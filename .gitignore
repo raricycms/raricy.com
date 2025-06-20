@@ -1,0 +1,11 @@
+__pycache__/
+venv/
+.env
+.DS_Store
+.vscode/
+.idea/
+.pytest_cache/
+.coverage
+.coverage.*
+.coverage.*.*
+.coverage.*.*.*
