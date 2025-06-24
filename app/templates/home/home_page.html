@@ -1,1 +1,235 @@
-hello world
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Bootstrap 学习示例页面</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="#">
+                <i class="bi bi-bootstrap"></i> Bootstrap Demo
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="#home">首页</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#about">关于</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#services">服务</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#contact">联系</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 主要内容区域 -->
+    <div class="container mt-4">
+        <!-- Hero Section -->
+        <div class="row mb-5">
+            <div class="col-12">
+                <div class="jumbotron bg-light p-5 rounded">
+                    <h1 class="display-4">欢迎学习 Bootstrap!</h1>
+                    <p class="lead">Bootstrap 是一个用于快速开发 Web 应用程序和网站的前端框架</p>
+                    <hr class="my-4">
+                    <p>基于 HTML、CSS、JavaScript 的响应式前端框架</p>
+                    <a class="btn btn-primary btn-lg" href="#" role="button">开始学习</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- 网格系统示例 -->
+        <div class="row mb-5">
+            <div class="col-12">
+                <h2>网格系统示例</h2>
+            </div>
+            <div class="col-md-4 mb-3">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">
+                            <i class="bi bi-grid-3x3-gap text-primary"></i> 响应式布局
+                        </h5>
+                        <p class="card-text">Bootstrap的12列网格系统让响应式设计变得简单</p>
+                        <a href="#" class="btn btn-outline-primary">了解更多</a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 mb-3">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">
+                            <i class="bi bi-palette text-success"></i> 丰富组件
+                        </h5>
+                        <p class="card-text">提供大量预制组件，快速构建现代化界面</p>
+                        <a href="#" class="btn btn-outline-success">查看组件</a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 mb-3">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">
+                            <i class="bi bi-phone text-info"></i> 移动优先
+                        </h5>
+                        <p class="card-text">移动优先的设计理念，完美适配各种设备</p>
+                        <a href="#" class="btn btn-outline-info">移动体验</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 表格示例 -->
+        <div class="row mb-5">
+            <div class="col-12">
+                <h2>表格示例</h2>
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead class="table-dark">
+                            <tr>
+                                <th scope="col">#</th>
+                                <th scope="col">姓名</th>
+                                <th scope="col">职位</th>
+                                <th scope="col">部门</th>
+                                <th scope="col">状态</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <th scope="row">1</th>
+                                <td>张三</td>
+                                <td>前端开发工程师</td>
+                                <td>技术部</td>
+                                <td><span class="badge bg-success">在职</span></td>
+                            </tr>
+                            <tr>
+                                <th scope="row">2</th>
+                                <td>李四</td>
+                                <td>UI设计师</td>
+                                <td>设计部</td>
+                                <td><span class="badge bg-success">在职</span></td>
+                            </tr>
+                            <tr>
+                                <th scope="row">3</th>
+                                <td>王五</td>
+                                <td>产品经理</td>
+                                <td>产品部</td>
+                                <td><span class="badge bg-warning">休假</span></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 按钮和表单示例 -->
+        <div class="row mb-5">
+            <div class="col-md-6">
+                <h3>按钮示例</h3>
+                <div class="mb-3">
+                    <button type="button" class="btn btn-primary me-2">主要按钮</button>
+                    <button type="button" class="btn btn-secondary me-2">次要按钮</button>
+                    <button type="button" class="btn btn-success me-2">成功</button>
+                    <button type="button" class="btn btn-danger me-2">危险</button>
+                </div>
+                <div class="mb-3">
+                    <button type="button" class="btn btn-outline-primary me-2">轮廓按钮</button>
+                    <button type="button" class="btn btn-sm btn-info me-2">小按钮</button>
+                    <button type="button" class="btn btn-lg btn-warning">大按钮</button>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <h3>表单示例</h3>
+                <form>
+                    <div class="mb-3">
+                        <label for="email" class="form-label">邮箱地址</label>
+                        <input type="email" class="form-control" id="email" placeholder="请输入邮箱">
+                    </div>
+                    <div class="mb-3">
+                        <label for="password" class="form-label">密码</label>
+                        <input type="password" class="form-control" id="password" placeholder="请输入密码">
+                    </div>
+                    <div class="mb-3">
+                        <label for="select" class="form-label">选择部门</label>
+                        <select class="form-select" id="select">
+                            <option selected>请选择...</option>
+                            <option value="1">技术部</option>
+                            <option value="2">设计部</option>
+                            <option value="3">产品部</option>
+                        </select>
+                    </div>
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="check">
+                        <label class="form-check-label" for="check">
+                            同意服务条款
+                        </label>
+                    </div>
+                    <button type="submit" class="btn btn-primary">提交</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- 警告框示例 -->
+        <div class="row mb-5">
+            <div class="col-12">
+                <h3>警告框示例</h3>
+                <div class="alert alert-success alert-dismissible fade show" role="alert">
+                    <i class="bi bi-check-circle"></i>
+                    <strong>成功!</strong> 您的操作已成功完成。
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+                <div class="alert alert-warning" role="alert">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    <strong>注意!</strong> 这是一个警告信息。
+                </div>
+                <div class="alert alert-info" role="alert">
+                    <i class="bi bi-info-circle"></i>
+                    <strong>提示:</strong> 这是一个信息提示。
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 页脚 -->
+    <footer class="bg-dark text-light py-4 mt-5">
+        <div class="container">
+            <div class="row">
+                <div class="col-md-6">
+                    <h5>Bootstrap 学习示例</h5>
+                    <p>这是一个完整的Bootstrap示例页面，展示了常用的组件和布局。</p>
+                </div>
+                <div class="col-md-6">
+                    <h5>相关链接</h5>
+                    <ul class="list-unstyled">
+                        <li><a href="#" class="text-light">Bootstrap 官网</a></li>
+                        <li><a href="#" class="text-light">文档</a></li>
+                        <li><a href="#" class="text-light">示例</a></li>
+                    </ul>
+                </div>
+            </div>
+            <hr>
+            <div class="text-center">
+                <p>&copy; 2025 Bootstrap 学习示例. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Bootstrap JavaScript -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
+
