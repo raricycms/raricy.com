@@ -1,0 +1,276 @@
+{% extends "base.html" %}
+
+{% block title %}Raricy.com - 聪明山 - 首页{% endblock %}
+
+{% block extra_css %}
+<style>
+    .hero-section {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 60vh;
+      display: flex;
+      align-items: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero-section::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grain" width="100" height="100" patternUnits="userSpaceOnUse"><circle cx="25" cy="25" r="1" fill="white" opacity="0.1"/><circle cx="75" cy="75" r="1" fill="white" opacity="0.1"/></pattern></defs><rect width="100" height="100" fill="url(%23grain)"/></svg>');
+      opacity: 0.3;
+    }
+
+    /* 卡片样式优化 */
+    .feature-card {
+      transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      cursor: pointer;
+      border: none;
+      border-radius: 15px;
+      overflow: hidden;
+      position: relative;
+      height: 100%;
+    }
+
+    .feature-card:hover {
+      transform: translateY(-10px) scale(1.02);
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+    }
+
+    .feature-card .card-body {
+      padding: 2rem;
+      position: relative;
+      z-index: 2;
+    }
+
+    .feature-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: linear-gradient(45deg, transparent 30%, rgba(255, 255, 255, 0.1) 50%, transparent 70%);
+      transform: translateX(-100%);
+      transition: transform 0.6s;
+    }
+
+    .feature-card:hover::before {
+      transform: translateX(100%);
+    }
+
+    /* 图标样式 */
+    .feature-icon {
+      font-size: 3rem;
+      margin-bottom: 1rem;
+      display: block;
+    }
+
+    /* 统计数据样式 */
+    .stats-section {
+      background: #f8f9fa;
+      padding: 4rem 0;
+    }
+
+    .stat-item {
+      text-align: center;
+      padding: 2rem 1rem;
+    }
+
+    .stat-number {
+      font-size: 3rem;
+      font-weight: bold;
+      color: #667eea;
+      display: block;
+    }
+
+    /* 特色区域 */
+    .features-section {
+      padding: 5rem 0;
+      background: white;
+    }
+
+    /* 响应式优化 */
+    @media (max-width: 768px) {
+      .hero-section {
+        min-height: 50vh;
+        text-align: center;
+      }
+
+      .feature-card {
+        margin-bottom: 2rem;
+      }
+    }
+
+    /* 动画效果 */
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(30px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .fade-in-up {
+      animation: fadeInUp 0.8s ease-out;
+    }
+
+    /* 按钮样式 */
+    .btn-custom {
+      background: linear-gradient(45deg, #667eea, #764ba2);
+      border: none;
+      border-radius: 25px;
+      padding: 12px 30px;
+      color: white;
+      font-weight: 500;
+      transition: all 0.3s ease;
+    }
+
+    .btn-custom:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+      color: white;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Hero Section -->
+<section class="hero-section" id="home">
+    <div class="container">
+        <div class="row align-items-center">
+            <div class="col-lg-6">
+                <div class="text-white fade-in-up">
+                    <h1 class="display-4 fw-bold mb-4">聪明山</h1>
+                    <p class="lead mb-4 fs-3 fst-italic">我 们 总 将 找 到 答 案</p>
+                    <p class="mb-4 fs-5">欢迎访问聪明山website。这里是Raricy.com的主页面，你可以由此进入Raricy.com的大部分页面</p>
+                    <!--
+            <div class="d-flex gap-3 flex-wrap">
+              <a href="#features" class="btn btn-custom btn-lg">开始探索</a>
+              <a href="#about" class="btn btn-outline-light btn-lg">了解更多</a>
+            </div>
+            -->
+                </div>
+            </div>
+            <div class="col-lg-6 text-center">
+                <div class="fade-in-up">
+                    <i class="bi bi-lightbulb text-warning" style="font-size: 8rem; opacity: 0.8;"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+<!-- 统计数据区域 -->
+<!--
+  <section class="stats-section">
+    <div class="container">
+      <div class="row">
+        <div class="col-md-3 col-6">
+          <div class="stat-item">
+            <span class="stat-number">0</span>
+            <p class="text-muted mb-0">故事收藏</p>
+          </div>
+        </div>
+        <div class="col-md-3 col-6">
+          <div class="stat-item">
+            <span class="stat-number">0</span>
+            <p class="text-muted mb-0">实用工具</p>
+          </div>
+        </div>
+        <div class="col-md-3 col-6">
+          <div class="stat-item">
+            <span class="stat-number">0</span>
+            <p class="text-muted mb-0">趣味游戏</p>
+          </div>
+        </div>
+        <div class="col-md-3 col-6">
+          <div class="stat-item">
+            <span class="stat-number">∞</span>
+            <p class="text-muted mb-0">无限可能</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+  -->
+<!-- 功能特色区域 -->
+<section class="features-section" id="features">
+    <div class="container">
+        <div class="row mb-5">
+            <div class="col-12 text-center">
+                <h2 class="display-5 fw-bold mb-3">探索</h2>
+                <p class="lead text-muted">以下是此网站的核心内容。</p>
+            </div>
+        </div>
+
+        <div class="row g-4">
+            <div class="col-lg-3 col-md-6">
+                <div class="card feature-card h-100 bg-primary text-white" data-url="{{url_for('story.menu')}}"
+                    onclick="handleCardClick(this)">
+                    <div class="card-body text-center">
+                        <i class="bi bi-book feature-icon"></i>
+                        <h4 class="card-title mb-3">故事/小说</h4>
+                        <p class="card-text">聪明山故事集，这里有一些聪明山的原创故事和小说，也有代发的原创小说。</p>
+                        <a href="{{ url_for('story.menu') }}" class="btn btn-light btn-sm mt-auto">开始阅读</a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-3 col-md-6">
+                <div class="card feature-card h-100 bg-success text-white" data-url="{{url_for('game.menu')}}"
+                    onclick="handleCardClick(this)">
+                    <div class="card-body text-center">
+                        <i class="bi bi-controller feature-icon"></i>
+                        <h4 class="card-title mb-3">玩具</h4>
+                        <p class="card-text">这里是一些前端小游戏，类型丰富，欢迎游玩。<br>部分游戏powered by ai。</p>
+                        <a href="{{ url_for('game.menu') }}" class="btn btn-light btn-sm mt-auto">开始游戏</a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-3 col-md-6">
+                <div class="card feature-card h-100 bg-warning text-dark" data-url="{{url_for('tool.menu')}}"
+                    onclick="handleCardClick(this)">
+                    <div class="card-body text-center">
+                        <i class="bi bi-tools feature-icon"></i>
+                        <h4 class="card-title mb-3">工具</h4>
+                        <p class="card-text">这里有一些化学计算工具、工作工具、编码解码工具，提升你的工作效率。</p>
+                        <a href="#" class="btn btn-dark btn-sm mt-auto">使用工具</a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-3 col-md-6">
+                <div class="card feature-card h-100 bg-info text-white" data-url="{{url_for('sitemap.index')}}"
+                    onclick="handleCardClick(this)">
+                    <div class="card-body text-center">
+                        <i class="bi bi-list-ul feature-icon"></i>
+                        <h4 class="card-title mb-3">站点目录</h4>
+                        <p class="card-text">查看此网站的所有页面，快速导航到你需要的内容，一站式浏览体验。</p>
+                        <a href="#" class="btn btn-light btn-sm mt-auto">查看目录</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // 卡片点击跳转处理函数
+    function handleCardClick(element) {
+        const url = element.getAttribute('data-url');
+        if (url) {
+            window.location.href = url;
+        }
+    }
+</script>
+{% endblock %}

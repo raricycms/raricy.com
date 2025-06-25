@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block title %}Raricy.com - 游戏菜单{% endblock %}
+
+{% block extra_css %}
+
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row">
+        <div class="col-md-6">
+            <a href="{{url_for('game.xingkong')}}">星空战机</a>
+        </div>
+        <div class="col-md-6">
+            <a href="{{url_for('game.gecao')}}">割草打怪</a>
+        </div>
+        <div class="col-md-6">
+            <a href="{{url_for('game.reversi')}}">黑白棋</a>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+
+{% endblock %}
