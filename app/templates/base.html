@@ -97,7 +97,7 @@
             <div class="row">
                 <div class="col-md-6">
                     <h5>聪明山 Raricy.com</h5>
-                    <p class="text-muted">你是否正在找智慧河的网站？可能就在附近哦。</p>
+                    {% block footer_text %}{% endblock %}
                 </div>
                 <div class="col-md-6 text-md-end">
                     <div class="social-links">
@@ -106,7 +106,7 @@
                         <a href="#" class="text-white me-3"><i class="bi bi-twitter"></i></a>
                         <a href="#" class="text-white"><i class="bi bi-envelope"></i></a>
                     </div>
-                    <p class="text-white mt-2">&copy; 2025 聪明山. All rights reserved.</p>
+                    <p class="text-white mt-2">{% block copyright %}&copy; 2025 聪明山. All rights reserved.{% endblock %}</p>
                 </div>
             </div>
         </div>

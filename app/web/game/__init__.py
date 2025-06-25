@@ -17,3 +17,7 @@ def gecao():
 @game_bp.route('/reversi')
 def reversi():
     return render_template('game/reversi.html')
+
+@game_bp.route('/quandi')
+def quandi():
+    return render_template('game/quandi.html')

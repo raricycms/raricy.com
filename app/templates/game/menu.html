@@ -3,25 +3,396 @@
 {% block title %}Raricy.com - 游戏菜单{% endblock %}
 
 {% block extra_css %}
-
+<style>
+    .games-hero {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 80px 0 60px;
+        margin-bottom: 60px;
+        text-align: center;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .games-hero::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grain" width="100" height="100" patternUnits="userSpaceOnUse"><circle cx="25" cy="25" r="1" fill="white" opacity="0.1"/><circle cx="75" cy="75" r="1" fill="white" opacity="0.1"/><circle cx="50" cy="10" r="0.5" fill="white" opacity="0.1"/><circle cx="10" cy="60" r="0.5" fill="white" opacity="0.1"/><circle cx="90" cy="40" r="0.5" fill="white" opacity="0.1"/></pattern></defs><rect width="100" height="100" fill="url(%23grain)"/></svg>');
+        opacity: 0.3;
+    }
+    
+    .games-hero h1 {
+        font-size: 3.5rem;
+        font-weight: 700;
+        margin-bottom: 20px;
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        position: relative;
+        z-index: 1;
+    }
+    
+    .games-hero p {
+        font-size: 1.3rem;
+        opacity: 0.9;
+        position: relative;
+        z-index: 1;
+    }
+    
+    .game-card {
+        background: white;
+        border-radius: 20px;
+        padding: 30px;
+        margin-bottom: 30px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        transition: all 0.3s ease;
+        border: none;
+        height: 100%;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .game-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 5px;
+        background: linear-gradient(90deg, #ff6b6b, #4ecdc4, #45b7d1, #96ceb4);
+        transform: translateX(-100%);
+        transition: transform 0.3s ease;
+    }
+    
+    .game-card:hover::before {
+        transform: translateX(0);
+    }
+    
+    .game-card:hover {
+        transform: translateY(-10px);
+        box-shadow: 0 20px 40px rgba(0,0,0,0.15);
+    }
+    
+    .game-icon {
+        width: 80px;
+        height: 80px;
+        border-radius: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 2.5rem;
+        margin-bottom: 20px;
+        color: white;
+        text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+    }
+    
+    .game-icon.space { background: linear-gradient(135deg, #667eea, #764ba2); }
+    .game-icon.grass { background: linear-gradient(135deg, #56ab2f, #a8e6cf); }
+    .game-icon.chess { background: linear-gradient(135deg, #2c3e50, #34495e); }
+    .game-icon.territory { background: linear-gradient(135deg, #ff6b6b, #ee5a24); }
+    
+    .game-title {
+        font-size: 1.8rem;
+        font-weight: 700;
+        color: #2c3e50;
+        margin-bottom: 15px;
+        text-decoration: none;
+    }
+    
+    .game-title:hover {
+        color: #3498db;
+        text-decoration: none;
+    }
+    
+    .game-description {
+        color: #7f8c8d;
+        font-size: 1.1rem;
+        line-height: 1.6;
+        margin-bottom: 20px;
+    }
+    
+    .game-features {
+        list-style: none;
+        padding: 0;
+        margin-bottom: 25px;
+    }
+    
+    .game-features li {
+        color: #95a5a6;
+        font-size: 0.95rem;
+        margin-bottom: 8px;
+        position: relative;
+        padding-left: 20px;
+    }
+    
+    .game-features li::before {
+        content: '✓';
+        position: absolute;
+        left: 0;
+        color: #27ae60;
+        font-weight: bold;
+    }
+    
+    .play-btn {
+        background: linear-gradient(135deg, #3498db, #2980b9);
+        color: white;
+        border: none;
+        padding: 12px 30px;
+        border-radius: 25px;
+        font-weight: 600;
+        text-decoration: none;
+        display: inline-block;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(52, 152, 219, 0.3);
+    }
+    
+    .play-btn:hover {
+        background: linear-gradient(135deg, #2980b9, #3498db);
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(52, 152, 219, 0.4);
+        color: white;
+        text-decoration: none;
+    }
+    
+    .stats-section {
+        background: #f8f9fa;
+        padding: 60px 0;
+        margin-top: 60px;
+    }
+    
+    .stat-item {
+        text-align: center;
+        padding: 20px;
+    }
+    
+    .stat-number {
+        font-size: 3rem;
+        font-weight: 700;
+        color: #3498db;
+        display: block;
+    }
+    
+    .stat-label {
+        color: #7f8c8d;
+        font-size: 1.1rem;
+        margin-top: 10px;
+    }
+    
+    @media (max-width: 768px) {
+        .games-hero h1 {
+            font-size: 2.5rem;
+        }
+        
+        .games-hero p {
+            font-size: 1.1rem;
+        }
+        
+        .game-card {
+            padding: 20px;
+        }
+        
+        .game-icon {
+            width: 60px;
+            height: 60px;
+            font-size: 2rem;
+        }
+        
+        .game-title {
+            font-size: 1.5rem;
+        }
+    }
+</style>
 {% endblock %}
 
 {% block content %}
+<!-- Hero Section -->
+<section class="games-hero">
+    <div class="container">
+        <h1>🎮 精品游戏合集</h1>
+        <p>探索多样化的游戏世界，享受无限乐趣</p>
+    </div>
+</section>
+
+<!-- Games Grid -->
 <div class="container">
     <div class="row">
-        <div class="col-md-6">
-            <a href="{{url_for('game.xingkong')}}">星空战机</a>
+        <!-- 星空战机 -->
+        <div class="col-lg-6 col-md-6 mb-4">
+            <div class="game-card">
+                <div class="game-icon space">🚀</div>
+                <a href="{{url_for('game.xingkong')}}" class="game-title">星空战机</a>
+                <p class="game-description">
+                    驾驶先进战机穿越浩瀚星空，在激烈的太空战斗中生存下来。
+                </p>
+                <ul class="game-features">
+                    <li>流畅的飞行操控体验</li>
+                    <li>多样化的道具收集</li>
+                    <li>挑战性的Boss战斗</li>
+                    <li>精美的星空背景</li>
+                </ul>
+                <a href="{{url_for('game.xingkong')}}" class="play-btn">开始游戏</a>
+            </div>
         </div>
-        <div class="col-md-6">
-            <a href="{{url_for('game.gecao')}}">割草打怪</a>
+
+        <!-- 割草打怪 -->
+        <div class="col-lg-6 col-md-6 mb-4">
+            <div class="game-card">
+                <div class="game-icon grass">⚔️</div>
+                <a href="{{url_for('game.gecao')}}" class="game-title">割草打怪</a>
+                <p class="game-description">
+                    在广阔的草原上展开冒险，击败怪物，收集经验，不断成长。
+                </p>
+                <ul class="game-features">
+                    <li>角色成长系统</li>
+                    <li>丰富的怪物种类</li>
+                    <li>经验值升级机制</li>
+                    <li>史诗级Boss挑战</li>
+                </ul>
+                <a href="{{url_for('game.gecao')}}" class="play-btn">开始冒险</a>
+            </div>
         </div>
-        <div class="col-md-6">
-            <a href="{{url_for('game.reversi')}}">黑白棋</a>
+
+        <!-- 黑白棋 -->
+        <div class="col-lg-6 col-md-6 mb-4">
+            <div class="game-card">
+                <div class="game-icon chess">⚫</div>
+                <a href="{{url_for('game.reversi')}}" class="game-title">黑白棋</a>
+                <p class="game-description">
+                    经典的策略棋类游戏，考验你的逻辑思维和战略规划能力。
+                </p>
+                <ul class="game-features">
+                    <li>双人对战模式</li>
+                    <li>智能提示系统</li>
+                    <li>精美的棋盘设计</li>
+                    <li>实时计分功能</li>
+                </ul>
+                <a href="{{url_for('game.reversi')}}" class="play-btn">开始对弈</a>
+            </div>
+        </div>
+
+        <!-- 圈地运动 -->
+        <div class="col-lg-6 col-md-6 mb-4">
+            <div class="game-card">
+                <div class="game-icon territory">🐍</div>
+                <a href="{{url_for('game.quandi')}}" class="game-title">圈地运动</a>
+                <p class="game-description">
+                    控制你的贪吃蛇在竞技场中扩张领土，与对手争夺更多地盘。
+                </p>
+                <ul class="game-features">
+                    <li>双人竞技模式</li>
+                    <li>策略性地盘争夺</li>
+                    <li>流畅的操控手感</li>
+                    <li>紧张刺激的对战</li>
+                </ul>
+                <a href="{{url_for('game.quandi')}}" class="play-btn">开始圈地</a>
+            </div>
         </div>
     </div>
 </div>
+
+<!-- Stats Section -->
+<section class="stats-section">
+    <div class="container">
+        <div class="row">
+            <div class="col-md-3 col-6">
+                <div class="stat-item">
+                    <span class="stat-number">4</span>
+                    <div class="stat-label">精品游戏</div>
+                </div>
+            </div>
+            <div class="col-md-3 col-6">
+                <div class="stat-item">
+                    <span class="stat-number">100%</span>
+                    <div class="stat-label">免费畅玩</div>
+                </div>
+            </div>
+            <div class="col-md-3 col-6">
+                <div class="stat-item">
+                    <span class="stat-number">∞</span>
+                    <div class="stat-label">无限乐趣</div>
+                </div>
+            </div>
+            <div class="col-md-3 col-6">
+                <div class="stat-item">
+                    <span class="stat-number">24/7</span>
+                    <div class="stat-label">随时可玩</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
 {% endblock %}
 
 {% block extra_js %}
-
+<script>
+// 添加一些交互效果
+document.addEventListener('DOMContentLoaded', function() {
+    // 为游戏卡片添加鼠标跟踪效果
+    const gameCards = document.querySelectorAll('.game-card');
+    
+    gameCards.forEach(card => {
+        card.addEventListener('mousemove', function(e) {
+            const rect = card.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            
+            const centerX = rect.width / 2;
+            const centerY = rect.height / 2;
+            
+            const rotateX = (y - centerY) / 10;
+            const rotateY = (centerX - x) / 10;
+            
+            card.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) translateY(-10px)`;
+        });
+        
+        card.addEventListener('mouseleave', function() {
+            card.style.transform = 'perspective(1000px) rotateX(0deg) rotateY(0deg) translateY(0px)';
+        });
+    });
+    
+    // 数字动画效果
+    const animateNumbers = () => {
+        const statNumbers = document.querySelectorAll('.stat-number');
+        
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    const target = entry.target;
+                    const text = target.textContent;
+                    
+                    if (text === '4') {
+                        animateNumber(target, 0, 4, 1000);
+                    } else if (text === '100%') {
+                        animateNumber(target, 0, 100, 1500, '%');
+                    }
+                }
+            });
+        });
+        
+        statNumbers.forEach(num => observer.observe(num));
+    };
+    
+    const animateNumber = (element, start, end, duration, suffix = '') => {
+        const startTime = performance.now();
+        
+        const updateNumber = (currentTime) => {
+            const elapsed = currentTime - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+            
+            const current = Math.floor(start + (end - start) * progress);
+            element.textContent = current + suffix;
+            
+            if (progress < 1) {
+                requestAnimationFrame(updateNumber);
+            }
+        };
+        
+        requestAnimationFrame(updateNumber);
+    };
+    
+    animateNumbers();
+});
+</script>
 {% endblock %}

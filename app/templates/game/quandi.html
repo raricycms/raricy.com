@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+
+{% block title %}Raricy.com - 圈地运动{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/quandi/styles.css') }}">
+{% endblock %}
+
+{% block content %}
+    <!-- 主菜单页面 -->
+    <div id="mainMenu" class="page active">
+        <div class="menu-container">
+            <h1 class="game-title">圈地运动</h1>
+            <div class="menu-options">
+                <div class="color-selection">
+                    <h3>选择你的颜色</h3>
+                    <div class="color-picker">
+                        <div class="color-option" data-color="#ff4444" style="background: #ff4444;"></div>
+                        <div class="color-option" data-color="#44ff44" style="background: #44ff44;"></div>
+                        <div class="color-option" data-color="#ffff44" style="background: #ffff44;"></div>
+                        <div class="color-option" data-color="#ff44ff" style="background: #ff44ff;"></div>
+                    </div>
+                </div>
+                <div class="difficulty-selection">
+                    <h3>选择难度</h3>
+                    <select id="difficultySelect">
+                        <option value="easy">简单</option>
+                        <option value="medium" selected>中等</option>
+                        <option value="hard">困难</option>
+                    </select>
+                </div>
+                <div class="menu-buttons">
+                    <button class="btn primary" onclick="showRules()">游戏说明</button>
+                    <button class="btn primary" onclick="startGame()">开始游戏</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 游戏说明页面 -->
+    <div id="rulesPage" class="page">
+        <div class="rules-container">
+            <h2>游戏说明</h2>
+            <div class="rules-content">
+                <h3>游戏目标</h3>
+                <p>控制你的画笔在画布上移动，通过圈地和阻断对手来获得更多领土！</p>
+                
+                <h3>操作方式</h3>
+                <p><strong>玩家1：</strong> 使用 W、A、S、D 键控制移动</p>
+                <p><strong>玩家2：</strong> 使用方向键控制移动</p>
+                
+                <h3>游戏规则</h3>
+                <ul>
+                    <li>玩家有一定长度的轨迹</li>
+                    <li>移动时会留下自己颜色的轨迹</li>
+                    <li>轨迹头回到家后与尾相连</li>
+                    <li>形成封闭区域可以占领该区域</li>
+                    <li>碰到对手的轨迹会死亡</li>
+                    <li>进入对手的领土会死亡</li>
+                    <li>可以碰到自己的轨迹</li>
+                    <li>规定时间内占领更多区域的玩家获胜</li>
+                </ul>
+                
+                <h3>策略提示</h3>
+                <ul>
+                    <li>尝试圈出大片区域</li>
+                    <li>阻断对手的圈地路径</li>
+                    <li>注意保护你的家</li>
+                    <li>使用道具可以获得优势</li>
+                </ul>
+
+                <h3>道具说明</h3>
+                <ul>
+                    <li>速度：增加移动速度</li>
+                    <li>长度：增加轨迹长度</li>
+                    <li>护盾：保护自己可以进入对方领土</li>
+                    <li>障碍：阻挡对手的移动</li>
+                    <li>临时栏杆: 开局12秒后消失</li>
+                </ul>
+            </div>
+            <button class="btn secondary" onclick="showMainMenu()">返回主菜单</button>
+        </div>
+    </div>
+
+    <!-- 游戏页面 -->
+    <div id="gamePage" class="page">
+        <div class="game-header">
+            <div class="score-board">
+                <div class="player-score">
+                    <span class="player-name">玩家1</span>
+                    <div class="score-bar">
+                        <div class="score-fill player1" id="player1Score"></div>
+                    </div>
+                    <span class="score-text" id="player1ScoreText">0%</span>
+                </div>
+                <div class="game-controls">
+                    <button class="btn small" onclick="pauseGame()">暂停</button>
+                    <button class="btn small" onclick="restartGame()">重新开始</button>
+                    <button class="btn small" onclick="showMainMenu()">主菜单</button>
+                </div>
+                <div class="player-score">
+                    <span class="player-name">玩家2</span>
+                    <div class="score-bar">
+                        <div class="score-fill player2" id="player2Score"></div>
+                    </div>
+                    <span class="score-text" id="player2ScoreText">0%</span>
+                </div>
+            </div>
+        </div>
+        <div class="game-container">
+            <canvas id="gameCanvas" width="1200" height="600"></canvas>
+        </div>
+        <div class="game-status" id="gameStatus"></div>
+    </div>
+
+    <!-- 暂停菜单 -->
+    <div id="pauseMenu" class="overlay">
+        <div class="pause-container">
+            <h2>游戏暂停</h2>
+            <div class="pause-buttons">
+                <button class="btn primary" onclick="resumeGame()">继续游戏</button>
+                <button class="btn secondary" onclick="restartGame()">重新开始</button>
+                <button class="btn secondary" onclick="showMainMenu()">主菜单</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 游戏结束菜单 -->
+    <div id="gameOverMenu" class="overlay">
+        <div class="gameover-container">
+            <h2 id="gameOverTitle">游戏结束</h2>
+            <p id="gameOverMessage"></p>
+            <div class="gameover-buttons">
+                <button class="btn primary" onclick="restartGame()">再来一局</button>
+                <button class="btn secondary" onclick="showMainMenu()">主菜单</button>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+{% block copyright %}
+    &copy; 2025 北斗大帝. Reproduced with permission.
+{% endblock %}
+{% block extra_js %}
+    <script src="{{ url_for('static', filename='js/quandi/Player.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/quandi/Territory.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/quandi/GameEngine.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/quandi/InputHandler.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/quandi/ItemManager.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/quandi/Renderer.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/quandi/main.js') }}"></script>
+{% endblock %}
