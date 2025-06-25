@@ -12,7 +12,7 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <!-- Bootstrap Icons -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
-  
+
   <style>
     /* 渐变背景 */
     .hero-section {
@@ -23,7 +23,7 @@
       position: relative;
       overflow: hidden;
     }
-    
+
     .hero-section::before {
       content: '';
       position: absolute;
@@ -34,7 +34,7 @@
       background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grain" width="100" height="100" patternUnits="userSpaceOnUse"><circle cx="25" cy="25" r="1" fill="white" opacity="0.1"/><circle cx="75" cy="75" r="1" fill="white" opacity="0.1"/></pattern></defs><rect width="100" height="100" fill="url(%23grain)"/></svg>');
       opacity: 0.3;
     }
-    
+
     /* 卡片样式优化 */
     .feature-card {
       transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
@@ -45,18 +45,18 @@
       position: relative;
       height: 100%;
     }
-    
+
     .feature-card:hover {
       transform: translateY(-10px) scale(1.02);
-      box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
     }
-    
+
     .feature-card .card-body {
       padding: 2rem;
       position: relative;
       z-index: 2;
     }
-    
+
     .feature-card::before {
       content: '';
       position: absolute;
@@ -64,81 +64,82 @@
       left: 0;
       right: 0;
       bottom: 0;
-      background: linear-gradient(45deg, transparent 30%, rgba(255,255,255,0.1) 50%, transparent 70%);
+      background: linear-gradient(45deg, transparent 30%, rgba(255, 255, 255, 0.1) 50%, transparent 70%);
       transform: translateX(-100%);
       transition: transform 0.6s;
     }
-    
+
     .feature-card:hover::before {
       transform: translateX(100%);
     }
-    
+
     /* 图标样式 */
     .feature-icon {
       font-size: 3rem;
       margin-bottom: 1rem;
       display: block;
     }
-    
+
     /* 导航栏优化 */
     .navbar {
       backdrop-filter: blur(10px);
       background: rgba(33, 37, 41, 0.95) !important;
-      box-shadow: 0 2px 20px rgba(0,0,0,0.1);
+      box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
     }
-    
+
     /* 统计数据样式 */
     .stats-section {
       background: #f8f9fa;
       padding: 4rem 0;
     }
-    
+
     .stat-item {
       text-align: center;
       padding: 2rem 1rem;
     }
-    
+
     .stat-number {
       font-size: 3rem;
       font-weight: bold;
       color: #667eea;
       display: block;
     }
-    
+
     /* 特色区域 */
     .features-section {
       padding: 5rem 0;
       background: white;
     }
-    
+
     /* 响应式优化 */
     @media (max-width: 768px) {
       .hero-section {
         min-height: 50vh;
         text-align: center;
       }
-      
+
       .feature-card {
         margin-bottom: 2rem;
       }
     }
-    
+
     /* 动画效果 */
     @keyframes fadeInUp {
       from {
         opacity: 0;
         transform: translateY(30px);
       }
+
       to {
         opacity: 1;
         transform: translateY(0);
       }
     }
-    
+
     .fade-in-up {
       animation: fadeInUp 0.8s ease-out;
     }
-    
+
     /* 按钮样式 */
     .btn-custom {
       background: linear-gradient(45deg, #667eea, #764ba2);
@@ -149,7 +150,7 @@
       font-weight: 500;
       transition: all 0.3s ease;
     }
-    
+
     .btn-custom:hover {
       transform: translateY(-2px);
       box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
@@ -190,7 +191,7 @@
       </div>
     </div>
   </nav>
-  
+
   <!-- 主要横幅区域 -->
   <section class="hero-section" id="home">
     <div class="container">
@@ -217,7 +218,7 @@
     </div>
   </section>
   <!-- 统计数据区域 -->
-   <!--
+  <!--
   <section class="stats-section">
     <div class="container">
       <div class="row">
@@ -258,32 +259,32 @@
           <p class="lead text-muted">以下是此网站的核心内容。</p>
         </div>
       </div>
-      
+
       <div class="row g-4">
         <div class="col-lg-3 col-md-6">
-          <div class="card feature-card h-100 bg-primary text-white">
+          <div class="card feature-card h-100 bg-primary text-white" data-url="{{url_for('story.menu')}}" onclick="handleCardClick(this)">
             <div class="card-body text-center">
               <i class="bi bi-book feature-icon"></i>
               <h4 class="card-title mb-3">故事/小说</h4>
               <p class="card-text">聪明山故事集，这里有一些聪明山的原创故事和小说，也有代发的原创小说。</p>
-              <a href="#" class="btn btn-light btn-sm mt-auto">开始阅读</a>
+              <a href="{{ url_for('story.menu') }}" class="btn btn-light btn-sm mt-auto">开始阅读</a>
             </div>
           </div>
         </div>
-        
+
         <div class="col-lg-3 col-md-6">
-          <div class="card feature-card h-100 bg-success text-white">
+          <div class="card feature-card h-100 bg-success text-white" data-url="{{url_for('game.menu')}}" onclick="handleCardClick(this)">
             <div class="card-body text-center">
               <i class="bi bi-controller feature-icon"></i>
               <h4 class="card-title mb-3">玩具</h4>
               <p class="card-text">这里是一些前端小游戏，类型丰富，欢迎游玩。<br>部分游戏powered by ai。</p>
-              <a href="#" class="btn btn-light btn-sm mt-auto">开始游戏</a>
+              <a href="{{ url_for('game.menu') }}" class="btn btn-light btn-sm mt-auto">开始游戏</a>
             </div>
           </div>
         </div>
-        
+
         <div class="col-lg-3 col-md-6">
-          <div class="card feature-card h-100 bg-warning text-dark">
+          <div class="card feature-card h-100 bg-warning text-dark" data-url="{{url_for('tool.menu')}}" onclick="handleCardClick(this)">
             <div class="card-body text-center">
               <i class="bi bi-tools feature-icon"></i>
               <h4 class="card-title mb-3">工具</h4>
@@ -292,9 +293,9 @@
             </div>
           </div>
         </div>
-        
+
         <div class="col-lg-3 col-md-6">
-          <div class="card feature-card h-100 bg-info text-white">
+          <div class="card feature-card h-100 bg-info text-white" data-url="{{url_for('sitemap.index')}}" onclick="handleCardClick(this)">
             <div class="card-body text-center">
               <i class="bi bi-list-ul feature-icon"></i>
               <h4 class="card-title mb-3">站点目录</h4>
@@ -329,8 +330,17 @@
 
   <!-- Bootstrap JS -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-  
+
   <script>
+    // 卡片点击跳转处理函数
+    function handleCardClick(element) {
+      const url = element.getAttribute('data-url');
+      if (url) {
+        // 可以选择在当前窗口打开或新窗口打开
+        window.location.href = url; // 当前窗口打开
+        // window.open(url, '_blank'); // 新窗口打开
+      }
+    }
     // 平滑滚动
     document.querySelectorAll('a[href^="#"]').forEach(anchor => {
       anchor.addEventListener('click', function (e) {
@@ -344,9 +354,9 @@
         }
       });
     });
-    
+
     // 滚动时导航栏效果
-    window.addEventListener('scroll', function() {
+    window.addEventListener('scroll', function () {
       const navbar = document.querySelector('.navbar');
       if (window.scrollY > 50) {
         navbar.style.background = 'rgba(33, 37, 41, 0.98)';
@@ -356,4 +366,5 @@
     });
   </script>
 </body>
+
 </html>
