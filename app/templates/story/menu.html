@@ -217,135 +217,46 @@
 <!-- Hero Section -->
 <section class="stories-hero">
     <div class="container">
-        <h1>📚 小说集</h1>
-        <p>沉浸在文字的世界，探索无限的想象空间</p>
+        <h1>📚 聪明山故事集</h1>
+        <p>这里有一些故事，希望你喜欢</p>
     </div>
 </section>
 
 <!-- Stories Grid -->
 <div class="container">
     <div class="row">
-        <!-- 爱情小说 -->
         <div class="col-lg-6 col-md-6 mb-4">
             <div class="story-card romance">
-                <span class="story-genre genre-romance">Romance</span>
-                <a href="{{url_for('story.romance_collection')}}" class="story-title">浪漫时光</a>
+                <span class="story-genre genre-romance">404</span>
+                <a href="/story/main" class="story-title">404</a>
                 <p class="story-description">
-                    收录了多个温馨浪漫的爱情故事，从校园青涩到都市情缘，每一个故事都诉说着爱情的美好与感动。
+                    /* 主线章节已经在to-do list中。请保持信心，我大概总会写好的。*/
                 </p>
                 <div class="story-meta">
-                    <span class="story-chapters">12 个故事</span>
+                    <span class="story-chapters">0 个故事</span>
                     <span class="story-status status-ongoing">连载中</span>
                 </div>
-                <a href="{{url_for('story.romance_collection')}}" class="read-btn">开始阅读</a>
+                <a href="/story/main" class="read-btn">开始阅读</a>
             </div>
         </div>
 
-        <!-- 悬疑推理 -->
         <div class="col-lg-6 col-md-6 mb-4">
             <div class="story-card mystery">
-                <span class="story-genre genre-mystery">Mystery</span>
-                <a href="{{url_for('story.mystery_collection')}}" class="story-title">迷雾重重</a>
+                <span class="story-genre genre-mystery">others</span>
+                <a href="/story/others" class="story-title">转载/代发</a>
                 <p class="story-description">
-                    精心编织的悬疑推理故事集，每个案件都充满了意想不到的转折，挑战你的逻辑思维和推理能力。
+                    聪明山朋友的原创故事。已获得授权。部分故事powered by gemini。
                 </p>
                 <div class="story-meta">
-                    <span class="story-chapters">8 个案件</span>
-                    <span class="story-status status-completed">已完结</span>
+                    <span class="story-chapters">0 个故事</span>
+                    <span class="story-status status-completed">待办</span>
                 </div>
-                <a href="{{url_for('story.mystery_collection')}}" class="read-btn">开始阅读</a>
-            </div>
-        </div>
-
-        <!-- 科幻小说 -->
-        <div class="col-lg-6 col-md-6 mb-4">
-            <div class="story-card scifi">
-                <span class="story-genre genre-scifi">Sci-Fi</span>
-                <a href="{{url_for('story.scifi_collection')}}" class="story-title">星际漫游</a>
-                <p class="story-description">
-                    探索未来世界的科幻故事集，从太空探险到人工智能，从时间旅行到平行宇宙，开启你的科幻之旅。
-                </p>
-                <div class="story-meta">
-                    <span class="story-chapters">15 个故事</span>
-                    <span class="story-status status-ongoing">连载中</span>
-                </div>
-                <a href="{{url_for('story.scifi_collection')}}" class="read-btn">开始阅读</a>
-            </div>
-        </div>
-
-        <!-- 奇幻冒险 -->
-        <div class="col-lg-6 col-md-6 mb-4">
-            <div class="story-card fantasy">
-                <span class="story-genre genre-fantasy">Fantasy</span>
-                <a href="{{url_for('story.fantasy_collection')}}" class="story-title">魔法世界</a>
-                <p class="story-description">
-                    充满魔法与冒险的奇幻故事集，勇敢的英雄、神秘的魔法、古老的传说，带你进入一个奇妙的幻想世界。
-                </p>
-                <div class="story-meta">
-                    <span class="story-chapters">10 个传说</span>
-                    <span class="story-status status-ongoing">连载中</span>
-                </div>
-                <a href="{{url_for('story.fantasy_collection')}}" class="read-btn">开始阅读</a>
-            </div>
-        </div>
-
-        <!-- 惊悚小说 -->
-        <div class="col-lg-6 col-md-6 mb-4">
-            <div class="story-card thriller">
-                <span class="story-genre genre-thriller">Thriller</span>
-                <a href="{{url_for('story.thriller_collection')}}" class="story-title">午夜惊魂</a>
-                <p class="story-description">
-                    紧张刺激的惊悚故事集，每一个故事都会让你心跳加速，在黑暗中感受恐惧与刺激的双重体验。
-                </p>
-                <div class="story-meta">
-                    <span class="story-chapters">6 个故事</span>
-                    <span class="story-status status-completed">已完结</span>
-                </div>
-                <a href="{{url_for('story.thriller_collection')}}" class="read-btn">开始阅读</a>
-            </div>
-        </div>
-
-        <!-- 人生百态 -->
-        <div class="col-lg-6 col-md-6 mb-4">
-            <div class="story-card drama">
-                <span class="story-genre genre-drama">Drama</span>
-                <a href="{{url_for('story.drama_collection')}}" class="story-title">人生百态</a>
-                <p class="story-description">
-                    描绘人生各个阶段的温情故事集，从童年回忆到老年感悟，每个故事都是生活的真实写照。
-                </p>
-                <div class="story-meta">
-                    <span class="story-chapters">20 个故事</span>
-                    <span class="story-status status-ongoing">连载中</span>
-                </div>
-                <a href="{{url_for('story.drama_collection')}}" class="read-btn">开始阅读</a>
+                <a href="/story/others" class="read-btn">开始阅读</a>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Stats Section -->
-<section class="stats-section">
-    <div class="container">
-        <div class="stats-grid">
-            <div class="stat-item">
-                <span class="stat-number">6</span>
-                <div class="stat-label">故事集</div>
-            </div>
-            <div class="stat-item">
-                <span class="stat-number">71</span>
-                <div class="stat-label">精选故事</div>
-            </div>
-            <div class="stat-item">
-                <span class="stat-number">∞</span>
-                <div class="stat-label">想象空间</div>
-            </div>
-            <div class="stat-item">
-                <span class="stat-number">24/7</span>
-                <div class="stat-label">随时阅读</div>
-            </div>
-        </div>
-    </div>
-</section>
 {% endblock %}
 
 {% block extra_js %}
