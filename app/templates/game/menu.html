@@ -210,8 +210,8 @@
 <!-- Hero Section -->
 <section class="games-hero">
     <div class="container">
-        <h1>🎮 精品游戏合集</h1>
-        <p>探索多样化的游戏世界，享受无限乐趣</p>
+        <h1>🎮 精品玩具合集</h1>
+        <p>仅用作HTML学习成果展示。珍惜时间，注意休息。</p>
     </div>
 </section>
 
@@ -266,7 +266,6 @@
                     <li>双人对战模式</li>
                     <li>智能提示系统</li>
                     <li>精美的棋盘设计</li>
-                    <li>实时计分功能</li>
                 </ul>
                 <a href="{{url_for('game.reversi')}}" class="play-btn">开始对弈</a>
             </div>
@@ -324,7 +323,9 @@
     </div>
 </section>
 {% endblock %}
-
+{% block footer_text %}
+<p>本页面powered by claude 4 sonnet。</p>
+{% endblock %}
 {% block extra_js %}
 <script>
 // 添加一些交互效果
