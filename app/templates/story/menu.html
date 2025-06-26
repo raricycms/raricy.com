@@ -1,0 +1,405 @@
+{% extends "base.html" %}
+
+{% block title %}Raricy.com - 小说集{% endblock %}
+
+{% block extra_css %}
+<style>
+    .stories-hero {
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        padding: 80px 0 60px;
+        margin-bottom: 60px;
+        text-align: center;
+    }
+    
+    .stories-hero h1 {
+        font-size: 3rem;
+        font-weight: 300;
+        color: #2c3e50;
+        margin-bottom: 20px;
+        letter-spacing: 2px;
+    }
+    
+    .stories-hero p {
+        font-size: 1.2rem;
+        color: #7f8c8d;
+        font-weight: 300;
+    }
+    
+    .story-card {
+        background: white;
+        border-radius: 8px;
+        padding: 40px 30px;
+        margin-bottom: 30px;
+        box-shadow: 0 2px 20px rgba(0,0,0,0.08);
+        transition: all 0.3s ease;
+        border-left: 4px solid transparent;
+        height: 100%;
+    }
+    
+    .story-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+    }
+    
+    .story-card.romance {
+        border-left-color: #e74c3c;
+    }
+    
+    .story-card.mystery {
+        border-left-color: #9b59b6;
+    }
+    
+    .story-card.scifi {
+        border-left-color: #3498db;
+    }
+    
+    .story-card.fantasy {
+        border-left-color: #27ae60;
+    }
+    
+    .story-card.thriller {
+        border-left-color: #f39c12;
+    }
+    
+    .story-card.drama {
+        border-left-color: #34495e;
+    }
+    
+    .story-genre {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.8rem;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 20px;
+    }
+    
+    .genre-romance { background: #fdf2f2; color: #e74c3c; }
+    .genre-mystery { background: #f8f4fd; color: #9b59b6; }
+    .genre-scifi { background: #f0f8ff; color: #3498db; }
+    .genre-fantasy { background: #f0fdf4; color: #27ae60; }
+    .genre-thriller { background: #fef9e7; color: #f39c12; }
+    .genre-drama { background: #f8f9fa; color: #34495e; }
+    
+    .story-title {
+        font-size: 1.6rem;
+        font-weight: 600;
+        color: #2c3e50;
+        margin-bottom: 15px;
+        text-decoration: none;
+        line-height: 1.3;
+    }
+    
+    .story-title:hover {
+        color: #3498db;
+        text-decoration: none;
+    }
+    
+    .story-description {
+        color: #7f8c8d;
+        font-size: 1rem;
+        line-height: 1.7;
+        margin-bottom: 25px;
+    }
+    
+    .story-meta {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 25px;
+        font-size: 0.9rem;
+        color: #95a5a6;
+    }
+    
+    .story-chapters {
+        display: flex;
+        align-items: center;
+    }
+    
+    .story-chapters::before {
+        content: '📖';
+        margin-right: 5px;
+    }
+    
+    .story-status {
+        display: flex;
+        align-items: center;
+    }
+    
+    .status-ongoing::before {
+        content: '🔄';
+        margin-right: 5px;
+    }
+    
+    .status-completed::before {
+        content: '✅';
+        margin-right: 5px;
+    }
+    
+    .read-btn {
+        background: #2c3e50;
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 4px;
+        font-weight: 500;
+        text-decoration: none;
+        display: inline-block;
+        transition: all 0.3s ease;
+        font-size: 0.95rem;
+    }
+    
+    .read-btn:hover {
+        background: #34495e;
+        color: white;
+        text-decoration: none;
+        transform: translateY(-1px);
+    }
+    
+    .stats-section {
+        background: #f8f9fa;
+        padding: 50px 0;
+        margin-top: 60px;
+        text-align: center;
+    }
+    
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 30px;
+        max-width: 800px;
+        margin: 0 auto;
+    }
+    
+    .stat-item {
+        padding: 20px;
+    }
+    
+    .stat-number {
+        font-size: 2.5rem;
+        font-weight: 300;
+        color: #2c3e50;
+        display: block;
+        margin-bottom: 10px;
+    }
+    
+    .stat-label {
+        color: #7f8c8d;
+        font-size: 1rem;
+        font-weight: 300;
+    }
+    
+    @media (max-width: 768px) {
+        .stories-hero h1 {
+            font-size: 2.2rem;
+        }
+        
+        .story-card {
+            padding: 25px 20px;
+        }
+        
+        .story-meta {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 10px;
+        }
+        
+        .stats-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Hero Section -->
+<section class="stories-hero">
+    <div class="container">
+        <h1>📚 小说集</h1>
+        <p>沉浸在文字的世界，探索无限的想象空间</p>
+    </div>
+</section>
+
+<!-- Stories Grid -->
+<div class="container">
+    <div class="row">
+        <!-- 爱情小说 -->
+        <div class="col-lg-6 col-md-6 mb-4">
+            <div class="story-card romance">
+                <span class="story-genre genre-romance">Romance</span>
+                <a href="{{url_for('story.romance_collection')}}" class="story-title">浪漫时光</a>
+                <p class="story-description">
+                    收录了多个温馨浪漫的爱情故事，从校园青涩到都市情缘，每一个故事都诉说着爱情的美好与感动。
+                </p>
+                <div class="story-meta">
+                    <span class="story-chapters">12 个故事</span>
+                    <span class="story-status status-ongoing">连载中</span>
+                </div>
+                <a href="{{url_for('story.romance_collection')}}" class="read-btn">开始阅读</a>
+            </div>
+        </div>
+
+        <!-- 悬疑推理 -->
+        <div class="col-lg-6 col-md-6 mb-4">
+            <div class="story-card mystery">
+                <span class="story-genre genre-mystery">Mystery</span>
+                <a href="{{url_for('story.mystery_collection')}}" class="story-title">迷雾重重</a>
+                <p class="story-description">
+                    精心编织的悬疑推理故事集，每个案件都充满了意想不到的转折，挑战你的逻辑思维和推理能力。
+                </p>
+                <div class="story-meta">
+                    <span class="story-chapters">8 个案件</span>
+                    <span class="story-status status-completed">已完结</span>
+                </div>
+                <a href="{{url_for('story.mystery_collection')}}" class="read-btn">开始阅读</a>
+            </div>
+        </div>
+
+        <!-- 科幻小说 -->
+        <div class="col-lg-6 col-md-6 mb-4">
+            <div class="story-card scifi">
+                <span class="story-genre genre-scifi">Sci-Fi</span>
+                <a href="{{url_for('story.scifi_collection')}}" class="story-title">星际漫游</a>
+                <p class="story-description">
+                    探索未来世界的科幻故事集，从太空探险到人工智能，从时间旅行到平行宇宙，开启你的科幻之旅。
+                </p>
+                <div class="story-meta">
+                    <span class="story-chapters">15 个故事</span>
+                    <span class="story-status status-ongoing">连载中</span>
+                </div>
+                <a href="{{url_for('story.scifi_collection')}}" class="read-btn">开始阅读</a>
+            </div>
+        </div>
+
+        <!-- 奇幻冒险 -->
+        <div class="col-lg-6 col-md-6 mb-4">
+            <div class="story-card fantasy">
+                <span class="story-genre genre-fantasy">Fantasy</span>
+                <a href="{{url_for('story.fantasy_collection')}}" class="story-title">魔法世界</a>
+                <p class="story-description">
+                    充满魔法与冒险的奇幻故事集，勇敢的英雄、神秘的魔法、古老的传说，带你进入一个奇妙的幻想世界。
+                </p>
+                <div class="story-meta">
+                    <span class="story-chapters">10 个传说</span>
+                    <span class="story-status status-ongoing">连载中</span>
+                </div>
+                <a href="{{url_for('story.fantasy_collection')}}" class="read-btn">开始阅读</a>
+            </div>
+        </div>
+
+        <!-- 惊悚小说 -->
+        <div class="col-lg-6 col-md-6 mb-4">
+            <div class="story-card thriller">
+                <span class="story-genre genre-thriller">Thriller</span>
+                <a href="{{url_for('story.thriller_collection')}}" class="story-title">午夜惊魂</a>
+                <p class="story-description">
+                    紧张刺激的惊悚故事集，每一个故事都会让你心跳加速，在黑暗中感受恐惧与刺激的双重体验。
+                </p>
+                <div class="story-meta">
+                    <span class="story-chapters">6 个故事</span>
+                    <span class="story-status status-completed">已完结</span>
+                </div>
+                <a href="{{url_for('story.thriller_collection')}}" class="read-btn">开始阅读</a>
+            </div>
+        </div>
+
+        <!-- 人生百态 -->
+        <div class="col-lg-6 col-md-6 mb-4">
+            <div class="story-card drama">
+                <span class="story-genre genre-drama">Drama</span>
+                <a href="{{url_for('story.drama_collection')}}" class="story-title">人生百态</a>
+                <p class="story-description">
+                    描绘人生各个阶段的温情故事集，从童年回忆到老年感悟，每个故事都是生活的真实写照。
+                </p>
+                <div class="story-meta">
+                    <span class="story-chapters">20 个故事</span>
+                    <span class="story-status status-ongoing">连载中</span>
+                </div>
+                <a href="{{url_for('story.drama_collection')}}" class="read-btn">开始阅读</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Stats Section -->
+<section class="stats-section">
+    <div class="container">
+        <div class="stats-grid">
+            <div class="stat-item">
+                <span class="stat-number">6</span>
+                <div class="stat-label">故事集</div>
+            </div>
+            <div class="stat-item">
+                <span class="stat-number">71</span>
+                <div class="stat-label">精选故事</div>
+            </div>
+            <div class="stat-item">
+                <span class="stat-number">∞</span>
+                <div class="stat-label">想象空间</div>
+            </div>
+            <div class="stat-item">
+                <span class="stat-number">24/7</span>
+                <div class="stat-label">随时阅读</div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // 简单的数字动画
+    const animateNumbers = () => {
+        const statNumbers = document.querySelectorAll('.stat-number');
+        
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    const target = entry.target;
+                    const text = target.textContent;
+                    
+                    if (text === '6') {
+                        animateNumber(target, 0, 6, 800);
+                    } else if (text === '71') {
+                        animateNumber(target, 0, 71, 1200);
+                    }
+                }
+            });
+        });
+        
+        statNumbers.forEach(num => observer.observe(num));
+    };
+    
+    const animateNumber = (element, start, end, duration) => {
+        const startTime = performance.now();
+        
+        const updateNumber = (currentTime) => {
+            const elapsed = currentTime - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+            
+            const current = Math.floor(start + (end - start) * progress);
+            element.textContent = current;
+            
+            if (progress < 1) {
+                requestAnimationFrame(updateNumber);
+            }
+        };
+        
+        requestAnimationFrame(updateNumber);
+    };
+    
+    animateNumbers();
+    
+    // 简单的卡片悬停效果
+    const storyCards = document.querySelectorAll('.story-card');
+    storyCards.forEach(card => {
+        card.addEventListener('mouseenter', function() {
+            this.style.transition = 'all 0.3s ease';
+        });
+    });
+});
+</script>
+{% endblock %}
