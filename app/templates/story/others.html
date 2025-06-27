@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+
+{% block title %}Raricy.com - 小说集{% endblock %}
+
+{% block extra_css %}
+<style>
+    .stories-hero {
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        padding: 80px 0 60px;
+        margin-bottom: 60px;
+        text-align: center;
+    }
+
+    .stories-hero h1 {
+        font-size: 3rem;
+        font-weight: 300;
+        color: #2c3e50;
+        margin-bottom: 20px;
+        letter-spacing: 2px;
+    }
+
+    .stories-hero p {
+        font-size: 1.2rem;
+        color: #7f8c8d;
+        font-weight: 300;
+    }
+
+    .story-card {
+        background: white;
+        border-radius: 8px;
+        padding: 40px 30px;
+        margin-bottom: 30px;
+        box-shadow: 0 2px 20px rgba(0,0,0,0.08);
+        transition: all 0.3s ease;
+        height: 100%;
+    }
+
+    .story-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+    }
+
+    .story-title {
+        font-size: 1.6rem;
+        font-weight: 600;
+        color: #2c3e50;
+        margin-bottom: 15px;
+        text-decoration: none;
+        line-height: 1.3;
+        display: block;
+    }
+
+    .story-title:hover {
+        color: #3498db;
+        text-decoration: none;
+    }
+
+    .story-description {
+        color: #7f8c8d;
+        font-size: 1rem;
+        line-height: 1.7;
+        margin-bottom: 15px;
+    }
+
+    .story-meta {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+        font-size: 0.9rem;
+        color: #95a5a6;
+    }
+
+    .story-chapters::before {
+        content: '📖';
+        margin-right: 5px;
+    }
+
+    .status-ongoing::before {
+        content: '🔄';
+        margin-right: 5px;
+    }
+
+    .status-completed::before {
+        content: '✅';
+        margin-right: 5px;
+    }
+
+    .story-author {
+        font-size: 0.9rem;
+        color: #7f8c8d;
+    }
+
+    .read-btn {
+        background: #2c3e50;
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 4px;
+        font-weight: 500;
+        text-decoration: none;
+        display: inline-block;
+        transition: all 0.3s ease;
+        font-size: 0.95rem;
+    }
+
+    .read-btn:hover {
+        background: #34495e;
+        color: white;
+        text-decoration: none;
+        transform: translateY(-1px);
+    }
+
+    @media (max-width: 768px) {
+        .stories-hero h1 {
+            font-size: 2.2rem;
+        }
+
+        .story-card {
+            padding: 25px 20px;
+        }
+
+        .story-meta {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 10px;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Hero Section -->
+<section class="stories-hero">
+    <div class="container">
+        <h1>📖 其它小说</h1>
+        <p>在这里阅读转载的精彩小说</p>
+    </div>
+</section>
+
+<!-- Stories Grid -->
+<div class="container">
+    <div class="row">
+        <!-- 示例卡片，后续可以替换为 for 循环 -->
+        <div class="col-lg-12 col-md-12 mb-4">
+            <div class="story-card">
+                <a href="/story/main" class="story-title">倾注世界的温柔</a>
+                <p class="story-description">
+                    在冷静与秩序中，邂逅一场不合逻辑的温柔。
+                </p>
+                <div class="story-meta">
+                    <span class="story-chapters">9 章</span>
+                    <span class="story-status status-ongoing">完结</span>
+                </div>
+                <p class="story-author">作者：Nemophilist</p>
+                <a href="/story/main" class="read-btn">开始阅读</a>
+            </div>
+        </div>
+
+        <!-- 更多小说卡片 -->
+        <!--
+        {% for story in stories %}
+        <div class="col-lg-6 col-md-6 mb-4">
+            <div class="story-card">
+                <a href="{{ url_for('story_view', story_id=story.id) }}" class="story-title">{{ story.title }}</a>
+                <p class="story-description">{{ story.description }}</p>
+                <div class="story-meta">
+                    <span class="story-chapters">{{ story.chapter_count }} 章</span>
+                    <span class="story-status {% if story.is_finished %}status-completed{% else %}status-ongoing{% endif %}">
+                        {% if story.is_finished %}已完结{% else %}连载中{% endif %}
+                    </span>
+                </div>
+                <p class="story-author">作者：{{ story.author }}</p>
+                <a href="{{ url_for('story_view', story_id=story.id) }}" class="read-btn">开始阅读</a>
+            </div>
+        </div>
+        {% endfor %}
+        -->
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const storyCards = document.querySelectorAll('.story-card');
+    storyCards.forEach(card => {
+        card.addEventListener('mouseenter', function() {
+            this.style.transition = 'all 0.3s ease';
+        });
+    });
+});
+</script>
+{% endblock %}

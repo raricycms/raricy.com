@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block title %}{{ story_title }} - 小说阅读{% endblock %}
+
+{% block extra_css %}
+<style>
+.read-hero {
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    padding: 50px 0 30px;
+    text-align: center;
+}
+.read-hero h1 {
+    font-size: 2.2rem;
+    font-weight: 400;
+    color: #2c3e50;
+    margin-bottom: 10px;
+}
+.read-hero .story-meta {
+    color: #7f8c8d;
+    font-size: 1rem;
+    margin-bottom: 0;
+}
+.story-content-container {
+    max-width: 900px;
+    margin: 40px auto 60px;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 16px rgba(0,0,0,0.06);
+    padding: 40px 30px;
+    font-size: 1.15rem;
+    line-height: 2;
+    color: #2c3e50;
+}
+.story-content-container p {
+    margin-bottom: 1.5em;
+    text-indent: 2em;
+}
+.read-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 30px auto 0;
+    max-width: 700px;
+}
+.read-btn {
+    background: #2c3e50;
+    color: white;
+    border: none;
+    padding: 10px 22px;
+    border-radius: 4px;
+    font-weight: 500;
+    text-decoration: none;
+    font-size: 1rem;
+    transition: background 0.2s;
+}
+.read-btn:hover {
+    background: #34495e;
+    color: white;
+    text-decoration: none;
+}
+@media (max-width: 768px) {
+    .story-content-container, .read-controls {
+        padding: 18px 8px;
+        max-width: 98vw;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="read-hero">
+    <h1>{{ story_title }}</h1>
+    <div class="story-meta">
+        作者：{{ story_author }} &nbsp;|&nbsp; {{ story_genre }} &nbsp;|&nbsp; {{ story_status }}
+    </div>
+</section>
+
+<div class="story-content-container">
+    {{ story_content | safe }}
+</div>
+
+<div class="read-controls">
+    {% if prev_chapter_url %}
+        <a href="{{ prev_chapter_url }}" class="read-btn">上一章</a>
+    {% else %}
+        <span></span>
+    {% endif %}
+    <a href="{{ url_for('story.menu') }}" class="read-btn">返回目录</a>
+    {% if next_chapter_url %}
+        <a href="{{ next_chapter_url }}" class="read-btn">下一章</a>
+    {% else %}
+        <span></span>
+    {% endif %}
+</div>
+{% endblock %}
