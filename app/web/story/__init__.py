@@ -23,6 +23,8 @@ def batch_detail(batch_id):
             info_path = os.path.join(current_app.instance_path, "stories", f"{batch_id}", story_id, "info.json")
             with open(info_path, "r", encoding="utf-8") as f:
                 info = json.load(f)
+            if info.get("ignore", False):
+                continue
             stories.append(info)
     return render_template('story/batch.html', batch_id=batch_id, batch_title=batch_title, batch_description=batch_description, stories=stories)
 
@@ -51,5 +53,5 @@ def story_detail(batch_id,story_id):
     html_content = markdown.markdown(md_content, extensions=["extra", "codehilite", "tables", "toc"])
 
     # 渲染模板
-    return render_template("story/story_base.html", story_title=story_title, story_author=story_author, story_genre=story_genre, story_status=story_status, story_content=html_content)
+    return render_template("story/story_base.html", story_title=story_title, story_author=story_author, story_genre=story_genre, story_status=story_status, batch_id=batch_id, story_content=html_content)
 

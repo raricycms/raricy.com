@@ -10,3 +10,4 @@ venv/
 .coverage.*.*
 .coverage.*.*.*
 instance/
+upload_story.sh

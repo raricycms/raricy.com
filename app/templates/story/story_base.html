@@ -3,67 +3,130 @@
 {% block title %}{{ story_title }} - 小说阅读{% endblock %}
 
 {% block extra_css %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pygments/2.14.0/styles/default.min.css">
+
 <style>
-.read-hero {
-    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-    padding: 50px 0 30px;
-    text-align: center;
-}
-.read-hero h1 {
-    font-size: 2.2rem;
-    font-weight: 400;
-    color: #2c3e50;
-    margin-bottom: 10px;
-}
-.read-hero .story-meta {
-    color: #7f8c8d;
-    font-size: 1rem;
-    margin-bottom: 0;
-}
-.story-content-container {
-    max-width: 900px;
-    margin: 40px auto 60px;
-    background: #fff;
-    border-radius: 8px;
-    box-shadow: 0 2px 16px rgba(0,0,0,0.06);
-    padding: 40px 30px;
-    font-size: 1.15rem;
-    line-height: 2;
-    color: #2c3e50;
-}
-.story-content-container p {
-    margin-bottom: 1.5em;
-    text-indent: 2em;
-}
-.read-controls {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin: 30px auto 0;
-    max-width: 700px;
-}
-.read-btn {
-    background: #2c3e50;
-    color: white;
-    border: none;
-    padding: 10px 22px;
-    border-radius: 4px;
-    font-weight: 500;
-    text-decoration: none;
-    font-size: 1rem;
-    transition: background 0.2s;
-}
-.read-btn:hover {
-    background: #34495e;
-    color: white;
-    text-decoration: none;
-}
-@media (max-width: 768px) {
-    .story-content-container, .read-controls {
-        padding: 18px 8px;
-        max-width: 98vw;
+    .read-hero {
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        padding: 50px 0 30px;
+        text-align: center;
     }
-}
+
+    .read-hero h1 {
+        font-size: 2.2rem;
+        font-weight: 400;
+        color: #2c3e50;
+        margin-bottom: 10px;
+    }
+
+    .read-hero .story-meta {
+        color: #7f8c8d;
+        font-size: 1rem;
+        margin-bottom: 0;
+    }
+
+    .story-content-container {
+        max-width: 900px;
+        margin: 40px auto 60px;
+        background: #fff;
+        border-radius: 8px;
+        box-shadow: 0 2px 16px rgba(0, 0, 0, 0.06);
+        padding: 40px 40px;
+        font-size: 1.15rem;
+        line-height: 2;
+        color: #2c3e50;
+    }
+
+    .story-content-container-container {
+        margin: 0 auto;
+        padding: 0 40px;
+    }
+
+    .story-content-container p {
+        margin-bottom: 1.5em;
+        text-indent: 2em;
+    }
+
+    .read-controls {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin: 30px auto 0;
+        max-width: 700px;
+    }
+
+    .read-btn {
+        background: #2c3e50;
+        color: white;
+        border: none;
+        padding: 10px 22px;
+        border-radius: 4px;
+        font-weight: 500;
+        text-decoration: none;
+        font-size: 1rem;
+        transition: background 0.2s;
+    }
+
+    .read-btn:hover {
+        background: #34495e;
+        color: white;
+        text-decoration: none;
+    }
+
+    @media (max-width: 768px) {
+
+        .story-content-container,
+        .read-controls {
+            padding: 18px 30px;
+            max-width: 98vw;
+        }
+    }
+
+    :root {
+        --bg: #ffffff;
+        --text: #2c3e50;
+        --box-bg: #f9fafc;
+        --btn-bg: #2c3e50;
+        --btn-hover-bg: #34495e;
+    }
+
+    body.dark-mode {
+        --bg: #121212;
+        --text: #ecf0f1;
+        --box-bg: #1e1e1e;
+        --btn-bg: #3498db;
+        --btn-hover-bg: #2980b9;
+    }
+
+    body {
+        background-color: var(--bg);
+        color: var(--text);
+    }
+
+    .read-hero {
+        background: var(--box-bg);
+    }
+
+    .read-hero h1,
+    .read-hero .story-meta,
+    .story-content-container,
+    .story-content-container p {
+        color: var(--text);
+        background-color: var(--box-bg);
+    }
+
+    .story-content-container {
+        box-shadow: 0 2px 16px rgba(0, 0, 0, 0.12);
+    }
+
+    .read-btn {
+        background: var(--btn-bg);
+        color: white;
+    }
+
+    .read-btn:hover {
+        background: var(--btn-hover-bg);
+    }
 </style>
 {% endblock %}
 
@@ -73,23 +136,47 @@
     <div class="story-meta">
         作者：{{ story_author }} &nbsp;|&nbsp; {{ story_genre }} &nbsp;|&nbsp; {{ story_status }}
     </div>
+    <button id="toggle-theme" class="btn btn-outline-secondary mt-3">切换深色模式</button>
+
 </section>
 
-<div class="story-content-container">
-    {{ story_content | safe }}
+<div class="story-content-container-container">
+    <div class="story-content-container">
+        {{ story_content | safe }}
+    </div>
 </div>
 
 <div class="read-controls">
     {% if prev_chapter_url %}
-        <a href="{{ prev_chapter_url }}" class="read-btn">上一章</a>
+    <a href="{{ prev_chapter_url }}" class="read-btn">上一章</a>
     {% else %}
-        <span></span>
+    <span></span>
     {% endif %}
-    <a href="{{ url_for('story.menu') }}" class="read-btn">返回目录</a>
+    <a href="{{ url_for('story.batch_detail', batch_id=batch_id) }}" class="read-btn">返回目录</a>
     {% if next_chapter_url %}
-        <a href="{{ next_chapter_url }}" class="read-btn">下一章</a>
+    <a href="{{ next_chapter_url }}" class="read-btn">下一章</a>
     {% else %}
-        <span></span>
+    <span></span>
     {% endif %}
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const toggleBtn = document.getElementById('toggle-theme');
+    const isDark = localStorage.getItem('theme') === 'dark';
+
+    if (isDark) {
+        document.body.classList.add('dark-mode');
+        toggleBtn.innerText = '切换亮色模式';
+    }
+
+    toggleBtn.addEventListener('click', () => {
+        document.body.classList.toggle('dark-mode');
+        const nowDark = document.body.classList.contains('dark-mode');
+        localStorage.setItem('theme', nowDark ? 'dark' : 'light');
+        toggleBtn.innerText = nowDark ? '切换亮色模式' : '切换深色模式';
+    });
+</script>
+
 {% endblock %}
