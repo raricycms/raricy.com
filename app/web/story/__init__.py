@@ -8,15 +8,29 @@ story_bp = Blueprint('story', __name__)
 def menu():
     return render_template('story/menu.html')
 
-@story_bp.route('/others')
-def others():
-    return render_template('story/others.html')
+@story_bp.route('/<batch_id>')
+def batch_detail(batch_id):
+    info_path = os.path.join(current_app.instance_path, "stories", f"{batch_id}", "info.json")
+    if not os.path.isfile(info_path):
+        abort(404)
+    with open(info_path, "r", encoding="utf-8") as f:
+        info = json.load(f)
+    batch_title = info["title"]
+    batch_description = info["description"]
+    stories = []
+    for story_id in os.listdir(os.path.join(current_app.instance_path, "stories", f"{batch_id}")):
+        if os.path.isdir(os.path.join(current_app.instance_path, "stories", f"{batch_id}", story_id)):
+            info_path = os.path.join(current_app.instance_path, "stories", f"{batch_id}", story_id, "info.json")
+            with open(info_path, "r", encoding="utf-8") as f:
+                info = json.load(f)
+            stories.append(info)
+    return render_template('story/batch.html', batch_id=batch_id, batch_title=batch_title, batch_description=batch_description, stories=stories)
 
-@story_bp.route("/read/<story_id>")
-def story_detail(story_id):
+@story_bp.route("/read/<batch_id>/<story_id>")
+def story_detail(batch_id,story_id):
     # 拼出 Markdown 路径
-    md_path = os.path.join(current_app.instance_path, "stories", f"{story_id}", "story.md")
-    info_path = os.path.join(current_app.instance_path, "stories", f"{story_id}", "info.json")
+    md_path = os.path.join(current_app.instance_path, "stories", f"{batch_id}", f"{story_id}", "story.md")
+    info_path = os.path.join(current_app.instance_path, "stories", f"{batch_id}", f"{story_id}", "info.json")
     # 判断文件是否存在
     if not os.path.isfile(md_path):
         abort(404)
