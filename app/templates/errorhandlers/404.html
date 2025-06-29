@@ -1,0 +1,443 @@
+{% extends "base.html" %}
+{% block title %}
+页面未找到 - 404错误
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* 覆盖 body 的 padding-top，让错误页面占满整个视口 */
+    body {
+        padding-top: 0 !important;
+    }
+    .navbar{
+        display: none;
+    }
+    .error-page {
+        min-height: 100vh;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        position: relative;
+        overflow: hidden;
+        /* 确保没有额外的边距 */
+        margin: 0;
+        padding: 0;
+    }
+    
+    /* 隐藏 footer，因为错误页面应该占满整个屏幕 */
+    footer {
+        display: none;
+    }
+    
+    .error-page::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grain" width="100" height="100" patternUnits="userSpaceOnUse"><circle cx="25" cy="25" r="1" fill="rgba(255,255,255,0.1)"/><circle cx="75" cy="75" r="1" fill="rgba(255,255,255,0.1)"/><circle cx="50" cy="10" r="0.5" fill="rgba(255,255,255,0.05)"/><circle cx="10" cy="60" r="0.5" fill="rgba(255,255,255,0.05)"/><circle cx="90" cy="40" r="0.5" fill="rgba(255,255,255,0.05)"/></pattern></defs><rect width="100" height="100" fill="url(%23grain)"/></svg>');
+        opacity: 0.3;
+    }
+    
+    .error-container {
+        position: relative;
+        z-index: 2;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        padding: 2rem 0;
+    }
+    
+    .error-card {
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        border-radius: 20px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        padding: 3rem 2rem;
+        text-align: center;
+        max-width: 600px;
+        width: 100%;
+        margin: 0 1rem;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    
+    .error-illustration {
+        margin-bottom: 2rem;
+        position: relative;
+    }
+    
+    .error-code {
+        font-size: 8rem;
+        font-weight: 900;
+        background: linear-gradient(45deg, #667eea, #764ba2);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        line-height: 1;
+        margin: 0;
+        text-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        position: relative;
+    }
+    
+    /* .error-code::after {
+        content: '404';
+        position: absolute;
+        top: 4px;
+        left: 4px;
+        z-index: -1;
+        background: linear-gradient(45deg, rgba(102, 126, 234, 0.3), rgba(118, 75, 162, 0.3));
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    } */
+    
+    .floating-elements {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        top: 0;
+        left: 0;
+        pointer-events: none;
+    }
+    
+    .floating-element {
+        position: absolute;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 50%;
+        animation: float 6s ease-in-out infinite;
+    }
+    
+    .floating-element:nth-child(1) {
+        width: 80px;
+        height: 80px;
+        top: 20%;
+        left: 10%;
+        animation-delay: 0s;
+    }
+    
+    .floating-element:nth-child(2) {
+        width: 60px;
+        height: 60px;
+        top: 60%;
+        right: 15%;
+        animation-delay: 2s;
+    }
+    
+    .floating-element:nth-child(3) {
+        width: 40px;
+        height: 40px;
+        top: 30%;
+        right: 25%;
+        animation-delay: 4s;
+    }
+    
+    .floating-element:nth-child(4) {
+        width: 100px;
+        height: 100px;
+        bottom: 20%;
+        left: 20%;
+        animation-delay: 1s;
+    }
+/*     
+    @keyframes float {
+        0%, 100% { transform: translateY(0px) rotate(0deg); }
+        50% { transform: translateY(-20px) rotate(180deg); }
+    } */
+    
+    .error-title {
+        font-size: 2.5rem;
+        font-weight: 700;
+        color: #2c3e50;
+        margin-bottom: 1rem;
+        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+    
+    .error-subtitle {
+        font-size: 1.2rem;
+        color: #7f8c8d;
+        margin-bottom: 2rem;
+        line-height: 1.6;
+    }
+    
+    .error-description {
+        color: #95a5a6;
+        margin-bottom: 3rem;
+        font-size: 1rem;
+        line-height: 1.8;
+    }
+    
+    .action-buttons {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        margin-bottom: 3rem;
+    }
+    
+    .btn-primary-custom {
+        background: linear-gradient(45deg, #667eea, #764ba2);
+        border: none;
+        padding: 15px 40px;
+        font-size: 1.1rem;
+        font-weight: 600;
+        border-radius: 50px;
+        color: white;
+        text-decoration: none;
+        transition: all 0.3s ease;
+        box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .btn-primary-custom::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: -100%;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+        transition: left 0.5s;
+    }
+    
+    .btn-primary-custom:hover::before {
+        left: 100%;
+    }
+    
+    .btn-primary-custom:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 12px 35px rgba(102, 126, 234, 0.4);
+        color: white;
+        text-decoration: none;
+    }
+    
+    .btn-secondary-custom {
+        background: transparent;
+        border: 2px solid #667eea;
+        padding: 13px 40px;
+        font-size: 1.1rem;
+        font-weight: 600;
+        border-radius: 50px;
+        color: #667eea;
+        text-decoration: none;
+        transition: all 0.3s ease;
+    }
+    
+    .btn-secondary-custom:hover {
+        background: #667eea;
+        color: white;
+        transform: translateY(-2px);
+        text-decoration: none;
+    }
+    
+    .quick-links {
+        border-top: 1px solid #ecf0f1;
+        padding-top: 2rem;
+    }
+    
+    .quick-links h5 {
+        color: #2c3e50;
+        margin-bottom: 1.5rem;
+        font-weight: 600;
+    }
+    
+    .link-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 1rem;
+    }
+    
+    .quick-link {
+        background: #f8f9fa;
+        border: 1px solid #e9ecef;
+        border-radius: 10px;
+        padding: 1rem;
+        text-decoration: none;
+        color: #495057;
+        transition: all 0.3s ease;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    .quick-link:hover {
+        background: #667eea;
+        color: white;
+        transform: translateY(-3px);
+        box-shadow: 0 8px 20px rgba(102, 126, 234, 0.3);
+        text-decoration: none;
+    }
+    
+    .quick-link i {
+        font-size: 1.5rem;
+    }
+    
+    .quick-link span {
+        font-size: 0.9rem;
+        font-weight: 500;
+    }
+    
+    @media (max-width: 768px) {
+        .error-code {
+            font-size: 5rem;
+        }
+        
+        .error-title {
+            font-size: 2rem;
+        }
+        
+        .error-card {
+            padding: 2rem 1.5rem;
+            margin: 0 0.5rem;
+        }
+        
+        .action-buttons {
+            flex-direction: column;
+        }
+        
+        .link-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+    
+    @media (min-width: 576px) {
+        .action-buttons {
+            flex-direction: row;
+            justify-content: center;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="error-page">
+    <!-- 浮动装饰元素 -->
+    <div class="floating-elements">
+        <div class="floating-element"></div>
+        <div class="floating-element"></div>
+        <div class="floating-element"></div>
+        <div class="floating-element"></div>
+    </div>
+    
+    <div class="error-container">
+        <div class="error-card">
+            <!-- 错误插图 -->
+            <div class="error-illustration">
+                <h1 class="error-code">404</h1>
+            </div>
+            
+            <!-- 错误信息 -->
+            <h2 class="error-title">页面走丢了</h2>
+            <p class="error-subtitle">
+                抱歉，您访问的页面似乎在数字世界中迷路了
+            </p>
+            <p class="error-description">
+                可能是链接已过期、页面已移动，或者您输入的地址有误。<br>
+                不过别担心，我们有很多其他精彩的内容等着您！
+            </p>
+            
+            <!-- 操作按钮 -->
+            <div class="action-buttons">
+                <a href="/" class="btn-primary-custom">
+                    <i class="fas fa-home me-2"></i>回到首页
+                </a>
+                <button onclick="history.back()" class="btn-secondary-custom">
+                    <i class="fas fa-arrow-left me-2"></i>返回上页
+                </button>
+            </div>
+            
+            <!-- 快捷链接 -->
+            <div class="quick-links">
+                <h5>您可能在寻找：</h5>
+                <div class="link-grid">
+                    <a href="/" class="quick-link">
+                        <i class="fas fa-home"></i>
+                        <span>首页</span>
+                    </a>
+                    <a href="{{url_for('story.menu')}}" class="quick-link">
+                        <i class="fas fa-info-circle"></i>
+                        <span>故事</span>
+                    </a>
+                    <a href="{{url_for('game.menu')}}" class="quick-link">
+                        <i class="fas fa-box"></i>
+                        <span>玩具</span>
+                    </a>
+                    <a href="{{url_for('tool.menu')}}" class="quick-link">
+                        <i class="fas fa-cogs"></i>
+                        <span>工具</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // 页面加载动画
+    document.addEventListener('DOMContentLoaded', function() {
+        const errorCard = document.querySelector('.error-card');
+        const floatingElements = document.querySelectorAll('.floating-element');
+        
+        // 卡片入场动画
+        errorCard.style.opacity = '0';
+        errorCard.style.transform = 'translateY(50px) scale(0.9)';
+        
+        setTimeout(() => {
+            errorCard.style.transition = 'all 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+            errorCard.style.opacity = '1';
+            errorCard.style.transform = 'translateY(0) scale(1)';
+        }, 200);
+        
+        // 浮动元素延迟显示
+        floatingElements.forEach((element, index) => {
+            element.style.opacity = '0';
+            setTimeout(() => {
+                element.style.transition = 'opacity 1s ease-in-out';
+                element.style.opacity = '1';
+            }, 500 + index * 200);
+        });
+    });
+    
+    // 按钮点击效果
+    document.querySelectorAll('.btn-primary-custom, .btn-secondary-custom').forEach(button => {
+        button.addEventListener('click', function(e) {
+            let ripple = document.createElement('span');
+            let rect = this.getBoundingClientRect();
+            let size = Math.max(rect.width, rect.height);
+            let x = e.clientX - rect.left - size / 2;
+            let y = e.clientY - rect.top - size / 2;
+            
+            ripple.style.width = ripple.style.height = size + 'px';
+            ripple.style.left = x + 'px';
+            ripple.style.top = y + 'px';
+            ripple.classList.add('ripple');
+            
+            this.appendChild(ripple);
+            
+            setTimeout(() => {
+                ripple.remove();
+            }, 600);
+        });
+    });
+</script>
+
+<style>
+    .ripple {
+        position: absolute;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.6);
+        transform: scale(0);
+        animation: ripple-animation 0.6s linear;
+        pointer-events: none;
+    }
+    
+    @keyframes ripple-animation {
+        to {
+            transform: scale(4);
+            opacity: 0;
+        }
+    }
+</style>
+{% endblock %}
