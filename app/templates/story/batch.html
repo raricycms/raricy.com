@@ -62,6 +62,11 @@
         margin-bottom: 15px;
     }
 
+    .story-genre {
+        font-size: 0.9rem;
+        color: #7f8c8d;
+    }
+
     .story-meta {
         display: flex;
         justify-content: space-between;
@@ -149,6 +154,7 @@
                 </p>
                 <div class="story-meta">
                     <span class="story-chapters">{{ story.chapter_count }} 章</span>
+                    <span class="story-genre">{{story.genre}}</span>
                     <span class="story-status status-ongoing">{{ story.status }}</span>
                 </div>
                 <p class="story-author">作者：{{ story.author }}</p>

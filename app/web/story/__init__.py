@@ -26,6 +26,10 @@ def batch_detail(batch_id):
             if info.get("ignore", False):
                 continue
             stories.append(info)
+    
+    # 按照 priority 从大到小排序，如果没有 priority 字段则默认为 0
+    stories.sort(key=lambda x: x.get("priority", 0), reverse=True)
+    
     return render_template('story/batch.html', batch_id=batch_id, batch_title=batch_title, batch_description=batch_description, stories=stories)
 
 @story_bp.route("/read/<batch_id>/<story_id>")
