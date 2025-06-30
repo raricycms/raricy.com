@@ -6,7 +6,25 @@ story_bp = Blueprint('story', __name__)
 
 @story_bp.route('/')
 def menu():
-    return render_template('story/menu.html')
+    batches = []
+    for batch_id in os.listdir(os.path.join(current_app.instance_path, "stories")):
+        if os.path.isdir(os.path.join(current_app.instance_path, "stories", batch_id)):
+            info_path = os.path.join(current_app.instance_path, "stories", batch_id, "info.json")
+            if not os.path.isfile(info_path):
+                continue
+            with open(info_path, "r", encoding="utf-8") as f:
+                info = json.load(f)
+            if info.get("ignore", False):
+                continue
+            batches.append({
+                "id": batch_id,
+                "name": info["name"],
+                "description": info["description"],
+                "story_count": len(os.listdir(os.path.join(current_app.instance_path, "stories", batch_id))) -1,
+                "priority": info.get("priority", 0)
+            })
+    batches.sort(key=lambda x: x.get("priority", 0), reverse=True)
+    return render_template('story/new_menu.html', batches=batches)
 
 @story_bp.route('/<batch_id>')
 def batch_detail(batch_id):
