@@ -148,17 +148,19 @@
     <div class="row">
         <div class="col-lg-12 col-md-12 mb-4">
             <div class="story-card">
-                <a href="/story/read/{{ batch_id }}/{{ story.id }}" class="story-title">{{ story.title }}</a>
+                <a href="/story/{{ batch_id }}/{{ story.id }}" class="story-title">{{ story.title }}</a>
                 <p class="story-description">
                     {{ story.description }}
                 </p>
                 <div class="story-meta">
                     <span class="story-chapters">{{ story.chapter_count }} 章</span>
                     <span class="story-genre">{{story.genre}}</span>
+                    {% if story.status == "连载中" %}
                     <span class="story-status status-ongoing">{{ story.status }}</span>
+                    {% endif %}
                 </div>
                 <p class="story-author">作者：{{ story.author }}</p>
-                <a href="/story/read/{{ batch_id }}/{{ story.id }}" class="read-btn">开始阅读</a>
+                <a href="/story/{{ batch_id }}/{{ story.id }}" class="read-btn">开始阅读</a>
             </div>
         </div>
     </div>

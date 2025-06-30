@@ -24,7 +24,7 @@ def menu():
                 "priority": info.get("priority", 0)
             })
     batches.sort(key=lambda x: x.get("priority", 0), reverse=True)
-    return render_template('story/new_menu.html', batches=batches)
+    return render_template('story/menu.html', batches=batches)
 
 @story_bp.route('/<batch_id>')
 def batch_detail(batch_id):
@@ -43,14 +43,23 @@ def batch_detail(batch_id):
                 info = json.load(f)
             if info.get("ignore", False):
                 continue
-            stories.append(info)
+            stories.append({
+                "id": story_id,
+                "title": info["title"],
+                "description": info["description"],
+                "chapter_count": info.get("chapter_count", 1),
+                "genre": info["genre"],
+                "status": info["status"],
+                "author": info["author"],
+                "priority": info.get("priority", 0)
+            })
     
     # 按照 priority 从大到小排序，如果没有 priority 字段则默认为 0
     stories.sort(key=lambda x: x.get("priority", 0), reverse=True)
     
     return render_template('story/batch.html', batch_id=batch_id, batch_title=batch_title, batch_description=batch_description, stories=stories)
 
-@story_bp.route("/read/<batch_id>/<story_id>")
+@story_bp.route("/<batch_id>/<story_id>")
 def story_detail(batch_id,story_id):
     # 拼出 Markdown 路径
     md_path = os.path.join(current_app.instance_path, "stories", f"{batch_id}", f"{story_id}", "story.md")

@@ -10,7 +10,7 @@
         margin-bottom: 60px;
         text-align: center;
     }
-    
+
     .stories-hero h1 {
         font-size: 3rem;
         font-weight: 300;
@@ -24,11 +24,11 @@
         color: #7f8c8d;
         font-weight: 300;
     }
-    
+
     .story-card {
         background: white;
         border-radius: 8px;
-        padding: 40px 30px;
+        padding: 30px 30px;
         margin-bottom: 30px;
         box-shadow: 0 2px 20px rgba(0,0,0,0.08);
         transition: all 0.3s ease;
@@ -40,56 +40,14 @@
         transform: translateY(-5px);
         box-shadow: 0 8px 30px rgba(0,0,0,0.12);
     }
-    
-    .story-card.romance {
-        border-left-color: #e74c3c;
-    }
-    
-    .story-card.mystery {
-        border-left-color: #9b59b6;
-    }
-    
-    .story-card.scifi {
-        border-left-color: #3498db;
-    }
-    
-    .story-card.fantasy {
-        border-left-color: #27ae60;
-    }
-    
-    .story-card.thriller {
-        border-left-color: #f39c12;
-    }
-    
-    .story-card.drama {
-        border-left-color: #34495e;
-    }
-    
-    .story-genre {
-        display: inline-block;
-        padding: 4px 12px;
-        border-radius: 20px;
-        font-size: 0.8rem;
-        font-weight: 500;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        margin-bottom: 20px;
-    }
-    
-    .genre-romance { background: #fdf2f2; color: #e74c3c; }
-    .genre-mystery { background: #f8f4fd; color: #9b59b6; }
-    .genre-scifi { background: #f0f8ff; color: #3498db; }
-    .genre-fantasy { background: #f0fdf4; color: #27ae60; }
-    .genre-thriller { background: #fef9e7; color: #f39c12; }
-    .genre-drama { background: #f8f9fa; color: #34495e; }
-    
+
     .story-title {
-        font-size: 1.6rem;
+        font-size: 2rem;
         font-weight: 600;
         color: #2c3e50;
-        margin-bottom: 15px;
+        margin-bottom: 20px;
         text-decoration: none;
-        line-height: 1.3;
+        line-height: 1.8;
     }
     
     .story-title:hover {
@@ -103,7 +61,7 @@
         line-height: 1.7;
         margin-bottom: 25px;
     }
-    
+
     .story-meta {
         display: flex;
         justify-content: space-between;
@@ -111,31 +69,6 @@
         margin-bottom: 25px;
         font-size: 0.9rem;
         color: #95a5a6;
-    }
-    
-    .story-chapters {
-        display: flex;
-        align-items: center;
-    }
-    
-    .story-chapters::before {
-        content: '📖';
-        margin-right: 5px;
-    }
-    
-    .story-status {
-        display: flex;
-        align-items: center;
-    }
-    
-    .status-ongoing::before {
-        content: '🔄';
-        margin-right: 5px;
-    }
-    
-    .status-completed::before {
-        content: '✅';
-        margin-right: 5px;
     }
     
     .read-btn {
@@ -149,6 +82,7 @@
         display: inline-block;
         transition: all 0.3s ease;
         font-size: 0.95rem;
+        margin-bottom: -15px;
     }
     
     .read-btn:hover {
@@ -157,173 +91,51 @@
         text-decoration: none;
         transform: translateY(-1px);
     }
-    
-    .stats-section {
-        background: #f8f9fa;
-        padding: 50px 0;
-        margin-top: 60px;
-        text-align: center;
-    }
-    
-    .stats-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-        gap: 30px;
-        max-width: 800px;
-        margin: 0 auto;
-    }
-    
-    .stat-item {
-        padding: 20px;
-    }
-    
-    .stat-number {
-        font-size: 2.5rem;
-        font-weight: 300;
-        color: #2c3e50;
-        display: block;
-        margin-bottom: 10px;
-    }
-    
-    .stat-label {
-        color: #7f8c8d;
-        font-size: 1rem;
-        font-weight: 300;
-    }
-    
     @media (max-width: 768px) {
         .stories-hero h1 {
             font-size: 2.2rem;
         }
-        
+
         .story-card {
             padding: 25px 20px;
         }
-        
+
         .story-meta {
             flex-direction: column;
             align-items: flex-start;
             gap: 10px;
-        }
-        
-        .stats-grid {
-            grid-template-columns: repeat(2, 1fr);
         }
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<!-- Hero Section -->
 <section class="stories-hero">
     <div class="container">
         <h1>📚 聪明山故事集</h1>
         <p>这里有一些故事，希望你喜欢</p>
     </div>
 </section>
-
-<!-- Stories Grid -->
 <div class="container">
     <div class="row">
+        {% for batch in batches %}
         <div class="col-lg-6 col-md-6 mb-4">
-            <div class="story-card romance">
-                <span class="story-genre genre-romance">404</span>
-                <a href="/story/main" class="story-title">404</a>
+            <div class="story-card">
+                <a href="/story/{{ batch.id }}" class="story-title">{{ batch.name }}</a>
                 <p class="story-description">
-                    /* 主线章节已经在to-do list中。请保持信心，我大概总会写好的。*/
+                    {{ batch.description }}
                 </p>
                 <div class="story-meta">
-                    <span class="story-chapters">0 个故事</span>
-                    <span class="story-status status-ongoing">待办</span>
+                    <span class="story-chapters">📖 {{ batch.story_count }} 个故事</span>
                 </div>
-                <a href="/story/main" class="read-btn">开始阅读</a>
+                <a href="/story/{{ batch.id }}" class="read-btn">开始阅读</a>
             </div>
         </div>
-        <div class="col-lg-6 col-md-6 mb-4">
-            <div class="story-card fantasy">
-                <span class="story-genre genre-fantasy">404</span>
-                <a href="/story/branch" class="story-title">404</a>
-                <p class="story-description">
-                    没写好，占位符。
-                </p>
-                <div class="story-meta">
-                    <span class="story-chapters">0 个故事</span>
-                    <span class="story-status status-ongoing">待办</span>
-                </div>
-                <a href="/story/others" class="read-btn">开始阅读</a>
-            </div>
-        </div>
-        <div class="col-lg-6 col-md-6 mb-4">
-            <div class="story-card mystery">
-                <span class="story-genre genre-mystery">others</span>
-                <a href="/story/others" class="story-title">转载/代发</a>
-                <p class="story-description">
-                    聪明山朋友的原创故事。已获得授权。部分故事powered by gemini。
-                </p>
-                <div class="story-meta">
-                    <span class="story-chapters">4 个故事</span>
-                    <span class="story-status status-completed">代办</span>
-                </div>
-                <a href="/story/others" class="read-btn">开始阅读</a>
-            </div>
-        </div>
+        {% endfor %}
     </div>
 </div>
-
 {% endblock %}
 
 {% block extra_js %}
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    // 简单的数字动画
-    const animateNumbers = () => {
-        const statNumbers = document.querySelectorAll('.stat-number');
-        
-        const observer = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-                if (entry.isIntersecting) {
-                    const target = entry.target;
-                    const text = target.textContent;
-                    
-                    if (text === '6') {
-                        animateNumber(target, 0, 6, 800);
-                    } else if (text === '71') {
-                        animateNumber(target, 0, 71, 1200);
-                    }
-                }
-            });
-        });
-        
-        statNumbers.forEach(num => observer.observe(num));
-    };
-    
-    const animateNumber = (element, start, end, duration) => {
-        const startTime = performance.now();
-        
-        const updateNumber = (currentTime) => {
-            const elapsed = currentTime - startTime;
-            const progress = Math.min(elapsed / duration, 1);
-            
-            const current = Math.floor(start + (end - start) * progress);
-            element.textContent = current;
-            
-            if (progress < 1) {
-                requestAnimationFrame(updateNumber);
-            }
-        };
-        
-        requestAnimationFrame(updateNumber);
-    };
-    
-    animateNumbers();
-    
-    // 简单的卡片悬停效果
-    const storyCards = document.querySelectorAll('.story-card');
-    storyCards.forEach(card => {
-        card.addEventListener('mouseenter', function() {
-            this.style.transition = 'all 0.3s ease';
-        });
-    });
-});
-</script>
+
 {% endblock %}
