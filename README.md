@@ -11,7 +11,7 @@ powered by flask 和 bootstrap.
 如果要运行，需要一个instance文件夹。示例结构：   
 > instance   
 > └── stories   
-> &emsp;&emsp;└── mainstory   
+> &emsp;&emsp;└── mainstories_batch   
 > &emsp;&emsp;&emsp;&emsp;├── info.json   
 > &emsp;&emsp;&emsp;&emsp;├── teststory1.md   
 > &emsp;&emsp;&emsp;&emsp;└── teststory2.md

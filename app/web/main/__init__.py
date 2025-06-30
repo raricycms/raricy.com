@@ -1,6 +1,24 @@
-from flask import Blueprint, render_template
+from flask import Blueprint, render_template, current_app, url_for
 home_bp = Blueprint('home', __name__)
 
 @home_bp.route('/')
 def index():
-    return render_template('home/new_homepage.html')
+    return render_template('home/homepage.html')
+
+@home_bp.route('/robots.txt')
+def robots_txt():
+    """动态生成robots.txt"""
+    sitemap_url = url_for('sitemap.xml', _external=True)
+    
+    robots_content = f"""User-agent: *
+Allow: /
+Disallow: /zhh/
+
+Sitemap: {sitemap_url}
+"""
+    
+    response = current_app.response_class(
+        robots_content,
+        mimetype='text/plain'
+    )
+    return response

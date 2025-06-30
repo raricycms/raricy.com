@@ -2,3 +2,4 @@ flask
 markdown
 pyyaml
 python-frontmatter
+flask-sitemap
