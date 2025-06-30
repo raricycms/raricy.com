@@ -11,9 +11,7 @@ powered by flask 和 bootstrap.
 如果要运行，需要一个instance文件夹。示例结构：   
 > instance   
 > └── stories   
-> &nbsp;&nbsp;&nbsp;&nbsp;└── mainstory   
-> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├── info.json   
-> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└── teststory   
-> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├── info.json   
-> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└── story.md   
-
+> &emsp;&emsp;└── mainstory   
+> &emsp;&emsp;&emsp;&emsp;├── info.json   
+> &emsp;&emsp;&emsp;&emsp;├── teststory1.md   
+> &emsp;&emsp;&emsp;&emsp;└── teststory2.md
