@@ -1,2 +1,17 @@
 这是 聪明山 的个人网站！
-测试网址：https://raricy.com:5000
+
+powered by flask 和 bootstrap.
+
+网址：http://raricy.com:5000
+
+网站还在更新中。
+
+如果要运行，需要一个instance文件夹。示例结构：   
+> instance
+> └── stories
+>     └── mainstory
+>         ├── info.json
+>         └── teststory
+>             ├── info.json
+>             └── story.md
+
