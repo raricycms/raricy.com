@@ -11,4 +11,5 @@ venv/
 .coverage.*.*.*
 instance/
 upload_story.sh
+upload_instance.sh
 nohup.out

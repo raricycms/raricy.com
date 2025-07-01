@@ -29,14 +29,30 @@
 
         /* 解决导航栏遮挡问题 */
         body {
-            padding-top: 70px;
+
+            padding-top: 62px;
             /* 导航栏高度 + 一点间距 */
+        }
+
+        html,
+        body {
+            height: 100%;
+        }
+
+        body {
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        main {
+            flex: 1;
         }
 
         /* 响应式调整 */
         @media (max-width: 768px) {
             body {
-                padding-top: 66px;
+                padding-top: 62px;
                 /* 移动端导航栏稍微矮一些 */
             }
         }
@@ -48,6 +64,10 @@
 
         .nav-link:hover {
             color: #007bff !important;
+        }
+
+        footer {
+            margin-bottom: 0;
         }
     </style>
     {% block extra_css %}{% endblock %}
@@ -92,7 +112,7 @@
     </main>
 
     <!-- 页脚（可选） -->
-    <footer class="bg-dark text-white py-4 mt-5">
+    <footer class="bg-dark text-white py-4">
         <div class="container">
             <div class="row">
                 <div class="col-md-6">
@@ -106,7 +126,8 @@
                         <a href="#" class="text-white me-3"><i class="bi bi-twitter"></i></a>
                         <a href="#" class="text-white"><i class="bi bi-envelope"></i></a>
                     </div>
-                    <p class="text-white mt-2">{% block copyright %}&copy; 2025 聪明山. All rights reserved.{% endblock %}</p>
+                    <p class="text-white mt-2">{% block copyright %}&copy; 2025 聪明山. All rights reserved.{% endblock %}
+                    </p>
                 </div>
             </div>
         </div>

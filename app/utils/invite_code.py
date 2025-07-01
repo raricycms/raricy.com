@@ -4,7 +4,7 @@ import random
 
 def generate_invite_code():
     secret_key = current_app.config['SECRET_KEY']
-    return aes_encrypt(secret_key, 'invite_code'+str(random.randint(1000000, 9999999)))
+    return aes_encrypt(secret_key, str(random.randint(1, 99999))+'invite_code'+str(random.randint(1, 99999)))
 
 def verify_invite_code(code):
     secret_key = current_app.config['SECRET_KEY']

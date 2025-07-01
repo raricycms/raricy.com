@@ -9,40 +9,46 @@
         max-width: 500px;
         margin: 50px auto;
         padding: 30px;
-        box-shadow: 0 0 20px rgba(0,0,0,0.1);
+        box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
         border-radius: 10px;
         background-color: #fff;
     }
-    
+
     .register-header {
         text-align: center;
         margin-bottom: 30px;
         color: #333;
     }
-    
+
     .form-group {
         margin-bottom: 20px;
     }
-    
+
     .btn-register {
         width: 100%;
         padding: 12px;
         font-size: 16px;
         font-weight: 500;
     }
-    
+
+    body {
+        background: linear-gradient(135deg, #f28391 0%, #2575fc 100%);
+        background-attachment: fixed;
+        min-height: 100vh;
+    }
+
     .alert {
         margin-top: 15px;
     }
-    
+
     .login-link {
         text-align: center;
         margin-top: 20px;
     }
-    
+
     .form-control:focus {
         border-color: #007bff;
-        box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25);
+        box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, .25);
     }
 </style>
 {% endblock %}
@@ -54,66 +60,65 @@
             <h2><i class="fas fa-user-plus"></i> 用户注册</h2>
             <p class="text-muted">请填写以下信息完成注册</p>
         </div>
-        
+
         <!-- 显示错误或成功消息 -->
         <div id="message-container"></div>
-        
+
         <form id="registerForm">
             <div class="form-group">
                 <label for="inviteCode" class="form-label">
                     <i class="fas fa-key"></i> 邀请码 <span class="text-danger">*</span>
                 </label>
-                <input type="text" class="form-control" id="inviteCode" name="invite_code" 
-                       placeholder="请输入邀请码" required>
+                <input type="text" class="form-control" id="inviteCode" name="invite_code" placeholder="请输入邀请码"
+                    required>
                 <div class="invalid-feedback">
                     请输入有效的邀请码
                 </div>
             </div>
-            
+
             <div class="form-group">
                 <label for="username" class="form-label">
                     <i class="fas fa-user"></i> 用户名 <span class="text-danger">*</span>
                 </label>
-                <input type="text" class="form-control" id="username" name="username" 
-                       placeholder="请输入用户名" required minlength="3" maxlength="20">
+                <input type="text" class="form-control" id="username" name="username" placeholder="请输入用户名" required
+                    minlength="3" maxlength="20">
                 <div class="invalid-feedback">
                     用户名长度应在3-20个字符之间
                 </div>
             </div>
-            
+
             <div class="form-group">
                 <label for="email" class="form-label">
                     <i class="fas fa-envelope"></i> 邮箱 <span class="text-danger">*</span>
                 </label>
-                <input type="email" class="form-control" id="email" name="email" 
-                       placeholder="请输入邮箱地址" required>
+                <input type="email" class="form-control" id="email" name="email" placeholder="请输入邮箱地址" required>
                 <div class="invalid-feedback">
                     请输入有效的邮箱地址
                 </div>
             </div>
-            
+
             <div class="form-group">
                 <label for="password" class="form-label">
                     <i class="fas fa-lock"></i> 密码 <span class="text-danger">*</span>
                 </label>
-                <input type="password" class="form-control" id="password" name="password" 
-                       placeholder="请输入密码" required minlength="6">
+                <input type="password" class="form-control" id="password" name="password" placeholder="请输入密码" required
+                    minlength="6">
                 <div class="invalid-feedback">
                     密码长度至少6个字符
                 </div>
             </div>
-            
+
             <div class="form-group">
                 <label for="confirmPassword" class="form-label">
                     <i class="fas fa-lock"></i> 确认密码 <span class="text-danger">*</span>
                 </label>
-                <input type="password" class="form-control" id="confirmPassword" name="confirm_password" 
-                       placeholder="请再次输入密码" required>
+                <input type="password" class="form-control" id="confirmPassword" name="confirm_password"
+                    placeholder="请再次输入密码" required>
                 <div class="invalid-feedback">
                     两次输入的密码不一致
                 </div>
             </div>
-            
+
             <div class="form-group">
                 <div class="form-check">
                     <input class="form-check-input" type="checkbox" id="agreeTerms" required>
@@ -125,7 +130,7 @@
                     </div>
                 </div>
             </div>
-            
+
             <button type="submit" class="btn btn-primary btn-register" id="submitBtn">
                 <span id="submitText">
                     <i class="fas fa-user-plus"></i> 立即注册
@@ -135,7 +140,7 @@
                 </span>
             </button>
         </form>
-        
+
         <div class="login-link">
             <p class="text-muted">已有账号？ <a href="{{ url_for('sign_in.login') }}" class="text-primary">立即登录</a></p>
         </div>
@@ -145,97 +150,97 @@
 
 {% block extra_js %}
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    const form = document.getElementById('registerForm');
-    const submitBtn = document.getElementById('submitBtn');
-    const submitText = document.getElementById('submitText');
-    const loadingText = document.getElementById('loadingText');
-    const messageContainer = document.getElementById('message-container');
-    
-    // 密码确认验证
-    const password = document.getElementById('password');
-    const confirmPassword = document.getElementById('confirmPassword');
-    
-    function validatePassword() {
-        if (password.value !== confirmPassword.value) {
-            confirmPassword.setCustomValidity('两次输入的密码不一致');
-        } else {
-            confirmPassword.setCustomValidity('');
+    document.addEventListener('DOMContentLoaded', function () {
+        const form = document.getElementById('registerForm');
+        const submitBtn = document.getElementById('submitBtn');
+        const submitText = document.getElementById('submitText');
+        const loadingText = document.getElementById('loadingText');
+        const messageContainer = document.getElementById('message-container');
+
+        // 密码确认验证
+        const password = document.getElementById('password');
+        const confirmPassword = document.getElementById('confirmPassword');
+
+        function validatePassword() {
+            if (password.value !== confirmPassword.value) {
+                confirmPassword.setCustomValidity('两次输入的密码不一致');
+            } else {
+                confirmPassword.setCustomValidity('');
+            }
         }
-    }
-    
-    password.addEventListener('input', validatePassword);
-    confirmPassword.addEventListener('input', validatePassword);
-    
-    // 显示消息函数
-    function showMessage(message, type = 'danger') {
-        messageContainer.innerHTML = `
+
+        password.addEventListener('input', validatePassword);
+        confirmPassword.addEventListener('input', validatePassword);
+
+        // 显示消息函数
+        function showMessage(message, type = 'danger') {
+            messageContainer.innerHTML = `
             <div class="alert alert-${type} alert-dismissible fade show" role="alert">
                 ${message}
                 <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
             </div>
         `;
-    }
-    
-    // 表单提交处理
-    form.addEventListener('submit', async function(e) {
-        e.preventDefault();
-        
-        // 清除之前的消息
-        messageContainer.innerHTML = '';
-        
-        // 表单验证
-        if (!form.checkValidity()) {
-            form.classList.add('was-validated');
-            return;
         }
-        
-        // 显示加载状态
-        submitBtn.disabled = true;
-        submitText.style.display = 'none';
-        loadingText.style.display = 'inline';
-        
-        // 收集表单数据
-        const formData = new FormData(form);
-        const data = Object.fromEntries(formData);
-        
-        try {
-            // 发送注册请求到后端
-            const response = await fetch('{{ url_for("sign_up.register") }}', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(data)
-            });
-            
-            const result = await response.json();
-            
-            if (response.ok) {
-                // 注册成功
-                showMessage(result.message || '注册成功！正在跳转到登录页面...', 'success');
-                setTimeout(() => {
-                    window.location.href = '{{ url_for("sign_in.login") }}';
-                }, 2000);
-            } else {
-                // 注册失败
-                showMessage(result.message || '注册失败，请检查输入信息');
-                
-                // 如果是邀请码错误，聚焦到邀请码输入框
-                if (result.field === 'invite_code') {
-                    document.getElementById('inviteCode').focus();
-                }
+
+        // 表单提交处理
+        form.addEventListener('submit', async function (e) {
+            e.preventDefault();
+
+            // 清除之前的消息
+            messageContainer.innerHTML = '';
+
+            // 表单验证
+            if (!form.checkValidity()) {
+                form.classList.add('was-validated');
+                return;
             }
-        } catch (error) {
-            console.error('注册请求失败:', error);
-            showMessage('网络错误，请稍后重试');
-        } finally {
-            // 恢复按钮状态
-            submitBtn.disabled = false;
-            submitText.style.display = 'inline';
-            loadingText.style.display = 'none';
-        }
+
+            // 显示加载状态
+            submitBtn.disabled = true;
+            submitText.style.display = 'none';
+            loadingText.style.display = 'inline';
+
+            // 收集表单数据
+            const formData = new FormData(form);
+            const data = Object.fromEntries(formData);
+
+            try {
+                // 发送注册请求到后端
+                const response = await fetch('{{ url_for("sign_up.register") }}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    // 注册成功
+                    showMessage(result.message || '注册成功！正在跳转到登录页面...', 'success');
+                    setTimeout(() => {
+                        window.location.href = '{{ url_for("sign_in.login") }}';
+                    }, 2000);
+                } else {
+                    // 注册失败
+                    showMessage(result.message || '注册失败，请检查输入信息');
+
+                    // 如果是邀请码错误，聚焦到邀请码输入框
+                    if (result.field === 'invite_code') {
+                        document.getElementById('inviteCode').focus();
+                    }
+                }
+            } catch (error) {
+                console.error('注册请求失败:', error);
+                showMessage('网络错误，请稍后重试');
+            } finally {
+                // 恢复按钮状态
+                submitBtn.disabled = false;
+                submitText.style.display = 'inline';
+                loadingText.style.display = 'none';
+            }
+        });
     });
-});
 </script>
 {% endblock %}

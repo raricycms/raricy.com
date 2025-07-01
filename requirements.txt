@@ -9,3 +9,4 @@ flask-sqlalchemy
 flask-migrate
 flask-turnstile
 cryptography
+regex
