@@ -16,4 +16,9 @@ def init_extensions(app):
     migrate.init_app(app, db)
     turnstile.init_app(app)
     login_manager.init_app(app)
-    login_manager.login_view = 'sign_in.login'
+    login_manager.login_view = 'sign_in.login'  # type: ignore
+    
+    @login_manager.user_loader
+    def load_user(user_id):
+        from app.models import User  # 导入你的用户模型
+        return User.query.get(int(user_id)) if user_id else None
