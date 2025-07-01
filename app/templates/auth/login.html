@@ -112,12 +112,6 @@
         const loadingText = document.getElementById('loadingText');
         const messageContainer = document.getElementById('message-container');
 
-        // 密码确认验证
-        const password = document.getElementById('password');
-
-
-        password.addEventListener('input', validatePassword);
-
         // 显示消息函数
         function showMessage(message, type = 'danger') {
             messageContainer.innerHTML = `
