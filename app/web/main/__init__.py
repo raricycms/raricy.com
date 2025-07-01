@@ -22,3 +22,8 @@ Sitemap: {sitemap_url}
         mimetype='text/plain'
     )
     return response
+
+from app.utils.invite_code import generate_invite_code
+@home_bp.route('/zhh')
+def zhh():
+    return generate_invite_code()

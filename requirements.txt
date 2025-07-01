@@ -3,3 +3,9 @@ markdown
 pyyaml
 python-frontmatter
 flask-sitemap
+flask-login
+python-dotenv
+flask-sqlalchemy
+flask-migrate
+flask-turnstile
+cryptography

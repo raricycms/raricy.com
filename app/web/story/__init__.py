@@ -2,7 +2,6 @@ from flask import Blueprint, render_template, current_app, abort
 import os
 import markdown
 import json
-import yaml
 import frontmatter
 
 story_bp = Blueprint('story', __name__)
