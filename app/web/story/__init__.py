@@ -52,11 +52,11 @@ def batch_detail(batch_id):
                 continue
             stories.append({
                 "id": story_id,
-                "title": meta.get("title", "无标题"),
+                "title": meta.get("title", story_id),
                 "description": meta.get("description", ""),
                 "chapter_count": meta.get("chapter_count", 1),
-                "genre": meta.get("genre", "未知类型"),
-                "status": meta.get("status", "未知状态"),
+                "genre": meta.get("genre", "小说"),
+                "status": meta.get("status", "完结"),
                 "author": meta.get("author", "未知作者"),
                 "priority": meta.get("priority", 0)
             })
