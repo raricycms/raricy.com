@@ -79,7 +79,7 @@ def story_detail(batch_id, story_id):
     metadata = post.metadata
 
     # 从 metadata 里获取信息
-    story_title = metadata.get("title", "无标题")
+    story_title = metadata.get("title", story_id)
     story_author = metadata.get("author", "未知作者")
     story_genre = metadata.get("genre", "未知类型")
     story_status = metadata.get("status", "未知状态")

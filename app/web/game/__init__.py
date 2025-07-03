@@ -21,3 +21,7 @@ def reversi():
 @game_bp.route('/quandi')
 def quandi():
     return render_template('game/quandi.html')
+
+@game_bp.route('/2048')
+def _2048():
+    return render_template('game/2048.html')
