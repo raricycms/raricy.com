@@ -56,7 +56,7 @@ def batch_detail(batch_id):
                 "chapter_count": meta.get("chapter_count", 1),
                 "genre": meta.get("genre", "小说"),
                 "status": meta.get("status", "完结"),
-                "author": meta.get("author", "未知作者"),
+                "author": meta.get("author", info.get("author", "未知作者")),
                 "priority": meta.get("priority", 0)
             })
     

@@ -787,14 +787,14 @@
         }
 
         bindMobileControls() {
-            // 防止按钮被长按时的默认行为
-            const preventDefaults = (e) => {
+            // 上移/硬降
+            this.upBtn.addEventListener('touchstart', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-            };
-
-            // 上移/硬降
-            this.upBtn.addEventListener('touchstart', preventDefaults);
+                if (this.game && !this.game.getGameState().isGameOver && !this.game.getGameState().isPaused) {
+                    this.game.hardDrop();
+                }
+            });
             this.upBtn.addEventListener('click', () => {
                 if (this.game && !this.game.getGameState().isGameOver && !this.game.getGameState().isPaused) {
                     this.game.hardDrop();
@@ -802,7 +802,13 @@
             });
 
             // 下移
-            this.downBtn.addEventListener('touchstart', preventDefaults);
+            this.downBtn.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (this.game && !this.game.getGameState().isGameOver && !this.game.getGameState().isPaused) {
+                    this.game.moveDown();
+                }
+            });
             this.downBtn.addEventListener('click', () => {
                 if (this.game && !this.game.getGameState().isGameOver && !this.game.getGameState().isPaused) {
                     this.game.moveDown();
@@ -810,7 +816,13 @@
             });
 
             // 左移
-            this.leftBtn.addEventListener('touchstart', preventDefaults);
+            this.leftBtn.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (this.game && !this.game.getGameState().isGameOver && !this.game.getGameState().isPaused) {
+                    this.game.moveLeft();
+                }
+            });
             this.leftBtn.addEventListener('click', () => {
                 if (this.game && !this.game.getGameState().isGameOver && !this.game.getGameState().isPaused) {
                     this.game.moveLeft();
@@ -818,7 +830,13 @@
             });
 
             // 右移
-            this.rightBtn.addEventListener('touchstart', preventDefaults);
+            this.rightBtn.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (this.game && !this.game.getGameState().isGameOver && !this.game.getGameState().isPaused) {
+                    this.game.moveRight();
+                }
+            });
             this.rightBtn.addEventListener('click', () => {
                 if (this.game && !this.game.getGameState().isGameOver && !this.game.getGameState().isPaused) {
                     this.game.moveRight();
@@ -826,7 +844,13 @@
             });
 
             // 旋转
-            this.rotateBtn.addEventListener('touchstart', preventDefaults);
+            this.rotateBtn.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (this.game && !this.game.getGameState().isGameOver && !this.game.getGameState().isPaused) {
+                    this.game.rotate();
+                }
+            });
             this.rotateBtn.addEventListener('click', () => {
                 if (this.game && !this.game.getGameState().isGameOver && !this.game.getGameState().isPaused) {
                     this.game.rotate();
