@@ -19,7 +19,10 @@ powered by flask 和 bootstrap.
 
 同时需要一个.env文件。示例：
 > SQLALCHEMY_DATABASE_URI=sqlite:///../instance/database/db.db   
-> SECRET_KEY=I_Love_Rust   
+> SECRET_KEY=l_L0ve_Rust_secretkeyhf4cn0hnfhf43b   
 > DEBUG=True   
 > TRUNSTILE_SITE_KEY=some_secret_key   
 > TRUNSITLE_SECRET_KEY=some_secret_key   
+> TURNSTILE_AVAILABLE=False
+> CONFIG_TYPE=development
+

@@ -9,22 +9,34 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     TURNSTILE_SITEKEY = os.getenv('TURNSTILE_SITEKEY')
     TURNSTILE_SECRETKEY = os.getenv('TURNSTILE_SECRETKEY')
+    TURNSTILE_AVAILABLE = os.getenv('TURNSTILE_AVAILABLE') == 'True'
+
 
 class DevelopmentConfig(Config):
     DEBUG = True
-    TURNSTILE_AVAILABLE = False
+    PORT = int(os.getenv('PORT', 5000))
+    HOST = os.getenv('HOST', '127.0.0.1')
+    DEBUG = os.getenv('DEBUG', 'True') == 'True'
 
 class ProductionConfig(Config):
     DEBUG = False
-    TURNSTILE_AVAILABLE = True
+    PORT = int(os.getenv('PORT', 5000))
+    HOST = os.getenv('HOST', '0.0.0.0')
+    DEBUG = os.getenv('DEBUG', 'False') == 'False'
 
 class TestingConfig(Config):
     DEBUG = True
-    TURNSTILE_AVAILABLE = True
+    PORT = int(os.getenv('PORT', 5000))
+    HOST = os.getenv('HOST', '0.0.0.0')
+    DEBUG = os.getenv('DEBUG', 'True') == 'True'
 
-config = {
-    'development': DevelopmentConfig,
-    'production': ProductionConfig,
-    'testing': TestingConfig,
-    'default': DevelopmentConfig
-}
+def get_config():
+    config_type = os.getenv('CONFIG_TYPE')
+    if config_type == 'development':
+        return DevelopmentConfig
+    elif config_type == 'production':
+        return ProductionConfig
+    elif config_type == 'testing':
+        return TestingConfig
+    else:
+        return DevelopmentConfig

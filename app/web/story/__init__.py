@@ -36,7 +36,7 @@ def batch_detail(batch_id):
     with open(info_path, "r", encoding="utf-8") as f:
         info = json.load(f)
     batch_title = info["title"]
-    batch_description = info["description"]
+    batch_description = info["details"]
     stories = []
     batch_dir = os.path.join(current_app.instance_path, "stories", f"{batch_id}")
     for story_id in os.listdir(batch_dir):
