@@ -77,12 +77,16 @@ def story_detail(batch_id, story_id):
     post = frontmatter.load(md_path)
     md_content = post.content
     metadata = post.metadata
-
+    batch_info_path = os.path.join(current_app.instance_path, "stories", f"{batch_id}", "info.json")
+    if not os.path.isfile(batch_info_path):
+        abort(404)
+    with open(batch_info_path, "r", encoding="utf-8") as f:
+        batch_info = json.load(f)
     # 从 metadata 里获取信息
     story_title = metadata.get("title", story_id)
-    story_author = metadata.get("author", "未知作者")
-    story_genre = metadata.get("genre", "未知类型")
-    story_status = metadata.get("status", "未知状态")
+    story_author = metadata.get("author", batch_info.get("author", "未知作者"))
+    story_genre = metadata.get("genre", "小说")
+    story_status = metadata.get("status", "完结")
 
     # 转换为 HTML
     html_content = markdown.markdown(md_content, extensions=["extra", "codehilite", "tables", "toc"])
