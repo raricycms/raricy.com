@@ -13,6 +13,7 @@
     .game-container {
         width: 500px;
         margin: 20px;
+        max-width: 90vw; /* 响应式设计 */
     }
 
     /* 标题和分数 */
@@ -38,6 +39,8 @@
         background: #bbada0;
         padding: 15px;
         border-radius: 6px;
+        touch-action: none; /* 防止默认的触摸行为 */
+        user-select: none; /* 防止文本选择 */
     }
 
     /* 单元格样式 */
@@ -53,6 +56,26 @@
         font-weight: bold;
         color: #776e65;
         transition: all 0.15s ease;
+    }
+
+    /* 响应式单元格大小 */
+    @media (max-width: 600px) {
+        .cell {
+            width: calc((90vw - 90px) / 4);
+            height: calc((90vw - 90px) / 4);
+            font-size: calc((90vw - 90px) / 4 * 0.35);
+        }
+        
+        .cell[data-value="128"],
+        .cell[data-value="256"],
+        .cell[data-value="512"] {
+            font-size: calc((90vw - 90px) / 4 * 0.3);
+        }
+        
+        .cell[data-value="1024"],
+        .cell[data-value="2048"] {
+            font-size: calc((90vw - 90px) / 4 * 0.25);
+        }
     }
 
     /* 不同数字的配色 */
@@ -150,13 +173,78 @@
             this.score = 0
             this.best = localStorage.getItem('2048-best') || 0
 
+            // 触摸相关属性
+            this.touchStartX = 0
+            this.touchStartY = 0
+            this.touchEndX = 0
+            this.touchEndY = 0
+            this.minSwipeDistance = 30 // 最小滑动距离
+
             this.initGrid()
             this.addNewNumber()
             this.addNewNumber()
             this.updateDisplay()
 
+            // 绑定事件
             document.addEventListener('keydown', this.handleKey.bind(this))
             document.getElementById('new-game').addEventListener('click', () => this.reset())
+            
+            // 绑定触摸事件
+            this.bindTouchEvents()
+        }
+
+        bindTouchEvents() {
+            // 触摸开始
+            this.grid.addEventListener('touchstart', (e) => {
+                e.preventDefault()
+                this.touchStartX = e.touches[0].clientX
+                this.touchStartY = e.touches[0].clientY
+            }, { passive: false })
+
+            // 触摸移动（可选，用于防止页面滚动）
+            this.grid.addEventListener('touchmove', (e) => {
+                e.preventDefault()
+            }, { passive: false })
+
+            // 触摸结束
+            this.grid.addEventListener('touchend', (e) => {
+                e.preventDefault()
+                this.touchEndX = e.changedTouches[0].clientX
+                this.touchEndY = e.changedTouches[0].clientY
+                this.handleSwipe()
+            }, { passive: false })
+        }
+
+        handleSwipe() {
+            const deltaX = this.touchEndX - this.touchStartX
+            const deltaY = this.touchEndY - this.touchStartY
+            const absDeltaX = Math.abs(deltaX)
+            const absDeltaY = Math.abs(deltaY)
+
+            // 检查是否达到最小滑动距离
+            if (Math.max(absDeltaX, absDeltaY) < this.minSwipeDistance) {
+                return
+            }
+
+            let direction = null
+
+            // 判断滑动方向
+            if (absDeltaX > absDeltaY) {
+                // 水平滑动
+                direction = deltaX > 0 ? 'right' : 'left'
+            } else {
+                // 垂直滑动
+                direction = deltaY > 0 ? 'down' : 'up'
+            }
+
+            // 执行移动
+            if (direction && this.move(direction)) {
+                this.addNewNumber()
+                this.updateDisplay()
+                if (this.checkGameOver()) {
+                    setTimeout(() => alert('游戏结束!'), 100)
+                }
+            }
         }
 
         initGrid() {

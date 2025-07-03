@@ -25,3 +25,7 @@ def quandi():
 @game_bp.route('/2048')
 def _2048():
     return render_template('game/2048.html')
+
+@game_bp.route('/Tetris')
+def Tetris():
+    return render_template('game/Tetris.html')

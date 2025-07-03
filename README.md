@@ -16,3 +16,10 @@ powered by flask 和 bootstrap.
 > &emsp;&emsp;&emsp;&emsp;├── info.json   
 > &emsp;&emsp;&emsp;&emsp;├── teststory1.md   
 > &emsp;&emsp;&emsp;&emsp;└── teststory2.md
+
+同时需要一个.env文件。示例：
+> SQLALCHEMY_DATABASE_URI=sqlite:///../instance/database/db.db   
+> SECRET_KEY=I_Love_Rust   
+> DEBUG=True   
+> TRUNSTILE_SITE_KEY=some_secret_key   
+> TRUNSITLE_SECRET_KEY=some_secret_key   
