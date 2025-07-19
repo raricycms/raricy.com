@@ -13,3 +13,6 @@ instance/
 upload_story.sh
 upload_instance.sh
 nohup.out
+*.ps1
+*.bak
+baks/

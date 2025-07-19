@@ -76,8 +76,8 @@
         color: #95a5a6;
     }
 
-    .story-chapters::before {
-        content: '📖';
+    .story-wordscount::before {
+        content: '📝';
         margin-right: 5px;
     }
 
@@ -153,7 +153,7 @@
                     {{ story.description }}
                 </p>
                 <div class="story-meta">
-                    <span class="story-chapters">{{ story.chapter_count }} 章</span>
+                    <span class="story-wordscount">{{ story.word_count }} 字</span>
                     <span class="story-genre">{{story.genre}}</span>
                     {% if story.status == "连载中" %}
                     <span class="story-status status-ongoing">{{ story.status }}</span>

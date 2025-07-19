@@ -10,3 +10,4 @@ flask-migrate
 flask-turnstile
 cryptography
 regex
+flask_sitemap

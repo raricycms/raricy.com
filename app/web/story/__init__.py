@@ -3,7 +3,7 @@ import os
 import markdown
 import json
 import frontmatter
-
+from ...utils.markdown_countword import count_markdown_words
 story_bp = Blueprint('story', __name__)
 
 @story_bp.route('/')
@@ -53,7 +53,7 @@ def batch_detail(batch_id):
                 "id": story_id,
                 "title": meta.get("title", story_id),
                 "description": meta.get("description", ""),
-                "chapter_count": meta.get("chapter_count", 1),
+                "word_count": count_markdown_words(md_path)['non_whitespace_characters'],
                 "genre": meta.get("genre", "小说"),
                 "status": meta.get("status", "完结"),
                 "author": meta.get("author", info.get("author", "未知作者")),
