@@ -11,3 +11,4 @@ flask-turnstile
 cryptography
 regex
 flask_sitemap
+pygments

@@ -11,6 +11,7 @@ venv/
 .coverage.*.*.*
 instance/
 upload_story.sh
+upload_blog.sh
 upload_instance.sh
 nohup.out
 *.ps1

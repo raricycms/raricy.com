@@ -1,0 +1,607 @@
+{% extends "base.html" %}
+
+{% block title %}{{ blog.title }} - 文章阅读{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pygments-default.css') }}" id="pygments-default">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pygments-Monokai.css') }}" id="pygments-monokai">
+<style>
+
+    .read-hero {
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        padding: 50px 0 30px;
+        text-align: center;
+    }
+
+    .read-hero h1 {
+        font-size: 2.2rem;
+        font-weight: 400;
+        color: #2c3e50;
+        margin-bottom: 15px;
+    }
+
+    .blog-meta {
+        color: #7f8c8d;
+        font-size: 1rem;
+        margin-bottom: 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 20px;
+        flex-wrap: wrap;
+    }
+
+    .blog-author::before {
+        content: '👤';
+        margin-right: 5px;
+    }
+
+    .blog-date::before {
+        content: '📅';
+        margin-right: 5px;
+    }
+
+    .blog-content-container {
+        max-width: 900px;
+        margin: 40px auto 60px;
+        background: #fff;
+        border-radius: 8px;
+        box-shadow: 0 2px 16px rgba(0, 0, 0, 0.06);
+        padding: 40px;
+        font-size: 1.15rem;
+        line-height: 2;
+        color: #2c3e50;
+    }
+
+    .blog-content-container-container {
+        margin: 0 auto;
+        padding: 0 20px;
+    }
+
+    .blog-content-container p {
+        margin-bottom: 1.5em;
+        text-align: justify;
+    }
+
+    /* 博客内容标题样式 */
+    .blog-content-container h1,
+    .blog-content-container h2,
+    .blog-content-container h3,
+    .blog-content-container h4,
+    .blog-content-container h5,
+    .blog-content-container h6 {
+        margin: 2em 0 1em;
+        font-weight: 600;
+        color: #2c3e50;
+    }
+
+    .blog-content-container h1 {
+        font-size: 1.8rem;
+        border-bottom: 2px solid #3498db;
+        padding-bottom: 10px;
+    }
+
+    .blog-content-container h2 {
+        font-size: 1.5rem;
+    }
+
+    .blog-content-container h3 {
+        font-size: 1.3rem;
+    }
+
+    /* 代码块样式 */
+    .blog-content-container pre {
+        background: #f8f9fa;
+        border: 1px solid #e9ecef;
+        border-radius: 6px;
+        padding: 15px;
+        overflow-x: auto;
+        margin: 1.5em 0;
+    }
+
+    .blog-content-container code {
+        background: #f8f9fa;
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-size: 0.9em;
+    }
+
+    .blog-content-container pre code {
+        background: none;
+        padding: 0;
+    }
+
+    /* 引用样式 */
+    .blog-content-container blockquote {
+        border-left: 4px solid #3498db;
+        margin: 1.5em 0;
+        padding: 10px 20px;
+        background: #f8f9fa;
+        font-style: italic;
+    }
+
+    /* 列表样式 */
+    .blog-content-container ul,
+    .blog-content-container ol {
+        margin: 1.5em 0;
+        padding-left: 2em;
+    }
+
+    .blog-content-container li {
+        margin-bottom: 0.5em;
+    }
+
+    /* 链接样式 */
+    .blog-content-container a {
+        color: #3498db;
+        text-decoration: none;
+        border-bottom: 1px solid transparent;
+        transition: border-bottom 0.2s ease;
+    }
+
+    .blog-content-container a:hover {
+        color: #2980b9;
+        border-bottom: 1px solid #2980b9;
+        text-decoration: none;
+    }
+
+    /* 图片样式 */
+    .blog-content-container img {
+        max-width: 100%;
+        height: auto;
+        border-radius: 6px;
+        margin: 1.5em 0;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    /* 表格样式 */
+    .blog-content-container table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 1.5em 0;
+    }
+
+    .blog-content-container th,
+    .blog-content-container td {
+        border: 1px solid #ddd;
+        padding: 12px;
+        text-align: left;
+    }
+
+    .blog-content-container th {
+        background: #f8f9fa;
+        font-weight: 600;
+    }
+
+    .blog-content-container .highlight {
+        background: #f8f9fa;
+        border: 1px solid #e9ecef;
+        border-radius: 6px;
+        padding: 15px;
+        overflow-x: auto;
+        margin: 1.5em 0;
+        position: relative;
+    }
+
+    .blog-content-container .highlight pre {
+        background: none;
+        border: none;
+        padding: 0;
+        margin: 0;
+        font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+        font-size: 0.9em;
+        line-height: 1.4;
+    }
+
+    .blog-content-container .highlight code {
+        background: none;
+        padding: 0;
+        border-radius: 0;
+        font-size: inherit;
+    }
+
+    /* 行内代码样式 */
+    .blog-content-container code:not(.highlight code) {
+        background: #f1f3f4;
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-size: 0.9em;
+        font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+        color: #d73a49;
+    }
+
+    /* 深色模式下的代码样式 */
+    body.dark-mode .blog-content-container .highlight {
+        background: #2d3748;
+        border-color: #4a5568;
+    }
+
+    body.dark-mode .blog-content-container code:not(.highlight code) {
+        background: #4a5568;
+        color: #f56565;
+    }
+
+    /* 代码复制按钮样式优化 */
+    .copy-btn {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        background: #3498db;
+        color: white;
+        border: none;
+        padding: 5px 10px;
+        border-radius: 3px;
+        font-size: 0.8rem;
+        cursor: pointer;
+        opacity: 0.8;
+        transition: all 0.2s ease;
+        font-family: system-ui, -apple-system, sans-serif;
+    }
+
+    .copy-btn:hover {
+        opacity: 1;
+        background: #2980b9;
+    }
+
+    .read-controls {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin: 30px auto 40px;
+        max-width: 700px;
+        padding: 0 20px;
+    }
+
+    .read-btn {
+        background: #2c3e50;
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 6px;
+        font-weight: 500;
+        text-decoration: none;
+        font-size: 1rem;
+        transition: all 0.3s ease;
+        min-width: 120px;
+        text-align: center;
+    }
+
+    .read-btn:hover {
+        background: #34495e;
+        color: white;
+        text-decoration: none;
+        transform: translateY(-1px);
+    }
+
+    /* 主题切换按钮样式 */
+    #toggle-theme {
+        font-size: 0.9rem;
+        padding: 8px 16px;
+        border-radius: 20px;
+        transition: all 0.3s ease;
+        margin-top: 15px;
+    }
+
+    /* 阅读进度条 */
+    .reading-progress {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 0%;
+        height: 3px;
+        background: #3498db;
+        z-index: 1000;
+        transition: width 0.1s ease;
+    }
+
+    @media (max-width: 768px) {
+        .read-hero h1 {
+            font-size: 1.8rem;
+        }
+
+        .blog-meta {
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .blog-content-container {
+            padding: 25px 20px;
+            margin: 20px auto 40px;
+            font-size: 1.1rem;
+            line-height: 1.8;
+        }
+
+        .read-controls {
+            padding: 0 15px;
+            margin: 20px auto 30px;
+        }
+
+        .read-btn {
+            padding: 10px 16px;
+            font-size: 0.9rem;
+            min-width: 100px;
+        }
+
+        .blog-content-container-container {
+            padding: 0 10px;
+        }
+
+        .blog-content-container h1 {
+            font-size: 1.5rem;
+        }
+
+        .blog-content-container h2 {
+            font-size: 1.3rem;
+        }
+
+        .blog-content-container h3 {
+            font-size: 1.2rem;
+        }
+    }
+
+    /* CSS 变量 */
+    :root {
+        --bg: #f3f5f7;
+        --text: #2c3e50;
+        --box-bg: #ffffff;
+        --hero-bg: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        --btn-bg: #2c3e50;
+        --btn-hover-bg: #34495e;
+        --shadow: 0 2px 16px rgba(0, 0, 0, 0.06);
+        --code-bg: #f8f9fa;
+        --border-color: #e9ecef;
+        --link-color: #3498db;
+        --link-hover-color: #2980b9;
+    }
+
+    body.dark-mode {
+        --bg: #121212;
+        --text: #ecf0f1;
+        --box-bg: #1e1e1e;
+        --hero-bg: linear-gradient(135deg, #1c1d22 0%, #212224 100%);
+        --btn-bg: #3498db;
+        --btn-hover-bg: #2980b9;
+        --shadow: 0 2px 16px rgba(0, 0, 0, 0.3);
+        --code-bg: #2d3748;
+        --border-color: #4a5568;
+        --link-color: #5dade2;
+        --link-hover-color: #3498db;
+    }
+
+    body {
+        background-color: var(--bg);
+        color: var(--text);
+        transition: background-color 0.3s ease, color 0.3s ease;
+    }
+
+    .read-hero {
+        background: var(--hero-bg);
+    }
+
+    .read-hero h1,
+    .blog-meta {
+        color: var(--text);
+    }
+
+    .blog-content-container {
+        background-color: var(--box-bg);
+        color: var(--text);
+        box-shadow: var(--shadow);
+    }
+
+    .blog-content-container h1,
+    .blog-content-container h2,
+    .blog-content-container h3,
+    .blog-content-container h4,
+    .blog-content-container h5,
+    .blog-content-container h6 {
+        color: var(--text);
+    }
+
+    .blog-content-container pre,
+    .blog-content-container code,
+    .blog-content-container blockquote,
+    .blog-content-container th {
+        background: var(--code-bg);
+    }
+
+    .blog-content-container th,
+    .blog-content-container td {
+        border-color: var(--border-color);
+    }
+
+    .blog-content-container a {
+        color: var(--link-color);
+    }
+
+    .blog-content-container a:hover {
+        color: var(--link-hover-color);
+        border-bottom-color: var(--link-hover-color);
+    }
+
+    .read-btn {
+        background: var(--btn-bg);
+    }
+
+    .read-btn:hover {
+        background: var(--btn-hover-bg);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- 阅读进度条 -->
+<div class="reading-progress"></div>
+
+<section class="read-hero">
+    <h1>{{ blog.title }}</h1>
+    <div class="blog-meta">
+        <span class="blog-author">{{ blog.author }}</span>
+        <span class="blog-date">{{ blog.date }}</span>
+    </div>
+    <button id="toggle-theme" class="btn btn-outline-secondary">切换深色模式</button>
+</section>
+
+<div class="blog-content-container-container">
+    <div class="blog-content-container">
+        {{ blog.content | safe }}
+    </div>
+</div>
+
+<div class="read-controls">
+    <a href="{{ url_for('blog.menu') }}" class="read-btn">📝 返回博客列表</a>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // 主题切换功能
+    const toggleBtn = document.getElementById('toggle-theme');
+    const isDark = localStorage.getItem('theme') === 'dark';
+
+    if (isDark) {
+        document.body.classList.add('dark-mode');
+        toggleBtn.innerText = '切换亮色模式';
+    }
+    updatePygmentsTheme(isDark);
+
+    toggleBtn.addEventListener('click', () => {
+        document.body.classList.toggle('dark-mode');
+        const nowDark = document.body.classList.contains('dark-mode');
+        localStorage.setItem('theme', nowDark ? 'dark' : 'light');
+        toggleBtn.innerText = nowDark ? '切换亮色模式' : '切换深色模式';
+        updatePygmentsTheme(nowDark);
+    });
+
+    // 阅读进度条
+    function updateReadingProgress() {
+        const article = document.querySelector('.blog-content-container');
+        const scrollTop = window.pageYOffset;
+        const docHeight = document.body.scrollHeight - window.innerHeight;
+        const scrollPercent = Math.min((scrollTop / docHeight) * 100, 100);
+
+        let progressBar = document.querySelector('.reading-progress');
+        if (!progressBar) {
+            progressBar = document.createElement('div');
+            progressBar.className = 'reading-progress';
+            document.body.appendChild(progressBar);
+        }
+
+        progressBar.style.width = scrollPercent + '%';
+    }
+
+    // 代码块复制功能
+    function addCopyButtons() {
+        const codeBlocks = document.querySelectorAll('.highlight');
+        codeBlocks.forEach((block, index) => {
+            const button = document.createElement('button');
+            button.innerHTML = '📋 复制';
+            button.className = 'copy-btn';
+
+            block.style.position = 'relative';
+            block.appendChild(button);
+
+            button.addEventListener('click', async () => {
+                const code = block.querySelector('code');
+                if (code) {
+                    try {
+                        await navigator.clipboard.writeText(code.textContent);
+                        button.innerHTML = '✅ 已复制';
+                        button.style.background = '#27ae60';
+                        setTimeout(() => {
+                            button.innerHTML = '📋 复制';
+                            button.style.background = '#3498db';
+                        }, 2000);
+                    } catch (err) {
+                        // 降级方案
+                        const textArea = document.createElement('textarea');
+                        textArea.value = code.textContent;
+                        document.body.appendChild(textArea);
+                        textArea.select();
+                        document.execCommand('copy');
+                        document.body.removeChild(textArea);
+
+                        button.innerHTML = '✅ 已复制';
+                        setTimeout(() => {
+                            button.innerHTML = '📋 复制';
+                        }, 2000);
+                    }
+                }
+            });
+        });
+    }
+
+    // 图片点击放大功能
+    function addImageZoom() {
+        const images = document.querySelectorAll('.blog-content-container img');
+        images.forEach(img => {
+            img.style.cursor = 'pointer';
+            img.addEventListener('click', () => {
+                const overlay = document.createElement('div');
+                overlay.style.cssText = `
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background: rgba(0, 0, 0, 0.8);
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    z-index: 9999;
+                    cursor: pointer;
+                `;
+
+                const zoomedImg = img.cloneNode();
+                zoomedImg.style.cssText = `
+                    max-width: 90%;
+                    max-height: 90%;
+                    object-fit: contain;
+                `;
+
+                overlay.appendChild(zoomedImg);
+                document.body.appendChild(overlay);
+
+                overlay.addEventListener('click', () => {
+                    document.body.removeChild(overlay);
+                });
+            });
+        });
+    }
+
+    // 滚动事件监听
+    window.addEventListener('scroll', updateReadingProgress);
+
+    // 页面加载时自动适配系统主题
+    document.addEventListener('DOMContentLoaded', () => {
+        let isDark = localStorage.getItem('theme') === 'dark';
+        if (!localStorage.getItem('theme')) {
+            if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                document.body.classList.add('dark-mode');
+                document.getElementById('toggle-theme').innerText = '切换亮色模式';
+                isDark = true;
+            }
+        }
+        updatePygmentsTheme(document.body.classList.contains('dark-mode'));
+        updateReadingProgress();
+        addCopyButtons();
+        addImageZoom();
+
+        // 平滑滚动到内容区域（如果有锚点）
+        if (window.location.hash) {
+            const target = document.querySelector(window.location.hash);
+            if (target) {
+                target.scrollIntoView({ behavior: 'smooth' });
+            }
+        }
+    });
+
+    function updatePygmentsTheme(isDark) {
+        document.getElementById('pygments-default').disabled = isDark;
+        document.getElementById('pygments-monokai').disabled = !isDark;
+    }
+</script>
+{% endblock %}
+
+{% block footer_text %}
+{% endblock %}

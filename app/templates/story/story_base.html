@@ -31,7 +31,7 @@
         background: #fff;
         border-radius: 8px;
         box-shadow: 0 2px 16px rgba(0, 0, 0, 0.06);
-        padding: 40px 40px;
+        padding: 40px;
         font-size: 1.15rem;
         line-height: 2;
         color: #2c3e50;
@@ -39,98 +39,158 @@
 
     .story-content-container-container {
         margin: 0 auto;
-        padding: 0 10px;
+        padding: 0 20px; /* 增加一些边距 */
     }
 
     .story-content-container p {
         margin-bottom: 1.5em;
         text-indent: 2em;
+        text-align: justify; /* 两端对齐，提升阅读体验 */
+    }
+
+    /* 添加章节标题样式 */
+    .story-content-container h1,
+    .story-content-container h2,
+    .story-content-container h3 {
+        text-align: center;
+        margin: 2em 0 1.5em;
+        text-indent: 0;
+        font-weight: 600;
     }
 
     .read-controls {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin: 30px auto 0;
+        margin: 30px auto 40px; /* 增加底部边距 */
         max-width: 700px;
+        padding: 0 20px;
     }
 
     .read-btn {
         background: #2c3e50;
         color: white;
         border: none;
-        padding: 10px 22px;
-        border-radius: 4px;
+        padding: 12px 24px; /* 稍微增大按钮 */
+        border-radius: 6px;
         font-weight: 500;
         text-decoration: none;
         font-size: 1rem;
-        transition: background 0.2s;
+        transition: all 0.3s ease;
+        min-width: 80px; /* 确保按钮最小宽度 */
+        text-align: center;
     }
 
     .read-btn:hover {
         background: #34495e;
         color: white;
         text-decoration: none;
+        transform: translateY(-1px);
+    }
+
+    /* 主题切换按钮样式 */
+    #toggle-theme {
+        font-size: 0.9rem;
+        padding: 8px 16px;
+        border-radius: 20px;
+        transition: all 0.3s ease;
+    }
+
+    /* 添加阅读进度条 */
+    .reading-progress {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 0%;
+        height: 3px;
+        background: #3498db;
+        z-index: 1000;
+        transition: width 0.1s ease;
     }
 
     @media (max-width: 768px) {
+        .read-hero h1 {
+            font-size: 1.8rem;
+        }
 
-        .story-content-container,
+        .story-content-container {
+            padding: 25px 20px;
+            margin: 20px auto 40px;
+            font-size: 1.1rem;
+            line-height: 1.8;
+        }
+
         .read-controls {
-            padding: 18px 20px;
-            max-width: 98vw;
+            padding: 0 15px;
+            margin: 20px auto 30px;
+        }
+
+        .read-btn {
+            padding: 10px 16px;
+            font-size: 0.9rem;
+            min-width: 70px;
+        }
+
+        .story-content-container-container {
+            padding: 0 10px;
         }
     }
 
+    /* CSS 变量优化 */
     :root {
-        --bg: #ffffff;
+        --bg: #f3f5f7;
         --text: #2c3e50;
-        --box-bg: #f9fafc;
+        --box-bg: #ffffff;
+        --hero-bg: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
         --btn-bg: #2c3e50;
         --btn-hover-bg: #34495e;
+        --shadow: 0 2px 16px rgba(0, 0, 0, 0.06);
     }
 
     body.dark-mode {
         --bg: #121212;
         --text: #ecf0f1;
         --box-bg: #1e1e1e;
+        --hero-bg: linear-gradient(135deg, #111214 0%, #212224 100%);
         --btn-bg: #3498db;
         --btn-hover-bg: #2980b9;
+        --shadow: 0 2px 16px rgba(0, 0, 0, 0.3);
     }
 
     body {
         background-color: var(--bg);
         color: var(--text);
+        transition: background-color 0.3s ease, color 0.3s ease;
     }
 
     .read-hero {
-        background: var(--box-bg);
+        background: var(--hero-bg);
     }
 
     .read-hero h1,
-    .read-hero .story-meta,
-    .story-content-container,
-    .story-content-container p {
+    .read-hero .story-meta {
         color: var(--text);
-        background-color: var(--box-bg);
     }
 
     .story-content-container {
-        box-shadow: 0 2px 16px rgba(0, 0, 0, 0.12);
+        background-color: var(--box-bg);
+        color: var(--text);
+        box-shadow: var(--shadow);
     }
 
     .read-btn {
         background: var(--btn-bg);
-        color: white;
     }
 
     .read-btn:hover {
         background: var(--btn-hover-bg);
     }
 </style>
+
 {% endblock %}
 
 {% block content %}
+<div class="reading-progress"></div>
 <section class="read-hero">
     <h1>{{ story_title }}</h1>
     <div class="story-meta">
@@ -148,21 +208,24 @@
 
 <div class="read-controls">
     {% if prev_chapter_url %}
-    <a href="{{ prev_chapter_url }}" class="read-btn">上一章</a>
+    <a href="{{ prev_chapter_url }}" class="read-btn" title="上一章 (←)">← 上一章</a>
     {% else %}
-    <span></span>
+    <div style="width: 80px;"></div> <!-- 占位符保持布局 -->
     {% endif %}
-    <a href="{{ url_for('story.batch_detail', batch_id=batch_id) }}" class="read-btn">返回目录</a>
+    
+    <a href="{{ url_for('story.batch_detail', batch_id=batch_id) }}" class="read-btn">📚 目录</a>
+    
     {% if next_chapter_url %}
-    <a href="{{ next_chapter_url }}" class="read-btn">下一章</a>
+    <a href="{{ next_chapter_url }}" class="read-btn" title="下一章 (→)">下一章 →</a>
     {% else %}
-    <span></span>
+    <div style="width: 80px;"></div> <!-- 占位符保持布局 -->
     {% endif %}
 </div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
+    // 主题切换功能
     const toggleBtn = document.getElementById('toggle-theme');
     const isDark = localStorage.getItem('theme') === 'dark';
 
@@ -177,6 +240,49 @@
         localStorage.setItem('theme', nowDark ? 'dark' : 'light');
         toggleBtn.innerText = nowDark ? '切换亮色模式' : '切换深色模式';
     });
-</script>
 
+    // 阅读进度条
+    function updateReadingProgress() {
+        const article = document.querySelector('.story-content-container');
+        const scrollTop = window.pageYOffset;
+        const docHeight = document.body.scrollHeight - window.innerHeight;
+        const scrollPercent = (scrollTop / docHeight) * 100;
+        
+        let progressBar = document.querySelector('.reading-progress');
+        if (!progressBar) {
+            progressBar = document.createElement('div');
+            progressBar.className = 'reading-progress';
+            document.body.appendChild(progressBar);
+        }
+        
+        progressBar.style.width = scrollPercent + '%';
+    }
+
+    // 键盘导航
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowLeft') {
+            const prevBtn = document.querySelector('a[href*="prev"]');
+            if (prevBtn) prevBtn.click();
+        } else if (e.key === 'ArrowRight') {
+            const nextBtn = document.querySelector('a[href*="next"]');
+            if (nextBtn) nextBtn.click();
+        }
+    });
+
+    // 滚动事件监听
+    window.addEventListener('scroll', updateReadingProgress);
+    
+    // 页面加载完成后初始化
+    document.addEventListener('DOMContentLoaded', () => {
+        updateReadingProgress();
+        
+        // 平滑滚动到内容区域（如果有锚点）
+        if (window.location.hash) {
+            const target = document.querySelector(window.location.hash);
+            if (target) {
+                target.scrollIntoView({ behavior: 'smooth' });
+            }
+        }
+    });
+</script>
 {% endblock %}
