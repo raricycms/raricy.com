@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}
-用户注册
+用户登录
 {% endblock %}
 
 {% block extra_css %}
@@ -57,21 +57,21 @@
 <div class="container">
     <div class="register-container">
         <div class="register-header">
-            <h2><i class="fas fa-user-plus"></i> 用户登录</h2>
+            <h2><i class="fas fa-user"></i> 用户登录</h2>
             <p class="text-muted">请填写以下信息完成登录</p>
         </div>
 
         <!-- 显示错误或成功消息 -->
         <div id="message-container"></div>
 
-        <form id="registerForm">
+        <form id="loginForm">
             <div class="form-group">
-                <label for="email" class="form-label">
-                    <i class="fas fa-envelope"></i> 邮箱 <span class="text-danger">*</span>
+                <label for="username" class="form-label">
+                    <i class="fas fa-user"></i> 用户名 <span class="text-danger">*</span>
                 </label>
-                <input type="email" class="form-control" id="email" name="email" placeholder="请输入邮箱地址" required>
+                <input type="text" class="form-control" id="username" name="username" placeholder="请输入用户名" required>
                 <div class="invalid-feedback">
-                    请输入有效的邮箱地址
+                    请输入用户名
                 </div>
             </div>
 
@@ -88,7 +88,7 @@
 
             <button type="submit" class="btn btn-primary btn-register" id="submitBtn">
                 <span id="submitText">
-                    <i class="fas fa-user-plus"></i> 立即登录
+                    <i class="fas fa-sign-in-alt"></i> 立即登录
                 </span>
                 <span id="loadingText" style="display: none;">
                     <i class="fas fa-spinner fa-spin"></i> 登录中...
@@ -106,7 +106,7 @@
 {% block extra_js %}
 <script>
     document.addEventListener('DOMContentLoaded', function () {
-        const form = document.getElementById('registerForm');
+        const form = document.getElementById('loginForm');
         const submitBtn = document.getElementById('submitBtn');
         const submitText = document.getElementById('submitText');
         const loadingText = document.getElementById('loadingText');
@@ -145,7 +145,7 @@
             const data = Object.fromEntries(formData);
 
             try {
-                // 发送注册请求到后端
+                // 发送登录请求到后端
                 const response = await fetch('{{ url_for("sign_in.login") }}', {
                     method: 'POST',
                     headers: {
@@ -157,22 +157,17 @@
                 const result = await response.json();
 
                 if (response.ok) {
-                    // 注册成功
-                    showMessage(result.message || '注册成功！正在跳转到登录页面...', 'success');
+                    // 登录成功
+                    showMessage(result.message || '登录成功！正在跳转到首页...', 'success');
                     setTimeout(() => {
-                        window.location.href = '{{ url_for("sign_up.register") }}';
-                    }, 2000);
+                        window.location.href = '/';
+                    }, 1500);
                 } else {
-                    // 注册失败
-                    showMessage(result.message || '注册失败，请检查输入信息');
-
-                    // 如果是邀请码错误，聚焦到邀请码输入框
-                    if (result.field === 'invite_code') {
-                        document.getElementById('inviteCode').focus();
-                    }
+                    // 登录失败
+                    showMessage(result.message || '登录失败，请检查用户名和密码');
                 }
             } catch (error) {
-                console.error('注册请求失败:', error);
+                console.error('登录请求失败:', error);
                 showMessage('网络错误，请稍后重试');
             } finally {
                 // 恢复按钮状态

@@ -11,11 +11,18 @@ sign_up_bp = Blueprint('sign_up', __name__)
 def register():
     if request.method == 'POST':
         data = request.get_json()
-        if not data or not data.get('username') or not data.get('password') or not data.get('email') or not data.get('invite_code'):
-            return jsonify({'code': 400, 'message': '缺少参数'}), 400
+        if not data or not data.get('username') or not data.get('password') or not data.get('email'):
+            return jsonify({'code': 400, 'message': '缺少必要参数'}), 400
 
-        if not verify_invite_code(data['invite_code']):
-            return jsonify({'code': 400, 'message': '邀请码错误'}), 400
+        # 邀请码变为可选项
+        invite_code = data.get('invite_code', '')
+        is_authenticated = False
+        
+        # 如果提供了邀请码，则验证
+        if invite_code:
+            if not verify_invite_code(invite_code):
+                return jsonify({'code': 400, 'message': '邀请码错误'}), 400
+            is_authenticated = True
 
         if User.query.filter_by(username=data['username']).first():
             return jsonify({'code': 400, 'message': '用户名已存在'}), 400
@@ -38,7 +45,13 @@ def register():
 
         user = User(username=data['username'], email=data['email'])
         user.set_password(data['password'])
+        user.authenticated = is_authenticated
         db.session.add(user)
         db.session.commit()
-        return jsonify({'code': 200, 'message': '注册成功'}), 200
+        
+        success_message = '注册成功'
+        if is_authenticated:
+            success_message += '，您的账号已通过邀请码验证'
+        
+        return jsonify({'code': 200, 'message': success_message}), 200
     return render_template('auth/register.html')

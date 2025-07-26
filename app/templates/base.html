@@ -29,7 +29,6 @@
 
         /* 解决导航栏遮挡问题 */
         body {
-
             padding-top: 62px;
             /* 导航栏高度 + 一点间距 */
         }
@@ -69,6 +68,44 @@
         footer {
             margin-bottom: 0;
         }
+
+        /* 用户菜单样式 */
+        .user-menu {
+            position: relative;
+        }
+
+        .user-dropdown {
+            min-width: 200px;
+        }
+
+        .user-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #007bff, #0056b3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 14px;
+        }
+
+        .login-btn {
+            background: linear-gradient(135deg, #007bff, #0056b3);
+            border: none;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        .login-btn:hover {
+            background: linear-gradient(135deg, #0056b3, #004085);
+            color: white;
+            transform: translateY(-1px);
+        }
     </style>
     {% block extra_css %}{% endblock %}
 </head>
@@ -85,7 +122,7 @@
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
+                <ul class="navbar-nav me-auto">
                     <li class="nav-item">
                         <a class="nav-link active" href="/">首页</a>
                     </li>
@@ -101,6 +138,39 @@
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('sitemap.index') }}">站点地图</a>
                     </li>
+                </ul>
+                
+                <!-- 用户菜单 -->
+                <ul class="navbar-nav">
+                    {% if current_user.is_authenticated %}
+                        <li class="nav-item dropdown user-menu">
+                            <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                <div class="user-avatar me-2">
+                                    {{ current_user.username[0].upper() }}
+                                </div>
+                                <span>{{ current_user.username }}</span>
+                            </a>
+                            <ul class="dropdown-menu user-dropdown">
+                                <li><h6 class="dropdown-header">用户信息</h6></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item" href="#"><i class="bi bi-person me-2"></i>个人资料</a></li>
+                                <li><a class="dropdown-item" href="#"><i class="bi bi-gear me-2"></i>设置</a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item text-danger" href="#" onclick="logout()"><i class="bi bi-box-arrow-right me-2"></i>退出登录</a></li>
+                            </ul>
+                        </li>
+                    {% else %}
+                        <li class="nav-item">
+                            <a class="nav-link login-btn" href="{{ url_for('sign_in.login') }}">
+                                <i class="bi bi-person-circle me-1"></i>登录
+                            </a>
+                        </li>
+                        <li class="nav-item ms-2">
+                            <a class="nav-link" href="{{ url_for('sign_up.register') }}" style="color: #6c757d;">
+                                <i class="bi bi-person-plus me-1"></i>注册
+                            </a>
+                        </li>
+                    {% endif %}
                 </ul>
             </div>
         </div>
@@ -161,6 +231,76 @@
                 }
             });
         });
+
+        // 登出功能
+        function logout() {
+            if (confirm('确定要退出登录吗？')) {
+                fetch('{{ url_for("sign_in.logout") }}', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.code === 200) {
+                        // 显示成功消息
+                        showToast('已成功退出登录', 'success');
+                        // 刷新页面
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 1000);
+                    } else {
+                        showToast('退出登录失败', 'error');
+                    }
+                })
+                .catch(error => {
+                    console.error('退出登录请求失败:', error);
+                    showToast('网络错误，请稍后重试', 'error');
+                });
+            }
+        }
+
+        // 显示消息提示
+        function showToast(message, type = 'info') {
+            // 创建toast元素
+            const toastContainer = document.getElementById('toast-container') || createToastContainer();
+            const toast = document.createElement('div');
+            toast.className = `toast align-items-center text-white bg-${type === 'success' ? 'success' : type === 'error' ? 'danger' : 'info'} border-0`;
+            toast.setAttribute('role', 'alert');
+            toast.setAttribute('aria-live', 'assertive');
+            toast.setAttribute('aria-atomic', 'true');
+            
+            toast.innerHTML = `
+                <div class="d-flex">
+                    <div class="toast-body">
+                        ${message}
+                    </div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+                </div>
+            `;
+            
+            toastContainer.appendChild(toast);
+            
+            // 显示toast
+            const bsToast = new bootstrap.Toast(toast);
+            bsToast.show();
+            
+            // 自动移除
+            toast.addEventListener('hidden.bs.toast', () => {
+                toast.remove();
+            });
+        }
+
+        // 创建toast容器
+        function createToastContainer() {
+            const container = document.createElement('div');
+            container.id = 'toast-container';
+            container.className = 'toast-container position-fixed top-0 end-0 p-3';
+            container.style.zIndex = '9999';
+            document.body.appendChild(container);
+            return container;
+        }
     </script>
 
     <!-- 页面特定的JavaScript -->

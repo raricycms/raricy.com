@@ -12,8 +12,8 @@ class User(UserMixin, db.Model):
     password_hash = db.Column(db.String(255), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.now)
     last_login = db.Column(db.DateTime, default=datetime.now)
+    authenticated = db.Column(db.Boolean, default=False)
     is_admin = db.Column(db.Boolean, default=False)
-    used_invite_code = db.Column(db.Boolean, default=False)
     
     def set_password(self, password):
         """设置密码"""

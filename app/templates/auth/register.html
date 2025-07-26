@@ -6,7 +6,7 @@
 {% block extra_css %}
 <style>
     .register-container {
-        max-width: 500px;
+        max-width: 600px;
         margin: 50px auto;
         padding: 30px;
         box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
@@ -67,10 +67,12 @@
         <form id="registerForm">
             <div class="form-group">
                 <label for="inviteCode" class="form-label">
-                    <i class="fas fa-key"></i> 邀请码 <span class="text-danger">*</span>
+                    <i class="fas fa-key"></i> 邀请码 <span class="text-muted">(可选)</span>
                 </label>
-                <input type="text" class="form-control" id="inviteCode" name="invite_code" placeholder="请输入邀请码"
-                    required>
+                <input type="text" class="form-control" id="inviteCode" name="invite_code" placeholder="请输入邀请码（可选）">
+                <div class="form-text">
+                    邀请码也可以在之后填写。如果你需要邀请码，可以去<a href="/contact" target="_blank">这里</a>获取。
+                </div>
                 <div class="invalid-feedback">
                     请输入有效的邀请码
                 </div>
@@ -203,6 +205,11 @@
             // 收集表单数据
             const formData = new FormData(form);
             const data = Object.fromEntries(formData);
+            
+            // 如果邀请码为空，则从数据中移除该字段
+            if (!data.invite_code || data.invite_code.trim() === '') {
+                delete data.invite_code;
+            }
 
             try {
                 // 发送注册请求到后端
