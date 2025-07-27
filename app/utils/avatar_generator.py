@@ -3,7 +3,7 @@ import os
 from PIL import Image, ImageDraw
 import argparse
 
-def generate_identicon(input_string: str, size: int = 250, grid_size: int = 5) -> Image.Image:
+def generate_identicon(input_string: str, size: int = 250, grid_size: int = 8) -> Image.Image:
     """
     根据输入的字符串在内存中生成一个 GitHub 风格的 identicon 图像对象。
     这个函数是“纯”的，它不执行任何文件 I/O 操作。

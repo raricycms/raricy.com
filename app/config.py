@@ -10,6 +10,7 @@ class Config:
     TURNSTILE_SITEKEY = os.getenv('TURNSTILE_SITEKEY')
     TURNSTILE_SECRETKEY = os.getenv('TURNSTILE_SECRETKEY')
     TURNSTILE_AVAILABLE = os.getenv('TURNSTILE_AVAILABLE') == 'True'
+    SEND_FILE_MAX_AGE_DEFAULT = 2592000  # 30天缓存
 
 
 class DevelopmentConfig(Config):

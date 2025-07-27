@@ -5,26 +5,72 @@ Raricy.com - 联系我们
 
 {% block extra_css %}
 <style>
-    .card{
+    body {
+        background: linear-gradient(135deg, #f28391 0%, #2575fc 100%);
+        background-attachment: fixed;
+        min-height: 100vh;
+    }
+    .contact-card {
         margin-top: 50px;
-        box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-        padding: 20px;
-        border-radius: 10px;
-        background: #f8f9fa;
+        box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+        padding: 30px;
+        border-radius: 15px;
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(5px);
+        transition: transform 0.3s ease;
+    }
+    .contact-card:hover {
+        transform: translateY(-5px);
+    }
+    .contact-icon {
+        font-size: 1.5rem;
+        margin-right: 10px;
+        vertical-align: middle;
+    }
+    .contact-link {
+        color: #2575fc;
+        text-decoration: none;
+        transition: color 0.3s ease;
+    }
+    .contact-link:hover {
+        color: #f28391;
     }
 </style>
 {% endblock %}
-zx
+
 {% block content %}
-    <div class="container" style="margin-top: 20px;">
-        <h1 class="text-center">联系我们</h1>
-        <div class="card">
-            <p>网站出问题了？遇到了任何HTTP500？或者说，遇到困难了？</p>
-            <p>请通过以下方式联系我：</p>
-            <ul>
-                <li>电子邮件：<a href="mailto:raricycms@gmail.com">raricycms@gmail.com</a></li>
-                <li>微信号：<a>whitealiveautumn0</a></li>
-            </ul>
+    <div class="container">
+        <div class="contact-card">
+            <h1 class="text-center mb-4"><i class="bi bi-chat-dots contact-icon"></i>联系我们</h1>
+            <p class="lead text-muted text-center mb-4">遇到问题或有建议？我们随时为您服务</p>
+            
+            <div class="row justify-content-center">
+                <div class="col-md-8">
+                    <ul class="list-unstyled">
+                        <li class="mb-3">
+                            <i class="bi bi-envelope contact-icon"></i>
+                            电子邮件：<a href="mailto:raricycms@gmail.com" class="contact-link">raricycms@gmail.com</a>
+                        </li>
+                        <li class="mb-3">
+                            <i class="bi bi-wechat contact-icon"></i>
+                            微信号：<span class="contact-link">whitealiveautumn0</span>
+                        </li>
+                        <li class="mb-3">
+                            <i class="bi bi-clock-history contact-icon"></i>
+                            响应时间：不定期😢
+                        </li>
+                    </ul>
+
+                    <div class="text-center mt-4">
+                        <p class="text-muted">
+                            或通过GitHub提交问题：
+                            <a href="https://github.com/raricycms/raricy.com" class="contact-link" target="_blank">
+                                <i class="bi bi-github"></i> 项目仓库
+                            </a>
+                        </p>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 {% endblock %}

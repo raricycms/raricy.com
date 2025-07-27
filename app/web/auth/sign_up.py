@@ -5,6 +5,8 @@ from app.utils.verify_username import validate_username
 from app.extensions import db
 from flask import jsonify
 from app.utils.verify_email import validate_email
+import os
+from flask import current_app
 sign_up_bp = Blueprint('sign_up', __name__)
 
 @sign_up_bp.route('/register', methods=['GET', 'POST'])
@@ -49,6 +51,19 @@ def register():
         db.session.add(user)
         db.session.commit()
         
+        try:
+            # 使用UUID作为头像文件名
+            avatar_path = f'avatars/{user.uuid}.png'
+            from app.utils.avatar_generator import create_and_save_avatar
+            create_and_save_avatar(
+                input_string=user.uuid,  # 使用UUID作为生成依据
+                output_path=os.path.join(current_app.instance_path, avatar_path),
+                size=200
+            )
+            user.avatar_path = avatar_path
+            db.session.commit()
+        except Exception as e:
+            print(f"头像生成失败: {e}")
         success_message = '注册成功'
         if is_authenticated:
             success_message += '，您的账号已通过邀请码验证'

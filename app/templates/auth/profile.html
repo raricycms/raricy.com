@@ -84,7 +84,8 @@
             <!-- 头像列 -->
             <div class="col-md-4 text-center">
                 <div class="profile-avatar">
-                    {{ current_user.username[0].upper() }}
+                    <img src="{{ url_for('profile.get_avatar', uuid=current_user.uuid) }}" 
+                         style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">
                 </div>
             </div>
 

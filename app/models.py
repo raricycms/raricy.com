@@ -2,6 +2,7 @@ from app.extensions import db
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import UserMixin
+import uuid
 
 class User(UserMixin, db.Model):
     __tablename__ = 'users'
@@ -14,6 +15,8 @@ class User(UserMixin, db.Model):
     last_login = db.Column(db.DateTime, default=datetime.now)
     authenticated = db.Column(db.Boolean, default=False)
     is_admin = db.Column(db.Boolean, default=False)
+    uuid = db.Column(db.String(36), unique=True, index=True)  # 新增UUID字段
+    avatar_path = db.Column(db.String(255))
     
     def set_password(self, password):
         """设置密码"""
@@ -28,6 +31,7 @@ class User(UserMixin, db.Model):
             'id': self.id,
             'username': self.username,
             'email': self.email,
+            'uuid': self.uuid,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'last_login': self.last_login.isoformat() if self.last_login else None,
             'is_admin': self.is_admin,
@@ -36,4 +40,8 @@ class User(UserMixin, db.Model):
     
     def __repr__(self):
         return f'<User {self.username}>'
+    
+    def __init__(self, **kwargs):
+        super(User, self).__init__(**kwargs)
+        self.uuid = str(uuid.uuid4())
     
