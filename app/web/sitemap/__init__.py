@@ -20,8 +20,8 @@ def static_pages():
     # 故事页面
     yield 'story.menu', {}
     
-    # 工具页面
-    yield 'tool.menu', {}
+    # 博客页面
+    yield 'blog.menu', {}
 
 @sitemap.register_generator
 def story_pages():

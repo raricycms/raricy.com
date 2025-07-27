@@ -152,12 +152,6 @@
                     <h1 class="display-4 fw-bold mb-4">聪明山</h1>
                     <p class="lead mb-4 fs-3 fst-italic">我 们 总 将 找 到 答 案</p>
                     <p class="mb-4 fs-5">欢迎访问聪明山website。这里是Raricy.com的主页面，你可以由此进入Raricy.com的大部分页面</p>
-                    <!--
-            <div class="d-flex gap-3 flex-wrap">
-              <a href="#features" class="btn btn-custom btn-lg">开始探索</a>
-              <a href="#about" class="btn btn-outline-light btn-lg">了解更多</a>
-            </div>
-            -->
                 </div>
             </div>
             <div class="col-lg-6 text-center">
@@ -168,40 +162,6 @@
         </div>
     </div>
 </section>
-<!-- 统计数据区域 -->
-<!--
-  <section class="stats-section">
-    <div class="container">
-      <div class="row">
-        <div class="col-md-3 col-6">
-          <div class="stat-item">
-            <span class="stat-number">0</span>
-            <p class="text-muted mb-0">故事收藏</p>
-          </div>
-        </div>
-        <div class="col-md-3 col-6">
-          <div class="stat-item">
-            <span class="stat-number">0</span>
-            <p class="text-muted mb-0">实用工具</p>
-          </div>
-        </div>
-        <div class="col-md-3 col-6">
-          <div class="stat-item">
-            <span class="stat-number">0</span>
-            <p class="text-muted mb-0">趣味游戏</p>
-          </div>
-        </div>
-        <div class="col-md-3 col-6">
-          <div class="stat-item">
-            <span class="stat-number">∞</span>
-            <p class="text-muted mb-0">无限可能</p>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-  -->
-<!-- 功能特色区域 -->
 <section class="features-section" id="features">
     <div class="container">
         <div class="row mb-5">
@@ -237,13 +197,13 @@
             </div>
 
             <div class="col-lg-3 col-md-6">
-                <div class="card feature-card h-100 bg-warning text-dark" data-url="{{url_for('tool.menu')}}"
+                <div class="card feature-card h-100 bg-warning text-dark" data-url="{{url_for('blog.menu')}}"
                     onclick="handleCardClick(this)">
                     <div class="card-body text-center">
-                        <i class="bi bi-tools feature-icon"></i>
-                        <h4 class="card-title mb-3">工具</h4>
-                        <p class="card-text">这里有一些化学计算工具、工作工具、编码解码工具，提升你的工作效率。</p>
-                        <a href="#" class="btn btn-dark btn-sm mt-auto">使用工具</a>
+                        <i class="bi bi-journal-text feature-icon"></i>
+                        <h4 class="card-title mb-3">博客/文章</h4>
+                        <p class="card-text">这里有一些博客文章和思考分享，涵盖技术、生活、思考等多个方面。</p>
+                        <a href="{{ url_for('blog.menu') }}" class="btn btn-dark btn-sm mt-auto">阅读文章</a>
                     </div>
                 </div>
             </div>

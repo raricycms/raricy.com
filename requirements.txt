@@ -12,3 +12,4 @@ cryptography
 regex
 flask_sitemap
 pygments
+Pillow

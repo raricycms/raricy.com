@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}
+用户资料
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .profile-container {
+        max-width: 800px;
+        margin: 50px auto;
+        padding: 30px;
+        box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+        border-radius: 10px;
+        background-color: #fff;
+    }
+
+    .profile-header {
+        text-align: center;
+        margin-bottom: 30px;
+        color: #333;
+    }
+
+    .profile-avatar {
+        width: 200px; /* 放大头像 */
+        height: 200px; /* 放大头像 */
+        border-radius: 50%;
+        margin: 0 auto 20px;
+        background: linear-gradient(135deg, #f28391 0%, #2575fc 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 72px; /* 放大头像字体 */
+        font-weight: bold;
+    }
+
+    .profile-info {
+        margin-bottom: 20px;
+    }
+
+    .profile-label {
+        font-weight: 500;
+        color: #6c757d;
+        margin-bottom: 5px; /* 增加标签和值之间的间距 */
+    }
+
+    .profile-value {
+        font-size: 18px;
+        color: #333;
+    }
+
+    .btn-edit {
+        background: linear-gradient(135deg, #007bff, #0056b3);
+        border: none;
+        color: white;
+        padding: 10px 20px;
+        border-radius: 5px;
+        font-weight: 500;
+        transition: all 0.3s ease;
+    }
+
+    .btn-edit:hover {
+        background: linear-gradient(135deg, #0056b3, #004085);
+        transform: translateY(-2px);
+    }
+
+    body {
+        background: linear-gradient(135deg, #f28391 0%, #2575fc 100%);
+        background-attachment: fixed;
+        min-height: 100vh;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="profile-container">
+        <div class="profile-header">
+            <h2>{{ current_user.username }}</h2>
+            <p class="text-muted">欢迎查看您的个人资料</p>
+        </div>
+
+        <div class="row">
+            <!-- 头像列 -->
+            <div class="col-md-4 text-center">
+                <div class="profile-avatar">
+                    {{ current_user.username[0].upper() }}
+                </div>
+            </div>
+
+            <!-- 用户信息列 -->
+            <div class="col-md-8">
+                <div class="profile-info">
+                    <div class="mb-3">
+                        <p class="profile-label">用户名</p>
+                        <p class="profile-value">{{ current_user.username }}</p>
+                    </div>
+                    <div class="mb-3">
+                        <p class="profile-label">邮箱</p>
+                        <p class="profile-value">{{ current_user.email }}</p>
+                    </div>
+                    <div class="mb-3">
+                        <p class="profile-label">注册时间</p>
+                        <p class="profile-value">{{ current_user.created_at.strftime('%Y-%m-%d') }}</p>
+                    </div>
+                </div>
+
+                <div class="text-center mt-4">
+                    <a href="#" class="btn btn-edit">
+                        <i class="bi bi-pencil-square me-2"></i>编辑资料
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        // 可以在这里添加交互逻辑，例如表单验证或动态内容加载
+    });
+</script>
+{% endblock %}
