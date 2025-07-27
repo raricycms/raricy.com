@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}
+Raricy.com - 联系我们
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .card{
+        margin-top: 50px;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        padding: 20px;
+        border-radius: 10px;
+        background: #f8f9fa;
+    }
+</style>
+{% endblock %}
+zx
+{% block content %}
+    <div class="container" style="margin-top: 20px;">
+        <h1 class="text-center">联系我们</h1>
+        <div class="card">
+            <p>网站出问题了？遇到了任何HTTP500？或者说，遇到困难了？</p>
+            <p>请通过以下方式联系我：</p>
+            <ul>
+                <li>电子邮件：<a href="mailto:raricycms@gmail.com">raricycms@gmail.com</a></li>
+                <li>微信号：<a>whitealiveautumn0</a></li>
+            </ul>
+        </div>
+    </div>
+{% endblock %}
+
+{% block extra_js %}
+{% endblock %}
+
+{% block footer_text %}
+<p class='text-muted'>就在附近！</p>
+{% endblock %}

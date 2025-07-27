@@ -27,3 +27,11 @@ from app.utils.invite_code import generate_invite_code
 @home_bp.route('/zhh')
 def zhh():
     return generate_invite_code()
+
+@home_bp.route('/valid_user')
+def valid_user():
+    return render_template('home/valid_user.html')
+
+@home_bp.route('/contact')
+def contact():
+    return render_template('home/contact.html')
