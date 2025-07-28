@@ -1,0 +1,19 @@
+
+from functools import wraps
+from flask import jsonify, current_user
+
+def admin_only(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_admin:
+            return jsonify({'code': 403, 'message': '管理员权限required'}), 403
+        return f(*args, **kwargs)
+    return decorated_function
+
+def authenticated_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.authenticated:
+            return jsonify({'code': 403, 'message': '请先验证邀请码！'}), 403
+        return f(*args, **kwargs)
+    return decorated_function

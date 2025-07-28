@@ -6,10 +6,10 @@ import os
 
 profile_bp = Blueprint('profile', __name__)
 
-@profile_bp.route('/profile')
-@login_required
-def profile():
-    return render_template('auth/profile.html')
+@profile_bp.route('/profile/<uuid>')
+def profile(uuid):
+    user = User.query.filter_by(uuid=uuid).first_or_404()
+    return render_template('auth/profile.html', user=user)
 
 
 @profile_bp.route('/avatar/<uuid>')

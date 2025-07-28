@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, request
 from app.models import User
-from app.utils.invite_code import verify_invite_code
+from app.utils.invite_code import verify_invite_code, mark_invite_code_used
 from app.utils.verify_username import validate_username
 from app.extensions import db
 from flask import jsonify
@@ -24,6 +24,8 @@ def register():
         if invite_code:
             if not verify_invite_code(invite_code):
                 return jsonify({'code': 400, 'message': '邀请码错误'}), 400
+            # 验证成功后，标记邀请码为已使用
+            mark_invite_code_used(invite_code, user.id)
             is_authenticated = True
 
         if User.query.filter_by(username=data['username']).first():

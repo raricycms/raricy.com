@@ -13,3 +13,4 @@ regex
 flask_sitemap
 pygments
 Pillow
+pybase62

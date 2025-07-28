@@ -21,8 +21,10 @@
     }
 
     .profile-avatar {
-        width: 200px; /* 放大头像 */
-        height: 200px; /* 放大头像 */
+        width: 200px;
+        /* 放大头像 */
+        height: 200px;
+        /* 放大头像 */
         border-radius: 50%;
         margin: 0 auto 20px;
         background: linear-gradient(135deg, #f28391 0%, #2575fc 100%);
@@ -30,7 +32,8 @@
         align-items: center;
         justify-content: center;
         color: white;
-        font-size: 72px; /* 放大头像字体 */
+        font-size: 72px;
+        /* 放大头像字体 */
         font-weight: bold;
     }
 
@@ -41,7 +44,8 @@
     .profile-label {
         font-weight: 500;
         color: #6c757d;
-        margin-bottom: 5px; /* 增加标签和值之间的间距 */
+        margin-bottom: 5px;
+        /* 增加标签和值之间的间距 */
     }
 
     .profile-value {
@@ -76,42 +80,54 @@
 <div class="container">
     <div class="profile-container">
         <div class="profile-header">
-            <h2>{{ current_user.username }}</h2>
-            <p class="text-muted">欢迎查看您的个人资料</p>
+            <h2>{{ user.username }}</h2>
+            <p class="text-muted">{{ user.username }} 的个人资料</p>
         </div>
 
         <div class="row">
             <!-- 头像列 -->
-            <div class="col-md-4 text-center">
-                <div class="profile-avatar">
-                    <img src="{{ url_for('profile.get_avatar', uuid=current_user.uuid) }}" 
-                         style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">
+            <div class="col-md-4 order-md-last text-center">
+                <div class="profile-avatar" style="margin-right: 0;">
+                    <img src="{{ url_for('profile.get_avatar', uuid=current_user.uuid) }}"
+                        style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">
                 </div>
             </div>
 
             <!-- 用户信息列 -->
-            <div class="col-md-8">
+            <div class="col-md-8 order-md-first">
                 <div class="profile-info">
                     <div class="mb-3">
                         <p class="profile-label">用户名</p>
-                        <p class="profile-value">{{ current_user.username }}</p>
+                        <p class="profile-value">{{ user.username }}</p>
                     </div>
                     <div class="mb-3">
                         <p class="profile-label">邮箱</p>
-                        <p class="profile-value">{{ current_user.email }}</p>
+                        <p class="profile-value">{{ user.email }}</p>
                     </div>
                     <div class="mb-3">
                         <p class="profile-label">注册时间</p>
-                        <p class="profile-value">{{ current_user.created_at.strftime('%Y-%m-%d') }}</p>
+                        <p class="profile-value">{{ user.created_at.strftime('%Y-%m-%d') }}</p>
+                    </div>
+                    <div class="d-flex align-items-center gap-3 mb-3">
+                        <div>
+                            <p class="profile-label mb-0">用户类型</p>
+                            <p class="profile-value mb-0">{{ ('普通用户' if not user.authenticated else '核心用户') if not user.is_admin
+                                else '管理员' }}</p>
+                        </div>
+                        {% if not user.authenticated %}
+                        <a href="{{url_for('auth.authentic')}}" class="btn btn-edit">
+                            去认证
+                        </a>
+                        {% endif %}
                     </div>
                 </div>
-
-                <div class="text-center mt-4">
-                    <a href="#" class="btn btn-edit">
-                        <i class="bi bi-pencil-square me-2"></i>编辑资料
-                    </a>
-                </div>
             </div>
+        </div>
+        <!-- 编辑按钮 -->
+        <div class="text-center mt-4">
+            <a href="#" class="btn btn-edit">
+                <i class="bi bi-pencil-square me-2"></i>编辑资料
+            </a>
         </div>
     </div>
 </div>

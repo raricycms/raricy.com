@@ -45,3 +45,12 @@ class User(UserMixin, db.Model):
         super(User, self).__init__(**kwargs)
         self.uuid = str(uuid.uuid4())
     
+    
+
+class InviteCode(db.Model):
+    __tablename__ = 'invite_codes'
+    id = db.Column(db.Integer, primary_key=True)
+    code = db.Column(db.String(12), unique=True, nullable=False)
+    is_used = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+    used_by = db.Column(db.Integer, db.ForeignKey('users.id'))

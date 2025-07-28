@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}
+邀请码验证
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .authentic-container {
+        max-width: 600px;
+        margin: 50px auto;
+        padding: 30px;
+        box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+        border-radius: 10px;
+        background-color: #fff;
+    }
+
+    body {
+        background: linear-gradient(135deg, #f28391 0%, #2575fc 100%);
+        background-attachment: fixed;
+        min-height: 100vh;
+    }
+
+    #message-container {
+        margin-top: 20px;
+    }
+
+    .loading-text {
+        display: none;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="authentic-container">
+        <h2 class="text-center mb-4"><i class="fas fa-key"></i> 邀请码验证</h2>
+        <div id="message-container" class="mb-4"></div>
+        
+        <form id="authentic-form" class="d-grid gap-3">
+            <div class="form-group">
+                <label for="authentic_code">
+                    <i class="fas fa-ticket-alt"></i> 邀请码 <span class="text-danger">*</span>
+                </label>
+                <input type="text" 
+                       class="form-control" 
+                       id="authentic_code" 
+                       name="authentic_code"
+                       placeholder="请输入您的邀请码"
+                       required>
+                <div class="invalid-feedback">
+                    请输入有效的邀请码
+                </div>
+            </div>
+            <p class="text-center mb-4">
+                没有邀请码？<a href="{{url_for('home.contact')}}" class="text-primary">点击联系我们</a>
+            </p>
+            <div class="d-grid">
+                <button type="submit" class="btn btn-primary btn-lg" id="submitBtn">
+                    <span id="submitText">立即验证</span>
+                    <span id="loadingText" class="loading-text">
+                        <i class="fas fa-spinner fa-spin"></i> 验证中...
+                    </span>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const form = document.getElementById('authentic-form');
+        const submitBtn = document.getElementById('submitBtn');
+        const messageContainer = document.getElementById('message-container');
+
+        form.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            messageContainer.innerHTML = '';
+
+            if (!form.checkValidity()) {
+                form.classList.add('was-validated');
+                return;
+            }
+
+            submitBtn.disabled = true;
+            document.getElementById('submitText').style.display = 'none';
+            document.getElementById('loadingText').style.display = 'inline';
+
+            try {
+                const response = await fetch('{{ url_for("auth.authentic") }}', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        authentic_code: document.getElementById('authentic_code').value
+                    })
+                });
+
+                const result = await response.json();
+                if (response.ok) {
+                    showMessage(result.message, 'success');
+                    setTimeout(() => {
+                        window.location.href = "{{ url_for('profile.profile', uuid=current_user.uuid) }}";
+                    }, 1500);
+                } else {
+                    showMessage(result.message, 'danger');
+                    document.getElementById('authentic_code').focus();
+                }
+            } catch (error) {
+                console.error('验证请求失败:', error);
+                showMessage('网络错误，请稍后重试', 'danger');
+            } finally {
+                submitBtn.disabled = false;
+                document.getElementById('submitText').style.display = 'inline';
+                document.getElementById('loadingText').style.display = 'none';
+            }
+        });
+
+        function showMessage(message, type) {
+            messageContainer.innerHTML = `
+                <div class="alert alert-${type} alert-dismissible fade show">
+                    ${message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            `;
+        }
+    });
+</script>
+{% endblock %}
+
+{% block footer_text %}
+{% endblock %}
