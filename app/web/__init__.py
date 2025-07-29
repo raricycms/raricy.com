@@ -16,4 +16,10 @@ def register_blueprints(app: Flask):
     app.register_blueprint(sitemap_bp, url_prefix='/sitemap')
     app.register_blueprint(error_bp, url_prefix='/error')
     app.register_blueprint(blog_bp, url_prefix='/blog')
+    
+    # 仅在非生产环境注册测试蓝图
+    if app.config.get('DEBUG'):
+        from .test import register_blueprints as register_test
+        register_test(app)
+
     register_auth_blueprints(app)

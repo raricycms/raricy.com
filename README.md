@@ -1,4 +1,4 @@
-这是聪明山的个人网站！
+这是 聪明山 的个人网站！
 
 基于Flask和Bootstrap构建  
 访问地址：http://raricy.com:5000  
@@ -9,37 +9,32 @@
 ## 运行要求
 需要创建instance文件夹，结构示例：
 
-> instance
-> &emsp;├── avatars
-> &emsp;├── database
-> &emsp;├── stories
-> &emsp;│&emsp;├── mainstories_batch
-> &emsp;│&emsp;│&emsp;├── info.json
-> &emsp;│&emsp;│&emsp;├── teststory1.md
-> &emsp;│&emsp;│&emsp;└── teststory2.md
-> 
-> &emsp;│&emsp;├── mainstories_batch2
-> &emsp;│&emsp;│&emsp;├── info.json
-> &emsp;│&emsp;│&emsp;├── teststory3.md
-> &emsp;│&emsp;│&emsp;└── teststory4.md
-> 
-> &emsp;│&emsp;└── mainstories_batch3
-> &emsp;│&emsp;    ├── info.json
-> &emsp;│&emsp;    ├── teststory5.md
-> &emsp;│&emsp;    └── teststory6.md
-> 
-> &emsp;└── blogs
-> &emsp;&emsp;├── test1
-> &emsp;&emsp;│&emsp;├── info.json
-> &emsp;&emsp;│&emsp;└── content.md
-> 
-> &emsp;&emsp;├── test2
-> &emsp;&emsp;│&emsp;├── info.json
-> &emsp;&emsp;│&emsp;└── content.md
-> 
-> &emsp;&emsp;└── test3
-> &emsp;&emsp;&emsp;├── info.json
-> &emsp;&emsp;&emsp;└── content.md
+> instance   
+> &emsp;&emsp;├── avatars   
+> &emsp;&emsp;├── database   
+> &emsp;&emsp;├── stories   
+> &emsp;&emsp;│&emsp;&emsp;├── mainstories_batch   
+> &emsp;&emsp;│&emsp;&emsp;│&emsp;&emsp;├── info.json   
+> &emsp;&emsp;│&emsp;&emsp;│&emsp;&emsp;├── teststory1.md   
+> &emsp;&emsp;│&emsp;&emsp;│&emsp;&emsp;└── teststory2.md   
+> &emsp;&emsp;│&emsp;&emsp;├── mainstories_batch2   
+> &emsp;&emsp;│&emsp;&emsp;│&emsp;&emsp;├── info.json   
+> &emsp;&emsp;│&emsp;&emsp;│&emsp;&emsp;├── teststory3.md   
+> &emsp;&emsp;│&emsp;&emsp;│&emsp;&emsp;└── teststory4.md   
+> &emsp;&emsp;│&emsp;&emsp;└── mainstories_batch3   
+> &emsp;&emsp;│&emsp;&emsp;&emsp;&emsp;&emsp;├── info.json   
+> &emsp;&emsp;│&emsp;&emsp;&emsp;&emsp;&emsp;├── teststory5.md   
+> &emsp;&emsp;│&emsp;&emsp;&emsp;&emsp;&emsp;└── teststory6.md   
+> &emsp;&emsp;└── blogs
+> &emsp;&emsp;&emsp;&emsp;&emsp;├── test1
+> &emsp;&emsp;&emsp;&emsp;&emsp;│&emsp;&emsp;├── info.json
+> &emsp;&emsp;&emsp;&emsp;&emsp;│&emsp;&emsp;└── content.md
+> &emsp;&emsp;&emsp;&emsp;&emsp;├── test2
+> &emsp;&emsp;&emsp;&emsp;&emsp;│&emsp;&emsp;├── info.json
+> &emsp;&emsp;&emsp;&emsp;&emsp;│&emsp;&emsp;└── content.md
+> &emsp;&emsp;&emsp;&emsp;&emsp;└── test3
+> &emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;├── info.json
+> &emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;└── content.md
 
 同时需要创建.env配置文件：
 

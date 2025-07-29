@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}
+Markdown Editor
+{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='vditor/index.css') }}">
+{% endblock %}
+
+{% block content %}
+<br><br><br>
+<div id="editor" style="height: 80vh;"></div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='vditor/index.min.js') }}"></script>
+<script>
+    // 添加加载检查
+    document.addEventListener('DOMContentLoaded', function () {
+        if (typeof Vditor === 'undefined') {
+            console.error('Vditor 未加载! 请检查 CDN 链接');
+            return;
+        }
+
+        // 初始化编辑器
+        const vditor = new Vditor('editor', {
+            minHeight: 500,
+            mode: 'sv',
+            toolbar: [
+                // ===== 基本编辑功能 =====
+                'emoji', // 表情符号
+                'headings', // 标题
+                'bold', // 粗体
+                'italic', // 斜体
+                'strike', // 删除线
+                'link', // 链接
+                '|', // 分隔线
+
+                // ===== 列表与引用 =====
+                'list', // 无序列表
+                'ordered-list', // 有序列表
+                'check', // 任务列表
+                'outdent', // 减少缩进
+                'indent', // 增加缩进
+                '|',
+
+                // ===== 代码相关 =====
+                'quote', // 引用块
+                'line', // 水平分割线
+                'code', // 代码块
+                'inline-code', // 行内代码
+                'code-theme', // 代码主题
+                '|',
+
+                'upload', // 上传
+                'table', // 插入表格
+                '|',
+
+                // ===== 内容操作 =====
+                'undo', // 撤销
+                'redo', // 重做
+                '|',
+
+                // ===== 视图控制 =====
+                'preview', // 预览
+                'fullscreen', // 全屏
+                'info', // 帮助信息
+                '|',
+
+                // ===== 导出功能 =====
+                'export', // 导出
+                '|',],
+            counter: {
+                enable: true, // 显示字数统计
+                type: 'text' // 统计类型 (text/markdown)
+            },
+            cache: {
+                enable: true, // 启用本地缓存
+                id: 'vditor-flask-editor' // 缓存ID
+            },
+            after: () => {
+                vditor.setValue('# Hello Vditor!');
+            }
+        });
+    });
+</script>
+{% endblock %}
+
+{% block footer_text %}
+{% endblock %}

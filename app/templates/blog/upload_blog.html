@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}
+Raricy.com - 文章上传
+{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='vditor/index.css') }}">
+<style>
+    .upload-hero {
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        padding: 50px 0 30px;
+        text-align: center;
+    }
+
+    .blog-form-container {
+        max-width: 900px;
+        margin: 40px auto;
+        background: #fff;
+        border-radius: 8px;
+        box-shadow: 0 2px 16px rgba(0, 0, 0, 0.06);
+        padding: 40px;
+    }
+
+    #message-container {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 9999;
+        min-width: 300px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="upload-hero">
+    <h1>发布新文章</h1>
+</section>
+
+<div class="blog-form-container">
+    <!-- 消息容器 -->
+    <div id="message-container"></div>
+
+    <form id="blogForm">
+        <div class="mb-3">
+            <label for="title" class="form-label">标题</label>
+            <input type="text" class="form-control" id="title" required>
+        </div>
+        
+        <div class="mb-3">
+            <label for="description" class="form-label">摘要</label>
+            <textarea class="form-control" id="description" rows="3" required></textarea>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">内容（Markdown格式）（注意：粘贴的内容会自动变为引用。）</label>
+            <div id="editor" style="height: 60vh;"></div>
+        </div>
+
+        <button type="submit" class="btn btn-primary">提交</button>
+    </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='vditor/index.min.js') }}"></script>
+<script>
+    // 初始化Vditor编辑器
+    document.addEventListener('DOMContentLoaded', function() {
+        const vditor = new Vditor('editor', {
+            minHeight: 500,
+            mode: 'sv',
+            toolbar: [
+                'emoji', 'headings', 'bold', 'italic', 'strike', 'link', '|',
+                'list', 'ordered-list', 'check', 'outdent', 'indent', '|',
+                'quote', 'line', 'code', 'inline-code', 'upload', 'table', '|',
+                'undo', 'redo', 'preview', 'fullscreen', 'export'
+            ],
+            counter: { enable: true, type: 'text' },
+            cache: { enable: false},
+            value: ''
+        });
+
+        // 表单提交处理（使用register.html的提示样式）
+        document.getElementById('blogForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const showMessage = (message, type = 'danger') => {
+                const alert = `<div class="alert alert-${type} alert-dismissible fade show">
+                    ${message}
+                    <button type="button" class="btn-close"></button>
+                </div>`;
+                document.getElementById('message-container').innerHTML = alert;
+            };
+
+            try {
+                const response = await fetch('/blog/upload_blog', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        title: document.getElementById('title').value,
+                        description: document.getElementById('description').value,
+                        content: vditor.getValue()
+                    })
+                });
+
+                const result = await response.json();
+                if (result.code === 200) {
+                    showMessage('上传成功！即将跳转到文章页面...', 'success');
+                    setTimeout(() => {
+                        window.location.href = '/blog/' + result.blog_id;
+                    }, 1500);
+                } else {
+                    showMessage('上传失败: ' + result.message);
+                }
+            } catch (error) {
+                showMessage('网络请求异常，请检查连接');
+            }
+        });
+    });
+</script>
+{% endblock %}
+
+{% block footer_text %}
+{% endblock %}

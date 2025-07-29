@@ -8,8 +8,4 @@ def create_app():
     app.config.from_object(get_config())
     register_blueprints(app)
     init_extensions(app)
-    with app.app_context():
-        from app.models import User
-        from app.extensions import db
-        db.create_all()
     return app

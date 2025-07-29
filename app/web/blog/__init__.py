@@ -1,8 +1,14 @@
-from flask import Blueprint, render_template, current_app, abort
+from flask import Blueprint, render_template, current_app, abort, request, jsonify
+from flask_login import login_required, current_user
+from app.extensions import db
 import os
 import json
 import markdown
+import uuid
 import pygments
+from datetime import datetime
+from app.models import Blog
+from app.utils.process_markdown import safe_markdown_to_html
 
 blog_bp = Blueprint('blog', __name__)
 
@@ -39,17 +45,42 @@ def blog_detail(blog_id):
     content_path = os.path.join(blog_path, "content.md")
     with open(content_path, "r", encoding="utf-8") as f:
         content = f.read()
-    info['content'] = markdown.markdown(content, extensions=[
-        "extra", 
-        "codehilite", 
-        "tables", 
-        "toc"
-    ], extension_configs={
-        'codehilite': {
-            'css_class': 'highlight',
-            'use_pygments': True,
-            'noclasses': False,
-            'linenums': False
-        }
-    })
+    info['content'] = safe_markdown_to_html(content)
     return render_template('blog/blog.html', blog=info, content=content)
+
+@blog_bp.route('/upload_blog', methods=['GET', 'POST'])
+@login_required
+def upload():
+    if request.method == 'GET':
+        return render_template('blog/upload_blog.html')
+    elif request.method == 'POST':
+        data = request.get_json()
+        if not data or not data.get('title') or not data.get('content') or not data.get('description'):
+            return jsonify({'code': 400, 'message': '缺少必要参数'}), 400
+        # 生成博客ID
+        blog_id = str(uuid.uuid4())
+        # 创建博客目录
+        blog_path = os.path.join(current_app.instance_path, "blogs", blog_id)
+        os.makedirs(blog_path, exist_ok=True)
+        # 保存博客信息
+        info = {
+            "title": data['title'],
+            "description": data['description'],
+            "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "author": current_user.username,
+        }
+        with open(os.path.join(blog_path, "info.json"), "w", encoding="utf-8") as f:
+            json.dump(info, f, ensure_ascii=False, indent=4)
+        # 保存博客内容
+        with open(os.path.join(blog_path, "content.md"), "w", encoding="utf-8") as f:
+            f.write(data['content'])
+        # 保存博客到数据库
+        blog = Blog(
+            uuid=blog_id,
+            created_at=datetime.now(),
+            author_id=current_user.id
+        )
+        db.session.add(blog)
+        db.session.commit()
+        return jsonify({'code': 200, 'message': '上传成功', 'blog_id': blog_id})
+        

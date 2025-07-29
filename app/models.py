@@ -54,3 +54,9 @@ class InviteCode(db.Model):
     is_used = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.now)
     used_by = db.Column(db.Integer, db.ForeignKey('users.id'))
+
+class Blog(db.Model):
+    __tablename__ = 'blogs'
+    uuid = db.Column(db.String(36), primary_key=True)
+    created_at = db.Column(db.DateTime, default=datetime.now())
+    author_id = db.Column(db.Integer, db.ForeignKey('users.id'))

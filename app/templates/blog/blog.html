@@ -6,7 +6,6 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/pygments-default.css') }}" id="pygments-default">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/pygments-Monokai.css') }}" id="pygments-monokai">
 <style>
-
     .read-hero {
         background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
         padding: 50px 0 30px;
@@ -443,8 +442,10 @@
 </section>
 
 <div class="blog-content-container-container">
-    <div class="blog-content-container">
-        {{ blog.content | safe }}
+    <div class="blog-content-container" id="userContentContainer">
+        <template id="userContentTemplate">
+            {{ blog.content | safe }}
+        </template>
     </div>
 </div>
 
@@ -456,6 +457,16 @@
 {% block extra_js %}
 <script>
     // 主题切换功能
+    // 安全渲染函数
+    function renderUserContent() {
+        const container = document.getElementById('userContentContainer');
+        const template = document.getElementById('userContentTemplate');
+
+        // 克隆模板内容（此时仍为惰性文档片段）
+        const fragment = template.content.cloneNode(true);
+        // 激活并插入DOM
+        container.appendChild(fragment);
+    }
     const toggleBtn = document.getElementById('toggle-theme');
     const isDark = localStorage.getItem('theme') === 'dark';
 
@@ -574,6 +585,7 @@
 
     // 页面加载时自动适配系统主题
     document.addEventListener('DOMContentLoaded', () => {
+        renderUserContent();
         let isDark = localStorage.getItem('theme') === 'dark';
         if (!localStorage.getItem('theme')) {
             if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
