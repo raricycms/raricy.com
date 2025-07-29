@@ -1,8 +1,9 @@
 这是 聪明山 的个人网站！
 
-基于Flask和Bootstrap构建  
+powered by Flask & Bootstrap & Vditor    
 访问地址：http://raricy.com:5000  
-（持续更新中）
+（持续更新中）    
+（不要攻击我呜呜呜，谢谢啦）
 
 ---
 
@@ -26,15 +27,6 @@
 > &emsp;&emsp;│&emsp;&emsp;&emsp;&emsp;&emsp;├── teststory5.md   
 > &emsp;&emsp;│&emsp;&emsp;&emsp;&emsp;&emsp;└── teststory6.md   
 > &emsp;&emsp;└── blogs
-> &emsp;&emsp;&emsp;&emsp;&emsp;├── test1
-> &emsp;&emsp;&emsp;&emsp;&emsp;│&emsp;&emsp;├── info.json
-> &emsp;&emsp;&emsp;&emsp;&emsp;│&emsp;&emsp;└── content.md
-> &emsp;&emsp;&emsp;&emsp;&emsp;├── test2
-> &emsp;&emsp;&emsp;&emsp;&emsp;│&emsp;&emsp;├── info.json
-> &emsp;&emsp;&emsp;&emsp;&emsp;│&emsp;&emsp;└── content.md
-> &emsp;&emsp;&emsp;&emsp;&emsp;└── test3
-> &emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;├── info.json
-> &emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;└── content.md
 
 同时需要创建.env配置文件：
 
@@ -46,3 +38,8 @@
 > TURNSTILE_AVAILABLE=False   
 > CONFIG_TYPE=development
 
+别忘了安装必要的库：   
+> pip install -r requirements.txt 
+
+有任何建议，请联系我：   
+http://raricy.com:5000/contact
