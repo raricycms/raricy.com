@@ -2,7 +2,7 @@ from flask import Blueprint, render_template, request
 from app.models import User
 from app.utils.invite_code import verify_invite_code, mark_invite_code_used
 from app.utils.verify_username import validate_username
-from app.extensions import db
+from app.extensions import db, turnstile
 from flask import jsonify
 from app.utils.verify_email import validate_email
 import os
@@ -15,6 +15,10 @@ def register():
         data = request.get_json()
         if not data or not data.get('username') or not data.get('password') or not data.get('email'):
             return jsonify({'code': 400, 'message': '缺少必要参数'}), 400
+            
+        # 验证Turnstile
+        if current_app.config['TURNSTILE_AVAILABLE'] and not turnstile.verify(request.form):
+            return jsonify({'code': 400, 'message': '人机验证失败'}), 400
 
         # 邀请码变为可选项
         invite_code = data.get('invite_code', '')

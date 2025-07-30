@@ -58,6 +58,8 @@ def upload():
         if not data or not data.get('title') or not data.get('content') or not data.get('description'):
             return jsonify({'code': 400, 'message': '缺少必要参数'}), 400
         # 生成博客ID
+        if current_app.config['TURNSTILE_AVAILABLE'] and (not data.get('token') or not turnstile.verify(data)):
+            return jsonify({'code': 400, 'message': '人机验证失败'}), 400
         blog_id = str(uuid.uuid4())
         # 创建博客目录
         blog_path = os.path.join(current_app.instance_path, "blogs", blog_id)

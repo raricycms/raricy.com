@@ -1,6 +1,7 @@
 这是 聪明山 的个人网站！
 
-powered by Flask & Bootstrap & Vditor    
+powered by Flask & Bootstrap & Vditor & Turnstile   
+感谢 deepask.cc & Trae CN & deepseek.com 提供的免费ai工具   
 访问地址：http://raricy.com:5000  
 （持续更新中）    
 （不要攻击我呜呜呜，谢谢啦）
@@ -31,7 +32,7 @@ powered by Flask & Bootstrap & Vditor
 同时需要创建.env配置文件：
 
 > SQLALCHEMY_DATABASE_URI=sqlite:///../instance/database/db.db   
-> SECRET_KEY=your_secure_key_here   
+> SECRET_KEY=Secret_key_like_Il0veRust1145141919810abcdef   
 > DEBUG=True   
 > TURNSTILE_SITE_KEY=your_site_key   
 > TURNSTILE_SECRET_KEY=your_secret_key   
