@@ -121,9 +121,7 @@ Raricy.com - 用户注册
                 </div>
             </div>
 
-            <div class="form-group mt-4">
-                <div class="cf-turnstile" data-sitekey="{{config['TURNSTILE_SITE_KEY']}}" data-callback="callback"></div>
-            </div>
+            {{ turnstile }}
 
             <div class="form-group">
                 <div class="form-check">
@@ -148,14 +146,13 @@ Raricy.com - 用户注册
         </form>
 
         <div class="login-link">
-            <p class="text-muted">已有账号？ <a href="{{ url_for('sign_in.login') }}" class="text-primary">立即登录</a></p>
+            <p class="text-muted">已有账号？ <a href="{{ url_for('auth.login') }}" class="text-primary">立即登录</a></p>
         </div>
     </div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
-<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         const form = document.getElementById('registerForm');
@@ -215,10 +212,10 @@ Raricy.com - 用户注册
             if (!data.invite_code || data.invite_code.trim() === '') {
                 delete data.invite_code;
             }
-
+            console.log(formData.get('cf-turnstile-response'));
             try {
                 // 发送注册请求到后端
-                const response = await fetch('{{ url_for("sign_up.register") }}', {
+                const response = await fetch('{{ url_for("auth.register") }}', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -232,7 +229,7 @@ Raricy.com - 用户注册
                     // 注册成功
                     showMessage(result.message || '注册成功！正在跳转到登录页面...', 'success');
                     setTimeout(() => {
-                        window.location.href = '{{ url_for("sign_in.login") }}';
+                        window.location.href = '{{ url_for("auth.login") }}';
                     }, 2000);
                 } else {
                     // 注册失败

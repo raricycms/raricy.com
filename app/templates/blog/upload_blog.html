@@ -56,9 +56,7 @@ Raricy.com - 文章上传
             <div id="editor" style="height: 60vh;"></div>
         </div>
 
-        <div class="form-group mt-4">
-            <div class="cf-turnstile" data-sitekey="{{config['TURNSTILE_SITE_KEY']}}" data-callback="callback"></div>
-        </div>
+        {{turnstile}}
 
         <button type="submit" class="btn btn-primary">提交</button>
     </form>
@@ -66,7 +64,6 @@ Raricy.com - 文章上传
 {% endblock %}
 
 {% block extra_js %}
-<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 <script src="{{ url_for('static', filename='vditor/index.min.js') }}"></script>
 <script>
     // 初始化Vditor编辑器
@@ -97,6 +94,7 @@ Raricy.com - 文章上传
                 document.getElementById('message-container').innerHTML = alert;
             };
 
+            form = document.getElementById('blogForm');
             try {
                 const response = await fetch('/blog/upload_blog', {
                     method: 'POST',
@@ -105,7 +103,7 @@ Raricy.com - 文章上传
                         title: document.getElementById('title').value,
                         description: document.getElementById('description').value,
                         content: vditor.getValue(),
-                        token: document.getElementById('cf-turnstile-response').value
+                        'cf-turnstile-response': form.querySelector('[name="cf-turnstile-response"]').value
                     })
                 });
 
@@ -119,7 +117,7 @@ Raricy.com - 文章上传
                     showMessage('上传失败: ' + result.message);
                 }
             } catch (error) {
-                showMessage('网络请求异常，请检查连接');
+                showMessage('出现错误，稍后再试也不行');
             }
         });
     });

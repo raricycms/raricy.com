@@ -97,7 +97,7 @@ Raricy.com - 用户登录
         </form>
 
         <div class="login-link">
-            <p class="text-muted">没有账号？ <a href="{{ url_for('sign_up.register') }}" class="text-primary">立即注册</a></p>
+            <p class="text-muted">没有账号？ <a href="{{ url_for('auth.register') }}" class="text-primary">立即注册</a></p>
         </div>
     </div>
 </div>
@@ -146,7 +146,7 @@ Raricy.com - 用户登录
 
             try {
                 // 发送登录请求到后端
-                const response = await fetch('{{ url_for("sign_in.login") }}', {
+                const response = await fetch('{{ url_for("auth.login") }}', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',

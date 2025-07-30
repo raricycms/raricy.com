@@ -27,6 +27,9 @@ class User(UserMixin, db.Model):
         return check_password_hash(self.password_hash, password)
     
     def to_dict(self):
+        """
+        将用户对象转换为字典格式，用于序列化。
+        """
         return {
             'id': self.id,
             'username': self.username,
@@ -39,6 +42,9 @@ class User(UserMixin, db.Model):
         }
     
     def __repr__(self):
+        """
+        返回用户对象的字符串表示，用于调试。
+        """
         return f'<User {self.username}>'
     
     def __init__(self, **kwargs):
@@ -48,6 +54,9 @@ class User(UserMixin, db.Model):
     
 
 class InviteCode(db.Model):
+    """
+    邀请码模型类，用于存储和管理邀请码。
+    """
     __tablename__ = 'invite_codes'
     id = db.Column(db.Integer, primary_key=True)
     code = db.Column(db.String(12), unique=True, nullable=False)
@@ -56,6 +65,9 @@ class InviteCode(db.Model):
     used_by = db.Column(db.Integer, db.ForeignKey('users.id'))
 
 class Blog(db.Model):
+    """
+    博客模型类，用于存储和管理博客文章。
+    """
     __tablename__ = 'blogs'
     uuid = db.Column(db.String(36), primary_key=True)
     created_at = db.Column(db.DateTime, default=datetime.now())

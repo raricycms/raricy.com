@@ -8,6 +8,9 @@ story_bp = Blueprint('story', __name__)
 
 @story_bp.route('/')
 def menu():
+    """
+    小说集列表页面，用于显示所有小说集的列表。
+    """
     batches = []
     for batch_id in os.listdir(os.path.join(current_app.instance_path, "stories")):
         if os.path.isdir(os.path.join(current_app.instance_path, "stories", batch_id)):
@@ -30,6 +33,9 @@ def menu():
 
 @story_bp.route('/<batch_id>')
 def batch_detail(batch_id):
+    """
+    小说集详情页面，用于显示指定小说集的所有文章。
+    """
     info_path = os.path.join(current_app.instance_path, "stories", f"{batch_id}", "info.json")
     if not os.path.isfile(info_path):
         abort(404)
@@ -67,6 +73,9 @@ def batch_detail(batch_id):
 
 @story_bp.route("/<batch_id>/<story_id>")
 def story_detail(batch_id, story_id):
+    """
+    文章详情页面，用于显示指定文章的内容。
+    """
     # 拼出 Markdown 路径
     md_path = os.path.join(current_app.instance_path, "stories", f"{batch_id}", f"{story_id}.md")
     # 判断文件是否存在

@@ -4,15 +4,15 @@ from flask_login import login_user, logout_user, login_required
 from flask import send_from_directory, abort, current_app
 import os
 
-profile_bp = Blueprint('profile', __name__)
+from . import auth_bp
 
-@profile_bp.route('/profile/<uuid>')
+@auth_bp.route('/profile/<uuid>')
 def profile(uuid):
     user = User.query.filter_by(uuid=uuid).first_or_404()
     return render_template('auth/profile.html', user=user)
 
 
-@profile_bp.route('/avatar/<uuid>')
+@auth_bp.route('/avatar/<uuid>')
 def get_avatar(uuid):
     print(uuid)
     user = User.query.filter_by(uuid=uuid).first_or_404()

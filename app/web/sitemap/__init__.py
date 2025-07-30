@@ -44,6 +44,20 @@ def story_pages():
             story_id = story_id[:-3]
             yield 'story.story_detail', {'batch_id': batch_id, 'story_id': story_id}
 
+@sitemap.register_generator
+def blog_pages():
+    """动态博客页面"""
+    import os
+    
+    blog_dir = os.path.join(current_app.instance_path, 'blogs')
+    for blog_id in os.listdir(blog_dir):
+        if not os.path.isdir(os.path.join(blog_dir, blog_id)):
+            continue
+        info_file = os.path.join(blog_dir, blog_id, 'info.json')
+        if not os.path.isfile(info_file):
+            continue
+        yield 'blog.blog_detail', {'blog_id': blog_id}
+
 @sitemap_bp.route('/')
 def index():
     """sitemap索引页面"""

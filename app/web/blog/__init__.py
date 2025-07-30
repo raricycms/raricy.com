@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, current_app, abort, request, jsonify
 from flask_login import login_required, current_user
-from app.extensions import db
+from app.extensions import db, turnstile
 import os
 import json
 import markdown
@@ -58,7 +58,9 @@ def upload():
         if not data or not data.get('title') or not data.get('content') or not data.get('description'):
             return jsonify({'code': 400, 'message': '缺少必要参数'}), 400
         # 生成博客ID
-        if current_app.config['TURNSTILE_AVAILABLE'] and (not data.get('token') or not turnstile.verify(data)):
+        # 验证Turnstile
+        if current_app.config['TURNSTILE_AVAILABLE'] and not turnstile.verify(data.get('cf-turnstile-response')):
+            print("Turnstile verification failed. Reason:", data.get('cf-turnstile-response'))
             return jsonify({'code': 400, 'message': '人机验证失败'}), 400
         blog_id = str(uuid.uuid4())
         # 创建博客目录

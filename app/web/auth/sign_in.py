@@ -2,9 +2,9 @@ from flask import Blueprint, render_template, request, jsonify
 from app.models import User
 from flask_login import login_user, logout_user, login_required
 
-sign_in_bp = Blueprint('sign_in', __name__)
+from . import auth_bp
 
-@sign_in_bp.route('/login', methods=['GET', 'POST'])
+@auth_bp.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
         data = request.get_json()
@@ -18,7 +18,7 @@ def login():
             return jsonify({'code': 400, 'message': '用户名或密码错误！'}), 400
     return render_template('auth/login.html')
 
-@sign_in_bp.route('/logout')
+@auth_bp.route('/logout')
 @login_required
 def logout():
     logout_user()

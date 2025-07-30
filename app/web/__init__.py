@@ -7,7 +7,7 @@ def register_blueprints(app: Flask):
     from .tool import tool_bp
     from .sitemap import sitemap_bp
     from .error import error_bp
-    from .auth import register_auth_blueprints
+    from .auth import auth_bp
     from .blog import blog_bp
     app.register_blueprint(home_bp, url_prefix='/')
     app.register_blueprint(story_bp, url_prefix='/story')
@@ -22,4 +22,4 @@ def register_blueprints(app: Flask):
         from .test import register_blueprints as register_test
         register_test(app)
 
-    register_auth_blueprints(app)
+    app.register_blueprint(auth_bp, url_prefix='/auth')

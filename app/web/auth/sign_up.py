@@ -7,9 +7,10 @@ from flask import jsonify
 from app.utils.verify_email import validate_email
 import os
 from flask import current_app
-sign_up_bp = Blueprint('sign_up', __name__)
 
-@sign_up_bp.route('/register', methods=['GET', 'POST'])
+from . import auth_bp
+
+@auth_bp.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
         data = request.get_json()
@@ -17,7 +18,8 @@ def register():
             return jsonify({'code': 400, 'message': '缺少必要参数'}), 400
             
         # 验证Turnstile
-        if current_app.config['TURNSTILE_AVAILABLE'] and not turnstile.verify(request.form):
+        if current_app.config['TURNSTILE_AVAILABLE'] and not turnstile.verify(data.get('cf-turnstile-response')):
+            print("Turnstile verification failed. Reason:", data.get('cf-turnstile-response'))
             return jsonify({'code': 400, 'message': '人机验证失败'}), 400
 
         # 邀请码变为可选项

@@ -4,28 +4,40 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class Config:
-    SECRET_KEY = os.getenv('SECRET_KEY')
-    SQLALCHEMY_DATABASE_URI = os.getenv('SQLALCHEMY_DATABASE_URI')
-    SQLALCHEMY_TRACK_MODIFICATIONS = False
-    TURNSTILE_SITE_KEY = os.getenv('TURNSTILE_SITE_KEY')
-    TURNSTILE_SECRET_KEY = os.getenv('TURNSTILE_SECRET_KEY')
-    TURNSTILE_AVAILABLE = os.getenv('TURNSTILE_AVAILABLE') == 'True'
+    """
+    基础配置类，包含所有环境的通用配置。
+    """
+    SECRET_KEY = os.getenv('SECRET_KEY') # 网站密钥
+    SQLALCHEMY_DATABASE_URI = os.getenv('SQLALCHEMY_DATABASE_URI') # 数据库连接URI
+    SQLALCHEMY_TRACK_MODIFICATIONS = False # 关闭数据库修改跟踪
+    TURNSTILE_SITE_KEY = os.getenv('TURNSTILE_SITE_KEY') # Cloudflare Turnstile 站点密钥
+    TURNSTILE_SECRET_KEY = os.getenv('TURNSTILE_SECRET_KEY') # Cloudflare Turnstile 密钥
+    TURNSTILE_AVAILABLE = os.getenv('TURNSTILE_AVAILABLE') == 'True' # 是否启用 Cloudflare Turnstile
     SEND_FILE_MAX_AGE_DEFAULT = 2592000  # 30天缓存
 
 
 class DevelopmentConfig(Config):
+    """
+    开发环境配置类，继承自基础配置类。用于本地开发。
+    """
     DEBUG = True
     PORT = int(os.getenv('PORT', 5000))
     HOST = os.getenv('HOST', '127.0.0.1')
     DEBUG = os.getenv('DEBUG', 'True') == 'True'
 
 class ProductionConfig(Config):
+    """
+    生产环境配置类，继承自基础配置类。用于https://raricy.com
+    """
     DEBUG = False
     PORT = int(os.getenv('PORT', 5000))
     HOST = os.getenv('HOST', '0.0.0.0')
     DEBUG = os.getenv('DEBUG', 'False') == 'False'
 
 class TestingConfig(Config):
+    """
+    测试环境配置类，继承自基础配置类。用于http://raricy.com:5000
+    """
     DEBUG = True
     PORT = int(os.getenv('PORT', 5000))
     HOST = os.getenv('HOST', '0.0.0.0')
