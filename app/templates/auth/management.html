@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}
+Raricy.com - 用户管理页面
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    body {
+        background: linear-gradient(135deg, #f28391 0%, #2575fc 100%);
+        background-attachment: fixed;
+        min-height: 100vh;
+    }
+    .management-card {
+        margin-top: 50px;
+        box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+        padding: 30px;
+        border-radius: 15px;
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(5px);
+        transition: transform 0.3s ease;
+    }
+    .management-card:hover {
+        transform: translateY(-5px);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+    <div class="container">
+        <div class="management-card">
+            <h1 class="text-center mb-4">用户管理</h1>
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>用户名</th>
+                        <th>邮箱</th>
+                        <th>角色</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in user_list %}
+                    <tr>
+                        <td>{{ user.username }}</td>
+                        <td>{{ user.email }}</td>
+                        <td>
+                            {% if user.is_admin %}
+                                <span class="text-danger">管理员</span>
+                            {% elif user.authenticated %}
+                                <span class="text-success">核心用户</span>
+                            {% else %}
+                                <span class="text-primary">普通用户</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <button class="btn btn-sm btn-info" onclick="window.location.href=`{{ url_for('auth.profile', user_id=user.id) }}`">查看</button>
+                            <button class="btn btn-sm btn-primary">编辑</button>
+                            <button class="btn btn-sm btn-danger">删除</button>
+                            {% if user.authenticated %}
+                                <button class="btn btn-sm btn-warning" onclick="demoteUser('{{ user.id }}')">取消认证</button>
+                            {% else %}
+                                <button class="btn btn-sm btn-success" onclick="promoteUser('{{ user.id }}')">认证</button>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function promoteUser(user_id) {
+        fetch('{{ url_for("auth.promote") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({user_id: user_id})
+        }).then(response => response.json())
+          .then(data => {
+              if(data.code === 200) {
+                  location.reload();
+              } else {
+                  alert(data.message);
+              }
+          });
+    }
+
+    function demoteUser(user_id) {
+        fetch('{{ url_for("auth.demote") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({user_id: user_id})
+
+        }).then(response => response.json())
+          .then(data => {
+              if(data.code === 200) {
+                  location.reload();
+              } else {
+                  alert(data.message);
+              }
+          });
+    }
+</script>
+{% endblock %}
+
+{% block footer_text %}
+{% endblock %}

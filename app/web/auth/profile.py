@@ -6,17 +6,16 @@ import os
 
 from . import auth_bp
 
-@auth_bp.route('/profile/<uuid>')
-def profile(uuid):
-    user = User.query.filter_by(uuid=uuid).first_or_404()
+@auth_bp.route('/profile/<user_id>')
+def profile(user_id):
+    user = User.query.filter_by(id=user_id).first_or_404()
     return render_template('auth/profile.html', user=user)
 
 
-@auth_bp.route('/avatar/<uuid>')
-def get_avatar(uuid):
-    print(uuid)
-    user = User.query.filter_by(uuid=uuid).first_or_404()
-    avatar_dir = os.path.normpath(os.path.join(current_app.instance_path, 'avatars', f'{uuid}.png'))
+@auth_bp.route('/avatar/<user_id>')
+def get_avatar(user_id):
+    user = User.query.filter_by(id=user_id).first_or_404()
+    avatar_dir = os.path.normpath(os.path.join(current_app.instance_path, 'avatars', f'{user.id}.png'))
     if not os.path.exists(avatar_dir):
         abort(404)
     return send_from_directory(

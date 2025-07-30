@@ -86,7 +86,7 @@ Raricy.com - 用户资料
             <!-- 头像列 -->
             <div class="col-md-4 order-md-last text-center">
                 <div class="profile-avatar" style="margin-right: 0;">
-                    <img src="{{ url_for('auth.get_avatar', uuid=current_user.uuid) }}"
+                    <img src="{{ url_for('auth.get_avatar', user_id=current_user.id) }}"
                         style="width: 100%; height: 100%; border-radius: 10px; object-fit: cover;">
                 </div>
             </div>

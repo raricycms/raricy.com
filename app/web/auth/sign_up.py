@@ -25,14 +25,6 @@ def register():
         # 邀请码变为可选项
         invite_code = data.get('invite_code', '')
         is_authenticated = False
-        
-        # 如果提供了邀请码，则验证
-        if invite_code:
-            if not verify_invite_code(invite_code):
-                return jsonify({'code': 400, 'message': '邀请码错误'}), 400
-            # 验证成功后，标记邀请码为已使用
-            mark_invite_code_used(invite_code, user.id)
-            is_authenticated = True
 
         if User.query.filter_by(username=data['username']).first():
             return jsonify({'code': 400, 'message': '用户名已存在'}), 400
@@ -55,16 +47,23 @@ def register():
 
         user = User(username=data['username'], email=data['email'])
         user.set_password(data['password'])
+        # 如果提供了邀请码，则验证
+        if invite_code:
+            if not verify_invite_code(invite_code):
+                return jsonify({'code': 400, 'message': '邀请码错误'}), 400
+            # 验证成功后，标记邀请码为已使用
+            mark_invite_code_used(invite_code, user.id)
+            is_authenticated = True
         user.authenticated = is_authenticated
         db.session.add(user)
         db.session.commit()
         
         try:
             # 使用UUID作为头像文件名
-            avatar_path = f'avatars/{user.uuid}.png'
+            avatar_path = f'avatars/{user.id}.png'
             from app.utils.avatar_generator import create_and_save_avatar
             create_and_save_avatar(
-                input_string=user.uuid,  # 使用UUID作为生成依据
+                input_string=user.id,  # 使用UUID作为生成依据
                 output_path=os.path.join(current_app.instance_path, avatar_path),
                 size=200
             )

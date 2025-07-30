@@ -1,13 +1,13 @@
 from flask import Blueprint, render_template, current_app, abort, request, jsonify
 from flask_login import login_required, current_user
 from app.extensions import db, turnstile
+from app.models import User
 import os
 import json
 import markdown
 import uuid
 import pygments
 from datetime import datetime
-from app.models import Blog
 from app.utils.process_markdown import safe_markdown_to_html
 
 blog_bp = Blueprint('blog', __name__)
@@ -26,6 +26,7 @@ def menu():
                 continue
             blogs.append({
                 "id": blog_id,
+                "author_id": info.get("author_id"),
                 "title": info.get("title", "无标题"),
                 "description": info.get("description", ""),
                 "date": info.get("date", "未知日期"),
@@ -62,6 +63,16 @@ def upload():
         if current_app.config['TURNSTILE_AVAILABLE'] and not turnstile.verify(data.get('cf-turnstile-response')):
             print("Turnstile verification failed. Reason:", data.get('cf-turnstile-response'))
             return jsonify({'code': 400, 'message': '人机验证失败'}), 400
+        
+        if len(data['title']) > 30:
+            return jsonify({'code': 400, 'message': '标题不能超过30个字符'}), 400
+        
+        if len(data['description']) > 100:
+            return jsonify({'code': 400, 'message': '描述不能超过100个字符'}), 400
+
+        if len(data['content']) > 250000:
+            return jsonify({'code': 400, 'message': '内容不能超过250000个字符'}), 400
+
         blog_id = str(uuid.uuid4())
         # 创建博客目录
         blog_path = os.path.join(current_app.instance_path, "blogs", blog_id)
@@ -72,19 +83,13 @@ def upload():
             "description": data['description'],
             "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "author": current_user.username,
+            "author_id": current_user.id,
         }
         with open(os.path.join(blog_path, "info.json"), "w", encoding="utf-8") as f:
             json.dump(info, f, ensure_ascii=False, indent=4)
         # 保存博客内容
         with open(os.path.join(blog_path, "content.md"), "w", encoding="utf-8") as f:
             f.write(data['content'])
-        # 保存博客到数据库
-        blog = Blog(
-            uuid=blog_id,
-            created_at=datetime.now(),
-            author_id=current_user.id
-        )
-        db.session.add(blog)
-        db.session.commit()
+
         return jsonify({'code': 200, 'message': '上传成功', 'blog_id': blog_id})
         

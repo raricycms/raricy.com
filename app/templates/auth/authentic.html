@@ -100,7 +100,7 @@ Raricy.com - 邀请码验证
                 if (response.ok) {
                     showMessage(result.message, 'success');
                     setTimeout(() => {
-                        window.location.href = "{{ url_for('auth.profile', uuid=current_user.uuid) }}";
+                        window.location.href = "{{ url_for('auth.profile', user_id=current_user.id) }}";
                     }, 1500);
                 } else {
                     showMessage(result.message, 'danger');

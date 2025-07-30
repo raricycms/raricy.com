@@ -1,8 +1,9 @@
 
 from functools import wraps
-from flask import jsonify, current_user
+from flask import jsonify
+from flask_login import current_user
 
-def admin_only(f):
+def admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if not current_user.is_admin:

@@ -7,7 +7,7 @@ import uuid
 class User(UserMixin, db.Model):
     __tablename__ = 'users'
     
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(db.String(36), primary_key=True, index=True)
     username: str = db.Column(db.String(80), unique=True, nullable=False, index=True)
     email: str = db.Column(db.String(120), unique=True, nullable=False, index=True)
     password_hash = db.Column(db.String(255), nullable=False)
@@ -15,7 +15,6 @@ class User(UserMixin, db.Model):
     last_login = db.Column(db.DateTime, default=datetime.now)
     authenticated = db.Column(db.Boolean, default=False)
     is_admin = db.Column(db.Boolean, default=False)
-    uuid = db.Column(db.String(36), unique=True, index=True)  # 新增UUID字段
     avatar_path = db.Column(db.String(255))
     
     def set_password(self, password):
@@ -34,11 +33,12 @@ class User(UserMixin, db.Model):
             'id': self.id,
             'username': self.username,
             'email': self.email,
-            'uuid': self.uuid,
+            'avatar_path': self.avatar_path,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'last_login': self.last_login.isoformat() if self.last_login else None,
             'is_admin': self.is_admin,
-            'used_invite_code': self.used_invite_code
+            'authenticated': self.authenticated,
+            'password_hash': self.password_hash
         }
     
     def __repr__(self):
@@ -49,7 +49,7 @@ class User(UserMixin, db.Model):
     
     def __init__(self, **kwargs):
         super(User, self).__init__(**kwargs)
-        self.uuid = str(uuid.uuid4())
+        self.id = str(uuid.uuid4())
     
     
 
@@ -62,13 +62,4 @@ class InviteCode(db.Model):
     code = db.Column(db.String(12), unique=True, nullable=False)
     is_used = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.now)
-    used_by = db.Column(db.Integer, db.ForeignKey('users.id'))
-
-class Blog(db.Model):
-    """
-    博客模型类，用于存储和管理博客文章。
-    """
-    __tablename__ = 'blogs'
-    uuid = db.Column(db.String(36), primary_key=True)
-    created_at = db.Column(db.DateTime, default=datetime.now())
-    author_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    used_by = db.Column(db.String(36), db.ForeignKey('users.id'), nullable=True)

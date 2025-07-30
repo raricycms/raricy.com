@@ -31,7 +31,6 @@
     }
 
     .blog-author::before {
-        content: '👤';
         margin-right: 5px;
     }
 
@@ -435,7 +434,10 @@
 <section class="read-hero">
     <h1>{{ blog.title }}</h1>
     <div class="blog-meta">
-        <span class="blog-author">{{ blog.author }}</span>
+        <span class="blog-author">
+            <img src="/auth/avatar/{{ blog.author_id }}"
+                style="width:24px; height:24px; border-radius:10%; margin-right:8px;">
+            {{ blog.author }}</span>
         <span class="blog-date">{{ blog.date }}</span>
     </div>
     <button id="toggle-theme" class="btn btn-outline-secondary">切换深色模式</button>

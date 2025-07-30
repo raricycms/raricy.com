@@ -95,15 +95,36 @@ Raricy.com - 文章上传
             };
 
             form = document.getElementById('blogForm');
+            const title = document.getElementById('title').value;
+            const description = document.getElementById('description').value;
+            const content = vditor.getValue();
+            const turnstileResponse = form.querySelector('[name="cf-turnstile-response"]').value;
+            if (!title || !description || !content) {
+                showMessage('请填写完整信息');
+                return;
+            }
+            if (title.length > 30) {
+                showMessage('标题不能超过30个字符');
+                return;
+            }
+            if (description.length > 100) {
+                showMessage('描述不能超过100个字符');
+                return;
+            }
+            if (content.length > 250000) {
+                showMessage('内容不能超过250000个字符');
+                return;
+            }
+            
             try {
                 const response = await fetch('/blog/upload_blog', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        title: document.getElementById('title').value,
-                        description: document.getElementById('description').value,
-                        content: vditor.getValue(),
-                        'cf-turnstile-response': form.querySelector('[name="cf-turnstile-response"]').value
+                        title: title,
+                        description: description,
+                        content: content,
+                        'cf-turnstile-response': turnstileResponse
                     })
                 });
 

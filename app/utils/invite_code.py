@@ -25,9 +25,9 @@ def verify_invite_code(code):
     record = InviteCode.query.filter_by(code=code).first()
     return record and not record.is_used
 
-def mark_invite_code_used(code, user_id):
+def mark_invite_code_used(code, user_uuid):
     record = InviteCode.query.filter_by(code=code).first()
     if record and not record.is_used:
         record.is_used = True
-        record.used_by = user_id
+        record.used_by = user_uuid
         db.session.commit()

@@ -23,4 +23,4 @@ def init_extensions(app):
     @login_manager.user_loader
     def load_user(user_id):
         from app.models import User  # 导入你的用户模型
-        return User.query.get(int(user_id)) if user_id else None
+        return User.query.get(user_id) if user_id else None
