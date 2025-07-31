@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+
+{% block title %}403 禁止访问 - {{ super() }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* 错误页面特定样式 */
+    .error-page-container {
+        /* 解决背景与页脚间隙问题 */
+        /* 让容器高度填满其父元素 (main)，而 main 被设置为 flex:1 来填充可用空间 */
+        height: 100%; 
+        
+        /* 使用 flex 布局来垂直居中内容 */
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        text-align: center;
+        padding: 2rem;
+        position: relative;
+        overflow: hidden; /* 隐藏超出部分的背景 */
+    }
+
+    /* --- 新的连续亮色斜向彩虹渐变背景 --- */
+    .continuous-rainbow-bg {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: -1; /* 将背景置于内容下方 */
+        
+        /* 定义一个初始的亮色斜向彩虹渐变 */
+        /* 方向改为斜向，例如 'to bottom right' 或 '45deg' */
+        background: linear-gradient(to bottom right, 
+            #FF8C8C, /* 更亮的红 */
+            #FFC060, /* 更亮的橙 */
+            #FFFF66, /* 更亮的黄 (接近纯黄) */
+            #80FFB0, /* 更亮的绿 */
+            #99E6FF, /* 更亮的蓝 */
+            #A090FF, /* 更亮的靛 (更偏向浅紫蓝) */
+            #EEB0EE  /* 更亮的紫 (更偏向淡粉紫) */
+        );
+        background-size: 100% 100%; /* 确保渐变覆盖整个区域 */
+
+        /* 应用色相旋转动画 */
+        animation: hue-cycle 3s linear infinite; /* 动画时间可以调整 */
+    }
+
+    /* 色相旋转动画：让整个渐变沿着色轮循环变化 */
+    @keyframes hue-cycle {
+        from {
+            filter: hue-rotate(0deg);
+        }
+        to {
+            filter: hue-rotate(360deg);
+        }
+    }
+    /* --- 背景样式结束 --- */
+
+
+    /* 错误信息盒子，增加可读性 */
+    .error-box {
+        background: rgba(0, 0, 0, 0.6); /* 加深一点背景，让文字更突出 */
+        padding: 2.5rem;
+        border-radius: 15px;
+        backdrop-filter: blur(10px); /* 毛玻璃效果 */
+        -webkit-backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        max-width: 600px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.3); /* 增加阴影，更有层次感 */
+    }
+
+    .error-box h1 {
+        font-size: 6rem;
+        font-weight: 900;
+        text-shadow: 0 0 15px rgba(255, 255, 255, 0.5);
+    }
+
+    .error-box .lead {
+        font-size: 1.25rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .error-box .btn-home {
+        background-color: rgba(255, 255, 255, 0.9);
+        color: #333;
+        border: none;
+        font-weight: bold;
+        transition: all 0.3s ease;
+    }
+
+    .error-box .btn-home:hover {
+        background-color: white;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="error-page-container">
+    <!-- 新的连续亮色斜向彩虹渐变背景层 -->
+    <div class="continuous-rainbow-bg"></div>
+
+    <!-- 内容盒子 -->
+    <div class="error-box">
+        <h1 class="display-1">403</h1>
+        <h2 class="mb-3"><i class="bi bi-lock-fill me-2"></i>禁止访问 (Forbidden)</h2>
+        <p class="lead">
+            抱歉，您没有足够的权限访问此页面。
+        </p>
+        <p>这可能是因为页面内容需要特定权限，或者您的账户尚未登录。请尝试登录或联系网站管理员。</p>
+        <a href="{{ url_for('home.index') or '/' }}" class="btn btn-lg btn-home mt-4">
+            <i class="bi bi-house-door-fill me-2"></i>返回首页
+        </a>
+    </div>
+</div>
+{% endblock %}
+
+{% block footer_text %}{% endblock %}
+{% block copyright %}&copy; 2025 聪明山. 迷路了也能找到回家的路。{% endblock %}

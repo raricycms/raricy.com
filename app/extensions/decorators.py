@@ -1,13 +1,13 @@
 
 from functools import wraps
-from flask import jsonify
+from flask import jsonify, abort
 from flask_login import current_user
 
 def admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if not current_user.is_admin:
-            return jsonify({'code': 403, 'message': '管理员权限required'}), 403
+            abort(403)
         return f(*args, **kwargs)
     return decorated_function
 

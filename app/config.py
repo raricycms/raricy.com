@@ -14,6 +14,7 @@ class Config:
     TURNSTILE_SECRET_KEY = os.getenv('TURNSTILE_SECRET_KEY') # Cloudflare Turnstile 密钥
     TURNSTILE_AVAILABLE = os.getenv('TURNSTILE_AVAILABLE') == 'True' # 是否启用 Cloudflare Turnstile
     SEND_FILE_MAX_AGE_DEFAULT = 2592000  # 30天缓存
+    SERVER_NAME = os.getenv('SERVER_NAME', '127.0.0.1') # 服务器名称
 
 
 class DevelopmentConfig(Config):
