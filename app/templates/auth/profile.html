@@ -122,11 +122,13 @@ Raricy.com - 用户资料
             </div>
         </div>
         <!-- 编辑按钮 -->
+        {% if user == current_user %}
         <div class="text-center mt-4">
             <a href="#" class="btn btn-edit">
                 <i class="bi bi-pencil-square me-2"></i>编辑资料
             </a>
         </div>
+        {% endif %}
     </div>
 </div>
 {% endblock %}
