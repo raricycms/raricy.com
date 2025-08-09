@@ -252,6 +252,18 @@
         flex-wrap: wrap;
     }
 
+    /* 管理员操作区域单独一行 */
+    .admin-controls {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 12px;
+        margin: -10px auto 30px; /* 与上方控件间距更紧凑一点 */
+        max-width: 900px;
+        padding: 0 20px;
+        flex-wrap: wrap;
+    }
+
     .read-btn {
         background: #2c3e50;
         color: white;
@@ -539,6 +551,59 @@
 
     <a href="{{ url_for('blog.menu') }}" class="read-btn">📝 返回博客列表</a>
 </div>
+{% if current_user.is_authenticated and current_user.is_admin %}
+<div class="admin-controls">
+    <button id="admin-likers-btn" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#likersModal" data-likers-url="{{ url_for('blog.likers', blog_id=blog.id) }}">
+        👍 查看点赞者
+    </button>
+    <button id="admin-delete-btn" class="btn btn-outline-danger" data-delete-url="{{ url_for('blog.delete_blog', blog_id=blog.id) }}" data-redirect-url="{{ url_for('blog.menu') }}">
+        🗑️ 删除文章
+    </button>
+</div>
+{% endif %}
+{% if current_user.is_authenticated and current_user.is_admin %}
+<!-- 点赞者列表 Modal -->
+<div class="modal fade" id="likersModal" tabindex="-1" aria-labelledby="likersModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="likersModalLabel">点赞者列表</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div id="likers-list" class="list-group" style="max-height: 50vh; overflow: auto;"></div>
+        <div class="d-flex justify-content-between align-items-center mt-3">
+            <button id="likers-prev" class="btn btn-sm btn-outline-secondary">上一页</button>
+            <small id="likers-pageinfo" class="text-muted"></small>
+            <button id="likers-next" class="btn btn-sm btn-outline-secondary">下一页</button>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 删除确认 Modal -->
+<div class="modal fade" id="deleteConfirmModal" tabindex="-1" aria-labelledby="deleteConfirmLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="deleteConfirmLabel">确认删除</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        确定要删除这篇文章《{{ blog.title }}》吗？该操作不可恢复。
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+        <button type="button" id="confirm-delete-btn" class="btn btn-danger">确认删除</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
 {% endblock %}
 
 {% block copyright %}
@@ -748,6 +813,89 @@
                 if (typeof showToast === 'function') showToast('网络错误，请稍后重试', 'error');
             } finally {
                 likeBtn.disabled = false;
+            }
+        });
+    })();
+
+    // 管理员：点赞者列表
+    (function () {
+        const btn = document.getElementById('admin-likers-btn');
+        if (!btn) return;
+        const listEl = document.getElementById('likers-list');
+        const pageInfo = document.getElementById('likers-pageinfo');
+        const prevBtn = document.getElementById('likers-prev');
+        const nextBtn = document.getElementById('likers-next');
+        const LIKERS_URL = btn.dataset.likersUrl;
+        let offset = 0;
+        const limit = 20;
+
+        async function loadLikers() {
+            listEl.innerHTML = '<div class="text-muted">加载中...</div>';
+            try {
+                const res = await fetch(`${LIKERS_URL}?offset=${offset}&limit=${limit}`);
+                const data = await res.json();
+                if (data.code !== 200) throw new Error(data.message || '加载失败');
+                const { users = [], total = 0 } = data;
+                listEl.innerHTML = '';
+                if (users.length === 0) {
+                    listEl.innerHTML = '<div class="text-muted">暂无点赞者</div>';
+                } else {
+                    for (const u of users) {
+                        const item = document.createElement('a');
+                        item.className = 'list-group-item list-group-item-action d-flex align-items-center';
+                        item.innerHTML = `
+                            <img src="${u.avatar_url}" style="width:28px;height:28px;border-radius:6%;margin-right:10px;" />
+                            <div class="d-flex flex-column">
+                                <strong>${u.username || u.id}</strong>
+                                <small class="text-muted">${u.liked_at || ''}</small>
+                            </div>
+                        `;
+                        listEl.appendChild(item);
+                    }
+                }
+                const cur = Math.floor(offset / limit) + 1;
+                const pages = Math.max(1, Math.ceil(total / limit));
+                pageInfo.textContent = `${cur} / ${pages} 页（共 ${total} 人）`;
+                prevBtn.disabled = offset <= 0;
+                nextBtn.disabled = offset + limit >= total;
+            } catch (e) {
+                listEl.innerHTML = '<div class="text-danger">加载失败，请重试</div>';
+            }
+        }
+
+        document.getElementById('likersModal').addEventListener('shown.bs.modal', loadLikers);
+        prevBtn.addEventListener('click', () => { offset = Math.max(0, offset - limit); loadLikers(); });
+        nextBtn.addEventListener('click', () => { offset += limit; loadLikers(); });
+    })();
+
+    // 管理员：删除文章
+    (function () {
+        const delBtn = document.getElementById('admin-delete-btn');
+        if (!delBtn) return;
+        const confirmBtn = document.getElementById('confirm-delete-btn');
+        const DELETE_URL = delBtn.dataset.deleteUrl;
+        const REDIRECT_URL = delBtn.dataset.redirectUrl;
+
+        delBtn.addEventListener('click', () => {
+            const modal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
+            modal.show();
+        });
+
+        confirmBtn.addEventListener('click', async () => {
+            confirmBtn.disabled = true;
+            try {
+                const res = await fetch(DELETE_URL, { method: 'DELETE' });
+                const data = await res.json();
+                if (data.code === 200) {
+                    if (typeof showToast === 'function') showToast('文章已删除', 'success');
+                    window.location.href = REDIRECT_URL;
+                } else {
+                    if (typeof showToast === 'function') showToast(data.message || '删除失败', 'error');
+                }
+            } catch (e) {
+                if (typeof showToast === 'function') showToast('网络错误，请稍后重试', 'error');
+            } finally {
+                confirmBtn.disabled = false;
             }
         });
     })();

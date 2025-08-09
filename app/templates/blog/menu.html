@@ -64,11 +64,29 @@
 
     .blog-meta {
         display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 20px;
+        flex-direction: column;
+        gap: 6px;
+        margin-bottom: 16px;
         font-size: 0.9rem;
         color: #95a5a6;
+    }
+
+    .blog-meta-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .blog-likes {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        color: #e74c3c;
+    }
+
+    .blog-date {
+        font-size: 0.85rem;
+        color: #a0a7ad;
     }
 
     .blog-author::before {
@@ -137,15 +155,17 @@
                     {{ blog.description }}
                 </p>
                 <div class="blog-meta">
-                    <span class="blog-author">
-                        <img src="/auth/avatar/{{ blog.author_id }}"
-                            style="width:24px; height:24px; border-radius:10%; margin-right:8px;">
-                        {{ blog.author }}</span>
-                    <span class="blog-date">{{ blog.date }}</span>
-                    <span title="点赞数" style="display:flex; align-items:center; gap:6px;">
-                        <i class="bi bi-heart-fill" style="color:#e74c3c;"></i>
-                        <span>{{ blog.likes_count or 0 }}</span>
-                    </span>
+                    <div class="blog-meta-top">
+                        <span class="blog-author">
+                            <img src="/auth/avatar/{{ blog.author_id }}"
+                                style="width:24px; height:24px; border-radius:10%; margin-right:8px;">
+                            {{ blog.author }}</span>
+                        <span class="blog-likes" title="点赞数">
+                            <i class="bi bi-heart-fill"></i>
+                            <span>{{ blog.likes_count or 0 }}</span>
+                        </span>
+                    </div>
+                    <div class="blog-date">{{ blog.date }}</div>
                 </div>
                 <a href="/blog/{{ blog.id }}" class="read-btn">阅读</a>
             </div>

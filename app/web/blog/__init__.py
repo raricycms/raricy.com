@@ -1,11 +1,13 @@
-from flask import Blueprint, render_template, current_app, abort, request, jsonify
+from flask import Blueprint, render_template, current_app, abort, request, jsonify, url_for
 from flask_login import login_required, current_user
 from app.extensions import db, turnstile
 from app.models import Blog, BlogContent, BlogLike
+from app.extensions.decorators import admin_required
 import os
 import uuid
 from datetime import datetime
 from app.utils.process_markdown import safe_markdown_to_html
+import shutil
 
 blog_bp = Blueprint('blog', __name__)
 
@@ -131,3 +133,64 @@ def like_toggle(blog_id):
 
     db.session.commit()
     return jsonify({'code': 200, 'liked': liked, 'likes_count': blog.likes_count})
+
+
+@blog_bp.route('/<blog_id>/likers', methods=['GET'])
+@login_required
+@admin_required
+def likers(blog_id):
+    """
+    管理员查看点赞者列表。
+    支持简单分页参数：?offset=0&limit=50
+    """
+    blog = Blog.query.get(blog_id)
+    if not blog:
+        return jsonify({'code': 404, 'message': '未找到文章'}), 404
+
+    try:
+        offset = int(request.args.get('offset', 0))
+        limit = int(request.args.get('limit', 50))
+        limit = max(1, min(limit, 200))
+        offset = max(0, offset)
+    except Exception:
+        offset, limit = 0, 50
+
+    q = BlogLike.query.filter_by(blog_id=blog_id).order_by(BlogLike.created_at.desc())
+    total = q.count()
+    likes = q.offset(offset).limit(limit).all()
+
+    users = []
+    for like in likes:
+        user = like.user
+        users.append({
+            'id': user.id if user else like.user_id,
+            'username': user.username if user else None,
+            'avatar_url': url_for('auth.get_avatar', user_id=(user.id if user else like.user_id)),
+            'liked_at': like.created_at.strftime('%Y-%m-%d %H:%M:%S') if like.created_at else None,
+        })
+
+    return jsonify({'code': 200, 'total': total, 'offset': offset, 'limit': limit, 'users': users})
+
+
+@blog_bp.route('/<blog_id>', methods=['DELETE'])
+@login_required
+@admin_required
+def delete_blog(blog_id):
+    """
+    管理员删除文章：删除 Blog、BlogContent、BlogLike，并清理 instance/blogs/<id> 目录。
+    """
+    blog = Blog.query.get(blog_id)
+    if not blog:
+        return jsonify({'code': 404, 'message': '未找到文章'}), 404
+
+    # 删除磁盘目录（若存在）
+    blog_path = os.path.join(current_app.instance_path, 'blogs', blog_id)
+    try:
+        shutil.rmtree(blog_path, ignore_errors=True)
+    except Exception:
+        # 忽略清理错误，继续逻辑删除
+        pass
+
+    db.session.delete(blog)
+    db.session.commit()
+    return jsonify({'code': 200, 'message': '文章已删除'})
