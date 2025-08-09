@@ -1,9 +1,8 @@
-from flask import current_app
-from . import db
+"""
+Deprecated: This module previously created tables at app startup via db.create_all().
+Schema creation and migrations should be handled by Flask-Migrate/Alembic
+using CLI commands (flask db init/migrate/upgrade) during deployment,
+not within the application runtime.
+"""
 
-def init_models(app):
-    """集中初始化数据库模型"""
-    with app.app_context():
-        # 延迟导入解决循环依赖
-        from ..models import User, InviteCode  
-        db.create_all()
+# Intentionally left without side effects.

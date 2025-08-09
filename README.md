@@ -42,5 +42,11 @@ powered by Flask & Bootstrap & Vditor & Turnstile
 别忘了安装必要的库：   
 > pip install -r requirements.txt 
 
+启动前，运行：   
+> flask db create all
+
+启动时，运行：   
+> python run.py
+
 有任何建议，请联系我：   
 http://raricy.com:5000/contact
