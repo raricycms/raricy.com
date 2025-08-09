@@ -245,9 +245,11 @@
         display: flex;
         justify-content: center;
         align-items: center;
+        gap: 16px;
         margin: 30px auto 40px;
         max-width: 700px;
         padding: 0 20px;
+        flex-wrap: wrap;
     }
 
     .read-btn {
@@ -269,6 +271,75 @@
         color: white;
         text-decoration: none;
         transform: translateY(-1px);
+    }
+
+    /* 点赞按钮样式 */
+    .like-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: #ffffff;
+        color: #e74c3c;
+        border: 1px solid #f2d7d5;
+        padding: 10px 16px;
+        border-radius: 999px;
+        box-shadow: 0 2px 10px rgba(231, 76, 60, 0.08);
+        transition: all 0.2s ease;
+        cursor: pointer;
+    }
+
+    .like-btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 6px 18px rgba(231, 76, 60, 0.15);
+        border-color: #f5b7b1;
+    }
+
+    .like-btn:disabled {
+        opacity: 0.7;
+        cursor: not-allowed;
+    }
+
+    .like-btn .bi {
+        font-size: 1.1rem;
+    }
+
+    .like-count-badge {
+        background: #fdecea;
+        color: #c0392b;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 0.85rem;
+        line-height: 1.2;
+    }
+
+    .like-btn.liked {
+        background: linear-gradient(135deg, #ff7675, #e74c3c);
+        color: #fff;
+        border-color: #e74c3c;
+        box-shadow: 0 6px 18px rgba(231, 76, 60, 0.25);
+    }
+
+    .like-btn.liked .like-count-badge {
+        background: rgba(255, 255, 255, 0.25);
+        color: #fff;
+    }
+
+    /* 深色主题下的未点赞样式 */
+    body.dark-mode .like-btn:not(.liked) {
+        background: #1f242b;
+        color: #ffb3ae;
+        border-color: #2f3640;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+    }
+
+    body.dark-mode .like-btn:not(.liked):hover {
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+        border-color: #3a4350;
+    }
+
+    body.dark-mode .like-btn:not(.liked) .like-count-badge {
+        background: #2b323c;
+        color: #ffd7d4;
     }
 
     /* 主题切换按钮样式 */
@@ -312,6 +383,7 @@
         .read-controls {
             padding: 0 15px;
             margin: 20px auto 30px;
+            gap: 12px;
         }
 
         .read-btn {
@@ -452,6 +524,19 @@
 </div>
 
 <div class="read-controls">
+    <button
+        id="like-btn"
+        class="like-btn {{ 'liked' if blog.liked else '' }}"
+        data-auth="{{ 1 if current_user.is_authenticated else 0 }}"
+        data-login-url="{{ url_for('auth.login') }}"
+        data-like-url="{{ url_for('blog.like_toggle', blog_id=blog.id) }}"
+        aria-label="点赞"
+    >
+        <i id="like-icon" class="bi {{ 'bi-heart-fill' if blog.liked else 'bi-heart' }}"></i>
+        <span id="like-text">{{ '已点赞' if blog.liked else '点赞' }}</span>
+        <span class="like-count-badge" id="like-count">{{ blog.likes_count or 0 }}</span>
+    </button>
+
     <a href="{{ url_for('blog.menu') }}" class="read-btn">📝 返回博客列表</a>
 </div>
 {% endblock %}
@@ -619,6 +704,53 @@
         document.getElementById('pygments-default').disabled = isDark;
         document.getElementById('pygments-monokai').disabled = !isDark;
     }
+
+    // 点赞功能
+    (function () {
+        const likeBtn = document.getElementById('like-btn');
+        if (!likeBtn) return;
+        const IS_AUTHENTICATED = likeBtn.dataset.auth === '1';
+        const LOGIN_URL = likeBtn.dataset.loginUrl;
+        const LIKE_URL = likeBtn.dataset.likeUrl;
+        const likeIcon = document.getElementById('like-icon');
+        const likeText = document.getElementById('like-text');
+        const likeCount = document.getElementById('like-count');
+
+        likeBtn.addEventListener('click', async () => {
+            if (!IS_AUTHENTICATED) {
+                if (typeof showToast === 'function') {
+                    showToast('请先登录后再点赞', 'info');
+                }
+                window.location.href = LOGIN_URL;
+                return;
+            }
+            likeBtn.disabled = true;
+            try {
+                const res = await fetch(LIKE_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin'
+                });
+                const data = await res.json();
+                if (data.code === 200) {
+                    const liked = !!data.liked;
+                    likeCount.textContent = data.likes_count;
+                    likeIcon.className = 'bi ' + (liked ? 'bi-heart-fill' : 'bi-heart');
+                    likeText.textContent = liked ? '已点赞' : '点赞';
+                    likeBtn.classList.toggle('liked', liked);
+                    if (typeof showToast === 'function') {
+                        showToast(liked ? '已点赞' : '已取消点赞', liked ? 'success' : 'info');
+                    }
+                } else {
+                    if (typeof showToast === 'function') showToast(data.message || '操作失败', 'error');
+                }
+            } catch (e) {
+                if (typeof showToast === 'function') showToast('网络错误，请稍后重试', 'error');
+            } finally {
+                likeBtn.disabled = false;
+            }
+        });
+    })();
 </script>
 {% endblock %}
 

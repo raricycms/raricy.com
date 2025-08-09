@@ -142,6 +142,10 @@
                             style="width:24px; height:24px; border-radius:10%; margin-right:8px;">
                         {{ blog.author }}</span>
                     <span class="blog-date">{{ blog.date }}</span>
+                    <span title="点赞数" style="display:flex; align-items:center; gap:6px;">
+                        <i class="bi bi-heart-fill" style="color:#e74c3c;"></i>
+                        <span>{{ blog.likes_count or 0 }}</span>
+                    </span>
                 </div>
                 <a href="/blog/{{ blog.id }}" class="read-btn">阅读</a>
             </div>

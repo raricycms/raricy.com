@@ -1,7 +1,7 @@
 from flask import Blueprint, render_template, current_app, abort, request, jsonify
 from flask_login import login_required, current_user
 from app.extensions import db, turnstile
-from app.models import Blog, BlogContent
+from app.models import Blog, BlogContent, BlogLike
 import os
 import uuid
 from datetime import datetime
@@ -42,6 +42,14 @@ def blog_detail(blog_id):
 
     blog_dict = blog.to_dict()
     blog_dict['content'] = safe_markdown_to_html(content)
+    # 当前用户是否已点赞
+    liked = False
+    try:
+        if current_user.is_authenticated:
+            liked = BlogLike.query.filter_by(blog_id=blog_id, user_id=current_user.id).first() is not None
+    except Exception:
+        liked = False
+    blog_dict['liked'] = liked
     return render_template('blog/blog.html', blog=blog_dict, content=content)
 
 @blog_bp.route('/upload_blog', methods=['GET', 'POST'])
@@ -95,3 +103,31 @@ def upload():
 
         return jsonify({'code': 200, 'message': '上传成功', 'blog_id': blog_id})
         
+
+@blog_bp.route('/<blog_id>/like', methods=['POST'])
+@login_required
+def like_toggle(blog_id):
+    """
+    点赞/取消点赞切换接口。
+
+    返回：{ code, liked, likes_count }
+    """
+    blog = Blog.query.get(blog_id)
+    if not blog or blog.ignore:
+        return jsonify({'code': 404, 'message': '未找到文章'}), 404
+
+    like = BlogLike.query.filter_by(blog_id=blog_id, user_id=current_user.id).first()
+    if like:
+        # 取消点赞
+        db.session.delete(like)
+        blog.likes_count = max(0, (blog.likes_count or 0) - 1)
+        liked = False
+    else:
+        # 点赞
+        like = BlogLike(blog_id=blog_id, user_id=current_user.id)
+        db.session.add(like)
+        blog.likes_count = (blog.likes_count or 0) + 1
+        liked = True
+
+    db.session.commit()
+    return jsonify({'code': 200, 'liked': liked, 'likes_count': blog.likes_count})
