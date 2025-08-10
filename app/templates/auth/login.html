@@ -65,6 +65,7 @@ Raricy.com - 用户登录
         <div id="message-container"></div>
 
         <form id="loginForm">
+            <input type="hidden" name="next" value="{{ request.args.get('next', '') }}">
             <div class="form-group">
                 <label for="username" class="form-label">
                     <i class="fas fa-user"></i> 用户名 <span class="text-danger">*</span>
@@ -158,9 +159,9 @@ Raricy.com - 用户登录
 
                 if (response.ok) {
                     // 登录成功
-                    showMessage(result.message || '登录成功！正在跳转到首页...', 'success');
+                    showMessage(result.message || '登录成功！正在跳转...', 'success');
                     setTimeout(() => {
-                        window.location.href = '/';
+                        window.location.href = result.redirect_url || '/';
                     }, 1500);
                 } else {
                     // 登录失败
