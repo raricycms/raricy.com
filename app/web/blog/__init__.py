@@ -194,3 +194,65 @@ def delete_blog(blog_id):
     db.session.delete(blog)
     db.session.commit()
     return jsonify({'code': 200, 'message': '文章已删除'})
+
+
+@blog_bp.route('/<blog_id>/edit', methods=['GET', 'POST'])
+@login_required
+def edit_blog(blog_id):
+    """
+    文章编辑：作者与管理员可以编辑标题、摘要与正文（Markdown）。
+
+    - GET: 渲染编辑页
+    - POST: 保存更新，返回 JSON
+    """
+    blog = Blog.query.get(blog_id)
+    if not blog or blog.ignore:
+        abort(404)
+
+    # 权限：作者或管理员
+    if not (current_user.is_admin or blog.author_id == current_user.id):
+        return jsonify({'code': 403, 'message': '无权编辑该文章'}), 403
+
+    if request.method == 'GET':
+        # 读取 Markdown 正文
+        content_obj = BlogContent.query.get(blog_id)
+        markdown_content = content_obj.content if content_obj else ''
+        blog_dict = blog.to_dict()
+        return render_template('blog/edit_blog.html', blog=blog_dict, content_markdown=markdown_content)
+
+    # POST: 保存
+    data = request.get_json(silent=True) or {}
+    title = (data.get('title') or '').strip()
+    description = (data.get('description') or '').strip()
+    content = data.get('content') or ''
+
+    # Turnstile 人机验证（可选）
+    if current_app.config.get('TURNSTILE_AVAILABLE'):
+        if not turnstile.verify(data.get('cf-turnstile-response')):
+            return jsonify({'code': 400, 'message': '人机验证失败'}), 400
+
+    # 校验
+    if not title or not description or not content:
+        return jsonify({'code': 400, 'message': '缺少必要参数'}), 400
+    if len(title) > 30:
+        return jsonify({'code': 400, 'message': '标题不能超过30个字符'}), 400
+    if len(description) > 100:
+        return jsonify({'code': 400, 'message': '描述不能超过100个字符'}), 400
+    if len(content) > 200000:
+        return jsonify({'code': 400, 'message': '内容不能超过200000个字符'}), 400
+
+    # 更新 Blog 元信息
+    blog.title = title
+    blog.description = description
+
+    # 更新/创建正文 Markdown
+    content_obj = BlogContent.query.get(blog_id)
+    if not content_obj:
+        content_obj = BlogContent(blog_id=blog_id, content=content)
+        db.session.add(content_obj)
+    else:
+        content_obj.content = content
+
+    db.session.commit()
+
+    return jsonify({'code': 200, 'message': '更新成功', 'blog_id': blog_id, 'redirect': url_for('blog.blog_detail', blog_id=blog_id)})

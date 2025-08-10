@@ -551,14 +551,18 @@
 
     <a href="{{ url_for('blog.menu') }}" class="read-btn">📝 返回博客列表</a>
 </div>
-{% if current_user.is_authenticated and current_user.is_admin %}
+{% if current_user.is_authenticated and (current_user.is_admin or current_user.id == blog.author_id) %}
 <div class="admin-controls">
+    {% if current_user.is_admin %}
     <button id="admin-likers-btn" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#likersModal" data-likers-url="{{ url_for('blog.likers', blog_id=blog.id) }}">
         👍 查看点赞者
     </button>
     <button id="admin-delete-btn" class="btn btn-outline-danger" data-delete-url="{{ url_for('blog.delete_blog', blog_id=blog.id) }}" data-redirect-url="{{ url_for('blog.menu') }}">
         🗑️ 删除文章
     </button>
+    {% endif %}
+    <a href="{{ url_for('blog.edit_blog', blog_id=blog.id) }}" class="btn btn-outline-primary">✏️ 编辑文章</a>
+    
 </div>
 {% endif %}
 {% if current_user.is_authenticated and current_user.is_admin %}
@@ -623,6 +627,38 @@
         const fragment = template.content.cloneNode(true);
         // 激活并插入DOM
         container.appendChild(fragment);
+    }
+
+    // 对内容区域中的链接进行安全加固：
+    // - 外链添加 rel="noopener noreferrer nofollow"
+    // - 外链在新窗口打开 target="_blank"
+    // - 移除不安全协议（除 http/https/mailto/tel 外）
+    function hardenLinks() {
+        const anchors = document.querySelectorAll('.blog-content-container a[href]');
+        anchors.forEach(a => {
+            const href = a.getAttribute('href') || '';
+            try {
+                const url = new URL(href, window.location.origin);
+                const protocol = url.protocol.toLowerCase();
+                const isHttp = protocol === 'http:' || protocol === 'https:';
+                const isAllowed = isHttp || protocol === 'mailto:' || protocol === 'tel:';
+                if (!isAllowed) {
+                    a.removeAttribute('href');
+                    return;
+                }
+                if (isHttp) {
+                    const relParts = new Set((a.getAttribute('rel') || '').split(/\s+/).filter(Boolean));
+                    ['noopener', 'noreferrer', 'nofollow'].forEach(v => relParts.add(v));
+                    a.setAttribute('rel', Array.from(relParts).join(' '));
+                    if (url.origin !== window.location.origin) {
+                        a.setAttribute('target', '_blank');
+                    }
+                }
+            } catch (e) {
+                // 非法URL，移除href
+                a.removeAttribute('href');
+            }
+        });
     }
     const toggleBtn = document.getElementById('toggle-theme');
     const isDark = localStorage.getItem('theme') === 'dark';
@@ -743,6 +779,7 @@
     // 页面加载时自动适配系统主题
     document.addEventListener('DOMContentLoaded', () => {
         renderUserContent();
+        hardenLinks();
         let isDark = localStorage.getItem('theme') === 'dark';
         if (!localStorage.getItem('theme')) {
             if (window.matchMedia('(prefers-color-scheme: dark)').matches) {

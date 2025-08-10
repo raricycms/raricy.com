@@ -83,21 +83,11 @@ def safe_markdown_to_html(markdown_text):
     # 净化HTML内容
     clean_html = cleaner.clean(raw_html)
     
-    # 安全处理链接（自动转换文本链接并添加安全属性）
-    final_html = bleach.linkify(
-        clean_html,
-        callbacks=[
-            bleach.callbacks.nofollow,  # 添加rel="nofollow"
-            rel_noopener,               # 添加rel="noopener noreferrer"
-            # 添加协议安全检查回调
-            lambda attrs, new: check_protocol_safety(attrs, ALLOWED_PROTOCOLS),
-            # 添加图片src检查回调
-            lambda attrs, new: check_image_src(attrs)
-        ],
-        skip_tags=['pre', 'code']      # 跳过代码块内的文本
-    )
-    
-    return final_html
+    # 直接返回清理后的HTML
+    # 注意：原先在此处使用了 bleach.linkify 进行自动链接处理，但会导致实体再次转义，
+    # 例如代码块中的引号 " 被序列化为 &quot; 后再次被转义为 &amp;quot;，从而在前端显示为 &quot;。
+    # 因此这里改为直接返回 clean_html 以避免双重转义问题。
+    return clean_html
 
 # 协议安全检查函数
 def check_protocol_safety(attrs, allowed_protocols):

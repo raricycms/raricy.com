@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+
+{% block title %}编辑文章 - {{ blog.title }}{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/vditor/dist/index.css">
+<style>
+    .edit-hero {
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        padding: 40px 0 24px;
+        text-align: center;
+    }
+    .blog-form-container {
+        max-width: 960px;
+        margin: 30px auto 50px;
+        background: #fff;
+        border-radius: 8px;
+        box-shadow: 0 2px 16px rgba(0, 0, 0, 0.06);
+        padding: 32px;
+    }
+    #message-container { position: fixed; top: 20px; right: 20px; z-index: 9999; min-width: 300px; }
+    .btn-row { display:flex; gap:12px; flex-wrap:wrap; }
+    .btn-row .btn { min-width: 120px; }
+    .preview-container { margin-top: 20px; }
+    .preview-box { padding: 16px; background: #f8f9fa; border-radius: 6px; border:1px solid #e9ecef; }
+    .note { color:#6c757d; font-size: .9rem; }
+    @media (max-width: 768px) { .blog-form-container { padding: 20px; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="edit-hero">
+    <h1>编辑文章</h1>
+    <div class="text-muted">ID: {{ blog.id }}</div>
+    <div class="note">仅作者或管理员可编辑。服务端仅保存 Markdown，渲染使用安全转换。</div>
+    <div class="mt-2"><a class="btn btn-sm btn-outline-secondary" href="{{ url_for('blog.blog_detail', blog_id=blog.id) }}">返回阅读页</a></div>
+</section>
+
+<div class="blog-form-container">
+    <div id="message-container"></div>
+
+    <form id="editForm">
+        <div class="mb-3">
+            <label for="title" class="form-label">标题</label>
+            <input type="text" class="form-control" id="title" value="{{ blog.title }}" required>
+        </div>
+
+        <div class="mb-3">
+            <label for="description" class="form-label">摘要</label>
+            <textarea class="form-control" id="description" rows="3" required>{{ blog.description }}</textarea>
+            <div class="form-text">摘要用于列表与 SEO 描述，不渲染为 HTML。</div>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">内容（Markdown）</label>
+            <div id="editor" style="height: 60vh;"></div>
+            <div class="form-text note">提示：粘贴的内容可能按编辑器策略处理，预览请用右上角预览按钮。</div>
+        </div>
+
+        {{turnstile}}
+
+        <div class="btn-row">
+            <button type="submit" class="btn btn-primary">保存修改</button>
+            <a href="{{ url_for('blog.blog_detail', blog_id=blog.id) }}" class="btn btn-outline-secondary">取消</a>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/vditor"></script>
+<script id="initial-markdown" type="application/json">{{ (content_markdown or '') | tojson }}</script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const initialMarkdown = JSON.parse(document.getElementById('initial-markdown').textContent || '""');
+    const vditor = new Vditor('editor', {
+        minHeight: 500,
+        mode: 'sv',
+        toolbar: [
+            'emoji','headings','bold','italic','strike','link','|',
+            'list','ordered-list','check','outdent','indent','|',
+            'quote','line','code','inline-code','upload','table','|',
+            'undo','redo','preview','export'
+        ],
+        counter: { enable: true, type: 'text' },
+        cache: { enable: false },
+        value: initialMarkdown
+    });
+
+    const form = document.getElementById('editForm');
+    const messageContainer = document.getElementById('message-container');
+
+    const showMessage = (message, type = 'danger') => {
+        const alert = `<div class="alert alert-${type} alert-dismissible fade show">${message}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>`;
+        messageContainer.innerHTML = alert;
+    };
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const title = document.getElementById('title').value.trim();
+        const description = document.getElementById('description').value.trim();
+        const content = vditor.getValue();
+        const turnstileInput = form.querySelector('[name="cf-turnstile-response"]');
+        const turnstileResponse = turnstileInput ? turnstileInput.value : '';
+
+        if (!title || !description || !content) {
+            showMessage('请填写完整信息');
+            return;
+        }
+        if (title.length > 30) { showMessage('标题不能超过30个字符'); return; }
+        if (description.length > 100) { showMessage('描述不能超过100个字符'); return; }
+        if (content.length > 250000) { showMessage('内容不能超过250000个字符'); return; }
+
+        try {
+            const resp = await fetch("{{ url_for('blog.edit_blog', blog_id=blog.id) }}", {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ title, description, content, 'cf-turnstile-response': turnstileResponse })
+            });
+            const data = await resp.json();
+            if (data.code === 200) {
+                showMessage('保存成功，正在返回...', 'success');
+                setTimeout(() => {
+                    window.location.href = data.redirect || "{{ url_for('blog.blog_detail', blog_id=blog.id) }}";
+                }, 800);
+            } else {
+                showMessage(data.message || '保存失败');
+            }
+        } catch (err) {
+            showMessage('网络错误，请稍后重试');
+        }
+    });
+});
+</script>
+{% endblock %}
+
+{% block footer_text %}{% endblock %}
+
