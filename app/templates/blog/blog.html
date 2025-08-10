@@ -419,6 +419,23 @@
         .blog-content-container h3 {
             font-size: 1.2rem;
         }
+
+        /* 移动端：让复制按钮不遮挡代码，放到代码块下方显示 */
+        .copy-btn {
+            position: static;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            top: auto;
+            right: auto;
+            margin-top: 8px;
+            padding: 6px 10px;
+            font-size: 0.85rem;
+        }
+        /* 代码块在移动端内边距稍微增大，避免拥挤 */
+        .blog-content-container .highlight {
+            padding: 12px;
+        }
     }
 
     /* CSS 变量 */
