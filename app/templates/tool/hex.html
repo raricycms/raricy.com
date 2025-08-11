@@ -1,0 +1,281 @@
+{% extends 'base.html' %}
+
+{% block title %}Hex 查看/编辑 - 聪明山{% endblock %}
+
+{% block extra_css %}
+<style>
+  .tool-panel { background: rgba(255,255,255,.9); border: 1px solid rgba(0,0,0,.06); backdrop-filter: blur(6px); }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+  .hex-grid { display: grid; grid-template-columns: 1fr; gap: 1rem; }
+  .form-hint { font-size: .875rem; }
+  .btn-copy { position: absolute; right: 1rem; top: .75rem; }
+  .kbd { border: 1px solid rgba(0,0,0,.2); border-bottom-width: 3px; border-radius: 6px; padding: 0 6px; font-size: .8rem; }
+  @media (min-width: 768px) { .hex-grid { grid-template-columns: 1fr; } }
+
+  /* Viewer */
+  .viewer-panel { background: #0f172a; color: #e2e8f0; border: 1px solid rgba(255,255,255,.08); }
+  .hex-viewer { max-height: 520px; overflow: auto; font-size: 0.95rem; }
+  .hex-line { display: grid; grid-template-columns: 120px 1fr 1fr; gap: 12px; padding: 2px 10px; align-items: start; }
+  .hex-offset { color: #94a3b8; width: 120px; text-align: right; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+  .hex-bytes, .hex-ascii { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; white-space: pre; }
+  .hex-bytes { letter-spacing: 1px; }
+  .byte { display: inline-block; min-width: 26px; text-align: center; padding: 2px 4px; border-radius: 4px; margin-right: 4px; color: #e2e8f0; }
+  .char { display: inline-block; width: 1ch; text-align: center; padding: 2px 1px; border-radius: 4px; color: #e2e8f0; }
+  .byte.group-gap { margin-right: 12px; }
+  .active-cell { background: #1e293b; outline: 1px solid #38bdf8; color: #e2e8f0; }
+  .modified-cell { background: rgba(234, 179, 8, 0.15); outline: 1px solid rgba(234, 179, 8, 0.55); }
+  .hex-header { position: sticky; top: 0; background: #0b1220; z-index: 1; padding: 6px 10px; border-bottom: 1px solid rgba(255,255,255,.08); }
+  .hex-header .byte { color: #a5b4fc; margin-right: 4px; }
+  .hex-header .byte.group-gap { margin-right: 12px; }
+  .hex-header .hex-bytes { white-space: nowrap; }
+  .hex-body { position: relative; }
+  .pad { height: 0; }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="py-4">
+  <div class="container">
+    <div class="d-flex align-items-center mb-3">
+      <a href="{{ url_for('tool.menu') }}" class="text-decoration-none me-2"><i class="bi bi-arrow-left"></i></a>
+      <h1 class="mb-0 section-title">Hex 查看 / 编辑</h1>
+    </div>
+    <p class="text-muted">在浏览器中完成：文件 → Hex 查看与编辑 → 下载为修改后的文件。</p>
+
+    <div class="p-3 rounded tool-panel mb-4">
+      <div class="row g-3 align-items-center">
+        <div class="col-12 col-md-6">
+          <label for="fileInput" class="form-label fw-semibold">选择文件</label>
+          <input id="fileInput" class="form-control" type="file" />
+          <div class="form-text">支持任意类型文件，大小受浏览器可用内存限制。</div>
+        </div>
+        <div class="col-12 col-md-6 d-flex gap-2 flex-wrap">
+          <button id="btnDownload" class="btn btn-primary" disabled><i class="bi bi-download"></i> 下载修改后的文件</button>
+          <span id="fileInfo" class="ms-auto text-muted form-hint"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="hex-grid">
+      <div class="p-3 rounded viewer-panel">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <label class="form-label fw-semibold mb-0">Hex 视图</label>
+          <small class="text-muted">三列：偏移地址、Hex 值、ASCII 字符</small>
+        </div>
+        <div id="hexViewer" class="hex-viewer mono">
+          <div class="hex-header hex-line">
+            <div class="hex-offset">偏移</div>
+            <div class="hex-bytes">
+              <span class="byte">00</span><span class="byte">01</span><span class="byte">02</span><span class="byte">03</span><span class="byte">04</span><span class="byte">05</span><span class="byte">06</span><span class="byte group-gap">07</span><span class="byte">08</span><span class="byte">09</span><span class="byte">0A</span><span class="byte">0B</span><span class="byte">0C</span><span class="byte">0D</span><span class="byte">0E</span><span class="byte">0F</span>
+            </div>
+            <div class="hex-ascii">ASCII</div>
+          </div>
+          <div id="hexBody" class="hex-body"></div>
+        </div>
+        <div class="d-flex justify-content-between mt-2">
+          <small class="text-muted">提示：双击 Hex 可编辑或删除；修改项将高亮</small>
+          <span id="statusText" class="text-muted"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  (function(){
+    const fileInput = document.getElementById('fileInput');
+    const btnDownload = document.getElementById('btnDownload');
+    const hexViewer = document.getElementById('hexViewer');
+    const statusText = document.getElementById('statusText');
+    const fileInfo = document.getElementById('fileInfo');
+
+    let originalFileName = '';
+    let fileBytes = new Uint8Array();
+    let originalBytes = new Uint8Array();
+    let modifiedIndices = new Set();
+    let lastFocusIndex = null;
+
+    const te = new TextEncoder();
+    const td = new TextDecoder();
+
+    function showStatus(msg){ statusText.textContent = msg; }
+
+    function hexByte(n){ return n.toString(16).toUpperCase().padStart(2,'0'); }
+
+    function refreshAll(){
+      renderViewer(fileBytes);
+      btnDownload.disabled = fileBytes.length === 0;
+      fileInfo.textContent = `${fileBytes.length} 字节`;
+    }
+
+    // Virtualized rendering with larger initial window
+    function renderViewer(bytes){
+      const bodyEl = document.getElementById('hexBody');
+      if (!bodyEl) return;
+      const rowHeight = 24; // slightly smaller to fit more per viewport
+      const viewport = hexViewer.getBoundingClientRect();
+      const scrollTop = hexViewer.scrollTop;
+      const total = bytes.length;
+      const rows = Math.ceil(total / 16);
+      const isInitial = bodyEl.childElementCount === 0 && scrollTop === 0;
+      const preBuffer = isInitial ? 100 : 30; // render more at top initially
+      const postBuffer = isInitial ? 200 : 50; // render more at bottom initially
+      const startRow = Math.max(0, Math.floor(scrollTop / rowHeight) - preBuffer);
+      const endRow = Math.min(rows, Math.ceil((scrollTop + viewport.height) / rowHeight) + postBuffer);
+
+      // paddings to keep scroll height
+      const topPad = startRow * rowHeight;
+      const bottomPad = (rows - endRow) * rowHeight;
+
+      const lines = [];
+      lines.push(`<div class="pad" style="height:${topPad}px"></div>`);
+      for (let r = startRow; r < endRow; r++) {
+        const start = r * 16;
+        const end = Math.min(start + 16, total);
+        const offsetLabel = (r * 16).toString(16).toUpperCase().padStart(8, '0');
+        let hexCells = '';
+        let asciiCells = '';
+        for (let i = start; i < end; i++) {
+          const val = bytes[i];
+          const hx = hexByte(val);
+          const isGroupGap = (i % 16) === 7; // after 8th byte add larger gap
+          const modifiedClass = modifiedIndices.has(i) ? ' modified-cell' : '';
+          hexCells += `<span class="byte${isGroupGap ? ' group-gap':''}${modifiedClass}" data-index="${i}" tabindex="0">${hx}</span>`;
+          const ch = (val >= 0x20 && val <= 0x7E) ? String.fromCharCode(val) : '.';
+          asciiCells += `<span class="char${modifiedClass}" data-index="${i}" tabindex="0">${ch}</span>`;
+        }
+        // pad remaining cells to 16 for layout alignment
+        for (let i = end; i < start + 16; i++) {
+          const isGroupGap = (i % 16) === 7;
+          hexCells += `<span class="byte${isGroupGap ? ' group-gap':''}" style="opacity:.2">  </span>`;
+          asciiCells += `<span class="char" style="opacity:.2"> </span>`;
+        }
+        lines.push(`<div class="hex-line" style="height:${rowHeight}px"><div class="hex-offset">${offsetLabel}</div><div class="hex-bytes">${hexCells}</div><div class="hex-ascii">${asciiCells}</div></div>`);
+      }
+      lines.push(`<div class="pad" style="height:${bottomPad}px"></div>`);
+      bodyEl.innerHTML = lines.join('');
+    }
+
+    fileInput.addEventListener('change', async () => {
+      const f = fileInput.files?.[0];
+      if (!f) return;
+      originalFileName = f.name || 'modified.bin';
+      const buf = await f.arrayBuffer();
+      fileBytes = new Uint8Array(buf);
+      originalBytes = new Uint8Array(fileBytes);
+      modifiedIndices = new Set();
+      lastFocusIndex = null;
+      refreshAll();
+    });
+
+    btnDownload.addEventListener('click', () => {
+      try{
+        const blob = new Blob([fileBytes], { type: 'application/octet-stream' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const dot = originalFileName.lastIndexOf('.');
+        const name = dot > 0 ? `${originalFileName.slice(0, dot)}.modified${originalFileName.slice(dot)}` : `${originalFileName}.modified`;
+        a.download = name;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        showStatus('已下载');
+      }catch(e){ showStatus('下载失败：' + (e.message || '')); }
+    });
+
+    // Cross highlight
+    function clearActive(){ hexViewer.querySelectorAll('.active-cell').forEach(e=> e.classList.remove('active-cell')); }
+    hexViewer.addEventListener('mouseover', (e) => {
+      const t = e.target;
+      if (!(t instanceof HTMLElement)) return;
+      const idx = t.getAttribute('data-index');
+      if (!idx) return;
+      clearActive();
+      hexViewer.querySelectorAll(`[data-index="${idx}"]`).forEach(el => el.classList.add('active-cell'));
+    });
+    hexViewer.addEventListener('focusin', (e) => {
+      const t = e.target;
+      if (!(t instanceof HTMLElement)) return;
+      const idx = t.getAttribute('data-index');
+      if (!idx) return;
+      clearActive();
+      hexViewer.querySelectorAll(`[data-index="${idx}"]`).forEach(el => el.classList.add('active-cell'));
+    });
+    hexViewer.addEventListener('mouseleave', clearActive);
+
+    // Inline edit on double click
+    function beginEditHexCell(span) {
+      const idx = Number(span.getAttribute('data-index'));
+      lastFocusIndex = idx;
+      const oldText = span.textContent.trim();
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.maxLength = 2;
+      input.value = oldText;
+      input.className = 'form-control form-control-sm mono';
+      input.style.width = '48px';
+      input.style.display = 'inline-block';
+      input.style.padding = '0 4px';
+      input.style.height = '24px';
+      span.replaceWith(input);
+      input.focus();
+      input.select();
+
+      function commit() {
+        const val = (input.value || '').trim();
+        if (val === '') {
+          // delete byte at idx
+          const arr = Array.from(fileBytes);
+          arr.splice(idx, 1);
+          fileBytes = new Uint8Array(arr);
+          // shift modified indices
+          const newSet = new Set();
+          modifiedIndices.forEach(j => { if (j < idx) newSet.add(j); else if (j > idx) newSet.add(j - 1); });
+          modifiedIndices = newSet;
+          showStatus(`已删除索引 ${idx} 字节`);
+          refreshAll();
+          return;
+        }
+        const hex = val.toUpperCase();
+        if (!/^[0-9A-F]{1,2}$/.test(hex)) { showStatus('请输入 1-2 位十六进制'); input.focus(); input.select(); return; }
+        const byte = parseInt(hex, 16);
+        if (Number.isNaN(byte)) { showStatus('非法十六进制'); input.focus(); input.select(); return; }
+        if (fileBytes[idx] !== byte) {
+          fileBytes[idx] = byte;
+          modifiedIndices.add(idx);
+        }
+        showStatus('已更新');
+        refreshAll();
+      }
+      function cancel() { refreshAll(); }
+
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); commit(); }
+        if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+        if (e.key === 'Backspace' && input.value.length === 0) { e.preventDefault(); commit(); }
+      });
+      input.addEventListener('blur', commit);
+    }
+
+    hexViewer.addEventListener('dblclick', (e) => {
+      const t = e.target;
+      if (!(t instanceof HTMLElement)) return;
+      if (t.classList.contains('byte') && t.hasAttribute('data-index')) {
+        beginEditHexCell(t);
+      }
+    });
+
+    // Virtual scrolling: re-render on scroll
+    hexViewer.addEventListener('scroll', () => {
+      renderViewer(fileBytes);
+    });
+
+  })();
+</script>
+{% endblock %}
+
+

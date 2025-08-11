@@ -1,0 +1,484 @@
+{% extends 'base.html' %}
+
+{% block title %}Base 编码工具 - 聪明山{% endblock %}
+
+{% block extra_css %}
+<style>
+  .tool-panel { background: rgba(255,255,255,.9); border: 1px solid rgba(0,0,0,.06); backdrop-filter: blur(6px); }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+  .result-area { min-height: 220px; }
+  .algo-badge { cursor: pointer; }
+  .algo-badge.active { background: #0d6efd; color: #fff; }
+  .section-title { font-weight: 700; letter-spacing: .2px; }
+  .tip { font-size: .875rem; }
+  .btn-copy { position: absolute; right: 1rem; top: .75rem; }
+  @media (max-width: 767.98px) {
+    .result-area { min-height: 160px; }
+  }
+  .kbd { border: 1px solid rgba(0,0,0,.2); border-bottom-width: 3px; border-radius: 6px; padding: 0 6px; font-size: .8rem; }
+  .algo-grid .badge { white-space: nowrap; }
+  .mid-actions { min-height: 100%; display: flex; align-items: center; justify-content: center; }
+  .mid-actions .btn { width: 140px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="py-4">
+  <div class="container">
+    <div class="d-flex align-items-center mb-3">
+      <a href="{{ url_for('tool.menu') }}" class="text-decoration-none me-2"><i class="bi bi-arrow-left"></i></a>
+      <h1 class="mb-0 section-title">Base 编码 / 解码</h1>
+    </div>
+    <p class="text-muted mb-4">覆盖 Base16/32/36/58/62/64/85/91/92 的通用在线编解码工具。</p>
+
+    <div class="mb-3">
+      <label class="form-label fw-semibold">算法</label>
+      <div class="algo-grid d-flex flex-wrap gap-2">
+        {% set algos = [
+          ('base16','Base16'),('base32','Base32'),('base36','Base36'),
+          ('base58','Base58'),('base62','Base62'),('base64','Base64'),
+          ('base85','Base85'),('base91','Base91'),('base92','Base92')
+        ] %}
+        {% for key, label in algos %}
+          <span class="badge rounded-pill bg-light text-dark algo-badge" data-algo="{{ key }}">{{ label }}</span>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="row g-4 align-items-stretch">
+      <div class="col-12 col-lg-5">
+        <div class="p-3 rounded tool-panel h-100">
+          <label class="form-label fw-semibold">左侧（原文/明文）</label>
+          <textarea id="leftArea" class="form-control mono result-area" rows="12" placeholder="原文在此输入。编码时 → 右侧，解码结果将从右侧 → 左侧"></textarea>
+        </div>
+      </div>
+
+      <div class="col-12 col-lg-2">
+        <div class="mid-actions h-100">
+          <div class="d-flex flex-column gap-3 w-100 align-items-center">
+            <button id="btnEncode" class="btn btn-primary"><i class="bi bi-arrow-right"></i> 编码</button>
+            <button id="btnDecode" class="btn btn-outline-primary"><i class="bi bi-arrow-left"></i> 解码</button>
+            <button id="btnSwap" class="btn btn-outline-secondary"><i class="bi bi-arrow-left-right"></i> 交换两侧</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-12 col-lg-5">
+        <div class="p-3 rounded tool-panel h-100 position-relative">
+          <label class="form-label fw-semibold">右侧（编码/密文）</label>
+          <button id="btnCopyRight" class="btn btn-sm btn-outline-secondary btn-copy"><i class="bi bi-clipboard"></i> 复制</button>
+          <textarea id="rightArea" class="form-control mono result-area" rows="12" placeholder="编码/密文在此输入。解码时 → 左侧"></textarea>
+          <div class="d-flex justify-content-between mt-2">
+            <small class="text-muted">快捷键：<span class="kbd">Ctrl</span> + <span class="kbd">Enter</span> 编码（左 → 右）</small>
+            <div>
+              <span id="statusText" class="text-muted"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  </section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  (function () {
+    const leftArea = document.getElementById('leftArea');
+    const rightArea = document.getElementById('rightArea');
+    const btnEncode = document.getElementById('btnEncode');
+    const btnDecode = document.getElementById('btnDecode');
+    const btnCopyRight = document.getElementById('btnCopyRight');
+    const btnSwap = document.getElementById('btnSwap');
+    const statusText = document.getElementById('statusText');
+    const algoBadges = Array.from(document.querySelectorAll('.algo-badge'));
+
+    let currentAlgo = 'base64';
+
+    function setAlgo(algo) {
+      currentAlgo = algo;
+      algoBadges.forEach(b => b.classList.toggle('active', b.getAttribute('data-algo') === algo));
+    }
+    function updateBadgeClasses() {
+      algoBadges.forEach(b => {
+        const isActive = b.getAttribute('data-algo') === currentAlgo;
+        b.classList.toggle('active', isActive);
+        if (isActive) {
+          b.classList.remove('bg-light', 'text-dark');
+          b.classList.add('text-white');
+          b.setAttribute('aria-pressed', 'true');
+        } else {
+          b.classList.add('bg-light', 'text-dark');
+          b.classList.remove('text-white');
+          b.setAttribute('aria-pressed', 'false');
+        }
+      });
+    }
+    setAlgo(currentAlgo);
+    updateBadgeClasses();
+
+    // Drag & drop
+    ['dragenter','dragover'].forEach(evt => {
+      leftArea.addEventListener(evt, (e) => { e.preventDefault(); e.stopPropagation(); });
+      rightArea.addEventListener(evt, (e) => { e.preventDefault(); e.stopPropagation(); });
+    });
+    leftArea.addEventListener('drop', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const text = e.dataTransfer.getData('text');
+      if (text) leftArea.value = text;
+    });
+    rightArea.addEventListener('drop', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const text = e.dataTransfer.getData('text');
+      if (text) rightArea.value = text;
+    });
+
+    // Algo select
+    algoBadges.forEach(badge => {
+      badge.addEventListener('click', () => { setAlgo(badge.getAttribute('data-algo')); updateBadgeClasses(); });
+    });
+
+    function showStatus(msg) { statusText.textContent = msg; }
+
+    // ---------- Encoding/Decoding Implementations (Frontend) ----------
+    const alphabets = {
+      base16: '0123456789abcdef',
+      base32: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567',
+      base36: '0123456789abcdefghijklmnopqrstuvwxyz',
+      base58: '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz',
+      base62: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz',
+      base64: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+    };
+
+    const te = new TextEncoder();
+    const td = new TextDecoder();
+
+    function bytesToHex(bytes) {
+      return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+    function hexToBytes(hex) {
+      const cleaned = (hex || '').trim().toLowerCase().replace(/^0x/, '').replace(/\s+/g, '');
+      if (cleaned.length % 2 !== 0) throw new Error('十六进制长度必须为偶数');
+      const out = new Uint8Array(cleaned.length / 2);
+      for (let i = 0; i < cleaned.length; i += 2) {
+        const byte = parseInt(cleaned.slice(i, i + 2), 16);
+        if (Number.isNaN(byte)) throw new Error('包含非法十六进制字符');
+        out[i / 2] = byte;
+      }
+      return out;
+    }
+
+    function bytesToBase64(bytes) {
+      // Convert bytes -> binary string -> base64
+      let binary = '';
+      bytes.forEach(b => binary += String.fromCharCode(b));
+      return btoa(binary);
+    }
+    function base64ToBytes(text) {
+      const bin = atob((text || '').trim());
+      const out = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+      return out;
+    }
+
+    function bytesToBase32(bytes) {
+      const ALPH = alphabets.base32;
+      let bits = 0, value = 0, output = '';
+      for (let i = 0; i < bytes.length; i++) {
+        value = (value << 8) | bytes[i];
+        bits += 8;
+        while (bits >= 5) {
+          output += ALPH[(value >>> (bits - 5)) & 31];
+          bits -= 5;
+        }
+      }
+      if (bits > 0) {
+        output += ALPH[(value << (5 - bits)) & 31];
+      }
+      // pad to multiple of 8
+      while (output.length % 8 !== 0) output += '=';
+      return output;
+    }
+    function base32ToBytes(text) {
+      const clean = (text || '').toUpperCase().replace(/=+$/,'');
+      const ALPH = alphabets.base32;
+      const map = new Map(Array.from(ALPH).map((c,i)=>[c,i]));
+      let bits = 0, value = 0;
+      const out = [];
+      for (const ch of clean) {
+        if (!map.has(ch)) continue; // skip invalid
+        value = (value << 5) | map.get(ch);
+        bits += 5;
+        if (bits >= 8) {
+          out.push((value >>> (bits - 8)) & 0xff);
+          bits -= 8;
+        }
+      }
+      return new Uint8Array(out);
+    }
+
+    function bytesToBigInt(bytes) {
+      let n = 0n;
+      for (const b of bytes) n = (n << 8n) | BigInt(b);
+      return n;
+    }
+    function bigIntToBytes(bi) {
+      if (bi === 0n) return new Uint8Array([]);
+      const tmp = [];
+      while (bi > 0n) {
+        tmp.push(Number(bi & 0xffn));
+        bi >>= 8n;
+      }
+      return new Uint8Array(tmp.reverse());
+    }
+
+    function baseNEncode(bytes, alphabet) {
+      if (bytes.length === 0) return '';
+      const base = BigInt(alphabet.length);
+      const zeroByte = alphabet[0];
+      let n = bytesToBigInt(bytes);
+      let out = '';
+      while (n > 0n) {
+        const r = n % base;
+        n = n / base;
+        out = alphabet[Number(r)] + out;
+      }
+      // leading zeros
+      let leadingZeros = 0;
+      for (const b of bytes) { if (b === 0) leadingZeros++; else break; }
+      return zeroByte.repeat(leadingZeros) + out;
+    }
+
+    function baseNDecode(text, alphabet) {
+      if (!text) return new Uint8Array([]);
+      const base = BigInt(alphabet.length);
+      // leading zeros
+      let leading = 0;
+      for (const ch of text) { if (ch === alphabet[0]) leading++; else break; }
+      let n = 0n;
+      for (const ch of text) {
+        const idx = alphabet.indexOf(ch);
+        if (idx === -1) throw new Error(`非法字符: ${ch}`);
+        n = n * base + BigInt(idx);
+      }
+      const body = bigIntToBytes(n);
+      const zeros = new Uint8Array(leading);
+      return new Uint8Array([...zeros, ...body]);
+    }
+
+    // Ascii85 (Base85) encode/decode
+    function ascii85Encode(bytes) {
+      if (bytes.length === 0) return '';
+      let out = '';
+      for (let i = 0; i < bytes.length; i += 4) {
+        const chunk = bytes.slice(i, i + 4);
+        const pad = 4 - chunk.length;
+        let val = 0;
+        for (let j = 0; j < 4; j++) {
+          val = (val << 8) | (chunk[j] ?? 0);
+        }
+        if (val === 0 && pad === 0) { out += 'z'; continue; }
+        const digits = new Array(5);
+        for (let k = 4; k >= 0; k--) { digits[k] = (val % 85) + 33; val = Math.floor(val / 85); }
+        const emitLen = 5 - pad;
+        for (let k = 0; k < emitLen; k++) out += String.fromCharCode(digits[k]);
+      }
+      return out;
+    }
+    function ascii85Decode(text) {
+      const cleaned = (text || '').replace(/\s+/g, '').replace(/<~|~>/g, '');
+      const out = [];
+      let i = 0;
+      while (i < cleaned.length) {
+        const ch = cleaned[i];
+        if (ch === 'z') { out.push(0,0,0,0); i++; continue; }
+        const group = cleaned.slice(i, i + 5);
+        const pad = 5 - group.length;
+        if (group.length < 5) {
+          const padded = group + 'u'.repeat(pad);
+          let val = 0;
+          for (let k = 0; k < 5; k++) {
+            const code = padded.charCodeAt(k) - 33;
+            if (code < 0 || code > 84) throw new Error('包含非法 Base85 字符');
+            val = val * 85 + code;
+          }
+          const tmp = [ (val >>> 24) & 0xff, (val >>> 16) & 0xff, (val >>> 8) & 0xff, val & 0xff ];
+          const emitLen = 4 - pad;
+          for (let k = 0; k < emitLen; k++) out.push(tmp[k]);
+          break;
+        } else {
+          let val = 0;
+          for (let k = 0; k < 5; k++) {
+            const code = group.charCodeAt(k) - 33;
+            if (code < 0 || code > 84) throw new Error('包含非法 Base85 字符');
+            val = val * 85 + code;
+          }
+          out.push((val >>> 24) & 0xff, (val >>> 16) & 0xff, (val >>> 8) & 0xff, val & 0xff);
+          i += 5;
+        }
+      }
+      return new Uint8Array(out);
+    }
+
+    function encodeAlgo(algo, inputStr) {
+      const bytes = te.encode(inputStr);
+      switch (algo) {
+        case 'base16': return bytesToHex(bytes);
+        case 'base32': return bytesToBase32(bytes);
+        case 'base36': return baseNEncode(bytes, alphabets.base36);
+        case 'base58': return baseNEncode(bytes, alphabets.base58);
+        case 'base62': return baseNEncode(bytes, alphabets.base62);
+        case 'base64': return bytesToBase64(bytes);
+        case 'base85': return ascii85Encode(bytes);
+        case 'base91': return base91Encode(bytes);
+        case 'base92': return base92Encode(bytes);
+        default: throw new Error('不支持的算法');
+      }
+    }
+
+    function decodeAlgo(algo, inputStr) {
+      switch (algo) {
+        case 'base16': return td.decode(hexToBytes(inputStr));
+        case 'base32': return td.decode(base32ToBytes(inputStr));
+        case 'base36': return td.decode(baseNDecode(inputStr.toLowerCase(), alphabets.base36));
+        case 'base58': return td.decode(baseNDecode(inputStr, alphabets.base58));
+        case 'base62': return td.decode(baseNDecode(inputStr, alphabets.base62));
+        case 'base64': return td.decode(base64ToBytes(inputStr));
+        case 'base85': return td.decode(ascii85Decode(inputStr));
+        case 'base91': return td.decode(base91Decode(inputStr));
+        case 'base92': return td.decode(base92Decode(inputStr));
+        default: throw new Error('不支持的算法');
+      }
+    }
+
+    // Base91 implementation
+    const B91_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!#$%&()*+,./:;<=>?@[]^_`{|}~\"";
+    const B91_DEC = (()=>{ const arr = new Array(256).fill(-1); for (let i=0;i<B91_ALPHABET.length;i++) arr[B91_ALPHABET.charCodeAt(i)] = i; return arr; })();
+    function base91Encode(bytes) {
+      let b = 0, n = 0, out = '';
+      for (let i = 0; i < bytes.length; i++) {
+        b |= bytes[i] << n;
+        n += 8;
+        if (n > 13) {
+          let v = b & 8191; // 2^13 - 1
+          if (v > 88) { b >>= 13; n -= 13; }
+          else { v = b & 16383; b >>= 14; n -= 14; }
+          out += B91_ALPHABET[v % 91] + B91_ALPHABET[Math.floor(v / 91)];
+        }
+      }
+      if (n) {
+        out += B91_ALPHABET[b % 91];
+        if (n > 7 || b > 90) out += B91_ALPHABET[Math.floor(b / 91)];
+      }
+      return out;
+    }
+    function base91Decode(text) {
+      const input = (text || '').replace(/\s+/g, '');
+      let v = -1, b = 0, n = 0;
+      const out = [];
+      for (let i = 0; i < input.length; i++) {
+        const c = B91_DEC[input.charCodeAt(i)];
+        if (c === -1) continue;
+        if (v < 0) v = c; else {
+          v += c * 91;
+          b |= v << n;
+          n += (v & 8191) > 88 ? 13 : 14;
+          do { out.push(b & 255); b >>= 8; n -= 8; } while (n > 7);
+          v = -1;
+        }
+      }
+      if (v + 1) out.push((b | (v << n)) & 255);
+      return new Uint8Array(out);
+    }
+
+    // Base92 implementation (common fixed 92-char alphabet)
+    const B92_ALPHABET = (()=>{ const arr = []; for (let c = 33; c <= 126; c++) { if (c !== 34 && c !== 92) arr.push(String.fromCharCode(c)); } return arr.join(''); })();
+    const B92_DEC = (()=>{ const arr = new Array(256).fill(-1); for (let i=0;i<B92_ALPHABET.length;i++) arr[B92_ALPHABET.charCodeAt(i)] = i; return arr; })();
+    function base92Encode(bytes) {
+      let b = 0, n = 0, out = '';
+      for (let i = 0; i < bytes.length; i++) {
+        b = (b << 8) | bytes[i];
+        n += 8;
+        while (n >= 13) {
+          n -= 13;
+          const v = (b >>> n) & 0x1fff; // 13 bits
+          out += B92_ALPHABET[Math.floor(v / 92)] + B92_ALPHABET[v % 92];
+        }
+      }
+      if (n > 0) {
+        const v = (b << (13 - n)) & 0x1fff;
+        out += B92_ALPHABET[Math.floor(v / 92)] + B92_ALPHABET[v % 92];
+      }
+      return out;
+    }
+    function base92Decode(text) {
+      const input = (text || '').replace(/\s+/g, '');
+      let b = 0, n = 0;
+      const out = [];
+      for (let i = 0; i < input.length; i += 2) {
+        const c1 = B92_DEC[input.charCodeAt(i)];
+        const c2 = B92_DEC[input.charCodeAt(i+1)] ?? -1;
+        if (c1 === -1 || c2 === -1) throw new Error('包含非法 Base92 字符');
+        const v = c1 * 92 + c2;
+        b = (b << 13) | v;
+        n += 13;
+        while (n >= 8) { n -= 8; out.push((b >>> n) & 0xff); }
+      }
+      return new Uint8Array(out);
+    }
+
+    function encodeLeftToRight() {
+      try {
+        rightArea.value = encodeAlgo(currentAlgo, leftArea.value || '');
+        showStatus('完成');
+      } catch (e) {
+        rightArea.value = '';
+        showStatus(e.message || '出错了');
+      }
+    }
+    function decodeRightToLeft() {
+      try {
+        leftArea.value = decodeAlgo(currentAlgo, rightArea.value || '');
+        showStatus('完成');
+      } catch (e) {
+        leftArea.value = '';
+        showStatus(e.message || '出错了');
+      }
+    }
+
+    btnEncode.addEventListener('click', encodeLeftToRight);
+    btnDecode.addEventListener('click', decodeRightToLeft);
+    btnCopyRight.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(rightArea.value || '');
+        showStatus('已复制');
+      } catch {
+        showStatus('复制失败');
+      }
+    });
+    btnSwap.addEventListener('click', () => {
+      const tmp = leftArea.value;
+      leftArea.value = rightArea.value;
+      rightArea.value = tmp;
+      showStatus('已交换');
+    });
+
+    // Ctrl+Enter -> Encode (left -> right)
+    leftArea.addEventListener('keydown', (e) => {
+      if (e.ctrlKey && e.key === 'Enter') {
+        e.preventDefault();
+        encodeLeftToRight();
+      }
+    });
+    // Ctrl+Enter on right -> Decode (right -> left)
+    rightArea.addEventListener('keydown', (e) => {
+      if (e.ctrlKey && e.key === 'Enter') {
+        e.preventDefault();
+        decodeRightToLeft();
+      }
+    });
+  })();
+</script>
+{% endblock %}
+
+

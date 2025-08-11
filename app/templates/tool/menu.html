@@ -1,0 +1,622 @@
+{% extends 'base.html' %}
+
+{% block title %}工具目录 - 聪明山{% endblock %}
+
+{% block extra_css %}
+<style>
+  .tools-hero {
+    background: radial-gradient(1200px 400px at 10% -10%, rgba(13, 110, 253, 0.25), transparent 60%),
+                radial-gradient(900px 300px at 90% -20%, rgba(111, 66, 193, 0.25), transparent 60%),
+                linear-gradient(180deg, #0d6efd10, transparent);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  .glass-card {
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(6px);
+    border: 1px solid rgba(0,0,0,0.06);
+    transition: transform .2s ease, box-shadow .2s ease;
+  }
+  .glass-card:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(0,0,0,0.08); }
+  .tool-icon {
+    width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 10px; color: #fff;
+  }
+  .icon-blue { background: linear-gradient(135deg, #0d6efd, #3b8bfd); }
+  .icon-purple { background: linear-gradient(135deg, #6f42c1, #9a64e6); }
+  .icon-teal { background: linear-gradient(135deg, #20c997, #1aa179); }
+  .icon-orange { background: linear-gradient(135deg, #fd7e14, #f5a25c); }
+  .icon-pink { background: linear-gradient(135deg, #d63384, #f06595); }
+  .icon-cyan { background: linear-gradient(135deg, #0dcaf0, #74d6f7); color: #084c61; }
+  .icon-gray { background: linear-gradient(135deg, #6c757d, #9aa0a6); }
+  .icon-green { background: linear-gradient(135deg, #198754, #34c38f); }
+
+  .tool-tag { font-size: .75rem; }
+
+  .filter-pill { cursor: pointer; }
+  .filter-pill.active { background: #0d6efd; color: #fff; }
+
+  .section-title { font-weight: 700; letter-spacing: .2px; }
+
+  .coming-badge { font-size: .7rem; }
+
+  @media (max-width: 767.98px) {
+    .tools-hero h1 { font-size: 1.75rem; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+  <!-- Hero -->
+  <section class="tools-hero py-5">
+    <div class="container">
+      <div class="row align-items-center g-4">
+        <div class="col-lg-8">
+          <h1 class="mb-3 fw-bold">前端工具箱</h1>
+          <p class="text-muted mb-4">常用小工具的整合平台，助你更高效地完成开发与日常工作。</p>
+
+          <div class="row g-2">
+            <div class="col-12 col-md-7">
+              <div class="input-group input-group-lg">
+                <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+                <input id="tool-search" type="text" class="form-control" placeholder="搜索工具或类别，例如：Base64、AES、化学…" aria-label="搜索工具">
+              </div>
+            </div>
+            <div class="col-12 col-md-5 d-flex gap-2 flex-wrap">
+              <span class="badge rounded-pill bg-light text-dark filter-pill active" data-filter="all">全部</span>
+              <span class="badge rounded-pill bg-light text-dark filter-pill" data-filter="codec">编码/解码</span>
+              <span class="badge rounded-pill bg-light text-dark filter-pill" data-filter="chem">化学计算</span>
+              <span class="badge rounded-pill bg-light text-dark filter-pill" data-filter="text">文本处理</span>
+              <span class="badge rounded-pill bg-light text-dark filter-pill" data-filter="time">时间日期</span>
+              <span class="badge rounded-pill bg-light text-dark filter-pill" data-filter="net">网络工具</span>
+            </div>
+          </div>
+        </div>
+        <div class="col-lg-4 d-none d-lg-block text-end">
+          <img src="{{ url_for('static', filename='img/favicon.png') }}" class="img-fluid" alt="工具箱" style="max-height: 120px; opacity: .9;">
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Tools Grid -->
+  <section class="py-5">
+    <div class="container">
+      <!-- 编码/解码工具 -->
+      <h2 id="codec" class="section-title mb-3">编码 / 解码工具</h2>
+      <div class="row g-4 mb-5">
+        <!-- Base 编码 -->
+        <div class="col-12 col-md-6 col-xl-4">
+          <div class="card glass-card tool-card h-100" data-groups="codec" data-keywords="base base16 base 16 hex base32 base 32 base36 base 36 base58 base 58 base62 base 62 base64 base 64 base85 base 85 base91 base 91 base92 base 92 编码 解码">
+            <div class="card-body">
+              <div class="d-flex align-items-start mb-3">
+                <div class="tool-icon icon-blue me-3"><i class="bi bi-code-slash"></i></div>
+                <div>
+                  <h5 class="card-title mb-1">Base 编码</h5>
+                  <small class="text-muted">Base16 / 32 / 36 / 58 / 62 / 64 / 85 / 91 / 92</small>
+                </div>
+              </div>
+              <div class="d-flex flex-wrap gap-2 mb-3">
+                <span class="badge rounded-pill bg-secondary-subtle text-secondary tool-tag">Base16</span>
+                <span class="badge rounded-pill bg-secondary-subtle text-secondary tool-tag">Base32</span>
+                <span class="badge rounded-pill bg-secondary-subtle text-secondary tool-tag">Base36</span>
+                <span class="badge rounded-pill bg-secondary-subtle text-secondary tool-tag">Base58</span>
+                <span class="badge rounded-pill bg-secondary-subtle text-secondary tool-tag">Base62</span>
+                <span class="badge rounded-pill bg-primary-subtle text-primary tool-tag">Base64</span>
+                <span class="badge rounded-pill bg-secondary-subtle text-secondary tool-tag">Base85</span>
+                <span class="badge rounded-pill bg-secondary-subtle text-secondary tool-tag">Base91</span>
+                <span class="badge rounded-pill bg-secondary-subtle text-secondary tool-tag">Base92</span>
+              </div>
+              <div class="d-flex align-items-center justify-content-between">
+                <a class="btn btn-primary" href="{{ url_for('tool.base') }}">开始使用</a>
+                <span></span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Hex 编码 -->
+        <div class="col-12 col-md-6 col-xl-4">
+          <div class="card glass-card tool-card h-100" data-groups="codec" data-keywords="hex 十六进制 字节 bytes 0x 编码 解码 转换">
+            <div class="card-body">
+              <div class="d-flex align-items-start mb-3">
+                <div class="tool-icon icon-gray me-3"><i class="bi bi-upc-scan"></i></div>
+                <div>
+                  <h5 class="card-title mb-1">Hex 编码</h5>
+                  <small class="text-muted">十六进制与字节流互转。查看并编辑一个文件的hex值。</small>
+                </div>
+              </div>
+              <div class="d-flex flex-wrap gap-2 mb-3">
+                <span class="badge rounded-pill bg-secondary-subtle text-secondary tool-tag">Hex</span>
+                <span class="badge rounded-pill bg-info-subtle text-info tool-tag">Bytes</span>
+              </div>
+              <div class="d-flex align-items-center justify-content-between">
+                <a class="btn btn-primary" href="{{ url_for('tool.hex_page') }}">开始使用</a>
+                <span></span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- URL 编码 -->
+        <div class="col-12 col-md-6 col-xl-4">
+          <div class="card glass-card tool-card h-100" data-groups="codec" data-keywords="URL 编码 解码 percent-encode query">
+            <div class="card-body">
+              <div class="d-flex align-items-start mb-3">
+                <div class="tool-icon icon-teal me-3"><i class="bi bi-link-45deg"></i></div>
+                <div>
+                  <h5 class="card-title mb-1">URL 编码</h5>
+                  <small class="text-muted">处理查询参数与路径中的特殊字符</small>
+                </div>
+              </div>
+              <div class="d-flex flex-wrap gap-2 mb-3">
+                <span class="badge rounded-pill bg-success-subtle text-success tool-tag">URL</span>
+                <span class="badge rounded-pill bg-info-subtle text-info tool-tag">Web</span>
+                <span class="badge rounded-pill bg-secondary-subtle text-secondary tool-tag">编码</span>
+              </div>
+              <div class="d-flex align-items-center justify-content-between">
+                <a class="btn btn-primary disabled" href="#" aria-disabled="true">开始使用</a>
+                <span class="badge bg-secondary-subtle text-secondary coming-badge">即将上线</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- HTML 编码 -->
+        <div class="col-12 col-md-6 col-xl-4">
+          <div class="card glass-card tool-card h-100" data-groups="codec" data-keywords="HTML 实体 entity 转义 escape &nbsp; &lt; &gt; &amp;">
+            <div class="card-body">
+              <div class="d-flex align-items-start mb-3">
+                <div class="tool-icon icon-orange me-3"><i class="bi bi-code"></i></div>
+                <div>
+                  <h5 class="card-title mb-1">HTML 编码</h5>
+                  <small class="text-muted">HTML 实体转义与还原（如 &amp;nbsp;）</small>
+                </div>
+              </div>
+              <div class="d-flex flex-wrap gap-2 mb-3">
+                <span class="badge rounded-pill bg-warning-subtle text-warning tool-tag">Entity</span>
+                <span class="badge rounded-pill bg-secondary-subtle text-secondary tool-tag">Escape</span>
+              </div>
+              <div class="d-flex align-items-center justify-content-between">
+                <a class="btn btn-primary disabled" href="#" aria-disabled="true">开始使用</a>
+                <span class="badge bg-secondary-subtle text-secondary coming-badge">即将上线</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Quoted-printable 编码 -->
+        <div class="col-12 col-md-6 col-xl-4">
+          <div class="card glass-card tool-card h-100" data-groups="codec" data-keywords="quoted-printable MIME RFC2045 qp 邮件 编码 解码">
+            <div class="card-body">
+              <div class="d-flex align-items-start mb-3">
+                <div class="tool-icon icon-pink me-3"><i class="bi bi-envelope-open"></i></div>
+                <div>
+                  <h5 class="card-title mb-1">Quoted-printable 编码</h5>
+                  <small class="text-muted">邮件 MIME Quoted-Printable 编/解码</small>
+                </div>
+              </div>
+              <div class="d-flex flex-wrap gap-2 mb-3">
+                <span class="badge rounded-pill bg-danger-subtle text-danger tool-tag">MIME</span>
+                <span class="badge rounded-pill bg-secondary-subtle text-secondary tool-tag">RFC2045</span>
+              </div>
+              <div class="d-flex align-items-center justify-content-between">
+                <a class="btn btn-primary disabled" href="#" aria-disabled="true">开始使用</a>
+                <span class="badge bg-secondary-subtle text-secondary coming-badge">即将上线</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 哈希计算器 -->
+        <div class="col-12 col-md-6 col-xl-4">
+          <div class="card glass-card tool-card h-100" data-groups="codec" data-keywords="hash 哈希 校验 SHA256 SHA-256 SHA1 SHA-1 SHA512 SHA-512 MD5 BLAKE2 CRC32 校验和">
+            <div class="card-body">
+              <div class="d-flex align-items-start mb-3">
+                <div class="tool-icon icon-purple me-3"><i class="bi bi-hash"></i></div>
+                <div>
+                  <h5 class="card-title mb-1">哈希计算</h5>
+                  <small class="text-muted">SHA-256 / SHA-1 / SHA-512 / MD5 / BLAKE2 等</small>
+                </div>
+              </div>
+              <div class="d-flex flex-wrap gap-2 mb-3">
+                <span class="badge rounded-pill bg-dark-subtle text-dark tool-tag">SHA-256</span>
+                <span class="badge rounded-pill bg-dark-subtle text-dark tool-tag">SHA-1</span>
+                <span class="badge rounded-pill bg-dark-subtle text-dark tool-tag">SHA-512</span>
+                <span class="badge rounded-pill bg-dark-subtle text-dark tool-tag">MD5</span>
+                <span class="badge rounded-pill bg-dark-subtle text-dark tool-tag">BLAKE2</span>
+              </div>
+              <div class="d-flex align-items-center justify-content-between">
+                <a class="btn btn-primary disabled" href="#" aria-disabled="true">开始使用</a>
+                <span class="badge bg-secondary-subtle text-secondary coming-badge">即将上线</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- AES -->
+        <div class="col-12 col-md-6 col-xl-4">
+          <div class="card glass-card tool-card h-100" data-groups="codec" data-keywords="AES 加密 解密 对称 密钥 CBC GCM CTR 填充">
+            <div class="card-body">
+              <div class="d-flex align-items-start mb-3">
+                <div class="tool-icon icon-teal me-3"><i class="bi bi-shield-lock"></i></div>
+                <div>
+                  <h5 class="card-title mb-1">AES</h5>
+                  <small class="text-muted">常见模式（CBC/CTR/GCM）与填充</small>
+                </div>
+              </div>
+              <div class="d-flex flex-wrap gap-2 mb-3">
+                <span class="badge rounded-pill bg-warning-subtle text-warning tool-tag">AES</span>
+                <span class="badge rounded-pill bg-danger-subtle text-danger tool-tag">安全</span>
+                <span class="badge rounded-pill bg-dark-subtle text-dark tool-tag">密钥</span>
+              </div>
+              <div class="d-flex align-items-center justify-content-between">
+                <a class="btn btn-primary disabled" href="#" aria-disabled="true">开始使用</a>
+                <span class="badge bg-secondary-subtle text-secondary coming-badge">即将上线</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- DES / 3DES -->
+        <div class="col-12 col-md-6 col-xl-4">
+          <div class="card glass-card tool-card h-100" data-groups="codec" data-keywords="DES 3DES TDEA 加密 解密 ECB CBC 对称">
+            <div class="card-body">
+              <div class="d-flex align-items-start mb-3">
+                <div class="tool-icon icon-green me-3"><i class="bi bi-shield-shaded"></i></div>
+                <div>
+                  <h5 class="card-title mb-1">DES / 3DES</h5>
+                  <small class="text-muted">经典对称加密（ECB/CBC 等）</small>
+                </div>
+              </div>
+              <div class="d-flex flex-wrap gap-2 mb-3">
+                <span class="badge rounded-pill bg-success-subtle text-success tool-tag">DES</span>
+                <span class="badge rounded-pill bg-success-subtle text-success tool-tag">3DES</span>
+              </div>
+              <div class="d-flex align-items-center justify-content-between">
+                <a class="btn btn-primary disabled" href="#" aria-disabled="true">开始使用</a>
+                <span class="badge bg-secondary-subtle text-secondary coming-badge">即将上线</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- RSA -->
+        <div class="col-12 col-md-6 col-xl-4">
+          <div class="card glass-card tool-card h-100" data-groups="codec" data-keywords="RSA 公钥 私钥 加密 解密 签名 验签 PKCS1 PKCS8 OAEP PSS">
+            <div class="card-body">
+              <div class="d-flex align-items-start mb-3">
+                <div class="tool-icon icon-purple me-3"><i class="bi bi-key"></i></div>
+                <div>
+                  <h5 class="card-title mb-1">RSA</h5>
+                  <small class="text-muted">非对称加密 / 签名（OAEP / PSS）</small>
+                </div>
+              </div>
+              <div class="d-flex flex-wrap gap-2 mb-3">
+                <span class="badge rounded-pill bg-secondary-subtle text-secondary tool-tag">OAEP</span>
+                <span class="badge rounded-pill bg-secondary-subtle text-secondary tool-tag">PSS</span>
+              </div>
+              <div class="d-flex align-items-center justify-content-between">
+                <a class="btn btn-primary disabled" href="#" aria-disabled="true">开始使用</a>
+                <span class="badge bg-secondary-subtle text-secondary coming-badge">即将上线</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ASCII -->
+        <div class="col-12 col-md-6 col-xl-4">
+          <div class="card glass-card tool-card h-100" data-groups="codec" data-keywords="ASCII 字符 码表 十进制 十六进制 转换 文本">
+            <div class="card-body">
+              <div class="d-flex align-items-start mb-3">
+                <div class="tool-icon icon-cyan me-3"><i class="bi bi-fonts"></i></div>
+                <div>
+                  <h5 class="card-title mb-1">ASCII</h5>
+                  <small class="text-muted">文本与 ASCII 码互转，常用码表</small>
+                </div>
+              </div>
+              <div class="d-flex flex-wrap gap-2 mb-3">
+                <span class="badge rounded-pill bg-info-subtle text-info tool-tag">字符</span>
+                <span class="badge rounded-pill bg-secondary-subtle text-secondary tool-tag">码表</span>
+              </div>
+              <div class="d-flex align-items-center justify-content-between">
+                <a class="btn btn-primary disabled" href="#" aria-disabled="true">开始使用</a>
+                <span class="badge bg-secondary-subtle text-secondary coming-badge">即将上线</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 化学计算工具 -->
+      <h2 id="chem" class="section-title mb-3">化学计算工具</h2>
+      <div class="row g-4 mb-5">
+        <div class="col-12 col-md-6 col-xl-4">
+          <div class="card glass-card tool-card h-100" data-groups="chem" data-keywords="分子量 相对分子质量 计算 化学式">
+            <div class="card-body">
+              <div class="d-flex align-items-start mb-3">
+                <div class="tool-icon icon-orange me-3"><i class="bi bi-beaker"></i></div>
+                <div>
+                  <h5 class="card-title mb-1">分子量计算器</h5>
+                  <small class="text-muted">根据化学式计算相对分子质量</small>
+                </div>
+              </div>
+              <div class="d-flex flex-wrap gap-2 mb-3">
+                <span class="badge rounded-pill bg-warning-subtle text-warning tool-tag">化学</span>
+                <span class="badge rounded-pill bg-primary-subtle text-primary tool-tag">分子量</span>
+              </div>
+              <div class="d-flex align-items-center justify-content-between">
+                <a class="btn btn-primary disabled" href="#" aria-disabled="true">开始使用</a>
+                <span class="badge bg-secondary-subtle text-secondary coming-badge">即将上线</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-12 col-md-6 col-xl-4">
+          <div class="card glass-card tool-card h-100" data-groups="chem" data-keywords="元素 百分比 组成 含量 质量分数">
+            <div class="card-body">
+              <div class="d-flex align-items-start mb-3">
+                <div class="tool-icon icon-pink me-3"><i class="bi bi-pie-chart"></i></div>
+                <div>
+                  <h5 class="card-title mb-1">元素百分比计算</h5>
+                  <small class="text-muted">化合物中各元素质量分数</small>
+                </div>
+              </div>
+              <div class="d-flex flex-wrap gap-2 mb-3">
+                <span class="badge rounded-pill bg-danger-subtle text-danger tool-tag">配比</span>
+                <span class="badge rounded-pill bg-success-subtle text-success tool-tag">分析</span>
+              </div>
+              <div class="d-flex align-items-center justify-content-between">
+                <a class="btn btn-primary disabled" href="#" aria-disabled="true">开始使用</a>
+                <span class="badge bg-secondary-subtle text-secondary coming-badge">即将上线</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-12 col-md-6 col-xl-4">
+          <div class="card glass-card tool-card h-100" data-groups="chem" data-keywords="滴定 计算 摩尔 浓度 体积">
+            <div class="card-body">
+              <div class="d-flex align-items-start mb-3">
+                <div class="tool-icon icon-cyan me-3"><i class="bi bi-droplet"></i></div>
+                <div>
+                  <h5 class="card-title mb-1">滴定计算器</h5>
+                  <small class="text-muted">摩尔浓度、体积与等当点换算</small>
+                </div>
+              </div>
+              <div class="d-flex flex-wrap gap-2 mb-3">
+                <span class="badge rounded-pill bg-info-subtle text-info tool-tag">滴定</span>
+                <span class="badge rounded-pill bg-secondary-subtle text-secondary tool-tag">浓度</span>
+              </div>
+              <div class="d-flex align-items-center justify-content-between">
+                <a class="btn btn-primary disabled" href="#" aria-disabled="true">开始使用</a>
+                <span class="badge bg-secondary-subtle text-secondary coming-badge">即将上线</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 其他常用工具组 -->
+      <h2 class="section-title mb-3">更多工具组</h2>
+      <div class="row g-4">
+        <div class="col-12 col-md-6 col-xl-4">
+          <div class="card glass-card tool-card h-100" data-groups="text" data-keywords="文本 处理 去重 排序 字数 统计 JSON 格式化">
+            <div class="card-body">
+              <div class="d-flex align-items-start mb-3">
+                <div class="tool-icon icon-gray me-3"><i class="bi bi-type"></i></div>
+                <div>
+                  <h5 class="card-title mb-1">文本处理工具</h5>
+                  <small class="text-muted">去重 / 排序 / 字数统计 / JSON 格式化</small>
+                </div>
+              </div>
+              <div class="d-flex flex-wrap gap-2 mb-3">
+                <span class="badge rounded-pill bg-secondary-subtle text-secondary tool-tag">文本</span>
+                <span class="badge rounded-pill bg-info-subtle text-info tool-tag">JSON</span>
+              </div>
+              <div class="d-flex align-items-center justify-content-between">
+                <a class="btn btn-outline-primary disabled" href="#" aria-disabled="true">查看工具</a>
+                <span class="badge bg-secondary-subtle text-secondary coming-badge">规划中</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-12 col-md-6 col-xl-4">
+          <div class="card glass-card tool-card h-100" data-groups="time" data-keywords="时间戳 转换 时区 日期 差 倒计时">
+            <div class="card-body">
+              <div class="d-flex align-items-start mb-3">
+                <div class="tool-icon icon-green me-3"><i class="bi bi-clock"></i></div>
+                <div>
+                  <h5 class="card-title mb-1">时间与日期工具</h5>
+                  <small class="text-muted">时间戳转换 / 时区换算 / 日期差计算</small>
+                </div>
+              </div>
+              <div class="d-flex flex-wrap gap-2 mb-3">
+                <span class="badge rounded-pill bg-success-subtle text-success tool-tag">时间</span>
+                <span class="badge rounded-pill bg-primary-subtle text-primary tool-tag">时区</span>
+              </div>
+              <div class="d-flex align-items-center justify-content-between">
+                <a class="btn btn-outline-primary disabled" href="#" aria-disabled="true">查看工具</a>
+                <span class="badge bg-secondary-subtle text-secondary coming-badge">规划中</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-12 col-md-6 col-xl-4">
+          <div class="card glass-card tool-card h-100" data-groups="net" data-keywords="网络 HTTP 请求 WebSocket DNS IP">
+            <div class="card-body">
+              <div class="d-flex align-items-start mb-3">
+                <div class="tool-icon icon-blue me-3"><i class="bi bi-globe"></i></div>
+                <div>
+                  <h5 class="card-title mb-1">网络工具</h5>
+                  <small class="text-muted">HTTP 请求调试 / WebSocket 测试 / DNS 查询</small>
+                </div>
+              </div>
+              <div class="d-flex flex-wrap gap-2 mb-3">
+                <span class="badge rounded-pill bg-info-subtle text-info tool-tag">HTTP</span>
+                <span class="badge rounded-pill bg-secondary-subtle text-secondary tool-tag">WS</span>
+              </div>
+              <div class="d-flex align-items-center justify-content-between">
+                <a class="btn btn-outline-primary disabled" href="#" aria-disabled="true">查看工具</a>
+                <span class="badge bg-secondary-subtle text-secondary coming-badge">规划中</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-12 col-md-6 col-xl-4">
+          <div class="card glass-card tool-card h-100" data-groups="dev" data-keywords="前端 颜色 渐变 阴影 Box-shadow 生成器">
+            <div class="card-body">
+              <div class="d-flex align-items-start mb-3">
+                <div class="tool-icon icon-purple me-3"><i class="bi bi-palette"></i></div>
+                <div>
+                  <h5 class="card-title mb-1">前端样式工具</h5>
+                  <small class="text-muted">颜色 / 渐变 / 阴影生成器</small>
+                </div>
+              </div>
+              <div class="d-flex flex-wrap gap-2 mb-3">
+                <span class="badge rounded-pill bg-primary-subtle text-primary tool-tag">CSS</span>
+                <span class="badge rounded-pill bg-warning-subtle text-warning tool-tag">设计</span>
+              </div>
+              <div class="d-flex align-items-center justify-content-between">
+                <a class="btn btn-outline-primary disabled" href="#" aria-disabled="true">查看工具</a>
+                <span class="badge bg-secondary-subtle text-secondary coming-badge">规划中</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-12 col-md-6 col-xl-4">
+          <div class="card glass-card tool-card h-100" data-groups="image" data-keywords="图片 压缩 Base64 转换 EXIF">
+            <div class="card-body">
+              <div class="d-flex align-items-start mb-3">
+                <div class="tool-icon icon-teal me-3"><i class="bi bi-image"></i></div>
+                <div>
+                  <h5 class="card-title mb-1">图像处理工具</h5>
+                  <small class="text-muted">Base64↔图片 / 压缩 / EXIF 查看</small>
+                </div>
+              </div>
+              <div class="d-flex flex-wrap gap-2 mb-3">
+                <span class="badge rounded-pill bg-success-subtle text-success tool-tag">图像</span>
+                <span class="badge rounded-pill bg-secondary-subtle text-secondary tool-tag">转换</span>
+              </div>
+              <div class="d-flex align-items-center justify-content-between">
+                <a class="btn btn-outline-primary disabled" href="#" aria-disabled="true">查看工具</a>
+                <span class="badge bg-secondary-subtle text-secondary coming-badge">规划中</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-12 col-md-6 col-xl-4">
+          <div class="card glass-card tool-card h-100" data-groups="data" data-keywords="数据 格式 JSON YAML CSV Markdown HTML 转换">
+            <div class="card-body">
+              <div class="d-flex align-items-start mb-3">
+                <div class="tool-icon icon-orange me-3"><i class="bi bi-braces"></i></div>
+                <div>
+                  <h5 class="card-title mb-1">数据格式工具</h5>
+                  <small class="text-muted">JSON↔YAML / CSV↔JSON / Markdown↔HTML</small>
+                </div>
+              </div>
+              <div class="d-flex flex-wrap gap-2 mb-3">
+                <span class="badge rounded-pill bg-info-subtle text-info tool-tag">JSON</span>
+                <span class="badge rounded-pill bg-warning-subtle text-warning tool-tag">YAML</span>
+                <span class="badge rounded-pill bg-success-subtle text-success tool-tag">CSV</span>
+              </div>
+              <div class="d-flex align-items-center justify-content-between">
+                <a class="btn btn-outline-primary disabled" href="#" aria-disabled="true">查看工具</a>
+                <span class="badge bg-secondary-subtle text-secondary coming-badge">规划中</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-12 col-md-6 col-xl-4">
+          <div class="card glass-card tool-card h-100" data-groups="regex" data-keywords="正则 表达式 测试 速查 在线">
+            <div class="card-body">
+              <div class="d-flex align-items-start mb-3">
+                <div class="tool-icon icon-pink me-3"><i class="bi bi-slash-square"></i></div>
+                <div>
+                  <h5 class="card-title mb-1">正则表达式工具</h5>
+                  <small class="text-muted">正则测试与速查</small>
+                </div>
+              </div>
+              <div class="d-flex flex-wrap gap-2 mb-3">
+                <span class="badge rounded-pill bg-danger-subtle text-danger tool-tag">RegExp</span>
+                <span class="badge rounded-pill bg-secondary-subtle text-secondary tool-tag">校验</span>
+              </div>
+              <div class="d-flex align-items-center justify-content-between">
+                <a class="btn btn-outline-primary disabled" href="#" aria-disabled="true">查看工具</a>
+                <span class="badge bg-secondary-subtle text-secondary coming-badge">规划中</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="text-center text-muted mt-4">
+        <small>有新的工具需求？<a href="mailto:raricycms@gmail.com">告诉我们</a> 或在 <a href="https://github.com/raricycms/raricy.com" target="_blank" rel="noopener">GitHub</a> 提交建议。</small>
+      </div>
+    </div>
+  </section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  (function () {
+    const searchInput = document.getElementById('tool-search');
+    const pills = Array.from(document.querySelectorAll('.filter-pill'));
+    const cards = Array.from(document.querySelectorAll('.tool-card'));
+
+    let activeGroup = 'all';
+
+    function normalize(text) { return (text || '').toLowerCase().trim(); }
+
+    function matches(card, term) {
+      if (!term) return true;
+      const keywords = (card.getAttribute('data-keywords') || '') + ' ' + card.innerText;
+      return normalize(keywords).includes(normalize(term));
+    }
+
+    function inGroup(card, group) {
+      if (group === 'all') return true;
+      const groups = (card.getAttribute('data-groups') || '').split(',').map(s => s.trim());
+      return groups.includes(group);
+    }
+
+    function applyFilter() {
+      const term = searchInput.value;
+      cards.forEach(card => {
+        const visible = matches(card, term) && inGroup(card, activeGroup);
+        card.parentElement.style.display = visible ? '' : 'none';
+      });
+    }
+
+    // Search input
+    searchInput?.addEventListener('input', applyFilter);
+
+    // Group pills
+    pills.forEach(pill => {
+      pill.addEventListener('click', () => {
+        pills.forEach(p => p.classList.remove('active'));
+        pill.classList.add('active');
+        activeGroup = pill.getAttribute('data-filter') || 'all';
+        applyFilter();
+        // Scroll smoothly to section if not 'all'
+        const targetId = activeGroup !== 'all' ? activeGroup : null;
+        if (targetId) {
+          const section = document.getElementById(targetId);
+          section?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      });
+    });
+
+    // Initial
+    applyFilter();
+  })();
+</script>
+{% endblock %}
+
+
