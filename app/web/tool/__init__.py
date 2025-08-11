@@ -62,3 +62,28 @@ def api_base():
 @tool_bp.route('/hex')
 def hex_page():
     return render_template('tool/hex.html')
+
+
+@tool_bp.route('/url')
+def url_page():
+    return render_template('tool/url.html')
+
+
+@tool_bp.route('/html')
+def html_page():
+    return render_template('tool/html.html')
+
+
+@tool_bp.route('/qp')
+def qp_page():
+    return render_template('tool/qp.html')
+
+
+@tool_bp.route('/hash')
+def hash_page():
+    return render_template('tool/hash.html')
+
+
+@tool_bp.route('/aes')
+def aes_page():
+    return render_template('tool/aes.html')

@@ -103,15 +103,9 @@
       algoBadges.forEach(b => {
         const isActive = b.getAttribute('data-algo') === currentAlgo;
         b.classList.toggle('active', isActive);
-        if (isActive) {
-          b.classList.remove('bg-light', 'text-dark');
-          b.classList.add('text-white');
-          b.setAttribute('aria-pressed', 'true');
-        } else {
-          b.classList.add('bg-light', 'text-dark');
-          b.classList.remove('text-white');
-          b.setAttribute('aria-pressed', 'false');
-        }
+        b.classList.toggle('bg-light', !isActive);
+        b.classList.toggle('text-dark', !isActive);
+        b.setAttribute('aria-pressed', isActive ? 'true' : 'false');
       });
     }
     setAlgo(currentAlgo);
@@ -158,6 +152,7 @@
     }
     function hexToBytes(hex) {
       const cleaned = (hex || '').trim().toLowerCase().replace(/^0x/, '').replace(/\s+/g, '');
+      if (!/^[0-9a-f]*$/.test(cleaned)) throw new Error('包含非法十六进制字符');
       if (cleaned.length % 2 !== 0) throw new Error('十六进制长度必须为偶数');
       const out = new Uint8Array(cleaned.length / 2);
       for (let i = 0; i < cleaned.length; i += 2) {
@@ -423,6 +418,10 @@
         b = (b << 13) | v;
         n += 13;
         while (n >= 8) { n -= 8; out.push((b >>> n) & 0xff); }
+      }
+      // Final check for remaining bits that couldn't form a full byte in the last iteration
+      if (n > 0 && input.length % 2 === 1) {
+         out.push((b << (8-n)) & 0xff);
       }
       return new Uint8Array(out);
     }

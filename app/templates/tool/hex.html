@@ -49,7 +49,14 @@
           <input id="fileInput" class="form-control" type="file" />
           <div class="form-text">支持任意类型文件，大小受浏览器可用内存限制。</div>
         </div>
-        <div class="col-12 col-md-6 d-flex gap-2 flex-wrap">
+        <div class="col-12 col-md-6 d-flex gap-2 flex-wrap align-items-center">
+          <div id="loadProgressGroup" class="flex-grow-1" style="display:none; min-width: 240px;">
+            <div class="progress" role="progressbar" aria-label="文件加载进度" aria-valuemin="0" aria-valuemax="100">
+              <div id="loadProgressBar" class="progress-bar progress-bar-striped progress-bar-animated" style="width: 0%"></div>
+            </div>
+            <small id="loadProgressText" class="text-muted">0%</small>
+          </div>
+          <button id="btnCancelLoad" class="btn btn-outline-danger" style="display:none;"><i class="bi bi-x-circle"></i> 取消加载</button>
           <button id="btnDownload" class="btn btn-primary" disabled><i class="bi bi-download"></i> 下载修改后的文件</button>
           <span id="fileInfo" class="ms-auto text-muted form-hint"></span>
         </div>
@@ -90,6 +97,10 @@
     const hexViewer = document.getElementById('hexViewer');
     const statusText = document.getElementById('statusText');
     const fileInfo = document.getElementById('fileInfo');
+    const loadProgressGroup = document.getElementById('loadProgressGroup');
+    const loadProgressBar = document.getElementById('loadProgressBar');
+    const loadProgressText = document.getElementById('loadProgressText');
+    const btnCancelLoad = document.getElementById('btnCancelLoad');
 
     let originalFileName = '';
     let fileBytes = new Uint8Array();
@@ -158,16 +169,67 @@
       bodyEl.innerHTML = lines.join('');
     }
 
+    let currentAbort = null;
+    function resetProgress() {
+      loadProgressBar.style.width = '0%';
+      loadProgressText.textContent = '0%';
+    }
+    function showProgressUI(show) {
+      loadProgressGroup.style.display = show ? '' : 'none';
+      btnCancelLoad.style.display = show ? '' : 'none';
+    }
+
+    btnCancelLoad.addEventListener('click', () => {
+      if (currentAbort) currentAbort.abort();
+      showProgressUI(false);
+      showStatus('已取消加载');
+    });
+
     fileInput.addEventListener('change', async () => {
       const f = fileInput.files?.[0];
       if (!f) return;
       originalFileName = f.name || 'modified.bin';
-      const buf = await f.arrayBuffer();
-      fileBytes = new Uint8Array(buf);
-      originalBytes = new Uint8Array(fileBytes);
       modifiedIndices = new Set();
       lastFocusIndex = null;
-      refreshAll();
+      showProgressUI(true);
+      resetProgress();
+
+      // Stream read for progress using fetch on blob URL
+      const url = URL.createObjectURL(f);
+      const controller = new AbortController();
+      currentAbort = controller;
+      try {
+        const resp = await fetch(url, { signal: controller.signal });
+        const reader = resp.body.getReader();
+        const total = f.size;
+        let received = 0;
+        const chunks = [];
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunks.push(value);
+          received += value.byteLength;
+          const percent = Math.min(100, Math.floor((received / total) * 100));
+          loadProgressBar.style.width = percent + '%';
+          loadProgressText.textContent = percent + '%';
+        }
+        const blob = new Blob(chunks, { type: 'application/octet-stream' });
+        const buf = await blob.arrayBuffer();
+        fileBytes = new Uint8Array(buf);
+        originalBytes = new Uint8Array(fileBytes);
+        refreshAll();
+        showStatus('加载完成');
+      } catch (e) {
+        if (controller.signal.aborted) {
+          // keep current state
+        } else {
+          showStatus('加载失败');
+        }
+      } finally {
+        showProgressUI(false);
+        URL.revokeObjectURL(url);
+        currentAbort = null;
+      }
     });
 
     btnDownload.addEventListener('click', () => {

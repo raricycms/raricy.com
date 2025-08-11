@@ -1,0 +1,140 @@
+{% extends 'base.html' %}
+
+{% block title %}HTML 实体编码/解码 - 聪明山{% endblock %}
+
+{% block extra_css %}
+<style>
+  .tool-panel { background: rgba(255,255,255,.9); border: 1px solid rgba(0,0,0,.06); backdrop-filter: blur(6px); }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+  .result-area { min-height: 220px; }
+  .section-title { font-weight: 700; letter-spacing: .2px; }
+  .mid-actions { min-height: 100%; display: flex; align-items: center; justify-content: center; }
+  .mid-actions .btn { width: 140px; }
+  .btn-copy { position: absolute; right: 1rem; top: .75rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="py-4">
+  <div class="container">
+    <div class="d-flex align-items-center mb-3">
+      <a href="{{ url_for('tool.menu') }}" class="text-decoration-none me-2"><i class="bi bi-arrow-left"></i></a>
+      <h1 class="mb-0 section-title">HTML 实体编码 / 解码</h1>
+    </div>
+    <p class="text-muted mb-3">支持常见 HTML 实体（如 &amp;amp; &amp;lt; &amp;gt; &amp;quot; &amp;apos; &amp;nbsp;）的转义与还原。</p>
+
+    <div class="row g-4 align-items-stretch">
+      <div class="col-12 col-lg-5">
+        <div class="p-3 rounded tool-panel h-100">
+          <label class="form-label fw-semibold">左侧（原文）</label>
+          <textarea id="leftArea" class="form-control mono result-area" rows="12" placeholder="原文在此输入。编码时 → 右侧，解码结果将从右侧 → 左侧"></textarea>
+          <div class="mt-3">
+            <label class="form-label fw-semibold">选项</label>
+            <div class="row g-2">
+              <div class="col-12 col-md-6">
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" id="useNamed" checked>
+                  <label class="form-check-label" for="useNamed">优先使用命名实体（如 &amp;amp;），否则使用数字实体</label>
+                </div>
+              </div>
+              <div class="col-12 col-md-6">
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" id="encodeNonAscii" checked>
+                  <label class="form-check-label" for="encodeNonAscii">编码非 ASCII 字符（如中文 → &#xXXXX;）</label>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-12 col-lg-2">
+        <div class="mid-actions h-100">
+          <div class="d-flex flex-column gap-3 w-100 align-items-center">
+            <button id="btnEncode" class="btn btn-primary"><i class="bi bi-arrow-right"></i> 编码</button>
+            <button id="btnDecode" class="btn btn-outline-primary"><i class="bi bi-arrow-left"></i> 解码</button>
+            <button id="btnSwap" class="btn btn-outline-secondary"><i class="bi bi-arrow-left-right"></i> 交换两侧</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-12 col-lg-5">
+        <div class="p-3 rounded tool-panel h-100 position-relative">
+          <label class="form-label fw-semibold">右侧（编码文本）</label>
+          <button id="btnCopyRight" class="btn btn-sm btn-outline-secondary btn-copy"><i class="bi bi-clipboard"></i> 复制</button>
+          <textarea id="rightArea" class="form-control mono result-area" rows="12" placeholder="编码文本在此显示或粘贴以解码"></textarea>
+          <div class="d-flex justify-content-between mt-2">
+            <small class="text-muted">快捷键：<span class="kbd">Ctrl</span> + <span class="kbd">Enter</span> 编码（左 → 右）</small>
+            <span id="statusText" class="text-muted"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  (function(){
+    const leftArea = document.getElementById('leftArea');
+    const rightArea = document.getElementById('rightArea');
+    const btnEncode = document.getElementById('btnEncode');
+    const btnDecode = document.getElementById('btnDecode');
+    const btnSwap = document.getElementById('btnSwap');
+    const btnCopyRight = document.getElementById('btnCopyRight');
+    const statusText = document.getElementById('statusText');
+
+    const useNamed = document.getElementById('useNamed');
+    const encodeNonAscii = document.getElementById('encodeNonAscii');
+
+    function showStatus(msg){ statusText.textContent = msg; }
+
+    const namedMap = {
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;',
+      '\u00A0': '&nbsp;'
+    };
+    function encodeHTML(text) {
+      let out = '';
+      for (const ch of text) {
+        if (namedMap[ch]) {
+          // Always encode the basic HTML entities, regardless of the checkbox
+          out += namedMap[ch];
+        } else if (encodeNonAscii.checked && ch.charCodeAt(0) > 0x7F) {
+          const code = ch.codePointAt(0).toString(16).toUpperCase();
+          out += `&#x${code};`;
+        } else {
+          out += ch;
+        }
+      }
+      return out;
+    }
+
+    function decodeHTML(text) {
+      // Use a DOM parser approach for robustness
+      const div = document.createElement('div');
+      div.innerHTML = text;
+      return div.textContent || div.innerText || '';
+    }
+
+    function encodeLeftToRight(){
+      rightArea.value = encodeHTML(leftArea.value || '');
+      showStatus('完成');
+    }
+    function decodeRightToLeft(){
+      leftArea.value = decodeHTML(rightArea.value || '');
+      showStatus('完成');
+    }
+
+    btnEncode.addEventListener('click', encodeLeftToRight);
+    btnDecode.addEventListener('click', decodeRightToLeft);
+    btnSwap.addEventListener('click', () => { const t = leftArea.value; leftArea.value = rightArea.value; rightArea.value = t; });
+    btnCopyRight.addEventListener('click', async () => { try{ await navigator.clipboard.writeText(rightArea.value || ''); showStatus('已复制'); } catch { showStatus('复制失败'); } });
+
+    leftArea.addEventListener('keydown', (e) => { if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); encodeLeftToRight(); } });
+    rightArea.addEventListener('keydown', (e) => { if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); decodeRightToLeft(); } });
+  })();
+</script>
+{% endblock %}
+
+

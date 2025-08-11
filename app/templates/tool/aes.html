@@ -1,0 +1,246 @@
+{% extends 'base.html' %}
+
+{% block title %}AES 加/解密 - 聪明山{% endblock %}
+
+{% block extra_css %}
+<style>
+  .tool-panel { background: rgba(255,255,255,.9); border: 1px solid rgba(0,0,0,.06); backdrop-filter: blur(6px); }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+  .result-area { min-height: 220px; }
+  .section-title { font-weight: 700; letter-spacing: .2px; }
+  .mid-actions { min-height: 100%; display: flex; align-items: center; justify-content: center; }
+  .mid-actions .btn { width: 140px; }
+  .btn-copy { position: absolute; right: 1rem; top: .75rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="py-4">
+  <div class="container">
+    <div class="d-flex align-items-center mb-3">
+      <a href="{{ url_for('tool.menu') }}" class="text-decoration-none me-2"><i class="bi bi-arrow-left"></i></a>
+      <h1 class="mb-0 section-title">AES 加/解密</h1>
+    </div>
+    <p class="text-muted mb-3">前端完成 AES-CBC/CTR/GCM 加解密，支持十六进制或文本密钥，IV/Nonce 自定义。</p>
+
+    <div class="row g-4 align-items-stretch">
+      <div class="col-12 col-lg-5">
+        <div class="p-3 rounded tool-panel h-100">
+          <label class="form-label fw-semibold">左侧（明文 / 输入）</label>
+          <textarea id="leftArea" class="form-control mono result-area" rows="12" placeholder="输入待加密明文，或在右侧粘贴密文以解密"></textarea>
+
+          <div class="row g-3 mt-2">
+            <div class="col-12 col-md-6">
+              <label class="form-label">模式</label>
+              <select id="mode" class="form-select">
+                <option value="GCM" selected>GCM</option>
+                <option value="CBC">CBC</option>
+                <option value="CTR">CTR</option>
+              </select>
+            </div>
+            <div class="col-12 col-md-6">
+              <label class="form-label">密钥长度</label>
+              <select id="keyLen" class="form-select">
+                <option value="128" selected>128</option>
+                <option value="192">192</option>
+                <option value="256">256</option>
+              </select>
+            </div>
+            <div class="col-12 col-md-8">
+              <label class="form-label">密钥（文本或十六进制）</label>
+              <input id="keyInput" class="form-control mono" placeholder="示例：secret or 001122... (hex)">
+            </div>
+            <div class="col-12 col-md-4">
+              <label class="form-label">密钥类型</label>
+              <select id="keyType" class="form-select">
+                <option value="text" selected>文本</option>
+                <option value="hex">十六进制</option>
+              </select>
+            </div>
+            <div class="col-12 col-md-8">
+              <label class="form-label">IV/Nonce（十六进制）</label>
+              <input id="ivInput" class="form-control mono" placeholder="GCM/CTR 推荐 12 字节；CBC 16 字节">
+            </div>
+            <div class="col-12 col-md-4">
+              <label class="form-label">输出格式</label>
+              <select id="outFormat" class="form-select">
+                <option value="hex" selected>Hex</option>
+                <option value="base64">Base64</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-12 col-lg-2">
+        <div class="mid-actions h-100">
+          <div class="d-flex flex-column gap-3 w-100 align-items-center">
+            <button id="btnEncrypt" class="btn btn-primary"><i class="bi bi-arrow-right"></i> 加密</button>
+            <button id="btnDecrypt" class="btn btn-outline-primary"><i class="bi bi-arrow-left"></i> 解密</button>
+            <button id="btnSwap" class="btn btn-outline-secondary"><i class="bi bi-arrow-left-right"></i> 交换两侧</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-12 col-lg-5">
+        <div class="p-3 rounded tool-panel h-100 position-relative">
+          <label class="form-label fw-semibold">右侧（密文 / 输出）</label>
+          <button id="btnCopyRight" class="btn btn-sm btn-outline-secondary btn-copy"><i class="bi bi-clipboard"></i> 复制</button>
+          <textarea id="rightArea" class="form-control mono result-area" rows="12" placeholder="密文在此显示或粘贴密文以解密"></textarea>
+          <div class="d-flex justify-content-between mt-2">
+            <small class="text-muted">快捷键：<span class="kbd">Ctrl</span> + <span class="kbd">Enter</span> 加密（左 → 右）</small>
+            <span id="statusText" class="text-muted"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  (function(){
+    const leftArea = document.getElementById('leftArea');
+    const rightArea = document.getElementById('rightArea');
+    const modeSel = document.getElementById('mode');
+    const keyLenSel = document.getElementById('keyLen');
+    const keyInput = document.getElementById('keyInput');
+    const keyTypeSel = document.getElementById('keyType');
+    const ivInput = document.getElementById('ivInput');
+    const outFormatSel = document.getElementById('outFormat');
+    const statusText = document.getElementById('statusText');
+    const btnEncrypt = document.getElementById('btnEncrypt');
+    const btnDecrypt = document.getElementById('btnDecrypt');
+    const btnSwap = document.getElementById('btnSwap');
+    const btnCopyRight = document.getElementById('btnCopyRight');
+
+    function showStatus(msg){ statusText.textContent = msg; }
+
+    const te = new TextEncoder();
+    const td = new TextDecoder();
+
+    function hexToBytes(hex) {
+      const cleaned = (hex || '').trim().replace(/^0x/i,'').replace(/\s+/g,'').toLowerCase();
+      if (!/^[0-9a-f]*$/.test(cleaned)) throw new Error('包含非法十六进制字符');
+      if (cleaned.length % 2 !== 0) throw new Error('十六进制长度必须为偶数');
+      const out = new Uint8Array(cleaned.length/2);
+      for (let i=0;i<cleaned.length;i+=2) out[i/2] = parseInt(cleaned.slice(i,i+2),16);
+      return out;
+    }
+    function bytesToHex(bytes){ return Array.from(bytes).map(b=>b.toString(16).padStart(2,'0')).join(''); }
+    function bytesToBase64(bytes){ let s=''; bytes.forEach(b=> s += String.fromCharCode(b)); return btoa(s); }
+    function base64ToBytes(b64){ const s=atob(b64.trim()); const out=new Uint8Array(s.length); for(let i=0;i<s.length;i++) out[i]=s.charCodeAt(i); return out; }
+
+    async function deriveKeyBytes(keyStr, keyType, keyLenBits){
+      const lenBytes = keyLenBits / 8;
+      if (keyType === 'hex') {
+        const kb = hexToBytes(keyStr);
+        if (kb.length !== lenBytes) throw new Error(`十六进制密钥长度必须为 ${lenBytes} 字节`);
+        return kb;
+      }
+      const raw = te.encode(keyStr || '');
+      // 使用 SHA-256 对文本密钥做哈希，截取所需长度，保证加/解密一致
+      const digest = await crypto.subtle.digest('SHA-256', raw);
+      const full = new Uint8Array(digest);
+      return full.slice(0, lenBytes);
+    }
+
+    async function getKey(mode){
+      const keyLenBits = parseInt(keyLenSel.value, 10);
+      const keyBytes = await deriveKeyBytes(keyInput.value || '', keyTypeSel.value, keyLenBits);
+      const algoName = 'AES-' + mode;
+      return await crypto.subtle.importKey('raw', keyBytes, { name: algoName }, false, ['encrypt','decrypt']);
+    }
+
+    function getIv(mode){
+      const ivHex = ivInput.value || '';
+      let iv;
+      if (ivHex) {
+        iv = hexToBytes(ivHex);
+      } else {
+        iv = (mode === 'CBC') ? crypto.getRandomValues(new Uint8Array(16)) : crypto.getRandomValues(new Uint8Array(12));
+        ivInput.value = bytesToHex(iv);
+      }
+      if (mode === 'CBC' && iv.length !== 16) throw new Error('CBC 模式要求 16 字节 IV');
+      if ((mode === 'GCM' || mode === 'CTR') && iv.length !== 12) throw new Error('GCM/CTR 需要 12 字节 Nonce');
+      return iv;
+    }
+
+    function encodeOut(bytes){ return outFormatSel.value === 'hex' ? bytesToHex(bytes) : bytesToBase64(bytes); }
+    function decodeIn(str){ return outFormatSel.value === 'hex' ? hexToBytes(str) : base64ToBytes(str); }
+
+    async function encrypt(){
+      try{
+        const mode = modeSel.value;
+        const key = await getKey(mode);
+        const iv = getIv(mode);
+        const data = te.encode(leftArea.value || '');
+        let result;
+        if (mode === 'GCM') {
+          result = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, key, data);
+        } else if (mode === 'CBC') {
+          // PKCS#7 padding by hand
+          const blockSize = 16;
+          const padLen = blockSize - (data.length % blockSize);
+          const padded = new Uint8Array(data.length + padLen);
+          padded.set(data);
+          padded.fill(padLen, data.length);
+          result = await crypto.subtle.encrypt({ name:'AES-CBC', iv }, key, padded);
+        } else {
+          result = await crypto.subtle.encrypt({ name:'AES-CTR', counter: iv, length: 64 }, key, data);
+        }
+        const out = new Uint8Array(result);
+        // prepend IV for convenience (hex/base64)
+        const combined = new Uint8Array(iv.length + out.length);
+        combined.set(iv, 0); combined.set(out, iv.length);
+        rightArea.value = encodeOut(combined);
+        showStatus('完成（输出已包含 IV/Nonce 前缀）');
+      }catch(e){ rightArea.value = ''; showStatus('失败: '+(e && e.message ? e.message : '')); }
+    }
+
+    async function decrypt(){
+      try{
+        const mode = modeSel.value;
+        const key = await getKey(mode);
+        const input = decodeIn(rightArea.value || '');
+        // assume input prefixed with IV
+        let ivLen = mode === 'CBC' ? 16 : 12;
+        if (input.length <= ivLen) throw new Error('密文长度不足');
+        const iv = input.slice(0, ivLen);
+        const ciphertext = input.slice(ivLen);
+        let plainBuf;
+        if (mode === 'GCM') {
+          plainBuf = await crypto.subtle.decrypt({ name:'AES-GCM', iv }, key, ciphertext);
+        } else if (mode === 'CBC') {
+          const buf = await crypto.subtle.decrypt({ name:'AES-CBC', iv }, key, ciphertext);
+          // remove PKCS#7 padding
+          const bytes = new Uint8Array(buf);
+          const pad = bytes[bytes.length - 1];
+          if (pad < 1 || pad > 16 || pad > bytes.length) throw new Error('填充无效');
+          // Verify all padding bytes
+          for (let i = bytes.length - pad; i < bytes.length; i++) {
+            if (bytes[i] !== pad) throw new Error('填充无效');
+          }
+          const unpadded = bytes.slice(0, bytes.length - pad);
+          plainBuf = unpadded.buffer;
+        } else {
+          plainBuf = await crypto.subtle.decrypt({ name:'AES-CTR', counter: iv, length: 64 }, key, ciphertext);
+        }
+        rightArea.value = '';
+        leftArea.value = td.decode(new Uint8Array(plainBuf));
+        showStatus('完成');
+      }catch(e){ leftArea.value = ''; showStatus('失败: '+(e && e.message ? e.message : '')); }
+    }
+
+    btnEncrypt.addEventListener('click', encrypt);
+    btnDecrypt.addEventListener('click', decrypt);
+    btnSwap.addEventListener('click', () => { const t = leftArea.value; leftArea.value = rightArea.value; rightArea.value = t; });
+    btnCopyRight.addEventListener('click', async () => { try{ await navigator.clipboard.writeText(rightArea.value || ''); showStatus('已复制'); } catch { showStatus('复制失败'); } });
+    leftArea.addEventListener('keydown', (e) => { if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); encrypt(); } });
+  })();
+</script>
+{% endblock %}
+
+
