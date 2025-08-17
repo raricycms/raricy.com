@@ -52,6 +52,21 @@ Raricy.com - 文章上传
         </div>
 
         <div class="mb-3">
+            <label for="category" class="form-label">栏目</label>
+            <select class="form-select" id="category">
+                <option value="">选择栏目（可选）</option>
+                {% for category in categories %}
+                <optgroup label="{{ category.icon }} {{ category.name }}">
+                    <option value="{{ category.id }}">{{ category.icon }} {{ category.name }}</option>
+                    {% for child in category.children %}
+                    <option value="{{ child.id }}">　└ {{ child.icon }} {{ child.name }}</option>
+                    {% endfor %}
+                </optgroup>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="mb-3">
             <label class="form-label">内容（Markdown格式）（注意：粘贴的内容会自动变为引用。）</label>
             <div id="editor" style="height: 60vh;"></div>
         </div>
@@ -98,6 +113,7 @@ Raricy.com - 文章上传
             const title = document.getElementById('title').value;
             const description = document.getElementById('description').value;
             const content = vditor.getValue();
+            const category_id = document.getElementById('category').value;
             const turnstileResponse = form.querySelector('[name="cf-turnstile-response"]').value;
             if (!title || !description || !content) {
                 showMessage('请填写完整信息');
@@ -124,6 +140,7 @@ Raricy.com - 文章上传
                         title: title,
                         description: description,
                         content: content,
+                        category_id: category_id,
                         'cf-turnstile-response': turnstileResponse
                     })
                 });

@@ -1,0 +1,451 @@
+{% extends "base.html" %}
+
+{% block title %}栏目管理 - 博客后台{% endblock %}
+
+{% block extra_css %}
+<style>
+    .admin-hero {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 50px 0 30px;
+        text-align: center;
+        color: white;
+    }
+
+    .admin-container {
+        max-width: 1200px;
+        margin: 40px auto;
+        padding: 0 20px;
+    }
+
+    .category-card {
+        background: white;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        border-left: 4px solid #007bff;
+    }
+
+    .child-category {
+        margin-left: 30px;
+        border-left-color: #28a745;
+        background: #f8f9fa;
+    }
+
+    .category-header {
+        display: flex;
+        justify-content: between;
+        align-items: center;
+        margin-bottom: 10px;
+    }
+
+    .category-info {
+        flex: 1;
+    }
+
+    .category-actions {
+        display: flex;
+        gap: 10px;
+    }
+
+    .btn-sm {
+        padding: 5px 12px;
+        font-size: 0.85rem;
+    }
+
+    .modal-body .form-group {
+        margin-bottom: 15px;
+    }
+
+    .emoji-preview {
+        font-size: 1.5rem;
+        margin-left: 10px;
+    }
+
+    #message-container {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 9999;
+        min-width: 300px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="admin-hero">
+    <h1>🏷️ 栏目管理</h1>
+    <p>管理博客栏目分类</p>
+</section>
+
+<div class="admin-container">
+    <div id="message-container"></div>
+    
+    <!-- 操作按钮 -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createCategoryModal">
+                ➕ 新增栏目
+            </button>
+            <a href="/blog/admin/articles" class="btn btn-outline-success">
+                📂 文章栏目管理
+            </a>
+            <a href="/blog/admin" class="btn btn-outline-info">
+                🏠 管理后台
+            </a>
+            <a href="/blog/" class="btn btn-outline-secondary">
+                📝 返回博客
+            </a>
+        </div>
+        <div>
+            <span class="text-muted">共 {{ categories|length }} 个一级栏目</span>
+        </div>
+    </div>
+
+    <!-- 栏目列表 -->
+    <div id="categoriesList">
+        {% for category in categories %}
+        <div class="category-card" data-category-id="{{ category.id }}">
+            <div class="category-header">
+                <div class="category-info">
+                    <h5>
+                        <span class="emoji-preview">{{ category.icon }}</span>
+                        {{ category.name }}
+                        <span class="badge bg-primary">{{ category.slug }}</span>
+                        {% if not category.is_active %}
+                        <span class="badge bg-warning">已禁用</span>
+                        {% endif %}
+                    </h5>
+                    <p class="text-muted mb-0">{{ category.description }}</p>
+                </div>
+                <div class="category-actions">
+                    <button class="btn btn-sm btn-outline-primary edit-category" 
+                            data-category='{{ category | tojson }}'>
+                        ✏️ 编辑
+                    </button>
+                    <button class="btn btn-sm btn-outline-success add-child" 
+                            data-parent-id="{{ category.id }}" 
+                            data-parent-name="{{ category.name }}">
+                        ➕ 添加子栏目
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger delete-category" 
+                            data-category-id="{{ category.id }}" 
+                            data-category-name="{{ category.name }}">
+                        🗑️ 删除
+                    </button>
+                </div>
+            </div>
+            
+            <!-- 子栏目 -->
+            {% if category.children %}
+            <div class="child-categories mt-3">
+                {% for child in category.children %}
+                <div class="category-card child-category" data-category-id="{{ child.id }}">
+                    <div class="category-header">
+                        <div class="category-info">
+                            <h6>
+                                <span class="emoji-preview">{{ child.icon }}</span>
+                                {{ child.name }}
+                                <span class="badge bg-success">{{ child.slug }}</span>
+                                {% if not child.is_active %}
+                                <span class="badge bg-warning">已禁用</span>
+                                {% endif %}
+                            </h6>
+                            <p class="text-muted mb-0">{{ child.description }}</p>
+                        </div>
+                        <div class="category-actions">
+                            <button class="btn btn-sm btn-outline-primary edit-category" 
+                                    data-category='{{ child | tojson }}'>
+                                ✏️ 编辑
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger delete-category" 
+                                    data-category-id="{{ child.id }}" 
+                                    data-category-name="{{ child.name }}">
+                                🗑️ 删除
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- 创建栏目模态框 -->
+<div class="modal fade" id="createCategoryModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">新增栏目</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="createCategoryForm">
+                    <div class="form-group">
+                        <label for="createName" class="form-label">栏目名称</label>
+                        <input type="text" class="form-control" id="createName" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="createSlug" class="form-label">标识符</label>
+                        <input type="text" class="form-control" id="createSlug" required>
+                        <div class="form-text">用于URL，只能包含字母、数字、连字符</div>
+                    </div>
+                    <div class="form-group">
+                        <label for="createDescription" class="form-label">描述</label>
+                        <textarea class="form-control" id="createDescription" rows="3"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="createIcon" class="form-label">图标</label>
+                        <input type="text" class="form-control" id="createIcon" placeholder="🏷️">
+                        <div class="form-text">输入一个emoji表情</div>
+                    </div>
+                    <div class="form-group">
+                        <label for="createParent" class="form-label">父栏目</label>
+                        <select class="form-select" id="createParent">
+                            <option value="">选择父栏目（可选）</option>
+                            {% for category in categories %}
+                            <option value="{{ category.id }}">{{ category.icon }} {{ category.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="submitCreate">创建</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 编辑栏目模态框 -->
+<div class="modal fade" id="editCategoryModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">编辑栏目</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editCategoryForm">
+                    <input type="hidden" id="editCategoryId">
+                    <div class="form-group">
+                        <label for="editName" class="form-label">栏目名称</label>
+                        <input type="text" class="form-control" id="editName" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="editSlug" class="form-label">标识符</label>
+                        <input type="text" class="form-control" id="editSlug" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="editDescription" class="form-label">描述</label>
+                        <textarea class="form-control" id="editDescription" rows="3"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="editIcon" class="form-label">图标</label>
+                        <input type="text" class="form-control" id="editIcon">
+                    </div>
+                    <div class="form-group">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="editIsActive">
+                            <label class="form-check-label" for="editIsActive">启用栏目</label>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="submitEdit">保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 删除确认模态框 -->
+<div class="modal fade" id="deleteConfirmModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">确认删除</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>确定要删除栏目 "<span id="deleteCategoryName"></span>" 吗？</p>
+                <p class="text-danger">注意：删除前请确保该栏目下没有文章和子栏目。</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-danger" id="confirmDelete">确认删除</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // 显示消息提示
+    function showMessage(message, type = 'danger') {
+        const alert = `<div class="alert alert-${type} alert-dismissible fade show">
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>`;
+        document.getElementById('message-container').innerHTML = alert;
+    }
+
+    // 创建栏目
+    document.getElementById('submitCreate').addEventListener('click', async function() {
+        const form = document.getElementById('createCategoryForm');
+        const data = {
+            name: document.getElementById('createName').value.trim(),
+            slug: document.getElementById('createSlug').value.trim(),
+            description: document.getElementById('createDescription').value.trim(),
+            icon: document.getElementById('createIcon').value.trim(),
+            parent_id: document.getElementById('createParent').value || null
+        };
+
+        if (!data.name || !data.slug) {
+            showMessage('请填写栏目名称和标识符');
+            return;
+        }
+
+        try {
+            const response = await fetch('/blog/admin/categories', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+            const result = await response.json();
+            
+            if (result.code === 200) {
+                showMessage('栏目创建成功！', 'success');
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                showMessage(result.message || '创建失败');
+            }
+        } catch (error) {
+            showMessage('网络错误，请稍后重试');
+        }
+    });
+
+    // 添加子栏目
+    document.addEventListener('click', function(e) {
+        if (e.target.classList.contains('add-child')) {
+            const parentId = e.target.dataset.parentId;
+            const parentName = e.target.dataset.parentName;
+            
+            document.getElementById('createParent').value = parentId;
+            document.getElementById('createParent').disabled = true;
+            document.querySelector('#createCategoryModal .modal-title').textContent = `为 "${parentName}" 添加子栏目`;
+            
+            const modal = new bootstrap.Modal(document.getElementById('createCategoryModal'));
+            modal.show();
+            
+            // 重置模态框关闭时的状态
+            document.getElementById('createCategoryModal').addEventListener('hidden.bs.modal', function() {
+                document.getElementById('createParent').disabled = false;
+                document.getElementById('createParent').value = '';
+                document.querySelector('#createCategoryModal .modal-title').textContent = '新增栏目';
+                document.getElementById('createCategoryForm').reset();
+            });
+        }
+    });
+
+    // 编辑栏目
+    document.addEventListener('click', function(e) {
+        if (e.target.classList.contains('edit-category')) {
+            const category = JSON.parse(e.target.dataset.category);
+            
+            document.getElementById('editCategoryId').value = category.id;
+            document.getElementById('editName').value = category.name;
+            document.getElementById('editSlug').value = category.slug;
+            document.getElementById('editDescription').value = category.description || '';
+            document.getElementById('editIcon').value = category.icon || '';
+            document.getElementById('editIsActive').checked = category.is_active;
+            
+            const modal = new bootstrap.Modal(document.getElementById('editCategoryModal'));
+            modal.show();
+        }
+    });
+
+    // 保存编辑
+    document.getElementById('submitEdit').addEventListener('click', async function() {
+        const categoryId = document.getElementById('editCategoryId').value;
+        const data = {
+            name: document.getElementById('editName').value.trim(),
+            slug: document.getElementById('editSlug').value.trim(),
+            description: document.getElementById('editDescription').value.trim(),
+            icon: document.getElementById('editIcon').value.trim(),
+            is_active: document.getElementById('editIsActive').checked
+        };
+
+        if (!data.name || !data.slug) {
+            showMessage('请填写栏目名称和标识符');
+            return;
+        }
+
+        try {
+            const response = await fetch(`/blog/admin/categories/${categoryId}`, {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+            const result = await response.json();
+            
+            if (result.code === 200) {
+                showMessage('栏目更新成功！', 'success');
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                showMessage(result.message || '更新失败');
+            }
+        } catch (error) {
+            showMessage('网络错误，请稍后重试');
+        }
+    });
+
+    // 删除栏目
+    document.addEventListener('click', function(e) {
+        if (e.target.classList.contains('delete-category')) {
+            const categoryId = e.target.dataset.categoryId;
+            const categoryName = e.target.dataset.categoryName;
+            
+            document.getElementById('deleteCategoryName').textContent = categoryName;
+            document.getElementById('confirmDelete').dataset.categoryId = categoryId;
+            
+            const modal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
+            modal.show();
+        }
+    });
+
+    // 确认删除
+    document.getElementById('confirmDelete').addEventListener('click', async function() {
+        const categoryId = this.dataset.categoryId;
+        
+        try {
+            const response = await fetch(`/blog/admin/categories/${categoryId}`, {
+                method: 'DELETE'
+            });
+            const result = await response.json();
+            
+            if (result.code === 200) {
+                showMessage('栏目删除成功！', 'success');
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                showMessage(result.message || '删除失败');
+            }
+        } catch (error) {
+            showMessage('网络错误，请稍后重试');
+        }
+    });
+});
+</script>
+{% endblock %}
+
+{% block footer_text %}
+栏目管理 - 仅管理员可访问
+{% endblock %}
+

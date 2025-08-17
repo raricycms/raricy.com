@@ -1,0 +1,536 @@
+{% extends "base.html" %}
+
+{% block title %}文章栏目管理 - 博客后台{% endblock %}
+
+{% block extra_css %}
+<style>
+    .admin-hero {
+        background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+        padding: 50px 0 30px;
+        text-align: center;
+        color: white;
+    }
+
+    .admin-container {
+        max-width: 1400px;
+        margin: 40px auto;
+        padding: 0 20px;
+    }
+
+    .filter-bar {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        margin-bottom: 20px;
+    }
+
+    .article-card {
+        background: white;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 15px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+        border-left: 4px solid #dee2e6;
+        transition: all 0.3s ease;
+    }
+
+    .article-card:hover {
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+        transform: translateY(-2px);
+    }
+
+    .article-card.selected {
+        border-left-color: #007bff;
+        background: #f8f9ff;
+    }
+
+    .article-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 10px;
+    }
+
+    .article-info {
+        flex: 1;
+        margin-right: 20px;
+    }
+
+    .article-title {
+        font-size: 1.2rem;
+        font-weight: 600;
+        margin-bottom: 5px;
+        color: #2c3e50;
+    }
+
+    .article-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 15px;
+        margin-bottom: 8px;
+        font-size: 0.9rem;
+        color: #6c757d;
+    }
+
+    .article-description {
+        color: #6c757d;
+        font-size: 0.95rem;
+        line-height: 1.4;
+    }
+
+    .article-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        min-width: 200px;
+    }
+
+    .current-category {
+        padding: 6px 12px;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        font-weight: 500;
+        white-space: nowrap;
+    }
+
+    .current-category.uncategorized {
+        background: #ffeaa7;
+        color: #d63031;
+    }
+
+    .current-category.categorized {
+        background: #74b9ff;
+        color: white;
+    }
+
+    .category-select {
+        width: 100%;
+        font-size: 0.9rem;
+    }
+
+    .batch-actions {
+        background: #e3f2fd;
+        padding: 15px 20px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        border: 1px solid #bbdefb;
+        display: none;
+    }
+
+    .batch-actions.show {
+        display: block;
+    }
+
+    .stats-bar {
+        display: flex;
+        gap: 20px;
+        margin-bottom: 20px;
+        flex-wrap: wrap;
+    }
+
+    .stat-item {
+        background: white;
+        padding: 15px 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+        text-align: center;
+        min-width: 120px;
+    }
+
+    .stat-number {
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: #007bff;
+    }
+
+    .stat-label {
+        font-size: 0.9rem;
+        color: #6c757d;
+        margin-top: 5px;
+    }
+
+    .pagination-wrapper {
+        display: flex;
+        justify-content: center;
+        margin-top: 30px;
+    }
+
+    #message-container {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 9999;
+        min-width: 300px;
+    }
+
+    @media (max-width: 768px) {
+        .article-header {
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .article-actions {
+            min-width: auto;
+            width: 100%;
+        }
+
+        .stats-bar {
+            justify-content: center;
+        }
+
+        .filter-bar .row > div {
+            margin-bottom: 15px;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="admin-hero">
+    <h1>📂 文章栏目管理</h1>
+    <p>批量管理文章的栏目分配</p>
+</section>
+
+<div class="admin-container">
+    <div id="message-container"></div>
+    
+    <!-- 统计信息 -->
+    <div class="stats-bar">
+        <div class="stat-item">
+            <div class="stat-number">{{ pagination.total }}</div>
+            <div class="stat-label">总文章数</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-number" id="selected-count">0</div>
+            <div class="stat-label">已选择</div>
+        </div>
+    </div>
+
+    <!-- 筛选和搜索栏 -->
+    <div class="filter-bar">
+        <form method="GET" id="filterForm">
+            <div class="row align-items-end">
+                <div class="col-md-4">
+                    <label class="form-label">栏目筛选</label>
+                    <select class="form-select" name="category_id" onchange="document.getElementById('filterForm').submit()">
+                        <option value="">全部栏目</option>
+                        <option value="-1" {{ 'selected' if current_category_id == -1 else '' }}>未分类</option>
+                        {% for category in categories %}
+                        <optgroup label="{{ category.icon }} {{ category.name }}">
+                            <option value="{{ category.id }}" {{ 'selected' if current_category_id == category.id else '' }}>
+                                {{ category.icon }} {{ category.name }}
+                            </option>
+                            {% for child in category.children %}
+                            <option value="{{ child.id }}" {{ 'selected' if current_category_id == child.id else '' }}>
+                                　└ {{ child.icon }} {{ child.name }}
+                            </option>
+                            {% endfor %}
+                        </optgroup>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">搜索标题</label>
+                    <input type="text" class="form-control" name="search" value="{{ search }}" placeholder="输入文章标题关键词...">
+                </div>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-primary w-100">搜索</button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <!-- 批量操作栏 -->
+    <div class="batch-actions" id="batchActions">
+        <div class="row align-items-center">
+            <div class="col-md-6">
+                <strong>批量操作</strong> - 已选择 <span id="batch-selected-count">0</span> 篇文章
+            </div>
+            <div class="col-md-4">
+                <select class="form-select" id="batchCategorySelect">
+                    <option value="">选择目标栏目</option>
+                    <option value="">设为未分类</option>
+                    {% for category in categories %}
+                    <optgroup label="{{ category.icon }} {{ category.name }}">
+                        <option value="{{ category.id }}">{{ category.icon }} {{ category.name }}</option>
+                        {% for child in category.children %}
+                        <option value="{{ child.id }}">　└ {{ child.icon }} {{ child.name }}</option>
+                        {% endfor %}
+                    </optgroup>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <button class="btn btn-success w-100" id="batchUpdateBtn">批量更新</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 操作按钮 -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <button class="btn btn-outline-primary" id="selectAllBtn">全选当前页</button>
+            <button class="btn btn-outline-secondary" id="clearSelectionBtn">清空选择</button>
+        </div>
+        <div>
+            <a href="/blog/admin/categories" class="btn btn-outline-info">🏷️ 栏目管理</a>
+            <a href="/blog/admin" class="btn btn-outline-warning">🏠 管理后台</a>
+            <a href="/blog/" class="btn btn-outline-secondary">📝 返回博客</a>
+        </div>
+    </div>
+
+    <!-- 文章列表 -->
+    <div id="articlesList">
+        {% for article in articles %}
+        <div class="article-card" data-article-id="{{ article.id }}">
+            <div class="article-header">
+                <div class="article-info">
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <input type="checkbox" class="form-check-input article-checkbox" value="{{ article.id }}">
+                        <div class="article-title">{{ article.title }}</div>
+                    </div>
+                    <div class="article-meta">
+                        <span>📝 {{ article.author }}</span>
+                        <span>📅 {{ article.date }}</span>
+                        <span>❤️ {{ article.likes_count or 0 }}</span>
+                        <span>🆔 {{ article.id[:8] }}...</span>
+                    </div>
+                    <div class="article-description">{{ article.description }}</div>
+                </div>
+                <div class="article-actions">
+                    <div class="current-category {{ 'categorized' if article.category else 'uncategorized' }}">
+                        {% if article.category %}
+                        {{ article.category_path }}
+                        {% else %}
+                        📄 未分类
+                        {% endif %}
+                    </div>
+                    <select class="form-select category-select" data-article-id="{{ article.id }}">
+                        <option value="">选择栏目</option>
+                        <option value="" {{ 'selected' if not article.category_id else '' }}>设为未分类</option>
+                        {% for category in categories %}
+                        <optgroup label="{{ category.icon }} {{ category.name }}">
+                            <option value="{{ category.id }}" {{ 'selected' if article.category_id == category.id else '' }}>
+                                {{ category.icon }} {{ category.name }}
+                            </option>
+                            {% for child in category.children %}
+                            <option value="{{ child.id }}" {{ 'selected' if article.category_id == child.id else '' }}>
+                                　└ {{ child.icon }} {{ child.name }}
+                            </option>
+                            {% endfor %}
+                        </optgroup>
+                        {% endfor %}
+                    </select>
+                    <div class="d-flex gap-1">
+                        <a href="/blog/{{ article.id }}" class="btn btn-sm btn-outline-primary" target="_blank">👁️ 查看</a>
+                        <a href="/blog/{{ article.id }}/edit" class="btn btn-sm btn-outline-success">✏️ 编辑</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+
+        {% if not articles %}
+        <div class="text-center py-5">
+            <div class="text-muted">
+                <i class="bi bi-inbox" style="font-size: 3rem;"></i>
+                <h5 class="mt-3">没有找到文章</h5>
+                <p>尝试调整筛选条件或搜索关键词</p>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- 分页 -->
+    {% if pagination.pages > 1 %}
+    <div class="pagination-wrapper">
+        <nav>
+            <ul class="pagination">
+                {% if pagination.has_prev %}
+                <li class="page-item">
+                    <a class="page-link" href="{{ url_for('blog.manage_articles', page=pagination.prev_num, category_id=current_category_id, search=search) }}">上一页</a>
+                </li>
+                {% endif %}
+                
+                {% for page_num in pagination.iter_pages() %}
+                    {% if page_num %}
+                        {% if page_num != pagination.page %}
+                        <li class="page-item">
+                            <a class="page-link" href="{{ url_for('blog.manage_articles', page=page_num, category_id=current_category_id, search=search) }}">{{ page_num }}</a>
+                        </li>
+                        {% else %}
+                        <li class="page-item active">
+                            <span class="page-link">{{ page_num }}</span>
+                        </li>
+                        {% endif %}
+                    {% else %}
+                    <li class="page-item disabled">
+                        <span class="page-link">…</span>
+                    </li>
+                    {% endif %}
+                {% endfor %}
+                
+                {% if pagination.has_next %}
+                <li class="page-item">
+                    <a class="page-link" href="{{ url_for('blog.manage_articles', page=pagination.next_num, category_id=current_category_id, search=search) }}">下一页</a>
+                </li>
+                {% endif %}
+            </ul>
+        </nav>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // 显示消息提示
+    function showMessage(message, type = 'danger') {
+        const alert = `<div class="alert alert-${type} alert-dismissible fade show">
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>`;
+        document.getElementById('message-container').innerHTML = alert;
+    }
+
+    // 更新选择状态
+    function updateSelectionState() {
+        const checkboxes = document.querySelectorAll('.article-checkbox');
+        const checkedBoxes = document.querySelectorAll('.article-checkbox:checked');
+        
+        // 更新计数显示
+        document.getElementById('selected-count').textContent = checkedBoxes.length;
+        document.getElementById('batch-selected-count').textContent = checkedBoxes.length;
+        
+        // 显示/隐藏批量操作栏
+        const batchActions = document.getElementById('batchActions');
+        if (checkedBoxes.length > 0) {
+            batchActions.classList.add('show');
+        } else {
+            batchActions.classList.remove('show');
+        }
+        
+        // 更新文章卡片样式
+        checkboxes.forEach(checkbox => {
+            const card = checkbox.closest('.article-card');
+            if (checkbox.checked) {
+                card.classList.add('selected');
+            } else {
+                card.classList.remove('selected');
+            }
+        });
+    }
+
+    // 监听复选框变化
+    document.addEventListener('change', function(e) {
+        if (e.target.classList.contains('article-checkbox')) {
+            updateSelectionState();
+        }
+    });
+
+    // 全选/清空选择
+    document.getElementById('selectAllBtn').addEventListener('click', function() {
+        const checkboxes = document.querySelectorAll('.article-checkbox');
+        checkboxes.forEach(checkbox => checkbox.checked = true);
+        updateSelectionState();
+    });
+
+    document.getElementById('clearSelectionBtn').addEventListener('click', function() {
+        const checkboxes = document.querySelectorAll('.article-checkbox');
+        checkboxes.forEach(checkbox => checkbox.checked = false);
+        updateSelectionState();
+    });
+
+    // 单个文章栏目修改
+    document.addEventListener('change', function(e) {
+        if (e.target.classList.contains('category-select')) {
+            const articleId = e.target.dataset.articleId;
+            const categoryId = e.target.value;
+            
+            updateArticleCategory(articleId, categoryId);
+        }
+    });
+
+    // 批量栏目修改
+    document.getElementById('batchUpdateBtn').addEventListener('click', function() {
+        const checkedBoxes = document.querySelectorAll('.article-checkbox:checked');
+        const categoryId = document.getElementById('batchCategorySelect').value;
+        
+        if (checkedBoxes.length === 0) {
+            showMessage('请选择要更新的文章');
+            return;
+        }
+        
+        const blogIds = Array.from(checkedBoxes).map(cb => cb.value);
+        batchUpdateCategory(blogIds, categoryId);
+    });
+
+    // 更新单个文章栏目
+    async function updateArticleCategory(articleId, categoryId) {
+        try {
+            const response = await fetch(`/blog/admin/articles/${articleId}/category`, {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ category_id: categoryId })
+            });
+            
+            const result = await response.json();
+            if (result.code === 200) {
+                showMessage(result.message, 'success');
+                
+                // 更新页面上的栏目显示
+                const card = document.querySelector(`[data-article-id="${articleId}"]`);
+                const categoryDisplay = card.querySelector('.current-category');
+                
+                if (categoryId) {
+                    const selectOption = card.querySelector(`option[value="${categoryId}"]`);
+                    categoryDisplay.textContent = selectOption.textContent.trim();
+                    categoryDisplay.className = 'current-category categorized';
+                } else {
+                    categoryDisplay.textContent = '📄 未分类';
+                    categoryDisplay.className = 'current-category uncategorized';
+                }
+            } else {
+                showMessage(result.message || '更新失败');
+            }
+        } catch (error) {
+            showMessage('网络错误，请稍后重试');
+        }
+    }
+
+    // 批量更新栏目
+    async function batchUpdateCategory(blogIds, categoryId) {
+        try {
+            const response = await fetch('/blog/admin/articles/batch-category', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ blog_ids: blogIds, category_id: categoryId })
+            });
+            
+            const result = await response.json();
+            if (result.code === 200) {
+                showMessage(result.message, 'success');
+                
+                // 清空选择并刷新页面
+                setTimeout(() => {
+                    location.reload();
+                }, 1500);
+            } else {
+                showMessage(result.message || '批量更新失败');
+            }
+        } catch (error) {
+            showMessage('网络错误，请稍后重试');
+        }
+    }
+
+    // 初始化
+    updateSelectionState();
+});
+</script>
+{% endblock %}
+
+{% block footer_text %}
+文章栏目管理 - 仅管理员可访问
+{% endblock %}

@@ -118,6 +118,84 @@
         transform: translateY(-1px);
     }
 
+    .current-category {
+        margin-top: 15px;
+    }
+
+    .categories-nav {
+        background: #f8f9fa;
+        padding: 20px 0;
+        margin-bottom: 40px;
+        border-bottom: 1px solid #e9ecef;
+    }
+
+    .category-buttons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: flex-start;
+    }
+
+    .category-group {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .category-btn {
+        display: inline-block;
+        padding: 8px 16px;
+        background: #ffffff;
+        color: #6c757d;
+        text-decoration: none;
+        border-radius: 20px;
+        border: 1px solid #dee2e6;
+        font-size: 0.9rem;
+        transition: all 0.3s ease;
+        white-space: nowrap;
+    }
+
+    .category-btn:hover {
+        background: #e9ecef;
+        color: #495057;
+        text-decoration: none;
+        transform: translateY(-1px);
+    }
+
+    .category-btn.active {
+        background: #007bff;
+        color: white;
+        border-color: #007bff;
+    }
+
+    .category-btn.main-category {
+        font-weight: 500;
+    }
+
+    .sub-categories {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        margin-left: 16px;
+    }
+
+    .category-btn.sub-category {
+        font-size: 0.8rem;
+        padding: 6px 12px;
+        background: #f8f9fa;
+        border-color: #e9ecef;
+    }
+
+    .category-tag {
+        display: inline-block;
+        background: #f8f9fa;
+        color: #6c757d;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 0.8rem;
+        margin-top: 5px;
+    }
+
     @media (max-width: 768px) {
         .blogs-hero h1 {
             font-size: 2.2rem;
@@ -132,6 +210,29 @@
             align-items: flex-start;
             gap: 10px;
         }
+
+        .categories-nav {
+            padding: 15px 0;
+        }
+
+        .category-buttons {
+            flex-direction: column;
+            align-items: stretch;
+        }
+
+        .category-group {
+            margin-bottom: 10px;
+        }
+
+        .sub-categories {
+            margin-left: 0;
+            margin-top: 5px;
+        }
+
+        .category-btn {
+            text-align: center;
+            margin-bottom: 5px;
+        }
     }
 </style>
 {% endblock %}
@@ -142,6 +243,44 @@
     <div class="container">
         <h1>📝 博客文章</h1>
         <p>分享思考与见解</p>
+        {% if current_category %}
+        <div class="current-category">
+            <span class="badge bg-primary fs-6">{{ current_category.icon }} {{ current_category.get_full_path() }}</span>
+        </div>
+        {% endif %}
+    </div>
+</section>
+
+<!-- 栏目导航 -->
+<section class="categories-nav">
+    <div class="container">
+        <div class="row">
+            <div class="col-12">
+                <div class="category-buttons">
+                    <a href="/blog/" class="category-btn {{ 'active' if not current_category else '' }}">
+                        🏠 全部
+                    </a>
+                    {% for category in categories %}
+                    <div class="category-group">
+                        <a href="/blog/?category={{ category.slug }}" 
+                           class="category-btn main-category {{ 'active' if current_category and current_category.id == category.id else '' }}">
+                            {{ category.icon }} {{ category.name }}
+                        </a>
+                        {% if category.children %}
+                        <div class="sub-categories">
+                            {% for child in category.children %}
+                            <a href="/blog/?category={{ child.slug }}" 
+                               class="category-btn sub-category {{ 'active' if current_category and current_category.id == child.id else '' }}">
+                                {{ child.icon }} {{ child.name }}
+                            </a>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
     </div>
 </section>
 
@@ -166,6 +305,11 @@
                         </span>
                     </div>
                     <div class="blog-date">{{ blog.date }}</div>
+                    {% if blog.category_path %}
+                    <div class="blog-category">
+                        <span class="category-tag">📁 {{ blog.category_path }}</span>
+                    </div>
+                    {% endif %}
                 </div>
                 <a href="/blog/{{ blog.id }}" class="read-btn">阅读</a>
             </div>

@@ -1,7 +1,7 @@
 from flask import Blueprint, render_template, current_app, abort, request, jsonify, url_for
 from flask_login import login_required, current_user
 from app.extensions import db, turnstile
-from app.models import Blog, BlogContent, BlogLike
+from app.models import Blog, BlogContent, BlogLike, Category
 from app.extensions.decorators import admin_required
 import os
 import uuid
@@ -16,15 +16,42 @@ def menu():
     """
     博客列表页
 
-    由数据库中的 `Blog` 元信息提供列表所需字段。
+    支持按栏目筛选，URL格式：/blog/?category=栏目slug
     """
+    category_slug = request.args.get('category')
+    current_category = None
+    
+    # 获取栏目层级结构用于导航
+    categories = Category.get_hierarchy()
+    
+    # 构建查询
+    query = Blog.query.filter_by(ignore=False)
+    
+    if category_slug:
+        # 按栏目筛选
+        current_category = Category.query.filter_by(slug=category_slug, is_active=True).first()
+        if current_category:
+            if current_category.parent_id is None:
+                # 一级栏目：包含该栏目下的所有文章（包括子栏目）
+                child_ids = [child.id for child in current_category.children.filter_by(is_active=True).all()]
+                category_ids = [current_category.id] + child_ids
+                query = query.filter(Blog.category_id.in_(category_ids))
+            else:
+                # 二级栏目：只显示该栏目的文章
+                query = query.filter_by(category_id=current_category.id)
+        else:
+            # 栏目不存在，返回404
+            abort(404)
+    
     blogs = []
-    # 仅显示未被忽略的博客，按创建时间倒序
-    for blog in Blog.query.filter_by(ignore=False).order_by(Blog.created_at.desc()).all():
-        # 模板兼容：保持与历史结构一致的键名
+    for blog in query.order_by(Blog.created_at.desc()).all():
         item = blog.to_dict()
         blogs.append(item)
-    return render_template('blog/menu.html', blogs=blogs)
+    
+    return render_template('blog/menu.html', 
+                         blogs=blogs, 
+                         categories=categories, 
+                         current_category=current_category)
 
 @blog_bp.route('/<blog_id>')
 def blog_detail(blog_id):
@@ -64,7 +91,9 @@ def upload():
     - 正文写入数据库 `BlogContent`
     """
     if request.method == 'GET':
-        return render_template('blog/upload_blog.html')
+        # 获取栏目列表用于下拉选择
+        categories = Category.get_hierarchy()
+        return render_template('blog/upload_blog.html', categories=categories)
     elif request.method == 'POST':
         data = request.get_json()
         if not data or not data.get('title') or not data.get('content') or not data.get('description'):
@@ -83,6 +112,19 @@ def upload():
         if len(data['content']) > 200000:
             return jsonify({'code': 400, 'message': '内容不能超过200000个字符'}), 400
 
+        # 栏目验证
+        category_id = data.get('category_id')
+        if category_id:
+            try:
+                category_id = int(category_id)
+                category = Category.query.filter_by(id=category_id, is_active=True).first()
+                if not category:
+                    return jsonify({'code': 400, 'message': '选择的栏目不存在'}), 400
+            except (ValueError, TypeError):
+                return jsonify({'code': 400, 'message': '栏目ID格式错误'}), 400
+        else:
+            category_id = None
+
         # 生成博客 ID，并准备目录
         blog_id = str(uuid.uuid4())
         # 若历史上仍需要创建目录以便放图片等资源，可保留目录；否则可以完全省略
@@ -95,6 +137,7 @@ def upload():
             title=data['title'],
             description=data['description'],
             author_id=current_user.id,
+            category_id=category_id,
             created_at=datetime.now(),
         )
         db.session.add(blog)
@@ -218,7 +261,9 @@ def edit_blog(blog_id):
         content_obj = BlogContent.query.get(blog_id)
         markdown_content = content_obj.content if content_obj else ''
         blog_dict = blog.to_dict()
-        return render_template('blog/edit_blog.html', blog=blog_dict, content_markdown=markdown_content)
+        # 获取栏目列表用于下拉选择
+        categories = Category.get_hierarchy()
+        return render_template('blog/edit_blog.html', blog=blog_dict, content_markdown=markdown_content, categories=categories)
 
     # POST: 保存
     data = request.get_json(silent=True) or {}
@@ -241,9 +286,23 @@ def edit_blog(blog_id):
     if len(content) > 200000:
         return jsonify({'code': 400, 'message': '内容不能超过200000个字符'}), 400
 
+    # 栏目验证
+    category_id = data.get('category_id')
+    if category_id:
+        try:
+            category_id = int(category_id)
+            category = Category.query.filter_by(id=category_id, is_active=True).first()
+            if not category:
+                return jsonify({'code': 400, 'message': '选择的栏目不存在'}), 400
+        except (ValueError, TypeError):
+            return jsonify({'code': 400, 'message': '栏目ID格式错误'}), 400
+    else:
+        category_id = None
+
     # 更新 Blog 元信息
     blog.title = title
     blog.description = description
+    blog.category_id = category_id
 
     # 更新/创建正文 Markdown
     content_obj = BlogContent.query.get(blog_id)
@@ -256,3 +315,301 @@ def edit_blog(blog_id):
     db.session.commit()
 
     return jsonify({'code': 200, 'message': '更新成功', 'blog_id': blog_id, 'redirect': url_for('blog.blog_detail', blog_id=blog_id)})
+
+
+@blog_bp.route('/admin/categories')
+@login_required
+@admin_required
+def manage_categories():
+    """
+    栏目管理页面（仅管理员）
+    """
+    categories = Category.get_hierarchy()
+    return render_template('blog/manage_categories.html', categories=categories)
+
+
+@blog_bp.route('/admin/categories', methods=['POST'])
+@login_required
+@admin_required
+def create_category():
+    """
+    创建新栏目（仅管理员）
+    """
+    data = request.get_json()
+    
+    name = (data.get('name') or '').strip()
+    slug = (data.get('slug') or '').strip()
+    description = (data.get('description') or '').strip()
+    icon = (data.get('icon') or '').strip()
+    parent_id = data.get('parent_id')
+    
+    if not name or not slug:
+        return jsonify({'code': 400, 'message': '栏目名称和标识符不能为空'}), 400
+    
+    # 检查slug是否已存在
+    existing = Category.query.filter_by(slug=slug).first()
+    if existing:
+        return jsonify({'code': 400, 'message': '标识符已存在'}), 400
+    
+    # 验证父栏目
+    if parent_id:
+        try:
+            parent_id = int(parent_id)
+            parent = Category.query.filter_by(id=parent_id, parent_id=None, is_active=True).first()
+            if not parent:
+                return jsonify({'code': 400, 'message': '父栏目不存在或不是一级栏目'}), 400
+        except (ValueError, TypeError):
+            return jsonify({'code': 400, 'message': '父栏目ID格式错误'}), 400
+    else:
+        parent_id = None
+    
+    # 创建栏目
+    category = Category(
+        name=name,
+        slug=slug,
+        description=description,
+        icon=icon,
+        parent_id=parent_id,
+        sort_order=0,  # 可以后续调整
+        is_active=True,
+        created_at=datetime.now()
+    )
+    
+    db.session.add(category)
+    db.session.commit()
+    
+    return jsonify({'code': 200, 'message': '栏目创建成功', 'category': category.to_dict()})
+
+
+@blog_bp.route('/admin/categories/<int:category_id>', methods=['PUT'])
+@login_required
+@admin_required
+def update_category(category_id):
+    """
+    更新栏目信息（仅管理员）
+    """
+    category = Category.query.get(category_id)
+    if not category:
+        return jsonify({'code': 404, 'message': '栏目不存在'}), 404
+    
+    data = request.get_json()
+    
+    name = (data.get('name') or '').strip()
+    slug = (data.get('slug') or '').strip()
+    description = (data.get('description') or '').strip()
+    icon = (data.get('icon') or '').strip()
+    is_active = data.get('is_active', True)
+    
+    if not name or not slug:
+        return jsonify({'code': 400, 'message': '栏目名称和标识符不能为空'}), 400
+    
+    # 检查slug是否被其他栏目使用
+    existing = Category.query.filter(Category.slug == slug, Category.id != category_id).first()
+    if existing:
+        return jsonify({'code': 400, 'message': '标识符已被其他栏目使用'}), 400
+    
+    # 更新栏目信息
+    category.name = name
+    category.slug = slug
+    category.description = description
+    category.icon = icon
+    category.is_active = is_active
+    
+    db.session.commit()
+    
+    return jsonify({'code': 200, 'message': '栏目更新成功', 'category': category.to_dict()})
+
+
+@blog_bp.route('/admin/categories/<int:category_id>', methods=['DELETE'])
+@login_required
+@admin_required
+def delete_category(category_id):
+    """
+    删除栏目（仅管理员）
+    
+    注意：删除栏目前需要先将该栏目下的文章移动到其他栏目或设为未分类
+    """
+    category = Category.query.get(category_id)
+    if not category:
+        return jsonify({'code': 404, 'message': '栏目不存在'}), 404
+    
+    # 检查是否有文章在此栏目下
+    blog_count = Blog.query.filter_by(category_id=category_id).count()
+    if blog_count > 0:
+        return jsonify({'code': 400, 'message': f'无法删除，该栏目下还有 {blog_count} 篇文章'}), 400
+    
+    # 检查是否有子栏目
+    child_count = Category.query.filter_by(parent_id=category_id).count()
+    if child_count > 0:
+        return jsonify({'code': 400, 'message': f'无法删除，该栏目下还有 {child_count} 个子栏目'}), 400
+    
+    db.session.delete(category)
+    db.session.commit()
+    
+    return jsonify({'code': 200, 'message': '栏目删除成功'})
+
+
+@blog_bp.route('/admin/articles')
+@login_required
+@admin_required
+def manage_articles():
+    """
+    文章栏目管理页面（仅管理员）
+    """
+    # 获取筛选参数
+    category_id = request.args.get('category_id', type=int)
+    search = request.args.get('search', '').strip()
+    page = request.args.get('page', 1, type=int)
+    per_page = 20
+    
+    # 构建查询
+    query = Blog.query.filter_by(ignore=False)
+    
+    # 按栏目筛选
+    if category_id == -1:  # 未分类
+        query = query.filter_by(category_id=None)
+    elif category_id:
+        query = query.filter_by(category_id=category_id)
+    
+    # 搜索标题
+    if search:
+        query = query.filter(Blog.title.contains(search))
+    
+    # 分页
+    pagination = query.order_by(Blog.created_at.desc()).paginate(
+        page=page, per_page=per_page, error_out=False
+    )
+    
+    articles = pagination.items
+    categories = Category.get_hierarchy()
+    
+    return render_template('blog/manage_articles.html', 
+                         articles=articles,
+                         categories=categories,
+                         pagination=pagination,
+                         current_category_id=category_id,
+                         search=search)
+
+
+@blog_bp.route('/admin/articles/<blog_id>/category', methods=['PUT'])
+@login_required
+@admin_required
+def update_article_category(blog_id):
+    """
+    更新文章栏目（仅管理员）
+    """
+    blog = Blog.query.get(blog_id)
+    if not blog:
+        return jsonify({'code': 404, 'message': '文章不存在'}), 404
+    
+    data = request.get_json()
+    category_id = data.get('category_id')
+    
+    # 验证栏目
+    if category_id:
+        try:
+            category_id = int(category_id)
+            category = Category.query.filter_by(id=category_id, is_active=True).first()
+            if not category:
+                return jsonify({'code': 400, 'message': '选择的栏目不存在'}), 400
+        except (ValueError, TypeError):
+            return jsonify({'code': 400, 'message': '栏目ID格式错误'}), 400
+    else:
+        category_id = None
+    
+    # 更新栏目
+    old_category = blog.category.name if blog.category else '未分类'
+    blog.category_id = category_id
+    db.session.commit()
+    
+    new_category = blog.category.name if blog.category else '未分类'
+    
+    return jsonify({
+        'code': 200, 
+        'message': f'文章栏目已从 "{old_category}" 更改为 "{new_category}"',
+        'blog': blog.to_dict()
+    })
+
+
+@blog_bp.route('/admin/articles/batch-category', methods=['POST'])
+@login_required
+@admin_required
+def batch_update_category():
+    """
+    批量更新文章栏目（仅管理员）
+    """
+    data = request.get_json()
+    blog_ids = data.get('blog_ids', [])
+    category_id = data.get('category_id')
+    
+    if not blog_ids:
+        return jsonify({'code': 400, 'message': '请选择要更新的文章'}), 400
+    
+    # 验证栏目
+    if category_id:
+        try:
+            category_id = int(category_id)
+            category = Category.query.filter_by(id=category_id, is_active=True).first()
+            if not category:
+                return jsonify({'code': 400, 'message': '选择的栏目不存在'}), 400
+        except (ValueError, TypeError):
+            return jsonify({'code': 400, 'message': '栏目ID格式错误'}), 400
+    else:
+        category_id = None
+    
+    # 批量更新
+    updated_count = Blog.query.filter(Blog.id.in_(blog_ids)).update(
+        {Blog.category_id: category_id}, synchronize_session=False
+    )
+    db.session.commit()
+    
+    category_name = category.name if category_id else '未分类'
+    
+    return jsonify({
+        'code': 200, 
+        'message': f'已将 {updated_count} 篇文章分配到 "{category_name}"'
+    })
+
+
+@blog_bp.route('/admin')
+@login_required
+@admin_required
+def admin_dashboard():
+    """
+    博客管理后台首页（仅管理员）
+    """
+    # 统计数据
+    total_blogs = Blog.query.filter_by(ignore=False).count()
+    categorized_blogs = Blog.query.filter(Blog.category_id.isnot(None), Blog.ignore == False).count()
+    uncategorized_blogs = Blog.query.filter_by(category_id=None, ignore=False).count()
+    total_categories = Category.query.filter_by(is_active=True).count()
+    total_likes = db.session.query(db.func.sum(Blog.likes_count)).scalar() or 0
+    
+    # 最近文章
+    recent_blogs = Blog.query.filter_by(ignore=False).order_by(Blog.created_at.desc()).limit(5).all()
+    
+    # 热门文章（按点赞数）
+    popular_blogs = Blog.query.filter_by(ignore=False).order_by(Blog.likes_count.desc()).limit(5).all()
+    
+    # 栏目文章分布
+    category_stats = db.session.query(
+        Category.name, 
+        Category.icon,
+        db.func.count(Blog.id).label('blog_count')
+    ).outerjoin(Blog, Category.id == Blog.category_id).filter(
+        Category.is_active == True,
+        Blog.ignore == False
+    ).group_by(Category.id, Category.name, Category.icon).all()
+    
+    stats = {
+        'total_blogs': total_blogs,
+        'categorized_blogs': categorized_blogs,
+        'uncategorized_blogs': uncategorized_blogs,
+        'total_categories': total_categories,
+        'total_likes': total_likes,
+        'recent_blogs': [blog.to_dict() for blog in recent_blogs],
+        'popular_blogs': [blog.to_dict() for blog in popular_blogs],
+        'category_stats': [{'name': stat[0], 'icon': stat[1], 'count': stat[2]} for stat in category_stats]
+    }
+    
+    return render_template('blog/admin_dashboard.html', stats=stats)

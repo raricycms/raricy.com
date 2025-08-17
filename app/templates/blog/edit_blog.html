@@ -52,6 +52,25 @@
         </div>
 
         <div class="mb-3">
+            <label for="category" class="form-label">栏目</label>
+            <select class="form-select" id="category">
+                <option value="">选择栏目（可选）</option>
+                {% for category in categories %}
+                <optgroup label="{{ category.icon }} {{ category.name }}">
+                    <option value="{{ category.id }}" {{ 'selected' if blog.category_id == category.id else '' }}>
+                        {{ category.icon }} {{ category.name }}
+                    </option>
+                    {% for child in category.children %}
+                    <option value="{{ child.id }}" {{ 'selected' if blog.category_id == child.id else '' }}>
+                        　└ {{ child.icon }} {{ child.name }}
+                    </option>
+                    {% endfor %}
+                </optgroup>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="mb-3">
             <label class="form-label">内容（Markdown）</label>
             <div id="editor" style="height: 60vh;"></div>
             <div class="form-text note">提示：粘贴的内容可能按编辑器策略处理，预览请用右上角预览按钮。</div>
@@ -100,6 +119,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const title = document.getElementById('title').value.trim();
         const description = document.getElementById('description').value.trim();
         const content = vditor.getValue();
+        const category_id = document.getElementById('category').value;
         const turnstileInput = form.querySelector('[name="cf-turnstile-response"]');
         const turnstileResponse = turnstileInput ? turnstileInput.value : '';
 
@@ -116,7 +136,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'same-origin',
-                body: JSON.stringify({ title, description, content, 'cf-turnstile-response': turnstileResponse })
+                body: JSON.stringify({ title, description, content, category_id, 'cf-turnstile-response': turnstileResponse })
             });
             const data = await resp.json();
             if (data.code === 200) {
