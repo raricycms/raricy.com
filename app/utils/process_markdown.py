@@ -6,6 +6,7 @@ import pygments
 def safe_markdown_to_html(markdown_text):
     """
     将Markdown文本转换为安全的HTML，防止XSS攻击（兼容最新Bleach版本）
+    支持 LaTeX 数学公式渲染
     
     参数:
         markdown_text (str): 原始Markdown文本
@@ -13,6 +14,59 @@ def safe_markdown_to_html(markdown_text):
     返回:
         str: 经过安全过滤的HTML内容
     """
+    
+    # 保护 LaTeX 数学公式不被 Markdown 处理
+    def protect_latex_math(text):
+        import re
+        
+        # 存储受保护的数学公式
+        protected_math = {}
+        counter = 0
+        
+        # 保护块级数学公式 $$...$$
+        def replace_display_math(match):
+            nonlocal counter
+            placeholder = f"MATHPROTECTDISPLAY{counter}MATHPROTECT"
+            protected_math[placeholder] = match.group(0)
+            counter += 1
+            return placeholder
+            
+        # 保护行内数学公式 $...$
+        def replace_inline_math(match):
+            nonlocal counter
+            placeholder = f"MATHPROTECTINLINE{counter}MATHPROTECT"
+            protected_math[placeholder] = match.group(0)
+            counter += 1
+            return placeholder
+        
+        # 保护 \[...\] 和 \(...\) 格式
+        def replace_bracket_math(match):
+            nonlocal counter
+            placeholder = f"MATHPROTECTBRACKET{counter}MATHPROTECT"
+            protected_math[placeholder] = match.group(0)
+            counter += 1
+            return placeholder
+        
+        # 先处理块级数学公式（避免与行内公式冲突）
+        text = re.sub(r'\$\$.*?\$\$', replace_display_math, text, flags=re.DOTALL)
+        
+        # 处理 \[...\] 块级公式
+        text = re.sub(r'\\\[.*?\\\]', replace_bracket_math, text, flags=re.DOTALL)
+        
+        # 处理行内数学公式（注意避免匹配到已处理的 $$ 标记）
+        text = re.sub(r'(?<!\$)\$(?!\$)([^$\n]+?)(?<!\$)\$(?!\$)', replace_inline_math, text)
+        
+        # 处理 \(...\) 行内公式
+        text = re.sub(r'\\\(.*?\\\)', replace_bracket_math, text, flags=re.DOTALL)
+        
+        return text, protected_math
+    
+    # 恢复受保护的数学公式
+    def restore_latex_math(text, protected_math):
+        for placeholder, original in protected_math.items():
+            text = text.replace(placeholder, original)
+        return text
+
     # 预处理markdown文本以改善嵌套列表的解析
     def preprocess_markdown(text):
         import re
@@ -83,6 +137,9 @@ def safe_markdown_to_html(markdown_text):
         
         return '\n'.join(processed_lines)
     
+    # 保护 LaTeX 数学公式
+    markdown_text, protected_math = protect_latex_math(markdown_text)
+    
     # 预处理文本
     markdown_text = preprocess_markdown(markdown_text)
     # 定义安全标签白名单
@@ -93,7 +150,13 @@ def safe_markdown_to_html(markdown_text):
         'code', 'blockquote', 'ul', 'ol', 'li',
         'a', 'img', 'table', 'thead', 'tbody', 'tr', 'th', 'td','del', 'input',
         'details', 'summary', 'sub', 'sup', 'mark', 'figure', 'figcaption',
-        'dl', 'dt', 'dd'
+        'dl', 'dt', 'dd',
+        # MathJax 相关标签
+        'mjx-container', 'mjx-math', 'mjx-semantics', 'mjx-mrow', 'mjx-mo', 'mjx-mi', 'mjx-mn',
+        'mjx-mfrac', 'mjx-num', 'mjx-den', 'mjx-msup', 'mjx-msub', 'mjx-msubsup',
+        'mjx-munder', 'mjx-mover', 'mjx-munderover', 'mjx-msqrt', 'mjx-mroot',
+        'mjx-mtext', 'mjx-menclose', 'mjx-mtable', 'mjx-mtr', 'mjx-mtd',
+        'mjx-mspace', 'mjx-mpadded', 'mjx-mphantom', 'mjx-annotation'
     ]
     
     # 定义属性白名单（包含动态属性检查）
@@ -101,11 +164,39 @@ def safe_markdown_to_html(markdown_text):
         'a': ['href', 'title', 'rel'],
         'img': ['src', 'alt', 'title', 'width', 'height'],
         'code': ['class'],
-        'div': ['class'],
-        'span': ['class'],
+        'div': ['class', 'style'],
+        'span': ['class', 'style'],
         'th': ['align', 'colspan'],
         'td': ['align', 'colspan'],
-        'input': ['type', 'name', 'value', 'checked', 'disabled']
+        'input': ['type', 'name', 'value', 'checked', 'disabled'],
+        # MathJax 相关属性
+        'mjx-container': ['class', 'style', 'data-formula'],
+        'mjx-math': ['class', 'style'],
+        'mjx-semantics': ['class'],
+        'mjx-mrow': ['class'],
+        'mjx-mo': ['class'],
+        'mjx-mi': ['class'],
+        'mjx-mn': ['class'],
+        'mjx-mfrac': ['class'],
+        'mjx-num': ['class'],
+        'mjx-den': ['class'],
+        'mjx-msup': ['class'],
+        'mjx-msub': ['class'],
+        'mjx-msubsup': ['class'],
+        'mjx-munder': ['class'],
+        'mjx-mover': ['class'],
+        'mjx-munderover': ['class'],
+        'mjx-msqrt': ['class'],
+        'mjx-mroot': ['class'],
+        'mjx-mtext': ['class'],
+        'mjx-menclose': ['class'],
+        'mjx-mtable': ['class'],
+        'mjx-mtr': ['class'],
+        'mjx-mtd': ['class'],
+        'mjx-mspace': ['class'],
+        'mjx-mpadded': ['class'],
+        'mjx-mphantom': ['class'],
+        'mjx-annotation': ['class']
     }
     
     # 安全协议白名单
@@ -152,8 +243,11 @@ def safe_markdown_to_html(markdown_text):
         }
     })
     
-    # 净化HTML内容
+    # 净化HTML内容（在占位符状态下清理，避免数学公式被转义）
     clean_html = cleaner.clean(raw_html)
+    
+    # 最后恢复受保护的 LaTeX 数学公式
+    clean_html = restore_latex_math(clean_html, protected_math)
     
     # 直接返回清理后的HTML
     # 注意：原先在此处使用了 bleach.linkify 进行自动链接处理，但会导致实体再次转义，

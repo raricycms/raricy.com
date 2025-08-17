@@ -5,6 +5,24 @@
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/pygments-default.css') }}" id="pygments-default">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/pygments-Monokai.css') }}" id="pygments-monokai">
+<!-- MathJax 配置 -->
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    processEnvironments: true
+  },
+  options: {
+    skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'],
+    ignoreHtmlClass: 'tex2jax_ignore'
+  }
+};
+</script>
+<script type="text/javascript" id="MathJax-script" async
+  src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
+</script>
 <style>
     .read-hero {
         background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
@@ -169,6 +187,57 @@
     .blog-content-container th {
         background: #f8f9fa;
         font-weight: 600;
+    }
+
+    /* 数学公式样式 */
+    .blog-content-container .MathJax_Display {
+        margin: 1.5em 0;
+        text-align: center;
+        overflow-x: auto;
+        overflow-y: hidden;
+    }
+
+    .blog-content-container .MathJax {
+        font-size: 1.1em;
+        max-width: 100%;
+    }
+
+    /* 行内数学公式样式 */
+    .blog-content-container .MathJax_SVG {
+        vertical-align: middle;
+        max-width: 100%;
+        height: auto;
+    }
+
+    /* 自适应字体大小的数学公式 */
+    .blog-content-container mjx-container {
+        max-width: 100%;
+        overflow-x: auto;
+        overflow-y: hidden;
+    }
+
+    .blog-content-container mjx-container[jax="CHTML"][display="true"] {
+        text-align: center;
+        margin: 1.5em 0;
+    }
+
+    /* 当公式过长时自动调整字体大小 */
+    .blog-content-container mjx-container[jax="CHTML"][display="true"] mjx-math {
+        font-size: min(1.1em, calc(100vw / var(--formula-width, 20)));
+    }
+
+    .blog-content-container mjx-container[jax="CHTML"][display="false"] mjx-math {
+        font-size: min(1em, calc(100vw / var(--formula-width, 25)));
+    }
+
+    /* 深色模式下的数学公式 */
+    body.dark-mode .MathJax_SVG * {
+        fill: var(--text) !important;
+        stroke: var(--text) !important;
+    }
+
+    body.dark-mode mjx-container mjx-math {
+        color: var(--text) !important;
     }
 
     .blog-content-container .highlight {
@@ -435,6 +504,21 @@
         /* 代码块在移动端内边距稍微增大，避免拥挤 */
         .blog-content-container .highlight {
             padding: 12px;
+        }
+
+        /* 移动端数学公式优化 */
+        .blog-content-container mjx-container[jax="CHTML"][display="true"] {
+            margin: 1em 0;
+        }
+
+        .blog-content-container mjx-container[jax="CHTML"] {
+            overflow-x: auto;
+            max-width: 100%;
+        }
+
+        .blog-content-container mjx-container[jax="CHTML"] mjx-math {
+            font-size: 0.9em !important;
+            min-width: max-content;
         }
     }
 
@@ -790,8 +874,75 @@
         });
     }
 
+    // 调整数学公式大小以适应容器宽度
+    function adjustMathFormulaSizes() {
+        const container = document.querySelector('.blog-content-container');
+        if (!container) return;
+
+        const containerWidth = container.clientWidth;
+        const mathContainers = container.querySelectorAll('mjx-container[jax="CHTML"]');
+
+        mathContainers.forEach(mathContainer => {
+            const mathElement = mathContainer.querySelector('mjx-math');
+            if (!mathElement) return;
+
+            // 获取数学公式的实际宽度
+            const mathWidth = mathContainer.scrollWidth;
+            const isDisplayMode = mathContainer.getAttribute('display') === 'true';
+            
+            // 计算容器可用宽度（考虑内边距）
+            const availableWidth = containerWidth - 80; // 减去左右内边距
+            
+            if (mathWidth > availableWidth) {
+                // 计算需要的缩放比例
+                const scale = availableWidth / mathWidth;
+                const newFontSize = scale * (isDisplayMode ? 1.1 : 1.0);
+                
+                // 设置最小字体大小限制
+                const minFontSize = isDisplayMode ? 0.7 : 0.8;
+                const finalFontSize = Math.max(newFontSize, minFontSize);
+                
+                mathElement.style.fontSize = finalFontSize + 'em';
+                
+                // 为行内公式添加水平滚动
+                if (!isDisplayMode && scale < 0.8) {
+                    mathContainer.style.overflowX = 'auto';
+                    mathContainer.style.display = 'inline-block';
+                    mathContainer.style.maxWidth = '100%';
+                }
+            }
+        });
+
+        // 处理移动端的特殊情况
+        if (window.innerWidth <= 768) {
+            mathContainers.forEach(mathContainer => {
+                const mathElement = mathContainer.querySelector('mjx-math');
+                if (!mathElement) return;
+
+                const isDisplayMode = mathContainer.getAttribute('display') === 'true';
+                const currentFontSize = parseFloat(window.getComputedStyle(mathElement).fontSize);
+                
+                // 在移动端进一步缩小公式
+                if (isDisplayMode) {
+                    mathElement.style.fontSize = Math.min(currentFontSize * 0.9, 16) + 'px';
+                } else {
+                    mathElement.style.fontSize = Math.min(currentFontSize * 0.85, 14) + 'px';
+                }
+            });
+        }
+    }
+
     // 滚动事件监听
     window.addEventListener('scroll', updateReadingProgress);
+
+    // 窗口大小变化时重新调整数学公式大小
+    let resizeTimeout;
+    window.addEventListener('resize', () => {
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(() => {
+            adjustMathFormulaSizes();
+        }, 200);
+    });
 
     // 页面加载时自动适配系统主题
     document.addEventListener('DOMContentLoaded', () => {
@@ -809,6 +960,15 @@
         updateReadingProgress();
         addCopyButtons();
         addImageZoom();
+
+        // 渲染数学公式
+        if (window.MathJax) {
+            MathJax.typesetPromise([document.querySelector('.blog-content-container')]).then(() => {
+                console.log('MathJax rendering completed');
+                // 渲染完成后调整过长公式的字体大小
+                adjustMathFormulaSizes();
+            }).catch((err) => console.log('MathJax rendering failed: ' + err.message));
+        }
 
         // 平滑滚动到内容区域（如果有锚点）
         if (window.location.hash) {

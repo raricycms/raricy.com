@@ -5,233 +5,406 @@
 {% block extra_css %}
 <style>
     .blogs-hero {
-        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-        padding: 80px 0 60px;
-        margin-bottom: 60px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 60px 0 40px;
+        margin-bottom: 0;
         text-align: center;
+        color: white;
     }
 
     .blogs-hero h1 {
-        font-size: 3rem;
-        font-weight: 300;
-        color: #2c3e50;
-        margin-bottom: 20px;
-        letter-spacing: 2px;
+        font-size: 2.5rem;
+        font-weight: 600;
+        margin-bottom: 12px;
+        letter-spacing: 1px;
     }
 
     .blogs-hero p {
-        font-size: 1.2rem;
-        color: #7f8c8d;
+        font-size: 1.1rem;
+        opacity: 0.9;
         font-weight: 300;
     }
 
-    .blog-card {
-        background: white;
-        border-radius: 8px;
-        padding: 40px 30px;
-        margin-bottom: 30px;
-        box-shadow: 0 2px 20px rgba(0, 0, 0, 0.08);
-        transition: all 0.3s ease;
-        height: 100%;
+    .current-category {
+        margin-top: 12px;
     }
 
-    .blog-card:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+    .current-category .badge {
+        background: rgba(255, 255, 255, 0.2) !important;
+        color: white;
+        padding: 8px 16px;
+        border-radius: 20px;
+    }
+
+    /* 主布局 */
+    .blog-layout {
+        display: flex;
+        gap: 30px;
+        margin-top: 30px;
+        min-height: calc(100vh - 400px);
+    }
+
+    /* 左侧分类导航 */
+    .sidebar {
+        flex: 0 0 280px;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+        padding: 24px;
+        height: fit-content;
+        position: sticky;
+        top: 90px;
+    }
+
+    .sidebar-title {
+        font-size: 1.2rem;
+        font-weight: 600;
+        color: #2c3e50;
+        margin-bottom: 20px;
+        padding-bottom: 12px;
+        border-bottom: 2px solid #f8f9fa;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        cursor: pointer;
+        user-select: none;
+        transition: color 0.2s ease;
+    }
+
+    .sidebar-title:hover {
+        color: #1976d2;
+    }
+
+    .sidebar-title .toggle-icon {
+        font-size: 1rem;
+        transition: transform 0.3s ease;
+    }
+
+    .sidebar-title.collapsed .toggle-icon {
+        transform: rotate(-90deg);
+    }
+
+    .category-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        transition: all 0.3s ease;
+        overflow: hidden;
+    }
+
+    .category-list.collapsed {
+        max-height: 0;
+        opacity: 0;
+        margin-bottom: 0;
+    }
+
+    .category-list:not(.collapsed) {
+        max-height: 1000px;
+        opacity: 1;
+    }
+
+    .category-item {
+        margin-bottom: 8px;
+    }
+
+    .category-item.has-children {
+        position: relative;
+    }
+
+    .category-link {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 14px;
+        color: #6c757d;
+        text-decoration: none;
+        border-radius: 8px;
+        font-size: 0.9rem;
+        font-weight: 500;
+        transition: all 0.2s ease;
+        border-left: 3px solid transparent;
+        position: relative;
+    }
+
+    .category-link.collapsible {
+        cursor: pointer;
+        user-select: none;
+    }
+
+    .category-content {
+        display: flex;
+        align-items: center;
+        flex: 1;
+    }
+
+    .category-toggle {
+        font-size: 0.8rem;
+        margin-left: 8px;
+        transition: transform 0.3s ease;
+        color: #adb5bd;
+    }
+
+    .category-link.collapsed .category-toggle {
+        transform: rotate(-90deg);
+    }
+
+    .category-link:hover {
+        background: #f8f9fa;
+        color: #495057;
+        text-decoration: none;
+        border-left-color: #dee2e6;
+    }
+
+    .category-link.active {
+        background: #e3f2fd;
+        color: #1976d2;
+        border-left-color: #1976d2;
+    }
+
+    .category-link .icon {
+        margin-right: 8px;
+        font-size: 1rem;
+    }
+
+    .sub-category-list {
+        list-style: none;
+        padding: 0;
+        margin: 8px 0 0 24px;
+        transition: all 0.3s ease;
+        overflow: hidden;
+    }
+
+    .sub-category-list.collapsed {
+        max-height: 0;
+        opacity: 0;
+        margin-top: 0;
+    }
+
+    .sub-category-list:not(.collapsed) {
+        max-height: 500px;
+        opacity: 1;
+    }
+
+    .sub-category-link {
+        display: flex;
+        align-items: center;
+        padding: 8px 12px;
+        color: #8e9ba6;
+        text-decoration: none;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        font-weight: 400;
+        transition: all 0.2s ease;
+        border-left: 2px solid transparent;
+    }
+
+    .sub-category-link:hover {
+        background: #f1f3f4;
+        color: #5f6368;
+        text-decoration: none;
+        border-left-color: #dee2e6;
+    }
+
+    .sub-category-link.active {
+        background: #e8f0fe;
+        color: #1565c0;
+        border-left-color: #1565c0;
+    }
+
+    /* 右侧博客列表 */
+    .blog-content {
+        flex: 1;
+    }
+
+    .blog-item {
+        background: white;
+        border-radius: 8px;
+        padding: 20px 24px;
+        margin-bottom: 16px;
+        box-shadow: 0 1px 6px rgba(0, 0, 0, 0.05);
+        transition: all 0.2s ease;
+        border-left: 4px solid transparent;
+    }
+
+    .blog-item:hover {
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+        transform: translateY(-1px);
+        border-left-color: #007bff;
+    }
+
+    .blog-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 12px;
     }
 
     .blog-title {
-        font-size: 1.6rem;
+        font-size: 1.3rem;
         font-weight: 600;
         color: #2c3e50;
-        margin-bottom: 15px;
         text-decoration: none;
-        line-height: 1.3;
-        display: block;
+        line-height: 1.4;
+        margin: 0;
+        flex: 1;
+        margin-right: 16px;
     }
 
     .blog-title:hover {
-        color: #3498db;
+        color: #007bff;
         text-decoration: none;
     }
 
+    .blog-stats {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-shrink: 0;
+    }
+
+    .blog-likes {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        color: #dc3545;
+        font-size: 0.85rem;
+    }
+
     .blog-description {
-        color: #7f8c8d;
-        font-size: 1rem;
-        line-height: 1.7;
-        margin-bottom: 20px;
+        color: #6c757d;
+        font-size: 0.9rem;
+        line-height: 1.5;
+        margin-bottom: 14px;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
     }
 
     .blog-meta {
         display: flex;
-        flex-direction: column;
-        gap: 6px;
-        margin-bottom: 16px;
-        font-size: 0.9rem;
-        color: #95a5a6;
-    }
-
-    .blog-meta-top {
-        display: flex;
         justify-content: space-between;
         align-items: center;
+        font-size: 0.8rem;
+        color: #8e9ba6;
     }
 
-    .blog-likes {
-        display: inline-flex;
+    .blog-author {
+        display: flex;
         align-items: center;
-        gap: 6px;
-        color: #e74c3c;
+        gap: 8px;
+    }
+
+    .blog-author img {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        object-fit: cover;
     }
 
     .blog-date {
-        font-size: 0.85rem;
-        color: #a0a7ad;
+        color: #adb5bd;
     }
 
-    .blog-author::before {
-        margin-right: 5px;
-    }
-
-    .blog-date::before {
-        content: '📅';
-        margin-right: 5px;
-    }
-
-    .read-btn {
-        background: #2c3e50;
-        color: white;
-        border: none;
-        padding: 12px 24px;
-        border-radius: 4px;
-        font-weight: 500;
-        text-decoration: none;
-        display: inline-block;
-        transition: all 0.3s ease;
-        font-size: 0.95rem;
-    }
-
-    .read-btn:hover {
-        background: #34495e;
-        color: white;
-        text-decoration: none;
-        transform: translateY(-1px);
-    }
-
-    .current-category {
-        margin-top: 15px;
-    }
-
-    .categories-nav {
-        background: #f8f9fa;
-        padding: 20px 0;
-        margin-bottom: 40px;
-        border-bottom: 1px solid #e9ecef;
-    }
-
-    .category-buttons {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        align-items: flex-start;
-    }
-
-    .category-group {
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-    }
-
-    .category-btn {
-        display: inline-block;
-        padding: 8px 16px;
-        background: #ffffff;
-        color: #6c757d;
-        text-decoration: none;
-        border-radius: 20px;
-        border: 1px solid #dee2e6;
-        font-size: 0.9rem;
-        transition: all 0.3s ease;
-        white-space: nowrap;
-    }
-
-    .category-btn:hover {
-        background: #e9ecef;
-        color: #495057;
-        text-decoration: none;
-        transform: translateY(-1px);
-    }
-
-    .category-btn.active {
-        background: #007bff;
-        color: white;
-        border-color: #007bff;
-    }
-
-    .category-btn.main-category {
-        font-weight: 500;
-    }
-
-    .sub-categories {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 4px;
-        margin-left: 16px;
-    }
-
-    .category-btn.sub-category {
-        font-size: 0.8rem;
-        padding: 6px 12px;
-        background: #f8f9fa;
-        border-color: #e9ecef;
-    }
-
-    .category-tag {
+    .blog-category-tag {
         display: inline-block;
         background: #f8f9fa;
         color: #6c757d;
         padding: 2px 8px;
         border-radius: 12px;
-        font-size: 0.8rem;
-        margin-top: 5px;
+        font-size: 0.75rem;
+        margin-left: 8px;
+    }
+
+    .no-blogs {
+        text-align: center;
+        padding: 60px 20px;
+        color: #8e9ba6;
+    }
+
+    .no-blogs i {
+        font-size: 3rem;
+        margin-bottom: 16px;
+        opacity: 0.5;
+    }
+
+    /* 响应式设计 */
+    @media (max-width: 992px) {
+        .blog-layout {
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        .sidebar {
+            flex: none;
+            position: static;
+            order: -1;
+        }
+        
+        .blogs-hero h1 {
+            font-size: 2rem;
+        }
     }
 
     @media (max-width: 768px) {
-        .blogs-hero h1 {
-            font-size: 2.2rem;
+        .sidebar {
+            padding: 16px;
         }
 
-        .blog-card {
-            padding: 25px 20px;
+        /* 手机端默认折叠分类列表 */
+        .sidebar .category-list {
+            max-height: 0;
+            opacity: 0;
+            margin-bottom: 0;
         }
 
+        .sidebar .category-list.expanded {
+            max-height: 1000px;
+            opacity: 1;
+            margin-bottom: 0;
+        }
+
+        /* 手机端侧边栏标题更明显 */
+        .sidebar-title {
+            background: #f8f9fa;
+            padding: 12px 16px;
+            margin: -16px -16px 20px -16px;
+            border-radius: 12px 12px 0 0;
+            border-bottom: 2px solid #e9ecef;
+        }
+        
+        .blog-item {
+            padding: 16px 18px;
+        }
+        
+        .blog-header {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 8px;
+        }
+        
+        .blog-title {
+            font-size: 1.1rem;
+            margin-right: 0;
+        }
+        
         .blog-meta {
             flex-direction: column;
             align-items: flex-start;
-            gap: 10px;
+            gap: 8px;
+        }
+        
+        .blogs-hero {
+            padding: 40px 0 30px;
+        }
+        
+        .blog-layout {
+            margin-top: 20px;
         }
 
-        .categories-nav {
-            padding: 15px 0;
-        }
-
-        .category-buttons {
-            flex-direction: column;
-            align-items: stretch;
-        }
-
-        .category-group {
-            margin-bottom: 10px;
-        }
-
-        .sub-categories {
-            margin-left: 0;
-            margin-top: 5px;
-        }
-
-        .category-btn {
-            text-align: center;
-            margin-bottom: 5px;
+        .sub-category-list {
+            margin-left: 16px;
         }
     }
 </style>
@@ -245,101 +418,215 @@
         <p>分享思考与见解</p>
         {% if current_category %}
         <div class="current-category">
-            <span class="badge bg-primary fs-6">{{ current_category.icon }} {{ current_category.get_full_path() }}</span>
+            <span class="badge">{{ current_category.icon }} {{ current_category.get_full_path() }}</span>
         </div>
         {% endif %}
     </div>
 </section>
 
-<!-- 栏目导航 -->
-<section class="categories-nav">
-    <div class="container">
-        <div class="row">
-            <div class="col-12">
-                <div class="category-buttons">
-                    <a href="/blog/" class="category-btn {{ 'active' if not current_category else '' }}">
-                        🏠 全部
-                    </a>
-                    {% for category in categories %}
-                    <div class="category-group">
-                        <a href="/blog/?category={{ category.slug }}" 
-                           class="category-btn main-category {{ 'active' if current_category and current_category.id == category.id else '' }}">
-                            {{ category.icon }} {{ category.name }}
-                        </a>
-                        {% if category.children %}
-                        <div class="sub-categories">
-                            {% for child in category.children %}
-                            <a href="/blog/?category={{ child.slug }}" 
-                               class="category-btn sub-category {{ 'active' if current_category and current_category.id == child.id else '' }}">
-                                {{ child.icon }} {{ child.name }}
-                            </a>
-                            {% endfor %}
-                        </div>
-                        {% endif %}
-                    </div>
-                    {% endfor %}
-                </div>
-            </div>
-        </div>
-    </div>
-</section>
-
-{% for blog in blogs %}
+<!-- 主布局 -->
 <div class="container">
-    <div class="row">
-        <div class="col-lg-12 col-md-12 mb-4">
-            <div class="blog-card">
-                <a href="/blog/{{ blog.id }}" class="blog-title">{{ blog.title }}</a>
-                <p class="blog-description">
-                    {{ blog.description }}
-                </p>
-                <div class="blog-meta">
-                    <div class="blog-meta-top">
-                        <span class="blog-author">
-                            <img src="/auth/avatar/{{ blog.author_id }}"
-                                style="width:24px; height:24px; border-radius:10%; margin-right:8px;">
-                            {{ blog.author }}</span>
+    <div class="blog-layout">
+        <!-- 左侧分类导航 -->
+        <aside class="sidebar">
+            <h3 class="sidebar-title" onclick="toggleMainCategories()">
+                <span>📚 文章分类</span>
+                <span class="toggle-icon">🔽</span>
+            </h3>
+            <ul class="category-list" id="mainCategoryList">
+                <li class="category-item">
+                    <a href="/blog/" class="category-link {{ 'active' if not current_category else '' }}">
+                        <div class="category-content">
+                            <span class="icon">🏠</span>
+                            <span>全部文章</span>
+                        </div>
+                    </a>
+                </li>
+                {% for category in categories %}
+                <li class="category-item {{ 'has-children' if category.children else '' }}">
+                    {% if category.children %}
+                    <div class="category-link collapsible" onclick="toggleCategory('category-{{ category.id }}')">
+                        <div class="category-content">
+                            <span class="icon">{{ category.icon }}</span>
+                            <span>{{ category.name }}</span>
+                        </div>
+                        <span class="category-toggle">🔽</span>
+                    </div>
+                    <ul class="sub-category-list" id="category-{{ category.id }}">
+                        {% for child in category.children %}
+                        <li class="category-item">
+                            <a href="/blog/?category={{ child.slug }}" 
+                               class="sub-category-link {{ 'active' if current_category and current_category.id == child.id else '' }}">
+                                <span class="icon">{{ child.icon }}</span>
+                                <span>{{ child.name }}</span>
+                            </a>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <a href="/blog/?category={{ category.slug }}" 
+                       class="category-link {{ 'active' if current_category and current_category.id == category.id else '' }}">
+                        <div class="category-content">
+                            <span class="icon">{{ category.icon }}</span>
+                            <span>{{ category.name }}</span>
+                        </div>
+                    </a>
+                    {% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+        </aside>
+
+        <!-- 右侧博客列表 -->
+        <main class="blog-content">
+            {% for blog in blogs %}
+            <article class="blog-item">
+                <div class="blog-header">
+                    <a href="/blog/{{ blog.id }}" class="blog-title">{{ blog.title }}</a>
+                    <div class="blog-stats">
                         <span class="blog-likes" title="点赞数">
                             <i class="bi bi-heart-fill"></i>
                             <span>{{ blog.likes_count or 0 }}</span>
                         </span>
                     </div>
-                    <div class="blog-date">{{ blog.date }}</div>
-                    {% if blog.category_path %}
-                    <div class="blog-category">
-                        <span class="category-tag">📁 {{ blog.category_path }}</span>
-                    </div>
-                    {% endif %}
                 </div>
-                <a href="/blog/{{ blog.id }}" class="read-btn">阅读</a>
-            </div>
-        </div>
-    </div>
-</div>
-{% endfor %}
+                <p class="blog-description">{{ blog.description }}</p>
+                <div class="blog-meta">
+                    <div class="blog-author">
+                        <img src="/auth/avatar/{{ blog.author_id }}" alt="{{ blog.author }}">
+                        <span>{{ blog.author }}</span>
+                        {% if blog.category_path %}
+                        <span class="blog-category-tag">{{ blog.category_path }}</span>
+                        {% endif %}
+                    </div>
+                    <div class="blog-date">{{ blog.date }}</div>
+                </div>
+            </article>
+            {% endfor %}
 
-{% if not blogs %}
-<div class="container">
-    <div class="text-center">
-        <p style="color: #7f8c8d; font-size: 1.1rem;">暂无博客文章</p>
+            {% if not blogs %}
+            <div class="no-blogs">
+                <i class="bi bi-journal-x"></i>
+                <p>暂无博客文章</p>
+            </div>
+            {% endif %}
+        </main>
     </div>
 </div>
-{% endif %}
 {% endblock %}
 
 {% block extra_js %}
 <script>
     document.addEventListener('DOMContentLoaded', function () {
-        const blogCards = document.querySelectorAll('.blog-card');
-        blogCards.forEach((card, index) => {
-            card.style.opacity = '0';
-            card.style.transform = 'translateY(20px)';
+        // 初始化折叠状态
+        initializeCollapse();
+        
+        // 博客卡片动画
+        const blogItems = document.querySelectorAll('.blog-item');
+        blogItems.forEach((item, index) => {
+            item.style.opacity = '0';
+            item.style.transform = 'translateY(20px)';
             setTimeout(() => {
-                card.style.transition = 'all 0.6s ease';
-                card.style.opacity = '1';
-                card.style.transform = 'translateY(0)';
+                item.style.transition = 'all 0.6s ease';
+                item.style.opacity = '1';
+                item.style.transform = 'translateY(0)';
             }, index * 100);
         });
+
+        // 侧边栏动画
+        const sidebar = document.querySelector('.sidebar');
+        if (sidebar) {
+            sidebar.style.opacity = '0';
+            sidebar.style.transform = 'translateX(-20px)';
+            setTimeout(() => {
+                sidebar.style.transition = 'all 0.6s ease';
+                sidebar.style.opacity = '1';
+                sidebar.style.transform = 'translateX(0)';
+            }, 200);
+        }
+    });
+
+    // 初始化折叠状态
+    function initializeCollapse() {
+        const isMobile = window.innerWidth <= 768;
+        const mainCategoryList = document.getElementById('mainCategoryList');
+        const sidebarTitle = document.querySelector('.sidebar-title');
+        
+        // 手机端默认折叠主分类列表
+        if (isMobile && mainCategoryList) {
+            mainCategoryList.classList.add('collapsed');
+            if (sidebarTitle) {
+                sidebarTitle.classList.add('collapsed');
+            }
+        }
+
+        // 桌面端默认展开所有子分类
+        if (!isMobile) {
+            const subCategoryLists = document.querySelectorAll('.sub-category-list');
+            subCategoryLists.forEach(list => {
+                list.classList.remove('collapsed');
+            });
+        } else {
+            // 手机端默认折叠所有子分类
+            const subCategoryLists = document.querySelectorAll('.sub-category-list');
+            subCategoryLists.forEach(list => {
+                list.classList.add('collapsed');
+            });
+            const collapsibleLinks = document.querySelectorAll('.category-link.collapsible');
+            collapsibleLinks.forEach(link => {
+                link.classList.add('collapsed');
+            });
+        }
+    }
+
+    // 切换主分类列表显示/隐藏
+    function toggleMainCategories() {
+        const mainCategoryList = document.getElementById('mainCategoryList');
+        const sidebarTitle = document.querySelector('.sidebar-title');
+        
+        if (mainCategoryList) {
+            const isCollapsed = mainCategoryList.classList.contains('collapsed');
+            
+            if (isCollapsed) {
+                mainCategoryList.classList.remove('collapsed');
+                if (window.innerWidth <= 768) {
+                    mainCategoryList.classList.add('expanded');
+                }
+                if (sidebarTitle) {
+                    sidebarTitle.classList.remove('collapsed');
+                }
+            } else {
+                mainCategoryList.classList.add('collapsed');
+                mainCategoryList.classList.remove('expanded');
+                if (sidebarTitle) {
+                    sidebarTitle.classList.add('collapsed');
+                }
+            }
+        }
+    }
+
+    // 切换子分类显示/隐藏
+    function toggleCategory(categoryId) {
+        const categoryList = document.getElementById(categoryId);
+        const toggleButton = document.querySelector(`[onclick="toggleCategory('${categoryId}')"]`);
+        
+        if (categoryList && toggleButton) {
+            const isCollapsed = categoryList.classList.contains('collapsed');
+            
+            if (isCollapsed) {
+                categoryList.classList.remove('collapsed');
+                toggleButton.classList.remove('collapsed');
+            } else {
+                categoryList.classList.add('collapsed');
+                toggleButton.classList.add('collapsed');
+            }
+        }
+    }
+
+    // 响应窗口大小变化
+    window.addEventListener('resize', function() {
+        // 当从手机端切换到桌面端时，重新初始化
+        setTimeout(initializeCollapse, 100);
     });
 </script>
 {% endblock %}
