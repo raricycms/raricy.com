@@ -46,6 +46,37 @@ def safe_markdown_to_html(markdown_text):
                     # 如果遇到新的有序列表项或其他内容，退出内层循环
                     else:
                         break
+            
+            # 检查是否是无序列表项（* 开头）
+            elif re.match(r'^\*\s+', line):
+                processed_lines.append(line)
+                i += 1
+                
+                # 查看后续行，寻找子列表和普通内容
+                while i < len(lines):
+                    next_line = lines[i]
+                    
+                    # 如果是空行，跳过但继续查找
+                    if next_line.strip() == '':
+                        i += 1
+                        continue
+                    
+                    # 如果是两个空格缩进的内容（属于当前列表项的内容）
+                    elif re.match(r'^  [^\s]', next_line) and not re.match(r'^  \*\s+', next_line):
+                        # 这是列表项的继续内容，保持原样
+                        processed_lines.append(next_line)
+                        i += 1
+                    
+                    # 如果是两个空格缩进的子列表项
+                    elif re.match(r'^  \*\s+', next_line):
+                        # 确保有正确的4空格缩进用于子列表
+                        processed_lines.append('    ' + next_line.strip())
+                        i += 1
+                    
+                    # 如果遇到新的顶级列表项或其他内容，退出内层循环
+                    else:
+                        break
+            
             else:
                 processed_lines.append(line)
                 i += 1
