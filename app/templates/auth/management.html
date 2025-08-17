@@ -55,7 +55,7 @@ Raricy.com - 用户管理页面
                         <td>
                             <button class="btn btn-sm btn-info" onclick="window.location.href=`{{ url_for('auth.profile', user_id=user.id) }}`">查看</button>
                             <button class="btn btn-sm btn-primary">编辑</button>
-                            <button class="btn btn-sm btn-danger">删除</button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteUser('{{ user.id }}')" {% if user.is_admin or user.id == current_user.id %}disabled{% endif %}>删除</button>
                             {% if user.authenticated %}
                                 <button class="btn btn-sm btn-warning" onclick="demoteUser('{{ user.id }}')">取消认证</button>
                             {% else %}
@@ -105,6 +105,26 @@ Raricy.com - 用户管理页面
                   alert(data.message);
               }
           });
+    }
+
+    function deleteUser(user_id) {
+        const password = prompt("请输入您的管理员密码以确认删除：");
+        if (password) {
+            fetch('{{ url_for("auth.delete_user") }}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({user_id: user_id, password: password})
+            }).then(response => response.json())
+              .then(data => {
+                  if(data.code === 200) {
+                      location.reload();
+                  } else {
+                      alert(data.message);
+                  }
+              });
+        }
     }
 </script>
 {% endblock %}

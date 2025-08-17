@@ -13,6 +13,47 @@ def safe_markdown_to_html(markdown_text):
     返回:
         str: 经过安全过滤的HTML内容
     """
+    # 预处理markdown文本以改善嵌套列表的解析
+    def preprocess_markdown(text):
+        import re
+        lines = text.split('\n')
+        processed_lines = []
+        i = 0
+        
+        while i < len(lines):
+            line = lines[i]
+            
+            # 检查是否是有序列表项
+            if re.match(r'^\d+\.\s+', line):
+                processed_lines.append(line)
+                i += 1
+                
+                # 查看后续行，寻找子列表
+                while i < len(lines):
+                    next_line = lines[i]
+                    
+                    # 如果是空行，跳过但继续查找子列表
+                    if next_line.strip() == '':
+                        i += 1
+                        continue
+                    
+                    # 如果是缩进的无序列表项（子列表）
+                    elif re.match(r'^   -\s+', next_line):
+                        # 确保有正确的4空格缩进用于子列表
+                        processed_lines.append('    ' + next_line.strip())
+                        i += 1
+                    
+                    # 如果遇到新的有序列表项或其他内容，退出内层循环
+                    else:
+                        break
+            else:
+                processed_lines.append(line)
+                i += 1
+        
+        return '\n'.join(processed_lines)
+    
+    # 预处理文本
+    markdown_text = preprocess_markdown(markdown_text)
     # 定义安全标签白名单
     ALLOWED_TAGS = [
         'p', 'br', 'hr', 'pre', 'div', 'span',
