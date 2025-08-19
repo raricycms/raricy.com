@@ -17,6 +17,17 @@ window.MathJax = {
   options: {
     skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'],
     ignoreHtmlClass: 'tex2jax_ignore'
+  },
+  startup: {
+    ready: () => {
+      // The default ready function waits for the DOM and then typesets the page.
+      MathJax.startup.defaultReady();
+      // We can chain a promise to the startup promise to run code after typesetting.
+      MathJax.startup.promise = MathJax.startup.promise.then(() => {
+        console.log('MathJax initial typesetting complete. Adjusting formula sizes.');
+        adjustMathFormulaSizes();
+      });
+    }
   }
 };
 </script>
@@ -960,15 +971,6 @@ window.MathJax = {
         updateReadingProgress();
         addCopyButtons();
         addImageZoom();
-
-        // 渲染数学公式
-        if (window.MathJax) {
-            MathJax.typesetPromise([document.querySelector('.blog-content-container')]).then(() => {
-                console.log('MathJax rendering completed');
-                // 渲染完成后调整过长公式的字体大小
-                adjustMathFormulaSizes();
-            }).catch((err) => console.log('MathJax rendering failed: ' + err.message));
-        }
 
         // 平滑滚动到内容区域（如果有锚点）
         if (window.location.hash) {

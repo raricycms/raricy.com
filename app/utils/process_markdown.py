@@ -156,81 +156,59 @@ def safe_markdown_to_html(markdown_text):
                 text = text.replace(placeholder, "[数学公式已被过滤]")
         return text
     
-    # 预处理markdown文本以改善嵌套列表的解析
-    def preprocess_markdown(text):
+    def fix_lazy_list_indentation(text):
+        """
+        一个健壮的预处理器，通过两阶段处理，在 Markdown 解析前修正常见的列表渲染问题。
+        """
         import re
+        # 阶段零：清理可能破坏解析的零宽空格 (U+200B)
+        text = text.replace('\u200b', '')
+ 
+        # 阶段一：修正“懒惰”缩进
+        # 将使用2或3个空格进行缩进的嵌套列表，整体增加缩进，使其符合4空格标准。
         lines = text.split('\n')
         processed_lines = []
         i = 0
-        
         while i < len(lines):
             line = lines[i]
-            
-            # 检查是否是有序列表项
-            if re.match(r'^\d+\.\s+', line):
-                processed_lines.append(line)
+            if re.match(r'^(  |   )([*+-]|\d+\.) ', line):
+                block_start_index = i
                 i += 1
-                
-                # 查看后续行，寻找子列表
-                while i < len(lines):
-                    next_line = lines[i]
-                    
-                    # 如果是空行，跳过但继续查找子列表
-                    if next_line.strip() == '':
-                        i += 1
-                        continue
-                    
-                    # 如果是缩进的无序列表项（子列表）
-                    elif re.match(r'^   -\s+', next_line):
-                        # 确保有正确的4空格缩进用于子列表
-                        processed_lines.append('    ' + next_line.strip())
-                        i += 1
-                    
-                    # 如果遇到新的有序列表项或其他内容，退出内层循环
-                    else:
-                        break
-            
-            # 检查是否是无序列表项（* 开头）
-            elif re.match(r'^\*\s+', line):
-                processed_lines.append(line)
-                i += 1
-                
-                # 查看后续行，寻找子列表和普通内容
-                while i < len(lines):
-                    next_line = lines[i]
-                    
-                    # 如果是空行，跳过但继续查找
-                    if next_line.strip() == '':
-                        i += 1
-                        continue
-                    
-                    # 如果是两个空格缩进的内容（属于当前列表项的内容）
-                    elif re.match(r'^  [^\s]', next_line) and not re.match(r'^  \*\s+', next_line):
-                        # 这是列表项的继续内容，保持原样
-                        processed_lines.append(next_line)
-                        i += 1
-                    
-                    # 如果是两个空格缩进的子列表项
-                    elif re.match(r'^  \*\s+', next_line):
-                        # 确保有正确的4空格缩进用于子列表
-                        processed_lines.append('    ' + next_line.strip())
-                        i += 1
-                    
-                    # 如果遇到新的顶级列表项或其他内容，退出内层循环
-                    else:
-                        break
-            
+                while i < len(lines) and (lines[i].strip() == '' or re.match(r'^  ', lines[i])):
+                    i += 1
+                block_end_index = i
+                for j in range(block_start_index, block_end_index):
+                    processed_lines.append('  ' + lines[j])
             else:
                 processed_lines.append(line)
                 i += 1
+
+        # 阶段二：插入空行分隔符，消除歧义
+        # 如果一个顶级列表项紧跟在一个缩进行之后，则在它们之间插入一个空行。
+        final_lines = []
+        if not processed_lines:
+            return ""
         
-        return '\n'.join(processed_lines)
-    
+        final_lines.append(processed_lines[0])
+        for i in range(1, len(processed_lines)):
+            prev_line = processed_lines[i-1]
+            current_line = processed_lines[i]
+            
+            is_top_level_list = re.match(r'^([*+-]|\d+\.) ', current_line)
+            prev_is_indented = re.match(r'^\s+', prev_line)
+            prev_is_not_blank = prev_line.strip() != ''
+
+            if is_top_level_list and prev_is_indented and prev_is_not_blank:
+                final_lines.append('')
+            
+            final_lines.append(current_line)
+            
+        return '\n'.join(final_lines)
     # 保护 LaTeX 数学公式
     markdown_text, protected_math = protect_latex_math(markdown_text)
     
-    # 预处理文本
-    markdown_text = preprocess_markdown(markdown_text)
+    markdown_text = fix_lazy_list_indentation(markdown_text)
+    
     # 定义安全标签白名单
     ALLOWED_TAGS = [
         'p', 'br', 'hr', 'pre', 'div', 'span',
