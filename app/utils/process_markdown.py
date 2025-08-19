@@ -15,6 +15,71 @@ def safe_markdown_to_html(markdown_text):
         str: 经过安全过滤的HTML内容
     """
     
+    # 验证数学公式内容是否安全
+    def is_safe_math_content(math_content):
+        import re
+        
+        # 移除数学公式的包装符号
+        content = math_content
+        if content.startswith('$$') and content.endswith('$$'):
+            content = content[2:-2]
+        elif content.startswith('$') and content.endswith('$'):
+            content = content[1:-1]
+        elif content.startswith('\\[') and content.endswith('\\]'):
+            content = content[2:-2]
+        elif content.startswith('\\(') and content.endswith('\\)'):
+            content = content[2:-2]
+        
+        content = content.strip()
+        
+        # 检查是否包含HTML标签（但排除LaTeX中的比较符号）
+        # 使用完整的HTML标签匹配，必须有开始和结束的尖括号
+        # 检查是否有合法的HTML标签结构：<tagname> 或 <tagname/> 或 <tagname 属性>
+        import re
+        html_tag_pattern = r'<\s*([a-zA-Z][a-zA-Z0-9\-]*)\s*(?:[^>]*)?\s*>'
+        matches = re.findall(html_tag_pattern, content)
+        if matches:
+            # 进一步验证：确保不是数学符号的误匹配
+            for match in matches:
+                # 检查标签名是否为常见的HTML标签
+                common_html_tags = [
+                    'div', 'span', 'p', 'a', 'img', 'br', 'hr', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+                    'ul', 'ol', 'li', 'table', 'tr', 'td', 'th', 'script', 'style', 'link', 'meta',
+                    'input', 'button', 'form', 'iframe', 'object', 'embed'
+                ]
+                if match.lower() in common_html_tags:
+                    return False
+        
+        # 额外检查：是否包含明显的HTML属性模式
+        if re.search(r'<[^>]*\s+(class|id|src|href|onclick|onload|style)\s*=', content, re.IGNORECASE):
+            return False
+            
+        # 检查是否包含JavaScript相关内容
+        dangerous_patterns = [
+            r'javascript:',
+            r'\bon\w+\s*=',  # onclick, onload, etc. (需要单词边界)
+            r'<script',
+            r'</script',
+            r'eval\s*\(',
+            r'document\.',
+            r'window\.',
+            r'alert\s*\(',
+            r'prompt\s*\(',
+            r'confirm\s*\(',
+        ]
+        
+        for pattern in dangerous_patterns:
+            if re.search(pattern, content, re.IGNORECASE):
+                return False
+        
+        # 检查是否包含不安全的协议
+        unsafe_protocols = ['javascript:', 'data:', 'vbscript:']
+        for protocol in unsafe_protocols:
+            if protocol in content.lower():
+                return False
+                
+        return True
+
     # 保护 LaTeX 数学公式不被 Markdown 处理
     def protect_latex_math(text):
         import re
@@ -26,26 +91,44 @@ def safe_markdown_to_html(markdown_text):
         # 保护块级数学公式 $$...$$
         def replace_display_math(match):
             nonlocal counter
-            placeholder = f"MATHPROTECTDISPLAY{counter}MATHPROTECT"
-            protected_math[placeholder] = match.group(0)
-            counter += 1
-            return placeholder
+            math_content = match.group(0)
+            # 预先验证内容是否为合法的数学公式
+            if is_safe_math_content(math_content):
+                placeholder = f"MATHPROTECTDISPLAY{counter}MATHPROTECT"
+                protected_math[placeholder] = math_content
+                counter += 1
+                return placeholder
+            else:
+                # 不安全的内容不进行保护，让 Markdown 正常处理
+                return math_content
             
         # 保护行内数学公式 $...$
         def replace_inline_math(match):
             nonlocal counter
-            placeholder = f"MATHPROTECTINLINE{counter}MATHPROTECT"
-            protected_math[placeholder] = match.group(0)
-            counter += 1
-            return placeholder
+            math_content = match.group(0)
+            # 预先验证内容是否为合法的数学公式
+            if is_safe_math_content(math_content):
+                placeholder = f"MATHPROTECTINLINE{counter}MATHPROTECT"
+                protected_math[placeholder] = math_content
+                counter += 1
+                return placeholder
+            else:
+                # 不安全的内容不进行保护，让 Markdown 正常处理
+                return math_content
         
         # 保护 \[...\] 和 \(...\) 格式
         def replace_bracket_math(match):
             nonlocal counter
-            placeholder = f"MATHPROTECTBRACKET{counter}MATHPROTECT"
-            protected_math[placeholder] = match.group(0)
-            counter += 1
-            return placeholder
+            math_content = match.group(0)
+            # 预先验证内容是否为合法的数学公式
+            if is_safe_math_content(math_content):
+                placeholder = f"MATHPROTECTBRACKET{counter}MATHPROTECT"
+                protected_math[placeholder] = math_content
+                counter += 1
+                return placeholder
+            else:
+                # 不安全的内容不进行保护，让 Markdown 正常处理
+                return math_content
         
         # 先处理块级数学公式（避免与行内公式冲突）
         text = re.sub(r'\$\$.*?\$\$', replace_display_math, text, flags=re.DOTALL)
@@ -61,12 +144,18 @@ def safe_markdown_to_html(markdown_text):
         
         return text, protected_math
     
-    # 恢复受保护的数学公式
+    # 恢复受保护的数学公式（带安全验证）
     def restore_latex_math(text, protected_math):
+        import re
         for placeholder, original in protected_math.items():
-            text = text.replace(placeholder, original)
+            # 验证数学公式内容的安全性
+            if is_safe_math_content(original):
+                text = text.replace(placeholder, original)
+            else:
+                # 如果不安全，用安全的占位符替换
+                text = text.replace(placeholder, "[数学公式已被过滤]")
         return text
-
+    
     # 预处理markdown文本以改善嵌套列表的解析
     def preprocess_markdown(text):
         import re
