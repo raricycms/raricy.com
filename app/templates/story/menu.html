@@ -4,59 +4,129 @@
 
 {% block extra_css %}
 <style>
+    /* --- THEME & LAYOUT --- */
+    :root { /* Dark Theme (Default) */
+        --page-bg: #1a202c;
+        --hero-bg: radial-gradient(ellipse at 50% 100%, rgba(44, 62, 80, 0.15) 0%, rgba(26, 32, 44, 0) 70%);
+        --card-bg: rgba(39, 54, 71, 0.5);
+        --card-border: rgba(255, 255, 255, 0.1);
+        --card-border-left: rgba(255, 255, 255, 0.2);
+        --card-hover-bg: rgba(44, 62, 80, 0.6);
+        --text-primary: #ecf0f1;
+        --text-secondary: #bdc3c7;
+        --text-muted: #95a5a6;
+        --accent-color: #3498db;
+        --card-shadow: 0 4px 20px rgba(0,0,0,0.2);
+        --card-hover-shadow: 0 8px 30px rgba(0,0,0,0.25);
+        --btn-outline-text: var(--accent-color);
+    }
+
+    [data-theme="light"] {
+        --page-bg: #f4f7f9;
+        --hero-bg: linear-gradient(135deg, #e0eafc 0%, #cfdef3 100%);
+        --card-bg: #ffffff;
+        --card-border: #e9ecef;
+        --card-border-left: #3b82f6;
+        --card-hover-bg: #ffffff;
+        --text-primary: #2c3e50;
+        --text-secondary: #596a7a;
+        --text-muted: #7f8c8d;
+        --accent-color: #3b82f6;
+        --card-shadow: 0 4px 15px rgba(44,62,80,0.06);
+        --card-hover-shadow: 0 8px 25px rgba(44,62,80,0.1);
+        --btn-outline-text: var(--accent-color);
+    }
+
+    body {
+        background-color: var(--page-bg);
+        color: var(--text-secondary);
+        transition: background-color 0.3s ease, color 0.3s ease;
+    }
+
+    #page-bg-canvas {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: -2;
+    }
+    #hero-canvas {
+        position: absolute;
+        top: 0; left: 0; width: 100%; height: 100%;
+        z-index: -1;
+    }
+
     .stories-hero {
-        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        background: var(--hero-bg);
         padding: 80px 0 60px;
-        margin-bottom: 60px;
+        margin-bottom: 40px;
         text-align: center;
+        border-bottom: 1px solid var(--card-border);
+        transition: all 0.3s ease;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .stories-hero .container {
+        position: relative;
+        z-index: 1; /* Ensure text is above any potential pseudo-elements */
     }
 
     .stories-hero h1 {
         font-size: 3rem;
         font-weight: 300;
-        color: #2c3e50;
+        color: var(--text-primary);
         margin-bottom: 20px;
         letter-spacing: 2px;
     }
     
     .stories-hero p {
         font-size: 1.2rem;
-        color: #7f8c8d;
+        color: var(--text-secondary);
         font-weight: 300;
     }
 
     .story-card {
-        background: white;
-        border-radius: 8px;
+        background: var(--card-bg);
+        border-radius: 12px;
         padding: 30px 30px;
         margin-bottom: 30px;
-        box-shadow: 0 2px 20px rgba(0,0,0,0.08);
+        box-shadow: var(--card-shadow);
         transition: all 0.3s ease;
-        border-left: 4px solid transparent;
+        border: 1px solid var(--card-border);
+        border-left: 4px solid var(--card-border-left);
         height: 100%;
     }
     
+    [data-theme="dark"] .story-card {
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+    }
+
     .story-card:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+        transform: translateY(-5px) scale(1.02);
+        box-shadow: var(--card-hover-shadow);
+        border-left-color: var(--accent-color);
+        background: var(--card-hover-bg);
     }
 
     .story-title {
         font-size: 2rem;
         font-weight: 600;
-        color: #2c3e50;
+        color: var(--text-primary);
         margin-bottom: 20px;
         text-decoration: none;
         line-height: 1.8;
+        transition: color 0.3s ease;
     }
     
     .story-title:hover {
-        color: #3498db;
-        text-decoration: none;
+        color: var(--accent-color);
     }
     
     .story-description {
-        color: #7f8c8d;
+        color: var(--text-secondary);
         font-size: 1rem;
         line-height: 1.7;
         margin-bottom: 25px;
@@ -68,38 +138,61 @@
         align-items: center;
         margin-bottom: 25px;
         font-size: 0.9rem;
-        color: #95a5a6;
+        color: var(--text-muted);
     }
     
     .read-btn {
-        background: #2c3e50;
-        color: white;
-        border: none;
+        background: transparent;
+        color: var(--btn-outline-text);
+        border: 1px solid var(--accent-color);
         padding: 12px 24px;
-        border-radius: 4px;
+        border-radius: 6px;
         font-weight: 500;
         text-decoration: none;
         display: inline-block;
         transition: all 0.3s ease;
         font-size: 0.95rem;
-        margin-bottom: -15px;
     }
     
     .read-btn:hover {
-        background: #34495e;
+        background: var(--accent-color);
         color: white;
-        text-decoration: none;
         transform: translateY(-1px);
     }
+
+    .theme-switcher {
+        position: absolute;
+        top: 20px;
+        right: 20px;
+    }
+    #theme-toggle-btn {
+        background: rgba(127, 127, 127, 0.2);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        color: white;
+        width: 40px; height: 40px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.2rem;
+    }
+    [data-theme="light"] #theme-toggle-btn {
+        background: rgba(0, 0, 0, 0.1);
+        border-color: transparent;
+        color: var(--text-primary);
+    }
+    #theme-toggle-btn .bi-sun-fill { display: none; }
+    #theme-toggle-btn .bi-moon-stars-fill { display: inline-block; }
+    [data-theme="light"] #theme-toggle-btn .bi-sun-fill { display: inline-block; }
+    [data-theme="light"] #theme-toggle-btn .bi-moon-stars-fill { display: none; }
+
     @media (max-width: 768px) {
         .stories-hero h1 {
             font-size: 2.2rem;
         }
-
         .story-card {
             padding: 25px 20px;
         }
-
         .story-meta {
             flex-direction: column;
             align-items: flex-start;
@@ -111,11 +204,18 @@
 
 {% block content %}
 <section class="stories-hero">
+    <canvas id="hero-canvas"></canvas>
     <div class="container">
         <h1>📚 聪明山故事集</h1>
         <p>这里有一些故事，希望你喜欢</p>
     </div>
+    <div class="theme-switcher">
+        <button id="theme-toggle-btn">
+            <i class="bi bi-moon-stars-fill"></i><i class="bi bi-sun-fill"></i>
+        </button>
+    </div>
 </section>
+<canvas id="page-bg-canvas"></canvas>
 <div class="container">
     <div class="row">
         {% for batch in batches %}
@@ -137,5 +237,187 @@
 {% endblock %}
 
 {% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // --- THEME SWITCHER ---
+    const themeToggleBtn = document.getElementById('theme-toggle-btn');
+    const docElement = document.documentElement;
 
+    function applyTheme(theme) {
+        docElement.setAttribute('data-theme', theme);
+        localStorage.setItem('theme', theme);
+    }
+
+    const savedTheme = localStorage.getItem('theme') || 'dark';
+    applyTheme(savedTheme);
+
+    themeToggleBtn.addEventListener('click', () => {
+        const currentTheme = docElement.getAttribute('data-theme');
+        const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+        applyTheme(newTheme);
+    });
+
+    // --- DUAL CANVAS ANIMATIONS ---
+    const heroCanvas = document.getElementById('hero-canvas');
+    const pageBgCanvas = document.getElementById('page-bg-canvas');
+    if (!heroCanvas || !pageBgCanvas) return;
+
+    const heroCtx = heroCanvas.getContext('2d');
+    const pageBgCtx = pageBgCanvas.getContext('2d');
+
+    let heroParticles = [], pageBgParticles = [], metaballs = [];
+
+    function resizeCanvas() {
+        heroCanvas.width = heroCanvas.offsetWidth;
+        heroCanvas.height = heroCanvas.offsetHeight;
+        pageBgCanvas.width = window.innerWidth;
+        pageBgCanvas.height = window.innerHeight;
+    }
+
+    // --- DARK MODE: Starfield Particles ---
+    class Star {
+        constructor(canvas, options = {}) {
+            this.canvas = canvas;
+            this.x = Math.random() * canvas.width;
+            this.y = Math.random() * canvas.height;
+            this.vx = (Math.random() - 0.5) * (options.speed || 0.3);
+            this.vy = (Math.random() - 0.5) * (options.speed || 0.3);
+            this.radius = Math.random() * (options.size || 1.5) + 0.5;
+            this.alpha = Math.random() * 0.7 + 0.2;
+            this.isShootingStar = options.shooting && Math.random() < 0.001;
+            if (this.isShootingStar) {
+                this.vx *= 20; this.vy *= 20; this.alpha = 1;
+            }
+        }
+        update() {
+            this.x += this.vx; this.y += this.vy;
+            if (this.x < 0 || this.x > this.canvas.width || this.y < 0 || this.y > this.canvas.height) {
+                if (this.isShootingStar) {
+                    Object.assign(this, new Star(this.canvas, { shooting: true, speed: 0.3, size: 1.5 }));
+                } else {
+                    if (this.x < 0) this.x = this.canvas.width;
+                    if (this.x > this.canvas.width) this.x = 0;
+                    if (this.y < 0) this.y = this.canvas.height;
+                    if (this.y > this.canvas.height) this.y = 0;
+                }
+            }
+        }
+        draw(ctx) {
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(255, 255, 255, ${this.alpha})`;
+            ctx.fill();
+        }
+    }
+
+    // --- LIGHT MODE: Metaballs ---
+    class Metaball {
+        constructor() {
+            this.x = Math.random() * heroCanvas.width;
+            this.y = Math.random() * heroCanvas.height;
+            this.vx = (Math.random() - 0.5) * 2;
+            this.vy = (Math.random() - 0.5) * 2;
+            this.r = Math.random() * 80 + 60;
+            this.color = `hsl(${Math.random() * 360}, 70%, 70%)`;
+        }
+        update() {
+            this.x += this.vx;
+            this.y += this.vy;
+            if (this.x - this.r < 0 || this.x + this.r > heroCanvas.width) this.vx *= -1;
+            if (this.y - this.r < 0 || this.y + this.r > heroCanvas.height) this.vy *= -1;
+        }
+        draw(ctx) {
+            const grad = ctx.createRadialGradient(this.x, this.y, 1, this.x, this.y, this.r);
+            grad.addColorStop(0, this.color);
+            grad.addColorStop(1, this.color.replace('hsl', 'hsla').replace(')', ', 0)'));
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+
+    // --- LIGHT MODE: Dust Motes ---
+    class Mote {
+        constructor() {
+            this.x = Math.random() * pageBgCanvas.width;
+            this.y = Math.random() * pageBgCanvas.height;
+            this.vx = (Math.random() - 0.5) * 0.1;
+            this.vy = (Math.random() - 0.5) * 0.1;
+            this.radius = Math.random() * 1 + 0.5;
+            this.alpha = Math.random() * 0.1 + 0.05;
+        }
+        update() {
+            this.x += this.vx; this.y += this.vy;
+            if (this.x < 0) this.x = pageBgCanvas.width;
+            if (this.x > pageBgCanvas.width) this.x = 0;
+            if (this.y < 0) this.y = pageBgCanvas.height;
+            if (this.y > pageBgCanvas.height) this.y = 0;
+        }
+        draw(ctx) {
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(44, 62, 80, ${this.alpha})`;
+            ctx.fill();
+        }
+    }
+
+    function initAnimations() {
+        resizeCanvas();
+        heroParticles = [];
+        pageBgParticles = [];
+        metaballs = [];
+
+        // Dark mode particles
+        const heroDensity = Math.floor((heroCanvas.width * heroCanvas.height) / 8000);
+        for (let i = 0; i < Math.min(150, heroDensity); i++) {
+            heroParticles.push(new Star(heroCanvas, { shooting: true, speed: 0.4, size: 1.8 }));
+        }
+        const pageBgDensity = Math.floor((pageBgCanvas.width * pageBgCanvas.height) / 15000);
+        for (let i = 0; i < Math.min(100, pageBgDensity); i++) {
+            pageBgParticles.push(new Star(pageBgCanvas, { speed: 0.1, size: 1.2 }));
+        }
+
+        // Light mode particles
+        for (let i = 0; i < 5; i++) {
+            metaballs.push(new Metaball());
+        }
+        const moteDensity = Math.floor((pageBgCanvas.width * pageBgCanvas.height) / 20000);
+        for (let i = 0; i < Math.min(80, moteDensity); i++) {
+            pageBgParticles.push(new Mote());
+        }
+    }
+
+    function animateDark() {
+        heroCtx.clearRect(0, 0, heroCanvas.width, heroCanvas.height);
+        heroParticles.forEach(p => { p.update(); p.draw(heroCtx); });
+
+        pageBgCtx.clearRect(0, 0, pageBgCanvas.width, pageBgCanvas.height);
+        pageBgParticles.forEach(p => { if(p instanceof Star) { p.update(); p.draw(pageBgCtx); } });
+    }
+
+    function animateLight() {
+        heroCtx.clearRect(0, 0, heroCanvas.width, heroCanvas.height);
+        heroCtx.filter = 'blur(20px) contrast(25)';
+        metaballs.forEach(p => { p.update(); p.draw(heroCtx); });
+        heroCtx.filter = 'none';
+
+        pageBgCtx.clearRect(0, 0, pageBgCanvas.width, pageBgCanvas.height);
+        pageBgParticles.forEach(p => { if(p instanceof Mote) { p.update(); p.draw(pageBgCtx); } });
+    }
+
+    function masterAnimateLoop() {
+        if (docElement.getAttribute('data-theme') === 'light') {
+            animateLight();
+        } else {
+            animateDark();
+        }
+        requestAnimationFrame(masterAnimateLoop);
+    }
+
+    initAnimations();
+    masterAnimateLoop();
+    window.addEventListener('resize', initAnimations);
+});
+</script>
 {% endblock %}

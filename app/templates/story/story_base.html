@@ -6,49 +6,98 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pygments/2.14.0/styles/default.min.css">
 
 <style>
+    /* --- THEME & LAYOUT --- */
+    :root { /* Default to Dark Theme */
+        --page-bg: #121212;
+        --hero-bg: linear-gradient(135deg, #111214 0%, #212224 100%);
+        --content-bg: #1e1e1e;
+        --text-primary: #ecf0f1;
+        --text-secondary: #bdc3c7;
+        --btn-bg: #3498db;
+        --btn-hover-bg: #2980b9;
+        --btn-text: #ffffff;
+        --shadow: 0 4px 20px rgba(0,0,0,0.2);
+        --progress-bar-bg: var(--btn-bg);
+    }
+
+    [data-theme="light"] {
+        --page-bg: #f3f5f7;
+        --hero-bg: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        --content-bg: #ffffff;
+        --text-primary: #2c3e50;
+        --text-secondary: #7f8c8d;
+        --btn-bg: #2c3e50;
+        --btn-hover-bg: #34495e;
+        --btn-text: #ffffff;
+        --shadow: 0 2px 16px rgba(0, 0, 0, 0.06);
+        --progress-bar-bg: #3498db;
+    }
+
+    body {
+        background-color: var(--page-bg);
+        color: var(--text-secondary);
+        transition: background-color 0.3s ease, color 0.3s ease;
+    }
+
     .read-hero {
-        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-        padding: 50px 0 30px;
+        background: var(--hero-bg);
+        padding: 80px 0 60px;
         text-align: center;
+        position: relative;
+        overflow: hidden;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    [data-theme="light"] .read-hero {
+        border-bottom-color: #e9ecef;
+    }
+
+    #hero-canvas {
+        position: absolute;
+        top: 0; left: 0; width: 100%; height: 100%;
+        z-index: 0;
+    }
+
+    .read-hero .container {
+        position: relative;
+        z-index: 1;
     }
 
     .read-hero h1 {
-        font-size: 2.2rem;
-        font-weight: 400;
-        color: #2c3e50;
+        font-size: 2.5rem;
+        font-weight: 300;
+        color: var(--text-primary);
         margin-bottom: 10px;
     }
 
     .read-hero .story-meta {
-        color: #7f8c8d;
+        color: var(--text-secondary);
         font-size: 1rem;
-        margin-bottom: 0;
+        margin-bottom: 20px;
     }
 
     .story-content-container {
-        max-width: 900px;
+        max-width: 800px; /* Slightly narrower for better readability */
         margin: 40px auto 60px;
-        background: #fff;
+        background: var(--content-bg);
         border-radius: 8px;
-        box-shadow: 0 2px 16px rgba(0, 0, 0, 0.06);
-        padding: 40px;
+        box-shadow: var(--shadow);
+        padding: 50px;
         font-size: 1.15rem;
         line-height: 2;
-        color: #2c3e50;
+        color: var(--text-primary);
     }
 
     .story-content-container-container {
         margin: 0 auto;
-        padding: 0 20px; /* 增加一些边距 */
+        padding: 0 20px;
     }
 
     .story-content-container p {
         margin-bottom: 1.5em;
         text-indent: 2em;
-        text-align: justify; /* 两端对齐，提升阅读体验 */
+        text-align: justify;
     }
 
-    /* 添加章节标题样式 */
     .story-content-container h1,
     .story-content-container h2,
     .story-content-container h3 {
@@ -62,142 +111,128 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin: 30px auto 40px; /* 增加底部边距 */
+        margin: 30px auto 40px;
         max-width: 700px;
         padding: 0 20px;
     }
 
     .read-btn {
-        background: #2c3e50;
-        color: white;
+        background: var(--btn-bg);
+        color: var(--btn-text);
         border: none;
-        padding: 12px 24px; /* 稍微增大按钮 */
+        padding: 12px 24px;
         border-radius: 6px;
         font-weight: 500;
         text-decoration: none;
         font-size: 1rem;
         transition: all 0.3s ease;
-        min-width: 80px; /* 确保按钮最小宽度 */
+        min-width: 120px; /* Ensure consistent button width */
         text-align: center;
     }
 
     .read-btn:hover {
-        background: #34495e;
-        color: white;
+        background: var(--btn-hover-bg);
+        color: var(--btn-text);
         text-decoration: none;
-        transform: translateY(-1px);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 10px rgba(0,0,0,0.1);
     }
 
-    /* 主题切换按钮样式 */
-    #toggle-theme {
-        font-size: 0.9rem;
-        padding: 8px 16px;
-        border-radius: 20px;
-        transition: all 0.3s ease;
+    .read-btn.btn-catalogue {
+        background: transparent;
+        border: 1px solid var(--btn-bg);
+        color: var(--btn-bg);
+    }
+    .read-btn.btn-catalogue:hover {
+        background: var(--btn-bg);
+        color: var(--btn-text);
     }
 
-    /* 添加阅读进度条 */
     .reading-progress {
         position: fixed;
         top: 0;
         left: 0;
         width: 0%;
-        height: 3px;
-        background: #3498db;
+        height: 4px; /* A bit thicker */
+        background: var(--progress-bar-bg);
         z-index: 1000;
         transition: width 0.1s ease;
+        box-shadow: 0 0 10px var(--progress-bar-bg);
     }
 
-    @media (max-width: 768px) {
-        .read-hero h1 {
-            font-size: 1.8rem;
-        }
+    /* Theme Switcher */
+    .theme-switcher {
+        position: absolute;
+        top: 20px;
+        right: 20px;
+        z-index: 2;
+    }
+    #theme-toggle-btn {
+        background: rgba(127, 127, 127, 0.2);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        color: white;
+        width: 40px; height: 40px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.2rem;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+    [data-theme="light"] #theme-toggle-btn {
+        background: rgba(0, 0, 0, 0.1);
+        border-color: transparent;
+        color: var(--text-primary);
+    }
+    #theme-toggle-btn:hover {
+        transform: scale(1.1);
+    }
+    #theme-toggle-btn .bi-sun-fill { display: none; }
+    #theme-toggle-btn .bi-moon-stars-fill { display: inline-block; }
+    [data-theme="light"] #theme-toggle-btn .bi-sun-fill { display: inline-block; }
+    [data-theme="light"] #theme-toggle-btn .bi-moon-stars-fill { display: none; }
 
+    @media (max-width: 768px) {
+        .read-hero { padding: 60px 0 40px; }
+        .read-hero h1 { font-size: 1.8rem; }
         .story-content-container {
             padding: 25px 20px;
             margin: 20px auto 40px;
             font-size: 1.1rem;
             line-height: 1.8;
         }
-
         .read-controls {
             padding: 0 15px;
             margin: 20px auto 30px;
         }
-
         .read-btn {
             padding: 10px 16px;
             font-size: 0.9rem;
-            min-width: 70px;
-        }
-
-        .story-content-container-container {
-            padding: 0 10px;
+            min-width: 100px;
         }
     }
 
-    /* CSS 变量优化 */
-    :root {
-        --bg: #f3f5f7;
-        --text: #2c3e50;
-        --box-bg: #ffffff;
-        --hero-bg: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-        --btn-bg: #2c3e50;
-        --btn-hover-bg: #34495e;
-        --shadow: 0 2px 16px rgba(0, 0, 0, 0.06);
-    }
-
-    body.dark-mode {
-        --bg: #121212;
-        --text: #ecf0f1;
-        --box-bg: #1e1e1e;
-        --hero-bg: linear-gradient(135deg, #111214 0%, #212224 100%);
-        --btn-bg: #3498db;
-        --btn-hover-bg: #2980b9;
-        --shadow: 0 2px 16px rgba(0, 0, 0, 0.3);
-    }
-
-    body {
-        background-color: var(--bg);
-        color: var(--text);
-        transition: background-color 0.3s ease, color 0.3s ease;
-    }
-
-    .read-hero {
-        background: var(--hero-bg);
-    }
-
-    .read-hero h1,
-    .read-hero .story-meta {
-        color: var(--text);
-    }
-
-    .story-content-container {
-        background-color: var(--box-bg);
-        color: var(--text);
-        box-shadow: var(--shadow);
-    }
-
-    .read-btn {
-        background: var(--btn-bg);
-    }
-
-    .read-btn:hover {
-        background: var(--btn-hover-bg);
-    }
 </style>
 
 {% endblock %}
 
 {% block content %}
 <div class="reading-progress"></div>
-<section class="read-hero">
-    <h1>{{ story_title }}</h1>
-    <div class="story-meta">
-        作者：{{ story_author }} &nbsp;|&nbsp; {{ story_genre }} &nbsp;|&nbsp; {{ story_status }}
-    </div>
-    <button id="toggle-theme" class="btn btn-outline-secondary mt-3">切换深色模式</button>
 
+<section class="read-hero">
+    <canvas id="hero-canvas"></canvas>
+    <div class="container">
+        <h1>{{ story_title }}</h1>
+        <div class="story-meta">
+            作者：{{ story_author }} &nbsp;|&nbsp; {{ story_genre }} &nbsp;|&nbsp; {{ story_status }}
+        </div>
+    </div>
+    <div class="theme-switcher">
+        <button id="theme-toggle-btn" title="切换主题">
+            <i class="bi bi-moon-stars-fill"></i><i class="bi bi-sun-fill"></i>
+        </button>
+    </div>
 </section>
 
 <div class="story-content-container-container">
@@ -210,15 +245,15 @@
     {% if prev_chapter_url %}
     <a href="{{ prev_chapter_url }}" class="read-btn" title="上一章 (←)">← 上一章</a>
     {% else %}
-    <div style="width: 80px;"></div> <!-- 占位符保持布局 -->
+    <a class="read-btn" style="visibility: hidden;" aria-hidden="true">← 上一章</a>
     {% endif %}
     
-    <a href="{{ url_for('story.batch_detail', batch_id=batch_id) }}" class="read-btn">📚 目录</a>
+    <a href="{{ url_for('story.batch_detail', batch_id=batch_id) }}" class="read-btn btn-catalogue">📚 目录</a>
     
     {% if next_chapter_url %}
     <a href="{{ next_chapter_url }}" class="read-btn" title="下一章 (→)">下一章 →</a>
     {% else %}
-    <div style="width: 80px;"></div> <!-- 占位符保持布局 -->
+    <a class="read-btn" style="visibility: hidden;" aria-hidden="true">下一章 →</a>
     {% endif %}
 </div>
 {% endblock %}
@@ -228,64 +263,175 @@
 {% endblock %}
 {% block extra_js %}
 <script>
-    // 主题切换功能
-    const toggleBtn = document.getElementById('toggle-theme');
-    const isDark = localStorage.getItem('theme') === 'dark';
+document.addEventListener('DOMContentLoaded', function() {
+    // --- THEME SWITCHER ---
+    const themeToggleBtn = document.getElementById('theme-toggle-btn');
+    const docElement = document.documentElement;
 
-    if (isDark) {
-        document.body.classList.add('dark-mode');
-        toggleBtn.innerText = '切换亮色模式';
+    function applyTheme(theme) {
+        docElement.setAttribute('data-theme', theme);
+        localStorage.setItem('theme', theme);
     }
 
-    toggleBtn.addEventListener('click', () => {
-        document.body.classList.toggle('dark-mode');
-        const nowDark = document.body.classList.contains('dark-mode');
-        localStorage.setItem('theme', nowDark ? 'dark' : 'light');
-        toggleBtn.innerText = nowDark ? '切换亮色模式' : '切换深色模式';
+    // On page load, apply the saved theme or default to dark
+    const savedTheme = localStorage.getItem('theme') || 'dark';
+    applyTheme(savedTheme);
+
+    themeToggleBtn.addEventListener('click', () => {
+        const currentTheme = docElement.getAttribute('data-theme');
+        const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+        applyTheme(newTheme);
     });
 
-    // 阅读进度条
+    // --- READING PROGRESS BAR ---
     function updateReadingProgress() {
-        const article = document.querySelector('.story-content-container');
-        const scrollTop = window.pageYOffset;
-        const docHeight = document.body.scrollHeight - window.innerHeight;
-        const scrollPercent = (scrollTop / docHeight) * 100;
-        
-        let progressBar = document.querySelector('.reading-progress');
-        if (!progressBar) {
-            progressBar = document.createElement('div');
-            progressBar.className = 'reading-progress';
-            document.body.appendChild(progressBar);
+        const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+        const scrollPercent = (window.pageYOffset / docHeight) * 100;
+        const progressBar = document.querySelector('.reading-progress');
+        if (progressBar) {
+            progressBar.style.width = scrollPercent + '%';
         }
-        
-        progressBar.style.width = scrollPercent + '%';
     }
+    window.addEventListener('scroll', updateReadingProgress);
+    updateReadingProgress(); // Initial call
 
-    // 键盘导航
+    // --- KEYBOARD NAVIGATION ---
     document.addEventListener('keydown', (e) => {
+        // Avoid triggering navigation when typing in input fields
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+            return;
+        }
         if (e.key === 'ArrowLeft') {
-            const prevBtn = document.querySelector('a[href*="prev"]');
+            const prevBtn = document.querySelector('.read-controls a[href*="prev"], .read-controls a[title*="上一章"]');
             if (prevBtn) prevBtn.click();
         } else if (e.key === 'ArrowRight') {
-            const nextBtn = document.querySelector('a[href*="next"]');
+            const nextBtn = document.querySelector('.read-controls a[href*="next"], .read-controls a[title*="下一章"]');
             if (nextBtn) nextBtn.click();
         }
     });
 
-    // 滚动事件监听
-    window.addEventListener('scroll', updateReadingProgress);
-    
-    // 页面加载完成后初始化
-    document.addEventListener('DOMContentLoaded', () => {
-        updateReadingProgress();
-        
-        // 平滑滚动到内容区域（如果有锚点）
-        if (window.location.hash) {
-            const target = document.querySelector(window.location.hash);
-            if (target) {
-                target.scrollIntoView({ behavior: 'smooth' });
+    // --- HERO CANVAS ANIMATION ---
+    const canvas = document.getElementById('hero-canvas');
+    if (canvas) {
+        const ctx = canvas.getContext('2d');
+        let particles = [];
+        let animationFrameId;
+
+        function resizeCanvas() {
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+        }
+
+        // --- Light Mode: Flowing Lines ---
+        class Line {
+            constructor() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.vx = (Math.random() - 0.5) * 0.5;
+                this.vy = (Math.random() - 0.5) * 0.5;
+                this.len = Math.random() * 100 + 50;
+                this.angle = Math.random() * Math.PI * 2;
+                this.color = `hsla(${180 + Math.random() * 60}, 70%, 70%, 0.3)`;
+            }
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                if (this.x < -this.len || this.x > canvas.width + this.len || this.y < -this.len || this.y > canvas.height + this.len) {
+                    Object.assign(this, new Line());
+                }
+            }
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.angle);
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.lineTo(this.len, 0);
+                ctx.lineWidth = Math.random() * 2 + 0.5;
+                ctx.strokeStyle = this.color;
+                ctx.stroke();
+                ctx.restore();
             }
         }
-    });
+
+        // --- Dark Mode: Rising Embers ---
+        class Ember {
+            constructor() {
+                this.x = Math.random() * canvas.width;
+                this.y = canvas.height + Math.random() * 50;
+                this.vx = (Math.random() - 0.5) * 0.5;
+                this.vy = -(Math.random() * 1.5 + 0.5);
+                this.radius = Math.random() * 2 + 1;
+                this.alpha = 1;
+                this.life = Math.random() * 100 + 50;
+            }
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life--;
+                this.alpha = this.life / 100;
+                if (this.life <= 0 || this.y < 0) {
+                    Object.assign(this, new Ember());
+                }
+            }
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 180, 80, ${this.alpha * 0.6})`;
+                ctx.shadowColor = 'rgba(255, 120, 0, 0.8)';
+                ctx.shadowBlur = 10;
+                ctx.fill();
+            }
+        }
+
+        function initAnimation() {
+            resizeCanvas();
+            particles = [];
+            const particleCount = Math.floor((canvas.width * canvas.height) / 20000);
+            const theme = docElement.getAttribute('data-theme');
+            for (let i = 0; i < Math.min(80, particleCount); i++) {
+                if (theme === 'light') {
+                    particles.push(new Line());
+                } else {
+                    particles.push(new Ember());
+                }
+            }
+        }
+
+        function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.shadowBlur = 0; // Reset shadow for light mode
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+            animationFrameId = requestAnimationFrame(animate);
+        }
+
+        function startAnimation() {
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+            }
+            initAnimation();
+            animate();
+        }
+
+        // Start animation on load
+        startAnimation();
+
+        // Re-init on resize
+        window.addEventListener('resize', startAnimation);
+
+        // Re-init on theme change
+        const observer = new MutationObserver((mutations) => {
+            mutations.forEach(mutation => {
+                if (mutation.type === 'attributes' && mutation.attributeName === 'data-theme') {
+                    startAnimation();
+                }
+            });
+        });
+        observer.observe(docElement, { attributes: true });
+    }
+});
 </script>
 {% endblock %}

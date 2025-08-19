@@ -4,11 +4,22 @@
 
 {% block extra_css %}
 <style>
-  .tool-panel { background: rgba(255,255,255,.9); border: 1px solid rgba(0,0,0,.06); backdrop-filter: blur(6px); }
+  :root {
+    --primary-color: #3b82f6; /* A nice blue */
+    --primary-hover: #2563eb;
+    --body-bg: #f9fafb;
+  }
+  body {
+    background-color: var(--body-bg);
+  }
+  .tool-panel { background: #ffffff; border: 1px solid #e5e7eb; box-shadow: 0 1px 3px rgba(0,0,0,.03); }
   .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
   .result-area { min-height: 220px; }
-  .algo-badge { cursor: pointer; }
-  .algo-badge.active { background: #0d6efd; color: #fff; }
+  .algo-badge { cursor: pointer; transition: all 0.2s ease; border: 1px solid transparent; }
+  .algo-badge:hover { background-color: #e5e7eb; }
+  .algo-badge.active { background-color: var(--primary-color); color: #fff; border-color: var(--primary-color); }
+  .btn-primary { background-color: var(--primary-color); border-color: var(--primary-color); }
+  .btn-primary:hover { background-color: var(--primary-hover); border-color: var(--primary-hover); }
   .section-title { font-weight: 700; letter-spacing: .2px; }
   .tip { font-size: .875rem; }
   .btn-copy { position: absolute; right: 1rem; top: .75rem; }
@@ -479,5 +490,3 @@
   })();
 </script>
 {% endblock %}
-
-
