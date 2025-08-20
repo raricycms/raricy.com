@@ -68,7 +68,11 @@ Raricy.com - 文章上传
 
         <div class="mb-3">
             <label class="form-label">内容（Markdown格式）（注意：粘贴的内容会自动变为引用。）</label>
+            <!-- Vditor 编辑器容器 -->
             <div id="editor" style="height: 60vh;"></div>
+            <!-- Fallback: 当 Vditor 加载失败时显示的普通文本框 -->
+            <p id="fallback-message" class="form-text text-muted" style="display: none;">Markdown编辑器加载失败，已切换到基础文本输入框。</p>
+            <textarea id="fallback-editor" class="form-control" rows="20" style="display: none;"></textarea>
         </div>
 
         {{turnstile}}
@@ -81,23 +85,48 @@ Raricy.com - 文章上传
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/vditor"></script>
 <script>
-    // 初始化Vditor编辑器
     document.addEventListener('DOMContentLoaded', function () {
-        const vditor = new Vditor('editor', {
-            minHeight: 500,
-            mode: 'sv',
-            toolbar: [
-                'emoji', 'headings', 'bold', 'italic', 'strike', 'link', '|',
-                'list', 'ordered-list', 'check', 'outdent', 'indent', '|',
-                'quote', 'line', 'code', 'inline-code', 'upload', 'table', '|',
-                'undo', 'redo', 'preview',  'export'
-            ],
-            counter: { enable: true, type: 'text' },
-            cache: { enable: false },
-            value: ''
-        });
+        let vditor = null;
+        let isVditorLoaded = false;
 
-        // 表单提交处理（使用register.html的提示样式）
+        // 检查 Vditor 是否成功加载
+        if (typeof Vditor !== 'undefined') {
+            try {
+                // 初始化Vditor编辑器
+                vditor = new Vditor('editor', {
+                    minHeight: 500,
+                    mode: 'sv',
+                    toolbar: [
+                        'emoji', 'headings', 'bold', 'italic', 'strike', 'link', '|',
+                        'list', 'ordered-list', 'check', 'outdent', 'indent', '|',
+                        'quote', 'line', 'code', 'inline-code', 'upload', 'table', '|',
+                        'undo', 'redo', 'preview', 'export'
+                    ],
+                    counter: { enable: true, type: 'text' },
+                    cache: { enable: false },
+                    value: ''
+                });
+                isVditorLoaded = true;
+                console.log("Vditor loaded successfully.");
+            } catch (e) {
+                console.error("Vditor initialization failed:", e);
+                showFallback();
+            }
+        } else {
+            // Vditor 加载失败，显示备用输入框
+            console.warn("Vditor script failed to load. Using fallback textarea.");
+            showFallback();
+        }
+
+        // 显示备用输入框的函数
+        function showFallback() {
+            document.getElementById('editor').style.display = 'none';
+            document.getElementById('fallback-message').style.display = 'block';
+            document.getElementById('fallback-editor').style.display = 'block';
+            isVditorLoaded = false;
+        }
+
+        // 表单提交处理
         document.getElementById('blogForm').addEventListener('submit', async (e) => {
             e.preventDefault();
 
@@ -109,12 +138,21 @@ Raricy.com - 文章上传
                 document.getElementById('message-container').innerHTML = alert;
             };
 
-            form = document.getElementById('blogForm');
+            const form = document.getElementById('blogForm');
             const title = document.getElementById('title').value;
             const description = document.getElementById('description').value;
-            const content = vditor.getValue();
             const category_id = document.getElementById('category').value;
             const turnstileResponse = form.querySelector('[name="cf-turnstile-response"]').value;
+            
+            // 根据 Vditor 是否加载成功来获取内容
+            let content;
+            if (isVditorLoaded) {
+                content = vditor.getValue();
+            } else {
+                content = document.getElementById('fallback-editor').value;
+            }
+
+            // 表单验证
             if (!title || !description || !content) {
                 showMessage('请填写完整信息');
                 return;
@@ -155,7 +193,7 @@ Raricy.com - 文章上传
                     showMessage('上传失败: ' + result.message);
                 }
             } catch (error) {
-                showMessage('出现错误，稍后再试也不行');
+                showMessage('出现错误，请稍后重试');
             }
         });
     });
