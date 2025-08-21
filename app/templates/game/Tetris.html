@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% block title %}俄罗斯方块{% endblock %}
 {% block extra_css %}
-
 <style>
+    /* --- 全局与基础设置 --- */
     * {
         margin: 0;
         padding: 0;
@@ -13,301 +13,293 @@
         display: none;
     }
 
-    body {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    html {
+        height: 100%;
     }
+
+    body {
+        font-family: 'Roboto Mono', 'Courier New', monospace, sans-serif;
+        background: linear-gradient(135deg, #0d1117 0%, #1a237e 100%);
+        color: #e0e0e0;
+        min-height: 100%;
+        display: flex;
+        flex-direction: column;
+    }
+
     main {
-        font-family: 'Arial', sans-serif;
-        min-height: 100vh;
+        flex-grow: 1;
         display: flex;
         justify-content: center;
         align-items: center;
+        padding: 20px;
     }
 
+    /* --- 主容器与布局 --- */
     .game-container {
         display: flex;
-        gap: 20px;
-        background: rgba(255, 255, 255, 0.1);
-        padding: 20px;
-        border-radius: 15px;
-        backdrop-filter: blur(10px);
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-    }
-
-    .game-info {
-        width: 250px;
-        color: white;
-    }
-
-    .game-info h1 {
-        text-align: center;
-        margin-bottom: 20px;
-        color: #fff;
-        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
-    }
-
-    .score-board {
-        background: rgba(255, 255, 255, 0.2);
-        padding: 15px;
-        border-radius: 10px;
-        margin-bottom: 20px;
-    }
-
-    .score-board div {
-        margin-bottom: 10px;
-        font-weight: bold;
-    }
-
-    .next-piece {
-        background: rgba(255, 255, 255, 0.2);
-        padding: 15px;
-        border-radius: 10px;
-        margin-bottom: 20px;
-        text-align: center;
-    }
-
-    .next-piece h3 {
-        margin-bottom: 10px;
-    }
-
-    #nextCanvas {
-        background: rgba(0, 0, 0, 0.3);
-        border-radius: 5px;
-    }
-
-    .controls {
-        background: rgba(255, 255, 255, 0.2);
-        padding: 15px;
-        border-radius: 10px;
-        margin-bottom: 20px;
-    }
-
-    .controls h3 {
-        margin-bottom: 10px;
-    }
-
-    .controls p {
-        margin-bottom: 5px;
-        font-size: 14px;
-    }
-
-    /* 移动控制按钮样式 */
-    .mobile-controls {
-        background: rgba(255, 255, 255, 0.2);
-        padding: 15px;
-        border-radius: 10px;
-        margin-bottom: 20px;
-    }
-
-    .mobile-controls h3 {
-        margin-bottom: 15px;
-        text-align: center;
-    }
-
-    .direction-pad {
-        display: grid;
-        grid-template-columns: 1fr 1fr 1fr;
-        grid-template-rows: 1fr 1fr 1fr;
-        gap: 5px;
-        max-width: 200px;
-        margin: 0 auto;
-    }
-
-    .direction-btn {
-        width: 60px;
-        height: 60px;
-        border: none;
-        border-radius: 8px;
-        background: #2196F3;
-        color: white;
-        font-size: 18px;
-        font-weight: bold;
-        cursor: pointer;
-        transition: all 0.2s;
-        display: flex;
+        flex-direction: column;
         align-items: center;
-        justify-content: center;
-        user-select: none;
-        -webkit-user-select: none;
-        -webkit-touch-callout: none;
-    }
-
-    .direction-btn:hover {
-        background: #1976D2;
-        transform: scale(1.05);
-    }
-
-    .direction-btn:active {
-        background: #0D47A1;
-        transform: scale(0.95);
-    }
-
-    .direction-btn:disabled {
-        background: #cccccc;
-        cursor: not-allowed;
-        transform: none;
-    }
-
-    .btn-up {
-        grid-column: 2;
-        grid-row: 1;
-    }
-
-    .btn-left {
-        grid-column: 1;
-        grid-row: 2;
-    }
-
-    .btn-rotate {
-        grid-column: 2;
-        grid-row: 2;
-        background: #FF9800;
-        font-size: 14px;
-    }
-
-    .btn-rotate:hover {
-        background: #F57C00;
-    }
-
-    .btn-rotate:active {
-        background: #E65100;
-    }
-
-    .btn-right {
-        grid-column: 3;
-        grid-row: 2;
-    }
-
-    .btn-down {
-        grid-column: 2;
-        grid-row: 3;
-    }
-
-    button {
+        gap: 20px;
         width: 100%;
-        padding: 10px;
-        margin-bottom: 10px;
-        border: none;
-        border-radius: 5px;
-        background: #4CAF50;
-        color: white;
-        font-size: 16px;
-        cursor: pointer;
-        transition: background 0.3s;
+        max-width: 900px;
     }
 
-    button:hover {
-        background: #45a049;
+    .game-container h1 {
+        color: #fff;
+        font-size: 2.5rem;
+        text-shadow: 0 0 10px #4fc3f7, 0 0 20px #4fc3f7;
+        margin-bottom: 0;
     }
 
-    button:disabled {
-        background: #cccccc;
-        cursor: not-allowed;
+    .game-layout-wrapper {
+        display: flex;
+        flex-direction: column; /* 移动端默认为单列 */
+        align-items: center;
+        gap: 20px;
+        width: 100%;
     }
 
-    .game-board {
+    .game-main-area {
         position: relative;
     }
 
     #gameCanvas {
-        border: 3px solid #fff;
+        border: 3px solid #4fc3f7;
         border-radius: 10px;
         background: #000;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        box-shadow: 0 0 25px rgba(79, 195, 247, 0.5), inset 0 0 10px rgba(0, 0, 0, 0.5);
+        max-width: 100%;
+        height: auto;
+        display: block;
     }
 
+    .game-sidebar {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+        width: 100%;
+        max-width: 300px;
+    }
+
+    /* --- 面板与按钮样式 --- */
+    .score-board,
+    .next-piece,
+    .mobile-controls,
+    .controls {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(79, 195, 247, 0.5);
+        border-radius: 12px;
+        padding: 15px;
+        backdrop-filter: blur(5px);
+    }
+
+    .score-board div { margin-bottom: 10px; font-weight: bold; font-size: 1rem; }
+    .score-board div:last-child { margin-bottom: 0; }
+    .score-board span { color: #ffeb3b; float: right; }
+
+    .next-piece h3, .controls h3 {
+        margin-bottom: 15px;
+        color: #4fc3f7;
+        text-align: center;
+        border-bottom: 1px solid rgba(79, 195, 247, 0.3);
+        padding-bottom: 10px;
+    }
+    .controls p { margin-bottom: 8px; font-size: 14px; text-align: center; }
+
+    #nextCanvas {
+        background: #000;
+        border-radius: 5px;
+        display: block;
+        margin: 0 auto;
+        border: 1px solid rgba(79, 195, 247, 0.5);
+    }
+
+    button {
+        width: 100%;
+        padding: 12px;
+        margin-bottom: 10px;
+        border: none;
+        border-radius: 8px;
+        background: #3f51b5;
+        color: white;
+        font-size: 16px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+    button:last-child { margin-bottom: 0; }
+    button:hover:not(:disabled) { background: #5c6bc0; transform: translateY(-2px); }
+    button:disabled { background: #545454; color: #9e9e9e; cursor: not-allowed; transform: none; }
+
+    /* --- 移动端方向键 (已修复) --- */
+    .mobile-controls-container {
+        width: 100%;
+        max-width: 320px;
+        padding: 0 20px; /* 增加一些边距 */
+    }
+    .direction-pad {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        grid-template-rows: repeat(3, 1fr);
+        gap: 10px;
+        margin: 0 auto;
+        height: 180px; /* 给定一个固定高度以保持形状 */
+    }
+    .direction-btn {
+        width: 100%;
+        height: 100%;
+        border: 2px solid #4fc3f7;
+        border-radius: 12px;
+        background: transparent;
+        color: #4fc3f7;
+        font-size: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s ease;
+        user-select: none;
+    }
+    .direction-btn:active:not(:disabled) { background: rgba(79, 195, 247, 0.4); transform: scale(0.95); }
+
+    /* 关键：经典的十字布局 */
+    .btn-up { grid-column: 2; grid-row: 1; }
+    .btn-left { grid-column: 1; grid-row: 2; }
+    .btn-right { grid-column: 3; grid-row: 2; }
+    .btn-down { grid-column: 2; grid-row: 3; }
+    .btn-rotate {
+        grid-column: 2;
+        grid-row: 2;
+        border-color: #ffeb3b;
+        color: #ffeb3b;
+        font-size: 16px;
+    }
+
+    /* --- 游戏结束弹窗 --- */
     .game-over {
         position: absolute;
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
-        background: rgba(0, 0, 0, 0.9);
+        background: rgba(0, 0, 0, 0.85);
         color: white;
         padding: 30px;
         border-radius: 15px;
         text-align: center;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+        border: 2px solid #ff6b6b;
+        box-shadow: 0 0 20px rgba(255, 107, 107, 0.7);
+        width: 80%;
+        z-index: 10;
     }
+    .hidden { display: none; }
 
-    .game-over h2 {
-        margin-bottom: 15px;
-        color: #ff6b6b;
-    }
+    /* ================================================== */
+    /* --- 响应式设计 --- */
+    /* ================================================== */
 
-    .game-over p {
-        margin-bottom: 20px;
-        font-size: 18px;
-    }
-
-    .hidden {
-        display: none;
-    }
-
+    /* 手机端 (宽度 <= 768px) */
     @media (max-width: 768px) {
+        html, body {
+            height: 100%;
+            overflow: hidden;
+        }
+        main {
+            padding: 10px;
+        }
         .game-container {
-            flex-direction: column;
-            align-items: center;
+            justify-content: space-between;
+            height: 100%;
+            gap: 10px;
         }
-
-        .game-info {
-            width: 300px;
+        .game-layout-wrapper {
+            flex-direction: row;
+            align-items: flex-start;
+            gap: 10px;
+            width: 100%;
         }
+        .game-main-area { flex: 2; min-width: 0; }
+        .game-sidebar { flex: 1; min-width: 0; }
+        .game-container h1 { font-size: 1.8rem; }
+        .score-board { padding: 10px; }
+        .score-board div { font-size: 0.8rem; }
+        .next-piece h3 { font-size: 1rem; margin-bottom: 5px; padding-bottom: 5px; }
+        #nextCanvas { width: 80px; height: 80px; }
+        button { padding: 8px; font-size: 14px; }
+        .desktop-controls { display: none; } /* 手机上隐藏键盘提示 */
+    }
 
-        .direction-pad {
-            max-width: 180px;
+    /* 桌面端 (宽度 > 768px) */
+    @media (min-width: 769px) {
+        .game-layout-wrapper {
+            flex-direction: row;
+            align-items: flex-start;
+            gap: 30px;
         }
-
-        .direction-btn {
-            width: 55px;
-            height: 55px;
-            font-size: 30px;
+        .mobile-controls-container {
+            display: none; /* 桌面端隐藏移动控制按钮 */
+        }
+        .desktop-controls {
+            display: block; /* 桌面端显示键盘提示 */
+        }
+        .mobile-controls-right {
+            display: none; /* 桌面端也隐藏右侧的开始/暂停按钮，因为有键盘提示了 */
         }
     }
 </style>
+
+
 {% endblock %}
 {% block content %}
 <div class="game-container">
-    <div class="game-info">
-        <h1>俄罗斯方块</h1>
-        <div class="score-board">
-            <div class="score">分数: <span id="score">0</span></div>
-            <div class="level">等级: <span id="level">1</span></div>
-            <div class="lines">行数: <span id="lines">0</span></div>
-        </div>
-        <div class="next-piece">
-            <h3>下一个:</h3>
-            <canvas id="nextCanvas" width="120" height="120"></canvas>
-        </div>
-        <div class="controls">
-            <h3>键盘控制:</h3>
-            <p>← → 移动</p>
-            <p>↓ 加速下降</p>
-            <p>↑ 旋转</p>
-            <p>空格 暂停</p>
-        </div>
-        <div class="mobile-controls mobile-controls-right">
-            <button id="startBtn">开始游戏</button>
-            <button id="pauseBtn">暂停</button>
-            <button id="resetBtn">重新开始</button>
-        </div>
-    </div>
-    <div class="game-board">
-        <canvas id="gameCanvas" width="300" height="600"></canvas>
-        <div id="gameOver" class="game-over hidden">
-            <h2>游戏结束!</h2>
-            <p>最终分数: <span id="finalScore">0</span></p>
-            <button id="restartBtn">再来一局</button>
-        </div>
-        <div class="mobile-controls-group" style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 20px; justify-content: center;">
-            <div class="mobile-controls mobile-controls-left">
-                <div class="direction-pad">
-                    <button class="direction-btn btn-up" id="upBtn">↑</button>
-                    <button class="direction-btn btn-left" id="leftBtn">←</button>
-                    <button class="direction-btn btn-rotate" id="rotateBtn">转</button>
-                    <button class="direction-btn btn-right" id="rightBtn">→</button>
-                    <button class="direction-btn btn-down" id="downBtn">↓</button>
+    <h1>俄罗斯方块</h1>
+
+    <div class="game-layout-wrapper">
+        <!-- 左侧主游戏区 -->
+        <div class="game-main-area">
+            <div class="game-board">
+                <canvas id="gameCanvas" width="300" height="600"></canvas>
+                <div id="gameOver" class="game-over hidden">
+                    <h2>游戏结束!</h2>
+                    <p>最终分数: <span id="finalScore">0</span></p>
+                    <button id="restartBtn">再来一局</button>
                 </div>
             </div>
+        </div>
+
+        <!-- 右侧信息与控制区 -->
+        <div class="game-sidebar">
+            <div class="score-board">
+                <div class="score">分数: <span id="score">0</span></div>
+                <div class="level">等级: <span id="level">1</span></div>
+                <div class="lines">行数: <span id="lines">0</span></div>
+            </div>
+            <div class="next-piece">
+                <h3>下一个</h3>
+                <canvas id="nextCanvas" width="120" height="120"></canvas>
+            </div>
+            <div class="mobile-controls mobile-controls-right">
+                <button id="startBtn">开始</button>
+                <button id="pauseBtn">暂停</button>
+                <button id="resetBtn">重置</button>
+            </div>
+            <!-- 关键改动：将桌面控制提示移到这里 -->
+            <div class="controls desktop-controls">
+                <h3>键盘控制</h3>
+                <p>← → 移动</p>
+                <p>↓ 加速下降</p>
+                <p>↑ 旋转</p>
+                <p>空格 暂停</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 移动端专属控制区域 -->
+    <div class="mobile-controls-container">
+        <div class="direction-pad">
+            <button class="direction-btn btn-up" id="upBtn">↑</button>
+            <button class="direction-btn btn-left" id="leftBtn">←</button>
+            <button class="direction-btn btn-rotate" id="rotateBtn">转</button>
+            <button class="direction-btn btn-right" id="rightBtn">→</button>
+            <button class="direction-btn btn-down" id="downBtn">↓</button>
         </div>
     </div>
 </div>
