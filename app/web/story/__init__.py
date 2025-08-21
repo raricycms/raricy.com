@@ -67,7 +67,7 @@ def batch_detail(batch_id):
             })
     
     # 按照 priority 从大到小排序，如果没有 priority 字段则默认为 0
-    stories.sort(key=lambda x: x.get("priority", 0), reverse=True)
+    stories.sort(key=lambda x: (x.get("priority", 0), bool(x.get("description", ""))), reverse=True)
     
     return render_template('story/batch.html', batch_id=batch_id, batch_title=batch_title, batch_description=batch_description, stories=stories)
 
@@ -110,4 +110,3 @@ def story_detail(batch_id, story_id):
         batch_id=batch_id,
         story_content=html_content
     )
-
