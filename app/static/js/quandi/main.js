@@ -1,7 +1,8 @@
 // 全局变量
 let gameEngine;
 let inputHandler;
-let selectedColor = '#4444ff';
+let selectedColor = '#E6194B';
+
 
 // 页面加载完成后初始化
 document.addEventListener('DOMContentLoaded', function() {
@@ -11,7 +12,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
 function initGame() {
     const canvas = document.getElementById('gameCanvas');
+    // 在初始化游戏引擎的地方添加
     gameEngine = new GameEngine();
+    window.gameEngine = gameEngine; // 将游戏引擎实例暴露给全局
     gameEngine.init(canvas);
     inputHandler = new InputHandler(gameEngine);
 }
@@ -30,6 +33,12 @@ function setupEventListeners() {
     document.getElementById('difficultySelect').addEventListener('change', function() {
         gameEngine.setDifficulty(this.value);
     });
+
+    // 游戏模式选择
+    document.getElementById('gamemodeSelect').addEventListener('change', function() {
+        gameEngine.setgamemode(this.value);
+    });
+
 }
 
 // 页面导航函数
@@ -42,6 +51,7 @@ function showPage(pageId) {
 
 function showMainMenu() {
     showPage('mainMenu');
+    gameEngine.endGame();
     hideOverlays();
     if (gameEngine) {
         gameEngine.gameState = 'menu';
@@ -57,6 +67,10 @@ function startGame() {
     
     // 设置玩家颜色
     gameEngine.setPlayerColor(1, selectedColor);
+    
+    // 重新设置难度和游戏模式，确保应用用户的选择
+    gameEngine.setDifficulty(document.getElementById('difficultySelect').value);
+    gameEngine.setgamemode(document.getElementById('gamemodeSelect').value);
     
     // 开始游戏
     gameEngine.start();
@@ -92,16 +106,8 @@ function hideOverlays() {
 
 // 键盘事件处理
 document.addEventListener('keydown', function(e) {
-    // ESC键处理
-    if (e.code === 'Escape') {
-        if (gameEngine) {
-            if (gameEngine.gameState === 'playing') {
-                pauseGame();
-            } else if (gameEngine.gameState === 'paused') {
-                resumeGame();
-            }
-        }
-    }
+    // ESC键和空格键的处理已经移到InputHandler.js中
+    // 这里不再重复处理
 });
 
 // 防止页面滚动

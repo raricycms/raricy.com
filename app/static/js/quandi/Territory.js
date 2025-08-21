@@ -1,6 +1,23 @@
 class Territory {
     constructor() {
+        this.canvasWidth = 1200;
+        this.canvasHeight = 600;
         this.areas = new Map(); // playerId -> areas[]
+        this.offscreenCanvas = document.createElement('canvas');
+        this.offscreenCanvas.width = this.canvasWidth;
+        this.offscreenCanvas.height = this.canvasHeight;
+        this.ctx = this.offscreenCanvas.getContext('2d', { willReadFrequently: true });
+        this.maxArea = this.canvasWidth * this.canvasHeight * 0.95;
+    }
+
+    calculateSignedArea(polygon) {
+        let area = 0;
+        for (let i = 0; i < polygon.length; i++) {
+            const p1 = polygon[i];
+            const p2 = polygon[(i + 1) % polygon.length]; // 获取下一个点，最后一个点连接回第一个点
+            area += (p1.x * p2.y - p2.x * p1.y);
+        }
+        return area / 2; // 完整的鞋带公式结果是面积的一半
     }
 
     detectEnclosure(player) {
@@ -16,14 +33,19 @@ class Territory {
             Math.pow(startArea.x - currentPos.x, 2) + Math.pow(startArea.y - currentPos.y, 2)
         );
 
-        if (distanceToStart < 40) {
+        if (distanceToStart < 20) {
             // 形成封闭区域
-            const area = [...trail, currentPos, startArea]; // 闭合路径
-            this.addTerritory(player.id, area);
-            
+            const area = [...trail, currentPos, startArea];
+            const windingorder = this.calculateSignedArea(area);
+            let clockwisearea = area;
+            if (windingorder > 0) {
+                clockwisearea = [...area].reverse();
+            }
+            this.addTerritory(player.id, clockwisearea);
+
             // 重置玩家状态
             player.trail = [];
-            
+
             return area;
         }
 
@@ -41,17 +63,67 @@ class Territory {
         return this.areas.get(playerId) || [];
     }
 
+    calculateTotalArea(playerId) {
+        const territories = this.getPlayerTerritories(playerId);
+
+        if (territories.length === 0) {
+            return []; // 如果没有领地，返回空数组
+        }
+        const total_area = territories.flatMap(area => area);
+        const total_area2 = [];
+        total_area2.push(total_area)
+
+        return total_area2;
+    }
+
     calculateScore(playerId, canvasWidth, canvasHeight) {
         const territories = this.getPlayerTerritories(playerId);
         if (territories.length === 0) return 0;
 
-        const offscreenCanvas = document.createElement('canvas');
-        offscreenCanvas.width = canvasWidth;
-        offscreenCanvas.height = canvasHeight;
-        const ctx = offscreenCanvas.getContext('2d', { willReadFrequently: true });
+        // 生成territories的哈希值作为缓存键
+        const territoriesHash = this.generateTerritoriesHash(territories, canvasWidth, canvasHeight);
+        const cacheKey = `${playerId}_${territoriesHash}`;
 
+        // 检查缓存
+        if (this.scoreCache && this.scoreCache[cacheKey] !== undefined) {
+            return this.scoreCache[cacheKey];
+        }
+
+        // 执行计算
+        const score = this.computeScore(territories, canvasWidth, canvasHeight);
+
+        // 缓存结果
+        if (!this.scoreCache) this.scoreCache = {};
+        this.scoreCache[cacheKey] = score;
+
+        return score;
+    }
+
+    // 生成territories的哈希值
+    generateTerritoriesHash(territories, canvasWidth, canvasHeight) {
+        const str = JSON.stringify({
+            territories: territories.map(territory =>
+                territory.map(point => `${point.x},${point.y}`).join('|')
+            ).join(';'),
+            canvas: `${canvasWidth}x${canvasHeight}`
+        });
+
+        // 简单哈希函数
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+            const char = str.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash; // 转换为32位整数
+        }
+        return hash.toString();
+    }
+
+    // 将原来的计算逻辑提取到单独的方法
+    computeScore(territories, canvasWidth, canvasHeight) {
+        const ctx = this.ctx;
+        ctx.clearRect(0, 0, canvasWidth, canvasHeight);
         ctx.fillStyle = 'black';
-        
+
         for (const territory of territories) {
             if (territory.length < 3) continue;
 
@@ -67,15 +139,16 @@ class Territory {
         const imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
         const data = imageData.data;
         let totalArea = 0;
+        const step = 2; // 采样精度
 
-        for (let i = 0; i < data.length; i += 4) {
-            if (data[i + 3] > 0) { // Check alpha channel for non-transparent pixels
-                totalArea++;
+        for (let y = 0; y < this.canvasHeight; y += step) {
+            for (let x = 0; x < this.canvasWidth; x += step) {
+                const index = ((y * this.canvasWidth) + x) * 4 + 3;
+                if (data[index] > 0) totalArea += step * step;
             }
         }
 
-        const maxArea = canvasWidth * canvasHeight;
-        return Math.min(100, (totalArea / maxArea) * 100);
+        return Math.min(100, (totalArea / this.maxArea) * 100);
     }
 
     reset() {

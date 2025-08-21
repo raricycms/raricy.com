@@ -1,12 +1,14 @@
-{% extends "base.html" %}
+<!DOCTYPE html>
+<html lang="zh-CN">
 
-{% block title %}Raricy.com - 圈地运动{% endblock %}
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>圈地运动</title>
+    <link rel="stylesheet" href="{{url_for('static', filename='css/quandi/style.css')}}">
+</head>
 
-{% block extra_css %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/quandi/styles.css') }}">
-{% endblock %}
-
-{% block content %}
+<body>
     <!-- 主菜单页面 -->
     <div id="mainMenu" class="page active">
         <div class="menu-container">
@@ -15,18 +17,31 @@
                 <div class="color-selection">
                     <h3>选择你的颜色</h3>
                     <div class="color-picker">
-                        <div class="color-option" data-color="#ff4444" style="background: #ff4444;"></div>
-                        <div class="color-option" data-color="#44ff44" style="background: #44ff44;"></div>
-                        <div class="color-option" data-color="#ffff44" style="background: #ffff44;"></div>
-                        <div class="color-option" data-color="#ff44ff" style="background: #ff44ff;"></div>
+                        <div class="color-option" data-color="#E6194B" style="background: #E6194B;"></div>
+                        <div class="color-option" data-color="#3CB44B" style="background: #3CB44B;"></div>
+                        <div class="color-option" data-color="#FFE119" style="background: #FFE119;"></div>
+                        <div class="color-option" data-color="#F58231" style="background: #F58231;"></div>
+                        <div class="color-option" data-color="#46F0F0" style="background: #46F0F0;"></div>
+                        <div class="color-option" data-color="#808000" style="background: #808000;"></div>
                     </div>
                 </div>
                 <div class="difficulty-selection">
-                    <h3>选择难度</h3>
+                    <h3>选择速度</h3>
                     <select id="difficultySelect">
-                        <option value="easy">简单</option>
-                        <option value="medium" selected>中等</option>
-                        <option value="hard">困难</option>
+                        <option value="slow">慢速</option>
+                        <option value="medium" selected>中速</option>
+                        <option value="fast">快速</option>
+                        <option value="ultra">闪电</option>
+                    </select>
+                </div>
+                <div class="gamemode-selection">
+                    <h3>选择游戏模式</h3>
+                    <select id="gamemodeSelect">
+                        <option value="explore" selected>探索</option>
+                        <option value="fight">对战</option>
+                        <option value="infinite">无限</option>
+                        <option value="survival">生存</option>
+                        <option value="capture">夺旗</option>
                     </select>
                 </div>
                 <div class="menu-buttons">
@@ -44,38 +59,86 @@
             <div class="rules-content">
                 <h3>游戏目标</h3>
                 <p>控制你的画笔在画布上移动，通过圈地和阻断对手来获得更多领土！</p>
-                
-                <h3>操作方式</h3>
-                <p><strong>玩家1：</strong> 使用 W、A、S、D 键控制移动</p>
-                <p><strong>玩家2：</strong> 使用方向键控制移动</p>
-                
-                <h3>游戏规则</h3>
+
+                <h3>基本规则</h3>
                 <ul>
                     <li>玩家有一定长度的轨迹</li>
                     <li>移动时会留下自己颜色的轨迹</li>
                     <li>轨迹头回到家后与尾相连</li>
                     <li>形成封闭区域可以占领该区域</li>
-                    <li>碰到对手的轨迹会死亡</li>
+                    <li>碰到自己或对手的轨迹会死亡</li>
                     <li>进入对手的领土会死亡</li>
-                    <li>可以碰到自己的轨迹</li>
                     <li>规定时间内占领更多区域的玩家获胜</li>
                 </ul>
-                
-                <h3>策略提示</h3>
+
+                <h3>各游戏模式介绍</h3>
+                <h4>1. 探索模式</h4>
                 <ul>
-                    <li>尝试圈出大片区域</li>
-                    <li>阻断对手的圈地路径</li>
-                    <li>注意保护你的家</li>
-                    <li>使用道具可以获得优势</li>
+                    <li>碰到对手的轨迹会死亡</li>
+                    <li>进入对手的领土会死亡</li>
+                    <li>每个人只有1条生命</li>
+                    <li>规定时间内占领更多区域的玩家获胜</li>
                 </ul>
+
+                <h4>2. 对战模式</h4>
+                <ul>
+                    <li>碰到对手的轨迹会杀死对手</li>
+                    <li>进入对手的领土同样会死亡</li>
+                    <li>每个人有3条生命</li>
+                    <li>生命归零后即死亡</li>
+                    <li>规定时间内占领更多区域的玩家获胜</li>
+                </ul>
+
+                <h4>3. 无限模式</h4>
+                <ul>
+                    <li>游戏模式与对战模式类似</li>
+                    <li>拥有无限生命，但每次死亡后都会有5秒钟的封锁时间</li>
+                    <li>每死亡一次，封锁时间增加2秒钟</li>
+                    <li>第一个占领60%区域的玩家获胜</li>
+                </ul>
+
+                <h4>4. 生存模式</h4>
+                <ul>
+                    <li>AI会追击玩家，被追上就死亡</li>
+                    <li>每个人有3条生命，生命归零后即死亡</li>
+                    <li>AI碰撞玩家后会有5秒钟的休息时间，不再追逐玩家</li>
+                    <li>可以使用护盾来躲避AI进攻</li>
+                    <li>规定时间内占领更多区域的玩家获胜</li>
+                </ul>
+
+                <h4>5. 夺旗模式</h4>
+                <ul>
+                    <li>地图上会生成旗帜区域</li>
+                    <li>旗帜属于最后一个圈到旗帜的玩家</li>
+                    <li>每隔玩家离开出生点后15秒内需要回到出生点</li>
+                    <li>未及时回到出生点的玩家会直接死亡</li>
+                    <li>需要圈住并守住旗帜，先比较旗帜数量再比较领土面积</li>
+                    <li>规定时间内占领更多旗帜的玩家获胜</li>
+
+                </ul>
+
+                <h3>操作方式</h3>
+                <p><strong>玩家1：</strong> 使用 WASD 键控制移动</p>
+                <p><strong>玩家2：</strong> 使用方向键控制移动</p>
 
                 <h3>道具说明</h3>
                 <ul>
-                    <li>速度：增加移动速度</li>
-                    <li>长度：增加轨迹长度</li>
-                    <li>护盾：保护自己可以进入对方领土</li>
-                    <li>障碍：阻挡对手的移动</li>
+                    <li>速度（绿色 ⚡）：增加移动速度</li>
+                    <li>长度（黄色 📏）：增加轨迹长度</li>
+                    <li>护盾（蓝色 🛡️）：保护自己可以进入对方领土</li>
+                    <li>障碍：阻挡移动,一次会有多个同时生成</li>
                     <li>临时栏杆: 开局12秒后消失</li>
+                </ul>
+
+                <h3>策略提示</h3>
+                <ul>
+                    <li>尝试圈出大片区域</li>
+                    <li>尝试阻断对手的圈地路径</li>
+                    <li>注意保护你的家</li>
+                    <li>使用道具可以获得优势</li>
+                    <li>在临时栏杆消失前建设好你的根据地</li>
+                    <li>在对战模式下，及时攻击对手的暴露轨迹</li>
+                    <li>不要变得太贪婪，尤其是在对战模式下</li>
                 </ul>
             </div>
             <button class="btn secondary" onclick="showMainMenu()">返回主菜单</button>
@@ -86,31 +149,55 @@
     <div id="gamePage" class="page">
         <div class="game-header">
             <div class="score-board">
-                <div class="player-score">
-                    <span class="player-name">玩家1</span>
+                <span class="player-name">玩家1</span>
+
+                <div class="lives-display" id="player1Lives">
+                    <span class="lives-label">生命:</span>
+                    <span class="lives-count normal" id="player1LivesCount">3</span>
+                </div>
+
+                <div class="score-section">
                     <div class="score-bar">
                         <div class="score-fill player1" id="player1Score"></div>
                     </div>
                     <span class="score-text" id="player1ScoreText">0%</span>
                 </div>
+
                 <div class="game-controls">
                     <button class="btn small" onclick="pauseGame()">暂停</button>
                     <button class="btn small" onclick="restartGame()">重新开始</button>
                     <button class="btn small" onclick="showMainMenu()">主菜单</button>
                 </div>
-                <div class="player-score">
-                    <span class="player-name">玩家2</span>
+
+                <div class="score-section">
+                    <span class="score-text" id="player2ScoreText">0%</span>
                     <div class="score-bar">
                         <div class="score-fill player2" id="player2Score"></div>
                     </div>
-                    <span class="score-text" id="player2ScoreText">0%</span>
                 </div>
+
+                <div class="lives-display" id="player2Lives">
+                    <span class="lives-label">生命:</span>
+                    <span class="lives-count normal" id="player2LivesCount">3</span>
+                </div>
+
+                <span class="player-name">玩家2</span>
             </div>
+
+            <div class="game-container">
+                <canvas id="gameCanvas" width="1200" height="600"></canvas>
+            </div>
+            <div class="countdown-displays">
+                <div id="player1Shield" class="shield-countdown left">护盾：---</div>
+                <div id="player1Lock" class="lock-countdown left-lock">封锁：---</div>
+                <div id="player1Home" class="home-countdown left-home">回家：---</div>
+                <div id="initialBarrier" class="barrier-countdown bottom">初始栏杆：---</div>
+                <div id="player2Home" class="home-countdown right-home">回家：---</div>
+                <div id="player2Lock" class="lock-countdown right-lock">封锁：---</div>
+                <div id="player2Shield" class="shield-countdown right">护盾：---</div>
+            </div>
+            <div class="game-status" id="gameStatus"></div>
         </div>
-        <div class="game-container">
-            <canvas id="gameCanvas" width="1200" height="600"></canvas>
-        </div>
-        <div class="game-status" id="gameStatus"></div>
     </div>
 
     <!-- 暂停菜单 -->
@@ -136,16 +223,16 @@
             </div>
         </div>
     </div>
-{% endblock %}
-{% block copyright %}
-    &copy; 2025 北斗大帝. Reproduced with permission.
-{% endblock %}
-{% block extra_js %}
-    <script src="{{ url_for('static', filename='js/quandi/Player.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/quandi/Territory.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/quandi/GameEngine.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/quandi/InputHandler.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/quandi/ItemManager.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/quandi/Renderer.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/quandi/main.js') }}"></script>
-{% endblock %}
+
+    <script src="{{url_for('static', filename='js/quandi/Player.js')}}"></script>
+    <script src="{{url_for('static', filename='js/quandi/Flag.js')}}"></script>
+    <script src="{{url_for('static', filename='js/quandi/Survive.js')}}"></script>
+    <script src="{{url_for('static', filename='js/quandi/Territory.js')}}"></script>
+    <script src="{{url_for('static', filename='js/quandi/GameEngine.js')}}"></script>
+    <script src="{{url_for('static', filename='js/quandi/InputHandler.js')}}"></script>
+    <script src="{{url_for('static', filename='js/quandi/ItemManager.js')}}"></script>
+    <script src="{{url_for('static', filename='js/quandi/Renderer.js')}}"></script>
+    <script src="{{url_for('static', filename='js/quandi/main.js')}}"></script>
+</body>
+
+</html>
