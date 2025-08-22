@@ -35,7 +35,6 @@ def safe_markdown_to_html(markdown_text):
         # 检查是否包含HTML标签（但排除LaTeX中的比较符号）
         # 使用完整的HTML标签匹配，必须有开始和结束的尖括号
         # 检查是否有合法的HTML标签结构：<tagname> 或 <tagname/> 或 <tagname 属性>
-        import re
         html_tag_pattern = r'<\s*([a-zA-Z][a-zA-Z0-9\-]*)\s*(?:[^>]*)?\s*>'
         matches = re.findall(html_tag_pattern, content)
         if matches:
@@ -137,7 +136,7 @@ def safe_markdown_to_html(markdown_text):
         text = re.sub(r'\\\[.*?\\\]', replace_bracket_math, text, flags=re.DOTALL)
         
         # 处理行内数学公式（注意避免匹配到已处理的 $$ 标记）
-        text = re.sub(r'(?<!\$)\$(?!\$)([^$\n]+?)(?<!\$)\$(?!\$)', replace_inline_math, text)
+        text = re.sub(r'(?<!\$)\$(?!\$)([^$\n]+?)\$(?!\$)', replace_inline_math, text)
         
         # 处理 \(...\) 行内公式
         text = re.sub(r'\\\(.*?\\\)', replace_bracket_math, text, flags=re.DOTALL)
