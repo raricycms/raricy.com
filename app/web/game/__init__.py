@@ -54,10 +54,6 @@ def lifangqi():
 def sudujielong():
     return render_template('game/速度接龙.html')
 
-@game_bp.route('/luopanshizhong')
-def luopanshizhong():
-    return render_template('game/罗盘时钟.html')
-
 @game_bp.route('/tanchishe')
 def tanchishe():
     return render_template('game/贪吃蛇.html')
