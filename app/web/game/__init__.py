@@ -29,3 +29,35 @@ def _2048():
 @game_bp.route('/Tetris')
 def Tetris():
     return render_template('game/Tetris.html')
+
+@game_bp.route('/nengliangqiudazhan')
+def nengliangqiudazhan():
+    return render_template('game/能量球大战.html')
+
+@game_bp.route('/yinyou')
+def yinyou():
+    return render_template('game/音游.html')
+
+@game_bp.route('/chaojijingziqi')
+def chaojijingziqi():
+    return render_template('game/超级井字棋.html')
+
+@game_bp.route('/siziqi')
+def siziqi():
+    return render_template('game/四子棋.html')
+
+@game_bp.route('/lifangqi')
+def lifangqi():
+    return render_template('game/立方棋.html')
+
+@game_bp.route('/sudujielong')
+def sudujielong():
+    return render_template('game/速度接龙.html')
+
+@game_bp.route('/luopanshizhong')
+def luopanshizhong():
+    return render_template('game/罗盘时钟.html')
+
+@game_bp.route('/tanchishe')
+def tanchishe():
+    return render_template('game/贪吃蛇.html')

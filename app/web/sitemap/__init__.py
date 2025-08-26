@@ -16,6 +16,16 @@ def static_pages():
     yield 'game.xingkong', {}
     yield 'game.reversi', {}
     yield 'game.gecao', {}
+    yield 'game.Tetris', {}
+    yield 'game._2048', {}
+    yield 'game.nengliangqiudazhan', {}
+    yield 'game.yinyou', {}
+    yield 'game.chaojijingziqi', {}
+    yield 'game.siziqi', {}
+    yield 'game.lifangqi', {}
+    yield 'game.sudujielong', {}
+    yield 'game.luopanshizhong', {}
+    yield 'game.tanchishe', {}
     
     # 故事页面
     yield 'story.menu', {}
@@ -62,4 +72,3 @@ def index():
 def xml():
     """生成sitemap.xml"""
     return sitemap.sitemap()
-

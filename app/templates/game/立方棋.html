@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>4×4×4立方体下棋</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            background: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+
+        .container {
+            perspective: 1200px;
+            perspective-origin: center center;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .cube-system {
+            position: relative;
+            transform-style: preserve-3d;
+            cursor: grab;
+        }
+
+        .cube-system:active {
+            cursor: grabbing;
+        }
+
+        .small-cube {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            transform-style: preserve-3d;
+            transition: transform 0.5s ease-in-out;
+            cursor: pointer;
+        }
+
+        .face {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            border: 1px solid #333;
+            background: rgba(255, 255, 255, 0.8);
+            transition: background-color 0.2s ease;
+        }
+
+        .face.front { transform: translateZ(25px); }
+        .face.back { transform: translateZ(-25px) rotateY(180deg); }
+        .face.right { transform: rotateY(90deg) translateZ(25px); }
+        .face.left { transform: rotateY(-90deg) translateZ(25px); }
+        .face.top { transform: rotateX(90deg) translateZ(25px); }
+        .face.bottom { transform: rotateX(-90deg) translateZ(25px); }
+
+        /* 高亮状态 */
+        .small-cube.highlight .face {
+            background: rgba(255, 255, 0, 0.6);
+        }
+
+        /* 红方 */
+        .small-cube.red .face {
+            background: rgba(255, 100, 100, 0.8);
+        }
+
+        /* 蓝方 */
+        .small-cube.blue .face {
+            background: rgba(100, 100, 255, 0.8);
+        }
+
+        /* 获胜连线高亮 */
+        .small-cube.winning .face {
+            background: rgba(255, 215, 0, 0.9) !important;
+            border: 3px solid #FFD700 !important;
+            box-shadow: 0 0 20px rgba(255, 215, 0, 0.8);
+        }
+
+        /* 最后一步高亮 - 调整为更柔和的绿色 */
+        .small-cube.last-move .face {
+            border: 2px solid #4CAF50 !important;
+            box-shadow: 0 0 8px rgba(76, 175, 80, 0.4);
+        }
+
+        /* 游戏信息 */
+        .game-info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 14px;
+            z-index: 1000;
+        }
+
+        .current-player {
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .winner-message {
+            font-size: 18px;
+            font-weight: bold;
+            color: #FFD700;
+            margin-bottom: 10px;
+        }
+
+        .draw-message {
+            font-size: 18px;
+            font-weight: bold;
+            color: #FFA500;
+            margin-bottom: 10px;
+        }
+
+        .button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px 5px 0 0;
+            font-size: 12px;
+        }
+
+        .button:hover {
+            background: #45a049;
+        }
+
+        .button:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+
+        .undo-button {
+            background: #ff9800;
+        }
+
+        .undo-button:hover {
+            background: #e68900;
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 12px;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-info">
+        <div class="winner-message" id="winnerMessage" style="display: none;"></div>
+        <div class="draw-message" id="drawMessage" style="display: none;"></div>
+        <div class="current-player" id="currentPlayer">当前玩家: 红方</div>
+        <div>红方棋子: <span id="redCount">0</span></div>
+        <div>蓝方棋子: <span id="blueCount">0</span></div>
+        <div>总步数: <span id="totalMoves">0</span> / 64</div>
+        <div style="margin-top: 10px;">
+            <button class="button undo-button" id="undoButton" onclick="undoMove()" disabled>悔棋</button>
+            <button class="button" onclick="resetGame()">重新开始</button>
+        </div>
+    </div>
+
+    <div class="controls">
+        <div>操作说明:</div>
+        <div>• 拖拽旋转视角</div>
+        <div>• 单击下棋</div>
+        <div>• A/S/D键爆炸视图</div>
+        <div>• 四子连线获胜</div>
+        <div>• 绿框显示最后一步</div>
+        <div>• 64步无胜负为平局</div>
+    </div>
+
+    <div class="container" id="container">
+        <div class="cube-system" id="cubeSystem">
+        </div>
+    </div>
+
+    <script>
+        const container = document.getElementById('container');
+        const cubeSystem = document.getElementById('cubeSystem');
+        const currentPlayerEl = document.getElementById('currentPlayer');
+        const winnerMessageEl = document.getElementById('winnerMessage');
+        const drawMessageEl = document.getElementById('drawMessage');
+        const redCountEl = document.getElementById('redCount');
+        const blueCountEl = document.getElementById('blueCount');
+        const totalMovesEl = document.getElementById('totalMoves');
+        const undoButtonEl = document.getElementById('undoButton');
+        
+        let cubes = [];
+        let cubeGrid = {}; // 用于快速查找立方体
+        let isMouseDown = false;
+        let mouseX = 0;
+        let mouseY = 0;
+        let rotationX = -15;
+        let rotationY = 25;
+        let currentRotationX = 0;
+        let currentRotationY = 0;
+
+        // 游戏状态
+        let currentPlayer = 'red'; // 'red' 或 'blue'
+        let redCount = 0;
+        let blueCount = 0;
+        let totalMoves = 0;
+        let gameEnded = false;
+        let moveHistory = []; // 存储历史步骤
+
+        // 爆炸状态
+        let explodeState = {
+            x: false,
+            y: false,
+            z: false
+        };
+
+        // 所有可能的连线方向（76种）
+        const winDirections = [
+            // X轴方向（16条线）
+            [1, 0, 0],
+            // Y轴方向（16条线）
+            [0, 1, 0],
+            // Z轴方向（16条线）
+            [0, 0, 1],
+            // XY平面对角线（8条线）
+            [1, 1, 0], [1, -1, 0],
+            // XZ平面对角线（8条线）
+            [1, 0, 1], [1, 0, -1],
+            // YZ平面对角线（8条线）
+            [0, 1, 1], [0, 1, -1],
+            // 体对角线（4条线）
+            [1, 1, 1], [1, 1, -1], [1, -1, 1], [-1, 1, 1]
+        ];
+
+        // 创建64个小立方体
+        function createCubes() {
+            cubes = [];
+            cubeGrid = {};
+            
+            for (let x = 0; x < 4; x++) {
+                for (let y = 0; y < 4; y++) {
+                    for (let z = 0; z < 4; z++) {
+                        const cube = document.createElement('div');
+                        cube.className = 'small-cube';
+                        
+                        // 基础位置（相对于中心）
+                        const baseX = (x - 1.5) * 60;
+                        const baseY = (y - 1.5) * 60;
+                        const baseZ = (z - 1.5) * 60;
+                        
+                        // 存储位置信息
+                        cube.dataset.x = x;
+                        cube.dataset.y = y;
+                        cube.dataset.z = z;
+                        cube.dataset.baseX = baseX;
+                        cube.dataset.baseY = baseY;
+                        cube.dataset.baseZ = baseZ;
+                        cube.dataset.occupied = 'false';
+                        cube.dataset.player = '';
+                        
+                        // 创建6个面
+                        const faces = ['front', 'back', 'right', 'left', 'top', 'bottom'];
+                        faces.forEach(faceName => {
+                            const face = document.createElement('div');
+                            face.className = `face ${faceName}`;
+                            cube.appendChild(face);
+                        });
+                        
+                        // 添加鼠标事件
+                        cube.addEventListener('mouseenter', handleMouseEnter);
+                        cube.addEventListener('mouseleave', handleMouseLeave);
+                        cube.addEventListener('click', handleClick);
+                        
+                        cubeSystem.appendChild(cube);
+                        cubes.push(cube);
+                        
+                        // 建立坐标索引
+                        cubeGrid[`${x},${y},${z}`] = cube;
+                    }
+                }
+            }
+            updateCubePositions();
+        }
+
+        // 检查胜利条件
+        function checkWin(player) {
+            // 遍历所有可能的起始点
+            for (let x = 0; x < 4; x++) {
+                for (let y = 0; y < 4; y++) {
+                    for (let z = 0; z < 4; z++) {
+                        // 检查每个方向
+                        for (const [dx, dy, dz] of winDirections) {
+                            const line = [];
+                            let valid = true;
+                            
+                            // 检查这个方向的4个连续位置
+                            for (let i = 0; i < 4; i++) {
+                                const nx = x + dx * i;
+                                const ny = y + dy * i;
+                                const nz = z + dz * i;
+                                
+                                // 检查坐标是否在范围内
+                                if (nx < 0 || nx >= 4 || ny < 0 || ny >= 4 || nz < 0 || nz >= 4) {
+                                    valid = false;
+                                    break;
+                                }
+                                
+                                const cube = cubeGrid[`${nx},${ny},${nz}`];
+                                if (!cube || cube.dataset.player !== player) {
+                                    valid = false;
+                                    break;
+                                }
+                                
+                                line.push(cube);
+                            }
+                            
+                            // 如果找到了4个连续的同色棋子
+                            if (valid && line.length === 4) {
+                                return line;
+                            }
+                        }
+                    }
+                }
+            }
+            return null;
+        }
+
+        // 检查是否平局
+        function checkDraw() {
+            return totalMoves >= 64;
+        }
+
+        // 高亮获胜连线
+        function highlightWinningLine(line) {
+            line.forEach(cube => {
+                cube.classList.add('winning');
+            });
+        }
+
+        // 显示胜利信息
+        function showWinner(player) {
+            gameEnded = true;
+            const playerName = player === 'red' ? '红方' : '蓝方';
+            winnerMessageEl.textContent = `🎉 ${playerName}获胜！`;
+            winnerMessageEl.style.display = 'block';
+            drawMessageEl.style.display = 'none';
+            currentPlayerEl.style.display = 'none';
+        }
+
+        // 显示平局信息
+        function showDraw() {
+            gameEnded = true;
+            drawMessageEl.textContent = '🤝 平局！';
+            drawMessageEl.style.display = 'block';
+            winnerMessageEl.style.display = 'none';
+            currentPlayerEl.style.display = 'none';
+        }
+
+        // 更新UI显示
+        function updateUI() {
+            redCountEl.textContent = redCount;
+            blueCountEl.textContent = blueCount;
+            totalMovesEl.textContent = totalMoves;
+            undoButtonEl.disabled = moveHistory.length === 0 || gameEnded;
+            
+            if (!gameEnded) {
+                currentPlayerEl.textContent = `当前玩家: ${currentPlayer === 'red' ? '红方' : '蓝方'}`;
+            }
+        }
+
+        // 清除最后一步高亮
+        function clearLastMoveHighlight() {
+            cubes.forEach(cube => {
+                cube.classList.remove('last-move');
+            });
+        }
+
+        // 悔棋功能
+        function undoMove() {
+            if (moveHistory.length === 0 || gameEnded) {
+                return;
+            }
+
+            const lastMove = moveHistory.pop();
+            const cube = cubeGrid[`${lastMove.x},${lastMove.y},${lastMove.z}`];
+            
+            // 恢复立方体状态
+            cube.dataset.occupied = 'false';
+            cube.dataset.player = '';
+            cube.className = 'small-cube';
+            
+            // 更新计数
+            if (lastMove.player === 'red') {
+                redCount--;
+            } else {
+                blueCount--;
+            }
+            totalMoves--;
+            
+            // 切换回上一个玩家
+            currentPlayer = lastMove.player;
+            
+            // 清除所有高亮
+            clearLastMoveHighlight();
+            cubes.forEach(cube => {
+                cube.classList.remove('winning');
+            });
+            
+            // 高亮新的最后一步（如果有的话）
+            if (moveHistory.length > 0) {
+                const newLastMove = moveHistory[moveHistory.length - 1];
+                const newLastCube = cubeGrid[`${newLastMove.x},${newLastMove.y},${newLastMove.z}`];
+                newLastCube.classList.add('last-move');
+            }
+            
+            updateUI();
+        }
+
+        // 重置游戏
+        function resetGame() {
+            gameEnded = false;
+            currentPlayer = 'red';
+            redCount = 0;
+            blueCount = 0;
+            totalMoves = 0;
+            moveHistory = [];
+            
+            // 清除所有立方体状态
+            cubes.forEach(cube => {
+                cube.dataset.occupied = 'false';
+                cube.dataset.player = '';
+                cube.className = 'small-cube';
+            });
+            
+            // 重置UI
+            winnerMessageEl.style.display = 'none';
+            drawMessageEl.style.display = 'none';
+            currentPlayerEl.style.display = 'block';
+            updateUI();
+        }
+
+        // 鼠标进入立方体
+        function handleMouseEnter(e) {
+            if (gameEnded) return;
+            const cube = e.currentTarget;
+            if (cube.dataset.occupied === 'false') {
+                cube.classList.add('highlight');
+            }
+        }
+
+        // 鼠标离开立方体
+        function handleMouseLeave(e) {
+            const cube = e.currentTarget;
+            cube.classList.remove('highlight');
+        }
+
+        // 点击立方体（改为单击下棋）
+        function handleClick(e) {
+            if (gameEnded) return;
+            e.stopPropagation();
+            const cube = e.currentTarget;
+            
+            // 如果已经被占用，不能点击
+            if (cube.dataset.occupied === 'true') {
+                return;
+            }
+
+            // 单击下棋
+            placePiece(cube);
+        }
+
+        // 下棋逻辑
+        function placePiece(cube) {
+            if (gameEnded || cube.dataset.occupied === 'true') {
+                return;
+            }
+
+            // 记录这一步
+            const move = {
+                x: parseInt(cube.dataset.x),
+                y: parseInt(cube.dataset.y),
+                z: parseInt(cube.dataset.z),
+                player: currentPlayer
+            };
+            moveHistory.push(move);
+
+            // 清除之前的最后一步高亮
+            clearLastMoveHighlight();
+
+            // 下棋
+            cube.dataset.occupied = 'true';
+            cube.dataset.player = currentPlayer;
+            cube.classList.remove('highlight');
+            cube.classList.add(currentPlayer);
+            cube.classList.add('last-move'); // 标记为最后一步
+
+            // 更新计数
+            if (currentPlayer === 'red') {
+                redCount++;
+            } else {
+                blueCount++;
+            }
+            totalMoves++;
+
+            // 检查胜利条件
+            const winningLine = checkWin(currentPlayer);
+            if (winningLine) {
+                highlightWinningLine(winningLine);
+                showWinner(currentPlayer);
+                updateUI();
+                return;
+            }
+
+            // 检查平局
+            if (checkDraw()) {
+                showDraw();
+                updateUI();
+                return;
+            }
+
+            // 切换玩家
+            currentPlayer = currentPlayer === 'red' ? 'blue' : 'red';
+            updateUI();
+        }
+
+        // 更新立方体位置
+        function updateCubePositions() {
+            cubes.forEach(cube => {
+                const x = parseInt(cube.dataset.x);
+                const y = parseInt(cube.dataset.y);
+                const z = parseInt(cube.dataset.z);
+                const baseX = parseFloat(cube.dataset.baseX);
+                const baseY = parseFloat(cube.dataset.baseY);
+                const baseZ = parseFloat(cube.dataset.baseZ);
+                
+                let offsetX = 0;
+                let offsetY = 0;
+                let offsetZ = 0;
+                
+                // 计算爆炸偏移（60px）
+                if (explodeState.x) {
+                    offsetX = (x - 1.5) * 60;
+                }
+                if (explodeState.y) {
+                    offsetY = (y - 1.5) * 60;
+                }
+                if (explodeState.z) {
+                    offsetZ = (z - 1.5) * 60;
+                }
+                
+                const finalX = baseX + offsetX;
+                const finalY = baseY + offsetY;
+                const finalZ = baseZ + offsetZ;
+                
+                cube.style.transform = `translate3d(${finalX}px, ${finalY}px, ${finalZ}px)`;
+            });
+        }
+
+        // 更新整体旋转
+        function updateRotation() {
+            cubeSystem.style.transform = `rotateX(${rotationX}deg) rotateY(${rotationY}deg)`;
+        }
+
+        // 鼠标事件（旋转）- 在整个容器上监听
+        container.addEventListener('mousedown', (e) => {
+            // 如果点击的是UI元素，不处理旋转
+            if (e.target.closest('.game-info') || e.target.closest('.controls')) {
+                return;
+            }
+            
+            isMouseDown = true;
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+            currentRotationX = rotationX;
+            currentRotationY = rotationY;
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isMouseDown) return;
+
+            const deltaX = e.clientX - mouseX;
+            const deltaY = e.clientY - mouseY;
+
+            rotationY = currentRotationY + deltaX * 0.5;
+            rotationX = currentRotationX - deltaY * 0.5;
+
+            rotationX = Math.max(-90, Math.min(90, rotationX));
+
+            updateRotation();
+        });
+
+        document.addEventListener('mouseup', () => {
+            isMouseDown = false;
+        });
+
+        // 键盘事件
+        document.addEventListener('keydown', (e) => {
+            const key = e.key.toLowerCase();
+            
+            switch(key) {
+                case 'a':
+                    explodeState.z = !explodeState.z;
+                    updateCubePositions();
+                    break;
+                case 's':
+                    explodeState.y = !explodeState.y;
+                    updateCubePositions();
+                    break;
+                case 'd':
+                    explodeState.x = !explodeState.x;
+                    updateCubePositions();
+                    break;
+                case 'z':
+                    if (e.ctrlKey) {
+                        e.preventDefault();
+                        undoMove();
+                    }
+                    break;
+            }
+        });
+
+        // 触摸事件
+        container.addEventListener('touchstart', (e) => {
+            if (e.target.closest('.game-info') || e.target.closest('.controls')) {
+                return;
+            }
+            
+            isMouseDown = true;
+            const touch = e.touches[0];
+            mouseX = touch.clientX;
+            mouseY = touch.clientY;
+            currentRotationX = rotationX;
+            currentRotationY = rotationY;
+            e.preventDefault();
+        });
+
+        document.addEventListener('touchmove', (e) => {
+            if (!isMouseDown) return;
+
+            const touch = e.touches[0];
+            const deltaX = touch.clientX - mouseX;
+            const deltaY = touch.clientY - mouseY;
+
+            rotationY = currentRotationY + deltaX * 0.5;
+            rotationX = currentRotationX - deltaY * 0.5;
+
+            rotationX = Math.max(-90, Math.min(90, rotationX));
+
+            updateRotation();
+            e.preventDefault();
+        });
+
+        document.addEventListener('touchend', () => {
+            isMouseDown = false;
+        });
+
+        // 初始化
+        createCubes();
+        updateRotation();
+        updateUI();
+    </script>
+</body>
+</html>
