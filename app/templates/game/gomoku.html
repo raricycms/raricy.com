@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>五子棋 — 简洁版（移动优先）</title>
+  <style>
+    :root{
+      --bg1:#f6f7f9; --bg2:#e9eef6; --accent:#6b5cf6; --muted:#6b7280; --card:#ffffff; --radius:14px;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%;}
+    body{
+      margin:0;padding:env(safe-area-inset-top,12px) env(safe-area-inset-right,12px) env(safe-area-inset-bottom,12px) env(safe-area-inset-left,12px);
+      min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,var(--bg1),var(--bg2));
+      font-family: Inter, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;color:#111827;-webkit-font-smoothing:antialiased;
+    }
+
+    .container{width:100%;max-width:980px;padding:12px;display:flex;flex-direction:column;gap:12px;align-items:stretch;}
+
+    .panel{background:var(--card);border-radius:12px;padding:14px;box-shadow:0 10px 30px rgba(14,20,30,0.06);} 
+
+    /* Start screen */
+    .start-screen{max-width:720px;margin:0 auto;text-align:center}
+    .start-screen h1{margin:6px 0;font-size:20px}
+    .subtitle{color:var(--muted);font-size:13px;margin-bottom:8px}
+    .form{display:flex;flex-direction:column;gap:10px;align-items:stretch;margin-top:8px}
+    label{display:flex;flex-direction:column;align-items:flex-start;font-size:13px;color:#222}
+    select{margin-top:8px;padding:10px;border-radius:10px;border:1px solid rgba(10,10,20,0.06);width:100%}
+    .btn{border:0;padding:12px 14px;border-radius:10px;background:var(--glass);cursor:pointer;font-weight:700}
+    .btn.primary{background:linear-gradient(90deg,var(--accent),#3b82f6);color:#fff}
+
+    /* Game screen */
+    .game-screen{display:flex;flex-direction:column;gap:12px;align-items:center}
+    .game-header{width:100%;display:flex;gap:8px;align-items:center}
+    .game-header .title{font-weight:800}
+    .spacer{flex:1}
+
+    .board-wrap{display:flex;align-items:center;justify-content:center;padding:6px;width:100%;}
+    /* make board always square and fit available height: adapt to viewport to avoid being pushed off-screen */
+    .board-card{width:min(94vw,720px);height:min(94vw,calc(100vh - 220px));aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;border-radius:12px;overflow:hidden}
+
+    canvas#goban{width:100%;height:100%;border-radius:10px;background:linear-gradient(180deg,#f6e0b0,#e0b36a);touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+
+    /* toolbar */
+    .toolbar{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+    .toolbar .btn{padding:10px 12px;border-radius:10px;background:rgba(255,255,255,0.8);box-shadow:0 6px 18px rgba(12,14,20,0.04)}
+    .status{font-weight:700;text-align:center}
+
+    .moves{max-height:220px;overflow:auto;padding:8px;border-radius:10px;background:linear-gradient(180deg,rgba(0,0,0,0.02),transparent);width:100%}
+
+    .hidden{display:none}
+
+    @media(max-width:600px){
+      .board-card{height:min(92vw,calc(100vh - 200px));}
+      .container{padding:6px}
+    }
+
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- START SCREEN: 先选好模式再进入 -->
+    <div id="startScreen" class="panel start-screen">
+      <div style="display:flex;align-items:center;gap:12px;justify-content:center;margin-bottom:4px">
+        <div style="width:48px;height:48px;border-radius:10px;background:linear-gradient(135deg,#fff,#faf8ff);display:flex;align-items:center;justify-content:center;box-shadow:0 8px 20px rgba(107,92,246,0.08)">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="8" cy="8" r="3.2" fill="#111827"/><circle cx="16" cy="16" r="3.2" fill="#fff" stroke="#111827" stroke-opacity="0.12"/></svg>
+        </div>
+        <div>
+          <h1>五子棋（Gomoku）</h1>
+          <div class="subtitle">先选择对局设置，再进入棋盘（移动端优先）</div>
+        </div>
+      </div>
+
+      <div class="form" style="max-width:520px;margin:0 auto">
+        <label>对战模式
+          <select id="startMode">
+            <option value="local">本地双人</option>
+            <option value="ai">对战 AI</option>
+          </select>
+        </label>
+
+        <label>AI 难度（仅对 AI 模式生效）
+          <select id="startLevel">
+            <option value="easy">简单</option>
+            <option value="medium" selected>中等</option>
+          </select>
+        </label>
+
+        <label>棋盘大小
+          <select id="startSize">
+            <option value="13">13 × 13</option>
+            <option value="15" selected>15 × 15</option>
+            <option value="19">19 × 19</option>
+          </select>
+        </label>
+
+        <label>先手
+          <select id="startFirst">
+            <option value="black" selected>黑（先）</option>
+            <option value="white">白</option>
+          </select>
+        </label>
+
+        <div style="display:flex;gap:10px;justify-content:center;margin-top:8px">
+          <button id="startBtn" class="btn primary">开始游戏</button>
+          <button id="demoBtn" class="btn">快速示例</button>
+        </div>
+
+        <div style="margin-top:10px;color:var(--muted);font-size:13px">提示：在棋盘任意交叉点点按或触摸下子。双击棋盘可快速悔棋（移动端双击）。</div>
+      </div>
+    </div>
+
+    <!-- GAME SCREEN -->
+    <div id="gameScreen" class="panel game-screen hidden">
+      <div class="game-header">
+        <button id="btnBack" class="btn">返回设置</button>
+        <div class="spacer"></div>
+        <div class="title" id="gameModeLabel">模式</div>
+      </div>
+
+      <div class="board-wrap">
+        <div class="board-card">
+          <canvas id="goban"></canvas>
+        </div>
+      </div>
+
+      <div class="status" id="status">轮到：黑方（先）</div>
+
+      <div class="toolbar">
+        <button id="btnUndo" class="btn">撤回</button>
+        <button id="btnRedo" class="btn">重做</button>
+        <button id="btnReplay" class="btn">回放</button>
+        <button id="btnHint" class="btn">建议一步</button>
+        <button id="btnSave" class="btn">保存</button>
+        <button id="btnExport" class="btn">导出</button>
+        <button id="btnImport" class="btn">导入</button>
+      </div>
+
+      <div style="width:100%;max-width:720px;margin-top:6px">
+        <div class="moves" id="moveList" aria-live="polite"></div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <script>
+  (function(){
+    // --- DOM references ---
+    const startScreen = document.getElementById('startScreen');
+    const gameScreen = document.getElementById('gameScreen');
+    const startMode = document.getElementById('startMode');
+    const startLevel = document.getElementById('startLevel');
+    const startSize = document.getElementById('startSize');
+    const startFirst = document.getElementById('startFirst');
+    const startBtn = document.getElementById('startBtn');
+    const demoBtn = document.getElementById('demoBtn');
+    const btnBack = document.getElementById('btnBack');
+
+    const canvas = document.getElementById('goban');
+    const statusEl = document.getElementById('status');
+    const moveListEl = document.getElementById('moveList');
+    const btnUndo = document.getElementById('btnUndo');
+    const btnRedo = document.getElementById('btnRedo');
+    const btnReplay = document.getElementById('btnReplay');
+    const btnHint = document.getElementById('btnHint');
+    const btnSave = document.getElementById('btnSave');
+    const btnExport = document.getElementById('btnExport');
+    const btnImport = document.getElementById('btnImport');
+    const gameModeLabel = document.getElementById('gameModeLabel');
+
+    const ctx = canvas.getContext('2d');
+
+    // --- state ---
+    let SIZE = parseInt(startSize.value,10) || 15;
+    let board = [];
+    let moves = [];
+    let redoStack = [];
+    let current = 1; // 1 black, 2 white
+    let gameOver = false;
+    let lastMove = null;
+    let highlight = null;
+    let boardPixels = 0;
+    let margin = 12;
+    let cell = 32;
+    let stoneRadius = 14;
+    let savedStateKey = 'gomoku_simplified_autosave_v1';
+
+    // --- helpers ---
+    function inBounds(x,y){return x>=0 && y>=0 && x<SIZE && y<SIZE}
+
+    function initBoard(n){
+      SIZE = n;
+      board = Array.from({length:SIZE},()=>Array(SIZE).fill(0));
+      moves = [];
+      redoStack = [];
+      gameOver = false;
+      lastMove = null;
+      highlight = null;
+      current = (startFirst.value === 'black')?1:2;
+      updateStatus();
+      requestRedraw();
+    }
+
+    // --- drawing ---
+    function resizeCanvas(){
+      // parent wrapper determines the available square area
+      const wrapper = canvas.parentElement.getBoundingClientRect();
+      const side = Math.max(220, Math.min(wrapper.width, wrapper.height));
+      const dpr = window.devicePixelRatio || 1;
+      canvas.style.width = side + 'px';
+      canvas.style.height = side + 'px';
+      canvas.width = Math.floor(side * dpr);
+      canvas.height = Math.floor(side * dpr);
+      ctx.setTransform(dpr,0,0,dpr,0,0);
+      boardPixels = side;
+      margin = Math.max(10, side * 0.04);
+      cell = (side - margin*2) / (SIZE - 1);
+      stoneRadius = Math.max(6, cell * 0.42);
+      requestRedraw();
+    }
+
+    function clearBoardBG(){
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      const g = ctx.createLinearGradient(0,0,0,boardPixels);
+      g.addColorStop(0,'#f6e0b0'); g.addColorStop(1,'#e0b36a');
+      ctx.fillStyle = g; ctx.fillRect(0,0,boardPixels,boardPixels);
+    }
+
+    function drawGrid(){
+      ctx.save();
+      ctx.lineWidth = Math.max(1,cell*0.05);
+      ctx.strokeStyle = 'rgba(30,20,10,0.55)';
+      for(let i=0;i<SIZE;i++){
+        const p = margin + i*cell + 0.5;
+        ctx.beginPath(); ctx.moveTo(p, margin); ctx.lineTo(p, boardPixels - margin); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(margin, p); ctx.lineTo(boardPixels - margin, p); ctx.stroke();
+      }
+      // star points
+      ctx.fillStyle = 'rgba(20,20,20,0.6)';
+      function star(r,c){ const x=margin+c*cell; const y=margin+r*cell; ctx.beginPath(); ctx.arc(x,y,Math.max(2,cell*0.12),0,Math.PI*2); ctx.fill(); }
+      if(SIZE===15){ [3,11].forEach(r=>[3,7,11].forEach(c=>star(r,c))); }
+      if(SIZE===13){ [3,9].forEach(r=>[3,6,9].forEach(c=>star(r,c))); }
+      if(SIZE===19){ [3,9,15].forEach(r=>[3,9,15].forEach(c=>star(r,c))); }
+      ctx.restore();
+    }
+
+    function drawStones(){
+      for(let r=0;r<SIZE;r++) for(let c=0;c<SIZE;c++){ const v=board[r][c]; if(v===0) continue; const x=margin+c*cell; const y=margin+r*cell; drawStone(x,y,v,(lastMove && lastMove.x===c && lastMove.y===r)); }
+      if(highlight && highlight.length){ ctx.save(); ctx.strokeStyle='rgba(255,40,40,0.9)'; ctx.lineWidth=Math.max(4,cell*0.12); ctx.lineCap='round'; const a=highlight[0]; const b=highlight[highlight.length-1]; ctx.beginPath(); ctx.moveTo(margin+a.x*cell, margin+a.y*cell); ctx.lineTo(margin+b.x*cell, margin+b.y*cell); ctx.stroke(); ctx.restore(); }
+    }
+
+    function drawStone(x,y,player,isLast){ ctx.save(); ctx.beginPath(); ctx.ellipse(x+cell*0.06,y+cell*0.06,stoneRadius*1.08,stoneRadius*0.48,0,0,Math.PI*2); ctx.fillStyle='rgba(10,10,10,0.18)'; ctx.fill(); const g=ctx.createRadialGradient(x-stoneRadius*0.35,y-stoneRadius*0.6,stoneRadius*0.2,x,y,stoneRadius*1.1); if(player===1){ g.addColorStop(0,'#111217'); g.addColorStop(1,'#3a3f45'); } else { g.addColorStop(0,'#fff'); g.addColorStop(1,'#d6d6d6'); } ctx.beginPath(); ctx.arc(x,y,stoneRadius,0,Math.PI*2); ctx.fillStyle=g; ctx.fill(); ctx.lineWidth=Math.max(1,stoneRadius*0.08); ctx.strokeStyle = player===1? 'rgba(255,255,255,0.06)':'rgba(0,0,0,0.06)'; ctx.stroke(); const index = moves.findIndex(m=>m.x===Math.round((x-margin)/cell) && m.y===Math.round((y-margin)/cell)); if(index>=0){ ctx.fillStyle = player===1? '#fff':'#111'; ctx.font = Math.round(stoneRadius*0.8) + 'px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(index+1, x, y+1); } if(isLast){ ctx.beginPath(); ctx.arc(x,y,stoneRadius+4,0,Math.PI*2); ctx.strokeStyle='rgba(107,92,246,0.6)'; ctx.lineWidth=3; ctx.stroke(); } ctx.restore(); }
+
+    function requestRedraw(){ if(window.requestAnimationFrame) window.requestAnimationFrame(redraw); else setTimeout(redraw,16); }
+    function redraw(){ clearBoardBG(); drawGrid(); drawStones(); }
+
+    function pixelToGrid(px,py){ const rect = canvas.getBoundingClientRect(); const clientX = px - rect.left; const clientY = py - rect.top; const cx = (clientX - margin)/cell; const cy = (clientY - margin)/cell; return {x:Math.round(cx), y:Math.round(cy)}; }
+
+    // --- game logic ---
+    function playMove(x,y,player,record=true){ if(!inBounds(x,y) || board[y][x]!==0 || gameOver) return false; board[y][x]=player; lastMove={x,y,player}; if(record){ moves.push({x,y,player}); redoStack=[]; } const winLine = checkWinLine(x,y,player); if(winLine){ gameOver=true; highlight=winLine; updateStatus(true,player); } else { current = 3-player; updateStatus(false); if(record) saveAuto(); } requestRedraw(); return true; }
+
+    function checkWinLine(x,y,player){ const dirs=[[1,0],[0,1],[1,1],[1,-1]]; for(const d of dirs){ const line=[{x,y}]; for(let s=1;s<10;s++){ const nx=x+d[0]*s, ny=y+d[1]*s; if(!inBounds(nx,ny)||board[ny][nx]!==player) break; line.push({x:nx,y:ny}); } for(let s=1;s<10;s++){ const nx=x-d[0]*s, ny=y-d[1]*s; if(!inBounds(nx,ny)||board[ny][nx]!==player) break; line.unshift({x:nx,y:ny}); } if(line.length>=5) return line; } return null; }
+
+    function undo(){ if(moves.length===0 || gameOver) return false; const last = moves.pop(); redoStack.push(last); board[last.y][last.x]=0; lastMove = moves.length?moves[moves.length-1]:null; highlight=null; gameOver=false; current = (moves.length%2===0)? ((startFirst.value==='black')?1:2) : ((startFirst.value==='black')?2:1); updateStatus(false); requestRedraw(); saveAuto(); return true; }
+    function redo(){ if(redoStack.length===0 || gameOver) return false; const m = redoStack.pop(); board[m.y][m.x]=m.player; moves.push(m); lastMove=m; const winLine = checkWinLine(m.x,m.y,m.player); if(winLine){ gameOver=true; highlight=winLine; updateStatus(true,m.player); } else { current = 3-m.player; updateStatus(false); } requestRedraw(); saveAuto(); return true; }
+
+    // --- simple AI ---
+    function findImmediateWin(player){ for(let r=0;r<SIZE;r++) for(let c=0;c<SIZE;c++){ if(board[r][c]!==0) continue; board[r][c]=player; const ok = checkWinLine(c,r,player); board[r][c]=0; if(ok) return {x:c,y:r}; } return null; }
+    function countConsecutive(x,y,dx,dy,player){ let cnt=0; let nx=x+dx, ny=y+dy; while(inBounds(nx,ny)&&board[ny][nx]===player){ cnt++; nx+=dx; ny+=dy; } return cnt; }
+    function heuristicScoreAt(x,y,player){ let score=0; const opp = 3-player; const dirs=[[1,0],[0,1],[1,1],[1,-1]]; for(const d of dirs){ const a=countConsecutive(x,y,d[0],d[1],player); const b=countConsecutive(x,y,-d[0],-d[1],player); const total=a+1+b; score += Math.pow(10, Math.min(6,total)); const oa=countConsecutive(x,y,d[0],d[1],opp); const ob=countConsecutive(x,y,-d[0],-d[1],opp); const ot=oa+1+ob; if(ot>=5) score += 200000; else score += Math.pow(6, Math.min(4,ot)); } let near=0; for(let yy=Math.max(0,y-2); yy<=Math.min(SIZE-1,y+2); yy++) for(let xx=Math.max(0,x-2); xx<=Math.min(SIZE-1,x+2); xx++) if(board[yy][xx]!==0) near++; score += near*10; return score; }
+    function chooseAIMove(player,level){ const win = findImmediateWin(player); if(win) return win; const block = findImmediateWin(3-player); if(block) return block; if(level==='easy'){ const pool=[]; for(let r=0;r<SIZE;r++) for(let c=0;c<SIZE;c++){ if(board[r][c]!=0) continue; let near=false; for(let yy=Math.max(0,r-2); yy<=Math.min(SIZE-1,r+2); yy++) for(let xx=Math.max(0,c-2); xx<=Math.min(SIZE-1,c+2); xx++) if(board[yy][xx]!==0) near=true; if(near) pool.push({x:c,y:r}); } if(pool.length===0){ for(let r=0;r<SIZE;r++) for(let c=0;c<SIZE;c++) if(board[r][c]===0) pool.push({x:c,y:r}); } return pool[Math.floor(Math.random()*pool.length)]; }
+    let best=[]; let bestScore=-Infinity; for(let r=0;r<SIZE;r++) for(let c=0;c<SIZE;c++){ if(board[r][c]!==0) continue; const s = heuristicScoreAt(c,r,player); if(s>bestScore){ bestScore=s; best=[{x:c,y:r}]; } else if(s===bestScore) best.push({x:c,y:r}); } if(best.length===0) return null; return best[Math.floor(Math.random()*best.length)]; }
+
+    function aiPlayIfNeeded(){ if(gameOver) return; if(startMode.value!=='ai') return; const humanIs = (startFirst.value==='black')?1:2; const aiPlayer = 3-humanIs; if(current!==aiPlayer) return; setTimeout(()=>{ const mv = chooseAIMove(aiPlayer, startLevel.value); if(mv) { playMove(mv.x,mv.y,aiPlayer,true); updateMoveList(); } }, 220); }
+
+    // --- interactions ---
+    function pointerToGrid(ev){ const rect = canvas.getBoundingClientRect(); const px = ev.clientX || (ev.touches && ev.touches[0] && ev.touches[0].clientX); const py = ev.clientY || (ev.touches && ev.touches[0] && ev.touches[0].clientY); const cx = px - rect.left; const cy = py - rect.top; const gx = Math.round((cx - margin)/cell); const gy = Math.round((cy - margin)/cell); return {x:gx,y:gy}; }
+
+    function onPlace(x,y){ if(gameOver) return; if(!inBounds(x,y)) return; if(board[y][x]!==0) return; const did = playMove(x,y,current,true); if(!did) return; updateMoveList(); if(gameOver) return; // AI respond
+      aiPlayIfNeeded(); }
+
+    canvas.addEventListener('pointerdown', function(e){ e.preventDefault(); canvas.setPointerCapture(e.pointerId); const g = pointerToGrid(e); onPlace(g.x,g.y); });
+    let lastTap=0; canvas.addEventListener('click', function(e){ const now=Date.now(); if(now-lastTap<260){ undo(); updateMoveList(); } lastTap=now; });
+
+    // --- controls wiring ---
+    startBtn.addEventListener('click', ()=>{
+      // start with selected settings
+      SIZE = parseInt(startSize.value,10)||15;
+      initBoard(SIZE);
+      gameModeLabel.textContent = (startMode.value==='ai'?('对战 AI · 难度: '+startLevel.value): '本地双人');
+      startScreen.classList.add('hidden'); gameScreen.classList.remove('hidden');
+      resizeCanvas(); updateMoveList(); saveAuto(); // if AI starts
+      aiPlayIfNeeded();
+      // focus to canvas to avoid accidental scrolling
+      canvas.focus();
+    });
+
+    demoBtn.addEventListener('click', ()=>{
+      // quick demo: small sequence then show game
+      startSize.value = 13; startMode.value='local'; startFirst.value='black'; startLevel.value='medium'; startBtn.click();
+      // place a few demo moves
+      setTimeout(()=>{ playMove(6,6,1); playMove(7,6,2); playMove(6,7,1); playMove(7,7,2); updateMoveList(); }, 220);
+    });
+
+    btnBack.addEventListener('click', ()=>{ // back to settings
+      if(autoplayTimer) clearInterval(autoplayTimer);
+      gameScreen.classList.add('hidden'); startScreen.classList.remove('hidden'); saveAuto();
+    });
+
+    btnUndo.addEventListener('click', ()=>{ undo(); updateMoveList(); });
+    btnRedo.addEventListener('click', ()=>{ redo(); updateMoveList(); });
+    btnReplay.addEventListener('click', ()=>{ if(moves.length===0){ alert('没有棋谱可回放'); return; } replayMoves(); });
+    btnHint.addEventListener('click', ()=>{ const mv = chooseAIMove(current, startLevel.value); if(!mv){ alert('没有建议'); return; } animateHint(mv.x,mv.y); });
+
+    btnSave.addEventListener('click', ()=>{ localStorage.setItem(savedStateKey, JSON.stringify({size:SIZE,moves,first:startFirst.value,mode:startMode.value,level:startLevel.value})); alert('已保存到本地'); });
+    btnExport.addEventListener('click', ()=>{ const data = {size:SIZE,moves,first:startFirst.value,mode:startMode.value,level:startLevel.value}; const blob = new Blob([JSON.stringify(data,null,2)],{type:'application/json'}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href=url; a.download='gomoku_export.json'; a.click(); URL.revokeObjectURL(url); });
+    btnImport.addEventListener('click', ()=>{ const t = prompt('请粘贴导入的 JSON（导出格式）'); if(!t) return; try{ const obj = JSON.parse(t); startSize.value = obj.size; startMode.value = obj.mode||'local'; startLevel.value = obj.level||'medium'; startFirst.value = obj.first||'black'; initBoard(obj.size); for(const m of obj.moves||[]) playMove(m.x,m.y,m.player,true); updateMoveList(); alert('导入成功'); }catch(e){ alert('导入失败：'+e.message); }});
+
+    // --- move list and utilities ---
+    function updateMoveList(){ moveListEl.innerHTML=''; const list = moves.slice(-200); for(let i=0;i<list.length;i++){ const m=list[i]; const el=document.createElement('div'); el.style.padding='6px'; el.style.borderRadius='6px'; el.style.fontSize='13px'; el.textContent = (i+1) + '. ' + (m.player===1? '黑':'白') + ' → (' + (m.x+1) + ',' + (m.y+1) + ')'; moveListEl.appendChild(el); } }
+
+    function msg(t){ statusEl.textContent = t || ''; }
+
+    // autosave
+    function saveAuto(){ try{ const s={size:SIZE,moves,first:startFirst.value,mode:startMode.value,level:startLevel.value}; localStorage.setItem(savedStateKey, JSON.stringify(s)); }catch(e){} }
+    function tryAutoLoad(){ try{ const raw = localStorage.getItem(savedStateKey); if(!raw) return false; const obj = JSON.parse(raw); startSize.value = obj.size||15; startMode.value = obj.mode||'local'; startLevel.value = obj.level||'medium'; startFirst.value = obj.first||'black'; initBoard(startSize.value); for(const m of obj.moves||[]) playMove(m.x,m.y,m.player,true); updateMoveList(); return true; }catch(e){ return false; } }
+
+    // replay
+    let autoplayTimer = null;
+    function replayMoves(){ const snapshot = {size:SIZE,moves:[...moves],first:startFirst.value,mode:startMode.value,level:startLevel.value}; initBoard(SIZE); let i=0; msg('回放中...'); autoplayTimer = setInterval(()=>{ if(i>=snapshot.moves.length){ clearInterval(autoplayTimer); autoplayTimer=null; msg('回放结束'); return; } const m = snapshot.moves[i++]; playMove(m.x,m.y,m.player,true); updateMoveList(); }, 380); }
+
+    // hint animation
+    function animateHint(x,y){ const cx = margin + x*cell; const cy = margin + y*cell; let t=0; const total=12; const id = setInterval(()=>{ requestRedraw(); ctx.save(); ctx.beginPath(); ctx.arc(cx,cy,stoneRadius + 2 + t*1.4,0,Math.PI*2); ctx.strokeStyle = 'rgba(107,92,246,'+(0.9 - t/total*0.8)+')'; ctx.lineWidth = 4; ctx.stroke(); ctx.restore(); t++; if(t>total){ clearInterval(id); requestRedraw(); } },30); }
+
+    function updateStatus(isWin=false,winner=null){ if(isWin){ statusEl.textContent = '结束，' + (winner===1? '黑方胜利':'白方胜利'); } else { statusEl.textContent = '轮到：' + (current===1? '黑方':'白方'); } }
+
+    // window resize
+    window.addEventListener('resize', ()=>resizeCanvas());
+
+    // initial
+    if(!tryAutoLoad()){
+      // show start screen by default
+    }
+    // accessibility: allow keyboard to start for desktop
+    window.addEventListener('keydown',(e)=>{ if(e.key==='Escape'){ if(!startScreen.classList.contains('hidden')) return; btnBack.click(); } });
+
+  })();
+  </script>
+</body>
+</html>
