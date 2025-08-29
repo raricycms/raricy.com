@@ -302,7 +302,6 @@
                 <a href="{{url_for('game.quandi')}}" class="play-btn">开始圈地</a>
             </div>
         </div>
-        <!-- 已有游戏卡片保持不变 -->
 
         <!-- 速度接龙 -->
         <div class="col-lg-6 col-md-6 mb-4">
@@ -310,7 +309,7 @@
                 <div class="game-icon grass">⚡</div>
                 <a href="{{url_for('game.sudujielong')}}" class="game-title">速度接龙</a>
                 <p class="game-description">
-                    准备好迎接一场指尖上的风暴了吗？这是一款基于经典纸牌游戏“速度接龙”改编的线下双人对战网页游戏，节奏明快，规则独特，是与朋友在同一台电脑前一决高下的完美选择！
+                    准备好迎接一场指尖上的风暴了吗？这是一款基于经典纸牌游戏"速度接龙"改编的线下双人对战网页游戏，节奏明快，规则独特，是与朋友在同一台电脑前一决高下的完美选择！
                 </p>
                 <ul class="game-features">
                     <li>纸牌对决，快速反应</li>
@@ -413,6 +412,7 @@
             </div>
         </div>
 
+        <!-- 俄罗斯方块 -->
         <div class="col-lg-6 col-md-6 mb-4">
             <div class="game-card">
                 <div class="game-icon territory">🧩</div>
@@ -426,6 +426,8 @@
                 <a href="{{url_for('game.Tetris')}}" class="play-btn">开始游戏</a>
             </div>
         </div>
+
+        <!-- 2048 -->
         <div class="col-lg-6 col-md-6 mb-4">
             <div class="game-card">
                 <div class="game-icon territory">🔢</div>
@@ -439,6 +441,103 @@
                 <a href="{{url_for('game._2048')}}" class="play-btn">开始游戏</a>
             </div>
         </div>
+
+        <!-- 中国象棋 -->
+        <div class="col-lg-6 col-md-6 mb-4">
+            <div class="game-card">
+                <div class="game-icon chess">🐎</div>
+                <a href="{{url_for('game.zhongguoxiangqi')}}" class="game-title">中国象棋</a>
+                <p class="game-description">
+                    传统中国象棋，楚河汉界上的智慧博弈。
+                </p>
+                <ul class="game-features">
+                    <li>经典中国象棋规则</li>
+                    <li>双人对战模式</li>
+                </ul>
+                <a href="{{url_for('game.zhongguoxiangqi')}}" class="play-btn">开始对弈</a>
+            </div>
+        </div>
+
+        <!-- 国际跳棋 -->
+        <div class="col-lg-6 col-md-6 mb-4">
+            <div class="game-card">
+                <div class="game-icon chess">👑</div>
+                <a href="{{url_for('game.guojitiaqi')}}" class="game-title">国际跳棋</a>
+                <p class="game-description">
+                    国际跳棋游戏，策略与技巧的完美结合。
+                </p>
+                <ul class="game-features">
+                    <li>国际标准规则</li>
+                    <li>双人对战模式</li>
+                </ul>
+                <a href="{{url_for('game.guojitiaqi')}}" class="play-btn">开始跳棋</a>
+            </div>
+        </div>
+
+        <!-- 国际象棋 -->
+        <div class="col-lg-6 col-md-6 mb-4">
+            <div class="game-card">
+                <div class="game-icon chess">♛</div>
+                <a href="{{url_for('game.guojixiangqi')}}" class="game-title">国际象棋</a>
+                <p class="game-description">
+                    经典国际象棋，王者之间的智慧较量。
+                </p>
+                <ul class="game-features">
+                    <li>标准国际象棋规则</li>
+                    <li>双人对战模式</li>
+                </ul>
+                <a href="{{url_for('game.guojixiangqi')}}" class="play-btn">开始对弈</a>
+            </div>
+        </div>
+
+        <!-- 围棋 -->
+        <div class="col-lg-6 col-md-6 mb-4">
+            <div class="game-card">
+                <div class="game-icon chess">⚪</div>
+                <a href="{{url_for('game.weiqi')}}" class="game-title">围棋</a>
+                <p class="game-description">
+                    古老的围棋艺术，黑白子间的深邃智慧。
+                </p>
+                <ul class="game-features">
+                    <li>传统围棋规则</li>
+                    <li>双人对战模式</li>
+                </ul>
+                <a href="{{url_for('game.weiqi')}}" class="play-btn">开始围棋</a>
+            </div>
+        </div>
+
+        <!-- 五子棋 -->
+        <div class="col-lg-6 col-md-6 mb-4">
+            <div class="game-card">
+                <div class="game-icon chess">⚫</div>
+                <a href="{{url_for('game.gomoku')}}" class="game-title">五子棋</a>
+                <p class="game-description">
+                    简单易学的五子棋，五子连珠即可获胜。
+                </p>
+                <ul class="game-features">
+                    <li>经典五子棋规则</li>
+                    <li>双人对战模式</li>
+                </ul>
+                <a href="{{url_for('game.gomoku')}}" class="play-btn">开始对弈</a>
+            </div>
+        </div>
+
+        <!-- 21点 -->
+        <div class="col-lg-6 col-md-6 mb-4">
+            <div class="game-card">
+                <div class="game-icon territory">🃏</div>
+                <a href="{{url_for('game.blackjack_21')}}" class="game-title">21点</a>
+                <p class="game-description">
+                    经典的21点纸牌游戏，考验你的运气和策略。
+                </p>
+                <ul class="game-features">
+                    <li>经典21点规则</li>
+                    <li>策略与运气并重</li>
+                </ul>
+                <a href="{{url_for('game.blackjack_21')}}" class="play-btn">开始游戏</a>
+            </div>
+        </div>
+
     </div>
 </div>
 

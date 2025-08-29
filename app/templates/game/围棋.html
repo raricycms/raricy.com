@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>围棋游戏</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 10px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+            color: white;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .game-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(255,255,255,0.9);
+            padding: 15px 20px;
+            border-radius: 15px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 500px;
+        }
+
+        .player-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .stone-indicator {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            border: 2px solid #333;
+        }
+
+        .black-stone {
+            background: #333;
+        }
+
+        .white-stone {
+            background: #fff;
+        }
+
+        .current-player {
+            font-weight: bold;
+            color: #4a5568;
+        }
+
+        .game-container {
+            background: rgba(255,255,255,0.95);
+            padding: 20px;
+            border-radius: 20px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+            max-width: 100%;
+            overflow: auto;
+        }
+
+        .board {
+            background: linear-gradient(45deg, #deb887, #cd853f);
+            border: 3px solid #8b4513;
+            border-radius: 10px;
+            padding: 20px;
+            position: relative;
+            width: min(90vw, 500px);
+            height: min(90vw, 500px);
+            margin: 0 auto;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(19, 1fr);
+            grid-template-rows: repeat(19, 1fr);
+            gap: 0;
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+
+        .intersection {
+            position: relative;
+            border: 0.5px solid #8b4513;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .intersection:hover {
+            background-color: rgba(255,255,255,0.3);
+        }
+
+        .stone {
+            width: 80%;
+            height: 80%;
+            border-radius: 50%;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            box-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            transition: all 0.3s ease;
+            z-index: 10;
+        }
+
+        .stone.black {
+            background: radial-gradient(circle at 30% 30%, #555, #000);
+            border: 1px solid #000;
+        }
+
+        .stone.white {
+            background: radial-gradient(circle at 30% 30%, #fff, #ddd);
+            border: 1px solid #999;
+        }
+
+        .stone.placed {
+            animation: placeStone 0.3s ease-out;
+        }
+
+        @keyframes placeStone {
+            0% {
+                transform: translate(-50%, -50%) scale(0);
+            }
+            50% {
+                transform: translate(-50%, -50%) scale(1.2);
+            }
+            100% {
+                transform: translate(-50%, -50%) scale(1);
+            }
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 25px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+
+        .btn-primary {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+        }
+
+        .btn-secondary {
+            background: linear-gradient(45deg, #f093fb, #f5576c);
+            color: white;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 15px rgba(0,0,0,0.2);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .star-point {
+            position: absolute;
+            width: 6px;
+            height: 6px;
+            background: #8b4513;
+            border-radius: 50%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 5;
+        }
+
+        /* 手机端适配 */
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2rem;
+            }
+
+            .game-info {
+                flex-direction: column;
+                gap: 10px;
+                text-align: center;
+            }
+
+            .board {
+                width: min(95vw, 400px);
+                height: min(95vw, 400px);
+                padding: 15px;
+            }
+
+            .stone {
+                width: 70%;
+                height: 70%;
+            }
+
+            .btn {
+                padding: 10px 20px;
+                font-size: 14px;
+            }
+
+            .controls {
+                gap: 10px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .board {
+                width: min(98vw, 350px);
+                height: min(98vw, 350px);
+                padding: 10px;
+            }
+
+            .stone {
+                width: 60%;
+                height: 60%;
+            }
+
+            .star-point {
+                width: 4px;
+                height: 4px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>围棋游戏</h1>
+    </div>
+
+    <div class="game-info">
+        <div class="player-info">
+            <div class="stone-indicator black-stone"></div>
+            <span>黑棋</span>
+        </div>
+        <div class="current-player" id="currentPlayer">当前: 黑棋</div>
+        <div class="player-info">
+            <div class="stone-indicator white-stone"></div>
+            <span>白棋</span>
+        </div>
+    </div>
+
+    <div class="game-container">
+        <div class="board">
+            <div class="grid" id="gameBoard"></div>
+        </div>
+        
+        <div class="controls">
+            <button class="btn btn-primary" onclick="resetGame()">重新开始</button>
+            <button class="btn btn-secondary" onclick="undoMove()">悔棋</button>
+        </div>
+    </div>
+
+    <script>
+        class GoGame {
+            constructor() {
+                this.board = Array(19).fill().map(() => Array(19).fill(0));
+                this.currentPlayer = 1; // 1 for black, 2 for white
+                this.moveHistory = [];
+                this.initBoard();
+            }
+
+            initBoard() {
+                const gameBoard = document.getElementById('gameBoard');
+                gameBoard.innerHTML = '';
+
+                // 星位点的位置
+                const starPoints = [
+                    [3, 3], [3, 9], [3, 15],
+                    [9, 3], [9, 9], [9, 15],
+                    [15, 3], [15, 9], [15, 15]
+                ];
+
+                for (let row = 0; row < 19; row++) {
+                    for (let col = 0; col < 19; col++) {
+                        const intersection = document.createElement('div');
+                        intersection.className = 'intersection';
+                        intersection.dataset.row = row;
+                        intersection.dataset.col = col;
+                        intersection.addEventListener('click', () => this.makeMove(row, col));
+
+                        // 添加星位点
+                        if (starPoints.some(point => point[0] === row && point[1] === col)) {
+                            const starPoint = document.createElement('div');
+                            starPoint.className = 'star-point';
+                            intersection.appendChild(starPoint);
+                        }
+
+                        gameBoard.appendChild(intersection);
+                    }
+                }
+            }
+
+            makeMove(row, col) {
+                if (this.board[row][col] !== 0) return;
+
+                // 记录移动历史
+                this.moveHistory.push({
+                    row, col, player: this.currentPlayer,
+                    boardState: this.board.map(row => [...row])
+                });
+
+                this.board[row][col] = this.currentPlayer;
+                this.placeStone(row, col, this.currentPlayer);
+
+                // 检查并移除被吃的棋子
+                this.checkCaptures(row, col);
+
+                // 切换玩家
+                this.currentPlayer = this.currentPlayer === 1 ? 2 : 1;
+                this.updateCurrentPlayer();
+            }
+
+            placeStone(row, col, player) {
+                const intersection = document.querySelector(`[data-row="${row}"][data-col="${col}"]`);
+                const stone = document.createElement('div');
+                stone.className = `stone ${player === 1 ? 'black' : 'white'} placed`;
+                intersection.appendChild(stone);
+            }
+
+            checkCaptures(row, col) {
+                const opponent = this.currentPlayer === 1 ? 2 : 1;
+                const directions = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+
+                // 检查相邻的对手棋子群
+                for (const [dr, dc] of directions) {
+                    const newRow = row + dr;
+                    const newCol = col + dc;
+
+                    if (this.isValidPosition(newRow, newCol) && 
+                        this.board[newRow][newCol] === opponent) {
+                        const group = this.getGroup(newRow, newCol);
+                        if (!this.hasLiberties(group)) {
+                            this.removeGroup(group);
+                        }
+                    }
+                }
+            }
+
+            getGroup(row, col) {
+                const color = this.board[row][col];
+                const group = [];
+                const visited = new Set();
+                const stack = [[row, col]];
+
+                while (stack.length > 0) {
+                    const [r, c] = stack.pop();
+                    const key = `${r},${c}`;
+
+                    if (visited.has(key)) continue;
+                    visited.add(key);
+
+                    if (this.isValidPosition(r, c) && this.board[r][c] === color) {
+                        group.push([r, c]);
+                        const directions = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+                        for (const [dr, dc] of directions) {
+                            stack.push([r + dr, c + dc]);
+                        }
+                    }
+                }
+
+                return group;
+            }
+
+            hasLiberties(group) {
+                const directions = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+
+                for (const [row, col] of group) {
+                    for (const [dr, dc] of directions) {
+                        const newRow = row + dr;
+                        const newCol = col + dc;
+
+                        if (this.isValidPosition(newRow, newCol) && 
+                            this.board[newRow][newCol] === 0) {
+                            return true;
+                        }
+                    }
+                }
+
+                return false;
+            }
+
+            removeGroup(group) {
+                for (const [row, col] of group) {
+                    this.board[row][col] = 0;
+                    const intersection = document.querySelector(`[data-row="${row}"][data-col="${col}"]`);
+                    const stone = intersection.querySelector('.stone');
+                    if (stone) {
+                        stone.remove();
+                    }
+                }
+            }
+
+            isValidPosition(row, col) {
+                return row >= 0 && row < 19 && col >= 0 && col < 19;
+            }
+
+            updateCurrentPlayer() {
+                const currentPlayerElement = document.getElementById('currentPlayer');
+                currentPlayerElement.textContent = `当前: ${this.currentPlayer === 1 ? '黑棋' : '白棋'}`;
+            }
+
+            undoMove() {
+                if (this.moveHistory.length === 0) return;
+
+                const lastMove = this.moveHistory.pop();
+                this.board = lastMove.boardState;
+                this.currentPlayer = lastMove.player;
+
+                // 重新渲染棋盘
+                this.renderBoard();
+                this.updateCurrentPlayer();
+            }
+
+            renderBoard() {
+                const gameBoard = document.getElementById('gameBoard');
+                const intersections = gameBoard.querySelectorAll('.intersection');
+
+                intersections.forEach((intersection, index) => {
+                    const row = Math.floor(index / 19);
+                    const col = index % 19;
+                    const stone = intersection.querySelector('.stone');
+
+                    if (stone) {
+                        stone.remove();
+                    }
+
+                    if (this.board[row][col] !== 0) {
+                        this.placeStone(row, col, this.board[row][col]);
+                    }
+                });
+            }
+
+            reset() {
+                this.board = Array(19).fill().map(() => Array(19).fill(0));
+                this.currentPlayer = 1;
+                this.moveHistory = [];
+                this.renderBoard();
+                this.updateCurrentPlayer();
+            }
+        }
+
+        // 初始化游戏
+        const game = new GoGame();
+
+        function resetGame() {
+            game.reset();
+        }
+
+        function undoMove() {
+            game.undoMove();
+        }
+
+        // 防止页面缩放
+        document.addEventListener('touchstart', function(event) {
+            if (event.touches.length > 1) {
+                event.preventDefault();
+            }
+        });
+
+        let lastTouchEnd = 0;
+        document.addEventListener('touchend', function(event) {
+            const now = (new Date()).getTime();
+            if (now - lastTouchEnd <= 300) {
+                event.preventDefault();
+            }
+            lastTouchEnd = now;
+        }, false);
+    </script>
+</body>
+</html>
+

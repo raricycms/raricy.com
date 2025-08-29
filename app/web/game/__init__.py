@@ -57,3 +57,27 @@ def sudujielong():
 @game_bp.route('/tanchishe')
 def tanchishe():
     return render_template('game/贪吃蛇.html')
+
+@game_bp.route('/zhongguoxiangqi')
+def zhongguoxiangqi():
+    return render_template('game/中国象棋.html')
+
+@game_bp.route('/guojitiaqi')
+def guojitiaqi():
+    return render_template('game/国际跳棋.html')
+
+@game_bp.route('/guojixiangqi')
+def guojixiangqi():
+    return render_template('game/国际象棋.html')
+
+@game_bp.route('/weiqi')
+def weiqi():
+    return render_template('game/围棋.html')
+
+@game_bp.route('/gomoku')
+def gomoku():
+    return render_template('game/gomoku.html')
+
+@game_bp.route('/blackjack_21')
+def blackjack_21():
+    return render_template('game/blackjack_21_点.html')
