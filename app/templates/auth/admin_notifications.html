@@ -253,14 +253,14 @@ let selectedUserId = null;
 let userList = [];
 
 // 从DOM中获取用户数据，这样更安全且IDE友好
-$(document).ready(function() {
+document.addEventListener('DOMContentLoaded', function() {
     // 从DOM元素中收集用户数据
-    $('.user-item').each(function() {
-        const userId = $(this).data('user-id');
-        const username = $(this).data('username');
-        const email = $(this).find('small').text();
-        const isAdmin = $(this).find('.badge-danger').length > 0;
-        const isAuthenticated = $(this).find('.badge-success').length > 0;
+    document.querySelectorAll('.user-item').forEach(function(item) {
+        const userId = item.dataset.userId;
+        const username = item.dataset.username;
+        const email = item.querySelector('small').textContent;
+        const isAdmin = item.querySelector('.badge-danger') !== null;
+        const isAuthenticated = item.querySelector('.badge-success') !== null;
         
         userList.push({
             id: userId,
@@ -272,68 +272,77 @@ $(document).ready(function() {
     });
     
     // 发送方式切换
-    $('input[name="sendMode"]').change(function() {
-        if ($(this).attr('id') === 'sendToUser') {
-            $('#sendToUserForm').show();
-            $('#sendToAllForm').hide();
-        } else {
-            $('#sendToUserForm').hide();
-            $('#sendToAllForm').show();
-            updateTargetUserCount();
-        }
+    document.querySelectorAll('input[name="sendMode"]').forEach(function(radio) {
+        radio.addEventListener('change', function() {
+            if (this.id === 'sendToUser') {
+                document.getElementById('sendToUserForm').style.display = 'block';
+                document.getElementById('sendToAllForm').style.display = 'none';
+            } else {
+                document.getElementById('sendToUserForm').style.display = 'none';
+                document.getElementById('sendToAllForm').style.display = 'block';
+                updateTargetUserCount();
+            }
+        });
     });
     
     // 用户选择
-    $('.user-item').click(function() {
-        $('.user-item').removeClass('selected');
-        $(this).addClass('selected');
-        
-        selectedUserId = $(this).data('user-id');
-        const username = $(this).data('username');
-        
-        $('#selectedUserId').val(selectedUserId);
-        $('#selectedUser').val(username);
+    document.querySelectorAll('.user-item').forEach(function(item) {
+        item.addEventListener('click', function() {
+            document.querySelectorAll('.user-item').forEach(function(el) {
+                el.classList.remove('selected');
+            });
+            this.classList.add('selected');
+            
+            selectedUserId = this.dataset.userId;
+            const username = this.dataset.username;
+            
+            document.getElementById('selectedUserId').value = selectedUserId;
+            document.getElementById('selectedUser').value = username;
+        });
     });
     
     // 用户搜索
-    $('#userSearch').on('input', function() {
-        const searchTerm = $(this).val().toLowerCase();
-        $('.user-item').each(function() {
-            const username = $(this).data('username').toLowerCase();
-            const email = $(this).find('small').text().toLowerCase();
+    document.getElementById('userSearch').addEventListener('input', function() {
+        const searchTerm = this.value.toLowerCase();
+        document.querySelectorAll('.user-item').forEach(function(item) {
+            const username = item.dataset.username.toLowerCase();
+            const email = item.querySelector('small').textContent.toLowerCase();
             
             if (username.includes(searchTerm) || email.includes(searchTerm)) {
-                $(this).show();
+                item.style.display = 'block';
             } else {
-                $(this).hide();
+                item.style.display = 'none';
             }
         });
     });
     
     // 通知类型选择时更新placeholder
-    $('#notificationAction, #broadcastAction').change(function() {
-        const selectedOption = $(this).find('option:selected');
-        const placeholder = selectedOption.data('placeholder') || '请输入通知内容...';
-        
-        if ($(this).attr('id') === 'notificationAction') {
-            $('#notificationDetail').attr('placeholder', placeholder);
-        } else {
-            $('#broadcastDetail').attr('placeholder', placeholder);
-        }
+    function updatePlaceholder(selectElement, textareaId) {
+        const selectedOption = selectElement.options[selectElement.selectedIndex];
+        const placeholder = selectedOption.dataset.placeholder || '请输入通知内容...';
+        document.getElementById(textareaId).setAttribute('placeholder', placeholder);
+    }
+    
+    document.getElementById('notificationAction').addEventListener('change', function() {
+        updatePlaceholder(this, 'notificationDetail');
+    });
+    
+    document.getElementById('broadcastAction').addEventListener('change', function() {
+        updatePlaceholder(this, 'broadcastDetail');
     });
     
     // 目标用户群变化时更新用户数量
-    $('#targetGroup').change(function() {
+    document.getElementById('targetGroup').addEventListener('change', function() {
         updateTargetUserCount();
     });
     
     // 表单提交
-    $('#notificationForm').submit(function(e) {
+    document.getElementById('notificationForm').addEventListener('submit', function(e) {
         e.preventDefault();
         sendNotificationToUser();
     });
     
-    $('#broadcastForm').submit(function(e) {
+    document.getElementById('broadcastForm').addEventListener('submit', function(e) {
         e.preventDefault();
         sendNotificationToAll();
     });
@@ -351,10 +360,10 @@ function sendNotificationToUser() {
     
     const data = {
         recipient_id: selectedUserId,
-        action: $('#notificationAction').val(),
-        detail: $('#notificationDetail').val(),
-        object_type: $('#objectType').val() || null,
-        object_id: $('#objectId').val() || null
+        action: document.getElementById('notificationAction').value,
+        detail: document.getElementById('notificationDetail').value,
+        object_type: document.getElementById('objectType').value || null,
+        object_id: document.getElementById('objectId').value || null
     };
     
     if (!data.action || !data.detail) {
@@ -363,7 +372,7 @@ function sendNotificationToUser() {
     }
     
     // 确认发送
-    if (!confirm(`确定要向用户 "${$('#selectedUser').val()}" 发送通知吗？`)) {
+    if (!confirm(`确定要向用户 "${document.getElementById('selectedUser').value}" 发送通知吗？`)) {
         return;
     }
     
@@ -392,11 +401,11 @@ function sendNotificationToUser() {
 // 群发通知
 function sendNotificationToAll() {
     const data = {
-        target_group: $('#targetGroup').val(),
-        action: $('#broadcastAction').val(),
-        detail: $('#broadcastDetail').val(),
-        object_type: $('#broadcastObjectType').val() || null,
-        object_id: $('#broadcastObjectId').val() || null
+        target_group: document.getElementById('targetGroup').value,
+        action: document.getElementById('broadcastAction').value,
+        detail: document.getElementById('broadcastDetail').value,
+        object_type: document.getElementById('broadcastObjectType').value || null,
+        object_id: document.getElementById('broadcastObjectId').value || null
     };
     
     if (!data.action || !data.detail) {
@@ -405,15 +414,16 @@ function sendNotificationToAll() {
     }
     
     // 确认群发
-    const targetCount = $('#targetUserCount').text();
+    const targetCount = document.getElementById('targetUserCount').textContent;
     if (!confirm(`确定要向 ${targetCount} 个用户群发通知吗？此操作不可撤销！`)) {
         return;
     }
     
     // 显示发送进度
-    const submitBtn = $('#broadcastForm button[type="submit"]');
-    const originalText = submitBtn.html();
-    submitBtn.html('<i class="fas fa-spinner fa-spin"></i> 发送中...').prop('disabled', true);
+    const submitBtn = document.querySelector('#broadcastForm button[type="submit"]');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 发送中...';
+    submitBtn.disabled = true;
     
     fetch('{{ url_for("auth.send_notification_to_all") }}', {
         method: 'POST',
@@ -436,13 +446,14 @@ function sendNotificationToAll() {
         alert('群发失败，请稍后重试');
     })
     .finally(() => {
-        submitBtn.html(originalText).prop('disabled', false);
+        submitBtn.innerHTML = originalText;
+        submitBtn.disabled = false;
     });
 }
 
 // 更新目标用户数量
 function updateTargetUserCount() {
-    const targetGroup = $('#targetGroup').val();
+    const targetGroup = document.getElementById('targetGroup').value;
     let count = 0;
     
     userList.forEach(user => {
@@ -455,23 +466,25 @@ function updateTargetUserCount() {
         }
     });
     
-    $('#targetUserCount').text(count);
+    document.getElementById('targetUserCount').textContent = count;
 }
 
 // 清空单用户通知表单
 function clearForm() {
-    $('#notificationForm')[0].reset();
-    $('#selectedUser').val('');
-    $('#selectedUserId').val('');
-    $('.user-item').removeClass('selected');
+    document.getElementById('notificationForm').reset();
+    document.getElementById('selectedUser').value = '';
+    document.getElementById('selectedUserId').value = '';
+    document.querySelectorAll('.user-item').forEach(function(item) {
+        item.classList.remove('selected');
+    });
     selectedUserId = null;
-    $('#notificationDetail').attr('placeholder', '请输入通知内容...');
+    document.getElementById('notificationDetail').setAttribute('placeholder', '请输入通知内容...');
 }
 
 // 清空群发通知表单
 function clearBroadcastForm() {
-    $('#broadcastForm')[0].reset();
-    $('#broadcastDetail').attr('placeholder', '请输入群发通知内容...');
+    document.getElementById('broadcastForm').reset();
+    document.getElementById('broadcastDetail').setAttribute('placeholder', '请输入群发通知内容...');
     updateTargetUserCount();
 }
 </script>
