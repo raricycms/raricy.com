@@ -103,7 +103,10 @@ Raricy.com - 文章上传
                         'undo', 'redo', 'preview', 'export'
                     ],
                     counter: { enable: true, type: 'text' },
-                    cache: { enable: false },
+                    cache: { 
+                        enable: true,
+                        id: 'blog-upload-editor'
+                    },
                     value: ''
                 });
                 isVditorLoaded = true;
@@ -186,6 +189,13 @@ Raricy.com - 文章上传
                 const result = await response.json();
                 if (result.code === 200) {
                     showMessage('上传成功！即将跳转到文章页面...', 'success');
+                    
+                    // 清除vditor缓存
+                    if (isVditorLoaded && vditor) {
+                        vditor.clearCache();
+                        console.log("Vditor cache cleared after successful upload.");
+                    }
+                    
                     setTimeout(() => {
                         window.location.href = '/blog/' + result.blog_id;
                     }, 1500);
