@@ -1,0 +1,256 @@
+{% extends "base.html" %}
+{% block title %}
+Raricy.com - 通知设置
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    body {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background-attachment: fixed;
+        min-height: 100vh;
+    }
+    .settings-card {
+        margin-top: 50px;
+        box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+        padding: 40px;
+        border-radius: 15px;
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(5px);
+        transition: transform 0.3s ease;
+    }
+    .settings-card:hover {
+        transform: translateY(-5px);
+    }
+    .notification-item {
+        padding: 20px;
+        border: 1px solid #e9ecef;
+        border-radius: 10px;
+        margin-bottom: 15px;
+        background: rgba(248, 249, 250, 0.8);
+        transition: all 0.3s ease;
+    }
+    .notification-item:hover {
+        background: rgba(233, 236, 239, 0.8);
+        transform: translateX(5px);
+    }
+    .notification-item.enabled {
+        border-color: #28a745;
+        background: rgba(40, 167, 69, 0.1);
+    }
+    .notification-item.disabled {
+        border-color: #dc3545;
+        background: rgba(220, 53, 69, 0.1);
+    }
+    .custom-switch {
+        transform: scale(1.2);
+    }
+    .notification-icon {
+        font-size: 1.5em;
+        margin-right: 10px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="settings-card">
+        <div class="row">
+            <div class="col-md-8 offset-md-2">
+                <div class="text-center mb-4">
+                    <h1>🔔 通知设置</h1>
+                    <p class="text-muted">管理你要接收的通知类型</p>
+                </div>
+                
+                <form id="notificationSettingsForm">
+                    <!-- 文章点赞通知 -->
+                    <div class="notification-item" id="notify-like-item">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h5 class="mb-1">
+                                    <span class="notification-icon">👍</span>
+                                    文章点赞通知
+                                </h5>
+                                <p class="mb-0 text-muted">当你的文章被其他用户点赞时接收通知</p>
+                            </div>
+                            <div class="custom-control custom-switch">
+                                <input type="checkbox" class="custom-control-input" id="notify_like" 
+                                       {% if user.notify_like %}checked{% endif %}>
+                                <label class="custom-control-label" for="notify_like"></label>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 文章编辑通知 -->
+                    <div class="notification-item" id="notify-edit-item">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h5 class="mb-1">
+                                    <span class="notification-icon">✏️</span>
+                                    文章编辑通知
+                                </h5>
+                                <p class="mb-0 text-muted">当管理员编辑你的文章时接收通知</p>
+                            </div>
+                            <div class="custom-control custom-switch">
+                                <input type="checkbox" class="custom-control-input" id="notify_edit"
+                                       {% if user.notify_edit %}checked{% endif %}>
+                                <label class="custom-control-label" for="notify_edit"></label>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 文章删除通知 -->
+                    <div class="notification-item" id="notify-delete-item">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h5 class="mb-1">
+                                    <span class="notification-icon">🗑️</span>
+                                    文章删除通知
+                                </h5>
+                                <p class="mb-0 text-muted">当管理员删除你的文章时接收通知</p>
+                            </div>
+                            <div class="custom-control custom-switch">
+                                <input type="checkbox" class="custom-control-input" id="notify_delete"
+                                       {% if user.notify_delete %}checked{% endif %}>
+                                <label class="custom-control-label" for="notify_delete"></label>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 管理员通知 -->
+                    <div class="notification-item" id="notify-admin-item">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h5 class="mb-1">
+                                    <span class="notification-icon">📢</span>
+                                    管理员通知
+                                </h5>
+                                <p class="mb-0 text-muted">接收系统公告、维护通知等管理员发送的通知</p>
+                            </div>
+                            <div class="custom-control custom-switch">
+                                <input type="checkbox" class="custom-control-input" id="notify_admin"
+                                       {% if user.notify_admin %}checked{% endif %}>
+                                <label class="custom-control-label" for="notify_admin"></label>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="text-center mt-4">
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            <i class="fas fa-save"></i> 保存设置
+                        </button>
+                        <a href="{{ url_for('notifications.notification_page') }}" class="btn btn-outline-secondary btn-lg ml-2">
+                            <i class="fas fa-bell"></i> 查看通知
+                        </a>
+                    </div>
+                </form>
+                
+                <div class="mt-4 p-3 bg-light rounded">
+                    <h6><i class="fas fa-info-circle text-info"></i> 说明</h6>
+                    <ul class="mb-0 small text-muted">
+                        <li><strong>文章点赞通知</strong>：当其他用户为你的文章点赞时，你会收到通知</li>
+                        <li><strong>文章编辑通知</strong>：当管理员修改你的文章内容时，你会收到详细的修改说明</li>
+                        <li><strong>文章删除通知</strong>：当管理员删除你的文章时，你会收到删除通知</li>
+                        <li><strong>管理员通知</strong>：包括系统公告、维护通知、功能更新等重要消息</li>
+                        <li class="mt-2"><em>注意：即使关闭某类通知，管理员仍可以通过"强制发送"向你发送重要通知</em></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+$(document).ready(function() {
+    // 初始化开关状态样式
+    updateSwitchStyles();
+    
+    // 监听开关状态变化
+    $('.custom-control-input').change(function() {
+        updateSwitchStyles();
+    });
+    
+    // 表单提交
+    $('#notificationSettingsForm').submit(function(e) {
+        e.preventDefault();
+        saveSettings();
+    });
+});
+
+function updateSwitchStyles() {
+    // 根据开关状态更新样式
+    $('.notification-item').each(function() {
+        const checkbox = $(this).find('.custom-control-input');
+        const isChecked = checkbox.is(':checked');
+        
+        $(this).removeClass('enabled disabled');
+        if (isChecked) {
+            $(this).addClass('enabled');
+        } else {
+            $(this).addClass('disabled');
+        }
+    });
+}
+
+function saveSettings() {
+    const settings = {
+        notify_like: $('#notify_like').is(':checked'),
+        notify_edit: $('#notify_edit').is(':checked'),
+        notify_delete: $('#notify_delete').is(':checked'),
+        notify_admin: $('#notify_admin').is(':checked')
+    };
+    
+    // 显示保存状态
+    const submitBtn = $('#notificationSettingsForm button[type="submit"]');
+    const originalText = submitBtn.html();
+    submitBtn.html('<i class="fas fa-spinner fa-spin"></i> 保存中...').prop('disabled', true);
+    
+    fetch('{{ url_for("auth.notification_settings") }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(settings)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.code === 200) {
+            // 显示成功消息
+            showSuccessMessage('设置已保存！');
+            
+            // 更新页面样式
+            updateSwitchStyles();
+        } else {
+            alert('保存失败：' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('保存失败，请稍后重试');
+    })
+    .finally(() => {
+        submitBtn.html(originalText).prop('disabled', false);
+    });
+}
+
+function showSuccessMessage(message) {
+    // 创建成功提示
+    const alertHtml = `
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            <i class="fas fa-check-circle"></i> ${message}
+            <button type="button" class="close" data-dismiss="alert">
+                <span>&times;</span>
+            </button>
+        </div>
+    `;
+    
+    // 插入到表单前面
+    $('#notificationSettingsForm').before(alertHtml);
+    
+    // 3秒后自动消失
+    setTimeout(function() {
+        $('.alert-success').fadeOut();
+    }, 3000);
+}
+</script>
+{% endblock %}

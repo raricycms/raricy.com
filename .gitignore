@@ -18,3 +18,4 @@ nohup.out
 *.bak
 baks/
 todo-list.txt
+download_instance.ps1

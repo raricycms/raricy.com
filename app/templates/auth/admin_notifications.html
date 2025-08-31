@@ -1,0 +1,478 @@
+{% extends "base.html" %}
+{% block title %}
+Raricy.com - 管理员通知发送
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    body {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background-attachment: fixed;
+        min-height: 100vh;
+    }
+    .notification-card {
+        margin-top: 30px;
+        box-shadow: 0 0 25px rgba(0, 0, 0, 0.15);
+        padding: 40px;
+        border-radius: 15px;
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        transition: transform 0.3s ease;
+    }
+    .notification-card:hover {
+        transform: translateY(-5px);
+    }
+    .template-card {
+        cursor: pointer;
+        transition: all 0.3s ease;
+        border: 2px solid transparent;
+    }
+    .template-card:hover {
+        border-color: #007bff;
+        transform: translateY(-2px);
+    }
+    .template-card.selected {
+        border-color: #007bff;
+        background-color: #e7f3ff;
+    }
+    .user-select-card {
+        max-height: 400px;
+        overflow-y: auto;
+    }
+    .user-item {
+        cursor: pointer;
+        transition: background-color 0.2s ease;
+    }
+    .user-item:hover {
+        background-color: #f8f9fa;
+    }
+    .user-item.selected {
+        background-color: #e7f3ff;
+        border-left: 4px solid #007bff;
+    }
+    .send-options {
+        background: rgba(248, 249, 250, 0.8);
+        border-radius: 10px;
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="notification-card">
+        <h1 class="text-center mb-4">📢 管理员通知发送中心</h1>
+        
+        <!-- 发送选项选择 -->
+        <div class="send-options">
+            <h4 class="mb-3">选择发送方式</h4>
+            <div class="btn-group w-100" role="group">
+                <input type="radio" class="btn-check" name="sendMode" id="sendToUser" autocomplete="off" checked>
+                <label class="btn btn-outline-primary" for="sendToUser">发送给指定用户</label>
+                
+                <input type="radio" class="btn-check" name="sendMode" id="sendToAll" autocomplete="off">
+                <label class="btn btn-outline-success" for="sendToAll">群发通知</label>
+            </div>
+        </div>
+
+        <!-- 发送给指定用户的表单 -->
+        <div id="sendToUserForm">
+            <div class="row">
+                <div class="col-md-4">
+                    <h5>选择用户</h5>
+                    <div class="user-select-card card">
+                        <div class="card-body p-2">
+                            <div class="mb-2">
+                                <input type="text" class="form-control form-control-sm" id="userSearch" placeholder="搜索用户...">
+                            </div>
+                            <div id="userList">
+                                {% for user in user_list %}
+                                <div class="user-item p-2 rounded mb-1" data-user-id="{{ user.id }}" data-username="{{ user.username }}">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <strong>{{ user.username }}</strong>
+                                            <br><small class="text-muted">{{ user.email }}</small>
+                                        </div>
+                                        <div>
+                                            {% if user.is_admin %}
+                                                <span class="badge badge-danger">管理员</span>
+                                            {% elif user.authenticated %}
+                                                <span class="badge badge-success">认证用户</span>
+                                            {% else %}
+                                                <span class="badge badge-secondary">普通用户</span>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-8">
+                    <h5>编写通知</h5>
+                    <form id="notificationForm">
+                        <div class="form-group">
+                            <label for="selectedUser">接收用户</label>
+                            <input type="text" class="form-control" id="selectedUser" readonly placeholder="请先选择用户">
+                            <input type="hidden" id="selectedUserId">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="notificationAction">通知类型</label>
+                            <select class="form-control" id="notificationAction" required>
+                                <option value="">请选择通知类型</option>
+                                {% for template in templates %}
+                                <option value="{{ template.action }}" data-placeholder="{{ template.placeholder }}">
+                                    {{ template.action }} - {{ template.description }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="notificationDetail">通知内容</label>
+                            <textarea class="form-control" id="notificationDetail" rows="5" required placeholder="请输入通知内容..."></textarea>
+                            <small class="form-text text-muted">请详细描述通知内容，确保用户能够理解。</small>
+                        </div>
+                        
+                        <div class="form-row">
+                            <div class="col-md-6">
+                                <label for="objectType">关联对象类型（可选）</label>
+                                <select class="form-control" id="objectType">
+                                    <option value="">无关联对象</option>
+                                    <option value="blog">博客文章</option>
+                                    <option value="user">用户</option>
+                                    <option value="system">系统</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="objectId">关联对象ID（可选）</label>
+                                <input type="text" class="form-control" id="objectId" placeholder="如：博客ID、用户ID等">
+                            </div>
+                        </div>
+                        
+                        <div class="text-center mt-4">
+                            <button type="submit" class="btn btn-primary btn-lg">
+                                <i class="fas fa-paper-plane"></i> 发送通知
+                            </button>
+                            <button type="button" class="btn btn-secondary btn-lg ml-2" onclick="clearForm()">
+                                <i class="fas fa-times"></i> 清空
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- 群发通知的表单 -->
+        <div id="sendToAllForm" style="display: none;">
+            <form id="broadcastForm">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="targetGroup">目标用户群</label>
+                            <select class="form-control" id="targetGroup" required>
+                                <option value="all">所有用户</option>
+                                <option value="authenticated">认证用户</option>
+                                <option value="normal">普通用户</option>
+                            </select>
+                            <small class="form-text text-muted">选择要接收通知的用户群体</small>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="broadcastAction">通知类型</label>
+                            <select class="form-control" id="broadcastAction" required>
+                                <option value="">请选择通知类型</option>
+                                {% for template in templates %}
+                                <option value="{{ template.action }}" data-placeholder="{{ template.placeholder }}">
+                                    {{ template.action }} - {{ template.description }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <div class="form-row">
+                            <div class="col-md-6">
+                                <label for="broadcastObjectType">关联对象类型（可选）</label>
+                                <select class="form-control" id="broadcastObjectType">
+                                    <option value="">无关联对象</option>
+                                    <option value="blog">博客文章</option>
+                                    <option value="user">用户</option>
+                                    <option value="system">系统</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="broadcastObjectId">关联对象ID（可选）</label>
+                                <input type="text" class="form-control" id="broadcastObjectId" placeholder="如：博客ID等">
+                            </div>
+                        </div>
+                        
+                        <!-- 预览用户数量 -->
+                        <div class="mt-3 p-3 bg-light rounded">
+                            <h6>预览信息</h6>
+                            <p class="mb-1">目标用户数量: <span id="targetUserCount" class="font-weight-bold text-primary">计算中...</span></p>
+                            <small class="text-muted">请确认发送范围后再提交</small>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="broadcastDetail">通知内容</label>
+                    <textarea class="form-control" id="broadcastDetail" rows="5" required placeholder="请输入群发通知内容..."></textarea>
+                    <small class="form-text text-muted">群发通知会发送给所有符合条件的用户，请谨慎编写内容。</small>
+                </div>
+                
+                <div class="text-center mt-4">
+                    <button type="submit" class="btn btn-success btn-lg">
+                        <i class="fas fa-bullhorn"></i> 群发通知
+                    </button>
+                    <button type="button" class="btn btn-secondary btn-lg ml-2" onclick="clearBroadcastForm()">
+                        <i class="fas fa-times"></i> 清空
+                    </button>
+                </div>
+            </form>
+        </div>
+        
+        <!-- 返回用户管理 -->
+        <div class="text-center mt-4">
+            <a href="{{ url_for('auth.user_management') }}" class="btn btn-outline-secondary">
+                <i class="fas fa-arrow-left"></i> 返回用户管理
+            </a>
+        </div>
+    </div>
+</div>
+
+<script>
+// 全局变量
+let selectedUserId = null;
+let userList = [];
+
+// 从DOM中获取用户数据，这样更安全且IDE友好
+$(document).ready(function() {
+    // 从DOM元素中收集用户数据
+    $('.user-item').each(function() {
+        const userId = $(this).data('user-id');
+        const username = $(this).data('username');
+        const email = $(this).find('small').text();
+        const isAdmin = $(this).find('.badge-danger').length > 0;
+        const isAuthenticated = $(this).find('.badge-success').length > 0;
+        
+        userList.push({
+            id: userId,
+            username: username,
+            email: email,
+            is_admin: isAdmin,
+            authenticated: isAuthenticated
+        });
+    });
+    
+    // 发送方式切换
+    $('input[name="sendMode"]').change(function() {
+        if ($(this).attr('id') === 'sendToUser') {
+            $('#sendToUserForm').show();
+            $('#sendToAllForm').hide();
+        } else {
+            $('#sendToUserForm').hide();
+            $('#sendToAllForm').show();
+            updateTargetUserCount();
+        }
+    });
+    
+    // 用户选择
+    $('.user-item').click(function() {
+        $('.user-item').removeClass('selected');
+        $(this).addClass('selected');
+        
+        selectedUserId = $(this).data('user-id');
+        const username = $(this).data('username');
+        
+        $('#selectedUserId').val(selectedUserId);
+        $('#selectedUser').val(username);
+    });
+    
+    // 用户搜索
+    $('#userSearch').on('input', function() {
+        const searchTerm = $(this).val().toLowerCase();
+        $('.user-item').each(function() {
+            const username = $(this).data('username').toLowerCase();
+            const email = $(this).find('small').text().toLowerCase();
+            
+            if (username.includes(searchTerm) || email.includes(searchTerm)) {
+                $(this).show();
+            } else {
+                $(this).hide();
+            }
+        });
+    });
+    
+    // 通知类型选择时更新placeholder
+    $('#notificationAction, #broadcastAction').change(function() {
+        const selectedOption = $(this).find('option:selected');
+        const placeholder = selectedOption.data('placeholder') || '请输入通知内容...';
+        
+        if ($(this).attr('id') === 'notificationAction') {
+            $('#notificationDetail').attr('placeholder', placeholder);
+        } else {
+            $('#broadcastDetail').attr('placeholder', placeholder);
+        }
+    });
+    
+    // 目标用户群变化时更新用户数量
+    $('#targetGroup').change(function() {
+        updateTargetUserCount();
+    });
+    
+    // 表单提交
+    $('#notificationForm').submit(function(e) {
+        e.preventDefault();
+        sendNotificationToUser();
+    });
+    
+    $('#broadcastForm').submit(function(e) {
+        e.preventDefault();
+        sendNotificationToAll();
+    });
+    
+    // 初始化目标用户数量
+    updateTargetUserCount();
+});
+
+// 发送通知给指定用户
+function sendNotificationToUser() {
+    if (!selectedUserId) {
+        alert('请先选择要接收通知的用户');
+        return;
+    }
+    
+    const data = {
+        recipient_id: selectedUserId,
+        action: $('#notificationAction').val(),
+        detail: $('#notificationDetail').val(),
+        object_type: $('#objectType').val() || null,
+        object_id: $('#objectId').val() || null
+    };
+    
+    if (!data.action || !data.detail) {
+        alert('请填写完整的通知信息');
+        return;
+    }
+    
+    // 确认发送
+    if (!confirm(`确定要向用户 "${$('#selectedUser').val()}" 发送通知吗？`)) {
+        return;
+    }
+    
+    fetch('{{ url_for("auth.send_notification_to_user") }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('通知发送成功！');
+            clearForm();
+        } else {
+            alert('发送失败：' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('发送失败，请稍后重试');
+    });
+}
+
+// 群发通知
+function sendNotificationToAll() {
+    const data = {
+        target_group: $('#targetGroup').val(),
+        action: $('#broadcastAction').val(),
+        detail: $('#broadcastDetail').val(),
+        object_type: $('#broadcastObjectType').val() || null,
+        object_id: $('#broadcastObjectId').val() || null
+    };
+    
+    if (!data.action || !data.detail) {
+        alert('请填写完整的通知信息');
+        return;
+    }
+    
+    // 确认群发
+    const targetCount = $('#targetUserCount').text();
+    if (!confirm(`确定要向 ${targetCount} 个用户群发通知吗？此操作不可撤销！`)) {
+        return;
+    }
+    
+    // 显示发送进度
+    const submitBtn = $('#broadcastForm button[type="submit"]');
+    const originalText = submitBtn.html();
+    submitBtn.html('<i class="fas fa-spinner fa-spin"></i> 发送中...').prop('disabled', true);
+    
+    fetch('{{ url_for("auth.send_notification_to_all") }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(`群发成功！共发送了 ${data.sent_count} 个通知`);
+            clearBroadcastForm();
+        } else {
+            alert('群发失败：' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('群发失败，请稍后重试');
+    })
+    .finally(() => {
+        submitBtn.html(originalText).prop('disabled', false);
+    });
+}
+
+// 更新目标用户数量
+function updateTargetUserCount() {
+    const targetGroup = $('#targetGroup').val();
+    let count = 0;
+    
+    userList.forEach(user => {
+        if (targetGroup === 'all') {
+            count++;
+        } else if (targetGroup === 'authenticated' && user.authenticated) {
+            count++;
+        } else if (targetGroup === 'normal' && !user.authenticated && !user.is_admin) {
+            count++;
+        }
+    });
+    
+    $('#targetUserCount').text(count);
+}
+
+// 清空单用户通知表单
+function clearForm() {
+    $('#notificationForm')[0].reset();
+    $('#selectedUser').val('');
+    $('#selectedUserId').val('');
+    $('.user-item').removeClass('selected');
+    selectedUserId = null;
+    $('#notificationDetail').attr('placeholder', '请输入通知内容...');
+}
+
+// 清空群发通知表单
+function clearBroadcastForm() {
+    $('#broadcastForm')[0].reset();
+    $('#broadcastDetail').attr('placeholder', '请输入群发通知内容...');
+    updateTargetUserCount();
+}
+</script>
+{% endblock %}

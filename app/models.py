@@ -17,6 +17,12 @@ class User(UserMixin, db.Model):
     is_admin = db.Column(db.Boolean, default=False)
     avatar_path = db.Column(db.String(255))
     
+    # 通知设置
+    notify_like = db.Column(db.Boolean, default=True)  # 文章被点赞通知
+    notify_edit = db.Column(db.Boolean, default=True)  # 文章被编辑通知  
+    notify_delete = db.Column(db.Boolean, default=True)  # 文章被删除通知
+    notify_admin = db.Column(db.Boolean, default=True)  # 管理员通知
+    
     def set_password(self, password):
         """设置密码"""
         self.password_hash = generate_password_hash(password)
@@ -37,7 +43,11 @@ class User(UserMixin, db.Model):
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'last_login': self.last_login.isoformat() if self.last_login else None,
             'is_admin': self.is_admin,
-            'authenticated': self.authenticated
+            'authenticated': self.authenticated,
+            'notify_like': getattr(self, 'notify_like', True),
+            'notify_edit': getattr(self, 'notify_edit', True),
+            'notify_delete': getattr(self, 'notify_delete', True),
+            'notify_admin': getattr(self, 'notify_admin', True)
         }
     
     def __repr__(self):
@@ -255,3 +265,61 @@ class BlogContent(db.Model):
 
     def __repr__(self) -> str:
         return f'<BlogContent blog={self.blog_id} len={len(self.content) if self.content else 0}>'
+    
+
+class Notification(db.Model):
+    __tablename__ = 'notifications'
+
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    timestamp = db.Column(db.DateTime, default=datetime.now, index=True)
+    
+    # 通知种类
+    action = db.Column(db.String(50), nullable=False)
+    
+    # 消息接收者
+    recipient_id = db.Column(db.String(36), db.ForeignKey('users.id'), nullable=False)
+    recipient = db.relationship('User', foreign_keys=[recipient_id], backref=db.backref('notifications', lazy='dynamic', cascade='all, delete-orphan'))
+
+    # 动作的发起者 (null代表系统通知)
+    actor_id = db.Column(db.String(36), db.ForeignKey('users.id'), nullable=True)
+    actor = db.relationship('User', foreign_keys=[actor_id], backref=db.backref('sent_notifications', lazy='dynamic'))
+
+
+    # 动作的关联对象（比如一篇博客文章）
+    object_type = db.Column(db.String(50), nullable=True)
+    object_id = db.Column(db.String(36), nullable=True)
+    
+    # 通知的详细信息
+    detail = db.Column(db.Text, nullable=True)
+
+    # 是否已读
+    read = db.Column(db.Boolean, default=False, nullable=False)
+
+    def __repr__(self):
+        return f'<Notification {self.id} for user={self.recipient_id}, action={self.action}>'
+    
+    def to_dict(self):
+        # 这个 to_dict 方法可以利用 relationship 变得更强大
+        actor_info = {'id': None, 'username': 'system'}
+        if self.actor: # 如果 actor 关系存在
+            actor_info = {'id': self.actor.id, 'username': self.actor.username}
+
+        return {
+            'id': self.id,
+            'timestamp': self.timestamp.isoformat(),
+            'action': self.action,
+            'recipient_id': self.recipient_id,
+            'actor': actor_info, # 返回一个包含 actor 信息的对象
+            'object': {
+                'type': self.object_type,
+                'id': self.object_id
+            },
+            'detail': self.detail,
+            'read': self.read
+        }
+
+    def get_object(self):
+        if self.object_type and self.object_id:
+            if self.object_type == 'blog':
+                return Blog.query.get(self.object_id)
+            

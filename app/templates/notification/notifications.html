@@ -1,0 +1,356 @@
+{% extends "base.html" %}
+
+{% block title %}我的通知{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1>我的通知</h1>
+        <div class="btn-group" role="group">
+            <button type="button" class="btn btn-outline-primary" onclick="markAllRead()">全部标记已读</button>
+            <button type="button" class="btn btn-outline-danger" onclick="deleteReadNotifications()">删除已读</button>
+            <button type="button" class="btn btn-outline-secondary" onclick="toggleBatchMode()">批量操作</button>
+        </div>
+    </div>
+    
+    <!-- 筛选选项 -->
+    <div class="row mb-3">
+        <div class="col-md-6">
+            <div class="btn-group" role="group">
+                <a href="{{ url_for('notifications.notification_page') }}" 
+                   class="btn {% if not unread_only %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                    全部通知
+                </a>
+                <a href="{{ url_for('notifications.notification_page', unread_only=true) }}" 
+                   class="btn {% if unread_only %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                    未读通知
+                </a>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div id="batch-actions" class="float-right" style="display: none;">
+                <button class="btn btn-sm btn-outline-primary" onclick="batchMarkRead()">标记选中为已读</button>
+                <button class="btn btn-sm btn-outline-danger" onclick="batchDelete()">删除选中</button>
+                <button class="btn btn-sm btn-outline-secondary" onclick="selectAll()">全选</button>
+            </div>
+        </div>
+    </div>
+    
+    <hr>
+    
+    {% if data %}
+        <div id="notifications-list">
+            {% for notification in data %}
+                <div class="card mb-2 notification-item {% if not notification.read %}border-info{% endif %}" 
+                     data-id="{{ notification.id }}">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center">
+                            <input type="checkbox" class="notification-checkbox mr-2" value="{{ notification.id }}" style="display: none;">
+                            <div class="flex-grow-1">
+                                <div class="d-flex w-100 justify-content-between align-items-start">
+                                    <h6 class="mb-1 {% if not notification.read %}font-weight-bold{% endif %}">
+                                        {{ notification.action }}
+                                        {% if not notification.read %}
+                                            <span class="badge badge-info ml-1">未读</span>
+                                        {% endif %}
+                                    </h6>
+                                    <small class="text-muted">{{ notification.timestamp }}</small>
+                                </div>
+                                <p class="mb-1 text-muted">
+                                    {% if notification.actor and notification.actor.id %}
+                                        来自用户: <a href="{{ url_for('auth.profile', user_id=notification.actor.id) }}">{{ notification.actor.username }}</a>
+                                    {% else %}
+                                        来自: 系统
+                                    {% endif %}
+                                </p>
+                                {% if notification.detail %}
+                                    <p class="mb-2">{{ notification.detail }}</p>
+                                {% endif %}
+                                {% if notification.object.type == 'blog' and notification.object.id %}
+                                    <a href="{{ url_for('blog.blog_detail', blog_id=notification.object.id) }}" class="btn btn-sm btn-outline-primary">查看博客</a>
+                                {% endif %}
+                            </div>
+                            <div class="ml-2">
+                                {% if not notification.read %}
+                                    <button class="btn btn-sm btn-outline-success" onclick="markAsRead('{{ notification.id }}')">
+                                        标记已读
+                                    </button>
+                                {% endif %}
+                                <button class="btn btn-sm btn-outline-danger" onclick="deleteNotification('{{ notification.id }}')">
+                                    删除
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+        
+        <!-- 分页 -->
+        {% if pagination.pages > 1 %}
+            <nav aria-label="通知分页">
+                <ul class="pagination justify-content-center">
+                    {% if pagination.has_prev %}
+                        <li class="page-item">
+                            <a class="page-link" href="{{ url_for('notifications.notification_page', page=pagination.prev_num, unread_only=unread_only) }}">上一页</a>
+                        </li>
+                    {% endif %}
+                    
+                    {% for page_num in range(1, pagination.pages + 1) %}
+                        {% if page_num == pagination.page %}
+                            <li class="page-item active">
+                                <span class="page-link">{{ page_num }}</span>
+                            </li>
+                        {% elif page_num <= 3 or page_num > pagination.pages - 3 or (page_num >= pagination.page - 1 and page_num <= pagination.page + 1) %}
+                            <li class="page-item">
+                                <a class="page-link" href="{{ url_for('notifications.notification_page', page=page_num, unread_only=unread_only) }}">{{ page_num }}</a>
+                            </li>
+                        {% elif page_num == 4 or page_num == pagination.pages - 3 %}
+                            <li class="page-item disabled">
+                                <span class="page-link">...</span>
+                            </li>
+                        {% endif %}
+                    {% endfor %}
+                    
+                    {% if pagination.has_next %}
+                        <li class="page-item">
+                            <a class="page-link" href="{{ url_for('notifications.notification_page', page=pagination.next_num, unread_only=unread_only) }}">下一页</a>
+                        </li>
+                    {% endif %}
+                </ul>
+            </nav>
+        {% endif %}
+        
+    {% else %}
+        <div class="text-center py-5">
+            <p class="text-muted">你还没有任何通知。</p>
+        </div>
+    {% endif %}
+</div>
+
+<script>
+let batchMode = false;
+
+// 标记单个通知为已读
+function markAsRead(notificationId) {
+    fetch(`/notifications/api/mark-read/${notificationId}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // 刷新通知计数
+            if (window.refreshNotificationCount) {
+                window.refreshNotificationCount();
+            }
+            location.reload();
+        } else {
+            alert('操作失败: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('操作失败');
+    });
+}
+
+// 删除单个通知
+function deleteNotification(notificationId) {
+    if (!confirm('确定要删除这个通知吗？')) {
+        return;
+    }
+    
+    fetch(`/notifications/api/delete/${notificationId}`, {
+        method: 'DELETE',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // 刷新通知计数
+            if (window.refreshNotificationCount) {
+                window.refreshNotificationCount();
+            }
+            location.reload();
+        } else {
+            alert('删除失败: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('删除失败');
+    });
+}
+
+// 标记所有通知为已读
+function markAllRead() {
+    if (!confirm('确定要标记所有通知为已读吗？')) {
+        return;
+    }
+    
+    fetch('/notifications/api/mark-all-read', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // 刷新通知计数
+            if (window.refreshNotificationCount) {
+                window.refreshNotificationCount();
+            }
+            alert(data.message);
+            location.reload();
+        } else {
+            alert('操作失败: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('操作失败');
+    });
+}
+
+// 删除所有已读通知
+function deleteReadNotifications() {
+    if (!confirm('确定要删除所有已读通知吗？')) {
+        return;
+    }
+    
+    fetch('/notifications/api/delete-read', {
+        method: 'DELETE',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // 刷新通知计数
+            if (window.refreshNotificationCount) {
+                window.refreshNotificationCount();
+            }
+            alert(data.message);
+            location.reload();
+        } else {
+            alert('操作失败: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('操作失败');
+    });
+}
+
+// 切换批量操作模式
+function toggleBatchMode() {
+    batchMode = !batchMode;
+    const checkboxes = document.querySelectorAll('.notification-checkbox');
+    const batchActions = document.getElementById('batch-actions');
+    
+    if (batchMode) {
+        checkboxes.forEach(checkbox => checkbox.style.display = 'inline-block');
+        batchActions.style.display = 'block';
+    } else {
+        checkboxes.forEach(checkbox => {
+            checkbox.style.display = 'none';
+            checkbox.checked = false;
+        });
+        batchActions.style.display = 'none';
+    }
+}
+
+// 全选/取消全选
+function selectAll() {
+    const checkboxes = document.querySelectorAll('.notification-checkbox');
+    const allChecked = Array.from(checkboxes).every(checkbox => checkbox.checked);
+    
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = !allChecked;
+    });
+}
+
+// 批量标记已读
+function batchMarkRead() {
+    const checkedBoxes = document.querySelectorAll('.notification-checkbox:checked');
+    if (checkedBoxes.length === 0) {
+        alert('请先选择要操作的通知');
+        return;
+    }
+    
+    const notificationIds = Array.from(checkedBoxes).map(checkbox => checkbox.value);
+    
+    fetch('/notifications/api/batch-mark-read', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ notification_ids: notificationIds })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // 刷新通知计数
+            if (window.refreshNotificationCount) {
+                window.refreshNotificationCount();
+            }
+            alert(data.message);
+            location.reload();
+        } else {
+            alert('操作失败: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('操作失败');
+    });
+}
+
+// 批量删除
+function batchDelete() {
+    const checkedBoxes = document.querySelectorAll('.notification-checkbox:checked');
+    if (checkedBoxes.length === 0) {
+        alert('请先选择要删除的通知');
+        return;
+    }
+    
+    if (!confirm(`确定要删除选中的 ${checkedBoxes.length} 个通知吗？`)) {
+        return;
+    }
+    
+    const notificationIds = Array.from(checkedBoxes).map(checkbox => checkbox.value);
+    
+    fetch('/notifications/api/batch-delete', {
+        method: 'DELETE',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ notification_ids: notificationIds })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // 刷新通知计数
+            if (window.refreshNotificationCount) {
+                window.refreshNotificationCount();
+            }
+            alert(data.message);
+            location.reload();
+        } else {
+            alert('操作失败: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('操作失败');
+    });
+}
+</script>
+{% endblock %}

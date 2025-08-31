@@ -3,6 +3,10 @@ from app.models import User, InviteCode
 from flask_login import login_required, current_user
 from app.extensions.decorators import admin_required
 from app.extensions import db
+from app.service.notifications import (
+    admin_send_notification_to_user, admin_send_notification_to_all, 
+    admin_get_notification_templates
+)
 from . import auth_bp
 
 @auth_bp.route('/user_management')
@@ -79,3 +83,76 @@ def delete_user():
     db.session.commit()
 
     return jsonify({'code': 200, 'message': '用户删除成功'}), 200
+
+@auth_bp.route('/admin_notifications')
+@login_required
+@admin_required
+def admin_notifications():
+    """管理员通知发送页面"""
+    user_list = User.query.filter(User.id != current_user.id).all()
+    templates = admin_get_notification_templates()
+    return render_template('auth/admin_notifications.html', 
+                         user_list=user_list, 
+                         templates=templates)
+
+@auth_bp.route('/send_notification_to_user', methods=['POST'])
+@login_required
+@admin_required
+def send_notification_to_user():
+    """向指定用户发送通知"""
+    data = request.get_json()
+    
+    required_fields = ['recipient_id', 'action', 'detail']
+    if not all(field in data for field in required_fields):
+        return jsonify({'success': False, 'message': '缺少必要参数'}), 400
+    
+    result = admin_send_notification_to_user(
+        admin_id=current_user.id,
+        recipient_id=data['recipient_id'],
+        action=data['action'],
+        detail=data['detail'],
+        object_type=data.get('object_type'),
+        object_id=data.get('object_id')
+    )
+    
+    if result['success']:
+        return jsonify(result), 200
+    else:
+        return jsonify(result), 400
+
+@auth_bp.route('/send_notification_to_all', methods=['POST'])
+@login_required
+@admin_required
+def send_notification_to_all():
+    """向所有用户或特定用户组发送通知"""
+    data = request.get_json()
+    
+    required_fields = ['action', 'detail', 'target_group']
+    if not all(field in data for field in required_fields):
+        return jsonify({'success': False, 'message': '缺少必要参数'}), 400
+    
+    result = admin_send_notification_to_all(
+        admin_id=current_user.id,
+        action=data['action'],
+        detail=data['detail'],
+        target_group=data['target_group'],
+        object_type=data.get('object_type'),
+        object_id=data.get('object_id')
+    )
+    
+    if result['success']:
+        return jsonify(result), 200
+    else:
+        return jsonify(result), 400
+
+@auth_bp.route('/send_notification_modal/<user_id>')
+@login_required
+@admin_required
+def send_notification_modal(user_id):
+    """获取向指定用户发送通知的模态框内容"""
+    user = User.query.get_or_404(user_id)
+    templates = admin_get_notification_templates()
+    return jsonify({
+        'user': user.to_dict(),
+        'templates': templates
+    })

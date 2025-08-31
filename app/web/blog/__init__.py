@@ -3,6 +3,7 @@ from flask_login import login_required, current_user
 from app.extensions import db, turnstile
 from app.models import Blog, BlogContent, BlogLike, Category
 from app.extensions.decorators import admin_required
+from app.service.notifications import send_notification
 import os
 import uuid
 from datetime import datetime
@@ -173,6 +174,21 @@ def like_toggle(blog_id):
         db.session.add(like)
         blog.likes_count = (blog.likes_count or 0) + 1
         liked = True
+        
+        # 发送点赞通知给文章作者（但不给自己发）
+        if blog.author_id != current_user.id:
+            try:
+                send_notification(
+                    recipient_id=blog.author_id,
+                    action="文章点赞",
+                    actor_id=current_user.id,
+                    object_type="blog",
+                    object_id=blog_id,
+                    detail=f"你的文章《{blog.title}》收到了一个新的点赞！"
+                )
+            except Exception as e:
+                # 通知发送失败不影响点赞功能
+                current_app.logger.warning(f"Failed to send like notification: {e}")
 
     db.session.commit()
     return jsonify({'code': 200, 'liked': liked, 'likes_count': blog.likes_count})
@@ -225,6 +241,24 @@ def delete_blog(blog_id):
     blog = Blog.query.get(blog_id)
     if not blog:
         return jsonify({'code': 404, 'message': '未找到文章'}), 404
+
+    # 保存文章信息用于通知
+    blog_title = blog.title
+    blog_author_id = blog.author_id
+    
+    # 发送删除通知给文章作者（如果不是作者自己删除）
+    if blog_author_id != current_user.id:
+        try:
+            send_notification(
+                recipient_id=blog_author_id,
+                action="文章删除",
+                actor_id=current_user.id,
+                object_type="blog",
+                object_id=blog_id,
+                detail=f"你的文章《{blog_title}》已被管理员删除。如有疑问，请联系管理员。"
+            )
+        except Exception as e:
+            current_app.logger.warning(f"Failed to send delete notification: {e}")
 
     # 删除磁盘目录（若存在）
     blog_path = os.path.join(current_app.instance_path, 'blogs', blog_id)
@@ -299,18 +333,63 @@ def edit_blog(blog_id):
     else:
         category_id = None
 
+    # 检查是否有实际的修改
+    has_changes = False
+    changes_detail = []
+    
+    if blog.title != title:
+        changes_detail.append(f"标题从《{blog.title}》改为《{title}》")
+        has_changes = True
+    
+    if blog.description != description:
+        changes_detail.append("摘要已更新")
+        has_changes = True
+    
+    # 检查栏目变化
+    old_category_name = blog.category.name if blog.category else "未分类"
+    new_category_name = "未分类"
+    if category_id:
+        new_category = Category.query.get(category_id)
+        if new_category:
+            new_category_name = new_category.name
+    
+    if blog.category_id != category_id:
+        changes_detail.append(f"栏目从《{old_category_name}》改为《{new_category_name}》")
+        has_changes = True
+    
+    # 检查内容变化
+    content_obj = BlogContent.query.get(blog_id)
+    old_content = content_obj.content if content_obj else ''
+    if old_content != content:
+        changes_detail.append("文章内容已更新")
+        has_changes = True
+
     # 更新 Blog 元信息
     blog.title = title
     blog.description = description
     blog.category_id = category_id
 
     # 更新/创建正文 Markdown
-    content_obj = BlogContent.query.get(blog_id)
     if not content_obj:
         content_obj = BlogContent(blog_id=blog_id, content=content)
         db.session.add(content_obj)
     else:
         content_obj.content = content
+
+    # 发送编辑通知给文章作者（如果是管理员编辑且不是作者本人）
+    if has_changes and current_user.is_admin and blog.author_id != current_user.id:
+        try:
+            changes_text = "、".join(changes_detail) if changes_detail else "文章内容已更新"
+            send_notification(
+                recipient_id=blog.author_id,
+                action="文章编辑",
+                actor_id=current_user.id,
+                object_type="blog",
+                object_id=blog_id,
+                detail=f"你的文章《{title}》已被管理员编辑。修改内容：{changes_text}"
+            )
+        except Exception as e:
+            current_app.logger.warning(f"Failed to send edit notification: {e}")
 
     db.session.commit()
 

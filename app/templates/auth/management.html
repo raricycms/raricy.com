@@ -28,7 +28,14 @@ Raricy.com - 用户管理页面
 {% block content %}
     <div class="container">
         <div class="management-card">
-            <h1 class="text-center mb-4">用户管理</h1>
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1>用户管理</h1>
+                <div>
+                    <a href="{{ url_for('auth.admin_notifications') }}" class="btn btn-primary">
+                        <i class="fas fa-bullhorn"></i> 通知发送中心
+                    </a>
+                </div>
+            </div>
             <table class="table table-striped">
                 <thead>
                     <tr>
@@ -54,7 +61,7 @@ Raricy.com - 用户管理页面
                         </td>
                         <td>
                             <button class="btn btn-sm btn-info" onclick="window.location.href=`{{ url_for('auth.profile', user_id=user.id) }}`">查看</button>
-                            <button class="btn btn-sm btn-primary">编辑</button>
+                            <button class="btn btn-sm btn-secondary" onclick="sendNotificationTo('{{ user.id }}', '{{ user.username }}')">发通知</button>
                             <button class="btn btn-sm btn-danger" onclick="deleteUser('{{ user.id }}')" {% if user.is_admin or user.id == current_user.id %}disabled{% endif %}>删除</button>
                             {% if user.authenticated %}
                                 <button class="btn btn-sm btn-warning" onclick="demoteUser('{{ user.id }}')">取消认证</button>
@@ -125,6 +132,43 @@ Raricy.com - 用户管理页面
                   }
               });
         }
+    }
+
+    function sendNotificationTo(userId, username) {
+        // 简单的发送通知对话框
+        const action = prompt(`向用户 "${username}" 发送什么类型的通知？\n\n可选类型：\n- 系统公告\n- 维护通知\n- 功能更新\n- 用户提醒\n- 警告通知\n- 活动通知`);
+        if (!action) return;
+        
+        const detail = prompt(`请输入给 "${username}" 的通知内容：`);
+        if (!detail) return;
+        
+        if (!confirm(`确定要向用户 "${username}" 发送通知吗？\n\n类型：${action}\n内容：${detail}`)) {
+            return;
+        }
+        
+        fetch('{{ url_for("auth.send_notification_to_user") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                recipient_id: userId,
+                action: action,
+                detail: detail
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('通知发送成功！');
+            } else {
+                alert('发送失败：' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('发送失败，请稍后重试');
+        });
     }
 </script>
 {% endblock %}
