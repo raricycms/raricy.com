@@ -92,10 +92,30 @@ def upload():
     - 正文写入数据库 `BlogContent`
     """
     if request.method == 'GET':
+        # 检查用户是否被禁言
+        ban_info = None
+        if current_user.is_currently_banned():
+            ban_info = current_user.get_ban_info()
+        
         # 获取栏目列表用于下拉选择
         categories = Category.get_hierarchy()
-        return render_template('blog/upload_blog.html', categories=categories)
+        return render_template('blog/upload_blog.html', categories=categories, ban_info=ban_info)
     elif request.method == 'POST':
+        # 检查用户是否被禁言
+        if current_user.is_currently_banned():
+            ban_info = current_user.get_ban_info()
+            remaining_text = ""
+            if ban_info and ban_info.get('remaining_hours'):
+                remaining_hours = ban_info['remaining_hours']
+                if remaining_hours > 24:
+                    remaining_text = f"剩余约{remaining_hours/24:.1f}天"
+                else:
+                    remaining_text = f"剩余约{remaining_hours:.1f}小时"
+            return jsonify({
+                'code': 403, 
+                'message': f'您已被禁言，无法发布博客。{remaining_text}。原因：{ban_info.get("reason", "未说明") if ban_info else "未说明"}'
+            }), 403
+            
         data = request.get_json()
         if not data or not data.get('title') or not data.get('content') or not data.get('description'):
             return jsonify({'code': 400, 'message': '缺少必要参数'}), 400
@@ -290,14 +310,34 @@ def edit_blog(blog_id):
     if not (current_user.is_admin or blog.author_id == current_user.id):
         return jsonify({'code': 403, 'message': '无权编辑该文章'}), 403
 
+    # 检查用户是否被禁言（管理员除外）
+    if not current_user.is_admin and current_user.is_currently_banned():
+        ban_info = current_user.get_ban_info()
+        remaining_text = ""
+        if ban_info and ban_info.get('remaining_hours'):
+            remaining_hours = ban_info['remaining_hours']
+            if remaining_hours > 24:
+                remaining_text = f"剩余约{remaining_hours/24:.1f}天"
+            else:
+                remaining_text = f"剩余约{remaining_hours:.1f}小时"
+        return jsonify({
+            'code': 403, 
+            'message': f'您已被禁言，无法编辑博客。{remaining_text}。原因：{ban_info.get("reason", "未说明") if ban_info else "未说明"}'
+        }), 403
+
     if request.method == 'GET':
+        # 检查用户是否被禁言（管理员除外）
+        ban_info = None
+        if not current_user.is_admin and current_user.is_currently_banned():
+            ban_info = current_user.get_ban_info()
+            
         # 读取 Markdown 正文
         content_obj = BlogContent.query.get(blog_id)
         markdown_content = content_obj.content if content_obj else ''
         blog_dict = blog.to_dict()
         # 获取栏目列表用于下拉选择
         categories = Category.get_hierarchy()
-        return render_template('blog/edit_blog.html', blog=blog_dict, content_markdown=markdown_content, categories=categories)
+        return render_template('blog/edit_blog.html', blog=blog_dict, content_markdown=markdown_content, categories=categories, ban_info=ban_info)
 
     # POST: 保存
     data = request.get_json(silent=True) or {}

@@ -39,7 +39,28 @@
 <div class="blog-form-container">
     <div id="message-container"></div>
 
-    <form id="editForm">
+    {% if ban_info %}
+    <div class="alert alert-danger" role="alert">
+        <h5 class="alert-heading">您已被禁言</h5>
+        <p class="mb-2">您当前无法编辑文章。</p>
+        <hr>
+        <p class="mb-0">
+            <strong>原因：</strong>{{ ban_info.reason }}<br>
+            {% if ban_info.ban_until %}
+            <strong>解除时间：</strong>{{ ban_info.ban_until | datetime_format }}<br>
+            {% endif %}
+            {% if ban_info.remaining_hours %}
+                {% if ban_info.remaining_hours > 24 %}
+                    <strong>剩余时间：</strong>约{{ "%.1f"|format(ban_info.remaining_hours/24) }}天
+                {% else %}
+                    <strong>剩余时间：</strong>约{{ "%.1f"|format(ban_info.remaining_hours) }}小时
+                {% endif %}
+            {% endif %}
+        </p>
+    </div>
+    {% endif %}
+
+    <form id="editForm" {% if ban_info %}style="opacity: 0.5; pointer-events: none;"{% endif %}>
         <div class="mb-3">
             <label for="title" class="form-label">标题</label>
             <input type="text" class="form-control" id="title" value="{{ blog.title }}" required>

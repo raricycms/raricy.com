@@ -29,7 +29,7 @@ def send_notification(recipient_id, action, actor_id=None, object_type=None, obj
             return
         elif action == "文章删除" and not getattr(recipient, 'notify_delete', True):
             return
-        elif action in ["系统公告", "维护通知", "功能更新", "用户提醒", "警告通知", "活动通知"] and not getattr(recipient, 'notify_admin', True):
+        elif action in ["系统公告", "维护通知", "功能更新", "用户提醒", "警告通知", "活动通知", "禁言通知", "解除禁言"] and not getattr(recipient, 'notify_admin', True):
             return
     
     notification = Notification(
@@ -417,6 +417,65 @@ def admin_get_notification_templates():
             'action': '活动通知',
             'description': '网站活动相关通知',
             'placeholder': '请输入活动详情...'
+        },
+        {
+            'action': '禁言通知',
+            'description': '用户禁言通知',
+            'placeholder': '请输入禁言原因...'
+        },
+        {
+            'action': '解除禁言',
+            'description': '解除用户禁言通知',
+            'placeholder': '解除禁言说明...'
         }
     ]
     return templates
+
+def send_ban_notification(user_id, admin_id, ban_until, reason):
+    """
+    发送禁言通知。
+    
+    Args:
+        user_id: 被禁言用户ID
+        admin_id: 执行禁言的管理员ID
+        ban_until: 禁言结束时间
+        reason: 禁言原因
+    """
+    from datetime import datetime
+    
+    ban_duration = ""
+    if ban_until:
+        remaining_hours = (ban_until - datetime.now()).total_seconds() / 3600
+        if remaining_hours > 24:
+            ban_duration = f"约{remaining_hours/24:.1f}天"
+        else:
+            ban_duration = f"约{remaining_hours:.1f}小时"
+    
+    detail = f"您已被禁言，禁言时长：{ban_duration}。原因：{reason}"
+    
+    return send_notification(
+        recipient_id=user_id,
+        action="禁言通知",
+        actor_id=admin_id,
+        detail=detail,
+        force=True  # 强制发送，忽略用户通知偏好
+    )
+
+def send_unban_notification(user_id, admin_id=None, reason=""):
+    """
+    发送解除禁言通知。
+    
+    Args:
+        user_id: 用户ID
+        admin_id: 执行解除的管理员ID（可选）
+        reason: 解除原因
+    """
+    detail = f"您的禁言已被解除。{reason}" if reason else "您的禁言已被解除。"
+    
+    return send_notification(
+        recipient_id=user_id,
+        action="解除禁言",
+        actor_id=admin_id,
+        detail=detail,
+        force=True  # 强制发送，忽略用户通知偏好
+    )

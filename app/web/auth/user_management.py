@@ -5,8 +5,9 @@ from app.extensions.decorators import admin_required
 from app.extensions import db
 from app.service.notifications import (
     admin_send_notification_to_user, admin_send_notification_to_all, 
-    admin_get_notification_templates
+    admin_get_notification_templates, send_ban_notification, send_unban_notification
 )
+from datetime import datetime, timedelta
 from . import auth_bp
 
 @auth_bp.route('/user_management')
@@ -155,4 +156,122 @@ def send_notification_modal(user_id):
     return jsonify({
         'user': user.to_dict(),
         'templates': templates
+    })
+
+@auth_bp.route('/ban_user', methods=['POST'])
+@login_required
+@admin_required
+def ban_user():
+    """禁言用户"""
+    data = request.get_json()
+    
+    required_fields = ['user_id', 'hours', 'reason']
+    if not all(field in data for field in required_fields):
+        return jsonify({'success': False, 'message': '缺少必要参数'}), 400
+    
+    user_id = data['user_id']
+    hours = data['hours']
+    reason = data['reason']
+    
+    try:
+        hours = float(hours)
+        if hours <= 0:
+            return jsonify({'success': False, 'message': '禁言时长必须大于0'}), 400
+    except (ValueError, TypeError):
+        return jsonify({'success': False, 'message': '禁言时长格式错误'}), 400
+    
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({'success': False, 'message': '用户不存在'}), 404
+    
+    if user.id == current_user.id:
+        return jsonify({'success': False, 'message': '不能禁言自己'}), 403
+    
+    if user.is_admin:
+        return jsonify({'success': False, 'message': '不能禁言管理员'}), 403
+    
+    if user.is_currently_banned():
+        return jsonify({'success': False, 'message': '用户已被禁言'}), 400
+    
+    # 计算禁言结束时间
+    ban_until = datetime.now() + timedelta(hours=hours)
+    
+    try:
+        # 禁言用户
+        ban_record = user.ban_user(
+            admin_id=current_user.id,
+            ban_until=ban_until,
+            reason=reason
+        )
+        
+        # 发送禁言通知
+        send_ban_notification(
+            user_id=user.id,
+            admin_id=current_user.id,
+            ban_until=ban_until,
+            reason=reason
+        )
+        
+        return jsonify({
+            'success': True, 
+            'message': f'用户 {user.username} 已被禁言 {hours} 小时',
+            'ban_id': ban_record.id
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'禁言失败: {str(e)}'}), 500
+
+@auth_bp.route('/unban_user', methods=['POST'])
+@login_required
+@admin_required
+def unban_user():
+    """解除禁言"""
+    data = request.get_json()
+    
+    if 'user_id' not in data:
+        return jsonify({'success': False, 'message': '缺少用户ID'}), 400
+    
+    user_id = data['user_id']
+    reason = data.get('reason', '')
+    
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({'success': False, 'message': '用户不存在'}), 404
+    
+    if not user.is_currently_banned():
+        return jsonify({'success': False, 'message': '用户未被禁言'}), 400
+    
+    try:
+        # 解除禁言
+        user.lift_ban(admin_id=current_user.id)
+        
+        # 发送解除禁言通知
+        send_unban_notification(
+            user_id=user.id,
+            admin_id=current_user.id,
+            reason=reason
+        )
+        
+        return jsonify({
+            'success': True, 
+            'message': f'用户 {user.username} 的禁言已解除'
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'解除禁言失败: {str(e)}'}), 500
+
+@auth_bp.route('/user_ban_history/<user_id>')
+@login_required
+@admin_required
+def user_ban_history(user_id):
+    """获取用户禁言历史"""
+    user = User.query.get_or_404(user_id)
+    
+    ban_history = user.ban_history.order_by(
+        db.desc('banned_at')
+    ).limit(10).all()
+    
+    return jsonify({
+        'user': user.to_dict(),
+        'ban_history': [ban.to_dict() for ban in ban_history]
     })

@@ -58,10 +58,21 @@ Raricy.com - 用户管理页面
                             {% else %}
                                 <span class="text-primary">普通用户</span>
                             {% endif %}
+                            {% if user.ban_info %}
+                                <br><span class="text-warning badge badge-warning">禁言中</span>
+                            {% endif %}
                         </td>
                         <td>
                             <button class="btn btn-sm btn-info" onclick="window.location.href=`{{ url_for('auth.profile', user_id=user.id) }}`">查看</button>
                             <button class="btn btn-sm btn-secondary" onclick="sendNotificationTo('{{ user.id }}', '{{ user.username }}')">发通知</button>
+                            
+                            {% if user.ban_info %}
+                                <button class="btn btn-sm btn-success" onclick="unbanUser('{{ user.id }}', '{{ user.username }}')">解除禁言</button>
+                                <button class="btn btn-sm btn-info" onclick="showBanHistory('{{ user.id }}', '{{ user.username }}')">禁言历史</button>
+                            {% else %}
+                                <button class="btn btn-sm btn-warning" onclick="banUser('{{ user.id }}', '{{ user.username }}')" {% if user.is_admin or user.id == current_user.id %}disabled{% endif %}>禁言</button>
+                            {% endif %}
+                            
                             <button class="btn btn-sm btn-danger" onclick="deleteUser('{{ user.id }}')" {% if user.is_admin or user.id == current_user.id %}disabled{% endif %}>删除</button>
                             {% if user.authenticated %}
                                 <button class="btn btn-sm btn-warning" onclick="demoteUser('{{ user.id }}')">取消认证</button>
@@ -168,6 +179,112 @@ Raricy.com - 用户管理页面
         .catch(error => {
             console.error('Error:', error);
             alert('发送失败，请稍后重试');
+        });
+    }
+
+    function banUser(userId, username) {
+        const hours = prompt(`对用户 "${username}" 设置禁言时长（小时）：`, '24');
+        if (!hours || isNaN(hours) || parseFloat(hours) <= 0) return;
+        
+        const reason = prompt(`请输入对 "${username}" 的禁言原因：`);
+        if (!reason || reason.trim() === '') return;
+        
+        if (!confirm(`确定要禁言用户 "${username}" ${hours} 小时吗？\n\n原因：${reason}`)) {
+            return;
+        }
+        
+        fetch('{{ url_for("auth.ban_user") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                user_id: userId,
+                hours: parseFloat(hours),
+                reason: reason
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('禁言设置成功！');
+                location.reload();
+            } else {
+                alert('禁言失败：' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('禁言失败，请稍后重试');
+        });
+    }
+
+    function unbanUser(userId, username) {
+        const reason = prompt(`请输入解除 "${username}" 禁言的原因（可选）：`, '');
+        
+        if (!confirm(`确定要解除用户 "${username}" 的禁言吗？`)) {
+            return;
+        }
+        
+        fetch('{{ url_for("auth.unban_user") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                user_id: userId,
+                reason: reason || ''
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('禁言解除成功！');
+                location.reload();
+            } else {
+                alert('解除禁言失败：' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('解除禁言失败，请稍后重试');
+        });
+    }
+
+    function showBanHistory(userId, username) {
+        fetch(`{{ url_for("auth.user_ban_history", user_id="USER_ID") }}`.replace('USER_ID', userId))
+        .then(response => response.json())
+        .then(data => {
+            let historyText = `用户 "${username}" 的禁言历史：\n\n`;
+            
+            if (data.ban_history && data.ban_history.length > 0) {
+                data.ban_history.forEach((ban, index) => {
+                    const bannedAt = new Date(ban.banned_at).toLocaleString();
+                    const banUntil = new Date(ban.ban_until).toLocaleString();
+                    const status = ban.is_lifted ? '已解除' : '进行中';
+                    
+                    historyText += `${index + 1}. 禁言时间：${bannedAt}\n`;
+                    historyText += `   结束时间：${banUntil}\n`;
+                    historyText += `   状态：${status}\n`;
+                    historyText += `   原因：${ban.reason}\n`;
+                    historyText += `   执行者：${ban.admin_username}\n`;
+                    
+                    if (ban.is_lifted && ban.lifted_by) {
+                        const liftedAt = new Date(ban.lifted_at).toLocaleString();
+                        historyText += `   解除时间：${liftedAt}\n`;
+                        historyText += `   解除者：${ban.lifted_by}\n`;
+                    }
+                    historyText += '\n';
+                });
+            } else {
+                historyText += '暂无禁言记录';
+            }
+            
+            alert(historyText);
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('获取禁言历史失败');
         });
     }
 </script>
