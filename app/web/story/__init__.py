@@ -46,13 +46,23 @@ def batch_detail(batch_id):
     stories = []
     batch_dir = os.path.join(current_app.instance_path, "stories", f"{batch_id}")
     for story_id in os.listdir(batch_dir):
-        if not story_id.endswith(".md") and not story_id.endswith(".cattca"):
+        story_type = ''
+        if story_id.endswith(".md"):
+            story_type = 'markdown'
+        elif story_id.endswith(".cattca"):
+            story_type = 'cattca'
+        if story_type == '':
             continue
-        story_id = story_id[:-3]
+        story_id = story_id.split(".")[0]
         md_path = os.path.join(batch_dir, f"{story_id}.md")
         cattca_path = os.path.join(batch_dir, f"{story_id}.cattca")
         if os.path.isfile(md_path) or os.path.isfile(cattca_path):
-            post = frontmatter.load(md_path)
+            if story_type == 'markdown':
+                post = frontmatter.load(md_path)
+                wordcnt = count_markdown_words(md_path)['non_whitespace_characters']
+            if story_type == 'cattca':
+                post = frontmatter.load(cattca_path)
+                wordcnt = count_markdown_words(cattca_path)['non_whitespace_characters']
             meta = post.metadata
             if meta.get("ignore", False):
                 continue
@@ -60,7 +70,7 @@ def batch_detail(batch_id):
                 "id": story_id,
                 "title": meta.get("title", story_id),
                 "description": meta.get("description", ""),
-                "word_count": count_markdown_words(md_path)['non_whitespace_characters'],
+                "word_count": wordcnt,
                 "genre": meta.get("genre", "小说"),
                 "status": meta.get("status", "完结"),
                 "author": meta.get("author", info.get("author", "未知作者")),

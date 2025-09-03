@@ -5,7 +5,7 @@
 
 {% block extra_css %}
 <style>
-    body { font-family: sans-serif; padding: 20px; background: #f5f5f5; }
+    body { font-family: sans-serif; padding: 80px 0px 0px; background: #f5f5f5; }
     #game { max-width: 600px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
     #output { min-height: 150px; margin-bottom: 20px; white-space: pre-wrap; }
     #choices { display: flex; flex-direction: column; gap: 10px; }
@@ -17,19 +17,16 @@
 
 {% block content %}
 <div id="game">
-    <h2>Cattca.js 互动小说 Demo</h2>
+    <h2>{{title}}</h2>
     <div id="output"></div>
     <div id="choices"></div>
     <div id="log"></div>
   </div>
-<template id="cattca-template">
-    {{ content }}
-</template>"
 {% endblock %}
 
 {% block extra_js %}
 <script type="module">
-    import { CattcaInterpreter } from './cattca.js';
+    import { CattcaInterpreter } from "{{url_for('static', filename='js/cattca.js')}}";
 
     const outputDiv = document.querySelector('#output');
     const logDiv = document.querySelector('#log');
@@ -71,7 +68,8 @@
       getChoice
     );
 
-    const story = document.getElementById('cattca-template').innerHTML;
+    const story = `{{ content|safe }}`
+    console.log(story)
 
     // 加载并运行
     interpreter.load(story);
