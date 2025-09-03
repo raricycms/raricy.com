@@ -46,11 +46,12 @@ def batch_detail(batch_id):
     stories = []
     batch_dir = os.path.join(current_app.instance_path, "stories", f"{batch_id}")
     for story_id in os.listdir(batch_dir):
-        if not story_id.endswith(".md"):
+        if not story_id.endswith(".md") and not story_id.endswith(".cattca"):
             continue
         story_id = story_id[:-3]
         md_path = os.path.join(batch_dir, f"{story_id}.md")
-        if os.path.isfile(md_path):
+        cattca_path = os.path.join(batch_dir, f"{story_id}.cattca")
+        if os.path.isfile(md_path) or os.path.isfile(cattca_path):
             post = frontmatter.load(md_path)
             meta = post.metadata
             if meta.get("ignore", False):
@@ -78,35 +79,42 @@ def story_detail(batch_id, story_id):
     """
     # 拼出 Markdown 路径
     md_path = os.path.join(current_app.instance_path, "stories", f"{batch_id}", f"{story_id}.md")
+    cattca_path = os.path.join(current_app.instance_path, "stories", f"{batch_id}", f"{story_id}.cattca")
     # 判断文件是否存在
-    if not os.path.isfile(md_path):
+    if not os.path.isfile(md_path) and not os.path.isfile(cattca_path):
         abort(404)
-
+    
+    if os.path.isfile(md_path):
     # 读取 Markdown 内容和 front matter
-    post = frontmatter.load(md_path)
-    md_content = post.content
-    metadata = post.metadata
-    batch_info_path = os.path.join(current_app.instance_path, "stories", f"{batch_id}", "info.json")
-    if not os.path.isfile(batch_info_path):
-        abort(404)
-    with open(batch_info_path, "r", encoding="utf-8") as f:
-        batch_info = json.load(f)
-    # 从 metadata 里获取信息
-    story_title = metadata.get("title", story_id)
-    story_author = metadata.get("author", batch_info.get("author", "未知作者"))
-    story_genre = metadata.get("genre", "小说")
-    story_status = metadata.get("status", "完结")
+        post = frontmatter.load(md_path)
+        md_content = post.content
+        metadata = post.metadata
+        batch_info_path = os.path.join(current_app.instance_path, "stories", f"{batch_id}", "info.json")
+        if not os.path.isfile(batch_info_path):
+            abort(404)
+        with open(batch_info_path, "r", encoding="utf-8") as f:
+            batch_info = json.load(f)
+        # 从 metadata 里获取信息
+        story_title = metadata.get("title", story_id)
+        story_author = metadata.get("author", batch_info.get("author", "未知作者"))
+        story_genre = metadata.get("genre", "小说")
+        story_status = metadata.get("status", "完结")
 
-    # 转换为 HTML
-    html_content = markdown.markdown(md_content, extensions=["extra", "codehilite", "tables", "toc"])
+        # 转换为 HTML
+        html_content = markdown.markdown(md_content, extensions=["extra", "codehilite", "tables", "toc"])
 
-    # 渲染模板
-    return render_template(
-        "story/story_base.html",
-        story_title=story_title,
-        story_author=story_author,
-        story_genre=story_genre,
-        story_status=story_status,
-        batch_id=batch_id,
-        story_content=html_content
-    )
+        # 渲染模板
+        return render_template(
+            "story/story_base.html",
+            story_title=story_title,
+            story_author=story_author,
+            story_genre=story_genre,
+            story_status=story_status,
+            batch_id=batch_id,
+            story_content=html_content
+        )
+    
+    if os.path.isfile(cattca_path):
+        with open(cattca_path, "r", encoding="utf-8") as f:
+            story_content = f.read()
+        return render_template('story/cattca.html', title=story_id, content=story_content)
