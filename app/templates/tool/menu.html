@@ -399,6 +399,24 @@
       <!-- 其他常用工具组 -->
       <h2 class="section-title mb-3">更多工具组</h2>
       <div class="row g-4">
+        <!-- Cattca 预览器 -->
+        <div class="col-12 col-md-6 col-xl-4">
+          <div class="card glass-card tool-card h-100" data-groups="codec" data-keywords="hash 哈希 校验 SHA256 SHA-256 SHA1 SHA-1 SHA512 SHA-512 MD5 BLAKE2 CRC32 校验和">
+            <div class="card-body">
+              <div class="d-flex align-items-start mb-3">
+                <div class="tool-icon icon-purple me-3"><i class="bi bi-hash"></i></div>
+                <div>
+                  <h5 class="card-title mb-1">Cattca运行</h5>
+                  <small class="text-muted">运行Cattca脚本</small>
+                </div>
+              </div>
+              <div class="d-flex align-items-center justify-content-between">
+                <a class="btn btn-primary" href="{{ url_for('tool.cattca_page') }}">开始使用</a>
+                <span></span>
+              </div>
+            </div>
+          </div>
+        </div>
         <div class="col-12 col-md-6 col-xl-4">
           <div class="card glass-card tool-card h-100" data-groups="text" data-keywords="文本 处理 去重 排序 字数 统计 JSON 格式化">
             <div class="card-body">

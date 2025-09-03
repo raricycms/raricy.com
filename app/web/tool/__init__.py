@@ -87,3 +87,7 @@ def hash_page():
 @tool_bp.route('/aes')
 def aes_page():
     return render_template('tool/aes.html')
+
+@tool_bp.route('/cattca')
+def cattca_page():
+    return render_template('tool/cattca.html')

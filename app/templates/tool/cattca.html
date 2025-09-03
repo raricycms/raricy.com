@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>Cattca.js Demo - 选项按钮版</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body { 
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+      padding: 20px; 
+      background: linear-gradient(135deg, rgb(102, 126, 234) 0%, rgb(118, 75, 162) 100%);
+      min-height: 100vh;
+      color: rgb(51, 51, 51);
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      align-items: start;
+    }
+
+    .panel {
+      background: white;
+      padding: 25px;
+      border-radius: 15px;
+      box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+      backdrop-filter: blur(10px);
+    }
+
+    .editor-panel {
+      display: flex;
+      flex-direction: column;
+      height: 600px;
+    }
+
+    .game-panel {
+      min-height: 600px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    h2 {
+      color: rgb(44, 62, 80);
+      margin-bottom: 20px;
+      font-size: 24px;
+      font-weight: 600;
+      border-bottom: 3px solid rgb(52, 152, 219);
+      padding-bottom: 10px;
+    }
+
+    h3 {
+      color: rgb(52, 73, 94);
+      margin-bottom: 15px;
+      font-size: 18px;
+      font-weight: 500;
+    }
+
+    .script-input {
+      flex: 1;
+      width: 100%;
+      padding: 15px;
+      border: 2px solid rgb(225, 232, 237);
+      border-radius: 10px;
+      font-family: 'Courier New', monospace;
+      font-size: 14px;
+      line-height: 1.5;
+      resize: none;
+      background: rgb(248, 249, 250);
+      transition: border-color 0.3s ease;
+    }
+
+    .script-input:focus {
+      outline: none;
+      border-color: rgb(52, 152, 219);
+      background: white;
+    }
+
+    .button-group {
+      display: flex;
+      gap: 10px;
+      margin-top: 15px;
+    }
+
+    .btn {
+      padding: 12px 24px;
+      font-size: 16px;
+      font-weight: 500;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .btn-primary {
+      background: linear-gradient(45deg, rgb(52, 152, 219), rgb(41, 128, 185));
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: linear-gradient(45deg, rgb(41, 128, 185), rgb(31, 95, 139));
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(52, 152, 219, 0.4);
+    }
+
+    .btn-secondary {
+      background: linear-gradient(45deg, rgb(149, 165, 166), rgb(127, 140, 141));
+      color: white;
+    }
+
+    .btn-secondary:hover {
+      background: linear-gradient(45deg, rgb(127, 140, 141), rgb(108, 123, 125));
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(149, 165, 166, 0.4);
+    }
+
+    .output {
+      flex: 1;
+      min-height: 200px;
+      margin-bottom: 20px;
+      white-space: pre-wrap;
+      padding: 20px;
+      background: rgb(248, 249, 250);
+      border-radius: 10px;
+      border-left: 4px solid rgb(52, 152, 219);
+      font-size: 16px;
+      line-height: 1.6;
+      overflow-y: auto;
+    }
+
+    .choices {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .choices button {
+      padding: 15px 20px;
+      font-size: 16px;
+      font-weight: 500;
+      border: 2px solid rgb(52, 152, 219);
+      border-radius: 10px;
+      background: white;
+      color: rgb(52, 152, 219);
+      cursor: pointer;
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .choices button:hover {
+      background: rgb(52, 152, 219);
+      color: white;
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(52, 152, 219, 0.3);
+    }
+
+    .choices button:active {
+      transform: translateY(0);
+    }
+
+    .log {
+      padding: 15px;
+      background: rgb(236, 240, 241);
+      border-radius: 10px;
+      font-size: 13px;
+      font-family: 'Courier New', monospace;
+      max-height: 150px;
+      overflow-y: auto;
+      border-left: 4px solid rgb(231, 76, 60);
+      color: rgb(44, 62, 80);
+    }
+
+    .status {
+      display: inline-block;
+      padding: 5px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 15px;
+    }
+
+    .status.ready {
+      background: rgb(213, 244, 230);
+      color: rgb(39, 174, 96);
+    }
+
+    .status.running {
+      background: rgb(254, 249, 231);
+      color: rgb(243, 156, 18);
+    }
+
+    .status.error {
+      background: rgb(250, 219, 216);
+      color: rgb(231, 76, 60);
+    }
+
+    @media (max-width: 768px) {
+      .container {
+        grid-template-columns: 1fr;
+        gap: 15px;
+      }
+      
+      .panel {
+        padding: 20px;
+      }
+      
+      .editor-panel {
+        height: 400px;
+      }
+      
+      .button-group {
+        flex-direction: column;
+      }
+    }
+
+    /* 滚动条样式 */
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: rgb(241, 241, 241);
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: rgb(193, 193, 193);
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgb(168, 168, 168);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- 脚本编辑器面板 -->
+    <div class="panel editor-panel">
+      <h2>📝 Cattca 脚本编辑器</h2>
+      <div class="status ready" id="status">准备就绪</div>
+      <textarea class="script-input" id="script-input" placeholder="在这里输入你的 Cattca 脚本..."></textarea>
+      <div class="button-group">
+        <button class="btn btn-primary" id="run-btn">▶️ 运行脚本</button>
+        <button class="btn btn-secondary" id="clear-btn">🗑️ 清空</button>
+        <button class="btn btn-secondary" id="example-btn">📖 加载示例</button>
+      </div>
+    </div>
+
+    <!-- 游戏运行面板 -->
+    <div class="panel game-panel">
+      <h2>🎮 游戏运行区</h2>
+      <div class="output" id="output"></div>
+      <div class="choices" id="choices"></div>
+      <div class="log" id="log"></div>
+    </div>
+  </div>
+  <script>
+    import { CattcaInterpreter } from "{{url_for('static', filename='js/cattca.js')}}";
+</script>
+  {% raw %}
+  <script type="module">
+    const scriptInput = document.querySelector('#script-input');
+    const outputDiv = document.querySelector('#output');
+    const logDiv = document.querySelector('#log');
+    const choicesDiv = document.querySelector('#choices');
+    const statusDiv = document.querySelector('#status');
+    const runBtn = document.querySelector('#run-btn');
+    const clearBtn = document.querySelector('#clear-btn');
+    const exampleBtn = document.querySelector('#example-btn');
+
+    let interpreter = null;
+
+    function updateStatus(text, type = 'ready') {
+      statusDiv.textContent = text;
+      statusDiv.className = `status ${type}`;
+    }
+
+    function appendOutput(txt) {
+      outputDiv.innerText += txt + "\n";
+      outputDiv.scrollTop = outputDiv.scrollHeight;
+    }
+
+    function appendLog(txt) {
+      logDiv.innerText += txt + "\n";
+      logDiv.scrollTop = logDiv.scrollHeight;
+    }
+
+    function clearOutput() {
+      outputDiv.innerText = "";
+      logDiv.innerText = "";
+      choicesDiv.innerHTML = "";
+    }
+
+    // 异步等待用户选择
+    function getChoice(options) {
+      return new Promise(resolve => {
+        choicesDiv.innerHTML = "";
+        options.forEach(opt => {
+          const btn = document.createElement("button");
+          btn.innerText = opt;
+          btn.onclick = () => {
+            choicesDiv.innerHTML = "";
+            resolve(opt);
+          };
+          choicesDiv.appendChild(btn);
+        });
+      });
+    }
+
+    // 输入文本：这里仍然用 prompt
+    async function getInput(promptText) {
+      return window.prompt(promptText);
+    }
+
+    // 运行脚本
+    function runScript() {
+      const script = scriptInput.value.trim();
+      if (!script) {
+        updateStatus('请输入脚本内容', 'error');
+        return;
+      }
+
+      try {
+        clearOutput();
+        updateStatus('正在运行...', 'running');
+        
+        interpreter = new CattcaInterpreter(
+          appendOutput,
+          appendLog,
+          getInput,
+          getChoice
+        );
+
+        interpreter.load(script);
+        interpreter.run();
+        updateStatus('运行中...', 'running');
+      } catch (error) {
+        appendLog(`错误: ${error.message}`);
+        updateStatus('运行出错', 'error');
+      }
+    }
+
+    // 清空编辑器
+    function clearEditor() {
+      scriptInput.value = '';
+      clearOutput();
+      updateStatus('已清空', 'ready');
+    }
+
+    // 加载示例脚本
+    function loadExample() {
+      const exampleScript = `你叫莱莉菥。
+现在是早上六点，你醒了。
+你躺在床上。
+你要怎么做？
+</let cntsleep = 0;
+label 1;
+input case:
+'继续睡觉' -> goto 2:
+'起床' -> goto 3;
+/>
+
+</label 2;
+set cntsleep = cntsleep + 1;
+if cntsleep > 3 ->goto 4/>
+你睡不着。
+</goto 1;/>
+
+</label 3/>
+结局一：起床
+你成功起床了。
+</exit/>
+
+</label 4/>
+结局二：睡觉
+你又睡着了。
+</exit/>`;
+
+      scriptInput.value = exampleScript;
+      updateStatus('示例已加载', 'ready');
+    }
+
+    // 事件监听器
+    runBtn.addEventListener('click', runScript);
+    clearBtn.addEventListener('click', clearEditor);
+    exampleBtn.addEventListener('click', loadExample);
+
+    // 键盘快捷键
+    scriptInput.addEventListener('keydown', (e) => {
+      if (e.ctrlKey && e.key === 'Enter') {
+        e.preventDefault();
+        runScript();
+      }
+    });
+
+    // 初始化时加载示例
+    loadExample();
+  </script>
+  {% endraw %}
+</body>
+</html>
