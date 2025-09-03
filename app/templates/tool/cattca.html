@@ -268,11 +268,8 @@
       <div class="log" id="log"></div>
     </div>
   </div>
-  <script>
-    import { CattcaInterpreter } from "{{url_for('static', filename='js/cattca.js')}}";
-</script>
-  {% raw %}
   <script type="module">
+    import { CattcaInterpreter } from "{{url_for('static', filename='js/cattca.js')}}";
     const scriptInput = document.querySelector('#script-input');
     const outputDiv = document.querySelector('#output');
     const logDiv = document.querySelector('#log');
@@ -410,6 +407,5 @@ if cntsleep > 3 ->goto 4/>
     // 初始化时加载示例
     loadExample();
   </script>
-  {% endraw %}
 </body>
 </html>
