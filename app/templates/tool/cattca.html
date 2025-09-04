@@ -365,7 +365,7 @@
     }
 
     function appendOutput(txt) {
-      outputDiv.innerText += txt + "\n";
+      outputDiv.innerText += txt;  // 移除自动换行符，实现连续输出
       outputDiv.scrollTop = outputDiv.scrollHeight;
     }
 

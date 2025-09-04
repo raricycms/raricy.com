@@ -322,6 +322,63 @@ export class CattcaInterpreter {
       return;
     }
 
+    // ---- random varname = minExpr maxExpr ----
+    if (cmd.startsWith('random ')) {
+      const after = cmd.slice(7).trim();
+      const eqIdx = (() => {
+        // find top-level '=' ignoring quotes
+        let inS=false,inD=false;
+        for (let i=0;i<after.length;i++){
+          const ch=after[i];
+          if (ch==='\\\\') { i++; continue; }
+          if (ch==="'" && !inD) { inS=!inS; continue; }
+          if (ch=='\"' && !inS) { inD=!inD; continue; }
+          if (ch==='=' && !inS && !inD) return i;
+        }
+        return -1;
+      })();
+      if (eqIdx === -1) throw new Error('random 缺少 =');
+      
+      const varName = after.slice(0, eqIdx).trim();
+      const rangeStr = after.slice(eqIdx+1).trim();
+      
+      // check if variable exists (like set command)
+      if (!this.vars.hasOwnProperty(varName)) throw new Error('变量未声明：' + varName);
+      
+      // split range by space (find first space outside quotes)
+      const spaceIdx = (() => {
+        let inS=false,inD=false;
+        for (let i=0;i<rangeStr.length;i++){
+          const ch=rangeStr[i];
+          if (ch==='\\\\') { i++; continue; }
+          if (ch==="'" && !inD) { inS=!inS; continue; }
+          if (ch=='\"' && !inS) { inD=!inD; continue; }
+          if (ch===' ' && !inS && !inD) return i;
+        }
+        return -1;
+      })();
+      if (spaceIdx === -1) throw new Error('random 需要两个参数：最小值和最大值');
+      
+      const minExpr = rangeStr.slice(0, spaceIdx).trim();
+      const maxExpr = rangeStr.slice(spaceIdx+1).trim();
+      
+      // evaluate expressions
+      const minVal = this.evalExpr(minExpr);
+      const maxVal = this.evalExpr(maxExpr);
+      
+      // convert to numbers
+      const min = Number(minVal);
+      const max = Number(maxVal);
+      
+      if (isNaN(min) || isNaN(max)) throw new Error('random 参数必须是数字');
+      if (min > max) throw new Error('random 最小值不能大于最大值');
+      
+      // generate random integer in range [min, max] (inclusive)
+      const randomValue = Math.floor(Math.random() * (max - min + 1)) + min;
+      this.vars[varName] = randomValue;
+      return;
+    }
+
     // unknown command fallback
     this.logCb('未知命令：' + cmd);
   }
