@@ -134,7 +134,6 @@
       flex: 1;
       min-height: 200px;
       margin-bottom: 20px;
-      white-space: pre-wrap;
       padding: 20px;
       background: rgb(248, 249, 250);
       border-radius: 10px;
@@ -257,6 +256,188 @@
     ::-webkit-scrollbar-thumb:hover {
       background: rgb(168, 168, 168);
     }
+
+    /* 可折叠段落样式 */
+    .output-segment { 
+      margin-bottom: 8px; 
+      border: 1px solid rgb(225, 232, 237); 
+      border-radius: 10px; 
+      overflow: hidden; 
+      background: white;
+    }
+    .segment-header { 
+      background: rgb(248, 249, 250); 
+      padding: 10px 15px; 
+      cursor: pointer; 
+      display: flex; 
+      justify-content: space-between; 
+      align-items: center;
+      border-bottom: 1px solid rgb(225, 232, 237);
+      transition: all 0.3s ease;
+    }
+    .segment-header:hover { 
+      background: rgb(236, 240, 241); 
+      transform: translateY(-1px);
+    }
+    .segment-title { 
+      font-weight: 600; 
+      font-size: 14px; 
+      color: rgb(52, 73, 94);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .toggle-icon { 
+      font-size: 12px; 
+      color: rgb(52, 152, 219); 
+      transition: transform 0.3s ease;
+      font-weight: bold;
+    }
+    .segment-content { 
+      padding: 15px; 
+      white-space: pre-wrap; 
+      background: white;
+      transition: all 0.3s ease-out;
+      line-height: 1.6;
+    }
+    .segment-content.collapsed { 
+      max-height: 0; 
+      padding: 0 15px; 
+      overflow: hidden; 
+    }
+
+    /* 游戏头部样式 */
+    .game-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .game-header h2 {
+      margin-bottom: 0;
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+
+    /* 全屏模式样式 */
+    .fullscreen-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: linear-gradient(135deg, rgb(102, 126, 234) 0%, rgb(118, 75, 162) 100%);
+      z-index: 9999;
+      display: none;
+      flex-direction: column;
+      padding: 20px;
+    }
+
+    .fullscreen-overlay.active {
+      display: flex;
+    }
+
+    .fullscreen-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      background: white;
+      padding: 15px 25px;
+      border-radius: 15px;
+      box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+    }
+
+    .fullscreen-header h2 {
+      margin: 0;
+      color: rgb(44, 62, 80);
+      font-size: 24px;
+      font-weight: 600;
+    }
+
+    .fullscreen-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      background: white;
+      border-radius: 15px;
+      box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+      overflow: hidden;
+    }
+
+    .fullscreen-output {
+      flex: 1;
+      padding: 25px;
+      overflow-y: auto;
+      font-size: 18px;
+      line-height: 1.8;
+    }
+
+    .fullscreen-choices {
+      padding: 0 25px 25px 25px;
+    }
+
+    .fullscreen-choices .choices {
+      margin-bottom: 0;
+    }
+
+    .fullscreen-choices button {
+      padding: 18px 25px;
+      font-size: 18px;
+      font-weight: 500;
+      border: 2px solid rgb(52, 152, 219);
+      border-radius: 10px;
+      background: white;
+      color: rgb(52, 152, 219);
+      cursor: pointer;
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+      margin-bottom: 12px;
+      width: 100%;
+    }
+
+    .fullscreen-choices button:hover {
+      background: rgb(52, 152, 219);
+      color: white;
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(52, 152, 219, 0.3);
+    }
+
+    .fullscreen-choices button:active {
+      transform: translateY(0);
+    }
+
+    .fullscreen-log {
+      max-height: 200px;
+      margin: 0 25px 25px 25px;
+      padding: 20px;
+      background: rgb(236, 240, 241);
+      border-radius: 10px;
+      font-size: 14px;
+      font-family: 'Courier New', monospace;
+      overflow-y: auto;
+      border-left: 4px solid rgb(231, 76, 60);
+      color: rgb(44, 62, 80);
+    }
+
+    .exit-fullscreen-btn {
+      background: linear-gradient(45deg, rgb(231, 76, 60), rgb(192, 57, 43));
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 16px;
+      font-weight: 500;
+      transition: all 0.3s ease;
+    }
+
+    .exit-fullscreen-btn:hover {
+      background: linear-gradient(45deg, rgb(192, 57, 43), rgb(169, 50, 38));
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(231, 76, 60, 0.4);
+    }
   </style>
 </head>
 <body>
@@ -278,10 +459,26 @@
 
     <!-- 游戏运行面板 -->
     <div class="panel game-panel">
-      <h2>🎮 游戏运行区</h2>
+      <div class="game-header">
+        <h2>🎮 游戏运行区</h2>
+        <button class="btn btn-secondary" id="fullscreen-btn">🔍 全屏</button>
+      </div>
       <div class="output" id="output"></div>
       <div class="choices" id="choices"></div>
       <div class="log" id="log"></div>
+    </div>
+  </div>
+
+  <!-- 全屏覆盖层 -->
+  <div class="fullscreen-overlay" id="fullscreen-overlay">
+    <div class="fullscreen-header">
+      <h2>🎮 游戏运行区 - 全屏模式</h2>
+      <button class="exit-fullscreen-btn" id="exit-fullscreen-btn">❌ 退出全屏</button>
+    </div>
+    <div class="fullscreen-content">
+      <div class="fullscreen-output" id="fullscreen-output"></div>
+      <div class="fullscreen-choices" id="fullscreen-choices"></div>
+      <div class="fullscreen-log" id="fullscreen-log"></div>
     </div>
   </div>
   <script type="module">
@@ -297,8 +494,17 @@
     const saveBtn = document.querySelector('#save-btn');
     const loadBtn = document.querySelector('#load-btn');
     const exampleBtn = document.querySelector('#example-btn');
+    
+    // 全屏相关元素
+    const fullscreenBtn = document.querySelector('#fullscreen-btn');
+    const fullscreenOverlay = document.querySelector('#fullscreen-overlay');
+    const exitFullscreenBtn = document.querySelector('#exit-fullscreen-btn');
+    const fullscreenOutput = document.querySelector('#fullscreen-output');
+    const fullscreenChoices = document.querySelector('#fullscreen-choices');
+    const fullscreenLog = document.querySelector('#fullscreen-log');
 
     let interpreter = null;
+    let isFullscreen = false; // 全屏状态
 
     // 历史记录系统
     let history = [];
@@ -308,6 +514,67 @@
     function updateStatus(text, type = 'ready') {
       statusDiv.textContent = text;
       statusDiv.className = `status ${type}`;
+    }
+
+    // 全屏功能
+    function enterFullscreen() {
+      isFullscreen = true;
+      fullscreenOverlay.classList.add('active');
+      fullscreenBtn.textContent = '📱 退出全屏';
+      
+      // 同步内容到全屏模式
+      syncToFullscreen();
+      
+      // 阻止页面滚动
+      document.body.style.overflow = 'hidden';
+    }
+
+    function exitFullscreen() {
+      isFullscreen = false;
+      fullscreenOverlay.classList.remove('active');
+      fullscreenBtn.textContent = '🔍 全屏';
+      
+      // 恢复页面滚动
+      document.body.style.overflow = '';
+    }
+
+    function syncToFullscreen() {
+      // 同步输出内容
+      fullscreenOutput.innerHTML = outputDiv.innerHTML;
+      
+      // 同步日志
+      fullscreenLog.textContent = logDiv.textContent;
+      
+      // 只有在没有选择按钮时才同步选择按钮
+      if (choicesDiv.children.length > 0 && fullscreenChoices.children.length === 0) {
+        fullscreenChoices.innerHTML = choicesDiv.innerHTML;
+        bindFullscreenChoiceEvents();
+      }
+    }
+
+    function syncFromFullscreen() {
+      // 从全屏模式同步回普通模式
+      outputDiv.innerHTML = fullscreenOutput.innerHTML;
+      choicesDiv.innerHTML = fullscreenChoices.innerHTML;
+      logDiv.textContent = fullscreenLog.textContent;
+    }
+
+    function bindFullscreenChoiceEvents() {
+      const fullscreenChoiceButtons = fullscreenChoices.querySelectorAll('button');
+      fullscreenChoiceButtons.forEach(btn => {
+        btn.onclick = () => {
+          const choiceText = btn.innerText;
+          // 清空所有选择按钮
+          choicesDiv.innerHTML = "";
+          fullscreenChoices.innerHTML = "";
+          // 选择完成后开始新段落
+          startNewSegment();
+          // 触发选择回调
+          if (window.currentChoiceResolver) {
+            window.currentChoiceResolver(choiceText);
+          }
+        };
+      });
     }
 
     // 添加到历史记录
@@ -364,41 +631,218 @@
       }
     }
 
+    // 可折叠输出系统
+    let currentSegment = null;
+    let segmentCount = 0;
+
     function appendOutput(txt) {
-      outputDiv.innerText += txt;  // 移除自动换行符，实现连续输出
+      if (!currentSegment) {
+        // 创建新的段落
+        currentSegment = document.createElement('div');
+        currentSegment.className = 'output-segment';
+        currentSegment.innerHTML = `
+          <div class="segment-header" onclick="toggleSegment(this)">
+            <span class="segment-title">段落 ${++segmentCount}</span>
+            <span class="toggle-icon">▼</span>
+          </div>
+          <div class="segment-content">${txt}</div>
+        `;
+        outputDiv.appendChild(currentSegment);
+        // 自动滚动到新段落，稍微往上一点以显示段落标题
+        setTimeout(() => {
+          const rect = currentSegment.getBoundingClientRect();
+          const containerRect = outputDiv.getBoundingClientRect();
+          const scrollTop = outputDiv.scrollTop + (rect.top - containerRect.top) - 20;
+          outputDiv.scrollTo({ top: scrollTop, behavior: 'smooth' });
+        }, 10);
+      } else {
+        // 追加到当前段落
+        const contentDiv = currentSegment.querySelector('.segment-content');
+        contentDiv.textContent += txt;
+      }
       outputDiv.scrollTop = outputDiv.scrollHeight;
+      
+      // 如果当前是全屏模式，同步到全屏输出
+      if (isFullscreen) {
+        fullscreenOutput.innerHTML = outputDiv.innerHTML;
+        fullscreenOutput.scrollTop = fullscreenOutput.scrollHeight;
+        
+        // 同步选择按钮（如果有的话）
+        if (choicesDiv.children.length > 0) {
+          fullscreenChoices.innerHTML = choicesDiv.innerHTML;
+          bindFullscreenChoiceEvents();
+        }
+      }
     }
+
+    function startNewSegment() {
+      // 将当前段落标记为可折叠（如果有当前段落）
+      if (currentSegment) {
+        const content = currentSegment.querySelector('.segment-content');
+        content.classList.add('collapsed');
+      }
+      currentSegment = null;
+      
+      // 如果当前是全屏模式，同步段落状态
+      if (isFullscreen) {
+        fullscreenOutput.innerHTML = outputDiv.innerHTML;
+      }
+    }
+
+    function toggleSegment(header) {
+      const segment = header.parentElement;
+      const content = segment.querySelector('.segment-content');
+      const icon = header.querySelector('.toggle-icon');
+      
+      if (content.classList.contains('collapsed')) {
+        content.classList.remove('collapsed');
+        icon.textContent = '▲';
+      } else {
+        content.classList.add('collapsed');
+        icon.textContent = '▼';
+      }
+    }
+
+    // 将函数暴露到全局作用域
+    window.toggleSegment = toggleSegment;
 
     function appendLog(txt) {
       logDiv.innerText += txt + "\n";
       logDiv.scrollTop = logDiv.scrollHeight;
+      
+      // 如果当前是全屏模式，同步到全屏日志
+      if (isFullscreen) {
+        fullscreenLog.textContent = logDiv.textContent;
+        fullscreenLog.scrollTop = fullscreenLog.scrollHeight;
+      }
     }
 
     function clearOutput() {
-      outputDiv.innerText = "";
+      outputDiv.innerHTML = "";
       logDiv.innerText = "";
       choicesDiv.innerHTML = "";
+      // 重置段落计数
+      segmentCount = 0;
+      currentSegment = null;
+      
+      // 如果当前是全屏模式，也清空全屏内容
+      if (isFullscreen) {
+        fullscreenOutput.innerHTML = "";
+        fullscreenLog.textContent = "";
+        fullscreenChoices.innerHTML = "";
+      }
     }
 
     // 异步等待用户选择
     function getChoice(options) {
       return new Promise(resolve => {
         choicesDiv.innerHTML = "";
+        fullscreenChoices.innerHTML = "";
+        
         options.forEach(opt => {
+          // 创建普通模式的按钮
           const btn = document.createElement("button");
           btn.innerText = opt;
           btn.onclick = () => {
             choicesDiv.innerHTML = "";
+            fullscreenChoices.innerHTML = "";
+            // 选择完成后开始新段落
+            startNewSegment();
             resolve(opt);
           };
           choicesDiv.appendChild(btn);
+          
+          // 如果当前是全屏模式，也创建全屏模式的按钮
+          if (isFullscreen) {
+            const fullscreenBtn = document.createElement("button");
+            fullscreenBtn.innerText = opt;
+            fullscreenBtn.onclick = () => {
+              choicesDiv.innerHTML = "";
+              fullscreenChoices.innerHTML = "";
+              // 选择完成后开始新段落
+              startNewSegment();
+              resolve(opt);
+            };
+            fullscreenChoices.appendChild(fullscreenBtn);
+          }
         });
+        
+        // 保存resolve函数供后续使用
+        window.currentChoiceResolver = resolve;
       });
     }
 
-    // 输入文本：这里仍然用 prompt
+    // 输入文本：使用非阻塞的输入框
     async function getInput(promptText) {
-      return window.prompt(promptText);
+      return new Promise(resolve => {
+        // 创建输入框
+        const inputDiv = document.createElement('div');
+        inputDiv.style.cssText = 'margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 6px; border: 1px solid #dee2e6;';
+        
+        const label = document.createElement('label');
+        label.textContent = promptText || '请输入:';
+        label.style.cssText = 'display: block; margin-bottom: 5px; font-weight: bold;';
+        
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.style.cssText = 'width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 4px; font-size: 16px;';
+        
+        const button = document.createElement('button');
+        button.textContent = '确定';
+        button.style.cssText = 'margin-top: 5px; padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;';
+        
+        inputDiv.appendChild(label);
+        inputDiv.appendChild(input);
+        inputDiv.appendChild(button);
+        
+        // 添加到输出区域
+        outputDiv.appendChild(inputDiv);
+        
+        // 如果当前是全屏模式，也添加到全屏输出
+        if (isFullscreen) {
+          const fullscreenInputDiv = inputDiv.cloneNode(true);
+          fullscreenOutput.appendChild(fullscreenInputDiv);
+          const fullscreenInput = fullscreenInputDiv.querySelector('input');
+          const fullscreenButton = fullscreenInputDiv.querySelector('button');
+          fullscreenInput.focus();
+          
+          // 处理全屏输入
+          const handleFullscreenSubmit = () => {
+            const value = fullscreenInput.value;
+            fullscreenOutput.removeChild(fullscreenInputDiv);
+            outputDiv.removeChild(inputDiv);
+            // 输入完成后开始新段落
+            startNewSegment();
+            resolve(value);
+          };
+          
+          fullscreenButton.onclick = handleFullscreenSubmit;
+          fullscreenInput.onkeypress = (e) => {
+            if (e.key === 'Enter') {
+              handleFullscreenSubmit();
+            }
+          };
+        } else {
+          // 自动聚焦输入框
+          input.focus();
+        }
+        
+        // 处理输入
+        const handleSubmit = () => {
+          const value = input.value;
+          outputDiv.removeChild(inputDiv);
+          // 输入完成后开始新段落
+          startNewSegment();
+          resolve(value);
+        };
+        
+        button.onclick = handleSubmit;
+        input.onkeypress = (e) => {
+          if (e.key === 'Enter') {
+            handleSubmit();
+          }
+        };
+      });
     }
 
     // 运行脚本
@@ -555,6 +999,17 @@ if cntsleep > 3 ->goto 4/>
     saveBtn.addEventListener('click', saveScript);
     loadBtn.addEventListener('click', loadScript);
     exampleBtn.addEventListener('click', loadExample);
+    
+    // 全屏功能事件监听器
+    fullscreenBtn.addEventListener('click', () => {
+      if (isFullscreen) {
+        exitFullscreen();
+      } else {
+        enterFullscreen();
+      }
+    });
+    
+    exitFullscreenBtn.addEventListener('click', exitFullscreen);
 
     // 自动保存功能和历史记录 - 当文本改变时
     let autoSaveTimeout;
@@ -592,6 +1047,32 @@ if cntsleep > 3 ->goto 4/>
       if (e.ctrlKey && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
         e.preventDefault();
         redo();
+      }
+      if (e.ctrlKey && e.key === 'f') {
+        e.preventDefault();
+        if (isFullscreen) {
+          exitFullscreen();
+        } else {
+          enterFullscreen();
+        }
+      }
+    });
+
+    // 全局键盘快捷键（包括全屏模式）
+    document.addEventListener('keydown', (e) => {
+      // ESC键退出全屏
+      if (e.key === 'Escape' && isFullscreen) {
+        e.preventDefault();
+        exitFullscreen();
+      }
+      // F11键切换全屏
+      if (e.key === 'F11') {
+        e.preventDefault();
+        if (isFullscreen) {
+          exitFullscreen();
+        } else {
+          enterFullscreen();
+        }
       }
     });
 
