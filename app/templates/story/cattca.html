@@ -30,7 +30,6 @@
     .toggle-icon { font-size: 12px; color: #6c757d; transition: transform 0.2s; }
     .segment-content { 
       padding: 12px; 
-      white-space: pre-wrap; 
       background: white;
       transition: max-height 0.3s ease-out;
     }
@@ -38,6 +37,74 @@
       max-height: 0; 
       padding: 0 12px; 
       overflow: hidden; 
+    }
+    
+    /* Markdown样式 */
+    .segment-content h1, .segment-content h2, .segment-content h3, 
+    .segment-content h4, .segment-content h5, .segment-content h6 {
+      margin: 16px 0 8px 0;
+      color: #333;
+    }
+    .segment-content h1 { font-size: 1.8em; border-bottom: 2px solid #eee; padding-bottom: 8px; }
+    .segment-content h2 { font-size: 1.5em; border-bottom: 1px solid #eee; padding-bottom: 6px; }
+    .segment-content h3 { font-size: 1.3em; }
+    .segment-content p { margin: 8px 0; line-height: 1.6; }
+    .segment-content strong { font-weight: bold; color: #2c3e50; }
+    .segment-content em { font-style: italic; color: #7f8c8d; }
+    .segment-content code { 
+      background: #f8f9fa; 
+      padding: 2px 4px; 
+      border-radius: 3px; 
+      font-family: 'Courier New', monospace; 
+      font-size: 0.9em;
+    }
+    .segment-content pre { 
+      background: #f8f9fa; 
+      padding: 12px; 
+      border-radius: 6px; 
+      overflow-x: auto; 
+      margin: 12px 0;
+      border-left: 4px solid #007bff;
+    }
+    .segment-content pre code { 
+      background: none; 
+      padding: 0; 
+    }
+    .segment-content blockquote { 
+      border-left: 4px solid #007bff; 
+      margin: 12px 0; 
+      padding: 8px 16px; 
+      background: #f8f9fa; 
+      color: #6c757d;
+    }
+    .segment-content ul, .segment-content ol { 
+      margin: 8px 0; 
+      padding-left: 24px; 
+    }
+    .segment-content li { 
+      margin: 4px 0; 
+      line-height: 1.5; 
+    }
+    .segment-content a { 
+      color: #007bff; 
+      text-decoration: none; 
+    }
+    .segment-content a:hover { 
+      text-decoration: underline; 
+    }
+    .segment-content table { 
+      border-collapse: collapse; 
+      width: 100%; 
+      margin: 12px 0; 
+    }
+    .segment-content th, .segment-content td { 
+      border: 1px solid #dee2e6; 
+      padding: 8px 12px; 
+      text-align: left; 
+    }
+    .segment-content th { 
+      background: #f8f9fa; 
+      font-weight: bold; 
     }
   </style>
 {% endblock %}
@@ -48,12 +115,40 @@
     <div id="output"></div>
     <div id="choices"></div>
     <div id="log"></div>
+    <!-- 隐藏的story内容 -->
+    <script type="application/json" id="story-content">{{ content|tojson|safe }}</script>
   </div>
 {% endblock %}
 
 {% block extra_js %}
+<!-- 引入marked.js用于markdown渲染 -->
+<script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
 <script type="module">
     import { CattcaInterpreter } from "{{url_for('static', filename='js/cattca.js')}}";
+    
+    // 配置marked.js
+    try {
+        if (typeof marked.setOptions === 'function') {
+            marked.setOptions({
+                breaks: true,
+                gfm: true,
+                sanitize: false,
+                smartLists: true,
+                smartypants: false
+            });
+        } else if (typeof marked.use === 'function') {
+            // 新版本API
+            marked.use({
+                breaks: true,
+                gfm: true,
+                sanitize: false,
+                smartLists: true,
+                smartypants: false
+            });
+        }
+    } catch (error) {
+        console.warn('Failed to configure marked.js:', error);
+    }
 
     const outputDiv = document.querySelector('#output');
     const logDiv = document.querySelector('#log');
@@ -64,18 +159,60 @@
     let segmentCount = 0;
 
     function appendOutput(txt) {
+      // 使用marked.js渲染markdown，添加错误处理
+      let htmlContent;
+      try {
+        // 尝试新的API
+        if (typeof marked.parse === 'function') {
+          htmlContent = marked.parse(txt);
+        } else if (typeof marked === 'function') {
+          htmlContent = marked(txt);
+        } else {
+          throw new Error('marked API not found');
+        }
+      } catch (error) {
+        console.error('Markdown parsing error:', error);
+        // 如果markdown解析失败，直接显示原始文本
+        htmlContent = txt.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      }
+      
       if (!currentSegment) {
         // 创建新的段落
         currentSegment = document.createElement('div');
         currentSegment.className = 'output-segment';
-        currentSegment.innerHTML = `
-          <div class="segment-header" onclick="toggleSegment(this)">
-            <span class="segment-title">段落 ${++segmentCount}</span>
-            <span class="toggle-icon">▼</span>
-          </div>
-          <div class="segment-content">${txt}</div>
-        `;
+        
+        // 创建段落头部
+        const header = document.createElement('div');
+        header.className = 'segment-header';
+        header.onclick = () => toggleSegment(header);
+        
+        const title = document.createElement('span');
+        title.className = 'segment-title';
+        title.textContent = `段落 ${++segmentCount}`;
+        
+        const icon = document.createElement('span');
+        icon.className = 'toggle-icon';
+        icon.textContent = '▼';
+        
+        header.appendChild(title);
+        header.appendChild(icon);
+        
+        // 创建内容区域
+        const content = document.createElement('div');
+        content.className = 'segment-content';
+        // 使用textContent先设置，然后安全地设置innerHTML
+        content.textContent = '';
+        try {
+          content.innerHTML = htmlContent;
+        } catch (error) {
+          console.error('HTML insertion error:', error);
+          content.textContent = txt;
+        }
+        
+        currentSegment.appendChild(header);
+        currentSegment.appendChild(content);
         outputDiv.appendChild(currentSegment);
+        
         // 自动滚动到新段落，稍微往上一点以显示段落标题
         setTimeout(() => {
           const rect = currentSegment.getBoundingClientRect();
@@ -86,7 +223,28 @@
       } else {
         // 追加到当前段落
         const contentDiv = currentSegment.querySelector('.segment-content');
-        contentDiv.textContent += txt;
+        // 获取当前内容并追加新的markdown内容
+        const currentHtml = contentDiv.innerHTML;
+        let newHtml;
+        try {
+          // 尝试新的API
+          if (typeof marked.parse === 'function') {
+            newHtml = marked.parse(txt);
+          } else if (typeof marked === 'function') {
+            newHtml = marked(txt);
+          } else {
+            throw new Error('marked API not found');
+          }
+        } catch (error) {
+          console.error('Markdown parsing error:', error);
+          newHtml = txt.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+        try {
+          contentDiv.innerHTML = currentHtml + newHtml;
+        } catch (error) {
+          console.error('HTML insertion error:', error);
+          contentDiv.textContent = contentDiv.textContent + txt;
+        }
       }
     }
 
@@ -192,7 +350,9 @@
       getChoice
     );
 
-    const story = `{{ content|safe }}`
+    // 从隐藏的script标签中读取story内容
+    const storyElement = document.getElementById('story-content');
+    const story = storyElement ? JSON.parse(storyElement.textContent) : '';
     console.log(story)
 
     // 加载并运行
