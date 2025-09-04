@@ -3,37 +3,70 @@
 {% block title %}{{ blog.title }} - 文章阅读{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/pygments-default.css') }}" id="pygments-default">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/pygments-Monokai.css') }}" id="pygments-monokai">
-<!-- MathJax 配置 -->
+<!-- CSS 样式表 -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css" id="hljs-light">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/monokai.min.css" id="hljs-dark" disabled>
+
+<!-- JavaScript 库（按依赖顺序加载） -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.8/purify.min.js" onerror="console.error('DOMPurify 加载失败')"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js" onerror="console.error('highlight.js 加载失败')"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js" onerror="console.error('marked.js 加载失败')"></script>
+<!-- MathJax 配置和加载 -->
 <script>
-window.MathJax = {
-  tex: {
-    inlineMath: [['$', '$'], ['\\(', '\\)']],
-    displayMath: [['$$', '$$'], ['\\[', '\\]']],
-    processEscapes: true,
-    processEnvironments: true
-  },
-  options: {
-    skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'],
-    ignoreHtmlClass: 'tex2jax_ignore'
-  },
-  startup: {
-    ready: () => {
-      // The default ready function waits for the DOM and then typesets the page.
-      MathJax.startup.defaultReady();
-      // We can chain a promise to the startup promise to run code after typesetting.
-      MathJax.startup.promise = MathJax.startup.promise.then(() => {
-        console.log('MathJax initial typesetting complete. Adjusting formula sizes.');
-        adjustMathFormulaSizes();
-      });
-    }
-  }
-};
+    window.MathJax = {
+        tex: {
+            inlineMath: [['$', '$'], ['\\(', '\\)']],
+            displayMath: [['$$', '$$'], ['\\[', '\\]']],
+            processEscapes: true,
+            processEnvironments: true,
+            processRefs: true,
+            packages: {'[+]': ['ams', 'newcommand', 'configmacros', 'action', 'bbox', 'boldsymbol', 'braket', 'cancel', 'color', 'enclose', 'extpfeil', 'mhchem', 'newcommand', 'unicode', 'verb']},
+            macros: {
+                RR: "\\mathbb{R}",
+                NN: "\\mathbb{N}",
+                ZZ: "\\mathbb{Z}",
+                QQ: "\\mathbb{Q}",
+                CC: "\\mathbb{C}",
+                PP: "\\mathbb{P}",
+                EE: "\\mathbb{E}",
+                FF: "\\mathbb{F}",
+                bold: ["\\mathbf{" + "#1}", 1],
+                bm: ["\\boldsymbol{" + "#1}", 1]
+            }
+        },
+        options: {
+            ignoreHtmlClass: 'tex2jax_ignore',
+            processHtmlClass: 'tex2jax_process',
+            renderActions: {
+                findScript: [10, function (doc) {
+                    for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+                        const display = !!node.type.match(/; *mode=display/);
+                        const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+                        const text = document.createTextNode('');
+                        node.parentNode.replaceChild(text, node);
+                        math.start = {node: text, delim: '', n: 0};
+                        math.end = {node: text, delim: '', n: 0};
+                        doc.math.push(math);
+                    }
+                }, '']
+            }
+        },
+        chtml: {
+            fontURL: 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/output/chtml/fonts/woff-v2'
+        },
+        svg: {
+            fontCache: 'global'
+        },
+        startup: {
+            ready: function () {
+                console.log('MathJax 加载完成');
+                MathJax.startup.defaultReady();
+            }
+        }
+    };
 </script>
-<script type="text/javascript" id="MathJax-script" async
-  src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
-</script>
+<!-- 移除有问题的 polyfill.io，改用更稳定的方案 -->
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" onerror="console.error('MathJax 加载失败')"></script>
 <style>
     .read-hero {
         background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
@@ -158,6 +191,25 @@ window.MathJax = {
         margin-bottom: 0.5em;
     }
 
+    /* 任务列表样式 */
+    .blog-content-container li input[type="checkbox"] {
+        margin-right: 0.5em;
+        cursor: default;
+    }
+
+    /* 任务列表样式 - 使用更兼容的选择器 */
+    .blog-content-container li.task-list-item {
+        list-style: none;
+        margin-left: -1.5em;
+    }
+
+    /* 后备样式：如果 :has 选择器不被支持，这个样式会作为备选 */
+    @supports not (selector(:has(*))) {
+        .blog-content-container li:first-child input[type="checkbox"] {
+            margin-left: -1.5em;
+        }
+    }
+
     /* 链接样式 */
     .blog-content-container a {
         color: #3498db;
@@ -200,7 +252,12 @@ window.MathJax = {
         font-weight: 600;
     }
 
-    /* 数学公式样式 */
+    /* MathJax 数学公式样式 */
+    .blog-content-container .MathJax {
+        font-size: 1.1em !important;
+        max-width: 100%;
+    }
+
     .blog-content-container .MathJax_Display {
         margin: 1.5em 0;
         text-align: center;
@@ -208,46 +265,22 @@ window.MathJax = {
         overflow-y: hidden;
     }
 
-    .blog-content-container .MathJax {
-        font-size: 1.1em;
-        max-width: 100%;
-    }
-
-    /* 行内数学公式样式 */
-    .blog-content-container .MathJax_SVG {
-        vertical-align: middle;
-        max-width: 100%;
-        height: auto;
-    }
-
-    /* 自适应字体大小的数学公式 */
-    .blog-content-container mjx-container {
-        max-width: 100%;
+    /* MathJax SVG 输出样式 */
+    .blog-content-container mjx-container[jax="CHTML"][display="true"] {
+        margin: 1.5em 0;
+        text-align: center;
         overflow-x: auto;
         overflow-y: hidden;
     }
 
-    .blog-content-container mjx-container[jax="CHTML"][display="true"] {
-        text-align: center;
-        margin: 1.5em 0;
-    }
-
-    /* 当公式过长时自动调整字体大小 */
-    .blog-content-container mjx-container[jax="CHTML"][display="true"] mjx-math {
-        font-size: min(1.1em, calc(100vw / var(--formula-width, 20)));
-    }
-
-    .blog-content-container mjx-container[jax="CHTML"][display="false"] mjx-math {
-        font-size: min(1em, calc(100vw / var(--formula-width, 25)));
+    .blog-content-container mjx-container[jax="CHTML"] {
+        font-size: 1.1em;
+        max-width: 100%;
     }
 
     /* 深色模式下的数学公式 */
-    body.dark-mode .MathJax_SVG * {
-        fill: var(--text) !important;
-        stroke: var(--text) !important;
-    }
-
-    body.dark-mode mjx-container mjx-math {
+    body.dark-mode .MathJax,
+    body.dark-mode mjx-container {
         color: var(--text) !important;
     }
 
@@ -314,11 +347,33 @@ window.MathJax = {
         opacity: 0.8;
         transition: all 0.2s ease;
         font-family: system-ui, -apple-system, sans-serif;
+        z-index: 10;
+        user-select: none;
     }
 
     .copy-btn:hover {
         opacity: 1;
         background: #2980b9;
+        transform: translateY(-1px);
+    }
+    
+    .copy-btn:active {
+        transform: translateY(0);
+    }
+    
+    .copy-btn:disabled {
+        cursor: not-allowed;
+        opacity: 0.6;
+    }
+
+    /* 深色模式下的复制按钮 */
+    body.dark-mode .copy-btn {
+        background: #5dade2;
+        color: #1e1e1e;
+    }
+    
+    body.dark-mode .copy-btn:hover {
+        background: #3498db;
     }
 
     .read-controls {
@@ -511,6 +566,7 @@ window.MathJax = {
             margin-top: 8px;
             padding: 6px 10px;
             font-size: 0.85rem;
+            width: auto;
         }
         /* 代码块在移动端内边距稍微增大，避免拥挤 */
         .blog-content-container .highlight {
@@ -518,18 +574,15 @@ window.MathJax = {
         }
 
         /* 移动端数学公式优化 */
+        .blog-content-container .MathJax_Display,
         .blog-content-container mjx-container[jax="CHTML"][display="true"] {
             margin: 1em 0;
+            font-size: 0.9em;
         }
 
+        .blog-content-container .MathJax,
         .blog-content-container mjx-container[jax="CHTML"] {
-            overflow-x: auto;
-            max-width: 100%;
-        }
-
-        .blog-content-container mjx-container[jax="CHTML"] mjx-math {
             font-size: 0.9em !important;
-            min-width: max-content;
         }
     }
 
@@ -641,10 +694,16 @@ window.MathJax = {
 
 <div class="blog-content-container-container">
     <div class="blog-content-container" id="userContentContainer">
-        <template id="userContentTemplate">
-            {{ blog.content | safe }}
-        </template>
+        <!-- Markdown 内容将在前端渲染 -->
+        <div id="loading-indicator" class="text-center my-4">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">加载中...</span>
+            </div>
+            <p class="mt-2">正在加载内容...</p>
+        </div>
     </div>
+    <!-- 原始 Markdown 数据 -->
+    <script type="application/json" id="markdownContent">{{ blog.content | tojson }}</script>
 </div>
 
 <div class="read-controls">
@@ -729,22 +788,364 @@ window.MathJax = {
 
 {% block extra_js %}
 <script>
-    // 主题切换功能
-    // 安全渲染函数
-    function renderUserContent() {
-        const container = document.getElementById('userContentContainer');
-        const template = document.getElementById('userContentTemplate');
+    // 前端 Markdown 渲染功能
+    function initMarkdownRenderer() {
+        // 检查依赖是否加载完成
+        if (typeof marked === 'undefined') {
+            console.error('marked.js 未加载');
+            return false;
+        }
+        if (typeof hljs === 'undefined') {
+            console.error('highlight.js 未加载');
+            return false;
+        }
+        if (typeof DOMPurify === 'undefined') {
+            console.error('DOMPurify 未加载');
+            return false;
+        }
+        if (typeof MathJax === 'undefined') {
+            console.error('MathJax 未加载');
+            return false;
+        }
 
-        // 克隆模板内容（此时仍为惰性文档片段）
-        const fragment = template.content.cloneNode(true);
-        // 激活并插入DOM
-        container.appendChild(fragment);
+        // 配置 marked
+        marked.setOptions({
+            highlight: function(code, lang) {
+                try {
+                    if (lang && hljs.getLanguage(lang)) {
+                        return hljs.highlight(code, { language: lang }).value;
+                    }
+                    return hljs.highlightAuto(code).value;
+                } catch (err) {
+                    console.warn('代码高亮失败:', err);
+                    return code; // 返回原始代码
+                }
+            },
+            breaks: true,
+            gfm: true,
+            tables: true,
+            xhtml: false
+        });
+
+        // 配置自定义渲染器
+        const renderer = new marked.Renderer();
+        
+        // 自定义链接渲染
+        renderer.link = function(href, title, text) {
+            const link = marked.Renderer.prototype.link.call(this, href, title, text);
+            return link.replace('<a', '<a rel="noopener noreferrer nofollow" target="_blank"');
+        };
+
+        // 自定义代码块渲染
+        renderer.code = function(code, lang) {
+            try {
+                const highlighted = lang && hljs.getLanguage(lang) 
+                    ? hljs.highlight(code, { language: lang }).value 
+                    : hljs.highlightAuto(code).value;
+                
+                return `<div class="highlight">
+                    <pre><code class="hljs">${highlighted}</code></pre>
+                    <button class="copy-btn" data-code="${encodeURIComponent(code)}">📋 复制</button>
+                </div>`;
+            } catch (err) {
+                console.warn('代码高亮失败:', err);
+                return `<div class="highlight">
+                    <pre><code>${code}</code></pre>
+                    <button class="copy-btn" data-code="${encodeURIComponent(code)}">📋 复制</button>
+                </div>`;
+            }
+        };
+
+        // 自定义列表项渲染（支持任务列表）
+        renderer.listitem = function(text) {
+            // 检查是否是任务列表项
+            if (/^\s*\[[ x]\]\s/.test(text)) {
+                const checked = /^\s*\[x\]\s/.test(text);
+                const cleanText = text.replace(/^\s*\[[ x]\]\s/, '');
+                return `<li class="task-list-item"><input type="checkbox" ${checked ? 'checked' : ''} disabled> ${cleanText}</li>`;
+            }
+            return `<li>${text}</li>`;
+        };
+
+        marked.use({ renderer });
+        
+        return true;
     }
 
-    // 对内容区域中的链接进行安全加固：
-    // - 外链添加 rel="noopener noreferrer nofollow"
-    // - 外链在新窗口打开 target="_blank"
-    // - 移除不安全协议（除 http/https/mailto/tel 外）
+    // 安全渲染 Markdown 内容
+    function renderUserContent() {
+        const container = document.getElementById('userContentContainer');
+        const markdownScript = document.getElementById('markdownContent');
+        const loadingIndicator = document.getElementById('loading-indicator');
+        
+        if (!markdownScript) {
+            console.error('未找到 Markdown 内容');
+            if (loadingIndicator) {
+                loadingIndicator.innerHTML = '<div class="alert alert-danger">内容数据缺失</div>';
+            }
+            return;
+        }
+
+        try {
+            let markdownText = JSON.parse(markdownScript.textContent);
+            
+            // 移除加载指示器
+            if (loadingIndicator) {
+                loadingIndicator.remove();
+            }
+            
+            // 检查必要的库是否可用
+            if (typeof marked === 'undefined' || typeof DOMPurify === 'undefined') {
+                // 备用方案：显示原始 Markdown
+                container.innerHTML = `
+                    <div class="alert alert-warning">
+                        <h5>⚠️ Markdown 渲染库未加载</h5>
+                        <p>正在显示原始 Markdown 内容。这可能是由于网络问题导致的。</p>
+                        <button class="btn btn-primary btn-sm mt-2" onclick="location.reload()">刷新页面重试</button>
+                    </div>
+                    <pre style="white-space: pre-wrap; font-family: inherit; background: #f8f9fa; padding: 15px; border-radius: 6px; margin-top: 15px;">${markdownText.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+                `;
+                console.warn('Markdown 库未加载，显示原始内容');
+                return;
+            }
+            
+            // 保护数学公式不被 Markdown 破坏
+            const mathPlaceholders = {};
+            let placeholderCounter = 0;
+            
+            // 保护块级数学公式 $$...$$
+            markdownText = markdownText.replace(/\$\$([\s\S]*?)\$\$/g, (match) => {
+                const placeholder = `MATHBLOCK${placeholderCounter++}PLACEHOLDER`;
+                mathPlaceholders[placeholder] = match;
+                return placeholder;
+            });
+            
+            // 保护行内数学公式 $...$
+            markdownText = markdownText.replace(/\$([^$\n]+?)\$/g, (match) => {
+                const placeholder = `MATHINLINE${placeholderCounter++}PLACEHOLDER`;
+                mathPlaceholders[placeholder] = match;
+                return placeholder;
+            });
+            
+            // 保护 LaTeX 风格公式 \[...\] 和 \(...\)
+            markdownText = markdownText.replace(/\\\[([\s\S]*?)\\\]/g, (match) => {
+                const placeholder = `MATHLATEX${placeholderCounter++}PLACEHOLDER`;
+                mathPlaceholders[placeholder] = match;
+                return placeholder;
+            });
+            
+            markdownText = markdownText.replace(/\\\(([\s\S]*?)\\\)/g, (match) => {
+                const placeholder = `MATHLATEX${placeholderCounter++}PLACEHOLDER`;
+                mathPlaceholders[placeholder] = match;
+                return placeholder;
+            });
+            
+            // 渲染 Markdown 为 HTML
+            let html = marked.parse(markdownText);
+            
+            // 恢复数学公式
+            Object.keys(mathPlaceholders).forEach(placeholder => {
+                html = html.replace(new RegExp(placeholder, 'g'), mathPlaceholders[placeholder]);
+            });
+            
+            // 使用 DOMPurify 清理 HTML，防止 XSS - 保留数学公式标记
+            html = DOMPurify.sanitize(html, {
+                ALLOWED_TAGS: [
+                    'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+                    'p', 'br', 'hr', 'div', 'span',
+                    'strong', 'b', 'em', 'i', 'u', 's', 'del',
+                    'code', 'pre', 'blockquote',
+                    'ul', 'ol', 'li',
+                    'a', 'img',
+                    'table', 'thead', 'tbody', 'tr', 'th', 'td',
+                    'details', 'summary',
+                    'sub', 'sup', 'mark',
+                    'input', 'button'  // 允许 input 标签用于任务列表和button用于复制功能
+                ],
+                ALLOWED_ATTR: [
+                    'href', 'title', 'alt', 'src', 'class', 'rel', 'target',
+                    'width', 'height', 'align', 'colspan', 'rowspan',
+                    'type', 'checked', 'disabled', 'data-code'  // 允许任务列表的属性和复制按钮属性
+                ],
+                ALLOW_DATA_ATTR: false
+            });
+            
+            container.innerHTML = html;
+            
+            // 安全处理链接
+            hardenLinks();
+            
+            // 添加代码复制功能
+            addCopyButtons();
+            
+            // 添加图片点击放大功能
+            addImageZoom();
+            
+            // 延迟渲染数学公式，确保 DOM 完全准备好
+            if (typeof MathJax !== 'undefined') {
+                setTimeout(() => {
+                    // 直接检查 DOM 中是否有数学公式
+                    const hasBlockMath = container.innerHTML.includes('$$') || container.innerHTML.includes('\\[') || container.innerHTML.includes('\\]');
+                    const hasInlineMath = /\$[^$\n]+\$/.test(container.innerHTML) || container.innerHTML.includes('\\(') || container.innerHTML.includes('\\)');
+                    
+                    console.log('数学公式检测:', {
+                        hasBlockMath,
+                        hasInlineMath,
+                        htmlSample: container.innerHTML.substring(0, 200) + '...'
+                    });
+                    
+                    if (hasBlockMath || hasInlineMath) {
+                        console.log('检测到数学公式，开始渲染...');
+                        renderMath();
+                    } else {
+                        console.log('未检测到数学公式');
+                    }
+                }, 300);
+            } else {
+                console.warn('MathJax 未加载，跳过数学公式渲染');
+            }
+            
+        } catch (error) {
+            console.error('Markdown 渲染失败:', error);
+            // 尝试显示原始内容作为备用
+            try {
+                const markdownText = JSON.parse(markdownScript.textContent);
+                container.innerHTML = `<div class="alert alert-warning">
+                    <h5>内容渲染失败</h5>
+                    <p>正在显示原始内容：</p>
+                    <pre style="white-space: pre-wrap; font-family: inherit; background: #f8f9fa; padding: 15px; border-radius: 6px;">${markdownText}</pre>
+                </div>`;
+            } catch (e) {
+                container.innerHTML = '<div class="alert alert-danger">内容加载失败，请刷新页面重试。</div>';
+            }
+        }
+    }
+
+    // 渲染数学公式
+    function renderMath() {
+        try {
+            console.log('开始渲染数学公式...');
+            const container = document.getElementById('userContentContainer');
+            if (!container) {
+                console.warn('未找到内容容器');
+                return;
+            }
+            
+            // 使用 MathJax 重新渲染数学公式
+            if (window.MathJax && window.MathJax.typesetPromise) {
+                window.MathJax.typesetPromise([container]).then(() => {
+                    console.log('数学公式渲染完成');
+                }).catch((error) => {
+                    console.error('MathJax 渲染失败:', error);
+                });
+            } else if (window.MathJax && window.MathJax.Hub) {
+                // 针对 MathJax v2 的降级支持
+                window.MathJax.Hub.Queue(["Typeset", window.MathJax.Hub, container]);
+                console.log('数学公式渲染完成 (MathJax v2)');
+            } else {
+                console.warn('MathJax 未正确加载或配置');
+            }
+        } catch (error) {
+            console.error('数学公式渲染失败:', error);
+        }
+    }
+
+    // 添加代码复制功能
+    function addCopyButtons() {
+        const copyButtons = document.querySelectorAll('.copy-btn');
+        copyButtons.forEach(button => {
+            button.addEventListener('click', function() {
+                copyCode(this);
+            });
+        });
+    }
+    
+    // 复制代码功能
+    function copyCode(button) {
+        console.log('复制代码按钮被点击');
+        try {
+            let codeText = '';
+            
+            // 尝试从 data-code 属性获取代码
+            const encodedCode = button.getAttribute('data-code');
+            if (encodedCode) {
+                codeText = decodeURIComponent(encodedCode);
+            } else {
+                // 降级方案：从相邻的 code 元素获取
+                const codeBlock = button.parentElement.querySelector('code');
+                if (!codeBlock) {
+                    console.error('未找到代码块');
+                    return;
+                }
+                codeText = codeBlock.textContent || codeBlock.innerText;
+            }
+            
+            console.log('准备复制的代码长度:', codeText.length);
+            
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                // 现代浏览器
+                navigator.clipboard.writeText(codeText).then(() => {
+                    console.log('代码复制成功');
+                    showCopySuccess(button);
+                }).catch((err) => {
+                    console.warn('Clipboard API 失败，使用降级方案:', err);
+                    fallbackCopy(codeText, button);
+                });
+            } else {
+                // 降级方案
+                console.log('使用降级复制方案');
+                fallbackCopy(codeText, button);
+            }
+        } catch (error) {
+            console.error('复制代码时出错:', error);
+        }
+    }
+    
+    // 显示复制成功状态
+    function showCopySuccess(button) {
+        const originalText = button.innerHTML;
+        const originalBg = button.style.background;
+        
+        button.innerHTML = '✅ 已复制';
+        button.style.background = '#27ae60';
+        button.disabled = true;
+        
+        setTimeout(() => {
+            button.innerHTML = originalText;
+            button.style.background = originalBg || '#3498db';
+            button.disabled = false;
+        }, 2000);
+    }
+    
+    // 降级复制方案
+    function fallbackCopy(text, button) {
+        try {
+            const textArea = document.createElement('textarea');
+            textArea.value = text;
+            textArea.style.position = 'fixed';
+            textArea.style.left = '-999999px';
+            textArea.style.top = '-999999px';
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            
+            const successful = document.execCommand('copy');
+            document.body.removeChild(textArea);
+            
+            if (successful) {
+                console.log('降级复制成功');
+                showCopySuccess(button);
+            } else {
+                console.error('降级复制失败');
+                alert('复制失败，请手动选择代码');
+            }
+        } catch (err) {
+            console.error('降级复制出错:', err);
+            alert('复制功能不可用，请手动选择代码');
+        }
+    }
+
+    // 对内容区域中的链接进行安全加固
     function hardenLinks() {
         const anchors = document.querySelectorAll('.blog-content-container a[href]');
         anchors.forEach(a => {
@@ -754,17 +1155,15 @@ window.MathJax = {
                 const protocol = url.protocol.toLowerCase();
                 const isHttp = protocol === 'http:' || protocol === 'https:';
                 const isAllowed = isHttp || protocol === 'mailto:' || protocol === 'tel:';
+                
                 if (!isAllowed) {
                     a.removeAttribute('href');
                     return;
                 }
-                if (isHttp) {
-                    const relParts = new Set((a.getAttribute('rel') || '').split(/\s+/).filter(Boolean));
-                    ['noopener', 'noreferrer', 'nofollow'].forEach(v => relParts.add(v));
-                    a.setAttribute('rel', Array.from(relParts).join(' '));
-                    if (url.origin !== window.location.origin) {
-                        a.setAttribute('target', '_blank');
-                    }
+                
+                if (isHttp && url.origin !== window.location.origin) {
+                    a.setAttribute('rel', 'noopener noreferrer nofollow');
+                    a.setAttribute('target', '_blank');
                 }
             } catch (e) {
                 // 非法URL，移除href
@@ -772,6 +1171,7 @@ window.MathJax = {
             }
         });
     }
+    // 主题切换功能
     const toggleBtn = document.getElementById('toggle-theme');
     const isDark = localStorage.getItem('theme') === 'dark';
 
@@ -779,14 +1179,14 @@ window.MathJax = {
         document.body.classList.add('dark-mode');
         toggleBtn.innerText = '切换亮色模式';
     }
-    updatePygmentsTheme(isDark);
+    updateHighlightTheme(isDark);
 
     toggleBtn.addEventListener('click', () => {
         document.body.classList.toggle('dark-mode');
         const nowDark = document.body.classList.contains('dark-mode');
         localStorage.setItem('theme', nowDark ? 'dark' : 'light');
         toggleBtn.innerText = nowDark ? '切换亮色模式' : '切换深色模式';
-        updatePygmentsTheme(nowDark);
+        updateHighlightTheme(nowDark);
     });
 
     // 阅读进度条
@@ -806,46 +1206,7 @@ window.MathJax = {
         progressBar.style.width = scrollPercent + '%';
     }
 
-    // 代码块复制功能
-    function addCopyButtons() {
-        const codeBlocks = document.querySelectorAll('.highlight');
-        codeBlocks.forEach((block, index) => {
-            const button = document.createElement('button');
-            button.innerHTML = '📋 复制';
-            button.className = 'copy-btn';
 
-            block.style.position = 'relative';
-            block.appendChild(button);
-
-            button.addEventListener('click', async () => {
-                const code = block.querySelector('code');
-                if (code) {
-                    try {
-                        await navigator.clipboard.writeText(code.textContent);
-                        button.innerHTML = '✅ 已复制';
-                        button.style.background = '#27ae60';
-                        setTimeout(() => {
-                            button.innerHTML = '📋 复制';
-                            button.style.background = '#3498db';
-                        }, 2000);
-                    } catch (err) {
-                        // 降级方案
-                        const textArea = document.createElement('textarea');
-                        textArea.value = code.textContent;
-                        document.body.appendChild(textArea);
-                        textArea.select();
-                        document.execCommand('copy');
-                        document.body.removeChild(textArea);
-
-                        button.innerHTML = '✅ 已复制';
-                        setTimeout(() => {
-                            button.innerHTML = '📋 复制';
-                        }, 2000);
-                    }
-                }
-            });
-        });
-    }
 
     // 图片点击放大功能
     function addImageZoom() {
@@ -885,80 +1246,64 @@ window.MathJax = {
         });
     }
 
-    // 调整数学公式大小以适应容器宽度
-    function adjustMathFormulaSizes() {
-        const container = document.querySelector('.blog-content-container');
-        if (!container) return;
 
-        const containerWidth = container.clientWidth;
-        const mathContainers = container.querySelectorAll('mjx-container[jax="CHTML"]');
-
-        mathContainers.forEach(mathContainer => {
-            const mathElement = mathContainer.querySelector('mjx-math');
-            if (!mathElement) return;
-
-            // 获取数学公式的实际宽度
-            const mathWidth = mathContainer.scrollWidth;
-            const isDisplayMode = mathContainer.getAttribute('display') === 'true';
-            
-            // 计算容器可用宽度（考虑内边距）
-            const availableWidth = containerWidth - 80; // 减去左右内边距
-            
-            if (mathWidth > availableWidth) {
-                // 计算需要的缩放比例
-                const scale = availableWidth / mathWidth;
-                const newFontSize = scale * (isDisplayMode ? 1.1 : 1.0);
-                
-                // 设置最小字体大小限制
-                const minFontSize = isDisplayMode ? 0.7 : 0.8;
-                const finalFontSize = Math.max(newFontSize, minFontSize);
-                
-                mathElement.style.fontSize = finalFontSize + 'em';
-                
-                // 为行内公式添加水平滚动
-                if (!isDisplayMode && scale < 0.8) {
-                    mathContainer.style.overflowX = 'auto';
-                    mathContainer.style.display = 'inline-block';
-                    mathContainer.style.maxWidth = '100%';
-                }
-            }
-        });
-
-        // 处理移动端的特殊情况
-        if (window.innerWidth <= 768) {
-            mathContainers.forEach(mathContainer => {
-                const mathElement = mathContainer.querySelector('mjx-math');
-                if (!mathElement) return;
-
-                const isDisplayMode = mathContainer.getAttribute('display') === 'true';
-                const currentFontSize = parseFloat(window.getComputedStyle(mathElement).fontSize);
-                
-                // 在移动端进一步缩小公式
-                if (isDisplayMode) {
-                    mathElement.style.fontSize = Math.min(currentFontSize * 0.9, 16) + 'px';
-                } else {
-                    mathElement.style.fontSize = Math.min(currentFontSize * 0.85, 14) + 'px';
-                }
-            });
-        }
-    }
 
     // 滚动事件监听
     window.addEventListener('scroll', updateReadingProgress);
 
-    // 窗口大小变化时重新调整数学公式大小
-    let resizeTimeout;
-    window.addEventListener('resize', () => {
-        clearTimeout(resizeTimeout);
-        resizeTimeout = setTimeout(() => {
-            adjustMathFormulaSizes();
-        }, 200);
-    });
 
-    // 页面加载时自动适配系统主题
+
+    // 等待所有依赖加载完成
+    function waitForDependencies(callback, maxAttempts = 100) {
+        let attempts = 0;
+        
+        function check() {
+            attempts++;
+            
+            // 详细检查每个依赖
+            const dependencies = {
+                'marked': typeof marked !== 'undefined',
+                'hljs': typeof hljs !== 'undefined', 
+                'DOMPurify': typeof DOMPurify !== 'undefined',
+                'MathJax': typeof MathJax !== 'undefined'
+            };
+            
+            console.log(`依赖检查 (${attempts}/${maxAttempts}):`, dependencies);
+            
+            if (dependencies.marked && dependencies.hljs && dependencies.DOMPurify && dependencies.MathJax) {
+                console.log('✅ 所有依赖已加载完成');
+                callback();
+                return;
+            }
+            
+            if (attempts >= maxAttempts) {
+                console.error('❌ 依赖加载超时，缺失的依赖:', 
+                    Object.keys(dependencies).filter(key => !dependencies[key]));
+                callback(); // 仍然尝试初始化
+                return;
+            }
+            
+            setTimeout(check, 200); // 200ms 后重试
+        }
+        
+        check();
+    }
+
+    // 页面加载时自动适配系统主题和初始化
     document.addEventListener('DOMContentLoaded', () => {
-        renderUserContent();
-        hardenLinks();
+        waitForDependencies(() => {
+            // 初始化 Markdown 渲染器
+            if (initMarkdownRenderer()) {
+                // 渲染内容
+                renderUserContent();
+            } else {
+                console.error('Markdown 渲染器初始化失败');
+                document.getElementById('userContentContainer').innerHTML = 
+                    '<p class="text-danger">内容加载失败，请刷新页面重试。</p>';
+            }
+        });
+        
+        // 主题设置
         let isDark = localStorage.getItem('theme') === 'dark';
         if (!localStorage.getItem('theme')) {
             if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
@@ -967,9 +1312,8 @@ window.MathJax = {
                 isDark = true;
             }
         }
-        updatePygmentsTheme(document.body.classList.contains('dark-mode'));
+        updateHighlightTheme(document.body.classList.contains('dark-mode'));
         updateReadingProgress();
-        addCopyButtons();
         addImageZoom();
 
         // 平滑滚动到内容区域（如果有锚点）
@@ -981,9 +1325,9 @@ window.MathJax = {
         }
     });
 
-    function updatePygmentsTheme(isDark) {
-        document.getElementById('pygments-default').disabled = isDark;
-        document.getElementById('pygments-monokai').disabled = !isDark;
+    function updateHighlightTheme(isDark) {
+        document.getElementById('hljs-light').disabled = isDark;
+        document.getElementById('hljs-dark').disabled = !isDark;
     }
 
     // 点赞功能

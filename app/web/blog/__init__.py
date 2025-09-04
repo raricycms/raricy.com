@@ -7,7 +7,7 @@ from app.service.notifications import send_notification
 import os
 import uuid
 from datetime import datetime
-from app.utils.process_markdown import safe_markdown_to_html
+# 前端处理 Markdown，无需后端转换
 import shutil
 
 blog_bp = Blueprint('blog', __name__)
@@ -71,7 +71,7 @@ def blog_detail(blog_id):
     content = content_obj.content if content_obj else ''
 
     blog_dict = blog.to_dict()
-    blog_dict['content'] = safe_markdown_to_html(content)
+    blog_dict['content'] = content  # 直接返回原始 Markdown，前端处理
     # 当前用户是否已点赞
     liked = False
     try:
