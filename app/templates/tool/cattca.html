@@ -87,6 +87,7 @@
       display: flex;
       gap: 10px;
       margin-top: 15px;
+      flex-wrap: wrap;
     }
 
     .btn {
@@ -121,6 +122,12 @@
       background: linear-gradient(45deg, rgb(127, 140, 141), rgb(108, 123, 125));
       transform: translateY(-2px);
       box-shadow: 0 4px 12px rgba(149, 165, 166, 0.4);
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      pointer-events: none;
     }
 
     .output {
@@ -223,6 +230,12 @@
       
       .button-group {
         flex-direction: column;
+        gap: 8px;
+      }
+      
+      .btn {
+        padding: 10px 20px;
+        font-size: 14px;
       }
     }
 
@@ -255,7 +268,10 @@
       <textarea class="script-input" id="script-input" placeholder="在这里输入你的 Cattca 脚本..."></textarea>
       <div class="button-group">
         <button class="btn btn-primary" id="run-btn">▶️ 运行脚本</button>
-        <button class="btn btn-secondary" id="clear-btn">🗑️ 清空</button>
+        <button class="btn btn-secondary" id="undo-btn" disabled>↶ 撤回</button>
+        <button class="btn btn-secondary" id="redo-btn" disabled>↷ 重做</button>
+        <button class="btn btn-secondary" id="save-btn">💾 保存脚本</button>
+        <button class="btn btn-secondary" id="load-btn">📁 加载脚本</button>
         <button class="btn btn-secondary" id="example-btn">📖 加载示例</button>
       </div>
     </div>
@@ -276,14 +292,76 @@
     const choicesDiv = document.querySelector('#choices');
     const statusDiv = document.querySelector('#status');
     const runBtn = document.querySelector('#run-btn');
-    const clearBtn = document.querySelector('#clear-btn');
+    const undoBtn = document.querySelector('#undo-btn');
+    const redoBtn = document.querySelector('#redo-btn');
+    const saveBtn = document.querySelector('#save-btn');
+    const loadBtn = document.querySelector('#load-btn');
     const exampleBtn = document.querySelector('#example-btn');
 
     let interpreter = null;
 
+    // 历史记录系统
+    let history = [];
+    let historyIndex = -1;
+    let isUndoRedoAction = false; // 防止在撤回/重做时触发新的历史记录
+
     function updateStatus(text, type = 'ready') {
       statusDiv.textContent = text;
       statusDiv.className = `status ${type}`;
+    }
+
+    // 添加到历史记录
+    function addToHistory(content) {
+      if (isUndoRedoAction) return; // 撤回/重做操作不记录历史
+      
+      // 如果当前不在历史记录的末尾，移除后面的记录
+      if (historyIndex < history.length - 1) {
+        history = history.slice(0, historyIndex + 1);
+      }
+      
+      // 只有当内容真的改变时才添加到历史记录
+      if (history.length === 0 || history[history.length - 1] !== content) {
+        history.push(content);
+        historyIndex = history.length - 1;
+        
+        // 限制历史记录数量，避免内存过度使用
+        if (history.length > 100) {
+          history.shift();
+          historyIndex--;
+        }
+      }
+      
+      updateUndoRedoButtons();
+    }
+
+    // 更新撤回/重做按钮状态
+    function updateUndoRedoButtons() {
+      undoBtn.disabled = historyIndex <= 0;
+      redoBtn.disabled = historyIndex >= history.length - 1;
+    }
+
+    // 撤回操作
+    function undo() {
+      if (historyIndex > 0) {
+        historyIndex--;
+        isUndoRedoAction = true;
+        scriptInput.value = history[historyIndex];
+        isUndoRedoAction = false;
+        updateUndoRedoButtons();
+        updateStatus('已撤回', 'ready');
+      }
+    }
+
+    // 重做操作
+    function redo() {
+      if (historyIndex < history.length - 1) {
+        historyIndex++;
+        isUndoRedoAction = true;
+        scriptInput.value = history[historyIndex];
+        isUndoRedoAction = false;
+        updateUndoRedoButtons();
+        updateStatus('已重做', 'ready');
+      }
     }
 
     function appendOutput(txt) {
@@ -351,11 +429,89 @@
       }
     }
 
-    // 清空编辑器
-    function clearEditor() {
-      scriptInput.value = '';
-      clearOutput();
-      updateStatus('已清空', 'ready');
+
+    // 保存脚本到本地文件
+    function saveScript() {
+      const script = scriptInput.value.trim();
+      if (!script) {
+        updateStatus('没有内容可保存', 'error');
+        return;
+      }
+
+      const blob = new Blob([script], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'script.cattca';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      updateStatus('脚本已保存', 'ready');
+      saveToLocalStorage(); // 同时保存到浏览器
+    }
+
+    // 从本地文件加载脚本
+    function loadScript() {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.cattca';
+      input.onchange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            const loadedContent = e.target.result;
+            scriptInput.value = loadedContent;
+            addToHistory(loadedContent); // 添加到历史记录
+            updateStatus('脚本已加载', 'ready');
+            saveToLocalStorage(); // 加载后自动保存到浏览器
+          };
+          reader.readAsText(file);
+        }
+      };
+      input.click();
+    }
+
+    // 保存到浏览器 localStorage
+    function saveToLocalStorage() {
+      const script = scriptInput.value;
+      localStorage.setItem('cattca_script', script);
+      localStorage.setItem('cattca_script_timestamp', new Date().toISOString());
+      
+      // 显示自动保存指示器
+      showAutoSaveIndicator();
+    }
+
+    // 显示自动保存指示器
+    function showAutoSaveIndicator() {
+      const originalText = statusDiv.textContent;
+      const originalClass = statusDiv.className;
+      
+      statusDiv.textContent = '自动保存中...';
+      statusDiv.className = 'status running';
+      
+      setTimeout(() => {
+        statusDiv.textContent = originalText;
+        statusDiv.className = originalClass;
+      }, 800);
+    }
+
+    // 从浏览器 localStorage 加载
+    function loadFromLocalStorage() {
+      const savedScript = localStorage.getItem('cattca_script');
+      if (savedScript) {
+        scriptInput.value = savedScript;
+        addToHistory(savedScript); // 添加到历史记录
+        const timestamp = localStorage.getItem('cattca_script_timestamp');
+        if (timestamp) {
+          const saveTime = new Date(timestamp).toLocaleString();
+          updateStatus(`已从浏览器缓存恢复 (${saveTime})`, 'ready');
+        }
+        return true;
+      }
+      return false;
     }
 
     // 加载示例脚本
@@ -388,13 +544,36 @@ if cntsleep > 3 ->goto 4/>
 </exit/>`;
 
       scriptInput.value = exampleScript;
+      addToHistory(exampleScript); // 添加到历史记录
       updateStatus('示例已加载', 'ready');
     }
 
     // 事件监听器
     runBtn.addEventListener('click', runScript);
-    clearBtn.addEventListener('click', clearEditor);
+    undoBtn.addEventListener('click', undo);
+    redoBtn.addEventListener('click', redo);
+    saveBtn.addEventListener('click', saveScript);
+    loadBtn.addEventListener('click', loadScript);
     exampleBtn.addEventListener('click', loadExample);
+
+    // 自动保存功能和历史记录 - 当文本改变时
+    let autoSaveTimeout;
+    let historyTimeout;
+    scriptInput.addEventListener('input', () => {
+      const currentContent = scriptInput.value;
+      
+      // 添加到历史记录（延迟500ms避免每个字符都记录）
+      clearTimeout(historyTimeout);
+      historyTimeout = setTimeout(() => {
+        addToHistory(currentContent);
+      }, 500);
+      
+      // 自动保存（延迟1秒）
+      clearTimeout(autoSaveTimeout);
+      autoSaveTimeout = setTimeout(() => {
+        saveToLocalStorage();
+      }, 1000);
+    });
 
     // 键盘快捷键
     scriptInput.addEventListener('keydown', (e) => {
@@ -402,10 +581,24 @@ if cntsleep > 3 ->goto 4/>
         e.preventDefault();
         runScript();
       }
+      if (e.ctrlKey && e.key === 's') {
+        e.preventDefault();
+        saveScript();
+      }
+      if (e.ctrlKey && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      }
+      if (e.ctrlKey && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+        e.preventDefault();
+        redo();
+      }
     });
 
-    // 初始化时加载示例
-    loadExample();
+    // 初始化 - 优先从浏览器缓存加载，否则加载示例
+    if (!loadFromLocalStorage()) {
+      loadExample();
+    }
   </script>
 </body>
 </html>
