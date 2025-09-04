@@ -47,35 +47,57 @@ def batch_detail(batch_id):
     batch_dir = os.path.join(current_app.instance_path, "stories", f"{batch_id}")
     for story_id in os.listdir(batch_dir):
         story_type = ''
+        story_path = os.path.join(batch_dir, story_id)
+        
+        # 检查是否是markdown文件
         if story_id.endswith(".md"):
             story_type = 'markdown'
-        elif story_id.endswith(".cattca"):
+            story_id = story_id.split(".")[0]
+        # 检查是否是cattca文件夹
+        elif os.path.isdir(story_path) and os.path.isfile(os.path.join(story_path, "info.json")) and os.path.isfile(os.path.join(story_path, "content.cattca")):
             story_type = 'cattca'
+        
         if story_type == '':
             continue
-        story_id = story_id.split(".")[0]
-        md_path = os.path.join(batch_dir, f"{story_id}.md")
-        cattca_path = os.path.join(batch_dir, f"{story_id}.cattca")
-        if os.path.isfile(md_path) or os.path.isfile(cattca_path):
-            if story_type == 'markdown':
+            
+        if story_type == 'markdown':
+            md_path = os.path.join(batch_dir, f"{story_id}.md")
+            if os.path.isfile(md_path):
                 post = frontmatter.load(md_path)
                 wordcnt = count_markdown_words(md_path)['non_whitespace_characters']
-            if story_type == 'cattca':
-                post = frontmatter.load(cattca_path)
-                wordcnt = count_markdown_words(cattca_path)['non_whitespace_characters']
-            meta = post.metadata
-            if meta.get("ignore", False):
-                continue
-            stories.append({
-                "id": story_id,
-                "title": meta.get("title", story_id),
-                "description": meta.get("description", ""),
-                "word_count": wordcnt,
-                "genre": meta.get("genre", "小说"),
-                "status": meta.get("status", "完结"),
-                "author": meta.get("author", info.get("author", "未知作者")),
-                "priority": meta.get("priority", 0)
-            })
+                meta = post.metadata
+                if meta.get("ignore", False):
+                    continue
+                stories.append({
+                    "id": story_id,
+                    "title": meta.get("title", story_id),
+                    "description": meta.get("description", ""),
+                    "word_count": wordcnt,
+                    "genre": meta.get("genre", "小说"),
+                    "status": meta.get("status", "完结"),
+                    "author": meta.get("author", info.get("author", "未知作者")),
+                    "priority": meta.get("priority", 0)
+                })
+        
+        elif story_type == 'cattca':
+            info_path = os.path.join(story_path, "info.json")
+            content_path = os.path.join(story_path, "content.cattca")
+            if os.path.isfile(info_path) and os.path.isfile(content_path):
+                with open(info_path, "r", encoding="utf-8") as f:
+                    meta = json.load(f)
+                if meta.get("ignore", False):
+                    continue
+                wordcnt = count_markdown_words(content_path)['non_whitespace_characters']
+                stories.append({
+                    "id": story_id,
+                    "title": meta.get("title", story_id),
+                    "description": meta.get("description", ""),
+                    "word_count": wordcnt,
+                    "genre": meta.get("genre", "小说"),
+                    "status": meta.get("status", "完结"),
+                    "author": meta.get("author", info.get("author", "未知作者")),
+                    "priority": meta.get("priority", 0)
+                })
     
     # 按照 priority 从大到小排序，如果没有 priority 字段则默认为 0
     stories.sort(key=lambda x: (x.get("priority", 0), bool(x.get("description", ""))), reverse=True)
@@ -89,13 +111,16 @@ def story_detail(batch_id, story_id):
     """
     # 拼出 Markdown 路径
     md_path = os.path.join(current_app.instance_path, "stories", f"{batch_id}", f"{story_id}.md")
-    cattca_path = os.path.join(current_app.instance_path, "stories", f"{batch_id}", f"{story_id}.cattca")
+    cattca_dir = os.path.join(current_app.instance_path, "stories", f"{batch_id}", story_id)
+    cattca_info_path = os.path.join(cattca_dir, "info.json")
+    cattca_content_path = os.path.join(cattca_dir, "content.cattca")
+    
     # 判断文件是否存在
-    if not os.path.isfile(md_path) and not os.path.isfile(cattca_path):
+    if not os.path.isfile(md_path) and not (os.path.isdir(cattca_dir) and os.path.isfile(cattca_info_path) and os.path.isfile(cattca_content_path)):
         abort(404)
     
     if os.path.isfile(md_path):
-    # 读取 Markdown 内容和 front matter
+        # 读取 Markdown 内容和 front matter
         post = frontmatter.load(md_path)
         md_content = post.content
         metadata = post.metadata
@@ -124,7 +149,32 @@ def story_detail(batch_id, story_id):
             story_content=html_content
         )
     
-    if os.path.isfile(cattca_path):
-        with open(cattca_path, "r", encoding="utf-8") as f:
+    if os.path.isdir(cattca_dir) and os.path.isfile(cattca_info_path) and os.path.isfile(cattca_content_path):
+        # 读取 cattca 的 info.json 和 content.cattca
+        with open(cattca_info_path, "r", encoding="utf-8") as f:
+            metadata = json.load(f)
+        with open(cattca_content_path, "r", encoding="utf-8") as f:
             story_content = f.read()
-        return render_template('story/cattca.html', title=story_id, content=story_content)
+        
+        # 获取批次信息
+        batch_info_path = os.path.join(current_app.instance_path, "stories", f"{batch_id}", "info.json")
+        if not os.path.isfile(batch_info_path):
+            abort(404)
+        with open(batch_info_path, "r", encoding="utf-8") as f:
+            batch_info = json.load(f)
+        
+        # 从 metadata 里获取信息
+        story_title = metadata.get("title", story_id)
+        story_author = metadata.get("author", batch_info.get("author", "未知作者"))
+        story_genre = metadata.get("genre", "小说")
+        story_status = metadata.get("status", "完结")
+        
+        return render_template(
+            'story/cattca.html', 
+            title=story_title,
+            author=story_author,
+            genre=story_genre,
+            status=story_status,
+            batch_id=batch_id,
+            content=story_content
+        )
