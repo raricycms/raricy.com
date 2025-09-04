@@ -249,6 +249,7 @@ class BlogLike(db.Model):
     blog_id = db.Column(db.String(36), db.ForeignKey('blogs.id'), nullable=False, index=True)
     user_id = db.Column(db.String(36), db.ForeignKey('users.id'), nullable=False, index=True)
     created_at = db.Column(db.DateTime, default=datetime.now)
+    notification_sent = db.Column(db.Boolean, default=False, nullable=False)  # 是否已发送点赞通知
 
     __table_args__ = (
         db.UniqueConstraint('blog_id', 'user_id', name='uq_blog_like_blog_user'),

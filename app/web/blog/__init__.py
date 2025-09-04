@@ -190,12 +190,12 @@ def like_toggle(blog_id):
         liked = False
     else:
         # 点赞
-        like = BlogLike(blog_id=blog_id, user_id=current_user.id)
+        like = BlogLike(blog_id=blog_id, user_id=current_user.id, notification_sent=False)
         db.session.add(like)
         blog.likes_count = (blog.likes_count or 0) + 1
         liked = True
         
-        # 发送点赞通知给文章作者（但不给自己发）
+        # 发送点赞通知给文章作者（但不给自己发，且只发送一次）
         if blog.author_id != current_user.id:
             try:
                 send_notification(
@@ -206,6 +206,8 @@ def like_toggle(blog_id):
                     object_id=blog_id,
                     detail=f"你的文章《{blog.title}》收到了一个新的点赞！"
                 )
+                # 标记通知已发送
+                like.notification_sent = True
             except Exception as e:
                 # 通知发送失败不影响点赞功能
                 current_app.logger.warning(f"Failed to send like notification: {e}")
