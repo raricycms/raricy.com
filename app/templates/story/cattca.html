@@ -33,7 +33,7 @@
     const choicesDiv = document.querySelector('#choices');
 
     function appendOutput(txt) {
-      outputDiv.innerText += txt + "\n";
+      outputDiv.innerText += txt;
     }
 
     function appendLog(txt) {
@@ -56,9 +56,49 @@
       });
     }
 
-    // 输入文本：这里仍然用 prompt
+    // 输入文本：使用非阻塞的输入框
     async function getInput(promptText) {
-      return window.prompt(promptText);
+      return new Promise(resolve => {
+        // 创建输入框
+        const inputDiv = document.createElement('div');
+        inputDiv.style.cssText = 'margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 6px; border: 1px solid #dee2e6;';
+        
+        const label = document.createElement('label');
+        label.textContent = promptText || '请输入:';
+        label.style.cssText = 'display: block; margin-bottom: 5px; font-weight: bold;';
+        
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.style.cssText = 'width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 4px; font-size: 16px;';
+        
+        const button = document.createElement('button');
+        button.textContent = '确定';
+        button.style.cssText = 'margin-top: 5px; padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;';
+        
+        inputDiv.appendChild(label);
+        inputDiv.appendChild(input);
+        inputDiv.appendChild(button);
+        
+        // 添加到输出区域
+        outputDiv.appendChild(inputDiv);
+        
+        // 自动聚焦输入框
+        input.focus();
+        
+        // 处理输入
+        const handleSubmit = () => {
+          const value = input.value;
+          outputDiv.removeChild(inputDiv);
+          resolve(value);
+        };
+        
+        button.onclick = handleSubmit;
+        input.onkeypress = (e) => {
+          if (e.key === 'Enter') {
+            handleSubmit();
+          }
+        };
+      });
     }
 
     const interpreter = new CattcaInterpreter(
