@@ -8,12 +8,6 @@
     <link rel="icon" href="{{ url_for('static', filename='img/favicon.png') }}" type="image/png">
 
     <title>{% block title %}聪明山{% endblock %}</title>
-    
-    <!-- 注入服务器端数据 -->
-    <meta name="user-authenticated" content="{% if current_user.is_authenticated %}true{% else %}false{% endif %}">
-    {% if current_user.is_authenticated %}
-    <meta name="notification-api-url" content="{{ url_for('notifications.api_unread_count') }}">
-    {% endif %}
 
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -22,194 +16,6 @@
 
     <!-- 自定义CSS -->
     <style>
-        /* Bootstrap fallback styles - 当Bootstrap加载失败时使用 */
-        .navbar-fallback {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            z-index: 1030;
-            background: #212529;
-            color: white;
-            padding: 0.5rem 1rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        
-        .navbar-fallback .brand {
-            font-size: 1.25rem;
-            font-weight: bold;
-            color: white;
-            text-decoration: none;
-            display: flex;
-            align-items: center;
-        }
-        
-        .navbar-fallback .brand img {
-            margin-right: 0.5rem;
-        }
-        
-        .navbar-fallback .nav-links {
-            display: flex;
-            list-style: none;
-            margin: 0;
-            padding: 0;
-            gap: 1rem;
-        }
-        
-        .navbar-fallback .nav-links a {
-            color: #ffffff;
-            text-decoration: none;
-            padding: 0.5rem;
-            border-radius: 0.25rem;
-            transition: background-color 0.3s ease;
-        }
-        
-        .navbar-fallback .nav-links a:hover {
-            background-color: rgba(255, 255, 255, 0.1);
-        }
-        
-        .navbar-fallback .user-menu {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            position: relative;
-        }
-        
-        .navbar-fallback .login-btn {
-            background: #007bff;
-            color: white;
-            padding: 0.5rem 1rem;
-            border-radius: 0.25rem;
-            text-decoration: none;
-            border: none;
-        }
-        
-        .navbar-fallback .login-btn:hover {
-            background: #0056b3;
-        }
-        
-        /* Fallback用户下拉菜单 */
-        .navbar-fallback .user-dropdown {
-            position: relative;
-            display: inline-block;
-        }
-        
-        .navbar-fallback .user-dropdown-toggle {
-            background: none;
-            border: none;
-            color: white;
-            padding: 0.5rem;
-            border-radius: 0.25rem;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            transition: background-color 0.3s ease;
-        }
-        
-        .navbar-fallback .user-dropdown-toggle:hover {
-            background-color: rgba(255, 255, 255, 0.1);
-        }
-        
-        .navbar-fallback .user-avatar {
-            width: 32px;
-            height: 32px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, #007bff, #0056b3);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-weight: bold;
-            font-size: 14px;
-            overflow: hidden;
-        }
-        
-        .navbar-fallback .user-avatar img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-        
-        .navbar-fallback .dropdown-arrow {
-            font-size: 0.8rem;
-            transition: transform 0.3s ease;
-        }
-        
-        .navbar-fallback .user-dropdown.open .dropdown-arrow {
-            transform: rotate(180deg);
-        }
-        
-        .navbar-fallback .dropdown-menu {
-            position: absolute;
-            top: 100%;
-            right: 0;
-            background: white;
-            border: 1px solid #dee2e6;
-            border-radius: 0.25rem;
-            box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
-            min-width: 200px;
-            z-index: 1000;
-            display: none;
-            padding: 0.5rem 0;
-        }
-        
-        .navbar-fallback .user-dropdown.open .dropdown-menu {
-            display: block;
-        }
-        
-        .navbar-fallback .dropdown-item {
-            display: block;
-            padding: 0.5rem 1rem;
-            color: #212529;
-            text-decoration: none;
-            transition: background-color 0.3s ease;
-        }
-        
-        .navbar-fallback .dropdown-item:hover {
-            background-color: #f8f9fa;
-        }
-        
-        .navbar-fallback .dropdown-divider {
-            height: 1px;
-            background-color: #dee2e6;
-            margin: 0.5rem 0;
-        }
-        
-        .navbar-fallback .dropdown-header {
-            padding: 0.5rem 1rem;
-            font-size: 0.875rem;
-            color: #6c757d;
-            font-weight: 600;
-        }
-        
-        .navbar-fallback .dropdown-item.text-danger {
-            color: #dc3545;
-        }
-        
-        .navbar-fallback .dropdown-item.text-danger:hover {
-            background-color: #f8d7da;
-        }
-        
-        /* 当Bootstrap加载失败时隐藏Bootstrap导航栏 */
-        .bootstrap-failed .navbar {
-            display: none !important;
-        }
-        
-        /* 当Bootstrap加载失败时显示fallback导航栏 */
-        .bootstrap-failed .navbar-fallback {
-            display: flex !important;
-        }
-        
-        /* 默认隐藏fallback导航栏 */
-        .navbar-fallback {
-            display: none;
-        }
-        
-        /* Bootstrap正常加载时的样式 */
         .navbar {
             background: rgba(33, 37, 41, 0.95) !important;
             backdrop-filter: blur(10px);
@@ -363,108 +169,12 @@
             font-size: 0.65rem;
             padding: 1px 4px;
         }
-        
-        /* Fallback导航栏响应式样式 */
-        @media (max-width: 768px) {
-            .navbar-fallback {
-                flex-direction: column;
-                padding: 0.5rem;
-                gap: 0.5rem;
-            }
-            
-            .navbar-fallback .nav-links {
-                flex-wrap: wrap;
-                justify-content: center;
-                gap: 0.5rem;
-            }
-            
-            .navbar-fallback .nav-links a {
-                padding: 0.25rem 0.5rem;
-                font-size: 0.9rem;
-            }
-            
-            .navbar-fallback .user-menu {
-                gap: 0.25rem;
-            }
-            
-            .navbar-fallback .login-btn {
-                padding: 0.25rem 0.5rem;
-                font-size: 0.9rem;
-            }
-            
-            .navbar-fallback .user-dropdown-toggle {
-                padding: 0.25rem;
-                font-size: 0.9rem;
-            }
-            
-            .navbar-fallback .user-avatar {
-                width: 28px;
-                height: 28px;
-                font-size: 12px;
-            }
-            
-            .navbar-fallback .dropdown-menu {
-                min-width: 180px;
-                right: -1rem;
-            }
-        }
     </style>
     {% block extra_css %}{% endblock %}
 </head>
 
 <body>
-    <!-- Fallback导航栏 - 当Bootstrap加载失败时显示 -->
-    <div class="navbar-fallback">
-        <a href="/" class="brand">
-            <img src="/static/img/favicon.png" alt="My Icon" width="30" height="30">
-            <span>Raricy.com - 聪明山</span>
-        </a>
-        <ul class="nav-links">
-            <li><a href="/">首页</a></li>
-            <li><a href="{{ url_for('story.menu') }}">故事</a></li>
-            <li><a href="{{ url_for('game.menu') }}">玩具</a></li>
-            <li><a href="{{ url_for('blog.menu') }}">博客</a></li>
-            <li><a href="{{ url_for('sitemap.index') }}">站点地图</a></li>
-        </ul>
-        <div class="user-menu">
-            {% if current_user.is_authenticated %}
-                <!-- 通知按钮 -->
-                <a href="{{ url_for('notifications.notification_page') }}" class="notification-btn" title="我的通知">
-                    🔔
-                    <span class="notification-badge" id="fallbackNotificationBadge" style="display: none;">0</span>
-                </a>
-                <!-- 用户下拉菜单 -->
-                <div class="user-dropdown">
-                    <button class="user-dropdown-toggle" onclick="toggleFallbackDropdown()">
-                        <div class="user-avatar">
-                            <img src="{{ url_for('auth.get_avatar', user_id=current_user.id) }}" 
-                                 style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">
-                        </div>
-                        <span>{{ current_user.username }}</span>
-                        <span class="dropdown-arrow">▼</span>
-                    </button>
-                    <div class="dropdown-menu">
-                        <div class="dropdown-header">用户信息</div>
-                        <div class="dropdown-divider"></div>
-                        <a href="{{ url_for('auth.profile', user_id=current_user.id) }}" class="dropdown-item">👤 个人资料</a>
-                        <a href="{{ url_for('notifications.notification_page') }}" class="dropdown-item">🔔 我的通知</a>
-                        <a href="{{ url_for('auth.notification_settings') }}" class="dropdown-item">⚙️ 通知设置</a>
-                        {% if current_user.is_admin %}
-                        <a href="/blog/admin" class="dropdown-item">🔧 博客管理后台</a>
-                        <a href="{{ url_for('auth.user_management') }}" class="dropdown-item">👥 用户管理</a>
-                        {% endif %}
-                        <div class="dropdown-divider"></div>
-                        <a href="#" onclick="logout()" class="dropdown-item text-danger">🚪 退出登录</a>
-                    </div>
-                </div>
-            {% else %}
-                <a href="{{ url_for('auth.login') }}" class="login-btn">登录</a>
-                <a href="{{ url_for('auth.register') }}">注册</a>
-            {% endif %}
-        </div>
-    </div>
-
-    <!-- Bootstrap导航栏 -->
+    <!-- 导航栏 -->
     <nav class="navbar navbar-expand-lg navbar-dark fixed-top">
         <div class="container">
             <a class="navbar-brand d-flex align-items-center" href="/">
@@ -489,7 +199,7 @@
                         <a class="nav-link" href="{{ url_for('blog.menu') }}">博客</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('tool.menu') }}">工具</a>
+                        <a class="nav-link" href="{{ url_for('sitemap.index') }}">站点地图</a>
                     </li>
                 </ul>
                 
@@ -575,27 +285,6 @@
 
     <!-- 通用JavaScript -->
     <script>
-        // 从meta标签读取服务器端数据
-        const userAuthenticatedMeta = document.querySelector('meta[name="user-authenticated"]');
-        const notificationApiUrlMeta = document.querySelector('meta[name="notification-api-url"]');
-        
-        // 安全地解析JSON
-        function safeJsonParse(jsonString, defaultValue) {
-            try {
-                return JSON.parse(jsonString);
-            } catch (e) {
-                console.error('JSON解析错误:', e, '原始内容:', jsonString);
-                return defaultValue;
-            }
-        }
-        
-        window.isUserAuthenticated = userAuthenticatedMeta ? (userAuthenticatedMeta.content === 'true') : false;
-        window.notificationApiUrl = notificationApiUrlMeta ? notificationApiUrlMeta.content : null;
-        
-        console.log('用户认证状态:', window.isUserAuthenticated);
-        console.log('通知API URL:', window.notificationApiUrl);
-        console.log('user-authenticated meta内容:', userAuthenticatedMeta ? userAuthenticatedMeta.content : '不存在');
-        console.log('notification-api-url meta内容:', notificationApiUrlMeta ? notificationApiUrlMeta.content : '不存在');
         // 滚动时导航栏效果
         window.addEventListener('scroll', function () {
             const navbar = document.querySelector('.navbar');
@@ -696,18 +385,8 @@
 
         // 获取并更新通知数量
         function updateNotificationCount() {
-            if (!window.isUserAuthenticated) {
-                console.log('用户未登录，跳过通知数量更新');
-                return;
-            }
-            
-            if (!window.notificationApiUrl) {
-                console.log('通知API URL未设置');
-                return;
-            }
-            
-            console.log('正在获取通知数量...', window.notificationApiUrl);
-            fetch(window.notificationApiUrl)
+            {% if current_user.is_authenticated %}
+            fetch('{{ url_for("notifications.api_unread_count") }}')
                 .then(response => response.json())
                 .then(data => {
                     const badge = document.getElementById('notificationBadge');
@@ -732,59 +411,15 @@
                 .catch(error => {
                     console.error('获取通知数量失败:', error);
                 });
-        }
-
-        // 检测Bootstrap是否加载成功
-        function checkBootstrapLoaded() {
-            // 检查Bootstrap CSS文件是否加载成功
-            const bootstrapLink = document.querySelector('link[href*="bootstrap"]');
-            if (!bootstrapLink) {
-                console.warn('Bootstrap CSS链接未找到');
-                document.body.classList.add('bootstrap-failed');
-                return;
-            }
-            
-            // 使用更简单的方法：检查Bootstrap特有的CSS规则是否存在
-            const testElement = document.createElement('div');
-            testElement.className = 'container';
-            testElement.style.visibility = 'hidden';
-            testElement.style.position = 'absolute';
-            testElement.style.top = '-9999px';
-            document.body.appendChild(testElement);
-            
-            const computedStyle = window.getComputedStyle(testElement);
-            
-            // 检查Bootstrap container的box-sizing属性（Bootstrap使用border-box）
-            const hasBootstrap = computedStyle.boxSizing === 'border-box';
-            
-            // 调试信息
-            console.log('Bootstrap检测详情:', {
-                boxSizing: computedStyle.boxSizing,
-                paddingLeft: computedStyle.paddingLeft,
-                paddingRight: computedStyle.paddingRight,
-                marginLeft: computedStyle.marginLeft,
-                marginRight: computedStyle.marginRight,
-                maxWidth: computedStyle.maxWidth,
-                hasBootstrap: hasBootstrap
-            });
-            
-            document.body.removeChild(testElement);
-            
-            if (!hasBootstrap) {
-                console.warn('Bootstrap CSS未正确加载，使用fallback样式');
-                document.body.classList.add('bootstrap-failed');
-            } else {
-                console.log('Bootstrap CSS加载成功');
-            }
+            {% endif %}
         }
 
         // 页面加载时获取通知数量
         document.addEventListener('DOMContentLoaded', function() {
             updateNotificationCount();
-            updateFallbackNotificationCount();
             
-            // 延迟检测Bootstrap，给CSS加载时间
-            setTimeout(checkBootstrapLoaded, 100);
+            // 每30秒刷新一次通知数量
+            setInterval(updateNotificationCount, 30000);
         });
 
         // 当用户点击通知按钮时，延迟更新计数（给服务器时间处理）
@@ -798,53 +433,6 @@
         window.refreshNotificationCount = function() {
             updateNotificationCount();
         };
-
-        // Fallback下拉菜单控制
-        function toggleFallbackDropdown() {
-            const dropdown = document.querySelector('.navbar-fallback .user-dropdown');
-            if (dropdown) {
-                dropdown.classList.toggle('open');
-            }
-        }
-
-        // 点击外部关闭fallback下拉菜单
-        document.addEventListener('click', function(e) {
-            const dropdown = document.querySelector('.navbar-fallback .user-dropdown');
-            const toggle = document.querySelector('.navbar-fallback .user-dropdown-toggle');
-            
-            if (dropdown && toggle && !toggle.contains(e.target) && !dropdown.contains(e.target)) {
-                dropdown.classList.remove('open');
-            }
-        });
-
-        // 更新fallback通知数量
-        function updateFallbackNotificationCount() {
-            if (!window.isUserAuthenticated || !window.notificationApiUrl) {
-                return;
-            }
-            
-            fetch(window.notificationApiUrl)
-                .then(response => response.json())
-                .then(data => {
-                    const badge = document.getElementById('fallbackNotificationBadge');
-                    if (badge) {
-                        const count = data.count || 0;
-                        if (count > 0) {
-                            badge.style.display = 'inline-block';
-                            if (count > 99) {
-                                badge.textContent = '99+';
-                            } else {
-                                badge.textContent = count;
-                            }
-                        } else {
-                            badge.style.display = 'none';
-                        }
-                    }
-                })
-                .catch(error => {
-                    console.error('获取fallback通知数量失败:', error);
-                });
-        }
     </script>
 
     <!-- 页面特定的JavaScript -->
