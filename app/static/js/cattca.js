@@ -240,7 +240,8 @@ export class CattcaInterpreter {
     if (cmd.startsWith('log ')) {
       const expr = cmd.slice(4).trim();
       const v = this.evalExpr(expr);
-      this.logCb(v);
+      // 确保传递给logCb的是字符串类型
+      this.logCb(String(v));
       return;
     }
 
@@ -248,7 +249,8 @@ export class CattcaInterpreter {
     if (cmd.startsWith('apply ')) {
       const expr = cmd.slice(6).trim();
       const v = this.evalExpr(expr);
-      this.outputCb(v);
+      // 确保传递给outputCb的是字符串类型
+      this.outputCb(String(v));
       return;
     }
 
