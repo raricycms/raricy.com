@@ -209,6 +209,358 @@
             display: none;
         }
         
+        /* Bootstrap失败时的全局样式修复 */
+        .bootstrap-failed {
+            /* 确保基本字体和颜色 */
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            line-height: 1.5;
+            color: #212529;
+        }
+        
+        .bootstrap-failed body {
+            margin: 0;
+            padding: 0;
+            background-color: #ffffff;
+        }
+        
+        .bootstrap-failed h1, .bootstrap-failed h2, .bootstrap-failed h3, 
+        .bootstrap-failed h4, .bootstrap-failed h5, .bootstrap-failed h6 {
+            color: #212529;
+            font-weight: 600;
+            margin-top: 0;
+            margin-bottom: 0.5rem;
+        }
+        
+        .bootstrap-failed p {
+            color: #495057;
+            margin-bottom: 1rem;
+        }
+        
+        .bootstrap-failed a {
+            color: #007bff;
+            text-decoration: none;
+        }
+        
+        .bootstrap-failed a:hover {
+            color: #0056b3;
+            text-decoration: underline;
+        }
+        
+        /* Hero section 样式修复 */
+        .bootstrap-failed .hero-section {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #ffffff !important;
+            padding: 4rem 1rem;
+            text-align: center;
+        }
+        
+        .bootstrap-failed .hero-section h1 {
+            color: #ffffff !important;
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+        }
+        
+        .bootstrap-failed .hero-section p {
+            color: #ffffff !important;
+            font-size: 1.25rem;
+            margin-bottom: 2rem;
+            opacity: 0.9;
+        }
+        
+        .bootstrap-failed .hero-section .btn {
+            display: inline-block;
+            padding: 0.75rem 1.5rem;
+            background-color: #007bff;
+            color: #ffffff;
+            border: none;
+            border-radius: 0.25rem;
+            text-decoration: none;
+            font-weight: 500;
+            transition: background-color 0.3s ease;
+        }
+        
+        .bootstrap-failed .hero-section .btn:hover {
+            background-color: #0056b3;
+            color: #ffffff;
+        }
+        
+        /* 卡片样式修复 */
+        .bootstrap-failed .card {
+            background: #ffffff;
+            border: 1px solid #dee2e6;
+            border-radius: 0.25rem;
+            box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+            margin-bottom: 1rem;
+        }
+        
+        .bootstrap-failed .card-body {
+            padding: 1.25rem;
+        }
+        
+        .bootstrap-failed .card-title {
+            color: #212529;
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+        }
+        
+        .bootstrap-failed .card-text {
+            color: #495057;
+            margin-bottom: 1rem;
+        }
+        
+        /* 按钮样式修复 */
+        .bootstrap-failed .btn {
+            display: inline-block;
+            padding: 0.5rem 1rem;
+            margin-bottom: 0;
+            font-size: 1rem;
+            font-weight: 400;
+            line-height: 1.5;
+            text-align: center;
+            text-decoration: none;
+            vertical-align: middle;
+            cursor: pointer;
+            border: 1px solid transparent;
+            border-radius: 0.25rem;
+            transition: all 0.3s ease;
+        }
+        
+        .bootstrap-failed .btn-primary {
+            color: #ffffff;
+            background-color: #007bff;
+            border-color: #007bff;
+        }
+        
+        .bootstrap-failed .btn-primary:hover {
+            color: #ffffff;
+            background-color: #0056b3;
+            border-color: #004085;
+        }
+        
+        .bootstrap-failed .btn-secondary {
+            color: #ffffff;
+            background-color: #6c757d;
+            border-color: #6c757d;
+        }
+        
+        .bootstrap-failed .btn-secondary:hover {
+            color: #ffffff;
+            background-color: #545b62;
+            border-color: #4e555b;
+        }
+        
+        /* 文本颜色修复 */
+        .bootstrap-failed .text-white {
+            color: #ffffff !important;
+        }
+        
+        .bootstrap-failed .text-dark {
+            color: #212529 !important;
+        }
+        
+        .bootstrap-failed .text-muted {
+            color: #6c757d !important;
+        }
+        
+        /* 背景颜色修复 */
+        .bootstrap-failed .bg-dark {
+            background-color: #212529 !important;
+            color: #ffffff !important;
+        }
+        
+        .bootstrap-failed .bg-light {
+            background-color: #f8f9fa !important;
+            color: #212529 !important;
+        }
+        
+        .bootstrap-failed .bg-primary {
+            background-color: #007bff !important;
+            color: #ffffff !important;
+        }
+        
+        /* 容器样式修复 */
+        .bootstrap-failed .container {
+            width: 100%;
+            padding-right: 15px;
+            padding-left: 15px;
+            margin-right: auto;
+            margin-left: auto;
+        }
+        
+        @media (min-width: 576px) {
+            .bootstrap-failed .container {
+                max-width: 540px;
+            }
+        }
+        
+        @media (min-width: 768px) {
+            .bootstrap-failed .container {
+                max-width: 720px;
+            }
+        }
+        
+        @media (min-width: 992px) {
+            .bootstrap-failed .container {
+                max-width: 960px;
+            }
+        }
+        
+        @media (min-width: 1200px) {
+            .bootstrap-failed .container {
+                max-width: 1140px;
+            }
+        }
+        
+        /* 表格样式修复 */
+        .bootstrap-failed table {
+            width: 100%;
+            margin-bottom: 1rem;
+            color: #212529;
+            border-collapse: collapse;
+        }
+        
+        .bootstrap-failed table th,
+        .bootstrap-failed table td {
+            padding: 0.75rem;
+            vertical-align: top;
+            border-top: 1px solid #dee2e6;
+        }
+        
+        .bootstrap-failed table thead th {
+            vertical-align: bottom;
+            border-bottom: 2px solid #dee2e6;
+            background-color: #f8f9fa;
+            font-weight: 600;
+        }
+        
+        /* 表单样式修复 */
+        .bootstrap-failed .form-control {
+            display: block;
+            width: 100%;
+            padding: 0.375rem 0.75rem;
+            font-size: 1rem;
+            line-height: 1.5;
+            color: #495057;
+            background-color: #ffffff;
+            background-clip: padding-box;
+            border: 1px solid #ced4da;
+            border-radius: 0.25rem;
+            transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+        }
+        
+        .bootstrap-failed .form-control:focus {
+            color: #495057;
+            background-color: #ffffff;
+            border-color: #80bdff;
+            outline: 0;
+            box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+        }
+        
+        .bootstrap-failed .form-group {
+            margin-bottom: 1rem;
+        }
+        
+        .bootstrap-failed label {
+            display: inline-block;
+            margin-bottom: 0.5rem;
+            color: #212529;
+            font-weight: 500;
+        }
+        
+        /* 警告框样式修复 */
+        .bootstrap-failed .alert {
+            position: relative;
+            padding: 0.75rem 1.25rem;
+            margin-bottom: 1rem;
+            border: 1px solid transparent;
+            border-radius: 0.25rem;
+        }
+        
+        .bootstrap-failed .alert-success {
+            color: #155724;
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+        }
+        
+        .bootstrap-failed .alert-danger {
+            color: #721c24;
+            background-color: #f8d7da;
+            border-color: #f5c6cb;
+        }
+        
+        .bootstrap-failed .alert-warning {
+            color: #856404;
+            background-color: #fff3cd;
+            border-color: #ffeaa7;
+        }
+        
+        .bootstrap-failed .alert-info {
+            color: #0c5460;
+            background-color: #d1ecf1;
+            border-color: #bee5eb;
+        }
+        
+        /* 列表样式修复 */
+        .bootstrap-failed ul, .bootstrap-failed ol {
+            margin-bottom: 1rem;
+            padding-left: 2rem;
+        }
+        
+        .bootstrap-failed li {
+            margin-bottom: 0.25rem;
+            color: #495057;
+        }
+        
+        /* 代码样式修复 */
+        .bootstrap-failed code {
+            font-size: 87.5%;
+            color: #e83e8c;
+            word-break: break-word;
+            background-color: #f8f9fa;
+            padding: 0.2rem 0.4rem;
+            border-radius: 0.25rem;
+        }
+        
+        .bootstrap-failed pre {
+            display: block;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            font-size: 87.5%;
+            color: #212529;
+            background-color: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 0.25rem;
+            overflow-x: auto;
+        }
+        
+        /* 页脚样式修复 */
+        .bootstrap-failed footer {
+            background-color: #212529 !important;
+            color: #ffffff !important;
+            padding: 2rem 0;
+            margin-top: 2rem;
+        }
+        
+        .bootstrap-failed footer h5 {
+            color: #ffffff !important;
+            margin-bottom: 1rem;
+        }
+        
+        .bootstrap-failed footer p {
+            color: #ffffff !important;
+            margin-bottom: 0.5rem;
+        }
+        
+        .bootstrap-failed footer a {
+            color: #ffffff !important;
+        }
+        
+        .bootstrap-failed footer a:hover {
+            color: #007bff !important;
+        }
+        
         /* Bootstrap正常加载时的样式 */
         .navbar {
             background: rgba(33, 37, 41, 0.95) !important;
@@ -797,6 +1149,14 @@
         // 全局函数：刷新通知计数（可在其他页面调用）
         window.refreshNotificationCount = function() {
             updateNotificationCount();
+        };
+
+        // 测试函数：手动切换Bootstrap fallback模式
+        window.toggleBootstrapFallback = function() {
+            document.body.classList.toggle('bootstrap-failed');
+            const isFallback = document.body.classList.contains('bootstrap-failed');
+            console.log('Bootstrap fallback模式:', isFallback ? '开启' : '关闭');
+            return isFallback;
         };
 
         // Fallback下拉菜单控制

@@ -28,6 +28,67 @@ export class CattcaInterpreter {
     return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
+  // remove /* */ comments from source code
+  static removeComments(source) {
+    let result = '';
+    let i = 0;
+    let inString = false;
+    let stringChar = '';
+    
+    while (i < source.length) {
+      const ch = source[i];
+      const next = i + 1 < source.length ? source[i + 1] : '';
+      
+      // handle string literals
+      if (!inString && (ch === '"' || ch === "'")) {
+        inString = true;
+        stringChar = ch;
+        result += ch;
+        i++;
+        continue;
+      }
+      
+      if (inString && ch === stringChar) {
+        // check for escaped quotes
+        if (i > 0 && source[i - 1] === '\\') {
+          result += ch;
+          i++;
+          continue;
+        }
+        inString = false;
+        stringChar = '';
+        result += ch;
+        i++;
+        continue;
+      }
+      
+      if (inString) {
+        result += ch;
+        i++;
+        continue;
+      }
+      
+      // handle comments outside strings
+      if (ch === '/' && next === '*') {
+        // found start of comment, skip until */
+        i += 2; // skip /*
+        while (i < source.length - 1) {
+          if (source[i] === '*' && source[i + 1] === '/') {
+            i += 2; // skip */
+            break;
+          }
+          i++;
+        }
+        continue;
+      }
+      
+      result += ch;
+      i++;
+    }
+    
+    return result;
+  }
+
   // split by top-level semicolons (ignore semicolons inside quotes)
   static splitTopLevelSemicolons(s) {
     const out = [];
@@ -85,13 +146,16 @@ export class CattcaInterpreter {
 
   // ---------- parse ----------
   parse() {
+    // first remove all comments from the source
+    const sourceWithoutComments = CattcaInterpreter.removeComments(this.source);
+    
     const { open, close } = this.delimiters;
     const regex = new RegExp(CattcaInterpreter.escapeRegExp(open) + "([\\s\\S]*?)" + CattcaInterpreter.escapeRegExp(close), "g");
     let lastIndex = 0;
     let m;
-    while ((m = regex.exec(this.source)) !== null) {
+    while ((m = regex.exec(sourceWithoutComments)) !== null) {
       if (m.index > lastIndex) {
-        const text = this.source.slice(lastIndex, m.index);
+        const text = sourceWithoutComments.slice(lastIndex, m.index);
         // keep text as-is (but remove leading newlines)
         this.lines.push({ type: "text", content: text.replace(/^[\\r\\n]+/, '') });
       }
@@ -104,8 +168,8 @@ export class CattcaInterpreter {
       }
       lastIndex = regex.lastIndex;
     }
-    if (lastIndex < this.source.length) {
-      const tail = this.source.slice(lastIndex);
+    if (lastIndex < sourceWithoutComments.length) {
+      const tail = sourceWithoutComments.slice(lastIndex);
       this.lines.push({ type: "text", content: tail.replace(/^[\\r\\n]+/, '') });
     }
 
