@@ -6,21 +6,187 @@ Raricy.com - 用户管理页面
 {% block extra_css %}
 <style>
     body {
-        background: linear-gradient(135deg, #f28391 0%, #2575fc 100%);
-        background-attachment: fixed;
+        background-color: #f8f9fa;
         min-height: 100vh;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     }
     .management-card {
-        margin-top: 50px;
-        box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+        margin-top: 20px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
         padding: 30px;
-        border-radius: 15px;
-        background: rgba(255, 255, 255, 0.95);
-        backdrop-filter: blur(5px);
+        border-radius: 8px;
+        background: white;
+        border: 1px solid #e9ecef;
+    }
+    .table {
+        border-radius: 6px;
+        overflow: hidden;
+        border: 1px solid #dee2e6;
+    }
+    .table thead th {
+        background-color: #495057;
+        color: white;
+        border: none;
+        font-weight: 500;
+        padding: 15px 12px;
+        font-size: 0.9rem;
+    }
+    .table tbody tr {
+        border-bottom: 1px solid #dee2e6;
+    }
+    .table tbody tr:hover {
+        background-color: #f8f9fa;
+    }
+    .table tbody td {
+        padding: 15px 12px;
+        border: none;
+        vertical-align: middle;
+    }
+    .btn {
+        border-radius: 4px;
+        font-weight: 400;
+        padding: 6px 12px;
+        margin: 1px;
+        font-size: 0.875rem;
+        border: 1px solid transparent;
+    }
+    .btn:hover {
+        opacity: 0.85;
+    }
+    .btn-primary {
+        background-color: #007bff;
+        color: white;
+    }
+    .btn-success {
+        background-color: #28a745;
+        color: white;
+    }
+    .btn-warning {
+        background-color: #ffc107;
+        color: #212529;
+    }
+    .btn-danger {
+        background-color: #dc3545;
+        color: white;
+    }
+    .btn-info {
+        background-color: #17a2b8;
+        color: white;
+    }
+    .btn-secondary {
+        background-color: #6c757d;
+        color: white;
+    }
+    .badge {
+        border-radius: 4px;
+        padding: 4px 8px;
+        font-size: 0.75rem;
+        font-weight: 500;
+    }
+    .text-danger { color: #dc3545 !important; }
+    .text-success { color: #28a745 !important; }
+    .text-primary { color: #007bff !important; }
+    .text-warning { color: #ffc107 !important; }
+    
+    /* 通知样式 */
+    .notification-toast {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 9999;
+        min-width: 300px;
+        max-width: 500px;
+        padding: 12px 16px;
+        border-radius: 6px;
+        color: white;
+        font-weight: 400;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        transform: translateX(100%);
         transition: transform 0.3s ease;
     }
-    .management-card:hover {
-        transform: translateY(-5px);
+    .notification-toast.show {
+        transform: translateX(0);
+    }
+    .notification-toast.success {
+        background-color: #28a745;
+    }
+    .notification-toast.error {
+        background-color: #dc3545;
+    }
+    .notification-toast.info {
+        background-color: #17a2b8;
+    }
+    .notification-toast.warning {
+        background-color: #ffc107;
+        color: #212529;
+    }
+    
+    /* 模态框样式 */
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 10000;
+        display: none;
+        align-items: center;
+        justify-content: center;
+    }
+    .modal-content {
+        background: white;
+        border-radius: 8px;
+        padding: 24px;
+        max-width: 500px;
+        width: 90%;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+        transform: scale(0.9);
+        transition: transform 0.2s ease;
+    }
+    .modal-overlay.show .modal-content {
+        transform: scale(1);
+    }
+    .modal-header {
+        margin-bottom: 16px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid #dee2e6;
+    }
+    .modal-title {
+        font-size: 1.25rem;
+        font-weight: 500;
+        color: #333;
+        margin: 0;
+    }
+    .modal-body {
+        margin-bottom: 16px;
+    }
+    .form-group {
+        margin-bottom: 12px;
+    }
+    .form-label {
+        display: block;
+        margin-bottom: 4px;
+        font-weight: 500;
+        color: #495057;
+    }
+    .form-control {
+        width: 100%;
+        padding: 8px 12px;
+        border: 1px solid #ced4da;
+        border-radius: 4px;
+        font-size: 14px;
+        transition: border-color 0.15s ease;
+    }
+    .form-control:focus {
+        outline: none;
+        border-color: #007bff;
+        box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+    }
+    .modal-footer {
+        display: flex;
+        gap: 8px;
+        justify-content: flex-end;
     }
 </style>
 {% endblock %}
@@ -86,10 +252,142 @@ Raricy.com - 用户管理页面
             </table>
         </div>
     </div>
+    
+    <!-- 通知提示框 -->
+    <div id="notificationToast" class="notification-toast">
+        <div id="notificationMessage"></div>
+    </div>
+    
+    <!-- 发送通知模态框 -->
+    <div id="notificationModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">发送通知</h3>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">接收用户</label>
+                    <input type="text" id="recipientName" class="form-control" readonly>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">通知类型</label>
+                    <select id="notificationType" class="form-control">
+                        <option value="系统公告">系统公告</option>
+                        <option value="维护通知">维护通知</option>
+                        <option value="功能更新">功能更新</option>
+                        <option value="用户提醒">用户提醒</option>
+                        <option value="警告通知">警告通知</option>
+                        <option value="活动通知">活动通知</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">通知内容</label>
+                    <textarea id="notificationContent" class="form-control" rows="4" placeholder="请输入通知内容..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeNotificationModal()">取消</button>
+                <button type="button" class="btn btn-primary" onclick="sendNotification()">发送</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 禁言用户模态框 -->
+    <div id="banModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">禁言用户</h3>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">用户</label>
+                    <input type="text" id="banUserName" class="form-control" readonly>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">禁言时长（小时）</label>
+                    <input type="number" id="banHours" class="form-control" min="1" value="24">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">禁言原因</label>
+                    <textarea id="banReason" class="form-control" rows="3" placeholder="请输入禁言原因..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeBanModal()">取消</button>
+                <button type="button" class="btn btn-warning" onclick="confirmBanUser()">确认禁言</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 解除禁言模态框 -->
+    <div id="unbanModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">解除禁言</h3>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">用户</label>
+                    <input type="text" id="unbanUserName" class="form-control" readonly>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">解除原因（可选）</label>
+                    <textarea id="unbanReason" class="form-control" rows="3" placeholder="请输入解除禁言的原因..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeUnbanModal()">取消</button>
+                <button type="button" class="btn btn-success" onclick="confirmUnbanUser()">确认解除</button>
+            </div>
+        </div>
+    </div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
+    // 全局变量
+    let currentUserId = null;
+    let currentUsername = null;
+
+    // 通知系统
+    function showNotification(message, type = 'info') {
+        const toast = document.getElementById('notificationToast');
+        const messageEl = document.getElementById('notificationMessage');
+        
+        messageEl.textContent = message;
+        toast.className = `notification-toast ${type}`;
+        toast.classList.add('show');
+        
+        setTimeout(() => {
+            toast.classList.remove('show');
+        }, 4000);
+    }
+
+    // 模态框控制
+    function showModal(modalId) {
+        const modal = document.getElementById(modalId);
+        modal.style.display = 'flex';
+        setTimeout(() => {
+            modal.classList.add('show');
+        }, 10);
+    }
+
+    function closeModal(modalId) {
+        const modal = document.getElementById(modalId);
+        modal.classList.remove('show');
+        setTimeout(() => {
+            modal.style.display = 'none';
+        }, 300);
+    }
+
+    // 点击模态框外部关闭
+    document.addEventListener('click', function(e) {
+        if (e.target.classList.contains('modal-overlay')) {
+            closeModal(e.target.id);
+        }
+    });
+
+    // 用户认证相关
     function promoteUser(user_id) {
         fetch('{{ url_for("auth.promote") }}', {
             method: 'POST',
@@ -100,10 +398,15 @@ Raricy.com - 用户管理页面
         }).then(response => response.json())
           .then(data => {
               if(data.code === 200) {
-                  location.reload();
+                  showNotification('用户认证成功！', 'success');
+                  setTimeout(() => location.reload(), 1000);
               } else {
-                  alert(data.message);
+                  showNotification(data.message, 'error');
               }
+          })
+          .catch(error => {
+              console.error('Error:', error);
+              showNotification('操作失败，请稍后重试', 'error');
           });
     }
 
@@ -114,14 +417,18 @@ Raricy.com - 用户管理页面
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({user_id: user_id})
-
         }).then(response => response.json())
           .then(data => {
               if(data.code === 200) {
-                  location.reload();
+                  showNotification('取消认证成功！', 'success');
+                  setTimeout(() => location.reload(), 1000);
               } else {
-                  alert(data.message);
+                  showNotification(data.message, 'error');
               }
+          })
+          .catch(error => {
+              console.error('Error:', error);
+              showNotification('操作失败，请稍后重试', 'error');
           });
     }
 
@@ -137,23 +444,39 @@ Raricy.com - 用户管理页面
             }).then(response => response.json())
               .then(data => {
                   if(data.code === 200) {
-                      location.reload();
+                      showNotification('用户删除成功！', 'success');
+                      setTimeout(() => location.reload(), 1000);
                   } else {
-                      alert(data.message);
+                      showNotification(data.message, 'error');
                   }
+              })
+              .catch(error => {
+                  console.error('Error:', error);
+                  showNotification('删除失败，请稍后重试', 'error');
               });
         }
     }
 
+    // 通知相关
     function sendNotificationTo(userId, username) {
-        // 简单的发送通知对话框
-        const action = prompt(`向用户 "${username}" 发送什么类型的通知？\n\n可选类型：\n- 系统公告\n- 维护通知\n- 功能更新\n- 用户提醒\n- 警告通知\n- 活动通知`);
-        if (!action) return;
+        currentUserId = userId;
+        currentUsername = username;
+        document.getElementById('recipientName').value = username;
+        document.getElementById('notificationType').value = '系统公告';
+        document.getElementById('notificationContent').value = '';
+        showModal('notificationModal');
+    }
+
+    function closeNotificationModal() {
+        closeModal('notificationModal');
+    }
+
+    function sendNotification() {
+        const type = document.getElementById('notificationType').value;
+        const content = document.getElementById('notificationContent').value.trim();
         
-        const detail = prompt(`请输入给 "${username}" 的通知内容：`);
-        if (!detail) return;
-        
-        if (!confirm(`确定要向用户 "${username}" 发送通知吗？\n\n类型：${action}\n内容：${detail}`)) {
+        if (!content) {
+            showNotification('请输入通知内容', 'warning');
             return;
         }
         
@@ -163,33 +486,51 @@ Raricy.com - 用户管理页面
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                recipient_id: userId,
-                action: action,
-                detail: detail
+                recipient_id: currentUserId,
+                action: type,
+                detail: content
             })
         })
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                alert('通知发送成功！');
+                showNotification('通知发送成功！', 'success');
+                closeNotificationModal();
             } else {
-                alert('发送失败：' + data.message);
+                showNotification('发送失败：' + data.message, 'error');
             }
         })
         .catch(error => {
             console.error('Error:', error);
-            alert('发送失败，请稍后重试');
+            showNotification('发送失败，请稍后重试', 'error');
         });
     }
 
+    // 禁言相关
     function banUser(userId, username) {
-        const hours = prompt(`对用户 "${username}" 设置禁言时长（小时）：`, '24');
-        if (!hours || isNaN(hours) || parseFloat(hours) <= 0) return;
+        currentUserId = userId;
+        currentUsername = username;
+        document.getElementById('banUserName').value = username;
+        document.getElementById('banHours').value = '24';
+        document.getElementById('banReason').value = '';
+        showModal('banModal');
+    }
+
+    function closeBanModal() {
+        closeModal('banModal');
+    }
+
+    function confirmBanUser() {
+        const hours = parseFloat(document.getElementById('banHours').value);
+        const reason = document.getElementById('banReason').value.trim();
         
-        const reason = prompt(`请输入对 "${username}" 的禁言原因：`);
-        if (!reason || reason.trim() === '') return;
+        if (!hours || hours <= 0) {
+            showNotification('请输入有效的禁言时长', 'warning');
+            return;
+        }
         
-        if (!confirm(`确定要禁言用户 "${username}" ${hours} 小时吗？\n\n原因：${reason}`)) {
+        if (!reason) {
+            showNotification('请输入禁言原因', 'warning');
             return;
         }
         
@@ -199,32 +540,41 @@ Raricy.com - 用户管理页面
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                user_id: userId,
-                hours: parseFloat(hours),
+                user_id: currentUserId,
+                hours: hours,
                 reason: reason
             })
         })
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                alert('禁言设置成功！');
-                location.reload();
+                showNotification('禁言设置成功！', 'success');
+                closeBanModal();
+                setTimeout(() => location.reload(), 1000);
             } else {
-                alert('禁言失败：' + data.message);
+                showNotification('禁言失败：' + data.message, 'error');
             }
         })
         .catch(error => {
             console.error('Error:', error);
-            alert('禁言失败，请稍后重试');
+            showNotification('禁言失败，请稍后重试', 'error');
         });
     }
 
     function unbanUser(userId, username) {
-        const reason = prompt(`请输入解除 "${username}" 禁言的原因（可选）：`, '');
-        
-        if (!confirm(`确定要解除用户 "${username}" 的禁言吗？`)) {
-            return;
-        }
+        currentUserId = userId;
+        currentUsername = username;
+        document.getElementById('unbanUserName').value = username;
+        document.getElementById('unbanReason').value = '';
+        showModal('unbanModal');
+    }
+
+    function closeUnbanModal() {
+        closeModal('unbanModal');
+    }
+
+    function confirmUnbanUser() {
+        const reason = document.getElementById('unbanReason').value.trim();
         
         fetch('{{ url_for("auth.unban_user") }}', {
             method: 'POST',
@@ -232,22 +582,23 @@ Raricy.com - 用户管理页面
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                user_id: userId,
+                user_id: currentUserId,
                 reason: reason || ''
             })
         })
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                alert('禁言解除成功！');
-                location.reload();
+                showNotification('禁言解除成功！', 'success');
+                closeUnbanModal();
+                setTimeout(() => location.reload(), 1000);
             } else {
-                alert('解除禁言失败：' + data.message);
+                showNotification('解除禁言失败：' + data.message, 'error');
             }
         })
         .catch(error => {
             console.error('Error:', error);
-            alert('解除禁言失败，请稍后重试');
+            showNotification('解除禁言失败，请稍后重试', 'error');
         });
     }
 
@@ -280,11 +631,28 @@ Raricy.com - 用户管理页面
                 historyText += '暂无禁言记录';
             }
             
-            alert(historyText);
+            // 创建一个临时的模态框来显示历史记录
+            const modal = document.createElement('div');
+            modal.className = 'modal-overlay show';
+            modal.style.display = 'flex';
+            modal.innerHTML = `
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3 class="modal-title">禁言历史</h3>
+                    </div>
+                    <div class="modal-body">
+                        <pre style="white-space: pre-wrap; font-family: inherit; background: #f8f9fa; padding: 15px; border-radius: 8px; max-height: 400px; overflow-y: auto;">${historyText}</pre>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">关闭</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
         })
         .catch(error => {
             console.error('Error:', error);
-            alert('获取禁言历史失败');
+            showNotification('获取禁言历史失败', 'error');
         });
     }
 </script>

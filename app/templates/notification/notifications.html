@@ -213,4 +213,137 @@
         </div>
     {% endif %}
 </div>
+
+<script>
+// 标记所有通知为已读
+function markAllRead() {
+    if (!confirm('确定要标记所有通知为已读吗？')) {
+        return;
+    }
+    
+    fetch('/notifications/api/mark-all-read', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message);
+            location.reload(); // 刷新页面以更新状态
+        } else {
+            alert('操作失败: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('操作失败，请重试');
+    });
+}
+
+// 删除所有已读通知
+function deleteReadNotifications() {
+    if (!confirm('确定要删除所有已读通知吗？此操作不可恢复！')) {
+        return;
+    }
+    
+    fetch('/notifications/api/delete-read', {
+        method: 'DELETE',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message);
+            location.reload(); // 刷新页面以更新状态
+        } else {
+            alert('操作失败: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('操作失败，请重试');
+    });
+}
+
+// 批量操作模式（暂时简单实现）
+function toggleBatchMode() {
+    alert('批量操作功能正在开发中...');
+}
+
+// 标记单个通知为已读
+function markAsRead(notificationId) {
+    fetch(`/notifications/api/mark-read/${notificationId}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // 更新UI状态
+            const notificationCard = document.querySelector(`[data-id="${notificationId}"]`);
+            if (notificationCard) {
+                notificationCard.classList.remove('unread');
+                // 移除"标记已读"按钮
+                const markReadBtn = notificationCard.querySelector('button[onclick*="markAsRead"]');
+                if (markReadBtn) {
+                    markReadBtn.remove();
+                }
+                // 更新标题，移除"未读"标识
+                const title = notificationCard.querySelector('.notification-title');
+                if (title) {
+                    title.innerHTML = title.innerHTML.replace(/<span[^>]*>\(未读\)<\/span>/, '');
+                }
+            }
+        } else {
+            alert('操作失败: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('操作失败，请重试');
+    });
+}
+
+// 删除单个通知
+function deleteNotification(notificationId) {
+    if (!confirm('确定要删除这个通知吗？此操作不可恢复！')) {
+        return;
+    }
+    
+    fetch(`/notifications/api/delete/${notificationId}`, {
+        method: 'DELETE',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // 从页面中移除通知卡片
+            const notificationCard = document.querySelector(`[data-id="${notificationId}"]`);
+            if (notificationCard) {
+                notificationCard.remove();
+            }
+            
+            // 检查是否还有通知，如果没有则显示空状态
+            const notificationsList = document.getElementById('notifications-list');
+            if (notificationsList && notificationsList.children.length === 0) {
+                location.reload(); // 刷新页面显示空状态
+            }
+        } else {
+            alert('操作失败: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('操作失败，请重试');
+    });
+}
+</script>
 {% endblock %}
