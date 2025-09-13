@@ -332,6 +332,20 @@
         color: #f56565;
     }
 
+    /* 深色模式下的Markdown备用显示样式 */
+    body.dark-mode .markdown-fallback {
+        background: #2d3748 !important;
+        border-color: #4a5568 !important;
+    }
+
+    body.dark-mode .markdown-fallback h6 {
+        color: #a0aec0 !important;
+    }
+
+    body.dark-mode .markdown-fallback pre {
+        color: #e2e8f0 !important;
+    }
+
     /* 代码复制按钮样式优化 */
     .copy-btn {
         position: absolute;
@@ -903,7 +917,10 @@
                         <p>正在显示原始 Markdown 内容。这可能是由于网络问题导致的。</p>
                         <button class="btn btn-primary btn-sm mt-2" onclick="location.reload()">刷新页面重试</button>
                     </div>
-                    <pre style="white-space: pre-wrap; font-family: inherit; background: #f8f9fa; padding: 15px; border-radius: 6px; margin-top: 15px;">${markdownText.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+                    <div class="markdown-fallback" style="background: #f8f9fa; padding: 20px; border-radius: 6px; margin-top: 15px; border: 1px solid #e9ecef;">
+                        <h6 style="color: #6c757d; margin-bottom: 15px; font-weight: 600;">📝 原始 Markdown 内容：</h6>
+                        <pre style="white-space: pre-wrap; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 0.9rem; line-height: 1.6; margin: 0; color: #2c3e50; background: transparent; border: none; padding: 0;">${markdownText.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+                    </div>
                 `;
                 console.warn('Markdown 库未加载，显示原始内容');
                 return;
@@ -1010,11 +1027,17 @@
             // 尝试显示原始内容作为备用
             try {
                 const markdownText = JSON.parse(markdownScript.textContent);
-                container.innerHTML = `<div class="alert alert-warning">
-                    <h5>内容渲染失败</h5>
-                    <p>正在显示原始内容：</p>
-                    <pre style="white-space: pre-wrap; font-family: inherit; background: #f8f9fa; padding: 15px; border-radius: 6px;">${markdownText}</pre>
-                </div>`;
+                container.innerHTML = `
+                    <div class="alert alert-warning">
+                        <h5>⚠️ 内容渲染失败</h5>
+                        <p>正在显示原始 Markdown 内容。这可能是由于内容格式问题导致的。</p>
+                        <button class="btn btn-primary btn-sm mt-2" onclick="location.reload()">刷新页面重试</button>
+                    </div>
+                    <div class="markdown-fallback" style="background: #f8f9fa; padding: 20px; border-radius: 6px; margin-top: 15px; border: 1px solid #e9ecef;">
+                        <h6 style="color: #6c757d; margin-bottom: 15px; font-weight: 600;">📝 原始 Markdown 内容：</h6>
+                        <pre style="white-space: pre-wrap; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 0.9rem; line-height: 1.6; margin: 0; color: #2c3e50; background: transparent; border: none; padding: 0;">${markdownText.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+                    </div>
+                `;
             } catch (e) {
                 container.innerHTML = '<div class="alert alert-danger">内容加载失败，请刷新页面重试。</div>';
             }
@@ -1279,6 +1302,36 @@
             if (attempts >= maxAttempts) {
                 console.error('❌ 依赖加载超时，缺失的依赖:', 
                     Object.keys(dependencies).filter(key => !dependencies[key]));
+                // 如果关键依赖缺失，直接显示原始内容
+                if (!dependencies.marked || !dependencies.DOMPurify) {
+                    console.log('关键依赖缺失，直接显示原始Markdown内容');
+                    const container = document.getElementById('userContentContainer');
+                    const markdownScript = document.getElementById('markdownContent');
+                    const loadingIndicator = document.getElementById('loading-indicator');
+                    
+                    if (markdownScript && container) {
+                        try {
+                            const markdownText = JSON.parse(markdownScript.textContent);
+                            if (loadingIndicator) {
+                                loadingIndicator.remove();
+                            }
+                            container.innerHTML = `
+                                <div class="alert alert-warning">
+                                    <h5>⚠️ CDN 资源加载失败</h5>
+                                    <p>由于网络问题，Markdown 渲染库未能加载。正在显示原始内容。</p>
+                                    <button class="btn btn-primary btn-sm mt-2" onclick="location.reload()">刷新页面重试</button>
+                                </div>
+                                <div class="markdown-fallback" style="background: #f8f9fa; padding: 20px; border-radius: 6px; margin-top: 15px; border: 1px solid #e9ecef;">
+                                    <h6 style="color: #6c757d; margin-bottom: 15px; font-weight: 600;">📝 原始 Markdown 内容：</h6>
+                                    <pre style="white-space: pre-wrap; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 0.9rem; line-height: 1.6; margin: 0; color: #2c3e50; background: transparent; border: none; padding: 0;">${markdownText.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+                                </div>
+                            `;
+                            return;
+                        } catch (e) {
+                            console.error('解析Markdown内容失败:', e);
+                        }
+                    }
+                }
                 callback(); // 仍然尝试初始化
                 return;
             }

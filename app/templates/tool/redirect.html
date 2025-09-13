@@ -1,0 +1,252 @@
+{% extends "base.html" %}
+{% block title %}网址重定向工具 - 聪明山{% endblock %}
+
+{% block extra_css %}
+<style>
+  .redirect-hero {
+    background: radial-gradient(1200px 400px at 10% -10%, rgba(13, 110, 253, 0.25), transparent 60%),
+                radial-gradient(900px 300px at 90% -20%, rgba(111, 66, 193, 0.25), transparent 60%),
+                linear-gradient(180deg, #0d6efd10, transparent);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  .glass-card {
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(6px);
+    border: 1px solid rgba(0,0,0,0.06);
+    transition: transform .2s ease, box-shadow .2s ease;
+  }
+  .glass-card:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(0,0,0,0.08); }
+  .url-input {
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  }
+  .redirect-btn {
+    background: linear-gradient(135deg, #0d6efd, #3b8bfd);
+    border: none;
+    transition: all 0.3s ease;
+  }
+  .redirect-btn:hover {
+    background: linear-gradient(135deg, #0b5ed7, #2c7ce6);
+    transform: translateY(-1px);
+  }
+  .url-preview {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+    padding: 0.75rem;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 0.875rem;
+    word-break: break-all;
+  }
+  .security-warning {
+    background: linear-gradient(135deg, #fff3cd, #ffeaa7);
+    border: 1px solid #ffeaa7;
+    border-radius: 0.5rem;
+    padding: 1rem;
+  }
+  .countdown {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #dc3545;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+  <!-- Hero -->
+  <section class="redirect-hero py-5">
+    <div class="container">
+      <div class="row align-items-center g-4">
+        <div class="col-lg-8">
+          <h1 class="mb-3 fw-bold">网址重定向工具</h1>
+          <p class="text-muted mb-4">安全地跳转到目标网址，支持自定义延迟时间，让您有足够时间确认目标地址。</p>
+        </div>
+        <div class="col-lg-4 d-none d-lg-block text-end">
+          <i class="bi bi-arrow-right-circle" style="font-size: 4rem; color: #0d6efd; opacity: 0.8;"></i>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Main Content -->
+  <section class="py-5">
+    <div class="container">
+      <div class="row justify-content-center">
+        <div class="col-lg-8">
+          <div class="card glass-card">
+            <div class="card-body p-4">
+              <h3 class="card-title mb-4">
+                <i class="bi bi-link-45deg me-2"></i>网址重定向
+              </h3>
+              
+              <form id="redirectForm">
+                <div class="mb-4">
+                  <label for="targetUrl" class="form-label fw-semibold">目标网址</label>
+                  <div class="input-group">
+                    <span class="input-group-text">
+                      <i class="bi bi-globe"></i>
+                    </span>
+                    <input type="url" class="form-control url-input" id="targetUrl" 
+                           placeholder="https://example.com" required>
+                  </div>
+                  <div class="form-text">请输入完整的网址，包含协议（http:// 或 https://）</div>
+                </div>
+
+                <div class="mb-4">
+                  <label for="delayTime" class="form-label fw-semibold">延迟时间（秒）</label>
+                  <div class="input-group">
+                    <span class="input-group-text">
+                      <i class="bi bi-clock"></i>
+                    </span>
+                    <input type="number" class="form-control" id="delayTime" 
+                           value="3" min="0" max="30" required>
+                    <span class="input-group-text">秒</span>
+                  </div>
+                  <div class="form-text">设置跳转前的等待时间，让您有时间确认目标地址</div>
+                </div>
+
+                <div class="mb-4">
+                  <button type="submit" class="btn btn-primary btn-lg redirect-btn w-100">
+                    <i class="bi bi-arrow-right-circle me-2"></i>开始重定向
+                  </button>
+                </div>
+              </form>
+
+              <!-- URL Preview -->
+              <div id="urlPreview" class="mb-4" style="display: none;">
+                <h5 class="mb-2">即将跳转到：</h5>
+                <div class="url-preview" id="previewUrl"></div>
+              </div>
+
+              <!-- Countdown -->
+              <div id="countdownSection" class="text-center" style="display: none;">
+                <div class="countdown mb-3" id="countdown">3</div>
+                <p class="text-muted">正在跳转，请稍候...</p>
+                <button class="btn btn-outline-danger" id="cancelRedirect">
+                  <i class="bi bi-x-circle me-2"></i>取消跳转
+                </button>
+              </div>
+
+              <!-- Security Warning -->
+              <div class="security-warning mt-4">
+                <h6 class="mb-2">
+                  <i class="bi bi-shield-exclamation me-2"></i>安全提醒
+                </h6>
+                <ul class="mb-0 small">
+                  <li>请确认目标网址的安全性，避免访问可疑或恶意网站</li>
+                  <li>本工具仅提供跳转功能，不承担任何安全责任</li>
+                  <li>建议在跳转前检查网址是否正确</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const form = document.getElementById('redirectForm');
+  const targetUrlInput = document.getElementById('targetUrl');
+  const delayTimeInput = document.getElementById('delayTime');
+  const urlPreview = document.getElementById('urlPreview');
+  const previewUrl = document.getElementById('previewUrl');
+  const countdownSection = document.getElementById('countdownSection');
+  const countdown = document.getElementById('countdown');
+  const cancelBtn = document.getElementById('cancelRedirect');
+
+  let redirectTimer = null;
+  let countdownTimer = null;
+
+  // 实时预览URL
+  targetUrlInput.addEventListener('input', function() {
+    const url = this.value.trim();
+    if (url) {
+      try {
+        // 验证URL格式
+        new URL(url);
+        previewUrl.textContent = url;
+        urlPreview.style.display = 'block';
+      } catch (e) {
+        urlPreview.style.display = 'none';
+      }
+    } else {
+      urlPreview.style.display = 'none';
+    }
+  });
+
+  // 表单提交
+  form.addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const url = targetUrlInput.value.trim();
+    const delay = parseInt(delayTimeInput.value) || 3;
+
+    if (!url) {
+      alert('请输入目标网址');
+      return;
+    }
+
+    try {
+      // 验证URL
+      new URL(url);
+    } catch (e) {
+      alert('请输入有效的网址格式');
+      return;
+    }
+
+    // 开始倒计时
+    startCountdown(url, delay);
+  });
+
+  // 开始倒计时
+  function startCountdown(url, delay) {
+    form.style.display = 'none';
+    urlPreview.style.display = 'none';
+    countdownSection.style.display = 'block';
+    
+    let timeLeft = delay;
+    countdown.textContent = timeLeft;
+
+    countdownTimer = setInterval(() => {
+      timeLeft--;
+      countdown.textContent = timeLeft;
+      
+      if (timeLeft <= 0) {
+        clearInterval(countdownTimer);
+        // 执行跳转
+        window.location.href = url;
+      }
+    }, 1000);
+  }
+
+  // 取消跳转
+  cancelBtn.addEventListener('click', function() {
+    if (countdownTimer) {
+      clearInterval(countdownTimer);
+    }
+    if (redirectTimer) {
+      clearTimeout(redirectTimer);
+    }
+    
+    // 重置界面
+    form.style.display = 'block';
+    countdownSection.style.display = 'none';
+    urlPreview.style.display = 'none';
+  });
+
+  // 自动填充协议
+  targetUrlInput.addEventListener('blur', function() {
+    let url = this.value.trim();
+    if (url && !url.match(/^https?:\/\//)) {
+      this.value = 'https://' + url;
+    }
+  });
+});
+</script>
+{% endblock %}
+
+{% block footer_text %}
+{% endblock %}

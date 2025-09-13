@@ -91,3 +91,7 @@ def aes_page():
 @tool_bp.route('/cattca')
 def cattca_page():
     return render_template('tool/cattca.html')
+
+@tool_bp.route('/redirect')
+def redirect_page():
+    return render_template('tool/redirect.html')
