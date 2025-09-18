@@ -1277,7 +1277,7 @@
 
 
     // 等待所有依赖加载完成
-    function waitForDependencies(callback, maxAttempts = 100) {
+    function waitForDependencies(callback, maxAttempts = 15) { // 减少到15次尝试，总共3秒
         let attempts = 0;
         
         function check() {
@@ -1344,7 +1344,38 @@
 
     // 页面加载时自动适配系统主题和初始化
     document.addEventListener('DOMContentLoaded', () => {
+        // 增加一个快速失败检测，2秒后如果依赖还未加载就直接显示原文
+        const quickFailTimeout = setTimeout(() => {
+            console.log('🚀 快速失败检测：2秒后强制显示原文');
+            const container = document.getElementById('userContentContainer');
+            const markdownScript = document.getElementById('markdownContent');
+            const loadingIndicator = document.getElementById('loading-indicator');
+            
+            if (markdownScript && container && loadingIndicator) {
+                try {
+                    const markdownText = JSON.parse(markdownScript.textContent);
+                    loadingIndicator.remove();
+                    container.innerHTML = `
+                        <div class="alert alert-info">
+                            <h5>⚡ 网络较慢，已切换到原文显示</h5>
+                            <p>Markdown 渲染库正在加载中。如需完整渲染效果，请稍后刷新页面。</p>
+                            <button class="btn btn-primary btn-sm mt-2" onclick="location.reload()">刷新页面</button>
+                        </div>
+                        <div class="markdown-fallback" style="background: #f8f9fa; padding: 20px; border-radius: 6px; margin-top: 15px; border: 1px solid #e9ecef;">
+                            <h6 style="color: #6c757d; margin-bottom: 15px; font-weight: 600;">📝 原始 Markdown 内容：</h6>
+                            <pre style="white-space: pre-wrap; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 0.9rem; line-height: 1.6; margin: 0; color: #2c3e50; background: transparent; border: none; padding: 0;">${markdownText.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+                        </div>
+                    `;
+                } catch (e) {
+                    console.error('解析Markdown内容失败:', e);
+                }
+            }
+        }, 2000); // 2秒快速失败
+
         waitForDependencies(() => {
+            // 如果依赖加载成功，清除快速失败定时器
+            clearTimeout(quickFailTimeout);
+            
             // 初始化 Markdown 渲染器
             if (initMarkdownRenderer()) {
                 // 渲染内容
