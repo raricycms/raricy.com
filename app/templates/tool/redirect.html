@@ -48,6 +48,14 @@
     font-weight: 600;
     color: #dc3545;
   }
+  .shortcut-btn {
+    transition: all 0.2s ease;
+    border: 1px solid rgba(0,0,0,0.125);
+  }
+  .shortcut-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+  }
 </style>
 {% endblock %}
 
@@ -77,6 +85,44 @@
               <h3 class="card-title mb-4">
                 <i class="bi bi-link-45deg me-2"></i>网址重定向
               </h3>
+              
+              <!-- Quick Access Shortcuts -->
+              <div class="mb-4">
+                <h5 class="mb-3">
+                  <i class="bi bi-lightning me-2"></i>快捷访问
+                </h5>
+                <div class="row g-2">
+                  <div class="col-6 col-md-3">
+                    <button class="btn btn-outline-primary btn-sm w-100 shortcut-btn" 
+                            data-url="http://116.62.179.232:8765" 
+                            data-title="修复时光机">
+                      <i class="bi bi-clock-history me-1"></i>修复时光机
+                    </button>
+                  </div>
+                  <div class="col-6 col-md-3">
+                    <button class="btn btn-outline-success btn-sm w-100 shortcut-btn" 
+                            data-url="http://116.62.179.232:5411" 
+                            data-title="人生重开模拟器">
+                      <i class="bi bi-arrow-clockwise me-1"></i>人生重开
+                    </button>
+                  </div>
+                  <div class="col-6 col-md-3">
+                    <button class="btn btn-outline-warning btn-sm w-100 shortcut-btn" 
+                            data-url="http://111.231.16.190" 
+                            data-title="hustOJ">
+                      <i class="bi bi-code-square me-1"></i>hustOJ
+                    </button>
+                  </div>
+                  <div class="col-6 col-md-3">
+                    <button class="btn btn-outline-info btn-sm w-100 shortcut-btn" 
+                            data-url="http://116.62.179.232:9991" 
+                            data-title="旧版网站">
+                      <i class="bi bi-archive me-1"></i>旧版网站
+                    </button>
+                  </div>
+                </div>
+                <hr class="my-4">
+              </div>
               
               <form id="redirectForm">
                 <div class="mb-4">
@@ -235,6 +281,23 @@ document.addEventListener('DOMContentLoaded', function() {
     form.style.display = 'block';
     countdownSection.style.display = 'none';
     urlPreview.style.display = 'none';
+  });
+
+  // 快捷方式按钮事件
+  document.querySelectorAll('.shortcut-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+      const url = this.getAttribute('data-url');
+      const title = this.getAttribute('data-title');
+      
+      // 填充表单
+      targetUrlInput.value = url;
+      previewUrl.textContent = url;
+      urlPreview.style.display = 'block';
+      
+      // 直接开始跳转，使用默认延迟时间
+      const delay = parseInt(delayTimeInput.value) || 3;
+      startCountdown(url, delay);
+    });
   });
 
   // 自动填充协议

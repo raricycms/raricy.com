@@ -81,3 +81,13 @@ def gomoku():
 @game_bp.route('/blackjack_21')
 def blackjack_21():
     return render_template('game/blackjack_21_点.html')
+
+@game_bp.route('/xiufushiguangji')
+def xiufushiguangji():
+    from flask import redirect
+    return redirect('http://116.62.179.232:8765')
+
+@game_bp.route('/renshengchongkai')
+def renshengchongkai():
+    from flask import redirect
+    return redirect('http://116.62.179.232:5411')
