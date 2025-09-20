@@ -375,6 +375,14 @@
     }
     function toggleBtn(btn, enabled){ btn.disabled = !enabled; btn.classList.toggle('disabled', !enabled) }
 
+    function setBetControlsEnabled(enabled){
+      betInput.disabled = !enabled;
+      $$('.chip').forEach(btn=>{
+        btn.disabled = !enabled;
+        btn.classList.toggle('disabled', !enabled);
+      });
+    }
+
     function bustFlash(targetEl){
       targetEl.style.filter='drop-shadow(0 0 10px rgba(239,68,68,.8))';
       setTimeout(()=>targetEl.style.filter='', 500);
@@ -414,7 +422,7 @@
       if(bet>bank){ setMessage('下注不能超过余额。'); return }
 
       inRound = true; playerTurn = true; doubled = false;
-      bank -= bet; updateUI(); save();
+      bank -= bet; updateUI(); save(); setBetControlsEnabled(false);
       setMessage('祝你好运！');
 
       clearHands();
@@ -516,7 +524,7 @@
     }
 
     function newRound(){
-      bet = 0; betInput.value=0; updateUI();
+      bet = 0; betInput.value=0; updateUI(); setBetControlsEnabled(true);
       clearHands(); setMessage('下注后点击“发牌”。');
       enableActions({deal:true});
     }
@@ -530,18 +538,23 @@
     // —— 事件 ——
     $$('.chip').forEach(btn=>{
       btn.addEventListener('click', ()=>{
+        if(inRound) return;
         const add = Number(btn.dataset.chip);
         bet = clampBet((bet||0) + add);
         betInput.value = bet; betEl.textContent = bet;
       });
       // 双击快速叠加
       btn.addEventListener('dblclick', ()=>{
+        if(inRound) return;
         const add = Number(btn.dataset.chip)*2;
         bet = clampBet((bet||0)+add); betInput.value=bet; betEl.textContent=bet;
       }, {passive:true});
     });
 
-    betInput.addEventListener('input', ()=>{ bet = clampBet(Number(betInput.value||0)); betInput.value=bet; betEl.textContent=bet });
+    betInput.addEventListener('input', ()=>{
+      if(inRound){ betInput.value = bet; return }
+      bet = clampBet(Number(betInput.value||0)); betInput.value=bet; betEl.textContent=bet
+    });
 
     dealBtn.addEventListener('click', startRound);
     // 长按全押
@@ -571,6 +584,7 @@
     updateUI();
     setMessage('下注后点击“发牌”。');
     enableActions({deal:true});
+    setBetControlsEnabled(true);
     checkGoal();
   </script>
 </body>

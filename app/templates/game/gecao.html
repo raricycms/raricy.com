@@ -380,6 +380,41 @@
             z-index: 400;
             display: none;
         }
+
+        /* Mobile joystick */
+        #joystick {
+            position: absolute;
+            left: 20px;
+            bottom: 20px;
+            width: 140px;
+            height: 140px;
+            z-index: 200;
+            touch-action: none;
+            display: none;
+        }
+        #joystick-base {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.06);
+            border: 2px solid rgba(255, 255, 255, 0.15);
+            box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.4);
+        }
+        #joystick-thumb {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(76, 175, 80, 0.6);
+            border: 2px solid #4CAF50;
+            box-shadow: 0 0 12px rgba(76, 175, 80, 0.7);
+        }
     </style>
 </head>
 <body>
@@ -541,6 +576,12 @@
             <div>靠近经验球自动获取</div>
             <div>空格键暂停</div>
         </div>
+
+        <!-- Mobile joystick (shown only on touch devices) -->
+        <div id="joystick">
+            <div id="joystick-base"></div>
+            <div id="joystick-thumb"></div>
+        </div>
     </div>
 
     <script>
@@ -552,6 +593,93 @@
         canvas.height = window.innerHeight;
         
         const world = { x: 0, y: 0 };
+
+        // 触屏检测与摇杆状态
+        const isTouchDevice = () => ('ontouchstart' in window) || (navigator.maxTouchPoints || 0) > 0 || (navigator.msMaxTouchPoints || 0) > 0;
+        const joystick = {
+            active: false,
+            dx: 0,
+            dy: 0,
+            magnitude: 0,
+            pointerId: null,
+            el: null,
+            thumbEl: null,
+            rect: null
+        };
+
+        function setupJoystick() {
+            if (joystick.el && joystick.thumbEl) return; // already set
+            joystick.el = document.getElementById('joystick');
+            joystick.thumbEl = document.getElementById('joystick-thumb');
+            if (!joystick.el || !joystick.thumbEl) return;
+
+            const onPointerDown = (e) => {
+                (e.preventDefault && e.preventDefault());
+                joystick.active = true;
+                joystick.pointerId = (e.pointerId !== undefined) ? e.pointerId : 'touch';
+                joystick.rect = joystick.el.getBoundingClientRect();
+                updateJoystickFromEvent(e);
+            };
+
+            const onPointerMove = (e) => {
+                if (!joystick.active) return;
+                if (e.pointerId !== undefined && joystick.pointerId !== null && e.pointerId !== joystick.pointerId) return;
+                (e.preventDefault && e.preventDefault());
+                updateJoystickFromEvent(e);
+            };
+
+            const onPointerUp = (e) => {
+                if (e && e.pointerId !== undefined && joystick.pointerId !== null && e.pointerId !== joystick.pointerId) return;
+                resetJoystick();
+            };
+
+            if (window.PointerEvent) {
+                joystick.el.addEventListener('pointerdown', onPointerDown, { passive: false });
+                window.addEventListener('pointermove', onPointerMove, { passive: false });
+                window.addEventListener('pointerup', onPointerUp, { passive: true });
+                window.addEventListener('pointercancel', onPointerUp, { passive: true });
+            } else {
+                joystick.el.addEventListener('touchstart', (e) => onPointerDown(e.touches[0]), { passive: false });
+                window.addEventListener('touchmove', (e) => onPointerMove(e.touches[0]), { passive: false });
+                window.addEventListener('touchend', onPointerUp, { passive: true });
+                window.addEventListener('touchcancel', onPointerUp, { passive: true });
+            }
+        }
+
+        function updateJoystickFromEvent(e) {
+            if (!joystick.el) return;
+            if (!joystick.rect) joystick.rect = joystick.el.getBoundingClientRect();
+            const cx = joystick.rect.left + joystick.rect.width / 2;
+            const cy = joystick.rect.top + joystick.rect.height / 2;
+            const clientX = e.clientX !== undefined ? e.clientX : 0;
+            const clientY = e.clientY !== undefined ? e.clientY : 0;
+            const x = clientX - cx;
+            const y = clientY - cy;
+            const r = joystick.rect.width / 2;
+            const len = Math.sqrt(x * x + y * y);
+            const clampedLen = Math.min(len, r);
+            const nx = len > 0 ? (x / len) : 0;
+            const ny = len > 0 ? (y / len) : 0;
+
+            joystick.dx = nx;
+            joystick.dy = ny;
+            joystick.magnitude = clampedLen / r;
+
+            const offsetX = nx * clampedLen * 0.9;
+            const offsetY = ny * clampedLen * 0.9;
+            joystick.thumbEl.style.transform = `translate(-50%, -50%) translate(${offsetX}px, ${offsetY}px)`;
+        }
+
+        function resetJoystick() {
+            joystick.active = false;
+            joystick.pointerId = null;
+            joystick.dx = 0;
+            joystick.dy = 0;
+            joystick.magnitude = 0;
+            if (joystick.thumbEl) {
+                joystick.thumbEl.style.transform = 'translate(-50%, -50%)';
+            }
+        }
         
         // 游戏状态标记
         let gameStarted = false;
@@ -852,6 +980,11 @@
             document.getElementById('skillsDisplay').style.display = 'block';
             document.getElementById('buffs').style.display = 'block';
             document.getElementById('controls').style.display = 'block';
+            if (isTouchDevice()) {
+                const j = document.getElementById('joystick');
+                if (j) j.style.display = 'block';
+                setupJoystick();
+            }
             
             updateUI();
             updateSkillsDisplay();
@@ -2085,44 +2218,54 @@
             const player = game.player;
             let moved = false;
             let moveX = 0, moveY = 0;
-            
-            if (game.keys['w'] || game.keys['arrowup']) {
-                moveY = -player.speed;
+
+            // 优先使用移动遥杆（触屏设备）
+            if (isTouchDevice() && joystick.active && joystick.magnitude > 0.05) {
+                const speedScale = joystick.magnitude; // 模拟模拟量速度
+                moveX = joystick.dx * player.speed * speedScale;
+                moveY = joystick.dy * player.speed * speedScale;
                 moved = true;
+                if (moveX < -0.01) player.facingLeft = true;
+                else if (moveX > 0.01) player.facingLeft = false;
+            } else {
+                if (game.keys['w'] || game.keys['arrowup']) {
+                    moveY = -player.speed;
+                    moved = true;
+                }
+                if (game.keys['s'] || game.keys['arrowdown']) {
+                    moveY = player.speed;
+                    moved = true;
+                }
+                if (game.keys['a'] || game.keys['arrowleft']) {
+                    moveX = -player.speed;
+                    moved = true;
+                    player.facingLeft = true;
+                }
+                if (game.keys['d'] || game.keys['arrowright']) {
+                    moveX = player.speed;
+                    moved = true;
+                    player.facingLeft = false;
+                }
             }
-            if (game.keys['s'] || game.keys['arrowdown']) {
-                moveY = player.speed;
-                moved = true;
-            }
-            if (game.keys['a'] || game.keys['arrowleft']) {
-                moveX = -player.speed;
-                moved = true;
-                player.facingLeft = true;
-            }
-            if (game.keys['d'] || game.keys['arrowright']) {
-                moveX = player.speed;
-                moved = true;
-                player.facingLeft = false;
-            }
-            
+
             if (moveX !== 0 && moveY !== 0) {
                 moveX *= 0.707;
                 moveY *= 0.707;
             }
-            
+
             player.x += moveX;
             player.y += moveY;
             player.isMoving = moved;
-            
+
             if (moved) {
                 player.walkCycle += 0.3;
             }
-            
+
             // 限制在竞技场内
             if (game.bossActive) {
                 constrainToArena(player);
             }
-            
+
             // 更新摄像机
             world.x = player.x - canvas.width / 2;
             world.y = player.y - canvas.height / 2;
@@ -3237,6 +3380,9 @@
         window.addEventListener('resize', () => {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
+            if (joystick.el) {
+                joystick.rect = joystick.el.getBoundingClientRect();
+            }
         });
         
         // 初始化

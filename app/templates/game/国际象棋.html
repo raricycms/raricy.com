@@ -1271,11 +1271,26 @@ U.byId('btnFlip').addEventListener('click', ()=>{
 U.byId('btnUndo').addEventListener('click', ()=>{
   if(!STATE.allowUndo){ setNotice('本局不允许悔棋（可在开局设置中开启）。'); U.playWarn(); return; }
   if(STATE.history.length===0){ U.playWarn(); return; }
-  const last = STATE.history.pop();
+  const prevHist = STATE.history.slice(0, -1);
+  const last = STATE.history[STATE.history.length-1];
   // 还原上一步局面
   loadFEN(last.fenBefore);
-  // 回退时钟（无法精确重放增益，采用近似：撤回上步给的增益）
-  addIncrement(STATE.turn); // turn 已回到走子方，给其加回增益
+  // 恢复历史与三次重复计数
+  STATE.history = prevHist;
+  STATE.repCount = {};
+  for(const h of STATE.history){ STATE.repCount[h.repKey] = (STATE.repCount[h.repKey]||0)+1; }
+  // 修正最近一步高亮
+  if(STATE.history.length>0){
+    const lm = STATE.history[STATE.history.length-1].move;
+    STATE.lastMove = {from: lm.from, to: lm.to};
+  }else{
+    STATE.lastMove = null;
+  }
+  // 回退时钟（近似：撤回上步给的增益 -> 扣回）
+  if(STATE.inc>0){
+    const side = STATE.turn; // 当前应走的一方即为刚才走子的那一方
+    STATE.clocks[side] = Math.max(0, (STATE.clocks[side]||0) - STATE.inc);
+  }
   updateUI();
 });
 U.byId('btnOfferDraw').addEventListener('click', ()=>{
