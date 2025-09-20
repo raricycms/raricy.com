@@ -444,11 +444,11 @@
                 
                 // 如果点击的是己方棋子
                 if (piece && piece.color === this.currentPlayer) {
-                    // 如果必须吃子，检查这个棋子是否能吃子
+                    // 如果必须吃子，检查这个棋子是否能进行最优吃子
                     if (this.mustCapture) {
-                        const captureMoves = this.getCaptureMoves(row, col);
+                        const captureMoves = this.getOptimalCaptureMoves(row, col);
                         if (captureMoves.length === 0) {
-                            this.showMessage('必须选择能够吃子的棋子！', 'warning');
+                            this.showMessage('必须选择能够进行最多吃子的棋子！', 'warning');
                             return;
                         }
                     }
@@ -487,16 +487,16 @@
                 
                 let moves = [];
                 
-                // 如果必须吃子，只返回吃子移动
+                // 如果必须吃子，只返回最优吃子移动
                 if (this.mustCapture) {
-                    return this.getCaptureMoves(row, col);
+                    return this.getOptimalCaptureMoves(row, col);
                 }
                 
                 // 获取普通移动
                 moves = moves.concat(this.getNormalMoves(row, col));
                 
-                // 获取吃子移动
-                const captureMoves = this.getCaptureMoves(row, col);
+                // 获取最优吃子移动
+                const captureMoves = this.getOptimalCaptureMoves(row, col);
                 moves = moves.concat(captureMoves);
                 
                 return moves;
@@ -600,6 +600,143 @@
                 return moves;
             }
 
+            // 计算所有可能的吃子序列（递归计算连续吃子）
+            getAllCaptureSequences(row, col, captured = [], currentBoard = null) {
+                if (!currentBoard) {
+                    currentBoard = this.board.map(row => [...row]); // 深拷贝当前棋盘
+                }
+                
+                const piece = currentBoard[row][col];
+                if (!piece) return [];
+                
+                const captureMoves = this.getDirectCaptureMoves(row, col, currentBoard);
+                const sequences = [];
+                
+                if (captureMoves.length === 0) {
+                    // 没有更多吃子，返回当前序列
+                    if (captured.length > 0) {
+                        sequences.push({
+                            captures: [...captured],
+                            finalPos: { row, col },
+                            totalCaptured: captured.length
+                        });
+                    }
+                    return sequences;
+                }
+                
+                for (const move of captureMoves) {
+                    // 模拟执行这步吃子
+                    const newBoard = currentBoard.map(row => [...row]);
+                    newBoard[move.row][move.col] = newBoard[row][col];
+                    newBoard[row][col] = null;
+                    newBoard[move.capturedRow][move.capturedCol] = null;
+                    
+                    const newCaptured = [...captured, { row: move.capturedRow, col: move.capturedCol }];
+                    
+                    // 递归计算后续吃子
+                    const subsequences = this.getAllCaptureSequences(move.row, move.col, newCaptured, newBoard);
+                    
+                    if (subsequences.length === 0) {
+                        // 没有后续吃子，这是一个完整序列
+                        sequences.push({
+                            captures: newCaptured,
+                            finalPos: { row: move.row, col: move.col },
+                            totalCaptured: newCaptured.length,
+                            firstMove: move
+                        });
+                    } else {
+                        // 有后续吃子，添加所有子序列
+                        subsequences.forEach(seq => {
+                            sequences.push({
+                                ...seq,
+                                firstMove: move
+                            });
+                        });
+                    }
+                }
+                
+                return sequences;
+            }
+
+            // 获取单步吃子移动（不包括连续吃子）
+            getDirectCaptureMoves(row, col, board = null) {
+                if (!board) board = this.board;
+                
+                const piece = board[row][col];
+                if (!piece) return [];
+                
+                const moves = [];
+                
+                // 确定移动方向
+                let directions = [];
+                if (piece.isKing) {
+                    directions = [[-1, -1], [-1, 1], [1, -1], [1, 1]];
+                } else {
+                    if (piece.color === 'black') {
+                        directions = [[1, -1], [1, 1], [-1, -1], [-1, 1]]; // 可以向前后吃子
+                    } else {
+                        directions = [[-1, -1], [-1, 1], [1, -1], [1, 1]]; // 可以向前后吃子
+                    }
+                }
+                
+                for (const [dr, dc] of directions) {
+                    let enemyRow = row + dr;
+                    let enemyCol = col + dc;
+                    
+                    // 对于王，寻找可吃的敌子
+                    while (this.isValidPosition(enemyRow, enemyCol)) {
+                        const enemyPiece = board[enemyRow][enemyCol];
+                        
+                        if (enemyPiece && enemyPiece.color !== piece.color) {
+                            // 找到敌子，检查其后面是否有空位
+                            let landRow = enemyRow + dr;
+                            let landCol = enemyCol + dc;
+                            
+                            while (this.isValidPosition(landRow, landCol) && !board[landRow][landCol]) {
+                                moves.push({
+                                    row: landRow,
+                                    col: landCol,
+                                    type: 'capture',
+                                    capturedRow: enemyRow,
+                                    capturedCol: enemyCol
+                                });
+                                
+                                // 普通棋子只能跳一格
+                                if (!piece.isKing) break;
+                                
+                                landRow += dr;
+                                landCol += dc;
+                            }
+                            break;
+                        } else if (enemyPiece) {
+                            // 遇到己方棋子，停止
+                            break;
+                        }
+                        
+                        // 普通棋子只检查相邻位置
+                        if (!piece.isKing) break;
+                        
+                        enemyRow += dr;
+                        enemyCol += dc;
+                    }
+                }
+                
+                return moves;
+            }
+
+            // 获取最优吃子移动（最大吃子规则）
+            getOptimalCaptureMoves(row, col) {
+                const sequences = this.getAllCaptureSequences(row, col);
+                if (sequences.length === 0) return [];
+                
+                // 找出吃子最多的序列
+                const maxCaptures = Math.max(...sequences.map(seq => seq.totalCaptured));
+                const optimalSequences = sequences.filter(seq => seq.totalCaptured === maxCaptures);
+                
+                // 返回最优序列的第一步移动
+                return optimalSequences.map(seq => seq.firstMove);
+            }
+
             makeMove(fromRow, fromCol, toRow, toCol) {
                 const move = this.possibleMoves.find(m => m.row === toRow && m.col === toCol);
                 if (!move) return;
@@ -616,7 +753,7 @@
                     this.captureSequence.push({ row: move.capturedRow, col: move.capturedCol });
                     
                     // 检查是否可以继续吃子
-                    const additionalCaptures = this.getCaptureMoves(toRow, toCol);
+                    const additionalCaptures = this.getOptimalCaptureMoves(toRow, toCol);
                     if (additionalCaptures.length > 0) {
                         // 可以继续吃子
                         this.selectedPiece = { row: toRow, col: toCol };
@@ -627,7 +764,7 @@
                         const cell = document.querySelector(`[data-row="${toRow}"][data-col="${toCol}"]`);
                         cell.classList.add('highlighted');
                         
-                        this.showMessage('继续吃子！', 'info');
+                        this.showMessage('继续吃子！必须完成最多吃子的序列', 'info');
                         return;
                     }
                 }
@@ -680,7 +817,7 @@
                     for (let col = 0; col < this.boardSize; col++) {
                         const piece = this.board[row][col];
                         if (piece && piece.color === this.currentPlayer) {
-                            const captures = this.getCaptureMoves(row, col);
+                            const captures = this.getOptimalCaptureMoves(row, col);
                             if (captures.length > 0) {
                                 return true;
                             }
@@ -825,6 +962,7 @@
    • 可以向前后任意方向吃子
    • 必须连续吃子（如果可能）
    • 有吃子机会时必须吃子
+   • ⚠️ 最大吃子规则：当有多种吃子路径时，必须选择能吃掉最多棋子的路径
 
 4. 👑 升王：
    • 棋子到达对方底线时升为王
@@ -856,6 +994,7 @@
    • 可以向前后任意方向吃子
    • 必须连续吃子（如果可能）
    • 有吃子机会时必须吃子
+   • ⚠️ 最大吃子规则：当有多种吃子路径时，必须选择能吃掉最多棋子的路径
 
 4. 👑 升王：
    • 棋子到达对方底线时升为王

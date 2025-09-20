@@ -83,7 +83,7 @@
         }
 
         .grid-cell {
-            border: 1px solid #8b4513;
+            border: none;
             position: relative;
             display: flex;
             align-items: center;
@@ -139,18 +139,37 @@
 
         .river {
             position: absolute;
-            top: 45%;
+            top: 50%;
             left: 0;
             right: 0;
-            height: 10%;
-            background: linear-gradient(to right, transparent 10%, #87ceeb 50%, transparent 90%);
+            transform: translateY(-50%);
+            height: auto;
+            background: none;
             display: flex;
             align-items: center;
             justify-content: center;
             font-size: 1.2em;
-            color: #2c5aa0;
+            color: rgba(44, 90, 160, 0.4);
             font-weight: bold;
-            text-shadow: 1px 1px 2px rgba(255, 255, 255, 0.8);
+            text-shadow: none;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        /* Grid lines drawn via SVG under the interactive cells */
+        .board-grid { position: relative; z-index: 2; }
+        .board-lines {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            pointer-events: none;
+        }
+        .board-lines line {
+            stroke: #8b4513;
+            stroke-width: 0.06;
+            vector-effect: non-scaling-stroke;
         }
 
         .control-panel {
@@ -275,7 +294,7 @@
 
         <div class="chess-board">
             <div class="board-grid" id="chessBoard"></div>
-            <div class="river">楚河 ═══ 汉界</div>
+            <div class="river">楚河  汉界</div>
         </div>
 
         <div class="control-panel">
@@ -335,6 +354,57 @@
             renderBoard() {
                 const boardElement = document.getElementById('chessBoard');
                 boardElement.innerHTML = '';
+
+                // Draw grid lines as SVG that aligns to cell centers (pieces on intersections)
+                const svgNS = 'http://www.w3.org/2000/svg';
+                const svg = document.createElementNS(svgNS, 'svg');
+                svg.setAttribute('class', 'board-lines');
+                svg.setAttribute('viewBox', '0 0 9 10');
+                svg.setAttribute('preserveAspectRatio', 'none');
+
+                // Horizontal lines (10)
+                for (let i = 0; i < 10; i++) {
+                    const y = i + 0.5;
+                    const line = document.createElementNS(svgNS, 'line');
+                    line.setAttribute('x1', '0.5');
+                    line.setAttribute('y1', String(y));
+                    line.setAttribute('x2', '8.5');
+                    line.setAttribute('y2', String(y));
+                    svg.appendChild(line);
+                }
+
+                // Vertical lines (9)
+                for (let j = 0; j < 9; j++) {
+                    const x = j + 0.5;
+                    const line = document.createElementNS(svgNS, 'line');
+                    line.setAttribute('x1', String(x));
+                    line.setAttribute('y1', '0.5');
+                    line.setAttribute('x2', String(x));
+                    line.setAttribute('y2', '9.5');
+                    svg.appendChild(line);
+                }
+
+                // Palace diagonals (top)
+                const p1 = document.createElementNS(svgNS, 'line');
+                p1.setAttribute('x1', '3.5'); p1.setAttribute('y1', '0.5');
+                p1.setAttribute('x2', '5.5'); p1.setAttribute('y2', '2.5');
+                svg.appendChild(p1);
+                const p2 = document.createElementNS(svgNS, 'line');
+                p2.setAttribute('x1', '5.5'); p2.setAttribute('y1', '0.5');
+                p2.setAttribute('x2', '3.5'); p2.setAttribute('y2', '2.5');
+                svg.appendChild(p2);
+
+                // Palace diagonals (bottom)
+                const p3 = document.createElementNS(svgNS, 'line');
+                p3.setAttribute('x1', '3.5'); p3.setAttribute('y1', '7.5');
+                p3.setAttribute('x2', '5.5'); p3.setAttribute('y2', '9.5');
+                svg.appendChild(p3);
+                const p4 = document.createElementNS(svgNS, 'line');
+                p4.setAttribute('x1', '5.5'); p4.setAttribute('y1', '7.5');
+                p4.setAttribute('x2', '3.5'); p4.setAttribute('y2', '9.5');
+                svg.appendChild(p4);
+
+                boardElement.appendChild(svg);
 
                 for (let row = 0; row < 10; row++) {
                     for (let col = 0; col < 9; col++) {

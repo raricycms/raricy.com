@@ -131,6 +131,7 @@
         <button id="btnUndo" class="btn">撤回</button>
         <button id="btnRedo" class="btn">重做</button>
         <button id="btnReplay" class="btn">回放</button>
+        <button id="btnRestart" class="btn">重新开始</button>
         <button id="btnHint" class="btn">建议一步</button>
         <button id="btnSave" class="btn">保存</button>
         <button id="btnExport" class="btn">导出</button>
@@ -164,6 +165,7 @@
     const btnUndo = document.getElementById('btnUndo');
     const btnRedo = document.getElementById('btnRedo');
     const btnReplay = document.getElementById('btnReplay');
+    const btnRestart = document.getElementById('btnRestart');
     const btnHint = document.getElementById('btnHint');
     const btnSave = document.getElementById('btnSave');
     const btnExport = document.getElementById('btnExport');
@@ -304,14 +306,23 @@
       setTimeout(()=>{ playMove(6,6,1); playMove(7,6,2); playMove(6,7,1); playMove(7,7,2); updateMoveList(); }, 220);
     });
 
-    btnBack.addEventListener('click', ()=>{ // back to settings
-      if(autoplayTimer) clearInterval(autoplayTimer);
-      gameScreen.classList.add('hidden'); startScreen.classList.remove('hidden'); saveAuto();
-    });
+    function backToMenu() {
+      if (moves.length > 0 && !gameOver) {
+        if (!confirm('确定要返回主菜单吗？当前棋局进度会自动保存。')) {
+          return;
+        }
+      }
+      if (autoplayTimer) clearInterval(autoplayTimer);
+      gameScreen.classList.add('hidden');
+      startScreen.classList.remove('hidden');
+      saveAuto();
+    }
+    btnBack.addEventListener('click', backToMenu);
 
     btnUndo.addEventListener('click', ()=>{ undo(); updateMoveList(); });
     btnRedo.addEventListener('click', ()=>{ redo(); updateMoveList(); });
     btnReplay.addEventListener('click', ()=>{ if(moves.length===0){ alert('没有棋谱可回放'); return; } replayMoves(); });
+    btnRestart.addEventListener('click', backToMenu);
     btnHint.addEventListener('click', ()=>{ const mv = chooseAIMove(current, startLevel.value); if(!mv){ alert('没有建议'); return; } animateHint(mv.x,mv.y); });
 
     btnSave.addEventListener('click', ()=>{ localStorage.setItem(savedStateKey, JSON.stringify({size:SIZE,moves,first:startFirst.value,mode:startMode.value,level:startLevel.value})); alert('已保存到本地'); });

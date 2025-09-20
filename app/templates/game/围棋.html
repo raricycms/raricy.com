@@ -32,7 +32,7 @@
   .badge{font-size:12px;padding:4px 8px;border-radius:999px;background:var(--panel-2);border:1px solid var(--line);color:#cbd5e1}
   .info{display:flex;justify-content:space-between;align-items:center}
   .canvas-wrap{position:relative;aspect-ratio:1/1;background:var(--board);border-radius:18px;border:1px solid #b9853b;box-shadow:inset 0 0 80px #00000022, 0 10px 30px var(--shadow)}
-  canvas{width:100%;height:100%;display:block;border-radius:18px}
+  canvas{width:100%;height:100%;display:block;border-radius:18px;touch-action:none}
   .overlay-tip{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none}
   .overlay-tip span{background:#00000066;padding:6px 10px;border:1px solid var(--line);border-radius:10px}
   textarea, .log{width:100%;min-height:120px;background:var(--panel-2);color:#e6edf3;border:1px solid var(--line);border-radius:12px;padding:10px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
@@ -455,8 +455,9 @@ function xyFromClient(ev){
   const rect = cvs.getBoundingClientRect();
   const pad = 60;
   const step = (cvs.width-2*pad)/(N-1);
-  const px = (ev.touches?ev.touches[0].clientX:ev.clientX) - rect.left;
-  const py = (ev.touches?ev.touches[0].clientY:ev.clientY) - rect.top;
+  const t = (ev.touches && ev.touches[0]) || (ev.changedTouches && ev.changedTouches[0]) || ev;
+  const px = t.clientX - rect.left;
+  const py = t.clientY - rect.top;
   // 反变换至 canvas 坐标
   const sx = px * (cvs.width/rect.width);
   const sy = py * (cvs.height/rect.height);
@@ -473,17 +474,35 @@ cvs.addEventListener('click',(ev)=>{
   else if(phase===PHASE.SCORING) toggleDeadAt(x,y);
 });
 
-let longPressTimer=null;
+let longPressTimer=null, longPressTriggered=false, touchMoved=false;
 cvs.addEventListener('touchstart',(ev)=>{ // 防止双击缩放等
   ev.preventDefault();
+  longPressTriggered=false; touchMoved=false;
   longPressTimer = setTimeout(()=>{
+    longPressTriggered=true;
     const {x,y}=xyFromClient(ev);
     if(inb(x,y)){
       if(phase===PHASE.SCORING) toggleDeadAt(x,y);
     }
   },500);
 },{passive:false});
-cvs.addEventListener('touchend',()=>{ if(longPressTimer) clearTimeout(longPressTimer); });
+cvs.addEventListener('touchmove',(ev)=>{
+  touchMoved=true;
+  if(longPressTimer){ clearTimeout(longPressTimer); longPressTimer=null; }
+},{passive:false});
+cvs.addEventListener('touchend',(ev)=>{
+  if(longPressTimer){ clearTimeout(longPressTimer); longPressTimer=null; }
+  // 轻触作为点击
+  if(!longPressTriggered && !touchMoved){
+    const {x,y}=xyFromClient(ev);
+    if(inb(x,y)){
+      if(phase===PHASE.PLAY) play(x,y);
+      else if(phase===PHASE.SCORING) toggleDeadAt(x,y);
+    }
+  }
+  ev.preventDefault();
+  longPressTriggered=false; touchMoved=false;
+},{passive:false});
 
 // --------------------- 记分阶段 ---------------------
 function enterScoring(){
