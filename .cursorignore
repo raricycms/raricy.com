@@ -1,0 +1,4 @@
+**/*.min.js
+app/static/vendor/**
+app/static/js/marked.min.js
+

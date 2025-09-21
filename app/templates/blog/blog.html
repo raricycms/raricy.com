@@ -10,7 +10,12 @@
 <!-- JavaScript 库（按依赖顺序加载） -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.8/purify.min.js" onerror="console.error('DOMPurify 加载失败')"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js" onerror="console.error('highlight.js 加载失败')"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js" onerror="console.error('marked.js 加载失败')"></script>
+<script src="{{url_for('static', filename='js/marked.min.js')}}"></script>
+<script>
+    if (typeof window.marked === 'undefined') {
+        document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"><\\/script>');
+    }
+</script>
 <!-- MathJax 配置和加载 -->
 <script>
     window.MathJax = {

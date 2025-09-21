@@ -122,7 +122,12 @@
 
 {% block extra_js %}
 <!-- 引入marked.js用于markdown渲染 -->
-<script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
+<script src="{{url_for('static', filename='js/marked.min.js')}}"></script>
+<script>
+  if (!window.marked) {
+    document.write('<script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"><\\/script>');
+  }
+</script>
 <script type="module">
     import { CattcaInterpreter } from "{{url_for('static', filename='js/cattca.js')}}";
     
@@ -172,8 +177,12 @@
         }
       } catch (error) {
         console.error('Markdown parsing error:', error);
-        // 如果markdown解析失败，直接显示原始文本
-        htmlContent = txt.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        // 如果markdown解析失败，安全转义并保留换行符
+        const escaped = txt
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;');
+        htmlContent = escaped.replace(/\r\n|\n/g, '<br>');
       }
       
       if (!currentSegment) {
@@ -237,7 +246,11 @@
           }
         } catch (error) {
           console.error('Markdown parsing error:', error);
-          newHtml = txt.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          const escaped = txt
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+          newHtml = escaped.replace(/\r\n|\n/g, '<br>');
         }
         try {
           contentDiv.innerHTML = currentHtml + newHtml;

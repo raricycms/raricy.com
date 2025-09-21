@@ -19,3 +19,5 @@ nohup.out
 baks/
 todo-list.txt
 download_instance.ps1
+\# Ignore local vendored browser libs (kept out of git to avoid line counts)
+app/static/js/marked.min.js
