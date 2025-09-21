@@ -4,12 +4,22 @@
 
 {% block extra_css %}
 <!-- CSS 样式表 -->
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css" id="hljs-light">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/monokai.min.css" id="hljs-dark" disabled>
+<link rel="stylesheet" href="{{url_for('static', filename='css/hljs/default.min.css')}}" id="hljs-light" onerror="this.onerror=null; this.href='https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css'">
+<link rel="stylesheet" href="{{url_for('static', filename='css/hljs/monokai.min.css')}}" id="hljs-dark" disabled onerror="this.onerror=null; this.href='https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/monokai.min.css'">
 
 <!-- JavaScript 库（按依赖顺序加载） -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.8/purify.min.js" onerror="console.error('DOMPurify 加载失败')"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js" onerror="console.error('highlight.js 加载失败')"></script>
+<script src="{{url_for('static', filename='js/dompurify.min.js')}}"></script>
+<script>
+    if (typeof window.DOMPurify === 'undefined') {
+        document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.8/purify.min.js"><\\/script>');
+    }
+</script>
+<script src="{{url_for('static', filename='js/highlight.min.js')}}"></script>
+<script>
+    if (typeof window.hljs === 'undefined') {
+        document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"><\\/script>');
+    }
+</script>
 <script src="{{url_for('static', filename='js/marked.min.js')}}"></script>
 <script>
     if (typeof window.marked === 'undefined') {
