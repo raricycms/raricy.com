@@ -95,3 +95,9 @@ def cattca_page():
 @tool_bp.route('/redirect')
 def redirect_page():
     return render_template('tool/redirect.html')
+
+
+@tool_bp.route('/translate')
+def translate_page():
+    from flask import redirect
+    return redirect('http://116.62.179.232:9198')
