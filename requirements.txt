@@ -16,5 +16,4 @@ Pillow
 pybase62
 bleach
 pymdown-extensions
-python-base91
 base92

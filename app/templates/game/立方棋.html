@@ -152,6 +152,19 @@
             cursor: not-allowed;
         }
 
+        /* 手机端切换爆炸视图按钮 */
+        .toggle-button {
+            background: #607d8b;
+        }
+
+        .toggle-button:hover {
+            background: #546e7a;
+        }
+
+        .toggle-button.active {
+            background: #2196f3;
+        }
+
         .undo-button {
             background: #ff9800;
         }
@@ -212,6 +225,14 @@
         <div>• 四子连线获胜</div>
         <div>• 绿框显示最后一步</div>
         <div>• 64步无胜负为平局</div>
+        <div style="margin-top: 10px;">
+            <div>手机端爆炸视图:</div>
+            <div style="margin-top: 6px;">
+                <button class="button toggle-button" id="btnExplodeZ" aria-pressed="false" title="键盘 A">Z轴(A)</button>
+                <button class="button toggle-button" id="btnExplodeY" aria-pressed="false" title="键盘 S">Y轴(S)</button>
+                <button class="button toggle-button" id="btnExplodeX" aria-pressed="false" title="键盘 D">X轴(D)</button>
+            </div>
+        </div>
     </div>
 
     <div class="container" id="container">
@@ -229,6 +250,9 @@
         const blueCountEl = document.getElementById('blueCount');
         const totalMovesEl = document.getElementById('totalMoves');
         const undoButtonEl = document.getElementById('undoButton');
+        const btnExplodeX = document.getElementById('btnExplodeX');
+        const btnExplodeY = document.getElementById('btnExplodeY');
+        const btnExplodeZ = document.getElementById('btnExplodeZ');
         
         let cubes = [];
         let cubeGrid = {}; // 用于快速查找立方体
@@ -255,6 +279,22 @@
             y: false,
             z: false
         };
+
+        function updateExplodeButtons() {
+            if (!btnExplodeX || !btnExplodeY || !btnExplodeZ) return;
+            btnExplodeX.classList.toggle('active', explodeState.x);
+            btnExplodeX.setAttribute('aria-pressed', String(explodeState.x));
+            btnExplodeY.classList.toggle('active', explodeState.y);
+            btnExplodeY.setAttribute('aria-pressed', String(explodeState.y));
+            btnExplodeZ.classList.toggle('active', explodeState.z);
+            btnExplodeZ.setAttribute('aria-pressed', String(explodeState.z));
+        }
+
+        function toggleExplode(axis) {
+            explodeState[axis] = !explodeState[axis];
+            updateCubePositions();
+            updateExplodeButtons();
+        }
 
         // 所有可能的连线方向（76种）
         const winDirections = [
@@ -696,14 +736,17 @@
                 case 'a':
                     explodeState.z = !explodeState.z;
                     updateCubePositions();
+                    updateExplodeButtons();
                     break;
                 case 's':
                     explodeState.y = !explodeState.y;
                     updateCubePositions();
+                    updateExplodeButtons();
                     break;
                 case 'd':
                     explodeState.x = !explodeState.x;
                     updateCubePositions();
+                    updateExplodeButtons();
                     break;
                 case 'z':
                     if (e.ctrlKey) {
@@ -713,6 +756,13 @@
                     break;
             }
         });
+
+        // 手机端按钮事件
+        if (btnExplodeX && btnExplodeY && btnExplodeZ) {
+            btnExplodeX.addEventListener('click', () => toggleExplode('x'));
+            btnExplodeY.addEventListener('click', () => toggleExplode('y'));
+            btnExplodeZ.addEventListener('click', () => toggleExplode('z'));
+        }
 
         // 触摸事件（旋转）
         function handleTouchStart(e) {
@@ -753,6 +803,7 @@
         updateScale();
         updateRotation();
         updateUI();
+        updateExplodeButtons();
 
         // 监听窗口变化
         window.addEventListener('resize', updateScale);
