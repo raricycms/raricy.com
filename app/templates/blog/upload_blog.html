@@ -96,8 +96,6 @@ Raricy.com - 文章上传
             <textarea id="fallback-editor" class="form-control" rows="20" style="display: none;"></textarea>
         </div>
 
-        {{turnstile}}
-
         <button type="submit" class="btn btn-primary">提交</button>
     </form>
 </div>
@@ -166,7 +164,6 @@ Raricy.com - 文章上传
             const title = document.getElementById('title').value;
             const description = document.getElementById('description').value;
             const category_id = document.getElementById('category').value;
-            const turnstileResponse = form.querySelector('[name="cf-turnstile-response"]').value;
             
             // 根据 Vditor 是否加载成功来获取内容
             let content;
@@ -202,8 +199,7 @@ Raricy.com - 文章上传
                         title: title,
                         description: description,
                         content: content,
-                        category_id: category_id,
-                        'cf-turnstile-response': turnstileResponse
+                        category_id: category_id
                     })
                 });
 

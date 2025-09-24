@@ -417,6 +417,13 @@
     <div class="container">
         <h1>📝 博客文章</h1>
         <p>分享思考与见解</p>
+        {% if current_user.is_authenticated and current_user.authenticated %}
+        <div class="mt-3">
+            <a href="/blog/upload_blog" class="btn btn-light btn-sm">
+                ➕ 发布文章
+            </a>
+        </div>
+        {% endif %}
         {% if current_category or featured %}
         <div class="current-category">
             {% if featured %}

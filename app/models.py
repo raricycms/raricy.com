@@ -13,7 +13,7 @@ class User(UserMixin, db.Model):
     password_hash = db.Column(db.String(255), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.now)
     last_login = db.Column(db.DateTime, default=datetime.now)
-    authenticated = db.Column(db.Boolean, default=False)
+    authenticated = db.Column(db.Boolean, default=False) # 是否为核心用户
     is_admin = db.Column(db.Boolean, default=False)
     avatar_path = db.Column(db.String(255))
     

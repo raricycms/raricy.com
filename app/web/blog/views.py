@@ -64,6 +64,9 @@ def register_views(blog_bp):
         - 正文写入数据库 `BlogContent`
         """
         if request.method == 'GET':
+            # 仅核心用户可以访问发布页
+            if not getattr(current_user, 'authenticated', False):
+                abort(403)
             # 检查用户是否被禁言
             is_banned, ban_info, _ = check_user_ban_status()
             
@@ -78,6 +81,10 @@ def register_views(blog_bp):
             if is_banned:
                 return error_response
             
+            # 仅核心用户可以发布
+            if not getattr(current_user, 'authenticated', False):
+                return forbidden_response('只有核心用户才能发布文章')
+            
             data = request.get_json()
             
             # 验证博客数据
@@ -85,10 +92,16 @@ def register_views(blog_bp):
             if not is_valid:
                 return validation_error_response(error_message)
             
-            # Turnstile 人机验证（可选）
-            from flask import current_app
-            if current_app.config['TURNSTILE_AVAILABLE'] and not turnstile.verify(data.get('cf-turnstile-response')):
-                return error_response('人机验证失败', 400)
+            # 每日发文数量限制（最多5篇）
+            from datetime import datetime
+            from app.models import Blog
+            start_of_day = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+            today_count = Blog.query.filter(
+                Blog.author_id == current_user.id,
+                Blog.created_at >= start_of_day
+            ).count()
+            if today_count >= 5:
+                return error_response('今日发布数量已达上限（5篇）', 429)
             
             # 创建博客
             blog_id = BlogService.create_blog(validated_data)
