@@ -115,6 +115,34 @@ def register_admin_views(blog_bp):
                              pagination=pagination,
                              current_category_id=category_id,
                              search=search)
+
+    @blog_bp.route('/admin/articles/<blog_id>/featured', methods=['PUT'])
+    @login_required
+    @admin_required
+    def update_article_featured(blog_id):
+        """
+        更新文章精选状态（仅管理员）
+        """
+        data = request.get_json() or {}
+        is_featured = bool(data.get('is_featured'))
+        success, message, blog_dict = BlogService.update_featured(blog_id, is_featured)
+        if success:
+            return success_response(message, blog=blog_dict)
+        else:
+            return error_response(message, 404)
+
+    @blog_bp.route('/admin/articles/batch-featured', methods=['POST'])
+    @login_required
+    @admin_required
+    def batch_update_featured():
+        data = request.get_json() or {}
+        blog_ids = data.get('blog_ids', [])
+        is_featured = bool(data.get('is_featured'))
+        success, message = BlogService.batch_update_featured(blog_ids, is_featured)
+        if success:
+            return success_response(message)
+        else:
+            return error_response(message, 400)
     
     @blog_bp.route('/admin/articles/<blog_id>/category', methods=['PUT'])
     @login_required

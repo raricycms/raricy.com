@@ -85,6 +85,15 @@
         gap: 10px;
         min-width: 200px;
     }
+    .featured-flag {
+        display: inline-block;
+        padding: 4px 10px;
+        border-radius: 12px;
+        background: #fff3cd;
+        color: #b36b00;
+        font-size: 0.8rem;
+        align-self: flex-start;
+    }
 
     .current-category {
         padding: 6px 12px;
@@ -261,8 +270,9 @@
                     {% endfor %}
                 </select>
             </div>
-            <div class="col-md-2">
+            <div class="col-md-2 d-flex gap-2">
                 <button class="btn btn-success w-100" id="batchUpdateBtn">批量更新</button>
+                <button class="btn btn-warning w-100" id="batchFeaturedBtn">批量设为精选</button>
             </div>
         </div>
     </div>
@@ -306,6 +316,9 @@
                         📄 未分类
                         {% endif %}
                     </div>
+                    <div>
+                        <span class="featured-flag" style="display: {{ 'inline-block' if article.is_featured else 'none' }}">🌟 精选</span>
+                    </div>
                     <select class="form-select category-select" data-article-id="{{ article.id }}">
                         <option value="">选择栏目</option>
                         <option value="" {{ 'selected' if not article.category_id else '' }}>设为未分类</option>
@@ -325,6 +338,9 @@
                     <div class="d-flex gap-1">
                         <a href="/blog/{{ article.id }}" class="btn btn-sm btn-outline-primary" target="_blank">👁️ 查看</a>
                         <a href="/blog/{{ article.id }}/edit" class="btn btn-sm btn-outline-success">✏️ 编辑</a>
+                        <button class="btn btn-sm btn-outline-warning toggle-featured" data-article-id="{{ article.id }}">
+                            {{ '取消精选' if article.is_featured else '设为精选' }}
+                        </button>
                     </div>
                 </div>
             </div>
@@ -467,6 +483,32 @@ document.addEventListener('DOMContentLoaded', function() {
         batchUpdateCategory(blogIds, categoryId);
     });
 
+    // 批量设为精选
+    document.getElementById('batchFeaturedBtn').addEventListener('click', async function() {
+        const checkedBoxes = document.querySelectorAll('.article-checkbox:checked');
+        if (checkedBoxes.length === 0) {
+            showMessage('请选择要更新的文章');
+            return;
+        }
+        const blogIds = Array.from(checkedBoxes).map(cb => cb.value);
+        try {
+            const response = await fetch('/blog/admin/articles/batch-featured', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ blog_ids: blogIds, is_featured: true })
+            });
+            const result = await response.json();
+            if (result.code === 200) {
+                showMessage(result.message, 'success');
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                showMessage(result.message || '批量更新失败');
+            }
+        } catch (e) {
+            showMessage('网络错误，请稍后重试');
+        }
+    });
+
     // 更新单个文章栏目
     async function updateArticleCategory(articleId, categoryId) {
         try {
@@ -527,6 +569,38 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // 初始化
     updateSelectionState();
+
+    // 单条精选切换
+    document.addEventListener('click', async function(e) {
+        if (e.target.classList.contains('toggle-featured')) {
+            const card = e.target.closest('.article-card');
+            const articleId = e.target.dataset.articleId;
+            const turnToFeatured = e.target.textContent.includes('设为精选');
+            try {
+                const response = await fetch(`/blog/admin/articles/${articleId}/featured`, {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ is_featured: turnToFeatured })
+                });
+                const result = await response.json();
+                if (result.code === 200) {
+                    showMessage(result.message, 'success');
+                    const flag = card.querySelector('.featured-flag');
+                    if (turnToFeatured) {
+                        flag.style.display = 'inline-block';
+                        e.target.textContent = '取消精选';
+                    } else {
+                        flag.style.display = 'none';
+                        e.target.textContent = '设为精选';
+                    }
+                } else {
+                    showMessage(result.message || '更新失败');
+                }
+            } catch (err) {
+                showMessage('网络错误，请稍后重试');
+            }
+        }
+    });
 });
 </script>
 {% endblock %}

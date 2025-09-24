@@ -23,8 +23,12 @@ def register_views(blog_bp):
         支持按栏目筛选，URL格式：/blog/?category=栏目slug
         """
         category_slug = request.args.get('category')
+        featured = request.args.get('featured')
+        featured_flag = None
+        if featured is not None:
+            featured_flag = True if featured in ['1', 'true', 'True'] else False if featured in ['0', 'false', 'False'] else None
         
-        blogs, categories, current_category = BlogService.get_blog_list(category_slug)
+        blogs, categories, current_category = BlogService.get_blog_list(category_slug, featured=featured_flag)
         
         if blogs is None:  # 栏目不存在
             abort(404)
@@ -32,7 +36,8 @@ def register_views(blog_bp):
         return render_template('blog/menu.html', 
                              blogs=blogs, 
                              categories=categories, 
-                             current_category=current_category)
+                             current_category=current_category,
+                             featured=featured_flag)
     
     @blog_bp.route('/<blog_id>')
     def blog_detail(blog_id):

@@ -26,6 +26,7 @@ class CategoryService:
             description=validated_data['description'],
             icon=validated_data['icon'],
             parent_id=validated_data['parent_id'],
+            exclude_from_all=validated_data.get('exclude_from_all', False),
             sort_order=0,  # 可以后续调整
             is_active=True,
             created_at=datetime.now()
@@ -58,6 +59,7 @@ class CategoryService:
         category.description = validated_data['description']
         category.icon = validated_data['icon']
         category.is_active = validated_data['is_active']
+        category.exclude_from_all = validated_data.get('exclude_from_all', category.exclude_from_all)
         
         db.session.commit()
         

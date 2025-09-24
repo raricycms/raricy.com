@@ -15,7 +15,7 @@ class BlogService:
     """博客业务逻辑服务"""
     
     @staticmethod
-    def get_blog_list(category_slug=None):
+    def get_blog_list(category_slug=None, featured=None):
         """
         获取博客列表
         
@@ -48,6 +48,24 @@ class BlogService:
             else:
                 # 栏目不存在
                 return None, categories, None
+        else:
+            # 无栏目筛选时，排除被设置为不在“全部文章”显示的分类（及其子分类）
+            excluded_ids = []
+            try:
+                excluded_categories = Category.query.filter_by(exclude_from_all=True, is_active=True).all()
+                for ec in excluded_categories:
+                    excluded_ids.append(ec.id)
+                    # 子分类
+                    for child in ec.children.filter_by(is_active=True).all():
+                        excluded_ids.append(child.id)
+            except Exception:
+                excluded_ids = []
+            if excluded_ids:
+                query = query.filter((Blog.category_id.is_(None)) | (~Blog.category_id.in_(excluded_ids)))
+
+        # 精选筛选
+        if featured in (True, False):
+            query = query.filter(Blog.is_featured == featured)
         
         blogs = []
         for blog in query.order_by(Blog.created_at.desc()).all():
@@ -55,6 +73,31 @@ class BlogService:
             blogs.append(item)
         
         return blogs, categories, current_category
+
+    @staticmethod
+    def update_featured(blog_id, is_featured):
+        """
+        更新文章精选状态
+        """
+        blog = Blog.query.get(blog_id)
+        if not blog:
+            return False, "文章不存在", None
+        blog.is_featured = bool(is_featured)
+        db.session.commit()
+        return True, ("已设为精选" if blog.is_featured else "已取消精选"), blog.to_dict()
+
+    @staticmethod
+    def batch_update_featured(blog_ids, is_featured):
+        """
+        批量更新精选状态
+        """
+        if not blog_ids:
+            return False, "请选择要更新的文章"
+        updated = Blog.query.filter(Blog.id.in_(blog_ids)).update(
+            {Blog.is_featured: bool(is_featured)}, synchronize_session=False
+        )
+        db.session.commit()
+        return True, f"已更新 {updated} 篇文章的精选状态"
     
     @staticmethod
     def get_blog_detail(blog_id):

@@ -25,6 +25,7 @@ class CategoryValidator:
         slug = (data.get('slug') or '').strip()
         description = (data.get('description') or '').strip()
         icon = (data.get('icon') or '').strip()
+        exclude_from_all = bool(data.get('exclude_from_all', False))
         parent_id = data.get('parent_id')
         
         if not name:
@@ -54,7 +55,8 @@ class CategoryValidator:
             'slug': slug,
             'description': description,
             'icon': icon,
-            'parent_id': validated_parent_id
+            'parent_id': validated_parent_id,
+            'exclude_from_all': exclude_from_all
         }
         
         return True, None, validated_data
@@ -79,6 +81,7 @@ class CategoryValidator:
         description = (data.get('description') or '').strip()
         icon = (data.get('icon') or '').strip()
         is_active = data.get('is_active', True)
+        exclude_from_all = bool(data.get('exclude_from_all', False))
         
         if not name:
             return False, "栏目名称不能为空", None
@@ -95,7 +98,8 @@ class CategoryValidator:
             'slug': slug,
             'description': description,
             'icon': icon,
-            'is_active': is_active
+            'is_active': is_active,
+            'exclude_from_all': exclude_from_all
         }
         
         return True, None, validated_data

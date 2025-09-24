@@ -200,6 +200,9 @@ class Blog(db.Model):
     # 所属栏目（可为空，表示未分类）
     category_id = db.Column(db.Integer, db.ForeignKey('categories.id'), nullable=True, index=True)
 
+    # 是否为精选文章
+    is_featured = db.Column(db.Boolean, default=False, index=True)
+
     # ORM 关系：便于通过 blog.author.username 取作者名
     author = db.relationship('User', backref=db.backref('blogs', lazy=True))
     
@@ -233,6 +236,7 @@ class Blog(db.Model):
             'category_id': self.category_id,
             'category': self.category.name if self.category else None,
             'category_path': self.category.get_full_path() if self.category else None,
+            'is_featured': self.is_featured,
         }
 
 
@@ -288,6 +292,9 @@ class Category(db.Model):
     
     # 分类图标（可选，用于前端显示）
     icon = db.Column(db.String(50), default='')
+
+    # 是否从“全部文章”中排除该分类（及其子分类）
+    exclude_from_all = db.Column(db.Boolean, default=False, index=True)
     
     created_at = db.Column(db.DateTime, default=datetime.now)
 
@@ -312,6 +319,7 @@ class Category(db.Model):
             'sort_order': self.sort_order,
             'is_active': self.is_active,
             'icon': self.icon,
+            'exclude_from_all': self.exclude_from_all,
             'level': 1 if self.parent_id is None else 2
         }
         

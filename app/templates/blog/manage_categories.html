@@ -123,6 +123,10 @@
                             data-category='{{ category | tojson }}'>
                         ✏️ 编辑
                     </button>
+                    <span class="form-check form-switch d-inline-flex align-items-center">
+                        <input class="form-check-input toggle-exclude" type="checkbox" data-category-id="{{ category.id }}" {{ 'checked' if category.exclude_from_all else '' }}>
+                        <label class="form-check-label ms-1">不在全部显示</label>
+                    </span>
                     <button class="btn btn-sm btn-outline-success add-child" 
                             data-parent-id="{{ category.id }}" 
                             data-parent-name="{{ category.name }}">
@@ -158,6 +162,10 @@
                                     data-category='{{ child | tojson }}'>
                                 ✏️ 编辑
                             </button>
+                            <span class="form-check form-switch d-inline-flex align-items-center">
+                                <input class="form-check-input toggle-exclude" type="checkbox" data-category-id="{{ child.id }}" {{ 'checked' if child.exclude_from_all else '' }}>
+                                <label class="form-check-label ms-1">不在全部显示</label>
+                            </span>
                             <button class="btn btn-sm btn-outline-danger delete-category" 
                                     data-category-id="{{ child.id }}" 
                                     data-category-name="{{ child.name }}">
@@ -252,6 +260,12 @@
                         <div class="form-check">
                             <input class="form-check-input" type="checkbox" id="editIsActive">
                             <label class="form-check-label" for="editIsActive">启用栏目</label>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="editExclude">
+                            <label class="form-check-label" for="editExclude">从“全部文章”中排除</label>
                         </div>
                     </div>
                 </form>
@@ -366,6 +380,7 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('editDescription').value = category.description || '';
             document.getElementById('editIcon').value = category.icon || '';
             document.getElementById('editIsActive').checked = category.is_active;
+            document.getElementById('editExclude').checked = !!category.exclude_from_all;
             
             const modal = new bootstrap.Modal(document.getElementById('editCategoryModal'));
             modal.show();
@@ -380,7 +395,8 @@ document.addEventListener('DOMContentLoaded', function() {
             slug: document.getElementById('editSlug').value.trim(),
             description: document.getElementById('editDescription').value.trim(),
             icon: document.getElementById('editIcon').value.trim(),
-            is_active: document.getElementById('editIsActive').checked
+            is_active: document.getElementById('editIsActive').checked,
+            exclude_from_all: document.getElementById('editExclude').checked
         };
 
         if (!data.name || !data.slug) {
@@ -404,6 +420,45 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         } catch (error) {
             showMessage('网络错误，请稍后重试');
+        }
+    });
+
+    // 切换“从全部排除”开关
+    document.addEventListener('change', async function(e) {
+        if (e.target.classList.contains('toggle-exclude')) {
+            const categoryId = e.target.dataset.categoryId;
+            const isExcluded = e.target.checked;
+            try {
+                // 获取同区域的编辑按钮以读取完整的分类数据
+                const actions = e.target.closest('.category-actions');
+                const editBtn = actions ? actions.querySelector('.edit-category') : null;
+                let payload;
+                if (editBtn) {
+                    const cat = JSON.parse(editBtn.dataset.category);
+                    payload = {
+                        name: cat.name,
+                        slug: cat.slug,
+                        description: cat.description || '',
+                        icon: cat.icon || '',
+                        is_active: !!cat.is_active,
+                        exclude_from_all: !!isExcluded
+                    };
+                } else {
+                    // 回退：只更新该字段（仍需通过后端验证，可能失败）
+                    payload = { exclude_from_all: !!isExcluded };
+                }
+                const resp = await fetch(`/blog/admin/categories/${categoryId}`, {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
+                });
+                const result = await resp.json();
+                if (result.code !== 200) {
+                    showMessage(result.message || '更新失败');
+                }
+            } catch (err) {
+                showMessage('网络错误，请稍后重试');
+            }
         }
     });
 
