@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 STATIC_DIR="$SCRIPT_DIR/../app/static"
-OUT_DIR="$STATIC_DIR/vditor"
+OUT_DIR="$STATIC_DIR/vditor/dist"
 
 mkdir -p "$OUT_DIR"
 
@@ -57,6 +57,7 @@ echo "Downloading Vditor ${VERSION} assets to $OUT_DIR ..."
 download_with_mirrors "index.min.js" "$OUT_DIR/index.min.js"
 download_with_mirrors "index.css" "$OUT_DIR/index.css"
 download_with_mirrors "js/lute/lute.min.js" "$OUT_DIR/js/lute/lute.min.js"
+download_with_mirrors "js/i18n/zh_CN.js" "$OUT_DIR/js/i18n/zh_CN.js"
 
 # Fonts referenced by index.css (optional per version)
 FONT_DIR="$OUT_DIR/fonts"

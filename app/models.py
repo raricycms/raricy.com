@@ -230,7 +230,7 @@ class Blog(db.Model):
             'description': self.description,
             'author_id': self.author_id,
             'author': self.author.username if self.author else None,
-            'date': self.created_at.strftime('%Y-%m-%d %H:%M:%S') if self.created_at else None,
+            'date': self.created_at.strftime('%Y-%m-%d') if self.created_at else None,
             'ignore': self.ignore,
             'likes_count': self.likes_count,
             'category_id': self.category_id,
@@ -296,6 +296,12 @@ class Category(db.Model):
     # 是否从“全部文章”中排除该分类（及其子分类）
     exclude_from_all = db.Column(db.Boolean, default=False, index=True)
     
+    # 仅管理员可发文
+    admin_only_posting = db.Column(db.Boolean, default=False, index=True)
+    
+    # 当有用户在该栏目发文时，通知管理员
+    notify_admin_on_post = db.Column(db.Boolean, default=False, index=True)
+    
     created_at = db.Column(db.DateTime, default=datetime.now)
 
     # 自关联关系：父分类与子分类
@@ -320,6 +326,8 @@ class Category(db.Model):
             'is_active': self.is_active,
             'icon': self.icon,
             'exclude_from_all': self.exclude_from_all,
+            'admin_only_posting': self.admin_only_posting,
+            'notify_admin_on_post': self.notify_admin_on_post,
             'level': 1 if self.parent_id is None else 2
         }
         

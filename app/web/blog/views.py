@@ -104,7 +104,47 @@ def register_views(blog_bp):
                 return error_response('今日发布数量已达上限（5篇）', 429)
             
             # 创建博客
+            # 若选择了栏目，检查该栏目及其父栏目是否限制管理员专属
+            from app.models import Category, User
+            category_id = validated_data.get('category_id')
+            if category_id:
+                category = Category.query.get(category_id)
+                if category:
+                    parent = category.parent
+                    admin_only_effective = bool(getattr(category, 'admin_only_posting', False) or getattr(parent, 'admin_only_posting', False)) if parent else bool(getattr(category, 'admin_only_posting', False))
+                else:
+                    admin_only_effective = False
+                if admin_only_effective and not current_user.is_admin:
+                    return forbidden_response('该栏目仅允许管理员发布文章')
+
             blog_id = BlogService.create_blog(validated_data)
+
+            # 如果该栏目需要通知管理员，向所有管理员发送通知
+            if category_id:
+                category = category or Category.query.get(category_id)
+                parent = category.parent if category else None
+                notify_effective = False
+                if category:
+                    notify_effective = bool(getattr(category, 'notify_admin_on_post', False))
+                    if parent:
+                        notify_effective = notify_effective or bool(getattr(parent, 'notify_admin_on_post', False))
+                if notify_effective:
+                    admins = User.query.filter_by(is_admin=True).all()
+                    for admin in admins:
+                        # 跳过自己
+                        if admin.id == current_user.id:
+                            continue
+                        try:
+                            send_notification(
+                                recipient_id=admin.id,
+                                action='栏目发文提醒',
+                                actor_id=current_user.id,
+                                object_type='blog',
+                                object_id=blog_id,
+                                detail=f'用户 {current_user.username} 在栏目 "{category.get_full_path()}" 发布了新文章：{validated_data["title"]}'
+                            )
+                        except Exception:
+                            pass
             
             return success_response('上传成功', blog_id=blog_id)
     

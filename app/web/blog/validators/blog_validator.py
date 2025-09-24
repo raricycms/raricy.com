@@ -57,6 +57,7 @@ class BlogValidator:
                 category = Category.query.filter_by(id=category_id, is_active=True).first()
                 if not category:
                     return False, "选择的栏目不存在", None
+                # 如果栏目仅允许管理员发文，则在控制器层再校验权限，这里只承载说明
                 validated_category_id = category_id
             except (ValueError, TypeError):
                 return False, "栏目ID格式错误", None

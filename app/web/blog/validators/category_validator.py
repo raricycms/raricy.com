@@ -26,6 +26,8 @@ class CategoryValidator:
         description = (data.get('description') or '').strip()
         icon = (data.get('icon') or '').strip()
         exclude_from_all = bool(data.get('exclude_from_all', False))
+        admin_only_posting = bool(data.get('admin_only_posting', False))
+        notify_admin_on_post = bool(data.get('notify_admin_on_post', False))
         parent_id = data.get('parent_id')
         
         if not name:
@@ -56,7 +58,9 @@ class CategoryValidator:
             'description': description,
             'icon': icon,
             'parent_id': validated_parent_id,
-            'exclude_from_all': exclude_from_all
+            'exclude_from_all': exclude_from_all,
+            'admin_only_posting': admin_only_posting,
+            'notify_admin_on_post': notify_admin_on_post
         }
         
         return True, None, validated_data
@@ -82,6 +86,8 @@ class CategoryValidator:
         icon = (data.get('icon') or '').strip()
         is_active = data.get('is_active', True)
         exclude_from_all = bool(data.get('exclude_from_all', False))
+        admin_only_posting = bool(data.get('admin_only_posting', False))
+        notify_admin_on_post = bool(data.get('notify_admin_on_post', False))
         
         if not name:
             return False, "栏目名称不能为空", None
@@ -99,7 +105,9 @@ class CategoryValidator:
             'description': description,
             'icon': icon,
             'is_active': is_active,
-            'exclude_from_all': exclude_from_all
+            'exclude_from_all': exclude_from_all,
+            'admin_only_posting': admin_only_posting,
+            'notify_admin_on_post': notify_admin_on_post
         }
         
         return True, None, validated_data

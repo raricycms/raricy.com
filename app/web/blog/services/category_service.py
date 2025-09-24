@@ -27,6 +27,8 @@ class CategoryService:
             icon=validated_data['icon'],
             parent_id=validated_data['parent_id'],
             exclude_from_all=validated_data.get('exclude_from_all', False),
+            admin_only_posting=validated_data.get('admin_only_posting', False),
+            notify_admin_on_post=validated_data.get('notify_admin_on_post', False),
             sort_order=0,  # 可以后续调整
             is_active=True,
             created_at=datetime.now()
@@ -60,6 +62,8 @@ class CategoryService:
         category.icon = validated_data['icon']
         category.is_active = validated_data['is_active']
         category.exclude_from_all = validated_data.get('exclude_from_all', category.exclude_from_all)
+        category.admin_only_posting = validated_data.get('admin_only_posting', category.admin_only_posting)
+        category.notify_admin_on_post = validated_data.get('notify_admin_on_post', category.notify_admin_on_post)
         
         db.session.commit()
         

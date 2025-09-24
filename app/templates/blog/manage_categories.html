@@ -124,6 +124,14 @@
                         ✏️ 编辑
                     </button>
                     <span class="form-check form-switch d-inline-flex align-items-center">
+                        <input class="form-check-input toggle-admin-only" type="checkbox" data-category-id="{{ category.id }}" {{ 'checked' if category.admin_only_posting else '' }}>
+                        <label class="form-check-label ms-1">仅管理员可发</label>
+                    </span>
+                    <span class="form-check form-switch d-inline-flex align-items-center">
+                        <input class="form-check-input toggle-notify-admin" type="checkbox" data-category-id="{{ category.id }}" {{ 'checked' if category.notify_admin_on_post else '' }}>
+                        <label class="form-check-label ms-1">发文提醒管理员</label>
+                    </span>
+                    <span class="form-check form-switch d-inline-flex align-items-center">
                         <input class="form-check-input toggle-exclude" type="checkbox" data-category-id="{{ category.id }}" {{ 'checked' if category.exclude_from_all else '' }}>
                         <label class="form-check-label ms-1">不在全部显示</label>
                     </span>
@@ -162,6 +170,14 @@
                                     data-category='{{ child | tojson }}'>
                                 ✏️ 编辑
                             </button>
+                            <span class="form-check form-switch d-inline-flex align-items-center">
+                                <input class="form-check-input toggle-admin-only" type="checkbox" data-category-id="{{ child.id }}" {{ 'checked' if child.admin_only_posting else '' }}>
+                                <label class="form-check-label ms-1">仅管理员可发</label>
+                            </span>
+                            <span class="form-check form-switch d-inline-flex align-items-center">
+                                <input class="form-check-input toggle-notify-admin" type="checkbox" data-category-id="{{ child.id }}" {{ 'checked' if child.notify_admin_on_post else '' }}>
+                                <label class="form-check-label ms-1">发文提醒管理员</label>
+                            </span>
                             <span class="form-check form-switch d-inline-flex align-items-center">
                                 <input class="form-check-input toggle-exclude" type="checkbox" data-category-id="{{ child.id }}" {{ 'checked' if child.exclude_from_all else '' }}>
                                 <label class="form-check-label ms-1">不在全部显示</label>
@@ -209,6 +225,18 @@
                         <label for="createIcon" class="form-label">图标</label>
                         <input type="text" class="form-control" id="createIcon" placeholder="🏷️">
                         <div class="form-text">输入一个emoji表情</div>
+                    </div>
+                    <div class="form-group">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="createAdminOnly">
+                            <label class="form-check-label" for="createAdminOnly">仅管理员可发文</label>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="createNotifyAdmin">
+                            <label class="form-check-label" for="createNotifyAdmin">用户发文时提醒管理员</label>
+                        </div>
                     </div>
                     <div class="form-group">
                         <label for="createParent" class="form-label">父栏目</label>
@@ -268,6 +296,18 @@
                             <label class="form-check-label" for="editExclude">从“全部文章”中排除</label>
                         </div>
                     </div>
+                    <div class="form-group">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="editAdminOnly">
+                            <label class="form-check-label" for="editAdminOnly">仅管理员可发文</label>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="editNotifyAdmin">
+                            <label class="form-check-label" for="editNotifyAdmin">用户发文时提醒管理员</label>
+                        </div>
+                    </div>
                 </form>
             </div>
             <div class="modal-footer">
@@ -319,7 +359,9 @@ document.addEventListener('DOMContentLoaded', function() {
             slug: document.getElementById('createSlug').value.trim(),
             description: document.getElementById('createDescription').value.trim(),
             icon: document.getElementById('createIcon').value.trim(),
-            parent_id: document.getElementById('createParent').value || null
+            parent_id: document.getElementById('createParent').value || null,
+            admin_only_posting: document.getElementById('createAdminOnly').checked,
+            notify_admin_on_post: document.getElementById('createNotifyAdmin').checked
         };
 
         if (!data.name || !data.slug) {
@@ -381,6 +423,8 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('editIcon').value = category.icon || '';
             document.getElementById('editIsActive').checked = category.is_active;
             document.getElementById('editExclude').checked = !!category.exclude_from_all;
+            document.getElementById('editAdminOnly').checked = !!category.admin_only_posting;
+            document.getElementById('editNotifyAdmin').checked = !!category.notify_admin_on_post;
             
             const modal = new bootstrap.Modal(document.getElementById('editCategoryModal'));
             modal.show();
@@ -396,7 +440,9 @@ document.addEventListener('DOMContentLoaded', function() {
             description: document.getElementById('editDescription').value.trim(),
             icon: document.getElementById('editIcon').value.trim(),
             is_active: document.getElementById('editIsActive').checked,
-            exclude_from_all: document.getElementById('editExclude').checked
+            exclude_from_all: document.getElementById('editExclude').checked,
+            admin_only_posting: document.getElementById('editAdminOnly').checked,
+            notify_admin_on_post: document.getElementById('editNotifyAdmin').checked
         };
 
         if (!data.name || !data.slug) {
@@ -423,11 +469,11 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // 切换“从全部排除”开关
+    // 切换开关字段（排除/仅管理员/提醒管理员）
     document.addEventListener('change', async function(e) {
-        if (e.target.classList.contains('toggle-exclude')) {
+        const isToggle = e.target.classList.contains('toggle-exclude') || e.target.classList.contains('toggle-admin-only') || e.target.classList.contains('toggle-notify-admin');
+        if (isToggle) {
             const categoryId = e.target.dataset.categoryId;
-            const isExcluded = e.target.checked;
             try {
                 // 获取同区域的编辑按钮以读取完整的分类数据
                 const actions = e.target.closest('.category-actions');
@@ -441,11 +487,16 @@ document.addEventListener('DOMContentLoaded', function() {
                         description: cat.description || '',
                         icon: cat.icon || '',
                         is_active: !!cat.is_active,
-                        exclude_from_all: !!isExcluded
+                        exclude_from_all: !!(actions.querySelector('.toggle-exclude')?.checked),
+                        admin_only_posting: !!(actions.querySelector('.toggle-admin-only')?.checked),
+                        notify_admin_on_post: !!(actions.querySelector('.toggle-notify-admin')?.checked)
                     };
                 } else {
                     // 回退：只更新该字段（仍需通过后端验证，可能失败）
-                    payload = { exclude_from_all: !!isExcluded };
+                    payload = {};
+                    if (e.target.classList.contains('toggle-exclude')) payload.exclude_from_all = !!e.target.checked;
+                    if (e.target.classList.contains('toggle-admin-only')) payload.admin_only_posting = !!e.target.checked;
+                    if (e.target.classList.contains('toggle-notify-admin')) payload.notify_admin_on_post = !!e.target.checked;
                 }
                 const resp = await fetch(`/blog/admin/categories/${categoryId}`, {
                     method: 'PUT',
