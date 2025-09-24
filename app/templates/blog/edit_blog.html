@@ -3,7 +3,7 @@
 {% block title %}编辑文章 - {{ blog.title }}{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/vditor/dist/index.css">
+<link rel="stylesheet" href="{{ url_for('static', filename='vditor/dist/index.css') }}">
 <style>
     .edit-hero {
         background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
@@ -97,8 +97,6 @@
             <div class="form-text note">提示：粘贴的内容可能按编辑器策略处理，预览请用右上角预览按钮。</div>
         </div>
 
-        {{turnstile}}
-
         <div class="btn-row">
             <button type="submit" class="btn btn-primary">保存修改</button>
             <a href="{{ url_for('blog.blog_detail', blog_id=blog.id) }}" class="btn btn-outline-secondary">取消</a>
@@ -108,7 +106,12 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="https://cdn.jsdelivr.net/npm/vditor"></script>
+<script src="{{ url_for('static', filename='vditor/dist/index.min.js') }}"></script>
+<script>
+if (typeof window.Vditor === 'undefined') {
+    document.write('<script src="https://cdn.jsdelivr.net/npm/vditor@3.10.7/dist/index.min.js"><\\/script>');
+}
+;</script>
 <script id="initial-markdown" type="application/json">{{ (content_markdown or '') | tojson }}</script>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
@@ -116,6 +119,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const vditor = new Vditor('editor', {
         minHeight: 500,
         mode: 'sv',
+        cdn: '/static/vditor',
         toolbar: [
             'emoji','headings','bold','italic','strike','link','|',
             'list','ordered-list','check','outdent','indent','|',
@@ -141,8 +145,6 @@ document.addEventListener('DOMContentLoaded', function () {
         const description = document.getElementById('description').value.trim();
         const content = vditor.getValue();
         const category_id = document.getElementById('category').value;
-        const turnstileInput = form.querySelector('[name="cf-turnstile-response"]');
-        const turnstileResponse = turnstileInput ? turnstileInput.value : '';
 
         if (!title || !description || !content) {
             showMessage('请填写完整信息');
@@ -157,7 +159,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'same-origin',
-                body: JSON.stringify({ title, description, content, category_id, 'cf-turnstile-response': turnstileResponse })
+                body: JSON.stringify({ title, description, content, category_id })
             });
             const data = await resp.json();
             if (data.code === 200) {

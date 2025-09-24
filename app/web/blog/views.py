@@ -194,11 +194,7 @@ def register_views(blog_bp):
         if not is_valid:
             return validation_error_response(error_message)
         
-        # Turnstile 人机验证（可选）
-        from flask import current_app
-        if current_app.config.get('TURNSTILE_AVAILABLE'):
-            if not turnstile.verify(data.get('cf-turnstile-response')):
-                return error_response('人机验证失败', 400)
+        # 已移除 Turnstile 人机验证
         
         # 更新博客
         has_changes, changes_detail = BlogService.update_blog(blog_id, validated_data)
