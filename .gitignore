@@ -21,3 +21,6 @@ todo-list.txt
 download_instance.ps1
 \# Ignore local vendored browser libs (kept out of git to avoid line counts)
 app/static/js/marked.min.js
+app/static/js/vditor
+app/static/js/dompurify.min.js
+app/static/js/highlight.min.js

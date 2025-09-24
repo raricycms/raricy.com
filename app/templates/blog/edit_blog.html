@@ -3,7 +3,7 @@
 {% block title %}编辑文章 - {{ blog.title }}{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{{ url_for('static', filename='vditor/dist/index.css') }}">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/vditor@3.10.7/dist/index.css" onerror="this.onerror=null; this.href='{{ url_for('static', filename='js/vditor/node_modules/vditor/dist/index.css') }}'">
 <style>
     .edit-hero {
         background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
@@ -106,10 +106,13 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{{ url_for('static', filename='vditor/dist/index.min.js') }}"></script>
+<script src="https://cdn.jsdelivr.net/npm/vditor@3.10.7/dist/index.min.js"></script>
 <script>
 if (typeof window.Vditor === 'undefined') {
-    document.write('<script src="https://cdn.jsdelivr.net/npm/vditor@3.10.7/dist/index.min.js"><\\/script>');
+    document.write('<script src="{{ url_for('static', filename='js/vditor/node_modules/vditor/dist/index.min.js') }}"><\\/script>');
+    window.__VDITOR_USE_LOCAL__ = true;
+} else {
+    window.__VDITOR_USE_LOCAL__ = false;
 }
 ;</script>
 <script id="initial-markdown" type="application/json">{{ (content_markdown or '') | tojson }}</script>
@@ -119,7 +122,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const vditor = new Vditor('editor', {
         minHeight: 500,
         mode: 'sv',
-        cdn: '/static/vditor',
+        cdn: (window.__VDITOR_USE_LOCAL__ ? '/static/js/vditor/node_modules/vditor' : 'https://cdn.jsdelivr.net/npm/vditor@3.10.7'),
         toolbar: [
             'emoji','headings','bold','italic','strike','link','|',
             'list','ordered-list','check','outdent','indent','|',
