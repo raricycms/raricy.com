@@ -25,13 +25,16 @@ download_once() {
   URL="$1"
   OUT="$2"
   mkdir -p "$(dirname "$OUT")"
+  TMP="$OUT.tmp.$$"
   if command -v curl >/dev/null 2>&1; then
-    curl -fsSL --connect-timeout 8 --max-time 120 "$URL" -o "$OUT" || return 1
+    curl -fsSL --connect-timeout 8 --max-time 300 "$URL" -o "$TMP" || { rm -f "$TMP"; return 1; }
   elif command -v wget >/dev/null 2>&1; then
-    wget -q --timeout=15 --tries=2 -O "$OUT" "$URL" || return 1
+    wget -q --timeout=30 --tries=3 -O "$TMP" "$URL" || { rm -f "$TMP"; return 1; }
   else
     return 1
   fi
+  if [ ! -s "$TMP" ]; then rm -f "$TMP"; return 1; fi
+  mv -f "$TMP" "$OUT"
 }
 
 download_with_mirrors() {
@@ -45,6 +48,18 @@ download_with_mirrors() {
     fi
   done
   return 1
+}
+
+assert_min_size() {
+  FILE="$1"; MIN="$2"
+  if [ ! -s "$FILE" ]; then
+    echo "Error: missing file $FILE" >&2; exit 1
+  fi
+  SIZE=$(wc -c < "$FILE" | tr -d ' ')
+  if [ "$SIZE" -lt "$MIN" ]; then
+    echo "Error: file seems incomplete ($FILE, ${SIZE}B < ${MIN}B)" >&2
+    exit 1
+  fi
 }
 
 if ! have_downloader; then
@@ -69,5 +84,10 @@ for F in vditor.woff2 vditor.woff vditor.ttf; do
 done
 
 echo "Vditor assets downloaded."
+
+# Basic integrity checks to avoid serving partial files
+assert_min_size "$OUT_DIR/index.min.js" 50000
+assert_min_size "$OUT_DIR/index.css" 5000
+assert_min_size "$OUT_DIR/js/lute/lute.min.js" 50000
 
 
