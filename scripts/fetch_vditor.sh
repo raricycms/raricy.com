@@ -56,7 +56,7 @@ echo "Downloading Vditor ${VERSION} assets to $OUT_DIR ..."
 
 download_with_mirrors "index.min.js" "$OUT_DIR/index.min.js"
 download_with_mirrors "index.css" "$OUT_DIR/index.css"
-download_with_mirrors "js/lute/lute.min.js" "$OUT_DIR/lute.min.js"
+download_with_mirrors "js/lute/lute.min.js" "$OUT_DIR/js/lute/lute.min.js"
 
 # Fonts referenced by index.css (optional per version)
 FONT_DIR="$OUT_DIR/fonts"

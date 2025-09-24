@@ -4,7 +4,7 @@ Raricy.com - 文章上传
 {% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/vditor/dist/index.css">
+<link rel="stylesheet" href="{{ url_for('static', filename='vditor/index.css') }}">
 <style>
     .upload-hero {
         background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
@@ -102,7 +102,12 @@ Raricy.com - 文章上传
 {% endblock %}
 
 {% block extra_js %}
-<script src="https://cdn.jsdelivr.net/npm/vditor"></script>
+<script src="{{ url_for('static', filename='vditor/index.min.js') }}"></script>
+<script>
+    if (typeof window.Vditor === 'undefined') {
+        document.write('<script src="https://cdn.jsdelivr.net/npm/vditor@3.10.7/dist/index.min.js"><\\/script>');
+    }
+;</script>
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         let vditor = null;
@@ -115,6 +120,7 @@ Raricy.com - 文章上传
                 vditor = new Vditor('editor', {
                     minHeight: 500,
                     mode: 'sv',
+                    cdn: '/static/vditor',
                     toolbar: [
                         'emoji', 'headings', 'bold', 'italic', 'strike', 'link', '|',
                         'list', 'ordered-list', 'check', 'outdent', 'indent', '|',
