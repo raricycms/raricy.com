@@ -317,7 +317,7 @@
                         {% endif %}
                     </div>
                     <div>
-                        <span class="featured-flag" style="display: {% if article.is_featured %}inline-block{% else %}none{% endif %}">🌟 精选</span>
+                        <span class="featured-flag" style="display: {{ 'inline-block' if article.is_featured else 'none' }}">🌟 精选</span>
                     </div>
                     <select class="form-select category-select" data-article-id="{{ article.id }}">
                         <option value="">选择栏目</option>
