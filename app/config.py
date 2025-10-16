@@ -15,7 +15,10 @@ class Config:
     TURNSTILE_SECRET_KEY = os.getenv('TURNSTILE_SECRET_KEY') # Cloudflare Turnstile 密钥
     TURNSTILE_AVAILABLE = os.getenv('TURNSTILE_AVAILABLE') == 'True' # 是否启用 Cloudflare Turnstile
     SEND_FILE_MAX_AGE_DEFAULT = 2592000  # 30天缓存
-    SERVER_NAME = os.getenv('SERVER_NAME', '127.0.0.1') # 服务器名称
+    SERVER_NAME = os.getenv('SERVER_NAME') # 服务器名称（可选）
+    PREFERRED_URL_SCHEME = os.getenv('PREFERRED_URL_SCHEME', 'http')
+    # For flask_sitemap; when set, overrides the scheme used in sitemap URLs
+    SITEMAP_URL_SCHEME = os.getenv('SITEMAP_URL_SCHEME')
 
 
 class DevelopmentConfig(Config):
@@ -35,6 +38,10 @@ class ProductionConfig(Config):
     PORT = int(os.getenv('PORT', 5000))
     HOST = os.getenv('HOST', '0.0.0.0')
     DEBUG = os.getenv('DEBUG', 'False') == 'False'
+    # Ensure URL generation uses your public domain and HTTPS
+    SERVER_NAME = os.getenv('SERVER_NAME', 'raricy.com')
+    PREFERRED_URL_SCHEME = 'https'
+    SITEMAP_URL_SCHEME = 'https'
 
 class TestingConfig(Config):
     """
