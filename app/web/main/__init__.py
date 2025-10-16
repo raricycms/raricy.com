@@ -15,7 +15,7 @@ def robots_txt():
 Allow: /
 Disallow: /zhh/
 
-Sitemap: {sitemap_url}
+Sitemap: https://raricy.com/sitemap/sitemap.xml
 """
     
     response = current_app.response_class(
