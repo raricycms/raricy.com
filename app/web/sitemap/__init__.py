@@ -24,8 +24,16 @@ def static_pages():
     yield 'game.siziqi', {}
     yield 'game.lifangqi', {}
     yield 'game.sudujielong', {}
-    yield 'game.luopanshizhong', {}
     yield 'game.tanchishe', {}
+    yield 'game.zhongguoxiangqi', {}
+    yield 'game.guojitiaqi', {}
+    yield 'game.guojixiangqi', {}
+    yield 'game.weiqi', {}
+    yield 'game.gomoku', {}
+    yield 'game.blackjack_21', {}
+    yield 'game.eatcat', {}
+    yield 'game.xiufushiguangji', {}
+    yield 'game.renshengchongkai', {}
     
     # 故事页面
     yield 'story.menu', {}
