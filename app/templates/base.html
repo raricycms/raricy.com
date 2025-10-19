@@ -20,6 +20,9 @@
     <!-- Bootstrap Icons -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
 
+    <!-- Global site styles -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/site.css') }}">
+
     <!-- 自定义CSS -->
     <style>
         /* Bootstrap fallback styles - 当Bootstrap加载失败时使用 */
@@ -774,7 +777,7 @@
         <ul class="nav-links">
             <li><a href="/">首页</a></li>
             <li><a href="{{ url_for('story.menu') }}">故事</a></li>
-            <li><a href="{{ url_for('game.menu') }}">玩具</a></li>
+            
             <li><a href="{{ url_for('blog.menu') }}">博客</a></li>
             <li><a href="{{ url_for('sitemap.index') }}">站点地图</a></li>
         </ul>
@@ -834,9 +837,7 @@
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('story.menu') }}">故事</a>
                     </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('game.menu') }}">玩具</a>
-                    </li>
+                    
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('blog.menu') }}">博客</a>
                     </li>

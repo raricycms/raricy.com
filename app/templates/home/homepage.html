@@ -204,13 +204,12 @@
             </div>
 
             <div class="col-lg-3 col-md-6">
-                <div class="card feature-card h-100 card-game" data-url="{{url_for('game.menu')}}"
-                    onclick="handleCardClick(this)">
+                <div class="card feature-card h-100 card-game">
                     <div class="card-body text-center">
                         <i class="bi bi-controller feature-icon"></i>
-                        <h4 class="card-title mb-3">玩具</h4>
-                        <p class="card-text">这里是一些前端小游戏，类型丰富，欢迎游玩。<br>部分游戏powered by ai。</p>
-                        <a href="{{ url_for('game.menu') }}" class="btn btn-outline-success btn-sm mt-auto">开始游戏</a>
+                        <h4 class="card-title mb-3">玩具（维护中）</h4>
+                        <p class="card-text">该功能正在维护中，暂不可用。</p>
+                        <button class="btn btn-outline-secondary btn-sm mt-auto" disabled aria-disabled="true">维护中</button>
                     </div>
                 </div>
             </div>

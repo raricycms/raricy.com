@@ -1,0 +1,39 @@
+/* Global site-level CSS overrides and tokens */
+
+:root {
+  --brand-primary: #667eea;
+  --brand-secondary: #764ba2;
+  --text-color: #212529;
+  --muted-color: #6c757d;
+}
+
+/* Typography */
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color: var(--text-color);
+}
+
+/* Links */
+a {
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+/* Buttons */
+.btn-brand {
+  background: linear-gradient(45deg, var(--brand-primary), var(--brand-secondary));
+  color: #fff;
+  border: 0;
+}
+.btn-brand:hover {
+  filter: brightness(0.95);
+  color: #fff;
+}
+
+/* Utilities */
+.text-muted-strong { color: var(--muted-color) !important; }
+
+

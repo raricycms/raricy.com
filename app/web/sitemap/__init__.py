@@ -10,30 +10,7 @@ def static_pages():
     # 主页
     yield 'home.index', {}
     
-    # 游戏页面
-    yield 'game.menu', {}
-    yield 'game.quandi', {}
-    yield 'game.xingkong', {}
-    yield 'game.reversi', {}
-    yield 'game.gecao', {}
-    yield 'game.Tetris', {}
-    yield 'game._2048', {}
-    yield 'game.nengliangqiudazhan', {}
-    yield 'game.yinyou', {}
-    yield 'game.chaojijingziqi', {}
-    yield 'game.siziqi', {}
-    yield 'game.lifangqi', {}
-    yield 'game.sudujielong', {}
-    yield 'game.tanchishe', {}
-    yield 'game.zhongguoxiangqi', {}
-    yield 'game.guojitiaqi', {}
-    yield 'game.guojixiangqi', {}
-    yield 'game.weiqi', {}
-    yield 'game.gomoku', {}
-    yield 'game.blackjack_21', {}
-    yield 'game.eatcat', {}
-    yield 'game.xiufushiguangji', {}
-    yield 'game.renshengchongkai', {}
+    # 游戏页面（已移除）
     
     # 故事页面
     yield 'story.menu', {}
