@@ -1,0 +1,10 @@
+@use '../abstracts/variables' as v;
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color: v.$color-text;
+}
+
+a:hover { text-decoration: underline; }
+

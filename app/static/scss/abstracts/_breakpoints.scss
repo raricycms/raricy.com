@@ -1,0 +1,13 @@
+$bp-sm: 576px;
+$bp-md: 768px;
+$bp-lg: 992px;
+$bp-xl: 1200px;
+
+@mixin up($size) {
+  @media (min-width: $size) { @content; }
+}
+
+@mixin down($size) {
+  @media (max-width: $size) { @content; }
+}
+

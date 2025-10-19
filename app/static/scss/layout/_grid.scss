@@ -1,0 +1,7 @@
+.row { display: flex; flex-wrap: wrap; margin-left: -8px; margin-right: -8px; }
+[class^="col-"], [class*=" col-"] { padding-left: 8px; padding-right: 8px; }
+.col-12 { flex: 0 0 100%; max-width: 100%; }
+.col-6 { flex: 0 0 50%; max-width: 50%; }
+.col-4 { flex: 0 0 33.3333%; max-width: 33.3333%; }
+.col-3 { flex: 0 0 25%; max-width: 25%; }
+

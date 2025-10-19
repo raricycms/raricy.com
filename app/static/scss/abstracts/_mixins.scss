@@ -1,0 +1,15 @@
+@use 'variables' as v;
+@use 'breakpoints' as bp;
+
+@mixin truncate($lines: 1) {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: $lines;
+  -webkit-box-orient: vertical;
+}
+
+@mixin container-padding {
+  padding-left: v.$space-4;
+  padding-right: v.$space-4;
+}
+
