@@ -1,41 +1,4 @@
-/* Global site-level CSS overrides and tokens */
-
-:root {
-  --brand-primary: #667eea;
-  --brand-secondary: #764ba2;
-  --text-color: #212529;
-  --muted-color: #6c757d;
-}
-
-/* Typography */
-body {
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  color: var(--text-color);
-}
-
-/* Links */
-a {
-  text-decoration: none;
-}
-a:hover {
-  text-decoration: underline;
-}
-
-/* Buttons */
-.btn-brand {
-  background: linear-gradient(45deg, var(--brand-primary), var(--brand-secondary));
-  color: #fff;
-  border: 0;
-}
-.btn-brand:hover {
-  filter: brightness(0.95);
-  color: #fff;
-}
-
-/* Utilities */
-.text-muted-strong { color: var(--muted-color) !important; }
-
+@use '../abstracts/variables' as v;
 
 /* Toasts (no Bootstrap) */
 .toast-container {
@@ -48,11 +11,12 @@ a:hover {
   top: 12px;
   right: 12px;
 }
+
 .toast {
   pointer-events: auto;
   background: #2b3035;
   color: #fff;
-  border-radius: 8px;
+  border-radius: v.$radius-md;
   box-shadow: 0 8px 24px rgba(0,0,0,0.18);
   margin: 8px 0;
   opacity: 0;
@@ -63,6 +27,7 @@ a:hover {
   opacity: 1;
   transform: translateY(0);
 }
+
 .toast__content {
   display: flex;
   align-items: center;
@@ -81,18 +46,10 @@ a:hover {
   cursor: pointer;
   padding: 2px 6px;
 }
+
 .toast--success { background: #198754; }
 .toast--error { background: #dc3545; }
 .toast--info { background: #0d6efd; }
 .toast--warning { background: #fd7e14; }
 
-/* Utilities (no Bootstrap) */
-.site-text-danger { color: #dc3545 !important; }
 
-/* Footer heading scale to match previous Bootstrap h5 */
-.site-footer h5 {
-  font-size: 1.25rem;
-  line-height: 1.2;
-  margin: 0 0 .5rem;
-  font-weight: 500;
-}

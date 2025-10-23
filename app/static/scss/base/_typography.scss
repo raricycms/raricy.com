@@ -8,3 +8,6 @@ body {
 
 a:hover { text-decoration: underline; }
 
+/* Legacy link behavior: ensure links default to no underline */
+a { text-decoration: none; }
+

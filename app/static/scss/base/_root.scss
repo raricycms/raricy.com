@@ -7,6 +7,11 @@
   --muted-color: #{v.$color-muted};
 }
 
+/* Ensure footer stays at bottom when content is short */
+html, body { height: 100%; }
+body { min-height: 100vh; display: flex; flex-direction: column; }
+main { flex: 1 0 auto; }
+
 
 
 

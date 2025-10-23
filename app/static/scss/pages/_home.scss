@@ -75,6 +75,19 @@
 
 .feature-card .card-body { padding: 2rem; position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center; height: 100%; }
 
+/* Increase card title size for better readability */
+.feature-card .card-title {
+  font-size: 1.25rem;
+  line-height: 1.3;
+  font-weight: 600;
+}
+@media (min-width: 768px) {
+  .feature-card .card-title { font-size: 1.35rem; }
+}
+@media (min-width: 992px) {
+  .feature-card .card-title { font-size: 1.5rem; }
+}
+
 /* 图标样式（本地SVG作为mask，可着色并保持居中） */
 .feature-icon {
   width: 3rem;

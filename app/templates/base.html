@@ -15,8 +15,6 @@
     <meta name="notification-api-url" content="{{ url_for('notifications.api_unread_count') }}">
     {% endif %}
 
-    <!-- Bootstrap CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- Local icons via CSS masking (no CDN) -->
 
     <!-- Global site styles (SCSS build output) -->
@@ -69,7 +67,7 @@
                                 <li role="none"><a class="site-dropdown-item" role="menuitem" href="{{ url_for('auth.user_management') }}"><span class="icon icon-people" style="margin-right: .5rem;"></span>用户管理</a></li>
                                 {% endif %}
                                 <li role="separator" class="site-dropdown-divider"></li>
-                                <li role="none"><a class="site-dropdown-item text-danger" role="menuitem" href="#" onclick="logout()"><span class="icon icon-box-arrow-right" style="margin-right: .5rem;"></span>退出登录</a></li>
+                                <li role="none"><a class="site-dropdown-item site-text-danger" role="menuitem" href="#" onclick="logout()"><span class="icon icon-box-arrow-right" style="margin-right: .5rem;"></span>退出登录</a></li>
                             </ul>
                         </div>
                     {% else %}
@@ -107,8 +105,7 @@
         </div>
     </footer>
 
-    <!-- Bootstrap JS（全站其他组件可用；顶栏不依赖） -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
 
     <!-- 通用JavaScript -->
     <script>
@@ -187,42 +184,56 @@
             }
         }
 
-        // 显示消息提示
+        // 显示消息提示（原生实现，无Bootstrap）
         function showToast(message, type = 'info') {
-            // 创建toast元素
             const toastContainer = document.getElementById('toast-container') || createToastContainer();
             const toast = document.createElement('div');
-            toast.className = `toast align-items-center text-white bg-${type === 'success' ? 'success' : type === 'error' ? 'danger' : 'info'} border-0`;
+            const resolvedType = (type === 'success' || type === 'error' || type === 'info' || type === 'warning') ? type : 'info';
+            toast.className = `toast toast--${resolvedType}`;
             toast.setAttribute('role', 'alert');
             toast.setAttribute('aria-live', 'assertive');
             toast.setAttribute('aria-atomic', 'true');
-            
+
             toast.innerHTML = `
-                <div class="d-flex">
-                    <div class="toast-body">
-                        ${message}
-                    </div>
-                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+                <div class="toast__content">
+                    <div class="toast__body">${message}</div>
+                    <button type="button" class="toast__close" aria-label="Close">&times;</button>
                 </div>
             `;
-            
+
+            const closeBtn = toast.querySelector('.toast__close');
+            closeBtn.addEventListener('click', () => hideAndRemoveToast(toast));
+
             toastContainer.appendChild(toast);
-            
-            // 显示toast
-            const bsToast = new bootstrap.Toast(toast);
-            bsToast.show();
-            
-            // 自动移除
-            toast.addEventListener('hidden.bs.toast', () => {
-                toast.remove();
+
+            // 动画展示
+            requestAnimationFrame(() => {
+                toast.classList.add('show');
             });
+
+            // 自动移除
+            const autoHideMs = 3500;
+            const autoHideTimer = setTimeout(() => hideAndRemoveToast(toast), autoHideMs);
+
+            // 鼠标悬停时暂停自动关闭
+            toast.addEventListener('mouseenter', () => clearTimeout(autoHideTimer));
+        }
+
+        function hideAndRemoveToast(toastEl) {
+            if (!toastEl) return;
+            toastEl.classList.remove('show');
+            toastEl.addEventListener('transitionend', () => {
+                if (toastEl && toastEl.parentNode) {
+                    toastEl.parentNode.removeChild(toastEl);
+                }
+            }, { once: true });
         }
 
         // 创建toast容器
         function createToastContainer() {
             const container = document.createElement('div');
             container.id = 'toast-container';
-            container.className = 'toast-container position-fixed top-0 end-0 p-3';
+            container.className = 'toast-container toast-container--tr';
             container.style.zIndex = '9999';
             document.body.appendChild(container);
             return container;
@@ -268,49 +279,7 @@
                 });
         }
 
-        // 检测Bootstrap是否加载成功
-        function checkBootstrapLoaded() {
-            // 检查Bootstrap CSS文件是否加载成功
-            const bootstrapLink = document.querySelector('link[href*="bootstrap"]');
-            if (!bootstrapLink) {
-                console.warn('Bootstrap CSS链接未找到');
-                document.body.classList.add('bootstrap-failed');
-                return;
-            }
-            
-            // 使用更简单的方法：检查Bootstrap特有的CSS规则是否存在
-            const testElement = document.createElement('div');
-            testElement.className = 'container';
-            testElement.style.visibility = 'hidden';
-            testElement.style.position = 'absolute';
-            testElement.style.top = '-9999px';
-            document.body.appendChild(testElement);
-            
-            const computedStyle = window.getComputedStyle(testElement);
-            
-            // 检查Bootstrap container的box-sizing属性（Bootstrap使用border-box）
-            const hasBootstrap = computedStyle.boxSizing === 'border-box';
-            
-            // 调试信息
-            console.log('Bootstrap检测详情:', {
-                boxSizing: computedStyle.boxSizing,
-                paddingLeft: computedStyle.paddingLeft,
-                paddingRight: computedStyle.paddingRight,
-                marginLeft: computedStyle.marginLeft,
-                marginRight: computedStyle.marginRight,
-                maxWidth: computedStyle.maxWidth,
-                hasBootstrap: hasBootstrap
-            });
-            
-            document.body.removeChild(testElement);
-            
-            if (!hasBootstrap) {
-                console.warn('Bootstrap CSS未正确加载，使用fallback样式');
-                document.body.classList.add('bootstrap-failed');
-            } else {
-                console.log('Bootstrap CSS加载成功');
-            }
-        }
+        // 已移除Bootstrap依赖与检测
 
         // 页面加载后：初始化顶栏交互与通知
         document.addEventListener('DOMContentLoaded', function() {
