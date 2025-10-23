@@ -1,0 +1,12 @@
+@use '../abstracts/variables' as v;
+
+:root {
+  --brand-primary: #{v.$color-brand-primary};
+  --brand-secondary: #{v.$color-brand-secondary};
+  --text-color: #{v.$color-text};
+  --muted-color: #{v.$color-muted};
+}
+
+
+
+

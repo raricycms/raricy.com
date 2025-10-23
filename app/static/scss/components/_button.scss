@@ -14,3 +14,10 @@
   color: #fff;
 }
 
+/* Legacy alias from site.css */
+.btn-brand {
+  background: linear-gradient(45deg, v.$color-brand-primary, v.$color-brand-secondary);
+  color: #fff;
+  border: 0;
+}
+

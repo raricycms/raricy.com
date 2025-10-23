@@ -5,6 +5,8 @@
 @use 'abstracts/mixins';
 
 @use 'base/reset';
+@use 'base/root';
+@use 'base/bootstrap_fallback';
 @use 'base/typography';
 @use 'base/forms';
 
@@ -15,6 +17,7 @@
 
 @use 'components/button';
 @use 'components/navbar';
+@use 'components/icons';
 @use 'components/modal';
 @use 'components/card';
 @use 'components/alert';

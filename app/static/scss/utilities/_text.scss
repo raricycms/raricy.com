@@ -2,3 +2,6 @@
 .u-text-muted { color: #6c757d !important; }
 .u-text-nowrap { white-space: nowrap !important; }
 
+/* Legacy from site.css */
+.text-muted-strong { color: var(--muted-color) !important; }
+

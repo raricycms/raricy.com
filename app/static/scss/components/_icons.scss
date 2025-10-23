@@ -1,0 +1,27 @@
+/* Icon masking utilities using local SVG files; color follows currentColor */
+.icon {
+  display: inline-block;
+  width: 1.2rem;
+  height: 1.2rem;
+  vertical-align: -0.125em;
+  background-color: currentColor;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  -webkit-mask-size: contain;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: contain;
+}
+
+.icon-bell-fill    { -webkit-mask-image: url('/static/img/icons/bell-fill.svg');    mask-image: url('/static/img/icons/bell-fill.svg'); }
+.icon-bell         { -webkit-mask-image: url('/static/img/icons/bell.svg');         mask-image: url('/static/img/icons/bell.svg'); }
+.icon-person       { -webkit-mask-image: url('/static/img/icons/person.svg');       mask-image: url('/static/img/icons/person.svg'); }
+.icon-person-circle{ -webkit-mask-image: url('/static/img/icons/person-circle.svg');mask-image: url('/static/img/icons/person-circle.svg'); }
+.icon-gear         { -webkit-mask-image: url('/static/img/icons/gear.svg');         mask-image: url('/static/img/icons/gear.svg'); }
+.icon-gear-fill    { -webkit-mask-image: url('/static/img/icons/gear-fill.svg');    mask-image: url('/static/img/icons/gear-fill.svg'); }
+.icon-people       { -webkit-mask-image: url('/static/img/icons/people.svg');       mask-image: url('/static/img/icons/people.svg'); }
+.icon-box-arrow-right{ -webkit-mask-image: url('/static/img/icons/box-arrow-right.svg'); mask-image: url('/static/img/icons/box-arrow-right.svg'); }
+.icon-github       { -webkit-mask-image: url('/static/img/icons/github.svg');       mask-image: url('/static/img/icons/github.svg'); }
+.icon-twitter      { -webkit-mask-image: url('/static/img/icons/twitter.svg');      mask-image: url('/static/img/icons/twitter.svg'); }
+.icon-envelope     { -webkit-mask-image: url('/static/img/icons/envelope.svg');     mask-image: url('/static/img/icons/envelope.svg'); }
+

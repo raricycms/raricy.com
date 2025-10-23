@@ -17,913 +17,97 @@
 
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Bootstrap Icons -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <!-- Local icons via CSS masking (no CDN) -->
 
     <!-- Global site styles (SCSS build output) -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
 
-    <!-- 自定义CSS -->
-    <style>
-        /* Bootstrap fallback styles - 当Bootstrap加载失败时使用 */
-        .navbar-fallback {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            z-index: 1030;
-            background: #212529;
-            color: white;
-            padding: 0.5rem 1rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        
-        .navbar-fallback .brand {
-            font-size: 1.25rem;
-            font-weight: bold;
-            color: white;
-            text-decoration: none;
-            display: flex;
-            align-items: center;
-        }
-        
-        .navbar-fallback .brand img {
-            margin-right: 0.5rem;
-        }
-        
-        .navbar-fallback .nav-links {
-            display: flex;
-            list-style: none;
-            margin: 0;
-            padding: 0;
-            gap: 1rem;
-        }
-        
-        .navbar-fallback .nav-links a {
-            color: #ffffff;
-            text-decoration: none;
-            padding: 0.5rem;
-            border-radius: 0.25rem;
-            transition: background-color 0.3s ease;
-        }
-        
-        .navbar-fallback .nav-links a:hover {
-            background-color: rgba(255, 255, 255, 0.1);
-        }
-        
-        .navbar-fallback .user-menu {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            position: relative;
-        }
-        
-        .navbar-fallback .login-btn {
-            background: #007bff;
-            color: white;
-            padding: 0.5rem 1rem;
-            border-radius: 0.25rem;
-            text-decoration: none;
-            border: none;
-        }
-        
-        .navbar-fallback .login-btn:hover {
-            background: #0056b3;
-        }
-        
-        /* Fallback用户下拉菜单 */
-        .navbar-fallback .user-dropdown {
-            position: relative;
-            display: inline-block;
-        }
-        
-        .navbar-fallback .user-dropdown-toggle {
-            background: none;
-            border: none;
-            color: white;
-            padding: 0.5rem;
-            border-radius: 0.25rem;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            transition: background-color 0.3s ease;
-        }
-        
-        .navbar-fallback .user-dropdown-toggle:hover {
-            background-color: rgba(255, 255, 255, 0.1);
-        }
-        
-        .navbar-fallback .user-avatar {
-            width: 32px;
-            height: 32px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, #007bff, #0056b3);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-weight: bold;
-            font-size: 14px;
-            overflow: hidden;
-        }
-        
-        .navbar-fallback .user-avatar img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-        
-        .navbar-fallback .dropdown-arrow {
-            font-size: 0.8rem;
-            transition: transform 0.3s ease;
-        }
-        
-        .navbar-fallback .user-dropdown.open .dropdown-arrow {
-            transform: rotate(180deg);
-        }
-        
-        .navbar-fallback .dropdown-menu {
-            position: absolute;
-            top: 100%;
-            right: 0;
-            background: white;
-            border: 1px solid #dee2e6;
-            border-radius: 0.25rem;
-            box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
-            min-width: 200px;
-            z-index: 1000;
-            display: none;
-            padding: 0.5rem 0;
-        }
-        
-        .navbar-fallback .user-dropdown.open .dropdown-menu {
-            display: block;
-        }
-        
-        .navbar-fallback .dropdown-item {
-            display: block;
-            padding: 0.5rem 1rem;
-            color: #212529;
-            text-decoration: none;
-            transition: background-color 0.3s ease;
-        }
-        
-        .navbar-fallback .dropdown-item:hover {
-            background-color: #f8f9fa;
-        }
-        
-        .navbar-fallback .dropdown-divider {
-            height: 1px;
-            background-color: #dee2e6;
-            margin: 0.5rem 0;
-        }
-        
-        .navbar-fallback .dropdown-header {
-            padding: 0.5rem 1rem;
-            font-size: 0.875rem;
-            color: #6c757d;
-            font-weight: 600;
-        }
-        
-        .navbar-fallback .dropdown-item.text-danger {
-            color: #dc3545;
-        }
-        
-        .navbar-fallback .dropdown-item.text-danger:hover {
-            background-color: #f8d7da;
-        }
-        
-        /* 当Bootstrap加载失败时隐藏Bootstrap导航栏 */
-        .bootstrap-failed .navbar {
-            display: none !important;
-        }
-        
-        /* 当Bootstrap加载失败时显示fallback导航栏 */
-        .bootstrap-failed .navbar-fallback {
-            display: flex !important;
-        }
-        
-        /* 默认隐藏fallback导航栏 */
-        .navbar-fallback {
-            display: none;
-        }
-        
-        /* Bootstrap失败时的全局样式修复 */
-        .bootstrap-failed {
-            /* 确保基本字体和颜色 */
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            line-height: 1.5;
-            color: #212529;
-        }
-        
-        .bootstrap-failed body {
-            margin: 0;
-            padding: 0;
-            background-color: #ffffff;
-        }
-        
-        .bootstrap-failed h1, .bootstrap-failed h2, .bootstrap-failed h3, 
-        .bootstrap-failed h4, .bootstrap-failed h5, .bootstrap-failed h6 {
-            color: #212529;
-            font-weight: 600;
-            margin-top: 0;
-            margin-bottom: 0.5rem;
-        }
-        
-        .bootstrap-failed p {
-            color: #495057;
-            margin-bottom: 1rem;
-        }
-        
-        .bootstrap-failed a {
-            color: #007bff;
-            text-decoration: none;
-        }
-        
-        .bootstrap-failed a:hover {
-            color: #0056b3;
-            text-decoration: underline;
-        }
-        
-        /* Hero section 样式修复 */
-        .bootstrap-failed .hero-section {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: #ffffff !important;
-            padding: 4rem 1rem;
-            text-align: center;
-        }
-        
-        .bootstrap-failed .hero-section h1 {
-            color: #ffffff !important;
-            font-size: 2.5rem;
-            font-weight: 700;
-            margin-bottom: 1rem;
-        }
-        
-        .bootstrap-failed .hero-section p {
-            color: #ffffff !important;
-            font-size: 1.25rem;
-            margin-bottom: 2rem;
-            opacity: 0.9;
-        }
-        
-        .bootstrap-failed .hero-section .btn {
-            display: inline-block;
-            padding: 0.75rem 1.5rem;
-            background-color: #007bff;
-            color: #ffffff;
-            border: none;
-            border-radius: 0.25rem;
-            text-decoration: none;
-            font-weight: 500;
-            transition: background-color 0.3s ease;
-        }
-        
-        .bootstrap-failed .hero-section .btn:hover {
-            background-color: #0056b3;
-            color: #ffffff;
-        }
-        
-        /* 卡片样式修复 */
-        .bootstrap-failed .card {
-            background: #ffffff;
-            border: 1px solid #dee2e6;
-            border-radius: 0.25rem;
-            box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
-            margin-bottom: 1rem;
-        }
-        
-        .bootstrap-failed .card-body {
-            padding: 1.25rem;
-        }
-        
-        .bootstrap-failed .card-title {
-            color: #212529;
-            font-size: 1.25rem;
-            font-weight: 600;
-            margin-bottom: 0.75rem;
-        }
-        
-        .bootstrap-failed .card-text {
-            color: #495057;
-            margin-bottom: 1rem;
-        }
-        
-        /* 按钮样式修复 */
-        .bootstrap-failed .btn {
-            display: inline-block;
-            padding: 0.5rem 1rem;
-            margin-bottom: 0;
-            font-size: 1rem;
-            font-weight: 400;
-            line-height: 1.5;
-            text-align: center;
-            text-decoration: none;
-            vertical-align: middle;
-            cursor: pointer;
-            border: 1px solid transparent;
-            border-radius: 0.25rem;
-            transition: all 0.3s ease;
-        }
-        
-        .bootstrap-failed .btn-primary {
-            color: #ffffff;
-            background-color: #007bff;
-            border-color: #007bff;
-        }
-        
-        .bootstrap-failed .btn-primary:hover {
-            color: #ffffff;
-            background-color: #0056b3;
-            border-color: #004085;
-        }
-        
-        .bootstrap-failed .btn-secondary {
-            color: #ffffff;
-            background-color: #6c757d;
-            border-color: #6c757d;
-        }
-        
-        .bootstrap-failed .btn-secondary:hover {
-            color: #ffffff;
-            background-color: #545b62;
-            border-color: #4e555b;
-        }
-        
-        /* 文本颜色修复 */
-        .bootstrap-failed .text-white {
-            color: #ffffff !important;
-        }
-        
-        .bootstrap-failed .text-dark {
-            color: #212529 !important;
-        }
-        
-        .bootstrap-failed .text-muted {
-            color: #6c757d !important;
-        }
-        
-        /* 背景颜色修复 */
-        .bootstrap-failed .bg-dark {
-            background-color: #212529 !important;
-            color: #ffffff !important;
-        }
-        
-        .bootstrap-failed .bg-light {
-            background-color: #f8f9fa !important;
-            color: #212529 !important;
-        }
-        
-        .bootstrap-failed .bg-primary {
-            background-color: #007bff !important;
-            color: #ffffff !important;
-        }
-        
-        /* 容器样式修复 */
-        .bootstrap-failed .container {
-            width: 100%;
-            padding-right: 15px;
-            padding-left: 15px;
-            margin-right: auto;
-            margin-left: auto;
-        }
-        
-        @media (min-width: 576px) {
-            .bootstrap-failed .container {
-                max-width: 540px;
-            }
-        }
-        
-        @media (min-width: 768px) {
-            .bootstrap-failed .container {
-                max-width: 720px;
-            }
-        }
-        
-        @media (min-width: 992px) {
-            .bootstrap-failed .container {
-                max-width: 960px;
-            }
-        }
-        
-        @media (min-width: 1200px) {
-            .bootstrap-failed .container {
-                max-width: 1140px;
-            }
-        }
-        
-        /* 表格样式修复 */
-        .bootstrap-failed table {
-            width: 100%;
-            margin-bottom: 1rem;
-            color: #212529;
-            border-collapse: collapse;
-        }
-        
-        .bootstrap-failed table th,
-        .bootstrap-failed table td {
-            padding: 0.75rem;
-            vertical-align: top;
-            border-top: 1px solid #dee2e6;
-        }
-        
-        .bootstrap-failed table thead th {
-            vertical-align: bottom;
-            border-bottom: 2px solid #dee2e6;
-            background-color: #f8f9fa;
-            font-weight: 600;
-        }
-        
-        /* 表单样式修复 */
-        .bootstrap-failed .form-control {
-            display: block;
-            width: 100%;
-            padding: 0.375rem 0.75rem;
-            font-size: 1rem;
-            line-height: 1.5;
-            color: #495057;
-            background-color: #ffffff;
-            background-clip: padding-box;
-            border: 1px solid #ced4da;
-            border-radius: 0.25rem;
-            transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
-        }
-        
-        .bootstrap-failed .form-control:focus {
-            color: #495057;
-            background-color: #ffffff;
-            border-color: #80bdff;
-            outline: 0;
-            box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
-        }
-        
-        .bootstrap-failed .form-group {
-            margin-bottom: 1rem;
-        }
-        
-        .bootstrap-failed label {
-            display: inline-block;
-            margin-bottom: 0.5rem;
-            color: #212529;
-            font-weight: 500;
-        }
-        
-        /* 警告框样式修复 */
-        .bootstrap-failed .alert {
-            position: relative;
-            padding: 0.75rem 1.25rem;
-            margin-bottom: 1rem;
-            border: 1px solid transparent;
-            border-radius: 0.25rem;
-        }
-        
-        .bootstrap-failed .alert-success {
-            color: #155724;
-            background-color: #d4edda;
-            border-color: #c3e6cb;
-        }
-        
-        .bootstrap-failed .alert-danger {
-            color: #721c24;
-            background-color: #f8d7da;
-            border-color: #f5c6cb;
-        }
-        
-        .bootstrap-failed .alert-warning {
-            color: #856404;
-            background-color: #fff3cd;
-            border-color: #ffeaa7;
-        }
-        
-        .bootstrap-failed .alert-info {
-            color: #0c5460;
-            background-color: #d1ecf1;
-            border-color: #bee5eb;
-        }
-        
-        /* 列表样式修复 */
-        .bootstrap-failed ul, .bootstrap-failed ol {
-            margin-bottom: 1rem;
-            padding-left: 2rem;
-        }
-        
-        .bootstrap-failed li {
-            margin-bottom: 0.25rem;
-            color: #495057;
-        }
-        
-        /* 代码样式修复 */
-        .bootstrap-failed code {
-            font-size: 87.5%;
-            color: #e83e8c;
-            word-break: break-word;
-            background-color: #f8f9fa;
-            padding: 0.2rem 0.4rem;
-            border-radius: 0.25rem;
-        }
-        
-        .bootstrap-failed pre {
-            display: block;
-            padding: 1rem;
-            margin-bottom: 1rem;
-            font-size: 87.5%;
-            color: #212529;
-            background-color: #f8f9fa;
-            border: 1px solid #e9ecef;
-            border-radius: 0.25rem;
-            overflow-x: auto;
-        }
-        
-        /* 页脚样式修复 */
-        .bootstrap-failed footer {
-            background-color: #212529 !important;
-            color: #ffffff !important;
-            padding: 2rem 0;
-            margin-top: 2rem;
-        }
-        
-        .bootstrap-failed footer h5 {
-            color: #ffffff !important;
-            margin-bottom: 1rem;
-        }
-        
-        .bootstrap-failed footer p {
-            color: #ffffff !important;
-            margin-bottom: 0.5rem;
-        }
-        
-        .bootstrap-failed footer a {
-            color: #ffffff !important;
-        }
-        
-        .bootstrap-failed footer a:hover {
-            color: #007bff !important;
-        }
-        
-        /* Bootstrap正常加载时的样式 */
-        .navbar {
-            background: rgba(33, 37, 41, 0.95) !important;
-            backdrop-filter: blur(10px);
-            transition: all 0.3s ease;
-        }
-
-        .navbar-brand {
-            font-weight: bold;
-            font-size: 1.5rem;
-        }
-
-        /* 解决导航栏遮挡问题 */
-        body {
-            padding-top: 62px;
-            /* 导航栏高度 + 一点间距 */
-        }
-
-        html,
-        body {
-            height: 100%;
-        }
-
-        body {
-            display: flex;
-            flex-direction: column;
-            min-height: 100vh;
-        }
-
-        main {
-            flex: 1;
-        }
-
-        /* 响应式调整 */
-        @media (max-width: 768px) {
-            body {
-                padding-top: 62px;
-                /* 移动端导航栏稍微矮一些 */
-            }
-        }
-
-        .nav-link {
-            font-weight: 500;
-            transition: color 0.3s ease;
-        }
-
-        .nav-link:hover {
-            color: #007bff !important;
-        }
-
-        footer {
-            margin-bottom: 0;
-        }
-
-        /* 用户菜单样式 */
-        .user-menu {
-            position: relative;
-        }
-
-        .user-dropdown {
-            min-width: 200px;
-        }
-
-        .user-avatar {
-            width: 32px;
-            height: 32px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, #007bff, #0056b3);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-weight: bold;
-            font-size: 14px;
-        }
-
-        .login-btn {
-            background: linear-gradient(135deg, #007bff, #0056b3);
-            border: none;
-            color: white;
-            padding: 8px 16px;
-            border-radius: 20px;
-            font-weight: 500;
-            transition: all 0.3s ease;
-        }
-
-        .login-btn:hover {
-            background: linear-gradient(135deg, #0056b3, #004085);
-            color: white;
-            transform: translateY(-1px);
-        }
-
-        /* 通知按钮样式 */
-        .notification-btn {
-            position: relative;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 8px 12px !important;
-            border-radius: 50%;
-            transition: all 0.3s ease;
-        }
-
-        .notification-btn:hover {
-            background: rgba(255, 255, 255, 0.1);
-            transform: scale(1.1);
-        }
-
-        .notification-btn i {
-            font-size: 1.2rem;
-            color: #ffffff;
-        }
-
-        .notification-badge {
-            position: absolute;
-            top: 2px;
-            right: 2px;
-            background: #dc3545;
-            color: white;
-            border-radius: 50%;
-            padding: 2px 6px;
-            font-size: 0.75rem;
-            font-weight: bold;
-            min-width: 18px;
-            height: 18px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border: 2px solid #212529;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-            animation: none;
-        }
-
-        .notification-badge.has-notifications {
-            animation: pulse 2s infinite;
-        }
-
-        @keyframes pulse {
-            0% {
-                transform: scale(1);
-            }
-            50% {
-                transform: scale(1.1);
-            }
-            100% {
-                transform: scale(1);
-            }
-        }
-
-        /* 当通知数量大于99时的样式 */
-        .notification-badge.large-count {
-            font-size: 0.65rem;
-            padding: 1px 4px;
-        }
-        
-        /* Fallback导航栏响应式样式 */
-        @media (max-width: 768px) {
-            .navbar-fallback {
-                flex-direction: column;
-                padding: 0.5rem;
-                gap: 0.5rem;
-            }
-            
-            .navbar-fallback .nav-links {
-                flex-wrap: wrap;
-                justify-content: center;
-                gap: 0.5rem;
-            }
-            
-            .navbar-fallback .nav-links a {
-                padding: 0.25rem 0.5rem;
-                font-size: 0.9rem;
-            }
-            
-            .navbar-fallback .user-menu {
-                gap: 0.25rem;
-            }
-            
-            .navbar-fallback .login-btn {
-                padding: 0.25rem 0.5rem;
-                font-size: 0.9rem;
-            }
-            
-            .navbar-fallback .user-dropdown-toggle {
-                padding: 0.25rem;
-                font-size: 0.9rem;
-            }
-            
-            .navbar-fallback .user-avatar {
-                width: 28px;
-                height: 28px;
-                font-size: 12px;
-            }
-            
-            .navbar-fallback .dropdown-menu {
-                min-width: 180px;
-                right: -1rem;
-            }
-        }
-    </style>
     {% block extra_css %}{% endblock %}
 </head>
 
 <body>
-    <!-- Fallback导航栏 - 当Bootstrap加载失败时显示 -->
-    <div class="navbar-fallback">
-        <a href="/" class="brand">
-            <img src="/static/img/favicon.png" alt="My Icon" width="30" height="30">
-            <span>Raricy.com - 聪明山</span>
-        </a>
-        <ul class="nav-links">
-            <li><a href="/">首页</a></li>
-            <li><a href="{{ url_for('story.menu') }}">故事</a></li>
-            
-            <li><a href="{{ url_for('blog.menu') }}">博客</a></li>
-            <li><a href="{{ url_for('sitemap.index') }}">站点地图</a></li>
-        </ul>
-        <div class="user-menu">
-            {% if current_user.is_authenticated %}
-                <!-- 通知按钮 -->
-                <a href="{{ url_for('notifications.notification_page') }}" class="notification-btn" title="我的通知">
-                    🔔
-                    <span class="notification-badge" id="fallbackNotificationBadge" style="display: none;">0</span>
-                </a>
-                <!-- 用户下拉菜单 -->
-                <div class="user-dropdown">
-                    <button class="user-dropdown-toggle" onclick="toggleFallbackDropdown()">
-                        <div class="user-avatar">
-                            <img src="{{ url_for('auth.get_avatar', user_id=current_user.id) }}" 
-                                 style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">
-                        </div>
-                        <span>{{ current_user.username }}</span>
-                        <span class="dropdown-arrow">▼</span>
-                    </button>
-                    <div class="dropdown-menu">
-                        <div class="dropdown-header">用户信息</div>
-                        <div class="dropdown-divider"></div>
-                        <a href="{{ url_for('auth.profile', user_id=current_user.id) }}" class="dropdown-item">👤 个人资料</a>
-                        <a href="{{ url_for('notifications.notification_page') }}" class="dropdown-item">🔔 我的通知</a>
-                        <a href="{{ url_for('auth.notification_settings') }}" class="dropdown-item">⚙️ 通知设置</a>
-                        {% if current_user.is_admin %}
-                        <a href="/blog/admin" class="dropdown-item">🔧 博客管理后台</a>
-                        <a href="{{ url_for('auth.user_management') }}" class="dropdown-item">👥 用户管理</a>
-                        {% endif %}
-                        <div class="dropdown-divider"></div>
-                        <a href="#" onclick="logout()" class="dropdown-item text-danger">🚪 退出登录</a>
-                    </div>
-                </div>
-            {% else %}
-                <a href="{{ url_for('auth.login') }}" class="login-btn">登录</a>
-                <a href="{{ url_for('auth.register') }}">注册</a>
-            {% endif %}
-        </div>
-    </div>
-
-    <!-- Bootstrap导航栏 -->
-    <nav class="navbar navbar-expand-lg navbar-dark fixed-top">
-        <div class="container">
-            <a class="navbar-brand d-flex align-items-center" href="/">
-                <img src="/static/img/favicon.png" alt="My Icon" width="30" height="30" class="me-2">
-                <span class="fw-bold">Raricy.com - 聪明山</span>
+    <!-- 自定义无Bootstrap顶栏 -->
+    <header class="site-navbar" role="navigation">
+        <div class="site-container">
+            <a class="site-brand" href="/">
+                <img src="/static/img/favicon.png" alt="My Icon" width="30" height="30">
+                <span>Raricy.com - 聪明山</span>
             </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
+            <button class="site-navbar-toggler" type="button" aria-expanded="false" aria-controls="siteNavbar" aria-label="切换导航">
+                <span class="bar"></span>
+                <span class="bar"></span>
+                <span class="bar"></span>
             </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav me-auto">
-                    <li class="nav-item">
-                        <a class="nav-link active" href="/">首页</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('story.menu') }}">故事</a>
-                    </li>
-                    
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('blog.menu') }}">博客</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('tool.menu') }}">工具</a>
-                    </li>
+            <div class="site-navbar-collapse" id="siteNavbar">
+                <ul class="site-nav">
+                    <li><a class="site-link active" href="/">首页</a></li>
+                    <li><a class="site-link" href="{{ url_for('story.menu') }}">故事</a></li>
+                    <li><a class="site-link" href="{{ url_for('blog.menu') }}">博客</a></li>
+                    <li><a class="site-link" href="{{ url_for('tool.menu') }}">工具</a></li>
                 </ul>
-                
-                <!-- 用户菜单 -->
-                <ul class="navbar-nav">
+                <div class="site-actions">
                     {% if current_user.is_authenticated %}
-                        <!-- 通知按钮 -->
-                        <li class="nav-item">
-                            <a class="nav-link position-relative notification-btn" href="{{ url_for('notifications.notification_page') }}" title="我的通知">
-                                <i class="bi bi-bell-fill"></i>
-                                <span class="notification-badge" id="notificationBadge" style="display: none;">0</span>
-                            </a>
-                        </li>
-                        <!-- 用户菜单 -->
-                        <li class="nav-item dropdown user-menu">
-                            <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                                <div class="user-avatar me-2">
-                                    <img src="{{ url_for('auth.get_avatar', user_id=current_user.id) }}" 
-                                         style="width: 100%; height: 100%; border-radius: 5%; object-fit: cover;">
-                                </div>
+                            <a class="notification-btn" href="{{ url_for('notifications.notification_page') }}" title="我的通知">
+                            <span class="icon icon-bell-fill" aria-hidden="true"></span>
+                            <span class="notification-badge" id="notificationBadge" style="display: none;">0</span>
+                        </a>
+                        <div class="site-user-dropdown">
+                            <button class="site-user-dropdown-toggle" id="userDropdownToggle" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="userDropdownMenu">
+                                <span class="site-user-avatar">
+                                    <img src="{{ url_for('auth.get_avatar', user_id=current_user.id) }}" alt="avatar">
+                                </span>
                                 <span>{{ current_user.username }}</span>
-                            </a>
-                            <ul class="dropdown-menu user-dropdown">
-                                <li><h6 class="dropdown-header">用户信息</h6></li>
-                                <li><hr class="dropdown-divider"></li>
-                                <li><a class="dropdown-item" href="{{ url_for('auth.profile', user_id=current_user.id) }}"><i class="bi bi-person me-2"></i>个人资料</a></li>
-                                <li><a class="dropdown-item" href="{{ url_for('notifications.notification_page') }}"><i class="bi bi-bell me-2"></i>我的通知</a></li>
-                                <li><a class="dropdown-item" href="{{ url_for('auth.notification_settings') }}"><i class="bi bi-gear me-2"></i>通知设置</a></li>
+                            </button>
+                            <ul class="site-user-dropdown-menu" role="menu" id="userDropdownMenu" aria-labelledby="userDropdownToggle">
+                                <li role="presentation" class="site-dropdown-header">用户信息</li>
+                                <li role="separator" class="site-dropdown-divider"></li>
+                                <li role="none"><a class="site-dropdown-item" role="menuitem" href="{{ url_for('auth.profile', user_id=current_user.id) }}"><span class="icon icon-person" style="margin-right: .5rem;"></span>个人资料</a></li>
+                                <li role="none"><a class="site-dropdown-item" role="menuitem" href="{{ url_for('notifications.notification_page') }}"><span class="icon icon-bell" style="margin-right: .5rem;"></span>我的通知</a></li>
+                                <li role="none"><a class="site-dropdown-item" role="menuitem" href="{{ url_for('auth.notification_settings') }}"><span class="icon icon-gear" style="margin-right: .5rem;"></span>通知设置</a></li>
                                 {% if current_user.is_admin %}
-                                <li><a class="dropdown-item" href="/blog/admin"><i class="bi bi-gear-fill me-2"></i>博客管理后台</a></li>
-                                <li><a class="dropdown-item" href="{{ url_for('auth.user_management') }}"><i class="bi bi-people me-2"></i>用户管理</a></li>
+                                <li role="none"><a class="site-dropdown-item" role="menuitem" href="/blog/admin"><span class="icon icon-gear-fill" style="margin-right: .5rem;"></span>博客管理后台</a></li>
+                                <li role="none"><a class="site-dropdown-item" role="menuitem" href="{{ url_for('auth.user_management') }}"><span class="icon icon-people" style="margin-right: .5rem;"></span>用户管理</a></li>
                                 {% endif %}
-                                <li><hr class="dropdown-divider"></li>
-                                <li><a class="dropdown-item text-danger" href="#" onclick="logout()"><i class="bi bi-box-arrow-right me-2"></i>退出登录</a></li>
+                                <li role="separator" class="site-dropdown-divider"></li>
+                                <li role="none"><a class="site-dropdown-item text-danger" role="menuitem" href="#" onclick="logout()"><span class="icon icon-box-arrow-right" style="margin-right: .5rem;"></span>退出登录</a></li>
                             </ul>
-                        </li>
+                        </div>
                     {% else %}
-                        <li class="nav-item">
-                            <a class="nav-link login-btn" href="{{ url_for('auth.login') }}">
-                                <i class="bi bi-person-circle me-1"></i>登录
-                            </a>
-                        </li>
-                        <li class="nav-item ms-2">
-                            <a class="nav-link" href="{{ url_for('auth.register') }}" style="color: #6c757d;">
-                                <i class="bi bi-person-plus me-1"></i>注册
-                            </a>
-                        </li>
+                        <a class="site-login-btn" href="{{ url_for('auth.login') }}"><span class="icon icon-person-circle" style="margin-right:6px;"></span>登录</a>
+                        <a class="site-link" href="{{ url_for('auth.register') }}" style="color:#6c757d;">注册</a>
                     {% endif %}
-                </ul>
+                </div>
             </div>
         </div>
-    </nav>
+    </header>
 
     <!-- 主要内容区域 -->
     <main>
         {% block content %}{% endblock %}
     </main>
 
-    <!-- 页脚（可选） -->
-    <footer class="bg-dark text-white py-4">
-        <div class="container">
-            <div class="row">
-                <div class="col-md-6">
+    <!-- 自定义底栏（无Bootstrap） -->
+    <footer class="site-footer">
+        <div class="site-footer-container">
+            <div class="site-footer-row">
+                <div class="site-footer-left">
                     <h5>聪明山 Raricy.com</h5>
                     {% block footer_text %}{% endblock %}
                 </div>
-                <div class="col-md-6 text-md-end">
+                <div class="site-footer-right">
                     <div class="social-links">
-                        <a href="https://github.com/raricycms/raricy.com" class="text-white me-3"><i
-                                class="bi bi-github"></i></a>
-                        <a href="/contact" class="text-white me-3"><i class="bi bi-twitter"></i></a>
-                        <a href="mailto:raricycms@gmail.com" class="text-white"><i class="bi bi-envelope"></i></a>
+                        <a href="https://github.com/raricycms/raricy.com" aria-label="GitHub"><span class="icon icon-github" aria-hidden="true"></span></a>
+                        <a href="/contact" aria-label="Twitter"><span class="icon icon-twitter" aria-hidden="true"></span></a>
+                        <a href="mailto:raricycms@gmail.com" aria-label="Email"><span class="icon icon-envelope" aria-hidden="true"></span></a>
                     </div>
-                    <p class="text-white mt-2">{% block copyright %}&copy; 2025 聪明山. All rights reserved.{% endblock %}
+                    <p style="margin-top: 0.5rem;">{% block copyright %}&copy; 2025 聪明山. All rights reserved.{% endblock %}
                     </p>
                 </div>
             </div>
         </div>
     </footer>
 
-    <!-- Bootstrap JS -->
+    <!-- Bootstrap JS（全站其他组件可用；顶栏不依赖） -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
     <!-- 通用JavaScript -->
@@ -949,14 +133,11 @@
         console.log('通知API URL:', window.notificationApiUrl);
         console.log('user-authenticated meta内容:', userAuthenticatedMeta ? userAuthenticatedMeta.content : '不存在');
         console.log('notification-api-url meta内容:', notificationApiUrlMeta ? notificationApiUrlMeta.content : '不存在');
-        // 滚动时导航栏效果
+        // 滚动时导航栏背景渐变
         window.addEventListener('scroll', function () {
-            const navbar = document.querySelector('.navbar');
-            if (window.scrollY > 50) {
-                navbar.style.background = 'rgba(33, 37, 41, 0.98)';
-            } else {
-                navbar.style.background = 'rgba(33, 37, 41, 0.95)';
-            }
+            const navbar = document.querySelector('.site-navbar');
+            if (!navbar) return;
+            navbar.style.background = (window.scrollY > 50) ? 'rgba(33, 37, 41, 0.98)' : 'rgba(33, 37, 41, 0.95)';
         });
 
         // 平滑滚动
@@ -1131,13 +312,43 @@
             }
         }
 
-        // 页面加载时获取通知数量
+        // 页面加载后：初始化顶栏交互与通知
         document.addEventListener('DOMContentLoaded', function() {
             updateNotificationCount();
-            updateFallbackNotificationCount();
-            
-            // 延迟检测Bootstrap，给CSS加载时间
-            setTimeout(checkBootstrapLoaded, 100);
+
+            // 顶栏折叠
+            const siteNavbar = document.querySelector('.site-navbar');
+            const toggler = document.querySelector('.site-navbar-toggler');
+            if (toggler && siteNavbar) {
+                toggler.addEventListener('click', function () {
+                    const isOpen = siteNavbar.classList.toggle('open');
+                    toggler.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+                });
+                window.addEventListener('resize', function () {
+                    if (window.innerWidth >= 992 && siteNavbar.classList.contains('open')) {
+                        siteNavbar.classList.remove('open');
+                        toggler.setAttribute('aria-expanded', 'false');
+                    }
+                });
+            }
+
+            // 用户下拉
+            const userDropdown = document.querySelector('.site-user-dropdown');
+            const userToggle = document.querySelector('.site-user-dropdown-toggle');
+            if (userDropdown && userToggle) {
+                userToggle.addEventListener('click', function (e) {
+                    e.stopPropagation();
+                    userDropdown.classList.toggle('open');
+                    const expanded = userDropdown.classList.contains('open') ? 'true' : 'false';
+                    userToggle.setAttribute('aria-expanded', expanded);
+                });
+                document.addEventListener('click', function (e) {
+                    if (!userDropdown.contains(e.target)) {
+                        userDropdown.classList.remove('open');
+                        userToggle.setAttribute('aria-expanded', 'false');
+                    }
+                });
+            }
         });
 
         // 当用户点击通知按钮时，延迟更新计数（给服务器时间处理）
@@ -1152,60 +363,7 @@
             updateNotificationCount();
         };
 
-        // 测试函数：手动切换Bootstrap fallback模式
-        window.toggleBootstrapFallback = function() {
-            document.body.classList.toggle('bootstrap-failed');
-            const isFallback = document.body.classList.contains('bootstrap-failed');
-            console.log('Bootstrap fallback模式:', isFallback ? '开启' : '关闭');
-            return isFallback;
-        };
-
-        // Fallback下拉菜单控制
-        function toggleFallbackDropdown() {
-            const dropdown = document.querySelector('.navbar-fallback .user-dropdown');
-            if (dropdown) {
-                dropdown.classList.toggle('open');
-            }
-        }
-
-        // 点击外部关闭fallback下拉菜单
-        document.addEventListener('click', function(e) {
-            const dropdown = document.querySelector('.navbar-fallback .user-dropdown');
-            const toggle = document.querySelector('.navbar-fallback .user-dropdown-toggle');
-            
-            if (dropdown && toggle && !toggle.contains(e.target) && !dropdown.contains(e.target)) {
-                dropdown.classList.remove('open');
-            }
-        });
-
-        // 更新fallback通知数量
-        function updateFallbackNotificationCount() {
-            if (!window.isUserAuthenticated || !window.notificationApiUrl) {
-                return;
-            }
-            
-            fetch(window.notificationApiUrl)
-                .then(response => response.json())
-                .then(data => {
-                    const badge = document.getElementById('fallbackNotificationBadge');
-                    if (badge) {
-                        const count = data.count || 0;
-                        if (count > 0) {
-                            badge.style.display = 'inline-block';
-                            if (count > 99) {
-                                badge.textContent = '99+';
-                            } else {
-                                badge.textContent = count;
-                            }
-                        } else {
-                            badge.style.display = 'none';
-                        }
-                    }
-                })
-                .catch(error => {
-                    console.error('获取fallback通知数量失败:', error);
-                });
-        }
+        // 取消不再需要的fallback相关函数（已移除）
     </script>
 
     <!-- 页面特定的JavaScript -->

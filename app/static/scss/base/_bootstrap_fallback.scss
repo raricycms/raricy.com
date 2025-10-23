@@ -1,0 +1,18 @@
+/* Styles to approximate Bootstrap when CDN fails (optional use) */
+.bootstrap-failed {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  line-height: 1.5;
+  color: #212529;
+}
+.bootstrap-failed a { color: #007bff; text-decoration: none; }
+.bootstrap-failed a:hover { color: #0056b3; text-decoration: underline; }
+.bootstrap-failed .container { width: 100%; padding-right: 15px; padding-left: 15px; margin-right: auto; margin-left: auto; }
+@media (min-width: 576px) { .bootstrap-failed .container { max-width: 540px; } }
+@media (min-width: 768px) { .bootstrap-failed .container { max-width: 720px; } }
+@media (min-width: 992px) { .bootstrap-failed .container { max-width: 960px; } }
+@media (min-width: 1200px) { .bootstrap-failed .container { max-width: 1140px; } }
+.bootstrap-failed .btn { display: inline-block; padding: 0.5rem 1rem; font-size: 1rem; line-height: 1.5; text-align: center; cursor: pointer; border: 1px solid transparent; border-radius: 0.25rem; transition: all 0.3s ease; }
+.bootstrap-failed .btn-primary { color: #fff; background-color: #007bff; border-color: #007bff; }
+.bootstrap-failed .btn-primary:hover { background-color: #0056b3; }
+.bootstrap-failed footer { background-color: #212529 !important; color: #fff !important; padding: 2rem 0; margin-top: 2rem; }
+

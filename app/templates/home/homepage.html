@@ -4,236 +4,75 @@
 
 {% block extra_css %}
 <meta name="google-site-verification" content="LRVbLEdJxTTwwbT114ygONe1auaak1IJxv1Eyr-vZt8" />
-<style>
-    .hero-section {
-      background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
-      min-height: 60vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      position: relative;
-      overflow: hidden;
-    }
-
-    .hero-section::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grain" width="100" height="100" patternUnits="userSpaceOnUse"><circle cx="25" cy="25" r="1" fill="white" opacity="0.1"/><circle cx="75" cy="75" r="1" fill="white" opacity="0.1"/></pattern></defs><rect width="100" height="100" fill="url(%23grain)"/></svg>');
-      opacity: 0.1;
-      z-index: 1;
-    }
-
-    #hero-canvas {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      z-index: 0;
-    }
-
-    .hero-content {
-      position: relative;
-      z-index: 2;
-    }
-
-    /* 卡片样式优化 */
-    .feature-card {
-      transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
-      cursor: pointer;
-      border: 1px solid #e5e7eb;
-      border-radius: 15px;
-      overflow: hidden;
-      position: relative;
-      height: 100%;
-      background-color: #fff;
-      border-top: 4px solid transparent;
-    }
-
-    .feature-card:hover {
-      transform: translateY(-10px) scale(1.02);
-      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
-    }
-    .feature-card:hover.card-story { border-top-color: #3b82f6; }
-    .feature-card:hover.card-game { border-top-color: #10b981; }
-    .feature-card:hover.card-blog { border-top-color: #f59e0b; }
-    .feature-card:hover.card-tool { border-top-color: #06b6d4; }
-
-    .feature-card:hover .feature-icon {
-      transform: scale(1.1);
-    }
-
-    .feature-card .card-body {
-      padding: 2rem;
-      position: relative;
-      z-index: 2;
-      display: flex;
-      flex-direction: column;
-      height: 100%;
-    }
-
-    /* 图标样式 */
-    .feature-icon {
-      font-size: 3rem;
-      margin-bottom: 1rem;
-      transition: transform 0.3s ease;
-    }
-    .card-story .feature-icon { color: #3b82f6; }
-    .card-game .feature-icon { color: #10b981; }
-    .card-blog .feature-icon { color: #f59e0b; }
-    .card-tool .feature-icon { color: #06b6d4; }
-
-    /* 统计数据样式 */
-    .stats-section {
-      background: #f8f9fa;
-      padding: 4rem 0;
-    }
-
-    .stat-item {
-      text-align: center;
-      padding: 2rem 1rem;
-    }
-
-    .stat-number {
-      font-size: 3rem;
-      font-weight: bold;
-      color: #667eea;
-      display: block;
-    }
-
-    /* 特色区域 */
-    .features-section {
-      padding: 5rem 0;
-      background: white;
-      background-color: #f9fafb;
-    }
-
-    /* 响应式优化 */
-    @media (max-width: 768px) {
-      .hero-section {
-        min-height: 50vh;
-        text-align: center;
-      }
-
-      .feature-card {
-        margin-bottom: 2rem;
-      }
-    }
-
-    /* 动画效果 */
-    @keyframes fadeInUp {
-      from {
-        opacity: 0;
-        transform: translateY(30px);
-      }
-
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
-
-    .fade-in-up {
-      animation: fadeInUp 0.8s ease-out;
-    }
-
-    /* 按钮样式 */
-    .btn-custom {
-      background: linear-gradient(45deg, #667eea, #764ba2);
-      border: none;
-      border-radius: 25px;
-      padding: 12px 30px;
-      color: white;
-      font-weight: 500;
-      transition: all 0.3s ease;
-    }
-
-    .btn-custom:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
-      color: white;
-    }
-</style>
 {% endblock %}
 
 {% block content %}
 <!-- Hero Section -->
 <section class="hero-section" id="home">
     <canvas id="hero-canvas"></canvas>
-    <div class="container">
-        <div class="row align-items-center justify-content-center text-center">
-            <div class="col-lg-6">
+    <div class="home-container">
+        <div class="home-row home-text-center">
+            <div class="home-col-6">
                 <div class="text-white fade-in-up hero-content">
-                    <h1 class="display-4 fw-bold mb-4">聪明山</h1>
-                    <p class="lead mb-4 fs-3 fst-italic">我 们 总 将 找 到 答 案</p>
-                    <p class="mb-4 fs-5">欢迎访问聪明山website。这里是Raricy.com的主页面，你可以由此进入Raricy.com的大部分页面</p>
+                    <h1 class="home-display" style="color:#fff; margin-bottom:1rem;">聪明山</h1>
+                    <p class="home-lead" style="color:#fff; opacity:0.9; margin-bottom:1rem; font-style: italic; font-size:1.5rem;">我 们 总 将 找 到 答 案</p>
+                    <p style="color:#fff; opacity:0.9; margin-bottom:1rem; font-size:1.125rem;">欢迎访问聪明山website。这里是Raricy.com的主页面，你可以由此进入Raricy.com的大部分页面</p>
                 </div>
             </div>
-            <div class="col-lg-6 text-center">
-                <div class="fade-in-up" aria-hidden="true">
-                    <i class="bi bi-lightbulb text-warning" style="font-size: 8rem; opacity: 0.8;"></i>
-                </div>
-            </div>
+            
         </div>
     </div>
-</section>
+    </section>
 <section class="features-section" id="features">
-    <div class="container">
-        <div class="row mb-5">
-            <div class="col-12 text-center">
-                <h2 class="display-5 fw-bold mb-3">探索</h2>
-                <p class="lead text-muted">以下是此网站的核心内容。</p>
+    <div class="home-container">
+        <div class="home-row" style="margin-bottom: 2rem;">
+            <div class="home-col-12 home-text-center">
+                <h2 class="home-display">探索</h2>
+                <p class="home-lead u-text-muted">以下是此网站的核心内容。</p>
             </div>
         </div>
 
-        <div class="row g-4">
-            <div class="col-lg-3 col-md-6">
-                <div class="card feature-card h-100 card-story" data-url="{{url_for('story.menu')}}"
-                    onclick="handleCardClick(this)">
-                    <div class="card-body text-center">
-                        <i class="bi bi-book feature-icon"></i>
-                        <h4 class="card-title mb-3">故事/小说</h4>
+        <div class="home-grid">
+            <div class="home-grid-item">
+                <div class="feature-card card-story" data-url="{{url_for('story.menu')}}" onclick="handleCardClick(this)">
+                    <div class="card-body home-text-center">
+                        <span class="feature-icon" aria-hidden="true"></span>
+                        <h4 class="card-title" style="margin-bottom: 0.75rem;">故事/小说</h4>
                         <p class="card-text">聪明山故事集，这里有一些聪明山的原创故事和小说，也有代发的原创小说。</p>
-                        <a href="{{ url_for('story.menu') }}" class="btn btn-outline-primary btn-sm mt-auto">开始阅读</a>
+                        <a href="{{ url_for('story.menu') }}" class="home-btn home-btn--outline-primary home-btn--sm">开始阅读</a>
                     </div>
                 </div>
             </div>
 
-            <div class="col-lg-3 col-md-6">
-                <div class="card feature-card h-100 card-game">
-                    <div class="card-body text-center">
-                        <i class="bi bi-controller feature-icon"></i>
-                        <h4 class="card-title mb-3">玩具（维护中）</h4>
+            <div class="home-grid-item">
+                <div class="feature-card card-game">
+                    <div class="card-body home-text-center">
+                        <span class="feature-icon" aria-hidden="true"></span>
+                        <h4 class="card-title" style="margin-bottom: 0.75rem;">玩具（维护中）</h4>
                         <p class="card-text">该功能正在维护中，暂不可用。</p>
-                        <button class="btn btn-outline-secondary btn-sm mt-auto" disabled aria-disabled="true">维护中</button>
+                        <button class="home-btn home-btn--outline-secondary home-btn--sm" disabled aria-disabled="true">维护中</button>
                     </div>
                 </div>
             </div>
 
-            <div class="col-lg-3 col-md-6">
-                <div class="card feature-card h-100 card-blog" data-url="{{url_for('blog.menu')}}"
-                    onclick="handleCardClick(this)">
-                    <div class="card-body text-center">
-                        <i class="bi bi-journal-text feature-icon"></i>
-                        <h4 class="card-title mb-3">博客/文章</h4>
+            <div class="home-grid-item">
+                <div class="feature-card card-blog" data-url="{{url_for('blog.menu')}}" onclick="handleCardClick(this)">
+                    <div class="card-body home-text-center">
+                        <span class="feature-icon" aria-hidden="true"></span>
+                        <h4 class="card-title" style="margin-bottom: 0.75rem;">博客/文章</h4>
                         <p class="card-text">这里有一些博客文章和思考分享，涵盖技术、生活、思考等多个方面。</p>
-                        <a href="{{ url_for('blog.menu') }}" class="btn btn-outline-warning btn-sm mt-auto">阅读文章</a>
+                        <a href="{{ url_for('blog.menu') }}" class="home-btn home-btn--outline-warning home-btn--sm">阅读文章</a>
                     </div>
                 </div>
             </div>
 
-            <div class="col-lg-3 col-md-6">
-                <div class="card feature-card h-100 card-tool" data-url="{{url_for('tool.menu')}}"
-                    onclick="handleCardClick(this)">
-                    <div class="card-body text-center">
-                        <i class="bi bi-tools feature-icon"></i>
-                        <h4 class="card-title mb-3">工具</h4>
+            <div class="home-grid-item">
+                <div class="feature-card card-tool" data-url="{{url_for('tool.menu')}}" onclick="handleCardClick(this)">
+                    <div class="card-body home-text-center">
+                        <span class="feature-icon" aria-hidden="true"></span>
+                        <h4 class="card-title" style="margin-bottom: 0.75rem;">工具</h4>
                         <p class="card-text">常用小工具合集：Base 编码、Hex 查看等，助你更高效。</p>
-                        <a href="{{ url_for('tool.menu') }}" class="btn btn-outline-info btn-sm mt-auto">打开工具箱</a>
+                        <a href="{{ url_for('tool.menu') }}" class="home-btn home-btn--outline-info home-btn--sm">打开工具箱</a>
                     </div>
                 </div>
             </div>
@@ -243,7 +82,7 @@
 {% endblock %}
 
 {% block footer_text %}
-<p class="text-muted">你是否正在找智慧河的网站？可能就在附近哦。</p>
+<p class="u-text-muted">你是否正在找智慧河的网站？来<a href="https://zhh.raricy.com">这里</a>。</p>
 {% endblock %}
 
 {% block extra_js %}
