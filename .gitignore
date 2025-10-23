@@ -24,3 +24,9 @@ app/static/js/marked.min.js
 app/static/js/vditor
 app/static/js/dompurify.min.js
 app/static/js/highlight.min.js
+\# Sass/SCSS build artifacts
+.sass-cache/
+**/.sass-cache/
+app/static/css/main.css
+app/static/css/main.css.map
+app/static/css/**/*.map
