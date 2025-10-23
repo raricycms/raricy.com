@@ -35,10 +35,10 @@ if [[ "$MODE" == "prod" ]]; then
   npx --yes sass --style=expanded "$SCSS_FILE" "$CSS_FILE" --no-source-map --load-path="$SCSS_DIR"
 
   echo "[PostCSS] Autoprefix → $AUTO_FILE"
-  npx --yes postcss "$CSS_FILE" --use autoprefixer --no-map -o "$AUTO_FILE"
+  npx --yes --package postcss-cli --package autoprefixer postcss "$CSS_FILE" --use autoprefixer --no-map -o "$AUTO_FILE"
 
   echo "[PostCSS] Minify → $MIN_FILE"
-  npx --yes postcss "$AUTO_FILE" --use cssnano --no-map -o "$MIN_FILE"
+  npx --yes --package postcss-cli --package cssnano postcss "$AUTO_FILE" --use cssnano --no-map -o "$MIN_FILE"
 
   rm -f "$AUTO_FILE"
   if [[ "$TO_MAIN" == "true" ]]; then
