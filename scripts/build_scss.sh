@@ -23,22 +23,22 @@ fi
 if [[ "$MODE" == "dev" ]]; then
   echo "[Sass] Building (dev) → $CSS_FILE"
   if [[ "$WATCH" == "true" ]]; then
-    npx sass --style=expanded --source-map "$SCSS_FILE" "$CSS_FILE" --load-path="$SCSS_DIR" --watch
+    npx --yes sass --style=expanded --source-map "$SCSS_FILE" "$CSS_FILE" --load-path="$SCSS_DIR" --watch
   else
-    npx sass --style=expanded --source-map "$SCSS_FILE" "$CSS_FILE" --load-path="$SCSS_DIR"
+    npx --yes sass --style=expanded --source-map "$SCSS_FILE" "$CSS_FILE" --load-path="$SCSS_DIR"
   fi
   exit $?
 fi
 
 if [[ "$MODE" == "prod" ]]; then
   echo "[Sass] Compiling (prod) → $CSS_FILE"
-  npx sass --style=expanded "$SCSS_FILE" "$CSS_FILE" --no-source-map --load-path="$SCSS_DIR"
+  npx --yes sass --style=expanded "$SCSS_FILE" "$CSS_FILE" --no-source-map --load-path="$SCSS_DIR"
 
   echo "[PostCSS] Autoprefix → $AUTO_FILE"
-  npx postcss "$CSS_FILE" --use autoprefixer --no-map -o "$AUTO_FILE"
+  npx --yes postcss "$CSS_FILE" --use autoprefixer --no-map -o "$AUTO_FILE"
 
   echo "[PostCSS] Minify → $MIN_FILE"
-  npx postcss "$AUTO_FILE" --use cssnano --no-map -o "$MIN_FILE"
+  npx --yes postcss "$AUTO_FILE" --use cssnano --no-map -o "$MIN_FILE"
 
   rm -f "$AUTO_FILE"
   if [[ "$TO_MAIN" == "true" ]]; then
