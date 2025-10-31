@@ -103,14 +103,7 @@ Raricy.com - 文章上传
 
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/vditor@3.10.7/dist/index.min.js"></script>
-<script>
-    if (typeof window.Vditor === 'undefined') {
-        document.write('<script src="{{ url_for('static', filename='js/vditor/node_modules/vditor/dist/index.min.js') }}"><\\/script>');
-        window.__VDITOR_USE_LOCAL__ = true;
-    } else {
-        window.__VDITOR_USE_LOCAL__ = false;
-    }
-;</script>
+
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         let vditor = null;
