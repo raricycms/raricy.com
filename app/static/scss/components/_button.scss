@@ -25,3 +25,117 @@
   color: #fff;
 }
 
+// Bootstrap-like button styles (no Bootstrap dependency)
+.btn {
+  display: inline-block;
+  padding: 0.5rem 1rem;
+  font-size: 1rem;
+  line-height: 1.5;
+  text-align: center;
+  cursor: pointer;
+  border: 1px solid transparent;
+  border-radius: 0.375rem;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.btn-primary {
+  color: #fff;
+  background-color: #0d6efd;
+  border-color: #0d6efd;
+}
+.btn-primary:hover {
+  background-color: #0b5ed7;
+  border-color: #0a58ca;
+}
+
+.btn-secondary {
+  color: #fff;
+  background-color: #6c757d;
+  border-color: #6c757d;
+}
+.btn-secondary:hover {
+  background-color: #5c636a;
+  border-color: #565e64;
+}
+
+.btn-outline-primary {
+  color: #0d6efd;
+  background-color: transparent;
+  border-color: #0d6efd;
+}
+.btn-outline-primary:hover {
+  color: #fff;
+  background-color: #0d6efd;
+  border-color: #0d6efd;
+}
+
+.btn-outline-secondary {
+  color: #6c757d;
+  background-color: transparent;
+  border-color: #6c757d;
+}
+.btn-outline-secondary:hover {
+  color: #fff;
+  background-color: #6c757d;
+  border-color: #6c757d;
+}
+
+.btn-outline-danger {
+  color: #dc3545;
+  background-color: transparent;
+  border-color: #dc3545;
+}
+.btn-outline-danger:hover {
+  color: #fff;
+  background-color: #dc3545;
+  border-color: #dc3545;
+}
+
+.btn-sm {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.875rem;
+  border-radius: 0.25rem;
+}
+
+.btn-danger {
+  color: #fff;
+  background-color: #dc3545;
+  border-color: #dc3545;
+}
+.btn-danger:hover {
+  background-color: #bb2d3b;
+  border-color: #b02a37;
+}
+
+// Close button (×) without image assets
+.btn-close {
+  box-sizing: content-box;
+  width: 1rem;
+  height: 1rem;
+  padding: 0.25rem;
+  color: currentColor;
+  background: transparent;
+  border: 0;
+  border-radius: 0.25rem;
+  opacity: .5;
+  cursor: pointer;
+}
+.btn-close::before {
+  content: '×';
+  display: block;
+  font-size: 1.25rem;
+  line-height: 1rem;
+}
+.btn-close:hover { opacity: .75; }
+
+// Dark mode tweaks
+body.dark-mode {
+  .btn-outline-primary { color: #5dade2; border-color: #5dade2; }
+  .btn-outline-primary:hover { background-color: #5dade2; border-color: #5dade2; color: #1e1e1e; }
+  .btn-outline-secondary { color: #a0aec0; border-color: #4a5568; }
+  .btn-outline-secondary:hover { background-color: #4a5568; color: #ecf0f1; }
+  .btn-outline-danger { color: #ff6b6b; border-color: #ff6b6b; }
+  .btn-outline-danger:hover { background-color: #ff6b6b; color: #1e1e1e; }
+}
+

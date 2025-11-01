@@ -754,25 +754,25 @@
 {% if current_user.is_authenticated and (current_user.is_admin or current_user.id == blog.author_id) %}
 <div class="admin-controls">
     {% if current_user.is_admin %}
-    <button id="admin-likers-btn" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#likersModal" data-likers-url="{{ url_for('blog.likers', blog_id=blog.id) }}">
+    <button id="admin-likers-btn" class="btn btn-outline-primary" data-likers-url="{{ url_for('blog.likers', blog_id=blog.id) }}">
         👍 查看点赞者
     </button>
+    {% endif %}
     <button id="admin-delete-btn" class="btn btn-outline-danger" data-delete-url="{{ url_for('blog.delete_blog', blog_id=blog.id) }}" data-redirect-url="{{ url_for('blog.menu') }}">
         🗑️ 删除文章
     </button>
-    {% endif %}
     <a href="{{ url_for('blog.edit_blog', blog_id=blog.id) }}" class="btn btn-outline-primary">✏️ 编辑文章</a>
     
 </div>
 {% endif %}
 {% if current_user.is_authenticated and current_user.is_admin %}
 <!-- 点赞者列表 Modal -->
-<div class="modal fade" id="likersModal" tabindex="-1" aria-labelledby="likersModalLabel" aria-hidden="true">
+<div class="modal fade" id="likersModal" tabindex="-1" aria-labelledby="likersModalLabel" aria-hidden="true" role="dialog">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title" id="likersModalLabel">点赞者列表</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button type="button" class="btn-close" data-modal-close aria-label="Close"></button>
       </div>
       <div class="modal-body">
         <div id="likers-list" class="list-group" style="max-height: 50vh; overflow: auto;"></div>
@@ -783,25 +783,25 @@
         </div>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+        <button type="button" class="btn btn-secondary" data-modal-close>关闭</button>
       </div>
     </div>
   </div>
 </div>
 
 <!-- 删除确认 Modal -->
-<div class="modal fade" id="deleteConfirmModal" tabindex="-1" aria-labelledby="deleteConfirmLabel" aria-hidden="true">
+<div class="modal fade" id="deleteConfirmModal" tabindex="-1" aria-labelledby="deleteConfirmLabel" aria-hidden="true" role="dialog">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title" id="deleteConfirmLabel">确认删除</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button type="button" class="btn-close" data-modal-close aria-label="Close"></button>
       </div>
       <div class="modal-body">
         确定要删除这篇文章《{{ blog.title }}》吗？该操作不可恢复。
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+        <button type="button" class="btn btn-secondary" data-modal-close>取消</button>
         <button type="button" id="confirm-delete-btn" class="btn btn-danger">确认删除</button>
       </div>
     </div>
@@ -1429,6 +1429,76 @@
         document.getElementById('hljs-dark').disabled = !isDark;
     }
 
+    // Lightweight modal helpers (no Bootstrap), with a11y handling
+    function setBackgroundInert(enable, excludeEl) {
+        const children = Array.from(document.body.children);
+        children.forEach(node => {
+            if (excludeEl && (node === excludeEl || node.contains(excludeEl))) return;
+            if (enable) node.setAttribute('inert', ''); else node.removeAttribute('inert');
+        });
+    }
+    function trapFocus(modalEl, e) {
+        if (e.key !== 'Tab') return;
+        const focusable = modalEl.querySelectorAll('a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])');
+        if (focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey) {
+            if (document.activeElement === first) { last.focus(); e.preventDefault(); }
+        } else {
+            if (document.activeElement === last) { first.focus(); e.preventDefault(); }
+        }
+    }
+    function openModal(modalEl) {
+        if (!modalEl) return;
+        modalEl._prevActiveEl = document.activeElement;
+        modalEl.classList.add('is-open');
+        modalEl.classList.add('show');
+        modalEl.setAttribute('aria-hidden', 'false');
+        modalEl.setAttribute('aria-modal', 'true');
+        document.body.style.overflow = 'hidden';
+        setBackgroundInert(true, modalEl);
+        const focusable = modalEl.querySelectorAll('a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])');
+        if (focusable.length > 0) {
+            focusable[0].focus();
+        } else {
+            modalEl.focus();
+        }
+        modalEl._onKeydown = (e) => {
+            if (e.key === 'Escape') { closeModal(modalEl); }
+            trapFocus(modalEl, e);
+        };
+        document.addEventListener('keydown', modalEl._onKeydown);
+    }
+    function closeModal(modalEl) {
+        if (!modalEl) return;
+        modalEl.classList.remove('is-open');
+        modalEl.classList.remove('show');
+        modalEl.setAttribute('aria-hidden', 'true');
+        modalEl.removeAttribute('aria-modal');
+        document.body.style.overflow = '';
+        setBackgroundInert(false, modalEl);
+        if (modalEl._onKeydown) {
+            document.removeEventListener('keydown', modalEl._onKeydown);
+            modalEl._onKeydown = null;
+        }
+        if (modalEl._prevActiveEl && typeof modalEl._prevActiveEl.focus === 'function') {
+            modalEl._prevActiveEl.focus();
+        }
+        modalEl._prevActiveEl = null;
+    }
+    function setupModal(modalEl) {
+        if (!modalEl) return;
+        // Close on backdrop click
+        modalEl.addEventListener('click', (e) => {
+            if (e.target === modalEl) closeModal(modalEl);
+        });
+        // Close on any element marked with data-modal-close
+        modalEl.querySelectorAll('[data-modal-close]').forEach((el) => {
+            el.addEventListener('click', () => closeModal(modalEl));
+        });
+    }
+
     // 点赞功能
     (function () {
         const likeBtn = document.getElementById('like-btn');
@@ -1476,7 +1546,7 @@
         });
     })();
 
-    // 管理员：点赞者列表
+    // 管理员：点赞者列表（无 Bootstrap）
     (function () {
         const btn = document.getElementById('admin-likers-btn');
         if (!btn) return;
@@ -1484,6 +1554,7 @@
         const pageInfo = document.getElementById('likers-pageinfo');
         const prevBtn = document.getElementById('likers-prev');
         const nextBtn = document.getElementById('likers-next');
+        const modalEl = document.getElementById('likersModal');
         const LIKERS_URL = btn.dataset.likersUrl;
         let offset = 0;
         const limit = 20;
@@ -1522,26 +1593,50 @@
             }
         }
 
-        document.getElementById('likersModal').addEventListener('shown.bs.modal', loadLikers);
+        setupModal(modalEl);
+        btn.addEventListener('click', () => { openModal(modalEl); loadLikers(); });
         prevBtn.addEventListener('click', () => { offset = Math.max(0, offset - limit); loadLikers(); });
         nextBtn.addEventListener('click', () => { offset += limit; loadLikers(); });
     })();
 
-    // 管理员：删除文章
+    // 删除文章（无 Bootstrap） - 兼容无模态场景
     (function () {
         const delBtn = document.getElementById('admin-delete-btn');
         if (!delBtn) return;
         const confirmBtn = document.getElementById('confirm-delete-btn');
+        const deleteModal = document.getElementById('deleteConfirmModal');
         const DELETE_URL = delBtn.dataset.deleteUrl;
         const REDIRECT_URL = delBtn.dataset.redirectUrl;
 
-        delBtn.addEventListener('click', () => {
-            const modal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
-            modal.show();
-        });
+        // 若页面存在模态框（管理员视图），使用模态确认
+        if (deleteModal && confirmBtn) {
+            setupModal(deleteModal);
+            delBtn.addEventListener('click', () => { openModal(deleteModal); });
+            confirmBtn.addEventListener('click', async () => {
+                confirmBtn.disabled = true;
+                try {
+                    const res = await fetch(DELETE_URL, { method: 'DELETE' });
+                    const data = await res.json();
+                    if (data.code === 200) {
+                        if (typeof showToast === 'function') showToast('文章已删除', 'success');
+                        closeModal(deleteModal);
+                        window.location.href = REDIRECT_URL;
+                    } else {
+                        if (typeof showToast === 'function') showToast(data.message || '删除失败', 'error');
+                    }
+                } catch (e) {
+                    if (typeof showToast === 'function') showToast('网络错误，请稍后重试', 'error');
+                } finally {
+                    confirmBtn.disabled = false;
+                }
+            });
+            return;
+        }
 
-        confirmBtn.addEventListener('click', async () => {
-            confirmBtn.disabled = true;
+        // 否则（非管理员场景），使用原生 confirm 作为后备
+        delBtn.addEventListener('click', async () => {
+            const ok = window.confirm('确认删除这篇文章？该操作不可恢复。');
+            if (!ok) return;
             try {
                 const res = await fetch(DELETE_URL, { method: 'DELETE' });
                 const data = await res.json();
@@ -1553,8 +1648,6 @@
                 }
             } catch (e) {
                 if (typeof showToast === 'function') showToast('网络错误，请稍后重试', 'error');
-            } finally {
-                confirmBtn.disabled = false;
             }
         });
     })();

@@ -341,6 +341,9 @@
             flex: none;
             position: static;
             order: -1;
+            height: auto;               /* Mobile/tablet: auto height */
+            max-height: none;           /* Remove fixed height cap */
+            overflow: visible;          /* No internal scroll; page grows with content */
         }
         
         .blogs-hero h1 {
@@ -351,6 +354,9 @@
     @media (max-width: 768px) {
         .sidebar {
             padding: 16px;
+            height: auto;               /* Ensure auto height on smaller screens */
+            max-height: none;
+            overflow: visible;
         }
 
         /* 手机端默认折叠分类列表 */

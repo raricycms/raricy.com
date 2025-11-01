@@ -2,3 +2,9 @@
 .u-items-center { align-items: center !important; }
 .u-justify-center { justify-content: center !important; }
 
+// Bootstrap-like aliases
+.d-flex { display: flex !important; }
+.align-items-center { align-items: center !important; }
+.justify-content-between { justify-content: space-between !important; }
+.flex-column { flex-direction: column !important; }
+

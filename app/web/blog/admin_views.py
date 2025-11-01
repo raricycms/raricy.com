@@ -8,7 +8,7 @@ from app.service.notifications import send_notification
 from app.web.blog.services.blog_service import BlogService
 from app.web.blog.services.category_service import CategoryService
 from app.web.blog.validators.category_validator import CategoryValidator
-from app.web.blog.utils.response_utils import success_response, error_response, validation_error_response, not_found_response
+from app.web.blog.utils.response_utils import success_response, error_response, validation_error_response, not_found_response, forbidden_response
 
 
 def register_admin_views(blog_bp):
@@ -181,22 +181,27 @@ def register_admin_views(blog_bp):
     
     @blog_bp.route('/<blog_id>', methods=['DELETE'])
     @login_required
-    @admin_required
     def delete_blog(blog_id):
         """
-        管理员删除文章：删除 Blog、BlogContent、BlogLike，并清理 instance/blogs/<id> 目录。
+        删除文章：作者或管理员可删除。
+        - 删除 Blog、BlogContent、BlogLike，并清理 instance/blogs/<id> 目录。
+        - 若管理员删除他人文章，向作者发送通知。
         """
         from app.models import Blog
-        
+
         blog = Blog.query.get(blog_id)
         if not blog:
             return not_found_response('未找到文章')
-        
-        # 保存文章信息用于通知
+
+        # 权限：作者本人或管理员
+        if not (current_user.is_admin or blog.author_id == current_user.id):
+            return forbidden_response('无权删除该文章')
+
+        # 执行删除
         blog_title, blog_author_id = BlogService.delete_blog(blog_id)
-        
-        # 发送删除通知给文章作者（如果不是作者自己删除）
-        if blog_author_id and blog_author_id != current_user.id:
+
+        # 管理员删除他人文章时通知作者
+        if current_user.is_admin and blog_author_id and blog_author_id != current_user.id:
             try:
                 send_notification(
                     recipient_id=blog_author_id,
@@ -209,5 +214,5 @@ def register_admin_views(blog_bp):
             except Exception as e:
                 from flask import current_app
                 current_app.logger.warning(f"Failed to send delete notification: {e}")
-        
+
         return success_response('文章已删除')

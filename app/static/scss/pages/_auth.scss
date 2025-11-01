@@ -1,2 +1,27 @@
-.page-auth { }
+.auth-page {
+  background: linear-gradient(135deg, #f28391 0%, #2575fc 100%);
+  background-attachment: fixed;
+  min-height: 100vh;
+  padding-top: 2rem;
+  padding-bottom: 2rem;
+}
+
+.register-container {
+  max-width: 600px;
+  margin: 50px auto;
+  padding: 30px;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+  border-radius: 10px;
+  background-color: #fff;
+}
+
+.register-header { text-align: center; margin-bottom: 30px; color: #333; }
+.btn-register { width: 100%; padding: 12px; font-size: 16px; font-weight: 500; }
+.login-link { text-align: center; margin-top: 20px; }
+
+// Dark mode adjustments
+body.dark-mode {
+  .register-container { background-color: #1e1e1e; box-shadow: 0 0 20px rgba(0,0,0,0.4); }
+  .register-header { color: #ecf0f1; }
+}
 

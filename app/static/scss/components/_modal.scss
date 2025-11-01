@@ -1,2 +1,77 @@
-.modal-custom { }
+// Bootstrap-like modal (no Bootstrap required)
+.modal {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1050;
+}
+
+.modal.is-open { display: flex; }
+
+.modal-dialog {
+  width: calc(100% - 2rem);
+  max-width: 500px;
+  margin: 1.75rem auto;
+}
+
+.modal-dialog.modal-dialog-centered { margin: 0 auto; }
+
+.modal-content {
+  background: var(--box-bg, #ffffff);
+  color: var(--text, #2c3e50);
+  border: 1px solid var(--border-color, #e9ecef);
+  border-radius: 0.5rem;
+  box-shadow: var(--shadow, 0 10px 30px rgba(0, 0, 0, 0.2));
+  overflow: hidden;
+}
+
+.modal-header,
+.modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem;
+}
+
+.modal-header {
+  border-bottom: 1px solid var(--border-color, #e9ecef);
+}
+
+.modal-footer {
+  border-top: 1px solid var(--border-color, #e9ecef);
+  gap: .5rem;
+}
+
+.modal-title { margin: 0; font-size: 1.25rem; }
+
+.modal-body { padding: 1rem; }
+
+// List group styles used inside modal
+.list-group {
+  border: 1px solid var(--border-color, #e9ecef);
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+.list-group .list-group-item {
+  display: block;
+  padding: 0.5rem 0.75rem;
+  background: var(--box-bg, #ffffff);
+  color: var(--text, #2c3e50);
+  border-bottom: 1px solid var(--border-color, #e9ecef);
+}
+.list-group .list-group-item:last-child { border-bottom: none; }
+.list-group-item-action { cursor: pointer; }
+.list-group-item-action:hover { background: rgba(0, 0, 0, 0.03); }
+
+// Dark mode adjustments
+body.dark-mode {
+  .modal-content { border-color: #4a5568; }
+  .modal-header, .modal-footer { border-color: #4a5568; }
+  .list-group { border-color: #4a5568; }
+  .list-group .list-group-item { border-color: #4a5568; }
+}
+
 

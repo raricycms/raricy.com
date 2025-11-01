@@ -3,57 +3,10 @@
 Raricy.com - 用户注册
 {% endblock %}
 
-{% block extra_css %}
-<style>
-    .register-container {
-        max-width: 600px;
-        margin: 50px auto;
-        padding: 30px;
-        box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
-        border-radius: 10px;
-        background-color: #fff;
-    }
-
-    .register-header {
-        text-align: center;
-        margin-bottom: 30px;
-        color: #333;
-    }
-
-    .form-group {
-        margin-bottom: 20px;
-    }
-
-    .btn-register {
-        width: 100%;
-        padding: 12px;
-        font-size: 16px;
-        font-weight: 500;
-    }
-
-    body {
-        background: linear-gradient(135deg, #f28391 0%, #2575fc 100%);
-        background-attachment: fixed;
-        min-height: 100vh;
-    }
-
-    .alert {
-        margin-top: 15px;
-    }
-
-    .login-link {
-        text-align: center;
-        margin-top: 20px;
-    }
-
-    .form-control:focus {
-        border-color: #007bff;
-        box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, .25);
-    }
-</style>
-{% endblock %}
+{% block extra_css %}{% endblock %}
 
 {% block content %}
+<div class="auth-page">
 <div class="container">
     <div class="register-container">
         <div class="register-header">
@@ -150,6 +103,7 @@ Raricy.com - 用户注册
         </div>
     </div>
 </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -181,9 +135,18 @@ Raricy.com - 用户注册
             messageContainer.innerHTML = `
             <div class="alert alert-${type} alert-dismissible fade show" role="alert">
                 ${message}
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                <button type="button" class="btn-close" data-alert-close></button>
             </div>
         `;
+            const btn = messageContainer.querySelector('[data-alert-close]');
+            if (btn) {
+                btn.addEventListener('click', function() {
+                    const alertEl = this.closest('.alert');
+                    if (!alertEl) return;
+                    alertEl.classList.remove('show');
+                    alertEl.addEventListener('transitionend', () => alertEl.remove(), { once: true });
+                });
+            }
         }
 
         // 表单提交处理
