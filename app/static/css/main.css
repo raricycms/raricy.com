@@ -1671,6 +1671,52 @@ body.dark-mode .form-check-input {
   color: #fff;
 }
 
+.blog-detail .comment-section {
+  margin-top: 2rem;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  padding-top: 1.5rem;
+}
+.blog-detail .comment-section .comment-form {
+  margin-bottom: 1rem;
+}
+.blog-detail .comment-section .comment-form textarea {
+  width: 100%;
+  min-height: 100px;
+  padding: 0.75rem;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 0.5rem;
+  resize: vertical;
+}
+.blog-detail .comment-section .comment-list {
+  list-style: none;
+  padding-left: 0;
+}
+.blog-detail .comment-section .comment-list .comment-item {
+  padding: 0.75rem 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+.blog-detail .comment-section .comment-list .comment-item .meta {
+  font-size: 0.875rem;
+  color: rgba(0, 0, 0, 0.55);
+  margin-bottom: 0.25rem;
+}
+.blog-detail .comment-section .comment-list .comment-item .content {
+  line-height: 1.6;
+  word-break: break-word;
+}
+.blog-detail .comment-section .comment-list .comment-item .actions {
+  margin-top: 0.5rem;
+}
+.blog-detail .comment-section .comment-list .comment-item .actions button, .blog-detail .comment-section .comment-list .comment-item .actions a {
+  font-size: 0.875rem;
+  margin-right: 0.5rem;
+}
+.blog-detail .comment-section .comment-list .comment-item .children {
+  margin-left: 1rem;
+  padding-left: 1rem;
+  border-left: 2px solid rgba(0, 0, 0, 0.05);
+}
+
 .auth-page {
   background: linear-gradient(135deg, #f28391 0%, #2575fc 100%);
   background-attachment: fixed;

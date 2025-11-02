@@ -518,7 +518,7 @@
                     <a href="/blog/{{ blog.id }}" class="blog-title">{{ blog.title }}</a>
                     <div class="blog-stats">
                         <span class="blog-likes" title="点赞数">
-                            <i class="bi bi-heart-fill"></i>
+                            <img src="{{ url_for('static', filename='img/icons/heart-fill.svg') }}" alt="heart" width="16" height="16">
                             <span>{{ blog.likes_count or 0 }}</span>
                         </span>
                     </div>

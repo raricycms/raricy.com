@@ -808,6 +808,33 @@
   </div>
 </div>
 {% endif %}
+    
+<!-- 评论区 -->
+<div class="blog-detail">
+    <section class="comment-section" id="comment-section"
+             data-blog-id="{{ blog.id }}"
+             data-list-url="{{ url_for('blog.list_comments', blog_id=blog.id) }}"
+             data-create-url="{{ url_for('blog.create_comment', blog_id=blog.id) }}"
+             data-delete-url-template="{{ url_for('blog.delete_comment', comment_id='__CID__') }}"
+             data-can-comment="{{ 1 if current_user.is_authenticated and (current_user.authenticated or current_user.is_admin) else 0 }}"
+             data-current-user-id="{{ current_user.id if current_user.is_authenticated else '' }}"
+             data-is-admin="{{ 1 if current_user.is_authenticated and current_user.is_admin else 0 }}">
+
+        {% if current_user.is_authenticated and (current_user.authenticated or current_user.is_admin) %}
+        <form class="comment-form" id="comment-form">
+            <textarea name="content" id="comment-content" maxlength="2000" placeholder="说点什么…（最多2000字）"></textarea>
+            <div class="mt-2">
+                <button type="submit" class="btn btn-primary btn-sm">发表评论</button>
+            </div>
+            <input type="hidden" name="parent_id" id="comment-parent-id" value="">
+        </form>
+        {% else %}
+        <div class="alert alert-info">只有"核心用户"可以发表评论。</div>
+        {% endif %}
+
+        <ul class="comment-list" id="comment-list"></ul>
+    </section>
+</div>
 {% endblock %}
 
 {% block copyright %}
@@ -1544,6 +1571,170 @@
                 likeBtn.disabled = false;
             }
         });
+    })();
+
+    // ===== 评论功能 =====
+    (function () {
+        const section = document.getElementById('comment-section');
+        if (!section) return;
+
+        const LIST_URL = section.dataset.listUrl;
+        const CREATE_URL = section.dataset.createUrl;
+        const DELETE_URL_TPL = section.dataset.deleteUrlTemplate; // 包含 __CID__ 占位符
+        const CAN_COMMENT = section.dataset.canComment === '1';
+        const CURRENT_USER_ID = section.dataset.currentUserId || '';
+        const IS_ADMIN = section.dataset.isAdmin === '1';
+
+        const listEl = document.getElementById('comment-list');
+        const formEl = document.getElementById('comment-form');
+        const contentEl = document.getElementById('comment-content');
+        const parentIdEl = document.getElementById('comment-parent-id');
+
+        async function loadComments() {
+            listEl.innerHTML = '<li class="text-muted">加载评论中…</li>';
+            try {
+                const res = await fetch(LIST_URL, { credentials: 'same-origin' });
+                const data = await res.json();
+                if (data.code !== 200) throw new Error(data.message || '加载失败');
+                renderComments(data.comments || []);
+            } catch (e) {
+                listEl.innerHTML = '<li class="text-danger">评论加载失败，请稍后重试</li>';
+            }
+        }
+
+        function renderComments(comments) {
+            listEl.innerHTML = '';
+            const frag = document.createDocumentFragment();
+            comments.forEach(c => frag.appendChild(renderItem(c)));
+            listEl.appendChild(frag);
+        }
+
+        function renderItem(cmt) {
+            const li = document.createElement('li');
+            li.className = 'comment-item';
+
+            const meta = document.createElement('div');
+            meta.className = 'meta';
+            const authorName = (cmt.author && cmt.author.username) ? cmt.author.username : '匿名用户';
+            meta.textContent = `${authorName} · ${formatTime(cmt.created_at)}`;
+
+            const content = document.createElement('div');
+            content.className = 'content';
+            // 服务端已做转义，这里安全插入
+            content.innerHTML = cmt.content_html || '';
+
+            const actions = document.createElement('div');
+            actions.className = 'actions';
+
+            if (CAN_COMMENT) {
+                const replyBtn = document.createElement('button');
+                replyBtn.type = 'button';
+                replyBtn.className = 'btn btn-link btn-sm';
+                replyBtn.textContent = '回复';
+                replyBtn.addEventListener('click', () => openReply(cmt.id, li));
+                actions.appendChild(replyBtn);
+            }
+
+            if (IS_ADMIN || (cmt.author && cmt.author.id === CURRENT_USER_ID)) {
+                const delBtn = document.createElement('button');
+                delBtn.type = 'button';
+                delBtn.className = 'btn btn-link btn-sm text-danger';
+                delBtn.textContent = '删除';
+                delBtn.addEventListener('click', () => deleteComment(cmt.id));
+                actions.appendChild(delBtn);
+            }
+
+            li.appendChild(meta);
+            li.appendChild(content);
+            li.appendChild(actions);
+
+            if (Array.isArray(cmt.children) && cmt.children.length > 0) {
+                const children = document.createElement('ul');
+                children.className = 'children comment-list';
+                cmt.children.forEach(child => children.appendChild(renderItem(child)));
+                li.appendChild(children);
+            }
+
+            return li;
+        }
+
+        function openReply(parentId, liEl) {
+            // 将主表单移动到目标评论下方并设置 parent_id
+            if (!formEl || !contentEl || !parentIdEl) return;
+            parentIdEl.value = parentId || '';
+            contentEl.value = '';
+            liEl.appendChild(formEl);
+            contentEl.focus();
+        }
+
+        async function deleteComment(commentId) {
+            const ok = window.confirm('确认删除该评论？');
+            if (!ok) return;
+            const url = DELETE_URL_TPL.replace('__CID__', commentId);
+            try {
+                const res = await fetch(url, { method: 'DELETE', credentials: 'same-origin' });
+                const data = await res.json();
+                if (data.code === 200) {
+                    if (typeof showToast === 'function') showToast('已删除', 'success');
+                    loadComments();
+                } else {
+                    if (typeof showToast === 'function') showToast(data.message || '删除失败', 'error');
+                }
+            } catch (e) {
+                if (typeof showToast === 'function') showToast('网络错误，请稍后重试', 'error');
+            }
+        }
+
+        function formatTime(iso) {
+            if (!iso) return '';
+            try {
+                const d = new Date(iso);
+                return d.toLocaleString();
+            } catch { return iso; }
+        }
+
+        if (formEl) {
+            formEl.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                if (!CAN_COMMENT) return;
+                const content = (contentEl.value || '').trim();
+                if (!content) {
+                    if (typeof showToast === 'function') showToast('评论内容不能为空', 'info');
+                    return;
+                }
+                if (content.length > 2000) {
+                    if (typeof showToast === 'function') showToast('评论内容不能超过2000字', 'info');
+                    return;
+                }
+                const payload = { content };
+                const pid = (parentIdEl.value || '').trim();
+                if (pid) payload.parent_id = pid;
+                try {
+                    const res = await fetch(CREATE_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'same-origin',
+                        body: JSON.stringify(payload)
+                    });
+                    const data = await res.json();
+                    if (data.code === 200) {
+                        if (typeof showToast === 'function') showToast('评论成功', 'success');
+                        // 重置为顶层表单：放回评论区顶部
+                        parentIdEl.value = '';
+                        contentEl.value = '';
+                        section.insertBefore(formEl, listEl);
+                        loadComments();
+                    } else {
+                        if (typeof showToast === 'function') showToast(data.message || '评论失败', data.code === 429 ? 'warning' : 'error');
+                    }
+                } catch (e) {
+                    if (typeof showToast === 'function') showToast('网络错误，请稍后重试', 'error');
+                }
+            });
+        }
+
+        // 初次加载
+        loadComments();
     })();
 
     // 管理员：点赞者列表（无 Bootstrap）
