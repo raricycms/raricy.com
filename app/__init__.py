@@ -1,4 +1,4 @@
-from flask import Flask
+from flask import Flask, url_for
 from .web import register_blueprints
 from .extensions import init_extensions
 from .config import get_config
@@ -6,6 +6,7 @@ from .cli import register_commands
 from .cli_import import register_import_commands
 from datetime import datetime
 from werkzeug.middleware.proxy_fix import ProxyFix
+import os
 
 def create_app():
     app = Flask(__name__)
@@ -26,6 +27,17 @@ def create_app():
         if isinstance(value, datetime):
             return value.strftime(format)
         return value
+
+    # 为静态资源追加基于文件修改时间的版本号，避免浏览器使用旧缓存
+    def static_url(filename: str):
+        file_path = os.path.join(app.static_folder, filename)
+        try:
+            version = int(os.path.getmtime(file_path))
+        except OSError:
+            version = None
+        return url_for('static', filename=filename, v=version) if version else url_for('static', filename=filename)
+
+    app.jinja_env.globals['static_url'] = static_url
     
     register_blueprints(app)
     init_extensions(app)
