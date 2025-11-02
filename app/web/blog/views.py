@@ -100,8 +100,8 @@ def register_views(blog_bp):
                 Blog.author_id == current_user.id,
                 Blog.created_at >= start_of_day
             ).count()
-            if today_count >= 5:
-                return error_response('今日发布数量已达上限（5篇）', 429)
+            if today_count >= 10:
+                return error_response('今日发布数量已达上限（10篇）', 429)
             
             # 创建博客
             # 若选择了栏目，检查该栏目及其父栏目是否限制管理员专属
