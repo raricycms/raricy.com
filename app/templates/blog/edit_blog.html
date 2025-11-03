@@ -94,6 +94,8 @@
         <div class="mb-3">
             <label class="form-label">内容（Markdown）</label>
             <div id="editor" style="height: 60vh;"></div>
+            <p id="fallback-message" class="form-text text-muted" style="display: none;">Markdown编辑器加载失败，已切换到基础文本输入框。</p>
+            <textarea id="fallback-editor" class="form-control" rows="20" style="display: none;"></textarea>
             <div class="form-text note">提示：粘贴的内容可能按编辑器策略处理，预览请用右上角预览按钮。</div>
         </div>
 
@@ -107,38 +109,56 @@
 
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/vditor@3.10.7/dist/index.min.js"></script>
-<script>
-if (typeof window.Vditor === 'undefined') {
-    document.write('<script src="{{ url_for('static', filename='js/vditor/node_modules/vditor/dist/index.min.js') }}"><\\/script>');
-    window.__VDITOR_USE_LOCAL__ = true;
-} else {
-    window.__VDITOR_USE_LOCAL__ = false;
-}
-;</script>
 <script id="initial-markdown" type="application/json">{{ (content_markdown or '') | tojson }}</script>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     const initialMarkdown = JSON.parse(document.getElementById('initial-markdown').textContent || '""');
-    const vditor = new Vditor('editor', {
-        minHeight: 500,
-        mode: 'sv',
-        cdn: (window.__VDITOR_USE_LOCAL__ ? '/static/js/vditor/node_modules/vditor' : 'https://cdn.jsdelivr.net/npm/vditor@3.10.7'),
-        toolbar: [
-            'emoji','headings','bold','italic','strike','link','|',
-            'list','ordered-list','check','outdent','indent','|',
-            'quote','line','code','inline-code','upload','table','|',
-            'undo','redo','preview','export'
-        ],
-        counter: { enable: true, type: 'text' },
-        cache: { enable: false },
-        value: initialMarkdown
-    });
+
+    let vditor = null;
+    let isVditorLoaded = false;
+
+    function showFallback() {
+        document.getElementById('editor').style.display = 'none';
+        document.getElementById('fallback-message').style.display = 'block';
+        const fallback = document.getElementById('fallback-editor');
+        fallback.style.display = 'block';
+        if (!fallback.value) {
+            fallback.value = initialMarkdown || '';
+        }
+        isVditorLoaded = false;
+    }
+
+    if (typeof Vditor !== 'undefined') {
+        try {
+            vditor = new Vditor('editor', {
+                minHeight: 500,
+                mode: 'sv',
+                cdn: (window.__VDITOR_USE_LOCAL__ ? '/static/js/vditor/node_modules/vditor' : 'https://cdn.jsdelivr.net/npm/vditor@3.10.7'),
+                toolbar: [
+                    'emoji','headings','bold','italic','strike','link','|',
+                    'list','ordered-list','check','outdent','indent','|',
+                    'quote','line','code','inline-code','upload','table','|',
+                    'undo','redo','preview','export'
+                ],
+                counter: { enable: true, type: 'text' },
+                cache: { enable: false },
+                value: initialMarkdown
+            });
+            isVditorLoaded = true;
+        } catch (e) {
+            console.error('Vditor initialization failed:', e);
+            showFallback();
+        }
+    } else {
+        console.warn('Vditor script failed to load. Using fallback textarea.');
+        showFallback();
+    }
 
     const form = document.getElementById('editForm');
     const messageContainer = document.getElementById('message-container');
 
     const showMessage = (message, type = 'danger') => {
-        const alert = `<div class="alert alert-${type} alert-dismissible fade show">${message}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>`;
+        const alert = `<div class="alert alert-${type} alert-dismissible fade show">${message}<button type="button" class="btn-close"></button></div>`;
         messageContainer.innerHTML = alert;
     };
 
@@ -146,8 +166,8 @@ document.addEventListener('DOMContentLoaded', function () {
         e.preventDefault();
         const title = document.getElementById('title').value.trim();
         const description = document.getElementById('description').value.trim();
-        const content = vditor.getValue();
         const category_id = document.getElementById('category').value;
+        const content = isVditorLoaded && vditor ? vditor.getValue() : document.getElementById('fallback-editor').value;
 
         if (!title || !description || !content) {
             showMessage('请填写完整信息');
