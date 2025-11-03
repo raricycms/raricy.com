@@ -521,6 +521,10 @@
                             <img src="{{ url_for('static', filename='img/icons/heart-fill.svg') }}" alt="heart" width="16" height="16">
                             <span>{{ blog.likes_count or 0 }}</span>
                         </span>
+                        <span class="blog-comments" title="评论数">
+                            <img src="{{ url_for('static', filename='img/icons/chat-dots.svg') }}" alt="comment" width="16" height="16">
+                            <span>{{ blog.comments_count or 0 }}</span>
+                        </span>
                     </div>
                 </div>
                 <p class="blog-description">{{ blog.description }}</p>
