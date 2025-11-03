@@ -236,6 +236,7 @@ class Blog(db.Model):
             'date': self.created_at.strftime('%Y-%m-%d') if self.created_at else None,
             'ignore': self.ignore,
             'likes_count': self.likes_count,
+            'comments_count': self.comments_count,
             'category_id': self.category_id,
             'category': self.category.name if self.category else None,
             'category_path': self.category.get_full_path() if self.category else None,
