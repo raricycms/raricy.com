@@ -716,7 +716,7 @@
             <img src="/auth/avatar/{{ blog.author_id }}"
                 style="width:24px; height:24px; border-radius:10%; margin-right:8px;">
             {{ blog.author }}</span>
-        <span class="blog-date">{{ blog.date }}</span>
+        <!-- <span class="blog-date">{{ blog.date }}</span> -->
     </div>
     <button id="toggle-theme" class="btn btn-outline-secondary">切换深色模式</button>
 </section>
@@ -1616,7 +1616,7 @@
             const meta = document.createElement('div');
             meta.className = 'meta';
             const authorName = (cmt.author && cmt.author.username) ? cmt.author.username : '匿名用户';
-            meta.textContent = `${authorName} · ${formatTime(cmt.created_at)}`;
+            meta.textContent = `${authorName}`;
 
             const content = document.createElement('div');
             content.className = 'content';
