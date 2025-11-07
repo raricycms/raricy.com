@@ -119,6 +119,32 @@ Raricy.com - 用户资料
                         {% endif %}
                     </div>
                 </div>
+                {% if user == current_user %}
+                <div class="mt-5">
+                    <h4 class="mb-3">修改密码</h4>
+                    <div id="changePasswordAlert" class="alert d-none" role="alert"></div>
+                    <form id="changePasswordForm" class="row g-3">
+                        <div class="col-12">
+                            <label for="currentPassword" class="form-label">原密码</label>
+                            <input type="password" class="form-control" id="currentPassword" required
+                                autocomplete="current-password">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="newPassword" class="form-label">新密码</label>
+                            <input type="password" class="form-control" id="newPassword" required
+                                minlength="8" autocomplete="new-password">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="confirmPassword" class="form-label">确认新密码</label>
+                            <input type="password" class="form-control" id="confirmPassword" required
+                                minlength="8" autocomplete="new-password">
+                        </div>
+                        <div class="col-12 d-flex justify-content-end">
+                            <button type="submit" class="btn btn-edit" id="changePasswordSubmit">确认修改</button>
+                        </div>
+                    </form>
+                </div>
+                {% endif %}
             </div>
         </div>
         <!-- 编辑按钮 -->
@@ -136,7 +162,79 @@ Raricy.com - 用户资料
 {% block extra_js %}
 <script>
     document.addEventListener('DOMContentLoaded', function () {
-        // 可以在这里添加交互逻辑，例如表单验证或动态内容加载
+        const changePasswordForm = document.getElementById('changePasswordForm');
+        if (changePasswordForm) {
+            const alertBox = document.getElementById('changePasswordAlert');
+            const submitBtn = document.getElementById('changePasswordSubmit');
+
+            function showAlert(message, type = 'danger') {
+                if (!alertBox) return;
+                alertBox.textContent = message || '请求失败，请稍后再试。';
+                alertBox.classList.remove('d-none', 'alert-success', 'alert-danger');
+                alertBox.classList.add(`alert-${type}`);
+            }
+
+            changePasswordForm.addEventListener('submit', async function (event) {
+                event.preventDefault();
+
+                const currentPassword = document.getElementById('currentPassword').value.trim();
+                const newPassword = document.getElementById('newPassword').value.trim();
+                const confirmPassword = document.getElementById('confirmPassword').value.trim();
+
+                if (newPassword !== confirmPassword) {
+                    showAlert('两次输入的新密码不一致。');
+                    return;
+                }
+
+                if (submitBtn) {
+                    submitBtn.disabled = true;
+                    submitBtn.textContent = '提交中...';
+                }
+
+                if (alertBox) {
+                    alertBox.classList.add('d-none');
+                }
+
+                let shouldReset = false;
+                try {
+                    const response = await fetch('{{ url_for("auth.change_password") }}', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            current_password: currentPassword,
+                            new_password: newPassword,
+                            confirm_password: confirmPassword
+                        })
+                    });
+
+                    const result = await response.json().catch(() => ({}));
+                    const message = result.message || (response.ok ? '密码修改成功。' : '请求失败，请稍后再试。');
+
+                    if (response.ok && result.code === 200) {
+                        showAlert(message, 'success');
+                        shouldReset = true;
+                        setTimeout(() => {
+                            window.location.href = result.redirect_url || '{{ url_for("auth.login") }}';
+                        }, 1500);
+                    } else {
+                        showAlert(message, 'danger');
+                    }
+                } catch (error) {
+                    showAlert('网络错误，请稍后再试。');
+                } finally {
+                    if (submitBtn) {
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = '确认修改';
+                    }
+
+                    if (shouldReset) {
+                        changePasswordForm.reset();
+                    }
+                }
+            });
+        }
     });
 </script>
 {% endblock %}

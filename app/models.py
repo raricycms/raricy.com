@@ -16,6 +16,7 @@ class User(UserMixin, db.Model):
     authenticated = db.Column(db.Boolean, default=False) # 是否为核心用户
     is_admin = db.Column(db.Boolean, default=False)
     avatar_path = db.Column(db.String(255))
+    session_version = db.Column(db.Integer, default=0, nullable=False)
     
     # 通知设置
     notify_like = db.Column(db.Boolean, default=True)  # 文章被点赞通知

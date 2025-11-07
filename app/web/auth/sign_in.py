@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, jsonify, url_for
+from flask import Blueprint, render_template, request, jsonify, url_for, session
 from app.models import User
 from flask_login import login_user, logout_user, login_required
 
@@ -23,6 +23,7 @@ def login():
         user = User.query.filter_by(username=username).first()
         if user and user.check_password(password):
             login_user(user)
+            session['session_version'] = int(user.session_version or 0)
             next_url = data.get('next') or request.args.get('next')
             if not next_url or not is_safe_url(next_url):
                 next_url = url_for('home.index')
@@ -35,4 +36,5 @@ def login():
 @login_required
 def logout():
     logout_user()
+    session.pop('session_version', None)
     return jsonify({'code': 200, 'message': '已成功登出！'}), 200
