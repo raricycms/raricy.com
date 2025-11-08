@@ -4,7 +4,6 @@
     <h2 class="mb-3">操作详情</h2>
 
     <div class="card p-3 mb-3">
-        <div>时间：{{ log.created_at.strftime('%Y-%m-%d %H:%M') }}</div>
         <div>类型：{{ log.action }}</div>
         <div>管理员：{{ log.admin.username if log.admin else log.admin_id }}</div>
         <div>对象：{{ log.object_type }} {{ log.object_id }}</div>
@@ -17,7 +16,6 @@
         {% for a in appeals %}
         <li class="list-group-item">
             <div>申诉人：{{ a.appellant.username if a.appellant else a.appellant_id }}</div>
-            <div>时间：{{ a.created_at.strftime('%Y-%m-%d %H:%M') }}</div>
             <div>内容：{{ a.content }}</div>
             <div>状态：{{ a.status }}{% if a.status!='pending' %}（{{ a.decision or '' }}）{% endif %}</div>
             {% if current_user.is_authenticated and current_user.has_admin_rights and a.status == 'pending' %}

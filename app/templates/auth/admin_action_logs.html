@@ -65,7 +65,6 @@
         <table class="table">
             <thead>
                 <tr>
-                    <th>时间</th>
                     <th>类型</th>
                     <th>管理员</th>
                     <th>对象</th>
@@ -78,7 +77,6 @@
             {% for log in pagination.items %}
                 {% set accepted = (log.appeals.filter_by(status='accepted').first() is not none) %}
                 <tr class="{% if accepted %}log-reverted{% endif %}">
-                    <td>{{ log.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
                     <td class="type-col">{{ log.action }}</td>
                     <td>{{ log.admin.username if log.admin else log.admin_id }}</td>
                     <td>
