@@ -239,7 +239,7 @@ Raricy.com - 用户管理页面
                                 <button class="btn btn-sm btn-warning" onclick="banUser('{{ user.id }}', '{{ user.username }}')" {% if user.is_admin or user.id == current_user.id %}disabled{% endif %}>禁言</button>
                             {% endif %}
                             
-                            <button class="btn btn-sm btn-danger" onclick="deleteUser('{{ user.id }}')" {% if user.is_admin or user.id == current_user.id %}disabled{% endif %}>删除</button>
+                            <button class="btn btn-sm btn-danger" disabled title="管理员无权删除用户">删除</button>
                             {% if user.authenticated %}
                                 <button class="btn btn-sm btn-warning" onclick="demoteUser('{{ user.id }}')">取消认证</button>
                             {% else %}

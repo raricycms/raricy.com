@@ -53,7 +53,7 @@ def demote():
 @admin_required
 def delete_user():
     """
-    删除用户。
+    删除用户。管理员无权删除任何用户。
     """
     data = request.get_json()
     user_id = data.get('user_id')
