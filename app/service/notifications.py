@@ -286,10 +286,10 @@ def admin_send_notification_to_user(admin_id, recipient_id, action, detail=None,
         dict: 包含成功状态和消息的字典
     """
     try:
-        # 验证管理员权限
+        # 验证权限：仅站长可发送
         admin = User.query.get(admin_id)
-        if not admin or not getattr(admin, 'has_admin_rights', False):
-            return {'success': False, 'message': '没有管理员权限'}
+        if not admin or not getattr(admin, 'is_owner', False):
+            return {'success': False, 'message': '没有站长权限'}
         
         # 验证接收者存在
         recipient = User.query.get(recipient_id)
@@ -330,10 +330,10 @@ def admin_send_notification_to_all(admin_id, action, detail=None, object_type=No
         dict: 包含成功状态和消息的字典
     """
     try:
-        # 验证管理员权限
+        # 验证权限：仅站长可群发
         admin = User.query.get(admin_id)
-        if not admin or not getattr(admin, 'has_admin_rights', False):
-            return {'success': False, 'message': '没有管理员权限'}
+        if not admin or not getattr(admin, 'is_owner', False):
+            return {'success': False, 'message': '没有站长权限'}
         
         # 根据目标组选择用户
         if target_group == 'all':

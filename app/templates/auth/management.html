@@ -196,11 +196,13 @@ Raricy.com - 用户管理页面
         <div class="management-card">
             <div class="d-flex justify-content-between align-items-center mb-4">
                 <h1>用户管理</h1>
+                {% if current_user.is_owner %}
                 <div>
                     <a href="{{ url_for('auth.admin_notifications') }}" class="btn btn-primary">
                         <i class="fas fa-bullhorn"></i> 通知发送中心
                     </a>
                 </div>
+                {% endif %}
             </div>
             <table class="table table-striped">
                 <thead>
@@ -232,7 +234,9 @@ Raricy.com - 用户管理页面
                         </td>
                         <td>
                             <button class="btn btn-sm btn-info" onclick="window.location.href=`{{ url_for('auth.profile', user_id=user.id) }}`">查看</button>
+                            {% if current_user.is_owner %}
                             <button class="btn btn-sm btn-secondary" onclick="sendNotificationTo('{{ user.id }}', '{{ user.username }}')">发通知</button>
+                            {% endif %}
                             
                             {% if user.ban_info %}
                                 <button class="btn btn-sm btn-success" onclick="unbanUser('{{ user.id }}', '{{ user.username }}')">解除禁言</button>
@@ -241,7 +245,9 @@ Raricy.com - 用户管理页面
                                 <button class="btn btn-sm btn-warning" onclick="banUser('{{ user.id }}', '{{ user.username }}')" {% if user.is_owner or user.has_admin_rights or user.id == current_user.id %}disabled{% endif %}>禁言</button>
                             {% endif %}
                             
-                            <button class="btn btn-sm btn-danger" disabled title="管理员无权删除用户">删除</button>
+                            {% if current_user.is_owner and not user.is_owner and user.id != current_user.id %}
+                                <button class="btn btn-sm btn-danger" onclick="deleteUser('{{ user.id }}')">删除</button>
+                            {% endif %}
                             {% if user.role == 'core' %}
                                 <button class="btn btn-sm btn-warning" onclick="demoteUser('{{ user.id }}')">取消认证</button>
                             {% else %}
