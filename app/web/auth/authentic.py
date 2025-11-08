@@ -15,13 +15,9 @@ def authentic():
         code = data.get("authentic_code")
         if verify_invite_code(code):
             mark_invite_code_used(code, current_user.id)
-            current_user.authenticated = True
             # 同步角色：仅当仍为普通用户时，升级为核心用户
-            try:
-                if getattr(current_user, 'role', 'user') == 'user':
-                    current_user.role = 'core'
-            except Exception:
-                pass
+            if getattr(current_user, 'role', 'user') == 'user':
+                current_user.role = 'core'
             db.session.commit()
             return jsonify({'code': 200, 'message': '验证成功'}), 200
         else:

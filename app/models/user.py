@@ -14,8 +14,7 @@ class User(UserMixin, db.Model):
     password_hash = db.Column(db.String(255), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.now)
     last_login = db.Column(db.DateTime, default=datetime.now)
-    authenticated = db.Column(db.Boolean, default=False)  # 是否为核心用户
-    is_admin = db.Column(db.Boolean, default=False)
+    # 兼容历史：已改用 role，不再使用 authenticated/is_admin 布尔
     avatar_path = db.Column(db.String(255))
     session_version = db.Column(db.Integer, default=0, nullable=False)
     
@@ -81,6 +80,16 @@ class User(UserMixin, db.Model):
     def is_owner(self) -> bool:
         """站长角色"""
         return getattr(self, 'role', 'user') == 'owner'
+    
+    @property
+    def has_admin_rights(self) -> bool:
+        """是否具备管理员权限（管理员或站长）"""
+        return getattr(self, 'role', 'user') in ('admin', 'owner')
+    
+    @property
+    def is_core_user(self) -> bool:
+        """是否为核心用户（核心用户、管理员、站长）"""
+        return getattr(self, 'role', 'user') in ('core', 'admin', 'owner')
     
     def ban_user(self, admin_id, ban_until, reason):
         """
@@ -151,8 +160,6 @@ class User(UserMixin, db.Model):
             'avatar_path': self.avatar_path,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'last_login': self.last_login.isoformat() if self.last_login else None,
-            'is_admin': self.is_admin,
-            'authenticated': self.authenticated,
             'role': getattr(self, 'role', 'user'),
             'notify_like': getattr(self, 'notify_like', True),
             'notify_edit': getattr(self, 'notify_edit', True),

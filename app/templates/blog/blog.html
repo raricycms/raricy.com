@@ -751,9 +751,9 @@
 
     <a href="{{ url_for('blog.menu') }}" class="read-btn">📝 返回博客列表</a>
 </div>
-{% if current_user.is_authenticated and (current_user.is_admin or current_user.id == blog.author_id) %}
+{% if current_user.is_authenticated and (current_user.has_admin_rights or current_user.id == blog.author_id) %}
 <div class="admin-controls">
-    {% if current_user.is_admin %}
+    {% if current_user.has_admin_rights %}
     <button id="admin-likers-btn" class="btn btn-outline-primary" data-likers-url="{{ url_for('blog.likers', blog_id=blog.id) }}">
         👍 查看点赞者
     </button>
@@ -765,7 +765,7 @@
     
 </div>
 {% endif %}
-{% if current_user.is_authenticated and current_user.is_admin %}
+{% if current_user.is_authenticated and current_user.has_admin_rights %}
 <!-- 点赞者列表 Modal -->
 <div class="modal fade" id="likersModal" tabindex="-1" aria-labelledby="likersModalLabel" aria-hidden="true" role="dialog">
   <div class="modal-dialog modal-dialog-centered">
@@ -816,11 +816,11 @@
              data-list-url="{{ url_for('blog.list_comments', blog_id=blog.id) }}"
              data-create-url="{{ url_for('blog.create_comment', blog_id=blog.id) }}"
              data-delete-url-template="{{ url_for('blog.delete_comment', comment_id='__CID__') }}"
-             data-can-comment="{{ 1 if current_user.is_authenticated and (current_user.authenticated or current_user.is_admin) else 0 }}"
+             data-can-comment="{{ 1 if current_user.is_authenticated and current_user.is_core_user else 0 }}"
              data-current-user-id="{{ current_user.id if current_user.is_authenticated else '' }}"
-             data-is-admin="{{ 1 if current_user.is_authenticated and current_user.is_admin else 0 }}">
+             data-is-admin="{{ 1 if current_user.is_authenticated and current_user.has_admin_rights else 0 }}">
 
-        {% if current_user.is_authenticated and (current_user.authenticated or current_user.is_admin) %}
+        {% if current_user.is_authenticated and current_user.is_core_user %}
         <form class="comment-form" id="comment-form">
             <textarea name="content" id="comment-content" maxlength="2000" placeholder="说点什么…（最多2000字）"></textarea>
             <div class="mt-2">

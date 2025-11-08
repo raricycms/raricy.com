@@ -95,9 +95,11 @@ Raricy.com - 管理员通知发送
                                             <br><small class="text-muted">{{ user.email }}</small>
                                         </div>
                                         <div>
-                                            {% if user.is_admin %}
+                                            {% if user.is_owner %}
+                                                <span class="badge badge-danger">站长</span>
+                                            {% elif user.has_admin_rights %}
                                                 <span class="badge badge-danger">管理员</span>
-                                            {% elif user.authenticated %}
+                                            {% elif user.role == 'core' %}
                                                 <span class="badge badge-success">认证用户</span>
                                             {% else %}
                                                 <span class="badge badge-secondary">普通用户</span>
@@ -259,15 +261,18 @@ document.addEventListener('DOMContentLoaded', function() {
         const userId = item.dataset.userId;
         const username = item.dataset.username;
         const email = item.querySelector('small').textContent;
-        const isAdmin = item.querySelector('.badge-danger') !== null;
-        const isAuthenticated = item.querySelector('.badge-success') !== null;
+        // 通过徽章或数据集判断角色
+        const roleBadge = item.querySelector('.badge-danger, .badge-success, .badge-secondary');
+        let role = 'user';
+        if (roleBadge && roleBadge.textContent.includes('站长')) role = 'owner';
+        else if (roleBadge && roleBadge.textContent.includes('管理员')) role = 'admin';
+        else if (roleBadge && roleBadge.textContent.includes('认证')) role = 'core';
         
         userList.push({
             id: userId,
             username: username,
             email: email,
-            is_admin: isAdmin,
-            authenticated: isAuthenticated
+            role: role
         });
     });
     
@@ -457,13 +462,11 @@ function updateTargetUserCount() {
     let count = 0;
     
     userList.forEach(user => {
-        if (targetGroup === 'all') {
-            count++;
-        } else if (targetGroup === 'authenticated' && user.authenticated) {
-            count++;
-        } else if (targetGroup === 'normal' && !user.authenticated && !user.is_admin) {
-            count++;
-        }
+        const isCore = ['core', 'admin', 'owner'].includes(user.role);
+        const isNormal = user.role === 'user';
+        if (targetGroup === 'all') count++;
+        else if (targetGroup === 'authenticated' && isCore) count++;
+        else if (targetGroup === 'normal' && isNormal) count++;
     });
     
     document.getElementById('targetUserCount').textContent = count;

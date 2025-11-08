@@ -51,7 +51,7 @@ def check_user_ban_status_for_admin():
         return False, None, None
     
     # 管理员不受禁言限制
-    if current_user.is_admin:
+    if getattr(current_user, 'has_admin_rights', False):
         return False, None, None
     
     return check_user_ban_status()

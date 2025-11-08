@@ -109,10 +109,15 @@ Raricy.com - 用户资料
                     <div class="d-flex align-items-center gap-3 mb-3">
                         <div>
                             <p class="profile-label mb-0">用户类型</p>
-                            <p class="profile-value mb-0">{{ ('普通用户' if not user.authenticated else '核心用户') if not user.is_admin
-                                else '管理员' }}</p>
+                            <p class="profile-value mb-0">
+                                {% if user.is_owner %}站长
+                                {% elif user.has_admin_rights %}管理员
+                                {% elif user.is_core_user %}核心用户
+                                {% else %}普通用户
+                                {% endif %}
+                            </p>
                         </div>
-                        {% if not user.authenticated  and user == current_user %}
+                        {% if not user.is_core_user and user == current_user %}
                         <a href="{{url_for('auth.authentic')}}" class="btn btn-edit">
                             去认证
                         </a>

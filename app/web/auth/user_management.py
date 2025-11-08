@@ -28,13 +28,9 @@ def promote():
     user = User.query.get(user_id)
     if not user:
         return jsonify({'code': 400, 'message': '用户不存在'}), 400
-    user.authenticated = True
-    # 同步角色：普通用户升级为核心用户
-    try:
-        if getattr(user, 'role', 'user') == 'user':
-            user.role = 'core'
-    except Exception:
-        pass
+    # 仅使用角色：普通用户升级为核心用户
+    if getattr(user, 'role', 'user') == 'user':
+        user.role = 'core'
     db.session.commit()
     return jsonify({'code': 200, 'message': '提升成功'}), 200
 
@@ -49,13 +45,9 @@ def demote():
     user = User.query.get(user_id)
     if not user:
         return jsonify({'code': 400, 'message': '用户不存在'}), 400
-    user.authenticated = False
-    # 同步角色：核心用户降级为普通用户（不影响管理员/站长）
-    try:
-        if getattr(user, 'role', 'user') == 'core':
-            user.role = 'user'
-    except Exception:
-        pass
+    # 仅使用角色：核心用户降级为普通用户（不影响管理员/站长）
+    if getattr(user, 'role', 'user') == 'core':
+        user.role = 'user'
     db.session.commit()
     return jsonify({'code': 200, 'message': '降级成功'}), 200
 
@@ -200,7 +192,7 @@ def ban_user():
     if user.id == current_user.id:
         return jsonify({'success': False, 'message': '不能禁言自己'}), 403
     
-    if user.is_admin or getattr(user, 'is_owner', False):
+    if getattr(user, 'has_admin_rights', False):
         return jsonify({'success': False, 'message': '不能禁言管理员'}), 403
     
     if user.is_currently_banned():

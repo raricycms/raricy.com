@@ -194,14 +194,14 @@ def register_admin_views(blog_bp):
             return not_found_response('未找到文章')
 
         # 权限：作者本人或管理员
-        if not (current_user.is_admin or blog.author_id == current_user.id):
+        if not (getattr(current_user, 'has_admin_rights', False) or blog.author_id == current_user.id):
             return forbidden_response('无权删除该文章')
 
         # 执行删除
         blog_title, blog_author_id = BlogService.delete_blog(blog_id)
 
         # 管理员删除他人文章时通知作者
-        if current_user.is_admin and blog_author_id and blog_author_id != current_user.id:
+        if getattr(current_user, 'has_admin_rights', False) and blog_author_id and blog_author_id != current_user.id:
             try:
                 send_notification(
                     recipient_id=blog_author_id,

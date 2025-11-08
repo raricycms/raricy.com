@@ -219,9 +219,9 @@ Raricy.com - 用户管理页面
                         <td>
                             {% if user.is_owner %}
                                 <span class="text-danger">站长</span>
-                            {% elif user.is_admin %}
+                            {% elif user.role == 'admin' %}
                                 <span class="text-danger">管理员</span>
-                            {% elif user.authenticated %}
+                            {% elif user.role == 'core' %}
                                 <span class="text-success">核心用户</span>
                             {% else %}
                                 <span class="text-primary">普通用户</span>
@@ -238,11 +238,11 @@ Raricy.com - 用户管理页面
                                 <button class="btn btn-sm btn-success" onclick="unbanUser('{{ user.id }}', '{{ user.username }}')">解除禁言</button>
                                 <button class="btn btn-sm btn-info" onclick="showBanHistory('{{ user.id }}', '{{ user.username }}')">禁言历史</button>
                             {% else %}
-                                <button class="btn btn-sm btn-warning" onclick="banUser('{{ user.id }}', '{{ user.username }}')" {% if user.is_owner or user.is_admin or user.id == current_user.id %}disabled{% endif %}>禁言</button>
+                                <button class="btn btn-sm btn-warning" onclick="banUser('{{ user.id }}', '{{ user.username }}')" {% if user.is_owner or user.has_admin_rights or user.id == current_user.id %}disabled{% endif %}>禁言</button>
                             {% endif %}
                             
                             <button class="btn btn-sm btn-danger" disabled title="管理员无权删除用户">删除</button>
-                            {% if user.authenticated %}
+                            {% if user.role == 'core' %}
                                 <button class="btn btn-sm btn-warning" onclick="demoteUser('{{ user.id }}')">取消认证</button>
                             {% else %}
                                 <button class="btn btn-sm btn-success" onclick="promoteUser('{{ user.id }}')">认证</button>

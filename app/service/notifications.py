@@ -288,7 +288,7 @@ def admin_send_notification_to_user(admin_id, recipient_id, action, detail=None,
     try:
         # 验证管理员权限
         admin = User.query.get(admin_id)
-        if not admin or not admin.is_admin:
+        if not admin or not getattr(admin, 'has_admin_rights', False):
             return {'success': False, 'message': '没有管理员权限'}
         
         # 验证接收者存在
@@ -332,16 +332,16 @@ def admin_send_notification_to_all(admin_id, action, detail=None, object_type=No
     try:
         # 验证管理员权限
         admin = User.query.get(admin_id)
-        if not admin or not admin.is_admin:
+        if not admin or not getattr(admin, 'has_admin_rights', False):
             return {'success': False, 'message': '没有管理员权限'}
         
         # 根据目标组选择用户
         if target_group == 'all':
             users = User.query.filter(User.id != admin_id).all()  # 排除管理员自己
         elif target_group == 'authenticated':
-            users = User.query.filter(and_(User.authenticated == True, User.id != admin_id)).all()
+            users = User.query.filter(and_(User.role.in_(['core', 'admin', 'owner']), User.id != admin_id)).all()
         elif target_group == 'normal':
-            users = User.query.filter(and_(User.authenticated == False, User.is_admin == False, User.id != admin_id)).all()
+            users = User.query.filter(and_(User.role == 'user', User.id != admin_id)).all()
         else:
             return {'success': False, 'message': '无效的目标用户组'}
         

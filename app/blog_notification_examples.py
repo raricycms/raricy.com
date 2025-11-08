@@ -20,8 +20,8 @@ def demo_like_notification():
     
     with create_app().app_context():
         # 获取一个作者和一个点赞者
-        author = User.query.filter_by(is_admin=False).first()
-        liker = User.query.filter(User.id != author.id, User.is_admin == False).first()
+        author = User.query.filter(User.role == 'user').first()
+        liker = User.query.filter(User.id != author.id, User.role == 'user').first()
         
         if not author or not liker:
             print("需要至少两个非管理员用户来演示此功能")
@@ -67,8 +67,8 @@ def demo_edit_notification():
     
     with create_app().app_context():
         # 获取管理员和一篇文章作者
-        admin = User.query.filter_by(is_admin=True).first()
-        author = User.query.filter_by(is_admin=False).first()
+        admin = User.query.filter(User.role.in_(['admin', 'owner'])).first()
+        author = User.query.filter(User.role == 'user').first()
         
         if not admin:
             print("需要管理员用户来演示此功能")
@@ -120,8 +120,8 @@ def demo_delete_notification():
     
     with create_app().app_context():
         # 获取管理员和一篇文章作者
-        admin = User.query.filter_by(is_admin=True).first()
-        author = User.query.filter_by(is_admin=False).first()
+        admin = User.query.filter(User.role.in_(['admin', 'owner'])).first()
+        author = User.query.filter(User.role == 'user').first()
         
         if not admin or not author:
             print("需要管理员和普通用户来演示此功能")
@@ -161,7 +161,7 @@ def demo_notification_settings():
     print("\n=== 通知设置演示 ===")
     
     with create_app().app_context():
-        user = User.query.filter_by(is_admin=False).first()
+        user = User.query.filter(User.role == 'user').first()
         if not user:
             print("需要普通用户来演示此功能")
             return

@@ -20,7 +20,7 @@ class CommentService:
             'author': {
                 'id': comment.author.id if comment.author else None,
                 'username': comment.author.username if comment.author else None,
-                'is_admin': getattr(comment.author, 'is_admin', False) if comment.author else False,
+                'is_admin': getattr(comment.author, 'has_admin_rights', False) if comment.author else False,
             },
             'parent_id': comment.parent_id,
             'root_id': comment.root_id,
@@ -93,11 +93,11 @@ class CommentService:
         - 楼中楼：parent_id 可选；root_id 指向最顶层评论
         """
         # 权限校验
-        if not (getattr(current_user, 'authenticated', False) or getattr(current_user, 'is_admin', False)):
+        if not getattr(current_user, 'is_core_user', False):
             return False, '只有核心用户或管理员可以发表评论', None
 
         # 禁言检查（管理员除外）
-        if not current_user.is_admin and current_user.is_currently_banned():
+        if not getattr(current_user, 'has_admin_rights', False) and current_user.is_currently_banned():
             return False, '您已被禁言，无法发表评论', None
 
         # 频率限制：最近 30 秒内是否已有评论
@@ -190,7 +190,7 @@ class CommentService:
         if not comment or comment.is_deleted:
             return False, '评论不存在或已删除'
 
-        if not (current_user.is_admin or comment.author_id == current_user.id):
+        if not (getattr(current_user, 'has_admin_rights', False) or comment.author_id == current_user.id):
             return False, '无权删除该评论'
 
         comment.is_deleted = True

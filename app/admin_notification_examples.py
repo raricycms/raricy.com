@@ -20,8 +20,8 @@ def example_send_to_specific_user():
         # 假设管理员ID是 admin_user_id，目标用户ID是 target_user_id
         # 在实际使用中，这些ID来自数据库查询或Web请求
         
-        admin_user = User.query.filter_by(is_admin=True).first()
-        target_user = User.query.filter_by(is_admin=False).first()
+        admin_user = User.query.filter(User.role.in_(['admin', 'owner'])).first()
+        target_user = User.query.filter(User.role == 'user').first()
         
         if admin_user and target_user:
             result = admin_send_notification_to_user(
@@ -40,7 +40,7 @@ def example_send_to_specific_user():
 def example_send_to_all_users():
     """示例：向所有用户群发通知"""
     with create_app().app_context():
-        admin_user = User.query.filter_by(is_admin=True).first()
+        admin_user = User.query.filter(User.role.in_(['admin', 'owner'])).first()
         
         if admin_user:
             result = admin_send_notification_to_all(
@@ -57,7 +57,7 @@ def example_send_to_all_users():
 def example_send_to_authenticated_users():
     """示例：只向认证用户发送通知"""
     with create_app().app_context():
-        admin_user = User.query.filter_by(is_admin=True).first()
+        admin_user = User.query.filter(User.role.in_(['admin', 'owner'])).first()
         
         if admin_user:
             result = admin_send_notification_to_all(

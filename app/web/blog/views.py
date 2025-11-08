@@ -82,7 +82,7 @@ def register_views(blog_bp):
                 return error_response
             
             # 仅核心用户可以发布
-            if not getattr(current_user, 'authenticated', False):
+            if not getattr(current_user, 'is_core_user', False):
                 return forbidden_response('只有核心用户才能发布文章')
             
             data = request.get_json()
@@ -114,7 +114,7 @@ def register_views(blog_bp):
                     admin_only_effective = bool(getattr(category, 'admin_only_posting', False) or getattr(parent, 'admin_only_posting', False)) if parent else bool(getattr(category, 'admin_only_posting', False))
                 else:
                     admin_only_effective = False
-                if admin_only_effective and not current_user.is_admin:
+                if admin_only_effective and not getattr(current_user, 'has_admin_rights', False):
                     return forbidden_response('该栏目仅允许管理员发布文章')
 
             blog_id = BlogService.create_blog(validated_data)
@@ -129,7 +129,7 @@ def register_views(blog_bp):
                     if parent:
                         notify_effective = notify_effective or bool(getattr(parent, 'notify_admin_on_post', False))
                 if notify_effective:
-                    admins = User.query.filter_by(is_admin=True).all()
+                    admins = User.query.filter(User.role.in_(['admin', 'owner'])).all()
                     for admin in admins:
                         # 跳过自己
                         if admin.id == current_user.id:
@@ -164,7 +164,7 @@ def register_views(blog_bp):
             abort(404)
         
         # 权限：作者或管理员
-        if not (current_user.is_admin or blog.author_id == current_user.id):
+        if not (getattr(current_user, 'has_admin_rights', False) or blog.author_id == current_user.id):
             return forbidden_response('无权编辑该文章')
         
         # 检查用户是否被禁言（管理员除外）
@@ -200,7 +200,7 @@ def register_views(blog_bp):
         has_changes, changes_detail = BlogService.update_blog(blog_id, validated_data)
         
         # 发送编辑通知给文章作者（如果是管理员编辑且不是作者本人）
-        if has_changes and current_user.is_admin and blog.author_id != current_user.id:
+        if has_changes and getattr(current_user, 'has_admin_rights', False) and blog.author_id != current_user.id:
             try:
                 changes_text = "、".join(changes_detail) if changes_detail else "文章内容已更新"
                 send_notification(

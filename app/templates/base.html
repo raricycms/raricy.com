@@ -62,7 +62,7 @@
                                 <li role="none"><a class="site-dropdown-item" role="menuitem" href="{{ url_for('auth.profile', user_id=current_user.id) }}"><span class="icon icon-person" style="margin-right: .5rem;"></span>个人资料</a></li>
                                 <li role="none"><a class="site-dropdown-item" role="menuitem" href="{{ url_for('notifications.notification_page') }}"><span class="icon icon-bell" style="margin-right: .5rem;"></span>我的通知</a></li>
                                 <li role="none"><a class="site-dropdown-item" role="menuitem" href="{{ url_for('auth.notification_settings') }}"><span class="icon icon-gear" style="margin-right: .5rem;"></span>通知设置</a></li>
-                                {% if current_user.is_admin %}
+                                {% if current_user.has_admin_rights %}
                                 <li role="none"><a class="site-dropdown-item" role="menuitem" href="/blog/admin"><span class="icon icon-gear-fill" style="margin-right: .5rem;"></span>博客管理后台</a></li>
                                 <li role="none"><a class="site-dropdown-item" role="menuitem" href="{{ url_for('auth.user_management') }}"><span class="icon icon-people" style="margin-right: .5rem;"></span>用户管理</a></li>
                                 {% endif %}

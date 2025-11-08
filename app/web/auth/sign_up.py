@@ -53,8 +53,8 @@ def register():
                 return jsonify({'code': 400, 'message': '邀请码错误'}), 400
             # 验证成功后，标记邀请码为已使用
             mark_invite_code_used(invite_code, user.id)
-            is_authenticated = True
-        user.authenticated = is_authenticated
+            # 使用角色体系：邀请码通过则设为核心用户
+            user.role = 'core'
         db.session.add(user)
         db.session.commit()
         
@@ -72,7 +72,7 @@ def register():
         except Exception as e:
             print(f"头像生成失败: {e}")
         success_message = '注册成功'
-        if is_authenticated:
+        if getattr(user, 'role', 'user') in ('core', 'admin', 'owner'):
             success_message += '，您的账号已通过邀请码验证'
         
         return jsonify({'code': 200, 'message': success_message}), 200
