@@ -758,10 +758,14 @@
         👍 查看点赞者
     </button>
     {% endif %}
+    {% if current_user.has_admin_rights or current_user.id == blog.author_id %}
     <button id="admin-delete-btn" class="btn btn-outline-danger" data-delete-url="{{ url_for('blog.delete_blog', blog_id=blog.id) }}" data-redirect-url="{{ url_for('blog.menu') }}">
         🗑️ 删除文章
     </button>
+    {% endif %}
+    {% if current_user.id == blog.author_id %}
     <a href="{{ url_for('blog.edit_blog', blog_id=blog.id) }}" class="btn btn-outline-primary">✏️ 编辑文章</a>
+    {% endif %}
     
 </div>
 {% endif %}
@@ -799,6 +803,12 @@
       </div>
       <div class="modal-body">
         确定要删除这篇文章《{{ blog.title }}》吗？该操作不可恢复。
+        {% if current_user.has_admin_rights and current_user.id != blog.author_id %}
+        <div class="mt-3">
+            <label for="delete-reason" class="form-label">删除原因（管理员必填，将通知作者）：</label>
+            <textarea id="delete-reason" class="form-control" rows="3" maxlength="500" placeholder="请填写删除原因…"></textarea>
+        </div>
+        {% endif %}
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-modal-close>取消</button>
@@ -1805,8 +1815,24 @@
             delBtn.addEventListener('click', () => { openModal(deleteModal); });
             confirmBtn.addEventListener('click', async () => {
                 confirmBtn.disabled = true;
+                const IS_OWN = {{ 1 if current_user.is_authenticated and current_user.id == blog.author_id else 0 }} === 1;
+                let payload = {};
+                if (!IS_OWN) {
+                    const reasonInput = document.getElementById('delete-reason');
+                    const reason = (reasonInput && reasonInput.value ? reasonInput.value : '').trim();
+                    if (!reason) {
+                        if (typeof showToast === 'function') showToast('请填写删除原因', 'warning');
+                        confirmBtn.disabled = false;
+                        return;
+                    }
+                    payload.reason = reason;
+                }
                 try {
-                    const res = await fetch(DELETE_URL, { method: 'DELETE' });
+                    const res = await fetch(DELETE_URL, { 
+                        method: 'DELETE',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
                     const data = await res.json();
                     if (data.code === 200) {
                         if (typeof showToast === 'function') showToast('文章已删除', 'success');

@@ -197,8 +197,19 @@ def register_admin_views(blog_bp):
         if not (getattr(current_user, 'has_admin_rights', False) or blog.author_id == current_user.id):
             return forbidden_response('无权删除该文章')
 
-        # 执行删除
-        blog_title, blog_author_id = BlogService.delete_blog(blog_id)
+        # 管理员删除他人文章时需要填写原因
+        admin_deleting_others = getattr(current_user, 'has_admin_rights', False) and blog.author_id != current_user.id
+        reason = None
+        if admin_deleting_others:
+            data = request.get_json(silent=True) or {}
+            reason = (data.get('reason') or '').strip()
+            if not reason:
+                return error_response('请提供删除原因', 400)
+            if len(reason) > 500:
+                return error_response('删除原因过长（最多500字）', 400)
+
+        # 执行删除（统一软删除：ignore=True，不物理删除）
+        blog_title, blog_author_id = BlogService.delete_blog(blog_id, soft_delete=True)
 
         # 管理员删除他人文章时通知作者
         if getattr(current_user, 'has_admin_rights', False) and blog_author_id and blog_author_id != current_user.id:
@@ -209,7 +220,7 @@ def register_admin_views(blog_bp):
                     actor_id=current_user.id,
                     object_type="blog",
                     object_id=blog_id,
-                    detail=f"你的文章《{blog_title}》已被管理员删除。如有疑问，请联系管理员。"
+                    detail=f"你的文章《{blog_title}》已被管理员删除。\n原因：{reason}"
                 )
             except Exception as e:
                 from flask import current_app

@@ -231,12 +231,13 @@ class BlogService:
         return has_changes, changes_detail
     
     @staticmethod
-    def delete_blog(blog_id):
+    def delete_blog(blog_id, soft_delete=False):
         """
         删除博客
         
         Args:
             blog_id: 博客ID
+            soft_delete: 是否软删除（将 ignore 设为 True，而不物理删除）
             
         Returns:
             tuple: (blog_title, blog_author_id)
@@ -248,6 +249,12 @@ class BlogService:
         # 保存文章信息用于通知
         blog_title = blog.title
         blog_author_id = blog.author_id
+        
+        # 管理员软删除：仅标记 ignore=True，不做物理删除
+        if soft_delete:
+            blog.ignore = True
+            db.session.commit()
+            return blog_title, blog_author_id
         
         # 删除磁盘目录（若存在）
         blog_path = os.path.join(current_app.instance_path, 'blogs', blog_id)

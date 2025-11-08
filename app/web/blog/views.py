@@ -65,7 +65,7 @@ def register_views(blog_bp):
         """
         if request.method == 'GET':
             # 仅核心用户可以访问发布页
-            if not getattr(current_user, 'authenticated', False):
+            if not getattr(current_user, 'is_core_user', False):
                 abort(403)
             # 检查用户是否被禁言
             is_banned, ban_info, _ = check_user_ban_status()
@@ -152,7 +152,7 @@ def register_views(blog_bp):
     @login_required
     def edit_blog(blog_id):
         """
-        文章编辑：作者与管理员可以编辑标题、摘要与正文（Markdown）。
+        文章编辑：仅作者本人可以编辑标题、摘要与正文（Markdown）。
         
         - GET: 渲染编辑页
         - POST: 保存更新，返回 JSON
@@ -163,8 +163,8 @@ def register_views(blog_bp):
         if not blog or blog.ignore:
             abort(404)
         
-        # 权限：作者或管理员
-        if not (getattr(current_user, 'has_admin_rights', False) or blog.author_id == current_user.id):
+        # 权限：仅作者本人
+        if blog.author_id != current_user.id:
             return forbidden_response('无权编辑该文章')
         
         # 检查用户是否被禁言（管理员除外）

@@ -239,7 +239,9 @@ Raricy.com - 用户管理页面
                             {% endif %}
                             
                             {% if user.ban_info %}
-                                <button class="btn btn-sm btn-success" onclick="unbanUser('{{ user.id }}', '{{ user.username }}')">解除禁言</button>
+                                {% if current_user.has_admin_rights %}
+                                    <button class="btn btn-sm btn-success" onclick="unbanUser('{{ user.id }}', '{{ user.username }}')">解除禁言</button>
+                                {% endif %}
                                 <button class="btn btn-sm btn-info" onclick="showBanHistory('{{ user.id }}', '{{ user.username }}')">禁言历史</button>
                             {% else %}
                                 <button class="btn btn-sm btn-warning" onclick="banUser('{{ user.id }}', '{{ user.username }}')" {% if user.is_owner or user.has_admin_rights or user.id == current_user.id %}disabled{% endif %}>禁言</button>
