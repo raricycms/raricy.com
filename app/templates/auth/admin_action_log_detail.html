@@ -1,0 +1,74 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container">
+    <h2 class="mb-3">操作详情</h2>
+
+    <div class="card p-3 mb-3">
+        <div>时间：{{ log.created_at.strftime('%Y-%m-%d %H:%M') }}</div>
+        <div>类型：{{ log.action }}</div>
+        <div>管理员：{{ log.admin.username if log.admin else log.admin_id }}</div>
+        <div>对象：{{ log.object_type }} {{ log.object_id }}</div>
+        <div>目标用户：{{ log.target_user.username if log.target_user else '' }}</div>
+        <div>原因：{{ log.reason or '' }}</div>
+    </div>
+
+    <h4 class="mb-2">相关申诉</h4>
+    <ul class="list-group mb-3">
+        {% for a in appeals %}
+        <li class="list-group-item">
+            <div>申诉人：{{ a.appellant.username if a.appellant else a.appellant_id }}</div>
+            <div>时间：{{ a.created_at.strftime('%Y-%m-%d %H:%M') }}</div>
+            <div>内容：{{ a.content }}</div>
+            <div>状态：{{ a.status }}{% if a.status!='pending' %}（{{ a.decision or '' }}）{% endif %}</div>
+            {% if current_user.is_authenticated and current_user.has_admin_rights and a.status == 'pending' %}
+            <div class="mt-2">
+                <textarea id="decision_{{ a.id }}" class="form-control mb-2" rows="2" placeholder="处理说明（可选）"></textarea>
+                <div class="d-flex" style="gap:8px;">
+                    <button class="btn btn-success btn-sm" onclick="decideAppeal({{ a.id }}, 'accepted')">通过</button>
+                    <button class="btn btn-outline-danger btn-sm" onclick="decideAppeal({{ a.id }}, 'rejected')">驳回</button>
+                </div>
+            </div>
+            {% endif %}
+        </li>
+        {% else %}
+        <li class="list-group-item">暂无申诉</li>
+        {% endfor %}
+    </ul>
+
+    {% if current_user.is_authenticated %}
+    <div class="card p-3">
+        <h5 class="mb-2">提交申诉</h5>
+        <textarea id="appeal_content" class="form-control mb-2" rows="3" placeholder="请填写你的申诉理由…"></textarea>
+        <button class="btn btn-primary" onclick="submitAppeal()">提交</button>
+    </div>
+    <script>
+        async function submitAppeal() {
+            const content = document.getElementById('appeal_content').value.trim();
+            if (!content) { alert('内容不能为空'); return; }
+            const res = await fetch('{{ url_for("audit.create_appeal") }}', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ log_id: {{ log.id }}, content })
+            });
+            const data = await res.json();
+            if (data.code === 200) location.reload(); else alert(data.message || '提交失败');
+        }
+        async function decideAppeal(appealId, status) {
+            const el = document.getElementById('decision_' + appealId);
+            const decision = el ? el.value.trim() : '';
+            const res = await fetch(`/audit/appeals/${appealId}/decision`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ status, decision })
+            });
+            const data = await res.json();
+            if (data.code === 200) location.reload(); else alert(data.message || '处理失败');
+        }
+    </script>
+    {% else %}
+    <div class="alert alert-info">登录后可提交申诉。</div>
+    {% endif %}
+</div>
+{% endblock %}
+
+

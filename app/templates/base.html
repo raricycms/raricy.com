@@ -42,6 +42,7 @@
                     <li><a class="site-link" href="{{ url_for('story.menu') }}">故事</a></li>
                     <li><a class="site-link" href="{{ url_for('blog.menu') }}">博客</a></li>
                     <li><a class="site-link" href="{{ url_for('tool.menu') }}">工具</a></li>
+                    <li><a class="site-link" href="{{ url_for('audit.public_logs') }}">公示日志</a></li>
                 </ul>
                 <div class="site-actions">
                     {% if current_user.is_authenticated %}

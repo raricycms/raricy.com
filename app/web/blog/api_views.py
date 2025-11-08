@@ -85,7 +85,9 @@ def register_api_views(blog_bp):
     @login_required
     def delete_comment(comment_id):
         """删除评论（作者本人或管理员）。"""
-        success, message = CommentService.delete_comment(comment_id)
+        data = request.get_json(silent=True) or {}
+        reason = (data.get('reason') or '').strip()
+        success, message = CommentService.delete_comment(comment_id, reason=reason)
         if success:
             return success_response(message)
         else:

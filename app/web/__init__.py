@@ -10,6 +10,7 @@ def register_blueprints(app: Flask):
     from .auth import auth_bp
     from .blog import blog_bp
     from .notification import notifications_bp
+    from .audit import audit_bp
 
     app.register_blueprint(home_bp, url_prefix='/')
     app.register_blueprint(story_bp, url_prefix='/story')
@@ -19,6 +20,7 @@ def register_blueprints(app: Flask):
     app.register_blueprint(error_bp, url_prefix='/error')
     app.register_blueprint(blog_bp, url_prefix='/blog')
     app.register_blueprint(notifications_bp, url_prefix='/notifications')
+    app.register_blueprint(audit_bp, url_prefix='/audit')
     
     # 仅在非生产环境注册测试蓝图
     if app.config.get('DEBUG'):

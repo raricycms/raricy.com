@@ -7,6 +7,7 @@ from app.service.notifications import (
     admin_send_notification_to_user, admin_send_notification_to_all, 
     admin_get_notification_templates, send_ban_notification, send_unban_notification
 )
+from app.service.audit_log import log_admin_action
 from datetime import datetime, timedelta
 from . import auth_bp
 
@@ -215,6 +216,20 @@ def ban_user():
             ban_until=ban_until,
             reason=reason
         )
+
+        # 记录管理员操作日志
+        try:
+            log_admin_action(
+                action='ban_user',
+                admin_id=current_user.id,
+                target_user_id=user.id,
+                object_type='user',
+                object_id=user.id,
+                reason=reason,
+                metadata={'ban_until': ban_until.isoformat()}
+            )
+        except Exception:
+            pass
         
         return jsonify({
             'success': True, 
@@ -255,6 +270,19 @@ def unban_user():
             admin_id=current_user.id,
             reason=reason
         )
+
+        # 记录管理员操作日志
+        try:
+            log_admin_action(
+                action='unban_user',
+                admin_id=current_user.id,
+                target_user_id=user.id,
+                object_type='user',
+                object_id=user.id,
+                reason=reason or ''
+            )
+        except Exception:
+            pass
         
         return jsonify({
             'success': True, 

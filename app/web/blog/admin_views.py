@@ -9,6 +9,7 @@ from app.web.blog.services.blog_service import BlogService
 from app.web.blog.services.category_service import CategoryService
 from app.web.blog.validators.category_validator import CategoryValidator
 from app.web.blog.utils.response_utils import success_response, error_response, validation_error_response, not_found_response, forbidden_response
+from app.service.audit_log import log_admin_action
 
 
 def register_admin_views(blog_bp):
@@ -225,5 +226,20 @@ def register_admin_views(blog_bp):
             except Exception as e:
                 from flask import current_app
                 current_app.logger.warning(f"Failed to send delete notification: {e}")
+
+        # 记录管理员操作日志（管理员删除时）
+        if getattr(current_user, 'has_admin_rights', False):
+            try:
+                log_admin_action(
+                    action='delete_blog',
+                    admin_id=current_user.id,
+                    target_user_id=blog_author_id,
+                    object_type='blog',
+                    object_id=blog_id,
+                    reason=reason if (blog_author_id and blog_author_id != current_user.id) else '自删',
+                    metadata={'blog_title': blog_title}
+                )
+            except Exception:
+                pass
 
         return success_response('文章已删除')

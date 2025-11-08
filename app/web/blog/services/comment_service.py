@@ -184,14 +184,27 @@ class CommentService:
         return True, '评论成功', CommentService._serialize_comment(comment)
 
     @staticmethod
-    def delete_comment(comment_id: str) -> Tuple[bool, str]:
-        """删除（软删）评论：作者本人或管理员可删除。"""
+    def delete_comment(comment_id: str, reason: Optional[str] = None) -> Tuple[bool, str]:
+        """删除（软删）评论：作者本人或管理员可删除。
+        - 管理员删除他人评论时必须给出删除原因（1..500）。
+        """
         comment = BlogComment.query.get(comment_id)
         if not comment or comment.is_deleted:
             return False, '评论不存在或已删除'
 
-        if not (getattr(current_user, 'has_admin_rights', False) or comment.author_id == current_user.id):
+        is_admin = getattr(current_user, 'has_admin_rights', False)
+        is_owner = (comment.author_id == current_user.id)
+
+        if not (is_admin or is_owner):
             return False, '无权删除该评论'
+
+        admin_deleting_others = is_admin and not is_owner
+        if admin_deleting_others:
+            reason = (reason or '').strip()
+            if not reason:
+                return False, '请提供删除原因'
+            if len(reason) > 500:
+                return False, '删除原因过长（最多500字）'
 
         comment.is_deleted = True
         # 可选：清空展示内容，保留审计
@@ -203,7 +216,24 @@ class CommentService:
         if blog and (blog.comments_count or 0) > 0:
             blog.comments_count = (blog.comments_count or 0) - 1
 
+        was_admin_delete = admin_deleting_others
         db.session.commit()
+
+        # 记录管理员操作日志（管理员删除他人评论）
+        if was_admin_delete:
+            try:
+                from app.service.audit_log import log_admin_action
+                log_admin_action(
+                    action='delete_comment',
+                    admin_id=current_user.id,
+                    target_user_id=comment.author_id,
+                    object_type='comment',
+                    object_id=comment.id,
+                    reason=reason or '违反规则',
+                    metadata={'blog_id': comment.blog_id}
+                )
+            except Exception:
+                pass
         return True, '删除成功'
 
 

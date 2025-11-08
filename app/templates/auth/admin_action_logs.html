@@ -1,0 +1,160 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container">
+    <h2 class="mb-3">管理员操作公示</h2>
+    <style>
+        .status-badge {
+            display: inline-block;
+            font-size: .85rem;
+            padding: 2px 8px;
+            border-radius: 999px;
+            border: 1px solid #dee2e6;
+            color: #6c757d;
+            line-height: 1.4;
+        }
+        .obj-id details {
+            display: inline-block;
+            vertical-align: middle;
+            margin-left: 4px;
+        }
+        .obj-id summary {
+            list-style: none;
+            cursor: pointer;
+            color: #6c757d;
+            display: inline-block;
+        }
+        .obj-id summary::marker { display: none; }
+        .obj-id summary::-webkit-details-marker { display: none; }
+        .obj-id code {
+            user-select: all;
+            font-size: .85rem;
+            color: #495057;
+            background: #f8f9fa;
+            padding: 2px 6px;
+            border-radius: 4px;
+            border: 1px solid #e9ecef;
+        }
+        .status-badge.reverted {
+            color: #198754;
+            border-color: #198754;
+            background: #e9f7ef;
+        }
+        tr.log-reverted td {
+            color: #6c757d;
+        }
+        /* 在类型后附注（已撤回）的小提示 */
+        tr.log-reverted td.type-col::after {
+            content: '（已撤回）';
+            color: #198754;
+            margin-left: 4px;
+            font-weight: 500;
+        }
+    </style>
+
+    <form method="get" class="mb-3 d-flex" style="gap:8px;">
+        <select name="action" class="form-select" style="max-width:260px;" onchange="this.form.submit()">
+            <option value="">全部类型</option>
+            {% for a in ['ban_user','unban_user','delete_blog','delete_comment'] %}
+                <option value="{{a}}" {% if action==a %}selected{% endif %}>{{a}}</option>
+            {% endfor %}
+        </select>
+        <noscript><button type="submit" class="btn btn-primary">筛选</button></noscript>
+    </form>
+
+    <div class="table-responsive">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>时间</th>
+                    <th>类型</th>
+                    <th>管理员</th>
+                    <th>对象</th>
+                    <th>原因</th>
+                    <th>状态</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for log in pagination.items %}
+                {% set accepted = (log.appeals.filter_by(status='accepted').first() is not none) %}
+                <tr class="{% if accepted %}log-reverted{% endif %}">
+                    <td>{{ log.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                    <td class="type-col">{{ log.action }}</td>
+                    <td>{{ log.admin.username if log.admin else log.admin_id }}</td>
+                    <td>
+                        {% if log.object_type=='blog' %}
+                            {% set oid = log.object_id %}
+                            {% set short_oid = (oid[:8] ~ '…' ~ oid[-4:]) if oid and oid|length > 16 else oid %}
+                            文章 {{ (log.extra or {}).get('blog_title','') }}
+                            {% if oid %}
+                            <span class="obj-id">
+                                <details>
+                                    <summary>{{ short_oid }}</summary>
+                                    <code>{{ oid }}</code>
+                                </details>
+                            </span>
+                            {% endif %}
+                        {% elif log.object_type=='comment' %}
+                            {% set oid = log.object_id %}
+                            {% set short_oid = (oid[:8] ~ '…' ~ oid[-4:]) if oid and oid|length > 16 else oid %}
+                            评论
+                            {% if oid %}
+                            <span class="obj-id">
+                                <details>
+                                    <summary>{{ short_oid }}</summary>
+                                    <code>{{ oid }}</code>
+                                </details>
+                            </span>
+                            {% endif %}
+                        {% elif log.object_type=='user' %}
+                            用户 {{ log.target_user.username if log.target_user else log.target_user_id }}
+                        {% else %}
+                            {% set oid = log.object_id %}
+                            {% set short_oid = (oid[:8] ~ '…' ~ oid[-4:]) if oid and oid|length > 16 else oid %}
+                            {{ log.object_type or '' }}
+                            {% if oid %}
+                            <span class="obj-id">
+                                <details>
+                                    <summary>{{ short_oid }}</summary>
+                                    <code>{{ oid }}</code>
+                                </details>
+                            </span>
+                            {% endif %}
+                        {% endif %}
+                    </td>
+                    <td>{{ log.reason or '' }}</td>
+                    <td>
+                        {% if accepted %}
+                            <span class="status-badge reverted">已撤回</span>
+                        {% else %}
+                            <span class="status-badge">—</span>
+                        {% endif %}
+                    </td>
+                    <td><a href="{{ url_for('audit.log_detail', log_id=log.id) }}">详情</a></td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if pagination.pages > 1 %}
+    <nav>
+        <ul class="pagination">
+            {% if pagination.has_prev %}
+            <li class="page-item">
+                <a class="page-link" href="?page={{ pagination.prev_num }}{% if action %}&action={{action}}{% endif %}">上一页</a>
+            </li>
+            {% endif %}
+            <li class="page-item disabled"><span class="page-link">{{ pagination.page }}/{{ pagination.pages }}</span></li>
+            {% if pagination.has_next %}
+            <li class="page-item">
+                <a class="page-link" href="?page={{ pagination.next_num }}{% if action %}&action={{action}}{% endif %}">下一页</a>
+            </li>
+            {% endif %}
+        </ul>
+    </nav>
+    {% endif %}
+</div>
+{% endblock %}
+
+

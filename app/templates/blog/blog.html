@@ -819,6 +819,28 @@
 </div>
 {% endif %}
     
+<!-- 评论删除确认 Modal -->
+<div class="modal fade" id="commentDeleteModal" tabindex="-1" aria-labelledby="commentDeleteLabel" aria-hidden="true" role="dialog">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="commentDeleteLabel">确认删除评论</h5>
+        <button type="button" class="btn-close" data-modal-close aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="text-muted">确定要删除该评论吗？该操作可由管理员恢复（基于申诉通过）。</div>
+        <div id="comment-delete-reason-wrap" class="mt-3" style="display:none;">
+          <label for="comment-delete-reason" class="form-label">删除原因（管理员必填，将通知用户）：</label>
+          <textarea id="comment-delete-reason" class="form-control" rows="3" maxlength="500" placeholder="请填写删除原因…"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-modal-close>取消</button>
+        <button type="button" id="comment-confirm-delete-btn" class="btn btn-danger">确认删除</button>
+      </div>
+    </div>
+  </div>
+</div>
 <!-- 评论区 -->
 <div class="blog-detail">
     <section class="comment-section" id="comment-section"
@@ -1650,7 +1672,8 @@
                 delBtn.type = 'button';
                 delBtn.className = 'btn btn-link btn-sm text-danger';
                 delBtn.textContent = '删除';
-                delBtn.addEventListener('click', () => deleteComment(cmt.id));
+                const requiresReason = IS_ADMIN && (!cmt.author || cmt.author.id !== CURRENT_USER_ID);
+                delBtn.addEventListener('click', () => openCommentDeleteModal(cmt.id, requiresReason));
                 actions.appendChild(delBtn);
             }
 
@@ -1677,22 +1700,59 @@
             contentEl.focus();
         }
 
-        async function deleteComment(commentId) {
-            const ok = window.confirm('确认删除该评论？');
-            if (!ok) return;
-            const url = DELETE_URL_TPL.replace('__CID__', commentId);
+        // 评论删除（使用自定义模态）
+        const commentDeleteModal = document.getElementById('commentDeleteModal');
+        const commentConfirmBtn = document.getElementById('comment-confirm-delete-btn');
+        const commentReasonWrap = document.getElementById('comment-delete-reason-wrap');
+        const commentReasonInput = document.getElementById('comment-delete-reason');
+        setupModal(commentDeleteModal);
+        let pendingDeleteCommentId = null;
+        let pendingRequiresReason = false;
+        function openCommentDeleteModal(commentId, requiresReason) {
+            pendingDeleteCommentId = commentId;
+            pendingRequiresReason = !!requiresReason;
+            if (commentReasonWrap) {
+                commentReasonWrap.style.display = pendingRequiresReason ? '' : 'none';
+            }
+            if (commentReasonInput) commentReasonInput.value = '';
+            openModal(commentDeleteModal);
+        }
+        async function performDeleteComment() {
+            if (!pendingDeleteCommentId) return;
+            const url = DELETE_URL_TPL.replace('__CID__', pendingDeleteCommentId);
+            let payload = undefined;
+            if (pendingRequiresReason) {
+                const reason = (commentReasonInput && commentReasonInput.value ? commentReasonInput.value : '').trim();
+                if (!reason) {
+                    if (typeof showToast === 'function') showToast('请填写删除原因', 'warning');
+                    return;
+                }
+                payload = JSON.stringify({ reason });
+            }
+            commentConfirmBtn.disabled = true;
             try {
-                const res = await fetch(url, { method: 'DELETE', credentials: 'same-origin' });
+                const res = await fetch(url, { 
+                    method: 'DELETE', 
+                    credentials: 'same-origin',
+                    headers: payload ? { 'Content-Type': 'application/json' } : undefined,
+                    body: payload
+                });
                 const data = await res.json();
                 if (data.code === 200) {
-                    if (typeof showToast === 'function') showToast('已删除', 'success');
+                    if (typeof showToast === 'function') showToast('评论已删除', 'success');
+                    closeModal(commentDeleteModal);
                     loadComments();
                 } else {
                     if (typeof showToast === 'function') showToast(data.message || '删除失败', 'error');
                 }
             } catch (e) {
                 if (typeof showToast === 'function') showToast('网络错误，请稍后重试', 'error');
+            } finally {
+                commentConfirmBtn.disabled = false;
             }
+        }
+        if (commentConfirmBtn) {
+            commentConfirmBtn.addEventListener('click', performDeleteComment);
         }
 
         function formatTime(iso) {
