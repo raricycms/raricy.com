@@ -217,7 +217,9 @@ Raricy.com - 用户管理页面
                         <td>{{ user.username }}</td>
                         <td>{{ user.email }}</td>
                         <td>
-                            {% if user.is_admin %}
+                            {% if user.is_owner %}
+                                <span class="text-danger">站长</span>
+                            {% elif user.is_admin %}
                                 <span class="text-danger">管理员</span>
                             {% elif user.authenticated %}
                                 <span class="text-success">核心用户</span>
@@ -236,7 +238,7 @@ Raricy.com - 用户管理页面
                                 <button class="btn btn-sm btn-success" onclick="unbanUser('{{ user.id }}', '{{ user.username }}')">解除禁言</button>
                                 <button class="btn btn-sm btn-info" onclick="showBanHistory('{{ user.id }}', '{{ user.username }}')">禁言历史</button>
                             {% else %}
-                                <button class="btn btn-sm btn-warning" onclick="banUser('{{ user.id }}', '{{ user.username }}')" {% if user.is_admin or user.id == current_user.id %}disabled{% endif %}>禁言</button>
+                                <button class="btn btn-sm btn-warning" onclick="banUser('{{ user.id }}', '{{ user.username }}')" {% if user.is_owner or user.is_admin or user.id == current_user.id %}disabled{% endif %}>禁言</button>
                             {% endif %}
                             
                             <button class="btn btn-sm btn-danger" disabled title="管理员无权删除用户">删除</button>

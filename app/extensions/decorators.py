@@ -6,7 +6,7 @@ from flask_login import current_user
 def admin_required(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
-        if not getattr(current_user, 'is_authenticated', False) or not getattr(current_user, 'is_admin', False):
+        if not getattr(current_user, 'is_authenticated', False) or not (getattr(current_user, 'is_admin', False) or getattr(current_user, 'is_owner', False)):
             abort(403)
         return f(*args, **kwargs)
     return wrapper
