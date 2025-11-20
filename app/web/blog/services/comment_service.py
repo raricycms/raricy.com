@@ -14,6 +14,10 @@ class CommentService:
 
     @staticmethod
     def _serialize_comment(comment: BlogComment) -> Dict:
+        if comment.is_deleted:
+            content_html = "[该评论已删除]"
+        else:
+            content_html = comment.content_html or ''
         return {
             'id': comment.id,
             'blog_id': comment.blog_id,
@@ -24,7 +28,7 @@ class CommentService:
             },
             'parent_id': comment.parent_id,
             'root_id': comment.root_id,
-            'content_html': comment.content_html or '',
+            'content_html': content_html,
             'status': comment.status,
             'is_deleted': comment.is_deleted,
             'likes_count': comment.likes_count,
@@ -70,8 +74,8 @@ class CommentService:
         """获取某篇文章的所有评论（已批准且未删除），返回树结构。"""
         comments = BlogComment.query.filter_by(
             blog_id=blog_id,
-            status='approved',
-            is_deleted=False
+            status='approved'
+            #is_deleted=False
         ).order_by(BlogComment.created_at.asc()).all()
 
         if not comments:
