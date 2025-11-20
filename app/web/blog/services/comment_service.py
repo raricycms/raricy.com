@@ -91,7 +91,7 @@ class CommentService:
         规则：
         - 仅核心用户或管理员可发评论
         - 禁言用户禁止发言（管理员不受限）
-        - 频率限制：30 秒 1 条
+        - 频率限制：15 秒 1 条
         - 内容长度：1..2000
         - 不支持 Markdown：保存时进行 HTML 转义，并将换行转 <br>
         - 楼中楼：parent_id 可选；root_id 指向最顶层评论
@@ -104,8 +104,8 @@ class CommentService:
         if not getattr(current_user, 'has_admin_rights', False) and current_user.is_currently_banned():
             return False, '您已被禁言，无法发表评论', None
 
-        # 频率限制：最近 30 秒内是否已有评论
-        one_minute_ago = datetime.now() - timedelta(seconds=30)
+        # 频率限制：最近 15 秒内是否已有评论
+        one_minute_ago = datetime.now() - timedelta(seconds=15)
         recent_exists = BlogComment.query.filter(
             BlogComment.author_id == current_user.id,
             BlogComment.created_at >= one_minute_ago,
