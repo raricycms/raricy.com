@@ -300,7 +300,8 @@
     .blog-author img {
         width: 20px;
         height: 20px;
-        border-radius: 50%;
+        /* border-radius: 50%; 去掉圆形，变成方形 */
+        border-radius: 4px;
         object-fit: cover;
     }
 
@@ -556,30 +557,30 @@
     document.addEventListener('DOMContentLoaded', function () {
         // 初始化折叠状态
         initializeCollapse();
-        
-        // 博客卡片动画
-        const blogItems = document.querySelectorAll('.blog-item');
-        blogItems.forEach((item, index) => {
-            item.style.opacity = '0';
-            item.style.transform = 'translateY(20px)';
-            setTimeout(() => {
-                item.style.transition = 'all 0.6s ease';
-                item.style.opacity = '1';
-                item.style.transform = 'translateY(0)';
-            }, index * 100);
-        });
 
-        // 侧边栏动画
-        const sidebar = document.querySelector('.sidebar');
-        if (sidebar) {
-            sidebar.style.opacity = '0';
-            sidebar.style.transform = 'translateX(-20px)';
-            setTimeout(() => {
-                sidebar.style.transition = 'all 0.6s ease';
-                sidebar.style.opacity = '1';
-                sidebar.style.transform = 'translateX(0)';
-            }, 200);
-        }
+        // 移除所有博客卡片动画和侧边栏动画，所有内容直接显示
+        // 原实现如下（已移除）：
+        // const blogItems = document.querySelectorAll('.blog-item');
+        // blogItems.forEach((item, index) => {
+        //     item.style.opacity = '0';
+        //     item.style.transform = 'translateY(20px)';
+        //     setTimeout(() => {
+        //         item.style.transition = 'all 0.6s ease';
+        //         item.style.opacity = '1';
+        //         item.style.transform = 'translateY(0)';
+        //     }, index * 100);
+        // });
+
+        // const sidebar = document.querySelector('.sidebar');
+        // if (sidebar) {
+        //     sidebar.style.opacity = '0';
+        //     sidebar.style.transform = 'translateX(-20px)';
+        //     setTimeout(() => {
+        //         sidebar.style.transition = 'all 0.6s ease';
+        //         sidebar.style.opacity = '1';
+        //         sidebar.style.transform = 'translateX(0)';
+        //     }, 200);
+        // }
     });
 
     // 初始化折叠状态
