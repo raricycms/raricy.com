@@ -1,0 +1,15 @@
+{
+  "name": "raricy.com",
+  "version": "1.0.0",
+  "description": "这是 聪明山 的个人网站！",
+  "main": "postcss.config.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

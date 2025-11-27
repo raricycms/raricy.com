@@ -30,3 +30,8 @@ app/static/js/highlight.min.js
 app/static/css/main.css
 app/static/css/main.css.map
 app/static/css/**/*.map
+app/static/css/main.min.css
+app/static/vditor/
+app/static/hljs/
+*~
+*.xlsx

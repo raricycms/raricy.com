@@ -10,12 +10,13 @@ from app.web.blog.services.blog_service import BlogService
 from app.web.blog.validators.blog_validator import BlogValidator
 from app.web.blog.utils.ban_check import check_user_ban_status, check_user_ban_status_for_admin
 from app.web.blog.utils.response_utils import success_response, error_response, validation_error_response, forbidden_response
-
+from app.extensions.decorators import authenticated_required
 
 def register_views(blog_bp):
     """注册用户视图路由"""
-    
+   
     @blog_bp.route('/')
+    @authenticated_required
     def menu():
         """
         博客列表页
