@@ -250,11 +250,13 @@ Raricy.com - 用户管理页面
                             {% if current_user.is_owner and not user.is_owner and user.id != current_user.id %}
                                 <button class="btn btn-sm btn-danger" onclick="deleteUser('{{ user.id }}')">删除</button>
                             {% endif %}
+		    {% if current_user.is_owner %}
                             {% if user.role == 'core' %}
                                 <button class="btn btn-sm btn-warning" onclick="demoteUser('{{ user.id }}')">取消认证</button>
                             {% else %}
                                 <button class="btn btn-sm btn-success" onclick="promoteUser('{{ user.id }}')">认证</button>
                             {% endif %}
+		    {% endif %}
                         </td>
                     </tr>
                     {% endfor %}

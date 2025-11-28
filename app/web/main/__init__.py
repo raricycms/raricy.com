@@ -1,4 +1,5 @@
 from flask import Blueprint, render_template, current_app, url_for
+from app.extensions.decorators import owner_required
 home_bp = Blueprint('home', __name__)
 
 @home_bp.route('/')
@@ -26,6 +27,7 @@ Sitemap: https://raricy.com/sitemap/sitemap.xml
 
 from app.utils.invite_code import generate_invite_code
 @home_bp.route('/zhh')
+@owner_required
 def zhh():
     return generate_invite_code()
 

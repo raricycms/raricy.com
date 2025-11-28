@@ -20,7 +20,7 @@ def user_management():
 
 @auth_bp.route('/promote', methods=['POST'])
 @login_required
-@admin_required
+@owner_required
 def promote():
     data = request.get_json()
     user_id = data.get('user_id')
@@ -37,7 +37,7 @@ def promote():
 
 @auth_bp.route('/demote', methods=['POST'])
 @login_required
-@admin_required
+@owner_required
 def demote():
     data = request.get_json()
     user_id = data.get('user_id')
