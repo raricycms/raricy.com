@@ -22,6 +22,7 @@ class Blog(db.Model):
     # 作者与创建时间
     author_id = db.Column(db.String(36), db.ForeignKey('users.id'), nullable=False, index=True)
     created_at = db.Column(db.DateTime, default=datetime.now, index=True)
+    #updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now, index=True)
 
     # 是否在列表中忽略显示（替代原 info.json 的 ignore 字段）
     ignore = db.Column(db.Boolean, default=False, index=True)

@@ -1,7 +1,7 @@
 import pandas as pd
 from app import create_app
 from app.extensions import db   # 你的 Flask 工厂函数
-from app.models import Blog, User   # 根据实际路径导入模型
+from app.models import Blog, User, BlogContent  # 根据实际路径导入模型
 
 app = create_app()
 app.app_context().push()   # 让 SQLAlchemy 能在脚本里使用
@@ -20,8 +20,10 @@ def export_blogs_to_excel(file_path='blogs.xlsx'):
             Blog.comments_count,
             Blog.category_id,
             Blog.is_featured,
+            BlogContent.content,
         )
         .join(User, Blog.author_id == User.id)
+        .outerjoin(BlogContent, Blog.id == BlogContent.blog_id)
         .order_by(Blog.created_at.desc())
         .all()
     )
@@ -29,7 +31,7 @@ def export_blogs_to_excel(file_path='blogs.xlsx'):
     # ② 把查询结果转成 DataFrame
     df = pd.DataFrame(blogs, columns=[
         'ID', '标题', '简介', '作者', '创建时间',
-        '点赞数', '评论数', '栏目ID', '精选'
+        '点赞数', '评论数', '栏目ID', '精选', '正文内容'
     ])
 
     # ③（可选）对时间列做格式化

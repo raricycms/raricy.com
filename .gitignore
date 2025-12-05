@@ -37,3 +37,4 @@ app/static/hljs/
 *.xlsx
 .cursorignore
 .browserslistrc
+instance.zip
