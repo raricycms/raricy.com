@@ -16,8 +16,9 @@ notifications_bp = Blueprint('notifications', __name__)
 def notification_page():
     """通知页面，支持分页和过滤"""
     page = request.args.get('page', 1, type=int)
-    unread_only = request.args.get('unread_only', False, type=bool)
-    
+    unread_only_str = request.args.get('unread_only', 'false')
+    unread_only = unread_only_str.lower() == 'true'
+
     result = get_user_notifications(
         user_id=current_user.id,
         page=page,

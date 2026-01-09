@@ -84,6 +84,25 @@ class CommentService:
         return CommentService._build_comment_tree(comments)
 
     @staticmethod
+    def get_comment(comment_id: str):
+        comment = BlogComment.query.filter_by(
+            id=comment_id,
+            is_deleted=False
+        ).first()
+
+        if not comment:
+            return None
+        return CommentService._serialize_comment(comment)
+    @staticmethod
+    def get_recent_comments(limit: int = 100) -> List[Dict]:
+        """获取最近100条评论（按时间倒序）"""""
+        comments = BlogComment.query.filter_by(
+            status='approved'
+        ).order_by(BlogComment.created_at.desc()).limit(limit).all()
+        
+        return [CommentService._serialize_comment(c) for c in comments]
+        
+    @staticmethod
     def create_comment(blog_id: str, content: str, parent_id: Optional[str] = None) -> Tuple[bool, str, Optional[Dict]]:
         """
         创建评论。

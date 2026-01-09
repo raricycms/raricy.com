@@ -13,7 +13,7 @@
                 width: 100%;
                 min-height: 100px;
                 padding: .75rem;
-                border: 1px solid rgba(0,0,0,0.15);
+                border: 1px solid rgba(150,150,150,0.25);
                 border-radius: .5rem;
                 resize: vertical;
             }
@@ -21,11 +21,11 @@
 
         .comment-list {
             list-style: none;
-            padding-left: 0;
+            padding-left: 10px;
 
             .comment-item {
                 padding: .75rem 0;
-                border-bottom: 1px solid rgba(0,0,0,0.05);
+                border-bottom: 1px solid rgba(150,150,150,0.25);
 
                 .meta {
                     font-size: .875rem;
@@ -49,7 +49,7 @@
                 .children {
                     margin-left: 1rem;
                     padding-left: 1rem;
-                    border-left: 2px solid rgba(0,0,0,0.05);
+                    border-left: 2px solid rgba(150,150,150,0.25);
                 }
             }
         }

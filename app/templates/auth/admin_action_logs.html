@@ -49,6 +49,11 @@
             margin-left: 4px;
             font-weight: 500;
         }
+        .status-badge.pending {
+            color: #fd7e14;
+            border-color: #fd7e14;
+            background: #fff3e0;
+        }
     </style>
 
     <form method="get" class="mb-3 d-flex" style="gap:8px;">
@@ -76,6 +81,7 @@
             <tbody>
             {% for log in pagination.items %}
                 {% set accepted = (log.appeals.filter_by(status='accepted').first() is not none) %}
+                {% set pending = has_pending.get(log.id, false) %}
                 <tr class="{% if accepted %}log-reverted{% endif %}">
                     <td class="type-col">{{ log.action }}</td>
                     <td>{{ log.admin.username if log.admin else log.admin_id }}</td>
@@ -124,6 +130,8 @@
                     <td>
                         {% if accepted %}
                             <span class="status-badge reverted">已撤回</span>
+                        {% elif pending %}
+                            <span class="status-badge pending">申诉中</span>
                         {% else %}
                             <span class="status-badge">—</span>
                         {% endif %}

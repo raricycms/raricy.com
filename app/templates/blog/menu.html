@@ -5,7 +5,7 @@
 {% block extra_css %}
 <style>
     .blogs-hero {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+	background:linear-gradient(135deg, #2d2d2d 0%, #4a4a4a 100%); 
         padding: 60px 0 40px;
         margin-bottom: 0;
         text-align: center;
@@ -100,7 +100,7 @@
     }
 
     .category-list:not(.collapsed) {
-        max-height: 1000px;
+        max-height: 1250px;
         opacity: 1;
     }
 
@@ -162,9 +162,11 @@
         border-left-color: #1976d2;
     }
 
-    .category-link .icon {
+    .category-link .icon,
+    .category-item .icon {
         margin-right: 8px;
         font-size: 1rem;
+        background-color: rgba(255, 255, 255, 0);
     }
 
     .sub-category-list {
@@ -513,8 +515,13 @@
 
         <!-- 右侧博客列表 -->
         <main class="blog-content">
+	    <label for="sortSelect">排序方式：</label>
+	    <select id="sortSelect" class="sort-select">
+        	<option value="publish">按发布时间排序</option>
+	        <option value="update">按更新时间排序</option>
+            </select>
             {% for blog in blogs %}
-            <article class="blog-item">
+		<article class="blog-item" id="id{{ blog.id }}">
                 <div class="blog-header">
                     <a href="/blog/{{ blog.id }}" class="blog-title">{{ blog.title }}</a>
                     <div class="blog-stats">
@@ -554,10 +561,42 @@
 
 {% block extra_js %}
 <script>
+	const sortSelect = document.getElementById('sortSelect');
+
+        // 页面加载时，根据当前 URL 的参数设置下拉框的默认选中项
+        (function initSelection() {
+		            const urlParams = new URLSearchParams(window.location.search);
+		            if (urlParams.get('update') === 'True') {
+				                    sortSelect.value = 'update';
+				                } else {
+							                sortSelect.value = 'publish';
+							            }
+		        })();
+
+        // 监听下拉框变化
+        sortSelect.addEventListener('change', function () {
+		            const selected = this.value;               // 'publish' 或 'update'
+		            const url = new URL(window.location.href); // 当前完整URL
+		            const params = url.searchParams;
+
+		            if (selected === 'update') {
+				                    // 添加或更新 update 参数
+				                    params.set('update', 'True');
+				                } else {
+							                // 移除 update 参数（如果存在）
+							        params.delete('update');
+							            }
+
+		            // 重新构造 URL 并跳转
+		            // 注意：如果还有其它查询参会被保留
+		            const newUrl = url.origin + url.pathname;
+		            const queryString = params.toString();
+		            window.location.href = queryString ? `${newUrl}?${queryString}` : newUrl;
+		        });
     document.addEventListener('DOMContentLoaded', function () {
         // 初始化折叠状态
         initializeCollapse();
-
+	jumpToTargetBlog();
         // 移除所有博客卡片动画和侧边栏动画，所有内容直接显示
         // 原实现如下（已移除）：
         // const blogItems = document.querySelectorAll('.blog-item');
@@ -582,7 +621,16 @@
         //     }, 200);
         // }
     });
-
+    function jumpToTargetBlog() {
+    	const params = new URLSearchParams(window.location.search);
+    	const targetBlogId = params.get('from_id');
+	    if(targetBlogId === null){
+	    	return;
+	    }
+	    const el = document.querySelector(`#id${targetBlogId}`);
+	    if(!el)return;
+	    //el.scrollIntoView({ behavior: 'smooth', block:'center' });
+    }
     // 初始化折叠状态
     function initializeCollapse() {
         const isMobile = window.innerWidth <= 768;

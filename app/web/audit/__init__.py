@@ -1,28 +1,42 @@
 from flask import Blueprint, render_template, request, jsonify
 from flask_login import login_required, current_user
 from app.service import audit_log as audit_service
-from app.extensions.decorators import admin_required
+from app.extensions.decorators import admin_required, authenticated_required, owner_required
 from app.models.audit import AdminActionAppeal
 
 
 audit_bp = Blueprint('audit', __name__)
 
-
+@authenticated_required
 @audit_bp.route('/logs')
 def public_logs():
     page = request.args.get('page', 1, type=int)
     action = request.args.get('action')
     pagination = audit_service.list_public_logs(page=page, per_page=20, action=action)
-    return render_template('auth/admin_action_logs.html', pagination=pagination, action=action)
 
+    log_ids = [log.id for log in pagination.items]
 
+    pending_appeals = AdminActionAppeal.query.filter(
+        AdminActionAppeal.log_id.in_(log_ids),
+        AdminActionAppeal.status == 'pending'
+    ).all()
+
+    # 创建映射：日志ID -> 是否有待处理申诉
+    has_pending = {appeal.log_id: True for appeal in pending_appeals}
+
+    return render_template('auth/admin_action_logs.html',
+                         pagination=pagination,
+                         action=action,
+                         has_pending=has_pending)
+
+@authenticated_required
 @audit_bp.route('/logs/<int:log_id>')
 def log_detail(log_id: int):
     log = audit_service.get_log(log_id)
     appeals = log.appeals.order_by(AdminActionAppeal.created_at.desc()).all()
     return render_template('auth/admin_action_log_detail.html', log=log, appeals=appeals)
 
-
+@authenticated_required
 @audit_bp.route('/appeals', methods=['POST'])
 @login_required
 def create_appeal():
@@ -40,6 +54,7 @@ def create_appeal():
 @audit_bp.route('/appeals/<int:appeal_id>/decision', methods=['POST'])
 @login_required
 @admin_required
+@owner_required
 def decide_appeal(appeal_id: int):
     data = request.get_json(silent=True) or {}
     status = data.get('status')          # accepted / rejected

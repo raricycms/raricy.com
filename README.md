@@ -85,7 +85,7 @@ priority: 96
 用户上传时，文章会存在 instance/database/db.db 里。但是，目前会在 instance/blogs 下创建一个空的文件夹。
 
 #### database   
-初次运行时，需要先创建 database 文件夹。   
+初次运行时，需要先创建 database 文件夹。（或者通过 `check_instance.py` 自动创建）   
 然后运行：   
 ```bash
 flask db init   

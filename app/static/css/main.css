@@ -226,16 +226,6 @@ input, select, textarea {
   height: 62px;
 }
 
-@media (min-width: 576px) {
-  .site-container {
-    max-width: 540px;
-  }
-}
-@media (min-width: 768px) {
-  .site-container {
-    max-width: 720px;
-  }
-}
 @media (min-width: 992px) {
   .site-container {
     max-width: 960px;
@@ -523,7 +513,7 @@ body {
   }
 }
 /* Mobile collapse */
-@media (max-width: 991.98px) {
+@media (max-width: 808px) {
   .site-navbar .site-container {
     height: 62px;
     padding-top: 8px;
@@ -567,7 +557,6 @@ body {
 .site-footer {
   background-color: #212529;
   color: #ffffff;
-  margin-top: 2rem;
   padding: 0 0 1.5rem;
 }
 
@@ -1683,17 +1672,17 @@ body.dark-mode .form-check-input {
   width: 100%;
   min-height: 100px;
   padding: 0.75rem;
-  border: 1px solid rgba(0, 0, 0, 0.15);
+  border: 1px solid rgba(150, 150, 150, 0.25);
   border-radius: 0.5rem;
   resize: vertical;
 }
 .blog-detail .comment-section .comment-list {
   list-style: none;
-  padding-left: 0;
+  padding-left: 10px;
 }
 .blog-detail .comment-section .comment-list .comment-item {
   padding: 0.75rem 0;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  border-bottom: 1px solid rgba(150, 150, 150, 0.25);
 }
 .blog-detail .comment-section .comment-list .comment-item .meta {
   font-size: 0.875rem;
@@ -1714,7 +1703,7 @@ body.dark-mode .form-check-input {
 .blog-detail .comment-section .comment-list .comment-item .children {
   margin-left: 1rem;
   padding-left: 1rem;
-  border-left: 2px solid rgba(0, 0, 0, 0.05);
+  border-left: 2px solid rgba(150, 150, 150, 0.25);
 }
 
 .auth-page {

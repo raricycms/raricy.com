@@ -25,11 +25,16 @@ def register_views(blog_bp):
         """
         category_slug = request.args.get('category')
         featured = request.args.get('featured')
+        ordered_by_updated = request.args.get('update')
+        if not ordered_by_updated == 'True':
+            ordered_by_updated = False
+        else:
+            ordered_by_updated = True
         featured_flag = None
         if featured is not None:
             featured_flag = True if featured in ['1', 'true', 'True'] else False if featured in ['0', 'false', 'False'] else None
-        
-        blogs, categories, current_category = BlogService.get_blog_list(category_slug, featured=featured_flag)
+       
+        blogs, categories, current_category = BlogService.get_blog_list(category_slug, featured=featured_flag, ordered_by_updated_time = ordered_by_updated)
         
         if blogs is None:  # 栏目不存在
             abort(404)
@@ -40,6 +45,7 @@ def register_views(blog_bp):
                              current_category=current_category,
                              featured=featured_flag)
     
+    @authenticated_required
     @blog_bp.route('/<blog_id>')
     def blog_detail(blog_id):
         """
@@ -93,7 +99,7 @@ def register_views(blog_bp):
             if not is_valid:
                 return validation_error_response(error_message)
             
-            # 每日发文数量限制（最多5篇）
+            # 每日发文数量限制（最多20篇）
             from datetime import datetime
             from app.models import Blog
             start_of_day = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
@@ -101,8 +107,8 @@ def register_views(blog_bp):
                 Blog.author_id == current_user.id,
                 Blog.created_at >= start_of_day
             ).count()
-            if today_count >= 10:
-                return error_response('今日发布数量已达上限（10篇）', 429)
+            if today_count >= 20:
+                return error_response('今日发布数量已达上限（20篇）', 429)
             
             # 创建博客
             # 若选择了栏目，检查该栏目及其父栏目是否限制管理员专属

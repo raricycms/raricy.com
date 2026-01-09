@@ -91,7 +91,7 @@ def create_appeal(*, log_id: int, appellant_id: str, content: str) -> Tuple[bool
     db.session.commit()
 
     # 通知管理员/站长
-    admins = User.query.filter(User.role.in_(['admin', 'owner'])).all()
+    admins = User.query.filter(User.role.in_(['owner'])).all()
     for admin in admins:
         try:
             send_notification(

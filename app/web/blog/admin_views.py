@@ -228,7 +228,7 @@ def register_admin_views(blog_bp):
                 current_app.logger.warning(f"Failed to send delete notification: {e}")
 
         # 记录管理员操作日志（管理员删除时）
-        if getattr(current_user, 'has_admin_rights', False):
+        if getattr(current_user, 'has_admin_rights', False) and blog_author_id and blog_author_id != current_user.id:
             try:
                 log_admin_action(
                     action='delete_blog',

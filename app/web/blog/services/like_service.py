@@ -27,10 +27,15 @@ class LikeService:
         
         like = BlogLike.query.filter_by(blog_id=blog_id, user_id=current_user.id).first()
         if like:
+            if like.deleted:
+                like.deleted = False
+                blog.likes_count = (blog.likes_count or 0) + 1
+                liked = True
+            else:
             # 取消点赞
-            db.session.delete(like)
-            blog.likes_count = max(0, (blog.likes_count or 0) - 1)
-            liked = False
+                blog.likes_count = max(0, (blog.likes_count or 0) - 1)
+                liked = False
+                like.deleted = True
         else:
             # 点赞
             like = BlogLike(blog_id=blog_id, user_id=current_user.id, notification_sent=False)
@@ -39,7 +44,7 @@ class LikeService:
             liked = True
             
             # 发送点赞通知给文章作者（但不给自己发，且只发送一次）
-            if blog.author_id != current_user.id:
+            if blog.author_id != current_user.id and not like.notification_sent:
                 try:
                     send_notification(
                         recipient_id=blog.author_id,

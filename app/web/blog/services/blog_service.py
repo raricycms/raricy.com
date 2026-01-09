@@ -15,7 +15,7 @@ class BlogService:
     """博客业务逻辑服务"""
     
     @staticmethod
-    def get_blog_list(category_slug=None, featured=None):
+    def get_blog_list(category_slug=None, featured=None, ordered_by_updated_time=False):
         """
         获取博客列表
         
@@ -44,7 +44,7 @@ class BlogService:
                     query = query.filter(Blog.category_id.in_(category_ids))
                 else:
                     # 二级栏目：只显示该栏目的文章
-                    query = query.filter_by(category_id=current_category.id)
+                    query = query.filter(Blog.category_id==current_category.id)
             else:
                 # 栏目不存在
                 return None, categories, None
@@ -68,9 +68,14 @@ class BlogService:
             query = query.filter(Blog.is_featured == featured)
         
         blogs = []
-        for blog in query.order_by(Blog.created_at.desc()).all():
-            item = blog.to_dict()
-            blogs.append(item)
+        if 1 == 0:
+            for blog in query.order_by(BlogContent.updated_at.desc()).all():
+                item = blog.to_dict()
+                blogs.append(item)
+        else:
+            for blog in query.order_by(Blog.created_at.desc()).all():
+                item = blog.to_dict()
+                blogs.append(item)
         
         return blogs, categories, current_category
 

@@ -7,9 +7,10 @@ from flask import Blueprint
 blog_bp = Blueprint('blog', __name__)
 
 # 注册各个视图模块
-from . import views, admin_views, api_views
+from . import views, admin_views, api_views, spider_api
 
 # 注册路由
 views.register_views(blog_bp)
 admin_views.register_admin_views(blog_bp)
 api_views.register_api_views(blog_bp)
+spider_api.register_spider_api_views(blog_bp)

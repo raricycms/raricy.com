@@ -188,11 +188,17 @@
 
     /* 引用样式 */
     .blog-content-container blockquote {
-        border-left: 4px solid #3498db;
+        border-left: 4px solid #989898;
         margin: 1.5em 0;
-        padding: 10px 20px;
+        padding: 5px 15px;
         background: #f8f9fa;
-        font-style: italic;
+        /*font-style: italic;*/
+        color: var(--slim-color);
+    }
+
+    .blog-content-container blockquote p {
+        margin-block-start: 0px !important;
+        margin-block-end: 0px !important;
     }
 
     /* 列表样式 */
@@ -628,6 +634,7 @@
         --border-color: #e9ecef;
         --link-color: #3498db;
         --link-hover-color: #2980b9;
+        --slim-color: #708090;
     }
 
     body.dark-mode {
@@ -638,10 +645,11 @@
         --btn-bg: #3498db;
         --btn-hover-bg: #2980b9;
         --shadow: 0 2px 16px rgba(0, 0, 0, 0.3);
-        --code-bg: #2d3748;
+        --code-bg: #262626;
         --border-color: #4a5568;
         --link-color: #5dade2;
         --link-hover-color: #3498db;
+        --slim-color: #a0b0c0;
     }
 
     body {
@@ -659,6 +667,9 @@
         color: var(--text);
     }
 
+    .meta {
+        color: var(--text);
+    }
     .blog-content-container {
         background-color: var(--box-bg);
         color: var(--text);
@@ -699,6 +710,32 @@
         background: var(--btn-bg);
     }
 
+    .comment-meta {
+        font-size: 0.875rem;
+        color: rgba(0, 0, 0, 0.55);
+        margin-bottom: 0.25rem;
+    }
+    body.dark-mode .comment-meta {
+        color: rgba(255, 255, 255, 0.55);
+    }
+
+    .comment-btn {
+        background-color: var(--box-bg);
+        color: var(--text);
+    }
+
+    .comment-form textarea{
+        background-color: var(--box-bg);
+        color: var(--text);
+    }
+/*
+    .comment-list {
+        background-color: var(--box-bg);
+        margin: 10px;
+        padding-left: 15px;
+        border-radius: 5px;
+    }
+  */
     .read-btn:hover {
         background: var(--btn-hover-bg);
     }
@@ -749,11 +786,11 @@
         <span class="like-count-badge" id="like-count">{{ blog.likes_count or 0 }}</span>
     </button>
 
-    <a href="{{ url_for('blog.menu') }}" class="read-btn">📝 返回博客列表</a>
+    <a href="{{ url_for('blog.menu') }}?from_id={{blog.id}}" class="read-btn">📝 返回博客列表</a>
 </div>
 {% if current_user.is_authenticated and (current_user.has_admin_rights or current_user.id == blog.author_id) %}
 <div class="admin-controls">
-    {% if current_user.has_admin_rights %}
+    {% if current_user.has_admin_rights or current_user.id == blog.author_id %}
     <button id="admin-likers-btn" class="btn btn-outline-primary" data-likers-url="{{ url_for('blog.likers', blog_id=blog.id) }}">
         👍 查看点赞者
     </button>
@@ -769,7 +806,7 @@
     
 </div>
 {% endif %}
-{% if current_user.is_authenticated and current_user.has_admin_rights %}
+{% if current_user.is_authenticated and current_user.has_admin_rights or current_user.id == blog.author_id %}
 <!-- 点赞者列表 Modal -->
 <div class="modal fade" id="likersModal" tabindex="-1" aria-labelledby="likersModalLabel" aria-hidden="true" role="dialog">
   <div class="modal-dialog modal-dialog-centered">
@@ -828,7 +865,7 @@
         <button type="button" class="btn-close" data-modal-close aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <div class="text-muted">确定要删除该评论吗？该操作可由管理员恢复（基于申诉通过）。</div>
+        <div class="text-muted">确定要删除该评论吗？</div>
         <div id="comment-delete-reason-wrap" class="mt-3" style="display:none;">
           <label for="comment-delete-reason" class="form-label">删除原因（管理员必填，将通知用户）：</label>
           <textarea id="comment-delete-reason" class="form-control" rows="3" maxlength="500" placeholder="请填写删除原因…"></textarea>
@@ -1051,12 +1088,15 @@
                     'table', 'thead', 'tbody', 'tr', 'th', 'td',
                     'details', 'summary',
                     'sub', 'sup', 'mark',
-                    'input', 'button'  // 允许 input 标签用于任务列表和button用于复制功能
+                    'input', 'button',  // 允许 input 标签用于任务列表和button用于复制功能
+                    'video', 'source', 'track', 'audio'
                 ],
                 ALLOWED_ATTR: [
                     'href', 'title', 'alt', 'src', 'class', 'rel', 'target',
                     'width', 'height', 'align', 'colspan', 'rowspan',
-                    'type', 'checked', 'disabled', 'data-code'  // 允许任务列表的属性和复制按钮属性
+                    'type', 'checked', 'disabled', 'data-code',  // 允许任务列表的属性和复制按钮属性
+                    'controls', 'autoplay', 'muted', 'loop', 'poster', 'preload',
+                    'playsinline', 'crossorigin', 'kind', 'srclang', 'label'
                 ],
                 ALLOW_DATA_ATTR: false
             });
@@ -1646,12 +1686,12 @@
             li.className = 'comment-item';
 
             const meta = document.createElement('div');
-            meta.className = 'meta';
+            meta.className = 'comment-meta';
             const authorName = (cmt.author && cmt.author.username) ? cmt.author.username : '匿名用户';
             meta.textContent = `${authorName}`;
 
             const content = document.createElement('div');
-            content.className = 'content';
+            content.className = 'comment-content';
             // 服务端已做转义，这里安全插入
             content.innerHTML = cmt.content_html || '';
 
@@ -1661,7 +1701,7 @@
             if (CAN_COMMENT) {
                 const replyBtn = document.createElement('button');
                 replyBtn.type = 'button';
-                replyBtn.className = 'btn btn-link btn-sm';
+                replyBtn.className = 'btn btn-link btn-sm comment-btn';
                 replyBtn.textContent = '回复';
                 replyBtn.addEventListener('click', () => openReply(cmt.id, li));
                 actions.appendChild(replyBtn);
@@ -1670,7 +1710,7 @@
             if (IS_ADMIN || (cmt.author && cmt.author.id === CURRENT_USER_ID)) {
                 const delBtn = document.createElement('button');
                 delBtn.type = 'button';
-                delBtn.className = 'btn btn-link btn-sm text-danger';
+                delBtn.className = 'btn btn-link btn-sm text-danger comment-btn';
                 delBtn.textContent = '删除';
                 const requiresReason = IS_ADMIN && (!cmt.author || cmt.author.id !== CURRENT_USER_ID);
                 delBtn.addEventListener('click', () => openCommentDeleteModal(cmt.id, requiresReason));
@@ -1838,7 +1878,7 @@
                             <img src="${u.avatar_url}" style="width:28px;height:28px;border-radius:6%;margin-right:10px;" />
                             <div class="d-flex flex-column">
                                 <strong>${u.username || u.id}</strong>
-                                <small class="text-muted">${u.liked_at || ''}</small>
+                                <!--<small class="text-muted">${u.liked_at || ''}</small>-->
                             </div>
                         `;
                         listEl.appendChild(item);

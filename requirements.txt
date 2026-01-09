@@ -16,3 +16,5 @@ pybase62
 bleach
 pymdown-extensions
 base92
+pandas
+openpyxl

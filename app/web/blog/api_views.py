@@ -1,9 +1,10 @@
 """
 博客API视图
 """
-from flask import request, jsonify
+from flask import request, jsonify, abort
 from flask_login import login_required, current_user
-from app.extensions.decorators import admin_required
+from app.extensions.decorators import admin_required, authenticated_required
+from app.web.blog.services.blog_service import BlogService
 from app.web.blog.services.like_service import LikeService
 from app.web.blog.services.comment_service import CommentService
 from app.web.blog.validators.comment_validator import CommentValidator
@@ -16,6 +17,7 @@ def register_api_views(blog_bp):
     
     @blog_bp.route('/<blog_id>/like', methods=['POST'])
     @login_required
+    @authenticated_required
     def like_toggle(blog_id):
         """
         点赞/取消点赞切换接口。
@@ -31,12 +33,13 @@ def register_api_views(blog_bp):
     
     @blog_bp.route('/<blog_id>/likers', methods=['GET'])
     @login_required
-    @admin_required
     def likers(blog_id):
         """
-        管理员查看点赞者列表。
+        查看点赞者列表。
         支持简单分页参数：?offset=0&limit=50
         """
+        if current_user.id != BlogService.get_blog_detail(blog_id)[0]['author_id'] and not current_user.has_admin_rights:
+            abort(403)
         try:
             offset = int(request.args.get('offset', 0))
             limit = int(request.args.get('limit', 50))

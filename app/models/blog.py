@@ -22,6 +22,7 @@ class Blog(db.Model):
     # 作者与创建时间
     author_id = db.Column(db.String(36), db.ForeignKey('users.id'), nullable=False, index=True)
     created_at = db.Column(db.DateTime, default=datetime.now, index=True)
+    #updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now, index=True)
 
     # 是否在列表中忽略显示（替代原 info.json 的 ignore 字段）
     ignore = db.Column(db.Boolean, default=False, index=True)
@@ -90,6 +91,8 @@ class BlogLike(db.Model):
     user_id = db.Column(db.String(36), db.ForeignKey('users.id'), nullable=False, index=True)
     created_at = db.Column(db.DateTime, default=datetime.now)
     notification_sent = db.Column(db.Boolean, default=False, nullable=False)  # 是否已发送点赞通知
+    deleted = db.Column(db.Boolean, default=False, nullable=False)
+    deleted_at = db.Column(db.DateTime, nullable=True)
 
     __table_args__ = (
         db.UniqueConstraint('blog_id', 'user_id', name='uq_blog_like_blog_user'),
