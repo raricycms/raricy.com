@@ -1,3 +1,11 @@
+import os
+import sys
+
+# 设置项目根目录
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(current_dir)
+sys.path.insert(0, project_root)
+
 import pandas as pd
 from app.extensions import db
 from app.models import User  # 根据实际路径导入

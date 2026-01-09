@@ -4,6 +4,13 @@ export_comments_to_excel.py
 
 功能：把所有博客评论（包括作者、所属博客、点赞数、状态等）导出为 Excel 文件
 """
+import os
+import sys
+
+# 设置项目根目录
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(current_dir)
+sys.path.insert(0, project_root)
 
 import pandas as pd
 from app import create_app
