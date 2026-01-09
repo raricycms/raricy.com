@@ -1660,6 +1660,11 @@ body.dark-mode .form-check-input {
   color: #fff;
 }
 
+.blog-detail {
+  margin-left: 2em;
+  margin-right: 2em;
+}
+
 .blog-detail .comment-section {
   margin-top: 2rem;
   border-top: 1px solid rgba(0, 0, 0, 0.08);
@@ -1678,7 +1683,7 @@ body.dark-mode .form-check-input {
 }
 .blog-detail .comment-section .comment-list {
   list-style: none;
-  padding-left: 10px;
+  padding-left: 0;
 }
 .blog-detail .comment-section .comment-list .comment-item {
   padding: 0.75rem 0;
