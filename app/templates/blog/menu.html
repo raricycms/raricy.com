@@ -270,7 +270,17 @@
         align-items: center;
         gap: 4px;
         color: #dc3545;
-        font-size: 0.85rem;
+        font-size: 0.9rem;
+        font-weight: bold;
+    }
+
+    .blog-comments {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        color: #999999;
+        font-size: 0.9rem;
+        font-weight: bold;
     }
 
     .blog-description {
@@ -530,7 +540,7 @@
                             <span>{{ blog.likes_count or 0 }}</span>
                         </span>
                         <span class="blog-comments" title="评论数">
-                            <img src="{{ url_for('static', filename='img/icons/chat-dots.svg') }}" alt="comment" width="16" height="16">
+                            <img src="{{ url_for('static', filename='img/icons/chat-dots.svg') }}" alt="comment" height="16">
                             <span>{{ blog.comments_count or 0 }}</span>
                         </span>
                     </div>
