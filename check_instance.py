@@ -22,18 +22,6 @@ def check_instance_structure():
             dir_path.mkdir()
             print(f"已创建文件夹: {dir_path}")
     
-    # 检查stories文件夹下的子文件夹结构
-    stories_path = base_path / "stories"
-    for i in range(1, 4):
-        batch_dir = stories_path / f"mainstories_batch{i}"
-        if not batch_dir.exists():
-            batch_dir.mkdir()
-            print(f"已创建文件夹: {batch_dir}")
-            
-            # 在每个batch文件夹中创建info.json和示例故事文件
-            (batch_dir / "info.json").touch()
-            for j in range(1, 3):
-                (batch_dir / f"teststory{j}.md").touch()
     
     print("文件夹结构检查完成！")
 
