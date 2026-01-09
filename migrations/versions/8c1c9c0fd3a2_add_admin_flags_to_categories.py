@@ -17,6 +17,7 @@ depends_on = None
 
 
 def upgrade():
+    '''
     # categories.admin_only_posting
     with op.batch_alter_table('categories', schema=None) as batch_op:
         batch_op.add_column(sa.Column('admin_only_posting', sa.Boolean(), nullable=True))
@@ -32,9 +33,10 @@ def upgrade():
     op.execute("UPDATE categories SET notify_admin_on_post = 0 WHERE notify_admin_on_post IS NULL")
     with op.batch_alter_table('categories', schema=None) as batch_op:
         batch_op.alter_column('notify_admin_on_post', nullable=False)
-
+    '''
 
 def downgrade():
+    '''
     with op.batch_alter_table('categories', schema=None) as batch_op:
         batch_op.drop_index(batch_op.f('ix_categories_notify_admin_on_post'))
         batch_op.drop_column('notify_admin_on_post')
@@ -42,5 +44,5 @@ def downgrade():
     with op.batch_alter_table('categories', schema=None) as batch_op:
         batch_op.drop_index(batch_op.f('ix_categories_admin_only_posting'))
         batch_op.drop_column('admin_only_posting')
-
+    '''
 
