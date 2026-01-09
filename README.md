@@ -2,12 +2,16 @@
 
 powered by Flask & Bootstrap & Vditor & Turnstile   
 感谢 deepask.cc & Trae CN & deepseek.com & flycursor & cursor 提供的免费ai工具   
-访问地址：<http://raricy.com:5000>  
+访问地址：<https://raricy.com>  
 （持续更新中）    
 （不要攻击我呜呜呜，谢谢啦）
 
 有任何建议，请联系我：   
-<http://raricy.com:5000/contact>
+<https://raricy.com/contact>
+
+---
+
+以下为旧版 README.md，其中的内容可能有误或已经过时
 
 ---
 
