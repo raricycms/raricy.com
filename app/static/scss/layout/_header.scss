@@ -5,7 +5,7 @@
   left: 0;
   right: 0;
   z-index: 1030;
-  background: rgba(33, 37, 41, 0.95);
+  background: #ffffff;
   backdrop-filter: blur(10px);
   transition: background 0.3s ease;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
@@ -37,6 +37,7 @@
   font-weight: bold;
   font-size: 1.5rem;
   white-space: nowrap;
+  font-family: sans-serif;
 }
 
 .site-navbar-toggler {
