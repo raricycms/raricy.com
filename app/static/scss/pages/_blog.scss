@@ -2,6 +2,8 @@
 
 // Comment section styles
 .blog-detail {
+    margin-left: 2em;
+    margin-right: 2em;
     .comment-section {
         margin-top: 2rem;
         border-top: 1px solid rgba(0,0,0,0.08);
@@ -21,8 +23,7 @@
 
         .comment-list {
             list-style: none;
-            padding-left: 10px;
-
+            padding-left: 0;
             .comment-item {
                 padding: .75rem 0;
                 border-bottom: 1px solid rgba(150,150,150,0.25);
