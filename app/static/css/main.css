@@ -202,16 +202,21 @@ input, select, textarea {
   }
 }
 /* Site header (custom, no Bootstrap dependency) */
+a {
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: none;
+}
+
 .site-navbar {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   z-index: 1030;
-  background: rgba(33, 37, 41, 0.95);
-  backdrop-filter: blur(10px);
-  transition: background 0.3s ease;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  background: #fff;
+  box-shadow: 0 2px 25px rgba(37, 99, 235, 0.15);
 }
 
 .site-container {
@@ -240,7 +245,7 @@ input, select, textarea {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  color: #fff;
+  color: #64748B;
   text-decoration: none;
   font-weight: bold;
   font-size: 1.5rem;
@@ -260,14 +265,13 @@ input, select, textarea {
   flex-direction: column;
   gap: 4px;
   cursor: pointer;
-  color: #fff;
+  color: #0F172A;
 }
-
 .site-navbar-toggler .bar {
   display: block;
   width: 22px;
   height: 2px;
-  background: #fff;
+  background: #0F172A;
   margin: 3px 0;
   transition: transform 0.2s ease, opacity 0.2s ease;
 }
@@ -276,6 +280,7 @@ input, select, textarea {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  width: 100%;
   gap: 1rem;
 }
 
@@ -283,31 +288,25 @@ input, select, textarea {
   display: flex;
   list-style: none;
   padding: 0;
-  margin: 0;
-  gap: 0.25rem;
+  margin-left: 50px;
+  gap: 15px;
 }
-
 .site-nav li {
   display: block;
 }
 
 .site-link {
   display: block;
-  color: #adb5bd;
+  color: #0F172A;
   text-decoration: none;
-  padding: 0.5rem 0.75rem;
-  border-radius: 0.25rem;
+  padding: 0.5rem 1rem;
+  border-radius: 999px;
   font-weight: 500;
   transition: color 0.3s ease, background-color 0.2s ease;
 }
-
 .site-link:hover {
-  color: #007bff;
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.site-link.active {
-  color: #fff;
+  color: #2563EB;
+  background: rgba(37, 99, 235, 0.1);
 }
 
 .site-actions {
@@ -317,42 +316,43 @@ input, select, textarea {
 }
 
 .site-login-btn {
-  background: linear-gradient(135deg, #007bff, #0056b3);
+  display: inline-flex;
+  background: rgba(37, 99, 235, 0.1);
   border: none;
-  color: #fff;
+  color: #2563EB;
   padding: 8px 16px;
   border-radius: 20px;
   font-weight: 500;
   transition: all 0.3s ease;
   text-decoration: none;
+  align-items: center;
 }
-
 .site-login-btn:hover {
-  background: linear-gradient(135deg, #0056b3, #004085);
+  background: #2563EB;
   color: #fff;
-  transform: translateY(-1px);
+  text-decoration: none;
 }
 
 .site-user-dropdown {
   position: relative;
 }
-
 .site-user-dropdown-toggle {
   background: transparent;
   border: 0;
-  color: #fff;
+  color: #64748B;
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 6px 8px;
-  border-radius: 8px;
+  padding: 8px 15px;
+  border-radius: 999px;
+  font-size: 1rem;
   cursor: pointer;
+  transition: all 0.3s ease;
 }
-
 .site-user-dropdown-toggle:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(37, 99, 235, 0.1);
+  color: #2563EB;
 }
-
 .site-user-dropdown-toggle::after {
   content: "";
   display: inline-block;
@@ -361,8 +361,28 @@ input, select, textarea {
   height: 0;
   border-left: 5px solid transparent;
   border-right: 5px solid transparent;
-  border-top: 6px solid #ffffff;
+  border-top: 6px solid #0F172A;
   transition: transform 0.2s ease;
+}
+.site-user-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  background: #fff;
+  border-radius: 15px;
+  box-shadow: 0 2px 25px rgba(37, 99, 235, 0.15);
+  min-width: 200px;
+  padding: 0.5rem 0;
+  display: none;
+  z-index: 2000;
+  list-style: none;
+  margin: 0;
+}
+.site-user-dropdown.open .site-user-dropdown-menu {
+  display: block;
+}
+.site-user-dropdown.open .site-user-dropdown-toggle::after {
+  transform: rotate(180deg);
 }
 
 .site-user-avatar {
@@ -371,96 +391,58 @@ input, select, textarea {
   border-radius: 5%;
   overflow: hidden;
   display: inline-flex;
+  margin-left: 5px;
 }
-
 .site-user-avatar img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
-.site-user-dropdown-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  background: #fff;
-  border: 1px solid #dee2e6;
-  border-radius: 0.25rem;
-  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
-  min-width: 200px;
-  padding: 0.5rem 0;
-  display: none;
-  z-index: 2000;
-}
-
-.site-user-dropdown-menu {
-  list-style: none;
-  margin: 0;
-}
-
-.site-user-dropdown.open .site-user-dropdown-menu {
-  display: block;
-}
-
-.site-user-dropdown.open .site-user-dropdown-toggle::after {
-  transform: rotate(180deg);
-}
-
 .site-dropdown-header {
   padding: 0.5rem 1rem;
-  font-size: 0.875rem;
-  color: #6c757d;
-  font-weight: 600;
+  font-size: 1.2rem;
+  color: #0F172A;
+  font-weight: bold;
 }
-
 .site-dropdown-divider {
-  height: 1px;
+  height: 2px;
   background: #e9ecef;
   margin: 0.5rem 0;
 }
-
 .site-dropdown-item {
   display: block;
   padding: 0.5rem 1rem;
-  color: #212529;
+  color: #0F172A;
   text-decoration: none;
+  transition: all 0.3s ease;
 }
-
 .site-dropdown-item:hover {
-  background: #f8f9fa;
+  background: rgba(37, 99, 235, 0.1);
+  color: #2563EB;
 }
-
 .site-dropdown-item.text-danger {
   color: #dc3545;
 }
-
 .site-dropdown-item.text-danger:hover {
   background: #f8d7da;
 }
 
-/* Notification button */
 .notification-btn {
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 8px 12px !important;
-  border-radius: 50%;
+  padding: 14px 14px !important;
+  border-radius: 999px;
   transition: all 0.3s ease;
 }
-
 .notification-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  transform: scale(1.1);
+  background: rgba(37, 99, 235, 0.1);
 }
-
-.notification-btn i {
+.notification-btn i, .notification-btn .icon {
   font-size: 1.2rem;
-  color: #ffffff;
-}
-
-.notification-btn .icon {
-  color: #ffffff;
+  color: #0F172A;
 }
 
 .notification-badge {
@@ -478,15 +460,10 @@ input, select, textarea {
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 2px solid #212529;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-  animation: none;
 }
-
 .notification-badge.has-notifications {
   animation: pulse 2s infinite;
 }
-
 .notification-badge.large-count {
   font-size: 0.65rem;
   padding: 1px 4px;
@@ -503,17 +480,15 @@ input, select, textarea {
     transform: scale(1);
   }
 }
-/* Layout fixes for fixed header */
 body {
   padding-top: 62px;
 }
-
 @media (max-width: 768px) {
   body {
     padding-top: 62px;
   }
 }
-/* Mobile collapse */
+
 @media (max-width: 808px) {
   .site-navbar .site-container {
     height: 62px;
