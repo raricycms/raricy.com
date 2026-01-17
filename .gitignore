@@ -1,6 +1,7 @@
 __pycache__/
 venv/
 .env
+app/.env
 .DS_Store
 .vscode/
 .idea/

@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}
+云剪贴板 - Raricy.com
+{% endblock %}
+
+{% block extra_css %}
+<style>
+a {
+    color: blue;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div>
+    <input type="text" placeholder="请输入目的地编号……" id="target_link"><button id="redirect">前往</button>
+</div>
+<div>
+    {% for clip in clip_lst %}
+    <div>
+        <div>
+            {{clip["title"]}}
+            <a href="./{{clip["id"]}}">{{clip["id"]}}</a>
+        </div>
+    </div>
+    {% else %}
+    <div>you haven't written anything!</div>
+    {% endfor %}
+    <a href="/clipboard/upload">创建文章</a>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('redirect').addEventListener('click', () => {
+            const inputValue = document.getElementById('target_link').value;
+            if (inputValue.trim() !== '') {
+                window.location.href = './' + encodeURIComponent(inputValue);
+            } else {
+                alert('目的地不能为空ovo');
+            }
+        });
+    });
+</script>
+{% endblock %}
+
+{% block footer_text %}
+{% endblock %}

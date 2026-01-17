@@ -446,6 +446,7 @@
         transition: all 0.3s ease;
         min-width: 120px;
         text-align: center;
+        cursor: pointer;
     }
 
     .read-btn:hover {
@@ -786,7 +787,7 @@
         <span class="like-count-badge" id="like-count">{{ blog.likes_count or 0 }}</span>
     </button>
 
-    <a href="{{ url_for('blog.menu') }}?from_id={{blog.id}}" class="read-btn">📝 返回博客列表</a>
+    <button onclick="history.back()" class="read-btn">📝 返回上页</button>
 </div>
 {% if current_user.is_authenticated and (current_user.has_admin_rights or current_user.id == blog.author_id) %}
 <div class="admin-controls">

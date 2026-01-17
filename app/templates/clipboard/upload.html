@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}
+{% if clip %}
+{{clip.title}} 文章编辑 - Raricy.com
+{% else %}
+上传云剪贴板 - Raricy.com
+{% endif %}
+{% endblock %}
+
+{% block extra_css %}
+{% endblock %}
+
+{% block content %}
+<div>
+    <form id="uploadForm">
+        标题：<br/>
+        <input type="text" name="title" value="{{ clip.title if clip else '' }}" required>
+        <br/>
+        正文：<br/>
+        <textarea name="content" rows="20" cols="100">{{ clip.content if clip else ''}}</textarea>
+        是否公开：<input type="checkbox" name="publicity" {% if not clip or clip.publicity %}checked{% endif %} ><br/>
+        <button type="submit">
+            {% if clip %}更新{% else %}提交{% endif %}
+        </button>
+    </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const form = e.target;
+            const data = {
+                title: form.title.value,
+                content: form.content.value,
+                publicity: form.publicity.checked
+            };
+            try{
+                    const response = await fetch(window.location.pathname, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(data)
+                })
+                if (response.ok){
+                    const result = await response.json();
+                    console.log('成功');
+                    window.location.href = `/clipboard/${result.id}`
+                } else {
+                    const result = await response.json();
+                    alert(`上传失败，原因：${result.message}`)
+                }
+            }catch(error){
+                console.log(error);
+                alert('出错了qaq，快去找raricy')
+            }
+        })
+    })
+</script>
+{% endblock %}
+
+{% block footer_text %}
+{% endblock %}
