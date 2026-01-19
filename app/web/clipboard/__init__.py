@@ -52,6 +52,8 @@ def upload():
     if not valid:
         return jsonify({'code': 400, "message": message})
     clip_id = ClipService.create_clipboard(clip_dict)
+    if not clip_id:
+        return jsonify({'code': 400, "message": '一个用户只能发布200篇云剪贴板！'})
     return jsonify({"code": 200, "message": 'success', 'id': clip_id})
 
 @clip_bp.route('/<clip_id>/edit', methods=['GET'])

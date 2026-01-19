@@ -8,6 +8,10 @@ class ClipService:
 
     @staticmethod
     def create_clipboard(validated_data):
+        author_id = current_user.id
+        clip_count = ClipBoard.query.filter_by(author_id=author_id).count()
+        if clip_count > 200:
+            return None
         clip_id = generate_id()
 
         clip = ClipBoard(
