@@ -29,20 +29,21 @@
         <div class="site-container">
             <a class="site-brand" href="/">
                 <img src="/static/img/favicon.png" alt="My Icon" width="30" height="30">
-                <span>Raricy.com 聪明山</span>
+                <span>RARICY</span>
             </a>
             <button class="site-navbar-toggler" type="button" aria-expanded="false" aria-controls="siteNavbar" aria-label="切换导航">
                 <span class="bar"></span>
                 <span class="bar"></span>
                 <span class="bar"></span>
             </button>
+            
             <div class="site-navbar-collapse" id="siteNavbar">
                 <ul class="site-nav">
-                    <li><a class="site-link active" href="/">首页</a></li>
-                    <li><a class="site-link" href="{{ url_for('story.menu') }}">故事</a></li>
-                    <li><a class="site-link" href="{{ url_for('blog.menu') }}">博客</a></li>
-                    <li><a class="site-link" href="{{ url_for('tool.menu') }}">工具</a></li>
-                    <li><a class="site-link" href="{{ url_for('audit.public_logs') }}">公示日志</a></li>
+                   <!-- <li><a class="site-link active" href="/">首页</a></li> -->
+                   <li><a class="site-link" href="{{ url_for('story.menu') }}">故事</a></li>
+                   <li><a class="site-link" href="{{ url_for('blog.menu') }}">博客</a></li>
+                   <li><a class="site-link" href="{{ url_for('tool.menu') }}">工具</a></li>
+                   <li><a class="site-link" href="{{ url_for('audit.public_logs') }}">日志</a></li>
                 </ul>
                 <div class="site-actions">
                     {% if current_user.is_authenticated %}
@@ -52,10 +53,11 @@
                         </a>
                         <div class="site-user-dropdown">
                             <button class="site-user-dropdown-toggle" id="userDropdownToggle" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="userDropdownMenu">
+                                <span>{{ current_user.username }}</span>
                                 <span class="site-user-avatar">
                                     <img src="{{ url_for('auth.get_avatar', user_id=current_user.id) }}" alt="avatar">
                                 </span>
-                                <span>{{ current_user.username }}</span>
+                                
                             </button>
                             <ul class="site-user-dropdown-menu" role="menu" id="userDropdownMenu" aria-labelledby="userDropdownToggle">
                                 <li role="presentation" class="site-dropdown-header">用户信息</li>
@@ -72,8 +74,8 @@
                             </ul>
                         </div>
                     {% else %}
-                        <a class="site-login-btn" href="{{ url_for('auth.login') }}"><span class="icon icon-person-circle" style="margin-right:6px;"></span>登录</a>
-                        <a class="site-link" href="{{ url_for('auth.register') }}" style="color:#6c757d;">注册</a>
+                        <a class="site-login-btn" href="{{ url_for('auth.login') }}"><span class="icon icon-person-circle" style="margin-right:6px; vertical-align: middle;"></span>登录</a>
+                        <a class="site-link" href="{{ url_for('auth.register') }}">注册</a>
                     {% endif %}
                 </div>
             </div>
@@ -132,11 +134,11 @@
         console.log('user-authenticated meta内容:', userAuthenticatedMeta ? userAuthenticatedMeta.content : '不存在');
         console.log('notification-api-url meta内容:', notificationApiUrlMeta ? notificationApiUrlMeta.content : '不存在');
         // 滚动时导航栏背景渐变
-        window.addEventListener('scroll', function () {
-            const navbar = document.querySelector('.site-navbar');
-            if (!navbar) return;
-            navbar.style.background = (window.scrollY > 50) ? 'rgba(33, 37, 41, 0.98)' : 'rgba(33, 37, 41, 0.95)';
-        });
+        // window.addEventListener('scroll', function () {
+        //     const navbar = document.querySelector('.site-navbar');
+        //     if (!navbar) return;
+        //     navbar.style.background = (window.scrollY > 50) ? 'rgba(33, 37, 41, 0.98)' : 'rgba(33, 37, 41, 0.95)';
+        // });
 
         // 平滑滚动
         document.querySelectorAll('a[href^="#"]').forEach(anchor => {
