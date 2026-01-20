@@ -1,4 +1,4 @@
-from flask import Blueprint, json, render_template, current_app, jsonify, abort, request
+from flask import Blueprint, json, render_template, current_app, jsonify, abort, request, make_response
 from flask_login import current_user
 from app.extensions.decorators import authenticated_required
 from app.web.clipboard.service import ClipService
@@ -11,7 +11,7 @@ def validator(data):
         return False, 'wrong publicity format'
     
     # 检查 'content' 键
-    if 'content' not in data or not isinstance(data['content'], str) or len(data['content']) > 30000:
+    if 'content' not in data or not isinstance(data['content'], str) or len(data['content']) > 50000:
         return False, 'content too long'
     
     # 检查 'title' 键
@@ -50,10 +50,14 @@ def upload():
     clip_dict = request.get_json()
     valid, message = validator(clip_dict)
     if not valid:
-        return jsonify({'code': 400, "message": message})
+        response_data = make_response(jsonify({'code': 400, "message": message}))
+        response_data.status_code = 400
+        return response_data
     clip_id = ClipService.create_clipboard(clip_dict)
     if not clip_id:
-        return jsonify({'code': 400, "message": '一个用户只能发布200篇云剪贴板！'})
+        response_data = make_response(jsonify({'code': 400, "message": '一个用户只能发布200篇云剪贴板！'}))
+        response_data.status_code = 400
+        return response_data
     return jsonify({"code": 200, "message": 'success', 'id': clip_id})
 
 @clip_bp.route('/<clip_id>/edit', methods=['GET'])
