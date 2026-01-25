@@ -444,10 +444,10 @@ a:hover {
   background: var(--color-brand-secondary);
   color: var(--color-brand-primary);
 }
-.site-dropdown-item.text-danger {
+.site-dropdown-item.site-text-danger {
   color: var(--color-warning-primary);
 }
-.site-dropdown-item.text-danger:hover {
+.site-dropdown-item.site-text-danger:hover {
   background: var(--color-warning-secondary);
 }
 
@@ -725,6 +725,7 @@ body {
 
 .actions {
   margin-top: 10px;
+  margin-bottom: 10px;
   display: flex;
   gap: 10px;
 }
@@ -1141,6 +1142,7 @@ body.dark-mode .alert-danger {
 }
 
 .form-label {
+  color: var(--color-text-primary);
   display: inline-block;
   margin-bottom: 0.5rem;
   font-weight: 500;
@@ -1153,11 +1155,11 @@ body.dark-mode .alert-danger {
 .form-control {
   display: block;
   width: 100%;
-  padding: 0.375rem 0.75rem;
-  font-size: 1rem;
+  padding: 1rem 1rem;
+  font-size: 0.9rem;
   line-height: 1.5;
-  color: var(--color-text-primary);
-  background-color: var(--color-background-content);
+  color: var(--color-text-primary) !important;
+  background-color: var(--color-background-content) !important;
   background-clip: padding-box;
   border: none;
   border-radius: 15px;
@@ -1233,17 +1235,15 @@ body.dark-mode .alert-danger {
   margin-left: -1.5rem;
   margin-top: 0.25rem;
   vertical-align: top;
-  background-color: #fff;
-  border: 1px solid #ced4da;
+  background-color: var(--color-text-tertiary);
+  border: none;
   appearance: none;
-  border-radius: 0.25rem;
+  border-radius: 999px;
   cursor: pointer;
 }
 
 .form-check-input:checked {
-  background-color: #0d6efd;
-  border-color: #0d6efd;
-  box-shadow: inset 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+  background-color: var(--color-brand-primary);
 }
 
 .form-check-input:focus {
@@ -1253,24 +1253,12 @@ body.dark-mode .alert-danger {
 }
 
 .form-check-label {
+  color: var(--color-text-primary);
   cursor: pointer;
 }
-
-body.dark-mode .form-control {
-  color: #ecf0f1;
-  background-color: #1e1e1e;
-  border-color: #4a5568;
-}
-body.dark-mode .form-control:focus {
-  border-color: #5dade2;
-  box-shadow: 0 0 0 0.2rem rgba(93, 173, 226, 0.25);
-}
-body.dark-mode .form-text {
-  color: #a0aec0;
-}
-body.dark-mode .form-check-input {
-  background-color: #1e1e1e;
-  border-color: #4a5568;
+.form-check-label a {
+  color: var(--color-brand-primary);
+  text-decoration: none;
 }
 
 /* Toasts (no Bootstrap) */
@@ -2160,7 +2148,7 @@ a:hover {
 
 .blog-detail {
   max-width: 940px;
-  margin: 0 auto;
+  margin: 50px auto;
   padding: 0 20px;
   overflow-x: auto;
 }
@@ -2182,17 +2170,22 @@ a:hover {
 }
 
 .comment-list {
+  width: 100%;
   background-color: var(--box-bg);
   padding-left: 15px;
   list-style: none;
   padding-left: 15px;
-  margin-bottom: 12px;
-  margin-top: 12px;
+  margin-left: 15px;
+  margin-bottom: 15px;
+  overflow-wrap: break-word;
+  margin-top: 15px;
   border-left: 3px solid var(--color-brand-secondary);
+  line-height: 1.5;
 }
 .comment-section > .comment-list {
   border-left: none;
   padding-left: 0;
+  margin-left: 0;
 }
 
 .read-btn {
@@ -2757,7 +2750,7 @@ a:hover {
 }
 
 .auth-page {
-  background: linear-gradient(135deg, #f28391 0%, #2575fc 100%);
+  background: var(--color-background-page);
   background-attachment: fixed;
   min-height: 100vh;
   padding-top: 2rem;
@@ -2768,15 +2761,14 @@ a:hover {
   max-width: 600px;
   margin: 50px auto;
   padding: 30px;
-  box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
-  border-radius: 10px;
-  background-color: #fff;
+  border-radius: 30px;
+  background-color: var(--color-background-card);
 }
 
 .register-header {
   text-align: center;
   margin-bottom: 30px;
-  color: #333;
+  color: var(--color-text-primary);
 }
 
 .btn-register {
@@ -2789,14 +2781,6 @@ a:hover {
 .login-link {
   text-align: center;
   margin-top: 20px;
-}
-
-body.dark-mode .register-container {
-  background-color: #1e1e1e;
-  box-shadow: 0 0 20px rgba(0, 0, 0, 0.4);
-}
-body.dark-mode .register-header {
-  color: #ecf0f1;
 }
 
 body {

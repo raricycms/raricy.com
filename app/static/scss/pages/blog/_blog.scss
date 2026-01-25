@@ -408,7 +408,7 @@ a {
 
 .blog-detail {
     max-width: 940px;
-    margin: 0 auto;
+    margin: 50px auto;
     padding: 0 20px;
     overflow-x: auto;
 }
@@ -430,16 +430,21 @@ a {
 }
 
 .comment-list {
+    width: 100%;
     background-color: var(--box-bg);
     padding-left: 15px;
     list-style: none;
     padding-left: 15px;
-    margin-bottom: 12px;
-    margin-top: 12px;
+    margin-left: 15px;
+    margin-bottom: 15px;
+    overflow-wrap: break-word;
+    margin-top: 15px;
     border-left: 3px solid var(--color-brand-secondary);
+    line-height: 1.5;
     .comment-section > & {
         border-left: none;
         padding-left: 0;
+        margin-left: 0;
     }
 }
 

@@ -590,14 +590,17 @@
     function showCopySuccess(button) {
         const originalText = button.innerHTML;
         const originalBg = button.style.background;
+        const originalColor = button.style.color;
         
         button.innerHTML = '✅ 已复制';
         button.style.background = '#27ae60';
+        button.style.color = '#fff';
         button.disabled = true;
         
         setTimeout(() => {
             button.innerHTML = originalText;
-            button.style.background = originalBg || '#3498db';
+            button.style.background = originalBg;
+            button.style.color = originalColor;
             button.disabled = false;
         }, 2000);
     }

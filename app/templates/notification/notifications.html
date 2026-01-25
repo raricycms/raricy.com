@@ -44,13 +44,13 @@
                         <p class="notification-content">{{ notification.detail }}</p>
                     {% endif %}
                     {% if notification.object.type == 'blog' and notification.object.id %}
-                        <a href="{{ url_for('blog.blog_detail', blog_id=notification.object.id) }}" class="button button-primary">📖 查看博客</a>
+                        <a href="{{ url_for('blog.blog_detail', blog_id=notification.object.id) }}" class="button button-primary-small">📖 查看博客</a>
                     {% endif %}
                     <div style="margin-top:0.5rem;">
                         {% if not notification.read %}
-                            <button class="button button-primary" onclick="markAsRead('{{ notification.id }}')">✅ 标记已读</button>
+                            <button class="button button-primary-small" onclick="markAsRead('{{ notification.id }}')">✅ 标记已读</button>
                         {% endif %}
-                        <button class="button button-warning" onclick="deleteNotification('{{ notification.id }}')">🗑️ 删除</button>
+                        <button class="button button-warning-small" onclick="deleteNotification('{{ notification.id }}')">🗑️ 删除</button>
                     </div>
                 </div>
             {% endfor %}
