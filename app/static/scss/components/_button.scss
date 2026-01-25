@@ -3,20 +3,84 @@
 .button {
   display: inline-block;
   padding: 8px 16px;
-  border-radius: v.$radius-sm;
-  border: 1px solid transparent;
+  border: none;
   cursor: pointer;
   text-align: center;
 }
 
-.button--primary {
-  background: linear-gradient(45deg, v.$color-brand-primary, v.$color-brand-secondary);
-  color: #fff;
+.button-primary {
+  background: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+  font-size: 16px;
+  font-weight: bold;
+  border-radius: 999px;
+  padding: 10px 16px;
+  &:hover {
+    background: var(--color-brand-primary);
+    color: #fff;
+  }
+  &:active {
+    filter: brightness(0.6)
+  }
+}
+
+.button-primary-small {
+  background: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+  font-size: 12px;
+  font-weight: bold;
+  border-radius: 999px;
+  padding: 5px 10px;
+  &:hover {
+    background: var(--color-brand-primary);
+    color: #fff;
+  }
+  &:active {
+    filter: brightness(0.6)
+  }
+}
+
+
+.button-warning {
+  background: var(--color-warning-secondary);
+  color: var(--color-warning-primary);
+  border-radius: 999px;
+  font-size: 16px;
+  font-weight: bold;
+  padding: 10px 20px;
+  &:hover {
+    background: var(--color-warning-primary);
+    color: #fff;
+  }
+  &:active {
+    filter: brightness(0.6)
+  }
+}
+.actions {
+  margin-top: 10px;
+  display: flex;
+  gap: 10px;
+}
+
+.button-warning-small {
+  background: var(--color-warning-secondary);
+  color: var(--color-warning-primary);
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: bold;
+  padding: 5px 10px;
+  &:hover {
+    background: var(--color-warning-primary);
+    color: #fff;
+  }
+  &:active {
+    filter: brightness(0.6)
+  }
 }
 
 /* Legacy alias from site.css */
 .btn-brand {
-  background: linear-gradient(45deg, v.$color-brand-primary, v.$color-brand-secondary);
+  background: var(--color-brand-primary);
   color: #fff;
   border: 0;
 }

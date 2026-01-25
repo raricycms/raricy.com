@@ -5,7 +5,7 @@
 {% block extra_css %}
 <!-- CSS 样式表 -->
 <link rel="stylesheet" href="{{url_for('static', filename='css/hljs/default.min.css')}}" id="hljs-light" onerror="this.onerror=null; this.href='https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css'">
-<link rel="stylesheet" href="{{url_for('static', filename='css/hljs/monokai.min.css')}}" id="hljs-dark" disabled onerror="this.onerror=null; this.href='https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/monokai.min.css'">
+<link rel="stylesheet" href="{{url_for('static', filename='css/hljs/monokai.min.css')}}" id="hljs-dark" onerror="this.onerror=null; this.href='https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/monokai.min.css'">
 
 <!-- JavaScript 库（按依赖顺序加载） -->
 <script src="{{url_for('static', filename='js/dompurify.min.js')}}"></script>
@@ -80,666 +80,13 @@
         }
     };
 </script>
+
+<script>
+    
+</script>
+
 <!-- 移除有问题的 polyfill.io，改用更稳定的方案 -->
 <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" onerror="console.error('MathJax 加载失败')"></script>
-<style>
-    .read-hero {
-        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-        padding: 50px 0 30px;
-        text-align: center;
-    }
-
-    .read-hero h1 {
-        font-size: 2.2rem;
-        font-weight: 400;
-        color: #2c3e50;
-        margin-bottom: 15px;
-    }
-
-    .blog-meta {
-        color: #7f8c8d;
-        font-size: 1rem;
-        margin-bottom: 0;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        gap: 20px;
-        flex-wrap: wrap;
-    }
-
-    .blog-author::before {
-        margin-right: 5px;
-    }
-
-    .blog-date::before {
-        content: '📅';
-        margin-right: 5px;
-    }
-
-    .blog-content-container {
-        max-width: 900px;
-        margin: 40px auto 60px;
-        background: #fff;
-        border-radius: 8px;
-        box-shadow: 0 2px 16px rgba(0, 0, 0, 0.06);
-        padding: 40px;
-        font-size: 1.15rem;
-        line-height: 2;
-        color: #2c3e50;
-    }
-
-    .blog-content-container-container {
-        margin: 0 auto;
-        padding: 0 20px;
-    }
-
-    .blog-content-container p {
-        margin-bottom: 1.5em;
-        text-align: justify;
-    }
-
-    /* 博客内容标题样式 */
-    .blog-content-container h1,
-    .blog-content-container h2,
-    .blog-content-container h3,
-    .blog-content-container h4,
-    .blog-content-container h5,
-    .blog-content-container h6 {
-        margin: 2em 0 1em;
-        font-weight: 600;
-        color: #2c3e50;
-    }
-
-    .blog-content-container h1 {
-        font-size: 1.8rem;
-        border-bottom: 2px solid #3498db;
-        padding-bottom: 10px;
-    }
-
-    .blog-content-container h2 {
-        font-size: 1.5rem;
-    }
-
-    .blog-content-container h3 {
-        font-size: 1.3rem;
-    }
-
-    /* 代码块样式 */
-    .blog-content-container pre {
-        background: #f8f9fa;
-        border: 1px solid #e9ecef;
-        border-radius: 6px;
-        padding: 15px;
-        overflow-x: auto;
-        margin: 1.5em 0;
-    }
-
-    .blog-content-container code {
-        background: #f8f9fa;
-        padding: 2px 6px;
-        border-radius: 3px;
-        font-size: 0.9em;
-    }
-
-    .blog-content-container pre code {
-        background: none;
-        padding: 0;
-    }
-
-    /* 引用样式 */
-    .blog-content-container blockquote {
-        border-left: 4px solid #989898;
-        margin: 1.5em 0;
-        padding: 5px 15px;
-        background: #f8f9fa;
-        /*font-style: italic;*/
-        color: var(--slim-color);
-    }
-
-    .blog-content-container blockquote p {
-        margin-block-start: 0px !important;
-        margin-block-end: 0px !important;
-    }
-
-    /* 列表样式 */
-    .blog-content-container ul,
-    .blog-content-container ol {
-        margin: 1.5em 0;
-        padding-left: 2em;
-    }
-
-    .blog-content-container li {
-        margin-bottom: 0.5em;
-    }
-
-    /* 任务列表样式 */
-    .blog-content-container li input[type="checkbox"] {
-        margin-right: 0.5em;
-        cursor: default;
-    }
-
-    /* 任务列表样式 - 使用更兼容的选择器 */
-    .blog-content-container li.task-list-item {
-        list-style: none;
-        margin-left: -1.5em;
-    }
-
-    /* 后备样式：如果 :has 选择器不被支持，这个样式会作为备选 */
-    @supports not (selector(:has(*))) {
-        .blog-content-container li:first-child input[type="checkbox"] {
-            margin-left: -1.5em;
-        }
-    }
-
-    /* 链接样式 */
-    .blog-content-container a {
-        color: #3498db;
-        text-decoration: none;
-        border-bottom: 1px solid transparent;
-        transition: border-bottom 0.2s ease;
-    }
-
-    .blog-content-container a:hover {
-        color: #2980b9;
-        border-bottom: 1px solid #2980b9;
-        text-decoration: none;
-    }
-
-    /* 图片样式 */
-    .blog-content-container img {
-        max-width: 100%;
-        height: auto;
-        border-radius: 6px;
-        margin: 1.5em 0;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    }
-
-    /* 表格样式 */
-    .blog-content-container table {
-        width: 100%;
-        border-collapse: collapse;
-        margin: 1.5em 0;
-    }
-
-    .blog-content-container th,
-    .blog-content-container td {
-        border: 1px solid #ddd;
-        padding: 12px;
-        text-align: left;
-    }
-
-    .blog-content-container th {
-        background: #f8f9fa;
-        font-weight: 600;
-    }
-
-    /* MathJax 数学公式样式 */
-    .blog-content-container .MathJax {
-        font-size: 1.1em !important;
-        max-width: 100%;
-    }
-
-    .blog-content-container .MathJax_Display {
-        margin: 1.5em 0;
-        text-align: center;
-        overflow-x: auto;
-        overflow-y: hidden;
-    }
-
-    /* MathJax SVG 输出样式 */
-    .blog-content-container mjx-container[jax="CHTML"][display="true"] {
-        margin: 1.5em 0;
-        text-align: center;
-        overflow-x: auto;
-        overflow-y: hidden;
-    }
-
-    .blog-content-container mjx-container[jax="CHTML"] {
-        font-size: 1.1em;
-        max-width: 100%;
-    }
-
-    /* 深色模式下的数学公式 */
-    body.dark-mode .MathJax,
-    body.dark-mode mjx-container {
-        color: var(--text) !important;
-    }
-
-    .blog-content-container .highlight {
-        background: rgba(0, 0, 0, 0.03);
-        /* border: 1px solid #e9ecef; */
-        border-radius: 10px;
-        padding: 15px;
-        overflow-x: auto;
-        margin: 1.5em 0;
-        position: relative;
-    }
-
-    .blog-content-container .highlight pre {
-        background: none;
-        border: none;
-        padding: 0;
-        margin: 0;
-        font-family: monospace;
-        font-size: 0.9em;
-        line-height: 1.4;
-    }
-
-    .blog-content-container .highlight code {
-        background: none;
-        padding: 0;
-        border-radius: 0;
-        font-size: inherit;
-    }
-
-    /* 行内代码样式 */
-    .blog-content-container code:not(.highlight code) {
-        background: rgba(0, 0, 0, 0.06);
-        padding: 2px 6px;
-        border-radius: 5px;
-        font-size: 0.9em;
-        font-family: monospace;
-        color: var(--text);
-    }
-
-    /* 深色模式下的代码样式 */
-    body.dark-mode .blog-content-container .highlight {
-        background: rgba(255,255,255,0.06);
-        /* border-color: #4a5568; */
-    }
-
-    body.dark-mode .blog-content-container code:not(.highlight code) {
-        background: rgba(255, 255, 255, 0.1);
-        color: var(--text);
-    }
-
-    /* 深色模式下的Markdown备用显示样式 */
-    body.dark-mode .markdown-fallback {
-        background: #2d3748 !important;
-        border-color: #4a5568 !important;
-    }
-
-    body.dark-mode .markdown-fallback h6 {
-        color: #a0aec0 !important;
-    }
-
-    body.dark-mode .markdown-fallback pre {
-        color: #e2e8f0 !important;
-    }
-
-    /* 代码复制按钮样式优化 */
-    .copy-btn {
-        position: absolute;
-        top: 10px;
-        right: 10px;
-        background: #3498db;
-        color: white;
-        border: none;
-        padding: 5px 10px;
-        border-radius: 6px;
-        font-size: 0.8rem;
-        cursor: pointer;
-        /* opacity: 0.8; */
-        transition: all 0.2s ease;
-        font-family: system-ui, -apple-system, sans-serif;
-        z-index: 10;
-        user-select: none;
-    }
-
-    .copy-btn:hover {
-        opacity: 1;
-        background: #2980b9;
-        transform: translateY(-1px);
-    }
-    
-    .copy-btn:active {
-        transform: translateY(0);
-    }
-    
-    .copy-btn:disabled {
-        cursor: not-allowed;
-        /* opacity: 0.6; */
-    }
-
-    /* 深色模式下的复制按钮 */
-    body.dark-mode .copy-btn {
-        background: #3498db;
-        color: #ffffff;
-    }
-    
-    body.dark-mode .copy-btn:hover {
-        background: #3498db;
-    }
-
-    .read-controls {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        gap: 16px;
-        margin: 30px auto 40px;
-        max-width: 700px;
-        padding: 0 20px;
-        flex-wrap: wrap;
-    }
-
-    /* 管理员操作区域单独一行 */
-    .admin-controls {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        gap: 12px;
-        margin: -10px auto 30px; /* 与上方控件间距更紧凑一点 */
-        max-width: 900px;
-        padding: 0 20px;
-        flex-wrap: wrap;
-    }
-
-    .read-btn {
-        background: #2c3e50;
-        color: white;
-        border: none;
-        padding: 12px 24px;
-        border-radius: 6px;
-        font-weight: 500;
-        text-decoration: none;
-        font-size: 1rem;
-        transition: all 0.3s ease;
-        min-width: 120px;
-        text-align: center;
-    }
-
-    .read-btn:hover {
-        background: #34495e;
-        color: white;
-        text-decoration: none;
-        transform: translateY(-1px);
-    }
-
-    /* 点赞按钮样式 */
-    .like-btn {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        background: #ffffff;
-        color: #e74c3c;
-        border: 1px solid #f2d7d5;
-        padding: 10px 16px;
-        border-radius: 999px;
-        box-shadow: 0 2px 10px rgba(231, 76, 60, 0.08);
-        transition: all 0.2s ease;
-        cursor: pointer;
-    }
-
-    .like-btn:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 6px 18px rgba(231, 76, 60, 0.15);
-        border-color: #f5b7b1;
-    }
-
-    .like-btn:disabled {
-        opacity: 0.7;
-        cursor: not-allowed;
-    }
-
-    .like-btn .bi {
-        font-size: 1.1rem;
-    }
-
-    .like-count-badge {
-        background: #fdecea;
-        color: #c0392b;
-        padding: 2px 8px;
-        border-radius: 999px;
-        font-size: 0.85rem;
-        line-height: 1.2;
-    }
-
-    .like-btn.liked {
-        background: linear-gradient(135deg, #ff7675, #e74c3c);
-        color: #fff;
-        border-color: #e74c3c;
-        box-shadow: 0 6px 18px rgba(231, 76, 60, 0.25);
-    }
-
-    .like-btn.liked .like-count-badge {
-        background: rgba(255, 255, 255, 0.25);
-        color: #fff;
-    }
-
-    /* 深色主题下的未点赞样式 */
-    body.dark-mode .like-btn:not(.liked) {
-        background: #1f242b;
-        color: #ffb3ae;
-        border-color: #2f3640;
-        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
-    }
-
-    body.dark-mode .like-btn:not(.liked):hover {
-        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
-        border-color: #3a4350;
-    }
-
-    body.dark-mode .like-btn:not(.liked) .like-count-badge {
-        background: #2b323c;
-        color: #ffd7d4;
-    }
-
-    /* 主题切换按钮样式 */
-    #toggle-theme {
-        font-size: 0.9rem;
-        padding: 8px 16px;
-        border-radius: 20px;
-        transition: all 0.3s ease;
-        margin-top: 15px;
-    }
-
-    /* 阅读进度条 */
-    .reading-progress {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 0%;
-        height: 3px;
-        background: #3498db;
-        z-index: 1000;
-        transition: width 0.1s ease;
-    }
-
-    @media (max-width: 768px) {
-        .read-hero h1 {
-            font-size: 1.8rem;
-        }
-
-        .blog-meta {
-            flex-direction: column;
-            gap: 10px;
-        }
-
-        .blog-content-container {
-            padding: 25px 20px;
-            margin: 20px auto 40px;
-            font-size: 1.1rem;
-            line-height: 1.8;
-        }
-
-        .read-controls {
-            padding: 0 15px;
-            margin: 20px auto 30px;
-            gap: 12px;
-        }
-
-        .read-btn {
-            padding: 10px 16px;
-            font-size: 0.9rem;
-            min-width: 100px;
-        }
-
-        .blog-content-container-container {
-            padding: 0 10px;
-        }
-
-        .blog-content-container h1 {
-            font-size: 1.5rem;
-        }
-
-        .blog-content-container h2 {
-            font-size: 1.3rem;
-        }
-
-        .blog-content-container h3 {
-            font-size: 1.2rem;
-        }
-
-        /* 移动端：让复制按钮不遮挡代码，放到代码块下方显示 */
-        .copy-btn {
-            position: static;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            top: auto;
-            right: auto;
-            margin-top: 8px;
-            padding: 6px 10px;
-            font-size: 0.85rem;
-            width: auto;
-        }
-        /* 代码块在移动端内边距稍微增大，避免拥挤 */
-        .blog-content-container .highlight {
-            padding: 12px;
-        }
-
-        /* 移动端数学公式优化 */
-        .blog-content-container .MathJax_Display,
-        .blog-content-container mjx-container[jax="CHTML"][display="true"] {
-            margin: 1em 0;
-            font-size: 0.9em;
-        }
-
-        .blog-content-container .MathJax,
-        .blog-content-container mjx-container[jax="CHTML"] {
-            font-size: 0.9em !important;
-        }
-    }
-
-    /* CSS 变量 */
-    :root {
-        --bg: #f3f5f7;
-        --text: #2c3e50;
-        --box-bg: #ffffff;
-        --hero-bg: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-        --btn-bg: #2c3e50;
-        --btn-hover-bg: #34495e;
-        --shadow: 0 2px 16px rgba(0, 0, 0, 0.06);
-        --code-bg: #f8f9fa;
-        --border-color: #e9ecef;
-        --link-color: #3498db;
-        --link-hover-color: #2980b9;
-        --slim-color: #708090;
-    }
-
-    body.dark-mode {
-        --bg: #121212;
-        --text: #ecf0f1;
-        --box-bg: #1e1e1e;
-        --hero-bg: linear-gradient(135deg, #1c1d22 0%, #212224 100%);
-        --btn-bg: #3498db;
-        --btn-hover-bg: #2980b9;
-        --shadow: 0 2px 16px rgba(0, 0, 0, 0.3);
-        --code-bg: #262626;
-        --border-color: #4a5568;
-        --link-color: #5dade2;
-        --link-hover-color: #3498db;
-        --slim-color: #a0b0c0;
-    }
-
-    body {
-        background-color: var(--bg);
-        color: var(--text);
-        transition: background-color 0.3s ease, color 0.3s ease;
-    }
-
-    .read-hero {
-        background: var(--hero-bg);
-    }
-
-    .read-hero h1,
-    .blog-meta {
-        color: var(--text);
-    }
-
-    .meta {
-        color: var(--text);
-    }
-    .blog-content-container {
-        background-color: var(--box-bg);
-        color: var(--text);
-        box-shadow: var(--shadow);
-    }
-
-    .blog-content-container h1,
-    .blog-content-container h2,
-    .blog-content-container h3,
-    .blog-content-container h4,
-    .blog-content-container h5,
-    .blog-content-container h6 {
-        color: var(--text);
-    }
-
-    .blog-content-container pre,
-    .blog-content-container code,
-    .blog-content-container blockquote,
-    .blog-content-container th {
-        background: var(--code-bg);
-    }
-
-    .blog-content-container th,
-    .blog-content-container td {
-        border-color: var(--border-color);
-    }
-
-    .blog-content-container a {
-        color: var(--link-color);
-    }
-
-    .blog-content-container a:hover {
-        color: var(--link-hover-color);
-        border-bottom-color: var(--link-hover-color);
-    }
-
-    .read-btn {
-        background: var(--btn-bg);
-    }
-
-    .comment-meta {
-        font-size: 0.875rem;
-        color: rgba(0, 0, 0, 0.55);
-        margin-bottom: 0.25rem;
-    }
-    body.dark-mode .comment-meta {
-        color: rgba(255, 255, 255, 0.55);
-    }
-
-    .comment-btn {
-        background-color: var(--box-bg);
-        color: var(--text);
-    }
-
-    .comment-form textarea{
-        background-color: var(--box-bg);
-        color: var(--text);
-    }
-/*
-    .comment-list {
-        background-color: var(--box-bg);
-        margin: 10px;
-        padding-left: 15px;
-        border-radius: 5px;
-    }
-  */
-    .read-btn:hover {
-        background: var(--btn-hover-bg);
-    }
-</style>
 {% endblock %}
 
 {% block content %}
@@ -752,10 +99,10 @@
         <span class="blog-author">
             <img src="/auth/avatar/{{ blog.author_id }}"
                 style="width:24px; height:24px; border-radius:10%; margin-right:8px; vertical-align: bottom;">
-            {{ blog.author }}</span>
+            {{ blog.author }}
+        </span>
         <!-- <span class="blog-date">{{ blog.date }}</span> -->
     </div>
-    <button id="toggle-theme" class="btn btn-outline-secondary">亮色模式</button>
 </section>
 
 <div class="blog-content-container-container">
@@ -791,21 +138,22 @@
 {% if current_user.is_authenticated and (current_user.has_admin_rights or current_user.id == blog.author_id) %}
 <div class="admin-controls">
     {% if current_user.has_admin_rights or current_user.id == blog.author_id %}
-    <button id="admin-likers-btn" class="btn btn-outline-primary" data-likers-url="{{ url_for('blog.likers', blog_id=blog.id) }}">
+    <button id="admin-likers-btn" class="button button-primary" data-likers-url="{{ url_for('blog.likers', blog_id=blog.id) }}">
         👍 查看点赞者
     </button>
     {% endif %}
+    {% if current_user.id == blog.author_id %}
+    <a href="{{ url_for('blog.edit_blog', blog_id=blog.id) }}" class="button button-primary">✏️ 编辑文章</a>
+    {% endif %}
     {% if current_user.has_admin_rights or current_user.id == blog.author_id %}
-    <button id="admin-delete-btn" class="btn btn-outline-danger" data-delete-url="{{ url_for('blog.delete_blog', blog_id=blog.id) }}" data-redirect-url="{{ url_for('blog.menu') }}">
+    <button id="admin-delete-btn" class="button button-warning" data-delete-url="{{ url_for('blog.delete_blog', blog_id=blog.id) }}" data-redirect-url="{{ url_for('blog.menu') }}">
         🗑️ 删除文章
     </button>
-    {% endif %}
-    {% if current_user.id == blog.author_id %}
-    <a href="{{ url_for('blog.edit_blog', blog_id=blog.id) }}" class="btn btn-outline-primary">✏️ 编辑文章</a>
     {% endif %}
     
 </div>
 {% endif %}
+
 {% if current_user.is_authenticated and current_user.has_admin_rights or current_user.id == blog.author_id %}
 <!-- 点赞者列表 Modal -->
 <div class="modal fade" id="likersModal" tabindex="-1" aria-labelledby="likersModalLabel" aria-hidden="true" role="dialog">
@@ -848,8 +196,8 @@
         {% endif %}
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-modal-close>取消</button>
-        <button type="button" id="confirm-delete-btn" class="btn btn-danger">确认删除</button>
+        <button type="button" class="button button-primary" data-modal-close>取消</button>
+        <button type="button" id="confirm-delete-btn" class="button button-warning">确认删除</button>
       </div>
     </div>
   </div>
@@ -872,8 +220,8 @@
         </div>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-modal-close>取消</button>
-        <button type="button" id="comment-confirm-delete-btn" class="btn btn-danger">确认删除</button>
+        <button type="button" class="button button-primary" data-modal-close>取消</button>
+        <button type="button" id="comment-confirm-delete-btn" class="button button-warning">确认删除</button>
       </div>
     </div>
   </div>
@@ -890,10 +238,10 @@
              data-is-admin="{{ 1 if current_user.is_authenticated and current_user.has_admin_rights else 0 }}">
 
         {% if current_user.is_authenticated and current_user.is_core_user %}
-        <form class="comment-form" id="comment-form">
-            <textarea name="content" id="comment-content" maxlength="2000" placeholder="说点什么…（最多2000字）"></textarea>
+        <form class="comment-form" id="comment-form" style="overflow: auto;">
+            <textarea name="content" id="comment-content" class="form-control" maxlength="2000" placeholder="说点什么…（最多2000字）"></textarea>
             <div class="mt-2">
-                <button type="submit" class="btn btn-primary btn-sm">发表评论</button>
+                <button type="submit" class="button button-primary" style="margin-top: 10px;">发表评论</button>
             </div>
             <input type="hidden" name="parent_id" id="comment-parent-id" value="">
         </form>
@@ -1309,23 +657,9 @@
         });
     }
     // 主题切换功能
-    const toggleBtn = document.getElementById('toggle-theme');
-    const isDark = localStorage.getItem('theme') === 'dark';
 
-    if (isDark) {
-        document.body.classList.add('dark-mode');
-        toggleBtn.innerText = '深色模式';
-    }
-    updateHighlightTheme(isDark);
 
-    toggleBtn.addEventListener('click', () => {
-        document.body.classList.toggle('dark-mode');
-        const nowDark = document.body.classList.contains('dark-mode');
-        localStorage.setItem('theme', nowDark ? 'dark' : 'light');
-        toggleBtn.innerText = nowDark ? '深色模式' : '亮色模式';
-        updateHighlightTheme(nowDark);
-    });
-
+    
     // 阅读进度条
     function updateReadingProgress() {
         const article = document.querySelector('.blog-content-container');
@@ -1502,15 +836,6 @@
         });
         
         // 主题设置
-        let isDark = localStorage.getItem('theme') === 'dark';
-        if (!localStorage.getItem('theme')) {
-            if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-                document.body.classList.add('dark-mode');
-                document.getElementById('toggle-theme').innerText = '深色模式';
-                isDark = true;
-            }
-        }
-        updateHighlightTheme(document.body.classList.contains('dark-mode'));
         updateReadingProgress();
         addImageZoom();
 
@@ -1522,11 +847,6 @@
             }
         }
     });
-
-    function updateHighlightTheme(isDark) {
-        document.getElementById('hljs-light').disabled = isDark;
-        document.getElementById('hljs-dark').disabled = !isDark;
-    }
 
     // Lightweight modal helpers (no Bootstrap), with a11y handling
     function setBackgroundInert(enable, excludeEl) {
@@ -1644,7 +964,6 @@
             }
         });
     })();
-
     // ===== 评论功能 =====
     (function () {
         const section = document.getElementById('comment-section');
@@ -1701,7 +1020,7 @@
             if (CAN_COMMENT) {
                 const replyBtn = document.createElement('button');
                 replyBtn.type = 'button';
-                replyBtn.className = 'btn btn-link btn-sm comment-btn';
+                replyBtn.className = 'button button-primary-small';
                 replyBtn.textContent = '回复';
                 replyBtn.addEventListener('click', () => openReply(cmt.id, li));
                 actions.appendChild(replyBtn);
@@ -1710,7 +1029,7 @@
             if (IS_ADMIN || (cmt.author && cmt.author.id === CURRENT_USER_ID)) {
                 const delBtn = document.createElement('button');
                 delBtn.type = 'button';
-                delBtn.className = 'btn btn-link btn-sm text-danger comment-btn';
+                delBtn.className = 'button button-warning-small';
                 delBtn.textContent = '删除';
                 const requiresReason = IS_ADMIN && (!cmt.author || cmt.author.id !== CURRENT_USER_ID);
                 delBtn.addEventListener('click', () => openCommentDeleteModal(cmt.id, requiresReason));
@@ -1968,6 +1287,27 @@
             }
         });
     })();
+    function updateHljsTheme() {
+        const lightTheme = document.getElementById('hljs-light');
+        const darkTheme = document.getElementById('hljs-dark');
+        if (document.documentElement.getAttribute('data-theme') === 'dark') {
+            lightTheme.disabled = true;   // 禁用浅色主题
+            darkTheme.disabled = false;   // 启用暗色主题
+        } else {
+            lightTheme.disabled = false;  // 启用浅色主题
+            darkTheme.disabled = true;    // 禁用暗色主题
+    }
+    }
+    const observer = new MutationObserver(function(mutations) {
+        mutations.forEach(function(mutation) {
+            if (mutation.attributeName === 'data-theme') {
+               updateHljsTheme();
+            }
+        });
+    });
+    observer.observe(document.documentElement, { attributes: true });
+
+    
 </script>
 {% endblock %}
 

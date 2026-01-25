@@ -1,6 +1,22 @@
 @use 'variables' as v;
 @use 'breakpoints' as bp;
 
+// abstracts/_mixins.scss
+@use 'theme-map' as *;
+
+// @mixin themeify {
+//   @each $theme-name, $theme-map in $themes {
+//     [data-theme="#{$theme-name}"] & {
+//       $theme-map: $theme-map !global;
+//       @content;
+//     }
+//   }
+// }
+// @function themed($key) {
+//   @return map-get($theme-map, $key);
+// }
+
+
 @mixin truncate($lines: 1) {
   overflow: hidden;
   display: -webkit-box;
@@ -12,4 +28,5 @@
   padding-left: v.$space-4;
   padding-right: v.$space-4;
 }
+
 

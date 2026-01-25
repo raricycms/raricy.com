@@ -1,12 +1,13 @@
 /* Site footer (custom, no Bootstrap dependency) */
 .site-footer {
-  background-color: #212529;
-  color: #ffffff;
+  background-color: var(--color-background-card);
+  color: var(--color-text-primary);
 //  margin-top: 2rem;
   padding: 0 0 1.5rem;
+  box-shadow: var(--shadow-card-brand);
 }
 .site-footer a { color: #ffffff; text-decoration: none; }
-.site-footer a:hover { color: #007bff; }
+.site-footer a:hover { color: var(--color-brand-primary) }
 
 .site-footer-container {
   width: 100%;
@@ -33,14 +34,14 @@
 }
 .site-footer-left, .site-footer-right { flex: 1; }
 .site-footer h5 {
-  color: #ffffff;
+  color: var(--color-text-primary);
   margin-bottom: 1rem;
   /* Match Bootstrap h5 scale */
   font-size: 1.25rem;
   line-height: 1.2;
   font-weight: 500;
 }
-.site-footer p { color: #ffffff; margin-bottom: 0.5rem; }
-.social-links a { display: inline-block; margin-right: 1rem; vertical-align: baseline; }
+.site-footer p { color: var(--color-text-primary); margin-bottom: 0.5rem; }
+.social-links a { color: var(--color-text-primary); display: inline-block; margin-right: 1rem; vertical-align: baseline; }
 .social-links a:last-child { margin-right: 0; }
 

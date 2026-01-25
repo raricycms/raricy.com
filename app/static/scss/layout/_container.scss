@@ -6,6 +6,7 @@
   width: 100%;
   margin-left: auto;
   margin-right: auto;
+  color: var(--color-background-page);
   @include m.container-padding;
   @include bp.up(bp.$bp-xl) { max-width: v.$container-max; }
 }

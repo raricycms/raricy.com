@@ -1,0 +1,13 @@
+// abstracts/_theme-map.scss
+
+$themes:(
+    light:(
+        color-brand-primary: #2563EB,
+        color-brand-secondary: rgba(37, 99, 235, 0.1),
+        color-background-card: #fff,
+        color-background-page: #F8FAFC,
+        color-text-primary: #0F172A,
+        color-text-secondary: #64748B,
+        shadow-card-brand: 0 2px 25px rgba(37, 99, 235, 0.15)
+    )
+);

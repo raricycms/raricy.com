@@ -1,11 +1,8 @@
 /* Site header (custom, no Bootstrap dependency) */
 
-$color-light-theme: #2563EB;
-$color-light-theme-transparent: rgba(37, 99, 235, 0.1);
-$color-light-background:#fff;
-$color-light-text-primary: #0F172A;
-$color-light-text-secondary: #64748B;
-$shadow-light-theme: 0 2px 25px rgba(37, 99, 235, 0.15);
+* {
+  transition: color 0.3s ease, background-color 0.3s ease;
+}
 
 a { 
   text-decoration: none;
@@ -20,10 +17,10 @@ a {
   left: 0;
   right: 0;
   z-index: 1030;
-  background: $color-light-background;
+  background: var(--color-background-card);
   // backdrop-filter: blur(10px);
   // transition: background 0.3s ease;
-  box-shadow: $shadow-light-theme;
+  box-shadow: var(--shadow-card-brand);
 }
 
 .site-container {
@@ -55,7 +52,7 @@ a {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  color: $color-light-text-secondary;
+  color: var(--color-text-secondary);
   text-decoration: none;
   font-weight: bold;
   font-size: 1.5rem;
@@ -75,13 +72,13 @@ a {
   flex-direction: column;
   gap: 4px;
   cursor: pointer;
-  color: $color-light-text-primary;
+  color: var(--color-text-primary);
 
   .bar {
     display: block;
     width: 22px;
     height: 2px;
-    background: $color-light-text-primary;
+    background: var(--color-text-primary);
     margin: 3px 0;
     transition: transform 0.2s ease, opacity 0.2s ease;
   }
@@ -109,7 +106,7 @@ a {
 
 .site-link {
   display: block;
-  color: $color-light-text-primary;
+  color: var(--color-text-primary);
   text-decoration: none;
   padding: 0.5rem 1rem;
   border-radius: 999px;
@@ -117,12 +114,12 @@ a {
   transition: color 0.3s ease, background-color 0.2s ease;
 
   &:hover { 
-    color: $color-light-theme; 
-    background: $color-light-theme-transparent; 
+    color: var(--color-brand-primary); 
+    background: var(--color-brand-secondary); 
   }
 
   // &.active { 
-  //   color: $color-light-theme; 
+  //   color: --color-brand-primary; 
   // }
 }
 
@@ -134,9 +131,9 @@ a {
 
 .site-login-btn {
   display: inline-flex;
-  background: $color-light-theme-transparent;
+  background: var(--color-brand-secondary);
   border: none;
-  color: $color-light-theme;
+  color: var(--color-brand-primary);
   padding: 8px 16px;
   border-radius: 20px;
   font-weight: 500;
@@ -145,7 +142,7 @@ a {
   align-items: center;
 
   &:hover { 
-    background: $color-light-theme; 
+    background: var(--color-brand-primary); 
     color: #fff; 
     // transform: translateY(-1px); 
     text-decoration: none;
@@ -157,7 +154,7 @@ a {
   &-toggle {
     background: transparent;
     border: 0;
-    color: $color-light-text-secondary;
+    color: var(--color-text-secondary);
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -168,8 +165,8 @@ a {
     transition: all 0.3s ease; 
 
     &:hover { 
-      background: $color-light-theme-transparent; 
-      color: $color-light-theme;
+      background: var(--color-brand-secondary); 
+      color: var(--color-brand-primary);
     }
 
     &::after {
@@ -180,8 +177,8 @@ a {
       height: 0;
       border-left: 5px solid transparent;
       border-right: 5px solid transparent;
-      border-top: 6px solid $color-light-text-primary;
-      transition: transform 0.2s ease;
+      border-top: 6px solid var(--color-text-primary);
+      transition: all 0.3s ease;
     }
   }
 
@@ -189,10 +186,10 @@ a {
     position: absolute;
     top: calc(100% + 6px);
     right: 0;
-    background: #fff;
+    background: var(--color-background-card);
     // border: 1px solid #dee2e6;
     border-radius: 15px;
-    box-shadow: $shadow-light-theme;
+    box-shadow: var(--shadow-card-brand);
     min-width: 200px;
     padding: 0.5rem 0;
     display: none;
@@ -231,37 +228,37 @@ a {
 }
 
 .site-dropdown {
-   
+  
   &-header { 
     padding: 0.5rem 1rem; 
     font-size: 1.2rem; 
-    color: $color-light-text-primary; 
+    color: var(--color-text-primary); 
     font-weight: bold; 
   }
 
   &-divider { 
     height: 2px; 
-    background: #e9ecef; 
+    background: var(--color-text-tertiary); 
     margin: 0.5rem 0; 
   }
 
   &-item { 
     display: block; 
     padding: 0.5rem 1rem; 
-    color: $color-light-text-primary; 
+    color: var(--color-text-primary); 
     text-decoration: none; 
     transition: all 0.3s ease;
 
     &:hover { 
-      background: $color-light-theme-transparent; 
-      color: $color-light-theme
+      background: var(--color-brand-secondary); 
+      color: var(--color-brand-primary)
     }
 
     &.text-danger { 
-      color: #dc3545; 
+      color: var(--color-warning-primary); 
 
       &:hover { 
-        background: #f8d7da; 
+        background: var(--color-warning-secondary); 
       }
     }
   }
@@ -278,13 +275,14 @@ a {
   transition: all 0.3s ease; 
 
   &:hover { 
-    background: $color-light-theme-transparent; 
+    background: var(--color-brand-secondary); 
     // transform: scale(1.1); 
+    color: var(--color-brand-primary)
   }
 
   i, .icon { 
     font-size: 1.2rem; 
-    color: $color-light-text-primary; 
+    color: var(--color-text-primary); 
   }
 }
 
@@ -315,6 +313,33 @@ a {
     padding: 1px 4px; 
   }
 }
+
+.theme-toggle-button {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border-radius: 999px;
+  border: none;
+  background: none;
+  color: var(--color-text-primary);
+  padding: 14px 14px !important; 
+  transition: all 0.3s ease; 
+
+  &:hover { 
+    background: var(--color-brand-secondary); 
+    color: var(--color-brand-primary)
+    // transform: scale(1.1); 
+  }
+  
+  .rotated {
+    transform: rotate(180deg);
+  }
+  .icon { 
+    font-size: 1.2rem; 
+    color: var(--color-text-primary); 
+  }
+}
+
 
 @keyframes pulse { 
   0% { transform: scale(1); } 

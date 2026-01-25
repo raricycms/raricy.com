@@ -19,7 +19,14 @@
 
     <!-- Global site styles (SCSS build output) -->
     <link rel="stylesheet" href="{{ static_url('css/main.css') }}">
-
+    <script>
+        (function() {
+            const savedThemeName = localStorage.getItem('theme') || 'light';
+            if (savedThemeName) {
+                document.documentElement.setAttribute('data-theme', savedThemeName);
+            }
+        })()
+    </script>
     {% block extra_css %}{% endblock %}
 </head>
 
@@ -46,8 +53,9 @@
                    <li><a class="site-link" href="{{ url_for('audit.public_logs') }}">日志</a></li>
                 </ul>
                 <div class="site-actions">
+                    <button class="theme-toggle-button" id="themeToggle"><span class="icon icon-theme-toggle"></button>
                     {% if current_user.is_authenticated %}
-                            <a class="notification-btn" href="{{ url_for('notifications.notification_page') }}" title="我的通知">
+                        <a class="notification-btn" href="{{ url_for('notifications.notification_page') }}" title="我的通知">
                             <span class="icon icon-bell-fill" aria-hidden="true"></span>
                             <span class="notification-badge" id="notificationBadge" style="display: none;">0</span>
                         </a>
@@ -336,6 +344,40 @@
         };
 
         // 取消不再需要的fallback相关函数（已移除）
+        
+
+        const themeConfig = {
+            light: {
+                'data-theme': 'light'
+            },
+            dark: {
+                'data-theme': 'dark'
+            }
+        };
+        function switchTheme(themeName) {
+            const root = document.documentElement;
+            const config = themeConfig[themeName];
+            root.setAttribute('data-theme', config['data-theme']);
+            localStorage.setItem('theme', themeName);
+            console.log('切换主题:', themeName);
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const savedThemeName = localStorage.getItem('theme') || 'light';
+            switchTheme(savedThemeName);
+        })
+
+        document.getElementById('themeToggle').addEventListener('click', function() {
+            const currentTheme = document.documentElement.getAttribute('data-theme');
+            const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+            switchTheme(newTheme);
+        });
+        let rotationAngle = 0;
+        const themeToggleButton = document.getElementById('themeToggle');
+        themeToggleButton.addEventListener('click', function() {
+            rotationAngle += 180;       
+            themeToggleButton.style.transform = `rotate(${rotationAngle}deg)`;
+        })
     </script>
 
     <!-- 页面特定的JavaScript -->
