@@ -1,5 +1,6 @@
 from flask import Blueprint, render_template, request, jsonify
 from app.models import User, InviteCode
+from app.models.audit import AdminActionLog
 from flask_login import login_required, current_user
 from app.extensions.decorators import admin_required, owner_required
 from app.extensions import db
@@ -177,6 +178,23 @@ def ban_user():
     user_id = data['user_id']
     hours = data['hours']
     reason = data['reason']
+
+    max_reason_length = 200
+    if len(reason) > max_reason_length:
+        return jsonify({'success': False, 'message': f'禁言原因不能超过 {max_reason_length} 个字符'}), 400
+    
+    min_ban_interval = timedelta(minutes=1)  # 设置禁言间隔时长为 1 分钟
+    last_ban_action = AdminActionLog.query.filter_by(
+        admin_id=current_user.id,
+        action='ban_user'
+    ).order_by(AdminActionLog.created_at.desc()).first()
+    
+    if last_ban_action and datetime.now() - last_ban_action.created_at < min_ban_interval:
+        remaining_time = min_ban_interval - (datetime.now() - last_ban_action.created_at)
+        return jsonify({
+            'success': False,
+            'message': f'操作过于频繁，请等待 {int(remaining_time.seconds)} 秒后再试'
+        }), 429
     
     try:
         hours = float(hours)
@@ -252,6 +270,10 @@ def unban_user():
     
     user_id = data['user_id']
     reason = data.get('reason', '')
+    
+    max_reason_length = 200
+    if len(reason) > max_reason_length:
+        return jsonify({'success': False, 'message': f'解除禁言原因不能超过 {max_reason_length} 个字符'}), 400
     
     user = User.query.get(user_id)
     if not user:
