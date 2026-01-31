@@ -159,7 +159,7 @@ input, select, textarea {
   width: 100%;
   margin-left: auto;
   margin-right: auto;
-  color: var(--color-background-page);
+  color: var(--color-text-primary);
   padding-left: 16px;
   padding-right: 16px;
 }
@@ -585,7 +585,7 @@ body {
 }
 
 .site-footer a {
-  color: #ffffff;
+  color: #8899ef;
   text-decoration: none;
 }
 
@@ -2899,7 +2899,7 @@ body {
 
 .btn-primary {
   border-color: #3498db;
-  color: #2980b9;
+  color: #d3d5e9;
 }
 
 .btn-primary:hover {
@@ -2940,3 +2940,5 @@ body {
   font-size: 3rem;
   margin-bottom: 0.5rem;
 }
+
+/*# sourceMappingURL=main.css.map */
