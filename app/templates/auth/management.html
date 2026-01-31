@@ -6,7 +6,7 @@ Raricy.com - 用户管理页面
 {% block extra_css %}
 <style>
     body {
-        background-color: #f8f9fa;
+        background-color: var(--color-background-page);
         min-height: 100vh;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     }
@@ -15,7 +15,7 @@ Raricy.com - 用户管理页面
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
         padding: 30px;
         border-radius: 8px;
-        background: white;
+        background: var(--color-background-card);
         border: 1px solid #e9ecef;
     }
     .table {
@@ -34,9 +34,11 @@ Raricy.com - 用户管理页面
     .table tbody tr {
         border-bottom: 1px solid #dee2e6;
     }
+    /*
     .table tbody tr:hover {
         background-color: #f8f9fa;
     }
+    */
     .table tbody td {
         padding: 15px 12px;
         border: none;

@@ -29,7 +29,9 @@ img {
   --color-background-card: #fff;
   --color-background-page: #F8FAFC;
   --color-background-content: #eff2f5;
-  --color-text-primary: #0F172A;
+  --color-background-card-unrend: #fffdf0;
+  --color-border-unread: #f1c40f;
+  --color-text-primary: #0f172a;
   --color-text-secondary: #64748B;
   --color-text-tertiary: #dde4ee;
   --color-warning-primary: #ea3b3b;
@@ -43,6 +45,8 @@ img {
   --color-background-page: #131517;
   --color-background-card: #181A1D;
   --color-background-content: #21252A;
+  --color-background-card-unread: #08102D;
+  --color-border-unread: #033ae3;
   --color-text-primary: #f1f5f9;
   --color-text-secondary: #94A3B8;
   --color-text-tertiary: #2b3036;
@@ -2855,6 +2859,11 @@ body {
   border-radius: 30px;
   padding: 1.5rem;
   margin-bottom: 1rem;
+}
+
+.notification-card.unread {
+  border-left: 4px solid var(--color-border-unread);
+  background: var(--color-background-card-unread);
 }
 
 .notification-title {
