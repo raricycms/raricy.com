@@ -1,0 +1,362 @@
+{% extends "base.html" %}
+{% block title %}
+raricy.com 重定向工具
+{% endblock %}
+{% block extra_css %}
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+        }
+        
+/*        body {
+            background-color: #f5f7fa;
+            color: #333;
+            line-height: 1.6;
+            padding: 20px;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+  */      
+        .container {
+            width: 100%;
+            max-width: 800px;
+            background-color: white;
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+            padding: 40px;
+            text-align: center;
+        }
+        
+        .header {
+            margin-bottom: 40px;
+        }
+        
+        h1 {
+            color: #2c3e50;
+            font-size: 2.4rem;
+            margin-bottom: 8px;
+            font-weight: 700;
+        }
+        
+        .subtitle {
+            color: #7f8c8d;
+            font-size: 1.1rem;
+            margin-bottom: 20px;
+        }
+        
+        .tagline {
+            color: #3498db;
+            font-weight: 500;
+            font-size: 1.2rem;
+            margin-bottom: 5px;
+        }
+        
+        .input-section {
+            margin-bottom: 40px;
+            text-align: left;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 10px;
+            color: #2c3e50;
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+        
+        .input-group {
+            display: flex;
+            gap: 10px;
+        }
+        
+        input[type="url"] {
+            flex: 1;
+            padding: 16px 20px;
+            font-size: 1.1rem;
+            border: 2px solid #e1e8ed;
+            border-radius: 12px;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+        
+        input[type="url"]:focus {
+            border-color: #3498db;
+            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.2);
+        }
+        
+        .btn {
+            padding: 16px 32px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .btn:hover {
+            background-color: #2980b9;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(52, 152, 219, 0.3);
+        }
+        
+        .btn:active {
+            transform: translateY(0);
+        }
+        
+        .shortcuts-section {
+            margin-bottom: 40px;
+            text-align: left;
+        }
+        
+        .shortcuts-title {
+            color: #2c3e50;
+            font-weight: 600;
+            font-size: 1.1rem;
+            margin-bottom: 20px;
+        }
+        
+        .shortcut-buttons {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+        }
+        
+        .shortcut-btn {
+            padding: 16px;
+            background-color: #f8f9fa;
+            color: #2c3e50;
+            border: 2px solid #e1e8ed;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .shortcut-btn:hover {
+            background-color: #e8f4fc;
+            border-color: #3498db;
+            transform: translateY(-3px);
+            box-shadow: 0 5px 15px rgba(52, 152, 219, 0.1);
+        }
+        
+        .shortcut-name {
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+        
+        .shortcut-url {
+            font-size: 0.85rem;
+            color: #7f8c8d;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            width: 100%;
+        }
+        
+        .instructions {
+            background-color: #f8f9fa;
+            padding: 20px;
+            border-radius: 12px;
+            margin-top: 30px;
+            text-align: left;
+        }
+        
+        .instructions h3 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+            font-size: 1.1rem;
+        }
+        
+        .instructions ul {
+            padding-left: 20px;
+            color: #555;
+        }
+        
+        .instructions li {
+            margin-bottom: 8px;
+        }
+        
+        /*.footer {
+            margin-top: 30px;
+            color: #95a5a6;
+            font-size: 0.9rem;
+            border-top: 1px solid #eee;
+            padding-top: 20px;
+        }*/
+        
+        @media (max-width: 768px) {
+            .container {
+                padding: 25px;
+            }
+            
+            h1 {
+                font-size: 2rem;
+            }
+            
+            .input-group {
+                flex-direction: column;
+            }
+            
+            .btn {
+                width: 100%;
+            }
+            
+            .shortcut-buttons {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+{% endblock %}
+{% block content %}
+    <div class="container">
+        <div class="header">
+            <div class="tagline">跳转工具</div>
+            <h1>raricy.com</h1>
+            <div class="subtitle">快速访问您常用的网站，减少干扰，提升效率</div>
+        </div>
+        
+        <div class="input-section">
+            <label for="url-input">输入链接地址：</label>
+            <div class="input-group">
+                <input type="url" id="url-input" placeholder="例如：https://example.com">
+                <button class="btn" id="go-btn">跳转</button>
+            </div>
+        </div>
+        
+        <div class="shortcuts-section">
+            <div class="shortcuts-title">快捷方式：</div>
+            <div class="shortcut-buttons" id="shortcut-buttons">
+                <!-- 快捷方式按钮将通过JavaScript动态生成 -->
+            </div>
+        </div>
+        
+        <div class="instructions">
+            <h3>使用说明：</h3>
+            <ul>
+                <li>在输入框中输入完整的网址（包含 https:// 或 http://）</li>
+                <li>点击"跳转"按钮，将在新标签页中打开链接</li>
+                <li>点击下方任意快捷方式按钮，将自动填充对应链接到输入框</li>
+                <li>您也可以直接点击快捷方式按钮旁边的"打开"链接直接访问</li>
+            </ul>
+        </div>
+        
+    </div>
+{% endblock %}
+{% block extra_js %}
+    <script>
+        // 快捷方式数据
+        const shortcuts = [
+            {
+                name: "腾讯元宝",
+                url: "https://yuanbao.tencent.com",
+                color: "#0081ff"
+            },
+            {
+                name: "QQ音乐",
+                url: "https://y.qq.com",
+                color: "#31c27c"
+            },
+            {
+                name: "聪明山",
+                url: "http://116.62.179.232:5002",
+                color: "#9b59b6"
+            },
+            {
+                name: "智慧河",
+                url: "http://116.62.179.232:22821",
+                color: "#e74c3c"
+            },
+            {
+                name: "HUSTOJ",
+                url: "http://111.231.16.190",
+                color: "#f39c12"
+            }
+        ];
+        
+        // DOM元素
+        const urlInput = document.getElementById('url-input');
+        const goBtn = document.getElementById('go-btn');
+        const shortcutButtonsContainer = document.getElementById('shortcut-buttons');
+        
+        // 初始化快捷方式按钮
+        function initShortcutButtons() {
+            shortcuts.forEach(shortcut => {
+                const button = document.createElement('button');
+                button.className = 'shortcut-btn';
+                button.innerHTML = `
+                    <div class="shortcut-name">${shortcut.name}</div>
+                    <div class="shortcut-url">${shortcut.url}</div>
+                    <div style="margin-top: 8px; font-size: 0.85rem; color: #3498db;">点击填充 | <a href="${shortcut.url}" target="_blank" style="color: #e74c3c; text-decoration: none;" onclick="event.stopPropagation()">直接打开</a></div>
+                `;
+                
+                // 设置按钮悬停时的边框颜色
+                button.style.borderColor = shortcut.color + "40"; // 添加透明度
+                
+                button.addEventListener('click', () => {
+                    urlInput.value = shortcut.url;
+                    urlInput.focus();
+                    
+                    // 添加视觉反馈
+                    button.style.backgroundColor = shortcut.color + "15";
+                    setTimeout(() => {
+                        button.style.backgroundColor = '';
+                    }, 300);
+                });
+                
+                shortcutButtonsContainer.appendChild(button);
+            });
+        }
+        
+        // 跳转功能
+        function navigateToUrl() {
+            let url = urlInput.value.trim();
+            
+            if (!url) {
+                alert('请输入有效的网址');
+                urlInput.focus();
+                return;
+            }
+            
+            // 确保URL有协议前缀
+            if (!url.startsWith('http://') && !url.startsWith('https://')) {
+                url = 'https://' + url;
+                urlInput.value = url;
+            }
+            
+            // 在新标签页中打开链接
+            window.open(url, '_blank');
+        }
+        
+        // 事件监听
+        goBtn.addEventListener('click', navigateToUrl);
+        
+        urlInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                navigateToUrl();
+            }
+        });
+        
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', initShortcutButtons);
+        
+        // 示例：添加一个随机示例URL到输入框（可选功能）
+        window.addEventListener('load', () => {
+            // 可以选择是否在页面加载时自动填充一个示例URL
+            // urlInput.value = 'https://example.com';
+        });
+    </script>
+   {% endblock %}

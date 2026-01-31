@@ -133,7 +133,7 @@
         <span class="like-count-badge" id="like-count">{{ blog.likes_count or 0 }}</span>
     </button>
 
-    <a href="{{ url_for('blog.menu') }}?from_id={{blog.id}}" class="read-btn">📝 返回博客列表</a>
+    <button onclick="history.back()" class="read-btn">📝 返回上页</button>
 </div>
 {% if current_user.is_authenticated and (current_user.has_admin_rights or current_user.id == blog.author_id) %}
 <div class="admin-controls">
@@ -344,9 +344,62 @@
         
         return true;
     }
+    class ClipboardPreprocessor {
+  constructor() {
+    this.cache = new Map(); // 缓存已获取的内容
+  }
+
+  async preprocess(markdownContent) {
+    const pattern = /\[@\s*(\w+)\s*\]/g;
+    const matches = [...markdownContent.matchAll(pattern)];
+
+    if (matches.length === 0) return markdownContent;
+
+    // 提取所有唯一的 ID
+    const uniqueIds = [...new Set(matches.map(match => match[1]))];
+
+    // 批量获取未缓存的内容
+    const fetchPromises = uniqueIds
+      .filter(id => !this.cache.has(id))
+      .map(async (id) => {
+        try {
+          const response = await fetch(`/clipboard/${id}?raw`);
+          if (!response.ok) throw new Error(`Failed to fetch ${id}`);
+
+          const data = await response.json();
+          this.cache.set(id, data.content || '');
+        } catch (error) {
+          console.error(`Error fetching clipboard ${id}:`, error);
+          this.cache.set(id, `[Error loading clipboard ${id}]`);
+        }
+      });
+
+    // 等待所有请求完成
+    await Promise.all(fetchPromises);
+
+    // 执行替换
+    let processedContent = markdownContent;
+
+    // 为每个匹配项进行替换
+    matches.forEach(([fullMatch, id]) => {
+      const replacement = this.cache.get(id) || '';
+      // 只替换当前匹配项，使用正则避免替换所有相同内容
+      processedContent = processedContent.replace(fullMatch, () => replacement);
+    });
+
+    return processedContent;
+  }
+
+  clearCache() {
+    this.cache.clear();
+  }
+}
+
+// 使用示例
+const preprocessor = new ClipboardPreprocessor();
 
     // 安全渲染 Markdown 内容
-    function renderUserContent() {
+    async function renderUserContent() {
         const container = document.getElementById('userContentContainer');
         const markdownScript = document.getElementById('markdownContent');
         const loadingIndicator = document.getElementById('loading-indicator');
@@ -361,7 +414,7 @@
 
         try {
             let markdownText = JSON.parse(markdownScript.textContent);
-            
+            markdownText = await preprocessor.preprocess(markdownText)
             // 移除加载指示器
             if (loadingIndicator) {
                 loadingIndicator.remove();

@@ -9,8 +9,11 @@ tool_bp = Blueprint('tool', __name__)
 @tool_bp.route('/')
 @authenticated_required
 def menu():
-    return render_template('tool/menu.html')
+    return render_template('tool/new_menu.html')
 
+@tool_bp.route('/menu_legacy')
+def old_menu():
+    return render_template('tool/menu.html')
 
 @tool_bp.route('/base')
 def base():
@@ -103,3 +106,7 @@ def redirect_page():
 def translate_page():
     from flask import redirect
     return redirect('http://116.62.179.232:9198')
+
+@tool_bp.route('/new_redirect')
+def new_redirect():
+    return render_template('tool/new_redirect.html')

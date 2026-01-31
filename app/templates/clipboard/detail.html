@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}
+{{clip['title']}} - Raricy.com 云剪贴板
+{% endblock %}
+
+{% block extra_css %}
+{% endblock %}
+
+{% block content %}
+<div><h1>{{clip['title']}}</h1></div><br/>
+<div>作者：{{clip.author_name}}</div>
+<div>id: {{clip.id}}</div><br/>
+<div><pre style="font-family:inherit;white-space: pre-wrap;overflow-wrap: break-word;">{{clip['content']}}</pre></div><br/>
+{% if clip['author_id'] == current_user.id %}
+<button onclick="window.open(`${window.location.pathname}/edit`)">编辑文章</button>
+{% endif %}
+{% if clip['author_id'] == current_user.id or current_user.is_owner %}
+<button id="delete">删除文章</button>
+{% endif %}
+<a href="/clipboard/">返回云剪贴板主页</a>
+<button onclick="history.back()">返回上页</button>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('delete').addEventListener('click', () => {
+           delete_clipboard() 
+        });
+    });
+    function delete_clipboard(){
+        if(!confirm('确认要删除吗？')) return;
+        fetch(window.location.pathname, {
+            method: 'DELETE'
+        })
+            .then(response => {
+                if (response.ok) {
+                    alert('删除成功！');
+                    window.location.href = '/clipboard/'
+                }
+            })
+            .catch(error => {
+                alert("删除失败qaq");
+                console.error("删除失败:", error);
+            })
+    }
+</script>
+{% endblock %}
+
+{% block copyright %}
+原作者：{{clip['author_name']}} | 版权归原作者所有
+{% endblock %}

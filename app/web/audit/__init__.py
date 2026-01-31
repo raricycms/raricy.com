@@ -7,8 +7,8 @@ from app.models.audit import AdminActionAppeal
 
 audit_bp = Blueprint('audit', __name__)
 
-@authenticated_required
 @audit_bp.route('/logs')
+@authenticated_required
 def public_logs():
     page = request.args.get('page', 1, type=int)
     action = request.args.get('action')
@@ -29,15 +29,15 @@ def public_logs():
                          action=action,
                          has_pending=has_pending)
 
-@authenticated_required
 @audit_bp.route('/logs/<int:log_id>')
+@authenticated_required
 def log_detail(log_id: int):
     log = audit_service.get_log(log_id)
     appeals = log.appeals.order_by(AdminActionAppeal.created_at.desc()).all()
     return render_template('auth/admin_action_log_detail.html', log=log, appeals=appeals)
 
-@authenticated_required
 @audit_bp.route('/appeals', methods=['POST'])
+@authenticated_required
 @login_required
 def create_appeal():
     data = request.get_json(silent=True) or {}

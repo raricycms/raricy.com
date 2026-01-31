@@ -39,7 +39,7 @@ class ProductionConfig(Config):
     HOST = os.getenv('HOST', '0.0.0.0')
     DEBUG = os.getenv('DEBUG', 'False') == 'False'
     # Ensure URL generation uses your public domain and HTTPS
-    SERVER_NAME = os.getenv('SERVER_NAME', 'raricy.com')
+    SERVER_NAME = os.getenv('SERVER_NAME', None)
     PREFERRED_URL_SCHEME = 'https'
     SITEMAP_URL_SCHEME = 'https'
 
