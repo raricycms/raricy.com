@@ -21,7 +21,7 @@ Raricy.com - 用户登录
             <input type="hidden" name="next" value="{{ request.args.get('next', '') }}">
             <div class="form-group">
                 <label for="username" class="form-label">
-                    <i class="fas fa-user"></i> 用户名 <span class="text-danger">*</span>
+                     用户名
                 </label>
                 <input type="text" class="form-control" id="username" name="username" placeholder="请输入用户名" required>
                 <div class="invalid-feedback">
@@ -31,7 +31,7 @@ Raricy.com - 用户登录
 
             <div class="form-group">
                 <label for="password" class="form-label">
-                    <i class="fas fa-lock"></i> 密码 <span class="text-danger">*</span>
+                    密码
                 </label>
                 <input type="password" class="form-control" id="password" name="password" placeholder="请输入密码" required
                     minlength="6">
@@ -40,7 +40,7 @@ Raricy.com - 用户登录
                 </div>
             </div>
 
-            <button type="submit" class="btn btn-primary btn-register" id="submitBtn">
+            <button type="submit" class="button button-primary" style="width: 100%; margin-top: 20px;" id="submitBtn">
                 <span id="submitText">
                     <i class="fas fa-sign-in-alt"></i> 立即登录
                 </span>

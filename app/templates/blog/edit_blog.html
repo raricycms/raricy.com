@@ -4,36 +4,14 @@
 
 {% block extra_css %}
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/vditor@3.10.7/dist/index.css" onerror="this.onerror=null; this.href='{{ url_for('static', filename='js/vditor/node_modules/vditor/dist/index.css') }}'">
-<style>
-    .edit-hero {
-        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-        padding: 40px 0 24px;
-        text-align: center;
-    }
-    .blog-form-container {
-        max-width: 960px;
-        margin: 30px auto 50px;
-        background: #fff;
-        border-radius: 8px;
-        box-shadow: 0 2px 16px rgba(0, 0, 0, 0.06);
-        padding: 32px;
-    }
-    #message-container { position: fixed; top: 20px; right: 20px; z-index: 9999; min-width: 300px; }
-    .btn-row { display:flex; gap:12px; flex-wrap:wrap; }
-    .btn-row .btn { min-width: 120px; }
-    .preview-container { margin-top: 20px; }
-    .preview-box { padding: 16px; background: #f8f9fa; border-radius: 6px; border:1px solid #e9ecef; }
-    .note { color:#6c757d; font-size: .9rem; }
-    @media (max-width: 768px) { .blog-form-container { padding: 20px; } }
-</style>
 {% endblock %}
 
 {% block content %}
-<section class="edit-hero">
+<section class="upload-hero">
     <h1>编辑文章</h1>
     <div class="text-muted">ID: {{ blog.id }}</div>
     <div class="note">仅作者或管理员可编辑。服务端仅保存 Markdown，渲染使用安全转换。</div>
-    <div class="mt-2"><a class="btn btn-sm btn-outline-secondary" href="{{ url_for('blog.blog_detail', blog_id=blog.id) }}">返回阅读页</a></div>
+    <div class="mt-2" style="margin-top: 30px"><a class="button button-primary" href="{{ url_for('blog.blog_detail', blog_id=blog.id) }}">返回阅读页</a></div>
 </section>
 
 <div class="blog-form-container">
@@ -75,7 +53,7 @@
         <div class="mb-3">
             <label for="category" class="form-label">栏目</label>
             <select class="form-select" id="category">
-                <option value="">选择栏目（可选）</option>
+                <option value="">选择栏目</option>
                 {% for category in categories %}
                 <optgroup label="{{ category.icon }} {{ category.name }}">
                     <option value="{{ category.id }}" {{ 'selected' if blog.category_id == category.id else '' }}>
@@ -100,7 +78,7 @@
         </div>
 
         <div class="btn-row">
-            <button type="submit" class="btn btn-primary">保存修改</button>
+            <button type="submit" class="button button-primary">保存修改</button>
             <a href="{{ url_for('blog.blog_detail', blog_id=blog.id) }}" class="btn btn-outline-secondary">取消</a>
         </div>
     </form>

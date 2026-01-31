@@ -30,7 +30,9 @@
 @use 'utilities/text';
 
 @use 'pages/home';
-@use 'pages/blog';
+@use 'pages/blog/blog';
+@use 'pages/blog/menu';
+@use 'pages/blog/upload_blog';
 @use 'pages/auth';
 @use 'pages/notifications';
 @use 'pages/story';

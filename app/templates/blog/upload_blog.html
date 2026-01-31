@@ -5,30 +5,6 @@ Raricy.com - 文章上传
 
 {% block extra_css %}
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/vditor@3.10.7/dist/index.css" onerror="this.onerror=null; this.href='{{ url_for('static', filename='js/vditor/node_modules/vditor/dist/index.css') }}'">
-<style>
-    .upload-hero {
-        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-        padding: 50px 0 30px;
-        text-align: center;
-    }
-
-    .blog-form-container {
-        max-width: 900px;
-        margin: 40px auto;
-        background: #fff;
-        border-radius: 8px;
-        box-shadow: 0 2px 16px rgba(0, 0, 0, 0.06);
-        padding: 40px;
-    }
-
-    #message-container {
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        z-index: 9999;
-        min-width: 300px;
-    }
-</style>
 {% endblock %}
 
 {% block content %}
@@ -75,12 +51,12 @@ Raricy.com - 文章上传
         <div class="mb-3">
             <label for="category" class="form-label">栏目</label>
             <select class="form-select" id="category">
-                <option value="">选择栏目（可选）</option>
+                <option value="" class="form-option">选择栏目</option>
                 {% for category in categories %}
                 <optgroup label="{{ category.icon }} {{ category.name }}">
-                    <option value="{{ category.id }}">{{ category.icon }} {{ category.name }}</option>
+                    <option value="{{ category.id }}" class="form-option">{{ category.icon }} {{ category.name }}</option>
                     {% for child in category.children %}
-                    <option value="{{ child.id }}">　└ {{ child.icon }} {{ child.name }}</option>
+                    <option value="{{ child.id }}" class="form-option">　└ {{ child.icon }} {{ child.name }}</option>
                     {% endfor %}
                 </optgroup>
                 {% endfor %}
@@ -96,7 +72,7 @@ Raricy.com - 文章上传
             <textarea id="fallback-editor" class="form-control" rows="20" style="display: none;"></textarea>
         </div>
 
-        <button type="submit" class="btn btn-primary">提交</button>
+        <button type="submit" class="button button-primary">提交</button>
     </form>
 </div>
 {% endblock %}

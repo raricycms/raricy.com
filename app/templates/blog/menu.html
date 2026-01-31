@@ -3,447 +3,24 @@
 {% block title %}Raricy.com - 博客{% endblock %}
 
 {% block extra_css %}
-<style>
-    .blogs-hero {
-	background:linear-gradient(135deg, #2d2d2d 0%, #4a4a4a 100%); 
-        padding: 60px 0 40px;
-        margin-bottom: 0;
-        text-align: center;
-        color: white;
-    }
 
-    .blogs-hero h1 {
-        font-size: 2.5rem;
-        font-weight: 600;
-        margin-bottom: 12px;
-        letter-spacing: 1px;
-    }
-
-    .blogs-hero p {
-        font-size: 1.1rem;
-        opacity: 0.9;
-        font-weight: 300;
-    }
-
-    .current-category {
-        margin-top: 12px;
-    }
-
-    .current-category .badge {
-        background: rgba(255, 255, 255, 0.2) !important;
-        color: white;
-        padding: 8px 16px;
-        border-radius: 20px;
-    }
-
-    /* 主布局 */
-    .blog-layout {
-        display: flex;
-        gap: 30px;
-        margin-top: 30px;
-        min-height: calc(100vh - 400px);
-    }
-
-    /* 左侧分类导航 */
-    .sidebar {
-        flex: 0 0 280px;
-        background: white;
-        border-radius: 12px;
-        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
-        padding: 24px;
-        height: calc(100vh - 120px);
-        position: sticky;
-        top: 90px;
-        overflow: auto;
-    }
-
-    .sidebar-title {
-        font-size: 1.2rem;
-        font-weight: 600;
-        color: #2c3e50;
-        margin-bottom: 20px;
-        padding-bottom: 12px;
-        border-bottom: 2px solid #f8f9fa;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        cursor: pointer;
-        user-select: none;
-        transition: color 0.2s ease;
-    }
-
-    .sidebar-title:hover {
-        color: #1976d2;
-    }
-
-    .sidebar-title .toggle-icon {
-        font-size: 1rem;
-        transition: transform 0.3s ease;
-    }
-
-    .sidebar-title.collapsed .toggle-icon {
-        transform: rotate(-90deg);
-    }
-
-    .category-list {
-        list-style: none;
-        padding: 0;
-        margin: 0;
-        transition: all 0.3s ease;
-        overflow: hidden;
-    }
-
-    .category-list.collapsed {
-        max-height: 0;
-        opacity: 0;
-        margin-bottom: 0;
-    }
-
-    .category-list:not(.collapsed) {
-        max-height: 1250px;
-        opacity: 1;
-    }
-
-    .category-item {
-        margin-bottom: 8px;
-    }
-
-    .category-item.has-children {
-        position: relative;
-    }
-
-    .category-link {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 10px 14px;
-        color: #6c757d;
-        text-decoration: none;
-        border-radius: 8px;
-        font-size: 0.9rem;
-        font-weight: 500;
-        transition: all 0.2s ease;
-        border-left: 3px solid transparent;
-        position: relative;
-    }
-
-    .category-link.collapsible {
-        cursor: pointer;
-        user-select: none;
-    }
-
-    .category-content {
-        display: flex;
-        align-items: center;
-        flex: 1;
-    }
-
-    .category-toggle {
-        font-size: 0.8rem;
-        margin-left: 8px;
-        transition: transform 0.3s ease;
-        color: #adb5bd;
-    }
-
-    .category-link.collapsed .category-toggle {
-        transform: rotate(-90deg);
-    }
-
-    .category-link:hover {
-        background: #f8f9fa;
-        color: #495057;
-        text-decoration: none;
-        border-left-color: #dee2e6;
-    }
-
-    .category-link.active {
-        background: #e3f2fd;
-        color: #1976d2;
-        border-left-color: #1976d2;
-    }
-
-    .category-link .icon,
-    .category-item .icon {
-        margin-right: 8px;
-        font-size: 1rem;
-        background-color: rgba(255, 255, 255, 0);
-    }
-
-    .sub-category-list {
-        list-style: none;
-        padding: 0;
-        margin: 8px 0 0 24px;
-        transition: all 0.3s ease;
-        overflow: hidden;
-    }
-
-    .sub-category-list.collapsed {
-        max-height: 0;
-        opacity: 0;
-        margin-top: 0;
-    }
-
-    .sub-category-list:not(.collapsed) {
-        max-height: 500px;
-        opacity: 1;
-    }
-
-    .sub-category-link {
-        display: flex;
-        align-items: center;
-        padding: 8px 12px;
-        color: #8e9ba6;
-        text-decoration: none;
-        border-radius: 6px;
-        font-size: 0.85rem;
-        font-weight: 400;
-        transition: all 0.2s ease;
-        border-left: 2px solid transparent;
-    }
-
-    .sub-category-link:hover {
-        background: #f1f3f4;
-        color: #5f6368;
-        text-decoration: none;
-        border-left-color: #dee2e6;
-    }
-
-    .sub-category-link.active {
-        background: #e8f0fe;
-        color: #1565c0;
-        border-left-color: #1565c0;
-    }
-
-    /* 右侧博客列表 */
-    .blog-content {
-        flex: 1;
-    }
-
-    .blog-item {
-        background: white;
-        border-radius: 8px;
-        padding: 20px 24px;
-        margin-bottom: 16px;
-        box-shadow: 0 1px 6px rgba(0, 0, 0, 0.05);
-        transition: all 0.2s ease;
-        border-left: 4px solid transparent;
-    }
-
-    .blog-item:hover {
-        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
-        transform: translateY(-1px);
-        border-left-color: #007bff;
-    }
-
-    .blog-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-        margin-bottom: 12px;
-    }
-
-    .blog-title {
-        font-size: 1.3rem;
-        font-weight: 600;
-        color: #2c3e50;
-        text-decoration: none;
-        line-height: 1.4;
-        margin: 0;
-        flex: 1;
-        margin-right: 16px;
-    }
-
-    .blog-title:hover {
-        color: #007bff;
-        text-decoration: none;
-    }
-
-    .blog-stats {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        flex-shrink: 0;
-    }
-
-    .blog-likes {
-        display: flex;
-        align-items: center;
-        gap: 4px;
-        color: #dc3545;
-        font-size: 0.9rem;
-        font-weight: bold;
-    }
-
-    .blog-comments {
-        display: flex;
-        align-items: center;
-        gap: 4px;
-        color: #999999;
-        font-size: 0.9rem;
-        font-weight: bold;
-    }
-
-    .blog-description {
-        color: #6c757d;
-        font-size: 0.9rem;
-        line-height: 1.5;
-        margin-bottom: 14px;
-        display: -webkit-box;
-        -webkit-line-clamp: 2;
-        line-clamp: 2;
-        -webkit-box-orient: vertical;
-        overflow: hidden;
-    }
-
-    .blog-meta {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        font-size: 0.8rem;
-        color: #8e9ba6;
-    }
-
-    .blog-author {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-    }
-
-    .blog-author img {
-        width: 20px;
-        height: 20px;
-        /* border-radius: 50%; 去掉圆形，变成方形 */
-        border-radius: 4px;
-        object-fit: cover;
-    }
-
-    .blog-date {
-        color: #adb5bd;
-    }
-
-    .blog-category-tag {
-        display: inline-block;
-        background: #f8f9fa;
-        color: #6c757d;
-        padding: 2px 8px;
-        border-radius: 12px;
-        font-size: 0.75rem;
-        margin-left: 8px;
-    }
-
-    .no-blogs {
-        text-align: center;
-        padding: 60px 20px;
-        color: #8e9ba6;
-    }
-
-    .no-blogs i {
-        font-size: 3rem;
-        margin-bottom: 16px;
-        opacity: 0.5;
-    }
-
-    /* 响应式设计 */
-    @media (max-width: 992px) {
-        .blog-layout {
-            flex-direction: column;
-            gap: 20px;
-        }
-        
-        .sidebar {
-            flex: none;
-            position: static;
-            order: -1;
-            height: auto;               /* Mobile/tablet: auto height */
-            max-height: none;           /* Remove fixed height cap */
-            overflow: visible;          /* No internal scroll; page grows with content */
-        }
-        
-        .blogs-hero h1 {
-            font-size: 2rem;
-        }
-    }
-
-    @media (max-width: 768px) {
-        .sidebar {
-            padding: 16px;
-            height: auto;               /* Ensure auto height on smaller screens */
-            max-height: none;
-            overflow: visible;
-        }
-
-        /* 手机端默认折叠分类列表 */
-        .sidebar .category-list {
-            max-height: 0;
-            opacity: 0;
-            margin-bottom: 0;
-        }
-
-        .sidebar .category-list.expanded {
-            max-height: 1000px;
-            opacity: 1;
-            margin-bottom: 0;
-        }
-
-        /* 手机端侧边栏标题更明显 */
-        .sidebar-title {
-            background: #f8f9fa;
-            padding: 12px 16px;
-            margin: -16px -16px 20px -16px;
-            border-radius: 12px 12px 0 0;
-            border-bottom: 2px solid #e9ecef;
-        }
-        
-        .blog-item {
-            padding: 16px 18px;
-        }
-        
-        .blog-header {
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 8px;
-        }
-        
-        .blog-title {
-            font-size: 1.1rem;
-            margin-right: 0;
-        }
-        
-        .blog-meta {
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 8px;
-        }
-        
-        .blogs-hero {
-            padding: 40px 0 30px;
-        }
-        
-        .blog-layout {
-            margin-top: 20px;
-        }
-
-        .sub-category-list {
-            margin-left: 16px;
-        }
-    }
-</style>
 {% endblock %}
 
 {% block content %}
 <!-- Hero Section -->
 <section class="blogs-hero">
     <div class="container">
-        <h1>📝 博客文章</h1>
+        <h1>博客</h1>
         <p>分享思考与见解</p>
         {% if current_user.is_authenticated and current_user.is_core_user %}
         <div class="mt-3">
-            <a href="/blog/upload_blog" class="btn btn-light btn-sm">
-                ➕ 发布文章
+            <a href="/blog/upload_blog" class="upload-button">
+                <span class="icon icon-add"></span>
+                创建
             </a>
         </div>
         {% endif %}
-        {% if current_category or featured %}
+        <!-- {% if current_category or featured %}
         <div class="current-category">
             {% if featured %}
             <span class="badge">🌟 精选</span>
@@ -451,7 +28,7 @@
             <span class="badge">{{ current_category.icon }} {{ current_category.get_full_path() }}</span>
             {% endif %}
         </div>
-        {% endif %}
+        {% endif %} -->
     </div>
 </section>
 
@@ -461,8 +38,7 @@
         <!-- 左侧分类导航 -->
         <aside class="sidebar">
             <h3 class="sidebar-title" onclick="toggleMainCategories()">
-                <span>📚 文章分类</span>
-                <span class="toggle-icon">🔽</span>
+                <span>分类</span>
             </h3>
             <ul class="category-list" id="mainCategoryList">
                 <li class="category-item">
@@ -489,7 +65,6 @@
                             <span class="icon">{{ category.icon }}</span>
                             <span>{{ category.name }}</span>
                         </div>
-                        <span class="category-toggle">🔽</span>
                     </div>
                     <ul class="sub-category-list" id="category-{{ category.id }}">
                         <li class="category-item">
@@ -525,28 +100,23 @@
 
         <!-- 右侧博客列表 -->
         <main class="blog-content">
-	    <label for="sortSelect">排序方式：</label>
-	    <select id="sortSelect" class="sort-select">
-        	<option value="publish">按发布时间排序</option>
-	        <option value="update">按更新时间排序</option>
-            </select>
-            {% for blog in blogs %}
+        {% for blog in blogs %}
 		<article class="blog-item" id="id{{ blog.id }}">
                 <div class="blog-header">
                     <a href="/blog/{{ blog.id }}" class="blog-title">{{ blog.title }}</a>
                     <div class="blog-stats">
                         <span class="blog-likes" title="点赞数">
-                            <img src="{{ url_for('static', filename='img/icons/heart-fill.svg') }}" alt="heart" width="16" height="16">
+                            <span class="icon icon-heart-fill"></span>
                             <span>{{ blog.likes_count or 0 }}</span>
                         </span>
                         <span class="blog-comments" title="评论数">
-                            <img src="{{ url_for('static', filename='img/icons/chat-dots_new.svg') }}" alt="comment" height="16">
+                            <span class="icon icon-chat-dots_new"></span>
                             <span>{{ blog.comments_count or 0 }}</span>
                         </span>
                     </div>
                 </div>
                 <p class="blog-description">{{ blog.description }}</p>
-                <div class="blog-meta">
+                <div class="menu-blog-meta">
                     <div class="blog-author">
                         <img src="/auth/avatar/{{ blog.author_id }}" alt="{{ blog.author }}">
                         <span>{{ blog.author }}</span>

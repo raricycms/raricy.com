@@ -20,11 +20,11 @@
 .modal-dialog.modal-dialog-centered { margin: 0 auto; }
 
 .modal-content {
-  background: var(--box-bg, #ffffff);
-  color: var(--text, #2c3e50);
-  border: 1px solid var(--border-color, #e9ecef);
-  border-radius: 0.5rem;
-  box-shadow: var(--shadow, 0 10px 30px rgba(0, 0, 0, 0.2));
+  padding: 10px;
+  background: var(--color-background-card);
+  color: var(--color-text-primary);
+  border-radius: 30px;
+  box-shadow: var(--shadow-card-brand);
   overflow: hidden;
 }
 
@@ -36,14 +36,14 @@
   padding: 1rem;
 }
 
-.modal-header {
-  border-bottom: 1px solid var(--border-color, #e9ecef);
-}
+// .modal-header {
+//   border-bottom: 1px solid var(--color-background-content);
+// }
 
-.modal-footer {
-  border-top: 1px solid var(--border-color, #e9ecef);
-  gap: .5rem;
-}
+// .modal-footer {
+//   border-top: 1px solid var(--color-background-content);
+//   gap: .5rem;
+// }
 
 .modal-title { margin: 0; font-size: 1.25rem; }
 

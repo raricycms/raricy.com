@@ -3,155 +3,23 @@
 {% block title %}我的通知{% endblock %}
 
 {% block extra_css %}
-<style>
-    body {
-        padding-top: 62px;
-        background: #f5f6fa;
-        font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-        color: #333;
-    }
-
-    .content-wrapper {
-        max-width: 900px;
-        margin: auto;
-        padding: 1rem;
-    }
-
-    .page-title {
-        font-size: 1.8rem;
-        font-weight: 600;
-        margin-bottom: 1rem;
-        text-align: center;
-        color: #333;
-    }
-
-    .btn-group {
-        margin-bottom: 1rem;
-        text-align: center;
-    }
-
-    .action-btn {
-        background: #fff;
-        border: 1px solid #ccc;
-        color: #333;
-        border-radius: 6px;
-        padding: 0.4rem 1rem;
-        margin: 0.2rem;
-        font-size: 0.9rem;
-        cursor: pointer;
-        transition: background 0.2s;
-    }
-    .action-btn:hover {
-        background: #f0f0f0;
-    }
-    .btn-danger { color: #c0392b; border-color: #e74c3c; }
-    .btn-danger:hover { background: #fceaea; }
-
-    .filter-btn {
-        background: #fff;
-        border: 1px solid #ccc;
-        color: #333;
-        border-radius: 6px;
-        padding: 0.3rem 0.8rem;
-        margin: 0.2rem;
-        font-size: 0.85rem;
-        text-decoration: none;
-    }
-    .filter-btn.active {
-        background: #3498db;
-        color: #fff;
-        border-color: #2980b9;
-    }
-
-    .notification-card {
-        background: #fff;
-        border: 1px solid #ddd;
-        border-radius: 8px;
-        padding: 1rem;
-        margin-bottom: 1rem;
-    }
-    .notification-card.unread {
-        border-left: 4px solid #f1c40f;
-        background: #fffdf0;
-    }
-
-    .notification-title {
-        font-weight: 600;
-        margin-bottom: 0.3rem;
-    }
-    .notification-meta {
-        font-size: 0.8rem;
-        color: #666;
-    }
-    .notification-content {
-        margin: 0.5rem 0;
-        font-size: 0.9rem;
-    }
-
-    .action-button {
-        background: #f8f8f8;
-        border: 1px solid #ccc;
-        border-radius: 6px;
-        font-size: 0.8rem;
-        padding: 0.3rem 0.7rem;
-        margin: 0.2rem;
-        cursor: pointer;
-    }
-    .action-button:hover { background: #eee; }
-    .btn-success { border-color: #2ecc71; color: #27ae60; }
-    .btn-success:hover { background: #e8f9f0; }
-    .btn-primary { border-color: #3498db; color: #2980b9; }
-    .btn-primary:hover { background: #eaf4fb; }
-
-    .pagination {
-        display: flex;
-        justify-content: center;
-        margin-top: 1rem;
-        flex-wrap: wrap;
-    }
-    .page-link {
-        padding: 0.4rem 0.7rem;
-        margin: 0.2rem;
-        border: 1px solid #ccc;
-        border-radius: 6px;
-        background: #fff;
-        font-size: 0.85rem;
-        color: #333;
-        text-decoration: none;
-    }
-    .page-item.active .page-link {
-        background: #3498db;
-        color: #fff;
-        border-color: #2980b9;
-    }
-
-    .empty-state {
-        text-align: center;
-        padding: 3rem 1rem;
-        color: #777;
-    }
-    .empty-state-icon {
-        font-size: 3rem;
-        margin-bottom: 0.5rem;
-    }
-</style>
 {% endblock %}
 
 {% block content %}
 <div class="content-wrapper">
     <h1 class="page-title">📬 我的通知</h1>
     <div class="btn-group">
-        <button class="action-btn" onclick="markAllRead()">✓ 全部标记已读</button>
-        <button class="action-btn btn-danger" onclick="deleteReadNotifications()">🗑️ 删除已读</button>
-        <button class="action-btn" onclick="toggleBatchMode()">📋 批量操作</button>
+        <button class="button button-primary" onclick="markAllRead()">✓ 全部标记已读</button>
+        <button class="button button-warning" onclick="deleteReadNotifications()">🗑️ 删除已读</button>
+        <!-- <button class="action-btn" onclick="toggleBatchMode()">📋 批量操作</button> -->
     </div>
 
-    <div class="btn-group">
+    <!-- <div class="btn-group">
         <a href="{{ url_for('notifications.notification_page') }}" 
            class="filter-btn {% if not unread_only %}active{% endif %}">📨 全部通知</a>
         <a href="{{ url_for('notifications.notification_page', unread_only=true) }}" 
            class="filter-btn {% if unread_only %}active{% endif %}">🔔 未读通知</a>
-    </div>
+    </div> -->
 
     {% if data %}
         <div id="notifications-list">
@@ -159,30 +27,30 @@
                 <div class="notification-card {% if not notification.read %}unread{% endif %}" 
                      data-id="{{ notification.id }}">
                     <h6 class="notification-title">
-                        🔔 {{ notification.action }}
+                        {{ notification.action }}
                         {% if not notification.read %}
                             <span style="color:#e67e22;font-size:0.8rem;">(未读)</span>
                         {% endif %}
                     </h6>
-                    <div class="notification-meta">⏰ {{ notification.timestamp }}</div>
+                    <div class="notification-meta">{{ notification.timestamp }}</div>
                     <div class="notification-meta">
                         {% if notification.actor and notification.actor.id %}
-                            👤 来自用户: <a href="{{ url_for('auth.profile', user_id=notification.actor.id) }}">{{ notification.actor.username }}</a>
+                            来自用户: <a href="{{ url_for('auth.profile', user_id=notification.actor.id) }}">{{ notification.actor.username }}</a>
                         {% else %}
-                            🤖 来自: 系统
+                            来自: 系统
                         {% endif %}
                     </div>
                     {% if notification.detail %}
                         <p class="notification-content">{{ notification.detail }}</p>
                     {% endif %}
                     {% if notification.object.type == 'blog' and notification.object.id %}
-                        <a href="{{ url_for('blog.blog_detail', blog_id=notification.object.id) }}" class="action-button btn-primary">📖 查看博客</a>
+                        <a href="{{ url_for('blog.blog_detail', blog_id=notification.object.id) }}" class="button button-primary-small">📖 查看博客</a>
                     {% endif %}
                     <div style="margin-top:0.5rem;">
                         {% if not notification.read %}
-                            <button class="action-button btn-success" onclick="markAsRead('{{ notification.id }}')">✅ 标记已读</button>
+                            <button class="button button-primary-small" onclick="markAsRead('{{ notification.id }}')">✅ 标记已读</button>
                         {% endif %}
-                        <button class="action-button btn-danger" onclick="deleteNotification('{{ notification.id }}')">🗑️ 删除</button>
+                        <button class="button button-warning-small" onclick="deleteNotification('{{ notification.id }}')">🗑️ 删除</button>
                     </div>
                 </div>
             {% endfor %}

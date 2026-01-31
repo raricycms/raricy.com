@@ -3,10 +3,10 @@
 body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  color: v.$color-text;
+  color: var(--color-text-primary);
 }
 
-a:hover { text-decoration: underline; }
+// a:hover { text-decoration: underline; }
 
 /* Legacy link behavior: ensure links default to no underline */
 a { text-decoration: none; }

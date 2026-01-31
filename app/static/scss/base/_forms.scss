@@ -1,6 +1,6 @@
 @use '../abstracts/variables' as v;
 
 input, select, textarea {
-  color: v.$color-text;
+  color: var(--color-text-primary);
 }
 
