@@ -7,18 +7,32 @@
 {% endblock %}
 
 {% block content %}
-<div><h1>{{clip['title']}}</h1></div><br/>
-<div>作者：{{clip.author_name}}</div>
-<div>id: {{clip.id}}</div><br/>
-<div><pre style="font-family:inherit;white-space: pre-wrap;overflow-wrap: break-word;">{{clip['content']}}</pre></div><br/>
-{% if clip['author_id'] == current_user.id %}
-<button onclick="window.open(`${window.location.pathname}/edit`)">编辑文章</button>
-{% endif %}
-{% if clip['author_id'] == current_user.id or current_user.is_owner %}
-<button id="delete">删除文章</button>
-{% endif %}
-<a href="/clipboard/">返回云剪贴板主页</a>
-<button onclick="history.back()">返回上页</button>
+<div class="clipboard-page">
+    <div class="clipboard-detail">
+        <div class="clipboard-detail__header">
+            <h1 class="clipboard-detail__header-title">{{clip['title']}}</h1>
+            <div class="clipboard-detail__header-meta">
+                <span>作者：{{clip.author_name}}</span>
+                <span>ID：{{clip.id}}</span>
+            </div>
+        </div>
+        
+        <div class="clipboard-detail__content">
+            <pre>{{clip['content']}}</pre>
+        </div>
+        
+        <div class="clipboard-detail__actions">
+            {% if clip['author_id'] == current_user.id %}
+            <button class="action-button primary" onclick="window.open(`${window.location.pathname}/edit`)">编辑文章</button>
+            {% endif %}
+            {% if clip['author_id'] == current_user.id or current_user.is_owner %}
+            <button class="action-button danger" id="delete">删除文章</button>
+            {% endif %}
+            <a href="/clipboard/" class="action-button">返回云剪贴板主页</a>
+            <button class="action-button" onclick="history.back()">返回上页</button>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}

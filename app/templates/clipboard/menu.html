@@ -4,29 +4,43 @@
 {% endblock %}
 
 {% block extra_css %}
-<style>
-a {
-    color: blue;
-}
-</style>
 {% endblock %}
 
 {% block content %}
-<div>
-    <input type="text" placeholder="请输入目的地编号……" id="target_link"><button id="redirect">前往</button>
-</div>
-<div>
-    {% for clip in clip_lst %}
-    <div>
-        <div>
-            {{clip["title"]}}
-            <a href="./{{clip["id"]}}">{{clip["id"]}}</a>
+<div class="clipboard-page">
+    <h1 class="clipboard-title">云剪贴板</h1>
+    
+    <div class="clipboard-navigation">
+        <div class="clipboard-navigation__search">
+            <input type="text" class="search-input" placeholder="请输入目的地编号……" id="target_link">
+            <button class="search-button" id="redirect">前往</button>
+        </div>
+        
+        <div class="clipboard-navigation__actions">
+            <a href="/clipboard/upload" class="action-button primary">创建文章</a>
         </div>
     </div>
-    {% else %}
-    <div>you haven't written anything!</div>
-    {% endfor %}
-    <a href="/clipboard/upload">创建文章</a>
+    
+    <div class="clipboard-list">
+        {% if clip_lst %}
+            {% for clip in clip_lst %}
+            <a href="./{{clip['id']}}" class="clipboard-item">
+                <div class="clipboard-item__header">
+                    <h3 class="clipboard-item__header-title">{{clip["title"]}}</h3>
+                    <span class="clipboard-item__header-id">{{clip["id"]}}</span>
+                </div>
+            </a>
+            {% endfor %}
+        {% else %}
+            <div class="clipboard-list__empty">
+                <div class="clipboard-list__empty-icon">
+                    <i class="bi bi-clipboard"></i>
+                </div>
+                <div class="clipboard-list__empty-text">您还没有创建任何剪贴板</div>
+                <div class="clipboard-list__empty-subtext">点击上方按钮创建您的第一个剪贴板</div>
+            </div>
+        {% endif %}
+    </div>
 </div>
 {% endblock %}
 

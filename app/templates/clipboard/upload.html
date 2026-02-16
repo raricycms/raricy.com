@@ -11,18 +11,37 @@
 {% endblock %}
 
 {% block content %}
-<div>
-    <form id="uploadForm">
-        标题：<br/>
-        <input type="text" name="title" value="{{ clip.title if clip else '' }}" required>
-        <br/>
-        正文：<br/>
-        <textarea name="content" rows="20" cols="100" class="form-control">{{ clip.content if clip else ''}}</textarea>
-        是否公开：<input type="checkbox" name="publicity" {% if not clip or clip.publicity %}checked{% endif %} ><br/>
-        <button type="submit">
-            {% if clip %}更新{% else %}提交{% endif %}
-        </button>
-    </form>
+<div class="clipboard-page">
+    <h1 class="clipboard-title">
+        {% if clip %}
+        {{clip.title}} 文章编辑
+        {% else %}
+        上传云剪贴板
+        {% endif %}
+    </h1>
+    
+    <div class="clipboard-form">
+        <form id="uploadForm">
+            <div class="clipboard-form__group">
+                <label for="title">标题</label>
+                <input type="text" id="title" name="title" value="{{ clip.title if clip else '' }}" placeholder="请输入标题" required>
+            </div>
+            
+            <div class="clipboard-form__group">
+                <label for="content">正文</label>
+                <textarea id="content" name="content" placeholder="请输入正文内容" rows="15">{{ clip.content if clip else ''}}</textarea>
+            </div>
+            
+            <div class="clipboard-form__group clipboard-form__group--checkbox">
+                <input type="checkbox" id="publicity" name="publicity" {% if not clip or clip.publicity %}checked{% endif %}>
+                <label for="publicity">是否公开</label>
+            </div>
+            
+            <button type="submit" class="clipboard-form__submit">
+                {% if clip %}更新{% else %}提交{% endif %}
+            </button>
+        </form>
+    </div>
 </div>
 {% endblock %}
 

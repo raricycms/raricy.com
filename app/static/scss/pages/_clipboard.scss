@@ -1,0 +1,450 @@
+// 云剪贴板页面样式
+@use '../abstracts/variables' as *;
+.clipboard {
+  // 页面容器
+  &-page {
+    width: 100%;
+    padding: $space-6 16px;
+    margin-left: auto;
+    margin-right: auto;
+    
+    @media (min-width: 1200px) {
+      max-width: 1140px;
+    }
+    
+    @media (max-width: 768px) {
+      padding: $space-4 16px;
+    }
+  }
+  
+  // 页面标题
+  &-title {
+    font-size: 2rem;
+    font-weight: 700;
+    margin-bottom: $space-4;
+    color: var(--color-text-primary);
+    
+    @media (max-width: 768px) {
+      font-size: 1.75rem;
+      margin-bottom: $space-3;
+    }
+  }
+  
+  // 搜索和导航区域
+  &-navigation {
+    background: var(--color-background-card);
+    border: 1px solid var(--color-border);
+    border-radius: $radius-large;
+    padding: $space-4;
+    margin-bottom: $space-6;
+    
+    @media (max-width: 768px) {
+      padding: $space-3;
+      margin-bottom: $space-4;
+    }
+    
+    &__search {
+      display: flex;
+      gap: $space-2;
+      margin-bottom: $space-4;
+      
+      @media (max-width: 768px) {
+        flex-direction: column;
+      }
+      
+      .search-input {
+        flex: 1;
+        padding: $space-3;
+        border: 1px solid var(--color-border);
+        border-radius: $radius-small;
+        background: var(--color-background-card);
+        color: var(--color-text-primary);
+        font-size: 1rem;
+        transition: all 0.2s ease;
+        
+        &:focus {
+          outline: none;
+          border-color: var(--color-brand-primary);
+          box-shadow: 0 0 0 3px var(--color-brand-secondary);
+        }
+        
+        &::placeholder {
+          color: var(--color-text-secondary);
+        }
+      }
+      
+      .search-button {
+        padding: $space-3 $space-4;
+        background: var(--color-brand-primary);
+        color: white;
+        border: none;
+        border-radius: $radius-small;
+        font-size: 1rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        
+        &:hover {
+          background: var(--color-brand-primary);
+          opacity: 0.9;
+          transform: translateY(-1px);
+        }
+      }
+    }
+    
+    &__actions {
+      display: flex;
+      gap: $space-2;
+      flex-wrap: wrap;
+      
+      .action-button {
+        padding: $space-2 $space-3;
+        background: var(--color-background-page);
+        border: 1px solid var(--color-border);
+        border-radius: $radius-small;
+        color: var(--color-text-primary);
+        text-decoration: none;
+        font-size: 0.875rem;
+        font-weight: 500;
+        transition: all 0.2s ease;
+        
+        &:hover {
+          background: var(--color-brand-secondary);
+          border-color: var(--color-brand-primary);
+          color: var(--color-brand-primary);
+        }
+        
+        &.primary {
+          background: var(--color-brand-primary);
+          border-color: var(--color-brand-primary);
+          color: white;
+          
+          &:hover {
+            background: var(--color-brand-primary);
+            opacity: 0.9;
+          }
+        }
+      }
+    }
+  }
+  
+  // 剪贴板列表
+  &-list {
+    display: grid;
+    gap: $space-3;
+    
+    &__empty {
+      text-align: center;
+      padding: $space-8 0;
+      color: var(--color-text-secondary);
+      
+      &-icon {
+        font-size: 3rem;
+        margin-bottom: $space-3;
+        opacity: 0.5;
+      }
+      
+      &-text {
+        font-size: 1.125rem;
+        margin-bottom: $space-2;
+      }
+      
+      &-subtext {
+        font-size: 0.875rem;
+        opacity: 0.7;
+      }
+    }
+  }
+  
+  // 剪贴板项目
+  &-item {
+    background: var(--color-background-card);
+    border: 1px solid var(--color-border);
+    border-radius: $radius-large;
+    padding: $space-4;
+    transition: all 0.3s ease;
+    cursor: pointer;
+    text-decoration: none;
+    color: inherit;
+    display: block;
+    
+    &:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-card-brand);
+      border-color: var(--color-brand-primary);
+      background: var(--color-brand-secondary);
+    }
+    
+    &:active {
+      transform: translateY(0);
+      transition: all 0.1s ease;
+    }
+    
+    &:focus {
+      outline: 2px solid var(--color-brand-primary);
+      outline-offset: 2px;
+    }
+    
+    &__header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      
+      @media (max-width: 768px) {
+        flex-direction: column;
+        gap: $space-2;
+        align-items: flex-start;
+      }
+      
+      &-title {
+        font-size: 1.125rem;
+        font-weight: 600;
+        color: var(--color-text-primary);
+        margin: 0;
+        line-height: 1.4;
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      
+      &-id {
+        font-size: 0.875rem;
+        color: var(--color-text-secondary);
+        background: var(--color-background-page);
+        border: 1px solid var(--color-border);
+        border-radius: $radius-small;
+        padding: $space-1 $space-2;
+        font-family: monospace;
+        margin-left: $space-3;
+        flex-shrink: 0;
+        
+        @media (max-width: 768px) {
+          margin-left: 0;
+        }
+      }
+    }
+  }
+  
+  // 详情页面
+  &-detail {
+    background: var(--color-background-card);
+    border: 1px solid var(--color-border);
+    border-radius: $radius-large;
+    padding: $space-6;
+    
+    @media (max-width: 768px) {
+      padding: $space-4;
+    }
+    
+    &__header {
+      margin-bottom: $space-4;
+      
+      &-title {
+        font-size: 1.75rem;
+        font-weight: 700;
+        color: var(--color-text-primary);
+        margin-bottom: $space-2;
+        
+        @media (max-width: 768px) {
+          font-size: 1.5rem;
+        }
+      }
+      
+      &-meta {
+        display: flex;
+        gap: $space-4;
+        color: var(--color-text-secondary);
+        font-size: 0.875rem;
+        
+        @media (max-width: 768px) {
+          flex-direction: column;
+          gap: $space-1;
+        }
+      }
+    }
+    
+    &__content {
+      background: var(--color-background-page);
+      border: 1px solid var(--color-border);
+      border-radius: $radius-large;
+      padding: $space-4;
+      margin-bottom: $space-4;
+      
+      pre {
+        font-family: inherit;
+        white-space: pre-wrap;
+        overflow-wrap: break-word;
+        margin: 0;
+        color: var(--color-text-primary);
+        line-height: 1.6;
+        font-size: 0.95rem;
+      }
+    }
+    
+    &__actions {
+      display: flex;
+      gap: $space-2;
+      flex-wrap: wrap;
+      
+      .action-button {
+        padding: $space-2 $space-3;
+        background: var(--color-background-page);
+        border: 1px solid var(--color-border);
+        border-radius: $radius-small;
+        color: var(--color-text-primary);
+        text-decoration: none;
+        font-size: 0.875rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        
+        &:hover {
+          background: var(--color-brand-secondary);
+          border-color: var(--color-brand-primary);
+          color: var(--color-brand-primary);
+        }
+        
+        &.primary {
+          background: var(--color-brand-primary);
+          border-color: var(--color-brand-primary);
+          color: white;
+          
+          &:hover {
+            background: var(--color-brand-primary);
+            opacity: 0.9;
+          }
+        }
+        
+        &.danger {
+          background: var(--color-warning-secondary);
+          border-color: var(--color-warning-primary);
+          color: var(--color-warning-primary);
+          
+          &:hover {
+            background: var(--color-warning-primary);
+            color: white;
+          }
+        }
+      }
+    }
+  }
+  
+  // 上传/编辑表单
+  &-form {
+    background: var(--color-background-card);
+    border: 1px solid var(--color-border);
+    border-radius: $radius-large;
+    padding: $space-6;
+    
+    @media (max-width: 768px) {
+      padding: $space-4;
+    }
+    
+    &__group {
+      margin-bottom: $space-4;
+      
+      label {
+        display: block;
+        font-weight: 600;
+        color: var(--color-text-primary);
+        margin-bottom: $space-2;
+        font-size: 1rem;
+      }
+      
+      input[type="text"],
+      textarea {
+        width: 100%;
+        padding: $space-3;
+        border: 1px solid var(--color-border);
+        border-radius: $radius-small;
+        background: var(--color-background-card);
+        color: var(--color-text-primary);
+        font-size: 1rem;
+        transition: all 0.2s ease;
+        
+        &:focus {
+          outline: none;
+          border-color: var(--color-brand-primary);
+          box-shadow: 0 0 0 3px var(--color-brand-secondary);
+        }
+        
+        &::placeholder {
+          color: var(--color-text-secondary);
+        }
+      }
+      
+      textarea {
+        min-height: 200px;
+        resize: vertical;
+        font-family: inherit;
+        line-height: 1.6;
+      }
+      
+      &--checkbox {
+        display: flex;
+        align-items: center;
+        gap: $space-2;
+        
+        input[type="checkbox"] {
+          width: auto;
+          margin: 0;
+        }
+        
+        label {
+          margin: 0;
+          font-weight: normal;
+        }
+      }
+    }
+    
+    &__submit {
+      padding: $space-3 $space-6;
+      background: var(--color-brand-primary);
+      border: none;
+      border-radius: $radius-small;
+      color: white;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      
+      &:hover {
+        background: var(--color-brand-primary);
+        opacity: 0.9;
+        transform: translateY(-1px);
+      }
+      
+      &:disabled {
+        background: var(--color-text-secondary);
+        cursor: not-allowed;
+        transform: none;
+      }
+    }
+  }
+}
+
+// 响应式调整
+@media (max-width: 768px) {
+  .clipboard {
+    &-item {
+      padding: $space-3;
+    }
+    
+    &-detail {
+      padding: $space-3;
+      
+      &__content {
+        padding: $space-3;
+      }
+    }
+    
+    &-form {
+      padding: $space-3;
+      
+      textarea {
+        min-height: 150px;
+      }
+    }
+  }
+}
