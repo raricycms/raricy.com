@@ -17,7 +17,7 @@
         <input type="text" name="title" value="{{ clip.title if clip else '' }}" required>
         <br/>
         正文：<br/>
-        <textarea name="content" rows="20" cols="100">{{ clip.content if clip else ''}}</textarea>
+        <textarea name="content" rows="20" cols="100" class="form-control">{{ clip.content if clip else ''}}</textarea>
         是否公开：<input type="checkbox" name="publicity" {% if not clip or clip.publicity %}checked{% endif %} ><br/>
         <button type="submit">
             {% if clip %}更新{% else %}提交{% endif %}
