@@ -1,0 +1,440 @@
+<!-- Markdown 渲染组件 -->
+<div class="blog-content-container-container">
+    <div class="blog-content-container" id="userContentContainer">
+        <!-- Markdown 内容将在前端渲染 -->
+        <div id="loading-indicator" class="text-center my-4">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">加载中...</span>
+            </div>
+            <p class="mt-2">正在加载内容...</p>
+        </div>
+    </div>
+    <!-- 原始 Markdown 数据 -->
+    <script type="application/json" id="markdownContent">{{ blog.content | tojson }}</script>
+</div>
+
+<script>
+// Markdown 渲染功能模块
+class MarkdownRenderer {
+    constructor() {
+        this.clipboardPreprocessor = null;
+        this.initialized = false;
+    }
+
+    // 初始化 Markdown 渲染器
+    init() {
+        if (this.initialized) return true;
+        
+        // 检查依赖是否加载完成
+        if (typeof marked === 'undefined') {
+            console.error('marked.js 未加载');
+            return false;
+        }
+        if (typeof hljs === 'undefined') {
+            console.error('highlight.js 未加载');
+            return false;
+        }
+        if (typeof DOMPurify === 'undefined') {
+            console.error('DOMPurify 未加载');
+            return false;
+        }
+
+        // 配置 marked
+        marked.setOptions({
+            highlight: function(code, lang) {
+                try {
+                    if (lang && hljs.getLanguage(lang)) {
+                        return hljs.highlight(code, { language: lang }).value;
+                    }
+                    return hljs.highlightAuto(code).value;
+                } catch (err) {
+                    console.warn('代码高亮失败:', err);
+                    return code; // 返回原始代码
+                }
+            },
+            breaks: true,
+            gfm: true,
+            tables: true,
+            xhtml: false
+        });
+
+        // 配置自定义渲染器
+        const renderer = new marked.Renderer();
+        
+        // 自定义链接渲染
+        renderer.link = function(href, title, text) {
+            const link = marked.Renderer.prototype.link.call(this, href, title, text);
+            return link.replace('<a', '<a rel="noopener noreferrer nofollow" target="_blank"');
+        };
+
+        // 自定义代码块渲染
+        renderer.code = function(code, lang) {
+            try {
+                const highlighted = lang && hljs.getLanguage(lang) 
+                    ? hljs.highlight(code, { language: lang }).value 
+                    : hljs.highlightAuto(code).value;
+                
+                return `<div class="highlight">
+                    <pre><code class="hljs">${highlighted}</code></pre>
+                    <button class="copy-btn" data-code="${encodeURIComponent(code)}">📋 复制</button>
+                </div>`;
+            } catch (err) {
+                console.warn('代码高亮失败:', err);
+                return `<div class="highlight">
+                    <pre><code>${code}</code></pre>
+                    <button class="copy-btn" data-code="${encodeURIComponent(code)}">📋 复制</button>
+                </div>`;
+            }
+        };
+
+        // 自定义列表项渲染（支持任务列表）
+        renderer.listitem = function(text) {
+            // 检查是否是任务列表项
+            if (/^\s*\[[ x]\]\s/.test(text)) {
+                const checked = /^\s*\[x\]\s/.test(text);
+                const cleanText = text.replace(/^\s*\[[ x]\]\s/, '');
+                return `<li class="task-list-item"><input type="checkbox" ${checked ? 'checked' : ''} disabled> ${cleanText}</li>`;
+            }
+            return `<li>${text}</li>`;
+        };
+
+        marked.use({ renderer });
+        this.initialized = true;
+        return true;
+    }
+
+    // 安全渲染 Markdown 内容
+    async render() {
+        const container = document.getElementById('userContentContainer');
+        const markdownScript = document.getElementById('markdownContent');
+        const loadingIndicator = document.getElementById('loading-indicator');
+        
+        if (!markdownScript) {
+            console.error('未找到 Markdown 内容');
+            if (loadingIndicator) {
+                loadingIndicator.innerHTML = '<div class="alert alert-danger">内容数据缺失</div>';
+            }
+            return;
+        }
+
+        try {
+            let markdownText = JSON.parse(markdownScript.textContent);
+            
+            // 如果剪贴板预处理器可用，则进行预处理
+            if (typeof ClipboardPreprocessor !== 'undefined') {
+                if (!this.clipboardPreprocessor) {
+                    this.clipboardPreprocessor = new ClipboardPreprocessor();
+                }
+                markdownText = await this.clipboardPreprocessor.preprocess(markdownText);
+            }
+            
+            // 移除加载指示器
+            if (loadingIndicator) {
+                loadingIndicator.remove();
+            }
+            
+            // 检查必要的库是否可用
+            if (typeof marked === 'undefined' || typeof DOMPurify === 'undefined') {
+                this.showFallbackContent(container, markdownText);
+                return;
+            }
+            
+            // 保护数学公式不被 Markdown 破坏
+            const mathPlaceholders = {};
+            let placeholderCounter = 0;
+            
+            // 保护块级数学公式 $$...$$
+            markdownText = markdownText.replace(/\$\$([\s\S]*?)\$\$/g, (match) => {
+                const placeholder = `MATHBLOCK${placeholderCounter++}PLACEHOLDER`;
+                mathPlaceholders[placeholder] = match;
+                return placeholder;
+            });
+            
+            // 保护行内数学公式 $...$
+            markdownText = markdownText.replace(/\$([^$\n]+?)\$/g, (match) => {
+                const placeholder = `MATHINLINE${placeholderCounter++}PLACEHOLDER`;
+                mathPlaceholders[placeholder] = match;
+                return placeholder;
+            });
+            
+            // 保护 LaTeX 风格公式 \[...\] 和 \(...\)
+            markdownText = markdownText.replace(/\\\[([\s\S]*?)\\\]/g, (match) => {
+                const placeholder = `MATHLATEX${placeholderCounter++}PLACEHOLDER`;
+                mathPlaceholders[placeholder] = match;
+                return placeholder;
+            });
+            
+            markdownText = markdownText.replace(/\\(([\s\S]*?)\\)/g, (match) => {
+                const placeholder = `MATHLATEX${placeholderCounter++}PLACEHOLDER`;
+                mathPlaceholders[placeholder] = match;
+                return placeholder;
+            });
+            
+            // 渲染 Markdown 为 HTML
+            let html = marked.parse(markdownText);
+            
+            // 恢复数学公式
+            Object.keys(mathPlaceholders).forEach(placeholder => {
+                html = html.replace(new RegExp(placeholder, 'g'), mathPlaceholders[placeholder]);
+            });
+            
+            // 使用 DOMPurify 清理 HTML，防止 XSS
+            html = DOMPurify.sanitize(html, {
+                ALLOWED_TAGS: [
+                    'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+                    'p', 'br', 'hr', 'div', 'span',
+                    'strong', 'b', 'em', 'i', 'u', 's', 'del',
+                    'code', 'pre', 'blockquote',
+                    'ul', 'ol', 'li',
+                    'a', 'img',
+                    'table', 'thead', 'tbody', 'tr', 'th', 'td',
+                    'details', 'summary',
+                    'sub', 'sup', 'mark',
+                    'input', 'button',  // 允许 input 标签用于任务列表和button用于复制功能
+                    'video', 'source', 'track', 'audio'
+                ],
+                ALLOWED_ATTR: [
+                    'href', 'title', 'alt', 'src', 'class', 'rel', 'target',
+                    'width', 'height', 'align', 'colspan', 'rowspan',
+                    'type', 'checked', 'disabled', 'data-code',  // 允许任务列表的属性和复制按钮属性
+                    'controls', 'autoplay', 'muted', 'loop', 'poster', 'preload',
+                    'playsinline', 'crossorigin', 'kind', 'srclang', 'label'
+                ],
+                ALLOW_DATA_ATTR: false
+            });
+            
+            container.innerHTML = html;
+            
+            // 安全处理链接
+            this.hardenLinks();
+            
+            // 添加代码复制功能
+            this.addCopyButtons();
+            
+            // 添加图片点击放大功能
+            this.addImageZoom();
+            
+            // 延迟渲染数学公式
+            this.delayedMathRender();
+            
+        } catch (error) {
+            console.error('Markdown 渲染失败:', error);
+            this.showErrorContent(container, markdownScript);
+        }
+    }
+
+    // 显示备用内容
+    showFallbackContent(container, markdownText) {
+        container.innerHTML = `
+            <div class="alert alert-warning">
+                <h5>⚠️ Markdown 渲染库未加载</h5>
+                <p>正在显示原始 Markdown 内容。这可能是由于网络问题导致的。</p>
+                <button class="btn btn-primary btn-sm mt-2" onclick="location.reload()">刷新页面重试</button>
+            </div>
+            <div class="markdown-fallback" style="background: #f8f9fa; padding: 20px; border-radius: 6px; margin-top: 15px; border: 1px solid #e9ecef;">
+                <h6 style="color: #6c757d; margin-bottom: 15px; font-weight: 600;">📝 原始 Markdown 内容：</h6>
+                <pre style="white-space: pre-wrap; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 0.9rem; line-height: 1.6; margin: 0; color: #2c3e50; background: transparent; border: none; padding: 0;">${markdownText.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+            </div>
+        `;
+        console.warn('Markdown 库未加载，显示原始内容');
+    }
+
+    // 显示错误内容
+    showErrorContent(container, markdownScript) {
+        try {
+            const markdownText = JSON.parse(markdownScript.textContent);
+            container.innerHTML = `
+                <div class="alert alert-warning">
+                    <h5>⚠️ 内容渲染失败</h5>
+                    <p>正在显示原始 Markdown 内容。这可能是由于内容格式问题导致的。</p>
+                    <button class="btn btn-primary btn-sm mt-2" onclick="location.reload()">刷新页面重试</button>
+                </div>
+                <div class="markdown-fallback" style="background: #f8f9fa; padding: 20px; border-radius: 6px; margin-top: 15px; border: 1px solid #e9ecef;">
+                    <h6 style="color: #6c757d; margin-bottom: 15px; font-weight: 600;">📝 原始 Markdown 内容：</h6>
+                    <pre style="white-space: pre-wrap; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 0.9rem; line-height: 1.6; margin: 0; color: #2c3e50; background: transparent; border: none; padding: 0;">${markdownText.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+                </div>
+            `;
+        } catch (e) {
+            container.innerHTML = '<div class="alert alert-danger">内容加载失败，请刷新页面重试。</div>';
+        }
+    }
+
+    // 延迟渲染数学公式
+    delayedMathRender() {
+        if (typeof MathJax === 'undefined') {
+            console.warn('MathJax 未加载，跳过数学公式渲染');
+            return;
+        }
+
+        setTimeout(() => {
+            const container = document.getElementById('userContentContainer');
+            if (!container) return;
+
+            // 检查是否有数学公式
+            const hasBlockMath = container.innerHTML.includes('$$') || container.innerHTML.includes('\\[') || container.innerHTML.includes('\\]');
+            const hasInlineMath = /\$[^$\n]+\$/.test(container.innerHTML) || container.innerHTML.includes('\\(') || container.innerHTML.includes('\\)');
+            
+            console.log('数学公式检测:', { hasBlockMath, hasInlineMath });
+            
+            if (hasBlockMath || hasInlineMath) {
+                console.log('检测到数学公式，开始渲染...');
+                this.renderMath();
+            } else {
+                console.log('未检测到数学公式');
+            }
+        }, 300);
+    }
+
+    // 渲染数学公式
+    renderMath() {
+        try {
+            console.log('开始渲染数学公式...');
+            const container = document.getElementById('userContentContainer');
+            if (!container) {
+                console.warn('未找到内容容器');
+                return;
+            }
+            
+            // 使用 MathJax 重新渲染数学公式
+            if (window.MathJax && window.MathJax.typesetPromise) {
+                window.MathJax.typesetPromise([container]).then(() => {
+                    console.log('数学公式渲染完成');
+                }).catch((error) => {
+                    console.error('MathJax 渲染失败:', error);
+                });
+            } else if (window.MathJax && window.MathJax.Hub) {
+                // 针对 MathJax v2 的降级支持
+                window.MathJax.Hub.Queue(["Typeset", window.MathJax.Hub, container]);
+                console.log('数学公式渲染完成 (MathJax v2)');
+            } else {
+                console.warn('MathJax 未正确加载或配置');
+            }
+        } catch (error) {
+            console.error('数学公式渲染失败:', error);
+        }
+    }
+
+    // 安全处理链接
+    hardenLinks() {
+        const anchors = document.querySelectorAll('.blog-content-container a[href]');
+        anchors.forEach(a => {
+            const href = a.getAttribute('href') || '';
+            try {
+                const url = new URL(href, window.location.origin);
+                const protocol = url.protocol.toLowerCase();
+                const isHttp = protocol === 'http:' || protocol === 'https:';
+                const isAllowed = isHttp || protocol === 'mailto:' || protocol === 'tel:';
+                
+                if (!isAllowed) {
+                    a.removeAttribute('href');
+                    return;
+                }
+                
+                if (isHttp && url.origin !== window.location.origin) {
+                    a.setAttribute('rel', 'noopener noreferrer nofollow');
+                    a.setAttribute('target', '_blank');
+                }
+            } catch (e) {
+                // 非法URL，移除href
+                a.removeAttribute('href');
+            }
+        });
+    }
+
+    // 添加代码复制功能
+    addCopyButtons() {
+        const copyButtons = document.querySelectorAll('.copy-btn');
+        copyButtons.forEach(button => {
+            button.addEventListener('click', function() {
+                copyCode(this);
+            });
+        });
+    }
+
+    // 添加图片点击放大功能
+    addImageZoom() {
+        const images = document.querySelectorAll('.blog-content-container img');
+        images.forEach(img => {
+            img.style.cursor = 'pointer';
+            img.addEventListener('click', () => {
+                const overlay = document.createElement('div');
+                overlay.style.cssText = `
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background: rgba(0, 0, 0, 0.8);
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    z-index: 9999;
+                    cursor: pointer;
+                `;
+
+                const zoomedImg = img.cloneNode();
+                zoomedImg.style.cssText = `
+                    max-width: 90%;
+                    max-height: 90%;
+                    object-fit: contain;
+                    border-radius: 8px;
+                `;
+
+                overlay.appendChild(zoomedImg);
+                document.body.appendChild(overlay);
+
+                overlay.addEventListener('click', () => {
+                    document.body.removeChild(overlay);
+                });
+            });
+        });
+    }
+}
+
+// 全局代码复制函数
+function copyCode(button) {
+    const codeText = decodeURIComponent(button.getAttribute('data-code'));
+    
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(codeText).then(() => {
+            const originalText = button.textContent;
+            button.textContent = '✅ 已复制';
+            setTimeout(() => {
+                button.textContent = originalText;
+            }, 2000);
+        }).catch(() => {
+            fallbackCopy(codeText);
+        });
+    } else {
+        fallbackCopy(codeText);
+    }
+}
+
+function fallbackCopy(text) {
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    textArea.style.position = 'fixed';
+    textArea.style.left = '-999999px';
+    textArea.style.top = '-999999px';
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    
+    try {
+        document.execCommand('copy');
+        alert('代码已复制到剪贴板');
+    } catch (err) {
+        alert('复制功能不可用，请手动选择代码');
+    }
+    
+    document.body.removeChild(textArea);
+}
+
+// 初始化 Markdown 渲染器
+document.addEventListener('DOMContentLoaded', function() {
+    const renderer = new MarkdownRenderer();
+    if (renderer.init()) {
+        renderer.render();
+    }
+});
+</script>
