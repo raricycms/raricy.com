@@ -1,0 +1,1371 @@
+{% extends "base.html" %}
+
+{% block title %}{{ blog.title }} - 文章阅读{% endblock %}
+
+{% block extra_css %}
+<!-- CSS 样式表 -->
+<link rel="stylesheet" href="{{url_for('static', filename='css/hljs/default.min.css')}}" id="hljs-light" onerror="this.onerror=null; this.href='https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css'">
+<link rel="stylesheet" href="{{url_for('static', filename='css/hljs/monokai.min.css')}}" id="hljs-dark" onerror="this.onerror=null; this.href='https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/monokai.min.css'">
+
+<!-- JavaScript 库（按依赖顺序加载） -->
+<script src="{{url_for('static', filename='js/dompurify.min.js')}}"></script>
+<script>
+    if (typeof window.DOMPurify === 'undefined') {
+        document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.8/purify.min.js"><\\/script>');
+    }
+</script>
+<script src="{{url_for('static', filename='js/highlight.min.js')}}"></script>
+<script>
+    if (typeof window.hljs === 'undefined') {
+        document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"><\\/script>');
+    }
+</script>
+<script src="{{url_for('static', filename='js/marked.min.js')}}"></script>
+<script>
+    if (typeof window.marked === 'undefined') {
+        document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"><\\/script>');
+    }
+</script>
+<!-- MathJax 配置和加载 -->
+<script>
+    window.MathJax = {
+        tex: {
+            inlineMath: [['$', '$'], ['\\(', '\\)']],
+            displayMath: [['$$', '$$'], ['\\[', '\\]']],
+            processEscapes: true,
+            processEnvironments: true,
+            processRefs: true,
+            packages: {'[+]': ['ams', 'newcommand', 'configmacros', 'action', 'bbox', 'boldsymbol', 'braket', 'cancel', 'color', 'enclose', 'extpfeil', 'mhchem', 'newcommand', 'unicode', 'verb']},
+            macros: {
+                RR: "\\mathbb{R}",
+                NN: "\\mathbb{N}",
+                ZZ: "\\mathbb{Z}",
+                QQ: "\\mathbb{Q}",
+                CC: "\\mathbb{C}",
+                PP: "\\mathbb{P}",
+                EE: "\\mathbb{E}",
+                FF: "\\mathbb{F}",
+                bold: ["\\mathbf{" + "#1}", 1],
+                bm: ["\\boldsymbol{" + "#1}", 1]
+            }
+        },
+        options: {
+            ignoreHtmlClass: 'tex2jax_ignore',
+            processHtmlClass: 'tex2jax_process',
+            renderActions: {
+                findScript: [10, function (doc) {
+                    for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+                        const display = !!node.type.match(/; *mode=display/);
+                        const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+                        const text = document.createTextNode('');
+                        node.parentNode.replaceChild(text, node);
+                        math.start = {node: text, delim: '', n: 0};
+                        math.end = {node: text, delim: '', n: 0};
+                        doc.math.push(math);
+                    }
+                }, '']
+            }
+        },
+        chtml: {
+            fontURL: 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/output/chtml/fonts/woff-v2'
+        },
+        svg: {
+            fontCache: 'global'
+        },
+        startup: {
+            ready: function () {
+                console.log('MathJax 加载完成');
+                MathJax.startup.defaultReady();
+            }
+        }
+    };
+</script>
+
+<script>
+    
+</script>
+
+<!-- 移除有问题的 polyfill.io，改用更稳定的方案 -->
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" onerror="console.error('MathJax 加载失败')"></script>
+{% endblock %}
+
+{% block content %}
+<!-- 阅读进度条 -->
+<div class="reading-progress"></div>
+
+<section class="read-hero">
+    <h1 style="font-weight: bold;">{{ blog.title }}</h1>
+    <div class="blog-meta">
+        <span class="blog-author">
+            <img src="/auth/avatar/{{ blog.author_id }}"
+                style="width:24px; height:24px; border-radius:10%; margin-right:8px; vertical-align: bottom;">
+            {{ blog.author }}
+        </span>
+        <!-- <span class="blog-date">{{ blog.date }}</span> -->
+    </div>
+</section>
+
+<div class="blog-content-container-container">
+    <div class="blog-content-container" id="userContentContainer">
+        <!-- Markdown 内容将在前端渲染 -->
+        <div id="loading-indicator" class="text-center my-4">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">加载中...</span>
+            </div>
+            <p class="mt-2">正在加载内容...</p>
+        </div>
+    </div>
+    <!-- 原始 Markdown 数据 -->
+    <script type="application/json" id="markdownContent">{{ blog.content | tojson }}</script>
+</div>
+
+<div class="read-controls">
+    <button
+        id="like-btn"
+        class="like-btn {{ 'liked' if blog.liked else '' }}"
+        data-auth="{{ 1 if current_user.is_authenticated else 0 }}"
+        data-login-url="{{ url_for('auth.login') }}"
+        data-like-url="{{ url_for('blog.like_toggle', blog_id=blog.id) }}"
+        aria-label="点赞"
+    >
+        <i id="like-icon" class="bi {{ 'bi-heart-fill' if blog.liked else 'bi-heart' }}"></i>
+        <span id="like-text">{{ '已点赞' if blog.liked else '点赞' }}</span>
+        <span class="like-count-badge" id="like-count">{{ blog.likes_count or 0 }}</span>
+    </button>
+
+    <button onclick="history.back()" class="read-btn">📝 返回上页</button>
+</div>
+{% if current_user.is_authenticated and (current_user.has_admin_rights or current_user.id == blog.author_id) %}
+<div class="admin-controls">
+    {% if current_user.has_admin_rights or current_user.id == blog.author_id %}
+    <button id="admin-likers-btn" class="button button-primary" data-likers-url="{{ url_for('blog.likers', blog_id=blog.id) }}">
+        👍 查看点赞者
+    </button>
+    {% endif %}
+    {% if current_user.id == blog.author_id %}
+    <a href="{{ url_for('blog.edit_blog', blog_id=blog.id) }}" class="button button-primary">✏️ 编辑文章</a>
+    {% endif %}
+    {% if current_user.has_admin_rights or current_user.id == blog.author_id %}
+    <button id="admin-delete-btn" class="button button-warning" data-delete-url="{{ url_for('blog.delete_blog', blog_id=blog.id) }}" data-redirect-url="{{ url_for('blog.menu') }}">
+        🗑️ 删除文章
+    </button>
+    {% endif %}
+    
+</div>
+{% endif %}
+
+{% if current_user.is_authenticated and current_user.has_admin_rights or current_user.id == blog.author_id %}
+<!-- 点赞者列表 Modal -->
+<div class="modal fade" id="likersModal" tabindex="-1" aria-labelledby="likersModalLabel" aria-hidden="true" role="dialog">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="likersModalLabel">点赞者列表</h5>
+        <button type="button" class="btn-close" data-modal-close aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div id="likers-list" class="list-group" style="max-height: 50vh; overflow: auto;"></div>
+        <div class="d-flex justify-content-between align-items-center mt-3">
+            <button id="likers-prev" class="btn btn-sm btn-outline-secondary">上一页</button>
+            <small id="likers-pageinfo" class="text-muted"></small>
+            <button id="likers-next" class="btn btn-sm btn-outline-secondary">下一页</button>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-modal-close>关闭</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 删除确认 Modal -->
+<div class="modal fade" id="deleteConfirmModal" tabindex="-1" aria-labelledby="deleteConfirmLabel" aria-hidden="true" role="dialog">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="deleteConfirmLabel">确认删除</h5>
+        <button type="button" class="btn-close" data-modal-close aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        确定要删除这篇文章《{{ blog.title }}》吗？该操作不可恢复。
+        {% if current_user.has_admin_rights and current_user.id != blog.author_id %}
+        <div class="mt-3">
+            <label for="delete-reason" class="form-label">删除原因（管理员必填，将通知作者）：</label>
+            <textarea id="delete-reason" class="form-control" rows="3" maxlength="500" placeholder="请填写删除原因…"></textarea>
+        </div>
+        {% endif %}
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="button button-primary" data-modal-close>取消</button>
+        <button type="button" id="confirm-delete-btn" class="button button-warning">确认删除</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+    
+<!-- 评论删除确认 Modal -->
+<div class="modal fade" id="commentDeleteModal" tabindex="-1" aria-labelledby="commentDeleteLabel" aria-hidden="true" role="dialog">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="commentDeleteLabel">确认删除评论</h5>
+        <button type="button" class="btn-close" data-modal-close aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="text-muted">确定要删除该评论吗？</div>
+        <div id="comment-delete-reason-wrap" class="mt-3" style="display:none;">
+          <label for="comment-delete-reason" class="form-label">删除原因（管理员必填，将通知用户）：</label>
+          <textarea id="comment-delete-reason" class="form-control" rows="3" maxlength="500" placeholder="请填写删除原因…"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="button button-primary" data-modal-close>取消</button>
+        <button type="button" id="comment-confirm-delete-btn" class="button button-warning">确认删除</button>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- 评论区 -->
+<div class="blog-detail">
+    <section class="comment-section" id="comment-section"
+             data-blog-id="{{ blog.id }}"
+             data-list-url="{{ url_for('blog.list_comments', blog_id=blog.id) }}"
+             data-create-url="{{ url_for('blog.create_comment', blog_id=blog.id) }}"
+             data-delete-url-template="{{ url_for('blog.delete_comment', comment_id='__CID__') }}"
+             data-can-comment="{{ 1 if current_user.is_authenticated and current_user.is_core_user else 0 }}"
+             data-current-user-id="{{ current_user.id if current_user.is_authenticated else '' }}"
+             data-is-admin="{{ 1 if current_user.is_authenticated and current_user.has_admin_rights else 0 }}">
+
+        {% if current_user.is_authenticated and current_user.is_core_user %}
+        <form class="comment-form" id="comment-form" style="overflow: auto;">
+            <textarea name="content" id="comment-content" class="form-control" maxlength="2000" placeholder="说点什么…（最多2000字）"></textarea>
+            <div class="mt-2">
+                <button type="submit" class="button button-primary" style="margin-top: 10px;">发表评论</button>
+            </div>
+            <input type="hidden" name="parent_id" id="comment-parent-id" value="">
+        </form>
+        {% else %}
+        <div class="alert alert-info">只有"核心用户"可以发表评论。</div>
+        {% endif %}
+
+        <ul class="comment-list" id="comment-list"></ul>
+    </section>
+</div>
+{% endblock %}
+
+{% block copyright %}
+作者：{{ blog.author }} | 版权归原作者所有  
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // 前端 Markdown 渲染功能
+    function initMarkdownRenderer() {
+        // 检查依赖是否加载完成
+        if (typeof marked === 'undefined') {
+            console.error('marked.js 未加载');
+            return false;
+        }
+        if (typeof hljs === 'undefined') {
+            console.error('highlight.js 未加载');
+            return false;
+        }
+        if (typeof DOMPurify === 'undefined') {
+            console.error('DOMPurify 未加载');
+            return false;
+        }
+        if (typeof MathJax === 'undefined') {
+            console.error('MathJax 未加载');
+            return false;
+        }
+
+        // 配置 marked
+        marked.setOptions({
+            highlight: function(code, lang) {
+                try {
+                    if (lang && hljs.getLanguage(lang)) {
+                        return hljs.highlight(code, { language: lang }).value;
+                    }
+                    return hljs.highlightAuto(code).value;
+                } catch (err) {
+                    console.warn('代码高亮失败:', err);
+                    return code; // 返回原始代码
+                }
+            },
+            breaks: true,
+            gfm: true,
+            tables: true,
+            xhtml: false
+        });
+
+        // 配置自定义渲染器
+        const renderer = new marked.Renderer();
+        
+        // 自定义链接渲染
+        renderer.link = function(href, title, text) {
+            const link = marked.Renderer.prototype.link.call(this, href, title, text);
+            return link.replace('<a', '<a rel="noopener noreferrer nofollow" target="_blank"');
+        };
+
+        // 自定义代码块渲染
+        renderer.code = function(code, lang) {
+            try {
+                const highlighted = lang && hljs.getLanguage(lang) 
+                    ? hljs.highlight(code, { language: lang }).value 
+                    : hljs.highlightAuto(code).value;
+                
+                return `<div class="highlight">
+                    <pre><code class="hljs">${highlighted}</code></pre>
+                    <button class="copy-btn" data-code="${encodeURIComponent(code)}">📋 复制</button>
+                </div>`;
+            } catch (err) {
+                console.warn('代码高亮失败:', err);
+                return `<div class="highlight">
+                    <pre><code>${code}</code></pre>
+                    <button class="copy-btn" data-code="${encodeURIComponent(code)}">📋 复制</button>
+                </div>`;
+            }
+        };
+
+        // 自定义列表项渲染（支持任务列表）
+        renderer.listitem = function(text) {
+            // 检查是否是任务列表项
+            if (/^\s*\[[ x]\]\s/.test(text)) {
+                const checked = /^\s*\[x\]\s/.test(text);
+                const cleanText = text.replace(/^\s*\[[ x]\]\s/, '');
+                return `<li class="task-list-item"><input type="checkbox" ${checked ? 'checked' : ''} disabled> ${cleanText}</li>`;
+            }
+            return `<li>${text}</li>`;
+        };
+
+        marked.use({ renderer });
+        
+        return true;
+    }
+    class ClipboardPreprocessor {
+  constructor() {
+    this.cache = new Map(); // 缓存已获取的内容
+  }
+
+  async preprocess(markdownContent) {
+    const pattern = /\[@\s*(\w+)\s*\]/g;
+    const matches = [...markdownContent.matchAll(pattern)];
+
+    if (matches.length === 0) return markdownContent;
+
+    // 提取所有唯一的 ID
+    const uniqueIds = [...new Set(matches.map(match => match[1]))];
+
+    // 批量获取未缓存的内容
+    const fetchPromises = uniqueIds
+      .filter(id => !this.cache.has(id))
+      .map(async (id) => {
+        try {
+          const response = await fetch(`/clipboard/${id}?raw`);
+          if (!response.ok) throw new Error(`Failed to fetch ${id}`);
+
+          const data = await response.json();
+          this.cache.set(id, data.content || '');
+        } catch (error) {
+          console.error(`Error fetching clipboard ${id}:`, error);
+          this.cache.set(id, `[Error loading clipboard ${id}]`);
+        }
+      });
+
+    // 等待所有请求完成
+    await Promise.all(fetchPromises);
+
+    // 执行替换
+    let processedContent = markdownContent;
+
+    // 为每个匹配项进行替换
+    matches.forEach(([fullMatch, id]) => {
+      const replacement = this.cache.get(id) || '';
+      // 只替换当前匹配项，使用正则避免替换所有相同内容
+      processedContent = processedContent.replace(fullMatch, () => replacement);
+    });
+
+    return processedContent;
+  }
+
+  clearCache() {
+    this.cache.clear();
+  }
+}
+
+// 使用示例
+const preprocessor = new ClipboardPreprocessor();
+
+    // 安全渲染 Markdown 内容
+    async function renderUserContent() {
+        const container = document.getElementById('userContentContainer');
+        const markdownScript = document.getElementById('markdownContent');
+        const loadingIndicator = document.getElementById('loading-indicator');
+        
+        if (!markdownScript) {
+            console.error('未找到 Markdown 内容');
+            if (loadingIndicator) {
+                loadingIndicator.innerHTML = '<div class="alert alert-danger">内容数据缺失</div>';
+            }
+            return;
+        }
+
+        try {
+            let markdownText = JSON.parse(markdownScript.textContent);
+            markdownText = await preprocessor.preprocess(markdownText)
+            // 移除加载指示器
+            if (loadingIndicator) {
+                loadingIndicator.remove();
+            }
+            
+            // 检查必要的库是否可用
+            if (typeof marked === 'undefined' || typeof DOMPurify === 'undefined') {
+                // 备用方案：显示原始 Markdown
+                container.innerHTML = `
+                    <div class="alert alert-warning">
+                        <h5>⚠️ Markdown 渲染库未加载</h5>
+                        <p>正在显示原始 Markdown 内容。这可能是由于网络问题导致的。</p>
+                        <button class="btn btn-primary btn-sm mt-2" onclick="location.reload()">刷新页面重试</button>
+                    </div>
+                    <div class="markdown-fallback" style="background: #f8f9fa; padding: 20px; border-radius: 6px; margin-top: 15px; border: 1px solid #e9ecef;">
+                        <h6 style="color: #6c757d; margin-bottom: 15px; font-weight: 600;">📝 原始 Markdown 内容：</h6>
+                        <pre style="white-space: pre-wrap; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 0.9rem; line-height: 1.6; margin: 0; color: #2c3e50; background: transparent; border: none; padding: 0;">${markdownText.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+                    </div>
+                `;
+                console.warn('Markdown 库未加载，显示原始内容');
+                return;
+            }
+            
+            // 保护数学公式不被 Markdown 破坏
+            const mathPlaceholders = {};
+            let placeholderCounter = 0;
+            
+            // 保护块级数学公式 $$...$$
+            markdownText = markdownText.replace(/\$\$([\s\S]*?)\$\$/g, (match) => {
+                const placeholder = `MATHBLOCK${placeholderCounter++}PLACEHOLDER`;
+                mathPlaceholders[placeholder] = match;
+                return placeholder;
+            });
+            
+            // 保护行内数学公式 $...$
+            markdownText = markdownText.replace(/\$([^$\n]+?)\$/g, (match) => {
+                const placeholder = `MATHINLINE${placeholderCounter++}PLACEHOLDER`;
+                mathPlaceholders[placeholder] = match;
+                return placeholder;
+            });
+            
+            // 保护 LaTeX 风格公式 \[...\] 和 \(...\)
+            markdownText = markdownText.replace(/\\\[([\s\S]*?)\\\]/g, (match) => {
+                const placeholder = `MATHLATEX${placeholderCounter++}PLACEHOLDER`;
+                mathPlaceholders[placeholder] = match;
+                return placeholder;
+            });
+            
+            markdownText = markdownText.replace(/\\\(([\s\S]*?)\\\)/g, (match) => {
+                const placeholder = `MATHLATEX${placeholderCounter++}PLACEHOLDER`;
+                mathPlaceholders[placeholder] = match;
+                return placeholder;
+            });
+            
+            // 渲染 Markdown 为 HTML
+            let html = marked.parse(markdownText);
+            
+            // 恢复数学公式
+            Object.keys(mathPlaceholders).forEach(placeholder => {
+                html = html.replace(new RegExp(placeholder, 'g'), mathPlaceholders[placeholder]);
+            });
+            
+            // 使用 DOMPurify 清理 HTML，防止 XSS - 保留数学公式标记
+            html = DOMPurify.sanitize(html, {
+                ALLOWED_TAGS: [
+                    'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+                    'p', 'br', 'hr', 'div', 'span',
+                    'strong', 'b', 'em', 'i', 'u', 's', 'del',
+                    'code', 'pre', 'blockquote',
+                    'ul', 'ol', 'li',
+                    'a', 'img',
+                    'table', 'thead', 'tbody', 'tr', 'th', 'td',
+                    'details', 'summary',
+                    'sub', 'sup', 'mark',
+                    'input', 'button',  // 允许 input 标签用于任务列表和button用于复制功能
+                    'video', 'source', 'track', 'audio'
+                ],
+                ALLOWED_ATTR: [
+                    'href', 'title', 'alt', 'src', 'class', 'rel', 'target',
+                    'width', 'height', 'align', 'colspan', 'rowspan',
+                    'type', 'checked', 'disabled', 'data-code',  // 允许任务列表的属性和复制按钮属性
+                    'controls', 'autoplay', 'muted', 'loop', 'poster', 'preload',
+                    'playsinline', 'crossorigin', 'kind', 'srclang', 'label'
+                ],
+                ALLOW_DATA_ATTR: false
+            });
+            
+            container.innerHTML = html;
+            
+            // 安全处理链接
+            hardenLinks();
+            
+            // 添加代码复制功能
+            addCopyButtons();
+            
+            // 添加图片点击放大功能
+            addImageZoom();
+            
+            // 延迟渲染数学公式，确保 DOM 完全准备好
+            if (typeof MathJax !== 'undefined') {
+                setTimeout(() => {
+                    // 直接检查 DOM 中是否有数学公式
+                    const hasBlockMath = container.innerHTML.includes('$$') || container.innerHTML.includes('\\[') || container.innerHTML.includes('\\]');
+                    const hasInlineMath = /\$[^$\n]+\$/.test(container.innerHTML) || container.innerHTML.includes('\\(') || container.innerHTML.includes('\\)');
+                    
+                    console.log('数学公式检测:', {
+                        hasBlockMath,
+                        hasInlineMath,
+                        htmlSample: container.innerHTML.substring(0, 200) + '...'
+                    });
+                    
+                    if (hasBlockMath || hasInlineMath) {
+                        console.log('检测到数学公式，开始渲染...');
+                        renderMath();
+                    } else {
+                        console.log('未检测到数学公式');
+                    }
+                }, 300);
+            } else {
+                console.warn('MathJax 未加载，跳过数学公式渲染');
+            }
+            
+        } catch (error) {
+            console.error('Markdown 渲染失败:', error);
+            // 尝试显示原始内容作为备用
+            try {
+                const markdownText = JSON.parse(markdownScript.textContent);
+                container.innerHTML = `
+                    <div class="alert alert-warning">
+                        <h5>⚠️ 内容渲染失败</h5>
+                        <p>正在显示原始 Markdown 内容。这可能是由于内容格式问题导致的。</p>
+                        <button class="btn btn-primary btn-sm mt-2" onclick="location.reload()">刷新页面重试</button>
+                    </div>
+                    <div class="markdown-fallback" style="background: #f8f9fa; padding: 20px; border-radius: 6px; margin-top: 15px; border: 1px solid #e9ecef;">
+                        <h6 style="color: #6c757d; margin-bottom: 15px; font-weight: 600;">📝 原始 Markdown 内容：</h6>
+                        <pre style="white-space: pre-wrap; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 0.9rem; line-height: 1.6; margin: 0; color: #2c3e50; background: transparent; border: none; padding: 0;">${markdownText.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+                    </div>
+                `;
+            } catch (e) {
+                container.innerHTML = '<div class="alert alert-danger">内容加载失败，请刷新页面重试。</div>';
+            }
+        }
+    }
+
+    // 渲染数学公式
+    function renderMath() {
+        try {
+            console.log('开始渲染数学公式...');
+            const container = document.getElementById('userContentContainer');
+            if (!container) {
+                console.warn('未找到内容容器');
+                return;
+            }
+            
+            // 使用 MathJax 重新渲染数学公式
+            if (window.MathJax && window.MathJax.typesetPromise) {
+                window.MathJax.typesetPromise([container]).then(() => {
+                    console.log('数学公式渲染完成');
+                }).catch((error) => {
+                    console.error('MathJax 渲染失败:', error);
+                });
+            } else if (window.MathJax && window.MathJax.Hub) {
+                // 针对 MathJax v2 的降级支持
+                window.MathJax.Hub.Queue(["Typeset", window.MathJax.Hub, container]);
+                console.log('数学公式渲染完成 (MathJax v2)');
+            } else {
+                console.warn('MathJax 未正确加载或配置');
+            }
+        } catch (error) {
+            console.error('数学公式渲染失败:', error);
+        }
+    }
+
+    // 添加代码复制功能
+    function addCopyButtons() {
+        const copyButtons = document.querySelectorAll('.copy-btn');
+        copyButtons.forEach(button => {
+            button.addEventListener('click', function() {
+                copyCode(this);
+            });
+        });
+    }
+    
+    // 复制代码功能
+    function copyCode(button) {
+        console.log('复制代码按钮被点击');
+        try {
+            let codeText = '';
+            
+            // 尝试从 data-code 属性获取代码
+            const encodedCode = button.getAttribute('data-code');
+            if (encodedCode) {
+                codeText = decodeURIComponent(encodedCode);
+            } else {
+                // 降级方案：从相邻的 code 元素获取
+                const codeBlock = button.parentElement.querySelector('code');
+                if (!codeBlock) {
+                    console.error('未找到代码块');
+                    return;
+                }
+                codeText = codeBlock.textContent || codeBlock.innerText;
+            }
+            
+            console.log('准备复制的代码长度:', codeText.length);
+            
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                // 现代浏览器
+                navigator.clipboard.writeText(codeText).then(() => {
+                    console.log('代码复制成功');
+                    showCopySuccess(button);
+                }).catch((err) => {
+                    console.warn('Clipboard API 失败，使用降级方案:', err);
+                    fallbackCopy(codeText, button);
+                });
+            } else {
+                // 降级方案
+                console.log('使用降级复制方案');
+                fallbackCopy(codeText, button);
+            }
+        } catch (error) {
+            console.error('复制代码时出错:', error);
+        }
+    }
+    
+    // 显示复制成功状态
+    function showCopySuccess(button) {
+        const originalText = button.innerHTML;
+        const originalBg = button.style.background;
+        const originalColor = button.style.color;
+        
+        button.innerHTML = '✅ 已复制';
+        button.style.background = '#27ae60';
+        button.style.color = '#fff';
+        button.disabled = true;
+        
+        setTimeout(() => {
+            button.innerHTML = originalText;
+            button.style.background = originalBg;
+            button.style.color = originalColor;
+            button.disabled = false;
+        }, 2000);
+    }
+    
+    // 降级复制方案
+    function fallbackCopy(text, button) {
+        try {
+            const textArea = document.createElement('textarea');
+            textArea.value = text;
+            textArea.style.position = 'fixed';
+            textArea.style.left = '-999999px';
+            textArea.style.top = '-999999px';
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            
+            const successful = document.execCommand('copy');
+            document.body.removeChild(textArea);
+            
+            if (successful) {
+                console.log('降级复制成功');
+                showCopySuccess(button);
+            } else {
+                console.error('降级复制失败');
+                alert('复制失败，请手动选择代码');
+            }
+        } catch (err) {
+            console.error('降级复制出错:', err);
+            alert('复制功能不可用，请手动选择代码');
+        }
+    }
+
+    // 对内容区域中的链接进行安全加固
+    function hardenLinks() {
+        const anchors = document.querySelectorAll('.blog-content-container a[href]');
+        anchors.forEach(a => {
+            const href = a.getAttribute('href') || '';
+            try {
+                const url = new URL(href, window.location.origin);
+                const protocol = url.protocol.toLowerCase();
+                const isHttp = protocol === 'http:' || protocol === 'https:';
+                const isAllowed = isHttp || protocol === 'mailto:' || protocol === 'tel:';
+                
+                if (!isAllowed) {
+                    a.removeAttribute('href');
+                    return;
+                }
+                
+                if (isHttp && url.origin !== window.location.origin) {
+                    a.setAttribute('rel', 'noopener noreferrer nofollow');
+                    a.setAttribute('target', '_blank');
+                }
+            } catch (e) {
+                // 非法URL，移除href
+                a.removeAttribute('href');
+            }
+        });
+    }
+    // 主题切换功能
+
+
+    
+    // 阅读进度条
+    function updateReadingProgress() {
+        const article = document.querySelector('.blog-content-container');
+        const scrollTop = window.pageYOffset;
+        const docHeight = document.body.scrollHeight - window.innerHeight;
+        const scrollPercent = Math.min((scrollTop / docHeight) * 100, 100);
+
+        let progressBar = document.querySelector('.reading-progress');
+        if (!progressBar) {
+            progressBar = document.createElement('div');
+            progressBar.className = 'reading-progress';
+            document.body.appendChild(progressBar);
+        }
+
+        progressBar.style.width = scrollPercent + '%';
+    }
+
+
+
+    // 图片点击放大功能
+    function addImageZoom() {
+        const images = document.querySelectorAll('.blog-content-container img');
+        images.forEach(img => {
+            img.style.cursor = 'pointer';
+            img.addEventListener('click', () => {
+                const overlay = document.createElement('div');
+                overlay.style.cssText = `
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background: rgba(0, 0, 0, 0.8);
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    z-index: 9999;
+                    cursor: pointer;
+                `;
+
+                const zoomedImg = img.cloneNode();
+                zoomedImg.style.cssText = `
+                    max-width: 90%;
+                    max-height: 90%;
+                    object-fit: contain;
+                `;
+
+                overlay.appendChild(zoomedImg);
+                document.body.appendChild(overlay);
+
+                overlay.addEventListener('click', () => {
+                    document.body.removeChild(overlay);
+                });
+            });
+        });
+    }
+
+
+
+    // 滚动事件监听
+    window.addEventListener('scroll', updateReadingProgress);
+
+
+
+    // 等待所有依赖加载完成
+    function waitForDependencies(callback, maxAttempts = 15) { // 减少到15次尝试，总共3秒
+        let attempts = 0;
+        
+        function check() {
+            attempts++;
+            
+            // 详细检查每个依赖
+            const dependencies = {
+                'marked': typeof marked !== 'undefined',
+                'hljs': typeof hljs !== 'undefined', 
+                'DOMPurify': typeof DOMPurify !== 'undefined',
+                'MathJax': typeof MathJax !== 'undefined'
+            };
+            
+            console.log(`依赖检查 (${attempts}/${maxAttempts}):`, dependencies);
+            
+            if (dependencies.marked && dependencies.hljs && dependencies.DOMPurify && dependencies.MathJax) {
+                console.log('✅ 所有依赖已加载完成');
+                callback();
+                return;
+            }
+            
+            if (attempts >= maxAttempts) {
+                console.error('❌ 依赖加载超时，缺失的依赖:', 
+                    Object.keys(dependencies).filter(key => !dependencies[key]));
+                // 如果关键依赖缺失，直接显示原始内容
+                if (!dependencies.marked || !dependencies.DOMPurify) {
+                    console.log('关键依赖缺失，直接显示原始Markdown内容');
+                    const container = document.getElementById('userContentContainer');
+                    const markdownScript = document.getElementById('markdownContent');
+                    const loadingIndicator = document.getElementById('loading-indicator');
+                    
+                    if (markdownScript && container) {
+                        try {
+                            const markdownText = JSON.parse(markdownScript.textContent);
+                            if (loadingIndicator) {
+                                loadingIndicator.remove();
+                            }
+                            container.innerHTML = `
+                                <div class="alert alert-warning">
+                                    <h5>⚠️ CDN 资源加载失败</h5>
+                                    <p>由于网络问题，Markdown 渲染库未能加载。正在显示原始内容。</p>
+                                    <button class="btn btn-primary btn-sm mt-2" onclick="location.reload()">刷新页面重试</button>
+                                </div>
+                                <div class="markdown-fallback" style="background: #f8f9fa; padding: 20px; border-radius: 6px; margin-top: 15px; border: 1px solid #e9ecef;">
+                                    <h6 style="color: #6c757d; margin-bottom: 15px; font-weight: 600;">📝 原始 Markdown 内容：</h6>
+                                    <pre style="white-space: pre-wrap; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 0.9rem; line-height: 1.6; margin: 0; color: #2c3e50; background: transparent; border: none; padding: 0;">${markdownText.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+                                </div>
+                            `;
+                            return;
+                        } catch (e) {
+                            console.error('解析Markdown内容失败:', e);
+                        }
+                    }
+                }
+                callback(); // 仍然尝试初始化
+                return;
+            }
+            
+            setTimeout(check, 200); // 200ms 后重试
+        }
+        
+        check();
+    }
+
+    // 页面加载时自动适配系统主题和初始化
+    document.addEventListener('DOMContentLoaded', () => {
+        // 增加一个快速失败检测，2秒后如果依赖还未加载就直接显示原文
+        const quickFailTimeout = setTimeout(() => {
+            console.log('🚀 快速失败检测：2秒后强制显示原文');
+            const container = document.getElementById('userContentContainer');
+            const markdownScript = document.getElementById('markdownContent');
+            const loadingIndicator = document.getElementById('loading-indicator');
+            
+            if (markdownScript && container && loadingIndicator) {
+                try {
+                    const markdownText = JSON.parse(markdownScript.textContent);
+                    loadingIndicator.remove();
+                    container.innerHTML = `
+                        <div class="alert alert-info">
+                            <h5>⚡ 网络较慢，已切换到原文显示</h5>
+                            <p>Markdown 渲染库正在加载中。如需完整渲染效果，请稍后刷新页面。</p>
+                            <button class="btn btn-primary btn-sm mt-2" onclick="location.reload()">刷新页面</button>
+                        </div>
+                        <div class="markdown-fallback" style="background: #f8f9fa; padding: 20px; border-radius: 6px; margin-top: 15px; border: 1px solid #e9ecef;">
+                            <h6 style="color: #6c757d; margin-bottom: 15px; font-weight: 600;">📝 原始 Markdown 内容：</h6>
+                            <pre style="white-space: pre-wrap; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 0.9rem; line-height: 1.6; margin: 0; color: #2c3e50; background: transparent; border: none; padding: 0;">${markdownText.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+                        </div>
+                    `;
+                } catch (e) {
+                    console.error('解析Markdown内容失败:', e);
+                }
+            }
+        }, 2000); // 2秒快速失败
+
+        waitForDependencies(() => {
+            // 如果依赖加载成功，清除快速失败定时器
+            clearTimeout(quickFailTimeout);
+            
+            // 初始化 Markdown 渲染器
+            if (initMarkdownRenderer()) {
+                // 渲染内容
+                renderUserContent();
+            } else {
+                console.error('Markdown 渲染器初始化失败');
+                document.getElementById('userContentContainer').innerHTML = 
+                    '<p class="text-danger">内容加载失败，请刷新页面重试。</p>';
+            }
+        });
+        
+        // 主题设置
+        updateReadingProgress();
+        addImageZoom();
+
+        // 平滑滚动到内容区域（如果有锚点）
+        if (window.location.hash) {
+            const target = document.querySelector(window.location.hash);
+            if (target) {
+                target.scrollIntoView({ behavior: 'smooth' });
+            }
+        }
+    });
+
+    // Lightweight modal helpers (no Bootstrap), with a11y handling
+    function setBackgroundInert(enable, excludeEl) {
+        const children = Array.from(document.body.children);
+        children.forEach(node => {
+            if (excludeEl && (node === excludeEl || node.contains(excludeEl))) return;
+            if (enable) node.setAttribute('inert', ''); else node.removeAttribute('inert');
+        });
+    }
+    function trapFocus(modalEl, e) {
+        if (e.key !== 'Tab') return;
+        const focusable = modalEl.querySelectorAll('a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])');
+        if (focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey) {
+            if (document.activeElement === first) { last.focus(); e.preventDefault(); }
+        } else {
+            if (document.activeElement === last) { first.focus(); e.preventDefault(); }
+        }
+    }
+    function openModal(modalEl) {
+        if (!modalEl) return;
+        modalEl._prevActiveEl = document.activeElement;
+        modalEl.classList.add('is-open');
+        modalEl.classList.add('show');
+        modalEl.setAttribute('aria-hidden', 'false');
+        modalEl.setAttribute('aria-modal', 'true');
+        document.body.style.overflow = 'hidden';
+        setBackgroundInert(true, modalEl);
+        const focusable = modalEl.querySelectorAll('a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])');
+        if (focusable.length > 0) {
+            focusable[0].focus();
+        } else {
+            modalEl.focus();
+        }
+        modalEl._onKeydown = (e) => {
+            if (e.key === 'Escape') { closeModal(modalEl); }
+            trapFocus(modalEl, e);
+        };
+        document.addEventListener('keydown', modalEl._onKeydown);
+    }
+    function closeModal(modalEl) {
+        if (!modalEl) return;
+        modalEl.classList.remove('is-open');
+        modalEl.classList.remove('show');
+        modalEl.setAttribute('aria-hidden', 'true');
+        modalEl.removeAttribute('aria-modal');
+        document.body.style.overflow = '';
+        setBackgroundInert(false, modalEl);
+        if (modalEl._onKeydown) {
+            document.removeEventListener('keydown', modalEl._onKeydown);
+            modalEl._onKeydown = null;
+        }
+        if (modalEl._prevActiveEl && typeof modalEl._prevActiveEl.focus === 'function') {
+            modalEl._prevActiveEl.focus();
+        }
+        modalEl._prevActiveEl = null;
+    }
+    function setupModal(modalEl) {
+        if (!modalEl) return;
+        // Close on backdrop click
+        modalEl.addEventListener('click', (e) => {
+            if (e.target === modalEl) closeModal(modalEl);
+        });
+        // Close on any element marked with data-modal-close
+        modalEl.querySelectorAll('[data-modal-close]').forEach((el) => {
+            el.addEventListener('click', () => closeModal(modalEl));
+        });
+    }
+
+    // 点赞功能
+    (function () {
+        const likeBtn = document.getElementById('like-btn');
+        if (!likeBtn) return;
+        const IS_AUTHENTICATED = likeBtn.dataset.auth === '1';
+        const LOGIN_URL = likeBtn.dataset.loginUrl;
+        const LIKE_URL = likeBtn.dataset.likeUrl;
+        const likeIcon = document.getElementById('like-icon');
+        const likeText = document.getElementById('like-text');
+        const likeCount = document.getElementById('like-count');
+
+        likeBtn.addEventListener('click', async () => {
+            if (!IS_AUTHENTICATED) {
+                if (typeof showToast === 'function') {
+                    showToast('请先登录后再点赞', 'info');
+                }
+                window.location.href = LOGIN_URL;
+                return;
+            }
+            likeBtn.disabled = true;
+            try {
+                const res = await fetch(LIKE_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin'
+                });
+                const data = await res.json();
+                if (data.code === 200) {
+                    const liked = !!data.liked;
+                    likeCount.textContent = data.likes_count;
+                    likeIcon.className = 'bi ' + (liked ? 'bi-heart-fill' : 'bi-heart');
+                    likeText.textContent = liked ? '已点赞' : '点赞';
+                    likeBtn.classList.toggle('liked', liked);
+                    if (typeof showToast === 'function') {
+                        showToast(liked ? '已点赞' : '已取消点赞', liked ? 'success' : 'info');
+                    }
+                } else {
+                    if (typeof showToast === 'function') showToast(data.message || '操作失败', 'error');
+                }
+            } catch (e) {
+                if (typeof showToast === 'function') showToast('网络错误，请稍后重试', 'error');
+            } finally {
+                likeBtn.disabled = false;
+            }
+        });
+    })();
+    // ===== 评论功能 =====
+    (function () {
+        const section = document.getElementById('comment-section');
+        if (!section) return;
+
+        const LIST_URL = section.dataset.listUrl;
+        const CREATE_URL = section.dataset.createUrl;
+        const DELETE_URL_TPL = section.dataset.deleteUrlTemplate; // 包含 __CID__ 占位符
+        const CAN_COMMENT = section.dataset.canComment === '1';
+        const CURRENT_USER_ID = section.dataset.currentUserId || '';
+        const IS_ADMIN = section.dataset.isAdmin === '1';
+
+        const listEl = document.getElementById('comment-list');
+        const formEl = document.getElementById('comment-form');
+        const contentEl = document.getElementById('comment-content');
+        const parentIdEl = document.getElementById('comment-parent-id');
+
+        async function loadComments() {
+            listEl.innerHTML = '<li class="text-muted">加载评论中…</li>';
+            try {
+                const res = await fetch(LIST_URL, { credentials: 'same-origin' });
+                const data = await res.json();
+                if (data.code !== 200) throw new Error(data.message || '加载失败');
+                renderComments(data.comments || []);
+            } catch (e) {
+                listEl.innerHTML = '<li class="text-danger">评论加载失败，请稍后重试</li>';
+            }
+        }
+
+        function renderComments(comments) {
+            listEl.innerHTML = '';
+            const frag = document.createDocumentFragment();
+            comments.forEach(c => frag.appendChild(renderItem(c)));
+            listEl.appendChild(frag);
+        }
+
+        function renderItem(cmt) {
+            const li = document.createElement('li');
+            li.className = 'comment-item';
+
+            const meta = document.createElement('div');
+            meta.className = 'comment-meta';
+            const authorName = (cmt.author && cmt.author.username) ? cmt.author.username : '匿名用户';
+            meta.textContent = `${authorName}`;
+
+            const content = document.createElement('div');
+            content.className = 'comment-content';
+            // 服务端已做转义，这里安全插入
+            content.innerHTML = cmt.content_html || '';
+
+            const actions = document.createElement('div');
+            actions.className = 'actions';
+
+            if (CAN_COMMENT) {
+                const replyBtn = document.createElement('button');
+                replyBtn.type = 'button';
+                replyBtn.className = 'button button-primary-small';
+                replyBtn.textContent = '回复';
+                replyBtn.addEventListener('click', () => openReply(cmt.id, li));
+                actions.appendChild(replyBtn);
+            }
+
+            if (IS_ADMIN || (cmt.author && cmt.author.id === CURRENT_USER_ID)) {
+                const delBtn = document.createElement('button');
+                delBtn.type = 'button';
+                delBtn.className = 'button button-warning-small';
+                delBtn.textContent = '删除';
+                const requiresReason = IS_ADMIN && (!cmt.author || cmt.author.id !== CURRENT_USER_ID);
+                delBtn.addEventListener('click', () => openCommentDeleteModal(cmt.id, requiresReason));
+                actions.appendChild(delBtn);
+            }
+
+            li.appendChild(meta);
+            li.appendChild(content);
+            li.appendChild(actions);
+
+            if (Array.isArray(cmt.children) && cmt.children.length > 0) {
+                const children = document.createElement('ul');
+                children.className = 'children comment-list';
+                cmt.children.forEach(child => children.appendChild(renderItem(child)));
+                li.appendChild(children);
+            }
+
+            return li;
+        }
+
+        function openReply(parentId, liEl) {
+            // 将主表单移动到目标评论下方并设置 parent_id
+            if (!formEl || !contentEl || !parentIdEl) return;
+            parentIdEl.value = parentId || '';
+            contentEl.value = '';
+            liEl.appendChild(formEl);
+            contentEl.focus();
+        }
+
+        // 评论删除（使用自定义模态）
+        const commentDeleteModal = document.getElementById('commentDeleteModal');
+        const commentConfirmBtn = document.getElementById('comment-confirm-delete-btn');
+        const commentReasonWrap = document.getElementById('comment-delete-reason-wrap');
+        const commentReasonInput = document.getElementById('comment-delete-reason');
+        setupModal(commentDeleteModal);
+        let pendingDeleteCommentId = null;
+        let pendingRequiresReason = false;
+        function openCommentDeleteModal(commentId, requiresReason) {
+            pendingDeleteCommentId = commentId;
+            pendingRequiresReason = !!requiresReason;
+            if (commentReasonWrap) {
+                commentReasonWrap.style.display = pendingRequiresReason ? '' : 'none';
+            }
+            if (commentReasonInput) commentReasonInput.value = '';
+            openModal(commentDeleteModal);
+        }
+        async function performDeleteComment() {
+            if (!pendingDeleteCommentId) return;
+            const url = DELETE_URL_TPL.replace('__CID__', pendingDeleteCommentId);
+            let payload = undefined;
+            if (pendingRequiresReason) {
+                const reason = (commentReasonInput && commentReasonInput.value ? commentReasonInput.value : '').trim();
+                if (!reason) {
+                    if (typeof showToast === 'function') showToast('请填写删除原因', 'warning');
+                    return;
+                }
+                payload = JSON.stringify({ reason });
+            }
+            commentConfirmBtn.disabled = true;
+            try {
+                const res = await fetch(url, { 
+                    method: 'DELETE', 
+                    credentials: 'same-origin',
+                    headers: payload ? { 'Content-Type': 'application/json' } : undefined,
+                    body: payload
+                });
+                const data = await res.json();
+                if (data.code === 200) {
+                    if (typeof showToast === 'function') showToast('评论已删除', 'success');
+                    closeModal(commentDeleteModal);
+                    loadComments();
+                } else {
+                    if (typeof showToast === 'function') showToast(data.message || '删除失败', 'error');
+                }
+            } catch (e) {
+                if (typeof showToast === 'function') showToast('网络错误，请稍后重试', 'error');
+            } finally {
+                commentConfirmBtn.disabled = false;
+            }
+        }
+        if (commentConfirmBtn) {
+            commentConfirmBtn.addEventListener('click', performDeleteComment);
+        }
+
+        function formatTime(iso) {
+            if (!iso) return '';
+            try {
+                const d = new Date(iso);
+                return d.toLocaleString();
+            } catch { return iso; }
+        }
+
+        if (formEl) {
+            formEl.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                if (!CAN_COMMENT) return;
+                const content = (contentEl.value || '').trim();
+                if (!content) {
+                    if (typeof showToast === 'function') showToast('评论内容不能为空', 'info');
+                    return;
+                }
+                if (content.length > 2000) {
+                    if (typeof showToast === 'function') showToast('评论内容不能超过2000字', 'info');
+                    return;
+                }
+                const payload = { content };
+                const pid = (parentIdEl.value || '').trim();
+                if (pid) payload.parent_id = pid;
+                try {
+                    const res = await fetch(CREATE_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'same-origin',
+                        body: JSON.stringify(payload)
+                    });
+                    const data = await res.json();
+                    if (data.code === 200) {
+                        if (typeof showToast === 'function') showToast('评论成功', 'success');
+                        // 重置为顶层表单：放回评论区顶部
+                        parentIdEl.value = '';
+                        contentEl.value = '';
+                        section.insertBefore(formEl, listEl);
+                        loadComments();
+                    } else {
+                        if (typeof showToast === 'function') showToast(data.message || '评论失败', data.code === 429 ? 'warning' : 'error');
+                    }
+                } catch (e) {
+                    if (typeof showToast === 'function') showToast('网络错误，请稍后重试', 'error');
+                }
+            });
+        }
+
+        // 初次加载
+        loadComments();
+    })();
+
+    // 管理员：点赞者列表（无 Bootstrap）
+    (function () {
+        const btn = document.getElementById('admin-likers-btn');
+        if (!btn) return;
+        const listEl = document.getElementById('likers-list');
+        const pageInfo = document.getElementById('likers-pageinfo');
+        const prevBtn = document.getElementById('likers-prev');
+        const nextBtn = document.getElementById('likers-next');
+        const modalEl = document.getElementById('likersModal');
+        const LIKERS_URL = btn.dataset.likersUrl;
+        let offset = 0;
+        const limit = 20;
+
+        async function loadLikers() {
+            listEl.innerHTML = '<div class="text-muted">加载中...</div>';
+            try {
+                const res = await fetch(`${LIKERS_URL}?offset=${offset}&limit=${limit}`);
+                const data = await res.json();
+                if (data.code !== 200) throw new Error(data.message || '加载失败');
+                const { users = [], total = 0 } = data;
+                listEl.innerHTML = '';
+                if (users.length === 0) {
+                    listEl.innerHTML = '<div class="text-muted">暂无点赞者</div>';
+                } else {
+                    for (const u of users) {
+                        const item = document.createElement('a');
+                        item.className = 'list-group-item list-group-item-action d-flex align-items-center';
+                        item.innerHTML = `
+                            <img src="${u.avatar_url}" style="width:28px;height:28px;border-radius:6%;margin-right:10px;" />
+                            <div class="d-flex flex-column">
+                                <strong>${u.username || u.id}</strong>
+                                <!--<small class="text-muted">${u.liked_at || ''}</small>-->
+                            </div>
+                        `;
+                        listEl.appendChild(item);
+                    }
+                }
+                const cur = Math.floor(offset / limit) + 1;
+                const pages = Math.max(1, Math.ceil(total / limit));
+                pageInfo.textContent = `${cur} / ${pages} 页（共 ${total} 人）`;
+                prevBtn.disabled = offset <= 0;
+                nextBtn.disabled = offset + limit >= total;
+            } catch (e) {
+                listEl.innerHTML = '<div class="text-danger">加载失败，请重试</div>';
+            }
+        }
+
+        setupModal(modalEl);
+        btn.addEventListener('click', () => { openModal(modalEl); loadLikers(); });
+        prevBtn.addEventListener('click', () => { offset = Math.max(0, offset - limit); loadLikers(); });
+        nextBtn.addEventListener('click', () => { offset += limit; loadLikers(); });
+    })();
+
+    // 删除文章（无 Bootstrap） - 兼容无模态场景
+    (function () {
+        const delBtn = document.getElementById('admin-delete-btn');
+        if (!delBtn) return;
+        const confirmBtn = document.getElementById('confirm-delete-btn');
+        const deleteModal = document.getElementById('deleteConfirmModal');
+        const DELETE_URL = delBtn.dataset.deleteUrl;
+        const REDIRECT_URL = delBtn.dataset.redirectUrl;
+
+        // 若页面存在模态框（管理员视图），使用模态确认
+        if (deleteModal && confirmBtn) {
+            setupModal(deleteModal);
+            delBtn.addEventListener('click', () => { openModal(deleteModal); });
+            confirmBtn.addEventListener('click', async () => {
+                confirmBtn.disabled = true;
+                const IS_OWN = {{ 1 if current_user.is_authenticated and current_user.id == blog.author_id else 0 }} === 1;
+                let payload = {};
+                if (!IS_OWN) {
+                    const reasonInput = document.getElementById('delete-reason');
+                    const reason = (reasonInput && reasonInput.value ? reasonInput.value : '').trim();
+                    if (!reason) {
+                        if (typeof showToast === 'function') showToast('请填写删除原因', 'warning');
+                        confirmBtn.disabled = false;
+                        return;
+                    }
+                    payload.reason = reason;
+                }
+                try {
+                    const res = await fetch(DELETE_URL, { 
+                        method: 'DELETE',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    const data = await res.json();
+                    if (data.code === 200) {
+                        if (typeof showToast === 'function') showToast('文章已删除', 'success');
+                        closeModal(deleteModal);
+                        window.location.href = REDIRECT_URL;
+                    } else {
+                        if (typeof showToast === 'function') showToast(data.message || '删除失败', 'error');
+                    }
+                } catch (e) {
+                    if (typeof showToast === 'function') showToast('网络错误，请稍后重试', 'error');
+                } finally {
+                    confirmBtn.disabled = false;
+                }
+            });
+            return;
+        }
+
+        // 否则（非管理员场景），使用原生 confirm 作为后备
+        delBtn.addEventListener('click', async () => {
+            const ok = window.confirm('确认删除这篇文章？该操作不可恢复。');
+            if (!ok) return;
+            try {
+                const res = await fetch(DELETE_URL, { method: 'DELETE' });
+                const data = await res.json();
+                if (data.code === 200) {
+                    if (typeof showToast === 'function') showToast('文章已删除', 'success');
+                    window.location.href = REDIRECT_URL;
+                } else {
+                    if (typeof showToast === 'function') showToast(data.message || '删除失败', 'error');
+                }
+            } catch (e) {
+                if (typeof showToast === 'function') showToast('网络错误，请稍后重试', 'error');
+            }
+        });
+    })();
+    function updateHljsTheme() {
+        const lightTheme = document.getElementById('hljs-light');
+        const darkTheme = document.getElementById('hljs-dark');
+        if (document.documentElement.getAttribute('data-theme') === 'dark') {
+            lightTheme.disabled = true;   // 禁用浅色主题
+            darkTheme.disabled = false;   // 启用暗色主题
+        } else {
+            lightTheme.disabled = false;  // 启用浅色主题
+            darkTheme.disabled = true;    // 禁用暗色主题
+    }
+    }
+    const observer = new MutationObserver(function(mutations) {
+        mutations.forEach(function(mutation) {
+            if (mutation.attributeName === 'data-theme') {
+               updateHljsTheme();
+            }
+        });
+    });
+    observer.observe(document.documentElement, { attributes: true });
+
+    
+</script>
+{% endblock %}
+
+{% block footer_text %}
+{% endblock %}

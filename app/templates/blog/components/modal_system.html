@@ -1,0 +1,261 @@
+<!-- 模态框系统组件 -->
+{% if current_user.is_authenticated and current_user.has_admin_rights or current_user.id == blog.author_id %}
+<!-- 点赞者列表 Modal -->
+<div class="modal fade" id="likersModal" tabindex="-1" aria-labelledby="likersModalLabel" aria-hidden="true" role="dialog">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="likersModalLabel">点赞者列表</h5>
+        <button type="button" class="btn-close" data-modal-close aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div id="likers-list" class="list-group" style="max-height: 50vh; overflow: auto;"></div>
+        <div class="d-flex justify-content-between align-items-center mt-3">
+            <button id="likers-prev" class="btn btn-sm btn-outline-secondary">上一页</button>
+            <small id="likers-pageinfo" class="text-muted"></small>
+            <button id="likers-next" class="btn btn-sm btn-outline-secondary">下一页</button>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-modal-close>关闭</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 删除确认 Modal -->
+<div class="modal fade" id="deleteConfirmModal" tabindex="-1" aria-labelledby="deleteConfirmLabel" aria-hidden="true" role="dialog">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="deleteConfirmLabel">确认删除</h5>
+        <button type="button" class="btn-close" data-modal-close aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        确定要删除这篇文章《{{ blog.title }}》吗？该操作不可恢复。
+        {% if current_user.has_admin_rights and current_user.id != blog.author_id %}
+        <div class="mt-3">
+            <label for="delete-reason" class="form-label">删除原因（管理员必填，将通知作者）：</label>
+            <textarea id="delete-reason" class="form-control" rows="3" maxlength="500" placeholder="请填写删除原因…"></textarea>
+        </div>
+        {% endif %}
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="button button-primary" data-modal-close>取消</button>
+        <button type="button" id="confirm-delete-btn" class="button button-warning">确认删除</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+    
+<!-- 评论删除确认 Modal -->
+<div class="modal fade" id="commentDeleteModal" tabindex="-1" aria-labelledby="commentDeleteLabel" aria-hidden="true" role="dialog">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="commentDeleteLabel">确认删除评论</h5>
+        <button type="button" class="btn-close" data-modal-close aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="text-muted">确定要删除该评论吗？</div>
+        <div id="comment-delete-reason-wrap" class="mt-3" style="display:none;">
+          <label for="comment-delete-reason" class="form-label">删除原因（管理员必填，将通知用户）：</label>
+          <textarea id="comment-delete-reason" class="form-control" rows="3" maxlength="500" placeholder="请填写删除原因…"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="button button-primary" data-modal-close>取消</button>
+        <button type="button" id="comment-confirm-delete-btn" class="button button-warning">确认删除</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// 模态框管理系统
+class ModalSystem {
+    constructor() {
+        this.modals = {};
+        this.init();
+    }
+    
+    init() {
+        // 初始化所有模态框
+        this.setupAllModals();
+        
+        // 绑定全局事件
+        this.bindGlobalEvents();
+        
+        // 绑定确认按钮事件
+        this.bindConfirmButtons();
+    }
+    
+    // 设置所有模态框
+    setupAllModals() {
+        const modalElements = document.querySelectorAll('.modal');
+        
+        modalElements.forEach(modal => {
+            this.setupModal(modal);
+        });
+    }
+    
+    // 设置单个模态框
+    setupModal(modalEl) {
+        if (!modalEl) return;
+        
+        // 点击背景关闭
+        modalEl.addEventListener('click', (e) => {
+            if (e.target === modalEl) {
+                this.closeModal(modalEl);
+            }
+        });
+        
+        // 点击关闭按钮关闭
+        modalEl.querySelectorAll('[data-modal-close]').forEach((el) => {
+            el.addEventListener('click', () => this.closeModal(modalEl));
+        });
+    }
+    
+    // 绑定全局事件
+    bindGlobalEvents() {
+        // ESC 键关闭模态框
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                const openModal = document.querySelector('.modal.show');
+                if (openModal) {
+                    this.closeModal(openModal);
+                }
+            }
+        });
+    }
+    
+    // 绑定确认按钮事件
+    bindConfirmButtons() {
+        // 文章删除确认按钮
+        const confirmDeleteBtn = document.getElementById('confirm-delete-btn');
+        if (confirmDeleteBtn) {
+            confirmDeleteBtn.addEventListener('click', () => {
+                // 这里需要调用 AdminControlsManager 的删除方法
+                const adminControls = window.adminControlsManager;
+                if (adminControls && typeof adminControls.performDelete === 'function') {
+                    adminControls.performDelete();
+                } else {
+                    console.error('AdminControlsManager not found or performDelete method not available');
+                }
+            });
+        }
+        
+        // 评论删除确认按钮已经在 CommentManager 中绑定
+    }
+    
+    // 打开模态框
+    openModal(modalEl) {
+        if (!modalEl) return;
+        modalEl._prevActiveEl = document.activeElement;
+        modalEl.classList.add('is-open');
+        modalEl.classList.add('show');
+        modalEl.setAttribute('aria-hidden', 'false');
+        modalEl.setAttribute('aria-modal', 'true');
+        document.body.style.overflow = 'hidden';
+        this.setBackgroundInert(true, modalEl);
+        const focusable = modalEl.querySelectorAll('a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])');
+        if (focusable.length > 0) {
+            focusable[0].focus();
+        } else {
+            modalEl.focus();
+        }
+        modalEl._onKeydown = (e) => {
+            if (e.key === 'Escape') { this.closeModal(modalEl); }
+            this.trapFocus(modalEl, e);
+        };
+        document.addEventListener('keydown', modalEl._onKeydown);
+    }
+    
+    // 关闭模态框
+    closeModal(modalEl) {
+        if (!modalEl) return;
+        modalEl.classList.remove('is-open');
+        modalEl.classList.remove('show');
+        modalEl.setAttribute('aria-hidden', 'true');
+        modalEl.removeAttribute('aria-modal');
+        document.body.style.overflow = '';
+        this.setBackgroundInert(false, modalEl);
+        if (modalEl._onKeydown) {
+            document.removeEventListener('keydown', modalEl._onKeydown);
+            modalEl._onKeydown = null;
+        }
+        if (modalEl._prevActiveEl && typeof modalEl._prevActiveEl.focus === 'function') {
+            modalEl._prevActiveEl.focus();
+        }
+        modalEl._prevActiveEl = null;
+    }
+    
+    // 设置背景不可交互
+    setBackgroundInert(enable, excludeEl) {
+        const children = Array.from(document.body.children);
+        
+        children.forEach(node => {
+            if (excludeEl && (node === excludeEl || node.contains(excludeEl))) return;
+            
+            if (enable) {
+                node.setAttribute('inert', '');
+            } else {
+                node.removeAttribute('inert');
+            }
+        });
+    }
+    
+    // 焦点管理
+    trapFocus(modalEl, event) {
+        if (event && event.key !== 'Tab') return;
+        
+        const focusable = modalEl.querySelectorAll(
+            'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])'
+        );
+        
+        if (focusable.length === 0) return;
+        
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        
+        if (event) {
+            if (event.shiftKey) {
+                if (document.activeElement === first) {
+                    last.focus();
+                    event.preventDefault();
+                }
+            } else {
+                if (document.activeElement === last) {
+                    first.focus();
+                    event.preventDefault();
+                }
+            }
+        } else {
+            // 如果没有事件，设置焦点到第一个可聚焦元素
+            first.focus();
+        }
+    }
+    
+    // 公共方法：打开指定ID的模态框
+    openModalById(modalId) {
+        const modal = document.getElementById(modalId);
+        if (modal) {
+            this.openModal(modal);
+        }
+    }
+    
+    // 公共方法：关闭指定ID的模态框
+    closeModalById(modalId) {
+        const modal = document.getElementById(modalId);
+        if (modal) {
+            this.closeModal(modal);
+        }
+    }
+}
+
+// 初始化模态框系统
+document.addEventListener('DOMContentLoaded', function() {
+    window.modalSystem = new ModalSystem();
+});
+</script>
