@@ -4,6 +4,105 @@
 {% endblock %}
 
 {% block extra_css %}
+<!-- Markdown 渲染相关样式 -->
+<link rel="stylesheet" href="{{url_for('static', filename='css/hljs/default.min.css')}}" id="hljs-light" onerror="this.onerror=null; this.href='https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css'">
+<link rel="stylesheet" href="{{url_for('static', filename='css/hljs/monokai.min.css')}}" id="hljs-dark" onerror="this.onerror=null; this.href='https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/monokai.min.css'">
+<style>
+.clipboard-markdown-content {
+    background: var(--card-bg);
+    border-radius: 8px;
+    padding: 20px;
+    border: 1px solid var(--border-color);
+    min-height: 200px;
+}
+
+.clipboard-markdown-content pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 12px;
+    overflow-x: auto;
+    margin: 16px 0;
+}
+
+.clipboard-markdown-content code {
+    background: var(--code-bg);
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+}
+
+.clipboard-markdown-content .highlight {
+    position: relative;
+    margin: 16px 0;
+}
+
+.clipboard-markdown-content .copy-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 12px;
+    cursor: pointer;
+    opacity: 0.8;
+    transition: opacity 0.2s;
+}
+
+.clipboard-markdown-content .copy-btn:hover {
+    opacity: 1;
+}
+
+.clipboard-markdown-content img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.clipboard-markdown-content table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 16px 0;
+}
+
+.clipboard-markdown-content table th,
+.clipboard-markdown-content table td {
+    border: 1px solid var(--border-color);
+    padding: 8px 12px;
+    text-align: left;
+}
+
+.clipboard-markdown-content table th {
+    background: var(--table-header-bg);
+    font-weight: 600;
+}
+
+.clipboard-markdown-content blockquote {
+    border-left: 4px solid var(--primary-color);
+    margin: 16px 0;
+    padding-left: 16px;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.loading-indicator {
+    text-align: center;
+    padding: 40px;
+    color: var(--text-muted);
+}
+
+.markdown-fallback {
+    background: var(--code-bg);
+    padding: 20px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    margin-top: 15px;
+}
+</style>
 {% endblock %}
 
 {% block content %}
@@ -18,7 +117,13 @@
         </div>
         
         <div class="clipboard-detail__content">
-            <pre>{{clip['content']}}</pre>
+            <div class="clipboard-markdown-content" id="clipboardContentContainer">
+                <div id="loading-indicator" class="loading-indicator">
+                    <div>正在加载内容...</div>
+                </div>
+            </div>
+            <!-- 原始内容数据 -->
+            <script type="application/json" id="clipboardContent">{{ clip['content'] | tojson }}</script>
         </div>
         
         <div class="clipboard-detail__actions">
@@ -36,12 +141,355 @@
 {% endblock %}
 
 {% block extra_js %}
+<!-- JavaScript 库（按依赖顺序加载） -->
+<script src="{{url_for('static', filename='js/dompurify.min.js')}}"></script>
 <script>
-    document.addEventListener('DOMContentLoaded', () => {
-        document.getElementById('delete').addEventListener('click', () => {
-           delete_clipboard() 
+    if (typeof window.DOMPurify === 'undefined') {
+        document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.8/purify.min.js"><\/script>');
+    }
+</script>
+<script src="{{url_for('static', filename='js/highlight.min.js')}}"></script>
+<script>
+    if (typeof window.hljs === 'undefined') {
+        document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"><\/script>');
+    }
+</script>
+<script src="{{url_for('static', filename='js/marked.min.js')}}"></script>
+<script>
+    if (typeof window.marked === 'undefined') {
+        document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"><\/script>');
+    }
+</script>
+
+<script>
+// 剪贴板 Markdown 渲染器
+class ClipboardMarkdownRenderer {
+    constructor() {
+        this.initialized = false;
+    }
+
+    // 初始化 Markdown 渲染器
+    init() {
+        if (this.initialized) return true;
+        
+        // 检查依赖是否加载完成
+        if (typeof marked === 'undefined') {
+            console.error('marked.js 未加载');
+            return false;
+        }
+        if (typeof hljs === 'undefined') {
+            console.error('highlight.js 未加载');
+            return false;
+        }
+        if (typeof DOMPurify === 'undefined') {
+            console.error('DOMPurify 未加载');
+            return false;
+        }
+
+        // 配置 marked
+        marked.setOptions({
+            highlight: function(code, lang) {
+                try {
+                    if (lang && hljs.getLanguage(lang)) {
+                        return hljs.highlight(code, { language: lang }).value;
+                    }
+                    return hljs.highlightAuto(code).value;
+                } catch (err) {
+                    console.warn('代码高亮失败:', err);
+                    return code; // 返回原始代码
+                }
+            },
+            breaks: true,
+            gfm: true,
+            tables: true,
+            xhtml: false
         });
+
+        // 配置自定义渲染器
+        const renderer = new marked.Renderer();
+        
+        // 自定义链接渲染
+        renderer.link = function(href, title, text) {
+            const link = marked.Renderer.prototype.link.call(this, href, title, text);
+            return link.replace('<a', '<a rel="noopener noreferrer nofollow" target="_blank"');
+        };
+
+        // 自定义代码块渲染
+        renderer.code = function(code, lang) {
+            try {
+                const highlighted = lang && hljs.getLanguage(lang) 
+                    ? hljs.highlight(code, { language: lang }).value 
+                    : hljs.highlightAuto(code).value;
+                
+                return `<div class="highlight">
+                    <pre><code class="hljs">${highlighted}</code></pre>
+                    <button class="copy-btn" data-code="${encodeURIComponent(code)}">📋 复制</button>
+                </div>`;
+            } catch (err) {
+                console.warn('代码高亮失败:', err);
+                return `<div class="highlight">
+                    <pre><code>${code}</code></pre>
+                    <button class="copy-btn" data-code="${encodeURIComponent(code)}">📋 复制</button>
+                </div>`;
+            }
+        };
+
+        // 自定义列表项渲染（支持任务列表）
+        renderer.listitem = function(text) {
+            // 检查是否是任务列表项
+            if (/^\s*\[[ x]\]\s/.test(text)) {
+                const checked = /^\s*\[x\]\s/.test(text);
+                const cleanText = text.replace(/^\s*\[[ x]\]\s/, '');
+                return `<li class="task-list-item"><input type="checkbox" ${checked ? 'checked' : ''} disabled> ${cleanText}</li>`;
+            }
+            return `<li>${text}</li>`;
+        };
+
+        marked.use({ renderer });
+        this.initialized = true;
+        return true;
+    }
+
+    // 安全渲染 Markdown 内容
+    render() {
+        const container = document.getElementById('clipboardContentContainer');
+        const contentScript = document.getElementById('clipboardContent');
+        const loadingIndicator = document.getElementById('loading-indicator');
+        
+        if (!contentScript) {
+            console.error('未找到剪贴板内容数据');
+            if (loadingIndicator) {
+                loadingIndicator.innerHTML = '<div class="alert alert-danger">内容数据缺失</div>';
+            }
+            return;
+        }
+
+        try {
+            let markdownText = JSON.parse(contentScript.textContent);
+            
+            // 移除加载指示器
+            if (loadingIndicator) {
+                loadingIndicator.remove();
+            }
+            
+            // 检查必要的库是否可用
+            if (typeof marked === 'undefined' || typeof DOMPurify === 'undefined') {
+                this.showFallbackContent(container, markdownText);
+                return;
+            }
+            
+            // 渲染 Markdown 为 HTML
+            let html = marked.parse(markdownText);
+            
+            // 使用 DOMPurify 清理 HTML，防止 XSS
+            html = DOMPurify.sanitize(html, {
+                ALLOWED_TAGS: [
+                    'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+                    'p', 'br', 'hr', 'div', 'span',
+                    'strong', 'b', 'em', 'i', 'u', 's', 'del',
+                    'code', 'pre', 'blockquote',
+                    'ul', 'ol', 'li',
+                    'a', 'img',
+                    'table', 'thead', 'tbody', 'tr', 'th', 'td',
+                    'details', 'summary',
+                    'sub', 'sup', 'mark',
+                    'input', 'button'  // 允许 input 标签用于任务列表和button用于复制功能
+                ],
+                ALLOWED_ATTR: [
+                    'href', 'title', 'alt', 'src', 'class', 'rel', 'target',
+                    'width', 'height', 'align', 'colspan', 'rowspan',
+                    'type', 'checked', 'disabled', 'data-code'  // 允许任务列表的属性和复制按钮属性
+                ],
+                ALLOW_DATA_ATTR: false
+            });
+            
+            container.innerHTML = html;
+            
+            // 安全处理链接
+            this.hardenLinks();
+            
+            // 添加代码复制功能
+            this.addCopyButtons();
+            
+            // 添加图片点击放大功能
+            this.addImageZoom();
+            
+        } catch (error) {
+            console.error('Markdown 渲染失败:', error);
+            this.showErrorContent(container, contentScript);
+        }
+    }
+
+    // 显示备用内容
+    showFallbackContent(container, markdownText) {
+        container.innerHTML = `
+            <div class="alert alert-warning">
+                <h5>⚠️ Markdown 渲染库未加载</h5>
+                <p>正在显示原始内容。这可能是由于网络问题导致的。</p>
+                <button class="btn btn-primary btn-sm mt-2" onclick="location.reload()">刷新页面重试</button>
+            </div>
+            <div class="markdown-fallback">
+                <h6>📝 原始内容：</h6>
+                <pre>${markdownText.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+            </div>
+        `;
+        console.warn('Markdown 库未加载，显示原始内容');
+    }
+
+    // 显示错误内容
+    showErrorContent(container, contentScript) {
+        try {
+            const markdownText = JSON.parse(contentScript.textContent);
+            container.innerHTML = `
+                <div class="alert alert-warning">
+                    <h5>⚠️ 内容渲染失败</h5>
+                    <p>正在显示原始内容。这可能是由于内容格式问题导致的。</p>
+                    <button class="btn btn-primary btn-sm mt-2" onclick="location.reload()">刷新页面重试</button>
+                </div>
+                <div class="markdown-fallback">
+                    <h6>📝 原始内容：</h6>
+                    <pre>${markdownText.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+                </div>
+            `;
+        } catch (e) {
+            container.innerHTML = '<div class="alert alert-danger">内容加载失败，请刷新页面重试。</div>';
+        }
+    }
+
+    // 安全处理链接
+    hardenLinks() {
+        const anchors = document.querySelectorAll('#clipboardContentContainer a[href]');
+        anchors.forEach(a => {
+            const href = a.getAttribute('href') || '';
+            try {
+                const url = new URL(href, window.location.origin);
+                const protocol = url.protocol.toLowerCase();
+                const isHttp = protocol === 'http:' || protocol === 'https:';
+                const isAllowed = isHttp || protocol === 'mailto:' || protocol === 'tel:';
+                
+                if (!isAllowed) {
+                    a.removeAttribute('href');
+                    return;
+                }
+                
+                if (isHttp && url.origin !== window.location.origin) {
+                    a.setAttribute('rel', 'noopener noreferrer nofollow');
+                    a.setAttribute('target', '_blank');
+                }
+            } catch (e) {
+                // 非法URL，移除href
+                a.removeAttribute('href');
+            }
+        });
+    }
+
+    // 添加代码复制功能
+    addCopyButtons() {
+        const copyButtons = document.querySelectorAll('#clipboardContentContainer .copy-btn');
+        copyButtons.forEach(button => {
+            button.addEventListener('click', function() {
+                copyCode(this);
+            });
+        });
+    }
+
+    // 添加图片点击放大功能
+    addImageZoom() {
+        const images = document.querySelectorAll('#clipboardContentContainer img');
+        images.forEach(img => {
+            img.style.cursor = 'pointer';
+            img.addEventListener('click', () => {
+                const overlay = document.createElement('div');
+                overlay.style.cssText = `
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background: rgba(0, 0, 0, 0.8);
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    z-index: 9999;
+                    cursor: pointer;
+                `;
+
+                const zoomedImg = img.cloneNode();
+                zoomedImg.style.cssText = `
+                    max-width: 90%;
+                    max-height: 90%;
+                    object-fit: contain;
+                    border-radius: 8px;
+                `;
+
+                overlay.appendChild(zoomedImg);
+                document.body.appendChild(overlay);
+
+                overlay.addEventListener('click', () => {
+                    document.body.removeChild(overlay);
+                });
+            });
+        });
+    }
+}
+
+// 全局代码复制函数
+function copyCode(button) {
+    const codeText = decodeURIComponent(button.getAttribute('data-code'));
+    
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(codeText).then(() => {
+            const originalText = button.textContent;
+            button.textContent = '✅ 已复制';
+            setTimeout(() => {
+                button.textContent = originalText;
+            }, 2000);
+        }).catch(() => {
+            fallbackCopy(codeText);
+        });
+    } else {
+        fallbackCopy(codeText);
+    }
+}
+
+function fallbackCopy(text) {
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    textArea.style.position = 'fixed';
+    textArea.style.left = '-999999px';
+    textArea.style.top = '-999999px';
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    
+    try {
+        document.execCommand('copy');
+        alert('代码已复制到剪贴板');
+    } catch (err) {
+        alert('复制功能不可用，请手动选择代码');
+    }
+    
+    document.body.removeChild(textArea);
+}
+
+// 初始化剪贴板 Markdown 渲染器
+document.addEventListener('DOMContentLoaded', function() {
+    const renderer = new ClipboardMarkdownRenderer();
+    if (renderer.init()) {
+        renderer.render();
+    }
+});
+
+// 删除功能
+    document.addEventListener('DOMContentLoaded', () => {
+        const deleteBtn = document.getElementById('delete');
+        if (deleteBtn) {
+            deleteBtn.addEventListener('click', () => {
+               delete_clipboard(); 
+            });
+        }
     });
+    
     function delete_clipboard(){
         if(!confirm('确认要删除吗？')) return;
         fetch(window.location.pathname, {
