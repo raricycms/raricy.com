@@ -7,7 +7,6 @@ from app.extensions.decorators import authenticated_required
 tool_bp = Blueprint('tool', __name__)
 
 @tool_bp.route('/')
-@authenticated_required
 def menu():
     return render_template('tool/new_menu.html')
 
