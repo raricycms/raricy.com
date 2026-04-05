@@ -152,27 +152,28 @@ document.addEventListener('DOMContentLoaded', function() {
     updateReadingProgress();
 });
 
-// 主题切换功能
+// hljs 主题同步 (监听 data-theme 变化)
 (function() {
-    const themeToggle = document.getElementById('theme-toggle');
     const hljsLight = document.getElementById('hljs-light');
     const hljsDark = document.getElementById('hljs-dark');
-    
-    if (themeToggle && hljsLight && hljsDark) {
-        themeToggle.addEventListener('click', function() {
-            const isDark = document.body.classList.contains('dark-theme');
-            
-            if (isDark) {
-                // 切换到亮色主题
-                hljsLight.disabled = false;
-                hljsDark.disabled = true;
-            } else {
-                // 切换到暗色主题
-                hljsLight.disabled = true;
-                hljsDark.disabled = false;
+
+    function syncHljsTheme() {
+        if (!hljsLight || !hljsDark) return;
+        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+        hljsLight.disabled = isDark;
+        hljsDark.disabled = !isDark;
+    }
+
+    document.addEventListener('DOMContentLoaded', syncHljsTheme);
+
+    const observer = new MutationObserver(function(mutations) {
+        mutations.forEach(function(mutation) {
+            if (mutation.attributeName === 'data-theme') {
+                syncHljsTheme();
             }
         });
-    }
+    });
+    observer.observe(document.documentElement, { attributes: true });
 })();
 
 // 全局辅助函数
