@@ -131,7 +131,7 @@ class BlogService:
         try:
             if current_user.is_authenticated:
                 from app.models import BlogLike
-                liked = BlogLike.query.filter_by(blog_id=blog_id, user_id=current_user.id).first() is not None
+                liked = BlogLike.query.filter_by(blog_id=blog_id, user_id=current_user.id, deleted=False).first() is not None
         except Exception:
             liked = False
         

@@ -32,7 +32,6 @@ class LikeService:
                 blog.likes_count = (blog.likes_count or 0) + 1
                 liked = True
             else:
-            # 取消点赞
                 blog.likes_count = max(0, (blog.likes_count or 0) - 1)
                 liked = False
                 like.deleted = True
@@ -85,7 +84,7 @@ class LikeService:
         limit = max(1, min(limit, 200))
         offset = max(0, offset)
         
-        q = BlogLike.query.filter_by(blog_id=blog_id).order_by(BlogLike.created_at.desc())
+        q = BlogLike.query.filter_by(blog_id=blog_id, deleted=False).order_by(BlogLike.created_at.desc())
         total = q.count()
         likes = q.offset(offset).limit(limit).all()
         
