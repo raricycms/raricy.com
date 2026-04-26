@@ -3,27 +3,53 @@
     justify-content: center;
     margin-top: 1rem;
     flex-wrap: wrap;
+    align-items: center;
+    gap: 0.2rem;
 }
 .page-link {
     padding: 0.4rem 0.7rem;
-    margin: 0.2rem;
     border: 1px solid #ccc;
     border-radius: 6px;
     background: #fff;
     font-size: 0.85rem;
     color: #333;
     text-decoration: none;
+    display: inline-block;
 }
-.page-info {
-    padding: 0.4rem 0.7rem;
-    margin: 0.2rem;
-    font-size: 0.85rem;
-    color: #666;
-    display: flex;
-    align-items: center;
+.page-link:hover {
+    background: #eee;
 }
-.page-item.active .page-link {
+.page-link.active {
     background: #3498db;
     color: #fff;
     border-color: #2980b9;
+}
+.page-ellipsis {
+    padding: 0.4rem 0.3rem;
+    font-size: 0.85rem;
+    color: #999;
+}
+.page-jump {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 0.8rem;
+}
+.page-input {
+    width: 3.5rem;
+    padding: 0.35rem 0.4rem;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    text-align: center;
+    -moz-appearance: textfield;
+}
+.page-input::-webkit-outer-spin-button,
+.page-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+.page-btn {
+    cursor: pointer;
+    margin-left: 0.3rem;
+    white-space: nowrap;
 }
