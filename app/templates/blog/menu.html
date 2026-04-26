@@ -134,6 +134,18 @@
                 <p>暂无博客文章</p>
             </div>
             {% endif %}
+
+            {% if pagination and pagination.pages > 1 %}
+            <div class="pagination">
+                {% if pagination.has_prev %}
+                <a href="{{ url_for('blog.menu', page=pagination.prev_num, category=request.args.get('category'), featured=request.args.get('featured')) }}" class="page-link">&laquo; 上一页</a>
+                {% endif %}
+                <span class="page-info">第 {{ pagination.page }} / {{ pagination.pages }} 页</span>
+                {% if pagination.has_next %}
+                <a href="{{ url_for('blog.menu', page=pagination.next_num, category=request.args.get('category'), featured=request.args.get('featured')) }}" class="page-link">下一页 &raquo;</a>
+                {% endif %}
+            </div>
+            {% endif %}
         </main>
     </div>
 </div>
@@ -141,38 +153,6 @@
 
 {% block extra_js %}
 <script>
-	const sortSelect = document.getElementById('sortSelect');
-
-        // 页面加载时，根据当前 URL 的参数设置下拉框的默认选中项
-        (function initSelection() {
-		            const urlParams = new URLSearchParams(window.location.search);
-		            if (urlParams.get('update') === 'True') {
-				                    sortSelect.value = 'update';
-				                } else {
-							                sortSelect.value = 'publish';
-							            }
-		        })();
-
-        // 监听下拉框变化
-        sortSelect.addEventListener('change', function () {
-		            const selected = this.value;               // 'publish' 或 'update'
-		            const url = new URL(window.location.href); // 当前完整URL
-		            const params = url.searchParams;
-
-		            if (selected === 'update') {
-				                    // 添加或更新 update 参数
-				                    params.set('update', 'True');
-				                } else {
-							                // 移除 update 参数（如果存在）
-							        params.delete('update');
-							            }
-
-		            // 重新构造 URL 并跳转
-		            // 注意：如果还有其它查询参会被保留
-		            const newUrl = url.origin + url.pathname;
-		            const queryString = params.toString();
-		            window.location.href = queryString ? `${newUrl}?${queryString}` : newUrl;
-		        });
     document.addEventListener('DOMContentLoaded', function () {
         // 初始化折叠状态
         initializeCollapse();

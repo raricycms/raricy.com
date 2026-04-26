@@ -97,28 +97,6 @@ body {
 .btn-primary { border-color: #3498db; color: #d3d5e9; }
 .btn-primary:hover { background: #eaf4fb; }
 
-.pagination {
-    display: flex;
-    justify-content: center;
-    margin-top: 1rem;
-    flex-wrap: wrap;
-}
-.page-link {
-    padding: 0.4rem 0.7rem;
-    margin: 0.2rem;
-    border: 1px solid #ccc;
-    border-radius: 6px;
-    background: #fff;
-    font-size: 0.85rem;
-    color: #333;
-    text-decoration: none;
-}
-.page-item.active .page-link {
-    background: #3498db;
-    color: #fff;
-    border-color: #2980b9;
-}
-
 .empty-state {
     text-align: center;
     padding: 3rem 1rem;

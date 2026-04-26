@@ -2935,6 +2935,15 @@ body {
   text-decoration: none;
 }
 
+.page-info {
+  padding: 0.4rem 0.7rem;
+  margin: 0.2rem;
+  font-size: 0.85rem;
+  color: #666;
+  display: flex;
+  align-items: center;
+}
+
 .page-item.active .page-link {
   background: #3498db;
   color: #fff;

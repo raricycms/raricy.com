@@ -15,24 +15,26 @@ class BlogService:
     """博客业务逻辑服务"""
     
     @staticmethod
-    def get_blog_list(category_slug=None, featured=None, ordered_by_updated_time=False):
+    def get_blog_list(category_slug=None, featured=None, page=1, per_page=200):
         """
         获取博客列表
-        
+
         Args:
             category_slug: 栏目标识符
-            
+            page: 页码
+            per_page: 每页数量
+
         Returns:
-            tuple: (blogs, categories, current_category)
+            tuple: (blogs, categories, current_category, pagination)
         """
         current_category = None
-        
+
         # 获取栏目层级结构用于导航
         categories = Category.get_hierarchy()
-        
+
         # 构建查询
         query = Blog.query.filter_by(ignore=False)
-        
+
         if category_slug:
             # 按栏目筛选
             current_category = Category.query.filter_by(slug=category_slug, is_active=True).first()
@@ -47,9 +49,9 @@ class BlogService:
                     query = query.filter(Blog.category_id==current_category.id)
             else:
                 # 栏目不存在
-                return None, categories, None
+                return None, categories, None, None
         else:
-            # 无栏目筛选时，排除被设置为不在“全部文章”显示的分类（及其子分类）
+            # 无栏目筛选时，排除被设置为不在”全部文章”显示的分类（及其子分类）
             excluded_ids = []
             try:
                 excluded_categories = Category.query.filter_by(exclude_from_all=True, is_active=True).all()
@@ -66,18 +68,13 @@ class BlogService:
         # 精选筛选
         if featured in (True, False):
             query = query.filter(Blog.is_featured == featured)
-        
-        blogs = []
-        if 1 == 0:
-            for blog in query.order_by(BlogContent.updated_at.desc()).all():
-                item = blog.to_dict()
-                blogs.append(item)
-        else:
-            for blog in query.order_by(Blog.created_at.desc()).all():
-                item = blog.to_dict()
-                blogs.append(item)
-        
-        return blogs, categories, current_category
+
+        query = query.order_by(Blog.created_at.desc())
+
+        pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+        blogs = [blog.to_dict() for blog in pagination.items]
+
+        return blogs, categories, current_category, pagination
 
     @staticmethod
     def update_featured(blog_id, is_featured):
