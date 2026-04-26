@@ -18,31 +18,64 @@ Raricy.com - 用户管理页面
         background: var(--color-background-card);
         border: 1px solid #e9ecef;
     }
-    .table {
-        border-radius: 6px;
-        overflow: hidden;
+    .user-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+        gap: 16px;
+    }
+    .user-card {
+        display: flex;
+        flex-direction: column;
+        padding: 20px;
+        border-radius: 8px;
         border: 1px solid #dee2e6;
+        background: var(--color-background-page, #f8f9fa);
+        transition: box-shadow 0.2s ease;
     }
-    .table thead th {
-        background-color: #495057;
-        color: white;
-        border: none;
+    .user-card:hover {
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    }
+    .user-card-top {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 12px;
+        flex-wrap: wrap;
+    }
+    .user-card-username {
+        font-size: 1.05rem;
+        font-weight: 600;
+        color: var(--color-text-primary);
+    }
+    .user-card-role {
+        font-size: 0.8rem;
+        padding: 2px 8px;
+        border-radius: 4px;
         font-weight: 500;
-        padding: 15px 12px;
-        font-size: 0.9rem;
     }
-    .table tbody tr {
-        border-bottom: 1px solid #dee2e6;
+    .user-card-buttons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
     }
-    /*
-    .table tbody tr:hover {
-        background-color: #f8f9fa;
-    }
-    */
-    .table tbody td {
-        padding: 15px 12px;
-        border: none;
-        vertical-align: middle;
+    @media (max-width: 576px) {
+        .management-card {
+            padding: 16px;
+        }
+        .user-grid {
+            grid-template-columns: 1fr;
+            gap: 12px;
+        }
+        .user-card {
+            padding: 14px;
+        }
+        .user-card-username {
+            font-size: 1rem;
+        }
+        .btn {
+            padding: 5px 10px;
+            font-size: 0.8rem;
+        }
     }
     .btn {
         border-radius: 4px;
@@ -89,7 +122,7 @@ Raricy.com - 用户管理页面
     .text-success { color: #28a745 !important; }
     .text-primary { color: #007bff !important; }
     .text-warning { color: #ffc107 !important; }
-    
+
     /* 通知样式 */
     .notification-toast {
         position: fixed;
@@ -122,7 +155,7 @@ Raricy.com - 用户管理页面
         background-color: #ffc107;
         color: #212529;
     }
-    
+
     /* 模态框样式 */
     .modal-overlay {
         position: fixed;
@@ -206,71 +239,58 @@ Raricy.com - 用户管理页面
                 </div>
                 {% endif %}
             </div>
-            <table class="table table-striped">
-                <thead>
-                    <tr>
-                        <th>用户名</th>
-                        <th>角色</th>
-                        <th>操作</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for user in user_list %}
-                    <tr>
-                        <td>{{ user.username }}</td>
-                        <td>
-                            {% if user.is_owner %}
-                                <span class="text-danger">站长</span>
-                            {% elif user.role == 'admin' %}
-                                <span class="text-danger">管理员</span>
-                            {% elif user.role == 'core' %}
-                                <span class="text-success">核心用户</span>
-                            {% else %}
-                                <span class="text-primary">普通用户</span>
+            <div class="user-grid">
+                {% for user in user_list %}
+                <div class="user-card">
+                    <div class="user-card-top">
+                        <span class="user-card-username">{{ user.username }}</span>
+                        {% if user.is_owner %}
+                            <span class="user-card-role text-danger" style="background:rgba(220,53,69,.12);">站长</span>
+                        {% elif user.role == 'admin' %}
+                            <span class="user-card-role text-danger" style="background:rgba(220,53,69,.12);">管理员</span>
+                        {% elif user.role == 'core' %}
+                            <span class="user-card-role text-success" style="background:rgba(40,167,69,.12);">核心用户</span>
+                        {% else %}
+                            <span class="user-card-role text-primary" style="background:rgba(0,123,255,.12);">普通用户</span>
+                        {% endif %}
+                        {% if user.ban_info %}
+                            <span class="user-card-role text-warning" style="background:rgba(255,193,7,.15);">禁言中</span>
+                        {% endif %}
+                    </div>
+                    <div class="user-card-buttons">
+                        <button class="btn btn-sm btn-info" onclick="window.location.href=`{{ url_for('auth.profile', user_id=user.id) }}`">查看</button>
+                        {% if current_user.is_owner %}
+                        <button class="btn btn-sm btn-secondary" onclick="sendNotificationTo('{{ user.id }}', '{{ user.username }}')">发通知</button>
+                        {% endif %}
+                        {% if user.ban_info %}
+                            {% if current_user.has_admin_rights %}
+                                <button class="btn btn-sm btn-success" onclick="unbanUser('{{ user.id }}', '{{ user.username }}')">解除禁言</button>
                             {% endif %}
-                            {% if user.ban_info %}
-                                <br><span class="text-warning badge badge-warning">禁言中</span>
+                            <button class="btn btn-sm btn-info" onclick="showBanHistory('{{ user.id }}', '{{ user.username }}')">禁言历史</button>
+                        {% else %}
+                            {% if current_user.has_admin_rights %}
+                                <button class="btn btn-sm btn-warning" onclick="banUser('{{ user.id }}', '{{ user.username }}')" {% if user.is_owner or user.has_admin_rights or user.id == current_user.id %}disabled{% endif %}>禁言</button>
                             {% endif %}
-                        </td>
-                        <td>
-                            <button class="btn btn-sm btn-info" onclick="window.location.href=`{{ url_for('auth.profile', user_id=user.id) }}`">查看</button>
-                            {% if current_user.is_owner %}
-                            <button class="btn btn-sm btn-secondary" onclick="sendNotificationTo('{{ user.id }}', '{{ user.username }}')">发通知</button>
-                            {% endif %}
-                            
-                            {% if user.ban_info %}
-                                {% if current_user.has_admin_rights %}
-                                    <button class="btn btn-sm btn-success" onclick="unbanUser('{{ user.id }}', '{{ user.username }}')">解除禁言</button>
-                                {% endif %}
-                                <button class="btn btn-sm btn-info" onclick="showBanHistory('{{ user.id }}', '{{ user.username }}')">禁言历史</button>
-                            {% else %}
-                                 {% if current_user.has_admin_rights %}                               <button class="btn btn-sm btn-warning" onclick="banUser('{{ user.id }}', '{{ user.username }}')" {% if user.is_owner or user.has_admin_rights or user.id == current_user.id %}disabled{% endif %}>禁言</button>
-                            {% endif %}
-                            {% endif %}
-                            
-                            {% if current_user.is_owner and not user.is_owner and user.id != current_user.id %}
-                            <!-- <button class="btn btn-sm btn-danger" onclick="deleteUser('{{ user.id }}')">删除</button> -->
-                            {% endif %}
-		    {% if current_user.is_owner %}
+                        {% endif %}
+                        {% if current_user.is_owner %}
                             {% if user.role == 'core' %}
                                 <button class="btn btn-sm btn-warning" onclick="demoteUser('{{ user.id }}')">取消认证</button>
                             {% else %}
                                 <button class="btn btn-sm btn-success" onclick="promoteUser('{{ user.id }}')">认证</button>
                             {% endif %}
-		    {% endif %}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
         </div>
     </div>
-    
+
     <!-- 通知提示框 -->
     <div id="notificationToast" class="notification-toast">
         <div id="notificationMessage"></div>
     </div>
-    
+
     <!-- 发送通知模态框 -->
     <div id="notificationModal" class="modal-overlay">
         <div class="modal-content">
@@ -304,7 +324,7 @@ Raricy.com - 用户管理页面
             </div>
         </div>
     </div>
-    
+
     <!-- 禁言用户模态框 -->
     <div id="banModal" class="modal-overlay">
         <div class="modal-content">
@@ -331,7 +351,7 @@ Raricy.com - 用户管理页面
             </div>
         </div>
     </div>
-    
+
     <!-- 解除禁言模态框 -->
     <div id="unbanModal" class="modal-overlay">
         <div class="modal-content">
@@ -366,11 +386,11 @@ Raricy.com - 用户管理页面
     function showNotification(message, type = 'info') {
         const toast = document.getElementById('notificationToast');
         const messageEl = document.getElementById('notificationMessage');
-        
+
         messageEl.textContent = message;
         toast.className = `notification-toast ${type}`;
         toast.classList.add('show');
-        
+
         setTimeout(() => {
             toast.classList.remove('show');
         }, 4000);
@@ -445,32 +465,6 @@ Raricy.com - 用户管理页面
           });
     }
 
-    /*
-    function deleteUser(user_id) {
-        const password = prompt("请输入您的管理员密码以确认删除：");
-        if (password) {
-            fetch('{\{ url_for("auth.delete_user") }\}', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({user_id: user_id, password: password})
-            }).then(response => response.json())
-              .then(data => {
-                  if(data.code === 200) {
-                      showNotification('用户删除成功！', 'success');
-                      setTimeout(() => location.reload(), 1000);
-                  } else {
-                      showNotification(data.message, 'error');
-                  }
-              })
-              .catch(error => {
-                  console.error('Error:', error);
-                  showNotification('删除失败，请稍后重试', 'error');
-              });
-        }
-    }
-*/
     // 通知相关
     function sendNotificationTo(userId, username) {
         currentUserId = userId;
@@ -488,12 +482,12 @@ Raricy.com - 用户管理页面
     function sendNotification() {
         const type = document.getElementById('notificationType').value;
         const content = document.getElementById('notificationContent').value.trim();
-        
+
         if (!content) {
             showNotification('请输入通知内容', 'warning');
             return;
         }
-        
+
         fetch('{{ url_for("auth.send_notification_to_user") }}', {
             method: 'POST',
             headers: {
@@ -537,17 +531,17 @@ Raricy.com - 用户管理页面
     function confirmBanUser() {
         const hours = parseFloat(document.getElementById('banHours').value);
         const reason = document.getElementById('banReason').value.trim();
-        
+
         if (!hours || hours <= 0) {
             showNotification('请输入有效的禁言时长', 'warning');
             return;
         }
-        
+
         if (!reason) {
             showNotification('请输入禁言原因', 'warning');
             return;
         }
-        
+
         fetch('{{ url_for("auth.ban_user") }}', {
             method: 'POST',
             headers: {
@@ -589,7 +583,7 @@ Raricy.com - 用户管理页面
 
     function confirmUnbanUser() {
         const reason = document.getElementById('unbanReason').value.trim();
-        
+
         fetch('{{ url_for("auth.unban_user") }}', {
             method: 'POST',
             headers: {
@@ -621,19 +615,19 @@ Raricy.com - 用户管理页面
         .then(response => response.json())
         .then(data => {
             let historyText = `用户 "${username}" 的禁言历史：\n\n`;
-            
+
             if (data.ban_history && data.ban_history.length > 0) {
                 data.ban_history.forEach((ban, index) => {
                     const bannedAt = new Date(ban.banned_at).toLocaleString();
                     const banUntil = new Date(ban.ban_until).toLocaleString();
                     const status = ban.is_lifted ? '已解除' : '进行中';
-                    
+
                     historyText += `${index + 1}. 禁言时间：${bannedAt}\n`;
                     historyText += `   结束时间：${banUntil}\n`;
                     historyText += `   状态：${status}\n`;
                     historyText += `   原因：${ban.reason}\n`;
                     historyText += `   执行者：${ban.admin_username}\n`;
-                    
+
                     if (ban.is_lifted && ban.lifted_by) {
                         const liftedAt = new Date(ban.lifted_at).toLocaleString();
                         historyText += `   解除时间：${liftedAt}\n`;
@@ -644,7 +638,7 @@ Raricy.com - 用户管理页面
             } else {
                 historyText += '暂无禁言记录';
             }
-            
+
             // 创建一个临时的模态框来显示历史记录
             const modal = document.createElement('div');
             modal.className = 'modal-overlay show';
