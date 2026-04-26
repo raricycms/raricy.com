@@ -2,7 +2,7 @@ from flask import Blueprint, render_template, request, jsonify
 from app.models import User, InviteCode
 from app.models.audit import AdminActionLog
 from flask_login import login_required, current_user
-from app.extensions.decorators import admin_required, owner_required
+from app.extensions.decorators import admin_required, owner_required, authenticated_required
 from app.extensions import db
 from app.service.notifications import (
     admin_send_notification_to_user, admin_send_notification_to_all, 
@@ -14,7 +14,7 @@ from . import auth_bp
 
 @auth_bp.route('/user_management')
 @login_required
-@admin_required
+@authenticated_required
 def user_management():
     user_list = User.query.all()
     return render_template('auth/management.html', user_list=user_list)
@@ -53,7 +53,7 @@ def demote():
     db.session.commit()
     return jsonify({'code': 200, 'message': '降级成功'}), 200
 
-
+'''
 @auth_bp.route('/delete_user', methods=['POST'])
 @login_required
 @owner_required
@@ -90,6 +90,8 @@ def delete_user():
     db.session.delete(user_to_delete)
     db.session.commit()
     return jsonify({'code': 200, 'message': '用户删除成功'}), 200
+
+'''
 
 @auth_bp.route('/admin_notifications')
 @login_required
@@ -316,7 +318,7 @@ def unban_user():
 
 @auth_bp.route('/user_ban_history/<user_id>')
 @login_required
-@admin_required
+@authenticated_required
 def user_ban_history(user_id):
     """获取用户禁言历史"""
     user = User.query.get_or_404(user_id)

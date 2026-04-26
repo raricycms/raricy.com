@@ -12,6 +12,11 @@ def profile(user_id):
     user = User.query.filter_by(id=user_id).first_or_404()
     return render_template('auth/profile.html', user=user)
 
+@auth_bp.route('/username/<user_id>')
+def username(user_id):
+    user = User.query.filter_by(id=user_id).first_or_404()
+    return jsonify(user.to_dict())
+
 
 @auth_bp.route('/avatar/<user_id>')
 def get_avatar(user_id):

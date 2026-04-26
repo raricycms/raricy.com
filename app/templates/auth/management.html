@@ -210,7 +210,6 @@ Raricy.com - 用户管理页面
                 <thead>
                     <tr>
                         <th>用户名</th>
-                        <th>邮箱</th>
                         <th>角色</th>
                         <th>操作</th>
                     </tr>
@@ -219,7 +218,6 @@ Raricy.com - 用户管理页面
                     {% for user in user_list %}
                     <tr>
                         <td>{{ user.username }}</td>
-                        <td>{{ user.email }}</td>
                         <td>
                             {% if user.is_owner %}
                                 <span class="text-danger">站长</span>
@@ -246,11 +244,12 @@ Raricy.com - 用户管理页面
                                 {% endif %}
                                 <button class="btn btn-sm btn-info" onclick="showBanHistory('{{ user.id }}', '{{ user.username }}')">禁言历史</button>
                             {% else %}
-                                <button class="btn btn-sm btn-warning" onclick="banUser('{{ user.id }}', '{{ user.username }}')" {% if user.is_owner or user.has_admin_rights or user.id == current_user.id %}disabled{% endif %}>禁言</button>
+                                 {% if current_user.has_admin_rights %}                               <button class="btn btn-sm btn-warning" onclick="banUser('{{ user.id }}', '{{ user.username }}')" {% if user.is_owner or user.has_admin_rights or user.id == current_user.id %}disabled{% endif %}>禁言</button>
+                            {% endif %}
                             {% endif %}
                             
                             {% if current_user.is_owner and not user.is_owner and user.id != current_user.id %}
-                                <button class="btn btn-sm btn-danger" onclick="deleteUser('{{ user.id }}')">删除</button>
+                            <!-- <button class="btn btn-sm btn-danger" onclick="deleteUser('{{ user.id }}')">删除</button> -->
                             {% endif %}
 		    {% if current_user.is_owner %}
                             {% if user.role == 'core' %}
@@ -446,10 +445,11 @@ Raricy.com - 用户管理页面
           });
     }
 
+    /*
     function deleteUser(user_id) {
         const password = prompt("请输入您的管理员密码以确认删除：");
         if (password) {
-            fetch('{{ url_for("auth.delete_user") }}', {
+            fetch('{\{ url_for("auth.delete_user") }\}', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -470,7 +470,7 @@ Raricy.com - 用户管理页面
               });
         }
     }
-
+*/
     // 通知相关
     function sendNotificationTo(userId, username) {
         currentUserId = userId;

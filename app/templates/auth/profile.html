@@ -11,19 +11,21 @@ Raricy.com - 用户资料
         padding: 30px;
         box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
         border-radius: 10px;
-        background-color: #fff;
+        background-color: var(--color-background-card);
     }
+    /*
 
     .profile-header {
         text-align: center;
         margin-bottom: 30px;
         color: #333;
     }
+    */
 
     .profile-avatar {
         width: 200px;
         height: 200px;
-        border-radius: 10px; /* 修改为方形圆角 */
+        border-radius: 10px;
         margin: 0 auto 20px;
         background: linear-gradient(135deg, #f28391 0%, #2575fc 100%);
         display: flex;
@@ -31,9 +33,9 @@ Raricy.com - 用户资料
         justify-content: center;
         color: white;
         font-size: 72px;
-        /* 放大头像字体 */
         font-weight: bold;
     }
+    /*
 
     .profile-info {
         margin-bottom: 20px;
@@ -43,7 +45,6 @@ Raricy.com - 用户资料
         font-weight: 500;
         color: #6c757d;
         margin-bottom: 5px;
-        /* 增加标签和值之间的间距 */
     }
 
     .profile-value {
@@ -65,12 +66,7 @@ Raricy.com - 用户资料
         background: linear-gradient(135deg, #0056b3, #004085);
         transform: translateY(-2px);
     }
-
-    body {
-        background: linear-gradient(135deg, #f28391 0%, #2575fc 100%);
-        background-attachment: fixed;
-        min-height: 100vh;
-    }
+    */
 </style>
 {% endblock %}
 
@@ -97,10 +93,6 @@ Raricy.com - 用户资料
                     <div class="mb-3">
                         <p class="profile-label">用户名</p>
                         <p class="profile-value">{{ user.username }}</p>
-                    </div>
-                    <div class="mb-3">
-                        <p class="profile-label">邮箱</p>
-                        <p class="profile-value">{{ user.email }}</p>
                     </div>
                     <div class="mb-3">
                         <p class="profile-label">注册时间</p>
