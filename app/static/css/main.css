@@ -574,6 +574,8 @@ body {
   .site-nav {
     flex-direction: column;
     gap: 0;
+    margin-left: 0;
+    align-items: center;
   }
   .site-link {
     padding: 0.5rem;
