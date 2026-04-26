@@ -2928,29 +2928,29 @@ body {
 
 .page-link {
   padding: 0.4rem 0.7rem;
-  border: 1px solid #ccc;
+  border: 1px solid var(--color-border);
   border-radius: 6px;
-  background: #fff;
+  background: var(--color-background-card);
   font-size: 0.85rem;
-  color: #333;
+  color: var(--color-text-primary);
   text-decoration: none;
   display: inline-block;
 }
 
 .page-link:hover {
-  background: #eee;
+  background: var(--color-brand-secondary);
 }
 
 .page-link.active {
-  background: #3498db;
+  background: var(--color-brand-primary);
   color: #fff;
-  border-color: #2980b9;
+  border-color: var(--color-brand-primary);
 }
 
 .page-ellipsis {
   padding: 0.4rem 0.3rem;
   font-size: 0.85rem;
-  color: #999;
+  color: var(--color-text-secondary);
 }
 
 .page-jump {
@@ -2962,10 +2962,12 @@ body {
 .page-input {
   width: 3.5rem;
   padding: 0.35rem 0.4rem;
-  border: 1px solid #ccc;
+  border: 1px solid var(--color-border);
   border-radius: 6px;
   font-size: 0.85rem;
   text-align: center;
+  background: var(--color-background-card);
+  color: var(--color-text-primary);
   -moz-appearance: textfield;
 }
 
