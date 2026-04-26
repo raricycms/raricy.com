@@ -26,11 +26,14 @@ def register_views(blog_bp):
         category_slug = request.args.get('category')
         featured = request.args.get('featured')
         page = request.args.get('page', 1, type=int)
+        search = request.args.get('search', '').strip()
         featured_flag = None
         if featured is not None:
             featured_flag = True if featured in ['1', 'true', 'True'] else False if featured in ['0', 'false', 'False'] else None
 
-        blogs, categories, current_category, pagination = BlogService.get_blog_list(category_slug, featured=featured_flag, page=page)
+        blogs, categories, current_category, pagination = BlogService.get_blog_list(
+            category_slug, featured=featured_flag, page=page, search=search or None
+        )
 
         if blogs is None:  # 栏目不存在
             abort(404)
@@ -40,7 +43,8 @@ def register_views(blog_bp):
                              categories=categories,
                              current_category=current_category,
                              featured=featured_flag,
-                             pagination=pagination)
+                             pagination=pagination,
+                             search=search)
     
     @authenticated_required
     @blog_bp.route('/<blog_id>')

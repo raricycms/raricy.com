@@ -8,6 +8,7 @@ from flask import current_app
 from flask_login import current_user
 from app.extensions import db
 from app.models import Blog, BlogContent, Category
+from app.models.user import User
 from app.service.notifications import send_notification
 
 
@@ -15,7 +16,7 @@ class BlogService:
     """博客业务逻辑服务"""
     
     @staticmethod
-    def get_blog_list(category_slug=None, featured=None, page=1, per_page=200):
+    def get_blog_list(category_slug=None, featured=None, page=1, per_page=200, search=None):
         """
         获取博客列表
 
@@ -23,6 +24,7 @@ class BlogService:
             category_slug: 栏目标识符
             page: 页码
             per_page: 每页数量
+            search: 搜索关键词（标题/作者/简介）
 
         Returns:
             tuple: (blogs, categories, current_category, pagination)
@@ -68,6 +70,16 @@ class BlogService:
         # 精选筛选
         if featured in (True, False):
             query = query.filter(Blog.is_featured == featured)
+
+        # 搜索（标题/作者/简介）
+        if search:
+            query = query.join(User, Blog.author_id == User.id).filter(
+                db.or_(
+                    Blog.title.contains(search),
+                    Blog.description.contains(search),
+                    User.username.contains(search)
+                )
+            )
 
         query = query.order_by(Blog.created_at.desc())
 
