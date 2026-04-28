@@ -256,10 +256,53 @@
         gap: $space-4;
         color: var(--color-text-secondary);
         font-size: 0.875rem;
-        
+        align-items: center;
+
         @media (max-width: 768px) {
           flex-direction: column;
           gap: $space-1;
+          align-items: flex-start;
+        }
+
+        &-id {
+          display: inline-flex;
+          align-items: center;
+          gap: $space-2;
+
+          code {
+            background: var(--color-background-page);
+            border: 1px solid var(--color-border);
+            border-radius: $radius-small;
+            padding: 1px 6px;
+            font-size: 0.8125rem;
+          }
+        }
+      }
+
+      &__inline-copy {
+        display: inline-flex;
+        align-items: center;
+        padding: 1px 8px;
+        background: var(--color-brand-secondary);
+        color: var(--color-brand-primary);
+        border: 1px solid transparent;
+        border-radius: $radius-small;
+        font-size: 0.75rem;
+        font-family: inherit;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        white-space: nowrap;
+        user-select: none;
+
+        &:hover {
+          background: var(--color-brand-primary);
+          color: #fff;
+          border-color: var(--color-brand-primary);
+        }
+
+        &:disabled {
+          cursor: default;
+          opacity: 0.7;
         }
       }
     }

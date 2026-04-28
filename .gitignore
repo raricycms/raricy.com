@@ -1,5 +1,6 @@
 __pycache__/
 venv/
+node_modules/
 .env
 app/.env
 .DS_Store

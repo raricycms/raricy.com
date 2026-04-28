@@ -112,7 +112,10 @@
             <h1 class="clipboard-detail__header-title">{{clip['title']}}</h1>
             <div class="clipboard-detail__header-meta">
                 <span>作者：{{clip.author_name}}</span>
-                <span>ID：{{clip.id}}</span>
+                <span class="clipboard-detail__header-meta-id">
+                    ID：<code>{{clip.id}}</code>
+                    <button class="clipboard-detail__header__inline-copy" data-copy="{{clip.id}}" title="复制ID">复制</button>
+                </span>
             </div>
         </div>
         
@@ -133,6 +136,7 @@
             {% if clip['author_id'] == current_user.id or current_user.is_owner %}
             <button class="action-button danger" id="delete">删除文章</button>
             {% endif %}
+            <button class="action-button" id="copy-content">复制正文</button>
             <a href="/clipboard/" class="action-button">返回云剪贴板主页</a>
             <button class="action-button" onclick="history.back()">返回上页</button>
         </div>
@@ -433,6 +437,51 @@ class ClipboardMarkdownRenderer {
     }
 }
 
+// 通用文本复制函数
+function copyTextToClipboard(text, button) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(() => {
+            const originalText = button.textContent;
+            button.textContent = '已复制';
+            button.disabled = true;
+            setTimeout(() => {
+                button.textContent = originalText;
+                button.disabled = false;
+            }, 2000);
+        }).catch(() => {
+            fallbackCopy(text, button);
+        });
+    } else {
+        fallbackCopy(text, button);
+    }
+}
+
+function fallbackCopy(text, button) {
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    textArea.style.position = 'fixed';
+    textArea.style.left = '-999999px';
+    textArea.style.top = '-999999px';
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    try {
+        document.execCommand('copy');
+        if (button) {
+            const originalText = button.textContent;
+            button.textContent = '已复制';
+            button.disabled = true;
+            setTimeout(() => {
+                button.textContent = originalText;
+                button.disabled = false;
+            }, 2000);
+        }
+    } catch (err) {
+        alert('复制失败，请手动复制');
+    }
+    document.body.removeChild(textArea);
+}
+
 // 全局代码复制函数
 function copyCode(button) {
     const codeText = decodeURIComponent(button.getAttribute('data-code'));
@@ -477,6 +526,29 @@ document.addEventListener('DOMContentLoaded', function() {
     const renderer = new ClipboardMarkdownRenderer();
     if (renderer.init()) {
         renderer.render();
+    }
+
+    // 行内复制按钮（ID 等）
+    document.querySelectorAll('.clipboard-detail__inline-copy').forEach(btn => {
+        btn.addEventListener('click', function() {
+            copyTextToClipboard(this.getAttribute('data-copy'), this);
+        });
+    });
+
+    // 复制正文按钮
+    const copyContentBtn = document.getElementById('copy-content');
+    if (copyContentBtn) {
+        copyContentBtn.addEventListener('click', function() {
+            const contentScript = document.getElementById('clipboardContent');
+            if (contentScript) {
+                try {
+                    const text = JSON.parse(contentScript.textContent);
+                    copyTextToClipboard(text, this);
+                } catch (e) {
+                    alert('内容读取失败');
+                }
+            }
+        });
     }
 });
 
