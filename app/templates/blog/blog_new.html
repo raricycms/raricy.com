@@ -175,17 +175,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 })();
 
-// 全局辅助函数
-window.showToast = function(message, type = 'info') {
-    // 简单的toast实现，可以根据需要替换为更完整的实现
-    console.log(`[${type.toUpperCase()}] ${message}`);
-    
-    // 这里可以集成更完整的toast系统
-    if (typeof Toast !== 'undefined') {
-        Toast.show(message, type);
-    }
-};
-
 // 锚点平滑滚动
 (function() {
     // 监听URL哈希变化

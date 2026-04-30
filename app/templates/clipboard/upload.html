@@ -22,7 +22,7 @@
 
     {% if clip %}
     <div class="clipboard-form__reminder">
-        提示：编辑过程中可按 <kbd>Ctrl+S</kbd> 手动保存，以免内容丢失。
+        提示：编辑过程中可按 <kbd>Ctrl+S</kbd> 手动保存，以免内容丢失。也可以勾选下方"自动保存"开关，每分钟自动保存一次。
     </div>
     {% endif %}
 
@@ -42,6 +42,13 @@
                 <input type="checkbox" id="publicity" name="publicity" {% if not clip or clip.publicity %}checked{% endif %}>
                 <label for="publicity">是否公开</label>
             </div>
+
+            {% if clip %}
+            <div class="clipboard-form__group clipboard-form__group--checkbox">
+                <input type="checkbox" id="autoSaveToggle" name="autoSave">
+                <label for="autoSaveToggle">自动保存（每分钟）</label>
+            </div>
+            {% endif %}
 
             <button type="submit" class="clipboard-form__submit">
                 {% if clip %}更新{% else %}提交{% endif %}
@@ -98,9 +105,26 @@
         }
     }
 
+    let autoSaveTimer = null;
+
+    function startAutoSave() {
+        if (autoSaveTimer) return;
+        autoSaveTimer = setInterval(() => {
+            saveClipboard(true);
+        }, 60000);
+    }
+
+    function stopAutoSave() {
+        if (autoSaveTimer) {
+            clearInterval(autoSaveTimer);
+            autoSaveTimer = null;
+        }
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('uploadForm').addEventListener('submit', async (e) => {
             e.preventDefault();
+            stopAutoSave();
             await saveClipboard(false);
         });
 
@@ -110,6 +134,23 @@
                 saveClipboard(true);
             }
         });
+
+        const autoSaveToggle = document.getElementById('autoSaveToggle');
+        if (autoSaveToggle) {
+            const storageKey = 'clipboard_autosave_enabled';
+            autoSaveToggle.checked = localStorage.getItem(storageKey) === 'true';
+            if (autoSaveToggle.checked) {
+                startAutoSave();
+            }
+            autoSaveToggle.addEventListener('change', () => {
+                localStorage.setItem(storageKey, autoSaveToggle.checked);
+                if (autoSaveToggle.checked) {
+                    startAutoSave();
+                } else {
+                    stopAutoSave();
+                }
+            });
+        }
     });
 </script>
 {% endblock %}
