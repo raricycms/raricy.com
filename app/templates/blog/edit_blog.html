@@ -1,6 +1,7 @@
 {% extends "base.html" %}
-
-{% block title %}编辑文章 - {{ blog.title }}{% endblock %}
+{% block title %}
+{% if blog %}编辑文章 - {{ blog.title }}{% else %}Raricy.com - 文章上传{% endif %}
+{% endblock %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/vditor@3.10.7/dist/index.css" onerror="this.onerror=null; this.href='{{ url_for('static', filename='js/vditor/node_modules/vditor/dist/index.css') }}'">
@@ -8,17 +9,22 @@
 
 {% block content %}
 <section class="upload-hero">
+    {% if blog %}
     <h1>编辑文章</h1>
     <div class="text-muted">ID: {{ blog.id }}</div>
-    <div class="note">仅作者或管理员可编辑。服务端仅保存 Markdown，渲染使用安全转换。</div>
-    <div class="mt-2" style="margin-top: 30px"><a class="button button-primary" href="{{ url_for('blog.blog_detail', blog_id=blog.id) }}">返回阅读页</a></div>
+    <div class="mt-2" style="margin-top: 30px">
+        <a class="button button-primary" href="{{ url_for('blog.blog_detail', blog_id=blog.id) }}">返回阅读页</a>
+    </div>
+    {% else %}
+    <h1>发布新文章</h1>
+    {% endif %}
 </section>
 
 <div class="blog-form-container">
     {% if ban_info %}
     <div class="alert alert-danger" role="alert">
         <h5 class="alert-heading">您已被禁言</h5>
-        <p class="mb-2">您当前无法编辑文章。</p>
+        <p class="mb-2">您当前无法{{ '编辑' if blog else '发布新' }}文章。</p>
         <hr>
         <p class="mb-0">
             <strong>原因：</strong>{{ ban_info.reason }}<br>
@@ -36,29 +42,28 @@
     </div>
     {% endif %}
 
-    <form id="editForm" {% if ban_info %}style="opacity: 0.5; pointer-events: none;"{% endif %}>
+    <form id="blogForm" {% if ban_info %}style="opacity: 0.5; pointer-events: none;"{% endif %}>
         <div class="mb-3">
             <label for="title" class="form-label">标题</label>
-            <input type="text" class="form-control" id="title" value="{{ blog.title }}" required>
+            <input type="text" class="form-control" id="title" value="{{ blog.title if blog else '' }}" required>
         </div>
 
         <div class="mb-3">
             <label for="description" class="form-label">摘要</label>
-            <textarea class="form-control" id="description" rows="3" required>{{ blog.description }}</textarea>
-            <div class="form-text">摘要用于列表与 SEO 描述，不渲染为 HTML。</div>
+            <textarea class="form-control" id="description" rows="3" required>{{ blog.description if blog else '' }}</textarea>
         </div>
 
         <div class="mb-3">
             <label for="category" class="form-label">栏目</label>
             <select class="form-select" id="category">
-                <option value="">选择栏目</option>
+                <option value="" class="form-option">选择栏目</option>
                 {% for category in categories %}
                 <optgroup label="{{ category.icon }} {{ category.name }}">
-                    <option value="{{ category.id }}" {{ 'selected' if blog.category_id == category.id else '' }}>
+                    <option value="{{ category.id }}" class="form-option" {{ 'selected' if blog and blog.category_id == category.id else '' }}>
                         {{ category.icon }} {{ category.name }}
                     </option>
                     {% for child in category.children %}
-                    <option value="{{ child.id }}" {{ 'selected' if blog.category_id == child.id else '' }}>
+                    <option value="{{ child.id }}" class="form-option" {{ 'selected' if blog and blog.category_id == child.id else '' }}>
                         　└ {{ child.icon }} {{ child.name }}
                     </option>
                     {% endfor %}
@@ -68,16 +73,19 @@
         </div>
 
         <div class="mb-3">
-            <label class="form-label">内容（Markdown）</label>
+            <label class="form-label">内容（Markdown格式）（注意：粘贴的内容会自动变为引用。）</label>
             <div id="editor" style="height: 60vh;"></div>
             <p id="fallback-message" class="form-text text-muted" style="display: none;">Markdown编辑器加载失败，已切换到基础文本输入框。</p>
             <textarea id="fallback-editor" class="form-control" rows="20" style="display: none;"></textarea>
-            <div class="form-text note">提示：粘贴的内容可能按编辑器策略处理，预览请用右上角预览按钮。</div>
         </div>
 
         <div class="btn-row">
-            <button type="submit" class="button button-primary">保存修改</button>
+            <button type="submit" class="button button-primary">
+                {{ '保存修改' if blog else '提交' }}
+            </button>
+            {% if blog %}
             <a href="{{ url_for('blog.blog_detail', blog_id=blog.id) }}" class="btn btn-outline-secondary">取消</a>
+            {% endif %}
         </div>
     </form>
 </div>
@@ -85,91 +93,133 @@
 
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/vditor@3.10.7/dist/index.min.js"></script>
+{% if blog %}
 <script id="initial-markdown" type="application/json">{{ (content_markdown or '') | tojson }}</script>
+{% endif %}
 <script>
-document.addEventListener('DOMContentLoaded', function () {
-    const initialMarkdown = JSON.parse(document.getElementById('initial-markdown').textContent || '""');
+    document.addEventListener('DOMContentLoaded', function () {
+        {% if blog %}
+        const initialMarkdown = JSON.parse(document.getElementById('initial-markdown').textContent || '""');
+        {% else %}
+        const initialMarkdown = '';
+        {% endif %}
 
-    let vditor = null;
-    let isVditorLoaded = false;
+        let vditor = null;
+        let isVditorLoaded = false;
 
-    function showFallback() {
-        document.getElementById('editor').style.display = 'none';
-        document.getElementById('fallback-message').style.display = 'block';
-        const fallback = document.getElementById('fallback-editor');
-        fallback.style.display = 'block';
-        if (!fallback.value) {
-            fallback.value = initialMarkdown || '';
+        function showFallback() {
+            document.getElementById('editor').style.display = 'none';
+            document.getElementById('fallback-message').style.display = 'block';
+            const fallback = document.getElementById('fallback-editor');
+            fallback.style.display = 'block';
+            if (!fallback.value && initialMarkdown) {
+                fallback.value = initialMarkdown;
+            }
+            isVditorLoaded = false;
         }
-        isVditorLoaded = false;
-    }
 
-    if (typeof Vditor !== 'undefined' && 0) {
-        try {
-            vditor = new Vditor('editor', {
-                minHeight: 500,
-                mode: 'ir',
-                cdn: (window.__VDITOR_USE_LOCAL__ ? '/static/js/vditor/node_modules/vditor' : 'https://cdn.jsdelivr.net/npm/vditor@3.10.7'),
-                toolbar: [
-                    'emoji','headings','bold','italic','strike','link','|',
-                    'list','ordered-list','check','outdent','indent','|',
-                    'quote','line','code','inline-code','upload','table','|',
-                    'undo','redo','preview','export'
-                ],
-                counter: { enable: true, type: 'text' },
-                cache: { enable: false },
-                value: initialMarkdown
-            });
-            isVditorLoaded = true;
-        } catch (e) {
-            console.error('Vditor initialization failed:', e);
+        if (typeof Vditor !== 'undefined') {
+            try {
+                const vditorConfig = {
+                    minHeight: 500,
+                    mode: 'ir',
+                    cdn: (window.__VDITOR_USE_LOCAL__ ? '/static/js/vditor/node_modules/vditor' : 'https://cdn.jsdelivr.net/npm/vditor@3.10.7'),
+                    toolbar: [
+                        'emoji', 'headings', 'bold', 'italic', 'strike', 'link', '|',
+                        'list', 'ordered-list', 'check', 'outdent', 'indent', '|',
+                        'quote', 'line', 'code', 'inline-code', 'upload', 'table', '|',
+                        'undo', 'redo', 'preview', 'export'
+                    ],
+                    counter: { enable: true, type: 'text' },
+                    {% if blog %}
+                    cache: { enable: false },
+                    {% else %}
+                    cache: { enable: true, id: 'blog-upload-editor' },
+                    {% endif %}
+                    value: initialMarkdown
+                };
+                vditor = new Vditor('editor', vditorConfig);
+                isVditorLoaded = true;
+                console.log("Vditor loaded successfully.");
+            } catch (e) {
+                console.error("Vditor initialization failed:", e);
+                showFallback();
+            }
+        } else {
+            console.warn("Vditor script failed to load. Using fallback textarea.");
             showFallback();
         }
-    } else {
-        console.warn('Vditor script failed to load. Using fallback textarea.');
-        showFallback();
-    }
 
-    const form = document.getElementById('editForm');
+        const form = document.getElementById('blogForm');
 
-    form.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const title = document.getElementById('title').value.trim();
-        const description = document.getElementById('description').value.trim();
-        const category_id = document.getElementById('category').value;
-        const content = isVditorLoaded && vditor ? vditor.getValue() : document.getElementById('fallback-editor').value;
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const title = document.getElementById('title').value;
+            const description = document.getElementById('description').value;
+            const category_id = document.getElementById('category').value;
 
-        if (!title || !description || !content) {
-            showToast('请填写完整信息', 'warning');
-            return;
-        }
-        if (title.length > 30) { showToast('标题不能超过30个字符', 'warning'); return; }
-        if (description.length > 100) { showToast('描述不能超过100个字符', 'warning'); return; }
-        if (content.length > 250000) { showToast('内容不能超过250000个字符', 'warning'); return; }
-
-        try {
-            const resp = await fetch("{{ url_for('blog.edit_blog', blog_id=blog.id) }}", {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'same-origin',
-                body: JSON.stringify({ title, description, content, category_id })
-            });
-            const data = await resp.json();
-            if (data.code === 200) {
-                showToast('保存成功，正在返回...', 'success');
-                setTimeout(() => {
-                    window.location.href = data.redirect || "{{ url_for('blog.blog_detail', blog_id=blog.id) }}";
-                }, 800);
+            let content;
+            if (isVditorLoaded && vditor) {
+                content = vditor.getValue();
             } else {
-                showToast(data.message || '保存失败', 'error');
+                content = document.getElementById('fallback-editor').value;
             }
-        } catch (err) {
-            showToast('网络错误，请稍后重试', 'error');
-        }
+
+            if (!title || !description || !content) {
+                showToast('请填写完整信息', 'warning');
+                return;
+            }
+            if (title.length > 30) {
+                showToast('标题不能超过30个字符', 'warning');
+                return;
+            }
+            if (description.length > 100) {
+                showToast('描述不能超过100个字符', 'warning');
+                return;
+            }
+            if (content.length > 250000) {
+                showToast('内容不能超过250000个字符', 'warning');
+                return;
+            }
+
+            try {
+                const url = "{% if blog %}{{ url_for('blog.edit_blog', blog_id=blog.id) }}{% else %}{{ url_for('blog.upload') }}{% endif %}";
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        title: title,
+                        description: description,
+                        content: content,
+                        category_id: category_id
+                    })
+                });
+
+                const result = await response.json();
+                if (result.code === 200) {
+                    const msg = "{% if blog %}保存成功，正在返回...{% else %}上传成功！即将跳转到文章页面...{% endif %}";
+                    showToast(msg, 'success');
+
+                    {% if not blog %}
+                    if (isVditorLoaded && vditor) {
+                        vditor.clearCache();
+                        console.log("Vditor cache cleared after successful upload.");
+                    }
+                    {% endif %}
+
+                    setTimeout(() => {
+                        window.location.href = result.redirect || '/blog/' + result.blog_id;
+                    }, {% if blog %}800{% else %}1500{% endif %});
+                } else {
+                    showToast('操作失败: ' + result.message, 'error');
+                }
+            } catch (error) {
+                showToast('出现错误，请稍后重试', 'error');
+            }
+        });
     });
-});
 </script>
 {% endblock %}
 
-{% block footer_text %}{% endblock %}
-
+{% block footer_text %}
+{% endblock %}

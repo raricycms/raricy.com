@@ -81,7 +81,7 @@ def register_views(blog_bp):
             # 获取栏目列表用于下拉选择
             from app.models import Category
             categories = Category.get_hierarchy()
-            return render_template('blog/upload_blog.html', categories=categories, ban_info=ban_info)
+            return render_template('blog/edit_blog.html', categories=categories, ban_info=ban_info)
         
         elif request.method == 'POST':
             # 检查用户是否被禁言
@@ -154,7 +154,7 @@ def register_views(blog_bp):
                         except Exception:
                             pass
             
-            return success_response('上传成功', blog_id=blog_id)
+            return success_response('上传成功', blog_id=blog_id, redirect=url_for('blog.blog_detail', blog_id=blog_id))
     
     @blog_bp.route('/<blog_id>/edit', methods=['GET', 'POST'])
     @login_required
@@ -195,15 +195,26 @@ def register_views(blog_bp):
                                  ban_info=ban_info)
         
         # POST: 保存
-        data = request.get_json(silent=True) or {}
-        
+        data = request.get_json()
+
         # 验证博客数据
         is_valid, error_message, validated_data = BlogValidator.validate_blog_data(data)
         if not is_valid:
             return validation_error_response(error_message)
-        
-        # 已移除 Turnstile 人机验证
-        
+
+        # 若选择了栏目，检查该栏目及其父栏目是否限制管理员专属
+        from app.models import Category
+        category_id = validated_data.get('category_id')
+        if category_id:
+            category = Category.query.get(category_id)
+            if category:
+                parent = category.parent
+                admin_only_effective = bool(getattr(category, 'admin_only_posting', False) or getattr(parent, 'admin_only_posting', False)) if parent else bool(getattr(category, 'admin_only_posting', False))
+            else:
+                admin_only_effective = False
+            if admin_only_effective and not getattr(current_user, 'has_admin_rights', False):
+                return forbidden_response('该栏目仅允许管理员发布文章')
+
         # 更新博客
         has_changes, changes_detail = BlogService.update_blog(blog_id, validated_data)
         
