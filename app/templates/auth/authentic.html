@@ -20,10 +20,6 @@ Raricy.com - 邀请码验证
         min-height: 100vh;
     }
 
-    #message-container {
-        margin-top: 20px;
-    }
-
     .loading-text {
         display: none;
     }
@@ -34,8 +30,7 @@ Raricy.com - 邀请码验证
 <div class="container">
     <div class="authentic-container">
         <h2 class="text-center mb-4"><i class="fas fa-key"></i> 邀请码验证</h2>
-        <div id="message-container" class="mb-4"></div>
-        
+
         <form id="authentic-form" class="d-grid gap-3">
             <div class="form-group">
                 <label for="authentic_code">
@@ -72,11 +67,9 @@ Raricy.com - 邀请码验证
     document.addEventListener('DOMContentLoaded', function() {
         const form = document.getElementById('authentic-form');
         const submitBtn = document.getElementById('submitBtn');
-        const messageContainer = document.getElementById('message-container');
 
         form.addEventListener('submit', async function(e) {
             e.preventDefault();
-            messageContainer.innerHTML = '';
 
             if (!form.checkValidity()) {
                 form.classList.add('was-validated');
@@ -98,32 +91,23 @@ Raricy.com - 邀请码验证
 
                 const result = await response.json();
                 if (response.ok) {
-                    showMessage(result.message, 'success');
+                    showToast(result.message, 'success');
                     setTimeout(() => {
                         window.location.href = "{{ url_for('auth.profile', user_id=current_user.id) }}";
                     }, 1500);
                 } else {
-                    showMessage(result.message, 'danger');
+                    showToast(result.message, 'error');
                     document.getElementById('authentic_code').focus();
                 }
             } catch (error) {
                 console.error('验证请求失败:', error);
-                showMessage('网络错误，请稍后重试', 'danger');
+                showToast('网络错误，请稍后重试', 'error');
             } finally {
                 submitBtn.disabled = false;
                 document.getElementById('submitText').style.display = 'inline';
                 document.getElementById('loadingText').style.display = 'none';
             }
         });
-
-        function showMessage(message, type) {
-            messageContainer.innerHTML = `
-                <div class="alert alert-${type} alert-dismissible fade show">
-                    ${message}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                </div>
-            `;
-        }
     });
 </script>
 {% endblock %}

@@ -14,9 +14,6 @@ Raricy.com - 用户注册
             <p class="text-muted">请填写以下信息完成注册</p>
         </div>
 
-        <!-- 显示错误或成功消息 -->
-        <div id="message-container"></div>
-
         <form id="registerForm">
             <div class="form-group">
                 <label for="inviteCode" class="form-label">
@@ -113,7 +110,6 @@ Raricy.com - 用户注册
         const submitBtn = document.getElementById('submitBtn');
         const submitText = document.getElementById('submitText');
         const loadingText = document.getElementById('loadingText');
-        const messageContainer = document.getElementById('message-container');
 
         // 密码确认验证
         const password = document.getElementById('password');
@@ -130,31 +126,9 @@ Raricy.com - 用户注册
         password.addEventListener('input', validatePassword);
         confirmPassword.addEventListener('input', validatePassword);
 
-        // 显示消息函数
-        function showMessage(message, type = 'danger') {
-            messageContainer.innerHTML = `
-            <div class="alert alert-${type} alert-dismissible fade show" role="alert">
-                ${message}
-                <button type="button" class="btn-close" data-alert-close></button>
-            </div>
-        `;
-            const btn = messageContainer.querySelector('[data-alert-close]');
-            if (btn) {
-                btn.addEventListener('click', function() {
-                    const alertEl = this.closest('.alert');
-                    if (!alertEl) return;
-                    alertEl.classList.remove('show');
-                    alertEl.addEventListener('transitionend', () => alertEl.remove(), { once: true });
-                });
-            }
-        }
-
         // 表单提交处理
         form.addEventListener('submit', async function (e) {
             e.preventDefault();
-
-            // 清除之前的消息
-            messageContainer.innerHTML = '';
 
             // 表单验证
             if (!form.checkValidity()) {
@@ -190,13 +164,13 @@ Raricy.com - 用户注册
 
                 if (response.ok) {
                     // 注册成功
-                    showMessage(result.message || '注册成功！正在跳转到登录页面...', 'success');
+                    showToast(result.message || '注册成功！正在跳转到登录页面...', 'success');
                     setTimeout(() => {
                         window.location.href = '{{ url_for("auth.login") }}';
                     }, 2000);
                 } else {
                     // 注册失败
-                    showMessage(result.message || '注册失败，请检查输入信息');
+                    showToast(result.message || '注册失败，请检查输入信息', 'error');
 
                     // 如果是邀请码错误，聚焦到邀请码输入框
                     if (result.field === 'invite_code') {
@@ -205,7 +179,7 @@ Raricy.com - 用户注册
                 }
             } catch (error) {
                 console.error('注册请求失败:', error);
-                showMessage('网络错误，请稍后重试');
+                showToast('网络错误，请稍后重试', 'error');
             } finally {
                 // 恢复按钮状态
                 submitBtn.disabled = false;

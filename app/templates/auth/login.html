@@ -14,9 +14,6 @@ Raricy.com - 用户登录
             <p class="text-muted">请填写以下信息完成登录</p>
         </div>
 
-        <!-- 显示错误或成功消息 -->
-        <div id="message-container"></div>
-
         <form id="loginForm">
             <input type="hidden" name="next" value="{{ request.args.get('next', '') }}">
             <div class="form-group">
@@ -65,33 +62,10 @@ Raricy.com - 用户登录
         const submitBtn = document.getElementById('submitBtn');
         const submitText = document.getElementById('submitText');
         const loadingText = document.getElementById('loadingText');
-        const messageContainer = document.getElementById('message-container');
-
-        // 显示消息函数
-        function showMessage(message, type = 'danger') {
-            messageContainer.innerHTML = `
-            <div class="alert alert-${type} alert-dismissible fade show" role="alert">
-                ${message}
-                <button type="button" class="btn-close" data-alert-close></button>
-            </div>
-        `;
-            const btn = messageContainer.querySelector('[data-alert-close]');
-            if (btn) {
-                btn.addEventListener('click', function() {
-                    const alertEl = this.closest('.alert');
-                    if (!alertEl) return;
-                    alertEl.classList.remove('show');
-                    alertEl.addEventListener('transitionend', () => alertEl.remove(), { once: true });
-                });
-            }
-        }
 
         // 表单提交处理
         form.addEventListener('submit', async function (e) {
             e.preventDefault();
-
-            // 清除之前的消息
-            messageContainer.innerHTML = '';
 
             // 表单验证
             if (!form.checkValidity()) {
@@ -122,17 +96,17 @@ Raricy.com - 用户登录
 
                 if (response.ok) {
                     // 登录成功
-                    showMessage(result.message || '登录成功！正在跳转...', 'success');
+                    showToast(result.message || '登录成功！正在跳转...', 'success');
                     setTimeout(() => {
                         window.location.href = result.redirect_url || '/';
                     }, 1500);
                 } else {
                     // 登录失败
-                    showMessage(result.message || '登录失败，请检查用户名和密码');
+                    showToast(result.message || '登录失败，请检查用户名和密码', 'error');
                 }
             } catch (error) {
                 console.error('登录请求失败:', error);
-                showMessage('网络错误，请稍后重试');
+                showToast('网络错误，请稍后重试', 'error');
             } finally {
                 // 恢复按钮状态
                 submitBtn.disabled = false;
