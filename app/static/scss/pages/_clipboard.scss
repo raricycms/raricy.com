@@ -384,6 +384,26 @@
       padding: $space-4;
     }
     
+    &__reminder {
+      background: var(--color-brand-secondary);
+      border: 1px solid var(--color-brand-primary);
+      border-radius: $radius-small;
+      padding: $space-3 $space-4;
+      margin-bottom: $space-4;
+      color: var(--color-brand-primary);
+      font-size: 0.875rem;
+      line-height: 1.5;
+
+      kbd {
+        background: var(--color-background-card);
+        border: 1px solid var(--color-border);
+        border-radius: 3px;
+        padding: 1px 5px;
+        font-family: monospace;
+        font-size: 0.8125rem;
+      }
+    }
+
     &__group {
       margin-bottom: $space-4;
       

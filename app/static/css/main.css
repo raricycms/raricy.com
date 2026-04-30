@@ -3615,6 +3615,24 @@ body {
     padding: 16px;
   }
 }
+.clipboard-form__reminder {
+  background: var(--color-brand-secondary);
+  border: 1px solid var(--color-brand-primary);
+  border-radius: 5px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  color: var(--color-brand-primary);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+.clipboard-form__reminder kbd {
+  background: var(--color-background-card);
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-family: monospace;
+  font-size: 0.8125rem;
+}
 .clipboard-form__group {
   margin-bottom: 16px;
 }
