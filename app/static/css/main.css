@@ -2885,13 +2885,6 @@ a:hover {
   .sub-category-list {
     margin-left: 16px;
   }
-  .search-form {
-    flex-direction: column;
-  }
-  .search-btn,
-  .search-clear-btn {
-    width: 100%;
-  }
 }
 .upload-hero {
   background: var(--color-background-page);
