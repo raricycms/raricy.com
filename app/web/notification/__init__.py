@@ -22,7 +22,7 @@ def notification_page():
     result = get_user_notifications(
         user_id=current_user.id,
         page=page,
-        per_page=20,
+        per_page=50,
         unread_only=unread_only
     )
     
@@ -107,7 +107,7 @@ def api_batch_delete():
 def api_notification_list():
     """获取通知列表的 API，支持分页和过滤"""
     page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 20, type=int)
+    per_page = request.args.get('per_page', 50, type=int)
     unread_only = request.args.get('unread_only', False, type=bool)
     
     # 限制每页数量，防止过大的请求

@@ -24,34 +24,35 @@
     {% if data %}
         <div id="notifications-list">
             {% for notification in data %}
-                <div class="notification-card {% if not notification.read %}unread{% endif %}" 
+                <div class="notification-card {% if not notification.read %}unread{% endif %}"
                      data-id="{{ notification.id }}">
-                    <h6 class="notification-title">
-                        {{ notification.action }}
+                    <div class="notification-header">
+                        <span class="notification-action">{{ notification.action }}</span>
                         {% if not notification.read %}
-                            <span style="color:#e67e22;font-size:0.8rem;">(未读)</span>
+                            <span class="notification-unread-badge">未读</span>
                         {% endif %}
-                    </h6>
-                    <div class="notification-meta">{{ notification.timestamp }}</div>
-                    <div class="notification-meta">
-                        {% if notification.actor and notification.actor.id %}
-                            来自用户: <a href="{{ url_for('auth.profile', user_id=notification.actor.id) }}">{{ notification.actor.username }}</a>
-                        {% else %}
-                            来自: 系统
-                        {% endif %}
+                        <span class="notification-meta">
+                            {{ notification.timestamp | datetime_format('%m-%d %H:%M') }}
+                            ·
+                            {% if notification.actor and notification.actor.id %}
+                                <a href="{{ url_for('auth.profile', user_id=notification.actor.id) }}">{{ notification.actor.username }}</a>
+                            {% else %}
+                                系统
+                            {% endif %}
+                        </span>
+                        <span class="notification-actions">
+                            {% if not notification.read %}
+                                <button class="btn-mark-read" onclick="markAsRead('{{ notification.id }}')">已读</button>
+                            {% endif %}
+                            <button class="btn-delete" onclick="deleteNotification('{{ notification.id }}')">删除</button>
+                        </span>
                     </div>
                     {% if notification.detail %}
-                        <p class="notification-content">{{ notification.detail }}</p>
+                        <div class="notification-content">{{ notification.detail }}</div>
                     {% endif %}
                     {% if notification.object.type == 'blog' and notification.object.id %}
-                        <a href="{{ url_for('blog.blog_detail', blog_id=notification.object.id) }}" class="button button-primary-small">📖 查看博客</a>
+                        <a href="{{ url_for('blog.blog_detail', blog_id=notification.object.id) }}" class="notification-blog-link">查看博客</a>
                     {% endif %}
-                    <div style="margin-top:0.5rem;">
-                        {% if not notification.read %}
-                            <button class="button button-primary-small" onclick="markAsRead('{{ notification.id }}')">✅ 标记已读</button>
-                        {% endif %}
-                        <button class="button button-warning-small" onclick="deleteNotification('{{ notification.id }}')">🗑️ 删除</button>
-                    </div>
                 </div>
             {% endfor %}
         </div>
@@ -118,15 +119,15 @@ function markAllRead() {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            alert(data.message);
-            location.reload(); // 刷新页面以更新状态
+            showToast(data.message, 'success');
+            setTimeout(() => location.reload(), 1000); // 刷新页面以更新状态
         } else {
-            alert('操作失败: ' + data.message);
+            showToast('操作失败: ' + data.message, 'error');
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('操作失败，请重试');
+        showToast('操作失败，请重试', 'error');
     });
 }
 
@@ -135,7 +136,7 @@ function deleteReadNotifications() {
     if (!confirm('确定要删除所有已读通知吗？此操作不可恢复！')) {
         return;
     }
-    
+
     fetch('/notifications/api/delete-read', {
         method: 'DELETE',
         headers: {
@@ -145,21 +146,21 @@ function deleteReadNotifications() {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            alert(data.message);
-            location.reload(); // 刷新页面以更新状态
+            showToast(data.message, 'success');
+            setTimeout(() => location.reload(), 1000); // 刷新页面以更新状态
         } else {
-            alert('操作失败: ' + data.message);
+            showToast('操作失败: ' + data.message, 'error');
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('操作失败，请重试');
+        showToast('操作失败，请重试', 'error');
     });
 }
 
 // 批量操作模式（暂时简单实现）
 function toggleBatchMode() {
-    alert('批量操作功能正在开发中...');
+    showToast('批量操作功能正在开发中...', 'info');
 }
 
 // 标记单个通知为已读
@@ -178,23 +179,24 @@ function markAsRead(notificationId) {
             if (notificationCard) {
                 notificationCard.classList.remove('unread');
                 // 移除"标记已读"按钮
-                const markReadBtn = notificationCard.querySelector('button[onclick*="markAsRead"]');
+                const markReadBtn = notificationCard.querySelector('.btn-mark-read');
                 if (markReadBtn) {
                     markReadBtn.remove();
                 }
-                // 更新标题，移除"未读"标识
-                const title = notificationCard.querySelector('.notification-title');
-                if (title) {
-                    title.innerHTML = title.innerHTML.replace(/<span[^>]*>\(未读\)<\/span>/, '');
+                // 移除"未读"徽标
+                const unreadBadge = notificationCard.querySelector('.notification-unread-badge');
+                if (unreadBadge) {
+                    unreadBadge.remove();
                 }
             }
+            showToast('已标记为已读', 'success');
         } else {
-            alert('操作失败: ' + data.message);
+            showToast('操作失败: ' + data.message, 'error');
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('操作失败，请重试');
+        showToast('操作失败，请重试', 'error');
     });
 }
 
@@ -203,7 +205,7 @@ function deleteNotification(notificationId) {
     if (!confirm('确定要删除这个通知吗？此操作不可恢复！')) {
         return;
     }
-    
+
     fetch(`/notifications/api/delete/${notificationId}`, {
         method: 'DELETE',
         headers: {
@@ -218,19 +220,20 @@ function deleteNotification(notificationId) {
             if (notificationCard) {
                 notificationCard.remove();
             }
-            
+
             // 检查是否还有通知，如果没有则显示空状态
             const notificationsList = document.getElementById('notifications-list');
             if (notificationsList && notificationsList.children.length === 0) {
                 location.reload(); // 刷新页面显示空状态
             }
+            showToast('通知已删除', 'success');
         } else {
-            alert('操作失败: ' + data.message);
+            showToast('操作失败: ' + data.message, 'error');
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('操作失败，请重试');
+        showToast('操作失败，请重试', 'error');
     });
 }
 </script>
