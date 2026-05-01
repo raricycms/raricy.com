@@ -2,287 +2,34 @@
 
 {% block title %}博客管理后台 - 控制面板{% endblock %}
 
-{% block extra_css %}
-<style>
-    .admin-hero {
-        background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-        padding: 50px 0 30px;
-        text-align: center;
-        color: white;
-    }
-
-    .admin-container {
-        max-width: 1400px;
-        margin: 40px auto;
-        padding: 0 20px;
-    }
-
-    .dashboard-card {
-        background: white;
-        border-radius: 12px;
-        padding: 24px;
-        margin-bottom: 24px;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-        border: 1px solid #e5e7eb;
-        transition: all 0.3s ease;
-    }
-
-    .dashboard-card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
-    }
-
-    .stats-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-        gap: 20px;
-        margin-bottom: 30px;
-    }
-
-    .stat-card {
-        background: white;
-        border-radius: 12px;
-        padding: 20px;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-        border-left: 4px solid;
-        text-align: center;
-        transition: all 0.3s ease;
-    }
-
-    .stat-card:hover {
-        transform: translateY(-3px);
-        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);
-    }
-
-    .stat-card.total { border-left-color: #3b82f6; }
-    .stat-card.categorized { border-left-color: #10b981; }
-    .stat-card.uncategorized { border-left-color: #f59e0b; }
-    .stat-card.categories { border-left-color: #8b5cf6; }
-    .stat-card.likes { border-left-color: #ef4444; }
-
-    .stat-number {
-        font-size: 2.5rem;
-        font-weight: 700;
-        margin-bottom: 8px;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
-    }
-
-    .stat-label {
-        font-size: 0.95rem;
-        color: #6b7280;
-        font-weight: 500;
-    }
-
-    .function-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-        gap: 24px;
-        margin-bottom: 30px;
-    }
-
-    .function-card {
-        background: white;
-        border-radius: 12px;
-        padding: 24px;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-        border: 1px solid #e5e7eb;
-        transition: all 0.3s ease;
-        position: relative;
-        overflow: hidden;
-    }
-
-    .function-card::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: 4px;
-        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-    }
-
-    .function-card:hover {
-        transform: translateY(-3px);
-        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);
-    }
-
-    .function-icon {
-        font-size: 2.5rem;
-        margin-bottom: 16px;
-        display: block;
-    }
-
-    .function-title {
-        font-size: 1.25rem;
-        font-weight: 600;
-        color: #1f2937;
-        margin-bottom: 12px;
-    }
-
-    .function-desc {
-        color: #6b7280;
-        margin-bottom: 20px;
-        line-height: 1.6;
-    }
-
-    .function-actions {
-        display: flex;
-        gap: 12px;
-        flex-wrap: wrap;
-    }
-
-    .btn-function {
-        padding: 8px 16px;
-        border-radius: 8px;
-        text-decoration: none;
-        font-weight: 500;
-        font-size: 0.9rem;
-        transition: all 0.3s ease;
-        border: 1px solid;
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-    }
-
-    .btn-primary-function {
-        background: #3b82f6;
-        color: white;
-        border-color: #3b82f6;
-    }
-
-    .btn-primary-function:hover {
-        background: #2563eb;
-        border-color: #2563eb;
-        color: white;
-        text-decoration: none;
-        transform: translateY(-1px);
-    }
-
-    .btn-secondary-function {
-        background: white;
-        color: #6b7280;
-        border-color: #d1d5db;
-    }
-
-    .btn-secondary-function:hover {
-        background: #f9fafb;
-        color: #374151;
-        border-color: #9ca3af;
-        text-decoration: none;
-        transform: translateY(-1px);
-    }
-
-    .recent-list {
-        max-height: 300px;
-        overflow-y: auto;
-    }
-
-    .recent-item {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 12px 0;
-        border-bottom: 1px solid #f3f4f6;
-    }
-
-    .recent-item:last-child {
-        border-bottom: none;
-    }
-
-    .recent-title {
-        font-weight: 500;
-        color: #1f2937;
-        margin-bottom: 4px;
-    }
-
-    .recent-meta {
-        font-size: 0.85rem;
-        color: #6b7280;
-    }
-
-    .category-chart {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-        gap: 16px;
-    }
-
-    .category-item {
-        text-align: center;
-        padding: 16px;
-        background: #f9fafb;
-        border-radius: 8px;
-        border: 1px solid #e5e7eb;
-    }
-
-    .category-icon {
-        font-size: 1.5rem;
-        margin-bottom: 8px;
-    }
-
-    .category-name {
-        font-size: 0.9rem;
-        font-weight: 500;
-        color: #374151;
-        margin-bottom: 4px;
-    }
-
-    .category-count {
-        font-size: 1.2rem;
-        font-weight: 600;
-        color: #3b82f6;
-    }
-
-    @media (max-width: 768px) {
-        .stats-grid {
-            grid-template-columns: repeat(2, 1fr);
-        }
-        
-        .function-grid {
-            grid-template-columns: 1fr;
-        }
-
-        .function-actions {
-            justify-content: center;
-        }
-
-        .category-chart {
-            grid-template-columns: repeat(2, 1fr);
-        }
-    }
-</style>
-{% endblock %}
-
 {% block content %}
 <section class="admin-hero">
-    <h1>🛠️ 博客管理后台</h1>
+    <h1>博客管理后台</h1>
     <p>管理员控制面板 - 统一管理博客内容与栏目</p>
 </section>
 
 <div class="admin-container">
     <!-- 统计概览 -->
-    <div class="stats-grid">
-        <div class="stat-card total">
-            <div class="stat-number">{{ stats.total_blogs }}</div>
-            <div class="stat-label">📄 总文章数</div>
+    <div class="admin-stats">
+        <div class="admin-stat-card admin-stat-card--blue">
+            <div class="admin-stat-card__number">{{ stats.total_blogs }}</div>
+            <div class="admin-stat-card__label">📄 总文章数</div>
         </div>
-        <div class="stat-card categorized">
-            <div class="stat-number">{{ stats.categorized_blogs }}</div>
-            <div class="stat-label">📁 已分类文章</div>
+        <div class="admin-stat-card admin-stat-card--green">
+            <div class="admin-stat-card__number">{{ stats.categorized_blogs }}</div>
+            <div class="admin-stat-card__label">📁 已分类文章</div>
         </div>
-        <div class="stat-card uncategorized">
-            <div class="stat-number">{{ stats.uncategorized_blogs }}</div>
-            <div class="stat-label">📋 未分类文章</div>
+        <div class="admin-stat-card admin-stat-card--amber">
+            <div class="admin-stat-card__number">{{ stats.uncategorized_blogs }}</div>
+            <div class="admin-stat-card__label">📋 未分类文章</div>
         </div>
-        <div class="stat-card categories">
-            <div class="stat-number">{{ stats.total_categories }}</div>
-            <div class="stat-label">🏷️ 活跃栏目</div>
+        <div class="admin-stat-card admin-stat-card--purple">
+            <div class="admin-stat-card__number">{{ stats.total_categories }}</div>
+            <div class="admin-stat-card__label">🏷️ 活跃栏目</div>
         </div>
-        <div class="stat-card likes">
-            <div class="stat-number">{{ stats.total_likes }}</div>
-            <div class="stat-label">❤️ 总点赞数</div>
+        <div class="admin-stat-card admin-stat-card--red">
+            <div class="admin-stat-card__number">{{ stats.total_likes }}</div>
+            <div class="admin-stat-card__label">❤️ 总点赞数</div>
         </div>
     </div>
 
@@ -290,68 +37,48 @@
     <div class="function-grid">
         <!-- 文章管理 -->
         <div class="function-card">
-            <div class="function-icon">📝</div>
-            <div class="function-title">文章管理</div>
-            <div class="function-desc">
+            <div class="function-card__icon">📝</div>
+            <div class="function-card__title">文章管理</div>
+            <div class="function-card__desc">
                 查看、搜索、编辑和删除博客文章，管理文章的栏目分配，批量操作文章。
             </div>
-            <div class="function-actions">
-                <a href="/blog/admin/articles" class="btn-function btn-primary-function">
-                    📂 文章栏目管理
+            <div class="function-card__actions">
+                <a href="/blog/admin/articles" class="btn-function btn-function--primary">
+                    文章栏目管理
                 </a>
-                <a href="/blog/" class="btn-function btn-secondary-function">
-                    👁️ 查看博客
+                <a href="/blog/admin/articles?category_id=-1" class="btn-function btn-function--secondary">
+                    未分类文章
                 </a>
             </div>
         </div>
 
         <!-- 栏目管理 -->
         <div class="function-card">
-            <div class="function-icon">🏷️</div>
-            <div class="function-title">栏目管理</div>
-            <div class="function-desc">
+            <div class="function-card__icon">🏷️</div>
+            <div class="function-card__title">栏目管理</div>
+            <div class="function-card__desc">
                 创建、编辑和删除博客栏目，管理栏目层级结构，设置栏目图标和描述。
             </div>
-            <div class="function-actions">
-                <a href="/blog/admin/categories" class="btn-function btn-primary-function">
-                    🛠️ 栏目管理
+            <div class="function-card__actions">
+                <a href="/blog/admin/categories" class="btn-function btn-function--primary">
+                    管理栏目
                 </a>
-                <a href="/blog/?category=academic" class="btn-function btn-secondary-function">
-                    👀 预览栏目
+                <a href="/blog/" class="btn-function btn-function--secondary">
+                    查看博客
                 </a>
             </div>
         </div>
 
         <!-- 内容创作 -->
         <div class="function-card">
-            <div class="function-icon">✍️</div>
-            <div class="function-title">内容创作</div>
-            <div class="function-desc">
-                发布新文章，使用Markdown编辑器创作内容，设置文章栏目和描述。
+            <div class="function-card__icon">✍️</div>
+            <div class="function-card__title">内容创作</div>
+            <div class="function-card__desc">
+                发布新文章，使用 Markdown 编辑器创作内容，设置文章栏目和描述。
             </div>
-            <div class="function-actions">
-                <a href="/blog/upload_blog" class="btn-function btn-primary-function">
-                    ➕ 发布文章
-                </a>
-                <a href="https://commonmark.org/help/" target="_blank" class="btn-function btn-secondary-function">
-                    📖 Markdown指南
-                </a>
-            </div>
-        </div>
-
-        <!-- 用户互动 -->
-        <div class="function-card">
-            <div class="function-icon">💬</div>
-            <div class="function-title">用户互动</div>
-            <div class="function-desc">
-                查看文章点赞情况，管理用户互动数据，分析热门内容。
-            </div>
-            <div class="function-actions">
-                <a href="/blog/" class="btn-function btn-primary-function">
-                    📊 查看热门
-                </a>
-                <a href="/blog/admin/articles?category_id=-1" class="btn-function btn-secondary-function">
-                    🔍 未分类文章
+            <div class="function-card__actions">
+                <a href="/blog/upload_blog" class="btn-function btn-function--primary">
+                    发布文章
                 </a>
             </div>
         </div>
@@ -367,8 +94,8 @@
                     {% for blog in stats.recent_blogs %}
                     <div class="recent-item">
                         <div>
-                            <div class="recent-title">{{ blog.title }}</div>
-                            <div class="recent-meta">
+                            <div class="recent-item__title">{{ blog.title }}</div>
+                            <div class="recent-item__meta">
                                 👤 {{ blog.author }} • 📅 {{ blog.date }} • ❤️ {{ blog.likes_count or 0 }}
                                 {% if blog.category %}
                                 • 📁 {{ blog.category }}
@@ -380,7 +107,7 @@
                         </div>
                     </div>
                     {% endfor %}
-                    
+
                     {% if not stats.recent_blogs %}
                     <div class="text-center py-3 text-muted">
                         暂无文章
@@ -398,9 +125,9 @@
                     {% for blog in stats.popular_blogs %}
                     <div class="recent-item">
                         <div>
-                            <div class="recent-title">{{ blog.title }}</div>
-                            <div class="recent-meta">
-                                👤 {{ blog.author }} • ❤️ {{ blog.likes_count or 0 }} 
+                            <div class="recent-item__title">{{ blog.title }}</div>
+                            <div class="recent-item__meta">
+                                👤 {{ blog.author }} • ❤️ {{ blog.likes_count or 0 }}
                                 {% if blog.category %}
                                 • 📁 {{ blog.category }}
                                 {% endif %}
@@ -411,7 +138,7 @@
                         </div>
                     </div>
                     {% endfor %}
-                    
+
                     {% if not stats.popular_blogs %}
                     <div class="text-center py-3 text-muted">
                         暂无文章
@@ -427,18 +154,18 @@
         <h5 class="mb-3">📊 栏目文章分布</h5>
         <div class="category-chart">
             {% for category in stats.category_stats %}
-            <div class="category-item">
-                <div class="category-icon">{{ category.icon }}</div>
-                <div class="category-name">{{ category.name }}</div>
-                <div class="category-count">{{ category.count }}</div>
+            <div class="category-chart__item">
+                <div class="category-chart__icon">{{ category.icon }}</div>
+                <div class="category-chart__name">{{ category.name }}</div>
+                <div class="category-chart__count">{{ category.count }}</div>
             </div>
             {% endfor %}
-            
+
             {% if stats.uncategorized_blogs > 0 %}
-            <div class="category-item">
-                <div class="category-icon">📋</div>
-                <div class="category-name">未分类</div>
-                <div class="category-count">{{ stats.uncategorized_blogs }}</div>
+            <div class="category-chart__item">
+                <div class="category-chart__icon">📋</div>
+                <div class="category-chart__name">未分类</div>
+                <div class="category-chart__count">{{ stats.uncategorized_blogs }}</div>
             </div>
             {% endif %}
         </div>
@@ -482,7 +209,6 @@
 {% block extra_js %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // 统计数字动画效果
     function animateNumber(element, target) {
         let current = 0;
         const increment = target / 30;
@@ -496,15 +222,13 @@ document.addEventListener('DOMContentLoaded', function() {
         }, 50);
     }
 
-    // 为所有统计数字添加动画
-    document.querySelectorAll('.stat-number').forEach(element => {
+    document.querySelectorAll('.admin-stat-card__number').forEach(element => {
         const target = parseInt(element.textContent);
         element.textContent = '0';
         animateNumber(element, target);
     });
 
-    // 为栏目统计数字添加动画
-    document.querySelectorAll('.category-count').forEach(element => {
+    document.querySelectorAll('.category-chart__count').forEach(element => {
         const target = parseInt(element.textContent);
         element.textContent = '0';
         setTimeout(() => {
@@ -516,5 +240,5 @@ document.addEventListener('DOMContentLoaded', function() {
 {% endblock %}
 
 {% block footer_text %}
-博客管理后台 - 仅管理员可访问 | 当前版本：v2.0
+博客管理后台 - 仅管理员可访问
 {% endblock %}

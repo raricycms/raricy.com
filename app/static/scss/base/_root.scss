@@ -4,7 +4,7 @@
 
 @use '../abstracts/theme-map' as *;
 
-:root, 
+:root,
   [data-theme="light"] {
     --color-brand-primary: #2563EB;
     --color-brand-secondary: rgba(37, 99, 235, 0.1);
@@ -12,29 +12,49 @@
     --color-background-page: #F8FAFC;
     --color-background-content: #eff2f5;
     --color-background-card-unrend: #fffdf0;
+    --color-background-subtle: #f3f4f6;
+    --color-background-highlight: #eef2ff;
     --color-border: #E2E8F0;
     --color-border-unread: #f1c40f;
+    --color-border-highlight: #007bff;
     --color-text-primary: #0f172a;
     --color-text-secondary: #64748B;
     --color-text-tertiary: #dde4ee;
     --color-warning-primary: #ea3b3b;
     --color-warning-secondary: rgba(255, 47, 47, 0.1);
+    --color-success-primary: #10b981;
+    --color-success-secondary: rgba(16, 185, 129, 0.1);
+    --color-info-secondary: rgba(59, 130, 246, 0.08);
+    --shadow-xs: 0 2px 10px rgba(0, 0, 0, 0.05);
+    --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.1);
+    --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.08);
+    --shadow-card-hover: 0 8px 30px rgba(0, 0, 0, 0.12);
     --shadow-card-brand: 0 2px 25px rgba(37, 99, 235, 0.15);
   }
   [data-theme="dark"] {
     --color-brand-primary: #23A5FF;
-    --color-brand-secondary: rgba(35,165,255,0.1); 
-    --color-background-page: #131517; 
-    --color-background-card: #181A1D; 
+    --color-brand-secondary: rgba(35,165,255,0.1);
+    --color-background-page: #131517;
+    --color-background-card: #181A1D;
     --color-background-content: #21252A;
     --color-background-card-unread: #08102D;
+    --color-background-subtle: #1e2024;
+    --color-background-highlight: #1a2040;
     --color-border: #334155;
     --color-border-unread: #033ae3;
-    --color-text-primary: #f1f5f9;  
-    --color-text-secondary: #94A3B8; 
-    --color-text-tertiary: #2b3036; 
+    --color-border-highlight: #23A5FF;
+    --color-text-primary: #f1f5f9;
+    --color-text-secondary: #94A3B8;
+    --color-text-tertiary: #2b3036;
     --color-warning-primary: #FF3535;
     --color-warning-secondary: rgba(255, 53, 53, 0.1);
+    --color-success-primary: #10b981;
+    --color-success-secondary: rgba(16, 185, 129, 0.12);
+    --color-info-secondary: rgba(59, 130, 246, 0.12);
+    --shadow-xs: 0 2px 10px rgba(0, 0, 0, 0.2);
+    --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.25);
+    --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.3);
+    --shadow-card-hover: 0 8px 30px rgba(0, 0, 0, 0.4);
     --shadow-card-brand: 0 2px 20px rgba(35, 165, 255, 0.1);
   }
 

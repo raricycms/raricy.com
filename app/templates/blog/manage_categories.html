@@ -2,85 +2,15 @@
 
 {% block title %}栏目管理 - 博客后台{% endblock %}
 
-{% block extra_css %}
-<style>
-    .admin-hero {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        padding: 50px 0 30px;
-        text-align: center;
-        color: white;
-    }
-
-    .admin-container {
-        max-width: 1200px;
-        margin: 40px auto;
-        padding: 0 20px;
-    }
-
-    .category-card {
-        background: white;
-        border-radius: 8px;
-        padding: 20px;
-        margin-bottom: 20px;
-        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-        border-left: 4px solid #007bff;
-    }
-
-    .child-category {
-        margin-left: 30px;
-        border-left-color: #28a745;
-        background: #f8f9fa;
-    }
-
-    .category-header {
-        display: flex;
-        justify-content: between;
-        align-items: center;
-        margin-bottom: 10px;
-    }
-
-    .category-info {
-        flex: 1;
-    }
-
-    .category-actions {
-        display: flex;
-        gap: 10px;
-    }
-
-    .btn-sm {
-        padding: 5px 12px;
-        font-size: 0.85rem;
-    }
-
-    .modal-body .form-group {
-        margin-bottom: 15px;
-    }
-
-    .emoji-preview {
-        font-size: 1.5rem;
-        margin-left: 10px;
-    }
-
-    #message-container {
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        z-index: 9999;
-        min-width: 300px;
-    }
-</style>
-{% endblock %}
-
 {% block content %}
 <section class="admin-hero">
-    <h1>🏷️ 栏目管理</h1>
+    <h1>栏目管理</h1>
     <p>管理博客栏目分类</p>
 </section>
 
-<div class="admin-container">
-    <div id="message-container"></div>
-    
+<div class="admin-container admin-container--narrow">
+    <div class="admin-message-container" id="message-container"></div>
+
     <!-- 操作按钮 -->
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
@@ -106,10 +36,10 @@
     <div id="categoriesList">
         {% for category in categories %}
         <div class="category-card" data-category-id="{{ category.id }}">
-            <div class="category-header">
-                <div class="category-info">
+            <div class="category-card__header">
+                <div class="category-card__info">
                     <h5>
-                        <span class="emoji-preview">{{ category.icon }}</span>
+                        <span class="category-card__icon">{{ category.icon }}</span>
                         {{ category.name }}
                         <span class="badge bg-primary">{{ category.slug }}</span>
                         {% if not category.is_active %}
@@ -118,8 +48,8 @@
                     </h5>
                     <p class="text-muted mb-0">{{ category.description }}</p>
                 </div>
-                <div class="category-actions">
-                    <button class="btn btn-sm btn-outline-primary edit-category" 
+                <div class="category-card__actions">
+                    <button class="btn btn-sm btn-outline-primary edit-category"
                             data-category='{{ category | tojson }}'>
                         ✏️ 编辑
                     </button>
@@ -135,28 +65,28 @@
                         <input class="form-check-input toggle-exclude" type="checkbox" data-category-id="{{ category.id }}" {{ 'checked' if category.exclude_from_all else '' }}>
                         <label class="form-check-label ms-1">不在全部显示</label>
                     </span>
-                    <button class="btn btn-sm btn-outline-success add-child" 
-                            data-parent-id="{{ category.id }}" 
+                    <button class="btn btn-sm btn-outline-success add-child"
+                            data-parent-id="{{ category.id }}"
                             data-parent-name="{{ category.name }}">
                         ➕ 添加子栏目
                     </button>
-                    <button class="btn btn-sm btn-outline-danger delete-category" 
-                            data-category-id="{{ category.id }}" 
+                    <button class="btn btn-sm btn-outline-danger delete-category"
+                            data-category-id="{{ category.id }}"
                             data-category-name="{{ category.name }}">
                         🗑️ 删除
                     </button>
                 </div>
             </div>
-            
+
             <!-- 子栏目 -->
             {% if category.children %}
             <div class="child-categories mt-3">
                 {% for child in category.children %}
-                <div class="category-card child-category" data-category-id="{{ child.id }}">
-                    <div class="category-header">
-                        <div class="category-info">
+                <div class="category-card category-card--child" data-category-id="{{ child.id }}">
+                    <div class="category-card__header">
+                        <div class="category-card__info">
                             <h6>
-                                <span class="emoji-preview">{{ child.icon }}</span>
+                                <span class="category-card__icon">{{ child.icon }}</span>
                                 {{ child.name }}
                                 <span class="badge bg-success">{{ child.slug }}</span>
                                 {% if not child.is_active %}
@@ -165,8 +95,8 @@
                             </h6>
                             <p class="text-muted mb-0">{{ child.description }}</p>
                         </div>
-                        <div class="category-actions">
-                            <button class="btn btn-sm btn-outline-primary edit-category" 
+                        <div class="category-card__actions">
+                            <button class="btn btn-sm btn-outline-primary edit-category"
                                     data-category='{{ child | tojson }}'>
                                 ✏️ 编辑
                             </button>
@@ -182,8 +112,8 @@
                                 <input class="form-check-input toggle-exclude" type="checkbox" data-category-id="{{ child.id }}" {{ 'checked' if child.exclude_from_all else '' }}>
                                 <label class="form-check-label ms-1">不在全部显示</label>
                             </span>
-                            <button class="btn btn-sm btn-outline-danger delete-category" 
-                                    data-category-id="{{ child.id }}" 
+                            <button class="btn btn-sm btn-outline-danger delete-category"
+                                    data-category-id="{{ child.id }}"
                                     data-category-name="{{ child.name }}">
                                 🗑️ 删除
                             </button>
@@ -293,7 +223,7 @@
                     <div class="form-group">
                         <div class="form-check">
                             <input class="form-check-input" type="checkbox" id="editExclude">
-                            <label class="form-check-label" for="editExclude">从“全部文章”中排除</label>
+                            <label class="form-check-label" for="editExclude">从"全部文章"中排除</label>
                         </div>
                     </div>
                     <div class="form-group">
@@ -342,7 +272,6 @@
 {% block extra_js %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // 显示消息提示
     function showMessage(message, type = 'danger') {
         const alert = `<div class="alert alert-${type} alert-dismissible fade show">
             ${message}
@@ -351,7 +280,6 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('message-container').innerHTML = alert;
     }
 
-    // 创建栏目
     document.getElementById('submitCreate').addEventListener('click', async function() {
         const form = document.getElementById('createCategoryForm');
         const data = {
@@ -376,7 +304,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 body: JSON.stringify(data)
             });
             const result = await response.json();
-            
+
             if (result.code === 200) {
                 showMessage('栏目创建成功！', 'success');
                 setTimeout(() => location.reload(), 1000);
@@ -388,20 +316,18 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // 添加子栏目
     document.addEventListener('click', function(e) {
         if (e.target.classList.contains('add-child')) {
             const parentId = e.target.dataset.parentId;
             const parentName = e.target.dataset.parentName;
-            
+
             document.getElementById('createParent').value = parentId;
             document.getElementById('createParent').disabled = true;
             document.querySelector('#createCategoryModal .modal-title').textContent = `为 "${parentName}" 添加子栏目`;
-            
+
             const modal = new bootstrap.Modal(document.getElementById('createCategoryModal'));
             modal.show();
-            
-            // 重置模态框关闭时的状态
+
             document.getElementById('createCategoryModal').addEventListener('hidden.bs.modal', function() {
                 document.getElementById('createParent').disabled = false;
                 document.getElementById('createParent').value = '';
@@ -411,11 +337,10 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // 编辑栏目
     document.addEventListener('click', function(e) {
         if (e.target.classList.contains('edit-category')) {
             const category = JSON.parse(e.target.dataset.category);
-            
+
             document.getElementById('editCategoryId').value = category.id;
             document.getElementById('editName').value = category.name;
             document.getElementById('editSlug').value = category.slug;
@@ -425,13 +350,12 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('editExclude').checked = !!category.exclude_from_all;
             document.getElementById('editAdminOnly').checked = !!category.admin_only_posting;
             document.getElementById('editNotifyAdmin').checked = !!category.notify_admin_on_post;
-            
+
             const modal = new bootstrap.Modal(document.getElementById('editCategoryModal'));
             modal.show();
         }
     });
 
-    // 保存编辑
     document.getElementById('submitEdit').addEventListener('click', async function() {
         const categoryId = document.getElementById('editCategoryId').value;
         const data = {
@@ -457,7 +381,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 body: JSON.stringify(data)
             });
             const result = await response.json();
-            
+
             if (result.code === 200) {
                 showMessage('栏目更新成功！', 'success');
                 setTimeout(() => location.reload(), 1000);
@@ -469,14 +393,12 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // 切换开关字段（排除/仅管理员/提醒管理员）
     document.addEventListener('change', async function(e) {
         const isToggle = e.target.classList.contains('toggle-exclude') || e.target.classList.contains('toggle-admin-only') || e.target.classList.contains('toggle-notify-admin');
         if (isToggle) {
             const categoryId = e.target.dataset.categoryId;
             try {
-                // 获取同区域的编辑按钮以读取完整的分类数据
-                const actions = e.target.closest('.category-actions');
+                const actions = e.target.closest('.category-card__actions');
                 const editBtn = actions ? actions.querySelector('.edit-category') : null;
                 let payload;
                 if (editBtn) {
@@ -492,7 +414,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         notify_admin_on_post: !!(actions.querySelector('.toggle-notify-admin')?.checked)
                     };
                 } else {
-                    // 回退：只更新该字段（仍需通过后端验证，可能失败）
                     payload = {};
                     if (e.target.classList.contains('toggle-exclude')) payload.exclude_from_all = !!e.target.checked;
                     if (e.target.classList.contains('toggle-admin-only')) payload.admin_only_posting = !!e.target.checked;
@@ -513,30 +434,28 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // 删除栏目
     document.addEventListener('click', function(e) {
         if (e.target.classList.contains('delete-category')) {
             const categoryId = e.target.dataset.categoryId;
             const categoryName = e.target.dataset.categoryName;
-            
+
             document.getElementById('deleteCategoryName').textContent = categoryName;
             document.getElementById('confirmDelete').dataset.categoryId = categoryId;
-            
+
             const modal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
             modal.show();
         }
     });
 
-    // 确认删除
     document.getElementById('confirmDelete').addEventListener('click', async function() {
         const categoryId = this.dataset.categoryId;
-        
+
         try {
             const response = await fetch(`/blog/admin/categories/${categoryId}`, {
                 method: 'DELETE'
             });
             const result = await response.json();
-            
+
             if (result.code === 200) {
                 showMessage('栏目删除成功！', 'success');
                 setTimeout(() => location.reload(), 1000);
@@ -554,4 +473,3 @@ document.addEventListener('DOMContentLoaded', function() {
 {% block footer_text %}
 栏目管理 - 仅管理员可访问
 {% endblock %}
-

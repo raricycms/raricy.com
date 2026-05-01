@@ -1,0 +1,49 @@
+// Category management page
+
+.admin-container--narrow {
+  max-width: 1200px;
+}
+
+.category-card {
+  background: var(--color-background-card);
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 20px;
+  box-shadow: var(--shadow-sm);
+  border-left: 4px solid var(--color-border-highlight);
+}
+
+.category-card--child {
+  margin-left: 30px;
+  border-left-color: var(--color-success-primary);
+  background: var(--color-background-subtle);
+}
+
+.category-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.category-card__info {
+  flex: 1;
+}
+
+.category-card__actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.category-card__icon {
+  font-size: 1.5rem;
+  margin-left: 10px;
+}
+
+// Action buttons
+.btn-admin-sm {
+  padding: 5px 12px;
+  font-size: 0.85rem;
+}

@@ -2,59 +2,6 @@
 {% block content %}
 <div class="container">
     <h2 class="mb-3">管理员操作公示</h2>
-    <style>
-        .status-badge {
-            display: inline-block;
-            font-size: .85rem;
-            padding: 2px 8px;
-            border-radius: 999px;
-            border: 1px solid #dee2e6;
-            color: #6c757d;
-            line-height: 1.4;
-        }
-        .obj-id details {
-            display: inline-block;
-            vertical-align: middle;
-            margin-left: 4px;
-        }
-        .obj-id summary {
-            list-style: none;
-            cursor: pointer;
-            color: #6c757d;
-            display: inline-block;
-        }
-        .obj-id summary::marker { display: none; }
-        .obj-id summary::-webkit-details-marker { display: none; }
-        .obj-id code {
-            user-select: all;
-            font-size: .85rem;
-            color: #495057;
-            background: #f8f9fa;
-            padding: 2px 6px;
-            border-radius: 4px;
-            border: 1px solid #e9ecef;
-        }
-        .status-badge.reverted {
-            color: #198754;
-            border-color: #198754;
-            background: #e9f7ef;
-        }
-        tr.log-reverted td {
-            color: #6c757d;
-        }
-        /* 在类型后附注（已撤回）的小提示 */
-        tr.log-reverted td.type-col::after {
-            content: '（已撤回）';
-            color: #198754;
-            margin-left: 4px;
-            font-weight: 500;
-        }
-        .status-badge.pending {
-            color: #fd7e14;
-            border-color: #fd7e14;
-            background: #fff3e0;
-        }
-    </style>
 
     <form method="get" class="mb-3 d-flex" style="gap:8px;">
         <select name="action" class="form-select" style="max-width:260px;" onchange="this.form.submit()">
@@ -82,8 +29,8 @@
             {% for log in pagination.items %}
                 {% set accepted = (log.appeals.filter_by(status='accepted').first() is not none) %}
                 {% set pending = has_pending.get(log.id, false) %}
-                <tr class="{% if accepted %}log-reverted{% endif %}">
-                    <td class="type-col">{{ log.action }}</td>
+                <tr class="{% if accepted %}log-row--reverted{% endif %}">
+                    <td class="log-row__type">{{ log.action }}</td>
                     <td>{{ log.admin.username if log.admin else log.admin_id }}</td>
                     <td>
                         {% if log.object_type=='blog' %}
@@ -129,9 +76,9 @@
                     <td>{{ log.reason or '' }}</td>
                     <td>
                         {% if accepted %}
-                            <span class="status-badge reverted">已撤回</span>
+                            <span class="status-badge status-badge--reverted">已撤回</span>
                         {% elif pending %}
-                            <span class="status-badge pending">申诉中</span>
+                            <span class="status-badge status-badge--pending">申诉中</span>
                         {% else %}
                             <span class="status-badge">—</span>
                         {% endif %}
@@ -162,5 +109,3 @@
     {% endif %}
 </div>
 {% endblock %}
-
-

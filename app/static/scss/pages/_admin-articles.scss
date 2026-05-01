@@ -1,0 +1,114 @@
+// Article management page
+
+.article-card {
+  background: var(--color-background-card);
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 15px;
+  box-shadow: var(--shadow-xs);
+  border-left: 4px solid var(--color-border);
+  transition: all 0.3s ease;
+
+  &:hover {
+    box-shadow: var(--shadow-sm);
+    transform: translateY(-2px);
+  }
+
+  &.is-selected {
+    border-left-color: var(--color-border-highlight);
+    background: var(--color-background-highlight);
+  }
+}
+
+.article-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 10px;
+}
+
+.article-card__info {
+  flex: 1;
+  margin-right: 20px;
+}
+
+.article-card__title {
+  font-size: 1.2rem;
+  font-weight: 600;
+  margin-bottom: 5px;
+  color: var(--color-text-primary);
+}
+
+.article-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+  margin-bottom: 8px;
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+}
+
+.article-card__desc {
+  color: var(--color-text-secondary);
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
+.article-card__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 200px;
+}
+
+// Featured flag
+.featured-flag {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 12px;
+  background: #fff3cd;
+  color: #856404;
+  font-size: 0.8rem;
+  align-self: flex-start;
+}
+
+// Category display badge
+.current-category {
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  white-space: nowrap;
+
+  &.is-categorized {
+    background: #74b9ff;
+    color: #fff;
+  }
+
+  &.is-uncategorized {
+    background: #ffeaa7;
+    color: #d63031;
+  }
+}
+
+// Category select in article card
+.category-select {
+  width: 100%;
+  font-size: 0.9rem;
+}
+
+@media (max-width: 768px) {
+  .article-card__header {
+    flex-direction: column;
+    gap: 15px;
+  }
+
+  .article-card__actions {
+    min-width: auto;
+    width: 100%;
+  }
+
+  .admin-filter-bar .row > div {
+    margin-bottom: 15px;
+  }
+}

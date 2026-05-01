@@ -3,74 +3,18 @@
 Raricy.com - 管理员通知发送
 {% endblock %}
 
-{% block extra_css %}
-<style>
-    body {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        background-attachment: fixed;
-        min-height: 100vh;
-    }
-    .notification-card {
-        margin-top: 30px;
-        box-shadow: 0 0 25px rgba(0, 0, 0, 0.15);
-        padding: 40px;
-        border-radius: 15px;
-        background: rgba(255, 255, 255, 0.95);
-        backdrop-filter: blur(10px);
-        transition: transform 0.3s ease;
-    }
-    .notification-card:hover {
-        transform: translateY(-5px);
-    }
-    .template-card {
-        cursor: pointer;
-        transition: all 0.3s ease;
-        border: 2px solid transparent;
-    }
-    .template-card:hover {
-        border-color: #007bff;
-        transform: translateY(-2px);
-    }
-    .template-card.selected {
-        border-color: #007bff;
-        background-color: #e7f3ff;
-    }
-    .user-select-card {
-        max-height: 400px;
-        overflow-y: auto;
-    }
-    .user-item {
-        cursor: pointer;
-        transition: background-color 0.2s ease;
-    }
-    .user-item:hover {
-        background-color: #f8f9fa;
-    }
-    .user-item.selected {
-        background-color: #e7f3ff;
-        border-left: 4px solid #007bff;
-    }
-    .send-options {
-        background: rgba(248, 249, 250, 0.8);
-        border-radius: 10px;
-        padding: 20px;
-        margin-bottom: 20px;
-    }
-</style>
-{% endblock %}
-
 {% block content %}
-<div class="container">
+<div class="container" style="margin-top: 30px;">
     <div class="notification-card">
         <h1 class="text-center mb-4">📢 管理员通知发送中心</h1>
-        
+
         <!-- 发送选项选择 -->
         <div class="send-options">
             <h4 class="mb-3">选择发送方式</h4>
             <div class="btn-group w-100" role="group">
                 <input type="radio" class="btn-check" name="sendMode" id="sendToUser" autocomplete="off" checked>
                 <label class="btn btn-outline-primary" for="sendToUser">发送给指定用户</label>
-                
+
                 <input type="radio" class="btn-check" name="sendMode" id="sendToAll" autocomplete="off">
                 <label class="btn btn-outline-success" for="sendToAll">群发通知</label>
             </div>
@@ -112,7 +56,7 @@ Raricy.com - 管理员通知发送
                         </div>
                     </div>
                 </div>
-                
+
                 <div class="col-md-8">
                     <h5>编写通知</h5>
                     <form id="notificationForm">
@@ -121,7 +65,7 @@ Raricy.com - 管理员通知发送
                             <input type="text" class="form-control" id="selectedUser" readonly placeholder="请先选择用户">
                             <input type="hidden" id="selectedUserId">
                         </div>
-                        
+
                         <div class="form-group">
                             <label for="notificationAction">通知类型</label>
                             <select class="form-control" id="notificationAction" required>
@@ -133,13 +77,13 @@ Raricy.com - 管理员通知发送
                                 {% endfor %}
                             </select>
                         </div>
-                        
+
                         <div class="form-group">
                             <label for="notificationDetail">通知内容</label>
                             <textarea class="form-control" id="notificationDetail" rows="5" required placeholder="请输入通知内容..."></textarea>
                             <small class="form-text text-muted">请详细描述通知内容，确保用户能够理解。</small>
                         </div>
-                        
+
                         <div class="form-row">
                             <div class="col-md-6">
                                 <label for="objectType">关联对象类型（可选）</label>
@@ -155,7 +99,7 @@ Raricy.com - 管理员通知发送
                                 <input type="text" class="form-control" id="objectId" placeholder="如：博客ID、用户ID等">
                             </div>
                         </div>
-                        
+
                         <div class="text-center mt-4">
                             <button type="submit" class="btn btn-primary btn-lg">
                                 <i class="fas fa-paper-plane"></i> 发送通知
@@ -183,7 +127,7 @@ Raricy.com - 管理员通知发送
                             </select>
                             <small class="form-text text-muted">选择要接收通知的用户群体</small>
                         </div>
-                        
+
                         <div class="form-group">
                             <label for="broadcastAction">通知类型</label>
                             <select class="form-control" id="broadcastAction" required>
@@ -196,7 +140,7 @@ Raricy.com - 管理员通知发送
                             </select>
                         </div>
                     </div>
-                    
+
                     <div class="col-md-6">
                         <div class="form-row">
                             <div class="col-md-6">
@@ -213,7 +157,7 @@ Raricy.com - 管理员通知发送
                                 <input type="text" class="form-control" id="broadcastObjectId" placeholder="如：博客ID等">
                             </div>
                         </div>
-                        
+
                         <!-- 预览用户数量 -->
                         <div class="mt-3 p-3 bg-light rounded">
                             <h6>预览信息</h6>
@@ -222,13 +166,13 @@ Raricy.com - 管理员通知发送
                         </div>
                     </div>
                 </div>
-                
+
                 <div class="form-group">
                     <label for="broadcastDetail">通知内容</label>
                     <textarea class="form-control" id="broadcastDetail" rows="5" required placeholder="请输入群发通知内容..."></textarea>
                     <small class="form-text text-muted">群发通知会发送给所有符合条件的用户，请谨慎编写内容。</small>
                 </div>
-                
+
                 <div class="text-center mt-4">
                     <button type="submit" class="btn btn-success btn-lg">
                         <i class="fas fa-bullhorn"></i> 群发通知
@@ -239,7 +183,7 @@ Raricy.com - 管理员通知发送
                 </div>
             </form>
         </div>
-        
+
         <!-- 返回用户管理 -->
         <div class="text-center mt-4">
             <a href="{{ url_for('auth.user_management') }}" class="btn btn-outline-secondary">
@@ -250,24 +194,20 @@ Raricy.com - 管理员通知发送
 </div>
 
 <script>
-// 全局变量
 let selectedUserId = null;
 let userList = [];
 
-// 从DOM中获取用户数据，这样更安全且IDE友好
 document.addEventListener('DOMContentLoaded', function() {
-    // 从DOM元素中收集用户数据
     document.querySelectorAll('.user-item').forEach(function(item) {
         const userId = item.dataset.userId;
         const username = item.dataset.username;
         const email = item.querySelector('small').textContent;
-        // 通过徽章或数据集判断角色
         const roleBadge = item.querySelector('.badge-danger, .badge-success, .badge-secondary');
         let role = 'user';
         if (roleBadge && roleBadge.textContent.includes('站长')) role = 'owner';
         else if (roleBadge && roleBadge.textContent.includes('管理员')) role = 'admin';
         else if (roleBadge && roleBadge.textContent.includes('认证')) role = 'core';
-        
+
         userList.push({
             id: userId,
             username: username,
@@ -275,8 +215,7 @@ document.addEventListener('DOMContentLoaded', function() {
             role: role
         });
     });
-    
-    // 发送方式切换
+
     document.querySelectorAll('input[name="sendMode"]').forEach(function(radio) {
         radio.addEventListener('change', function() {
             if (this.id === 'sendToUser') {
@@ -289,30 +228,28 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     });
-    
-    // 用户选择
+
     document.querySelectorAll('.user-item').forEach(function(item) {
         item.addEventListener('click', function() {
             document.querySelectorAll('.user-item').forEach(function(el) {
-                el.classList.remove('selected');
+                el.classList.remove('is-selected');
             });
-            this.classList.add('selected');
-            
+            this.classList.add('is-selected');
+
             selectedUserId = this.dataset.userId;
             const username = this.dataset.username;
-            
+
             document.getElementById('selectedUserId').value = selectedUserId;
             document.getElementById('selectedUser').value = username;
         });
     });
-    
-    // 用户搜索
+
     document.getElementById('userSearch').addEventListener('input', function() {
         const searchTerm = this.value.toLowerCase();
         document.querySelectorAll('.user-item').forEach(function(item) {
             const username = item.dataset.username.toLowerCase();
             const email = item.querySelector('small').textContent.toLowerCase();
-            
+
             if (username.includes(searchTerm) || email.includes(searchTerm)) {
                 item.style.display = 'block';
             } else {
@@ -320,49 +257,44 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     });
-    
-    // 通知类型选择时更新placeholder
+
     function updatePlaceholder(selectElement, textareaId) {
         const selectedOption = selectElement.options[selectElement.selectedIndex];
         const placeholder = selectedOption.dataset.placeholder || '请输入通知内容...';
         document.getElementById(textareaId).setAttribute('placeholder', placeholder);
     }
-    
+
     document.getElementById('notificationAction').addEventListener('change', function() {
         updatePlaceholder(this, 'notificationDetail');
     });
-    
+
     document.getElementById('broadcastAction').addEventListener('change', function() {
         updatePlaceholder(this, 'broadcastDetail');
     });
-    
-    // 目标用户群变化时更新用户数量
+
     document.getElementById('targetGroup').addEventListener('change', function() {
         updateTargetUserCount();
     });
-    
-    // 表单提交
+
     document.getElementById('notificationForm').addEventListener('submit', function(e) {
         e.preventDefault();
         sendNotificationToUser();
     });
-    
+
     document.getElementById('broadcastForm').addEventListener('submit', function(e) {
         e.preventDefault();
         sendNotificationToAll();
     });
-    
-    // 初始化目标用户数量
+
     updateTargetUserCount();
 });
 
-// 发送通知给指定用户
 function sendNotificationToUser() {
     if (!selectedUserId) {
         alert('请先选择要接收通知的用户');
         return;
     }
-    
+
     const data = {
         recipient_id: selectedUserId,
         action: document.getElementById('notificationAction').value,
@@ -370,17 +302,16 @@ function sendNotificationToUser() {
         object_type: document.getElementById('objectType').value || null,
         object_id: document.getElementById('objectId').value || null
     };
-    
+
     if (!data.action || !data.detail) {
         alert('请填写完整的通知信息');
         return;
     }
-    
-    // 确认发送
+
     if (!confirm(`确定要向用户 "${document.getElementById('selectedUser').value}" 发送通知吗？`)) {
         return;
     }
-    
+
     fetch('{{ url_for("auth.send_notification_to_user") }}', {
         method: 'POST',
         headers: {
@@ -403,7 +334,6 @@ function sendNotificationToUser() {
     });
 }
 
-// 群发通知
 function sendNotificationToAll() {
     const data = {
         target_group: document.getElementById('targetGroup').value,
@@ -412,24 +342,22 @@ function sendNotificationToAll() {
         object_type: document.getElementById('broadcastObjectType').value || null,
         object_id: document.getElementById('broadcastObjectId').value || null
     };
-    
+
     if (!data.action || !data.detail) {
         alert('请填写完整的通知信息');
         return;
     }
-    
-    // 确认群发
+
     const targetCount = document.getElementById('targetUserCount').textContent;
     if (!confirm(`确定要向 ${targetCount} 个用户群发通知吗？此操作不可撤销！`)) {
         return;
     }
-    
-    // 显示发送进度
+
     const submitBtn = document.querySelector('#broadcastForm button[type="submit"]');
     const originalText = submitBtn.innerHTML;
     submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 发送中...';
     submitBtn.disabled = true;
-    
+
     fetch('{{ url_for("auth.send_notification_to_all") }}', {
         method: 'POST',
         headers: {
@@ -456,11 +384,10 @@ function sendNotificationToAll() {
     });
 }
 
-// 更新目标用户数量
 function updateTargetUserCount() {
     const targetGroup = document.getElementById('targetGroup').value;
     let count = 0;
-    
+
     userList.forEach(user => {
         const isCore = ['core', 'admin', 'owner'].includes(user.role);
         const isNormal = user.role === 'user';
@@ -468,23 +395,21 @@ function updateTargetUserCount() {
         else if (targetGroup === 'authenticated' && isCore) count++;
         else if (targetGroup === 'normal' && isNormal) count++;
     });
-    
+
     document.getElementById('targetUserCount').textContent = count;
 }
 
-// 清空单用户通知表单
 function clearForm() {
     document.getElementById('notificationForm').reset();
     document.getElementById('selectedUser').value = '';
     document.getElementById('selectedUserId').value = '';
     document.querySelectorAll('.user-item').forEach(function(item) {
-        item.classList.remove('selected');
+        item.classList.remove('is-selected');
     });
     selectedUserId = null;
     document.getElementById('notificationDetail').setAttribute('placeholder', '请输入通知内容...');
 }
 
-// 清空群发通知表单
 function clearBroadcastForm() {
     document.getElementById('broadcastForm').reset();
     document.getElementById('broadcastDetail').setAttribute('placeholder', '请输入群发通知内容...');

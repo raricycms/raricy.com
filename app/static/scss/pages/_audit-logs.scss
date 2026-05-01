@@ -1,0 +1,66 @@
+// Audit log pages
+
+.status-badge {
+  display: inline-block;
+  font-size: 0.85rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+  line-height: 1.4;
+
+  &--reverted {
+    color: #198754;
+    border-color: #198754;
+    background: #e9f7ef;
+  }
+
+  &--pending {
+    color: #fd7e14;
+    border-color: #fd7e14;
+    background: #fff3e0;
+  }
+}
+
+// Reverted log row
+.log-row--reverted {
+  td {
+    color: var(--color-text-secondary);
+  }
+
+  .log-row__type::after {
+    content: "（已撤回）";
+    color: #198754;
+    margin-left: 4px;
+    font-weight: 500;
+  }
+}
+
+// Object ID display
+.obj-id {
+  details {
+    display: inline-block;
+    vertical-align: middle;
+    margin-left: 4px;
+  }
+
+  summary {
+    list-style: none;
+    cursor: pointer;
+    color: var(--color-text-secondary);
+    display: inline-block;
+
+    &::marker { display: none; }
+    &::-webkit-details-marker { display: none; }
+  }
+
+  code {
+    user-select: all;
+    font-size: 0.85rem;
+    color: var(--color-text-primary);
+    background: var(--color-background-subtle);
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid var(--color-border);
+  }
+}

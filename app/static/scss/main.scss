@@ -42,4 +42,13 @@
 @use 'pages/clipboard';
 @use 'pages/sitemap';
 
+// Admin pages
+@use 'pages/admin-common';
+@use 'pages/admin-dashboard';
+@use 'pages/admin-articles';
+@use 'pages/admin-categories';
+
+@use 'pages/admin-notifications';
+@use 'pages/audit-logs';
+
 

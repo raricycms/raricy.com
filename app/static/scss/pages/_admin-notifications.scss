@@ -1,0 +1,38 @@
+// Admin notification center
+
+.notification-card {
+  margin-top: 30px;
+  box-shadow: var(--shadow-xs);
+  padding: 32px;
+  border-radius: 10px;
+  background: var(--color-background-card);
+  border: 1px solid var(--color-border);
+}
+
+// User selection list
+.user-select-card {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.user-item {
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+
+  &:hover {
+    background-color: var(--color-background-subtle);
+  }
+
+  &.is-selected {
+    background-color: var(--color-background-highlight);
+    border-left: 4px solid var(--color-border-highlight);
+  }
+}
+
+// Send options panel
+.send-options {
+  background: var(--color-background-subtle);
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 20px;
+}

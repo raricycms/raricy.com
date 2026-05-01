@@ -1,0 +1,172 @@
+// Admin dashboard — function cards, recent list, category chart
+
+.dashboard-card {
+  background: var(--color-background-card);
+  border-radius: 10px;
+  padding: 24px;
+  margin-bottom: 20px;
+  box-shadow: var(--shadow-xs);
+  border: 1px solid var(--color-border);
+}
+
+// Function cards
+.function-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+  margin-bottom: 28px;
+}
+
+.function-card {
+  background: var(--color-background-card);
+  border-radius: 10px;
+  padding: 24px;
+  box-shadow: var(--shadow-xs);
+  border: 1px solid var(--color-border);
+  transition: box-shadow 0.2s ease;
+
+  &:hover {
+    box-shadow: var(--shadow-sm);
+  }
+}
+
+.function-card__icon {
+  font-size: 2rem;
+  margin-bottom: 12px;
+  display: block;
+}
+
+.function-card__title {
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: 8px;
+}
+
+.function-card__desc {
+  color: var(--color-text-secondary);
+  margin-bottom: 18px;
+  line-height: 1.6;
+  font-size: 0.92rem;
+}
+
+.function-card__actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+// Function buttons
+.btn-function {
+  padding: 8px 16px;
+  border-radius: 6px;
+  text-decoration: none;
+  font-weight: 500;
+  font-size: 0.88rem;
+  transition: all 0.2s ease;
+  border: 1px solid;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.btn-function--primary {
+  background: var(--color-brand-primary);
+  color: #fff;
+  border-color: var(--color-brand-primary);
+
+  &:hover {
+    opacity: 0.9;
+    color: #fff;
+    text-decoration: none;
+  }
+}
+
+.btn-function--secondary {
+  background: var(--color-background-card);
+  color: var(--color-text-secondary);
+  border-color: var(--color-border);
+
+  &:hover {
+    background: var(--color-background-subtle);
+    color: var(--color-text-primary);
+    text-decoration: none;
+  }
+}
+
+// Recent / popular lists
+.recent-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.recent-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--color-background-subtle);
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.recent-item__title {
+  font-weight: 500;
+  color: var(--color-text-primary);
+  margin-bottom: 4px;
+}
+
+.recent-item__meta {
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+}
+
+// Category chart
+.category-chart {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+}
+
+.category-chart__item {
+  text-align: center;
+  padding: 14px;
+  background: var(--color-background-subtle);
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+}
+
+.category-chart__icon {
+  font-size: 1.3rem;
+  margin-bottom: 6px;
+}
+
+.category-chart__name {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  margin-bottom: 4px;
+}
+
+.category-chart__count {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--color-brand-primary);
+}
+
+@media (max-width: 768px) {
+  .function-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .function-card__actions {
+    justify-content: flex-start;
+  }
+
+  .category-chart {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
