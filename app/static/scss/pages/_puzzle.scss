@@ -142,4 +142,42 @@
     display: block;
     max-width: 100%;
     cursor: pointer;
+    touch-action: none;
+}
+
+// ---- Mobile: compact controls, full-width canvas ----------------------------
+@media (max-width: 640px) {
+    .puzzle-page {
+        padding: $space-3 0 24px;
+    }
+
+    .puzzle-header {
+        &__title {
+            font-size: 1.5rem;
+        }
+
+        &__desc {
+            font-size: 0.9rem;
+        }
+    }
+
+    .puzzle-controls {
+        gap: $space-2;
+    }
+
+    .puzzle-range {
+        width: 80px;
+    }
+
+    .puzzle-btn {
+        padding: 7px 14px;
+        font-size: 0.85rem;
+    }
+
+    .puzzle-canvas-wrap {
+        display: block;
+        border-radius: 0;
+        border-left: none;
+        border-right: none;
+    }
 }

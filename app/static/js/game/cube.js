@@ -733,7 +733,29 @@
       });
     }
 
+    // Map a 2D angle to a move direction (shared by click and swipe).
+    _angleToDir(ang) {
+      const sq = this.state.grid[this.state.current];
+      if (sq.npoints === 4) {
+        if (Math.abs(ang) > 3*PI/4)      return LEFT;
+        else if (Math.abs(ang) < PI/4)   return RIGHT;
+        else if (ang > 0)                 return DOWN;
+        else                              return UP;
+      } else if (sq.directions[UP] === 0) {
+        // Up-pointing triangle
+        if (ang < -PI/2 || ang > 5*PI/6) return LEFT;
+        else if (ang > PI/6)              return DOWN;
+        else                              return RIGHT;
+      } else {
+        // Down-pointing triangle
+        if (ang > PI/2 || ang < -5*PI/6) return LEFT;
+        else if (ang < -PI/6)             return UP;
+        else                              return RIGHT;
+      }
+    }
+
     _bindEvents() {
+      // ---- Desktop: click on canvas ------------------------------------------
       this.canvas.addEventListener('click', e => {
         if (this.animating) return;
         const rect = this.canvas.getBoundingClientRect();
@@ -746,29 +768,41 @@
         const cx = sq.x * this.gridScale;
         const cy = sq.y * this.gridScale;
         const ang = Math.atan2(my - cy, mx - cx);
-        let dir;
-
-        if (sq.npoints === 4) {
-          if (Math.abs(ang) > 3*PI/4)      dir = LEFT;
-          else if (Math.abs(ang) < PI/4)   dir = RIGHT;
-          else if (ang > 0)                 dir = DOWN;
-          else                              dir = UP;
-        } else if (sq.directions[UP] === 0) {
-          // Up-pointing triangle
-          if (ang < -PI/2 || ang > 5*PI/6) dir = LEFT;
-          else if (ang > PI/6)              dir = DOWN;
-          else                              dir = RIGHT;
-        } else {
-          // Down-pointing triangle
-          if (ang > PI/2 || ang < -5*PI/6) dir = LEFT;
-          else if (ang < -PI/6)             dir = UP;
-          else                              dir = RIGHT;
-        }
-
-        const mask = this.state.grid[this.state.current].directions[dir];
+        const dir = this._angleToDir(ang);
+        const mask = sq.directions[dir];
         if (mask) this._doMove(dir);
       });
 
+      // ---- Mobile: swipe on canvas -------------------------------------------
+      this._swipeStartX = 0;
+      this._swipeStartY = 0;
+      const SWIPE_MIN = 15;
+
+      this.canvas.addEventListener('touchstart', e => {
+        if (this.animating) return;
+        if (e.touches.length === 1) {
+          this._swipeStartX = e.touches[0].clientX;
+          this._swipeStartY = e.touches[0].clientY;
+        }
+        e.preventDefault();
+      }, { passive: false });
+
+      this.canvas.addEventListener('touchend', e => {
+        if (this.animating) return;
+        const t = e.changedTouches[0];
+        if (!t) return;
+        const dx = t.clientX - this._swipeStartX;
+        const dy = t.clientY - this._swipeStartY;
+        if (Math.abs(dx) < SWIPE_MIN && Math.abs(dy) < SWIPE_MIN) return;
+
+        const ang = Math.atan2(dy, dx);
+        const dir = this._angleToDir(ang);
+        const mask = this.state.grid[this.state.current].directions[dir];
+        if (mask) this._doMove(dir);
+        e.preventDefault();
+      }, { passive: false });
+
+      // ---- Keyboard ----------------------------------------------------------
       document.addEventListener('keydown', e => {
         if (this.animating) return;
         let dir;
@@ -779,7 +813,6 @@
         else return;
         e.preventDefault();
 
-        // Allow diagonal movement for triangle grids via key sequences
         const sq = this.state.grid[this.state.current];
         const mask = sq.directions[dir];
         if (mask) this._doMove(dir);

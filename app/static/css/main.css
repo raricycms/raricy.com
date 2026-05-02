@@ -4470,8 +4470,36 @@ body {
   display: block;
   max-width: 100%;
   cursor: pointer;
+  touch-action: none;
 }
 
+@media (max-width: 640px) {
+  .puzzle-page {
+    padding: 12px 0 24px;
+  }
+  .puzzle-header__title {
+    font-size: 1.5rem;
+  }
+  .puzzle-header__desc {
+    font-size: 0.9rem;
+  }
+  .puzzle-controls {
+    gap: 8px;
+  }
+  .puzzle-range {
+    width: 80px;
+  }
+  .puzzle-btn {
+    padding: 7px 14px;
+    font-size: 0.85rem;
+  }
+  .puzzle-canvas-wrap {
+    display: block;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+  }
+}
 .photo-wall {
   display: flex;
   flex-direction: column;
@@ -5563,5 +5591,3 @@ body {
   border-radius: 4px;
   border: 1px solid var(--color-border);
 }
-
-/*# sourceMappingURL=main.css.map */
