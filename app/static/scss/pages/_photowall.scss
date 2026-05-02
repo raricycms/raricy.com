@@ -46,6 +46,8 @@ $wall-height: 3000px;
     overflow: hidden;
     position: relative;
     cursor: grab;
+    touch-action: none;
+    overscroll-behavior: contain;
 
     &:active {
         cursor: grabbing;
@@ -340,6 +342,11 @@ $wall-height: 3000px;
     }
 }
 
+// --- Mobile detail strip (replaces popup on phones) ---
+.photo-wall__mobile-detail {
+    display: none;
+}
+
 // --- Photo list panel (below canvas) ---
 .photo-wall__list-panel {
     border-top: 2px solid var(--color-border);
@@ -532,15 +539,63 @@ $wall-height: 3000px;
         }
     }
 
+    .photo-wall__detail,
     .photo-wall__detail-overlay {
-        display: none;
-        position: fixed;
-        inset: 0;
-        background: rgba(0, 0, 0, 0.5);
-        z-index: 1499;
+        display: none !important;
+    }
 
-        &--open {
-            display: block;
+    .photo-wall__mobile-detail {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 8px;
+        background: var(--color-background-card);
+        border-bottom: 1px solid var(--color-border);
+        flex-shrink: 0;
+        overflow-x: auto;
+
+        &__thumb {
+            width: 36px;
+            height: 36px;
+            object-fit: cover;
+            border-radius: 4px;
+            flex-shrink: 0;
+        }
+
+        &__info {
+            flex: 1;
+            min-width: 0;
+            font-size: 0.8rem;
+            line-height: 1.3;
+            color: var(--color-text-secondary);
+
+            strong {
+                color: var(--color-text-primary);
+                font-weight: 500;
+            }
+        }
+
+        &__btn {
+            padding: 4px 8px;
+            border-radius: 4px;
+            border: 1px solid var(--color-border);
+            background: var(--color-background-card);
+            color: var(--color-text-primary);
+            font-size: 0.75rem;
+            cursor: pointer;
+            flex-shrink: 0;
+            white-space: nowrap;
+
+            &--up,
+            &--down {
+                background: var(--color-brand-secondary);
+                border-color: transparent;
+            }
+
+            &--danger {
+                color: #ef4444;
+                border-color: rgba(239, 68, 68, 0.3);
+            }
         }
     }
 

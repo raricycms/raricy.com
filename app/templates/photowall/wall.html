@@ -65,6 +65,15 @@
         </div>
     </div>
 
+    <!-- Mobile detail strip (phones only, replaces popup) -->
+    <div class="photo-wall__mobile-detail" id="mobile-detail">
+        <img class="photo-wall__mobile-detail__thumb" id="md-thumb" src="" alt="">
+        <div class="photo-wall__mobile-detail__info" id="md-info"></div>
+        <button class="photo-wall__mobile-detail__btn photo-wall__mobile-detail__btn--up" id="md-up">上移</button>
+        <button class="photo-wall__mobile-detail__btn photo-wall__mobile-detail__btn--down" id="md-down">下移</button>
+        <button class="photo-wall__mobile-detail__btn photo-wall__mobile-detail__btn--danger" id="md-remove">摘除</button>
+    </div>
+
     <!-- Bottom Photo List -->
     <div class="photo-wall__list-panel" id="list-panel">
         <div class="photo-wall__list-header">
@@ -104,6 +113,8 @@
     const pickerOverlay = document.getElementById('picker-overlay');
     const photoList = document.getElementById('photo-list');
     const listCount = document.getElementById('list-count');
+    const mobileDetail = document.getElementById('mobile-detail');
+    const isMobile = window.matchMedia('(max-width: 768px)').matches;
 
     // ── Viewport Transform ──
     let _viewportRaf = null;
@@ -145,9 +156,13 @@
     }, { passive: false });
 
     // ── Pan (viewport drag on empty area) ──
+    let _panMoved = false;
+    const PAN_THRESHOLD = 3;
+
     viewport.addEventListener('pointerdown', function(e) {
         if (e.target === viewport || e.target === canvas) {
             state.isPanning = true;
+            _panMoved = false;
             state.panStart = { x: e.clientX, y: e.clientY };
             state.panStartOffset = { x: state.panX, y: state.panY };
             viewport.classList.add('photo-wall__viewport--grabbing');
@@ -157,8 +172,14 @@
 
     window.addEventListener('pointermove', function(e) {
         if (!state.isPanning) return;
-        state.panX = state.panStartOffset.x + (e.clientX - state.panStart.x);
-        state.panY = state.panStartOffset.y + (e.clientY - state.panStart.y);
+        const dx = e.clientX - state.panStart.x;
+        const dy = e.clientY - state.panStart.y;
+        if (Math.abs(dx) > PAN_THRESHOLD || Math.abs(dy) > PAN_THRESHOLD) {
+            _panMoved = true;
+        }
+        if (!_panMoved) return;
+        state.panX = state.panStartOffset.x + dx;
+        state.panY = state.panStartOffset.y + dy;
         applyViewport();
     });
 
@@ -166,6 +187,10 @@
         if (state.isPanning) {
             state.isPanning = false;
             viewport.classList.remove('photo-wall__viewport--grabbing');
+            // Tap (not drag) on empty area → deselect
+            if (!_panMoved) {
+                deselectAll();
+            }
         }
     });
 
@@ -261,9 +286,12 @@
         document.querySelectorAll('.photo-wall__list-item').forEach(el => {
             el.classList.toggle('photo-wall__list-item--active', el.dataset.itemId === itemId);
         });
-        // Update detail popup
+        // Update detail
         const item = state.items.find(it => it.id === itemId);
-        if (item) {
+        if (!item) return;
+        if (isMobile) {
+            showMobileDetail(item);
+        } else {
             showDetail(item);
         }
     }
@@ -278,6 +306,16 @@
         });
         detailPopup.classList.remove('photo-wall__detail--open');
         detailOverlay.classList.remove('photo-wall__detail-overlay--open');
+        if (isMobile) {
+            mobileDetail.style.display = 'none';
+        }
+    }
+
+    function showMobileDetail(item) {
+        document.getElementById('md-thumb').src = item.url || '';
+        document.getElementById('md-info').innerHTML =
+            `<strong>${escapeHtml(item.author_name || '未知')}</strong> · 层级 #${item.z_index}`;
+        mobileDetail.style.display = 'flex';
     }
 
     // ── Item Drag (move / rotate / scale) ──
@@ -414,6 +452,7 @@
     }
 
     function updateDetailFields(item) {
+        if (isMobile) return;
         document.getElementById('detail-z').textContent = item.z_index;
         document.getElementById('detail-time').textContent = item.updated_at
             ? new Date(item.updated_at).toLocaleString('zh-CN')
@@ -428,49 +467,26 @@
         deselectAll();
     });
 
-    // Layer up/down
-    document.getElementById('btn-layer-up').addEventListener('click', async function() {
+    // ── Shared actions (used by both popup and mobile strip) ──
+    async function actionMoveLayer(direction) {
         if (!state.selectedItemId) return;
         const resp = await fetch(`/photowall/api/${state.selectedItemId}/move-layer`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ direction: 'up' }),
+            body: JSON.stringify({ direction }),
         });
         const data = await resp.json();
         if (data.code === 200) {
             await loadItems();
-            state.selectedItemId = data.item.id;
-            renderAll();
             const item = state.items.find(it => it.id === data.item.id);
-            if (item) showDetail(item);
+            if (item) selectItem(item.id);
         }
-    });
+    }
 
-    document.getElementById('btn-layer-down').addEventListener('click', async function() {
-        if (!state.selectedItemId) return;
-        const resp = await fetch(`/photowall/api/${state.selectedItemId}/move-layer`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ direction: 'down' }),
-        });
-        const data = await resp.json();
-        if (data.code === 200) {
-            await loadItems();
-            state.selectedItemId = data.item.id;
-            renderAll();
-            const item = state.items.find(it => it.id === data.item.id);
-            if (item) showDetail(item);
-        }
-    });
-
-    // Remove
-    document.getElementById('btn-remove').addEventListener('click', async function() {
+    async function actionRemove() {
         if (!state.selectedItemId) return;
         if (!confirm('确定要摘除这张照片吗？')) return;
-
-        const resp = await fetch(`/photowall/api/${state.selectedItemId}`, {
-            method: 'DELETE',
-        });
+        const resp = await fetch(`/photowall/api/${state.selectedItemId}`, { method: 'DELETE' });
         const data = await resp.json();
         if (data.code === 200) {
             showToast('已摘除', 'success');
@@ -480,7 +496,17 @@
         } else {
             showToast(data.message || '操作失败', 'error');
         }
-    });
+    }
+
+    // Desktop popup buttons
+    document.getElementById('btn-layer-up').addEventListener('click', () => actionMoveLayer('up'));
+    document.getElementById('btn-layer-down').addEventListener('click', () => actionMoveLayer('down'));
+    document.getElementById('btn-remove').addEventListener('click', actionRemove);
+
+    // Mobile detail strip buttons
+    document.getElementById('md-up').addEventListener('click', () => actionMoveLayer('up'));
+    document.getElementById('md-down').addEventListener('click', () => actionMoveLayer('down'));
+    document.getElementById('md-remove').addEventListener('click', actionRemove);
 
     // ── Bottom Photo List ──
     function renderList() {
