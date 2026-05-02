@@ -90,7 +90,7 @@
 async function hardDelete(imageId, filename) {
     if (!confirm('确定永久删除 "' + filename + '" 吗？\n此操作不可撤销，将删除文件及记录。')) return;
     try {
-        const resp = await fetch('{{ url_for("image.admin") }}' + imageId, {
+        const resp = await fetch('{{ url_for("image.admin") }}/' + imageId, {
             method: 'DELETE',
         });
         const result = await resp.json();

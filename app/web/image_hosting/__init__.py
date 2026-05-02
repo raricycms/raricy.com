@@ -4,6 +4,7 @@ from flask import (Blueprint, render_template, request, jsonify,
 from flask_login import current_user
 from app.extensions.decorators import authenticated_required, owner_required
 from app.web.image_hosting.service import ImageService
+from app.service.notifications import send_notification
 
 image_bp = Blueprint('image', __name__)
 
@@ -132,7 +133,27 @@ def admin():
 @image_bp.route('/admin/<image_id>', methods=['DELETE'])
 @owner_required
 def admin_delete_image(image_id):
+    image = ImageService.get_image_by_id(image_id)
+    if not image:
+        return jsonify({'code': 400, 'message': '图片不存在'}), 400
+
+    author_id = image.author_id
+    filename = image.filename
+
     ok, err = ImageService.hard_delete_image(image_id)
     if not ok:
         return jsonify({'code': 400, 'message': err}), 400
+
+    # Send notification to the image owner
+    if author_id != current_user.id:
+        send_notification(
+            recipient_id=author_id,
+            action='图片删除',
+            actor_id=current_user.id,
+            object_type='image',
+            object_id=image_id,
+            detail=f'你上传的图片 "{filename}" 因违规被站长删除',
+            force=True,
+        )
+
     return jsonify({'code': 200, 'message': '已永久删除'})

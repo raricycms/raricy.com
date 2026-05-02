@@ -12,6 +12,46 @@ try:
 except ImportError:
     HAS_PILLOW = False
 
+import re
+
+
+def sanitize_filename(filename):
+    """Strip characters that could be used for XSS or path traversal."""
+    # Keep only alphanumeric, dots, hyphens, underscores, spaces, and Chinese chars
+    name = re.sub(r'[^\w.\- 一-鿿]', '', filename, flags=re.UNICODE)
+    # Collapse multiple dots/spaces
+    name = re.sub(r'\.{2,}', '.', name)
+    name = re.sub(r' {2,}', ' ', name)
+    # Strip leading dots/spaces/hyphens (prevent hidden files)
+    name = name.lstrip('. -')
+    # Max 200 chars
+    name = name[:200]
+    return name or 'image'
+
+
+def verify_image_mime(file_content, claimed_mime):
+    """Use PIL to verify the actual image type matches the claimed MIME."""
+    if not HAS_PILLOW:
+        return True  # can't verify without Pillow, trust the browser MIME
+    if claimed_mime == 'image/svg+xml':
+        # SVG is XML, PIL can't open it; check for <svg tag instead
+        text = file_content[:1024].decode('utf-8', errors='ignore').lower().strip()
+        return '<svg' in text or text.startswith('<?xml')
+    try:
+        img = PILImage.open(io.BytesIO(file_content))
+        fmt = img.format
+        fmt_map = {
+            'PNG': 'image/png',
+            'JPEG': 'image/jpeg',
+            'GIF': 'image/gif',
+            'WEBP': 'image/webp',
+        }
+        actual_mime = fmt_map.get(fmt, '')
+        return actual_mime == claimed_mime
+    except Exception:
+        return False
+
+
 ALLOWED_MIMETYPES = {
     'image/png',
     'image/jpeg',
@@ -21,9 +61,9 @@ ALLOWED_MIMETYPES = {
 }
 
 QUOTA_LIMITS_MB = {
-    'core': 20,
-    'admin': 30,
-    'owner': 50,
+    'core': 50,
+    'admin': 50,
+    'owner': 100,
 }
 
 # In-memory rate limiter: {user_id: [timestamp, ...]}
@@ -134,6 +174,9 @@ class ImageService:
         if mime_type not in ALLOWED_MIMETYPES:
             return False, '不支持的文件格式，仅允许 PNG、JPEG、GIF、WebP、SVG'
 
+        if not verify_image_mime(file_content, mime_type):
+            return False, '文件内容与声明的格式不匹配'
+
         if len(file_content) > max_size:
             max_mb = max_size / (1024 * 1024)
             return False, f'文件过大，单文件上限 {max_mb:.0f} MB'
@@ -155,6 +198,8 @@ class ImageService:
 
     @staticmethod
     def upload_image(user, file_content, mime_type, filename, compress=False):
+        filename = sanitize_filename(filename)
+
         max_retries = 10
         for _ in range(max_retries):
             image_id = generate_image_id()

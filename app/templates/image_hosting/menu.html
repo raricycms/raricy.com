@@ -37,7 +37,7 @@
             </svg>
             <p class="image-hosting-upload__text">拖拽图片到此处，或点击上传</p>
             <p class="image-hosting-upload__hint">支持 PNG / JPEG / GIF / WebP / SVG，单文件上限 10 MB</p>
-            <label class="image-hosting-upload__compress">
+            <label class="image-hosting-upload__compress" onclick="event.stopPropagation()">
                 <input type="checkbox" id="compress-toggle" checked> 压缩图片（减小文件体积，轻微损失画质）
             </label>
         </div>
