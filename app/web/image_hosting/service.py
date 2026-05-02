@@ -28,7 +28,7 @@ QUOTA_LIMITS_MB = {
 
 # In-memory rate limiter: {user_id: [timestamp, ...]}
 _upload_timestamps = {}
-_RATE_LIMIT_MAX = 30
+_RATE_LIMIT_MAX = 75
 _RATE_LIMIT_WINDOW = 3600
 
 
