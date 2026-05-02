@@ -466,6 +466,27 @@
                             <span></span>
                         </div>
                     </div>
+
+                    {% if current_user.is_authenticated and current_user.is_core_user %}
+                    <!-- 照片墙 -->
+                    <div class="tool-new-card" data-groups="other" data-keywords="照片墙 photo 照片 贴纸 软木板">
+                        <div class="tool-new-card__header">
+                            <div class="tool-new-card__header-info">
+                                <div class="title">照片墙</div>
+                                <div class="description">社区共享软木板，贴照片、旋转、缩放</div>
+                            </div>
+                        </div>
+                        <div class="tool-new-card__tags">
+                            <span class="tag">社区</span>
+                            <span class="tag">照片</span>
+                            <span class="tag">共创</span>
+                        </div>
+                        <div class="tool-new-card__footer">
+                            <a class="btn" href="{{ url_for('photowall.wall') }}">开始使用</a>
+                            <span></span>
+                        </div>
+                    </div>
+                    {% endif %}
                 </div>
             </div>
         </div>

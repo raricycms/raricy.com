@@ -7,6 +7,7 @@ from .comment import BlogComment, CommentLike
 from .notification import Notification
 from .clipboard import ClipBoard, ClipText
 from .image import ImageHosting
+from .photowall import PhotoWallItem
 
 __all__ = [
     'db',
@@ -15,7 +16,7 @@ __all__ = [
     'Blog', 'BlogContent', 'BlogLike',
     'BlogComment', 'CommentLike',
     'Notification', 'ClipBoard', 'ClipText',
-    'ImageHosting',
+    'ImageHosting', 'PhotoWallItem',
 ]
 
 

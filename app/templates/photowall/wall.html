@@ -1,0 +1,724 @@
+{% extends "base.html" %}
+{% block title %}照片墙 - raricy.com{% endblock %}
+
+{% block content %}
+<div class="photo-wall" id="photo-wall-app">
+    <!-- Canvas Viewport -->
+    <div class="photo-wall__viewport" id="viewport">
+        <div class="photo-wall__canvas" id="canvas">
+            <!-- Photo items rendered dynamically -->
+        </div>
+    </div>
+
+    <!-- Toolbar (floats over bottom of viewport) -->
+    <div class="photo-wall__toolbar">
+        <button class="photo-wall__toolbar-btn photo-wall__toolbar-btn--primary" id="btn-add-photo">
+            + 贴照片
+        </button>
+        <button class="photo-wall__toolbar-btn" id="btn-reset-view">
+            重置视角
+        </button>
+        <span class="photo-wall__toolbar-hint">
+            拖拽空白平移 · 滚轮缩放
+        </span>
+    </div>
+
+    <!-- Detail Popup Overlay (mobile backdrop) -->
+    <div class="photo-wall__detail-overlay" id="detail-overlay"></div>
+    <!-- Detail Popup -->
+    <div class="photo-wall__detail" id="detail-popup">
+        <button class="photo-wall__detail__close" id="btn-detail-close">&times;</button>
+        <img class="photo-wall__detail__img" id="detail-img" src="" alt="">
+        <div class="photo-wall__detail__body">
+            <div class="photo-wall__detail__field"><strong>作者：</strong><span id="detail-author"></span></div>
+            <div class="photo-wall__detail__field"><strong>照片ID：</strong><span id="detail-id"></span></div>
+            <div class="photo-wall__detail__field"><strong>上传时间：</strong><span id="detail-time"></span></div>
+            <div class="photo-wall__detail__field"><strong>层级：</strong><span id="detail-z"></span></div>
+        </div>
+        <div class="photo-wall__detail__actions">
+            <button class="photo-wall__detail__btn photo-wall__detail__btn--up" id="btn-layer-up">上移一层</button>
+            <button class="photo-wall__detail__btn photo-wall__detail__btn--down" id="btn-layer-down">下移一层</button>
+            <button class="photo-wall__detail__btn photo-wall__detail__btn--danger" id="btn-remove">摘除照片</button>
+        </div>
+    </div>
+
+    <!-- Image Picker Overlay -->
+    <div class="photo-wall__picker-overlay" id="picker-overlay">
+        <div class="photo-wall__picker" style="position: relative;">
+            <button class="photo-wall__picker__close" id="btn-picker-close">&times;</button>
+            <h3 class="photo-wall__picker__title">选择照片贴到墙上</h3>
+            <div class="photo-wall__picker__tabs">
+                <button class="photo-wall__picker__tab photo-wall__picker__tab--active" data-tab="my-images">我的图床</button>
+                <button class="photo-wall__picker__tab" data-tab="upload-new">上传新照片</button>
+            </div>
+            <div id="tab-my-images">
+                <div class="photo-wall__picker__grid" id="my-images-grid"></div>
+            </div>
+            <div id="tab-upload-new" style="display:none;">
+                <div class="photo-wall__picker__upload-zone" id="upload-zone">
+                    <div style="font-size:2rem;margin-bottom:8px;">+</div>
+                    <div>点击或拖拽上传</div>
+                    <div style="font-size:0.75rem;margin-top:4px;">支持 PNG、JPEG、GIF、WebP、SVG</div>
+                    <input type="file" id="upload-input" accept="image/*" style="display:none;">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bottom Photo List -->
+    <div class="photo-wall__list-panel" id="list-panel">
+        <div class="photo-wall__list-header">
+            墙上照片 · 按遮挡顺序（靠前 → 靠后）· <span id="list-count">0</span> 张
+        </div>
+        <div class="photo-wall__list" id="photo-list"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function() {
+    // ── State ──
+    const state = {
+        items: [],
+        selectedItemId: null,
+        panX: 0,
+        panY: 0,
+        zoom: 0.35,
+        isPanning: false,
+        panStart: { x: 0, y: 0 },
+        panStartOffset: { x: 0, y: 0 },
+        draggingItem: null,   // item id being dragged
+        dragStart: { x: 0, y: 0 },
+        dragStartPos: { x: 0, y: 0 },
+        dragMode: null,       // 'move' | 'rotate' | 'scale'
+        dragStartValue: 0,
+        dragStartCenter: { x: 0, y: 0 },
+    };
+
+    // ── DOM refs ──
+    const viewport = document.getElementById('viewport');
+    const canvas = document.getElementById('canvas');
+    const detailPopup = document.getElementById('detail-popup');
+    const detailOverlay = document.getElementById('detail-overlay');
+    const pickerOverlay = document.getElementById('picker-overlay');
+    const photoList = document.getElementById('photo-list');
+    const listCount = document.getElementById('list-count');
+
+    // ── Viewport Transform ──
+    let _viewportRaf = null;
+    function applyViewport() {
+        if (_viewportRaf) return;
+        _viewportRaf = requestAnimationFrame(() => {
+            canvas.style.transform = `translate(${state.panX}px, ${state.panY}px) scale(${state.zoom})`;
+            _viewportRaf = null;
+        });
+    }
+
+    function resetView() {
+        const vw = viewport.clientWidth;
+        const vh = viewport.clientHeight;
+        const wallW = 4000;
+        const wallH = 3000;
+        const pad = vw < 768 ? 8 : 40;
+        state.zoom = Math.min((vw - pad * 2) / wallW, (vh - pad * 2) / wallH);
+        state.panX = (vw - wallW * state.zoom) / 2;
+        state.panY = (vh - wallH * state.zoom) / 2;
+        applyViewport();
+    }
+
+    viewport.addEventListener('wheel', function(e) {
+        e.preventDefault();
+        const rect = viewport.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+
+        const oldZoom = state.zoom;
+        const factor = e.deltaY > 0 ? 0.97 : 1.03;
+        state.zoom = Math.max(0.1, Math.min(2.0, state.zoom * factor));
+
+        const ratio = state.zoom / oldZoom;
+        state.panX = mx - ratio * (mx - state.panX);
+        state.panY = my - ratio * (my - state.panY);
+
+        applyViewport();
+    }, { passive: false });
+
+    // ── Pan (viewport drag on empty area) ──
+    viewport.addEventListener('pointerdown', function(e) {
+        if (e.target === viewport || e.target === canvas) {
+            state.isPanning = true;
+            state.panStart = { x: e.clientX, y: e.clientY };
+            state.panStartOffset = { x: state.panX, y: state.panY };
+            viewport.classList.add('photo-wall__viewport--grabbing');
+            viewport.setPointerCapture(e.pointerId);
+        }
+    });
+
+    window.addEventListener('pointermove', function(e) {
+        if (!state.isPanning) return;
+        state.panX = state.panStartOffset.x + (e.clientX - state.panStart.x);
+        state.panY = state.panStartOffset.y + (e.clientY - state.panStart.y);
+        applyViewport();
+    });
+
+    window.addEventListener('pointerup', function(e) {
+        if (state.isPanning) {
+            state.isPanning = false;
+            viewport.classList.remove('photo-wall__viewport--grabbing');
+        }
+    });
+
+    // ── Load & Render ──
+    async function loadItems() {
+        const resp = await fetch('/photowall/api/items');
+        const data = await resp.json();
+        if (data.code === 200) {
+            state.items = data.items;
+            renderAll();
+        }
+    }
+
+    function renderAll() {
+        renderCanvas();
+        renderList();
+    }
+
+    function renderCanvas() {
+        canvas.querySelectorAll('.photo-wall__item').forEach(el => el.remove());
+
+        state.items.forEach(item => {
+            const el = createItemElement(item);
+            canvas.appendChild(el);
+        });
+    }
+
+    function createItemElement(item) {
+        const el = document.createElement('div');
+        el.className = 'photo-wall__item';
+        el.dataset.itemId = item.id;
+        el.style.left = item.x + 'px';
+        el.style.top = item.y + 'px';
+        el.style.zIndex = item.z_index;
+        el.style.transform = `rotate(${item.rotation}deg) scale(${item.scale})`;
+
+        if (item.id === state.selectedItemId) {
+            el.classList.add('photo-wall__item--selected');
+        }
+
+        // Default item size (will be constrained by image aspect ratio via CSS and JS)
+        const defaultW = 280;
+        const defaultH = 210;
+
+        el.style.width = defaultW + 'px';
+        el.innerHTML = `
+            <div class="photo-wall__item__frame">
+                <img class="photo-wall__item__img"
+                     src="${item.url || ''}"
+                     alt=""
+                     style="width:${defaultW - 20}px;height:${defaultH - 12}px;object-fit:cover;"
+                     onload="this.style.height='auto';"
+                     draggable="false">
+            </div>
+            <div class="photo-wall__item__handle photo-wall__item__handle--rotate"
+                 data-handle="rotate"></div>
+            <div class="photo-wall__item__handle photo-wall__item__handle--scale"
+                 data-handle="scale"></div>
+        `;
+
+        // Click to select
+        el.addEventListener('pointerdown', function(e) {
+            if (state.isPanning) return;
+
+            const handle = e.target.dataset.handle;
+            if (handle === 'rotate') {
+                startItemDrag(item, e, 'rotate');
+                return;
+            }
+            if (handle === 'scale') {
+                startItemDrag(item, e, 'scale');
+                return;
+            }
+
+            // Click on photo (not handle) — select and prepare for move
+            selectItem(item.id);
+
+            if (!state.isPanning) {
+                startItemDrag(item, e, 'move');
+            }
+        });
+
+        return el;
+    }
+
+    function selectItem(itemId) {
+        state.selectedItemId = itemId;
+        // Update canvas selection styling
+        canvas.querySelectorAll('.photo-wall__item').forEach(el => {
+            el.classList.toggle('photo-wall__item--selected', el.dataset.itemId === itemId);
+        });
+        // Update list selection
+        document.querySelectorAll('.photo-wall__list-item').forEach(el => {
+            el.classList.toggle('photo-wall__list-item--active', el.dataset.itemId === itemId);
+        });
+        // Update detail popup
+        const item = state.items.find(it => it.id === itemId);
+        if (item) {
+            showDetail(item);
+        }
+    }
+
+    function deselectAll() {
+        state.selectedItemId = null;
+        canvas.querySelectorAll('.photo-wall__item').forEach(el => {
+            el.classList.remove('photo-wall__item--selected');
+        });
+        document.querySelectorAll('.photo-wall__list-item').forEach(el => {
+            el.classList.remove('photo-wall__list-item--active');
+        });
+        detailPopup.classList.remove('photo-wall__detail--open');
+        detailOverlay.classList.remove('photo-wall__detail-overlay--open');
+    }
+
+    // ── Item Drag (move / rotate / scale) ──
+    function toCanvasCoords(clientX, clientY) {
+        const rect = viewport.getBoundingClientRect();
+        return {
+            x: (clientX - rect.left - state.panX) / state.zoom,
+            y: (clientY - rect.top - state.panY) / state.zoom,
+        };
+    }
+
+    function startItemDrag(item, e, mode) {
+        e.stopPropagation();
+        e.preventDefault();
+
+        state.draggingItem = item.id;
+        state.dragMode = mode;
+        state.dragStart = { x: e.clientX, y: e.clientY };
+        state.dragStartPos = { x: item.x, y: item.y };
+
+        if (mode === 'rotate') {
+            state.dragStartValue = item.rotation;
+            state.dragStartCenter = getItemCenter(item);
+            state.dragStartCanvas = toCanvasCoords(e.clientX, e.clientY);
+        } else if (mode === 'scale') {
+            state.dragStartValue = item.scale;
+            state.dragStartCenter = getItemCenter(item);
+            state.dragStartCanvas = toCanvasCoords(e.clientX, e.clientY);
+        }
+
+        const el = canvas.querySelector(`[data-item-id="${item.id}"]`);
+        if (el) el.classList.add('photo-wall__item--dragging');
+
+        viewport.setPointerCapture(e.pointerId);
+        viewport.addEventListener('pointermove', onItemDrag);
+        viewport.addEventListener('pointerup', onItemDragEnd);
+        viewport.addEventListener('pointercancel', onItemDragEnd);
+    }
+
+    function getItemCenter(item) {
+        const el = canvas.querySelector(`[data-item-id="${item.id}"]`);
+        if (!el) return { x: item.x + 100, y: item.y + 75 };
+        return { x: item.x + el.offsetWidth / 2, y: item.y + el.offsetHeight / 2 };
+    }
+
+    function onItemDrag(e) {
+        if (!state.draggingItem) return;
+        const dx = (e.clientX - state.dragStart.x) / state.zoom;
+        const dy = (e.clientY - state.dragStart.y) / state.zoom;
+
+        const item = state.items.find(it => it.id === state.draggingItem);
+        if (!item) return;
+
+        if (state.dragMode === 'move') {
+            item.x = state.dragStartPos.x + dx;
+            item.y = state.dragStartPos.y + dy;
+        } else if (state.dragMode === 'rotate') {
+            const cx = state.dragStartCenter.x;
+            const cy = state.dragStartCenter.y;
+            const cur = toCanvasCoords(e.clientX, e.clientY);
+            const startAngle = Math.atan2(state.dragStartCanvas.y - cy, state.dragStartCanvas.x - cx) * 180 / Math.PI;
+            const currentAngle = Math.atan2(cur.y - cy, cur.x - cx) * 180 / Math.PI;
+            item.rotation = (state.dragStartValue + (currentAngle - startAngle)) % 360;
+            if (item.rotation < 0) item.rotation += 360;
+        } else if (state.dragMode === 'scale') {
+            const cx = state.dragStartCenter.x;
+            const cy = state.dragStartCenter.y;
+            const cur = toCanvasCoords(e.clientX, e.clientY);
+            const startDist = Math.sqrt((state.dragStartCanvas.x - cx) ** 2 + (state.dragStartCanvas.y - cy) ** 2);
+            const currentDist = Math.sqrt((cur.x - cx) ** 2 + (cur.y - cy) ** 2);
+            if (startDist > 1) {
+                item.scale = Math.max(0.25, Math.min(5.0, state.dragStartValue * (currentDist / startDist)));
+            }
+        }
+
+        updateItemElement(item);
+        if (item.id === state.selectedItemId) {
+            updateDetailFields(item);
+        }
+    }
+
+    function onItemDragEnd(e) {
+        viewport.removeEventListener('pointermove', onItemDrag);
+        viewport.removeEventListener('pointerup', onItemDragEnd);
+        viewport.removeEventListener('pointercancel', onItemDragEnd);
+
+        if (!state.draggingItem) return;
+
+        const item = state.items.find(it => it.id === state.draggingItem);
+        const el = canvas.querySelector(`[data-item-id="${state.draggingItem}"]`);
+        if (el) el.classList.remove('photo-wall__item--dragging');
+
+        // Save to server
+        if (item) {
+            saveItemPosition(item);
+        }
+
+        state.draggingItem = null;
+        state.dragMode = null;
+    }
+
+    function updateItemElement(item) {
+        const el = canvas.querySelector(`[data-item-id="${item.id}"]`);
+        if (!el) return;
+        el.style.left = item.x + 'px';
+        el.style.top = item.y + 'px';
+        el.style.transform = `rotate(${item.rotation}deg) scale(${item.scale})`;
+    }
+
+    async function saveItemPosition(item) {
+        await fetch(`/photowall/api/${item.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                x: item.x,
+                y: item.y,
+                rotation: item.rotation,
+                scale: item.scale,
+            }),
+        });
+    }
+
+    // ── Detail Popup ──
+    function showDetail(item) {
+        document.getElementById('detail-img').src = item.url || '';
+        document.getElementById('detail-author').textContent = item.author_name || '未知';
+        document.getElementById('detail-id').textContent = item.id;
+        document.getElementById('detail-time').textContent = item.created_at
+            ? new Date(item.created_at).toLocaleString('zh-CN')
+            : '—';
+        document.getElementById('detail-z').textContent = item.z_index;
+        detailPopup.classList.add('photo-wall__detail--open');
+        detailOverlay.classList.add('photo-wall__detail-overlay--open');
+    }
+
+    function updateDetailFields(item) {
+        document.getElementById('detail-z').textContent = item.z_index;
+        document.getElementById('detail-time').textContent = item.updated_at
+            ? new Date(item.updated_at).toLocaleString('zh-CN')
+            : '—';
+    }
+
+    document.getElementById('btn-detail-close').addEventListener('click', function() {
+        deselectAll();
+    });
+
+    detailOverlay.addEventListener('click', function() {
+        deselectAll();
+    });
+
+    // Layer up/down
+    document.getElementById('btn-layer-up').addEventListener('click', async function() {
+        if (!state.selectedItemId) return;
+        const resp = await fetch(`/photowall/api/${state.selectedItemId}/move-layer`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ direction: 'up' }),
+        });
+        const data = await resp.json();
+        if (data.code === 200) {
+            await loadItems();
+            state.selectedItemId = data.item.id;
+            renderAll();
+            const item = state.items.find(it => it.id === data.item.id);
+            if (item) showDetail(item);
+        }
+    });
+
+    document.getElementById('btn-layer-down').addEventListener('click', async function() {
+        if (!state.selectedItemId) return;
+        const resp = await fetch(`/photowall/api/${state.selectedItemId}/move-layer`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ direction: 'down' }),
+        });
+        const data = await resp.json();
+        if (data.code === 200) {
+            await loadItems();
+            state.selectedItemId = data.item.id;
+            renderAll();
+            const item = state.items.find(it => it.id === data.item.id);
+            if (item) showDetail(item);
+        }
+    });
+
+    // Remove
+    document.getElementById('btn-remove').addEventListener('click', async function() {
+        if (!state.selectedItemId) return;
+        if (!confirm('确定要摘除这张照片吗？')) return;
+
+        const resp = await fetch(`/photowall/api/${state.selectedItemId}`, {
+            method: 'DELETE',
+        });
+        const data = await resp.json();
+        if (data.code === 200) {
+            showToast('已摘除', 'success');
+            deselectAll();
+            await loadItems();
+            renderAll();
+        } else {
+            showToast(data.message || '操作失败', 'error');
+        }
+    });
+
+    // ── Bottom Photo List ──
+    function renderList() {
+        // Use FLIP animation: capture old positions
+        const oldPositions = new Map();
+        photoList.querySelectorAll('.photo-wall__list-item').forEach(el => {
+            oldPositions.set(el.dataset.itemId, el.getBoundingClientRect().top);
+        });
+
+        // Sort by z_index desc (front to back)
+        const sorted = [...state.items].sort((a, b) => b.z_index - a.z_index);
+
+        photoList.innerHTML = '';
+        sorted.forEach(item => {
+            const row = document.createElement('div');
+            row.className = 'photo-wall__list-item';
+            row.dataset.itemId = item.id;
+            if (item.id === state.selectedItemId) {
+                row.classList.add('photo-wall__list-item--active');
+            }
+
+            row.innerHTML = `
+                <img class="photo-wall__list-item__thumb" src="${item.url || ''}" alt="">
+                <div class="photo-wall__list-item__info">
+                    <div class="photo-wall__list-item__author">${escapeHtml(item.author_name || '未知')}</div>
+                    <div class="photo-wall__list-item__meta">
+                        ${item.created_at ? new Date(item.created_at).toLocaleDateString('zh-CN') : ''}
+                    </div>
+                </div>
+                <span class="photo-wall__list-item__z">#${item.z_index}</span>
+            `;
+
+            row.addEventListener('click', function() {
+                selectItem(item.id);
+            });
+
+            photoList.appendChild(row);
+        });
+
+        listCount.textContent = state.items.length;
+
+        // FLIP: animate from old positions
+        photoList.querySelectorAll('.photo-wall__list-item').forEach(el => {
+            const oldTop = oldPositions.get(el.dataset.itemId);
+            if (oldTop !== undefined) {
+                const newTop = el.getBoundingClientRect().top;
+                const delta = oldTop - newTop;
+                if (Math.abs(delta) > 1) {
+                    el.style.transform = `translateY(${delta}px)`;
+                    el.style.transition = 'none';
+                    requestAnimationFrame(() => {
+                        el.style.transition = 'transform 0.3s ease';
+                        el.style.transform = '';
+                    });
+                }
+            }
+        });
+    }
+
+    function escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    // ── Image Picker ──
+    document.getElementById('btn-add-photo').addEventListener('click', function() {
+        pickerOverlay.classList.add('photo-wall__picker-overlay--open');
+        loadMyImages();
+    });
+
+    document.getElementById('btn-picker-close').addEventListener('click', function() {
+        pickerOverlay.classList.remove('photo-wall__picker-overlay--open');
+    });
+
+    pickerOverlay.addEventListener('click', function(e) {
+        if (e.target === pickerOverlay) {
+            pickerOverlay.classList.remove('photo-wall__picker-overlay--open');
+        }
+    });
+
+    // Tabs
+    document.querySelectorAll('.photo-wall__picker__tab').forEach(tab => {
+        tab.addEventListener('click', function() {
+            document.querySelectorAll('.photo-wall__picker__tab').forEach(t => {
+                t.classList.remove('photo-wall__picker__tab--active');
+            });
+            this.classList.add('photo-wall__picker__tab--active');
+
+            const tabName = this.dataset.tab;
+            document.getElementById('tab-my-images').style.display = tabName === 'my-images' ? 'block' : 'none';
+            document.getElementById('tab-upload-new').style.display = tabName === 'upload-new' ? 'block' : 'none';
+
+            if (tabName === 'my-images') {
+                loadMyImages();
+            }
+        });
+    });
+
+    async function loadMyImages() {
+        const grid = document.getElementById('my-images-grid');
+        grid.innerHTML = '<div style="color:var(--color-text-secondary);padding:20px;">加载中...</div>';
+
+        const resp = await fetch('/photowall/api/image-list');
+        const data = await resp.json();
+
+        if (data.code !== 200 || !data.images.length) {
+            grid.innerHTML = '<div style="color:var(--color-text-secondary);padding:20px;">暂无可用图片，请先在图床上传或使用"上传新照片"标签。</div>';
+            return;
+        }
+
+        grid.innerHTML = '';
+        data.images.forEach(img => {
+            const thumb = document.createElement('img');
+            thumb.className = 'photo-wall__picker__thumb';
+            thumb.src = `/image/i/${img.id}`;
+            thumb.title = img.filename;
+            thumb.addEventListener('click', function() {
+                placeImageOnWall(img.id);
+            });
+            grid.appendChild(thumb);
+        });
+    }
+
+    async function placeImageOnWall(imageId) {
+        // Place near the center of the current view
+        const vpRect = viewport.getBoundingClientRect();
+        const cx = (vpRect.width / 2 - state.panX) / state.zoom;
+        const cy = (vpRect.height / 2 - state.panY) / state.zoom;
+
+        // Add some random offset
+        const x = cx + (Math.random() - 0.5) * 300;
+        const y = cy + (Math.random() - 0.5) * 200;
+
+        const resp = await fetch('/photowall/api/place', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                image_id: imageId,
+                x: Math.max(0, Math.min(3800, x)),
+                y: Math.max(0, Math.min(2800, y)),
+            }),
+        });
+        const data = await resp.json();
+
+        if (data.code === 200) {
+            showToast('已贴到墙上', 'success');
+            pickerOverlay.classList.remove('photo-wall__picker-overlay--open');
+            await loadItems();
+            renderAll();
+        } else {
+            showToast(data.message || '放置失败', 'error');
+        }
+    }
+
+    // Upload tab
+    const uploadZone = document.getElementById('upload-zone');
+    const uploadInput = document.getElementById('upload-input');
+
+    uploadZone.addEventListener('click', function() {
+        uploadInput.click();
+    });
+
+    uploadZone.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        this.style.borderColor = 'var(--color-brand-primary)';
+    });
+
+    uploadZone.addEventListener('dragleave', function() {
+        this.style.borderColor = '';
+    });
+
+    uploadZone.addEventListener('drop', function(e) {
+        e.preventDefault();
+        this.style.borderColor = '';
+        const file = e.dataTransfer.files[0];
+        if (file) uploadAndPlace(file);
+    });
+
+    uploadInput.addEventListener('change', function() {
+        const file = this.files[0];
+        if (file) uploadAndPlace(file);
+    });
+
+    async function uploadAndPlace(file) {
+        const vpRect = viewport.getBoundingClientRect();
+        const cx = (vpRect.width / 2 - state.panX) / state.zoom;
+        const cy = (vpRect.height / 2 - state.panY) / state.zoom;
+        const x = cx + (Math.random() - 0.5) * 200;
+        const y = cy + (Math.random() - 0.5) * 150;
+
+        const form = new FormData();
+        form.append('file', file);
+        form.append('x', Math.max(100, Math.min(3800, x)));
+        form.append('y', Math.max(100, Math.min(2800, y)));
+        form.append('compress', '1');
+
+        const resp = await fetch('/photowall/api/upload-and-place', {
+            method: 'POST',
+            body: form,
+        });
+        const data = await resp.json();
+
+        if (data.code === 200) {
+            showToast('上传并贴墙成功', 'success');
+            pickerOverlay.classList.remove('photo-wall__picker-overlay--open');
+            uploadInput.value = '';
+            await loadItems();
+            renderAll();
+        } else {
+            showToast(data.message || '上传失败', 'error');
+        }
+    }
+
+    // ── Reset View ──
+    document.getElementById('btn-reset-view').addEventListener('click', resetView);
+
+    // ── Keyboard shortcuts ──
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            deselectAll();
+            pickerOverlay.classList.remove('photo-wall__picker-overlay--open');
+        }
+        // Delete/Backspace to remove selected
+        if ((e.key === 'Delete' || e.key === 'Backspace') && state.selectedItemId) {
+            if (document.activeElement === document.body) {
+                document.getElementById('btn-remove').click();
+            }
+        }
+    });
+
+    // ── Init ──
+    resetView();
+    loadItems();
+    window.addEventListener('resize', resetView);
+
+})();
+</script>
+{% endblock %}
+
+{% block footer_text %}{% endblock %}
