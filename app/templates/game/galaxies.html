@@ -1,0 +1,103 @@
+{% extends 'base.html' %}
+{% block title %}螺旋星系 - 聪明山{% endblock %}
+
+{% block content %}
+<section class="puzzle-page">
+    <div class="container">
+        <a href="{{ url_for('game.menu') }}" class="puzzle-back">&larr; 返回玩具</a>
+
+        <div class="puzzle-header">
+            <h1 class="puzzle-header__title">螺旋星系</h1>
+            <p class="puzzle-header__desc">
+                将网格划分为星系区域。每个区域必须围绕一个圆点保持180度旋转对称，且每个区域恰好包含一个圆点。
+                左键点击边来放置/移除边界，右键拖动来标记每个格子归属的圆点。
+            </p>
+        </div>
+
+        <div class="puzzle-controls">
+            <div class="puzzle-controls__group">
+                <label class="puzzle-label" for="galSize">网格大小</label>
+                <select id="galSize" class="puzzle-select">
+                    <option value="5">5x5</option>
+                    <option value="7" selected>7x7</option>
+                    <option value="10">10x10</option>
+                    <option value="12">12x12</option>
+                    <option value="15">15x15</option>
+                </select>
+            </div>
+            <div class="puzzle-controls__group">
+                <label class="puzzle-label" for="galDiff">难度</label>
+                <select id="galDiff" class="puzzle-select">
+                    <option value="normal" selected>普通</option>
+                    <option value="unreasonable">困难</option>
+                </select>
+            </div>
+            <button id="galNewGame" class="puzzle-btn">新游戏</button>
+            <button id="galSolve" class="puzzle-btn puzzle-btn--secondary">看答案</button>
+        </div>
+
+        <div class="puzzle-status" id="galStatus">
+            圆点：0
+        </div>
+
+        <div class="puzzle-canvas-wrap">
+            <canvas id="galaxiesCanvas" class="puzzle-canvas"></canvas>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ static_url('js/game/galaxies.js') }}"></script>
+<script>
+(function() {
+    const canvas = document.getElementById('galaxiesCanvas');
+    const statusEl = document.getElementById('galStatus');
+    const sizeSelect = document.getElementById('galSize');
+    const diffSelect = document.getElementById('galDiff');
+    const newGameBtn = document.getElementById('galNewGame');
+    const solveBtn = document.getElementById('galSolve');
+
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+
+    function getDiff() {
+        return diffSelect.value === 'unreasonable' ? 1 : 0;
+    }
+
+    let game = new GalaxiesGame(canvas, {
+        w: 7, h: 7,
+        diff: getDiff(),
+        darkMode: isDark,
+        onStatus: function(s) {
+            if (s.completed) {
+                statusEl.textContent = '完成！网格 ' + s.size + '，圆点 ' + s.dots;
+                statusEl.classList.add('puzzle-status--done');
+            } else {
+                statusEl.textContent = '网格 ' + s.size + '，圆点 ' + s.dots;
+                statusEl.classList.remove('puzzle-status--done');
+            }
+        }
+    });
+
+    newGameBtn.addEventListener('click', function() {
+        const size = parseInt(sizeSelect.value);
+        game.newGame(size, size, getDiff());
+    });
+
+    solveBtn.addEventListener('click', function() {
+        game.solve();
+    });
+
+    // Theme switch observer
+    const themeToggle = document.getElementById('themeToggle');
+    if (themeToggle) {
+        themeToggle.addEventListener('click', function() {
+            setTimeout(function() {
+                const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+                game.setDarkMode(dark);
+            }, 50);
+        });
+    }
+})();
+</script>
+{% endblock %}

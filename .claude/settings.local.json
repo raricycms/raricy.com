@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npx sass *)"
+      "Bash(npx sass *)",
+      "Bash(node *)"
     ]
   }
 }

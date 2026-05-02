@@ -1,0 +1,97 @@
+{% extends 'base.html' %}
+{% block title %}立方体滚滚 - 聪明山{% endblock %}
+
+{% block content %}
+<section class="puzzle-page">
+    <div class="container">
+        <a href="{{ url_for('game.menu') }}" class="puzzle-back">&larr; 返回玩具</a>
+
+        <div class="puzzle-header">
+            <h1 class="puzzle-header__title">立方体滚滚</h1>
+            <p class="puzzle-header__desc">
+                在多面体上涂满蓝色。每当你把多面体滚到蓝色格子上时，多面体底面和格子的颜色就会互换。
+                使用方向键或点击格子周围来滚动多面体。
+            </p>
+        </div>
+
+        <div class="puzzle-controls">
+            <div class="puzzle-controls__group">
+                <label class="puzzle-label" for="cubeSolid">多面体</label>
+                <select id="cubeSolid" class="puzzle-select">
+                    <option value="CUBE" selected>立方体 (Cube)</option>
+                    <option value="TETRAHEDRON">四面体 (Tetrahedron)</option>
+                    <option value="OCTAHEDRON">八面体 (Octahedron)</option>
+                    <option value="ICOSAHEDRON">二十面体 (Icosahedron)</option>
+                </select>
+            </div>
+            <div class="puzzle-controls__group">
+                <label class="puzzle-label" for="cubeSize">网格大小</label>
+                <input type="range" id="cubeSize" class="puzzle-range" min="2" max="8" value="4" step="1">
+                <span class="puzzle-range-value" id="cubeSizeVal">4x4</span>
+            </div>
+            <button id="cubeNewGame" class="puzzle-btn">新游戏</button>
+        </div>
+
+        <div class="puzzle-status" id="cubeStatus">
+            步数：0
+        </div>
+
+        <div class="puzzle-canvas-wrap">
+            <canvas id="cubeCanvas" class="puzzle-canvas"></canvas>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ static_url('js/game/cube.js') }}"></script>
+<script>
+(function() {
+    const canvas = document.getElementById('cubeCanvas');
+    const statusEl = document.getElementById('cubeStatus');
+    const solidSelect = document.getElementById('cubeSolid');
+    const sizeInput = document.getElementById('cubeSize');
+    const sizeVal = document.getElementById('cubeSizeVal');
+    const newGameBtn = document.getElementById('cubeNewGame');
+
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+
+    let game = new CubeGame(canvas, {
+        solidType: 'CUBE',
+        d1: 4, d2: 4,
+        gridScale: 36,
+        darkMode: isDark,
+        onStatus: function(s) {
+            if (s.completed) {
+                statusEl.textContent = '完成！共 ' + s.moves + ' 步';
+                statusEl.classList.add('puzzle-status--done');
+            } else {
+                statusEl.textContent = '步数：' + s.moves;
+                statusEl.classList.remove('puzzle-status--done');
+            }
+        }
+    });
+
+    newGameBtn.addEventListener('click', function() {
+        const solid = solidSelect.value;
+        const size = parseInt(sizeInput.value);
+        game.newGame(solid, size, size);
+    });
+
+    sizeInput.addEventListener('input', function() {
+        sizeVal.textContent = sizeInput.value + 'x' + sizeInput.value;
+    });
+
+    // Theme switch observer
+    const themeToggle = document.getElementById('themeToggle');
+    if (themeToggle) {
+        themeToggle.addEventListener('click', function() {
+            setTimeout(function() {
+                const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+                game.setDarkMode(dark);
+            }, 50);
+        });
+    }
+})();
+</script>
+{% endblock %}

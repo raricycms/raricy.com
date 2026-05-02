@@ -1,7 +1,73 @@
 {% extends 'base.html' %}
-{% block title %}游戏目录 - 聪明山{% endblock %}
+{% block title %}玩具 - 聪明山{% endblock %}
+
 {% block content %}
-<div class="container">
-    <h1>游戏目录</h1>
-</div>
+<section class="game-hero">
+    <div class="container">
+        <h1 class="game-hero__title">玩具</h1>
+        <p class="game-hero__description">一些小玩意儿，闲暇时摆弄摆弄。</p>
+    </div>
+</section>
+
+<section class="game-section">
+    <div class="container">
+        <div class="game-grid">
+            {% if current_user.is_authenticated and current_user.is_core_user %}
+            <div class="game-card" data-url="{{ url_for('photowall.wall') }}" onclick="handleGameCardClick(this)">
+                <div class="game-card__body">
+                    <span class="game-card__icon game-card__icon--photowall" aria-hidden="true"></span>
+                    <h3 class="game-card__title">照片墙</h3>
+                    <p class="game-card__desc">在软木板上自由张贴照片，拖动、旋转、缩放，和朋友一起装饰一面共同的回忆墙。</p>
+                    <span class="game-card__btn">进入照片墙</span>
+                </div>
+            </div>
+            {% else %}
+            <div class="game-card game-card--locked">
+                <div class="game-card__body">
+                    <span class="game-card__icon game-card__icon--photowall" aria-hidden="true"></span>
+                    <h3 class="game-card__title">照片墙</h3>
+                    <p class="game-card__desc">在软木板上自由张贴照片，拖动、旋转、缩放，和朋友一起装饰一面共同的回忆墙。</p>
+                    <span class="game-card__hint">请先登录并通过认证</span>
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="game-card" data-url="{{ url_for('game.cube') }}" onclick="handleGameCardClick(this)">
+                <div class="game-card__body">
+                    <span class="game-card__icon game-card__icon--cube" aria-hidden="true"></span>
+                    <h3 class="game-card__title">立方体滚滚</h3>
+                    <p class="game-card__desc">在多面体上涂满蓝色。滚到蓝色格子上交换颜色，用最少的步数把多面体所有面都变成蓝色。</p>
+                    <span class="game-card__btn">开始游戏</span>
+                </div>
+            </div>
+
+            <div class="game-card" data-url="{{ url_for('game.galaxies') }}" onclick="handleGameCardClick(this)">
+                <div class="game-card__body">
+                    <span class="game-card__icon game-card__icon--galaxies" aria-hidden="true"></span>
+                    <h3 class="game-card__title">螺旋星系</h3>
+                    <p class="game-card__desc">将网格划分为对称的星系区域，每个区域围绕一个圆点保持180度旋转对称。</p>
+                    <span class="game-card__btn">开始游戏</span>
+                </div>
+            </div>
+
+            <div class="game-card game-card--soon">
+                <div class="game-card__body">
+                    <span class="game-card__icon game-card__icon--coming" aria-hidden="true"></span>
+                    <h3 class="game-card__title">更多玩具筹备中</h3>
+                    <p class="game-card__desc">有想法的朋友欢迎向站长提议，好玩的一起做。</p>
+                    <span class="game-card__badge">即将到来</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function handleGameCardClick(el) {
+    const url = el.getAttribute('data-url');
+    if (url) window.location.href = url;
+}
+</script>
 {% endblock %}

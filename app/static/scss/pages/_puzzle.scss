@@ -1,0 +1,145 @@
+@use '../abstracts/variables' as *;
+
+// ---- Shared puzzle page layout --------------------------------------------
+
+.puzzle-page {
+    padding: $space-6 0 40px;
+
+    .container {
+        max-width: 960px;
+    }
+}
+
+.puzzle-back {
+    display: inline-block;
+    color: var(--color-text-secondary);
+    text-decoration: none;
+    font-size: 0.9rem;
+    margin-bottom: $space-4;
+    transition: color 0.2s;
+
+    &:hover {
+        color: var(--color-brand-primary);
+    }
+}
+
+.puzzle-header {
+    margin-bottom: $space-4;
+
+    &__title {
+        font-size: 2rem;
+        font-weight: 700;
+        color: var(--color-text-primary);
+        margin-bottom: $space-2;
+    }
+
+    &__desc {
+        font-size: 1rem;
+        color: var(--color-text-secondary);
+        line-height: 1.6;
+        max-width: 640px;
+    }
+}
+
+.puzzle-controls {
+    display: flex;
+    align-items: flex-end;
+    gap: $space-4;
+    flex-wrap: wrap;
+    margin-bottom: $space-4;
+
+    &__group {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+}
+
+.puzzle-label {
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--color-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.puzzle-select,
+.puzzle-range {
+    padding: 6px 10px;
+    border: 1px solid var(--color-border);
+    border-radius: $radius-small;
+    background: var(--color-background-card);
+    color: var(--color-text-primary);
+    font-size: 0.9rem;
+    font-family: inherit;
+    transition: border-color 0.2s;
+
+    &:focus {
+        outline: none;
+        border-color: var(--color-brand-primary);
+    }
+}
+
+.puzzle-range {
+    width: 120px;
+    cursor: pointer;
+}
+
+.puzzle-range-value {
+    font-size: 0.85rem;
+    color: var(--color-text-secondary);
+}
+
+.puzzle-btn {
+    padding: 7px 18px;
+    border: 1px solid var(--color-brand-primary);
+    border-radius: $radius-small;
+    background: var(--color-brand-primary);
+    color: #fff;
+    font-size: 0.9rem;
+    font-family: inherit;
+    cursor: pointer;
+    transition: opacity 0.2s;
+
+    &:hover {
+        opacity: 0.85;
+    }
+
+    &--secondary {
+        background: transparent;
+        color: var(--color-text-secondary);
+        border-color: var(--color-border);
+
+        &:hover {
+            border-color: var(--color-text-secondary);
+            opacity: 1;
+        }
+    }
+}
+
+.puzzle-status {
+    font-size: 0.95rem;
+    color: var(--color-text-secondary);
+    margin-bottom: $space-3;
+    min-height: 1.5em;
+
+    &--done {
+        color: #10b981;
+        font-weight: 600;
+    }
+}
+
+.puzzle-canvas-wrap {
+    border: 1px solid var(--color-border);
+    border-radius: $radius-large;
+    background: var(--color-background-card);
+    display: inline-block;
+    overflow: hidden;
+    max-width: 100%;
+}
+
+.puzzle-canvas {
+    display: block;
+    max-width: 100%;
+    cursor: pointer;
+}
