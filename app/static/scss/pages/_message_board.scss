@@ -1,0 +1,302 @@
+@use '../abstracts/variables' as v;
+@use '../abstracts/breakpoints' as bp;
+
+// ========== Page container ==========
+.message-board {
+  width: 100%;
+  max-width: 1140px;
+  margin: 0 auto;
+  padding: v.$space-6 v.$space-4;
+
+  &__hero {
+    text-align: center;
+    margin-bottom: v.$space-8;
+    h1 {
+      font-size: 2.2rem;
+      color: var(--color-text-primary);
+      margin-bottom: v.$space-2;
+    }
+    p {
+      color: var(--color-text-secondary);
+      font-size: 1rem;
+    }
+  }
+
+  &__create {
+    background: var(--color-background-card);
+    border: 1px solid var(--color-border);
+    border-radius: v.$radius-large;
+    padding: v.$space-4;
+    margin-bottom: v.$space-6;
+
+    textarea {
+      width: 100%;
+      min-height: 80px;
+      padding: v.$space-3;
+      border: 1px solid var(--color-border);
+      border-radius: v.$radius-small;
+      background: var(--color-background-page);
+      color: var(--color-text-primary);
+      resize: vertical;
+      font-family: inherit;
+      font-size: 0.95rem;
+      line-height: 1.6;
+      &:focus {
+        border-color: var(--color-brand-primary);
+        box-shadow: 0 0 0 3px var(--color-brand-secondary);
+        outline: none;
+      }
+    }
+  }
+
+  &__create-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: v.$space-3;
+  }
+
+  &__anonymous-toggle {
+    display: flex;
+    align-items: center;
+    gap: v.$space-2;
+    cursor: pointer;
+    color: var(--color-text-secondary);
+    font-size: 0.9rem;
+    user-select: none;
+
+    input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--color-brand-primary);
+      cursor: pointer;
+    }
+  }
+
+  // Card wall grid
+  &__wall {
+    display: flex;
+    flex-wrap: wrap;
+    gap: v.$space-4;
+    justify-content: center;
+
+    @include bp.up(bp.$bp-md) {
+      justify-content: flex-start;
+    }
+  }
+}
+
+// ========== Message card ==========
+.message-card {
+  width: 280px;
+  min-height: 160px;
+  padding: v.$space-4;
+  border-radius: v.$radius-large;
+  box-shadow: var(--shadow-card);
+  position: relative;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+
+  &:hover {
+    transform: translateY(-4px) rotate(0deg) !important;
+    box-shadow: var(--shadow-card-hover);
+  }
+
+  &__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: v.$space-2;
+    font-size: 0.8rem;
+    color: var(--color-text-secondary);
+  }
+
+  &__author {
+    font-weight: 600;
+    color: var(--color-text-primary);
+    font-size: 0.85rem;
+
+    &--anonymous {
+      font-style: italic;
+      color: var(--color-text-secondary);
+    }
+
+    &--admin {
+      color: var(--color-brand-primary);
+    }
+  }
+
+  &__time {
+    font-size: 0.72rem;
+    color: var(--color-text-secondary);
+  }
+
+  &__body {
+    flex: 1;
+    font-size: 0.95rem;
+    line-height: 1.7;
+    color: var(--color-text-primary);
+    word-break: break-word;
+    margin-bottom: v.$space-2;
+  }
+
+  &__actions {
+    display: flex;
+    gap: v.$space-1;
+    padding-top: v.$space-2;
+    border-top: 1px solid rgba(0, 0, 0, 0.07);
+  }
+
+  &__action-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 2px 8px;
+    border: none;
+    border-radius: v.$radius-small;
+    background: transparent;
+    color: var(--color-text-secondary);
+    font-size: 0.78rem;
+    cursor: pointer;
+
+    &:hover {
+      background: rgba(0, 0, 0, 0.05);
+      color: var(--color-text-primary);
+    }
+
+    &--liked {
+      color: #e74c3c;
+      &:hover { color: #c0392b; }
+    }
+  }
+
+  // Replies section
+  &__replies {
+    margin-top: v.$space-3;
+    padding-left: v.$space-3;
+    border-left: 2px solid rgba(0, 0, 0, 0.08);
+    display: flex;
+    flex-direction: column;
+    gap: v.$space-2;
+  }
+
+  &__reply {
+    background: rgba(0, 0, 0, 0.03);
+    border-radius: v.$radius-small;
+    padding: v.$space-2 v.$space-3;
+    font-size: 0.85rem;
+
+    .message-card__author { font-size: 0.78rem; }
+    .message-card__body { font-size: 0.85rem; line-height: 1.5; }
+    .message-card__time { font-size: 0.7rem; }
+  }
+
+  &__reply-form {
+    margin-top: v.$space-2;
+    display: flex;
+    flex-direction: column;
+    gap: v.$space-1;
+
+    textarea {
+      width: 100%;
+      min-height: 50px;
+      padding: v.$space-2;
+      border: 1px solid var(--color-border);
+      border-radius: v.$radius-small;
+      background: var(--color-background-page);
+      color: var(--color-text-primary);
+      font-family: inherit;
+      font-size: 0.85rem;
+      resize: vertical;
+      &:focus {
+        border-color: var(--color-brand-primary);
+        outline: none;
+      }
+    }
+
+    .message-card__reply-actions {
+      display: flex;
+      gap: v.$space-2;
+      justify-content: flex-end;
+    }
+  }
+
+  // Deleted state
+  &--deleted {
+    opacity: 0.55;
+    .message-card__body { font-style: italic; color: var(--color-text-secondary); }
+  }
+
+  // Empty state
+  &__empty {
+    text-align: center;
+    padding: v.$space-8 v.$space-4;
+    color: var(--color-text-secondary);
+    width: 100%;
+
+    p {
+      font-size: 1.1rem;
+      margin-bottom: v.$space-2;
+    }
+    span {
+      font-size: 0.9rem;
+      opacity: 0.7;
+    }
+  }
+}
+
+// ========== Card color variants (pastel sticky notes) ==========
+$card-colors: (
+  0: #FFF5F5,  // rose
+  1: #FFF8F0,  // orange
+  2: #FFFDE7,  // yellow
+  3: #F0FFF4,  // green
+  4: #F0F9FF,  // sky
+  5: #F5F0FF,  // violet
+  6: #FFF0F7,  // pink
+  7: #F0FFF8,  // mint
+);
+
+@each $i, $color in $card-colors {
+  .message-card--color-#{$i} {
+    background-color: #{$color};
+  }
+}
+
+[data-theme="dark"] {
+  $dark-card-colors: (
+    0: #3D2025,
+    1: #3D2E20,
+    2: #3D3920,
+    3: #203D2A,
+    4: #203040,
+    5: #2E2040,
+    6: #3D2030,
+    7: #203D30,
+  );
+
+  @each $i, $color in $dark-card-colors {
+    .message-card--color-#{$i} {
+      background-color: #{$color};
+    }
+  }
+
+  .message-card {
+    border-color: rgba(255, 255, 255, 0.06);
+
+    &__actions { border-top-color: rgba(255, 255, 255, 0.06); }
+    &__reply { background: rgba(255, 255, 255, 0.04); }
+    &__action-btn:hover { background: rgba(255, 255, 255, 0.06); }
+    &__replies { border-left-color: rgba(255, 255, 255, 0.08); }
+  }
+}
+
+// ========== Responsive ==========
+@include bp.down(bp.$bp-md) {
+  .message-card {
+    width: 100%;
+    max-width: 400px;
+  }
+}

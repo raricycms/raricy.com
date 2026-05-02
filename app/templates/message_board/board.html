@@ -1,0 +1,338 @@
+{% extends "base.html" %}
+{% block title %}留言板 - 聪明山{% endblock %}
+
+{% block content %}
+<section class="message-board">
+    <div class="message-board__hero">
+        <h1>留言板</h1>
+        <p>写下你想对同学们说的话</p>
+    </div>
+
+    <div class="message-board__create">
+        <form id="message-form" autocomplete="off">
+            <textarea id="message-content" maxlength="500" placeholder="说点什么…（最多500字）" rows="3"></textarea>
+            <div class="message-board__create-actions">
+                <label class="message-board__anonymous-toggle">
+                    <input type="checkbox" id="message-anonymous">
+                    <span>匿名发言</span>
+                </label>
+                <button type="submit" class="button button-primary">发布</button>
+            </div>
+        </form>
+    </div>
+
+    <div class="message-board__wall" id="message-wall"></div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function() {
+    var CURRENT_USER_ID = "{{ current_user.id }}";
+    var CURRENT_USER_IS_ADMIN = {{ 'true' if current_user.has_admin_rights else 'false' }};
+    var TOTAL_COLORS = 8;
+    var messageDataMap = {};  // msgId -> message data for ownership lookups
+
+    var wall = document.getElementById('message-wall');
+    var form = document.getElementById('message-form');
+    var contentInput = document.getElementById('message-content');
+    var anonymousCheck = document.getElementById('message-anonymous');
+    var submitBtn = form.querySelector('button[type="submit"]');
+
+    // ========== API ==========
+    async function api(url, options) {
+        if (!options) options = {};
+        var res = await fetch(url, options);
+        return res.json();
+    }
+
+    // ========== Load ==========
+    async function loadMessages() {
+        try {
+            var data = await api('/message-board/api/messages');
+            if (data.code === 200 && data.messages && data.messages.length > 0) {
+                renderWall(data.messages);
+            } else {
+                wall.innerHTML = '<div class="message-card__empty"><p>还没有留言</p><span>来发第一条吧！</span></div>';
+            }
+        } catch (e) {
+            wall.innerHTML = '<div class="message-card__empty"><p>加载失败</p><span>请刷新页面重试</span></div>';
+        }
+    }
+
+    function indexMessages(tree) {
+        tree.forEach(function(node) {
+            messageDataMap[node.id] = node;
+            if (node.children && node.children.length > 0) {
+                indexMessages(node.children);
+            }
+        });
+    }
+
+    function renderWall(tree) {
+        messageDataMap = {};
+        indexMessages(tree);
+        wall.innerHTML = '';
+        tree.forEach(function(node) { wall.appendChild(renderCard(node, 0)); });
+    }
+
+    // ========== Render card ==========
+    function renderCard(msg, depth) {
+        var card = document.createElement('div');
+        var colorIdx = Math.floor(Math.random() * TOTAL_COLORS);
+        var rotation = (Math.random() * 4 - 2).toFixed(1);
+
+        card.className = 'message-card message-card--color-' + colorIdx;
+        if (msg.is_deleted) card.classList.add('message-card--deleted');
+        if (depth > 0) card.classList.add('message-card__reply');
+        card.style.transform = 'rotate(' + rotation + 'deg)';
+        card.dataset.messageId = msg.id;
+
+        // Header
+        var header = document.createElement('div');
+        header.className = 'message-card__header';
+
+        var authorSpan = document.createElement('span');
+        authorSpan.className = 'message-card__author';
+        if (msg.is_deleted) {
+            authorSpan.textContent = '[已删除]';
+        } else if (msg.author.is_admin) {
+            authorSpan.classList.add('message-card__author--admin');
+            authorSpan.textContent = msg.author.display_name + ' [管]';
+        } else if (msg.is_anonymous) {
+            authorSpan.classList.add('message-card__author--anonymous');
+            authorSpan.textContent = '某位同学';
+        } else {
+            authorSpan.textContent = msg.author.display_name;
+        }
+
+        var timeSpan = document.createElement('span');
+        timeSpan.className = 'message-card__time';
+        timeSpan.textContent = formatTime(msg.created_at);
+
+        header.appendChild(authorSpan);
+        header.appendChild(timeSpan);
+        card.appendChild(header);
+
+        // Body
+        var body = document.createElement('div');
+        body.className = 'message-card__body';
+        body.innerHTML = msg.content_html || '';
+        card.appendChild(body);
+
+        // Actions
+        if (!msg.is_deleted) {
+            var actions = document.createElement('div');
+            actions.className = 'message-card__actions';
+
+            // Like
+            var likeBtn = document.createElement('button');
+            likeBtn.className = 'message-card__action-btn';
+            if (msg.liked) likeBtn.classList.add('message-card__action-btn--liked');
+            likeBtn.innerHTML = (msg.liked ? '&#10084; ' : '&#9825; ') + (msg.likes_count || 0);
+            likeBtn.addEventListener('click', function() { handleLike(msg.id, likeBtn); });
+            actions.appendChild(likeBtn);
+
+            // Reply
+            var replyBtn = document.createElement('button');
+            replyBtn.className = 'message-card__action-btn';
+            replyBtn.textContent = '回复';
+            replyBtn.addEventListener('click', function() { toggleReplyForm(card, msg.id); });
+            actions.appendChild(replyBtn);
+
+            // Delete (author or admin)
+            var isAuthor = msg.author.id === CURRENT_USER_ID;
+            if (isAuthor || CURRENT_USER_IS_ADMIN) {
+                var delBtn = document.createElement('button');
+                delBtn.className = 'message-card__action-btn';
+                delBtn.textContent = '删除';
+                delBtn.addEventListener('click', function() {
+                    handleDelete(msg.id, isAuthor);
+                });
+                actions.appendChild(delBtn);
+            }
+
+            card.appendChild(actions);
+        }
+
+        // Children
+        if (msg.children && msg.children.length > 0) {
+            var repliesDiv = document.createElement('div');
+            repliesDiv.className = 'message-card__replies';
+            msg.children.forEach(function(child) {
+                repliesDiv.appendChild(renderCard(child, depth + 1));
+            });
+            card.appendChild(repliesDiv);
+        }
+
+        return card;
+    }
+
+    function formatTime(iso) {
+        if (!iso) return '';
+        var d = new Date(iso);
+        var diff = Date.now() - d.getTime();
+        if (diff < 60000) return '刚刚';
+        if (diff < 3600000) return Math.floor(diff / 60000) + '分钟前';
+        if (diff < 86400000) return Math.floor(diff / 3600000) + '小时前';
+        var mm = String(d.getMonth() + 1).padStart(2, '0');
+        var dd = String(d.getDate()).padStart(2, '0');
+        return mm + '-' + dd + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+    }
+
+    // ========== Reply ==========
+    function toggleReplyForm(card, parentId) {
+        var existing = card.querySelector('.message-card__reply-form');
+        if (existing) { existing.remove(); return; }
+
+        var formDiv = document.createElement('div');
+        formDiv.className = 'message-card__reply-form';
+
+        var ta = document.createElement('textarea');
+        ta.maxLength = 500;
+        ta.placeholder = '写下回复…（最多500字）';
+        ta.rows = 2;
+
+        var btnRow = document.createElement('div');
+        btnRow.className = 'message-card__reply-actions';
+
+        var cancelBtn = document.createElement('button');
+        cancelBtn.className = 'button button-secondary';
+        cancelBtn.textContent = '取消';
+        cancelBtn.style.cssText = 'font-size:0.8rem;padding:2px 10px;';
+        cancelBtn.addEventListener('click', function() { formDiv.remove(); });
+
+        var submitReplyBtn = document.createElement('button');
+        submitReplyBtn.className = 'button button-primary';
+        submitReplyBtn.textContent = '回复';
+        submitReplyBtn.style.cssText = 'font-size:0.8rem;padding:2px 10px;';
+        submitReplyBtn.addEventListener('click', function() {
+            var val = ta.value.trim();
+            if (!val) { showToast('请输入回复内容', 'error'); return; }
+            submitReply(val, parentId, submitReplyBtn);
+        });
+
+        btnRow.appendChild(cancelBtn);
+        btnRow.appendChild(submitReplyBtn);
+        formDiv.appendChild(ta);
+        formDiv.appendChild(btnRow);
+        card.appendChild(formDiv);
+        ta.focus();
+    }
+
+    async function submitReply(content, parentId, btn) {
+        btn.disabled = true;
+        var origText = btn.textContent;
+        btn.textContent = '发送中…';
+        try {
+            var data = await api('/message-board/api/messages', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: content, parent_id: parentId, is_anonymous: false })
+            });
+            if (data.code === 200) {
+                showToast(data.message, 'success');
+                loadMessages();
+            } else {
+                showToast(data.message, 'error');
+            }
+        } catch (e) {
+            showToast('网络错误', 'error');
+        }
+        btn.disabled = false;
+        btn.textContent = origText;
+    }
+
+    // ========== Create ==========
+    form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        var content = contentInput.value.trim();
+        if (!content) { showToast('请输入留言内容', 'error'); return; }
+
+        submitBtn.disabled = true;
+        var origText = submitBtn.textContent;
+        submitBtn.textContent = '发布中…';
+        try {
+            var data = await api('/message-board/api/messages', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    content: content,
+                    is_anonymous: anonymousCheck.checked,
+                    parent_id: null
+                })
+            });
+            if (data.code === 200) {
+                showToast(data.message, 'success');
+                contentInput.value = '';
+                anonymousCheck.checked = false;
+                loadMessages();
+            } else {
+                showToast(data.message, 'error');
+            }
+        } catch (e) {
+            showToast('网络错误', 'error');
+        }
+        submitBtn.disabled = false;
+        submitBtn.textContent = origText;
+    });
+
+    // ========== Like ==========
+    async function handleLike(msgId, btn) {
+        try {
+            var data = await api('/message-board/api/messages/' + msgId + '/like', { method: 'POST' });
+            if (data.code === 200) {
+                if (data.liked) {
+                    btn.classList.add('message-card__action-btn--liked');
+                } else {
+                    btn.classList.remove('message-card__action-btn--liked');
+                }
+                btn.innerHTML = (data.liked ? '&#10084; ' : '&#9825; ') + (data.likes_count || 0);
+            } else {
+                showToast(data.message, 'error');
+            }
+        } catch (e) {
+            showToast('网络错误', 'error');
+        }
+    }
+
+    // ========== Delete ==========
+    function handleDelete(msgId, isAuthor) {
+        if (!CURRENT_USER_IS_ADMIN || isAuthor) {
+            if (confirm('确定要删除这条留言吗？')) {
+                doDelete(msgId, null);
+            }
+        } else {
+            var reason = prompt('请输入删除原因（必填）：');
+            if (reason && reason.trim()) {
+                doDelete(msgId, reason.trim());
+            } else if (reason !== null) {
+                showToast('删除原因不能为空', 'error');
+            }
+        }
+    }
+
+    async function doDelete(msgId, reason) {
+        try {
+            var options = {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' }
+            };
+            if (reason) options.body = JSON.stringify({ reason: reason });
+            var data = await api('/message-board/api/messages/' + msgId, options);
+            if (data.code === 200) {
+                showToast(data.message, 'success');
+                loadMessages();
+            } else {
+                showToast(data.message, 'error');
+            }
+        } catch (e) {
+            showToast('网络错误', 'error');
+        }
+    }
+
+    // ========== Init ==========
+    loadMessages();
+})();
+</script>
+{% endblock %}

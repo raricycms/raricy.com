@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}图床管理 - Raricy.com{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ static_url('css/main.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="image-hosting-page">
+    <div class="image-hosting-header">
+        <h1 class="image-hosting-title">图床管理</h1>
+        <p class="image-hosting-subtitle">总存储用量：<strong>{{ total_mb }} MB</strong></p>
+    </div>
+
+    <div class="image-hosting-admin-bar">
+        <form class="image-hosting-admin-bar__search" method="get">
+            <input type="text" name="search" placeholder="搜索用户名或文件名..."
+                   value="{{ search or '' }}" class="image-hosting-admin-bar__input">
+            <button type="submit" class="button-primary-small">搜索</button>
+            {% if search %}
+            <a href="{{ url_for('image.admin') }}" class="button-warning-small">清除</a>
+            {% endif %}
+        </form>
+    </div>
+
+    {% if images %}
+    <div class="image-hosting-admin-table-wrap">
+        <table class="image-hosting-admin-table">
+            <thead>
+                <tr>
+                    <th>预览</th>
+                    <th>文件名</th>
+                    <th>上传者</th>
+                    <th>大小</th>
+                    <th>时间</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for img in images %}
+                <tr id="row-{{ img.id }}">
+                    <td>
+                        <a href="{{ url_for('image.serve_image', image_id=img.id) }}" target="_blank">
+                            <img src="{{ url_for('image.serve_image', image_id=img.id) }}"
+                                 alt="{{ img.filename }}" class="image-hosting-admin-thumb">
+                        </a>
+                    </td>
+                    <td>
+                        <a href="{{ url_for('image.serve_image', image_id=img.id) }}" target="_blank"
+                           class="image-hosting-admin-filename" title="{{ img.filename }}">
+                            {{ img.filename }}
+                        </a>
+                    </td>
+                    <td>{{ img.author_name }}</td>
+                    <td>{{ "%.1f"|format(img.file_size / 1024) }} KB</td>
+                    <td>{{ img.created_at }}</td>
+                    <td>
+                        <button class="button-warning-small"
+                                onclick="hardDelete('{{ img.id }}', '{{ img.filename }}')">
+                            永久删除
+                        </button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if pages > 1 %}
+    <div class="image-hosting-pagination">
+        {% for p in range(1, pages + 1) %}
+        <a href="{{ url_for('image.admin', page=p, search=search) }}"
+           class="image-hosting-pagination__item {% if p == page %}active{% endif %}">
+            {{ p }}
+        </a>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {% else %}
+    <div class="image-hosting-grid__empty">
+        <p>{% if search %}没有匹配的图片{% else %}还没有任何上传{% endif %}</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function hardDelete(imageId, filename) {
+    if (!confirm('确定永久删除 "' + filename + '" 吗？\n此操作不可撤销，将删除文件及记录。')) return;
+    try {
+        const resp = await fetch('{{ url_for("image.admin") }}' + imageId, {
+            method: 'DELETE',
+        });
+        const result = await resp.json();
+        if (result.code === 200) {
+            const row = document.getElementById('row-' + imageId);
+            if (row) row.remove();
+            showToast('已永久删除', 'success');
+        } else {
+            showToast(result.message || '删除失败', 'error');
+        }
+    } catch (e) {
+        showToast('网络错误', 'error');
+    }
+}
+</script>
+{% endblock %}
+
+{% block footer_text %}{% endblock %}

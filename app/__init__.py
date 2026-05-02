@@ -39,6 +39,7 @@ def create_app():
 
     app.jinja_env.globals['static_url'] = static_url
     
+    os.makedirs(app.config.get('IMAGE_UPLOAD_FOLDER', os.path.join(os.getcwd(), 'instance', 'images')), exist_ok=True)
     register_blueprints(app)
     init_extensions(app)
     register_commands(app)

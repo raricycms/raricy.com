@@ -1,0 +1,239 @@
+{% extends "base.html" %}
+{% block title %}图床 - Raricy.com{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ static_url('css/main.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="image-hosting-page">
+    <div class="image-hosting-header">
+        <h1 class="image-hosting-title">图床</h1>
+        <p class="image-hosting-subtitle">上传图片，获取分享链接</p>
+        {% if current_user.is_owner %}
+        <a class="button-warning-small" href="{{ url_for('image.admin') }}" style="margin-top: 12px; display: inline-block;">管理所有图片</a>
+        {% endif %}
+    </div>
+
+    <!-- Quota bar -->
+    <div class="image-hosting-quota">
+        <div class="image-hosting-quota__info">
+            <span>已用 <strong>{{ quota.used_mb }} MB</strong> / {{ quota.limit_mb }} MB</span>
+            <span>{{ quota.usage_percent }}%</span>
+        </div>
+        <div class="image-hosting-quota__bar">
+            <div class="image-hosting-quota__fill {% if quota.usage_percent > 80 %}image-hosting-quota__fill--warn{% endif %}"
+                 style="width: {{ quota.usage_percent }}%"></div>
+        </div>
+    </div>
+
+    <!-- Upload zone -->
+    <div class="image-hosting-upload" id="upload-zone">
+        <div class="image-hosting-upload__inner">
+            <svg class="image-hosting-upload__icon" viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/>
+                <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+            <p class="image-hosting-upload__text">拖拽图片到此处，或点击上传</p>
+            <p class="image-hosting-upload__hint">支持 PNG / JPEG / GIF / WebP / SVG，单文件上限 10 MB</p>
+            <label class="image-hosting-upload__compress">
+                <input type="checkbox" id="compress-toggle" checked> 压缩图片（减小文件体积，轻微损失画质）
+            </label>
+        </div>
+        <input type="file" id="file-input" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml" hidden>
+    </div>
+
+    <!-- Upload progress -->
+    <div class="image-hosting-progress" id="upload-progress" style="display: none;">
+        <div class="image-hosting-progress__bar">
+            <div class="image-hosting-progress__fill" id="progress-fill"></div>
+        </div>
+        <span id="progress-text">上传中...</span>
+    </div>
+
+    <!-- Image grid -->
+    <div class="image-hosting-grid" id="image-grid">
+        {% if images %}
+        {% for img in images %}
+        <div class="image-hosting-card" id="card-{{ img.id }}">
+            <div class="image-hosting-card__preview" onclick="showPreview('{{ url_for('image.serve_image', image_id=img.id) }}', '{{ img.filename }}')">
+                <img src="{{ url_for('image.serve_image', image_id=img.id) }}" alt="{{ img.filename }}" loading="lazy">
+            </div>
+            <div class="image-hosting-card__info">
+                <span class="image-hosting-card__name" title="{{ img.filename }}">{{ img.filename }}</span>
+                <span class="image-hosting-card__size">{{ "%.1f"|format(img.file_size / 1024) }} KB</span>
+            </div>
+            <div class="image-hosting-card__actions">
+                <button class="image-hosting-card__btn" onclick="copyLink('{{ url_for('image.serve_image', image_id=img.id, _external=True) }}', this)" title="复制链接">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                </button>
+                <a class="image-hosting-card__btn" href="{{ url_for('image.serve_image', image_id=img.id) }}" target="_blank" title="新窗口打开">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                </a>
+                <button class="image-hosting-card__btn image-hosting-card__btn--danger" onclick="deleteImage('{{ img.id }}')" title="删除">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                </button>
+            </div>
+        </div>
+        {% endfor %}
+        {% else %}
+        <div class="image-hosting-grid__empty">
+            <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3">
+                <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+            </svg>
+            <p>还没有上传图片</p>
+            <p>点击上方区域开始上传</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Preview modal -->
+<div class="image-hosting-preview" id="preview-modal" style="display: none;" onclick="closePreview()">
+    <div class="image-hosting-preview__content" onclick="event.stopPropagation()">
+        <img id="preview-img" src="" alt="">
+        <div class="image-hosting-preview__info">
+            <span id="preview-name"></span>
+            <div>
+                <button class="button-primary-small" id="preview-copy-btn" onclick="copyPreviewLink()">复制链接</button>
+                {% if current_user.is_owner %}
+                <a class="button-warning-small" href="{{ url_for('image.admin') }}">图片管理</a>
+                {% endif %}
+            </div>
+        </div>
+        <button class="image-hosting-preview__close" onclick="closePreview()">&times;</button>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let previewUrl = '';
+
+function copyLink(url, btn) {
+    navigator.clipboard.writeText(url).then(() => {
+        const orig = btn.innerHTML;
+        btn.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>';
+        setTimeout(() => { btn.innerHTML = orig; }, 1500);
+    });
+}
+
+function copyPreviewLink() {
+    navigator.clipboard.writeText(previewUrl).then(() => {
+        const btn = document.getElementById('preview-copy-btn');
+        btn.textContent = '已复制';
+        setTimeout(() => { btn.textContent = '复制链接'; }, 1500);
+    });
+}
+
+function showPreview(url, name) {
+    previewUrl = url;
+    document.getElementById('preview-img').src = url;
+    document.getElementById('preview-name').textContent = name;
+    document.getElementById('preview-modal').style.display = 'flex';
+}
+
+function closePreview() {
+    document.getElementById('preview-modal').style.display = 'none';
+}
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closePreview();
+});
+
+// Upload handling
+const uploadZone = document.getElementById('upload-zone');
+const fileInput = document.getElementById('file-input');
+const progressEl = document.getElementById('upload-progress');
+const progressFill = document.getElementById('progress-fill');
+const progressText = document.getElementById('progress-text');
+
+uploadZone.addEventListener('click', () => fileInput.click());
+
+uploadZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    uploadZone.classList.add('image-hosting-upload--drag');
+});
+
+uploadZone.addEventListener('dragleave', () => {
+    uploadZone.classList.remove('image-hosting-upload--drag');
+});
+
+uploadZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    uploadZone.classList.remove('image-hosting-upload--drag');
+    const files = e.dataTransfer.files;
+    if (files.length > 0) uploadFile(files[0]);
+});
+
+fileInput.addEventListener('change', () => {
+    if (fileInput.files.length > 0) uploadFile(fileInput.files[0]);
+});
+
+async function uploadFile(file) {
+    const maxSize = 10 * 1024 * 1024;
+    if (file.size > maxSize) {
+        showToast('文件过大，单文件上限 10 MB', 'error');
+        return;
+    }
+
+    const compress = document.getElementById('compress-toggle').checked ? '1' : '0';
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('compress', compress);
+
+    progressEl.style.display = 'block';
+    progressFill.style.width = '0%';
+    progressText.textContent = '上传中...';
+
+    try {
+        const resp = await fetch('{{ url_for("image.upload") }}', {
+            method: 'POST',
+            body: formData,
+        });
+        const result = await resp.json();
+
+        if (result.code === 200) {
+            progressFill.style.width = '100%';
+            progressText.textContent = '上传成功';
+            setTimeout(() => {
+                progressEl.style.display = 'none';
+                location.reload();
+            }, 500);
+        } else {
+            progressEl.style.display = 'none';
+            showToast(result.message || '上传失败', 'error');
+        }
+    } catch (e) {
+        progressEl.style.display = 'none';
+        showToast('网络错误，请重试', 'error');
+    }
+}
+
+async function deleteImage(imageId) {
+    if (!confirm('确定删除这张图片吗？')) return;
+    try {
+        const resp = await fetch('{{ url_for("image.menu") }}' + imageId, {
+            method: 'DELETE',
+        });
+        const result = await resp.json();
+        if (result.code === 200) {
+            const card = document.getElementById('card-' + imageId);
+            if (card) card.remove();
+            showToast('已删除', 'success');
+            // Check if grid is empty
+            const grid = document.getElementById('image-grid');
+            const cards = grid.querySelectorAll('.image-hosting-card');
+            if (cards.length === 0) location.reload();
+        } else {
+            showToast(result.message || '删除失败', 'error');
+        }
+    } catch (e) {
+        showToast('网络错误', 'error');
+    }
+}
+</script>
+{% endblock %}
+
+{% block footer_text %}{% endblock %}

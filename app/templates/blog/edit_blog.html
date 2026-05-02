@@ -131,6 +131,11 @@
                         'undo', 'redo', 'preview', 'export'
                     ],
                     counter: { enable: true, type: 'text' },
+                    upload: {
+                        url: '{{ url_for("image.upload") }}',
+                        accept: 'image/*',
+                        max: 10 * 1024 * 1024,
+                    },
                     {% if blog %}
                     cache: { enable: false },
                     {% else %}

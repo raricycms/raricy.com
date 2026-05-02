@@ -19,6 +19,8 @@ class Config:
     PREFERRED_URL_SCHEME = os.getenv('PREFERRED_URL_SCHEME', 'http')
     # For flask_sitemap; when set, overrides the scheme used in sitemap URLs
     SITEMAP_URL_SCHEME = os.getenv('SITEMAP_URL_SCHEME')
+    IMAGE_UPLOAD_FOLDER = os.path.join(os.getcwd(), 'instance', 'images')
+    MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10MB
 
 
 class DevelopmentConfig(Config):

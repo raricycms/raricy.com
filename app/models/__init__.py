@@ -6,6 +6,7 @@ from .blog import Blog, BlogContent, BlogLike
 from .comment import BlogComment, CommentLike
 from .notification import Notification
 from .clipboard import ClipBoard, ClipText
+from .image import ImageHosting
 
 __all__ = [
     'db',
@@ -13,7 +14,8 @@ __all__ = [
     'Category',
     'Blog', 'BlogContent', 'BlogLike',
     'BlogComment', 'CommentLike',
-    'Notification', 'ClipBoard', 'ClipText'
+    'Notification', 'ClipBoard', 'ClipText',
+    'ImageHosting',
 ]
 
 
