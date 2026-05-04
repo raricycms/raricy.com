@@ -1,375 +1,177 @@
 {% extends "base.html" %}
-{% block title %}
-{{ title }} - 互动小说阅读
-{% endblock %}
 
-{% block extra_css %}
-<style>
-    body { font-family: sans-serif; padding: 80px 0px 0px; background: #f5f5f5; }
-    #game { max-width: 600px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
-    #output { min-height: 150px; margin-bottom: 20px; }
-    #choices { display: flex; flex-direction: column; gap: 10px; }
-    #choices button { padding: 12px; font-size: 16px; border: none; border-radius: 8px; background: #007bff; color: white; cursor: pointer; }
-    #choices button:hover { background: #0056b3; }
-    #log { margin-top: 20px; padding: 10px; background: #eee; border-radius: 6px; font-size: 14px; }
-    
-    /* 可折叠段落样式 */
-    .output-segment { margin-bottom: 8px; border: 1px solid #ddd; border-radius: 6px; overflow: hidden; }
-    .segment-header { 
-      background: #f8f9fa; 
-      padding: 8px 12px; 
-      cursor: pointer; 
-      display: flex; 
-      justify-content: space-between; 
-      align-items: center;
-      border-bottom: 1px solid #ddd;
-      transition: background-color 0.2s;
-    }
-    .segment-header:hover { background: #e9ecef; }
-    .segment-title { font-weight: bold; font-size: 14px; color: #495057; }
-    .toggle-icon { font-size: 12px; color: #6c757d; transition: transform 0.2s; }
-    .segment-content { 
-      padding: 12px; 
-      background: white;
-      transition: max-height 0.3s ease-out;
-    }
-    .segment-content.collapsed { 
-      max-height: 0; 
-      padding: 0 12px; 
-      overflow: hidden; 
-    }
-    
-    /* Markdown样式 */
-    .segment-content h1, .segment-content h2, .segment-content h3, 
-    .segment-content h4, .segment-content h5, .segment-content h6 {
-      margin: 16px 0 8px 0;
-      color: #333;
-    }
-    .segment-content h1 { font-size: 1.8em; border-bottom: 2px solid #eee; padding-bottom: 8px; }
-    .segment-content h2 { font-size: 1.5em; border-bottom: 1px solid #eee; padding-bottom: 6px; }
-    .segment-content h3 { font-size: 1.3em; }
-    .segment-content p { margin: 8px 0; line-height: 1.6; }
-    .segment-content strong { font-weight: bold; color: #2c3e50; }
-    .segment-content em { font-style: italic; color: #7f8c8d; }
-    .segment-content code { 
-      background: #f8f9fa; 
-      padding: 2px 4px; 
-      border-radius: 3px; 
-      font-family: 'Courier New', monospace; 
-      font-size: 0.9em;
-    }
-    .segment-content pre { 
-      background: #f8f9fa; 
-      padding: 12px; 
-      border-radius: 6px; 
-      overflow-x: auto; 
-      margin: 12px 0;
-      border-left: 4px solid #007bff;
-    }
-    .segment-content pre code { 
-      background: none; 
-      padding: 0; 
-    }
-    .segment-content blockquote { 
-      border-left: 4px solid #007bff; 
-      margin: 12px 0; 
-      padding: 8px 16px; 
-      background: #f8f9fa; 
-      color: #6c757d;
-    }
-    .segment-content ul, .segment-content ol { 
-      margin: 8px 0; 
-      padding-left: 24px; 
-    }
-    .segment-content li { 
-      margin: 4px 0; 
-      line-height: 1.5; 
-    }
-    .segment-content a { 
-      color: #007bff; 
-      text-decoration: none; 
-    }
-    .segment-content a:hover { 
-      text-decoration: underline; 
-    }
-    .segment-content table { 
-      border-collapse: collapse; 
-      width: 100%; 
-      margin: 12px 0; 
-    }
-    .segment-content th, .segment-content td { 
-      border: 1px solid #dee2e6; 
-      padding: 8px 12px; 
-      text-align: left; 
-    }
-    .segment-content th { 
-      background: #f8f9fa; 
-      font-weight: bold; 
-    }
-  </style>
-{% endblock %}
+{% block title %}{{ title }} - 互动小说{% endblock %}
 
 {% block content %}
-<div id="game">
-    <h2>{{title}}</h2>
-    <div id="output"></div>
-    <div id="choices"></div>
-    <div id="log"></div>
-    <!-- 隐藏的story内容 -->
-    <script type="application/json" id="story-content">{{ content|tojson|safe }}</script>
+<div class="story-cattca">
+  <div class="story-cattca__header">
+    <h2>{{ title }}</h2>
   </div>
+
+  <div class="story-cattca__game">
+    <div class="story-cattca__output" id="output"></div>
+    <div class="story-cattca__choices" id="choices"></div>
+    <div class="story-cattca__log" id="log"></div>
+  </div>
+</div>
+
+<script type="application/json" id="story-content">{{ content|tojson|safe }}</script>
 {% endblock %}
 
 {% block extra_js %}
-<!-- 引入marked.js用于markdown渲染 -->
-<script src="{{url_for('static', filename='js/marked.min.js')}}"></script>
+<script src="{{ url_for('static', filename='js/marked.min.js') }}"></script>
 <script>
   if (!window.marked) {
     document.write('<script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"><\\/script>');
   }
 </script>
 <script type="module">
-    import { CattcaInterpreter } from "{{url_for('static', filename='js/cattca.js')}}";
-    
-    // 配置marked.js
+  import { CattcaInterpreter } from "{{ url_for('static', filename='js/cattca.js') }}";
+
+  try {
+    if (typeof marked.setOptions === 'function') {
+      marked.setOptions({ breaks: true, gfm: true, sanitize: false, smartLists: true, smartypants: false });
+    } else if (typeof marked.use === 'function') {
+      marked.use({ breaks: true, gfm: true, sanitize: false, smartLists: true, smartypants: false });
+    }
+  } catch (e) { console.warn('marked config error:', e); }
+
+  var outputDiv = document.querySelector('#output');
+  var logDiv = document.querySelector('#log');
+  var choicesDiv = document.querySelector('#choices');
+
+  var currentSegment = null;
+  var segmentCount = 0;
+
+  function renderMarkdown(txt) {
     try {
-        if (typeof marked.setOptions === 'function') {
-            marked.setOptions({
-                breaks: true,
-                gfm: true,
-                sanitize: false,
-                smartLists: true,
-                smartypants: false
-            });
-        } else if (typeof marked.use === 'function') {
-            // 新版本API
-            marked.use({
-                breaks: true,
-                gfm: true,
-                sanitize: false,
-                smartLists: true,
-                smartypants: false
-            });
+      if (typeof marked.parse === 'function') return marked.parse(txt);
+      if (typeof marked === 'function') return marked(txt);
+      throw new Error('marked API not found');
+    } catch (e) {
+      console.error('Markdown error:', e);
+      return txt.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\r\n|\n/g, '<br>');
+    }
+  }
+
+  function appendOutput(txt) {
+    var html = renderMarkdown(txt);
+    if (!currentSegment) {
+      currentSegment = document.createElement('div');
+      currentSegment.className = 'story-cattca__segment';
+
+      var header = document.createElement('div');
+      header.className = 'story-cattca__segment-header';
+      header.onclick = function() { toggleSegment(header); };
+
+      var title = document.createElement('span');
+      title.className = 'story-cattca__segment-title';
+      title.textContent = '段落 ' + (++segmentCount);
+
+      var icon = document.createElement('span');
+      icon.className = 'story-cattca__segment-toggle';
+      icon.textContent = '▼';
+
+      header.appendChild(title);
+      header.appendChild(icon);
+
+      var body = document.createElement('div');
+      body.className = 'story-cattca__segment-body';
+      body.innerHTML = html;
+
+      currentSegment.appendChild(header);
+      currentSegment.appendChild(body);
+      outputDiv.appendChild(currentSegment);
+
+      setTimeout(function() {
+        if (currentSegment) {
+          currentSegment.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
-    } catch (error) {
-        console.warn('Failed to configure marked.js:', error);
+      }, 10);
+    } else {
+      var body = currentSegment.querySelector('.story-cattca__segment-body');
+      body.innerHTML = body.innerHTML + html;
     }
+  }
 
-    const outputDiv = document.querySelector('#output');
-    const logDiv = document.querySelector('#log');
-    const choicesDiv = document.querySelector('#choices');
-
-    // 可折叠输出系统
-    let currentSegment = null;
-    let segmentCount = 0;
-
-    function appendOutput(txt) {
-      // 使用marked.js渲染markdown，添加错误处理
-      let htmlContent;
-      try {
-        // 尝试新的API
-        if (typeof marked.parse === 'function') {
-          htmlContent = marked.parse(txt);
-        } else if (typeof marked === 'function') {
-          htmlContent = marked(txt);
-        } else {
-          throw new Error('marked API not found');
-        }
-      } catch (error) {
-        console.error('Markdown parsing error:', error);
-        // 如果markdown解析失败，安全转义并保留换行符
-        const escaped = txt
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;');
-        htmlContent = escaped.replace(/\r\n|\n/g, '<br>');
-      }
-      
-      if (!currentSegment) {
-        // 创建新的段落
-        currentSegment = document.createElement('div');
-        currentSegment.className = 'output-segment';
-        
-        // 创建段落头部
-        const header = document.createElement('div');
-        header.className = 'segment-header';
-        header.onclick = () => toggleSegment(header);
-        
-        const title = document.createElement('span');
-        title.className = 'segment-title';
-        title.textContent = `段落 ${++segmentCount}`;
-        
-        const icon = document.createElement('span');
-        icon.className = 'toggle-icon';
-        icon.textContent = '▼';
-        
-        header.appendChild(title);
-        header.appendChild(icon);
-        
-        // 创建内容区域
-        const content = document.createElement('div');
-        content.className = 'segment-content';
-        // 使用textContent先设置，然后安全地设置innerHTML
-        content.textContent = '';
-        try {
-          content.innerHTML = htmlContent;
-        } catch (error) {
-          console.error('HTML insertion error:', error);
-          content.textContent = txt;
-        }
-        
-        currentSegment.appendChild(header);
-        currentSegment.appendChild(content);
-        outputDiv.appendChild(currentSegment);
-        
-        // 自动滚动到新段落，稍微往上一点以显示段落标题
-        setTimeout(() => {
-          const rect = currentSegment.getBoundingClientRect();
-          const containerRect = outputDiv.getBoundingClientRect();
-          const scrollTop = outputDiv.scrollTop + (rect.top - containerRect.top) - 20;
-          outputDiv.scrollTo({ top: scrollTop, behavior: 'smooth' });
-        }, 10);
-      } else {
-        // 追加到当前段落
-        const contentDiv = currentSegment.querySelector('.segment-content');
-        // 获取当前内容并追加新的markdown内容
-        const currentHtml = contentDiv.innerHTML;
-        let newHtml;
-        try {
-          // 尝试新的API
-          if (typeof marked.parse === 'function') {
-            newHtml = marked.parse(txt);
-          } else if (typeof marked === 'function') {
-            newHtml = marked(txt);
-          } else {
-            throw new Error('marked API not found');
-          }
-        } catch (error) {
-          console.error('Markdown parsing error:', error);
-          const escaped = txt
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;');
-          newHtml = escaped.replace(/\r\n|\n/g, '<br>');
-        }
-        try {
-          contentDiv.innerHTML = currentHtml + newHtml;
-        } catch (error) {
-          console.error('HTML insertion error:', error);
-          contentDiv.textContent = contentDiv.textContent + txt;
-        }
-      }
+  function startNewSegment() {
+    if (currentSegment) {
+      currentSegment.querySelector('.story-cattca__segment-body').classList.add('collapsed');
     }
+    currentSegment = null;
+  }
 
-    function startNewSegment() {
-      // 将当前段落标记为可折叠（如果有当前段落）
-      if (currentSegment) {
-        const content = currentSegment.querySelector('.segment-content');
-        content.classList.add('collapsed');
-      }
-      currentSegment = null;
+  window.toggleSegment = function(header) {
+    var segment = header.parentElement;
+    var body = segment.querySelector('.story-cattca__segment-body');
+    var icon = header.querySelector('.story-cattca__segment-toggle');
+    if (body.classList.contains('collapsed')) {
+      body.classList.remove('collapsed');
+      icon.textContent = '▲';
+    } else {
+      body.classList.add('collapsed');
+      icon.textContent = '▼';
     }
+  };
 
-    function toggleSegment(header) {
-      const segment = header.parentElement;
-      const content = segment.querySelector('.segment-content');
-      const icon = header.querySelector('.toggle-icon');
-      
-      if (content.classList.contains('collapsed')) {
-        content.classList.remove('collapsed');
-        icon.textContent = '▲';
-      } else {
-        content.classList.add('collapsed');
-        icon.textContent = '▼';
-      }
-    }
+  function appendLog(txt) {
+    logDiv.textContent += txt + '\n';
+  }
 
-    // 将函数暴露到全局作用域
-    window.toggleSegment = toggleSegment;
-
-    function appendLog(txt) {
-      logDiv.innerText += txt + "\n";
-    }
-
-    // 异步等待用户选择
-    function getChoice(options) {
-      return new Promise(resolve => {
-        choicesDiv.innerHTML = "";
-        options.forEach(opt => {
-          const btn = document.createElement("button");
-          btn.innerText = opt;
-          btn.onclick = () => {
-            choicesDiv.innerHTML = "";
-            // 选择完成后开始新段落
-            startNewSegment();
-            resolve(opt);
-          };
-          choicesDiv.appendChild(btn);
-        });
-      });
-    }
-
-    // 输入文本：使用非阻塞的输入框
-    async function getInput(promptText) {
-      return new Promise(resolve => {
-        // 创建输入框
-        const inputDiv = document.createElement('div');
-        inputDiv.style.cssText = 'margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 6px; border: 1px solid #dee2e6;';
-        
-        const label = document.createElement('label');
-        label.textContent = promptText || '请输入:';
-        label.style.cssText = 'display: block; margin-bottom: 5px; font-weight: bold;';
-        
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.style.cssText = 'width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 4px; font-size: 16px;';
-        
-        const button = document.createElement('button');
-        button.textContent = '确定';
-        button.style.cssText = 'margin-top: 5px; padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;';
-        
-        inputDiv.appendChild(label);
-        inputDiv.appendChild(input);
-        inputDiv.appendChild(button);
-        
-        // 添加到输出区域
-        outputDiv.appendChild(inputDiv);
-        
-        // 自动聚焦输入框
-        input.focus();
-        
-        // 处理输入
-        const handleSubmit = () => {
-          const value = input.value;
-          outputDiv.removeChild(inputDiv);
-          // 输入完成后开始新段落
+  function getChoice(options) {
+    return new Promise(function(resolve) {
+      choicesDiv.innerHTML = '';
+      options.forEach(function(opt) {
+        var btn = document.createElement('button');
+        btn.textContent = opt;
+        btn.onclick = function() {
+          choicesDiv.innerHTML = '';
           startNewSegment();
-          resolve(value);
+          resolve(opt);
         };
-        
-        button.onclick = handleSubmit;
-        input.onkeypress = (e) => {
-          if (e.key === 'Enter') {
-            handleSubmit();
-          }
-        };
+        choicesDiv.appendChild(btn);
       });
-    }
+    });
+  }
 
-    const interpreter = new CattcaInterpreter(
-      appendOutput,
-      appendLog,
-      getInput,
-      getChoice
-    );
+  function getInput(promptText) {
+    return new Promise(function(resolve) {
+      var area = document.createElement('div');
+      area.className = 'story-cattca__input-area';
 
-    // 从隐藏的script标签中读取story内容
-    const storyElement = document.getElementById('story-content');
-    const story = storyElement ? JSON.parse(storyElement.textContent) : '';
-    console.log(story)
+      var label = document.createElement('label');
+      label.textContent = promptText || '请输入:';
 
-    // 加载并运行
-    interpreter.load(story);
-    interpreter.run();
-  </script>
+      var input = document.createElement('input');
+      input.type = 'text';
+
+      var btn = document.createElement('button');
+      btn.textContent = '确定';
+
+      area.appendChild(label);
+      area.appendChild(input);
+      area.appendChild(btn);
+      outputDiv.appendChild(area);
+      input.focus();
+
+      var handleSubmit = function() {
+        var value = input.value;
+        outputDiv.removeChild(area);
+        startNewSegment();
+        resolve(value);
+      };
+
+      btn.onclick = handleSubmit;
+      input.onkeypress = function(e) {
+        if (e.key === 'Enter') handleSubmit();
+      };
+    });
+  }
+
+  var interpreter = new CattcaInterpreter(appendOutput, appendLog, getInput, getChoice);
+  var storyEl = document.getElementById('story-content');
+  var story = storyEl ? JSON.parse(storyEl.textContent) : '';
+  interpreter.load(story);
+  interpreter.run();
+</script>
 {% endblock %}

@@ -694,6 +694,8 @@
       this.d2 = opts.d2 || 4;
       this.gridScale = opts.gridScale || 40;
       this.dark = opts.darkMode || false;
+      this.minScale = 20;
+      this.maxScale = 44;
 
       this.state = createState(this.solidIdx, this.d1, this.d2);
       generatePuzzle(this.state);
@@ -702,10 +704,27 @@
       this.animStart = 0;
       this.onStatus = opts.onStatus || (() => {});
 
+      this._autoScale();
       this._resizeCanvas();
       this._draw(-1);
       this._emitStatus();
       this._bindEvents();
+    }
+
+    _autoScale() {
+      const container = this.canvas.closest('.container');
+      const availWidth = container ? container.clientWidth - 32 : window.innerWidth - 32;
+      const availHeight = window.innerHeight * 0.55;
+
+      const bb = findBBox(this.state);
+      const gridW = bb.r - bb.l + 2 * this.state.solid.border;
+      const gridH = bb.d - bb.u + 2 * this.state.solid.border;
+
+      const sW = availWidth / gridW;
+      const sH = availHeight / gridH;
+      const optimal = Math.floor(Math.min(sW, sH));
+
+      this.gridScale = Math.max(this.minScale, Math.min(this.maxScale, optimal));
     }
 
     _resizeCanvas() {
@@ -850,9 +869,16 @@
       this.state = createState(this.solidIdx, this.d1, this.d2);
       generatePuzzle(this.state);
       this.animating = false;
+      this._autoScale();
       this._resizeCanvas();
       this._draw(-1);
       this._emitStatus();
+    }
+
+    autoScale() {
+      this._autoScale();
+      this._resizeCanvas();
+      this._draw(-1);
     }
 
     setDarkMode(dark) {

@@ -59,7 +59,6 @@
     let game = new CubeGame(canvas, {
         solidType: 'CUBE',
         d1: 4, d2: 4,
-        gridScale: 36,
         darkMode: isDark,
         onStatus: function(s) {
             if (s.completed) {
@@ -92,6 +91,14 @@
             }, 50);
         });
     }
+
+    let resizeTimer;
+    window.addEventListener('resize', function() {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(function() {
+            game.autoScale();
+        }, 150);
+    });
 })();
 </script>
 {% endblock %}

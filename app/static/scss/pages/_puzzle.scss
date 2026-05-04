@@ -133,7 +133,8 @@
     border: 1px solid var(--color-border);
     border-radius: $radius-large;
     background: var(--color-background-card);
-    display: inline-block;
+    display: flex;
+    justify-content: center;
     overflow: hidden;
     max-width: 100%;
 }
@@ -175,7 +176,6 @@
     }
 
     .puzzle-canvas-wrap {
-        display: block;
         border-radius: 0;
         border-left: none;
         border-right: none;
