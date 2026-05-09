@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+{% block title %}
+{{ vote.title }} - 投票箱 - Raricy.com
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.vote-detail { max-width: 720px; margin: 0 auto; padding: 2rem 0; }
+.vote-detail__header { margin-bottom: 1.5rem; }
+.vote-detail__title { font-size: 1.75rem; font-weight: 700; color: var(--color-text-primary); margin-bottom: 0.5rem; }
+.vote-detail__meta { font-size: 0.875rem; color: var(--color-text-secondary); display: flex; gap: 1rem; flex-wrap: wrap; align-items: center; }
+.vote-detail__meta .badge { padding: 0.2rem 0.6rem; border-radius: 0.25rem; font-size: 0.75rem; }
+.badge-locked { background: var(--color-warning-secondary); color: var(--color-warning-primary); }
+.badge-voted { background: var(--color-success-secondary); color: var(--color-success-primary); }
+.vote-detail__total { margin-bottom: 1rem; font-size: 0.875rem; color: var(--color-text-secondary); }
+.vote-detail__options { display: flex; flex-direction: column; gap: 0.75rem; }
+.vote-detail__option { border: 1px solid var(--color-border); border-radius: 0.5rem; padding: 1rem; background: var(--color-background-card); cursor: pointer; transition: all 0.2s ease; position: relative; overflow: hidden; }
+.vote-detail__option:hover { border-color: var(--color-brand-primary); }
+.vote-detail__option--selected { border-color: var(--color-brand-primary); background: var(--color-brand-secondary); }
+.vote-detail__option--voted { border-color: var(--color-success-primary); background: var(--color-success-secondary); }
+.vote-detail__option--disabled { cursor: default; }
+.vote-detail__option--disabled:hover { border-color: var(--color-border); }
+.vote-detail__bar { position: absolute; top: 0; left: 0; height: 100%; background: var(--color-brand-secondary); border-radius: 0.5rem; z-index: 0; transition: width 0.5s ease; }
+.vote-detail__option-content { position: relative; z-index: 1; display: flex; justify-content: space-between; align-items: center; }
+.vote-detail__option-label { font-weight: 500; color: var(--color-text-primary); }
+.vote-detail__option-stats { font-size: 0.875rem; color: var(--color-text-secondary); white-space: nowrap; margin-left: 0.5rem; }
+.vote-detail__actions { margin-top: 1.5rem; display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.vote-detail__actions .btn { padding: 0.6rem 1.25rem; border-radius: 0.375rem; font-size: 0.875rem; font-weight: 500; cursor: pointer; border: none; transition: all 0.2s ease; text-decoration: none; display: inline-block; }
+.btn-primary { background: var(--color-brand-primary); color: #fff; }
+.btn-primary:hover { opacity: 0.9; }
+.btn-outline { background: transparent; color: var(--color-text-primary); border: 1px solid var(--color-border) !important; }
+.btn-outline:hover { border-color: var(--color-brand-primary) !important; color: var(--color-brand-primary); }
+.btn-danger { background: var(--color-warning-secondary); color: var(--color-warning-primary); }
+.btn-danger:hover { opacity: 0.9; }
+.vote-detail__voters { margin-top: 1rem; }
+.vote-detail__voters-toggle { background: none; border: none; color: var(--color-brand-primary); cursor: pointer; font-size: 0.875rem; padding: 0; }
+.vote-detail__voters-toggle:hover { text-decoration: underline; }
+.vote-detail__voters-list { margin-top: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.vote-detail__voter-group { font-size: 0.875rem; color: var(--color-text-secondary); }
+.vote-detail__voter-group strong { color: var(--color-text-primary); }
+.vote-detail__id-row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; font-size: 0.85rem; color: var(--color-text-secondary); }
+.vote-detail__id-row code { background: var(--color-background-page); border: 1px solid var(--color-border); border-radius: 0.25rem; padding: 0.2rem 0.5rem; font-size: 0.85rem; font-family: monospace; color: var(--color-text-primary); }
+.vote-detail__copy-btn { padding: 0.2rem 0.6rem; background: var(--color-brand-secondary); color: var(--color-brand-primary); border: 1px solid transparent; border-radius: 0.25rem; font-size: 0.75rem; cursor: pointer; transition: all 0.15s ease; }
+.vote-detail__copy-btn:hover { background: var(--color-brand-primary); color: #fff; }
+@media (max-width: 768px) {
+    .vote-detail { padding: 1rem; }
+    .vote-detail__title { font-size: 1.375rem; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="vote-detail" data-vote-id="{{ vote.id }}">
+    <div class="vote-detail__header">
+        <h1 class="vote-detail__title">{{ vote.title }}</h1>
+        <div class="vote-detail__id-row">
+            <span>ID：</span><code>{{ vote.id }}</code>
+            <button class="vote-detail__copy-btn" onclick="copyVoteId()">复制</button>
+        </div>
+        <div class="vote-detail__meta">
+            <span>发起者：{{ vote.author_name }}</span>
+            <span>{{ vote.created_at[:10] }}</span>
+            {% if vote.is_locked %}<span class="badge badge-locked">已锁定</span>{% endif %}
+            {% if vote.user_voted %}<span class="badge badge-voted">已投票</span>{% endif %}
+        </div>
+    </div>
+
+    {% if vote.is_locked or vote.user_voted %}
+    <div class="vote-detail__total">共 {{ vote.total_votes }} 票</div>
+    <div class="vote-detail__options" id="resultsContainer">
+        {% for opt in vote.options %}
+        <div class="vote-detail__option vote-detail__option--disabled{% if opt.id == vote.user_voted %} vote-detail__option--voted{% endif %}">
+            <div class="vote-detail__bar" style="width: {{ opt.percentage }}%"></div>
+            <div class="vote-detail__option-content">
+                <span class="vote-detail__option-label">{{ opt.label }}</span>
+                <span class="vote-detail__option-stats">{{ opt.count }} 票 &middot; {{ opt.percentage }}%</span>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="vote-detail__options" id="votingContainer">
+        {% for opt in vote.options %}
+        <div class="vote-detail__option" data-option-id="{{ opt.id }}" onclick="selectOption(this, {{ opt.id }})">
+            <div class="vote-detail__option-content">
+                <span class="vote-detail__option-label">{{ opt.label }}</span>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    <div class="vote-detail__actions" id="votingActions">
+        <button class="btn btn-primary" id="submitVote" disabled onclick="castVote()">投票</button>
+    </div>
+    {% endif %}
+
+    {% if vote.is_creator %}
+    <div class="vote-detail__actions">
+        <button class="btn btn-outline" onclick="history.back()">返回上页</button>
+        {% if vote.is_locked %}
+        <button class="btn btn-outline" onclick="unlockVote()">解锁投票</button>
+        {% else %}
+        <button class="btn btn-outline" onclick="lockVote()">锁定投票</button>
+        {% endif %}
+        <button class="btn btn-danger" onclick="deleteVote()">删除投票</button>
+    </div>
+    <div class="vote-detail__voters">
+        <button class="vote-detail__voters-toggle" id="votersToggle" onclick="toggleVoters()">查看详细投票情况</button>
+        <div class="vote-detail__voters-list" id="votersList" style="display: none;">
+            {% for opt in vote.options %}
+            <div class="vote-detail__voter-group">
+                <strong>{{ opt.label }}</strong>（{{ opt.count }} 票）：
+                {% if opt.voters %}
+                    {{ opt.voters | join('、') }}
+                {% else %}
+                    暂无投票
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% else %}
+    <div class="vote-detail__actions">
+        <button class="btn btn-outline" onclick="history.back()">返回上页</button>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function copyVoteId() {
+        const id = '{{ vote.id }}';
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(id).then(() => {
+                const btn = document.querySelector('.vote-detail__copy-btn');
+                btn.textContent = '已复制';
+                setTimeout(() => { btn.textContent = '复制'; }, 1500);
+            }).catch(() => {
+                alert('复制失败，请手动复制：' + id);
+            });
+        } else {
+            alert('投票ID：' + id);
+        }
+    }
+
+    let selectedOptionId = null;
+
+    function selectOption(el, optionId) {
+        document.querySelectorAll('#votingContainer .vote-detail__option').forEach(o => o.classList.remove('vote-detail__option--selected'));
+        el.classList.add('vote-detail__option--selected');
+        selectedOptionId = optionId;
+        document.getElementById('submitVote').disabled = false;
+    }
+
+    async function castVote() {
+        if (!selectedOptionId) return;
+        const btn = document.getElementById('submitVote');
+        btn.disabled = true;
+        btn.textContent = '投票中……';
+        try {
+            const resp = await fetch(`/vote/{{ vote.id }}/cast`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ option_id: selectedOptionId })
+            });
+            const result = await resp.json();
+            if (resp.ok && result.code === 200) {
+                location.reload();
+            } else {
+                alert('投票失败：' + (result.message || '未知错误'));
+            }
+        } catch (err) {
+            console.error(err);
+            alert('出错了，请稍后再试');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '投票';
+        }
+    }
+
+    async function lockVote() {
+        if (!confirm('确定要锁定此投票吗？锁定后所有人都不能投票，但可以看到结果。')) return;
+        await fetch('/vote/{{ vote.id }}/lock', { method: 'POST' });
+        location.reload();
+    }
+
+    async function unlockVote() {
+        if (!confirm('确定要解锁此投票吗？')) return;
+        await fetch('/vote/{{ vote.id }}/unlock', { method: 'POST' });
+        location.reload();
+    }
+
+    async function deleteVote() {
+        if (!confirm('确定要删除此投票吗？此操作不可恢复。')) return;
+        const resp = await fetch('/vote/{{ vote.id }}', { method: 'DELETE' });
+        const result = await resp.json();
+        if (resp.ok) {
+            window.location.href = '/vote/';
+        } else {
+            alert('删除失败：' + (result.message || '未知错误'));
+        }
+    }
+
+    function toggleVoters() {
+        const list = document.getElementById('votersList');
+        const toggle = document.getElementById('votersToggle');
+        if (list.style.display === 'none') {
+            list.style.display = 'flex';
+            toggle.textContent = '收起详细投票情况';
+        } else {
+            list.style.display = 'none';
+            toggle.textContent = '查看详细投票情况';
+        }
+    }
+</script>
+{% endblock %}
+
+{% block footer_text %}
+{% endblock %}

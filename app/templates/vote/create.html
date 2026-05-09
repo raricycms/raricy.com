@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}
+创建投票 - Raricy.com
+{% endblock %}
+
+{% block extra_css %}
+{% endblock %}
+
+{% block content %}
+<div class="vote-page">
+    <h1 class="vote-title">创建投票</h1>
+
+    <div class="vote-form">
+        <form id="createForm">
+            <div class="vote-form__group">
+                <label for="title">投票标题 <span class="vote-form__hint">（1-200字）</span></label>
+                <input type="text" id="title" name="title" placeholder="请输入投票标题" maxlength="200" required>
+            </div>
+
+            <div class="vote-form__group">
+                <label>投票选项 <span class="vote-form__hint">（2-10个选项，每个1-200字）</span></label>
+                <div class="vote-form__options" id="optionsContainer">
+                    <div class="vote-form__option-row">
+                        <input type="text" class="vote-option-input" placeholder="选项 1" maxlength="200" required>
+                        <button type="button" class="vote-form__remove-option" title="移除">&times;</button>
+                    </div>
+                    <div class="vote-form__option-row">
+                        <input type="text" class="vote-option-input" placeholder="选项 2" maxlength="200" required>
+                        <button type="button" class="vote-form__remove-option" title="移除">&times;</button>
+                    </div>
+                </div>
+                <button type="button" class="vote-form__add-option" id="addOption">+ 添加选项</button>
+            </div>
+
+            <button type="submit" class="vote-form__submit">创建投票</button>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const MAX_OPTIONS = 10;
+    const MIN_OPTIONS = 2;
+
+    function updateRemoveButtons() {
+        const rows = document.querySelectorAll('.vote-form__option-row');
+        rows.forEach(row => {
+            const btn = row.querySelector('.vote-form__remove-option');
+            btn.style.display = rows.length <= MIN_OPTIONS ? 'none' : '';
+        });
+    }
+
+    function getOptions() {
+        return [...document.querySelectorAll('.vote-option-input')]
+            .map(input => input.value.trim())
+            .filter(v => v !== '');
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        updateRemoveButtons();
+
+        document.getElementById('addOption').addEventListener('click', () => {
+            const container = document.getElementById('optionsContainer');
+            const count = container.querySelectorAll('.vote-form__option-row').length;
+            if (count >= MAX_OPTIONS) {
+                alert('最多只能添加10个选项');
+                return;
+            }
+            const row = document.createElement('div');
+            row.className = 'vote-form__option-row';
+            row.innerHTML = `
+                <input type="text" class="vote-option-input" placeholder="选项 ${count + 1}" maxlength="200" required>
+                <button type="button" class="vote-form__remove-option" title="移除">&times;</button>
+            `;
+            row.querySelector('.vote-form__remove-option').addEventListener('click', () => {
+                row.remove();
+                updateRemoveButtons();
+            });
+            container.appendChild(row);
+            updateRemoveButtons();
+            row.querySelector('input').focus();
+        });
+
+        document.querySelectorAll('.vote-form__remove-option').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const row = btn.closest('.vote-form__option-row');
+                row.remove();
+                updateRemoveButtons();
+            });
+        });
+
+        document.getElementById('createForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const title = document.getElementById('title').value.trim();
+            const options = getOptions();
+
+            if (!title) { alert('请输入投票标题'); return; }
+            if (options.length < MIN_OPTIONS) { alert(`至少需要${MIN_OPTIONS}个选项`); return; }
+            if (options.length > MAX_OPTIONS) { alert(`最多只能有${MAX_OPTIONS}个选项`); return; }
+
+            const submitBtn = document.querySelector('.vote-form__submit');
+            submitBtn.disabled = true;
+            submitBtn.textContent = '创建中……';
+
+            try {
+                const resp = await fetch('/vote/create', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title, options })
+                });
+                const result = await resp.json();
+                if (resp.ok && result.code === 200) {
+                    window.location.href = '/vote/' + result.data.id;
+                } else {
+                    alert('创建失败：' + (result.message || '未知错误'));
+                }
+            } catch (err) {
+                console.error(err);
+                alert('出错了，请稍后再试');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = '创建投票';
+            }
+        });
+    });
+</script>
+{% endblock %}
+
+{% block footer_text %}
+{% endblock %}

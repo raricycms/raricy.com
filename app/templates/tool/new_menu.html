@@ -468,6 +468,23 @@
                     </div>
 
                     {% if current_user.is_authenticated and current_user.is_core_user %}
+                    <!-- 投票箱 -->
+                    <div class="tool-new-card" data-groups="other" data-keywords="投票 投票箱 vote 问卷 调查 选项">
+                        <div class="tool-new-card__header">
+                            <div class="tool-new-card__header-info">
+                                <div class="title">投票箱</div>
+                                <div class="description">创建和参与投票，支持嵌入博客文章</div>
+                            </div>
+                        </div>
+                        <div class="tool-new-card__tags">
+                            <span class="tag">投票</span>
+                            <span class="tag">问卷</span>
+                        </div>
+                        <div class="tool-new-card__footer">
+                            <a class="btn" href="{{ url_for('vote.menu') }}">开始使用</a>
+                            <span></span>
+                        </div>
+                    </div>
                     <!-- 照片墙 -->
                     <div class="tool-new-card" data-groups="other" data-keywords="照片墙 photo 照片 贴纸 软木板">
                         <div class="tool-new-card__header">
