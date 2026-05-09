@@ -1,10 +1,9 @@
-<!-- 剪贴板预处理组件 -->
+<!-- 内容引用预处理组件：剪贴板(8位ID) + 图床图片(10位ID) -->
 <script>
-// 剪贴板预处理类
 class ClipboardPreprocessor {
     constructor() {
-        this.cache = new Map(); // 缓存已获取的内容
-        this.MAX_CLIPBOARDS = 100; // 最多加载100篇云剪贴板
+        this.cache = new Map();
+        this.MAX_ITEMS = 50;
     }
 
     async preprocess(markdownContent) {
@@ -13,89 +12,67 @@ class ClipboardPreprocessor {
 
         if (matches.length === 0) return markdownContent;
 
-        // 检查是否超过限制
-        if (matches.length > this.MAX_CLIPBOARDS) {
-            console.warn(`检测到 ${matches.length} 个剪贴板引用，超过最大限制 ${this.MAX_CLIPBOARDS}，将只加载前 ${this.MAX_CLIPBOARDS} 个`);
-            
-            // 只处理前100个匹配项
-            const limitedMatches = matches.slice(0, this.MAX_CLIPBOARDS);
-            
-            // 提取需要加载的唯一ID（只从前100个匹配项中提取）
-            const uniqueIds = [...new Set(limitedMatches.map(match => match[1]))];
-            
-            // 批量获取未缓存的内容
-            const fetchPromises = uniqueIds
-                .filter(id => !this.cache.has(id))
-                .map(async (id) => {
-                    try {
-                        const response = await fetch(`/clipboard/${id}?raw`);
-                        if (!response.ok) throw new Error(`Failed to fetch ${id}`);
+        // 按ID长度分类：8位→剪贴板，10位→图床图片，其他长度→跳过
+        const clipboardIds = new Set();
+        const imageIds = new Set();
 
-                        const data = await response.json();
-                        this.cache.set(id, data.content || '');
-                    } catch (error) {
-                        console.error(`Error fetching clipboard ${id}:`, error);
-                        this.cache.set(id, `[Error loading clipboard ${id}]`);
-                    }
-                });
+        for (const match of matches) {
+            const id = match[1];
+            if (id.length === 8) {
+                clipboardIds.add(id);
+            } else if (id.length === 10) {
+                imageIds.add(id);
+            }
+        }
 
-            // 等待所有请求完成
-            await Promise.all(fetchPromises);
-
-            // 执行替换，只替换前100个匹配项
-            let processedContent = markdownContent;
-            let processedCount = 0;
-            
-            // 为每个匹配项进行替换，但不超过限制
-            matches.forEach(([fullMatch, id]) => {
-                if (processedCount < this.MAX_CLIPBOARDS) {
-                    const replacement = this.cache.get(id) || `[剪贴板加载限制：已超过最大加载数量 ${this.MAX_CLIPBOARDS}]`;
-                    // 只替换当前匹配项，使用正则避免替换所有相同内容
-                    processedContent = processedContent.replace(fullMatch, () => replacement);
-                    processedCount++;
-                } else {
-                    // 超过限制的匹配项保持原文显示（比如 [@clip150]）
-                    // 不进行替换，保持原样
+        // 并行获取未缓存的剪贴板内容
+        const clipboardFetches = [...clipboardIds]
+            .filter(id => !this.cache.has(id))
+            .map(async (id) => {
+                try {
+                    const response = await fetch(`/clipboard/${id}?raw`);
+                    if (!response.ok) throw new Error(`Failed to fetch ${id}`);
+                    const data = await response.json();
+                    this.cache.set(id, { type: 'clipboard', content: data.content || '' });
+                } catch (error) {
+                    console.error(`Error fetching clipboard ${id}:`, error);
+                    this.cache.set(id, { type: 'clipboard', content: `[剪贴板 ${id} 加载失败]` });
                 }
             });
 
-            return processedContent;
-        } else {
-            // 正常处理，不超过限制
-            // 提取所有唯一的 ID
-            const uniqueIds = [...new Set(matches.map(match => match[1]))];
-
-            // 批量获取未缓存的内容
-            const fetchPromises = uniqueIds
-                .filter(id => !this.cache.has(id))
-                .map(async (id) => {
-                    try {
-                        const response = await fetch(`/clipboard/${id}?raw`);
-                        if (!response.ok) throw new Error(`Failed to fetch ${id}`);
-
-                        const data = await response.json();
-                        this.cache.set(id, data.content || '');
-                    } catch (error) {
-                        console.error(`Error fetching clipboard ${id}:`, error);
-                        this.cache.set(id, `[Error loading clipboard ${id}]`);
-                    }
-                });
-
-            // 等待所有请求完成
-            await Promise.all(fetchPromises);
-
-            // 执行替换
-            let processedContent = markdownContent;
-
-            // 为每个匹配项进行替换
-            matches.forEach(([fullMatch, id]) => {
-                const replacement = this.cache.get(id) || '';
-                // 只替换当前匹配项，使用正则避免替换所有相同内容
-                processedContent = processedContent.replace(fullMatch, () => replacement);
-            });
-
-            return processedContent;
+        // 图床图片：直接拼接URL，无需请求
+        for (const id of imageIds) {
+            if (!this.cache.has(id)) {
+                this.cache.set(id, { type: 'image', url: `/image/i/${id}` });
+            }
         }
+
+        await Promise.all(clipboardFetches);
+
+        // 按原始顺序替换，不超过 MAX_ITEMS
+        let processedContent = markdownContent;
+        let processedCount = 0;
+
+        for (const [fullMatch, id] of matches) {
+            if (processedCount >= this.MAX_ITEMS) break;
+
+            const cached = this.cache.get(id);
+            if (!cached) continue; // 非8位/10位ID，保持原样
+
+            let replacement;
+            if (cached.type === 'clipboard') {
+                replacement = cached.content;
+            } else if (cached.type === 'image') {
+                replacement = `![${id}](${cached.url})`;
+            } else {
+                continue;
+            }
+
+            processedContent = processedContent.replace(fullMatch, () => replacement);
+            processedCount++;
+        }
+
+        return processedContent;
     }
 
     clearCache() {
