@@ -38,3 +38,4 @@ app/static/hljs/
 *~
 *.xlsx
 instance.zip
+exported_blogs/
