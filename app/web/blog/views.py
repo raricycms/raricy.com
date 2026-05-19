@@ -46,8 +46,8 @@ def register_views(blog_bp):
                              pagination=pagination,
                              search=search)
     
-    @authenticated_required
     @blog_bp.route('/<blog_id>')
+    @authenticated_required
     def blog_detail(blog_id):
         """
         博客详情页
