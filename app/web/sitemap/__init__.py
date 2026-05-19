@@ -39,14 +39,6 @@ def story_pages():
             story_id = story_id[:-3]
             yield 'story.story_detail', {'batch_id': batch_id, 'story_id': story_id}
 
-@sitemap.register_generator
-def blog_pages():
-    """动态博客页面"""
-    from app.models import Blog
-
-    blogs = Blog.query.filter_by(ignore=False).all()
-    for blog in blogs:
-        yield 'blog.blog_detail', {'blog_id': blog.id}
 
 @sitemap_bp.route('/')
 def index():
