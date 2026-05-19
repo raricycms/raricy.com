@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+{% block title %}Raricy.com - 用户协议{% endblock %}
+
+{% block extra_css %}
+<style>
+    body {
+        background: var(--color-background-page);
+        background-attachment: fixed;
+        min-height: 100vh;
+    }
+    .policy-card {
+        margin-top: 30px;
+        margin-bottom: 40px;
+        box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+        padding: 35px 40px;
+        border-radius: 15px;
+        background: var(--color-background-card);
+        backdrop-filter: blur(5px);
+    }
+    .policy-card h1 {
+        color: var(--color-text-primary);
+        font-size: 1.8rem;
+        margin-bottom: 0.5rem;
+    }
+    .policy-card h2 {
+        color: var(--color-brand-primary);
+        font-size: 1.3rem;
+        margin-top: 2rem;
+        margin-bottom: 0.8rem;
+        padding-bottom: 0.3rem;
+        border-bottom: 1px solid var(--color-border);
+    }
+    .policy-card h3 {
+        color: var(--color-text-primary);
+        font-size: 1.05rem;
+        margin-top: 1.2rem;
+        margin-bottom: 0.5rem;
+    }
+    .policy-card p, .policy-card li {
+        color: var(--color-text-secondary);
+        line-height: 1.8;
+        font-size: 0.95rem;
+    }
+    .policy-card ul, .policy-card ol {
+        padding-left: 1.5rem;
+        margin-bottom: 1rem;
+    }
+    .policy-card li {
+        margin-bottom: 0.3rem;
+    }
+    .policy-card .last-updated {
+        color: var(--color-text-tertiary);
+        font-size: 0.85rem;
+        text-align: right;
+        margin-top: 2.5rem;
+        border-top: 1px solid var(--color-border);
+        padding-top: 1rem;
+    }
+    @media (max-width: 768px) {
+        .policy-card {
+            padding: 20px 18px;
+            margin-top: 15px;
+        }
+        .policy-card h1 { font-size: 1.5rem; }
+        .policy-card h2 { font-size: 1.15rem; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="policy-card">
+        <h1>用户协议</h1>
+        <p>欢迎使用 Raricy.com（聪明山）。在使用本网站之前，请仔细阅读以下协议条款。注册或使用本网站即表示您同意本协议的全部内容。如果您不同意本协议的任何条款，请勿使用本网站。</p>
+
+        <h2>1. 账号注册</h2>
+        <p>1.1 您在注册时应当提供真实、准确的个人信息，包括用户名和电子邮箱地址。</p>
+        <p>1.2 注册时需要满足本网站所在地法律规定的最低年龄要求，或具备相应的民事行为能力。</p>
+        <p>1.3 注册时可选择性提供邀请码。提供有效邀请码的用户将获得核心用户（core）角色，享有更多功能权限；未提供邀请码的用户将以普通用户（user）角色注册，功能受限。</p>
+
+        <h2>2. 用户角色与权限</h2>
+        <p>本网站用户角色分为四个等级，权限逐级递增：</p>
+        <ul>
+            <li><strong>普通用户（user）</strong>：可浏览个人资料、修改密码等基本操作。</li>
+            <li><strong>核心用户（core）</strong>：可发布博客、评论、留言、投票，使用剪贴板、图床、照片墙等功能。</li>
+            <li><strong>管理员（admin）</strong>：可管理内容（编辑/删除他人文章和评论）、禁言/解禁用户，操作将被记录至审计日志。</li>
+            <li><strong>站长（owner）</strong>：拥有最高权限，包括用户角色管理、群发通知、审核申诉、邀请码生成等。</li>
+        </ul>
+        <p>角色变更由管理员或站长操作，用户不可自行升级。</p>
+
+        <h2>3. 内容发布规则</h2>
+        <p>3.1 您在网站上发布的所有内容（包括但不限于博客文章、评论、留言、投票、剪贴板内容、图片）均应符合中华人民共和国法律法规。</p>
+        <p>3.2 禁止发布以下内容：</p>
+        <ul>
+            <li>反对宪法所确定的基本原则的；</li>
+            <li>危害国家安全、泄露国家秘密、颠覆国家政权、破坏国家统一的；</li>
+            <li>煽动民族仇恨、民族歧视，破坏民族团结的；</li>
+            <li>破坏国家宗教政策，宣扬邪教和封建迷信的；</li>
+            <li>散布谣言、扰乱社会秩序、破坏社会稳定的；</li>
+            <li>散布淫秽、色情、赌博、暴力、凶杀、恐怖或者教唆犯罪的；</li>
+            <li>侮辱或者诽谤他人，侵害他人合法权益的；</li>
+            <li>含有欺诈、虚假、误导性信息的；</li>
+            <li>含有恶意软件、病毒或其他可能危害计算机系统安全的代码的。</li>
+        </ul>
+        <p>3.3 为维护网站正常运行，网站对部分操作设有频率限制：博客每日发布上限 20 篇，评论/留言每 15 秒 1 条，图片上传每小时 75 次，照片墙放置每小时 30 次。请合理使用，避免影响他人。</p>
+        <p>3.4 上传图片单文件不超过 10MB，允许的格式为 PNG、JPEG、GIF、WebP、SVG。上传的图片可能经过压缩处理以优化存储。</p>
+
+        <h2>4. 禁止行为</h2>
+        <p>除上述内容限制外，您还不得从事以下行为：</p>
+        <ul>
+            <li>骚扰、欺凌、威胁或恐吓其他用户；</li>
+            <li>发布垃圾信息（spam）、重复内容或使用自动化工具批量发布内容；</li>
+            <li>尝试未经授权地访问、篡改或破坏网站系统（包括但不限于 SQL 注入、XSS 攻击、DoS 攻击）；</li>
+            <li>利用网站传播恶意软件、钓鱼链接或其他有害内容；</li>
+            <li>未经许可抓取、采集或爬取网站数据；</li>
+            <li>冒充他人身份或虚假陈述与本站的关联关系。</li>
+        </ul>
+
+        <h2>5. 内容所有权与授权</h2>
+        <p>5.1 您在网站上创作的原创内容（博客文章、评论、图片等），其知识产权仍归您所有。</p>
+        <p>5.2 您授予本网站一项非独占的、全球范围内的、免许可费的许可，以在网站上展示、存储和分发您发布的内容。此许可的目的是使网站能够正常呈现您的内容给其他用户。</p>
+        <p>5.3 当您删除内容后，上述许可即告终止。但出于技术原因（如备份、缓存），内容的完全移除可能存在合理延迟。</p>
+
+        <h2>6. 管理权与内容审核</h2>
+        <p>6.1 管理员和站长有权对违反本协议的内容进行编辑、隐藏或删除处理。</p>
+        <p>6.2 对于违反本协议的用户，管理员可依据情节轻重采取禁言措施（临时或永久），并记录禁言原因和期限。禁言期间，用户将无法发布内容或参与互动。</p>
+        <p>6.3 管理员的操作将被记录在审计日志中。部分日志（如封禁、删除内容）将公开发布，以保障管理行为的透明度。</p>
+        <p>6.4 内容的删除通常为软删除（内容在前端不可见，但保留在数据库中），以便在申诉需要时核查。</p>
+
+        <h2>7. 申诉机制</h2>
+        <p>7.1 如果您认为管理员对您的操作（禁言、删除内容等）不当，您有权提出申诉。</p>
+        <p>7.2 申诉方式：通过审计日志公示页面提交申诉，或通过电子邮件（raricycms@gmail.com）联系站长。</p>
+        <p>7.3 站长将审核您的申诉并作出决定。申诉通过后，相应的管理操作将被撤销（解禁、恢复内容）。申诉结果将以站内通知方式告知。</p>
+
+        <h2>8. 服务免责声明</h2>
+        <p>8.1 本网站按"现状"提供服务，不对服务的持续性、及时性、安全性或准确性作任何明示或默示的保证。</p>
+        <p>8.2 本网站有权在必要时修改、暂停或终止服务（全部或部分），且无需事先通知。对于因服务变更或中断造成的损失，本网站不承担责任。</p>
+        <p>8.3 用户发布的内容仅代表用户个人观点，与本网站立场无关。本网站不对用户内容的真实性、合法性、准确性负责。</p>
+        <p>8.4 由于不可抗力、计算机病毒、黑客攻击、系统维护、网络故障等原因导致的服务中断或数据损失，本网站不承担责任。</p>
+
+        <h2>9. 账号终止</h2>
+        <p>9.1 您可随时停止使用本网站，并可请求删除账号。</p>
+        <p>9.2 如您违反本协议，本网站有权终止您的账号或限制您对网站的使用，且无需事先通知。</p>
+        <p>9.3 账号终止后，您使用本网站的权利立即终止。您在终止前发布的内容可能根据本协议的授权继续保留在网站上，或根据网站的数据保留政策处理。</p>
+
+        <h2>10. 协议变更</h2>
+        <p>10.1 本网站保留随时修改本协议的权利。</p>
+        <p>10.2 协议的修改将在网站上公布。重大变更可能通过站内通知方式告知用户。</p>
+        <p>10.3 在协议修改后继续使用本网站，即表示您接受修改后的协议。如您不同意修改，应停止使用本网站。</p>
+
+        <h2>11. 适用法律与争议解决</h2>
+        <p>11.1 本协议的解释、效力及纠纷的解决，适用中华人民共和国法律。</p>
+        <p>11.2 因本协议引起的或与本协议有关的任何争议，双方应首先通过友好协商解决。协商不成的，任何一方有权向有管辖权的人民法院提起诉讼。</p>
+
+        <h2>12. 联系方式</h2>
+        <p>如您对本协议有任何疑问、意见或建议，请通过以下方式联系我们：</p>
+        <ul>
+            <li>电子邮件：raricycms@gmail.com</li>
+            <li>GitHub：<a href="https://github.com/raricycms/raricy.com" target="_blank">https://github.com/raricycms/raricy.com</a></li>
+        </ul>
+
+        <div class="last-updated">
+            最后更新：2026年5月18日
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}{% endblock %}

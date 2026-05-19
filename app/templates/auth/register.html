@@ -77,7 +77,7 @@ Raricy.com - 用户注册
                 <div class="form-check">
                     <input class="form-check-input" type="checkbox" id="agreeTerms" required>
                     <label class="form-check-label" for="agreeTerms">
-                        我已阅读并同意 <a href="#" >用户协议</a> 和 <a href="#">隐私政策</a>
+                        我已阅读并同意 <a href="{{ url_for('home.terms') }}" target="_blank">用户协议</a> 和 <a href="{{ url_for('home.privacy') }}" target="_blank">隐私政策</a>
                     </label>
                     <div class="invalid-feedback">
                         请同意用户协议和隐私政策

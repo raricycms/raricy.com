@@ -38,3 +38,11 @@ def valid_user():
 @home_bp.route('/contact')
 def contact():
     return render_template('home/contact.html')
+
+@home_bp.route('/terms')
+def terms():
+    return render_template('home/terms.html')
+
+@home_bp.route('/privacy')
+def privacy():
+    return render_template('home/privacy.html')

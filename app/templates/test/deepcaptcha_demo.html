@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}DeepCaptcha 验证码测试{% endblock %}
+
+{% block content %}
+<div style="max-width: 400px; margin: 60px auto; padding: 0 20px;">
+  <h2 style="margin-bottom: 24px;">DeepCaptcha 验证码测试</h2>
+
+  <form id="captchaForm" method="post">
+    <div style="margin-bottom: 16px;">
+      <img id="captchaImg"
+           src="data:image/png;base64,{{ captcha_b64 }}"
+           alt="验证码"
+           style="border: 1px solid var(--color-border); border-radius: 6px; display: block; max-width: 100%;">
+    </div>
+
+    <div style="margin-bottom: 16px;">
+      <input type="text" name="captcha" id="captchaInput"
+             placeholder="请输入图片中的字符"
+             autocomplete="off"
+             style="width: 100%; padding: 10px 12px; font-size: 16px;
+                    border: 1px solid var(--color-border); border-radius: 6px;
+                    background: var(--color-bg); color: var(--color-text);">
+    </div>
+
+    <div style="display: flex; gap: 10px;">
+      <button type="submit" class="button button-primary" style="flex: 1;">提交验证</button>
+      <button type="button" id="refreshBtn" class="button" style="flex: 0 0 auto;">换一张</button>
+    </div>
+  </form>
+
+  <div id="result" style="margin-top: 16px; padding: 12px; border-radius: 6px; display: none;"></div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  const form = document.getElementById('captchaForm');
+  const img = document.getElementById('captchaImg');
+  const input = document.getElementById('captchaInput');
+  const refreshBtn = document.getElementById('refreshBtn');
+  const result = document.getElementById('result');
+
+  function refreshCaptcha() {
+    fetch('/test/deepcaptcha')
+      .then(r => r.text())
+      .then(html => {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        const newImg = doc.getElementById('captchaImg');
+        if (newImg) img.src = newImg.src;
+        input.value = '';
+        result.style.display = 'none';
+        input.focus();
+      });
+  }
+
+  refreshBtn.addEventListener('click', refreshCaptcha);
+
+  form.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const formData = new FormData(form);
+    const resp = await fetch('/test/deepcaptcha', {
+      method: 'POST',
+      body: formData
+    });
+    const data = await resp.json();
+    result.style.display = 'block';
+    result.style.background = data.success ? '#d4edda' : '#f8d7da';
+    result.style.color = data.success ? '#155724' : '#721c24';
+    result.textContent = data.message;
+    if (!data.success) refreshCaptcha();
+  });
+</script>
+{% endblock %}
