@@ -67,7 +67,21 @@ class CommentService:
 
         # 顶层按时间排序
         roots.sort(key=lambda x: x['created_at'] or '')
+
+        # 移除没有子评论的已删除评论
+        roots = CommentService._filter_deleted_leaves(roots)
         return roots
+
+    @staticmethod
+    def _filter_deleted_leaves(nodes: List[Dict]) -> List[Dict]:
+        """递归移除没有子评论的已删除评论。"""
+        result = []
+        for node in nodes:
+            node['children'] = CommentService._filter_deleted_leaves(node['children'])
+            if node['is_deleted'] and not node['children']:
+                continue
+            result.append(node)
+        return result
 
     @staticmethod
     def list_comments(blog_id: str) -> List[Dict]:
