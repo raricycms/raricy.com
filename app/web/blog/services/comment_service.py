@@ -1,3 +1,4 @@
+import time
 from datetime import datetime, timedelta
 from typing import List, Optional, Tuple, Dict
 
@@ -7,6 +8,21 @@ from markupsafe import escape
 from app.extensions import db
 from app.models import Blog, BlogComment
 from app.service.notifications import send_notification
+
+_comment_timestamps = {}
+_COMMENT_DAILY_MAX = 1200
+_COMMENT_WINDOW = 86400
+
+
+def _check_comment_rate(user_id):
+    now = time.time()
+    timestamps = _comment_timestamps.get(user_id, [])
+    timestamps = [t for t in timestamps if now - t < _COMMENT_WINDOW]
+    _comment_timestamps[user_id] = timestamps
+    if len(timestamps) >= _COMMENT_DAILY_MAX:
+        return False
+    timestamps.append(now)
+    return True
 
 
 class CommentService:
@@ -124,7 +140,7 @@ class CommentService:
         规则：
         - 仅核心用户或管理员可发评论
         - 禁言用户禁止发言（管理员不受限）
-        - 频率限制：15 秒 1 条
+        - 频率限制：每天 1200 条
         - 内容长度：1..2000
         - 不支持 Markdown：保存时进行 HTML 转义，并将换行转 <br>
         - 楼中楼：parent_id 可选；root_id 指向最顶层评论
@@ -137,15 +153,9 @@ class CommentService:
         if not getattr(current_user, 'has_admin_rights', False) and current_user.is_currently_banned():
             return False, '您已被禁言，无法发表评论', None
 
-        # 频率限制：最近 15 秒内是否已有评论
-        one_minute_ago = datetime.now() - timedelta(seconds=15)
-        recent_exists = BlogComment.query.filter(
-            BlogComment.author_id == current_user.id,
-            BlogComment.created_at >= one_minute_ago,
-            BlogComment.is_deleted == False
-        ).first()
-        if recent_exists:
-            return False, '发言过于频繁，请稍后再试', None
+        # 频率限制：每天最多 1200 条
+        if not _check_comment_rate(current_user.id):
+            return False, '今日评论已达上限（1200条），请明日再试', None
 
         # 验证文章存在
         blog = Blog.query.get(blog_id)

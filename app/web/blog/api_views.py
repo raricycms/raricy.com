@@ -62,7 +62,7 @@ def register_api_views(blog_bp):
     @blog_bp.route('/<blog_id>/comments', methods=['POST'])
     @login_required
     def create_comment(blog_id):
-        """创建评论（仅核心用户或管理员）。频率：1分钟1条。"""
+        """创建评论（仅核心用户或管理员）。频率：每天1200条。"""
         # 禁言检查（管理员除外）
         is_banned, _, ban_error = check_user_ban_status_for_admin()
         if is_banned:
@@ -81,7 +81,7 @@ def register_api_views(blog_bp):
         if success:
             return success_response(message, comment=comment)
         else:
-            code = 429 if '频繁' in message else 400
+            code = 429 if '上限' in message else 400
             return error_response(message, code)
 
     @blog_bp.route('/comments/<comment_id>', methods=['DELETE'])
