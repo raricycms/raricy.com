@@ -417,6 +417,15 @@ a {
     font-size: 1rem;
     color: var(--color-text-secondary);
     margin-bottom: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    .comment-author-avatar {
+        width: 24px;
+        height: 24px;
+        border-radius: 10%;
+        object-fit: cover;
+    }
 }
 
 .comment-btn {

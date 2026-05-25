@@ -41,6 +41,7 @@ class CommentService:
                 'id': comment.author.id if comment.author else None,
                 'username': comment.author.username if comment.author else None,
                 'is_admin': getattr(comment.author, 'has_admin_rights', False) if comment.author else False,
+                'avatar_url': f"/auth/avatar/{comment.author.id}" if comment.author else None,
             },
             'parent_id': comment.parent_id,
             'root_id': comment.root_id,

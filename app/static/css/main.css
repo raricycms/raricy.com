@@ -2259,6 +2259,15 @@ a:hover {
   font-size: 1rem;
   color: var(--color-text-secondary);
   margin-bottom: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.comment-meta .comment-author-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 10%;
+  object-fit: cover;
 }
 
 .comment-btn {
@@ -3198,6 +3207,37 @@ body {
   padding: 60px 20px;
   color: var(--color-text-secondary);
   font-size: 1.05rem;
+}
+
+.maintenance-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 50vh;
+  padding: 40px 20px;
+}
+
+.maintenance-card {
+  text-align: center;
+  background: var(--color-background-card);
+  border-radius: 20px;
+  padding: 48px 56px;
+  box-shadow: var(--shadow-card);
+  max-width: 480px;
+}
+
+.maintenance-title {
+  font-size: 1.6rem;
+  font-weight: bold;
+  color: var(--color-text-primary);
+  margin-bottom: 16px;
+}
+
+.maintenance-message {
+  color: var(--color-text-secondary);
+  font-size: 1.05rem;
+  line-height: 1.7;
+  margin: 0;
 }
 
 .story-grid {
@@ -6615,3 +6655,5 @@ body {
   border-radius: 4px;
   border: 1px solid var(--color-border);
 }
+
+/*# sourceMappingURL=main.css.map */

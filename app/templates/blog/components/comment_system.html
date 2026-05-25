@@ -113,7 +113,16 @@ class CommentManager {
         const meta = document.createElement('div');
         meta.className = 'comment-meta';
         const authorName = (comment.author && comment.author.username) ? comment.author.username : '匿名用户';
-        meta.textContent = `${authorName}`;
+        if (comment.author && comment.author.avatar_url) {
+            const avatar = document.createElement('img');
+            avatar.src = comment.author.avatar_url;
+            avatar.alt = authorName;
+            avatar.className = 'comment-author-avatar';
+            meta.appendChild(avatar);
+        }
+        const nameSpan = document.createElement('span');
+        nameSpan.textContent = authorName;
+        meta.appendChild(nameSpan);
         
         // 评论内容
         const content = document.createElement('div');
