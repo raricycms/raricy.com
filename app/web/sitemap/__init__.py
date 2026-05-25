@@ -1,43 +1,27 @@
-from flask import Blueprint, render_template, current_app
+from flask import Blueprint, render_template
 from app.extensions import sitemap
 
 sitemap_bp = Blueprint('sitemap', __name__, url_prefix='/sitemap')
 
-# 注册sitemap生成器
 @sitemap.register_generator
 def static_pages():
-    """静态页面"""
-    # 主页
     yield 'home.index', {}
-    
-    # 游戏页面（已移除）
-    
-    # 故事页面
-    yield 'story.menu', {}
-    
-    # 博客页面
+    yield 'story.root_collection', {}
     yield 'blog.menu', {}
 
 @sitemap.register_generator
 def story_pages():
-    """动态故事页面"""
-    import os
-    import json
-    
-    batch_dir = os.path.join(current_app.instance_path, 'stories')
-    for batch_id in os.listdir(batch_dir):
-        if not os.path.isdir(os.path.join(batch_dir, batch_id)):
-            continue
-        story_dir = os.path.join(batch_dir, batch_id)
-        info_file = os.path.join(story_dir, 'info.json')
-        if not os.path.isfile(info_file):
-            continue
-        yield 'story.batch_detail', {'batch_id': batch_id}
-        for story_id in os.listdir(story_dir):
-            if not story_id.endswith('.md'):
-                continue
-            story_id = story_id[:-3]
-            yield 'story.story_detail', {'batch_id': batch_id, 'story_id': story_id}
+    from app.web.story.services import StoryService
+    for kind, *args in StoryService.walk_all():
+        if kind == 'collection':
+            rel_path = args[0]
+            if rel_path:
+                yield 'story.resolve_path', {'path': rel_path}
+            # root is already covered by story.root_collection above
+        elif kind == 'story':
+            parent_path, story_id = args
+            full = f"{parent_path}/{story_id}" if parent_path else story_id
+            yield 'story.resolve_path', {'path': full}
 
 
 @sitemap_bp.route('/')

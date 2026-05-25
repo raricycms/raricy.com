@@ -6,6 +6,15 @@
 <div class="story-cattca">
   <div class="story-cattca__header">
     <h2>{{ title }}</h2>
+    <div class="story-cattca__meta">
+      <span>作者：{{ author }}</span>
+      {% if genre %}<span>{{ genre }}</span>{% endif %}
+    </div>
+    {% if parent_path %}
+    <a href="{{ url_for('story.resolve_path', path=parent_path) }}" class="story-back">← 返回合集</a>
+    {% else %}
+    <a href="{{ url_for('story.root_collection') }}" class="story-back">← 返回故事首页</a>
+    {% endif %}
   </div>
 
   <div class="story-cattca__game">
@@ -19,10 +28,10 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{{ url_for('static', filename='js/marked.min.js') }}"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
 <script>
   if (!window.marked) {
-    document.write('<script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"><\\/script>');
+    document.write('<script src="{{ url_for('static', filename='js/marked.min.js') }}"><\\/script>');
   }
 </script>
 <script type="module">

@@ -30,7 +30,11 @@
     <span class="story-card__btn story-card__btn--ghost" aria-hidden="true">← 上一章</span>
     {% endif %}
 
-    <a href="{{ url_for('story.batch_detail', batch_id=batch_id) }}" class="story-card__btn">目录</a>
+    {% if parent_path %}
+    <a href="{{ url_for('story.resolve_path', path=parent_path) }}" class="story-card__btn">目录</a>
+    {% else %}
+    <a href="{{ url_for('story.root_collection') }}" class="story-card__btn">目录</a>
+    {% endif %}
 
     {% if next_chapter_url %}
     <a href="{{ next_chapter_url }}" class="story-card__btn" title="下一章 (→)">下一章 →</a>

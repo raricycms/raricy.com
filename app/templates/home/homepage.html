@@ -34,12 +34,12 @@
 
         <div class="home-grid">
             <div class="home-grid-item">
-                <div class="feature-card card-story" data-url="{{url_for('story.menu')}}" onclick="handleCardClick(this)">
+                <div class="feature-card card-story" data-url="{{url_for('story.root_collection')}}" onclick="handleCardClick(this)">
                     <div class="card-body home-text-center">
                         <span class="feature-icon" aria-hidden="true"></span>
                         <h4 class="card-title" style="margin-bottom: 0.75rem;">故事/小说</h4>
                         <p class="card-text">聪明山故事集，这里有一些聪明山的原创故事和小说，也有代发的原创小说。</p>
-                        <a href="{{ url_for('story.menu') }}" class="home-btn home-btn--outline-primary home-btn--sm">开始阅读</a>
+                        <a href="{{ url_for('story.root_collection') }}" class="home-btn home-btn--outline-primary home-btn--sm">开始阅读</a>
                     </div>
                 </div>
             </div>
