@@ -16,8 +16,16 @@ from . import auth_bp
 @login_required
 @authenticated_required
 def user_management():
-    user_list = User.query.all()
-    return render_template('auth/management.html', user_list=user_list)
+    search = request.args.get('search', '').strip()
+    page = request.args.get('page', 1, type=int)
+    query = User.query
+    if search:
+        query = query.filter(User.username.contains(search))
+    pagination = query.order_by(User.created_at.desc()).paginate(
+        page=page, per_page=100, error_out=False
+    )
+    user_list = pagination.items
+    return render_template('auth/management.html', user_list=user_list, search=search, pagination=pagination)
 
 @auth_bp.route('/promote', methods=['POST'])
 @login_required

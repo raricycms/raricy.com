@@ -239,10 +239,20 @@ Raricy.com - 用户管理页面
                 </div>
                 {% endif %}
             </div>
+            <form method="GET" action="{{ url_for('auth.user_management') }}" style="margin-bottom: 20px; display: flex; gap: 8px;">
+                <input type="search" name="search" value="{{ search or '' }}" placeholder="搜索用户名..."
+                       style="flex: 1; max-width: 320px; padding: 8px 12px; border: 1px solid #ced4da; border-radius: 4px; font-size: 0.9rem;">
+                <button type="submit" class="btn btn-primary">搜索</button>
+                {% if search %}
+                <a href="{{ url_for('auth.user_management') }}" class="btn btn-secondary">清除</a>
+                {% endif %}
+            </form>
             <div class="user-grid">
                 {% for user in user_list %}
                 <div class="user-card">
                     <div class="user-card-top">
+                        <img src="{{ url_for('auth.get_avatar', user_id=user.id) }}" alt="{{ user.username }}"
+                             style="width: 28px; height: 28px; border-radius: 4px; object-fit: cover;">
                         <span class="user-card-username">{{ user.username }}</span>
                         {% if user.is_owner %}
                             <span class="user-card-role text-danger" style="background:rgba(220,53,69,.12);">站长</span>
@@ -283,6 +293,34 @@ Raricy.com - 用户管理页面
                 </div>
                 {% endfor %}
             </div>
+
+            {% if pagination and pagination.pages > 1 %}
+            {% set search_arg = request.args.get('search') %}
+            <div class="pagination">
+                {% if pagination.has_prev %}
+                <a href="{{ url_for('auth.user_management', page=pagination.prev_num, search=search_arg) }}" class="page-link">&laquo;</a>
+                {% endif %}
+
+                {% set window = 3 %}
+                {% for p in range(1, pagination.pages + 1) %}
+                    {% if p == 1 or p == pagination.pages or (p >= pagination.page - window and p <= pagination.page + window) %}
+                    <a href="{{ url_for('auth.user_management', page=p, search=search_arg) }}"
+                       class="page-link {{ 'active' if p == pagination.page else '' }}">{{ p }}</a>
+                    {% elif p == pagination.page - window - 1 or p == pagination.page + window + 1 %}
+                    <span class="page-ellipsis">...</span>
+                    {% endif %}
+                {% endfor %}
+
+                {% if pagination.has_next %}
+                <a href="{{ url_for('auth.user_management', page=pagination.next_num, search=search_arg) }}" class="page-link">&raquo;</a>
+                {% endif %}
+
+                <span class="page-jump">
+                    <input type="number" id="pageInput" min="1" max="{{ pagination.pages }}" placeholder="{{ pagination.page }}" class="page-input">
+                    <button onclick="jumpToPage({{ pagination.pages }})" class="page-link page-btn">跳转</button>
+                </span>
+            </div>
+            {% endif %}
         </div>
     </div>
 
@@ -378,6 +416,16 @@ Raricy.com - 用户管理页面
 
 {% block extra_js %}
 <script>
+    function jumpToPage(totalPages) {
+        const input = document.getElementById('pageInput');
+        let page = parseInt(input.value, 10);
+        if (isNaN(page) || page < 1) page = 1;
+        if (page > totalPages) page = totalPages;
+        const url = new URL(window.location.href);
+        url.searchParams.set('page', page);
+        window.location.href = url.toString();
+    }
+
     // 全局变量
     let currentUserId = null;
     let currentUsername = null;
