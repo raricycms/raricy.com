@@ -21,7 +21,7 @@ def user_management():
     query = User.query
     if search:
         query = query.filter(User.username.contains(search))
-    pagination = query.order_by(User.created_at.desc()).paginate(
+    pagination = query.order_by(User.created_at.asc()).paginate(
         page=page, per_page=100, error_out=False
     )
     user_list = pagination.items
