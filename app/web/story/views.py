@@ -2,12 +2,12 @@ from flask import render_template
 
 from . import story_bp
 
-# TODO: 恢复故事模块时，删除下面的 catch-all 并取消注释原有的路由函数
+# TODO: 恢复故事模块时，删除下面的 catch-all 并取消注释原有的路由函数，然后删除末尾注释块
 
 
 @story_bp.route("/")
 @story_bp.route("/<path:path>")
-def maintenance(path=None):
+def root_collection(path=None):
     return render_template("story/maintenance.html"), 503
 
 

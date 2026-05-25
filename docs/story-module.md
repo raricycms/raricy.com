@@ -7,7 +7,7 @@
 **重新开启步骤：**
 
 1. 编辑 `app/web/story/views.py`：
-   - 删除顶部的 `maintenance()` 函数及其路由装饰器
+   - 删除顶部的 `root_collection()` 维护函数及其路由装饰器
    - 取消注释文件末尾"原始路由（已暂时关闭）"区块内的所有代码
    - 将 `from .services import StoryService` 和 `from flask import abort` 移到文件顶部（替换现有的 import）
 2. 编辑 `app/templates/base.html` 第50行，将"玩具"改回"故事"，链接改回 `url_for('story.root_collection')`
