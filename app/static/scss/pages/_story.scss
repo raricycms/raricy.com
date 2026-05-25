@@ -83,6 +83,38 @@
   font-size: 1.05rem;
 }
 
+// ---- Maintenance ----
+.maintenance-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 50vh;
+  padding: 40px 20px;
+}
+
+.maintenance-card {
+  text-align: center;
+  background: var(--color-background-card);
+  border-radius: 20px;
+  padding: 48px 56px;
+  box-shadow: var(--shadow-card);
+  max-width: 480px;
+}
+
+.maintenance-title {
+  font-size: 1.6rem;
+  font-weight: bold;
+  color: var(--color-text-primary);
+  margin-bottom: 16px;
+}
+
+.maintenance-message {
+  color: var(--color-text-secondary);
+  font-size: 1.05rem;
+  line-height: 1.7;
+  margin: 0;
+}
+
 // ---- Grid (unified for collections & stories) ----
 .story-grid {
   display: grid;

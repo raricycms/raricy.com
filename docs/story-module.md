@@ -1,5 +1,18 @@
 # 故事模块
 
+## 临时关闭与重新开启
+
+当前故事模块已暂时关闭（显示"正在维护中"）。
+
+**重新开启步骤：**
+
+1. 编辑 `app/web/story/views.py`：
+   - 删除顶部的 `maintenance()` 函数及其路由装饰器
+   - 取消注释文件末尾"原始路由（已暂时关闭）"区块内的所有代码
+   - 将 `from .services import StoryService` 和 `from flask import abort` 移到文件顶部（替换现有的 import）
+2. 编辑 `app/templates/base.html` 第50行，将"玩具"改回"故事"，链接改回 `url_for('story.root_collection')`
+3. （可选）删除 `app/templates/story/maintenance.html`
+
 ## 概述
 
 故事模块是一个基于文件系统的内容管理模块，支持 **Markdown 小说** 和 **Cattca 互动小说** 两种格式，合集可以**无限嵌套**。
