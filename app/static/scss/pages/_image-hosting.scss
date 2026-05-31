@@ -207,6 +207,14 @@
     white-space: nowrap;
   }
 
+  &__id {
+    padding: 0 $space-3 $space-2;
+    font-size: .7rem;
+    font-family: monospace;
+    color: var(--color-text-secondary);
+    user-select: all;
+  }
+
   &__actions {
     display: flex;
     gap: $space-1;

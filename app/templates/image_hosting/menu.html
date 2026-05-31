@@ -57,15 +57,16 @@
         {% if images %}
         {% for img in images %}
         <div class="image-hosting-card" id="card-{{ img.id }}">
-            <div class="image-hosting-card__preview" onclick="showPreview('{{ url_for('image.serve_image', image_id=img.id) }}', '{{ img.filename }}')">
+            <div class="image-hosting-card__preview" onclick="showPreview('{{ url_for('image.serve_image', image_id=img.id) }}', '{{ img.filename }}', '{{ img.id }}')">
                 <img src="{{ url_for('image.serve_image', image_id=img.id) }}" alt="{{ img.filename }}" loading="lazy">
             </div>
             <div class="image-hosting-card__info">
                 <span class="image-hosting-card__name" title="{{ img.filename }}">{{ img.filename }}</span>
                 <span class="image-hosting-card__size">{{ "%.1f"|format(img.file_size / 1024) }} KB</span>
             </div>
+            <div class="image-hosting-card__id" title="图片ID">{{ img.id }}</div>
             <div class="image-hosting-card__actions">
-                <button class="image-hosting-card__btn" onclick="copyLink('{{ url_for('image.serve_image', image_id=img.id, _external=True) }}', this)" title="复制链接">
+                <button class="image-hosting-card__btn" onclick="copyLink('{{ img.id }}', this)" title="复制图片ID">
                     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                 </button>
                 <a class="image-hosting-card__btn" href="{{ url_for('image.serve_image', image_id=img.id) }}" target="_blank" title="新窗口打开">
@@ -96,7 +97,7 @@
         <div class="image-hosting-preview__info">
             <span id="preview-name"></span>
             <div>
-                <button class="button-primary-small" id="preview-copy-btn" onclick="copyPreviewLink()">复制链接</button>
+                <button class="button-primary-small" id="preview-copy-btn" onclick="copyPreviewLink()">复制图片ID</button>
                 {% if current_user.is_owner %}
                 <a class="button-warning-small" href="{{ url_for('image.admin') }}">图片管理</a>
                 {% endif %}
@@ -110,9 +111,10 @@
 {% block extra_js %}
 <script>
 let previewUrl = '';
+let previewImageId = '';
 
-function copyLink(url, btn) {
-    navigator.clipboard.writeText(url).then(() => {
+function copyLink(imageId, btn) {
+    navigator.clipboard.writeText(imageId).then(() => {
         const orig = btn.innerHTML;
         btn.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>';
         setTimeout(() => { btn.innerHTML = orig; }, 1500);
@@ -120,15 +122,16 @@ function copyLink(url, btn) {
 }
 
 function copyPreviewLink() {
-    navigator.clipboard.writeText(previewUrl).then(() => {
+    navigator.clipboard.writeText(previewImageId).then(() => {
         const btn = document.getElementById('preview-copy-btn');
         btn.textContent = '已复制';
-        setTimeout(() => { btn.textContent = '复制链接'; }, 1500);
+        setTimeout(() => { btn.textContent = '复制图片ID'; }, 1500);
     });
 }
 
-function showPreview(url, name) {
+function showPreview(url, name, imageId) {
     previewUrl = url;
+    previewImageId = imageId;
     document.getElementById('preview-img').src = url;
     document.getElementById('preview-name').textContent = name;
     document.getElementById('preview-modal').style.display = 'flex';

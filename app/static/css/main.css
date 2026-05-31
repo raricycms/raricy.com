@@ -4602,6 +4602,13 @@ body {
   color: var(--color-text-secondary);
   white-space: nowrap;
 }
+.image-hosting-card__id {
+  padding: 0 12px 8px;
+  font-size: 0.7rem;
+  font-family: monospace;
+  color: var(--color-text-secondary);
+  user-select: all;
+}
 .image-hosting-card__actions {
   display: flex;
   gap: 4px;
