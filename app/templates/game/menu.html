@@ -50,6 +50,51 @@
                 </div>
             </div>
 
+            <div class="game-card" data-url="{{ url_for('game.game_2048') }}" onclick="handleGameCardClick(this)">
+                <div class="game-card__body">
+                    <span class="game-card__icon game-card__icon--2048" aria-hidden="true"></span>
+                    <h3 class="game-card__title">2048</h3>
+                    <p class="game-card__desc">滑动合并数字方块，挑战 2048！经典益智小游戏，支持触屏和键盘操作。</p>
+                    <span class="game-card__btn">开始游戏</span>
+                </div>
+            </div>
+
+            <div class="game-card" data-url="{{ url_for('game.connect4') }}" onclick="handleGameCardClick(this)">
+                <div class="game-card__body">
+                    <span class="game-card__icon game-card__icon--connect4" aria-hidden="true"></span>
+                    <h3 class="game-card__title">四子棋</h3>
+                    <p class="game-card__desc">经典四子连线棋，支持普通、障碍、盲棋等多种模式，键盘操作快捷落子。</p>
+                    <span class="game-card__btn">开始游戏</span>
+                </div>
+            </div>
+
+            <div class="game-card" data-url="{{ url_for('game.utictactoe') }}" onclick="handleGameCardClick(this)">
+                <div class="game-card__body">
+                    <span class="game-card__icon game-card__icon--utictactoe" aria-hidden="true"></span>
+                    <h3 class="game-card__title">超级井字棋</h3>
+                    <p class="game-card__desc">大棋盘套小棋盘，你的落子决定对手的战场。策略深度远超普通井字棋。</p>
+                    <span class="game-card__btn">开始游戏</span>
+                </div>
+            </div>
+
+            <div class="game-card" data-url="{{ url_for('game.speed') }}" onclick="handleGameCardClick(this)">
+                <div class="game-card__body">
+                    <span class="game-card__icon game-card__icon--speed" aria-hidden="true"></span>
+                    <h3 class="game-card__title">速度接龙</h3>
+                    <p class="game-card__desc">本地双人竞速纸牌，红色对黑色，比谁更快出完手中的牌。支持键盘快捷键。</p>
+                    <span class="game-card__btn">开始游戏</span>
+                </div>
+            </div>
+
+            <div class="game-card" data-url="{{ url_for('game.cubetictactoe') }}" onclick="handleGameCardClick(this)">
+                <div class="game-card__body">
+                    <span class="game-card__icon game-card__icon--cubetictactoe" aria-hidden="true"></span>
+                    <h3 class="game-card__title">立方棋</h3>
+                    <p class="game-card__desc">4×4×4立体空间井字棋，拖拽旋转视角，76种连线方式，3D视觉盛宴。</p>
+                    <span class="game-card__btn">开始游戏</span>
+                </div>
+            </div>
+
             <div class="game-card game-card--soon">
                 <div class="game-card__body">
                     <span class="game-card__icon game-card__icon--coming" aria-hidden="true"></span>

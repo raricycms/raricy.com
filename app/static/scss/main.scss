@@ -43,6 +43,11 @@
 @use 'pages/image-hosting';
 @use 'pages/sitemap';
 @use 'pages/game';
+@use 'pages/2048' as game2048;
+@use 'pages/connect4';
+@use 'pages/utictactoe';
+@use 'pages/speed';
+@use 'pages/cubetictactoe';
 @use 'pages/puzzle';
 @use 'pages/photowall';
 @use 'pages/vote';
