@@ -46,6 +46,11 @@ def speed():
 def cubetictactoe():
     return render_template('game/cubetictactoe.html')
 
+
+@game_bp.route('/gomoku')
+def gomoku():
+    return render_template('game/gomoku.html')
+
 from app.web.game.game_api import register_game_api
 
 register_game_api(game_bp)

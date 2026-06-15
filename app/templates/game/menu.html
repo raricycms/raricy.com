@@ -95,6 +95,15 @@
                 </div>
             </div>
 
+            <div class="game-card" data-url="{{ url_for('game.gomoku') }}" onclick="handleGameCardClick(this)">
+                <div class="game-card__body">
+                    <span class="game-card__icon game-card__icon--gomoku" aria-hidden="true"></span>
+                    <h3 class="game-card__title">五子棋</h3>
+                    <p class="game-card__desc">15×15棋盘五子连线，支持双人对战和人机对战，AI带深度搜索策略。</p>
+                    <span class="game-card__btn">开始游戏</span>
+                </div>
+            </div>
+
             <div class="game-card game-card--soon">
                 <div class="game-card__body">
                     <span class="game-card__icon game-card__icon--coming" aria-hidden="true"></span>

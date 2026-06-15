@@ -1,0 +1,62 @@
+{% extends 'base.html' %}
+{% block title %}五子棋 - 聪明山{% endblock %}
+
+{% block content %}
+<div class="gomoku-page">
+  <div class="container" style="display: flex; flex-direction: column; align-items: center;">
+    <div class="gomoku-container">
+      <a href="{{ url_for('game.menu') }}" class="gomoku-back">&larr; 返回玩具</a>
+
+      <div class="gomoku-header">
+        <h1 class="gomoku-header__title">五子棋</h1>
+        <p class="gomoku-header__subtitle">15×15 棋盘，五子连线即获胜</p>
+      </div>
+
+      <!-- Mode Selector -->
+      <div class="gomoku-mode-selector">
+        <label class="gomoku-mode-option">
+          <input type="radio" name="game-mode" value="pvp" checked>
+          <span>双人对战</span>
+        </label>
+        <label class="gomoku-mode-option">
+          <input type="radio" name="game-mode" value="ai">
+          <span>人机对战</span>
+        </label>
+      </div>
+
+      <!-- Status -->
+      <div class="gomoku-status" id="status-display">黑方落子</div>
+
+      <!-- Board Canvas -->
+      <div class="gomoku-canvas-wrap">
+        <canvas id="gomoku-canvas" class="gomoku-canvas"></canvas>
+      </div>
+
+      <!-- Controls -->
+      <div class="gomoku-controls">
+        <button class="gomoku-btn gomoku-btn--new" id="btn-new-game">新游戏</button>
+        <button class="gomoku-btn gomoku-btn--undo" id="btn-undo" disabled>悔棋</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ static_url('js/game/gomoku/constants.js') }}"></script>
+<script src="{{ static_url('js/game/gomoku/board.js') }}"></script>
+<script src="{{ static_url('js/game/gomoku/ai.js') }}"></script>
+<script src="{{ static_url('js/game/gomoku/renderer.js') }}"></script>
+<script src="{{ static_url('js/game/gomoku/main.js') }}"></script>
+<script>
+(function() {
+  var canvas = document.getElementById('gomoku-canvas');
+  new GomokuGame(canvas, {
+    statusEl: document.getElementById('status-display'),
+    newGameBtn: document.getElementById('btn-new-game'),
+    undoBtn: document.getElementById('btn-undo'),
+    modeRadios: document.querySelectorAll('input[name="game-mode"]')
+  });
+})();
+</script>
+{% endblock %}

@@ -161,6 +161,12 @@
             -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M21 16.5c0 .38-.21.71-.53.88l-7.9 4.44c-.16.12-.36.18-.57.18-.21 0-.41-.06-.57-.18l-7.9-4.44A1 1 0 013 16.5v-9c0-.38.21-.71.53-.88l7.9-4.44c.16-.12.36-.18.57-.18.21 0 .41.06.57.18l7.9 4.44c.32.17.53.5.53.88v9z' fill='none' stroke='black' stroke-width='2'/%3E%3Cpath d='M12 2L3 7l9 5 9-5-9-5z' fill='black' opacity='0.3'/%3E%3C/svg%3E");
         }
 
+        &--gomoku {
+            color: #2d5a27;
+            mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='2' y='2' width='20' height='20' rx='2' fill='none' stroke='black' stroke-width='2'/%3E%3Cline x1='2' y1='7' x2='22' y2='7' stroke='black' stroke-width='1'/%3E%3Cline x1='2' y1='12' x2='22' y2='12' stroke='black' stroke-width='1'/%3E%3Cline x1='2' y1='17' x2='22' y2='17' stroke='black' stroke-width='1'/%3E%3Cline x1='7' y1='2' x2='7' y2='22' stroke='black' stroke-width='1'/%3E%3Cline x1='12' y1='2' x2='12' y2='22' stroke='black' stroke-width='1'/%3E%3Cline x1='17' y1='2' x2='17' y2='22' stroke='black' stroke-width='1'/%3E%3Ccircle cx='7' cy='7' r='2.5' fill='black'/%3E%3Ccircle cx='17' cy='17' r='2.5' fill='black'/%3E%3C/svg%3E");
+            -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='2' y='2' width='20' height='20' rx='2' fill='none' stroke='black' stroke-width='2'/%3E%3Cline x1='2' y1='7' x2='22' y2='7' stroke='black' stroke-width='1'/%3E%3Cline x1='2' y1='12' x2='22' y2='12' stroke='black' stroke-width='1'/%3E%3Cline x1='2' y1='17' x2='22' y2='17' stroke='black' stroke-width='1'/%3E%3Cline x1='7' y1='2' x2='7' y2='22' stroke='black' stroke-width='1'/%3E%3Cline x1='12' y1='2' x2='12' y2='22' stroke='black' stroke-width='1'/%3E%3Cline x1='17' y1='2' x2='17' y2='22' stroke='black' stroke-width='1'/%3E%3Ccircle cx='7' cy='7' r='2.5' fill='black'/%3E%3Ccircle cx='17' cy='17' r='2.5' fill='black'/%3E%3C/svg%3E");
+        }
+
         &--coming {
             color: #94a3b8;
             mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='10' fill='none' stroke='black' stroke-width='2'/%3E%3Cpath d='M12 8v4M12 16h.01' stroke='black' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");

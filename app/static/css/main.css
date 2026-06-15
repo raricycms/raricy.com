@@ -4961,6 +4961,11 @@ body {
   mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M21 16.5c0 .38-.21.71-.53.88l-7.9 4.44c-.16.12-.36.18-.57.18-.21 0-.41-.06-.57-.18l-7.9-4.44A1 1 0 013 16.5v-9c0-.38.21-.71.53-.88l7.9-4.44c.16-.12.36-.18.57-.18.21 0 .41.06.57.18l7.9 4.44c.32.17.53.5.53.88v9z' fill='none' stroke='black' stroke-width='2'/%3E%3Cpath d='M12 2L3 7l9 5 9-5-9-5z' fill='black' opacity='0.3'/%3E%3C/svg%3E");
   -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M21 16.5c0 .38-.21.71-.53.88l-7.9 4.44c-.16.12-.36.18-.57.18-.21 0-.41-.06-.57-.18l-7.9-4.44A1 1 0 013 16.5v-9c0-.38.21-.71.53-.88l7.9-4.44c.16-.12.36-.18.57-.18.21 0 .41.06.57.18l7.9 4.44c.32.17.53.5.53.88v9z' fill='none' stroke='black' stroke-width='2'/%3E%3Cpath d='M12 2L3 7l9 5 9-5-9-5z' fill='black' opacity='0.3'/%3E%3C/svg%3E");
 }
+.game-card__icon--gomoku {
+  color: #2d5a27;
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='2' y='2' width='20' height='20' rx='2' fill='none' stroke='black' stroke-width='2'/%3E%3Cline x1='2' y1='7' x2='22' y2='7' stroke='black' stroke-width='1'/%3E%3Cline x1='2' y1='12' x2='22' y2='12' stroke='black' stroke-width='1'/%3E%3Cline x1='2' y1='17' x2='22' y2='17' stroke='black' stroke-width='1'/%3E%3Cline x1='7' y1='2' x2='7' y2='22' stroke='black' stroke-width='1'/%3E%3Cline x1='12' y1='2' x2='12' y2='22' stroke='black' stroke-width='1'/%3E%3Cline x1='17' y1='2' x2='17' y2='22' stroke='black' stroke-width='1'/%3E%3Ccircle cx='7' cy='7' r='2.5' fill='black'/%3E%3Ccircle cx='17' cy='17' r='2.5' fill='black'/%3E%3C/svg%3E");
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='2' y='2' width='20' height='20' rx='2' fill='none' stroke='black' stroke-width='2'/%3E%3Cline x1='2' y1='7' x2='22' y2='7' stroke='black' stroke-width='1'/%3E%3Cline x1='2' y1='12' x2='22' y2='12' stroke='black' stroke-width='1'/%3E%3Cline x1='2' y1='17' x2='22' y2='17' stroke='black' stroke-width='1'/%3E%3Cline x1='7' y1='2' x2='7' y2='22' stroke='black' stroke-width='1'/%3E%3Cline x1='12' y1='2' x2='12' y2='22' stroke='black' stroke-width='1'/%3E%3Cline x1='17' y1='2' x2='17' y2='22' stroke='black' stroke-width='1'/%3E%3Ccircle cx='7' cy='7' r='2.5' fill='black'/%3E%3Ccircle cx='17' cy='17' r='2.5' fill='black'/%3E%3C/svg%3E");
+}
 .game-card__icon--coming {
   color: #94a3b8;
   mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='10' fill='none' stroke='black' stroke-width='2'/%3E%3Cpath d='M12 8v4M12 16h.01' stroke='black' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");
@@ -6292,6 +6297,153 @@ body {
     font-size: 14px;
   }
 }
+.gomoku-page {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  min-height: calc(100vh - 62px);
+  padding: 24px 0;
+  background: var(--color-background-page);
+}
+
+.gomoku-container {
+  text-align: center;
+  background: var(--color-background-card);
+  padding: 24px;
+  border-radius: 10px;
+  box-shadow: var(--shadow-card);
+  max-width: 680px;
+  width: 100%;
+  margin: 0 auto;
+}
+@media (max-width: 640px) {
+  .gomoku-container {
+    padding: 16px 12px;
+    margin: 0 8px;
+    border-radius: 5px;
+  }
+}
+
+.gomoku-back {
+  display: inline-block;
+  margin-bottom: 16px;
+  color: var(--color-text-secondary);
+  font-size: 0.95rem;
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+.gomoku-back:hover {
+  color: var(--color-brand-primary);
+}
+
+.gomoku-header {
+  margin-bottom: 16px;
+}
+.gomoku-header__title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin-bottom: 4px;
+}
+@media (max-width: 640px) {
+  .gomoku-header__title {
+    font-size: 1.3rem;
+  }
+}
+.gomoku-header__subtitle {
+  font-size: 0.95rem;
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+}
+
+.gomoku-mode-selector {
+  display: flex;
+  justify-content: center;
+  gap: 24px;
+  margin-bottom: 16px;
+}
+
+.gomoku-mode-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  color: var(--color-text-primary);
+  user-select: none;
+}
+.gomoku-mode-option input[type=radio] {
+  accent-color: var(--color-brand-primary);
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.gomoku-status {
+  font-weight: 600;
+  font-size: 1.1rem;
+  min-height: 28px;
+  margin-bottom: 12px;
+  color: var(--color-text-primary);
+  transition: color 0.2s ease;
+}
+
+.gomoku-canvas-wrap {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 12px;
+}
+
+.gomoku-canvas {
+  cursor: pointer;
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+}
+
+.gomoku-controls {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.gomoku-btn {
+  padding: 8px 16px;
+  font-size: 0.95rem;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  color: #fff;
+  font-weight: 500;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+}
+.gomoku-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-sm);
+}
+.gomoku-btn:active {
+  transform: translateY(0);
+}
+.gomoku-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+.gomoku-btn--new {
+  background: linear-gradient(135deg, #4CAF50, #388E3C);
+}
+.gomoku-btn--undo {
+  background: linear-gradient(135deg, #74b9ff, #0984e3);
+}
+@media (max-width: 640px) {
+  .gomoku-btn {
+    padding: 8px 12px;
+    font-size: 0.85rem;
+  }
+}
+
 .puzzle-page {
   padding: 24px 0 40px;
 }
