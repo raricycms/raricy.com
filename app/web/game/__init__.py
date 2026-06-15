@@ -16,3 +16,12 @@ def cube():
 @game_bp.route('/galaxies')
 def galaxies():
     return render_template('game/galaxies.html')
+
+@game_bp.route('/wand')
+def wand():
+    return render_template('game/wand_demo.html')
+
+from app.web.game.game_api import register_game_api
+
+register_game_api(game_bp)
+

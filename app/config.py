@@ -8,6 +8,7 @@ class Config:
     基础配置类，包含所有环境的通用配置。
     """
     SECRET_KEY = os.getenv('SECRET_KEY') # 网站密钥
+    GAME_SECRET_KEY = os.getenv('GAME_SECRET_KEY') # 游戏密钥
     # 数据库连接URI；若环境变量未提供，默认使用 instance 下的 SQLite，便于携带与备份
     SQLALCHEMY_DATABASE_URI = os.getenv('SQLALCHEMY_DATABASE_URI') or 'sqlite:///' + os.path.join(os.getcwd(), 'instance', 'database', 'db.db')
     SQLALCHEMY_TRACK_MODIFICATIONS = False # 关闭数据库修改跟踪

@@ -1,0 +1,239 @@
+{% extends "base_base.html" %}
+{% block title %}魔法棒 - 聪明山{% endblock %}
+
+{% block extra_css %}
+<style>
+    canvas {
+        background: #6cdc00;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<canvas id="c"></canvas>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const W = canvas.width = 500;
+const H = canvas.height = 500;
+
+let then = Date.now();
+
+const keys = {};
+
+const TILE_SIZE = 50;
+const player = {
+    x: 50,
+    y: 50,
+    radius: 10,
+    speed: 95
+};
+
+const tile = [
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 1, 1, 1, 1, 0, 0, 0],
+    [0, 0, 1, 1, 1, 1, 1, 1, 0, 0],
+    [0, 0, 1, 1, 1, 1, 1, 1, 0, 0],
+    [0, 0, 1, 1, 1, 1, 1, 1, 0, 0],
+    [0, 0, 1, 1, 1, 1, 1, 1, 0, 0],
+    [0, 0, 0, 1, 1, 1, 1, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+]
+
+const myId = 0;
+
+
+
+let seq = 0;
+
+window.addEventListener('keydown', function(e) {
+    keys[e.key] = true;
+})
+window.addEventListener('keyup', function(e) {
+    keys[e.key] = false;
+})
+
+function tileAt(px, py) {
+    const col = Math.floor(px / TILE_SIZE);
+    const row = Math.floor(py / TILE_SIZE);
+    if (row < 0 || row >= tile.length || col < 0 || col >= tile[0].length) return -1; // 地图外
+    return tile[row][col];
+}
+
+function collidesAny(px, py) {
+    const r = player.radius;
+    const colL = Math.floor((px - r) / TILE_SIZE);
+    const colR = Math.floor((px + r) / TILE_SIZE);
+    const rowT = Math.floor((py - r) / TILE_SIZE);
+    const rowB = Math.floor((py + r) / TILE_SIZE);
+    for (let row = rowT; row <= rowB; row++) {
+        for (let col = colL; col <= colR; col++) {
+            if (row < 0 || row >= tile.length || col < 0 || col >= tile[0].length) return true;
+            if (tile[row][col] === 1) return true;
+        }
+    }
+    return false;
+}
+
+function update(dt) {
+    let dx = 0, dy = 0;
+    if (keys['ArrowLeft'])  dx -= 1;
+    if (keys['ArrowRight']) dx += 1;
+    if (keys['ArrowUp'])    dy -= 1;
+    if (keys['ArrowDown'])  dy += 1;
+
+    if (dx !== 0 && dy !== 0) {
+        const diag = Math.SQRT1_2 * 1.05;
+        dx *= diag;
+        dy *= diag;
+    }
+
+    const r = player.radius;
+    const stepX = dx * player.speed * dt;
+    const stepY = dy * player.speed * dt;
+
+    // ── X 轴 ──
+    const prevX = player.x;
+    player.x += stepX;
+
+    if (dx > 0) {
+        const col = Math.floor((player.x + r) / TILE_SIZE);
+        const rowT = Math.floor((player.y - r) / TILE_SIZE);
+        const rowB = Math.floor((player.y + r) / TILE_SIZE);
+        for (let row = rowT; row <= rowB; row++) {
+            if (row < 0 || row >= tile.length || col < 0 || col >= tile[0].length || tile[row][col] === 1) {
+                player.x = col * TILE_SIZE - r;
+                break;
+            }
+        }
+    } else if (dx < 0) {
+        const col = Math.floor((player.x - r) / TILE_SIZE);
+        const rowT = Math.floor((player.y - r) / TILE_SIZE);
+        const rowB = Math.floor((player.y + r) / TILE_SIZE);
+        for (let row = rowT; row <= rowB; row++) {
+            if (row < 0 || row >= tile.length || col < 0 || col >= tile[0].length || tile[row][col] === 1) {
+                player.x = (col + 1) * TILE_SIZE + r;
+                break;
+            }
+        }
+    }
+
+    // 安全网：解析后如果还在湖里，回退 X
+    if (collidesAny(player.x, player.y)) {
+        player.x = prevX;
+    }
+
+    // ── Y 轴 ──
+    const prevY = player.y;
+    player.y += stepY;
+
+    if (dy > 0) {
+        const row = Math.floor((player.y + r) / TILE_SIZE);
+        const colL = Math.floor((player.x - r) / TILE_SIZE);
+        const colR = Math.floor((player.x + r) / TILE_SIZE);
+        for (let col = colL; col <= colR; col++) {
+            if (col < 0 || col >= tile[0].length || row < 0 || row >= tile.length || tile[row][col] === 1) {
+                player.y = row * TILE_SIZE - r;
+                break;
+            }
+        }
+    } else if (dy < 0) {
+        const row = Math.floor((player.y - r) / TILE_SIZE);
+        const colL = Math.floor((player.x - r) / TILE_SIZE);
+        const colR = Math.floor((player.x + r) / TILE_SIZE);
+        for (let col = colL; col <= colR; col++) {
+            if (col < 0 || col >= tile[0].length || row < 0 || row >= tile.length || tile[row][col] === 1) {
+                player.y = (row + 1) * TILE_SIZE + r;
+                break;
+            }
+        }
+    }
+
+    // 安全网：解析后如果还在湖里，回退 Y
+    if (collidesAny(player.x, player.y)) {
+        player.y = prevY;
+    }
+}
+
+function render() {
+    ctx.clearRect(0, 0, W, H);
+
+    for (let i = 0; i < tile.length; i++) {
+        for (let j = 0; j < tile[i].length; j++) {
+            if (tile[i][j] === 1) {
+                ctx.fillStyle = '#17aefb';
+                ctx.fillRect(j * 50, i * 50, 50, 50);
+            }
+        }
+    }
+
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+    ctx.fillStyle = '#fff';
+    ctx.fill();
+    ctx.closePath();
+
+}
+
+function gameloop() {
+    const now = Date.now();
+    const dt = (now - then) / 1000;
+    update(dt);
+    render();
+    then = now;
+    requestAnimationFrame(gameloop);
+}
+
+async function run() {
+    try {
+      // 1. 请求游戏 token（自动带 Cookie，因为同站）
+      const resp = await fetch('/game/api/game_token', { method: 'POST' });
+      if (!resp.ok) {
+        // 未登录或请求失败，跳转到登录页或提示
+        alert('请先登录');
+        window.location.href = '/login';
+        return;
+      }
+      const data = await resp.json();
+      const token = data.token;
+
+      // 2. 用 token 连接 WebSocket
+      const wsUrl = `ws://localhost:3033?token=${encodeURIComponent(token)}`;
+      const socket = new WebSocket(wsUrl);
+
+      socket.onopen = function(e) {
+        console.log("[open] Connection established");
+        console.log("Sending to server");
+        socket.send("My name is Raricy");
+      }
+
+      socket.onmessage = function(event) {
+        console.log(`[message] Data received from server: ${event.data}`);
+      }
+      setInterval(() => {
+        const buffer = new ArrayBuffer(9);
+        const view = new DataView(buffer);
+        view.setUint8(0, 0x01);
+        view.setUint8(1, myId);
+        view.setInt16(2, player.x);
+        view.setInt16(4, player.y);
+        view.setUint16(6, seq);
+        view.setUint8(8, 0);
+        socket.send(buffer);
+        seq = (seq + 1) % 65536;
+    }, 50);
+    }catch (err) {
+      console.error('获取 token 失败', err);
+    }
+    
+    requestAnimationFrame(gameloop);
+}
+run();
+
+</script>
+{% endblock %}
