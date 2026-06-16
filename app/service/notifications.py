@@ -19,19 +19,7 @@ def send_notification(recipient_id, action, actor_id=None, object_type=None, obj
     recipient = User.query.get(recipient_id)
     if not recipient:
         return
-    
-    # 检查用户通知偏好（除非强制发送）
-    if not force:
-        # 根据不同的通知类型检查用户设置
-        if action == "文章点赞" and not getattr(recipient, 'notify_like', True):
-            return
-        elif action == "文章编辑" and not getattr(recipient, 'notify_edit', True):
-            return
-        elif action == "文章删除" and not getattr(recipient, 'notify_delete', True):
-            return
-        elif action in ["系统公告", "维护通知", "功能更新", "用户提醒", "警告通知", "活动通知", "禁言通知", "解除禁言"] and not getattr(recipient, 'notify_admin', True):
-            return
-    
+
     notification = Notification(
         recipient_id=recipient_id,
         action=action,

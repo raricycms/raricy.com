@@ -1,237 +1,405 @@
 {% extends "base.html" %}
-{% block title %}
-Raricy.com - 用户资料
-{% endblock %}
-
-{% block extra_css %}
-<style>
-    .profile-container {
-        max-width: 800px;
-        margin: 50px auto;
-        padding: 30px;
-        box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
-        border-radius: 10px;
-        background-color: var(--color-background-card);
-    }
-    /*
-
-    .profile-header {
-        text-align: center;
-        margin-bottom: 30px;
-        color: #333;
-    }
-    */
-
-    .profile-avatar {
-        width: 200px;
-        height: 200px;
-        border-radius: 10px;
-        margin: 0 auto 20px;
-        background: linear-gradient(135deg, #f28391 0%, #2575fc 100%);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: white;
-        font-size: 72px;
-        font-weight: bold;
-    }
-    /*
-
-    .profile-info {
-        margin-bottom: 20px;
-    }
-
-    .profile-label {
-        font-weight: 500;
-        color: #6c757d;
-        margin-bottom: 5px;
-    }
-
-    .profile-value {
-        font-size: 18px;
-        color: #333;
-    }
-
-    .btn-edit {
-        background: linear-gradient(135deg, #007bff, #0056b3);
-        border: none;
-        color: white;
-        padding: 10px 20px;
-        border-radius: 5px;
-        font-weight: 500;
-        transition: all 0.3s ease;
-    }
-
-    .btn-edit:hover {
-        background: linear-gradient(135deg, #0056b3, #004085);
-        transform: translateY(-2px);
-    }
-    */
-</style>
-{% endblock %}
+{% block title %}{{ user.username }} - 个人主页{% endblock %}
 
 {% block content %}
-<div class="container">
-    <div class="profile-container">
-        <div class="profile-header">
-            <h2>{{ user.username }}</h2>
-            <p class="text-muted">{{ user.username }} 的个人资料</p>
+<div class="profile-page container">
+  <!-- ====== Hero ====== -->
+  <div class="profile-hero">
+    <div class="profile-hero__top">
+      <!-- Avatar -->
+      <div class="profile-hero__avatar">
+        <img src="{{ url_for('auth.get_avatar', user_id=user.id) }}" alt="{{ user.username }}">
+      </div>
+
+      <!-- Info -->
+      <div class="profile-hero__info">
+        <div class="profile-hero__name-row">
+          <span class="profile-hero__username">{{ user.username }}</span>
+          <span class="profile-hero__role-badge
+            {% if user.is_owner %}profile-hero__role-badge--owner{% elif user.has_admin_rights %}profile-hero__role-badge--admin{% elif user.is_core_user %}profile-hero__role-badge--core{% else %}profile-hero__role-badge--user{% endif %}">
+            {% if user.is_owner %}站长{% elif user.has_admin_rights %}管理员{% elif user.is_core_user %}核心用户{% else %}用户{% endif %}
+          </span>
         </div>
 
-        <div class="row">
-            <!-- 头像列 -->
-            <div class="col-md-4 order-md-last text-center">
-                <div class="profile-avatar" style="margin-right: 0;">
-                    <img src="{{ url_for('auth.get_avatar', user_id=user.id) }}"
-                        style="width: 100%; height: 100%; border-radius: 10px; object-fit: cover;">
-                </div>
-            </div>
-
-            <!-- 用户信息列 -->
-            <div class="col-md-8 order-md-first">
-                <div class="profile-info">
-                    <div class="mb-3">
-                        <p class="profile-label">用户名</p>
-                        <p class="profile-value">{{ user.username }}</p>
-                    </div>
-                    <div class="mb-3">
-                        <p class="profile-label">注册时间</p>
-                        <p class="profile-value">{{ user.created_at.strftime('%Y-%m-%d') }}</p>
-                    </div>
-                    <div class="d-flex align-items-center gap-3 mb-3">
-                        <div>
-                            <p class="profile-label mb-0">用户类型</p>
-                            <p class="profile-value mb-0">
-                                {% if user.is_owner %}站长
-                                {% elif user.has_admin_rights %}管理员
-                                {% elif user.is_core_user %}核心用户
-                                {% else %}普通用户
-                                {% endif %}
-                            </p>
-                        </div>
-                        {% if not user.is_core_user and user == current_user %}
-                        <a href="{{url_for('auth.authentic')}}" class="btn btn-edit">
-                            去认证
-                        </a>
-                        {% endif %}
-                    </div>
-                </div>
-                {% if user == current_user %}
-                <div class="mt-5">
-                    <h4 class="mb-3">修改密码</h4>
-                    <div id="changePasswordAlert" class="alert d-none" role="alert"></div>
-                    <form id="changePasswordForm" class="row g-3">
-                        <div class="col-12">
-                            <label for="currentPassword" class="form-label">原密码</label>
-                            <input type="password" class="form-control" id="currentPassword" required
-                                autocomplete="current-password">
-                        </div>
-                        <div class="col-md-6">
-                            <label for="newPassword" class="form-label">新密码</label>
-                            <input type="password" class="form-control" id="newPassword" required
-                                minlength="8" autocomplete="new-password">
-                        </div>
-                        <div class="col-md-6">
-                            <label for="confirmPassword" class="form-label">确认新密码</label>
-                            <input type="password" class="form-control" id="confirmPassword" required
-                                minlength="8" autocomplete="new-password">
-                        </div>
-                        <div class="col-12 d-flex justify-content-end">
-                            <button type="submit" class="btn btn-edit" id="changePasswordSubmit">确认修改</button>
-                        </div>
-                    </form>
-                </div>
-                {% endif %}
-            </div>
+        <!-- Bio -->
+        <div class="profile-hero__bio {% if not user.bio %}profile-hero__bio--empty{% endif %}" id="profileBio">
+          {{ user.bio if user.bio else '这个人还没有写简介...' }}
         </div>
-        <!-- 编辑按钮 -->
+
+        <!-- Meta -->
+        <div class="profile-hero__meta">
+          <span>
+            <i class="icon icon-person"></i>
+            注册于 {{ user.created_at.strftime('%Y-%m-%d') }}
+          </span>
+          {% if user.last_login %}
+          <span>
+            最后登录 {{ user.last_login.strftime('%Y-%m-%d') }}
+          </span>
+          {% endif %}
+          {% if user == current_user %}
+          <span>
+            <i class="icon icon-envelope"></i>
+            {{ user.email }}
+          </span>
+          {% endif %}
+        </div>
+
+        <!-- Stats -->
+        <div class="profile-stats">
+          <div class="profile-stats__item">
+            <div class="profile-stats__number">{{ blogs_count }}</div>
+            <div class="profile-stats__label">文章</div>
+          </div>
+          <div class="profile-stats__item">
+            <div class="profile-stats__number">{{ likes_received }}</div>
+            <div class="profile-stats__label">获赞</div>
+          </div>
+          <div class="profile-stats__item">
+            <div class="profile-stats__number">{{ comments_count }}</div>
+            <div class="profile-stats__label">评论</div>
+          </div>
+        </div>
+
+        <!-- Actions (owner only) -->
         {% if user == current_user %}
-        <div class="text-center mt-4">
-            <a href="#" class="btn btn-edit">
-                <i class="bi bi-pencil-square me-2"></i>编辑资料
-            </a>
+        <div class="profile-actions">
+          <button class="profile-actions__btn profile-actions__btn--edit" id="btnEditProfile">
+            <i class="icon icon-gear"></i> 编辑资料
+          </button>
+          <button class="profile-actions__btn profile-actions__btn--password" id="btnChangePassword">
+            <i class="icon icon-gear-fill"></i> 修改密码
+          </button>
+          {% if not user.is_core_user %}
+          <a href="{{ url_for('auth.authentic') }}" class="profile-actions__btn profile-actions__btn--auth">
+            <i class="icon icon-person-circle"></i> 去认证
+          </a>
+          {% endif %}
+        </div>
+
+        <!-- Edit bio form -->
+        <div class="profile-edit-form" id="editProfileForm">
+          <div class="profile-alert profile-alert--danger d-none" id="editProfileAlert"></div>
+          <textarea id="editBio" placeholder="写一段简介，介绍一下自己...">{{ user.bio or '' }}</textarea>
+          <div class="profile-edit-form__hint" id="bioCharCount">0 / 500</div>
+          <div class="profile-edit-form__actions">
+            <button class="profile-actions__btn profile-actions__btn--edit" id="btnSaveBio">保存</button>
+            <button class="profile-actions__btn profile-actions__btn--password" id="btnCancelEdit">取消</button>
+          </div>
+        </div>
+
+        <!-- Change password form -->
+        <div class="profile-password-form" id="passwordForm">
+          <div class="profile-alert profile-alert--danger d-none" id="changePasswordAlert"></div>
+          <form id="changePasswordFormInner">
+            <div class="profile-password-form__row">
+              <div class="profile-password-form__field">
+                <label for="currentPassword">原密码</label>
+                <input type="password" id="currentPassword" required autocomplete="current-password">
+              </div>
+            </div>
+            <div class="profile-password-form__row">
+              <div class="profile-password-form__field">
+                <label for="newPassword">新密码</label>
+                <input type="password" id="newPassword" required minlength="8" autocomplete="new-password">
+              </div>
+              <div class="profile-password-form__field">
+                <label for="confirmPassword">确认新密码</label>
+                <input type="password" id="confirmPassword" required minlength="8" autocomplete="new-password">
+              </div>
+            </div>
+            <button type="submit" class="profile-actions__btn profile-actions__btn--edit" id="changePasswordSubmit">确认修改</button>
+          </form>
         </div>
         {% endif %}
+      </div>
     </div>
+  </div>
+
+  <!-- ====== Tabs ====== -->
+  <div class="profile-tabs">
+    <button class="profile-tabs__tab profile-tabs__tab--active" data-tab="blogs">文章 ({{ blogs_count }})</button>
+    <button class="profile-tabs__tab" data-tab="comments">评论 ({{ comments_count }})</button>
+  </div>
+
+  <!-- ====== Blogs tab ====== -->
+  <div class="profile-tab-panel profile-tab-panel--active" id="tab-blogs">
+    {% if recent_blogs %}
+    <div class="profile-content-list">
+      {% for blog in recent_blogs %}
+      <a href="{{ url_for('blog.blog_detail', blog_id=blog.id) }}" class="profile-content-item">
+        <div class="profile-content-item__title">{{ blog.title }}</div>
+        {% if blog.description %}
+        <div class="profile-content-item__preview">{{ blog.description }}</div>
+        {% endif %}
+        <div class="profile-content-item__meta">
+          <span>{{ blog.created_at.strftime('%Y-%m-%d') }}</span>
+          <span>
+            <i class="icon icon-heart-fill"></i> {{ blog.likes_count }}
+          </span>
+          <span>
+            <i class="icon icon-chat-dots_new"></i> {{ blog.comments_count }}
+          </span>
+        </div>
+      </a>
+      {% endfor %}
+    </div>
+    {% if blogs_count > 5 %}
+    <div class="profile-actions" style="justify-content: center; border-top: none; margin-top: 1rem;">
+      <span class="profile-hero__bio--empty" style="margin: 0;">还有 {{ blogs_count - 5 }} 篇文章...</span>
+    </div>
+    {% endif %}
+    {% else %}
+    <div class="profile-empty">
+      <i class="icon icon-person"></i>
+      还没有发布过文章
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- ====== Comments tab ====== -->
+  <div class="profile-tab-panel" id="tab-comments">
+    {% if recent_comments %}
+    <div class="profile-content-list">
+      {% for comment in recent_comments %}
+      <a href="{{ url_for('blog.blog_detail', blog_id=comment.blog_id) }}#comment-{{ comment.id }}" class="profile-content-item">
+        <div class="profile-content-item__title">回复：{{ comment.blog_title }}</div>
+        <div class="profile-content-item__preview">{{ comment.content }}</div>
+        <div class="profile-content-item__meta">
+          <span>{{ comment.created_at.strftime('%Y-%m-%d') }}</span>
+        </div>
+      </a>
+      {% endfor %}
+    </div>
+    {% if comments_count > 5 %}
+    <div class="profile-actions" style="justify-content: center; border-top: none; margin-top: 1rem;">
+      <span class="profile-hero__bio--empty" style="margin: 0;">还有 {{ comments_count - 5 }} 条评论...</span>
+    </div>
+    {% endif %}
+    {% else %}
+    <div class="profile-empty">
+      <i class="icon icon-chat-dots_new"></i>
+      还没有发表过评论
+    </div>
+    {% endif %}
+  </div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
+{% if user == current_user %}
 <script>
-    document.addEventListener('DOMContentLoaded', function () {
-        const changePasswordForm = document.getElementById('changePasswordForm');
-        if (changePasswordForm) {
-            const alertBox = document.getElementById('changePasswordAlert');
-            const submitBtn = document.getElementById('changePasswordSubmit');
+document.addEventListener('DOMContentLoaded', function () {
+  // ====== Tab switching ======
+  const tabs = document.querySelectorAll('.profile-tabs__tab');
+  const panels = document.querySelectorAll('.profile-tab-panel');
 
-            function showAlert(message, type = 'danger') {
-                if (!alertBox) return;
-                alertBox.textContent = message || '请求失败，请稍后再试。';
-                alertBox.classList.remove('d-none', 'alert-success', 'alert-danger');
-                alertBox.classList.add(`alert-${type}`);
-            }
+  tabs.forEach(function (tab) {
+    tab.addEventListener('click', function () {
+      var target = this.getAttribute('data-tab');
 
-            changePasswordForm.addEventListener('submit', async function (event) {
-                event.preventDefault();
+      tabs.forEach(function (t) { t.classList.remove('profile-tabs__tab--active'); });
+      panels.forEach(function (p) { p.classList.remove('profile-tab-panel--active'); });
 
-                const currentPassword = document.getElementById('currentPassword').value.trim();
-                const newPassword = document.getElementById('newPassword').value.trim();
-                const confirmPassword = document.getElementById('confirmPassword').value.trim();
-
-                if (newPassword !== confirmPassword) {
-                    showAlert('两次输入的新密码不一致。');
-                    return;
-                }
-
-                if (submitBtn) {
-                    submitBtn.disabled = true;
-                    submitBtn.textContent = '提交中...';
-                }
-
-                if (alertBox) {
-                    alertBox.classList.add('d-none');
-                }
-
-                let shouldReset = false;
-                try {
-                    const response = await fetch('{{ url_for("auth.change_password") }}', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            current_password: currentPassword,
-                            new_password: newPassword,
-                            confirm_password: confirmPassword
-                        })
-                    });
-
-                    const result = await response.json().catch(() => ({}));
-                    const message = result.message || (response.ok ? '密码修改成功。' : '请求失败，请稍后再试。');
-
-                    if (response.ok && result.code === 200) {
-                        showAlert(message, 'success');
-                        shouldReset = true;
-                        setTimeout(() => {
-                            window.location.href = result.redirect_url || '{{ url_for("auth.login") }}';
-                        }, 1500);
-                    } else {
-                        showAlert(message, 'danger');
-                    }
-                } catch (error) {
-                    showAlert('网络错误，请稍后再试。');
-                } finally {
-                    if (submitBtn) {
-                        submitBtn.disabled = false;
-                        submitBtn.textContent = '确认修改';
-                    }
-
-                    if (shouldReset) {
-                        changePasswordForm.reset();
-                    }
-                }
-            });
-        }
+      this.classList.add('profile-tabs__tab--active');
+      var panel = document.getElementById('tab-' + target);
+      if (panel) panel.classList.add('profile-tab-panel--active');
     });
+  });
+
+  // ====== Edit profile toggle ======
+  var btnEdit = document.getElementById('btnEditProfile');
+  var editForm = document.getElementById('editProfileForm');
+  var btnCancelEdit = document.getElementById('btnCancelEdit');
+  var btnSaveBio = document.getElementById('btnSaveBio');
+  var editBio = document.getElementById('editBio');
+  var bioDisplay = document.getElementById('profileBio');
+  var charCount = document.getElementById('bioCharCount');
+  var editAlert = document.getElementById('editProfileAlert');
+
+  function updateCharCount() {
+    if (charCount && editBio) {
+      var len = editBio.value.length;
+      charCount.textContent = len + ' / 500';
+      charCount.style.color = len > 500 ? 'var(--color-warning-primary)' : '';
+    }
+  }
+
+  if (btnEdit) {
+    btnEdit.addEventListener('click', function () {
+      editForm.classList.add('profile-edit-form--open');
+      btnEdit.style.display = 'none';
+      updateCharCount();
+      editBio.focus();
+    });
+  }
+
+  if (btnCancelEdit) {
+    btnCancelEdit.addEventListener('click', function () {
+      editForm.classList.remove('profile-edit-form--open');
+      btnEdit.style.display = '';
+      editBio.value = bioDisplay.textContent.trim() === '这个人还没有写简介...' ? '' : bioDisplay.textContent.trim();
+    });
+  }
+
+  if (editBio) {
+    editBio.addEventListener('input', updateCharCount);
+    updateCharCount();
+  }
+
+  // Save bio
+  if (btnSaveBio) {
+    btnSaveBio.addEventListener('click', async function () {
+      var bio = editBio.value.trim();
+      if (bio.length > 500) {
+        showEditAlert('简介不能超过 500 字', 'danger');
+        return;
+      }
+      btnSaveBio.disabled = true;
+      btnSaveBio.textContent = '保存中...';
+      try {
+        var resp = await fetch('{{ url_for("auth.edit_profile", user_id=user.id) }}', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ bio: bio })
+        });
+        var result = await resp.json();
+        if (resp.ok && result.code === 200) {
+          showEditAlert('资料已保存', 'success');
+          bioDisplay.textContent = bio || '这个人还没有写简介...';
+          if (!bio) {
+            bioDisplay.classList.add('profile-hero__bio--empty');
+          } else {
+            bioDisplay.classList.remove('profile-hero__bio--empty');
+          }
+          editForm.classList.remove('profile-edit-form--open');
+          btnEdit.style.display = '';
+        } else {
+          showEditAlert(result.message || '保存失败', 'danger');
+        }
+      } catch (e) {
+        showEditAlert('网络错误，请稍后再试', 'danger');
+      } finally {
+        btnSaveBio.disabled = false;
+        btnSaveBio.textContent = '保存';
+      }
+    });
+  }
+
+  function showEditAlert(message, type) {
+    if (!editAlert) return;
+    editAlert.textContent = message;
+    editAlert.classList.remove('d-none', 'profile-alert--danger', 'profile-alert--success');
+    editAlert.classList.add('profile-alert--' + type);
+    setTimeout(function () {
+      editAlert.classList.add('d-none');
+    }, 3000);
+  }
+
+  // ====== Change password toggle ======
+  var btnPassword = document.getElementById('btnChangePassword');
+  var passwordForm = document.getElementById('passwordForm');
+
+  if (btnPassword && passwordForm) {
+    btnPassword.addEventListener('click', function () {
+      var isOpen = passwordForm.classList.contains('profile-password-form--open');
+      if (isOpen) {
+        passwordForm.classList.remove('profile-password-form--open');
+      } else {
+        passwordForm.classList.add('profile-password-form--open');
+      }
+    });
+  }
+
+  // ====== Change password form ======
+  var changePasswordFormInner = document.getElementById('changePasswordFormInner');
+  if (changePasswordFormInner) {
+    var alertBox = document.getElementById('changePasswordAlert');
+    var submitBtn = document.getElementById('changePasswordSubmit');
+
+    function showAlert(message, type) {
+      if (!alertBox) return;
+      alertBox.textContent = message || '请求失败，请稍后再试。';
+      alertBox.classList.remove('d-none', 'profile-alert--danger', 'profile-alert--success');
+      alertBox.classList.add('profile-alert--' + (type === 'success' ? 'success' : 'danger'));
+    }
+
+    changePasswordFormInner.addEventListener('submit', async function (event) {
+      event.preventDefault();
+
+      var currentPassword = document.getElementById('currentPassword').value.trim();
+      var newPassword = document.getElementById('newPassword').value.trim();
+      var confirmPassword = document.getElementById('confirmPassword').value.trim();
+
+      if (newPassword !== confirmPassword) {
+        showAlert('两次输入的新密码不一致。');
+        return;
+      }
+
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = '提交中...';
+      }
+
+      if (alertBox) {
+        alertBox.classList.add('d-none');
+      }
+
+      var shouldReset = false;
+      try {
+        var response = await fetch('{{ url_for("auth.change_password") }}', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            current_password: currentPassword,
+            new_password: newPassword,
+            confirm_password: confirmPassword
+          })
+        });
+
+        var result = await response.json().catch(function () { return {}; });
+        var message = result.message || (response.ok ? '密码修改成功。' : '请求失败，请稍后再试。');
+
+        if (response.ok && result.code === 200) {
+          showAlert(message, 'success');
+          shouldReset = true;
+          setTimeout(function () {
+            window.location.href = result.redirect_url || '{{ url_for("auth.login") }}';
+          }, 1500);
+        } else {
+          showAlert(message, 'danger');
+        }
+      } catch (error) {
+        showAlert('网络错误，请稍后再试。');
+      } finally {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = '确认修改';
+        }
+        if (shouldReset) {
+          changePasswordFormInner.reset();
+        }
+      }
+    });
+  }
+});
 </script>
+{% else %}
+{# Non-owner tab switching only #}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  var tabs = document.querySelectorAll('.profile-tabs__tab');
+  tabs.forEach(function (tab) {
+    tab.addEventListener('click', function () {
+      var target = this.getAttribute('data-tab');
+      document.querySelectorAll('.profile-tabs__tab').forEach(function (t) { t.classList.remove('profile-tabs__tab--active'); });
+      document.querySelectorAll('.profile-tab-panel').forEach(function (p) { p.classList.remove('profile-tab-panel--active'); });
+      this.classList.add('profile-tabs__tab--active');
+      var panel = document.getElementById('tab-' + target);
+      if (panel) panel.classList.add('profile-tab-panel--active');
+    });
+  });
+});
+</script>
+{% endif %}
 {% endblock %}

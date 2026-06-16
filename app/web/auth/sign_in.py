@@ -1,6 +1,8 @@
 from flask import Blueprint, render_template, request, jsonify, url_for, session
 from app.models import User
 from flask_login import login_user, logout_user, login_required
+from datetime import datetime
+from app.extensions import db
 
 from . import auth_bp
 
@@ -22,6 +24,8 @@ def login():
         password = data.get('password')
         user = User.query.filter_by(username=username).first()
         if user and user.check_password(password):
+            user.last_login = datetime.now()
+            db.session.commit()
             login_user(user)
             session['session_version'] = int(user.session_version or 0)
             next_url = data.get('next') or request.args.get('next')

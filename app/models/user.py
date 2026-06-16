@@ -16,6 +16,7 @@ class User(UserMixin, db.Model):
     last_login = db.Column(db.DateTime, default=datetime.now)
     # 兼容历史：已改用 role，不再使用 authenticated/is_admin 布尔
     avatar_path = db.Column(db.String(255))
+    bio = db.Column(db.Text, nullable=True, default='')
     session_version = db.Column(db.Integer, default=0, nullable=False)
     
     # 通知设置
@@ -158,6 +159,7 @@ class User(UserMixin, db.Model):
             'username': self.username,
             'email': self.email,
             'avatar_path': self.avatar_path,
+            'bio': getattr(self, 'bio', ''),
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'last_login': self.last_login.isoformat() if self.last_login else None,
             'role': getattr(self, 'role', 'user'),
