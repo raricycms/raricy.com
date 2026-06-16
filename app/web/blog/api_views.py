@@ -25,11 +25,13 @@ def register_api_views(blog_bp):
         返回：{ code, liked, likes_count }
         """
         success, message, liked, likes_count = LikeService.toggle_like(blog_id)
-        
+
         if success:
             return success_response(message, liked=liked, likes_count=likes_count)
         else:
-            return error_response(message, 404)
+            # 频率限制返回 429，文章不存在返回 404
+            code = 429 if '上限' in message or '频繁' in message else 404
+            return error_response(message, code)
     
     @blog_bp.route('/<blog_id>/likers', methods=['GET'])
     @login_required

@@ -1,10 +1,47 @@
 """
 点赞业务逻辑服务
 """
+import time
 from flask_login import current_user
 from app.extensions import db
 from app.models import Blog, BlogLike
 from app.service.notifications import send_notification
+
+# 点赞频率限制（内存追踪，同评论保持一致策略）
+_like_timestamps = {}  # user_id -> [timestamp, ...]
+_LIKE_HOURLY_MAX = 100
+_LIKE_HOURLY_WINDOW = 3600
+_LIKE_DAILY_MAX = 500
+_LIKE_DAILY_WINDOW = 86400
+
+
+def _check_like_rate(user_id):
+    """
+    检查用户点赞频率：
+    - 每小时最多 100 条
+    - 每天最多 500 条
+    返回 (allowed: bool, error_message: str | None)
+    """
+    now = time.time()
+    timestamps = _like_timestamps.get(user_id, [])
+
+    # 清理过期记录（保留一天以内的）
+    timestamps = [t for t in timestamps if now - t < _LIKE_DAILY_WINDOW]
+
+    # 日限额检查
+    if len(timestamps) >= _LIKE_DAILY_MAX:
+        _like_timestamps[user_id] = timestamps
+        return False, "今日点赞已达上限（500条），请明日再试"
+
+    # 时限额检查
+    hourly_count = sum(1 for t in timestamps if now - t < _LIKE_HOURLY_WINDOW)
+    if hourly_count >= _LIKE_HOURLY_MAX:
+        _like_timestamps[user_id] = timestamps
+        return False, "点赞过于频繁，1小时内最多点赞100条，请稍后再试"
+
+    timestamps.append(now)
+    _like_timestamps[user_id] = timestamps
+    return True, None
 
 
 class LikeService:
@@ -14,20 +51,24 @@ class LikeService:
     def toggle_like(blog_id):
         """
         切换点赞状态
-        
+
         Args:
             blog_id: 博客ID
-            
+
         Returns:
             tuple: (success, message, liked, likes_count)
         """
         blog = Blog.query.get(blog_id)
         if not blog or blog.ignore:
             return False, "未找到文章", False, 0
-        
+
         like = BlogLike.query.filter_by(blog_id=blog_id, user_id=current_user.id).first()
         if like:
             if like.deleted:
+                # 重新点赞：需要检查频率限制
+                allowed, err_msg = _check_like_rate(current_user.id)
+                if not allowed:
+                    return False, err_msg, False, blog.likes_count or 0
                 like.deleted = False
                 blog.likes_count = (blog.likes_count or 0) + 1
                 liked = True
@@ -36,7 +77,10 @@ class LikeService:
                 liked = False
                 like.deleted = True
         else:
-            # 点赞
+            # 首次点赞：需要检查频率限制
+            allowed, err_msg = _check_like_rate(current_user.id)
+            if not allowed:
+                return False, err_msg, False, blog.likes_count or 0
             like = BlogLike(blog_id=blog_id, user_id=current_user.id, notification_sent=False)
             db.session.add(like)
             blog.likes_count = (blog.likes_count or 0) + 1
