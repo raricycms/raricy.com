@@ -59,6 +59,9 @@
                             <span class="icon icon-bell-fill" aria-hidden="true"></span>
                             <span class="notification-badge" id="notificationBadge" style="display: none;">0</span>
                         </a>
+                        <a class="checkin-indicator" href="{{ url_for('checkin.index') }}" title="每日签到">
+                            <span class="icon icon-calendar-check" aria-hidden="true"></span>
+                        </a>
                         <div class="site-user-dropdown">
                             <button class="site-user-dropdown-toggle" id="userDropdownToggle" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="userDropdownMenu">
                                 <span>{{ current_user.username }}</span>
@@ -72,6 +75,7 @@
                                 <li role="separator" class="site-dropdown-divider"></li>
                                 <li role="none"><a class="site-dropdown-item" role="menuitem" href="{{ url_for('auth.profile', user_id=current_user.id) }}"><span class="icon icon-person" style="margin-right: .5rem;"></span>个人资料</a></li>
                                 <li role="none"><a class="site-dropdown-item" role="menuitem" href="{{ url_for('notifications.notification_page') }}"><span class="icon icon-bell" style="margin-right: .5rem;"></span>我的通知</a></li>
+                                <li role="none"><a class="site-dropdown-item" role="menuitem" href="{{ url_for('checkin.index') }}"><span class="icon icon-calendar-check" style="margin-right: .5rem;"></span>每日签到</a></li>
                                 {% if current_user.has_admin_rights %}
                                 <li role="none"><a class="site-dropdown-item" role="menuitem" href="/blog/admin"><span class="icon icon-gear-fill" style="margin-right: .5rem;"></span>博客管理后台</a></li>
                                 <li role="none"><a class="site-dropdown-item" role="menuitem" href="{{ url_for('auth.user_management') }}"><span class="icon icon-people" style="margin-right: .5rem;"></span>用户管理</a></li>

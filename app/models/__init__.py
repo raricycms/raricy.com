@@ -9,6 +9,7 @@ from .clipboard import ClipBoard, ClipText
 from .image import ImageHosting
 from .photowall import PhotoWallItem
 from .vote import Vote, VoteOption, VoteRecord
+from .checkin import DailyCheckIn
 
 __all__ = [
     'db',
@@ -19,6 +20,7 @@ __all__ = [
     'Notification', 'ClipBoard', 'ClipText',
     'ImageHosting', 'PhotoWallItem',
     'Vote', 'VoteOption', 'VoteRecord',
+    'DailyCheckIn',
 ]
 
 

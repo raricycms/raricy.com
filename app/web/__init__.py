@@ -15,6 +15,7 @@ def register_blueprints(app: Flask):
     from .image_hosting import image_bp
     from .photowall import photo_wall_bp
     from .vote import vote_bp
+    from .checkin import checkin_bp
 
     app.register_blueprint(home_bp, url_prefix='/')
     app.register_blueprint(story_bp, url_prefix='/story')
@@ -29,6 +30,7 @@ def register_blueprints(app: Flask):
     app.register_blueprint(image_bp, url_prefix='/image')
     app.register_blueprint(photo_wall_bp, url_prefix='/photowall')
     app.register_blueprint(vote_bp, url_prefix='/vote')
+    app.register_blueprint(checkin_bp, url_prefix='/checkin')
 
     # 仅在非生产环境注册测试蓝图
     if app.config.get('DEBUG'):

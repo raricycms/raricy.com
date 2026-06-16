@@ -340,6 +340,28 @@ a {
   }
 }
 
+.checkin-indicator {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border-radius: 999px;
+  border: none;
+  background: none;
+  color: var(--color-text-primary);
+  padding: 14px 14px !important;
+  transition: all 0.3s ease;
+
+  &:hover {
+    background: var(--color-brand-secondary);
+    color: var(--color-brand-primary);
+  }
+
+  .icon {
+    font-size: 1.2rem;
+    color: var(--color-text-primary);
+  }
+}
+
 
 @keyframes pulse { 
   0% { transform: scale(1); } 

@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block title %}每日签到 - 聪明山{% endblock %}
+
+{% block content %}
+<div class="checkin-page container">
+    <!-- 签到卡片 -->
+    <div class="checkin-card">
+        <div class="checkin-card__header">
+            <span class="checkin-card__greeting">你好，{{ current_user.username }}</span>
+            <span class="checkin-card__date">{{ today_status.today }}</span>
+        </div>
+
+        <button class="checkin-button{% if today_status.checked_in %} checkin-button--done{% endif %}"
+                id="checkinBtn"
+                {% if today_status.checked_in %}disabled{% endif %}
+                onclick="doCheckin()">
+            <span class="checkin-button__particles" id="checkinParticles"></span>
+            {% if today_status.checked_in %}
+            ✅ 今日已签到
+            {% else %}
+            📅 每日签到
+            {% endif %}
+        </button>
+
+        <div class="checkin-stats">
+            <div class="checkin-stats__item">
+                <div class="checkin-stats__value" id="totalCount">{{ today_status.total_count }}</div>
+                <div class="checkin-stats__label">累计签到天数</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 排行榜 -->
+    <div class="checkin-leaderboard">
+        <h2 class="checkin-leaderboard__title">🏆 签到排行榜</h2>
+        {% if leaderboard %}
+        <div class="checkin-leaderboard__list">
+            {% for entry in leaderboard %}
+            <div class="checkin-leaderboard__item{% if entry.user_id == current_user.id %} checkin-leaderboard__item--self{% endif %}">
+                <span class="checkin-leaderboard__rank
+                    {%- if entry.rank == 1 %} checkin-leaderboard__rank--top1
+                    {%- elif entry.rank == 2 %} checkin-leaderboard__rank--top2
+                    {%- elif entry.rank == 3 %} checkin-leaderboard__rank--top3
+                    {%- endif %}">
+                    {%- if entry.rank == 1 -%}🥇
+                    {%- elif entry.rank == 2 -%}🥈
+                    {%- elif entry.rank == 3 -%}🥉
+                    {%- else -%}#{{ entry.rank }}
+                    {%- endif -%}
+                </span>
+                <a class="checkin-leaderboard__user" href="{{ url_for('auth.profile', user_id=entry.user_id) }}">
+                    {% if entry.avatar_path %}
+                    <img class="checkin-leaderboard__avatar" src="{{ url_for('auth.get_avatar', user_id=entry.user_id) }}" alt="">
+                    {% else %}
+                    <span class="checkin-leaderboard__avatar-placeholder"></span>
+                    {% endif %}
+                    <span class="checkin-leaderboard__name">{{ entry.username }}</span>
+                </a>
+                <span class="checkin-leaderboard__count">{{ entry.count }} 天</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="checkin-empty">还没有人签到，快来抢占第一名吧！</div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const $ = (id) => document.getElementById(id);
+
+    function animateCount(el) {
+        if (!el) return;
+        el.classList.remove('checkin-stats__value--bounce');
+        void el.offsetWidth;
+        el.classList.add('checkin-stats__value--bounce');
+    }
+
+    async function safeJson(resp) {
+        const ct = resp.headers.get('Content-Type') || '';
+        if (!ct.includes('application/json')) {
+            throw new Error('Server returned ' + resp.status + ' ' + ct);
+        }
+        return resp.json();
+    }
+
+    function resetButton(btn) {
+        if (!btn) return;
+        btn.classList.remove('checkin-button--popping');
+        btn.disabled = false;
+        btn.textContent = '📅 每日签到';
+    }
+
+    async function doCheckin() {
+        const btn = $('checkinBtn');
+        if (!btn || btn.disabled) return;
+
+        btn.classList.add('checkin-button--popping');
+        btn.disabled = true;
+
+        setTimeout(() => { if (btn) btn.textContent = '⏳ 签到中...'; }, 180);
+
+        try {
+            const resp = await fetch('{{ url_for("checkin.api_do_checkin") }}', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+            });
+            const data = await safeJson(resp);
+
+            if (data.code === 200) {
+                btn.classList.remove('checkin-button--popping');
+                btn.classList.add('checkin-button--success');
+                btn.textContent = '✅';
+
+                const particles = $('checkinParticles');
+                if (particles) particles.classList.add('checkin-button__particles--active');
+
+                const countEl = $('totalCount');
+                if (countEl) {
+                    countEl.textContent = data.total_count;
+                    animateCount(countEl);
+                }
+
+                showToast(data.message, 'success');
+
+                setTimeout(() => {
+                    if (!btn) return;
+                    btn.classList.remove('checkin-button--success');
+                    btn.classList.add('checkin-button--done');
+                    btn.textContent = '✅ 今日已签到';
+                    const p = $('checkinParticles');
+                    if (p) p.classList.remove('checkin-button__particles--active');
+                }, 1050);
+
+                setTimeout(() => { location.reload(); }, 2200);
+
+            } else if (data.code === 401) {
+                resetButton(btn);
+                showToast('登录已过期，请重新登录', 'error');
+                setTimeout(() => { location.href = '{{ url_for("auth.login") }}'; }, 1500);
+
+            } else {
+                btn.classList.remove('checkin-button--popping');
+                btn.disabled = false;
+                btn.textContent = '✅ 今日已签到';
+                btn.classList.add('checkin-button--done');
+                const countEl = $('totalCount');
+                if (countEl) countEl.textContent = data.total_count;
+                showToast(data.message, 'info');
+            }
+        } catch (err) {
+            console.error('Checkin error:', err);
+            resetButton(btn);
+            showToast('网络异常，请稍后重试', 'error');
+        }
+    }
+</script>
+{% endblock %}
