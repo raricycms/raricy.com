@@ -1,1260 +1,1189 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="UTF-8">
-  <title>Cattca.js Demo - 选项按钮版</title>
-  <style>
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
+{% extends "base.html" %}
 
-    body { 
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-      padding: 20px; 
-      background: linear-gradient(135deg, rgb(102, 126, 234) 0%, rgb(118, 75, 162) 100%);
-      min-height: 100vh;
-      color: rgb(51, 51, 51);
-    }
+{% block title %}Cattca 脚本编辑器 - 聪明山{% endblock %}
 
-    .container {
-      max-width: 1200px;
-      margin: 0 auto;
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 20px;
-      align-items: start;
-    }
+{% block extra_css %}
+<style>
+/* ==========================================================================
+   Cattca Script Editor — BEM naming, design-token driven
+   Uses project CSS variables (--color-*) defined in base/_root.scss
+   ========================================================================== */
 
-    .panel {
-      background: white;
-      padding: 25px;
-      border-radius: 15px;
-      box-shadow: 0 8px 25px rgba(0,0,0,0.15);
-      backdrop-filter: blur(10px);
-    }
+/* ---- Layout ---- */
+.cattca {
+  padding: 2rem 0;
+}
 
-    .editor-panel {
-      display: flex;
-      flex-direction: column;
-      height: 600px;
-    }
+.cattca__back-link {
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  font-size: 0.875rem;
+  display: inline-block;
+  margin-bottom: 1.25rem;
+  transition: color 0.2s ease;
+}
 
-    .game-panel {
-      min-height: 600px;
-      display: flex;
-      flex-direction: column;
-    }
+.cattca__back-link:hover {
+  color: var(--color-brand-primary);
+}
 
-    h2 {
-      color: rgb(44, 62, 80);
-      margin-bottom: 20px;
-      font-size: 24px;
-      font-weight: 600;
-      border-bottom: 3px solid rgb(52, 152, 219);
-      padding-bottom: 10px;
-    }
+.cattca__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
 
-    h3 {
-      color: rgb(52, 73, 94);
-      margin-bottom: 15px;
-      font-size: 18px;
-      font-weight: 500;
-    }
+/* ---- Panel ---- */
+.cattca__panel {
+  background: var(--color-background-card);
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  padding: 1.5rem;
+}
 
-    .script-input {
-      flex: 1;
-      width: 100%;
-      padding: 15px;
-      border: 2px solid rgb(225, 232, 237);
-      border-radius: 10px;
-      font-family: 'Courier New', monospace;
-      font-size: 14px;
-      line-height: 1.5;
-      resize: none;
-      background: rgb(248, 249, 250);
-      transition: border-color 0.3s ease;
-    }
+.cattca__panel--editor {
+  display: flex;
+  flex-direction: column;
+  min-height: 550px;
+}
 
-    .script-input:focus {
-      outline: none;
-      border-color: rgb(52, 152, 219);
-      background: white;
-    }
+.cattca__panel--game {
+  min-height: 550px;
+  display: flex;
+  flex-direction: column;
+}
 
-    .button-group {
-      display: flex;
-      gap: 10px;
-      margin-top: 15px;
-      flex-wrap: wrap;
-    }
+.cattca__panel-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 2px solid var(--color-brand-primary);
+}
 
-    .btn {
-      padding: 12px 24px;
-      font-size: 16px;
-      font-weight: 500;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-      transition: all 0.3s ease;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
+.cattca__game-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
 
-    .btn-primary {
-      background: linear-gradient(45deg, rgb(52, 152, 219), rgb(41, 128, 185));
-      color: white;
-    }
+.cattca__game-header .cattca__panel-title {
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-bottom: 0;
+}
 
-    .btn-primary:hover {
-      background: linear-gradient(45deg, rgb(41, 128, 185), rgb(31, 95, 139));
-      transform: translateY(-2px);
-      box-shadow: 0 4px 12px rgba(52, 152, 219, 0.4);
-    }
+/* ---- Status indicator ---- */
+.cattca__status {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 1rem;
+}
 
-    .btn-secondary {
-      background: linear-gradient(45deg, rgb(149, 165, 166), rgb(127, 140, 141));
-      color: white;
-    }
+.cattca__status--ready {
+  background: var(--color-success-secondary);
+  color: var(--color-success-primary);
+}
 
-    .btn-secondary:hover {
-      background: linear-gradient(45deg, rgb(127, 140, 141), rgb(108, 123, 125));
-      transform: translateY(-2px);
-      box-shadow: 0 4px 12px rgba(149, 165, 166, 0.4);
-    }
+.cattca__status--running {
+  background: var(--color-info-secondary);
+  color: var(--color-brand-primary);
+}
 
-    .btn:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-      pointer-events: none;
-    }
+.cattca__status--error {
+  background: var(--color-warning-secondary);
+  color: var(--color-warning-primary);
+}
 
-    .output {
-      flex: 1;
-      min-height: 200px;
-      margin-bottom: 20px;
-      padding: 20px;
-      background: rgb(248, 249, 250);
-      border-radius: 10px;
-      border-left: 4px solid rgb(52, 152, 219);
-      font-size: 16px;
-      line-height: 1.6;
-      overflow-y: auto;
-    }
+/* ---- Script textarea ---- */
+.cattca__script-input {
+  flex: 1;
+  width: 100%;
+  padding: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  resize: none;
+  background: var(--color-background-page);
+  color: var(--color-text-primary);
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
 
-    .choices {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      margin-bottom: 20px;
-    }
+.cattca__script-input:focus {
+  outline: none;
+  border-color: var(--color-brand-primary);
+  background: var(--color-background-card);
+}
 
-    .choices button {
-      padding: 15px 20px;
-      font-size: 16px;
-      font-weight: 500;
-      border: 2px solid rgb(52, 152, 219);
-      border-radius: 10px;
-      background: white;
-      color: rgb(52, 152, 219);
-      cursor: pointer;
-      transition: all 0.3s ease;
-      position: relative;
-      overflow: hidden;
-    }
+.cattca__script-input::placeholder {
+  color: var(--color-text-secondary);
+}
 
-    .choices button:hover {
-      background: rgb(52, 152, 219);
-      color: white;
-      transform: translateY(-2px);
-      box-shadow: 0 6px 20px rgba(52, 152, 219, 0.3);
-    }
+/* ---- Buttons ---- */
+.cattca__button-group {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  flex-wrap: wrap;
+}
 
-    .choices button:active {
-      transform: translateY(0);
-    }
+.cattca__btn {
+  padding: 0.625rem 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border: 1px solid var(--color-border);
+  border-radius: 0.375rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background: var(--color-background-card);
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  font-family: inherit;
+  line-height: 1.4;
+}
 
-    .log {
-      padding: 15px;
-      background: rgb(236, 240, 241);
-      border-radius: 10px;
-      font-size: 13px;
-      font-family: 'Courier New', monospace;
-      max-height: 150px;
-      overflow-y: auto;
-      border-left: 4px solid rgb(231, 76, 60);
-      color: rgb(44, 62, 80);
-    }
+.cattca__btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
 
-    .status {
-      display: inline-block;
-      padding: 5px 12px;
-      border-radius: 20px;
-      font-size: 12px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin-bottom: 15px;
-    }
+.cattca__btn--primary {
+  background: var(--color-brand-primary);
+  color: #fff;
+  border-color: var(--color-brand-primary);
+}
 
-    .status.ready {
-      background: rgb(213, 244, 230);
-      color: rgb(39, 174, 96);
-    }
+.cattca__btn--primary:hover:not(:disabled) {
+  opacity: 0.9;
+}
 
-    .status.running {
-      background: rgb(254, 249, 231);
-      color: rgb(243, 156, 18);
-    }
+.cattca__btn--secondary:hover:not(:disabled) {
+  background: var(--color-background-page);
+  border-color: var(--color-brand-primary);
+}
 
-    .status.error {
-      background: rgb(250, 219, 216);
-      color: rgb(231, 76, 60);
-    }
+.cattca__btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
 
-    @media (max-width: 768px) {
-      .container {
-        grid-template-columns: 1fr;
-        gap: 15px;
-      }
-      
-      .panel {
-        padding: 20px;
-      }
-      
-      .editor-panel {
-        height: 400px;
-      }
-      
-      .button-group {
-        flex-direction: column;
-        gap: 8px;
-      }
-      
-      .btn {
-        padding: 10px 20px;
-        font-size: 14px;
-      }
-    }
+/* ---- Output area ---- */
+.cattca__output {
+  flex: 1;
+  min-height: 180px;
+  margin-bottom: 1rem;
+  padding: 1rem;
+  background: var(--color-background-page);
+  border-radius: 0.5rem;
+  border-left: 3px solid var(--color-brand-primary);
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  overflow-y: auto;
+  color: var(--color-text-primary);
+}
 
-    /* 滚动条样式 */
-    ::-webkit-scrollbar {
-      width: 8px;
-    }
+/* ---- Choice buttons ---- */
+.cattca__choices {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
 
-    ::-webkit-scrollbar-track {
-      background: rgb(241, 241, 241);
-      border-radius: 4px;
-    }
+.cattca__choice-btn {
+  padding: 0.75rem 1rem;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  border: 1px solid var(--color-brand-primary);
+  border-radius: 0.5rem;
+  background: var(--color-background-card);
+  color: var(--color-brand-primary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+  font-family: inherit;
+  line-height: 1.4;
+}
 
-    ::-webkit-scrollbar-thumb {
-      background: rgb(193, 193, 193);
-      border-radius: 4px;
-    }
+.cattca__choice-btn:hover {
+  background: var(--color-brand-primary);
+  color: #fff;
+  transform: translateY(-1px);
+}
 
-    ::-webkit-scrollbar-thumb:hover {
-      background: rgb(168, 168, 168);
-    }
+/* ---- Log area ---- */
+.cattca__log {
+  padding: 0.75rem 1rem;
+  background: var(--color-background-page);
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  max-height: 140px;
+  overflow-y: auto;
+  border-left: 3px solid var(--color-warning-primary);
+  color: var(--color-text-secondary);
+  white-space: pre-wrap;
+}
 
-    /* 可折叠段落样式 */
-    .output-segment { 
-      margin-bottom: 8px; 
-      border: 1px solid rgb(225, 232, 237); 
-      border-radius: 10px; 
-      overflow: hidden; 
-      background: white;
-    }
-    .segment-header { 
-      background: rgb(248, 249, 250); 
-      padding: 10px 15px; 
-      cursor: pointer; 
-      display: flex; 
-      justify-content: space-between; 
-      align-items: center;
-      border-bottom: 1px solid rgb(225, 232, 237);
-      transition: all 0.3s ease;
-    }
-    .segment-header:hover { 
-      background: rgb(236, 240, 241); 
-      transform: translateY(-1px);
-    }
-    .segment-title { 
-      font-weight: 600; 
-      font-size: 14px; 
-      color: rgb(52, 73, 94);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-    .toggle-icon { 
-      font-size: 12px; 
-      color: rgb(52, 152, 219); 
-      transition: transform 0.3s ease;
-      font-weight: bold;
-    }
-    .segment-content { 
-      padding: 15px; 
-      background: white;
-      transition: all 0.3s ease-out;
-      line-height: 1.6;
-    }
-    .segment-content.collapsed { 
-      max-height: 0; 
-      padding: 0 15px; 
-      overflow: hidden; 
-    }
-    
-    /* Markdown样式 */
-    .segment-content h1, .segment-content h2, .segment-content h3, 
-    .segment-content h4, .segment-content h5, .segment-content h6 {
-      margin: 16px 0 8px 0;
-      color: rgb(44, 62, 80);
-    }
-    .segment-content h1 { font-size: 1.8em; border-bottom: 2px solid rgb(225, 232, 237); padding-bottom: 8px; }
-    .segment-content h2 { font-size: 1.5em; border-bottom: 1px solid rgb(225, 232, 237); padding-bottom: 6px; }
-    .segment-content h3 { font-size: 1.3em; }
-    .segment-content p { margin: 8px 0; line-height: 1.6; }
-    .segment-content strong { font-weight: bold; color: rgb(44, 62, 80); }
-    .segment-content em { font-style: italic; color: rgb(127, 140, 141); }
-    .segment-content code { 
-      background: rgb(248, 249, 250); 
-      padding: 2px 4px; 
-      border-radius: 3px; 
-      font-family: 'Courier New', monospace; 
-      font-size: 0.9em;
-      color: rgb(231, 76, 60);
-    }
-    .segment-content pre { 
-      background: rgb(248, 249, 250); 
-      padding: 12px; 
-      border-radius: 6px; 
-      overflow-x: auto; 
-      margin: 12px 0;
-      border-left: 4px solid rgb(52, 152, 219);
-    }
-    .segment-content pre code { 
-      background: none; 
-      padding: 0; 
-      color: rgb(44, 62, 80);
-    }
-    .segment-content blockquote { 
-      border-left: 4px solid rgb(52, 152, 219); 
-      margin: 12px 0; 
-      padding: 8px 16px; 
-      background: rgb(248, 249, 250); 
-      color: rgb(127, 140, 141);
-    }
-    .segment-content ul, .segment-content ol { 
-      margin: 8px 0; 
-      padding-left: 24px; 
-    }
-    .segment-content li { 
-      margin: 4px 0; 
-      line-height: 1.5; 
-    }
-    .segment-content a { 
-      color: rgb(52, 152, 219); 
-      text-decoration: none; 
-    }
-    .segment-content a:hover { 
-      text-decoration: underline; 
-    }
-    .segment-content table { 
-      border-collapse: collapse; 
-      width: 100%; 
-      margin: 12px 0; 
-    }
-    .segment-content th, .segment-content td { 
-      border: 1px solid rgb(225, 232, 237); 
-      padding: 8px 12px; 
-      text-align: left; 
-    }
-    .segment-content th { 
-      background: rgb(248, 249, 250); 
-      font-weight: bold; 
-    }
+/* ---- Collapsible output segments ---- */
+.cattca__segment {
+  margin-bottom: 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  overflow: hidden;
+  background: var(--color-background-card);
+}
 
-    /* 游戏头部样式 */
-    .game-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 20px;
-    }
+.cattca__segment-header {
+  background: var(--color-background-page);
+  padding: 0.625rem 1rem;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--color-border);
+  transition: background 0.2s ease;
+  user-select: none;
+}
 
-    .game-header h2 {
-      margin-bottom: 0;
-      border-bottom: none;
-      padding-bottom: 0;
-    }
+.cattca__segment-header:hover {
+  background: var(--color-background-subtle);
+}
 
-    /* 全屏模式样式 */
-    .fullscreen-overlay {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
-      background: linear-gradient(135deg, rgb(102, 126, 234) 0%, rgb(118, 75, 162) 100%);
-      z-index: 9999;
-      display: none;
-      flex-direction: column;
-      padding: 20px;
-    }
+.cattca__segment-title {
+  font-weight: 600;
+  font-size: 0.8125rem;
+  color: var(--color-text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
 
-    .fullscreen-overlay.active {
-      display: flex;
-    }
+.cattca__segment-toggle {
+  font-size: 0.75rem;
+  color: var(--color-brand-primary);
+  transition: transform 0.2s ease;
+  font-weight: bold;
+}
 
-    .fullscreen-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 20px;
-      background: white;
-      padding: 15px 25px;
-      border-radius: 15px;
-      box-shadow: 0 8px 25px rgba(0,0,0,0.15);
-    }
+.cattca__segment-content {
+  padding: 1rem;
+  background: var(--color-background-card);
+  line-height: 1.6;
+  color: var(--color-text-primary);
+  transition: all 0.3s ease-out;
+}
 
-    .fullscreen-header h2 {
-      margin: 0;
-      color: rgb(44, 62, 80);
-      font-size: 24px;
-      font-weight: 600;
-    }
+.cattca__segment-content--collapsed {
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  overflow: hidden;
+}
 
-    .fullscreen-content {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      background: white;
-      border-radius: 15px;
-      box-shadow: 0 8px 25px rgba(0,0,0,0.15);
-      overflow: hidden;
-    }
+/* ---- Markdown content inside segments ---- */
+.cattca__segment-content h1,
+.cattca__segment-content h2,
+.cattca__segment-content h3,
+.cattca__segment-content h4,
+.cattca__segment-content h5,
+.cattca__segment-content h6 {
+  margin: 1rem 0 0.5rem 0;
+  color: var(--color-text-primary);
+}
 
-    .fullscreen-output {
-      flex: 1;
-      padding: 25px;
-      overflow-y: auto;
-      font-size: 18px;
-      line-height: 1.8;
-    }
+.cattca__segment-content h1 { font-size: 1.5em; border-bottom: 2px solid var(--color-border); padding-bottom: 0.5rem; }
+.cattca__segment-content h2 { font-size: 1.3em; border-bottom: 1px solid var(--color-border); padding-bottom: 0.375rem; }
+.cattca__segment-content h3 { font-size: 1.15em; }
+.cattca__segment-content p { margin: 0.5rem 0; line-height: 1.6; }
+.cattca__segment-content strong { font-weight: bold; color: var(--color-text-primary); }
+.cattca__segment-content em { font-style: italic; color: var(--color-text-secondary); }
 
-    .fullscreen-choices {
-      padding: 0 25px 25px 25px;
-    }
+.cattca__segment-content code {
+  background: var(--color-background-page);
+  padding: 0.125rem 0.25rem;
+  border-radius: 3px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.875em;
+  color: var(--color-warning-primary);
+}
 
-    .fullscreen-choices .choices {
-      margin-bottom: 0;
-    }
+.cattca__segment-content pre {
+  background: var(--color-background-page);
+  padding: 0.75rem;
+  border-radius: 0.375rem;
+  overflow-x: auto;
+  margin: 0.75rem 0;
+  border-left: 3px solid var(--color-brand-primary);
+}
 
-    .fullscreen-choices button {
-      padding: 18px 25px;
-      font-size: 18px;
-      font-weight: 500;
-      border: 2px solid rgb(52, 152, 219);
-      border-radius: 10px;
-      background: white;
-      color: rgb(52, 152, 219);
-      cursor: pointer;
-      transition: all 0.3s ease;
-      position: relative;
-      overflow: hidden;
-      margin-bottom: 12px;
-      width: 100%;
-    }
+.cattca__segment-content pre code {
+  background: none;
+  padding: 0;
+  color: var(--color-text-primary);
+}
 
-    .fullscreen-choices button:hover {
-      background: rgb(52, 152, 219);
-      color: white;
-      transform: translateY(-2px);
-      box-shadow: 0 6px 20px rgba(52, 152, 219, 0.3);
-    }
+.cattca__segment-content blockquote {
+  border-left: 3px solid var(--color-brand-primary);
+  margin: 0.75rem 0;
+  padding: 0.5rem 1rem;
+  background: var(--color-background-page);
+  color: var(--color-text-secondary);
+}
 
-    .fullscreen-choices button:active {
-      transform: translateY(0);
-    }
+.cattca__segment-content ul,
+.cattca__segment-content ol {
+  margin: 0.5rem 0;
+  padding-left: 1.5rem;
+}
 
-    .fullscreen-log {
-      max-height: 200px;
-      margin: 0 25px 25px 25px;
-      padding: 20px;
-      background: rgb(236, 240, 241);
-      border-radius: 10px;
-      font-size: 14px;
-      font-family: 'Courier New', monospace;
-      overflow-y: auto;
-      border-left: 4px solid rgb(231, 76, 60);
-      color: rgb(44, 62, 80);
-    }
+.cattca__segment-content li {
+  margin: 0.25rem 0;
+  line-height: 1.5;
+}
 
-    .exit-fullscreen-btn {
-      background: linear-gradient(45deg, rgb(231, 76, 60), rgb(192, 57, 43));
-      color: white;
-      border: none;
-      padding: 12px 24px;
-      border-radius: 8px;
-      cursor: pointer;
-      font-size: 16px;
-      font-weight: 500;
-      transition: all 0.3s ease;
-    }
+.cattca__segment-content a {
+  color: var(--color-brand-primary);
+  text-decoration: none;
+}
 
-    .exit-fullscreen-btn:hover {
-      background: linear-gradient(45deg, rgb(192, 57, 43), rgb(169, 50, 38));
-      transform: translateY(-2px);
-      box-shadow: 0 4px 12px rgba(231, 76, 60, 0.4);
-    }
-  </style>
-</head>
-<body>
+.cattca__segment-content a:hover {
+  text-decoration: underline;
+}
+
+.cattca__segment-content table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.75rem 0;
+}
+
+.cattca__segment-content th,
+.cattca__segment-content td {
+  border: 1px solid var(--color-border);
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+}
+
+.cattca__segment-content th {
+  background: var(--color-background-page);
+  font-weight: bold;
+}
+
+/* ---- Inline input prompt (getInput) ---- */
+.cattca__input-prompt {
+  margin: 0.625rem 0;
+  padding: 0.75rem;
+  background: var(--color-background-page);
+  border-radius: 0.375rem;
+  border: 1px solid var(--color-border);
+}
+
+.cattca__input-prompt label {
+  display: block;
+  margin-bottom: 0.375rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  font-size: 0.875rem;
+}
+
+.cattca__input-prompt input {
+  width: 100%;
+  padding: 0.5rem 0.625rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.25rem;
+  font-size: 0.9375rem;
+  background: var(--color-background-card);
+  color: var(--color-text-primary);
+  font-family: inherit;
+}
+
+.cattca__input-prompt input:focus {
+  outline: none;
+  border-color: var(--color-brand-primary);
+}
+
+.cattca__input-submit {
+  margin-top: 0.375rem;
+  padding: 0.5rem 1rem;
+  background: var(--color-brand-primary);
+  color: #fff;
+  border: none;
+  border-radius: 0.25rem;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-family: inherit;
+}
+
+.cattca__input-submit:hover {
+  opacity: 0.9;
+}
+
+/* ---- Fullscreen overlay ---- */
+.cattca__fullscreen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: var(--color-background-page);
+  z-index: 9999;
+  display: none;
+  flex-direction: column;
+  padding: 1.5rem;
+}
+
+.cattca__fullscreen--active {
+  display: flex;
+}
+
+.cattca__fullscreen-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.25rem;
+  background: var(--color-background-card);
+  padding: 1rem 1.5rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--color-border);
+}
+
+.cattca__fullscreen-header .cattca__panel-title {
+  margin: 0;
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.cattca__fullscreen-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-background-card);
+  border-radius: 0.5rem;
+  border: 1px solid var(--color-border);
+  overflow: hidden;
+}
+
+.cattca__fullscreen-output {
+  flex: 1;
+  padding: 1.5rem;
+  overflow-y: auto;
+  font-size: 1.0625rem;
+  line-height: 1.8;
+  color: var(--color-text-primary);
+}
+
+.cattca__fullscreen-choices {
+  padding: 0 1.5rem 1.5rem 1.5rem;
+}
+
+.cattca__fullscreen-choices .cattca__choices {
+  margin-bottom: 0;
+}
+
+.cattca__fullscreen-choices .cattca__choice-btn {
+  padding: 1rem 1.5rem;
+  font-size: 1.0625rem;
+  margin-bottom: 0.5rem;
+}
+
+.cattca__fullscreen-log {
+  max-height: 180px;
+  margin: 0 1.5rem 1.5rem 1.5rem;
+  padding: 1rem 1.25rem;
+  background: var(--color-background-page);
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  overflow-y: auto;
+  border-left: 3px solid var(--color-warning-primary);
+  color: var(--color-text-secondary);
+  white-space: pre-wrap;
+}
+
+.cattca__exit-fullscreen-btn {
+  background: var(--color-warning-primary);
+  color: #fff;
+  border: none;
+  padding: 0.625rem 1.25rem;
+  border-radius: 0.375rem;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.cattca__exit-fullscreen-btn:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 768px) {
+  .cattca__grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  .cattca__panel--editor {
+    min-height: 380px;
+  }
+
+  .cattca__panel--game {
+    min-height: 400px;
+  }
+
+  .cattca__button-group {
+    flex-direction: column;
+  }
+
+  .cattca__btn {
+    width: 100%;
+  }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="cattca">
   <div class="container">
-    <!-- 脚本编辑器面板 -->
-    <div class="panel editor-panel">
-      <h2>📝 Cattca 脚本编辑器</h2>
-      <div class="status ready" id="status">准备就绪</div>
-      <textarea class="script-input" id="script-input" placeholder="在这里输入你的 Cattca 脚本..."></textarea>
-      <div class="button-group">
-        <button class="btn btn-primary" id="run-btn">▶️ 运行脚本</button>
-        <button class="btn btn-secondary" id="undo-btn" disabled>↶ 撤回</button>
-        <button class="btn btn-secondary" id="redo-btn" disabled>↷ 重做</button>
-        <button class="btn btn-secondary" id="save-btn">💾 保存脚本</button>
-        <button class="btn btn-secondary" id="load-btn">📁 加载脚本</button>
-        <button class="btn btn-secondary" id="example-btn">📖 加载示例</button>
+    <a href="{{ url_for('tool.menu') }}" class="cattca__back-link">← 返回工具箱</a>
+
+    <div class="cattca__grid">
+      <!-- 脚本编辑器面板 -->
+      <div class="cattca__panel cattca__panel--editor">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+          <h2 class="cattca__panel-title" style="border-bottom: none; padding-bottom: 0; margin-bottom: 0;">📝 Cattca 脚本编辑器</h2>
+          <a href="{{ url_for('tool.cattca_guide') }}" target="_blank" rel="noopener"
+             style="font-size: 0.8125rem; color: var(--color-brand-primary); text-decoration: none; white-space: nowrap; padding: 0.25rem 0.5rem; border: 1px solid var(--color-border); border-radius: 0.25rem; transition: all 0.2s ease;"
+             onmouseover="this.style.background='var(--color-brand-secondary)'"
+             onmouseout="this.style.background='transparent'">
+            📖 语法指南
+          </a>
+        </div>
+        <div class="cattca__status cattca__status--ready" id="status">准备就绪</div>
+        <textarea class="cattca__script-input" id="script-input" placeholder="在这里输入你的 Cattca 脚本..."></textarea>
+        <div class="cattca__button-group">
+          <button class="cattca__btn cattca__btn--primary" id="run-btn">▶️ 运行脚本</button>
+          <button class="cattca__btn cattca__btn--secondary" id="undo-btn" disabled>↶ 撤回</button>
+          <button class="cattca__btn cattca__btn--secondary" id="redo-btn" disabled>↷ 重做</button>
+          <button class="cattca__btn cattca__btn--secondary" id="save-btn">💾 保存脚本</button>
+          <button class="cattca__btn cattca__btn--secondary" id="load-btn">📁 加载脚本</button>
+          <button class="cattca__btn cattca__btn--secondary" id="example-btn">📖 加载示例</button>
+        </div>
+      </div>
+
+      <!-- 游戏运行面板 -->
+      <div class="cattca__panel cattca__panel--game">
+        <div class="cattca__game-header">
+          <h2 class="cattca__panel-title">🎮 游戏运行区</h2>
+          <button class="cattca__btn cattca__btn--secondary" id="fullscreen-btn">🔍 全屏</button>
+        </div>
+        <div class="cattca__output" id="output"></div>
+        <div class="cattca__choices" id="choices"></div>
+        <div class="cattca__log" id="log"></div>
       </div>
     </div>
 
-    <!-- 游戏运行面板 -->
-    <div class="panel game-panel">
-      <div class="game-header">
-        <h2>🎮 游戏运行区</h2>
-        <button class="btn btn-secondary" id="fullscreen-btn">🔍 全屏</button>
+    <!-- 全屏覆盖层 -->
+    <div class="cattca__fullscreen" id="fullscreen-overlay">
+      <div class="cattca__fullscreen-header">
+        <h2 class="cattca__panel-title">🎮 游戏运行区 - 全屏模式</h2>
+        <button class="cattca__exit-fullscreen-btn" id="exit-fullscreen-btn">❌ 退出全屏</button>
       </div>
-      <div class="output" id="output"></div>
-      <div class="choices" id="choices"></div>
-      <div class="log" id="log"></div>
+      <div class="cattca__fullscreen-content">
+        <div class="cattca__fullscreen-output" id="fullscreen-output"></div>
+        <div class="cattca__fullscreen-choices" id="fullscreen-choices"></div>
+        <div class="cattca__fullscreen-log" id="fullscreen-log"></div>
+      </div>
     </div>
   </div>
+</div>
+{% endblock %}
 
-  <!-- 全屏覆盖层 -->
-  <div class="fullscreen-overlay" id="fullscreen-overlay">
-    <div class="fullscreen-header">
-      <h2>🎮 游戏运行区 - 全屏模式</h2>
-      <button class="exit-fullscreen-btn" id="exit-fullscreen-btn">❌ 退出全屏</button>
-    </div>
-    <div class="fullscreen-content">
-      <div class="fullscreen-output" id="fullscreen-output"></div>
-      <div class="fullscreen-choices" id="fullscreen-choices"></div>
-      <div class="fullscreen-log" id="fullscreen-log"></div>
-    </div>
-  </div>
-  <!-- 引入marked.js用于markdown渲染 -->
-  <script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
-  <script type="module">
-    import { CattcaInterpreter } from "{{url_for('static', filename='js/cattca.js')}}";
-    
-    // 配置marked.js
-    try {
-        if (typeof marked.setOptions === 'function') {
-            marked.setOptions({
-                breaks: true,
-                gfm: true,
-                sanitize: false,
-                smartLists: true,
-                smartypants: false
-            });
-        } else if (typeof marked.use === 'function') {
-            // 新版本API
-            marked.use({
-                breaks: true,
-                gfm: true,
-                sanitize: false,
-                smartLists: true,
-                smartypants: false
-            });
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
+<script type="module">
+  import { CattcaInterpreter } from "{{ url_for('static', filename='js/cattca.js') }}";
+
+  // 配置marked.js
+  try {
+    if (typeof marked.setOptions === 'function') {
+      marked.setOptions({
+        breaks: true,
+        gfm: true,
+        sanitize: false,
+        smartLists: true,
+        smartypants: false
+      });
+    } else if (typeof marked.use === 'function') {
+      marked.use({
+        breaks: true,
+        gfm: true,
+        sanitize: false,
+        smartLists: true,
+        smartypants: false
+      });
+    }
+  } catch (error) {
+    console.warn('Failed to configure marked.js:', error);
+  }
+
+  const scriptInput = document.querySelector('#script-input');
+  const outputDiv = document.querySelector('#output');
+  const logDiv = document.querySelector('#log');
+  const choicesDiv = document.querySelector('#choices');
+  const statusDiv = document.querySelector('#status');
+  const runBtn = document.querySelector('#run-btn');
+  const undoBtn = document.querySelector('#undo-btn');
+  const redoBtn = document.querySelector('#redo-btn');
+  const saveBtn = document.querySelector('#save-btn');
+  const loadBtn = document.querySelector('#load-btn');
+  const exampleBtn = document.querySelector('#example-btn');
+
+  // 全屏相关元素
+  const fullscreenBtn = document.querySelector('#fullscreen-btn');
+  const fullscreenOverlay = document.querySelector('#fullscreen-overlay');
+  const exitFullscreenBtn = document.querySelector('#exit-fullscreen-btn');
+  const fullscreenOutput = document.querySelector('#fullscreen-output');
+  const fullscreenChoices = document.querySelector('#fullscreen-choices');
+  const fullscreenLog = document.querySelector('#fullscreen-log');
+
+  let interpreter = null;
+  let isFullscreen = false;
+
+  // 历史记录系统
+  let history = [];
+  let historyIndex = -1;
+  let isUndoRedoAction = false;
+
+  function updateStatus(text, type) {
+    if (type === void 0) type = 'ready';
+    statusDiv.textContent = text;
+    statusDiv.className = 'cattca__status cattca__status--' + type;
+  }
+
+  // 全屏功能
+  function enterFullscreen() {
+    isFullscreen = true;
+    fullscreenOverlay.classList.add('cattca__fullscreen--active');
+    fullscreenBtn.textContent = '📱 退出全屏';
+    syncToFullscreen();
+    document.body.style.overflow = 'hidden';
+  }
+
+  function exitFullscreen() {
+    isFullscreen = false;
+    fullscreenOverlay.classList.remove('cattca__fullscreen--active');
+    fullscreenBtn.textContent = '🔍 全屏';
+    document.body.style.overflow = '';
+  }
+
+  function syncToFullscreen() {
+    fullscreenOutput.innerHTML = outputDiv.innerHTML;
+    fullscreenLog.textContent = logDiv.textContent;
+    if (choicesDiv.children.length > 0 && fullscreenChoices.children.length === 0) {
+      fullscreenChoices.innerHTML = choicesDiv.innerHTML;
+      bindFullscreenChoiceEvents();
+    }
+  }
+
+  function bindFullscreenChoiceEvents() {
+    const btns = fullscreenChoices.querySelectorAll('button');
+    btns.forEach(function (btn) {
+      btn.onclick = function () {
+        var choiceText = btn.innerText;
+        choicesDiv.innerHTML = "";
+        fullscreenChoices.innerHTML = "";
+        startNewSegment();
+        if (window.currentChoiceResolver) {
+          window.currentChoiceResolver(choiceText);
         }
+      };
+    });
+  }
+
+  // 历史记录
+  function addToHistory(content) {
+    if (isUndoRedoAction) return;
+    if (historyIndex < history.length - 1) {
+      history = history.slice(0, historyIndex + 1);
+    }
+    if (history.length === 0 || history[history.length - 1] !== content) {
+      history.push(content);
+      historyIndex = history.length - 1;
+      if (history.length > 100) {
+        history.shift();
+        historyIndex--;
+      }
+    }
+    updateUndoRedoButtons();
+  }
+
+  function updateUndoRedoButtons() {
+    undoBtn.disabled = historyIndex <= 0;
+    redoBtn.disabled = historyIndex >= history.length - 1;
+  }
+
+  function undo() {
+    if (historyIndex > 0) {
+      historyIndex--;
+      isUndoRedoAction = true;
+      scriptInput.value = history[historyIndex];
+      isUndoRedoAction = false;
+      updateUndoRedoButtons();
+      updateStatus('已撤回', 'ready');
+    }
+  }
+
+  function redo() {
+    if (historyIndex < history.length - 1) {
+      historyIndex++;
+      isUndoRedoAction = true;
+      scriptInput.value = history[historyIndex];
+      isUndoRedoAction = false;
+      updateUndoRedoButtons();
+      updateStatus('已重做', 'ready');
+    }
+  }
+
+  // 可折叠输出系统
+  var currentSegment = null;
+  var segmentCount = 0;
+
+  // 输出缓冲区：累积文本和apply输出，在段落边界一次性整体渲染
+  var outputBuffer = '';
+
+  // 将缓冲区内容整体markdown解析并渲染到当前段落
+  function flushOutput() {
+    if (outputBuffer === '') return;
+
+    var htmlContent;
+    try {
+      if (typeof marked.parse === 'function') {
+        htmlContent = marked.parse(outputBuffer);
+      } else if (typeof marked === 'function') {
+        htmlContent = marked(outputBuffer);
+      } else {
+        throw new Error('marked API not found');
+      }
     } catch (error) {
-        console.warn('Failed to configure marked.js:', error);
-    }
-    const scriptInput = document.querySelector('#script-input');
-    const outputDiv = document.querySelector('#output');
-    const logDiv = document.querySelector('#log');
-    const choicesDiv = document.querySelector('#choices');
-    const statusDiv = document.querySelector('#status');
-    const runBtn = document.querySelector('#run-btn');
-    const undoBtn = document.querySelector('#undo-btn');
-    const redoBtn = document.querySelector('#redo-btn');
-    const saveBtn = document.querySelector('#save-btn');
-    const loadBtn = document.querySelector('#load-btn');
-    const exampleBtn = document.querySelector('#example-btn');
-    
-    // 全屏相关元素
-    const fullscreenBtn = document.querySelector('#fullscreen-btn');
-    const fullscreenOverlay = document.querySelector('#fullscreen-overlay');
-    const exitFullscreenBtn = document.querySelector('#exit-fullscreen-btn');
-    const fullscreenOutput = document.querySelector('#fullscreen-output');
-    const fullscreenChoices = document.querySelector('#fullscreen-choices');
-    const fullscreenLog = document.querySelector('#fullscreen-log');
-
-    let interpreter = null;
-    let isFullscreen = false; // 全屏状态
-
-    // 历史记录系统
-    let history = [];
-    let historyIndex = -1;
-    let isUndoRedoAction = false; // 防止在撤回/重做时触发新的历史记录
-
-    function updateStatus(text, type = 'ready') {
-      statusDiv.textContent = text;
-      statusDiv.className = `status ${type}`;
+      console.error('Markdown parsing error:', error);
+      htmlContent = outputBuffer.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
 
-    // 全屏功能
-    function enterFullscreen() {
-      isFullscreen = true;
-      fullscreenOverlay.classList.add('active');
-      fullscreenBtn.textContent = '📱 退出全屏';
-      
-      // 同步内容到全屏模式
-      syncToFullscreen();
-      
-      // 阻止页面滚动
-      document.body.style.overflow = 'hidden';
-    }
+    if (!currentSegment) {
+      currentSegment = document.createElement('div');
+      currentSegment.className = 'cattca__segment';
 
-    function exitFullscreen() {
-      isFullscreen = false;
-      fullscreenOverlay.classList.remove('active');
-      fullscreenBtn.textContent = '🔍 全屏';
-      
-      // 恢复页面滚动
-      document.body.style.overflow = '';
-    }
+      var header = document.createElement('div');
+      header.className = 'cattca__segment-header';
+      header.onclick = function () { toggleSegment(header); };
 
-    function syncToFullscreen() {
-      // 同步输出内容
+      var title = document.createElement('span');
+      title.className = 'cattca__segment-title';
+      title.textContent = '段落 ' + (++segmentCount);
+
+      var icon = document.createElement('span');
+      icon.className = 'cattca__segment-toggle';
+      icon.textContent = '▼';
+
+      header.appendChild(title);
+      header.appendChild(icon);
+
+      var content = document.createElement('div');
+      content.className = 'cattca__segment-content';
+      content.innerHTML = htmlContent;
+
+      currentSegment.appendChild(header);
+      currentSegment.appendChild(content);
+      outputDiv.appendChild(currentSegment);
+
+      setTimeout(function () {
+        var rect = currentSegment.getBoundingClientRect();
+        var containerRect = outputDiv.getBoundingClientRect();
+        var scrollTop = outputDiv.scrollTop + (rect.top - containerRect.top) - 20;
+        outputDiv.scrollTo({ top: scrollTop, behavior: 'smooth' });
+      }, 10);
+    } else {
+      var contentDiv = currentSegment.querySelector('.cattca__segment-content');
+      contentDiv.innerHTML = htmlContent;
+    }
+    outputDiv.scrollTop = outputDiv.scrollHeight;
+
+    if (isFullscreen) {
       fullscreenOutput.innerHTML = outputDiv.innerHTML;
-      
-      // 同步日志
-      fullscreenLog.textContent = logDiv.textContent;
-      
-      // 只有在没有选择按钮时才同步选择按钮
-      if (choicesDiv.children.length > 0 && fullscreenChoices.children.length === 0) {
+      fullscreenOutput.scrollTop = fullscreenOutput.scrollHeight;
+      if (choicesDiv.children.length > 0) {
         fullscreenChoices.innerHTML = choicesDiv.innerHTML;
         bindFullscreenChoiceEvents();
       }
     }
+  }
 
-    function syncFromFullscreen() {
-      // 从全屏模式同步回普通模式
-      outputDiv.innerHTML = fullscreenOutput.innerHTML;
-      choicesDiv.innerHTML = fullscreenChoices.innerHTML;
-      logDiv.textContent = fullscreenLog.textContent;
+  // 仅累积文本到缓冲区，不立即渲染——等待段落边界再统一flush
+  function appendOutput(txt) {
+    outputBuffer += txt;
+  }
+
+  function startNewSegment() {
+    if (currentSegment) {
+      var content = currentSegment.querySelector('.cattca__segment-content');
+      content.classList.add('cattca__segment-content--collapsed');
     }
+    currentSegment = null;
+    outputBuffer = '';
+    if (isFullscreen) {
+      fullscreenOutput.innerHTML = outputDiv.innerHTML;
+    }
+  }
 
-    function bindFullscreenChoiceEvents() {
-      const fullscreenChoiceButtons = fullscreenChoices.querySelectorAll('button');
-      fullscreenChoiceButtons.forEach(btn => {
-        btn.onclick = () => {
-          const choiceText = btn.innerText;
-          // 清空所有选择按钮
+  function toggleSegment(header) {
+    var segment = header.parentElement;
+    var content = segment.querySelector('.cattca__segment-content');
+    var icon = header.querySelector('.cattca__segment-toggle');
+
+    if (content.classList.contains('cattca__segment-content--collapsed')) {
+      content.classList.remove('cattca__segment-content--collapsed');
+      icon.textContent = '▲';
+    } else {
+      content.classList.add('cattca__segment-content--collapsed');
+      icon.textContent = '▼';
+    }
+  }
+
+  window.toggleSegment = toggleSegment;
+
+  function appendLog(txt) {
+    logDiv.innerText += txt + "\n";
+    logDiv.scrollTop = logDiv.scrollHeight;
+    if (isFullscreen) {
+      fullscreenLog.textContent = logDiv.textContent;
+      fullscreenLog.scrollTop = fullscreenLog.scrollHeight;
+    }
+  }
+
+  function clearOutput() {
+    outputDiv.innerHTML = "";
+    logDiv.innerText = "";
+    choicesDiv.innerHTML = "";
+    segmentCount = 0;
+    currentSegment = null;
+    outputBuffer = '';
+    if (isFullscreen) {
+      fullscreenOutput.innerHTML = "";
+      fullscreenLog.textContent = "";
+      fullscreenChoices.innerHTML = "";
+    }
+  }
+
+  // 异步等待用户选择——在此之前flush缓冲区中所有累积文本
+  function getChoice(options) {
+    return new Promise(function (resolve) {
+      flushOutput();
+      choicesDiv.innerHTML = "";
+      fullscreenChoices.innerHTML = "";
+
+      options.forEach(function (opt) {
+        var btn = document.createElement("button");
+        btn.className = 'cattca__choice-btn';
+        btn.innerText = opt;
+        btn.onclick = function () {
           choicesDiv.innerHTML = "";
           fullscreenChoices.innerHTML = "";
-          // 选择完成后开始新段落
           startNewSegment();
-          // 触发选择回调
-          if (window.currentChoiceResolver) {
-            window.currentChoiceResolver(choiceText);
-          }
+          resolve(opt);
         };
-      });
-    }
+        choicesDiv.appendChild(btn);
 
-    // 添加到历史记录
-    function addToHistory(content) {
-      if (isUndoRedoAction) return; // 撤回/重做操作不记录历史
-      
-      // 如果当前不在历史记录的末尾，移除后面的记录
-      if (historyIndex < history.length - 1) {
-        history = history.slice(0, historyIndex + 1);
-      }
-      
-      // 只有当内容真的改变时才添加到历史记录
-      if (history.length === 0 || history[history.length - 1] !== content) {
-        history.push(content);
-        historyIndex = history.length - 1;
-        
-        // 限制历史记录数量，避免内存过度使用
-        if (history.length > 100) {
-          history.shift();
-          historyIndex--;
-        }
-      }
-      
-      updateUndoRedoButtons();
-    }
-
-    // 更新撤回/重做按钮状态
-    function updateUndoRedoButtons() {
-      undoBtn.disabled = historyIndex <= 0;
-      redoBtn.disabled = historyIndex >= history.length - 1;
-    }
-
-    // 撤回操作
-    function undo() {
-      if (historyIndex > 0) {
-        historyIndex--;
-        isUndoRedoAction = true;
-        scriptInput.value = history[historyIndex];
-        isUndoRedoAction = false;
-        updateUndoRedoButtons();
-        updateStatus('已撤回', 'ready');
-      }
-    }
-
-    // 重做操作
-    function redo() {
-      if (historyIndex < history.length - 1) {
-        historyIndex++;
-        isUndoRedoAction = true;
-        scriptInput.value = history[historyIndex];
-        isUndoRedoAction = false;
-        updateUndoRedoButtons();
-        updateStatus('已重做', 'ready');
-      }
-    }
-
-    // 可折叠输出系统
-    let currentSegment = null;
-    let segmentCount = 0;
-
-    function appendOutput(txt) {
-      // 使用marked.js渲染markdown，添加错误处理
-      let htmlContent;
-      try {
-        // 尝试新的API
-        if (typeof marked.parse === 'function') {
-          htmlContent = marked.parse(txt);
-        } else if (typeof marked === 'function') {
-          htmlContent = marked(txt);
-        } else {
-          throw new Error('marked API not found');
-        }
-      } catch (error) {
-        console.error('Markdown parsing error:', error);
-        // 如果markdown解析失败，直接显示原始文本
-        htmlContent = txt.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      }
-      
-      if (!currentSegment) {
-        // 创建新的段落
-        currentSegment = document.createElement('div');
-        currentSegment.className = 'output-segment';
-        
-        // 创建段落头部
-        const header = document.createElement('div');
-        header.className = 'segment-header';
-        header.onclick = () => toggleSegment(header);
-        
-        const title = document.createElement('span');
-        title.className = 'segment-title';
-        title.textContent = `段落 ${++segmentCount}`;
-        
-        const icon = document.createElement('span');
-        icon.className = 'toggle-icon';
-        icon.textContent = '▼';
-        
-        header.appendChild(title);
-        header.appendChild(icon);
-        
-        // 创建内容区域
-        const content = document.createElement('div');
-        content.className = 'segment-content';
-        // 使用textContent先设置，然后安全地设置innerHTML
-        content.textContent = '';
-        try {
-          content.innerHTML = htmlContent;
-        } catch (error) {
-          console.error('HTML insertion error:', error);
-          content.textContent = txt;
-        }
-        
-        currentSegment.appendChild(header);
-        currentSegment.appendChild(content);
-        outputDiv.appendChild(currentSegment);
-        
-        // 自动滚动到新段落，稍微往上一点以显示段落标题
-        setTimeout(() => {
-          const rect = currentSegment.getBoundingClientRect();
-          const containerRect = outputDiv.getBoundingClientRect();
-          const scrollTop = outputDiv.scrollTop + (rect.top - containerRect.top) - 20;
-          outputDiv.scrollTo({ top: scrollTop, behavior: 'smooth' });
-        }, 10);
-      } else {
-        // 追加到当前段落
-        const contentDiv = currentSegment.querySelector('.segment-content');
-        // 获取当前内容并追加新的markdown内容
-        const currentHtml = contentDiv.innerHTML;
-        let newHtml;
-        try {
-          // 尝试新的API
-          if (typeof marked.parse === 'function') {
-            newHtml = marked.parse(txt);
-          } else if (typeof marked === 'function') {
-            newHtml = marked(txt);
-          } else {
-            throw new Error('marked API not found');
-          }
-        } catch (error) {
-          console.error('Markdown parsing error:', error);
-          newHtml = txt.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        }
-        try {
-          contentDiv.innerHTML = currentHtml + newHtml;
-        } catch (error) {
-          console.error('HTML insertion error:', error);
-          contentDiv.textContent = contentDiv.textContent + txt;
-        }
-      }
-      outputDiv.scrollTop = outputDiv.scrollHeight;
-      
-      // 如果当前是全屏模式，同步到全屏输出
-      if (isFullscreen) {
-        fullscreenOutput.innerHTML = outputDiv.innerHTML;
-        fullscreenOutput.scrollTop = fullscreenOutput.scrollHeight;
-        
-        // 同步选择按钮（如果有的话）
-        if (choicesDiv.children.length > 0) {
-          fullscreenChoices.innerHTML = choicesDiv.innerHTML;
-          bindFullscreenChoiceEvents();
-        }
-      }
-    }
-
-    function startNewSegment() {
-      // 将当前段落标记为可折叠（如果有当前段落）
-      if (currentSegment) {
-        const content = currentSegment.querySelector('.segment-content');
-        content.classList.add('collapsed');
-      }
-      currentSegment = null;
-      
-      // 如果当前是全屏模式，同步段落状态
-      if (isFullscreen) {
-        fullscreenOutput.innerHTML = outputDiv.innerHTML;
-      }
-    }
-
-    function toggleSegment(header) {
-      const segment = header.parentElement;
-      const content = segment.querySelector('.segment-content');
-      const icon = header.querySelector('.toggle-icon');
-      
-      if (content.classList.contains('collapsed')) {
-        content.classList.remove('collapsed');
-        icon.textContent = '▲';
-      } else {
-        content.classList.add('collapsed');
-        icon.textContent = '▼';
-      }
-    }
-
-    // 将函数暴露到全局作用域
-    window.toggleSegment = toggleSegment;
-
-    function appendLog(txt) {
-      logDiv.innerText += txt + "\n";
-      logDiv.scrollTop = logDiv.scrollHeight;
-      
-      // 如果当前是全屏模式，同步到全屏日志
-      if (isFullscreen) {
-        fullscreenLog.textContent = logDiv.textContent;
-        fullscreenLog.scrollTop = fullscreenLog.scrollHeight;
-      }
-    }
-
-    function clearOutput() {
-      outputDiv.innerHTML = "";
-      logDiv.innerText = "";
-      choicesDiv.innerHTML = "";
-      // 重置段落计数
-      segmentCount = 0;
-      currentSegment = null;
-      
-      // 如果当前是全屏模式，也清空全屏内容
-      if (isFullscreen) {
-        fullscreenOutput.innerHTML = "";
-        fullscreenLog.textContent = "";
-        fullscreenChoices.innerHTML = "";
-      }
-    }
-
-    // 异步等待用户选择
-    function getChoice(options) {
-      return new Promise(resolve => {
-        choicesDiv.innerHTML = "";
-        fullscreenChoices.innerHTML = "";
-        
-        options.forEach(opt => {
-          // 创建普通模式的按钮
-          const btn = document.createElement("button");
-          btn.innerText = opt;
-          btn.onclick = () => {
+        if (isFullscreen) {
+          var fsBtn = document.createElement("button");
+          fsBtn.className = 'cattca__choice-btn';
+          fsBtn.innerText = opt;
+          fsBtn.onclick = function () {
             choicesDiv.innerHTML = "";
             fullscreenChoices.innerHTML = "";
-            // 选择完成后开始新段落
             startNewSegment();
             resolve(opt);
           };
-          choicesDiv.appendChild(btn);
-          
-          // 如果当前是全屏模式，也创建全屏模式的按钮
-          if (isFullscreen) {
-            const fullscreenBtn = document.createElement("button");
-            fullscreenBtn.innerText = opt;
-            fullscreenBtn.onclick = () => {
-              choicesDiv.innerHTML = "";
-              fullscreenChoices.innerHTML = "";
-              // 选择完成后开始新段落
-              startNewSegment();
-              resolve(opt);
-            };
-            fullscreenChoices.appendChild(fullscreenBtn);
-          }
-        });
-        
-        // 保存resolve函数供后续使用
-        window.currentChoiceResolver = resolve;
-      });
-    }
-
-    // 输入文本：使用非阻塞的输入框
-    async function getInput(promptText) {
-      return new Promise(resolve => {
-        // 创建输入框
-        const inputDiv = document.createElement('div');
-        inputDiv.style.cssText = 'margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 6px; border: 1px solid #dee2e6;';
-        
-        const label = document.createElement('label');
-        label.textContent = promptText || '请输入:';
-        label.style.cssText = 'display: block; margin-bottom: 5px; font-weight: bold;';
-        
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.style.cssText = 'width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 4px; font-size: 16px;';
-        
-        const button = document.createElement('button');
-        button.textContent = '确定';
-        button.style.cssText = 'margin-top: 5px; padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;';
-        
-        inputDiv.appendChild(label);
-        inputDiv.appendChild(input);
-        inputDiv.appendChild(button);
-        
-        // 添加到输出区域
-        outputDiv.appendChild(inputDiv);
-        
-        // 如果当前是全屏模式，也添加到全屏输出
-        if (isFullscreen) {
-          const fullscreenInputDiv = inputDiv.cloneNode(true);
-          fullscreenOutput.appendChild(fullscreenInputDiv);
-          const fullscreenInput = fullscreenInputDiv.querySelector('input');
-          const fullscreenButton = fullscreenInputDiv.querySelector('button');
-          fullscreenInput.focus();
-          
-          // 处理全屏输入
-          const handleFullscreenSubmit = () => {
-            const value = fullscreenInput.value;
-            fullscreenOutput.removeChild(fullscreenInputDiv);
-            outputDiv.removeChild(inputDiv);
-            // 输入完成后开始新段落
-            startNewSegment();
-            resolve(value);
-          };
-          
-          fullscreenButton.onclick = handleFullscreenSubmit;
-          fullscreenInput.onkeypress = (e) => {
-            if (e.key === 'Enter') {
-              handleFullscreenSubmit();
-            }
-          };
-        } else {
-          // 自动聚焦输入框
-          input.focus();
+          fullscreenChoices.appendChild(fsBtn);
         }
-        
-        // 处理输入
-        const handleSubmit = () => {
-          const value = input.value;
+      });
+
+      window.currentChoiceResolver = resolve;
+    });
+  }
+
+  // 输入文本——在此之前flush缓冲区中所有累积文本
+  async function getInput(promptText) {
+    return new Promise(function (resolve) {
+      flushOutput();
+      var inputDiv = document.createElement('div');
+      inputDiv.className = 'cattca__input-prompt';
+
+      var label = document.createElement('label');
+      label.textContent = promptText || '请输入:';
+
+      var input = document.createElement('input');
+      input.type = 'text';
+
+      var button = document.createElement('button');
+      button.className = 'cattca__input-submit';
+      button.textContent = '确定';
+
+      inputDiv.appendChild(label);
+      inputDiv.appendChild(input);
+      inputDiv.appendChild(button);
+
+      outputDiv.appendChild(inputDiv);
+
+      if (isFullscreen) {
+        var fsInputDiv = inputDiv.cloneNode(true);
+        fullscreenOutput.appendChild(fsInputDiv);
+        var fsInput = fsInputDiv.querySelector('input');
+        var fsButton = fsInputDiv.querySelector('button');
+        fsInput.focus();
+
+        var handleFullscreenSubmit = function () {
+          var value = fsInput.value;
+          fullscreenOutput.removeChild(fsInputDiv);
           outputDiv.removeChild(inputDiv);
-          // 输入完成后开始新段落
           startNewSegment();
           resolve(value);
         };
-        
-        button.onclick = handleSubmit;
-        input.onkeypress = (e) => {
-          if (e.key === 'Enter') {
-            handleSubmit();
-          }
+
+        fsButton.onclick = handleFullscreenSubmit;
+        fsInput.onkeypress = function (e) {
+          if (e.key === 'Enter') handleFullscreenSubmit();
         };
-      });
-    }
-
-    // 运行脚本
-    function runScript() {
-      const script = scriptInput.value.trim();
-      if (!script) {
-        updateStatus('请输入脚本内容', 'error');
-        return;
+      } else {
+        input.focus();
       }
 
-      try {
-        clearOutput();
-        updateStatus('正在运行...', 'running');
-        
-        interpreter = new CattcaInterpreter(
-          appendOutput,
-          appendLog,
-          getInput,
-          getChoice
-        );
-
-        interpreter.load(script);
-        interpreter.run();
-        updateStatus('运行中...', 'running');
-      } catch (error) {
-        appendLog(`错误: ${error.message}`);
-        updateStatus('运行出错', 'error');
-      }
-    }
-
-
-    // 保存脚本到本地文件
-    function saveScript() {
-      const script = scriptInput.value.trim();
-      if (!script) {
-        updateStatus('没有内容可保存', 'error');
-        return;
-      }
-
-      const blob = new Blob([script], { type: 'text/plain' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'script.cattca';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      
-      updateStatus('脚本已保存', 'ready');
-      saveToLocalStorage(); // 同时保存到浏览器
-    }
-
-    // 从本地文件加载脚本
-    function loadScript() {
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = '.cattca';
-      input.onchange = (e) => {
-        const file = e.target.files[0];
-        if (file) {
-          const reader = new FileReader();
-          reader.onload = (e) => {
-            const loadedContent = e.target.result;
-            scriptInput.value = loadedContent;
-            addToHistory(loadedContent); // 添加到历史记录
-            updateStatus('脚本已加载', 'ready');
-            saveToLocalStorage(); // 加载后自动保存到浏览器
-          };
-          reader.readAsText(file);
-        }
+      var handleSubmit = function () {
+        var value = input.value;
+        outputDiv.removeChild(inputDiv);
+        startNewSegment();
+        resolve(value);
       };
-      input.click();
+
+      button.onclick = handleSubmit;
+      input.onkeypress = function (e) {
+        if (e.key === 'Enter') handleSubmit();
+      };
+    });
+  }
+
+  // 运行脚本
+  function runScript() {
+    var script = scriptInput.value.trim();
+    if (!script) {
+      updateStatus('请输入脚本内容', 'error');
+      return;
     }
 
-    // 保存到浏览器 localStorage
-    function saveToLocalStorage() {
-      const script = scriptInput.value;
-      localStorage.setItem('cattca_script', script);
-      localStorage.setItem('cattca_script_timestamp', new Date().toISOString());
-      
-      // 显示自动保存指示器
-      showAutoSaveIndicator();
+    try {
+      clearOutput();
+      updateStatus('正在运行...', 'running');
+
+      interpreter = new CattcaInterpreter(
+        appendOutput,
+        appendLog,
+        getInput,
+        getChoice
+      );
+
+      interpreter.load(script);
+      interpreter.run().then(function () {
+        flushOutput();   // 脚本exit或自然结束后flush剩余缓冲
+        updateStatus('运行完成', 'ready');
+      }).catch(function (error) {
+        appendLog('错误: ' + error.message);
+        updateStatus('运行出错', 'error');
+      });
+      updateStatus('运行中...', 'running');
+    } catch (error) {
+      appendLog('错误: ' + error.message);
+      updateStatus('运行出错', 'error');
+    }
+  }
+
+  // 保存脚本到本地文件
+  function saveScript() {
+    var script = scriptInput.value.trim();
+    if (!script) {
+      updateStatus('没有内容可保存', 'error');
+      return;
     }
 
-    // 显示自动保存指示器
-    function showAutoSaveIndicator() {
-      const originalText = statusDiv.textContent;
-      const originalClass = statusDiv.className;
-      
-      statusDiv.textContent = '自动保存中...';
-      statusDiv.className = 'status running';
-      
-      setTimeout(() => {
-        statusDiv.textContent = originalText;
-        statusDiv.className = originalClass;
-      }, 800);
-    }
+    var blob = new Blob([script], { type: 'text/plain' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'script.cattca';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
 
-    // 从浏览器 localStorage 加载
-    function loadFromLocalStorage() {
-      const savedScript = localStorage.getItem('cattca_script');
-      if (savedScript) {
-        scriptInput.value = savedScript;
-        addToHistory(savedScript); // 添加到历史记录
-        const timestamp = localStorage.getItem('cattca_script_timestamp');
-        if (timestamp) {
-          const saveTime = new Date(timestamp).toLocaleString();
-          updateStatus(`已从浏览器缓存恢复 (${saveTime})`, 'ready');
-        }
-        return true;
+    updateStatus('脚本已保存', 'ready');
+    saveToLocalStorage();
+  }
+
+  // 从本地文件加载脚本
+  function loadScript() {
+    var input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.cattca';
+    input.onchange = function (e) {
+      var file = e.target.files[0];
+      if (file) {
+        var reader = new FileReader();
+        reader.onload = function (e) {
+          var loadedContent = e.target.result;
+          scriptInput.value = loadedContent;
+          addToHistory(loadedContent);
+          updateStatus('脚本已加载', 'ready');
+          saveToLocalStorage();
+        };
+        reader.readAsText(file);
       }
-      return false;
+    };
+    input.click();
+  }
+
+  // 保存到 localStorage
+  function saveToLocalStorage() {
+    var script = scriptInput.value;
+    localStorage.setItem('cattca_script', script);
+    localStorage.setItem('cattca_script_timestamp', new Date().toISOString());
+    showAutoSaveIndicator();
+  }
+
+  function showAutoSaveIndicator() {
+    var originalText = statusDiv.textContent;
+    var originalClass = statusDiv.className;
+    statusDiv.textContent = '自动保存中...';
+    statusDiv.className = 'cattca__status cattca__status--running';
+    setTimeout(function () {
+      statusDiv.textContent = originalText;
+      statusDiv.className = originalClass;
+    }, 800);
+  }
+
+  // 从 localStorage 加载
+  function loadFromLocalStorage() {
+    var savedScript = localStorage.getItem('cattca_script');
+    if (savedScript) {
+      scriptInput.value = savedScript;
+      addToHistory(savedScript);
+      var timestamp = localStorage.getItem('cattca_script_timestamp');
+      if (timestamp) {
+        var saveTime = new Date(timestamp).toLocaleString();
+        updateStatus('已从浏览器缓存恢复 (' + saveTime + ')', 'ready');
+      }
+      return true;
     }
+    return false;
+  }
 
-    // 加载示例脚本
-    function loadExample() {
-      const exampleScript = `# 莱莉菥的早晨
+  // 加载示例脚本
+  function loadExample() {
+    var exampleScript = '# 莱莉菥的早晨\n\n你叫**莱莉菥**。\n现在是早上六点，你醒了。\n你躺在床上。\n\n## 你要怎么做？\n\n</let cntsleep = 0;\nlabel 1;\ninput case:\n\'继续睡觉\' -> goto 2:\n\'起床\' -> goto 3;\n/>\n\n</label 2;\nset cntsleep = cntsleep + 1;\nif cntsleep > 3 ->goto 4/>\n你睡不着。已经尝试了 </apply cntsleep /> 次。\n\n### 状态\n- 尝试睡觉次数：</apply cntsleep />\n- 当前时间：早上</apply cntsleep+5/>点\n\n</goto 1;/>\n\n</label 3/>\n# 结局一：起床\n\n你成功起床了！\n\n> 新的一天开始了，充满无限可能。\n\n</exit/>\n\n</label 4/>\n# 结局二：睡觉\n\n你又睡着了。\n\n> 有时候，休息是最好的选择。\n\n</exit/>';
 
-你叫**莱莉菥**。
-现在是早上六点，你醒了。
-你躺在床上。
+    scriptInput.value = exampleScript;
+    addToHistory(exampleScript);
+    updateStatus('示例已加载', 'ready');
+  }
 
-## 你要怎么做？
+  // 事件监听器
+  runBtn.addEventListener('click', runScript);
+  undoBtn.addEventListener('click', undo);
+  redoBtn.addEventListener('click', redo);
+  saveBtn.addEventListener('click', saveScript);
+  loadBtn.addEventListener('click', loadScript);
+  exampleBtn.addEventListener('click', loadExample);
 
-</let cntsleep = 0;
-label 1;
-input case:
-'继续睡觉' -> goto 2:
-'起床' -> goto 3;
-/>
-
-</label 2;
-set cntsleep = cntsleep + 1;
-if cntsleep > 3 ->goto 4/>
-你睡不着。已经尝试了 \`cntsleep\` 次。
-
-### 状态
-- 尝试睡觉次数：\`cntsleep\`
-- 当前时间：早上6点
-
-</goto 1;/>
-
-</label 3/>
-# 结局一：起床
-
-你成功起床了！
-
-> 新的一天开始了，充满无限可能。
-
-</exit/>
-
-</label 4/>
-# 结局二：睡觉
-
-你又睡着了。
-
-> 有时候，休息是最好的选择。
-
-</exit/>`;
-
-      scriptInput.value = exampleScript;
-      addToHistory(exampleScript); // 添加到历史记录
-      updateStatus('示例已加载', 'ready');
+  fullscreenBtn.addEventListener('click', function () {
+    if (isFullscreen) {
+      exitFullscreen();
+    } else {
+      enterFullscreen();
     }
+  });
 
-    // 事件监听器
-    runBtn.addEventListener('click', runScript);
-    undoBtn.addEventListener('click', undo);
-    redoBtn.addEventListener('click', redo);
-    saveBtn.addEventListener('click', saveScript);
-    loadBtn.addEventListener('click', loadScript);
-    exampleBtn.addEventListener('click', loadExample);
-    
-    // 全屏功能事件监听器
-    fullscreenBtn.addEventListener('click', () => {
+  exitFullscreenBtn.addEventListener('click', exitFullscreen);
+
+  // 自动保存和歷史记录
+  var autoSaveTimeout;
+  var historyTimeout;
+  scriptInput.addEventListener('input', function () {
+    var currentContent = scriptInput.value;
+    clearTimeout(historyTimeout);
+    historyTimeout = setTimeout(function () {
+      addToHistory(currentContent);
+    }, 500);
+
+    clearTimeout(autoSaveTimeout);
+    autoSaveTimeout = setTimeout(function () {
+      saveToLocalStorage();
+    }, 1000);
+  });
+
+  // 键盘快捷键
+  scriptInput.addEventListener('keydown', function (e) {
+    if (e.ctrlKey && e.key === 'Enter') {
+      e.preventDefault();
+      runScript();
+    }
+    if (e.ctrlKey && e.key === 's') {
+      e.preventDefault();
+      saveScript();
+    }
+    if (e.ctrlKey && e.key === 'z' && !e.shiftKey) {
+      e.preventDefault();
+      undo();
+    }
+    if (e.ctrlKey && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+      e.preventDefault();
+      redo();
+    }
+    if (e.ctrlKey && e.key === 'f') {
+      e.preventDefault();
       if (isFullscreen) {
         exitFullscreen();
       } else {
         enterFullscreen();
       }
-    });
-    
-    exitFullscreenBtn.addEventListener('click', exitFullscreen);
-
-    // 自动保存功能和历史记录 - 当文本改变时
-    let autoSaveTimeout;
-    let historyTimeout;
-    scriptInput.addEventListener('input', () => {
-      const currentContent = scriptInput.value;
-      
-      // 添加到历史记录（延迟500ms避免每个字符都记录）
-      clearTimeout(historyTimeout);
-      historyTimeout = setTimeout(() => {
-        addToHistory(currentContent);
-      }, 500);
-      
-      // 自动保存（延迟1秒）
-      clearTimeout(autoSaveTimeout);
-      autoSaveTimeout = setTimeout(() => {
-        saveToLocalStorage();
-      }, 1000);
-    });
-
-    // 键盘快捷键
-    scriptInput.addEventListener('keydown', (e) => {
-      if (e.ctrlKey && e.key === 'Enter') {
-        e.preventDefault();
-        runScript();
-      }
-      if (e.ctrlKey && e.key === 's') {
-        e.preventDefault();
-        saveScript();
-      }
-      if (e.ctrlKey && e.key === 'z' && !e.shiftKey) {
-        e.preventDefault();
-        undo();
-      }
-      if (e.ctrlKey && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
-        e.preventDefault();
-        redo();
-      }
-      if (e.ctrlKey && e.key === 'f') {
-        e.preventDefault();
-        if (isFullscreen) {
-          exitFullscreen();
-        } else {
-          enterFullscreen();
-        }
-      }
-    });
-
-    // 全局键盘快捷键（包括全屏模式）
-    document.addEventListener('keydown', (e) => {
-      // ESC键退出全屏
-      if (e.key === 'Escape' && isFullscreen) {
-        e.preventDefault();
-        exitFullscreen();
-      }
-      // F11键切换全屏
-      if (e.key === 'F11') {
-        e.preventDefault();
-        if (isFullscreen) {
-          exitFullscreen();
-        } else {
-          enterFullscreen();
-        }
-      }
-    });
-
-    // 初始化 - 优先从浏览器缓存加载，否则加载示例
-    if (!loadFromLocalStorage()) {
-      loadExample();
     }
-  </script>
-</body>
-</html>
+  });
+
+  // 全局键盘快捷键
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && isFullscreen) {
+      e.preventDefault();
+      exitFullscreen();
+    }
+    if (e.key === 'F11') {
+      e.preventDefault();
+      if (isFullscreen) {
+        exitFullscreen();
+      } else {
+        enterFullscreen();
+      }
+    }
+  });
+
+  // 初始化
+  if (!loadFromLocalStorage()) {
+    loadExample();
+  }
+</script>
+{% endblock %}

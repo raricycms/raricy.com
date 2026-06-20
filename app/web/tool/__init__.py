@@ -96,6 +96,20 @@ def aes_page():
 def cattca_page():
     return render_template('tool/cattca.html')
 
+
+@tool_bp.route('/cattca-guide')
+def cattca_guide():
+    import markdown as md
+    import os
+    guide_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))),
+        'docs', 'cattca-guide.md'
+    )
+    with open(guide_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+    html_content = md.markdown(content, extensions=['fenced_code', 'tables'])
+    return render_template('tool/cattca_guide.html', content=html_content)
+
 @tool_bp.route('/redirect')
 def redirect_page():
     return render_template('tool/redirect.html')
