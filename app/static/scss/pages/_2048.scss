@@ -104,38 +104,68 @@
     // The actual tile backgrounds go inside the cell
 }
 
+// ---- Tile: two-layer structure -----------------------------------------------
+// Outer .game-2048-tile        → transform: translate(x,y)  (slide via transition)
+// Inner .game-2048-tile__face  → transform: scale()         (appear / merge pop)
+// This separation prevents CSS animation scale() from clobbering the translate()
+// position — the two transform contexts compose correctly.
+
 .game-2048-tile {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: $radius-small;
-    font-weight: 700;
-    transition: transform 100ms ease-in-out, opacity 100ms ease-in-out;
+    position: absolute;
+    left: 0;
+    top: 0;
+    // Slide animation: JS updates translate(x,y) → this transition kicks in
+    transition: transform 120ms ease;
+    // Ensure tiles render above cell backgrounds
+    z-index: 1;
 
-    // Tile colors are set inline via JS, but provide defaults
-    background: var(--color-background-card);
-    color: var(--color-text-primary);
+    &__face {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: $radius-small;
+        font-weight: 700;
+        width: 100%;
+        height: 100%;
+        // Colors set inline by JS
+        background: var(--color-background-card);
+        color: var(--color-text-primary);
 
-    &--new {
-        animation: tile-pop 200ms ease;
-    }
+        // New tile — delayed so it appears AFTER the slide settles
+        &--new {
+            animation: tile-appear 200ms ease 90ms backwards;
+        }
 
-    &--merged {
-        animation: tile-pop 200ms ease;
+        // Merge pop — delayed to fire right after the slide reaches its destination
+        // &--merged {
+        //     animation: tile-merge-pop 200ms ease 120ms backwards;
+        // }
     }
 }
 
-@keyframes tile-pop {
+@keyframes tile-appear {
     0% {
         transform: scale(0);
         opacity: 0;
     }
     60% {
-        transform: scale(1.15);
+        transform: scale(1.1);
     }
     100% {
         transform: scale(1);
         opacity: 1;
+    }
+}
+
+@keyframes tile-merge-pop {
+    0% {
+        transform: scale(1);
+    }
+    35% {
+        transform: scale(1.25);
+    }
+    100% {
+        transform: scale(1);
     }
 }
 

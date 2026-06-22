@@ -9,6 +9,7 @@
     <div class="story-cattca__meta">
       <span>作者：{{ author }}</span>
       {% if genre %}<span>{{ genre }}</span>{% endif %}
+      {% if ai_assisted %}<span class="story-cattca__ai-badge">AI辅助创作</span>{% endif %}
     </div>
     {% if parent_path %}
     <a href="{{ url_for('story.resolve_path', path=parent_path) }}" class="story-back">← 返回合集</a>
@@ -37,6 +38,7 @@
 <script type="module">
   import { CattcaInterpreter } from "{{ url_for('static', filename='js/cattca.js') }}";
 
+  // 配置marked.js
   try {
     if (typeof marked.setOptions === 'function') {
       marked.setOptions({ breaks: true, gfm: true, sanitize: false, smartLists: true, smartypants: false });
@@ -49,29 +51,38 @@
   var logDiv = document.querySelector('#log');
   var choicesDiv = document.querySelector('#choices');
 
+  // 可折叠输出系统
   var currentSegment = null;
   var segmentCount = 0;
 
-  function renderMarkdown(txt) {
-    try {
-      if (typeof marked.parse === 'function') return marked.parse(txt);
-      if (typeof marked === 'function') return marked(txt);
-      throw new Error('marked API not found');
-    } catch (e) {
-      console.error('Markdown error:', e);
-      return txt.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\r\n|\n/g, '<br>');
-    }
-  }
+  // 输出缓冲区：累积文本和apply输出，在段落边界一次性整体渲染
+  var outputBuffer = '';
 
-  function appendOutput(txt) {
-    var html = renderMarkdown(txt);
+  // 将缓冲区内容整体markdown解析并渲染到当前段落
+  function flushOutput() {
+    if (outputBuffer === '') return;
+
+    var htmlContent;
+    try {
+      if (typeof marked.parse === 'function') {
+        htmlContent = marked.parse(outputBuffer);
+      } else if (typeof marked === 'function') {
+        htmlContent = marked(outputBuffer);
+      } else {
+        throw new Error('marked API not found');
+      }
+    } catch (error) {
+      console.error('Markdown parsing error:', error);
+      htmlContent = outputBuffer.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
     if (!currentSegment) {
       currentSegment = document.createElement('div');
       currentSegment.className = 'story-cattca__segment';
 
       var header = document.createElement('div');
       header.className = 'story-cattca__segment-header';
-      header.onclick = function() { toggleSegment(header); };
+      header.onclick = function () { toggleSegment(header); };
 
       var title = document.createElement('span');
       title.className = 'story-cattca__segment-title';
@@ -86,31 +97,40 @@
 
       var body = document.createElement('div');
       body.className = 'story-cattca__segment-body';
-      body.innerHTML = html;
+      body.innerHTML = htmlContent;
 
       currentSegment.appendChild(header);
       currentSegment.appendChild(body);
       outputDiv.appendChild(currentSegment);
 
-      setTimeout(function() {
-        if (currentSegment) {
-          currentSegment.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
+      setTimeout(function () {
+        var rect = currentSegment.getBoundingClientRect();
+        var containerRect = outputDiv.getBoundingClientRect();
+        var scrollTop = outputDiv.scrollTop + (rect.top - containerRect.top) - 20;
+        outputDiv.scrollTo({ top: scrollTop, behavior: 'smooth' });
       }, 10);
     } else {
       var body = currentSegment.querySelector('.story-cattca__segment-body');
-      body.innerHTML = body.innerHTML + html;
+      body.innerHTML = htmlContent;
     }
+    outputDiv.scrollTop = outputDiv.scrollHeight;
+  }
+
+  // 仅累积文本到缓冲区，不立即渲染——等待段落边界再统一flush
+  function appendOutput(txt) {
+    outputBuffer += txt;
   }
 
   function startNewSegment() {
     if (currentSegment) {
-      currentSegment.querySelector('.story-cattca__segment-body').classList.add('collapsed');
+      var body = currentSegment.querySelector('.story-cattca__segment-body');
+      body.classList.add('collapsed');
     }
     currentSegment = null;
+    outputBuffer = '';
   }
 
-  window.toggleSegment = function(header) {
+  window.toggleSegment = function (header) {
     var segment = header.parentElement;
     var body = segment.querySelector('.story-cattca__segment-body');
     var icon = header.querySelector('.story-cattca__segment-toggle');
@@ -125,15 +145,18 @@
 
   function appendLog(txt) {
     logDiv.textContent += txt + '\n';
+    logDiv.scrollTop = logDiv.scrollHeight;
   }
 
+  // 异步等待用户选择——在此之前flush缓冲区中所有累积文本
   function getChoice(options) {
-    return new Promise(function(resolve) {
+    return new Promise(function (resolve) {
+      flushOutput();
       choicesDiv.innerHTML = '';
-      options.forEach(function(opt) {
+      options.forEach(function (opt) {
         var btn = document.createElement('button');
         btn.textContent = opt;
-        btn.onclick = function() {
+        btn.onclick = function () {
           choicesDiv.innerHTML = '';
           startNewSegment();
           resolve(opt);
@@ -143,8 +166,10 @@
     });
   }
 
+  // 输入文本——在此之前flush缓冲区中所有累积文本
   function getInput(promptText) {
-    return new Promise(function(resolve) {
+    return new Promise(function (resolve) {
+      flushOutput();
       var area = document.createElement('div');
       area.className = 'story-cattca__input-area';
 
@@ -163,7 +188,7 @@
       outputDiv.appendChild(area);
       input.focus();
 
-      var handleSubmit = function() {
+      var handleSubmit = function () {
         var value = input.value;
         outputDiv.removeChild(area);
         startNewSegment();
@@ -171,7 +196,7 @@
       };
 
       btn.onclick = handleSubmit;
-      input.onkeypress = function(e) {
+      input.onkeypress = function (e) {
         if (e.key === 'Enter') handleSubmit();
       };
     });
@@ -181,6 +206,10 @@
   var storyEl = document.getElementById('story-content');
   var story = storyEl ? JSON.parse(storyEl.textContent) : '';
   interpreter.load(story);
-  interpreter.run();
+  interpreter.run().then(function () {
+    flushOutput();   // 脚本exit或自然结束后flush剩余缓冲
+  }).catch(function (error) {
+    appendLog('错误: ' + error.message);
+  });
 </script>
 {% endblock %}

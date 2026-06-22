@@ -1,0 +1,243 @@
+@use '../abstracts/variables' as *;
+
+// ============================================================
+// Settings page
+// ============================================================
+
+.settings-page {
+  max-width: 700px;
+  margin: 0 auto;
+  padding: $space-8 0;
+
+  @media (max-width: 768px) {
+    padding: $space-6 0;
+  }
+}
+
+// --- Card sections ---
+
+.settings-card {
+  background: var(--color-background-card);
+  border-radius: 30px;
+  padding: $space-8;
+  box-shadow: var(--shadow-card);
+  margin-bottom: $space-6;
+
+  @media (max-width: 768px) {
+    padding: $space-6;
+    border-radius: 20px;
+  }
+
+  &__header {
+    display: flex;
+    align-items: center;
+    gap: $space-3;
+    margin-bottom: $space-2;
+
+    .icon {
+      width: 1.4rem;
+      height: 1.4rem;
+      opacity: 0.7;
+      flex-shrink: 0;
+    }
+  }
+
+  &__title {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--color-text-primary);
+    margin: 0;
+  }
+
+  &__desc {
+    font-size: 0.85rem;
+    color: var(--color-text-secondary);
+    margin: 0 0 $space-4;
+  }
+}
+
+// --- Inputs ---
+
+.settings-input {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: $radius-large;
+  background: var(--color-background-page);
+  color: var(--color-text-primary);
+  font-size: 0.95rem;
+  transition: border-color 0.2s ease;
+  box-sizing: border-box;
+
+  &:focus {
+    outline: none;
+    border-color: var(--color-brand-primary);
+  }
+
+  &--textarea {
+    min-height: 110px;
+    resize: vertical;
+    line-height: 1.6;
+  }
+
+  &__hint {
+    font-size: 0.8rem;
+    color: var(--color-text-secondary);
+    margin-top: $space-2;
+    margin-bottom: $space-3;
+  }
+}
+
+// --- Form rows ---
+
+.settings-form-row {
+  display: flex;
+  gap: $space-3;
+  margin-bottom: $space-3;
+
+  @media (max-width: 576px) {
+    flex-direction: column;
+  }
+}
+
+.settings-field {
+  flex: 1;
+
+  label {
+    display: block;
+    font-size: 0.85rem;
+    color: var(--color-text-secondary);
+    margin-bottom: $space-1;
+  }
+}
+
+// --- Buttons ---
+
+.settings-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: $space-2;
+  padding: 8px 24px;
+  border-radius: $radius-max;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: none;
+
+  &--primary {
+    background: var(--color-brand-secondary);
+    color: var(--color-brand-primary);
+
+    &:hover:not(:disabled) {
+      background: var(--color-brand-primary);
+      color: #fff;
+    }
+
+    &:disabled {
+      opacity: 0.6;
+      cursor: default;
+    }
+  }
+}
+
+// --- Alert ---
+
+.settings-alert {
+  padding: $space-3 $space-4;
+  border-radius: $radius-large;
+  font-size: 0.9rem;
+  margin-bottom: $space-3;
+
+  &.d-none { display: none; }
+
+  &--danger {
+    background: var(--color-warning-secondary);
+    color: var(--color-warning-primary);
+  }
+
+  &--success {
+    background: var(--color-success-secondary);
+    color: var(--color-success-primary);
+  }
+}
+
+// --- Toggle rows ---
+
+.settings-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: $space-3 0;
+  border-top: 1px solid var(--color-background-subtle);
+
+  &:first-of-type {
+    border-top: none;
+  }
+
+  &__label {
+    flex: 1;
+    min-width: 0;
+    padding-right: $space-4;
+  }
+
+  &__title {
+    display: block;
+    font-size: 0.9rem;
+    color: var(--color-text-primary);
+  }
+
+  &__desc {
+    display: block;
+    font-size: 0.78rem;
+    color: var(--color-text-secondary);
+    margin-top: 2px;
+  }
+}
+
+// --- Toggle switch ---
+
+.settings-toggle {
+  position: relative;
+  display: inline-block;
+  width: 48px;
+  height: 26px;
+  flex-shrink: 0;
+  cursor: pointer;
+
+  input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+
+  &__slider {
+    position: absolute;
+    inset: 0;
+    background: var(--color-border);
+    border-radius: 26px;
+    transition: background 0.25s ease;
+
+    &::before {
+      content: '';
+      position: absolute;
+      width: 20px;
+      height: 20px;
+      left: 3px;
+      top: 3px;
+      background: #fff;
+      border-radius: 50%;
+      transition: transform 0.25s ease;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+    }
+  }
+
+  input:checked + &__slider {
+    background: var(--color-brand-primary);
+  }
+
+  input:checked + &__slider::before {
+    transform: translateX(22px);
+  }
+}

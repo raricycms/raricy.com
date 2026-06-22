@@ -19,7 +19,7 @@ class CollectionItem:
     priority: int = 0
     # story only
     genre: str = ""
-    status: str = ""
+    ai_assisted: bool = False
     word_count: int = 0
     # collection only
     item_count: int = 0
@@ -132,8 +132,8 @@ class StoryService:
                 return "markdown", {
                     "title": meta.get("title", story_id),
                     "author": meta.get("author", fallback_author),
-                    "genre": meta.get("genre", "小说"),
-                    "status": meta.get("status", "完结"),
+                    "genre": meta.get("genre", ""),
+                    "ai_assisted": bool(meta.get("ai_assisted", False)),
                     "content": html,
                     "parent_path": parent_path,
                 }
@@ -149,8 +149,8 @@ class StoryService:
                 return "cattca", {
                     "title": meta.get("title", story_id),
                     "author": meta.get("author", fallback_author),
-                    "genre": meta.get("genre", "小说"),
-                    "status": meta.get("status", "完结"),
+                    "genre": meta.get("genre", ""),
+                    "ai_assisted": bool(meta.get("ai_assisted", False)),
                     "content": post.content,
                     "parent_path": parent_path,
                 }
@@ -251,8 +251,8 @@ class StoryService:
             description=meta.get("description", ""),
             author=meta.get("author", fallback_author),
             priority=meta.get("priority", 0),
-            genre=meta.get("genre", "小说"),
-            status=meta.get("status", "完结"),
+            genre=meta.get("genre", ""),
+            ai_assisted=bool(meta.get("ai_assisted", False)),
             word_count=word_count,
         )
 

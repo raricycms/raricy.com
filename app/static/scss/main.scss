@@ -14,6 +14,7 @@
 @use 'layout/grid';
 @use 'layout/header';
 @use 'layout/footer';
+@use 'layout/admin-sidebar';
 
 @use 'components/button';
 @use 'components/navbar';
@@ -53,15 +54,16 @@
 @use 'pages/photowall';
 @use 'pages/vote';
 @use 'pages/profile';
+@use 'pages/settings';
 
 // Admin pages
 @use 'pages/admin-common';
 @use 'pages/admin-dashboard';
 @use 'pages/admin-articles';
-@use 'pages/admin-categories';
-
 @use 'pages/admin-notifications';
+@use 'pages/admin-users';
 @use 'pages/audit-logs';
 @use 'pages/checkin';
+@use 'pages/error';
 
 

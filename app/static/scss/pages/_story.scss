@@ -139,7 +139,6 @@
 
   // Collection card variant
   &--collection {
-    border-left: 4px solid var(--color-brand-primary);
     background: linear-gradient(135deg, var(--color-background-card) 0%, var(--color-brand-secondary) 100%);
   }
 }
@@ -192,12 +191,7 @@
     color: var(--color-brand-primary);
   }
 
-  &--ongoing {
-    background: var(--color-warning-secondary);
-    color: var(--color-warning-primary);
-  }
-
-  &--completed {
+  &--ai-assisted {
     background: var(--color-success-secondary);
     color: var(--color-success-primary);
   }
@@ -273,6 +267,16 @@
   span + span::before {
     content: ' | ';
   }
+}
+
+.story-reader__ai-badge {
+  display: inline-block;
+  background: var(--color-success-secondary);
+  color: var(--color-success-primary);
+  border-radius: 999px;
+  padding: 2px 12px;
+  font-size: 0.85rem;
+  font-weight: 500;
 }
 
 .story-reader__progress {
@@ -415,6 +419,16 @@
   span + span::before {
     content: ' | ';
   }
+}
+
+.story-cattca__ai-badge {
+  display: inline-block;
+  background: var(--color-success-secondary);
+  color: var(--color-success-primary);
+  border-radius: 999px;
+  padding: 2px 12px;
+  font-size: 0.85rem;
+  font-weight: 500;
 }
 
 .story-cattca__game {

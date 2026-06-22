@@ -349,43 +349,24 @@ class BlogService:
     @staticmethod
     def get_admin_stats():
         """
-        获取管理员统计数据
-        
+        获取管理员统计数据。
+
         Returns:
             dict: 统计数据
         """
-        # 统计数据
+        from app.models.user import User
+        from app.models.comment import BlogComment
+
         total_blogs = Blog.query.filter_by(ignore=False).count()
-        categorized_blogs = Blog.query.filter(Blog.category_id.isnot(None), Blog.ignore == False).count()
+        total_likes = db.session.query(db.func.coalesce(db.func.sum(Blog.likes_count), 0)).scalar()
+        total_comments = BlogComment.query.filter_by(is_deleted=False).count()
+        total_users = User.query.count()
         uncategorized_blogs = Blog.query.filter_by(category_id=None, ignore=False).count()
-        total_categories = Category.query.filter_by(is_active=True).count()
-        total_likes = db.session.query(db.func.sum(Blog.likes_count)).scalar() or 0
-        
-        # 最近文章
-        recent_blogs = Blog.query.filter_by(ignore=False).order_by(Blog.created_at.desc()).limit(5).all()
-        
-        # 热门文章（按点赞数）
-        popular_blogs = Blog.query.filter_by(ignore=False).order_by(Blog.likes_count.desc()).limit(5).all()
-        
-        # 栏目文章分布
-        category_stats = db.session.query(
-            Category.name, 
-            Category.icon,
-            db.func.count(Blog.id).label('blog_count')
-        ).outerjoin(Blog, Category.id == Blog.category_id).filter(
-            Category.is_active == True,
-            Blog.ignore == False
-        ).group_by(Category.id, Category.name, Category.icon).all()
-        
-        stats = {
+
+        return {
             'total_blogs': total_blogs,
-            'categorized_blogs': categorized_blogs,
+            'total_likes': int(total_likes),
+            'total_comments': total_comments,
+            'total_users': total_users,
             'uncategorized_blogs': uncategorized_blogs,
-            'total_categories': total_categories,
-            'total_likes': total_likes,
-            'recent_blogs': [blog.to_dict() for blog in recent_blogs],
-            'popular_blogs': [blog.to_dict() for blog in popular_blogs],
-            'category_stats': [{'name': stat[0], 'icon': stat[1], 'count': stat[2]} for stat in category_stats]
         }
-        
-        return stats

@@ -24,7 +24,11 @@ class User(UserMixin, db.Model):
     notify_edit = db.Column(db.Boolean, default=True)   # 文章被编辑通知
     notify_delete = db.Column(db.Boolean, default=True) # 文章被删除通知
     notify_admin = db.Column(db.Boolean, default=True)  # 管理员通知
-    
+
+    # 隐私设置
+    show_recent_blogs = db.Column(db.Boolean, default=True, nullable=False)     # 个人主页展示最近文章
+    show_recent_comments = db.Column(db.Boolean, default=True, nullable=False)  # 个人主页展示最近评论
+
     # 禁言相关
     is_banned = db.Column(db.Boolean, default=False)           # 是否被禁言
     ban_until = db.Column(db.DateTime, nullable=True)          # 禁言结束时间

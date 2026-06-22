@@ -1,8 +1,9 @@
-{% extends "base.html" %}
+{% extends "admin_base.html" %}
+{% from "blog/_macros.html" import render_category_options, admin_pagination with context %}
 
 {% block title %}文章栏目管理 - 博客后台{% endblock %}
 
-{% block content %}
+{% block admin_content %}
 <section class="admin-hero">
     <h1>文章栏目管理</h1>
     <p>批量管理文章的栏目分配</p>
@@ -32,18 +33,7 @@
                     <select class="form-select" name="category_id" onchange="document.getElementById('filterForm').submit()">
                         <option value="">全部栏目</option>
                         <option value="-1" {{ 'selected' if current_category_id == -1 else '' }}>未分类</option>
-                        {% for category in categories %}
-                        <optgroup label="{{ category.icon }} {{ category.name }}">
-                            <option value="{{ category.id }}" {{ 'selected' if current_category_id == category.id else '' }}>
-                                {{ category.icon }} {{ category.name }}
-                            </option>
-                            {% for child in category.children %}
-                            <option value="{{ child.id }}" {{ 'selected' if current_category_id == child.id else '' }}>
-                                　└ {{ child.icon }} {{ child.name }}
-                            </option>
-                            {% endfor %}
-                        </optgroup>
-                        {% endfor %}
+                        {{ render_category_options(categories, selected_id=current_category_id, include_uncategorized=False) }}
                     </select>
                 </div>
                 <div class="col-md-6">
@@ -67,14 +57,7 @@
                 <select class="form-select" id="batchCategorySelect">
                     <option value="">选择目标栏目</option>
                     <option value="">设为未分类</option>
-                    {% for category in categories %}
-                    <optgroup label="{{ category.icon }} {{ category.name }}">
-                        <option value="{{ category.id }}">{{ category.icon }} {{ category.name }}</option>
-                        {% for child in category.children %}
-                        <option value="{{ child.id }}">　└ {{ child.icon }} {{ child.name }}</option>
-                        {% endfor %}
-                    </optgroup>
-                    {% endfor %}
+                    {{ render_category_options(categories, include_uncategorized=False) }}
                 </select>
             </div>
             <div class="col-md-2 d-flex gap-2">
@@ -89,11 +72,6 @@
         <div>
             <button class="btn btn-outline-primary" id="selectAllBtn">全选当前页</button>
             <button class="btn btn-outline-secondary" id="clearSelectionBtn">清空选择</button>
-        </div>
-        <div>
-            <a href="/blog/admin/categories" class="btn btn-outline-info">🏷️ 栏目管理</a>
-            <a href="/blog/admin" class="btn btn-outline-warning">🏠 管理后台</a>
-            <a href="/blog/" class="btn btn-outline-secondary">📝 返回博客</a>
         </div>
     </div>
 
@@ -128,19 +106,7 @@
                     </div>
                     <select class="form-select category-select" data-article-id="{{ article.id }}">
                         <option value="">选择栏目</option>
-                        <option value="" {{ 'selected' if not article.category_id else '' }}>设为未分类</option>
-                        {% for category in categories %}
-                        <optgroup label="{{ category.icon }} {{ category.name }}">
-                            <option value="{{ category.id }}" {{ 'selected' if article.category_id == category.id else '' }}>
-                                {{ category.icon }} {{ category.name }}
-                            </option>
-                            {% for child in category.children %}
-                            <option value="{{ child.id }}" {{ 'selected' if article.category_id == child.id else '' }}>
-                                　└ {{ child.icon }} {{ child.name }}
-                            </option>
-                            {% endfor %}
-                        </optgroup>
-                        {% endfor %}
+                        {{ render_category_options(categories, selected_id=article.category_id, include_uncategorized=False) }}
                     </select>
                     <div class="d-flex gap-1">
                         <a href="/blog/{{ article.id }}" class="btn btn-sm btn-outline-primary" target="_blank">👁️ 查看</a>
@@ -157,7 +123,6 @@
         {% if not articles %}
         <div class="text-center py-5">
             <div class="text-muted">
-                <i class="bi bi-inbox" style="font-size: 3rem;"></i>
                 <h5 class="mt-3">没有找到文章</h5>
                 <p>尝试调整筛选条件或搜索关键词</p>
             </div>
@@ -165,100 +130,21 @@
         {% endif %}
     </div>
 
-    <!-- 分页 -->
-    {% if pagination.pages > 1 %}
-    <div class="admin-pagination">
-        <nav>
-            <ul class="pagination">
-                {% if pagination.has_prev %}
-                <li class="page-item">
-                    <a class="page-link" href="{{ url_for('blog.manage_articles', page=pagination.prev_num, category_id=current_category_id, search=search) }}">上一页</a>
-                </li>
-                {% endif %}
-
-                {% for page_num in pagination.iter_pages() %}
-                    {% if page_num %}
-                        {% if page_num != pagination.page %}
-                        <li class="page-item">
-                            <a class="page-link" href="{{ url_for('blog.manage_articles', page=page_num, category_id=current_category_id, search=search) }}">{{ page_num }}</a>
-                        </li>
-                        {% else %}
-                        <li class="page-item active">
-                            <span class="page-link">{{ page_num }}</span>
-                        </li>
-                        {% endif %}
-                    {% else %}
-                    <li class="page-item disabled">
-                        <span class="page-link">…</span>
-                    </li>
-                    {% endif %}
-                {% endfor %}
-
-                {% if pagination.has_next %}
-                <li class="page-item">
-                    <a class="page-link" href="{{ url_for('blog.manage_articles', page=pagination.next_num, category_id=current_category_id, search=search) }}">下一页</a>
-                </li>
-                {% endif %}
-            </ul>
-        </nav>
-    </div>
-    {% endif %}
+    {{ admin_pagination(pagination, 'blog.manage_articles', extra_params={'category_id': current_category_id, 'search': search}) }}
 </div>
 {% endblock %}
 
 {% block extra_js %}
+<script src="{{ static_url('js/admin.js') }}"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    function showMessage(message, type = 'danger') {
-        const alert = `<div class="alert alert-${type} alert-dismissible fade show">
-            ${message}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>`;
-        document.getElementById('message-container').innerHTML = alert;
-    }
+    // 初始化选择管理器
+    const sel = createSelectionManager('.article-checkbox');
 
-    function updateSelectionState() {
-        const checkboxes = document.querySelectorAll('.article-checkbox');
-        const checkedBoxes = document.querySelectorAll('.article-checkbox:checked');
+    document.getElementById('selectAllBtn').addEventListener('click', () => sel.selectAll());
+    document.getElementById('clearSelectionBtn').addEventListener('click', () => sel.clearSelection());
 
-        document.getElementById('selected-count').textContent = checkedBoxes.length;
-        document.getElementById('batch-selected-count').textContent = checkedBoxes.length;
-
-        const batchActions = document.getElementById('batchActions');
-        if (checkedBoxes.length > 0) {
-            batchActions.classList.add('is-visible');
-        } else {
-            batchActions.classList.remove('is-visible');
-        }
-
-        checkboxes.forEach(checkbox => {
-            const card = checkbox.closest('.article-card');
-            if (checkbox.checked) {
-                card.classList.add('is-selected');
-            } else {
-                card.classList.remove('is-selected');
-            }
-        });
-    }
-
-    document.addEventListener('change', function(e) {
-        if (e.target.classList.contains('article-checkbox')) {
-            updateSelectionState();
-        }
-    });
-
-    document.getElementById('selectAllBtn').addEventListener('click', function() {
-        const checkboxes = document.querySelectorAll('.article-checkbox');
-        checkboxes.forEach(checkbox => checkbox.checked = true);
-        updateSelectionState();
-    });
-
-    document.getElementById('clearSelectionBtn').addEventListener('click', function() {
-        const checkboxes = document.querySelectorAll('.article-checkbox');
-        checkboxes.forEach(checkbox => checkbox.checked = false);
-        updateSelectionState();
-    });
-
+    // 文章栏目变更
     document.addEventListener('change', function(e) {
         if (e.target.classList.contains('category-select')) {
             const articleId = e.target.dataset.articleId;
@@ -267,113 +153,102 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
+    // 批量更新栏目
     document.getElementById('batchUpdateBtn').addEventListener('click', function() {
-        const checkedBoxes = document.querySelectorAll('.article-checkbox:checked');
+        const blogIds = sel.getSelectedIds();
         const categoryId = document.getElementById('batchCategorySelect').value;
 
-        if (checkedBoxes.length === 0) {
-            showMessage('请选择要更新的文章');
+        if (blogIds.length === 0) {
+            showToast('请选择要更新的文章', 'warning');
             return;
         }
 
-        const blogIds = Array.from(checkedBoxes).map(cb => cb.value);
         batchUpdateCategory(blogIds, categoryId);
     });
 
+    // 批量设为精选
     document.getElementById('batchFeaturedBtn').addEventListener('click', async function() {
-        const checkedBoxes = document.querySelectorAll('.article-checkbox:checked');
-        if (checkedBoxes.length === 0) {
-            showMessage('请选择要更新的文章');
+        const blogIds = sel.getSelectedIds();
+        if (blogIds.length === 0) {
+            showToast('请选择要更新的文章', 'warning');
             return;
         }
-        const blogIds = Array.from(checkedBoxes).map(cb => cb.value);
         try {
-            const response = await fetch('/blog/admin/articles/batch-featured', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ blog_ids: blogIds, is_featured: true })
+            const result = await adminRequest('/blog/admin/articles/batch-featured', 'POST', {
+                blog_ids: blogIds,
+                is_featured: true
             });
-            const result = await response.json();
             if (result.code === 200) {
-                showMessage(result.message, 'success');
+                showToast(result.message, 'success');
                 setTimeout(() => location.reload(), 1000);
             } else {
-                showMessage(result.message || '批量更新失败');
+                showToast(result.message || '批量更新失败', 'error');
             }
         } catch (e) {
-            showMessage('网络错误，请稍后重试');
+            showToast('网络错误，请稍后重试', 'error');
         }
     });
 
+    // 单篇文章栏目更新
     async function updateArticleCategory(articleId, categoryId) {
         try {
-            const response = await fetch(`/blog/admin/articles/${articleId}/category`, {
-                method: 'PUT',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ category_id: categoryId })
+            const result = await adminRequest(`/blog/admin/articles/${articleId}/category`, 'PUT', {
+                category_id: categoryId
             });
 
-            const result = await response.json();
             if (result.code === 200) {
-                showMessage(result.message, 'success');
+                showToast(result.message, 'success');
 
                 const card = document.querySelector(`[data-article-id="${articleId}"]`);
                 const categoryDisplay = card.querySelector('.current-category');
 
                 if (categoryId) {
                     const selectOption = card.querySelector(`option[value="${categoryId}"]`);
-                    categoryDisplay.textContent = selectOption.textContent.trim();
+                    categoryDisplay.textContent = selectOption ? selectOption.textContent.trim() : '';
                     categoryDisplay.className = 'current-category is-categorized';
                 } else {
                     categoryDisplay.textContent = '📄 未分类';
                     categoryDisplay.className = 'current-category is-uncategorized';
                 }
             } else {
-                showMessage(result.message || '更新失败');
+                showToast(result.message || '更新失败', 'error');
             }
         } catch (error) {
-            showMessage('网络错误，请稍后重试');
+            showToast('网络错误，请稍后重试', 'error');
         }
     }
 
+    // 批量更新栏目
     async function batchUpdateCategory(blogIds, categoryId) {
         try {
-            const response = await fetch('/blog/admin/articles/batch-category', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ blog_ids: blogIds, category_id: categoryId })
+            const result = await adminRequest('/blog/admin/articles/batch-category', 'POST', {
+                blog_ids: blogIds,
+                category_id: categoryId
             });
 
-            const result = await response.json();
             if (result.code === 200) {
-                showMessage(result.message, 'success');
-                setTimeout(() => {
-                    location.reload();
-                }, 1500);
+                showToast(result.message, 'success');
+                setTimeout(() => location.reload(), 1500);
             } else {
-                showMessage(result.message || '批量更新失败');
+                showToast(result.message || '批量更新失败', 'error');
             }
         } catch (error) {
-            showMessage('网络错误，请稍后重试');
+            showToast('网络错误，请稍后重试', 'error');
         }
     }
 
-    updateSelectionState();
-
+    // 精选切换
     document.addEventListener('click', async function(e) {
         if (e.target.classList.contains('toggle-featured')) {
             const card = e.target.closest('.article-card');
             const articleId = e.target.dataset.articleId;
             const turnToFeatured = e.target.textContent.includes('设为精选');
             try {
-                const response = await fetch(`/blog/admin/articles/${articleId}/featured`, {
-                    method: 'PUT',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ is_featured: turnToFeatured })
+                const result = await adminRequest(`/blog/admin/articles/${articleId}/featured`, 'PUT', {
+                    is_featured: turnToFeatured
                 });
-                const result = await response.json();
                 if (result.code === 200) {
-                    showMessage(result.message, 'success');
+                    showToast(result.message, 'success');
                     const flag = card.querySelector('.featured-flag');
                     if (turnToFeatured) {
                         flag.style.display = 'inline-block';
@@ -383,13 +258,16 @@ document.addEventListener('DOMContentLoaded', function() {
                         e.target.textContent = '设为精选';
                     }
                 } else {
-                    showMessage(result.message || '更新失败');
+                    showToast(result.message || '更新失败', 'error');
                 }
             } catch (err) {
-                showMessage('网络错误，请稍后重试');
+                showToast('网络错误，请稍后重试', 'error');
             }
         }
     });
+
+    // 初始状态
+    sel.update();
 });
 </script>
 {% endblock %}

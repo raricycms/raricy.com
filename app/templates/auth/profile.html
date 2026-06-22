@@ -61,55 +61,17 @@
           </div>
         </div>
 
-        <!-- Actions (owner only) -->
+        <!-- Owner-only actions -->
         {% if user == current_user %}
         <div class="profile-actions">
-          <button class="profile-actions__btn profile-actions__btn--edit" id="btnEditProfile">
-            <i class="icon icon-gear"></i> 编辑资料
-          </button>
-          <button class="profile-actions__btn profile-actions__btn--password" id="btnChangePassword">
-            <i class="icon icon-gear-fill"></i> 修改密码
-          </button>
+          <a href="{{ url_for('auth.settings') }}" class="profile-actions__btn profile-actions__btn--edit">
+            <i class="icon icon-gear"></i> 账号设置
+          </a>
           {% if not user.is_core_user %}
           <a href="{{ url_for('auth.authentic') }}" class="profile-actions__btn profile-actions__btn--auth">
             <i class="icon icon-person-circle"></i> 去认证
           </a>
           {% endif %}
-        </div>
-
-        <!-- Edit bio form -->
-        <div class="profile-edit-form" id="editProfileForm">
-          <div class="profile-alert profile-alert--danger d-none" id="editProfileAlert"></div>
-          <textarea id="editBio" placeholder="写一段简介，介绍一下自己...">{{ user.bio or '' }}</textarea>
-          <div class="profile-edit-form__hint" id="bioCharCount">0 / 500</div>
-          <div class="profile-edit-form__actions">
-            <button class="profile-actions__btn profile-actions__btn--edit" id="btnSaveBio">保存</button>
-            <button class="profile-actions__btn profile-actions__btn--password" id="btnCancelEdit">取消</button>
-          </div>
-        </div>
-
-        <!-- Change password form -->
-        <div class="profile-password-form" id="passwordForm">
-          <div class="profile-alert profile-alert--danger d-none" id="changePasswordAlert"></div>
-          <form id="changePasswordFormInner">
-            <div class="profile-password-form__row">
-              <div class="profile-password-form__field">
-                <label for="currentPassword">原密码</label>
-                <input type="password" id="currentPassword" required autocomplete="current-password">
-              </div>
-            </div>
-            <div class="profile-password-form__row">
-              <div class="profile-password-form__field">
-                <label for="newPassword">新密码</label>
-                <input type="password" id="newPassword" required minlength="8" autocomplete="new-password">
-              </div>
-              <div class="profile-password-form__field">
-                <label for="confirmPassword">确认新密码</label>
-                <input type="password" id="confirmPassword" required minlength="8" autocomplete="new-password">
-              </div>
-            </div>
-            <button type="submit" class="profile-actions__btn profile-actions__btn--edit" id="changePasswordSubmit">确认修改</button>
-          </form>
         </div>
         {% endif %}
       </div>
@@ -118,15 +80,20 @@
 
   <!-- ====== Tabs ====== -->
   <div class="profile-tabs">
-    <button class="profile-tabs__tab profile-tabs__tab--active" data-tab="blogs">文章 ({{ blogs_count }})</button>
-    <button class="profile-tabs__tab" data-tab="comments">评论 ({{ comments_count }})</button>
+    <button class="profile-tabs__tab {{ 'profile-tabs__tab--active' if tab == 'blogs' else '' }}" data-tab="blogs">文章 ({{ blogs_count }})</button>
+    <button class="profile-tabs__tab {{ 'profile-tabs__tab--active' if tab == 'comments' else '' }}" data-tab="comments">评论 ({{ comments_count }})</button>
   </div>
 
   <!-- ====== Blogs tab ====== -->
-  <div class="profile-tab-panel profile-tab-panel--active" id="tab-blogs">
-    {% if recent_blogs %}
+  <div class="profile-tab-panel {{ 'profile-tab-panel--active' if tab == 'blogs' else '' }}" id="tab-blogs">
+    {% if not show_blogs %}
+    <div class="profile-privacy-notice">
+      <i class="icon icon-lock2"></i>
+      该用户设置了文章不可见
+    </div>
+    {% elif blogs_pagination and blogs_pagination.items %}
     <div class="profile-content-list">
-      {% for blog in recent_blogs %}
+      {% for blog in blogs_pagination.items %}
       <a href="{{ url_for('blog.blog_detail', blog_id=blog.id) }}" class="profile-content-item">
         <div class="profile-content-item__title">{{ blog.title }}</div>
         {% if blog.description %}
@@ -144,9 +111,30 @@
       </a>
       {% endfor %}
     </div>
-    {% if blogs_count > 5 %}
-    <div class="profile-actions" style="justify-content: center; border-top: none; margin-top: 1rem;">
-      <span class="profile-hero__bio--empty" style="margin: 0;">还有 {{ blogs_count - 5 }} 篇文章...</span>
+    {% if blogs_pagination.pages > 1 %}
+    <div class="pagination">
+      {% if blogs_pagination.has_prev %}
+      <a href="{{ url_for('auth.profile', user_id=user.id, tab='blogs', blog_page=blogs_pagination.prev_num, comment_page=comment_page) }}" class="page-link">&laquo;</a>
+      {% endif %}
+
+      {% set window = 3 %}
+      {% for p in range(1, blogs_pagination.pages + 1) %}
+        {% if p == 1 or p == blogs_pagination.pages or (p >= blogs_pagination.page - window and p <= blogs_pagination.page + window) %}
+        <a href="{{ url_for('auth.profile', user_id=user.id, tab='blogs', blog_page=p, comment_page=comment_page) }}"
+           class="page-link {{ 'active' if p == blogs_pagination.page else '' }}">{{ p }}</a>
+        {% elif p == blogs_pagination.page - window - 1 or p == blogs_pagination.page + window + 1 %}
+        <span class="page-ellipsis">...</span>
+        {% endif %}
+      {% endfor %}
+
+      {% if blogs_pagination.has_next %}
+      <a href="{{ url_for('auth.profile', user_id=user.id, tab='blogs', blog_page=blogs_pagination.next_num, comment_page=comment_page) }}" class="page-link">&raquo;</a>
+      {% endif %}
+
+      <span class="page-jump">
+        <input type="number" id="blogPageInput" min="1" max="{{ blogs_pagination.pages }}" placeholder="{{ blogs_pagination.page }}" class="page-input">
+        <button onclick="jumpToBlogPage({{ blogs_pagination.pages }})" class="page-link page-btn">跳转</button>
+      </span>
     </div>
     {% endif %}
     {% else %}
@@ -158,10 +146,15 @@
   </div>
 
   <!-- ====== Comments tab ====== -->
-  <div class="profile-tab-panel" id="tab-comments">
-    {% if recent_comments %}
+  <div class="profile-tab-panel {{ 'profile-tab-panel--active' if tab == 'comments' else '' }}" id="tab-comments">
+    {% if not show_comments %}
+    <div class="profile-privacy-notice">
+      <i class="icon icon-lock2"></i>
+      该用户设置了评论不可见
+    </div>
+    {% elif comments_data %}
     <div class="profile-content-list">
-      {% for comment in recent_comments %}
+      {% for comment in comments_data %}
       <a href="{{ url_for('blog.blog_detail', blog_id=comment.blog_id) }}#comment-{{ comment.id }}" class="profile-content-item">
         <div class="profile-content-item__title">回复：{{ comment.blog_title }}</div>
         <div class="profile-content-item__preview">{{ comment.content }}</div>
@@ -171,9 +164,30 @@
       </a>
       {% endfor %}
     </div>
-    {% if comments_count > 5 %}
-    <div class="profile-actions" style="justify-content: center; border-top: none; margin-top: 1rem;">
-      <span class="profile-hero__bio--empty" style="margin: 0;">还有 {{ comments_count - 5 }} 条评论...</span>
+    {% if comments_pagination.pages > 1 %}
+    <div class="pagination">
+      {% if comments_pagination.has_prev %}
+      <a href="{{ url_for('auth.profile', user_id=user.id, tab='comments', blog_page=blog_page, comment_page=comments_pagination.prev_num) }}" class="page-link">&laquo;</a>
+      {% endif %}
+
+      {% set window = 3 %}
+      {% for p in range(1, comments_pagination.pages + 1) %}
+        {% if p == 1 or p == comments_pagination.pages or (p >= comments_pagination.page - window and p <= comments_pagination.page + window) %}
+        <a href="{{ url_for('auth.profile', user_id=user.id, tab='comments', blog_page=blog_page, comment_page=p) }}"
+           class="page-link {{ 'active' if p == comments_pagination.page else '' }}">{{ p }}</a>
+        {% elif p == comments_pagination.page - window - 1 or p == comments_pagination.page + window + 1 %}
+        <span class="page-ellipsis">...</span>
+        {% endif %}
+      {% endfor %}
+
+      {% if comments_pagination.has_next %}
+      <a href="{{ url_for('auth.profile', user_id=user.id, tab='comments', blog_page=blog_page, comment_page=comments_pagination.next_num) }}" class="page-link">&raquo;</a>
+      {% endif %}
+
+      <span class="page-jump">
+        <input type="number" id="commentPageInput" min="1" max="{{ comments_pagination.pages }}" placeholder="{{ comments_pagination.page }}" class="page-input">
+        <button onclick="jumpToCommentPage({{ comments_pagination.pages }})" class="page-link page-btn">跳转</button>
+      </span>
     </div>
     {% endif %}
     {% else %}
@@ -187,12 +201,11 @@
 {% endblock %}
 
 {% block extra_js %}
-{% if user == current_user %}
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-  // ====== Tab switching ======
-  const tabs = document.querySelectorAll('.profile-tabs__tab');
-  const panels = document.querySelectorAll('.profile-tab-panel');
+  // ====== Tab switching (with URL update) ======
+  var tabs = document.querySelectorAll('.profile-tabs__tab');
+  var panels = document.querySelectorAll('.profile-tab-panel');
 
   tabs.forEach(function (tab) {
     tab.addEventListener('click', function () {
@@ -204,202 +217,38 @@ document.addEventListener('DOMContentLoaded', function () {
       this.classList.add('profile-tabs__tab--active');
       var panel = document.getElementById('tab-' + target);
       if (panel) panel.classList.add('profile-tab-panel--active');
+
+      // Update URL without reload so pagination links carry correct tab
+      var url = new URL(window.location.href);
+      url.searchParams.set('tab', target);
+      window.history.replaceState({}, '', url.toString());
     });
   });
 
-  // ====== Edit profile toggle ======
-  var btnEdit = document.getElementById('btnEditProfile');
-  var editForm = document.getElementById('editProfileForm');
-  var btnCancelEdit = document.getElementById('btnCancelEdit');
-  var btnSaveBio = document.getElementById('btnSaveBio');
-  var editBio = document.getElementById('editBio');
-  var bioDisplay = document.getElementById('profileBio');
-  var charCount = document.getElementById('bioCharCount');
-  var editAlert = document.getElementById('editProfileAlert');
+  // ====== Blog page jump ======
+  window.jumpToBlogPage = function(totalPages) {
+    var input = document.getElementById('blogPageInput');
+    var page = parseInt(input.value, 10);
+    if (isNaN(page) || page < 1) page = 1;
+    if (page > totalPages) page = totalPages;
+    var url = new URL(window.location.href);
+    url.searchParams.set('tab', 'blogs');
+    url.searchParams.set('blog_page', page);
+    window.location.href = url.toString();
+  };
 
-  function updateCharCount() {
-    if (charCount && editBio) {
-      var len = editBio.value.length;
-      charCount.textContent = len + ' / 500';
-      charCount.style.color = len > 500 ? 'var(--color-warning-primary)' : '';
-    }
-  }
-
-  if (btnEdit) {
-    btnEdit.addEventListener('click', function () {
-      editForm.classList.add('profile-edit-form--open');
-      btnEdit.style.display = 'none';
-      updateCharCount();
-      editBio.focus();
-    });
-  }
-
-  if (btnCancelEdit) {
-    btnCancelEdit.addEventListener('click', function () {
-      editForm.classList.remove('profile-edit-form--open');
-      btnEdit.style.display = '';
-      editBio.value = bioDisplay.textContent.trim() === '这个人还没有写简介...' ? '' : bioDisplay.textContent.trim();
-    });
-  }
-
-  if (editBio) {
-    editBio.addEventListener('input', updateCharCount);
-    updateCharCount();
-  }
-
-  // Save bio
-  if (btnSaveBio) {
-    btnSaveBio.addEventListener('click', async function () {
-      var bio = editBio.value.trim();
-      if (bio.length > 500) {
-        showEditAlert('简介不能超过 500 字', 'danger');
-        return;
-      }
-      btnSaveBio.disabled = true;
-      btnSaveBio.textContent = '保存中...';
-      try {
-        var resp = await fetch('{{ url_for("auth.edit_profile", user_id=user.id) }}', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ bio: bio })
-        });
-        var result = await resp.json();
-        if (resp.ok && result.code === 200) {
-          showEditAlert('资料已保存', 'success');
-          bioDisplay.textContent = bio || '这个人还没有写简介...';
-          if (!bio) {
-            bioDisplay.classList.add('profile-hero__bio--empty');
-          } else {
-            bioDisplay.classList.remove('profile-hero__bio--empty');
-          }
-          editForm.classList.remove('profile-edit-form--open');
-          btnEdit.style.display = '';
-        } else {
-          showEditAlert(result.message || '保存失败', 'danger');
-        }
-      } catch (e) {
-        showEditAlert('网络错误，请稍后再试', 'danger');
-      } finally {
-        btnSaveBio.disabled = false;
-        btnSaveBio.textContent = '保存';
-      }
-    });
-  }
-
-  function showEditAlert(message, type) {
-    if (!editAlert) return;
-    editAlert.textContent = message;
-    editAlert.classList.remove('d-none', 'profile-alert--danger', 'profile-alert--success');
-    editAlert.classList.add('profile-alert--' + type);
-    setTimeout(function () {
-      editAlert.classList.add('d-none');
-    }, 3000);
-  }
-
-  // ====== Change password toggle ======
-  var btnPassword = document.getElementById('btnChangePassword');
-  var passwordForm = document.getElementById('passwordForm');
-
-  if (btnPassword && passwordForm) {
-    btnPassword.addEventListener('click', function () {
-      var isOpen = passwordForm.classList.contains('profile-password-form--open');
-      if (isOpen) {
-        passwordForm.classList.remove('profile-password-form--open');
-      } else {
-        passwordForm.classList.add('profile-password-form--open');
-      }
-    });
-  }
-
-  // ====== Change password form ======
-  var changePasswordFormInner = document.getElementById('changePasswordFormInner');
-  if (changePasswordFormInner) {
-    var alertBox = document.getElementById('changePasswordAlert');
-    var submitBtn = document.getElementById('changePasswordSubmit');
-
-    function showAlert(message, type) {
-      if (!alertBox) return;
-      alertBox.textContent = message || '请求失败，请稍后再试。';
-      alertBox.classList.remove('d-none', 'profile-alert--danger', 'profile-alert--success');
-      alertBox.classList.add('profile-alert--' + (type === 'success' ? 'success' : 'danger'));
-    }
-
-    changePasswordFormInner.addEventListener('submit', async function (event) {
-      event.preventDefault();
-
-      var currentPassword = document.getElementById('currentPassword').value.trim();
-      var newPassword = document.getElementById('newPassword').value.trim();
-      var confirmPassword = document.getElementById('confirmPassword').value.trim();
-
-      if (newPassword !== confirmPassword) {
-        showAlert('两次输入的新密码不一致。');
-        return;
-      }
-
-      if (submitBtn) {
-        submitBtn.disabled = true;
-        submitBtn.textContent = '提交中...';
-      }
-
-      if (alertBox) {
-        alertBox.classList.add('d-none');
-      }
-
-      var shouldReset = false;
-      try {
-        var response = await fetch('{{ url_for("auth.change_password") }}', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            current_password: currentPassword,
-            new_password: newPassword,
-            confirm_password: confirmPassword
-          })
-        });
-
-        var result = await response.json().catch(function () { return {}; });
-        var message = result.message || (response.ok ? '密码修改成功。' : '请求失败，请稍后再试。');
-
-        if (response.ok && result.code === 200) {
-          showAlert(message, 'success');
-          shouldReset = true;
-          setTimeout(function () {
-            window.location.href = result.redirect_url || '{{ url_for("auth.login") }}';
-          }, 1500);
-        } else {
-          showAlert(message, 'danger');
-        }
-      } catch (error) {
-        showAlert('网络错误，请稍后再试。');
-      } finally {
-        if (submitBtn) {
-          submitBtn.disabled = false;
-          submitBtn.textContent = '确认修改';
-        }
-        if (shouldReset) {
-          changePasswordFormInner.reset();
-        }
-      }
-    });
-  }
+  // ====== Comment page jump ======
+  window.jumpToCommentPage = function(totalPages) {
+    var input = document.getElementById('commentPageInput');
+    var page = parseInt(input.value, 10);
+    if (isNaN(page) || page < 1) page = 1;
+    if (page > totalPages) page = totalPages;
+    var url = new URL(window.location.href);
+    url.searchParams.set('tab', 'comments');
+    url.searchParams.set('comment_page', page);
+    window.location.href = url.toString();
+  };
 });
 </script>
-{% else %}
-{# Non-owner tab switching only #}
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-  var tabs = document.querySelectorAll('.profile-tabs__tab');
-  tabs.forEach(function (tab) {
-    tab.addEventListener('click', function () {
-      var target = this.getAttribute('data-tab');
-      document.querySelectorAll('.profile-tabs__tab').forEach(function (t) { t.classList.remove('profile-tabs__tab--active'); });
-      document.querySelectorAll('.profile-tab-panel').forEach(function (p) { p.classList.remove('profile-tab-panel--active'); });
-      this.classList.add('profile-tabs__tab--active');
-      var panel = document.getElementById('tab-' + target);
-      if (panel) panel.classList.add('profile-tab-panel--active');
-    });
-  });
-});
-</script>
-{% endif %}
 {% endblock %}
+

@@ -27,5 +27,3 @@ class CommentValidator:
             return False, '父评论ID格式错误', {}
 
         return True, '', {'content': content, 'parent_id': parent_id}
-
-

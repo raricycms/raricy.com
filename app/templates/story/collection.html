@@ -66,8 +66,8 @@
           {% if item.genre %}
           <span class="story-card__tag story-card__tag--genre">{{ item.genre }}</span>
           {% endif %}
-          {% if item.status %}
-          <span class="story-card__tag {% if item.status == '连载中' %}story-card__tag--ongoing{% else %}story-card__tag--completed{% endif %}">{{ item.status }}</span>
+          {% if item.ai_assisted %}
+          <span class="story-card__tag story-card__tag--ai-assisted">AI辅助创作</span>
           {% endif %}
           <span class="story-card__author">作者：{{ item.author }}</span>
         </div>

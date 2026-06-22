@@ -283,5 +283,3 @@ class CommentService:
             except Exception:
                 pass
         return True, '删除成功'
-
-

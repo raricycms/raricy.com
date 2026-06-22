@@ -1,11 +1,11 @@
-{% extends "base.html" %}
+{% extends "admin_base.html" %}
 
-{% block title %}博客管理后台 - 控制面板{% endblock %}
+{% block title %}管理概览 - 博客后台{% endblock %}
 
-{% block content %}
+{% block admin_content %}
 <section class="admin-hero">
-    <h1>博客管理后台</h1>
-    <p>管理员控制面板 - 统一管理博客内容与栏目</p>
+    <h1>管理概览</h1>
+    <p>博客数据一览</p>
 </section>
 
 <div class="admin-container">
@@ -15,193 +15,22 @@
             <div class="admin-stat-card__number">{{ stats.total_blogs }}</div>
             <div class="admin-stat-card__label">📄 总文章数</div>
         </div>
+        <div class="admin-stat-card admin-stat-card--red">
+            <div class="admin-stat-card__number">{{ stats.total_likes }}</div>
+            <div class="admin-stat-card__label">❤️ 总点赞数</div>
+        </div>
         <div class="admin-stat-card admin-stat-card--green">
-            <div class="admin-stat-card__number">{{ stats.categorized_blogs }}</div>
-            <div class="admin-stat-card__label">📁 已分类文章</div>
+            <div class="admin-stat-card__number">{{ stats.total_comments }}</div>
+            <div class="admin-stat-card__label">💬 总评论数</div>
+        </div>
+        <div class="admin-stat-card admin-stat-card--purple">
+            <div class="admin-stat-card__number">{{ stats.total_users }}</div>
+            <div class="admin-stat-card__label">👥 总用户数</div>
         </div>
         <div class="admin-stat-card admin-stat-card--amber">
             <div class="admin-stat-card__number">{{ stats.uncategorized_blogs }}</div>
             <div class="admin-stat-card__label">📋 未分类文章</div>
         </div>
-        <div class="admin-stat-card admin-stat-card--purple">
-            <div class="admin-stat-card__number">{{ stats.total_categories }}</div>
-            <div class="admin-stat-card__label">🏷️ 活跃栏目</div>
-        </div>
-        <div class="admin-stat-card admin-stat-card--red">
-            <div class="admin-stat-card__number">{{ stats.total_likes }}</div>
-            <div class="admin-stat-card__label">❤️ 总点赞数</div>
-        </div>
-    </div>
-
-    <!-- 管理功能 -->
-    <div class="function-grid">
-        <!-- 文章管理 -->
-        <div class="function-card">
-            <div class="function-card__icon">📝</div>
-            <div class="function-card__title">文章管理</div>
-            <div class="function-card__desc">
-                查看、搜索、编辑和删除博客文章，管理文章的栏目分配，批量操作文章。
-            </div>
-            <div class="function-card__actions">
-                <a href="/blog/admin/articles" class="btn-function btn-function--primary">
-                    文章栏目管理
-                </a>
-                <a href="/blog/admin/articles?category_id=-1" class="btn-function btn-function--secondary">
-                    未分类文章
-                </a>
-            </div>
-        </div>
-
-        <!-- 栏目管理 -->
-        <div class="function-card">
-            <div class="function-card__icon">🏷️</div>
-            <div class="function-card__title">栏目管理</div>
-            <div class="function-card__desc">
-                创建、编辑和删除博客栏目，管理栏目层级结构，设置栏目图标和描述。
-            </div>
-            <div class="function-card__actions">
-                <a href="/blog/admin/categories" class="btn-function btn-function--primary">
-                    管理栏目
-                </a>
-                <a href="/blog/" class="btn-function btn-function--secondary">
-                    查看博客
-                </a>
-            </div>
-        </div>
-
-        <!-- 内容创作 -->
-        <div class="function-card">
-            <div class="function-card__icon">✍️</div>
-            <div class="function-card__title">内容创作</div>
-            <div class="function-card__desc">
-                发布新文章，使用 Markdown 编辑器创作内容，设置文章栏目和描述。
-            </div>
-            <div class="function-card__actions">
-                <a href="/blog/upload_blog" class="btn-function btn-function--primary">
-                    发布文章
-                </a>
-            </div>
-        </div>
-    </div>
-
-    <!-- 数据概览 -->
-    <div class="row">
-        <!-- 最近文章 -->
-        <div class="col-md-6">
-            <div class="dashboard-card">
-                <h5 class="mb-3">📅 最近文章</h5>
-                <div class="recent-list">
-                    {% for blog in stats.recent_blogs %}
-                    <div class="recent-item">
-                        <div>
-                            <div class="recent-item__title">{{ blog.title }}</div>
-                            <div class="recent-item__meta">
-                                👤 {{ blog.author }} • 📅 {{ blog.date }} • ❤️ {{ blog.likes_count or 0 }}
-                                {% if blog.category %}
-                                • 📁 {{ blog.category }}
-                                {% endif %}
-                            </div>
-                        </div>
-                        <div>
-                            <a href="/blog/{{ blog.id }}" class="btn btn-sm btn-outline-primary" target="_blank">查看</a>
-                        </div>
-                    </div>
-                    {% endfor %}
-
-                    {% if not stats.recent_blogs %}
-                    <div class="text-center py-3 text-muted">
-                        暂无文章
-                    </div>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
-
-        <!-- 热门文章 -->
-        <div class="col-md-6">
-            <div class="dashboard-card">
-                <h5 class="mb-3">🔥 热门文章</h5>
-                <div class="recent-list">
-                    {% for blog in stats.popular_blogs %}
-                    <div class="recent-item">
-                        <div>
-                            <div class="recent-item__title">{{ blog.title }}</div>
-                            <div class="recent-item__meta">
-                                👤 {{ blog.author }} • ❤️ {{ blog.likes_count or 0 }}
-                                {% if blog.category %}
-                                • 📁 {{ blog.category }}
-                                {% endif %}
-                            </div>
-                        </div>
-                        <div>
-                            <a href="/blog/{{ blog.id }}" class="btn btn-sm btn-outline-success" target="_blank">查看</a>
-                        </div>
-                    </div>
-                    {% endfor %}
-
-                    {% if not stats.popular_blogs %}
-                    <div class="text-center py-3 text-muted">
-                        暂无文章
-                    </div>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- 栏目分布 -->
-    <div class="dashboard-card">
-        <h5 class="mb-3">📊 栏目文章分布</h5>
-        <div class="category-chart">
-            {% for category in stats.category_stats %}
-            <div class="category-chart__item">
-                <div class="category-chart__icon">{{ category.icon }}</div>
-                <div class="category-chart__name">{{ category.name }}</div>
-                <div class="category-chart__count">{{ category.count }}</div>
-            </div>
-            {% endfor %}
-
-            {% if stats.uncategorized_blogs > 0 %}
-            <div class="category-chart__item">
-                <div class="category-chart__icon">📋</div>
-                <div class="category-chart__name">未分类</div>
-                <div class="category-chart__count">{{ stats.uncategorized_blogs }}</div>
-            </div>
-            {% endif %}
-        </div>
-    </div>
-
-    <!-- 快速操作 -->
-    <div class="dashboard-card">
-        <h5 class="mb-3">⚡ 快速操作</h5>
-        <div class="row">
-            <div class="col-md-3 mb-2">
-                <a href="/blog/upload_blog" class="btn btn-primary w-100">
-                    ➕ 发布新文章
-                </a>
-            </div>
-            <div class="col-md-3 mb-2">
-                <a href="/blog/admin/categories" class="btn btn-success w-100">
-                    🏷️ 管理栏目
-                </a>
-            </div>
-            <div class="col-md-3 mb-2">
-                <a href="/blog/admin/articles" class="btn btn-info w-100">
-                    📂 文章管理
-                </a>
-            </div>
-            <div class="col-md-3 mb-2">
-                <a href="/blog/" class="btn btn-outline-secondary w-100">
-                    👁️ 查看博客
-                </a>
-            </div>
-        </div>
-    </div>
-
-    <!-- 返回链接 -->
-    <div class="text-center mt-4">
-        <a href="/" class="btn btn-outline-primary">🏠 返回首页</a>
-        <a href="/blog/" class="btn btn-outline-secondary">📝 博客首页</a>
     </div>
 </div>
 {% endblock %}
@@ -226,14 +55,6 @@ document.addEventListener('DOMContentLoaded', function() {
         const target = parseInt(element.textContent);
         element.textContent = '0';
         animateNumber(element, target);
-    });
-
-    document.querySelectorAll('.category-chart__count').forEach(element => {
-        const target = parseInt(element.textContent);
-        element.textContent = '0';
-        setTimeout(() => {
-            animateNumber(element, target);
-        }, 500);
     });
 });
 </script>

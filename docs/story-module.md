@@ -1,18 +1,5 @@
 # 故事模块
 
-## 临时关闭与重新开启
-
-当前故事模块已暂时关闭（显示"正在维护中"）。
-
-**重新开启步骤：**
-
-1. 编辑 `app/web/story/views.py`：
-   - 删除顶部的 `root_collection()` 维护函数及其路由装饰器
-   - 取消注释文件末尾"原始路由（已暂时关闭）"区块内的所有代码
-   - 将 `from .services import StoryService` 和 `from flask import abort` 移到文件顶部（替换现有的 import）
-2. 编辑 `app/templates/base.html` 第50行，将"玩具"改回"故事"，链接改回 `url_for('story.root_collection')`
-3. （可选）删除 `app/templates/story/maintenance.html`
-
 ## 概述
 
 故事模块是一个基于文件系统的内容管理模块，支持 **Markdown 小说** 和 **Cattca 互动小说** 两种格式，合集可以**无限嵌套**。
@@ -78,7 +65,7 @@ instance/stories/
 title: 故事标题
 author: 作者名
 genre: 小说
-status: 完结
+ai_assisted: false
 description: 一句话简介
 priority: 100
 ignore: false
@@ -90,8 +77,8 @@ ignore: false
 |------|------|--------|------|
 | `title` | string | 文件名 | 故事标题 |
 | `author` | string | 合集作者 | 作者 |
-| `genre` | string | `"小说"` | 类型标签 |
-| `status` | string | `"完结"` | `"连载中"` 或 `"完结"` |
+| `genre` | string | `""` | 类型标签，不设则不显示 |
+| `ai_assisted` | bool | `false` | 设为 `true` 显示「AI辅助创作」标记 |
 | `description` | string | `""` | 简介 |
 | `priority` | int | `0` | 排序优先级 |
 | `ignore` | bool | `false` | 设为 `true` 隐藏此故事 |

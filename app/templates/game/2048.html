@@ -76,12 +76,18 @@
     // ---- State ----------------------------------------------------------------
 
     let grid = [];        // grid[row][col] = value (0 means empty)
+    let tileIds = [];     // tileIds[row][col] = unique id (0 means empty)
+    let nextTileId = 1;   // auto-increment tile ID
+    let mergedIds = null;   // Set of tile IDs that resulted from a merge this move
+    let consumedMap = null; // {consumedId: survivedId} — tiles eaten in merges
     let score = 0;
     let best = 0;
     let over = false;
     let won = false;
     let keepPlaying = false;
-    let history = [];     // [{grid, score}] for undo
+    let history = [];     // [{grid, tileIds, score}] for undo
+    let tileElements = {}; // id -> {el, r, c}  persistent tile DOM elements
+    let cellElements = []; // [r][c] -> cell DOM element (created once)
 
     // ---- localStorage ---------------------------------------------------------
 
@@ -112,8 +118,97 @@
         return g;
     }
 
+    function emptyIdGrid() {
+        const g = [];
+        for (let r = 0; r < SIZE; r++) {
+            g[r] = new Array(SIZE).fill(0);
+        }
+        return g;
+    }
+
     function cloneGrid(g) {
         return g.map(row => row.slice());
+    }
+
+    // ---- Persistent board & tile elements ---------------------------------------
+
+    function initBoard() {
+        boardEl.innerHTML = '';
+        for (var r = 0; r < SIZE; r++) {
+            cellElements[r] = [];
+            for (var c = 0; c < SIZE; c++) {
+                var cell = document.createElement('div');
+                cell.className = 'game-2048-cell';
+                cellElements[r][c] = cell;
+                boardEl.appendChild(cell);
+            }
+        }
+    }
+
+    // ---- Tile element factory (two-layer: outer=position, inner=face) -----------
+
+    function createTileElement(value, id) {
+        var outer = document.createElement('div');
+        outer.className = 'game-2048-tile';
+        outer.dataset.tileId = id;
+
+        var face = document.createElement('div');
+        face.className = 'game-2048-tile__face';
+        var st = tileStyle(value);
+        face.textContent = value;
+        face.style.background = st.bg;
+        face.style.color = st.fg;
+        _setTileFontSize(face, value);
+
+        outer.appendChild(face);
+        // Stash reference to the face so we can update/add classes later
+        outer._face = face;
+        return outer;
+    }
+
+    function updateTileContent(outer, value) {
+        var face = outer._face;
+        var st = tileStyle(value);
+        face.textContent = value;
+        face.style.background = st.bg;
+        face.style.color = st.fg;
+        _setTileFontSize(face, value);
+    }
+
+    function _setTileFontSize(el, value) {
+        var len = String(value).length;
+        if (len <= 2)        el.style.fontSize = '2rem';
+        else if (len === 3)  el.style.fontSize = '1.6rem';
+        else if (len === 4)  el.style.fontSize = '1.2rem';
+        else                 el.style.fontSize = '0.95rem';
+    }
+
+    // ---- Cell-position helpers --------------------------------------------------
+
+    // Read every cell's rect relative to the board (handles resize / mobile gap).
+    function getCellPositions() {
+        var boardRect = boardEl.getBoundingClientRect();
+        var pos = [];
+        for (var r = 0; r < SIZE; r++) {
+            pos[r] = [];
+            for (var c = 0; c < SIZE; c++) {
+                var cr = cellElements[r][c].getBoundingClientRect();
+                pos[r][c] = {
+                    x: cr.left - boardRect.left,
+                    y: cr.top  - boardRect.top,
+                    w: cr.width,
+                    h: cr.height
+                };
+            }
+        }
+        return pos;
+    }
+
+    // Position a tile outer-div at a specific cell.
+    function placeTile(outer, cellPos) {
+        outer.style.width  = cellPos.w + 'px';
+        outer.style.height = cellPos.h + 'px';
+        outer.style.transform = 'translate(' + cellPos.x + 'px, ' + cellPos.y + 'px)';
     }
 
     function availableCells(g) {
@@ -126,94 +221,125 @@
         return cells;
     }
 
-    function addRandomTile(g) {
+    function addRandomTile(g, idGrid) {
         const cells = availableCells(g);
         if (cells.length === 0) return false;
         const { r, c } = cells[Math.floor(Math.random() * cells.length)];
         g[r][c] = Math.random() < 0.9 ? 2 : 4;
+        idGrid[r][c] = nextTileId++;
         return true;
     }
 
     // ---- Slide logic ----------------------------------------------------------
 
-    // Slide a single line (array of SIZE values) to the left.
-    // Returns { line, score, moved }
-    function slideLine(line) {
-        // Remove zeros
-        let arr = line.filter(v => v !== 0);
+    // Slide a single line (values + ids) to the left.
+    // Returns { values, ids, score, moved, merged, consumed }
+    //   merged:   [survivingId, ...] — tiles that absorbed another
+    //   consumed: [{consumedId, survivedId}, ...] — tiles eaten during merge
+    function slideLineWithIds(values, ids) {
+        // Remove zeros, keeping values and ids in sync
+        let arr = [];
+        let idArr = [];
+        for (let i = 0; i < values.length; i++) {
+            if (values[i] !== 0) {
+                arr.push(values[i]);
+                idArr.push(ids[i]);
+            }
+        }
+
         let scoreGain = 0;
         let moved = false;
+        const merged = [];
+        const consumed = [];
 
         // Merge
         for (let i = 0; i < arr.length - 1; i++) {
             if (arr[i] === arr[i + 1]) {
                 arr[i] *= 2;
                 scoreGain += arr[i];
+                merged.push(idArr[i]);                        // surviving ID
+                consumed.push({ consumedId: idArr[i + 1], survivedId: idArr[i] });
                 arr[i + 1] = 0;
-                i++; // skip the merged cell
+                idArr[i + 1] = 0;
+                i++;
             }
         }
 
-        // Remove zeros again after merge
-        arr = arr.filter(v => v !== 0);
+        // Remove zeros again after merge (sync)
+        const newArr = [];
+        const newIdArr = [];
+        for (let i = 0; i < arr.length; i++) {
+            if (arr[i] !== 0) {
+                newArr.push(arr[i]);
+                newIdArr.push(idArr[i]);
+            }
+        }
 
         // Pad to SIZE
-        while (arr.length < SIZE) arr.push(0);
+        while (newArr.length < SIZE) {
+            newArr.push(0);
+            newIdArr.push(0);
+        }
 
         // Check if line changed
         for (let i = 0; i < SIZE; i++) {
-            if (arr[i] !== line[i]) {
+            if (newArr[i] !== values[i]) {
                 moved = true;
                 break;
             }
         }
 
-        return { line: arr, score: scoreGain, moved };
+        return { values: newArr, ids: newIdArr, score: scoreGain, moved, merged, consumed };
     }
 
     // Slide the entire grid in a given direction
-    function slide(g, direction) {
+    function slide(g, idGrid, direction) {
         let totalScore = 0;
         let anyMoved = false;
         const newGrid = emptyGrid();
+        const newIdGrid = emptyIdGrid();
+        const allMerged = [];
+        const allConsumed = [];
 
-        if (direction === 'left') {
-            for (let r = 0; r < SIZE; r++) {
-                const row = g[r].slice();
-                const result = slideLine(row);
-                newGrid[r] = result.line;
-                totalScore += result.score;
-                anyMoved = anyMoved || result.moved;
-            }
-        } else if (direction === 'right') {
-            for (let r = 0; r < SIZE; r++) {
-                const row = g[r].slice().reverse();
-                const result = slideLine(row);
-                newGrid[r] = result.line.reverse();
-                totalScore += result.score;
-                anyMoved = anyMoved || result.moved;
-            }
-        } else if (direction === 'up') {
-            for (let c = 0; c < SIZE; c++) {
-                const col = [];
-                for (let r = 0; r < SIZE; r++) col.push(g[r][c]);
-                const result = slideLine(col);
-                for (let r = 0; r < SIZE; r++) newGrid[r][c] = result.line[r];
-                totalScore += result.score;
-                anyMoved = anyMoved || result.moved;
-            }
-        } else if (direction === 'down') {
-            for (let c = 0; c < SIZE; c++) {
-                const col = [];
-                for (let r = 0; r < SIZE; r++) col.push(g[r][c]);
-                const result = slideLine(col.reverse());
-                for (let r = 0; r < SIZE; r++) newGrid[r][c] = result.line[SIZE - 1 - r];
-                totalScore += result.score;
-                anyMoved = anyMoved || result.moved;
-            }
+        function slideRow(r, reverse) {
+            const row = g[r].slice();
+            const idRow = idGrid[r].slice();
+            if (reverse) { row.reverse(); idRow.reverse(); }
+            const result = slideLineWithIds(row, idRow);
+            if (reverse) { result.values.reverse(); result.ids.reverse(); }
+            newGrid[r] = result.values;
+            newIdGrid[r] = result.ids;
+            totalScore += result.score;
+            anyMoved = anyMoved || result.moved;
+            allMerged.push(...result.merged);
+            allConsumed.push(...result.consumed);
         }
 
-        return { grid: newGrid, score: totalScore, moved: anyMoved };
+        function slideCol(c, reverse) {
+            const col = [];
+            const idCol = [];
+            for (let r = 0; r < SIZE; r++) { col.push(g[r][c]); idCol.push(idGrid[r][c]); }
+            if (reverse) { col.reverse(); idCol.reverse(); }
+            const result = slideLineWithIds(col, idCol);
+            if (reverse) { result.values.reverse(); result.ids.reverse(); }
+            for (let r = 0; r < SIZE; r++) { newGrid[r][c] = result.values[r]; newIdGrid[r][c] = result.ids[r]; }
+            totalScore += result.score;
+            anyMoved = anyMoved || result.moved;
+            allMerged.push(...result.merged);
+            allConsumed.push(...result.consumed);
+        }
+
+        if (direction === 'left') {
+            for (let r = 0; r < SIZE; r++) slideRow(r, false);
+        } else if (direction === 'right') {
+            for (let r = 0; r < SIZE; r++) slideRow(r, true);
+        } else if (direction === 'up') {
+            for (let c = 0; c < SIZE; c++) slideCol(c, false);
+        } else if (direction === 'down') {
+            for (let c = 0; c < SIZE; c++) slideCol(c, true);
+        }
+
+        return { grid: newGrid, idGrid: newIdGrid, score: totalScore, moved: anyMoved, merged: allMerged, consumed: allConsumed };
     }
 
     // ---- Game-over check ------------------------------------------------------
@@ -251,7 +377,7 @@
     // ---- Save state for undo --------------------------------------------------
 
     function pushHistory() {
-        history.push({ grid: cloneGrid(grid), score: score });
+        history.push({ grid: cloneGrid(grid), tileIds: cloneGrid(tileIds), score: score });
         // Keep only last 5 states
         if (history.length > 5) history.shift();
     }
@@ -265,7 +391,7 @@
         // Save state before move
         pushHistory();
 
-        const result = slide(grid, direction);
+        const result = slide(grid, tileIds, direction);
         if (!result.moved) {
             // Revert history push — move didn't change anything
             history.pop();
@@ -273,6 +399,14 @@
         }
 
         grid = result.grid;
+        tileIds = result.idGrid;
+        mergedIds = new Set(result.merged);
+        // Map consumed tile ID → surviving tile ID (so we can animate them sliding
+        // to the merge position before removal)
+        consumedMap = {};
+        result.consumed.forEach(function (c) {
+            consumedMap[c.consumedId] = c.survivedId;
+        });
         score += result.score;
 
         if (score > best) {
@@ -281,7 +415,7 @@
         }
 
         // Spawn new tile
-        addRandomTile(grid);
+        addRandomTile(grid, tileIds);
 
         // Check win
         if (!won && !keepPlaying && hasWon(grid)) {
@@ -294,59 +428,114 @@
         }
 
         updateBestEl();
-        render();
+        syncTiles();
     }
 
-    // ---- Render ---------------------------------------------------------------
+    // ---- Sync tiles (direct positioning — no FLIP, no innerHTML) ----------------
 
-    function render() {
+    function syncTiles() {
         // Remove overlay if present
-        const existingOverlay = boardWrap.querySelector('.game-2048-overlay');
-        if (existingOverlay) existingOverlay.remove();
+        var ov = boardWrap.querySelector('.game-2048-overlay');
+        if (ov) ov.remove();
 
-        // Render tiles
-        boardEl.innerHTML = '';
+        // Get current cell rects (handles resize / mobile gap changes)
+        var cellPos = getCellPositions();
 
-        for (let r = 0; r < SIZE; r++) {
-            for (let c = 0; c < SIZE; c++) {
-                const cell = document.createElement('div');
-                cell.className = 'game-2048-cell';
+        // ---- Sync tile elements to match grid state ------------------------------
+        var seenIds = {};
+        var newEls = [];
 
-                if (grid[r][c] !== 0) {
-                    const tile = document.createElement('div');
-                    const style = tileStyle(grid[r][c]);
-                    tile.textContent = grid[r][c];
-                    tile.style.background = style.bg;
-                    tile.style.color = style.fg;
-                    tile.style.position = 'absolute';
-                    tile.style.inset = '0';
-                    tile.style.display = 'flex';
-                    tile.style.alignItems = 'center';
-                    tile.style.justifyContent = 'center';
-                    tile.style.borderRadius = '5px';
-                    tile.style.fontWeight = '700';
+        for (var r = 0; r < SIZE; r++) {
+            for (var c = 0; c < SIZE; c++) {
+                var value = grid[r][c];
+                if (value === 0) continue;
+                var id = tileIds[r][c];
+                seenIds[id] = true;
 
-                    // Font size adapts to tile value length
-                    const len = String(grid[r][c]).length;
-                    if (len <= 2) {
-                        tile.style.fontSize = '2rem';
-                    } else if (len === 3) {
-                        tile.style.fontSize = '1.6rem';
-                    } else if (len === 4) {
-                        tile.style.fontSize = '1.2rem';
-                    } else {
-                        tile.style.fontSize = '0.95rem';
+                var entry = tileElements[id];
+                if (entry) {
+                    // Existing tile — check movement BEFORE updating r,c
+                    var cellChanged = (entry.r !== r || entry.c !== c);
+                    // Update content + move to target cell
+                    updateTileContent(entry.el, value);
+                    // Directly set target position → CSS transition does the slide.
+                    // If a previous transition was in-flight the browser smoothly
+                    // re-targets — no snap, no flicker.
+                    placeTile(entry.el, cellPos[r][c]);
+                    entry.r = r;
+                    entry.c = c;
+
+                    if (mergedIds && mergedIds.has(id)) {
+                        entry._mergeMoved = cellChanged;
                     }
-
-                    tile.className = 'game-2048-tile';
-
-                    cell.style.position = 'relative';
-                    cell.appendChild(tile);
+                } else {
+                    // Brand-new tile — create + position + appear animation
+                    var el = createTileElement(value, id);
+                    placeTile(el, cellPos[r][c]);
+                    boardEl.appendChild(el);
+                    tileElements[id] = { el: el, r: r, c: c };
+                    newEls.push(el);
                 }
-
-                boardEl.appendChild(cell);
             }
         }
+
+        // ---- Animate consumed tiles to merge position, then remove ---------------
+        if (consumedMap) {
+            Object.keys(tileElements).forEach(function (id) {
+                if (!seenIds[id] && consumedMap[id]) {
+                    var survivedId = consumedMap[id];
+                    var survivedEntry = tileElements[survivedId];
+                    if (survivedEntry) {
+                        var entry = tileElements[id];
+                        // Slide consumed tile to the same cell as the surviving tile
+                        placeTile(entry.el, cellPos[survivedEntry.r][survivedEntry.c]);
+                        // Fade out in parallel with the slide
+                        entry.el.style.opacity = '0';
+                        entry.el.style.transition = 'transform 120ms ease, opacity 100ms ease';
+                        // Clean up after animation
+                        var el = entry.el;
+                        var removeId = id;
+                        setTimeout(function () {
+                            el.remove();
+                            delete tileElements[removeId];
+                        }, 150);
+                        seenIds[id] = true; // skip the removal loop below
+                    }
+                }
+            });
+        }
+
+        // ---- Remove any remaining stale tiles ------------------------------------
+        Object.keys(tileElements).forEach(function (id) {
+            if (!seenIds[id]) {
+                tileElements[id].el.remove();
+                delete tileElements[id];
+            }
+        });
+
+        consumedMap = null;
+
+        // // ---- Merge pop (disabled) ------------------------------------------------
+        // if (mergedIds) {
+        //     mergedIds.forEach(function (id) {
+        //         var entry = tileElements[id];
+        //         if (entry) {
+        //             var face = entry.el._face;
+        //             face.classList.add('game-2048-tile__face--merged');
+        //             if (!entry._mergeMoved) {
+        //                 face.style.animationDelay = '0s';
+        //             }
+        //             entry._mergeMoved = undefined;
+        //         }
+        //     });
+        //     mergedIds = null;
+        // }
+        mergedIds = null;
+
+        // ---- New-tile appear (CSS animation-delay starts after slide) ------------
+        newEls.forEach(function (el) {
+            el._face.classList.add('game-2048-tile__face--new');
+        });
 
         // Update score
         scoreEl.textContent = score;
@@ -378,7 +567,7 @@
                 e.stopPropagation();
                 keepPlaying = true;
                 won = false;
-                render();
+                syncTiles();
             });
             overlay.appendChild(btn);
         } else {
@@ -400,25 +589,37 @@
     // ---- New game -------------------------------------------------------------
 
     function newGame() {
+        // Remove all existing tile DOM elements
+        Object.keys(tileElements).forEach(function (id) {
+            tileElements[id].el.remove();
+        });
+        tileElements = {};
+
         grid = emptyGrid();
-        addRandomTile(grid);
-        addRandomTile(grid);
+        tileIds = emptyIdGrid();
+        nextTileId = 1;
+        mergedIds = null;
+        consumedMap = null;
+        addRandomTile(grid, tileIds);
+        addRandomTile(grid, tileIds);
         score = 0;
         over = false;
         won = false;
         keepPlaying = false;
         history = [];
         updateBestEl();
-        render();
+        syncTiles();
     }
 
     function undo() {
         if (history.length === 0) return;
-        if (over && !keepPlaying) return;
 
         const prev = history.pop();
         grid = prev.grid;
+        tileIds = prev.tileIds;
         score = prev.score;
+        mergedIds = null; // no animations on undo
+        consumedMap = null;
         over = false;
         won = hasWon(grid);
         // If already won before undo, keep playing flag
@@ -426,7 +627,7 @@
             over = true;
         }
         updateBestEl();
-        render();
+        syncTiles();
     }
 
     // ---- Input handlers -------------------------------------------------------
@@ -493,6 +694,7 @@
     btnNew.addEventListener('click', newGame);
     btnUndo.addEventListener('click', undo);
 
+    initBoard();
     updateBestEl();
     newGame();
 })();
