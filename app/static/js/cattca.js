@@ -111,7 +111,7 @@ export class CattcaInterpreter {
   }
 
   /**
-   * 去除源码中的 /* */ 注释。
+   * 去除源码中的 注释。
    */
   static removeComments(source) {
     let result = '';
