@@ -10,6 +10,7 @@
 }
 
 .speed-page {
+  position: relative;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -19,6 +20,22 @@
   overflow: hidden;
   user-select: none;
   padding: $space-4;
+}
+
+.speed-back {
+  position: absolute;
+  top: 16px;
+  left: 20px;
+  z-index: 10;
+  display: inline-block;
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  font-size: 0.9rem;
+  transition: color 0.2s;
+
+  &:hover {
+    color: var(--color-brand-primary);
+  }
 }
 
 .speed-wrapper {

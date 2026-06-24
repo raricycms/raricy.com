@@ -6007,6 +6007,7 @@ body {
 }
 
 .speed-page {
+  position: relative;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -6016,6 +6017,21 @@ body {
   overflow: hidden;
   user-select: none;
   padding: 16px;
+}
+
+.speed-back {
+  position: absolute;
+  top: 16px;
+  left: 20px;
+  z-index: 10;
+  display: inline-block;
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  font-size: 0.9rem;
+  transition: color 0.2s;
+}
+.speed-back:hover {
+  color: var(--color-brand-primary);
 }
 
 .speed-wrapper {
@@ -6268,6 +6284,21 @@ body {
     padding: 1.5rem 2rem;
   }
 }
+.cubettt-back {
+  position: fixed;
+  top: 80px;
+  left: 20px;
+  z-index: 10;
+  display: inline-block;
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  font-size: 0.9rem;
+  transition: color 0.2s;
+}
+.cubettt-back:hover {
+  color: var(--color-brand-primary);
+}
+
 .cubettt-page {
   margin: 0;
   padding: 0;

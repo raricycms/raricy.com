@@ -4,6 +4,22 @@
 // 4×4×4 Cube Tic-Tac-Toe (立方棋) — BEM namespace: .cubettt-*
 // ============================================================
 
+.cubettt-back {
+  position: fixed;
+  top: 80px;
+  left: 20px;
+  z-index: 10;
+  display: inline-block;
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  font-size: 0.9rem;
+  transition: color 0.2s;
+
+  &:hover {
+    color: var(--color-brand-primary);
+  }
+}
+
 .cubettt-page {
   margin: 0;
   padding: 0;

@@ -10,6 +10,7 @@
 {% endblock %}
 
 {% block content %}
+<a href="{{ url_for('game.menu') }}" style="display:inline-block;color:var(--color-text-secondary);text-decoration:none;font-size:0.9rem;margin:16px 0 8px 16px;transition:color 0.2s;" onmouseover="this.style.color='var(--color-brand-primary)'" onmouseout="this.style.color='var(--color-text-secondary)'">&larr; 返回玩具</a>
 <canvas id="c"></canvas>
 {% endblock %}
 

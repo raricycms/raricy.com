@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, Tuple
 from app.extensions import db
 from app.models.audit import AdminActionLog, AdminActionAppeal
@@ -39,7 +39,10 @@ def list_public_logs(page: int = 1, per_page: int = 20, action: Optional[str] = 
     """
     公示日志分页列表（仅 public）。
     """
-    query = AdminActionLog.query.filter_by(visibility='public').order_by(AdminActionLog.created_at.desc())
+    one_month_ago = datetime.now() - timedelta(days=30)
+    query = AdminActionLog.query.filter_by(visibility='public') \
+        .filter(AdminActionLog.created_at >= one_month_ago) \
+        .order_by(AdminActionLog.created_at.desc())
     if action:
         query = query.filter_by(action=action)
     return query.paginate(page=page, per_page=per_page, error_out=False)
