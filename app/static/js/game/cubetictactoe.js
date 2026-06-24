@@ -1,0 +1,478 @@
+(function() {
+  var container = document.getElementById('container');
+  var cubeSystem = document.getElementById('cubeSystem');
+  var currentPlayerEl = document.getElementById('currentPlayer');
+  var winnerMessageEl = document.getElementById('winnerMessage');
+  var drawMessageEl = document.getElementById('drawMessage');
+  var redCountEl = document.getElementById('redCount');
+  var blueCountEl = document.getElementById('blueCount');
+  var totalMovesEl = document.getElementById('totalMoves');
+  var undoButtonEl = document.getElementById('undoButton');
+  var btnExplodeX = document.getElementById('btnExplodeX');
+  var btnExplodeY = document.getElementById('btnExplodeY');
+  var btnExplodeZ = document.getElementById('btnExplodeZ');
+
+  var cubes = [];
+  var cubeGrid = {};
+  var isMouseDown = false;
+  var mouseX = 0;
+  var mouseY = 0;
+  var rotationX = -15;
+  var rotationY = 25;
+  var currentRotationX = 0;
+  var currentRotationY = 0;
+  var scaleFactor = 1;
+
+  var currentPlayer = 'red';
+  var redCount = 0;
+  var blueCount = 0;
+  var totalMoves = 0;
+  var gameEnded = false;
+  var moveHistory = [];
+
+  var explodeState = { x: false, y: false, z: false };
+
+  // All 13 line directions (covering 76 total winning lines across the 4x4x4 grid)
+  var winDirections = [
+    [1, 0, 0], [0, 1, 0], [0, 0, 1],
+    [1, 1, 0], [1, -1, 0],
+    [1, 0, 1], [1, 0, -1],
+    [0, 1, 1], [0, 1, -1],
+    [1, 1, 1], [1, 1, -1], [1, -1, 1], [-1, 1, 1]
+  ];
+
+  function updateExplodeButtons() {
+    if (!btnExplodeX || !btnExplodeY || !btnExplodeZ) return;
+    btnExplodeX.classList.toggle('active', explodeState.x);
+    btnExplodeX.setAttribute('aria-pressed', String(explodeState.x));
+    btnExplodeY.classList.toggle('active', explodeState.y);
+    btnExplodeY.setAttribute('aria-pressed', String(explodeState.y));
+    btnExplodeZ.classList.toggle('active', explodeState.z);
+    btnExplodeZ.setAttribute('aria-pressed', String(explodeState.z));
+  }
+
+  function toggleExplode(axis) {
+    explodeState[axis] = !explodeState[axis];
+    updateCubePositions();
+    updateExplodeButtons();
+  }
+
+  window.toggleExplode = toggleExplode;
+
+  function createCubes() {
+    cubes = [];
+    cubeGrid = {};
+    cubeSystem.innerHTML = '';
+
+    for (var x = 0; x < 4; x++) {
+      for (var y = 0; y < 4; y++) {
+        for (var z = 0; z < 4; z++) {
+          var cube = document.createElement('div');
+          cube.className = 'cubettt-cube';
+
+          var baseX = (x - 1.5) * 60;
+          var baseY = (y - 1.5) * 60;
+          var baseZ = (z - 1.5) * 60;
+
+          cube.dataset.x = x;
+          cube.dataset.y = y;
+          cube.dataset.z = z;
+          cube.dataset.baseX = baseX;
+          cube.dataset.baseY = baseY;
+          cube.dataset.baseZ = baseZ;
+          cube.dataset.occupied = 'false';
+          cube.dataset.player = '';
+
+          var faceNames = ['front', 'back', 'right', 'left', 'top', 'bottom'];
+          faceNames.forEach(function(faceName) {
+            var face = document.createElement('div');
+            face.className = 'cubettt-face cubettt-face--' + faceName;
+            cube.appendChild(face);
+          });
+
+          cube.addEventListener('mouseenter', handleMouseEnter);
+          cube.addEventListener('mouseleave', handleMouseLeave);
+          cube.addEventListener('click', handleClick);
+          cube.addEventListener('touchstart', cubeTouchStart, { passive: false });
+          cube.addEventListener('touchmove', cubeTouchMove, { passive: false });
+          cube.addEventListener('touchend', cubeTouchEnd);
+
+          cubeSystem.appendChild(cube);
+          cubes.push(cube);
+          cubeGrid[x + ',' + y + ',' + z] = cube;
+        }
+      }
+    }
+    updateCubePositions();
+  }
+
+  function checkWin(player) {
+    for (var x = 0; x < 4; x++) {
+      for (var y = 0; y < 4; y++) {
+        for (var z = 0; z < 4; z++) {
+          for (var d = 0; d < winDirections.length; d++) {
+            var dx = winDirections[d][0];
+            var dy = winDirections[d][1];
+            var dz = winDirections[d][2];
+            var line = [];
+            var valid = true;
+
+            for (var i = 0; i < 4; i++) {
+              var nx = x + dx * i;
+              var ny = y + dy * i;
+              var nz = z + dz * i;
+
+              if (nx < 0 || nx >= 4 || ny < 0 || ny >= 4 || nz < 0 || nz >= 4) {
+                valid = false;
+                break;
+              }
+
+              var cube = cubeGrid[nx + ',' + ny + ',' + nz];
+              if (!cube || cube.dataset.player !== player) {
+                valid = false;
+                break;
+              }
+
+              line.push(cube);
+            }
+
+            if (valid && line.length === 4) {
+              return line;
+            }
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  function checkDraw() {
+    return totalMoves >= 64;
+  }
+
+  function highlightWinningLine(line) {
+    line.forEach(function(cube) {
+      cube.classList.add('cubettt-cube--winning');
+    });
+  }
+
+  function showWinner(player) {
+    gameEnded = true;
+    var playerName = player === 'red' ? '红方' : '蓝方';
+    winnerMessageEl.textContent = '🎉 ' + playerName + '获胜！';
+    winnerMessageEl.style.display = 'block';
+    drawMessageEl.style.display = 'none';
+    currentPlayerEl.style.display = 'none';
+  }
+
+  function showDraw() {
+    gameEnded = true;
+    drawMessageEl.textContent = '🤝 平局！';
+    drawMessageEl.style.display = 'block';
+    winnerMessageEl.style.display = 'none';
+    currentPlayerEl.style.display = 'none';
+  }
+
+  function updateUI() {
+    redCountEl.textContent = redCount;
+    blueCountEl.textContent = blueCount;
+    totalMovesEl.textContent = totalMoves;
+    undoButtonEl.disabled = moveHistory.length === 0 || gameEnded;
+
+    if (!gameEnded) {
+      currentPlayerEl.textContent = '当前玩家: ' + (currentPlayer === 'red' ? '红方' : '蓝方');
+    }
+  }
+
+  function clearLastMoveHighlight() {
+    cubes.forEach(function(cube) {
+      cube.classList.remove('cubettt-cube--last-move');
+    });
+  }
+
+  function undoMove() {
+    if (moveHistory.length === 0 || gameEnded) return;
+
+    var lastMove = moveHistory.pop();
+    var cube = cubeGrid[lastMove.x + ',' + lastMove.y + ',' + lastMove.z];
+
+    cube.dataset.occupied = 'false';
+    cube.dataset.player = '';
+    cube.className = 'cubettt-cube';
+
+    if (lastMove.player === 'red') { redCount--; }
+    else { blueCount--; }
+    totalMoves--;
+
+    currentPlayer = lastMove.player;
+
+    clearLastMoveHighlight();
+    cubes.forEach(function(cube) {
+      cube.classList.remove('cubettt-cube--winning');
+    });
+
+    if (moveHistory.length > 0) {
+      var newLastMove = moveHistory[moveHistory.length - 1];
+      var newLastCube = cubeGrid[newLastMove.x + ',' + newLastMove.y + ',' + newLastMove.z];
+      newLastCube.classList.add('cubettt-cube--last-move');
+    }
+
+    updateUI();
+  }
+
+  function resetGame() {
+    gameEnded = false;
+    currentPlayer = 'red';
+    redCount = 0;
+    blueCount = 0;
+    totalMoves = 0;
+    moveHistory = [];
+
+    cubes.forEach(function(cube) {
+      cube.dataset.occupied = 'false';
+      cube.dataset.player = '';
+      cube.className = 'cubettt-cube';
+    });
+
+    winnerMessageEl.style.display = 'none';
+    drawMessageEl.style.display = 'none';
+    currentPlayerEl.style.display = 'block';
+    updateUI();
+  }
+
+  window.resetGame = resetGame;
+  window.undoMove = undoMove;
+
+  function handleMouseEnter(e) {
+    if (gameEnded) return;
+    var cube = e.currentTarget;
+    if (cube.dataset.occupied === 'false') {
+      cube.classList.add('cubettt-cube--highlight');
+    }
+  }
+
+  function handleMouseLeave(e) {
+    e.currentTarget.classList.remove('cubettt-cube--highlight');
+  }
+
+  function handleClick(e) {
+    if (gameEnded) return;
+    e.stopPropagation();
+    var cube = e.currentTarget;
+    if (cube.dataset.occupied === 'true') return;
+    placePiece(cube);
+  }
+
+  function cubeTouchStart(e) {
+    if (gameEnded) return;
+    e.stopPropagation();
+    var touch = e.touches[0];
+    var cube = e.currentTarget;
+    cube._touchStartX = touch.clientX;
+    cube._touchStartY = touch.clientY;
+    cube._touchMoved = false;
+    e.preventDefault();
+  }
+
+  function cubeTouchMove(e) {
+    var cube = e.currentTarget;
+    if (cube._touchStartX == null) return;
+    var touch = e.touches[0];
+    var dx = Math.abs(touch.clientX - cube._touchStartX);
+    var dy = Math.abs(touch.clientY - cube._touchStartY);
+    if (dx > 10 || dy > 10) {
+      cube._touchMoved = true;
+    }
+    e.preventDefault();
+  }
+
+  function cubeTouchEnd(e) {
+    if (gameEnded) return;
+    e.stopPropagation();
+    var cube = e.currentTarget;
+    if (!cube._touchMoved && cube.dataset.occupied === 'false') {
+      placePiece(cube);
+    }
+    cube._touchStartX = null;
+    cube._touchStartY = null;
+    cube._touchMoved = false;
+    e.preventDefault();
+  }
+
+  function placePiece(cube) {
+    if (gameEnded || cube.dataset.occupied === 'true') return;
+
+    var move = {
+      x: parseInt(cube.dataset.x),
+      y: parseInt(cube.dataset.y),
+      z: parseInt(cube.dataset.z),
+      player: currentPlayer
+    };
+    moveHistory.push(move);
+
+    clearLastMoveHighlight();
+
+    cube.dataset.occupied = 'true';
+    cube.dataset.player = currentPlayer;
+    cube.classList.remove('cubettt-cube--highlight');
+    cube.classList.add('cubettt-cube--' + currentPlayer);
+    cube.classList.add('cubettt-cube--last-move');
+
+    if (currentPlayer === 'red') { redCount++; }
+    else { blueCount++; }
+    totalMoves++;
+
+    var winningLine = checkWin(currentPlayer);
+    if (winningLine) {
+      highlightWinningLine(winningLine);
+      showWinner(currentPlayer);
+      updateUI();
+      return;
+    }
+
+    if (checkDraw()) {
+      showDraw();
+      updateUI();
+      return;
+    }
+
+    currentPlayer = currentPlayer === 'red' ? 'blue' : 'red';
+    updateUI();
+  }
+
+  function updateCubePositions() {
+    cubes.forEach(function(cube) {
+      var x = parseInt(cube.dataset.x);
+      var y = parseInt(cube.dataset.y);
+      var z = parseInt(cube.dataset.z);
+      var baseX = parseFloat(cube.dataset.baseX);
+      var baseY = parseFloat(cube.dataset.baseY);
+      var baseZ = parseFloat(cube.dataset.baseZ);
+
+      var offsetX = 0, offsetY = 0, offsetZ = 0;
+
+      if (explodeState.x) { offsetX = (x - 1.5) * 60; }
+      if (explodeState.y) { offsetY = (y - 1.5) * 60; }
+      if (explodeState.z) { offsetZ = (z - 1.5) * 60; }
+
+      var finalX = baseX + offsetX;
+      var finalY = baseY + offsetY;
+      var finalZ = baseZ + offsetZ;
+
+      cube.style.transform = 'translate3d(' + finalX + 'px, ' + finalY + 'px, ' + finalZ + 'px)';
+    });
+  }
+
+  function updateRotation() {
+    cubeSystem.style.transform = 'scale(' + scaleFactor + ') rotateX(' + rotationX + 'deg) rotateY(' + rotationY + 'deg)';
+  }
+
+  function updateScale() {
+    var minDim = Math.min(window.innerWidth, window.innerHeight);
+    var baseSize = 230;
+    var targetSize = minDim * 0.8;
+    var s = targetSize / baseSize;
+    scaleFactor = Math.max(0.6, Math.min(1.6, s));
+    updateRotation();
+  }
+
+  // Mouse rotation
+  container.addEventListener('mousedown', function(e) {
+    if (e.target.closest('.cubettt-info') || e.target.closest('.cubettt-controls')) return;
+    isMouseDown = true;
+    mouseX = e.clientX;
+    mouseY = e.clientY;
+    currentRotationX = rotationX;
+    currentRotationY = rotationY;
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', function(e) {
+    if (!isMouseDown) return;
+    var deltaX = e.clientX - mouseX;
+    var deltaY = e.clientY - mouseY;
+    rotationY = currentRotationY + deltaX * 0.5;
+    rotationX = currentRotationX - deltaY * 0.5;
+    rotationX = Math.max(-90, Math.min(90, rotationX));
+    updateRotation();
+  });
+
+  document.addEventListener('mouseup', function() {
+    isMouseDown = false;
+  });
+
+  // Keyboard
+  document.addEventListener('keydown', function(e) {
+    var key = e.key.toLowerCase();
+
+    switch(key) {
+      case 'a':
+        e.preventDefault();
+        toggleExplode('z');
+        break;
+      case 's':
+        e.preventDefault();
+        toggleExplode('y');
+        break;
+      case 'd':
+        e.preventDefault();
+        toggleExplode('x');
+        break;
+      case 'z':
+        if (e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+          undoMove();
+        }
+        break;
+    }
+  });
+
+  // Touch explode buttons
+  if (btnExplodeX && btnExplodeY && btnExplodeZ) {
+    btnExplodeX.addEventListener('click', function() { toggleExplode('x'); });
+    btnExplodeY.addEventListener('click', function() { toggleExplode('y'); });
+    btnExplodeZ.addEventListener('click', function() { toggleExplode('z'); });
+  }
+
+  // Touch rotation
+  function handleTouchStart(e) {
+    if (e.target.closest('.cubettt-info') || e.target.closest('.cubettt-controls')) return;
+    isMouseDown = true;
+    var touch = e.touches[0];
+    mouseX = touch.clientX;
+    mouseY = touch.clientY;
+    currentRotationX = rotationX;
+    currentRotationY = rotationY;
+    e.preventDefault();
+  }
+
+  function handleTouchMove(e) {
+    if (!isMouseDown) return;
+    var touch = e.touches[0];
+    var deltaX = touch.clientX - mouseX;
+    var deltaY = touch.clientY - mouseY;
+    rotationY = currentRotationY + deltaX * 0.5;
+    rotationX = currentRotationX - deltaY * 0.5;
+    rotationX = Math.max(-90, Math.min(90, rotationX));
+    updateRotation();
+    e.preventDefault();
+  }
+
+  function handleTouchEnd() {
+    isMouseDown = false;
+  }
+
+  container.addEventListener('touchstart', handleTouchStart, { passive: false });
+  document.addEventListener('touchmove', handleTouchMove, { passive: false });
+  document.addEventListener('touchend', handleTouchEnd);
+
+  // Init
+  createCubes();
+  updateScale();
+  updateRotation();
+  updateUI();
+  updateExplodeButtons();
+
+  window.addEventListener('resize', updateScale);
+  window.addEventListener('orientationchange', updateScale);
+})();

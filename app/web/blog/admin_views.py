@@ -6,6 +6,7 @@ from flask_login import login_required, current_user
 from app.extensions.decorators import admin_required
 from app.service.notifications import send_notification
 from app.web.blog.services.blog_service import BlogService
+from app.web.blog.services.category_service import CategoryService
 from app.web.blog.utils.response_utils import success_response, error_response, not_found_response, forbidden_response
 from app.service.audit_log import log_admin_action
 

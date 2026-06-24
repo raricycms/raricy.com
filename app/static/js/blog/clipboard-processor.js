@@ -1,0 +1,106 @@
+// 内容引用预处理：剪贴板(8位ID) + 投票(9位ID) + 图床图片(10位ID)
+class ClipboardPreprocessor {
+    constructor() {
+        this.cache = new Map();
+        this.MAX_ITEMS = 50;
+    }
+
+    async preprocess(markdownContent) {
+        const pattern = /\[@\s*(\w+)\s*\]/g;
+        const matches = [...markdownContent.matchAll(pattern)];
+
+        if (matches.length === 0) return markdownContent;
+
+        // 按ID长度分类：8位→剪贴板，9位→投票，10位→图床图片，其他长度→跳过
+        const clipboardIds = new Set();
+        const voteIds = new Set();
+        const imageIds = new Set();
+
+        for (const match of matches) {
+            const id = match[1];
+            if (id.length === 8) {
+                clipboardIds.add(id);
+            } else if (id.length === 9) {
+                voteIds.add(id);
+            } else if (id.length === 10) {
+                imageIds.add(id);
+            }
+        }
+
+        // 并行获取未缓存的剪贴板内容
+        const clipboardFetches = [...clipboardIds]
+            .filter(id => !this.cache.has(id))
+            .map(async (id) => {
+                try {
+                    const response = await fetch(`/clipboard/${id}?raw`);
+                    if (!response.ok) throw new Error(`Failed to fetch ${id}`);
+                    const data = await response.json();
+                    this.cache.set(id, { type: 'clipboard', content: data.content || '' });
+                } catch (error) {
+                    console.error(`Error fetching clipboard ${id}:`, error);
+                    this.cache.set(id, { type: 'clipboard', content: `[剪贴板 ${id} 加载失败]` });
+                }
+            });
+
+        // 并行获取投票信息
+        const voteFetches = [...voteIds]
+            .filter(id => !this.cache.has(id))
+            .map(async (id) => {
+                try {
+                    const response = await fetch(`/vote/${id}?raw`);
+                    if (!response.ok) throw new Error(`Failed to fetch vote ${id}`);
+                    const data = await response.json();
+                    this.cache.set(id, { type: 'vote', data: data.data });
+                } catch (error) {
+                    console.error(`Error fetching vote ${id}:`, error);
+                    this.cache.set(id, { type: 'vote', error: true, id: id });
+                }
+            });
+
+        // 图床图片：直接拼接URL，无需请求
+        for (const id of imageIds) {
+            if (!this.cache.has(id)) {
+                this.cache.set(id, { type: 'image', url: `/image/i/${id}` });
+            }
+        }
+
+        await Promise.all([...clipboardFetches, ...voteFetches]);
+
+        // 按原始顺序替换，不超过 MAX_ITEMS
+        let processedContent = markdownContent;
+        let processedCount = 0;
+
+        for (const [fullMatch, id] of matches) {
+            if (processedCount >= this.MAX_ITEMS) break;
+
+            const cached = this.cache.get(id);
+            if (!cached) continue; // 非8位/9位/10位ID，保持原样
+
+            let replacement;
+            if (cached.type === 'clipboard') {
+                replacement = cached.content;
+            } else if (cached.type === 'vote') {
+                if (cached.error) {
+                    replacement = `<a href="/vote/${cached.id}">[投票 ${cached.id} 加载失败，点击查看]</a>`;
+                } else {
+                    replacement = `<div class="vote-embed" data-vote-id="${id}"></div>`;
+                }
+            } else if (cached.type === 'image') {
+                replacement = `![${id}](${cached.url})`;
+            } else {
+                continue;
+            }
+
+            processedContent = processedContent.replace(fullMatch, () => replacement);
+            processedCount++;
+        }
+
+        return processedContent;
+    }
+
+    clearCache() {
+        this.cache.clear();
+    }
+}
+
+window.ClipboardPreprocessor = ClipboardPreprocessor;
