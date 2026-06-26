@@ -3694,6 +3694,9 @@ body {
   border-radius: 0 8px 8px 0;
   text-indent: 0;
 }
+.story-reader__content blockquote p {
+  text-indent: 0;
+}
 .story-reader__content pre {
   background: var(--color-background-content);
   padding: 16px;
@@ -3775,6 +3778,10 @@ body {
 }
 .story-reader__content li.task-list-item {
   list-style: none;
+  text-indent: 0;
+}
+
+.story-reader__content .u-no-indent {
   text-indent: 0;
 }
 

@@ -85,7 +85,26 @@ ignore: false
 
 #### Markdown 故事（`.md`）
 
-标准 Markdown 文件，前端使用 YAML frontmatter。正文支持 `extra`、`codehilite`、`tables`、`toc` 扩展。
+标准 Markdown 文件，前端使用 YAML frontmatter。正文由浏览器端渲染（marked.js + DOMPurify + highlight.js），支持 GFM 表格、任务列表、代码高亮等。
+
+#### 排版规则
+
+**段落缩进**：正文段落首行自动缩进两字符（`text-indent: 2em`）。以下情况不会缩进：
+
+- **引用块内的段落** — 自动取消缩进
+- **手动标记** — 在段落上添加 `class="u-no-indent"` 可取消缩进：
+
+```markdown
+> 这是引用块，里面的段落不会缩进。
+
+<p class="u-no-indent">这一段也不会缩进。适合题记后的首段、独立引言等场景。</p>
+
+这里恢复正常缩进。
+```
+
+**链接**：正文中的链接显示为品牌色，hover 时出现下划线。外部链接自动添加 `target="_blank" rel="noopener noreferrer nofollow"`。
+
+**代码块**：带有复制按钮（右上角），高亮主题自动跟随亮色/暗色模式。
 
 #### Cattca 互动小说（`.cattca`）
 
