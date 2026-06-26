@@ -1,5 +1,5 @@
 from flask import Blueprint, render_template, request, jsonify
-from app.models import User, InviteCode
+from app.models import User, InviteCode, UserBan
 from app.models.audit import AdminActionLog
 from flask_login import login_required, current_user
 from app.extensions.decorators import admin_required, owner_required, authenticated_required
@@ -332,7 +332,7 @@ def user_ban_history(user_id):
     user = User.query.get_or_404(user_id)
     
     ban_history = user.ban_history.order_by(
-        db.desc('banned_at')
+        UserBan.banned_at.desc()
     ).limit(10).all()
     
     return jsonify({

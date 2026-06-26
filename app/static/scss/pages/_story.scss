@@ -284,8 +284,9 @@
   top: 0;
   left: 0;
   width: 0%;
-  height: 4px;
+  height: 3px;
   background: var(--color-brand-primary);
+  opacity: 0.7;
   z-index: 1050;
   transition: width 0.1s ease;
 }

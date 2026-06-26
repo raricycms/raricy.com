@@ -108,7 +108,11 @@
   if (progress) {
     window.addEventListener('scroll', function() {
       var h = document.documentElement.scrollHeight - window.innerHeight;
-      progress.style.width = h > 0 ? (window.pageYOffset / h * 100) + '%' : '0%';
+      var pct = h > 0 ? (window.pageYOffset / h * 100) : 0;
+      progress.style.width = pct + '%';
+      // 渐隐区域随进度动态缩小：0%时右端15%渐隐，100%时全部填满无渐隐
+      var fadeStart = 60 + (pct / 100) * 40;
+      progress.style.background = 'linear-gradient(to right, var(--color-brand-primary) ' + fadeStart + '%, transparent 100%)';
     });
   }
 
