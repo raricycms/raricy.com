@@ -562,6 +562,21 @@ a:hover {
   color: var(--color-text-primary);
 }
 
+.checkin-badge {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  width: 8px;
+  height: 8px;
+  background: #22c55e;
+  border-radius: 50%;
+  border: 1.5px solid var(--color-bg-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: pulse 2s infinite;
+}
+
 @keyframes pulse {
   0% {
     transform: scale(1);
@@ -9523,7 +9538,7 @@ input:checked + .settings-toggle__slider::before {
 .fortune-cards {
   display: flex;
   justify-content: center;
-  gap: 12px;
+  gap: 8px;
   margin-bottom: 24px;
   perspective: 800px;
   flex-wrap: wrap;

@@ -322,10 +322,8 @@
         close() {
             this.modal.classList.remove('fortune-modal--open');
             document.body.style.overflow = '';
-            // Only full-reload for fresh check-ins (leaderboard + count changed).
-            // Recovery mode: we already updated the fortune stat inline.
             if (!this.isPending) {
-                location.reload();
+                refreshPageAfterCheckin();
             } else {
                 // Lightweight: animate the fortune stat one more time
                 const fortuneEl = $('totalFortune');
@@ -422,7 +420,7 @@
                         if (fortunePicker) fortunePicker.show(false);
                     }, 1300);
                 } else {
-                    setTimeout(() => { location.reload(); }, 2200);
+                    setTimeout(() => { refreshPageAfterCheckin(); }, 2200);
                 }
 
             } else if (data.code === 401) {
@@ -449,6 +447,149 @@
             clearLoadingTimer();
             resetButton(btn);
             showToast('网络异常，请稍后重试', 'error');
+        }
+    }
+
+    // ---- 排行榜渲染 ----
+
+    const RANK_EMOJI = {1: '🥇', 2: '🥈', 3: '🥉'};
+    const CURRENT_USER_ID = '{{ current_user.id }}';
+
+    function buildLeaderboardItem(entry, type) {
+        const isSelf = entry.user_id === CURRENT_USER_ID;
+        const suffix = type === 'count' ? ' 天' : ' 运势';
+        const value = type === 'count' ? entry.count : entry.total_fortune;
+
+        const item = document.createElement('div');
+        item.className = 'checkin-leaderboard__item' + (isSelf ? ' checkin-leaderboard__item--self' : '');
+
+        // Rank
+        const rank = document.createElement('span');
+        rank.className = 'checkin-leaderboard__rank';
+        if (entry.rank === 1) rank.classList.add('checkin-leaderboard__rank--top1');
+        else if (entry.rank === 2) rank.classList.add('checkin-leaderboard__rank--top2');
+        else if (entry.rank === 3) rank.classList.add('checkin-leaderboard__rank--top3');
+        rank.textContent = RANK_EMOJI[entry.rank] || ('#' + entry.rank);
+
+        // User link
+        const userLink = document.createElement('a');
+        userLink.className = 'checkin-leaderboard__user';
+        userLink.href = '/auth/profile/' + encodeURIComponent(entry.user_id);
+
+        // Avatar
+        if (entry.avatar_url) {
+            const avatar = document.createElement('img');
+            avatar.className = 'checkin-leaderboard__avatar';
+            avatar.src = entry.avatar_url;
+            avatar.alt = '';
+            userLink.appendChild(avatar);
+        } else {
+            const placeholder = document.createElement('span');
+            placeholder.className = 'checkin-leaderboard__avatar-placeholder';
+            userLink.appendChild(placeholder);
+        }
+
+        const name = document.createElement('span');
+        name.className = 'checkin-leaderboard__name';
+        name.textContent = entry.username;
+        userLink.appendChild(name);
+
+        // Count
+        const count = document.createElement('span');
+        count.className = 'checkin-leaderboard__count';
+        count.textContent = value + suffix;
+
+        item.appendChild(rank);
+        item.appendChild(userLink);
+        item.appendChild(count);
+
+        return item;
+    }
+
+    function renderLeaderboard(containerId, items, type) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+
+        // Clear existing content
+        container.textContent = '';
+
+        if (!items || items.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'checkin-empty';
+            empty.textContent = type === 'count'
+                ? '还没有人签到，快来抢占第一名吧！'
+                : '暂无运势数据，快去签到吧！';
+            container.appendChild(empty);
+            return;
+        }
+
+        const list = document.createElement('div');
+        list.className = 'checkin-leaderboard__list';
+        items.forEach(entry => {
+            list.appendChild(buildLeaderboardItem(entry, type));
+        });
+        container.appendChild(list);
+    }
+
+    function updateTodayFortune(status) {
+        // Remove existing today-fortune label if present
+        const existing = document.querySelector('.checkin-today-fortune');
+        if (existing) existing.remove();
+
+        if (status.checked_in && status.fortune_value !== null && status.fortune_value !== undefined) {
+            const card = document.querySelector('.checkin-card');
+            if (!card) return;
+
+            const div = document.createElement('div');
+            div.className = 'checkin-today-fortune';
+
+            const label = document.createElement('span');
+            label.className = 'checkin-today-fortune__label';
+            label.textContent = '今日运势';
+
+            const value = document.createElement('span');
+            value.className = 'checkin-today-fortune__value fortune-color--' + status.fortune_value;
+            value.textContent = status.fortune_value;
+
+            div.appendChild(label);
+            div.appendChild(value);
+            card.appendChild(div);
+        }
+    }
+
+    async function refreshPageAfterCheckin() {
+        try {
+            const [lbResp, statusResp] = await Promise.all([
+                fetch('{{ url_for("checkin.api_leaderboard") }}'),
+                fetch('{{ url_for("checkin.api_today_status") }}')
+            ]);
+
+            const lbData = await safeJson(lbResp);
+            const statusData = await safeJson(statusResp);
+
+            if (lbData.code === 200) {
+                renderLeaderboard('leaderboardCount', lbData.count_leaderboard, 'count');
+                renderLeaderboard('leaderboardFortune', lbData.fortune_leaderboard, 'fortune');
+            }
+
+            // Update stats
+            const countEl = document.getElementById('totalCount');
+            const fortuneEl = document.getElementById('totalFortune');
+            if (countEl) countEl.textContent = statusData.total_count;
+            if (fortuneEl) {
+                fortuneEl.textContent = statusData.total_fortune;
+                animateCount(fortuneEl);
+            }
+
+            updateTodayFortune(statusData);
+
+            // 刷新顶栏签到绿点
+            if (window.updateCheckinIndicator) {
+                window.updateCheckinIndicator();
+            }
+        } catch (err) {
+            console.error('Failed to refresh after checkin:', err);
+            location.reload();
         }
     }
 

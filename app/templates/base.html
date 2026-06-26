@@ -13,6 +13,7 @@
     <meta name="user-authenticated" content="{% if current_user.is_authenticated %}true{% else %}false{% endif %}">
     {% if current_user.is_authenticated %}
     <meta name="notification-api-url" content="{{ url_for('notifications.api_unread_count') }}">
+    <meta name="checkin-api-url" content="{{ url_for('checkin.api_today_status') }}">
     <meta name="logout-url" content="{{ url_for('auth.logout') }}">
     {% endif %}
 
@@ -62,6 +63,7 @@
                         </a>
                         <a class="checkin-indicator" href="{{ url_for('checkin.index') }}" title="每日签到">
                             <span class="icon icon-calendar-check" aria-hidden="true"></span>
+                            <span class="checkin-badge" id="checkinBadge" style="display: none;"></span>
                         </a>
                         <div class="site-user-dropdown">
                             <button class="site-user-dropdown-toggle" id="userDropdownToggle" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="userDropdownMenu">

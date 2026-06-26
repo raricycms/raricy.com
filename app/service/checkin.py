@@ -229,10 +229,11 @@ def get_leaderboard(limit=50):
     rows = (
         db.session.query(
             DailyCheckIn.user_id,
-            func.count(DailyCheckIn.id).label('count')
+            func.count(DailyCheckIn.id).label('count'),
+            func.max(DailyCheckIn.checkin_date).label('last_checkin')
         )
         .group_by(DailyCheckIn.user_id)
-        .order_by(func.count(DailyCheckIn.id).desc())
+        .order_by(func.count(DailyCheckIn.id).desc(), func.max(DailyCheckIn.created_at).asc())
         .limit(limit)
         .all()
     )

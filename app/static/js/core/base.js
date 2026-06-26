@@ -3,6 +3,7 @@
 // 从meta标签读取服务器端数据
 const userAuthenticatedMeta = document.querySelector('meta[name="user-authenticated"]');
 const notificationApiUrlMeta = document.querySelector('meta[name="notification-api-url"]');
+const checkinApiUrlMeta = document.querySelector('meta[name="checkin-api-url"]');
 const logoutUrlMeta = document.querySelector('meta[name="logout-url"]');
 
 // 安全地解析JSON
@@ -17,6 +18,7 @@ function safeJsonParse(jsonString, defaultValue) {
 
 window.isUserAuthenticated = userAuthenticatedMeta ? (userAuthenticatedMeta.content === 'true') : false;
 window.notificationApiUrl = notificationApiUrlMeta ? notificationApiUrlMeta.content : null;
+window.checkinApiUrl = checkinApiUrlMeta ? checkinApiUrlMeta.content : null;
 
 console.log('用户认证状态:', window.isUserAuthenticated);
 console.log('通知API URL:', window.notificationApiUrl);
@@ -172,6 +174,34 @@ function updateNotificationCount() {
 
 window.updateNotificationCount = updateNotificationCount;
 
+// 获取并更新签到状态（绿点提示）
+function updateCheckinIndicator() {
+    if (!window.isUserAuthenticated) {
+        return;
+    }
+
+    if (!window.checkinApiUrl) {
+        return;
+    }
+
+    fetch(window.checkinApiUrl)
+        .then(response => response.json())
+        .then(data => {
+            const badge = document.getElementById('checkinBadge');
+            if (!badge) return;
+            if (!data.checked_in) {
+                badge.style.display = 'flex';
+            } else {
+                badge.style.display = 'none';
+            }
+        })
+        .catch(error => {
+            console.error('获取签到状态失败:', error);
+        });
+}
+
+window.updateCheckinIndicator = updateCheckinIndicator;
+
 const themeConfig = {
     light: {
         'data-theme': 'light'
@@ -206,6 +236,7 @@ window.refreshNotificationCount = function() {
 // 页面加载后：初始化顶栏交互与通知
 document.addEventListener('DOMContentLoaded', function() {
     updateNotificationCount();
+    updateCheckinIndicator();
 
     // 顶栏折叠
     const siteNavbar = document.querySelector('.site-navbar');

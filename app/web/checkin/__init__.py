@@ -110,3 +110,28 @@ def api_today_status():
         'total_fortune': status['total_fortune'],
         'fortune_pending': status['fortune_pending'],
     })
+
+
+@checkin_bp.route('/api/leaderboard')
+@_json_auth_required
+def api_leaderboard():
+    """AJAX endpoint to get both leaderboards as JSON."""
+    from flask import url_for
+
+    count_lb = get_leaderboard()
+    fortune_lb = get_fortune_leaderboard()
+
+    # Attach avatar URLs for client-side rendering
+    for entry in count_lb:
+        if entry.get('avatar_path'):
+            entry['avatar_url'] = url_for('auth.get_avatar', user_id=entry['user_id'])
+
+    for entry in fortune_lb:
+        if entry.get('avatar_path'):
+            entry['avatar_url'] = url_for('auth.get_avatar', user_id=entry['user_id'])
+
+    return jsonify({
+        'code': 200,
+        'count_leaderboard': count_lb,
+        'fortune_leaderboard': fortune_lb,
+    })

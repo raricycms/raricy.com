@@ -510,7 +510,7 @@
 .fortune-cards {
   display: flex;
   justify-content: center;
-  gap: 12px;
+  gap: 8px;
   margin-bottom: $space-6;
   perspective: 800px;
   // Safety: allow wrapping on ultra-small screens
