@@ -55,6 +55,7 @@ class StoryService:
             return None
 
         fallback_author = info.get("author", "未知作者")
+        fallback_ai_assisted = info.get("ai_assisted", False)
         display_title = info.get("title") or (os.path.basename(coll_dir) if path else "故事")
 
         collection = Collection(title=display_title, description=info.get("description", ""))
@@ -68,12 +69,12 @@ class StoryService:
             full = os.path.join(coll_dir, name)
 
             if name.endswith(".md"):
-                item = StoryService._load_markdown_item(full, name[:-3], fallback_author)
+                item = StoryService._load_markdown_item(full, name[:-3], fallback_author, fallback_ai_assisted)
                 if item:
                     collection.items.append(item)
 
             elif name.endswith(".cattca"):
-                item = StoryService._load_cattca_item(full, name[:-7], fallback_author)
+                item = StoryService._load_cattca_item(full, name[:-7], fallback_author, fallback_ai_assisted)
                 if item:
                     collection.items.append(item)
 
@@ -118,6 +119,13 @@ class StoryService:
 
         parent_info = StoryService._read_json(os.path.join(parent_dir, "info.json")) or {}
         fallback_author = parent_info.get("author", "未知作者")
+        fallback_ai_assisted = parent_info.get("ai_assisted", False)
+
+        def _resolve_ai_assisted(meta):
+            """文章自己有 ai_assisted 参数则用文章自己的，否则继承合集设置"""
+            if "ai_assisted" in meta:
+                return bool(meta["ai_assisted"])
+            return bool(fallback_ai_assisted)
 
         # Try Markdown
         md_path = os.path.join(parent_dir, f"{story_id}.md")
@@ -133,7 +141,7 @@ class StoryService:
                     "title": meta.get("title", story_id),
                     "author": meta.get("author", fallback_author),
                     "genre": meta.get("genre", ""),
-                    "ai_assisted": bool(meta.get("ai_assisted", False)),
+                    "ai_assisted": _resolve_ai_assisted(meta),
                     "content": html,
                     "parent_path": parent_path,
                 }
@@ -150,7 +158,7 @@ class StoryService:
                     "title": meta.get("title", story_id),
                     "author": meta.get("author", fallback_author),
                     "genre": meta.get("genre", ""),
-                    "ai_assisted": bool(meta.get("ai_assisted", False)),
+                    "ai_assisted": _resolve_ai_assisted(meta),
                     "content": post.content,
                     "parent_path": parent_path,
                 }
@@ -219,31 +227,36 @@ class StoryService:
             return None
 
     @staticmethod
-    def _load_markdown_item(md_path, story_id, fallback_author):
+    def _load_markdown_item(md_path, story_id, fallback_author, fallback_ai_assisted=False):
         try:
             post = frontmatter.load(md_path)
             meta = post.metadata
             if meta.get("ignore"):
                 return None
             wc = count_markdown_words(md_path)["non_whitespace_characters"]
-            return StoryService._build_item(story_id, meta, fallback_author, wc)
+            return StoryService._build_item(story_id, meta, fallback_author, fallback_ai_assisted, wc)
         except Exception:
             return None
 
     @staticmethod
-    def _load_cattca_item(cattca_path, story_id, fallback_author):
+    def _load_cattca_item(cattca_path, story_id, fallback_author, fallback_ai_assisted=False):
         try:
             post = frontmatter.load(cattca_path)
             meta = post.metadata
             if meta.get("ignore"):
                 return None
             wc = count_markdown_words(cattca_path)["non_whitespace_characters"]
-            return StoryService._build_item(story_id, meta, fallback_author, wc)
+            return StoryService._build_item(story_id, meta, fallback_author, fallback_ai_assisted, wc)
         except Exception:
             return None
 
     @staticmethod
-    def _build_item(story_id, meta, fallback_author, word_count):
+    def _build_item(story_id, meta, fallback_author, fallback_ai_assisted, word_count):
+        # 如果文章本身有 ai_assisted 参数则用文章自己的，否则继承合集的 fallback
+        if "ai_assisted" in meta:
+            ai_assisted = bool(meta["ai_assisted"])
+        else:
+            ai_assisted = bool(fallback_ai_assisted)
         return CollectionItem(
             type="story",
             id=story_id,
@@ -252,7 +265,7 @@ class StoryService:
             author=meta.get("author", fallback_author),
             priority=meta.get("priority", 0),
             genre=meta.get("genre", ""),
-            ai_assisted=bool(meta.get("ai_assisted", False)),
+            ai_assisted=ai_assisted,
             word_count=word_count,
         )
 

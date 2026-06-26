@@ -163,6 +163,12 @@
   border-radius: 0.25rem;
 }
 
+.btn-lg {
+  padding: 0.5rem 1rem;
+  font-size: 1.25rem;
+  border-radius: 0.3rem;
+}
+
 .btn-danger {
   color: #fff;
   background-color: #dc3545;
@@ -171,6 +177,38 @@
 .btn-danger:hover {
   background-color: #bb2d3b;
   border-color: #b02a37;
+}
+
+.btn-success {
+  color: #fff;
+  background-color: #198754;
+  border-color: #198754;
+}
+.btn-success:hover {
+  background-color: #157347;
+  border-color: #146c43;
+}
+
+.btn-warning {
+  color: #000;
+  background-color: #ffc107;
+  border-color: #ffc107;
+}
+.btn-warning:hover {
+  color: #000;
+  background-color: #ffca2c;
+  border-color: #ffc720;
+}
+
+.btn-info {
+  color: #000;
+  background-color: #0dcaf0;
+  border-color: #0dcaf0;
+}
+.btn-info:hover {
+  color: #000;
+  background-color: #31d2f2;
+  border-color: #25cff2;
 }
 
 // Close button (×) without image assets
@@ -194,13 +232,44 @@
 }
 .btn-close:hover { opacity: .75; }
 
-// Dark mode tweaks
-body.dark-mode {
+// Dark mode tweaks — project uses [data-theme="dark"] on <html>
+[data-theme="dark"] {
   .btn-outline-primary { color: #5dade2; border-color: #5dade2; }
   .btn-outline-primary:hover { background-color: #5dade2; border-color: #5dade2; color: #1e1e1e; }
   .btn-outline-secondary { color: #a0aec0; border-color: #4a5568; }
   .btn-outline-secondary:hover { background-color: #4a5568; color: #ecf0f1; }
   .btn-outline-danger { color: #ff6b6b; border-color: #ff6b6b; }
   .btn-outline-danger:hover { background-color: #ff6b6b; color: #1e1e1e; }
+
+  .btn-success {
+    background-color: #157347;
+    border-color: #146c43;
+  }
+  .btn-success:hover {
+    background-color: #146c43;
+    border-color: #115c36;
+  }
+
+  .btn-warning {
+    color: #000;
+    background-color: #e0a800;
+    border-color: #d39e00;
+  }
+  .btn-warning:hover {
+    color: #000;
+    background-color: #d39e00;
+    border-color: #c69500;
+  }
+
+  .btn-info {
+    color: #000;
+    background-color: #0aa2c0;
+    border-color: #0997b3;
+  }
+  .btn-info:hover {
+    color: #000;
+    background-color: #0997b3;
+    border-color: #08859e;
+  }
 }
 

@@ -995,6 +995,12 @@ body {
   border-radius: 0.25rem;
 }
 
+.btn-lg {
+  padding: 0.5rem 1rem;
+  font-size: 1.25rem;
+  border-radius: 0.3rem;
+}
+
 .btn-danger {
   color: #fff;
   background-color: #dc3545;
@@ -1004,6 +1010,41 @@ body {
 .btn-danger:hover {
   background-color: #bb2d3b;
   border-color: #b02a37;
+}
+
+.btn-success {
+  color: #fff;
+  background-color: #198754;
+  border-color: #198754;
+}
+
+.btn-success:hover {
+  background-color: #157347;
+  border-color: #146c43;
+}
+
+.btn-warning {
+  color: #000;
+  background-color: #ffc107;
+  border-color: #ffc107;
+}
+
+.btn-warning:hover {
+  color: #000;
+  background-color: #ffca2c;
+  border-color: #ffc720;
+}
+
+.btn-info {
+  color: #000;
+  background-color: #0dcaf0;
+  border-color: #0dcaf0;
+}
+
+.btn-info:hover {
+  color: #000;
+  background-color: #31d2f2;
+  border-color: #25cff2;
 }
 
 .btn-close {
@@ -1030,30 +1071,58 @@ body {
   opacity: 0.75;
 }
 
-body.dark-mode .btn-outline-primary {
+[data-theme=dark] .btn-outline-primary {
   color: #5dade2;
   border-color: #5dade2;
 }
-body.dark-mode .btn-outline-primary:hover {
+[data-theme=dark] .btn-outline-primary:hover {
   background-color: #5dade2;
   border-color: #5dade2;
   color: #1e1e1e;
 }
-body.dark-mode .btn-outline-secondary {
+[data-theme=dark] .btn-outline-secondary {
   color: #a0aec0;
   border-color: #4a5568;
 }
-body.dark-mode .btn-outline-secondary:hover {
+[data-theme=dark] .btn-outline-secondary:hover {
   background-color: #4a5568;
   color: #ecf0f1;
 }
-body.dark-mode .btn-outline-danger {
+[data-theme=dark] .btn-outline-danger {
   color: #ff6b6b;
   border-color: #ff6b6b;
 }
-body.dark-mode .btn-outline-danger:hover {
+[data-theme=dark] .btn-outline-danger:hover {
   background-color: #ff6b6b;
   color: #1e1e1e;
+}
+[data-theme=dark] .btn-success {
+  background-color: #157347;
+  border-color: #146c43;
+}
+[data-theme=dark] .btn-success:hover {
+  background-color: #146c43;
+  border-color: #115c36;
+}
+[data-theme=dark] .btn-warning {
+  color: #000;
+  background-color: #e0a800;
+  border-color: #d39e00;
+}
+[data-theme=dark] .btn-warning:hover {
+  color: #000;
+  background-color: #d39e00;
+  border-color: #c69500;
+}
+[data-theme=dark] .btn-info {
+  color: #000;
+  background-color: #0aa2c0;
+  border-color: #0997b3;
+}
+[data-theme=dark] .btn-info:hover {
+  color: #000;
+  background-color: #0997b3;
+  border-color: #08859e;
 }
 
 /* Keep file to adhere to import order; header styles live in layout/_header.scss */
@@ -9386,3 +9455,5 @@ input:checked + .settings-toggle__slider::before {
     text-align: center;
   }
 }
+
+/*# sourceMappingURL=main.css.map */
