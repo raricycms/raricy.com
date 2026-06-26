@@ -36,6 +36,9 @@ class User(UserMixin, db.Model):
     
     # 角色字段（user/core/admin/owner）
     role = db.Column(db.String(20), default='user', nullable=False, index=True)
+
+    # 运势统计
+    total_fortune = db.Column(db.Integer, default=0, nullable=False)
     
     def set_password(self, password):
         """设置密码"""

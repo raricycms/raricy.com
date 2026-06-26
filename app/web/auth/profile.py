@@ -70,6 +70,7 @@ def profile(user_id):
         blogs_count=blogs_count,
         likes_received=likes_received,
         comments_count=comments_count,
+        checkin_total_fortune=user.total_fortune,
         tab=tab,
         blog_page=blog_page,
         comment_page=comment_page,
