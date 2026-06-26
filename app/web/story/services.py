@@ -2,7 +2,6 @@ import os
 import json
 from dataclasses import dataclass, field
 
-import markdown
 import frontmatter
 from flask import current_app
 
@@ -133,16 +132,12 @@ class StoryService:
             try:
                 post = frontmatter.load(md_path)
                 meta = post.metadata
-                html = markdown.markdown(
-                    post.content,
-                    extensions=["extra", "codehilite", "tables", "toc"],
-                )
                 return "markdown", {
                     "title": meta.get("title", story_id),
                     "author": meta.get("author", fallback_author),
                     "genre": meta.get("genre", ""),
                     "ai_assisted": _resolve_ai_assisted(meta),
-                    "content": html,
+                    "content": post.content,
                     "parent_path": parent_path,
                 }
             except Exception:

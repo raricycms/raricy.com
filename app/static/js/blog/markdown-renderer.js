@@ -300,7 +300,7 @@ class MarkdownRenderer {
 
     // 安全处理链接
     hardenLinks() {
-        const anchors = document.querySelectorAll('.blog-content-container a[href]');
+        const anchors = document.querySelectorAll('#userContentContainer a[href]');
         anchors.forEach(a => {
             const href = a.getAttribute('href') || '';
             try {
@@ -337,7 +337,7 @@ class MarkdownRenderer {
 
     // 添加图片点击放大功能
     addImageZoom() {
-        const images = document.querySelectorAll('.blog-content-container img');
+        const images = document.querySelectorAll('#userContentContainer img');
         images.forEach(img => {
             img.style.cursor = 'pointer';
             img.addEventListener('click', () => {

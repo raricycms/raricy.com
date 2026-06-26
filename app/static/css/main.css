@@ -3651,6 +3651,17 @@ body {
   color: var(--color-text-primary);
   margin-bottom: 32px;
 }
+.story-reader__content a {
+  color: var(--color-brand-primary);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-bottom 0.3s ease;
+}
+.story-reader__content a:hover {
+  color: var(--color-brand-primary);
+  border-bottom: 1px solid var(--color-brand-primary);
+  text-decoration: none;
+}
 .story-reader__content p {
   margin-bottom: 1.5em;
   text-indent: 2em;
@@ -3714,7 +3725,71 @@ body {
 .story-reader__content th {
   background: var(--color-background-subtle);
 }
+.story-reader__content .highlight {
+  position: relative;
+  background: var(--color-background-content);
+  border-radius: 15px;
+  padding: 15px;
+  overflow-x: auto;
+  margin: 1.5em 0;
+  text-indent: 0;
+}
+.story-reader__content .highlight pre {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font-family: monospace;
+  font-size: 0.9em;
+}
+.story-reader__content .highlight code {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+  font-size: inherit;
+}
+.story-reader__content .copy-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+  border: none;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 0.9rem;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: system-ui, -apple-system, sans-serif;
+  z-index: 10;
+  user-select: none;
+  backdrop-filter: blur(10px);
+}
+.story-reader__content .copy-btn:hover {
+  background: var(--color-brand-primary);
+  color: #fff;
+}
+.story-reader__content .copy-btn:disabled {
+  cursor: not-allowed;
+}
+.story-reader__content li.task-list-item {
+  list-style: none;
+  text-indent: 0;
+}
 
+@media (max-width: 768px) {
+  .story-reader__content .copy-btn {
+    position: static;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    top: auto;
+    right: auto;
+    margin-top: 8px;
+    padding: 6px 10px;
+  }
+}
 .story-reader__nav {
   display: flex;
   justify-content: space-between;
@@ -9455,5 +9530,3 @@ input:checked + .settings-toggle__slider::before {
     text-align: center;
   }
 }
-
-/*# sourceMappingURL=main.css.map */

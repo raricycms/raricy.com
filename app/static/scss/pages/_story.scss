@@ -300,6 +300,18 @@
   color: var(--color-text-primary);
   margin-bottom: 32px;
 
+  a {
+    color: var(--color-brand-primary);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    transition: border-bottom 0.3s ease;
+    &:hover {
+      color: var(--color-brand-primary);
+      border-bottom: 1px solid var(--color-brand-primary);
+      text-decoration: none;
+    }
+  }
+
   p {
     margin-bottom: 1.5em;
     text-indent: 2em;
@@ -366,6 +378,82 @@
 
   th {
     background: var(--color-background-subtle);
+  }
+  // 客户端渲染产生的代码块包装与复制按钮
+  .highlight {
+    position: relative;
+    background: var(--color-background-content);
+    border-radius: 15px;
+    padding: 15px;
+    overflow-x: auto;
+    margin: 1.5em 0;
+    text-indent: 0;
+
+    pre {
+      background: none;
+      border: none;
+      padding: 0;
+      margin: 0;
+      font-family: monospace;
+      font-size: 0.9em;
+    }
+
+    code {
+      background: none;
+      padding: 0;
+      border-radius: 0;
+      font-size: inherit;
+    }
+  }
+
+  .copy-btn {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: var(--color-brand-secondary);
+    color: var(--color-brand-primary);
+    border: none;
+    padding: 5px 10px;
+    border-radius: 999px;
+    font-size: 0.9rem;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: system-ui, -apple-system, sans-serif;
+    z-index: 10;
+    user-select: none;
+    backdrop-filter: blur(10px);
+
+    &:hover {
+      background: var(--color-brand-primary);
+      color: #fff;
+    }
+
+    &:disabled {
+      cursor: not-allowed;
+    }
+  }
+
+  // 任务列表
+  li.task-list-item {
+    list-style: none;
+    text-indent: 0;
+  }
+}
+
+// 响应式：移动端复制按钮改为静态
+@media (max-width: 768px) {
+  .story-reader__content {
+    .copy-btn {
+      position: static;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      top: auto;
+      right: auto;
+      margin-top: 8px;
+      padding: 6px 10px;
+    }
   }
 }
 

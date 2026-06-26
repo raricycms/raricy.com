@@ -3,7 +3,29 @@
 {% block title %}{{ story_title }} - 故事阅读{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pygments/2.14.0/styles/default.min.css">
+<!-- highlight.js 主题（亮/暗） -->
+<link rel="stylesheet" href="{{url_for('static', filename='css/hljs/default.min.css')}}" id="hljs-light" onerror="this.onerror=null; this.href='https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css'">
+<link rel="stylesheet" href="{{url_for('static', filename='css/hljs/monokai.min.css')}}" id="hljs-dark" onerror="this.onerror=null; this.href='https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/monokai.min.css'">
+
+<!-- JavaScript 库（按依赖顺序加载） -->
+<script src="{{url_for('static', filename='js/dompurify.min.js')}}"></script>
+<script>
+    if (typeof window.DOMPurify === 'undefined') {
+        document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.8/purify.min.js"><\/script>');
+    }
+</script>
+<script src="{{url_for('static', filename='js/highlight.min.js')}}"></script>
+<script>
+    if (typeof window.hljs === 'undefined') {
+        document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"><\/script>');
+    }
+</script>
+<script src="{{url_for('static', filename='js/marked.min.js')}}"></script>
+<script>
+    if (typeof window.marked === 'undefined') {
+        document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"><\/script>');
+    }
+</script>
 {% endblock %}
 
 {% block content %}
@@ -19,8 +41,14 @@
     </div>
   </div>
 
-  <div class="story-reader__content">
-    {{ story_content | safe }}
+  <div class="story-reader__content" id="userContentContainer">
+    <div id="loading-indicator" class="text-center my-4">
+      <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">加载中...</span>
+      </div>
+      <p class="mt-2">正在加载内容...</p>
+    </div>
+    <script type="application/json" id="markdownContent">{{ story_content | tojson }}</script>
   </div>
 
   <div class="story-reader__nav">
@@ -50,8 +78,32 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="{{ static_url('js/blog/markdown-renderer.js') }}"></script>
 <script>
 (function() {
+  // hljs 主题同步
+  const hljsLight = document.getElementById('hljs-light');
+  const hljsDark = document.getElementById('hljs-dark');
+
+  function syncHljsTheme() {
+    if (!hljsLight || !hljsDark) return;
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    hljsLight.disabled = isDark;
+    hljsDark.disabled = !isDark;
+  }
+
+  document.addEventListener('DOMContentLoaded', syncHljsTheme);
+
+  const observer = new MutationObserver(function(mutations) {
+    mutations.forEach(function(mutation) {
+      if (mutation.attributeName === 'data-theme') {
+        syncHljsTheme();
+      }
+    });
+  });
+  observer.observe(document.documentElement, { attributes: true });
+
+  // 阅读进度条
   var progress = document.getElementById('readingProgress');
   if (progress) {
     window.addEventListener('scroll', function() {
@@ -60,6 +112,7 @@
     });
   }
 
+  // 键盘导航
   document.addEventListener('keydown', function(e) {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
     if (e.key === 'ArrowLeft') {
