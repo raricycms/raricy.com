@@ -51,6 +51,11 @@ def cubetictactoe():
 def gomoku():
     return render_template('game/gomoku.html')
 
+
+@game_bp.route('/atamas')
+def atamas():
+    return render_template('game/atamas.html')
+
 from app.web.game.game_api import register_game_api
 
 register_game_api(game_bp)
