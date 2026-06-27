@@ -1,0 +1,71 @@
+@use '../abstracts/variables' as *;
+
+.fish-card {
+  background: var(--color-background-card);
+  border-radius: 30px;
+  padding: $space-8;
+  box-shadow: var(--shadow-card);
+  margin-bottom: $space-6;
+  max-width: 480px;
+  margin-left: auto;
+  margin-right: auto;
+  text-align: center;
+
+  @media (max-width: 768px) {
+    padding: $space-6;
+    border-radius: 20px;
+  }
+}
+
+.fish-card__header {
+  margin-bottom: $space-6;
+}
+
+.fish-card__title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.fish-card__body {
+  // wrapper
+}
+
+.fish-card__balance {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: $space-2;
+  margin-bottom: $space-6;
+  padding: $space-6;
+  background: var(--color-background-subtle);
+  border-radius: $radius-large;
+}
+
+.fish-card__balance-number {
+  font-size: 3rem;
+  font-weight: 800;
+  color: var(--color-brand-primary);
+  line-height: 1;
+}
+
+.fish-card__balance-label {
+  font-size: 1rem;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+.fish-card__meta {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  margin-bottom: $space-4;
+}
+
+.fish-card__info {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  padding: $space-4;
+  background: var(--color-background-highlight);
+  border-radius: $radius-large;
+  line-height: 1.6;
+}

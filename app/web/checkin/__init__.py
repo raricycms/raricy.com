@@ -88,6 +88,7 @@ def api_claim_fortune():
             'fortune_value': result['fortune_value'],
             'pool': result['pool'],
             'total_fortune': result['total_fortune'],
+            'dried_fish': result.get('dried_fish', 0),
             'already_claimed': result.get('already_claimed', False),
         })
     else:
@@ -108,6 +109,7 @@ def api_today_status():
         'today': status['today'],
         'fortune_value': status['fortune_value'],
         'total_fortune': status['total_fortune'],
+        'dried_fish': status['dried_fish'],
         'fortune_pending': status['fortune_pending'],
     })
 

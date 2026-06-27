@@ -116,6 +116,7 @@ def claim_fortune(user_id, chosen_index):
             'fortune_value': record.fortune_value,
             'pool': pool,
             'total_fortune': user.total_fortune if user else 0,
+            'dried_fish': user.dried_fish if user else 0,
             'already_claimed': True,
         }
 
@@ -152,6 +153,7 @@ def claim_fortune(user_id, chosen_index):
             'fortune_value': record.fortune_value if record else None,
             'pool': pool,
             'total_fortune': user.total_fortune if user else 0,
+            'dried_fish': user.dried_fish if user else 0,
             'already_claimed': True,
         }
 
@@ -160,6 +162,13 @@ def claim_fortune(user_id, chosen_index):
         User.__table__.update()
         .where(User.id == user_id)
         .values(total_fortune=User.total_fortune + fortune_val)
+    )
+
+    # Atomic increment of dried_fish (same value — avoids read-modify-write race)
+    db.session.execute(
+        User.__table__.update()
+        .where(User.id == user_id)
+        .values(dried_fish=User.dried_fish + fortune_val)
     )
     db.session.commit()
 
@@ -171,6 +180,7 @@ def claim_fortune(user_id, chosen_index):
         'fortune_value': fortune_val,
         'pool': pool,
         'total_fortune': user.total_fortune if user else 0,
+        'dried_fish': user.dried_fish if user else 0,
         'already_claimed': False,
     }
 
@@ -212,6 +222,7 @@ def get_today_status(user_id):
         'today': today.isoformat(),
         'fortune_value': record.fortune_value if record else None,
         'total_fortune': user.total_fortune if user else 0,
+        'dried_fish': user.dried_fish if user else 0,
         'fortune_pending': fortune_pending,
     }
 

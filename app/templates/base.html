@@ -78,6 +78,7 @@
                                 <li role="separator" class="site-dropdown-divider"></li>
                                 <li role="none"><a class="site-dropdown-item" role="menuitem" href="{{ url_for('auth.profile', user_id=current_user.id) }}"><span class="icon icon-person" style="margin-right: .5rem;"></span>个人资料</a></li>
                                 <li role="none"><a class="site-dropdown-item" role="menuitem" href="{{ url_for('auth.settings') }}"><span class="icon icon-gear" style="margin-right: .5rem;"></span>账号设置</a></li>
+                                <li role="none"><a class="site-dropdown-item" role="menuitem" href="{{ url_for('auth.fish_balance') }}"><span style="margin-right: .5rem;">🐟</span>小鱼干</a></li>
                                 {% if current_user.has_admin_rights %}
                                 <li role="none"><a class="site-dropdown-item" role="menuitem" href="/blog/admin"><span class="icon icon-gear-fill" style="margin-right: .5rem;"></span>管理面板</a></li>
                                 {% endif %}
