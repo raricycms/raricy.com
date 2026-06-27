@@ -383,6 +383,56 @@ a {
     color: #fff;
 }
 
+/* 投喂按钮样式（参照点赞按钮） */
+.fish-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--color-text-tertiary);
+    color: var(--color-text-secondary);
+    padding: 10px 16px;
+    border-radius: 999px;
+    border: none;
+    font-weight: bold;
+    font-size: 16px;
+    transition: all 0.3s ease;
+    cursor: pointer;
+
+    &:hover {
+        background: var(--color-success-secondary);
+        color: var(--color-success-primary);
+        .fish-count-badge {
+            background: var(--color-success-primary);
+            color: #fff;
+        }
+    }
+
+    &:disabled {
+        opacity: 0.7;
+        cursor: not-allowed;
+    }
+}
+
+.fish-count-badge {
+    background: var(--color-text-secondary);
+    color: #fff;
+    font-weight: bold;
+    padding: 4px 8px;
+    border-radius: 999px;
+    font-size: 0.85rem;
+    line-height: 1.2;
+}
+
+.fish-btn--fed {
+    background: var(--color-success-secondary);
+    color: var(--color-success-primary);
+
+    .fish-count-badge {
+        background: var(--color-success-primary);
+        color: #fff;
+    }
+}
+
 
 /* 主题切换按钮样式 */
 #toggle-theme {

@@ -10,6 +10,8 @@ from .image import ImageHosting
 from .photowall import PhotoWallItem
 from .vote import Vote, VoteOption, VoteRecord
 from .checkin import DailyCheckIn
+from .fish import FishTransaction
+from .blog_feed import BlogFeed
 
 __all__ = [
     'db',
@@ -21,6 +23,8 @@ __all__ = [
     'ImageHosting', 'PhotoWallItem',
     'Vote', 'VoteOption', 'VoteRecord',
     'DailyCheckIn',
+    'FishTransaction',
+    'BlogFeed',
 ]
 
 

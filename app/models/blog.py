@@ -29,6 +29,8 @@ class Blog(db.Model):
 
     # 反范式的点赞计数，便于列表页排序/展示（如后续实现点赞功能，可在事务内增减）
     likes_count = db.Column(db.Integer, default=0)
+    # 小鱼干投喂计数
+    fish_count = db.Column(db.Integer, default=0, nullable=False)
     # 评论计数与最近评论时间（便于排序与展示）
     comments_count = db.Column(db.Integer, default=0)
     last_comment_at = db.Column(db.DateTime, nullable=True, index=True)
@@ -70,6 +72,7 @@ class Blog(db.Model):
             'ignore': self.ignore,
             'likes_count': self.likes_count,
             'comments_count': self.comments_count,
+            'fish_count': self.fish_count,
             'category_id': self.category_id,
             'category': self.category.name if self.category else None,
             'category_path': self.category.get_full_path() if self.category else None,

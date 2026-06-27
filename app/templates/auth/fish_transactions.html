@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}小鱼干流水 - 聪明山{% endblock %}
+
+{% block content %}
+<div class="content-wrapper">
+    <h1 class="page-title">🐟 小鱼干流水</h1>
+
+    <div class="fish-filter-bar">
+        <a class="filter-btn {% if not type_filter %}active{% endif %}" href="{{ url_for('auth.fish_transactions') }}">全部</a>
+        <a class="filter-btn {% if type_filter == 'checkin' %}active{% endif %}" href="{{ url_for('auth.fish_transactions', type='checkin') }}">签到</a>
+        <a class="filter-btn {% if type_filter == 'admin_grant' %}active{% endif %}" href="{{ url_for('auth.fish_transactions', type='admin_grant') }}">赠送</a>
+        <a class="filter-btn {% if type_filter == 'purchase' %}active{% endif %}" href="{{ url_for('auth.fish_transactions', type='purchase') }}">消费</a>
+    </div>
+
+    {% if transactions %}
+        <div class="fish-transaction-list">
+            {% for tx in transactions %}
+            <div class="fish-transaction">
+                <div class="fish-transaction__icon">
+                    {% if tx.amount > 0 %}
+                    <span class="fish-transaction__icon-in fish-transaction__icon--in">+</span>
+                    {% else %}
+                    <span class="fish-transaction__icon-out fish-transaction__icon--out">-</span>
+                    {% endif %}
+                </div>
+                <div class="fish-transaction__info">
+                    <div class="fish-transaction__desc">
+                        {{ tx.description or tx.type }}
+                    </div>
+                    <div class="fish-transaction__meta">
+                        <span class="fish-transaction__type-tag fish-transaction__type-tag--{{ tx.type }}">{{ tx.type }}</span>
+                        <span class="fish-transaction__time">{{ tx.created_at | datetime_format('%Y-%m-%d %H:%M') }}</span>
+                    </div>
+                </div>
+                <div class="fish-transaction__amount {% if tx.amount > 0 %}fish-transaction__amount--in{% else %}fish-transaction__amount--out{% endif %}">
+                    {% if tx.amount > 0 %}+{% endif %}{{ tx.amount }}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        {% if pagination.pages > 1 %}
+            {% set type_arg = request.args.get('type') %}
+            <div class="pagination">
+                {% if pagination.has_prev %}
+                <a class="page-link" href="{{ url_for('auth.fish_transactions', page=pagination.prev_num, type=type_arg) }}">&laquo;</a>
+                {% endif %}
+
+                {% set window = 3 %}
+                {% for p in range(1, pagination.pages + 1) %}
+                    {% if p == 1 or p == pagination.pages or (p >= pagination.page - window and p <= pagination.page + window) %}
+                    <a class="page-link {{ 'active' if p == pagination.page else '' }}"
+                       href="{{ url_for('auth.fish_transactions', page=p, type=type_arg) }}">{{ p }}</a>
+                    {% elif p == pagination.page - window - 1 or p == pagination.page + window + 1 %}
+                    <span class="page-ellipsis">...</span>
+                    {% endif %}
+                {% endfor %}
+
+                {% if pagination.has_next %}
+                <a class="page-link" href="{{ url_for('auth.fish_transactions', page=pagination.next_num, type=type_arg) }}">&raquo;</a>
+                {% endif %}
+
+                <span class="page-jump">
+                    <input type="number" id="pageInput" min="1" max="{{ pagination.pages }}" placeholder="{{ pagination.page }}" class="page-input">
+                    <button onclick="jumpToPage({{ pagination.pages }})" class="page-link page-btn">跳转</button>
+                </span>
+            </div>
+        {% endif %}
+    {% else %}
+        <div class="empty-state">
+            <div class="empty-state-icon">🐟</div>
+            <h3>暂无流水</h3>
+            <p>还没有小鱼干交易记录，快去签到赚取吧！</p>
+        </div>
+    {% endif %}
+</div>
+
+<script>
+function jumpToPage(totalPages) {
+    const input = document.getElementById('pageInput');
+    let page = parseInt(input.value, 10);
+    if (isNaN(page) || page < 1) page = 1;
+    if (page > totalPages) page = totalPages;
+    const url = new URL(window.location.href);
+    url.searchParams.set('page', page);
+    window.location.href = url.toString();
+}
+</script>
+{% endblock %}

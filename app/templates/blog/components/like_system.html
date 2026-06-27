@@ -13,6 +13,20 @@
         <span class="like-count-badge" id="like-count">{{ blog.likes_count or 0 }}</span>
     </button>
 
+    <button
+        id="feed-fish-btn"
+        class="fish-btn {{ 'fish-btn--fed' if blog.user_fed else '' }}"
+        data-auth="{{ 1 if current_user.is_authenticated else 0 }}"
+        data-is-core="{{ 1 if current_user.is_authenticated and current_user.is_core_user else 0 }}"
+        data-login-url="{{ url_for('auth.login') }}"
+        data-feed-url="{{ url_for('blog.feed_fish_api', blog_id=blog.id) }}"
+        data-status-url="{{ url_for('blog.feed_status', blog_id=blog.id) }}"
+        aria-label="投喂小鱼干"
+    >
+        <span>🐟 投喂</span>
+        <span class="fish-count-badge" id="fish-count">{{ blog.fish_count or 0 }}</span>
+    </button>
+
     <button onclick="history.back()" class="read-btn">📝 返回上页</button>
 </div>
 

@@ -41,7 +41,7 @@ class User(UserMixin, db.Model):
     total_fortune = db.Column(db.Integer, default=0, nullable=False)
 
     # 小鱼干（虚拟货币）
-    dried_fish = db.Column(db.Integer, default=0, nullable=False)
+    dried_fish = db.Column(db.Float, default=0.0, nullable=False)
     
     def set_password(self, password):
         """设置密码"""

@@ -5,6 +5,9 @@
     <button id="admin-likers-btn" class="button button-primary" data-likers-url="{{ url_for('blog.likers', blog_id=blog.id) }}">
         👍 查看点赞者
     </button>
+    <button id="admin-feeders-btn" class="button button-primary" data-feeders-url="{{ url_for('blog.feeders', blog_id=blog.id) }}">
+        🐟 查看投喂者
+    </button>
     {% endif %}
     {% if current_user.id == blog.author_id %}
     <a href="{{ url_for('blog.edit_blog', blog_id=blog.id) }}" class="button button-primary">✏️ 编辑文章</a>

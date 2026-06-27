@@ -139,12 +139,23 @@ class BlogService:
         liked = False
         try:
             if current_user.is_authenticated:
-                from app.models import BlogLike
+                from app.models import BlogLike, BlogFeed
                 liked = BlogLike.query.filter_by(blog_id=blog_id, user_id=current_user.id, deleted=False).first() is not None
         except Exception:
             liked = False
-        
+
+        # 当前用户是否已投喂
+        user_fed = False
+        try:
+            if current_user.is_authenticated:
+                from app.models.blog_feed import BlogFeed
+                feed = BlogFeed.query.filter_by(blog_id=blog_id, user_id=current_user.id).first()
+                user_fed = feed is not None and feed.amount > 0
+        except Exception:
+            user_fed = False
+
         blog_dict['liked'] = liked
+        blog_dict['user_fed'] = user_fed
         return blog_dict, content
     
     @staticmethod

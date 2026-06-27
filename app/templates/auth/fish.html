@@ -12,6 +12,14 @@
                 <span class="fish-card__balance-number">{{ dried_fish }}</span>
                 <span class="fish-card__balance-label">小鱼干</span>
             </div>
+            {% if today_fish > 0 %}
+            <div class="fish-card__today">
+                今日签到获得 <strong>+{{ today_fish }}</strong> 小鱼干
+            </div>
+            {% endif %}
+            <div class="fish-card__actions">
+                <a class="fish-card__link" href="{{ url_for('auth.fish_transactions') }}">📋 查看流水</a>
+            </div>
             <div class="fish-card__info">
                 <p>每日签到可获得小鱼干，更多获取方式即将开放…</p>
             </div>

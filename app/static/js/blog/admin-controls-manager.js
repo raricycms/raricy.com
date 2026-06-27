@@ -2,6 +2,7 @@
 class AdminControlsManager {
     constructor() {
         this.likersBtn = document.getElementById('admin-likers-btn');
+        this.feedersBtn = document.getElementById('admin-feeders-btn');
         this.deleteBtn = document.getElementById('admin-delete-btn');
 
         this.init();
@@ -11,6 +12,11 @@ class AdminControlsManager {
         // 绑定点赞者列表按钮事件
         if (this.likersBtn) {
             this.likersBtn.addEventListener('click', () => this.openLikersModal());
+        }
+
+        // 绑定投喂者列表按钮事件
+        if (this.feedersBtn) {
+            this.feedersBtn.addEventListener('click', () => this.openFeedersModal());
         }
 
         // 绑定删除按钮事件
@@ -80,6 +86,104 @@ class AdminControlsManager {
             likersList.innerHTML = '<div class="text-danger">网络错误，请稍后重试</div>';
             console.error('点赞者列表加载异常:', error);
         }
+    }
+
+    // 打开投喂者列表模态框
+    openFeedersModal() {
+        if (window.modalSystem) {
+            window.modalSystem.openModalById('feedersModal');
+            this.loadFeeders();
+        } else {
+            console.error('Modal system not initialized');
+        }
+    }
+
+    // 加载投喂者列表
+    async loadFeeders(page = 1) {
+        const listEl = document.getElementById('feeders-list');
+        const pageInfo = document.getElementById('feeders-pageinfo');
+        const prevBtn = document.getElementById('feeders-prev');
+        const nextBtn = document.getElementById('feeders-next');
+
+        if (!listEl || !this.feedersBtn) return;
+
+        listEl.innerHTML = '<div class="text-muted">加载中...</div>';
+
+        try {
+            const limit = 20;
+            const offset = (page - 1) * limit;
+            const url = `${this.feedersBtn.dataset.feedersUrl}?offset=${offset}&limit=${limit}`;
+
+            const response = await fetch(url, { credentials: 'same-origin' });
+            const data = await response.json();
+
+            if (data.code === 200) {
+                const feeders = data.feeders || [];
+                const totalCount = data.total || 0;
+                const totalPages = Math.ceil(totalCount / limit);
+
+                this.renderFeeders(feeders);
+
+                if (pageInfo) {
+                    pageInfo.textContent = `第 ${page} 页，共 ${totalPages} 页`;
+                }
+
+                if (prevBtn) {
+                    prevBtn.onclick = () => this.loadFeeders(page - 1);
+                    prevBtn.disabled = page <= 1;
+                }
+
+                if (nextBtn) {
+                    nextBtn.onclick = () => this.loadFeeders(page + 1);
+                    nextBtn.disabled = page >= totalPages;
+                }
+            } else {
+                listEl.innerHTML = `<div class="text-danger">加载失败: ${data.message || '未知错误'}</div>`;
+            }
+        } catch (error) {
+            listEl.innerHTML = '<div class="text-danger">网络错误，请稍后重试</div>';
+        }
+    }
+
+    // 渲染投喂者列表
+    renderFeeders(feeders) {
+        const listEl = document.getElementById('feeders-list');
+        if (!listEl) return;
+
+        if (feeders.length === 0) {
+            listEl.innerHTML = '<div class="text-muted">暂无投喂者</div>';
+            return;
+        }
+
+        const fragment = document.createDocumentFragment();
+
+        feeders.forEach(f => {
+            const item = document.createElement('div');
+            item.className = 'list-group-item';
+
+            const username = f.username || '未知用户';
+            const avatarUrl = f.avatar_path
+                ? `/auth/avatar/${f.user_id}`
+                : '/static/img/default-avatar.png';
+
+            item.innerHTML = `
+                <div class="d-flex align-items-center justify-content-between">
+                    <div class="d-flex align-items-center">
+                        <img src="${avatarUrl}" alt="${username}"
+                             style="width: 32px; height: 32px; border-radius: 4px; margin-right: 10px;">
+                        <strong>${username}</strong>
+                    </div>
+                    <span class="badge" style="background: var(--color-brand-secondary); color: var(--color-brand-primary); font-size: 0.9rem;">
+                        🐟 ${f.amount}
+                    </span>
+                </div>
+            `;
+
+            fragment.appendChild(item);
+        });
+
+        listEl.innerHTML = '';
+        listEl.appendChild(fragment);
     }
 
     // 渲染点赞者列表

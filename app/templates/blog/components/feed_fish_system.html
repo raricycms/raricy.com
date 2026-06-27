@@ -1,0 +1,23 @@
+<!-- 小鱼干投喂弹窗 -->
+<div class="feed-modal" id="feedModal">
+    <div class="feed-modal__backdrop"></div>
+    <div class="feed-modal__content">
+        <div class="feed-modal__header">
+            <h3>🐟 投喂小鱼干</h3>
+            <p id="feedModalStatus">加载中...</p>
+        </div>
+        <div class="feed-modal__buttons" id="feedButtons">
+            <button class="feed-modal__amount-btn" data-amount="1" disabled>1 条</button>
+            <button class="feed-modal__amount-btn" data-amount="2" disabled>2 条</button>
+            <button class="feed-modal__amount-btn" data-amount="3" disabled>3 条</button>
+            <button class="feed-modal__amount-btn" data-amount="4" disabled>4 条</button>
+            <button class="feed-modal__amount-btn" data-amount="5" disabled>5 条</button>
+        </div>
+        <div class="feed-modal__actions">
+            <button class="feed-modal__close-btn" id="feedCancelBtn">取消</button>
+            <button class="feed-modal__confirm-btn" id="feedConfirmBtn" disabled>确认投喂</button>
+        </div>
+    </div>
+</div>
+
+<script src="{{ static_url('js/blog/feed-fish-manager.js') }}"></script>

@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from app.extensions import db
 from app.models.checkin import DailyCheckIn
 from app.models.user import User
+from app.service.fish import add_fish
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 
@@ -164,12 +165,11 @@ def claim_fortune(user_id, chosen_index):
         .values(total_fortune=User.total_fortune + fortune_val)
     )
 
-    # Atomic increment of dried_fish (same value — avoids read-modify-write race)
-    db.session.execute(
-        User.__table__.update()
-        .where(User.id == user_id)
-        .values(dried_fish=User.dried_fish + fortune_val)
-    )
+    # Use fish service for dried_fish increment + transaction log
+    # auto_commit=False — we commit everything together below
+    add_fish(user_id, fortune_val, 'checkin',
+             f'每日签到（运势值 {fortune_val}）',
+             auto_commit=False)
     db.session.commit()
 
     # Re-read user for the response

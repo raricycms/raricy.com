@@ -1,6 +1,7 @@
 import click
 from app.models import User
 from app.extensions import db
+from app.service.fish import add_fish, deduct_fish
 
 def register_commands(app):
     @app.cli.command('promote-admin')
@@ -91,3 +92,73 @@ def register_commands(app):
         user.role = 'admin'
         db.session.commit()
         click.echo(f'\x1b[32m成功：已移除 {username} 的站长权限（保留管理员）\x1b[0m')
+
+    @app.cli.group('fish')
+    def fish_group():
+        """小鱼干管理命令组"""
+        pass
+
+    @fish_group.command('grant')
+    @click.argument('username')
+    @click.argument('amount', type=int)
+    @click.option('--description', '-d', default=None, help='操作说明')
+    def fish_grant(username, amount, description):
+        """
+        给用户增加小鱼干。
+
+        Usage: flask fish grant <username> <amount> [--description "..."]
+        """
+        if amount <= 0:
+            click.echo('\x1b[31m错误：amount 必须为正整数\x1b[0m')
+            return
+
+        user = User.query.filter_by(username=username).first()
+        if not user:
+            click.echo(f'\x1b[31m错误：用户 {username} 不存在\x1b[0m')
+            return
+
+        desc = description or f'管理员手动赠送'
+        balance = add_fish(user.id, amount, 'admin_grant', desc)
+        click.echo(f'\x1b[32m成功：已赠送 {amount} 小鱼干给 {username}\x1b[0m')
+        click.echo(f'  当前余额：{balance}')
+
+    @fish_group.command('deduct')
+    @click.argument('username')
+    @click.argument('amount', type=int)
+    @click.option('--description', '-d', default=None, help='操作说明')
+    def fish_deduct(username, amount, description):
+        """
+        扣减用户小鱼干。
+
+        Usage: flask fish deduct <username> <amount> [--description "..."]
+        """
+        if amount <= 0:
+            click.echo('\x1b[31m错误：amount 必须为正整数\x1b[0m')
+            return
+
+        user = User.query.filter_by(username=username).first()
+        if not user:
+            click.echo(f'\x1b[31m错误：用户 {username} 不存在\x1b[0m')
+            return
+
+        desc = description or f'管理员手动扣减'
+        try:
+            balance = deduct_fish(user.id, amount, 'admin_deduct', desc)
+            click.echo(f'\x1b[32m成功：已扣减 {amount} 小鱼干从 {username}\x1b[0m')
+            click.echo(f'  当前余额：{balance}')
+        except ValueError as e:
+            click.echo(f'\x1b[31m错误：{e}\x1b[0m')
+
+    @fish_group.command('balance')
+    @click.argument('username')
+    def fish_balance(username):
+        """
+        查看用户小鱼干余额。
+
+        Usage: flask fish balance <username>
+        """
+        user = User.query.filter_by(username=username).first()
+        if not user:
+            click.echo(f'\x1b[31m错误：用户 {username} 不存在\x1b[0m')
+            return
+        click.echo(f'{username} 当前小鱼干余额：{user.dried_fish}')
