@@ -8,6 +8,7 @@
     <div class="fish-filter-bar">
         <a class="filter-btn {% if not type_filter %}active{% endif %}" href="{{ url_for('auth.fish_transactions') }}">全部</a>
         <a class="filter-btn {% if type_filter == 'checkin' %}active{% endif %}" href="{{ url_for('auth.fish_transactions', type='checkin') }}">签到</a>
+        <a class="filter-btn {% if type_filter == 'feed_all' %}active{% endif %}" href="{{ url_for('auth.fish_transactions', type='feed_all') }}">投喂</a>
         <a class="filter-btn {% if type_filter == 'admin_grant' %}active{% endif %}" href="{{ url_for('auth.fish_transactions', type='admin_grant') }}">赠送</a>
         <a class="filter-btn {% if type_filter == 'purchase' %}active{% endif %}" href="{{ url_for('auth.fish_transactions', type='purchase') }}">消费</a>
     </div>

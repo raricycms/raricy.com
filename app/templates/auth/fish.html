@@ -9,7 +9,7 @@
         </div>
         <div class="fish-card__body">
             <div class="fish-card__balance">
-                <span class="fish-card__balance-number">{{ dried_fish }}</span>
+                <span class="fish-card__balance-number">{{ "%.4f"|format(dried_fish) }}</span>
                 <span class="fish-card__balance-label">小鱼干</span>
             </div>
             {% if today_fish > 0 %}

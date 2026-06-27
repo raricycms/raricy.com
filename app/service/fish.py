@@ -35,12 +35,19 @@ def get_balance_batch(user_ids):
 def get_transactions(user_id, page=1, per_page=20, type=None):
     """分页查询用户交易流水。返回格式和通知服务一致。
 
+    type 支持以下值：
+        - 单个类型字符串（如 'checkin', 'feed' 等）
+        - 'feed_all' — 投喂与被投喂（同时匹配 'feed' 和 'feed_receive'）
+
     返回 dict:
         {transactions, total, page, per_page, pages, has_prev, has_next, prev_num, next_num}
     """
     query = FishTransaction.query.filter_by(user_id=user_id)
     if type:
-        query = query.filter_by(type=type)
+        if type == 'feed_all':
+            query = query.filter(FishTransaction.type.in_(['feed', 'feed_receive']))
+        else:
+            query = query.filter_by(type=type)
     query = query.order_by(FishTransaction.created_at.desc())
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
     return {
