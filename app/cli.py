@@ -47,10 +47,51 @@ def register_commands(app):
             click.echo(f'\x1b[33m提示：{username} 不是管理员\x1b[0m')
             return
 
-        # 降级为普通用户
+        # 降级为核心用户
+        user.role = 'core'
+        db.session.commit()
+        click.echo(f'\x1b[32m成功：已移除 {username} 的管理员权限（降级为核心用户）\x1b[0m')
+
+    @app.cli.command('promote-core')
+    @click.argument('username')
+    def promote_core(username):
+        '''
+        提升用户为核心用户（仅限服务器执行）
+        Usage: flask promote-core <username>
+        '''
+        user = User.query.filter_by(username=username).first()
+        if not user:
+            click.echo(f'\x1b[31m错误：用户 {username} 不存在\x1b[0m')
+            return
+
+        role = getattr(user, 'role', 'user')
+        if role in ('core', 'admin', 'owner'):
+            click.echo(f'\x1b[33m提示：{username} 已是核心用户（或更高角色）\x1b[0m')
+            return
+
+        user.role = 'core'
+        db.session.commit()
+        click.echo(f'\x1b[32m成功：已授予 {username} 核心用户权限\x1b[0m')
+
+    @app.cli.command('demote-core')
+    @click.argument('username')
+    def demote_core(username):
+        '''
+        取消用户核心用户权限（仅限服务器执行）
+        Usage: flask demote-core <username>
+        '''
+        user = User.query.filter_by(username=username).first()
+        if not user:
+            click.echo(f'\x1b[31m错误：用户 {username} 不存在\x1b[0m')
+            return
+
+        if getattr(user, 'role', 'user') != 'core':
+            click.echo(f'\x1b[33m提示：{username} 不是核心用户（或已超出该角色范围）\x1b[0m')
+            return
+
         user.role = 'user'
         db.session.commit()
-        click.echo(f'\x1b[32m成功：已移除 {username} 的管理员权限\x1b[0m')
+        click.echo(f'\x1b[32m成功：已移除 {username} 的核心用户权限\x1b[0m')
 
     @app.cli.command('promote-owner')
     @click.argument('username')
