@@ -20,7 +20,7 @@ def get_feed_status(blog_id, user_id):
 
 def feed_fish(blog_id, user_id, amount):
     """
-    用户投喂小鱼干给文章。作者收到 20%。
+    用户投喂小鱼干给文章。作者收到 80%。
 
     原子操作，防并发超限。
 
@@ -44,8 +44,8 @@ def feed_fish(blog_id, user_id, amount):
                                 related_user_id=blog.author_id,
                                 auto_commit=False)
 
-    # 2. 作者收入 20%
-    author_income = round(amount * 0.2, 1)
+    # 2. 作者收入 80%
+    author_income = round(amount * 0.8, 1)
     add_fish(blog.author_id, author_income, 'feed_receive',
              f'文章「{blog.title}」被投喂',
              reference_type='blog', reference_id=blog_id,
