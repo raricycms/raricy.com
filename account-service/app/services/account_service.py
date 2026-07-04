@@ -17,6 +17,25 @@ from app.models.account import Account
 from app.models.ledger_entry import LedgerEntry, compute_balance, signed_amount_expr
 
 
+def _safely_load(account: Account) -> None:
+    """Touch every persisted attribute while still inside the greenlet context.
+
+    After ``flush()`` (or after a sync SELECT), SQLAlchemy marks attributes
+    as "expired". The next attribute access from the caller triggers a
+    lazy-load — which on AsyncSession requires a new greenlet to issue IO.
+    If the caller is a plain ``def``/sync path (or any code that isn't
+    currently awaiting inside an async-session call), the lazy-load fails
+    with ``MissingGreenlet: ... Was IO attempted in an unexpected place?``
+    (sqlalche.me/e/20/xd2s).
+
+    We avoid this by reading every column from the ORM instance BEFORE the
+    service function returns. The values are pinned into ``__dict__`` so
+    later ``account.created_at`` style access is just a dict lookup.
+    """
+    for column_attr in Account.__table__.columns:
+        getattr(account, column_attr.name)
+
+
 class AccountService:
     """Service for account management and balance queries.
 
@@ -68,6 +87,10 @@ class AccountService:
                 existing.api_key_hash = key_hash
                 existing.api_key_prefix = key_prefix
                 await self.db.flush()
+                # Force attribute load while still in greenlet context.
+                # Without this, attribute access after the function returns
+                # can trigger a lazy-load and raise MissingGreenlet in async.
+                _safely_load(existing)
                 return existing, plain_key
 
         # Case 1: Brand new account
@@ -79,6 +102,17 @@ class AccountService:
             api_key_hash=key_hash,
             api_key_prefix=key_prefix,
             is_system=False,
+            # Populate created_at in Python too. The DB-side server_default
+            # (`func.now()`) will still fire if we leave it None, and the
+            # eager-default-refresh will populate the attribute — but only
+            # on SQLAlchemy versions that use INSERT...RETURNING for
+            # SQLite. On versions that fall back to INSERT-then-SELECT
+            # (older SA, or some aiosqlite combos), the attribute can be
+            # expired after flush, and accessing it from the endpoint later
+            # raises MissingGreenlet because the lazy-load attempt is
+            # outside greenlet_spawn. Setting it here unconditionally keeps
+            # the attribute populated regardless of what the dialect does.
+            created_at=datetime.utcnow(),
         )
         self.db.add(account)
         try:
@@ -91,6 +125,7 @@ class AccountService:
             existing = await self.get_account_by_user_id(user_id, currency)
             if existing is not None:
                 if existing.is_claimed:
+                    _safely_load(existing)
                     return existing, None
                 else:
                     # Unclaimed — this request claims it
@@ -98,6 +133,7 @@ class AccountService:
                     existing.api_key_hash = key_hash
                     existing.api_key_prefix = key_prefix
                     await self.db.flush()
+                    _safely_load(existing)
                     return existing, plain_key
             # Re-query also missed the row. This is rare but can happen
             # under unusual isolation or with concurrent test runs.
@@ -105,6 +141,9 @@ class AccountService:
             # rather than leaking the raw IntegrityError as a 500.
             raise AccountAlreadyExistsRaceError(user_id, currency) from None
 
+        # Force attribute load while still in greenlet context (defensive —
+        # account.created_at was set above so this is normally a no-op).
+        _safely_load(account)
         return account, plain_key
 
     # ------------------------------------------------------------------
