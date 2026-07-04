@@ -1,6 +1,6 @@
 # account-service 文档
 
-raricy.com 小鱼干（Dried Fish）虚拟货币账户微服务。基于 FastAPI + PostgreSQL + 复式记账（Double-Entry Ledger）。
+raricy.com 小鱼干（Dried Fish）虚拟货币账户微服务。基于 FastAPI + SQLite（默认，可选 PostgreSQL）+ 复式记账（Double-Entry Ledger）。
 
 ## 文档目录
 

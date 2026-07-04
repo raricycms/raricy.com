@@ -4,15 +4,16 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import case, func, select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings
+from app.core.constants import DEFAULT_CURRENCY
 from app.core.currency import to_external
 from app.core.security import generate_api_key
+from app.core.timezone import utc8_day_bounds
 from app.models.account import Account
-from app.models.ledger_entry import LedgerEntry
+from app.models.ledger_entry import LedgerEntry, compute_balance, signed_amount_expr
 
 
 class AccountService:
@@ -30,7 +31,7 @@ class AccountService:
     # ------------------------------------------------------------------
 
     async def create_account(
-        self, user_id: str, currency: str = "DRIED_FISH"
+        self, user_id: str, currency: str = DEFAULT_CURRENCY
     ) -> tuple[Account, str | None]:
         """Create a new account, claim an unclaimed one, or return existing.
 
@@ -100,43 +101,77 @@ class AccountService:
     # ------------------------------------------------------------------
 
     async def get_balance(
-        self, user_id: str, currency: str = "DRIED_FISH"
-    ) -> tuple[Decimal, datetime | None]:
+        self,
+        user_id: str,
+        currency: str = DEFAULT_CURRENCY,
+        include_today_checkin: bool = False,
+        today: datetime | None = None,
+    ) -> tuple[Decimal, datetime | None, Decimal | None]:
         """Get the balance for a user.
 
         Balance is computed as SUM(DEBIT) - SUM(CREDIT) from ledger entries.
-        For non-existent users, returns (0.0, None) — never raises 404.
+        For non-existent users, returns (0.0, None, None) — never raises 404.
 
         Args:
             user_id: External user ID.
             currency: Currency code.
+            include_today_checkin: When True, also compute today's (UTC+8) check-in earnings.
+            today: Override "today" timestamp — mainly for tests. Defaults to
+                current UTC+8 midnight (start of today UTC+8).
 
         Returns:
-            Tuple of (balance_in_natural_units, last_activity_timestamp).
+            Tuple of (balance_in_natural_units, last_activity_timestamp, today_checkin).
+            `today_checkin` is None when `include_today_checkin=False`,
+            otherwise Decimal(0.0) if no check-in today.
         """
         account = await self.get_account_by_user_id(user_id, currency)
         if account is None:
-            return Decimal("0.0"), None
+            return Decimal("0.0"), None, (Decimal("0.0") if include_today_checkin else None)
 
+        internal_balance = await compute_balance(self.db, account.id)
+
+        # Get last activity timestamp
+        result = await self.db.execute(
+            select(func.max(LedgerEntry.created_at)).where(
+                LedgerEntry.account_id == account.id
+            )
+        )
+        updated_at = result.scalar_one()
+
+        today_checkin: Decimal | None = None
+        if include_today_checkin:
+            today_checkin = await self._sum_today_checkin(account.id, today)
+
+        return to_external(internal_balance), updated_at, today_checkin
+
+    async def _sum_today_checkin(
+        self, account_id: uuid.UUID, today: datetime | None = None
+    ) -> Decimal:
+        """SUM today's (UTC+8) check-in earnings for the account.
+
+        Computes SUM(DEBIT) - SUM(CREDIT) over LedgerEntry rows with
+        entry_type='checkin' and created_at within the UTC+8 calendar day.
+
+        Uses idx_ledger_type_created (entry_type, created_at.desc) — an index
+        range scan with the account_id filter applied afterwards.
+
+        Returns Decimal(0.0) if no check-in today (never raises).
+        """
+        start_dt, end_dt = utc8_day_bounds(today)
         result = await self.db.execute(
             select(
-                func.coalesce(
-                    func.sum(
-                        case(
-                            (LedgerEntry.direction == "DEBIT", LedgerEntry.amount),
-                            else_=-LedgerEntry.amount,
-                        )
-                    ),
-                    0,
-                ),
-                func.max(LedgerEntry.created_at),
-            ).where(LedgerEntry.account_id == account.id)
+                func.coalesce(func.sum(signed_amount_expr()), 0)
+            ).where(
+                LedgerEntry.account_id == account_id,
+                LedgerEntry.entry_type == "checkin",
+                LedgerEntry.created_at >= start_dt,
+                LedgerEntry.created_at <= end_dt,
+            )
         )
-        internal_balance, updated_at = result.one()
-        return to_external(int(internal_balance)), updated_at
+        return to_external(int(result.scalar_one()))
 
     async def get_balance_batch(
-        self, user_ids: list[str], currency: str = "DRIED_FISH"
+        self, user_ids: list[str], currency: str = DEFAULT_CURRENCY
     ) -> dict[str, Decimal]:
         """Get balances for multiple users in a single query.
 
@@ -152,15 +187,7 @@ class AccountService:
         result = await self.db.execute(
             select(
                 Account.user_id,
-                func.coalesce(
-                    func.sum(
-                        case(
-                            (LedgerEntry.direction == "DEBIT", LedgerEntry.amount),
-                            else_=-LedgerEntry.amount,
-                        )
-                    ),
-                    0,
-                ),
+                func.coalesce(func.sum(signed_amount_expr()), 0),
             )
             .outerjoin(LedgerEntry, LedgerEntry.account_id == Account.id)
             .where(
@@ -181,7 +208,7 @@ class AccountService:
     # ------------------------------------------------------------------
 
     async def get_account_by_user_id(
-        self, user_id: str, currency: str = "DRIED_FISH"
+        self, user_id: str, currency: str = DEFAULT_CURRENCY
     ) -> Account | None:
         """Find an account by user_id and currency."""
         result = await self.db.execute(
@@ -205,29 +232,3 @@ class AccountService:
             select(Account).where(Account.id == account_id)
         )
         return result.scalar_one_or_none()
-
-    async def get_or_create_system_account(self) -> Account:
-        """Ensure the system account exists, creating it if necessary.
-
-        The system account has a fixed UUID, is_system=True, and can overdraft.
-        """
-        system_id = uuid.UUID(settings.system_account_id)
-        account = await self.get_account_by_id(system_id)
-        if account is not None:
-            return account
-
-        # Create system account — no API key needed for internal use initially,
-        # but generate one so it can be used for transfers.
-        plain_key, key_hash, key_prefix = generate_api_key()
-
-        account = Account(
-            id=system_id,
-            user_id=settings.system_user_id,
-            currency="DRIED_FISH",
-            api_key_hash=key_hash,
-            api_key_prefix=key_prefix,
-            is_system=True,
-        )
-        self.db.add(account)
-        await self.db.flush()
-        return account

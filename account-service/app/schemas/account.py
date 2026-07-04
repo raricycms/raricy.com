@@ -6,6 +6,8 @@ from decimal import Decimal
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.core.constants import CURRENCY_PATTERN, DEFAULT_CURRENCY
+
 
 class CreateAccountRequest(BaseModel):
     """Request body for creating a new account."""
@@ -15,8 +17,8 @@ class CreateAccountRequest(BaseModel):
         description="External user ID (UUID from the blog system)",
     )
     currency: str = Field(
-        default="DRIED_FISH",
-        pattern=r"^[A-Z_]{1,20}$",
+        default=DEFAULT_CURRENCY,
+        pattern=CURRENCY_PATTERN,
         description="Currency code",
     )
 
@@ -52,6 +54,13 @@ class BalanceResponse(BaseModel):
         default=None,
         description="Timestamp of the most recent ledger entry, or None if no activity",
     )
+    today_checkin: Decimal | None = Field(
+        default=None,
+        description=(
+            "Today's check-in earnings (UTC+8 date). "
+            "Only populated when client passes ?include=today_checkin."
+        ),
+    )
 
 
 class BatchBalanceRequest(BaseModel):
@@ -62,8 +71,8 @@ class BatchBalanceRequest(BaseModel):
         description="List of user IDs to query (max 100)",
     )
     currency: str = Field(
-        default="DRIED_FISH",
-        pattern=r"^[A-Z_]{1,20}$",
+        default=DEFAULT_CURRENCY,
+        pattern=CURRENCY_PATTERN,
     )
 
     @field_validator("user_ids")

@@ -5,12 +5,11 @@ Idempotency keys prevent duplicate transfers on network retry.
 API key authentication ensures only the from_user can initiate transfers.
 """
 
-import json
 import uuid
 from datetime import datetime, timedelta
 from decimal import Decimal
 
-from sqlalchemy import case, func, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -21,9 +20,9 @@ from app.core.exceptions import (
     IdempotencyConflictError,
     InsufficientBalanceError,
 )
-from app.core.security import hash_api_key, verify_api_key
+from app.core.security import hash_api_key
 from app.models.account import Account
-from app.models.ledger_entry import IdempotencyKey, LedgerEntry
+from app.models.ledger_entry import IdempotencyKey, LedgerEntry, compute_balance
 from app.schemas.transfer import TransferResponse
 
 
@@ -118,7 +117,7 @@ class TransferService:
         # 5. Check balance (skip for system accounts)
         # ------------------------------------------------------------------
         if not from_account_locked.is_system:
-            balance_internal, _ = await self._compute_balance(from_account_locked.id)
+            balance_internal = await compute_balance(self.db, from_account_locked.id)
             if balance_internal < internal_amount:
                 raise InsufficientBalanceError(
                     user_id=from_user_id,
@@ -163,8 +162,8 @@ class TransferService:
         # ------------------------------------------------------------------
         # 7. Compute post-transfer balances
         # ------------------------------------------------------------------
-        from_balance_internal, _ = await self._compute_balance(from_account_locked.id)
-        to_balance_internal, _ = await self._compute_balance(to_account_locked.id)
+        from_balance_internal = await compute_balance(self.db, from_account_locked.id)
+        to_balance_internal = await compute_balance(self.db, to_account_locked.id)
 
         from_balance_after = to_external(from_balance_internal)
         to_balance_after = to_external(to_balance_internal)
@@ -319,27 +318,3 @@ class TransferService:
         await self.db.flush()
         return account
 
-    async def _compute_balance(self, account_id: uuid.UUID) -> tuple[int, datetime | None]:
-        """Compute current balance for an account from ledger entries.
-
-        Must be called within a transaction that holds a lock on the account row.
-
-        Returns:
-            Tuple of (internal_balance, last_activity_timestamp).
-        """
-        result = await self.db.execute(
-            select(
-                func.coalesce(
-                    func.sum(
-                        case(
-                            (LedgerEntry.direction == "DEBIT", LedgerEntry.amount),
-                            else_=-LedgerEntry.amount,
-                        )
-                    ),
-                    0,
-                ),
-                func.max(LedgerEntry.created_at),
-            ).where(LedgerEntry.account_id == account_id)
-        )
-        internal_balance, updated_at = result.one()
-        return int(internal_balance), updated_at

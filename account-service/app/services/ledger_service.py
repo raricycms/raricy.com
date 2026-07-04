@@ -4,29 +4,31 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import case, func, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import aliased
 
+from app.core.constants import DEFAULT_CURRENCY
 from app.core.currency import to_external
 from app.models.account import Account
-from app.models.ledger_entry import LedgerEntry
+from app.models.ledger_entry import LedgerEntry, compute_balance, signed_amount_expr
 from app.schemas.common import PaginationInfo
 from app.schemas.ledger import LedgerEntryResponse, LedgerPageResponse
+from app.services.account_service import AccountService
 
 
 class LedgerService:
     """Service for querying transaction history."""
 
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: AsyncSession, account_service: AccountService):
         self.db = db
+        self.account_service = account_service
 
     async def get_ledger(
         self,
         user_id: str,
         page: int = 1,
         per_page: int = 20,
-        currency: str = "DRIED_FISH",
+        currency: str = DEFAULT_CURRENCY,
         entry_type: str | None = None,
         start: date | None = None,
         end: date | None = None,
@@ -46,7 +48,7 @@ class LedgerService:
             LedgerPageResponse with entries and pagination metadata.
         """
         # First, find the account
-        account = await self._get_account(user_id, currency)
+        account = await self.account_service.get_account_by_user_id(user_id, currency)
         if account is None:
             return LedgerPageResponse(
                 entries=[],
@@ -137,16 +139,6 @@ class LedgerService:
     # Helpers
     # ------------------------------------------------------------------
 
-    async def _get_account(self, user_id: str, currency: str) -> Account | None:
-        """Find an account by user_id and currency."""
-        result = await self.db.execute(
-            select(Account).where(
-                Account.user_id == user_id,
-                Account.currency == currency,
-            )
-        )
-        return result.scalar_one_or_none()
-
     async def _get_counterparty(
         self, transaction_id: uuid.UUID, account_id: uuid.UUID
     ) -> str | None:
@@ -182,15 +174,7 @@ class LedgerService:
         """
         result = await self.db.execute(
             select(
-                func.coalesce(
-                    func.sum(
-                        case(
-                            (LedgerEntry.direction == "DEBIT", LedgerEntry.amount),
-                            else_=-LedgerEntry.amount,
-                        )
-                    ),
-                    0,
-                ),
+                func.coalesce(func.sum(signed_amount_expr()), 0),
             ).where(
                 LedgerEntry.account_id == account_id,
                 LedgerEntry.created_at <= at_time,

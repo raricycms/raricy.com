@@ -2,14 +2,14 @@
 
 raricy.com 小鱼干（Dried Fish）虚拟货币账户微服务。
 
-基于 FastAPI + PostgreSQL + 复式记账（Double-Entry Ledger）。
+基于 FastAPI + SQLite（可切换 PostgreSQL）+ 复式记账（Double-Entry Ledger）。
 
 ## 快速开始
 
 ### 前置条件
 
 - Python 3.12+
-- PostgreSQL 16+
+- SQLite 3（默认）。PostgreSQL 可选，但需手动安装 `asyncpg` 驱动
 - `pip` / `uv`
 
 ### 安装
@@ -29,21 +29,21 @@ pip install -e .
 cp .env.example .env
 ```
 
-`.env` 内容：
+`.env` 内容（默认 SQLite）：
 
 ```env
-DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/account
+DATABASE_URL=sqlite+aiosqlite:///account.db
 DEBUG=true
 SERVICE_NAME=account-service
+INTERNAL_TOKEN=<替换为强随机字符串>
 ```
+
+> 如需切换 PostgreSQL，请先 `pip install asyncpg`，然后将 `DATABASE_URL` 改为 `postgresql+asyncpg://user:pass@host:5432/account`。
 
 ### 数据库初始化
 
 ```bash
-# 创建数据库（在 PostgreSQL 中）
-createdb account
-
-# 运行迁移
+# SQLite 无需手动创建数据库，直接运行迁移即可
 alembic upgrade head
 
 # 创建系统账户（获取 API Key）
@@ -61,10 +61,7 @@ API 文档：http://localhost:8000/docs
 ## 运行测试
 
 ```bash
-# 创建测试数据库
-createdb account_test
-
-# 运行测试
+# 测试使用 SQLite 内存数据库，无需额外配置
 pytest -v
 ```
 

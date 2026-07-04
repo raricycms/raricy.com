@@ -42,6 +42,9 @@ class User(UserMixin, db.Model):
 
     # 小鱼干（虚拟货币）
     dried_fish = db.Column(db.Float, default=0.0, nullable=False)
+
+    # 小鱼干账户服务 — 加密存储的 API Key
+    fish_api_key_encrypted = db.Column(db.Text, nullable=True)
     
     def set_password(self, password):
         """设置密码"""

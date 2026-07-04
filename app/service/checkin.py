@@ -166,10 +166,48 @@ def claim_fortune(user_id, chosen_index):
     )
 
     # Use fish service for dried_fish increment + transaction log
-    # auto_commit=False — we commit everything together below
+    # auto_commit=False — we sync remote first (fail-closed), then commit
     add_fish(user_id, fortune_val, 'checkin',
              f'每日签到（运势值 {fortune_val}）',
              auto_commit=False)
+
+    # 写路径 fail-closed：本地变更已收集到 session，先同步远端，
+    # 远端成功才 commit 本地；远端失败则 rollback（用户需重新选卡）。
+    from flask import current_app
+    from app.clients.account_client import AccountClientError
+    from app.clients import AccountClient
+    try:
+        current_app.account_client.transfer(
+            from_user_id=AccountClient.SYSTEM_USER_ID,
+            to_user_id=user_id,
+            amount=float(fortune_val),
+            entry_type='checkin',
+            description=f'每日签到（运势值 {fortune_val}）',
+            metadata={'fortune_value': fortune_val, 'checkin_date': today.isoformat()},
+            idempotency_key=f"checkin-{user_id}-{today.isoformat()}",
+        )
+    except AccountClientError as e:
+        db.session.rollback()
+        import logging
+        logging.getLogger(__name__).warning(
+            f"账户服务签到同步失败，本地事务已回滚（user={user_id}, "
+            f"date={today.isoformat()}）: {e}"
+        )
+        raise
+    except Exception as e:
+        # 兜底：意外异常也按 fail-closed 处理
+        db.session.rollback()
+        import logging
+        logging.getLogger(__name__).exception(
+            f"账户服务签到同步异常，本地事务已回滚（user={user_id}, "
+            f"date={today.isoformat()}）: {e}"
+        )
+        raise AccountClientError(
+            f"账户服务暂不可用，签到失败: {e}",
+            code=503,
+        ) from e
+
+    # 远端同步成功 → 提交本地事务
     db.session.commit()
 
     # Re-read user for the response

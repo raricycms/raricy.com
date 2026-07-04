@@ -58,6 +58,14 @@ def register():
         db.session.add(user)
         db.session.commit()
         
+        # 在账户服务中创建小鱼干账户（fire-and-forget，失败不阻塞注册）
+        try:
+            current_app.account_client.create_account(user.id)
+        except Exception as e:
+            current_app.logger.warning(
+                f"账户服务创建账户失败（将在首次鱼干操作时自动重试）: {e}"
+            )
+
         try:
             # 使用UUID作为头像文件名
             avatar_path = f'avatars/{user.id}.png'

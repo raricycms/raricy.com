@@ -10,6 +10,7 @@ from datetime import datetime
 from sqlalchemy import Boolean, DateTime, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.constants import DEFAULT_CURRENCY
 from app.models.base import Base
 
 
@@ -31,7 +32,7 @@ class Account(Base):
     currency: Mapped[str] = mapped_column(
         String(20),
         nullable=False,
-        default="DRIED_FISH",
+        default=DEFAULT_CURRENCY,
     )
     api_key_hash: Mapped[str | None] = mapped_column(
         String(128),

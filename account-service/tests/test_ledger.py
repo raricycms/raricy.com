@@ -17,11 +17,6 @@ def _idempotency_key() -> str:
     return str(uuid.uuid4())
 
 
-def _make_transfer(client: AsyncClient, from_user: str, to_user: str, amount: float, entry_type: str, api_key: str) -> dict:
-    """Helper to make a transfer and return the response data."""
-    ...
-
-
 class TestLedgerBasic:
     """Basic ledger query scenarios."""
 
@@ -38,8 +33,7 @@ class TestLedgerBasic:
 
     @pytest.mark.asyncio
     async def test_ledger_after_transfer(
-        self, async_client: AsyncClient, system_account, test_account
-    ):
+        self, async_client: AsyncClient    ):
         """After a transfer, ledger entries appear for both parties."""
         # Make a transfer
         key = _idempotency_key()
@@ -86,8 +80,7 @@ class TestLedgerPagination:
 
     @pytest.mark.asyncio
     async def test_ledger_pagination(
-        self, async_client: AsyncClient, system_account, test_account
-    ):
+        self, async_client: AsyncClient    ):
         """Multiple transfers should be paginated correctly."""
         # Make 5 transfers
         for i in range(5):
@@ -142,8 +135,7 @@ class TestLedgerFilters:
 
     @pytest.mark.asyncio
     async def test_ledger_filter_by_type(
-        self, async_client: AsyncClient, system_account, test_account
-    ):
+        self, async_client: AsyncClient    ):
         """Filtering by entry_type should only return matching entries."""
         # Make a checkin transfer
         await async_client.post(
@@ -188,8 +180,7 @@ class TestLedgerFilters:
 
     @pytest.mark.asyncio
     async def test_ledger_filter_by_multiple_types(
-        self, async_client: AsyncClient, system_account, test_account
-    ):
+        self, async_client: AsyncClient    ):
         """Comma-separated type filter supports multiple entry_types."""
         # Make transfers of different types
         for etype in ["checkin", "admin_grant", "feed_income"]:
@@ -220,8 +211,7 @@ class TestLedgerFilters:
 
     @pytest.mark.asyncio
     async def test_ledger_order_desc(
-        self, async_client: AsyncClient, system_account, test_account
-    ):
+        self, async_client: AsyncClient    ):
         """Ledger entries should be ordered by created_at descending."""
         for i in range(3):
             await async_client.post(

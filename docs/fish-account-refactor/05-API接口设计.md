@@ -117,8 +117,8 @@ X-Idempotency-Key: checkin-userA-2026-07-02
 | entry_type | 含义 | 说明 |
 |-----------|------|------|
 | `checkin` | 签到获得 | 每日签到选卡后系统发放 |
-| `feed_out` | 投喂支出 | 用户给文章投小鱼干 |
-| `feed_income` | 投喂收入 | 作者收到的投喂分成 (20%) |
+| `feed_consume` | 投喂支出 | 用户给文章投小鱼干（用户 → 系统，扣 100% 鱼干） |
+| `feed_income` | 投喂收入 | 作者收到的投喂分成 (80%) |
 | `admin_grant` | 管理员发放 | 管理员通过后台/CLI 发放 |
 | `transfer` | 用户转账 | 用户之间直接转账 |
 | `purchase` | 购买消费 | 用户购买商品/服务 |
@@ -391,7 +391,7 @@ X-Idempotency-Key: <idempotency-key>                   ← 必填！
 |------|------|------|------|
 | `from_user_id` | string | ✅ | 出账方用户 ID。**必须与 Authorization Bearer token 所属账户一致** |
 | `to_user_id` | string | ✅ | 入账方用户 ID。如果该用户没有账户，**自动创建未认领账户**（无 API Key），之后该用户需通过 `POST /accounts` 认领 |
-| `amount` | string | ✅ | 金额（自然单位），Decimal 字符串如 `"3.0"`，>0，最多 4 位小数 |
+| `amount` | string \| number | ✅ | 金额（自然单位），Decimal 字符串 `"3.0"` 或数字 `3.0`（Pydantic 自动转换），>0，最多 4 位小数 |
 | `currency` | string | ❌ | 默认 `"DRIED_FISH"` |
 | `entry_type` | string | ✅ | 业务类型，见 [1.6 节](#16-业务类型-entry_type) |
 | `description` | string | ❌ | 人类可读描述，最大 255 字符 |
@@ -470,7 +470,7 @@ X-Idempotency-Key: <idempotency-key>                   ← 必填！
     -H "X-Internal-Token: ${INTERNAL_TOKEN}" \
     -H "Authorization: Bearer fish_sk_USER_A_KEY" \    ← 用户 A 的 Key
     -H "X-Idempotency-Key: feed-blog123-userA-5" \
-    -d '{"from_user_id":"user-a","to_user_id":"user-b","amount":"5.0","entry_type":"feed_out"}'
+    -d '{"from_user_id":"user-a","to_user_id":"user-b","amount":"5.0","entry_type":"feed_consume"}'
 
 场景 3：用户直接操作（不经过博客，未来场景）
   手机 App 拿着用户自己的 API Key 直接调账户服务
@@ -492,7 +492,7 @@ X-Internal-Token: <shared-secret>
 | `user_id` | path | string | ✅ | — | 博客用户 ID |
 | `page` | query | int | ❌ | 1 | 页码，≥1 |
 | `per_page` | query | int | ❌ | 20 | 每页条数，1-100 |
-| `entry_type` | query | string | ❌ | — | 筛选业务类型，支持逗号分隔：`checkin,feed_out` |
+| `entry_type` | query | string | ❌ | — | 筛选业务类型，支持逗号分隔：`checkin,feed_consume` |
 | `start` | query | date | ❌ | — | 起始日期（含），ISO 8601 |
 | `end` | query | date | ❌ | — | 结束日期（含），ISO 8601 |
 | `currency` | query | string | ❌ | `DRIED_FISH` | 币种 |

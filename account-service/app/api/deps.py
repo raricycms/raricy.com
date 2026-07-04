@@ -6,6 +6,7 @@ internal token verification, and idempotency key validation.
 
 import re
 import secrets
+from typing import Generic, TypeVar
 
 from fastapi import Depends, Header, Request
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,9 +18,12 @@ from app.core.exceptions import (
     InternalTokenInvalidError,
 )
 from app.db.session import get_db
+from app.schemas.common import ApiResponse
 from app.services.account_service import AccountService
 from app.services.ledger_service import LedgerService
 from app.services.transfer_service import TransferService
+
+T = TypeVar("T")
 
 
 # Re-export get_db for convenience
@@ -32,6 +36,7 @@ __all__ = [
     "verify_internal_token",
     "extract_idempotency_key",
     "get_request_id",
+    "ok_response",
 ]
 
 # Only allow safe characters, 1-64 chars (matching DB column width)
@@ -50,7 +55,8 @@ async def get_transfer_service(db: AsyncSession = Depends(get_db)) -> TransferSe
 
 async def get_ledger_service(db: AsyncSession = Depends(get_db)) -> LedgerService:
     """Dependency: LedgerService with an active DB session."""
-    return LedgerService(db)
+    account_service = AccountService(db)
+    return LedgerService(db, account_service)
 
 
 async def extract_api_key(authorization: str | None = Header(None)) -> str | None:
@@ -105,3 +111,23 @@ async def extract_idempotency_key(
 def get_request_id(request: Request) -> str:
     """Get the request ID from request state (set by middleware)."""
     return getattr(request.state, "request_id", "unknown")
+
+
+def ok_response(
+    request: Request,
+    data: T,
+    *,
+    code: int = 200,
+    message: str = "ok",
+) -> ApiResponse[T]:
+    """Wrap a payload in the unified ApiResponse envelope.
+
+    Centralizes the `request_id` + `message="ok"` boilerplate that every
+    endpoint previously inlined. Pass `code=201` for resource creation, etc.
+    """
+    return ApiResponse(
+        code=code,
+        data=data,
+        request_id=get_request_id(request),
+        message=message,
+    )

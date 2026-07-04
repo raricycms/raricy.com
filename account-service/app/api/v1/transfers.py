@@ -10,8 +10,8 @@ from fastapi import APIRouter, Depends, Request
 from app.api.deps import (
     extract_api_key,
     extract_idempotency_key,
-    get_request_id,
     get_transfer_service,
+    ok_response,
     verify_internal_token,
 )
 from app.core.exceptions import ApiKeyInvalidError
@@ -20,7 +20,11 @@ from app.schemas.common import ApiResponse
 from app.schemas.transfer import TransferRequest, TransferResponse
 from app.services.transfer_service import TransferService
 
-router = APIRouter(prefix="/api/v1", tags=["transfers"])
+router = APIRouter(
+    prefix="/api/v1",
+    tags=["transfers"],
+    dependencies=[Depends(verify_internal_token)],
+)
 
 
 @router.post(
@@ -34,7 +38,6 @@ async def create_transfer(
     service: TransferService = Depends(get_transfer_service),
     api_key: str | None = Depends(extract_api_key),
     idempotency_key: str = Depends(extract_idempotency_key),
-    _token: str = Depends(verify_internal_token),
 ):
     """Execute a double-entry transfer.
 
@@ -62,9 +65,4 @@ async def create_transfer(
         api_key=api_key,
     )
 
-    return ApiResponse(
-        code=200,
-        data=result,
-        request_id=get_request_id(request),
-        message="ok",
-    )
+    return ok_response(request, result)

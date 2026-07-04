@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import StaticPool
 
 from app.config import settings
+from app.core.constants import DEFAULT_CURRENCY
 from app.core.security import hash_api_key
 from app.db.session import get_db
 from app.main import create_app
@@ -97,7 +98,7 @@ async def db_session(_engine) -> AsyncGenerator[AsyncSession, None]:
         (TEST_ACCOUNT_ID, TEST_USER_ID, TEST_USER_API_KEY, False),
     ]:
         session.add(Account(
-            id=acct_id, user_id=uid, currency="DRIED_FISH",
+            id=acct_id, user_id=uid, currency=DEFAULT_CURRENCY,
             api_key_hash=hash_api_key(key),
             api_key_prefix=key[:12], is_system=sys_flag,
         ))
@@ -141,19 +142,3 @@ async def async_client(db_session) -> AsyncGenerator[AsyncClient, None]:
         yield client
 
     app.dependency_overrides.clear()
-
-
-# ---------------------------------------------------------------------------
-# Pre-created account fixtures
-# ---------------------------------------------------------------------------
-
-@pytest_asyncio.fixture
-async def system_account(db_session):
-    """Guaranteed by db_session seed — no-op for dependency clarity."""
-    pass
-
-
-@pytest_asyncio.fixture
-async def test_account(db_session):
-    """Guaranteed by db_session seed — no-op for dependency clarity."""
-    pass

@@ -58,7 +58,7 @@ def upgrade() -> None:
     op.create_table(
         "idempotency_keys",
         sa.Column("key", sa.String(64), primary_key=True),
-        sa.Column("transaction_id", sa.Uuid, nullable=True),
+        sa.Column("transaction_id", sa.Uuid, nullable=False),
         sa.Column("response_json", sa.JSON(), nullable=True),
         sa.Column("created_at", sa.DateTime, nullable=False,
                   server_default=sa.func.now()),

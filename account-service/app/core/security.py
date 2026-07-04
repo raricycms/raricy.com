@@ -36,17 +36,3 @@ def hash_api_key(key: str) -> str:
         Hex-encoded SHA-256 digest.
     """
     return hashlib.sha256(key.encode()).hexdigest()
-
-
-def verify_api_key(plain_key: str, stored_hash: str) -> bool:
-    """Constant-time comparison of a plain key against a stored hash.
-
-    Args:
-        plain_key: The API key provided in the request.
-        stored_hash: The SHA-256 hex digest from the database.
-
-    Returns:
-        True if the key matches the hash.
-    """
-    computed = hash_api_key(plain_key)
-    return secrets.compare_digest(computed, stored_hash)

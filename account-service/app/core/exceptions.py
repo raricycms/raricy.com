@@ -4,6 +4,8 @@ Each exception maps to an HTTP status code and is caught by the global
 exception handler in main.py to produce a unified ApiResponse.
 """
 
+from app.core.currency import to_external
+
 
 class AccountServiceError(Exception):
     """Base exception for all account service errors."""
@@ -15,23 +17,10 @@ class AccountServiceError(Exception):
         super().__init__(message)
 
 
-class AccountNotFoundError(AccountServiceError):
-    """The requested account does not exist."""
-
-    def __init__(self, user_id: str, currency: str = "DRIED_FISH"):
-        super().__init__(
-            message=f"Account not found: user_id={user_id}, currency={currency}",
-            code=404,
-            detail={"user_id": user_id, "currency": currency},
-        )
-
-
 class InsufficientBalanceError(AccountServiceError):
     """The account does not have enough balance for the transfer."""
 
     def __init__(self, user_id: str, required: int, available: int):
-        from app.core.currency import to_external
-
         super().__init__(
             message=f"Insufficient balance for user_id={user_id}: "
             f"required={to_external(required)}, available={to_external(available)}",

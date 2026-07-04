@@ -1,16 +1,16 @@
 """Account API endpoints — create accounts and query balances."""
 
 from fastapi import APIRouter, Depends, Query, Request
-from sqlalchemy import case, func, select
 
 from app.api.deps import (
     get_account_service,
-    get_request_id,
+    ok_response,
     verify_internal_token,
 )
+from app.core.constants import CURRENCY_PATTERN, DEFAULT_CURRENCY
 from app.core.currency import to_external
 from app.core.limiter import limiter
-from app.models.ledger_entry import LedgerEntry
+from app.models.ledger_entry import compute_balance
 from app.schemas.account import (
     BalanceResponse,
     BatchBalanceRequest,
@@ -22,7 +22,11 @@ from app.schemas.account import (
 from app.schemas.common import ApiResponse
 from app.services.account_service import AccountService
 
-router = APIRouter(prefix="/api/v1/accounts", tags=["accounts"])
+router = APIRouter(
+    prefix="/api/v1/accounts",
+    tags=["accounts"],
+    dependencies=[Depends(verify_internal_token)],
+)
 
 
 @router.post(
@@ -35,7 +39,6 @@ async def create_account(
     request: Request,
     body: CreateAccountRequest,
     service: AccountService = Depends(get_account_service),
-    _token: str = Depends(verify_internal_token),
 ):
     """Create a new account or return an existing one.
 
@@ -61,21 +64,8 @@ async def create_account(
         status_code = 201
     else:
         # Existing account — no api_key
-        result = await service.db.execute(
-            select(
-                func.coalesce(
-                    func.sum(
-                        case(
-                            (LedgerEntry.direction == "DEBIT", LedgerEntry.amount),
-                            else_=-LedgerEntry.amount,
-                        )
-                    ),
-                    0,
-                ),
-            ).where(LedgerEntry.account_id == account.id)
-        )
-        internal_balance = result.scalar_one()
-        balance = to_external(int(internal_balance))
+        internal_balance = await compute_balance(service.db, account.id)
+        balance = to_external(internal_balance)
 
         data = ExistingAccountResponse(
             account_id=account.id,
@@ -86,12 +76,7 @@ async def create_account(
         )
         status_code = 200
 
-    return ApiResponse(
-        code=status_code,
-        data=data,
-        request_id=get_request_id(request),
-        message="ok",
-    )
+    return ok_response(request, data, code=status_code)
 
 
 @router.get(
@@ -102,26 +87,45 @@ async def create_account(
 async def get_balance(
     request: Request,
     user_id: str,
-    currency: str = Query(default="DRIED_FISH", pattern=r"^[A-Z_]{1,20}$"),
+    currency: str = Query(default=DEFAULT_CURRENCY, pattern=CURRENCY_PATTERN),
+    include: str | None = Query(
+        default=None,
+        description=(
+            "Comma-separated optional fields to include. "
+            "Supported: 'today_checkin' (UTC+8 day check-in earnings)."
+        ),
+    ),
     service: AccountService = Depends(get_account_service),
-    _token: str = Depends(verify_internal_token),
 ):
     """Get the balance for a user.
 
     Returns balance=0.0 for non-existent users (never 404).
-    """
-    balance, updated_at = await service.get_balance(user_id, currency)
 
-    return ApiResponse(
-        code=200,
-        data=BalanceResponse(
+    Pass `?include=today_checkin` to also receive today's (UTC+8) check-in
+    earnings in `data.today_checkin`, saving the client an extra ledger query.
+    """
+    include_today_checkin = False
+    if include:
+        for token in include.split(","):
+            if token.strip() == "today_checkin":
+                include_today_checkin = True
+                break
+
+    balance, updated_at, today_checkin = await service.get_balance(
+        user_id,
+        currency,
+        include_today_checkin=include_today_checkin,
+    )
+
+    return ok_response(
+        request,
+        BalanceResponse(
             user_id=user_id,
             currency=currency,
             balance=balance,
             updated_at=updated_at,
+            today_checkin=today_checkin,
         ),
-        request_id=get_request_id(request),
-        message="ok",
     )
 
 
@@ -134,17 +138,14 @@ async def batch_balance(
     request: Request,
     body: BatchBalanceRequest,
     service: AccountService = Depends(get_account_service),
-    _token: str = Depends(verify_internal_token),
 ):
     """Query balances for multiple users at once (max 100)."""
     balances = await service.get_balance_batch(body.user_ids, body.currency)
 
-    return ApiResponse(
-        code=200,
-        data=BatchBalanceResponse(
+    return ok_response(
+        request,
+        BatchBalanceResponse(
             balances=balances,
             currency=body.currency,
         ),
-        request_id=get_request_id(request),
-        message="ok",
     )

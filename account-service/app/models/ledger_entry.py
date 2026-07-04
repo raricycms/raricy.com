@@ -18,11 +18,53 @@ from sqlalchemy import (
     String,
     Text,
     Uuid,
+    case,
     func,
+    select,
 )
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.constants import DEFAULT_CURRENCY
 from app.models.base import Base
+
+
+def signed_amount_expr():
+    """Return a SQLAlchemy expression that signs a LedgerEntry amount.
+
+    DEBIT adds to balance (recipient); CREDIT subtracts (sender).
+    Wrap in `func.sum(...)` to aggregate; wrap that in `func.coalesce(..., 0)`
+    to return 0 for empty result sets.
+
+    Single source of truth for the sign convention — change here propagates
+    to all balance / running-balance / today-checkin queries.
+    """
+    return case(
+        (LedgerEntry.direction == "DEBIT", LedgerEntry.amount),
+        else_=-LedgerEntry.amount,
+    )
+
+
+async def compute_balance(db: AsyncSession, account_id: uuid.UUID) -> int:
+    """Compute the current balance for an account from its ledger entries.
+
+    Balance = SUM(DEBIT) - SUM(CREDIT).  Returns 0 for accounts with no entries.
+    This is the single source of truth for balance computation — all services
+    and endpoints should use this function rather than duplicating the SQL.
+
+    Args:
+        db: An active AsyncSession.
+        account_id: The account's internal UUID.
+
+    Returns:
+        Balance in internal units (BIGINT).
+    """
+    result = await db.execute(
+        select(
+            func.coalesce(func.sum(signed_amount_expr()), 0)
+        ).where(LedgerEntry.account_id == account_id)
+    )
+    return int(result.scalar_one())
 
 
 class LedgerEntry(Base):
@@ -62,7 +104,7 @@ class LedgerEntry(Base):
     currency: Mapped[str] = mapped_column(
         String(20),
         nullable=False,
-        default="DRIED_FISH",
+        default=DEFAULT_CURRENCY,
     )
     entry_type: Mapped[str] = mapped_column(
         String(32),
@@ -117,9 +159,9 @@ class IdempotencyKey(Base):
         String(64),
         primary_key=True,
     )
-    transaction_id: Mapped[uuid.UUID | None] = mapped_column(
+    transaction_id: Mapped[uuid.UUID] = mapped_column(
         Uuid,
-        nullable=True,
+        nullable=False,
     )
     response_json: Mapped[dict | None] = mapped_column(
         JSON,

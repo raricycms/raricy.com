@@ -22,8 +22,7 @@ class TestTransferBasic:
 
     @pytest.mark.asyncio
     async def test_system_to_user_transfer(
-        self, async_client: AsyncClient, system_account, test_account
-    ):
+        self, async_client: AsyncClient    ):
         """System account can transfer fish to a user."""
         response = await async_client.post(
             "/api/v1/transfers",
@@ -56,8 +55,7 @@ class TestTransferBasic:
 
     @pytest.mark.asyncio
     async def test_user_to_user_transfer(
-        self, async_client: AsyncClient, system_account, test_account
-    ):
+        self, async_client: AsyncClient    ):
         """After receiving fish from system, a user can transfer to another user."""
         # First, give test user some fish
         await async_client.post(
@@ -99,8 +97,7 @@ class TestTransferBasic:
 
     @pytest.mark.asyncio
     async def test_transfer_creates_ledger_entries(
-        self, async_client: AsyncClient, system_account, test_account
-    ):
+        self, async_client: AsyncClient    ):
         """A transfer should create visible ledger entries for both parties."""
         key = _idempotency_key()
         await async_client.post(
@@ -133,8 +130,7 @@ class TestTransferErrors:
 
     @pytest.mark.asyncio
     async def test_insufficient_balance(
-        self, async_client: AsyncClient, test_account
-    ):
+        self, async_client: AsyncClient    ):
         """A new user with 0 balance cannot transfer fish."""
         response = await async_client.post(
             "/api/v1/transfers",
@@ -192,7 +188,7 @@ class TestTransferErrors:
         assert response.status_code == 401
 
     @pytest.mark.asyncio
-    async def test_api_key_mismatch(self, async_client: AsyncClient, test_account):
+    async def test_api_key_mismatch(self, async_client: AsyncClient):
         """Using test user's API key but claiming to be system should return 403."""
         response = await async_client.post(
             "/api/v1/transfers",
@@ -214,8 +210,7 @@ class TestTransferErrors:
 
     @pytest.mark.asyncio
     async def test_system_account_can_overdraft(
-        self, async_client: AsyncClient, system_account, test_account
-    ):
+        self, async_client: AsyncClient    ):
         """System account can transfer even when balance goes deeply negative."""
         # Transfer a huge amount — system can overdraft
         response = await async_client.post(
@@ -243,8 +238,7 @@ class TestIdempotency:
 
     @pytest.mark.asyncio
     async def test_same_key_same_body_returns_cached(
-        self, async_client: AsyncClient, system_account, test_account
-    ):
+        self, async_client: AsyncClient    ):
         """Using the same idempotency key twice returns the same transaction."""
         key = _idempotency_key()
         payload = {
@@ -278,8 +272,7 @@ class TestIdempotency:
 
     @pytest.mark.asyncio
     async def test_same_key_different_body_returns_conflict(
-        self, async_client: AsyncClient, system_account, test_account
-    ):
+        self, async_client: AsyncClient    ):
         """Using the same idempotency key with different params returns 409."""
         key = _idempotency_key()
         headers = {

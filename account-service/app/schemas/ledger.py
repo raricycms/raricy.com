@@ -1,35 +1,12 @@
 """Ledger (transaction history) Pydantic schemas."""
 
 import uuid
-from datetime import date, datetime
+from datetime import datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, Field
 
 from app.schemas.common import PaginationInfo
-
-
-class LedgerQueryParams(BaseModel):
-    """Query parameters for listing ledger entries."""
-
-    page: int = Field(default=1, ge=1, description="Page number (1-based)")
-    per_page: int = Field(default=20, ge=1, le=100, description="Entries per page")
-    entry_type: str | None = Field(
-        default=None,
-        description="Comma-separated type filter (e.g. 'checkin,feed_out')",
-    )
-    start: date | None = Field(
-        default=None,
-        description="Filter entries created on or after this date",
-    )
-    end: date | None = Field(
-        default=None,
-        description="Filter entries created on or before this date",
-    )
-    currency: str = Field(
-        default="DRIED_FISH",
-        pattern=r"^[A-Z_]{1,20}$",
-    )
 
 
 class LedgerEntryResponse(BaseModel):

@@ -1,5 +1,7 @@
 # API 接口文档
 
+> **文档版本**：与代码 v0.1.0 同步，最后更新 2026-07-03
+
 ## 通用约定
 
 ### 基础 URL
@@ -59,7 +61,7 @@ Authorization: Bearer fish_sk_<32字节随机>
 
 ### 金额精度
 
-所有 `amount` 和 `balance` 字段使用 **自然单位**（1 = 1 小鱼干），以字符串形式传输避免浮点精度损失。服务端以 BIGINT 内部单位存储（1 小鱼干 = 10,000 内部单位）。
+所有 `amount` 和 `balance` 字段使用 **自然单位**（1 = 1 小鱼干）。Pydantic 自动将字符串或数字转为 Decimal，**推荐使用字符串**（如 `"3.0"`）以避免浮点精度损失。服务端以 BIGINT 内部单位存储（1 小鱼干 = 10,000 内部单位）。
 
 ---
 
@@ -302,7 +304,7 @@ X-Idempotency-Key: <唯一幂等键>
 |------|------|------|------|
 | `from_user_id` | string | 是 | 转出方用户 ID，最长 36 字符 |
 | `to_user_id` | string | 是 | 接收方用户 ID，最长 36 字符 |
-| `amount` | Decimal (>0) | 是 | 转账金额（自然单位），如 `"3.0"` |
+| `amount` | Decimal (>0) | 是 | 转账金额（自然单位），字符串 `"3.0"` 或数字 `3.0` 均可（推荐字符串） |
 | `currency` | string | 否 | 币种代码，默认 `DRIED_FISH` |
 | `entry_type` | string | 是 | 业务类型，最长 32 字符。见下方枚举表 |
 | `description` | string | 否 | 人类可读描述，最长 255 字符 |
@@ -314,8 +316,8 @@ X-Idempotency-Key: <唯一幂等键>
 |----|------|---------|
 | `checkin` | 签到 | 系统 → 用户 |
 | `admin_grant` | 管理员发放 | 系统 → 用户 |
-| `feed_out` | 投喂支出 | 用户 → 系统（博客抽成 20%） |
-| `feed_income` | 被投喂收入 | 系统 → 用户（被打赏者获 80%） |
+| `feed_consume` | 投喂支出 | 用户 → 系统（投喂者扣 100% 鱼干） |
+| `feed_income` | 被投喂收入 | 系统 → 用户（被打赏者获分成，目前为 80%） |
 | `transfer` | 转账 | 用户 → 用户 |
 | `purchase` | 购买 | 用户 → 系统 |
 
@@ -431,7 +433,7 @@ X-Internal-Token: <token>
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `direction` | string | `DEBIT`（收入）或 `CREDIT`（支出） |
+| `direction` | string | `DEBIT`（收到，钱**进入**本账户）或 `CREDIT`（支出，钱**离开**本账户）。余额公式：`SUM(DEBIT) − SUM(CREDIT)` |
 | `amount` | string | 金额（自然单位） |
 | `counterparty` | string\|null | 对手方用户 ID |
 | `balance_after` | string | 该笔交易后的 running balance |

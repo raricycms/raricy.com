@@ -6,6 +6,8 @@ from decimal import Decimal
 
 from pydantic import BaseModel, Field
 
+from app.core.constants import CURRENCY_PATTERN, DEFAULT_CURRENCY
+
 
 class TransferRequest(BaseModel):
     """Request body for creating a transfer (double-entry transaction).
@@ -27,8 +29,8 @@ class TransferRequest(BaseModel):
         description="Amount in natural units (e.g. 3.0 = 3 fish)",
     )
     currency: str = Field(
-        default="DRIED_FISH",
-        pattern=r"^[A-Z_]{1,20}$",
+        default=DEFAULT_CURRENCY,
+        pattern=CURRENCY_PATTERN,
     )
     entry_type: str = Field(
         max_length=32,
