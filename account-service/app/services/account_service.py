@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.constants import DEFAULT_CURRENCY
 from app.core.currency import to_external
+from app.core.exceptions import AccountAlreadyExistsRaceError
 from app.core.security import generate_api_key
 from app.core.timezone import utc8_day_bounds
 from app.models.account import Account
@@ -49,6 +50,11 @@ class AccountService:
             Tuple of (Account, plain_api_key | None).
             The API key is returned on creation AND on claiming; None for
             already-claimed accounts.
+
+        Raises:
+            AccountAlreadyExistsRaceError: (409) Rare race condition where the
+                pre-INSERT SELECT and the post-IntegrityError re-SELECT both
+                fail to observe an existing account. The caller should retry.
         """
         # Check if account already exists
         existing = await self.get_account_by_user_id(user_id, currency)
@@ -79,7 +85,8 @@ class AccountService:
             await self.db.flush()
         except IntegrityError:
             # Race condition: another request created the same account
-            # between our check and insert. Roll back and re-query.
+            # between our pre-check SELECT and our INSERT. Roll back and
+            # re-query — the winning transaction's row should now be visible.
             await self.db.rollback()
             existing = await self.get_account_by_user_id(user_id, currency)
             if existing is not None:
@@ -92,7 +99,11 @@ class AccountService:
                     existing.api_key_prefix = key_prefix
                     await self.db.flush()
                     return existing, plain_key
-            raise  # should never happen — the unique constraint guarantees a row
+            # Re-query also missed the row. This is rare but can happen
+            # under unusual isolation or with concurrent test runs.
+            # Convert to a domain error (409) so the caller can retry,
+            # rather than leaking the raw IntegrityError as a 500.
+            raise AccountAlreadyExistsRaceError(user_id, currency) from None
 
         return account, plain_key
 

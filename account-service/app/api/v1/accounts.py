@@ -1,5 +1,7 @@
 """Account API endpoints — create accounts and query balances."""
 
+import logging
+
 from fastapi import APIRouter, Depends, Query, Request
 
 from app.api.deps import (
@@ -21,6 +23,8 @@ from app.schemas.account import (
 )
 from app.schemas.common import ApiResponse
 from app.services.account_service import AccountService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/api/v1/accounts",
@@ -50,31 +54,48 @@ async def create_account(
         currency=body.currency,
     )
 
-    if api_key is not None:
-        # New account — return api_key
-        balance = 0.0  # new accounts always start at 0
-        data = CreateAccountResponse(
-            account_id=account.id,
-            user_id=account.user_id,
-            currency=account.currency,
-            balance=balance,
-            api_key=api_key,
-            created_at=account.created_at,
-        )
-        status_code = 201
-    else:
-        # Existing account — no api_key
-        internal_balance = await compute_balance(service.db, account.id)
-        balance = to_external(internal_balance)
+    try:
+        if api_key is not None:
+            # New account — return api_key
+            balance = 0.0  # new accounts always start at 0
+            data = CreateAccountResponse(
+                account_id=account.id,
+                user_id=account.user_id,
+                currency=account.currency,
+                balance=balance,
+                api_key=api_key,
+                created_at=account.created_at,
+            )
+            status_code = 201
+        else:
+            # Existing account — no api_key
+            internal_balance = await compute_balance(service.db, account.id)
+            balance = to_external(internal_balance)
 
-        data = ExistingAccountResponse(
-            account_id=account.id,
-            user_id=account.user_id,
-            currency=account.currency,
-            balance=balance,
-            created_at=account.created_at,
+            data = ExistingAccountResponse(
+                account_id=account.id,
+                user_id=account.user_id,
+                currency=account.currency,
+                balance=balance,
+                created_at=account.created_at,
+            )
+            status_code = 200
+    except Exception as exc:
+        # Log detailed context if response construction or compute_balance
+        # ever fails so the 500 path produces useful diagnostics in uvicorn
+        # logs — particularly the eager-default-refresh round trip that
+        # occurs when the INSERT returns without `RETURNING created_at`.
+        logger.exception(
+            "Failed to build create-account response: user_id=%s currency=%s "
+            "account_id=%s created_at=%r account_type=%s",
+            body.user_id,
+            body.currency,
+            getattr(account, "id", None),
+            getattr(account, "created_at", None),
+            type(getattr(account, "created_at", None)).__name__,
+            exc_info=exc,
         )
-        status_code = 200
+        raise
 
     return ok_response(request, data, code=status_code)
 

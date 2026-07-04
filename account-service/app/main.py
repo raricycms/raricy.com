@@ -110,12 +110,24 @@ def create_app() -> FastAPI:
     @app.exception_handler(Exception)
     async def general_exception_handler(request: Request, exc: Exception):
         request_id = getattr(request.state, "request_id", "unknown")
+        # Capture full traceback for debugging
+        import traceback
+        tb = traceback.format_exception(type(exc), exc, exc.__traceback__)
+        print(f"\n!!! UNHANDLED EXCEPTION !!! request_id={request_id}")
+        print("".join(tb))
+        detail: dict | None = None
+        if settings.debug:
+            detail = {
+                "type": type(exc).__name__,
+                "message": str(exc),
+                "traceback": "".join(tb),
+            }
         return JSONResponse(
             status_code=500,
             content=ErrorResponse(
                 code=500,
                 message="Internal server error",
-                detail={"type": type(exc).__name__} if settings.debug else None,
+                detail=detail,
                 request_id=request_id,
             ).model_dump(),
         )

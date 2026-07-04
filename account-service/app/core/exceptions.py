@@ -87,3 +87,27 @@ class IdempotencyKeyInvalidFormatError(AccountServiceError):
             message="Invalid X-Idempotency-Key format (must be 1-64 alphanumeric, hyphens, or underscores)",
             code=400,
         )
+
+
+class AccountAlreadyExistsRaceError(AccountServiceError):
+    """Race condition: account was created by a concurrent request and re-query also failed.
+
+    Returned when the IntegrityError re-query path also fails (e.g., another
+    transaction also rolled back, or the post-rollback snapshot doesn't yet
+    see the committed row). The caller should retry — the account creation
+    is idempotent.
+
+    Surfaced as 409 Conflict so the blog side knows the operation is
+    recoverable by retry.
+    """
+
+    def __init__(self, user_id: str, currency: str):
+        super().__init__(
+            message=(
+                f"Account for user_id={user_id} currency={currency} was created "
+                "by a concurrent request but is not yet visible after re-query. "
+                "Retry the call."
+            ),
+            code=409,
+            detail={"user_id": user_id, "currency": currency},
+        )
