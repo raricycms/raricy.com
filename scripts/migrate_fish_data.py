@@ -18,11 +18,17 @@ Usage:
     python scripts/migrate_fish_data.py --dry-run
 
 需先配置 .env 中的 ACCOUNT_SERVICE_URL、ACCOUNT_SYSTEM_KEY、ACCOUNT_SERVICE_INTERNAL_TOKEN。
+
+限频说明：
+    账户服务各端点有速率限制（create 20/秒、transfer 10/秒），本脚本通过
+    throttled_call() 主动节流（limit+5% 余量）避开限速，并在收到 429 时
+    指数退避重试最多 3 次（0.5s → 1s → 2s）。
 """
 
 import sys
 import os
 import argparse
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -30,6 +36,56 @@ from app import create_app
 from app.models.user import User
 from app.models.fish import FishTransaction
 from app.clients import AccountClient
+from app.clients.account_client import AccountClientError
+
+
+# ── 限频策略 ──────────────────────────────────────────────
+# 账户服务各端点的限速（见 account-service/app/api/v1/）：
+#   POST /api/v1/accounts               — 20/秒
+#   POST /api/v1/transfers              — 10/秒
+#   POST /api/v1/accounts/balances/batch — 20/秒
+#   GET  /api/v1/accounts/{id}/balance  — 100/秒
+# 主动节流按"limit + 5% 余量"取倒数，确保不撞限速；遇到 429 再退避重试。
+THROTTLE_SECONDS_CREATE_ACCOUNT = 1.05 / 20  # ~52ms
+THROTTLE_SECONDS_TRANSFER = 1.05 / 10        # ~105ms
+
+# 429 重试配置：最多 3 次，指数退避 0.5s → 1s → 2s
+MAX_429_RETRIES = 3
+RETRY_BACKOFF_BASE = 0.5
+
+
+def throttled_call(fn, throttle_seconds, *args, **kwargs):
+    """以固定速率调用 fn；遇到 429 时指数退避重试。
+
+    Args:
+        fn: 要调用的 AccountClient 方法（如 client.create_account）。
+        throttle_seconds: 每次调用前 sleep 的秒数（主动节流，避免撞限速）。
+        *args, **kwargs: 透传给 fn 的位置参数和关键字参数。
+
+    Returns:
+        fn 的返回值。
+
+    Raises:
+        AccountClientError: 非 429 错误立即抛出；429 重试耗尽后抛出最后一次的错误。
+    """
+    last_error = None
+    for attempt in range(MAX_429_RETRIES + 1):
+        time.sleep(throttle_seconds)
+        try:
+            return fn(*args, **kwargs)
+        except AccountClientError as e:
+            if e.code != 429:
+                raise
+            last_error = e
+            if attempt < MAX_429_RETRIES:
+                backoff = RETRY_BACKOFF_BASE * (2 ** attempt)
+                print(
+                    f"  [RATE] {fn.__name__} 触发 429，"
+                    f"{backoff:.1f}s 后重试 ({attempt + 1}/{MAX_429_RETRIES})..."
+                )
+                time.sleep(backoff)
+    assert last_error is not None
+    raise last_error
 
 
 def create_accounts(app):
@@ -42,7 +98,9 @@ def create_accounts(app):
 
     for user in users:
         try:
-            result = client.create_account(user.id)
+            result = throttled_call(
+                client.create_account, THROTTLE_SECONDS_CREATE_ACCOUNT, user.id,
+            )
             if result.get('api_key'):
                 created += 1
                 print(f"  [NEW] {user.username} — 账户已创建")
@@ -106,7 +164,8 @@ def replay_transactions(app):
                 to_id = system
                 amount = float(abs(tx.amount))
 
-            client.transfer(
+            throttled_call(
+                client.transfer, THROTTLE_SECONDS_TRANSFER,
                 from_user_id=from_id,
                 to_user_id=to_id,
                 amount=amount,
@@ -172,7 +231,8 @@ def sync_balances(app):
             continue
 
         try:
-            client.transfer(
+            throttled_call(
+                client.transfer, THROTTLE_SECONDS_TRANSFER,
                 from_user_id=system,
                 to_user_id=user.id,
                 amount=initial_gap,
@@ -210,7 +270,9 @@ def fix_discrepancies(app, tolerance: float = 0.01):
     - 此操作直接改远端账本，请在排查差异来源后执行
     - 若用户无 API Key（create-accounts 未执行），跳过并在日志中提示
     """
-    from app.clients.account_client import AccountClientError
+    # get_balance 限速 100/秒；此处只调用一次/用户，远高于实际限速，故不主动节流，
+    # 但 429 重试仍由 throttled_call 负责。
+    GET_BALANCE_THROTTLE = 1.05 / 100  # ~10ms — 主动节流作为兜底
 
     client = app.account_client
     system = AccountClient.SYSTEM_USER_ID
@@ -228,7 +290,9 @@ def fix_discrepancies(app, tolerance: float = 0.01):
             continue
 
         try:
-            remote = float(client.get_balance(user.id))
+            remote = float(throttled_call(
+                client.get_balance, GET_BALANCE_THROTTLE, user.id,
+            ))
         except Exception as e:
             print(f"  [ERR]  {user.username} — 远程余额查询失败: {e}")
             errors += 1
@@ -246,7 +310,8 @@ def fix_discrepancies(app, tolerance: float = 0.01):
         try:
             if diff > 0:
                 # 本地多 → 系统向用户增发
-                client.transfer(
+                throttled_call(
+                    client.transfer, THROTTLE_SECONDS_TRANSFER,
                     from_user_id=system,
                     to_user_id=user.id,
                     amount=abs(diff),
@@ -262,7 +327,8 @@ def fix_discrepancies(app, tolerance: float = 0.01):
                 )
             else:
                 # 本地少 → 用户向系统退回
-                client.transfer(
+                throttled_call(
+                    client.transfer, THROTTLE_SECONDS_TRANSFER,
                     from_user_id=user.id,
                     to_user_id=system,
                     amount=abs(diff),
