@@ -19,3 +19,4 @@ base92
 pandas
 openpyxl
 itsdangerous
+httpx

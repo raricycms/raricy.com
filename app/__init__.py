@@ -4,16 +4,24 @@ from .extensions import init_extensions
 from .config import get_config
 from .cli import register_commands
 from .cli_import import register_import_commands
+from .clients import AccountClient
 from datetime import datetime
 from werkzeug.middleware.proxy_fix import ProxyFix
 import os
+
+# 账户服务客户端（在 create_app 中通过 init_app 初始化）
+account_client = AccountClient()
 
 def create_app():
     app = Flask(__name__)
     app.config.from_object(get_config())
     # Trust reverse proxy headers from Nginx for host/scheme so url_for builds correct external URLs
     app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
-    
+
+    # 初始化账户服务客户端
+    account_client.init_app(app)
+    app.account_client = account_client
+
     # 注册自定义 Jinja2 过滤器
     @app.template_filter('datetime_format')
     def datetime_format(value, format='%Y-%m-%d %H:%M:%S'):

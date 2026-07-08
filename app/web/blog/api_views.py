@@ -3,6 +3,7 @@
 """
 from flask import request, jsonify, abort
 from flask_login import login_required, current_user
+from app.clients.account_client import AccountClientError
 from app.extensions.decorators import admin_required, authenticated_required
 from app.web.blog.services.blog_service import BlogService
 from app.web.blog.services.like_service import LikeService
@@ -138,6 +139,13 @@ def register_api_views(blog_bp):
             msg = str(e)
             code = 400 if '不足' in msg else 404
             return error_response(msg, code)
+        except AccountClientError as e:
+            # 远端账户服务不可用/失败 → fail-closed，本地已回滚
+            return error_response(
+                '鱼干服务暂不可用，请稍后再试',
+                503,
+                detail=str(e),
+            )
 
     @blog_bp.route('/<blog_id>/feeders', methods=['GET'])
     @login_required

@@ -1,6 +1,7 @@
 from functools import wraps
 from flask import Blueprint, render_template, jsonify, request
 from flask_login import login_required, current_user
+from app.clients.account_client import AccountClientError
 from app.service.checkin import (
     check_in,
     claim_fortune,
@@ -80,7 +81,15 @@ def api_claim_fortune():
     except (ValueError, TypeError):
         return jsonify({'code': 400, 'message': '无效的选择'}), 400
 
-    result = claim_fortune(current_user.id, chosen_index)
+    try:
+        result = claim_fortune(current_user.id, chosen_index)
+    except AccountClientError as e:
+        # 远端账户服务不可用/失败 → fail-closed，本地已回滚
+        return jsonify({
+            'code': 503,
+            'message': '鱼干服务暂不可用，请稍后再试',
+            'detail': str(e),
+        }), 503
 
     if result['success']:
         return jsonify({

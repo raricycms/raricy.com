@@ -23,6 +23,12 @@ class Config:
     IMAGE_UPLOAD_FOLDER = os.path.join(os.getcwd(), 'instance', 'images')
     MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10MB
 
+    # 小鱼干账户服务
+    ACCOUNT_SERVICE_URL = os.getenv('ACCOUNT_SERVICE_URL', 'http://localhost:8000')
+    ACCOUNT_SYSTEM_KEY = os.getenv('ACCOUNT_SYSTEM_KEY', '')
+    ACCOUNT_SERVICE_INTERNAL_TOKEN = os.getenv('ACCOUNT_SERVICE_INTERNAL_TOKEN', '')
+    ACCOUNT_SERVICE_TIMEOUT = int(os.getenv('ACCOUNT_SERVICE_TIMEOUT', '5'))
+
 
 class DevelopmentConfig(Config):
     """
