@@ -267,21 +267,34 @@ def register_commands(app):
     @click.option('--description', '-d', default=None, help='操作说明，会写入每条 FishTransaction')
     @click.option('--yes', '-y', is_flag=True, help='跳过确认提示')
     @click.option('--dry-run', is_flag=True, help='只显示计划，不实际执行')
-    def fish_compensate(amount, description, yes, dry_run):
+    @click.option('--rate', type=click.FloatRange(min=0.1, max=100.0), default=5.0,
+                  metavar='FLOAT',
+                  help='远端同步每秒请求数（默认 5.0；遇到 429 可调小，如 1.0）')
+    @click.option('--batch-id', default=None, metavar='ID',
+                  help='指定批次 ID（默认生成新 UUID）。重跑时传入原 batch_id，'
+                       '已成功的 transfer 会被远端幂等键去重跳过，从失败点继续。')
+    def fish_compensate(amount, description, yes, dry_run, rate, batch_id):
         """
-        系统补偿：给所有用户发放指定数量的小鱼干（fail-closed）。
+        系统补偿：给所有用户发放指定数量的小鱼干（fail-closed，限频版）。
 
-        Usage: flask fish compensate <amount> [-d "..."] [--yes] [--dry-run]
+        Usage: flask fish compensate <amount> [-d "..."] [--yes] [--dry-run] [--rate 5.0]
 
         写路径 fail-closed：先在本地为每个用户 add_fish（不 commit），
         再逐个 transfer 同步到远端账户服务；任一用户同步失败则 rollback
         整个本地事务，所有用户余额不变，返回非零退出码。
+
+        限频：远端同步间隔 = 1/--rate 秒（默认 5 req/s），避免触发账户服务 QPS 限流。
+        进度：每成功 25 位打印一次进度。
 
         幂等键格式：comp-{sha256(batch_id, user_id, amount)[:16]}
         账户服务要求 1-64 字符、仅 [a-zA-Z0-9_-]；user_id(36) + batch_id(12) +
         前缀已超 64 字符，故走 hash 短键（同 _make_feed_idempotency_key 模式）。
         同批次同用户重跑会被远端去重保护；新批次生成新 key，正常下发。
         """
+        from flask import current_app
+        from app.clients.account_client import AccountClientError
+        from app.clients import AccountClient
+
         if amount <= 0:
             click.echo('\x1b[31m错误：amount 必须为正整数\x1b[0m')
             sys.exit(1)
@@ -295,7 +308,9 @@ def register_commands(app):
 
         desc = description or '系统补偿'
         total_fish = amount * user_count
-        batch_id = uuid.uuid4().hex[:12]
+        if batch_id is None:
+            batch_id = uuid.uuid4().hex[:12]
+        interval = 1.0 / rate
 
         click.echo('\x1b[36m=== 补偿计划 ===\x1b[0m')
         click.echo(f'  批次 ID：{batch_id}')
@@ -303,6 +318,10 @@ def register_commands(app):
         click.echo(f'  单用户发放：{amount} 小鱼干')
         click.echo(f'  目标用户数：{user_count}')
         click.echo(f'  合计发放：{total_fish} 小鱼干')
+        click.echo(
+            f'  同步限频：{rate} req/s '
+            f'(间隔 {interval:.3f}s, 预计耗时 {user_count * interval:.1f}s)'
+        )
         click.echo('  流程：先本地累加 → 全部远端同步成功 → commit 本地；任一失败则整体回滚')
 
         if dry_run:
@@ -320,15 +339,13 @@ def register_commands(app):
         for user in users:
             add_fish(user.id, amount, 'system_compensate', desc, auto_commit=False)
 
-        # 第二阶段：逐个同步远端（任一失败 → 整体 rollback）
-        from flask import current_app
-        from app.clients.account_client import AccountClientError
-        from app.clients import AccountClient
-
-        click.echo(f'\x1b[36m[2/2] 同步远端账户服务...\x1b[0m')
+        # 第二阶段：逐个同步远端（限频 + 失败回滚）
+        click.echo(f'\x1b[36m[2/2] 同步远端账户服务（限频 {rate} req/s）...\x1b[0m')
         success_count = 0
         try:
-            for user in users:
+            for i, user in enumerate(users):
+                if i > 0:
+                    time.sleep(interval)
                 # 短键：账户服务要求 1-64 字符的 [a-zA-Z0-9_-]，
                 # 长 user_id (36) + 批次 ID + 描述会超限，故走 SHA-256 短键
                 short_hash = hashlib.sha256(
@@ -343,6 +360,8 @@ def register_commands(app):
                     idempotency_key=f"comp-{short_hash}",
                 )
                 success_count += 1
+                if success_count % 25 == 0 or success_count == user_count:
+                    click.echo(f'  进度：{success_count}/{user_count}')
         except AccountClientError as e:
             db.session.rollback()
             click.echo(
@@ -350,8 +369,17 @@ def register_commands(app):
                 f'本地事务已回滚\x1b[0m',
                 err=True,
             )
+            click.echo(f'  失败用户：{user.username} ({user.id})', err=True)
             click.echo(f'  原因: {e}', err=True)
-            click.echo(f'  全部 {user_count} 位用户余额未变更，请稍后重试。', err=True)
+            click.echo(f'  HTTP code: {getattr(e, "code", "N/A")}', err=True)
+            detail = getattr(e, "detail", None)
+            click.echo(f'  detail: {detail if detail else "N/A"}', err=True)
+            if getattr(e, 'code', None) == 429:
+                click.echo(
+                    f'  提示：429 限频！可降低 --rate 重试（例：--rate 1.0 或 --rate 0.5）',
+                    err=True,
+                )
+            click.echo(f'  全部 {user_count} 位用户余额未变更（已 rollback），请稍后重试。', err=True)
             sys.exit(2)
         except Exception as e:
             db.session.rollback()
@@ -360,7 +388,9 @@ def register_commands(app):
                 f'本地事务已回滚\x1b[0m',
                 err=True,
             )
+            click.echo(f'  失败用户：{user.username} ({user.id})', err=True)
             click.echo(f'  原因: {e}', err=True)
+            click.echo(f'  全部 {user_count} 位用户余额未变更（已 rollback），请稍后重试。', err=True)
             sys.exit(2)
 
         # 远端全部成功 → commit 本地
