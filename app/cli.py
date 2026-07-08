@@ -1,6 +1,7 @@
 import sys
 import time
 import uuid
+import hashlib
 
 import click
 from app.models import User
@@ -276,9 +277,10 @@ def register_commands(app):
         再逐个 transfer 同步到远端账户服务；任一用户同步失败则 rollback
         整个本地事务，所有用户余额不变，返回非零退出码。
 
-        幂等键格式：cli-compensate-{batch_id}-{user_id}-{amount}
-        batch_id 为本批次的 UUID 短串，重复执行同一命令会生成不同批次，
-        不会触发远端去重。同一批次内重跑会被远端去重保护。
+        幂等键格式：comp-{sha256(batch_id, user_id, amount)[:16]}
+        账户服务要求 1-64 字符、仅 [a-zA-Z0-9_-]；user_id(36) + batch_id(12) +
+        前缀已超 64 字符，故走 hash 短键（同 _make_feed_idempotency_key 模式）。
+        同批次同用户重跑会被远端去重保护；新批次生成新 key，正常下发。
         """
         if amount <= 0:
             click.echo('\x1b[31m错误：amount 必须为正整数\x1b[0m')
@@ -327,13 +329,18 @@ def register_commands(app):
         success_count = 0
         try:
             for user in users:
+                # 短键：账户服务要求 1-64 字符的 [a-zA-Z0-9_-]，
+                # 长 user_id (36) + 批次 ID + 描述会超限，故走 SHA-256 短键
+                short_hash = hashlib.sha256(
+                    f"compensate-{batch_id}-{user.id}-{amount}".encode()
+                ).hexdigest()[:16]
                 current_app.account_client.transfer(
                     from_user_id=AccountClient.SYSTEM_USER_ID,
                     to_user_id=user.id,
                     amount=float(amount),
                     entry_type='system_compensate',
                     description=desc,
-                    idempotency_key=f"cli-compensate-{batch_id}-{user.id}-{amount}",
+                    idempotency_key=f"comp-{short_hash}",
                 )
                 success_count += 1
         except AccountClientError as e:
