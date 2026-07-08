@@ -1,5 +1,6 @@
 import sys
 import time
+import uuid
 
 import click
 from app.models import User
@@ -258,6 +259,109 @@ def register_commands(app):
         db.session.commit()
         click.echo(f'\x1b[32m成功：已扣减 {amount} 小鱼干从 {username}\x1b[0m')
         click.echo(f'  当前余额：{balance}')
+        click.echo(f'  已同步至账户服务')
+
+    @fish_group.command('compensate')
+    @click.argument('amount', type=int)
+    @click.option('--description', '-d', default=None, help='操作说明，会写入每条 FishTransaction')
+    @click.option('--yes', '-y', is_flag=True, help='跳过确认提示')
+    @click.option('--dry-run', is_flag=True, help='只显示计划，不实际执行')
+    def fish_compensate(amount, description, yes, dry_run):
+        """
+        系统补偿：给所有用户发放指定数量的小鱼干（fail-closed）。
+
+        Usage: flask fish compensate <amount> [-d "..."] [--yes] [--dry-run]
+
+        写路径 fail-closed：先在本地为每个用户 add_fish（不 commit），
+        再逐个 transfer 同步到远端账户服务；任一用户同步失败则 rollback
+        整个本地事务，所有用户余额不变，返回非零退出码。
+
+        幂等键格式：cli-compensate-{batch_id}-{user_id}-{amount}
+        batch_id 为本批次的 UUID 短串，重复执行同一命令会生成不同批次，
+        不会触发远端去重。同一批次内重跑会被远端去重保护。
+        """
+        if amount <= 0:
+            click.echo('\x1b[31m错误：amount 必须为正整数\x1b[0m')
+            sys.exit(1)
+
+        # 列出所有用户（包括被禁言的；补偿是系统行为，与个人状态无关）
+        users = User.query.order_by(User.created_at.asc()).all()
+        user_count = len(users)
+        if user_count == 0:
+            click.echo('\x1b[33m提示：数据库中没有用户，无需补偿\x1b[0m')
+            return
+
+        desc = description or '系统补偿'
+        total_fish = amount * user_count
+        batch_id = uuid.uuid4().hex[:12]
+
+        click.echo('\x1b[36m=== 补偿计划 ===\x1b[0m')
+        click.echo(f'  批次 ID：{batch_id}')
+        click.echo(f'  类型：{desc}')
+        click.echo(f'  单用户发放：{amount} 小鱼干')
+        click.echo(f'  目标用户数：{user_count}')
+        click.echo(f'  合计发放：{total_fish} 小鱼干')
+        click.echo('  流程：先本地累加 → 全部远端同步成功 → commit 本地；任一失败则整体回滚')
+
+        if dry_run:
+            click.echo('\x1b[33m--dry-run 模式：未实际执行\x1b[0m')
+            return
+
+        if not yes:
+            click.confirm(
+                f'\x1b[33m确认向所有 {user_count} 位用户每人发放 {amount} 小鱼干（合计 {total_fish}）？\x1b[0m',
+                abort=True,
+            )
+
+        # 第一阶段：本地累加（auto_commit=False，全部留在 session 中）
+        click.echo(f'\x1b[36m[1/2] 本地累加 {user_count} 位用户余额...\x1b[0m')
+        for user in users:
+            add_fish(user.id, amount, 'system_compensate', desc, auto_commit=False)
+
+        # 第二阶段：逐个同步远端（任一失败 → 整体 rollback）
+        from flask import current_app
+        from app.clients.account_client import AccountClientError
+        from app.clients import AccountClient
+
+        click.echo(f'\x1b[36m[2/2] 同步远端账户服务...\x1b[0m')
+        success_count = 0
+        try:
+            for user in users:
+                current_app.account_client.transfer(
+                    from_user_id=AccountClient.SYSTEM_USER_ID,
+                    to_user_id=user.id,
+                    amount=float(amount),
+                    entry_type='system_compensate',
+                    description=desc,
+                    idempotency_key=f"cli-compensate-{batch_id}-{user.id}-{amount}",
+                )
+                success_count += 1
+        except AccountClientError as e:
+            db.session.rollback()
+            click.echo(
+                f'\x1b[31m失败：账户服务同步失败（已成功 {success_count}/{user_count}），'
+                f'本地事务已回滚\x1b[0m',
+                err=True,
+            )
+            click.echo(f'  原因: {e}', err=True)
+            click.echo(f'  全部 {user_count} 位用户余额未变更，请稍后重试。', err=True)
+            sys.exit(2)
+        except Exception as e:
+            db.session.rollback()
+            click.echo(
+                f'\x1b[31m失败：账户服务同步异常（已成功 {success_count}/{user_count}），'
+                f'本地事务已回滚\x1b[0m',
+                err=True,
+            )
+            click.echo(f'  原因: {e}', err=True)
+            sys.exit(2)
+
+        # 远端全部成功 → commit 本地
+        db.session.commit()
+        click.echo(
+            f'\x1b[32m成功：已向 {success_count} 位用户每人发放 {amount} 小鱼干'
+            f'（合计 {total_fish}）\x1b[0m'
+        )
         click.echo(f'  已同步至账户服务')
 
     @fish_group.command('balance')
