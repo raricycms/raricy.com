@@ -5,9 +5,13 @@ from .config import get_config
 from .cli import register_commands
 from .cli_import import register_import_commands
 from .clients import AccountClient
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from werkzeug.middleware.proxy_fix import ProxyFix
 import os
+
+# 站点统一以 UTC+8 (Asia/Shanghai) 展示时间。
+# 服务器系统时区通常为 UTC，但 `datetime.now()` 写入的 naive datetime 在展示时统一 +8 小时。
+_DISPLAY_TZ = timezone(timedelta(hours=8))
 
 # 账户服务客户端（在 create_app 中通过 init_app 初始化）
 account_client = AccountClient()
@@ -25,14 +29,22 @@ def create_app():
     # 注册自定义 Jinja2 过滤器
     @app.template_filter('datetime_format')
     def datetime_format(value, format='%Y-%m-%d %H:%M:%S'):
-        """格式化日期时间"""
+        """格式化日期时间为 UTC+8 显示。
+
+        数据库存的是 naive datetime（默认 `datetime.now()`，服务器 UTC 时区下即 UTC）。
+        远端账户服务返回的 ISO 字符串可能带时区也可能 naive。无论哪种，都统一转 UTC+8 再格式化。
+        """
         if isinstance(value, str):
             try:
-                # 如果是 ISO 格式字符串，先转换为 datetime 对象
+                # ISO 格式字符串（FastAPI/Pydantic 可能带 `Z` 或 `+00:00`）
                 value = datetime.fromisoformat(value.replace('Z', '+00:00'))
             except ValueError:
                 return value
         if isinstance(value, datetime):
+            # naive → 视为 UTC；aware → 直接 astimezone
+            if value.tzinfo is None:
+                value = value.replace(tzinfo=timezone.utc)
+            value = value.astimezone(_DISPLAY_TZ)
             return value.strftime(format)
         return value
 
