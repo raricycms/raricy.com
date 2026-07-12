@@ -1,648 +1,250 @@
+// pages/blog/_blog.scss
+// 博客详情/阅读页：token 驱动，修复未定义变量与失效选择器，统一圆角与排版。
 
-* {
-  transition: all 0.3s ease;
-  transition: border-color 0.3s ease;
-}
+a { text-decoration: none; &:hover { text-decoration: none; } }
 
-* {
-  -webkit-tap-highlight-color: transparent;
-}
+.read-hero {
+  background: var(--color-background-page);
+  padding: var(--space-12) 0 var(--space-8);
+  text-align: center;
 
-a { 
-  text-decoration: none;
-  &:hover {
-    text-decoration: none;
+  h1 {
+    font-size: clamp(1.8rem, 4vw, 2.4rem);
+    font-weight: var(--weight-bold);
+    letter-spacing: var(--tracking-tight);
+    color: var(--color-text-primary);
+    margin-bottom: var(--space-4);
   }
 }
 
-.read-hero {
-    background: var(--background-color);
-    padding: 50px 0 30px;
-    text-align: center;
-    &h1 {
-        font-size: 2.2rem;
-        font-weight: 400;
-        color: var(--color-text-primary);
-        margin-bottom: 15px;
-    }
-}
-
 .blog-meta {
-    color: var(--color-text-secondary);
-    font-size: 1rem;
-    margin-bottom: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 20px;
-    &::before {
-        margin-right: 5px;
-    }
+  color: var(--color-text-muted);
+  font-size: var(--text-base);
+  margin-bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-5);
 }
+.blog-date::before { content: '📅'; margin-right: var(--space-1); }
 
-.blog-date::before {
-    content: '📅';
-    margin-right: 5px;
-}
-
+// ── 正文容器 ──────────────────────────────────────────────────────────
 .blog-content-container {
-    max-width: 900px;
-    margin: 40px auto 60px;
-    background: var(--color-background-card);
-    border-radius: 30px;
-    padding: 40px;
-    font-size: 1.15rem;
-    line-height: 2;
-    color: var(--color-text-primary);
-    p {
-        margin-bottom: 1.5em;
-        text-align: justify;
-    }
-    h1, h2, h3, h4, h5, h6 {
-        margin: 2em 0 1em;
-        font-weight: 600;
-        color: var(--color-text-primary);
-    }
-    h1 {
-        font-size: 1.8rem;
-        border-bottom: 2px solid var(--color-brand-primary);
-        padding-bottom: 10px;
-    }
-    h2 {
-        font-size: 1.5rem;
-    }
-    h3 {
-        font-size: 1.3rem;
-    }
-    pre {
-        background: var(--color-background-content);
-        border-radius: 6px;
-        padding: 15px;
-        overflow-x: auto;
-        margin: 1.5em 0;
-        code {
-            background: none;
-            padding: 0;
-        }
-    }
-    code {
-        background: var(--color-background-content);
-        padding: 2px 6px;
-        border-radius: 3px;
-        font-size: 0.9em;
-    }
-    a {
-        color: var(--color-brand-primary);
-        text-decoration: none;
-        border-bottom: 1px solid transparent;
-        transition: border-bottom 0.3s ease;
-        &:hover {
-            color: var(--color-brand-primary);
-            border-bottom: 1px solid var(--color-brand-primary);
-            text-decoration: none;
-        }
-    }
-    blockquote {
-        border-left: 4px solid var(--color-text-secondary);
-        margin: 1.5em 0;
-        padding: 5px 15px;
-        background: var(--color-background-content);
-        color: var(--color-text-secondary);
-    };
-    hr {
-        border: 1px solid var(--color-text-tertiary);
-    }
-}
+  max-width: 820px;
+  margin: var(--space-8) auto var(--space-16);
+  background: var(--color-background-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  padding: clamp(1.5rem, 4vw, 2.75rem);
+  font-size: 1.0625rem;
+  line-height: var(--leading-relaxed);
+  color: var(--color-text-primary);
 
-.blog-content-container-container {
-    margin: 0 auto;
-    padding: 0 20px;
-}
+  p { margin-bottom: 1.4em; }
+  h1, h2, h3, h4, h5, h6 { margin: 1.8em 0 0.8em; font-weight: var(--weight-semibold); letter-spacing: var(--tracking-snug); color: var(--color-text-primary); }
+  h1 { font-size: 1.7rem; border-bottom: 1px solid var(--color-border); padding-bottom: var(--space-3); }
+  h2 { font-size: 1.45rem; }
+  h3 { font-size: 1.25rem; }
 
-
-
-.blog-content-container blockquote p {
-    margin-block-start: 0px !important;
-    margin-block-end: 0px !important;
-}
-
-/* 列表样式 */
-.blog-content-container ul,
-.blog-content-container ol {
+  pre {
+    background: var(--color-background-content);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: var(--space-4);
+    overflow-x: auto;
     margin: 1.5em 0;
-    padding-left: 2em;
+    code { background: none; padding: 0; }
+  }
+  code { background: var(--color-background-content); padding: 2px 6px; border-radius: var(--radius-xs); font-size: 0.9em; font-family: var(--font-mono); }
+
+  a {
+    color: var(--color-brand-primary);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    transition: border-color var(--duration) var(--ease-standard), color var(--duration) var(--ease-standard);
+    &:hover { color: var(--color-brand-primary-hover); border-bottom-color: currentColor; text-decoration: none; }
+  }
+  blockquote {
+    border-left: 3px solid var(--color-brand-primary);
+    margin: 1.5em 0;
+    padding: var(--space-2) var(--space-4);
+    background: var(--color-background-content);
+    color: var(--color-text-secondary);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  }
+  hr { border: 0; height: 1px; background: var(--color-border); margin: 2em 0; }
 }
 
-.blog-content-container li {
-    margin-bottom: 0.5em;
-}
+.blog-content-container-container { margin: 0 auto; padding: 0 var(--space-5); }
+.blog-content-container blockquote p { margin-block-start: 0 !important; margin-block-end: 0 !important; }
 
-/* 任务列表样式 */
-.blog-content-container li input[type="checkbox"] {
-    margin-right: 0.5em;
-    cursor: default;
-}
-
-/* 任务列表样式 - 使用更兼容的选择器 */
-.blog-content-container li.task-list-item {
-    list-style: none;
-    margin-left: -1.5em;
-}
-
-/* 后备样式：如果 :has 选择器不被支持，这个样式会作为备选 */
+.blog-content-container ul, .blog-content-container ol { margin: 1.4em 0; padding-left: 2em; }
+.blog-content-container li { margin-bottom: 0.5em; }
+.blog-content-container li input[type="checkbox"] { margin-right: 0.5em; cursor: default; }
+.blog-content-container li.task-list-item { list-style: none; margin-left: -1.5em; }
 @supports not (selector(:has(*))) {
-    .blog-content-container li:first-child input[type="checkbox"] {
-        margin-left: -1.5em;
-    }
+  .blog-content-container li:first-child input[type="checkbox"] { margin-left: -1.5em; }
 }
 
-/* 图片样式 */
 .blog-content-container img {
-    max-width: 100%;
-    height: auto;
-    border-radius: 6px;
-    margin: 1.5em 0;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-md);
+  margin: 1.5em 0;
+  box-shadow: var(--shadow-sm);
 }
 
-/* 表格样式 */
-.blog-content-container table {
-    width: 100%;
-    border-collapse: collapse;
-    margin: 1.5em 0;
-    border-radius: 15px;
-}
+.blog-content-container table { width: 100%; border-collapse: collapse; margin: 1.5em 0; }
+.blog-content-container th, .blog-content-container td { border-bottom: 1px solid var(--color-border); padding: var(--space-3); text-align: left; }
+.blog-content-container th { background: var(--color-background-content); font-weight: var(--weight-semibold); }
 
-.blog-content-container th,
-.blog-content-container td {
-    border-bottom: 1px solid var(--color-text-tertiary);
-    padding: 12px;
-    text-align: left;
-}
+// MathJax
+.blog-content-container .MathJax { font-size: 1.1em !important; max-width: 100%; }
+.blog-content-container .MathJax_Display { margin: 1.5em 0; text-align: center; overflow-x: auto; overflow-y: hidden; }
+.blog-content-container mjx-container[jax="CHTML"][display="true"] { margin: 1.5em 0; text-align: center; overflow-x: auto; overflow-y: hidden; }
+.blog-content-container mjx-container[jax="CHTML"] { font-size: 1.1em; max-width: 100%; }
 
-.blog-content-container th {
-    background: var(--color-background-content);
-    font-weight: 600;
-}
-
-/* MathJax 数学公式样式 */
-.blog-content-container .MathJax {
-    font-size: 1.1em !important;
-    max-width: 100%;
-}
-
-.blog-content-container .MathJax_Display {
-    margin: 1.5em 0;
-    text-align: center;
-    overflow-x: auto;
-    overflow-y: hidden;
-}
-
-/* MathJax SVG 输出样式 */
-.blog-content-container mjx-container[jax="CHTML"][display="true"] {
-    margin: 1.5em 0;
-    text-align: center;
-    overflow-x: auto;
-    overflow-y: hidden;
-}
-
-.blog-content-container mjx-container[jax="CHTML"] {
-    font-size: 1.1em;
-    max-width: 100%;
-}
-
-
+// 代码高亮块
 .blog-content-container .highlight {
-    background: var(--color-background-content);
-    /* border: 1px solid #e9ecef; */
-    border-radius: 15px;
-    padding: 15px;
-    overflow-x: auto;
-    margin: 1.5em 0;
-    position: relative;
+  background: var(--color-background-content);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  overflow-x: auto;
+  margin: 1.5em 0;
+  position: relative;
 }
+.blog-content-container .highlight pre { background: none; border: none; padding: 0; margin: 0; font-family: var(--font-mono); font-size: 0.9em; line-height: 1.5; }
+.blog-content-container .highlight code { background: none; padding: 0; border-radius: 0; font-size: inherit; }
+.blog-content-container code:not(.highlight code) { background: var(--color-background-content); padding: 2px 6px; border-radius: var(--radius-xs); font-size: 0.9em; font-family: var(--font-mono); color: var(--color-text-primary); }
 
-.blog-content-container .highlight pre {
-    background: none;
-    border: none;
-    padding: 0;
-    margin: 0;
-    font-family: monospace;
-    font-size: 0.9em;
-    line-height: 1.4;
-}
-
-.blog-content-container .highlight code {
-    background: none;
-    padding: 0;
-    border-radius: 0;
-    font-size: inherit;
-}
-
-/* 行内代码样式 */
-.blog-content-container code:not(.highlight code) {
-    background: var(--color-background-content);
-    padding: 2px 6px;
-    border-radius: 5px;
-    font-size: 0.9em;
-    font-family: monospace;
-    color: var(--color-text-primary);
-}
-
-
-
-/* 代码复制按钮样式优化 */
+// 复制按钮
 .copy-btn {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    background: var(--color-brand-secondary);
-    color: var(--color-brand-primary);
-    border: none;
-    padding: 5px 10px;
-    border-radius: 999px;
-    font-size: 0.9rem;
-    font-weight: bold;
-    cursor: pointer;
-    /* opacity: 0.8; */
-    transition: all 0.2s ease;
-    font-family: system-ui, -apple-system, sans-serif;
-    z-index: 10;
-    user-select: none;
-    backdrop-filter: blur(10px);
-    &:hover {
-        opacity: 1;
-        background: var(--color-brand-primary);
-        color: #fff;
-    }
-    &:disabled {
-        cursor: not-allowed;
-    }
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  background: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+  border: none;
+  padding: 5px 12px;
+  border-radius: var(--radius-full);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+  z-index: 10;
+  user-select: none;
+  backdrop-filter: blur(10px);
+  transition: background-color var(--duration) var(--ease-standard), color var(--duration) var(--ease-standard);
+  &:hover { background: var(--color-brand-primary); color: #fff; }
+  &:disabled { cursor: not-allowed; opacity: 0.6; }
 }
 
-
-
-.read-controls {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 16px;
-    margin: 30px auto 40px;
-    max-width: 700px;
-    padding: 0 20px;
-    flex-wrap: wrap;
-}
-
-/* 管理员操作区域单独一行 */
-.admin-controls {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 12px;
-    margin: -10px auto 30px; /* 与上方控件间距更紧凑一点 */
-    max-width: 900px;
-    padding: 0 20px;
-    flex-wrap: wrap;
-}
+// ── 阅读控件 ──────────────────────────────────────────────────────────
+.read-controls { display: flex; justify-content: center; align-items: center; gap: var(--space-4); margin: var(--space-8) auto var(--space-10); max-width: 700px; padding: 0 var(--space-5); flex-wrap: wrap; }
+.admin-controls { display: flex; justify-content: center; align-items: center; gap: var(--space-3); margin: calc(-1 * var(--space-2)) auto var(--space-8); max-width: 900px; padding: 0 var(--space-5); flex-wrap: wrap; }
 
 .read-btn {
-    background: #2c3e50;
-    color: white;
-    border: none;
-    padding: 12px 24px;
-    border-radius: 6px;
-    font-weight: 500;
-    text-decoration: none;
-    font-size: 1rem;
-    transition: all 0.3s ease;
-    min-width: 120px;
-    text-align: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  background: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+  border: none;
+  padding: 10px 20px;
+  border-radius: var(--radius-full);
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-md);
+  text-decoration: none;
+  min-width: 116px;
+  text-align: center;
+  cursor: pointer;
+  transition: background-color var(--duration) var(--ease-standard), color var(--duration) var(--ease-standard), transform var(--duration-fast) var(--ease-standard);
+  &:hover { background: var(--color-brand-primary); color: #fff; text-decoration: none; }
+  &:active { transform: scale(0.97); }
+  &:focus-visible { outline: none; box-shadow: var(--ring); }
 }
 
-.read-btn:hover {
-    background: #34495e;
-    color: white;
-    text-decoration: none;
-    transform: translateY(-1px);
+// ── 点赞 / 投喂 ───────────────────────────────────────────────────────
+%engage-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: var(--color-background-content);
+  color: var(--color-text-secondary);
+  padding: 9px 16px;
+  border-radius: var(--radius-full);
+  border: none;
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-md);
+  cursor: pointer;
+  transition: background-color var(--duration) var(--ease-standard), color var(--duration) var(--ease-standard);
+  &:disabled { opacity: 0.6; cursor: not-allowed; }
+  &:focus-visible { outline: none; box-shadow: var(--ring); }
 }
+%engage-badge { color: #fff; font-weight: var(--weight-bold); padding: 3px 8px; border-radius: var(--radius-full); font-size: var(--text-sm); line-height: 1.2; }
 
-
-
-
-/* 点赞按钮样式 */
 .like-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    background: var(--color-text-tertiary);
-    color: var(--color-text-secondary);
-    padding: 10px 16px;
-    border-radius: 999px;
-    border: none;
-    font-weight: bold;
-    font-size: 16px;
-    transition: all 0.3s ease;
-    cursor: pointer;
-    &:hover {
-        background: var(--color-warning-secondary);
-        color: var(--color-warning-primary);
-        .like-count-badge {
-            background: var(--color-warning-primary);
-            color: #fff;
-        }
-    }
+  @extend %engage-btn;
+  .bi { font-size: 1.1rem; }
+  &:hover, &.liked { background: var(--color-warning-secondary); color: var(--color-warning-primary); }
+  &:hover .like-count-badge, &.liked .like-count-badge { background: var(--color-warning-primary); color: #fff; }
 }
+.like-count-badge { @extend %engage-badge; background: var(--color-text-muted); }
 
-.like-btn:disabled {
-    opacity: 0.7;
-    cursor: not-allowed;
-}
-
-.like-btn .bi {
-    font-size: 1.1rem;
-}
-
-.like-count-badge {
-    background: var(--color-text-secondary);
-    color: #fff;
-    font-weight: bold;
-    padding: 4px 8px;
-    border-radius: 999px;
-    font-weight: bold;
-    font-size: 0.85rem;
-    line-height: 1.2;
-}
-
-.like-btn.liked {
-    background: var(--color-warning-secondary);
-    color: var(--color-warning-primary);
-}
-
-.like-btn.liked .like-count-badge {
-    background: var(--color-warning-primary);
-    color: #fff;
-}
-
-/* 投喂按钮样式（参照点赞按钮） */
 .fish-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    background: var(--color-text-tertiary);
-    color: var(--color-text-secondary);
-    padding: 10px 16px;
-    border-radius: 999px;
-    border: none;
-    font-weight: bold;
-    font-size: 16px;
-    transition: all 0.3s ease;
-    cursor: pointer;
-
-    &:hover {
-        background: var(--color-success-secondary);
-        color: var(--color-success-primary);
-        .fish-count-badge {
-            background: var(--color-success-primary);
-            color: #fff;
-        }
-    }
-
-    &:disabled {
-        opacity: 0.7;
-        cursor: not-allowed;
-    }
+  @extend %engage-btn;
+  &:hover, &.fish-btn--fed { background: var(--color-success-secondary); color: var(--color-success-primary); }
+  &:hover .fish-count-badge, &.fish-btn--fed .fish-count-badge { background: var(--color-success-primary); color: #fff; }
 }
+.fish-count-badge { @extend %engage-badge; background: var(--color-text-muted); }
 
-.fish-count-badge {
-    background: var(--color-text-secondary);
-    color: #fff;
-    font-weight: bold;
-    padding: 4px 8px;
-    border-radius: 999px;
-    font-size: 0.85rem;
-    line-height: 1.2;
-}
+#toggle-theme { font-size: var(--text-base); padding: 8px 16px; }
 
-.fish-btn--fed {
-    background: var(--color-success-secondary);
-    color: var(--color-success-primary);
+// 阅读进度条
+.reading-progress { position: fixed; top: 0; left: 0; width: 0; height: 3px; background: var(--color-brand-primary); z-index: var(--z-nav); transition: width 0.1s linear; }
 
-    .fish-count-badge {
-        background: var(--color-success-primary);
-        color: #fff;
-    }
-}
+.blog-detail { max-width: 940px; margin: var(--space-12) auto; padding: 0 var(--space-5); overflow-x: auto; }
 
-
-/* 主题切换按钮样式 */
-#toggle-theme {
-    font-size: 0.9rem;
-    padding: 8px 16px;
-}
-//     border-radius: 20px;
-//     transition: all 0.3s ease;
-//     margin-top: 15px;
-// }
-
-/* 阅读进度条 */
-.reading-progress {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 0%;
-    height: 3px;
-    background: #3498db;
-    z-index: 1000;
-    transition: width 0.1s ease;
-}
-
-.blog-detail {
-    max-width: 940px;
-    margin: 50px auto;
-    padding: 0 20px;
-    overflow-x: auto;
-}
-
+// ── 评论 ──────────────────────────────────────────────────────────────
 .comment-meta {
-    font-size: 1rem;
-    color: var(--color-text-secondary);
-    margin-bottom: 0.5rem;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    .comment-author-avatar {
-        width: 24px;
-        height: 24px;
-        border-radius: 10%;
-        object-fit: cover;
-    }
+  font-size: var(--text-base);
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-2);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  .comment-author-avatar { width: 24px; height: 24px; border-radius: var(--radius-xs); object-fit: cover; }
 }
-
-.comment-btn {
-    background-color: var(--box-bg);
-    color: var(--text);
-}
-
-.comment-form textarea {
-    background-color: var(--color-background-card);
-    color: var(--color-text-primary);
-}
-
+.comment-btn { background-color: var(--color-background-content); color: var(--color-text-primary); }
+.comment-form textarea { background-color: var(--color-background-card); color: var(--color-text-primary); }
 .comment-list {
-    width: 100%;
-    background-color: var(--box-bg);
-    padding-left: 15px;
-    list-style: none;
-    padding-left: 15px;
-    margin-left: 15px;
-    margin-bottom: 15px;
-    overflow-wrap: break-word;
-    margin-top: 15px;
-    border-left: 3px solid var(--color-brand-secondary);
-    line-height: 1.5;
-    .comment-section > & {
-        border-left: none;
-        padding-left: 0;
-        margin-left: 0;
-    }
+  width: 100%;
+  list-style: none;
+  padding-left: var(--space-4);
+  margin: var(--space-4) 0 var(--space-4) var(--space-4);
+  overflow-wrap: break-word;
+  border-left: 2px solid var(--color-border);
+  line-height: var(--leading-normal);
+  .comment-section > & { border-left: none; padding-left: 0; margin-left: 0; }
 }
 
-
-.read-btn {
-    background: var(--color-brand-secondary);
-    color: var(--color-brand-primary);
-    border-radius: 999px;
-    font-weight: bold;
-    font-size: 17px;
-    &:hover {
-        background: var(--color-brand-primary);
-        color: #fff;
-    }
-}
-
+// ── 响应式 ────────────────────────────────────────────────────────────
 @media (max-width: 768px) {
-    .read-hero h1 {
-        font-size: 1.8rem;
-    }
-
-    .blog-meta {
-        flex-direction: column;
-        gap: 10px;
-    }
-
-    .blog-content-container {
-        padding: 25px 20px;
-        margin: 20px auto 40px;
-        font-size: 1.1rem;
-        line-height: 1.8;
-    }
-    .blog-detail {
-        margin: 20px auto 40px;
-    }
-    .read-controls {
-        padding: 0 15px;
-        margin: 20px auto 30px;
-        gap: 12px;
-    }
-
-    .read-btn {
-        padding: 10px 16px;
-        font-size: 0.9rem;
-        min-width: 100px;
-    }
-
-    .blog-content-container-container {
-        padding: 0 10px;
-    }
-
-    .blog-content-container h1 {
-        font-size: 1.5rem;
-    }
-
-    .blog-content-container h2 {
-        font-size: 1.3rem;
-    }
-
-    .blog-content-container h3 {
-        font-size: 1.2rem;
-    }
-
-    /* 移动端：让复制按钮不遮挡代码，放到代码块下方显示 */
-    .copy-btn {
-        position: static;
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        top: auto;
-        right: auto;
-        margin-top: 8px;
-        padding: 6px 10px;
-        font-size: 0.85rem;
-        width: auto;
-    }
-    /* 代码块在移动端内边距稍微增大，避免拥挤 */
-    .blog-content-container .highlight {
-        padding: 12px;
-    }
-
-    /* 移动端数学公式优化 */
-    .blog-content-container .MathJax_Display,
-    .blog-content-container mjx-container[jax="CHTML"][display="true"] {
-        margin: 1em 0;
-        font-size: 0.9em;
-    }
-
-    .blog-content-container .MathJax,
-    .blog-content-container mjx-container[jax="CHTML"] {
-        font-size: 0.9em !important;
-    }
+  .read-hero h1 { font-size: 1.6rem; }
+  .blog-meta { flex-direction: column; gap: var(--space-2); }
+  .blog-content-container { padding: var(--space-5) var(--space-4); margin: var(--space-5) auto var(--space-10); font-size: 1rem; line-height: var(--leading-normal); }
+  .blog-detail { margin: var(--space-5) auto var(--space-10); }
+  .read-controls { padding: 0 var(--space-4); margin: var(--space-5) auto var(--space-8); gap: var(--space-3); }
+  .read-btn { padding: 9px 16px; font-size: var(--text-base); min-width: 100px; }
+  .blog-content-container-container { padding: 0 var(--space-3); }
+  .blog-content-container h1 { font-size: 1.4rem; }
+  .blog-content-container h2 { font-size: 1.25rem; }
+  .blog-content-container h3 { font-size: 1.15rem; }
+  .copy-btn { position: static; display: inline-flex; align-items: center; gap: var(--space-2); margin-top: var(--space-2); padding: 6px 10px; font-size: var(--text-sm); }
+  .blog-content-container .highlight { padding: var(--space-3); }
+  .blog-content-container .MathJax_Display,
+  .blog-content-container mjx-container[jax="CHTML"][display="true"] { margin: 1em 0; font-size: 0.9em; }
+  .blog-content-container .MathJax,
+  .blog-content-container mjx-container[jax="CHTML"] { font-size: 0.9em !important; }
 }
-
-/* CSS 变量 */
-// :root {
-//     --bg: #f3f5f7;
-//     --text: #2c3e50;
-//     --box-bg: #ffffff;
-//     --hero-bg: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-//     --btn-bg: #2c3e50;
-//     --btn-hover-bg: #34495e;
-//     --shadow: 0 2px 16px rgba(0, 0, 0, 0.06);
-//     --code-bg: #f8f9fa;
-//     --border-color: #e9ecef;
-//     --link-color: #3498db;
-//     --link-hover-color: #2980b9;
-//     --slim-color: #708090;
-// }
-
-// body.dark-mode {
-//     --bg: #121212;
-//     --text: #ecf0f1;
-//     --box-bg: #1e1e1e;
-//     --hero-bg: linear-gradient(135deg, #1c1d22 0%, #212224 100%);
-//     --btn-bg: #3498db;
-//     --btn-hover-bg: #2980b9;
-//     --shadow: 0 2px 16px rgba(0, 0, 0, 0.3);
-//     --code-bg: #262626;
-//     --border-color: #4a5568;
-//     --link-color: #5dade2;
-//     --link-hover-color: #3498db;
-//     --slim-color: #a0b0c0;
-// }
-
-body {
-    background-color: var(--color-background-page);
-    color: var(--color-text-primary);
-    transition: background-color 0.3s ease, color 0.3s ease;
-}
-
-
-// .blog-content-container th,
-// .blog-content-container td {
-//     border-color: var(--border-color);
-// }
-
-
-// .blog-content-container a:hover {
-//     opaci
-// }
-

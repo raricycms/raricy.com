@@ -1,57 +1,71 @@
+// components/_pagination.scss
+// 分页：token 驱动，含 hover / active / focus。
+
 .pagination {
-    display: flex;
-    justify-content: center;
-    margin-top: 1rem;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.2rem;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-top: var(--space-6);
 }
+
 .page-link {
-    padding: 0.4rem 0.7rem;
-    border: 1px solid var(--color-border);
-    border-radius: 6px;
-    background: var(--color-background-card);
-    font-size: 0.85rem;
-    color: var(--color-text-primary);
-    text-decoration: none;
-    display: inline-block;
-}
-.page-link:hover {
-    background: var(--color-brand-secondary);
-}
-.page-link.active {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 38px;
+  height: 38px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-background-card);
+  font-size: var(--text-base);
+  color: var(--color-text-primary);
+  text-decoration: none;
+  transition: background-color var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard);
+
+  &:hover { background: var(--color-background-content); border-color: var(--color-border-strong); color: var(--color-text-primary); }
+  &:focus-visible { outline: 0; box-shadow: var(--ring); }
+
+  &.active {
     background: var(--color-brand-primary);
     color: #fff;
     border-color: var(--color-brand-primary);
+  }
 }
+
 .page-ellipsis {
-    padding: 0.4rem 0.3rem;
-    font-size: 0.85rem;
-    color: var(--color-text-secondary);
+  padding: 0 var(--space-1);
+  font-size: var(--text-base);
+  color: var(--color-text-muted);
 }
+
 .page-jump {
-    display: inline-flex;
-    align-items: center;
-    margin-left: 0.8rem;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-left: var(--space-3);
 }
+
 .page-input {
-    width: 3.5rem;
-    padding: 0.35rem 0.4rem;
-    border: 1px solid var(--color-border);
-    border-radius: 6px;
-    font-size: 0.85rem;
-    text-align: center;
-    background: var(--color-background-card);
-    color: var(--color-text-primary);
-    -moz-appearance: textfield;
+  width: 3.25rem;
+  height: 38px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-base);
+  text-align: center;
+  background: var(--color-background-card);
+  color: var(--color-text-primary);
+  -moz-appearance: textfield;
+  transition: border-color var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-fast) var(--ease-standard);
+
+  &:focus { outline: 0; border-color: var(--color-brand-primary); box-shadow: var(--ring); }
+  &::-webkit-outer-spin-button, &::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 }
-.page-input::-webkit-outer-spin-button,
-.page-input::-webkit-inner-spin-button {
-    -webkit-appearance: none;
-    margin: 0;
-}
-.page-btn {
-    cursor: pointer;
-    margin-left: 0.3rem;
-    white-space: nowrap;
-}
+
+.page-btn { cursor: pointer; margin-left: var(--space-1); white-space: nowrap; }

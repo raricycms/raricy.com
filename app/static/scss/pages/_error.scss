@@ -4,15 +4,15 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: calc(100vh - 62px - 120px); // viewport minus navbar minus approx footer
-  padding: 2rem 1rem;
+  min-height: calc(100vh - 60px - 140px); // viewport minus navbar minus approx footer
+  padding: var(--space-10) var(--space-4);
 }
 
 .error-card {
   background: var(--color-background-card);
-  border-radius: 30px;
+  border-radius: var(--radius-2xl);
   box-shadow: var(--shadow-card);
-  padding: 3rem 2rem;
+  padding: clamp(2rem, 5vw, 3.5rem) clamp(1.5rem, 4vw, 3rem);
   text-align: center;
   max-width: 560px;
   width: 100%;
@@ -20,75 +20,41 @@
 }
 
 .error-code {
-  font-size: 7rem;
-  font-weight: 900;
+  font-size: clamp(5rem, 14vw, 7rem);
+  font-weight: 800;
   line-height: 1;
   color: var(--color-brand-primary);
-  margin: 0 0 0.5rem;
-  letter-spacing: -0.03em;
+  margin: 0 0 var(--space-3);
+  letter-spacing: var(--tracking-tighter);
 }
 
 .error-title {
-  font-size: 1.75rem;
-  font-weight: 700;
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-bold);
   color: var(--color-text-primary);
-  margin-bottom: 0.75rem;
+  margin-bottom: var(--space-3);
 }
 
 .error-message {
-  font-size: 1.05rem;
+  font-size: var(--text-md);
   color: var(--color-text-secondary);
-  margin-bottom: 0.5rem;
-  line-height: 1.7;
+  margin-bottom: var(--space-2);
+  line-height: var(--leading-relaxed);
 }
 
 .error-hint {
-  font-size: 0.95rem;
-  color: var(--color-text-secondary);
-  margin-bottom: 2rem;
-  line-height: 1.7;
-  opacity: 0.8;
+  font-size: var(--text-base);
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-8);
+  line-height: var(--leading-relaxed);
 }
 
 .error-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.75rem;
+  gap: var(--space-3);
   justify-content: center;
-  margin-bottom: 2.5rem;
-
-  // Ensure buttons in error-actions use inline-flex for icon alignment
-  .button-primary,
-  .button-outline {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-  }
-}
-
-// Pill-shaped outline button — consistent with .button-primary but outlined
-.button-outline {
-  display: inline-block;
-  padding: 10px 16px;
-  font-size: 16px;
-  font-weight: bold;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--color-brand-primary);
-  border: 2px solid var(--color-brand-primary);
-  cursor: pointer;
-  text-decoration: none;
-  transition: all 0.2s ease;
-
-  &:hover {
-    background: var(--color-brand-primary);
-    color: #fff;
-    text-decoration: none;
-  }
-
-  &:active {
-    filter: brightness(0.85);
-  }
+  margin-bottom: var(--space-10);
 }
 
 // Quick links section

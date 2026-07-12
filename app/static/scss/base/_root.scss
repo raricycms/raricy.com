@@ -1,72 +1,231 @@
-// @use '../abstracts/variables' as v;
-
 // base/_root.scss
+// ─────────────────────────────────────────────────────────────────────────
+// 设计令牌中枢（Design tokens）
+//
+// 说明：
+// - 所有旧变量名（--color-*, --shadow-*）均保留，页面无需改动即可整体提质。
+// - 旧变量的“语义方向”保持不变（浅的仍浅、深的仍深），仅将色值升级为更克制、
+//   更现代的中性体系（近 Apple / 一线 SaaS 观感）。
+// - 新增：字体族、字号/行高/字重/字距刻度、完整间距、圆角、多层柔和阴影、
+//   动效缓动与时长、focus ring、层级 z-index。
+// ─────────────────────────────────────────────────────────────────────────
 
 @use '../abstracts/theme-map' as *;
 
 :root,
-  [data-theme="light"] {
-    --color-brand-primary: #2563EB;
-    --color-brand-secondary: rgba(37, 99, 235, 0.1);
-    --color-background-card: #fff;
-    --color-background-page: #F8FAFC;
-    --color-background-content: #eff2f5;
-    --color-background-card-unrend: #fffdf0;
-    --color-background-subtle: #f3f4f6;
-    --color-background-highlight: #eef2ff;
-    --color-border: #E2E8F0;
-    --color-border-unread: #f1c40f;
-    --color-border-highlight: #007bff;
-    --color-text-primary: #0f172a;
-    --color-text-secondary: #64748B;
-    --color-text-tertiary: #dde4ee;
-    --color-warning-primary: #ea3b3b;
-    --color-warning-secondary: rgba(255, 47, 47, 0.1);
-    --color-success-primary: #10b981;
-    --color-success-secondary: rgba(16, 185, 129, 0.1);
-    --color-info-secondary: rgba(59, 130, 246, 0.08);
-    --shadow-xs: 0 2px 10px rgba(0, 0, 0, 0.05);
-    --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.1);
-    --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.08);
-    --shadow-card-hover: 0 8px 30px rgba(0, 0, 0, 0.12);
-    --shadow-card-brand: 0 2px 25px rgba(37, 99, 235, 0.15);
-  }
-  [data-theme="dark"] {
-    --color-brand-primary: #23A5FF;
-    --color-brand-secondary: rgba(35,165,255,0.1);
-    --color-background-page: #131517;
-    --color-background-card: #181A1D;
-    --color-background-content: #21252A;
-    --color-background-card-unread: #08102D;
-    --color-background-subtle: #1e2024;
-    --color-background-highlight: #1a2040;
-    --color-border: #334155;
-    --color-border-unread: #033ae3;
-    --color-border-highlight: #23A5FF;
-    --color-text-primary: #f1f5f9;
-    --color-text-secondary: #94A3B8;
-    --color-text-tertiary: #2b3036;
-    --color-warning-primary: #FF3535;
-    --color-warning-secondary: rgba(255, 53, 53, 0.1);
-    --color-success-primary: #10b981;
-    --color-success-secondary: rgba(16, 185, 129, 0.12);
-    --color-info-secondary: rgba(59, 130, 246, 0.12);
-    --shadow-xs: 0 2px 10px rgba(0, 0, 0, 0.2);
-    --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.25);
-    --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.3);
-    --shadow-card-hover: 0 8px 30px rgba(0, 0, 0, 0.4);
-    --shadow-card-brand: 0 2px 20px rgba(35, 165, 255, 0.1);
-  }
+[data-theme="light"] {
+  // ── 字体族 ────────────────────────────────────────────────────────────
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
+    "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+    "Helvetica Neue", Helvetica, Arial, system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
 
+  // ── 字号刻度（rem，1rem = 16px）───────────────────────────────────────
+  --text-xs: 0.75rem;      // 12
+  --text-sm: 0.8125rem;    // 13
+  --text-base: 0.9375rem;  // 15  正文
+  --text-md: 1rem;         // 16
+  --text-lg: 1.125rem;     // 18
+  --text-xl: 1.375rem;     // 22
+  --text-2xl: 1.75rem;     // 28
+  --text-3xl: 2.25rem;     // 36
+  --text-4xl: 3rem;        // 48
+  --text-5xl: 3.75rem;     // 60
 
+  // ── 行高 ──────────────────────────────────────────────────────────────
+  --leading-none: 1;
+  --leading-tight: 1.1;
+  --leading-snug: 1.3;
+  --leading-normal: 1.55;
+  --leading-relaxed: 1.75;
 
+  // ── 字重 ──────────────────────────────────────────────────────────────
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
 
+  // ── 字距 ──────────────────────────────────────────────────────────────
+  --tracking-tighter: -0.03em;
+  --tracking-tight: -0.02em;
+  --tracking-snug: -0.01em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.02em;
 
+  // ── 间距（4px 基准）───────────────────────────────────────────────────
+  --space-0: 0;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 28px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-14: 56px;
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-24: 96px;
+  --space-32: 128px;
 
-/* Ensure footer stays at bottom when content is short */
+  // ── 圆角（更柔）───────────────────────────────────────────────────────
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 22px;
+  --radius-2xl: 30px;
+  --radius-full: 999px;
+
+  // ── 容器 ──────────────────────────────────────────────────────────────
+  --container-max: 1120px;
+  --container-narrow: 720px;
+
+  // ── 动效 ──────────────────────────────────────────────────────────────
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.5, 1);
+  --duration-fast: 120ms;
+  --duration: 200ms;
+  --duration-slow: 320ms;
+
+  // ── 层级 ──────────────────────────────────────────────────────────────
+  --z-nav: 1030;
+  --z-dropdown: 2000;
+  --z-modal: 3000;
+  --z-toast: 4000;
+
+  // ── 品牌色 ────────────────────────────────────────────────────────────
+  --color-brand-primary: #0A84FF;
+  --color-brand-primary-hover: #0071E3;
+  --color-brand-strong: #0058B9;
+  --color-brand-secondary: rgba(10, 132, 255, 0.10);
+  --color-brand-tint: rgba(10, 132, 255, 0.06);
+
+  // ── 背景层次（冷中性灰）───────────────────────────────────────────────
+  --color-background-page: #FBFBFD;
+  --color-background-card: #FFFFFF;
+  --color-background-content: #F5F5F7;
+  --color-background-subtle: #F5F5F7;
+  --color-background-highlight: #EFF4FF;
+  --color-background-card-unrend: #FFFDF5;
+  --color-background-card-unread: #EFF4FF;
+
+  // ── 边框 ──────────────────────────────────────────────────────────────
+  --color-border: #E5E5EA;
+  --color-border-strong: #D2D2D7;
+  --color-border-unread: #F1C40F;
+  --color-border-highlight: var(--color-brand-primary);
+
+  // ── 文本 ──────────────────────────────────────────────────────────────
+  --color-text-primary: #1D1D1F;
+  --color-text-secondary: #6E6E73;
+  --color-text-tertiary: #E8E8ED;   // 语义保持：极浅，用作分隔/占位
+  --color-text-muted: #86868B;      // 新增：真正的“弱化文字”灰
+
+  // ── 语义色 ────────────────────────────────────────────────────────────
+  --color-warning-primary: #E5484D;
+  --color-warning-secondary: rgba(229, 72, 77, 0.10);
+  --color-success-primary: #12A150;
+  --color-success-secondary: rgba(18, 161, 80, 0.10);
+  --color-info-primary: #0A84FF;
+  --color-info-secondary: rgba(10, 132, 255, 0.08);
+
+  // ── 焦点环 ────────────────────────────────────────────────────────────
+  --ring: 0 0 0 3px rgba(10, 132, 255, 0.30);
+  --ring-offset-bg: var(--color-background-page);
+
+  // ── 阴影（多层柔和，Apple 级淡而有层次）──────────────────────────────
+  --shadow-xs: 0 1px 2px rgba(17, 24, 39, 0.05);
+  --shadow-sm: 0 1px 2px rgba(17, 24, 39, 0.05), 0 2px 6px rgba(17, 24, 39, 0.05);
+  --shadow-card: 0 1px 2px rgba(17, 24, 39, 0.04), 0 6px 16px rgba(17, 24, 39, 0.07);
+  --shadow-card-hover: 0 2px 4px rgba(17, 24, 39, 0.05), 0 16px 32px rgba(17, 24, 39, 0.12);
+  --shadow-card-brand: 0 1px 2px rgba(17, 24, 39, 0.04), 0 8px 24px rgba(10, 132, 255, 0.10);
+  --shadow-popover: 0 4px 8px rgba(17, 24, 39, 0.06), 0 16px 40px rgba(17, 24, 39, 0.16);
+}
+
+[data-theme="dark"] {
+  // ── 品牌色 ────────────────────────────────────────────────────────────
+  --color-brand-primary: #0A84FF;
+  --color-brand-primary-hover: #409CFF;
+  --color-brand-strong: #64B0FF;
+  --color-brand-secondary: rgba(10, 132, 255, 0.16);
+  --color-brand-tint: rgba(10, 132, 255, 0.10);
+
+  // ── 背景层次（近黑分层，避免死黑）─────────────────────────────────────
+  --color-background-page: #0B0B0D;
+  --color-background-card: #161618;
+  --color-background-content: #1C1C1F;
+  --color-background-subtle: #1C1C1F;
+  --color-background-highlight: #16233F;
+  --color-background-card-unrend: #1A1A14;
+  --color-background-card-unread: #16233F;
+
+  // ── 边框 ──────────────────────────────────────────────────────────────
+  --color-border: #2C2C2E;
+  --color-border-strong: #3A3A3C;
+  --color-border-unread: #0A84FF;
+  --color-border-highlight: var(--color-brand-primary);
+
+  // ── 文本 ──────────────────────────────────────────────────────────────
+  --color-text-primary: #F5F5F7;
+  --color-text-secondary: #98989D;
+  --color-text-tertiary: #2A2A2E;   // 语义保持：极暗，用作分隔/占位
+  --color-text-muted: #86868B;
+
+  // ── 语义色 ────────────────────────────────────────────────────────────
+  --color-warning-primary: #FF6166;
+  --color-warning-secondary: rgba(255, 97, 102, 0.14);
+  --color-success-primary: #30D158;
+  --color-success-secondary: rgba(48, 209, 88, 0.14);
+  --color-info-primary: #0A84FF;
+  --color-info-secondary: rgba(10, 132, 255, 0.14);
+
+  // ── 焦点环 ────────────────────────────────────────────────────────────
+  --ring: 0 0 0 3px rgba(10, 132, 255, 0.40);
+  --ring-offset-bg: var(--color-background-page);
+
+  // ── 阴影（暗色下更深，靠对比而非发灰）────────────────────────────────
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.40);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.40), 0 2px 6px rgba(0, 0, 0, 0.40);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.40), 0 8px 20px rgba(0, 0, 0, 0.50);
+  --shadow-card-hover: 0 2px 4px rgba(0, 0, 0, 0.45), 0 18px 36px rgba(0, 0, 0, 0.60);
+  --shadow-card-brand: 0 1px 2px rgba(0, 0, 0, 0.40), 0 8px 24px rgba(10, 132, 255, 0.22);
+  --shadow-popover: 0 4px 8px rgba(0, 0, 0, 0.50), 0 20px 48px rgba(0, 0, 0, 0.65);
+}
+
+// ── 全局基线 ──────────────────────────────────────────────────────────
+html {
+  -webkit-text-size-adjust: 100%;
+  scroll-behavior: smooth;
+}
+
 html, body { height: 100%; }
-body { min-height: 100vh; display: flex; flex-direction: column; }
+
+body {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  color: var(--color-text-primary);
+  background: var(--color-background-page);
+  letter-spacing: var(--tracking-normal);
+  text-rendering: optimizeLegibility;
+}
+
 main { flex: 1 0 auto; }
 
-
-
+// 尊重“减少动效”系统偏好
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
