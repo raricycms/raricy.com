@@ -170,7 +170,7 @@ def send_notification_modal(user_id):
     user = User.query.get_or_404(user_id)
     templates = admin_get_notification_templates()
     return jsonify({
-        'user': user.to_dict(),
+        'user': user.to_public_dict(),
         'templates': templates
     })
 
@@ -336,6 +336,6 @@ def user_ban_history(user_id):
     ).limit(10).all()
     
     return jsonify({
-        'user': user.to_dict(),
+        'user': user.to_public_dict(),
         'ban_history': [ban.to_dict() for ban in ban_history]
     })

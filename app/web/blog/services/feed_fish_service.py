@@ -66,6 +66,8 @@ def feed_fish(blog_id, user_id, amount):
 
     # 3. 原子更新或创建 BlogFeed 记录
     existing = BlogFeed.query.filter_by(blog_id=blog_id, user_id=user_id).first()
+    # 投喂后累计量：并入远端幂等键，确保"分两次投喂相同数量"不会撞键被误判为重放
+    feed_seq = (existing.amount if existing else 0) + amount
     if existing:
         # 原子 UPDATE：仅当累计不超 5 时才更新
         result = db.session.execute(
@@ -89,7 +91,15 @@ def feed_fish(blog_id, user_id, amount):
         .values(fish_count=Blog.fish_count + amount)
     )
 
-    # 5. 先同步远端，成功后才 commit 本地（fail-closed）
+    # 5. 先 flush 本地变更（不 commit），让首次投喂的唯一约束冲突在调用远端
+    #    之前就暴露，避免"远端已扣款、本地 commit 时才报冲突"的不一致。
+    try:
+        db.session.flush()
+    except Exception as e:
+        db.session.rollback()
+        raise ValueError('投喂冲突，请重试') from e
+
+    # 6. 同步远端，成功后才 commit 本地（fail-closed）
     # 模型：投喂者全额付给平台，平台分 80% 给作者（system → author）
     try:
         feeder = User.query.get(user_id)
@@ -103,6 +113,7 @@ def feed_fish(blog_id, user_id, amount):
             blog_id=blog_id,
             blog_title=blog.title,
             feeder_name=feeder_name,
+            feed_seq=feed_seq,
         )
     except AccountClientError as e:
         # 远端失败 → rollback 本地事务，让本地/远端保持一致
@@ -124,7 +135,7 @@ def feed_fish(blog_id, user_id, amount):
             code=503,
         ) from e
 
-    # 6. 远端同步成功 → 提交本地事务
+    # 7. 远端同步成功 → 提交本地事务
     db.session.commit()
 
     # 通知文章作者（自投喂不通知；通知失败不应回滚已成功的事务）

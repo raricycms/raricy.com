@@ -85,7 +85,8 @@ def profile(user_id):
 @auth_bp.route('/username/<user_id>')
 def username(user_id):
     user = User.query.filter_by(id=user_id).first_or_404()
-    return jsonify(user.to_dict())
+    # 公开无认证端点：只返回非敏感字段，绝不暴露 email 等 PII
+    return jsonify(user.to_public_dict())
 
 
 @auth_bp.route('/avatar/<user_id>')

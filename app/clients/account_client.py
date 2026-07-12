@@ -90,9 +90,14 @@ class AccountClient:
         self.internal_token = app.config.get("ACCOUNT_SERVICE_INTERNAL_TOKEN", "")
         self.timeout = app.config.get("ACCOUNT_SERVICE_TIMEOUT", 5.0)
 
-        # 从 SECRET_KEY 派生 Fernet 密钥（与 app/utils/AES.py 模式一致）
+        # 派生 Fernet 密钥用于加/解密用户 API Key。
+        # 优先用独立的 FISH_ENCRYPTION_KEY；未配置则回退 SECRET_KEY（兼容存量数据）。
+        # 与会话签名密钥解耦：SECRET_KEY 泄露不再连带暴露全部用户账户密钥。
+        # 注意：启用 FISH_ENCRYPTION_KEY 后，历史用 SECRET_KEY 加密的
+        # fish_api_key_encrypted 需重新加密迁移，否则将解密失败。
+        key_source = app.config.get("FISH_ENCRYPTION_KEY") or app.config["SECRET_KEY"]
         derived = base64.urlsafe_b64encode(
-            hashlib.sha256(app.config["SECRET_KEY"].encode()).digest()
+            hashlib.sha256(key_source.encode()).digest()
         )
         self._cipher = Fernet(derived)
 
@@ -357,37 +362,37 @@ class AccountClient:
         blog_id: str,
         blog_title: str,
         feeder_name: str,
-    ) -> dict:
-        """执行投喂的远程同步（两步转账，失败时尽量保持一致性）。
+        feed_seq: int,
+    ) -> None:
+        """执行投喂的远程同步（两步转账，fail-closed）。
 
         投喂模型：feeder → system（全额），system → author（80% 分成）。
-        两步共享确定性幂等键，Step 1 失败时跳过 Step 2。
 
-        Returns:
-            dict: {'step1': 'ok'|'failed', 'step2': 'ok'|'failed'|'skipped'}
+        - feed_seq：本次投喂后该用户对该文章的累计投喂量（1~5），并入幂等键，
+          确保"分两次投喂相同数量"不会生成相同幂等键而被远端误判为重放跳过。
+        - 任一步失败都会向上抛出异常，交由调用方回滚本地事务（fail-closed）。
+        - Step 1 成功但 Step 2 失败时，尝试补偿退款 Step 1，使远端回到初始状态，
+          再抛出异常；补偿也失败则记录严重日志（需人工核对）。
+
+        Raises:
+            AccountClientError: 任一步远端同步失败。
         """
         import logging
         logger = logging.getLogger(__name__)
 
-        result = {'step1': 'failed', 'step2': 'skipped'}
-
         # Step 1: 投喂者 → 系统（全额，使用投喂者 Key）
-        try:
-            self.transfer(
-                from_user_id=feeder_id,
-                to_user_id=self.SYSTEM_USER_ID,
-                amount=float(amount),
-                entry_type='feed_consume',
-                description=f"投喂文章「{blog_title}」",
-                metadata={'blog_id': blog_id},
-                idempotency_key=self._make_feed_idempotency_key(
-                    blog_id, feeder_id, int(amount), 'consume'
-                ),
-            )
-            result['step1'] = 'ok'
-        except Exception as e:
-            logger.warning(f"账户服务投喂同步失败（投喂者→系统）: {e}")
-            return result  # Step 1 失败则跳过 Step 2
+        # 失败直接抛出：远端未扣款，调用方回滚本地即保持一致。
+        self.transfer(
+            from_user_id=feeder_id,
+            to_user_id=self.SYSTEM_USER_ID,
+            amount=float(amount),
+            entry_type='feed_consume',
+            description=f"投喂文章「{blog_title}」",
+            metadata={'blog_id': blog_id},
+            idempotency_key=self._make_feed_idempotency_key(
+                blog_id, feeder_id, feed_seq, 'consume'
+            ),
+        )
 
         # Step 2: 系统 → 作者（80% 分成，使用系统 Key）
         try:
@@ -403,15 +408,34 @@ class AccountClient:
                     'feeder_name': feeder_name,
                 },
                 idempotency_key=self._make_feed_idempotency_key(
-                    blog_id, feeder_id, int(amount), 'income'
+                    blog_id, feeder_id, feed_seq, 'income'
                 ),
             )
-            result['step2'] = 'ok'
-        except Exception as e:
-            logger.warning(f"账户服务投喂同步失败（系统→作者）: {e}")
-            result['step2'] = 'failed'
-
-        return result
+        except Exception as step2_err:
+            # Step 1 已扣款但 Step 2 失败 → 补偿退款 Step 1，让远端回到初始状态
+            logger.warning(
+                f"投喂 Step 2（系统→作者）失败，尝试补偿退款 Step 1: {step2_err}"
+            )
+            try:
+                self.transfer(
+                    from_user_id=self.SYSTEM_USER_ID,
+                    to_user_id=feeder_id,
+                    amount=float(amount),
+                    entry_type='feed_refund',
+                    description=f"投喂文章「{blog_title}」分成失败，退款",
+                    metadata={'blog_id': blog_id, 'reason': 'feed_income_failed'},
+                    idempotency_key=self._make_feed_idempotency_key(
+                        blog_id, feeder_id, feed_seq, 'refund'
+                    ),
+                )
+            except Exception as refund_err:
+                logger.error(
+                    f"严重：投喂 Step 2 失败且补偿退款也失败，远端可能不一致，"
+                    f"需人工核对（feeder={feeder_id}, author={author_id}, "
+                    f"blog={blog_id}, amount={amount}）: {refund_err}"
+                )
+            # 无论补偿是否成功，都向上抛出，让调用方回滚本地事务（fail-closed）
+            raise
 
     def get_ledger(
         self, user_id: str, page: int = 1, per_page: int = 20,

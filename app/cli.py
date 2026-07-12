@@ -148,7 +148,10 @@ def register_commands(app):
     @click.argument('username')
     @click.argument('amount', type=int)
     @click.option('--description', '-d', default=None, help='操作说明')
-    def fish_grant(username, amount, description):
+    @click.option('--batch-id', default=None, metavar='ID',
+                  help='幂等批次 ID（默认随机生成并打印）。远端成功但响应丢失、'
+                       '需要重试时，传入相同 batch_id 可避免重复发放。')
+    def fish_grant(username, amount, description, batch_id):
         """
         给用户增加小鱼干（fail-closed）。
 
@@ -168,6 +171,13 @@ def register_commands(app):
             sys.exit(1)
 
         desc = description or f'管理员手动赠送'
+        # 确定性幂等键：同一 batch_id 重跑不会重复发放（原用 time.time() 秒级
+        # 时间戳，远端成功但响应丢失后重试会生成新键 → 二次发放）。
+        if batch_id is None:
+            batch_id = uuid.uuid4().hex[:12]
+        idem_hash = hashlib.sha256(
+            f"cli-grant-{batch_id}-{user.id}-{amount}".encode()
+        ).hexdigest()[:16]
         # auto_commit=False：本变更先留在 session，等远端成功后再 commit
         balance = add_fish(user.id, amount, 'admin_grant', desc, auto_commit=False)
 
@@ -181,13 +191,15 @@ def register_commands(app):
                 amount=float(amount),
                 entry_type='admin_grant',
                 description=desc,
-                idempotency_key=f"cli-grant-{user.id}-{int(time.time())}-{amount}",
+                idempotency_key=f"grant-{idem_hash}",
             )
         except AccountClientError as e:
             db.session.rollback()
             click.echo(f'\x1b[31m失败：账户服务同步失败，本地事务已回滚\x1b[0m', err=True)
             click.echo(f'  原因: {e}', err=True)
-            click.echo(f'  本地余额未变更（{user.dried_fish}），请稍后重试。', err=True)
+            click.echo(f'  本地余额未变更（{user.dried_fish}）。', err=True)
+            click.echo(f'  重试请用相同批次：flask fish grant {username} {amount} --batch-id {batch_id}', err=True)
+            click.echo(f'  （相同 batch-id 可避免"远端已成功但响应丢失"时的重复发放）', err=True)
             sys.exit(2)
         except Exception as e:
             db.session.rollback()
@@ -205,7 +217,10 @@ def register_commands(app):
     @click.argument('username')
     @click.argument('amount', type=int)
     @click.option('--description', '-d', default=None, help='操作说明')
-    def fish_deduct(username, amount, description):
+    @click.option('--batch-id', default=None, metavar='ID',
+                  help='幂等批次 ID（默认随机生成并打印）。远端成功但响应丢失、'
+                       '需要重试时，传入相同 batch_id 可避免重复扣减。')
+    def fish_deduct(username, amount, description, batch_id):
         """
         扣减用户小鱼干（fail-closed）。
 
@@ -225,6 +240,13 @@ def register_commands(app):
             sys.exit(1)
 
         desc = description or f'管理员手动扣减'
+        # 确定性幂等键：同一 batch_id 重跑不会重复扣减（原用 time.time() 秒级
+        # 时间戳，远端成功但响应丢失后重试会生成新键 → 二次扣减）。
+        if batch_id is None:
+            batch_id = uuid.uuid4().hex[:12]
+        idem_hash = hashlib.sha256(
+            f"cli-deduct-{batch_id}-{user.id}-{amount}".encode()
+        ).hexdigest()[:16]
         try:
             # auto_commit=False：本变更先留在 session，等远端成功后再 commit
             balance = deduct_fish(user.id, amount, 'admin_deduct', desc, auto_commit=False)
@@ -242,13 +264,15 @@ def register_commands(app):
                 amount=float(amount),
                 entry_type='admin_deduct',
                 description=desc,
-                idempotency_key=f"cli-deduct-{user.id}-{int(time.time())}-{amount}",
+                idempotency_key=f"deduct-{idem_hash}",
             )
         except AccountClientError as e:
             db.session.rollback()
             click.echo(f'\x1b[31m失败：账户服务同步失败，本地事务已回滚\x1b[0m', err=True)
             click.echo(f'  原因: {e}', err=True)
-            click.echo(f'  本地余额未变更（{user.dried_fish}），请稍后重试。', err=True)
+            click.echo(f'  本地余额未变更（{user.dried_fish}）。', err=True)
+            click.echo(f'  重试请用相同批次：flask fish deduct {username} {amount} --batch-id {batch_id}', err=True)
+            click.echo(f'  （相同 batch-id 可避免"远端已成功但响应丢失"时的重复扣减）', err=True)
             sys.exit(2)
         except Exception as e:
             db.session.rollback()
@@ -379,7 +403,11 @@ def register_commands(app):
                     f'  提示：429 限频！可降低 --rate 重试（例：--rate 1.0 或 --rate 0.5）',
                     err=True,
                 )
-            click.echo(f'  全部 {user_count} 位用户余额未变更（已 rollback），请稍后重试。', err=True)
+            click.echo(f'  本地 {user_count} 位用户余额已全部回滚（未 commit）。', err=True)
+            click.echo(f'  \x1b[33m⚠ 但远端已成功发放前 {success_count} 位\x1b[0m，请务必用相同批次续跑：', err=True)
+            click.echo(f'      flask fish compensate {amount} --batch-id {batch_id}（附带原有 -d/--rate 等参数）', err=True)
+            click.echo(f'  已发放的用户会被远端幂等键去重跳过，不会重复发放。', err=True)
+            click.echo(f'  \x1b[31m切勿新建批次（省略 --batch-id 或换新 ID），否则前 {success_count} 位会被二次发放！\x1b[0m', err=True)
             sys.exit(2)
         except Exception as e:
             db.session.rollback()
@@ -390,7 +418,11 @@ def register_commands(app):
             )
             click.echo(f'  失败用户：{user.username} ({user.id})', err=True)
             click.echo(f'  原因: {e}', err=True)
-            click.echo(f'  全部 {user_count} 位用户余额未变更（已 rollback），请稍后重试。', err=True)
+            click.echo(f'  本地 {user_count} 位用户余额已全部回滚（未 commit）。', err=True)
+            click.echo(f'  \x1b[33m⚠ 但远端已成功发放前 {success_count} 位\x1b[0m，请务必用相同批次续跑：', err=True)
+            click.echo(f'      flask fish compensate {amount} --batch-id {batch_id}（附带原有 -d/--rate 等参数）', err=True)
+            click.echo(f'  已发放的用户会被远端幂等键去重跳过，不会重复发放。', err=True)
+            click.echo(f'  \x1b[31m切勿新建批次（省略 --batch-id 或换新 ID），否则前 {success_count} 位会被二次发放！\x1b[0m', err=True)
             sys.exit(2)
 
         # 远端全部成功 → commit 本地
