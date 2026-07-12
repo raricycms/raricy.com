@@ -22,6 +22,7 @@ import sys
 import os
 import time
 import uuid
+import hashlib
 import argparse
 
 # 确保可以 import app
@@ -195,7 +196,10 @@ def main():
                     # 本地少 → 用户向系统退回
                     from_user, to_user = u.id, system
 
-                idem_key = f"sync-adjust-{batch_id}-{u.id}-{amount_cents}"
+                # 幂等键最长 64 字符；用 sha256(user_id)[:12] 替掉完整 UUID
+                # 完整键长度 ≈ 5 + 12 + 1 + 12 + 1 + 8 = 39，留足余量
+                user_short = hashlib.sha256(u.id.encode()).hexdigest()[:12]
+                idem_key = f"sync-{batch_id}-{user_short}-{amount_cents}"
                 client.transfer(
                     from_user_id=from_user,
                     to_user_id=to_user,
