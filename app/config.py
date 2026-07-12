@@ -9,6 +9,10 @@ class Config:
     """
     SECRET_KEY = os.getenv('SECRET_KEY') # 网站密钥
     GAME_SECRET_KEY = os.getenv('GAME_SECRET_KEY') # 游戏密钥
+    # 鱼干账户 API Key 的字段加密密钥，独立于 SECRET_KEY，避免"会话签名"与
+    # "账户密钥加密"共用同一根密钥（SECRET_KEY 泄露即两者同时沦陷）。
+    # 未配置时回退到 SECRET_KEY，保持对现有已加密数据的兼容（见 account_client.py）。
+    FISH_ENCRYPTION_KEY = os.getenv('FISH_ENCRYPTION_KEY')
     # 数据库连接URI；若环境变量未提供，默认使用 instance 下的 SQLite，便于携带与备份
     SQLALCHEMY_DATABASE_URI = os.getenv('SQLALCHEMY_DATABASE_URI') or 'sqlite:///' + os.path.join(os.getcwd(), 'instance', 'database', 'db.db')
     SQLALCHEMY_TRACK_MODIFICATIONS = False # 关闭数据库修改跟踪
@@ -43,10 +47,11 @@ class ProductionConfig(Config):
     """
     生产环境配置类，继承自基础配置类。用于https://raricy.com
     """
-    DEBUG = False
     PORT = int(os.getenv('PORT', 5000))
     HOST = os.getenv('HOST', '0.0.0.0')
-    DEBUG = os.getenv('DEBUG', 'False') == 'False'
+    # 默认关闭调试；只有显式设置 DEBUG=True 才开启。
+    # （原为 == 'False'，逻辑写反，导致生产默认开着 Werkzeug 调试器 → 信息泄露/RCE）
+    DEBUG = os.getenv('DEBUG', 'False') == 'True'
     # Ensure URL generation uses your public domain and HTTPS
     SERVER_NAME = os.getenv('SERVER_NAME', None)
     PREFERRED_URL_SCHEME = 'https'

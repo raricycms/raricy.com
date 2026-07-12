@@ -182,7 +182,22 @@ class User(UserMixin, db.Model):
             'notify_admin': getattr(self, 'notify_admin', True),
             'ban_info': ban_info
         }
-    
+
+    def to_public_dict(self):
+        """对外公开的精简资料，绝不含 email 等敏感字段。
+
+        用于任何未登录、或非本人/非管理员可访问的端点，避免通过
+        公开接口批量收割用户邮箱（部分用户邮箱即手机号）等 PII。
+        """
+        return {
+            'id': self.id,
+            'username': self.username,
+            'avatar_path': self.avatar_path,
+            'bio': getattr(self, 'bio', ''),
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'role': getattr(self, 'role', 'user'),
+        }
+
     def __repr__(self):
         """
         返回用户对象的字符串表示，用于调试。
