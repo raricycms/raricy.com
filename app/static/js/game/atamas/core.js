@@ -369,7 +369,7 @@ function checkGameOver() {
             state.gameOver = true;
             state.pendingElement = null;
 
-            messageBox.innerHTML = `💥 ${getTranslation('gameOver')}! ${getTranslation('diskFull')}<br>🏆 ${getTranslation('score')}: ${state.totalScore} | ${getTranslation('maxPlate')}: ${state.maxPlate}`;
+            messageBox.innerHTML = `${getTranslation('gameOver')}! ${getTranslation('diskFull')}<br>${getTranslation('score')}: ${state.totalScore} | ${getTranslation('maxPlate')}: ${state.maxPlate}`;
             currentActionEl.textContent = getTranslation('gameOver');
             startGameOverAnimation();
             return true;
@@ -730,7 +730,7 @@ function placeElementFromCenter(gapIndex) {
                     getNextFromQueue();
                 }
             } else {
-                const plusType = newElement.isBlackGolden ? '🌟 Black+' : '➕ Plus';
+                const plusType = newElement.isBlackGolden ? 'Black+' : 'Plus';
                 messageBox.innerHTML = formatTranslation('plusPlaced', {type: plusType});
                 if (!checkPlusMerge()) {
                     setTimeout(() => {
@@ -874,7 +874,7 @@ function animateRedistribution() {
 
 function handleCanvasClick(e) {
     if (state.gameOver || state.animating) {
-        if (state.gameOver) messageBox.innerHTML = `⛔ ${getTranslation('gameOver')}, ${getTranslation('clickRingArea')}`;
+        if (state.gameOver) messageBox.innerHTML = `${getTranslation('gameOver')}, ${getTranslation('clickRingArea')}`;
         return;
     }
 

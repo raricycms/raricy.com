@@ -61,8 +61,8 @@
                 </select>
             </div>
             <div class="col-md-2 d-flex gap-2">
-                <button class="btn btn-success w-100" id="batchUpdateBtn">批量更新</button>
-                <button class="btn btn-warning w-100" id="batchFeaturedBtn">批量设为精选</button>
+                <button class="btn btn-primary w-100" id="batchUpdateBtn">批量更新</button>
+                <button class="btn btn-outline-secondary w-100" id="batchFeaturedBtn">批量设为精选</button>
             </div>
         </div>
     </div>
@@ -86,10 +86,10 @@
                         <div class="article-card__title">{{ article.title }}</div>
                     </div>
                     <div class="article-card__meta">
-                        <span>{{ article.author }}</span>
-                        <span>{{ article.date }}</span>
-                        <span>{{ article.likes_count or 0 }}</span>
-                        <span>🆔 {{ article.id[:8] }}...</span>
+                        <span>{{ article.author.username if article.author else '未知作者' }}</span>
+                        <span>{{ article.created_at.strftime('%Y-%m-%d') if article.created_at else '' }}</span>
+                        <span><span class="icon icon-heart-fill"></span>{{ article.likes_count or 0 }}</span>
+                        <span class="mono">ID {{ article.id[:8] }}…</span>
                     </div>
                     <div class="article-card__desc">{{ article.description }}</div>
                 </div>
@@ -110,8 +110,8 @@
                     </select>
                     <div class="d-flex gap-1">
                         <a href="/blog/{{ article.id }}" class="btn btn-sm btn-outline-primary" target="_blank">查看</a>
-                        <a href="/blog/{{ article.id }}/edit" class="btn btn-sm btn-outline-success">编辑</a>
-                        <button class="btn btn-sm btn-outline-warning toggle-featured" data-article-id="{{ article.id }}">
+                        <a href="/blog/{{ article.id }}/edit" class="btn btn-sm btn-outline-secondary">编辑</a>
+                        <button class="btn btn-sm btn-outline-secondary toggle-featured" data-article-id="{{ article.id }}">
                             {{ '取消精选' if article.is_featured else '设为精选' }}
                         </button>
                     </div>

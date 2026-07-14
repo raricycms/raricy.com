@@ -211,12 +211,12 @@ class MarkdownRenderer {
     showFallbackContent(container, markdownText) {
         container.innerHTML = `
             <div class="alert alert-warning">
-                <h5>⚠️ Markdown 渲染库未加载</h5>
+                <h5>Markdown 渲染库未加载</h5>
                 <p>正在显示原始 Markdown 内容。这可能是由于网络问题导致的。</p>
                 <button class="btn btn-primary btn-sm mt-2" onclick="location.reload()">刷新页面重试</button>
             </div>
             <div class="markdown-fallback" style="background: #f8f9fa; padding: 20px; border-radius: 6px; margin-top: 15px; border: 1px solid #e9ecef;">
-                <h6 style="color: #6c757d; margin-bottom: 15px; font-weight: 600;">📝 原始 Markdown 内容：</h6>
+                <h6 style="color: var(--ink-3); margin-bottom: 15px; font-weight: 600;">原始 Markdown 内容：</h6>
                 <pre style="white-space: pre-wrap; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 0.9rem; line-height: 1.6; margin: 0; color: #2c3e50; background: transparent; border: none; padding: 0;">${markdownText.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
             </div>
         `;
@@ -229,12 +229,12 @@ class MarkdownRenderer {
             const markdownText = JSON.parse(markdownScript.textContent);
             container.innerHTML = `
                 <div class="alert alert-warning">
-                    <h5>⚠️ 内容渲染失败</h5>
+                    <h5>内容渲染失败</h5>
                     <p>正在显示原始 Markdown 内容。这可能是由于内容格式问题导致的。</p>
                     <button class="btn btn-primary btn-sm mt-2" onclick="location.reload()">刷新页面重试</button>
                 </div>
                 <div class="markdown-fallback" style="background: #f8f9fa; padding: 20px; border-radius: 6px; margin-top: 15px; border: 1px solid #e9ecef;">
-                    <h6 style="color: #6c757d; margin-bottom: 15px; font-weight: 600;">📝 原始 Markdown 内容：</h6>
+                    <h6 style="color: var(--ink-3); margin-bottom: 15px; font-weight: 600;">原始 Markdown 内容：</h6>
                     <pre style="white-space: pre-wrap; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 0.9rem; line-height: 1.6; margin: 0; color: #2c3e50; background: transparent; border: none; padding: 0;">${markdownText.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
                 </div>
             `;
