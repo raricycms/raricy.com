@@ -1,63 +1,46 @@
 {% extends "base.html" %}
-{% block title %}
-云剪贴板 - Raricy.com
-{% endblock %}
-
-{% block extra_css %}
-{% endblock %}
+{% block title %}云剪贴板 · 聪明山{% endblock %}
 
 {% block content %}
-<div class="clipboard-page">
-    <h1 class="clipboard-title">云剪贴板</h1>
-    
-    <div class="clipboard-navigation">
-        <div class="clipboard-navigation__search">
-            <input type="text" class="search-input" placeholder="请输入目的地编号……" id="target_link">
-            <button class="search-button" id="redirect">前往</button>
-        </div>
-        
-        <div class="clipboard-navigation__actions">
-            <a href="/clipboard/upload" class="action-button primary">创建文章</a>
-        </div>
+<div class="pwrap">
+  <span class="kicker">Clipboard</span>
+  <h1 class="ptitle" style="margin:14px 0 0;">云剪贴板</h1>
+
+  <div class="item-toolbar">
+    <div class="search-form" style="max-width:420px;">
+      <input type="text" class="search-input" placeholder="请输入目的地编号……" id="target_link">
+      <button class="search-btn" id="redirect">前往</button>
     </div>
-    
-    <div class="clipboard-list">
-        {% if clip_lst %}
-            {% for clip in clip_lst %}
-            <a href="./{{clip['id']}}" class="clipboard-item">
-                <div class="clipboard-item__header">
-                    <h3 class="clipboard-item__header-title">{{clip["title"]}}</h3>
-                    <span class="clipboard-item__header-id">{{clip["id"]}}</span>
-                </div>
-            </a>
-            {% endfor %}
-        {% else %}
-            <div class="clipboard-list__empty">
-                <div class="clipboard-list__empty-icon">
-                    <i class="bi bi-clipboard"></i>
-                </div>
-                <div class="clipboard-list__empty-text">您还没有创建任何剪贴板</div>
-                <div class="clipboard-list__empty-subtext">点击上方按钮创建您的第一个剪贴板</div>
-            </div>
-        {% endif %}
-    </div>
+    <a href="/clipboard/upload" class="upload-button"><span class="icon icon-add"></span>创建剪贴板</a>
+  </div>
+
+  {% if clip_lst %}
+  <div class="clip-list">
+    {% for clip in clip_lst %}
+    <a href="./{{ clip['id'] }}" class="card card--link clip-item">
+      <span class="clip-item__title">{{ clip["title"] }}</span>
+      <span class="clip-item__id">{{ clip["id"] }}</span>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <div class="empty-state-icon"><span class="icon icon-clipboard" style="width:2.4rem;height:2.4rem;display:inline-block;"></span></div>
+    <h3>还没有剪贴板</h3>
+    <p>点击上方按钮创建你的第一个剪贴板。</p>
+  </div>
+  {% endif %}
 </div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
-    document.addEventListener('DOMContentLoaded', () => {
-        document.getElementById('redirect').addEventListener('click', () => {
-            const inputValue = document.getElementById('target_link').value;
-            if (inputValue.trim() !== '') {
-                window.location.href = './' + encodeURIComponent(inputValue);
-            } else {
-                alert('目的地不能为空ovo');
-            }
-        });
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('redirect').addEventListener('click', () => {
+        const v = document.getElementById('target_link').value;
+        if (v.trim() !== '') window.location.href = './' + encodeURIComponent(v);
+        else showToast('目的地不能为空', 'warning');
     });
+});
 </script>
-{% endblock %}
-
-{% block footer_text %}
 {% endblock %}

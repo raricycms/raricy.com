@@ -3,21 +3,21 @@
 <div class="admin-controls">
     {% if current_user.has_admin_rights or current_user.id == blog.author_id %}
     <button id="admin-likers-btn" class="button button-primary" data-likers-url="{{ url_for('blog.likers', blog_id=blog.id) }}">
-        👍 查看点赞者
+        查看点赞者
     </button>
     <button id="admin-feeders-btn" class="button button-primary" data-feeders-url="{{ url_for('blog.feeders', blog_id=blog.id) }}">
         🐟 查看投喂者
     </button>
     {% endif %}
     {% if current_user.id == blog.author_id %}
-    <a href="{{ url_for('blog.edit_blog', blog_id=blog.id) }}" class="button button-primary">✏️ 编辑文章</a>
+    <a href="{{ url_for('blog.edit_blog', blog_id=blog.id) }}" class="button button-primary">编辑文章</a>
     {% endif %}
     {% if current_user.has_admin_rights or current_user.id == blog.author_id %}
     <button id="admin-delete-btn" class="button button-warning"
             data-delete-url="{% if current_user.has_admin_rights and current_user.id != blog.author_id %}/blog/admin/articles/{{ blog.id }}{% else %}{{ url_for('blog.delete_blog', blog_id=blog.id) }}{% endif %}"
             data-redirect-url="{{ url_for('blog.menu') }}"
             data-is-admin-delete="{{ 'true' if current_user.has_admin_rights and current_user.id != blog.author_id else 'false' }}">
-        🗑️ 删除文章
+        删除文章
     </button>
     {% endif %}
 </div>

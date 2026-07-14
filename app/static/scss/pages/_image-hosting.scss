@@ -1,4 +1,5 @@
 @use '../abstracts/variables' as *;
+@use '../abstracts/mixins' as m;
 
 // ============================================================
 // Image Hosting — user page & admin
@@ -161,16 +162,9 @@
 // ---- Image card ----
 
 .image-hosting-card {
-  background: var(--color-background-card);
-  border: 1px solid var(--color-border);
-  border-radius: $radius-large;
+  @include m.surface-card;
+  @include m.surface-card-interactive(-2px);
   overflow: hidden;
-  transition: transform .2s, box-shadow .2s;
-
-  &:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-card-hover);
-  }
 
   &__preview {
     aspect-ratio: 16 / 10;

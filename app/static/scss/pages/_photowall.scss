@@ -97,7 +97,7 @@ $wall-height: 3000px;
         .photo-wall__item__frame {
             box-shadow:
                 0 4px 16px rgba(0, 0, 0, 0.3),
-                0 0 0 3px var(--color-brand-primary, #3b82f6);
+                0 0 0 3px var(--color-brand-primary);
         }
 
         .photo-wall__item__handle {
@@ -148,7 +148,7 @@ $wall-height: 3000px;
         transform: translateX(-50%);
         width: 16px;
         height: 16px;
-        background: var(--color-brand-primary, #3b82f6);
+        background: var(--color-brand-primary);
         border-radius: 50%;
         cursor: grab;
         box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
@@ -164,7 +164,7 @@ $wall-height: 3000px;
         right: 6px;
         width: 14px;
         height: 14px;
-        background: var(--color-brand-primary, #3b82f6);
+        background: var(--color-brand-primary);
         border-radius: 50%;
         cursor: nwse-resize;
         box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
@@ -502,13 +502,13 @@ $wall-height: 3000px;
     }
 
     &--danger {
-        color: #ef4444;
+        color: var(--color-warning-primary);
         border-color: rgba(239, 68, 68, 0.3);
 
         &:hover {
-            background: #ef4444;
+            background: var(--color-warning-primary);
             color: #fff;
-            border-color: #ef4444;
+            border-color: var(--color-warning-primary);
         }
     }
 }
@@ -593,7 +593,7 @@ $wall-height: 3000px;
             }
 
             &--danger {
-                color: #ef4444;
+                color: var(--color-warning-primary);
                 border-color: rgba(239, 68, 68, 0.3);
             }
         }
@@ -645,4 +645,15 @@ $wall-height: 3000px;
         background: rgba(0, 0, 0, 0.6);
         border: 2px solid rgba(255, 255, 255, 0.3);
     }
+}
+
+// 防横向溢出（移动端 375px 实测溢出 8px）：夹住巨幅画布与工具条，不影响拖拽平移
+.photo-wall {
+    max-width: 100%;
+    overflow-x: clip;
+}
+
+.photo-wall__toolbar {
+    max-width: 100%;
+    flex-wrap: wrap;
 }

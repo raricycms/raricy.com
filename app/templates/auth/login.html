@@ -1,57 +1,32 @@
 {% extends "base.html" %}
-{% block title %}
-Raricy.com - 用户登录
-{% endblock %}
-
-{% block extra_css %}{% endblock %}
+{% block title %}用户登录 · 聪明山{% endblock %}
 
 {% block content %}
-<div class="auth-page">
-<div class="container">
-    <div class="register-container">
-        <div class="register-header">
-            <h2><i class="fas fa-user"></i> 用户登录</h2>
-            <p class="text-muted">请填写以下信息完成登录</p>
-        </div>
-
-        <form id="loginForm">
-            <input type="hidden" name="next" value="{{ request.args.get('next', '') }}">
-            <div class="form-group">
-                <label for="username" class="form-label">
-                     用户名
-                </label>
-                <input type="text" class="form-control" id="username" name="username" placeholder="请输入用户名" required>
-                <div class="invalid-feedback">
-                    请输入用户名
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label for="password" class="form-label">
-                    密码
-                </label>
-                <input type="password" class="form-control" id="password" name="password" placeholder="请输入密码" required
-                    minlength="6">
-                <div class="invalid-feedback">
-                    密码长度至少6个字符
-                </div>
-            </div>
-
-            <button type="submit" class="button button-primary" style="width: 100%; margin-top: 20px;" id="submitBtn">
-                <span id="submitText">
-                    <i class="fas fa-sign-in-alt"></i> 立即登录
-                </span>
-                <span id="loadingText" style="display: none;">
-                    <i class="fas fa-spinner fa-spin"></i> 登录中...
-                </span>
-            </button>
-        </form>
-
-        <div class="login-link">
-            <p class="text-muted">没有账号？ <a href="{{ url_for('auth.register') }}" class="text-primary">立即注册</a></p>
-        </div>
+<div class="auth-wrap">
+  <div class="card auth-card">
+    <div class="auth-head">
+      <h1>用户登录</h1>
+      <p>请填写以下信息完成登录</p>
     </div>
-</div>
+
+    <form id="loginForm">
+      <input type="hidden" name="next" value="{{ request.args.get('next', '') }}">
+      <div class="field">
+        <label for="username">用户名</label>
+        <input class="input" type="text" id="username" name="username" placeholder="请输入用户名" required>
+      </div>
+      <div class="field">
+        <label for="password">密码</label>
+        <input class="input" type="password" id="password" name="password" placeholder="请输入密码" required minlength="6">
+      </div>
+      <button type="submit" class="btn btn--primary btn--full" id="submitBtn" style="margin-top:8px;">
+        <span id="submitText">立即登录</span>
+        <span id="loadingText" style="display:none;">登录中…</span>
+      </button>
+    </form>
+
+    <p class="auth-alt">没有账号？<a href="{{ url_for('auth.register') }}">立即注册</a></p>
+  </div>
 </div>
 {% endblock %}
 
@@ -63,52 +38,31 @@ Raricy.com - 用户登录
         const submitText = document.getElementById('submitText');
         const loadingText = document.getElementById('loadingText');
 
-        // 表单提交处理
         form.addEventListener('submit', async function (e) {
             e.preventDefault();
+            if (!form.checkValidity()) { form.reportValidity(); return; }
 
-            // 表单验证
-            if (!form.checkValidity()) {
-                form.classList.add('was-validated');
-                return;
-            }
-
-            // 显示加载状态
             submitBtn.disabled = true;
             submitText.style.display = 'none';
             loadingText.style.display = 'inline';
 
-            // 收集表单数据
-            const formData = new FormData(form);
-            const data = Object.fromEntries(formData);
-
+            const data = Object.fromEntries(new FormData(form));
             try {
-                // 发送登录请求到后端
                 const response = await fetch('{{ url_for("auth.login") }}', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data)
                 });
-
                 const result = await response.json();
-
                 if (response.ok) {
-                    // 登录成功
                     showToast(result.message || '登录成功！正在跳转...', 'success');
-                    setTimeout(() => {
-                        window.location.href = result.redirect_url || '/';
-                    }, 1500);
+                    setTimeout(() => { window.location.href = result.redirect_url || '/'; }, 1200);
                 } else {
-                    // 登录失败
                     showToast(result.message || '登录失败，请检查用户名和密码', 'error');
                 }
             } catch (error) {
-                console.error('登录请求失败:', error);
                 showToast('网络错误，请稍后重试', 'error');
             } finally {
-                // 恢复按钮状态
                 submitBtn.disabled = false;
                 submitText.style.display = 'inline';
                 loadingText.style.display = 'none';

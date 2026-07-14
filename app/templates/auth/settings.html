@@ -1,63 +1,60 @@
 {% extends "base.html" %}
-{% block title %}账号设置 - 聪明山{% endblock %}
+{% block title %}账号设置 · 聪明山{% endblock %}
 
 {% block content %}
-<div class="settings-page container">
+<div class="pwrap pwrap--narrow">
+  <span class="kicker">Settings</span>
+  <h1 class="ptitle" style="margin:14px 0 28px;">账号设置</h1>
 
-  <!-- ====== Section 1: Bio ====== -->
-  <div class="settings-card">
+  <!-- 个人资料 -->
+  <div class="card settings-card">
     <div class="settings-card__header">
       <span class="icon icon-person"></span>
       <h2 class="settings-card__title">个人资料</h2>
     </div>
-    <p class="settings-card__desc">编辑你的个人简介，展示在个人主页中</p>
+    <p class="settings-card__desc">编辑你的个人简介，展示在个人主页中。</p>
     <div class="settings-alert d-none" id="bioAlert"></div>
-    <textarea id="editBio" class="settings-input settings-input--textarea"
-              placeholder="写一段简介，介绍一下自己..."
-              maxlength="500">{{ user.bio or '' }}</textarea>
+    <textarea id="editBio" class="settings-input settings-input--textarea" placeholder="写一段简介，介绍一下自己…" maxlength="500">{{ user.bio or '' }}</textarea>
     <div class="settings-input__hint" id="bioCharCount">0 / 500</div>
     <button class="settings-btn settings-btn--primary" id="btnSaveBio">保存</button>
   </div>
 
-  <!-- ====== Section 2: Password ====== -->
-  <div class="settings-card">
+  <!-- 修改密码 -->
+  <div class="card settings-card">
     <div class="settings-card__header">
       <span class="icon icon-gear-fill"></span>
       <h2 class="settings-card__title">修改密码</h2>
     </div>
-    <p class="settings-card__desc">修改后需要重新登录</p>
+    <p class="settings-card__desc">修改后需要重新登录。</p>
     <div class="settings-alert d-none" id="passwordAlert"></div>
     <form id="passwordForm">
       <div class="settings-form-row">
         <div class="settings-field">
           <label for="currentPassword">原密码</label>
-          <input type="password" id="currentPassword" class="settings-input"
-                 required autocomplete="current-password">
+          <input type="password" id="currentPassword" class="settings-input" required autocomplete="current-password">
         </div>
       </div>
       <div class="settings-form-row">
         <div class="settings-field">
           <label for="newPassword">新密码</label>
-          <input type="password" id="newPassword" class="settings-input"
-                 required minlength="8" autocomplete="new-password">
+          <input type="password" id="newPassword" class="settings-input" required minlength="8" autocomplete="new-password">
         </div>
         <div class="settings-field">
           <label for="confirmPassword">确认新密码</label>
-          <input type="password" id="confirmPassword" class="settings-input"
-                 required minlength="8" autocomplete="new-password">
+          <input type="password" id="confirmPassword" class="settings-input" required minlength="8" autocomplete="new-password">
         </div>
       </div>
       <button type="submit" class="settings-btn settings-btn--primary" id="passwordSubmit">确认修改</button>
     </form>
   </div>
 
-  <!-- ====== Section 3: Privacy ====== -->
-  <div class="settings-card">
+  <!-- 主页隐私 -->
+  <div class="card settings-card">
     <div class="settings-card__header">
       <span class="icon icon-gear"></span>
       <h2 class="settings-card__title">主页隐私设置</h2>
     </div>
-    <p class="settings-card__desc">控制你的最近文章和评论是否在个人主页中公开展示</p>
+    <p class="settings-card__desc">控制你的最近文章和评论是否在个人主页中公开展示。</p>
     <div class="settings-alert d-none" id="privacyAlert"></div>
 
     <div class="settings-toggle-row">
@@ -82,168 +79,96 @@
       </label>
     </div>
   </div>
-
 </div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-  // ====== Bio char count ======
   var editBio = document.getElementById('editBio');
   var charCount = document.getElementById('bioCharCount');
   function updateCharCount() {
     if (!editBio || !charCount) return;
     var len = editBio.value.length;
     charCount.textContent = len + ' / 500';
-    charCount.style.color = len > 500 ? 'var(--color-warning-primary)' : '';
+    charCount.style.color = len > 500 ? 'var(--danger)' : '';
   }
-  if (editBio) {
-    editBio.addEventListener('input', updateCharCount);
-    updateCharCount();
-  }
+  if (editBio) { editBio.addEventListener('input', updateCharCount); updateCharCount(); }
 
-  // ====== Save bio ======
   var btnSaveBio = document.getElementById('btnSaveBio');
   var bioAlert = document.getElementById('bioAlert');
-
   function showBioAlert(msg, type) {
     if (!bioAlert) return;
     bioAlert.textContent = msg;
     bioAlert.className = 'settings-alert settings-alert--' + type;
     setTimeout(function () { bioAlert.classList.add('d-none'); }, 3000);
   }
-
   if (btnSaveBio) {
     btnSaveBio.addEventListener('click', async function () {
       var bio = editBio.value.trim();
       if (bio.length > 500) { showBioAlert('简介不能超过 500 字', 'danger'); return; }
-      btnSaveBio.disabled = true;
-      btnSaveBio.textContent = '保存中...';
+      btnSaveBio.disabled = true; btnSaveBio.textContent = '保存中…';
       try {
-        var resp = await fetch('{{ url_for("auth.update_bio") }}', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ bio: bio })
-        });
+        var resp = await fetch('{{ url_for("auth.update_bio") }}', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bio: bio }) });
         var result = await resp.json();
-        if (resp.ok && result.code === 200) {
-          showBioAlert('资料已保存', 'success');
-        } else {
-          showBioAlert(result.message || '保存失败', 'danger');
-        }
-      } catch (e) {
-        showBioAlert('网络错误，请稍后再试', 'danger');
-      } finally {
-        btnSaveBio.disabled = false;
-        btnSaveBio.textContent = '保存';
-      }
+        if (resp.ok && result.code === 200) showBioAlert('资料已保存', 'success');
+        else showBioAlert(result.message || '保存失败', 'danger');
+      } catch (e) { showBioAlert('网络错误，请稍后再试', 'danger'); }
+      finally { btnSaveBio.disabled = false; btnSaveBio.textContent = '保存'; }
     });
   }
 
-  // ====== Change password ======
   var passwordForm = document.getElementById('passwordForm');
   var passwordAlert = document.getElementById('passwordAlert');
   var passwordSubmit = document.getElementById('passwordSubmit');
-
   function showPasswordAlert(msg, type) {
     if (!passwordAlert) return;
     passwordAlert.textContent = msg || '请求失败，请稍后再试。';
     passwordAlert.className = 'settings-alert settings-alert--' + (type || 'danger');
   }
-
   if (passwordForm) {
     passwordForm.addEventListener('submit', async function (e) {
       e.preventDefault();
       var currentPw = document.getElementById('currentPassword').value.trim();
       var newPw = document.getElementById('newPassword').value.trim();
       var confirmPw = document.getElementById('confirmPassword').value.trim();
-
       if (newPw !== confirmPw) { showPasswordAlert('两次输入的新密码不一致。'); return; }
-
-      passwordSubmit.disabled = true;
-      passwordSubmit.textContent = '提交中...';
+      passwordSubmit.disabled = true; passwordSubmit.textContent = '提交中…';
       passwordAlert.classList.add('d-none');
-
       var shouldReset = false;
       try {
-        var resp = await fetch('{{ url_for("auth.change_password") }}', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            current_password: currentPw,
-            new_password: newPw,
-            confirm_password: confirmPw
-          })
-        });
+        var resp = await fetch('{{ url_for("auth.change_password") }}', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ current_password: currentPw, new_password: newPw, confirm_password: confirmPw }) });
         var result = await resp.json().catch(function () { return {}; });
         var message = result.message || (resp.ok ? '密码修改成功。' : '请求失败，请稍后再试。');
-
         if (resp.ok && result.code === 200) {
-          showPasswordAlert(message, 'success');
-          shouldReset = true;
-          setTimeout(function () {
-            window.location.href = result.redirect_url || '{{ url_for("auth.login") }}';
-          }, 1500);
-        } else {
-          showPasswordAlert(message, 'danger');
-        }
-      } catch (err) {
-        showPasswordAlert('网络错误，请稍后再试。');
-      } finally {
-        passwordSubmit.disabled = false;
-        passwordSubmit.textContent = '确认修改';
-        if (shouldReset) passwordForm.reset();
-      }
+          showPasswordAlert(message, 'success'); shouldReset = true;
+          setTimeout(function () { window.location.href = result.redirect_url || '{{ url_for("auth.login") }}'; }, 1500);
+        } else showPasswordAlert(message, 'danger');
+      } catch (err) { showPasswordAlert('网络错误，请稍后再试。'); }
+      finally { passwordSubmit.disabled = false; passwordSubmit.textContent = '确认修改'; if (shouldReset) passwordForm.reset(); }
     });
   }
 
-  // ====== Privacy toggles ======
   var toggleBlogs = document.getElementById('toggleBlogs');
   var toggleComments = document.getElementById('toggleComments');
   var privacyAlert = document.getElementById('privacyAlert');
-
   function showPrivacyAlert(msg, type) {
     if (!privacyAlert) return;
     privacyAlert.textContent = msg;
     privacyAlert.className = 'settings-alert settings-alert--' + type;
     setTimeout(function () { privacyAlert.classList.add('d-none'); }, 3000);
   }
-
   async function savePrivacy(field, value) {
     try {
       var body = {}; body[field] = value;
-      var resp = await fetch('{{ url_for("auth.update_privacy") }}', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
+      var resp = await fetch('{{ url_for("auth.update_privacy") }}', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       var result = await resp.json();
-      if (resp.ok && result.code === 200) {
-        showPrivacyAlert('隐私设置已保存', 'success');
-        return true;
-      } else {
-        showPrivacyAlert(result.message || '保存失败', 'danger');
-        return false;
-      }
-    } catch (e) {
-      showPrivacyAlert('网络错误，请稍后再试', 'danger');
-      return false;
-    }
+      if (resp.ok && result.code === 200) { showPrivacyAlert('隐私设置已保存', 'success'); return true; }
+      showPrivacyAlert(result.message || '保存失败', 'danger'); return false;
+    } catch (e) { showPrivacyAlert('网络错误，请稍后再试', 'danger'); return false; }
   }
-
-  if (toggleBlogs) {
-    toggleBlogs.addEventListener('change', async function () {
-      var ok = await savePrivacy('show_recent_blogs', this.checked);
-      if (!ok) this.checked = !this.checked;
-    });
-  }
-  if (toggleComments) {
-    toggleComments.addEventListener('change', async function () {
-      var ok = await savePrivacy('show_recent_comments', this.checked);
-      if (!ok) this.checked = !this.checked;
-    });
-  }
+  if (toggleBlogs) toggleBlogs.addEventListener('change', async function () { var ok = await savePrivacy('show_recent_blogs', this.checked); if (!ok) this.checked = !this.checked; });
+  if (toggleComments) toggleComments.addEventListener('change', async function () { var ok = await savePrivacy('show_recent_comments', this.checked); if (!ok) this.checked = !this.checked; });
 });
 </script>
 {% endblock %}

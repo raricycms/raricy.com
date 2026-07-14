@@ -84,7 +84,7 @@ class LikeManager {
 
         // 更新图标
         if (this.elements.icon) {
-            this.elements.icon.className = 'bi ' + (liked ? 'bi-heart-fill' : 'bi-heart');
+            this.elements.icon.className = 'icon icon-heart-fill';
         }
 
         // 更新文本

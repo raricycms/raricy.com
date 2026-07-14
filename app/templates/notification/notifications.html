@@ -1,96 +1,63 @@
 {% extends "base.html" %}
-
-{% block title %}我的通知{% endblock %}
-
-{% block extra_css %}
-{% endblock %}
+{% block title %}我的通知 · 聪明山{% endblock %}
 
 {% block content %}
-<div class="content-wrapper">
-    <h1 class="page-title">📬 我的通知</h1>
-    <div class="btn-group">
-        <button class="button button-primary" onclick="markAllRead()">✓ 全部标记已读</button>
-        <button class="button button-warning" onclick="deleteReadNotifications()">🗑️ 删除已读</button>
-        <!-- <button class="action-btn" onclick="toggleBatchMode()">📋 批量操作</button> -->
+<div class="pwrap pwrap--narrow">
+  <span class="kicker">Notifications</span>
+  <h1 class="ptitle" style="margin:14px 0 0;">我的通知</h1>
+
+  <div class="notif-toolbar">
+    <button class="btn btn--primary btn--sm" onclick="markAllRead()">全部标记已读</button>
+    <button class="btn btn--danger-soft btn--sm" onclick="deleteReadNotifications()">删除已读</button>
+  </div>
+
+  {% if data %}
+  <div class="notif-list" id="notifications-list">
+    {% for notification in data %}
+    <div class="card notification-card {% if not notification.read %}unread{% endif %}" data-id="{{ notification.id }}">
+      <div class="notification-header">
+        <span class="notification-action">{{ notification.action }}</span>
+        {% if not notification.read %}<span class="notification-unread-badge">未读</span>{% endif %}
+        <span class="notification-meta">
+          {{ notification.timestamp | datetime_format('%m-%d %H:%M') }} ·
+          {% if notification.actor and notification.actor.id %}
+            <a href="{{ url_for('auth.profile', user_id=notification.actor.id) }}">{{ notification.actor.username }}</a>
+          {% else %}系统{% endif %}
+        </span>
+        <span class="notification-actions">
+          {% if not notification.read %}<button class="btn-mark-read" onclick="markAsRead('{{ notification.id }}')">已读</button>{% endif %}
+          <button class="btn-delete" onclick="deleteNotification('{{ notification.id }}')">删除</button>
+        </span>
+      </div>
+      {% if notification.detail %}<div class="notification-content">{{ notification.detail }}</div>{% endif %}
+      {% if notification.object.type == 'blog' and notification.object.id %}
+      <a href="{{ url_for('blog.blog_detail', blog_id=notification.object.id) }}" class="notification-blog-link">查看博客 →</a>
+      {% endif %}
     </div>
+    {% endfor %}
+  </div>
 
-    <!-- <div class="btn-group">
-        <a href="{{ url_for('notifications.notification_page') }}" 
-           class="filter-btn {% if not unread_only %}active{% endif %}">📨 全部通知</a>
-        <a href="{{ url_for('notifications.notification_page', unread_only=true) }}" 
-           class="filter-btn {% if unread_only %}active{% endif %}">🔔 未读通知</a>
-    </div> -->
-
-    {% if data %}
-        <div id="notifications-list">
-            {% for notification in data %}
-                <div class="notification-card {% if not notification.read %}unread{% endif %}"
-                     data-id="{{ notification.id }}">
-                    <div class="notification-header">
-                        <span class="notification-action">{{ notification.action }}</span>
-                        {% if not notification.read %}
-                            <span class="notification-unread-badge">未读</span>
-                        {% endif %}
-                        <span class="notification-meta">
-                            {{ notification.timestamp | datetime_format('%m-%d %H:%M') }}
-                            ·
-                            {% if notification.actor and notification.actor.id %}
-                                <a href="{{ url_for('auth.profile', user_id=notification.actor.id) }}">{{ notification.actor.username }}</a>
-                            {% else %}
-                                系统
-                            {% endif %}
-                        </span>
-                        <span class="notification-actions">
-                            {% if not notification.read %}
-                                <button class="btn-mark-read" onclick="markAsRead('{{ notification.id }}')">已读</button>
-                            {% endif %}
-                            <button class="btn-delete" onclick="deleteNotification('{{ notification.id }}')">删除</button>
-                        </span>
-                    </div>
-                    {% if notification.detail %}
-                        <div class="notification-content">{{ notification.detail }}</div>
-                    {% endif %}
-                    {% if notification.object.type == 'blog' and notification.object.id %}
-                        <a href="{{ url_for('blog.blog_detail', blog_id=notification.object.id) }}" class="notification-blog-link">查看博客</a>
-                    {% endif %}
-                </div>
-            {% endfor %}
-        </div>
-
-        {% if pagination.pages > 1 %}
-            {% set unread_arg = request.args.get('unread_only') %}
-            <div class="pagination">
-                {% if pagination.has_prev %}
-                <a class="page-link" href="{{ url_for('notifications.notification_page', page=pagination.prev_num, unread_only=unread_arg) }}">&laquo;</a>
-                {% endif %}
-
-                {% set window = 3 %}
-                {% for p in range(1, pagination.pages + 1) %}
-                    {% if p == 1 or p == pagination.pages or (p >= pagination.page - window and p <= pagination.page + window) %}
-                    <a class="page-link {{ 'active' if p == pagination.page else '' }}"
-                       href="{{ url_for('notifications.notification_page', page=p, unread_only=unread_arg) }}">{{ p }}</a>
-                    {% elif p == pagination.page - window - 1 or p == pagination.page + window + 1 %}
-                    <span class="page-ellipsis">...</span>
-                    {% endif %}
-                {% endfor %}
-
-                {% if pagination.has_next %}
-                <a class="page-link" href="{{ url_for('notifications.notification_page', page=pagination.next_num, unread_only=unread_arg) }}">&raquo;</a>
-                {% endif %}
-
-                <span class="page-jump">
-                    <input type="number" id="pageInput" min="1" max="{{ pagination.pages }}" placeholder="{{ pagination.page }}" class="page-input">
-                    <button onclick="jumpToPage({{ pagination.pages }})" class="page-link page-btn">跳转</button>
-                </span>
-            </div>
-        {% endif %}
-    {% else %}
-        <div class="empty-state">
-            <div class="empty-state-icon">📭</div>
-            <h3>暂无通知</h3>
-            <p>你还没有任何通知，保持关注最新动态！</p>
-        </div>
-    {% endif %}
+  {% if pagination.pages > 1 %}
+  {% set unread_arg = request.args.get('unread_only') %}
+  <div class="pagination">
+    {% if pagination.has_prev %}<a class="page-link" href="{{ url_for('notifications.notification_page', page=pagination.prev_num, unread_only=unread_arg) }}">&laquo;</a>{% endif %}
+    {% set window = 3 %}
+    {% for p in range(1, pagination.pages + 1) %}
+      {% if p == 1 or p == pagination.pages or (p >= pagination.page - window and p <= pagination.page + window) %}
+      <a class="page-link {{ 'active' if p == pagination.page else '' }}" href="{{ url_for('notifications.notification_page', page=p, unread_only=unread_arg) }}">{{ p }}</a>
+      {% elif p == pagination.page - window - 1 or p == pagination.page + window + 1 %}<span class="page-ellipsis">…</span>{% endif %}
+    {% endfor %}
+    {% if pagination.has_next %}<a class="page-link" href="{{ url_for('notifications.notification_page', page=pagination.next_num, unread_only=unread_arg) }}">&raquo;</a>{% endif %}
+    <span class="page-jump"><input type="number" id="pageInput" min="1" max="{{ pagination.pages }}" placeholder="{{ pagination.page }}" class="page-input"><button onclick="jumpToPage({{ pagination.pages }})" class="page-link">跳转</button></span>
+  </div>
+  {% endif %}
+  {% else %}
+  <div class="empty-state">
+    <div class="empty-state-icon"><span class="icon icon-bell" style="width:2.4rem;height:2.4rem;display:inline-block;"></span></div>
+    <h3>暂无通知</h3>
+    <p>你还没有任何通知，保持关注最新动态！</p>
+  </div>
+  {% endif %}
 </div>
 
 <script>
@@ -103,138 +70,40 @@ function jumpToPage(totalPages) {
     url.searchParams.set('page', page);
     window.location.href = url.toString();
 }
-
-// 标记所有通知为已读
 function markAllRead() {
-    if (!confirm('确定要标记所有通知为已读吗？')) {
-        return;
-    }
-    
-    fetch('/notifications/api/mark-all-read', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        }
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            showToast(data.message, 'success');
-            setTimeout(() => location.reload(), 1000); // 刷新页面以更新状态
-        } else {
-            showToast('操作失败: ' + data.message, 'error');
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        showToast('操作失败，请重试', 'error');
-    });
+    if (!confirm('确定要标记所有通知为已读吗？')) return;
+    fetch('/notifications/api/mark-all-read', { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+        .then(r => r.json()).then(d => { if (d.success) { showToast(d.message, 'success'); setTimeout(() => location.reload(), 1000); } else showToast('操作失败: ' + d.message, 'error'); })
+        .catch(() => showToast('操作失败，请重试', 'error'));
 }
-
-// 删除所有已读通知
 function deleteReadNotifications() {
-    if (!confirm('确定要删除所有已读通知吗？此操作不可恢复！')) {
-        return;
-    }
-
-    fetch('/notifications/api/delete-read', {
-        method: 'DELETE',
-        headers: {
-            'Content-Type': 'application/json',
-        }
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            showToast(data.message, 'success');
-            setTimeout(() => location.reload(), 1000); // 刷新页面以更新状态
-        } else {
-            showToast('操作失败: ' + data.message, 'error');
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        showToast('操作失败，请重试', 'error');
-    });
+    if (!confirm('确定要删除所有已读通知吗？此操作不可恢复！')) return;
+    fetch('/notifications/api/delete-read', { method: 'DELETE', headers: { 'Content-Type': 'application/json' } })
+        .then(r => r.json()).then(d => { if (d.success) { showToast(d.message, 'success'); setTimeout(() => location.reload(), 1000); } else showToast('操作失败: ' + d.message, 'error'); })
+        .catch(() => showToast('操作失败，请重试', 'error'));
 }
-
-// 批量操作模式（暂时简单实现）
-function toggleBatchMode() {
-    showToast('批量操作功能正在开发中...', 'info');
+function markAsRead(id) {
+    fetch(`/notifications/api/mark-read/${id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+        .then(r => r.json()).then(d => {
+            if (d.success) {
+                const c = document.querySelector(`[data-id="${id}"]`);
+                if (c) { c.classList.remove('unread'); const b = c.querySelector('.btn-mark-read'); if (b) b.remove(); const u = c.querySelector('.notification-unread-badge'); if (u) u.remove(); }
+                showToast('已标记为已读', 'success');
+            } else showToast('操作失败: ' + d.message, 'error');
+        }).catch(() => showToast('操作失败，请重试', 'error'));
 }
-
-// 标记单个通知为已读
-function markAsRead(notificationId) {
-    fetch(`/notifications/api/mark-read/${notificationId}`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        }
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            // 更新UI状态
-            const notificationCard = document.querySelector(`[data-id="${notificationId}"]`);
-            if (notificationCard) {
-                notificationCard.classList.remove('unread');
-                // 移除"标记已读"按钮
-                const markReadBtn = notificationCard.querySelector('.btn-mark-read');
-                if (markReadBtn) {
-                    markReadBtn.remove();
-                }
-                // 移除"未读"徽标
-                const unreadBadge = notificationCard.querySelector('.notification-unread-badge');
-                if (unreadBadge) {
-                    unreadBadge.remove();
-                }
-            }
-            showToast('已标记为已读', 'success');
-        } else {
-            showToast('操作失败: ' + data.message, 'error');
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        showToast('操作失败，请重试', 'error');
-    });
-}
-
-// 删除单个通知
-function deleteNotification(notificationId) {
-    if (!confirm('确定要删除这个通知吗？此操作不可恢复！')) {
-        return;
-    }
-
-    fetch(`/notifications/api/delete/${notificationId}`, {
-        method: 'DELETE',
-        headers: {
-            'Content-Type': 'application/json',
-        }
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            // 从页面中移除通知卡片
-            const notificationCard = document.querySelector(`[data-id="${notificationId}"]`);
-            if (notificationCard) {
-                notificationCard.remove();
-            }
-
-            // 检查是否还有通知，如果没有则显示空状态
-            const notificationsList = document.getElementById('notifications-list');
-            if (notificationsList && notificationsList.children.length === 0) {
-                location.reload(); // 刷新页面显示空状态
-            }
-            showToast('通知已删除', 'success');
-        } else {
-            showToast('操作失败: ' + data.message, 'error');
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        showToast('操作失败，请重试', 'error');
-    });
+function deleteNotification(id) {
+    if (!confirm('确定要删除这个通知吗？此操作不可恢复！')) return;
+    fetch(`/notifications/api/delete/${id}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' } })
+        .then(r => r.json()).then(d => {
+            if (d.success) {
+                const c = document.querySelector(`[data-id="${id}"]`);
+                if (c) c.remove();
+                const list = document.getElementById('notifications-list');
+                if (list && list.children.length === 0) location.reload();
+                showToast('通知已删除', 'success');
+            } else showToast('操作失败: ' + d.message, 'error');
+        }).catch(() => showToast('操作失败，请重试', 'error'));
 }
 </script>
 {% endblock %}

@@ -60,13 +60,13 @@ class MarkdownRenderer {
 
                 return `<div class="highlight">
                     <pre><code class="hljs">${highlighted}</code></pre>
-                    <button class="copy-btn" data-code="${encodeURIComponent(code)}">📋 复制</button>
+                    <button class="copy-btn" data-code="${encodeURIComponent(code)}">复制</button>
                 </div>`;
             } catch (err) {
                 console.warn('代码高亮失败:', err);
                 return `<div class="highlight">
                     <pre><code>${code}</code></pre>
-                    <button class="copy-btn" data-code="${encodeURIComponent(code)}">📋 复制</button>
+                    <button class="copy-btn" data-code="${encodeURIComponent(code)}">复制</button>
                 </div>`;
             }
         };
@@ -382,7 +382,7 @@ function copyCode(button) {
     if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(codeText).then(() => {
             const originalText = button.textContent;
-            button.textContent = '✅ 已复制';
+            button.textContent = '已复制';
             setTimeout(() => {
                 button.textContent = originalText;
             }, 2000);

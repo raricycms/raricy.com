@@ -29,4 +29,50 @@
   padding-right: v.$space-4;
 }
 
+// 统一页头：干净的纯色标题带 + 底部分隔线（克制，无渐变装饰）。
+@mixin aurora-header {
+  background: var(--color-background-card);
+  border-bottom: 1px solid var(--color-border);
+}
+
+// ── 全站统一卡片语言（对齐 tool-new-card）──────────────────────────────
+// 卡片表面：白底 + 发丝边 + 18px 圆角 + 柔和真实阴影。所有卡片走这一套。
+@mixin surface-card($radius: 14px) {
+  background: var(--color-background-card);
+  border: 1px solid var(--color-border);
+  border-radius: $radius;
+  box-shadow: var(--shadow-card);
+}
+
+// 可交互卡片：hover 上浮 + 收紧边框 + 抬升阴影（显式列过渡属性，不用 transition:all）。
+@mixin surface-card-interactive($lift: -4px) {
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+
+  &:hover {
+    transform: translateY($lift);
+    box-shadow: var(--shadow-card-hover);
+    border-color: var(--color-border-strong);
+  }
+}
+
+// 图标徽章：卡片的视觉锚点。浅品牌色底 + 品牌色字形；父卡 hover 时填充实心品牌色。
+// 用法：卡片内放 .xxx__icon，@include icon-badge; 图标用 .icon.icon-*。
+@mixin icon-badge($size: 46px, $radius: 13px, $glyph: 22px) {
+  flex-shrink: 0;
+  width: $size;
+  height: $size;
+  border-radius: $radius;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-brand-tint);
+  color: var(--color-brand-primary);
+  transition: background-color 0.3s var(--ease-standard),
+    color 0.3s var(--ease-standard);
+
+  .icon { width: $glyph; height: $glyph; }
+}
+
 

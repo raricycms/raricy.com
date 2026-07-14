@@ -1,89 +1,66 @@
 {% extends "base.html" %}
-{% block title %}
-投票箱 - Raricy.com
-{% endblock %}
-
-{% block extra_css %}
-{% endblock %}
+{% block title %}投票箱 · 聪明山{% endblock %}
 
 {% block content %}
-<div class="vote-page">
-    <h1 class="vote-title">投票箱</h1>
+<div class="pwrap">
+  <span class="kicker">Vote</span>
+  <h1 class="ptitle" style="margin:14px 0 0;">投票箱</h1>
 
-    <div class="vote-navigation">
-        <div class="vote-navigation__search">
-            <input type="text" class="search-input" placeholder="输入投票ID跳转……" id="target_link">
-            <button class="search-button" id="redirect">前往</button>
-        </div>
-
-        <div class="vote-navigation__actions">
-            <a href="/vote/create" class="action-button primary">创建投票</a>
-        </div>
+  <div class="item-toolbar">
+    <div class="search-form" style="max-width:420px;">
+      <input type="text" class="search-input" placeholder="输入投票 ID 跳转……" id="target_link">
+      <button class="search-btn" id="redirect">前往</button>
     </div>
+    <a href="/vote/create" class="upload-button"><span class="icon icon-add"></span>创建投票</a>
+  </div>
 
-    <div class="vote-list">
-        {% if vote_lst %}
-            {% for v in vote_lst %}
-            <a href="/vote/{{ v['id'] }}" class="vote-item">
-                <div class="vote-item__header">
-                    <h3 class="vote-item__header-title">{{ v['title'] }}</h3>
-                    <span class="vote-item__header-meta">
-                        {{ v['option_count'] }} 个选项 &middot; {{ v['total_votes'] }} 票
-                        {% if v['is_locked'] %}<span class="vote-item__header-locked">已锁定</span>{% endif %}
-                    </span>
-                </div>
-                <div class="vote-item__id">
-                    <code>{{ v['id'] }}</code>
-                    <button class="vote-item__copy-btn" onclick="copyVoteId(event, '{{ v['id'] }}')">复制</button>
-                </div>
-            </a>
-            {% endfor %}
-        {% else %}
-            <div class="vote-list__empty">
-                <div class="vote-list__empty-icon">&#x1F5F3;</div>
-                <div class="vote-list__empty-text">您还没有创建任何投票</div>
-                <div class="vote-list__empty-subtext">点击上方按钮创建您的第一个投票</div>
-            </div>
-        {% endif %}
-    </div>
+  {% if vote_lst %}
+  <div class="vote-list">
+    {% for v in vote_lst %}
+    <a href="/vote/{{ v['id'] }}" class="card card--link vote-item">
+      <div class="vote-item__header">
+        <span class="vote-item__title">{{ v['title'] }}</span>
+        <span class="vote-item__meta">
+          {{ v['option_count'] }} 个选项 · {{ v['total_votes'] }} 票
+          {% if v['is_locked'] %}<span class="vote-locked">已锁定</span>{% endif %}
+        </span>
+      </div>
+      <div class="vote-item__id">
+        <code>{{ v['id'] }}</code>
+        <button class="vote-copy-btn" onclick="copyVoteId(event, '{{ v['id'] }}')">复制</button>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <div class="empty-state-icon"><span class="icon icon-grid" style="width:2.4rem;height:2.4rem;display:inline-block;"></span></div>
+    <h3>还没有投票</h3>
+    <p>点击上方按钮创建你的第一个投票。</p>
+  </div>
+  {% endif %}
 </div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
-    function copyVoteId(event, id) {
-        event.preventDefault();
-        event.stopPropagation();
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(id).then(() => {
-                const btn = event.target;
-                btn.textContent = '已复制';
-                setTimeout(() => { btn.textContent = '复制'; }, 1500);
-            }).catch(() => {
-                alert('复制失败，请手动复制：' + id);
-            });
-        } else {
-            alert('投票ID：' + id);
-        }
-    }
-
-    document.addEventListener('DOMContentLoaded', () => {
-        document.getElementById('redirect').addEventListener('click', () => {
-            const inputValue = document.getElementById('target_link').value.trim();
-            if (inputValue !== '') {
-                window.location.href = '/vote/' + encodeURIComponent(inputValue);
-            } else {
-                alert('请输入投票ID');
-            }
-        });
-        document.getElementById('target_link').addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                document.getElementById('redirect').click();
-            }
-        });
+function copyVoteId(event, id) {
+    event.preventDefault(); event.stopPropagation();
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(id).then(() => {
+            const btn = event.target; btn.textContent = '已复制';
+            setTimeout(() => { btn.textContent = '复制'; }, 1500);
+        }).catch(() => showToast('复制失败：' + id, 'error'));
+    } else showToast('投票 ID：' + id, 'info');
+}
+document.addEventListener('DOMContentLoaded', () => {
+    const go = document.getElementById('redirect');
+    go.addEventListener('click', () => {
+        const v = document.getElementById('target_link').value.trim();
+        if (v !== '') window.location.href = '/vote/' + encodeURIComponent(v);
+        else showToast('请输入投票 ID', 'warning');
     });
+    document.getElementById('target_link').addEventListener('keydown', (e) => { if (e.key === 'Enter') go.click(); });
+});
 </script>
-{% endblock %}
-
-{% block footer_text %}
 {% endblock %}

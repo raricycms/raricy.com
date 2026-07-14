@@ -3,22 +3,13 @@
 {% block title %}哈希计算 - 聪明山{% endblock %}
 
 {% block extra_css %}
-<style>
-  .tool-panel { background: rgba(255,255,255,.9); border: 1px solid rgba(0,0,0,.06); backdrop-filter: blur(6px); }
-  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
-  .result-area { min-height: 220px; }
-  .section-title { font-weight: 700; letter-spacing: .2px; }
-  .algo-badge { cursor: pointer; }
-  .algo-badge.active { background: #0d6efd; color: #fff; }
-  .file-hint { font-size: .875rem; }
-</style>
 {% endblock %}
 
 {% block content %}
-<section class="py-4">
+<section class="py-4 base-tool-page">
   <div class="container">
     <div class="d-flex align-items-center mb-3">
-      <a href="{{ url_for('tool.menu') }}" class="text-decoration-none me-2"><i class="bi bi-arrow-left"></i></a>
+      <a href="{{ url_for('tool.menu') }}" class="text-decoration-none me-2">←</a>
       <h1 class="mb-0 section-title">哈希计算</h1>
     </div>
     <p class="text-muted mb-3">支持 SHA-256 / SHA-1 / SHA-512 / MD5 / BLAKE2 等，文本与文件均可计算。</p>
@@ -63,8 +54,8 @@
             <span class="badge rounded-pill bg-light text-dark algo-badge" data-algo="MD5">MD5</span>
           </div>
           <div class="d-grid gap-2 d-md-flex">
-            <button id="btnCompute" class="btn btn-primary"><i class="bi bi-lightning-charge"></i> 计算</button>
-            <button id="btnCopy" class="btn btn-outline-secondary"><i class="bi bi-clipboard"></i> 复制结果</button>
+            <button id="btnCompute" class="btn btn-primary"> 计算</button>
+            <button id="btnCopy" class="btn btn-outline-secondary"> 复制结果</button>
 
           </div>
           <div class="mt-3">

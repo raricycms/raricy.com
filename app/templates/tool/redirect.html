@@ -2,61 +2,6 @@
 {% block title %}网址重定向工具 - 聪明山{% endblock %}
 
 {% block extra_css %}
-<style>
-  .redirect-hero {
-    background: radial-gradient(1200px 400px at 10% -10%, rgba(13, 110, 253, 0.25), transparent 60%),
-                radial-gradient(900px 300px at 90% -20%, rgba(111, 66, 193, 0.25), transparent 60%),
-                linear-gradient(180deg, #0d6efd10, transparent);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  }
-  .glass-card {
-    background: rgba(255, 255, 255, 0.85);
-    backdrop-filter: blur(6px);
-    border: 1px solid rgba(0,0,0,0.06);
-    transition: transform .2s ease, box-shadow .2s ease;
-  }
-  .glass-card:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(0,0,0,0.08); }
-  .url-input {
-    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-  }
-  .redirect-btn {
-    background: linear-gradient(135deg, #0d6efd, #3b8bfd);
-    border: none;
-    transition: all 0.3s ease;
-  }
-  .redirect-btn:hover {
-    background: linear-gradient(135deg, #0b5ed7, #2c7ce6);
-    transform: translateY(-1px);
-  }
-  .url-preview {
-    background: #f8f9fa;
-    border: 1px solid #dee2e6;
-    border-radius: 0.375rem;
-    padding: 0.75rem;
-    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-    font-size: 0.875rem;
-    word-break: break-all;
-  }
-  .security-warning {
-    background: linear-gradient(135deg, #fff3cd, #ffeaa7);
-    border: 1px solid #ffeaa7;
-    border-radius: 0.5rem;
-    padding: 1rem;
-  }
-  .countdown {
-    font-size: 1.25rem;
-    font-weight: 600;
-    color: #dc3545;
-  }
-  .shortcut-btn {
-    transition: all 0.2s ease;
-    border: 1px solid rgba(0,0,0,0.125);
-  }
-  .shortcut-btn:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-  }
-</style>
 {% endblock %}
 
 {% block content %}
@@ -69,7 +14,7 @@
           <p class="text-muted mb-4">安全地跳转到目标网址，支持自定义延迟时间，让您有足够时间确认目标地址。</p>
         </div>
         <div class="col-lg-4 d-none d-lg-block text-end">
-          <i class="bi bi-arrow-right-circle" style="font-size: 4rem; color: #0d6efd; opacity: 0.8;"></i>
+          
         </div>
       </div>
     </div>
@@ -83,34 +28,34 @@
           <div class="card glass-card">
             <div class="card-body p-4">
               <h3 class="card-title mb-4">
-                <i class="bi bi-link-45deg me-2"></i>网址重定向
+网址重定向
               </h3>
               
               <!-- Quick Access Shortcuts -->
               <div class="mb-4">
                 <h5 class="mb-3">
-                  <i class="bi bi-lightning me-2"></i>快捷访问
+快捷访问
                 </h5>
                 <div class="row g-2">
                   <div class="col-6 col-md-3">
                     <button class="btn btn-outline-warning btn-sm w-100 shortcut-btn" 
                             data-url="http://111.231.16.190" 
                             data-title="hustOJ">
-                      <i class="bi bi-code-square me-1"></i>hustOJ
+hustOJ
                     </button>
                   </div>
                   <div class="col-6 col-md-3">
                     <button class="btn btn-outline-warning btn-sm w-100 shortcut-btn" 
                             data-url="https://yuanbao.tencent.com/" 
                             data-title="yuanbao">
-                      <i class="bi bi-code-square me-1"></i>腾讯元宝
+腾讯元宝
                     </button>
                   </div>
                   <div class="col-6 col-md-3">
                     <button class="btn btn-outline-warning btn-sm w-100 shortcut-btn" 
                             data-url="http://116.62.179.232" 
                             data-title="raricy">
-                      <i class="bi bi-code-square me-1"></i>本站
+本站
                     </button>
                   </div>
                 </div>
@@ -122,7 +67,7 @@
                   <label for="targetUrl" class="form-label fw-semibold">目标网址</label>
                   <div class="input-group">
                     <span class="input-group-text">
-                      <i class="bi bi-globe"></i>
+                      
                     </span>
                     <input type="url" class="form-control url-input" id="targetUrl" 
                            placeholder="https://example.com" required>
@@ -134,7 +79,7 @@
                   <label for="delayTime" class="form-label fw-semibold">延迟时间（秒）</label>
                   <div class="input-group">
                     <span class="input-group-text">
-                      <i class="bi bi-clock"></i>
+                      
                     </span>
                     <input type="number" class="form-control" id="delayTime" 
                            value="3" min="0" max="30" required>
@@ -145,7 +90,7 @@
 
                 <div class="mb-4">
                   <button type="submit" class="btn btn-primary btn-lg redirect-btn w-100">
-                    <i class="bi bi-arrow-right-circle me-2"></i>开始重定向
+开始重定向
                   </button>
                 </div>
               </form>
@@ -161,14 +106,14 @@
                 <div class="countdown mb-3" id="countdown">3</div>
                 <p class="text-muted">正在跳转，请稍候...</p>
                 <button class="btn btn-outline-danger" id="cancelRedirect">
-                  <i class="bi bi-x-circle me-2"></i>取消跳转
+取消跳转
                 </button>
               </div>
 
               <!-- Security Warning -->
               <div class="security-warning mt-4">
                 <h6 class="mb-2">
-                  <i class="bi bi-shield-exclamation me-2"></i>安全提醒
+安全提醒
                 </h6>
                 <ul class="mb-0 small">
                   <li>请确认目标网址的安全性，避免访问可疑或恶意网站</li>

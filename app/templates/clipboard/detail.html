@@ -4,6 +4,7 @@
 {% endblock %}
 
 {% block extra_css %}
+<link rel="stylesheet" href="{{ static_url('css/legacy.css') }}">
 <!-- Markdown 渲染相关样式 -->
 <link rel="stylesheet" href="{{url_for('static', filename='css/hljs/default.min.css')}}" id="hljs-light" onerror="this.onerror=null; this.href='https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css'">
 <link rel="stylesheet" href="{{url_for('static', filename='css/hljs/monokai.min.css')}}" id="hljs-dark" onerror="this.onerror=null; this.href='https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/monokai.min.css'">
@@ -12,13 +13,13 @@
     background: var(--card-bg);
     border-radius: 8px;
     padding: 20px;
-    border: 1px solid var(--border-color);
+    border: 1px solid var(--color-border);
     min-height: 200px;
 }
 
 .clipboard-markdown-content pre {
-    background: var(--code-bg);
-    border: 1px solid var(--border-color);
+    background: var(--color-background-content);
+    border: 1px solid var(--color-border);
     border-radius: 4px;
     padding: 12px;
     overflow-x: auto;
@@ -26,7 +27,7 @@
 }
 
 .clipboard-markdown-content code {
-    background: var(--code-bg);
+    background: var(--color-background-content);
     padding: 2px 4px;
     border-radius: 3px;
     font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
@@ -41,7 +42,7 @@
     position: absolute;
     top: 8px;
     right: 8px;
-    background: var(--primary-color);
+    background: var(--color-brand-primary);
     color: white;
     border: none;
     border-radius: 4px;
@@ -71,7 +72,7 @@
 
 .clipboard-markdown-content table th,
 .clipboard-markdown-content table td {
-    border: 1px solid var(--border-color);
+    border: 1px solid var(--color-border);
     padding: 8px 12px;
     text-align: left;
 }
@@ -82,24 +83,24 @@
 }
 
 .clipboard-markdown-content blockquote {
-    border-left: 4px solid var(--primary-color);
+    border-left: 4px solid var(--color-brand-primary);
     margin: 16px 0;
     padding-left: 16px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     font-style: italic;
 }
 
 .loading-indicator {
     text-align: center;
     padding: 40px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
 }
 
 .markdown-fallback {
-    background: var(--code-bg);
+    background: var(--color-background-content);
     padding: 20px;
     border-radius: 6px;
-    border: 1px solid var(--border-color);
+    border: 1px solid var(--color-border);
     margin-top: 15px;
 }
 </style>
@@ -227,13 +228,13 @@ class ClipboardMarkdownRenderer {
                 
                 return `<div class="highlight">
                     <pre><code class="hljs">${highlighted}</code></pre>
-                    <button class="copy-btn" data-code="${encodeURIComponent(code)}">📋 复制</button>
+                    <button class="copy-btn" data-code="${encodeURIComponent(code)}">复制</button>
                 </div>`;
             } catch (err) {
                 console.warn('代码高亮失败:', err);
                 return `<div class="highlight">
                     <pre><code>${code}</code></pre>
-                    <button class="copy-btn" data-code="${encodeURIComponent(code)}">📋 复制</button>
+                    <button class="copy-btn" data-code="${encodeURIComponent(code)}">复制</button>
                 </div>`;
             }
         };
@@ -328,12 +329,12 @@ class ClipboardMarkdownRenderer {
     showFallbackContent(container, markdownText) {
         container.innerHTML = `
             <div class="alert alert-warning">
-                <h5>⚠️ Markdown 渲染库未加载</h5>
+                <h5>Markdown 渲染库未加载</h5>
                 <p>正在显示原始内容。这可能是由于网络问题导致的。</p>
                 <button class="btn btn-primary btn-sm mt-2" onclick="location.reload()">刷新页面重试</button>
             </div>
             <div class="markdown-fallback">
-                <h6>📝 原始内容：</h6>
+                <h6>原始内容：</h6>
                 <pre>${markdownText.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
             </div>
         `;
@@ -346,12 +347,12 @@ class ClipboardMarkdownRenderer {
             const markdownText = JSON.parse(contentScript.textContent);
             container.innerHTML = `
                 <div class="alert alert-warning">
-                    <h5>⚠️ 内容渲染失败</h5>
+                    <h5>内容渲染失败</h5>
                     <p>正在显示原始内容。这可能是由于内容格式问题导致的。</p>
                     <button class="btn btn-primary btn-sm mt-2" onclick="location.reload()">刷新页面重试</button>
                 </div>
                 <div class="markdown-fallback">
-                    <h6>📝 原始内容：</h6>
+                    <h6>原始内容：</h6>
                     <pre>${markdownText.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
                 </div>
             `;
@@ -489,7 +490,7 @@ function copyCode(button) {
     if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(codeText).then(() => {
             const originalText = button.textContent;
-            button.textContent = '✅ 已复制';
+            button.textContent = '已复制';
             setTimeout(() => {
                 button.textContent = originalText;
             }, 2000);

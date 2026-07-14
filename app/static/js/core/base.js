@@ -272,9 +272,19 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // 主题还原
-    const savedThemeName = localStorage.getItem('theme') || 'light';
-    switchTheme(savedThemeName);
+    // 主题：有手动偏好则用之，否则跟随系统（不落盘，OS 变化实时跟随）
+    const savedThemeName = localStorage.getItem('theme');
+    if (savedThemeName === 'light' || savedThemeName === 'dark') {
+        document.documentElement.setAttribute('data-theme', savedThemeName);
+    } else if (window.matchMedia) {
+        const mq = window.matchMedia('(prefers-color-scheme: dark)');
+        document.documentElement.setAttribute('data-theme', mq.matches ? 'dark' : 'light');
+        mq.addEventListener('change', function (e) {
+            if (!localStorage.getItem('theme')) {
+                document.documentElement.setAttribute('data-theme', e.matches ? 'dark' : 'light');
+            }
+        });
+    }
 });
 
 // 主题切换按钮

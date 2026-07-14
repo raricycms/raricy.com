@@ -1,5 +1,6 @@
 // 云剪贴板页面样式
 @use '../abstracts/variables' as *;
+@use '../abstracts/mixins' as m;
 .clipboard {
   // 页面容器
   &-page {
@@ -158,23 +159,14 @@
   
   // 剪贴板项目
   &-item {
-    background: var(--color-background-card);
-    border: 1px solid var(--color-border);
-    border-radius: $radius-large;
+    @include m.surface-card;
+    @include m.surface-card-interactive(-2px);
     padding: $space-4;
-    transition: all 0.3s ease;
     cursor: pointer;
     text-decoration: none;
     color: inherit;
     display: block;
-    
-    &:hover {
-      transform: translateY(-2px);
-      box-shadow: var(--shadow-card-brand);
-      border-color: var(--color-brand-primary);
-      background: var(--color-brand-secondary);
-    }
-    
+
     &:active {
       transform: translateY(0);
       transition: all 0.1s ease;

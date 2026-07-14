@@ -1,195 +1,115 @@
 {% extends "base.html" %}
-
-{% block title %}Raricy.com - 博客{% endblock %}
-
-{% block extra_css %}
-
-{% endblock %}
+{% block title %}博客 · 聪明山{% endblock %}
 
 {% block content %}
-<!-- Hero Section -->
-<section class="blogs-hero">
-    <div class="container">
-        <h1>博客</h1>
-        <p>分享思考与见解</p>
-        <div class="blog-search">
-            <form method="GET" action="{{ url_for('blog.menu') }}" class="search-form">
-                {% if request.args.get('category') %}
-                <input type="hidden" name="category" value="{{ request.args.get('category') }}">
-                {% endif %}
-                {% if request.args.get('featured') %}
-                <input type="hidden" name="featured" value="{{ request.args.get('featured') }}">
-                {% endif %}
-                <input type="search" name="search"
-                       value="{{ search or '' }}"
-                       placeholder="搜索标题、作者、简介..."
-                       class="search-input">
-                <button type="submit" class="search-btn">搜索</button>
-                {% if search %}
-                <a href="{{ url_for('blog.menu', category=request.args.get('category'), featured=request.args.get('featured')) }}"
-                   class="search-clear-btn">清除</a>
-                {% endif %}
-            </form>
-        </div>
-        {% if current_user.is_authenticated and current_user.is_core_user %}
-        <div class="mt-3">
-            <a href="/blog/upload_blog" class="upload-button">
-                <span class="icon icon-add"></span>
-                创建
-            </a>
-        </div>
-        {% endif %}
-        <!-- {% if current_category or featured %}
-        <div class="current-category">
-            {% if featured %}
-            <span class="badge">🌟 精选</span>
-            {% elif current_category %}
-            <span class="badge">{{ current_category.icon }} {{ current_category.get_full_path() }}</span>
-            {% endif %}
-        </div>
-        {% endif %} -->
-    </div>
+<section class="phero wrap">
+  <span class="kicker">Blog · 博客</span>
+  <h1 class="phero__title">博客</h1>
+  <p class="lede phero__lede">分享思考与见解。</p>
+
+  <div class="blog-toolbar">
+    <form method="GET" action="{{ url_for('blog.menu') }}" class="search-form">
+      {% if request.args.get('category') %}<input type="hidden" name="category" value="{{ request.args.get('category') }}">{% endif %}
+      {% if request.args.get('featured') %}<input type="hidden" name="featured" value="{{ request.args.get('featured') }}">{% endif %}
+      <input type="search" name="search" value="{{ search or '' }}" placeholder="搜索标题、作者、简介…" class="search-input">
+      <button type="submit" class="search-btn">搜索</button>
+      {% if search %}<a href="{{ url_for('blog.menu', category=request.args.get('category'), featured=request.args.get('featured')) }}" class="search-clear-btn">清除</a>{% endif %}
+    </form>
+    {% if current_user.is_authenticated and current_user.is_core_user %}
+    <a href="/blog/upload_blog" class="upload-button"><span class="icon icon-add"></span>创建文章</a>
+    {% endif %}
+  </div>
 </section>
 
-<!-- 主布局 -->
-<div class="container">
-    <div class="blog-layout">
-        <!-- 左侧分类导航 -->
-        <aside class="sidebar">
-            <h3 class="sidebar-title" onclick="toggleMainCategories()">
-                <span>分类</span>
-            </h3>
-            <ul class="category-list" id="mainCategoryList">
-                <li class="category-item">
-                    <a href="/blog/" class="category-link {{ 'active' if not current_category and not featured else '' }}">
-                        <div class="category-content">
-                            <span class="icon">🏠</span>
-                            <span>全部文章</span>
-                        </div>
-                    </a>
-                </li>
-                <li class="category-item">
-                    <a href="/blog/?featured=1" class="category-link {{ 'active' if featured else '' }}">
-                        <div class="category-content">
-                            <span class="icon">🌟</span>
-                            <span>精选</span>
-                        </div>
-                    </a>
-                </li>
-                {% for category in categories %}
-                <li class="category-item {{ 'has-children' if category.children else '' }}">
-                    {% if category.children %}
-                    <div class="category-link collapsible" onclick="toggleCategory('category-{{ category.id }}')">
-                        <div class="category-content">
-                            <span class="icon">{{ category.icon }}</span>
-                            <span>{{ category.name }}</span>
-                        </div>
-                    </div>
-                    <ul class="sub-category-list" id="category-{{ category.id }}">
-                        <li class="category-item">
-                            <a href="/blog/?category={{ category.slug }}" 
-                               class="sub-category-link {{ 'active' if current_category and current_category.id == category.id else '' }}">
-                                <span class="icon">{{ category.icon }}</span>
-                                <span>全部</span>
-                            </a>
-                        </li>
-                        {% for child in category.children %}
-                        <li class="category-item">
-                            <a href="/blog/?category={{ child.slug }}" 
-                               class="sub-category-link {{ 'active' if current_category and current_category.id == child.id else '' }}">
-                                <span class="icon">{{ child.icon }}</span>
-                                <span>{{ child.name }}</span>
-                            </a>
-                        </li>
-                        {% endfor %}
-                    </ul>
-                    {% else %}
-                    <a href="/blog/?category={{ category.slug }}" 
-                       class="category-link {{ 'active' if current_category and current_category.id == category.id else '' }}">
-                        <div class="category-content">
-                            <span class="icon">{{ category.icon }}</span>
-                            <span>{{ category.name }}</span>
-                        </div>
-                    </a>
-                    {% endif %}
-                </li>
-                {% endfor %}
-            </ul>
-        </aside>
-
-        <!-- 右侧博客列表 -->
-        <main class="blog-content">
-        {% for blog in blogs %}
-		<article class="blog-item" id="id{{ blog.id }}">
-                <div class="blog-header">
-                    <a href="/blog/{{ blog.id }}" class="blog-title">{{ blog.title }}</a>
-                    <div class="blog-stats">
-                        <span class="blog-likes" title="点赞数">
-                            <span class="icon icon-heart-fill"></span>
-                            <span>{{ blog.likes_count or 0 }}</span>
-                        </span>
-                        <span class="blog-comments" title="评论数">
-                            <span class="icon icon-chat-dots_new"></span>
-                            <span>{{ blog.comments_count or 0 }}</span>
-                        </span>
-                        <span class="blog-fish" title="小鱼干">
-                            <span>🐟</span>
-                            <span>{{ blog.fish_count or 0 }}</span>
-                        </span>
-                    </div>
-                </div>
-                <p class="blog-description">{{ blog.description }}</p>
-                <div class="menu-blog-meta">
-                    <div class="blog-author">
-                        <img src="/auth/avatar/{{ blog.author_id }}" alt="{{ blog.author }}">
-                        <span>{{ blog.author }}</span>
-                        {% if blog.category_path %}
-                        <span class="blog-category-tag">{{ blog.category_path }}</span>
-                        {% endif %}
-                    </div>
-                </div>
-            </article>
+<section class="section--tight wrap">
+  <div class="blog-layout">
+    <aside class="sidebar">
+      <h3 class="sidebar-title" onclick="toggleMainCategories()">分类</h3>
+      <ul class="category-list" id="mainCategoryList">
+        <li class="category-item">
+          <a href="/blog/" class="category-link {{ 'active' if not current_category and not featured else '' }}">
+            <div class="category-content"><span>全部文章</span></div>
+          </a>
+        </li>
+        <li class="category-item">
+          <a href="/blog/?featured=1" class="category-link {{ 'active' if featured else '' }}">
+            <div class="category-content"><span>精选</span></div>
+          </a>
+        </li>
+        {% for category in categories %}
+        <li class="category-item {{ 'has-children' if category.children else '' }}">
+          {% if category.children %}
+          <div class="category-link collapsible" onclick="toggleCategory('category-{{ category.id }}')">
+            <div class="category-content"><span class="icon">{{ category.icon }}</span><span>{{ category.name }}</span></div>
+          </div>
+          <ul class="sub-category-list" id="category-{{ category.id }}">
+            <li class="category-item">
+              <a href="/blog/?category={{ category.slug }}" class="sub-category-link {{ 'active' if current_category and current_category.id == category.id else '' }}"><span>全部</span></a>
+            </li>
+            {% for child in category.children %}
+            <li class="category-item">
+              <a href="/blog/?category={{ child.slug }}" class="sub-category-link {{ 'active' if current_category and current_category.id == child.id else '' }}"><span>{{ child.name }}</span></a>
+            </li>
             {% endfor %}
+          </ul>
+          {% else %}
+          <a href="/blog/?category={{ category.slug }}" class="category-link {{ 'active' if current_category and current_category.id == category.id else '' }}">
+            <div class="category-content"><span class="icon">{{ category.icon }}</span><span>{{ category.name }}</span></div>
+          </a>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+    </aside>
 
-            {% if not blogs %}
-            <div class="no-blogs">
-                <i class="bi bi-journal-x"></i>
-                <p>暂无博客文章</p>
-            </div>
-            {% endif %}
+    <div class="blog-content">
+      {% for blog in blogs %}
+      <a class="card blog-item" id="id{{ blog.id }}" href="/blog/{{ blog.id }}">
+        <div class="blog-header">
+          <span class="blog-title">{{ blog.title }}</span>
+          <div class="blog-stats">
+            <span title="点赞"><span class="icon icon-heart-fill"></span>{{ blog.likes_count or 0 }}</span>
+            <span title="评论"><span class="icon icon-chat-dots_new"></span>{{ blog.comments_count or 0 }}</span>
+            <span title="小鱼干">🐟 {{ blog.fish_count or 0 }}</span>
+          </div>
+        </div>
+        <p class="blog-description">{{ blog.description }}</p>
+        <div class="menu-blog-meta">
+          <div class="blog-author">
+            <img src="/auth/avatar/{{ blog.author_id }}" alt="{{ blog.author }}">
+            <span>{{ blog.author }}</span>
+            {% if blog.category_path %}<span class="blog-category-tag">{{ blog.category_path }}</span>{% endif %}
+          </div>
+        </div>
+      </a>
+      {% endfor %}
 
-            {% if pagination and pagination.pages > 1 %}
-            {% set category_arg = request.args.get('category') %}
-            {% set featured_arg = request.args.get('featured') %}
-            {% set search_arg = request.args.get('search') %}
-            <div class="pagination">
-                {% if pagination.has_prev %}
-                <a href="{{ url_for('blog.menu', page=pagination.prev_num, category=category_arg, featured=featured_arg, search=search_arg) }}" class="page-link">&laquo;</a>
-                {% endif %}
+      {% if not blogs %}<div class="no-blogs">暂无博客文章</div>{% endif %}
 
-                {% set window = 3 %}
-                {% for p in range(1, pagination.pages + 1) %}
-                    {% if p == 1 or p == pagination.pages or (p >= pagination.page - window and p <= pagination.page + window) %}
-                    <a href="{{ url_for('blog.menu', page=p, category=category_arg, featured=featured_arg, search=search_arg) }}"
-                       class="page-link {{ 'active' if p == pagination.page else '' }}">{{ p }}</a>
-                    {% elif p == pagination.page - window - 1 or p == pagination.page + window + 1 %}
-                    <span class="page-ellipsis">...</span>
-                    {% endif %}
-                {% endfor %}
-
-                {% if pagination.has_next %}
-                <a href="{{ url_for('blog.menu', page=pagination.next_num, category=category_arg, featured=featured_arg, search=search_arg) }}" class="page-link">&raquo;</a>
-                {% endif %}
-
-                <span class="page-jump">
-                    <input type="number" id="pageInput" min="1" max="{{ pagination.pages }}" placeholder="{{ pagination.page }}" class="page-input">
-                    <button onclick="jumpToPage({{ pagination.pages }})" class="page-link page-btn">跳转</button>
-                </span>
-            </div>
-            {% endif %}
-        </main>
+      {% if pagination and pagination.pages > 1 %}
+      {% set category_arg = request.args.get('category') %}
+      {% set featured_arg = request.args.get('featured') %}
+      {% set search_arg = request.args.get('search') %}
+      <div class="pagination">
+        {% if pagination.has_prev %}<a href="{{ url_for('blog.menu', page=pagination.prev_num, category=category_arg, featured=featured_arg, search=search_arg) }}" class="page-link">&laquo;</a>{% endif %}
+        {% set window = 3 %}
+        {% for p in range(1, pagination.pages + 1) %}
+          {% if p == 1 or p == pagination.pages or (p >= pagination.page - window and p <= pagination.page + window) %}
+          <a href="{{ url_for('blog.menu', page=p, category=category_arg, featured=featured_arg, search=search_arg) }}" class="page-link {{ 'active' if p == pagination.page else '' }}">{{ p }}</a>
+          {% elif p == pagination.page - window - 1 or p == pagination.page + window + 1 %}
+          <span class="page-ellipsis">…</span>
+          {% endif %}
+        {% endfor %}
+        {% if pagination.has_next %}<a href="{{ url_for('blog.menu', page=pagination.next_num, category=category_arg, featured=featured_arg, search=search_arg) }}" class="page-link">&raquo;</a>{% endif %}
+        <span class="page-jump">
+          <input type="number" id="pageInput" min="1" max="{{ pagination.pages }}" placeholder="{{ pagination.page }}" class="page-input">
+          <button onclick="jumpToPage({{ pagination.pages }})" class="page-link">跳转</button>
+        </span>
+      </div>
+      {% endif %}
     </div>
-</div>
+  </div>
+</section>
 {% endblock %}
 
 {% block extra_js %}
@@ -203,8 +123,6 @@
         url.searchParams.set('page', page);
         window.location.href = url.toString();
     }
-
-    // 搜索表单：移除空值参数再提交
     document.addEventListener('DOMContentLoaded', function () {
         const searchForm = document.querySelector('.search-form');
         if (searchForm) {
@@ -212,142 +130,39 @@
                 const searchInput = this.querySelector('.search-input');
                 if (searchInput && searchInput.value.trim() === '') {
                     e.preventDefault();
-                    // 移除 search 参数后提交
                     const url = new URL(this.action, window.location.origin);
-                    const formData = new FormData(this);
-                    for (const [key, value] of formData.entries()) {
-                        if (key !== 'search') {
-                            url.searchParams.set(key, value);
-                        }
+                    for (const [key, value] of new FormData(this).entries()) {
+                        if (key !== 'search') url.searchParams.set(key, value);
                     }
                     window.location.href = url.toString();
                 }
             });
         }
-    });
-
-    document.addEventListener('DOMContentLoaded', function () {
-        // 初始化折叠状态
         initializeCollapse();
-	jumpToTargetBlog();
-        // 移除所有博客卡片动画和侧边栏动画，所有内容直接显示
-        // 原实现如下（已移除）：
-        // const blogItems = document.querySelectorAll('.blog-item');
-        // blogItems.forEach((item, index) => {
-        //     item.style.opacity = '0';
-        //     item.style.transform = 'translateY(20px)';
-        //     setTimeout(() => {
-        //         item.style.transition = 'all 0.6s ease';
-        //         item.style.opacity = '1';
-        //         item.style.transform = 'translateY(0)';
-        //     }, index * 100);
-        // });
-
-        // const sidebar = document.querySelector('.sidebar');
-        // if (sidebar) {
-        //     sidebar.style.opacity = '0';
-        //     sidebar.style.transform = 'translateX(-20px)';
-        //     setTimeout(() => {
-        //         sidebar.style.transition = 'all 0.6s ease';
-        //         sidebar.style.opacity = '1';
-        //         sidebar.style.transform = 'translateX(0)';
-        //     }, 200);
-        // }
     });
-    function jumpToTargetBlog() {
-    	const params = new URLSearchParams(window.location.search);
-    	const targetBlogId = params.get('from_id');
-	    if(targetBlogId === null){
-	    	return;
-	    }
-	    const el = document.querySelector(`#id${targetBlogId}`);
-	    if(!el)return;
-	    //el.scrollIntoView({ behavior: 'smooth', block:'center' });
-    }
-    // 初始化折叠状态
     function initializeCollapse() {
-        const isMobile = window.innerWidth <= 768;
+        const isMobile = window.innerWidth <= 820;
         const mainCategoryList = document.getElementById('mainCategoryList');
-        const sidebarTitle = document.querySelector('.sidebar-title');
-        
-        // 手机端默认折叠主分类列表
-        if (isMobile && mainCategoryList) {
-            mainCategoryList.classList.add('collapsed');
-            if (sidebarTitle) {
-                sidebarTitle.classList.add('collapsed');
-            }
-        }
-
-        // 桌面端默认展开所有子分类
-        if (!isMobile) {
-            const subCategoryLists = document.querySelectorAll('.sub-category-list');
-            subCategoryLists.forEach(list => {
-                list.classList.remove('collapsed');
-            });
+        const subLists = document.querySelectorAll('.sub-category-list');
+        const collapsibles = document.querySelectorAll('.category-link.collapsible');
+        if (isMobile) {
+            if (mainCategoryList) mainCategoryList.classList.add('collapsed');
+            subLists.forEach(l => l.classList.add('collapsed'));
+            collapsibles.forEach(l => l.classList.add('collapsed'));
         } else {
-            // 手机端默认折叠所有子分类
-            const subCategoryLists = document.querySelectorAll('.sub-category-list');
-            subCategoryLists.forEach(list => {
-                list.classList.add('collapsed');
-            });
-            const collapsibleLinks = document.querySelectorAll('.category-link.collapsible');
-            collapsibleLinks.forEach(link => {
-                link.classList.add('collapsed');
-            });
+            subLists.forEach(l => l.classList.remove('collapsed'));
         }
     }
-
-    // 切换主分类列表显示/隐藏
     function toggleMainCategories() {
-        const mainCategoryList = document.getElementById('mainCategoryList');
-        const sidebarTitle = document.querySelector('.sidebar-title');
-        
-        if (mainCategoryList) {
-            const isCollapsed = mainCategoryList.classList.contains('collapsed');
-            
-            if (isCollapsed) {
-                mainCategoryList.classList.remove('collapsed');
-                if (window.innerWidth <= 768) {
-                    mainCategoryList.classList.add('expanded');
-                }
-                if (sidebarTitle) {
-                    sidebarTitle.classList.remove('collapsed');
-                }
-            } else {
-                mainCategoryList.classList.add('collapsed');
-                mainCategoryList.classList.remove('expanded');
-                if (sidebarTitle) {
-                    sidebarTitle.classList.add('collapsed');
-                }
-            }
-        }
+        const el = document.getElementById('mainCategoryList');
+        if (el) el.classList.toggle('collapsed');
     }
-
-    // 切换子分类显示/隐藏
     function toggleCategory(categoryId) {
-        const categoryList = document.getElementById(categoryId);
-        const toggleButton = document.querySelector(`[onclick="toggleCategory('${categoryId}')"]`);
-        
-        if (categoryList && toggleButton) {
-            const isCollapsed = categoryList.classList.contains('collapsed');
-            
-            if (isCollapsed) {
-                categoryList.classList.remove('collapsed');
-                toggleButton.classList.remove('collapsed');
-            } else {
-                categoryList.classList.add('collapsed');
-                toggleButton.classList.add('collapsed');
-            }
-        }
+        const list = document.getElementById(categoryId);
+        const btn = document.querySelector(`[onclick="toggleCategory('${categoryId}')"]`);
+        if (list) list.classList.toggle('collapsed');
+        if (btn) btn.classList.toggle('collapsed');
     }
-
-    // 响应窗口大小变化
-    window.addEventListener('resize', function() {
-        // 当从手机端切换到桌面端时，重新初始化
-        setTimeout(initializeCollapse, 100);
-    });
+    window.addEventListener('resize', function () { setTimeout(initializeCollapse, 100); });
 </script>
-{% endblock %}
-
-{% block footer_text %}
 {% endblock %}

@@ -3,22 +3,13 @@
 {% block title %}URL 编码/解码 - 聪明山{% endblock %}
 
 {% block extra_css %}
-<style>
-  .tool-panel { background: rgba(255,255,255,.9); border: 1px solid rgba(0,0,0,.06); backdrop-filter: blur(6px); }
-  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
-  .result-area { min-height: 220px; }
-  .section-title { font-weight: 700; letter-spacing: .2px; }
-  .mid-actions { min-height: 100%; display: flex; align-items: center; justify-content: center; }
-  .mid-actions .btn { width: 140px; }
-  .btn-copy { position: absolute; right: 1rem; top: .75rem; }
-</style>
 {% endblock %}
 
 {% block content %}
-<section class="py-4">
+<section class="py-4 base-tool-page">
   <div class="container">
     <div class="d-flex align-items-center mb-3">
-      <a href="{{ url_for('tool.menu') }}" class="text-decoration-none me-2"><i class="bi bi-arrow-left"></i></a>
+      <a href="{{ url_for('tool.menu') }}" class="text-decoration-none me-2">←</a>
       <h1 class="mb-0 section-title">URL 编码 / 解码</h1>
     </div>
     <p class="text-muted mb-3">支持 encodeURIComponent / encodeURI，空格用 + 或 %20，保留斜杠等选项。</p>
@@ -63,9 +54,9 @@
       <div class="col-12 col-lg-2">
         <div class="mid-actions h-100">
           <div class="d-flex flex-column gap-3 w-100 align-items-center">
-            <button id="btnEncode" class="btn btn-primary"><i class="bi bi-arrow-right"></i> 编码</button>
-            <button id="btnDecode" class="btn btn-outline-primary"><i class="bi bi-arrow-left"></i> 解码</button>
-            <button id="btnSwap" class="btn btn-outline-secondary"><i class="bi bi-arrow-left-right"></i> 交换两侧</button>
+            <button id="btnEncode" class="btn btn-primary">→ 编码</button>
+            <button id="btnDecode" class="btn btn-outline-primary">← 解码</button>
+            <button id="btnSwap" class="btn btn-outline-secondary">⇄ 交换两侧</button>
           </div>
         </div>
       </div>
@@ -73,7 +64,7 @@
       <div class="col-12 col-lg-5">
         <div class="p-3 rounded tool-panel h-100 position-relative">
           <label class="form-label fw-semibold">右侧（编码文本）</label>
-          <button id="btnCopyRight" class="btn btn-sm btn-outline-secondary btn-copy"><i class="bi bi-clipboard"></i> 复制</button>
+          <button id="btnCopyRight" class="btn btn-sm btn-outline-secondary btn-copy"> 复制</button>
           <textarea id="rightArea" class="form-control mono result-area" rows="12" placeholder="编码文本在此显示或粘贴以解码"></textarea>
           <div class="d-flex justify-content-between mt-2">
             <small class="text-muted">快捷键：<span class="kbd">Ctrl</span> + <span class="kbd">Enter</span> 编码（左 → 右）</small>

@@ -1,187 +1,64 @@
 {% extends "base.html" %}
 
-{% block title %}Raricy.com - 聪明山 - 首页{% endblock %}
-
-{% block extra_css %}
-<meta name="google-site-verification" content="LRVbLEdJxTTwwbT114ygONe1auaak1IJxv1Eyr-vZt8" />
-{% endblock %}
+{% block title %}Raricy.com · 聪明山{% endblock %}
 
 {% block content %}
-<!-- Hero Section -->
-<section class="hero-section" id="home">
-    <canvas id="hero-canvas"></canvas>
-    <div class="home-container">
-        <div class="home-row home-text-center">
-            <div class="home-col-6">
-                <div class="fade-in-up hero-content">
-                    <h1 class="home-display">聪明山</h1>
-                    <p class="hero-tagline">我们总将找到答案</p>
-                    <p class="hero-desc">欢迎访问聪明山 website。这里是 Raricy.com 的主页面，你可以由此进入 Raricy.com 的大部分页面</p>
-                </div>
-            </div>
-            
-        </div>
+<section class="home-hero">
+  <div class="wrap">
+    <div class="home-hero__inner">
+      <span class="kicker">Raricy.com · 聪明山</span>
+      <h1 class="home-hero__title">我们总将<br>找到答案</h1>
+      <p class="lede home-hero__lede">
+        欢迎访问聪明山 website。这里是 Raricy.com 的主页面，你可以由此进入 Raricy.com 的大部分页面。
+      </p>
+      <div class="home-hero__cta">
+        <a class="btn btn--primary arrow" href="{{ url_for('blog.menu') }}">阅读博客</a>
+        <a class="btn btn--ghost" href="{{ url_for('tool.menu') }}">打开工具箱</a>
+      </div>
     </div>
-    </section>
-<section class="features-section" id="features">
-    <div class="home-container">
-        <div class="features-head">
-            <h2 class="home-display">探索</h2>
-            <p class="home-lead">以下是此网站的核心内容。</p>
-        </div>
-
-        <div class="home-grid">
-            <div class="home-grid-item">
-                <div class="feature-card card-story" data-url="{{url_for('story.root_collection')}}" onclick="handleCardClick(this)">
-                    <div class="card-body home-text-center">
-                        <span class="feature-icon" aria-hidden="true"></span>
-                        <h4 class="card-title" style="margin-bottom: 0.75rem;">故事/小说</h4>
-                        <p class="card-text">聪明山故事集，这里有一些聪明山的原创故事和小说，也有代发的原创小说。</p>
-                        <a href="{{ url_for('story.root_collection') }}" class="home-btn home-btn--outline-primary home-btn--sm">开始阅读</a>
-                    </div>
-                </div>
-            </div>
-
-            <div class="home-grid-item">
-                <div class="feature-card card-game" data-url="{{url_for('game.menu')}}" onclick="handleCardClick(this)">
-                    <div class="card-body home-text-center">
-                        <span class="feature-icon" aria-hidden="true"></span>
-                        <h4 class="card-title" style="margin-bottom: 0.75rem;">玩具</h4>
-                        <p class="card-text">一些神秘小游戏。感谢各位创作者的贡献！</p>
-                        <a href="{{ url_for('game.menu') }}" class="home-btn home-btn--outline-success home-btn--sm">进入玩具区</a>
-                    </div>
-                </div>
-            </div>
-
-            <div class="home-grid-item">
-                <div class="feature-card card-blog" data-url="{{url_for('blog.menu')}}" onclick="handleCardClick(this)">
-                    <div class="card-body home-text-center">
-                        <span class="feature-icon" aria-hidden="true"></span>
-                        <h4 class="card-title" style="margin-bottom: 0.75rem;">博客/文章</h4>
-                        <p class="card-text">这里有一些博客文章和思考分享，涵盖技术、生活、思考等多个方面。</p>
-                        <a href="{{ url_for('blog.menu') }}" class="home-btn home-btn--outline-warning home-btn--sm">阅读文章</a>
-                    </div>
-                </div>
-            </div>
-
-            <div class="home-grid-item">
-                <div class="feature-card card-tool" data-url="{{url_for('tool.menu')}}" onclick="handleCardClick(this)">
-                    <div class="card-body home-text-center">
-                        <span class="feature-icon" aria-hidden="true"></span>
-                        <h4 class="card-title" style="margin-bottom: 0.75rem;">工具</h4>
-                        <p class="card-text">常用小工具合集：Base 编码、Hex 查看等，助你更高效。</p>
-                        <a href="{{ url_for('tool.menu') }}" class="home-btn home-btn--outline-info home-btn--sm">打开工具箱</a>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
+  </div>
 </section>
-{% endblock %}
 
-{% block footer_text %}
-<p class="u-text-muted">你是否正在找智慧河的网站？来<a href="https://zhh.raricy.com">这里</a>。</p>
-{% endblock %}
+<section class="section home-explore">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="kicker">探索</span>
+      <h2>以下是此网站的核心内容</h2>
+    </div>
 
-{% block extra_js %}
-<script>
-    console.log('hello!')
-    console.log('https://raricy.com/zhh')
-    // 卡片点击跳转处理函数
-    function handleCardClick(element) {
-        const url = element.getAttribute('data-url');
-        if (url) {
-            window.location.href = url;
-        }
-    }
+    <div class="explore-grid">
+      <a class="card card--link dest" href="{{ url_for('story.root_collection') }}">
+        <span class="dest__no">01</span>
+        <span class="dest__medallion"><span class="glyph glyph--book"></span></span>
+        <h3 class="dest__title">故事 / 小说</h3>
+        <p class="dest__desc">聪明山故事集，这里有一些聪明山的原创故事和小说，也有代发的原创小说。</p>
+        <span class="dest__go">开始阅读</span>
+      </a>
 
-    // Interactive Canvas Background
-    const canvas = document.getElementById('hero-canvas');
-    const ctx = canvas.getContext('2d');
-    let particles = [];
-    let mouse = { x: null, y: null };
+      <a class="card card--link dest" href="{{ url_for('game.menu') }}">
+        <span class="dest__no">02</span>
+        <span class="dest__medallion"><span class="glyph glyph--controller"></span></span>
+        <h3 class="dest__title">玩具</h3>
+        <p class="dest__desc">一些神秘小游戏。感谢各位创作者的贡献！</p>
+        <span class="dest__go">进入玩具区</span>
+      </a>
 
-    // Debounce function to limit how often a function gets called.
-    function debounce(func, wait = 250) {
-        let timeout;
-        return function(...args) {
-            const context = this;
-            clearTimeout(timeout);
-            timeout = setTimeout(() => func.apply(context, args), wait);
-        };
-    }
+      <a class="card card--link dest" href="{{ url_for('blog.menu') }}">
+        <span class="dest__no">03</span>
+        <span class="dest__medallion"><span class="glyph glyph--journal"></span></span>
+        <h3 class="dest__title">博客 / 文章</h3>
+        <p class="dest__desc">这里有一些博客文章和思考分享，涵盖技术、生活、思考等多个方面。</p>
+        <span class="dest__go">阅读文章</span>
+      </a>
 
-    function resizeCanvas() {
-        canvas.width = window.innerWidth;
-        canvas.height = document.querySelector('.hero-section').offsetHeight;
-        // Re-initialize particles on resize to fit new dimensions
-        init();
-    }
-    window.addEventListener('mousemove', (e) => {
-        const rect = canvas.getBoundingClientRect();
-        mouse.x = e.clientX - rect.left;
-        mouse.y = e.clientY - rect.top;
-    });
-    window.addEventListener('mouseout', () => {
-        mouse.x = null;
-        mouse.y = null;
-    });
-
-    class Particle {
-        constructor(x, y, dx, dy, radius, color) {
-            this.x = x; this.y = y; this.dx = dx; this.dy = dy;
-            this.radius = radius; this.color = color;
-        }
-        draw() {
-            ctx.beginPath();
-            ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2, false);
-            ctx.fillStyle = this.color;
-            ctx.fill();
-        }
-        update() {
-            if (this.x + this.radius > canvas.width || this.x - this.radius < 0) this.dx = -this.dx;
-            if (this.y + this.radius > canvas.height || this.y - this.radius < 0) this.dy = -this.dy;
-            this.x += this.dx; this.y += this.dy;
-            this.draw();
-        }
-    }
-
-    function init() {
-        particles = [];
-        for (let i = 0; i < 80; i++) {
-            let radius = Math.random() * 2 + 1;
-            let x = Math.random() * (canvas.width - radius * 2) + radius;
-            let y = Math.random() * (canvas.height - radius * 2) + radius;
-            let dx = (Math.random() - 0.5) * 0.5;
-            let dy = (Math.random() - 0.5) * 0.5;
-            particles.push(new Particle(x, y, dx, dy, radius, 'rgba(255, 255, 255, 0.5)'));
-        }
-    }
-
-    let animationFrameId = null;
-    function animate() {
-        animationFrameId = requestAnimationFrame(animate);
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        particles.forEach(p => p.update());
-    }
-
-    function handleVisibilityChange() {
-        if (document.hidden) {
-            if (animationFrameId) {
-                cancelAnimationFrame(animationFrameId);
-                animationFrameId = null;
-            }
-        } else {
-            if (!animationFrameId) {
-                animate();
-            }
-        }
-    }
-
-    // Initial setup and event listeners
-    resizeCanvas(); // This will set size and call init()
-    animate();
-    window.addEventListener('resize', debounce(resizeCanvas));
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-</script>
+      <a class="card card--link dest" href="{{ url_for('tool.menu') }}">
+        <span class="dest__no">04</span>
+        <span class="dest__medallion"><span class="glyph glyph--tools"></span></span>
+        <h3 class="dest__title">工具</h3>
+        <p class="dest__desc">常用小工具合集：Base 编码、Hex 查看等，助你更高效。</p>
+        <span class="dest__go">打开工具箱</span>
+      </a>
+    </div>
+  </div>
+</section>
 {% endblock %}
