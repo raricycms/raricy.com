@@ -94,7 +94,13 @@ def get_avatar(user_id):
     user = User.query.filter_by(id=user_id).first_or_404()
     avatar_dir = os.path.normpath(os.path.join(current_app.instance_path, 'avatars', f'{user.id}.png'))
     if not os.path.exists(avatar_dir):
-        abort(404)
+        # 文件缺失（如 CLI 建号、历史数据、生成失败）时按需生成 identicon，避免全站碎图
+        try:
+            from app.utils.avatar_generator import create_and_save_avatar
+            os.makedirs(os.path.dirname(avatar_dir), exist_ok=True)
+            create_and_save_avatar(input_string=user.id, output_path=avatar_dir)
+        except Exception:
+            abort(404)
     return send_from_directory(
         directory=os.path.dirname(avatar_dir),
         path=os.path.basename(avatar_dir),

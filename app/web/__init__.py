@@ -34,7 +34,10 @@ def register_blueprints(app: Flask):
 
     # 仅在非生产环境注册测试蓝图
     if app.config.get('DEBUG'):
-        from .test import register_blueprints as register_test
-        register_test(app)
+        try:
+            from .test import register_blueprints as register_test
+            register_test(app)
+        except Exception as e:  # 可选依赖（如 deepcaptcha）缺失时不阻断启动
+            app.logger.warning(f'测试蓝图部分未加载: {e}')
 
     app.register_blueprint(auth_bp, url_prefix='/auth')
