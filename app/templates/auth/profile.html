@@ -1,80 +1,41 @@
 {% extends "base.html" %}
-{% block title %}{{ user.username }} - 个人主页{% endblock %}
+{% block title %}{{ user.username }} · 个人主页{% endblock %}
 
 {% block content %}
-<div class="profile-page container">
-  <!-- ====== Hero ====== -->
-  <div class="profile-hero">
+<div class="wrap profile-page">
+  <div class="card profile-hero">
     <div class="profile-hero__top">
-      <!-- Avatar -->
       <div class="profile-hero__avatar">
         <img src="{{ url_for('auth.get_avatar', user_id=user.id) }}" alt="{{ user.username }}">
       </div>
-
-      <!-- Info -->
       <div class="profile-hero__info">
-        <div class="profile-hero__name-row">
-          <span class="profile-hero__username">{{ user.username }}</span>
-          <span class="profile-hero__role-badge
-            {% if user.is_owner %}profile-hero__role-badge--owner{% elif user.has_admin_rights %}profile-hero__role-badge--admin{% elif user.is_core_user %}profile-hero__role-badge--core{% else %}profile-hero__role-badge--user{% endif %}">
+        <div class="profile-name-row">
+          <span class="profile-username">{{ user.username }}</span>
+          <span class="role-badge {% if user.is_owner %}role-badge--owner{% elif user.has_admin_rights %}role-badge--admin{% elif user.is_core_user %}role-badge--core{% else %}role-badge--user{% endif %}">
             {% if user.is_owner %}站长{% elif user.has_admin_rights %}管理员{% elif user.is_core_user %}核心用户{% else %}用户{% endif %}
           </span>
         </div>
 
-        <!-- Bio -->
-        <div class="profile-hero__bio {% if not user.bio %}profile-hero__bio--empty{% endif %}" id="profileBio">
-          {{ user.bio if user.bio else '这个人还没有写简介...' }}
+        <div class="profile-bio {% if not user.bio %}profile-bio--empty{% endif %}">{{ user.bio if user.bio else '这个人还没有写简介…' }}</div>
+
+        <div class="profile-meta">
+          <span><span class="icon icon-person"></span>注册于 {{ user.created_at.strftime('%Y-%m-%d') }}</span>
+          {% if user.last_login %}<span>最后登录 {{ user.last_login.strftime('%Y-%m-%d') }}</span>{% endif %}
+          {% if user == current_user %}<span><span class="icon icon-envelope"></span>{{ user.email }}</span>{% endif %}
         </div>
 
-        <!-- Meta -->
-        <div class="profile-hero__meta">
-          <span>
-            <i class="icon icon-person"></i>
-            注册于 {{ user.created_at.strftime('%Y-%m-%d') }}
-          </span>
-          {% if user.last_login %}
-          <span>
-            最后登录 {{ user.last_login.strftime('%Y-%m-%d') }}
-          </span>
-          {% endif %}
-          {% if user == current_user %}
-          <span>
-            <i class="icon icon-envelope"></i>
-            {{ user.email }}
-          </span>
-          {% endif %}
-        </div>
-
-        <!-- Stats -->
         <div class="profile-stats">
-          <div class="profile-stats__item">
-            <div class="profile-stats__number">{{ blogs_count }}</div>
-            <div class="profile-stats__label">文章</div>
-          </div>
-          <div class="profile-stats__item">
-            <div class="profile-stats__number">{{ likes_received }}</div>
-            <div class="profile-stats__label">获赞</div>
-          </div>
-          <div class="profile-stats__item">
-            <div class="profile-stats__number">{{ comments_count }}</div>
-            <div class="profile-stats__label">评论</div>
-          </div>
-          <div class="profile-stats__item">
-            <div class="profile-stats__number">{{ checkin_total_fortune }}</div>
-            <div class="profile-stats__label">运势值</div>
-          </div>
+          <div class="profile-stats__item"><div class="profile-stats__number">{{ blogs_count }}</div><div class="profile-stats__label">文章</div></div>
+          <div class="profile-stats__item"><div class="profile-stats__number">{{ likes_received }}</div><div class="profile-stats__label">获赞</div></div>
+          <div class="profile-stats__item"><div class="profile-stats__number">{{ comments_count }}</div><div class="profile-stats__label">评论</div></div>
+          <div class="profile-stats__item"><div class="profile-stats__number">{{ checkin_total_fortune }}</div><div class="profile-stats__label">运势值</div></div>
         </div>
 
-        <!-- Owner-only actions -->
         {% if user == current_user %}
         <div class="profile-actions">
-          <a href="{{ url_for('auth.settings') }}" class="profile-actions__btn profile-actions__btn--edit">
-            <i class="icon icon-gear"></i> 账号设置
-          </a>
+          <a href="{{ url_for('auth.settings') }}" class="btn btn--ghost btn--sm"><span class="icon icon-gear"></span>账号设置</a>
           {% if not user.is_core_user %}
-          <a href="{{ url_for('auth.authentic') }}" class="profile-actions__btn profile-actions__btn--auth">
-            <i class="icon icon-person-circle"></i> 去认证
-          </a>
+          <a href="{{ url_for('auth.authentic') }}" class="btn btn--primary btn--sm"><span class="icon icon-person-circle"></span>去认证</a>
           {% endif %}
         </div>
         {% endif %}
@@ -82,123 +43,74 @@
     </div>
   </div>
 
-  <!-- ====== Tabs ====== -->
   <div class="profile-tabs">
     <button class="profile-tabs__tab {{ 'profile-tabs__tab--active' if tab == 'blogs' else '' }}" data-tab="blogs">文章 ({{ blogs_count }})</button>
     <button class="profile-tabs__tab {{ 'profile-tabs__tab--active' if tab == 'comments' else '' }}" data-tab="comments">评论 ({{ comments_count }})</button>
   </div>
 
-  <!-- ====== Blogs tab ====== -->
   <div class="profile-tab-panel {{ 'profile-tab-panel--active' if tab == 'blogs' else '' }}" id="tab-blogs">
     {% if not show_blogs %}
-    <div class="profile-privacy-notice">
-      <i class="icon icon-lock2"></i>
-      该用户设置了文章不可见
-    </div>
+    <div class="profile-privacy-notice"><span class="icon icon-lock2"></span>该用户设置了文章不可见</div>
     {% elif blogs_pagination and blogs_pagination.items %}
     <div class="profile-content-list">
       {% for blog in blogs_pagination.items %}
-      <a href="{{ url_for('blog.blog_detail', blog_id=blog.id) }}" class="profile-content-item">
+      <a href="{{ url_for('blog.blog_detail', blog_id=blog.id) }}" class="card profile-content-item">
         <div class="profile-content-item__title">{{ blog.title }}</div>
-        {% if blog.description %}
-        <div class="profile-content-item__preview">{{ blog.description }}</div>
-        {% endif %}
+        {% if blog.description %}<div class="profile-content-item__preview">{{ blog.description }}</div>{% endif %}
         <div class="profile-content-item__meta">
           <span>{{ blog.created_at.strftime('%Y-%m-%d') }}</span>
-          <span>
-            <i class="icon icon-heart-fill"></i> {{ blog.likes_count }}
-          </span>
-          <span>
-            <i class="icon icon-chat-dots_new"></i> {{ blog.comments_count }}
-          </span>
+          <span><span class="icon icon-heart-fill"></span>{{ blog.likes_count }}</span>
+          <span><span class="icon icon-chat-dots_new"></span>{{ blog.comments_count }}</span>
         </div>
       </a>
       {% endfor %}
     </div>
     {% if blogs_pagination.pages > 1 %}
     <div class="pagination">
-      {% if blogs_pagination.has_prev %}
-      <a href="{{ url_for('auth.profile', user_id=user.id, tab='blogs', blog_page=blogs_pagination.prev_num, comment_page=comment_page) }}" class="page-link">&laquo;</a>
-      {% endif %}
-
+      {% if blogs_pagination.has_prev %}<a href="{{ url_for('auth.profile', user_id=user.id, tab='blogs', blog_page=blogs_pagination.prev_num, comment_page=comment_page) }}" class="page-link">&laquo;</a>{% endif %}
       {% set window = 3 %}
       {% for p in range(1, blogs_pagination.pages + 1) %}
         {% if p == 1 or p == blogs_pagination.pages or (p >= blogs_pagination.page - window and p <= blogs_pagination.page + window) %}
-        <a href="{{ url_for('auth.profile', user_id=user.id, tab='blogs', blog_page=p, comment_page=comment_page) }}"
-           class="page-link {{ 'active' if p == blogs_pagination.page else '' }}">{{ p }}</a>
-        {% elif p == blogs_pagination.page - window - 1 or p == blogs_pagination.page + window + 1 %}
-        <span class="page-ellipsis">...</span>
-        {% endif %}
+        <a href="{{ url_for('auth.profile', user_id=user.id, tab='blogs', blog_page=p, comment_page=comment_page) }}" class="page-link {{ 'active' if p == blogs_pagination.page else '' }}">{{ p }}</a>
+        {% elif p == blogs_pagination.page - window - 1 or p == blogs_pagination.page + window + 1 %}<span class="page-ellipsis">…</span>{% endif %}
       {% endfor %}
-
-      {% if blogs_pagination.has_next %}
-      <a href="{{ url_for('auth.profile', user_id=user.id, tab='blogs', blog_page=blogs_pagination.next_num, comment_page=comment_page) }}" class="page-link">&raquo;</a>
-      {% endif %}
-
-      <span class="page-jump">
-        <input type="number" id="blogPageInput" min="1" max="{{ blogs_pagination.pages }}" placeholder="{{ blogs_pagination.page }}" class="page-input">
-        <button onclick="jumpToBlogPage({{ blogs_pagination.pages }})" class="page-link page-btn">跳转</button>
-      </span>
+      {% if blogs_pagination.has_next %}<a href="{{ url_for('auth.profile', user_id=user.id, tab='blogs', blog_page=blogs_pagination.next_num, comment_page=comment_page) }}" class="page-link">&raquo;</a>{% endif %}
+      <span class="page-jump"><input type="number" id="blogPageInput" min="1" max="{{ blogs_pagination.pages }}" placeholder="{{ blogs_pagination.page }}" class="page-input"><button onclick="jumpToBlogPage({{ blogs_pagination.pages }})" class="page-link">跳转</button></span>
     </div>
     {% endif %}
     {% else %}
-    <div class="profile-empty">
-      <i class="icon icon-person"></i>
-      还没有发布过文章
-    </div>
+    <div class="profile-empty"><span class="icon icon-journal-text"></span>还没有发布过文章</div>
     {% endif %}
   </div>
 
-  <!-- ====== Comments tab ====== -->
   <div class="profile-tab-panel {{ 'profile-tab-panel--active' if tab == 'comments' else '' }}" id="tab-comments">
     {% if not show_comments %}
-    <div class="profile-privacy-notice">
-      <i class="icon icon-lock2"></i>
-      该用户设置了评论不可见
-    </div>
+    <div class="profile-privacy-notice"><span class="icon icon-lock2"></span>该用户设置了评论不可见</div>
     {% elif comments_data %}
     <div class="profile-content-list">
       {% for comment in comments_data %}
-      <a href="{{ url_for('blog.blog_detail', blog_id=comment.blog_id) }}#comment-{{ comment.id }}" class="profile-content-item">
+      <a href="{{ url_for('blog.blog_detail', blog_id=comment.blog_id) }}#comment-{{ comment.id }}" class="card profile-content-item">
         <div class="profile-content-item__title">回复：{{ comment.blog_title }}</div>
         <div class="profile-content-item__preview">{{ comment.content }}</div>
-        <div class="profile-content-item__meta">
-          <span>{{ comment.created_at.strftime('%Y-%m-%d') }}</span>
-        </div>
+        <div class="profile-content-item__meta"><span>{{ comment.created_at.strftime('%Y-%m-%d') }}</span></div>
       </a>
       {% endfor %}
     </div>
     {% if comments_pagination.pages > 1 %}
     <div class="pagination">
-      {% if comments_pagination.has_prev %}
-      <a href="{{ url_for('auth.profile', user_id=user.id, tab='comments', blog_page=blog_page, comment_page=comments_pagination.prev_num) }}" class="page-link">&laquo;</a>
-      {% endif %}
-
+      {% if comments_pagination.has_prev %}<a href="{{ url_for('auth.profile', user_id=user.id, tab='comments', blog_page=blog_page, comment_page=comments_pagination.prev_num) }}" class="page-link">&laquo;</a>{% endif %}
       {% set window = 3 %}
       {% for p in range(1, comments_pagination.pages + 1) %}
         {% if p == 1 or p == comments_pagination.pages or (p >= comments_pagination.page - window and p <= comments_pagination.page + window) %}
-        <a href="{{ url_for('auth.profile', user_id=user.id, tab='comments', blog_page=blog_page, comment_page=p) }}"
-           class="page-link {{ 'active' if p == comments_pagination.page else '' }}">{{ p }}</a>
-        {% elif p == comments_pagination.page - window - 1 or p == comments_pagination.page + window + 1 %}
-        <span class="page-ellipsis">...</span>
-        {% endif %}
+        <a href="{{ url_for('auth.profile', user_id=user.id, tab='comments', blog_page=blog_page, comment_page=p) }}" class="page-link {{ 'active' if p == comments_pagination.page else '' }}">{{ p }}</a>
+        {% elif p == comments_pagination.page - window - 1 or p == comments_pagination.page + window + 1 %}<span class="page-ellipsis">…</span>{% endif %}
       {% endfor %}
-
-      {% if comments_pagination.has_next %}
-      <a href="{{ url_for('auth.profile', user_id=user.id, tab='comments', blog_page=blog_page, comment_page=comments_pagination.next_num) }}" class="page-link">&raquo;</a>
-      {% endif %}
-
-      <span class="page-jump">
-        <input type="number" id="commentPageInput" min="1" max="{{ comments_pagination.pages }}" placeholder="{{ comments_pagination.page }}" class="page-input">
-        <button onclick="jumpToCommentPage({{ comments_pagination.pages }})" class="page-link page-btn">跳转</button>
-      </span>
+      {% if comments_pagination.has_next %}<a href="{{ url_for('auth.profile', user_id=user.id, tab='comments', blog_page=blog_page, comment_page=comments_pagination.next_num) }}" class="page-link">&raquo;</a>{% endif %}
+      <span class="page-jump"><input type="number" id="commentPageInput" min="1" max="{{ comments_pagination.pages }}" placeholder="{{ comments_pagination.page }}" class="page-input"><button onclick="jumpToCommentPage({{ comments_pagination.pages }})" class="page-link">跳转</button></span>
     </div>
     {% endif %}
     {% else %}
-    <div class="profile-empty">
-      <i class="icon icon-chat-dots_new"></i>
-      还没有发表过评论
-    </div>
+    <div class="profile-empty"><span class="icon icon-chat-dots_new"></span>还没有发表过评论</div>
     {% endif %}
   </div>
 </div>
@@ -207,52 +119,39 @@
 {% block extra_js %}
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-  // ====== Tab switching (with URL update) ======
   var tabs = document.querySelectorAll('.profile-tabs__tab');
   var panels = document.querySelectorAll('.profile-tab-panel');
-
   tabs.forEach(function (tab) {
     tab.addEventListener('click', function () {
       var target = this.getAttribute('data-tab');
-
       tabs.forEach(function (t) { t.classList.remove('profile-tabs__tab--active'); });
       panels.forEach(function (p) { p.classList.remove('profile-tab-panel--active'); });
-
       this.classList.add('profile-tabs__tab--active');
       var panel = document.getElementById('tab-' + target);
       if (panel) panel.classList.add('profile-tab-panel--active');
-
-      // Update URL without reload so pagination links carry correct tab
       var url = new URL(window.location.href);
       url.searchParams.set('tab', target);
       window.history.replaceState({}, '', url.toString());
     });
   });
-
-  // ====== Blog page jump ======
-  window.jumpToBlogPage = function(totalPages) {
+  window.jumpToBlogPage = function (totalPages) {
     var input = document.getElementById('blogPageInput');
     var page = parseInt(input.value, 10);
     if (isNaN(page) || page < 1) page = 1;
     if (page > totalPages) page = totalPages;
     var url = new URL(window.location.href);
-    url.searchParams.set('tab', 'blogs');
-    url.searchParams.set('blog_page', page);
+    url.searchParams.set('tab', 'blogs'); url.searchParams.set('blog_page', page);
     window.location.href = url.toString();
   };
-
-  // ====== Comment page jump ======
-  window.jumpToCommentPage = function(totalPages) {
+  window.jumpToCommentPage = function (totalPages) {
     var input = document.getElementById('commentPageInput');
     var page = parseInt(input.value, 10);
     if (isNaN(page) || page < 1) page = 1;
     if (page > totalPages) page = totalPages;
     var url = new URL(window.location.href);
-    url.searchParams.set('tab', 'comments');
-    url.searchParams.set('comment_page', page);
+    url.searchParams.set('tab', 'comments'); url.searchParams.set('comment_page', page);
     window.location.href = url.toString();
   };
 });
 </script>
 {% endblock %}
-

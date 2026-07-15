@@ -9,12 +9,12 @@
 
 <div class="admin-container">
     <div class="management-card">
-        <div class="d-flex justify-content-between align-items-center mb-4">
+        <div class="management-card__head">
             <h2 style="margin:0; font-size:1.25rem; font-weight:600;">用户列表</h2>
             {% if current_user.is_owner %}
             <div>
                 <a href="{{ url_for('auth.admin_notifications') }}" class="btn btn-primary">
-                    📢 通知发送中心
+                    通知发送中心
                 </a>
             </div>
             {% endif %}

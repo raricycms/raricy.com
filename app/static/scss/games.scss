@@ -1,0 +1,44 @@
+// 游戏对局页专用样式包（保留各游戏棋盘/画布引擎，桥接旧令牌到 Apple 调色板）
+@use 'abstracts/variables';
+@use 'abstracts/functions';
+@use 'abstracts/breakpoints';
+@use 'abstracts/mixins';
+
+@use 'pages/game/2048' as g2048;
+@use 'pages/game/connect4';
+@use 'pages/game/utictactoe';
+@use 'pages/game/speed';
+@use 'pages/game/cubetictactoe';
+@use 'pages/game/gomoku';
+@use 'pages/game/puzzle';
+@use 'pages/game/atamas';
+
+// ---- 令牌桥：旧 --color-* → 新 Apple 值 ----
+:root, :root[data-theme="light"] {
+  --color-text-primary: #1D1D1F;
+  --color-text-secondary: #6E6E73;
+  --color-brand-primary: #0071E3;
+  --color-background-card: #FFFFFF;
+  --color-background-page: #FBFBFD;
+  --color-background-subtle: #F5F5F7;
+  --color-border: #E5E5E9;
+  --color-border-strong: #D2D2D7;
+  --shadow-xs: 0 1px 2px rgba(0,0,0,.04);
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.05);
+  --shadow-card: 0 4px 20px rgba(0,0,0,.06);
+  --shadow-card-hover: 0 6px 24px rgba(0,0,0,.08);
+}
+:root[data-theme="dark"] {
+  --color-text-primary: #F5F5F7;
+  --color-text-secondary: #A1A1A6;
+  --color-brand-primary: #2997FF;
+  --color-background-card: #1C1C1E;
+  --color-background-page: #000000;
+  --color-background-subtle: #2C2C2E;
+  --color-border: #2C2C2E;
+  --color-border-strong: #3A3A3C;
+  --shadow-xs: 0 1px 2px rgba(0,0,0,.4);
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.4);
+  --shadow-card: 0 4px 20px rgba(0,0,0,.5);
+  --shadow-card-hover: 0 6px 24px rgba(0,0,0,.6);
+}

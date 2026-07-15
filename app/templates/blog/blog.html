@@ -86,19 +86,15 @@
 {% endblock %}
 
 {% block content %}
-<!-- 阅读进度条 -->
-<div class="reading-progress"></div>
-
+<div class="read-wrap">
 <!-- 文章头部信息 -->
 <section class="read-hero">
-    <h1 style="font-weight: bold;">{{ blog.title }}</h1>
+    <h1>{{ blog.title }}</h1>
     <div class="blog-meta">
         <span class="blog-author">
-            <img src="/auth/avatar/{{ blog.author_id }}"
-                style="width:24px; height:24px; border-radius:10%; margin-right:8px; vertical-align: bottom;">
+            <img src="/auth/avatar/{{ blog.author_id }}" alt="{{ blog.author }}">
             {{ blog.author }}
         </span>
-        <!-- <span class="blog-date">{{ blog.date }}</span> -->
     </div>
 </section>
 
@@ -122,7 +118,7 @@
 
 <!-- 评论系统组件 -->
 {% include "blog/components/comment_system.html" %}
-
+</div>
 {% endblock %}
 
 {% block copyright %}
@@ -132,29 +128,6 @@
 {% block extra_js %}
 <!-- 阅读进度条功能 -->
 <script>
-// 阅读进度条
-function updateReadingProgress() {
-    const article = document.querySelector('.blog-content-container');
-    const scrollTop = window.pageYOffset;
-    const docHeight = document.body.scrollHeight - window.innerHeight;
-    const scrollPercent = Math.min((scrollTop / docHeight) * 100, 100);
-
-    let progressBar = document.querySelector('.reading-progress');
-    if (!progressBar) {
-        progressBar = document.createElement('div');
-        progressBar.className = 'reading-progress';
-        document.body.appendChild(progressBar);
-    }
-
-    progressBar.style.width = scrollPercent + '%';
-}
-
-// 初始化阅读进度条
-document.addEventListener('DOMContentLoaded', function() {
-    window.addEventListener('scroll', updateReadingProgress);
-    updateReadingProgress();
-});
-
 // hljs 主题同步 (监听 data-theme 变化)
 (function() {
     const hljsLight = document.getElementById('hljs-light');

@@ -159,7 +159,7 @@
   function showWinner(player) {
     gameEnded = true;
     var playerName = player === 'red' ? '红方' : '蓝方';
-    winnerMessageEl.textContent = '🎉 ' + playerName + '获胜！';
+    winnerMessageEl.textContent = '' + playerName + '获胜！';
     winnerMessageEl.style.display = 'block';
     drawMessageEl.style.display = 'none';
     currentPlayerEl.style.display = 'none';
@@ -167,7 +167,7 @@
 
   function showDraw() {
     gameEnded = true;
-    drawMessageEl.textContent = '🤝 平局！';
+    drawMessageEl.textContent = '平局！';
     drawMessageEl.style.display = 'block';
     winnerMessageEl.style.display = 'none';
     currentPlayerEl.style.display = 'none';

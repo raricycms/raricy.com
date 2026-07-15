@@ -11,25 +11,40 @@
 <div class="admin-container">
     <!-- 统计概览 -->
     <div class="admin-stats">
-        <div class="admin-stat-card admin-stat-card--blue">
-            <div class="admin-stat-card__number">{{ stats.total_blogs }}</div>
-            <div class="admin-stat-card__label">📄 总文章数</div>
+        <div class="admin-stat-card">
+            <span class="admin-stat-card__icon"><span class="icon icon-journal-text"></span></span>
+            <div class="admin-stat-card__body">
+                <div class="admin-stat-card__number">{{ stats.total_blogs }}</div>
+                <div class="admin-stat-card__label">总文章数</div>
+            </div>
         </div>
-        <div class="admin-stat-card admin-stat-card--red">
-            <div class="admin-stat-card__number">{{ stats.total_likes }}</div>
-            <div class="admin-stat-card__label">❤️ 总点赞数</div>
+        <div class="admin-stat-card">
+            <span class="admin-stat-card__icon"><span class="icon icon-heart-fill"></span></span>
+            <div class="admin-stat-card__body">
+                <div class="admin-stat-card__number">{{ stats.total_likes }}</div>
+                <div class="admin-stat-card__label">总点赞数</div>
+            </div>
         </div>
-        <div class="admin-stat-card admin-stat-card--green">
-            <div class="admin-stat-card__number">{{ stats.total_comments }}</div>
-            <div class="admin-stat-card__label">💬 总评论数</div>
+        <div class="admin-stat-card">
+            <span class="admin-stat-card__icon"><span class="icon icon-chat-dots_new"></span></span>
+            <div class="admin-stat-card__body">
+                <div class="admin-stat-card__number">{{ stats.total_comments }}</div>
+                <div class="admin-stat-card__label">总评论数</div>
+            </div>
         </div>
-        <div class="admin-stat-card admin-stat-card--purple">
-            <div class="admin-stat-card__number">{{ stats.total_users }}</div>
-            <div class="admin-stat-card__label">👥 总用户数</div>
+        <div class="admin-stat-card">
+            <span class="admin-stat-card__icon"><span class="icon icon-people"></span></span>
+            <div class="admin-stat-card__body">
+                <div class="admin-stat-card__number">{{ stats.total_users }}</div>
+                <div class="admin-stat-card__label">总用户数</div>
+            </div>
         </div>
-        <div class="admin-stat-card admin-stat-card--amber">
-            <div class="admin-stat-card__number">{{ stats.uncategorized_blogs }}</div>
-            <div class="admin-stat-card__label">📋 未分类文章</div>
+        <div class="admin-stat-card">
+            <span class="admin-stat-card__icon"><span class="icon icon-grid"></span></span>
+            <div class="admin-stat-card__body">
+                <div class="admin-stat-card__number">{{ stats.uncategorized_blogs }}</div>
+                <div class="admin-stat-card__label">未分类文章</div>
+            </div>
         </div>
     </div>
 </div>

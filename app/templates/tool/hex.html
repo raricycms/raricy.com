@@ -3,41 +3,13 @@
 {% block title %}Hex 查看/编辑 - 聪明山{% endblock %}
 
 {% block extra_css %}
-<style>
-  .tool-panel { background: rgba(255,255,255,.9); border: 1px solid rgba(0,0,0,.06); backdrop-filter: blur(6px); }
-  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
-  .hex-grid { display: grid; grid-template-columns: 1fr; gap: 1rem; }
-  .form-hint { font-size: .875rem; }
-  .btn-copy { position: absolute; right: 1rem; top: .75rem; }
-  .kbd { border: 1px solid rgba(0,0,0,.2); border-bottom-width: 3px; border-radius: 6px; padding: 0 6px; font-size: .8rem; }
-  @media (min-width: 768px) { .hex-grid { grid-template-columns: 1fr; } }
-
-  /* Viewer */
-  .viewer-panel { background: #0f172a; color: #e2e8f0; border: 1px solid rgba(255,255,255,.08); }
-  .hex-viewer { max-height: 520px; overflow: auto; font-size: 0.95rem; }
-  .hex-line { display: grid; grid-template-columns: 120px 1fr 1fr; gap: 12px; padding: 2px 10px; align-items: start; }
-  .hex-offset { color: #94a3b8; width: 120px; text-align: right; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
-  .hex-bytes, .hex-ascii { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; white-space: pre; }
-  .hex-bytes { letter-spacing: 1px; }
-  .byte { display: inline-block; min-width: 26px; text-align: center; padding: 2px 4px; border-radius: 4px; margin-right: 4px; color: #e2e8f0; }
-  .char { display: inline-block; width: 1ch; text-align: center; padding: 2px 1px; border-radius: 4px; color: #e2e8f0; }
-  .byte.group-gap { margin-right: 12px; }
-  .active-cell { background: #1e293b; outline: 1px solid #38bdf8; color: #e2e8f0; }
-  .modified-cell { background: rgba(234, 179, 8, 0.15); outline: 1px solid rgba(234, 179, 8, 0.55); }
-  .hex-header { position: sticky; top: 0; background: #0b1220; z-index: 1; padding: 6px 10px; border-bottom: 1px solid rgba(255,255,255,.08); }
-  .hex-header .byte { color: #a5b4fc; margin-right: 4px; }
-  .hex-header .byte.group-gap { margin-right: 12px; }
-  .hex-header .hex-bytes { white-space: nowrap; }
-  .hex-body { position: relative; }
-  .pad { height: 0; }
-</style>
 {% endblock %}
 
 {% block content %}
-<section class="py-4">
+<section class="py-4 base-tool-page">
   <div class="container">
     <div class="d-flex align-items-center mb-3">
-      <a href="{{ url_for('tool.menu') }}" class="text-decoration-none me-2"><i class="bi bi-arrow-left"></i></a>
+      <a href="{{ url_for('tool.menu') }}" class="text-decoration-none me-2">←</a>
       <h1 class="mb-0 section-title">Hex 查看 / 编辑</h1>
     </div>
     <p class="text-muted">在浏览器中完成：文件 → Hex 查看与编辑 → 下载为修改后的文件。</p>
@@ -56,8 +28,8 @@
             </div>
             <small id="loadProgressText" class="text-muted">0%</small>
           </div>
-          <button id="btnCancelLoad" class="btn btn-outline-danger" style="display:none;"><i class="bi bi-x-circle"></i> 取消加载</button>
-          <button id="btnDownload" class="btn btn-primary" disabled><i class="bi bi-download"></i> 下载修改后的文件</button>
+          <button id="btnCancelLoad" class="btn btn-outline-danger" style="display:none;"> 取消加载</button>
+          <button id="btnDownload" class="btn btn-primary" disabled> 下载修改后的文件</button>
           <span id="fileInfo" class="ms-auto text-muted form-hint"></span>
         </div>
       </div>
@@ -316,7 +288,7 @@
       function cancel() { refreshAll(); }
 
       input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') { e.preventDefault(); commit(); }
+        if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); commit(); }
         if (e.key === 'Escape') { e.preventDefault(); cancel(); }
         if (e.key === 'Backspace' && input.value.length === 0) { e.preventDefault(); commit(); }
       });

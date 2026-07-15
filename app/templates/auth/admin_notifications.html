@@ -6,7 +6,7 @@
 {% block admin_content %}
 <div class="container" style="margin-top: 30px;">
     <div class="notification-card">
-        <h1 class="text-center mb-4">📢 管理员通知发送中心</h1>
+        <h1 class="text-center mb-4">管理员通知发送中心</h1>
 
         <!-- 发送选项选择 -->
         <div class="send-options">
@@ -102,10 +102,10 @@
 
                         <div class="text-center mt-4">
                             <button type="submit" class="btn btn-primary btn-lg">
-                                <i class="fas fa-paper-plane"></i> 发送通知
+ 发送通知
                             </button>
                             <button type="button" class="btn btn-secondary btn-lg ml-2" onclick="clearForm()">
-                                <i class="fas fa-times"></i> 清空
+ 清空
                             </button>
                         </div>
                     </form>
@@ -175,10 +175,10 @@
 
                 <div class="text-center mt-4">
                     <button type="submit" class="btn btn-success btn-lg">
-                        <i class="fas fa-bullhorn"></i> 群发通知
+ 群发通知
                     </button>
                     <button type="button" class="btn btn-secondary btn-lg ml-2" onclick="clearBroadcastForm()">
-                        <i class="fas fa-times"></i> 清空
+ 清空
                     </button>
                 </div>
             </form>
@@ -348,7 +348,7 @@ function sendNotificationToAll() {
 
     const submitBtn = document.querySelector('#broadcastForm button[type="submit"]');
     const originalText = submitBtn.innerHTML;
-    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 发送中...';
+    submitBtn.innerHTML = ' 发送中...';
     submitBtn.disabled = true;
 
     fetch('{{ url_for("auth.send_notification_to_all") }}', {

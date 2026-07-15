@@ -1,6 +1,10 @@
 {% extends "base.html" %}
 {% block title %}照片墙 - raricy.com{% endblock %}
 
+{% block extra_css %}
+<link rel="stylesheet" href="{{ static_url('css/legacy.css') }}">
+{% endblock %}
+
 {% block content %}
 <div class="photo-wall" id="photo-wall-app">
     <!-- Canvas Viewport -->

@@ -1,122 +1,56 @@
 {% extends "base.html" %}
-
-{% block title %}403 禁止访问 - {{ super() }}{% endblock %}
+{% block title %}403 禁止访问 · 聪明山{% endblock %}
 
 {% block extra_css %}
 <style>
-    /* 错误页面特定样式 */
-    .error-page-container {
-        /* 解决背景与页脚间隙问题 */
-        /* 让容器高度填满其父元素 (main)，而 main 被设置为 flex:1 来填充可用空间 */
-        height: 100%; 
-        
-        /* 使用 flex 布局来垂直居中内容 */
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: white;
-        text-align: center;
-        padding: 2rem;
-        position: relative;
-        overflow: hidden; /* 隐藏超出部分的背景 */
-    }
+  .rainbow-error { position: relative; min-height: calc(100vh - var(--nav-h)); display: flex;
+    align-items: center; justify-content: center; padding: 48px 24px; overflow: hidden; text-align: center; }
 
-    /* --- 新的连续亮色斜向彩虹渐变背景 --- */
-    .continuous-rainbow-bg {
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        z-index: -1; /* 将背景置于内容下方 */
-        
-        /* 定义一个初始的亮色斜向彩虹渐变 */
-        /* 方向改为斜向，例如 'to bottom right' 或 '45deg' */
-        background: linear-gradient(to bottom right, 
-            #FF8C8C, /* 更亮的红 */
-            #FFC060, /* 更亮的橙 */
-            #FFFF66, /* 更亮的黄 (接近纯黄) */
-            #80FFB0, /* 更亮的绿 */
-            #99E6FF, /* 更亮的蓝 */
-            #A090FF, /* 更亮的靛 (更偏向浅紫蓝) */
-            #EEB0EE  /* 更亮的紫 (更偏向淡粉紫) */
-        );
-        background-size: 100% 100%; /* 确保渐变覆盖整个区域 */
+  /* 连续亮色斜向彩虹渐变 + 色相循环动画 */
+  .rainbow-error__bg { position: absolute; inset: 0; z-index: 0;
+    background: linear-gradient(to bottom right,
+      #FF8C8C, #FFC060, #FFFF66, #80FFB0, #99E6FF, #A090FF, #EEB0EE);
+    background-size: 100% 100%;
+    animation: rainbow-hue-cycle 3s linear infinite; }
+  @keyframes rainbow-hue-cycle { from { filter: hue-rotate(0deg); } to { filter: hue-rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .rainbow-error__bg { animation: none; } }
 
-        /* 应用色相旋转动画 */
-        animation: hue-cycle 3s linear infinite; /* 动画时间可以调整 */
-    }
+  .rainbow-error__box { position: relative; z-index: 1; max-width: 560px; width: 100%;
+    padding: 44px 40px; border-radius: 20px;
+    background: rgba(0, 0, 0, .58); border: 1px solid rgba(255, 255, 255, .22);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, .35); color: #fff; }
+  .rainbow-error__code { font-size: clamp(4.5rem, 15vw, 7rem); font-weight: 800; line-height: 1;
+    letter-spacing: -.04em; text-shadow: 0 0 24px rgba(255, 255, 255, .45); }
+  .rainbow-error__title { font-size: clamp(1.4rem, 4vw, 1.9rem); font-weight: 700; margin-top: 8px; color: #fff; }
+  .rainbow-error__msg { margin-top: 14px; font-size: 1.02rem; color: rgba(255, 255, 255, .9); }
+  .rainbow-error__hint { margin-top: 8px; font-size: .9rem; color: rgba(255, 255, 255, .72); line-height: 1.7; }
 
-    /* 色相旋转动画：让整个渐变沿着色轮循环变化 */
-    @keyframes hue-cycle {
-        from {
-            filter: hue-rotate(0deg);
-        }
-        to {
-            filter: hue-rotate(360deg);
-        }
-    }
-    /* --- 背景样式结束 --- */
-
-
-    /* 错误信息盒子，增加可读性 */
-    .error-box {
-        background: rgba(0, 0, 0, 0.6); /* 加深一点背景，让文字更突出 */
-        padding: 2.5rem;
-        border-radius: 15px;
-        backdrop-filter: blur(10px); /* 毛玻璃效果 */
-        -webkit-backdrop-filter: blur(10px);
-        border: 1px solid rgba(255, 255, 255, 0.2);
-        max-width: 600px;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.3); /* 增加阴影，更有层次感 */
-    }
-
-    .error-box h1 {
-        font-size: 6rem;
-        font-weight: 900;
-        text-shadow: 0 0 15px rgba(255, 255, 255, 0.5);
-    }
-
-    .error-box .lead {
-        font-size: 1.25rem;
-        margin-bottom: 1.5rem;
-    }
-
-    .error-box .btn-home {
-        background-color: rgba(255, 255, 255, 0.9);
-        color: #333;
-        border: none;
-        font-weight: bold;
-        transition: all 0.3s ease;
-    }
-
-    .error-box .btn-home:hover {
-        background-color: white;
-        transform: translateY(-2px);
-        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-    }
+  .rainbow-error__actions { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin-top: 30px; }
+  .rainbow-error__btn { display: inline-flex; align-items: center; gap: 7px; padding: 11px 22px;
+    border-radius: var(--r-pill); font-size: .95rem; font-weight: 600; transition: transform .2s ease, box-shadow .2s ease, background-color .2s ease; }
+  .rainbow-error__btn .icon { width: 1.05rem; height: 1.05rem; }
+  .rainbow-error__btn--solid { background: #fff; color: #1d1d1f; }
+  .rainbow-error__btn--solid:hover { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(0, 0, 0, .25); }
+  .rainbow-error__btn--ghost { background: rgba(255, 255, 255, .14); color: #fff; border: 1px solid rgba(255, 255, 255, .35); }
+  .rainbow-error__btn--ghost:hover { background: rgba(255, 255, 255, .24); }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="error-page-container">
-    <!-- 新的连续亮色斜向彩虹渐变背景层 -->
-    <div class="continuous-rainbow-bg"></div>
-
-    <!-- 内容盒子 -->
-    <div class="error-box">
-        <h1 class="display-1">403</h1>
-        <h2 class="mb-3"><i class="bi bi-lock-fill me-2"></i>禁止访问 (Forbidden)</h2>
-        <p class="lead">
-            抱歉，您没有足够的权限访问此页面。
-        </p>
-        <p>这可能是因为页面内容需要特定权限，或者您的账户尚未登录。请尝试登录或<a href='/contact'>联系网站管理员</a>。</p>
-        <a href="{{ url_for('home.index') or '/' }}" class="btn btn-lg btn-home mt-4">
-            <i class="bi bi-house-door-fill me-2"></i>返回首页
-        </a>
+<div class="rainbow-error">
+  <div class="rainbow-error__bg" aria-hidden="true"></div>
+  <div class="rainbow-error__box">
+    <p class="rainbow-error__code">403</p>
+    <h1 class="rainbow-error__title">禁止访问</h1>
+    <p class="rainbow-error__msg">抱歉，您没有足够的权限访问此页面。</p>
+    <p class="rainbow-error__hint">可能是该内容需要特定权限，或者您的账户尚未登录。登录后再试，或联系网站管理员。</p>
+    <div class="rainbow-error__actions">
+      <a href="{{ url_for('auth.login') }}" class="rainbow-error__btn rainbow-error__btn--solid"><span class="icon icon-person-circle"></span>去登录</a>
+      <a href="{{ url_for('home.index') }}" class="rainbow-error__btn rainbow-error__btn--ghost"><span class="icon icon-house"></span>返回首页</a>
     </div>
+  </div>
 </div>
 {% endblock %}
 
-{% block footer_text %}{% endblock %}
-{% block copyright %}&copy; 2025 聪明山. 迷路了也能找到回家的路。{% endblock %}
+{% block copyright %}&copy; 2026 聪明山. 迷路了也能找到回家的路。{% endblock %}

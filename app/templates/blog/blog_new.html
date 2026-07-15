@@ -3,6 +3,7 @@
 {% block title %}{{ blog.title }} - 文章阅读{% endblock %}
 
 {% block extra_css %}
+<link rel="stylesheet" href="{{ static_url('css/legacy.css') }}">
 <!-- CSS 样式表 -->
 <link rel="stylesheet" href="{{url_for('static', filename='css/hljs/default.min.css')}}" id="hljs-light" onerror="this.onerror=null; this.href='https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css'">
 <link rel="stylesheet" href="{{url_for('static', filename='css/hljs/monokai.min.css')}}" id="hljs-dark" onerror="this.onerror=null; this.href='https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/monokai.min.css'">

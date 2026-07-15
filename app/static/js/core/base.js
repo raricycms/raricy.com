@@ -216,6 +216,8 @@ function switchTheme(themeName) {
     const config = themeConfig[themeName];
     root.setAttribute('data-theme', config['data-theme']);
     localStorage.setItem('theme', themeName);
+    const tc = document.querySelector('meta[name="theme-color"]');
+    if (tc) tc.setAttribute('content', config['data-theme'] === 'dark' ? '#131517' : '#FBFBFD');
     console.log('切换主题:', themeName);
 }
 
@@ -233,10 +235,72 @@ window.refreshNotificationCount = function() {
     updateNotificationCount();
 };
 
+// 自定义文件选择器：接管所有可见的原生 input[type=file]
+// （保留原元素与其 id/name/事件，仅视觉隐藏，页面已有 JS 不受影响）
+function enhanceFileInputs() {
+    document.querySelectorAll('input[type="file"]').forEach(function (input) {
+        if (input.dataset.filepick) return;
+        // 跳过由自定义 UI 驱动、本就隐藏的（图床拖拽区、照片墙）
+        if (input.hasAttribute('hidden') || input.style.display === 'none') return;
+        input.dataset.filepick = '1';
+
+        if (!input.id) input.id = 'fp-' + Math.random().toString(36).slice(2, 9);
+
+        var wrap = document.createElement('div');
+        wrap.className = 'filepick';
+        input.parentNode.insertBefore(wrap, input);
+        wrap.appendChild(input);
+
+        var btn = document.createElement('label');
+        btn.className = 'filepick__btn';
+        btn.setAttribute('for', input.id);
+        btn.textContent = '选择文件';
+
+        var name = document.createElement('span');
+        name.className = 'filepick__name';
+        name.textContent = '未选择文件';
+
+        var clear = document.createElement('button');
+        clear.type = 'button';
+        clear.className = 'filepick__clear';
+        clear.setAttribute('aria-label', '清除所选文件');
+        clear.textContent = '×';
+
+        wrap.appendChild(btn);
+        wrap.appendChild(name);
+        wrap.appendChild(clear);
+
+        function render() {
+            var files = input.files;
+            if (files && files.length) {
+                name.textContent = files.length > 1 ? (files.length + ' 个文件') : files[0].name;
+                name.classList.add('filepick__name--has');
+                wrap.classList.add('filepick--has');
+            } else {
+                name.textContent = '未选择文件';
+                name.classList.remove('filepick__name--has');
+                wrap.classList.remove('filepick--has');
+            }
+        }
+
+        input.addEventListener('change', render);
+        clear.addEventListener('click', function () {
+            input.value = '';
+            // 通知页面已有逻辑（如哈希页据此回退到文本输入）
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+            render();
+        });
+        render();
+    });
+}
+
+window.enhanceFileInputs = enhanceFileInputs;
+
 // 页面加载后：初始化顶栏交互与通知
 document.addEventListener('DOMContentLoaded', function() {
     updateNotificationCount();
     updateCheckinIndicator();
+    enhanceFileInputs();
 
     // 顶栏折叠
     const siteNavbar = document.querySelector('.site-navbar');
@@ -272,9 +336,19 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // 主题还原
-    const savedThemeName = localStorage.getItem('theme') || 'light';
-    switchTheme(savedThemeName);
+    // 主题：有手动偏好则用之，否则跟随系统（不落盘，OS 变化实时跟随）
+    const savedThemeName = localStorage.getItem('theme');
+    if (savedThemeName === 'light' || savedThemeName === 'dark') {
+        document.documentElement.setAttribute('data-theme', savedThemeName);
+    } else if (window.matchMedia) {
+        const mq = window.matchMedia('(prefers-color-scheme: dark)');
+        document.documentElement.setAttribute('data-theme', mq.matches ? 'dark' : 'light');
+        mq.addEventListener('change', function (e) {
+            if (!localStorage.getItem('theme')) {
+                document.documentElement.setAttribute('data-theme', e.matches ? 'dark' : 'light');
+            }
+        });
+    }
 });
 
 // 主题切换按钮
@@ -289,6 +363,7 @@ if (themeToggleButton) {
     let rotationAngle = 0;
     themeToggleButton.addEventListener('click', function() {
         rotationAngle += 180;
-        themeToggleButton.style.transform = `rotate(${rotationAngle}deg)`;
+        const themeIcon = themeToggleButton.querySelector('.icon');
+        (themeIcon || themeToggleButton).style.transform = `rotate(${rotationAngle}deg)`;
     });
 }

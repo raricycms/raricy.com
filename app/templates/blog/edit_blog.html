@@ -4,6 +4,7 @@
 {% endblock %}
 
 {% block extra_css %}
+<link rel="stylesheet" href="{{ static_url('css/legacy.css') }}">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/vditor@3.10.7/dist/index.css" onerror="this.onerror=null; this.href='{{ url_for('static', filename='js/vditor/node_modules/vditor/dist/index.css') }}'">
 {% endblock %}
 

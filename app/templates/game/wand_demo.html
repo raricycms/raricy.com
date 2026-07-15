@@ -167,7 +167,7 @@ function render() {
     for (let i = 0; i < tile.length; i++) {
         for (let j = 0; j < tile[i].length; j++) {
             if (tile[i][j] === 1) {
-                ctx.fillStyle = '#17aefb';
+                ctx.fillStyle = 'var(--color-brand-primary)';
                 ctx.fillRect(j * 50, i * 50, 50, 50);
             }
         }

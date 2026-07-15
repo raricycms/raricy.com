@@ -16,9 +16,9 @@
                 onclick="doCheckin()">
             <span class="checkin-button__particles" id="checkinParticles"></span>
             {% if today_status.checked_in %}
-            ✅ 今日已签到
+            今日已签到
             {% else %}
-            📅 每日签到
+            每日签到
             {% endif %}
         </button>
 
@@ -46,7 +46,7 @@
         <div class="fortune-modal__backdrop"></div>
         <div class="fortune-modal__content">
             <div class="fortune-modal__header">
-                <h3 id="fortuneModalTitle">🎉 签到成功！</h3>
+                <h3 id="fortuneModalTitle">签到成功！</h3>
                 <p id="fortuneModalDesc">选择一张运势卡，看看今天的运气如何</p>
             </div>
             <div class="fortune-cards" id="fortuneCards">
@@ -72,10 +72,10 @@
     <div class="checkin-leaderboard">
         <div class="checkin-leaderboard__tabs">
             <button class="checkin-leaderboard__tab checkin-leaderboard__tab--active" data-tab="count" onclick="switchLeaderboardTab('count')">
-                🏆 签到天数榜
+                签到天数榜
             </button>
             <button class="checkin-leaderboard__tab" data-tab="fortune" onclick="switchLeaderboardTab('fortune')">
-                💰 运势榜
+                运势榜
             </button>
         </div>
 
@@ -90,10 +90,7 @@
                         {%- elif entry.rank == 2 %} checkin-leaderboard__rank--top2
                         {%- elif entry.rank == 3 %} checkin-leaderboard__rank--top3
                         {%- endif %}">
-                        {%- if entry.rank == 1 -%}🥇
-                        {%- elif entry.rank == 2 -%}🥈
-                        {%- elif entry.rank == 3 -%}🥉
-                        {%- else -%}#{{ entry.rank }}
+                        {%- if entry.rank == 1 -%}🥇{%- elif entry.rank == 2 -%}🥈{%- elif entry.rank == 3 -%}🥉{%- else -%}#{{ entry.rank }}
                         {%- endif -%}
                     </span>
                     <a class="checkin-leaderboard__user" href="{{ url_for('auth.profile', user_id=entry.user_id) }}">
@@ -124,10 +121,7 @@
                         {%- elif entry.rank == 2 %} checkin-leaderboard__rank--top2
                         {%- elif entry.rank == 3 %} checkin-leaderboard__rank--top3
                         {%- endif %}">
-                        {%- if entry.rank == 1 -%}🥇
-                        {%- elif entry.rank == 2 -%}🥈
-                        {%- elif entry.rank == 3 -%}🥉
-                        {%- else -%}#{{ entry.rank }}
+                        {%- if entry.rank == 1 -%}🥇{%- elif entry.rank == 2 -%}🥈{%- elif entry.rank == 3 -%}🥉{%- else -%}#{{ entry.rank }}
                         {%- endif -%}
                     </span>
                     <a class="checkin-leaderboard__user" href="{{ url_for('auth.profile', user_id=entry.user_id) }}">
@@ -160,7 +154,7 @@
         2: '小有运气',
         3: '运势不错',
         4: '好运连连',
-        5: '运势爆棚 ✨',
+        5: '运势爆棚 ',
     };
 
     // ---- FortunePicker 类 ----
@@ -197,7 +191,7 @@
                 this.title.textContent = '🃏 继续完成签到';
                 this.desc.textContent = '上次签到还未选牌，选择一张运势卡吧';
             } else {
-                this.title.textContent = '🎉 签到成功！';
+                this.title.textContent = '签到成功！';
                 this.desc.textContent = '选择一张运势卡，看看今天的运气如何';
             }
 
@@ -364,7 +358,7 @@
         if (!btn) return;
         btn.classList.remove('checkin-button--popping');
         btn.disabled = false;
-        btn.textContent = '📅 每日签到';
+        btn.textContent = '每日签到';
     }
 
     // ---- 签到逻辑 ----
@@ -398,7 +392,7 @@
             if (data.code === 200) {
                 btn.classList.remove('checkin-button--popping');
                 btn.classList.add('checkin-button--success');
-                btn.textContent = '✅';
+                btn.textContent = '';
 
                 const particles = $('checkinParticles');
                 if (particles) particles.classList.add('checkin-button__particles--active');
@@ -409,7 +403,7 @@
                     if (!btn) return;
                     btn.classList.remove('checkin-button--success');
                     btn.classList.add('checkin-button--done');
-                    btn.textContent = '✅ 今日已签到';
+                    btn.textContent = '今日已签到';
                     const p = $('checkinParticles');
                     if (p) p.classList.remove('checkin-button__particles--active');
                 }, 1050);
@@ -431,7 +425,7 @@
             } else if (data.already_checked) {
                 // Already checked in today — transition to done state
                 btn.classList.remove('checkin-button--popping');
-                btn.textContent = '✅ 今日已签到';
+                btn.textContent = '今日已签到';
                 btn.classList.add('checkin-button--done');
                 const countEl = $('totalCount');
                 if (countEl && data.total_count) countEl.textContent = data.total_count;
@@ -452,7 +446,7 @@
 
     // ---- 排行榜渲染 ----
 
-    const RANK_EMOJI = {1: '🥇', 2: '🥈', 3: '🥉'};
+    const RANK_EMOJI = {1: '', 2: '', 3: ''};
     const CURRENT_USER_ID = '{{ current_user.id }}';
 
     function buildLeaderboardItem(entry, type) {

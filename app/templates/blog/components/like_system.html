@@ -8,7 +8,7 @@
         data-like-url="{{ url_for('blog.like_toggle', blog_id=blog.id) }}"
         aria-label="点赞"
     >
-        <i id="like-icon" class="bi {{ 'bi-heart-fill' if blog.liked else 'bi-heart' }}"></i>
+        <span id="like-icon" class="icon icon-heart-fill" style="width:1.05rem;height:1.05rem;"></span>
         <span id="like-text">{{ '已点赞' if blog.liked else '点赞' }}</span>
         <span class="like-count-badge" id="like-count">{{ blog.likes_count or 0 }}</span>
     </button>
@@ -27,7 +27,7 @@
         <span class="fish-count-badge" id="fish-count">{{ blog.fish_count or 0 }}</span>
     </button>
 
-    <button onclick="history.back()" class="read-btn">📝 返回上页</button>
+    <button onclick="history.back()" class="read-btn">← 返回上页</button>
 </div>
 
 <script src="{{ static_url('js/blog/like-manager.js') }}"></script>

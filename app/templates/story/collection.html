@@ -1,28 +1,20 @@
 {% extends "base.html" %}
-
-{% block title %}{{ collection.title }} - 故事 - 聪明山{% endblock %}
+{% block title %}{{ collection.title }} · 故事 · 聪明山{% endblock %}
 
 {% block content %}
-<section class="story-hero">
-  <div class="container">
-    <h1>{{ collection.title }}</h1>
-    {% if collection.description %}
-    <p>{{ collection.description }}</p>
-    {% endif %}
-  </div>
+<section class="phero wrap">
+  <h1 class="phero__title">{{ collection.title }}</h1>
+  {% if collection.description %}<p class="lede phero__lede">{{ collection.description }}</p>{% endif %}
 </section>
 
-<div class="container">
+<section class="section--tight wrap">
   {% if breadcrumbs %}
-  <nav class="story-breadcrumbs">
+  <nav class="crumbs">
     <a href="{{ url_for('story.root_collection') }}">故事</a>
     {% for crumb in breadcrumbs %}
-    <span class="story-breadcrumbs__sep">/</span>
-    {% if loop.last %}
-    <span class="story-breadcrumbs__current">{{ crumb.label }}</span>
-    {% else %}
-    <a href="{{ url_for('story.resolve_path', path=crumb.path) }}">{{ crumb.label }}</a>
-    {% endif %}
+      <span class="sep">/</span>
+      {% if loop.last %}<span class="cur">{{ crumb.label }}</span>
+      {% else %}<a href="{{ url_for('story.resolve_path', path=crumb.path) }}">{{ crumb.label }}</a>{% endif %}
     {% endfor %}
   </nav>
   {% endif %}
@@ -31,9 +23,9 @@
   <div class="story-back">
     {% set parent = path.rsplit('/', 1) %}
     {% if parent|length > 1 %}
-    <a href="{{ url_for('story.resolve_path', path=parent[0]) }}">← 返回上级</a>
+      <a href="{{ url_for('story.resolve_path', path=parent[0]) }}">← 返回上级</a>
     {% else %}
-    <a href="{{ url_for('story.root_collection') }}">← 返回故事首页</a>
+      <a href="{{ url_for('story.root_collection') }}">← 返回故事首页</a>
     {% endif %}
   </div>
   {% endif %}
@@ -41,47 +33,33 @@
   {% if collection.items %}
   <div class="story-grid">
     {% for item in collection.items %}
+      {% set target = url_for('story.resolve_path', path=(path ~ '/' ~ item.id) if path else item.id) %}
       {% if item.type == 'collection' %}
-      <!-- 子合集卡片 -->
-      <div class="story-card story-card--collection">
-        <a href="{{ url_for('story.resolve_path', path=(path ~ '/' ~ item.id) if path else item.id) }}" class="story-card__title">{{ item.title }}</a>
-        {% if item.description %}
-        <p class="story-card__desc">{{ item.description }}</p>
-        {% endif %}
-        <div class="story-card__meta">
-          <span class="story-card__badge">{{ item.item_count }} 篇</span>
-          <a href="{{ url_for('story.resolve_path', path=(path ~ '/' ~ item.id) if path else item.id) }}" class="story-card__btn">浏览合集</a>
+      <a class="card card--link scard scard--collection" href="{{ target }}">
+        <span class="scard__title">{{ item.title }}</span>
+        {% if item.description %}<p class="scard__desc">{{ item.description }}</p>{% endif %}
+        <div class="scard__meta">
+          <span class="scard__tag">{{ item.item_count }} 篇</span>
         </div>
-      </div>
-
+        <span class="scard__go">浏览合集</span>
+      </a>
       {% else %}
-      <!-- 故事卡片 -->
-      <div class="story-card story-card--story">
-        <a href="{{ url_for('story.resolve_path', path=(path ~ '/' ~ item.id) if path else item.id) }}" class="story-card__title">{{ item.title }}</a>
-        {% if item.description %}
-        <p class="story-card__desc">{{ item.description }}</p>
-        {% endif %}
-        <div class="story-card__meta">
-          <span class="story-card__tag story-card__tag--words">{{ item.word_count }} 字</span>
-          {% if item.genre %}
-          <span class="story-card__tag story-card__tag--genre">{{ item.genre }}</span>
-          {% endif %}
-          {% if item.ai_assisted %}
-          <span class="story-card__tag story-card__tag--ai-assisted">AI辅助创作</span>
-          {% endif %}
-          <span class="story-card__author">作者：{{ item.author }}</span>
+      <a class="card card--link scard" href="{{ target }}">
+        <span class="scard__title">{{ item.title }}</span>
+        {% if item.description %}<p class="scard__desc">{{ item.description }}</p>{% endif %}
+        <div class="scard__meta">
+          <span class="scard__tag">{{ item.word_count }} 字</span>
+          {% if item.genre %}<span class="scard__tag scard__tag--genre">{{ item.genre }}</span>{% endif %}
+          {% if item.ai_assisted %}<span class="scard__tag scard__tag--ai">AI 辅助</span>{% endif %}
+          <span class="scard__author">{{ item.author }}</span>
         </div>
-        <div class="story-card__actions">
-          <a href="{{ url_for('story.resolve_path', path=(path ~ '/' ~ item.id) if path else item.id) }}" class="story-card__btn">开始阅读</a>
-        </div>
-      </div>
+        <span class="scard__go">开始阅读</span>
+      </a>
       {% endif %}
     {% endfor %}
   </div>
   {% else %}
-  <div class="story-empty">
-    <p>这个合集中还没有内容。</p>
-  </div>
+  <div class="story-empty">这个合集中还没有内容。</div>
   {% endif %}
-</div>
+</section>
 {% endblock %}

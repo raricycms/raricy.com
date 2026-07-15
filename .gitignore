@@ -39,3 +39,5 @@ app/static/hljs/
 *.xlsx
 instance.zip
 exported_blogs/
+# 本地 UI 预览临时文件
+app/_preview_*.html

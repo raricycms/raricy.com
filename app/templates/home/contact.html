@@ -1,79 +1,35 @@
 {% extends "base.html" %}
-{% block title %}
-Raricy.com - 联系我们
-{% endblock %}
-
-{% block extra_css %}
-<style>
-    body {
-        background: var(--color-background-page);
-        background-attachment: fixed;
-        min-height: 100vh;
-    }
-    .contact-card {
-        margin-top: 50px;
-        box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
-        padding: 30px;
-        border-radius: 15px;
-        background: var(--color-background-card);
-        backdrop-filter: blur(5px);
-        transition: transform 0.3s ease;
-    }
-    .contact-card:hover {
-        transform: translateY(-5px);
-    }
-    .contact-icon {
-        font-size: 1.5rem;
-        margin-right: 10px;
-        vertical-align: middle;
-    }
-    .contact-link {
-        color: #2575fc;
-        text-decoration: none;
-        transition: color 0.3s ease;
-    }
-    .contact-link:hover {
-        color: #f28391;
-    }
-</style>
-{% endblock %}
+{% block title %}联系我们 · 聪明山{% endblock %}
 
 {% block content %}
-    <div class="container">
-        <div class="contact-card">
-            <h1 class="text-center mb-4"><i class="bi bi-chat-dots contact-icon"></i>联系我们</h1>
-            <p class="lead text-muted text-center mb-4">遇到问题或有建议？我们随时为您服务</p>
-            
-            <div class="row justify-content-center">
-                <div class="col-md-8">
-                    <ul class="list-unstyled">
-                        <li class="mb-3">
-                            <i class="bi bi-envelope contact-icon"></i>
-                            电子邮件：<a href="mailto:raricycms@gmail.com" class="contact-link">raricycms@gmail.com</a>
-                        </li>
-                        <li class="mb-3">
-                            <i class="bi bi-wechat contact-icon"></i>
-                            微信号：<span class="contact-link">whitealiveautumn0</span>
-                        </li>
-                    </ul>
+<div class="pwrap pwrap--narrow" style="text-align:center;">
+  <h1 class="ptitle ptitle--plain" style="margin:0 0 8px;">联系我们</h1>
+  <p class="lede" style="margin-bottom:32px;">遇到问题或有建议？我们随时为您服务。</p>
 
-                    <div class="text-center mt-4">
-                        <p class="text-muted">
-                            或通过GitHub提交问题：
-                            <a href="https://github.com/raricycms/raricy.com" class="contact-link" target="_blank">
-                                <i class="bi bi-github"></i> 项目仓库
-                            </a>
-                        </p>
-                    </div>
-                </div>
-            </div>
-        </div>
+  <div class="card contact-card" style="text-align:left;">
+    <div class="contact-row">
+      <span class="contact-row__icon"><span class="icon icon-envelope"></span></span>
+      <div>
+        <div class="contact-row__label">电子邮件</div>
+        <div class="contact-row__value"><a href="mailto:raricycms@gmail.com">raricycms@gmail.com</a></div>
+      </div>
     </div>
+    <div class="contact-row">
+      <span class="contact-row__icon"><span class="icon icon-person"></span></span>
+      <div>
+        <div class="contact-row__label">微信号</div>
+        <div class="contact-row__value">whitealiveautumn0</div>
+      </div>
+    </div>
+    <div class="contact-row">
+      <span class="contact-row__icon"><span class="icon icon-github"></span></span>
+      <div>
+        <div class="contact-row__label">GitHub</div>
+        <div class="contact-row__value"><a href="https://github.com/raricycms/raricy.com" target="_blank">项目仓库</a></div>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
-{% block extra_js %}
-{% endblock %}
-
-{% block footer_text %}
-<p class='text-muted'>就在附近！</p>
-{% endblock %}
+{% block footer_text %}{% endblock %}
