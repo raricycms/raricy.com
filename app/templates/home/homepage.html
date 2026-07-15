@@ -8,15 +8,11 @@
 
 {% block content %}
 <section class="hero" id="home">
+  <canvas class="hero__canvas" id="hero-canvas" aria-hidden="true"></canvas>
   <div class="wrap">
-    <img class="hero__logo" src="/static/img/favicon.png" alt="" aria-hidden="true" width="80" height="80">
     <h1 class="hero__title">聪明山</h1>
     <p class="hero__tagline">我们总将找到答案</p>
     <p class="hero__desc">欢迎访问聪明山 website。这里是 Raricy.com 的主页面，你可以由此进入 Raricy.com 的大部分页面。</p>
-    <div class="hero__cta">
-      <a class="btn btn--primary" href="#features">开始探索</a>
-      <a class="btn btn--ghost" href="{{ url_for('blog.menu') }}">浏览博客</a>
-    </div>
   </div>
 </section>
 
@@ -62,4 +58,85 @@
 
 {% block footer_text %}
 <p class="muted">你是否正在找智慧河的网站？来<a href="https://zhh.raricy.com">这里</a>。</p>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  // 首页星空背景：漂浮星点，深浅自适应，尊重 reduced-motion，后台暂停
+  (function () {
+    var canvas = document.getElementById('hero-canvas');
+    var hero = document.getElementById('home');
+    if (!canvas || !hero) return;
+    var ctx = canvas.getContext('2d');
+    var particles = [];
+    var frameId = null;
+    var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    function starColor() {
+      return document.documentElement.getAttribute('data-theme') === 'dark'
+        ? 'rgba(255,255,255,0.55)'
+        : 'rgba(90,100,130,0.38)';
+    }
+
+    function init() {
+      canvas.width = hero.offsetWidth;
+      canvas.height = hero.offsetHeight;
+      var color = starColor();
+      var count = Math.min(90, Math.round(canvas.width * canvas.height / 14000));
+      particles = [];
+      for (var i = 0; i < count; i++) {
+        var r = Math.random() * 1.6 + 0.6;
+        particles.push({
+          x: Math.random() * canvas.width,
+          y: Math.random() * canvas.height,
+          dx: (Math.random() - 0.5) * 0.45,
+          dy: (Math.random() - 0.5) * 0.45,
+          r: r, color: color
+        });
+      }
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      for (var i = 0; i < particles.length; i++) {
+        var p = particles[i];
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fillStyle = p.color;
+        ctx.fill();
+      }
+    }
+
+    function step() {
+      frameId = requestAnimationFrame(step);
+      for (var i = 0; i < particles.length; i++) {
+        var p = particles[i];
+        if (p.x + p.r > canvas.width || p.x - p.r < 0) p.dx = -p.dx;
+        if (p.y + p.r > canvas.height || p.y - p.r < 0) p.dy = -p.dy;
+        p.x += p.dx; p.y += p.dy;
+      }
+      draw();
+    }
+
+    function start() {
+      if (reduceMotion) { draw(); return; }
+      if (!frameId) step();
+    }
+    function stop() { if (frameId) { cancelAnimationFrame(frameId); frameId = null; } }
+
+    function debounce(fn, wait) {
+      var t; return function () { clearTimeout(t); t = setTimeout(fn, wait || 200); };
+    }
+
+    init(); start();
+    window.addEventListener('resize', debounce(function () { init(); if (reduceMotion) draw(); }, 200));
+    document.addEventListener('visibilitychange', function () { document.hidden ? stop() : start(); });
+    // 主题切换时重新着色
+    new MutationObserver(function () {
+      var c = starColor();
+      for (var i = 0; i < particles.length; i++) particles[i].color = c;
+      if (reduceMotion) draw();
+    }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  })();
+</script>
 {% endblock %}

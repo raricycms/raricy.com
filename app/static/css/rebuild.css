@@ -569,7 +569,7 @@ code, kbd, pre { font-family: var(--mono); }
 .sub-category-list { margin: 2px 0 6px 12px; padding-left: 10px; border-left: 1px solid var(--line); }
 .sub-category-list.collapsed { display: none; }
 .sub-category-link { font-size: .88rem; padding: 7px 10px; }
-.category-link .icon { font-size: .95rem; }
+.category-icon { flex: none; font-size: 1.05rem; line-height: 1; }
 
 .blog-content { display: flex; flex-direction: column; gap: 16px; }
 .blog-item { display: block; padding: 26px 28px; }
@@ -1561,7 +1561,9 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); width
 /* ============================================================
    首页（回到原版布局：居中 hero + 居中四张特色卡）
    ============================================================ */
-.hero { padding: clamp(44px, 7vw, 92px) 0 clamp(40px, 5vw, 68px); text-align: center; }
+.hero { position: relative; overflow: hidden; padding: clamp(64px, 9vw, 120px) 0 clamp(56px, 7vw, 96px); text-align: center; }
+.hero__canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+.hero > .wrap { position: relative; z-index: 1; }
 .hero__logo {
   display: block; margin: 0 auto 26px; width: 80px; height: 80px;
   border-radius: var(--r); box-shadow: var(--shadow-1);

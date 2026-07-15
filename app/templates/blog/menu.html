@@ -39,7 +39,7 @@
         <li class="category-item {{ 'has-children' if category.children else '' }}">
           {% if category.children %}
           <div class="category-link collapsible" onclick="toggleCategory('category-{{ category.id }}')">
-            <div class="category-content"><span class="icon">{{ category.icon }}</span><span>{{ category.name }}</span></div>
+            <div class="category-content">{% if category.icon %}<span class="category-icon">{{ category.icon }}</span>{% endif %}<span>{{ category.name }}</span></div>
           </div>
           <ul class="sub-category-list" id="category-{{ category.id }}">
             <li class="category-item">
@@ -53,7 +53,7 @@
           </ul>
           {% else %}
           <a href="/blog/?category={{ category.slug }}" class="category-link {{ 'active' if current_category and current_category.id == category.id else '' }}">
-            <div class="category-content"><span class="icon">{{ category.icon }}</span><span>{{ category.name }}</span></div>
+            <div class="category-content">{% if category.icon %}<span class="category-icon">{{ category.icon }}</span>{% endif %}<span>{{ category.name }}</span></div>
           </a>
           {% endif %}
         </li>
