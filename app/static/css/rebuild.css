@@ -278,10 +278,17 @@ code, kbd, pre { font-family: var(--mono); }
 @media (max-width: 860px) {
   /* 移动端改为 sticky：在流内占位，内容不会被固定导航遮挡截断 */
   .site-navbar { position: sticky; top: 0; height: auto; }
-  .nav-inner { flex-wrap: wrap; padding-block: 12px; }
+  .nav-inner { padding-block: 12px; }
   .site-navbar-toggler { display: inline-flex; }
-  .nav-collapse { display: none; flex-basis: 100%; width: 100%; flex-direction: column; align-items: stretch; gap: 6px; }
-  .site-navbar.open .nav-collapse { display: flex; padding-top: 10px; }
+  /* 展开菜单为绝对定位浮层：不占流内高度，任何滚动位置都不挤动页面 */
+  .nav-collapse {
+    display: none; position: absolute; top: 100%; left: 0; right: 0;
+    flex-direction: column; align-items: stretch; gap: 6px;
+    padding: 10px 20px 16px; background: var(--surface);
+    border-bottom: 1px solid var(--line); box-shadow: var(--shadow-2);
+    max-height: calc(100vh - 64px); overflow-y: auto; overscroll-behavior: contain;
+  }
+  .site-navbar.open .nav-collapse { display: flex; }
   .nav-links { flex-direction: column; align-items: stretch; margin: 0; gap: 2px; }
   .nav-link { padding: 12px 14px; }
   .nav-actions { margin: 0; flex-wrap: wrap; padding-top: 10px; border-top: 1px solid var(--line); }
@@ -598,8 +605,8 @@ code, kbd, pre { font-family: var(--mono); }
 
 /* ---------- Notifications ---------- */
 .notif-actions { display: flex; gap: 10px; flex-wrap: wrap; margin: 20px 0 28px; }
-.notif-list { display: flex; flex-direction: column; gap: 12px; }
-.notification-card { padding: 20px 22px; }
+.notif-list { display: flex; flex-direction: column; gap: 8px; }
+.notification-card { padding: 12px 18px; }
 .notification-card.unread { border-left: 3px solid var(--accent); }
 .notification-header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .notification-action { font-weight: 600; color: var(--ink); }
@@ -613,7 +620,7 @@ code, kbd, pre { font-family: var(--mono); }
 .btn-mark-read:hover { background: var(--ok); color: #fff; border-color: var(--ok); }
 .btn-delete { color: var(--danger); }
 .btn-delete:hover { background: var(--danger); color: #fff; border-color: var(--danger); }
-.notification-content { margin-top: 10px; color: var(--ink-2); line-height: 1.55; }
+.notification-content { margin-top: 4px; color: var(--ink-2); line-height: 1.5; font-size: .92rem; }
 .notification-blog-link { display: inline-block; margin-top: 8px; font-size: .85rem; color: var(--accent); }
 .notification-blog-link:hover { color: var(--accent-ink); }
 .empty-state { text-align: center; padding: 80px 20px; color: var(--ink-3); }
@@ -785,7 +792,7 @@ code, kbd, pre { font-family: var(--mono); }
 
 /* ---------- Notifications layout ---------- */
 .notif-toolbar { display: flex; gap: 10px; margin: 20px 0 24px; flex-wrap: wrap; }
-.notif-list { display: flex; flex-direction: column; gap: 12px; }
+.notif-list { display: flex; flex-direction: column; gap: 8px; }
 .btn--danger-soft { background: var(--danger-wash); color: var(--danger); }
 .btn--danger-soft:hover { background: var(--danger); color: #fff; }
 .icon-bell { --i: url("/static/img/icons/bell.svg"); }
@@ -981,7 +988,7 @@ code, kbd, pre { font-family: var(--mono); }
 .user-search-input:focus { outline: none; background: var(--surface); border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-wash); }
 
 /* ---------- Admin: notifications page ---------- */
-.notification-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); }
+.notification-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); }
 .user-select-card { max-height: 400px; overflow-y: auto; overscroll-behavior: contain; }
 .user-item { padding: 10px 12px; border-radius: var(--r-sm); cursor: pointer; transition: background-color .15s; }
 .user-item:hover { background: var(--surface-2); }
