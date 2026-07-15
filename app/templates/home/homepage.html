@@ -9,9 +9,14 @@
 {% block content %}
 <section class="hero" id="home">
   <div class="wrap">
+    <span class="hero__chip">Raricy.com · 聪明山</span>
     <h1 class="hero__title">聪明山</h1>
     <p class="hero__tagline">我们总将找到答案</p>
     <p class="hero__desc">欢迎访问聪明山 website。这里是 Raricy.com 的主页面，你可以由此进入 Raricy.com 的大部分页面。</p>
+    <div class="hero__cta">
+      <a class="btn btn--primary" href="#features">开始探索</a>
+      <a class="btn btn--ghost" href="{{ url_for('blog.menu') }}">浏览博客</a>
+    </div>
   </div>
 </section>
 
