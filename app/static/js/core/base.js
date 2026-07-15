@@ -361,6 +361,7 @@ if (themeToggleButton) {
     let rotationAngle = 0;
     themeToggleButton.addEventListener('click', function() {
         rotationAngle += 180;
-        themeToggleButton.style.transform = `rotate(${rotationAngle}deg)`;
+        const themeIcon = themeToggleButton.querySelector('.icon');
+        (themeIcon || themeToggleButton).style.transform = `rotate(${rotationAngle}deg)`;
     });
 }

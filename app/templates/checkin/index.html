@@ -90,7 +90,7 @@
                         {%- elif entry.rank == 2 %} checkin-leaderboard__rank--top2
                         {%- elif entry.rank == 3 %} checkin-leaderboard__rank--top3
                         {%- endif %}">
-                        {%- if entry.rank == 1 -%}                        {%- elif entry.rank == 2 -%}                        {%- elif entry.rank == 3 -%}                        {%- else -%}#{{ entry.rank }}
+                        {%- if entry.rank == 1 -%}🥇{%- elif entry.rank == 2 -%}🥈{%- elif entry.rank == 3 -%}🥉{%- else -%}#{{ entry.rank }}
                         {%- endif -%}
                     </span>
                     <a class="checkin-leaderboard__user" href="{{ url_for('auth.profile', user_id=entry.user_id) }}">
@@ -121,7 +121,7 @@
                         {%- elif entry.rank == 2 %} checkin-leaderboard__rank--top2
                         {%- elif entry.rank == 3 %} checkin-leaderboard__rank--top3
                         {%- endif %}">
-                        {%- if entry.rank == 1 -%}                        {%- elif entry.rank == 2 -%}                        {%- elif entry.rank == 3 -%}                        {%- else -%}#{{ entry.rank }}
+                        {%- if entry.rank == 1 -%}🥇{%- elif entry.rank == 2 -%}🥈{%- elif entry.rank == 3 -%}🥉{%- else -%}#{{ entry.rank }}
                         {%- endif -%}
                     </span>
                     <a class="checkin-leaderboard__user" href="{{ url_for('auth.profile', user_id=entry.user_id) }}">
