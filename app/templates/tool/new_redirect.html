@@ -116,7 +116,7 @@ raricy.com 重定向工具
         goBtn.addEventListener('click', navigateToUrl);
         
         urlInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
+            if (e.key === 'Enter' && !e.isComposing) {
                 navigateToUrl();
             }
         });

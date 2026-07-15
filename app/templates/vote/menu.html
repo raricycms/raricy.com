@@ -59,7 +59,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (v !== '') window.location.href = '/vote/' + encodeURIComponent(v);
         else showToast('请输入投票 ID', 'warning');
     });
-    document.getElementById('target_link').addEventListener('keydown', (e) => { if (e.key === 'Enter') go.click(); });
+    document.getElementById('target_link').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) go.click(); });
 });
 </script>
 {% endblock %}

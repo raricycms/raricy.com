@@ -415,7 +415,7 @@
 
         fsButton.onclick = handleFullscreenSubmit;
         fsInput.onkeypress = function (e) {
-          if (e.key === 'Enter') handleFullscreenSubmit();
+          if (e.key === 'Enter' && !e.isComposing) handleFullscreenSubmit();
         };
       } else {
         input.focus();
@@ -430,7 +430,7 @@
 
       button.onclick = handleSubmit;
       input.onkeypress = function (e) {
-        if (e.key === 'Enter') handleSubmit();
+        if (e.key === 'Enter' && !e.isComposing) handleSubmit();
       };
     });
   }

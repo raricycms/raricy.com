@@ -288,7 +288,7 @@
       function cancel() { refreshAll(); }
 
       input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') { e.preventDefault(); commit(); }
+        if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); commit(); }
         if (e.key === 'Escape') { e.preventDefault(); cancel(); }
         if (e.key === 'Backspace' && input.value.length === 0) { e.preventDefault(); commit(); }
       });

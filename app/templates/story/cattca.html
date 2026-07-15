@@ -197,7 +197,7 @@
 
       btn.onclick = handleSubmit;
       input.onkeypress = function (e) {
-        if (e.key === 'Enter') handleSubmit();
+        if (e.key === 'Enter' && !e.isComposing) handleSubmit();
       };
     });
   }

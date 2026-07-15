@@ -216,6 +216,8 @@ function switchTheme(themeName) {
     const config = themeConfig[themeName];
     root.setAttribute('data-theme', config['data-theme']);
     localStorage.setItem('theme', themeName);
+    const tc = document.querySelector('meta[name="theme-color"]');
+    if (tc) tc.setAttribute('content', config['data-theme'] === 'dark' ? '#131517' : '#FBFBFD');
     console.log('切换主题:', themeName);
 }
 

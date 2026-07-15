@@ -4,6 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#FBFBFD">
     <link rel="icon" href="{{ url_for('static', filename='img/favicon.ico') }}" type="image/x-icon">
     <link rel="icon" href="{{ url_for('static', filename='img/favicon.png') }}" type="image/png">
 
@@ -26,6 +27,8 @@
                 t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
             }
             document.documentElement.setAttribute('data-theme', t);
+            var tc = document.querySelector('meta[name="theme-color"]');
+            if (tc) tc.setAttribute('content', t === 'dark' ? '#131517' : '#FBFBFD');
         })();
     </script>
     {% block extra_css %}{% endblock %}
