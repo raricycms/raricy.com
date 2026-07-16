@@ -9,6 +9,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { prisma } from './db';
+import { nowForDb, todayStr, dayStart } from './db-time';
 import type { Prisma } from '@prisma/client';
 
 /** 事务客户端类型（$transaction 回调里传入的 tx）。 */
@@ -42,22 +43,37 @@ export async function getBalanceBatch(userIds: string[]): Promise<Record<string,
 
 /** UTC+8 当天日期 YYYY-MM-DD（对齐 Flask app/service/checkin._today_utc8）。 */
 function todayUtc8(): string {
-  return new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
+  return todayStr(); // 统一走 db-time 的时区约定
 }
 
 /**
  * 今日签到获得的小鱼干数量（对齐 get_today_checkin_fish）。未签到返回 0。
  *
- * 与 Flask 一致：按 SQLite `date(created_at)` 与 UTC+8 今天比较，取当天首条
- * checkin 流水的 amount。用 $queryRaw 以复用 SQLite date() 语义。
+ * 取 UTC+8 今天首条 checkin 流水的 amount。
+ *
+ * 【为什么不用 SQLite 的 date(created_at)】
+ * Flask/SQLAlchemy 把 DATETIME 存为 TEXT，date() 能解析；但 **Prisma 往 SQLite 写
+ * DateTime 时存的是 INTEGER（Unix 毫秒）**，date(整数) 返回 NULL —— 即所有由 Next
+ * 写入的签到流水都匹配不上，今日签到会静默显示为 0。切换后同一列会 TEXT/INTEGER
+ * 混存（老数据 TEXT、新数据 INTEGER），任何裸 SQL 日期函数都不可靠。
+ * 改用 Prisma 原生范围查询：其查询引擎对两种存储都能正确比较（已实测）。
  */
 export async function getTodayCheckinFish(userId: string): Promise<number> {
   const today = todayUtc8();
-  const rows = await prisma.$queryRaw<{ amount: number }[]>`
-    SELECT amount FROM fish_transactions
-    WHERE user_id = ${userId} AND type = 'checkin' AND date(created_at) = ${today}
-    LIMIT 1`;
-  return rows.length > 0 ? rows[0].amount : 0;
+  // 【时区约定】库里存的是「UTC+8 墙上时间，贴 Z 标签」——
+  // Flask 用 datetime.now() 写 naive 本地时间（生产服务器 TZ=UTC+8，已由数据反推证实：
+  // daily_checkins 里 date(created_at) 与显式按 UTC+8 算的 checkin_date 2170/2170 全等），
+  // normalize-datetimes 只补 'T'/'Z' 不做平移，故墙上时间被原样保留。
+  // 因此这里**不做时区平移**，直接按墙上日期取区间；checkin-service 的 dateAtDay 同此约定。
+  const start = dayStart(today);
+  const end = new Date(start.getTime() + 24 * 3600 * 1000);
+
+  const row = await prisma.fishTransaction.findFirst({
+    where: { userId, type: 'checkin', createdAt: { gte: start, lt: end } },
+    select: { amount: true },
+    orderBy: { createdAt: 'asc' },
+  });
+  return row?.amount ?? 0;
 }
 
 export interface FishTxDTO {
@@ -189,6 +205,11 @@ export async function addFish(tx: TxClient, input: AddFishInput): Promise<void> 
       referenceType: input.referenceType ?? null,
       referenceId: input.referenceId ?? null,
       relatedUserId: input.relatedUserId ?? null,
+      // 必须显式写：schema 里 createdAt 是 DateTime? 且**没有** @default(now())
+      //（对齐既有库结构），漏写会让整条流水时间为 NULL —— 流水倒序会乱、今日签到判定失效。
+      // 用 nowForDb() 而非 new Date()：本库时间戳语义是「UTC+8 墙上时间贴 Z」，
+      // 详见 src/lib/db-time.ts 的说明。
+      createdAt: nowForDb(),
     },
   });
 }

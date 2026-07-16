@@ -12,7 +12,10 @@
     "prisma:generate": "prisma generate",
     "prisma:studio": "prisma studio",
     "db:normalize": "node scripts/normalize-datetimes.mjs --source ../instance/database/db.db --dest prisma/dev.db",
-    "diagnose": "node scripts/diagnose-deploy.mjs"
+    "diagnose": "node scripts/diagnose-deploy.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@prisma/client": "^6.2.1",
@@ -30,7 +33,10 @@
     "@types/node": "^22.10.5",
     "@types/react": "^19.0.4",
     "@types/react-dom": "^19.0.2",
+    "@vitest/coverage-v8": "^2.1.9",
+    "jsdom": "^25.0.1",
     "prisma": "^6.2.1",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.9"
   }
 }

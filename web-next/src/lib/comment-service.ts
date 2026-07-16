@@ -10,6 +10,8 @@
 import { prisma } from './db';
 import { hasAdminRights } from './auth';
 import { rateLimit, RULES } from './rate-limit';
+import { sendNotification } from './notification-service';
+import { logAdminAction } from './admin-user-service';
 import type { Prisma } from '@prisma/client';
 
 // ── 序列化输出（snake_case，对齐 Flask API JSON 形状）──────────────────────────
@@ -169,21 +171,27 @@ export async function createComment(input: CreateCommentInput): Promise<CreateCo
 
   try {
     const node = await prisma.$transaction(async (tx) => {
-      const blog = await tx.blog.findFirst({ where: { id: blogId, ignore: false }, select: { id: true } });
+      // 带出 title/authorId 供事务提交后发通知（对齐 Flask 的评论通知）
+      const blog = await tx.blog.findFirst({
+        where: { id: blogId, ignore: false },
+        select: { id: true, title: true, authorId: true },
+      });
       if (!blog) return { notFound: true as const };
 
       let resolvedParentId: string | null = null;
       let rootId: string | null = null;
+      let parentAuthorId: string | null = null;
       if (parentId) {
         const parent = await tx.blogComment.findUnique({
           where: { id: parentId },
-          select: { id: true, blogId: true, rootId: true, isDeleted: true },
+          select: { id: true, blogId: true, rootId: true, isDeleted: true, authorId: true },
         });
         if (!parent || parent.blogId !== blogId || parent.isDeleted) {
           return { parentInvalid: true as const };
         }
         resolvedParentId = parent.id;
         rootId = parent.rootId ?? parent.id;
+        parentAuthorId = parent.authorId;
       }
 
       const created = await tx.blogComment.create({
@@ -207,11 +215,47 @@ export async function createComment(input: CreateCommentInput): Promise<CreateCo
       const commentsCount = await tx.blogComment.count({ where: { blogId, isDeleted: false } });
       await tx.blog.update({ where: { id: blogId }, data: { commentsCount, lastCommentAt: now } });
 
-      return { row: created };
+      return {
+        row: created,
+        notify: {
+          blogTitle: blog.title,
+          blogAuthorId: blog.authorId,
+          parentAuthorId,
+        },
+      };
     });
 
     if ('notFound' in node) return { ok: false, error: 'notFound', message: '文章不存在' };
     if ('parentInvalid' in node) return { ok: false, error: 'parentInvalid', message: '父评论不存在或已删除' };
+
+    // 发送通知（对齐 Flask CommentService.create_comment）：
+    //   回复 → 通知被回复者；顶层 → 通知文章作者；两者都排除「自己评自己」。
+    // 与 Flask 一致：通知失败不影响主流程（评论已提交成功），故整体 try/catch 吞掉。
+    try {
+      const { blogTitle, blogAuthorId, parentAuthorId: pAuthor } = node.notify;
+      if (pAuthor && pAuthor !== authorId) {
+        await sendNotification({
+          recipientId: pAuthor,
+          action: '评论回复',
+          actorId: authorId,
+          objectType: 'blog',
+          objectId: blogId,
+          detail: `你的评论在《${blogTitle}》下收到了回复`,
+        });
+      } else if (!pAuthor && blogAuthorId && blogAuthorId !== authorId) {
+        await sendNotification({
+          recipientId: blogAuthorId,
+          action: '文章评论',
+          actorId: authorId,
+          objectType: 'blog',
+          objectId: blogId,
+          detail: `你的文章《${blogTitle}》收到了新评论`,
+        });
+      }
+    } catch {
+      // 通知失败不影响评论本身（对齐 Flask 的 try/except pass）
+    }
+
     return { ok: true, comment: serializeRow(node.row) };
   } catch {
     return { ok: false, error: 'notFound', message: '文章不存在' };
@@ -224,17 +268,26 @@ export type DeleteActor = { id: string; role: string };
 
 export type DeleteCommentResult =
   | { ok: true }
-  | { ok: false; error: 'notFound' | 'forbidden'; message: string };
+  | {
+      ok: false;
+      // reasonRequired / reasonTooLong：管理员删他人评论时的原因校验（对齐 Flask）
+      error: 'notFound' | 'forbidden' | 'reasonRequired' | 'reasonTooLong';
+      message: string;
+    };
 
 /**
  * 软删除评论（对齐 delete_comment）：作者本人或管理员可删。
  * 删除后重算文章未删除评论数与 lastCommentAt。
+ *
+ * @param reason 管理员删「他人」评论时必填（1..500）；作者删自己的可省略。
+ *               该原因会写入 AdminActionLog —— /audit 公示与用户申诉依赖它。
  */
 export async function softDeleteComment(
   commentId: string,
-  actor: DeleteActor
+  actor: DeleteActor,
+  reason?: string
 ): Promise<DeleteCommentResult> {
-  return prisma.$transaction(async (tx) => {
+  const outcome = await prisma.$transaction(async (tx) => {
     const comment = await tx.blogComment.findUnique({
       where: { id: commentId },
       select: { id: true, blogId: true, authorId: true, isDeleted: true },
@@ -246,6 +299,18 @@ export async function softDeleteComment(
     const isAuthor = comment.authorId === actor.id;
     if (!isAuthor && !hasAdminRights(actor)) {
       return { ok: false as const, error: 'forbidden' as const, message: '无权删除该评论' };
+    }
+
+    // 对齐 Flask：管理员删「他人」评论时必须给出原因（1..500），作者删自己的不需要。
+    const adminDeletingOthers = !isAuthor && hasAdminRights(actor);
+    const trimmedReason = (reason ?? '').trim();
+    if (adminDeletingOthers) {
+      if (!trimmedReason) {
+        return { ok: false as const, error: 'reasonRequired' as const, message: '请提供删除原因' };
+      }
+      if (trimmedReason.length > 500) {
+        return { ok: false as const, error: 'reasonTooLong' as const, message: '删除原因过长（最多500字）' };
+      }
     }
 
     await tx.blogComment.update({ where: { id: commentId }, data: { isDeleted: true } });
@@ -261,8 +326,37 @@ export async function softDeleteComment(
       data: { commentsCount, lastCommentAt: latest?.createdAt ?? null },
     });
 
-    return { ok: true as const };
+    return {
+      ok: true as const,
+      audit: adminDeletingOthers
+        ? { targetUserId: comment.authorId, blogId: comment.blogId, reason: trimmedReason }
+        : null,
+    };
   });
+
+  // 记录管理员操作日志（对齐 Flask：管理员删他人评论才记）。
+  // 这条日志是 /audit 公示与申诉流程的数据来源 —— 缺了用户就无法申诉。
+  // 与 Flask 一致：日志失败不回滚删除本身。
+  if (outcome.ok && outcome.audit) {
+    try {
+      await logAdminAction({
+        action: 'delete_comment',
+        adminId: actor.id,
+        targetUserId: outcome.audit.targetUserId,
+        objectType: 'comment',
+        objectId: commentId,
+        reason: outcome.audit.reason || '违反规则',
+        metadata: { blog_id: outcome.audit.blogId },
+      });
+    } catch {
+      /* 审计写入失败不影响删除结果（对齐 Flask 的 try/except pass） */
+    }
+  }
+
+  if (outcome.ok) return { ok: true };
+  // 剥掉内部用的 audit 字段，只暴露对外契约
+  const { ok, error, message } = outcome;
+  return { ok, error, message };
 }
 
 // ── 点赞切换 ─────────────────────────────────────────────────────────────────

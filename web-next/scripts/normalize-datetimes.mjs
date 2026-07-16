@@ -94,15 +94,45 @@ function main() {
         continue;
       }
       for (const col of cols) {
-        // 只转换尚未 ISO 化（不含 'T'）的非空值 → 幂等
+        // 转成 INTEGER（Unix 毫秒）—— 与 Prisma 自己写入 SQLite 的存储格式一致。
+        //
+        // 【为什么不是 TEXT ISO】曾经这里转的是 'YYYY-MM-DDTHH:MM:SS.sssZ' 文本，
+        // Prisma 能**读**，于是看起来没问题；但 Prisma 做 DateTime 比较时绑定的是
+        // INTEGER 毫秒，而 SQLite 跨存储类型比较**按类型序**（INTEGER < TEXT），不按数值：
+        //   · `gte` → 所有 TEXT 行恒真
+        //   · `lt` / `lte` → 所有 TEXT 行恒假
+        // 后果实测：countBlogsToday 会把用户历史上**全部**文章算成「今天发的」——
+        // 任何历史发文 ≥20 篇的用户切换后永久发不了文（429 今日已达上限）。
+        // 存成 INTEGER 后，读/写/比较/排序全部一致且正确（已实测）。
+        //
+        // 幂等：只转 TEXT 型的值（typeof = 'text'），已是 integer 的跳过。
+        // 两种来源都要吃下：
+        //   · Flask 原始格式 "2025-08-09 20:48:45.776483"（空格）
+        //   · 历史上被本脚本转成的 "2025-08-09T20:48:45.776Z"（ISO 文本）
+        // strftime('%s') 按 UTC 解析这两种格式，再补上毫秒部分。
         const stmt = db.prepare(
-          `UPDATE "${table}" SET "${col}" = strftime('%Y-%m-%dT%H:%M:%fZ', "${col}") ` +
-            `WHERE "${col}" IS NOT NULL AND instr("${col}", 'T') = 0`
+          `UPDATE "${table}" SET "${col}" = ` +
+            `CAST(strftime('%s', "${col}") AS INTEGER) * 1000 + ` +
+            `CAST(COALESCE(strftime('%f', "${col}"), '0') * 1000 AS INTEGER) % 1000 ` +
+            `WHERE "${col}" IS NOT NULL AND typeof("${col}") = 'text' ` +
+            `AND strftime('%s', "${col}") IS NOT NULL`
         );
         const res = stmt.run();
         const n = Number(res.changes || 0);
         totalUpdated += n;
-        if (n > 0) console.log(`  ✓ ${table}.${col}: ${n} 行`);
+        if (n > 0) console.log(`  ✓ ${table}.${col}: ${n} 行 → INTEGER 毫秒`);
+
+        // 兜底告警：仍有 text 残留说明格式无法被 strftime 解析，需人工看
+        const left = db
+          .prepare(
+            `SELECT COUNT(*) AS n FROM "${table}" WHERE "${col}" IS NOT NULL AND typeof("${col}") = 'text'`
+          )
+          .get();
+        if (Number(left?.n || 0) > 0) {
+          console.log(
+            `  ⚠️  ${table}.${col}: 仍有 ${left.n} 行是 TEXT 且无法解析 —— 请人工检查（这些行的日期比较会出错）`
+          );
+        }
       }
     }
     db.exec('COMMIT');

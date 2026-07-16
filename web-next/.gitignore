@@ -9,3 +9,7 @@ next-env.d.ts
 /prisma/*.db-journal
 /prisma/*.db-wal
 /prisma/*.db-shm
+
+# 测试临时数据库
+tests/.tmp/
+coverage/

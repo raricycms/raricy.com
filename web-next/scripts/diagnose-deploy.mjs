@@ -112,18 +112,40 @@ if (dbPath && fs.existsSync(dbPath)) {
     const prisma = new PrismaClient({ log: [] });
     const NORMALIZE_HINT = `对该库跑：node scripts/normalize-datetimes.mjs --source <你的库> --dest <新库>（详见 docs/nextjs-migration/03-数据库映射与陷阱.md）`;
 
-    // 3.1 看真实存储格式：CAST AS TEXT 强制按文本取回，绕开 Prisma 的 DateTime 反序列化
+    // 3.1 看真实存储类型。目标是 INTEGER（Unix 毫秒）—— 与 Prisma 自身写入格式一致。
+    //     TEXT 存储即使能被 Prisma 读出，日期比较也会按 SQLite 类型序（INTEGER < TEXT）
+    //     而非数值进行：gte 恒真、lt 恒假 → 发文日限额把历史文章全算成「今天」。
     try {
       const rows = await prisma.$queryRawUnsafe(
-        `SELECT CAST(created_at AS TEXT) AS v FROM users WHERE created_at IS NOT NULL LIMIT 1`
+        `SELECT typeof(created_at) AS ty, CAST(created_at AS TEXT) AS v, COUNT(*) AS n
+         FROM users WHERE created_at IS NOT NULL GROUP BY typeof(created_at)`
       );
-      const s = rows?.[0]?.v == null ? null : String(rows[0].v);
-      if (s == null) {
+      if (!rows?.length) {
         wrn('users.created_at 全为空，无法判定格式');
-      } else if (s.includes(' ') && !s.includes('T')) {
-        bad(`时间戳仍是 SQLAlchemy 空格格式："${s}" → Prisma 解析会抛错 → 登录 500`, NORMALIZE_HINT);
       } else {
-        ok(`时间戳已是 ISO 格式："${s}"`);
+        for (const r of rows) {
+          const ty = String(r.ty);
+          const sample = String(r.v);
+          const n = Number(r.n);
+          if (ty === 'integer') {
+            ok(`时间戳存储为 INTEGER 毫秒（${n} 行，样例 ${sample}）—— 正确`);
+          } else if (sample.includes(' ') && !sample.includes('T')) {
+            bad(
+              `时间戳是 SQLAlchemy 空格格式（${n} 行，样例 "${sample}"）→ Prisma 解析即抛错 → 登录 500`,
+              NORMALIZE_HINT
+            );
+          } else {
+            bad(
+              `时间戳是 TEXT 存储（${n} 行，样例 "${sample}"）→ Prisma 能读但**日期比较会错**：` +
+                `SQLite 跨类型比较按类型序，gte 恒真 / lt 恒假 → 发文日限额会把历史文章全算成「今天」，` +
+                `历史发文 ≥20 篇的用户将永久无法发文`,
+              NORMALIZE_HINT + '（新版脚本会转成 INTEGER 毫秒）'
+            );
+          }
+        }
+        if (rows.length > 1) {
+          bad('同一列混存多种类型 —— 日期比较结果不可预测', NORMALIZE_HINT);
+        }
       }
     } catch (e) {
       wrn(`读取 users.created_at 失败：${String(e).split('\n')[0]}`, '确认 DATABASE_URL 指向的是本项目的库');

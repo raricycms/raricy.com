@@ -93,11 +93,33 @@ export async function verifyPassword(password: string, stored: string): Promise<
  * 生成 werkzeug 兼容的 scrypt 哈希（新注册/改密码时用），Flask 侧亦可校验。
  * 与 werkzeug 默认参数一致：scrypt:32768:8:1，salt 16 字符，dklen=64。
  */
+// werkzeug 的 salt 字符集与长度：secrets.choice(ascii_letters + digits)，salt_length=16。
+const SALT_CHARS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+const SALT_LENGTH = 16;
+
+/**
+ * 生成 werkzeug 同款 salt：固定 16 位字母数字。
+ *
+ * 注意别用 `randomBytes(n).toString('base64').replace(/[^a-zA-Z0-9]/g,'')` ——
+ * 剥掉 +/= 后长度会随机变短（14~16 浮动），熵也跟着抖。
+ * 这里用拒绝采样（丢弃 >=248 的字节）避免 % 62 的取模偏置。
+ */
+function generateSalt(len = SALT_LENGTH): string {
+  let out = '';
+  while (out.length < len) {
+    for (const byte of randomBytes(len * 2)) {
+      if (out.length >= len) break;
+      if (byte < 248) out += SALT_CHARS[byte % SALT_CHARS.length]; // 248 = 4×62
+    }
+  }
+  return out;
+}
+
 export async function hashPassword(password: string): Promise<string> {
   const N = 32768,
     r = 8,
     p = 1;
-  const salt = randomBytes(12).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, 16);
+  const salt = generateSalt();
   const derived = (await scrypt(password, salt, SCRYPT_DKLEN, {
     N,
     r,
