@@ -27,8 +27,12 @@ import {
   getUnreadCount,
   markRead,
   markAllRead,
+  batchMarkRead,
+  batchDelete,
   prefForAction,
 } from '@/lib/notification-service';
+import { POST as batchMarkReadPost } from '@/app/api/notifications/batch-mark-read/route';
+import { DELETE as batchDeleteDelete } from '@/app/api/notifications/batch-delete/route';
 import {
   generateVoteId,
   createVote,
@@ -103,6 +107,14 @@ async function makeNotification(opts: {
   });
 }
 
+/** batch 端点的请求体构造。URL 无所谓，handler 只读 body。 */
+function jsonReq(body: unknown) {
+  return new Request('http://x/api/notifications/batch', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
 /** 造一个带 N 个选项的投票（绕开 createVote 的限频，用于纯投票行为的用例）。 */
 async function makeVote(opts: {
   authorId: string;
@@ -150,24 +162,86 @@ describe('notification-service', () => {
     // action → 偏好字段的映射是收敛进 prefForAction 的，先把映射本身钉死，
     // 后面的拦截用例才知道自己用的 action 落在哪个偏好上。
     it('prefForAction 把真实在用的 action 映射到对应偏好字段', () => {
-      // 下面这些 action 字符串取自 TS 侧真实调用点，不是编的
+      // 下面这些 action 字符串取自真实库 + TS 侧真实调用点，不是编的
       expect(prefForAction('文章点赞')).toBe('notifyLike');
       expect(prefForAction('文章编辑')).toBe('notifyEdit'); // api/blogs/[id]/route.ts
+      expect(prefForAction('文章删除')).toBe('notifyDelete');
       expect(prefForAction('图片删除')).toBe('notifyDelete'); // api/images/admin/[id]/route.ts
       expect(prefForAction('禁言通知')).toBe('notifyAdmin'); // admin-user-service.ts
       expect(prefForAction('解除禁言')).toBe('notifyAdmin'); // admin-user-service.ts
       expect(prefForAction('系统公告')).toBe('notifyAdmin');
-      // 英文关键字同样命中（兼容分支）
-      expect(prefForAction('like')).toBe('notifyLike');
-      expect(prefForAction('blog_deleted')).toBe('notifyDelete');
-      expect(prefForAction('ADMIN_NOTICE')).toBe('notifyAdmin'); // 大小写不敏感
+      expect(prefForAction('功能更新')).toBe('notifyAdmin');
+      expect(prefForAction('申诉提交')).toBe('notifyAdmin');
     });
 
-    it('不受偏好约束的 action 返回 null（评论类通知无对应偏好字段）', () => {
-      // Flask 也没有 notify_comment，评论通知一律发 —— 这是有意的，不是漏
+    it('不受偏好约束的 action 返回 null（评论 / 投喂类通知无对应偏好字段）', () => {
+      // 四个开关只有 like/edit/delete/admin，没有 notify_comment、notify_feed，
+      // 这类通知一律发 —— 这是有意的，不是漏
       expect(prefForAction('评论回复')).toBeNull();
       expect(prefForAction('文章评论')).toBeNull();
-      expect(prefForAction('申诉结果')).toBeNull();
+      expect(prefForAction('文章投喂')).toBeNull();
+    });
+
+    // ── 回归 1：精确映射表取代子串嗅探 ────────────────────────────────────
+    //
+    // 旧实现按「like → edit → delete → admin」顺序找第一个子串命中，导致自由文本
+    // action 串到错误的偏好上。改成精确表后，下面这些「像但不是」的串一律不命中。
+    it('【回归】自由文本 action 不再被子串嗅探串到错误偏好', () => {
+      // 这条是本次修复的核心：管理员自由输入的 action 里带「删除」二字，
+      // 旧实现 → notifyDelete（把管理员通知吞给了 delete 偏好），现在 → null
+      expect(prefForAction('管理员删除通知')).toBeNull();
+      // AdminUserActions.tsx 下拉里的其它自由选项，同样不再被「通知」二字吸进 notifyAdmin
+      expect(prefForAction('维护通知')).toBeNull();
+      expect(prefForAction('活动通知')).toBeNull();
+      expect(prefForAction('警告通知')).toBeNull();
+      // 英文关键字曾经命中（a.includes('like') 等），精确表下不再有这类隐式命中
+      expect(prefForAction('like')).toBeNull();
+      expect(prefForAction('blog_deleted')).toBeNull();
+      expect(prefForAction('ADMIN_NOTICE')).toBeNull();
+      // 未知 action 一律 null = 照发，绝不静默吞掉
+      expect(prefForAction('')).toBeNull();
+      expect(prefForAction('随便什么没见过的动作')).toBeNull();
+    });
+
+    it('【回归】原型链上的 key 不会被当成偏好命中', async () => {
+      // action 是自由文本，查表若用裸下标，'constructor' 会摸到
+      // Object.prototype.constructor（函数，truthy）→ 返回个非法偏好键。
+      for (const evil of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) {
+        expect(prefForAction(evil), evil).toBeNull();
+      }
+      // 且这类 action 能正常发出去，不会在偏好判定里炸掉
+      const u = await makeUserWithPrefs({ notifyAdmin: false, notifyDelete: false });
+      expect(await sendNotification({ recipientId: u.id, action: 'constructor' })).not.toBeNull();
+    });
+
+    it('【回归】notifyDelete=false 不再吞掉带「删除」二字的管理员通知', async () => {
+      // 旧行为：prefForAction('管理员删除通知') === 'notifyDelete' → 被拦 → null。
+      // 用户明明开着「管理员通知」，通知却被 delete 偏好吃了。
+      const u = await makeUserWithPrefs({ notifyDelete: false, notifyAdmin: true });
+      const r = await sendNotification({ recipientId: u.id, action: '管理员删除通知' });
+      expect(r).not.toBeNull();
+      expect(await prisma.notification.count({ where: { recipientId: u.id } })).toBe(1);
+    });
+
+    it('【回归】prefKey 显式传入时优先于查表，且 null 表示不受偏好拦截', async () => {
+      // 自由文本 action 的调用方（/api/admin/notify-user）靠这个显式声明归属，不再靠猜
+      const off = await makeUserWithPrefs({ notifyAdmin: false });
+      expect(
+        await sendNotification({ recipientId: off.id, action: '维护通知', prefKey: 'notifyAdmin' })
+      ).toBeNull();
+
+      const on = await makeUserWithPrefs({ notifyAdmin: true, notifyLike: false });
+      // 显式 prefKey 压过查表结果：action 查表本会命中 notifyLike（已关），
+      // 但显式声明为 notifyAdmin（开着）→ 照发
+      expect(
+        await sendNotification({ recipientId: on.id, action: '文章点赞', prefKey: 'notifyAdmin' })
+      ).not.toBeNull();
+
+      // prefKey:null = 显式声明「不受任何偏好拦截」，即便查表会命中已关的偏好
+      const allOff = await makeUserWithPrefs({ notifyLike: false });
+      expect(
+        await sendNotification({ recipientId: allOff.id, action: '文章点赞', prefKey: null })
+      ).not.toBeNull();
     });
 
     it('notifyLike=false 时点赞通知不创建', async () => {
@@ -231,24 +305,35 @@ describe('notification-service', () => {
       expect(await prisma.notification.count({ where: { recipientId: u.id } })).toBe(4);
     });
 
-    it('【可疑】action 同时含「删除」和「管理」时，delete 偏好抢在 admin 前面', async () => {
-      // prefForAction 的判定是「按 like → edit → delete → admin 顺序找第一个子串命中」，
-      // 所以管理员发的自定义通知只要正文里带了「删除」二字，就会被归到 notifyDelete。
-      // /api/admin/notify-user 的 action 是用户自由输入的（AdminUserActions.tsx），
-      // 这个串扰是真实可达的。此处**记录现状**，不主张它正确 —— 见交付说明。
-      expect(prefForAction('管理员删除通知')).toBe('notifyDelete');
+    // ── 回归 2：两类曾经逃过全部偏好的通知，现已归入 notifyAdmin ──────────
+    //
+    // 「栏目发文提醒」「申诉结果」都不含任何关键字 → 旧实现返回 null → 关了
+    // notifyAdmin 也照发。两者都是管理类通知，现在按精确表归 notifyAdmin。
+    it('【回归】「栏目发文提醒」归入 notifyAdmin，关掉后不再照发', async () => {
+      // api/blogs/route.ts 给管理员发的栏目提醒（发给管理员 = 管理类通知）
+      expect(prefForAction('栏目发文提醒')).toBe('notifyAdmin');
 
-      const u = await makeUserWithPrefs({ notifyDelete: false, notifyAdmin: true });
-      // 用户明明开着「管理员通知」，这条管理员通知仍被 delete 偏好吞掉
-      expect(await sendNotification({ recipientId: u.id, action: '管理员删除通知' })).toBeNull();
+      const off = await makeUserWithPrefs({ notifyAdmin: false });
+      expect(await sendNotification({ recipientId: off.id, action: '栏目发文提醒' })).toBeNull();
+      expect(await prisma.notification.count({ where: { recipientId: off.id } })).toBe(0);
+
+      // 开着的人照收
+      const on = await makeUserWithPrefs({ notifyAdmin: true });
+      expect(await sendNotification({ recipientId: on.id, action: '栏目发文提醒' })).not.toBeNull();
     });
 
-    it('【可疑】「栏目发文提醒」不受任何偏好约束', async () => {
-      // api/blogs/route.ts 给管理员发的栏目提醒，action='栏目发文提醒'，
-      // 不含任何关键字 → prefForAction 返回 null → 关了 notifyAdmin 也照发。
-      expect(prefForAction('栏目发文提醒')).toBeNull();
-      const u = await makeUserWithPrefs({ notifyAdmin: false });
-      expect(await sendNotification({ recipientId: u.id, action: '栏目发文提醒' })).not.toBeNull();
+    it('【回归】「申诉结果」归入 notifyAdmin（但真实调用点仍传 force:true）', async () => {
+      expect(prefForAction('申诉结果')).toBe('notifyAdmin');
+
+      const off = await makeUserWithPrefs({ notifyAdmin: false });
+      expect(await sendNotification({ recipientId: off.id, action: '申诉结果' })).toBeNull();
+
+      // 注意：admin-appeal-service.ts 的真实调用点带 force:true，所以线上申诉结果
+      // 仍然无条件送达 —— 映射只对不传 force 的调用方生效。这条钉住这个事实，
+      // 免得有人以为「归了 notifyAdmin」就等于「申诉结果可被用户关掉」。
+      expect(
+        await sendNotification({ recipientId: off.id, action: '申诉结果', force: true })
+      ).not.toBeNull();
     });
   });
 
@@ -355,6 +440,162 @@ describe('notification-service', () => {
       const me = await makeUser();
       await makeNotification({ recipientId: me.id, read: true });
       expect(await markAllRead(me.id)).toBe(0);
+    });
+  });
+
+  // ── 回归 3：批量已读 / 批量删除（补 Flask 的 batch 端点缺口）──────────────
+  //
+  // Flask 有 /api/batch-mark-read(POST) 与 /api/batch-delete(DELETE)，TS 侧原先没有。
+  // 这两个端点最要命的是**越权**：入参是一串 id，只要漏掉 recipient 过滤，
+  // 任何人都能标记 / 删除别人的通知。下面每组都带一条越权探针。
+  describe('批量已读 / 批量删除（service 层）', () => {
+    it('batchMarkRead 标记本人的多条，返回命中条数', async () => {
+      const me = await makeUser();
+      const a = await makeNotification({ recipientId: me.id });
+      const b = await makeNotification({ recipientId: me.id });
+      const c = await makeNotification({ recipientId: me.id }); // 不在列表里
+
+      expect(await batchMarkRead([a.id, b.id], me.id)).toBe(2);
+      expect(await prisma.notification.count({ where: { recipientId: me.id, read: true } })).toBe(2);
+      // 没点名的那条不受影响
+      expect((await prisma.notification.findUnique({ where: { id: c.id } }))!.read).toBe(false);
+    });
+
+    it('batchMarkRead 不能标记别人的通知（越权探针）', async () => {
+      const me = await makeUser();
+      const other = await makeUser();
+      const mine = await makeNotification({ recipientId: me.id });
+      const theirs = await makeNotification({ recipientId: other.id });
+
+      // 把别人的 id 混进自己的批量请求里 —— 只应命中自己那条
+      expect(await batchMarkRead([mine.id, theirs.id], me.id)).toBe(1);
+      // 别人的通知一个字都没动
+      expect((await prisma.notification.findUnique({ where: { id: theirs.id } }))!.read).toBe(false);
+    });
+
+    it('batchMarkRead 已读条目也计入 count（对齐 Flask：过滤不带 read=False）', async () => {
+      // Flask batch_mark_notifications_read 的 query 只有 id.in_() + recipient_id，
+      // update() 返回的是**匹配数**而非「本次真正翻转数」。这条钉住这个语义差别，
+      // 免得有人想当然加上 read:false 过滤把 count 改小。
+      const me = await makeUser();
+      const a = await makeNotification({ recipientId: me.id, read: true });
+      const b = await makeNotification({ recipientId: me.id, read: false });
+      expect(await batchMarkRead([a.id, b.id], me.id)).toBe(2);
+    });
+
+    it('batchMarkRead 空数组 / 全是不存在的 id → 0，且不误伤', async () => {
+      const me = await makeUser();
+      await makeNotification({ recipientId: me.id });
+      expect(await batchMarkRead([], me.id)).toBe(0);
+      expect(await batchMarkRead(['no-such-id'], me.id)).toBe(0);
+      // 空数组绝不能被当成「匹配全部」而把整个收件箱标已读
+      expect(await prisma.notification.count({ where: { recipientId: me.id, read: true } })).toBe(0);
+    });
+
+    it('batchDelete 删除本人的多条，返回删除条数（硬删除）', async () => {
+      const me = await makeUser();
+      const a = await makeNotification({ recipientId: me.id });
+      const b = await makeNotification({ recipientId: me.id });
+      const c = await makeNotification({ recipientId: me.id });
+
+      expect(await batchDelete([a.id, b.id], me.id)).toBe(2);
+      // 硬删除：是真没了，不是软删标记
+      expect(await prisma.notification.count({ where: { recipientId: me.id } })).toBe(1);
+      expect(await prisma.notification.findUnique({ where: { id: c.id } })).not.toBeNull();
+    });
+
+    it('batchDelete 不能删别人的通知（越权探针）', async () => {
+      const me = await makeUser();
+      const other = await makeUser();
+      const mine = await makeNotification({ recipientId: me.id });
+      const theirs = await makeNotification({ recipientId: other.id });
+
+      expect(await batchDelete([mine.id, theirs.id], me.id)).toBe(1);
+      // 别人的通知还在
+      expect(await prisma.notification.findUnique({ where: { id: theirs.id } })).not.toBeNull();
+    });
+
+    it('batchDelete 空数组不删任何东西（不能被当成「匹配全部」）', async () => {
+      const me = await makeUser();
+      await makeNotification({ recipientId: me.id });
+      expect(await batchDelete([], me.id)).toBe(0);
+      expect(await prisma.notification.count({ where: { recipientId: me.id } })).toBe(1);
+    });
+  });
+
+  // ── batch 端点的入参校验 / 权限 / 文案（API route 层）──────────────────
+  describe('批量端点（API route 层）', () => {
+    /** 两个 batch 端点入参一致，校验分支也一致，这里参数化跑。 */
+    const endpoints = [
+      { name: 'batch-mark-read', call: (body: unknown) => batchMarkReadPost(jsonReq(body)) },
+      { name: 'batch-delete', call: (body: unknown) => batchDeleteDelete(jsonReq(body)) },
+    ];
+
+    for (const ep of endpoints) {
+      it(`${ep.name} 未登录 → 401`, async () => {
+        mockCurrentUser = null;
+        const res = await ep.call({ notification_ids: [] });
+        expect(res.status).toBe(401);
+        expect(await res.json()).toMatchObject({ code: 401, message: '请先登录' });
+      });
+
+      it(`${ep.name} 缺 notification_ids → 400「缺少必要的参数」`, async () => {
+        mockCurrentUser = (await makeUser()) as SafeUser;
+        const res = await ep.call({});
+        expect(res.status).toBe(400);
+        expect(await res.json()).toMatchObject({ code: 400, message: '缺少必要的参数' });
+      });
+
+      it(`${ep.name} notification_ids 非数组 → 400「通知ID必须是数组」`, async () => {
+        mockCurrentUser = (await makeUser()) as SafeUser;
+        const res = await ep.call({ notification_ids: 'not-an-array' });
+        expect(res.status).toBe(400);
+        expect(await res.json()).toMatchObject({ code: 400, message: '通知ID必须是数组' });
+      });
+    }
+
+    it('batch-mark-read 正常路径：只标自己的，count 与文案对得上（越权探针）', async () => {
+      const me = await makeUser();
+      const other = await makeUser();
+      mockCurrentUser = me as SafeUser;
+      const mine = await makeNotification({ recipientId: me.id });
+      const theirs = await makeNotification({ recipientId: other.id });
+
+      const res = await batchMarkReadPost(jsonReq({ notification_ids: [mine.id, theirs.id] }));
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({
+        code: 200,
+        count: 1,
+        message: '已标记 1 个通知为已读',
+      });
+      // 打到 route 也一样越不了权
+      expect((await prisma.notification.findUnique({ where: { id: theirs.id } }))!.read).toBe(false);
+    });
+
+    it('batch-delete 正常路径：只删自己的，count 与文案对得上（越权探针）', async () => {
+      const me = await makeUser();
+      const other = await makeUser();
+      mockCurrentUser = me as SafeUser;
+      const mine = await makeNotification({ recipientId: me.id });
+      const theirs = await makeNotification({ recipientId: other.id });
+
+      const res = await batchDeleteDelete(jsonReq({ notification_ids: [mine.id, theirs.id] }));
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({ code: 200, count: 1, message: '已删除 1 个通知' });
+      expect(await prisma.notification.findUnique({ where: { id: theirs.id } })).not.toBeNull();
+      expect(await prisma.notification.findUnique({ where: { id: mine.id } })).toBeNull();
+    });
+
+    it('数组里混入非字符串项不会 500（Prisma 类型不符会直接抛）', async () => {
+      const me = await makeUser();
+      mockCurrentUser = me as SafeUser;
+      const mine = await makeNotification({ recipientId: me.id });
+
+      const res = await batchMarkReadPost(
+        jsonReq({ notification_ids: [mine.id, 123, null, { x: 1 }] })
+      );
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({ count: 1 });
     });
   });
 

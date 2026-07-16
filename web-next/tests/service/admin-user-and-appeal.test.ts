@@ -842,8 +842,10 @@ describe('createAppeal（提交申诉）', () => {
           appellantId: user.id,
           content: `第 ${i}`,
           status: 'pending',
-          createdAt: new Date(),
-          updatedAt: new Date(),
+          // 与 createAppeal 的窗口同口径：库内时间戳是「UTC+8 墙上时间」（见 db-time.ts），
+          // 用真实 UTC 的 new Date() 造夹具会落到今日窗口之前，导致计数为 0。
+          createdAt: new Date(Date.now() + 8 * 3600 * 1000),
+          updatedAt: new Date(Date.now() + 8 * 3600 * 1000),
         },
       });
     }

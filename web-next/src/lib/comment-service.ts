@@ -258,9 +258,29 @@ export async function createComment(input: CreateCommentInput): Promise<CreateCo
     }
 
     return { ok: true, comment: serializeRow(node.row) };
-  } catch {
-    return { ok: false, error: 'notFound', message: '文章不存在' };
+  } catch (e) {
+    // 【不要把所有异常都洗成「文章不存在」】
+    // 曾经这里是裸 `catch { return notFound }`：任何 DB 故障（外键冲突、磁盘错误、
+    // 锁超时…）都会变成一个误导性的 404，且零日志 —— 真出事时排查会极其痛苦。
+    // 实测过：传一个不存在的 authorId 会触发外键违例，却报「文章不存在」。
+    //
+    // 现在：已知的业务性外键违例（P2003，如 authorId 不存在）仍按 404 处理，
+    // 其余一律记日志后上抛，让路由返回 500 并留下真实堆栈。
+    if (isForeignKeyViolation(e)) {
+      return { ok: false, error: 'notFound', message: '文章不存在' };
+    }
+    console.error(`[comment-service] createComment 失败（blogId=${blogId}, authorId=${authorId}）:`, e);
+    throw e;
   }
+}
+
+/** Prisma 外键约束违例（P2003）。 */
+function isForeignKeyViolation(e: unknown): boolean {
+  return (
+    typeof e === 'object' &&
+    e !== null &&
+    (e as Prisma.PrismaClientKnownRequestError).code === 'P2003'
+  );
 }
 
 // ── 软删除 ───────────────────────────────────────────────────────────────────

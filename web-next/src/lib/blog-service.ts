@@ -137,6 +137,15 @@ export async function getBlogDetail(id: string) {
  * 计数在事务内原子增减。附带内存限频（100/时、500/天）。
  */
 export async function toggleLike(blogId: string, userId: string) {
+  // 【先查存在性，再扣限频】对齐 Flask 的顺序。
+  // 反过来（限频在最前）的话，刷一个不存在的 blogId 就能把自己 100 次/时的点赞额度
+  // 烧光 —— 属于自伤，但没有任何理由让无效请求消耗配额。
+  const exists = await prisma.blog.findFirst({
+    where: { id: blogId, ignore: false },
+    select: { id: true },
+  });
+  if (!exists) return { notFound: true as const };
+
   const hourly = rateLimit(`like:h:${userId}`, RULES.likeHourly);
   const daily = rateLimit(`like:d:${userId}`, RULES.likeDaily);
   if (!hourly.allowed || !daily.allowed) {
@@ -144,6 +153,7 @@ export async function toggleLike(blogId: string, userId: string) {
   }
 
   return prisma.$transaction(async (tx) => {
+    // 事务内再确认一次（并发下文章可能刚被软删）
     const blog = await tx.blog.findFirst({ where: { id: blogId, ignore: false }, select: { id: true } });
     if (!blog) return { notFound: true as const };
 

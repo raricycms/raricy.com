@@ -1056,15 +1056,45 @@ describe('toggleLike / 目标文章不存在', () => {
 });
 
 describe('toggleLike / 限频（100 次/时）', () => {
-  it('第 101 次 → { rateLimited: true }；且限频先于存在性检查（不存在的文章也消耗额度）', async () => {
-    // 用不存在的 blogId 快速烧额度 —— 顺带钉住「rateLimit 在 notFound 之前」这一实现顺序：
-    // 它意味着刷不存在的 id 也能把自己的点赞额度打光。
+  it('第 101 次 → { rateLimited: true }', async () => {
     const u = await makeUser();
+    const b = await makeBlog({});
     for (let i = 0; i < 100; i++) {
-      const r = await toggleLike('ghost-blog', u.id);
-      expect(r, `第 ${i + 1} 次应仍在额度内`).toEqual({ notFound: true });
+      const r = await toggleLike(b.id, u.id);
+      expect(r, `第 ${i + 1} 次应仍在额度内`).not.toEqual({ rateLimited: true });
     }
-    expect(await toggleLike('ghost-blog', u.id), '第 101 次应被限频').toEqual({ rateLimited: true });
+    expect(await toggleLike(b.id, u.id), '第 101 次应被限频').toEqual({ rateLimited: true });
+  });
+
+  // 【回归】无效请求不得消耗配额。
+  // 曾经 rateLimit 跑在存在性检查之前 —— 刷一个不存在的 blogId 就能把自己
+  // 100 次/时的点赞额度烧光（自伤）。Flask 是先查存在性再扣限频。
+  it('点不存在的文章不消耗额度', async () => {
+    const u = await makeUser();
+    const b = await makeBlog({});
+
+    // 200 次无效请求（远超 100 的额度）
+    for (let i = 0; i < 200; i++) {
+      expect(await toggleLike('ghost-blog', u.id)).toEqual({ notFound: true });
+    }
+
+    // 额度应完好无损：对真实文章仍能正常点赞
+    const r = await toggleLike(b.id, u.id);
+    expect(
+      r,
+      '无效请求烧光了配额 —— 刷不存在的 id 就能让用户点不了赞'
+    ).not.toEqual({ rateLimited: true });
+  });
+
+  it('软删除的文章同样不消耗额度', async () => {
+    const u = await makeUser();
+    const gone = await makeBlog({ ignore: true });
+    const ok = await makeBlog({});
+
+    for (let i = 0; i < 200; i++) {
+      expect(await toggleLike(gone.id, u.id)).toEqual({ notFound: true });
+    }
+    expect(await toggleLike(ok.id, u.id)).not.toEqual({ rateLimited: true });
   });
 });
 

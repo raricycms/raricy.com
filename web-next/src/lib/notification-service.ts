@@ -63,9 +63,13 @@ const ACTION_PREF_MAP: Readonly<Record<string, NotifyPrefKey>> = {
  *   • 文章投喂 —— 同样无对应开关；
  *   • 管理员自由输入的 action（如「维护通知」「活动通知」）—— 猜不准就不猜，
  *     宁可发出去，也不要被错误归类的偏好静默吞掉。需要受管的调用方应显式传 prefKey。
+ *
+ * 用 Object.hasOwn 而非直接下标：action 是自由文本，`ACTION_PREF_MAP['constructor']`
+ * 会顺着原型链摸到 Object.prototype.constructor（一个函数，truthy），
+ * 让 prefForAction 返回个非法值。只认自有属性。
  */
 export function prefForAction(action: string): NotifyPrefKey | null {
-  return ACTION_PREF_MAP[action] ?? null;
+  return Object.hasOwn(ACTION_PREF_MAP, action) ? ACTION_PREF_MAP[action] : null;
 }
 
 export interface SendNotificationInput {

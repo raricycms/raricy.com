@@ -17,6 +17,7 @@
 import { prisma } from './db';
 import { nowForDb } from './db-time';
 import { addFish } from './fish-service';
+import { sendNotification } from './notification-service';
 import {
   accountClient,
   accountServiceEnabled,
@@ -225,6 +226,27 @@ export async function feedBlog(
       },
       { timeout: 15000, maxWait: 5000 }
     );
+
+    // 通知文章作者（对齐 Flask feed_fish：自投喂不通知；**在事务提交之后**发，
+    // 且通知失败不回滚已成功的投喂 —— 钱已经结算完了，不能因为发通知失败而退回）。
+    if (userId !== blog.authorId) {
+      try {
+        await sendNotification({
+          recipientId: blog.authorId,
+          action: '文章投喂',
+          actorId: userId,
+          objectType: 'blog',
+          objectId: blogId,
+          detail: `你的文章《${blog.title}》收到了 ${amount} 条小鱼干投喂！`,
+        });
+      } catch (notifyErr) {
+        console.warn(
+          `[feed-service] 投喂成功但通知作者失败（不影响投喂结果）` +
+            `（blog=${blogId} author=${blog.authorId}）:`,
+          notifyErr
+        );
+      }
+    }
 
     return { ok: true, ...result };
   } catch (e) {
