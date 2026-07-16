@@ -6,6 +6,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { prisma } from './db';
+import { nowForDb } from './db-time';
 import { rateLimit, RULES } from './rate-limit';
 
 // ── 9 位 base62 ID（对齐 Vote.id 长度；用 crypto 随机 + 拒绝采样避免取模偏置）──────
@@ -179,7 +180,7 @@ export async function createVote(
       authorId: userId,
       isLocked: false,
       ignore: false,
-      createdAt: new Date(),
+      createdAt: nowForDb(),
       options: {
         create: opts.map((label, idx) => ({ label, sortOrder: idx, voteCount: 0 })),
       },
@@ -226,7 +227,7 @@ export async function castVote(
       if (existing) return { error: '您已经投过票了', status: 400 };
 
       await tx.voteRecord.create({
-        data: { voteId, optionId, userId, createdAt: new Date() },
+        data: { voteId, optionId, userId, createdAt: nowForDb() },
       });
       // 原子自增计数（对齐 Flask option.vote_count += 1）
       await tx.voteOption.update({

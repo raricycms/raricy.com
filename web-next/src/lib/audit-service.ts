@@ -8,6 +8,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { prisma } from './db';
+import { nowForDb } from './db-time';
 import type { Prisma } from '@prisma/client';
 
 const PER_PAGE = 20;
@@ -161,7 +162,7 @@ export async function createAppeal(params: {
   if (existsPending)
     return { ok: false, message: '该日志已存在你提交的待处理申诉', appealId: null };
 
-  const now = new Date();
+  const now = nowForDb();
   const appeal = await prisma.adminActionAppeal.create({
     data: {
       logId: params.logId,

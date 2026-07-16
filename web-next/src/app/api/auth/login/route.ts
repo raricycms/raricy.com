@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db';
+import { nowForDb } from '@/lib/db-time';
 import { verifyPassword } from '@/lib/password';
 import { createSessionToken, SESSION_COOKIE, sessionCookieOptions } from '@/lib/session';
 import { apiErr } from '@/lib/format';
@@ -37,7 +38,7 @@ export async function POST(req: Request) {
   // Prisma 解析该行会抛错 → 登录 500。这里显式 select 收窄返回，去掉这个失败面。
   await prisma.user.update({
     where: { id: user.id },
-    data: { lastLogin: new Date() },
+    data: { lastLogin: nowForDb() },
     select: { id: true },
   });
 

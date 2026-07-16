@@ -11,6 +11,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { prisma } from './db';
+import { nowForDb } from './db-time';
 import { rateLimit, type RateRule } from './rate-limit';
 
 // 与 Flask 常量对齐
@@ -169,7 +170,7 @@ export async function placeItem(
     zIndex = (agg._max.zIndex ?? 0) + 1;
   }
 
-  const now = new Date();
+  const now = nowForDb();
   const created = await prisma.photoWallItem.create({
     data: {
       id: crypto.randomUUID(),
@@ -242,7 +243,7 @@ export async function updateItem(
     scale?: number;
     zIndex?: number;
     updatedAt: Date;
-  } = { updatedAt: new Date() };
+  } = { updatedAt: nowForDb() };
 
   let nextX = item.x;
   let nextY = item.y;

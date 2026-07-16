@@ -15,6 +15,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { prisma } from './db';
+import { nowForDb } from './db-time';
 import { addFish } from './fish-service';
 import {
   accountClient,
@@ -160,11 +161,11 @@ export async function feedBlog(
         if (existing) {
           await tx.blogFeed.update({
             where: { uq_blog_feed_user: { blogId, userId } },
-            data: { amount: { increment: amount }, updatedAt: new Date() },
+            data: { amount: { increment: amount }, updatedAt: nowForDb() },
           });
         } else {
           await tx.blogFeed.create({
-            data: { blogId, userId, amount, createdAt: new Date(), updatedAt: new Date() },
+            data: { blogId, userId, amount, createdAt: nowForDb(), updatedAt: nowForDb() },
           });
         }
 

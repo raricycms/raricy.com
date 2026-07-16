@@ -8,6 +8,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { prisma } from './db';
+import { nowForDb } from './db-time';
 import { hasAdminRights } from './auth';
 import { rateLimit, RULES } from './rate-limit';
 import { sendNotification } from './notification-service';
@@ -166,7 +167,7 @@ export async function createComment(input: CreateCommentInput): Promise<CreateCo
   if (content.length > 2000) return { ok: false, error: 'tooLong', message: '评论内容不能超过2000字' };
 
   const contentHtml = toContentHtml(content);
-  const now = new Date();
+  const now = nowForDb();
   const id = crypto.randomUUID();
 
   try {
@@ -385,7 +386,7 @@ export async function toggleCommentLike(commentId: string, userId: string): Prom
       await tx.commentLike.delete({ where: { id: existing.id } });
       liked = false;
     } else {
-      await tx.commentLike.create({ data: { commentId, userId, createdAt: new Date() } });
+      await tx.commentLike.create({ data: { commentId, userId, createdAt: nowForDb() } });
       liked = true;
     }
 

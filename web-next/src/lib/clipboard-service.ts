@@ -7,6 +7,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { prisma } from './db';
+import { nowForDb } from './db-time';
 import { generateShortId } from './short-id';
 
 // 校验上限，对齐 Flask validator()
@@ -40,7 +41,7 @@ export async function createClip(
   }
 
   const id = generateShortId(8);
-  const now = new Date();
+  const now = nowForDb();
 
   await prisma.clipBoard.create({
     data: {
@@ -89,7 +90,7 @@ export async function updateClip(
   if (!clip) return { ok: false, reason: 'not_found' };
   if (clip.authorId !== editorId) return { ok: false, reason: 'forbidden' };
 
-  const now = new Date();
+  const now = nowForDb();
   await prisma.clipBoard.update({
     where: { id: clipId },
     data: {

@@ -11,6 +11,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { prisma } from './db';
+import { nowForDb } from './db-time';
 import { hashPassword, verifyPassword } from './password';
 import {
   accountClient,
@@ -135,7 +136,7 @@ export async function registerUser(input: RegisterInput): Promise<RegisterResult
             email,
             passwordHash,
             role,
-            createdAt: new Date(),
+            createdAt: nowForDb(),
             sessionVersion: 0,
           },
         });

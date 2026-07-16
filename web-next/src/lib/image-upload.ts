@@ -11,6 +11,7 @@ import path from 'node:path';
 import { randomInt } from 'node:crypto';
 import sharp from 'sharp';
 import { prisma } from './db';
+import { nowForDb } from './db-time';
 
 // 允许的 MIME 白名单，对齐 Flask ALLOWED_MIMETYPES
 export const ALLOWED_MIMETYPES = new Set<string>([
@@ -172,7 +173,7 @@ export async function saveUpload(input: {
       fileSize: finalBuffer.length,
       mimeType: input.mimeType,
       authorId: input.userId,
-      createdAt: new Date(), // schema 无 @default(now())，显式写入（对齐 Flask default）
+      createdAt: nowForDb(), // schema 无 @default(now())，显式写入；nowForDb 见 db-time.ts 的时区约定
     },
   });
 

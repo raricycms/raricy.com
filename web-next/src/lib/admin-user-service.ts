@@ -11,6 +11,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { prisma } from './db';
+import { nowForDb } from './db-time';
 import { isCurrentlyBanned, isOwner, type SafeUser } from './auth';
 import { sendNotification } from './notification-service';
 
@@ -44,7 +45,7 @@ export async function logAdminAction(input: LogAdminActionInput): Promise<number
       objectId: input.objectId ?? null,
       reason: input.reason ?? null,
       visibility: input.visibility ?? 'public',
-      createdAt: new Date(),
+      createdAt: nowForDb(),
     },
     select: { id: true }, // 不回读 extra（JSON 列）
   });
@@ -247,7 +248,7 @@ export async function banUser(p: BanUserParams): Promise<AdminResult<{ banId: nu
   if (isCurrentlyBanned({ isBanned: target.isBanned, banUntil: target.banUntil }))
     return { ok: false, code: 400, message: '用户已被禁言' };
 
-  const now = new Date();
+  const now = nowForDb();
   const banUntil = new Date(now.getTime() + hours * 60 * 60 * 1000);
 
   const ban = await prisma.userBan.create({
@@ -336,7 +337,7 @@ export async function unbanUser(p: UnbanUserParams): Promise<AdminResult> {
   if (latest) {
     await prisma.userBan.update({
       where: { id: latest.id },
-      data: { isLifted: true, liftedAt: new Date(), liftedBy: p.actor.id },
+      data: { isLifted: true, liftedAt: nowForDb(), liftedBy: p.actor.id },
       select: { id: true },
     });
   }

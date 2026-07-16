@@ -10,6 +10,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { prisma } from './db';
+import { nowForDb } from './db-time';
 import type { SafeUser } from './auth';
 import { sendNotification } from './notification-service';
 import { logAdminAction, unbanUser, type AdminResult } from './admin-user-service';
@@ -148,7 +149,7 @@ export async function adjudicate(p: AdjudicateParams): Promise<AdminResult> {
   if (!appeal) return { ok: false, code: 404, message: '申诉不存在' };
   if (appeal.status !== 'pending') return { ok: false, code: 400, message: '申诉已处理' };
 
-  const now = new Date();
+  const now = nowForDb();
   await prisma.adminActionAppeal.update({
     where: { id: appeal.id },
     data: {

@@ -6,6 +6,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { prisma } from './db';
+import { nowForDb } from './db-time';
 import { rateLimit, RULES } from './rate-limit';
 import type { Prisma } from '@prisma/client';
 
@@ -131,7 +132,7 @@ export async function toggleLike(blogId: string, userId: string) {
       liked = existing.deleted; // 之前是删除态 → 现在点亮
       await tx.blogLike.update({
         where: { id: existing.id },
-        data: { deleted: !liked, deletedAt: liked ? null : new Date() },
+        data: { deleted: !liked, deletedAt: liked ? null : nowForDb() },
       });
     }
 
@@ -330,7 +331,7 @@ export async function getBlogForEdit(blogId: string) {
  */
 export async function createBlog(authorId: string, data: ValidatedBlogData): Promise<string> {
   const blogId = crypto.randomUUID();
-  const now = new Date();
+  const now = nowForDb();
   await prisma.$transaction([
     prisma.blog.create({
       data: {
@@ -399,7 +400,7 @@ export async function updateBlog(
     hasChanges = true;
   }
 
-  const now = new Date();
+  const now = nowForDb();
   await prisma.$transaction([
     prisma.blog.update({
       where: { id: blogId },

@@ -9,6 +9,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { prisma } from './db';
+import { nowForDb } from './db-time';
 
 const CHARSET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'; // base62 默认表
 
@@ -33,7 +34,7 @@ export async function generateInviteCode(): Promise<string> {
   const code = base62Encode(raw).padEnd(12, '0').slice(0, 12);
 
   await prisma.inviteCode.create({
-    data: { code, isUsed: false, createdAt: new Date() },
+    data: { code, isUsed: false, createdAt: nowForDb() },
   });
   return code;
 }

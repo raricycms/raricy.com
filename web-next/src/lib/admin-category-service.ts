@@ -8,6 +8,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { prisma } from './db';
+import { nowForDb } from './db-time';
 import type { Category } from '@prisma/client';
 
 export interface CategoryInput {
@@ -129,7 +130,7 @@ export async function createCategory(input: CategoryInput): Promise<ServiceResul
       excludeFromAll: input.excludeFromAll ?? false,
       adminOnlyPosting: input.adminOnlyPosting ?? false,
       notifyAdminOnPost: input.notifyAdminOnPost ?? false,
-      createdAt: new Date(),
+      createdAt: nowForDb(),
     },
   });
   return { ok: true, data: category };

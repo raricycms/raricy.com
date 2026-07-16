@@ -10,6 +10,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { prisma } from './db';
+import { nowForDb } from './db-time';
 
 const DEFAULT_PER_PAGE = 20;
 
@@ -77,7 +78,7 @@ export async function sendNotification(input: SendNotificationInput) {
   return prisma.notification.create({
     data: {
       id: crypto.randomUUID(),
-      timestamp: new Date(),
+      timestamp: nowForDb(),
       action,
       recipientId,
       actorId,
