@@ -86,9 +86,14 @@ describe('isCurrentlyBanned —— 对齐 Flask is_currently_banned 的自动过
     vi.useRealTimers();
   });
 
-  const NOW = new Date('2026-07-16T12:00:00.000Z');
-  const future = (ms: number) => new Date(NOW.getTime() + ms);
-  const past = (ms: number) => new Date(NOW.getTime() - ms);
+  // vi.setSystemTime 冻结的是**真实 UTC**；而 banUntil 存的是「UTC+8 墙上时间」
+  // （banUser 按 nowForDb() + hours 计算，isCurrentlyBanned 也按 nowForDb() 比较）。
+  // 故构造夹具时必须同样加上 8h 偏移，否则两把尺子差 8 小时 —— 这正是曾经
+  // 「禁言 1 小时实际生效 9 小时」那个 bug 的根源。见 src/lib/db-time.ts。
+  const NOW = new Date('2026-07-16T12:00:00.000Z'); // 真实 UTC
+  const WALL_NOW = new Date(NOW.getTime() + 8 * 3600 * 1000); // 同一瞬间的墙上时间
+  const future = (ms: number) => new Date(WALL_NOW.getTime() + ms);
+  const past = (ms: number) => new Date(WALL_NOW.getTime() - ms);
 
   it('isBanned=false → 未禁言（banUntil 是什么都不看）', () => {
     expect(isCurrentlyBanned({ isBanned: false, banUntil: null })).toBe(false);
@@ -124,11 +129,12 @@ describe('isCurrentlyBanned —— 对齐 Flask is_currently_banned 的自动过
   });
 
   it('边界：banUntil 恰好等于当前时刻 → 仍算禁言中', () => {
-    // 实现为 `new Date() > banUntil` 才判过期（严格大于），
+    // 实现为 `nowForDb() > banUntil` 才判过期（严格大于），
     // 因此「恰好等于」这一毫秒尚未过期，判定为仍在禁言 —— 对用户更严格的一侧。
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
-    expect(isCurrentlyBanned({ isBanned: true, banUntil: new Date(NOW.getTime()) })).toBe(true);
+    // banUntil 与比较基准同为墙上时间
+    expect(isCurrentlyBanned({ isBanned: true, banUntil: new Date(WALL_NOW.getTime()) })).toBe(true);
   });
 
   it('边界：banUntil = now + 1ms 仍禁言，now - 1ms 即解除（切换点精确在到期时刻）', () => {
@@ -151,5 +157,45 @@ describe('isCurrentlyBanned —— 对齐 Flask is_currently_banned 的自动过
     isCurrentlyBanned(u);
     expect(u.isBanned, '判定函数不应就地修改用户对象').toBe(true);
     expect(u.banUntil).toEqual(past(1000));
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 回归：禁言时长必须与下达时长一致（曾经差 8 小时）
+//
+// 背景：banUser 用 nowForDb()（UTC+8 墙上时间）算 banUntil = now + hours，
+// 而 isCurrentlyBanned 一度用 new Date()（真实 UTC）判过期 —— 两把尺子差 8 小时，
+// 结果「禁言 1 小时」实际生效 9 小时。比较双方必须用同一个时钟。
+// ─────────────────────────────────────────────────────────────────────────────
+describe('回归：禁言时长不能被时区偏移放大', () => {
+  const REAL_NOW = new Date('2026-07-16T12:00:00.000Z');
+  /** 复刻 banUser 的算法：nowForDb() + hours */
+  const banUntilFor = (hours: number) =>
+    new Date(REAL_NOW.getTime() + 8 * 3600 * 1000 + hours * 3600 * 1000);
+
+  it('禁言 1 小时：59 分钟时仍禁言，61 分钟后解除（而不是 9 小时）', () => {
+    const banUntil = banUntilFor(1);
+
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(REAL_NOW.getTime() + 59 * 60 * 1000));
+    expect(isCurrentlyBanned({ isBanned: true, banUntil }), '59 分钟时应仍在禁言').toBe(true);
+
+    vi.setSystemTime(new Date(REAL_NOW.getTime() + 61 * 60 * 1000));
+    expect(
+      isCurrentlyBanned({ isBanned: true, banUntil }),
+      '61 分钟后必须解除 —— 若这里仍为 true，说明比较用的时钟与 banUntil 的口径不一致，' +
+        '禁言被悄悄放大了 8 小时'
+    ).toBe(false);
+  });
+
+  it('禁言 24 小时：23h59m 仍禁言，24h01m 解除', () => {
+    const banUntil = banUntilFor(24);
+
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(REAL_NOW.getTime() + (24 * 60 - 1) * 60 * 1000));
+    expect(isCurrentlyBanned({ isBanned: true, banUntil })).toBe(true);
+
+    vi.setSystemTime(new Date(REAL_NOW.getTime() + (24 * 60 + 1) * 60 * 1000));
+    expect(isCurrentlyBanned({ isBanned: true, banUntil })).toBe(false);
   });
 });

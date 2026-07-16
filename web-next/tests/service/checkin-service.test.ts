@@ -25,6 +25,7 @@ import {
   getTodayStatus,
   getCountLeaderboard,
   getFortuneLeaderboard,
+  isInvalidChoice,
 } from '@/lib/checkin-service';
 import { getTodayCheckinFish } from '@/lib/fish-service';
 import { resetDb, makeUser, prisma } from '../helpers/db';
@@ -428,18 +429,39 @@ describe('运势：抽取范围与牌池', () => {
     expect(row.fortuneValue).toBe(r.fortuneValue);
   });
 
-  it('⚠️ 越界 chosenIndex（-1 / 5 / 99 / NaN）不报错，静默降级为随机翻牌', async () => {
-    // 现状记录，非「正确性」断言：Flask claim_fortune 对越界 index 返回
-    // {'success': False, 'message': '无效的选择'}，Next 这里静默随机。见交付说明。
-    for (const bad of [-1, 5, 99, NaN]) {
+  // 【回归】越界 chosenIndex 必须报错，不能静默开盲盒。
+  // 曾经的行为：-1/5/99/NaN 都被静默换成随机 index —— 用户想选某张牌却拿到随机牌，
+  // 且唯一约束已锁死当天、无法重来。NaN 尤其隐蔽（NaN >= 0 为 false → 落进随机分支），
+  // 前端一个 parseInt 失败就变成开盲盒。Flask claim_fortune 对越界返回「无效的选择」。
+  it('越界/非法 chosenIndex（-1 / 5 / 99 / NaN / 小数）→ 报「无效的选择」且不落库', async () => {
+    freezeUtc('2026-07-15T04:00:00.000Z');
+    // 每轮换个新用户即可隔离（唯一约束是 (userId, checkinDate)）——
+    // 不在循环里 resetDb()：那会反复 DELETE 22 张表，制造 SQLite 锁竞争导致偶发失败。
+    for (const bad of [-1, 5, 99, NaN, 1.5]) {
+      const u = await makeUser();
+
+      const r = await doCheckin(u.id, bad);
+      expect(isInvalidChoice(r), `chosenIndex=${bad} 应被拒绝，而不是静默随机翻牌`).toBe(true);
+      if (isInvalidChoice(r)) expect(r.message).toBe('无效的选择');
+
+      // 被拒后不能留下任何痕迹 —— 否则用户当天就被锁死了
+      expect(await prisma.dailyCheckIn.count({ where: { userId: u.id } }), '不该落签到记录').toBe(0);
+      expect(await prisma.fishTransaction.count({ where: { userId: u.id } }), '不该发鱼').toBe(0);
+      const uu = await prisma.user.findUnique({ where: { id: u.id } });
+      expect(uu!.totalFortune ?? 0, '不该累加运势').toBe(0);
+    }
+  });
+
+  it('合法 chosenIndex（0-4）精确决定翻到哪张牌', async () => {
+    for (const idx of [0, 1, 2, 3, 4]) {
       await resetDb();
       freezeUtc('2026-07-15T04:00:00.000Z');
       const u = await makeUser();
-      const r = (await doCheckin(u.id, bad)) as { fortuneValue: number; chosenIndex: number };
-      expect(r.chosenIndex, `chosenIndex=${bad} 被换成了合法随机 index`).toBeGreaterThanOrEqual(0);
-      expect(r.chosenIndex).toBeLessThan(5);
-      expect(r.fortuneValue).toBeGreaterThanOrEqual(1);
-      expect(r.fortuneValue).toBeLessThanOrEqual(5);
+      const r = await doCheckin(u.id, idx);
+      expect(isInvalidChoice(r)).toBe(false);
+      if (isInvalidChoice(r) || r.alreadyChecked) continue;
+      expect(r.chosenIndex, `传 ${idx} 就必须翻第 ${idx} 张`).toBe(idx);
+      expect(r.fortuneValue, '运势值必须取自牌池对应位置').toBe(r.pool[idx]);
     }
   });
 
@@ -773,19 +795,42 @@ describe('getFortuneLeaderboard（运势榜）', () => {
 // doCheckin 也没显式写 —— 与 fish-service 当年的 BUG-1 完全同型。
 // 下面这条如实记录现状（当前为 NULL → 用例断言的是「已发现的 bug」）。见交付说明。
 
-describe('⚠️ DailyCheckIn.createdAt 落库情况', () => {
-  it('记录现状：doCheckin 未写 createdAt（Flask 侧该字段恒有值）', async () => {
+// 【回归】DailyCheckIn.createdAt 必须写入。
+// schema 里是 DateTime? 且无 @default(now())，Flask 模型却是 default=datetime.now
+// （真实库 2170 行全部有值）。漏写会让 get_leaderboard 的次级排序键
+// max(created_at) asc 失效 —— 与 fish 的 addFish 当年是同型 bug。
+describe('DailyCheckIn.createdAt 落库', () => {
+  it('doCheckin 必须写入 createdAt', async () => {
     freezeUtc('2026-07-15T04:00:00.000Z');
     const u = await makeUser();
     await doCheckin(u.id);
 
     const row = await prisma.dailyCheckIn.findFirstOrThrow({ where: { userId: u.id } });
-    // 此断言故意钉住「当前是 NULL」这一事实：一旦源码补上 createdAt，本条会红，
-    // 届时应把它改成 .not.toBeNull() 并删掉本注释。
     expect(
       row.createdAt,
-      'DailyCheckIn.createdAt 当前落 NULL —— Flask 侧有 default=datetime.now，' +
-        '且 get_leaderboard 依赖 max(created_at) 做并列排序。见交付说明。'
-    ).toBeNull();
+      'createdAt 落 NULL —— 排行榜的并列排序键 max(created_at) 会失效'
+    ).not.toBeNull();
+  });
+
+  it('createdAt 走 nowForDb()（UTC+8 墙上时间），而非真实 UTC', async () => {
+    freezeUtc('2026-07-15T04:00:00.000Z'); // UTC 04:00 = UTC+8 12:00
+    const u = await makeUser();
+    await doCheckin(u.id);
+
+    const row = await prisma.dailyCheckIn.findFirstOrThrow({ where: { userId: u.id } });
+    expect(
+      row.createdAt!.toISOString(),
+      '库内时间戳约定为 UTC+8 墙上时间（见 db-time.ts）；用 new Date() 会差 8 小时'
+    ).toBe('2026-07-15T12:00:00.000Z');
+  });
+
+  it('存储类型是 INTEGER（与规整脚本产出一致，保证日期比较按数值）', async () => {
+    freezeUtc('2026-07-15T04:00:00.000Z');
+    const u = await makeUser();
+    await doCheckin(u.id);
+    const [r] = await prisma.$queryRawUnsafe<{ t: string }[]>(
+      `SELECT typeof(created_at) t FROM daily_checkins LIMIT 1`
+    );
+    expect(r.t).toBe('integer');
   });
 });

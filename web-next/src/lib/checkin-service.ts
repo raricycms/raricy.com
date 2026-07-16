@@ -16,6 +16,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { prisma } from './db';
+import { nowForDb } from './db-time';
 import { addFish } from './fish-service';
 import type { Prisma } from '@prisma/client';
 
@@ -99,10 +100,19 @@ export async function getTodayStatus(userId: string): Promise<CheckinStatus> {
   };
 }
 
+/** 指定了非法的 chosenIndex（对齐 Flask claim_fortune 的「无效的选择」）。 */
+export interface CheckinInvalidChoice {
+  invalidChoice: true;
+  alreadyChecked: false;
+  message: string;
+}
+
 export type CheckinResult =
-  | { alreadyChecked: true; message: string; status: CheckinStatus }
+  | { alreadyChecked: true; invalidChoice?: false; message: string; status: CheckinStatus }
+  | CheckinInvalidChoice
   | {
       alreadyChecked: false;
+      invalidChoice?: false;
       fortuneValue: number;
       pool: number[];
       chosenIndex: number;
@@ -110,6 +120,11 @@ export type CheckinResult =
       driedFish: number;
       totalCount: number;
     };
+
+/** 类型守卫：结果是否为「无效的选择」。 */
+export function isInvalidChoice(r: CheckinResult): r is CheckinInvalidChoice {
+  return 'invalidChoice' in r && r.invalidChoice === true;
+}
 
 /**
  * 执行一次签到（合并版）：建记录 → 抽运势 → 发鱼干 → 累加 totalFortune。
@@ -123,11 +138,25 @@ export async function doCheckin(userId: string, chosenIndex?: number): Promise<C
   const pool = shuffledPool();
   const poolArr = parsePool(pool)!; // 刚生成，必合法
 
-  // 抽牌：给定合法 index 用之，否则随机
-  const idx =
-    chosenIndex != null && chosenIndex >= 0 && chosenIndex < poolArr.length
-      ? chosenIndex
-      : Math.floor(Math.random() * poolArr.length);
+  // 抽牌：未指定 → 随机；指定了就必须合法。
+  //
+  // 【为什么越界要报错而不是静默随机】对齐 Flask claim_fortune 的
+  // `{'success': False, 'message': '无效的选择'}`。用户传了 index 说明他想选某张牌，
+  // 若静默换成随机牌，他拿到的不是自己选的，而且唯一约束已锁死当天、无法重来。
+  // NaN 尤其隐蔽：`NaN >= 0` 为 false 会落进随机分支 —— 前端一个 parseInt 失败
+  // 就变成开盲盒。故此处显式校验。
+  let idx: number;
+  if (chosenIndex == null) {
+    idx = Math.floor(Math.random() * poolArr.length);
+  } else if (
+    !Number.isInteger(chosenIndex) ||
+    chosenIndex < 0 ||
+    chosenIndex >= poolArr.length
+  ) {
+    return { invalidChoice: true, alreadyChecked: false, message: '无效的选择' };
+  } else {
+    idx = chosenIndex;
+  }
   const fortuneValue = poolArr[idx];
 
   try {
@@ -138,7 +167,10 @@ export async function doCheckin(userId: string, chosenIndex?: number): Promise<C
     await prisma.$transaction(async (tx) => {
       // 唯一约束会在此拦截重复签到（并发/重复提交）→ 抛 P2002
       await tx.dailyCheckIn.create({
-        data: { userId, checkinDate, fortuneValue, fortunePool: pool },
+        // createdAt 必须显式写：schema 里是 DateTime? 且无 @default(now())，
+        // 而 Flask 模型是 default=datetime.now（真实库 2170 行全部有值）。
+        // 漏写会让排行榜的次级排序键（max(created_at) asc）失效。
+        data: { userId, checkinDate, fortuneValue, fortunePool: pool, createdAt: nowForDb() },
       });
 
       // 累加 totalFortune
@@ -201,10 +233,14 @@ export interface LeaderboardEntry {
 
 /** 签到天数榜（对齐 get_leaderboard）。 */
 export async function getCountLeaderboard(limit = 50): Promise<LeaderboardEntry[]> {
+  // 排序键对齐 Flask get_leaderboard：
+  //   ORDER BY count(id) DESC, max(created_at) ASC  —— 天数并列时「先签到的人」排前。
+  // 只按 count 排的话，并列 + limit 截断时谁上榜由 SQLite 决定，没有确定性。
   const grouped = await prisma.dailyCheckIn.groupBy({
     by: ['userId'],
     _count: { id: true },
-    orderBy: { _count: { id: 'desc' } },
+    _max: { createdAt: true },
+    orderBy: [{ _count: { id: 'desc' } }, { _max: { createdAt: 'asc' } }],
     take: limit,
   });
   if (grouped.length === 0) return [];

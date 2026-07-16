@@ -8,7 +8,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { prisma } from './db';
-import { nowForDb } from './db-time';
+import { nowForDb, dayStart, todayStr } from './db-time';
 import type { Prisma } from '@prisma/client';
 
 const PER_PAGE = 20;
@@ -146,9 +146,11 @@ export async function createAppeal(params: {
   if (acceptedExists)
     return { ok: false, message: '该操作申诉已被通过，无法再次申诉', appealId: null };
 
-  // 当日频控：一个用户每天最多 20 次（含任意操作）
-  const startOfDay = new Date();
-  startOfDay.setHours(0, 0, 0, 0);
+  // 当日频控：一个用户每天最多 20 次（含任意操作）。
+  // 窗口起点必须与写入 createdAt 用的时钟同口径 —— createdAt 走 nowForDb()（UTC+8 墙上时间），
+  // 若这里用 new Date()+setHours(0,0,0,0)（真实本地午夜），两者差 8h，会把前一天 16:00
+  // 之后的申诉误计进今日额度。见 src/lib/db-time.ts。
+  const startOfDay = dayStart(todayStr());
   const todayCount = await prisma.adminActionAppeal.count({
     where: { appellantId: params.appellantId, createdAt: { gte: startOfDay } },
   });

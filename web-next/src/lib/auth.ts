@@ -9,6 +9,7 @@
 
 import { cookies } from 'next/headers';
 import { prisma } from './db';
+import { nowForDb } from './db-time';
 import { SESSION_COOKIE, verifySessionToken } from './session';
 import type { User } from '@prisma/client';
 
@@ -70,9 +71,16 @@ export function isCoreUser(u: { role: string } | null): boolean {
   return !!u && (u.role === 'core' || u.role === 'admin' || u.role === 'owner');
 }
 
-/** 当前是否处于禁言中（含自动过期判定，对齐 is_currently_banned）。 */
+/**
+ * 当前是否处于禁言中（含自动过期判定，对齐 is_currently_banned）。
+ *
+ * 【为什么用 nowForDb() 而不是 new Date()】banUntil 存的是「UTC+8 墙上时间」
+ * （banUser 按 nowForDb() + hours 计算，Flask 亦为 datetime.now() + timedelta）。
+ * 若拿真实 UTC 的 new Date() 去比，两把尺子差 8 小时 —— 禁言 1 小时会实际生效 9 小时。
+ * 比较双方必须用同一个时钟。见 src/lib/db-time.ts。
+ */
 export function isCurrentlyBanned(u: { isBanned: boolean | null; banUntil: Date | null }): boolean {
   if (!u.isBanned) return false;
-  if (u.banUntil && new Date() > u.banUntil) return false; // 已过期
+  if (u.banUntil && nowForDb() > u.banUntil) return false; // 已过期
   return true;
 }

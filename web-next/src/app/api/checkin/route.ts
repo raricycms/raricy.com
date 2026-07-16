@@ -1,6 +1,6 @@
 import { getCurrentUser } from '@/lib/auth';
 import { apiOk, apiErr } from '@/lib/format';
-import { getTodayStatus, doCheckin, fortuneLabel } from '@/lib/checkin-service';
+import { getTodayStatus, doCheckin, fortuneLabel, isInvalidChoice } from '@/lib/checkin-service';
 
 // GET /api/checkin — 今日签到状态 + 累计天数 + 余额（需登录）
 export async function GET() {
@@ -30,13 +30,18 @@ export async function POST(req: Request) {
     const body = await req.json();
     if (body && body.chosenIndex != null) {
       const n = Number.parseInt(String(body.chosenIndex), 10);
-      if (!Number.isNaN(n)) chosenIndex = n;
+      // 解析失败不能静默忽略：那会变成「用户想选某张牌，却拿到随机牌且无法重来」。
+      // 传了值就必须是合法数字，否则报错（越界由 doCheckin 统一判定）。
+      if (Number.isNaN(n)) return apiErr(400, '无效的选择');
+      chosenIndex = n;
     }
   } catch {
-    // 无 body 或非 JSON — 随机翻牌，忽略
+    // 无 body 或非 JSON — 未指定，随机翻牌
   }
 
   const result = await doCheckin(user.id, chosenIndex);
+
+  if (isInvalidChoice(result)) return apiErr(400, result.message);
 
   if (result.alreadyChecked) {
     return apiErr(400, result.message, {

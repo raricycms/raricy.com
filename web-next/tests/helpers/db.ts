@@ -8,14 +8,17 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { prisma } from '@/lib/db';
 
-const TEST_DB_MARKER = 'tests/.tmp/test.db';
+// 测试库路径由 tests/setup.ts 生成为 tests/.tmp/test-<pid>-<rand>.db —— 每进程独立，
+// 避免多个 vitest 进程共用一个文件、互相 rmSync 重建（会随机报 no such table /
+// readonly database，看起来像被测代码不稳，实为测试基建自伤）。故此处按**前缀**校验。
+const TEST_DB_PREFIX = 'tests/.tmp/test-';
 
 /** 硬校验：连的必须是测试库，否则直接抛错（防止误伤真实数据）。 */
 function assertTestDb() {
   const url = process.env.DATABASE_URL || '';
-  if (!url.includes(TEST_DB_MARKER)) {
+  if (!url.includes(TEST_DB_PREFIX)) {
     throw new Error(
-      `拒绝在非测试库上运行：DATABASE_URL=${url}（期望包含 ${TEST_DB_MARKER}）`
+      `拒绝在非测试库上运行：DATABASE_URL=${url}（期望包含 ${TEST_DB_PREFIX}）`
     );
   }
 }
@@ -68,7 +71,10 @@ export async function resetDb() {
 // ── 种子数据 ────────────────────────────────────────────────────────────────
 
 let seq = 0;
-const uid = () => `test-${Date.now()}-${++seq}`;
+// 不用 Date.now()：用例常用 vi.useFakeTimers 冻结时钟（签到的 UTC+8 边界测试必须冻），
+// 冻结后 Date.now() 恒定，唯一性只剩 seq 扛着，很脆。用随机串 + 单调计数更稳。
+const runTag = Math.random().toString(36).slice(2, 8);
+const uid = () => `test-${runTag}-${++seq}`;
 
 export type Role = 'user' | 'core' | 'admin' | 'owner';
 
@@ -117,7 +123,7 @@ export async function makeCategory(opts: Partial<{
     data: {
       name: opts.name ?? `cat_${n}`,
       // slug 是 @unique 且非空、无默认值 —— 必须显式给，否则 Prisma 直接抛
-      slug: opts.slug ?? `cat-${n}-${Date.now()}`,
+      slug: opts.slug ?? `cat-${runTag}-${n}`,
       isActive: opts.isActive ?? true,
       adminOnlyPosting: opts.adminOnlyPosting ?? false,
       excludeFromAll: opts.excludeFromAll ?? false,

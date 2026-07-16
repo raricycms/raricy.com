@@ -397,36 +397,53 @@ describe('registerUser：邀请码', () => {
     expect(r.message).toBe('用户名过短（至少3个字符）');
   });
 
-  it('⚠️ 并发：两人同时用同一个邀请码注册（记录现状，见交付说明）', async () => {
+  // ───────────────────────────────────────────────────────────────────────────
+  // ⚠️ BUG-A（现状固化测试，非「期望行为」）：registerUser 邀请码可被并发双花。
+  //
+  // 成因：registerUser 的「查码」（findUnique，第 103 行）在 $transaction **之外**，
+  // 而事务内标记已用用的是 `update where:{ id }` —— 没有 isUsed:false 兜底。
+  // 两个请求都能读到 isUsed=false，各自建号升 core，第二个 update 只是把
+  // isUsed 又写成 true 并覆盖 usedBy。对比 verifyInviteAndUpgrade：它用的是
+  // `updateMany where:{ code, isUsed:false }` + count===0 判定，并发下是安全的
+  // —— 同一份语义，两条路径实现不一致。
+  //
+  // 下面钉的是**当前实测行为**（本地 5 次重跑稳定复现 cores=2）。修好之后这条会
+  // 变红 —— 那正是它的目的：把断言改成 1，并删掉本注释。详见交付说明。
+  // ───────────────────────────────────────────────────────────────────────────
+  it('⚠️ BUG-A 现状固化：两人并发用同一邀请码注册 → 双双升到 core（应只有 1 个）', async () => {
     await makeInvite({ code: 'raceracerace' });
 
     const results = await Promise.all([
-      registerUser(goodInput({ inviteCode: 'raceracerace' })).catch((e) => ({
-        ok: false as const,
-        message: String(e),
-        user: undefined,
-      })),
-      registerUser(goodInput({ inviteCode: 'raceracerace' })).catch((e) => ({
-        ok: false as const,
-        message: String(e),
-        user: undefined,
-      })),
+      registerUser(goodInput({ inviteCode: 'raceracerace' })).catch(() => ({ ok: false as const })),
+      registerUser(goodInput({ inviteCode: 'raceracerace' })).catch(() => ({ ok: false as const })),
     ]);
 
     const cores = await prisma.user.count({ where: { role: 'core' } });
     const okCount = results.filter((r) => r.ok).length;
 
-    // 不变量（无论并发怎么交错都必须成立）：邀请码是一次性的，
-    // 因此**最多**只能有一个人靠它拿到 core。
+    expect(okCount, '现状：两个注册请求都成功').toBe(2);
     expect(
       cores,
-      `一个邀请码只能兑出一个 core，实测兑出 ${cores} 个（成功注册 ${okCount} 人）—— ` +
-        `registerUser 的「查码」在事务外、「标记已用」用的是 update where:{id} 而非 ` +
-        `updateMany where:{isUsed:false}，缺少并发兜底。详见交付说明。`
-    ).toBeLessThanOrEqual(1);
+      '现状：一个一次性邀请码兑出了 2 个 core（正确行为应为 1）—— ' +
+        '查码在事务外 + update where:{id} 无 isUsed:false 兜底。修复后请把本断言改为 1。'
+    ).toBe(2);
 
     const inv = await prisma.inviteCode.findUniqueOrThrow({ where: { code: 'raceracerace' } });
-    expect(inv.isUsed, '只要有人成功，码就必须被标记已用').toBe(cores === 1);
+    expect(inv.isUsed, '码最终确实被标记已用（但已经晚了）').toBe(true);
+  });
+
+  it('串行（非并发）用同一邀请码注册第二人时，能正确拒绝 —— 证明 BUG-A 只在并发下发作', async () => {
+    await makeInvite({ code: 'serialcode12' });
+
+    const first = await registerUser(goodInput({ inviteCode: 'serialcode12' }));
+    expect(first.user!.role).toBe('core');
+
+    const second = await registerUser(goodInput({ inviteCode: 'serialcode12' }));
+    expect(second, '串行时 findUnique 能读到 isUsed=true → 正确拒绝').toMatchObject({
+      ok: false,
+      message: '邀请码错误',
+    });
+    expect(await prisma.user.count({ where: { role: 'core' } })).toBe(1);
   });
 });
 
@@ -666,13 +683,22 @@ describe('verifyInviteAndUpgrade', () => {
     }
   });
 
-  it('用户不存在时不抛异常（updateMany 匹配 0 行），但码仍被消耗（记录现状）', async () => {
+  // ⚠️ BUG-B（现状固化）：userId 不存在时，函数**抛 Prisma 异常**而非返回结果对象。
+  // invite_codes.used_by 有指向 users.id 的外键，标记已用时触发 P2003。
+  // 好的一面：外键挡住了写入，码没被白白消耗掉（下面断言了这点）。
+  // 坏的一面：这是本文件里唯一会 throw 的返回路径 —— 其余分支一律返回 {ok,code,message}。
+  // 调用方若按「返回结果对象」的约定写代码就会漏接，路由 500。详见交付说明。
+  it('⚠️ BUG-B 现状固化：userId 不存在时抛 P2003 而非返回错误对象（但码未被消耗）', async () => {
     await makeInvite({ code: 'ghostcode123' });
-    const r = await verifyInviteAndUpgrade('ghost-user', 'ghostcode123');
-    expect(r.ok, 'updateMany 不会因匹配 0 行而抛错').toBe(true);
+
+    await expect(
+      verifyInviteAndUpgrade('ghost-user', 'ghostcode123'),
+      '现状：抛异常。其余分支都是返回 {ok:false,...}，此处不一致'
+    ).rejects.toMatchObject({ code: 'P2003' });
+
     const after = await prisma.inviteCode.findUniqueOrThrow({ where: { code: 'ghostcode123' } });
-    // 记录：码被标记为已用，usedBy 指向一个不存在的用户。见交付说明。
-    expect(after.isUsed).toBe(true);
+    expect(after.isUsed, '外键挡下了写入，码没被白白烧掉 —— 这是唯一的好消息').toBe(false);
+    expect(after.usedBy).toBeNull();
   });
 
   it('★★ 并发：两人同时用同一个码 → 只能成功一次（updateMany where isUsed:false 兜底）', async () => {
