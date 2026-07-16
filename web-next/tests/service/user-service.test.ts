@@ -410,7 +410,12 @@ describe('registerUser：邀请码', () => {
   // 下面钉的是**当前实测行为**（本地 5 次重跑稳定复现 cores=2）。修好之后这条会
   // 变红 —— 那正是它的目的：把断言改成 1，并删掉本注释。详见交付说明。
   // ───────────────────────────────────────────────────────────────────────────
-  it('⚠️ BUG-A 现状固化：两人并发用同一邀请码注册 → 双双升到 core（应只有 1 个）', async () => {
+  // 【回归 · BUG-A】一次性邀请码不得被并发双花。
+  // 曾经：查码在事务外，事务内用 update where:{id} 无 isUsed:false 兜底 →
+  // 两个并发注册都读到 isUsed=false → **双双升到 core**，一个码兑出 2 个权限。
+  // 修复：事务内改用 updateMany(where isUsed:false)，count===0 即抛错回滚
+  //（与同文件 verifyInviteAndUpgrade 的做法统一）。
+  it('两人并发用同一邀请码注册 → 只有 1 人成功升到 core', async () => {
     await makeInvite({ code: 'raceracerace' });
 
     const results = await Promise.all([
@@ -421,15 +426,32 @@ describe('registerUser：邀请码', () => {
     const cores = await prisma.user.count({ where: { role: 'core' } });
     const okCount = results.filter((r) => r.ok).length;
 
-    expect(okCount, '现状：两个注册请求都成功').toBe(2);
-    expect(
-      cores,
-      '现状：一个一次性邀请码兑出了 2 个 core（正确行为应为 1）—— ' +
-        '查码在事务外 + update where:{id} 无 isUsed:false 兜底。修复后请把本断言改为 1。'
-    ).toBe(2);
+    expect(okCount, '一个一次性邀请码只应让一个注册成功').toBe(1);
+    expect(cores, '一个一次性邀请码兑出了多个 core —— 并发双花').toBe(1);
+
+    // 没抢到的一方：不该建号，且错误对用户是「邀请码错误」而非 500
+    expect(await prisma.user.count(), '失败方的用户记录必须回滚').toBe(1);
+    const failed = results.find((r) => !r.ok) as { code?: number; message?: string };
+    expect(failed.code, '并发失败应返回 400（业务错误），不是 500').toBe(400);
+    expect(failed.message).toBe('邀请码错误');
 
     const inv = await prisma.inviteCode.findUniqueOrThrow({ where: { code: 'raceracerace' } });
-    expect(inv.isUsed, '码最终确实被标记已用（但已经晚了）').toBe(true);
+    expect(inv.isUsed).toBe(true);
+    expect(inv.usedBy, '码应归属于成功的那个人').toBe(
+      (results.find((r) => r.ok) as { user: { id: string } }).user.id
+    );
+  });
+
+  it('5 人并发抢同一个码 → 恰好 1 人成功', async () => {
+    await makeInvite({ code: 'race5code123' });
+    const results = await Promise.all(
+      Array.from({ length: 5 }, () =>
+        registerUser(goodInput({ inviteCode: 'race5code123' })).catch(() => ({ ok: false as const }))
+      )
+    );
+    expect(results.filter((r) => r.ok).length).toBe(1);
+    expect(await prisma.user.count({ where: { role: 'core' } })).toBe(1);
+    expect(await prisma.user.count()).toBe(1);
   });
 
   it('串行（非并发）用同一邀请码注册第二人时，能正确拒绝 —— 证明 BUG-A 只在并发下发作', async () => {

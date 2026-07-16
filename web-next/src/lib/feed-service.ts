@@ -20,6 +20,7 @@ import { addFish } from './fish-service';
 import {
   accountClient,
   accountServiceEnabled,
+  assertRemoteRequiredInProduction,
   decryptApiKey,
   AccountServiceError,
 } from './account-client';
@@ -190,14 +191,20 @@ export async function feedBlog(
             feedSeq,
           });
         } else {
-          // dev fallback：无账户服务时仅本地记账，明确告警（绝非静默生产行为）。
+          // 未配置账户服务。
+          //
+          // 【生产必须 fail-closed】漏配 ACCOUNT_SERVICE_INTERNAL_TOKEN 时若静默放行，
+          // 投喂会只写本地、远端毫无记账，且只留一条 console.warn —— 与 Phase 1.5 的
+          // 意图完全相反（这是 fail-OPEN）。故生产环境直接抛 503 让问题当场暴露。
+          assertRemoteRequiredInProduction('投喂');
+          // 开发环境：仅本地记账，明确告警。
           console.warn(
             `[feed-service] ACCOUNT_SERVICE 未配置，投喂仅写本地库（dev fallback）。` +
               ` user=${userId} blog=${blogId} amount=${amount}`
           );
         }
 
-        // 事务提交后再读取最新值。
+        // 读取事务内的最新值（仍在事务中，故为本事务可见的最新状态）。
         const [feedRow, blogRow, feederRow] = await Promise.all([
           tx.blogFeed.findUnique({
             where: { uq_blog_feed_user: { blogId, userId } },

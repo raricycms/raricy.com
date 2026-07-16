@@ -67,9 +67,20 @@ export function sanitizeFilename(filename: string): string {
   return name || 'image';
 }
 
-/** 角色对应的配额上限（MB）；无权限角色返回 0。 */
+/**
+ * 角色对应的配额上限（MB）；无权限角色返回 0。
+ *
+ * 【为什么用 Object.hasOwn 而不是直接索引】对象字面量带 Object.prototype，
+ * `QUOTA_LIMITS_MB['constructor']` 会拿到**函数**而非 undefined，`?? 0` 兜不住 →
+ * 路由的 `if (limitMb === 0) return 403` 判不出来，`limitBytes = fn * 1024*1024 = NaN`，
+ * 而 `used + size > NaN` 恒为 false → **配额闸门全开**。
+ * role 虽来自 DB（攻击者注入不进来），但这道防线不该靠「数据一定干净」来维持。
+ */
 export function getQuotaLimitMb(role: string | null | undefined): number {
-  return QUOTA_LIMITS_MB[role ?? ''] ?? 0;
+  const key = role ?? '';
+  if (!Object.hasOwn(QUOTA_LIMITS_MB, key)) return 0;
+  const v = QUOTA_LIMITS_MB[key];
+  return typeof v === 'number' && Number.isFinite(v) ? v : 0;
 }
 
 /** 用户已用存储字节数（仅统计未软删的图片），对齐 get_user_used_bytes。 */

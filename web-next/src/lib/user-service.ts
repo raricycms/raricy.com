@@ -18,6 +18,8 @@ import {
   accountServiceEnabled,
   encryptApiKey,
   AccountServiceError,
+  InviteCodeRaceError,
+  assertRemoteRequiredInProduction,
 } from './account-client';
 import type { Prisma } from '@prisma/client';
 
@@ -94,9 +96,14 @@ export async function registerUser(input: RegisterInput): Promise<RegisterResult
   if (password.length > 100) return { ok: false, code: 400, message: '密码过长！' };
   if (email.length > 100) return { ok: false, code: 400, message: '邮箱过长!' };
 
-  // 邀请码（可选）：无效直接拒绝；有效则升级为 core
+  // 邀请码（可选）：无效直接拒绝；有效则升级为 core。
+  //
+  // 这里只做「格式 + 存在性」的预检以便尽早返回错误；**真正的占用是在下方事务里用
+  // updateMany(where isUsed:false) 原子完成的**（与 verifyInviteAndUpgrade 同款）。
+  // 不能依赖此处的读结果做占用判断 —— 读在事务外，两个并发注册会同时读到 isUsed=false，
+  // 若事务内只按 id 无条件 update，一个一次性邀请码就能兑出两个 core（已实测复现）。
   let role = 'user';
-  let inviteRecordId: number | null = null;
+  let inviteCodeToClaim: string | null = null;
   if (inviteCode) {
     if (inviteCode.length !== 12) {
       return { ok: false, code: 400, message: '邀请码错误' };
@@ -106,7 +113,7 @@ export async function registerUser(input: RegisterInput): Promise<RegisterResult
       return { ok: false, code: 400, message: '邀请码错误' };
     }
     role = 'core';
-    inviteRecordId = record.id;
+    inviteCodeToClaim = inviteCode;
   }
 
   const id = randomUUID();
@@ -140,12 +147,17 @@ export async function registerUser(input: RegisterInput): Promise<RegisterResult
             sessionVersion: 0,
           },
         });
-        if (inviteRecordId !== null) {
-          // 标记邀请码已用（对齐 mark_invite_code_used）
-          await tx.inviteCode.update({
-            where: { id: inviteRecordId },
+        if (inviteCodeToClaim !== null) {
+          // 原子占用邀请码（对齐 mark_invite_code_used，并与 verifyInviteAndUpgrade 同款）：
+          // 条件里必须带 isUsed:false —— 并发时只有一个事务能把 count 拿到 1，
+          // 另一个拿到 0 并在此抛错回滚，从而杜绝「一码兑两号」。
+          const claimed = await tx.inviteCode.updateMany({
+            where: { code: inviteCodeToClaim, isUsed: false },
             data: { isUsed: true, usedBy: id },
           });
+          if (claimed.count === 0) {
+            throw new InviteCodeRaceError();
+          }
         }
 
         // ── 远端同步：★ 提交前 ★ 建小鱼干账户（fail-closed 关键点）────────────────
@@ -160,7 +172,13 @@ export async function registerUser(input: RegisterInput): Promise<RegisterResult
             });
           }
         } else {
-          // dev fallback：无账户服务时仅建本地用户，明确告警（绝非静默生产行为）。
+          // 未配置账户服务。
+          //
+          // 【生产必须 fail-closed】漏配 ACCOUNT_SERVICE_INTERNAL_TOKEN 时若静默放行，
+          // 就与 Phase 1.5 的意图完全相反：用户建了号却没有远端鱼干账户，
+          // 且只留一条 console.warn，几乎不会被发现。故生产环境直接拒绝。
+          assertRemoteRequiredInProduction('注册');
+          // 开发环境：仅建本地用户，明确告警。
           // 用户首次投喂时 feed-service 会因缺少 fishApiKeyEncrypted 而 fail-closed。
           console.warn(
             `[user-service] ACCOUNT_SERVICE 未配置，注册仅建本地用户（dev fallback）。user=${id}`
@@ -170,6 +188,11 @@ export async function registerUser(input: RegisterInput): Promise<RegisterResult
       { timeout: 15000, maxWait: 5000 }
     );
   } catch (e) {
+    if (e instanceof InviteCodeRaceError) {
+      // 并发抢同一个邀请码，本次没抢到（事务已回滚，未建号、未占码）。
+      // 对用户就是「这个码已经被用了」——与串行下的判定一致。
+      return { ok: false, code: 400, message: '邀请码错误' };
+    }
     if (e instanceof AccountServiceError) {
       // 远端失败：本地事务已回滚，向用户返回明确错误（fail-closed）。
       console.warn(

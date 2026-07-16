@@ -26,35 +26,62 @@ export async function listBlogs(params: ListParams) {
 
   const where: Prisma.BlogWhereInput = { ignore: false };
 
-  if (params.featured) where.isFeatured = true;
+  // 精选筛选：对齐 Flask `if featured in (True, False)` —— **false 也生效**（筛出非精选）。
+  // 写成 `if (params.featured)` 会让 featured=false 等同于不传，丢掉「只看非精选」的语义。
+  if (params.featured !== undefined && params.featured !== null) {
+    where.isFeatured = params.featured;
+  }
 
-  // 分类过滤：命中该分类或其子分类；否则按“全部文章”排除 exclude_from_all 的分类
   if (params.categorySlug) {
-    const cat = await prisma.category.findUnique({
-      where: { slug: params.categorySlug },
-      select: { id: true, children: { select: { id: true } } },
+    // 指定栏目：命中该栏目或其子栏目。
+    // isActive 过滤对齐 Flask `filter_by(slug=..., is_active=True)` 与
+    // `children.filter_by(is_active=True)` —— 停用栏目下的文章不应能通过 slug 直接访问。
+    const cat = await prisma.category.findFirst({
+      where: { slug: params.categorySlug, isActive: true },
+      select: { id: true, children: { where: { isActive: true }, select: { id: true } } },
     });
     if (cat) {
       const ids = [cat.id, ...cat.children.map((c) => c.id)];
       where.categoryId = { in: ids };
     } else {
-      where.categoryId = -1; // 不存在的分类 → 空结果
+      where.categoryId = -1; // 不存在/已停用的栏目 → 空结果
     }
-  } else if (!params.featured) {
+  } else {
+    // 「全部文章」：排除 exclude_from_all 的栏目**及其子栏目**。
+    // 对齐 Flask：
+    //   excluded = Category.filter_by(exclude_from_all=True, is_active=True)
+    //   for ec in excluded: ids += [ec.id] + [child.id for child in ec.children if is_active]
+    //   query.filter((Blog.category_id.is_(None)) | (~Blog.category_id.in_(ids)))
+    //
+    // ⚠️ 两个易错点：
+    //  1. **必须显式保住 category_id IS NULL** —— SQL 里 `NULL NOT IN (...)` 求值为 NULL，
+    //     只写 notIn 会把「未分类」文章一并滤掉。实测：只要站内存在任意一个
+    //     exclude_from_all 栏目，所有未分类文章就从首页消失。
+    //  2. 该排除与 featured 无关（Flask 只看有没有传 category_slug）。写成
+    //     `else if (!params.featured)` 会让精选页漏出被排除栏目的文章。
     const excluded = await prisma.category.findMany({
-      where: { excludeFromAll: true },
-      select: { id: true },
+      where: { excludeFromAll: true, isActive: true },
+      select: { id: true, children: { where: { isActive: true }, select: { id: true } } },
     });
-    if (excluded.length) where.categoryId = { notIn: excluded.map((c) => c.id) };
+    const excludedIds = excluded.flatMap((c) => [c.id, ...c.children.map((x) => x.id)]);
+    if (excludedIds.length) {
+      where.AND = [
+        { OR: [{ categoryId: null }, { categoryId: { notIn: excludedIds } }] },
+      ];
+    }
   }
 
   if (params.search && params.search.trim()) {
     const q = params.search.trim();
-    where.OR = [
-      { title: { contains: q } },
-      { description: { contains: q } },
-      { author: { is: { username: { contains: q } } } },
-    ];
+    // 用 AND 承载，避免与上面「保住 NULL」的 OR 互相覆盖（两者都写 where.OR 会后者胜出）。
+    const searchOr: Prisma.BlogWhereInput = {
+      OR: [
+        { title: { contains: q } },
+        { description: { contains: q } },
+        { author: { is: { username: { contains: q } } } },
+      ],
+    };
+    where.AND = Array.isArray(where.AND) ? [...where.AND, searchOr] : [searchOr];
   }
 
   const [total, blogs] = await Promise.all([

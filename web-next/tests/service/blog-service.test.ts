@@ -753,15 +753,25 @@ describe('listBlogs / 分类过滤', () => {
     expect(r.blogs.map((b) => b.title)).toEqual(['正常']);
   });
 
-  it('【与 Flask 不一致】已停用的栏目（isActive=false）仍能按 slug 查出文章', async () => {
-    // Flask：filter_by(slug=..., is_active=True) 查不到 → 返回 None（栏目不存在）
-    // TS：findUnique({ where: { slug } }) 未带 isActive → 停用栏目照样出文章
-    // 钉的是【当前 TS 行为】。修复后应改为期望空结果。见交付说明。
+  // 【回归】停用栏目必须对外隐藏（对齐 Flask filter_by(slug=..., is_active=True)）。
+  it('已停用的栏目（isActive=false）按 slug 查不到文章', async () => {
     const u = await makeUser();
     const dead = await mkCat({ slug: 'dead', isActive: false });
     await makeBlog({ authorId: u.id, title: '停用栏目下的文章', categoryId: dead.id });
     const r = await listBlogs({ categorySlug: 'dead' });
-    expect(r.blogs.map((b) => b.title), '停用栏目本应对外隐藏').toEqual(['停用栏目下的文章']);
+    expect(r.blogs, '停用栏目下的文章不该能通过 slug 直接访问').toEqual([]);
+  });
+
+  it('停用的子栏目不被父栏目带出来', async () => {
+    const u = await makeUser();
+    const parent = await mkCat({ slug: 'p' });
+    const deadChild = await mkCat({ slug: 'dead-child', isActive: false, parentId: parent.id });
+    const liveChild = await mkCat({ slug: 'live-child', parentId: parent.id });
+    await makeBlog({ authorId: u.id, title: '停用子栏目文', categoryId: deadChild.id });
+    await makeBlog({ authorId: u.id, title: '正常子栏目文', categoryId: liveChild.id });
+
+    const r = await listBlogs({ categorySlug: 'p' });
+    expect(r.blogs.map((b) => b.title)).toEqual(['正常子栏目文']);
   });
 });
 
@@ -785,10 +795,11 @@ describe('listBlogs / 「全部文章」的 excludeFromAll 排除', () => {
     expect(r.blogs.map((b) => b.title), 'exclude_from_all 只影响「全部」聚合页').toEqual(['隐藏分类文']);
   });
 
-  it('【与 Flask 不一致】存在排除分类时，未分类（categoryId=null）文章会一并消失', async () => {
-    // Flask 的条件是 (category_id IS NULL) OR (category_id NOT IN (...)) —— 显式保住 NULL。
-    // TS 只有 { notIn: [...] }，SQL 里 NULL NOT IN (...) 求值为 NULL → 未分类文章被连坐滤掉。
-    // 钉的是【当前 TS 行为】。修复后应期望 ['未分类文', '正常文']。见交付说明。
+  // 【回归 · 用户可见】存在排除栏目时，未分类文章必须保留。
+  // 曾经只写 { notIn: [...] }，而 SQL 里 `NULL NOT IN (...)` 求值为 NULL —— 未分类文章
+  // 被连坐滤掉。后果：只要站内存在任意一个 exclude_from_all 栏目，
+  // **所有未分类文章就从首页消失**。Flask 显式写了 (category_id IS NULL) OR (...)。
+  it('存在排除栏目时，未分类（categoryId=null）文章仍出现在全部文章', async () => {
     const u = await makeUser();
     const hidden = await mkCat({ slug: 'hidden', excludeFromAll: true });
     const normal = await mkCat({ slug: 'normal' });
@@ -797,7 +808,34 @@ describe('listBlogs / 「全部文章」的 excludeFromAll 排除', () => {
     await makeBlog({ authorId: u.id, title: '隐藏分类文', categoryId: hidden.id, createdAt: new Date(2026, 0, 1) });
 
     const r = await listBlogs({});
-    expect(r.blogs.map((b) => b.title), '未分类文章被 notIn 连坐 —— 这是 bug').toEqual(['正常文']);
+    expect(
+      r.blogs.map((b) => b.title),
+      '未分类文章被 notIn 连坐滤掉 —— 首页会凭空少文章'
+    ).toEqual(['未分类文', '正常文']);
+  });
+
+  // 【回归】排除必须级联到子栏目（Flask 遍历 ec.children）。
+  it('excludeFromAll 的栏目，其子栏目的文章也不出现在全部文章', async () => {
+    const u = await makeUser();
+    const hidden = await mkCat({ slug: 'hidden', excludeFromAll: true });
+    const hiddenChild = await mkCat({ slug: 'hidden-child', parentId: hidden.id });
+    const normal = await mkCat({ slug: 'normal' });
+    await makeBlog({ authorId: u.id, title: '子栏目文', categoryId: hiddenChild.id, createdAt: new Date(2026, 0, 2) });
+    await makeBlog({ authorId: u.id, title: '正常文', categoryId: normal.id, createdAt: new Date(2026, 0, 1) });
+
+    const r = await listBlogs({});
+    expect(r.blogs.map((b) => b.title), '被排除栏目的子栏目文章漏了出来').toEqual(['正常文']);
+  });
+
+  // 【回归】排除逻辑与 featured 无关（Flask 只看有没有传 category_slug）。
+  it('精选页同样排除 excludeFromAll 的栏目', async () => {
+    const u = await makeUser();
+    const hidden = await mkCat({ slug: 'hidden', excludeFromAll: true });
+    const a = await makeBlog({ authorId: u.id, title: '隐藏栏目的精选文', categoryId: hidden.id });
+    await prisma.blog.update({ where: { id: a.id }, data: { isFeatured: true } });
+
+    const r = await listBlogs({ featured: true });
+    expect(r.blogs, '精选页漏出了被排除栏目的文章').toEqual([]);
   });
 
   it('没有任何排除分类时，未分类文章正常出现', async () => {
@@ -851,17 +889,26 @@ describe('listBlogs / 搜索与精选', () => {
     expect(r.blogs.map((b) => b.title)).toEqual(['精选文']);
   });
 
-  it('【与 Flask 不一致】featured=false 不过滤（Flask 会筛出非精选）', async () => {
-    // Flask：`if featured in (True, False)` → False 也生效
-    // TS：`if (params.featured)` → false 直接跳过，等同不传
-    // 钉的是【当前 TS 行为】。见交付说明。
+  // 【回归】featured=false 必须筛出「非精选」（对齐 Flask `if featured in (True, False)`）。
+  // 曾经写 `if (params.featured)` → false 直接跳过，等同不传，丢掉了「只看非精选」的语义。
+  it('featured=false 筛出非精选文章', async () => {
     const u = await makeUser();
     const a = await makeBlog({ authorId: u.id, title: '精选文', createdAt: new Date(2026, 0, 2) });
     await prisma.blog.update({ where: { id: a.id }, data: { isFeatured: true } });
     await makeBlog({ authorId: u.id, title: '普通文', createdAt: new Date(2026, 0, 1) });
 
     const r = await listBlogs({ featured: false });
-    expect(r.blogs.map((b) => b.title), 'featured=false 目前退化成不过滤').toEqual(['精选文', '普通文']);
+    expect(r.blogs.map((b) => b.title), 'featured=false 退化成了不过滤').toEqual(['普通文']);
+  });
+
+  it('featured=true 只返回精选；不传则两者都返回', async () => {
+    const u = await makeUser();
+    const a = await makeBlog({ authorId: u.id, title: '精选文', createdAt: new Date(2026, 0, 2) });
+    await prisma.blog.update({ where: { id: a.id }, data: { isFeatured: true } });
+    await makeBlog({ authorId: u.id, title: '普通文', createdAt: new Date(2026, 0, 1) });
+
+    expect((await listBlogs({ featured: true })).blogs.map((b) => b.title)).toEqual(['精选文']);
+    expect((await listBlogs({})).blogs.map((b) => b.title)).toEqual(['精选文', '普通文']);
   });
 });
 

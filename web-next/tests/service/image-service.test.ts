@@ -440,21 +440,25 @@ describe('getQuotaLimitMb（角色 → 配额）', () => {
     expect(getQuotaLimitMb('')).toBe(0);
   });
 
-  it('⚠️ BUG：原型链属性名会穿透 —— role="constructor" 拿到的不是 0', async () => {
-    // 实现是 `QUOTA_LIMITS_MB[role ?? ''] ?? 0`，对象字面量带 Object.prototype，
-    // 故 'constructor' / 'toString' 取到的是**函数**而非 undefined，`?? 0` 兜不住。
-    // 影响（见交付说明）：路由里 `if (limitMb === 0) return 403` 判不出来 →
-    // limitBytes = fn * 1024*1024 = NaN → `used + size > NaN` 恒为 false → 配额闸门全开。
-    // 现实中 role 来自 DB 且由管理员维护，不可由攻击者直接注入，故定级为健壮性缺陷。
-    const c = getQuotaLimitMb('constructor');
-    expect(typeof c, `如实记录：constructor → ${typeof c}（期望是 number 0）`).toBe('function');
-    expect(typeof getQuotaLimitMb('toString')).toBe('function');
+  // 【回归】原型链属性名不得穿透。
+  // 曾经的实现是 `QUOTA_LIMITS_MB[role ?? ''] ?? 0`，对象字面量带 Object.prototype，
+  // 'constructor' / 'toString' 取到的是**函数**而非 undefined，`?? 0` 兜不住。
+  // 连锁后果：路由的 `if (limitMb === 0) return 403` 判不出来 →
+  // limitBytes = fn * 1024*1024 = NaN → `used + size > NaN` 恒为 false → **配额闸门全开**。
+  // role 虽来自 DB（攻击者注入不进来），但这道闸门不该靠「数据一定干净」来维持。
+  it('原型链属性名不穿透：constructor / toString / __proto__ 一律返回 0', () => {
+    for (const key of ['constructor', 'toString', '__proto__', 'hasOwnProperty', 'valueOf']) {
+      const v = getQuotaLimitMb(key);
+      expect(typeof v, `getQuotaLimitMb('${key}') 应返回 number，实际 ${typeof v}`).toBe('number');
+      expect(v, `getQuotaLimitMb('${key}') 应为 0`).toBe(0);
+    }
+  });
 
-    // __proto__ 是取值器，不会返回函数，但也不是数字 0 —— 同样属于穿透
-    expect(getQuotaLimitMb('__proto__')).not.toBe(0);
-
-    // 反过来：普通的未知角色名是安全的（走 ?? 0）
+  it('普通未知角色名返回 0', () => {
     expect(getQuotaLimitMb('moderator')).toBe(0);
+    expect(getQuotaLimitMb('')).toBe(0);
+    expect(getQuotaLimitMb(null)).toBe(0);
+    expect(getQuotaLimitMb(undefined)).toBe(0);
   });
 
   it('导出的 QUOTA_LIMITS_MB 表本身没有多余角色', async () => {

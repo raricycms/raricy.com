@@ -72,9 +72,38 @@ export class AccountServiceError extends Error {
   }
 }
 
-/** 账户服务是否已配置（未配置时 feed-service 走本地 dev fallback）。 */
+/** 账户服务是否已配置（未配置时开发环境走本地 dev fallback）。 */
 export function accountServiceEnabled(cfg = accountConfig()): boolean {
   return !!cfg.internalToken;
+}
+
+/** 并发抢同一个邀请码时，未抢到的一方（用于回滚事务，非系统错误）。 */
+export class InviteCodeRaceError extends Error {
+  constructor() {
+    super('邀请码已被占用');
+    this.name = 'InviteCodeRaceError';
+  }
+}
+
+/**
+ * 生产环境下账户服务必须可用 —— 未配置即抛 AccountServiceError(503)。
+ *
+ * 【为什么需要这道守卫】dev fallback 的本意是「本地没有账户服务时也能把切片跑起来」，
+ * 但它在生产是 **fail-OPEN**：一旦漏配 ACCOUNT_SERVICE_INTERNAL_TOKEN，
+ * 投喂/注册会静默地只写本地、只留一条 console.warn —— 与 Phase 1.5 的 fail-closed
+ * 意图完全相反，且几乎不会被发现（用户侧一切正常，直到对账时才发现账目对不上）。
+ * 故生产环境一律拒绝，让问题在部署时就暴露。
+ *
+ * @param what 操作名，用于错误日志（如「注册」「投喂」）
+ */
+export function assertRemoteRequiredInProduction(what: string): void {
+  if (process.env.NODE_ENV === 'production') {
+    throw new AccountServiceError(
+      `账户服务未配置（缺少 ACCOUNT_SERVICE_INTERNAL_TOKEN），${what}已中止：` +
+        `生产环境不允许跳过远端同步（fail-closed）`,
+      503
+    );
+  }
 }
 
 // ── Fernet 解密（对齐 Flask AES.py：SHA-256 派生 → Fernet）───────────────────
