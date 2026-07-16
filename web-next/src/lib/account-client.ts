@@ -417,10 +417,35 @@ export const accountClient = {
           idempotencyKey: makeFeedIdempotencyKey(input.blogId, input.feederId, input.feedSeq, 'refund'),
         });
       } catch (refundErr) {
-        // 严重：补偿也失败，远端可能不一致，需人工核对。
+        // ★ 唯一会产生「本地/远端分叉」的窗口：Step1 已扣款 → Step2 失败 → 补偿也失败。
+        // 此时本地事务会回滚（下面照常上抛），但**远端已经扣了投喂者的钱**，两边对不上。
+        //
+        // 这条日志是目前唯一的发现途径 —— 没有对账队列，也没有自动重试。
+        // 故意打成**单行、带固定前缀的结构化 JSON**，便于日志系统按
+        // `ACCOUNT_RECONCILE_REQUIRED` 关键字告警、并直接解析出对账所需字段。
+        // 长期方案（见 docs/nextjs-migration/06 的账户微服务联调项）：落一张对账表 +
+        // 后台重试，而不是靠人盯日志。
         console.error(
-          `[account-client] 严重：投喂 Step2 失败且补偿退款也失败，远端可能不一致` +
-            `（feeder=${input.feederId}, author=${input.authorId}, blog=${input.blogId}, amount=${input.amount}）:`,
+          'ACCOUNT_RECONCILE_REQUIRED ' +
+            JSON.stringify({
+              scene: 'feed',
+              reason: 'step2_failed_and_refund_failed',
+              feederId: input.feederId,
+              authorId: input.authorId,
+              blogId: input.blogId,
+              amount: input.amount,
+              authorIncome: input.authorIncome,
+              feedSeq: input.feedSeq,
+              // 幂等键：人工补偿时按它去账户服务查/补，可避免重复退款
+              refundIdempotencyKey: makeFeedIdempotencyKey(
+                input.blogId,
+                input.feederId,
+                input.feedSeq,
+                'refund'
+              ),
+              step2Error: step2Err instanceof Error ? step2Err.message : String(step2Err),
+              refundError: refundErr instanceof Error ? refundErr.message : String(refundErr),
+            }),
           refundErr
         );
       }

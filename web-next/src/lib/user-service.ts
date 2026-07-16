@@ -340,6 +340,12 @@ export async function updateOwnProfile(userId: string, patch: ProfilePatch): Pro
     return { ok: false, code: 400, message: '没有可更新的字段' };
   }
 
+  // 文案对齐 Flask：那边是两个端点两套文案 —— update_bio → 「资料已保存」、
+  // update_privacy → 「隐私设置已保存」。这里合并成了一个 PATCH，故按本次实际改了
+  // 什么来选文案：只动隐私/通知开关 → 隐私文案；只要动了 bio → 资料文案。
+  const touchedBio = 'bio' in data;
+  const savedMessage = touchedBio ? '资料已保存' : '隐私设置已保存';
+
   const updated = await prisma.user.update({
     where: { id: userId },
     data,
@@ -357,7 +363,7 @@ export async function updateOwnProfile(userId: string, patch: ProfilePatch): Pro
   return {
     ok: true,
     code: 200,
-    message: '资料已保存',
+    message: savedMessage,
     data: {
       bio: updated.bio,
       notifyLike: updated.notifyLike ?? true,

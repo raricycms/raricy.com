@@ -1050,3 +1050,32 @@ describe('getPublicProfile', () => {
     expect(p!.recentComments[0].blogTitle, '应带上所属文章标题').toBe('某篇文章');
   });
 });
+
+// 【回归】文案对齐 Flask 的两个端点两套文案。
+// Flask：update_bio → 「资料已保存」；update_privacy → 「隐私设置已保存」。
+// TS 合并成一个 PATCH，故按本次实际改了什么选文案。
+describe('updateOwnProfile 的成功文案', () => {
+  it('改 bio → 「资料已保存」', async () => {
+    const u = await makeUser();
+    const r = await updateOwnProfile(u.id, { bio: '新简介' });
+    expect(r.message).toBe('资料已保存');
+  });
+
+  it('只改隐私/通知开关 → 「隐私设置已保存」', async () => {
+    const u = await makeUser();
+    const r = await updateOwnProfile(u.id, { notifyLike: false });
+    expect(r.message, 'Flask update_privacy 的文案是「隐私设置已保存」').toBe('隐私设置已保存');
+  });
+
+  it('只改可见性开关 → 「隐私设置已保存」', async () => {
+    const u = await makeUser();
+    const r = await updateOwnProfile(u.id, { showRecentBlogs: false });
+    expect(r.message).toBe('隐私设置已保存');
+  });
+
+  it('同时改 bio 与开关 → 「资料已保存」（只要动了 bio 就按资料算）', async () => {
+    const u = await makeUser();
+    const r = await updateOwnProfile(u.id, { bio: 'x', notifyLike: false });
+    expect(r.message).toBe('资料已保存');
+  });
+});

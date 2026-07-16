@@ -152,6 +152,15 @@ export async function feedBlog(
         });
 
         // 3.3 累计投喂量：更新或创建 BlogFeed，强制单篇累计 ≤ 5。
+        //
+        // ⚠️ 这里是「读 → 判断 → 写」，**不是原子表达式**。当前之所以成立，是因为
+        // SQLite 的写锁把并发事务串行化了（已用并发用例实测：同篇并发投喂不破 5）。
+        // **迁到 Postgres/MySQL 后（见 docs/nextjs-migration/03 §7）此处会失效** ——
+        // READ COMMITTED 下两个事务可能同时读到 amount=3、各自 +2，结果 7 > 5。
+        // 届时应改为原子条件写，例如：
+        //   UPDATE blog_feeds SET amount = amount + ?
+        //    WHERE blog_id = ? AND user_id = ? AND amount + ? <= 5
+        // 再按受影响行数判定（0 行 = 超限），与上面扣鱼干的 updateMany(gte) 同一套路。
         const existing = await tx.blogFeed.findUnique({
           where: { uq_blog_feed_user: { blogId, userId } },
           select: { amount: true },
