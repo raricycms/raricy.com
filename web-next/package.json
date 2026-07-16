@@ -18,7 +18,8 @@
     "diagnose": "node scripts/diagnose-deploy.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "db:compensate-fortunes": "node scripts/compensate-unclaimed-fortunes.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.2.1",

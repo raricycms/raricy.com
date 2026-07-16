@@ -2,18 +2,20 @@
 // normalize-datetimes.mjs
 //
 // 把 SQLAlchemy 写入的 "YYYY-MM-DD HH:MM:SS.ffffff"（空格分隔、无时区）时间戳
-// 规整为 Prisma/SQLite 要求的 ISO-8601 "YYYY-MM-DDTHH:MM:SS.sssZ"。
+// 规整为 INTEGER（Unix 毫秒）—— 与 Prisma 自身写入 SQLite 的存储格式一致。
+// （曾经转成 ISO 文本，Prisma 能读但日期比较会按类型序而非数值 —— 详见下方 UPDATE 处的注释。）
 //
 // 为什么必须做：Prisma 的 SQLite 连接器按列的声明类型 DATETIME 在驱动层解析，
 // 遇到空格分隔格式会直接报 "Conversion failed: input contains invalid characters"。
 //
-// 幂等：只转换尚未含 'T' 的值，重复运行安全。
+// 幂等：只转换 typeof='text' 的值（已是 integer 的跳过），重复运行安全。
+// 既吃 Flask 原始的空格格式，也吃历史上被旧版脚本转成的 ISO 文本。
 //
 // 用法：
 //   node scripts/normalize-datetimes.mjs --source ../instance/database/db.db --dest prisma/dev.db
 //        → 先把 source 复制成 dest，再对 dest 规整（推荐：不碰线上库）
 //   node scripts/normalize-datetimes.mjs --in-place path/to/db.db
-//        → 就地规整（正式硬切换时用；执行前务必备份，且 Flask 需已停机或已配 ISO 兼容类型）
+//        → 就地规整（正式硬切换时用；执行前务必备份，且 Flask 需已停机或已配附录 A 的兼容类型）
 //   npm run db:normalize
 //        → 等价于把线上 SQLite 复制到 prisma/dev.db 再规整（见 package.json）
 // ─────────────────────────────────────────────────────────────────────────────
