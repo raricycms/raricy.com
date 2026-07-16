@@ -11,6 +11,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { SignJWT, jwtVerify } from 'jose';
+import { headers } from 'next/headers';
 
 export const SESSION_COOKIE = 'raricy_session';
 const MAX_AGE_SECONDS = 60 * 60 * 24 * 30; // 30 天
@@ -44,12 +45,46 @@ export async function verifySessionToken(token: string): Promise<SessionPayload 
   }
 }
 
-export function sessionCookieOptions() {
+/**
+ * 会话 cookie 选项。
+ *
+ * 【Secure 标记的判定】顺序：COOKIE_SECURE（显式） → X-Forwarded-Proto（反代透传的真实协议）
+ * → NODE_ENV 兜底。
+ *
+ * 为什么不能简单写 `secure: NODE_ENV === 'production'`：
+ * 站点若走纯 HTTP（未上 TLS），带 Secure 的 cookie 会被浏览器直接丢弃 ——
+ * 表现为「登录接口返回 200 登录成功，但会话不粘、刷新仍未登录」，且无任何报错。
+ * 原 Flask 未设置 SESSION_COOKIE_SECURE（默认 False），HTTP 下可用；此处对齐该行为。
+ *
+ * ⚠️ 安全提醒：HTTP 下会话 cookie 以明文传输，链路上任何人都可窃取并冒用会话。
+ * 生产站点应上 TLS；COOKIE_SECURE=false 仅作为过渡期的显式选择。
+ */
+export async function sessionCookieOptions() {
+  const secure = await shouldUseSecureCookie();
   return {
     httpOnly: true,
     sameSite: 'lax' as const,
-    secure: process.env.NODE_ENV === 'production',
+    secure,
     path: '/',
     maxAge: MAX_AGE_SECONDS,
   };
+}
+
+async function shouldUseSecureCookie(): Promise<boolean> {
+  // 1) 显式配置优先
+  const cfg = process.env.COOKIE_SECURE?.trim().toLowerCase();
+  if (cfg === 'true' || cfg === '1') return true;
+  if (cfg === 'false' || cfg === '0') return false;
+
+  // 2) 反代透传的真实协议（nginx: proxy_set_header X-Forwarded-Proto $scheme）
+  try {
+    const h = await headers();
+    const proto = h.get('x-forwarded-proto')?.split(',')[0]?.trim().toLowerCase();
+    if (proto) return proto === 'https';
+  } catch {
+    // 非请求上下文（理论上不会走到）→ 落到兜底
+  }
+
+  // 3) 兜底：生产默认开启（直连 HTTPS 的常规部署）
+  return process.env.NODE_ENV === 'production';
 }

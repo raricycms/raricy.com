@@ -30,7 +30,7 @@ export async function POST(req: Request) {
 
   const token = await createSessionToken({ uid: user.id, sv: user.sessionVersion ?? 0 });
   const store = await cookies();
-  store.set(SESSION_COOKIE, token, sessionCookieOptions());
+  store.set(SESSION_COOKIE, token, await sessionCookieOptions());
 
   // 只回读 id：update 默认返回整行，会反序列化 createdAt 等时间戳字段；
   // 若库中时间戳仍是 SQLAlchemy 的空格格式（未跑 normalize-datetimes），

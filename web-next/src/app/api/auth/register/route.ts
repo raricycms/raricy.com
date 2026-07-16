@@ -49,7 +49,7 @@ export async function POST(req: Request) {
     sv: result.user.sessionVersion,
   });
   const store = await cookies();
-  store.set(SESSION_COOKIE, token, sessionCookieOptions());
+  store.set(SESSION_COOKIE, token, await sessionCookieOptions());
 
   return Response.json({
     code: 200,
