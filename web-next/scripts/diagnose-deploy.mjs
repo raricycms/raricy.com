@@ -49,6 +49,47 @@ for (const f of ['.env.production', '.env.local', '.env']) loadEnvFile(f);
 console.log('\x1b[1m═══ web-next 部署自检 ═══\x1b[0m');
 
 // ── 1. 必需环境变量 ─────────────────────────────────────────────────────────
+// ── 0. 运行时版本 ───────────────────────────────────────────────────────────
+//
+// 【为什么要查】本项目是对着 Next 15 写的（package.json 锁 ^15.1.4，lockfile 锁 15.5.20）。
+// 若有人手动 `npm install next@latest` 装成 Next 16，会跨大版本 —— 实际发生过：
+// 线上跑出 Next 16.2.10，启动即 `TypeError: Cannot read properties of undefined (reading 'map')`，
+// 且报错指向 ignore-listed frames，完全看不出根因。这类不匹配必须在自检里当场点名。
+head('0. 运行时版本');
+{
+  const nodeMajor = Number(process.versions.node.split('.')[0]);
+  if (nodeMajor < 20) {
+    bad(`Node ${process.versions.node} 过低（要求 ≥ 20）`, '升级 Node 到 20 或 22 LTS');
+  } else {
+    ok(`Node ${process.versions.node}`);
+  }
+
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.resolve(import.meta.dirname, '../package.json'), 'utf-8'));
+    const want = pkg.dependencies?.next ?? '';
+    const wantMajor = want.match(/(\d+)/)?.[1];
+
+    const installedPkgPath = path.resolve(import.meta.dirname, '../node_modules/next/package.json');
+    if (!fs.existsSync(installedPkgPath)) {
+      wrn('未找到已安装的 next（node_modules 缺失？）', '先跑 npm ci');
+    } else {
+      const installed = JSON.parse(fs.readFileSync(installedPkgPath, 'utf-8')).version;
+      const gotMajor = installed.split('.')[0];
+      if (wantMajor && gotMajor !== wantMajor) {
+        bad(
+          `Next 版本不匹配：已安装 ${installed}，但本项目要求 ${want}（主版本 ${wantMajor}）`,
+          '跨大版本会出现各种诡异崩溃（如启动即 "Cannot read properties of undefined (reading \'map\')"）。' +
+            '请跑 `npm ci`（严格按 package-lock.json 安装），不要用 npm install next@latest / npm update'
+        );
+      } else {
+        ok(`Next ${installed}（要求 ${want}）`);
+      }
+    }
+  } catch (e) {
+    wrn(`无法核对 Next 版本：${String(e).split('\n')[0]}`);
+  }
+}
+
 head('1. 环境变量');
 if (!process.env.SECRET_KEY) {
   bad('SECRET_KEY 未配置 → session.ts 会抛错 → 登录必 500', '在 .env.production 填 SECRET_KEY（照搬 Flask 生产值）');

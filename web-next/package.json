@@ -1,6 +1,9 @@
 {
   "name": "raricy-next",
   "version": "0.1.0",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "private": true,
   "description": "Next.js rebuild of raricy.com (聪明山) — reads the existing Flask SQLite database via Prisma.",
   "scripts": {
