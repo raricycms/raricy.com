@@ -32,7 +32,14 @@ export async function POST(req: Request) {
   const store = await cookies();
   store.set(SESSION_COOKIE, token, sessionCookieOptions());
 
-  await prisma.user.update({ where: { id: user.id }, data: { lastLogin: new Date() } });
+  // 只回读 id：update 默认返回整行，会反序列化 createdAt 等时间戳字段；
+  // 若库中时间戳仍是 SQLAlchemy 的空格格式（未跑 normalize-datetimes），
+  // Prisma 解析该行会抛错 → 登录 500。这里显式 select 收窄返回，去掉这个失败面。
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { lastLogin: new Date() },
+    select: { id: true },
+  });
 
   return Response.json({
     code: 200,
