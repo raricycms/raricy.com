@@ -68,6 +68,10 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
   const result = await updateClip(id, user.id, { title, content, publicity });
   if (!result.ok) {
     if (result.reason === 'forbidden') return apiErr(403, '您不是该文章作者，无法编辑！');
+    // 长度类原因在这里理论上不可达（上面已先校验过），但 service 现在也自己设防，
+    // 把它们如实映射成与上面同样的文案，避免被误报成「剪贴板不存在」。
+    if (result.reason === 'title_too_long') return apiErr(400, 'title too long');
+    if (result.reason === 'content_too_long') return apiErr(400, 'content too long');
     return apiErr(404, '剪贴板不存在');
   }
 

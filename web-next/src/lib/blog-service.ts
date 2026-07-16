@@ -240,12 +240,19 @@ export function countMarkdownWords(input: string): {
   total_characters: number;
   non_whitespace_characters: number;
 } {
+  // 逐条对齐 app/utils/markdown_countword.py。
+  //
+  // ⚠️ 关键：Python 侧**只有代码块那一条**加了 re.DOTALL，其余四条都是裸 `.`（不跨行）。
+  // JS 的 `.` 默认同样不跨行，故只有代码块该用 [\s\S]，其余必须保持 `.`。
+  // 若全用 [\s\S]，跨行内容会被多吞掉：例如 'a `x\ny` b'，
+  // Python 得 7/4（反引号不跨行，故 `x\ny` 未被当作行内代码消掉），
+  // 全用 [\s\S] 则得 3/2 —— 字数对不上。
   let content = input;
-  content = content.replace(/```[\s\S]*?```/g, ''); // 代码块
-  content = content.replace(/`[\s\S]*?`/g, ''); // 行内代码
-  content = content.replace(/!\[[\s\S]*?\]\([\s\S]*?\)/g, ''); // 图片
-  content = content.replace(/\[([\s\S]*?)\]\([\s\S]*?\)/g, '$1'); // 链接（保留文本）
-  content = content.replace(/<[\s\S]*?>/g, ''); // HTML 标签
+  content = content.replace(/```[\s\S]*?```/g, ''); // 代码块（Python 这条有 DOTALL）
+  content = content.replace(/`.*?`/g, ''); // 行内代码（不跨行）
+  content = content.replace(/!\[.*?\]\(.*?\)/g, ''); // 图片（不跨行）
+  content = content.replace(/\[(.*?)\]\(.*?\)/g, '$1'); // 链接，保留文本（不跨行）
+  content = content.replace(/<.*?>/g, ''); // HTML 标签（不跨行）
   content = content.replace(/[*_~>`#\-[\]()!]/g, ''); // Markdown 特殊字符
   content = content.replace(/\s+/g, ' ').trim(); // 折叠空白
   return {

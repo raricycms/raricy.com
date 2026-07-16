@@ -8,6 +8,7 @@ import {
   getQuotaLimitMb,
   getUserUsedBytes,
   saveUpload,
+  verifyImageMime,
 } from '@/lib/image-upload';
 
 // 说明：文件路由需 Node 运行时（fs / sharp）
@@ -61,6 +62,14 @@ export async function POST(req: Request) {
   }
 
   const buffer = Buffer.from(await file.arrayBuffer());
+
+  // 内容校验：file.type 是浏览器声明的，可伪造。必须比对真实 magic bytes，
+  // 否则「SVG/HTML 字节 + 声明 image/png」可绕过 raw 路由的 SVG attachment 分支
+  // → 被浏览器嗅探为 SVG 渲染 → 同源 XSS。对齐 Flask verify_image_mime。
+  if (!verifyImageMime(buffer, mimeType)) {
+    return apiErr(400, '文件内容与声明的格式不匹配');
+  }
+
   if (buffer.length > MAX_IMAGE_SIZE) {
     return apiErr(400, `文件过大，单文件上限 ${Math.round(MAX_IMAGE_SIZE / (1024 * 1024))} MB`);
   }

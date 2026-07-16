@@ -22,19 +22,37 @@ export interface CreateClipInput {
   publicity?: boolean;
 }
 
+/** 长度校验失败的原因，与 route 层的 'title too long' / 'content too long' 一一对应。 */
+export type ClipLengthReason = 'title_too_long' | 'content_too_long';
+
 export type CreateClipResult =
   | { ok: true; id: string }
-  | { ok: false; reason: 'limit' };
+  | { ok: false; reason: 'limit' | ClipLengthReason };
+
+/**
+ * 标题 / 正文长度校验（对齐 Flask validator()）。
+ * 合法返回 null，否则返回失败原因。空标题与超长标题同属 title_too_long 一条分支
+ * （对齐 Flask：len<1 与 len>40 走同一个 'title too long'）。
+ */
+function validateClipLength(title: string, content: string): ClipLengthReason | null {
+  if (content.length > CLIP_CONTENT_MAX) return 'content_too_long';
+  if (title.length < 1 || title.length > CLIP_TITLE_MAX) return 'title_too_long';
+  return null;
+}
 
 /**
  * 创建剪贴板（对齐 ClipService.create_clipboard）。
- * 先按 authorId 统计总数（含软删除，与 Flask 一致）；超限返回 limit。
- * 生成 8 位短 ID，写 ClipBoard + ClipText。
+ * 先校验长度（route 层也校验，但 service 自己必须设防：任何绕过 route 的调用方
+ * 都不该能写超长数据）；再按 authorId 统计总数（含软删除，与 Flask 一致），
+ * 超限返回 limit。最后生成 8 位短 ID，写 ClipBoard + ClipText。
  */
 export async function createClip(
   authorId: string,
   input: CreateClipInput
 ): Promise<CreateClipResult> {
+  const lengthErr = validateClipLength(input.title, input.content);
+  if (lengthErr) return { ok: false, reason: lengthErr };
+
   const count = await prisma.clipBoard.count({ where: { authorId } });
   if (count > CLIP_PER_USER_MAX) {
     return { ok: false, reason: 'limit' };
@@ -68,11 +86,12 @@ export interface UpdateClipInput {
 
 export type UpdateClipResult =
   | { ok: true; id: string }
-  | { ok: false; reason: 'not_found' | 'forbidden' };
+  | { ok: false; reason: 'not_found' | 'forbidden' | ClipLengthReason };
 
 /**
  * 编辑剪贴板（对齐 Flask edit 路由 + ClipService.update_clipboard）。
- * - 先取剪贴板并排除软删除（ignore=true）→ not_found（对齐 get_clipboard 的 ignore 检查）。
+ * - 先校验长度（与 route 层同一套规则，service 自己也设防，见 createClip 的说明）。
+ * - 再取剪贴板并排除软删除（ignore=true）→ not_found（对齐 get_clipboard 的 ignore 检查）。
  * - 权限=作者本人；非作者 → forbidden（对齐 Flask edit：仅作者，无 owner 例外）。
  * - 更新 title/publicity，并 upsert 正文（无 ClipText 记录时新建，对齐 update_clipboard）。
  * - 不改动 ignore，保留软删除语义。
@@ -82,6 +101,9 @@ export async function updateClip(
   editorId: string,
   input: UpdateClipInput
 ): Promise<UpdateClipResult> {
+  const lengthErr = validateClipLength(input.title, input.content);
+  if (lengthErr) return { ok: false, reason: lengthErr };
+
   const clip = await prisma.clipBoard.findFirst({
     where: { id: clipId, ignore: false },
     select: { id: true, authorId: true },

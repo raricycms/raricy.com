@@ -389,14 +389,15 @@ describe('countMarkdownWords / 与 Python 原实现逐样例对齐', () => {
     });
   });
 
-  it('【与 Flask 不一致】跨行的行内反引号：TS 会整段吃掉，Python 不会', () => {
-    // Python 的 r'`.*?`' 未开 DOTALL → 不跨行匹配 → 结果 'a x y b' = 7 / 4
-    // TS 用的是 /`[\s\S]*?`/g → 跨行吃掉 → 'a b' = 3 / 2
-    // 这里钉的是【当前 TS 行为】。修复后应改为 { 7, 4 }。见交付说明。
+  // 【回归】跨行的行内反引号不该被整段吃掉。
+  // Python 的 r'`.*?`' **未开 DOTALL** → 不跨行 → 'a `x\ny` b' 保留为 'a x y b' = 7/4。
+  // 曾经 TS 写成 /`[\s\S]*?`/g（跨行）→ 整段吃掉 → 'a b' = 3/2。
+  // 五条正则里只有代码块那条 Python 才开了 DOTALL，其余必须用不跨行的 `.`。
+  it('跨行的行内反引号不跨行匹配（与 Python 一致：7/4）', () => {
     expect(
       countMarkdownWords('a `x\ny` b'),
-      'TS 用 [\\s\\S] 模拟 . 却漏了 Python 未开 DOTALL 这一点'
-    ).toEqual({ total_characters: 3, non_whitespace_characters: 2 });
+      '若用 [\\s\\S] 模拟 `.`，会漏掉 Python 未开 DOTALL 这一点'
+    ).toEqual({ total_characters: 7, non_whitespace_characters: 4 });
   });
 });
 
@@ -1137,4 +1138,40 @@ describe('回归：日期比较必须按数值而非存储类型', () => {
         '此用例记录该缺陷，确保规整脚本不会退回 TEXT 格式。'
     ).toBe(1); // 1 = 被错误计入（若哪天 Prisma/SQLite 改了语义，这条会红，提醒复查
   });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 回归：countMarkdownWords 必须与 Python 原实现逐字节一致
+//
+// 下面的期望值由 **Python 原实现 app/utils/markdown_countword.py 实跑得出**（非手写）。
+// 关键：Python 里**只有代码块那一条**加了 re.DOTALL，其余四条（行内代码/图片/链接/
+// HTML 标签）都是裸 `.`，不跨行。曾经 TS 全用了 [\s\S]（跨行），导致跨行内容被多吞：
+// 例如 'a `x\ny` b' → Python 得 7/4，全 [\s\S] 得 3/2。
+// ─────────────────────────────────────────────────────────────────────────────
+describe('countMarkdownWords 与 Python 原实现对拍', () => {
+  const CASES: { input: string; total: number; nonWs: number }[] = [
+  { input: "纯文本测试", total: 5, nonWs: 5 },
+  { input: "a `x\ny` b", total: 7, nonWs: 4 },
+  { input: "前```\ncode\nblock\n```后", total: 2, nonWs: 2 },
+  { input: "行内 `code` 文字", total: 5, nonWs: 4 },
+  { input: "![图](http://x/y.png) 图片后", total: 3, nonWs: 3 },
+  { input: "[链接文本](http://x) 保留", total: 7, nonWs: 6 },
+  { input: "<div>\n多行\n</div>HTML", total: 7, nonWs: 6 },
+  { input: "![a\nb](c) 跨行图片", total: 9, nonWs: 7 },
+  { input: "[a\nb](c) 跨行链接", total: 9, nonWs: 7 },
+  { input: "混排 English 中文 **粗体** `c` [l](u) 结束", total: 21, nonWs: 16 },
+  { input: "", total: 0, nonWs: 0 },
+  { input: "   \n\n  ", total: 0, nonWs: 0 },
+  ];
+
+  for (const c of CASES) {
+    it(`${JSON.stringify(c.input)} → ${c.total}/${c.nonWs}`, () => {
+      const r = countMarkdownWords(c.input);
+      expect(r.total_characters, `total_characters（Python 基准 ${c.total}）`).toBe(c.total);
+      expect(
+        r.non_whitespace_characters,
+        `non_whitespace_characters（Python 基准 ${c.nonWs}）`
+      ).toBe(c.nonWs);
+    });
+  }
 });

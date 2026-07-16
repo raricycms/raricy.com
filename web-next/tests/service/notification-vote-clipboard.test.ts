@@ -35,6 +35,7 @@ import {
   castVote,
   listVotes,
   getVoteDetail,
+  MAX_VOTES_PER_USER,
 } from '@/lib/vote-service';
 import {
   createClip,
@@ -47,6 +48,7 @@ import {
 } from '@/lib/clipboard-service';
 import { PUT as clipPut } from '@/app/api/clipboard/[id]/route';
 import { POST as clipPost } from '@/app/api/clipboard/route';
+import { POST as votesPost } from '@/app/api/votes/route';
 
 // 最后一组用例要打到 API route 才能验错误文案，于是把 getCurrentUser 换成一个
 // 读可变量的桩。注意必须用**顶层 vi.mock 一次**，不能在用例里 doMock + resetModules ——
@@ -598,19 +600,94 @@ describe('vote-service', () => {
     });
   });
 
-  // ── 总数上限 100：TS 侧缺口 ────────────────────────────────────────────
+  // ── 总数上限 100 ──────────────────────────────────────────────────────
+  //
+  // Flask app/web/vote/service.py 有 _MAX_VOTES_PER_USER = 100 的硬上限，TS 侧原本
+  // 完全没迁。现已补上 —— 但**按正确语义**补：Flask 原实现数的是
+  //   VoteRecord.query.filter_by(user_id=user_id).count()   ← 这人「投过」多少票
+  // 而按变量名与文案该数的是「这人**创建**了多少投票」。TS 侧按后者实现，
+  // 即 Vote.authorId = userId AND ignore = false。下面几条把这个差异钉死。
   describe('每用户投票总数上限 100', () => {
-    it('【缺口】已有 150 个投票的用户仍能继续创建 —— TS 侧没有实现 100 上限', async () => {
-      // Flask app/web/vote/service.py 有 _MAX_VOTES_PER_USER = 100 的硬上限，
-      // TS 的 createVote / api/votes/route.ts 里都没有对应检查。
-      // 此处**记录现状**，不主张它正确 —— 见交付说明。
+    it('常量与 Flask 的 100 对齐', () => {
+      expect(MAX_VOTES_PER_USER).toBe(100);
+    });
+
+    it('已有 150 个投票的用户无法再创建，文案对齐 Flask', async () => {
       const u = await makeUser();
       // 直接落库绕开 10 次/时限频（限频挡不住这条上限该管的事）
       for (let i = 0; i < 150; i++) await makeVote({ authorId: u.id });
       expect(await prisma.vote.count({ where: { authorId: u.id } })).toBe(150);
 
-      const r = await createVote(u.id, '第 151 个', ['A', 'B']);
-      expect('id' in r).toBe(true); // 若上限被补上，这条应改成期望 error
+      expect(await createVote(u.id, '第 151 个', ['A', 'B'])).toEqual({
+        error: '每个用户最多创建 100 个投票',
+      });
+      // 关键：真的没落库，不只是返回了个错误
+      expect(await prisma.vote.count({ where: { authorId: u.id } })).toBe(150);
+    });
+
+    it('边界：99 个时还能建第 100 个，到 100 个就被拒', async () => {
+      const u = await makeUser();
+      for (let i = 0; i < 99; i++) await makeVote({ authorId: u.id });
+
+      expect('id' in (await createVote(u.id, '第 100 个', ['A', 'B']))).toBe(true);
+      expect(await prisma.vote.count({ where: { authorId: u.id } })).toBe(100);
+
+      expect(await createVote(u.id, '第 101 个', ['A', 'B'])).toEqual({
+        error: '每个用户最多创建 100 个投票',
+      });
+    });
+
+    it('软删除的投票不计入上限（ignore=false 过滤生效）', async () => {
+      // 与 clipboard 的 200 上限不同：那边有意连软删除一起数（防删了再建刷额度），
+      // 这边按 Flask 文案「最多创建 100 个投票」的字面语义，删掉的不该继续占坑。
+      const u = await makeUser();
+      for (let i = 0; i < 150; i++) await makeVote({ authorId: u.id, ignore: true });
+      expect('id' in (await createVote(u.id, 'x', ['A', 'B']))).toBe(true);
+    });
+
+    it('数的是「自己创建的投票」，不是「自己投过的票」（Flask 原实现数错了对象）', async () => {
+      // Flask 数 VoteRecord.user_id —— 投够 100 次票的人会被禁止创建投票，而创建了
+      // 1000 个投票的人反而畅通无阻。这条就是冲着那个错误对象来的探针：
+      // 一个投过 120 次票、但一个投票都没建过的用户，必须能正常创建。
+      const author = await makeUser();
+      const voter = await makeUser();
+      for (let i = 0; i < 120; i++) {
+        const v = await makeVote({ authorId: author.id });
+        // 直接落库绕开 30 次/时的投票限频
+        await prisma.voteRecord.create({
+          data: { voteId: v.id, optionId: v.options[0].id, userId: voter.id, createdAt: new Date() },
+        });
+      }
+      expect(await prisma.voteRecord.count({ where: { userId: voter.id } })).toBe(120);
+      expect(await prisma.vote.count({ where: { authorId: voter.id } })).toBe(0);
+
+      // 若照抄 Flask 的错误实现，这里会返回「每个用户最多创建 100 个投票」
+      expect('id' in (await createVote(voter.id, '我的第一个投票', ['A', 'B']))).toBe(true);
+    });
+
+    it('上限按用户隔离', async () => {
+      const a = await makeUser();
+      const b = await makeUser();
+      for (let i = 0; i < 100; i++) await makeVote({ authorId: a.id });
+      expect(await createVote(a.id, 'x', ['A', 'B'])).toEqual({
+        error: '每个用户最多创建 100 个投票',
+      });
+      expect('id' in (await createVote(b.id, 'x', ['A', 'B']))).toBe(true);
+    });
+
+    it('API route 把上限错误透传成 400 + 同样的文案', async () => {
+      const u = await makeUser();
+      for (let i = 0; i < 100; i++) await makeVote({ authorId: u.id });
+
+      mockCurrentUser = u as SafeUser;
+      const res = await votesPost(
+        new Request('http://x/api/votes', {
+          method: 'POST',
+          body: JSON.stringify({ title: 't', options: ['A', 'B'] }),
+        })
+      );
+      expect(res.status).toBe(400);
+      expect(await res.json()).toMatchObject({ code: 400, message: '每个用户最多创建 100 个投票' });
     });
   });
 
@@ -841,17 +918,63 @@ describe('vote-service', () => {
       expect(await prisma.voteRecord.count({ where: { userId: voter.id } })).toBe(30);
     });
 
-    it('【可疑】限频跑在存在性检查之前：投不存在的投票也吃掉配额', async () => {
-      // Flask cast_vote 是先查投票/选项/是否已投，最后才 check 限频；
-      // TS 把 rateLimit 提到了最前面。后果：对不存在的投票狂发请求也能把
-      // 用户自己的 30 次/时 配额烧光。此处**记录现状** —— 见交付说明。
+    it('限频跑在存在性检查之后：投不存在的投票不吃配额', async () => {
+      // Flask cast_vote 是先查投票/选项/是否已投，最后才 check 限频；TS 原先把
+      // rateLimit 提到了最前面，后果是对不存在的投票狂发请求就能把用户自己的
+      // 30 次/时 配额烧光（自伤）。现已对齐 Flask 的顺序，这条钉住它。
       const u = await makeUser();
       for (let i = 0; i < 30; i++) {
         expect(await castVote('nonexist9', 1, u.id)).toEqual({ error: '投票不存在', status: 404 });
       }
-      // 配额已被无效请求耗尽，真投票时反而被限
+      // 配额没被无效请求碰过，真投票照常成功
       const { id, options } = await makeVote({ authorId: u.id });
-      expect(await castVote(id, options[0].id, u.id)).toEqual({ rateLimited: true });
+      expect(await castVote(id, options[0].id, u.id)).toEqual({ ok: true });
+    });
+
+    it('选项不存在 / 已投过 同样不吃配额', async () => {
+      // 存在性检查的三道关（投票、选项、是否已投）都该在限频之前 —— 任何一道
+      // 漏到限频后面，用户都能用无效请求把自己锁死。
+      const u = await makeUser();
+      const target = await makeVote({ authorId: u.id });
+
+      // 1) 选项不存在 ×15
+      for (let i = 0; i < 15; i++) {
+        expect(await castVote(target.id, 999999, u.id)).toEqual({ error: '选项不存在', status: 400 });
+      }
+      // 2) 真投一票（唯一消耗配额的一次）
+      expect(await castVote(target.id, target.options[0].id, u.id)).toEqual({ ok: true });
+      // 3) 重复投票 ×20
+      for (let i = 0; i < 20; i++) {
+        expect(await castVote(target.id, target.options[0].id, u.id)).toEqual({
+          error: '您已经投过票了',
+          status: 400,
+        });
+      }
+
+      // 上面 36 次调用只该消耗 1 次配额，剩下 29 次仍可用
+      const votes = [];
+      for (let i = 0; i < 29; i++) votes.push(await makeVote({ authorId: u.id }));
+      for (const v of votes) {
+        expect(await castVote(v.id, v.options[0].id, u.id)).toEqual({ ok: true });
+      }
+      // 第 31 次真投票才被限
+      const extra = await makeVote({ authorId: u.id });
+      expect(await castVote(extra.id, extra.options[0].id, u.id)).toEqual({ rateLimited: true });
+    });
+
+    it('被限频时不落库、不涨计数', async () => {
+      const author = await makeUser();
+      const voter = await makeUser();
+      const votes = [];
+      for (let i = 0; i < 31; i++) votes.push(await makeVote({ authorId: author.id }));
+      for (let i = 0; i < 30; i++) await castVote(votes[i].id, votes[i].options[0].id, voter.id);
+
+      const last = votes[30];
+      expect(await castVote(last.id, last.options[0].id, voter.id)).toEqual({ rateLimited: true });
+      // 限频返回发生在 create 之前，事务里不该留下任何痕迹
+      expect(await prisma.voteRecord.count({ where: { voteId: last.id } })).toBe(0);
+      const opt = await prisma.voteOption.findUnique({ where: { id: last.options[0].id } });
+      expect(opt!.voteCount).toBe(0);
     });
   });
 });
@@ -1168,22 +1291,79 @@ describe('clipboard-service', () => {
       expect(clip!.ignore).toBe(false);
     });
 
-    it('【缺口】service 层不校验长度：超长标题 / 正文照样写进去', async () => {
-      // 长度上限只活在 API route 里（见下一组用例），service 自己完全不设防。
-      // 任何绕过 route 的调用方（CLI、其他 service）都能写超长数据 —— 见交付说明。
+    it('service 层自己校验长度：超长标题 / 正文被拒且不落库', async () => {
+      // 长度上限原先只活在 API route 里（见下一组用例），service 完全不设防 ——
+      // 任何绕过 route 的调用方（CLI、其他 service）都能写超长数据。校验已下沉到
+      // service，这条钉住它：route 和 service 现在是两道独立的防线。
       const author = await makeUser();
-      const r = (await createClip(author.id, {
-        title: 'x'.repeat(200), // > CLIP_TITLE_MAX(40)
-        content: 'y'.repeat(60000), // > CLIP_CONTENT_MAX(50000)
-      })) as { ok: true; id: string };
-      expect(r.ok).toBe(true);
 
-      const ok = await updateClip(r.id, author.id, {
-        title: 'z'.repeat(999),
-        content: 'w'.repeat(60000),
-        publicity: true,
+      expect(
+        await createClip(author.id, {
+          title: 'x'.repeat(41), // > CLIP_TITLE_MAX(40)
+          content: 'c',
+        })
+      ).toEqual({ ok: false, reason: 'title_too_long' });
+
+      expect(
+        await createClip(author.id, {
+          title: 't',
+          content: 'y'.repeat(CLIP_CONTENT_MAX + 1), // > 50000
+        })
+      ).toEqual({ ok: false, reason: 'content_too_long' });
+
+      // 空标题也走 title_too_long（对齐 Flask：len<1 与 len>40 同一分支）
+      expect(await createClip(author.id, { title: '', content: 'c' })).toEqual({
+        ok: false,
+        reason: 'title_too_long',
       });
-      expect(ok).toEqual({ ok: true, id: r.id }); // 若 service 补上校验，这条应改成期望拒绝
+
+      // 一条都没落库
+      expect(await prisma.clipBoard.count({ where: { authorId: author.id } })).toBe(0);
+
+      // 边界：恰好 40 / 50000 合法
+      const okRes = await createClip(author.id, {
+        title: 'x'.repeat(CLIP_TITLE_MAX),
+        content: 'y'.repeat(CLIP_CONTENT_MAX),
+      });
+      expect(okRes.ok).toBe(true);
+    });
+
+    it('updateClip 同样校验长度，且原内容一个字都没变', async () => {
+      const author = await makeUser();
+      const r = (await createClip(author.id, { title: '原标题', content: '原正文' })) as {
+        ok: true;
+        id: string;
+      };
+
+      expect(
+        await updateClip(r.id, author.id, { title: 'z'.repeat(41), content: 'c', publicity: true })
+      ).toEqual({ ok: false, reason: 'title_too_long' });
+
+      expect(
+        await updateClip(r.id, author.id, {
+          title: 't',
+          content: 'w'.repeat(CLIP_CONTENT_MAX + 1),
+          publicity: true,
+        })
+      ).toEqual({ ok: false, reason: 'content_too_long' });
+
+      expect(await updateClip(r.id, author.id, { title: '', content: 'c', publicity: true })).toEqual({
+        ok: false,
+        reason: 'title_too_long',
+      });
+
+      const clip = await prisma.clipBoard.findUnique({ where: { id: r.id }, include: { content: true } });
+      expect(clip!.title).toBe('原标题');
+      expect(clip!.content!.content).toBe('原正文');
+    });
+
+    it('长度校验先于存在性 / 权限检查（纯输入校验不该先打库）', async () => {
+      // 顺序本身不影响安全性，但钉一下以免以后有人把校验挪到查库之后，
+      // 让「不存在的 id + 超长标题」这种请求白白多打一次库。
+      const u = await makeUser();
+      expect(
+        await updateClip('nosuchid', u.id, { title: 'z'.repeat(41), content: 'c', publicity: true })
+      ).toEqual({ ok: false, reason: 'title_too_long' });
     });
   });
 

@@ -35,7 +35,14 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 
   const headers = new Headers({
     'Content-Type': img.mimeType,
-    'Cache-Control': 'public, max-age=31536000, immutable',
+    // 禁止浏览器 MIME 嗅探：即便有字节被塞进错误的 Content-Type，也不会被当成
+    // SVG/HTML 渲染。与上传侧的 magic byte 校验互为兜底。
+    'X-Content-Type-Options': 'nosniff',
+    // 私有图绝不能进共享缓存（CDN / 反代 / 中间缓存），否则鉴权形同虚设：
+    // 缓存命中后会绕过本路由的作者/管理员校验，直接向无权者下发。
+    'Cache-Control': img.isPublic
+      ? 'public, max-age=31536000, immutable'
+      : 'private, no-store',
   });
 
   if (img.mimeType === 'image/svg+xml') {

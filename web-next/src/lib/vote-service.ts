@@ -12,6 +12,15 @@ import { rateLimit, RULES } from './rate-limit';
 // ── 9 位 base62 ID（对齐 Vote.id 长度；用 crypto 随机 + 拒绝采样避免取模偏置）──────
 const BASE62 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 
+// 每用户可创建的投票总数上限，对齐 Flask _MAX_VOTES_PER_USER = 100。
+//
+// 【与 Flask 的差异，有意为之】Flask 原实现数错了对象：
+//   VoteRecord.query.filter_by(user_id=user_id).count()
+// 数的是「这人**投过**多少票」，而非「这人**创建**了多少投票」——投够 100 次票的人
+// 会被禁止创建投票，而创建了 1000 个投票的人反而畅通无阻。此处按正确语义修正：
+// 数自己创建的、未软删的投票（Vote.authorId = userId AND ignore = false）。
+export const MAX_VOTES_PER_USER = 100;
+
 export function generateVoteId(length = 9): string {
   const chars: string[] = [];
   const max = Math.floor(256 / BASE62.length) * BASE62.length; // 拒绝采样上界
@@ -161,6 +170,14 @@ export async function createVote(
     return { rateLimited: true };
   }
 
+  // 总数上限（对齐 Flask：限频之后、生成 ID 之前）。语义按「自己创建的、未软删的
+  // 投票」计数 —— Flask 原实现数的是 VoteRecord（投过的票），数错了对象，见
+  // MAX_VOTES_PER_USER 处的说明。文案与 Flask 保持一致。
+  const owned = await prisma.vote.count({ where: { authorId: userId, ignore: false } });
+  if (owned >= MAX_VOTES_PER_USER) {
+    return { error: `每个用户最多创建 ${MAX_VOTES_PER_USER} 个投票` };
+  }
+
   // 生成唯一 ID（重试 10 次，对齐 Flask）
   let voteId = '';
   for (let i = 0; i < 10; i++) {
@@ -201,12 +218,8 @@ export async function castVote(
   optionId: number,
   userId: string
 ): Promise<CastVoteResult> {
-  if (!rateLimit(`vote:cast:${userId}`, RULES.voteHourly).allowed) {
-    return { rateLimited: true };
-  }
-
   try {
-    return await prisma.$transaction(async (tx) => {
+    return await prisma.$transaction(async (tx): Promise<CastVoteResult> => {
       const vote = await tx.vote.findFirst({
         where: { id: voteId, ignore: false },
         select: { id: true, isLocked: true },
@@ -225,6 +238,13 @@ export async function castVote(
         select: { id: true },
       });
       if (existing) return { error: '您已经投过票了', status: 400 };
+
+      // 限频**最后**才 check（对齐 Flask cast_vote 的顺序）。放在最前面会让
+      // 无效请求（投不存在的投票/选项、重复投票）白白吃掉用户自己 30 次/时 的
+      // 配额 —— 刷不存在的投票就能把自己锁死，属于自伤。
+      if (!rateLimit(`vote:cast:${userId}`, RULES.voteHourly).allowed) {
+        return { rateLimited: true };
+      }
 
       await tx.voteRecord.create({
         data: { voteId, optionId, userId, createdAt: nowForDb() },

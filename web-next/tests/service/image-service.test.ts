@@ -38,6 +38,8 @@ import {
   storagePathFor,
   getUploadFolder,
   saveUpload,
+  detectImageMime,
+  verifyImageMime,
 } from '@/lib/image-upload';
 import { resetDb, makeUser, prisma } from '../helpers/db';
 
@@ -1541,7 +1543,7 @@ describe('GET /api/images/:id/raw（SVG XSS 防护 + 私有图鉴权）', () => 
     );
   });
 
-  it('⚠️ 私有图也带 public 长缓存头 —— 记录现状（见交付说明）', async () => {
+  it('★ 私有图必须是 private, no-store（否则共享缓存/CDN 会向无权者下发）', async () => {
     const u = await makeUser({ role: 'core' });
     const img = await seedOnDisk({
       authorId: u.id,
@@ -1551,6 +1553,299 @@ describe('GET /api/images/:id/raw（SVG XSS 防护 + 私有图鉴权）', () => 
     });
     authState.user = { id: u.id, role: 'core' };
     const cc = (await call(img.id)).headers.get('Cache-Control');
-    expect(cc, `私有图返回 ${cc} —— 共享缓存/CDN 可能缓存后向他人下发`).toContain('public');
+    expect(cc).toBe('private, no-store');
+    // 关键回归点：私有图一旦出现 public，鉴权就被缓存层旁路了
+    expect(cc).not.toContain('public');
+  });
+
+  it('私有图即便由管理员取回，也不得进共享缓存', async () => {
+    const u = await makeUser({ role: 'core' });
+    const img = await seedOnDisk({
+      authorId: u.id,
+      mimeType: 'image/png',
+      bytes: await pngBytes(),
+      isPublic: false,
+    });
+    authState.user = { id: 'admin-x', role: 'admin' };
+    expect((await call(img.id)).headers.get('Cache-Control')).toBe('private, no-store');
+  });
+
+  // ── nosniff ───────────────────────────────────────────────────────────────
+  //
+  // 缺 nosniff 时，「字节是 SVG/HTML、Content-Type 是 image/png」的图会被浏览器
+  // 嗅探成可执行文档 → 同源 XSS。上传侧的 magic byte 校验是第一道闸，这是第二道。
+
+  it('★ 响应必须带 X-Content-Type-Options: nosniff', async () => {
+    const u = await makeUser({ role: 'core' });
+    const img = await seedOnDisk({ authorId: u.id, mimeType: 'image/png', bytes: await pngBytes() });
+    expect((await call(img.id)).headers.get('X-Content-Type-Options')).toBe('nosniff');
+  });
+
+  it('nosniff 对所有 MIME / 公私有一致下发', async () => {
+    const u = await makeUser({ role: 'core' });
+    authState.user = { id: u.id, role: 'core' };
+
+    const png = await seedOnDisk({
+      authorId: u.id,
+      mimeType: 'image/png',
+      bytes: await pngBytes(),
+      isPublic: false,
+    });
+    const svg = await seedOnDisk({ authorId: u.id, mimeType: 'image/svg+xml', bytes: SVG });
+
+    for (const img of [png, svg]) {
+      expect((await call(img.id)).headers.get('X-Content-Type-Options')).toBe('nosniff');
+    }
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 十、内容校验（magic bytes）—— detectImageMime / verifyImageMime
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// 【威胁模型】file.type 由浏览器声明，攻击者可任意伪造。若只看声明：
+//   上传 SVG/HTML 字节 + 声明 image/png → 绕过 raw 路由「只看 mimeType」的
+//   SVG attachment 分支 → 以 image/png 内联下发 → 浏览器嗅探成 SVG → 同源 XSS。
+// 对齐 Flask verify_image_mime 的拒绝语义：识别不出 / 与声明不符 → 一律拒绝。
+
+describe('detectImageMime（由内容识别真实类型）', () => {
+  it('识别真 PNG', async () => {
+    expect(detectImageMime(await pngBytes())).toBe('image/png');
+  });
+
+  it('识别真 JPEG / WebP / GIF', async () => {
+    const sharp = (await import('sharp')).default;
+    const base = () =>
+      sharp({ create: { width: 8, height: 8, channels: 3, background: { r: 1, g: 2, b: 3 } } });
+
+    expect(detectImageMime(await base().jpeg().toBuffer())).toBe('image/jpeg');
+    expect(detectImageMime(await base().webp().toBuffer())).toBe('image/webp');
+    expect(detectImageMime(await base().gif().toBuffer())).toBe('image/gif');
+  });
+
+  it('识别 GIF87a / GIF89a 两种签名', () => {
+    expect(detectImageMime(Buffer.from('GIF87a\x00\x00'))).toBe('image/gif');
+    expect(detectImageMime(Buffer.from('GIF89a\x00\x00'))).toBe('image/gif');
+  });
+
+  it('WebP 必须 RIFF 与 WEBP 同时命中（RIFF/WAVE 不算图片）', () => {
+    const wav = Buffer.concat([
+      Buffer.from('RIFF'),
+      Buffer.from([0, 0, 0, 0]),
+      Buffer.from('WAVE'),
+    ]);
+    expect(detectImageMime(wav)).toBeNull();
+  });
+
+  describe('SVG 文本识别', () => {
+    it('裸 <svg 开头', () => {
+      expect(detectImageMime(Buffer.from('<svg xmlns="..."></svg>'))).toBe('image/svg+xml');
+    });
+
+    it('带 XML prolog', () => {
+      expect(detectImageMime(Buffer.from('<?xml version="1.0"?><svg></svg>'))).toBe(
+        'image/svg+xml'
+      );
+    });
+
+    it('带 BOM', () => {
+      expect(detectImageMime(Buffer.from('﻿<svg></svg>', 'utf8'))).toBe('image/svg+xml');
+    });
+
+    it('带前导空白 / 换行', () => {
+      expect(detectImageMime(Buffer.from('\n\n   \t<svg></svg>'))).toBe('image/svg+xml');
+    });
+
+    it('带前导注释', () => {
+      expect(detectImageMime(Buffer.from('<!-- made by inkscape --><svg></svg>'))).toBe(
+        'image/svg+xml'
+      );
+    });
+
+    it('带 DOCTYPE（含内部子集）', () => {
+      const doctype =
+        '<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" ' +
+        '"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd" [<!ENTITY foo "bar">]>';
+      expect(detectImageMime(Buffer.from(`${doctype}<svg></svg>`))).toBe('image/svg+xml');
+    });
+
+    it('prolog + 注释 + DOCTYPE 混合（真实 Inkscape 产物形态）', () => {
+      const src =
+        '﻿<?xml version="1.0" encoding="UTF-8"?>\n' +
+        '<!-- Generator: Adobe Illustrator -->\n' +
+        '<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "svg11.dtd">\n' +
+        '<svg width="10"></svg>';
+      expect(detectImageMime(Buffer.from(src, 'utf8'))).toBe('image/svg+xml');
+    });
+
+    it('★ HTML 文档不算 SVG（哪怕内部含 <svg>）', () => {
+      const html = '<!DOCTYPE html><html><body><svg onload="alert(1)"></svg></body></html>';
+      expect(detectImageMime(Buffer.from(html))).toBeNull();
+    });
+
+    it('★ 纯 HTML / 脚本不算 SVG', () => {
+      expect(detectImageMime(Buffer.from('<script>alert(1)</script>'))).toBeNull();
+      expect(detectImageMime(Buffer.from('<html><body>hi</body></html>'))).toBeNull();
+    });
+
+    it('<svgfoo> 这类同前缀标签不算 SVG', () => {
+      expect(detectImageMime(Buffer.from('<svgfoo></svgfoo>'))).toBeNull();
+    });
+
+    it('大小写不敏感', () => {
+      expect(detectImageMime(Buffer.from('<SVG></SVG>'))).toBe('image/svg+xml');
+    });
+  });
+
+  it('无法识别的内容返回 null（空 / 纯文本 / 截断头部）', async () => {
+    expect(detectImageMime(Buffer.alloc(0))).toBeNull();
+    expect(detectImageMime(Buffer.from('hello world'))).toBeNull();
+    expect(detectImageMime(Buffer.from([0x89, 0x50]))).toBeNull(); // 半个 PNG 签名
+    expect(detectImageMime((await pngBytes()).subarray(0, 4))).toBeNull();
+  });
+});
+
+describe('verifyImageMime（内容 vs 声明）', () => {
+  it('内容与声明一致 → 通过', async () => {
+    expect(verifyImageMime(await pngBytes(), 'image/png')).toBe(true);
+  });
+
+  it('★ SVG 字节声明成 image/png → 拒绝（这是 XSS 链路的入口）', () => {
+    const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
+    expect(verifyImageMime(svg, 'image/png')).toBe(false);
+  });
+
+  it('★ HTML 字节声明成 image/svg+xml → 拒绝', () => {
+    const html = Buffer.from('<!DOCTYPE html><html><script>alert(1)</script></html>');
+    expect(verifyImageMime(html, 'image/svg+xml')).toBe(false);
+  });
+
+  it('★ 位图之间互相伪装 → 拒绝', async () => {
+    const png = await pngBytes();
+    for (const claimed of ['image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml']) {
+      expect(verifyImageMime(png, claimed), `PNG 字节声明成 ${claimed}`).toBe(false);
+    }
+  });
+
+  it('★ 识别不出的内容一律拒绝（对齐 Flask：解不开 → False）', () => {
+    for (const mime of ALLOWED_MIMETYPES) {
+      expect(verifyImageMime(Buffer.from('not an image at all'), mime)).toBe(false);
+    }
+  });
+
+  it('声明不在白名单 → 拒绝（即便内容是真图）', async () => {
+    expect(verifyImageMime(await pngBytes(), 'text/html')).toBe(false);
+    expect(verifyImageMime(await pngBytes(), 'image/bmp')).toBe(false);
+  });
+
+  it('白名单内每种真实格式都能自证', async () => {
+    const sharp = (await import('sharp')).default;
+    const base = () =>
+      sharp({ create: { width: 8, height: 8, channels: 3, background: { r: 9, g: 9, b: 9 } } });
+
+    expect(verifyImageMime(await base().png().toBuffer(), 'image/png')).toBe(true);
+    expect(verifyImageMime(await base().jpeg().toBuffer(), 'image/jpeg')).toBe(true);
+    expect(verifyImageMime(await base().webp().toBuffer(), 'image/webp')).toBe(true);
+    expect(verifyImageMime(await base().gif().toBuffer(), 'image/gif')).toBe(true);
+    expect(verifyImageMime(Buffer.from('<svg></svg>'), 'image/svg+xml')).toBe(true);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 十一、POST /api/images —— 上传路由必须接上内容校验
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe('POST /api/images（上传内容校验接线）', () => {
+  let postImages: (req: Request) => Promise<Response>;
+
+  beforeAll(async () => {
+    ({ POST: postImages } = await import('@/app/api/images/route'));
+  });
+
+  beforeEach(() => {
+    authState.user = null;
+  });
+
+  async function upload(bytes: Buffer, declaredMime: string, filename = 'x.png') {
+    const form = new FormData();
+    form.append('file', new File([new Uint8Array(bytes)], filename, { type: declaredMime }));
+    const res = await postImages(
+      new Request('http://localhost/api/images', { method: 'POST', body: form })
+    );
+    return { res, body: (await res.json()) as { code: number; message: string } };
+  }
+
+  it('真 PNG 正常上传', async () => {
+    const u = await makeUser({ role: 'core' });
+    authState.user = { id: u.id, role: 'core' };
+
+    const { res, body } = await upload(await pngBytes(), 'image/png');
+    expect(res.status).toBe(200);
+    expect(body.code).toBe(200);
+    // 确实落库了
+    expect(await prisma.imageHosting.count({ where: { authorId: u.id } })).toBe(1);
+  });
+
+  it('★ SVG 字节 + 声明 image/png → 400，且不落库不落盘', async () => {
+    const u = await makeUser({ role: 'core' });
+    authState.user = { id: u.id, role: 'core' };
+
+    const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
+    const { res, body } = await upload(svg, 'image/png', 'evil.png');
+
+    expect(res.status).toBe(400);
+    expect(body.message).toBe('文件内容与声明的格式不匹配');
+    expect(await prisma.imageHosting.count({ where: { authorId: u.id } })).toBe(0);
+    expect(fs.readdirSync(TEST_UPLOAD_DIR)).toHaveLength(0);
+  });
+
+  it('★ HTML 字节 + 声明 image/svg+xml → 400', async () => {
+    const u = await makeUser({ role: 'core' });
+    authState.user = { id: u.id, role: 'core' };
+
+    const html = Buffer.from('<!DOCTYPE html><html><script>alert(1)</script></html>');
+    const { res, body } = await upload(html, 'image/svg+xml', 'evil.svg');
+
+    expect(res.status).toBe(400);
+    expect(body.message).toBe('文件内容与声明的格式不匹配');
+    expect(await prisma.imageHosting.count({ where: { authorId: u.id } })).toBe(0);
+  });
+
+  it('★ 任意垃圾字节 + 声明真图 MIME → 400', async () => {
+    const u = await makeUser({ role: 'core' });
+    authState.user = { id: u.id, role: 'core' };
+
+    const { res } = await upload(Buffer.from('just some text'), 'image/jpeg', 'a.jpg');
+    expect(res.status).toBe(400);
+    expect(await prisma.imageHosting.count({ where: { authorId: u.id } })).toBe(0);
+  });
+
+  it('合法 SVG（声明 image/svg+xml）仍可上传 —— 校验不能误伤', async () => {
+    const u = await makeUser({ role: 'core' });
+    authState.user = { id: u.id, role: 'core' };
+
+    const svg = Buffer.from('<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg"/>');
+    const { res } = await upload(svg, 'image/svg+xml', 'ok.svg');
+    expect(res.status).toBe(200);
+  });
+
+  it('白名单外的声明仍先被白名单拦下（错误文案不变）', async () => {
+    const u = await makeUser({ role: 'core' });
+    authState.user = { id: u.id, role: 'core' };
+
+    const { res, body } = await upload(await pngBytes(), 'text/html', 'a.html');
+    expect(res.status).toBe(400);
+    expect(body.message).toContain('不支持的文件格式');
+  });
+
+  it('内容校验先于配额/限频（伪造上传不消耗额度）', async () => {
+    // role=user 无图床权限；若内容校验没有前置，这里会先撞 403 而非 400。
+    // 断言拿到 400 即证明校验顺序对齐 Flask：白名单 → 内容 → 尺寸 → 配额 → 限频。
+    const u = await makeUser({ role: 'user' });
+    authState.user = { id: u.id, role: 'user' };
+
+    const { res, body } = await upload(Buffer.from('<svg></svg>'), 'image/png', 'e.png');
+    expect(res.status).toBe(400);
+    expect(body.message).toBe('文件内容与声明的格式不匹配');
   });
 });

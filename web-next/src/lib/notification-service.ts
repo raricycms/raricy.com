@@ -3,10 +3,13 @@
 //
 // 与 Flask 解耦风格一致：纯函数 + 显式参数。
 //   • 列表：recipientId = 当前用户，timestamp 倒序，20/页，带 actor.username。
-//   • 未读数 / 标记单条已读 / 全部已读。
+//   • 未读数 / 标记单条已读 / 全部已读 / 批量已读 / 批量删除。
 //   • sendNotification 尊重接收者的 notify_* 偏好（除非 force）——
-//     Flask 侧偏好判定散落在各调用点（如 like_service 的 author.notify_like），
-//     这里统一收敛进 helper，action→pref 映射同 Flask 语义。
+//     Flask 侧 send_notification 收了 force 参数却从头到尾没查过偏好（已核实
+//     app/service/notifications.py），即原站的偏好开关是摆设；判定只散落在少数
+//     调用点（如 like_service 的 author.notify_like）。TS 侧真的实现了检查，
+//     属**有意的行为改进**（真实库 465 个用户无一关过开关，影响面为零）。
+//     映射靠 ACTION_PREF_MAP 精确查表，不做子串嗅探；自由文本调用方显式传 prefKey。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { prisma } from './db';
@@ -14,28 +17,55 @@ import { nowForDb } from './db-time';
 
 const DEFAULT_PER_PAGE = 20;
 
-type NotifyPrefKey = 'notifyLike' | 'notifyEdit' | 'notifyDelete' | 'notifyAdmin';
+export type NotifyPrefKey = 'notifyLike' | 'notifyEdit' | 'notifyDelete' | 'notifyAdmin';
 
 /**
- * 将 action 映射到用户通知偏好字段（对齐 Flask：like→notifyLike, edit→notifyEdit,
- * delete→notifyDelete, admin→notifyAdmin）。兼容英文关键字与 Flask 侧的中文 action。
- * 返回 null 表示该 action 不受偏好约束，无条件发送。
+ * action 字符串 → 通知偏好字段的**精确映射表**。
+ *
+ * 【为什么是精确表而不是子串嗅探】旧实现按「like → edit → delete → admin」的顺序
+ * 找第一个命中的子串，而 /api/admin/notify-user 与 broadcast 的 action 是管理员
+ * **自由输入**的：只要正文里带了「删除」二字，`prefForAction('管理员删除通知')`
+ * 就会归到 notifyDelete —— 用户开着「管理员通知」，这条管理员通知却被 delete
+ * 偏好吞掉。自由文本 × 子串优先级 = 串扰，只能靠精确表根治。
+ *
+ * 偏好字段的语义以模型注释为准（app/models/user.py:23-26），四个开关都很窄：
+ *   notify_like「文章被点赞通知」/ notify_edit「文章被编辑通知」
+ *   notify_delete「文章被删除通知」/ notify_admin「管理员通知」
+ * key 取自真实库中实际存在的 action，外加代码里在用但库中暂无的两个（文章编辑、图片删除）。
+ */
+const ACTION_PREF_MAP: Readonly<Record<string, NotifyPrefKey>> = {
+  // ── notify_like ──
+  文章点赞: 'notifyLike',
+  // ── notify_edit ──
+  文章编辑: 'notifyEdit',
+  // ── notify_delete ──
+  文章删除: 'notifyDelete',
+  // 图片删除严格说不是「文章」被删，但四个开关里没有更贴的；站长违规删图的调用点
+  // （api/images/admin/[id]）本就传 force:true，落在哪个键上实际不影响送达。
+  图片删除: 'notifyDelete',
+  // ── notify_admin ──「管理员通知」，含管理动作与站务播报
+  禁言通知: 'notifyAdmin',
+  解除禁言: 'notifyAdmin',
+  系统公告: 'notifyAdmin',
+  功能更新: 'notifyAdmin',
+  申诉提交: 'notifyAdmin',
+  // 下面两条是本次补映射的重点：原先不含任何关键字 → 旧实现返回 null → 关了
+  // notifyAdmin 也照发。两者都是「管理类通知」（前者发给管理员，后者是管理决定的回执）。
+  申诉结果: 'notifyAdmin',
+  栏目发文提醒: 'notifyAdmin',
+};
+
+/**
+ * 将 action 映射到用户通知偏好字段。**未在表中的 action 返回 null**。
+ *
+ * 返回 null = 不受偏好拦截、照常发送，这是**有意为之**而非兜底遗漏：
+ *   • 评论回复 / 文章评论 —— Flask 与本项目都没有 notify_comment 开关，评论通知一律发；
+ *   • 文章投喂 —— 同样无对应开关；
+ *   • 管理员自由输入的 action（如「维护通知」「活动通知」）—— 猜不准就不猜，
+ *     宁可发出去，也不要被错误归类的偏好静默吞掉。需要受管的调用方应显式传 prefKey。
  */
 export function prefForAction(action: string): NotifyPrefKey | null {
-  const a = action.toLowerCase();
-  if (a.includes('like') || action.includes('点赞')) return 'notifyLike';
-  if (a.includes('edit') || action.includes('编辑')) return 'notifyEdit';
-  if (a.includes('delete') || action.includes('删除')) return 'notifyDelete';
-  if (
-    a.includes('admin') ||
-    action.includes('管理') ||
-    action.includes('公告') ||
-    action.includes('禁言') ||
-    action.includes('通知')
-  ) {
-    return 'notifyAdmin';
-  }
-  return null;
+  return ACTION_PREF_MAP[action] ?? null;
 }
 
 export interface SendNotificationInput {
@@ -46,6 +76,12 @@ export interface SendNotificationInput {
   objectId?: string | null;
   detail?: string | null;
   force?: boolean;
+  /**
+   * 显式指定本条通知受哪个偏好开关管辖，**优先于 ACTION_PREF_MAP 的查表结果**。
+   * 用于 action 是自由文本、查表必然猜不准的调用点（如管理员定向通知一律 notifyAdmin）。
+   * 传 null = 显式声明「不受任何偏好拦截」。不传 = 按 action 查表。
+   */
+  prefKey?: NotifyPrefKey | null;
 }
 
 /**
@@ -70,7 +106,8 @@ export async function sendNotification(input: SendNotificationInput) {
   if (!recipient) return null;
 
   if (!force) {
-    const prefKey = prefForAction(action);
+    // 调用方显式传了 prefKey（含 null）就以它为准，不再靠 action 猜。
+    const prefKey = input.prefKey !== undefined ? input.prefKey : prefForAction(action);
     // 偏好字段可空，缺省视为开启（对齐 Flask getattr(..., True)）
     if (prefKey && recipient[prefKey] === false) return null;
   }
@@ -166,6 +203,33 @@ export async function markAllRead(userId: string) {
   const res = await prisma.notification.updateMany({
     where: { recipientId: userId, read: false },
     data: { read: true },
+  });
+  return res.count;
+}
+
+/**
+ * 批量标记为已读（限本人），返回命中条数。
+ * 对齐 Flask batch_mark_notifications_read：过滤条件只有 id IN (...) + recipient_id，
+ * **不带 read=False**，所以已读的条目也会被计入 count（命中即算，非「本次真正翻转的条数」）。
+ * recipientId 是越权防线：别人的通知 id 混进来只会匹配不到，不会被改。
+ */
+export async function batchMarkRead(notificationIds: string[], userId: string) {
+  if (!notificationIds.length) return 0;
+  const res = await prisma.notification.updateMany({
+    where: { id: { in: notificationIds }, recipientId: userId },
+    data: { read: true },
+  });
+  return res.count;
+}
+
+/**
+ * 批量删除（限本人），返回删除条数。硬删除，对齐 Flask batch_delete_notifications。
+ * 同上：recipientId 过滤挡住越权删除别人通知。
+ */
+export async function batchDelete(notificationIds: string[], userId: string) {
+  if (!notificationIds.length) return 0;
+  const res = await prisma.notification.deleteMany({
+    where: { id: { in: notificationIds }, recipientId: userId },
   });
   return res.count;
 }

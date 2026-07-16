@@ -54,6 +54,10 @@ export async function POST(req: Request) {
 
   const result = await createClip(user.id, { title, content, publicity });
   if (!result.ok) {
+    // 长度类原因在这里理论上不可达（上面已先校验过），但 service 现在也自己设防，
+    // 把它们如实映射成与上面同样的文案，避免被误报成「超过 200 篇」。
+    if (result.reason === 'title_too_long') return apiErr(400, 'title too long');
+    if (result.reason === 'content_too_long') return apiErr(400, 'content too long');
     return apiErr(400, '一个用户只能发布200篇云剪贴板！');
   }
 
