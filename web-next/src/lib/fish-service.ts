@@ -23,6 +23,43 @@ export async function getBalance(userId: string): Promise<number> {
   return user?.driedFish ?? 0;
 }
 
+/**
+ * 批量查询余额（对齐 get_balance_batch）。返回 {userId: balance}。
+ * 不存在的 userId 对应 0；最多支持 500 个 ID，超出截断。
+ */
+export async function getBalanceBatch(userIds: string[]): Promise<Record<string, number>> {
+  if (!userIds || userIds.length === 0) return {};
+  const ids = userIds.slice(0, 500);
+  const users = await prisma.user.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, driedFish: true },
+  });
+  const result: Record<string, number> = {};
+  for (const uid of ids) result[uid] = 0;
+  for (const u of users) result[u.id] = u.driedFish;
+  return result;
+}
+
+/** UTC+8 当天日期 YYYY-MM-DD（对齐 Flask app/service/checkin._today_utc8）。 */
+function todayUtc8(): string {
+  return new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
+}
+
+/**
+ * 今日签到获得的小鱼干数量（对齐 get_today_checkin_fish）。未签到返回 0。
+ *
+ * 与 Flask 一致：按 SQLite `date(created_at)` 与 UTC+8 今天比较，取当天首条
+ * checkin 流水的 amount。用 $queryRaw 以复用 SQLite date() 语义。
+ */
+export async function getTodayCheckinFish(userId: string): Promise<number> {
+  const today = todayUtc8();
+  const rows = await prisma.$queryRaw<{ amount: number }[]>`
+    SELECT amount FROM fish_transactions
+    WHERE user_id = ${userId} AND type = 'checkin' AND date(created_at) = ${today}
+    LIMIT 1`;
+  return rows.length > 0 ? rows[0].amount : 0;
+}
+
 export interface FishTxDTO {
   id: number;
   amount: number;

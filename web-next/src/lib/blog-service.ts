@@ -140,3 +140,277 @@ export async function toggleLike(blogId: string, userId: string) {
     return { liked, likesCount };
   });
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 写路径（对齐 Flask BlogService.create_blog / update_blog + BlogValidator +
+// upload_blog / edit_blog 视图里的日限额、栏目管理员专属、通知逻辑）。
+// ─────────────────────────────────────────────────────────────────────────────
+
+// 对齐 BlogValidator 常量
+export const BLOG_TITLE_MAX = 30; // MAX_TITLE_LENGTH
+export const BLOG_DESCRIPTION_MAX = 100; // MAX_DESCRIPTION_LENGTH
+export const BLOG_CONTENT_MAX = 200000; // MAX_CONTENT_LENGTH（服务端强校验；前端另有 250000 的软提示）
+export const BLOG_DAILY_LIMIT = 20; // upload_blog 视图里的每日发文上限
+
+export interface ValidatedBlogData {
+  title: string;
+  description: string;
+  content: string;
+  categoryId: number | null;
+}
+
+export type ValidateBlogResult =
+  | { ok: true; data: ValidatedBlogData }
+  | { ok: false; message: string };
+
+/**
+ * 校验博客提交数据（对齐 BlogValidator.validate_blog_data）。
+ * title/description 去空白；content 不去空白（对齐 `data.get('content') or ''`）。
+ * 栏目存在性走 DB（is_active=True）。
+ */
+export async function validateBlogData(raw: unknown): Promise<ValidateBlogResult> {
+  if (!raw || typeof raw !== 'object') return { ok: false, message: '缺少必要参数' };
+  const data = raw as Record<string, unknown>;
+
+  const title = (typeof data.title === 'string' ? data.title : '').trim();
+  const description = (typeof data.description === 'string' ? data.description : '').trim();
+  const content = typeof data.content === 'string' ? data.content : '';
+
+  if (!title) return { ok: false, message: '标题不能为空' };
+  if (!description) return { ok: false, message: '描述不能为空' };
+  if (!content) return { ok: false, message: '内容不能为空' };
+
+  if (title.length > BLOG_TITLE_MAX) return { ok: false, message: `标题不能超过${BLOG_TITLE_MAX}个字符` };
+  if (description.length > BLOG_DESCRIPTION_MAX)
+    return { ok: false, message: `描述不能超过${BLOG_DESCRIPTION_MAX}个字符` };
+  if (content.length > BLOG_CONTENT_MAX)
+    return { ok: false, message: `内容不能超过${BLOG_CONTENT_MAX}个字符` };
+
+  // 栏目校验：空值放行为“未分类”；非空则必须存在且启用（对齐 int() + is_active 查询）
+  let categoryId: number | null = null;
+  const rawCat = data.category_id;
+  if (rawCat) {
+    const parsed = Number(rawCat);
+    if (!Number.isInteger(parsed)) return { ok: false, message: '栏目ID格式错误' };
+    const category = await prisma.category.findFirst({
+      where: { id: parsed, isActive: true },
+      select: { id: true },
+    });
+    if (!category) return { ok: false, message: '选择的栏目不存在' };
+    categoryId = parsed;
+  }
+
+  return { ok: true, data: { title, description, content, categoryId } };
+}
+
+/**
+ * 字数统计（对齐 app/utils/markdown_countword.py，改为对字符串操作）。
+ * 注意：Flask 博客写路径并不持久化字数，仅 story 模块使用此工具；此处按 brief 要求
+ * 提供等价实现以备展示/复用，createBlog/updateBlog 不写入字数（与 Flask 一致）。
+ */
+export function countMarkdownWords(input: string): {
+  total_characters: number;
+  non_whitespace_characters: number;
+} {
+  let content = input;
+  content = content.replace(/```[\s\S]*?```/g, ''); // 代码块
+  content = content.replace(/`[\s\S]*?`/g, ''); // 行内代码
+  content = content.replace(/!\[[\s\S]*?\]\([\s\S]*?\)/g, ''); // 图片
+  content = content.replace(/\[([\s\S]*?)\]\([\s\S]*?\)/g, '$1'); // 链接（保留文本）
+  content = content.replace(/<[\s\S]*?>/g, ''); // HTML 标签
+  content = content.replace(/[*_~>`#\-[\]()!]/g, ''); // Markdown 特殊字符
+  content = content.replace(/\s+/g, ' ').trim(); // 折叠空白
+  return {
+    total_characters: content.length,
+    non_whitespace_characters: content.replace(/\s/g, '').length,
+  };
+}
+
+/** 当日该作者已发布文章数（对齐 upload_blog：created_at >= 本地零点）。 */
+export async function countBlogsToday(authorId: string): Promise<number> {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  return prisma.blog.count({ where: { authorId, createdAt: { gte: start } } });
+}
+
+/**
+ * 栏目发文元信息：合并父栏目标志，得出“仅管理员可发”与“发文通知管理员”的最终生效值，
+ * 以及完整路径（对齐 upload_blog / edit_blog 里的 admin_only_effective / notify_effective /
+ * Category.get_full_path）。
+ */
+export async function getCategoryPostingMeta(categoryId: number) {
+  const category = await prisma.category.findUnique({
+    where: { id: categoryId },
+    select: {
+      id: true,
+      name: true,
+      parentId: true,
+      adminOnlyPosting: true,
+      notifyAdminOnPost: true,
+      parent: { select: { name: true, adminOnlyPosting: true, notifyAdminOnPost: true } },
+    },
+  });
+  if (!category) {
+    return { category: null, adminOnlyEffective: false, notifyEffective: false, fullPath: '' };
+  }
+  const parent = category.parent;
+  const adminOnlyEffective = parent
+    ? Boolean(category.adminOnlyPosting || parent.adminOnlyPosting)
+    : Boolean(category.adminOnlyPosting);
+  let notifyEffective = Boolean(category.notifyAdminOnPost);
+  if (parent) notifyEffective = notifyEffective || Boolean(parent.notifyAdminOnPost);
+  const fullPath =
+    category.parentId != null && parent ? `${parent.name} > ${category.name}` : category.name;
+  return { category, adminOnlyEffective, notifyEffective, fullPath };
+}
+
+/** 禁言时的操作错误文案（对齐 ban_check.check_user_ban_status 生成的 message）。 */
+export function banActionMessage(user: { banUntil: Date | null; banReason: string | null }): string {
+  let remainingText = '';
+  if (user.banUntil) {
+    const remainingHours = (user.banUntil.getTime() - Date.now()) / 3600000;
+    remainingText =
+      remainingHours > 24
+        ? `剩余约${(remainingHours / 24).toFixed(1)}天`
+        : `剩余约${remainingHours.toFixed(1)}小时`;
+  }
+  const reason = user.banReason ?? '未说明';
+  return `您已被禁言，无法执行此操作。${remainingText}。原因：${reason}`;
+}
+
+/** 栏目层级（供发布/编辑页下拉，对齐 Category.get_hierarchy：仅 is_active，按 sort_order）。 */
+export async function getCategoryHierarchy() {
+  const roots = await prisma.category.findMany({
+    where: { parentId: null, isActive: true },
+    orderBy: { sortOrder: 'asc' },
+    select: {
+      id: true,
+      name: true,
+      icon: true,
+      children: {
+        where: { isActive: true },
+        orderBy: { sortOrder: 'asc' },
+        select: { id: true, name: true, icon: true },
+      },
+    },
+  });
+  return roots;
+}
+
+export type CategoryHierarchy = Awaited<ReturnType<typeof getCategoryHierarchy>>;
+
+/** 编辑页数据（对齐 BlogService.get_blog_for_edit）：ignore=true 视为不存在。 */
+export async function getBlogForEdit(blogId: string) {
+  const blog = await prisma.blog.findFirst({
+    where: { id: blogId, ignore: false },
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      categoryId: true,
+      authorId: true,
+      content: { select: { content: true } },
+    },
+  });
+  if (!blog) return null;
+  return {
+    id: blog.id,
+    title: blog.title,
+    description: blog.description,
+    categoryId: blog.categoryId,
+    authorId: blog.authorId,
+    contentMarkdown: blog.content?.content ?? '',
+  };
+}
+
+/**
+ * 创建博客（对齐 BlogService.create_blog）：UUID 主键，Blog + BlogContent 同事务写。
+ * 未分类栏目 categoryId=null；is_featured 走 schema 默认 false（Flask 亦不显式设置）。
+ * 磁盘 instance/blogs/<id> 目录为 Flask 遗留物，正文已入库，Next 侧不再创建。
+ */
+export async function createBlog(authorId: string, data: ValidatedBlogData): Promise<string> {
+  const blogId = crypto.randomUUID();
+  const now = new Date();
+  await prisma.$transaction([
+    prisma.blog.create({
+      data: {
+        id: blogId,
+        title: data.title,
+        description: data.description,
+        authorId,
+        categoryId: data.categoryId,
+        createdAt: now,
+      },
+    }),
+    prisma.blogContent.create({ data: { blogId, content: data.content, updatedAt: now } }),
+  ]);
+  return blogId;
+}
+
+/**
+ * 更新博客（对齐 BlogService.update_blog）：逐字段比对生成 changesDetail，
+ * 更新元信息并 upsert 正文。返回 null 表示文章不存在（对齐 (False, [])）。
+ */
+export async function updateBlog(
+  blogId: string,
+  data: ValidatedBlogData
+): Promise<{ hasChanges: boolean; changesDetail: string[] }> {
+  const blog = await prisma.blog.findUnique({
+    where: { id: blogId },
+    select: { title: true, description: true, categoryId: true, category: { select: { name: true } } },
+  });
+  if (!blog) return { hasChanges: false, changesDetail: [] };
+
+  let hasChanges = false;
+  const changesDetail: string[] = [];
+
+  if (blog.title !== data.title) {
+    changesDetail.push(`标题从《${blog.title}》改为《${data.title}》`);
+    hasChanges = true;
+  }
+  if (blog.description !== data.description) {
+    changesDetail.push('摘要已更新');
+    hasChanges = true;
+  }
+
+  // 栏目变化描述（对齐 old_category_name / new_category_name，缺省“未分类”）
+  const oldCategoryName = blog.category?.name ?? '未分类';
+  let newCategoryName = '未分类';
+  if (data.categoryId != null) {
+    const newCat = await prisma.category.findUnique({
+      where: { id: data.categoryId },
+      select: { name: true },
+    });
+    if (newCat) newCategoryName = newCat.name;
+  }
+  if (blog.categoryId !== data.categoryId) {
+    changesDetail.push(`栏目从《${oldCategoryName}》改为《${newCategoryName}》`);
+    hasChanges = true;
+  }
+
+  // 正文变化
+  const contentRow = await prisma.blogContent.findUnique({
+    where: { blogId },
+    select: { content: true },
+  });
+  const oldContent = contentRow?.content ?? '';
+  if (oldContent !== data.content) {
+    changesDetail.push('文章内容已更新');
+    hasChanges = true;
+  }
+
+  const now = new Date();
+  await prisma.$transaction([
+    prisma.blog.update({
+      where: { id: blogId },
+      data: { title: data.title, description: data.description, categoryId: data.categoryId },
+    }),
+    prisma.blogContent.upsert({
+      where: { blogId },
+      create: { blogId, content: data.content, updatedAt: now },
+      update: { content: data.content, updatedAt: now },
+    }),
+  ]);
+
+  return { hasChanges, changesDetail };
+}

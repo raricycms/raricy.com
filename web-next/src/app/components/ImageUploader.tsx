@@ -254,8 +254,7 @@ export function ImageGallery({ images, isOwner = false }: { images: GalleryImage
               <button className="button-primary-small" id="preview-copy-btn" onClick={copyPreviewLink}>
                 {previewCopied ? '已复制' : '复制图片ID'}
               </button>
-              {/* owner 专属：图片管理。对齐 Flask image.admin（/image/admin 图床专属管理页）。
-                  TODO: Next 侧 /image/admin 页面尚未实现，落地页需后续补齐。 */}
+              {/* owner 专属：图片管理。对齐 Flask image.admin（/image/admin 图床专属管理页）。 */}
               {isOwner && (
                 <a className="button-warning-small" href="/image/admin">图片管理</a>
               )}

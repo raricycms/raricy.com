@@ -83,7 +83,7 @@ export default function Navbar({ user }: { user: SafeUser | null }) {
                       </Link>
                     </li>
                     <li>
-                      <Link className="site-dropdown-item" href="/checkin">
+                      <Link className="site-dropdown-item" href="/fish">
                         <span>🐟</span>小鱼干
                       </Link>
                     </li>

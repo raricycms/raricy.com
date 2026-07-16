@@ -38,8 +38,7 @@ export default async function ImageGalleryPage() {
       <div className="image-hosting-header">
         <h1 className="image-hosting-title">图床</h1>
         <p className="image-hosting-subtitle">上传图片，获取分享链接</p>
-        {/* owner 专属：管理所有图片。对齐 Flask image.admin（/image/admin 图床专属管理页）。
-            TODO: Next 侧 /image/admin 页面尚未实现，落地页需后续补齐。 */}
+        {/* owner 专属：管理所有图片。对齐 Flask image.admin（/image/admin 图床专属管理页）。 */}
         {owner && (
           <a className="button-warning-small" href="/image/admin" style={{ marginTop: 12, display: 'inline-block' }}>
             管理所有图片

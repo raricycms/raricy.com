@@ -5,8 +5,8 @@
 //   查看 / 发通知（站长）/ 禁言·解除禁言 / 禁言历史 / 认证·取消认证（站长）。
 // 认证 = 设为 core，取消认证 = 设为 user，对应 Flask 的 promote/demote。
 // 禁言 / 解除禁言 走 POST /api/admin/users/:id；角色变更走 PATCH。
-// ── 发通知、禁言历史两处 UI 已补齐，但后端端点尚未迁移，提交/加载处标了
-//    TODO(no backend)，对齐 Flask sendNotificationTo / showBanHistory 的可见形态。
+// 发通知 → POST /api/admin/notify-user（对齐 Flask sendNotificationTo）。
+// 禁言历史 → GET /api/users/:id/ban-history（对齐 Flask showBanHistory）。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState } from 'react';
@@ -29,6 +29,21 @@ const toast = (msg: string, type: 'success' | 'error' | 'info' | 'warning' = 'in
   if (w.showToast) w.showToast(msg, type);
 };
 
+// 单条禁言历史（对齐 Flask UserBan.to_dict()）。
+interface BanRecord {
+  id: number;
+  banned_at: string | null;
+  ban_until: string | null;
+  reason: string;
+  is_lifted: boolean | null;
+  admin_username: string | null;
+  lifted_at: string | null;
+  lifted_by: string | null;
+}
+
+// 对齐 Flask showBanHistory 的 new Date(x).toLocaleString()。
+const fmtTime = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : '');
+
 export default function AdminUserActions({ user, isOwner, currentUserId }: AdminUserActionsProps) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -38,6 +53,8 @@ export default function AdminUserActions({ user, isOwner, currentUserId }: Admin
   const [unbanReason, setUnbanReason] = useState('');
   const [notifyType, setNotifyType] = useState('系统公告');
   const [notifyContent, setNotifyContent] = useState('');
+  const [banHistory, setBanHistory] = useState<BanRecord[] | null>(null);
+  const [banHistoryLoading, setBanHistoryLoading] = useState(false);
 
   // 对齐 Flask 发送通知模态框的通知类型预设。
   const NOTIFY_TYPES = ['系统公告', '维护通知', '功能更新', '用户提醒', '警告通知', '活动通知'];
@@ -106,9 +123,36 @@ export default function AdminUserActions({ user, isOwner, currentUserId }: Admin
       toast('请输入通知内容', 'warning');
       return;
     }
-    // TODO(no backend): Next 尚无单用户通知发送端点（仅群发 /api/admin/broadcast）。
-    // UI 对齐 Flask sendNotificationTo 的模态框，待后端补 send-notification-to-user 端点后接入。
-    toast('单用户通知发送端点尚未迁移', 'info');
+    call(
+      '/api/admin/notify-user',
+      'POST',
+      { recipientId: user.id, action: notifyType, detail: notifyContent.trim() },
+      '通知发送成功！'
+    );
+  }
+
+  // 拉取禁言历史（对齐 Flask auth.user_ban_history / showBanHistory）。
+  async function openBanHistory() {
+    setModal('banHistory');
+    setBanHistory(null);
+    setBanHistoryLoading(true);
+    try {
+      const res = await fetch(`/api/users/${user.id}/ban-history`, {
+        credentials: 'same-origin',
+      });
+      const data = await res.json();
+      if (data.code === 200 && Array.isArray(data.ban_history)) {
+        setBanHistory(data.ban_history as BanRecord[]);
+      } else {
+        setBanHistory([]);
+        toast(data.message || '获取禁言历史失败', 'error');
+      }
+    } catch {
+      setBanHistory([]);
+      toast('获取禁言历史失败', 'error');
+    } finally {
+      setBanHistoryLoading(false);
+    }
   }
 
   return (
@@ -164,7 +208,7 @@ export default function AdminUserActions({ user, isOwner, currentUserId }: Admin
           type="button"
           className="btn btn-sm btn-info"
           disabled={busy}
-          onClick={() => setModal('banHistory')}
+          onClick={openBanHistory}
         >
           禁言历史
         </button>
@@ -313,10 +357,10 @@ export default function AdminUserActions({ user, isOwner, currentUserId }: Admin
                 </div>
               </div>
               <div className="modal-footer">
-                <button type="button" className="btn btn-secondary" onClick={() => setModal(null)}>
+                <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => setModal(null)}>
                   取消
                 </button>
-                <button type="button" className="btn btn-primary" onClick={sendNotification}>
+                <button type="button" className="btn btn-primary" disabled={busy} onClick={sendNotification}>
                   发送
                 </button>
               </div>
@@ -337,11 +381,49 @@ export default function AdminUserActions({ user, isOwner, currentUserId }: Admin
                 </button>
               </div>
               <div className="modal-body">
-                {/* TODO(no backend): Next 尚无禁言历史查询端点（Flask 为 auth.user_ban_history）。
-                    UI 已对齐 Flask 的历史弹窗形态，待后端补 ban-history 端点后填充数据。 */}
-                <p className="text-muted" style={{ margin: 0 }}>
-                  用户「{user.username}」的禁言历史查询端点尚未迁移。
+                <p style={{ marginTop: 0 }}>
+                  用户 &quot;{user.username}&quot; 的禁言历史：
                 </p>
+                {banHistoryLoading ? (
+                  <p className="text-muted" style={{ margin: 0 }}>
+                    加载中…
+                  </p>
+                ) : banHistory && banHistory.length > 0 ? (
+                  <div
+                    style={{
+                      background: 'var(--color-background-subtle)',
+                      padding: '15px',
+                      borderRadius: '8px',
+                      maxHeight: '400px',
+                      overflowY: 'auto',
+                    }}
+                  >
+                    {banHistory.map((ban, index) => (
+                      <div
+                        key={ban.id}
+                        style={{ marginBottom: index === banHistory.length - 1 ? 0 : '1rem' }}
+                      >
+                        <div>
+                          {index + 1}. 禁言时间：{fmtTime(ban.banned_at)}
+                        </div>
+                        <div>结束时间：{fmtTime(ban.ban_until)}</div>
+                        <div>状态：{ban.is_lifted ? '已解除' : '进行中'}</div>
+                        <div>原因：{ban.reason}</div>
+                        <div>执行者：{ban.admin_username}</div>
+                        {ban.is_lifted && ban.lifted_by && (
+                          <>
+                            <div>解除时间：{fmtTime(ban.lifted_at)}</div>
+                            <div>解除者：{ban.lifted_by}</div>
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-muted" style={{ margin: 0 }}>
+                    暂无禁言记录
+                  </p>
+                )}
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn btn-secondary" onClick={() => setModal(null)}>

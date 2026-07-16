@@ -96,9 +96,8 @@ export default function AdminBlogActions({
         <Link href={`/blog/${blogId}`} className="btn btn-sm btn-outline-primary" target="_blank">
           查看
         </Link>
-        {/* TODO(no backend): Next 尚无文章编辑路由（仅 /blog/[id]），暂链到详情页，
-            待迁移 /blog/[id]/edit 后改为编辑页。对齐 Flask manage_articles 的「编辑」按钮。 */}
-        <Link href={`/blog/${blogId}`} className="btn btn-sm btn-outline-secondary">
+        {/* 对齐 Flask manage_articles 的「编辑」按钮 → /blog/<id>/edit */}
+        <Link href={`/blog/${blogId}/edit`} className="btn btn-sm btn-outline-secondary">
           编辑
         </Link>
         <button

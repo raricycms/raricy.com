@@ -11,7 +11,13 @@
 
 import { randomUUID } from 'node:crypto';
 import { prisma } from './db';
-import { hashPassword } from './password';
+import { hashPassword, verifyPassword } from './password';
+import {
+  accountClient,
+  accountServiceEnabled,
+  encryptApiKey,
+  AccountServiceError,
+} from './account-client';
 import type { Prisma } from '@prisma/client';
 
 // ── 输入校验（对齐 verify_username / verify_email）──────────────────────────
@@ -105,30 +111,75 @@ export async function registerUser(input: RegisterInput): Promise<RegisterResult
   const id = randomUUID();
   const passwordHash = await hashPassword(password);
 
-  // 头像通过 /api/avatar/[id] 按 id 确定性生成，无需落盘文件，故 avatarPath 留空。
-  await prisma.$transaction(async (tx) => {
-    await tx.user.create({
-      data: {
-        id,
-        username,
-        email,
-        passwordHash,
-        role,
-        createdAt: new Date(),
-        sessionVersion: 0,
-      },
-    });
-    if (inviteRecordId !== null) {
-      // 标记邀请码已用（对齐 mark_invite_code_used）
-      await tx.inviteCode.update({
-        where: { id: inviteRecordId },
-        data: { isUsed: true, usedBy: id },
-      });
-    }
-  });
+  // 远端账户创建是否启用（未配置 internal token → dev 本地模式，见下）。
+  const remoteEnabled = accountServiceEnabled();
 
-  // TODO(生产): 账户服务小鱼干账户创建（Flask sign_up.py 的 account_client.create_account）
-  //             本切片暂不接入账户微服务。
+  // ── 建号（fail-closed，对齐 CLAUDE.md Phase 1.5 写路径）─────────────────────────
+  // 本地写入（建用户 + 标记邀请码 + 落 fishApiKeyEncrypted）全部收进一个交互式事务，
+  // 并在 **事务提交之前** 调用账户微服务 create_account 同步；远端成功才提交本地，
+  // 远端抛错则从事务回调抛出 → Prisma 回滚整个本地事务，绝不出现「本地建了号但远端
+  // 没账户」的不一致。远端不可达一律以 AccountServiceError(503) 向调用方返回明确错误。
+  //
+  // ⚠️ 与 Flask sign_up.py 的差异：Flask 侧 create_account 是 fire-and-forget（失败仅
+  //    记 warning、不阻塞注册，靠首次鱼干操作时 _ensure_account_exists 补注册）。本切片
+  //    按任务要求 + feed-service.ts 的 fail-closed 约定改为强一致：远端故障即注册失败。
+  //
+  // 头像通过 /api/avatar/[id] 按 id 确定性生成，无需落盘文件，故 avatarPath 留空。
+  try {
+    await prisma.$transaction(
+      async (tx) => {
+        await tx.user.create({
+          data: {
+            id,
+            username,
+            email,
+            passwordHash,
+            role,
+            createdAt: new Date(),
+            sessionVersion: 0,
+          },
+        });
+        if (inviteRecordId !== null) {
+          // 标记邀请码已用（对齐 mark_invite_code_used）
+          await tx.inviteCode.update({
+            where: { id: inviteRecordId },
+            data: { isUsed: true, usedBy: id },
+          });
+        }
+
+        // ── 远端同步：★ 提交前 ★ 建小鱼干账户（fail-closed 关键点）────────────────
+        // 远端抛错 → 从事务回调抛出 → 回滚整个本地事务。
+        if (remoteEnabled) {
+          // create_account 幂等：首次创建才返回 api_key，加密后回写用户表。
+          const acct = await accountClient.ensureAccount(id);
+          if (acct.api_key) {
+            await tx.user.update({
+              where: { id },
+              data: { fishApiKeyEncrypted: encryptApiKey(acct.api_key) },
+            });
+          }
+        } else {
+          // dev fallback：无账户服务时仅建本地用户，明确告警（绝非静默生产行为）。
+          // 用户首次投喂时 feed-service 会因缺少 fishApiKeyEncrypted 而 fail-closed。
+          console.warn(
+            `[user-service] ACCOUNT_SERVICE 未配置，注册仅建本地用户（dev fallback）。user=${id}`
+          );
+        }
+      },
+      { timeout: 15000, maxWait: 5000 }
+    );
+  } catch (e) {
+    if (e instanceof AccountServiceError) {
+      // 远端失败：本地事务已回滚，向用户返回明确错误（fail-closed）。
+      console.warn(
+        `[user-service] 账户服务建号失败，注册本地事务已回滚（user=${id}）: ${e.message}`
+      );
+      return { ok: false, code: 503, message: '账户服务暂时不可用，注册失败，请稍后重试' };
+    }
+    // 兜底：其它意外异常按 fail-closed 处理，返回 503（本地事务已回滚）。
+    console.error(`[user-service] 注册异常，本地事务已回滚（user=${id}）:`, e);
+    return { ok: false, code: 503, message: '注册失败，请稍后重试' };
+  }
 
   let message = '注册成功';
   if (role !== 'user') message += '，您的账号已通过邀请码验证';
@@ -293,4 +344,110 @@ export async function updateOwnProfile(userId: string, patch: ProfilePatch): Pro
       showRecentComments: updated.showRecentComments,
     },
   };
+}
+
+// ── 修改密码 ──────────────────────────────────────────────────────────────────
+
+export interface ChangePasswordResult {
+  ok: boolean;
+  code: number;
+  message: string;
+}
+
+/**
+ * 修改本人密码，逐条对齐 Flask auth.change_password 的校验顺序与文案：
+ *   1. 三项必填            → '请填写完整的信息'
+ *   2. 原密码校验失败      → '原密码不正确'
+ *   3. 新密码两次不一致    → '两次输入的新密码不一致'
+ *   4. 新密码长度 < 8      → '新密码长度至少为 8 位'
+ *   5. 新旧密码相同        → '新密码不能与原密码相同'
+ * 成功后重写哈希并 **自增 session_version**（对齐 Flask：使所有旧会话失效）。
+ * 调用方（route）负责随后清除当前会话 cookie（等价 Flask 的 logout_user）。
+ */
+export async function changeOwnPassword(
+  userId: string,
+  currentPassword: string,
+  newPassword: string,
+  confirmPassword: string
+): Promise<ChangePasswordResult> {
+  const cur = (currentPassword || '').trim();
+  const next = (newPassword || '').trim();
+  const confirm = (confirmPassword || '').trim();
+
+  if (!cur || !next || !confirm) {
+    return { ok: false, code: 400, message: '请填写完整的信息' };
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { passwordHash: true, sessionVersion: true },
+  });
+  if (!user) return { ok: false, code: 401, message: '未登录' };
+
+  if (!(await verifyPassword(cur, user.passwordHash))) {
+    return { ok: false, code: 400, message: '原密码不正确' };
+  }
+  if (next !== confirm) {
+    return { ok: false, code: 400, message: '两次输入的新密码不一致' };
+  }
+  if (next.length < 8) {
+    return { ok: false, code: 400, message: '新密码长度至少为 8 位' };
+  }
+  if (cur === next) {
+    return { ok: false, code: 400, message: '新密码不能与原密码相同' };
+  }
+
+  const passwordHash = await hashPassword(next);
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      passwordHash,
+      sessionVersion: (user.sessionVersion ?? 0) + 1,
+    },
+  });
+
+  return { ok: true, code: 200, message: '密码修改成功，请使用新密码重新登录。' };
+}
+
+// ── 邀请码验证 + 角色升级 ─────────────────────────────────────────────────────
+
+export interface AuthenticResult {
+  ok: boolean;
+  code: number;
+  message: string;
+}
+
+/**
+ * 邀请码验证，对齐 Flask auth.authentic（POST）：
+ *   • verify_invite_code：长度必须为 12，且邀请码存在且未被使用；否则 '邀请码无效'
+ *   • mark_invite_code_used：标记 is_used / used_by（这里用 updateMany + isUsed:false 兜住并发）
+ *   • 角色升级：仅当当前仍为普通用户（role == 'user'）时升级为 'core'
+ */
+export async function verifyInviteAndUpgrade(userId: string, code: string): Promise<AuthenticResult> {
+  // 对齐 verify_invite_code：长度必须恰为 12
+  if (code.length !== 12) {
+    return { ok: false, code: 400, message: '邀请码无效' };
+  }
+
+  const record = await prisma.inviteCode.findUnique({ where: { code } });
+  if (!record || record.isUsed) {
+    return { ok: false, code: 400, message: '邀请码无效' };
+  }
+
+  // 标记已用（并发安全：仅当仍未使用时才成功）
+  const marked = await prisma.inviteCode.updateMany({
+    where: { code, isUsed: false },
+    data: { isUsed: true, usedBy: userId },
+  });
+  if (marked.count === 0) {
+    return { ok: false, code: 400, message: '邀请码无效' };
+  }
+
+  // 仅当仍为普通用户时升级为核心用户（对齐 Flask 的 role == 'user' 判定）
+  await prisma.user.updateMany({
+    where: { id: userId, role: 'user' },
+    data: { role: 'core' },
+  });
+
+  return { ok: true, code: 200, message: '验证成功' };
 }

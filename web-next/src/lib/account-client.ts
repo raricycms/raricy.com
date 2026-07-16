@@ -27,10 +27,16 @@ interface FernetSecret {
 }
 interface FernetToken {
   decode(): string;
+  encode(message?: string): string;
 }
 interface FernetLib {
   Secret: new (secret64: string) => FernetSecret;
-  Token: new (opts: { secret: FernetSecret; token?: string; ttl?: number }) => FernetToken;
+  Token: new (opts: {
+    secret: FernetSecret;
+    token?: string;
+    message?: string;
+    ttl?: number;
+  }) => FernetToken;
 }
 const fernet = nodeRequire('fernet') as FernetLib;
 
@@ -92,6 +98,28 @@ export function decryptApiKey(encrypted: string, cfg = accountConfig()): string 
   } catch (e) {
     if (e instanceof AccountServiceError) throw e;
     throw new AccountServiceError(`用户账户 Key 解密失败: ${String(e)}`, 503);
+  }
+}
+
+/**
+ * 加密账户服务返回的用户 API Key，用于存入 User.fishApiKeyEncrypted。
+ * 与 decryptApiKey 完全对称（同一 SHA-256 派生密钥 → Fernet），Python 侧
+ * cryptography.Fernet 可直接解密（标准 Fernet 令牌格式，随机 IV）。
+ * 配置缺失或加密失败一律抛 AccountServiceError(503)，供注册写路径 fail-closed。
+ */
+export function encryptApiKey(plain: string, cfg = accountConfig()): string {
+  if (!cfg.encryptionKeySource) {
+    throw new AccountServiceError('缺少 FISH_ENCRYPTION_KEY / SECRET_KEY，无法加密用户账户 Key', 503);
+  }
+  try {
+    const derived = crypto.createHash('sha256').update(cfg.encryptionKeySource).digest();
+    const secret64 = derived.toString('base64url'); // 32 bytes → url-safe base64（与 decrypt 一致）
+    const secret = new fernet.Secret(secret64);
+    const token = new fernet.Token({ secret });
+    return token.encode(plain);
+  } catch (e) {
+    if (e instanceof AccountServiceError) throw e;
+    throw new AccountServiceError(`用户账户 Key 加密失败: ${String(e)}`, 503);
   }
 }
 

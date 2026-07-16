@@ -132,15 +132,39 @@ export default function SettingsPage() {
     }
     setPasswordSubmitting(true);
     setPasswordAlert(null);
+    let shouldReset = false;
     try {
-      // TODO(改密): Flask 的 auth.change_password 尚未迁移到 web-next，暂无
-      // /api/auth/change-password 端点。接入后端后在此处 fetch，并按成功响应
-      // 显示提示 + 1.5s 跳转登录页、reset 表单（对齐 settings.html 的行为）。
-      // 当前仅做客户端校验（必填 / 最短 8 位 / 两次一致）与占位提示。
-      void currentPw;
-      setPasswordAlert({ msg: '密码修改功能暂未开放', type: 'danger' });
+      const res = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          current_password: currentPw,
+          new_password: newPw,
+          confirm_password: confirmPw,
+        }),
+      });
+      const result = await res.json().catch(() => ({}));
+      const message = result.message || (res.ok ? '密码修改成功。' : '请求失败，请稍后再试。');
+      if (res.ok && result.code === 200) {
+        setPasswordAlert({ msg: message, type: 'success' });
+        shouldReset = true;
+        // 改密后当前会话已失效，1.5s 后跳回登录页（对齐 Flask 的 logout + redirect）
+        setTimeout(() => {
+          router.push(result.redirect_url || '/login');
+        }, 1500);
+      } else {
+        setPasswordAlert({ msg: message, type: 'danger' });
+      }
+    } catch {
+      setPasswordAlert({ msg: '网络错误，请稍后再试。', type: 'danger' });
     } finally {
       setPasswordSubmitting(false);
+      if (shouldReset) {
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+      }
     }
   }
 

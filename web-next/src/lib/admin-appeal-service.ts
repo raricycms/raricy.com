@@ -2,8 +2,9 @@
 // admin-appeal-service.ts — 申诉列表 + 裁决（对齐 Flask app/service/audit_log.py:decide_appeal）
 //
 // 裁决时：置 status/decision/decidedBy/decidedAt + 写 AdminActionLog + 通知申诉人。
-// 通过（accept）时尽力而为地撤回原动作——目前实现 ban_user 的自动解禁；
-// delete_blog / delete_comment 的恢复留 TODO（涉及计数回补，逻辑更复杂）。
+// 通过（accept）时尽力而为地撤回原动作：ban_user 自动解禁；delete_blog 恢复文章
+// （ignore=False）；delete_comment 恢复评论（isDeleted=False）并回补文章冗余计数
+// （commentsCount 重算 + lastCommentAt 刷新）。均对齐 Flask decide_appeal。
 //
 // 注意：不 select AdminActionLog.extra（JSON 列，驱动层拒读，见 audit-service）。
 // ─────────────────────────────────────────────────────────────────────────────
@@ -133,7 +134,15 @@ export async function adjudicate(p: AdjudicateParams): Promise<AdminResult> {
       id: true,
       status: true,
       appellantId: true,
-      log: { select: { id: true, action: true, targetUserId: true } },
+      log: {
+        select: {
+          id: true,
+          action: true,
+          targetUserId: true,
+          objectType: true,
+          objectId: true,
+        },
+      },
     },
   });
   if (!appeal) return { ok: false, code: 404, message: '申诉不存在' };
@@ -164,11 +173,57 @@ export async function adjudicate(p: AdjudicateParams): Promise<AdminResult> {
       });
       if (r.ok) reversedNote = '，已自动解除禁言';
     } else if (
-      appeal.log.action === 'delete_blog' ||
-      appeal.log.action === 'delete_comment'
+      appeal.log.action === 'delete_blog' &&
+      appeal.log.objectType === 'blog' &&
+      appeal.log.objectId
     ) {
-      // TODO: 恢复被删文章/评论（ignore/is_deleted 复位 + 评论计数回补），逻辑较复杂，暂不自动执行
-      reversedNote = '，原动作需人工复核撤回';
+      // 恢复被删文章：ignore=False（仅当当前处于软删除态，对齐 Flask decide_appeal）。
+      const blogId = appeal.log.objectId;
+      const blog = await prisma.blog.findUnique({
+        where: { id: blogId },
+        select: { id: true, ignore: true },
+      });
+      if (blog && blog.ignore) {
+        await prisma.blog.update({ where: { id: blog.id }, data: { ignore: false } });
+        reversedNote = '，已恢复被删文章';
+      }
+    } else if (
+      appeal.log.action === 'delete_comment' &&
+      appeal.log.objectType === 'comment' &&
+      appeal.log.objectId
+    ) {
+      // 恢复被删评论：isDeleted=False + 回补文章冗余计数。
+      // Flask 仅做 comments_count += 1；此处按任务要求参照 comment-service 的删除/新建路径，
+      // 在同一事务内按「未删除评论数」重算 commentsCount，并同步刷新 lastCommentAt
+      // （比 += 1 更健壮，且与 createComment/softDeleteComment 的计数口径一致）。
+      const commentId = appeal.log.objectId;
+      const restored = await prisma.$transaction(async (tx) => {
+        const comment = await tx.blogComment.findUnique({
+          where: { id: commentId },
+          select: { id: true, blogId: true, isDeleted: true },
+        });
+        if (!comment || !comment.isDeleted) return false;
+
+        await tx.blogComment.update({
+          where: { id: comment.id },
+          data: { isDeleted: false },
+        });
+
+        const commentsCount = await tx.blogComment.count({
+          where: { blogId: comment.blogId, isDeleted: false },
+        });
+        const latest = await tx.blogComment.findFirst({
+          where: { blogId: comment.blogId, isDeleted: false },
+          orderBy: { createdAt: 'desc' },
+          select: { createdAt: true },
+        });
+        await tx.blog.update({
+          where: { id: comment.blogId },
+          data: { commentsCount, lastCommentAt: latest?.createdAt ?? null },
+        });
+        return true;
+      });
+      if (restored) reversedNote = '，已恢复被删评论';
     }
   }
 

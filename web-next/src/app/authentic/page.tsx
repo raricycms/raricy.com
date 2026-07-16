@@ -23,10 +23,28 @@ export default function AuthenticPage() {
       return;
     }
     setLoading(true);
-    // TODO(生产): 接入邀请码验证接口（对齐 Flask POST /auth/authentic：verify_invite_code +
-    //             mark_invite_code_used + 角色升级 core）。本切片尚无对应 Next API，先留可见占位，不臆造接口。
-    toast('邀请码验证暂未接入', 'info');
-    setLoading(false);
+    try {
+      const res = await fetch('/api/auth/authentic', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ authentic_code: code }),
+      });
+      const result = await res.json().catch(() => ({}));
+      if (res.ok && result.code === 200) {
+        toast(result.message || '验证成功', 'success');
+        // 升级成功后回主页（此时角色已升为核心用户）
+        setTimeout(() => {
+          window.location.href = '/';
+        }, 1000);
+      } else {
+        toast(result.message || '邀请码无效', 'error');
+        setLoading(false);
+      }
+    } catch {
+      toast('网络错误，请稍后再试', 'error');
+      setLoading(false);
+    }
   }
 
   return (

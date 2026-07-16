@@ -39,9 +39,8 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
       publicity: publicityRef.current,
     };
     try {
-      // 编辑态对齐 Flask POST /clipboard/<id>/edit；新建态对齐 POST /clipboard/upload。
-      // TODO(backend): Next 侧 /api/clipboard/[id] 目前仅实现 GET，尚无编辑（PUT）接口，
-      // 编辑态保存会命中缺失的 PUT 路由并回落到错误提示（可见占位，接口待补）。
+      // 编辑态命中 PUT /api/clipboard/[id]（对齐 Flask POST /clipboard/<id>/edit）；
+      // 新建态命中 POST /api/clipboard（对齐 Flask POST /clipboard/upload）。
       const url = isEdit ? `/api/clipboard/${clip!.id}` : '/api/clipboard';
       const method = isEdit ? 'PUT' : 'POST';
       const response = await fetch(url, {

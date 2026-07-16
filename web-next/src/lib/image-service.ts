@@ -81,6 +81,63 @@ export async function listUserImages(userId: string): Promise<ImageMeta[]> {
   return images.map(serialize);
 }
 
+// ── 管理端（站长）：全站图片列表 + 总用量，对齐 get_all_images / get_total_storage_bytes ──
+
+const ADMIN_PER_PAGE = 30; // 对齐 Flask get_all_images(per_page=30)
+
+export interface AdminImagePage {
+  images: ImageMeta[];
+  total: number;
+  pages: number;
+  page: number;
+}
+
+/**
+ * 全站未软删图片分页列表（最新在前），对齐 get_all_images。
+ * search 命中「文件名 contains」或「上传者用户名 contains」（对齐 Flask 的
+ * filename.contains OR author_id in (username 命中的用户)）。
+ */
+export async function listAllImages(
+  page = 1,
+  search: string | null = null,
+): Promise<AdminImagePage> {
+  const safePage = Number.isFinite(page) && page > 0 ? Math.floor(page) : 1;
+  const where = {
+    ignore: false,
+    ...(search
+      ? {
+          OR: [
+            { filename: { contains: search } },
+            { author: { username: { contains: search } } },
+          ],
+        }
+      : {}),
+  } as const;
+
+  const [total, images] = await Promise.all([
+    prisma.imageHosting.count({ where }),
+    prisma.imageHosting.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      skip: (safePage - 1) * ADMIN_PER_PAGE,
+      take: ADMIN_PER_PAGE,
+      select: META_SELECT,
+    }),
+  ]);
+
+  const pages = Math.ceil(total / ADMIN_PER_PAGE);
+  return { images: images.map(serialize), total, pages, page: safePage };
+}
+
+/** 全站已用存储字节数（仅统计未软删），对齐 get_total_storage_bytes。 */
+export async function getTotalStorageBytes(): Promise<number> {
+  const agg = await prisma.imageHosting.aggregate({
+    _sum: { fileSize: true },
+    where: { ignore: false },
+  });
+  return agg._sum.fileSize ?? 0;
+}
+
 /** 取单张图片元信息；不存在或已软删返回 null。 */
 export async function getImageMeta(id: string): Promise<ImageMeta | null> {
   const img = await prisma.imageHosting.findUnique({

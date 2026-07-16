@@ -6,7 +6,7 @@
 //   • 指定用户面板：可搜索用户列表 + 编写表单（通知类型 / 内容 / 关联对象类型·ID）
 //   • 群发面板：目标用户组 + 通知类型 + 关联对象类型·ID + 实时目标用户数量预览
 // 群发走 POST /api/admin/broadcast（已支持 objectType/objectId）。
-// 单用户发送后端端点尚未迁移，提交处标了 TODO(no backend)。
+// 单用户发送走 POST /api/admin/notify-user（对齐 Flask sendNotificationToUser）。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useMemo, useState } from 'react';
@@ -137,8 +137,9 @@ export default function AdminBroadcastPage() {
     }
   }
 
-  function submitToUser(e: React.FormEvent) {
+  async function submitToUser(e: React.FormEvent) {
     e.preventDefault();
+    if (busy) return;
     if (!selectedUserId) {
       toast('请先选择要接收通知的用户', 'warning');
       return;
@@ -147,9 +148,32 @@ export default function AdminBroadcastPage() {
       toast('请填写完整的通知信息', 'warning');
       return;
     }
-    // TODO(no backend): Next 尚无单用户通知发送端点（仅群发 /api/admin/broadcast）。
-    // UI 对齐 Flask sendNotificationToUser，待后端补 send-notification-to-user 端点后接入。
-    toast('单用户通知发送端点尚未迁移', 'info');
+    setBusy(true);
+    try {
+      const res = await fetch('/api/admin/notify-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          recipientId: selectedUserId,
+          action: userAction,
+          detail: userDetail,
+          objectType: userObjectType || null,
+          objectId: userObjectId || null,
+        }),
+      });
+      const data = await res.json();
+      if (data.code === 200) {
+        toast(data.message ?? '通知发送成功', 'success');
+        clearUserForm();
+      } else {
+        toast(data.message ?? '发送失败', 'error');
+      }
+    } catch {
+      toast('网络错误', 'error');
+    } finally {
+      setBusy(false);
+    }
   }
 
   function clearUserForm() {

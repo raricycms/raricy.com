@@ -59,6 +59,54 @@ export async function createClip(
   return { ok: true, id };
 }
 
+export interface UpdateClipInput {
+  title: string;
+  content: string;
+  publicity: boolean;
+}
+
+export type UpdateClipResult =
+  | { ok: true; id: string }
+  | { ok: false; reason: 'not_found' | 'forbidden' };
+
+/**
+ * 编辑剪贴板（对齐 Flask edit 路由 + ClipService.update_clipboard）。
+ * - 先取剪贴板并排除软删除（ignore=true）→ not_found（对齐 get_clipboard 的 ignore 检查）。
+ * - 权限=作者本人；非作者 → forbidden（对齐 Flask edit：仅作者，无 owner 例外）。
+ * - 更新 title/publicity，并 upsert 正文（无 ClipText 记录时新建，对齐 update_clipboard）。
+ * - 不改动 ignore，保留软删除语义。
+ */
+export async function updateClip(
+  clipId: string,
+  editorId: string,
+  input: UpdateClipInput
+): Promise<UpdateClipResult> {
+  const clip = await prisma.clipBoard.findFirst({
+    where: { id: clipId, ignore: false },
+    select: { id: true, authorId: true },
+  });
+
+  if (!clip) return { ok: false, reason: 'not_found' };
+  if (clip.authorId !== editorId) return { ok: false, reason: 'forbidden' };
+
+  const now = new Date();
+  await prisma.clipBoard.update({
+    where: { id: clipId },
+    data: {
+      title: input.title,
+      publicity: input.publicity,
+      content: {
+        upsert: {
+          create: { content: input.content, updatedAt: now },
+          update: { content: input.content, updatedAt: now },
+        },
+      },
+    },
+  });
+
+  return { ok: true, id: clipId };
+}
+
 export type GetClipResult =
   | { ok: true; clip: ClipDetail }
   | { ok: false; reason: 'not_found' | 'forbidden' };
