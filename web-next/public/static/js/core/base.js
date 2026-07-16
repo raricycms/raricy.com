@@ -297,7 +297,12 @@ function enhanceFileInputs() {
 window.enhanceFileInputs = enhanceFileInputs;
 
 // 页面加载后：初始化顶栏交互与通知
-document.addEventListener('DOMContentLoaded', function() {
+//
+// 注意：本文件在 Next 侧由 <Script strategy="afterInteractive"> 加载，此时
+// DOMContentLoaded 早已触发完毕——若仍只注册该事件的监听器，回调永远不会执行，
+// 顶栏折叠 / 用户下拉 / 通知计数等会全部失效。故改为：DOM 已就绪则立即初始化。
+// （原 Flask 由 base.html 内联 <script> 在解析期执行，赶得上该事件，故无此问题。）
+function initSiteChrome() {
     updateNotificationCount();
     updateCheckinIndicator();
     enhanceFileInputs();
@@ -349,7 +354,14 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }
-});
+}
+
+// DOM 还在解析 → 等事件；已就绪（Next 的 afterInteractive 即属此列）→ 立即执行。
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initSiteChrome);
+} else {
+    initSiteChrome();
+}
 
 // 主题切换按钮
 const themeToggleButton = document.getElementById('themeToggle');
