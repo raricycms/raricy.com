@@ -1,0 +1,47 @@
+import Link from 'next/link';
+
+// 403 禁止访问页 —— 逐节点还原原 errorhandlers/403.html（彩虹渐变 + 色相循环）。
+// 由 forbidden()（受控页非核心用户）在原地以 403 状态渲染。
+export default function Forbidden() {
+  return (
+    <>
+      <style>{`
+        .rainbow-error{position:relative;min-height:calc(100vh - 64px);display:flex;align-items:center;justify-content:center;padding:48px 24px;overflow:hidden;text-align:center}
+        .rainbow-error__bg{position:absolute;inset:0;z-index:0;background:linear-gradient(to bottom right,#FF8C8C,#FFC060,#FFFF66,#80FFB0,#99E6FF,#A090FF,#EEB0EE);background-size:100% 100%;animation:rainbow-hue-cycle 3s linear infinite}
+        @keyframes rainbow-hue-cycle{from{filter:hue-rotate(0deg)}to{filter:hue-rotate(360deg)}}
+        @media (prefers-reduced-motion: reduce){.rainbow-error__bg{animation:none}}
+        .rainbow-error__box{position:relative;z-index:1;max-width:560px;width:100%;padding:44px 40px;border-radius:20px;background:rgba(0,0,0,.58);border:1px solid rgba(255,255,255,.22);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);box-shadow:0 20px 60px rgba(0,0,0,.35);color:#fff}
+        .rainbow-error__code{font-size:clamp(4.5rem,15vw,7rem);font-weight:800;line-height:1;letter-spacing:-.04em;text-shadow:0 0 24px rgba(255,255,255,.45)}
+        .rainbow-error__title{font-size:clamp(1.4rem,4vw,1.9rem);font-weight:700;margin-top:8px;color:#fff}
+        .rainbow-error__msg{margin-top:14px;font-size:1.02rem;color:rgba(255,255,255,.9)}
+        .rainbow-error__hint{margin-top:8px;font-size:.9rem;color:rgba(255,255,255,.72);line-height:1.7}
+        .rainbow-error__actions{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;margin-top:30px}
+        .rainbow-error__btn{display:inline-flex;align-items:center;gap:7px;padding:11px 22px;border-radius:var(--r-pill);font-size:.95rem;font-weight:600;transition:transform .2s ease,box-shadow .2s ease,background-color .2s ease}
+        .rainbow-error__btn .icon{width:1.05rem;height:1.05rem}
+        .rainbow-error__btn--solid{background:#fff;color:#1d1d1f}
+        .rainbow-error__btn--solid:hover{transform:translateY(-2px);box-shadow:0 8px 22px rgba(0,0,0,.25)}
+        .rainbow-error__btn--ghost{background:rgba(255,255,255,.14);color:#fff;border:1px solid rgba(255,255,255,.35)}
+        .rainbow-error__btn--ghost:hover{background:rgba(255,255,255,.24)}
+      `}</style>
+      <div className="rainbow-error">
+        <div className="rainbow-error__bg" aria-hidden="true"></div>
+        <div className="rainbow-error__box">
+          <p className="rainbow-error__code">403</p>
+          <h1 className="rainbow-error__title">禁止访问</h1>
+          <p className="rainbow-error__msg">抱歉，您没有足够的权限访问此页面。</p>
+          <p className="rainbow-error__hint">
+            可能是该内容需要特定权限，或者您的账户尚未登录。登录后再试，或联系网站管理员。
+          </p>
+          <div className="rainbow-error__actions">
+            <Link href="/login" className="rainbow-error__btn rainbow-error__btn--solid">
+              <span className="icon icon-person-circle"></span>去登录
+            </Link>
+            <Link href="/" className="rainbow-error__btn rainbow-error__btn--ghost">
+              <span className="icon icon-house"></span>返回首页
+            </Link>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}

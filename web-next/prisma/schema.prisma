@@ -1,0 +1,451 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// raricy.com — Prisma schema (规范 / 目标态)
+//
+// 从现有 Flask/SQLAlchemy 数据库 1:1 映射而来。字段用 camelCase，通过 @map/@@map
+// 对齐真实 snake_case 表/列名，**不改动数据结构**。
+//
+// ⚠️ 关键：DateTime 格式
+//   SQLAlchemy 以 "YYYY-MM-DD HH:MM:SS.ffffff"（空格分隔、无时区）写入；
+//   Prisma 的 SQLite 连接器按列的“声明类型 DATETIME”在驱动层解析，要求 ISO-8601，
+//   否则报 "Conversion failed: input contains invalid characters"（已实测复现）。
+//   因此使用本 schema 前，数据库必须先规整为 ISO：
+//       npm run db:normalize            # 在副本上执行，见 scripts/normalize-datetimes.mjs
+//   规整后 Flask 侧若仍需读同库，需要给 SQLAlchemy 配 ISO 兼容类型
+//   （见 docs/nextjs-migration/03-数据库映射与陷阱.md 附录）；否则按“硬切换”处理。
+//
+// 其它：
+//   • admin_action_logs.extra 是 JSON 列，SQLite 上 Prisma 无 Json 标量 → 映射 String，
+//     应用层自行 JSON.parse/stringify。
+//   • 该库 schema 仍由 Flask-Migrate/Alembic 管理，**不要**对本库跑 prisma migrate。
+// ─────────────────────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ── 用户与权限 ───────────────────────────────────────────────────────────────
+
+model User {
+  id             String    @id
+  username       String    @unique
+  email          String    @unique
+  passwordHash   String    @map("password_hash")
+  createdAt      DateTime? @map("created_at")
+  lastLogin      DateTime? @map("last_login")
+  avatarPath     String?   @map("avatar_path")
+  bio            String?
+  sessionVersion Int       @default(0) @map("session_version")
+
+  notifyLike   Boolean? @default(true) @map("notify_like")
+  notifyEdit   Boolean? @default(true) @map("notify_edit")
+  notifyDelete Boolean? @default(true) @map("notify_delete")
+  notifyAdmin  Boolean? @default(true) @map("notify_admin")
+
+  showRecentBlogs    Boolean @default(true) @map("show_recent_blogs")
+  showRecentComments Boolean @default(true) @map("show_recent_comments")
+
+  isBanned  Boolean?  @default(false) @map("is_banned")
+  banUntil  DateTime? @map("ban_until")
+  banReason String?   @map("ban_reason")
+
+  role String @default("user")
+
+  totalFortune Int   @default(0) @map("total_fortune")
+  driedFish    Float @default(0) @map("dried_fish")
+
+  fishApiKeyEncrypted String? @map("fish_api_key_encrypted")
+
+  blogs                 Blog[]              @relation("BlogAuthor")
+  blogLikes             BlogLike[]
+  comments              BlogComment[]       @relation("CommentAuthor")
+  commentLikes          CommentLike[]
+  notificationsReceived Notification[]      @relation("NotificationRecipient")
+  notificationsSent     Notification[]      @relation("NotificationActor")
+  clipboards            ClipBoard[]
+  images                ImageHosting[]
+  photoWallItems        PhotoWallItem[]
+  votes                 Vote[]
+  voteRecords           VoteRecord[]
+  checkins              DailyCheckIn[]
+  fishTransactions      FishTransaction[]   @relation("FishTxUser")
+  fishTransactionsPeer  FishTransaction[]   @relation("FishTxRelated")
+  blogFeeds             BlogFeed[]
+  adminActionsPerformed AdminActionLog[]    @relation("LogAdmin")
+  adminActionsReceived  AdminActionLog[]    @relation("LogTarget")
+  appeals               AdminActionAppeal[] @relation("AppealAppellant")
+  appealsDecided        AdminActionAppeal[] @relation("AppealDecider")
+  invitesUsed           InviteCode[]
+  bansReceived          UserBan[]           @relation("BanUser")
+  bansIssued            UserBan[]           @relation("BanAdmin")
+  bansLifted            UserBan[]           @relation("BanLifter")
+
+  @@map("users")
+}
+
+model InviteCode {
+  id        Int       @id @default(autoincrement())
+  code      String    @unique
+  isUsed    Boolean?  @default(false) @map("is_used")
+  createdAt DateTime? @map("created_at")
+  usedBy    String?   @map("used_by")
+
+  usedByUser User? @relation(fields: [usedBy], references: [id])
+
+  @@map("invite_codes")
+}
+
+model UserBan {
+  id       Int       @id @default(autoincrement())
+  userId   String    @map("user_id")
+  adminId  String    @map("admin_id")
+  bannedAt DateTime  @map("banned_at")
+  banUntil DateTime  @map("ban_until")
+  reason   String
+  isLifted Boolean?  @default(false) @map("is_lifted")
+  liftedAt DateTime? @map("lifted_at")
+  liftedBy String?   @map("lifted_by")
+
+  user   User  @relation("BanUser", fields: [userId], references: [id])
+  admin  User  @relation("BanAdmin", fields: [adminId], references: [id])
+  lifter User? @relation("BanLifter", fields: [liftedBy], references: [id])
+
+  @@map("user_bans")
+}
+
+// ── 博客 ─────────────────────────────────────────────────────────────────────
+
+model Blog {
+  id            String    @id
+  title         String
+  description   String    @default("")
+  authorId      String    @map("author_id")
+  createdAt     DateTime? @map("created_at")
+  ignore        Boolean?  @default(false)
+  likesCount    Int?      @default(0) @map("likes_count")
+  fishCount     Int       @default(0) @map("fish_count")
+  commentsCount Int?      @default(0) @map("comments_count")
+  lastCommentAt DateTime? @map("last_comment_at")
+  categoryId    Int?      @map("category_id")
+  isFeatured    Boolean?  @default(false) @map("is_featured")
+
+  author   User          @relation("BlogAuthor", fields: [authorId], references: [id])
+  category Category?     @relation(fields: [categoryId], references: [id])
+  content  BlogContent?
+  likes    BlogLike[]
+  comments BlogComment[]
+  feeds    BlogFeed[]
+
+  @@map("blogs")
+}
+
+model BlogContent {
+  blogId    String    @id @map("blog_id")
+  content   String
+  updatedAt DateTime? @map("updated_at")
+
+  blog Blog @relation(fields: [blogId], references: [id])
+
+  @@map("blog_contents")
+}
+
+model BlogLike {
+  id               Int       @id @default(autoincrement())
+  blogId           String    @map("blog_id")
+  userId           String    @map("user_id")
+  createdAt        DateTime? @map("created_at")
+  notificationSent Boolean   @default(false) @map("notification_sent")
+  deleted          Boolean   @default(false)
+  deletedAt        DateTime? @map("deleted_at")
+
+  blog Blog @relation(fields: [blogId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([blogId, userId], name: "uq_blog_like_blog_user")
+  @@map("blog_likes")
+}
+
+model BlogFeed {
+  id        Int       @id @default(autoincrement())
+  blogId    String    @map("blog_id")
+  userId    String    @map("user_id")
+  amount    Float     @default(0)
+  createdAt DateTime? @map("created_at")
+  updatedAt DateTime? @map("updated_at")
+
+  blog Blog @relation(fields: [blogId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([blogId, userId], name: "uq_blog_feed_user")
+  @@map("blog_feeds")
+}
+
+// ── 分类 ─────────────────────────────────────────────────────────────────────
+
+model Category {
+  id                Int       @id @default(autoincrement())
+  name              String
+  slug              String    @unique
+  description       String?   @default("")
+  parentId          Int?      @map("parent_id")
+  sortOrder         Int?      @default(0) @map("sort_order")
+  isActive          Boolean?  @default(true) @map("is_active")
+  icon              String?   @default("")
+  createdAt         DateTime? @map("created_at")
+  excludeFromAll    Boolean?  @default(false) @map("exclude_from_all")
+  adminOnlyPosting  Boolean?  @default(false) @map("admin_only_posting")
+  notifyAdminOnPost Boolean?  @default(false) @map("notify_admin_on_post")
+
+  parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children Category[] @relation("CategoryTree")
+  blogs    Blog[]
+
+  @@map("categories")
+}
+
+// ── 评论 ─────────────────────────────────────────────────────────────────────
+
+model BlogComment {
+  id          String    @id
+  blogId      String    @map("blog_id")
+  authorId    String    @map("author_id")
+  parentId    String?   @map("parent_id")
+  rootId      String?   @map("root_id")
+  content     String
+  contentHtml String?   @map("content_html")
+  status      String?   @default("approved")
+  isDeleted   Boolean?  @default(false) @map("is_deleted")
+  likesCount  Int?      @default(0) @map("likes_count")
+  createdAt   DateTime? @map("created_at")
+  updatedAt   DateTime? @map("updated_at")
+
+  blog        Blog          @relation(fields: [blogId], references: [id])
+  author      User          @relation("CommentAuthor", fields: [authorId], references: [id])
+  parent      BlogComment?  @relation("CommentParent", fields: [parentId], references: [id])
+  children    BlogComment[] @relation("CommentParent")
+  root        BlogComment?  @relation("CommentRoot", fields: [rootId], references: [id])
+  descendants BlogComment[] @relation("CommentRoot")
+  likes       CommentLike[]
+
+  @@map("blog_comments")
+}
+
+model CommentLike {
+  id        Int       @id @default(autoincrement())
+  commentId String    @map("comment_id")
+  userId    String    @map("user_id")
+  createdAt DateTime? @map("created_at")
+
+  comment BlogComment @relation(fields: [commentId], references: [id])
+  user    User        @relation(fields: [userId], references: [id])
+
+  @@unique([commentId, userId], name: "uq_comment_like_comment_user")
+  @@map("comment_likes")
+}
+
+// ── 通知 ─────────────────────────────────────────────────────────────────────
+
+model Notification {
+  id          String    @id
+  timestamp   DateTime? @map("timestamp")
+  action      String
+  recipientId String    @map("recipient_id")
+  actorId     String?   @map("actor_id")
+  objectType  String?   @map("object_type")
+  objectId    String?   @map("object_id")
+  detail      String?
+  read        Boolean   @default(false)
+
+  recipient User  @relation("NotificationRecipient", fields: [recipientId], references: [id])
+  actor     User? @relation("NotificationActor", fields: [actorId], references: [id])
+
+  @@map("notifications")
+}
+
+// ── 剪贴板 ───────────────────────────────────────────────────────────────────
+
+model ClipBoard {
+  id        String    @id
+  title     String
+  authorId  String    @map("author_id")
+  createdAt DateTime? @map("created_at")
+  ignore    Boolean?  @default(false)
+  publicity Boolean?  @default(true)
+
+  author  User      @relation(fields: [authorId], references: [id])
+  content ClipText?
+
+  @@map("clipboards")
+}
+
+model ClipText {
+  clipId    String    @id @map("clip_id")
+  content   String
+  updatedAt DateTime? @map("updated_at")
+
+  clipboard ClipBoard @relation(fields: [clipId], references: [id])
+
+  @@map("clip_text")
+}
+
+// ── 图床与照片墙 ─────────────────────────────────────────────────────────────
+
+model ImageHosting {
+  id        String    @id
+  filename  String
+  fileSize  Int       @map("file_size")
+  mimeType  String    @map("mime_type")
+  authorId  String    @map("author_id")
+  createdAt DateTime? @map("created_at")
+  isPublic  Boolean?  @default(true) @map("is_public")
+  ignore    Boolean?  @default(false)
+
+  author    User            @relation(fields: [authorId], references: [id])
+  wallItems PhotoWallItem[]
+
+  @@map("image_hosting")
+}
+
+model PhotoWallItem {
+  id        String    @id
+  imageId   String    @map("image_id")
+  x         Float     @default(0)
+  y         Float     @default(0)
+  rotation  Float     @default(0)
+  zIndex    Int       @default(0) @map("z_index")
+  scale     Float     @default(1)
+  authorId  String    @map("author_id")
+  createdAt DateTime? @map("created_at")
+  updatedAt DateTime? @map("updated_at")
+  ignore    Boolean?  @default(false)
+
+  image  ImageHosting @relation(fields: [imageId], references: [id])
+  author User         @relation(fields: [authorId], references: [id])
+
+  @@map("photo_wall_items")
+}
+
+// ── 投票 ─────────────────────────────────────────────────────────────────────
+
+model Vote {
+  id        String    @id
+  title     String
+  authorId  String    @map("author_id")
+  isLocked  Boolean?  @default(false) @map("is_locked")
+  ignore    Boolean?  @default(false)
+  createdAt DateTime? @map("created_at")
+
+  author  User         @relation(fields: [authorId], references: [id])
+  options VoteOption[]
+  records VoteRecord[]
+
+  @@map("votes")
+}
+
+model VoteOption {
+  id        Int    @id @default(autoincrement())
+  voteId    String @map("vote_id")
+  label     String
+  sortOrder Int?   @default(0) @map("sort_order")
+  voteCount Int?   @default(0) @map("vote_count")
+
+  vote    Vote         @relation(fields: [voteId], references: [id])
+  records VoteRecord[]
+
+  @@map("vote_options")
+}
+
+model VoteRecord {
+  id        Int       @id @default(autoincrement())
+  voteId    String    @map("vote_id")
+  optionId  Int       @map("option_id")
+  userId    String    @map("user_id")
+  createdAt DateTime? @map("created_at")
+
+  vote   Vote       @relation(fields: [voteId], references: [id])
+  option VoteOption @relation(fields: [optionId], references: [id])
+  user   User       @relation(fields: [userId], references: [id])
+
+  @@unique([voteId, userId], name: "uq_vote_user")
+  @@map("vote_records")
+}
+
+// ── 签到 ─────────────────────────────────────────────────────────────────────
+
+model DailyCheckIn {
+  id           Int       @id @default(autoincrement())
+  userId       String    @map("user_id")
+  checkinDate  DateTime  @map("checkin_date")
+  createdAt    DateTime? @map("created_at")
+  fortuneValue Int?      @map("fortune_value")
+  fortunePool  String?   @map("fortune_pool")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, checkinDate], name: "uq_user_checkin_date")
+  @@map("daily_checkins")
+}
+
+// ── 小鱼干流水 ───────────────────────────────────────────────────────────────
+
+model FishTransaction {
+  id            Int       @id @default(autoincrement())
+  userId        String    @map("user_id")
+  amount        Float
+  type          String
+  description   String?
+  referenceType String?   @map("reference_type")
+  referenceId   String?   @map("reference_id")
+  relatedUserId String?   @map("related_user_id")
+  createdAt     DateTime? @map("created_at")
+
+  user        User  @relation("FishTxUser", fields: [userId], references: [id])
+  relatedUser User? @relation("FishTxRelated", fields: [relatedUserId], references: [id])
+
+  @@map("fish_transactions")
+}
+
+// ── 管理审计 ─────────────────────────────────────────────────────────────────
+
+model AdminActionLog {
+  id           Int       @id @default(autoincrement())
+  createdAt    DateTime? @map("created_at")
+  action       String
+  adminId      String    @map("admin_id")
+  targetUserId String?   @map("target_user_id")
+  objectType   String?   @map("object_type")
+  objectId     String?   @map("object_id")
+  reason       String?
+  // SQLite 上 Prisma 无 Json 标量：以 String 存原始 JSON 文本，应用层自行解析
+  extra        String?
+  visibility   String    @default("public")
+
+  admin      User                @relation("LogAdmin", fields: [adminId], references: [id])
+  targetUser User?               @relation("LogTarget", fields: [targetUserId], references: [id])
+  appeals    AdminActionAppeal[]
+
+  @@map("admin_action_logs")
+}
+
+model AdminActionAppeal {
+  id          Int       @id @default(autoincrement())
+  createdAt   DateTime? @map("created_at")
+  updatedAt   DateTime? @map("updated_at")
+  logId       Int       @map("log_id")
+  appellantId String    @map("appellant_id")
+  content     String
+  status      String    @default("pending")
+  decision    String?
+  decidedBy   String?   @map("decided_by")
+  decidedAt   DateTime? @map("decided_at")
+
+  log       AdminActionLog @relation(fields: [logId], references: [id])
+  appellant User           @relation("AppealAppellant", fields: [appellantId], references: [id])
+  decider   User?          @relation("AppealDecider", fields: [decidedBy], references: [id])
+
+  @@map("admin_action_appeals")
+}
