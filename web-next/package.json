@@ -11,7 +11,8 @@
     "prisma:pull": "prisma db pull",
     "prisma:generate": "prisma generate",
     "prisma:studio": "prisma studio",
-    "db:normalize": "node scripts/normalize-datetimes.mjs --source ../instance/database/db.db --dest prisma/dev.db"
+    "db:normalize": "node scripts/normalize-datetimes.mjs --source ../instance/database/db.db --dest prisma/dev.db",
+    "diagnose": "node scripts/diagnose-deploy.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.2.1",
