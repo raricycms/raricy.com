@@ -11,7 +11,7 @@
 
 import { prisma } from './db';
 import { nowForDb } from './db-time';
-import type { SafeUser } from './auth';
+import { isOwner, type SafeUser } from './auth';
 import { sendNotification } from './notification-service';
 import { logAdminAction, unbanUser, type AdminResult } from './admin-user-service';
 
@@ -121,8 +121,14 @@ export interface AdjudicateParams {
 /**
  * 裁决申诉（对齐 decide_appeal）。accept→status 'accepted'，reject→'rejected'。
  * accept 时尝试撤回原动作（当前：ban_user 自动解禁）。
+ *
+ * 权限：**仅站长**（Flask 的 decide_appeal 是 @admin_required + @owner_required）。
+ * 校验放在 service 层而不只在路由，是与群发同一套纵深防御：申诉是对管理员权力的
+ * 制衡，管理员能自己裁决申诉的话这道闸就形同虚设。
  */
 export async function adjudicate(p: AdjudicateParams): Promise<AdminResult> {
+  if (!isOwner(p.actor)) return { ok: false, code: 403, message: '没有站长权限' };
+
   if (p.decision !== 'accept' && p.decision !== 'reject')
     return { ok: false, code: 400, message: '无效处理结果' };
 

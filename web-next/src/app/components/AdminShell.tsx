@@ -31,7 +31,14 @@ export default function AdminShell({
         ] as AdminNavItem[])
       : []),
     ...(isCoreUser(user) ? ([{ href: '/admin/users', label: '用户管理', icon: '👥' }] as AdminNavItem[]) : []),
-    ...(isOwner(user) ? ([{ href: '/admin/broadcast', label: '通知发送', icon: '📢' }] as AdminNavItem[]) : []),
+    ...(isOwner(user)
+      ? ([
+          { href: '/admin/broadcast', label: '通知发送', icon: '📢' },
+          // 申诉审批仅站长（对齐 Flask decide_appeal 的 @owner_required）。
+          // 此前侧栏里根本没有这一项，页面唯一的入口是 /audit/[id] 详情页里的一句提示。
+          { href: '/admin/appeals', label: '申诉管理', icon: '⚖️' },
+        ] as AdminNavItem[])
+      : []),
     ...(isCoreUser(user) ? ([{ href: '/audit', label: '操作日志', icon: '📋' }] as AdminNavItem[]) : []),
   ];
 

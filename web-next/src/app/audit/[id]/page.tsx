@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requireCoreUser } from '@/lib/guard';
 import { getLogDetail } from '@/lib/audit-service';
-import { hasAdminRights } from '@/lib/auth';
+import { isOwner } from '@/lib/auth';
 import { ymdhms } from '@/lib/format';
 import AppealForm from './AppealForm';
 
@@ -12,9 +12,10 @@ import AppealForm from './AppealForm';
 // 更要紧的是提交申诉的 API（/api/audit/[id]/appeal）因此成了孤儿 —— 用户根本
 // 没有入口申诉，而 Flask 里是可以的。
 //
-// 与 Flask 的一处差异：管理员的「通过/驳回」按钮不在这里重复实现。
-// Next 侧已有专门的 /admin/appeals 审批页（含批量、筛选），这里只给入口，
-// 避免同一操作两处实现、两处维护。
+// 与 Flask 的一处差异：「通过/驳回」按钮不在这里重复实现。Next 侧已有专门的
+// /admin/appeals 审批页（含批量、筛选），这里只给入口，避免同一操作两处维护。
+// 该入口仅对站长显示 —— 审批是站长专属（对齐 Flask decide_appeal 的
+// @owner_required），给管理员看这条提示只会把他们送去一个 403 页面。
 
 export const dynamic = 'force-dynamic';
 
@@ -39,7 +40,7 @@ export default async function AuditLogDetailPage({
   const log = await getLogDetail(logId);
   if (!log) notFound();
 
-  const isAdmin = hasAdminRights(user);
+  const owner = isOwner(user);
 
   return (
     <div className="container">
@@ -97,7 +98,8 @@ export default async function AuditLogDetailPage({
         )}
       </ul>
 
-      {isAdmin && log.appeals.some((a) => a.status === 'pending') ? (
+      {/* 审批仅站长 —— 给管理员看这条提示会把他们送去一个 403 的页面 */}
+      {owner && log.appeals.some((a) => a.status === 'pending') ? (
         <div className="alert alert-info mb-3">
           有待处理的申诉 —— 去 <Link href="/admin/appeals">申诉管理</Link> 审批。
         </div>

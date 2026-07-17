@@ -917,6 +917,64 @@ describe('createAppeal（提交申诉）', () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe('adjudicate（裁决申诉）', () => {
+  // ★ 权限：仅站长可裁决（对齐 Flask decide_appeal 的 @admin_required + @owner_required）。
+  // 此前路由与 service 都只判 hasAdminRights —— 申诉是对管理员权力的制衡，
+  // 管理员能自己裁决申诉的话这道闸形同虚设（包括裁决针对自己那条操作的申诉）。
+  // 本块其余用例的 actor 因此一律用 owner：它们测的是「裁决逻辑」，不是「谁能裁决」。
+
+  it('★ 管理员不能裁决申诉', async () => {
+    const admin = await makeUser({ role: 'admin' });
+    const user = await makeUser({ role: 'core' });
+    const logId = await makeLog({ action: 'ban_user', adminId: admin.id, targetUserId: user.id });
+    const appeal = await prisma.adminActionAppeal.create({
+      data: { logId, appellantId: user.id, content: 'x', status: 'pending',
+              createdAt: new Date(), updatedAt: new Date() },
+      select: { id: true },
+    });
+
+    expect(
+      await adjudicate({ actor: asActor(admin), appealId: appeal.id, decision: 'accept' })
+    ).toMatchObject({ ok: false, code: 403, message: '没有站长权限' });
+
+    // 申诉状态不该被动过
+    const after = await prisma.adminActionAppeal.findUnique({ where: { id: appeal.id } });
+    expect(after!.status).toBe('pending');
+    expect(after!.decidedBy).toBeNull();
+  });
+
+  it('★ 管理员不能裁决「针对自己那条操作」的申诉（制衡的要害就在这）', async () => {
+    const admin = await makeUser({ role: 'admin' });
+    const victim = await makeUser({ role: 'core' });
+    const logId = await makeLog({ action: 'ban_user', adminId: admin.id, targetUserId: victim.id });
+    const appeal = await prisma.adminActionAppeal.create({
+      data: { logId, appellantId: victim.id, content: '我不服', status: 'pending',
+              createdAt: new Date(), updatedAt: new Date() },
+      select: { id: true },
+    });
+
+    expect(
+      await adjudicate({ actor: asActor(admin), appealId: appeal.id, decision: 'reject' })
+    ).toMatchObject({ ok: false, code: 403 });
+    expect(
+      (await prisma.adminActionAppeal.findUnique({ where: { id: appeal.id } }))!.status
+    ).toBe('pending');
+  });
+
+  it('core / 普通用户不能裁决', async () => {
+    const admin = await makeUser({ role: 'admin' });
+    const core = await makeUser({ role: 'core' });
+    const plain = await makeUser({ role: 'user' });
+    const logId = await makeLog({ action: 'ban_user', adminId: admin.id, targetUserId: core.id });
+    const appeal = await prisma.adminActionAppeal.create({
+      data: { logId, appellantId: core.id, content: 'x', status: 'pending',
+              createdAt: new Date(), updatedAt: new Date() },
+      select: { id: true },
+    });
+
+    expect((await adjudicate({ actor: asActor(core), appealId: appeal.id, decision: 'accept' })).ok).toBe(false);
+    expect((await adjudicate({ actor: asActor(plain), appealId: appeal.id, decision: 'accept' })).ok).toBe(false);
+  });
+
   /** 造「日志 + 该日志的 pending 申诉」。 */
   async function makePendingAppeal(opts: {
     action: string;
@@ -942,7 +1000,7 @@ describe('adjudicate（裁决申诉）', () => {
   }
 
   it('accept：置 status/decision/decidedBy/decidedAt + 写 decide_appeal 日志 + 通知申诉人', async () => {
-    const admin = await makeUser({ role: 'admin' });
+    const admin = await makeUser({ role: 'owner' }); // 裁决仅站长，见块首说明
     const user = await makeUser({ role: 'core' });
     const { logId, appealId } = await makePendingAppeal({
       action: 'other_action',
@@ -982,7 +1040,7 @@ describe('adjudicate（裁决申诉）', () => {
   });
 
   it('accept + ban_user → 自动解禁：user 状态清空 + UserBan 标记 lifted + 补 unban_user 日志', async () => {
-    const admin = await makeUser({ role: 'admin' });
+    const admin = await makeUser({ role: 'owner' }); // 裁决仅站长，见块首说明
     const target = await makeUser({ role: 'core' });
 
     await banUser({ actor: asActor(admin), targetId: target.id, hours: 24, reason: '刷屏' });
@@ -1013,7 +1071,7 @@ describe('adjudicate（裁决申诉）', () => {
   });
 
   it('accept + ban_user 但禁言已自然过期 → 撤销静默失败，裁决仍成功（不 rollback）', async () => {
-    const admin = await makeUser({ role: 'admin' });
+    const admin = await makeUser({ role: 'owner' }); // 裁决仅站长，见块首说明
     const target = await makeUser({
       role: 'core',
       isBanned: true,
@@ -1040,7 +1098,7 @@ describe('adjudicate（裁决申诉）', () => {
   });
 
   it('accept + delete_blog → Blog.ignore 复位为 false', async () => {
-    const admin = await makeUser({ role: 'admin' });
+    const admin = await makeUser({ role: 'owner' }); // 裁决仅站长，见块首说明
     const author = await makeUser({ role: 'core' });
     const blog = await makeBlog({ authorId: author.id, ignore: true });
 
@@ -1063,7 +1121,7 @@ describe('adjudicate（裁决申诉）', () => {
   });
 
   it('accept + delete_blog：文章本就未删除 / 文章已不存在 → 不报错，只是没有恢复提示', async () => {
-    const admin = await makeUser({ role: 'admin' });
+    const admin = await makeUser({ role: 'owner' }); // 裁决仅站长，见块首说明
     const author = await makeUser({ role: 'core' });
     const alive = await makeBlog({ authorId: author.id, ignore: false });
 
@@ -1097,7 +1155,7 @@ describe('adjudicate（裁决申诉）', () => {
   });
 
   it('accept + delete_comment → isDeleted 复位，并回补 Blog.commentsCount / lastCommentAt', async () => {
-    const admin = await makeUser({ role: 'admin' });
+    const admin = await makeUser({ role: 'owner' }); // 裁决仅站长，见块首说明
     const author = await makeUser({ role: 'core' });
     const blog = await makeBlog({ authorId: author.id });
 
@@ -1133,7 +1191,7 @@ describe('adjudicate（裁决申诉）', () => {
   });
 
   it('accept + delete_comment：评论未被删 → 不重算计数（幂等，不会把计数越加越多）', async () => {
-    const admin = await makeUser({ role: 'admin' });
+    const admin = await makeUser({ role: 'owner' }); // 裁决仅站长，见块首说明
     const author = await makeUser({ role: 'core' });
     const blog = await makeBlog({ authorId: author.id });
     const c = await makeComment({ blogId: blog.id, authorId: author.id });
@@ -1155,7 +1213,7 @@ describe('adjudicate（裁决申诉）', () => {
   });
 
   it('撤销路径靠 objectType 把关：action 对但 objectType 不匹配 → 不撤销', async () => {
-    const admin = await makeUser({ role: 'admin' });
+    const admin = await makeUser({ role: 'owner' }); // 裁决仅站长，见块首说明
     const author = await makeUser({ role: 'core' });
     const blog = await makeBlog({ authorId: author.id, ignore: true });
 
@@ -1172,7 +1230,7 @@ describe('adjudicate（裁决申诉）', () => {
   });
 
   it('reject：只置状态，绝不撤销原操作（禁言/删文照旧生效）', async () => {
-    const admin = await makeUser({ role: 'admin' });
+    const admin = await makeUser({ role: 'owner' }); // 裁决仅站长，见块首说明
     const target = await makeUser({ role: 'core' });
     const blog = await makeBlog({ authorId: target.id, ignore: true });
 
@@ -1213,7 +1271,7 @@ describe('adjudicate（裁决申诉）', () => {
   });
 
   it('重复裁决 → 400「申诉已处理」，不二次撤销、不二次通知', async () => {
-    const admin = await makeUser({ role: 'admin' });
+    const admin = await makeUser({ role: 'owner' }); // 裁决仅站长，见块首说明
     const target = await makeUser({ role: 'core' });
 
     await banUser({ actor: asActor(admin), targetId: target.id, hours: 24, reason: '刷屏' });
@@ -1243,7 +1301,7 @@ describe('adjudicate（裁决申诉）', () => {
   });
 
   it('裁决不存在的申诉 → 404；无效 decision → 400', async () => {
-    const admin = await makeUser({ role: 'admin' });
+    const admin = await makeUser({ role: 'owner' }); // 裁决仅站长，见块首说明
 
     expect(
       await adjudicate({ actor: asActor(admin), appealId: 999999, decision: 'accept' })
@@ -1259,7 +1317,7 @@ describe('adjudicate（裁决申诉）', () => {
   });
 
   it('不带 note 时 decision 落空串、日志 reason 用默认文案', async () => {
-    const admin = await makeUser({ role: 'admin' });
+    const admin = await makeUser({ role: 'owner' }); // 裁决仅站长，见块首说明
     const user = await makeUser({ role: 'core' });
     const { appealId } = await makePendingAppeal({
       action: 'other_action',
@@ -1282,7 +1340,10 @@ describe('adjudicate（裁决申诉）', () => {
 
 describe('listAppeals（申诉列表）', () => {
   it('按 status 过滤，带出日志/申诉人/裁决人；裁决后从 pending 移到 accepted', async () => {
+    // 管理员执行操作、站长裁决申诉 —— 这正是申诉制度的形状：
+    // 裁决是对管理员的制衡，故 adjudicate 仅站长（对齐 Flask 的 @owner_required）。
     const admin = await makeUser({ role: 'admin', username: 'the_admin' });
+    const owner = await makeUser({ role: 'owner', username: 'the_owner' });
     const user = await makeUser({ role: 'core', username: 'the_user' });
     const logId = await makeLog({
       action: 'delete_blog',
@@ -1320,12 +1381,12 @@ describe('listAppeals（申诉列表）', () => {
     });
     expect(before.items[0].log!.admin.username).toBe('the_admin');
 
-    await adjudicate({ actor: asActor(admin), appealId: appeal.id, decision: 'accept', note: 'ok' });
+    await adjudicate({ actor: asActor(owner), appealId: appeal.id, decision: 'accept', note: 'ok' });
 
     expect((await listAppeals({ status: 'pending' })).total).toBe(0);
     const after = await listAppeals({ status: 'accepted' });
     expect(after.total).toBe(1);
-    expect(after.items[0].decider!.username).toBe('the_admin');
+    expect(after.items[0].decider!.username).toBe('the_owner');
     expect(after.items[0].decidedAt).not.toBeNull();
   });
 });
