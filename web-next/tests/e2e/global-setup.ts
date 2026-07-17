@@ -16,7 +16,7 @@ import path from 'node:path';
 import { PrismaClient } from '@prisma/client';
 import { hashPassword } from '../../src/lib/password';
 import { nowForDb } from '../../src/lib/db-time';
-import { SEED_PASSWORD, SEED_USERS, SEED_CATEGORY, SEED_BLOG } from './seed';
+import { SEED_PASSWORD, SEED_USERS, SEED_CATEGORY, SEED_BLOG, SEED_LOG } from './seed';
 
 // __dirname 而非 import.meta.dirname：Playwright 把本文件转成 CJS 加载，import.meta 在那里会炸。
 const E2E_DB = path.resolve(__dirname, '../.tmp/e2e.db');
@@ -98,6 +98,22 @@ export default async function globalSetup() {
     });
     await prisma.blogContent.create({
       data: { blogId: SEED_BLOG.id, content: SEED_BLOG.content, updatedAt: nowForDb() },
+    });
+
+    // 一条公示日志 —— /audit 列表页与 /audit/[id] 详情页的用例都靠它。
+    // 没有它，那些用例只会静默 skip（跳过 ≠ 通过）。
+    await prisma.adminActionLog.create({
+      data: {
+        id: SEED_LOG.id,
+        action: SEED_LOG.action,
+        adminId: SEED_USERS.admin.id,
+        targetUserId: SEED_USERS.plain.id,
+        objectType: SEED_LOG.objectType,
+        objectId: SEED_LOG.objectId,
+        reason: SEED_LOG.reason,
+        visibility: 'public',
+        createdAt: nowForDb(),
+      },
     });
   } finally {
     await prisma.$disconnect();

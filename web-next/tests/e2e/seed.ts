@@ -26,3 +26,12 @@ export const SEED_BLOG = {
   description: 'E2E 列表页用的摘要',
   content: `# E2E 标题\n\n${BLOG_BODY_MARKER}\n\n- 列表项一\n- 列表项二\n`,
 };
+
+/** 一条公示的管理操作日志 —— /audit 列表与 /audit/[id] 详情页用例的锚点。 */
+export const SEED_LOG = {
+  id: 90001,
+  action: 'delete_comment',
+  objectType: 'comment',
+  objectId: 'e2e-comment-0001',
+  reason: 'E2E 用的操作原因',
+};

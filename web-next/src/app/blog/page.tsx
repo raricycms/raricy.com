@@ -93,9 +93,9 @@ export default async function BlogListPage({
             search={sp.search ?? ''}
             clearHref={clearHref}
           />
-          <a href="/blog/upload_blog" className="upload-button">
+          <Link href="/blog/upload" className="upload-button">
             <span className="icon icon-add"></span>创建文章
-          </a>
+          </Link>
         </div>
       </section>
 

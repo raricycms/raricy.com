@@ -34,6 +34,97 @@ export interface ListLogsParams {
   action?: string | null;
 }
 
+export interface LogDetail {
+  id: number;
+  action: string;
+  createdAt: Date | null;
+  adminId: string | null;
+  adminName: string | null;
+  objectType: string | null;
+  objectId: string | null;
+  targetUserId: string | null;
+  targetUserName: string | null;
+  reason: string | null;
+  appeals: {
+    id: number;
+    content: string;
+    status: string;
+    decision: string | null;
+    createdAt: Date | null;
+    appellantId: string;
+    appellantName: string | null;
+  }[];
+}
+
+/**
+ * 单条公示日志 + 其全部申诉（承载 /audit/[id] 详情页）。
+ *
+ * ⚠️【有意偏离 Flask】Flask 的 get_log 是 get_or_404(log_id)，**不过滤 visibility** ——
+ * 于是列表只公示 public，详情页却让任何 core 用户猜个 ID 就能看到内部日志。
+ * 这里加上 visibility='public'：/audit 的定位就是「管理员操作日志公示」，
+ * 非公示日志不该从公示页读出来。
+ *
+ * 当前真实库里 1391 条日志全部是 public，所以这个差异在今天是空谈、无行为变化；
+ * 加它是为了将来真出现内部日志时不泄露。
+ *
+ * 不套用列表那 30 天的时间窗：那个窗是「公示只列近期」的展示策略，
+ * 对已知 ID 的单条查询没有安全意义，套上反而会让老日志无法申诉。
+ *
+ * @returns null 表示不存在或不可公示（页面据此 notFound）
+ */
+export async function getLogDetail(logId: number): Promise<LogDetail | null> {
+  const log = await prisma.adminActionLog.findFirst({
+    where: { id: logId, visibility: 'public' },
+    select: {
+      id: true,
+      action: true,
+      createdAt: true,
+      adminId: true,
+      objectType: true,
+      objectId: true,
+      targetUserId: true,
+      reason: true,
+      admin: { select: { username: true } },
+      targetUser: { select: { username: true } },
+      appeals: {
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          content: true,
+          status: true,
+          decision: true,
+          createdAt: true,
+          appellantId: true,
+          appellant: { select: { username: true } },
+        },
+      },
+    },
+  });
+  if (!log) return null;
+
+  return {
+    id: log.id,
+    action: log.action,
+    createdAt: log.createdAt,
+    adminId: log.adminId,
+    adminName: log.admin?.username ?? null,
+    objectType: log.objectType,
+    objectId: log.objectId,
+    targetUserId: log.targetUserId,
+    targetUserName: log.targetUser?.username ?? null,
+    reason: log.reason,
+    appeals: log.appeals.map((a) => ({
+      id: a.id,
+      content: a.content,
+      status: a.status,
+      decision: a.decision,
+      createdAt: a.createdAt,
+      appellantId: a.appellantId,
+      appellantName: a.appellant?.username ?? null,
+    })),
+  };
+}
+
 /** 公示日志分页列表（对齐 list_public_logs：public + 近 30 天 + 最新在前）。 */
 export async function listPublicLogs(params: ListLogsParams) {
   const page = Math.max(1, params.page ?? 1);
