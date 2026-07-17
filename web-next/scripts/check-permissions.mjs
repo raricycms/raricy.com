@@ -18,9 +18,18 @@
 //   Next ：读 route.ts 里出现的判权函数 → isOwner/requireOwner > hasAdminRights
 //          > isCoreUser > getCurrentUser > 公开
 //
-// 【它不判什么】路径映射是人工维护的（下面的 MAP）—— Next 重构了 URL 结构
-// （/auth/login → /login、log_id 进了 URL 路径…），没法可靠地自动对上。
-// 新增站长/管理员端点时，请顺手往 MAP 里加一行。
+// 【它不判什么】
+//   · 路径映射是人工维护的（下面的 MAP）—— Next 重构了 URL 结构
+//     （/auth/login → /login、log_id 进了 URL 路径…），没法可靠地自动对上。
+//     新增站长/管理员端点时，请顺手往 MAP 里加一行 —— 漏加会被覆盖率那段揪出来。
+//   · **函数体内的判权**。Flask 有 8 处的实际权限高于装饰器所示，例如 feeders/likers
+//     写着 @login_required，体内却是 `id != author_id and not has_admin_rights → abort(403)`。
+//     这里只读装饰器，所以 Flask 侧的档位可能被**低估**。
+//   · Next 侧取的是「文件里出现过的最高档判权函数」。若某路由是
+//     `isCoreUser` 兜底 + `hasAdminRights` 只管某个分支（如仅管理员可发的栏目），
+//     这里会报成 admin —— 档位被**高估**。两个方向的误差都只会让比对更宽松，
+//     所以本脚本只适合当廉价的绊线；真正可靠的是 e2e 里那组「用 role=user 真打接口」的用例
+//     （tests/e2e/access-control.spec.ts「核心用户门槛（接口层）」）。
 //
 // 【已知的有意偏离】记在 EXPECTED_DEVIATIONS 里，附原因。它们不报错，
 // 但会打印出来 —— 这样「有意的偏离」和「忘了改」不会混为一谈。
@@ -71,6 +80,22 @@ const MAP = {
   admin: { page: '/image/admin' }, // image_hosting 的站长图床管理页
   admin_dashboard: { page: '/admin' },
   manage_articles: { page: '/admin/blogs' },
+
+  // ── core（@authenticated_required）──
+  // 这一档整体漏过一次：12 个接口只判了「登录」没判「核心用户」，role=user
+  // （注册了但从没用邀请码认证的人）用不了界面却 curl 得动 —— 点赞/建剪贴板/
+  // 投票/照片墙/投喂/申诉实测全 200。邀请码体系等于失效。故把它们钉进比对。
+  like_toggle: 'blogs/[id]/like',
+  feed_fish_api: 'blogs/[id]/feed',
+  create_appeal: 'audit/[id]/appeal',
+  api_place: 'photowall',
+  api_items: 'photowall',
+  api_update: 'photowall/[id]',
+  create_api: 'votes',
+  cast_vote: 'votes/[id]/vote',
+  api_quota: 'images/quota',
+  delete_image: 'images/[id]',
+  user_ban_history: 'users/[id]/ban-history',
 };
 
 /**
@@ -114,7 +139,15 @@ function stripPyStrings(txt) {
   return txt.replace(/'''[\s\S]*?'''/g, '').replace(/"""[\s\S]*?"""/g, '');
 }
 
-/** 扫 Flask：函数名 → { level, file } */
+/**
+ * 扫 Flask：函数名 → { level, file, ambiguous }
+ *
+ * ★ 函数名不是唯一的 ★ —— menu 在 vote / image_hosting / game / blog / tool / clipboard
+ * 六个蓝图里各有一个，upload 在 blog / clipboard / image_hosting 三处且档位各不相同。
+ * 此前这里直接 out[fn] = {...}，后扫到的文件会**静默覆盖**先扫到的：谁映射 upload
+ * 都可能拿到另一个模块的档位，然后得出一个看起来很正常的结论。
+ * 现在重名的标记成 ambiguous，MAP 引用到它们时直接报错并要求用 '文件::函数名' 消歧。
+ */
 function scanFlask() {
   const out = {};
   for (const f of walk(FLASK_ROOT, '.py')) {
@@ -132,7 +165,12 @@ function scanFlask() {
             : decos.includes('login_required')
               ? 'login'
               : 'public';
-      out[fn] = { level, file: path.relative(path.dirname(FLASK_ROOT), f) };
+      const file = path.relative(path.dirname(FLASK_ROOT), f);
+      const entry = { level, file };
+      // 带文件名的全限定键，用于消歧：'app/web/blog/views.py::upload'
+      out[`${file}::${fn}`] = entry;
+      if (out[fn] && out[fn].file !== file) out[fn] = { ...out[fn], ambiguous: true };
+      else if (!out[fn]) out[fn] = entry;
     }
   }
   return out;
@@ -216,6 +254,14 @@ for (const [fn, route] of Object.entries(MAP)) {
     console.log(`  ${yellow('?')} Flask 里找不到 ${fn}（可能已删/改名，请更新 MAP）`);
     continue;
   }
+  if (f.ambiguous) {
+    problems.push(
+      `${bold('MAP 键有歧义')}：${fn} 在多个蓝图里都有（如 menu / upload），` +
+        `按函数名取到的档位可能是别的模块的。请改用 '文件::函数名'，例如 ` +
+        `'app/web/blog/views.py::${fn}'。`
+    );
+    continue;
+  }
   const isPage = typeof route === 'object' && route.page;
   const nLevel = isPage ? scanNextPage(route.page) : nxt[route];
   const shown = isPage ? route.page : `/api/${route}`;
@@ -245,9 +291,19 @@ for (const [fn, route] of Object.entries(MAP)) {
 // 所以：任何 owner/admin 档的 Flask 端点，要么在 MAP 里有对应，要么在
 // NOT_APPLICABLE 里写明为什么不用比。没交代的一律算失败。
 const HIGH = ['owner', 'admin'];
+// 只遍历全限定键（file::fn）—— 它对每条路由唯一；短名那份是给 MAP 用的别名，
+// 一起遍历会把每个端点数两遍。
 const uncovered = Object.entries(flask)
-  .filter(([fn, f]) => HIGH.includes(f.level) && !(fn in MAP) && !(fn in NOT_APPLICABLE))
-  .map(([fn, f]) => `${fn} (${f.level})  ${f.file}`);
+  .filter(([k]) => k.includes('::'))
+  .filter(([k, f]) => {
+    const fn = k.split('::')[1];
+    return (
+      HIGH.includes(f.level) &&
+      !(fn in MAP) && !(k in MAP) &&
+      !(fn in NOT_APPLICABLE) && !(k in NOT_APPLICABLE)
+    );
+  })
+  .map(([k, f]) => `${k.split('::')[1]} (${f.level})  ${f.file}`);
 
 if (uncovered.length) {
   problems.push(
@@ -257,7 +313,9 @@ if (uncovered.length) {
   );
 }
 
-const highTotal = Object.values(flask).filter((f) => HIGH.includes(f.level)).length;
+const highTotal = Object.entries(flask).filter(
+  ([k, f]) => k.includes('::') && HIGH.includes(f.level)
+).length;
 const naCount = Object.keys(NOT_APPLICABLE).filter((fn) => flask[fn]).length;
 console.log(
   `\n  覆盖：${highTotal - uncovered.length}/${highTotal} 个 owner/admin 端点` +
