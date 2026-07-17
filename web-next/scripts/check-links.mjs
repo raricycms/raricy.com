@@ -154,6 +154,39 @@ for (const f of srcFiles) {
   }
 }
 
+// ── 4. 图标类必须有定义 ──────────────────────────────────────────────────────
+// 图标靠 CSS 的 mask-image 上色，类名拼错不会报错，只会渲染成一个**纯黑方块**。
+// 联系页就这么顶着个黑方块：代码写 .icon-chat-dots，而 CSS 里叫 .icon-chat-dots_new。
+// 只查 icon-*：其余类名在 rebuild.css 里是重新设计过的，与 Flask 不对应属正常，
+// 拿「Flask 有而 Next 没有」当错报会淹没真问题。
+{
+  const cssText = ['src/app/rebuild.css', 'src/app/globals.css', 'public/static/css/legacy.css']
+    .map((f) => {
+      const p = path.join(ROOT, f);
+      return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '';
+    })
+    .join('\n');
+  // 组件内联的 <style>{X_CSS}</style> 也算 —— ATAMAS 整个游戏就是这么上样式的
+  const inlineCss = srcFiles.map((f) => fs.readFileSync(f, 'utf8')).join('\n');
+  const allCss = cssText + '\n' + inlineCss;
+
+  const seen = new Set();
+  for (const f of srcFiles.filter((f) => f.endsWith('.tsx'))) {
+    const txt = fs.readFileSync(f, 'utf8');
+    for (const m of txt.matchAll(/className=[{]?\s*[`'"]([^`'"]*)[`'"]/g)) {
+      for (const cls of m[1].split(/\s+/)) {
+        if (!/^icon-[\w-]+$/.test(cls) || seen.has(cls)) continue;
+        seen.add(cls);
+        if (!new RegExp('\\.' + cls.replace(/[-]/g, '\\-') + '(?![\\w-])').test(allCss)) {
+          problems.push(
+            `图标类无定义（会渲染成黑方块）：${bold('.' + cls)}  ← ${path.relative(ROOT, f)}`
+          );
+        }
+      }
+    }
+  }
+}
+
 console.log(bold('\n═══ 链接与 API 可达性检查 ═══'));
 console.log(`  页面 ${pages.size} 个 / API 路由 ${routes.size} 个\n`);
 

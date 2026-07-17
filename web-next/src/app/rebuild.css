@@ -1260,9 +1260,19 @@ textarea.form-control { line-height: 1.6; resize: vertical; }
 .fortune-card__back { background: var(--surface-2); border: 1px solid var(--line); color: var(--ink); transform: rotateY(180deg); }
 .fortune-card--selected { transform: translateY(-6px); }
 .fortune-card:hover:not(.fortune-card--flipped) { transform: scale(1.05); }
+/* 翻牌结果的入场动画（对齐 Flask pages/_checkin.scss:627）——
+   CheckinCard 一直在用 .fortune-modal__result，但这条规则漏搬了，于是结果是「啪」地
+   直接出现而不是浮入。同族的 __result-value / __result-desc 都在，唯独容器这条没跟过来。 */
+.fortune-modal__result { animation: fortuneFloatIn .4s ease-out; }
+@keyframes fortuneFloatIn {
+  0%   { opacity: 0; transform: translateY(20px) scale(.95); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
 .fortune-modal__result-value { font-size: 3rem; font-weight: 700; }
 .fortune-modal__result-value--pop { animation: ck-bounce .5s; }
 .fortune-modal__result-desc { color: var(--ink-2); margin-top: 8px; }
+/* $space-6 = 24px（Flask abstracts/_variables.scss:19） */
+.fortune-modal__pool-reveal { margin-bottom: 24px; }
 .fortune-modal__close-btn { margin-top: 20px; background: var(--accent); color: #fff; padding: 12px 28px; border-radius: var(--r-pill); font-weight: 600; }
 .fortune-mini-cards { display: flex; justify-content: center; gap: 8px; margin-top: 16px; }
 .fortune-mini-card { width: 34px; height: 44px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--line); display: inline-flex; align-items: center; justify-content: center; font-weight: 700; color: var(--ink-3); }

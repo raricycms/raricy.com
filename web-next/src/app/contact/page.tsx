@@ -50,7 +50,7 @@ export default function ContactPage() {
       <div className="container">
         <div className="contact-card">
           <h1 className="text-center mb-4">
-            <span className="icon icon-chat-dots contact-icon" aria-hidden="true"></span>联系我们
+            <span className="icon icon-chat-dots_new contact-icon" aria-hidden="true"></span>联系我们
           </h1>
           <p className="lead text-muted text-center mb-4">遇到问题或有建议？我们随时为您服务</p>
 
