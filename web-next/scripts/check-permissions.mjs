@@ -42,14 +42,43 @@ const bold = (s) => `\x1b[1m${s}\x1b[0m`;
 const LEVELS = ['public', 'login', 'core', 'admin', 'owner'];
 const rank = (l) => LEVELS.indexOf(l);
 
-/** Flask 函数名 → Next 路由目录（相对 src/app/api）。人工维护，见文件头说明。 */
+/**
+ * Flask 函数名 → Next 路由。人工维护，见文件头说明。
+ *
+ * 值的两种写法：
+ *   'admin/broadcast'        → API 路由，相对 src/app/api
+ *   { page: '/admin/broadcast' } → 页面路由，相对 src/app（守卫可能在 layout 链上，见 scanNextPage）
+ */
 const MAP = {
+  // ── API ──
   send_notification_to_all: 'admin/broadcast',
   send_notification_to_user: 'admin/notify-user',
   decide_appeal: 'admin/appeals/[id]',
   admin_delete_image: 'images/admin/[id]',
   promote: 'admin/users/[id]',
   demote: 'admin/users/[id]',
+  ban_user: 'admin/users/[id]',
+  unban_user: 'admin/users/[id]',
+  admin_delete_blog: 'admin/blogs/[id]',
+  update_article_category: 'admin/blogs/[id]',
+  update_article_featured: 'admin/blogs/[id]',
+  batch_update_category: 'admin/blogs',
+  batch_update_featured: 'admin/blogs',
+
+  // ── 页面 ──
+  admin_notifications: { page: '/admin/broadcast' },
+  send_notification_modal: { page: '/admin/broadcast' },
+  admin: { page: '/image/admin' }, // image_hosting 的站长图床管理页
+  admin_dashboard: { page: '/admin' },
+  manage_articles: { page: '/admin/blogs' },
+};
+
+/**
+ * 无需比对的 Flask 端点，附原因。
+ * 放这里而不是任其「未覆盖」—— 未覆盖会被当成漏网报错（这正是本脚本的意义）。
+ */
+const NOT_APPLICABLE = {
+  zhh: '智慧河的外链跳转页，Next 侧没有对应实现（首页页脚直接外链 zhh.raricy.com）',
 };
 
 /** 已知且有意的偏离：Flask 档位 → Next 档位，附原因。 */
@@ -71,11 +100,25 @@ function walk(dir, ext, out = []) {
   return out;
 }
 
+/**
+ * 剥掉 Python 的三引号块。
+ *
+ * ★ 不剥会误报 ★ —— app/web/auth/user_management.py 里整个 delete_user（含
+ * @auth_bp.route 和 @owner_required）被 ''' ... ''' 包着注释掉了。裸正则不认字符串
+ * 字面量，会把它当成一个活的站长端点，然后报「Next 缺了它 / 权限被放宽」——
+ * 而 Flask 压根就没这个路由。本脚本真的这么误报过一次。
+ *
+ * 剥掉函数体内的合法 docstring 不影响判断：我们只关心 @route 装饰器栈和 def。
+ */
+function stripPyStrings(txt) {
+  return txt.replace(/'''[\s\S]*?'''/g, '').replace(/"""[\s\S]*?"""/g, '');
+}
+
 /** 扫 Flask：函数名 → { level, file } */
 function scanFlask() {
   const out = {};
   for (const f of walk(FLASK_ROOT, '.py')) {
-    const txt = fs.readFileSync(f, 'utf8');
+    const txt = stripPyStrings(fs.readFileSync(f, 'utf8'));
     // 装饰器栈：@bp.route(...) 之后、def 之前的所有 @xxx
     const re = /@\w+\.route\([^)]*\)((?:\s*@[\w.]+(?:\([^)]*\))?)*)\s*def\s+(\w+)/g;
     for (const m of txt.matchAll(re)) {
@@ -117,6 +160,48 @@ function scanNext() {
   return out;
 }
 
+/** 从一段源码里判出权限档位。 */
+function levelOf(txt) {
+  // 只看代码，不看注释 —— 注释里常提到 isOwner 之类的词
+  const code = txt.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+  if (/\b(isOwner|requireOwner)\s*\(/.test(code)) return 'owner';
+  if (/\b(hasAdminRights|requireAdmin)\s*\(/.test(code)) return 'admin';
+  if (/\b(isCoreUser|requireCoreUser)\s*\(/.test(code)) return 'core';
+  if (/\bgetCurrentUser\s*\(/.test(code)) return 'login';
+  return 'public';
+}
+
+/**
+ * 扫 Next 页面路由：取 page.tsx **及其 layout 链**上的最高档位。
+ *
+ * ★ 必须走整条 layout 链 ★ —— /admin/broadcast/page.tsx 自己一行守卫都没有，
+ * 真正的 requireOwner() 在同目录的 layout.tsx 里；父级 /admin/layout.tsx 又只判到
+ * admin。只看 page.tsx 会得出「站长页面只挡了管理员」的错误结论（本人亲测踩过）。
+ * 取链上最严的一档，与 Next 的实际行为一致：任一层 layout 拒绝，页面就进不去。
+ */
+function scanNextPage(routePath) {
+  const appRoot = path.join(NEXT_ROOT, 'src', 'app');
+  const dir = path.join(appRoot, routePath);
+  const page = path.join(dir, 'page.tsx');
+  if (!fs.existsSync(page)) return undefined;
+
+  let best = levelOf(fs.readFileSync(page, 'utf8'));
+  // 从页面所在目录一路向上找 layout.tsx，直到 src/app
+  let cur = dir;
+  for (;;) {
+    const lay = path.join(cur, 'layout.tsx');
+    if (fs.existsSync(lay)) {
+      const l = levelOf(fs.readFileSync(lay, 'utf8'));
+      if (rank(l) > rank(best)) best = l;
+    }
+    if (path.resolve(cur) === path.resolve(appRoot)) break;
+    const parent = path.dirname(cur);
+    if (parent === cur) break;
+    cur = parent;
+  }
+  return best;
+}
+
 const flask = scanFlask();
 const nxt = scanNext();
 
@@ -131,14 +216,16 @@ for (const [fn, route] of Object.entries(MAP)) {
     console.log(`  ${yellow('?')} Flask 里找不到 ${fn}（可能已删/改名，请更新 MAP）`);
     continue;
   }
-  const nLevel = nxt[route];
+  const isPage = typeof route === 'object' && route.page;
+  const nLevel = isPage ? scanNextPage(route.page) : nxt[route];
+  const shown = isPage ? route.page : `/api/${route}`;
   if (nLevel === undefined) {
-    console.log(`  ${yellow('?')} Next 里找不到路由 ${route}（请更新 MAP）`);
+    console.log(`  ${yellow('?')} Next 里找不到路由 ${shown}（请更新 MAP）`);
     continue;
   }
 
   const devKey = Object.keys(EXPECTED_DEVIATIONS).find((k) => k.split('|').includes(fn));
-  const line = `${fn} (${f.level}) → /api/${route} (${nLevel})`;
+  const line = `${fn} (${f.level}) → ${shown} (${nLevel})`;
 
   if (rank(nLevel) < rank(f.level)) {
     if (devKey) deviations.push({ line, reason: EXPECTED_DEVIATIONS[devKey].reason });
@@ -147,6 +234,35 @@ for (const [fn, route] of Object.entries(MAP)) {
     console.log(`  ${green('✓')} ${line}`);
   }
 }
+
+// ── 覆盖率：MAP 没提到的高权限端点 ────────────────────────────────────────────
+//
+// ★ 这段是本脚本最重要的部分 ★
+// 在此之前 MAP 只覆盖了 20 个 owner/admin 端点里的 6 个，另外 14 个从没被查过，
+// 而脚本照样打印「✅ 没有意料之外的权限放宽」—— 一个只查了三成的检查，报出来的
+// 绿比没有检查更危险：它让人以为这块已经看过了。
+//
+// 所以：任何 owner/admin 档的 Flask 端点，要么在 MAP 里有对应，要么在
+// NOT_APPLICABLE 里写明为什么不用比。没交代的一律算失败。
+const HIGH = ['owner', 'admin'];
+const uncovered = Object.entries(flask)
+  .filter(([fn, f]) => HIGH.includes(f.level) && !(fn in MAP) && !(fn in NOT_APPLICABLE))
+  .map(([fn, f]) => `${fn} (${f.level})  ${f.file}`);
+
+if (uncovered.length) {
+  problems.push(
+    `${bold('未覆盖的高权限端点')}（${uncovered.length} 个）—— 它们的档位从没被比对过，` +
+      `请在 MAP 里补上映射，或在 NOT_APPLICABLE 里写明原因：\n     ` +
+      uncovered.join('\n     ')
+  );
+}
+
+const highTotal = Object.values(flask).filter((f) => HIGH.includes(f.level)).length;
+const naCount = Object.keys(NOT_APPLICABLE).filter((fn) => flask[fn]).length;
+console.log(
+  `\n  覆盖：${highTotal - uncovered.length}/${highTotal} 个 owner/admin 端点` +
+    `（其中 ${naCount} 个记为无需比对）`
+);
 
 if (deviations.length) {
   console.log(bold('\n── 已知的有意偏离 ──'));
