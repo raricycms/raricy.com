@@ -5,8 +5,6 @@
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 
-const FLASK = (process.env.NEXT_PUBLIC_FLASK_ORIGIN || 'https://raricy.com').replace(/\/$/, '');
-
 type Cat = 'site' | 'codec' | 'crypto';
 type Tool = {
   cat: Cat;
@@ -29,13 +27,13 @@ const SITE: Tool[] = [
 const CODEC: Tool[] = [
   { cat: 'codec', kw: 'base base64 base58 编码 解码', href: '/tool/base', glyph: 'glyph--code', title: 'Base 编码', desc: 'Base16 / 32 / 36 / 58 / 62 / 64 / 85 / 91 / 92', tags: ['Base64', 'Base58', '+7'] },
   { cat: 'codec', kw: 'hex 十六进制 字节 bytes 转换', href: '/tool/hex', glyph: 'glyph--code', title: 'Hex 编码', desc: '十六进制与字节流互转', tags: ['Hex', 'Bytes'] },
-  { cat: 'codec', kw: 'url 编码 解码 percent query', href: `${FLASK}/tool/url`, glyph: 'glyph--link', title: 'URL 编码', desc: 'URL 百分号编码 / 解码', tags: ['URL', 'Web', '编码'] },
-  { cat: 'codec', kw: 'html 实体 entity 转义 escape', href: `${FLASK}/tool/html`, glyph: 'glyph--code', title: 'HTML 编码', desc: 'HTML 实体编码 / 解码，支持常用符号和特殊字符', tags: ['Entity', 'Escape'] },
-  { cat: 'codec', kw: 'quoted-printable mime rfc2045 邮件', href: `${FLASK}/tool/qp`, glyph: 'glyph--envelope', title: 'Quoted-printable', desc: '邮件 MIME Quoted-Printable 编 / 解码', tags: ['MIME', 'RFC2045'] },
+  { cat: 'codec', kw: 'url 编码 解码 percent query', href: '/tool/url', glyph: 'glyph--link', title: 'URL 编码', desc: 'URL 百分号编码 / 解码', tags: ['URL', 'Web', '编码'] },
+  { cat: 'codec', kw: 'html 实体 entity 转义 escape', href: '/tool/html', glyph: 'glyph--code', title: 'HTML 编码', desc: 'HTML 实体编码 / 解码，支持常用符号和特殊字符', tags: ['Entity', 'Escape'] },
+  { cat: 'codec', kw: 'quoted-printable mime rfc2045 邮件', href: '/tool/qp', glyph: 'glyph--envelope', title: 'Quoted-printable', desc: '邮件 MIME Quoted-Printable 编 / 解码', tags: ['MIME', 'RFC2045'] },
 ];
 const CRYPTO: Tool[] = [
-  { cat: 'crypto', kw: 'hash 哈希 sha md5 校验', href: `${FLASK}/tool/hash`, glyph: 'glyph--hash', title: '哈希计算', desc: 'SHA-256 / SHA-1 / SHA-512 / MD5 等', tags: ['SHA-256', 'MD5'] },
-  { cat: 'crypto', kw: 'aes 加密 解密 对称 cbc gcm', href: `${FLASK}/tool/aes`, glyph: 'glyph--lock', title: 'AES', desc: '常见模式（CBC / CTR / GCM）与填充', tags: ['AES', '密钥'] },
+  { cat: 'crypto', kw: 'hash 哈希 sha md5 校验', href: '/tool/hash', glyph: 'glyph--hash', title: '哈希计算', desc: 'SHA-256 / SHA-1 / SHA-512 / MD5 等', tags: ['SHA-256', 'MD5'] },
+  { cat: 'crypto', kw: 'aes 加密 解密 对称 cbc gcm', href: '/tool/aes', glyph: 'glyph--lock', title: 'AES', desc: '常见模式（CBC / CTR / GCM）与填充', tags: ['AES', '密钥'] },
 ];
 
 function ToolCard({ t }: { t: Tool }) {
