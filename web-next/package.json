@@ -26,7 +26,8 @@
     "e2e": "npm run build && playwright test",
     "e2e:ui": "playwright test --ui",
     "verify:account": "tsx scripts/verify-account-integration.mjs",
-    "prepare:cutover": "tsx scripts/prepare-cutover.mjs"
+    "prepare:cutover": "tsx scripts/prepare-cutover.mjs",
+    "smoke": "tsx scripts/smoke.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.2.1",
