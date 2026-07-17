@@ -23,3 +23,15 @@ export function ymd(d: Date | null | undefined): string | null {
   if (!d) return null;
   return d.toISOString().slice(0, 10);
 }
+
+/**
+ * 'YYYY-MM-DD HH:MM:SS'（对齐 Flask 的 .strftime('%Y-%m-%d %H:%M:%S')）。
+ *
+ * 用 toISOString 切片而非 toLocaleString：库里存的已经是 UTC+8 墙上时间
+ * （见 db-time.ts），toISOString 按 UTC 解读正好把那个墙上时间原样吐回来。
+ * 换成 toLocaleString 会按运行机器的时区再平移一次 —— 服务器不在 UTC+8 时就错 8 小时。
+ */
+export function ymdhms(d: Date | null | undefined): string | null {
+  if (!d) return null;
+  return d.toISOString().slice(0, 19).replace('T', ' ');
+}

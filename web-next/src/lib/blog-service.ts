@@ -7,6 +7,7 @@
 
 import { prisma } from './db';
 import { nowForDb } from './db-time';
+import { ymdhms } from './format';
 import { rateLimit, RULES } from './rate-limit';
 import type { Prisma } from '@prisma/client';
 
@@ -130,6 +131,62 @@ export async function getBlogDetail(id: string) {
     },
   });
   return blog;
+}
+
+export interface LikerRow {
+  id: string;
+  username: string | null;
+  avatar_url: string;
+  liked_at: string | null;
+}
+
+/**
+ * 点赞者列表（对齐 Flask LikeService.get_likers）。
+ *
+ * 只列未软删的点赞（deleted=false）—— 取消赞的人不该还出现在列表里。
+ * 字段名用 snake_case、时间用 'YYYY-MM-DD HH:MM:SS'，都是对齐 Flask 的 JSON 形状，
+ * 前端 FeedButton 直接消费。
+ *
+ * @returns null 表示文章不存在（路由据此返回 404）
+ */
+export async function getLikers(
+  blogId: string,
+  offset = 0,
+  limit = 50
+): Promise<{ users: LikerRow[]; total: number; offset: number; limit: number } | null> {
+  const blog = await prisma.blog.findUnique({ where: { id: blogId }, select: { id: true } });
+  if (!blog) return null;
+
+  const lim = Math.max(1, Math.min(limit, 200));
+  const off = Math.max(0, offset);
+
+  const [total, likes] = await Promise.all([
+    prisma.blogLike.count({ where: { blogId, deleted: false } }),
+    prisma.blogLike.findMany({
+      where: { blogId, deleted: false },
+      orderBy: { createdAt: 'desc' },
+      skip: off,
+      take: lim,
+      select: {
+        userId: true,
+        createdAt: true,
+        user: { select: { id: true, username: true } },
+      },
+    }),
+  ]);
+
+  return {
+    users: likes.map((l) => ({
+      id: l.user?.id ?? l.userId,
+      username: l.user?.username ?? null,
+      // 头像由 Next 自己的 /api/avatar 提供（Flask 时代是 /auth/avatar/<id>）
+      avatar_url: `/api/avatar/${l.user?.id ?? l.userId}`,
+      liked_at: ymdhms(l.createdAt),
+    })),
+    total,
+    offset: off,
+    limit: lim,
+  };
 }
 
 /**

@@ -56,6 +56,62 @@ export async function getFeedStatus(
   return { fed, remaining: Math.max(0, FEED_CAP - fed), isFull: fed >= FEED_CAP };
 }
 
+export interface FeederRow {
+  user_id: string;
+  username: string;
+  avatar_path: string | null;
+  amount: number;
+}
+
+/**
+ * 投喂者列表（对齐 Flask feed_fish_service.get_feeders）。
+ *
+ * 排序按投喂量倒序（不是时间）—— 与 Flask 一致：这个列表给作者看「谁投得最多」。
+ * 字段名用 snake_case 是因为前端 FeedButton 直接消费该形状（对齐 Flask 的 JSON）。
+ */
+export async function getFeeders(
+  blogId: string,
+  offset = 0,
+  limit = 50
+): Promise<{ feeders: FeederRow[]; total: number; offset: number; limit: number }> {
+  const lim = Math.max(1, Math.min(limit, 200));
+  const off = Math.max(0, offset);
+
+  const [total, feeds] = await Promise.all([
+    prisma.blogFeed.count({ where: { blogId } }),
+    prisma.blogFeed.findMany({
+      where: { blogId },
+      orderBy: { amount: 'desc' },
+      skip: off,
+      take: lim,
+      select: { userId: true, amount: true },
+    }),
+  ]);
+
+  const users = feeds.length
+    ? await prisma.user.findMany({
+        where: { id: { in: feeds.map((f) => f.userId) } },
+        select: { id: true, username: true, avatarPath: true },
+      })
+    : [];
+  const map = new Map(users.map((u) => [u.id, u]));
+
+  return {
+    feeders: feeds.map((f) => {
+      const u = map.get(f.userId);
+      return {
+        user_id: f.userId,
+        username: u?.username ?? '未知',
+        avatar_path: u?.avatarPath ?? null,
+        amount: f.amount,
+      };
+    }),
+    total,
+    offset: off,
+    limit: lim,
+  };
+}
+
 /**
  * 用户投喂小鱼干给文章。作者收到 80%。
  *
