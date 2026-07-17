@@ -39,3 +39,5 @@ app/static/hljs/
 *.xlsx
 instance.zip
 exported_blogs/
+# 本地真实数据（数据库/图片/头像/故事）——绝不入库
+/data/

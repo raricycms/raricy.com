@@ -1,0 +1,69 @@
+# raricy-next.service —— Next.js 站点的 systemd unit（改掉路径和用户名即可）
+#
+# 安装：
+#   sudo cp docs/nextjs-migration/raricy-next.service.example /etc/systemd/system/raricy-next.service
+#   sudo vim /etc/systemd/system/raricy-next.service      # 改 User / WorkingDirectory / ExecStart 里的路径
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now raricy-next               # enable = 开机自启
+#   systemctl status raricy-next
+#   journalctl -u raricy-next -f                          # 看日志
+#
+# 【为什么给这个】手册 §3.7 原先只写「npm run start  # 或你的 systemd unit」，
+# 而 §4 回滚那节又让你 `systemctl stop raricy-next` —— 一个从没给过的服务。
+# 更要紧的是：没有 unit，服务器一重启站就没了，而且没人会立刻发现。
+
+[Unit]
+Description=raricy.com (Next.js)
+After=network.target
+# 账户微服务与本服务同机时打开这两行，让它先起来。
+# 不是硬依赖：账户服务没起时本站照样能跑，只是鱼干相关的写操作会 fail-closed 回 503
+# （这是设计如此，见 CLAUDE.md Phase 1.5），页面、博客、登录都不受影响。
+# After=account-service.service
+# Wants=account-service.service
+
+[Service]
+Type=simple
+
+# 别用 root。这个用户要能读 web-next/ 与 .env、能读写 data/（头像、图床、故事）。
+User=www-data
+Group=www-data
+
+WorkingDirectory=/srv/raricy.com/web-next
+
+# 直接调 next，而不是 `npm run start`：少一层 fork，systemd 的 MainPID 就是真正的
+# 服务进程本身，Restart/status 指的都是它。
+#
+# （我本来想在这写「npm 会吞掉 SIGTERM 导致 stop 卡住」，但实测两种方式都干净退出，
+#  所以那句话删了。用 npm 也能跑，只是多一层没必要的间接。）
+ExecStart=/srv/raricy.com/web-next/node_modules/.bin/next start -p 3000
+
+# ★ 不要用 EnvironmentFile=.env ★
+# next start 会自己读同目录的 .env（实测：shell 环境清空到只剩 PATH，站点照常起来）。
+# 再挂一个 EnvironmentFile 就是第二个真相源，而 systemd 解析 env 文件的规则与 dotenv
+# 并不一致（引号、# 的处理都不同），值里有特殊字符时两边会读出不同的东西 ——
+# 而 SECRET_KEY 恰恰最可能有特殊字符，它读错了 465 个用户的鱼干就全废。
+#
+# NODE_ENV 也不用设：next start 自己就是 production（实测：未配账户服务时注册回 503，
+# 正是 production 下 fail-closed 生效的证据）。
+
+Restart=always
+RestartSec=3
+
+# 崩溃循环时别无限重启，留出人工介入的空间
+StartLimitBurst=5
+StartLimitIntervalSec=60
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=raricy-next
+
+# ── 加固（可选，但建议留着）────────────────────────────────────────────────
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+# 只放开真正要写的目录：图床上传、头像。路径按你的实际部署改。
+# 注意 data/ 是**数据**，删 Flask 时千万别跟着删。
+ReadWritePaths=/srv/raricy.com/data
+
+[Install]
+WantedBy=multi-user.target

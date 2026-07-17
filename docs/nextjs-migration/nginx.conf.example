@@ -1,0 +1,86 @@
+# raricy.com —— Next.js 反向代理配置（可直接用，改掉域名和证书路径即可）
+#
+# 【为什么给一份完整的】手册 §3.8 只列了三个转发头 —— 那是「最容易漏掉、漏了必出事」
+# 的三个，不是「全部所需」。照那个片段重写 location 块，很容易把现有配置里别的必要
+# 项弄丢，其中 client_max_body_size 一丢，图床就只能传 1MB 以下的图。
+#
+# 与 Flask 时代的差异：只有 proxy_pass 的端口从 Flask 换成 3000。其余（尤其
+# client_max_body_size）本来就该有 —— 若你现有配置已经在跑图床，那它必然已经配了。
+# 【最省事的做法：别重写，只把 proxy_pass 指向 3000，其它一个字别动。】
+#
+# 部署后自检：curl -I https://你的域名/ 应回 200；传一张 2MB 的图应成功（不是 413）。
+
+server {
+    listen 443 ssl http2;
+    server_name raricy.com;
+
+    # raricy.com 的证书已经有了（实测 2026-07-17：Let's Encrypt，到期 2026-09-12），
+    # 路径按你现有配置里的写 —— 别改动 TLS 部分，照搬现有的那两行就行。
+    #
+    # ⚠️ zk.raricy.com 不在这张证书的覆盖范围里（实测：证书校验失败，浏览器会整页报警）。
+    # 要在那个域名上跑 HTTPS，先扩证书：sudo certbot --nginx -d raricy.com -d zk.raricy.com
+    ssl_certificate     /etc/letsencrypt/live/raricy.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/raricy.com/privkey.pem;
+
+    # ── 上传体积 ──────────────────────────────────────────────────────────────
+    # ★ 必配 ★ nginx 默认只给 1MB，而图床单文件上限是 10MB
+    # （src/lib/image-upload.ts:26，与 Flask app/config.py:24 一致）。
+    # 不配的话，超过 1MB 的图会被 nginx 直接回 413 —— 请求**根本到不了 Next**，
+    # 应用日志里干干净净，排查时会一头雾水。12m 是 10MB 加上 multipart 边界的余量。
+    client_max_body_size 12m;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+
+        # ★ 用 $http_host 而不是 $host ★
+        # $host 不含端口。中间件比对的是**含端口的** host（从 Origin 里取），
+        # 所以站点跑在非标准端口上时，$host 会让 allowed 里存的是 "example.com"、
+        # 而 Origin 给的是 "example.com:8443" —— 对不上，全站 POST 403。
+        # 走标准 443 时两者都没端口，碰巧不出事；但没理由留这个雷。
+        # （本地起 nginx 实测：$host + 8443 → 403，换 $http_host → 通过。）
+        proxy_set_header Host              $http_host;
+
+        # ★ 少了它：全站 POST 被判 CSRF 403 ★
+        # 中间件拿浏览器的 Origin 跟允许列表比对。套了 nginx 之后 Host 是
+        # 127.0.0.1:3000，而 Origin 是 https://raricy.com，对不上就全拒。
+        #
+        # 注：配了 ALLOWED_ORIGINS 的话，中间件先认它，这个头就成了双保险。
+        # 但两者留一个就够危险 —— 都配上，任一个写错还有另一个兜着。
+        proxy_set_header X-Forwarded-Host  $http_host;
+
+        # ★ 少了它：登录成功但没登录态 ★
+        # Next 靠它判断要不要给 cookie 加 Secure。判断错了 cookie 会被浏览器丢掉，
+        # 表现为「登录接口返回成功，刷新还是未登录」—— 极具迷惑性，因为登录本身是成功的。
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    }
+
+    # ── 静态资源缓存（可选，纯性能）────────────────────────────────────────────
+    # /_next/static 下的文件名带内容哈希，改了内容就换文件名，所以可以放心长缓存。
+    # 注意只对 /_next/static 这么干：/static/ 下是手工维护的图标/CSS，文件名不变。
+    location /_next/static/ {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header Host $http_host;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+    }
+}
+
+# HTTP → HTTPS
+server {
+    listen 80;
+    server_name raricy.com;
+    return 301 https://$host$request_uri;
+}
+
+# ── 不在这份配置里的东西 ──────────────────────────────────────────────────────
+#
+# · 魔杖 demo 的 WebSocket（NEXT_PUBLIC_WAND_WS_URL，默认 ws://localhost:3033）
+#   是独立服务，不经过这个反代。要从公网访问的话得单独加一个带
+#   `proxy_set_header Upgrade $http_upgrade; proxy_set_header Connection "upgrade";`
+#   的 location —— 但它原本就是本地 demo，多半不用管。
+#
+# · 账户微服务（ACCOUNT_SERVICE_URL）由 Next 在**服务端**调用，走内网，
+#   不该暴露到公网。
