@@ -1,5 +1,11 @@
 // POST /api/admin/broadcast { detail, action?, targetGroup?, objectType?, objectId? }
-import { getCurrentUser, hasAdminRights } from '@/lib/auth';
+//
+// 权限：**仅站长**。对齐 Flask —— 那边群发在三处都卡了站长：
+//   · 页面 admin_notifications        @owner_required
+//   · 接口 send_notification_to_user  @owner_required
+//   · service 层 notifications.py:321 显式判 is_owner（「仅站长可群发」）
+// 此前这里只判 hasAdminRights，任何管理员都能给全站发通知 —— 比 Flask 松。
+import { getCurrentUser, isOwner } from '@/lib/auth';
 import { broadcast, type TargetGroup } from '@/lib/broadcast-service';
 import { apiOk, apiErr } from '@/lib/format';
 
@@ -7,7 +13,7 @@ const GROUPS: TargetGroup[] = ['all', 'authenticated', 'normal'];
 
 export async function POST(req: Request) {
   const user = await getCurrentUser();
-  if (!hasAdminRights(user)) return apiErr(403, '没有管理员权限');
+  if (!isOwner(user)) return apiErr(403, '没有站长权限');
 
   const body = (await req.json().catch(() => null)) as {
     detail?: unknown;

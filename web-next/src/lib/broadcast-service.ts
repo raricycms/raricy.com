@@ -9,7 +9,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { prisma } from './db';
-import type { SafeUser } from './auth';
+import { isOwner, type SafeUser } from './auth';
 import { sendNotification } from './notification-service';
 
 export type TargetGroup = 'all' | 'authenticated' | 'normal';
@@ -30,6 +30,11 @@ export type BroadcastResult =
 const BATCH = 200; // 分批发送，避免一次性堆太多 promise
 
 export async function broadcast(p: BroadcastParams): Promise<BroadcastResult> {
+  // 站长校验放在 service 层而不只在路由里 —— 对齐 Flask 的纵深防御
+  // （notifications.py:321 也在服务层判了 is_owner）。群发能一次触达全站，
+  // 是本项目影响面最大的操作，值得两道闸。
+  if (!isOwner(p.actor)) return { ok: false, code: 403, message: '没有站长权限' };
+
   const detail = (p.detail ?? '').trim();
   if (!detail) return { ok: false, code: 400, message: '通知内容不能为空' };
 
