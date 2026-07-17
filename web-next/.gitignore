@@ -13,3 +13,9 @@ next-env.d.ts
 # 测试临时数据库
 tests/.tmp/
 coverage/
+
+# Playwright E2E 产物
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/

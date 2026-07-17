@@ -20,7 +20,9 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "db:compensate-fortunes": "node scripts/compensate-unclaimed-fortunes.mjs",
-    "cli": "tsx scripts/cli.mjs"
+    "cli": "tsx scripts/cli.mjs",
+    "e2e": "npm run build && playwright test",
+    "e2e:ui": "playwright test --ui"
   },
   "dependencies": {
     "@prisma/client": "^6.2.1",
