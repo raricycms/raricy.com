@@ -14,6 +14,11 @@ server {
     listen 443 ssl http2;
     server_name raricy.com;
 
+    # raricy.com 的证书已经有了（实测 2026-07-17：Let's Encrypt，到期 2026-09-12），
+    # 路径按你现有配置里的写 —— 别改动 TLS 部分，照搬现有的那两行就行。
+    #
+    # ⚠️ zk.raricy.com 不在这张证书的覆盖范围里（实测：证书校验失败，浏览器会整页报警）。
+    # 要在那个域名上跑 HTTPS，先扩证书：sudo certbot --nginx -d raricy.com -d zk.raricy.com
     ssl_certificate     /etc/letsencrypt/live/raricy.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/raricy.com/privkey.pem;
 
