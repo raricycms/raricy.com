@@ -18,8 +18,20 @@ import { hashPassword } from '../../src/lib/password';
 import { nowForDb } from '../../src/lib/db-time';
 import { SEED_PASSWORD, SEED_USERS, SEED_CATEGORY, SEED_BLOG, SEED_LOG } from './seed';
 
-// __dirname 而非 import.meta.dirname：Playwright 把本文件转成 CJS 加载，import.meta 在那里会炸。
-const E2E_DB = path.resolve(__dirname, '../.tmp/e2e.db');
+// 库路径由 playwright.config.ts 生成并经 env 传来（每轮唯一，原因见那边的注释）。
+// 不在这里自己拼：两处各算各的就会算出不同的名字，webServer 用一个、globalSetup 建另一个，
+// 测试会以「表不存在」的形式挂掉。
+const E2E_DB = (() => {
+  const p = process.env.E2E_DB;
+  if (!p) {
+    throw new Error(
+      '缺少 E2E_DB —— 它由 playwright.config.ts 在模块加载时写进 process.env。' +
+        '若 Playwright 改成在独立进程里跑 globalSetup，这里就取不到了，' +
+        '需改用别的方式传递（例如写一个 tests/.tmp/current-db 文件）。'
+    );
+  }
+  return p;
+})();
 const LOCK = path.resolve(__dirname, '../.tmp/e2e.lock');
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
 

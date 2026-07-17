@@ -240,6 +240,25 @@ function scanNextPage(routePath) {
   return best;
 }
 
+// ── Flask 还在吗 ────────────────────────────────────────────────────────────
+//
+// ★ 必须先查 ★ —— 本脚本的整个判断依据是读 app/ 下的装饰器。app/ 一旦不在，
+// scanFlask() 返回空对象，于是：MAP 里每条都「Flask 里找不到」而被 continue 跳过，
+// 覆盖率算出 0/0，最后堂而皇之地打印「✅ 没有意料之外的权限放宽」并 exit 0 ——
+// 一个永远绿的空转检查。而「删掉 Flask」正是这个项目的目标，所以这一天必然到来。
+//
+// 本脚本是迁移期的比对工具，Flask 没了它就完成使命了：明确说出来并让它失败，
+// 而不是继续假装在把关。
+if (!fs.existsSync(FLASK_ROOT)) {
+  console.error(bold(red('\n本脚本已完成使命：找不到 Flask 源码，无从比对。\n')));
+  console.error(`  期望路径：${FLASK_ROOT}`);
+  console.error('  若 Flask 已按计划删除，请连同本脚本与 package.json 里的 check:perms 一并删掉');
+  console.error('  （同批要删的还有 app/extensions/ms_datetime.py，见 docs/nextjs-migration/07-切换操作手册.md）。');
+  console.error(`  权限本身仍有 e2e 把关：tests/e2e/access-control.spec.ts「核心用户门槛（接口层）」——`);
+  console.error('  那组用真实 role=user 打接口，不依赖 Flask 源码。\n');
+  process.exit(2);
+}
+
 const flask = scanFlask();
 const nxt = scanNext();
 

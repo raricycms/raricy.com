@@ -18,4 +18,17 @@ export default async function globalTeardown() {
   } catch {
     // 清锁失败不该让整轮测试判失败 —— 残留锁有 PID 存活性兜底
   }
+
+  // 库名每轮唯一（见 playwright.config.ts），不清就会在 tests/.tmp 里越堆越多。
+  // 只删本轮那一个：别的 e2e-*.db 可能属于正在跑的另一轮。
+  const db = process.env.E2E_DB;
+  if (db) {
+    for (const suffix of ['', '-wal', '-shm', '-journal']) {
+      try {
+        fs.rmSync(db + suffix, { force: true });
+      } catch {
+        // 删不掉就算了 —— tests/.tmp 已 gitignore，最多占点磁盘
+      }
+    }
+  }
 }

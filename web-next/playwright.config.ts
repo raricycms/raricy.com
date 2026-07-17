@@ -15,10 +15,25 @@ import path from 'node:path';
 //     （页面 200、样式对、图标在，只有真去点才知道）
 // 后端测试证明「逻辑对」，E2E 证明「用户真能用」。
 //
-// 【数据安全】webServer 用独立的 e2e 测试库（tests/.tmp/e2e.db），
+// 【数据安全】webServer 用独立的 e2e 测试库（tests/.tmp/e2e-*.db），
 // 由 global-setup 从 schema 建表 + 造种子数据，绝不碰 data/ 与 prisma/prod.db。
 
-const E2E_DB = path.resolve(__dirname, 'tests/.tmp/e2e.db');
+// ★ 库名每轮唯一 ★
+//
+// Playwright **先起 webServer、再跑 globalSetup**（实测：globalSetup 里探到 3100/3101
+// 都已占用）。库名若是固定的 e2e.db，那么服务器一启动就可能把上一轮留下的同名文件
+// 打开，紧接着 globalSetup 把它 rmSync 掉重建 —— 服务器手里攥着已删除的 inode，
+// 之后所有写入都报「attempt to write a readonly database」，用例成片地挂。
+// 是竞态而非必现：服务器恰好还没碰库就没事。实测同一份代码跑出 154 / 51 / 54 三种结果，
+// 排查时极易误判成「测试本身 flaky」。
+//
+// 名字唯一 → globalSetup 建的是一个谁都没开过的新文件，竞态从根上不存在。
+// 路径经 process.env.E2E_DB 传给 global-setup / teardown（它们与本文件同进程）。
+const E2E_DB = path.resolve(
+  __dirname,
+  `tests/.tmp/e2e-${process.pid}-${Math.random().toString(36).slice(2, 8)}.db`
+);
+process.env.E2E_DB = E2E_DB;
 const PORT = 3100; // 避开开发用的 3000
 const ACCOUNT_PORT = 3101; // 账户服务替身，见 tests/e2e/mock-account-service.ts
 const ACCOUNT_INTERNAL_TOKEN = 'e2e-internal-token';
