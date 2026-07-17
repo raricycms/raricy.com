@@ -17,6 +17,7 @@
     "db:normalize": "node scripts/normalize-datetimes.mjs --source ../instance/database/db.db --dest prisma/dev.db",
     "diagnose": "node scripts/diagnose-deploy.mjs",
     "check:links": "node scripts/check-links.mjs",
+    "check:perms": "node scripts/check-permissions.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
