@@ -208,9 +208,78 @@ if (dbPath && fs.existsSync(dbPath)) {
   }
 }
 
-// ── 4. 线上活体检查 ─────────────────────────────────────────────────────────
+// ── 4. 小鱼干密钥能否解开存量密文 ────────────────────────────────────────────
+//
+// 【为什么必须切换前查】这是整个切换里**唯一不可逆**的一项。每个用户在账户微服务
+// 的 API Key 用 Fernet 加密存在 users.fish_api_key_encrypted，密钥由 SECRET_KEY 派生
+// （Flask: base64url(sha256(SECRET_KEY))，见 app/clients/account_client.py:93）。
+// SECRET_KEY 换了，或者给 FISH_ENCRYPTION_KEY 填了值（Flask 根本没这个变量，
+// 填了 Next 就改用它派生），全库密文立刻解不开 —— 465 个用户的鱼干功能集体失效，
+// 且密文本身没坏、只是没了钥匙。
+//
+// 而这件事**完全可以在切换前机械验证**：拿几条真实密文试解一下就知道。
+// 此前只能靠人上线后被投诉才发现，那时已经晚了。
+head('4. 小鱼干密钥（切换前必查，错了不可逆）');
+if (dbPath && fs.existsSync(dbPath)) {
+  if (process.env.FISH_ENCRYPTION_KEY) {
+    bad(
+      'FISH_ENCRYPTION_KEY 有值 —— 存量密文是用 SECRET_KEY 加密的，它一填就全解不开',
+      '留空即可（回退 SECRET_KEY，与 Flask 一致）。仅全新部署、库里没有任何存量密文时才谈得上设它'
+    );
+  } else {
+    ok('FISH_ENCRYPTION_KEY 留空（回退 SECRET_KEY，与 Flask 一致）');
+  }
+
+  try {
+    const { PrismaClient } = await import('@prisma/client');
+    const prisma = new PrismaClient({ log: [] });
+    try {
+      const rows = await prisma.$queryRawUnsafe(
+        `SELECT id, fish_api_key_encrypted AS ct FROM users
+         WHERE fish_api_key_encrypted IS NOT NULL AND fish_api_key_encrypted != '' LIMIT 5`
+      );
+      if (!rows?.length) {
+        wrn(
+          '库里没有任何已加密的 API Key —— 无法验证密钥对不对',
+          '若这是真实生产库，说明账户服务还没给用户建过号；切换后首次用到鱼干时才会建'
+        );
+      } else if (!process.env.SECRET_KEY) {
+        bad('SECRET_KEY 未设置，无法验证', '把 Flask 生产 .env 里的 SECRET_KEY 原样搬过来');
+      } else {
+        const { decryptApiKey } = await import('../src/lib/account-client.ts');
+        let good = 0;
+        const errs = [];
+        for (const r of rows) {
+          try {
+            const k = decryptApiKey(String(r.ct));
+            if (k) good++;
+          } catch (e) {
+            errs.push(String(e).split('\n')[0]);
+          }
+        }
+        if (good === rows.length) {
+          ok(`SECRET_KEY 正确：抽查 ${good}/${rows.length} 条存量密文全部解开`);
+        } else {
+          bad(
+            `SECRET_KEY 不对：抽查 ${rows.length} 条，只解开 ${good} 条（${errs[0] ?? ''}）`,
+            'SECRET_KEY 必须与当前 Flask 生产环境用的完全一致 —— 它在服务器的 .env 里，不在仓库。' +
+              '仓库里的是开发用的，解不开任何生产密文'
+          );
+        }
+      }
+    } finally {
+      await prisma.$disconnect();
+    }
+  } catch (e) {
+    wrn(`无法验证密钥：${String(e).split('\n')[0]}`);
+  }
+} else {
+  wrn('没有可读的数据库，跳过密钥验证');
+}
+
+// ── 5. 线上活体检查 ─────────────────────────────────────────────────────────
 if (urlArg) {
-  head(`4. 线上活体检查（${urlArg}）`);
+  head(`5. 线上活体检查（${urlArg}）`);
   const base = urlArg.replace(/\/$/, '');
   const isHttps = base.startsWith('https://');
   if (!isHttps) {
