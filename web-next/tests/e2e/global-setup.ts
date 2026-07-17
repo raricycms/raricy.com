@@ -20,6 +20,7 @@ import { SEED_PASSWORD, SEED_USERS, SEED_CATEGORY, SEED_BLOG, SEED_LOG } from '.
 
 // __dirname 而非 import.meta.dirname：Playwright 把本文件转成 CJS 加载，import.meta 在那里会炸。
 const E2E_DB = path.resolve(__dirname, '../.tmp/e2e.db');
+const LOCK = path.resolve(__dirname, '../.tmp/e2e.lock');
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
 
 /** 硬校验：只允许在 tests/.tmp 下建库（对齐 tests/helpers/db.ts 的同款保险）。 */
@@ -29,10 +30,42 @@ function assertTestDb(dbPath: string) {
   }
 }
 
+/**
+ * 拦住并发的第二轮 e2e。
+ *
+ * 库名固定（e2e.db）、端口也固定（3100/3101），所以两轮同时跑时后一轮的 globalSetup
+ * 会把前一轮正在用的库 rmSync 掉再重建。前一轮**不会报错**，只会看到一堆莫名其妙的
+ * 失败：用户消失、种子文章 404、登录失败……而且每次挂的用例都不一样，极像随机的 flaky。
+ * 这个坑真的绊了人（先后看到 121→54→122 三种结果），所以宁可在这里直接拒绝启动。
+ *
+ * 用 PID 存活性判断而非时间戳：跑一轮就几十秒，用超时判定要么误杀要么拦不住。
+ */
+function acquireLock() {
+  if (fs.existsSync(LOCK)) {
+    const pid = Number(fs.readFileSync(LOCK, 'utf8').trim());
+    let alive = false;
+    try {
+      process.kill(pid, 0); // 只探活，不真发信号
+      alive = true;
+    } catch {
+      alive = false; // 进程没了 —— 上一轮被 Ctrl-C 或崩了，锁是残留的
+    }
+    if (alive) {
+      throw new Error(
+        `另一轮 e2e 正在跑（pid ${pid}）。两轮共用 tests/.tmp/e2e.db 与端口 3100/3101，` +
+          `同时跑会互相清库，结果是两边都挂在莫名其妙的地方。请等它跑完，` +
+          `或先 kill ${pid}。`
+      );
+    }
+    fs.rmSync(LOCK, { force: true });
+  }
+  fs.writeFileSync(LOCK, String(process.pid));
+}
+
 export default async function globalSetup() {
   assertTestDb(E2E_DB);
-
   fs.mkdirSync(path.dirname(E2E_DB), { recursive: true });
+  acquireLock();
   // 每轮从零开始：上轮残留的用户会让「注册重名」「今天已签到」这类用例莫名其妙地挂
   for (const suffix of ['', '-wal', '-shm']) {
     fs.rmSync(E2E_DB + suffix, { force: true });

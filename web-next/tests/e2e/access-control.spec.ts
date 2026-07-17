@@ -11,15 +11,17 @@ import { SEED_USERS } from './seed';
 import { loginViaApi } from './helpers';
 
 test.describe('未登录访问受控页面', () => {
-  test('/checkin 跳转登录页', async ({ page }) => {
+  test('/checkin 跳转登录页，并带上回跳地址', async ({ page }) => {
     await page.goto('/checkin');
-    await expect(page).toHaveURL(/\/login$/);
+    // 带 ?next= 才能在登录后回到这里（对齐 Flask-Login 的 login_view 行为）。
+    // Next 侧一度只跳 '/login'、登录后一律回首页 —— 那是行为回归。
+    await expect(page).toHaveURL('/login?next=%2Fcheckin');
     await expect(page.locator('#loginForm')).toBeVisible();
   });
 
-  test('/admin 跳转登录页', async ({ page }) => {
+  test('/admin 跳转登录页，并带上回跳地址', async ({ page }) => {
     await page.goto('/admin');
-    await expect(page).toHaveURL(/\/login$/);
+    await expect(page).toHaveURL('/login?next=%2Fadmin');
   });
 
   test('/blog 原地渲染 403（对齐原站 abort(403)，非跳转）', async ({ page }) => {
@@ -36,8 +38,8 @@ test.describe('角色门控', () => {
     await loginViaApi(page, SEED_USERS.plain.username);
 
     await page.goto('/admin');
-    // AdminLayout: hasAdminRights(user) 为假 → redirect('/login')
-    await expect(page).toHaveURL(/\/login$/);
+    // AdminLayout: hasAdminRights(user) 为假 → redirect(loginUrlWithNext('/admin'))
+    await expect(page).toHaveURL('/login?next=%2Fadmin');
     // 顶栏能证明「他确实登着录」，被挡是因为角色不够，不是因为没登录 ——
     // 少了这一条，用例在「会话根本没生效」时也会绿。
     await expect(page.locator('#userDropdownToggle')).toContainText(SEED_USERS.plain.username);

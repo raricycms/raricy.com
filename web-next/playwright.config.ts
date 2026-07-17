@@ -31,6 +31,7 @@ export default defineConfig({
   reporter: process.env.CI ? 'list' : [['list']],
   timeout: 30_000,
   globalSetup: './tests/e2e/global-setup.ts',
+  globalTeardown: './tests/e2e/global-teardown.ts',
 
   use: {
     baseURL: `http://127.0.0.1:${PORT}`,

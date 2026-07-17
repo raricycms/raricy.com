@@ -24,13 +24,26 @@ export async function serverSeesAuthenticated(page: Page): Promise<boolean> {
 }
 
 /** 走真实登录页（填表 + 提交），而不是直接种 cookie —— 要测的就是这条链路本身。 */
-export async function loginViaUI(page: Page, username: string, password = SEED_PASSWORD) {
-  await page.goto('/login');
+/**
+ * 走真实表单登录。
+ *
+ * @param next 登录前想去的页面；传了就带 ?next= 进登录页，并等着落到那儿。
+ *             不传则等落到首页（登录页 next 为空时回首页）。
+ */
+export async function loginViaUI(
+  page: Page,
+  username: string,
+  password = SEED_PASSWORD,
+  next?: string
+) {
+  await page.goto(next ? `/login?next=${encodeURIComponent(next)}` : '/login');
   await page.fill('#username', username);
   await page.fill('#password', password);
   await Promise.all([
-    // 登录成功后前端 router.push('/')，等这次跳转落地再继续
-    page.waitForURL('/', { timeout: 15_000 }),
+    // 登录成功后前端 router.push(safeNextPath(next))，等这次跳转落地再继续。
+    // 传了不安全的 next（外站 URL）时会落到 '/' —— 那种用例请直接自己断言 URL，
+    // 别用这个参数，否则这里会一直等一个永远不来的跳转。
+    page.waitForURL(next ?? '/', { timeout: 15_000 }),
     page.click('#submitBtn'),
   ]);
 }

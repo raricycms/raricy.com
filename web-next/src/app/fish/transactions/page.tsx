@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth';
+import { loginUrlWithNext } from '@/lib/safe-url';
 import { getTransactions } from '@/lib/fish-service';
 import FishPageJump from '../FishPageJump';
 
@@ -35,7 +36,7 @@ export default async function FishTransactionsPage({
   searchParams: Promise<SearchParams>;
 }) {
   const user = await getCurrentUser();
-  if (!user) redirect('/login');
+  if (!user) redirect(loginUrlWithNext('/fish/transactions'));
   const sp = await searchParams;
   const page = Number.parseInt(sp.page || '1', 10) || 1;
   const typeFilter = sp.type ?? null;

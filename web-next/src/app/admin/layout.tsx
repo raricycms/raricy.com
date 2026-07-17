@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import { getCurrentUser, hasAdminRights } from '@/lib/auth';
+import { loginUrlWithNext } from '@/lib/safe-url';
 import AdminShell from '@/app/components/AdminShell';
 
 // 管理端母版（对齐 Flask admin_base.html）。
@@ -10,7 +11,7 @@ import AdminShell from '@/app/components/AdminShell';
 // 也要用同一套侧栏，但那条路由不在 /admin 段下，且对 core 用户开放。详见 AdminShell。
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
-  if (!hasAdminRights(user)) redirect('/login');
+  if (!hasAdminRights(user)) redirect(loginUrlWithNext('/admin'));
 
   return <AdminShell user={user!}>{children}</AdminShell>;
 }

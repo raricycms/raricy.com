@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { safeNextPath } from '@/lib/safe-url';
 
 function toast(msg: string, type: string) {
   if (typeof window === 'undefined') return;
@@ -34,7 +35,9 @@ export default function LoginPage() {
       const data = await res.json();
       if (data.code === 200) {
         toast(data.message || '登录成功！正在跳转...', 'success');
-        router.push('/');
+        // 回跳到登录前想去的页面（对齐 Flask sign_in.py 的 next_url 行为）。
+        // safeNextPath 挡开放重定向 —— next 来自 URL，攻击者可控。
+        router.push(safeNextPath(next));
         router.refresh();
       } else {
         toast(data.message || '登录失败，请检查用户名和密码', 'error');

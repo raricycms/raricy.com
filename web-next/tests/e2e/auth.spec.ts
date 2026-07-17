@@ -84,3 +84,35 @@ test.describe('认证主链路', () => {
     expect(await serverSeesAuthenticated(page)).toBe(false);
   });
 });
+
+test.describe('登录回跳（next）', () => {
+  test('带 next 登录后回到原页，而不是首页', async ({ page }) => {
+    // Next 侧一度**完全忽略** next：登录页那个 name="next" 的 hidden input
+    // 从没被发送过，跳转硬编码 '/'。于是「未登录点签到 → 登录 → 落到首页」，
+    // 用户还得自己再点一次。Flask 有 64 个 @login_required 路由都能正常回原页。
+    await loginViaUI(page, SEED_USERS.core.username, SEED_PASSWORD, '/checkin');
+    await expect(page).toHaveURL('/checkin');
+    expect(await serverSeesAuthenticated(page)).toBe(true);
+  });
+
+  test('★ next 指向外站时不跳出去（开放重定向）', async ({ page }) => {
+    // 补回 next 就等于把一个攻击者可控的值喂给 router.push。
+    // 攻击长这样：诱导用户点 /login?next=https://evil.com，用户在**我们自己的**
+    // 登录页输完密码后被弹去钓鱼站 —— 全程地址栏都是可信域名。
+    await page.goto('/login?next=' + encodeURIComponent('https://evil.example.com'));
+    await page.fill('#username', SEED_USERS.core.username);
+    await page.fill('#password', SEED_PASSWORD);
+    await page.click('#submitBtn');
+    await expect(page).toHaveURL('/'); // 落回首页，没被弹出去
+    expect(page.url()).not.toContain('evil');
+  });
+
+  test('★ 协议相对 URL 也挡住（//evil.com 浏览器当跨站跳转）', async ({ page }) => {
+    await page.goto('/login?next=' + encodeURIComponent('//evil.example.com'));
+    await page.fill('#username', SEED_USERS.core.username);
+    await page.fill('#password', SEED_PASSWORD);
+    await page.click('#submitBtn');
+    await expect(page).toHaveURL('/');
+    expect(page.url()).not.toContain('evil');
+  });
+});

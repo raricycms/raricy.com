@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth';
+import { loginUrlWithNext } from '@/lib/safe-url';
 import {
   getTodayStatus,
   getCountLeaderboard,
@@ -11,7 +12,7 @@ export const dynamic = 'force-dynamic'; // 依赖登录态与实时数据，禁�
 
 export default async function CheckinPage() {
   const user = await getCurrentUser();
-  if (!user) redirect('/login');
+  if (!user) redirect(loginUrlWithNext('/checkin'));
 
   const [status, countLb, fortuneLb] = await Promise.all([
     getTodayStatus(user.id),
