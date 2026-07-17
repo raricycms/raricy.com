@@ -1,6 +1,11 @@
 import { defineConfig, devices } from '@playwright/test';
 import path from 'node:path';
 
+// 用 __dirname 而非 import.meta.dirname：Playwright 会把配置与用例转成 CJS 再加载，
+// import.meta 在那里是语法错误（SyntaxError: Cannot use 'import.meta' outside a module）。
+// vitest 侧是原生 ESM，故 vitest.config.ts / tests/setup.ts 里的 import.meta.dirname 没问题 ——
+// 两套 runner 的加载方式不同，别照抄。
+
 // E2E 配置。
 //
 // 【为什么需要 E2E】1000+ 后端用例抓不到这类问题 —— 今天线上三个 bug 全是例证：
@@ -13,8 +18,10 @@ import path from 'node:path';
 // 【数据安全】webServer 用独立的 e2e 测试库（tests/.tmp/e2e.db），
 // 由 global-setup 从 schema 建表 + 造种子数据，绝不碰 data/ 与 prisma/prod.db。
 
-const E2E_DB = path.resolve(import.meta.dirname, 'tests/.tmp/e2e.db');
+const E2E_DB = path.resolve(__dirname, 'tests/.tmp/e2e.db');
 const PORT = 3100; // 避开开发用的 3000
+const ACCOUNT_PORT = 3101; // 账户服务替身，见 tests/e2e/mock-account-service.ts
+const ACCOUNT_INTERNAL_TOKEN = 'e2e-internal-token';
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -36,7 +43,21 @@ export default defineConfig({
     { name: 'mobile', use: { ...devices['iPhone 13'] } },
   ],
 
-  webServer: {
+  webServer: [
+    {
+      // 账户微服务替身。**不是可选项**：next start 下 NODE_ENV=production，
+      // 而注册/签到走 Phase 1.5 的 fail-closed —— 未配 ACCOUNT_SERVICE_INTERNAL_TOKEN
+      // 时 assertRemoteRequiredInProduction() 直接抛 503。不接远端就跑不了这两条主链路。
+      command: `npx tsx tests/e2e/mock-account-service.ts`,
+      port: ACCOUNT_PORT,
+      reuseExistingServer: false,
+      timeout: 30_000,
+      env: {
+        E2E_ACCOUNT_PORT: String(ACCOUNT_PORT),
+        E2E_ACCOUNT_INTERNAL_TOKEN: ACCOUNT_INTERNAL_TOKEN,
+      },
+    },
+    {
     // 用 next start（生产构建）而非 dev —— 线上跑的是这个，
     // 且 dev 模式的 Fast Refresh 会干扰「脚本加载时序」这类用例。
     command: `next start -p ${PORT}`,
@@ -47,12 +68,16 @@ export default defineConfig({
       NODE_ENV: 'production',
       DATABASE_URL: `file:${E2E_DB}`,
       SECRET_KEY: 'e2e-test-secret-key',
+      ACCOUNT_SERVICE_URL: `http://127.0.0.1:${ACCOUNT_PORT}`,
+      ACCOUNT_SERVICE_INTERNAL_TOKEN: ACCOUNT_INTERNAL_TOKEN,
+      ACCOUNT_SYSTEM_KEY: 'e2e-system-key',
       // 站点走 http://127.0.0.1 —— 若下发 Secure cookie，浏览器会丢弃它，
       // 登录会「成功但不粘」。这正是线上踩过的坑；此处显式关掉，
       // 另有专门用例验证该判定逻辑本身。
       COOKIE_SECURE: 'false',
-      AVATARS_DIR: path.resolve(import.meta.dirname, 'tests/.tmp/e2e-avatars'),
-      IMAGE_UPLOAD_FOLDER: path.resolve(import.meta.dirname, 'tests/.tmp/e2e-images'),
+      AVATARS_DIR: path.resolve(__dirname, 'tests/.tmp/e2e-avatars'),
+      IMAGE_UPLOAD_FOLDER: path.resolve(__dirname, 'tests/.tmp/e2e-images'),
     },
-  },
+    },
+  ],
 });
