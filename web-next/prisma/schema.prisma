@@ -32,8 +32,8 @@ datasource db {
 
 model User {
   id             String    @id
-  username       String    @unique
-  email          String    @unique
+  username       String    @unique(map: "ix_users_username")
+  email          String    @unique(map: "ix_users_email")
   passwordHash   String    @map("password_hash")
   createdAt      DateTime? @map("created_at")
   lastLogin      DateTime? @map("last_login")
@@ -83,6 +83,8 @@ model User {
   bansReceived          UserBan[]           @relation("BanUser")
   bansIssued            UserBan[]           @relation("BanAdmin")
   bansLifted            UserBan[]           @relation("BanLifter")
+  @@index([id], map: "ix_users_id")
+  @@index([role], map: "ix_users_role")
 
   @@map("users")
 }
@@ -113,6 +115,8 @@ model UserBan {
   user   User  @relation("BanUser", fields: [userId], references: [id])
   admin  User  @relation("BanAdmin", fields: [adminId], references: [id])
   lifter User? @relation("BanLifter", fields: [liftedBy], references: [id])
+  @@index([adminId], map: "ix_user_bans_admin_id")
+  @@index([userId], map: "ix_user_bans_user_id")
 
   @@map("user_bans")
 }
@@ -139,6 +143,14 @@ model Blog {
   likes    BlogLike[]
   comments BlogComment[]
   feeds    BlogFeed[]
+  @@index([id], map: "ix_blogs_id")
+  @@index([title], map: "ix_blogs_title")
+  @@index([authorId], map: "ix_blogs_author_id")
+  @@index([categoryId], map: "ix_blogs_category_id")
+  @@index([isFeatured], map: "ix_blogs_is_featured")
+  @@index([lastCommentAt], map: "ix_blogs_last_comment_at")
+  @@index([ignore], map: "ix_blogs_ignore")
+  @@index([createdAt], map: "ix_blogs_created_at")
 
   @@map("blogs")
 }
@@ -166,6 +178,8 @@ model BlogLike {
   user User @relation(fields: [userId], references: [id])
 
   @@unique([blogId, userId], name: "uq_blog_like_blog_user")
+  @@index([blogId], map: "ix_blog_likes_blog_id")
+  @@index([userId], map: "ix_blog_likes_user_id")
   @@map("blog_likes")
 }
 
@@ -181,6 +195,8 @@ model BlogFeed {
   user User @relation(fields: [userId], references: [id])
 
   @@unique([blogId, userId], name: "uq_blog_feed_user")
+  @@index([blogId], map: "ix_blog_feeds_blog_id")
+  @@index([userId], map: "ix_blog_feeds_user_id")
   @@map("blog_feeds")
 }
 
@@ -189,7 +205,7 @@ model BlogFeed {
 model Category {
   id                Int       @id @default(autoincrement())
   name              String
-  slug              String    @unique
+  slug              String    @unique(map: "ix_categories_slug")
   description       String?   @default("")
   parentId          Int?      @map("parent_id")
   sortOrder         Int?      @default(0) @map("sort_order")
@@ -203,6 +219,13 @@ model Category {
   parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id])
   children Category[] @relation("CategoryTree")
   blogs    Blog[]
+  @@index([notifyAdminOnPost], map: "ix_categories_notify_admin_on_post")
+  @@index([adminOnlyPosting], map: "ix_categories_admin_only_posting")
+  @@index([sortOrder], map: "ix_categories_sort_order")
+  @@index([isActive], map: "ix_categories_is_active")
+  @@index([name], map: "ix_categories_name")
+  @@index([parentId], map: "ix_categories_parent_id")
+  @@index([excludeFromAll], map: "ix_categories_exclude_from_all")
 
   @@map("categories")
 }
@@ -230,6 +253,13 @@ model BlogComment {
   root        BlogComment?  @relation("CommentRoot", fields: [rootId], references: [id])
   descendants BlogComment[] @relation("CommentRoot")
   likes       CommentLike[]
+  @@index([authorId], map: "ix_blog_comments_author_id")
+  @@index([blogId], map: "ix_blog_comments_blog_id")
+  @@index([createdAt], map: "ix_blog_comments_created_at")
+  @@index([isDeleted], map: "ix_blog_comments_is_deleted")
+  @@index([parentId], map: "ix_blog_comments_parent_id")
+  @@index([rootId], map: "ix_blog_comments_root_id")
+  @@index([status], map: "ix_blog_comments_status")
 
   @@map("blog_comments")
 }
@@ -244,6 +274,8 @@ model CommentLike {
   user    User        @relation(fields: [userId], references: [id])
 
   @@unique([commentId, userId], name: "uq_comment_like_comment_user")
+  @@index([commentId], map: "ix_comment_likes_comment_id")
+  @@index([userId], map: "ix_comment_likes_user_id")
   @@map("comment_likes")
 }
 
@@ -262,6 +294,7 @@ model Notification {
 
   recipient User  @relation("NotificationRecipient", fields: [recipientId], references: [id])
   actor     User? @relation("NotificationActor", fields: [actorId], references: [id])
+  @@index([timestamp], map: "ix_notifications_timestamp")
 
   @@map("notifications")
 }
@@ -278,6 +311,12 @@ model ClipBoard {
 
   author  User      @relation(fields: [authorId], references: [id])
   content ClipText?
+  @@index([authorId], map: "ix_clipboards_author_id")
+  @@index([createdAt], map: "ix_clipboards_created_at")
+  @@index([id], map: "ix_clipboards_id")
+  @@index([ignore], map: "ix_clipboards_ignore")
+  @@index([publicity], map: "ix_clipboards_publicity")
+  @@index([title], map: "ix_clipboards_title")
 
   @@map("clipboards")
 }
@@ -306,6 +345,10 @@ model ImageHosting {
 
   author    User            @relation(fields: [authorId], references: [id])
   wallItems PhotoWallItem[]
+  @@index([authorId], map: "ix_image_hosting_author_id")
+  @@index([createdAt], map: "ix_image_hosting_created_at")
+  @@index([id], map: "ix_image_hosting_id")
+  @@index([ignore], map: "ix_image_hosting_ignore")
 
   @@map("image_hosting")
 }
@@ -325,6 +368,11 @@ model PhotoWallItem {
 
   image  ImageHosting @relation(fields: [imageId], references: [id])
   author User         @relation(fields: [authorId], references: [id])
+  @@index([authorId], map: "ix_photo_wall_items_author_id")
+  @@index([createdAt], map: "ix_photo_wall_items_created_at")
+  @@index([id], map: "ix_photo_wall_items_id")
+  @@index([ignore], map: "ix_photo_wall_items_ignore")
+  @@index([imageId], map: "ix_photo_wall_items_image_id")
 
   @@map("photo_wall_items")
 }
@@ -342,6 +390,7 @@ model Vote {
   author  User         @relation(fields: [authorId], references: [id])
   options VoteOption[]
   records VoteRecord[]
+  @@index([authorId], map: "ix_votes_author_id")
 
   @@map("votes")
 }
@@ -355,6 +404,7 @@ model VoteOption {
 
   vote    Vote         @relation(fields: [voteId], references: [id])
   records VoteRecord[]
+  @@index([voteId], map: "ix_vote_options_vote_id")
 
   @@map("vote_options")
 }
@@ -371,6 +421,7 @@ model VoteRecord {
   user   User       @relation(fields: [userId], references: [id])
 
   @@unique([voteId, userId], name: "uq_vote_user")
+  @@index([voteId], map: "ix_vote_records_vote_id")
   @@map("vote_records")
 }
 
@@ -387,6 +438,7 @@ model DailyCheckIn {
   user User @relation(fields: [userId], references: [id])
 
   @@unique([userId, checkinDate], name: "uq_user_checkin_date")
+  @@index([userId], map: "ix_daily_checkins_user_id")
   @@map("daily_checkins")
 }
 
@@ -405,6 +457,10 @@ model FishTransaction {
 
   user        User  @relation("FishTxUser", fields: [userId], references: [id])
   relatedUser User? @relation("FishTxRelated", fields: [relatedUserId], references: [id])
+  @@index([type], map: "ix_fish_transactions_type")
+  @@index([relatedUserId], map: "ix_fish_transactions_related_user_id")
+  @@index([userId], map: "ix_fish_transactions_user_id")
+  @@index([createdAt], map: "ix_fish_transactions_created_at")
 
   @@map("fish_transactions")
 }
@@ -427,6 +483,12 @@ model AdminActionLog {
   admin      User                @relation("LogAdmin", fields: [adminId], references: [id])
   targetUser User?               @relation("LogTarget", fields: [targetUserId], references: [id])
   appeals    AdminActionAppeal[]
+  @@index([adminId], map: "ix_admin_action_logs_admin_id")
+  @@index([createdAt], map: "ix_admin_action_logs_created_at")
+  @@index([visibility], map: "ix_admin_action_logs_visibility")
+  @@index([objectId], map: "ix_admin_action_logs_object_id")
+  @@index([action], map: "ix_admin_action_logs_action")
+  @@index([targetUserId], map: "ix_admin_action_logs_target_user_id")
 
   @@map("admin_action_logs")
 }
@@ -446,6 +508,10 @@ model AdminActionAppeal {
   log       AdminActionLog @relation(fields: [logId], references: [id])
   appellant User           @relation("AppealAppellant", fields: [appellantId], references: [id])
   decider   User?          @relation("AppealDecider", fields: [decidedBy], references: [id])
+  @@index([logId], map: "ix_admin_action_appeals_log_id")
+  @@index([createdAt], map: "ix_admin_action_appeals_created_at")
+  @@index([appellantId], map: "ix_admin_action_appeals_appellant_id")
+  @@index([status], map: "ix_admin_action_appeals_status")
 
   @@map("admin_action_appeals")
 }
