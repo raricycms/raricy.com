@@ -5,6 +5,7 @@ from .config import get_config
 from .cli import register_commands
 from .cli_import import register_import_commands
 from .clients import AccountClient
+from .extensions.ms_datetime import install_ms_datetime
 from datetime import datetime
 from werkzeug.middleware.proxy_fix import ProxyFix
 import os
@@ -13,6 +14,18 @@ import os
 account_client = AccountClient()
 
 def create_app():
+    # 时间戳格式兼容层（默认关闭）。
+    #
+    # 置 DB_DATETIME_MS=true 后，Flask 改用 Unix 毫秒整数读写 DATETIME 列，
+    # 与 Next.js 侧的 Prisma 同格式 —— 这是「Flask 与 Next 共读一个已规整的库」
+    # （灰度切换/可回滚）的前提。详见 app/extensions/ms_datetime.py。
+    #
+    # 默认关闭，因为尚未规整的库仍是 SQLAlchemy 文本格式，装上反而读不了。
+    # 开启时机：跑完 web-next/scripts/normalize-datetimes.mjs 之后。
+    # 必须在 init_extensions() 建 engine 之前调用。
+    if os.environ.get('DB_DATETIME_MS', '').strip().lower() in ('1', 'true', 'yes'):
+        install_ms_datetime()
+
     app = Flask(__name__)
     app.config.from_object(get_config())
     # Trust reverse proxy headers from Nginx for host/scheme so url_for builds correct external URLs
