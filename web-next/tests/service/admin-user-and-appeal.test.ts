@@ -649,13 +649,51 @@ describe('setRole（角色变更）', () => {
     expect(JSON.parse((await readExtra(log!.id))!)).toEqual({ from: 'user', to: 'core' });
   });
 
-  it('降级 admin→user 也走同一路径（不涉及 owner 时 admin 即可操作）', async () => {
+  it('★ admin 不能任命 admin —— 接口收任意角色，UI 没按钮不等于挡住', async () => {
+    const admin = await makeUser({ role: 'admin' });
+    const plain = await makeUser({ role: 'user' });
+
+    // 实测过：此前这里返回 200，角色真的落库，管理员 curl 一发就能造出新管理员。
+    // Flask 压根做不到 —— /promote 硬编码只做 user→core 且 @owner_required，
+    // 想加管理员只能上服务器跑 flask promote-admin。
+    expect(
+      await setRole({ actor: asActor(admin), targetId: plain.id, newRole: 'admin' })
+    ).toMatchObject({ ok: false, code: 403, message: '仅站长可变更管理员/站长角色' });
+    expect((await prisma.user.findUnique({ where: { id: plain.id } }))!.role).toBe('user');
+  });
+
+  it('★ admin 也不能把另一个 admin 降成 user（判的是目标当前角色，不只是新角色）', async () => {
     const admin = await makeUser({ role: 'admin' });
     const target = await makeUser({ role: 'admin' });
 
     expect(
-      (await setRole({ actor: asActor(admin), targetId: target.id, newRole: 'user' })).ok
-    ).toBe(true);
+      await setRole({ actor: asActor(admin), targetId: target.id, newRole: 'user' })
+    ).toMatchObject({ ok: false, code: 403 });
+    expect((await prisma.user.findUnique({ where: { id: target.id } }))!.role).toBe('admin');
+  });
+
+  it('站长可以任命/卸任 admin', async () => {
+    const owner = await makeUser({ role: 'owner' });
+    const plain = await makeUser({ role: 'user' });
+
+    expect((await setRole({ actor: asActor(owner), targetId: plain.id, newRole: 'admin' })).ok).toBe(
+      true
+    );
+    expect((await setRole({ actor: asActor(owner), targetId: plain.id, newRole: 'user' })).ok).toBe(
+      true
+    );
+  });
+
+  it('user↔core（页面上的「认证 / 取消认证」）管理员仍然可以做 —— 这是日常工作，不该收到站长', async () => {
+    const admin = await makeUser({ role: 'admin' });
+    const target = await makeUser({ role: 'user' });
+
+    expect((await setRole({ actor: asActor(admin), targetId: target.id, newRole: 'core' })).ok).toBe(
+      true
+    );
+    expect((await setRole({ actor: asActor(admin), targetId: target.id, newRole: 'user' })).ok).toBe(
+      true
+    );
   });
 
   it('无效角色 → 400；不能改自己 → 403；目标不存在 → 404；角色未变化 → 400', async () => {

@@ -171,10 +171,26 @@ export interface SetRoleParams {
   newRole: string;
 }
 
+/** 管理员可自行变更的角色档位：仅「认证/取消认证」这一对（user↔core）。 */
+const ADMIN_SETTABLE_ROLES: readonly Role[] = ['user', 'core'];
+
 /**
  * 变更用户角色（user↔core↔admin↔owner）。
- *  • 涉及 owner（目标当前是 owner，或目标要变成 owner）时，仅站长可操作。
+ *
+ * 权限分档：
+ *  • user↔core（即页面上的「认证 / 取消认证」）—— 管理员即可。
+ *  • 涉及 admin 或 owner 的任何方向 —— 仅站长。
  *  • 不能改自己的角色。
+ *
+ * 【为什么卡 admin 这一档】此前只拦了 owner，于是管理员可以直接
+ * `PATCH /api/admin/users/:id {"role":"admin"}` 造出新的管理员（实测 200，
+ * 角色真的落库）。UI 上没有这个按钮，但接口收任意角色 —— 藏起按钮不等于挡住。
+ * Flask 侧压根做不到这件事：它的 /promote 硬编码只做 user→core，且是 @owner_required，
+ * 想加管理员只能上服务器跑 `flask promote-admin`。
+ *
+ * 这里比 Flask 略宽（Flask 连 user↔core 都要站长），是刻意保留的：
+ * 日常给新人认证是管理员的常规工作，收到站长会把这条路堵死。
+ * 但「谁能任命管理员」这条底线与 Flask 一致 —— 只有站长。
  */
 export async function setRole(p: SetRoleParams): Promise<AdminResult<{ role: string }>> {
   const newRole = p.newRole as Role;
@@ -188,10 +204,12 @@ export async function setRole(p: SetRoleParams): Promise<AdminResult<{ role: str
   if (!target) return { ok: false, code: 404, message: '用户不存在' };
   if (target.role === newRole) return { ok: false, code: 400, message: '角色未变化' };
 
-  // 涉及 owner 的任何方向都需要站长权限
-  const touchesOwner = target.role === 'owner' || newRole === 'owner';
-  if (touchesOwner && !isOwner(p.actor)) {
-    return { ok: false, code: 403, message: '仅站长可变更站长角色' };
+  // 目标的当前角色与目标角色，只要有一头超出 user↔core，就必须是站长。
+  // 判「当前角色」而非只判「新角色」：否则管理员能把另一个管理员一键降成 user。
+  const privileged =
+    !ADMIN_SETTABLE_ROLES.includes(target.role as Role) || !ADMIN_SETTABLE_ROLES.includes(newRole);
+  if (privileged && !isOwner(p.actor)) {
+    return { ok: false, code: 403, message: '仅站长可变更管理员/站长角色' };
   }
 
   await prisma.user.update({
