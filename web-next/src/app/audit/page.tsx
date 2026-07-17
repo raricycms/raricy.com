@@ -33,6 +33,7 @@ export default async function AuditPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
+  // layout 已鉴权；这里再判一次做纵深防御（页面若被单独复用/直连也拦得住）。
   await requireCoreUser();
   const sp = await searchParams;
   const result = await listPublicLogs({
