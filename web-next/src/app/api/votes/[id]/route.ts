@@ -1,13 +1,18 @@
 import { getVoteDetail } from '@/lib/vote-service';
-import { getCurrentUser } from '@/lib/auth';
+import { getCurrentUser, isCoreUser } from '@/lib/auth';
 import { apiErr } from '@/lib/format';
 
 // GET /api/votes/:id — 投票详情（选项计数 + 当前用户已投项）
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
   const user = await getCurrentUser();
+  // 对齐 Flask /vote/<id> 的 @authenticated_required：需核心用户。
+  // 此前这个 GET 完全没判权 —— 任何人 curl 就能拿到投票结果。唯二的调用方
+  // （投票页、博客里的投票嵌入）都在 core 门槛之后，加这道不影响任何合法场景。
+  if (!user) return apiErr(401, '请先登录');
+  if (!isCoreUser(user)) return apiErr(403, '需要核心用户权限');
 
-  const vote = await getVoteDetail(id, user?.id ?? null);
+  const vote = await getVoteDetail(id, user.id);
   if (!vote) return apiErr(404, '投票不存在');
 
   return Response.json({

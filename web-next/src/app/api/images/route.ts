@@ -1,5 +1,5 @@
 import { listUserImages } from '@/lib/image-service';
-import { getCurrentUser, isCurrentlyBanned } from '@/lib/auth';
+import { getCurrentUser, isCurrentlyBanned, isCoreUser } from '@/lib/auth';
 import { apiOk, apiErr } from '@/lib/format';
 import { rateLimit, RULES } from '@/lib/rate-limit';
 import {
@@ -18,6 +18,9 @@ export const runtime = 'nodejs';
 export async function GET() {
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '请先登录');
+  // 对齐 Flask @authenticated_required：需核心用户（core 及以上）。
+  // 页面挡了 core，但接口没挡 —— 未认证用户用不了界面，却 curl 得动。
+  if (!isCoreUser(user)) return apiErr(403, '需要核心用户权限');
 
   const images = await listUserImages(user.id);
   return apiOk({
@@ -44,6 +47,9 @@ export async function GET() {
 export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '请先登录');
+  // 对齐 Flask @authenticated_required：需核心用户（core 及以上）。
+  // 页面挡了 core，但接口没挡 —— 未认证用户用不了界面，却 curl 得动。
+  if (!isCoreUser(user)) return apiErr(403, '需要核心用户权限');
   if (isCurrentlyBanned(user)) return apiErr(403, '你已被禁言，暂时无法上传');
 
   let form: FormData;

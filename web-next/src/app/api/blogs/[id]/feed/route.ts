@@ -1,4 +1,4 @@
-import { getCurrentUser, isCurrentlyBanned } from '@/lib/auth';
+import { getCurrentUser, isCurrentlyBanned, isCoreUser } from '@/lib/auth';
 import { apiOk, apiErr } from '@/lib/format';
 import { feedBlog } from '@/lib/feed-service';
 import { AccountServiceError } from '@/lib/account-client';
@@ -10,6 +10,9 @@ export const runtime = 'nodejs';
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '请先登录');
+  // 对齐 Flask @authenticated_required：需核心用户（core 及以上）。
+  // 页面挡了 core，但接口没挡 —— 未认证用户用不了界面，却 curl 得动。
+  if (!isCoreUser(user)) return apiErr(403, '需要核心用户权限');
   if (isCurrentlyBanned(user)) return apiErr(403, '你已被禁言，暂时无法投喂');
 
   const { id } = await ctx.params;

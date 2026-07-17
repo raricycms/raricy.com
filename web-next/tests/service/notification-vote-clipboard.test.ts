@@ -917,7 +917,9 @@ describe('vote-service', () => {
     });
 
     it('API route 把上限错误透传成 400 + 同样的文案', async () => {
-      const u = await makeUser();
+      // core：投票接口是 @authenticated_required，makeUser() 默认的 role:'user'
+      // 会先吃 403，走不到这条用例要验的「上限文案」。
+      const u = await makeUser({ role: 'core' });
       for (let i = 0; i < 100; i++) await makeVote({ authorId: u.id });
 
       mockCurrentUser = u as SafeUser;
@@ -1648,6 +1650,11 @@ describe('clipboard-service', () => {
   //
   // 「标题/内容长度上限与文案」这两件事 service 层没有，只有 route 有。
   // 要验文案就得打到 route，所以这组 mock 掉 getCurrentUser 直接调 PUT/POST handler。
+  //
+  // 这里的用户必须 role:'core' —— 剪贴板接口是 @authenticated_required（core 及以上），
+  // makeUser() 默认造的是 role:'user'，会先吃一个 403「需要核心用户权限」，
+  // 根本走不到要验的长度校验。用 core 不是为了绕过权限，而是因为这组测的是长度文案，
+  // 权限那关有它自己的用例（见 e2e access-control「核心用户门槛（接口层）」）。
   describe('长度上限与错误文案（API route 层）', () => {
     it('常量与 Flask validator() 对齐', () => {
       expect(CLIP_TITLE_MAX).toBe(40); // app/web/clipboard/__init__.py: len(title) > 40
@@ -1655,7 +1662,7 @@ describe('clipboard-service', () => {
     });
 
     it('PUT /api/clipboard/:id 的长度校验与文案', async () => {
-      const author = await makeUser();
+      const author = await makeUser({ role: 'core' });
       const r = (await createClip(author.id, { title: 't', content: 'c' })) as { ok: true; id: string };
 
       mockCurrentUser = author as SafeUser;
@@ -1695,8 +1702,8 @@ describe('clipboard-service', () => {
     });
 
     it('PUT 非作者 → 403 「您不是该文章作者，无法编辑！」', async () => {
-      const author = await makeUser();
-      const other = await makeUser();
+      const author = await makeUser({ role: 'core' });
+      const other = await makeUser({ role: 'core' });
       const r = (await createClip(author.id, { title: 't', content: 'c' })) as { ok: true; id: string };
 
       mockCurrentUser = other as SafeUser;
@@ -1719,7 +1726,7 @@ describe('clipboard-service', () => {
     });
 
     it('POST /api/clipboard 超限 → 400 「一个用户只能发布200篇云剪贴板！」', async () => {
-      const author = await makeUser();
+      const author = await makeUser({ role: 'core' });
       for (let i = 0; i < 201; i++) {
         await prisma.clipBoard.create({
           data: { id: `seed${String(i).padStart(4, '0')}`, title: 't', authorId: author.id, createdAt: new Date() },

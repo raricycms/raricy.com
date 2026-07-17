@@ -1838,11 +1838,18 @@ describe('POST /api/images（上传内容校验接线）', () => {
     expect(body.message).toContain('不支持的文件格式');
   });
 
-  it('内容校验先于配额/限频（伪造上传不消耗额度）', async () => {
-    // role=user 无图床权限；若内容校验没有前置，这里会先撞 403 而非 400。
-    // 断言拿到 400 即证明校验顺序对齐 Flask：白名单 → 内容 → 尺寸 → 配额 → 限频。
-    const u = await makeUser({ role: 'user' });
-    authState.user = { id: u.id, role: 'user' };
+  it('内容校验先于配额（伪造上传不消耗额度）', async () => {
+    // 校验顺序对齐 Flask：白名单 → 内容 → 尺寸 → 配额 → 限频。
+    // 造一个**配额已满**的 core 用户：若配额先于内容被检查，这里会撞配额错误；
+    // 拿到 400「内容不匹配」才说明内容校验确实在前。
+    //
+    // 此前这条用例用的是 role=user（配额为 0），并注释说「若内容校验没有前置，
+    // 这里会先撞 403」—— 那个前提是错的：Flask 的 @authenticated_required 是**装饰器**，
+    // 永远先于函数体跑，非核心用户根本到不了任何校验。当时能拿到 400，是因为
+    // Next 这个接口漏了核心用户判断（已修）。
+    const u = await makeUser({ role: 'core' }); // core 配额 50MB
+    await makeImage({ authorId: u.id, fileSize: 50 * 1024 * 1024 }); // 一把占满
+    authState.user = { id: u.id, role: 'core' };
 
     const { res, body } = await upload(Buffer.from('<svg></svg>'), 'image/png', 'e.png');
     expect(res.status).toBe(400);

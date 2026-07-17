@@ -1,9 +1,17 @@
 import { listItems, placeItem } from '@/lib/photowall-service';
-import { getCurrentUser, isCurrentlyBanned } from '@/lib/auth';
+import { getCurrentUser, isCurrentlyBanned, isCoreUser } from '@/lib/auth';
 import { apiOk, apiErr } from '@/lib/format';
 
-// GET /api/photowall — 列出全部未软删的照片墙条目（公开，含图片回源 url）
+// GET /api/photowall — 列出全部未软删的照片墙条目（需核心用户，含图片回源 url）
+//
+// 此前标着「公开」且真的没判权 —— 但 Flask 的 /photowall/api/items 是
+// @authenticated_required。照片墙是社区共创内容，未认证用户不该能 curl 走整面墙
+// （含每张图的作者与回源 url）。页面 /photowall 本来就挡了 core，只有接口漏了。
 export async function GET() {
+  const user = await getCurrentUser();
+  if (!user) return apiErr(401, '请先登录');
+  if (!isCoreUser(user)) return apiErr(403, '需要核心用户权限');
+
   const items = await listItems();
   return apiOk({
     items: items.map((it) => ({
@@ -27,6 +35,9 @@ export async function GET() {
 export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '请先登录');
+  // 对齐 Flask @authenticated_required：需核心用户（core 及以上）。
+  // 页面挡了 core，但接口没挡 —— 未认证用户用不了界面，却 curl 得动。
+  if (!isCoreUser(user)) return apiErr(403, '需要核心用户权限');
   if (isCurrentlyBanned(user)) return apiErr(403, '你已被禁言，无法操作照片墙');
 
   const body = (await req.json().catch(() => null)) as {

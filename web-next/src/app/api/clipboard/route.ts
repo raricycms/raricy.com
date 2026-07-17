@@ -3,7 +3,7 @@
 //
 // 对齐 Flask app/web/clipboard/__init__.py 的 menu / upload 路由与 validator()。
 
-import { getCurrentUser } from '@/lib/auth';
+import { getCurrentUser, isCoreUser } from '@/lib/auth';
 import { apiOk, apiErr } from '@/lib/format';
 import {
   createClip,
@@ -15,6 +15,9 @@ import {
 export async function GET() {
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '请先登录');
+  // 对齐 Flask @authenticated_required：需核心用户（core 及以上）。
+  // 页面挡了 core，但接口没挡 —— 未认证用户用不了界面，却 curl 得动。
+  if (!isCoreUser(user)) return apiErr(403, '需要核心用户权限');
 
   const clips = await listUserClips(user.id);
   return apiOk({
@@ -30,6 +33,9 @@ export async function GET() {
 export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '请先登录');
+  // 对齐 Flask @authenticated_required：需核心用户（core 及以上）。
+  // 页面挡了 core，但接口没挡 —— 未认证用户用不了界面，却 curl 得动。
+  if (!isCoreUser(user)) return apiErr(403, '需要核心用户权限');
 
   let body: unknown;
   try {

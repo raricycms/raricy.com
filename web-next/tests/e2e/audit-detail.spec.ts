@@ -51,7 +51,7 @@ test.describe('操作详情页', () => {
 
 test.describe('申诉链路', () => {
   test('提交申诉 → 详情页可见；同人同日志重复提交被拒', async ({ page }) => {
-    const fresh = await registerFreshUser(page);
+    const fresh = await registerFreshUser(page, { core: true }); // 申诉是 @authenticated_required，光注册不够
 
     const content = `E2E 申诉 ${fresh.username}`;
     const res = await page.request.post(`/api/audit/${SEED_LOG.id}/appeal`, { data: { content } });

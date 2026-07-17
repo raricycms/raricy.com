@@ -7,7 +7,7 @@
 // 统一跳转，403 页那条语义就悄悄没了 —— 这两组用例就是为了让那种改动当场可见。
 
 import { test, expect } from '@playwright/test';
-import { SEED_USERS } from './seed';
+import { SEED_USERS, SEED_BLOG } from './seed';
 import { loginViaApi } from './helpers';
 
 test.describe('未登录访问受控页面', () => {
@@ -67,4 +67,58 @@ test.describe('角色门控', () => {
     // 入口藏在用户下拉里（移动端折叠），故不看可见性、只看它在不在 DOM 里
     await expect(page.locator('#userDropdownMenu a[href="/admin"]')).toHaveCount(0);
   });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 核心用户门槛：**接口**层
+//
+// 上面那组测的是页面门控。而这批 API 一度只判了「登录」不判「核心用户」——
+// role=user（注册了但从没用邀请码认证的人）用不了界面，却 curl 得动：
+// 点赞、建剪贴板、投票、建投票、看照片墙、投喂、申诉，实测全部 200。
+// 邀请码/core 体系的意义就是「未认证用户不能做这些」，等于整体失效。
+//
+// 页面挡了、接口没挡，是这一类漏洞的共同形状 —— 所以这里只打接口，不走 UI。
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('核心用户门槛（接口层）', () => {
+  // Flask 侧这些全是 @authenticated_required
+  const CASES: Array<{ name: string; method: 'GET' | 'POST'; path: string; body?: object }> = [
+    { name: '点赞', method: 'POST', path: `/api/blogs/${SEED_BLOG.id}/like` },
+    { name: '投喂', method: 'POST', path: `/api/blogs/${SEED_BLOG.id}/feed`, body: { amount: 1 } },
+    { name: '剪贴板列表', method: 'GET', path: '/api/clipboard' },
+    { name: '建剪贴板', method: 'POST', path: '/api/clipboard', body: { title: 't', content: 'c', publicity: true } },
+    { name: '图床列表', method: 'GET', path: '/api/images' },
+    { name: '投票列表', method: 'GET', path: '/api/votes' },
+    { name: '建投票', method: 'POST', path: '/api/votes', body: { title: 't', options: ['a', 'b'] } },
+    { name: '照片墙', method: 'GET', path: '/api/photowall' },
+  ];
+
+  for (const c of CASES) {
+    test(`role=user 调 ${c.name} → 403`, async ({ page }) => {
+      await loginViaApi(page, SEED_USERS.plain.username);
+      const res =
+        c.method === 'GET'
+          ? await page.request.get(c.path)
+          : await page.request.post(c.path, { data: c.body ?? {} });
+      expect(res.status(), `${c.method} ${c.path} 应拒绝非核心用户`).toBe(403);
+    });
+  }
+
+  for (const c of CASES) {
+    test(`core 用户调 ${c.name} → 不是 403（收紧不能误伤）`, async ({ page }) => {
+      await loginViaApi(page, SEED_USERS.core.username);
+      const res =
+        c.method === 'GET'
+          ? await page.request.get(c.path)
+          : await page.request.post(c.path, { data: c.body ?? {} });
+      // 不断言 200：投喂会因余额不足给 400，那是业务规则，与权限无关。
+      // 只要不是 403，就说明权限这关放行了。
+      expect(res.status(), `${c.method} ${c.path} 不该把核心用户挡在外面`).not.toBe(403);
+
+      // 点赞是**切换**，且打在种子文章上 —— 不还原的话 likers 用例（断言 total=0）
+      // 会挂在一个跟它自己八竿子打不着的地方。再点一次抵消。
+      if (c.name === '点赞' && res.status() === 200) {
+        await page.request.post(c.path, { data: {} });
+      }
+    });
+  }
 });

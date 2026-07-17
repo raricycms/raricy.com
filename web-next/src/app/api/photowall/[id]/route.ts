@@ -1,11 +1,14 @@
 import { updateItem } from '@/lib/photowall-service';
-import { getCurrentUser, hasAdminRights, isCurrentlyBanned } from '@/lib/auth';
+import { getCurrentUser, hasAdminRights, isCurrentlyBanned, isCoreUser } from '@/lib/auth';
 import { apiOk, apiErr } from '@/lib/format';
 
 // PATCH /api/photowall/:id — 更新位置/旋转/缩放/层级（需登录，属主或管理员，禁言禁止）
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '请先登录');
+  // 对齐 Flask @authenticated_required：需核心用户（core 及以上）。
+  // 页面挡了 core，但接口没挡 —— 未认证用户用不了界面，却 curl 得动。
+  if (!isCoreUser(user)) return apiErr(403, '需要核心用户权限');
   if (isCurrentlyBanned(user)) return apiErr(403, '你已被禁言，无法操作照片墙');
 
   const { id } = await ctx.params;

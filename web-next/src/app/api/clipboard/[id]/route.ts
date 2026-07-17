@@ -4,7 +4,7 @@
 //   对齐 Flask POST /clipboard/<id>/edit：软删除/不存在 → 404；非作者 → 403；
 //   校验对齐 validator()；成功返回 { code: 200, message: 'success', id }。
 
-import { getCurrentUser, isOwner } from '@/lib/auth';
+import { getCurrentUser, isOwner, isCoreUser } from '@/lib/auth';
 import { apiOk, apiErr } from '@/lib/format';
 import {
   getClip,
@@ -16,9 +16,13 @@ import {
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
   const user = await getCurrentUser();
+  // 对齐 Flask /clipboard/<id> 的 @authenticated_required：需核心用户。
+  // 页面挡了 core，但接口没挡 —— 未认证用户用不了界面，却 curl 得动。
+  if (!user) return apiErr(401, '请先登录');
+  if (!isCoreUser(user)) return apiErr(403, '需要核心用户权限');
 
   // 站长可看私有剪贴板（对齐 Flask 的 `and not current_user.is_owner`）
-  const result = await getClip(id, user?.id, isOwner(user));
+  const result = await getClip(id, user.id, isOwner(user));
   if (!result.ok) {
     if (result.reason === 'forbidden') return apiErr(403, '该剪贴板为私有内容');
     return apiErr(404, '剪贴板不存在');
@@ -44,6 +48,9 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
   const { id } = await ctx.params;
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '请先登录');
+  // 对齐 Flask @authenticated_required：需核心用户（core 及以上）。
+  // 页面挡了 core，但接口没挡 —— 未认证用户用不了界面，却 curl 得动。
+  if (!isCoreUser(user)) return apiErr(403, '需要核心用户权限');
 
   let body: unknown;
   try {

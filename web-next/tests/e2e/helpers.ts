@@ -1,5 +1,5 @@
 import { expect, type Page } from '@playwright/test';
-import { SEED_PASSWORD } from './seed';
+import { SEED_PASSWORD, SEED_USERS } from './seed';
 
 /** 唯一后缀：注册类用例每次都要新用户名，且 desktop / mobile 两个 project 会把同一个
  *  用例跑两遍 —— 写死用户名第二遍必撞「用户名已存在」。 */
@@ -64,8 +64,18 @@ export async function loginViaApi(page: Page, username: string) {
   expect((await res.json()).code).toBe(200);
 }
 
-/** 注册一个全新用户（角色 user）并让浏览器 context 处于其登录态。返回用户信息。 */
-export async function registerFreshUser(page: Page): Promise<{ id: string; username: string }> {
+/**
+ * 注册一个全新用户并让浏览器 context 处于其登录态。返回用户信息。
+ *
+ * @param opts.core 注册后直接提到 core。默认 false（新注册就是 role=user）。
+ *   需要 core 的场景：点赞/剪贴板/投票/照片墙/申诉这些 @authenticated_required
+ *   的接口 —— 光注册是用不了的，得先过邀请码认证。用例若忘了提权，会拿到 403，
+ *   看起来像鉴权坏了，其实是没认证。
+ */
+export async function registerFreshUser(
+  page: Page,
+  opts: { core?: boolean } = {}
+): Promise<{ id: string; username: string }> {
   const tag = uniqueTag();
   const username = `e2e_${tag}`;
   const res = await page.request.post('/api/auth/register', {
@@ -74,5 +84,17 @@ export async function registerFreshUser(page: Page): Promise<{ id: string; usern
   const body = await res.json();
   // 断言而非静默继续：注册失败时后续用例的报错会指向八竿子打不着的地方
   expect(body.code, `注册失败：${JSON.stringify(body)}`).toBe(200);
+
+  if (opts.core) {
+    // 借管理员走真实提权接口，而不是直连库改 role —— 顺带让这条链路本身也被跑到。
+    // （user↔core 是管理员权限内的事，见 setRole；不必动用站长。）
+    await loginViaApi(page, SEED_USERS.admin.username);
+    const up = await page.request.patch(`/api/admin/users/${body.user.id}`, {
+      data: { role: 'core' },
+    });
+    expect(up.status(), `提权失败：${await up.text()}`).toBe(200);
+    // 换回这个新用户的登录态 —— 上一步把 cookie 换成管理员了
+    await loginViaApi(page, username);
+  }
   return { id: body.user.id, username };
 }
