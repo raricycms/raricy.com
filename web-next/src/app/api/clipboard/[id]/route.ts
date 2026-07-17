@@ -1,10 +1,10 @@
 // GET /api/clipboard/:id — 单个剪贴板正文
-//   对齐 Flask detail 路由：软删除 → 404；私有且非作者 → 403。
+//   对齐 Flask detail 路由：软删除 → 404；私有且非作者/非站长 → 403。
 // PUT /api/clipboard/:id — 编辑剪贴板（登录必需）
 //   对齐 Flask POST /clipboard/<id>/edit：软删除/不存在 → 404；非作者 → 403；
 //   校验对齐 validator()；成功返回 { code: 200, message: 'success', id }。
 
-import { getCurrentUser } from '@/lib/auth';
+import { getCurrentUser, isOwner } from '@/lib/auth';
 import { apiOk, apiErr } from '@/lib/format';
 import {
   getClip,
@@ -17,7 +17,8 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   const { id } = await ctx.params;
   const user = await getCurrentUser();
 
-  const result = await getClip(id, user?.id);
+  // 站长可看私有剪贴板（对齐 Flask 的 `and not current_user.is_owner`）
+  const result = await getClip(id, user?.id, isOwner(user));
   if (!result.ok) {
     if (result.reason === 'forbidden') return apiErr(403, '该剪贴板为私有内容');
     return apiErr(404, '剪贴板不存在');

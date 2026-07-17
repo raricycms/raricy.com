@@ -148,7 +148,21 @@ export interface ClipDetail {
  * 按 id 取剪贴板正文（对齐 ClipService.get_clipboard_with_content + detail 路由的权限）。
  * ignore=true（软删除）→ not_found；私有（publicity=false）且非作者 → forbidden。
  */
-export async function getClip(id: string, viewerId?: string): Promise<GetClipResult> {
+/**
+ * 取剪贴板详情。
+ *
+ * @param viewerIsOwner 观看者是否为站长。★ 别漏 ★ —— Flask 的判断是
+ *   `not publicity and author_id != current_user.id and not current_user.is_owner`，
+ *   站长能看任何人的私有剪贴板（他本来就有硬删图床、裁决申诉这类权限，
+ *   看私有内容属于同一档）。这个例外一度漏掉，站长访问会吃 403，
+ *   连页面上那个「删除」按钮都够不着 —— 而删除权限是给了他的。
+ *   调用方必须显式传，不给默认 true：默认放行的参数一旦漏传就是越权。
+ */
+export async function getClip(
+  id: string,
+  viewerId?: string,
+  viewerIsOwner = false
+): Promise<GetClipResult> {
   const clip = await prisma.clipBoard.findFirst({
     where: { id, ignore: false },
     select: {
@@ -165,7 +179,7 @@ export async function getClip(id: string, viewerId?: string): Promise<GetClipRes
   if (!clip) return { ok: false, reason: 'not_found' };
 
   const isPublic = clip.publicity ?? true;
-  if (!isPublic && clip.authorId !== viewerId) {
+  if (!isPublic && clip.authorId !== viewerId && !viewerIsOwner) {
     return { ok: false, reason: 'forbidden' };
   }
 

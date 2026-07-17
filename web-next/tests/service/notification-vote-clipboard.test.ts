@@ -1374,6 +1374,42 @@ describe('clipboard-service', () => {
       // 注意：forbidden 而不是 not_found —— 会暴露「该 id 存在」，但对齐 Flask abort(403)
     });
 
+    it('★ 站长能看别人的私有剪贴板（对齐 Flask 的 `and not current_user.is_owner`）', async () => {
+      // 这个例外一度漏掉：getClip 只判了「非作者 → forbidden」，站长访问会吃 403，
+      // 连详情页上那个只对他显示的「删除」按钮都够不着 —— 而删除权限是给了他的。
+      // 上面那条用例覆盖了「别人看不到」，却没覆盖站长，于是漏网。
+      const author = await makeUser();
+      const r = (await createClip(author.id, {
+        title: 't',
+        content: 'secret',
+        publicity: false,
+      })) as { ok: true; id: string };
+
+      const asOwner = await getClip(r.id, 'some-owner-id', true);
+      expect(asOwner.ok).toBe(true);
+      expect((asOwner as { ok: true; clip: { content: string } }).clip.content).toBe('secret');
+
+      // 反面：同一个人不带站长身份就该被挡 —— 证明放行确实来自 viewerIsOwner，
+      // 而不是这条用例恰好选了个能过的 viewerId
+      expect(await getClip(r.id, 'some-owner-id', false)).toEqual({
+        ok: false,
+        reason: 'forbidden',
+      });
+    });
+
+    it('viewerIsOwner 不影响公开剪贴板（不该有副作用）', async () => {
+      const author = await makeUser();
+      const r = (await createClip(author.id, {
+        title: 't',
+        content: 'open',
+        publicity: true,
+      })) as { ok: true; id: string };
+      for (const owner of [true, false]) {
+        const got = await getClip(r.id, 'anyone', owner);
+        expect(got.ok).toBe(true);
+      }
+    });
+
     it('publicity 为 NULL 的历史数据视为公开（对齐模型 default true）', async () => {
       const author = await makeUser();
       const other = await makeUser();
