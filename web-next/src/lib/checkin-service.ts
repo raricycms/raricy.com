@@ -7,9 +7,8 @@
 //   建记录 + 抽运势 + 发鱼干 + 累加 totalFortune，body 可带 chosenIndex（0-4）
 //   指定翻哪张牌，缺省则随机翻一张。
 //
-// ⚠️ 生产上线注意：发鱼干这一步必须与账户微服务做 fail-closed 同步
-//   （远端 transfer 成功后才 commit 本地事务，远端失败则整体回滚）。
-//   本切片只写本地 DB —— 见 doCheckin() 内的醒目注释。
+// 发鱼干走 fail-closed 与账户微服务同步（远端 transfer 成功后才 commit 本地事务，
+//   远端失败则整体回滚 + 503）—— 对齐 Flask claim_fortune。见 doCheckin()。
 //
 // checkinDate 存储：UTC+8 当天的“零点 UTC”ISO 值（如 2026-07-15T00:00:00.000Z），
 //   与规整后 dev.db 中既有行的存储格式一致，保证唯一约束 (userId, checkinDate) 生效。
@@ -18,6 +17,14 @@
 import { prisma } from './db';
 import { nowForDb } from './db-time';
 import { addFish } from './fish-service';
+import {
+  accountClient,
+  accountConfig,
+  accountServiceEnabled,
+  assertRemoteRequiredInProduction,
+  AccountServiceError,
+  SYSTEM_USER_ID,
+} from './account-client';
 import type { Prisma } from '@prisma/client';
 
 const FORTUNE_LABELS: Record<number, string> = {
@@ -159,11 +166,15 @@ export async function doCheckin(userId: string, chosenIndex?: number): Promise<C
   }
   const fortuneValue = poolArr[idx];
 
+  // 远端同步是否启用（未配置 internal token → 开发模式，见事务内的分支）。
+  const remoteEnabled = accountServiceEnabled();
+
   try {
-    // ⚠️ 生产 fail-closed 提醒：以下本地写入（DailyCheckIn + User.totalFortune +
-    //   driedFish + FishTransaction）在正式环境必须先向账户微服务发起 transfer，
-    //   远端成功后才 commit 本地事务；远端失败则整体回滚并向用户返回 503。
-    //   本迁移切片仅写本地 DB，未接入账户服务。
+    // ★★★ 写路径 fail-closed（CLAUDE.md Phase 1.5，对齐 Flask claim_fortune）★★★
+    //   本地变更（DailyCheckIn + User.totalFortune + driedFish + FishTransaction）
+    //   全部收进一个交互式事务，**在事务提交之前**向账户微服务发起 transfer；
+    //   远端成功才提交本地，远端抛错则从回调抛出 → Prisma 回滚整个本地事务。
+    //   绝不出现「本地发了鱼干但远端没记账」的不一致。
     await prisma.$transaction(async (tx) => {
       // 唯一约束会在此拦截重复签到（并发/重复提交）→ 抛 P2002
       await tx.dailyCheckIn.create({
@@ -179,21 +190,59 @@ export async function doCheckin(userId: string, chosenIndex?: number): Promise<C
         data: { totalFortune: { increment: fortuneValue } },
       });
 
-      // 发鱼干 + 写流水（仅本地，见上方 fail-closed 提醒）
+      // 发鱼干 + 写流水（本地）
       await addFish(tx, {
         userId,
         amount: fortuneValue,
         type: 'checkin',
         description: `每日签到（运势值 ${fortuneValue}）`,
       });
+
+      // ── 远端同步：★ 提交前 ★（fail-closed 关键点）──────────────────────────
+      // 对齐 Flask claim_fortune：系统账户 → 用户的 transfer，
+      // 幂等键 checkin-{userId}-{date} 保证重复提交不会重复发放。
+      if (remoteEnabled) {
+        await accountClient.transfer({
+          fromUserId: SYSTEM_USER_ID,
+          toUserId: userId,
+          amount: fortuneValue,
+          entryType: 'checkin',
+          apiKey: accountConfig().systemKey,
+          description: `每日签到（运势值 ${fortuneValue}）`,
+          metadata: { fortune_value: fortuneValue, checkin_date: today },
+          idempotencyKey: `checkin-${userId}-${today}`,
+        });
+      } else {
+        // 未配置账户服务。生产环境必须 fail-closed —— 漏配 token 时若静默放行，
+        // 签到会只发本地鱼干、远端毫无记账，账目从切换第一天就开始分叉，
+        // 且只留一条 console.warn。故生产直接抛 503 让问题当场暴露。
+        assertRemoteRequiredInProduction('签到');
+        console.warn(
+          `[checkin-service] ACCOUNT_SERVICE 未配置，签到仅写本地库（dev fallback）。user=${userId}`
+        );
+      }
     });
   } catch (e) {
-    // 唯一约束冲突 → 今天已签到
+    // 唯一约束冲突 → 今天已签到（并发/重复提交，本地事务已回滚）
     if (isUniqueViolation(e)) {
       const status = await getTodayStatus(userId);
       return { alreadyChecked: true, message: '今天已签到', status };
     }
-    throw e;
+    // 远端失败：本地事务已回滚（没发鱼、没记签到），向上抛让路由返回 503。
+    // 对齐 Flask：`except AccountClientError: db.session.rollback(); raise`
+    if (e instanceof AccountServiceError) {
+      console.warn(
+        `[checkin-service] 账户服务签到同步失败，本地事务已回滚（user=${userId} date=${today}）: ${e.message}`
+      );
+      throw e;
+    }
+    // 兜底：意外异常也按 fail-closed 处理，包装成 503（对齐 Flask 的兜底分支）。
+    // 注意别把它吞成「签到成功」——本地已回滚，静默成功会让用户以为签到了。
+    console.error(
+      `[checkin-service] 签到异常，本地事务已回滚（user=${userId} date=${today}）:`,
+      e
+    );
+    throw new AccountServiceError(`账户服务暂不可用，签到失败: ${String(e)}`, 503);
   }
 
   const [totalCount, user] = await Promise.all([

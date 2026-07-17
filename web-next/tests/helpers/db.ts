@@ -90,6 +90,7 @@ export async function makeUser(opts: Partial<{
   banUntil: Date | null;
   banReason: string | null;
   driedFish: number;
+  totalFortune: number;
 }> = {}) {
   const id = opts.id ?? uid();
   return prisma.user.create({
@@ -104,6 +105,7 @@ export async function makeUser(opts: Partial<{
       banUntil: opts.banUntil ?? null,
       banReason: opts.banReason ?? null,
       driedFish: opts.driedFish ?? 0,
+      totalFortune: opts.totalFortune ?? 0,
       createdAt: new Date(),
     },
   });
