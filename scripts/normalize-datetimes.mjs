@@ -12,12 +12,16 @@
 // 既吃 Flask 原始的空格格式，也吃历史上被旧版脚本转成的 ISO 文本。
 //
 // 用法：
-//   node scripts/normalize-datetimes.mjs --source ./instance/database/db.db --dest prisma/dev.db
+//   node scripts/normalize-datetimes.mjs --source ./instance/database/db.db --dest ./instance/database/dev.db
 //        → 先把 source 复制成 dest，再对 dest 规整（推荐：不碰线上库）
 //   node scripts/normalize-datetimes.mjs --in-place path/to/db.db
 //        → 就地规整（正式硬切换时用；执行前务必备份，并确保没有写入进程持有库句柄）
 //   npm run db:normalize
-//        → 等价于把线上 SQLite 复制到 prisma/dev.db 再规整（见 package.json）
+//        → 等价于把线上 SQLite 复制到 ./instance/database/dev.db 再规整（见 package.json）
+//
+// 注：路径默认是相对于**进程 cwd**（=项目根），不是 schema.prisma 目录。
+//     Prisma 自己解析 DATABASE_URL 时则相对 schema.prisma 目录 —— 同名"相对路径"
+//     在不同语境下基点不同，不要照搬给 Prisma 用。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { DatabaseSync } from 'node:sqlite';
@@ -79,7 +83,7 @@ function main() {
     console.log(`⚠️  就地规整: ${target}（确认已备份 / 服务进程已停写）`);
   } else {
     const source = resolve(process.cwd(), args.source || './instance/database/db.db');
-    target = resolve(process.cwd(), args.dest || 'prisma/dev.db');
+    target = resolve(process.cwd(), args.dest || './instance/database/dev.db');
     if (!existsSync(source)) throw new Error(`源库不存在: ${source}`);
     copyFileSync(source, target);
     console.log(`📋 已复制 ${source} → ${target}`);

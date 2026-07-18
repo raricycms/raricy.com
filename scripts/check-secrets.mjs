@@ -67,6 +67,7 @@ for (const { re, what } of LEAKS) {
 // 历史干净只说明过去没犯；ignore 没盖住的话，下一次 `git add .` 就会犯。
 const MUST_IGNORE = [
   'instance/database/db.db',
+  'instance/database/dev.db',
   '.env',
   '.env.production',
   'prisma/dev.db',

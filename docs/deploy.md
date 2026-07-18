@@ -77,53 +77,82 @@ vim .env
 
 ## 4. 数据库准备
 
-### 首次部署（已有 `db.db` 来自历史 Flask 库）
+> `instance/` 是**唯一的数据目录**。头像 / 图床 / 故事 / 数据库都在这里，部署只需挂载一处。
+>
+> | 数据库 | 路径 | 何时用 |
+> |--------|------|--------|
+> | dev | `instance/database/dev.db` | 本地开发、修改 schema、写测试 |
+> | prod | `instance/database/db.db` | 真实用户数据、生产部署 |
 
-Prisma 0_init 已基线化，**不需要跑 `prisma migrate deploy`**——库已经在基线之后了。
+### dev 首次跑（从零起步）
 
 ```bash
-# 1) 校验 schema 与库一致
+cp .env.example .env       # DATABASE_URL="file:../instance/database/dev.db"
+
+# 把生产库复制一份到 dev.db（同时规整时间戳为 INTEGER 毫秒）
+npm run db:normalize
+#   等价于:scripts/normalize-datetimes.mjs --source ./instance/database/db.db \
+#                                          --dest ./instance/database/dev.db
+#   若 instance/database/db.db 不存在,则跳过复制,直接生成空 dev.db 跑 0_init。
+
+# 校验
 npm run prisma:generate
-npx prisma migrate status
-#   期望：Database schema is up to date!
-
-# 2) 检查时间戳格式（dev/旧库可能是 SQLAlchemy 文本格式）
-DATABASE_URL="file:./instance/database/db.db" npm run diagnose
-#   段 3 会显示当前格式;Prisma 期望 INTEGER 毫秒
+npx prisma migrate status   # 期望:Database schema is up to date!
 ```
 
-如果 `db.db` 是 Flask 时代的（DATETIME 列存 `"2026-07-16 10:00:00.123456"` 文本），
-Prisma 读到会抛 `Conversion failed`（登录 500）。**这要修，但不要直接覆盖原库**：
+> ⚠️ 没有真实库可用时（全新 dev 机器 / CI），`db:normalize` 走空库分支会创建空 dev.db。
+> 这是 dev 体验，不是 prod 路径。
+
+### dev 时想直接读真实库
 
 ```bash
-# 推荐做法：复制 → 规整 → 换库
-DATABASE_URL="file:./instance/database/db.db" npm run prepare:cutover -- \
-  --source /absolute/path/to/old-db.db \
-  --dest   /absolute/path/to/prod.db
-# 看完逐项输出，加 --apply 才执行
+DATABASE_URL="file:../instance/database/db.db" npm run dev
+# 临时覆盖 .env 的 DATABASE_URL,不污染 .env 文件。
 ```
 
-### 全新部署（无库）
+### 部署到生产
+
+`.env.production` 必须显式用绝对路径指向 `instance/database/db.db`。Prisma 0_init 已基线化，**不需要跑 `prisma migrate deploy`**——库已经在基线之后了：
 
 ```bash
-# 启动一个全新空库
-DATABASE_URL="file:./instance/database/db.db" npx prisma migrate deploy
+npm run prisma:generate
+npx prisma migrate status   # 期望:Database schema is up to date!
+
+DATABASE_URL="file:/绝对路径/instance/database/db.db" npm run diagnose
+# 段 3 会显示时间戳格式;Prisma 期望 INTEGER 毫秒。
+```
+
+如果生产库是 Flask 时代的（DATETIME 列存 `"2026-07-16 10:00:00.123456"` 文本），Prisma 读到会抛 `Conversion failed`（登录 500）。**这要修，但不要直接覆盖原库**：
+
+```bash
+# 推荐做法:复制 → 规整 → 换库
+npm run prepare:cutover -- \
+  --source /path/to/instance/database/db.db \
+  --dest   /path/to/prod-normalized.db
+# 看完逐项输出,加 --apply 才执行
+```
+
+### 全新部署（空目录起步）
+
+```bash
+DATABASE_URL="file:/绝对路径/instance/database/db.db" npx prisma migrate deploy
 # 走 0_init 把所有表建好
+# 之后按 .env.production.example 填 SECRET_KEY / ACCOUNT_* 等即可
 ```
 
 ### 修改 schema 后
 
 ```bash
 # 1) 改 prisma/schema.prisma
-# 2) 生成增量迁移 + 应用本地库
-DATABASE_URL="file:./instance/database/dev.db" npx prisma migrate dev --name add_xxx
+# 2) 生成增量迁移 + 应用本地 dev.db
+DATABASE_URL="file:../instance/database/dev.db" npx prisma migrate dev --name add_xxx
 # 3) 看一眼生成的 prisma/migrations/<时间戳>_add_xxx/migration.sql
 # 4) 提交 schema.prisma + migration.sql
-# 5) 部署到生产时：
-DATABASE_URL="file:./instance/database/db.db" npx prisma migrate deploy
+# 5) 部署到生产时:
+DATABASE_URL="file:/绝对路径/instance/database/db.db" npx prisma migrate deploy
 ```
 
-> 注意：不要直接对生产库 `prisma migrate dev`（会触发 drift 检测 + reset 提议）。
+> 注意:不要直接对生产库 `prisma migrate dev`（会触发 drift 检测 + reset 提议）。
 > 永远 `migrate deploy` 用于生产。
 
 ## 5. 依赖安装 + 构建 + 启动
