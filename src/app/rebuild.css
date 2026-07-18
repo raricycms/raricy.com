@@ -293,6 +293,17 @@ code, kbd, pre { font-family: var(--mono); }
   .nav-link { padding: 12px 14px; }
   .nav-actions { margin: 0; flex-wrap: wrap; padding-top: 10px; border-top: 1px solid var(--line); }
   body { padding-top: 0; }
+
+  /* 用户下拉：折叠面板是 overflow-y:auto 的滚动容器，桌面端的 absolute 浮层会被
+     裁切。改为静态流式，让菜单在折叠面板里自然展开，与 .nav-link 风格一致。 */
+  .site-user-dropdown { width: 100%; }
+  .site-user-dropdown-toggle { width: 100%; justify-content: flex-start; padding: 12px 14px; }
+  .site-user-dropdown-menu {
+    position: static; min-width: 0; width: 100%;
+    background: transparent; border: 0; border-radius: 0;
+    box-shadow: none; padding: 4px 0 8px;
+  }
+  .site-dropdown-item { padding: 10px 12px; }
 }
 
 /* ---------- Footer ---------- */
