@@ -1,63 +1,80 @@
-# 聪明山
+# 聪明山 · raricy.com
 
-基于 Flask 的个人网站，集博客、故事、工具集、剪贴板等功能于一体。
+个人网站（博客 / 故事 / 工具集 / 剪贴板 / 图床 / 投票 / 游戏）。
 
-**访问地址：https://raricy.com/**
+Next.js 15 + Prisma + SQLite 单进程部署，自有 `instance/` 数据目录。
+
+> 上一轮架构是 Flask 单体，2026-07 切到当前 Next.js 实现并已运行。
+> 迁移手册详见 git 历史与切换期提交的 commit message。
 
 ## 技术栈
 
-- **后端:** Python / Flask + SQLAlchemy + Flask-Login
-- **前端:** Jinja2 模板 + SCSS + 原生 JavaScript
-- **编辑器:** Vditor（Markdown）
-- **验证:** Cloudflare Turnstile
+- **框架**：Next.js 15 App Router + React 19 + TypeScript
+- **ORM**：Prisma 6，SQLite，`file:../instance/database/db.db`
+- **会话**：JWT（`jose`）+ `session_version` 失效机制
+- **认证**：密码哈希与历史 werkzeug **互通**，用户**无需重置密码**
+- **服务边界**：站点单进程；账户微服务（FastAPI）独立仓库部署
+- **前端**：服务端 / 客户端组件混用，marked + DOMPurify + highlight.js 渲染 Markdown
+
+## 目录
+
+| 目录 | 说明 |
+|------|------|
+| `src/app/`     | App Router 页面与 API 路由 |
+| `src/lib/`     | 业务逻辑层 |
+| `src/middleware.ts` | CSRF 同源校验（反代下读 `X-Forwarded-Host`） |
+| `prisma/`      | schema.prisma、迁移、dev.db（gitignored） |
+| `scripts/`     | 自检 / 运维 / 数据补偿脚本（详见下方"工具脚本"） |
+| `tests/`       | vitest 单测 + Playwright e2e |
+| `docs/`        | 玩家面向的内容/玩法文档 |
+| `instance/`    | 运行时数据（gitignored）：avatars / database / images / stories |
+| `public/`      | 静态资源（图标 / CSS / favicon） |
 
 ## 快速开始
 
 ```bash
-# 1. 安装依赖
-pip install -r requirements.txt
-npm install
-
-# 2. 配置环境变量
-cp example.env .env   # 编辑 .env 填入实际值
-
-# 3. 初始化
-python check_instance.py
-flask db upgrade
-
-# 4. 启动
-python run.py
+node scripts/check-instance.mjs         # 首次创建 instance/{avatars,database,images,stories}
+npm ci                                   # 严格按 lockfile 装（不要 npm install）
+cp .env.example .env                     # 填 SECRET_KEY / FISH_ENCRYPTION_KEY
+npm run prisma:generate                  # 生成 Prisma Client
+npm run dev                              # http://localhost:3000
 ```
 
-## 管理
+## 工具脚本
 
-```bash
-flask promote-admin <username>    # 授予管理员权限
-flask promote-owner <username>    # 授予站长权限
-```
+| 命令 | 作用 |
+|------|------|
+| `npm run dev` / `start` | 本地开发 / 生产启动 |
+| `npm run build` | 生产构建 |
+| `npm test` | vitest 单测 |
+| `npm run e2e` | 端到端（先 build 再跑 Playwright） |
+| `npm run smoke` | 11 条只读冒烟（登录态/列表/详情/签到/图床/CSRF 等） |
+| `npm run diagnose` | 部署自检（版本 / .env / 库 / 密钥）；报红就别往下走 |
+| `npm run check:secrets` | 密钥与生产数据是否进过版本库 |
+| `npm run check:links` | 站内断链静态扫描 |
+| `npm run check:perms` | 权限档位回归（与历史 Flask 对照） |
+| `npm run prisma:pull` | 把库反向同步到 schema.prisma（手改 SQL 后用） |
+| `npm run db:normalize` | 源库复制 + 规整时间戳为 INTEGER 毫秒 |
+| `npm run db:compensate-fortunes` | 补偿"已签到未翻牌"的鱼干记录 |
+| `npm run cli` | 运维 CLI：升降级 / 发鱼干 / 扣鱼干（fail-closed） |
+| `npm run verify:account` | 端到端对账账户微服务 |
+| `npm run prepare:cutover` | 切换期一次性：备份 → 规整 → 补偿 → diagnose |
+| `npm run instance:check` | 创建 instance/ 子目录 |
 
-管理后台：`/auth/user_management`
+## 部署 / 运行
 
-## 项目结构
+- 站内反代：`proxy_pass http://127.0.0.1:3000`，**务必**透传 `Host: $http_host` / `X-Forwarded-Host` / `X-Forwarded-Proto`。
+- `instance/` 需在部署机器上是**真实目录**：头像、图床、故事落盘。
+- 数据库以 Prisma 0_init 为基线；改 schema 跑 `prisma migrate dev --name ...`。
 
-| 目录                 | 说明                          |
-| ------------------ | --------------------------- |
-| `app/models/`      | 数据模型（User, Blog, Comment 等） |
-| `app/web/`         | 蓝图路由，按功能模块组织                |
-| `app/service/`     | 业务逻辑层（通知、审计日志）              |
-| `app/templates/`   | Jinja2 模板                   |
-| `app/static/scss/` | SCSS 样式源码                   |
-| `app/static/js/`   | JavaScript                  |
-| `app/extensions/`  | Flask 扩展初始化与装饰器             |
-| `app/utils/`       | 工具函数                        |
-| `migrations/`      | 数据库迁移文件                     |
+## 关键约定
 
-## 详细文档
+- 软删除：`Blog.ignore` / `BlogComment.is_deleted` / `ImageHosting.ignore` 等永不物理删除（站长手动例外）。
+- 鱼干密钥派生：`SECRET_KEY` 仍是派生源；`FISH_ENCRYPTION_KEY` 仅在全新部署时填。
+- 限频：站内用 `src/lib/rate-limit.ts`（内存，进程级）；多实例部署需换 Redis。
+- 角色：`user` → `core` → `admin` → `owner`；`@authenticated_required` 意为 core+。
 
-- [部署与运行](docs/部署与运行.md)
-- [项目概述与技术架构](docs/项目概述与技术架构.md)
-- [前端样式构建指南](docs/前端样式构建指南.md)
+## 内容/玩法文档
 
-## 联系
-
-有任何建议，请通过 [https://raricy.com/contact](https://raricy.com/contact) 联系我。
+`docs/atamas-game.md` `docs/cattca-guide.md` `docs/cattca-syntax.md`
+`docs/云剪贴板使用指南.md` `docs/内容引用语法指南.md` `docs/story-module.md`
