@@ -14,7 +14,7 @@ import { describe, it, expect, beforeEach, beforeAll, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 
-// 上传目录必须在任何 storagePathFor 之前指向临时目录，绝不能碰 data/ 里的真实图片
+// 上传目录必须在任何 storagePathFor 之前指向临时目录，绝不能碰 instance/images/ 里的真实图片
 const TEST_UPLOAD_DIR = path.resolve(import.meta.dirname, '../.tmp/images-route-test');
 process.env.IMAGE_UPLOAD_FOLDER = TEST_UPLOAD_DIR;
 

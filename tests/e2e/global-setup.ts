@@ -6,7 +6,7 @@
 // 两套 runner 同时跑也不会互相 rmSync。
 //
 // 【绝不碰真实数据】.env 里的 DATABASE_URL 指向 prisma/prod.db（真实数据的规整副本），
-// AVATARS_DIR / IMAGE_UPLOAD_FOLDER 指向 data/。这些在 playwright.config.ts 的
+// AVATARS_DIR / IMAGE_UPLOAD_FOLDER 指向 instance/。这些在 playwright.config.ts 的
 // webServer.env 里被全部改指到 tests/.tmp。下方 assertTestDb() 再兜一道硬校验：
 // 路径不在 tests/.tmp 下就直接抛，绝不让 db push 打到真实库上。
 

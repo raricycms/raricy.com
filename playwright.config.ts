@@ -16,7 +16,7 @@ import path from 'node:path';
 // 后端测试证明「逻辑对」，E2E 证明「用户真能用」。
 //
 // 【数据安全】webServer 用独立的 e2e 测试库（tests/.tmp/e2e-*.db），
-// 由 global-setup 从 schema 建表 + 造种子数据，绝不碰 data/ 与 prisma/prod.db。
+// 由 global-setup 从 schema 建表 + 造种子数据，绝不碰 instance/ 与 prisma/prod.db。
 
 // ★ 库名每轮唯一 ★
 //
