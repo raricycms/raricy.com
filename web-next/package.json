@@ -28,7 +28,8 @@
     "verify:account": "tsx scripts/verify-account-integration.mjs",
     "prepare:cutover": "tsx scripts/prepare-cutover.mjs",
     "smoke": "tsx scripts/smoke.mjs",
-    "check:secrets": "node scripts/check-secrets.mjs"
+    "check:secrets": "node scripts/check-secrets.mjs",
+    "instance:check": "node scripts/check-instance.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.2.1",
