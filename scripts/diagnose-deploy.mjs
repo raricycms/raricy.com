@@ -107,7 +107,7 @@ if (process.env.ALLOWED_ORIGINS) {
   wrn('ALLOWED_ORIGINS 未配置 —— 此时依赖 nginx 透传 X-Forwarded-Host/Host',
       'nginx 未透传就会 CSRF 403。稳妥做法：ALLOWED_ORIGINS="你的域名"');
 }
-for (const k of ['AVATARS_DIR', 'IMAGE_UPLOAD_FOLDER']) {
+for (const k of ['AVATARS_DIR', 'IMAGE_UPLOAD_FOLDER', 'STORIES_DIR']) {
   const v = process.env[k];
   if (!v) wrn(`${k} 未配置（将回退到 ./instance/...）`, '指向真实数据目录');
   else if (!fs.existsSync(v)) bad(`${k}=${v} 目录不存在`, '挂载真实数据卷');

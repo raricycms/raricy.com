@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { resolvePath } from '@/lib/story-service';
 import type { CollectionResult } from '@/lib/story-service';
 
-// 读磁盘 data/stories，禁用静态化；fs 需要 Node.js runtime（非 edge）。
+// 读磁盘 instance/stories（由 STORIES_DIR 覆盖），禁用静态化；fs 需要 Node.js runtime（非 edge）。
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 

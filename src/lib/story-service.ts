@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // story-service.ts — 故事模块服务端读盘（忠实移植 Flask app/web/story/services.py）
 //
-// 磁盘结构（真实数据，env STORIES_DIR 指向 <repo>/data/stories）：
+// 磁盘结构（真实数据在 repo 根的 instance/stories/，可用 env STORIES_DIR 覆盖）：
 //   • 顶层 = 若干「合集」文件夹，每个可含 info.json {title,description,author,
 //     priority,ignore,ai_assisted}。
 //   • 合集内可有 .md（markdown 故事）/ .cattca（互动小说）文件，以及子文件夹
@@ -81,21 +81,19 @@ export type ResolveResult =
 
 // ── 根目录解析 ──────────────────────────────────────────────────────────────
 
-/** stories 根目录：优先 env STORIES_DIR；否则回退 <repo>/data/stories，再 instance/stories。 */
+/**
+ * stories 根目录：优先 env STORIES_DIR；否则回退 `<cwd>/instance/stories`。
+ * （cwd 即仓库根，process.cwd() 在 Next dev / start 下都等于仓库根。）
+ */
 function storiesRoot(): string {
   if (process.env.STORIES_DIR) return process.env.STORIES_DIR;
-  const candidates = [
-    path.resolve(process.cwd(), '..', 'data', 'stories'),
-    path.resolve(process.cwd(), '..', 'instance', 'stories'),
-  ];
-  for (const c of candidates) {
-    try {
-      if (fs.existsSync(c) && fs.statSync(c).isDirectory()) return c;
-    } catch {
-      /* 忽略，尝试下一个 */
-    }
+  const candidate = path.resolve(process.cwd(), 'instance', 'stories');
+  try {
+    if (fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) return candidate;
+  } catch {
+    /* 忽略 */
   }
-  return candidates[0];
+  return candidate;
 }
 
 // ── 基础工具 ────────────────────────────────────────────────────────────────

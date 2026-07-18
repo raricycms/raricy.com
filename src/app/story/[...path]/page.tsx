@@ -5,7 +5,7 @@ import type { CollectionResult, StoryResult } from '@/lib/story-service';
 import CattcaPlayer from '@/app/components/CattcaPlayer';
 import StoryReaderClient from './StoryReaderClient';
 
-// 读磁盘 data/stories，禁用静态化；fs 需要 Node.js runtime（非 edge）。
+// 读磁盘 instance/stories（由 STORIES_DIR 覆盖），禁用静态化；fs 需要 Node.js runtime（非 edge）。
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
