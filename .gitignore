@@ -1,43 +1,28 @@
-__pycache__/
-venv/
-node_modules/
+/node_modules
+/.next
+/out
+next-env.d.ts
 .env
-app/.env
-.DS_Store
-.vscode/
-.idea/
-.pytest_cache/
-.coverage
-.coverage.*
-.coverage.*.*
-.coverage.*.*.*
-instance/
-upload_story.sh
-upload_blog.sh
-upload_instance.sh
-nohup.out
-/*.ps1
-*.bak
-baks/
-todo-list.txt
-download_instance.ps1
-\# Ignore local vendored browser libs (kept out of git to avoid line counts)
-app/static/js/marked.min.js
-app/static/js/vditor
-app/static/js/dompurify.min.js
-app/static/js/highlight.min.js
-\# Sass/SCSS build artifacts
-.sass-cache/
-**/.sass-cache/
-app/static/css/main.css
-app/static/css/main.css.map
-app/static/css/**/*.map
-app/static/css/main.min.css
-app/static/vditor/
-app/static/hljs/
-*~
-*.xlsx
-instance.zip
-exported_blogs/
-# 本地真实数据（数据库/图片/头像/故事）——绝不入库
-/data/
+*.tsbuildinfo
+# 本地 SQLite 副本（含真实用户数据，绝不入库）
+/prisma/*.db
+/prisma/*.db-journal
+/prisma/*.db-wal
+/prisma/*.db-shm
+
+# 测试临时数据库
+tests/.tmp/
+coverage/
+
+# Playwright E2E 产物
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+
+# 运行时数据目录（头像 / 图床 / 故事 / 数据库）—— 绝不入库
+/instance/
+
+# Python 副产物（历史迁移文档里的代码示例等可能产生）
+__pycache__/
+*.pyc
