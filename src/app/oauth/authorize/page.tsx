@@ -15,7 +15,7 @@ import type { Metadata } from 'next';
 // 必须已登录（raricy session cookie）；未登录跳 /login?next=当前 URL。
 //
 // 渲染：申请的应用名 + 主页链接 + 请求的 scope 列表 + 「授权 / 取消」按钮。
-// 用户点「授权」→ POST /api/oauth/authorize → 302 跳回 redirect_uri?code=&state=
+// 用户点「授权」→ POST /api/oauth/authorize → 拿 redirect_to 后顶层跳转 redirect_uri?code=&state=
 // 用户点「取消」→ 跳回 redirect_uri?error=access_denied&state=
 
 export const metadata: Metadata = {

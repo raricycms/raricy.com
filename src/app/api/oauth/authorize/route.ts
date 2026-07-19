@@ -9,7 +9,15 @@ import {
 } from '@/lib/oauth';
 
 // POST /api/oauth/authorize
-// 用户在同意页点击「授权」后调用：mint 一个授权码并 302 重定向到 redirect_uri。
+// 用户在同意页点击「授权」后调用：mint 一个授权码，前端拿到 redirect_to 后做顶层跳转。
+//
+// ⚠️ 这里不能返回 302：前端用 fetch() 调用本端点，fetch 即便默认 follow redirect，
+// 浏览器也不会因 fetch 而做顶层页面导航——用户会留在 /oauth/authorize，最终
+// 兜底 window.location.href = redirectUri 又会丢掉 code。
+//
+// 解决方案：后端 200 + JSON { redirect_to }，前端读出来再 window.location.href，
+// 由 fetch 的同源 cookie + 这层显式跳转共同完成 OAuth 流程。
+//
 // CSRF 中间件保护：必须同源 POST。
 //
 // 关键安全约束：
@@ -78,5 +86,8 @@ export async function POST(req: Request) {
   const target = `${redirectUri}${sep}code=${encodeURIComponent(minted.code)}${
     state ? `&state=${encodeURIComponent(state)}` : ''
   }`;
-  return Response.redirect(target, 302);
+  return Response.json(
+    { redirect_to: target },
+    { headers: { 'Cache-Control': 'no-store', Pragma: 'no-cache' } }
+  );
 }

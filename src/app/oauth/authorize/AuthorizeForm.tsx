@@ -11,8 +11,14 @@ interface Props {
 }
 
 // 「授权 / 取消」按钮组件。
-// 授权 → POST /api/oauth/authorize；后端会 302 跳到 redirect_uri?code=&state=
+// 授权 → POST /api/oauth/authorize；后端返回 JSON { redirect_to }，
+//         前端 window.location.href 跳到 redirect_to（含 code & state）。
 // 取消 → 直接跳回 redirect_uri?error=access_denied&state=
+//
+// ⚠️ 注意：这里不能用 fetch + 让浏览器 follow 302 的方式。
+// fetch 即便默认 follow redirect，也只会在内部接力请求，document 不会
+// 做顶层导航——用户会留在 /oauth/authorize，最终又得靠 window.location.href
+// 兜底，那时候就拿不到 code 了。
 export default function AuthorizeForm({ clientId, redirectUri, state, scope, appName }: Props) {
   const [submitting, setSubmitting] = useState<'approve' | 'deny' | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -26,30 +32,21 @@ export default function AuthorizeForm({ clientId, redirectUri, state, scope, app
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ client_id: clientId, redirect_uri: redirectUri, state, scope }),
-        redirect: 'manual', // 手动处理 302
       });
-      // 后端 302 → 用 location header；失败 → 读 body 报错
-      if (res.status === 0 || res.type === 'opaqueredirect') {
-        // 浏览器 follow 前的 redirect（fetch manual 不暴露 location）
-        // 这种 case 极少；真发生就退到读 header
-        window.location.href = redirectUri;
-        return;
-      }
-      if (res.status >= 300 && res.status < 400) {
-        const loc = res.headers.get('location');
-        if (loc) {
-          window.location.href = loc;
-          return;
-        }
-      }
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
         setError(j.message || `授权失败 (${res.status})`);
         setSubmitting(null);
         return;
       }
-      // 200 但无 redirect — 异常路径
-      window.location.href = redirectUri;
+      const j = (await res.json()) as { redirect_to?: string };
+      if (!j.redirect_to) {
+        setError('服务器响应缺少 redirect_to');
+        setSubmitting(null);
+        return;
+      }
+      // 顶层导航：跳到第三方应用 callback（含 code & state）
+      window.location.href = j.redirect_to;
     } catch (e) {
       setError(e instanceof Error ? e.message : '网络错误');
       setSubmitting(null);
