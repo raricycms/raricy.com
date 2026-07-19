@@ -21,22 +21,34 @@ export default function AuthorizeForm({ clientId, redirectUri, state, scope, app
     setSubmitting('approve');
     setError(null);
     try {
-      // 默认 redirect: 'follow'：后端 Response.redirect(target, 302) 由浏览器自动跟随，
-      // 用户最终落地到 redirect_uri?code=&state=，无需前端再处理 location header。
       const res = await fetch('/api/oauth/authorize', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ client_id: clientId, redirect_uri: redirectUri, state, scope }),
+        redirect: 'manual', // 手动处理 302
       });
-      // 正常情况下 302 已被跟随，fetch resolve 出来的是 200，不会进下面这段。
-      // 走到这说明后端走了非 redirect 路径（或被配置改过），用兜底跳回。
+      // 后端 302 → 用 location header；失败 → 读 body 报错
+      if (res.status === 0 || res.type === 'opaqueredirect') {
+        // 浏览器 follow 前的 redirect（fetch manual 不暴露 location）
+        // 这种 case 极少；真发生就退到读 header
+        window.location.href = redirectUri;
+        return;
+      }
+      if (res.status >= 300 && res.status < 400) {
+        const loc = res.headers.get('location');
+        if (loc) {
+          window.location.href = loc;
+          return;
+        }
+      }
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
         setError(j.message || `授权失败 (${res.status})`);
         setSubmitting(null);
         return;
       }
+      // 200 但无 redirect — 异常路径
       window.location.href = redirectUri;
     } catch (e) {
       setError(e instanceof Error ? e.message : '网络错误');
