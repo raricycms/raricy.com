@@ -142,18 +142,33 @@ DATABASE_URL="file:/绝对路径/instance/database/db.db" npx prisma migrate dep
 
 ### 修改 schema 后
 
+**本项目用 `scripts/migrate.mjs`，不用 `prisma migrate`**——因为：
+- `schema.prisma` 头部明确写了「不要 prisma migrate」（0_init 是从 Flask 1:1 抄来的，Prisma 不认识 alembic 迁移历史）
+- `prisma migrate deploy` 会试图重放 0_init 然后冲突失败（DB 没有 `_prisma_migrations` 表）
+- DateTime 格式陷阱需要我们自己 normalize，不能让 Prisma 自动跑
+
 ```bash
-# 1) 改 prisma/schema.prisma
-# 2) 生成增量迁移 + 应用本地 dev.db
-DATABASE_URL="file:../instance/database/dev.db" npx prisma migrate dev --name add_xxx
-# 3) 看一眼生成的 prisma/migrations/<时间戳>_add_xxx/migration.sql
-# 4) 提交 schema.prisma + migration.sql
-# 5) 部署到生产时:
-DATABASE_URL="file:/绝对路径/instance/database/db.db" npx prisma migrate deploy
+# 本地开发流程
+# 1) 改 prisma/schema.prisma（加字段/表）
+# 2) 手写 SQL 到 prisma/migrations/<n>_<name>/migration.sql
+#    （<n> 是递增序号；用 CREATE TABLE IF NOT EXISTS / CREATE INDEX IF NOT EXISTS 让脚本可重入）
+# 3) 本地应用
+DATABASE_URL="file:../instance/database/dev.db" npm run migrate -- status   # 看 pending
+DATABASE_URL="file:../instance/database/dev.db" npm run migrate -- up       # 应用
+# 4) 提交 schema.prisma + migration.sql + scripts/migrate.mjs（如改了）
+
+# 部署到生产
+DATABASE_URL="file:/绝对路径/instance/database/db.db" npm run migrate -- status   # 看 pending
+DATABASE_URL="file:/绝对路径/instance/database/db.db" npm run migrate -- up       # 应用
+
+# 从 Flask 迁过来的现有库（首次部署 OAuth 等新功能时）
+DATABASE_URL="file:/绝对路径/instance/database/db.db" npm run migrate -- mark 0_init
+DATABASE_URL="file:/绝对路径/instance/database/db.db" npm run migrate -- up
 ```
 
-> 注意:不要直接对生产库 `prisma migrate dev`（会触发 drift 检测 + reset 提议）。
-> 永远 `migrate deploy` 用于生产。
+`npm run migrate -- verify` 比对已应用迁移的 checksum 与当前文件，发现漂移会报错。
+
+> 永远不要在生产跑 `prisma migrate dev` / `prisma db push` / `prisma migrate reset`——它们会无视 `_raricy_migrations` 直接动 schema。
 
 ## 5. 依赖安装 + 构建 + 启动
 

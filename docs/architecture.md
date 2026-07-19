@@ -192,6 +192,30 @@ fish:admin       5/s     (CLI grant/deduct 用)
 | 内容引用 `[@xxxxxxxxxx]` | 浏览器渲染时正则替换为剪贴板/投票/图床组件 | `src/app/components/blog/ContentEmbeds.tsx` |
 | 工具页 cattca-guide | **服务端**渲染 | marked（仅一次，可信文档） |
 
+### 6.8 OAuth 2.0 身份绑定（raricy 作为 IdP）
+
+让外部第三方应用以标准 OAuth 2.0 Authorization Code 模式读取 raricy 用户的基础资料。
+
+**三张表**（`prisma/migrations/1_oauth/migration.sql`）：
+
+| 表 | 角色 | PK |
+|----|------|-----|
+| `oauth_applications` | 已注册的第三方应用（client_id + scrypt 哈希的 client_secret + JSON 串 redirect_uris + disabledAt 软禁用） | 12 字符 base36 |
+| `oauth_authorization_codes` | 单次性授权码（10 分钟 TTL） | SHA-256 hex |
+| `oauth_access_tokens` | 长效 token（90 天 TTL；支持 revokedAt / lastUsedAt） | SHA-256 hex |
+
+**安全要点**：
+
+- 原始 token / code / client_secret **永不落库**：仅存 SHA-256（不可逆）/ scrypt（自带盐）
+- `redirect_uri` 严格精确匹配（无通配 / 前缀 / 子串）
+- 授权码单次使用：Prisma 原子 `update where {codeHash, usedAt: null}`
+- `client_secret` 与 `User.passwordHash` 同款哈希（werkzeug 兼容），与 SECRET_KEY 轮换解耦
+- CSRF 中间件豁免 3 个 server-to-server 端点：`/api/oauth/token` `/userinfo` `/revoke`（鉴权由 client_secret / bearer 承担）
+
+**核心库与端点**：`src/lib/oauth.ts`（纯函数 + Prisma 调用）；6 个 `/api/oauth/*` 路由 + `/oauth/authorize` 页 + `/admin/oauth` 管理页；CLI `oauth create-app / list-apps / disable-app / enable-app`。
+
+详见 `docs/oauth.md`。
+
 ## 7. 数据流（3 个典型路径）
 
 ### 7.1 用户登录

@@ -15,6 +15,7 @@
     "prisma:generate": "prisma generate",
     "prisma:studio": "prisma studio",
     "db:normalize": "node scripts/normalize-datetimes.mjs --source ./instance/database/db.db --dest ./instance/database/dev.db",
+    "migrate": "node scripts/migrate.mjs",
     "diagnose": "tsx scripts/diagnose-deploy.mjs",
     "check:links": "node scripts/check-links.mjs",
     "check:perms": "node scripts/check-permissions.mjs",

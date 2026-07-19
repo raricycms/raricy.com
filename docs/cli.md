@@ -96,7 +96,44 @@ fi
 
 `fish grant` / `fish deduct` 命中站内内存限频规则 `RULES.fishAdmin`（默认 5 req/s）。本地连跑 5 次以上会被 `429 + Wait` 顶住。遇限频调低并发或加 `--batch-id`（如 `compensate-unclaimed-fortunes.mjs` 已支持）。
 
-## 五、相关脚本
+## 五、OAuth 2.0 应用
+
+注册和管理第三方应用（client_id / client_secret / 回调 URI）。详见 `docs/oauth.md`。
+
+### 命令
+
+```
+oauth create-app <name> [--owner <username>] [--homepage URL] [-d 说明] --redirect-uri URI [--redirect-uri URI2 ...]
+oauth list-apps
+oauth disable-app <id|client_id>
+oauth enable-app  <id|client_id>
+```
+
+### 用法示例
+
+```bash
+# 注册一个新应用
+npm run cli -- oauth create-app "cattca-game" \
+  --homepage "https://cattca.example.com" \
+  -d "CattCa 站点的用户绑定" \
+  --redirect-uri "https://cattca.example.com/oauth/callback"
+
+# 输出：
+#   client_id:     AbCdEf123...
+#   client_secret: XyZ_987...     ← 仅此一次，请立即复制
+#
+# ⚠️ client_secret 仅此一次显示。命令行若被记录（如 shell history、CI 日志），
+#    请同步清理；推荐写到 secrets manager 而不是明文文件。
+
+# 列出全部应用
+npm run cli -- oauth list-apps
+
+# 禁用 / 启用（按 id 或 client_id 都行）
+npm run cli -- oauth disable-app AbCdEf123...
+npm run cli -- oauth enable-app  AbCdEf123...
+```
+
+## 六、相关脚本
 
 | 脚本 | 与 CLI 的关系 |
 |------|---------------|

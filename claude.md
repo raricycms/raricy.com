@@ -60,11 +60,18 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 - `core+` 通过邀请码升级，注册时填邀请码即升。
 - 会话 cookie：`HttpOnly`，`Secure` 由 `X-Forwarded-Proto` 自动判定（不走 nginx 时显式设 `COOKIE_SECURE`）。
 - 站长的「针对自己的申诉」不由自己裁决——`/api/admin/appeals/[id]/decide` 需要目标用户 ≠ 当前用户。
+- **OAuth 2.0 Authorization Code**（RFC 6749 §4.1）：raricy 作为 IdP，让外部应用读取用户 `id / username / avatar`；scope 仅 `profile`；access_token TTL 90 天；应用由 owner 经 `npm run cli -- oauth create-app` 或 `/admin/oauth` 注册；详见 `docs/oauth.md`。
 
 ### CSRF / 中间件
 - `src/middleware.ts` 仅校验写请求（POST / PUT / PATCH / DELETE）的 `Origin` / `Referer` 同源。
 - 对外 Host 判定顺序：`ALLOWED_ORIGINS` → `X-Forwarded-Host` → `Host`。
 - 走 nginx 时务必 `proxy_set_header X-Forwarded-Host $http_host`，否则全站 POST 403。
+
+### 数据库迁移
+- **不用 `prisma migrate`**（schema.prisma 头禁了）—— 走 `npm run migrate`（脚本：`scripts/migrate.mjs`）。
+- 跟踪表：自己维护 `_raricy_migrations`；新迁移用 `CREATE TABLE IF NOT EXISTS` / `CREATE INDEX IF NOT EXISTS` 保持幂等。
+- 从 Flask 切过来的库：先 `npm run migrate -- mark 0_init`，再 `up`；新库直接 `up`。
+- 命令：`status` / `up` / `mark <name>` / `verify`。详见 `docs/deploy.md`「修改 schema 后」节。
 
 ### 鱼干写路径
 - 三条写路径（投喂 / 签到 / CLI grant|deduct）全部 **fail-closed**：

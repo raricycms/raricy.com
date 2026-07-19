@@ -16,6 +16,10 @@
 //   fish grant <username> <amount> [-d 说明]
 //   fish deduct <username> <amount> [-d 说明]
 //   fish balance <username>
+//   oauth create-app <name> [--owner <username>] [--homepage URL] [-d 说明] --redirect-uri URI [--redirect-uri URI2 ...]
+//   oauth list-apps
+//   oauth disable-app <id_or_client_id>
+//   oauth enable-app  <id_or_client_id>
 //
 // 退出码（对齐 Flask）：0 成功 / 1 参数或用户错误 / 2 账户服务同步失败（本地已回滚）
 //
@@ -115,6 +119,12 @@ async function main() {
   fish deduct  <username> <amount> [-d "说明"]   扣减（fail-closed）
   fish balance <username>                        查询余额
 
+OAuth 2.0 第三方应用：
+  oauth create-app <name> [--owner <username>] [--homepage URL] [-d 说明] --redirect-uri URI [...]   注册新应用，client_secret 仅显示一次
+  oauth list-apps                                                    列出全部应用
+  oauth disable-app <id|client_id>                                   禁用（保留 token 但 token 验证失败）
+  oauth enable-app  <id|client_id>                                   恢复
+
 退出码：0 成功 / 1 参数或用户错误 / 2 账户服务同步失败（本地已回滚）`);
     process.exit(0);
   }
@@ -206,6 +216,113 @@ async function main() {
       console.error(`  本地余额未变更（${user.driedFish}），请稍后重试。`);
       process.exit(2);
     }
+  }
+
+  // ── oauth 命令组 ─────────────────────────────────────────────────────────
+  if (cmd === 'oauth') {
+    const sub = argv[1];
+    if (!sub) die(red('错误：缺少 oauth 子命令（create-app / list-apps / disable-app / enable-app）'));
+
+    const oauth = await import('../src/lib/oauth.ts');
+
+    if (sub === 'list-apps') {
+      const apps = await oauth.listOAuthApplications();
+      if (apps.length === 0) {
+        console.log(yellow('（暂无 OAuth 应用）'));
+        process.exit(0);
+      }
+      for (const app of apps) {
+        const status = app.disabledAt ? yellow('已禁用') : green('启用中');
+        const uris = JSON.parse(app.redirectUris);
+        console.log(`${app.name}  [${status}]`);
+        console.log(`  id:        ${app.id}`);
+        console.log(`  client_id: ${app.clientId}`);
+        console.log(`  callback:  ${uris.join(', ')}`);
+        if (app.homepageUrl) console.log(`  homepage:  ${app.homepageUrl}`);
+        if (app.description) console.log(`  desc:      ${app.description}`);
+      }
+      process.exit(0);
+    }
+
+    if (sub === 'create-app') {
+      const name = argv[2];
+      if (!name) die(red('错误：缺少应用名。用法：npm run cli -- oauth create-app <name> --redirect-uri URI [...]'));
+
+      // 解析参数：--owner / --homepage / -d / --redirect-uri (可重复)
+      let ownerUsername = '';
+      let homepage = '';
+      let description = '';
+      const redirectUris = [];
+      for (let i = 3; i < argv.length; i++) {
+        const a = argv[i];
+        if (a === '--owner') {
+          ownerUsername = argv[++i] || '';
+        } else if (a === '--homepage') {
+          homepage = argv[++i] || '';
+        } else if (a === '-d' || a === '--description') {
+          description = argv[++i] || '';
+        } else if (a === '--redirect-uri') {
+          const v = argv[++i];
+          if (!v) die(red('错误：--redirect-uri 后必须接一个 URI'));
+          redirectUris.push(v);
+        } else {
+          die(red(`错误：未知参数 ${a}`));
+        }
+      }
+      if (redirectUris.length === 0) {
+        die(red('错误：至少需要一个 --redirect-uri'));
+      }
+
+      // owner 解析：--owner 指定 → 否则取库内第一个 owner
+      let owner;
+      if (ownerUsername) {
+        owner = await prisma.user.findUnique({
+          where: { username: ownerUsername },
+          select: { id: true, username: true, role: true },
+        });
+        if (!owner) die(red(`错误：用户 ${ownerUsername} 不存在`));
+        if (owner.role !== 'owner') die(red(`错误：${ownerUsername} 不是站长`));
+      } else {
+        owner = await prisma.user.findFirst({
+          where: { role: 'owner' },
+          select: { id: true, username: true, role: true },
+          orderBy: { createdAt: 'asc' },
+        });
+        if (!owner) die(red('错误：库内无站长用户，请用 --owner <username> 指定'));
+      }
+
+      const created = await oauth.createOAuthApplication(
+        {
+          name,
+          description: description || null,
+          homepageUrl: homepage || null,
+          redirectUris,
+        },
+        owner.id
+      );
+
+      console.log(green(`成功：已创建应用 ${created.application.name}（owner: ${owner.username}）`));
+      console.log('');
+      console.log(`  client_id:     ${created.clientId}`);
+      console.log(`  client_secret: ${created.clientSecret}`);
+      console.log('');
+      console.log(yellow('  ⚠️  client_secret 仅此一次显示，请立即复制保存。'));
+      process.exit(0);
+    }
+
+    if (sub === 'disable-app' || sub === 'enable-app') {
+      const idOrCid = argv[2];
+      if (!idOrCid) die(red(`错误：缺少应用 id 或 client_id。用法：npm run cli -- oauth ${sub} <id|client_id>`));
+      const app = await oauth.findApplication(idOrCid);
+      if (!app) die(red(`错误：未找到应用 ${idOrCid}`));
+      const updated = sub === 'disable-app'
+        ? await oauth.disableOAuthApplication(app.id)
+        : await oauth.enableOAuthApplication(app.id);
+      console.log(green(`成功：已${sub === 'disable-app' ? '禁用' : '启用'}应用 ${updated.name}`));
+      process.exit(0);
+    }
+
+    die(red(`错误：未知 oauth 子命令 ${sub}`));
   }
 
   die(red(`错误：未知命令 ${cmd}。跑 \`npm run cli -- --help\` 看用法。`));

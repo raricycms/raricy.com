@@ -83,6 +83,9 @@ model User {
   bansReceived          UserBan[]           @relation("BanUser")
   bansIssued            UserBan[]           @relation("BanAdmin")
   bansLifted            UserBan[]           @relation("BanLifter")
+  oauthAppsCreated      OAuthApplication[]      @relation("OAuthAppOwner")
+  oauthCodes            OAuthAuthorizationCode[]
+  oauthTokens           OAuthAccessToken[]
   @@index([id], map: "ix_users_id")
   @@index([role], map: "ix_users_role")
 
@@ -514,4 +517,74 @@ model AdminActionAppeal {
   @@index([status], map: "ix_admin_action_appeals_status")
 
   @@map("admin_action_appeals")
+}
+
+// ── OAuth 2.0（外部应用身份绑定） ────────────────────────────────────────────
+// 仅用于「让第三方应用代表已登录用户读取基础资料」。v1 不发 write scope，
+// 因此 OAuthAccessToken 仅出现在读路径；refresh_token 不在 v1 范围内。
+//
+// 应用注册由 owner 经 CLI（npm run cli -- oauth create-app）或 /admin/oauth 完成；
+// 客户端鉴权走 client_id + client_secret（werkzeug 兼容 scrypt 哈希入库）；
+// 授权码 / access_token 不透明随机串，仅存 SHA-256 哈希作为 PK。
+
+model OAuthApplication {
+  id               String    @id
+  clientId         String    @unique @map("client_id")
+  clientSecretHash String    @map("client_secret_hash")
+  name             String
+  description      String?
+  homepageUrl      String?   @map("homepage_url")
+  // SQLite 无数组类型 → JSON 字符串（应用层 parse）。结构：["https://app.example.com/cb","..."]
+  redirectUris     String    @map("redirect_uris")
+  createdById      String    @map("created_by_id")
+  createdAt        DateTime? @map("created_at")
+  disabledAt       DateTime? @map("disabled_at")
+
+  createdBy         User                      @relation("OAuthAppOwner", fields: [createdById], references: [id])
+  authorizationCodes OAuthAuthorizationCode[]
+  accessTokens       OAuthAccessToken[]
+
+  @@index([clientId], map: "ix_oauth_apps_client_id")
+  @@index([createdById], map: "ix_oauth_apps_created_by_id")
+  @@map("oauth_applications")
+}
+
+model OAuthAuthorizationCode {
+  // 主键 = SHA-256(明文)，64 字符 hex。原始 code 仅在 /api/oauth/authorize 响应里出现一次。
+  codeHash      String    @id @map("code_hash")
+  applicationId String    @map("application_id")
+  userId        String    @map("user_id")
+  redirectUri   String    @map("redirect_uri")
+  // JSON 字符串数组，如 ["profile"]。SQLite 无数组类型。
+  scopes        String
+  expiresAt     DateTime  @map("expires_at")
+  usedAt        DateTime? @map("used_at")
+  createdAt     DateTime? @map("created_at")
+
+  application OAuthApplication @relation(fields: [applicationId], references: [id])
+  user        User             @relation(fields: [userId], references: [id])
+
+  @@index([applicationId, userId], map: "ix_oauth_codes_app_user")
+  @@index([expiresAt], map: "ix_oauth_codes_expires_at")
+  @@map("oauth_authorization_codes")
+}
+
+model OAuthAccessToken {
+  // 主键 = SHA-256(明文)，64 字符 hex。
+  tokenHash     String    @id @map("token_hash")
+  applicationId String    @map("application_id")
+  userId        String    @map("user_id")
+  scopes        String
+  expiresAt     DateTime  @map("expires_at")
+  revokedAt     DateTime? @map("revoked_at")
+  lastUsedAt    DateTime? @map("last_used_at")
+  createdAt     DateTime? @map("created_at")
+
+  application OAuthApplication @relation(fields: [applicationId], references: [id])
+  user        User             @relation(fields: [userId], references: [id])
+
+  @@index([applicationId, userId], map: "ix_oauth_tokens_app_user")
+  @@index([userId], map: "ix_oauth_tokens_user_id")
+  @@index([expiresAt], map: "ix_oauth_tokens_expires_at")
+  @@map("oauth_access_tokens")
 }

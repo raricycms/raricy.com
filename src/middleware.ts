@@ -23,6 +23,20 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
+/**
+ * OAuth 服务器对服务器端点：客户端鉴权走 HTTP Basic（或 body 内 client_secret），
+ * 不需要会话浏览器上下文，CSRF 同源校验会让外部服务（在 ALLOWED_ORIGINS 之外）
+ * 的调用被误杀。consent 屏（/api/oauth/authorize）保留 CSRF 校验。
+ *
+ * 增删前请确认：新增到豁免列表的端点必须由 client_secret / token 自身承担鉴权，
+ * 否则留下攻击面。/api/oauth/authorize 永远**不要**加入。
+ */
+const CSRF_EXEMPT_PATHS = new Set<string>([
+  '/api/oauth/token',
+  '/api/oauth/userinfo',
+  '/api/oauth/revoke',
+]);
+
 function hostOf(url: string | null): string | null {
   if (!url) return null;
   try {
@@ -41,6 +55,9 @@ function normalizeHost(v: string): string | null {
 
 export function middleware(req: NextRequest) {
   if (SAFE_METHODS.has(req.method)) return NextResponse.next();
+
+  // OAuth 服务端对服务端端点豁免（鉴权由 client_secret / bearer token 承担）
+  if (CSRF_EXEMPT_PATHS.has(new URL(req.url).pathname)) return NextResponse.next();
 
   const originHost = hostOf(req.headers.get('origin'));
   const refererHost = hostOf(req.headers.get('referer'));

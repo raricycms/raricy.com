@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import OAuthConnectionsList from './OAuthConnectionsList';
 
 interface ProfileState {
   bio: string;
@@ -39,6 +40,7 @@ export default function SettingsPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordSubmitting, setPasswordSubmitting] = useState(false);
   const [passwordAlert, setPasswordAlert] = useState<Alert | null>(null);
+  const [oauthAlert, setOauthAlert] = useState<Alert | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -301,6 +303,26 @@ export default function SettingsPage() {
             <span className="settings-toggle__slider"></span>
           </label>
         </div>
+      </div>
+
+      {/* 已绑定的应用 */}
+      <div className="card settings-card">
+        <div className="settings-card__header">
+          <span className="icon icon-shield-check"></span>
+          <h2 className="settings-card__title">已绑定的应用</h2>
+        </div>
+        <p className="settings-card__desc">
+          查看通过 OAuth 2.0 绑定到你账号的第三方应用，可在此解除绑定。解除后该应用的访问令牌立即失效。
+        </p>
+        <div className={oauthAlert ? `settings-alert settings-alert--${oauthAlert.type}` : 'settings-alert d-none'}>
+          {oauthAlert?.msg}
+        </div>
+        <OAuthConnectionsList
+          onAlert={(kind, msg) => {
+            setOauthAlert({ msg, type: kind });
+            setTimeout(() => setOauthAlert(null), 3000);
+          }}
+        />
       </div>
     </div>
   );

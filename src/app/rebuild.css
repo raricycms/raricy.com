@@ -800,6 +800,40 @@ code, kbd, pre { font-family: var(--mono); }
 .settings-toggle__slider::before { content: ""; position: absolute; width: 22px; height: 22px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: transform .2s; box-shadow: 0 1px 3px rgba(0,0,0,.25); }
 .settings-toggle input:checked + .settings-toggle__slider { background: var(--accent); }
 .settings-toggle input:checked + .settings-toggle__slider::before { transform: translateX(18px); }
+
+/* ---------- OAuth 已绑定应用列表 ---------- */
+.oauth-conn-list { display: flex; flex-direction: column; gap: 10px; }
+.oauth-conn-row { display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 14px 16px; background: var(--bg-card-2); border: 1px solid var(--line); border-radius: var(--r-sm); }
+.oauth-conn-row__main { flex: 1 1 auto; min-width: 0; }
+.oauth-conn-row__name { font-size: .98rem; font-weight: 600; color: var(--ink); margin-bottom: 4px; }
+.oauth-conn-row__name a { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+.oauth-conn-row__meta { font-size: .82rem; color: var(--ink-3); margin-bottom: 6px; }
+.oauth-conn-row__scopes { display: flex; gap: 6px; flex-wrap: wrap; }
+.oauth-chip { display: inline-block; padding: 2px 10px; background: var(--accent-wash); color: var(--accent-ink);
+  border-radius: var(--r-pill); font-size: .76rem; font-weight: 500; }
+
+/* ---------- OAuth 管理页（/admin/oauth） ---------- */
+.admin-section { margin-top: 28px; }
+.admin-section__title { font-size: 1.15rem; font-weight: 600; margin-bottom: 14px; color: var(--ink); }
+.management-card__title-row { display: flex; align-items: center; gap: 12px; flex: 1; }
+.management-card__row { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-top: 1px solid var(--line); flex-wrap: wrap; }
+.management-card__row:first-of-type { border-top: none; }
+.management-card__label { font-size: .82rem; color: var(--ink-3); min-width: 80px; }
+.oauth-badge { display: inline-block; padding: 2px 10px; border-radius: var(--r-pill); font-size: .76rem; font-weight: 500; }
+.oauth-badge--ok { background: var(--ok-wash); color: var(--ok); }
+.oauth-badge--danger { background: var(--danger-wash); color: var(--danger); }
+
+/* 一次性 secret 展示 modal */
+.oauth-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.55);
+  display: grid; place-items: center; z-index: 1000; padding: 20px; }
+.oauth-modal { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg);
+  padding: 28px; max-width: 580px; width: 100%; box-shadow: 0 20px 60px rgba(0,0,0,.3); }
+.oauth-modal h2 { font-size: 1.3rem; font-weight: 700; margin-bottom: 8px; }
+.oauth-modal__field { margin-bottom: 14px; }
+.oauth-modal__label { font-size: .82rem; color: var(--ink-3); margin-bottom: 4px; font-weight: 600; }
+.oauth-modal__row { display: flex; align-items: center; gap: 8px; }
+.oauth-modal__row code { flex: 1; padding: 8px 10px; background: var(--bg-card-2); border-radius: var(--r-sm); font-size: .85rem; }
 .settings-toggle input:focus-visible + .settings-toggle__slider { outline: 2px solid var(--accent); outline-offset: 2px; }
 .settings-alert { padding: 10px 14px; border-radius: var(--r-sm); font-size: .88rem; margin-bottom: 14px; }
 .settings-alert--success { background: var(--ok-wash); color: var(--ok); }
