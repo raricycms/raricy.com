@@ -367,7 +367,7 @@ export async function getCategoryPostingMeta(categoryId: number) {
 }
 
 /** 禁言时的操作错误文案（对齐 ban_check.check_user_ban_status 生成的 message）。 */
-export function banActionMessage(user: { banUntil: Date | null; banReason: string | null }): string {
+export function banActionMessage(user: { banUntil?: Date | null; banReason?: string | null }): string {
   let remainingText = '';
   if (user.banUntil) {
     const remainingHours = (user.banUntil.getTime() - Date.now()) / 3600000;

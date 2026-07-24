@@ -46,12 +46,13 @@ document.querySelectorAll('a[href^="#"]').forEach(anchor => {
 // 登出功能
 function logout() {
     if (confirm('确定要退出登录吗？')) {
-        const logoutUrl = logoutUrlMeta ? logoutUrlMeta.content : '/auth/logout';
+        const logoutUrl = logoutUrlMeta ? logoutUrlMeta.content : '/api/auth/logout';
         fetch(logoutUrl, {
-            method: 'GET',
+            method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-            }
+            },
+            credentials: 'same-origin',
         })
         .then(response => response.json())
         .then(data => {
@@ -60,8 +61,8 @@ function logout() {
                 showToast('已成功退出登录', 'success');
                 // 刷新页面
                 setTimeout(() => {
-                    window.location.reload();
-                }, 1000);
+                    window.location.href = '/';
+                }, 800);
             } else {
                 showToast('退出登录失败', 'error');
             }

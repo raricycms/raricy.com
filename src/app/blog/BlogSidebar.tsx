@@ -3,8 +3,8 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
-// 分类侧栏（对齐 menu.html 的 aside.sidebar + extra_js 折叠交互）。
-// 服务端把分类数据作为 props 传入，交互（折叠/展开、≤820px 自动折叠）在客户端完成。
+// 分类侧栏 — Flask BEM（与 blog/menu.html 一一对应）
+// 服务端注入 props；客户端仅做折叠交互（≤820px 自动收拢）。
 interface SidebarChild {
   id: number;
   name: string;
@@ -28,26 +28,20 @@ export default function BlogSidebar({
   currentSlug: string | null;
   featured: boolean;
 }) {
-  // 主分类列表是否折叠（点击「分类」标题切换）
   const [mainCollapsed, setMainCollapsed] = useState(false);
-  // 已折叠的二级列表（对应 .sub-category-list.collapsed）
   const [collapsedSubs, setCollapsedSubs] = useState<Set<number>>(new Set());
-  // 已折叠的可折叠父级链接（对应 .category-link.collapsible.collapsed）
   const [collapsedLinks, setCollapsedLinks] = useState<Set<number>>(new Set());
 
-  // 挂载与窗口尺寸变化时执行折叠初始化，复刻 menu.html 的 initializeCollapse。
   useEffect(() => {
     const parentIds = categories.filter((c) => c.children.length > 0).map((c) => c.id);
 
     function initializeCollapse() {
       const isMobile = window.innerWidth <= 820;
       if (isMobile) {
-        // 移动端：主列表、二级列表、可折叠链接一律折叠
         setMainCollapsed(true);
         setCollapsedSubs(new Set(parentIds));
         setCollapsedLinks(new Set(parentIds));
       } else {
-        // 桌面端：仅展开二级列表（与原逻辑一致，不改动主列表/链接状态）
         setCollapsedSubs(new Set());
       }
     }
@@ -87,38 +81,53 @@ export default function BlogSidebar({
 
   return (
     <aside className="sidebar">
-      <h3 className="sidebar-title" onClick={toggleMainCategories}>
-        分类
+      <h3
+        className={`sidebar-title${mainCollapsed ? ' collapsed' : ''}`}
+        onClick={toggleMainCategories}
+      >
+        <span>分类</span>
+        <span className="toggle-icon">▼</span>
       </h3>
       <ul
         className={`category-list${mainCollapsed ? ' collapsed' : ''}`}
         id="mainCategoryList"
       >
         <li className="category-item">
-          <Link href="/blog" className={`category-link ${!currentSlug && !featured ? 'active' : ''}`}>
+          <Link
+            href="/blog"
+            className={`category-link${!currentSlug && !featured ? ' active' : ''}`}
+          >
             <div className="category-content">
+              <span className="icon">🏠</span>
               <span>全部文章</span>
             </div>
           </Link>
         </li>
         <li className="category-item">
-          <Link href="/blog?featured=1" className={`category-link ${featured ? 'active' : ''}`}>
+          <Link
+            href="/blog?featured=1"
+            className={`category-link${featured ? ' active' : ''}`}
+          >
             <div className="category-content">
+              <span className="icon">🌟</span>
               <span>精选</span>
             </div>
           </Link>
         </li>
         {categories.map((category) =>
           category.children.length > 0 ? (
-            <li key={category.id} className="category-item has-children">
+            <li key={category.id} className={`category-item has-children`}>
               <div
                 className={`category-link collapsible${collapsedLinks.has(category.id) ? ' collapsed' : ''}`}
                 onClick={() => toggleCategory(category.id)}
+                role="button"
+                aria-expanded={!collapsedLinks.has(category.id)}
               >
                 <div className="category-content">
-                  {category.icon && <span className="category-icon">{category.icon}</span>}
+                  {category.icon && <span className="icon" aria-hidden="true">{category.icon}</span>}
                   <span>{category.name}</span>
                 </div>
+                <span className="category-toggle">▼</span>
               </div>
               <ul
                 className={`sub-category-list${collapsedSubs.has(category.id) ? ' collapsed' : ''}`}
@@ -127,8 +136,9 @@ export default function BlogSidebar({
                 <li className="category-item">
                   <Link
                     href={`/blog?category=${category.slug}`}
-                    className={`sub-category-link ${currentSlug === category.slug ? 'active' : ''}`}
+                    className={`sub-category-link${currentSlug === category.slug ? ' active' : ''}`}
                   >
+                    {category.icon && <span className="icon" aria-hidden="true">{category.icon}</span>}
                     <span>全部</span>
                   </Link>
                 </li>
@@ -136,7 +146,7 @@ export default function BlogSidebar({
                   <li key={child.id} className="category-item">
                     <Link
                       href={`/blog?category=${child.slug}`}
-                      className={`sub-category-link ${currentSlug === child.slug ? 'active' : ''}`}
+                      className={`sub-category-link${currentSlug === child.slug ? ' active' : ''}`}
                     >
                       <span>{child.name}</span>
                     </Link>
@@ -148,10 +158,10 @@ export default function BlogSidebar({
             <li key={category.id} className="category-item">
               <Link
                 href={`/blog?category=${category.slug}`}
-                className={`category-link ${currentSlug === category.slug ? 'active' : ''}`}
+                className={`category-link${currentSlug === category.slug ? ' active' : ''}`}
               >
                 <div className="category-content">
-                  {category.icon && <span className="category-icon">{category.icon}</span>}
+                  {category.icon && <span className="icon" aria-hidden="true">{category.icon}</span>}
                   <span>{category.name}</span>
                 </div>
               </Link>

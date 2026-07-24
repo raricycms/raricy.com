@@ -4,8 +4,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { FormEvent } from 'react';
 
-// 搜索表单（对齐 menu.html 的 .search-form + extra_js 空搜索处理）。
-// 非空搜索走原生 GET 提交；空搜索则拦截并去掉空的 search 参数，仅保留 category/featured。
+// 博客搜索表单 — Flask BEM
+// 空搜索时拦截，去掉 search 参数并保留其他筛选。
 export default function SearchForm({
   currentSlug,
   featured,
@@ -32,14 +32,19 @@ export default function SearchForm({
   }
 
   return (
-    <form method="GET" action="/blog" className="search-form" onSubmit={onSubmit}>
+    <form
+      method="GET"
+      action="/blog"
+      className="search-form"
+      onSubmit={onSubmit}
+    >
       {currentSlug && <input type="hidden" name="category" value={currentSlug} />}
       {featured && <input type="hidden" name="featured" value="1" />}
       <input
         type="search"
         name="search"
         defaultValue={search}
-        placeholder="搜索标题、作者、简介…"
+        placeholder="搜索标题、作者、简介..."
         className="search-input"
       />
       <button type="submit" className="search-btn">

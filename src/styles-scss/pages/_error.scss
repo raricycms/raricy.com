@@ -1,0 +1,194 @@
+// Error pages (404, 403, 500) — theme-aware, consistent with site design system
+
+.error-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: calc(100vh - 62px - 120px); // viewport minus navbar minus approx footer
+  padding: 2rem 1rem;
+}
+
+.error-card {
+  background: var(--color-background-card);
+  border-radius: 30px;
+  box-shadow: var(--shadow-card);
+  padding: 3rem 2rem;
+  text-align: center;
+  max-width: 560px;
+  width: 100%;
+  border: 1px solid var(--color-border);
+}
+
+.error-code {
+  font-size: 7rem;
+  font-weight: 900;
+  line-height: 1;
+  color: var(--color-brand-primary);
+  margin: 0 0 0.5rem;
+  letter-spacing: -0.03em;
+}
+
+.error-title {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin-bottom: 0.75rem;
+}
+
+.error-message {
+  font-size: 1.05rem;
+  color: var(--color-text-secondary);
+  margin-bottom: 0.5rem;
+  line-height: 1.7;
+}
+
+.error-hint {
+  font-size: 0.95rem;
+  color: var(--color-text-secondary);
+  margin-bottom: 2rem;
+  line-height: 1.7;
+  opacity: 0.8;
+}
+
+.error-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: center;
+  margin-bottom: 2.5rem;
+
+  // Ensure buttons in error-actions use inline-flex for icon alignment
+  .button-primary,
+  .button-outline {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+}
+
+// Pill-shaped outline button — consistent with .button-primary but outlined
+.button-outline {
+  display: inline-block;
+  padding: 10px 16px;
+  font-size: 16px;
+  font-weight: bold;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-brand-primary);
+  border: 2px solid var(--color-brand-primary);
+  cursor: pointer;
+  text-decoration: none;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: var(--color-brand-primary);
+    color: #fff;
+    text-decoration: none;
+  }
+
+  &:active {
+    filter: brightness(0.85);
+  }
+}
+
+// Quick links section
+.error-quick-links {
+  border-top: 1px solid var(--color-border);
+  padding-top: 1.5rem;
+}
+
+.error-quick-links__title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  margin-bottom: 1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.error-link-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.75rem;
+}
+
+.error-quick-link {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem 0.5rem;
+  border-radius: 12px;
+  text-decoration: none;
+  color: var(--color-text-secondary);
+  background: var(--color-background-page);
+  border: 1px solid var(--color-border);
+  transition: all 0.2s ease;
+
+  &:hover {
+    color: var(--color-brand-primary);
+    border-color: var(--color-brand-primary);
+    box-shadow: var(--shadow-card-brand);
+    text-decoration: none;
+    transform: translateY(-2px);
+  }
+
+  .icon {
+    width: 1.4rem;
+    height: 1.4rem;
+  }
+
+  span {
+    font-size: 0.8rem;
+    font-weight: 500;
+  }
+}
+
+// Entrance animation
+.error-card--animate {
+  animation: errorFadeIn 0.6s ease-out both;
+}
+
+@keyframes errorFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+// Responsive
+@media (max-width: 768px) {
+  .error-code {
+    font-size: 5rem;
+  }
+
+  .error-title {
+    font-size: 1.4rem;
+  }
+
+  .error-card {
+    padding: 2rem 1.25rem;
+  }
+
+  .error-link-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .error-actions {
+    flex-direction: column;
+    align-items: stretch;
+
+    .button-primary,
+    .button-outline {
+      width: 100%;
+      justify-content: center;
+      text-align: center;
+    }
+  }
+}

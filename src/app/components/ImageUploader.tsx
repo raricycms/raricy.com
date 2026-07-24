@@ -79,18 +79,16 @@ export default function ImageUploader() {
           if (files.length > 0) uploadFile(files[0]);
         }}
       >
-        <div className="image-hosting-upload__inner">
-          <svg className="image-hosting-upload__icon" viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-            <polyline points="17 8 12 3 7 8" />
-            <line x1="12" y1="3" x2="12" y2="15" />
-          </svg>
-          <p className="image-hosting-upload__text">拖拽图片到此处，或点击上传</p>
-          <p className="image-hosting-upload__hint">支持 PNG / JPEG / GIF / WebP / SVG，单文件上限 10 MB</p>
-          <label className="image-hosting-upload__compress" onClick={(e) => e.stopPropagation()}>
-            <input type="checkbox" id="compress-toggle" ref={compressRef} defaultChecked /> 压缩图片（减小文件体积，轻微损失画质）
-          </label>
-        </div>
+        <svg className="image-hosting-upload__icon" viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" strokeWidth="1.5">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+          <polyline points="17 8 12 3 7 8" />
+          <line x1="12" y1="3" x2="12" y2="15" />
+        </svg>
+        <p className="image-hosting-upload__text">拖拽图片到此处，或点击上传</p>
+        <p className="image-hosting-upload__hint">支持 PNG / JPEG / GIF / WebP / SVG，单文件上限 10 MB</p>
+        <label className="image-hosting-upload__compress" onClick={(e) => e.stopPropagation()}>
+          <input type="checkbox" id="compress-toggle" ref={compressRef} defaultChecked /> 压缩图片（减小文件体积，轻微损失画质）
+        </label>
         <input
           type="file"
           id="file-input"
@@ -251,12 +249,12 @@ export function ImageGallery({ images, isOwner = false }: { images: GalleryImage
           <div className="image-hosting-preview__info">
             <span id="preview-name">{preview?.name ?? ''}</span>
             <div>
-              <button className="button-primary-small" id="preview-copy-btn" onClick={copyPreviewLink}>
+              <button className="image-hosting-card__btn" id="preview-copy-btn" onClick={copyPreviewLink}>
                 {previewCopied ? '已复制' : '复制图片ID'}
               </button>
               {/* owner 专属：图片管理。对齐 Flask image.admin（/image/admin 图床专属管理页）。 */}
               {isOwner && (
-                <a className="button-warning-small" href="/image/admin">图片管理</a>
+                <a className="image-hosting-card__btn" href="/image/admin">图片管理</a>
               )}
             </div>
           </div>

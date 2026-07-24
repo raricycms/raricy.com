@@ -11,7 +11,18 @@ export async function GET(req: Request) {
   return Response.json({
     code: 200,
     message: 'ok',
-    logs: result.items.map((l) => ({
+    logs: result.items.map((l: {
+      id: string | number;
+      createdAt: Date | null;
+      action: string;
+      admin: { id: string | number; username: string | null };
+      targetUser?: { id: string | number; username: string | null } | null;
+      object?: { type: string | null; id: string | null } | null;
+      reason: string | null;
+      extra?: Record<string, unknown> | null;
+      visibility: string;
+      hasPendingAppeal: boolean;
+    }) => ({
       id: l.id,
       created_at: l.createdAt ? l.createdAt.toISOString() : null,
       action: l.action,

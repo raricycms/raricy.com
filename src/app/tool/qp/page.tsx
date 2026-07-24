@@ -109,9 +109,9 @@ export default function QpToolPage() {
               style={{ width: '1.25rem', height: '1.25rem' }}
             ></span>
           </Link>
-          <h1 className="mb-0 section-title">Quoted-Printable 编码 / 解码</h1>
+          <h1 className="mb-0 tool-new-hero__title">Quoted-Printable 编码 / 解码</h1>
         </div>
-        <p className="text-muted mb-3">
+        <p className="tool-new-hero__description mb-3">
           符合 RFC 2045 的 QP 编码，支持软换行（软回车）与尾空格处理。
         </p>
 

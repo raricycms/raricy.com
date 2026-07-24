@@ -7,23 +7,20 @@ import BlogForm, { type BlogFormBanInfo } from '@/app/components/BlogForm';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: 'Raricy.com - 文章上传',
+  title: 'Raricy.com - 发布文章',
 };
 
-// 对齐 Flask datetime_format 默认格式 '%Y-%m-%d %H:%M:%S'
+// 对齐 Flask datetime_format 默认格式
 function fmtDateTime(d: Date | null): string | null {
   if (!d) return null;
   const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(
-    d.getMinutes()
-  )}:${p(d.getSeconds())}`;
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
+// 发布文章 — Flask BEM
 export default async function UploadBlogPage() {
-  // 对齐 Flask blog.upload GET：@login_required + 仅核心用户（否则 abort(403)）
   const user = await requireCoreUser();
 
-  // 禁言检查（upload 对所有用户生效）
   let banInfo: BlogFormBanInfo | null = null;
   if (isCurrentlyBanned(user)) {
     banInfo = {
@@ -37,5 +34,13 @@ export default async function UploadBlogPage() {
 
   const categories = await getCategoryHierarchy();
 
-  return <BlogForm categories={categories} banInfo={banInfo} />;
+  return (
+    <>
+      <header className="upload-hero">
+        <h1>发布新文章</h1>
+        <p>使用 Markdown 编辑器撰写并发布你的内容。</p>
+      </header>
+      <BlogForm categories={categories} banInfo={banInfo} />
+    </>
+  );
 }

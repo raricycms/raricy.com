@@ -273,15 +273,14 @@ export default function WandDemo() {
 
   return (
     <>
-      <style>{WAND_CSS}</style>
-      <canvas ref={canvasRef} id="wand-canvas" className="wand__canvas" aria-label="魔杖 demo 画布" />
+      <canvas ref={canvasRef} id="wand-canvas" className="wand-canvas" aria-label="魔杖 demo 画布" />
     </>
   );
 }
 
-// 自包含样式：画布绿底，对齐原 wand_demo.html 的 `canvas { background: #6cdc00 }`
+// 自包含样式：Flask 无 wand-* 等价；保留以维持画布绿底（#6cdc00）视觉。
 const WAND_CSS = `
-.wand__canvas {
+.wand-canvas {
   background: #6cdc00;
   display: block;
   max-width: 100%;

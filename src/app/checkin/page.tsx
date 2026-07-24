@@ -8,7 +8,7 @@ import {
 } from '@/lib/checkin-service';
 import CheckinCard, { CheckinLeaderboards } from '@/app/components/CheckinCard';
 
-export const dynamic = 'force-dynamic'; // 依赖登录态与实时数据，禁用静态化
+export const dynamic = 'force-dynamic';
 
 export default async function CheckinPage() {
   const user = await getCurrentUser();
@@ -21,13 +21,12 @@ export default async function CheckinPage() {
   ]);
 
   return (
-    <main className="checkin-page container">
+    <div className="checkin-page">
       <CheckinCard
         checkedIn={status.checkedIn}
         totalCount={status.totalCount}
         totalFortune={status.totalFortune}
         fortuneValue={status.fortuneValue}
-        // 已签到但尚未翻牌 → 进页自动弹出运势卡（对齐 Flask today_status.fortune_pending）
         fortunePending={status.checkedIn && status.fortuneValue == null}
         today={status.today}
         username={user.username}
@@ -38,6 +37,6 @@ export default async function CheckinPage() {
         fortuneEntries={fortuneLb}
         currentUserId={user.id}
       />
-    </main>
+    </div>
   );
 }

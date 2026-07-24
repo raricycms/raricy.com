@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 
-// 邀请码认证页，对齐 app/templates/auth/authentic.html（「去认证」按钮的落地页）。
+// 邀请码认证页，对齐 app/templates/auth/authentic.html。
 // 结构 / 文案 / 类名逐字对齐原模板；提交交互（禁用按钮 + 验证中… + toast + 成功跳回主页）用 React 等价实现。
 
 function toast(msg: string, type: string) {
@@ -48,48 +48,58 @@ export default function AuthenticPage() {
   }
 
   return (
-    <div className="auth-wrap">
-      <div className="card auth-card">
-        <div className="auth-head">
-          <h1>邀请码验证</h1>
-          <p>输入邀请码即可升级为核心用户</p>
-        </div>
-
-        <form id="authentic-form" onSubmit={submit}>
-          <div className="field">
-            <label htmlFor="authentic_code">
-              邀请码 <span className="req">*</span>
-            </label>
-            <input
-              className="input"
-              type="text"
-              id="authentic_code"
-              name="authentic_code"
-              placeholder="请输入您的邀请码"
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              required
-            />
+    <div className="auth-page">
+      <div className="container">
+        <div className="register-container">
+          <div className="register-header">
+            <h2>
+              <span className="icon icon-add" aria-hidden="true"></span> 邀请码验证
+            </h2>
           </div>
-          <button
-            type="submit"
-            className="btn btn--primary btn--full"
-            id="submitBtn"
-            disabled={loading}
-            style={{ marginTop: 8 }}
-          >
-            <span id="submitText" style={{ display: loading ? 'none' : 'inline' }}>
-              立即验证
-            </span>
-            <span id="loadingText" style={{ display: loading ? 'inline' : 'none' }}>
-              验证中…
-            </span>
-          </button>
-        </form>
 
-        <p className="auth-alt">
-          没有邀请码？<Link href="/contact">点击联系我们</Link>
-        </p>
+          <form id="authentic-form" onSubmit={submit}>
+            <div className="form-group">
+              <label htmlFor="authentic_code">
+                邀请码{' '}
+                <span className="text-danger">*</span>
+              </label>
+              <input
+                type="text"
+                className="form-control"
+                id="authentic_code"
+                name="authentic_code"
+                placeholder="请输入您的邀请码"
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                required
+              />
+              <div className="invalid-feedback">
+                请输入有效的邀请码
+              </div>
+            </div>
+            <p style={{ textAlign: 'center', marginBottom: '1rem' }}>
+              没有邀请码？
+              <Link href="/contact" className="text-primary">点击联系我们</Link>
+            </p>
+            <button
+              type="submit"
+              className="button button-primary"
+              style={{ width: '100%' }}
+              id="submitBtn"
+              disabled={loading}
+            >
+              <span style={{ display: loading ? 'none' : 'inline' }} id="submitText">
+                立即验证
+              </span>
+              <span
+                style={{ display: loading ? 'inline' : 'none' }}
+                id="loadingText"
+              >
+                验证中…
+              </span>
+            </button>
+          </form>
+        </div>
       </div>
     </div>
   );

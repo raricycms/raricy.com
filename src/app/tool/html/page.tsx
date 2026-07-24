@@ -78,9 +78,9 @@ export default function HtmlToolPage() {
               style={{ width: '1.25rem', height: '1.25rem' }}
             ></span>
           </Link>
-          <h1 className="mb-0 section-title">HTML 实体编码 / 解码</h1>
+          <h1 className="mb-0 tool-new-hero__title">HTML 实体编码 / 解码</h1>
         </div>
-        <p className="text-muted mb-3">
+        <p className="tool-new-hero__description mb-3">
           支持常见 HTML 实体（如 &amp;amp; &amp;lt; &amp;gt; &amp;quot; &amp;apos; &amp;nbsp;）的转义与还原。
         </p>
 

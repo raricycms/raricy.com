@@ -3,8 +3,7 @@
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useState } from 'react';
 
-// 小鱼干流水分页跳转（对齐 fish_transactions.html 的 page-jump + jumpToPage）。
-// 保留当前查询参数（含 type），仅覆盖 page，钳制到 [1, totalPages]。
+// 小鱼干流水分页跳转 — Fluent Design
 export default function FishPageJump({
   totalPages,
   current,
@@ -26,17 +25,17 @@ export default function FishPageJump({
   }
 
   return (
-    <span className="page-jump">
+    <span className="fd-pagination__jump">
       <input
         type="number"
         min={1}
         max={totalPages}
         placeholder={String(current)}
-        className="page-input"
+        className="fd-pagination__jump-input"
         value={value}
         onChange={(e) => setValue(e.target.value)}
       />
-      <button type="button" onClick={jump} className="page-link page-btn">
+      <button type="button" onClick={jump} className="fd-btn fd-btn--outline fd-btn--sm">
         跳转
       </button>
     </span>

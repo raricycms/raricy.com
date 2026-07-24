@@ -1899,17 +1899,15 @@ export default function Galaxies() {
     : '圆点：0';
 
   return (
-    <div className="gal">
-      <style>{GAL_CSS}</style>
-
-      <div className="gal__controls">
-        <div className="gal__group">
-          <label className="gal__label" htmlFor="galSize">
+    <div className="puzzle">
+      <div className="puzzle-controls">
+        <div className="puzzle-controls__group">
+          <label className="puzzle-label" htmlFor="galSize">
             网格大小
           </label>
           <select
             id="galSize"
-            className="gal__select"
+            className="puzzle-select"
             value={size}
             onChange={(e) => setSize(parseInt(e.target.value, 10))}
           >
@@ -1921,13 +1919,13 @@ export default function Galaxies() {
           </select>
         </div>
 
-        <div className="gal__group">
-          <label className="gal__label" htmlFor="galDiff">
+        <div className="puzzle-controls__group">
+          <label className="puzzle-label" htmlFor="galDiff">
             难度
           </label>
           <select
             id="galDiff"
-            className="gal__select"
+            className="puzzle-select"
             value={diffMode}
             onChange={(e) => setDiffMode(e.target.value as 'normal' | 'unreasonable')}
           >
@@ -1936,12 +1934,12 @@ export default function Galaxies() {
           </select>
         </div>
 
-        <button type="button" className="gal__btn" onClick={handleNewGame} disabled={generating}>
+        <button type="button" className="puzzle-btn" onClick={handleNewGame} disabled={generating}>
           {generating ? '生成中…' : '新游戏'}
         </button>
         <button
           type="button"
-          className="gal__btn gal__btn--secondary"
+          className="puzzle-btn puzzle-btn--secondary"
           onClick={handleSolve}
           disabled={generating}
         >
@@ -1949,19 +1947,19 @@ export default function Galaxies() {
         </button>
       </div>
 
-      <div className={`gal__status${status?.completed ? ' gal__status--done' : ''}`}>
+      <div className={`puzzle-status${status?.completed ? ' puzzle-status--done' : ''}`}>
         {statusText}
       </div>
 
-      <div className="gal__canvas-wrap">
-        <canvas ref={canvasRef} className="gal__canvas" aria-label="螺旋星系棋盘" />
+      <div className="puzzle-canvas-wrap">
+        <canvas ref={canvasRef} className="puzzle-canvas" aria-label="螺旋星系棋盘" />
       </div>
     </div>
   );
 }
 
-// 自包含样式（作用域前缀 gal__；颜色走设计令牌 CSS 变量并带回退）
-const GAL_CSS = `
+// 自包含样式已迁移至 src/styles-scss/pages/game/_puzzle.scss / 编译产物 flask.css
+const _UNUSED_GAL_CSS = `
 .gal { display: flex; flex-direction: column; align-items: center; gap: 14px; width: 100%; }
 .gal__controls {
   display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; justify-content: center;

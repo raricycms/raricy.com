@@ -334,8 +334,6 @@ export default function SpeedGame() {
 
   return (
     <div className="speed-page">
-      <style>{SPEED_CSS}</style>
-
       <Link href="/game" className="speed-back">
         ← 返回玩具
       </Link>
@@ -410,9 +408,8 @@ export default function SpeedGame() {
   );
 }
 
-// 自包含样式（作用域前缀 speed-*；从 pages/game/_speed.scss 逐一移植。
-// 设计令牌映射到 web-next 变量并带回退；卡牌恒为白底以保真）。
-const SPEED_CSS = `
+// 自包含样式已迁移至 src/styles-scss/pages/game/_speed.scss / 编译产物 flask.css
+const _UNUSED_SPEED_CSS = `
 .speed-page {
   --speed-card-width: clamp(75px, 6vw, 110px);
   --speed-card-height: calc(var(--speed-card-width) * 1.4);

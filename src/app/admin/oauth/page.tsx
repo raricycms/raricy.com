@@ -5,12 +5,9 @@ import { listOAuthApplications } from '@/lib/oauth';
 import ApplicationCreateForm from './ApplicationCreateForm';
 import ApplicationRow from './ApplicationRow';
 
-// /admin/oauth —— owner 专属：注册并管理 OAuth 2.0 第三方应用。
-// 父级 /admin/layout.tsx 已校验 hasAdminRights，这里再叠加 isOwner，
-// 把 admin 角色挡在外面（OAuth 应用是跨站信任锚点，必须由站长直接管）。
-
 export const dynamic = 'force-dynamic';
 
+// OAuth 应用管理（owner 专属）— Fluent Design
 export default async function AdminOAuthPage() {
   const user = await getCurrentUser();
   if (!user) redirect(loginUrlWithNext('/admin/oauth'));
@@ -30,27 +27,33 @@ export default async function AdminOAuthPage() {
   }));
 
   return (
-    <div className="admin-container">
+    <>
       <section className="admin-hero">
         <h1>OAuth 应用</h1>
         <p>注册并管理可调用 raricy 身份绑定的第三方应用。</p>
       </section>
 
-      <ApplicationCreateForm />
+      <div className="admin-container">
+        <ApplicationCreateForm />
 
-      <div className="admin-section">
-        <h2 className="admin-section__title">已注册的应用（{data.length}）</h2>
-        {data.length === 0 ? (
-          <p style={{ color: 'var(--ink-3)' }}>暂无应用，使用上方表单创建第一个。</p>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {data.map((a) => (
-              <ApplicationRow key={a.id} app={a} />
-            ))}
-          </div>
-        )}
+        <section className="management-card" style={{ marginTop: 20 }}>
+          <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 600 }}>
+            已注册的应用（{data.length}）
+          </h2>
+          {data.length === 0 ? (
+            <p className="text-muted" style={{ marginTop: 12 }}>
+              暂无应用，使用上方表单创建第一个。
+            </p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 20 }}>
+              {data.map((a) => (
+                <ApplicationRow key={a.id} app={a} />
+              ))}
+            </div>
+          )}
+        </section>
       </div>
-    </div>
+    </>
   );
 }
 

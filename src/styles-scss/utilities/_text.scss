@@ -1,0 +1,15 @@
+.u-text-center { text-align: center !important; }
+.u-text-muted { color: var(--color-text-secondary) !important; }
+.u-text-nowrap { white-space: nowrap !important; }
+
+/* Legacy from site.css */
+.text-muted-strong { color: var(--muted-color) !important; }
+
+/* Utilities (no Bootstrap) */
+.site-text-danger { color: var(--color-warning-primary) !important; }
+
+// Bootstrap-like alias
+.text-muted { color: var(--color-text-secondary) !important; }
+.text-danger { color: var(--color-warning-primary) !important; }
+.text-primary { color: var(--color-brand-primary) !important; }
+

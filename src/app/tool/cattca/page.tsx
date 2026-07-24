@@ -279,18 +279,18 @@ export default function CattcaToolPage() {
   );
 
   return (
-    <div className="cattca">
+    <div className="story-cattca cattca-tool">
       <div className="container">
-        <Link href="/tool" className="cattca__back-link">
+        <Link href="/tool" className="story-cattca__back">
           ← 返回工具箱
         </Link>
 
-        <div className="cattca__grid">
+        <div className="cattca-tool__grid">
           {/* 脚本编辑器面板 */}
-          <div className="cattca__panel cattca__panel--editor">
+          <div className="cattca-tool__panel cattca-tool__panel--editor">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <h2
-                className="cattca__panel-title"
+                className="story-cattca__panel-title"
                 style={{ borderBottom: 'none', paddingBottom: 0, marginBottom: 0 }}
               >
                 Cattca 脚本编辑器
@@ -313,47 +313,47 @@ export default function CattcaToolPage() {
                 语法指南
               </Link>
             </div>
-            <div className={`cattca__status cattca__status--${statusType}`}>{status}</div>
+            <div className={`cattca-tool__status cattca-tool__status--${statusType}`}>{status}</div>
             <textarea
               ref={textareaRef}
-              className="cattca__script-input"
+              className="cattca-tool__script-input"
               value={text}
               onChange={(e) => handleTextChange(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="在这里输入你的 Cattca 脚本..."
             />
-            <div className="cattca__button-group">
-              <button className="cattca__btn cattca__btn--primary" onClick={runScript}>
+            <div className="cattca-tool__button-group">
+              <button className="cattca-tool__btn cattca-tool__btn--primary" onClick={runScript}>
                 ▶运行脚本
               </button>
               <button
-                className="cattca__btn cattca__btn--secondary"
+                className="cattca-tool__btn cattca-tool__btn--secondary"
                 onClick={undo}
                 disabled={undoDisabled}
               >
                 ↶ 撤回
               </button>
               <button
-                className="cattca__btn cattca__btn--secondary"
+                className="cattca-tool__btn cattca-tool__btn--secondary"
                 onClick={redo}
                 disabled={redoDisabled}
               >
                 ↷ 重做
               </button>
-              <button className="cattca__btn cattca__btn--secondary" onClick={saveScript}>
+              <button className="cattca-tool__btn cattca-tool__btn--secondary" onClick={saveScript}>
                 保存脚本
               </button>
-              <button className="cattca__btn cattca__btn--secondary" onClick={loadScript}>
+              <button className="cattca-tool__btn cattca-tool__btn--secondary" onClick={loadScript}>
                 加载脚本
               </button>
-              <button className="cattca__btn cattca__btn--secondary" onClick={loadExample}>
+              <button className="cattca-tool__btn cattca-tool__btn--secondary" onClick={loadExample}>
                 加载示例
               </button>
             </div>
           </div>
 
           {/* 游戏运行面板（含标题栏、全屏按钮与全屏覆盖层，由 CattcaPlayer 承载） */}
-          <div className="cattca__panel cattca__panel--game">
+          <div className="cattca-tool__panel cattca-tool__panel--game">
             <CattcaPlayer
               ref={playerRef}
               variant="tool"

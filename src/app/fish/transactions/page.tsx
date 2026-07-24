@@ -5,16 +5,14 @@ import { loginUrlWithNext } from '@/lib/safe-url';
 import { getTransactions } from '@/lib/fish-service';
 import FishPageJump from '../FishPageJump';
 
-// 小鱼干流水页 — 对齐 Flask auth/fish_transactions.html（筛选 + 分页列表）。
-// 门控对齐 Flask @login_required：任意已登录用户可访问，未登录跳登录页。
-export const dynamic = 'force-dynamic'; // 依赖查询参数与登录态，禁用静态化
+export const dynamic = 'force-dynamic';
 
 interface SearchParams {
   page?: string;
   type?: string;
 }
 
-// 对齐 datetime_format('%Y-%m-%d %H:%M')（与 NotificationItems 一致，用本地时间分量）。
+// 对齐 datetime_format('%Y-%m-%d %H:%M')
 function fmtDateTime(iso: string | null): string {
   if (!iso) return '';
   const d = new Date(iso);
@@ -30,6 +28,7 @@ const FILTERS: { label: string; type: string | null }[] = [
   { label: '消费', type: 'purchase' },
 ];
 
+// 小鱼干流水页 — Flask BEM
 export default async function FishTransactionsPage({
   searchParams,
 }: {
@@ -43,7 +42,6 @@ export default async function FishTransactionsPage({
 
   const data = await getTransactions(user.id, page, 20, typeFilter);
 
-  // 分页链接（保留 type，对齐 url_for(..., type=type_arg)）
   const hrefFor = (p: number) => {
     const params = new URLSearchParams();
     params.set('page', String(p));
@@ -65,7 +63,7 @@ export default async function FishTransactionsPage({
         {FILTERS.map((f) => (
           <Link
             key={f.label}
-            className={`filter-btn ${typeFilter === f.type ? 'active' : ''}`}
+            className={`filter-btn${typeFilter === f.type ? ' active' : ''}`}
             href={filterHref(f.type)}
           >
             {f.label}
@@ -86,7 +84,9 @@ export default async function FishTransactionsPage({
                   )}
                 </div>
                 <div className="fish-transaction__info">
-                  <div className="fish-transaction__desc">{tx.description || tx.type}</div>
+                  <div className="fish-transaction__desc">
+                    {tx.description || tx.type}
+                  </div>
                   <div className="fish-transaction__meta">
                     <span className={`fish-transaction__type-tag fish-transaction__type-tag--${tx.type}`}>
                       {tx.type}
@@ -113,11 +113,15 @@ export default async function FishTransactionsPage({
               )}
 
               {Array.from({ length: data.pages }, (_, i) => i + 1).map((p) => {
-                if (p === 1 || p === data.pages || (p >= data.page - WINDOW && p <= data.page + WINDOW)) {
+                if (
+                  p === 1 ||
+                  p === data.pages ||
+                  (p >= data.page - WINDOW && p <= data.page + WINDOW)
+                ) {
                   return (
                     <Link
                       key={p}
-                      className={`page-link ${p === data.page ? 'active' : ''}`}
+                      className={`page-link${p === data.page ? ' active' : ''}`}
                       href={hrefFor(p)}
                     >
                       {p}
@@ -126,9 +130,7 @@ export default async function FishTransactionsPage({
                 }
                 if (p === data.page - WINDOW - 1 || p === data.page + WINDOW + 1) {
                   return (
-                    <span key={p} className="page-ellipsis">
-                      ...
-                    </span>
+                    <span key={p} className="page-ellipsis">...</span>
                   );
                 }
                 return null;
@@ -140,7 +142,9 @@ export default async function FishTransactionsPage({
                 </Link>
               )}
 
-              <FishPageJump totalPages={data.pages} current={data.page} />
+              <span className="page-jump">
+                <FishPageJump totalPages={data.pages} current={data.page} />
+              </span>
             </div>
           )}
         </>

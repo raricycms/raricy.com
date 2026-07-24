@@ -297,9 +297,9 @@ export default function HexToolPage() {
       <div className="container">
         <div className="d-flex align-items-center mb-3">
           <Link href="/tool" className="text-decoration-none me-2">←</Link>
-          <h1 className="mb-0 section-title">Hex 查看 / 编辑</h1>
+          <h1 className="mb-0 tool-new-hero__title">Hex 查看 / 编辑</h1>
         </div>
-        <p className="text-muted">在浏览器中完成：文件 → Hex 查看与编辑 → 下载为修改后的文件。</p>
+        <p className="tool-new-hero__description">在浏览器中完成：文件 → Hex 查看与编辑 → 下载为修改后的文件。</p>
 
         <div className="p-3 rounded tool-panel mb-4">
           <div className="row g-3 align-items-center">

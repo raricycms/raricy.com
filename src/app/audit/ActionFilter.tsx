@@ -1,12 +1,10 @@
 'use client';
 
-// 对齐 Flask app/templates/auth/admin_action_logs.html 的筛选下拉：
-// Flask 用 <select onchange="this.form.submit()"> 实现选中即提交（重置到第 1 页，仅带 action）。
-// 这里用 useRouter 在 onChange 时导航到 /audit?action=...，JS 关闭时退回 <noscript> 的提交按钮。
 import { useRouter } from 'next/navigation';
 
 const ACTION_TYPES = ['ban_user', 'unban_user', 'delete_blog', 'delete_comment'];
 
+// 操作类型筛选 — 对齐 Flask admin_action_logs.html
 export default function ActionFilter({ action }: { action: string }) {
   const router = useRouter();
   return (

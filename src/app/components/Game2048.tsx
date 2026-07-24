@@ -357,52 +357,51 @@ export default function Game2048() {
   const showOverlay = (won && !keepPlaying) || over;
 
   return (
-    <div className="g2048">
-      <style>{G2048_CSS}</style>
-
-      <div className="g2048__header">
-        <h2 className="g2048__title">2048</h2>
-        <div className="g2048__scores">
-          <div className="g2048__score">
-            <span className="g2048__score-label">分数</span>
-            <span className="g2048__score-value">{score}</span>
+    <>
+      <header className="game-2048-header">
+        <h1 className="game-2048-header__title">2048</h1>
+        <div className="game-2048-scores">
+          <div className="game-2048-score-box">
+            <span className="game-2048-score-box__label">分数</span>
+            <span className="game-2048-score-box__value">{score}</span>
           </div>
-          <div className="g2048__score">
-            <span className="g2048__score-label">最佳</span>
-            <span className="g2048__score-value">{best}</span>
+          <div className="game-2048-score-box">
+            <span className="game-2048-score-box__label">最佳</span>
+            <span className="game-2048-score-box__value">{best}</span>
           </div>
         </div>
-      </div>
+      </header>
 
-      <p className="g2048__desc">
+      <p className="game-2048-desc">
         用方向键 / WASD 或滑动合并相同的数字，拼出 <strong>2048</strong>！
       </p>
 
       <div
-        className="g2048__board-wrap"
+        className="game-2048-board-wrap"
         onTouchStart={onTouchStart}
         onTouchEnd={onTouchEnd}
       >
-        <div className="g2048__board">
+        <div className="game-2048-board">
           {Array.from({ length: SIZE * SIZE }).map((_, i) => (
-            <div key={i} className="g2048__cell" />
+            <div key={i} className="game-2048-cell" />
           ))}
           {tiles.map((t) => {
             const st = tileStyle(t.value);
             return (
               <div
                 key={t.id}
-                className="g2048__tile"
+                className="game-2048-tile"
                 style={
                   {
-                    '--r': t.r,
-                    '--c': t.c,
+                    transform: `translate(calc((var(--g2048-cell) + var(--g2048-gap)) * ${t.c}), calc((var(--g2048-cell) + var(--g2048-gap)) * ${t.r}))`,
+                    width: 'var(--g2048-cell)',
+                    height: 'var(--g2048-cell)',
                   } as React.CSSProperties
                 }
               >
                 <div
-                  className={`g2048__face${t.isNew ? ' g2048__face--new' : ''}${
-                    t.isMerged ? ' g2048__face--merged' : ''
+                  className={`game-2048-tile__face${t.isNew ? ' game-2048-tile__face--new' : ''}${
+                    t.isMerged ? ' game-2048-tile__face--merged' : ''
                   }`}
                   style={{
                     background: st.bg,
@@ -418,14 +417,14 @@ export default function Game2048() {
         </div>
 
         {showOverlay && (
-          <div className="g2048__overlay">
-            <div className="g2048__overlay-text">{won ? '你赢了！' : '游戏结束'}</div>
+          <div className="game-2048-overlay">
+            <div className="game-2048-overlay__text">{won ? '你赢了！' : '游戏结束'}</div>
             {won ? (
-              <button type="button" className="g2048__overlay-btn" onClick={continuePlaying}>
+              <button type="button" className="game-2048-overlay__btn" onClick={continuePlaying}>
                 继续游戏
               </button>
             ) : (
-              <button type="button" className="g2048__overlay-btn" onClick={newGame}>
+              <button type="button" className="game-2048-overlay__btn" onClick={newGame}>
                 再来一局
               </button>
             )}
@@ -433,20 +432,20 @@ export default function Game2048() {
         )}
       </div>
 
-      <div className="g2048__actions">
-        <button type="button" className="g2048__btn" onClick={newGame}>
+      <div className="game-2048-actions">
+        <button type="button" className="game-2048-btn" onClick={newGame}>
           新游戏
         </button>
         <button
           type="button"
-          className="g2048__btn g2048__btn--secondary"
+          className="game-2048-btn game-2048-btn--secondary"
           onClick={undo}
           disabled={!canUndo}
         >
           悔棋
         </button>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -460,104 +459,3 @@ function pickEmpty(existing: Tile[]): { r: number; c: number } {
   const cells = emptyCells(existing);
   return cells[Math.floor(Math.random() * cells.length)];
 }
-
-// 自包含样式（作用域前缀 g2048__；沿用设计令牌 var(--surface)/var(--ink)/var(--line)/var(--accent)/var(--r-sm)）
-const G2048_CSS = `
-.g2048 { display: flex; flex-direction: column; max-width: 480px; margin: 0 auto; }
-.g2048__header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; }
-.g2048__title { font-size: 2rem; font-weight: 700; color: var(--ink, #1d1d1f); margin: 0; }
-.g2048__scores { display: flex; gap: 8px; }
-.g2048__score { background: var(--surface-2, #f5f5f7); border-radius: var(--r-sm, 8px); padding: 6px 14px; text-align: center; min-width: 72px; }
-.g2048__score-label { display: block; font-size: .7rem; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-2, #6e6e73); margin-bottom: 2px; }
-.g2048__score-value { font-size: 1.15rem; font-weight: 700; color: var(--ink, #1d1d1f); }
-.g2048__desc { font-size: .9rem; color: var(--ink-2, #6e6e73); margin: 0 0 16px; line-height: 1.5; }
-.g2048__board-wrap {
-  position: relative;
-  background: var(--surface-2, #f5f5f7);
-  border: 1px solid var(--line, #e5e5e9);
-  border-radius: 12px;
-  padding: 12px;
-  aspect-ratio: 1 / 1;
-  max-width: 100%;
-  touch-action: none;
-  user-select: none;
-  -webkit-user-select: none;
-}
-.g2048__board {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  --gap: 10px;
-  --n: 4;
-  --cell: calc((100% - (var(--n) - 1) * var(--gap)) / var(--n));
-}
-.g2048__cell {
-  position: absolute;
-  width: var(--cell);
-  height: var(--cell);
-  background: var(--surface, #fff);
-  border-radius: var(--r-sm, 8px);
-}
-.g2048__cell:nth-child(1)  { left: calc((var(--cell) + var(--gap)) * 0); top: calc((var(--cell) + var(--gap)) * 0); }
-.g2048__cell:nth-child(2)  { left: calc((var(--cell) + var(--gap)) * 1); top: calc((var(--cell) + var(--gap)) * 0); }
-.g2048__cell:nth-child(3)  { left: calc((var(--cell) + var(--gap)) * 2); top: calc((var(--cell) + var(--gap)) * 0); }
-.g2048__cell:nth-child(4)  { left: calc((var(--cell) + var(--gap)) * 3); top: calc((var(--cell) + var(--gap)) * 0); }
-.g2048__cell:nth-child(5)  { left: calc((var(--cell) + var(--gap)) * 0); top: calc((var(--cell) + var(--gap)) * 1); }
-.g2048__cell:nth-child(6)  { left: calc((var(--cell) + var(--gap)) * 1); top: calc((var(--cell) + var(--gap)) * 1); }
-.g2048__cell:nth-child(7)  { left: calc((var(--cell) + var(--gap)) * 2); top: calc((var(--cell) + var(--gap)) * 1); }
-.g2048__cell:nth-child(8)  { left: calc((var(--cell) + var(--gap)) * 3); top: calc((var(--cell) + var(--gap)) * 1); }
-.g2048__cell:nth-child(9)  { left: calc((var(--cell) + var(--gap)) * 0); top: calc((var(--cell) + var(--gap)) * 2); }
-.g2048__cell:nth-child(10) { left: calc((var(--cell) + var(--gap)) * 1); top: calc((var(--cell) + var(--gap)) * 2); }
-.g2048__cell:nth-child(11) { left: calc((var(--cell) + var(--gap)) * 2); top: calc((var(--cell) + var(--gap)) * 2); }
-.g2048__cell:nth-child(12) { left: calc((var(--cell) + var(--gap)) * 3); top: calc((var(--cell) + var(--gap)) * 2); }
-.g2048__cell:nth-child(13) { left: calc((var(--cell) + var(--gap)) * 0); top: calc((var(--cell) + var(--gap)) * 3); }
-.g2048__cell:nth-child(14) { left: calc((var(--cell) + var(--gap)) * 1); top: calc((var(--cell) + var(--gap)) * 3); }
-.g2048__cell:nth-child(15) { left: calc((var(--cell) + var(--gap)) * 2); top: calc((var(--cell) + var(--gap)) * 3); }
-.g2048__cell:nth-child(16) { left: calc((var(--cell) + var(--gap)) * 3); top: calc((var(--cell) + var(--gap)) * 3); }
-.g2048__tile {
-  position: absolute;
-  width: var(--cell);
-  height: var(--cell);
-  left: calc((var(--cell) + var(--gap)) * var(--c));
-  top: calc((var(--cell) + var(--gap)) * var(--r));
-  transition: left 120ms ease, top 120ms ease;
-  z-index: 1;
-}
-.g2048__face {
-  display: flex; align-items: center; justify-content: center;
-  width: 100%; height: 100%;
-  border-radius: var(--r-sm, 8px);
-  font-weight: 700; line-height: 1;
-}
-.g2048__face--new { animation: g2048-appear 200ms ease 90ms backwards; }
-.g2048__face--merged { animation: g2048-pop 200ms ease 120ms backwards; }
-@keyframes g2048-appear { 0% { transform: scale(0); opacity: 0; } 60% { transform: scale(1.1); } 100% { transform: scale(1); opacity: 1; } }
-@keyframes g2048-pop { 0% { transform: scale(1); } 35% { transform: scale(1.25); } 100% { transform: scale(1); } }
-.g2048__overlay {
-  position: absolute; inset: 0;
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  background: rgba(0,0,0,.45); border-radius: 12px; z-index: 10; gap: 12px;
-}
-.g2048__overlay-text { color: #fff; font-size: 2rem; font-weight: 700; }
-.g2048__overlay-btn {
-  padding: 8px 24px; border: 1px solid #fff; border-radius: 999px;
-  background: transparent; color: #fff; font-size: 1rem; font-family: inherit; cursor: pointer;
-  transition: background .2s;
-}
-.g2048__overlay-btn:hover { background: rgba(255,255,255,.15); }
-.g2048__actions { margin-top: 16px; display: flex; gap: 8px; flex-wrap: wrap; }
-.g2048__btn {
-  padding: 7px 18px; border: 1px solid var(--accent, #0071e3); border-radius: var(--r-sm, 8px);
-  background: var(--accent, #0071e3); color: #fff; font-size: .9rem; font-family: inherit; cursor: pointer;
-  transition: opacity .2s;
-}
-.g2048__btn:hover:not(:disabled) { opacity: .85; }
-.g2048__btn--secondary { background: transparent; color: var(--ink-2, #6e6e73); border-color: var(--line-2, #d2d2d7); }
-.g2048__btn--secondary:hover:not(:disabled) { border-color: var(--ink-2, #6e6e73); opacity: 1; }
-.g2048__btn:disabled { opacity: .45; cursor: not-allowed; }
-@media (max-width: 640px) {
-  .g2048__title { font-size: 1.5rem; }
-  .g2048__board { --gap: 7px; }
-  .g2048__overlay-text { font-size: 1.5rem; }
-}
-`;

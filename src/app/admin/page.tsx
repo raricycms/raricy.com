@@ -1,9 +1,9 @@
 import { prisma } from '@/lib/db';
 import AdminStatNumber from '@/app/components/AdminStatNumber';
 
-export const dynamic = 'force-dynamic'; // 依赖实时计数
+export const dynamic = 'force-dynamic';
 
-// 管理概览：逐字对齐 Flask blog/admin_dashboard.html —— 5 张统计卡 + 数字入场动画。
+// 管理概览 — 对齐 Flask blog/admin_dashboard.html
 export default async function AdminDashboardPage() {
   const [totalBlogs, likesAgg, totalComments, totalUsers, uncategorizedBlogs] = await Promise.all([
     prisma.blog.count({ where: { ignore: false } }),
@@ -13,12 +13,12 @@ export default async function AdminDashboardPage() {
     prisma.blog.count({ where: { ignore: false, categoryId: null } }),
   ]);
 
-  const cards: Array<{ icon: string; number: number; label: string }> = [
-    { icon: 'icon-journal-text', number: totalBlogs, label: '总文章数' },
-    { icon: 'icon-heart-fill', number: likesAgg._sum.likesCount ?? 0, label: '总点赞数' },
-    { icon: 'icon-chat-dots_new', number: totalComments, label: '总评论数' },
-    { icon: 'icon-people', number: totalUsers, label: '总用户数' },
-    { icon: 'icon-grid', number: uncategorizedBlogs, label: '未分类文章' },
+  const cards: Array<{ number: number; label: string; variant: string }> = [
+    { number: totalBlogs, label: '📄 总文章数', variant: 'admin-stat-card--blue' },
+    { number: likesAgg._sum.likesCount ?? 0, label: '❤️ 总点赞数', variant: 'admin-stat-card--red' },
+    { number: totalComments, label: '💬 总评论数', variant: 'admin-stat-card--green' },
+    { number: totalUsers, label: '👥 总用户数', variant: 'admin-stat-card--purple' },
+    { number: uncategorizedBlogs, label: '📋 未分类文章', variant: 'admin-stat-card--amber' },
   ];
 
   return (
@@ -31,16 +31,11 @@ export default async function AdminDashboardPage() {
       <div className="admin-container">
         <div className="admin-stats">
           {cards.map((c) => (
-            <div key={c.label} className="admin-stat-card">
-              <span className="admin-stat-card__icon">
-                <span className={`icon ${c.icon}`}></span>
-              </span>
-              <div className="admin-stat-card__body">
-                <div className="admin-stat-card__number">
-                  <AdminStatNumber value={c.number} />
-                </div>
-                <div className="admin-stat-card__label">{c.label}</div>
+            <div key={c.label} className={`admin-stat-card ${c.variant}`}>
+              <div className="admin-stat-card__number">
+                <AdminStatNumber value={c.number} />
               </div>
+              <div className="admin-stat-card__label">{c.label}</div>
             </div>
           ))}
         </div>

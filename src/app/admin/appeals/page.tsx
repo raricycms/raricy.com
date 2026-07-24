@@ -16,9 +16,9 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const STATUS_BADGE: Record<string, string> = {
-  pending: 'badge-secondary',
-  accepted: 'badge-success',
-  rejected: 'badge-danger',
+  pending: 'status-badge status-badge--pending',
+  accepted: 'status-badge status-badge--reverted',
+  rejected: 'status-badge',
 };
 
 const ACTION_LABELS: Record<string, string> = {
@@ -34,6 +34,7 @@ function fmt(iso: string | null): string {
   return iso.slice(0, 19).replace('T', ' ');
 }
 
+// 申诉管理 — Fluent Design
 export default async function AdminAppealsPage({
   searchParams,
 }: {
@@ -57,16 +58,20 @@ export default async function AdminAppealsPage({
     <>
       <section className="admin-hero">
         <h1>操作申诉</h1>
-        <p>共 {result.total} 条申诉 · 通过申诉时会尝试自动撤回原动作（禁言可自动解除）</p>
+        <p>
+          共 {result.total} 条申诉 · 通过申诉时会尝试自动撤回原动作（禁言可自动解除）
+        </p>
       </section>
 
       <div className="admin-container">
-        <div className="d-flex align-items-center gap-2 mb-3" style={{ flexWrap: 'wrap' }}>
+        <div className="d-flex mb-3" style={{ gap: 8, flexWrap: 'wrap' }}>
           {['', 'pending', 'accepted', 'rejected'].map((s) => (
             <Link
               key={s || 'all'}
               href={qs(1, s)}
-              className={`btn btn-sm ${(sp.status ?? '') === s ? 'btn-primary' : 'btn-outline-secondary'}`}
+              className={`btn btn-sm ${
+                (sp.status ?? '') === s ? 'btn-primary' : 'btn-outline-secondary'
+              }`}
             >
               {s ? STATUS_LABELS[s] : '全部'}
             </Link>
@@ -74,60 +79,56 @@ export default async function AdminAppealsPage({
         </div>
 
         {result.items.length === 0 && (
-          <div className="text-center text-muted py-5">暂无申诉</div>
+          <div className="text-center text-muted py-5">
+            <h5 className="mt-3">暂无申诉</h5>
+          </div>
         )}
 
-        <div className="d-flex" style={{ flexDirection: 'column', gap: 12 }}>
-          {result.items.map((a) => (
-            <div key={a.id} className="card">
-              <div className="card-body">
-                <div className="d-flex align-items-center gap-2 mb-2" style={{ flexWrap: 'wrap' }}>
-                  <span className={STATUS_BADGE[a.status] ?? 'badge-secondary'}>
-                    {STATUS_LABELS[a.status] ?? a.status}
-                  </span>
-                  <strong style={{ color: 'var(--ink)' }}>
-                    {a.appellant.username ?? a.appellant.id}
-                  </strong>
-                  <span className="text-muted" style={{ fontSize: '0.85rem' }}>
-                    针对：
-                    {a.log
-                      ? `${ACTION_LABELS[a.log.action] ?? a.log.action}` +
-                        (a.log.targetUser
-                          ? ` → ${a.log.targetUser.username ?? a.log.targetUser.id}`
-                          : '')
-                      : '（日志已不存在）'}
-                  </span>
-                  <span
-                    className="text-muted"
-                    style={{ marginLeft: 'auto', fontSize: '0.78rem' }}
-                  >
-                    {fmt(a.createdAt)}
-                  </span>
-                </div>
-
-                <p className="card-text" style={{ whiteSpace: 'pre-wrap', margin: '4px 0' }}>
-                  {a.content}
-                </p>
-
-                {a.log?.reason && (
-                  <p className="text-muted" style={{ margin: '4px 0 0', fontSize: '0.82rem' }}>
-                    原操作理由：{a.log.reason}
-                  </p>
-                )}
-
-                {a.status === 'pending' ? (
-                  <AdminAppealActions appealId={a.id} />
-                ) : (
-                  <p className="text-muted mt-2" style={{ fontSize: '0.82rem' }}>
-                    裁决：{a.decision || '（无批注）'}
-                    {a.decider ? ` · 由 ${a.decider.username ?? a.decider.id}` : ''}
-                    {a.decidedAt ? ` · ${fmt(a.decidedAt)}` : ''}
-                  </p>
-                )}
+        {result.items.map((a) => (
+          <article key={a.id} className="article-card">
+            <div className="article-card__info">
+              <div className="d-flex align-items-center mb-2" style={{ gap: 8, flexWrap: 'wrap' }}>
+                <span className={STATUS_BADGE[a.status] ?? 'status-badge'}>
+                  {STATUS_LABELS[a.status] ?? a.status}
+                </span>
+                <strong>{a.appellant.username ?? a.appellant.id}</strong>
+                <span className="text-muted" style={{ fontSize: '0.9rem' }}>
+                  针对：
+                  {a.log
+                    ? `${ACTION_LABELS[a.log.action] ?? a.log.action}` +
+                      (a.log.targetUser
+                        ? ` → ${a.log.targetUser.username ?? a.log.targetUser.id}`
+                        : '')
+                    : '（日志已不存在）'}
+                </span>
+                <span
+                  className="text-muted"
+                  style={{ marginLeft: 'auto', fontSize: '0.8rem' }}
+                >
+                  {fmt(a.createdAt)}
+                </span>
               </div>
+
+              <p style={{ whiteSpace: 'pre-wrap', margin: '8px 0' }}>{a.content}</p>
+
+              {a.log?.reason && (
+                <p className="text-muted" style={{ margin: '4px 0 0', fontSize: '0.9rem' }}>
+                  原操作理由：{a.log.reason}
+                </p>
+              )}
+
+              {a.status === 'pending' ? (
+                <AdminAppealActions appealId={a.id} />
+              ) : (
+                <p className="text-muted" style={{ marginTop: 8, fontSize: '0.9rem' }}>
+                  裁决：{a.decision || '（无批注）'}
+                  {a.decider ? ` · 由 ${a.decider.username ?? a.decider.id}` : ''}
+                  {a.decidedAt ? ` · ${fmt(a.decidedAt)}` : ''}
+                </p>
+              )}
             </div>
-          ))}
-        </div>
+          </article>
+        ))}
 
         {result.pages > 1 && (
           <div className="admin-pagination">
@@ -136,7 +137,7 @@ export default async function AdminAppealsPage({
                 {result.hasPrev && (
                   <li className="page-item">
                     <Link className="page-link" href={qs(result.page - 1)}>
-                      &laquo;
+                      ‹
                     </Link>
                   </li>
                 )}
@@ -154,7 +155,7 @@ export default async function AdminAppealsPage({
                 {result.hasNext && (
                   <li className="page-item">
                     <Link className="page-link" href={qs(result.page + 1)}>
-                      &raquo;
+                      ›
                     </Link>
                   </li>
                 )}

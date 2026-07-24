@@ -84,7 +84,7 @@ export default function ImageAdminTable({ images }: { images: AdminImageRow[] })
               <td>{img.createdAt}</td>
               <td>
                 <button
-                  className="button-warning-small"
+                  className="image-hosting-card__btn image-hosting-card__btn--danger"
                   onClick={() => hardDelete(img.id, img.filename)}
                 >
                   永久删除

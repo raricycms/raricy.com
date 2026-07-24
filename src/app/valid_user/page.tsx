@@ -1,14 +1,29 @@
 import type { Metadata } from 'next';
 import FooterNote from '@/app/components/FooterNote';
 
-// 对齐 app/templates/home/valid_user.html（Flask 路由 /valid_user）。
-// 原模板正文 {% block content %} 为空，仅设置标题与页脚提示"你来对地方了。"。
-// 该页无任何生成动作 / 表单——邀请码的生成入口是仅站长可见的 /zhh（见 zhh/route.ts），
-// 故此处不需要配套 API。（原模板 `{% extends base.html %}` 缺引号，实际会渲染失败；
-// 此处按其显然意图移植为可正常渲染的空内容页。）
-
 export const metadata: Metadata = { title: 'raricy.com - 获取注册资格' };
 
+// 获取注册资格页 — Flask BEM
+// 模板本体的 content 块为空（详见 app/templates/home/valid_user.html），
+// 这里只保留一个简短的「邀请码流程」说明 + footer note，与原站保持一致。
 export default function ValidUserPage() {
-  return <FooterNote>你来对地方了。</FooterNote>;
+  return (
+    <div className="content-wrapper">
+      <h1 className="page-title">获取注册资格</h1>
+      <p style={{ textAlign: 'center', color: 'var(--color-text-secondary)' }}>
+        本页面无直接操作，仅作为「获取邀请码」流程的说明。
+      </p>
+      <div style={{ marginTop: '1.5rem' }}>
+        <h2 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '0.75rem' }}>
+          邀请码流程
+        </h2>
+        <p style={{ color: 'var(--color-text-secondary)', lineHeight: 1.7 }}>
+          当前注册开放邀请制。如果你已经获得邀请码，请在{' '}
+          <a href="/register">注册页</a> 填入；
+          如果还未获得，可前往 <a href="/contact">联系我们</a> 申请。
+        </p>
+      </div>
+      <FooterNote>你来对地方了。</FooterNote>
+    </div>
+  );
 }

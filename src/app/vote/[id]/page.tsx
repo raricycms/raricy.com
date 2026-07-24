@@ -77,26 +77,26 @@ export default async function VoteDetailPage({ params }: { params: Promise<{ id:
   }
 
   return (
-    <main className="pwrap pwrap--narrow">
-      <h1 className="ptitle">{vote.title}</h1>
+    <div className="vote-page">
+      <h1 className="vote-title">{vote.title}</h1>
 
       <VoteIdCopy voteId={vote.id} />
 
       <div
-        className="vote-item__meta"
-        style={{
-          display: 'flex',
-          gap: '1rem',
-          flexWrap: 'wrap',
-          alignItems: 'center',
-          whiteSpace: 'normal',
-          marginTop: 8,
-        }}
+        style={{ whiteSpace: 'normal', marginTop: '0.75rem', display: 'flex', flexWrap: 'wrap', gap: '0.75rem', alignItems: 'center' }}
       >
-        <span>发起者：{vote.authorName}</span>
-        <span>{ymd(vote.createdAt)}</span>
-        {vote.isLocked && <span className="badge-danger">已锁定</span>}
-        {vote.userVoted !== null && <span className="badge-success">已投票</span>}
+        <span style={{ color: 'var(--color-text-secondary)' }}>
+          发起者：{vote.authorName}
+        </span>
+        <span style={{ color: 'var(--color-text-secondary)' }}>
+          {ymd(vote.createdAt)}
+        </span>
+        {vote.isLocked && (
+          <span className="vote-embed-badge badge-locked">已锁定</span>
+        )}
+        {vote.userVoted !== null && (
+          <span className="vote-embed-badge" style={{ background: 'var(--color-success-secondary)', color: 'var(--color-success-primary)' }}>已投票</span>
+        )}
       </div>
 
       <VoteEmbed
@@ -116,6 +116,6 @@ export default async function VoteDetailPage({ params }: { params: Promise<{ id:
         unlockAction={unlockVoteAction}
         deleteAction={deleteVoteAction}
       />
-    </main>
+    </div>
   );
 }

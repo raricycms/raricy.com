@@ -1,24 +1,16 @@
 'use client';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 通知发送中心（对齐 Flask auth/admin_notifications.html）：
-//   • 发送方式单选：发送给指定用户 / 群发通知
-//   • 指定用户面板：可搜索用户列表 + 编写表单（通知类型 / 内容 / 关联对象类型·ID）
-//   • 群发面板：目标用户组 + 通知类型 + 关联对象类型·ID + 实时目标用户数量预览
-// 群发走 POST /api/admin/broadcast（已支持 objectType/objectId）。
-// 单用户发送走 POST /api/admin/notify-user（对齐 Flask sendNotificationToUser）。
-// ─────────────────────────────────────────────────────────────────────────────
+// 通知发送中心 — Fluent Design
+// 发送给指定用户 / 群发通知
 
 import { useEffect, useMemo, useState } from 'react';
 
-// 目标用户群标签逐字对齐 Flask admin_notifications.html 的 targetGroup 选项。
 const GROUPS: Array<{ value: string; label: string }> = [
   { value: 'all', label: '所有用户' },
   { value: 'authenticated', label: '认证用户' },
   { value: 'normal', label: '普通用户' },
 ];
 
-// 关联对象类型选项，逐字对齐 Flask objectType / broadcastObjectType。
 const OBJECT_TYPES: Array<{ value: string; label: string }> = [
   { value: '', label: '无关联对象' },
   { value: 'blog', label: '博客文章' },
@@ -43,7 +35,6 @@ const ROLE_BADGE: Record<string, { cls: string; label: string }> = {
 export default function AdminBroadcastPage() {
   const [sendMode, setSendMode] = useState<'user' | 'all'>('user');
 
-  // ── 群发表单状态 ──
   const [action, setAction] = useState('系统通知');
   const [detail, setDetail] = useState('');
   const [targetGroup, setTargetGroup] = useState('all');
@@ -52,7 +43,6 @@ export default function AdminBroadcastPage() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
 
-  // ── 指定用户表单状态 ──
   const [users, setUsers] = useState<UserLite[]>([]);
   const [userSearch, setUserSearch] = useState('');
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
@@ -67,7 +57,6 @@ export default function AdminBroadcastPage() {
     if (w.showToast) w.showToast(text, type);
   };
 
-  // 拉取用户列表用于「指定用户」面板与群发预览计数。
   useEffect(() => {
     let cancelled = false;
     fetch('/api/admin/users?perPage=100', { credentials: 'same-origin' })
@@ -89,7 +78,6 @@ export default function AdminBroadcastPage() {
     };
   }, []);
 
-  // 实时目标用户数量（对齐 Flask updateTargetUserCount，按已加载用户列表计数）。
   const targetUserCount = useMemo(() => {
     return users.filter((u) => {
       const isCore = ['core', 'admin', 'owner'].includes(u.role);
@@ -194,35 +182,26 @@ export default function AdminBroadcastPage() {
 
       <div className="admin-container">
         <div className="notification-card">
-          {/* 发送方式单选 */}
+          {/* 发送选项选择 */}
           <div className="send-options">
             <h4 className="mb-3">选择发送方式</h4>
             <div className="btn-group w-100" role="group">
-              <input
-                type="radio"
-                className="btn-check"
-                name="sendMode"
-                id="sendToUser"
-                autoComplete="off"
-                checked={sendMode === 'user'}
-                onChange={() => setSendMode('user')}
-              />
-              <label className="btn btn-outline-primary" htmlFor="sendToUser">
+              <button
+                type="button"
+                className={`btn ${sendMode === 'user' ? 'btn-primary' : 'btn-outline-primary'}`}
+                onClick={() => setSendMode('user')}
+                aria-pressed={sendMode === 'user'}
+              >
                 发送给指定用户
-              </label>
-
-              <input
-                type="radio"
-                className="btn-check"
-                name="sendMode"
-                id="sendToAll"
-                autoComplete="off"
-                checked={sendMode === 'all'}
-                onChange={() => setSendMode('all')}
-              />
-              <label className="btn btn-outline-success" htmlFor="sendToAll">
+              </button>
+              <button
+                type="button"
+                className={`btn ${sendMode === 'all' ? 'btn-success' : 'btn-outline-secondary'}`}
+                onClick={() => setSendMode('all')}
+                aria-pressed={sendMode === 'all'}
+              >
                 群发通知
-              </label>
+              </button>
             </div>
           </div>
 
@@ -236,21 +215,28 @@ export default function AdminBroadcastPage() {
                     <div className="mb-2">
                       <input
                         type="text"
-                        className="form-control"
+                        className="form-control form-control-sm"
                         placeholder="搜索用户..."
                         value={userSearch}
                         onChange={(e) => setUserSearch(e.target.value)}
                       />
                     </div>
-                    <div>
+                    {filteredUsers.length === 0 && (
+                      <p className="text-muted text-center" style={{ margin: 0 }}>
+                        没有匹配的用户
+                      </p>
+                    )}
+                    <div id="userList">
                       {filteredUsers.map((u) => {
                         const badge = ROLE_BADGE[u.role] ?? ROLE_BADGE.user;
                         return (
                           <div
                             key={u.id}
-                            className={`user-item p-2 rounded mb-1 ${
-                              selectedUserId === u.id ? 'is-selected' : ''
+                            className={`user-item p-2 rounded mb-1${
+                              selectedUserId === u.id ? ' is-selected' : ''
                             }`}
+                            data-user-id={u.id}
+                            data-username={u.username}
                             onClick={() => {
                               setSelectedUserId(u.id);
                               setSelectedUsername(u.username);
@@ -269,11 +255,6 @@ export default function AdminBroadcastPage() {
                           </div>
                         );
                       })}
-                      {filteredUsers.length === 0 && (
-                        <p className="text-muted text-center" style={{ margin: 0 }}>
-                          没有匹配的用户
-                        </p>
-                      )}
                     </div>
                   </div>
                 </div>
@@ -281,12 +262,13 @@ export default function AdminBroadcastPage() {
 
               <div className="col-md-8">
                 <h5>编写通知</h5>
-                <form onSubmit={submitToUser}>
+                <form id="notificationForm" onSubmit={submitToUser}>
                   <div className="form-group">
-                    <label className="form-label">接收用户</label>
+                    <label htmlFor="selectedUser">接收用户</label>
                     <input
                       type="text"
                       className="form-control"
+                      id="selectedUser"
                       readOnly
                       placeholder="请先选择用户"
                       value={selectedUsername}
@@ -294,9 +276,10 @@ export default function AdminBroadcastPage() {
                   </div>
 
                   <div className="form-group">
-                    <label className="form-label">通知类型</label>
+                    <label htmlFor="notificationAction">通知类型</label>
                     <select
                       className="form-control"
+                      id="notificationAction"
                       value={userAction}
                       onChange={(e) => setUserAction(e.target.value)}
                     >
@@ -310,21 +293,26 @@ export default function AdminBroadcastPage() {
                   </div>
 
                   <div className="form-group">
-                    <label className="form-label">通知内容</label>
+                    <label htmlFor="notificationDetail">通知内容</label>
                     <textarea
                       className="form-control"
+                      id="notificationDetail"
                       rows={5}
                       placeholder="请输入通知内容..."
                       value={userDetail}
                       onChange={(e) => setUserDetail(e.target.value)}
                     />
+                    <small className="form-text text-muted">
+                      请详细描述通知内容，确保用户能够理解。
+                    </small>
                   </div>
 
                   <div className="form-row">
                     <div className="col-md-6">
-                      <label className="form-label">关联对象类型（可选）</label>
+                      <label htmlFor="objectType">关联对象类型（可选）</label>
                       <select
                         className="form-control"
+                        id="objectType"
                         value={userObjectType}
                         onChange={(e) => setUserObjectType(e.target.value)}
                       >
@@ -336,10 +324,11 @@ export default function AdminBroadcastPage() {
                       </select>
                     </div>
                     <div className="col-md-6">
-                      <label className="form-label">关联对象ID（可选）</label>
+                      <label htmlFor="objectId">关联对象ID（可选）</label>
                       <input
                         type="text"
                         className="form-control"
+                        id="objectId"
                         placeholder="如：博客ID、用户ID等"
                         value={userObjectId}
                         onChange={(e) => setUserObjectId(e.target.value)}
@@ -347,13 +336,13 @@ export default function AdminBroadcastPage() {
                     </div>
                   </div>
 
-                  <div className="d-flex align-items-center gap-2 mt-4">
+                  <div className="text-center mt-4">
                     <button type="submit" className="btn btn-primary btn-lg">
                       发送通知
                     </button>
                     <button
                       type="button"
-                      className="btn btn-secondary btn-lg"
+                      className="btn btn-secondary btn-lg ml-2"
                       onClick={clearUserForm}
                     >
                       清空
@@ -366,16 +355,14 @@ export default function AdminBroadcastPage() {
 
           {/* 群发通知 */}
           {sendMode === 'all' && (
-            <form onSubmit={submitBroadcast}>
+            <form id="broadcastForm" onSubmit={submitBroadcast}>
               <div className="row">
                 <div className="col-md-6">
                   <div className="form-group">
-                    <label className="form-label" htmlFor="bc-group">
-                      目标用户组
-                    </label>
+                    <label htmlFor="targetGroup">目标用户群</label>
                     <select
-                      id="bc-group"
-                      className="form-select"
+                      className="form-control"
+                      id="targetGroup"
                       value={targetGroup}
                       onChange={(e) => setTargetGroup(e.target.value)}
                       disabled={busy}
@@ -390,11 +377,9 @@ export default function AdminBroadcastPage() {
                   </div>
 
                   <div className="form-group">
-                    <label className="form-label" htmlFor="bc-action">
-                      通知类型
-                    </label>
+                    <label htmlFor="broadcastAction">通知类型</label>
                     <input
-                      id="bc-action"
+                      id="broadcastAction"
                       type="text"
                       className="form-control"
                       value={action}
@@ -407,9 +392,10 @@ export default function AdminBroadcastPage() {
                 <div className="col-md-6">
                   <div className="form-row">
                     <div className="col-md-6">
-                      <label className="form-label">关联对象类型（可选）</label>
+                      <label htmlFor="broadcastObjectType">关联对象类型（可选）</label>
                       <select
                         className="form-control"
+                        id="broadcastObjectType"
                         value={objectType}
                         onChange={(e) => setObjectType(e.target.value)}
                         disabled={busy}
@@ -422,10 +408,11 @@ export default function AdminBroadcastPage() {
                       </select>
                     </div>
                     <div className="col-md-6">
-                      <label className="form-label">关联对象ID（可选）</label>
+                      <label htmlFor="broadcastObjectId">关联对象ID（可选）</label>
                       <input
                         type="text"
                         className="form-control"
+                        id="broadcastObjectId"
                         placeholder="如：博客ID等"
                         value={objectId}
                         onChange={(e) => setObjectId(e.target.value)}
@@ -434,7 +421,7 @@ export default function AdminBroadcastPage() {
                     </div>
                   </div>
 
-                  {/* 目标用户数量实时预览 */}
+                  {/* 预览用户数量 */}
                   <div className="mt-3 p-3 bg-light rounded">
                     <h6>预览信息</h6>
                     <p className="mb-1">
@@ -447,12 +434,10 @@ export default function AdminBroadcastPage() {
               </div>
 
               <div className="form-group">
-                <label className="form-label" htmlFor="bc-detail">
-                  通知内容
-                </label>
+                <label htmlFor="broadcastDetail">通知内容</label>
                 <textarea
-                  id="bc-detail"
                   className="form-control"
+                  id="broadcastDetail"
                   value={detail}
                   onChange={(e) => setDetail(e.target.value)}
                   disabled={busy}
@@ -464,7 +449,7 @@ export default function AdminBroadcastPage() {
                 </small>
               </div>
 
-              <div className="d-flex align-items-center gap-2 mt-4">
+              <div className="text-center mt-4">
                 <button
                   type="submit"
                   className="btn btn-success btn-lg"
@@ -474,8 +459,8 @@ export default function AdminBroadcastPage() {
                 </button>
                 {msg && (
                   <span
-                    className={msg.ok ? 'text-muted' : 'text-danger'}
-                    style={{ fontSize: '0.85rem' }}
+                    className={msg.ok ? 'text-muted ml-2' : 'text-danger ml-2'}
+                    style={{ fontSize: '0.875rem' }}
                   >
                     {msg.text}
                   </span>

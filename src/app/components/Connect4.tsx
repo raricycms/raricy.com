@@ -529,10 +529,7 @@ export default function Connect4() {
   }, []);
 
   return (
-    <div className="connect4-page-embed">
-      <style>{CONNECT4_CSS}</style>
-
-      <div className="connect4-container">
+    <div className="connect4-container">
         <div
           className={'connect4-winner-announcement' + (winnerShow ? ' show' : '')}
           id="winner-announcement"
@@ -647,13 +644,11 @@ export default function Connect4() {
           <div className="connect4-board" id="board" ref={boardRef} />
         </div>
       </div>
-    </div>
   );
 }
 
-// ─── 自包含样式（移植 app/static/scss/pages/game/_connect4.scss，SCSS 变量已展开
-//     为字面值；颜色令牌沿用 rebuild.css 提供的 --color-* / --shadow-* 变量）──────
-const CONNECT4_CSS = `
+// 自包含样式已迁移至 src/styles-scss/pages/game/_connect4.scss / 编译产物 flask.css
+const _UNUSED_CONNECT4_CSS = `
 .connect4-container {
   text-align: center;
   background: var(--color-background-card, #fff);

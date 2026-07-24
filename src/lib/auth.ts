@@ -61,13 +61,13 @@ export async function getCurrentUser(): Promise<SafeUser | null> {
 
 // ── 角色判定（对齐 User 模型属性）────────────────────────────────────────────
 
-export function isOwner(u: { role: string } | null): boolean {
+export function isOwner(u: { role?: string } | null): boolean {
   return !!u && u.role === 'owner';
 }
-export function hasAdminRights(u: { role: string } | null): boolean {
+export function hasAdminRights(u: { role?: string } | null): boolean {
   return !!u && (u.role === 'admin' || u.role === 'owner');
 }
-export function isCoreUser(u: { role: string } | null): boolean {
+export function isCoreUser(u: { role?: string } | null): boolean {
   return !!u && (u.role === 'core' || u.role === 'admin' || u.role === 'owner');
 }
 
@@ -83,7 +83,7 @@ export function isCurrentlyBanned(
   // 接受 null：getCurrentUser() 返回 SafeUser | null，三个角色函数也都收 | null。
   // 若此处不收，调用方漏判 null 就是 TypeError → 500。签名保持一致，未登录视为未禁言
   //（是否放行由调用方的登录检查负责，不是本函数的职责）。
-  u: { isBanned: boolean | null; banUntil: Date | null } | null | undefined
+  u: { isBanned?: boolean | null; banUntil?: Date | null } | null | undefined
 ): boolean {
   if (!u || !u.isBanned) return false;
   if (u.banUntil && nowForDb() > u.banUntil) return false; // 已过期

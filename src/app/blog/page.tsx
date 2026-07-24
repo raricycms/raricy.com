@@ -3,6 +3,7 @@ import { requireCoreUser } from '@/lib/guard';
 import { listBlogs } from '@/lib/blog-service';
 import { prisma } from '@/lib/db';
 import { categoryFullPath } from '@/lib/format';
+import { getCurrentUser, isCoreUser } from '@/lib/auth';
 import BlogSidebar from './BlogSidebar';
 import SearchForm from './SearchForm';
 import BlogPageJump from './BlogPageJump';
@@ -26,8 +27,7 @@ export default async function BlogListPage({
   const featured = sp.featured === '1';
   const currentSlug = sp.category ?? null;
 
-  // 并行拉取博客列表与侧栏分类（对齐 menu.html 的分类侧栏）
-  const [result, categories] = await Promise.all([
+  const [result, categories, currentUser] = await Promise.all([
     listBlogs({
       page: parseInt(sp.page || '1', 10),
       categorySlug: sp.category ?? null,
@@ -49,7 +49,10 @@ export default async function BlogListPage({
         },
       },
     }),
+    getCurrentUser(),
   ]);
+
+  const canUpload = isCoreUser(currentUser);
 
   const qs = (page: number) => {
     const p = new URLSearchParams();
@@ -60,7 +63,6 @@ export default async function BlogListPage({
     return `?${p.toString()}`;
   };
 
-  // 清除搜索时保留分类 / 精选筛选
   const clearHref = (() => {
     const p = new URLSearchParams();
     if (sp.category) p.set('category', sp.category);
@@ -69,7 +71,6 @@ export default async function BlogListPage({
     return s ? `/blog?${s}` : '/blog';
   })();
 
-  // 分页 window-of-3
   const win = 3;
   const pageItems: (number | '...')[] = [];
   for (let p = 1; p <= result.pages; p++) {
@@ -82,60 +83,89 @@ export default async function BlogListPage({
 
   return (
     <>
-      <section className="phero wrap">
-        <h1 className="phero__title">博客</h1>
-        <p className="lede phero__lede">分享思考与见解。</p>
+      <section className="blogs-hero">
+        <div className="container">
+          <h1>博客</h1>
+          <p>分享思考与见解</p>
 
-        <div className="blog-toolbar">
-          <SearchForm
-            currentSlug={currentSlug}
-            featured={featured}
-            search={sp.search ?? ''}
-            clearHref={clearHref}
-          />
-          <Link href="/blog/upload" className="upload-button">
-            <span className="icon icon-add"></span>创建文章
-          </Link>
+          <div className="blog-search">
+            <SearchForm
+              currentSlug={currentSlug}
+              featured={featured}
+              search={sp.search ?? ''}
+              clearHref={clearHref}
+            />
+          </div>
+
+          {canUpload && (
+            <div className="mt-3">
+              <Link href="/blog/upload" className="upload-button">
+                <span className="icon icon-add" aria-hidden="true"></span>
+                创建
+              </Link>
+            </div>
+          )}
         </div>
       </section>
 
-      <section className="section--tight wrap">
+      <div className="container">
         <div className="blog-layout">
-          <BlogSidebar categories={categories} currentSlug={currentSlug} featured={featured} />
+          <BlogSidebar
+            categories={categories}
+            currentSlug={currentSlug}
+            featured={featured}
+          />
 
-          <div className="blog-content">
-            {result.blogs.map((b) => (
-              <Link key={b.id} className="card blog-item" id={`id${b.id}`} href={`/blog/${b.id}`}>
-                <div className="blog-header">
-                  <span className="blog-title">{b.title}</span>
-                  <div className="blog-stats">
-                    <span title="点赞">
-                      <span className="icon icon-heart-fill"></span>
-                      {b.likesCount ?? 0}
-                    </span>
-                    <span title="评论">
-                      <span className="icon icon-chat-dots_new"></span>
-                      {b.commentsCount ?? 0}
-                    </span>
-                    <span title="小鱼干">🐟 {b.fishCount ?? 0}</span>
-                  </div>
-                </div>
-                <p className="blog-description">{b.description}</p>
-                <div className="menu-blog-meta">
-                  <div className="blog-author">
-                    {/* 头像/图床过渡期由 Flask 提供，经 next.config 的 rewrites 回源 */}
-                    <img src={`/api/avatar/${b.authorId}`} alt={b.author?.username ?? ''} />
-                    <span>{b.author?.username}</span>
-                    {b.category && <span className="blog-category-tag">{categoryFullPath(b.category)}</span>}
-                  </div>
-                </div>
-              </Link>
-            ))}
+          <main className="blog-content">
+            {result.blogs.length > 0 && (
+              <div className="blog-list">
+                {result.blogs.map((b) => (
+                  <article key={b.id} className="blog-item" id={`id${b.id}`}>
+                    <div className="blog-header">
+                      <Link href={`/blog/${b.id}`} className="blog-title">
+                        {b.title}
+                      </Link>
+                      <div className="blog-stats">
+                        <span className="blog-likes" title="点赞数">
+                          <span className="icon icon-heart-fill" aria-hidden="true"></span>
+                          <span>{b.likesCount ?? 0}</span>
+                        </span>
+                        <span className="blog-comments" title="评论数">
+                          <span className="icon icon-chat-dots_new" aria-hidden="true"></span>
+                          <span>{b.commentsCount ?? 0}</span>
+                        </span>
+                        <span className="blog-fish" title="小鱼干">
+                          <span className="icon" aria-hidden="true">🐟</span>
+                          <span>{b.fishCount ?? 0}</span>
+                        </span>
+                      </div>
+                    </div>
+                    <p className="blog-description">{b.description}</p>
+                    <div className="menu-blog-meta">
+                      <div className="blog-author">
+                        <img src={`/api/avatar/${b.authorId}`} alt={b.author?.username ?? ''} />
+                        <span>{b.author?.username}</span>
+                        {b.category && (
+                          <span className="blog-category-tag">
+                            {categoryFullPath(b.category)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
 
-            {result.blogs.length === 0 && <div className="no-blogs">暂无博客文章</div>}
+            {result.blogs.length === 0 && (
+              <div className="no-blogs">
+                <i className="bi bi-journal-x" aria-hidden="true"></i>
+                <p>暂无博客文章</p>
+              </div>
+            )}
 
             {result.pages > 1 && (
-              <div className="pagination">
+              <nav className="pagination" aria-label="分页">
                 {result.hasPrev && (
                   <Link href={qs(result.page - 1)} className="page-link">
                     &laquo;
@@ -144,13 +174,14 @@ export default async function BlogListPage({
                 {pageItems.map((p, i) =>
                   p === '...' ? (
                     <span key={`e${i}`} className="page-ellipsis">
-                      …
+                      ...
                     </span>
                   ) : (
                     <Link
                       key={p}
                       href={qs(p)}
-                      className={`page-link ${p === result.page ? 'active' : ''}`}
+                      className={`page-link${p === result.page ? ' active' : ''}`}
+                      aria-current={p === result.page ? 'page' : undefined}
                     >
                       {p}
                     </Link>
@@ -162,11 +193,11 @@ export default async function BlogListPage({
                   </Link>
                 )}
                 <BlogPageJump totalPages={result.pages} current={result.page} />
-              </div>
+              </nav>
             )}
-          </div>
+          </main>
         </div>
-      </section>
+      </div>
     </>
   );
 }

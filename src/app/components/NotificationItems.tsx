@@ -122,12 +122,16 @@ export default function NotificationItems({ initial }: { initial: NotificationDT
 
   return (
     <>
-      <div className="notif-toolbar">
-        <button className="btn btn--primary btn--sm" onClick={markAll} disabled={busy !== null}>
+      <div className="btn-group">
+        <button
+          className="action-btn"
+          onClick={markAll}
+          disabled={busy !== null}
+        >
           全部标记已读
         </button>
         <button
-          className="btn btn--danger-soft btn--sm"
+          className="action-btn btn-danger"
           type="button"
           onClick={deleteRead}
           disabled={busy !== null}
@@ -138,26 +142,25 @@ export default function NotificationItems({ initial }: { initial: NotificationDT
 
       {items.length === 0 ? (
         <div className="empty-state">
-          <div className="empty-state-icon">
-            <span
-              className="icon icon-bell"
-              style={{ width: '2.4rem', height: '2.4rem', display: 'inline-block' }}
-            ></span>
+          <div className="empty-state-icon" aria-hidden="true">
+            🔔
           </div>
           <h3>暂无通知</h3>
           <p>你还没有任何通知，保持关注最新动态！</p>
         </div>
       ) : (
-        <div className="notif-list" id="notifications-list">
+        <div id="notifications-list">
           {items.map((n) => (
             <div
               key={n.id}
-              className={`card notification-card ${n.read ? '' : 'unread'}`}
+              className={`notification-card${n.read ? '' : ' unread'}`}
               data-id={n.id}
             >
               <div className="notification-header">
                 <span className="notification-action">{n.action}</span>
-                {!n.read && <span className="notification-unread-badge">未读</span>}
+                {!n.read && (
+                  <span className="notification-unread-badge">未读</span>
+                )}
                 <span className="notification-meta">
                   {fmt(n.timestamp)} ·{' '}
                   {n.actor && n.actor.id ? (
@@ -186,7 +189,9 @@ export default function NotificationItems({ initial }: { initial: NotificationDT
                   </button>
                 </span>
               </div>
-              {n.detail && <div className="notification-content">{n.detail}</div>}
+              {n.detail && (
+                <p className="notification-content">{n.detail}</p>
+              )}
               {n.object.type === 'blog' && n.object.id && (
                 <Link href={`/blog/${n.object.id}`} className="notification-blog-link">
                   查看博客 →

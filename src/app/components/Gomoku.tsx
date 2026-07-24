@@ -963,25 +963,23 @@ export default function Gomoku() {
         : undefined;
 
   return (
-    <div className="gmk">
-      <style>{GMK_CSS}</style>
-
+    <div className="gomoku-container">
       {/* 模式选择 */}
-      <div className="gmk__modes" role="radiogroup" aria-label="对战模式">
-        <label className="gmk__mode">
+      <div className="gomoku-mode-selector" role="radiogroup" aria-label="对战模式">
+        <label className="gomoku-mode-option">
           <input
             type="radio"
-            name="gmk-mode"
+            name="gomoku-mode"
             value="pvp"
             checked={mode === 'pvp'}
             onChange={() => onModeChange('pvp')}
           />
           <span>双人对战</span>
         </label>
-        <label className="gmk__mode">
+        <label className="gomoku-mode-option">
           <input
             type="radio"
-            name="gmk-mode"
+            name="gomoku-mode"
             value="ai"
             checked={mode === 'ai'}
             onChange={() => onModeChange('ai')}
@@ -991,28 +989,28 @@ export default function Gomoku() {
       </div>
 
       {/* 状态 */}
-      <div className="gmk__status" style={statusColor ? { color: statusColor } : undefined}>
+      <div className="gomoku-status" style={statusColor ? { color: statusColor } : undefined}>
         {statusText}
       </div>
 
       {/* 棋盘 */}
-      <div className="gmk__canvas-wrap" ref={wrapRef}>
+      <div className="gomoku-canvas-wrap" ref={wrapRef}>
         <canvas
           ref={canvasRef}
-          className="gmk__canvas"
+          className="gomoku-canvas"
           onClick={onCanvasClick}
           aria-label="五子棋棋盘"
         />
       </div>
 
       {/* 控制 */}
-      <div className="gmk__controls">
-        <button type="button" className="gmk__btn" onClick={() => initGame(modeRef.current)}>
+      <div className="gomoku-controls">
+        <button type="button" className="gomoku-btn" onClick={() => initGame(modeRef.current)}>
           新游戏
         </button>
         <button
           type="button"
-          className="gmk__btn"
+          className="gomoku-btn"
           onClick={undoMove}
           disabled={undoDisabled}
         >
@@ -1023,8 +1021,8 @@ export default function Gomoku() {
   );
 }
 
-// 自包含样式（作用域前缀 gmk__；颜色走设计令牌 CSS 变量并带回退）
-const GMK_CSS = `
+// 自包含样式已迁移至 src/styles-scss/pages/game/_gomoku.scss / 编译产物 flask.css
+const _UNUSED_GMK_CSS = `
 .gmk { display: flex; flex-direction: column; align-items: center; gap: 14px; width: 100%; }
 .gmk__modes { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
 .gmk__mode {

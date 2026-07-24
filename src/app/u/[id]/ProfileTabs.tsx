@@ -4,12 +4,8 @@ import { useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
-// 个人主页「文章 / 评论」标签页。
-//   • tab 切换：客户端切换、不刷新（对齐 profile.html 的 data-tab 逻辑 + replaceState 回写 ?tab=）。
-//   • 分页：服务端真实翻页（对齐 profile.py 的 per_page=20）。«/»、页码、跳转均导航到带
-//     blog_page/comment_page 的 URL，整页重新加载对应页数据；两个 tab 的页码相互保留。
-// 数据由 Server Component 按当前页码注入（已是一整页切片）；隐私开关关闭时渲染 profile-privacy-notice。
-
+// 个人主页「文章 / 评论」标签页 — Flask BEM 样式
+// tab 切换在客户端完成；分页走整页刷新。
 interface BlogItem {
   id: string;
   title: string;
@@ -46,8 +42,6 @@ function ymd(iso: string | null): string {
   return iso.slice(0, 10);
 }
 
-// 服务端分页条：window-of-3 页码 + 省略号 + «/» + 跳转输入（对齐 profile.html 的 .pagination）。
-// 每个链接都保留两个 tab 的页码（blog_page / comment_page），点击导航整页刷新加载新一批数据。
 function Pager({
   which,
   page,
@@ -83,10 +77,10 @@ function Pager({
   }
 
   return (
-    <div className="pagination">
+    <nav className="pagination" aria-label="分页">
       {page > 1 && (
         <Link href={buildHref(which, page - 1)} className="page-link">
-          &laquo;
+          ‹
         </Link>
       )}
       {items.map((p, i) =>
@@ -98,24 +92,32 @@ function Pager({
           <Link
             key={p}
             href={buildHref(which, p)}
-            className={`page-link ${p === page ? 'active' : ''}`}
+            className={`page-link${p === page ? ' active' : ''}`}
+            aria-current={p === page ? 'page' : undefined}
           >
             {p}
           </Link>
-        ),
+        )
       )}
       {page < pages && (
         <Link href={buildHref(which, page + 1)} className="page-link">
-          &raquo;
+          ›
         </Link>
       )}
       <form className="page-jump" onSubmit={jump}>
-        <input type="number" name="jump" min={1} max={pages} placeholder={String(page)} className="page-input" />
-        <button type="submit" className="page-link">
+        <input
+          type="number"
+          name="jump"
+          min={1}
+          max={pages}
+          placeholder={String(page)}
+          className="page-input"
+        />
+        <button type="submit" className="btn btn-outline-primary btn-sm page-btn">
           跳转
         </button>
       </form>
-    </div>
+    </nav>
   );
 }
 
@@ -136,19 +138,16 @@ export default function ProfileTabs({
   const router = useRouter();
   const [tab, setTab] = useState<'blogs' | 'comments'>(initialTab);
 
-  // 构造分页链接：保留两个 tab 的页码（未变的那个沿用当前服务端页码），并把目标 tab 写进 URL。
   function buildHref(which: 'blogs' | 'comments', p: number): string {
     const bp = which === 'blogs' ? p : blogPage;
     const cp = which === 'comments' ? p : commentPage;
     return `/u/${userId}?tab=${which}&blog_page=${bp}&comment_page=${cp}`;
   }
 
-  // 跳转输入框：导航到目标页（整页刷新，对齐 profile.html 的 window.location.href 跳转）。
   function handleJump(which: 'blogs' | 'comments', p: number) {
     router.push(buildHref(which, p));
   }
 
-  // 对齐 profile.html 的 tab 切换：客户端切换、不刷新，切换后把 ?tab= 写回地址栏（replaceState，不新增历史）。
   function selectTab(target: 'blogs' | 'comments') {
     setTab(target);
     const url = new URL(window.location.href);
@@ -158,19 +157,21 @@ export default function ProfileTabs({
 
   return (
     <>
-      <div className="profile-tabs">
+      <div className="profile-tabs" role="tablist">
         <button
           type="button"
-          className={`profile-tabs__tab ${tab === 'blogs' ? 'profile-tabs__tab--active' : ''}`}
-          data-tab="blogs"
+          role="tab"
+          aria-selected={tab === 'blogs'}
+          className={`profile-tabs__tab${tab === 'blogs' ? ' profile-tabs__tab--active' : ''}`}
           onClick={() => selectTab('blogs')}
         >
           文章 ({blogsCount})
         </button>
         <button
           type="button"
-          className={`profile-tabs__tab ${tab === 'comments' ? 'profile-tabs__tab--active' : ''}`}
-          data-tab="comments"
+          role="tab"
+          aria-selected={tab === 'comments'}
+          className={`profile-tabs__tab${tab === 'comments' ? ' profile-tabs__tab--active' : ''}`}
           onClick={() => selectTab('comments')}
         >
           评论 ({commentsCount})
@@ -178,34 +179,42 @@ export default function ProfileTabs({
       </div>
 
       <div
-        className={`profile-tab-panel ${tab === 'blogs' ? 'profile-tab-panel--active' : ''}`}
+        role="tabpanel"
+        hidden={tab !== 'blogs'}
         id="tab-blogs"
+        className={`profile-tab-panel${tab === 'blogs' ? ' profile-tab-panel--active' : ''}`}
       >
         {!showBlogs ? (
           <div className="profile-privacy-notice">
-            <span className="icon icon-lock2"></span>该用户设置了文章不可见
+            <span className="icon icon-bell" aria-hidden="true" />
+            <p>该用户设置了文章不可见</p>
           </div>
         ) : blogItems.length === 0 ? (
           <div className="profile-empty">
-            <span className="icon icon-journal-text"></span>还没有发布过文章
+            <span className="icon icon-journal-text" aria-hidden="true" />
+            <p>还没有发布过文章</p>
           </div>
         ) : (
           <>
             <div className="profile-content-list">
               {blogItems.map((b) => (
-                <Link key={b.id} href={`/blog/${b.id}`} className="card profile-content-item">
-                  <div className="profile-content-item__title">{b.title}</div>
+                <Link
+                  key={b.id}
+                  href={`/blog/${b.id}`}
+                  className="profile-content-item"
+                >
+                  <h4 className="profile-content-item__title">{b.title}</h4>
                   {b.description && (
-                    <div className="profile-content-item__preview">{b.description}</div>
+                    <p className="profile-content-item__preview">{b.description}</p>
                   )}
                   <div className="profile-content-item__meta">
                     <span>{ymd(b.createdAt)}</span>
                     <span>
-                      <span className="icon icon-heart-fill"></span>
+                      <span className="icon icon-heart-fill" aria-hidden="true" />
                       {b.likesCount}
                     </span>
                     <span>
-                      <span className="icon icon-chat-dots_new"></span>
+                      <span className="icon icon-chat-dots_new" aria-hidden="true" />
                       {b.commentsCount}
                     </span>
                   </div>
@@ -224,16 +233,20 @@ export default function ProfileTabs({
       </div>
 
       <div
-        className={`profile-tab-panel ${tab === 'comments' ? 'profile-tab-panel--active' : ''}`}
+        role="tabpanel"
+        hidden={tab !== 'comments'}
         id="tab-comments"
+        className={`profile-tab-panel${tab === 'comments' ? ' profile-tab-panel--active' : ''}`}
       >
         {!showComments ? (
           <div className="profile-privacy-notice">
-            <span className="icon icon-lock2"></span>该用户设置了评论不可见
+            <span className="icon icon-bell" aria-hidden="true" />
+            <p>该用户设置了评论不可见</p>
           </div>
         ) : commentItems.length === 0 ? (
           <div className="profile-empty">
-            <span className="icon icon-chat-dots_new"></span>还没有发表过评论
+            <span className="icon icon-chat-dots_new" aria-hidden="true" />
+            <p>还没有发表过评论</p>
           </div>
         ) : (
           <>
@@ -242,10 +255,10 @@ export default function ProfileTabs({
                 <Link
                   key={c.id}
                   href={`/blog/${c.blogId}#comment-${c.id}`}
-                  className="card profile-content-item"
+                  className="profile-content-item"
                 >
-                  <div className="profile-content-item__title">回复：{c.blogTitle}</div>
-                  <div className="profile-content-item__preview">{c.content}</div>
+                  <h4 className="profile-content-item__title">回复：{c.blogTitle}</h4>
+                  <p className="profile-content-item__preview">{c.content}</p>
                   <div className="profile-content-item__meta">
                     <span>{ymd(c.createdAt)}</span>
                   </div>

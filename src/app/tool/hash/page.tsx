@@ -242,9 +242,9 @@ export default function HashToolPage() {
           >
             <span className="icon icon-arrow-left" style={{ width: '1.25rem', height: '1.25rem' }}></span>
           </Link>
-          <h1 className="mb-0 section-title">哈希计算</h1>
+          <h1 className="mb-0 tool-new-hero__title">哈希计算</h1>
         </div>
-        <p className="text-muted mb-3">
+        <p className="tool-new-hero__description">
           支持 SHA-256 / SHA-1 / SHA-512 / MD5 / BLAKE2 等，文本与文件均可计算。
         </p>
 

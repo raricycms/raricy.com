@@ -76,9 +76,9 @@ export default function UrlToolPage() {
               style={{ width: '1.25rem', height: '1.25rem' }}
             ></span>
           </Link>
-          <h1 className="mb-0 section-title">URL 编码 / 解码</h1>
+          <h1 className="mb-0 tool-new-hero__title">URL 编码 / 解码</h1>
         </div>
-        <p className="text-muted mb-3">
+        <p className="tool-new-hero__description mb-3">
           支持 encodeURIComponent / encodeURI，空格用 + 或 %20，保留斜杠等选项。
         </p>
 

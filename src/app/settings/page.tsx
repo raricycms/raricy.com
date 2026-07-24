@@ -151,7 +151,6 @@ export default function SettingsPage() {
       if (res.ok && result.code === 200) {
         setPasswordAlert({ msg: message, type: 'success' });
         shouldReset = true;
-        // 改密后当前会话已失效，1.5s 后跳回登录页（对齐 Flask 的 logout + redirect）
         setTimeout(() => {
           router.push(result.redirect_url || '/login');
         }, 1500);
@@ -170,48 +169,55 @@ export default function SettingsPage() {
     }
   }
 
-  return (
-    <div className="pwrap pwrap--narrow">
-      <h1 className="ptitle" style={{ margin: '0 0 28px' }}>
-        账号设置
-      </h1>
+  const bioAlertClass = bioAlert
+    ? `settings-alert settings-alert--${bioAlert.type}`
+    : 'settings-alert d-none';
 
-      {/* 个人资料 */}
-      <div className="card settings-card">
+  const passwordAlertClass = passwordAlert
+    ? `settings-alert settings-alert--${passwordAlert.type}`
+    : 'settings-alert d-none';
+
+  const privacyAlertClass = privacyAlert
+    ? `settings-alert settings-alert--${privacyAlert.type}`
+    : 'settings-alert d-none';
+
+  return (
+    <div className="settings-page container">
+      {/* ====== Section 1: Bio ====== */}
+      <div className="settings-card">
         <div className="settings-card__header">
           <span className="icon icon-person"></span>
           <h2 className="settings-card__title">个人资料</h2>
         </div>
-        <p className="settings-card__desc">编辑你的个人简介，展示在个人主页中。</p>
-        <div className={bioAlert ? `settings-alert settings-alert--${bioAlert.type}` : 'settings-alert d-none'}>
-          {bioAlert?.msg}
-        </div>
+        <p className="settings-card__desc">编辑你的个人简介，展示在个人主页中</p>
+        <div className={bioAlertClass} id="bioAlert">{bioAlert?.msg ?? ''}</div>
         <textarea
           id="editBio"
           className="settings-input settings-input--textarea"
-          placeholder="写一段简介，介绍一下自己…"
+          placeholder="写一段简介，介绍一下自己..."
           maxLength={500}
           value={state.bio}
           onChange={(e) => setState((s) => ({ ...s, bio: e.target.value }))}
         />
-        <div className="settings-input__hint" id="bioCharCount" style={state.bio.length > 500 ? { color: 'var(--danger)' } : undefined}>
-          {state.bio.length} / 500
-        </div>
-        <button className="settings-btn settings-btn--primary" id="btnSaveBio" onClick={saveBio} disabled={savingBio}>
+        <div className="settings-input__hint" id="bioCharCount">{state.bio.length} / 500</div>
+        <button
+          className="settings-btn settings-btn--primary"
+          id="btnSaveBio"
+          onClick={saveBio}
+          disabled={savingBio}
+        >
           {savingBio ? '保存中…' : '保存'}
         </button>
       </div>
 
-      {/* 修改密码 */}
-      <div className="card settings-card">
+      {/* ====== Section 2: Password ====== */}
+      <div className="settings-card">
         <div className="settings-card__header">
           <span className="icon icon-gear-fill"></span>
           <h2 className="settings-card__title">修改密码</h2>
         </div>
-        <p className="settings-card__desc">修改后需要重新登录。</p>
-        <div className={passwordAlert ? `settings-alert settings-alert--${passwordAlert.type}` : 'settings-alert d-none'}>
-          {passwordAlert?.msg}
-        </div>
+        <p className="settings-card__desc">修改后需要重新登录</p>
+        <div className={passwordAlertClass} id="passwordAlert">{passwordAlert?.msg ?? ''}</div>
         <form id="passwordForm" onSubmit={submitPassword}>
           <div className="settings-form-row">
             <div className="settings-field">
@@ -255,22 +261,25 @@ export default function SettingsPage() {
               />
             </div>
           </div>
-          <button type="submit" className="settings-btn settings-btn--primary" id="passwordSubmit" disabled={passwordSubmitting}>
+          <button
+            type="submit"
+            className="settings-btn settings-btn--primary"
+            id="passwordSubmit"
+            disabled={passwordSubmitting}
+          >
             {passwordSubmitting ? '提交中…' : '确认修改'}
           </button>
         </form>
       </div>
 
-      {/* 主页隐私 */}
-      <div className="card settings-card">
+      {/* ====== Section 3: Privacy ====== */}
+      <div className="settings-card">
         <div className="settings-card__header">
           <span className="icon icon-gear"></span>
           <h2 className="settings-card__title">主页隐私设置</h2>
         </div>
-        <p className="settings-card__desc">控制你的最近文章和评论是否在个人主页中公开展示。</p>
-        <div className={privacyAlert ? `settings-alert settings-alert--${privacyAlert.type}` : 'settings-alert d-none'}>
-          {privacyAlert?.msg}
-        </div>
+        <p className="settings-card__desc">控制你的最近文章和评论是否在个人主页中公开展示</p>
+        <div className={privacyAlertClass} id="privacyAlert">{privacyAlert?.msg ?? ''}</div>
 
         <div className="settings-toggle-row">
           <div className="settings-toggle-row__label">
@@ -305,18 +314,18 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* 已绑定的应用 */}
-      <div className="card settings-card">
+      {/* ====== Section 4: OAuth applications ====== */}
+      <div className="settings-card">
         <div className="settings-card__header">
-          <span className="icon icon-shield-check"></span>
+          <span className="icon icon-github"></span>
           <h2 className="settings-card__title">已绑定的应用</h2>
         </div>
-        <p className="settings-card__desc">
-          查看通过 OAuth 2.0 绑定到你账号的第三方应用，可在此解除绑定。解除后该应用的访问令牌立即失效。
-        </p>
-        <div className={oauthAlert ? `settings-alert settings-alert--${oauthAlert.type}` : 'settings-alert d-none'}>
-          {oauthAlert?.msg}
-        </div>
+        <p className="settings-card__desc">查看通过 OAuth 2.0 绑定到你账号的第三方应用，可在此解除绑定。解除后该应用的访问令牌立即失效。</p>
+        {oauthAlert && (
+          <div className={`settings-alert settings-alert--${oauthAlert.type}`}>
+            {oauthAlert.msg}
+          </div>
+        )}
         <OAuthConnectionsList
           onAlert={(kind, msg) => {
             setOauthAlert({ msg, type: kind });

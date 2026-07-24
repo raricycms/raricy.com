@@ -110,16 +110,16 @@ const CONFIGS: Record<Variant, VariantConfig> = {
     choiceBtn: '',
   },
   tool: {
-    prefix: 'cattca',
-    segment: 'cattca__segment',
-    header: 'cattca__segment-header',
-    title: 'cattca__segment-title',
-    toggle: 'cattca__segment-toggle',
-    body: 'cattca__segment-content',
-    collapsed: 'cattca__segment-content--collapsed',
-    inputArea: 'cattca__input-prompt',
-    inputSubmit: 'cattca__input-submit',
-    choiceBtn: 'cattca__choice-btn',
+    prefix: 'story-cattca',
+    segment: 'story-cattca__segment',
+    header: 'story-cattca__segment-header',
+    title: 'story-cattca__segment-title',
+    toggle: 'story-cattca__segment-toggle',
+    body: 'story-cattca__segment-body',
+    collapsed: 'collapsed',
+    inputArea: 'story-cattca__input-area',
+    inputSubmit: '',
+    choiceBtn: '',
   },
 };
 
@@ -510,31 +510,31 @@ const CattcaPlayer = forwardRef<CattcaPlayerHandle, CattcaPlayerProps>(function 
 
   return (
     <>
-      <div className="cattca__game-header">
-        <h2 className="cattca__panel-title">游戏运行区</h2>
-        <button className="cattca__btn cattca__btn--secondary" onClick={toggleFullscreen}>
+      <div className="story-cattca__game-header">
+        <h2 className="story-cattca__panel-title">游戏运行区</h2>
+        <button className="story-cattca__btn story-cattca__btn--secondary" onClick={toggleFullscreen}>
           {isFullscreen ? '退出全屏' : '全屏'}
         </button>
       </div>
-      <div className="cattca__output" ref={outputRef}></div>
-      <div className="cattca__choices" ref={choicesRef}></div>
-      <div className="cattca__log" ref={logRef}></div>
+      <div className="story-cattca__output" ref={outputRef}></div>
+      <div className="story-cattca__choices" ref={choicesRef}></div>
+      <div className="story-cattca__log" ref={logRef}></div>
 
       <div
         className={
-          'cattca__fullscreen' + (isFullscreen ? ' cattca__fullscreen--open' : '')
+          'story-cattca__fullscreen' + (isFullscreen ? ' story-cattca__fullscreen--open' : '')
         }
       >
-        <div className="cattca__fullscreen-header">
-          <h2 className="cattca__panel-title">游戏运行区 - 全屏模式</h2>
-          <button className="cattca__exit-fullscreen-btn" onClick={() => setFullscreen(false)}>
+        <div className="story-cattca__fullscreen-header">
+          <h2 className="story-cattca__panel-title">游戏运行区 - 全屏模式</h2>
+          <button className="story-cattca__exit-fullscreen-btn" onClick={() => setFullscreen(false)}>
             退出全屏
           </button>
         </div>
-        <div className="cattca__fullscreen-content">
-          <div className="cattca__fullscreen-output" ref={fsOutputRef}></div>
-          <div className="cattca__fullscreen-choices" ref={fsChoicesRef}></div>
-          <div className="cattca__fullscreen-log" ref={fsLogRef}></div>
+        <div className="story-cattca__fullscreen-content">
+          <div className="story-cattca__fullscreen-output" ref={fsOutputRef}></div>
+          <div className="story-cattca__fullscreen-choices" ref={fsChoicesRef}></div>
+          <div className="story-cattca__fullscreen-log" ref={fsLogRef}></div>
         </div>
       </div>
     </>

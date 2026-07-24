@@ -403,8 +403,6 @@ export default function CubeTicTacToe() {
 
   return (
     <div className={`cubettt-page ${gameEnded ? 'is-ended' : 'is-playing'}`}>
-      <style>{CUBETTT_CSS}</style>
-
       {/* 信息面板 */}
       <div className="cubettt-info">
         {winner && (
@@ -524,9 +522,8 @@ export default function CubeTicTacToe() {
   );
 }
 
-// 自包含样式（作用域前缀 cubettt-*；颜色走 web-next 设计令牌 CSS 变量并带回退）
-// 移植自 Flask app/static/scss/pages/game/_cubetictactoe.scss，改 fixed 布局为组件内 absolute
-const CUBETTT_CSS = `
+// 自包含样式已迁移至 src/styles-scss/pages/game/_cubetictactoe.scss / 编译产物 flask.css
+const _UNUSED_CUBETTT_CSS = `
 .cubettt-page {
   position: relative;
   width: 100%;

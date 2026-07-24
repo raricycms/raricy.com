@@ -2,109 +2,110 @@
 
 import { useEffect, useRef } from 'react';
 
-// 首页星空背景：漂浮星点，深浅自适应，尊重 reduced-motion，后台暂停。
-// 逐字节对齐原 homepage.html 的内联脚本。
+// 首页星空背景 — 逐字节对齐 Flask homepage.html 的内联脚本（保留 Flask 原行为）
 export default function HeroCanvas() {
   const ref = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
     const canvas = ref.current;
-    const hero = canvas?.parentElement as HTMLElement | null;
-    if (!canvas || !hero) return;
+    if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+    const hero = canvas.parentElement as HTMLElement | null;
+    if (!hero) return;
 
-    let particles: Array<{ x: number; y: number; dx: number; dy: number; r: number; color: string }> = [];
-    let frameId: number | null = null;
-    const reduceMotion =
-      window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    interface Particle { x: number; y: number; dx: number; dy: number; radius: number; color: string; update(): void; draw(): void }
+    let particles: Particle[] = [];
+    let mouse = { x: null as number | null, y: null as number | null };
 
-    function starColor() {
-      return document.documentElement.getAttribute('data-theme') === 'dark'
-        ? 'rgba(255,255,255,0.55)'
-        : 'rgba(90,100,130,0.38)';
-    }
-    function init() {
-      canvas!.width = hero!.offsetWidth;
-      canvas!.height = hero!.offsetHeight;
-      const color = starColor();
-      const count = Math.min(90, Math.round((canvas!.width * canvas!.height) / 14000));
-      particles = [];
-      for (let i = 0; i < count; i++) {
-        const r = Math.random() * 1.6 + 0.6;
-        particles.push({
-          x: Math.random() * canvas!.width,
-          y: Math.random() * canvas!.height,
-          dx: (Math.random() - 0.5) * 0.45,
-          dy: (Math.random() - 0.5) * 0.45,
-          r,
-          color,
-        });
-      }
-    }
-    function draw() {
-      ctx!.clearRect(0, 0, canvas!.width, canvas!.height);
-      for (const p of particles) {
-        ctx!.beginPath();
-        ctx!.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-        ctx!.fillStyle = p.color;
-        ctx!.fill();
-      }
-    }
-    function step() {
-      frameId = requestAnimationFrame(step);
-      for (const p of particles) {
-        if (p.x + p.r > canvas!.width || p.x - p.r < 0) p.dx = -p.dx;
-        if (p.y + p.r > canvas!.height || p.y - p.r < 0) p.dy = -p.dy;
-        p.x += p.dx;
-        p.y += p.dy;
-      }
-      draw();
-    }
-    function start() {
-      if (reduceMotion) {
-        draw();
-        return;
-      }
-      if (!frameId) step();
-    }
-    function stop() {
-      if (frameId) {
-        cancelAnimationFrame(frameId);
-        frameId = null;
-      }
-    }
-    function debounce(fn: () => void, wait: number) {
-      let t: ReturnType<typeof setTimeout>;
-      return () => {
-        clearTimeout(t);
-        t = setTimeout(fn, wait || 200);
+    function debounce(func: (...args: unknown[]) => void, wait = 250) {
+      let timeout: ReturnType<typeof setTimeout>;
+      return function (this: unknown, ...args: unknown[]) {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func.apply(this, args), wait);
       };
     }
 
-    init();
-    start();
-    const onResize = debounce(() => {
+    function resizeCanvas() {
+      canvas!.width = window.innerWidth;
+      canvas!.height = hero!.offsetHeight;
       init();
-      if (reduceMotion) draw();
-    }, 200);
-    const onVis = () => (document.hidden ? stop() : start());
-    window.addEventListener('resize', onResize);
-    document.addEventListener('visibilitychange', onVis);
-    const obs = new MutationObserver(() => {
-      const c = starColor();
-      for (const p of particles) p.color = c;
-      if (reduceMotion) draw();
-    });
-    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    }
+
+    function onMove(e: MouseEvent) {
+      const rect = canvas!.getBoundingClientRect();
+      mouse.x = e.clientX - rect.left;
+      mouse.y = e.clientY - rect.top;
+    }
+    function onOut() {
+      mouse.x = null;
+      mouse.y = null;
+    }
+
+    class P {
+      x: number; y: number; dx: number; dy: number; radius: number; color: string;
+      constructor(x: number, y: number, dx: number, dy: number, radius: number, color: string) {
+        this.x = x; this.y = y; this.dx = dx; this.dy = dy;
+        this.radius = radius; this.color = color;
+      }
+      draw() {
+        ctx!.beginPath();
+        ctx!.arc(this.x, this.y, this.radius, 0, Math.PI * 2, false);
+        ctx!.fillStyle = this.color;
+        ctx!.fill();
+      }
+      update() {
+        if (this.x + this.radius > canvas!.width || this.x - this.radius < 0) this.dx = -this.dx;
+        if (this.y + this.radius > canvas!.height || this.y - this.radius < 0) this.dy = -this.dy;
+        this.x += this.dx; this.y += this.dy;
+        this.draw();
+      }
+    }
+
+    function init() {
+      particles = [];
+      for (let i = 0; i < 80; i++) {
+        const radius = Math.random() * 2 + 1;
+        const x = Math.random() * (canvas!.width - radius * 2) + radius;
+        const y = Math.random() * (canvas!.height - radius * 2) + radius;
+        const dx = (Math.random() - 0.5) * 0.5;
+        const dy = (Math.random() - 0.5) * 0.5;
+        particles.push(new P(x, y, dx, dy, radius, 'rgba(255, 255, 255, 0.5)'));
+      }
+    }
+
+    let animationFrameId: number | null = null;
+    function animate() {
+      animationFrameId = requestAnimationFrame(animate);
+      ctx!.clearRect(0, 0, canvas!.width, canvas!.height);
+      particles.forEach((p) => p.update());
+    }
+    function handleVisibilityChange() {
+      if (document.hidden) {
+        if (animationFrameId) {
+          cancelAnimationFrame(animationFrameId);
+          animationFrameId = null;
+        }
+      } else {
+        if (!animationFrameId) animate();
+      }
+    }
+
+    resizeCanvas();
+    animate();
+    window.addEventListener('resize', debounce(resizeCanvas));
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseout', onOut);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
-      stop();
-      window.removeEventListener('resize', onResize);
-      document.removeEventListener('visibilitychange', onVis);
-      obs.disconnect();
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
+      window.removeEventListener('resize', debounce(resizeCanvas));
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseout', onOut);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, []);
 
-  return <canvas className="hero__canvas" id="hero-canvas" aria-hidden="true" ref={ref} />;
+  return <canvas id="hero-canvas" aria-hidden="true" ref={ref} />;
 }

@@ -3,13 +3,12 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-// ── 全局 toast（原站 base.js 注入 window.showToast） ──────────────────────────
 function showToast(msg: string, type: string) {
   const w = window as unknown as { showToast?: (m: string, t: string) => void };
   if (w.showToast) w.showToast(msg, type);
 }
 
-// 输入投票 ID 跳转（点击「前往」或回车），对齐 Flask menu.html #redirect / #target_link
+// 投票跳转输入
 export function VoteRedirect() {
   const router = useRouter();
   const [value, setValue] = useState('');
@@ -21,7 +20,7 @@ export function VoteRedirect() {
   };
 
   return (
-    <div className="search-form" style={{ maxWidth: 420 }}>
+    <div className="vote-navigation__search">
       <input
         type="text"
         className="search-input"
@@ -33,14 +32,18 @@ export function VoteRedirect() {
           if (e.key === 'Enter' && !e.nativeEvent.isComposing) go();
         }}
       />
-      <button className="search-btn" id="redirect" onClick={go}>
+      <button
+        className="search-button"
+        id="redirect"
+        onClick={go}
+      >
         前往
       </button>
     </div>
   );
 }
 
-// 复制投票 ID，成功后按钮文字变「已复制」1.5s 后恢复，对齐 Flask copyVoteId()
+// 复制投票 ID
 export function VoteCopyButton({ id }: { id: string }) {
   const [copied, setCopied] = useState(false);
 
@@ -61,7 +64,7 @@ export function VoteCopyButton({ id }: { id: string }) {
   };
 
   return (
-    <button className="vote-copy-btn" onClick={copy}>
+    <button className="vote-item__copy-btn" onClick={copy}>
       {copied ? '已复制' : '复制'}
     </button>
   );

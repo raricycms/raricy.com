@@ -3,34 +3,41 @@ import { requireCoreUser } from '@/lib/guard';
 import { listVotes } from '@/lib/vote-service';
 import { VoteRedirect, VoteCopyButton } from './VoteMenuClient';
 
-export const dynamic = 'force-dynamic'; // 列表随投票状态变化，禁用静态化
+export const dynamic = 'force-dynamic';
 
 export default async function VoteListPage() {
   await requireCoreUser();
   const votes = await listVotes();
 
   return (
-    <div className="pwrap">
-      <h1 className="ptitle" style={{ margin: 0 }}>
-        投票箱
-      </h1>
+    <div className="vote-page">
+      <h1 className="vote-title">投票箱</h1>
 
-      <div className="item-toolbar">
+      <div className="vote-navigation">
         <VoteRedirect />
-        <Link href="/vote/create" className="upload-button">
-          <span className="icon icon-add"></span>创建投票
-        </Link>
+        <div className="vote-navigation__actions">
+          <Link href="/vote/create" className="action-button primary">
+            创建投票
+          </Link>
+        </div>
       </div>
 
       {votes.length > 0 ? (
         <div className="vote-list">
           {votes.map((v) => (
-            <Link key={v.id} href={`/vote/${v.id}`} className="card card--link vote-item">
+            <Link key={v.id} href={`/vote/${v.id}`} className="vote-item">
               <div className="vote-item__header">
-                <span className="vote-item__title">{v.title}</span>
-                <span className="vote-item__meta">
+                <span className="vote-item__header-title">{v.title}</span>
+                <span className="vote-item__header-meta">
                   {v.optionCount} 个选项 · {v.totalVotes} 票
-                  {v.isLocked && <span className="vote-locked">已锁定</span>}
+                  {v.isLocked && (
+                    <span
+                      className="vote-item__header-locked"
+                      style={{ marginLeft: '0.5rem' }}
+                    >
+                      已锁定
+                    </span>
+                  )}
                 </span>
               </div>
               <div className="vote-item__id">
@@ -41,15 +48,12 @@ export default async function VoteListPage() {
           ))}
         </div>
       ) : (
-        <div className="empty-state">
-          <div className="empty-state-icon">
-            <span
-              className="icon icon-grid"
-              style={{ width: '2.4rem', height: '2.4rem', display: 'inline-block' }}
-            ></span>
+        <div className="vote-list__empty">
+          <div className="vote-list__empty-icon" aria-hidden="true">
+            🗳️
           </div>
-          <h3>还没有投票</h3>
-          <p>点击上方按钮创建你的第一个投票。</p>
+          <div className="vote-list__empty-text">还没有投票</div>
+          <div className="vote-list__empty-subtext">点击上方按钮创建你的第一个投票。</div>
         </div>
       )}
     </div>

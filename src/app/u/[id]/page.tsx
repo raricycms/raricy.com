@@ -8,7 +8,6 @@ import ProfileTabs from './ProfileTabs';
 
 export const dynamic = 'force-dynamic';
 
-// 每页条数，对齐 Flask profile.py 的 per_page=20。
 const PAGE_SIZE = 20;
 
 const ROLE_LABEL: Record<string, string> = {
@@ -18,14 +17,6 @@ const ROLE_LABEL: Record<string, string> = {
   owner: '站长',
 };
 
-const ROLE_BADGE: Record<string, string> = {
-  user: 'role-badge--user',
-  core: 'role-badge--core',
-  admin: 'role-badge--admin',
-  owner: 'role-badge--owner',
-};
-
-/** 解析页码查询参数（对齐 Flask request.args.get(..., 1, type=int)）：非法或 <1 归 1。 */
 function parsePage(raw: string | string[] | undefined): number {
   const v = Array.isArray(raw) ? raw[0] : raw;
   const n = parseInt(v ?? '', 10);
@@ -44,23 +35,18 @@ export default async function PublicProfilePage({
   const profile = await getPublicProfile(id);
   if (!profile) notFound();
 
-  // 查询参数（对齐 profile.py）：tab / blog_page / comment_page，两个 tab 的页码相互独立且并存于 URL。
   const rawTab = Array.isArray(sp.tab) ? sp.tab[0] : sp.tab;
   const tab: 'blogs' | 'comments' = rawTab === 'comments' ? 'comments' : 'blogs';
   const blogPage = parsePage(sp.blog_page);
   const commentPage = parsePage(sp.comment_page);
 
-  // 是否本人主页：邮箱与操作按钮仅本人可见（对齐 profile.html 的 user == current_user 判断）
   const currentUser = await getCurrentUser();
   const isOwnProfile = currentUser?.id === profile.id;
   const isCoreAuthenticated = isCoreUser(currentUser);
 
-  // 隐私可见性：本人始终可见，他人受隐私设置控制（对齐 profile.py：is_owner or show_recent_*）。
   const showBlogs = isOwnProfile || profile.showRecentBlogs;
   const showComments = isOwnProfile || profile.showRecentComments;
 
-  // 统计数字 + 最后登录（getPublicProfile 不含这些字段，故直接查 prisma 补齐，
-  // 对齐 profile.html 的 blogs_count / likes_received / comments_count / 运势值）。
   const [blogsCount, commentsCount, likesAgg, extra] = await Promise.all([
     prisma.blog.count({ where: { authorId: profile.id, ignore: false } }),
     prisma.blogComment.count({
@@ -79,8 +65,6 @@ export default async function PublicProfilePage({
   const totalFortune = extra?.totalFortune ?? 0;
   const lastLogin = extra?.lastLogin ?? null;
 
-  // 服务端真实分页（对齐 Flask 的 .paginate(page=..., per_page=20)）：按当前页码 skip/take 一整页数据，
-  // 页码越界返回空条目（对齐 error_out=False）。翻页通过链接整页刷新（见 ProfileTabs 的分页条）。
   const blogsPages = Math.max(1, Math.ceil(blogsCount / PAGE_SIZE));
   const commentsPages = Math.max(1, Math.ceil(commentsCount / PAGE_SIZE));
 
@@ -130,98 +114,103 @@ export default async function PublicProfilePage({
     id: c.id,
     blogId: c.blogId,
     blogTitle: c.blog?.title ?? '',
-    content: (c.content ?? '').slice(0, 120), // 对齐 Flask content[:120]
+    content: (c.content ?? '').slice(0, 120),
     createdAt: c.createdAt ? c.createdAt.toISOString() : null,
   }));
 
   return (
-    <div className="wrap profile-page">
-      <div className="card profile-hero">
-        <div className="profile-hero__top">
-          <div className="profile-hero__avatar">
-            {/* 头像走 /api/avatar/[id]，由 id 确定性生成 SVG identicon */}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={`/api/avatar/${profile.id}`} alt={profile.username} />
-          </div>
-          <div className="profile-hero__info">
-            <div className="profile-name-row">
-              <span className="profile-username">{profile.username}</span>
-              <span className={`role-badge ${ROLE_BADGE[profile.role] ?? 'role-badge--user'}`}>
-                {ROLE_LABEL[profile.role] ?? profile.role}
-              </span>
+    <div className="profile-page">
+      <div className="container">
+        <section className="profile-hero">
+          <div className="profile-hero__top">
+            <div className="profile-hero__avatar">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={`/api/avatar/${profile.id}`} alt={profile.username} />
             </div>
-
-            <div className={`profile-bio ${profile.bio ? '' : 'profile-bio--empty'}`}>
-              {profile.bio ? profile.bio : '这个人还没有写简介…'}
-            </div>
-
-            <div className="profile-meta">
-              {profile.createdAt && (
-                <span>
-                  <span className="icon icon-person"></span>注册于 {ymd(new Date(profile.createdAt))}
+            <div className="profile-hero__info">
+              <div className="profile-hero__name-row">
+                <span className="profile-hero__username">{profile.username}</span>
+                <span className={`profile-hero__role-badge profile-hero__role-badge--${profile.role}`}>
+                  {ROLE_LABEL[profile.role] ?? profile.role}
                 </span>
-              )}
-              {lastLogin && <span>最后登录 {ymd(new Date(lastLogin))}</span>}
-              {/* 邮箱仅本人可见（隐私），取自当前登录用户而非公开 profile */}
-              {isOwnProfile && currentUser?.email && (
-                <span>
-                  <span className="icon icon-envelope"></span>
-                  {currentUser.email}
-                </span>
-              )}
-            </div>
+              </div>
 
-            <div className="profile-stats">
-              <div className="profile-stats__item">
-                <div className="profile-stats__number">{blogsCount}</div>
-                <div className="profile-stats__label">文章</div>
-              </div>
-              <div className="profile-stats__item">
-                <div className="profile-stats__number">{likesReceived}</div>
-                <div className="profile-stats__label">获赞</div>
-              </div>
-              <div className="profile-stats__item">
-                <div className="profile-stats__number">{commentsCount}</div>
-                <div className="profile-stats__label">评论</div>
-              </div>
-              <div className="profile-stats__item">
-                <div className="profile-stats__number">{totalFortune}</div>
-                <div className="profile-stats__label">运势值</div>
-              </div>
-            </div>
+              <p
+                className={`profile-hero__bio${!profile.bio ? ' profile-hero__bio--empty' : ''}`}
+              >
+                {profile.bio || '这个人还没有写简介…'}
+              </p>
 
-            {/* 本人主页专属操作行（对齐 profile.html 的 profile-actions） */}
-            {isOwnProfile && (
-              <div className="profile-actions">
-                <Link href="/settings" className="btn btn--ghost btn--sm">
-                  <span className="icon icon-gear"></span>账号设置
-                </Link>
-                {/* 「去认证」对齐 Flask auth.authentic（专门的邀请码认证页），指向 /authentic */}
-                {!isCoreAuthenticated && (
-                  <Link href="/authentic" className="btn btn--primary btn--sm">
-                    <span className="icon icon-person-circle"></span>去认证
-                  </Link>
+              <div className="profile-hero__meta">
+                {profile.createdAt && (
+                  <span>
+                    <span className="icon icon-person" aria-hidden="true" />
+                    注册于 {ymd(new Date(profile.createdAt))}
+                  </span>
+                )}
+                {lastLogin && (
+                  <span>最后登录 {ymd(new Date(lastLogin))}</span>
+                )}
+                {isOwnProfile && currentUser?.email && (
+                  <span>
+                    <span className="icon icon-envelope" aria-hidden="true" />
+                    {currentUser.email}
+                  </span>
                 )}
               </div>
-            )}
+            </div>
           </div>
-        </div>
-      </div>
 
-      <ProfileTabs
-        userId={profile.id}
-        initialTab={tab}
-        blogsCount={blogsCount}
-        commentsCount={commentsCount}
-        showBlogs={showBlogs}
-        showComments={showComments}
-        blogItems={blogItems}
-        commentItems={commentItems}
-        blogPage={blogPage}
-        blogPages={blogsPages}
-        commentPage={commentPage}
-        commentPages={commentsPages}
-      />
+          <div className="profile-stats">
+            <div className="profile-stats__item">
+              <div className="profile-stats__number">{blogsCount}</div>
+              <div className="profile-stats__label">文章</div>
+            </div>
+            <div className="profile-stats__item">
+              <div className="profile-stats__number">{likesReceived}</div>
+              <div className="profile-stats__label">获赞</div>
+            </div>
+            <div className="profile-stats__item">
+              <div className="profile-stats__number">{commentsCount}</div>
+              <div className="profile-stats__label">评论</div>
+            </div>
+            <div className="profile-stats__item">
+              <div className="profile-stats__number">{totalFortune}</div>
+              <div className="profile-stats__label">运势值</div>
+            </div>
+          </div>
+
+          {isOwnProfile && (
+            <div className="profile-actions">
+              <Link href="/settings" className="profile-actions__btn profile-actions__btn--edit">
+                <span className="icon icon-gear" aria-hidden="true" />
+                账号设置
+              </Link>
+              {!isCoreAuthenticated && (
+                <Link href="/authentic" className="profile-actions__btn profile-actions__btn--auth">
+                  <span className="icon icon-person-circle" aria-hidden="true" />
+                  去认证
+                </Link>
+              )}
+            </div>
+          )}
+        </section>
+
+        <ProfileTabs
+          userId={profile.id}
+          initialTab={tab}
+          blogsCount={blogsCount}
+          commentsCount={commentsCount}
+          showBlogs={showBlogs}
+          showComments={showComments}
+          blogItems={blogItems}
+          commentItems={commentItems}
+          blogPage={blogPage}
+          blogPages={blogsPages}
+          commentPage={commentPage}
+          commentPages={commentsPages}
+        />
+      </div>
     </div>
   );
 }

@@ -2,20 +2,20 @@ import { requireOwner } from '@/lib/guard';
 import { listAllImages, getTotalStorageBytes } from '@/lib/image-service';
 import ImageAdminTable, { type AdminImageRow } from '@/app/components/ImageAdminTable';
 
-export const dynamic = 'force-dynamic'; // 依赖登录态与全站数据，禁用静态化
+export const dynamic = 'force-dynamic';
 
 interface SearchParams {
   page?: string;
   search?: string;
 }
 
-// 图床管理页（站长专属），逐字对齐 Flask image_hosting/admin.html。
+// 图床管理页（站长专属）
 export default async function ImageAdminPage({
   searchParams,
 }: {
   searchParams: Promise<SearchParams>;
 }) {
-  await requireOwner(); // 对齐 Flask @owner_required
+  await requireOwner();
 
   const sp = await searchParams;
   const page = parseInt(sp.page || '1', 10);
@@ -36,7 +36,6 @@ export default async function ImageAdminPage({
     createdAt: img.createdAt ? img.createdAt.toISOString() : '',
   }));
 
-  // 分页链接保留 search 查询参数
   const pageHref = (p: number) => {
     const params = new URLSearchParams();
     params.set('page', String(p));
@@ -54,7 +53,7 @@ export default async function ImageAdminPage({
       </div>
 
       <div className="image-hosting-admin-bar">
-        <form className="image-hosting-admin-bar__search" method="get">
+        <form method="get" className="image-hosting-admin-bar__search">
           <input
             type="text"
             name="search"
@@ -62,11 +61,11 @@ export default async function ImageAdminPage({
             defaultValue={search ?? ''}
             className="image-hosting-admin-bar__input"
           />
-          <button type="submit" className="button-primary-small">
+          <button type="submit" className="image-hosting-card__btn">
             搜索
           </button>
           {search && (
-            <a href="/image/admin" className="button-warning-small">
+            <a href="/image/admin" className="image-hosting-card__btn">
               清除
             </a>
           )}
@@ -78,17 +77,20 @@ export default async function ImageAdminPage({
           <ImageAdminTable images={rows} />
 
           {data.pages > 1 && (
-            <div className="image-hosting-pagination">
+            <nav className="image-hosting-pagination" aria-label="分页">
               {Array.from({ length: data.pages }, (_, i) => i + 1).map((p) => (
                 <a
                   key={p}
                   href={pageHref(p)}
-                  className={`image-hosting-pagination__item${p === data.page ? ' active' : ''}`}
+                  className={`image-hosting-pagination__item${
+                    p === data.page ? ' active' : ''
+                  }`}
+                  aria-current={p === data.page ? 'page' : undefined}
                 >
                   {p}
                 </a>
               ))}
-            </div>
+            </nav>
           )}
         </>
       ) : (

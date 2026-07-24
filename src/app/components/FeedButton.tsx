@@ -298,7 +298,7 @@ export default function FeedButton({
   return (
     <>
       {/* 点赞系统 + 投喂触发 + 返回（对齐 like_system 的 .read-controls）*/}
-      <div className="read-controls">
+      <div className="read-controls" id="read-controls">
         <button
           id="like-btn"
           className={`like-btn${liked ? ' liked' : ''}`}
@@ -306,9 +306,11 @@ export default function FeedButton({
           disabled={likeBusy}
           aria-label="点赞"
         >
-          <span id="like-icon" className="icon icon-heart-fill" style={{ width: '1.05rem', height: '1.05rem' }} />
-          <span id="like-text">{liked ? '已点赞' : '点赞'}</span>
-          <span className="like-count-badge" id="like-count">{likes}</span>
+          <span aria-hidden="true">{liked ? '❤' : '♡'}</span>
+          <span>{liked ? '已点赞' : '点赞'}</span>
+          <span className="like-count-badge" id="like-count">
+            {likes}
+          </span>
         </button>
 
         <button
@@ -318,11 +320,16 @@ export default function FeedButton({
           disabled={isAuth && fed >= FEED_CAP}
           aria-label="投喂小鱼干"
         >
-          <span>🐟 投喂</span>
-          <span className="fish-count-badge" id="fish-count">{fishCount}</span>
+          <span aria-hidden="true">🐟</span>
+          <span>投喂</span>
+          <span className="fish-count-badge" id="fish-count">
+            {fishCount}
+          </span>
         </button>
 
-        <button onClick={() => history.back()} className="read-btn">← 返回上页</button>
+        <button onClick={() => history.back()} className="read-btn">
+          ← 返回上页
+        </button>
       </div>
 
       {/* 小鱼干投喂弹窗（feed_fish_system）*/}
@@ -365,18 +372,22 @@ export default function FeedButton({
       {/* 管理员/作者控制（admin_controls）*/}
       {canManage && (
         <div className="admin-controls">
-          <button id="admin-likers-btn" className="button button-ghost" onClick={openLikers}>
+          <button id="admin-likers-btn" className="read-btn" onClick={openLikers}>
             查看点赞者
           </button>
-          <button id="admin-feeders-btn" className="button button-ghost" onClick={openFeeders}>
+          <button id="admin-feeders-btn" className="read-btn" onClick={openFeeders}>
             🐟 查看投喂者
           </button>
           {canEdit && (
-            <a href={`/blog/${blogId}/edit`} className="button button-primary">
+            <a href={`/blog/${blogId}/edit`} className="read-btn">
               编辑文章
             </a>
           )}
-          <button id="admin-delete-btn" className="button button-danger" onClick={() => setModal('delete')}>
+          <button
+            id="admin-delete-btn"
+            className="read-btn"
+            onClick={() => setModal('delete')}
+          >
             删除文章
           </button>
         </div>

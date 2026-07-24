@@ -1,0 +1,428 @@
+@use '../../abstracts/variables' as *;
+
+// ============================================================
+// Connect Four (四子棋) — BEM namespace: .connect4-*
+// ============================================================
+
+.connect4-page {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  min-height: calc(100vh - 62px);
+  padding: $space-6 0;
+  background: var(--color-background-page);
+}
+
+.connect4-container {
+  text-align: center;
+  background: var(--color-background-card);
+  padding: $space-6;
+  border-radius: $radius-large;
+  box-shadow: var(--shadow-card);
+  position: relative;
+  max-width: 680px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.connect4-back {
+  display: inline-block;
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  font-size: 0.9rem;
+  margin-bottom: $space-4;
+  transition: color 0.2s ease;
+  align-self: flex-start;
+
+  &:hover {
+    color: var(--color-brand-primary);
+  }
+}
+
+.connect4-mode-selector {
+  margin-bottom: $space-3;
+  display: flex;
+  justify-content: center;
+  gap: $space-3;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.connect4-mode-option {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+
+  input[type="radio"] {
+    margin: 0;
+  }
+
+  label {
+    font-size: 0.95rem;
+    color: var(--color-text-primary);
+    cursor: pointer;
+  }
+}
+
+.connect4-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: $space-4;
+  gap: $space-4;
+  flex-wrap: wrap;
+}
+
+.connect4-info__player {
+  color: var(--color-text-primary);
+  font-size: 1.25rem;
+}
+
+.connect4-info__status {
+  color: var(--color-text-primary);
+  font-size: 1.1rem;
+  font-weight: bold;
+  min-height: 30px;
+}
+
+.connect4-controls {
+  display: flex;
+  gap: $space-2;
+}
+
+.connect4-btn {
+  padding: $space-3 $space-4;
+  font-size: 0.95rem;
+  border: none;
+  border-radius: $radius-small;
+  cursor: pointer;
+  color: #fff;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-sm);
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+  }
+
+  &--undo {
+    background: linear-gradient(45deg, #74b9ff, #0984e3);
+  }
+
+  &--reset {
+    background: linear-gradient(45deg, #ff6b6b, #ee5a24);
+  }
+}
+
+.connect4-obstacle-phase {
+  color: #8b6914;
+  font-weight: bold;
+  margin-bottom: $space-2;
+  display: none;
+}
+
+.connect4-keyboard-hint {
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+  margin-bottom: $space-3;
+  text-align: center;
+}
+
+.connect4-board-wrap {
+  position: relative;
+  display: inline-block;
+}
+
+.connect4-column-numbers {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: $space-2;
+  padding: 0 15px;
+}
+
+.connect4-column-number {
+  width: 80px;
+  text-align: center;
+  font-size: 1.1rem;
+  font-weight: bold;
+  color: #2d5a27;
+}
+
+.connect4-board {
+  background: linear-gradient(135deg, #2d5a27, #4a7c59);
+  border-radius: 15px;
+  padding: 15px;
+  box-shadow:
+    inset 0 0 20px rgba(0, 0, 0, 0.3),
+    0 10px 30px rgba(0, 0, 0, 0.2);
+  display: grid;
+  grid-template-columns: repeat(7, 80px);
+  grid-template-rows: repeat(4, 80px);
+  gap: 8px;
+}
+
+.connect4-cell {
+  width: 80px;
+  height: 80px;
+  background: radial-gradient(circle at 30% 30%, #fff, #e0e0e0);
+  border-radius: 50%;
+  cursor: pointer;
+  position: relative;
+  box-shadow:
+    inset 0 0 10px rgba(0, 0, 0, 0.2),
+    0 2px 5px rgba(0, 0, 0, 0.3);
+  transition: transform 0.15s ease-out, box-shadow 0.15s ease-out;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  &:hover {
+    transform: scale(1.08);
+    box-shadow:
+      inset 0 0 10px rgba(0, 0, 0, 0.2),
+      0 4px 15px rgba(0, 0, 0, 0.2);
+  }
+
+  &--winning {
+    box-shadow:
+      inset 0 0 10px rgba(0, 0, 0, 0.2),
+      0 0 20px rgba(255, 215, 0, 0.9);
+  }
+
+  &--full {
+    animation: connect4-full-blink 0.4s ease-out;
+  }
+}
+
+.connect4-piece {
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+  position: absolute;
+  box-shadow:
+    0 4px 8px rgba(0, 0, 0, 0.3),
+    inset 0 2px 4px rgba(255, 255, 255, 0.3),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.2);
+
+  &--red {
+    background: radial-gradient(circle at 30% 30%, #ff6b6b, #e74c3c, #c0392b);
+    border: 2px solid #a93226;
+  }
+
+  &--blue {
+    background: radial-gradient(circle at 30% 30%, #74b9ff, #3498db, #2980b9);
+    border: 2px solid #1f4e79;
+  }
+
+  &--obstacle {
+    background:
+      radial-gradient(circle at 30% 30%, #d4a574, #b8956a, #8b6914),
+      repeating-linear-gradient(
+        45deg,
+        transparent,
+        transparent 2px,
+        rgba(139, 105, 20, 0.1) 2px,
+        rgba(139, 105, 20, 0.1) 4px
+      );
+    border: 2px solid #654321;
+  }
+
+  &--fade-out {
+    opacity: 0;
+    transform: scale(0.8);
+    transition: opacity 0.15s ease-out, transform 0.15s ease-out;
+  }
+
+  &--blind-fade {
+    animation: connect4-blind-fade-out 0.6s ease-out forwards;
+  }
+
+  &--blind2-fade {
+    animation: connect4-blind2-fade-out 0.8s ease-out forwards;
+  }
+
+  &--blind2-invisible {
+    opacity: 0 !important;
+    visibility: hidden !important;
+  }
+}
+
+.connect4-falling-piece {
+  position: absolute;
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+  z-index: 100;
+  pointer-events: none;
+  box-shadow:
+    0 4px 8px rgba(0, 0, 0, 0.3),
+    inset 0 2px 4px rgba(255, 255, 255, 0.3),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.2);
+
+  &--red {
+    background: radial-gradient(circle at 30% 30%, #ff6b6b, #e74c3c, #c0392b);
+    border: 2px solid #a93226;
+  }
+
+  &--blue {
+    background: radial-gradient(circle at 30% 30%, #74b9ff, #3498db, #2980b9);
+    border: 2px solid #1f4e79;
+  }
+
+  &--obstacle {
+    background:
+      radial-gradient(circle at 30% 30%, #d4a574, #b8956a, #8b6914),
+      repeating-linear-gradient(
+        45deg,
+        transparent,
+        transparent 2px,
+        rgba(139, 105, 20, 0.1) 2px,
+        rgba(139, 105, 20, 0.1) 4px
+      );
+    border: 2px solid #654321;
+  }
+
+  &--blind2-fade {
+    animation: connect4-blind2-fall-and-fade 0.4s linear forwards;
+  }
+}
+
+.connect4-winner-announcement {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--color-background-card);
+  padding: 25px 35px;
+  border-radius: $radius-large;
+  box-shadow: var(--shadow-card);
+  z-index: 1000;
+  text-align: center;
+  font-size: 1.25rem;
+  font-weight: bold;
+  display: none;
+  border: 3px solid #ffd700;
+
+  &.show {
+    display: block;
+    animation: connect4-pop-in 0.3s ease-out;
+  }
+}
+
+// Animations
+@keyframes connect4-full-blink {
+  0%, 100% {
+    background: radial-gradient(circle at 30% 30%, #fff, #e0e0e0);
+  }
+  50% {
+    background: radial-gradient(circle at 30% 30%, #ffcccc, #ffaaaa);
+  }
+}
+
+@keyframes connect4-pop-in {
+  from {
+    transform: translate(-50%, -50%) scale(0.8);
+    opacity: 0;
+  }
+  to {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes connect4-blind-fade-out {
+  0% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@keyframes connect4-blind2-fade-out {
+  0% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@keyframes connect4-blind2-fall-and-fade {
+  0%   { opacity: 1; }
+  70%  { opacity: 0.2; }
+  100% { opacity: 0; }
+}
+
+// Dark mode
+[data-theme="dark"] {
+  .connect4-container {
+    background: var(--color-background-card);
+  }
+
+  .connect4-cell {
+    background: radial-gradient(circle at 30% 30%, #555, #3a3a3a);
+    box-shadow:
+      inset 0 0 10px rgba(0, 0, 0, 0.4),
+      0 2px 5px rgba(0, 0, 0, 0.5);
+  }
+
+  .connect4-winner-announcement {
+    background: var(--color-background-card);
+  }
+}
+
+// Responsive
+@media (max-width: 640px) {
+  .connect4-container {
+    padding: $space-3;
+    margin: 0 $space-2;
+    border-radius: $radius-small;
+  }
+
+  .connect4-board {
+    grid-template-columns: repeat(7, 46px);
+    grid-template-rows: repeat(4, 46px);
+    gap: 5px;
+    padding: 10px;
+    border-radius: 10px;
+  }
+
+  .connect4-cell {
+    width: 46px;
+    height: 46px;
+  }
+
+  .connect4-piece {
+    width: 40px;
+    height: 40px;
+  }
+
+  .connect4-falling-piece {
+    width: 40px;
+    height: 40px;
+  }
+
+  .connect4-column-number {
+    width: 46px;
+    font-size: 0.9rem;
+  }
+
+  .connect4-column-numbers {
+    gap: 5px;
+    padding: 0 10px;
+  }
+
+  .connect4-btn {
+    padding: $space-2 $space-3;
+    font-size: 0.85rem;
+  }
+
+  .connect4-mode-selector {
+    gap: $space-2;
+    font-size: 0.85rem;
+  }
+}

@@ -11,6 +11,10 @@ const nextConfig = {
   // 头像与图床已由 Next 原生分发（/api/avatar/[id] 读 instance/avatars、
   // /api/images/[id]/raw 读 instance/images），前端也全部改用 /api/* 路径，
   // 因此不再需要把 /auth/avatar、/image 代理回 Flask —— web-next 已完全独立于 Flask。
+  // SCSS 来自 Flask 项目的 app/static/scss 整树拷贝（src/styles-scss/）。
+  // 运行 npm run build:css（一次性）或 dev:css（监听）把 SCSS 编译到
+  // src/styles-scss/compiled/flask.css，由 src/app/layout.tsx 全局导入。
+  sassOptions: { includePaths: ['./src/styles-scss'] },
 };
 
 export default nextConfig;

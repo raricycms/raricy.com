@@ -3,7 +3,7 @@ import { getCurrentUser, isOwner } from '@/lib/auth';
 import { listUsers } from '@/lib/admin-user-service';
 import AdminUserActions from '@/app/components/AdminUserActions';
 
-export const dynamic = 'force-dynamic'; // 依赖查询参数与登录态
+export const dynamic = 'force-dynamic';
 
 interface SearchParams {
   page?: string;
@@ -17,8 +17,13 @@ const ROLE_META: Record<string, { cls: string; label: string }> = {
   user: { cls: 'user-card__role--user', label: '普通用户' },
 };
 
-// 分页页码窗口（window-of-3），对齐 Flask management.html：
-// 始终显示首尾页，当前页 ±3 显示页码，其余折叠为 …（null 表示省略号）。
+type UserRow = {
+  id: string;
+  username: string;
+  role: string;
+  currentlyBanned: boolean;
+};
+
 function pageWindow(page: number, pages: number, window = 3): (number | null)[] {
   const out: (number | null)[] = [];
   for (let p = 1; p <= pages; p += 1) {
@@ -31,7 +36,7 @@ function pageWindow(page: number, pages: number, window = 3): (number | null)[] 
   return out;
 }
 
-// 用户管理：逐字对齐 Flask auth/management.html（卡片 + 头像 + 角色徽章 + 操作按钮 + 模态框）。
+// 用户管理 — Fluent Design
 export default async function AdminUsersPage({
   searchParams,
 }: {
@@ -62,14 +67,12 @@ export default async function AdminUsersPage({
 
       <div className="admin-container">
         <div className="management-card">
-          <div className="management-card__head">
+          <div className="d-flex justify-content-between align-items-center mb-4">
             <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 600 }}>用户列表</h2>
             {owner && (
-              <div>
-                <Link href="/admin/broadcast" className="btn btn-primary">
-                  通知发送中心
-                </Link>
-              </div>
+              <Link href="/admin/broadcast" className="btn btn-primary">
+                📢 通知发送中心
+              </Link>
             )}
           </div>
 
@@ -92,7 +95,7 @@ export default async function AdminUsersPage({
           </form>
 
           <div className="user-grid">
-            {result.users.map((u) => {
+            {(result.users as UserRow[]).map((u) => {
               const role = ROLE_META[u.role] ?? ROLE_META.user;
               const displayRole = u.role === 'owner' ? ROLE_META.owner : role;
               return (
@@ -105,7 +108,9 @@ export default async function AdminUsersPage({
                       className="user-card__avatar"
                     />
                     <span className="user-card__username">{u.username}</span>
-                    <span className={`user-card__role ${displayRole.cls}`}>{displayRole.label}</span>
+                    <span className={`user-card__role ${displayRole.cls}`}>
+                      {displayRole.label}
+                    </span>
                     {u.currentlyBanned && (
                       <span className="user-card__role user-card__role--banned">禁言中</span>
                     )}
@@ -133,7 +138,7 @@ export default async function AdminUsersPage({
                   {result.hasPrev && (
                     <li className="page-item">
                       <Link className="page-link" href={qs(result.page - 1)}>
-                        上一页
+                        &laquo;
                       </Link>
                     </li>
                   )}
@@ -143,7 +148,10 @@ export default async function AdminUsersPage({
                         <span className="page-link">…</span>
                       </li>
                     ) : (
-                      <li key={p} className={`page-item ${p === result.page ? 'active' : ''}`}>
+                      <li
+                        key={p}
+                        className={`page-item ${p === result.page ? 'active' : ''}`}
+                      >
                         {p === result.page ? (
                           <span className="page-link">{p}</span>
                         ) : (
@@ -157,7 +165,7 @@ export default async function AdminUsersPage({
                   {result.hasNext && (
                     <li className="page-item">
                       <Link className="page-link" href={qs(result.page + 1)}>
-                        下一页
+                        &raquo;
                       </Link>
                     </li>
                   )}

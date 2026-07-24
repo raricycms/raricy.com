@@ -1126,18 +1126,18 @@ export default function CubeRoll() {
   }, []);
 
   return (
-    <div className="cbr">
-      <style>{CBR_CSS}</style>
+    <div className="cube-roll">
+      <style>{CUBE_CSS}</style>
 
       {/* 控制区 */}
-      <div className="cbr__controls">
-        <div className="cbr__group">
-          <label className="cbr__label" htmlFor="cbr-solid">
+      <div className="cube-roll__controls">
+        <div className="cube-roll__group">
+          <label className="cube-roll__label" htmlFor="cube-solid">
             多面体
           </label>
           <select
-            id="cbr-solid"
-            className="cbr__select"
+            id="cube-solid"
+            className="cube-roll__select"
             value={solidType}
             onChange={(e) => setSolidType(e.target.value as SolidKey)}
           >
@@ -1147,49 +1147,49 @@ export default function CubeRoll() {
             <option value="ICOSAHEDRON">二十面体 (Icosahedron)</option>
           </select>
         </div>
-        <div className="cbr__group">
-          <label className="cbr__label" htmlFor="cbr-size">
+        <div className="cube-roll__group">
+          <label className="cube-roll__label" htmlFor="cube-size">
             网格大小
           </label>
           <input
-            id="cbr-size"
+            id="cube-size"
             type="range"
-            className="cbr__range"
+            className="cube-roll__range"
             min={2}
             max={8}
             step={1}
             value={sizeValue}
             onChange={(e) => onSizeInput(parseInt(e.target.value, 10))}
           />
-          <span className="cbr__range-value">
+          <span className="cube-roll__range-value">
             {sizeValue}x{sizeValue}
           </span>
         </div>
-        <button type="button" className="cbr__btn" onClick={onNewGame}>
+        <button type="button" className="cube-roll__btn" onClick={onNewGame}>
           新游戏
         </button>
       </div>
 
       {/* 状态 */}
-      <div className={completed ? 'cbr__status cbr__status--done' : 'cbr__status'}>{statusText}</div>
+      <div className={completed ? 'cube-roll__status cube-roll__status--done' : 'cube-roll__status'}>{statusText}</div>
 
       {/* 画布 */}
-      <div className="cbr__canvas-wrap" ref={wrapRef}>
-        <canvas ref={canvasRef} className="cbr__canvas" aria-label="立方体滚滚棋盘" />
+      <div className="cube-roll__canvas-wrap" ref={wrapRef}>
+        <canvas ref={canvasRef} className="cube-roll__canvas" aria-label="立方体滚滚棋盘" />
       </div>
     </div>
   );
 }
 
-// 自包含样式（作用域前缀 cbr__；颜色走设计令牌 CSS 变量并带回退）
-const CBR_CSS = `
-.cbr { display: flex; flex-direction: column; align-items: center; gap: 16px; width: 100%; }
-.cbr__controls {
+// 自包含样式（Flask 侧无 cube-* 等价 CSS；保留以维持视觉）
+const CUBE_CSS = `
+.cube-roll { display: flex; flex-direction: column; align-items: center; gap: 16px; width: 100%; }
+.cube-roll__controls {
   display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-end; justify-content: center;
 }
-.cbr__group { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
-.cbr__label { font-size: .82rem; font-weight: 600; color: var(--muted, #888); }
-.cbr__select {
+.cube-roll__group { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.cube-roll__label { font-size: .82rem; font-weight: 600; color: var(--muted, #888); }
+.cube-roll__select {
   padding: 7px 12px;
   border: 1px solid var(--line-2, #ccc);
   border-radius: var(--r-sm, 8px);
@@ -1198,9 +1198,9 @@ const CBR_CSS = `
   font-size: .92rem; font-weight: 600;
   cursor: pointer;
 }
-.cbr__range { width: 160px; accent-color: var(--accent, #3f51b5); cursor: pointer; }
-.cbr__range-value { font-size: .82rem; font-weight: 600; color: var(--ink, #222); }
-.cbr__btn {
+.cube-roll__range { width: 160px; accent-color: var(--accent, #3f51b5); cursor: pointer; }
+.cube-roll__range-value { font-size: .82rem; font-weight: 600; color: var(--ink, #222); }
+.cube-roll__btn {
   padding: 8px 20px;
   border: 1px solid var(--line-2, #ccc);
   border-radius: var(--r-sm, 8px);
@@ -1209,13 +1209,13 @@ const CBR_CSS = `
   font-size: .95rem; font-weight: 600;
   cursor: pointer;
 }
-.cbr__btn:hover { background: var(--surface-2, #f5f5f5); }
-.cbr__status {
+.cube-roll__btn:hover { background: var(--surface-2, #f5f5f5); }
+.cube-roll__status {
   font-size: 1.1rem; font-weight: 600; min-height: 1.4em; text-align: center;
   color: var(--ink, #222);
 }
-.cbr__status--done { color: var(--accent, #1e66f5); }
-.cbr__canvas-wrap {
+.cube-roll__status--done { color: var(--accent, #1e66f5); }
+.cube-roll__canvas-wrap {
   width: 100%;
   display: flex; justify-content: center;
   padding: 8px;
@@ -1224,7 +1224,7 @@ const CBR_CSS = `
   border-radius: var(--r-sm, 8px);
   overflow-x: auto;
 }
-.cbr__canvas {
+.cube-roll__canvas {
   display: block;
   max-width: 100%;
   touch-action: none;

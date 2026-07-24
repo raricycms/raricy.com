@@ -11,6 +11,7 @@ function toast(msg: string, type: string) {
   if (w.showToast) w.showToast(msg, type);
 }
 
+// 登录页 — Flask `auth/login.html` 样式（auth-page > .container > register-container > register-header）
 export default function LoginPage() {
   const router = useRouter();
   const [next, setNext] = useState('');
@@ -35,8 +36,6 @@ export default function LoginPage() {
       const data = await res.json();
       if (data.code === 200) {
         toast(data.message || '登录成功！正在跳转...', 'success');
-        // 回跳到登录前想去的页面（对齐 Flask sign_in.py 的 next_url 行为）。
-        // safeNextPath 挡开放重定向 —— next 来自 URL，攻击者可控。
         router.push(safeNextPath(next));
         router.refresh();
       } else {
@@ -50,63 +49,67 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="auth-wrap">
-      <div className="card auth-card">
-        <div className="auth-head">
-          <h1>用户登录</h1>
-          <p>请填写以下信息完成登录</p>
+    <div className="auth-page">
+      <div className="container">
+        <div className="register-container">
+          <div className="register-header">
+            <h2><span className="icon icon-person" aria-hidden="true"></span> 用户登录</h2>
+            <p className="text-muted">请填写以下信息完成登录</p>
+          </div>
+
+          <form id="loginForm" onSubmit={submit} noValidate>
+            <input type="hidden" name="next" value={next} />
+            <div className="form-group">
+              <label htmlFor="username" className="form-label">用户名</label>
+              <input
+                type="text"
+                className="form-control"
+                id="username"
+                name="username"
+                placeholder="请输入用户名"
+                autoComplete="username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                required
+              />
+              <div className="invalid-feedback">请输入用户名</div>
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="password" className="form-label">密码</label>
+              <input
+                type="password"
+                className="form-control"
+                id="password"
+                name="password"
+                placeholder="请输入密码"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                minLength={6}
+              />
+              <div className="invalid-feedback">密码长度至少6个字符</div>
+            </div>
+
+            <button
+              type="submit"
+              className="button button-primary"
+              style={{ width: '100%', marginTop: 20 }}
+              disabled={loading}
+              id="submitBtn"
+            >
+              <span id="submitText">
+                <span className="icon icon-box-arrow-right" aria-hidden="true"></span>{' '}
+                {loading ? '登录中...' : '立即登录'}
+              </span>
+            </button>
+          </form>
+
+          <div className="login-link">
+            <p className="text-muted">没有账号？ <Link href="/register" className="text-primary">立即注册</Link></p>
+          </div>
         </div>
-
-        <form id="loginForm" onSubmit={submit}>
-          <input type="hidden" name="next" value={next} />
-          <div className="field">
-            <label htmlFor="username">用户名</label>
-            <input
-              className="input"
-              type="text"
-              id="username"
-              name="username"
-              placeholder="请输入用户名"
-              autoComplete="username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              required
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="password">密码</label>
-            <input
-              className="input"
-              type="password"
-              id="password"
-              name="password"
-              placeholder="请输入密码"
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              minLength={6}
-            />
-          </div>
-          <button
-            type="submit"
-            className="btn btn--primary btn--full"
-            id="submitBtn"
-            disabled={loading}
-            style={{ marginTop: 8 }}
-          >
-            <span id="submitText" style={{ display: loading ? 'none' : 'inline' }}>
-              立即登录
-            </span>
-            <span id="loadingText" style={{ display: loading ? 'inline' : 'none' }}>
-              登录中…
-            </span>
-          </button>
-        </form>
-
-        <p className="auth-alt">
-          没有账号？<Link href="/register">立即注册</Link>
-        </p>
       </div>
     </div>
   );

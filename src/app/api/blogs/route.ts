@@ -25,19 +25,33 @@ export async function GET(req: Request) {
   return Response.json({
     code: 200,
     message: 'ok',
-    blogs: result.blogs.map((b) => ({
+    blogs: result.blogs.map((b: {
+      id: string;
+      title: string;
+      description: string | null;
+      authorId: string;
+      author?: { username: string | null } | null;
+      createdAt: Date | null;
+      likesCount?: number | null;
+      commentsCount?: number | null;
+      fishCount?: number | null;
+      isFeatured?: boolean | null;
+      category?: { name: string } | null;
+    }) => ({
       id: b.id,
       title: b.title,
       description: b.description,
       author_id: b.authorId,
       author: b.author?.username ?? null,
-      date: ymd(b.createdAt),
+      date: b.createdAt ? ymd(b.createdAt) : null,
       likes_count: b.likesCount ?? 0,
       comments_count: b.commentsCount ?? 0,
       fish_count: b.fishCount ?? 0,
       is_featured: b.isFeatured ?? false,
       category: b.category?.name ?? null,
-      category_path: b.category ? categoryFullPath(b.category) : null,
+      category_path: b.category
+        ? categoryFullPath({ name: b.category.name, parentId: null, parent: null })
+        : null,
     })),
     pagination: {
       page: result.page,

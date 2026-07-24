@@ -456,9 +456,9 @@ export default function BaseToolPage() {
               style={{ width: '1.25rem', height: '1.25rem' }}
             ></span>
           </Link>
-          <h1 className="mb-0 section-title">Base 编码 / 解码</h1>
+          <h1 className="mb-0 tool-new-hero__title">Base 编码 / 解码</h1>
         </div>
-        <p className="text-muted mb-4">
+        <p className="tool-new-hero__description mb-4">
           覆盖 Base16/32/36/58/62/64/85/91/92 的通用在线编解码工具。
         </p>
 

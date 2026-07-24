@@ -3,8 +3,7 @@
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useState } from 'react';
 
-// 分页跳转输入框（对齐 notifications.html 的 page-jump）。
-// 读取当前查询参数，仅覆盖 page，钳制到 [1, totalPages]。
+// 分页跳转输入框 — Flask BEM
 export default function PageJump({ totalPages, current }: { totalPages: number; current: number }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -33,7 +32,7 @@ export default function PageJump({ totalPages, current }: { totalPages: number; 
           if (e.key === 'Enter') jump();
         }}
       />
-      <button type="button" onClick={jump} className="page-link">
+      <button type="button" onClick={jump} className="page-btn">
         跳转
       </button>
     </span>

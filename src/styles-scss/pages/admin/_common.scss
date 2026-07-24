@@ -1,0 +1,150 @@
+// Shared admin layout styles
+// Hero, container, stats, filter bar, message container, batch actions
+
+.admin-hero {
+  padding: 40px 0 28px;
+  text-align: center;
+  background: var(--color-background-subtle);
+  border-bottom: 1px solid var(--color-border);
+
+  h1 {
+    margin-bottom: 6px;
+    font-weight: 700;
+    font-size: 1.6rem;
+    color: var(--color-text-primary);
+  }
+
+  p {
+    color: var(--color-text-secondary);
+    font-size: 0.95rem;
+  }
+}
+
+.admin-container {
+  max-width: 1400px;
+  margin: 32px auto;
+  padding: 0 20px;
+}
+
+// Stats
+.admin-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.admin-stat-card {
+  background: var(--color-background-card);
+  border-radius: 10px;
+  padding: 20px;
+  box-shadow: var(--shadow-xs);
+  border: 1px solid var(--color-border);
+  border-left: 4px solid;
+  text-align: center;
+  transition: box-shadow 0.2s ease;
+
+  &:hover {
+    box-shadow: var(--shadow-sm);
+  }
+
+  &--blue   { border-left-color: #3b82f6; }
+  &--green  { border-left-color: #10b981; }
+  &--amber  { border-left-color: #f59e0b; }
+  &--purple { border-left-color: #8b5cf6; }
+  &--red    { border-left-color: #ef4444; }
+}
+
+.admin-stat-card__number {
+  font-size: 2.2rem;
+  font-weight: 700;
+  margin-bottom: 6px;
+  color: var(--color-brand-primary);
+}
+
+.admin-stat-card__label {
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+// Inline stats bar (used on articles page)
+.admin-stats-bar {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.admin-stat-item {
+  background: var(--color-background-card);
+  padding: 14px 20px;
+  border-radius: 8px;
+  box-shadow: var(--shadow-xs);
+  border: 1px solid var(--color-border);
+  text-align: center;
+  min-width: 110px;
+
+  &__number {
+    font-size: 1.4rem;
+    font-weight: 600;
+    color: var(--color-brand-primary);
+  }
+
+  &__label {
+    font-size: 0.85rem;
+    color: var(--color-text-secondary);
+    margin-top: 4px;
+  }
+}
+
+// Filter bar
+.admin-filter-bar {
+  background: var(--color-background-card);
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: var(--shadow-xs);
+  border: 1px solid var(--color-border);
+  margin-bottom: 20px;
+}
+
+// Fixed message container
+.admin-message-container {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 9999;
+  min-width: 300px;
+}
+
+// Batch actions bar
+.admin-batch-actions {
+  background: var(--color-info-secondary);
+  padding: 14px 20px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  border: 1px solid var(--color-border-highlight);
+  display: none;
+
+  &.is-visible {
+    display: block;
+  }
+}
+
+// Pagination
+.admin-pagination {
+  display: flex;
+  justify-content: center;
+  margin-top: 28px;
+}
+
+// Responsive
+@media (max-width: 768px) {
+  .admin-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .admin-stats-bar {
+    justify-content: center;
+  }
+}

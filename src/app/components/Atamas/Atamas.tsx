@@ -148,7 +148,6 @@ export default function Atamas() {
 
   return (
     <div className={`game-atamas-page${lightMode ? ' light-mode' : ''}`} id="atamasPage">
-      <style>{ATAMAS_CSS}</style>
       <div className="game-atamas-wrapper">
         <Link href="/game" className="game-atamas-back">
           ← 返回玩具
@@ -321,8 +320,8 @@ export default function Atamas() {
   );
 }
 
-// 自包含样式（从 Flask 侧 pages/game/_atamas.scss 展平；light-mode 走 .game-atamas-page.light-mode）
-const ATAMAS_CSS = `
+// 自包含样式已迁移至 src/styles-scss/pages/game/_atamas.scss / 编译产物 flask.css
+const _UNUSED_ATAMAS_CSS = `
 .game-atamas-page {
   background: #0f1a2b; min-height: calc(100vh - 60px);
   display: flex; justify-content: center; align-items: flex-start;

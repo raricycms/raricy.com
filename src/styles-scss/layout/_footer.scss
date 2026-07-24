@@ -1,0 +1,47 @@
+/* Site footer (custom, no Bootstrap dependency) */
+.site-footer {
+  background-color: var(--color-background-card);
+  color: var(--color-text-primary);
+//  margin-top: 2rem;
+  padding: 0 0 1.5rem;
+  box-shadow: var(--shadow-card-brand);
+}
+.site-footer a { color: #8899ef; text-decoration: none; }
+.site-footer a:hover { color: var(--color-brand-primary) }
+
+.site-footer-container {
+  width: 100%;
+  padding-right: 15px;
+  padding-left: 15px;
+  margin-right: auto;
+  margin-left: auto;
+}
+@media (min-width: 576px) { .site-footer-container { max-width: 540px; } }
+@media (min-width: 768px) { .site-footer-container { max-width: 720px; } }
+@media (min-width: 992px) { .site-footer-container { max-width: 960px; } }
+@media (min-width: 1200px) { .site-footer-container { max-width: 1140px; } }
+
+.site-footer-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+@media (min-width: 768px) {
+  .site-footer-row { flex-direction: row; align-items: baseline; }
+  .site-footer-right { text-align: right; }
+}
+.site-footer-left, .site-footer-right { flex: 1; }
+.site-footer h5 {
+  color: var(--color-text-primary);
+  margin-bottom: 1rem;
+  /* Match Bootstrap h5 scale */
+  font-size: 1.25rem;
+  line-height: 1.2;
+  font-weight: 500;
+}
+.site-footer p { color: var(--color-text-primary); margin-bottom: 0.5rem; }
+.social-links a { color: var(--color-text-primary); display: inline-block; margin-right: 1rem; vertical-align: baseline; }
+.social-links a:last-child { margin-right: 0; }
+

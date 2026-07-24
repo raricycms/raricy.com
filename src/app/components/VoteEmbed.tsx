@@ -3,7 +3,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // VoteEmbed — 投票交互组件（对齐 Flask app/templates/vote/detail.html）
 //   • 未投票且未锁定：展示可选项，点击选择 → 提交
-//   • 已投票 / 已锁定：展示结果（顶部“共 X 票” + 计数/百分比条），高亮已投项
+//   • 已投票 / 已锁定：展示结果（顶部"共 X 票" + 计数/百分比条），高亮已投项
 //
 // 同文件另导出两个客户端小组件（复制 ID、创建者管理控制），供 vote/[id]/page.tsx
 // 组装成与 Flask 逐项对齐的详情页交互。
@@ -69,7 +69,7 @@ export default function VoteEmbed({
         );
         setTotal(nextTotal);
         setUserVoted(selected);
-        // 刷新服务端组件，让顶部 meta「已投票」绿色徽章出现（对齐 Flask location.reload()）
+        // 刷新服务端组件，让顶部 meta"已投票"绿色徽章出现（对齐 Flask location.reload()）
         router.refresh();
       } else {
         alert('投票失败：' + (data.message || '未知错误'));
@@ -83,7 +83,8 @@ export default function VoteEmbed({
   }
 
   return (
-    <div className="vote-embed">
+    <div className="vote-embed-widget">
+      {isLocked && <span className="vote-embed-badge badge-locked">已锁定</span>}
       {showResults && <p className="vote-embed-total">共 {total} 票</p>}
 
       {options.map((o) => {
@@ -94,9 +95,9 @@ export default function VoteEmbed({
           return (
             <div
               key={o.id}
-              className="vote-embed-option vote-embed-option--result"
-              // 已投项用绿色（success）标记，对齐 Flask vote-detail__option--voted
-              style={isMine ? { borderColor: 'var(--ok)', background: 'var(--ok-wash)' } : undefined}
+              className={`vote-embed-option vote-embed-option--result${
+                isMine ? ' vote-embed-option--voted' : ''
+              }`}
             >
               <div className="vote-embed-bar" style={{ width: `${o.percentage}%` }} />
               <div className="vote-embed-option-content">
@@ -138,7 +139,7 @@ export default function VoteEmbed({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// VoteIdCopy — ID 行 + 复制按钮（对齐 Flask copyVoteId：写剪贴板 → “已复制” 1.5s 回退）
+// VoteIdCopy — ID 行 + 复制按钮（对齐 Flask copyVoteId：写剪贴板 →"已复制" 1.5s 回退）
 // ─────────────────────────────────────────────────────────────────────────────
 export function VoteIdCopy({ voteId }: { voteId: string }) {
   const [copied, setCopied] = useState(false);
@@ -159,9 +160,9 @@ export function VoteIdCopy({ voteId }: { voteId: string }) {
 
   return (
     <div className="vote-item__id" style={{ marginTop: 12 }}>
-      <span className="text-muted">ID：</span>
+      <span>ID：</span>
       <code>{voteId}</code>
-      <button type="button" className="vote-copy-btn" onClick={copy}>
+      <button type="button" className="vote-item__copy-btn" onClick={copy}>
         {copied ? '已复制' : '复制'}
       </button>
     </div>
@@ -171,7 +172,7 @@ export function VoteIdCopy({ voteId }: { voteId: string }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // VoteDetailControls — 底部操作区（对齐 Flask vote-detail__actions / voters）
 //   • 所有人：返回上页
-//   • 创建者：锁定/解锁、删除，以及“查看详细投票情况”折叠
+//   • 创建者：锁定/解锁、删除，以及"查看详细投票情况"折叠
 // 管理动作通过传入的 server action 执行（锁定/解锁/删除），成功后刷新或跳转。
 // ─────────────────────────────────────────────────────────────────────────────
 interface VoterGroup {
@@ -284,8 +285,8 @@ export function VoteDetailControls({
               style={{ marginTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}
             >
               {voterGroups.map((g, i) => (
-                <div key={i} className="text-muted" style={{ fontSize: '0.875rem' }}>
-                  <strong style={{ color: 'var(--ink)' }}>{g.label}</strong>（{g.count} 票）：
+                <div key={i} style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)' }}>
+                  <strong style={{ color: 'var(--color-text-primary)' }}>{g.label}</strong>（{g.count} 票）：
                   {g.voters.length > 0 ? g.voters.join('、') : '暂无投票'}
                 </div>
               ))}

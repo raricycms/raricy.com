@@ -4,7 +4,7 @@ import { listPublicLogs } from '@/lib/audit-service';
 import { prisma } from '@/lib/db';
 import ActionFilter from './ActionFilter';
 
-export const dynamic = 'force-dynamic'; // 依赖查询参数，禁用静态化
+export const dynamic = 'force-dynamic';
 
 interface SearchParams {
   page?: string;
@@ -33,7 +33,6 @@ export default async function AuditPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
-  // layout 已鉴权；这里再判一次做纵深防御（页面若被单独复用/直连也拦得住）。
   await requireCoreUser();
   const sp = await searchParams;
   const result = await listPublicLogs({
@@ -41,8 +40,6 @@ export default async function AuditPage({
     action: sp.action ?? null,
   });
 
-  // 已撤回标记：对齐 Flask log.appeals.filter_by(status='accepted').first()。
-  // 有任一 accepted 申诉即视为「已撤回」，行加 log-row--reverted、状态列显示撤回徽章。
   const logIds = result.items.map((log) => log.id);
   const acceptedRows = logIds.length
     ? await prisma.adminActionAppeal.findMany({
@@ -83,7 +80,7 @@ export default async function AuditPage({
               const oid = log.object?.id;
               const reverted = revertedSet.has(log.id);
               return (
-                <tr key={log.id} className={reverted ? 'log-row--reverted' : ''}>
+                <tr key={log.id} className={reverted ? 'log-row--reverted' : undefined}>
                   <td className="log-row__type">{log.action}</td>
                   <td>{log.admin.username ?? log.admin.id}</td>
                   <td>
@@ -116,7 +113,9 @@ export default async function AuditPage({
                       <span className="status-badge">—</span>
                     )}
                   </td>
-                  <td><Link href={`/audit/${log.id}`}>详情</Link></td>
+                  <td>
+                    <Link href={`/audit/${log.id}`}>详情</Link>
+                  </td>
                 </tr>
               );
             })}
@@ -129,15 +128,21 @@ export default async function AuditPage({
           <ul className="pagination">
             {result.hasPrev && (
               <li className="page-item">
-                <Link className="page-link" href={qs(result.page - 1)}>上一页</Link>
+                <Link className="page-link" href={qs(result.page - 1)}>
+                  上一页
+                </Link>
               </li>
             )}
             <li className="page-item disabled">
-              <span className="page-link">{result.page}/{result.pages}</span>
+              <span className="page-link">
+                {result.page}/{result.pages}
+              </span>
             </li>
             {result.hasNext && (
               <li className="page-item">
-                <Link className="page-link" href={qs(result.page + 1)}>下一页</Link>
+                <Link className="page-link" href={qs(result.page + 1)}>
+                  下一页
+                </Link>
               </li>
             )}
           </ul>

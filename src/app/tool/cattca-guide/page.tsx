@@ -46,7 +46,7 @@ export default function CattcaGuidePage() {
         @media (max-width:768px){.guide__content{padding:1.5rem}.guide__content h1{font-size:1.6rem}}
       `}</style>
       <div className="guide wrap">
-        <Link href="/tool/cattca" className="guide__back">← 返回 Cattca 编辑器</Link>
+        <Link href="/tool/cattca" className="story-cattca__back guide__back">← 返回 Cattca 编辑器</Link>
         <div className="guide__content" dangerouslySetInnerHTML={{ __html: html }} />
       </div>
     </>

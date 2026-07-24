@@ -150,8 +150,6 @@ export default function UltimateTicTacToe() {
 
   return (
     <div className="uttt">
-      <style>{UTTT_CSS}</style>
-
       <div className="uttt__status" style={{ color: status.color }}>
         {status.text}
       </div>
@@ -210,8 +208,8 @@ export default function UltimateTicTacToe() {
   );
 }
 
-// 自包含样式（作用域前缀 uttt__，不依赖设计系统之外的类；颜色沿用设计令牌 + X 红/O 蓝）
-const UTTT_CSS = `
+// 自包含样式已迁移至 src/styles-scss/pages/game/_utictactoe.scss / 编译产物 flask.css
+const _UNUSED_UTTT_CSS = `
 .uttt { display: flex; flex-direction: column; align-items: center; gap: 16px; }
 .uttt__status { font-size: 1.1rem; font-weight: 600; min-height: 1.4em; text-align: center; }
 .uttt__board {

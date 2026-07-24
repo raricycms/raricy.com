@@ -1,0 +1,22 @@
+.upload-hero {
+    background: var(--color-background-page);
+    padding: 50px 0 30px;
+    text-align: center;
+}
+
+.blog-form-container {
+    max-width: 900px;
+    margin: 40px auto;
+    background: var(--color-background-card);
+    border-radius: 30px;
+    padding: 40px;
+}
+
+#message-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 9999;
+    min-width: 300px;
+    background: var(--color-background-content);
+}
