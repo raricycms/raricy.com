@@ -60,3 +60,9 @@ test('不存在的文章 ID 返回 404', async ({ page }) => {
   const res = await page.goto('/blog/definitely-not-a-real-blog-id');
   expect(res?.status()).toBe(404);
 });
+
+test('博客详情页里的数学公式被 MathJax 渲染', async ({ page }) => {
+  await page.goto(`/blog/${SEED_BLOG.id}`);
+  // CHTML 输出会以 <mjx-container jax="CHTML"> 包裹每个公式。
+  await expect(page.locator('mjx-container[jax="CHTML"]').first()).toBeVisible({ timeout: 15_000 });
+});

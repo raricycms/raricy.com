@@ -24,7 +24,9 @@ export const SEED_BLOG = {
   id: 'e2e-blog-0001',
   title: 'E2E 测试文章',
   description: 'E2E 列表页用的摘要',
-  content: `# E2E 标题\n\n${BLOG_BODY_MARKER}\n\n- 列表项一\n- 列表项二\n`,
+  content:
+    `# E2E 标题\n\n${BLOG_BODY_MARKER}\n\n- 列表项一\n- 列表项二\n\n` +
+    `行内公式 $\\int_0^1 x^2 \\, dx = 1/3$ 与化学式 $\\ce{H2O}$ 验证 MathJax 模块化加载。\n`,
 };
 
 /** 一条公示的管理操作日志 —— /audit 列表与 /audit/[id] 详情页用例的锚点。 */

@@ -23,6 +23,10 @@ coverage/
 # 运行时数据目录（头像 / 图床 / 故事 / 数据库）—— 绝不入库
 /instance/
 
+# vditor 的 icon sprite + KaTeX 静态资源 —— 从 npm 包拷贝，
+# 不要直接入库（保持 /public/static/vditor/ 由 `npm run prepare:vditor` 重建）
+/public/static/vditor/
+
 # Python 副产物（历史迁移文档里的代码示例等可能产生）
 __pycache__/
 *.pyc

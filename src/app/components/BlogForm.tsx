@@ -1,19 +1,18 @@
 'use client';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// BlogForm — 发布/编辑文章表单（逐字对齐 Flask 模板 blog/edit_blog.html）。
+// BlogForm — 发布/编辑文章表单（Flask BEM）
 //
-// - 编辑器：优先 Vditor（'ir' 模式，CDN 加载），失败回落到基础 textarea（对齐原模板 fallback）。
-// - 提交：新建 → POST /api/blogs；编辑 → PUT /api/blogs/:id。请求体 { title, description, content, category_id }。
-// - 前端软校验（30/100/250000）与文案、成功提示/跳转均对齐原模板。
-// - 禁言时展示横幅并禁用表单（opacity .5 + pointer-events:none）。
-// ─────────────────────────────────────────────────────────────────────────────
-
+// - 编辑器：vditor npm 包（vditor@3.10.7），icon sprite + KaTeX 从 /static/vditor 本地加载
+// - 提交：新建 → POST /api/blogs；编辑 → PUT /api/blogs/:id
+// - 禁言时展示横幅并禁用表单
 import { useEffect, useRef } from 'react';
+import Vditor from 'vditor';
+import 'vditor/dist/index.css';
 import type { CategoryHierarchy } from '@/lib/blog-service';
 
-const VDITOR_VERSION = '3.10.7';
-const VDITOR_CDN = `https://cdn.jsdelivr.net/npm/vditor@${VDITOR_VERSION}`;
+// vditor 默认会从远端拉 icon sprite / 预览用 KaTeX；本仓把这些资源拷到
+// public/static/vditor/，并把 cdn 指向这个本地路径，避免运行时依赖 unpkg。
+const VDITOR_LOCAL_CDN = '/static/vditor';
 
 function toast(msg: string, type: string) {
   if (typeof window === 'undefined') return;
@@ -45,14 +44,13 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
   const isEdit = !!blog;
   const initialMarkdown = blog?.contentMarkdown ?? '';
 
-  const vditorRef = useRef<unknown>(null);
+  const vditorRef = useRef<Vditor | null>(null);
   const vditorLoadedRef = useRef(false);
   const editorDivRef = useRef<HTMLDivElement>(null);
   const fallbackMsgRef = useRef<HTMLParagraphElement>(null);
   const fallbackRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    // 禁言态不初始化编辑器（表单已禁用）
     if (banInfo) return;
     let cancelled = false;
 
@@ -67,66 +65,26 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
       vditorLoadedRef.current = false;
     }
 
-    function initVditor() {
-      const w = window as unknown as { Vditor?: new (el: string, opts: object) => unknown };
-      if (typeof w.Vditor === 'undefined') {
-        showFallback();
-        return;
-      }
-      try {
-        const config = {
-          minHeight: 500,
-          mode: 'ir',
-          cdn: VDITOR_CDN,
-          toolbar: [
-            'emoji', 'headings', 'bold', 'italic', 'strike', 'link', '|',
-            'list', 'ordered-list', 'check', 'outdent', 'indent', '|',
-            'quote', 'line', 'code', 'inline-code', 'upload', 'table', '|',
-            'undo', 'redo', 'preview', 'export',
-          ],
-          counter: { enable: true, type: 'text' },
-          upload: { url: '/api/images', accept: 'image/*', max: 10 * 1024 * 1024 },
-          cache: isEdit ? { enable: false } : { enable: true, id: 'blog-upload-editor' },
-          value: initialMarkdown,
-        };
-        vditorRef.current = new w.Vditor('editor', config);
-        vditorLoadedRef.current = true;
-      } catch {
-        showFallback();
-      }
-    }
-
-    // 注入 Vditor 样式与脚本（对齐模板的 CDN 引用），失败时回落 textarea
-    if (!document.getElementById('vditor-css')) {
-      const link = document.createElement('link');
-      link.id = 'vditor-css';
-      link.rel = 'stylesheet';
-      link.href = `${VDITOR_CDN}/dist/index.css`;
-      document.head.appendChild(link);
-    }
-
-    const w = window as unknown as { Vditor?: unknown };
-    if (typeof w.Vditor !== 'undefined') {
-      initVditor();
-    } else {
-      const existing = document.getElementById('vditor-js') as HTMLScriptElement | null;
-      const onLoad = () => {
-        if (!cancelled) initVditor();
-      };
-      const onError = () => {
-        if (!cancelled) showFallback();
-      };
-      if (existing) {
-        existing.addEventListener('load', onLoad);
-        existing.addEventListener('error', onError);
-      } else {
-        const script = document.createElement('script');
-        script.id = 'vditor-js';
-        script.src = `${VDITOR_CDN}/dist/index.min.js`;
-        script.addEventListener('load', onLoad);
-        script.addEventListener('error', onError);
-        document.body.appendChild(script);
-      }
+    try {
+      if (cancelled) return;
+      vditorRef.current = new Vditor('editor', {
+        minHeight: 500,
+        mode: 'ir',
+        cdn: VDITOR_LOCAL_CDN,
+        toolbar: [
+          'emoji', 'headings', 'bold', 'italic', 'strike', 'link', '|',
+          'list', 'ordered-list', 'check', 'outdent', 'indent', '|',
+          'quote', 'line', 'code', 'inline-code', 'upload', 'table', '|',
+          'undo', 'redo', 'preview', 'export',
+        ],
+        counter: { enable: true, type: 'text' },
+        upload: { url: '/api/images', accept: 'image/*', max: 10 * 1024 * 1024 },
+        cache: isEdit ? { enable: false } : { enable: true, id: 'blog-upload-editor' },
+        value: initialMarkdown,
+      });
+      vditorLoadedRef.current = true;
+    } catch {
+      showFallback();
     }
 
     return () => {
@@ -137,8 +95,7 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
 
   function getContent(): string {
     if (vditorLoadedRef.current && vditorRef.current) {
-      const v = vditorRef.current as { getValue: () => string };
-      return v.getValue();
+      return vditorRef.current.getValue();
     }
     return fallbackRef.current?.value ?? '';
   }
@@ -184,7 +141,7 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
           'success'
         );
         if (!isEdit && vditorLoadedRef.current && vditorRef.current) {
-          (vditorRef.current as { clearCache?: () => void }).clearCache?.();
+          vditorRef.current.clearCache();
         }
         setTimeout(
           () => {
@@ -201,142 +158,153 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
   }
 
   return (
-    <>
-      <section className="upload-hero">
-        {isEdit ? (
-          <>
-            <h1>编辑文章</h1>
-            <div className="text-muted">ID: {blog!.id}</div>
-            <div className="mt-2" style={{ marginTop: 30 }}>
-              <a className="button button-primary" href={`/blog/${blog!.id}`}>
-                返回阅读页
-              </a>
-            </div>
-          </>
-        ) : (
-          <h1>发布新文章</h1>
-        )}
-      </section>
-
-      <div className="blog-form-container">
-        {banInfo && (
-          <div className="alert alert-danger" role="alert">
-            <h5 className="alert-heading">您已被禁言</h5>
-            <p className="mb-2">您当前无法{isEdit ? '编辑' : '发布新'}文章。</p>
-            <hr />
-            <p className="mb-0">
-              <strong>原因：</strong>
-              {banInfo.reason}
-              <br />
-              {banInfo.banUntilText && (
-                <>
-                  <strong>解除时间：</strong>
-                  {banInfo.banUntilText}
-                  <br />
-                </>
-              )}
-              {banInfo.remainingHours != null &&
-                (banInfo.remainingHours > 24 ? (
-                  <>
-                    <strong>剩余时间：</strong>约{(banInfo.remainingHours / 24).toFixed(1)}天
-                  </>
-                ) : (
-                  <>
-                    <strong>剩余时间：</strong>约{banInfo.remainingHours.toFixed(1)}小时
-                  </>
-                ))}
-            </p>
-          </div>
-        )}
-
-        <form
-          id="blogForm"
-          onSubmit={onSubmit}
-          style={banInfo ? { opacity: 0.5, pointerEvents: 'none' } : undefined}
+    <section className="blog-form-container" id="blog-form-container">
+      {isEdit && (
+        <div
+          className="d-flex justify-content-between align-items-center mb-3"
         >
-          <div className="mb-3">
-            <label htmlFor="title" className="form-label">
-              标题
-            </label>
-            <input
-              type="text"
-              className="form-control"
-              id="title"
-              name="title"
-              defaultValue={blog?.title ?? ''}
-              required
-            />
+          <div>
+            <h3 className="form-label">编辑文章 ID: {blog!.id}</h3>
           </div>
+          <a href={`/blog/${blog!.id}`} className="button button-primary-small">
+            返回阅读页
+          </a>
+        </div>
+      )}
 
-          <div className="mb-3">
-            <label htmlFor="description" className="form-label">
-              摘要
-            </label>
-            <textarea
-              className="form-control"
-              id="description"
-              name="description"
-              rows={3}
-              defaultValue={blog?.description ?? ''}
-              required
-            />
-          </div>
-
-          <div className="mb-3">
-            <label htmlFor="category" className="form-label">
-              栏目
-            </label>
-            <select className="form-select" id="category" name="category" defaultValue={blog?.categoryId ?? ''}>
-              <option value="" className="form-option">
-                选择栏目
-              </option>
-              {categories.map((category) => (
-                <optgroup key={category.id} label={`${category.icon ?? ''} ${category.name}`}>
-                  <option value={category.id} className="form-option">
-                    {category.icon} {category.name}
-                  </option>
-                  {category.children.map((child) => (
-                    <option key={child.id} value={child.id} className="form-option">
-                      　└ {child.icon} {child.name}
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
-          </div>
-
-          <div className="mb-3">
-            <label className="form-label">内容（Markdown格式）（注意：粘贴的内容会自动变为引用。）</label>
-            <div id="editor" ref={editorDivRef} style={{ height: '60vh' }}></div>
-            <p
-              id="fallback-message"
-              ref={fallbackMsgRef}
-              className="form-text text-muted"
-              style={{ display: 'none' }}
-            >
-              Markdown编辑器加载失败，已切换到基础文本输入框。
+      {banInfo && (
+        <div
+          className="alert alert-danger"
+          role="alert"
+        >
+          <strong>
+            您已被禁言，无法{isEdit ? '编辑' : '发布新'}文章
+          </strong>
+          <p style={{ margin: '8px 0 4px' }}>
+            <strong>原因：</strong>
+            {banInfo.reason}
+          </p>
+          {banInfo.banUntilText && (
+            <p style={{ margin: '4px 0' }}>
+              <strong>解除时间：</strong>
+              {banInfo.banUntilText}
             </p>
-            <textarea
-              id="fallback-editor"
-              ref={fallbackRef}
-              className="form-control"
-              rows={20}
-              style={{ display: 'none' }}
-            ></textarea>
-          </div>
+          )}
+          {banInfo.remainingHours != null && (
+            <p style={{ margin: '4px 0 0' }}>
+              <strong>剩余时间：</strong>
+              {banInfo.remainingHours > 24
+                ? `约${(banInfo.remainingHours / 24).toFixed(1)}天`
+                : `约${banInfo.remainingHours.toFixed(1)}小时`}
+            </p>
+          )}
+        </div>
+      )}
 
-          <div className="btn-row">
-            <button type="submit" className="button button-primary">
-              {isEdit ? '保存修改' : '提交'}
-            </button>
-            {isEdit && (
-              <a href={`/blog/${blog!.id}`} className="btn btn-outline-secondary">
-                取消
-              </a>
-            )}
-          </div>
-        </form>
-      </div>
-    </>
+      <form
+        id="blogForm"
+        onSubmit={onSubmit}
+        style={banInfo ? { opacity: 0.5, pointerEvents: 'none' } : undefined}
+      >
+        <div className="form-group">
+          <label htmlFor="title" className="form-label">
+            标题
+          </label>
+          <input
+            type="text"
+            className="form-control"
+            id="title"
+            name="title"
+            defaultValue={blog?.title ?? ''}
+            required
+          />
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="description" className="form-label">
+            摘要
+          </label>
+          <textarea
+            className="form-control"
+            id="description"
+            name="description"
+            rows={3}
+            defaultValue={blog?.description ?? ''}
+            required
+          />
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="category" className="form-label">
+            栏目
+          </label>
+          <select
+            className="form-select"
+            id="category"
+            name="category"
+            defaultValue={blog?.categoryId ?? ''}
+          >
+            <option value="">选择栏目</option>
+            {categories.map((category) => (
+              <optgroup key={category.id} label={`${category.icon ?? ''} ${category.name}`}>
+                <option value={category.id}>
+                  {category.icon} {category.name}
+                </option>
+                {category.children.map((child) => (
+                  <option key={child.id} value={child.id}>
+                    {child.icon} {child.name}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">
+            内容（Markdown 格式）
+          </label>
+          <div
+            id="editor"
+            ref={editorDivRef}
+            style={{
+              height: '60vh',
+              background: 'var(--color-background-content)',
+              border: '2px solid var(--color-border)',
+              borderRadius: '15px',
+            }}
+          ></div>
+          <p
+            id="fallback-message"
+            ref={fallbackMsgRef}
+            className="form-text"
+            style={{ display: 'none' }}
+          >
+            Markdown 编辑器加载失败，已切换到基础文本输入框。
+          </p>
+          <textarea
+            id="fallback-editor"
+            ref={fallbackRef}
+            className="form-control"
+            rows={20}
+            style={{
+              display: 'none',
+              fontFamily: 'ui-monospace, monospace',
+            }}
+          ></textarea>
+        </div>
+
+        <div className="actions">
+          <button type="submit" className="button button-primary">
+            {isEdit ? '保存修改' : '提交'}
+          </button>
+          {isEdit && (
+            <a href={`/blog/${blog!.id}`} className="button button-primary-small">
+              取消
+            </a>
+          )}
+        </div>
+      </form>
+    </section>
   );
 }

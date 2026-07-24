@@ -3,13 +3,18 @@
 // 博客正文客户端渲染：marked + DOMPurify + highlight.js（对齐 Flask markdown_renderer.js）。
 // 额外对齐（本波）：
 //   • 内容引用预处理（[@id]）：8位→剪贴板正文内联 / 9位→投票嵌入 / 10位→图床图片。
-//   • MathJax：行内 $..$ / \(..\)、块级 $$..$$ / \[..\]、mhchem（加载 tex-mml-chtml.js）。
+//   • MathJax：行内 $..$ / \(..\)、块级 $$..$$ / \[..\]、mhchem（mathjax-full 模块化 API）。
 //   • 代码高亮亮/暗双主题随 data-theme 切换（github / monokai，media 切换，对齐原站）。
 //   • 代码块「复制」按钮、图片点击放大、外链 target=_blank 加固、任务列表 checkbox。
 import { useEffect, useRef, useState } from 'react';
 import { Marked } from 'marked';
 import DOMPurify from 'dompurify';
 import hljs from 'highlight.js';
+import { mathjax } from 'mathjax-full/js/mathjax.js';
+import { TeX } from 'mathjax-full/js/input/tex.js';
+import { CHTML } from 'mathjax-full/js/output/chtml.js';
+import { RegisterHTMLHandler } from 'mathjax-full/js/handlers/html.js';
+import { AllPackages } from 'mathjax-full/js/input/tex/AllPackages.js';
 
 // ── 内容引用预处理器（对齐 clipboard-processor.js，端点改为 Next API）───────────
 class ContentRefProcessor {
@@ -125,41 +130,49 @@ function useHljsThemeStyles() {
   }, []);
 }
 
-// ── MathJax：设置配置并加载 tex-mml-chtml.js（含 mhchem）────────────────────────
-function ensureMathJax(): Promise<void> {
-  const w = window as unknown as {
-    MathJax?: { typesetPromise?: (els: HTMLElement[]) => Promise<void>; startup?: { promise?: Promise<void> } };
-  };
-  if (w.MathJax) {
-    return w.MathJax.startup?.promise ?? Promise.resolve();
-  }
-  (window as unknown as { MathJax: unknown }).MathJax = {
-    tex: {
-      inlineMath: [['$', '$'], ['\\(', '\\)']],
-      displayMath: [['$$', '$$'], ['\\[', '\\]']],
-      processEscapes: true,
-      processEnvironments: true,
-      packages: { '[+]': ['ams', 'newcommand', 'configmacros', 'action', 'bbox', 'boldsymbol', 'braket', 'cancel', 'color', 'enclose', 'extpfeil', 'mhchem', 'unicode', 'verb'] },
-      macros: {
-        RR: '\\mathbb{R}', NN: '\\mathbb{N}', ZZ: '\\mathbb{Z}', QQ: '\\mathbb{Q}',
-        CC: '\\mathbb{C}', PP: '\\mathbb{P}', EE: '\\mathbb{E}', FF: '\\mathbb{F}',
-      },
+// ── MathJax：模块化 mathjax-full（CHTML 输出），page-lifetime 单例─────────────
+import { browserAdaptor } from 'mathjax-full/js/adaptors/browserAdaptor.js';
+
+interface TypesetContext {
+  ready: boolean;
+  tex?: TeX<any, any, any>;
+  chtml?: CHTML<any, any, any>;
+}
+
+// 跨 MarkdownRenderer 实例复用 mathjax 句柄链。第一次见到数学公式时懒初始化。
+const typesetCtx: TypesetContext = { ready: false };
+
+function ensureMathJax(): TypesetContext {
+  if (typesetCtx.ready) return typesetCtx;
+  // RegisterHTMLHandler 内部已把 HTMLHandler 注册到 mathjax.handlers；
+  // TeX / CHTML 不属 Handler，要走 mathjax.document({ InputJax, OutputJax })。
+  RegisterHTMLHandler(browserAdaptor());
+  typesetCtx.tex = new TeX({
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    processEnvironments: true,
+    packages: AllPackages,
+    macros: {
+      RR: '\\mathbb{R}', NN: '\\mathbb{N}', ZZ: '\\mathbb{Z}', QQ: '\\mathbb{Q}',
+      CC: '\\mathbb{C}', PP: '\\mathbb{P}', EE: '\\mathbb{E}', FF: '\\mathbb{F}',
     },
-    options: { ignoreHtmlClass: 'tex2jax_ignore', processHtmlClass: 'tex2jax_process' },
-    svg: { fontCache: 'global' },
-  };
-  return new Promise<void>((resolve) => {
-    const s = document.createElement('script');
-    s.id = 'MathJax-script';
-    s.async = true;
-    s.src = 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js';
-    s.onload = () => {
-      const mj = (window as unknown as { MathJax?: { startup?: { promise?: Promise<void> } } }).MathJax;
-      (mj?.startup?.promise ?? Promise.resolve()).then(resolve).catch(() => resolve());
-    };
-    s.onerror = () => resolve();
-    document.head.appendChild(s);
   });
+  typesetCtx.chtml = new CHTML({ enableMenu: false, fontCache: 'global' });
+  typesetCtx.ready = true;
+  return typesetCtx;
+}
+
+function typesetMath(root: HTMLElement): void {
+  const ctx = ensureMathJax();
+  if (!ctx.tex || !ctx.chtml) return;
+  // mathjax.document 接受真实 DOM 节点，render() 同步改写 in-place。
+  const doc = mathjax.document(root, { InputJax: ctx.tex, OutputJax: ctx.chtml });
+  try {
+    doc.render();
+  } catch {
+    /* 公式语法错误时静默保留原文，不影响页面其他内容 */
+  }
 }
 
 export default function MarkdownRenderer({ content }: { content: string }) {
@@ -298,25 +311,22 @@ export default function MarkdownRenderer({ content }: { content: string }) {
     // MathJax 数学公式
     const hasMath = /\$\$|\\\[|\\\]|\$[^$\n]+\$|\\\(|\\\)/.test(root.innerHTML);
     if (hasMath) {
-      ensureMathJax().then(() => {
-        const mj = (window as unknown as { MathJax?: { typesetPromise?: (els: HTMLElement[]) => Promise<void> } }).MathJax;
-        if (mj?.typesetPromise && containerRef.current) mj.typesetPromise([containerRef.current]).catch(() => {});
-      });
+      typesetMath(root);
     }
   }, [html]);
 
   return (
-    <div className="blog-content-container-container">
+    <div>
       {ready ? (
         <div
           ref={containerRef}
-          className="blog-content-container"
+          className="story-reader__content"
           id="userContentContainer"
           // 已经 DOMPurify 净化
           dangerouslySetInnerHTML={{ __html: html }}
         />
       ) : (
-        <div className="blog-content-container" id="userContentContainer" ref={containerRef}>
+        <div className="story-reader__content" id="userContentContainer" ref={containerRef}>
           <div id="loading-indicator" className="text-center my-4">
             <div className="spinner-border text-primary" role="status">
               <span className="visually-hidden">加载中...</span>
