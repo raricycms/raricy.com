@@ -20,15 +20,23 @@ export default function Navbar({ user }: { user: SafeUser | null }) {
         </Link>
 
         <button
-          className="site-navbar-toggler"
+          className={`site-navbar-toggler${user ? ' site-navbar-toggler--avatar' : ''}`}
           type="button"
           aria-expanded="false"
           aria-controls="siteNavbar"
-          aria-label="切换导航"
+          aria-label={user ? `切换导航（${user.username}）` : '切换导航'}
         >
-          <span className="bar"></span>
-          <span className="bar"></span>
-          <span className="bar"></span>
+          {user ? (
+            <span className="site-user-avatar">
+              <img src={`/api/avatar/${user.id}`} alt={user.username} />
+            </span>
+          ) : (
+            <>
+              <span className="bar"></span>
+              <span className="bar"></span>
+              <span className="bar"></span>
+            </>
+          )}
         </button>
 
         {/* 头像下拉：从 collapse 内拿出，移动端折叠态仍可见。

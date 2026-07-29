@@ -325,6 +325,28 @@ a:hover {
   transition: transform 0.2s ease, opacity 0.2s ease;
 }
 
+.site-navbar-toggler--avatar {
+  padding: 0;
+  width: 36px;
+  height: 36px;
+  gap: 0;
+  flex-direction: row;
+  overflow: hidden;
+}
+.site-navbar-toggler--avatar .site-user-avatar {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  overflow: hidden;
+  margin: 0;
+  display: block;
+}
+.site-navbar-toggler--avatar .site-user-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .site-navbar-collapse {
   display: flex;
   align-items: center;
