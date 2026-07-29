@@ -20,7 +20,7 @@ export default async function FishPage() {
     <div className="container" style={{ padding: '2rem 0' }}>
       <div className="fish-card">
         <div className="fish-card__header">
-          <span className="fish-card__title">🐟 小鱼干</span>
+          <span className="fish-card__title"><span className="icon icon-fish" aria-hidden="true" style={{ marginRight: '0.5rem' }}></span>小鱼干</span>
         </div>
         <div className="fish-card__body">
           <div className="fish-card__balance">

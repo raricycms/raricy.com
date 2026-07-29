@@ -95,7 +95,7 @@ export default function Navbar({ user }: { user: SafeUser | null }) {
                     </li>
                     <li role="none">
                       <Link className="site-dropdown-item" role="menuitem" href="/fish">
-                        <span style={{ marginRight: '.5rem' }}>🐟</span>小鱼干
+                        <span className="icon icon-fish" style={{ marginRight: '.5rem' }} aria-hidden="true"></span>小鱼干
                       </Link>
                     </li>
                     {hasAdminRights(user) && (

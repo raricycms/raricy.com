@@ -1,7 +1,7 @@
 'use client';
 
 // FeedButton — 文章详情页「读者交互区」。对齐 Flask 三个组件的可见/可交互形态：
-//   • like_system：.read-controls（点赞按钮 + 🐟投喂触发按钮 + 返回上页）
+//   • like_system：.read-controls（点赞按钮 + 鱼干图标投喂触发按钮 + 返回上页）
 //   • feed_fish_system：两步式投喂弹窗（选数量 → 确认），由投喂按钮触发
 //   • admin_controls + modal_system：管理员/作者可见的「查看点赞者/投喂者/编辑/删除」
 //     及对应模态框（点赞者列表 / 投喂者列表 / 删除确认）
@@ -320,7 +320,7 @@ export default function FeedButton({
           disabled={isAuth && fed >= FEED_CAP}
           aria-label="投喂小鱼干"
         >
-          <span aria-hidden="true">🐟</span>
+          <span className="icon icon-fish" aria-hidden="true"></span>
           <span>投喂</span>
           <span className="fish-count-badge" id="fish-count">
             {fishCount}
@@ -337,7 +337,7 @@ export default function FeedButton({
         <div className="feed-modal__backdrop" onClick={() => setFeedOpen(false)} />
         <div className="feed-modal__content">
           <div className="feed-modal__header">
-            <h3>🐟 投喂小鱼干</h3>
+            <h3><span className="icon icon-fish" aria-hidden="true" style={{ marginRight: '0.5rem' }}></span>投喂小鱼干</h3>
             <p id="feedModalStatus">{feedStatus}</p>
           </div>
           <div className="feed-modal__buttons" id="feedButtons">
@@ -376,7 +376,7 @@ export default function FeedButton({
             查看点赞者
           </button>
           <button id="admin-feeders-btn" className="read-btn" onClick={openFeeders}>
-            🐟 查看投喂者
+            <span className="icon icon-fish" aria-hidden="true" style={{ marginRight: '0.4rem' }}></span>查看投喂者
           </button>
           {canEdit && (
             <a href={`/blog/${blogId}/edit`} className="read-btn">
@@ -469,7 +469,7 @@ export default function FeedButton({
           <div className="modal-dialog modal-dialog-centered">
             <div className="modal-content">
               <div className="modal-header">
-                <h5 className="modal-title">🐟 投喂者列表</h5>
+                <h5 className="modal-title"><span className="icon icon-fish" aria-hidden="true" style={{ marginRight: '0.5rem' }}></span>投喂者列表</h5>
                 <button type="button" className="btn-close" aria-label="Close" onClick={() => setModal(null)} />
               </div>
               <div className="modal-body">
@@ -496,7 +496,7 @@ export default function FeedButton({
                               fontSize: '0.9rem',
                             }}
                           >
-                            🐟 {f.amount}
+                            <span className="icon icon-fish" aria-hidden="true" style={{ marginRight: '0.3rem' }}></span>{f.amount}
                           </span>
                         </div>
                       </div>

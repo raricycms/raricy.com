@@ -135,7 +135,7 @@ export default async function BlogListPage({
                           <span>{b.commentsCount ?? 0}</span>
                         </span>
                         <span className="blog-fish" title="小鱼干">
-                          <span className="icon" aria-hidden="true">🐟</span>
+                          <span className="icon icon-fish" aria-hidden="true"></span>
                           <span>{b.fishCount ?? 0}</span>
                         </span>
                       </div>

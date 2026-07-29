@@ -57,7 +57,7 @@ export default async function FishTransactionsPage({
 
   return (
     <div className="content-wrapper">
-      <h1 className="page-title">🐟 小鱼干流水</h1>
+      <h1 className="page-title"><span className="icon icon-fish" aria-hidden="true" style={{ marginRight: '0.5rem' }}></span>小鱼干流水</h1>
 
       <div className="fish-filter-bar">
         {FILTERS.map((f) => (
@@ -150,7 +150,7 @@ export default async function FishTransactionsPage({
         </>
       ) : (
         <div className="empty-state">
-          <div className="empty-state-icon">🐟</div>
+          <div className="empty-state-icon"><span className="icon icon-fish" aria-hidden="true" style={{ width: '3rem', height: '3rem' }}></span></div>
           <h3>暂无流水</h3>
           <p>还没有小鱼干交易记录，快去签到赚取吧！</p>
         </div>
