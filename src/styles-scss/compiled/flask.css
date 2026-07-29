@@ -3132,6 +3132,11 @@ a:hover {
   font-weight: bold;
   padding: 4px 12px;
 }
+.blog-fish .icon {
+  width: 1rem;
+  height: 1rem;
+  color: var(--color-success-primary);
+}
 
 .blog-description {
   color: var(--color-text-secondary);
