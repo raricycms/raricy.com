@@ -5,6 +5,7 @@ import { prisma } from '@/lib/db';
 import MarkdownRenderer from '@/app/components/MarkdownRenderer';
 import CommentSection from '@/app/components/CommentSection';
 import FeedButton from '@/app/components/FeedButton';
+import ReadingProgress from '@/app/blog/ReadingProgress';
 import { getCurrentUser, hasAdminRights, isCoreUser } from '@/lib/auth';
 import { getFeedStatus } from '@/lib/feed-service';
 
@@ -36,10 +37,18 @@ export default async function BlogDetailPage({ params }: { params: Promise<{ id:
 
   return (
     <>
+      {/* 阅读进度条（对齐 Flask blog.html 顶部 .reading-progress） */}
+      <div className="reading-progress" />
+      {/* 客户端绑定 scroll → 进度条宽度 */}
+      <ReadingProgress />
+
       <header className="read-hero">
         <h1>{blog.title}</h1>
         <div className="blog-meta" id="blog-meta">
-          <span className="blog-date" id="blog-date"></span>
+          <span className="blog-author">
+            <img src={`/api/avatar/${blog.authorId}`} alt={blog.author?.username ?? ''} />
+            {blog.author?.username}
+          </span>
         </div>
       </header>
 

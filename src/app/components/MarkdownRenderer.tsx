@@ -316,17 +316,21 @@ export default function MarkdownRenderer({ content }: { content: string }) {
   }, [html]);
 
   return (
-    <div>
+    <div className="blog-content-container-container">
       {ready ? (
         <div
           ref={containerRef}
-          className="story-reader__content"
+          className="blog-content-container"
           id="userContentContainer"
           // 已经 DOMPurify 净化
           dangerouslySetInnerHTML={{ __html: html }}
         />
       ) : (
-        <div className="story-reader__content" id="userContentContainer" ref={containerRef}>
+        <div
+          className="blog-content-container"
+          id="userContentContainer"
+          ref={containerRef}
+        >
           <div id="loading-indicator" className="text-center my-4">
             <div className="spinner-border text-primary" role="status">
               <span className="visually-hidden">加载中...</span>
