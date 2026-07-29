@@ -396,7 +396,7 @@ export default function FeedButton({
       {/* 点赞者列表 Modal */}
       {canManage && (
         <div
-          className={`modal fade${modal === 'likers' ? ' show' : ''}`}
+          className={`modal${modal === 'likers' ? ' is-open' : ''}`}
           id="likersModal"
           role="dialog"
           aria-hidden={modal !== 'likers'}
@@ -460,7 +460,7 @@ export default function FeedButton({
       {/* 投喂者列表 Modal */}
       {canManage && (
         <div
-          className={`modal fade${modal === 'feeders' ? ' show' : ''}`}
+          className={`modal${modal === 'feeders' ? ' is-open' : ''}`}
           id="feedersModal"
           role="dialog"
           aria-hidden={modal !== 'feeders'}
@@ -536,7 +536,7 @@ export default function FeedButton({
       {/* 删除确认 Modal */}
       {canManage && (
         <div
-          className={`modal fade${modal === 'delete' ? ' show' : ''}`}
+          className={`modal${modal === 'delete' ? ' is-open' : ''}`}
           id="deleteConfirmModal"
           role="dialog"
           aria-hidden={modal !== 'delete'}
