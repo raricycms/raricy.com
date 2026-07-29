@@ -407,6 +407,12 @@ a {
     font-size: 15px;
     font-weight: bold;
     padding: 4px 12px;
+
+    .icon {
+        width: 1rem;
+        height: 1rem;
+        color: var(--color-success-primary);
+    }
 }
 
 .blog-description {
