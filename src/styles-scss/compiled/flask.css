@@ -626,18 +626,6 @@ body {
     max-height: 500px;
     overflow: visible;
   }
-  .site-user-dropdown {
-    position: fixed;
-    top: 9px;
-    right: 60px;
-    z-index: 1031;
-  }
-  .site-navbar.open .site-user-dropdown {
-    position: static;
-    top: auto;
-    right: auto;
-    z-index: auto;
-  }
   .site-nav {
     flex-direction: column;
     gap: 0;

@@ -86,9 +86,9 @@ a {
 
 // .site-user-dropdown 仍在 .site-actions 内（在 .site-navbar-collapse 内）。
 // 桌面端：hamburger display:none，collapse 占满中间，dropdown 留最右。
-// 移动端：collapse 整体折叠（含 actions + nav），用 position:fixed 让头像
-// 按钮在折叠态浮在 navbar 右上角（绕开 collapse 的 max-height:0 截切），
-// navbar 展开后收回 collapse 与 actions 并排。
+// 移动端：collapse 整体折叠（actions + nav 一起随 hamburger 收起）；
+// 头像按钮不另作浮动 —— 折叠态看不到头像是预期行为，要看头像先点
+// hamburger 展开 navbar。
 .site-navbar-collapse {
   display: flex;
   align-items: center;
@@ -432,21 +432,6 @@ body {
   .site-navbar.open .site-navbar-collapse {
     max-height: 500px;
     overflow: visible;
-  }
-
-  // 头像按钮 fixed 浮在 navbar 右上角（绕开 collapse max-height:0 的截切），
-  // 让折叠态下点头像也能弹下拉菜单。navbar 展开后收回 collapse 静态布局。
-  .site-user-dropdown {
-    position: fixed;
-    top: 9px;
-    right: 60px;
-    z-index: 1031;
-  }
-  .site-navbar.open .site-user-dropdown {
-    position: static;
-    top: auto;
-    right: auto;
-    z-index: auto;
   }
 
   .site-nav {
