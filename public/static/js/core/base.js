@@ -303,7 +303,19 @@ window.enhanceFileInputs = enhanceFileInputs;
 // DOMContentLoaded 早已触发完毕——若仍只注册该事件的监听器，回调永远不会执行，
 // 顶栏折叠 / 用户下拉 / 通知计数等会全部失效。故改为：DOM 已就绪则立即初始化。
 // （原 Flask 由 base.html 内联 <script> 在解析期执行，赶得上该事件，故无此问题。）
+//
+// 用 AbortController 收集本轮 init 注册的所有监听器：再次进入 initSiteChrome()
+// （HMR、SPA 重挂载、或测试反复执行）时先 abort 上一轮，避免监听器累积 ——
+// 头像下拉的 click 委托尤其需要这个：多次注册会让 toggle.click() 触发 N 次切 .open。
+const SITE_CHROME_CTRL_KEY = '__raricySiteChromeAbort';
+
 function initSiteChrome() {
+    const w = window;
+    if (w[SITE_CHROME_CTRL_KEY]) w[SITE_CHROME_CTRL_KEY].abort();
+    const ctrl = new AbortController();
+    w[SITE_CHROME_CTRL_KEY] = ctrl;
+    const { signal } = ctrl;
+
     updateNotificationCount();
     updateCheckinIndicator();
     enhanceFileInputs();
@@ -329,7 +341,7 @@ function initSiteChrome() {
         toggler.addEventListener('click', function () {
             const isOpen = siteNavbar.classList.toggle('open');
             toggler.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-        });
+        }, { signal });
         // 跨断点（如桌面端缩放 / 旋转）：离开 mobile 时清掉 .open，避免
         // aria-expanded 与 .site-navbar-collapse 的 max-height 状态错位。
         mqMobile.addEventListener('change', function (e) {
@@ -338,31 +350,35 @@ function initSiteChrome() {
     }
 
     // 用户下拉：mobile + desktop 行为一致 —— 点 toggle 切 .open。
-    const userDropdown = document.querySelector('.site-user-dropdown');
-    const userToggle = document.querySelector('.site-user-dropdown-toggle');
-    if (userDropdown && userToggle) {
-        userToggle.addEventListener('click', function (e) {
-            e.stopPropagation();
-            userDropdown.classList.toggle('open');
-            const expanded = userDropdown.classList.contains('open') ? 'true' : 'false';
-            userToggle.setAttribute('aria-expanded', expanded);
-        });
-        document.addEventListener('click', function (e) {
-            if (!userDropdown.contains(e.target)) {
-                userDropdown.classList.remove('open');
-                userToggle.setAttribute('aria-expanded', 'false');
+    //
+    // 用事件委托而不是直接绑 toggle：base.js 是 <Script strategy="afterInteractive">
+    // 加载的（仅执行一次）。登录流程 router.refresh() 会让 Navbar 从无头像切到
+    // 有头像 —— 新插入的 .site-user-dropdown-toggle 没绑过监听器，点击不会展开。
+    // 委托到 document 后，无论 toggle 何时插入 DOM 都能响应。
+    document.addEventListener('click', function (e) {
+        // 1) 点中 toggle：切 .open，然后 return（不触发后续"外部关闭"）
+        const toggle = e.target.closest && e.target.closest('.site-user-dropdown-toggle');
+        if (toggle) {
+            const dropdown = toggle.closest('.site-user-dropdown');
+            if (dropdown) {
+                dropdown.classList.toggle('open');
+                toggle.setAttribute('aria-expanded', dropdown.classList.contains('open') ? 'true' : 'false');
             }
-            // 移动端 navbar 展开后，点非 navbar 区域也收起
-            if (isMobile() && siteNavbar && !siteNavbar.contains(e.target)) {
-                closeNavbar();
+            return;
+        }
+        // 2) 点击页面其它位置：关闭所有已展开的头像下拉
+        document.querySelectorAll('.site-user-dropdown.open').forEach(function (d) {
+            if (!d.contains(e.target)) {
+                d.classList.remove('open');
+                const t = d.querySelector('.site-user-dropdown-toggle');
+                if (t) t.setAttribute('aria-expanded', 'false');
             }
         });
-    } else if (siteNavbar) {
-        // 没有头像下拉（如未登录态）也要保证外部点击能收起 navbar
-        document.addEventListener('click', function (e) {
-            if (isMobile() && !siteNavbar.contains(e.target)) closeNavbar();
-        });
-    }
+        // 3) 移动端：点非 navbar 区域收起 navbar
+        if (isMobile() && siteNavbar && !siteNavbar.contains(e.target)) {
+            closeNavbar();
+        }
+    }, { signal });
 
     // ESC 关闭移动端 navbar / 桌面端下拉菜单
     document.addEventListener('keydown', function (e) {
@@ -370,11 +386,12 @@ function initSiteChrome() {
         if (isMobile()) {
             closeNavbar();
         }
-        if (userDropdown && userDropdown.classList.contains('open')) {
-            userDropdown.classList.remove('open');
-            if (userToggle) userToggle.setAttribute('aria-expanded', 'false');
-        }
-    });
+        document.querySelectorAll('.site-user-dropdown.open').forEach(function (d) {
+            d.classList.remove('open');
+            const t = d.querySelector('.site-user-dropdown-toggle');
+            if (t) t.setAttribute('aria-expanded', 'false');
+        });
+    }, { signal });
 
     // 移动端：点导航链接后收起 navbar。
     // Navbar 在 root layout 里，Next 客户端路由跳转不会重建它，.open 会跨页残留。
@@ -382,7 +399,7 @@ function initSiteChrome() {
         siteNavbar.querySelectorAll('a.site-link').forEach(function (a) {
             a.addEventListener('click', function () {
                 if (isMobile()) closeNavbar();
-            });
+            }, { signal });
         });
     }
 

@@ -139,3 +139,69 @@ describe('健壮性：顶栏元素缺失时不应抛异常', () => {
     expect(() => new Function(BASE_JS)()).not.toThrow();
   });
 });
+
+describe('回归：登录后 Navbar 重渲染（user: null → user），新插入的 toggle 必须可点', () => {
+  //
+  // 【线上 bug】2026-07-29：登录页 router.refresh() 后，Navbar 里的
+  // .site-user-dropdown-toggle 是 React 新插入的 DOM 节点。
+  // base.js 是 <Script strategy="afterInteractive"> 加载的，仅执行一次；
+  // 它原本用 userToggle.addEventListener('click', ...) 直接绑元素，
+  // 所以初始化时若元素不存在，新插入的 toggle 永远点不开。
+  // 修复：用 document 上的事件委托 —— 监听器一次绑好，后续插入的节点
+  // 自动落入委托链。配合 AbortController 收口监听器，多次 init 互不污染。
+  //
+  it('✅ base.js 初始化时无下拉元素；之后插入的 toggle 点击可展开', () => {
+    // 1) 登录页状态：navbar 已就绪，但 user=null —— 无下拉
+    document.body.innerHTML = `
+      <nav class="site-navbar">
+        <button class="site-navbar-toggler" aria-expanded="false"></button>
+        <a class="site-link" href="/login">登录</a>
+      </nav>
+    `;
+    (globalThis as any).fetch = () =>
+      Promise.resolve({ ok: true, json: () => Promise.resolve({ code: 200, count: 0 }) });
+    new Function(BASE_JS)();
+
+    // 2) 模拟 router.refresh() 后 server 返回 user —— React 插入下拉 DOM
+    const navbar = document.querySelector('.site-navbar')!;
+    const dropdown = document.createElement('div');
+    dropdown.className = 'site-user-dropdown';
+    dropdown.innerHTML = `
+      <button class="site-user-dropdown-toggle" aria-expanded="false">me</button>
+      <ul class="site-user-dropdown-menu"></ul>
+    `;
+    navbar.appendChild(dropdown);
+    const toggle = dropdown.querySelector('.site-user-dropdown-toggle') as HTMLElement;
+
+    // 3) 点新插入的 toggle —— 必须能展开
+    toggle.click();
+    expect(
+      dropdown.classList.contains('open'),
+      'login 后新插入的头像下拉点不开 —— base.js 未做事件委托（线上 bug 重现）'
+    ).toBe(true);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('✅ 新插入下拉后，点击外部仍可关闭', () => {
+    document.body.innerHTML = `<nav class="site-navbar"></nav>`;
+    (globalThis as any).fetch = () =>
+      Promise.resolve({ ok: true, json: () => Promise.resolve({ code: 200, count: 0 }) });
+    new Function(BASE_JS)();
+
+    const dropdown = document.createElement('div');
+    dropdown.className = 'site-user-dropdown';
+    dropdown.innerHTML = `
+      <button class="site-user-dropdown-toggle" aria-expanded="false">me</button>
+      <ul class="site-user-dropdown-menu"></ul>
+    `;
+    document.querySelector('.site-navbar')!.appendChild(dropdown);
+    const toggle = dropdown.querySelector('.site-user-dropdown-toggle') as HTMLElement;
+
+    toggle.click();
+    expect(dropdown.classList.contains('open')).toBe(true);
+
+    document.body.click();
+    expect(dropdown.classList.contains('open'), '外部点击未关闭新插入的下拉').toBe(false);
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+  });
+});
