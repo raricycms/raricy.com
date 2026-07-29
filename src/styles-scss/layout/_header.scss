@@ -84,6 +84,33 @@ a {
   }
 }
 
+// 登录态下，移动端 hamburger 槽位直接渲染头像，让"点头像"承担 hamburger 的
+// 折叠/展开角色（避免用户在折叠态下找不到头像按钮）。
+// 基础 .site-navbar-toggler 的 display:none 在桌面端始终生效，故该变体不影响桌面。
+.site-navbar-toggler--avatar {
+  padding: 0;
+  width: 36px;
+  height: 36px;
+  gap: 0;
+  flex-direction: row;
+  overflow: hidden;
+
+  .site-user-avatar {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    overflow: hidden;
+    margin: 0;
+    display: block;
+  }
+
+  .site-user-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+}
+
 .site-navbar-collapse {
   display: flex;
   align-items: center;
@@ -424,8 +451,31 @@ body {
   }
 
   .site-navbar.open .site-navbar-collapse {
-    max-height: 500px;
-    overflow: visible;
+    max-height: 80vh;
+    overflow-y: auto;
+  }
+
+  // 折叠区内头像按钮隐藏（点 toggler 那颗就够了），下拉菜单作为 navbar 内容静态平铺
+  .site-navbar-collapse .site-user-dropdown-toggle { display: none; }
+  .site-navbar-collapse .site-user-dropdown-menu {
+    position: static;
+    display: block;
+    box-shadow: none;
+    background: transparent;
+    padding: 0;
+    min-width: 0;
+  }
+  .site-navbar-collapse .site-user-dropdown-header {
+    padding: .5rem 0;
+    border-bottom: 1px solid var(--color-border, rgba(0,0,0,.1));
+    margin-bottom: .25rem;
+  }
+  .site-navbar-collapse .site-dropdown-item {
+    padding: .5rem .25rem;
+    border-radius: 6px;
+  }
+  .site-navbar-collapse .site-dropdown-item:hover {
+    background: var(--color-brand-secondary);
   }
 
   .site-nav {

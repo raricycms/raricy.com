@@ -311,16 +311,29 @@ function initSiteChrome() {
     // 顶栏折叠
     const siteNavbar = document.querySelector('.site-navbar');
     const toggler = document.querySelector('.site-navbar-toggler');
+    // 与 _header.scss 的 @media (max-width: 808px) 对齐；改用 matchMedia 替代
+    // window.innerWidth 判断，避免 809–991px 区间 .open 跨断点残留。
+    // jsdom 下 window.matchMedia 不存在 → 走兜底，按非移动端处理（不影响测试）。
+    const mqMobile = window.matchMedia
+        ? window.matchMedia('(max-width: 808px)')
+        : { matches: false, addEventListener: function () {}, removeEventListener: function () {} };
+    function isMobile() { return mqMobile.matches; }
+
+    function closeNavbar() {
+        if (!siteNavbar || !siteNavbar.classList.contains('open')) return;
+        siteNavbar.classList.remove('open');
+        if (toggler) toggler.setAttribute('aria-expanded', 'false');
+    }
+
     if (toggler && siteNavbar) {
         toggler.addEventListener('click', function () {
             const isOpen = siteNavbar.classList.toggle('open');
             toggler.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
         });
-        window.addEventListener('resize', function () {
-            if (window.innerWidth >= 992 && siteNavbar.classList.contains('open')) {
-                siteNavbar.classList.remove('open');
-                toggler.setAttribute('aria-expanded', 'false');
-            }
+        // 跨断点（如桌面端缩放 / 旋转）：离开 mobile 时清掉 .open，避免
+        // aria-expanded 与 .site-navbar-collapse 的 max-height 状态错位。
+        mqMobile.addEventListener('change', function (e) {
+            if (!e.matches) closeNavbar();
         });
     }
 
@@ -339,6 +352,37 @@ function initSiteChrome() {
                 userDropdown.classList.remove('open');
                 userToggle.setAttribute('aria-expanded', 'false');
             }
+            // 移动端 navbar 展开后，点非 navbar 区域也收起
+            if (isMobile() && siteNavbar && !siteNavbar.contains(e.target)) {
+                closeNavbar();
+            }
+        });
+    } else if (siteNavbar) {
+        // 没有头像下拉（如未登录态）也要保证外部点击能收起 navbar
+        document.addEventListener('click', function (e) {
+            if (isMobile() && !siteNavbar.contains(e.target)) closeNavbar();
+        });
+    }
+
+    // ESC 关闭移动端 navbar / 桌面端下拉菜单
+    document.addEventListener('keydown', function (e) {
+        if (e.key !== 'Escape') return;
+        if (isMobile()) {
+            closeNavbar();
+        }
+        if (userDropdown && userDropdown.classList.contains('open')) {
+            userDropdown.classList.remove('open');
+            if (userToggle) userToggle.setAttribute('aria-expanded', 'false');
+        }
+    });
+
+    // 移动端：点导航链接后收起 navbar。
+    // Navbar 在 root layout 里，Next 客户端路由跳转不会重建它，.open 会跨页残留。
+    if (siteNavbar) {
+        siteNavbar.querySelectorAll('a.site-link').forEach(function (a) {
+            a.addEventListener('click', function () {
+                if (isMobile()) closeNavbar();
+            });
         });
     }
 
