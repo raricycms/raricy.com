@@ -5,6 +5,7 @@ import {
   banActionMessage,
   updateBlog,
 } from '@/lib/blog-service';
+import { setBlogIgnore } from '@/lib/admin-blog-service';
 import { categoryFullPath, apiOk, apiErr } from '@/lib/format';
 import { prisma } from '@/lib/db';
 import { getCurrentUser, hasAdminRights, isCurrentlyBanned } from '@/lib/auth';
@@ -92,4 +93,23 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
   }
 
   return apiOk({ blog_id: id, redirect: `/blog/${id}` }, '更新成功');
+}
+
+// DELETE /api/blogs/:id — 作者本人删自己的文章（对齐 Flask blog.delete_blog 的作者分支）
+// 权限：仅作者本人。管理员删他人请走 /api/admin/blogs/:id（要求 reason + 写日志 + 通知作者）。
+export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const user = await getCurrentUser();
+  if (!user) return apiErr(401, '请先登录');
+
+  const { id } = await ctx.params;
+  const blog = await prisma.blog.findFirst({
+    where: { id, ignore: false },
+    select: { id: true, authorId: true },
+  });
+  if (!blog) return apiErr(404, '文章不存在');
+  if (blog.authorId !== user.id) return apiErr(403, '无权删除该文章');
+
+  const result = await setBlogIgnore(id, true);
+  if (!result.ok) return apiErr(404, result.message);
+  return apiOk({ blog: result.data }, '文章已删除');
 }
