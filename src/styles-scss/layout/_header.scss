@@ -84,20 +84,17 @@ a {
   }
 }
 
-// .site-user-dropdown 已从 .site-actions 内移到 .site-container 直接子。
-// 桌面端 collapse 占满中间，dropdown 留在最右；移动端 collapse 折叠时 dropdown 仍可见。
+// .site-user-dropdown 仍在 .site-actions 内（在 .site-navbar-collapse 内）。
+// 桌面端：hamburger display:none，collapse 占满中间，dropdown 留最右。
+// 移动端：collapse 折叠只针对 .site-nav，不影响 .site-actions（含头像），
+// 让"点头像弹下拉"在 mobile 始终可用。
 .site-navbar-collapse {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  flex: 1 1 auto;
-  min-width: 0;
+  width: 100%;
   gap: 1rem;
 }
-
-// .site-user-dropdown 紧贴 .site-navbar-collapse 右侧；
-// collapse 内 .site-actions 自己 space-between 已经贴右。
-.site-user-dropdown { margin-left: 0.5rem; }
 
 .site-nav {
   display: flex;
@@ -419,26 +416,32 @@ body {
     margin-left: auto;
   }
 
+  // 移动端：collapse 容器不折叠，只折叠内部的 .site-nav（主导航）。
+  // .site-actions（含头像按钮）在折叠态仍可见可点，避免头像被 max-height:0 截掉。
   .site-navbar-collapse {
     order: 3;
     flex-direction: column;
     gap: 0.5rem;
     flex-basis: 100%;
     width: 100%;
+  }
+
+  .site-nav {
+    flex-basis: 100%;
+    flex-direction: column;
+    gap: 0;
     max-height: 0;
     overflow: hidden;
     transition: max-height 0.25s ease;
   }
 
-  .site-navbar.open .site-navbar-collapse {
-    max-height: 80vh;
-    overflow-y: auto;
+  .site-navbar.open .site-nav {
+    max-height: 500px;
   }
 
-  .site-nav {
-    flex-direction: column;
-    gap: 0;
-  }
+  .site-link { padding: 0.5rem; }
+
+  .site-actions { justify-content: flex-start; }
 
   .site-link {
     padding: 0.5rem;

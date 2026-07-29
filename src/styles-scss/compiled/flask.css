@@ -325,39 +325,12 @@ a:hover {
   transition: transform 0.2s ease, opacity 0.2s ease;
 }
 
-.site-navbar-toggler--avatar {
-  padding: 0;
-  width: 36px;
-  height: 36px;
-  gap: 0;
-  flex-direction: row;
-  overflow: hidden;
-}
-.site-navbar-toggler--avatar .site-user-avatar {
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  overflow: hidden;
-  margin: 0;
-  display: block;
-}
-.site-navbar-toggler--avatar .site-user-avatar img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
 .site-navbar-collapse {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  flex: 1 1 auto;
-  min-width: 0;
+  width: 100%;
   gap: 1rem;
-}
-
-.site-user-dropdown {
-  margin-left: 0.5rem;
 }
 
 .site-nav {
@@ -645,17 +618,23 @@ body {
     gap: 0.5rem;
     flex-basis: 100%;
     width: 100%;
+  }
+  .site-nav {
+    flex-basis: 100%;
+    flex-direction: column;
+    gap: 0;
     max-height: 0;
     overflow: hidden;
     transition: max-height 0.25s ease;
   }
-  .site-navbar.open .site-navbar-collapse {
-    max-height: 80vh;
-    overflow-y: auto;
+  .site-navbar.open .site-nav {
+    max-height: 500px;
   }
-  .site-nav {
-    flex-direction: column;
-    gap: 0;
+  .site-link {
+    padding: 0.5rem;
+  }
+  .site-actions {
+    justify-content: flex-start;
   }
   .site-link {
     padding: 0.5rem;

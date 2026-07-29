@@ -6,10 +6,6 @@ import LogoutLink from './LogoutLink';
 // 顶栏 — Flask `base.html` 样式（site-* BEM + icon mask）
 // base.js 通过 id (#userDropdownToggle, #userDropdownMenu, #themeToggle, #notificationBadge, #checkinBadge)
 // 与 .open class 操纵此顶栏，故结构必须与 Flask 保持一致。
-//
-// 移动端修复（2026-07-29）：.site-user-dropdown 从 .site-actions 内移到
-// .site-navbar-collapse 之外，确保折叠态（max-height:0）下头像按钮仍可点。
-// 行为：hamburger 折叠主导航与 actions；头像切 .open 弹下拉菜单（与桌面一致）。
 export default function Navbar({ user }: { user: SafeUser | null }) {
   return (
     <header className="site-navbar" role="navigation">
@@ -20,74 +16,16 @@ export default function Navbar({ user }: { user: SafeUser | null }) {
         </Link>
 
         <button
-          className={`site-navbar-toggler${user ? ' site-navbar-toggler--avatar' : ''}`}
+          className="site-navbar-toggler"
           type="button"
           aria-expanded="false"
           aria-controls="siteNavbar"
-          aria-label={user ? `切换导航（${user.username}）` : '切换导航'}
+          aria-label="切换导航"
         >
-          {user ? (
-            <span className="site-user-avatar">
-              <img src={`/api/avatar/${user.id}`} alt={user.username} />
-            </span>
-          ) : (
-            <>
-              <span className="bar"></span>
-              <span className="bar"></span>
-              <span className="bar"></span>
-            </>
-          )}
+          <span className="bar"></span>
+          <span className="bar"></span>
+          <span className="bar"></span>
         </button>
-
-        {/* 头像下拉：从 collapse 内拿出，移动端折叠态仍可见。
-            点 toggler 切 .open，与桌面端行为一致。 */}
-        {user && (
-          <div className="site-user-dropdown">
-            <button
-              className="site-user-dropdown-toggle"
-              id="userDropdownToggle"
-              type="button"
-              aria-haspopup="true"
-              aria-expanded="false"
-              aria-controls="userDropdownMenu"
-            >
-              <span>{user.username}</span>
-              <span className="site-user-avatar">
-                <img src={`/api/avatar/${user.id}`} alt="avatar" />
-              </span>
-            </button>
-            <ul className="site-user-dropdown-menu" role="menu" id="userDropdownMenu" aria-labelledby="userDropdownToggle">
-              <li role="presentation" className="site-dropdown-header">用户信息</li>
-              <li role="separator" className="site-dropdown-divider"></li>
-              <li role="none">
-                <Link className="site-dropdown-item" role="menuitem" href={`/u/${user.id}`}>
-                  <span className="icon icon-person" style={{ marginRight: '.5rem' }}></span>个人资料
-                </Link>
-              </li>
-              <li role="none">
-                <Link className="site-dropdown-item" role="menuitem" href="/settings">
-                  <span className="icon icon-gear" style={{ marginRight: '.5rem' }}></span>账号设置
-                </Link>
-              </li>
-              <li role="none">
-                <Link className="site-dropdown-item" role="menuitem" href="/fish">
-                  <span className="icon icon-fish" style={{ marginRight: '.5rem' }} aria-hidden="true"></span>小鱼干
-                </Link>
-              </li>
-              {hasAdminRights(user) && (
-                <li role="none">
-                  <Link className="site-dropdown-item" role="menuitem" href="/admin">
-                    <span className="icon icon-gear-fill" style={{ marginRight: '.5rem' }}></span>管理面板
-                  </Link>
-                </li>
-              )}
-              <li role="separator" className="site-dropdown-divider"></li>
-              <li role="none">
-                <LogoutLink />
-              </li>
-            </ul>
-          </div>
-        )}
 
         <div className="site-navbar-collapse" id="siteNavbar">
           <ul className="site-nav">
@@ -128,6 +66,51 @@ export default function Navbar({ user }: { user: SafeUser | null }) {
                   <span className="icon icon-calendar-check" aria-hidden="true"></span>
                   <span className="checkin-badge" id="checkinBadge" style={{ display: 'none' }}></span>
                 </Link>
+                <div className="site-user-dropdown">
+                  <button
+                    className="site-user-dropdown-toggle"
+                    id="userDropdownToggle"
+                    type="button"
+                    aria-haspopup="true"
+                    aria-expanded="false"
+                    aria-controls="userDropdownMenu"
+                  >
+                    <span>{user.username}</span>
+                    <span className="site-user-avatar">
+                      <img src={`/api/avatar/${user.id}`} alt="avatar" />
+                    </span>
+                  </button>
+                  <ul className="site-user-dropdown-menu" role="menu" id="userDropdownMenu" aria-labelledby="userDropdownToggle">
+                    <li role="presentation" className="site-dropdown-header">用户信息</li>
+                    <li role="separator" className="site-dropdown-divider"></li>
+                    <li role="none">
+                      <Link className="site-dropdown-item" role="menuitem" href={`/u/${user.id}`}>
+                        <span className="icon icon-person" style={{ marginRight: '.5rem' }}></span>个人资料
+                      </Link>
+                    </li>
+                    <li role="none">
+                      <Link className="site-dropdown-item" role="menuitem" href="/settings">
+                        <span className="icon icon-gear" style={{ marginRight: '.5rem' }}></span>账号设置
+                      </Link>
+                    </li>
+                    <li role="none">
+                      <Link className="site-dropdown-item" role="menuitem" href="/fish">
+                        <span className="icon icon-fish" style={{ marginRight: '.5rem' }} aria-hidden="true"></span>小鱼干
+                      </Link>
+                    </li>
+                    {hasAdminRights(user) && (
+                      <li role="none">
+                        <Link className="site-dropdown-item" role="menuitem" href="/admin">
+                          <span className="icon icon-gear-fill" style={{ marginRight: '.5rem' }}></span>管理面板
+                        </Link>
+                      </li>
+                    )}
+                    <li role="separator" className="site-dropdown-divider"></li>
+                    <li role="none">
+                      <LogoutLink />
+                    </li>
+                  </ul>
+                </div>
               </>
             ) : (
               <>
