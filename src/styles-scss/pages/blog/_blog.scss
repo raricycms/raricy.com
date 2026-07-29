@@ -19,7 +19,7 @@ a {
     background: var(--background-color);
     padding: 50px 0 30px;
     text-align: center;
-    &h1 {
+    h1 {
         font-size: 2.2rem;
         font-weight: 400;
         color: var(--color-text-primary);
@@ -35,9 +35,6 @@ a {
     align-items: center;
     justify-content: center;
     gap: 20px;
-    &::before {
-        margin-right: 5px;
-    }
 }
 
 .blog-date::before {
@@ -108,7 +105,7 @@ a {
         padding: 5px 15px;
         background: var(--color-background-content);
         color: var(--color-text-secondary);
-    };
+    }
     hr {
         border: 1px solid var(--color-text-tertiary);
     }
@@ -491,7 +488,6 @@ a {
 .comment-list {
     width: 100%;
     background-color: var(--box-bg);
-    padding-left: 15px;
     list-style: none;
     padding-left: 15px;
     margin-left: 15px;
