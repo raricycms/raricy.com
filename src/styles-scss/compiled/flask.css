@@ -1266,6 +1266,11 @@ body {
   mask-image: url("/static/img/icons/tools.svg");
 }
 
+.icon-fish {
+  -webkit-mask-image: url("/static/img/icons/fish.svg");
+  mask-image: url("/static/img/icons/fish.svg");
+}
+
 .modal {
   position: fixed;
   inset: 0;
@@ -2131,7 +2136,7 @@ a:hover {
   padding: 50px 0 30px;
   text-align: center;
 }
-.read-heroh1 {
+.read-hero h1 {
   font-size: 2.2rem;
   font-weight: 400;
   color: var(--color-text-primary);
@@ -2146,9 +2151,6 @@ a:hover {
   align-items: center;
   justify-content: center;
   gap: 20px;
-}
-.blog-meta::before {
-  margin-right: 5px;
 }
 
 .blog-date::before {
@@ -2583,7 +2585,6 @@ a:hover {
 .comment-list {
   width: 100%;
   background-color: var(--box-bg);
-  padding-left: 15px;
   list-style: none;
   padding-left: 15px;
   margin-left: 15px;
@@ -3179,7 +3180,7 @@ a:hover {
     opacity: 0;
     margin-bottom: 0;
   }
-  .sidebar .category-list.expanded {
+  .sidebar .category-list:not(.collapsed) {
     max-height: 1000px;
     opacity: 1;
     margin-bottom: 0;

@@ -500,13 +500,15 @@ a {
     }
 
     /* 手机端默认折叠分类列表 */
+    // 与 BlogSidebar.tsx 的折叠命名保持一致（用 .collapsed 而非 .expanded），
+    // 否则展开时 DOM 上既无 .collapsed 也无 .expanded，命中不到任何规则。
     .sidebar .category-list {
         max-height: 0;
         opacity: 0;
         margin-bottom: 0;
     }
 
-    .sidebar .category-list.expanded {
+    .sidebar .category-list:not(.collapsed) {
         max-height: 1000px;
         opacity: 1;
         margin-bottom: 0;
