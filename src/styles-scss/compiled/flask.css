@@ -618,23 +618,29 @@ body {
     gap: 0.5rem;
     flex-basis: 100%;
     width: 100%;
-  }
-  .site-nav {
-    flex-basis: 100%;
-    flex-direction: column;
-    gap: 0;
     max-height: 0;
     overflow: hidden;
     transition: max-height 0.25s ease;
   }
-  .site-navbar.open .site-nav {
+  .site-navbar.open .site-navbar-collapse {
     max-height: 500px;
+    overflow: visible;
   }
-  .site-link {
-    padding: 0.5rem;
+  .site-user-dropdown {
+    position: fixed;
+    top: 9px;
+    right: 60px;
+    z-index: 1031;
   }
-  .site-actions {
-    justify-content: flex-start;
+  .site-navbar.open .site-user-dropdown {
+    position: static;
+    top: auto;
+    right: auto;
+    z-index: auto;
+  }
+  .site-nav {
+    flex-direction: column;
+    gap: 0;
   }
   .site-link {
     padding: 0.5rem;
