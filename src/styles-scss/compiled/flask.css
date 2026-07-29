@@ -329,8 +329,13 @@ a:hover {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
   gap: 1rem;
+}
+
+.site-user-dropdown {
+  margin-left: 0.5rem;
 }
 
 .site-nav {
@@ -623,8 +628,8 @@ body {
     transition: max-height 0.25s ease;
   }
   .site-navbar.open .site-navbar-collapse {
-    max-height: 500px;
-    overflow: visible;
+    max-height: 80vh;
+    overflow-y: auto;
   }
   .site-nav {
     flex-direction: column;

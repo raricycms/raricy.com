@@ -84,13 +84,20 @@ a {
   }
 }
 
+// .site-user-dropdown 已从 .site-actions 内移到 .site-container 直接子。
+// 桌面端 collapse 占满中间，dropdown 留在最右；移动端 collapse 折叠时 dropdown 仍可见。
 .site-navbar-collapse {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
   gap: 1rem;
 }
+
+// .site-user-dropdown 紧贴 .site-navbar-collapse 右侧；
+// collapse 内 .site-actions 自己 space-between 已经贴右。
+.site-user-dropdown { margin-left: 0.5rem; }
 
 .site-nav {
   display: flex;
@@ -424,8 +431,8 @@ body {
   }
 
   .site-navbar.open .site-navbar-collapse {
-    max-height: 500px;
-    overflow: visible;
+    max-height: 80vh;
+    overflow-y: auto;
   }
 
   .site-nav {

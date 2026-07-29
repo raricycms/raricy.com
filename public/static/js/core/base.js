@@ -324,7 +324,7 @@ function initSiteChrome() {
         });
     }
 
-    // 用户下拉
+    // 用户下拉：mobile + desktop 行为一致 —— 点 toggle 切 .open。
     const userDropdown = document.querySelector('.site-user-dropdown');
     const userToggle = document.querySelector('.site-user-dropdown-toggle');
     if (userDropdown && userToggle) {
