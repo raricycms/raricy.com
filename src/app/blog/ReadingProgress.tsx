@@ -12,7 +12,7 @@ export default function ReadingProgress() {
 
     const article = document.querySelector<HTMLElement>('.blog-content-container');
 
-    function update() {
+    const update = () => {
       let percent = 0;
       if (article) {
         // 文章底部对齐视窗底部即认为阅读完（更接近用户"读完"的感觉）
@@ -30,7 +30,7 @@ export default function ReadingProgress() {
         }
       }
       target.style.width = `${percent}%`;
-    }
+    };
 
     update();
     window.addEventListener('scroll', update, { passive: true });
