@@ -271,7 +271,6 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
               height: '60vh',
               background: 'var(--color-background-content)',
               border: '2px solid var(--color-border)',
-              borderRadius: '15px',
             }}
           ></div>
           <p
