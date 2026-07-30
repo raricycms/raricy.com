@@ -34,6 +34,7 @@
     "build:css": "sass src/styles-scss/main.scss:src/styles-scss/compiled/flask.css --style=expanded --load-path=src/styles-scss --no-source-map",
     "dev:css": "sass src/styles-scss/main.scss:src/styles-scss/compiled/flask.css --style=expanded --load-path=src/styles-scss --watch",
     "prepare:vditor": "node scripts/copy-vditor-assets.mjs",
+    "vditor:check": "node scripts/copy-vditor-assets.mjs --check",
     "postinstall": "node scripts/copy-vditor-assets.mjs"
   },
   "dependencies": {
