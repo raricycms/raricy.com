@@ -68,7 +68,7 @@
 .hero-content { position: relative; z-index: 2; }
 
 /* 卡片样式优化 */
-.feature-card { transition: all 0.3s ease; cursor: pointer;  border-radius: 30px; overflow: hidden; position: relative; height: 100%; background-color: var(--color-background-card);  }
+.feature-card { transition: all 0.3s ease; cursor: pointer;  border-radius: 30px; overflow: hidden; position: relative; height: 100%; background-color: var(--color-background-card); box-shadow: var(--shadow-card);  }
 .feature-card:hover { box-shadow: var(--shadow-card-brand); }
 
 .feature-card .card-body { padding: 2rem; position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center; height: 100%; ; border: none;}

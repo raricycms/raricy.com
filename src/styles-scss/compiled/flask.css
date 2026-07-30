@@ -1966,6 +1966,7 @@ body.dark-mode .alert-danger {
   position: relative;
   height: 100%;
   background-color: var(--color-background-card);
+  box-shadow: var(--shadow-card);
 }
 
 .feature-card:hover {
