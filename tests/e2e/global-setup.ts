@@ -86,11 +86,21 @@ export default async function globalSetup() {
   const url = `file:${E2E_DB}`;
   // 用 db push 而非 migrate：本库的 schema 是从 Flask 建好的库 introspect 出来的，
   // 没有 migration 历史，migrate 会要求先 baseline。
-  execFileSync('npx', ['prisma', 'db', 'push', '--skip-generate', '--accept-data-loss'], {
-    cwd: PROJECT_ROOT,
-    env: { ...process.env, DATABASE_URL: url },
-    stdio: 'pipe',
-  });
+  //
+  // 直接用 node 跑 prisma 的 CLI 入口，不走 npx —— npx 在 Windows 上是 npx.cmd，
+  // 而 Node 20+ 出于 CVE-2024-27980（bat/cmd 参数注入）禁止 execFileSync 拉起
+  // .cmd，会直接 EINVAL；传裸 'npx' 则是 ENOENT（execFileSync 不做 PATHEXT 补全）。
+  // 走 process.execPath + build/index.js 两边都绕开了，且不必开 shell。
+  const prismaCli = path.join(PROJECT_ROOT, 'node_modules', 'prisma', 'build', 'index.js');
+  execFileSync(
+    process.execPath,
+    [prismaCli, 'db', 'push', '--skip-generate', '--accept-data-loss'],
+    {
+      cwd: PROJECT_ROOT,
+      env: { ...process.env, DATABASE_URL: url },
+      stdio: 'pipe',
+    }
+  );
 
   // 显式传 url：本进程的 .env 指向 prod.db，不能靠环境变量兜底
   const prisma = new PrismaClient({ datasources: { db: { url } } });
