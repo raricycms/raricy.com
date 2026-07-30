@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 // ─────────────────────────────────────────────────────────────────────────────
-// copy-vditor-assets.mjs —— 把 vditor 运行时需要的 icon sprite / KaTeX 从
+// copy-vditor-assets.mjs —— 把 vditor 运行时需要的 icon sprite / 语言包 / KaTeX 从
 // node_modules 拷贝到 public/static/vditor/，让浏览器从同源加载。
 //
 // 【为什么】vditor 默认 cdn: 'https://unpkg.com/vditor@3.10.7'，编辑器初始化时
-// 会动态拉 ${cdn}/dist/js/icons/ant.js 和（用户输入数学公式时）${cdn}/dist/js/katex/*。
-// 我们把项目从 CDN 改 npm 后，必须把这两个静态资源搬到 /public 下，并通过
+// 会动态拉 ${cdn}/dist/js/icons/ant.js、${cdn}/dist/js/i18n/<lang>.js（未设 lang
+// 时为 zh_CN）和（用户输入数学公式时）${cdn}/dist/js/katex/*。
+// 我们把项目从 CDN 改 npm 后，必须把这些静态资源搬到 /public 下，并通过
 // 把 vditor 配置的 cdn 指向 '/static/vditor' 来让编辑器从同源取。
 //
 // 【为什么不在仓库里提交 public/static/vditor/】这些 684KB 的资源是 npm 包的
@@ -30,6 +31,7 @@ if (!fs.existsSync(path.join(SRC, 'js', 'icons', 'ant.js'))) {
 
 const targets = [
   { rel: 'js/icons/ant.js', label: 'icon sprite (43KB)' },
+  { rel: 'js/i18n', label: '语言包（未设 lang 时默认加载 zh_CN.js）', filter: /\.js$/ },
   { rel: 'js/katex/katex.min.css', label: 'KaTeX CSS (23KB)' },
   { rel: 'js/katex/katex.min.js', label: 'KaTeX JS (277KB)' },
   { rel: 'js/katex/mhchem.min.js', label: 'KaTeX mhchem (34KB)' },
