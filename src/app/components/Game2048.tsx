@@ -393,7 +393,9 @@ export default function Game2048() {
                 className="game-2048-tile"
                 style={
                   {
-                    transform: `translate(calc((var(--g2048-cell) + var(--g2048-gap)) * ${t.c}), calc((var(--g2048-cell) + var(--g2048-gap)) * ${t.r}))`,
+                    // translate 用 100%（自身边长 = --g2048-cell）：translate 中的百分比
+                    // 相对元素自身解析，若直接写 var(--g2048-cell)（内含 100%）会循环失效。
+                    transform: `translate(calc((100% + var(--g2048-gap)) * ${t.c}), calc((100% + var(--g2048-gap)) * ${t.r}))`,
                     width: 'var(--g2048-cell)',
                     height: 'var(--g2048-cell)',
                   } as React.CSSProperties

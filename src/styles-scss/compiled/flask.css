@@ -5755,7 +5755,8 @@ body {
 .game-2048-page {
   padding: 24px 0 40px;
 }
-.game-2048-page .container {
+
+.game-2048-page.container {
   max-width: 540px;
 }
 
@@ -5840,6 +5841,8 @@ body {
   width: 100%;
   height: 100%;
   position: relative;
+  --g2048-cell: calc((100% - 3 * var(--g2048-gap)) / 4);
+  --g2048-gap: 10px;
 }
 
 .game-2048-cell {
@@ -5968,6 +5971,7 @@ body {
   }
   .game-2048-board {
     gap: 7px;
+    --g2048-gap: 7px;
   }
   .game-2048-overlay__text {
     font-size: 1.5rem;
