@@ -95,7 +95,7 @@ export default function ApplicationCreateForm() {
         {error && <div className="settings-alert settings-alert--danger">{error}</div>}
         <form onSubmit={submit} className="settings-form">
           <div className="settings-field">
-            <label htmlFor="oauth-name">应用名 <span style={{ color: 'var(--danger)' }}>*</span></label>
+            <label htmlFor="oauth-name">应用名 <span style={{ color: 'var(--color-warning-primary)' }}>*</span></label>
             <input
               id="oauth-name"
               className="settings-input"
@@ -128,7 +128,7 @@ export default function ApplicationCreateForm() {
           </div>
           <div className="settings-field">
             <label htmlFor="oauth-redirect">
-              回调 URI <span style={{ color: 'var(--danger)' }}>*</span>
+              回调 URI <span style={{ color: 'var(--color-warning-primary)' }}>*</span>
             </label>
             <textarea
               id="oauth-redirect"
@@ -140,7 +140,7 @@ export default function ApplicationCreateForm() {
               placeholder="每行一个 URL，例：&#10;https://example.com/oauth/callback&#10;http://localhost:3000/dev-cb"
               style={{ fontFamily: 'monospace', fontSize: '.85rem' }}
             />
-            <small style={{ color: 'var(--ink-3)' }}>
+            <small style={{ color: 'var(--color-text-secondary)' }}>
               精确匹配（无通配）。多个用换行分隔。
             </small>
           </div>
@@ -155,8 +155,8 @@ export default function ApplicationCreateForm() {
         <div className="oauth-modal-overlay" role="dialog" aria-modal="true">
           <div className="oauth-modal">
             <h2>应用已创建</h2>
-            <p style={{ color: 'var(--ink-3)', marginBottom: 16 }}>
-              ⚠️ <strong style={{ color: 'var(--danger)' }}>client_secret 仅此一次显示</strong>，
+            <p style={{ color: 'var(--color-text-secondary)', marginBottom: 16 }}>
+              ⚠️ <strong style={{ color: 'var(--color-warning-primary)' }}>client_secret 仅此一次显示</strong>，
               请立即复制到安全的地方。关闭此弹窗后无法再次查看。
             </p>
 

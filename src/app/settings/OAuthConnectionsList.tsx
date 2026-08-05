@@ -72,11 +72,11 @@ export default function OAuthConnectionsList({ onAlert }: Props) {
     );
   }
   if (conns === null) {
-    return <div style={{ color: 'var(--muted)', padding: '12px 0' }}>加载中…</div>;
+    return <div style={{ color: 'var(--color-text-secondary)', padding: '12px 0' }}>加载中…</div>;
   }
   if (conns.length === 0) {
     return (
-      <div style={{ color: 'var(--muted)', padding: '12px 0' }}>
+      <div style={{ color: 'var(--color-text-secondary)', padding: '12px 0' }}>
         暂无已绑定的应用。当你在外部应用点击「绑定 raricy 账号」时会出现在此。
       </div>
     );
