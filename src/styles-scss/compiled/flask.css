@@ -1307,6 +1307,16 @@ body {
   mask-image: url("/static/img/icons/fish.svg");
 }
 
+.icon-clipboard {
+  -webkit-mask-image: url("/static/img/icons/clipboard.svg");
+  mask-image: url("/static/img/icons/clipboard.svg");
+}
+
+.icon-link {
+  -webkit-mask-image: url("/static/img/icons/link.svg");
+  mask-image: url("/static/img/icons/link.svg");
+}
+
 .modal {
   position: fixed;
   inset: 0;
