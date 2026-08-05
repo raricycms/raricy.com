@@ -451,6 +451,9 @@ body {
   .site-nav {
     flex-direction: column;
     gap: 0;
+    // 桌面端靠 margin-left 把导航推离品牌位，移动端整个 collapse 居中布局，需清掉该偏移
+    margin-left: 0;
+    align-items: center;
   }
 
   .site-link {
