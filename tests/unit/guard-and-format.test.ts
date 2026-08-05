@@ -1,5 +1,9 @@
 // format.ts —— API 响应封装 + 展示辅助（对齐 Flask 的序列化约定）。
 // guard.ts  —— 服务端组件的权限闸门（对齐 Flask 的 @authenticated_required / @owner_required）。
+//   当前契约（07-24 迁移引入，与 Flask 的差异）：
+//   · 未登录 → redirect('/login?next=<原URL>') —— 保留目标 URL，登录后回跳
+//   · 已登录但权限不足 → forbidden() 原地渲染 403 页
+//   redirect / forbidden 都由 next/navigation 抛特殊错误中断渲染，测试里 mock 后同样抛。
 //
 // 这两个模块都是纯逻辑，但都在"跨端对齐"的关键路径上：
 //   - apiErr 的 body.code 与 HTTP status 必须一致：前端统一靠 data.code === 200 判成功，
@@ -21,6 +25,16 @@ const nav = vi.hoisted(() => ({
 }));
 vi.mock('next/navigation', () => nav);
 
+// guard 的 getSafeNextPath() 会读 next/headers 的 referer / host 拼登录回跳 URL。
+// vitest 里没有请求上下文，真实 headers() 直接抛「was called outside a request scope」，
+// 必须 mock（复用 session.test.ts 的 Map 模式；getSafeNextPath 传的全是小写 key）。
+const mockHeaders = vi.hoisted(() => ({ current: new Map<string, string>() }));
+vi.mock('next/headers', () => ({
+  headers: async () => ({
+    get: (k: string) => mockHeaders.current.get(k.toLowerCase()) ?? null,
+  }),
+}));
+
 // 只替换 getCurrentUser（它要读 cookie + 查库），角色判定 isCoreUser/isOwner 保留真实实现 ——
 // 权限边界正是被测语义，不能用测试里的假逻辑替身。
 const auth = vi.hoisted(() => ({ getCurrentUser: vi.fn() }));
@@ -39,6 +53,7 @@ function userWithRole(role: string) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockHeaders.current = new Map();
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -198,10 +213,16 @@ describe('requireCoreUser —— 对齐 @authenticated_required（core 及以上
     expect(nav.forbidden).toHaveBeenCalledTimes(1);
   });
 
-  it('❌ 未登录（getCurrentUser 返回 null）→ forbidden()', async () => {
+  it('❌ 未登录（getCurrentUser 返回 null）→ 重定向到 /login?next=<原URL>，不再原地 403', async () => {
     auth.getCurrentUser.mockResolvedValue(null);
-    await expect(requireCoreUser()).rejects.toThrow('NEXT_FORBIDDEN');
-    expect(nav.forbidden).toHaveBeenCalledTimes(1);
+    // referer + host 同源 → getSafeNextPath 取 /audit，登录后回跳
+    mockHeaders.current = new Map([
+      ['referer', 'http://localhost/audit'],
+      ['host', 'localhost'],
+    ]);
+    await expect(requireCoreUser()).rejects.toThrow('NEXT_REDIRECT');
+    expect(nav.redirect, '未登录应回跳登录页并保留原 URL').toHaveBeenCalledWith('/login?next=%2Faudit');
+    expect(nav.forbidden).not.toHaveBeenCalled();
   });
 
   it('❌ 未知角色不误放行（白名单语义，不是黑名单）', async () => {
@@ -212,11 +233,11 @@ describe('requireCoreUser —— 对齐 @authenticated_required（core 及以上
     }
   });
 
-  it('拒绝时调用 forbidden() 而非 redirect() —— 原站是 abort(403) 原地渲染 403 页', async () => {
-    auth.getCurrentUser.mockResolvedValue(null);
-    await expect(requireCoreUser()).rejects.toThrow();
-    expect(nav.forbidden).toHaveBeenCalled();
-    expect(nav.redirect, '不应跳转到登录页：URL 必须保持不变').not.toHaveBeenCalled();
+  it('❌ 已登录但权限不足（非 core）→ forbidden() 而非 redirect() —— URL 必须保持不变', async () => {
+    auth.getCurrentUser.mockResolvedValue(userWithRole('user'));
+    await expect(requireCoreUser()).rejects.toThrow('NEXT_FORBIDDEN');
+    expect(nav.forbidden).toHaveBeenCalledTimes(1);
+    expect(nav.redirect, '已登录不该跳登录页：URL 必须保持不变').not.toHaveBeenCalled();
   });
 });
 
@@ -237,10 +258,15 @@ describe('requireOwner —— 对齐 @owner_required（仅站长）', () => {
     });
   }
 
-  it('❌ 未登录（null）→ forbidden()', async () => {
+  it('❌ 未登录（null）→ 重定向到 /login?next=<原URL>，不再原地 403', async () => {
     auth.getCurrentUser.mockResolvedValue(null);
-    await expect(requireOwner()).rejects.toThrow('NEXT_FORBIDDEN');
-    expect(nav.forbidden).toHaveBeenCalledTimes(1);
+    mockHeaders.current = new Map([
+      ['referer', 'http://localhost/admin/appeals'],
+      ['host', 'localhost'],
+    ]);
+    await expect(requireOwner()).rejects.toThrow('NEXT_REDIRECT');
+    expect(nav.redirect).toHaveBeenCalledWith('/login?next=%2Fadmin%2Fappeals');
+    expect(nav.forbidden).not.toHaveBeenCalled();
   });
 
   it('拒绝时调用 forbidden() 而非 redirect()', async () => {
