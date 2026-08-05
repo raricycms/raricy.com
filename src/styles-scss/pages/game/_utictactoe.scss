@@ -9,7 +9,9 @@
 // 棋盘容器用 .uttt / .uttt-container 自居中。
 .uttt-page {
   min-height: calc(100vh - 62px);
-  padding: $space-6 0;
+  // 只设上下内边距，左右交给 .container，否则手机端返回链接/标题贴屏边。
+  padding-top: $space-6;
+  padding-bottom: $space-6;
   background: var(--color-background-page);
 }
 

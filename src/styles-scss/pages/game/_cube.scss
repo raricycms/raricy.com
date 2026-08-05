@@ -4,7 +4,9 @@
 // 立方页直接渲染页面级容器（未走 GamePageShell），补上 .cube-page / .cube-back。
 
 .cube-page {
-    padding: $space-6 0 40px;
+    // 只设上下内边距，左右交给 .container，否则手机端贴屏边。
+    padding-top: $space-6;
+    padding-bottom: 40px;
 }
 
 .cube-back {

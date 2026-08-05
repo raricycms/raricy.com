@@ -3,7 +3,9 @@
 // ---- Shared puzzle page layout --------------------------------------------
 
 .puzzle-page {
-    padding: $space-6 0 40px;
+    // 只设上下内边距，左右交给 .container，否则手机端贴屏边。
+    padding-top: $space-6;
+    padding-bottom: 40px;
 }
 
 .puzzle-page.container {
@@ -149,7 +151,8 @@
 // ---- Mobile: compact controls, full-width canvas ----------------------------
 @media (max-width: 640px) {
     .puzzle-page {
-        padding: $space-3 0 24px;
+        padding-top: $space-3;
+        padding-bottom: 24px;
     }
 
     .puzzle-header {

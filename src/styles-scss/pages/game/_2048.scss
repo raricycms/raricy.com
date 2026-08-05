@@ -3,7 +3,10 @@
 // ---- 2048 Game ---------------------------------------------------------------
 
 .game-2048-page {
-    padding: $space-6 0 40px;
+    // 只设上下内边距，左右交给 .container（padding-left/right: $space-4），
+    // 否则 `padding: X 0 Y` 简写会把水平内边距清零，手机端贴屏边。
+    padding-top: $space-6;
+    padding-bottom: 40px;
 }
 
 .game-2048-page.container {
@@ -252,7 +255,8 @@
 
 @media (max-width: 640px) {
     .game-2048-page {
-        padding: $space-3 0 24px;
+        padding-top: $space-3;
+        padding-bottom: 24px;
     }
 
     .game-2048-header {

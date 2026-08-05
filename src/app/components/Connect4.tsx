@@ -266,9 +266,10 @@ export default function Connect4() {
       let pieceOffset = 5;
 
       if (window.innerWidth <= 640) {
-        cellSize = 46;
-        gap = 5;
-        padding = 10;
+        // 与 _connect4.scss 移动端棋盘尺寸保持一致（38px 格 / 4px 间距 / 8px 内边距）。
+        cellSize = 38;
+        gap = 4;
+        padding = 8;
         pieceOffset = 3;
       }
 

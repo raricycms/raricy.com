@@ -9,7 +9,9 @@
 // 棋盘容器用 .connect4-container 的 margin: 0 auto 自居中。
 .connect4-page {
   min-height: calc(100vh - 62px);
-  padding: $space-6 0;
+  // 只设上下内边距，左右交给 .container，否则手机端返回链接/标题贴屏边。
+  padding-top: $space-6;
+  padding-bottom: $space-6;
   background: var(--color-background-page);
 }
 
@@ -378,42 +380,47 @@
 // Responsive
 @media (max-width: 640px) {
   .connect4-container {
-    padding: $space-3;
-    margin: 0 $space-2;
+    // 页面已由 .container 提供 16px 左右内边距，卡片去掉外边距（原 margin: 0 $space-2），
+    // 避免与页面内边距叠加成双倍间距。
+    padding: 10px;
+    margin: 0 auto;
     border-radius: $radius-small;
   }
 
+  // 固定像素棋盘在手机端会溢出卡片：7×46px + 间距 + 内边距 ≈ 372px > 内容宽。
+  // 缩到 38px/格（棋盘 ≈ 306px，360px 屏可放下），必须同步 Connect4.tsx 里
+  // window.innerWidth <= 640 分支的下落动画常量（cellSize/gap/padding/pieceOffset）。
   .connect4-board {
-    grid-template-columns: repeat(7, 46px);
-    grid-template-rows: repeat(4, 46px);
-    gap: 5px;
-    padding: 10px;
+    grid-template-columns: repeat(7, 38px);
+    grid-template-rows: repeat(4, 38px);
+    gap: 4px;
+    padding: 8px;
     border-radius: 10px;
   }
 
   .connect4-cell {
-    width: 46px;
-    height: 46px;
+    width: 38px;
+    height: 38px;
   }
 
   .connect4-piece {
-    width: 40px;
-    height: 40px;
+    width: 32px;
+    height: 32px;
   }
 
   .connect4-falling-piece {
-    width: 40px;
-    height: 40px;
+    width: 32px;
+    height: 32px;
   }
 
   .connect4-column-number {
-    width: 46px;
+    width: 38px;
     font-size: 0.9rem;
   }
 
   .connect4-column-numbers {
-    gap: 5px;
-    padding: 0 10px;
+    gap: 4px;
+    padding: 0 8px;
   }
 
   .connect4-btn {
