@@ -1,0 +1,304 @@
+// pages/_tool-cattca.scss — Cattca 脚本编辑器工具页样式
+//
+// 补齐 tool/cattca 页面与 CattcaPlayer tool 变体引用的样式：
+//   • 编辑器面板布局（.cattca-tool__*）：双栏 grid、状态条、脚本输入框、按钮组
+//   • 游戏运行区头部（.story-cattca__game-header / __panel-title / __btn）
+//   • 全屏覆盖层（.story-cattca__fullscreen*）
+// 全部走 --color-* / --shadow-* 主题令牌，随 [data-theme] 深浅自适应；
+// 尺寸沿用 $space-* / $radius-*，断点走 bp 混入，与全站体系一致。
+
+@use '../abstracts/variables' as *;
+@use '../abstracts/breakpoints' as bp;
+
+// ---- 页面包装器 ----
+// .story-cattca 的 story 变体默认 720px 单栏约束在这里放开，交给 .container 管宽度；
+// 只保留垂直留白（水平内边距由 .container 的 container-padding 提供）。
+.cattca-tool {
+  max-width: none;
+  margin: 0;
+  padding: $space-8 0;
+
+  @include bp.down(bp.$bp-md) {
+    padding: $space-6 0;
+  }
+}
+
+// ---- 返回工具箱链接 ----
+.story-cattca__back {
+  display: inline-flex;
+  align-items: center;
+  gap: $space-1;
+  margin-bottom: $space-4;
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+  text-decoration: none;
+  transition: color 0.2s ease;
+
+  &:hover {
+    color: var(--color-brand-primary);
+  }
+}
+
+// ---- 面板标题（编辑器头部 / 游戏运行区头部共用）----
+.story-cattca__panel-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0;
+  padding-bottom: $space-3;
+  border-bottom: 1px solid var(--color-border);
+}
+
+// ---- 双栏布局 ----
+.cattca-tool__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: $space-6;
+  align-items: stretch;
+
+  @include bp.down(bp.$bp-md) {
+    grid-template-columns: 1fr;
+    gap: $space-4;
+  }
+}
+
+// ---- 面板（编辑器 / 游戏运行区共用容器）----
+.cattca-tool__panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: $space-6;
+  background: var(--color-background-card);
+  border: 1px solid var(--color-border);
+  border-radius: 20px; // 对齐 .story-cattca__game 的圆角语言
+  box-shadow: var(--shadow-card);
+
+  @include bp.down(bp.$bp-md) {
+    padding: $space-4;
+  }
+}
+
+// ---- 游戏运行区：输出区撑满面板剩余高度 ----
+.cattca-tool__panel--game {
+  .story-cattca__output {
+    flex: 1;
+    min-height: 280px;
+  }
+
+  .story-cattca__log {
+    margin-top: $space-4;
+  }
+}
+
+// ---- 状态条 ----
+.cattca-tool__status {
+  margin: $space-3 0;
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+  min-height: 1.4em;
+
+  &--ready {
+    color: var(--color-text-secondary);
+  }
+
+  &--running {
+    color: var(--color-brand-primary);
+  }
+
+  &--error {
+    color: var(--color-warning-primary);
+  }
+}
+
+// ---- 脚本输入框 ----
+.cattca-tool__script-input {
+  flex: 1;
+  width: 100%;
+  min-height: 300px;
+  padding: $space-3;
+  border: 1px solid var(--color-border);
+  border-radius: $radius-large;
+  background: var(--color-background-page);
+  color: var(--color-text-primary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  font-size: 0.875rem;
+  line-height: 1.7;
+  resize: vertical;
+  caret-color: var(--color-brand-primary);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+
+  &:focus {
+    outline: none;
+    border-color: var(--color-brand-primary);
+    box-shadow: 0 0 0 3px var(--color-brand-secondary);
+  }
+
+  &::placeholder {
+    color: var(--color-text-secondary);
+  }
+}
+
+// ---- 按钮组（编辑器面板底部一行）----
+.cattca-tool__button-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $space-2;
+  margin-top: $space-4;
+}
+
+// ---- 按钮基础（编辑器按钮 + 游戏运行区头部按钮共用）----
+.cattca-tool__btn,
+.story-cattca__btn {
+  padding: $space-2 $space-4;
+  border: 1px solid var(--color-border);
+  border-radius: $radius-large;
+  background: var(--color-background-page);
+  color: var(--color-text-primary);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover:not(:disabled) {
+    background: var(--color-brand-secondary);
+    border-color: var(--color-brand-primary);
+    color: var(--color-brand-primary);
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+}
+
+// --secondary 修饰类与基础样式一致，保留类名以备后续差异化。
+.cattca-tool__btn--secondary,
+.story-cattca__btn--secondary {
+}
+
+// ---- 主按钮（运行脚本）----
+.cattca-tool__btn--primary {
+  background: var(--color-brand-primary);
+  border-color: var(--color-brand-primary);
+  color: #fff;
+
+  &:hover:not(:disabled) {
+    background: var(--color-brand-primary);
+    border-color: var(--color-brand-primary);
+    color: #fff;
+    opacity: 0.9;
+  }
+}
+
+// ---- 游戏运行区头部（标题 + 全屏按钮）----
+.story-cattca__game-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: $space-3;
+  margin-bottom: $space-4;
+}
+
+// ---- 全屏覆盖层 ----
+.story-cattca__fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 1050; // 高于 header(1030)，全屏时盖住导航栏
+  display: flex;
+  flex-direction: column;
+  background: var(--color-background-page);
+  visibility: hidden;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s ease;
+
+  &--open {
+    visibility: visible;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.story-cattca__fullscreen-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: $space-3;
+  padding: $space-4 $space-6;
+  background: var(--color-background-card);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.story-cattca__exit-fullscreen-btn {
+  padding: $space-2 $space-4;
+  border: 1px solid var(--color-border);
+  border-radius: $radius-large;
+  background: var(--color-background-page);
+  color: var(--color-text-primary);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: var(--color-warning-secondary);
+    border-color: var(--color-warning-primary);
+    color: var(--color-warning-primary);
+  }
+}
+
+.story-cattca__fullscreen-content {
+  flex: 1;
+  width: 100%;
+  max-width: 720px; // 全屏阅读行宽，对齐 .story-cattca 的 720px
+  margin: 0 auto;
+  padding: $space-6;
+  overflow-y: auto;
+}
+
+// ---- 全屏输出 / 选项 / 日志（与 .story-cattca__output|choices|log 视觉一致）----
+.story-cattca__fullscreen-output {
+  min-height: 140px;
+  font-size: 1.1rem;
+  line-height: 1.8;
+  color: var(--color-text-primary);
+}
+
+.story-cattca__fullscreen-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 20px 0;
+
+  button {
+    display: block;
+    width: 100%;
+    padding: 14px 24px;
+    border: none;
+    border-radius: 999px;
+    background: var(--color-brand-secondary);
+    color: var(--color-brand-primary);
+    font-size: 16px;
+    font-weight: 500;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+
+    &:hover {
+      background: var(--color-brand-primary);
+      color: #fff;
+    }
+  }
+}
+
+.story-cattca__fullscreen-log {
+  margin-top: 20px;
+  padding: 14px;
+  background: var(--color-background-subtle);
+  border-radius: 10px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  white-space: pre-wrap;
+  max-height: 220px;
+  overflow-y: auto;
+}
