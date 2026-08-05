@@ -1996,6 +1996,7 @@ body.dark-mode .alert-danger {
 
 /* 卡片样式优化 */
 .feature-card {
+  display: block;
   transition: all 0.3s ease;
   cursor: pointer;
   border-radius: 30px;
