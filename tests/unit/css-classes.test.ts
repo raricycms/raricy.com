@@ -22,10 +22,12 @@ import path from 'node:path';
 const ROOT = path.resolve(import.meta.dirname, '../..');
 
 function readCss(): string {
+  // 迁移后样式统一由 src/styles-scss/ 编译到 compiled/flask.css，layout.tsx 直接导入。
+  // 扫编译产物（而非 SCSS 源）才能回答「浏览器实际加载的 CSS 里有没有这个类」——
+  // 若只扫 SCSS，漏跑 build:css 时源里有类、运行时没有，黑方块照样出现而测试放行。
+  // （旧路径 src/app/rebuild.css / globals.css / public/static/css/legacy.css 已随迁移删除。）
   return [
-    path.join(ROOT, 'src/app/rebuild.css'),
-    path.join(ROOT, 'src/app/globals.css'),
-    path.join(ROOT, 'public/static/css/legacy.css'),
+    path.join(ROOT, 'src/styles-scss/compiled/flask.css'),
   ]
     .filter((p) => fs.existsSync(p))
     .map((p) => fs.readFileSync(p, 'utf8'))
