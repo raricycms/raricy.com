@@ -121,6 +121,12 @@ export default async function BlogListPage({
               <div className="blog-list">
                 {result.blogs.map((b) => (
                   <article key={b.id} className="blog-item" id={`id${b.id}`}>
+                    {/* 整卡可点击的拉伸链接（CSS 里 z-index:0，作者链接置顶优先） */}
+                    <Link
+                      href={`/blog/${b.id}`}
+                      className="blog-item-cover"
+                      aria-label={b.title}
+                    />
                     <div className="blog-header">
                       <Link href={`/blog/${b.id}`} className="blog-title">
                         {b.title}
@@ -143,8 +149,14 @@ export default async function BlogListPage({
                     <p className="blog-description">{b.description}</p>
                     <div className="menu-blog-meta">
                       <div className="blog-author">
-                        <img src={`/api/avatar/${b.authorId}`} alt={b.author?.username ?? ''} />
-                        <span>{b.author?.username}</span>
+                        <Link
+                          href={`/u/${b.authorId}`}
+                          className="blog-author-link"
+                          title={b.author?.username ?? ''}
+                        >
+                          <img src={`/api/avatar/${b.authorId}`} alt={b.author?.username ?? ''} />
+                          <span>{b.author?.username}</span>
+                        </Link>
                         {b.category && (
                           <span className="blog-category-tag">
                             {categoryFullPath(b.category)}

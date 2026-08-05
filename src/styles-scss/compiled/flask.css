@@ -3072,10 +3072,24 @@ a:hover {
 }
 
 .blog-item {
+  position: relative; /* 承载整卡拉伸链接（.blog-item-cover） */
   background: var(--color-background-card);
   border-radius: 30px;
   padding: 20px 23px 23px 28px;
   margin-bottom: 16px;
+  cursor: pointer;
+  transition: box-shadow 0.2s ease;
+}
+.blog-item:hover {
+  box-shadow: var(--shadow-card-hover);
+}
+
+/* 整卡可点击的拉伸链接：铺满卡片，作者链接（z-index:1）优先响应 */
+.blog-item-cover {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: 30px;
 }
 
 .blog-header {
@@ -3184,6 +3198,20 @@ a:hover {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+/* 作者链接：置顶于拉伸链接之上（点击头像/用户名 → 个人主页，而非博客详情） */
+.blog-author-link {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: inherit;
+  text-decoration: none;
+}
+.blog-author-link:hover span {
+  color: var(--color-brand-primary);
 }
 
 .blog-author img {
