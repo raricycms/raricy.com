@@ -1,4 +1,4 @@
-import GamePageShell from '@/app/components/GamePageShell';
+import Link from 'next/link';
 import CubeTicTacToe from '@/app/components/CubeTicTacToe';
 
 export const metadata = {
@@ -6,14 +6,15 @@ export const metadata = {
 };
 
 export default function CubeTicTacToePage() {
+  // 立方棋是沉浸式全屏页面（组件自身渲染 .cubettt-page，100vh + overflow: hidden），
+  // 不能走 GamePageShell（标题/介绍与全屏布局冲突）。
+  // 返回链接用 .cubettt-back（position: fixed，悬浮在画面上方）。
   return (
-    <GamePageShell
-      title="立方棋"
-      pageClass="cubettt-page"
-      backClass="cubettt-back"
-      description="4×4×4 立体井字棋，76 条连线四子连珠即获胜。拖拽旋转视角，A/S/D 键展开爆炸视图。本地双人对战，红方先手。"
-    >
+    <>
+      <Link href="/game" className="cubettt-back">
+        ← 返回玩具
+      </Link>
       <CubeTicTacToe />
-    </GamePageShell>
+    </>
   );
 }
