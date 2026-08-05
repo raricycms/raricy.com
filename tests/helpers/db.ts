@@ -3,7 +3,7 @@
 // 安全保证：DATABASE_URL 由 tests/setup.ts 指向 tests/.tmp/test.db，
 // 且下方 assertTestDb() 会硬校验，绝不会连到真实库。
 
-import { execFileSync } from 'node:child_process';
+import { execSync } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
 import { prisma } from '@/lib/db';
@@ -16,7 +16,9 @@ const TEST_DB_PREFIX = 'tests/.tmp/test-';
 /** 硬校验：连的必须是测试库，否则直接抛错（防止误伤真实数据）。 */
 function assertTestDb() {
   const url = process.env.DATABASE_URL || '';
-  if (!url.includes(TEST_DB_PREFIX)) {
+  // Windows 上 setup.ts 的 path.join 产出反斜杠（file:C:\...\tests\.tmp\...），
+  // 归一化成 / 再按前缀校验，避免「期望包含 tests/.tmp/test-」在 Windows 误报。
+  if (!url.replace(/\\/g, '/').includes(TEST_DB_PREFIX)) {
     throw new Error(
       `拒绝在非测试库上运行：DATABASE_URL=${url}（期望包含 ${TEST_DB_PREFIX}）`
     );
@@ -35,15 +37,14 @@ export function ensureSchema() {
     const f = dbPath + suffix;
     if (fs.existsSync(f)) fs.rmSync(f);
   }
-  execFileSync(
-    'npx',
-    ['prisma', 'db', 'push', '--skip-generate', '--accept-data-loss'],
-    {
-      cwd: path.resolve(import.meta.dirname, '../..'),
-      env: { ...process.env, DATABASE_URL: process.env.DATABASE_URL },
-      stdio: 'pipe',
-    }
-  );
+  // Windows 下 npm 可执行名是 npx.cmd（批处理），execFileSync 无法直接拉起
+  // （ENOENT / EINVAL）。execSync 默认走 shell（POSIX /bin/sh、Windows cmd.exe），
+  // 跨平台都能解析 npx。命令参数全是固定字面量，无注入面。
+  execSync('npx prisma db push --skip-generate --accept-data-loss', {
+    cwd: path.resolve(import.meta.dirname, '../..'),
+    env: { ...process.env, DATABASE_URL: process.env.DATABASE_URL },
+    stdio: 'pipe',
+  });
   schemaReady = true;
 }
 
