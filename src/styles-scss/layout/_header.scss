@@ -70,7 +70,8 @@ a {
   align-items: center;
   justify-content: center;
   flex-direction: column;
-  gap: 4px;
+  // 三条 2px 横条 + 2×8px gap = 总高 22px，等于条宽 22px → 整体图形为正方形。
+  gap: 8px;
   cursor: pointer;
   color: var(--color-text-primary);
 
@@ -79,9 +80,20 @@ a {
     width: 22px;
     height: 2px;
     background: var(--color-text-primary);
-    margin: 3px 0;
-    transition: transform 0.2s ease, opacity 0.2s ease;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s ease;
   }
+}
+
+// 点击后（base.js 切 .site-navbar.open）：上条右端下摆至右下、下条右端上摆至右上，
+// 中间条淡出 → 组成 X。上下条各自平移到图形中心（translateY ±10px）再 ±45° 转出对角。
+.site-navbar.open .site-navbar-toggler .bar:nth-child(1) {
+  transform: translateY(10px) rotate(45deg);
+}
+.site-navbar.open .site-navbar-toggler .bar:nth-child(2) {
+  opacity: 0;
+}
+.site-navbar.open .site-navbar-toggler .bar:nth-child(3) {
+  transform: translateY(-10px) rotate(-45deg);
 }
 
 // .site-user-dropdown 仍在 .site-actions 内（在 .site-navbar-collapse 内）。

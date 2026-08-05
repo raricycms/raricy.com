@@ -333,7 +333,7 @@ a:hover {
   align-items: center;
   justify-content: center;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
   cursor: pointer;
   color: var(--color-text-primary);
 }
@@ -342,8 +342,19 @@ a:hover {
   width: 22px;
   height: 2px;
   background: var(--color-text-primary);
-  margin: 3px 0;
-  transition: transform 0.2s ease, opacity 0.2s ease;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s ease;
+}
+
+.site-navbar.open .site-navbar-toggler .bar:nth-child(1) {
+  transform: translateY(10px) rotate(45deg);
+}
+
+.site-navbar.open .site-navbar-toggler .bar:nth-child(2) {
+  opacity: 0;
+}
+
+.site-navbar.open .site-navbar-toggler .bar:nth-child(3) {
+  transform: translateY(-10px) rotate(-45deg);
 }
 
 .site-navbar-collapse {
