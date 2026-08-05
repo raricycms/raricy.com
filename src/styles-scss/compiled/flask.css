@@ -5977,6 +5977,22 @@ body {
     font-size: 1.5rem;
   }
 }
+.cube-page {
+  padding: 24px 0 40px;
+}
+
+.cube-back {
+  display: inline-block;
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  font-size: 0.9rem;
+  margin-bottom: 16px;
+  transition: color 0.2s;
+}
+.cube-back:hover {
+  color: var(--color-brand-primary);
+}
+
 .connect4-page {
   display: flex;
   justify-content: center;
@@ -6345,6 +6361,13 @@ body {
   min-height: calc(100vh - 62px);
   padding: 24px 0;
   background: var(--color-background-page);
+}
+
+.uttt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
 }
 
 .uttt-container {
@@ -6896,9 +6919,6 @@ body {
   transition: transform 0.5s ease-in-out;
   cursor: pointer;
 }
-.cubettt-cube--highlight .cubettt-face {
-  background: rgba(255, 255, 0, 0.6);
-}
 .cubettt-cube--red .cubettt-face {
   background: rgba(255, 100, 100, 0.8);
 }
@@ -6913,6 +6933,10 @@ body {
 .cubettt-cube--last-move .cubettt-face {
   border: 2px solid #4caf50 !important;
   box-shadow: 0 0 8px rgba(76, 175, 80, 0.4);
+}
+
+.cubettt-page.is-playing .cubettt-cube--empty:hover .cubettt-face {
+  background: rgba(255, 255, 0, 0.6);
 }
 
 .cubettt-face {
@@ -7055,7 +7079,7 @@ body {
   background: rgba(60, 60, 60, 0.8);
   border-color: #555;
 }
-[data-theme=dark] .cubettt-cube--highlight .cubettt-face {
+[data-theme=dark] .cubettt-page.is-playing .cubettt-cube--empty:hover .cubettt-face {
   background: rgba(255, 255, 0, 0.5);
 }
 
@@ -7227,7 +7251,8 @@ body {
 .puzzle-page {
   padding: 24px 0 40px;
 }
-.puzzle-page .container {
+
+.puzzle-page.container {
   max-width: 960px;
 }
 

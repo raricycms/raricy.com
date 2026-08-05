@@ -13,6 +13,14 @@
   background: var(--color-background-page);
 }
 
+// 组件根容器：居中纵向排列（对齐 _UNUSED_UTTT_CSS 的 .uttt 规则）
+.uttt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: $space-4;
+}
+
 .uttt-container {
   text-align: center;
   padding: $space-6;

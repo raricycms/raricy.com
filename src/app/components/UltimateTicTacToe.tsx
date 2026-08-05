@@ -150,23 +150,23 @@ export default function UltimateTicTacToe() {
 
   return (
     <div className="uttt">
-      <div className="uttt__status" style={{ color: status.color }}>
+      <div className="uttt-status" style={{ color: status.color }}>
         {status.text}
       </div>
 
-      <div className={`uttt__board${freePlay ? ' uttt__board--free' : ''}`}>
+      <div className={`uttt-board${freePlay ? ' uttt-board--free-play' : ''}`}>
         {state.superBoardState.map((superCell, i) => {
           const won = superCell === 'X' || superCell === 'O';
           const tied = superCell === 'T';
           const active = state.gameActive && !freePlay && state.nextBoardIndex === i;
           const playable = freePlay && superCell === '';
           const cls = [
-            'uttt__mini',
-            won ? 'uttt__mini--won' : '',
-            won ? (superCell === 'X' ? 'uttt__mini--won-x' : 'uttt__mini--won-o') : '',
-            tied ? 'uttt__mini--tied' : '',
-            active ? 'uttt__mini--active' : '',
-            playable ? 'uttt__mini--playable' : '',
+            'uttt-mini',
+            won ? 'uttt-mini--won' : '',
+            won ? (superCell === 'X' ? 'uttt-mini--won-x' : 'uttt-mini--won-o') : '',
+            tied ? 'uttt-mini--tied' : '',
+            active ? 'uttt-mini--active' : '',
+            playable ? 'uttt-mini--playable' : '',
           ]
             .filter(Boolean)
             .join(' ');
@@ -177,8 +177,8 @@ export default function UltimateTicTacToe() {
                 <button
                   key={j}
                   type="button"
-                  className={`uttt__cell${
-                    mark === 'X' ? ' uttt__cell--x' : mark === 'O' ? ' uttt__cell--o' : ''
+                  className={`uttt-cell${
+                    mark === 'X' ? ' uttt-cell--x' : mark === 'O' ? ' uttt-cell--o' : ''
                   }`}
                   onClick={() => handleCellClick(i, j)}
                   aria-label={`小棋盘 ${i + 1} 格 ${j + 1}`}
@@ -191,13 +191,13 @@ export default function UltimateTicTacToe() {
         })}
       </div>
 
-      <div className="uttt__controls">
-        <button type="button" className="uttt__btn" onClick={restart}>
+      <div className="uttt-controls">
+        <button type="button" className="uttt-btn" onClick={restart}>
           重新开始
         </button>
         <button
           type="button"
-          className="uttt__btn"
+          className="uttt-btn"
           onClick={undoMove}
           disabled={history.length === 0 || !state.gameActive}
         >
@@ -211,8 +211,8 @@ export default function UltimateTicTacToe() {
 // 自包含样式已迁移至 src/styles-scss/pages/game/_utictactoe.scss / 编译产物 flask.css
 const _UNUSED_UTTT_CSS = `
 .uttt { display: flex; flex-direction: column; align-items: center; gap: 16px; }
-.uttt__status { font-size: 1.1rem; font-weight: 600; min-height: 1.4em; text-align: center; }
-.uttt__board {
+.uttt-status { font-size: 1.1rem; font-weight: 600; min-height: 1.4em; text-align: center; }
+.uttt-board {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
@@ -222,7 +222,7 @@ const _UNUSED_UTTT_CSS = `
   background: var(--line-2, #d0d0d0);
   border-radius: var(--r-sm, 8px);
 }
-.uttt__mini {
+.uttt-mini {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 3px;
@@ -232,10 +232,10 @@ const _UNUSED_UTTT_CSS = `
   position: relative;
   transition: box-shadow .15s ease, outline .15s ease;
 }
-.uttt__mini--playable { outline: 2px solid var(--accent, #3f51b5); outline-offset: 1px; }
-.uttt__mini--active { outline: 3px solid var(--accent, #3f51b5); outline-offset: 1px; box-shadow: 0 0 0 4px rgba(63,81,181,.18); }
-.uttt__mini--won::after,
-.uttt__mini--tied::after {
+.uttt-mini--playable { outline: 2px solid var(--accent, #3f51b5); outline-offset: 1px; }
+.uttt-mini--active { outline: 3px solid var(--accent, #3f51b5); outline-offset: 1px; box-shadow: 0 0 0 4px rgba(63,81,181,.18); }
+.uttt-mini--won::after,
+.uttt-mini--tied::after {
   content: attr(data-winner);
   position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;
@@ -243,10 +243,10 @@ const _UNUSED_UTTT_CSS = `
   border-radius: 6px;
   pointer-events: none;
 }
-.uttt__mini--won-x::after { content: 'X'; color: #d32f2f; background: rgba(211,47,47,.12); }
-.uttt__mini--won-o::after { content: 'O'; color: #1976d2; background: rgba(25,118,210,.12); }
-.uttt__mini--tied::after { content: '—'; color: #757575; background: rgba(117,117,117,.12); }
-.uttt__cell {
+.uttt-mini--won-x::after { content: 'X'; color: #d32f2f; background: rgba(211,47,47,.12); }
+.uttt-mini--won-o::after { content: 'O'; color: #1976d2; background: rgba(25,118,210,.12); }
+.uttt-mini--tied::after { content: '—'; color: #757575; background: rgba(117,117,117,.12); }
+.uttt-cell {
   aspect-ratio: 1 / 1;
   border: 1px solid var(--line, #e0e0e0);
   border-radius: 4px;
@@ -259,11 +259,11 @@ const _UNUSED_UTTT_CSS = `
   padding: 0; line-height: 1;
   transition: background .12s ease;
 }
-.uttt__cell:hover:not(:disabled) { background: var(--line, #eee); }
-.uttt__cell--x { color: #d32f2f; }
-.uttt__cell--o { color: #1976d2; }
-.uttt__controls { display: flex; gap: 12px; }
-.uttt__btn {
+.uttt-cell:hover:not(:disabled) { background: var(--line, #eee); }
+.uttt-cell--x { color: #d32f2f; }
+.uttt-cell--o { color: #1976d2; }
+.uttt-controls { display: flex; gap: 12px; }
+.uttt-btn {
   padding: 8px 20px;
   border: 1px solid var(--line-2, #ccc);
   border-radius: var(--r-sm, 8px);
@@ -272,6 +272,6 @@ const _UNUSED_UTTT_CSS = `
   font-size: .95rem; font-weight: 600;
   cursor: pointer;
 }
-.uttt__btn:hover:not(:disabled) { background: var(--surface-2, #f5f5f5); }
-.uttt__btn:disabled { opacity: .45; cursor: not-allowed; }
+.uttt-btn:hover:not(:disabled) { background: var(--surface-2, #f5f5f5); }
+.uttt-btn:disabled { opacity: .45; cursor: not-allowed; }
 `;

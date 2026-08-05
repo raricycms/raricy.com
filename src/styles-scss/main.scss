@@ -44,6 +44,7 @@
 @use 'pages/image-hosting';
 @use 'pages/game';
 @use 'pages/game/2048' as game2048;
+@use 'pages/game/cube';
 @use 'pages/game/connect4';
 @use 'pages/game/utictactoe';
 @use 'pages/game/speed';

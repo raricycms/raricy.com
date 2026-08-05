@@ -69,10 +69,6 @@
   transition: transform 0.5s ease-in-out;
   cursor: pointer;
 
-  &--highlight .cubettt-face {
-    background: rgba(255, 255, 0, 0.6);
-  }
-
   &--red .cubettt-face {
     background: rgba(255, 100, 100, 0.8);
   }
@@ -91,6 +87,11 @@
     border: 2px solid #4caf50 !important;
     box-shadow: 0 0 8px rgba(76, 175, 80, 0.4);
   }
+}
+
+// 可落子（空格）悬停高亮 — 对齐组件实际使用的 .cubettt-cube--empty + .is-playing 状态类
+.cubettt-page.is-playing .cubettt-cube--empty:hover .cubettt-face {
+  background: rgba(255, 255, 0, 0.6);
 }
 
 .cubettt-face {
@@ -234,7 +235,7 @@
     border-color: #555;
   }
 
-  .cubettt-cube--highlight .cubettt-face {
+  .cubettt-page.is-playing .cubettt-cube--empty:hover .cubettt-face {
     background: rgba(255, 255, 0, 0.5);
   }
 }
