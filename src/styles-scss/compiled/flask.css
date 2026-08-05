@@ -3340,6 +3340,59 @@ body {
   text-align: center;
 }
 
+.content-wrapper .legal-card {
+  background: var(--color-background-card);
+  border-radius: 20px;
+  padding: 2rem 2.5rem;
+  box-shadow: var(--shadow-card);
+  font-size: 1.05rem;
+  line-height: 1.9;
+  color: var(--color-text-primary);
+}
+
+.content-wrapper .legal-card p {
+  margin-bottom: 1.2em;
+  text-align: justify;
+}
+
+.content-wrapper .legal-card h2 {
+  font-size: 1.35rem;
+  font-weight: 600;
+  margin: 2em 0 1em;
+  padding-top: 1.2em;
+  border-top: 1px solid var(--color-border);
+}
+
+.content-wrapper .legal-card h2:first-of-type {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+.content-wrapper .legal-card h3 {
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin: 1.5em 0 0.6em;
+  color: var(--color-text-primary);
+}
+
+.content-wrapper .legal-card ul {
+  margin: 0 0 1.2em 1.4em;
+  padding: 0;
+}
+
+.content-wrapper .legal-card li {
+  margin-bottom: 0.5em;
+}
+
+.content-wrapper .legal-card a {
+  color: var(--color-brand-primary);
+}
+
+.content-wrapper .legal-card a:hover {
+  text-decoration: underline;
+}
+
 .btn-group {
   margin-bottom: 1rem;
   text-align: center;

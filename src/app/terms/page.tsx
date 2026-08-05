@@ -1,13 +1,15 @@
 import type { Metadata } from 'next';
+import LegalCard from '@/app/components/LegalCard';
 
 export const metadata: Metadata = { title: 'Raricy.com - 用户协议' };
 
 // 用户协议 — Flask BEM
-// 对齐 app/templates/home/terms.html：用 content-wrapper 包裹 + page-title 标题。
+// 对齐 app/templates/home/terms.html：用 content-wrapper 包裹 + page-title 标题，正文装入 .legal-card。
 export default function TermsPage() {
   return (
     <div className="content-wrapper">
       <h1 className="page-title">用户协议</h1>
+      <LegalCard>
       <p>
         欢迎使用 Raricy.com（聪明山）。在使用本网站之前，请仔细阅读以下协议条款。注册或使用本网站即表示您同意本协议的全部内容。如果您不同意本协议的任何条款，请勿使用本网站。
       </p>
@@ -163,6 +165,7 @@ export default function TermsPage() {
       <p style={{ textAlign: 'right', color: 'var(--color-text-tertiary)', fontSize: '0.85rem', marginTop: '2.5rem' }}>
         最后更新：2026年5月18日
       </p>
+      </LegalCard>
     </div>
   );
 }

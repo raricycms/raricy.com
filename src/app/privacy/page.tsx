@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
+import LegalCard from '@/app/components/LegalCard';
 
-// 对齐 app/templates/home/privacy.html：用 content-wrapper 包裹 + page-title 标题。
+// 对齐 app/templates/home/privacy.html：用 content-wrapper 包裹 + page-title 标题，正文装入 .legal-card。
 
 export const metadata: Metadata = { title: 'Raricy.com - 隐私政策' };
 
@@ -8,6 +9,7 @@ export default function PrivacyPage() {
   return (
     <div className="content-wrapper">
       <h1 className="page-title">隐私政策</h1>
+      <LegalCard>
       <p>
         Raricy.com（聪明山）高度重视您的隐私。本隐私政策详细说明了我们在您使用本网站时如何收集、使用和保护您的个人信息。请仔细阅读。
       </p>
@@ -232,6 +234,7 @@ export default function PrivacyPage() {
       <p style={{ textAlign: 'right', color: 'var(--color-text-tertiary)', fontSize: '0.85rem', marginTop: '2.5rem' }}>
         最后更新：2026年6月16日
       </p>
+      </LegalCard>
     </div>
   );
 }
