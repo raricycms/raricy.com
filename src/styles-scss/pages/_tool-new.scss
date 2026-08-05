@@ -1,5 +1,30 @@
 // New Tool Menu Styles - Clean design with dark mode support
 @use '../abstracts/variables' as *;
+
+// 药丸按钮：hero 筛选 pill 与 grid「更多开发者工具」展开按钮共用。
+// 独立成顶层规则，避免只作用于 .tool-new-hero__filters 内部。
+.filter-pill {
+  padding: $space-2 $space-3;
+  border: 1px solid var(--color-border);
+  border-radius: $radius-max;
+  background: var(--color-background-card);
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    border-color: var(--color-brand-primary);
+    color: var(--color-brand-primary);
+  }
+
+  &.active {
+    background: var(--color-brand-primary);
+    border-color: var(--color-brand-primary);
+    color: white;
+  }
+}
+
 .tool-new {
   // Hero section
   &-hero {
@@ -59,28 +84,6 @@
       display: flex;
       gap: $space-2;
       flex-wrap: wrap;
-      
-      .filter-pill {
-        padding: $space-2 $space-3;
-        border: 1px solid var(--color-border);
-        border-radius: $radius-max;
-        background: var(--color-background-card);
-        color: var(--color-text-secondary);
-        font-size: 0.875rem;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        
-        &:hover {
-          border-color: var(--color-brand-primary);
-          color: var(--color-brand-primary);
-        }
-        
-        &.active {
-          background: var(--color-brand-primary);
-          border-color: var(--color-brand-primary);
-          color: white;
-        }
-      }
     }
   }
   

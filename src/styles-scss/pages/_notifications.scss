@@ -70,9 +70,9 @@ body {
 }
 
 .action-btn {
-    background: #fff;
-    border: 1px solid #ccc;
-    color: #333;
+    background: var(--color-background-card);
+    border: 1px solid var(--color-border);
+    color: var(--color-text-primary);
     border-radius: 6px;
     padding: 0.4rem 1rem;
     margin: 0.2rem;
@@ -81,15 +81,15 @@ body {
     transition: background 0.2s;
 }
 .action-btn:hover {
-    background: #f0f0f0;
+    background: var(--color-background-subtle);
 }
-.btn-danger { color: #c0392b; border-color: #e74c3c; }
-.btn-danger:hover { background: #fceaea; }
+.btn-danger { color: var(--color-warning-primary); border-color: var(--color-warning-primary); }
+.btn-danger:hover { background: var(--color-warning-secondary); }
 
 .filter-btn {
-    background: #fff;
-    border: 1px solid #ccc;
-    color: #333;
+    background: var(--color-background-card);
+    border: 1px solid var(--color-border);
+    color: var(--color-text-primary);
     border-radius: 6px;
     padding: 0.3rem 0.8rem;
     margin: 0.2rem;
@@ -97,9 +97,9 @@ body {
     text-decoration: none;
 }
 .filter-btn.active {
-    background: #3498db;
+    background: var(--color-brand-primary);
     color: #fff;
-    border-color: #2980b9;
+    border-color: var(--color-brand-primary);
 }
 
 .content-wrapper .notification-card {
@@ -132,7 +132,7 @@ body {
     color: #e67e22;
     font-size: 0.7rem;
     font-weight: 600;
-    background: #fef3e2;
+    background: rgba(230, 126, 34, 0.15);
     padding: 0.1rem 0.4rem;
     border-radius: 3px;
 }
@@ -161,18 +161,18 @@ body {
 }
 
 .btn-mark-read {
-    background: #e8f9f0;
-    border-color: #2ecc71;
-    color: #27ae60;
+    background: var(--color-success-secondary);
+    border-color: var(--color-success-primary);
+    color: var(--color-success-primary);
 }
-.btn-mark-read:hover { background: #27ae60; color: #fff; }
+.btn-mark-read:hover { background: var(--color-success-primary); color: #fff; }
 
 .btn-delete {
-    background: #fceaea;
-    border-color: #e74c3c;
-    color: #c0392b;
+    background: var(--color-warning-secondary);
+    border-color: var(--color-warning-primary);
+    color: var(--color-warning-primary);
 }
-.btn-delete:hover { background: #e74c3c; color: #fff; }
+.btn-delete:hover { background: var(--color-warning-primary); color: #fff; }
 
 .notification-content {
     margin: 0.3rem 0 0 0;
@@ -183,7 +183,7 @@ body {
 
 .notification-blog-link {
     font-size: 0.75rem;
-    color: #3498db;
+    color: var(--color-brand-primary);
     text-decoration: none;
     display: inline-block;
     margin-top: 0.2rem;
