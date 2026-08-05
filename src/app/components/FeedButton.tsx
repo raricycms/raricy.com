@@ -306,7 +306,7 @@ export default function FeedButton({
           disabled={likeBusy}
           aria-label="点赞"
         >
-          <span aria-hidden="true">{liked ? '❤' : '♡'}</span>
+          <span className="icon icon-heart-fill" aria-hidden="true"></span>
           <span>{liked ? '已点赞' : '点赞'}</span>
           <span className="like-count-badge" id="like-count">
             {likes}
