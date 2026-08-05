@@ -127,19 +127,24 @@
   flex-wrap: wrap;
 }
 
+// 组件只渲染基类 .gomoku-btn（未用 --new/--undo 修饰符），
+// 且按钮需随深浅主题切换 —— 用主题令牌，勿硬编码颜色。
 .gomoku-btn {
   padding: $space-2 $space-4;
   font-size: 0.95rem;
-  border: none;
+  font-weight: 500;
+  border: 1px solid var(--color-border);
   border-radius: $radius-small;
   cursor: pointer;
-  color: #fff;
-  font-weight: 500;
-  transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+  background: var(--color-background-card);
+  color: var(--color-text-primary);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease, background-color 0.2s ease, border-color 0.2s ease;
 
-  &:hover {
+  &:hover:not(:disabled) {
     transform: translateY(-2px);
     box-shadow: var(--shadow-sm);
+    background: var(--color-background-subtle);
+    border-color: var(--color-border-highlight);
   }
 
   &:active {
@@ -151,14 +156,6 @@
     cursor: not-allowed;
     transform: none;
     box-shadow: none;
-  }
-
-  &--new {
-    background: linear-gradient(135deg, #4CAF50, #388E3C);
-  }
-
-  &--undo {
-    background: linear-gradient(135deg, #74b9ff, #0984e3);
   }
 
   @media (max-width: 640px) {

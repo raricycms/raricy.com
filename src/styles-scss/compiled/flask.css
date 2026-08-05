@@ -6500,31 +6500,24 @@ body {
 .uttt-btn {
   padding: 12px 24px;
   font-size: 1em;
+  font-weight: 600;
   cursor: pointer;
-  border: none;
+  border: 1px solid var(--color-border);
   border-radius: 5px;
-  color: #fff;
-  transition: transform 0.1s ease-out, background-color 0.2s ease-out;
+  background: var(--color-background-card);
+  color: var(--color-text-primary);
+  transition: transform 0.1s ease-out, background-color 0.2s ease-out, border-color 0.2s ease-out;
+}
+.uttt-btn:hover:not(:disabled) {
+  background: var(--color-background-subtle);
+  border-color: var(--color-border-highlight);
 }
 .uttt-btn:active {
   transform: scale(0.95);
 }
-.uttt-btn--restart {
-  background-color: #3f51b5;
-}
-.uttt-btn--restart:hover {
-  background-color: #303f9f;
-}
-.uttt-btn--undo {
-  background-color: #f57c00;
-}
-.uttt-btn--undo:hover {
-  background-color: #e65100;
-}
-.uttt-btn--undo:disabled {
-  background-color: #bdbdbd;
+.uttt-btn:disabled {
+  opacity: 0.45;
   cursor: not-allowed;
-  transform: none;
 }
 
 @keyframes uttt-overlay-in {
@@ -7206,16 +7199,19 @@ body {
 .gomoku-btn {
   padding: 8px 16px;
   font-size: 0.95rem;
-  border: none;
+  font-weight: 500;
+  border: 1px solid var(--color-border);
   border-radius: 5px;
   cursor: pointer;
-  color: #fff;
-  font-weight: 500;
-  transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+  background: var(--color-background-card);
+  color: var(--color-text-primary);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease, background-color 0.2s ease, border-color 0.2s ease;
 }
-.gomoku-btn:hover {
+.gomoku-btn:hover:not(:disabled) {
   transform: translateY(-2px);
   box-shadow: var(--shadow-sm);
+  background: var(--color-background-subtle);
+  border-color: var(--color-border-highlight);
 }
 .gomoku-btn:active {
   transform: translateY(0);
@@ -7225,12 +7221,6 @@ body {
   cursor: not-allowed;
   transform: none;
   box-shadow: none;
-}
-.gomoku-btn--new {
-  background: linear-gradient(135deg, #4CAF50, #388E3C);
-}
-.gomoku-btn--undo {
-  background: linear-gradient(135deg, #74b9ff, #0984e3);
 }
 @media (max-width: 640px) {
   .gomoku-btn {
