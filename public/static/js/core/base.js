@@ -395,12 +395,19 @@ function initSiteChrome() {
 
     // 移动端：点导航链接后收起 navbar。
     // Navbar 在 root layout 里，Next 客户端路由跳转不会重建它，.open 会跨页残留。
+    // 用事件委托而不是逐个绑定 `a.site-link`：登录后 router.refresh() 会插入
+    // 通知 / 签到 / 用户下拉等链接，逐个绑定收不到它们；委托到 .site-navbar 后
+    // 任意 <a>（含 site-brand、登录、用户下拉菜单项）点击都会收起。
     if (siteNavbar) {
-        siteNavbar.querySelectorAll('a.site-link').forEach(function (a) {
-            a.addEventListener('click', function () {
-                if (isMobile()) closeNavbar();
-            }, { signal });
-        });
+        siteNavbar.addEventListener('click', function (e) {
+            if (!isMobile()) return;
+            if (e.target.closest && e.target.closest('a')) {
+                closeNavbar();
+                // 用户下拉菜单项也是 <a>：导航时连下拉一并收起，避免 .open 跨页残留
+                const dd = document.querySelector('.site-user-dropdown.open');
+                if (dd) dd.classList.remove('open');
+            }
+        }, { signal });
     }
 
     // 主题：有手动偏好则用之，否则跟随系统（不落盘，OS 变化实时跟随）
