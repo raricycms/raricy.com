@@ -572,6 +572,7 @@ a:hover {
 .theme-toggle-button .icon {
   font-size: 1.2rem;
   color: var(--color-text-primary);
+  transition: transform 0.4s ease;
 }
 
 .checkin-indicator {

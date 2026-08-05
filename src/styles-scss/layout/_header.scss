@@ -351,9 +351,11 @@ a {
   .rotated {
     transform: rotate(180deg);
   }
-  .icon { 
-    font-size: 1.2rem; 
-    color: var(--color-text-primary); 
+  .icon {
+    font-size: 1.2rem;
+    color: var(--color-text-primary);
+    // 点击切换主题时，base.js 用内联 transform 累加 180°，靠这里的过渡产生动画
+    transition: transform 0.4s ease;
   }
 }
 
