@@ -373,7 +373,7 @@ export default function FeedButton({
       {canManage && (
         <div className="admin-controls">
           <button id="admin-likers-btn" className="read-btn" onClick={openLikers}>
-            查看点赞者
+            <span className="icon icon-heart-fill" aria-hidden="true" style={{ marginRight: '0.4rem' }}></span>查看点赞者
           </button>
           <button id="admin-feeders-btn" className="read-btn" onClick={openFeeders}>
             <span className="icon icon-fish" aria-hidden="true" style={{ marginRight: '0.4rem' }}></span>查看投喂者
@@ -405,7 +405,7 @@ export default function FeedButton({
           <div className="modal-dialog modal-dialog-centered">
             <div className="modal-content">
               <div className="modal-header">
-                <h5 className="modal-title">点赞者列表</h5>
+                <h5 className="modal-title"><span className="icon icon-heart-fill" aria-hidden="true" style={{ marginRight: '0.5rem' }}></span>点赞者列表</h5>
                 <button type="button" className="btn-close" aria-label="Close" onClick={() => setModal(null)} />
               </div>
               <div className="modal-body">
