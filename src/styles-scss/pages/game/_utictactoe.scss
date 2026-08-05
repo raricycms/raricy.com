@@ -4,10 +4,10 @@
 // Ultimate Tic-Tac-Toe (超级井字棋) — BEM namespace: .uttt-*
 // ============================================================
 
+// 扁平结构：GamePageShell 直接把 .container 与 .uttt-page 合并在同一元素上，
+// 不能用 display: flex（会把 返回链接/标题/介绍/棋盘 排成一行），改为普通块级流，
+// 棋盘容器用 .uttt / .uttt-container 自居中。
 .uttt-page {
-  display: flex;
-  justify-content: center;
-  align-items: flex-start;
   min-height: calc(100vh - 62px);
   padding: $space-6 0;
   background: var(--color-background-page);

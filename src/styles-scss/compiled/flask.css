@@ -5994,9 +5994,6 @@ body {
 }
 
 .connect4-page {
-  display: flex;
-  justify-content: center;
-  align-items: flex-start;
   min-height: calc(100vh - 62px);
   padding: 24px 0;
   background: var(--color-background-page);
@@ -6355,9 +6352,6 @@ body {
   }
 }
 .uttt-page {
-  display: flex;
-  justify-content: center;
-  align-items: flex-start;
   min-height: calc(100vh - 62px);
   padding: 24px 0;
   background: var(--color-background-page);
@@ -7102,9 +7096,6 @@ body {
   }
 }
 .gomoku-page {
-  display: flex;
-  justify-content: center;
-  align-items: flex-start;
   min-height: calc(100vh - 62px);
   padding: 24px 0;
   background: var(--color-background-page);
