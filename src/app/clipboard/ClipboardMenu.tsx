@@ -17,6 +17,34 @@ interface ClipItem {
   created_at: string | null;
 }
 
+// 点击 ID 直接复制（在 Link 内 preventDefault + stopPropagation，避免触发跳转，对齐 VoteCopyButton）
+function ClipIdCopyButton({ id }: { id: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const copy = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard
+        .writeText(id)
+        .then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        })
+        .catch(() => showToast('复制失败：' + id, 'error'));
+    } else {
+      showToast('剪贴板ID：' + id, 'info');
+    }
+  };
+
+  return (
+    <button type="button" className="clipboard-item__id" title="点击复制ID" onClick={copy}>
+      <code>{id}</code>
+      <span className="clipboard-item__id-hint">{copied ? '已复制' : '复制'}</span>
+    </button>
+  );
+}
+
 export default function ClipboardMenu() {
   const router = useRouter();
   const [clips, setClips] = useState<ClipItem[]>([]);
@@ -82,10 +110,8 @@ export default function ClipboardMenu() {
         <div className="clipboard-list">
           {clips.map((c) => (
             <Link key={c.id} href={`/clipboard/${c.id}`} className="clipboard-item">
-              <div className="clipboard-item__header">
-                <span className="clipboard-item__header-title">{c.title}</span>
-                <span className="clipboard-item__header-id">{c.id}</span>
-              </div>
+              <div className="clipboard-item__title">{c.title}</div>
+              <ClipIdCopyButton id={c.id} />
             </Link>
           ))}
         </div>

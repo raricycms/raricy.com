@@ -128,9 +128,10 @@
     }
   }
   
-  // 剪贴板列表
+  // 剪贴板列表（网格布局，一行多个入口）
   &-list {
     display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
     gap: $space-3;
     
     &__empty {
@@ -185,43 +186,54 @@
       outline-offset: 2px;
     }
     
-    &__header {
-      display: flex;
+    &__title {
+      font-size: 1.0625rem;
+      font-weight: 600;
+      color: var(--color-text-primary);
+      margin: 0;
+      line-height: 1.4;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    // ID 行：整块可点击复制，点击不触发跳转
+    &__id {
+      margin-top: $space-2;
+      display: inline-flex;
       align-items: center;
-      justify-content: space-between;
-      
-      @media (max-width: 768px) {
-        flex-direction: column;
-        gap: $space-2;
-        align-items: flex-start;
-      }
-      
-      &-title {
-        font-size: 1.125rem;
-        font-weight: 600;
+      gap: $space-2;
+      max-width: 100%;
+      padding: 2px $space-2;
+      background: var(--color-background-page);
+      border: 1px solid var(--color-border);
+      border-radius: $radius-small;
+      font-family: inherit;
+      font-size: 0.8125rem;
+      color: var(--color-text-secondary);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      user-select: none;
+
+      code {
+        font-family: monospace;
+        font-size: 0.8125rem;
         color: var(--color-text-primary);
-        margin: 0;
-        line-height: 1.4;
-        flex: 1;
+        white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
-        white-space: nowrap;
+        min-width: 0;
       }
-      
-      &-id {
-        font-size: 0.875rem;
-        color: var(--color-text-secondary);
-        background: var(--color-background-page);
-        border: 1px solid var(--color-border);
-        border-radius: $radius-small;
-        padding: $space-1 $space-2;
-        font-family: monospace;
-        margin-left: $space-3;
+
+      &-hint {
+        font-size: 0.6875rem;
+        color: var(--color-brand-primary);
         flex-shrink: 0;
-        
-        @media (max-width: 768px) {
-          margin-left: 0;
-        }
+      }
+
+      &:hover {
+        background: var(--color-brand-secondary);
+        border-color: var(--color-brand-primary);
       }
     }
   }
