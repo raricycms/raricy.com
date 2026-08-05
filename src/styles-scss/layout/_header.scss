@@ -339,10 +339,11 @@ a {
   border: none;
   background: none;
   color: var(--color-text-primary);
-  padding: 14px 14px !important; 
-  transition: all 0.3s ease; 
+  padding: 14px 14px !important;
+  transition: all 0.3s ease;
+  cursor: pointer;
 
-  &:hover { 
+  &:hover {
     background: var(--color-brand-secondary); 
     color: var(--color-brand-primary)
     // transform: scale(1.1); 

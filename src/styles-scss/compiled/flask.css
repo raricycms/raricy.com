@@ -561,6 +561,7 @@ a:hover {
   color: var(--color-text-primary);
   padding: 14px 14px !important;
   transition: all 0.3s ease;
+  cursor: pointer;
 }
 .theme-toggle-button:hover {
   background: var(--color-brand-secondary);
