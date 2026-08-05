@@ -30,6 +30,29 @@
     --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.08);
     --shadow-card-hover: 0 8px 30px rgba(0, 0, 0, 0.12);
     --shadow-card-brand: 0 2px 25px rgba(37, 99, 235, 0.15);
+
+    // Fluent (fd-) 令牌：映射站点主题体系，OAuth / 设置等新页面使用。
+    // 全部别名引用上面的 --color-*，随 [data-theme] 自动切换。
+    --fd-ink: var(--color-text-primary);
+    --fd-ink-2: var(--color-text-secondary);
+    --fd-ink-3: var(--color-text-secondary);
+    --fd-accent: var(--color-brand-primary);
+    --fd-accent-tint: var(--color-background-highlight);
+    --fd-accent-soft: rgba(37, 99, 235, 0.18);
+    --fd-danger: var(--color-warning-primary);
+    --fd-danger-soft: var(--color-warning-secondary);
+    --fd-success: var(--color-success-primary);
+    --fd-success-soft: var(--color-success-secondary);
+    --fd-text-base: 0.95rem;
+    --fd-text-sm: 0.85rem;
+    --fd-text-xs: 0.75rem;
+    --fd-space-1: 4px;
+    --fd-space-2: 8px;
+    --fd-space-3: 12px;
+    --fd-space-4: 16px;
+    --fd-space-5: 20px;
+    --fd-space-6: 24px;
+    --fd-space-8: 32px;
   }
   [data-theme="dark"] {
     --color-brand-primary: #23A5FF;
@@ -56,6 +79,9 @@
     --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.3);
     --shadow-card-hover: 0 8px 30px rgba(0, 0, 0, 0.4);
     --shadow-card-brand: 0 2px 20px rgba(35, 165, 255, 0.1);
+
+    // 深色仅需覆盖与浅色不同的 fd 令牌（其余是 var() 别名，自动跟随主题）
+    --fd-accent-soft: rgba(35, 165, 255, 0.18);
   }
 
 

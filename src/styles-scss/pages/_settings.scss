@@ -125,6 +125,18 @@
   cursor: pointer;
   transition: all 0.2s ease;
   border: none;
+  background: var(--color-background-content);
+  color: var(--color-text-primary);
+
+  &:hover:not(:disabled) {
+    background: var(--color-brand-secondary);
+    color: var(--color-brand-primary);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
 
   &--primary {
     background: var(--color-brand-secondary);

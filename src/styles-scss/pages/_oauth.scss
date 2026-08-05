@@ -1,0 +1,337 @@
+// pages/_oauth.scss
+@use '../abstracts/variables' as *;
+
+// ============================================================
+// OAuth 相关页面
+//   - /oauth/authorize   第三方授权页（fd-* Fluent 命名）
+//   - /admin/oauth       OAuth 应用管理（owner）
+//   - /settings          设置页「已绑定的应用」列表
+// 全部走 _root.scss 的 --color-* / --fd-* 令牌，自动适配深浅主题。
+// ============================================================
+
+// ---------- 授权页布局 ----------
+.fd-page {
+  max-width: $container-max;
+  margin: 0 auto;
+  padding: $space-8 16px;
+
+  &--narrow {
+    max-width: 600px; // 对齐登录/注册容器宽度
+  }
+}
+
+// ---------- 授权页卡片 ----------
+.fd-card {
+  background: var(--color-background-card);
+  border: 1px solid var(--color-border);
+  border-radius: 30px;
+  box-shadow: var(--shadow-card);
+
+  &--padded-lg {
+    padding: $space-8;
+  }
+
+  &--padded-md {
+    padding: $space-6;
+  }
+
+  // 内联 code（错误码 / scope 名 / 回调地址）
+  code {
+    padding: 2px 6px;
+    border-radius: $radius-small;
+    background: var(--color-background-content);
+    font-size: 0.9em;
+    color: var(--color-text-primary);
+  }
+
+  @media (max-width: 768px) {
+    border-radius: 20px;
+
+    &--padded-lg {
+      padding: $space-6;
+    }
+
+    &--padded-md {
+      padding: $space-4;
+    }
+  }
+}
+
+// ---------- 授权主卡片 ----------
+.fd-settings-card {
+  background: var(--color-background-card);
+  border: 1px solid var(--color-border);
+  border-radius: 30px;
+  box-shadow: var(--shadow-card);
+  padding: $space-8;
+
+  @media (max-width: 768px) {
+    padding: $space-6;
+    border-radius: 20px;
+  }
+
+  &__head {
+    display: flex;
+    align-items: center;
+    gap: $space-3;
+  }
+
+  &__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 46px;
+    height: 46px;
+    flex-shrink: 0;
+    border-radius: 14px;
+    background: var(--color-brand-secondary);
+    color: var(--color-brand-primary);
+    font-size: 1.4rem;
+  }
+
+  &__title {
+    margin: 0;
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: var(--color-text-primary);
+  }
+
+  &__desc {
+    margin: 0 0 $space-2;
+    font-size: 0.95rem;
+    line-height: 1.7;
+    color: var(--color-text-secondary);
+
+    a {
+      color: var(--color-brand-primary);
+
+      &:hover {
+        text-decoration: underline;
+      }
+    }
+  }
+}
+
+// ---------- 管理后台：应用行（复用 .management-card 容器）----------
+.management-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $space-3;
+  flex-wrap: wrap;
+}
+
+.management-card__title-row {
+  display: flex;
+  align-items: center;
+  gap: $space-3;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.management-card__title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.management-card__body {
+  margin-top: $space-4;
+}
+
+.management-card__desc {
+  margin: 0 0 $space-2;
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+}
+
+.management-card__row {
+  display: flex;
+  align-items: center;
+  gap: $space-3;
+  margin-top: $space-3;
+
+  code {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.85rem;
+    color: var(--color-text-primary);
+  }
+}
+
+.management-card__label {
+  flex-shrink: 0;
+  min-width: 64px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+// 应用行卡片彼此相邻时去掉默认 margin-top，间距交给外层 flex gap
+.management-card + .management-card {
+  margin-top: 0;
+}
+
+// 创建表单字段间距（.settings-field 直接兄弟）
+.settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: $space-4;
+}
+
+// ---------- 状态徽章 ----------
+.oauth-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: $radius-max;
+  font-size: 0.78rem;
+  font-weight: 600;
+
+  &--ok {
+    background: var(--color-success-secondary);
+    color: var(--color-success-primary);
+  }
+
+  &--danger {
+    background: var(--color-warning-secondary);
+    color: var(--color-warning-primary);
+  }
+}
+
+// ---------- 创建成功弹窗 ----------
+.oauth-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: $space-4;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.oauth-modal {
+  width: 100%;
+  max-width: 560px;
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: $space-8;
+  border-radius: 30px;
+  background: var(--color-background-card);
+  box-shadow: var(--shadow-card-brand);
+
+  h2 {
+    margin: 0 0 $space-2;
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: var(--color-text-primary);
+  }
+
+  &__field {
+    margin-top: $space-3;
+  }
+
+  &__label {
+    margin-bottom: 4px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+  }
+
+  &__row {
+    display: flex;
+    align-items: center;
+    gap: $space-2;
+
+    code {
+      flex: 1;
+      min-width: 0;
+      padding: 8px 10px;
+      border-radius: $radius-small;
+      background: var(--color-background-content);
+      font-size: 0.85rem;
+      color: var(--color-text-primary);
+    }
+  }
+}
+
+// ---------- 设置页「已绑定的应用」列表 ----------
+.oauth-conn-list {
+  display: flex;
+  flex-direction: column;
+  gap: $space-3;
+}
+
+.oauth-conn-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $space-3;
+  padding: $space-4;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: var(--color-background-page);
+
+  &__main {
+    flex: 1;
+    min-width: 0;
+  }
+
+  &__name {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+
+    a {
+      color: inherit;
+
+      &:hover {
+        color: var(--color-brand-primary);
+      }
+    }
+  }
+
+  &__meta {
+    margin-top: 2px;
+    font-size: 0.8rem;
+    color: var(--color-text-secondary);
+  }
+
+  &__scopes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: $space-2;
+  }
+}
+
+// scope 胶囊
+.oauth-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: $radius-max;
+  background: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+// ---------- 移动端 ----------
+@media (max-width: 576px) {
+  .oauth-conn-row {
+    flex-direction: column;
+    align-items: stretch;
+
+    .settings-btn {
+      width: 100%;
+    }
+  }
+
+  .management-card__head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
