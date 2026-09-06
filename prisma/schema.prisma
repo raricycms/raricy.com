@@ -569,6 +569,33 @@ model OAuthAuthorizationCode {
   @@map("oauth_authorization_codes")
 }
 
+// ── 账户微服务同步账本（fail-closed 的落地机制） ─────────────────────────────
+// 远端 HTTP 调用不在 SQLite 事务内（否则写锁被占用最长 ACCOUNT_SERVICE_TIMEOUT，
+// 并发写直接 "database is locked"）。改用「先提交本地 + 账本登记 + 提交后同步 +
+// 失败补偿」：远端失败时补偿事务精确撤销本地写入（对用户仍等价于回滚 + 503）；
+// 进程在「已提交本地、远端未同步」之间崩溃时，账本行留 pending/failed，
+// 由 npm run cli -- fish sync-retry 幂等重放收敛。
+// payload 只存非敏感重放参数；密钥类字段（系统 Key / 用户 Key）不入库，
+// 重放时按 userId 重新解密。
+model AccountSyncLedger {
+  id             Int       @id @default(autoincrement())
+  // 幂等键 = 发往账户服务的 Idempotency-Key（feed 是 consume/income/refund 三键的根）
+  idempotencyKey String    @unique @map("idempotency_key")
+  operation      String // feed | checkin | admin_grant | admin_deduct | register
+  // JSON 字符串：重建远端调用所需的非敏感参数（SQLite 无数组/Json 标量）
+  payload        String
+  // pending → synced（远端已同步）/ compensated（远端失败且本地已补偿）/ failed（补偿也失败，待重放）
+  status         String    @default("pending")
+  attempts       Int       @default(0)
+  lastError      String?   @map("last_error")
+  createdAt      DateTime? @map("created_at")
+  updatedAt      DateTime? @map("updated_at")
+
+  @@index([status], map: "ix_account_sync_ledger_status")
+  @@index([createdAt], map: "ix_account_sync_ledger_created_at")
+  @@map("account_sync_ledger")
+}
+
 model OAuthAccessToken {
   // 主键 = SHA-256(明文)，64 字符 hex。
   tokenHash     String    @id @map("token_hash")

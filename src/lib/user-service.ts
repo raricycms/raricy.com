@@ -14,13 +14,17 @@ import { prisma } from './db';
 import { nowForDb } from './db-time';
 import { hashPassword, verifyPassword } from './password';
 import {
-  accountClient,
   accountServiceEnabled,
-  encryptApiKey,
   AccountServiceError,
   InviteCodeRaceError,
   assertRemoteRequiredInProduction,
 } from './account-client';
+import {
+  recordPendingSync,
+  settleSync,
+  executeSync,
+  logReconcileRequired,
+} from './fish-sync';
 import type { Prisma } from '@prisma/client';
 
 // ── 输入校验（对齐 verify_username / verify_email）──────────────────────────
@@ -121,87 +125,100 @@ export async function registerUser(input: RegisterInput): Promise<RegisterResult
 
   // 远端账户创建是否启用（未配置 internal token → dev 本地模式，见下）。
   const remoteEnabled = accountServiceEnabled();
+  if (!remoteEnabled) {
+    assertRemoteRequiredInProduction('注册');
+    console.warn(
+      `[user-service] ACCOUNT_SERVICE 未配置，注册仅建本地用户（dev fallback）。user=${id}`
+    );
+  }
 
   // ── 建号（fail-closed，对齐 CLAUDE.md Phase 1.5 写路径）─────────────────────────
-  // 本地写入（建用户 + 标记邀请码 + 落 fishApiKeyEncrypted）全部收进一个交互式事务，
-  // 并在 **事务提交之前** 调用账户微服务 create_account 同步；远端成功才提交本地，
-  // 远端抛错则从事务回调抛出 → Prisma 回滚整个本地事务，绝不出现「本地建了号但远端
-  // 没账户」的不一致。远端不可达一律以 AccountServiceError(503) 向调用方返回明确错误。
+  // 远端 HTTP 调用不在 SQLite 事务内（写锁占用问题，见 fish-sync.ts）：
+  //   Tx A：建用户 + 原子占用邀请码 + 账本行 pending → 提交；
+  //   Phase 2：ensureAccount（幂等）→ 成功则回写 fishApiKeyEncrypted + 账本标 synced；
+  //   失败 → 补偿事务：删用户 + 释放邀请码 + 删账本行（对用户等价于注册失败 503）。
   //
   // ⚠️ 与 Flask sign_up.py 的差异：Flask 侧 create_account 是 fire-and-forget（失败仅
   //    记 warning、不阻塞注册，靠首次鱼干操作时 _ensure_account_exists 补注册）。本切片
-  //    按任务要求 + feed-service.ts 的 fail-closed 约定改为强一致：远端故障即注册失败。
+  //    按任务要求 + fail-closed 约定改为强一致：远端故障即注册失败。
   //
   // 头像通过 /api/avatar/[id] 按 id 确定性生成，无需落盘文件，故 avatarPath 留空。
+  const entry = {
+    idempotencyKey: `register-${id}`,
+    operation: 'register' as const,
+    payload: { userId: id },
+  };
   try {
-    await prisma.$transaction(
-      async (tx) => {
-        await tx.user.create({
-          data: {
-            id,
-            username,
-            email,
-            passwordHash,
-            role,
-            createdAt: nowForDb(),
-            sessionVersion: 0,
-          },
+    await prisma.$transaction(async (tx) => {
+      await tx.user.create({
+        data: {
+          id,
+          username,
+          email,
+          passwordHash,
+          role,
+          createdAt: nowForDb(),
+          sessionVersion: 0,
+        },
+      });
+      if (inviteCodeToClaim !== null) {
+        // 原子占用邀请码（对齐 mark_invite_code_used，并与 verifyInviteAndUpgrade 同款）：
+        // 条件里必须带 isUsed:false —— 并发时只有一个事务能把 count 拿到 1，
+        // 另一个拿到 0 并在此抛错回滚，从而杜绝「一码兑两号」。
+        const claimed = await tx.inviteCode.updateMany({
+          where: { code: inviteCodeToClaim, isUsed: false },
+          data: { isUsed: true, usedBy: id },
         });
-        if (inviteCodeToClaim !== null) {
-          // 原子占用邀请码（对齐 mark_invite_code_used，并与 verifyInviteAndUpgrade 同款）：
-          // 条件里必须带 isUsed:false —— 并发时只有一个事务能把 count 拿到 1，
-          // 另一个拿到 0 并在此抛错回滚，从而杜绝「一码兑两号」。
-          const claimed = await tx.inviteCode.updateMany({
-            where: { code: inviteCodeToClaim, isUsed: false },
-            data: { isUsed: true, usedBy: id },
-          });
-          if (claimed.count === 0) {
-            throw new InviteCodeRaceError();
-          }
+        if (claimed.count === 0) {
+          throw new InviteCodeRaceError();
         }
+      }
 
-        // ── 远端同步：★ 提交前 ★ 建小鱼干账户（fail-closed 关键点）────────────────
-        // 远端抛错 → 从事务回调抛出 → 回滚整个本地事务。
-        if (remoteEnabled) {
-          // create_account 幂等：首次创建才返回 api_key，加密后回写用户表。
-          const acct = await accountClient.ensureAccount(id);
-          if (acct.api_key) {
-            await tx.user.update({
-              where: { id },
-              data: { fishApiKeyEncrypted: encryptApiKey(acct.api_key) },
+      // 账本登记 pending（远端启用时）
+      if (remoteEnabled) {
+        await recordPendingSync(tx, entry);
+      }
+    });
+
+    // ── Phase 2：事务外远端建账户（create_account 幂等）────────────────────────
+    if (remoteEnabled) {
+      try {
+        await executeSync(entry);
+        await settleSync(entry.idempotencyKey, 'synced');
+      } catch (syncErr) {
+        // Phase 3：补偿 —— 删用户 + 释放邀请码 + 删账本行。
+        try {
+          await prisma.$transaction(async (tx) => {
+            await tx.inviteCode.updateMany({
+              where: { code: inviteCodeToClaim ?? '', usedBy: id },
+              data: { isUsed: false, usedBy: null },
             });
-          }
-        } else {
-          // 未配置账户服务。
-          //
-          // 【生产必须 fail-closed】漏配 ACCOUNT_SERVICE_INTERNAL_TOKEN 时若静默放行，
-          // 就与 Phase 1.5 的意图完全相反：用户建了号却没有远端鱼干账户，
-          // 且只留一条 console.warn，几乎不会被发现。故生产环境直接拒绝。
-          assertRemoteRequiredInProduction('注册');
-          // 开发环境：仅建本地用户，明确告警。
-          // 用户首次投喂时 feed-service 会因缺少 fishApiKeyEncrypted 而 fail-closed。
-          console.warn(
-            `[user-service] ACCOUNT_SERVICE 未配置，注册仅建本地用户（dev fallback）。user=${id}`
-          );
+            await tx.user.delete({ where: { id } });
+            await tx.accountSyncLedger.deleteMany({
+              where: { idempotencyKey: entry.idempotencyKey },
+            });
+          });
+        } catch (undoErr) {
+          await settleSync(entry.idempotencyKey, 'failed', String(undoErr)).catch(() => {
+            /* 尽力而为 */
+          });
+          await logReconcileRequired(entry, undoErr);
         }
-      },
-      { timeout: 15000, maxWait: 5000 }
-    );
+        console.warn(
+          `[user-service] 账户服务建号失败，注册本地写入已补偿回滚（user=${id}）: ` +
+            (syncErr instanceof Error ? syncErr.message : String(syncErr))
+        );
+        return { ok: false, code: 503, message: '账户服务暂时不可用，注册失败，请稍后重试' };
+      }
+    }
   } catch (e) {
     if (e instanceof InviteCodeRaceError) {
       // 并发抢同一个邀请码，本次没抢到（事务已回滚，未建号、未占码）。
       // 对用户就是「这个码已经被用了」——与串行下的判定一致。
       return { ok: false, code: 400, message: '邀请码错误' };
     }
-    if (e instanceof AccountServiceError) {
-      // 远端失败：本地事务已回滚，向用户返回明确错误（fail-closed）。
-      console.warn(
-        `[user-service] 账户服务建号失败，注册本地事务已回滚（user=${id}）: ${e.message}`
-      );
-      return { ok: false, code: 503, message: '账户服务暂时不可用，注册失败，请稍后重试' };
-    }
-    // 兜底：其它意外异常按 fail-closed 处理，返回 503（本地事务已回滚）。
-    console.error(`[user-service] 注册异常，本地事务已回滚（user=${id}）:`, e);
+    // 兜底：意外异常按 fail-closed 处理，返回 503（本地事务已回滚）。
+    console.error(`[user-service] 注册异常（user=${id}）:`, e);
     return { ok: false, code: 503, message: '注册失败，请稍后重试' };
   }
 

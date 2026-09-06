@@ -62,6 +62,7 @@ export async function resetDb() {
     'daily_checkins', 'fish_transactions', 'notifications',
     'admin_action_appeals', 'admin_action_logs',
     'user_bans', 'invite_codes', 'users',
+    'account_sync_ledger',
   ];
   for (const t of tables) {
     await prisma.$executeRawUnsafe(`DELETE FROM ${t}`).catch(() => {

@@ -4,13 +4,16 @@
 // 投喂模型：投喂者付全额，作者获 80% 分成；单用户对单篇累计上限 5。
 //
 // ★★★ 写路径 fail-closed（CLAUDE.md Phase 1.5）★★★
-//   本地先在一个 Prisma 交互式事务里收集全部变更（扣投喂者 / 加作者 / BlogFeed /
-//   Blog.fishCount / 两条流水），**在事务提交之前**调用账户微服务同步；
-//   远端成功 → 事务提交；远端抛错 → 抛出后事务自动回滚，绝不出现
-//   “本地已扣鱼干但远端没记账”的不一致。远端不可达一律以 AccountServiceError(503)
+//   远端 HTTP 调用**不在 SQLite 事务内**（写锁被占最长 5s 会拖垮并发写路径），
+//   改为「先提交本地 + 同步账本登记 + 事务外同步 + 失败补偿」：
+//   Tx A：扣投喂者 / 加作者 / BlogFeed / Blog.fishCount / 两条流水 + 账本行 pending
+//         ──→ 提交；随后调用账户微服务（幂等键与旧版一致）。
+//   远端成功 → 账本标 synced；远端失败 → 补偿事务精确撤销本地写入（对用户仍等价于
+//   「回滚 + 503」），绝不出现“本地已扣鱼干但远端没记账”且无人知晓的不一致。
+//   机制详见 src/lib/fish-sync.ts。远端不可达一律以 AccountServiceError(503)
 //   向上抛，路由据此返回 503（**绝不静默成功**）。
 //
-//   dev fallback：当 ACCOUNT_SERVICE_INTERNAL_TOKEN 未配置时，跳过远端同步、
+//   dev fallback：当 ACCOUNT_SERVICE_INTERNAL_TOKEN 未配置时，跳过远端同步与账本，
 //   仅写本地并打印告警，使该切片在无账户服务时可运行；fail-closed 结构保持不变。
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -19,12 +22,19 @@ import { nowForDb } from './db-time';
 import { addFish } from './fish-service';
 import { sendNotification } from './notification-service';
 import {
-  accountClient,
   accountServiceEnabled,
   assertRemoteRequiredInProduction,
   decryptApiKey,
+  makeFeedIdempotencyKey,
   AccountServiceError,
 } from './account-client';
+import {
+  recordPendingSync,
+  settleSync,
+  executeSync,
+  logReconcileRequired,
+} from './fish-sync';
+import type { Prisma } from '@prisma/client';
 
 const FEED_CAP = 5; // 单用户对单篇文章累计投喂上限
 
@@ -115,6 +125,9 @@ export async function getFeeders(
 /**
  * 用户投喂小鱼干给文章。作者收到 80%。
  *
+ * 【远端同步失败补偿所需的快照】Tx A 里捕获撤销所需的全部事实
+ * （两条流水 id / priorFeedAmount / feedSeq），补偿事务按 id 精确撤销。
+ *
  * @throws AccountServiceError 远端账户服务不可达 / 同步失败（→ 路由 503）
  */
 export async function feedBlog(
@@ -150,14 +163,18 @@ export async function feedBlog(
   // 远端同步是否启用（未配置 internal token → dev 本地模式）。
   const remoteEnabled = accountServiceEnabled();
 
-  // dev 模式下也需要判断 Key 是否可解密——若启用远端则先解出投喂者 Key，
-  // 解密失败即 fail-closed（在进入事务前抛出，避免脏事务）。
-  let feederApiKey = '';
-  if (remoteEnabled) {
-    if (!feeder.fishApiKeyEncrypted) {
-      throw new AccountServiceError('投喂者没有关联的账户 Key，无法完成远端结算', 503);
-    }
-    feederApiKey = decryptApiKey(feeder.fishApiKeyEncrypted); // 失败抛 AccountServiceError(503)
+  // 未配置账户服务：生产 fail-closed（不做任何本地写入直接拒绝）；dev 仅本地 + 告警。
+  if (!remoteEnabled) {
+    assertRemoteRequiredInProduction('投喂');
+    console.warn(
+      `[feed-service] ACCOUNT_SERVICE 未配置，投喂仅写本地库（dev fallback）。` +
+        ` user=${userId} blog=${blogId} amount=${amount}`
+    );
+  } else if (!feeder.fishApiKeyEncrypted) {
+    throw new AccountServiceError('投喂者没有关联的账户 Key，无法完成远端结算', 503);
+  } else {
+    // fail-fast：先解出投喂者 Key，解密失败即 503（不做任何本地写入）。
+    decryptApiKey(feeder.fishApiKeyEncrypted);
   }
 
   // 业务错误容器：事务回调里抛出后在外层转成 FeedError（不当作 500）。
@@ -171,83 +188,84 @@ export async function feedBlog(
   }
 
   try {
-    const result = await prisma.$transaction(
-      async (tx) => {
-        // ── 本地写入（全部在事务内，远端失败则整体回滚）──────────────────────
-
-        // 3.1 原子扣减投喂者鱼干（WHERE driedFish >= amount 防超扣）。
-        const dec = await tx.user.updateMany({
-          where: { id: userId, driedFish: { gte: amount } },
-          data: { driedFish: { decrement: amount } },
-        });
-        if (dec.count === 0) {
-          throw new FeedBusinessError(400, '小鱼干不足');
-        }
-        // 投喂者支出流水（负数表示支出）。
-        await tx.fishTransaction.create({
-          data: {
-            userId,
-            amount: -amount,
-            type: 'feed',
-            description: `投喂文章「${blog.title}」`,
-            referenceType: 'blog',
-            referenceId: blogId,
-            relatedUserId: blog.authorId,
-          },
-        });
-
-        // 3.2 作者收入 80%（复用 addFish：加余额 + 写 feed_receive 流水）。
-        await addFish(tx, {
-          userId: blog.authorId,
-          amount: authorIncome,
-          type: 'feed_receive',
-          description: `文章「${blog.title}」被投喂`,
+    // ── Phase 1：本地事务（纯 DB，无远端 IO —— 写锁只持有毫秒级）────────────────
+    const phase1 = await prisma.$transaction(async (tx) => {
+      // 1.1 原子扣减投喂者鱼干（WHERE driedFish >= amount 防超扣）。
+      const dec = await tx.user.updateMany({
+        where: { id: userId, driedFish: { gte: amount } },
+        data: { driedFish: { decrement: amount } },
+      });
+      if (dec.count === 0) {
+        throw new FeedBusinessError(400, '小鱼干不足');
+      }
+      // 投喂者支出流水（负数表示支出）。
+      const feederTx = await tx.fishTransaction.create({
+        data: {
+          userId,
+          amount: -amount,
+          type: 'feed',
+          description: `投喂文章「${blog.title}」`,
           referenceType: 'blog',
           referenceId: blogId,
-          relatedUserId: userId,
-        });
+          relatedUserId: blog.authorId,
+          createdAt: nowForDb(),
+        },
+        select: { id: true },
+      });
 
-        // 3.3 累计投喂量：更新或创建 BlogFeed，强制单篇累计 ≤ 5。
-        //
-        // ⚠️ 这里是「读 → 判断 → 写」，**不是原子表达式**。当前之所以成立，是因为
-        // SQLite 的写锁把并发事务串行化了（已用并发用例实测：同篇并发投喂不破 5）。
-        // **迁到 Postgres/MySQL 后（见 docs/nextjs-migration/03 §7）此处会失效** ——
-        // READ COMMITTED 下两个事务可能同时读到 amount=3、各自 +2，结果 7 > 5。
-        // 届时应改为原子条件写，例如：
-        //   UPDATE blog_feeds SET amount = amount + ?
-        //    WHERE blog_id = ? AND user_id = ? AND amount + ? <= 5
-        // 再按受影响行数判定（0 行 = 超限），与上面扣鱼干的 updateMany(gte) 同一套路。
-        const existing = await tx.blogFeed.findUnique({
+      // 1.2 作者收入 80%（复用 addFish：加余额 + 写 feed_receive 流水）。
+      const incomeTx = await addFish(tx, {
+        userId: blog.authorId,
+        amount: authorIncome,
+        type: 'feed_receive',
+        description: `文章「${blog.title}」被投喂`,
+        referenceType: 'blog',
+        referenceId: blogId,
+        relatedUserId: userId,
+      });
+
+      // 1.3 累计投喂量：更新或创建 BlogFeed，强制单篇累计 ≤ 5。
+      //
+      // ⚠️ 这里是「读 → 判断 → 写」，**不是原子表达式**。当前之所以成立，是因为
+      // SQLite 的写锁把并发事务串行化了（已用并发用例实测：同篇并发投喂不破 5）。
+      // **迁到 Postgres/MySQL 后（见 docs/nextjs-migration/03 §7）此处会失效** ——
+      // READ COMMITTED 下两个事务可能同时读到 amount=3、各自 +2，结果 7 > 5。
+      // 届时应改为原子条件写，例如：
+      //   UPDATE blog_feeds SET amount = amount + ?
+      //    WHERE blog_id = ? AND user_id = ? AND amount + ? <= 5
+      // 再按受影响行数判定（0 行 = 超限），与上面扣鱼干的 updateMany(gte) 同一套路。
+      const existing = await tx.blogFeed.findUnique({
+        where: { uq_blog_feed_user: { blogId, userId } },
+        select: { amount: true },
+      });
+      const feedSeq = (existing?.amount ?? 0) + amount; // 投喂后累计量（并入远端幂等键）
+      if (feedSeq > FEED_CAP) {
+        throw new FeedBusinessError(400, '投喂已满（单篇文章每人最多投喂 5 条）');
+      }
+      if (existing) {
+        await tx.blogFeed.update({
           where: { uq_blog_feed_user: { blogId, userId } },
-          select: { amount: true },
+          data: { amount: { increment: amount }, updatedAt: nowForDb() },
         });
-        const feedSeq = (existing?.amount ?? 0) + amount; // 投喂后累计量（并入远端幂等键）
-        if (feedSeq > FEED_CAP) {
-          throw new FeedBusinessError(400, '投喂已满（单篇文章每人最多投喂 5 条）');
-        }
-        if (existing) {
-          await tx.blogFeed.update({
-            where: { uq_blog_feed_user: { blogId, userId } },
-            data: { amount: { increment: amount }, updatedAt: nowForDb() },
-          });
-        } else {
-          await tx.blogFeed.create({
-            data: { blogId, userId, amount, createdAt: nowForDb(), updatedAt: nowForDb() },
-          });
-        }
-
-        // 3.4 累计文章投喂总量。
-        await tx.blog.update({
-          where: { id: blogId },
-          data: { fishCount: { increment: amount } },
+      } else {
+        await tx.blogFeed.create({
+          data: { blogId, userId, amount, createdAt: nowForDb(), updatedAt: nowForDb() },
         });
+      }
 
-        // ── 远端同步：★ 提交前 ★ 调用账户服务（fail-closed 关键点）─────────────
-        // 远端抛错 → 从事务回调抛出 → Prisma 回滚整个本地事务。
-        if (remoteEnabled) {
-          await accountClient.feedTransfer({
+      // 1.4 累计文章投喂总量。
+      await tx.blog.update({
+        where: { id: blogId },
+        data: { fishCount: { increment: amount } },
+      });
+
+      // 1.5 账本登记 pending（与业务写入同事务提交；幂等键与远端三键同根）。
+      if (remoteEnabled) {
+        await recordPendingSync(tx, {
+          idempotencyKey: makeFeedIdempotencyKey(blogId, userId, feedSeq, 'sync'),
+          operation: 'feed',
+          payload: {
             feederId: userId,
-            feederApiKey,
             authorId: blog.authorId,
             amount,
             authorIncome,
@@ -255,45 +273,118 @@ export async function feedBlog(
             blogTitle: blog.title,
             feederName: feeder.username,
             feedSeq,
-          });
-        } else {
-          // 未配置账户服务。
-          //
-          // 【生产必须 fail-closed】漏配 ACCOUNT_SERVICE_INTERNAL_TOKEN 时若静默放行，
-          // 投喂会只写本地、远端毫无记账，且只留一条 console.warn —— 与 Phase 1.5 的
-          // 意图完全相反（这是 fail-OPEN）。故生产环境直接抛 503 让问题当场暴露。
-          assertRemoteRequiredInProduction('投喂');
-          // 开发环境：仅本地记账，明确告警。
-          console.warn(
-            `[feed-service] ACCOUNT_SERVICE 未配置，投喂仅写本地库（dev fallback）。` +
-              ` user=${userId} blog=${blogId} amount=${amount}`
-          );
-        }
+          },
+        });
+      }
 
-        // 读取事务内的最新值（仍在事务中，故为本事务可见的最新状态）。
-        const [feedRow, blogRow, feederRow] = await Promise.all([
-          tx.blogFeed.findUnique({
-            where: { uq_blog_feed_user: { blogId, userId } },
-            select: { amount: true },
-          }),
-          tx.blog.findUnique({ where: { id: blogId }, select: { fishCount: true } }),
-          tx.user.findUnique({ where: { id: userId }, select: { driedFish: true } }),
-        ]);
+      // 读取事务内的最新值（仍在事务中，故为本事务可见的最新状态）。
+      const [feedRow, blogRow, feederRow] = await Promise.all([
+        tx.blogFeed.findUnique({
+          where: { uq_blog_feed_user: { blogId, userId } },
+          select: { amount: true },
+        }),
+        tx.blog.findUnique({ where: { id: blogId }, select: { fishCount: true } }),
+        tx.user.findUnique({ where: { id: userId }, select: { driedFish: true } }),
+      ]);
 
-        const fedTotal = feedRow?.amount ?? amount;
-        return {
-          fedTotal,
-          remaining: Math.max(0, FEED_CAP - fedTotal),
-          fishCount: blogRow?.fishCount ?? 0,
-          balance: feederRow?.driedFish ?? 0,
+      const fedTotal = feedRow?.amount ?? amount;
+      return {
+        fedTotal,
+        remaining: Math.max(0, FEED_CAP - fedTotal),
+        fishCount: blogRow?.fishCount ?? 0,
+        balance: feederRow?.driedFish ?? 0,
+        authorIncome,
+        // 补偿所需快照
+        feedSeq,
+        priorFeedAmount: existing?.amount ?? null,
+        feederTxId: feederTx.id,
+        authorTxId: incomeTx.txId,
+      };
+    });
+
+    // ── Phase 2：事务外远端同步（提交后调用；失败走补偿，不再占用写锁）──────────
+    if (remoteEnabled) {
+      const entry = {
+        idempotencyKey: makeFeedIdempotencyKey(blogId, userId, phase1.feedSeq, 'sync'),
+        operation: 'feed' as const,
+        payload: {
+          feederId: userId,
+          authorId: blog.authorId,
+          amount,
           authorIncome,
-        };
-      },
-      { timeout: 15000, maxWait: 5000 }
-    );
+          blogId,
+          blogTitle: blog.title,
+          feederName: feeder.username,
+          feedSeq: phase1.feedSeq,
+        },
+      };
+      try {
+        await executeSync(entry);
+        await settleSync(entry.idempotencyKey, 'synced');
+      } catch (syncErr) {
+        // ── Phase 3：远端失败 → 补偿事务精确撤销本地写入（对用户仍等价于回滚）──
+        try {
+          await prisma.$transaction(async (tx) => {
+            // 3.1 删除两条流水（按 id 精确撤销）
+            await tx.fishTransaction.deleteMany({
+              where: { id: { in: [phase1.feederTxId, phase1.authorTxId] } },
+            });
+            // 3.2 投喂者拿回全额（此前扣过 amount，余额不可能因此变负）
+            await tx.user.update({
+              where: { id: userId },
+              data: { driedFish: { increment: amount } },
+            });
+            // 3.3 作者退回分成（防负：余额可能已被花掉一部分）
+            const dec = await tx.user.updateMany({
+              where: { id: blog.authorId, driedFish: { gte: authorIncome } },
+              data: { driedFish: { decrement: authorIncome } },
+            });
+            if (dec.count === 0) {
+              throw new Error(
+                `作者余额不足以退回分成（author=${blog.authorId} income=${authorIncome}）`
+              );
+            }
+            // 3.4 BlogFeed 回退：Tx A 前不存在 → 整行删除；存在 → 减去本次量
+            if (phase1.priorFeedAmount === null) {
+              await tx.blogFeed.delete({
+                where: { uq_blog_feed_user: { blogId, userId } },
+              });
+            } else {
+              await tx.blogFeed.update({
+                where: { uq_blog_feed_user: { blogId, userId } },
+                data: { amount: { decrement: amount }, updatedAt: nowForDb() },
+              });
+            }
+            // 3.5 fishCount 回退（防负）
+            const decFish = await tx.blog.updateMany({
+              where: { id: blogId, fishCount: { gte: amount } },
+              data: { fishCount: { decrement: amount } },
+            });
+            if (decFish.count === 0) {
+              throw new Error(`fishCount 不足以回退（blog=${blogId} amount=${amount}）`);
+            }
+            // 3.6 删除账本行：释放幂等键，用户重试时可以重建（无痕失败）。
+            // 成功补偿 = 两边都回到原点，账本行不再保留（'compensated' 状态仅存在于
+            // 语义上；保留行会撞 idempotencyKey 唯一约束，挡住用户的重试）。
+            await tx.accountSyncLedger.deleteMany({
+              where: { idempotencyKey: entry.idempotencyKey },
+            });
+          });
+        } catch (undoErr) {
+          // 补偿也失败：账本行留 pending/failed，sync-retry 可幂等重放收敛。
+          await settleSync(entry.idempotencyKey, 'failed', String(undoErr)).catch(() => {
+            /* 尽力而为 */
+          });
+          await logReconcileRequired(entry, undoErr);
+        }
+        throw syncErr instanceof AccountServiceError
+          ? syncErr
+          : new AccountServiceError(`投喂同步失败: ${String(syncErr)}`, 503);
+      }
+    }
 
-    // 通知文章作者（对齐 Flask feed_fish：自投喂不通知；**在事务提交之后**发，
-    // 且通知失败不回滚已成功的投喂 —— 钱已经结算完了，不能因为发通知失败而退回）。
+    // 通知文章作者（对齐 Flask feed_fish：自投喂不通知；**在提交与同步之后**发，
+    // 且通知失败不影响已成功的投喂 —— 钱已经结算完了，不能因为发通知失败而退回）。
     if (userId !== blog.authorId) {
       try {
         await sendNotification({
@@ -313,22 +404,29 @@ export async function feedBlog(
       }
     }
 
-    return { ok: true, ...result };
+    return {
+      ok: true,
+      fedTotal: phase1.fedTotal,
+      remaining: phase1.remaining,
+      fishCount: phase1.fishCount,
+      balance: phase1.balance,
+      authorIncome: phase1.authorIncome,
+    };
   } catch (e) {
     if (e instanceof FeedBusinessError) {
       return { ok: false, code: e.code, message: e.message };
     }
     if (e instanceof AccountServiceError) {
-      // 远端失败：本地事务已回滚，向上抛让路由返回 503。
+      // 远端失败：本地已被补偿（等价于回滚），向上抛让路由返回 503。
       console.warn(
-        `[feed-service] 账户服务投喂同步失败，本地事务已回滚` +
+        `[feed-service] 账户服务投喂同步失败，本地写入已补偿回滚` +
           `（user=${userId} blog=${blogId} amount=${amount}）: ${e.message}`
       );
       throw e;
     }
     // 兜底：意外异常按 fail-closed 处理，包装为 503。
     console.error(
-      `[feed-service] 投喂异常，本地事务已回滚（user=${userId} blog=${blogId} amount=${amount}）:`,
+      `[feed-service] 投喂异常（user=${userId} blog=${blogId} amount=${amount}）:`,
       e
     );
     throw new AccountServiceError(`投喂失败: ${String(e)}`, 503);

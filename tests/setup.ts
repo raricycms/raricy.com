@@ -23,8 +23,15 @@ process.env.DATABASE_URL = `file:${TEST_DB}`;
 process.env.SECRET_KEY = 'test-secret-key-do-not-use-in-prod';
 // NODE_ENV 由 vitest 自动置为 'test'，无需（也不能，@types/node 标了 readonly）在此赋值。
 
-// 账户服务默认不可达 —— 走 dev fallback 分支，用例里需要时再单独 mock
-delete process.env.ACCOUNT_SERVICE_INTERNAL_TOKEN;
+// 账户服务默认不可达 —— 走 dev fallback 分支，用例里需要时再单独 mock。
+//
+// 【为什么置空串而不是 delete】@prisma/client 运行时首次 import 时会加载 schema
+// 同目录的 .env（schemaEnvPath），dotenv 的语义是「已存在的变量不覆盖」：
+//   • delete → .env 里若有 ACCOUNT_SERVICE_INTERNAL_TOKEN 占位值，会被重新灌回来，
+//     让真实的 accountServiceEnabled() 变 true、签到/投喂用例悄悄打真 HTTP（已实测）。
+//   • 置空串 → 变量已存在（空串 falsy）→ .env 灌不进来，accountServiceEnabled() 恒 false。
+process.env.ACCOUNT_SERVICE_INTERNAL_TOKEN = '';
+process.env.ACCOUNT_SYSTEM_KEY = '';
 
 // 进程退出时清掉自己的库文件，避免 .tmp 堆积
 process.on('exit', () => {

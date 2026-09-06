@@ -512,11 +512,16 @@ describe('getFeedStatus', () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe('dev fallback（ACCOUNT_SERVICE_INTERNAL_TOKEN 未配置）', () => {
-  it('前置事实：测试环境确实没有 internal token，真实 accountServiceEnabled() 为 false', async () => {
+  it('前置事实：internal token 为空时，真实 accountServiceEnabled() 为 false', async () => {
     const actual = await vi.importActual<typeof import('@/lib/account-client')>(
       '@/lib/account-client'
     );
-    expect(process.env.ACCOUNT_SERVICE_INTERNAL_TOKEN, 'tests/setup.ts 已 delete').toBeUndefined();
+    // tests/setup.ts 把 token 置为空串（不能 delete：@prisma/client import 时会加载
+    // schema 同目录的 .env，dotenv 只跳过「已存在」的变量 —— delete 反而会被占位值灌回）。
+    expect(
+      ['', undefined].includes(process.env.ACCOUNT_SERVICE_INTERNAL_TOKEN as string),
+      'setup 必须把 token 置空，否则 .env 的占位值会悄悄启用远端'
+    ).toBe(true);
     expect(actual.accountServiceEnabled(), '未配置 token → 走 dev fallback 分支').toBe(false);
   });
 
@@ -708,12 +713,12 @@ describe('★★ fail-closed：远端账户服务失败', () => {
 
     await feedBlog(blog.id, feeder.id, 2).catch(() => null);
 
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('本地事务已回滚'));
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('本地写入已补偿回滚'));
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining(feeder.id));
   });
 });
 
-describe('★★ fail-closed：远端成功路径（同步在提交之前发生）', () => {
+describe('★★ fail-closed：远端成功路径（本地先提交+账本登记，再同步）', () => {
   it('远端成功 → 本地提交，且传给 feedTransfer 的参数与本地账目一致', async () => {
     enableRemote();
     const { author, blog, feeder } = await scene({ feederFish: 10, withKey: true });
@@ -751,27 +756,38 @@ describe('★★ fail-closed：远端成功路径（同步在提交之前发生�
     expect(seqs, '2 → 累计 2；再投 3 → 累计 5。若两次都传本次量，幂等键会撞车').toEqual([2, 5]);
   });
 
-  it('★ 远端调用发生在本地提交之前：远端观察到的时刻，本地事务尚未提交', async () => {
+  it('★ 远端调用发生在本地提交之后：账本先落 pending，远端失败可补偿（不占 SQLite 写锁）', async () => {
     enableRemote();
     const { blog, feeder } = await scene({ feederFish: 10, withKey: true });
 
-    // 在远端回调里用**独立连接**读库：若此时已能读到扣款，说明本地先提交了 —— 顺序错。
+    // 在远端回调里用**独立连接**读库：此时本地事务必须【已提交】（先落账本后同步），
+    // 且 account_sync_ledger 里存在本笔的 pending 行 —— 它是「已提交但未同步」的
+    // 恢复锚点：进程此时崩溃，sync-retry 仍可按幂等键重放收敛。
     let balanceSeenByRemote: number | null = null;
+    let pendingRows: number | null = null;
     mockFeedTransfer.mockImplementation(async () => {
-      const u = await prisma.user.findUnique({
-        where: { id: feeder.id },
-        select: { driedFish: true },
-      });
+      const [u, rows] = await Promise.all([
+        prisma.user.findUnique({ where: { id: feeder.id }, select: { driedFish: true } }),
+        prisma.accountSyncLedger.findMany({
+          where: { operation: 'feed', status: 'pending' },
+          select: { idempotencyKey: true },
+        }),
+      ]);
       balanceSeenByRemote = u?.driedFish ?? null;
+      pendingRows = rows.length;
     });
 
     await feedBlog(blog.id, feeder.id, 4);
 
     expect(
       balanceSeenByRemote,
-      '远端同步时本地事务必须还未提交（外部连接仍看到旧余额 10）—— 顺序反了就不是 fail-closed'
-    ).toBe(10);
-    expect((await prisma.user.findUniqueOrThrow({ where: { id: feeder.id } })).driedFish, '提交后才扣').toBe(6);
+      '远端同步时本地事务必须已提交（看到扣款后的余额 6）—— HTTP 不再占写锁'
+    ).toBe(6);
+    expect(pendingRows, '远端调用时账本里必须有本笔 pending 行（崩溃可恢复的锚点）').toBe(1);
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: feeder.id } })).driedFish).toBe(6);
+    // 成功后账本行应结算为 synced（审计可查）
+    const ledger = await prisma.accountSyncLedger.findFirst({ where: { operation: 'feed' } });
+    expect(ledger?.status).toBe('synced');
   });
 
   it('业务失败（余额不足/超限）不打远端 —— 不浪费远端幂等键，也不产生远端脏账', async () => {

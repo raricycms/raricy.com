@@ -86,27 +86,40 @@ describe('远端正常：签到成功且远端被正确调用', () => {
     expect(s.txns).toBe(1);
   });
 
-  it('★ 远端同步发生在本地 commit 之前（不是提交后补偿）', async () => {
+  it('★ 本地先提交+账本登记 pending，远端同步在事务外（不占 SQLite 写锁）', async () => {
     enableRemote();
     const u = await makeUser({ driedFish: 0 });
 
-    // 在 transfer 回调里用**独立连接**读库：若此时已能看到签到记录，
-    // 说明本地先提交了 —— 那就不是 fail-closed，而是「先扣款后对账」。
-    let seenDuringTransfer: number | null = null;
+    // 在 transfer 回调里用**独立连接**读库：此时本地事务必须【已提交】（先落账本后
+    // 同步），且 account_sync_ledger 里有本笔的 pending 行 —— 它是「已提交但未同步」
+    // 的恢复锚点：进程此时崩溃，sync-retry 仍可按幂等键重放收敛。
+    let checkinsDuringTransfer: number | null = null;
+    let pendingRows: number | null = null;
     mockTransfer.mockImplementation(async () => {
-      const rows = await prisma.$queryRawUnsafe<{ n: number }[]>(
-        `SELECT COUNT(*) AS n FROM daily_checkins WHERE user_id = ?`,
-        u.id
-      );
-      seenDuringTransfer = Number(rows[0].n);
+      const [rows, ledger] = await Promise.all([
+        prisma.$queryRawUnsafe<{ n: number }[]>(
+          `SELECT COUNT(*) AS n FROM daily_checkins WHERE user_id = ?`,
+          u.id
+        ),
+        prisma.accountSyncLedger.findMany({
+          where: { operation: 'checkin', status: 'pending' },
+          select: { idempotencyKey: true },
+        }),
+      ]);
+      checkinsDuringTransfer = Number(rows[0].n);
+      pendingRows = ledger.length;
       return { ok: true };
     });
 
     await doCheckin(u.id, 0);
     expect(
-      seenDuringTransfer,
-      '远端调用时本地事务已提交 → 远端失败就回滚不掉了，fail-closed 名存实亡'
-    ).toBe(0);
+      checkinsDuringTransfer,
+      '远端调用时本地事务应已提交（先提交+账本登记，再同步 —— HTTP 不占写锁）'
+    ).toBe(1);
+    expect(pendingRows, '远端调用时账本里必须有本笔 pending 行').toBe(1);
+    // 成功后账本行应结算为 synced（审计可查）
+    const ledger = await prisma.accountSyncLedger.findFirst({ where: { operation: 'checkin' } });
+    expect(ledger?.status).toBe('synced');
   });
 });
 

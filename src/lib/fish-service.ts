@@ -186,9 +186,11 @@ export interface AddFishInput {
  * 增加小鱼干 + 写流水（对齐 add_fish，仅本地写）。必须在一个事务里调用，
  * tx 由调用方从 prisma.$transaction 传入，以便与其它写入原子提交。
  *
+ * @returns 创建的流水行 id —— 供写路径的远端同步失败补偿（fish-sync）精确删除。
+ *
  * ⚠️ 生产上线：调用链要在远端账户服务 transfer 成功后才提交该事务（fail-closed）。
  */
-export async function addFish(tx: TxClient, input: AddFishInput): Promise<void> {
+export async function addFish(tx: TxClient, input: AddFishInput): Promise<{ txId: number }> {
   if (input.amount <= 0) throw new Error('amount 必须为正数');
 
   await tx.user.update({
@@ -196,7 +198,7 @@ export async function addFish(tx: TxClient, input: AddFishInput): Promise<void> 
     data: { driedFish: { increment: input.amount } },
   });
 
-  await tx.fishTransaction.create({
+  const row = await tx.fishTransaction.create({
     data: {
       userId: input.userId,
       amount: input.amount,
@@ -211,5 +213,7 @@ export async function addFish(tx: TxClient, input: AddFishInput): Promise<void> 
       // 详见 src/lib/db-time.ts 的说明。
       createdAt: nowForDb(),
     },
+    select: { id: true },
   });
+  return { txId: row.id };
 }
