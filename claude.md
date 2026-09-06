@@ -52,8 +52,10 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 ### 数据与时间
 - 数据库走 SQLite 单进程；高并发写长期建议迁 Postgres。
 - 时间戳 **INTEGER 毫秒**（schema.prisma 与 Prisma 默认对齐）。规整是单向门，旧 Flask 的 `YYYY-MM-DD HH:MM:SS` 文本格式 Prisma 解析即抛 500。
+- **时间戳语义是「UTC+8 墙上时间贴 Z 标签」**（Flask datetime.now() 的历史遗留）。取当前时刻一律用 `nowForDb()`（src/lib/db-time.ts），**禁止无参 `new Date()`** —— tests/unit/db-time-guard.test.ts 静态守卫强制（src/lib、src/app/api、middleware、tests/helpers 范围内）。
 - 密码哈希与历史 werkzeug **双向互通**——用户**无需重设密码**。
 - 鱼干密钥派生：`SECRET_KEY` 是派生源；`FISH_ENCRYPTION_KEY` 仅全新部署时填。
+- **鱼干存储单位 = 0.1 鱼干（整数）**（Float 时代已整数化，迁移 `3_fish_integer_units` 数据 ×10）。换算只在数据库边界：`src/lib/fish-units.ts` 的 `fishToUnits/unitsToFish`；业务层（服务入参/返回、DTO、前端）一律「鱼干」，最多 1 位小数。`fishToUnits` 拒绝超精度值（fail-loud）。SQLite 列保持 REAL 亲和但值全为整数（`prisma db pull` 会显示 Float，以 schema 注释为准）。`Blog.fishCount` 例外——它本来就是鱼干整数口径，无需换算。
 
 ### 认证与角色
 - 角色：`user` → `core` → `admin` → `owner`
@@ -69,22 +71,31 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 
 ### 数据库迁移
 - **不用 `prisma migrate`**（schema.prisma 头禁了）—— 走 `npm run migrate`（脚本：`scripts/migrate.mjs`）。
-- 跟踪表：自己维护 `_raricy_migrations`；新迁移用 `CREATE TABLE IF NOT EXISTS` / `CREATE INDEX IF NOT EXISTS` 保持幂等。
+- 跟踪表：自己维护 `_raricy_migrations`；新迁移用 `CREATE TABLE IF NOT EXISTS` / `CREATE INDEX IF NOT EXISTS` 保持幂等。**含数据变换的迁移（如 ×10 整数化）只允许执行一次，由跟踪表保证，绝不手工重跑。**
 - 从 Flask 切过来的库：先 `npm run migrate -- mark 0_init`，再 `up`；新库直接 `up`。
 - 命令：`status` / `up` / `mark <name>` / `verify`。详见 `docs/deploy.md`「修改 schema 后」节。
 
 ### 鱼干写路径
-- 三条写路径（投喂 / 签到 / CLI grant|deduct）全部 **fail-closed**：
-  远端账户服务失败 → 本地事务回滚 → 503。这是设计如此，不要改。
-- 不配 `ACCOUNT_SERVICE_INTERNAL_TOKEN` 时，生产环境所有鱼干写路径直接 503。
+- 四条写路径（投喂 / 签到 / CLI grant|deduct / 注册建号）全部 **fail-closed**：
+  远端账户服务失败 → 本地写入被**补偿事务精确撤销**（对用户等价于回滚）→ 503。
+  绝不静默成功。这是设计如此，不要改。
+- 机制（`src/lib/fish-sync.ts` + `account_sync_ledger` 表）：远端 HTTP **不在 SQLite
+  事务内**（旧版把 HTTP 放事务里，写锁被占最长 5s，并发写直接 database is locked）。
+  流程：本地事务先提交（含账本 pending 行）→ 事务外调远端（幂等键不变）→ 成功标
+  synced；失败走补偿事务；补偿也失败标 failed 并打 `ACCOUNT_RECONCILE_REQUIRED`
+  日志。进程在「已提交/未同步」之间崩溃 → 账本留 pending →
+  `npm run cli -- fish sync-retry` 幂等重放收敛。payload 里**严禁存密钥**（重放时
+  按 userId 重新解密）。
+- 不配 `ACCOUNT_SERVICE_INTERNAL_TOKEN` 时，生产环境所有鱼干写路径直接 503
+  （不做任何本地写入）。dev 环境走 fallback 仅写本地。
 
 ### 软删除
 - 永不物理删除（站长手动例外）：`Blog.ignore`、`BlogComment.is_deleted`、`ImageHosting.ignore`、`Vote.ignore`、`ClipBoard.ignore`、`PhotoWallItem.ignore`。
 - `is_deleted=true` 且无子评论 → 自动从楼中楼里隐藏。
 
 ### 限频
-- 内存限频 `src/lib/rate-limit.ts`（进程级，重启丢失）。
-- 多实例部署需换 Redis（已知限制）。
+- 内存限频 `src/lib/rate-limit.ts`，**桶随 10 分钟清扫落盘**（`instance/rate-limit-snapshot.json`，原子写；`RATE_LIMIT_SNAPSHOT_PATH` 可覆盖），重启回灌不丢窗口；测试环境不自动回灌（确定性）。
+- 单进程语义；多实例部署需换 Redis（已知限制）。
 - 进程内规则：点赞 100/h 500/d、评论 1200/d、投票 30/h、图床 75/h、照片墙 30/h 300/d。
 
 ### 文件落盘
@@ -110,6 +121,9 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 | 0_init 基线 | `prisma/migrations/0_init/migration.sql` 由原 db.db 反向生成 |
 | Flask 删档 commit | 已合并到本分支；旧 `migrations/`（Alembic）已删除 |
 | 账户微服务 | 独立 FastAPI 仓库，本仓通过 `AccountClient` HTTP 调用 |
+| 1_oauth | OAuth 2.0 IdP（应用/授权码/access token 三表） |
+| 2_account_sync_ledger | 鱼干写路径账本化：HTTP 移出 SQLite 事务（见「鱼干写路径」） |
+| 3_fish_integer_units | 鱼干 Float → 整数（×10，0.1 鱼干 = 1 单位，只可执行一次） |
 
 ## 文档
 
