@@ -180,6 +180,8 @@ describe('RULES 全站配额（与 docs/全站限额与频控汇总.md 对齐，
     { name: 'voteCreateHourly', limit: 10, windowMs: HOUR, desc: '投票创建 10 次/时' },
     { name: 'voteHourly', limit: 30, windowMs: HOUR, desc: '投票 30 次/时' },
     { name: 'imageUploadHourly', limit: 75, windowMs: HOUR, desc: '图床上传 75 次/时' },
+    { name: 'chatMinute', limit: 30, windowMs: 60_000, desc: '聊天发言 30 次/分' },
+    { name: 'chatDaily', limit: 800, windowMs: DAY, desc: '聊天发言 800 次/天' },
   ] as const;
 
   for (const e of EXPECTED) {

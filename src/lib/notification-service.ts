@@ -88,10 +88,7 @@ export interface SendNotificationInput {
   prefKey?: NotifyPrefKey | null;
 }
 
-/**
- * 发送通知。接收者不存在返回 null；被偏好拦截（非 force）返回 null；否则返回创建的记录。
- * id 用 crypto.randomUUID()，timestamp 用 new Date()（对齐模型 default）。
- */
+/** 发送通知。接收者不存在返回 null；被偏好拦截（非 force）返回 null；否则返回创建的记录。 */
 export async function sendNotification(input: SendNotificationInput) {
   const {
     recipientId,
@@ -128,6 +125,58 @@ export async function sendNotification(input: SendNotificationInput) {
       detail,
       read: false,
     },
+  });
+}
+
+/**
+ * 私聊消息通知（**会话合并**）：同一会话对方连续发消息时，只要该会话在本端仍未读，
+ * 就只保留**一条**通知 —— 找到该会话最近一条未读 chat 通知，更新其 actor/timestamp/
+ * detail（刷新到顶部）；没有未读通知才新建。对齐主流 IM「一个会话一条未读提醒」，
+ * 避免离线很久后铃铛被同会话消息刷屏。
+ *
+ * 始终送达（不查偏好）：私聊属于强提醒，且 action『私聊消息』不在 ACTION_PREF_MAP。
+ * 会话被打开/阅读时，由 chat-service.markChannelRead 把对应 chat 通知批量标已读。
+ */
+export async function sendCoalescedChatNotification(input: {
+  recipientId: string;
+  actorId: string;
+  channelId: string;
+  preview: string;
+}) {
+  const { recipientId, actorId, channelId, preview } = input;
+  const now = nowForDb();
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.notification.findFirst({
+      where: {
+        recipientId,
+        objectType: 'chat',
+        objectId: channelId,
+        read: false,
+      },
+      orderBy: { timestamp: 'desc' },
+      select: { id: true },
+    });
+    if (existing) {
+      return tx.notification.update({
+        where: { id: existing.id },
+        data: { actorId, timestamp: now, detail: preview, read: false },
+        select: { id: true },
+      });
+    }
+    return tx.notification.create({
+      data: {
+        id: crypto.randomUUID(),
+        timestamp: now,
+        action: '私聊消息',
+        recipientId,
+        actorId,
+        objectType: 'chat',
+        objectId: channelId,
+        detail: preview,
+        read: false,
+      },
+      select: { id: true },
+    });
   });
 }
 

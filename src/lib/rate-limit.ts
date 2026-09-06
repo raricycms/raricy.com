@@ -162,4 +162,6 @@ export const RULES = {
   voteCreateHourly: { limit: 10, windowMs: 60 * 60 * 1000 },
   voteHourly: { limit: 30, windowMs: 60 * 60 * 1000 },
   imageUploadHourly: { limit: 75, windowMs: 60 * 60 * 1000 },
+  chatMinute: { limit: 30, windowMs: 60 * 1000 },
+  chatDaily: { limit: 800, windowMs: 24 * 60 * 60 * 1000 },
 } as const;
