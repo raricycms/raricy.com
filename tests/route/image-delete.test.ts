@@ -32,8 +32,9 @@ import { DELETE as adminDeleteImage } from '@/app/api/images/admin/[id]/route';
 
 beforeAll(() => {
   fs.mkdirSync(TEST_UPLOAD_DIR, { recursive: true });
-  // 兜底：确认没指到真实目录
-  if (!TEST_UPLOAD_DIR.includes('/tests/.tmp/')) {
+  // 兜底：确认没指到真实目录（Windows 路径是反斜杠，归一化后校验，
+  // 与 tests/helpers/db.ts 的 assertTestDb 同一处理）
+  if (!TEST_UPLOAD_DIR.replace(/\\/g, '/').includes('/tests/.tmp/')) {
     throw new Error(`拒绝在非临时目录上跑：${TEST_UPLOAD_DIR}`);
   }
 });

@@ -235,14 +235,15 @@ describe('validateBlogData / 栏目校验', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 2. 发文日限额 —— 对齐 upload_blog 视图：created_at >= 本地零点，today_count >= 20 拒绝
+// 2. 发文日限额 —— 对齐 upload_blog 视图：created_at >= 本站当日零点（UTC+8 墙上时间，
+//    与 countBlogsToday / db-time 同一把钟），today_count >= 20 拒绝
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 今天零点 + offsetMs 的时间点。 */
+import { dayStart, todayStr } from '@/lib/db-time';
+
+/** 今天（UTC+8 墙上日期）零点 + offsetMs 的时间点 —— 与 db-time 的 dayStart 同口径。 */
 function todayAt(offsetMs: number) {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return new Date(d.getTime() + offsetMs);
+  return new Date(dayStart(todayStr()).getTime() + offsetMs);
 }
 
 const HOUR = 3600_000;
