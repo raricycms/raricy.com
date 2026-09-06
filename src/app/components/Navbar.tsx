@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import type { SafeUser } from '@/lib/auth';
-import { hasAdminRights } from '@/lib/auth';
+import { hasAdminRights, isCoreUser } from '@/lib/auth';
 import LogoutLink from './LogoutLink';
 
 // 顶栏 — Flask `base.html` 样式（site-* BEM + icon mask）
@@ -49,6 +49,13 @@ export default function Navbar({ user }: { user: SafeUser | null }) {
                 日志
               </Link>
             </li>
+            {isCoreUser(user) && (
+              <li>
+                <Link className="site-link" href="/chat">
+                  <span className="icon icon-chat-dots_new" aria-hidden="true" style={{ marginRight: 6 }}></span>聊天
+                </Link>
+              </li>
+            )}
           </ul>
 
           <div className="site-actions">

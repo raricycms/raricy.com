@@ -197,6 +197,11 @@ export default function NotificationItems({ initial }: { initial: NotificationDT
                   查看博客 →
                 </Link>
               )}
+              {n.object.type === 'chat' && n.object.id && (
+                <Link href={`/chat?channel=${encodeURIComponent(n.object.id)}`} className="notification-blog-link">
+                  查看对话 →
+                </Link>
+              )}
             </div>
           ))}
         </div>
