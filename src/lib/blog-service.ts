@@ -6,7 +6,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { prisma } from './db';
-import { nowForDb } from './db-time';
+import { nowForDb, dayStart, todayStr } from './db-time';
 import { ymdhms } from './format';
 import { rateLimit, RULES } from './rate-limit';
 import type { Prisma } from '@prisma/client';
@@ -330,8 +330,11 @@ export function countMarkdownWords(input: string): {
 
 /** 当日该作者已发布文章数（对齐 upload_blog：created_at >= 本地零点）。 */
 export async function countBlogsToday(authorId: string): Promise<number> {
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
+  // 「当日」的零点必须用本站统一时钟（UTC+8 墙上时间，见 db-time.ts）：
+  // new Date().setHours(0,0,0,0) 取的是**服务器时区**的午夜 —— 服务器 TZ 若是 UTC，
+  // 零点会比 UTC+8 晚 8 小时，头 8 小时发出的文章会被算进前一天（与 audit-service
+  // 申诉频控修过的同类 bug）。
+  const start = dayStart(todayStr());
   return prisma.blog.count({ where: { authorId, createdAt: { gte: start } } });
 }
 

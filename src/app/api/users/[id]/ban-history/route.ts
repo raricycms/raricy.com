@@ -5,6 +5,7 @@
 import { getCurrentUser, isCoreUser } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { apiOk, apiErr } from '@/lib/format';
+import { nowForDb } from '@/lib/db-time';
 
 const iso = (d: Date | null | undefined) => (d ? d.toISOString() : null);
 
@@ -42,15 +43,18 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   }));
 
   // 对齐 User.to_dict()（含 get_ban_info：仅当前仍被禁言时返回，否则 null）
+  // ⚠️ 比较双方必须同一把钟：banUntil 存的是「UTC+8 墙上时间贴 Z」（见 db-time.ts），
+  // 若用真实 UTC 的 new Date() 比对会差 8 小时 —— 禁言到期后仍显示「禁言中」8 小时。
+  const now = nowForDb();
   const currentlyBanned =
-    !!user.isBanned && (user.banUntil == null || new Date() <= user.banUntil);
+    !!user.isBanned && (user.banUntil == null || now <= user.banUntil);
   const ban_info = currentlyBanned
     ? {
         is_banned: true,
         ban_until: iso(user.banUntil),
         reason: user.banReason,
         remaining_hours: user.banUntil
-          ? (user.banUntil.getTime() - Date.now()) / 3600000
+          ? (user.banUntil.getTime() - now.getTime()) / 3600000
           : null,
       }
     : null;

@@ -7,6 +7,7 @@ import { execSync } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
 import { prisma } from '@/lib/db';
+import { nowForDb } from '@/lib/db-time';
 
 // 测试库路径由 tests/setup.ts 生成为 tests/.tmp/test-<pid>-<rand>.db —— 每进程独立，
 // 避免多个 vitest 进程共用一个文件、互相 rmSync 重建（会随机报 no such table /
@@ -107,7 +108,9 @@ export async function makeUser(opts: Partial<{
       banReason: opts.banReason ?? null,
       driedFish: opts.driedFish ?? 0,
       totalFortune: opts.totalFortune ?? 0,
-      createdAt: new Date(),
+      // 与生产写路径同钟：本库时间戳语义是「UTC+8 墙上时间贴 Z」（db-time.ts），
+      // 种子数据也必须走 nowForDb()，否则冻结时钟的用例里两把钟不一致。
+      createdAt: nowForDb(),
     },
   });
 }
@@ -131,7 +134,7 @@ export async function makeCategory(opts: Partial<{
       adminOnlyPosting: opts.adminOnlyPosting ?? false,
       excludeFromAll: opts.excludeFromAll ?? false,
       parentId: opts.parentId ?? null,
-      createdAt: new Date(),
+      createdAt: nowForDb(),
     },
   });
 }
@@ -157,11 +160,11 @@ export async function makeBlog(opts: Partial<{
       description: opts.description ?? 'desc',
       categoryId: opts.categoryId ?? null,
       ignore: opts.ignore ?? false,
-      createdAt: opts.createdAt ?? new Date(),
+      createdAt: opts.createdAt ?? nowForDb(),
     },
   });
   await prisma.blogContent.create({
-    data: { blogId: id, content: opts.content ?? '# hello', updatedAt: new Date() },
+    data: { blogId: id, content: opts.content ?? '# hello', updatedAt: nowForDb() },
   });
   return blog;
 }
