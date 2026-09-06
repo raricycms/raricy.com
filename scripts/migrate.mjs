@@ -20,7 +20,7 @@
 // 用同一套驱动），避免再装 better-sqlite3 / pg / mysql2。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { execFileSync } from 'node:child_process';
+import { execSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -98,9 +98,12 @@ async function markApplied(prisma, name, sum) {
 function applySqlFile(name) {
   const file = path.join(MIGRATIONS_DIR, name, 'migration.sql');
   try {
-    execFileSync(
-      'npx',
-      ['prisma', 'db', 'execute', '--file', file, '--schema', SCHEMA_PATH],
+    // Windows 上 npx 是批处理（npx.cmd），execFileSync 无法直接拉起（EINVAL/ENOENT）——
+    // 与 tests/helpers/db.ts 同因同修：execSync 走 shell。参数全是固定字面量 +
+    // 仓库内文件路径（无外部输入，无注入面；路径含空格时靠引号包裹）。
+    const q = (s) => (/\s/.test(s) ? `"${s}"` : s);
+    execSync(
+      `npx prisma db execute --file ${q(file)} --schema ${q(SCHEMA_PATH)}`,
       { stdio: ['ignore', 'inherit', 'inherit'], env: process.env }
     );
     return true;
