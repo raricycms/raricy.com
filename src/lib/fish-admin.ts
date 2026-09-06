@@ -15,6 +15,7 @@ import { randomBytes } from 'node:crypto';
 import { prisma } from './db';
 import { nowForDb } from './db-time';
 import { addFish } from './fish-service';
+import { fishToUnits, unitsToFish } from './fish-units';
 import {
   accountServiceEnabled,
   assertRemoteRequiredInProduction,
@@ -102,8 +103,8 @@ export async function adminGrantFish(
         await prisma.$transaction(async (tx) => {
           await tx.fishTransaction.deleteMany({ where: { id: phase1.fishTxId } });
           const dec = await tx.user.updateMany({
-            where: { id: userId, driedFish: { gte: amount } },
-            data: { driedFish: { decrement: amount } },
+            where: { id: userId, driedFish: { gte: fishToUnits(amount) } },
+            data: { driedFish: { decrement: fishToUnits(amount) } },
           });
           if (dec.count === 0) {
             throw new Error(`余额不足以回退（user=${userId} amount=${amount}）`);
@@ -123,7 +124,7 @@ export async function adminGrantFish(
   }
 
   const u = await prisma.user.findUnique({ where: { id: userId }, select: { driedFish: true } });
-  return u?.driedFish ?? 0;
+  return unitsToFish(u?.driedFish ?? 0);
 }
 
 /**
@@ -152,11 +153,12 @@ export async function adminDeductFish(
   };
 
   // Phase 1：本地事务（原子扣减 + 写支出流水 + 账本登记）。
+  const units = fishToUnits(amount);
   const phase1 = await prisma.$transaction(async (tx) => {
     // 原子扣减：WHERE driedFish >= amount —— 防超扣。
     const dec = await tx.user.updateMany({
-      where: { id: userId, driedFish: { gte: amount } },
-      data: { driedFish: { decrement: amount } },
+      where: { id: userId, driedFish: { gte: units } },
+      data: { driedFish: { decrement: units } },
     });
     if (dec.count === 0) {
       throw new FishBusinessError('小鱼干不足');
@@ -165,7 +167,7 @@ export async function adminDeductFish(
     const txRow = await tx.fishTransaction.create({
       data: {
         userId,
-        amount: -amount,
+        amount: -units,
         type: 'admin_deduct',
         description,
         createdAt: nowForDb(),
@@ -190,7 +192,7 @@ export async function adminDeductFish(
           await tx.fishTransaction.deleteMany({ where: { id: phase1.fishTxId } });
           await tx.user.update({
             where: { id: userId },
-            data: { driedFish: { increment: amount } },
+            data: { driedFish: { increment: units } },
           });
           await tx.accountSyncLedger.deleteMany({ where: { idempotencyKey } });
         });
@@ -207,5 +209,5 @@ export async function adminDeductFish(
   }
 
   const u = await prisma.user.findUnique({ where: { id: userId }, select: { driedFish: true } });
-  return u?.driedFish ?? 0;
+  return unitsToFish(u?.driedFish ?? 0);
 }

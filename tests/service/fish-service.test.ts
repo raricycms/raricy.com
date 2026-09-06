@@ -23,13 +23,15 @@ import {
   addFish,
 } from '@/lib/fish-service';
 import { feedBlog } from '@/lib/feed-service';
+import { fishToUnits, unitsToFish } from '@/lib/fish-units';
 import { resetDb, makeUser, makeBlog, prisma } from '../helpers/db';
 
 beforeEach(async () => {
   await resetDb();
 });
 
-/** 直接落一条流水（read 路径用例需要可控的 createdAt，addFish 不写该字段）。 */
+/** 直接落一条流水（read 路径用例需要可控的 createdAt，addFish 不写该字段）。
+ *  amount 参数为鱼干（业务单位）；入库自动 ×10（存储单位 = 0.1 鱼干，fish-units.ts）。 */
 async function makeTx(opts: {
   userId: string;
   amount: number;
@@ -41,7 +43,7 @@ async function makeTx(opts: {
   return prisma.fishTransaction.create({
     data: {
       userId: opts.userId,
-      amount: opts.amount,
+      amount: fishToUnits(opts.amount),
       type: opts.type,
       description: opts.description ?? null,
       relatedUserId: opts.relatedUserId ?? null,
@@ -126,7 +128,7 @@ describe('addFish（加钱 + 写流水）', () => {
     const txs = await prisma.fishTransaction.findMany({ where: { userId: u.id } });
     expect(txs, '一次 addFish 必须且只能产生一条流水').toHaveLength(1);
     expect(txs[0]).toMatchObject({
-      amount: 3,
+      amount: fishToUnits(3),
       type: 'checkin',
       description: '每日签到',
       referenceType: 'blog',
@@ -174,7 +176,7 @@ describe('addFish（加钱 + 写流水）', () => {
     expect(await prisma.fishTransaction.count()).toBe(0);
   });
 
-  it('小数金额被接受（driedFish 是 Float；投喂分成 0.8/篇 依赖这一点）', async () => {
+  it('小数金额被接受（存储是 0.1 鱼干整数单位；投喂分成 0.8/篇 依赖这一点）', async () => {
     const u = await makeUser({ driedFish: 0 });
     await prisma.$transaction((tx) =>
       addFish(tx, { userId: u.id, amount: 0.8, type: 'feed_receive' })
@@ -182,24 +184,25 @@ describe('addFish（加钱 + 写流水）', () => {
     expect(await getBalance(u.id)).toBe(0.8);
   });
 
-  it('⚠️ 浮点累加会产生精度漂移：0.1 加 3 次 ≠ 0.3（记录现状，非断言正确性）', async () => {
+  it('整数存储后 0.1 加 3 次精确等于 0.3（Float 时代的漂移已消失）', async () => {
     const u = await makeUser({ driedFish: 0 });
     for (let i = 0; i < 3; i++) {
       await prisma.$transaction((tx) =>
         addFish(tx, { userId: u.id, amount: 0.1, type: 'feed_receive' })
       );
     }
-    const bal = await getBalance(u.id);
-    expect(bal).toBeCloseTo(0.3, 10);
-    // 记录：Float 存储下余额不是精确十进制。见交付说明「可疑之处」。
+    // 存储单位（0.1 鱼干=1）下三笔各 +1，余额 = 3 单位 = 精确 0.3 鱼干。
+    // 旧 Float 时代这里是 toBeCloseTo —— 整数化（fish-units.ts）后允许精确断言。
+    expect(await getBalance(u.id)).toBe(0.3);
   });
 
-  it('极大金额（Number.MAX_SAFE_INTEGER）能写入且读回一致', async () => {
+  it('极大金额（1e8 鱼干 = 1e9 存储单位，Prisma Int 4 字节上限内）能写入且读回一致', async () => {
     const u = await makeUser({ driedFish: 0 });
+    const big = 1e8;
     await prisma.$transaction((tx) =>
-      addFish(tx, { userId: u.id, amount: Number.MAX_SAFE_INTEGER, type: 'admin_grant' })
+      addFish(tx, { userId: u.id, amount: big, type: 'admin_grant' })
     );
-    expect(await getBalance(u.id)).toBe(Number.MAX_SAFE_INTEGER);
+    expect(await getBalance(u.id)).toBe(big);
   });
 
   it('amount = Infinity 的行为（记录现状：能通过 > 0 校验）', async () => {
@@ -304,13 +307,13 @@ describe('扣款：余额不足', () => {
     const spend = await prisma.fishTransaction.findFirstOrThrow({
       where: { userId: feeder.id, type: 'feed' },
     });
-    expect(spend.amount, '支出流水必须是负数，否则对账时收支同号').toBe(-2);
+    expect(unitsToFish(spend.amount), '支出流水必须是负数，否则对账时收支同号（存储单位换回鱼干）').toBe(-2);
     expect(spend.relatedUserId).toBe(author.id);
 
     const income = await prisma.fishTransaction.findFirstOrThrow({
       where: { userId: author.id, type: 'feed_receive' },
     });
-    expect(income.amount, '作者分成 80%').toBe(1.6);
+    expect(unitsToFish(income.amount), '作者分成 80%').toBe(1.6);
     expect(await getBalance(author.id)).toBe(1.6);
   });
 });
@@ -335,7 +338,7 @@ describe('★ 并发超扣防护（最关键）', () => {
     const spendRows = await prisma.fishTransaction.findMany({
       where: { userId: feeder.id, type: 'feed' },
     });
-    const spent = spendRows.reduce((s, r) => s + r.amount, 0);
+    const spent = spendRows.reduce((s, r) => s + unitsToFish(r.amount), 0); // 存储单位 → 鱼干再求和
 
     expect(bal, `余额绝不能为负（实测 ${bal}，成功 ${okCount} 笔）`).toBeGreaterThanOrEqual(0);
     expect(okCount, `余额 10 / 每笔 5，最多只能成功 2 笔（实测 ${okCount}）`).toBe(2);
@@ -384,7 +387,7 @@ describe('★ 并发超扣防护（最关键）', () => {
     expect(incomeRows, '每笔成功支出对应且仅对应一笔作者收入').toHaveLength(spendCount);
     const authorBal = await getBalance(author.id);
     expect(authorBal, '作者余额 = 收入流水之和').toBeCloseTo(
-      incomeRows.reduce((s, r) => s + r.amount, 0),
+      incomeRows.reduce((s, r) => s + unitsToFish(r.amount), 0),
       6
     );
   });
@@ -626,7 +629,7 @@ describe('getTodayCheckinFish', () => {
     await prisma.$executeRawUnsafe(
       `INSERT INTO fish_transactions (user_id, amount, type, created_at) VALUES (?, ?, ?, ?)`,
       userId,
-      amount,
+      fishToUnits(amount), // 整数化后老数据的口径也是 0.1 鱼干存储单位（fish-units.ts）
       type,
       new Date(isoTs).getTime() // 规整后的存储形态：INTEGER 毫秒
     );
@@ -748,11 +751,12 @@ describe('回归：流水 createdAt 与今日签到', () => {
   it('getTodayCheckinFish 也能读到迁移来的老数据', async () => {
     const u = await makeUser();
     const today = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
-    // 模拟 normalize-datetimes 产出的老行：INTEGER 毫秒
+    // 模拟 normalize-datetimes 产出的老行：INTEGER 毫秒；金额为存储单位（×10）
     await prisma.$executeRawUnsafe(
       `INSERT INTO fish_transactions (user_id, amount, type, description, created_at)
-       VALUES (?, 3, 'checkin', '老数据', ?)`,
+       VALUES (?, ?, 'checkin', '老数据', ?)`,
       u.id,
+      fishToUnits(3),
       new Date(`${today}T09:30:00.000Z`).getTime()
     );
     expect(await getTodayCheckinFish(u.id), '迁移来的老数据应能被匹配到').toBe(3);
@@ -763,8 +767,9 @@ describe('回归：流水 createdAt 与今日签到', () => {
     const y = new Date(Date.now() + 8 * 3600 * 1000 - 24 * 3600 * 1000).toISOString().slice(0, 10);
     await prisma.$executeRawUnsafe(
       `INSERT INTO fish_transactions (user_id, amount, type, description, created_at)
-       VALUES (?, 9, 'checkin', '昨天', ?)`,
+       VALUES (?, ?, 'checkin', '昨天', ?)`,
       u.id,
+      fishToUnits(9),
       new Date(`${y}T09:30:00.000Z`).getTime()
     );
     expect(await getTodayCheckinFish(u.id)).toBe(0);

@@ -157,8 +157,26 @@ OAuth 2.0 第三方应用：
   // ── fish 命令组 ───────────────────────────────────────────────────────────
   if (cmd === 'fish') {
     const sub = argv[1];
+
+    // fish sync-retry：重放 account_sync_ledger 里 pending/failed 的远端同步。
+    // 场景：进程在「本地已提交、远端未同步」之间崩溃（或补偿失败留下的 failed 行）。
+    // 远端按幂等键重放，收敛后标 synced。详见 src/lib/fish-sync.ts。
+    if (sub === 'sync-retry') {
+      const { replayPendingSyncs } = await import('../src/lib/fish-sync.ts');
+      const r = await replayPendingSyncs({ olderThanMs: 0, limit: 200 });
+      if (r.total === 0) {
+        console.log('没有待重放的同步账目（account_sync_ledger 无 pending/failed 行）。');
+      } else {
+        console.log(`扫描 ${r.total} 行：同步成功 ${r.synced}，仍失败 ${r.stillFailing}。`);
+        if (r.stillFailing > 0) {
+          console.log(yellow('  仍失败的行保留在账本里（attempts 已 +1），可稍后再次执行本命令。'));
+        }
+      }
+      process.exit(0);
+    }
+
     const username = argv[2];
-    if (!sub) die(red('错误：缺少子命令（grant / deduct / balance）'));
+    if (!sub) die(red('错误：缺少子命令（grant / deduct / balance / sync-retry）'));
     if (!username) die(red(`错误：缺少用户名。用法：npm run cli -- fish ${sub} <username> ...`));
 
     const user = await prisma.user.findUnique({
@@ -208,12 +226,13 @@ OAuth 2.0 第三方应用：
       }
       process.exit(0);
     } catch (e) {
-      // fail-closed：本地事务已回滚，余额未变，返回退出码 2（对齐 Flask）
+      // fail-closed：本地写入已被补偿回滚，余额未变，返回退出码 2（对齐 Flask）
       const isBiz = e && typeof e === 'object' && e.name === 'FishBusinessError';
       if (isBiz) die(red(`错误：${e.message}`), 1);
-      console.error(red('失败：账户服务同步失败，本地事务已回滚'));
+      console.error(red('失败：账户服务同步失败，本地写入已补偿回滚'));
       console.error(`  原因: ${e?.message ?? e}`);
-      console.error(`  本地余额未变更（${user.driedFish}），请稍后重试。`);
+      // driedFish 存的是 0.1 鱼干为单位（fish-units.ts），展示除以 10
+      console.error(`  本地余额未变更（${(user.driedFish ?? 0) / 10}），请稍后重试。`);
       process.exit(2);
     }
   }

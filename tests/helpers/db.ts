@@ -8,6 +8,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { prisma } from '@/lib/db';
 import { nowForDb } from '@/lib/db-time';
+import { fishToUnits } from '@/lib/fish-units';
 
 // 测试库路径由 tests/setup.ts 生成为 tests/.tmp/test-<pid>-<rand>.db —— 每进程独立，
 // 避免多个 vitest 进程共用一个文件、互相 rmSync 重建（会随机报 no such table /
@@ -107,7 +108,7 @@ export async function makeUser(opts: Partial<{
       isBanned: opts.isBanned ?? false,
       banUntil: opts.banUntil ?? null,
       banReason: opts.banReason ?? null,
-      driedFish: opts.driedFish ?? 0,
+      driedFish: fishToUnits(opts.driedFish ?? 0), // 存储单位 = 0.1 鱼干（fish-units.ts）
       totalFortune: opts.totalFortune ?? 0,
       // 与生产写路径同钟：本库时间戳语义是「UTC+8 墙上时间贴 Z」（db-time.ts），
       // 种子数据也必须走 nowForDb()，否则冻结时钟的用例里两把钟不一致。

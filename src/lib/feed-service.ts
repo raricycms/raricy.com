@@ -20,6 +20,7 @@
 import { prisma } from './db';
 import { nowForDb } from './db-time';
 import { addFish } from './fish-service';
+import { fishToUnits, unitsToFish } from './fish-units';
 import { sendNotification } from './notification-service';
 import {
   accountServiceEnabled,
@@ -62,7 +63,7 @@ export async function getFeedStatus(
     where: { uq_blog_feed_user: { blogId, userId } },
     select: { amount: true },
   });
-  const fed = feed?.amount ?? 0;
+  const fed = feed ? unitsToFish(feed.amount) : 0;
   return { fed, remaining: Math.max(0, FEED_CAP - fed), isFull: fed >= FEED_CAP };
 }
 
@@ -113,7 +114,7 @@ export async function getFeeders(
         user_id: f.userId,
         username: u?.username ?? '未知',
         avatar_path: u?.avatarPath ?? null,
-        amount: f.amount,
+        amount: unitsToFish(f.amount),
       };
     }),
     total,
@@ -190,10 +191,12 @@ export async function feedBlog(
   try {
     // ── Phase 1：本地事务（纯 DB，无远端 IO —— 写锁只持有毫秒级）────────────────
     const phase1 = await prisma.$transaction(async (tx) => {
+      // 金额换算：业务单位（鱼干）→ 存储单位（0.1 鱼干，见 fish-units.ts）。
+      const units = fishToUnits(amount);
       // 1.1 原子扣减投喂者鱼干（WHERE driedFish >= amount 防超扣）。
       const dec = await tx.user.updateMany({
-        where: { id: userId, driedFish: { gte: amount } },
-        data: { driedFish: { decrement: amount } },
+        where: { id: userId, driedFish: { gte: units } },
+        data: { driedFish: { decrement: units } },
       });
       if (dec.count === 0) {
         throw new FeedBusinessError(400, '小鱼干不足');
@@ -202,7 +205,7 @@ export async function feedBlog(
       const feederTx = await tx.fishTransaction.create({
         data: {
           userId,
-          amount: -amount,
+          amount: -units,
           type: 'feed',
           description: `投喂文章「${blog.title}」`,
           referenceType: 'blog',
@@ -238,18 +241,21 @@ export async function feedBlog(
         where: { uq_blog_feed_user: { blogId, userId } },
         select: { amount: true },
       });
-      const feedSeq = (existing?.amount ?? 0) + amount; // 投喂后累计量（并入远端幂等键）
+      // BlogFeed.amount 存储单位 → 业务单位（鱼干）后再算累计量（feedSeq 进幂等键，
+      // 保持与旧版一致的鱼干口径）。
+      const priorAmount = existing ? unitsToFish(existing.amount) : null;
+      const feedSeq = (priorAmount ?? 0) + amount; // 投喂后累计量（并入远端幂等键）
       if (feedSeq > FEED_CAP) {
         throw new FeedBusinessError(400, '投喂已满（单篇文章每人最多投喂 5 条）');
       }
       if (existing) {
         await tx.blogFeed.update({
           where: { uq_blog_feed_user: { blogId, userId } },
-          data: { amount: { increment: amount }, updatedAt: nowForDb() },
+          data: { amount: { increment: units }, updatedAt: nowForDb() },
         });
       } else {
         await tx.blogFeed.create({
-          data: { blogId, userId, amount, createdAt: nowForDb(), updatedAt: nowForDb() },
+          data: { blogId, userId, amount: units, createdAt: nowForDb(), updatedAt: nowForDb() },
         });
       }
 
@@ -287,16 +293,16 @@ export async function feedBlog(
         tx.user.findUnique({ where: { id: userId }, select: { driedFish: true } }),
       ]);
 
-      const fedTotal = feedRow?.amount ?? amount;
+      const fedTotal = feedRow ? unitsToFish(feedRow.amount) : amount;
       return {
         fedTotal,
         remaining: Math.max(0, FEED_CAP - fedTotal),
         fishCount: blogRow?.fishCount ?? 0,
-        balance: feederRow?.driedFish ?? 0,
+        balance: feederRow ? unitsToFish(feederRow.driedFish) : 0,
         authorIncome,
         // 补偿所需快照
         feedSeq,
-        priorFeedAmount: existing?.amount ?? null,
+        priorFeedAmount: priorAmount,
         feederTxId: feederTx.id,
         authorTxId: incomeTx.txId,
       };
@@ -324,20 +330,22 @@ export async function feedBlog(
       } catch (syncErr) {
         // ── Phase 3：远端失败 → 补偿事务精确撤销本地写入（对用户仍等价于回滚）──
         try {
+          const undoUnits = fishToUnits(amount);
+          const incomeUnits = fishToUnits(authorIncome);
           await prisma.$transaction(async (tx) => {
             // 3.1 删除两条流水（按 id 精确撤销）
             await tx.fishTransaction.deleteMany({
               where: { id: { in: [phase1.feederTxId, phase1.authorTxId] } },
             });
-            // 3.2 投喂者拿回全额（此前扣过 amount，余额不可能因此变负）
+            // 3.2 投喂者拿回全额（此前扣过 units，余额不可能因此变负）
             await tx.user.update({
               where: { id: userId },
-              data: { driedFish: { increment: amount } },
+              data: { driedFish: { increment: undoUnits } },
             });
             // 3.3 作者退回分成（防负：余额可能已被花掉一部分）
             const dec = await tx.user.updateMany({
-              where: { id: blog.authorId, driedFish: { gte: authorIncome } },
-              data: { driedFish: { decrement: authorIncome } },
+              where: { id: blog.authorId, driedFish: { gte: incomeUnits } },
+              data: { driedFish: { decrement: incomeUnits } },
             });
             if (dec.count === 0) {
               throw new Error(
@@ -352,10 +360,10 @@ export async function feedBlog(
             } else {
               await tx.blogFeed.update({
                 where: { uq_blog_feed_user: { blogId, userId } },
-                data: { amount: { decrement: amount }, updatedAt: nowForDb() },
+                data: { amount: { decrement: undoUnits }, updatedAt: nowForDb() },
               });
             }
-            // 3.5 fishCount 回退（防负）
+            // 3.5 fishCount 回退（fishCount 仍是鱼干口径的整数列，与 Tx A 的 increment 同量）
             const decFish = await tx.blog.updateMany({
               where: { id: blogId, fishCount: { gte: amount } },
               data: { fishCount: { decrement: amount } },

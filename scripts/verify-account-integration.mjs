@@ -81,6 +81,7 @@ const { accountClient, accountServiceEnabled, encryptApiKey, AccountServiceError
 const { doCheckin } = await import('../src/lib/checkin-service.ts');
 const { feedBlog } = await import('../src/lib/feed-service.ts');
 const { adminGrantFish } = await import('../src/lib/fish-admin.ts');
+const { nowForDb } = await import('../src/lib/db-time.ts');
 
 console.log(bold('\n═══ 账户微服务端到端联调 ═══'));
 console.log(`目标服务：${process.env.ACCOUNT_SERVICE_URL}`);
@@ -102,15 +103,17 @@ async function makeUser(id) {
   await prisma.user.create({
     data: {
       id, username: `u_${id}`, email: `${id}@verify.local`, passwordHash: 'x',
-      role: 'core', sessionVersion: 0, driedFish: 0, createdAt: new Date(),
+      role: 'core', sessionVersion: 0, driedFish: 0, createdAt: nowForDb(),
       fishApiKeyEncrypted: acct.api_key ? encryptApiKey(acct.api_key) : null,
     },
   });
   return acct;
 }
 const remoteBal = async (id) => Number((await accountClient.getBalance(id)).balance);
+// 本地 driedFish 存的是 0.1 鱼干为单位（fish-units.ts），与远端（鱼干）比较前换算
 const localBal = async (id) =>
-  (await prisma.user.findUnique({ where: { id }, select: { driedFish: true } }))?.driedFish ?? 0;
+  ((await prisma.user.findUnique({ where: { id }, select: { driedFish: true } }))?.driedFish ??
+    0) / 10;
 
 try {
   // ── 1. 建号 ───────────────────────────────────────────────────────────────

@@ -30,6 +30,7 @@ vi.mock('@/lib/account-client', async (importOriginal) => {
 
 import { doCheckin, todayUtc8 } from '@/lib/checkin-service';
 import { AccountServiceError, SYSTEM_USER_ID } from '@/lib/account-client';
+import { unitsToFish } from '@/lib/fish-units';
 import { resetDb, makeUser, prisma } from '../helpers/db';
 
 beforeEach(async () => {
@@ -55,7 +56,12 @@ async function snapshot(userId: string) {
     prisma.dailyCheckIn.count({ where: { userId } }),
     prisma.fishTransaction.count({ where: { userId } }),
   ]);
-  return { driedFish: u?.driedFish ?? 0, totalFortune: u?.totalFortune ?? 0, checkins, txns };
+  return {
+    driedFish: u ? unitsToFish(u.driedFish) : 0, // 存储单位 → 鱼干
+    totalFortune: u?.totalFortune ?? 0,
+    checkins,
+    txns,
+  };
 }
 
 describe('远端正常：签到成功且远端被正确调用', () => {

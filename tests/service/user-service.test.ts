@@ -517,7 +517,7 @@ describe('changeOwnPassword：成功路径', () => {
     await changeOwnPassword(u.id, 'oldpassword', 'newpassword1', 'newpassword1');
     const row = await prisma.user.findUniqueOrThrow({ where: { id: u.id } });
     expect(row.role).toBe('admin');
-    expect(row.driedFish).toBe(42);
+    expect(row.driedFish, '余额未被误伤（存储单位 = 0.1 鱼干）').toBe(420); // 42 鱼干 × 10
     expect(row.email).toBe(u.email);
   });
 

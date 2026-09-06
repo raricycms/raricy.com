@@ -121,6 +121,12 @@ if (rows.length === 0) {
 console.log(`找到 ${rows.length} 条待补偿记录：\n`);
 
 // ── 2. 逐条计算将要发生的变更 ────────────────────────────────────────────────
+// ── 单位约定（fish-units.ts）────────────────────────────────────────────────
+// dried_fish / fish_transactions.amount 的存储单位 = 0.1 鱼干（整数，×10）；
+// 运势值 / total_fortune 仍以「1=1」计。发鱼干与流水金额一律 ×10 入库，展示 ÷10。
+// ⚠️ 本脚本假定目标库已应用 prisma/migrations/3_fish_integer_units（先 migrate up）。
+const UNIT = 10;
+
 const plan = [];
 for (const r of rows) {
   const pool = parsePool(r.fortune_pool);
@@ -139,10 +145,11 @@ for (const r of rows) {
   }
   const value = pool[chosenIndex];
   plan.push({ ...r, pool, value });
+  const fishNow = (r.dried_fish ?? 0) / UNIT;
   console.log(
     `  id=${String(r.id).padStart(4)} ${String(r.username).padEnd(16)} ${fmtDay(r.checkin_date)}  ` +
       `池=[${pool.join(',')}] → 翻出 \x1b[36m${value}\x1b[0m  ` +
-      `(鱼干 ${r.dried_fish} → ${(r.dried_fish ?? 0) + value}, ` +
+      `(鱼干 ${fishNow} → ${fishNow + value}, ` +
       `运势 ${r.total_fortune} → ${(r.total_fortune ?? 0) + value})`
   );
 }
@@ -187,18 +194,19 @@ try {
       p.user_id
     );
 
-    // 3.3 发鱼干
+    // 3.3 发鱼干（存储单位 = 0.1 鱼干，×10）
     db.prepare(`UPDATE users SET dried_fish = COALESCE(dried_fish, 0) + ? WHERE id = ?`).run(
-      p.value,
+      p.value * UNIT,
       p.user_id
     );
 
     // 3.4 写流水（type/description 逐字对齐 Flask claim_fortune 里的 add_fish 调用）
     //     created_at 存 INTEGER 毫秒 —— 与规整后的库、与 Prisma 的写入格式一致。
+    //     amount 同样 ×10（存储单位）。
     db.prepare(
       `INSERT INTO fish_transactions (user_id, amount, type, description, created_at)
        VALUES (?, ?, 'checkin', ?, ?)`
-    ).run(p.user_id, p.value, `每日签到（运势值 ${p.value}）`, now);
+    ).run(p.user_id, p.value * UNIT, `每日签到（运势值 ${p.value}）`, now);
 
     console.log(`  \x1b[32m✓\x1b[0m id=${p.id} ${p.username} 补发 ${p.value} 条鱼干`);
     done += 1;

@@ -10,6 +10,7 @@
 
 import { prisma } from './db';
 import { nowForDb, todayStr, dayStart } from './db-time';
+import { fishToUnits, unitsToFish } from './fish-units';
 import type { Prisma } from '@prisma/client';
 
 /** 事务客户端类型（$transaction 回调里传入的 tx）。 */
@@ -21,7 +22,7 @@ export async function getBalance(userId: string): Promise<number> {
     where: { id: userId },
     select: { driedFish: true },
   });
-  return user?.driedFish ?? 0;
+  return unitsToFish(user?.driedFish ?? 0);
 }
 
 /**
@@ -37,7 +38,7 @@ export async function getBalanceBatch(userIds: string[]): Promise<Record<string,
   });
   const result: Record<string, number> = {};
   for (const uid of ids) result[uid] = 0;
-  for (const u of users) result[u.id] = u.driedFish;
+  for (const u of users) result[u.id] = unitsToFish(u.driedFish);
   return result;
 }
 
@@ -73,7 +74,7 @@ export async function getTodayCheckinFish(userId: string): Promise<number> {
     select: { amount: true },
     orderBy: { createdAt: 'asc' },
   });
-  return row?.amount ?? 0;
+  return row?.amount != null ? unitsToFish(row.amount) : 0;
 }
 
 export interface FishTxDTO {
@@ -128,7 +129,7 @@ export async function getTransactions(
   return {
     transactions: rows.map((t) => ({
       id: t.id,
-      amount: t.amount,
+      amount: unitsToFish(t.amount),
       type: t.type,
       description: t.description,
       referenceType: t.referenceType,
@@ -166,7 +167,7 @@ export async function getBalanceLeaderboard(limit = 50): Promise<FishLeaderboard
     userId: u.id,
     username: u.username,
     avatarPath: u.avatarPath,
-    balance: u.driedFish,
+    balance: unitsToFish(u.driedFish),
   }));
 }
 
@@ -193,15 +194,18 @@ export interface AddFishInput {
 export async function addFish(tx: TxClient, input: AddFishInput): Promise<{ txId: number }> {
   if (input.amount <= 0) throw new Error('amount 必须为正数');
 
+  // 存储 = 0.1 鱼干为单位（fish-units.ts）；input.amount 是业务单位的鱼干。
+  const units = fishToUnits(input.amount);
+
   await tx.user.update({
     where: { id: input.userId },
-    data: { driedFish: { increment: input.amount } },
+    data: { driedFish: { increment: units } },
   });
 
   const row = await tx.fishTransaction.create({
     data: {
       userId: input.userId,
-      amount: input.amount,
+      amount: units,
       type: input.type,
       description: input.description ?? null,
       referenceType: input.referenceType ?? null,

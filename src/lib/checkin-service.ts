@@ -18,6 +18,7 @@
 import { prisma } from './db';
 import { nowForDb } from './db-time';
 import { addFish } from './fish-service';
+import { fishToUnits, unitsToFish } from './fish-units';
 import {
   accountServiceEnabled,
   assertRemoteRequiredInProduction,
@@ -107,7 +108,7 @@ export async function getTodayStatus(userId: string): Promise<CheckinStatus> {
     fortuneValue: record?.fortuneValue ?? null,
     fortunePool: record ? parsePool(record.fortunePool) : null,
     totalFortune: user?.totalFortune ?? 0,
-    driedFish: user?.driedFish ?? 0,
+    driedFish: unitsToFish(user?.driedFish ?? 0),
   };
 }
 
@@ -263,8 +264,8 @@ export async function doCheckin(userId: string, chosenIndex?: number): Promise<C
               throw new Error(`totalFortune 不足以回退（user=${userId} value=${fortuneValue}）`);
             }
             const decFish = await tx.user.updateMany({
-              where: { id: userId, driedFish: { gte: fortuneValue } },
-              data: { driedFish: { decrement: fortuneValue } },
+              where: { id: userId, driedFish: { gte: fishToUnits(fortuneValue) } },
+              data: { driedFish: { decrement: fishToUnits(fortuneValue) } },
             });
             if (decFish.count === 0) {
               throw new Error(`driedFish 不足以回退（user=${userId} value=${fortuneValue}）`);
@@ -319,7 +320,7 @@ export async function doCheckin(userId: string, chosenIndex?: number): Promise<C
     pool: poolArr,
     chosenIndex: idx,
     totalFortune: user?.totalFortune ?? 0,
-    driedFish: user?.driedFish ?? 0,
+    driedFish: unitsToFish(user?.driedFish ?? 0),
     totalCount,
   };
 }

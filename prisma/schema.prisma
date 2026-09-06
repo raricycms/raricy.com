@@ -55,8 +55,11 @@ model User {
 
   role String @default("user")
 
-  totalFortune Int   @default(0) @map("total_fortune")
-  driedFish    Float @default(0) @map("dried_fish")
+  totalFortune Int @default(0) @map("total_fortune")
+  // ⚠️ 存储单位 = 0.1 鱼干（整数）。原为 Float，已整数化防 IEEE754 账目漂移，
+  // 数据 ×10 见 prisma/migrations/3_fish_integer_units；换算见 src/lib/fish-units.ts。
+  // SQLite 列仍是 REAL 亲和（动态类型，整数值无损存取；db pull 会显示 Float，以此注释为准）。
+  driedFish Int @default(0) @map("dried_fish")
 
   fishApiKeyEncrypted String? @map("fish_api_key_encrypted")
 
@@ -190,7 +193,10 @@ model BlogFeed {
   id        Int       @id @default(autoincrement())
   blogId    String    @map("blog_id")
   userId    String    @map("user_id")
-  amount    Float     @default(0)
+  // ⚠️ 存储单位 = 0.1 鱼干（整数），原 Float 已整数化，见 User.driedFish 注释与
+  // prisma/migrations/3_fish_integer_units；换算见 src/lib/fish-units.ts。
+  // 业务上限 5 鱼干 = 50 单位。
+  amount    Int       @default(0)
   createdAt DateTime? @map("created_at")
   updatedAt DateTime? @map("updated_at")
 
@@ -450,7 +456,9 @@ model DailyCheckIn {
 model FishTransaction {
   id            Int       @id @default(autoincrement())
   userId        String    @map("user_id")
-  amount        Float
+  // ⚠️ 存储单位 = 0.1 鱼干（整数），原 Float 已整数化，见 User.driedFish 注释与
+  // prisma/migrations/3_fish_integer_units；换算见 src/lib/fish-units.ts。
+  amount        Int
   type          String
   description   String?
   referenceType String?   @map("reference_type")

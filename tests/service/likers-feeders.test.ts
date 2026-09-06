@@ -16,6 +16,7 @@ import { resetDb, makeUser, makeBlog, prisma } from '../helpers/db';
 import { getLikers } from '@/lib/blog-service';
 import { getFeeders } from '@/lib/feed-service';
 import { nowForDb } from '@/lib/db-time';
+import { fishToUnits } from '@/lib/fish-units';
 
 beforeEach(resetDb);
 
@@ -103,7 +104,8 @@ describe('getLikers', () => {
 describe('getFeeders', () => {
   async function feed(blogId: string, userId: string, amount: number) {
     return prisma.blogFeed.create({
-      data: { blogId, userId, amount, createdAt: nowForDb(), updatedAt: nowForDb() },
+      // amount 入参为鱼干；存储单位 = 0.1 鱼干（fish-units.ts）
+      data: { blogId, userId, amount: fishToUnits(amount), createdAt: nowForDb(), updatedAt: nowForDb() },
     });
   }
 

@@ -24,6 +24,7 @@ vi.mock('@/lib/account-client', async (importOriginal) => {
 
 import { adminGrantFish, adminDeductFish, FishBusinessError } from '@/lib/fish-admin';
 import { AccountServiceError, SYSTEM_USER_ID } from '@/lib/account-client';
+import { unitsToFish } from '@/lib/fish-units';
 import { resetDb, makeUser, prisma } from '../helpers/db';
 
 beforeEach(async () => {
@@ -45,7 +46,10 @@ async function snapshot(userId: string) {
     prisma.user.findUnique({ where: { id: userId }, select: { driedFish: true } }),
     prisma.fishTransaction.count({ where: { userId } }),
   ]);
-  return { driedFish: u?.driedFish ?? 0, txns };
+  return {
+    driedFish: u ? unitsToFish(u.driedFish) : 0, // 存储单位 → 鱼干
+    txns,
+  };
 }
 
 describe('adminGrantFish：赠送', () => {
@@ -61,7 +65,7 @@ describe('adminGrantFish：赠送', () => {
     expect(s.txns).toBe(1);
     const t = await prisma.fishTransaction.findFirstOrThrow({ where: { userId: u.id } });
     expect(t.type).toBe('admin_grant');
-    expect(t.amount, '赠送记正数').toBe(5);
+    expect(unitsToFish(t.amount), '赠送记正数（存储单位换回鱼干）').toBe(5);
     expect(t.description).toBe('测试赠送');
     expect(t.createdAt, 'createdAt 落 NULL 会让流水页排序失效').not.toBeNull();
   });
@@ -102,7 +106,7 @@ describe('adminDeductFish：扣减', () => {
 
     const t = await prisma.fishTransaction.findFirstOrThrow({ where: { userId: u.id } });
     expect(t.type).toBe('admin_deduct');
-    expect(t.amount, '扣减记负数（对齐 feed 的记法）').toBe(-4);
+    expect(unitsToFish(t.amount), '扣减记负数（对齐 feed 的记法；存储单位换回鱼干）').toBe(-4);
   });
 
   it('★ 余额不足 → 拒绝，余额不变、无流水、不打远端', async () => {

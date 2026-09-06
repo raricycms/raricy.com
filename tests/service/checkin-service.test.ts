@@ -28,6 +28,7 @@ import {
   isInvalidChoice,
 } from '@/lib/checkin-service';
 import { getTodayCheckinFish } from '@/lib/fish-service';
+import { fishToUnits, unitsToFish } from '@/lib/fish-units';
 import { resetDb, makeUser, prisma } from '../helpers/db';
 
 beforeEach(async () => {
@@ -233,7 +234,7 @@ describe('唯一约束防重复签到', () => {
     });
     expect(balAfter3.driedFish, '重复签到刷鱼干 = 直接的资产漏洞').toBe(balAfter1.driedFish);
     expect(balAfter3.totalFortune, 'totalFortune 也不能被重复累加').toBe(balAfter1.totalFortune);
-    expect(balAfter3.driedFish).toBe(r1.fortuneValue);
+    expect(unitsToFish(balAfter3.driedFish)).toBe(r1.fortuneValue);
     expect(
       await prisma.fishTransaction.count({ where: { userId: u.id, type: 'checkin' } }),
       '一天只能有一条签到流水'
@@ -264,7 +265,9 @@ describe('唯一约束防重复签到', () => {
 
     expect(records, `并发下签到记录必须恰好 1 条（实测 ${records.length}）`).toHaveLength(1);
     expect(txs, `并发下签到流水必须恰好 1 条（实测 ${txs.length}）`).toHaveLength(1);
-    expect(user.driedFish, '余额 = 那一次的运势值，多发即为资产损失').toBe(records[0].fortuneValue);
+    expect(user.driedFish, '余额 = 那一次的运势值，多发即为资产损失').toBe(
+      fishToUnits(records[0].fortuneValue ?? 0)
+    );
     expect(user.totalFortune, 'totalFortune 不能被并发多加').toBe(records[0].fortuneValue);
     expect(
       succeeded.length,
@@ -309,13 +312,14 @@ describe('签到发鱼干', () => {
 
     expect(r.driedFish, `10 + ${r.fortuneValue}`).toBe(10 + r.fortuneValue);
     expect(await prisma.user.findUniqueOrThrow({ where: { id: u.id } })).toMatchObject({
-      driedFish: 10 + r.fortuneValue,
+      // driedFish 存储单位 = 0.1 鱼干（fish-units.ts）
+      driedFish: fishToUnits(10 + r.fortuneValue),
     });
 
     const txs = await prisma.fishTransaction.findMany({ where: { userId: u.id } });
     expect(txs, '一次签到只能有一条流水').toHaveLength(1);
     expect(txs[0]).toMatchObject({
-      amount: r.fortuneValue,
+      amount: fishToUnits(r.fortuneValue),
       type: 'checkin',
       description: `每日签到（运势值 ${r.fortuneValue}）`,
     });
@@ -370,7 +374,7 @@ describe('签到发鱼干', () => {
       sum += r.fortuneValue;
     }
     expect(await prisma.user.findUniqueOrThrow({ where: { id: u.id } })).toMatchObject({
-      driedFish: sum,
+      driedFish: fishToUnits(sum), // 存储单位 = 0.1 鱼干
       totalFortune: sum,
     });
     expect(await prisma.fishTransaction.count({ where: { userId: u.id } })).toBe(3);

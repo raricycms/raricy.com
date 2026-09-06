@@ -43,6 +43,7 @@ vi.mock('@/lib/account-client', async (importOriginal) => {
 
 import { feedBlog, getFeedStatus } from '@/lib/feed-service';
 import { AccountServiceError } from '@/lib/account-client';
+import { fishToUnits, unitsToFish } from '@/lib/fish-units';
 
 /** 让远端「已配置且一切正常」。默认（不调用）是 dev fallback。 */
 function enableRemote() {
@@ -103,10 +104,11 @@ async function snapshot(feederId: string, authorId: string, blogId: string) {
     prisma.fishTransaction.count(),
   ]);
   return {
-    feederBalance: feeder?.driedFish ?? null,
-    authorBalance: author?.driedFish ?? null,
+    // driedFish / blogFeed.amount 是 0.1 鱼干存储单位（fish-units.ts）→ 换回鱼干再比对
+    feederBalance: feeder ? unitsToFish(feeder.driedFish) : null,
+    authorBalance: author ? unitsToFish(author.driedFish) : null,
     fishCount: blog?.fishCount ?? null,
-    fedAmount: feed?.amount ?? null,
+    fedAmount: feed ? unitsToFish(feed.amount) : null,
     txCount,
   };
 }
@@ -219,7 +221,7 @@ describe('★ 单用户单篇累计上限 5', () => {
     const feed = await prisma.blogFeed.findUniqueOrThrow({
       where: { uq_blog_feed_user: { blogId: blog.id, userId: feeder.id } },
     });
-    expect(feed.amount, 'BlogFeed 累计必须正好 5').toBe(5);
+    expect(unitsToFish(feed.amount), 'BlogFeed 累计必须正好 5（存储单位换回鱼干）').toBe(5);
     expect(await snapshot(feeder.id, author.id, blog.id)).toMatchObject({
       feederBalance: 15, // 20 - 5
       authorBalance: 4, // 5 * 0.8
@@ -287,13 +289,16 @@ describe('★ 单用户单篇累计上限 5', () => {
     });
     const okCount = results.filter((r) => r && r.ok).length;
 
-    expect(feed.amount, `BlogFeed 累计突破上限（实测 ${feed.amount}，成功 ${okCount} 笔）`).toBe(5);
+    expect(unitsToFish(feed.amount), `BlogFeed 累计突破上限（实测 ${feed.amount} 存储单位，成功 ${okCount} 笔）`).toBe(5);
     expect(okCount, '3 笔并发 ×5，只能成功 1 笔').toBe(1);
 
     const blogRow = await prisma.blog.findUniqueOrThrow({ where: { id: blog.id } });
     expect(blogRow.fishCount, 'fishCount 必须与 BlogFeed 累计一致').toBe(5);
-    expect(await prisma.user.findUniqueOrThrow({ where: { id: feeder.id } }).then((u) => u.driedFish))
-      .toBe(95);
+    expect(
+      unitsToFish(
+        (await prisma.user.findUniqueOrThrow({ where: { id: feeder.id } })).driedFish
+      )
+    ).toBe(95);
   });
 });
 
@@ -342,7 +347,7 @@ describe('Blog.fishCount 冗余计数', () => {
     await feedBlog(blog.id, b.id, 1).catch(() => null); // b 已满，应被拒
 
     const feeds = await prisma.blogFeed.findMany({ where: { blogId: blog.id } });
-    const sum = feeds.reduce((s, f) => s + f.amount, 0);
+    const sum = feeds.reduce((s, f) => s + unitsToFish(f.amount), 0); // 存储单位换回鱼干再求和
     const blogRow = await prisma.blog.findUniqueOrThrow({ where: { id: blog.id } });
 
     expect(sum, 'a 投 5 + b 投 5').toBe(10);
@@ -406,7 +411,7 @@ describe('作者分成 80% 与金额守恒', () => {
     const [spend, income] = all;
     expect(spend).toMatchObject({
       userId: feeder.id,
-      amount: -3,
+      amount: fishToUnits(-3), // 存储单位 = 0.1 鱼干
       type: 'feed',
       referenceType: 'blog',
       referenceId: blog.id,
@@ -415,7 +420,7 @@ describe('作者分成 80% 与金额守恒', () => {
     });
     expect(income).toMatchObject({
       userId: author.id,
-      amount: 2.4,
+      amount: fishToUnits(2.4),
       type: 'feed_receive',
       referenceType: 'blog',
       referenceId: blog.id,
@@ -434,7 +439,9 @@ describe('作者分成 80% 与金额守恒', () => {
 
     const feederTxs = await prisma.fishTransaction.findMany({ where: { userId: feeder.id } });
     const authorTxs = await prisma.fishTransaction.findMany({ where: { userId: author.id } });
-    const sum = (rows: { amount: number }[]) => rows.reduce((s, r) => s + r.amount, 0);
+    // 流水金额是 0.1 鱼干存储单位 —— 换回鱼干后再与余额守恒比对
+    const sum = (rows: { amount: number }[]) =>
+      rows.reduce((s, r) => s + unitsToFish(r.amount), 0);
 
     const snap = await snapshot(feeder.id, author.id, blog.id);
     expect(snap.feederBalance, '10 + (-2) + (-3)').toBeCloseTo(10 + sum(feederTxs), 6);
@@ -461,7 +468,9 @@ describe('作者分成 80% 与金额守恒', () => {
     const r = await feedBlog(blog.id, self.id, 5);
 
     expect(r.ok, 'Flask feed_fish 无自投拦截，仅跳过通知 —— Next 保持一致').toBe(true);
-    const bal = (await prisma.user.findUniqueOrThrow({ where: { id: self.id } })).driedFish;
+    const bal = unitsToFish(
+      (await prisma.user.findUniqueOrThrow({ where: { id: self.id } })).driedFish
+    );
     expect(bal, '10 - 5 + 4 = 9（自投净亏 20%）').toBe(9);
     expect(await prisma.fishTransaction.count(), '仍然是两条流水（支出 + 收入）').toBe(2);
   });
@@ -773,7 +782,7 @@ describe('★★ fail-closed：远端成功路径（本地先提交+账本登记
           select: { idempotencyKey: true },
         }),
       ]);
-      balanceSeenByRemote = u?.driedFish ?? null;
+      balanceSeenByRemote = u ? unitsToFish(u.driedFish) : null;
       pendingRows = rows.length;
     });
 
@@ -784,7 +793,11 @@ describe('★★ fail-closed：远端成功路径（本地先提交+账本登记
       '远端同步时本地事务必须已提交（看到扣款后的余额 6）—— HTTP 不再占写锁'
     ).toBe(6);
     expect(pendingRows, '远端调用时账本里必须有本笔 pending 行（崩溃可恢复的锚点）').toBe(1);
-    expect((await prisma.user.findUniqueOrThrow({ where: { id: feeder.id } })).driedFish).toBe(6);
+    expect(
+      unitsToFish(
+        (await prisma.user.findUniqueOrThrow({ where: { id: feeder.id } })).driedFish
+      )
+    ).toBe(6);
     // 成功后账本行应结算为 synced（审计可查）
     const ledger = await prisma.accountSyncLedger.findFirst({ where: { operation: 'feed' } });
     expect(ledger?.status).toBe('synced');
