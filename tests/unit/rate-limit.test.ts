@@ -6,7 +6,10 @@
 // 时间通过第三个参数 `now` 注入 —— 全部用例都不 sleep，窗口过期靠推进时间戳模拟。
 // 注意 store 是模块级 Map 且跨用例共享，因此每个用例都用独立 key。
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { rateLimit, RULES } from '@/lib/rate-limit';
 
 const HOUR = 60 * 60 * 1000;
@@ -202,5 +205,96 @@ describe('RULES 全站配额（与 docs/全站限额与频控汇总.md 对齐，
     expect(rateLimit(key, rule, t).allowed, '第 11 次应被拒（voteCreateHourly=10/时）').toBe(false);
     // 一小时后释放
     expect(rateLimit(key, rule, t + HOUR).allowed, '整点滑出后应恢复').toBe(true);
+  });
+});
+describe('快照持久化（重启不丢窗口）', () => {
+  let seq2 = 0;
+  const tmpFile = () =>
+    path.join(os.tmpdir(), `rate-limit-snap-test-${Date.now()}-${seq2++}.json`);
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  it('flush → 模拟重启（清内存 + load）→ 窗口内仍拒绝、滑出后放行', async () => {
+    const file = tmpFile();
+    vi.stubEnv('RATE_LIMIT_SNAPSHOT_PATH', file);
+    const mod = await import('@/lib/rate-limit');
+    mod.__resetRateLimitStore();
+
+    // 时间戳必须以真实 Date.now() 为基准：回灌时会丢弃超过最长窗口（24h）的旧命中，
+    // 若用 1970 年的假时间戳，桶会被当成陈年垃圾过滤掉（本用例最初就栽在这）。
+    const T0 = Date.now();
+    const key = k('persist-basic');
+    const rule = { limit: 2, windowMs: 1000 };
+    mod.rateLimit(key, rule, T0);
+    mod.rateLimit(key, rule, T0); // 桶满
+    expect(mod.flushSnapshot(), '落盘应成功').toBe(true);
+    expect(fs.existsSync(file), '快照文件应存在').toBe(true);
+
+    mod.__resetRateLimitStore(); // 模拟进程重启后的空内存
+    expect(mod.loadSnapshot(), '应回灌至少 1 个桶').toBeGreaterThan(0);
+
+    expect(mod.rateLimit(key, rule, T0 + 500).allowed, '重启后窗口未过 → 仍拒绝（旧版会静默放水）').toBe(false);
+    expect(mod.rateLimit(key, rule, T0 + 1001).allowed, '窗口滑出 → 放行').toBe(true);
+  });
+
+  it('回灌丢弃超过最长窗口的旧命中（陈年桶不复活）', async () => {
+    const file = tmpFile();
+    vi.stubEnv('RATE_LIMIT_SNAPSHOT_PATH', file);
+    const mod = await import('@/lib/rate-limit');
+    mod.__resetRateLimitStore();
+
+    const DAY = 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    fs.writeFileSync(
+      file,
+      JSON.stringify({
+        savedAtMs: now,
+        buckets: {
+          'stale:key': [now - DAY - 1], // 已超最长窗口 → 丢弃
+          'fresh:key': [now - 500], // 仍在窗口内 → 回灌
+        },
+      })
+    );
+    const loaded = mod.loadSnapshot();
+    expect(loaded).toBe(1);
+    expect(mod.rateLimit('stale:key', { limit: 1, windowMs: 1000 }, now).allowed, '旧桶不应复活').toBe(true);
+    expect(mod.rateLimit('fresh:key', { limit: 1, windowMs: 1000 }, now).allowed, '新桶应占位').toBe(false);
+  });
+
+  it('快照文件损坏 → 静默按空启动，不抛错', async () => {
+    const file = tmpFile();
+    vi.stubEnv('RATE_LIMIT_SNAPSHOT_PATH', file);
+    const mod = await import('@/lib/rate-limit');
+    mod.__resetRateLimitStore();
+    fs.writeFileSync(file, '{ not valid json !!');
+    expect(mod.loadSnapshot()).toBe(0);
+    expect(mod.rateLimit(k('corrupt'), { limit: 1, windowMs: 1000 }, 1_000_000).allowed).toBe(true);
+  });
+
+  it('NODE_ENV=test 时不自动回灌（单测确定性）；显式 loadSnapshot 仍可用', async () => {
+    const file = tmpFile();
+    vi.stubEnv('RATE_LIMIT_SNAPSHOT_PATH', file);
+    const rule = { limit: 1, windowMs: 1000 };
+    // 全程用真实时钟：测试内任何一次命中都可能触发 sweep→flush 把内存写回快照，
+    // 假的远古时间戳（如 1_000_000）会污染文件、被 24h 过滤当成空桶。
+    const T1 = Date.now();
+    // 先造一个合法快照
+    {
+      const mod = await import('@/lib/rate-limit');
+      mod.__resetRateLimitStore();
+      mod.rateLimit('auto:key', rule, T1);
+      mod.flushSnapshot();
+    }
+    vi.resetModules();
+    const mod2 = await import('@/lib/rate-limit');
+    expect(
+      mod2.rateLimit('auto:key', rule, T1 + 1).allowed,
+      '若 test 环境自动回灌了快照，limit=1 的桶应直接拒绝'
+    ).toBe(true);
+    mod2.__resetRateLimitStore();
+    expect(mod2.loadSnapshot()).toBe(1);
   });
 });
