@@ -124,6 +124,7 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 | 1_oauth | OAuth 2.0 IdP（应用/授权码/access token 三表） |
 | 2_account_sync_ledger | 鱼干写路径账本化：HTTP 移出 SQLite 事务（见「鱼干写路径」） |
 | 3_fish_integer_units | 鱼干 Float → 整数（×10，0.1 鱼干 = 1 单位，只可执行一次） |
+| 4_chat | 在线聊天区：`chat_channels`（大区固定 id='lobby' 种子 + direct 私聊）/ `chat_members`（`last_read_message_id` 读游标）/ `chat_messages`（自增 id 作增量游标，软删除）。见 `docs/` 与 `src/lib/chat-service.ts` |
 
 ## 文档
 
