@@ -56,6 +56,7 @@ export async function resetDb() {
   ensureSchema();
   // 顺序：先删子表再删父表，避免外键约束
   const tables = [
+    'chat_messages', 'chat_members', 'chat_channels',
     'comment_likes', 'blog_comments', 'blog_likes', 'blog_feeds',
     'blog_contents', 'blogs', 'categories',
     'vote_records', 'vote_options', 'votes',

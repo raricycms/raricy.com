@@ -89,6 +89,8 @@ model User {
   oauthAppsCreated      OAuthApplication[]      @relation("OAuthAppOwner")
   oauthCodes            OAuthAuthorizationCode[]
   oauthTokens           OAuthAccessToken[]
+  chatMembers           ChatMember[]            @relation("ChatMemberUser")
+  chatMessages          ChatMessage[]           @relation("ChatMessageAuthor")
   @@index([id], map: "ix_users_id")
   @@index([role], map: "ix_users_role")
 
@@ -354,6 +356,7 @@ model ImageHosting {
 
   author    User            @relation(fields: [authorId], references: [id])
   wallItems PhotoWallItem[]
+  chatMessages ChatMessage[]
   @@index([authorId], map: "ix_image_hosting_author_id")
   @@index([createdAt], map: "ix_image_hosting_created_at")
   @@index([id], map: "ix_image_hosting_id")
@@ -622,4 +625,60 @@ model OAuthAccessToken {
   @@index([userId], map: "ix_oauth_tokens_user_id")
   @@index([expiresAt], map: "ix_oauth_tokens_expires_at")
   @@map("oauth_access_tokens")
+}
+
+// ── 在线聊天区（见 migration 4_chat / src/lib/chat-service.ts） ───────────────
+// 频道（大区 + 私聊）→ 成员（含读游标，用于未读）→ 消息（自增 id 作增量游标）。
+// 注意：image_id / reply_to 不在此库建外键（图床硬删 / 消息软删都不应被物理约束卡住），
+// 外键关系只在 Prisma 层表达（测试库 prisma db push 会建约束，生产走手写 migration.sql）。
+
+model ChatChannel {
+  id        String        @id
+  // 'lobby'（固定 id='lobby'，全局大区）| 'direct'（私聊，仅两成员）
+  kind      String        @default("direct")
+  createdAt DateTime?     @map("created_at")
+
+  members  ChatMember[]
+  messages ChatMessage[]
+
+  @@map("chat_channels")
+}
+
+model ChatMember {
+  id                Int       @id @default(autoincrement())
+  channelId         String    @map("channel_id")
+  userId            String    @map("user_id")
+  // 读游标：未读数 = 频道内 id > 该值且未软删的消息数
+  lastReadMessageId Int       @default(0) @map("last_read_message_id")
+  createdAt         DateTime? @map("created_at")
+
+  channel ChatChannel @relation(fields: [channelId], references: [id])
+  user    User        @relation("ChatMemberUser", fields: [userId], references: [id])
+
+  @@unique([channelId, userId], name: "uq_chat_member_channel_user")
+  @@index([userId], map: "ix_chat_members_user_id")
+  @@map("chat_members")
+}
+
+model ChatMessage {
+  id         Int       @id @default(autoincrement())
+  channelId  String    @map("channel_id")
+  authorId   String    @map("author_id")
+  // 正文纯文本（前端 JSX 转义渲染）；带图时此处放可选图注
+  content    String    @default("")
+  // 引用的图床图片（上传走 /api/images，消息只存引用）
+  imageId    String?   @map("image_id")
+  // 引用回复的消息 id（须同频道且未软删）
+  replyTo    Int?      @map("reply_to")
+  isDeleted  Boolean?  @default(false) @map("is_deleted")
+  createdAt  DateTime? @map("created_at")
+
+  channel    ChatChannel  @relation(fields: [channelId], references: [id])
+  author     User         @relation("ChatMessageAuthor", fields: [authorId], references: [id])
+  image      ImageHosting? @relation(fields: [imageId], references: [id])
+  replyToMsg ChatMessage?  @relation("ChatMessageReply", fields: [replyTo], references: [id])
+  replies    ChatMessage[] @relation("ChatMessageReply")
+
+  @@index([channelId, id], map: "ix_chat_messages_channel_id_id")
+  @@map("chat_messages")
 }
