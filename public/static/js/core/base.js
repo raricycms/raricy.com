@@ -221,6 +221,8 @@ function switchTheme(themeName) {
     const config = themeConfig[themeName];
     root.setAttribute('data-theme', config['data-theme']);
     localStorage.setItem('theme', themeName);
+    // cookie 镜像：/game/atamas 等服务端页据此 SSR 首屏直出亮/暗（见 src/lib/atamas-pref.ts）
+    document.cookie = 'theme=' + themeName + '; Path=/; SameSite=Lax; Max-Age=31536000';
     const tc = document.querySelector('meta[name="theme-color"]');
     if (tc) tc.setAttribute('content', config['data-theme'] === 'dark' ? '#131517' : '#FBFBFD');
     console.log('切换主题:', themeName);
@@ -432,6 +434,12 @@ function initSiteChrome() {
     }
 
     // 主题：有手动偏好则用之，否则跟随系统（不落盘，OS 变化实时跟随）
+    // 每次页面加载把解析出的 data-theme 镜像进 theme cookie（light|dark），
+    // /game/atamas 等服务端页靠它 SSR 直出亮/暗；首次访问无镜像属可接受的一次性翻转。
+    function mirrorThemeCookie() {
+        const t = document.documentElement.getAttribute('data-theme') || 'light';
+        document.cookie = 'theme=' + t + '; Path=/; SameSite=Lax; Max-Age=31536000';
+    }
     const savedThemeName = localStorage.getItem('theme');
     if (savedThemeName === 'light' || savedThemeName === 'dark') {
         document.documentElement.setAttribute('data-theme', savedThemeName);
@@ -441,9 +449,11 @@ function initSiteChrome() {
         mq.addEventListener('change', function (e) {
             if (!localStorage.getItem('theme')) {
                 document.documentElement.setAttribute('data-theme', e.matches ? 'dark' : 'light');
+                mirrorThemeCookie();
             }
         });
     }
+    mirrorThemeCookie();
 }
 
 // DOM 还在解析 → 等事件；已就绪（Next 的 afterInteractive 即属此列）→ 立即执行。

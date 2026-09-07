@@ -16,6 +16,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AtamasUiSnapshot } from './constants';
 import { BASECOLORS, FRONTCOLORS } from './constants';
 import { AtamasEngine } from './engine';
+import { THEME_COOKIE, COOKIE_MAX_AGE } from '@/lib/atamas-pref';
 import {
   TRANSLATIONS,
   getTranslation,
@@ -49,14 +50,22 @@ function warningClasses(count: number): string[] {
   return cls;
 }
 
-export default function Atamas() {
+export default function Atamas({
+  initialLightMode = true,
+  initialLang = null,
+}: {
+  /** SSR 首屏亮/暗：/game/atamas 服务端页读 theme cookie 传入（见 atamas-pref.ts） */
+  initialLightMode?: boolean;
+  /** SSR 首屏语言：读 atamas_lang cookie 传入（仅合法码）；null = 无镜像（首访，水合后走浏览器探测） */
+  initialLang?: string | null;
+}) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<AtamasEngine | null>(null);
 
   const [snap, setSnap] = useState<AtamasUiSnapshot>(EMPTY_SNAPSHOT);
-  const [lang, setLang] = useState('en');
+  const [lang, setLang] = useState(initialLang ?? 'en');
   const [langOpen, setLangOpen] = useState(false);
-  const [lightMode, setLightMode] = useState(true);
+  const [lightMode, setLightMode] = useState(initialLightMode);
   const [previewHidden, setPreviewHidden] = useState(false);
 
   // 挂载：建引擎、启动、监听主题
@@ -66,10 +75,20 @@ export default function Atamas() {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const initial = detectInitialLang();
+    // 语言：SSR prop（cookie 镜像）先定调，首帧与 SSR 一致、无翻转。
+    // LS 显式偏好权威（覆盖 prop；若 cookie 被清、只剩 LS，则经 setCurrentLang
+    // 补写 cookie 完成存量迁移）；两者皆无（首次访问）才退回浏览器探测。
+    let storedLang: string | null = null;
+    try {
+      const v = localStorage.getItem('atamas_lang');
+      if (v && TRANSLATIONS[v]) storedLang = v;
+    } catch {
+      /* ignore */
+    }
+    const initial = storedLang ?? initialLang ?? detectInitialLang();
     setCurrentLang(initial);
     setLang(initial);
-    if (typeof document !== 'undefined') document.documentElement.lang = initial;
+    document.documentElement.lang = initial;
 
     const theme = document.documentElement.getAttribute('data-theme') || 'light';
     setLightMode(theme === 'light');
@@ -134,6 +153,12 @@ export default function Atamas() {
     document.documentElement.setAttribute('data-theme', next);
     try {
       localStorage.setItem('theme', next);
+    } catch {
+      /* ignore */
+    }
+    // cookie 镜像即时补写：页内切完主题立刻刷新本页，SSR 也要直出正确的亮/暗。
+    try {
+      document.cookie = `${THEME_COOKIE}=${next}; Path=/; SameSite=Lax; Max-Age=${COOKIE_MAX_AGE}`;
     } catch {
       /* ignore */
     }

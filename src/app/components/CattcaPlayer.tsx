@@ -221,6 +221,9 @@ const CattcaPlayer = forwardRef<CattcaPlayerHandle, CattcaPlayerProps>(function 
     let currentSegment: HTMLDivElement | null = null;
     let segmentCount = 0;
     let outputBuffer = '';
+    // 等待用户输入的挂起项（解释器同步等待，同一时刻至多一个）：
+    // 全屏镜像拷贝不携带事件句柄，镜像时据此把全屏副本接回主区提交句柄。
+    let pendingInput: { area: HTMLElement; submit: () => void } | null = null;
 
     const renderMarkdown = (buffer: string): string => {
       try {
@@ -249,11 +252,10 @@ const CattcaPlayer = forwardRef<CattcaPlayerHandle, CattcaPlayerProps>(function 
 
     // 进入全屏时把主区内容镜像到全屏区。
     const syncToFullscreen = () => {
-      const fsOutput = fsOutputRef.current;
       const fsLog = fsLogRef.current;
       const fsChoices = fsChoicesRef.current;
-      if (!fsOutput || !fsLog || !fsChoices) return;
-      fsOutput.innerHTML = outputDiv.innerHTML;
+      if (!fsLog || !fsChoices) return;
+      mirrorOutput();
       fsLog.textContent = logDiv.textContent;
       if (choicesDiv.children.length > 0 && fsChoices.children.length === 0) {
         fsChoices.innerHTML = choicesDiv.innerHTML;
@@ -308,9 +310,8 @@ const CattcaPlayer = forwardRef<CattcaPlayerHandle, CattcaPlayerProps>(function 
       }
       outputDiv.scrollTop = outputDiv.scrollHeight;
 
-      if (isFullscreenRef.current && fsOutputRef.current) {
-        fsOutputRef.current.innerHTML = outputDiv.innerHTML;
-        fsOutputRef.current.scrollTop = fsOutputRef.current.scrollHeight;
+      if (isFullscreenRef.current) {
+        mirrorOutput();
         if (choicesDiv.children.length > 0 && fsChoicesRef.current) {
           fsChoicesRef.current.innerHTML = choicesDiv.innerHTML;
           bindFullscreenChoiceEvents();
@@ -330,9 +331,7 @@ const CattcaPlayer = forwardRef<CattcaPlayerHandle, CattcaPlayerProps>(function 
       }
       currentSegment = null;
       outputBuffer = '';
-      if (isFullscreenRef.current && fsOutputRef.current) {
-        fsOutputRef.current.innerHTML = outputDiv.innerHTML;
-      }
+      if (isFullscreenRef.current) mirrorOutput();
     };
     startNewSegmentRef.current = startNewSegment;
 
@@ -349,6 +348,36 @@ const CattcaPlayer = forwardRef<CattcaPlayerHandle, CattcaPlayerProps>(function 
         body.classList.add(cfg.collapsed);
         icon.textContent = '▼';
       }
+    };
+
+    // 把主区内容镜像到全屏输出层 —— innerHTML 拷贝带不走事件绑定，需补绑：
+    //   • 段落折叠头逐段重绑（toggleSegment 只看 header 的 DOM 结构，通用）；
+    //   • 挂起中的输入区在拷贝里是死的，把回车/确定接回主区提交句柄，提交后
+    //     双份（主区 + 全屏副本）一并移除（句柄内的 parentElement 守卫兜底）。
+    const mirrorOutput = () => {
+      const fs = fsOutputRef.current;
+      if (!fs) return;
+      fs.innerHTML = outputDiv.innerHTML;
+      fs.querySelectorAll<HTMLElement>('.' + cssEscape(cfg.header)).forEach((h) => {
+        h.onclick = () => toggleSegment(h);
+      });
+      if (pendingInput) {
+        const fsArea = fs.lastElementChild as HTMLElement | null;
+        const fsInput = fsArea?.querySelector('input') as HTMLInputElement | null;
+        const fsButton = fsArea?.querySelector('button') as HTMLButtonElement | null;
+        if (fsArea && fsInput && fsButton) {
+          const submitFs = () => {
+            if (fsArea.parentElement === fs) fs.removeChild(fsArea);
+            pendingInput?.submit();
+          };
+          fsButton.onclick = submitFs;
+          fsInput.onkeypress = (e) => {
+            if (e.key === 'Enter' && !e.isComposing) submitFs();
+          };
+          fsInput.focus();
+        }
+      }
+      fs.scrollTop = fs.scrollHeight;
     };
 
     const appendLog = (txt: string) => {
@@ -429,6 +458,7 @@ const CattcaPlayer = forwardRef<CattcaPlayerHandle, CattcaPlayerProps>(function 
             fsInput.focus();
             const handleFullscreenSubmit = () => {
               const value = fsInput.value;
+              if (pendingInput?.area === area) pendingInput = null;
               if (fsArea && fsArea.parentElement === fsOutput) {
                 fsOutput.removeChild(fsArea);
               }
@@ -447,6 +477,7 @@ const CattcaPlayer = forwardRef<CattcaPlayerHandle, CattcaPlayerProps>(function 
 
         const handleSubmit = () => {
           const value = input.value;
+          if (pendingInput?.area === area) pendingInput = null;
           if (fsArea && fsOutput && fsArea.parentElement === fsOutput) {
             fsOutput.removeChild(fsArea);
           }
@@ -458,6 +489,8 @@ const CattcaPlayer = forwardRef<CattcaPlayerHandle, CattcaPlayerProps>(function 
         input.onkeypress = (e) => {
           if (e.key === 'Enter' && !e.isComposing) handleSubmit();
         };
+        // 登记挂起输入：中途进全屏时 mirrorOutput 靠它给全屏副本补绑提交句柄。
+        pendingInput = { area, submit: handleSubmit };
       });
 
     // 启动：清空容器 → 加载解释器 → run() → 结束 flush 剩余缓冲。

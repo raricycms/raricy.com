@@ -5,6 +5,8 @@
 // 再回退到键名本身（原站 'placeMe' 等未定义键即靠此回退显示字面量）。
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { LANG_COOKIE, COOKIE_MAX_AGE } from '@/lib/atamas-pref';
+
 export interface LangPack {
   name: string;
   font: string;
@@ -1071,6 +1073,13 @@ export function setCurrentLang(code: string): void {
     if (typeof window !== 'undefined') {
       try {
         localStorage.setItem('atamas_lang', code);
+      } catch {
+        /* ignore */
+      }
+      // cookie 镜像：让 /game/atamas SSR 首屏直出所选语言（消除水合后文案翻转）。
+      // 单点写在这 —— 显式选择与挂载时的默认探测都经过本函数，cookie 与 LS 恒同步。
+      try {
+        document.cookie = `${LANG_COOKIE}=${code}; Path=/; SameSite=Lax; Max-Age=${COOKIE_MAX_AGE}`;
       } catch {
         /* ignore */
       }

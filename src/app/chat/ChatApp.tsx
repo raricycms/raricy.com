@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import type { ChatChannelDTO, ChatMessageDTO } from '@/lib/chat-shared';
 import { CHAT_LOBBY_ID, CHAT_LOBBY_TITLE, CHAT_DELETED_TEXT } from '@/lib/chat-shared';
+import { LS_KEY, COOKIE_NAME, COOKIE_MAX_AGE } from '@/lib/chat-sidebar-pref';
 import NewChatModal from './NewChatModal';
 
 declare global {
@@ -168,10 +169,13 @@ export default function ChatApp({
   currentUserId,
   isAdmin,
   initialChannel,
+  initialSidebarCollapsed = false,
 }: {
   currentUserId: string;
   isAdmin: boolean;
   initialChannel: string | null;
+  /** SSR 首屏折叠态：/chat 服务端页读 chat_sidebar_collapsed cookie 传入（见 chat-sidebar-pref.ts） */
+  initialSidebarCollapsed?: boolean;
 }) {
   const router = useRouter();
 
@@ -187,7 +191,7 @@ export default function ChatApp({
   const [replyTarget, setReplyTarget] = useState<ChatMessageDTO | null>(null);
   const [newCount, setNewCount] = useState(0);
   const [modalOpen, setModalOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(initialSidebarCollapsed);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   const activeRef = useRef(activeId);
@@ -204,9 +208,49 @@ export default function ChatApp({
     [channels, activeId]
   );
 
+  // ── 侧栏折叠偏好（对齐 blog.sort 的镜像模型）──────────────────────────────
+  // localStorage 长命记忆；cookie（chat_sidebar_collapsed，只存 '1'=折叠）是 SSR
+  // 可见镜像，/chat 首屏由服务端按 cookie 直出折叠态，不再「先展开再折叠」跳变。
+  // 折叠/展开切换双写；cookie 缺失 + LS='1' 只在旧存量（cookie 镜像引入前或
+  // ITP 清 cookie 后）时补建并折叠一次 —— 此后 SSR 首帧即折叠，不再翻转。
+  const lsCollapsed = (): boolean => {
+    try {
+      return localStorage.getItem(LS_KEY) === '1';
+    } catch {
+      return false; // 隐私模式/被禁 → 放弃记忆，按默认展开走
+    }
+  };
+  const cookieCollapsed = (): boolean => {
+    try {
+      return document.cookie.split('; ').some((c) => c.startsWith(`${COOKIE_NAME}=1`));
+    } catch {
+      return false;
+    }
+  };
+  const writeCookie = (collapsed: boolean) => {
+    try {
+      document.cookie = collapsed
+        ? `${COOKIE_NAME}=1; Path=/; SameSite=Lax; Max-Age=${COOKIE_MAX_AGE}`
+        : `${COOKIE_NAME}=; Path=/; SameSite=Lax; Max-Age=0`;
+    } catch {
+      // cookie 不可用 → 放弃镜像，行为同旧版（每次进入折叠一次）
+    }
+  };
+  const persistCollapsed = (collapsed: boolean) => {
+    try {
+      localStorage.setItem(LS_KEY, collapsed ? '1' : '0');
+    } catch {
+      // localStorage 不可用 → 本次会话内折叠仍生效，只是不记忆
+    }
+    writeCookie(collapsed);
+  };
+
   useEffect(() => {
-    const stored = localStorage.getItem('chat.sidebarCollapsed');
-    if (stored === '1') setSidebarCollapsed(true);
+    if (!cookieCollapsed() && lsCollapsed()) {
+      writeCookie(true); // 先补 cookie：StrictMode 双跑时第二次已命中 cookie，幂等
+      setSidebarCollapsed(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── 已读 ────────────────────────────────────────────────────────────────
@@ -534,10 +578,11 @@ export default function ChatApp({
           <button
             type="button"
             className="chat-sidebar__collapse"
-            onClick={() => setSidebarCollapsed((v) => {
-              localStorage.setItem('chat.sidebarCollapsed', v ? '0' : '1');
-              return !v;
-            })}
+            onClick={() => {
+              const next = !sidebarCollapsed;
+              setSidebarCollapsed(next);
+              persistCollapsed(next);
+            }}
             aria-label={sidebarCollapsed ? '展开侧栏' : '折叠侧栏'}
           >
             {sidebarCollapsed ? '»' : '«'}

@@ -67,10 +67,11 @@ export default function PrivacyPage() {
         用于在您登录后维持认证状态，属于技术必要型 Cookie。
       </p>
       <p>
-        2.2 您的博客列表排序偏好（按发布时间/更新时间）默认存储在浏览器的 localStorage
-        中；若您曾主动切换过排序方式，本网站还会写入一个同名的偏好 Cookie（blog_sort，
-        一年期，非 httpOnly，Path=/）。该 Cookie 仅用于让博客列表在您下次访问时按您的偏好
-        直接呈现，不用于任何追踪或跨站用途，您随时可在浏览器设置中清除。
+        2.2 部分界面偏好（博客列表排序方式、浅色/深色主题、聊天侧栏折叠、游戏语言）
+        以 localStorage 存储，并用同名偏好 Cookie（blog_sort、theme、chat_sidebar_collapsed、
+        atamas_lang，均为一年期、非 httpOnly、Path=/）同步给服务端，仅用于让相应页面在您
+        下次访问时按您的偏好直接呈现首屏，避免加载后跳变。这些 Cookie 不用于任何追踪或
+        跨站用途，您随时可在浏览器设置中清除；清除后相关页面将回退到默认显示。
       </p>
       <p>
         2.3 本网站<strong>不使用</strong>任何第三方 Cookie、追踪 Cookie、广告 Cookie
@@ -79,10 +80,6 @@ export default function PrivacyPage() {
       <p>
         2.4 会话 Cookie 在您关闭浏览器后即失效（不设"记住我"功能）。您可以在浏览器设置中禁用
         Cookie，但这可能导致无法正常登录和使用网站。
-      </p>
-      <p>
-        2.5 您的主题偏好（浅色/深色模式）存储在浏览器的 localStorage
-        中，该数据仅存在于您的设备上，不会发送至服务器。
       </p>
       <p>
         2.3 会话 Cookie 在您关闭浏览器后即失效（不设"记住我"功能）。您可以在浏览器设置中禁用
