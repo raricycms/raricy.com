@@ -88,10 +88,14 @@ function showToast(message, type = 'info') {
 
     toast.innerHTML = `
         <div class="toast__content">
-            <div class="toast__body">${message}</div>
+            <div class="toast__body"></div>
             <button type="button" class="toast__close" aria-label="Close">&times;</button>
         </div>
     `;
+
+    // 正文用 textContent 写入（不走 innerHTML）：message 可能掺入服务端/用户可控内容时，
+    // innerHTML 会变成同源 XSS 汇点；toast 语义只是纯文本提示，无任何需要解析的 HTML。
+    toast.querySelector('.toast__body').textContent = message;
 
     const closeBtn = toast.querySelector('.toast__close');
     closeBtn.addEventListener('click', () => hideAndRemoveToast(toast));
