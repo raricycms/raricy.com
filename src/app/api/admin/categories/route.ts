@@ -1,22 +1,22 @@
-import { getCurrentUser, hasAdminRights } from '@/lib/auth';
+import { getCurrentUser, isOwner } from '@/lib/auth';
 import { apiOk, apiErr } from '@/lib/format';
 import { listCategoriesTree, createCategory, categoryToDict } from '@/lib/admin-category-service';
 
-async function requireAdmin() {
+async function requireOwner() {
   const user = await getCurrentUser();
-  return hasAdminRights(user) ? user : null;
+  return isOwner(user) ? user : null;
 }
 
 // GET /api/admin/categories — 层级列表（含未启用 + 文章计数）
 export async function GET() {
-  if (!(await requireAdmin())) return apiErr(403, '需要管理员权限');
+  if (!(await requireOwner())) return apiErr(403, '没有站长权限');
   const categories = await listCategoriesTree();
   return apiOk({ categories });
 }
 
 // POST /api/admin/categories — 创建栏目
 export async function POST(req: Request) {
-  if (!(await requireAdmin())) return apiErr(403, '需要管理员权限');
+  if (!(await requireOwner())) return apiErr(403, '没有站长权限');
 
   let body: Record<string, unknown>;
   try {

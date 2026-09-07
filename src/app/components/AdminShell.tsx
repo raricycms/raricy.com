@@ -28,6 +28,7 @@ export default function AdminShell({
     ...(isOwner(user)
       ? ([
           { href: '/admin/broadcast', label: '通知发送', icon: '📢' },
+          { href: '/admin/categories', label: '栏目管理', icon: '🗂️' },
           { href: '/admin/appeals', label: '申诉管理', icon: '⚖️' },
         ] as AdminNavItem[])
       : []),

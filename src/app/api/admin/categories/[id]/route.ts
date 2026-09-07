@@ -1,4 +1,4 @@
-import { getCurrentUser, hasAdminRights } from '@/lib/auth';
+import { getCurrentUser, isOwner } from '@/lib/auth';
 import { apiOk, apiErr } from '@/lib/format';
 import {
   updateCategory,
@@ -7,14 +7,14 @@ import {
   categoryToDict,
 } from '@/lib/admin-category-service';
 
-async function requireAdmin() {
+async function requireOwner() {
   const user = await getCurrentUser();
-  return hasAdminRights(user) ? user : null;
+  return isOwner(user) ? user : null;
 }
 
 // PATCH /api/admin/categories/:id — 更新栏目；action=toggle-active 时仅切换启用状态
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
-  if (!(await requireAdmin())) return apiErr(403, '需要管理员权限');
+  if (!(await requireOwner())) return apiErr(403, '没有站长权限');
 
   const { id: idStr } = await ctx.params;
   const id = Number(idStr);
@@ -61,7 +61,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 
 // DELETE /api/admin/categories/:id — 物理删除（有子栏目/文章则阻断）
 export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string }> }) {
-  if (!(await requireAdmin())) return apiErr(403, '需要管理员权限');
+  if (!(await requireOwner())) return apiErr(403, '没有站长权限');
 
   const { id: idStr } = await ctx.params;
   const id = Number(idStr);

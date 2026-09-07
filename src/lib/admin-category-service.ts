@@ -89,6 +89,15 @@ export async function listCategoriesFlat() {
   }));
 }
 
+/** slug 字符集：URL 标识只用小写字母/数字/连字符（与全站既有 slug 风格一致）。 */
+const SLUG_PATTERN = /^[a-z0-9-]+$/;
+
+function validateSlug(slug: string): string | null {
+  if (!slug) return 'slug 不能为空';
+  if (!SLUG_PATTERN.test(slug)) return 'slug 只能由小写字母、数字和连字符（-）组成';
+  return null;
+}
+
 async function slugTaken(slug: string, exceptId?: number): Promise<boolean> {
   const found = await prisma.category.findUnique({ where: { slug }, select: { id: true } });
   if (!found) return false;
@@ -112,7 +121,8 @@ export async function createCategory(input: CategoryInput): Promise<ServiceResul
   const name = input.name?.trim();
   const slug = input.slug?.trim();
   if (!name) return { ok: false, message: '栏目名称不能为空' };
-  if (!slug) return { ok: false, message: 'slug 不能为空' };
+  const slugError = validateSlug(slug);
+  if (slugError) return { ok: false, message: slugError };
   if (await slugTaken(slug)) return { ok: false, message: 'slug 已存在' };
 
   const parentCheck = await validateParent(input.parentId);
@@ -152,9 +162,22 @@ export async function updateCategory(
   }
   if (input.slug !== undefined) {
     const slug = input.slug.trim();
-    if (!slug) return { ok: false, message: 'slug 不能为空' };
-    if (await slugTaken(slug, id)) return { ok: false, message: 'slug 已存在' };
-    data.slug = slug;
+    const slugError = validateSlug(slug);
+    if (slugError) return { ok: false, message: slugError };
+    if (slug !== existing.slug) {
+      // slug 是 URL 标识（侧栏链接 /blog?category=<slug>、专注模式分组都按它走）。
+      // 栏目一旦有文章（含 ignore=true 软删，与 deleteCategory 同口径）或子栏目，
+      // 改名即断链 —— 有内容则锁定。
+      const [blogCount, childCount] = await Promise.all([
+        prisma.blog.count({ where: { categoryId: id } }),
+        prisma.category.count({ where: { parentId: id } }),
+      ]);
+      if (blogCount > 0 || childCount > 0) {
+        return { ok: false, message: '栏目下已有文章或子栏目，slug 不可修改' };
+      }
+      if (await slugTaken(slug, id)) return { ok: false, message: 'slug 已存在' };
+      data.slug = slug;
+    }
   }
   if (input.description !== undefined) data.description = input.description;
   if (input.icon !== undefined) data.icon = input.icon;

@@ -47,6 +47,8 @@ interface FormState {
   icon: string;
   parentId: string; // '' = 一级栏目
   sortOrder: string;
+  /** 栏目已有文章/子栏目时 true —— URL 标识锁定，编辑表单里 slug 只读 */
+  slugLocked: boolean;
   isActive: boolean;
   excludeFromAll: boolean;
   adminOnlyPosting: boolean;
@@ -61,6 +63,7 @@ const emptyForm = (parentId = ''): FormState => ({
   icon: '',
   parentId,
   sortOrder: '0',
+  slugLocked: false,
   isActive: true,
   excludeFromAll: false,
   adminOnlyPosting: false,
@@ -76,6 +79,7 @@ function toForm(c: CategoryNode): FormState {
     icon: c.icon,
     parentId: c.parent_id != null ? String(c.parent_id) : '',
     sortOrder: String(c.sort_order),
+    slugLocked: c.blog_count > 0 || c.child_count > 0,
     isActive: c.is_active,
     excludeFromAll: c.exclude_from_all,
     adminOnlyPosting: c.admin_only_posting,
@@ -98,6 +102,19 @@ export default function AdminCategoryEditor({ initialCategories, initialParents 
   async function save() {
     if (!form) return;
     setError('');
+    // 客户端预检 slug（与 admin-category-service 同规则，服务端仍会复核）：
+    // 空串/非法字符在建栏目当场给出提示，不用等一次往返。
+    if (!form.slugLocked) {
+      const s = form.slug.trim();
+      if (!s) {
+        setError('slug 不能为空');
+        return;
+      }
+      if (!/^[a-z0-9-]+$/.test(s)) {
+        setError('slug 只能由小写字母、数字和连字符（-）组成');
+        return;
+      }
+    }
     setBusy(true);
     try {
       const payload = {
@@ -290,8 +307,14 @@ export default function AdminCategoryEditor({ initialCategories, initialParents 
                   <input
                     className="form-control"
                     value={form.slug}
+                    disabled={form.slugLocked}
                     onChange={(e) => setForm({ ...form, slug: e.target.value })}
                   />
+                  {form.slugLocked && (
+                    <small className="text-muted d-block mt-1">
+                      该栏目已有文章或子栏目，slug 不可修改（URL 标识，改名会断链）
+                    </small>
+                  )}
                 </div>
                 <div className="form-group">
                   <label className="form-label">父栏目</label>

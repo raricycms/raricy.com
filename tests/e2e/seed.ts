@@ -8,8 +8,10 @@ export const SEED_PASSWORD = 'e2e-Password-123';
 export const SEED_USERS = {
   /** core：博客列表/详情等 requireCoreUser 页面的通行证 */
   core: { id: 'e2e-user-core', username: 'e2e_core', email: 'core@e2e.local', role: 'core' },
-  /** admin：/admin 段的正向用例 */
+  /** admin：/admin 段的正向用例（非站长专属页）+ 站长专属页的反向用例 */
   admin: { id: 'e2e-user-admin', username: 'e2e_admin', email: 'admin@e2e.local', role: 'admin' },
+  /** owner：栏目管理/群发/申诉等站长专属页的通行证 */
+  owner: { id: 'e2e-user-owner', username: 'e2e_owner', email: 'owner@e2e.local', role: 'owner' },
   /** 普通 user：角色门控的反向用例（被 /blog 403、被 /admin 踢回登录页） */
   plain: { id: 'e2e-user-plain', username: 'e2e_plain', email: 'plain@e2e.local', role: 'user' },
 } as const;
