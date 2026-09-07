@@ -4,13 +4,13 @@
 //
 // 【为什么需要这个脚本】
 // Flask 的签到是**两步**：check_in() 先建记录（fortune_value=NULL、fortune_pool 已定），
-// 再由 claim_fortune() 让用户翻牌赋值 + 发鱼干。Next 侧合并成了一步（签到即翻牌），
-// 因此**没有单独的 claim 入口**。
+// 再由 claim_fortune() 让用户翻牌赋值 + 发鱼干。Next 侧曾合并成一步（签到即翻牌）、
+// 没有 claim 入口 —— 那时库里「已签到但未翻牌」的记录（fortune_value IS NULL）
+// 会永远翻不了牌。真实库里有 7 条这样的记录（最近一条 2026-07-15）。
 //
-// 后果：迁移时库里若存在「已签到但未翻牌」的记录（fortune_value IS NULL），
-// 这些用户切到 Next 后永远翻不了那张牌 —— doCheckin 会被唯一约束
-// (user_id, checkin_date) 挡住，而 claim 路径不存在。他们那天的鱼干和 total_fortune
-// 就永久丢了。真实库里有 7 条这样的记录（最近一条 2026-07-15）。
+// 【现状】Next 侧已恢复两步式 claim 入口（POST /api/checkin/claim，见
+// checkin-service.claimFortune），用户自己就能在 UI 里补翻这些牌。本脚本只
+// 服务**不想/不能回到 UI 翻牌**的存量 pending 行（管理员代选），行为不变。
 //
 // 【补偿口径 —— 逐条对齐 Flask claim_fortune】
 //   1. 从该记录**自己的** fortune_pool 里取一张（池是签到当时就定好的，不是现编）

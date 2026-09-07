@@ -27,7 +27,7 @@ export default async function CheckinPage() {
         totalCount={status.totalCount}
         totalFortune={status.totalFortune}
         fortuneValue={status.fortuneValue}
-        fortunePending={status.checkedIn && status.fortuneValue == null}
+        fortunePending={status.fortunePending}
         today={status.today}
         username={user.username}
       />

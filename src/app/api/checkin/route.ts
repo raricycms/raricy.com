@@ -1,6 +1,7 @@
 import { getCurrentUser } from '@/lib/auth';
 import { apiOk, apiErr } from '@/lib/format';
-import { getTodayStatus, doCheckin, fortuneLabel, isInvalidChoice } from '@/lib/checkin-service';
+import { getTodayStatus, checkIn, fortuneLabel } from '@/lib/checkin-service';
+import { AccountServiceError } from '@/lib/account-client';
 
 // GET /api/checkin — 今日签到状态 + 累计天数 + 余额（需登录）
 export async function GET() {
@@ -10,6 +11,7 @@ export async function GET() {
   const s = await getTodayStatus(user.id);
   return apiOk({
     checked_in: s.checkedIn,
+    fortune_pending: s.fortunePending,
     total_count: s.totalCount,
     today: s.today,
     fortune_value: s.fortuneValue,
@@ -19,48 +21,38 @@ export async function GET() {
   });
 }
 
-// POST /api/checkin — 执行签到（建记录 + 抽运势 + 发鱼干 + 累加运势，仅本地）
-// body 可选 { chosenIndex: 0-4 } 指定翻哪张牌，缺省随机。
-export async function POST(req: Request) {
+// POST /api/checkin — 第一步：签到（建记录 + 洗牌落库，不发鱼/不抽运势）。
+// 第二步「翻牌定命」走 POST /api/checkin/claim（见 claim/route.ts）。
+export async function POST() {
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '请先登录');
 
-  let chosenIndex: number | undefined;
   try {
-    const body = await req.json();
-    if (body && body.chosenIndex != null) {
-      const n = Number.parseInt(String(body.chosenIndex), 10);
-      // 解析失败不能静默忽略：那会变成「用户想选某张牌，却拿到随机牌且无法重来」。
-      // 传了值就必须是合法数字，否则报错（越界由 doCheckin 统一判定）。
-      if (Number.isNaN(n)) return apiErr(400, '无效的选择');
-      chosenIndex = n;
+    const result = await checkIn(user.id);
+
+    if (result.alreadyChecked) {
+      const s = result.status;
+      return apiErr(400, result.message, {
+        already_checked: true,
+        fortune_pending: s.fortunePending,
+        total_count: s.totalCount,
+        fortune_value: s.fortuneValue,
+        total_fortune: s.totalFortune,
+        dried_fish: s.driedFish,
+      });
     }
-  } catch {
-    // 无 body 或非 JSON — 未指定，随机翻牌
-  }
 
-  const result = await doCheckin(user.id, chosenIndex);
-
-  if (isInvalidChoice(result)) return apiErr(400, result.message);
-
-  if (result.alreadyChecked) {
-    return apiErr(400, result.message, {
-      already_checked: true,
-      total_count: result.status.totalCount,
-      fortune_value: result.status.fortuneValue,
-      total_fortune: result.status.totalFortune,
-      dried_fish: result.status.driedFish,
+    return apiOk({
+      message: '签到成功！',
+      total_count: result.totalCount,
+      fortune_pending: true,
+      show_fortune: true,
     });
+  } catch (e) {
+    // 生产漏配置守卫会抛 AccountServiceError(503) —— 兜成结构化 JSON，
+    // 否则 Next 会回裸 500 HTML，前端 res.json() 直接崩。
+    if (e instanceof AccountServiceError) return apiErr(503, '账户服务暂不可用，请稍后再试');
+    console.error('[checkin] 签到异常:', e);
+    return apiErr(500, '服务器开小差了，请稍后再试');
   }
-
-  return apiOk({
-    message: '签到成功！',
-    fortune_value: result.fortuneValue,
-    fortune_label: fortuneLabel(result.fortuneValue),
-    pool: result.pool,
-    chosen_index: result.chosenIndex,
-    total_fortune: result.totalFortune,
-    dried_fish: result.driedFish,
-    total_count: result.totalCount,
-  });
 }

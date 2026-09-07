@@ -8,7 +8,8 @@
 //
 // 本脚本对**运行中的真实 account-service** 跑完整链路，逐笔核对本地与远端账目：
 //   1. ensureAccount        建号 + 拿 api_key（Fernet 加密存库再解开用）
-//   2. doCheckin            签到发鱼   → 本地余额 == 远端余额
+//   2. checkIn + claimFortune  签到 → 翻牌发鱼 → 本地余额 == 远端余额
+//      （两步式：签到只建记录，翻牌那刻才发鱼 —— 对账放在 claim 之后）
 //   3. adminGrantFish       CLI 充值   → 同上
 //   4. feedBlog             投喂分成   → 投喂者与作者两侧都对上
 //   5. 幂等                 同 idempotencyKey 重发 → 不重复发放
@@ -78,7 +79,7 @@ execFileSync('npx', ['prisma', 'db', 'push', '--skip-generate', '--accept-data-l
 const { prisma } = await import('../src/lib/db.ts');
 const { accountClient, accountServiceEnabled, encryptApiKey, AccountServiceError } =
   await import('../src/lib/account-client.ts');
-const { doCheckin } = await import('../src/lib/checkin-service.ts');
+const { checkIn, claimFortune } = await import('../src/lib/checkin-service.ts');
 const { feedBlog } = await import('../src/lib/feed-service.ts');
 const { adminGrantFish } = await import('../src/lib/fish-admin.ts');
 const { nowForDb } = await import('../src/lib/db-time.ts');
@@ -126,13 +127,20 @@ try {
     where: { id: feeder }, select: { fishApiKeyEncrypted: true },
   }))?.fishApiKeyEncrypted);
 
-  // ── 2. 签到 ───────────────────────────────────────────────────────────────
-  console.log(bold('\n2. doCheckin（签到发鱼，fail-closed 写路径）'));
-  const r = await doCheckin(feeder, 0);
-  const fortune = r.alreadyChecked ? 0 : r.fortuneValue;
-  check('签到成功', !r.alreadyChecked, `运势=${fortune}`);
-  check('本地余额 == 远端余额', (await localBal(feeder)) === (await remoteBal(feeder)),
-    `本地=${await localBal(feeder)} 远端=${await remoteBal(feeder)}`);
+  // ── 2. 签到 + 翻牌 ────────────────────────────────────────────────────────
+  // 两步式：checkIn 只建记录（不发鱼），claimFortune(feeder, 0) 才发鱼 + 远端同步。
+  // 对账必须在 claim 之后 —— 否则「本地 == 远端」会因两边都还是 0 而假绿。
+  console.log(bold('\n2. checkIn + claimFortune（签到 → 翻牌发鱼，fail-closed 写路径）'));
+  const ci = await checkIn(feeder);
+  check('签到成功（仅建记录）', !ci.alreadyChecked);
+  const cl = await claimFortune(feeder, 0);
+  if (!cl.ok) {
+    check('翻牌成功', false, cl.message);
+  } else {
+    check('翻牌成功', !cl.alreadyClaimed, `运势=${cl.fortuneValue}`);
+    check('本地余额 == 远端余额', (await localBal(feeder)) === (await remoteBal(feeder)),
+      `本地=${await localBal(feeder)} 远端=${await remoteBal(feeder)}`);
+  }
 
   // ── 3. CLI 充值 ───────────────────────────────────────────────────────────
   console.log(bold('\n3. adminGrantFish（CLI fish grant 路径）'));

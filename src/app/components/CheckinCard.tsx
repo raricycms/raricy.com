@@ -68,8 +68,6 @@ export default function CheckinCard({
   const [chosenIndex, setChosenIndex] = useState<number | null>(null);
 
   const doneRef = useRef(checkedIn); // 本次会话是否已完成签到
-  // 签到成功时（先签到后翻牌）暂存服务端已抽好的运势，供翻牌动画使用
-  const drawnRef = useRef<{ fortuneValue: number; pool: number[] } | null>(null);
   const busyRef = useRef(false);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const mounted = useRef(true);
@@ -142,8 +140,9 @@ export default function CheckinCard({
     requestAnimationFrame(() => setFortuneBounce(true));
   }
 
-  // 点击「每日签到」→ 先签到（API 请求中按钮显示「⏳ 签到中...」）→ 成功 toast +
-  // 按钮转「今日已签到」→ 约 1.3s 后弹出运势卡（对齐 Flask 的先签到后翻牌时序）。
+  // 点击「每日签到」→ 第一步签到（API 请求中按钮显示「⏳ 签到中...」）→ 成功
+  // toast + 按钮转「今日已签到」→ 约 1.3s 后弹出运势卡等用户翻牌（对齐 Flask 的
+  // 先签到后翻牌时序；运势此刻未定，翻牌走 claim 才定）。
   async function doCheckinFlow() {
     if (doneRef.current || busyRef.current || modalOpen) return;
     busyRef.current = true;
@@ -154,17 +153,14 @@ export default function CheckinCard({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({}),
       });
       const data = await res.json();
 
       if (data.code === 200) {
-        // 签到成功 —— 服务端已抽好运势，暂存供翻牌动画使用
+        // 签到成功（仅建记录）—— 运势在翻牌那刻才由所选位置决定
         doneRef.current = true;
-        drawnRef.current = { fortuneValue: data.fortune_value, pool: data.pool ?? [] };
         toast(data.message || '签到成功！', 'success');
         setBtnPhase('success');
-        setFortune(data.total_fortune ?? fortune);
         later(() => setBtnPhase('done'), 1050);
         // 约 1.3s 后弹出运势卡（全新签到态）
         later(() => {
@@ -184,6 +180,15 @@ export default function CheckinCard({
         setBtnPhase('done');
         if (data.total_count != null) setCount(data.total_count);
         toast(data.message || '今天已签到', 'info');
+        // 已签到但还没翻牌（另一标签页签的 / 上次关了弹窗没选牌）→ 弹恢复态卡。
+        // 堵住「签到未翻牌 → 再来点签到按钮 → 卡死在无弹窗」的死角。
+        if (data.fortune_pending) {
+          later(() => {
+            resetCards();
+            setModalPending(true);
+            setModalOpen(true);
+          }, 600);
+        }
       } else {
         setBtnPhase('idle');
         toast(data.message || '操作失败，请稍后重试', 'error');
@@ -196,14 +201,12 @@ export default function CheckinCard({
     }
   }
 
-  // 翻牌动画：让被点的牌显示抽中的运势值，700ms 后揭示其余牌，1500ms 后展示结果区。
+  // 翻牌动画：被点的牌翻开即服务端从牌池取的 pool[i]（claim 响应保证
+  // fv === pool[i]，无需再交换 —— 选择的位置此刻才真正决定命运）。
+  // 700ms 后揭示其余牌，1500ms 后展示结果区。
   function runRevealAnimation(i: number, fv: number, drawnPool: number[]) {
-    // 把 fv 换到位置 i，保证被点的牌翻出的正是抽中值
+    if (!Array.isArray(drawnPool) || drawnPool.length !== CARD_COUNT) return; // 腐坏数据防线
     const display = [...drawnPool];
-    const cur = display.indexOf(fv);
-    if (cur !== -1 && cur !== i) {
-      [display[i], display[cur]] = [display[cur], display[i]];
-    }
 
     // Step 1：翻开所选牌
     setBacks((prev) => {
@@ -241,20 +244,16 @@ export default function CheckinCard({
     }, 1500);
   }
 
-  // 选牌 → 翻牌动画。全新签到态：运势已在签到时抽好，仅做动画；恢复态：调用合并 API 补抽。
+  // 选牌 → POST /api/checkin/claim：此刻服务端才从**签到落库的牌池**取
+  // pool[i] 赋值并发鱼 —— 翻哪张、拿哪个值由这一步的选择决定（恢复态同路）。
+  // 失败（400/503）→ 复原可点，用户可换牌重试（服务端 fortune 仍是 NULL）。
   async function selectCard(i: number) {
     if (isRevealed) return;
     setIsRevealed(true);
     setSelectedIdx(i);
 
-    if (drawnRef.current) {
-      const { fortuneValue, pool } = drawnRef.current;
-      runRevealAnimation(i, fortuneValue, pool);
-      return;
-    }
-
     try {
-      const res = await fetch('/api/checkin', {
+      const res = await fetch('/api/checkin/claim', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
