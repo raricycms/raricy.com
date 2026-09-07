@@ -15,6 +15,6 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       ? body.message_id
       : undefined;
 
-  const upTo = await markChannelRead(id, user.id, messageId);
+  const upTo = await markChannelRead(id, user.id, messageId, user.focusMode);
   return apiOk({ message_id: upTo }, '已读');
 }

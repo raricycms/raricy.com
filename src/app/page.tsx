@@ -1,9 +1,25 @@
 import Link from 'next/link';
+import { getCurrentUser } from '@/lib/auth';
+import { FOCUS_MODE_BLOCKED_TITLE } from '@/lib/focus-mode';
 import HomeFooterNote from './components/HomeFooterNote';
 import HeroCanvas from './components/HeroCanvas';
 
 // 首页 — Flask `home/homepage.html` 样式（home-container / home-display / feature-card / home-btn）
-export default function HomePage() {
+export default async function HomePage() {
+  // 专注模式：进入玩具区的卡片禁用（root layout 已每请求读 cookies，首页本就在
+  // 动态渲染之下 —— 这里只是多一次 SQLite 点查，不影响缓存正确性）。
+  const user = await getCurrentUser();
+  const gameDisabled = !!user?.focusMode;
+
+  const gameCardBody = (
+    <div className="card-body home-text-center">
+      <span className="feature-icon" aria-hidden="true"></span>
+      <h4 className="card-title" style={{ marginBottom: '0.75rem' }}>玩具</h4>
+      <p className="card-text">一些神秘小游戏。感谢各位创作者的贡献！</p>
+      <span className="home-btn home-btn--outline-success home-btn--sm">进入玩具区</span>
+    </div>
+  );
+
   return (
     <>
       <section className="hero-section" id="home">
@@ -45,14 +61,19 @@ export default function HomePage() {
             </div>
 
             <div className="home-grid-item">
-              <Link className="feature-card card-game" href="/game">
-                <div className="card-body home-text-center">
-                  <span className="feature-icon" aria-hidden="true"></span>
-                  <h4 className="card-title" style={{ marginBottom: '0.75rem' }}>玩具</h4>
-                  <p className="card-text">一些神秘小游戏。感谢各位创作者的贡献！</p>
-                  <span className="home-btn home-btn--outline-success home-btn--sm">进入玩具区</span>
+              {gameDisabled ? (
+                <div
+                  className="feature-card card-game is-disabled"
+                  title={FOCUS_MODE_BLOCKED_TITLE}
+                  aria-disabled="true"
+                >
+                  {gameCardBody}
                 </div>
-              </Link>
+              ) : (
+                <Link className="feature-card card-game" href="/game">
+                  {gameCardBody}
+                </Link>
+              )}
             </div>
 
             <div className="home-grid-item">

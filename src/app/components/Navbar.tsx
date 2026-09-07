@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import type { SafeUser } from '@/lib/auth';
 import { hasAdminRights, isCoreUser } from '@/lib/auth';
+import { FOCUS_MODE_BLOCKED_TITLE } from '@/lib/focus-mode';
 import LogoutLink from './LogoutLink';
 
 // 顶栏 — Flask `base.html` 样式（site-* BEM + icon mask）
@@ -30,9 +31,17 @@ export default function Navbar({ user }: { user: SafeUser | null }) {
         <div className="site-navbar-collapse" id="siteNavbar">
           <ul className="site-nav">
             <li>
-              <Link className="site-link" href="/game">
-                玩具
-              </Link>
+              {user?.focusMode ? (
+                // 专注模式禁用态：span 代替 Link（不导航）；不用 pointer-events:none，
+                // 否则 hover 的 title 不会弹
+                <span className="site-link is-disabled" title={FOCUS_MODE_BLOCKED_TITLE} aria-disabled="true">
+                  玩具
+                </span>
+              ) : (
+                <Link className="site-link" href="/game">
+                  玩具
+                </Link>
+              )}
             </li>
             <li>
               <Link className="site-link" href="/blog">

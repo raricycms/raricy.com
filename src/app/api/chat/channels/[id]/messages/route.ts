@@ -14,7 +14,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   const limitRaw = url.searchParams.get('limit');
   const limit = limitRaw ? parsePosInt(limitRaw) : null;
 
-  const res = await listMessages(id, user.id, { after, before, limit });
+  const res = await listMessages(id, user.id, { after, before, limit }, user.focusMode);
   if (res.ok) return apiOk({ messages: res.messages });
   if (res.error === 'forbidden') return apiErr(403, res.message);
   return apiErr(404, res.message);
@@ -37,7 +37,14 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const imageId = typeof body.image_id === 'string' && body.image_id ? body.image_id : null;
   const replyTo = typeof body.reply_to === 'number' && Number.isInteger(body.reply_to) ? body.reply_to : null;
 
-  const res = await sendMessage({ channelId: id, authorId: user.id, content, imageId, replyTo });
+  const res = await sendMessage({
+    channelId: id,
+    authorId: user.id,
+    content,
+    imageId,
+    replyTo,
+    focusMode: user.focusMode,
+  });
   if (res.ok) return apiOk({ message: res.message }, '发送成功');
 
   switch (res.error) {

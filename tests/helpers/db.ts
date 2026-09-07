@@ -125,6 +125,8 @@ export async function makeCategory(opts: Partial<{
   /** 对应 schema 的 adminOnlyPosting（栏目仅管理员可发文） */
   adminOnlyPosting: boolean;
   excludeFromAll: boolean;
+  /** 专注模式隐藏（开启专注模式的用户看不到此栏目） */
+  focusHidden: boolean;
   parentId: number | null;
 }> = {}) {
   const n = ++seq;
@@ -136,6 +138,7 @@ export async function makeCategory(opts: Partial<{
       isActive: opts.isActive ?? true,
       adminOnlyPosting: opts.adminOnlyPosting ?? false,
       excludeFromAll: opts.excludeFromAll ?? false,
+      focusHidden: opts.focusHidden ?? false,
       parentId: opts.parentId ?? null,
       createdAt: nowForDb(),
     },

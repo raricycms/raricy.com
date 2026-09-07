@@ -17,6 +17,8 @@
 // --- Card sections ---
 
 .settings-card {
+  // 锚点深链（/settings#focus-mode）落到顶栏之下不被遮住
+  scroll-margin-top: 96px;
   background: var(--color-background-card);
   border-radius: 30px;
   padding: $space-8;

@@ -389,6 +389,15 @@ a:hover {
   color: var(--color-brand-primary);
   background: var(--color-brand-secondary);
 }
+.site-link.is-disabled {
+  color: var(--color-text-tertiary);
+  cursor: default;
+  opacity: 0.7;
+}
+.site-link.is-disabled:hover {
+  color: var(--color-text-tertiary);
+  background: transparent;
+}
 
 .site-actions {
   display: flex;
@@ -2038,6 +2047,19 @@ body.dark-mode .alert-danger {
   border-color: var(--color-border-highlight);
 }
 
+/* 专注模式禁用态（div 渲染，不导航）：淡化 + hover 不给卡片反馈 */
+.feature-card.is-disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+.feature-card.is-disabled:hover {
+  box-shadow: var(--shadow-card);
+  border-color: var(--color-border);
+}
+.feature-card.is-disabled .home-btn {
+  opacity: 0.6;
+}
+
 .feature-card .card-body {
   padding: 2rem;
   position: relative;
@@ -2762,6 +2784,22 @@ a {
 }
 a:hover {
   text-decoration: none;
+}
+
+.focus-banner {
+  max-width: 1140px;
+  margin: 16px auto 0;
+  padding: 10px 20px;
+  text-align: center;
+  font-size: 0.9rem;
+  background: var(--color-brand-secondary);
+  color: var(--color-text-primary);
+  border-radius: 999px;
+}
+.focus-banner a {
+  color: var(--color-brand-primary);
+  font-weight: 700;
+  text-decoration: underline;
 }
 
 .blogs-hero {
@@ -5743,6 +5781,28 @@ body {
 .game-card--locked:hover {
   box-shadow: none;
   border-color: var(--color-border);
+}
+.game-card--focus-lock {
+  max-width: 560px;
+  margin: 0 auto;
+  opacity: 1;
+}
+.game-card--focus-lock .game-card__title {
+  font-size: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+.game-card__btn--link {
+  color: var(--color-brand-primary);
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: underline;
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin-top: 0.75rem;
+}
+.game-card__btn--link:hover {
+  color: var(--color-brand-primary-dark);
 }
 .game-card--soon {
   cursor: default;
@@ -9418,6 +9478,7 @@ body {
 }
 
 .settings-card {
+  scroll-margin-top: 96px;
   background: var(--color-background-card);
   border-radius: 30px;
   padding: 32px;
@@ -11585,6 +11646,17 @@ input:checked + .settings-toggle__slider::before {
   color: var(--color-brand-primary);
 }
 
+.chat-chan.is-disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.chat-chan.is-disabled:hover {
+  background: transparent;
+}
+.chat-chan.is-disabled .chat-chan__preview {
+  color: var(--color-text-tertiary);
+}
+
 .chat-chan__icon,
 .chat-chan__avatar {
   flex: none;
@@ -11765,7 +11837,15 @@ input:checked + .settings-toggle__slider::before {
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 0 24px;
+  text-align: center;
   color: var(--color-text-secondary);
+}
+
+.chat-main__focus-link {
+  color: var(--color-brand-primary);
+  font-weight: 700;
+  text-decoration: underline;
 }
 
 .chat-list {

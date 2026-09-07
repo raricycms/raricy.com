@@ -130,13 +130,25 @@ a {
   font-weight: 500;
   transition: color 0.3s ease, background-color 0.2s ease;
 
-  &:hover { 
-    color: var(--color-brand-primary); 
-    background: var(--color-brand-secondary); 
+  &:hover {
+    color: var(--color-brand-primary);
+    background: var(--color-brand-secondary);
   }
 
-  // &.active { 
-  //   color: --color-brand-primary; 
+  // 专注模式禁用态（span 渲染，无导航）：淡化 + 不给 hover 反馈
+  &.is-disabled {
+    color: var(--color-text-tertiary);
+    cursor: default;
+    opacity: 0.7;
+
+    &:hover {
+      color: var(--color-text-tertiary);
+      background: transparent;
+    }
+  }
+
+  // &.active {
+  //   color: --color-brand-primary;
   // }
 }
 

@@ -1078,4 +1078,27 @@ describe('updateOwnProfile 的成功文案', () => {
     const r = await updateOwnProfile(u.id, { bio: 'x', notifyLike: false });
     expect(r.message).toBe('资料已保存');
   });
+
+  it('专注模式开关：focusMode 布尔落库可回读', async () => {
+    const u = await makeUser();
+    const on = await updateOwnProfile(u.id, { focusMode: true });
+    expect(on.ok).toBe(true);
+    if (on.ok) {
+      expect(on.data?.focusMode).toBe(true);
+    }
+    const row = await prisma.user.findUnique({ where: { id: u.id } });
+    expect(row?.focusMode).toBe(true);
+
+    const off = await updateOwnProfile(u.id, { focusMode: false });
+    if (off.ok) expect(off.data?.focusMode).toBe(false);
+    expect((await prisma.user.findUnique({ where: { id: u.id } }))?.focusMode).toBe(false);
+  });
+
+  it('专注模式开关：只发 bio 不会把 focusMode 重置（缺省分支）', async () => {
+    const u = await makeUser();
+    await updateOwnProfile(u.id, { focusMode: true });
+    await updateOwnProfile(u.id, { bio: '只改简介' });
+    const row = await prisma.user.findUnique({ where: { id: u.id } });
+    expect(row?.focusMode).toBe(true);
+  });
 });

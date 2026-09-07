@@ -102,6 +102,17 @@
 .chat-chan.has-unread .chat-chan__title {
   color: var(--color-brand-primary);
 }
+// 专注模式禁用行：保留位置但不可点、无 hover 反馈、预览淡化、徽标不渲染
+.chat-chan.is-disabled {
+  cursor: default;
+  opacity: 0.6;
+  &:hover {
+    background: transparent;
+  }
+  .chat-chan__preview {
+    color: var(--color-text-tertiary);
+  }
+}
 
 .chat-chan__icon,
 .chat-chan__avatar {
@@ -277,7 +288,15 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 0 24px;
+  text-align: center;
   color: var(--color-text-secondary);
+}
+
+.chat-main__focus-link {
+  color: var(--color-brand-primary);
+  font-weight: 700;
+  text-decoration: underline;
 }
 
 .chat-list {

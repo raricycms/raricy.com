@@ -19,6 +19,7 @@ export async function GET() {
       notifyAdmin: user.notifyAdmin ?? true,
       showRecentBlogs: user.showRecentBlogs,
       showRecentComments: user.showRecentComments,
+      focusMode: user.focusMode,
     },
   });
 }

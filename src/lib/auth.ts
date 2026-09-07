@@ -36,6 +36,7 @@ const PUBLIC_USER_SELECT = {
   notifyAdmin: true,
   showRecentBlogs: true,
   showRecentComments: true,
+  focusMode: true,
 } as const;
 
 /** 读取并校验当前登录用户；未登录 / 会话失效返回 null。 */

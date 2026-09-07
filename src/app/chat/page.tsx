@@ -25,6 +25,7 @@ export default async function ChatPage({
       isAdmin={hasAdminRights(user)}
       initialChannel={typeof sp.channel === 'string' && sp.channel ? sp.channel : null}
       initialSidebarCollapsed={collapsedPref}
+      initialFocusMode={user.focusMode}
     />
   );
 }

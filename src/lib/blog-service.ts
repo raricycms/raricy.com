@@ -25,6 +25,8 @@ export interface ListParams {
   featured?: boolean;
   search?: string | null;
   sort?: BlogSort;
+  /** 查看者开启了专注模式：过滤 focusHidden 栏目（含其子栏目）下的文章。 */
+  focusMode?: boolean;
 }
 
 const DEFAULT_PER_PAGE = 100;
@@ -77,6 +79,28 @@ export async function listBlogs(params: ListParams) {
     if (excludedIds.length) {
       where.AND = [
         { OR: [{ categoryId: null }, { categoryId: { notIn: excludedIds } }] },
+      ];
+    }
+  }
+
+  // 专注模式（个人视图）：排除 focusHidden 栏目及其子栏目下的文章。
+  // 与 exclude_from_all 的区别：
+  //   • exclude 是全站生效、只认启用的栏目；focusHidden 对「开启专注模式的人」生效，
+  //     含已停用栏目 —— 站长标记的是"栏目范畴"，停用与否不改变"这板子是水区"的语义。
+  //   • categorySlug 指向被标记栏目时，slug 分支的 `in` 与这里的 `notIn` 交集为空，
+  //     列表自然为空 —— URL 显式点进来也看不到。
+  if (params.focusMode) {
+    const flagged = await prisma.category.findMany({
+      where: { focusHidden: true },
+      select: { id: true, children: { select: { id: true } } },
+    });
+    const focusIds = flagged.flatMap((c) => [c.id, ...c.children.map((x) => x.id)]);
+    if (focusIds.length) {
+      // AND 语义可能与上面的 exclude 分支叠加；AND 类型是 where 对象或数组，
+      // 与 search 分支同一写法（先展开既有元素再并新条件），避免互相覆盖。
+      where.AND = [
+        ...(Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []),
+        { OR: [{ categoryId: null }, { categoryId: { notIn: focusIds } }] },
       ];
     }
   }

@@ -49,6 +49,10 @@ model User {
   showRecentBlogs    Boolean @default(true) @map("show_recent_blogs")
   showRecentComments Boolean @default(true) @map("show_recent_comments")
 
+  // 专注模式：账号级浏览偏好（默认关）。开启后博客列表/侧栏隐藏 focusHidden 栏目，
+  // 聊天大区与「玩具」入口禁用。登出/游客不生效（见 docs/architecture.md 偏好约定）。
+  focusMode Boolean @default(false) @map("focus_mode")
+
   isBanned  Boolean?  @default(false) @map("is_banned")
   banUntil  DateTime? @map("ban_until")
   banReason String?   @map("ban_reason")
@@ -226,6 +230,9 @@ model Category {
   excludeFromAll    Boolean?  @default(false) @map("exclude_from_all")
   adminOnlyPosting  Boolean?  @default(false) @map("admin_only_posting")
   notifyAdminOnPost Boolean?  @default(false) @map("notify_admin_on_post")
+  // 专注模式隐藏：站长在栏目管理勾选；勾选根栏目时子栏目一并（由 listBlogs 子树展开）。
+  // 与 excludeFromAll 区别：这是「对开启专注模式的用户个人生效」，exclude 是全站生效。
+  focusHidden Boolean? @default(false) @map("focus_hidden")
 
   parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id])
   children Category[] @relation("CategoryTree")
@@ -237,6 +244,7 @@ model Category {
   @@index([name], map: "ix_categories_name")
   @@index([parentId], map: "ix_categories_parent_id")
   @@index([excludeFromAll], map: "ix_categories_exclude_from_all")
+  @@index([focusHidden], map: "ix_categories_focus_hidden")
 
   @@map("categories")
 }

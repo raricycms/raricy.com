@@ -77,6 +77,30 @@ export default async function GameMenuPage() {
   const user = await getCurrentUser();
   const canEnterPhotowall = isCoreUser(user);
 
+  // 专注模式：整页锁屏（入口禁用只是第一道，菜单页直接不给进）；
+  // 已开的游戏子页 /game/* 不受影响（可直达，返回链会落回本页）。
+  if (user?.focusMode) {
+    return (
+      <div className="container">
+        <section className="game-hero">
+          <h1 className="game-hero__title">玩具</h1>
+          <p className="game-hero__description">一些聪明山小游戏。</p>
+        </section>
+        <section className="game-section">
+          <div className="game-card game-card--locked game-card--focus-lock">
+            <div className="game-card__body">
+              <h3 className="game-card__title">已开启专注模式</h3>
+              <p className="game-card__desc">「玩具」暂不可用。可在设置中随时关闭专注模式。</p>
+              <Link className="game-card__btn game-card__btn--link" href="/settings#focus-mode">
+                前往设置关闭
+              </Link>
+            </div>
+          </div>
+        </section>
+      </div>
+    );
+  }
+
   return (
     <div className="container">
       <section className="game-hero">

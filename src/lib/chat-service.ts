@@ -26,6 +26,7 @@ import {
   CHAT_LOBBY_ID,
   CHAT_LOBBY_TITLE,
   CHAT_DELETED_TEXT,
+  CHAT_FOCUS_BLOCKED_TITLE,
   type ChatAuthorDTO,
   type ChatMessageDTO,
   type ChatChannelDTO,
@@ -38,6 +39,7 @@ export {
   CHAT_LOBBY_ID,
   CHAT_LOBBY_TITLE,
   CHAT_DELETED_TEXT,
+  CHAT_FOCUS_BLOCKED_TITLE,
   type ChatAuthorDTO,
   type ChatImageDTO,
   type ChatReplyDTO,
@@ -143,13 +145,18 @@ async function readCursorFor(channelId: string, userId: string): Promise<number 
  */
 export async function canAccessChannel(
   channelId: string,
-  userId: string
+  userId: string,
+  /** 专注模式：大区对开启者不可用（拉消息/发消息/已读全走这里拦） */
+  focusMode = false
 ): Promise<{ allowed: boolean; kind: string | null }> {
   // 大区行在迁移里种子化；测试库空表时兜底建，保证 sendMessage 等直接走大区的路径不炸
   if (channelId === CHAT_LOBBY_ID) await ensureLobbyChannel();
   const ch = await prisma.chatChannel.findUnique({ where: { id: channelId } });
   if (!ch) return { allowed: false, kind: null };
-  if (ch.kind === CHAT_KIND_LOBBY) return { allowed: true, kind: ch.kind };
+  if (ch.kind === CHAT_KIND_LOBBY) {
+    if (focusMode) return { allowed: false, kind: ch.kind };
+    return { allowed: true, kind: ch.kind };
+  }
   const member = await prisma.chatMember.findUnique({
     where: { uq_chat_member_channel_user: { channelId, userId } },
   });
@@ -162,7 +169,11 @@ export async function canAccessChannel(
  * 拉当前用户的全部频道（大区 + 私聊），带 peer、未读数、最后一条消息预览。
  * 大区固定置顶；私聊按「有未读优先，其次最近活跃」排序。
  */
-export async function listChannelsForUser(userId: string): Promise<ChatChannelDTO[]> {
+export async function listChannelsForUser(
+  userId: string,
+  /** 专注模式：大区行保留（侧栏要展示禁用行）但不带预览/未读、不懒建成员基线 */
+  focusMode = false
+): Promise<ChatChannelDTO[]> {
   await ensureLobbyChannel();
   const myMemberships = await prisma.chatMember.findMany({
     where: { userId },
@@ -178,6 +189,21 @@ export async function listChannelsForUser(userId: string): Promise<ChatChannelDT
   const out = await Promise.all(
     channels.map(async (ch) => {
       const isLobby = ch.kind === CHAT_KIND_LOBBY;
+      if (isLobby && focusMode) {
+        // 禁用行：无最近一条（需求：看不到大区的最新消息）、无未读、保持置顶。
+        // 提前返回还避免 readCursorFor → ensureLobbyMembership 把成员基线建出来。
+        return {
+          id: ch.id,
+          kind: ch.kind as 'lobby' | 'direct',
+          title: CHAT_LOBBY_TITLE,
+          peer: null,
+          unread_count: 0,
+          last_message: null,
+          disabled: true,
+          _order: -1,
+          _lastId: 0,
+        };
+      }
       let cursor = await readCursorFor(ch.id, userId);
       if (cursor === null) {
         // 私聊但缺成员行（理论上不会）→ 跳过
@@ -385,11 +411,19 @@ export type ListMessagesResult =
 export async function listMessages(
   channelId: string,
   userId: string,
-  params: ListMessagesParams = {}
+  params: ListMessagesParams = {},
+  focusMode = false
 ): Promise<ListMessagesResult> {
-  const access = await canAccessChannel(channelId, userId);
+  const access = await canAccessChannel(channelId, userId, focusMode);
   if (!access.kind) return { ok: false, error: 'notFound', message: '频道不存在' };
-  if (!access.allowed) return { ok: false, error: 'forbidden', message: '无权查看该会话' };
+  if (!access.allowed) {
+    return {
+      ok: false,
+      error: 'forbidden',
+      message:
+        focusMode && channelId === CHAT_LOBBY_ID ? CHAT_FOCUS_BLOCKED_TITLE : '无权查看该会话',
+    };
+  }
 
   const limit = Math.min(100, Math.max(1, params.limit ?? CHAT_INITIAL_LIMIT));
   let rows: MessageRow[];
@@ -429,6 +463,8 @@ export interface SendMessageInput {
   content?: string;
   imageId?: string | null;
   replyTo?: number | null;
+  /** 专注模式：开启者对聊天大区不可发言（服务端由路由按 user.focusMode 填入） */
+  focusMode?: boolean;
 }
 
 export type SendMessageResult =
@@ -452,14 +488,21 @@ export type SendMessageResult =
  * 私聊发送成功后给其他成员发**会话合并**通知（通知失败不回滚消息本身）。
  */
 export async function sendMessage(input: SendMessageInput): Promise<SendMessageResult> {
-  const { channelId, authorId, imageId, replyTo } = input;
+  const { channelId, authorId, imageId, replyTo, focusMode } = input;
   const content = (input.content ?? '').trim();
   const now = nowForDb();
 
   // 1) 资源校验
-  const access = await canAccessChannel(channelId, authorId);
+  const access = await canAccessChannel(channelId, authorId, focusMode);
   if (!access.kind) return { ok: false, error: 'notFound', message: '频道不存在' };
-  if (!access.allowed) return { ok: false, error: 'forbidden', message: '无权在该会话发言' };
+  if (!access.allowed) {
+    return {
+      ok: false,
+      error: 'forbidden',
+      message:
+        focusMode && channelId === CHAT_LOBBY_ID ? CHAT_FOCUS_BLOCKED_TITLE : '无权在该会话发言',
+    };
+  }
 
   const isImageMsg = !!imageId;
 
@@ -572,9 +615,10 @@ export async function sendMessage(input: SendMessageInput): Promise<SendMessageR
 export async function markChannelRead(
   channelId: string,
   userId: string,
-  messageId?: number
+  messageId?: number,
+  focusMode = false
 ): Promise<number> {
-  const access = await canAccessChannel(channelId, userId);
+  const access = await canAccessChannel(channelId, userId, focusMode);
   if (!access.allowed || !access.kind) return 0;
 
   let upTo = messageId;

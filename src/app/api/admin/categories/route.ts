@@ -37,6 +37,7 @@ export async function POST(req: Request) {
     excludeFromAll: body.excludeFromAll != null ? Boolean(body.excludeFromAll) : undefined,
     adminOnlyPosting: body.adminOnlyPosting != null ? Boolean(body.adminOnlyPosting) : undefined,
     notifyAdminOnPost: body.notifyAdminOnPost != null ? Boolean(body.notifyAdminOnPost) : undefined,
+    focusHidden: body.focusHidden != null ? Boolean(body.focusHidden) : undefined,
   });
 
   if (!result.ok) return apiErr(400, result.message);

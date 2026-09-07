@@ -12,7 +12,7 @@
 //    不是期望行为。修复源码时这些断言应当被翻转 —— 详见交付说明。
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { resetDb, makeUser, makeBlog, prisma } from '../helpers/db';
+import { resetDb, makeUser, makeBlog, makeCategory, prisma } from '../helpers/db';
 import {
   validateBlogData,
   countMarkdownWords,
@@ -1305,4 +1305,100 @@ describe('countMarkdownWords 与 Python 原实现对拍', () => {
       ).toBe(c.nonWs);
     });
   }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 9. listBlogs / 专注模式过滤（focusMode 参数）
+//    语义：排除 focusHidden=true 的栏目**及其子栏目**下的文章（含已停用栏目 ——
+//    与 excludeFromAll 只认 active 不同，站长标记的是"栏目范畴"）；未分类（NULL）
+//    文章保留；categorySlug 指向被标记栏目时列表为空。
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('listBlogs / 专注模式过滤', () => {
+  async function seedFocusFixture() {
+    // 被标记的根栏目 + 未标记的子栏目（子栏目靠「根被标记」自动带掉）
+    const waterRoot = await makeCategory({ name: '水根', slug: 'water-root', focusHidden: true });
+    const waterChild = await makeCategory({ name: '水子', slug: 'water-child', parentId: waterRoot.id });
+    // 未标记的对照栏目 + 一篇未分类文章
+    const normal = await makeCategory({ name: '正常', slug: 'normal' });
+    const bRoot = await makeBlog({ title: '在水根', categoryId: waterRoot.id });
+    const bChild = await makeBlog({ title: '在水子', categoryId: waterChild.id });
+    const bNormal = await makeBlog({ title: '正常文章', categoryId: normal.id });
+    const bUncat = await makeBlog({ title: '未分类文章' });
+    return { waterRoot, waterChild, normal, bRoot, bChild, bNormal, bUncat };
+  }
+
+  it('focusMode=true：根与子栏目文章全滤，未标记与未分类保留', async () => {
+    const { bRoot, bChild, bNormal, bUncat } = await seedFocusFixture();
+    const r = await listBlogs({ focusMode: true });
+    const ids = r.blogs.map((b) => b.id);
+    expect(ids).not.toContain(bRoot.id);
+    expect(ids).not.toContain(bChild.id);
+    expect(ids).toContain(bNormal.id);
+    expect(ids).toContain(bUncat.id);
+    expect(r.total).toBe(2);
+  });
+
+  it('focusMode 缺省 / false：行为与旧版完全一致（回归护栏）', async () => {
+    const { bRoot, bChild, bNormal, bUncat } = await seedFocusFixture();
+    const def = await listBlogs({});
+    const off = await listBlogs({ focusMode: false });
+    expect(def.total).toBe(4);
+    expect(off.total).toBe(4);
+    for (const b of [bRoot, bChild, bNormal, bUncat]) {
+      expect(def.blogs.map((x) => x.id)).toContain(b.id);
+    }
+  });
+
+  it('categorySlug 指向被标记的根/子栏目 → 空列表；指向正常栏目不受影响', async () => {
+    const { waterRoot, normal, bNormal, bRoot } = await seedFocusFixture();
+    const rRoot = await listBlogs({ categorySlug: waterRoot.slug, focusMode: true });
+    expect(rRoot.total).toBe(0);
+    const rNormal = await listBlogs({ categorySlug: normal.slug, focusMode: true });
+    expect(rNormal.blogs.map((b) => b.id)).toEqual([bNormal.id]);
+    // 对照：不传 focusMode 时水根栏目照常可见
+    const rOff = await listBlogs({ categorySlug: waterRoot.slug });
+    expect(rOff.blogs.map((b) => b.id)).toContain(bRoot.id);
+  });
+
+  it('× 精选：focus 与 featured 叠加过滤', async () => {
+    const { normal, bNormal } = await seedFocusFixture();
+    const flagged = await makeCategory({ focusHidden: true });
+    const bFlag = await makeBlog({ title: '水贴精选', categoryId: flagged.id });
+    await prisma.blog.update({ where: { id: bNormal.id }, data: { isFeatured: true } });
+    await prisma.blog.update({ where: { id: bFlag.id }, data: { isFeatured: true } });
+    const r = await listBlogs({ featured: true, focusMode: true });
+    expect(r.blogs.map((b) => b.id)).toEqual([bNormal.id]);
+    void normal;
+  });
+
+  it('× 搜索：命中被标记栏目的词条不出现', async () => {
+    const { bChild } = await seedFocusFixture();
+    const normal2 = await makeCategory();
+    const bHit = await makeBlog({ title: '水贴研究', categoryId: normal2.id });
+    const r = await listBlogs({ search: '水贴', focusMode: true });
+    const ids = r.blogs.map((b) => b.id);
+    expect(ids).toContain(bHit.id);
+    expect(ids).not.toContain(bChild.id);
+  });
+
+  it('被标记栏目已停用仍生效（与 excludeFromAll 的 active 限制不同）', async () => {
+    const offRoot = await makeCategory({ focusHidden: true, isActive: false });
+    const b = await makeBlog({ title: '停用水贴', categoryId: offRoot.id });
+    const normal = await makeCategory();
+    const bNormal = await makeBlog({ title: '正常', categoryId: normal.id });
+    const r = await listBlogs({ focusMode: true });
+    expect(r.blogs.map((x) => x.id)).not.toContain(b.id);
+    expect(r.blogs.map((x) => x.id)).toContain(bNormal.id);
+  });
+
+  it('与 excludeFromAll 叠加：未分类（NULL）不丢（防 NULL NOT IN 陷阱）', async () => {
+    // 同时既是"全站排除"又是"专注隐藏"的栏目 + 未分类文章
+    const both = await makeCategory({ excludeFromAll: true, focusHidden: true });
+    await makeBlog({ title: '双重水贴', categoryId: both.id });
+    const bUncat = await makeBlog({ title: '未分类' });
+    const r = await listBlogs({ focusMode: true });
+    expect(r.blogs.map((x) => x.id)).toEqual([bUncat.id]);
+    expect(r.total).toBe(1);
+  });
 });

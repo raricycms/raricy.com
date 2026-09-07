@@ -12,6 +12,7 @@ interface ProfileState {
   notifyAdmin: boolean;
   showRecentBlogs: boolean;
   showRecentComments: boolean;
+  focusMode: boolean;
 }
 
 const EMPTY: ProfileState = {
@@ -22,6 +23,7 @@ const EMPTY: ProfileState = {
   notifyAdmin: true,
   showRecentBlogs: true,
   showRecentComments: true,
+  focusMode: false,
 };
 
 interface Alert {
@@ -35,6 +37,7 @@ export default function SettingsPage() {
   const [savingBio, setSavingBio] = useState(false);
   const [bioAlert, setBioAlert] = useState<Alert | null>(null);
   const [privacyAlert, setPrivacyAlert] = useState<Alert | null>(null);
+  const [focusAlert, setFocusAlert] = useState<Alert | null>(null);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -62,6 +65,7 @@ export default function SettingsPage() {
             notifyAdmin: !!data.profile.notifyAdmin,
             showRecentBlogs: !!data.profile.showRecentBlogs,
             showRecentComments: !!data.profile.showRecentComments,
+            focusMode: !!data.profile.focusMode,
           });
         }
       } catch {
@@ -123,6 +127,32 @@ export default function SettingsPage() {
     }
   }
 
+  async function saveFocus(value: boolean) {
+    setState((s) => ({ ...s, focusMode: value }));
+    try {
+      // 只发单字段：updateOwnProfile 按白名单逐字段打补丁，整包旧 state 反而可能
+      // 携带过期值（PATCH 是幂等的，只传本次变更即可）。
+      const res = await fetch('/api/users/me', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ focusMode: value }),
+      });
+      const result = await res.json();
+      if (res.ok && result.code === 200) {
+        setFocusAlert({ msg: '专注模式设置已保存', type: 'success' });
+      } else {
+        setFocusAlert({ msg: result.message || '保存失败', type: 'danger' });
+        setState((s) => ({ ...s, focusMode: !value }));
+      }
+    } catch {
+      setFocusAlert({ msg: '网络错误，请稍后再试', type: 'danger' });
+      setState((s) => ({ ...s, focusMode: !value }));
+    } finally {
+      setTimeout(() => setFocusAlert(null), 3000);
+    }
+  }
+
   async function submitPassword(e: React.FormEvent) {
     e.preventDefault();
     const currentPw = currentPassword.trim();
@@ -179,6 +209,10 @@ export default function SettingsPage() {
 
   const privacyAlertClass = privacyAlert
     ? `settings-alert settings-alert--${privacyAlert.type}`
+    : 'settings-alert d-none';
+
+  const focusAlertClass = focusAlert
+    ? `settings-alert settings-alert--${focusAlert.type}`
     : 'settings-alert d-none';
 
   return (
@@ -308,6 +342,35 @@ export default function SettingsPage() {
               id="toggleComments"
               checked={state.showRecentComments}
               onChange={(e) => savePrivacy('showRecentComments', e.target.checked)}
+            />
+            <span className="settings-toggle__slider"></span>
+          </label>
+        </div>
+      </div>
+
+      {/* ====== Section 3.5: 专注模式（id 供 /blog 横幅与 /game 锁屏深链跳转） ====== */}
+      <div className="settings-card" id="focus-mode">
+        <div className="settings-card__header">
+          <span className="icon icon-controller"></span>
+          <h2 className="settings-card__title">专注模式</h2>
+        </div>
+        <p className="settings-card__desc">
+          屏蔽干扰源，专心阅读。开启后：博客列表与侧栏将隐藏站长标记为「专注隐藏」的栏目及其文章；
+          聊天大区（聊天室）不可进入；「玩具」入口暂不可用。随时可在此关闭。
+        </p>
+        <div className={focusAlertClass} id="focusAlert">{focusAlert?.msg ?? ''}</div>
+
+        <div className="settings-toggle-row">
+          <div className="settings-toggle-row__label">
+            <span className="settings-toggle-row__title">专注模式</span>
+            <span className="settings-toggle-row__desc">隐藏「专注隐藏」栏目，禁用聊天大区与玩具</span>
+          </div>
+          <label className="settings-toggle">
+            <input
+              type="checkbox"
+              id="toggleFocus"
+              checked={state.focusMode}
+              onChange={(e) => saveFocus(e.target.checked)}
             />
             <span className="settings-toggle__slider"></span>
           </label>

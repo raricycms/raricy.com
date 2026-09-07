@@ -15,6 +15,7 @@ type CategoryRow = {
   exclude_from_all: boolean;
   admin_only_posting: boolean;
   notify_admin_on_post: boolean;
+  focus_hidden: boolean;
   level: number;
   blog_count: number;
   child_count: number;

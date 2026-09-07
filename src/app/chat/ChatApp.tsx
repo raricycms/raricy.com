@@ -4,7 +4,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import type { ChatChannelDTO, ChatMessageDTO } from '@/lib/chat-shared';
-import { CHAT_LOBBY_ID, CHAT_LOBBY_TITLE, CHAT_DELETED_TEXT } from '@/lib/chat-shared';
+import {
+  CHAT_LOBBY_ID,
+  CHAT_LOBBY_TITLE,
+  CHAT_DELETED_TEXT,
+  CHAT_FOCUS_BLOCKED_TITLE,
+} from '@/lib/chat-shared';
 import { LS_KEY, COOKIE_NAME, COOKIE_MAX_AGE } from '@/lib/chat-sidebar-pref';
 import NewChatModal from './NewChatModal';
 
@@ -132,12 +137,17 @@ function SidebarRow({
   onClick: () => void;
 }) {
   const isLobby = ch.kind === 'lobby';
+  const disabled = !!ch.disabled;
   return (
     <button
       type="button"
-      className={`chat-chan${active ? ' is-active' : ''}${ch.unread_count > 0 ? ' has-unread' : ''}`}
-      onClick={onClick}
-      title={ch.title}
+      className={`chat-chan${active ? ' is-active' : ''}${ch.unread_count > 0 ? ' has-unread' : ''}${disabled ? ' is-disabled' : ''}`}
+      // 专注模式禁用行：不用 disabled attribute（Chrome 对 disabled 元素不弹原生 title），
+      // 用 aria-disabled + tabIndex=-1 + onClick 置空；行保留（title/预览由服务端置空）。
+      onClick={disabled ? undefined : onClick}
+      title={disabled ? CHAT_FOCUS_BLOCKED_TITLE : ch.title}
+      aria-disabled={disabled || undefined}
+      tabIndex={disabled ? -1 : undefined}
     >
       {isLobby ? (
         <span className="chat-chan__icon" aria-hidden="true">
@@ -151,11 +161,13 @@ function SidebarRow({
       <span className="chat-chan__main">
         <span className="chat-chan__title">{ch.title}</span>
         <span className="chat-chan__preview">
-          {ch.last_message
-            ? `${ch.last_message.author_name ? ch.last_message.author_name + '：' : ''}${ch.last_message.content}`
-            : isLobby
-              ? '来聊聊吧'
-              : '开始对话'}
+          {disabled
+            ? CHAT_FOCUS_BLOCKED_TITLE
+            : ch.last_message
+              ? `${ch.last_message.author_name ? ch.last_message.author_name + '：' : ''}${ch.last_message.content}`
+              : isLobby
+                ? '来聊聊吧'
+                : '开始对话'}
         </span>
       </span>
       {ch.unread_count > 0 && <span className="chat-chan__badge">{ch.unread_count > 99 ? '99+' : ch.unread_count}</span>}
@@ -170,12 +182,15 @@ export default function ChatApp({
   isAdmin,
   initialChannel,
   initialSidebarCollapsed = false,
+  initialFocusMode = false,
 }: {
   currentUserId: string;
   isAdmin: boolean;
   initialChannel: string | null;
   /** SSR 首屏折叠态：/chat 服务端页读 chat_sidebar_collapsed cookie 传入（见 chat-sidebar-pref.ts） */
   initialSidebarCollapsed?: boolean;
+  /** 专注模式（服务端按 user.focusMode 传入）：大区行禁用、默认不落大区 */
+  initialFocusMode?: boolean;
 }) {
   const router = useRouter();
 
@@ -193,6 +208,8 @@ export default function ChatApp({
   const [modalOpen, setModalOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(initialSidebarCollapsed);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  /** 首次频道列表加载完成（区分「加载中」与「专注模式空态」） */
+  const [channelsLoaded, setChannelsLoaded] = useState(false);
 
   const activeRef = useRef(activeId);
   activeRef.current = activeId;
@@ -359,14 +376,23 @@ export default function ChatApp({
       if (!alive || data.code !== 200) return;
       const list = (data.channels ?? []) as ChatChannelDTO[];
       setChannels(list);
+      setChannelsLoaded(true);
+      // 选中策略：请求的频道可用（存在且未禁用）优先；否则退回第一个可用行；
+      // 专注模式下大区行 disabled —— 想进 lobby / 没有私聊时落到 null（空态，
+      // 主区展示专注提示；顺带清掉 URL 里残留的 ?channel=lobby 防止刷新死循环）。
       const want = initialChannel ?? CHAT_LOBBY_ID;
-      const target = list.some((c) => c.id === want)
-        ? want
-        : list.length
-          ? list[0].id
-          : CHAT_LOBBY_ID;
+      const usable = list.filter((c) => !c.disabled);
+      let target: string | null = null;
+      if (usable.some((c) => c.id === want)) target = want;
+      else if (usable.length) target = usable[0].id;
       setActiveId(target);
       activeRef.current = target;
+      if (target === null) {
+        if (initialChannel !== null) {
+          router.replace('/chat', { scroll: false });
+        }
+        return;
+      }
       const token = ++viewTokenRef.current;
       await loadMessages(target, token);
       if (target !== CHAT_LOBBY_ID) {
@@ -396,6 +422,26 @@ export default function ChatApp({
     },
     [loadMessages, router]
   );
+
+  // ── 防御：poll 拉回的频道行若带 disabled（例如另一标签页把专注模式打开了，
+  // 而当前正停在大区）→ 自动切到第一个可用行，无可用则落空态。────────────
+  useEffect(() => {
+    const cur = channels.find((c) => c.id === activeId);
+    if (!cur?.disabled) return;
+    const next = channels.find((c) => !c.disabled);
+    if (next) {
+      selectChannel(next.id);
+      return;
+    }
+    setMessages([]);
+    lastIdRef.current = 0;
+    setNewCount(0);
+    setReplyTarget(null);
+    setActiveId(null);
+    activeRef.current = null;
+    viewTokenRef.current++;
+    router.replace('/chat', { scroll: false });
+  }, [channels, activeId, router, selectChannel]);
 
   // ── 发送 ───────────────────────────────────────────────────────────────
   const send = useCallback(async () => {
@@ -743,7 +789,19 @@ export default function ChatApp({
             </div>
           </>
         ) : (
-          <div className="chat-main__empty">加载中…</div>
+          <div className="chat-main__empty">
+            {channelsLoaded && initialFocusMode ? (
+              <>
+                已开启专注模式，聊天大区暂不可用。可发起私聊，或{' '}
+                <Link className="chat-main__focus-link" href="/settings#focus-mode">
+                  前往设置
+                </Link>{' '}
+                关闭专注模式。
+              </>
+            ) : (
+              '加载中…'
+            )}
+          </div>
         )}
       </main>
 

@@ -41,13 +41,20 @@ export default async function BlogListPage({
   const prefUpdated = (await cookies()).get(COOKIE_NAME)?.value === 'updated';
   const effectiveSort: 'created' | 'updated' = rawSort ?? (prefUpdated ? 'updated' : 'created');
 
-  const [result, categories, currentUser] = await Promise.all([
+  // 专注模式：查看者开启时，列表与侧栏都隐藏 focusHidden 栏目（根整组隐藏、
+  // 子项从父组剪掉但父组「全部」入口保留）。本页 requireCoreUser 保证登录，
+  // 先取当前用户定 focusOn，再与列表/栏目并行取数。
+  const currentUser = await getCurrentUser();
+  const focusOn = !!currentUser?.focusMode;
+
+  const [result, categories] = await Promise.all([
     listBlogs({
       page: parseInt(sp.page || '1', 10),
       categorySlug: sp.category ?? null,
       featured,
       search: sp.search ?? null,
       sort: parseSortParam(effectiveSort),
+      focusMode: focusOn,
     }),
     prisma.category.findMany({
       where: { parentId: null, isActive: true },
@@ -57,15 +64,22 @@ export default async function BlogListPage({
         name: true,
         slug: true,
         icon: true,
+        focusHidden: true,
         children: {
           where: { isActive: true },
           orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
-          select: { id: true, name: true, slug: true },
+          select: { id: true, name: true, slug: true, focusHidden: true },
         },
       },
     }),
-    getCurrentUser(),
   ]);
+
+  /** 专注模式下剪掉被标记栏目：根 focusHidden 整组丢弃；子项从父组过滤（父组保留）。 */
+  function pruneFocusCategories<T extends { focusHidden: boolean | null; children: { focusHidden: boolean | null }[] }>(list: T[]): T[] {
+    return list
+      .filter((c) => !c.focusHidden)
+      .map((c) => ({ ...c, children: c.children.filter((x) => !x.focusHidden) }));
+  }
 
   const canUpload = isCoreUser(currentUser);
 
@@ -126,10 +140,16 @@ export default async function BlogListPage({
         </div>
       </section>
 
+      {focusOn && (
+        <div className="focus-banner" role="status">
+          您已开启专注模式，点击 <Link href="/settings#focus-mode">此处</Link> 关闭
+        </div>
+      )}
+
       <div className="container">
         <div className="blog-layout">
           <BlogSidebar
-            categories={categories}
+            categories={focusOn ? pruneFocusCategories(categories) : categories}
             currentSlug={currentSlug}
             featured={featured}
             sort={rawSort}

@@ -22,6 +22,8 @@ export interface CategoryInput {
   excludeFromAll?: boolean;
   adminOnlyPosting?: boolean;
   notifyAdminOnPost?: boolean;
+  /** 专注模式隐藏：开启专注模式的用户看不到此栏目（勾根栏目时子栏目自动带掉） */
+  focusHidden?: boolean;
 }
 
 export type ServiceResult<T = undefined> =
@@ -42,6 +44,7 @@ export function categoryToDict(c: Category) {
     exclude_from_all: c.excludeFromAll ?? false,
     admin_only_posting: c.adminOnlyPosting ?? false,
     notify_admin_on_post: c.notifyAdminOnPost ?? false,
+    focus_hidden: c.focusHidden ?? false,
     level: c.parentId == null ? 1 : 2,
   };
 }
@@ -138,6 +141,7 @@ export async function createCategory(input: CategoryInput): Promise<ServiceResul
       sortOrder: input.sortOrder ?? 0,
       isActive: input.isActive ?? true,
       excludeFromAll: input.excludeFromAll ?? false,
+      focusHidden: input.focusHidden ?? false,
       adminOnlyPosting: input.adminOnlyPosting ?? false,
       notifyAdminOnPost: input.notifyAdminOnPost ?? false,
       createdAt: nowForDb(),
@@ -186,6 +190,7 @@ export async function updateCategory(
   if (input.excludeFromAll !== undefined) data.excludeFromAll = input.excludeFromAll;
   if (input.adminOnlyPosting !== undefined) data.adminOnlyPosting = input.adminOnlyPosting;
   if (input.notifyAdminOnPost !== undefined) data.notifyAdminOnPost = input.notifyAdminOnPost;
+  if (input.focusHidden !== undefined) data.focusHidden = input.focusHidden;
 
   if (input.parentId !== undefined) {
     const parentCheck = await validateParent(input.parentId, id);

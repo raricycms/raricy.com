@@ -86,7 +86,15 @@ describe('createCategory 校验', () => {
     expect(r.data.excludeFromAll).toBe(false);
     expect(r.data.adminOnlyPosting).toBe(false);
     expect(r.data.notifyAdminOnPost).toBe(false);
+    expect(r.data.focusHidden).toBe(false);
     expect(r.data.sortOrder).toBe(0);
+  });
+
+  it('合法创建：可显式设置 focusHidden=true', async () => {
+    const r = await createCategory({ name: '水区', slug: 'focus-water', focusHidden: true });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.data.focusHidden).toBe(true);
   });
 
   it('合法创建：父栏目下的二级栏目', async () => {
@@ -95,6 +103,25 @@ describe('createCategory 校验', () => {
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.data.parentId).toBe(root.id);
+  });
+});
+
+describe('updateCategory focusHidden 开关', () => {
+  it('开 → 关 往返可落库', async () => {
+    const c = await makeCategory();
+    const on = await updateCategory(c.id, { focusHidden: true });
+    expect(on.ok).toBe(true);
+    expect((await prisma.category.findUnique({ where: { id: c.id } }))?.focusHidden).toBe(true);
+    const off = await updateCategory(c.id, { focusHidden: false });
+    expect(off.ok).toBe(true);
+    expect((await prisma.category.findUnique({ where: { id: c.id } }))?.focusHidden).toBe(false);
+  });
+
+  it('不传 focusHidden 时保持原值（缺省分支）', async () => {
+    const c = await makeCategory({ focusHidden: true });
+    const r = await updateCategory(c.id, { name: '只改名' });
+    expect(r.ok).toBe(true);
+    expect((await prisma.category.findUnique({ where: { id: c.id } }))?.focusHidden).toBe(true);
   });
 });
 
@@ -280,6 +307,7 @@ describe('listCategoriesTree / categoryToDict', () => {
       exclude_from_all: true,
       admin_only_posting: false,
       notify_admin_on_post: false,
+      focus_hidden: false,
       level: 1,
     });
   });

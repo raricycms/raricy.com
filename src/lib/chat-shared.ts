@@ -10,6 +10,8 @@
 export const CHAT_LOBBY_ID = 'lobby';
 export const CHAT_LOBBY_TITLE = '聊天大区';
 export const CHAT_DELETED_TEXT = '[该消息已删除]';
+// 专注模式禁用文案（聊天场景别名）：单一来源在 focus-mode.ts，聊天侧保留语义化名字
+export { FOCUS_MODE_BLOCKED_TITLE as CHAT_FOCUS_BLOCKED_TITLE } from './focus-mode';
 
 export interface ChatAuthorDTO {
   id: string;
@@ -55,6 +57,8 @@ export interface ChatChannelDTO {
     author_name: string | null;
     created_at: string | null;
   } | null;
+  /** 专注模式下该频道不可进入（当前仅大区）：行保留但禁用、无预览、无未读。 */
+  disabled?: boolean;
 }
 
 /** 发起私聊弹窗的用户搜索项。 */

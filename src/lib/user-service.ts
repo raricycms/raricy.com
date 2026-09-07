@@ -324,6 +324,8 @@ export interface ProfilePatch {
   notifyAdmin?: boolean;
   showRecentBlogs?: boolean;
   showRecentComments?: boolean;
+  /** 专注模式（账号级浏览偏好，见 schema User.focusMode） */
+  focusMode?: boolean;
 }
 
 export interface UpdateResult {
@@ -352,6 +354,7 @@ export async function updateOwnProfile(userId: string, patch: ProfilePatch): Pro
   if (typeof patch.showRecentComments === 'boolean') {
     data.showRecentComments = patch.showRecentComments;
   }
+  if (typeof patch.focusMode === 'boolean') data.focusMode = patch.focusMode;
 
   if (Object.keys(data).length === 0) {
     return { ok: false, code: 400, message: '没有可更新的字段' };
@@ -374,6 +377,7 @@ export async function updateOwnProfile(userId: string, patch: ProfilePatch): Pro
       notifyAdmin: true,
       showRecentBlogs: true,
       showRecentComments: true,
+      focusMode: true,
     },
   });
 
@@ -389,6 +393,7 @@ export async function updateOwnProfile(userId: string, patch: ProfilePatch): Pro
       notifyAdmin: updated.notifyAdmin ?? true,
       showRecentBlogs: updated.showRecentBlogs,
       showRecentComments: updated.showRecentComments,
+      focusMode: updated.focusMode,
     },
   };
 }

@@ -26,6 +26,7 @@ import {
   listMessages,
   sendMessage,
   markChannelRead,
+  canAccessChannel,
   softDeleteMessage,
   searchCoreUsers,
 } from '@/lib/chat-service';
@@ -398,5 +399,98 @@ describe('搜索可私聊用户', () => {
     const row = await ensureLobbyMembership(a.id);
     expect(typeof row.lastReadMessageId).toBe('number');
     expect(await prisma.chatChannel.count({ where: { id: CHAT_LOBBY_ID } })).toBe(1);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 专注模式：大区禁用（focusMode 参数）
+//    语义：侧栏大区行保留但 disabled（无预览/未读/不懒建成员基线）；
+//    发消息/拉消息对 lobby 一律 forbidden；私聊全程不受影响。
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('专注模式：聊天大区禁用', () => {
+  it('listChannelsForUser(focus)：lobby 行 disabled 且无预览无未读，不建成员行', async () => {
+    const a = await makeUser({ role: 'core' });
+    // 先在大区留一条历史消息（focus 前）
+    await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: a.id, content: '历史消息' });
+
+    const channels = await listChannelsForUser(a.id, true);
+    const lobby = channels.find((c) => c.id === CHAT_LOBBY_ID);
+    expect(lobby?.disabled).toBe(true);
+    expect(lobby?.last_message).toBeNull();
+    expect(lobby?.unread_count).toBe(0);
+    expect(lobby?.title).toBe('聊天大区');
+    // 置顶语义保持（_order 已剥掉，直接断言它是第一行）
+    expect(channels[0]?.id).toBe(CHAT_LOBBY_ID);
+    // focus 期间不得把成员基线建出来（否则关掉 focus 后历史全变未读）
+    expect(await prisma.chatMember.count({ where: { userId: a.id } })).toBe(0);
+
+    // 对照：不传 focus 时预览照常
+    const plain = await listChannelsForUser(a.id);
+    const plainLobby = plain.find((c) => c.id === CHAT_LOBBY_ID);
+    expect(plainLobby?.last_message?.content).toBe('历史消息');
+  });
+
+  it('focus 用户给 lobby 发消息 → forbidden + 专注文案；私聊照发', async () => {
+    const a = await makeUser({ role: 'core' });
+    const b = await makeUser({ role: 'core' });
+
+    const blocked = await sendMessage({
+      channelId: CHAT_LOBBY_ID,
+      authorId: a.id,
+      content: '想在大区发言',
+      focusMode: true,
+    });
+    expect(blocked.ok).toBe(false);
+    if (!blocked.ok) {
+      expect(blocked.error).toBe('forbidden');
+      expect(blocked.message).toBe('已开启专注模式，无法使用该功能');
+    }
+
+    const direct = await startDirectChannel(a.id, b.id);
+    expect(direct.ok).toBe(true);
+    const did = (direct as { channel: { id: string } }).channel.id;
+    const ok = await sendMessage({
+      channelId: did,
+      authorId: a.id,
+      content: '私聊不受影响',
+      focusMode: true,
+    });
+    expect(ok.ok).toBe(true);
+  });
+
+  it('focus 用户拉 lobby 消息 → forbidden；markRead 静默 0；direct 不受影响', async () => {
+    const a = await makeUser({ role: 'core' });
+    const b = await makeUser({ role: 'core' });
+    await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: a.id, content: '历史' });
+
+    const listRes = await listMessages(CHAT_LOBBY_ID, a.id, {}, true);
+    expect(listRes.ok).toBe(false);
+    if (!listRes.ok) {
+      expect(listRes.error).toBe('forbidden');
+      expect(listRes.message).toBe('已开启专注模式，无法使用该功能');
+    }
+
+    const read = await markChannelRead(CHAT_LOBBY_ID, a.id, undefined, true);
+    expect(read).toBe(0);
+    expect(await prisma.chatMember.count({ where: { userId: a.id } })).toBe(0);
+
+    const direct = await startDirectChannel(a.id, b.id);
+    const did = (direct as { channel: { id: string } }).channel.id;
+    const okList = await listMessages(did, a.id, {}, true);
+    expect(okList.ok).toBe(true);
+  });
+
+  it('canAccessChannel 单点：focus 对大区 false、对私聊 true', async () => {
+    const a = await makeUser({ role: 'core' });
+    const b = await makeUser({ role: 'core' });
+    const lobbyAccess = await canAccessChannel(CHAT_LOBBY_ID, a.id, true);
+    expect(lobbyAccess.allowed).toBe(false);
+    const lobbyPlain = await canAccessChannel(CHAT_LOBBY_ID, a.id);
+    expect(lobbyPlain.allowed).toBe(true);
+    const direct = await startDirectChannel(a.id, b.id);
+    const did = (direct as { channel: { id: string } }).channel.id;
+    const directAccess = await canAccessChannel(did, a.id, true);
+    expect(directAccess.allowed).toBe(true);
   });
 });

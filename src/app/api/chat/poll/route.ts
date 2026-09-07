@@ -12,11 +12,12 @@ export async function GET(req: Request) {
   const channelId = url.searchParams.get('channel') ?? '';
   const after = parsePosInt(url.searchParams.get('after'));
 
-  const channels = await listChannelsForUser(user.id);
+  // 专注模式：大区在侧栏里以禁用行存在（无预览无未读），活动频道若是大区则拉不到消息
+  const channels = await listChannelsForUser(user.id, user.focusMode);
 
   let messages: ChatMessageDTO[] = [];
   if (channelId && after != null) {
-    const res = await listMessages(channelId, user.id, { after });
+    const res = await listMessages(channelId, user.id, { after }, user.focusMode);
     if (res.ok) messages = res.messages;
   }
 

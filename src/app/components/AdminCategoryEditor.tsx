@@ -22,6 +22,7 @@ export interface CategoryNode {
   exclude_from_all: boolean;
   admin_only_posting: boolean;
   notify_admin_on_post: boolean;
+  focus_hidden: boolean;
   level: number;
   blog_count: number;
   child_count: number;
@@ -53,6 +54,7 @@ interface FormState {
   excludeFromAll: boolean;
   adminOnlyPosting: boolean;
   notifyAdminOnPost: boolean;
+  focusHidden: boolean;
 }
 
 const emptyForm = (parentId = ''): FormState => ({
@@ -68,6 +70,7 @@ const emptyForm = (parentId = ''): FormState => ({
   excludeFromAll: false,
   adminOnlyPosting: false,
   notifyAdminOnPost: false,
+  focusHidden: false,
 });
 
 function toForm(c: CategoryNode): FormState {
@@ -84,6 +87,7 @@ function toForm(c: CategoryNode): FormState {
     excludeFromAll: c.exclude_from_all,
     adminOnlyPosting: c.admin_only_posting,
     notifyAdminOnPost: c.notify_admin_on_post,
+    focusHidden: c.focus_hidden,
   };
 }
 
@@ -128,6 +132,7 @@ export default function AdminCategoryEditor({ initialCategories, initialParents 
         excludeFromAll: form.excludeFromAll,
         adminOnlyPosting: form.adminOnlyPosting,
         notifyAdminOnPost: form.notifyAdminOnPost,
+        focusHidden: form.focusHidden,
       };
       const url = form.id == null ? '/api/admin/categories' : `/api/admin/categories/${form.id}`;
       const method = form.id == null ? 'POST' : 'PATCH';
@@ -210,6 +215,7 @@ export default function AdminCategoryEditor({ initialCategories, initialParents 
     if (c.exclude_from_all) tags.push('不进全部');
     if (c.admin_only_posting) tags.push('仅管理员发文');
     if (c.notify_admin_on_post) tags.push('发文通知管理员');
+    if (c.focus_hidden) tags.push('专注隐藏');
     return tags;
   };
 
@@ -389,7 +395,7 @@ export default function AdminCategoryEditor({ initialCategories, initialParents 
                   />
                   仅管理员可发文
                 </label>
-                <label className="d-flex align-items-center gap-2">
+                <label className="d-flex align-items-center gap-2 mb-2">
                   <input
                     type="checkbox"
                     className="form-check-input"
@@ -397,6 +403,15 @@ export default function AdminCategoryEditor({ initialCategories, initialParents 
                     onChange={(e) => setForm({ ...form, notifyAdminOnPost: e.target.checked })}
                   />
                   发文时通知管理员
+                </label>
+                <label className="d-flex align-items-center gap-2">
+                  <input
+                    type="checkbox"
+                    className="form-check-input"
+                    checked={form.focusHidden}
+                    onChange={(e) => setForm({ ...form, focusHidden: e.target.checked })}
+                  />
+                  专注模式隐藏（开启专注模式的用户看不到此栏目与子栏目）
                 </label>
 
                 {error && <p className="text-danger mt-3" style={{ fontSize: '.85rem' }}>{error}</p>}
