@@ -17,7 +17,11 @@ const TOOLS = ['url', 'html', 'qp', 'hash', 'aes'] as const;
 test('工具菜单不含指向老站的工具链接（Flask 删掉后不能 404）', async ({ page }) => {
   await page.goto('/tool');
 
-  const hrefs = await page.locator('a.tool').evaluateAll((as) =>
+  // 编码/加密工具默认收在「更多开发者工具」手风琴里 —— 走真实路径先展开，
+  // 否则菜单里只数得到站务类卡片（曾有旧版 .tool 链接类名，现行是 tool-new-card）
+  await page.getByRole('button', { name: '更多开发者工具' }).click();
+
+  const hrefs = await page.locator('a.tool-new-card').evaluateAll((as) =>
     as.map((a) => (a as HTMLAnchorElement).getAttribute('href') ?? '')
   );
   expect(hrefs.length).toBeGreaterThan(0);

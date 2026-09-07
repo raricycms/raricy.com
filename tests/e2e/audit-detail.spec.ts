@@ -18,8 +18,18 @@ import { SEED_USERS, SEED_LOG } from './seed';
 import { loginViaApi, registerFreshUser } from './helpers';
 
 test.describe('操作详情页', () => {
-  test('未登录访问 → 403（与 /audit 列表一致的门控）', async ({ request }) => {
-    const res = await request.get(`/audit/${SEED_LOG.id}`);
+  test('未登录访问 → 302 去登录页（与 /audit 列表一致的门控）', async ({ request }) => {
+    // guard.requireCoreUser 的语义：未登录 → redirect(/login?next=…) 让用户登录后
+    // 再回来；403 留给「已登录但权限不够」。maxRedirects:0 才能看到这一跳本身，
+    // 默认会跟着重定向落到登录页（200），测不到门控。Next 的 redirect() 默认发 307。
+    const res = await request.get(`/audit/${SEED_LOG.id}`, { maxRedirects: 0 });
+    expect(res.status()).toBe(307);
+    expect(res.headers().location ?? '').toContain('/login?next=');
+  });
+
+  test('已登录普通用户（非 core）访问 → 403（原地渲染，非跳转）', async ({ page }) => {
+    await loginViaApi(page, SEED_USERS.plain.username);
+    const res = await page.request.get(`/audit/${SEED_LOG.id}`);
     expect(res.status()).toBe(403);
   });
 

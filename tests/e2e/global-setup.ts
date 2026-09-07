@@ -82,6 +82,25 @@ function acquireLock() {
 }
 
 export default async function globalSetup() {
+  // vditor 静态资源是 postinstall 的派生产物（.gitignore 掉，不入库）：
+  // 本机一旦被清过或跳过 install 钩子，上传页的编辑器起不来，
+  // vditor-theme.spec 会成片挂（.vditor 类永不出现）。先自愈再建库。
+  const vditorCss = path.join(
+    PROJECT_ROOT,
+    'public',
+    'static',
+    'vditor',
+    'dist',
+    'css',
+    'content-theme'
+  );
+  if (!fs.existsSync(vditorCss)) {
+    execFileSync(process.execPath, [path.join(PROJECT_ROOT, 'scripts', 'copy-vditor-assets.mjs')], {
+      cwd: PROJECT_ROOT,
+      stdio: 'pipe',
+    });
+  }
+
   assertTestDb(E2E_DB);
   fs.mkdirSync(path.dirname(E2E_DB), { recursive: true });
   acquireLock();
