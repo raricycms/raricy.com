@@ -592,9 +592,6 @@ export default function ChatApp({
                   个人资料 →
                 </Link>
               )}
-              {activeChannel.kind === 'lobby' && (
-                <span className="chat-main__subtitle">核心用户及以上 · 所有人可见</span>
-              )}
             </header>
 
             <div className="chat-list" ref={listRef}>

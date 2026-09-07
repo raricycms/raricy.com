@@ -262,12 +262,6 @@
   text-overflow: ellipsis;
 }
 
-.chat-main__subtitle {
-  font-size: 0.75rem;
-  color: var(--color-text-secondary);
-  white-space: nowrap;
-}
-
 .chat-main__profile-link {
   margin-left: auto;
   font-size: 0.8rem;
@@ -745,8 +739,5 @@
   }
   .chat-msg__image {
     max-width: 100%;
-  }
-  .chat-main__subtitle {
-    display: none;
   }
 }
