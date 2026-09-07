@@ -244,7 +244,7 @@ export async function toggleLike(blogId: string, userId: string) {
 // 对齐 BlogValidator 常量
 export const BLOG_TITLE_MAX = 30; // MAX_TITLE_LENGTH
 export const BLOG_DESCRIPTION_MAX = 100; // MAX_DESCRIPTION_LENGTH
-export const BLOG_CONTENT_MAX = 200000; // MAX_CONTENT_LENGTH（服务端强校验；前端另有 250000 的软提示）
+export const BLOG_CONTENT_MAX = 250000; // 正文上限（前端 BlogForm 同值校验，放宽自 200000）
 export const BLOG_DAILY_LIMIT = 20; // upload_blog 视图里的每日发文上限
 
 export interface ValidatedBlogData {

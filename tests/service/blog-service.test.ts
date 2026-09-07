@@ -72,11 +72,11 @@ beforeEach(async () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('validateBlogData / 常量与 Flask 对齐', () => {
-  it('长度上限常量与 BlogValidator 一致（30 / 100 / 200000）', () => {
+  it('长度上限常量（30 / 100 / 250000）', () => {
     // 这三个数字前端也在用（字数计数器），漂了就会出现「前端说没超、后端说超了」
     expect(BLOG_TITLE_MAX, 'MAX_TITLE_LENGTH').toBe(30);
     expect(BLOG_DESCRIPTION_MAX, 'MAX_DESCRIPTION_LENGTH').toBe(100);
-    expect(BLOG_CONTENT_MAX, 'MAX_CONTENT_LENGTH').toBe(200000);
+    expect(BLOG_CONTENT_MAX, 'MAX_CONTENT_LENGTH').toBe(250000);
   });
 });
 
@@ -160,12 +160,12 @@ describe('validateBlogData / 长度上限（边界逐字对齐）', () => {
     expect((bad as { message: string }).message).toBe('描述不能超过100个字符');
   });
 
-  it('正文恰好 200000 字 → 通过；200001 字 → 「内容不能超过200000个字符」', async () => {
-    const ok = await validateBlogData(baseInput({ content: 'c'.repeat(200000) }));
+  it('正文恰好 250000 字 → 通过；250001 字 → 「内容不能超过250000个字符」', async () => {
+    const ok = await validateBlogData(baseInput({ content: 'c'.repeat(250000) }));
     expect(ok.ok).toBe(true);
 
-    const bad = await validateBlogData(baseInput({ content: 'c'.repeat(200001) }));
-    expect((bad as { message: string }).message).toBe('内容不能超过200000个字符');
+    const bad = await validateBlogData(baseInput({ content: 'c'.repeat(250001) }));
+    expect((bad as { message: string }).message).toBe('内容不能超过250000个字符');
   });
 
   it('中文按字符数而非字节数计（30 个汉字应通过）', async () => {
