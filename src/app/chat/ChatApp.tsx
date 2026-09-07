@@ -18,7 +18,9 @@ function toast(message: string, type: string) {
 }
 
 const POLL_MS = 4000;
-const IMAGE_ACCEPT = 'image/png,image/jpeg,image/gif,image/webp,image/svg+xml';
+// SVG 不在内联展示白名单：raw 路由对 SVG 强制 Content-Disposition: attachment
+// （防内联脚本执行的 XSS 设计），<img> 内联渲染必然失败，聊天场景只收位图。
+const IMAGE_ACCEPT = 'image/png,image/jpeg,image/gif,image/webp';
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 
 type ApiEnvelope = { code: number; message: string; [k: string]: unknown };
@@ -429,7 +431,7 @@ export default function ChatApp({
         return;
       }
       if (!IMAGE_ACCEPT.split(',').includes(file.type)) {
-        toast('仅支持 PNG / JPEG / GIF / WebP / SVG', 'error');
+        toast('仅支持 PNG / JPEG / GIF / WebP', 'error');
         return;
       }
       setUploadingImage(true);
