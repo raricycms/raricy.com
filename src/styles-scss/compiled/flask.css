@@ -3314,6 +3314,21 @@ a:hover {
 }
 
 /* 响应式设计 */
+/* 桌面端：排序条不再占右列顶部（否则首篇博客比目录矮一截），
+   浮到 .blog-layout 上方的留白带（hero 底 padding 40 + layout margin 30 ≈ 70px，
+   top:-52 + 高 ~33 刚好落在带内），右列首篇上边界与目录齐平。 */
+@media (min-width: 993px) {
+  .blog-content {
+    position: relative;
+  }
+  .blog-sort {
+    position: absolute;
+    top: -52px;
+    right: 0;
+    margin: 0;
+    z-index: 3;
+  }
+}
 @media (max-width: 992px) {
   .blog-layout {
     flex-direction: column;
