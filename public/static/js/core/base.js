@@ -240,6 +240,22 @@ window.refreshNotificationCount = function() {
     updateNotificationCount();
 };
 
+// 通知未读数心跳：每 20s 轮询一次顶栏红点数字。
+// 为什么需要它：Next 客户端路由切换（soft navigation）不会重载本文件、布局也
+// 不重挂载，若只在整页加载时拉一次，跨页（如聊天来了新消息）后数字会一直旧。
+// 切页那一下的即时刷新由根布局的 NotificationHeartbeat 组件负责（它监听不到
+// 整页加载，两者互补）；本定时器是持续兜底。
+const NOTIFY_HEARTBEAT_KEY = '__raricyNotifyHeartbeat';
+
+function startNotificationHeartbeat() {
+    // 未登录（无 meta）或页面没有徽标（未登录态 Navbar 不渲染）时无意义，不空轮询
+    if (!window.isUserAuthenticated || !window.notificationApiUrl) return;
+    if (!document.getElementById('notificationBadge')) return;
+    // 幂等：initSiteChrome 可能重复执行（HMR / 测试反复 new Function），先清上一轮
+    if (window[NOTIFY_HEARTBEAT_KEY]) clearInterval(window[NOTIFY_HEARTBEAT_KEY]);
+    window[NOTIFY_HEARTBEAT_KEY] = setInterval(updateNotificationCount, 20 * 1000);
+}
+
 // 自定义文件选择器：接管所有可见的原生 input[type=file]
 // （保留原元素与其 id/name/事件，仅视觉隐藏，页面已有 JS 不受影响）
 function enhanceFileInputs() {
@@ -322,6 +338,7 @@ function initSiteChrome() {
 
     updateNotificationCount();
     updateCheckinIndicator();
+    startNotificationHeartbeat();
     enhanceFileInputs();
 
     // 顶栏折叠

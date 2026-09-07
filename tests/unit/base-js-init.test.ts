@@ -12,7 +12,7 @@
 // 这个测试的关键在于：**必须在 DOM 已就绪之后再执行 base.js**，
 // 才能复现 Next 的加载时序。若在 loading 阶段执行，bug 不会显现。
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -203,6 +203,71 @@ describe('回归：登录后 Navbar 重渲染（user: null → user），新插�
     document.body.click();
     expect(dropdown.classList.contains('open'), '外部点击未关闭新插入的下拉').toBe(false);
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
+  });
+});
+
+describe('通知未读数心跳：登录态下每 20s 自动轮询一次', () => {
+  it('✅ 有徽标的登录页：每 20s 触发一次计数刷新；重复执行 base.js 不叠加定时器', () => {
+    vi.useFakeTimers();
+    try {
+      // 登录态 Navbar 会渲染 #notificationBadge；未登录不渲染 → 心跳不应启动
+      document.body.innerHTML = `
+        <meta name="user-authenticated" content="true">
+        <meta name="notification-api-url" content="/api/notifications/count">
+        <meta name="checkin-api-url" content="/api/checkin">
+        <span class="notification-badge" id="notificationBadge"></span>
+      `;
+      let fetches = 0;
+      (globalThis as any).fetch = () => {
+        fetches += 1;
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ code: 200, count: 0 }) });
+      };
+
+      // 首轮 init：updateNotificationCount + updateCheckinIndicator 各一次即时刷新
+      new Function(BASE_JS)();
+      const baseline = fetches;
+      expect(baseline).toBeGreaterThanOrEqual(2);
+
+      // 20s 后心跳 tick —— 恰好 +1（通知侧），签到无定时器
+      vi.advanceTimersByTime(20 * 1000);
+      expect(fetches, '20s 后未自动刷新通知数').toBe(baseline + 1);
+
+      // 模拟 HMR / 测试反复执行：initSiteChrome 会重跑 —— 旧定时器必须被清掉再开，
+      // 否则每重跑一次就多一条 20s 轮询，请求量随时间线性叠加
+      new Function(BASE_JS)();
+      const afterReinit = fetches; // = baseline + 1（心跳） + 2（重 init 的即时刷新）
+      expect(afterReinit).toBe(baseline + 3);
+
+      vi.advanceTimersByTime(20 * 1000);
+      expect(fetches, '重复 init 后 20s 触发了多次刷新 —— 定时器叠加了').toBe(afterReinit + 1);
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
+  });
+
+  it('✅ 页面没有徽标（未登录 Navbar）时不启动心跳，不产生空轮询', () => {
+    vi.useFakeTimers();
+    try {
+      document.body.innerHTML = `
+        <meta name="user-authenticated" content="false">
+        <nav class="site-navbar">
+          <a class="site-login-btn" href="/login">登录</a>
+        </nav>
+      `;
+      let fetches = 0;
+      (globalThis as any).fetch = () => {
+        fetches += 1;
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ code: 200, count: 0 }) });
+      };
+      new Function(BASE_JS)();
+      const baseline = fetches;
+      vi.advanceTimersByTime(60 * 1000);
+      expect(fetches).toBe(baseline);
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
   });
 });
 
