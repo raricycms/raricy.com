@@ -16,7 +16,14 @@ import path from 'node:path';
 import { PrismaClient } from '@prisma/client';
 import { hashPassword } from '../../src/lib/password';
 import { nowForDb } from '../../src/lib/db-time';
-import { SEED_PASSWORD, SEED_USERS, SEED_CATEGORY, SEED_BLOG, SEED_LOG } from './seed';
+import {
+  SEED_PASSWORD,
+  SEED_USERS,
+  SEED_CATEGORY,
+  SEED_BLOG,
+  SEED_BLOG2,
+  SEED_LOG,
+} from './seed';
 
 // 库路径由 playwright.config.ts 生成并经 env 传来（每轮唯一，原因见那边的注释）。
 // 不在这里自己拼：两处各算各的就会算出不同的名字，webServer 用一个、globalSetup 建另一个，
@@ -140,6 +147,11 @@ export default async function globalSetup() {
       },
     });
 
+    // 两篇种子文章的时间刻意错位，供排序用例断言「两种排序序相反」：
+    //   SEED_BLOG   发布新（now）、更新早（now - 1h）
+    //   SEED_BLOG2  发布早（now - 2d）、更新新（now）
+    // 按发布时间 → [SEED_BLOG, SEED_BLOG2]；按更新时间 → 正好反过来。
+    const now = nowForDb();
     await prisma.blog.create({
       data: {
         id: SEED_BLOG.id,
@@ -148,11 +160,29 @@ export default async function globalSetup() {
         description: SEED_BLOG.description,
         categoryId: category.id,
         ignore: false,
-        createdAt: nowForDb(),
+        createdAt: now,
       },
     });
     await prisma.blogContent.create({
-      data: { blogId: SEED_BLOG.id, content: SEED_BLOG.content, updatedAt: nowForDb() },
+      data: {
+        blogId: SEED_BLOG.id,
+        content: SEED_BLOG.content,
+        updatedAt: new Date(now.getTime() - 3600_000),
+      },
+    });
+    await prisma.blog.create({
+      data: {
+        id: SEED_BLOG2.id,
+        authorId: SEED_USERS.core.id,
+        title: SEED_BLOG2.title,
+        description: SEED_BLOG2.description,
+        categoryId: category.id,
+        ignore: false,
+        createdAt: new Date(now.getTime() - 2 * 86400_000),
+      },
+    });
+    await prisma.blogContent.create({
+      data: { blogId: SEED_BLOG2.id, content: SEED_BLOG2.content, updatedAt: now },
     });
 
     // 一条公示日志 —— /audit 列表页与 /audit/[id] 详情页的用例都靠它。

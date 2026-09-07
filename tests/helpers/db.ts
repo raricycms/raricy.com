@@ -152,6 +152,7 @@ export async function makeBlog(opts: Partial<{
   categoryId: number | null;
   ignore: boolean;
   createdAt: Date;
+  contentUpdatedAt: Date;
 }> = {}) {
   const id = opts.id ?? uid();
   const author = opts.authorId ?? (await makeUser()).id;
@@ -167,7 +168,11 @@ export async function makeBlog(opts: Partial<{
     },
   });
   await prisma.blogContent.create({
-    data: { blogId: id, content: opts.content ?? '# hello', updatedAt: nowForDb() },
+    data: {
+      blogId: id,
+      content: opts.content ?? '# hello',
+      updatedAt: opts.contentUpdatedAt ?? nowForDb(),
+    },
   });
   return blog;
 }

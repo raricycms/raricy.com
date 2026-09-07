@@ -11,19 +11,28 @@ import { ymdhms } from './format';
 import { rateLimit, RULES } from './rate-limit';
 import type { Prisma } from '@prisma/client';
 
+export type BlogSort = 'created' | 'updated';
+
+/** 列表排序参数解析：只认显式 'updated'，其余（缺省/非法）一律回退 'created'（默认按发布时间）。 */
+export function parseSortParam(raw: unknown): BlogSort {
+  return raw === 'updated' ? 'updated' : 'created';
+}
+
 export interface ListParams {
   page?: number;
   perPage?: number;
   categorySlug?: string | null;
   featured?: boolean;
   search?: string | null;
+  sort?: BlogSort;
 }
 
-const DEFAULT_PER_PAGE = 10;
+const DEFAULT_PER_PAGE = 100;
 
 export async function listBlogs(params: ListParams) {
   const page = Math.max(1, params.page ?? 1);
-  const perPage = Math.min(50, Math.max(1, params.perPage ?? DEFAULT_PER_PAGE));
+  // 上限留到默认值的两倍（内部调用/未来扩展有余量），仍防「?perPage=100000 拖库」
+  const perPage = Math.min(200, Math.max(1, params.perPage ?? DEFAULT_PER_PAGE));
 
   const where: Prisma.BlogWhereInput = { ignore: false };
 
@@ -85,11 +94,19 @@ export async function listBlogs(params: ListParams) {
     where.AND = Array.isArray(where.AND) ? [...where.AND, searchOr] : [searchOr];
   }
 
+  // 排序：created=发布时间（默认）；updated=最后编辑时间（BlogContent.updatedAt，1:1 relation
+  // orderBy，SQLite 对 NULL 的 DESC 语义是排最后 —— content 行缺失的文章退到最后，属防御分支，
+  // 正常写入路径 createBlog/updateBlog 保证行必在）。次键 createdAt 锁同秒 updatedAt 的稳定性。
+  const orderBy: Prisma.BlogOrderByWithRelationInput[] =
+    params.sort === 'updated'
+      ? [{ content: { updatedAt: 'desc' } }, { createdAt: 'desc' }]
+      : [{ createdAt: 'desc' }];
+
   const [total, blogs] = await Promise.all([
     prisma.blog.count({ where }),
     prisma.blog.findMany({
       where,
-      orderBy: { createdAt: 'desc' },
+      orderBy,
       skip: (page - 1) * perPage,
       take: perPage,
       select: {

@@ -20,6 +20,7 @@ import {
   createBlog,
   updateBlog,
   listBlogs,
+  parseSortParam,
   toggleLike,
   BLOG_TITLE_MAX,
   BLOG_DESCRIPTION_MAX,
@@ -691,15 +692,114 @@ describe('listBlogs / 排序与分页', () => {
     expect(r.hasNext).toBe(false);
   });
 
-  it('page < 1 被夹到 1；perPage 夹在 [1, 50]', async () => {
+  it('page < 1 被夹到 1；perPage 夹在 [1, 200]', async () => {
     // 防「?perPage=100000 拖库」和「?page=0 负 skip 报错」
     const u = await makeUser();
     await seed(3, u.id);
     expect((await listBlogs({ page: 0 })).page).toBe(1);
     expect((await listBlogs({ page: -5 })).page).toBe(1);
-    expect((await listBlogs({ perPage: 9999 })).perPage).toBe(50);
+    expect((await listBlogs({ perPage: 9999 })).perPage).toBe(200);
     expect((await listBlogs({ perPage: 0 })).perPage).toBe(1);
-    expect((await listBlogs({})).perPage, '默认每页 10').toBe(10);
+    expect((await listBlogs({})).perPage, '默认每页 100').toBe(100);
+  });
+});
+
+describe('listBlogs / sort 参数（created=发布时间 / updated=最后编辑时间）', () => {
+  /**
+   * 造 3 篇文章，让「发布时间序」与「更新时间序」互相翻转：
+   *   u0：发布最早、更新最晚（default 序排最后、updated 序排最前）
+   *   u1：发布居中、更新居中
+   *   u2：发布最晚、更新最早（default 序排最前、updated 序排最后）
+   */
+  async function seedReversed(authorId: string) {
+    await makeBlog({
+      authorId,
+      title: 'u0',
+      createdAt: new Date(2026, 0, 1, 0, 0, 0),
+      contentUpdatedAt: new Date(2026, 2, 1, 0, 0, 0),
+    });
+    await makeBlog({
+      authorId,
+      title: 'u1',
+      createdAt: new Date(2026, 1, 1, 0, 0, 0),
+      contentUpdatedAt: new Date(2026, 1, 1, 0, 0, 0),
+    });
+    await makeBlog({
+      authorId,
+      title: 'u2',
+      createdAt: new Date(2026, 2, 1, 0, 0, 0),
+      contentUpdatedAt: new Date(2026, 0, 1, 0, 0, 0),
+    });
+  }
+
+  it('默认（不传/created）仍按 createdAt 倒序，行为与加功能前一致', async () => {
+    const u = await makeUser();
+    await seedReversed(u.id);
+    expect((await listBlogs({})).blogs.map((b) => b.title), '不传').toEqual(['u2', 'u1', 'u0']);
+    expect((await listBlogs({ sort: 'created' })).blogs.map((b) => b.title), '显式 created').toEqual([
+      'u2',
+      'u1',
+      'u0',
+    ]);
+  });
+
+  it('sort=updated 按 BlogContent.updatedAt 倒序（可跨 created 序翻转）', async () => {
+    const u = await makeUser();
+    await seedReversed(u.id);
+    const r = await listBlogs({ sort: 'updated' });
+    expect(r.blogs.map((b) => b.title)).toEqual(['u0', 'u1', 'u2']);
+  });
+
+  it('updated 排序与分页叠加：第 2 页是第 2 段切片', async () => {
+    const u = await makeUser();
+    await seedReversed(u.id);
+    const p2 = await listBlogs({ sort: 'updated', page: 2, perPage: 2 });
+    expect(p2.blogs.map((b) => b.title)).toEqual(['u2']);
+    expect(p2.total).toBe(3);
+  });
+
+  it('content 行缺失的文章在 updated 排序下排最后（SQLite DESC 的 NULL 语义，防御分支）', async () => {
+    const u = await makeUser();
+    await makeBlog({
+      authorId: u.id,
+      title: '有content',
+      createdAt: new Date(2026, 0, 1),
+      contentUpdatedAt: new Date(2026, 2, 1),
+    });
+    const missing = await makeBlog({
+      authorId: u.id,
+      title: '缺content',
+      createdAt: new Date(2026, 1, 1),
+      contentUpdatedAt: new Date(2026, 1, 1),
+    });
+    // 模拟异常历史数据：正文行被删 —— 不崩、排最后，而不是被 SQL 静默吞掉
+    await prisma.blogContent.delete({ where: { blogId: missing.id } });
+
+    const r = await listBlogs({ sort: 'updated' });
+    expect(r.blogs.map((b) => b.title)).toEqual(['有content', '缺content']);
+  });
+
+  it('updatedAt 同秒时用 createdAt 作次键，顺序确定不 flaky', async () => {
+    const u = await makeUser();
+    await makeBlog({ authorId: u.id, title: '早发', createdAt: new Date(2026, 0, 1), contentUpdatedAt: new Date(2026, 5, 1, 12, 0, 0) });
+    await makeBlog({ authorId: u.id, title: '晚发', createdAt: new Date(2026, 1, 1), contentUpdatedAt: new Date(2026, 5, 1, 12, 0, 0) });
+    const r = await listBlogs({ sort: 'updated' });
+    expect(r.blogs.map((b) => b.title)).toEqual(['晚发', '早发']);
+  });
+});
+
+describe('parseSortParam / 非法值一律回退 created', () => {
+  it('只认显式 updated', () => {
+    expect(parseSortParam('updated')).toBe('updated');
+  });
+  it('undefined / null / 空串 / created / 任意垃圾值 → created', () => {
+    expect(parseSortParam(undefined)).toBe('created');
+    expect(parseSortParam(null)).toBe('created');
+    expect(parseSortParam('')).toBe('created');
+    expect(parseSortParam('created')).toBe('created');
+    expect(parseSortParam('foo')).toBe('created');
+    expect(parseSortParam('desc')).toBe('created');
+    expect(parseSortParam(123)).toBe('created');
   });
 });
 

@@ -29,6 +29,18 @@ export const SEED_BLOG = {
     `行内公式 $\\int_0^1 x^2 \\, dx = 1/3$ 与化学式 $\\ce{H2O}$ 验证 MathJax 模块化加载。\n`,
 };
 
+/**
+ * 第二篇种子文章 —— 排序用例的参照系。
+ * 时间在 global-setup 里刻意错位：发布早于 SEED_BLOG、更新晚于 SEED_BLOG，
+ * 使「按发布时间」与「按更新时间」两种排序结果正好相反。
+ */
+export const SEED_BLOG2 = {
+  id: 'e2e-blog-0002',
+  title: 'E2E 排序参照文章',
+  description: 'E2E 列表排序用例用的第二篇摘要',
+  content: '# E2E 排序参照\n\n第二篇种子文章，仅用于列表排序断言。\n',
+};
+
 /** 一条公示的管理操作日志 —— /audit 列表与 /audit/[id] 详情页用例的锚点。 */
 export const SEED_LOG = {
   id: 90001,

@@ -11,11 +11,14 @@ export default function SearchForm({
   featured,
   search,
   clearHref,
+  sort,
 }: {
   currentSlug: string | null;
   featured: boolean;
   search: string;
   clearHref: string;
+  /** URL 里显式合法的 sort，非空时随搜索请求带回，保住已选的排序 */
+  sort: string | null;
 }) {
   const router = useRouter();
 
@@ -26,6 +29,7 @@ export default function SearchForm({
       const params = new URLSearchParams();
       if (currentSlug) params.set('category', currentSlug);
       if (featured) params.set('featured', '1');
+      if (sort) params.set('sort', sort);
       const s = params.toString();
       router.push(s ? `/blog?${s}` : '/blog');
     }
@@ -40,6 +44,7 @@ export default function SearchForm({
     >
       {currentSlug && <input type="hidden" name="category" value={currentSlug} />}
       {featured && <input type="hidden" name="featured" value="1" />}
+      {sort && <input type="hidden" name="sort" value={sort} />}
       <input
         type="search"
         name="search"

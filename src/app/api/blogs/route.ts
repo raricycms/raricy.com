@@ -1,5 +1,6 @@
 import {
   listBlogs,
+  parseSortParam,
   validateBlogData,
   countBlogsToday,
   getCategoryPostingMeta,
@@ -12,7 +13,7 @@ import { getCurrentUser, isCoreUser, hasAdminRights, isCurrentlyBanned } from '@
 import { sendNotification } from '@/lib/notification-service';
 import { prisma } from '@/lib/db';
 
-// GET /api/blogs?page=&category=&featured=&search=
+// GET /api/blogs?page=&category=&featured=&search=&sort=
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const result = await listBlogs({
@@ -20,6 +21,7 @@ export async function GET(req: Request) {
     categorySlug: url.searchParams.get('category'),
     featured: url.searchParams.get('featured') === '1',
     search: url.searchParams.get('search'),
+    sort: parseSortParam(url.searchParams.get('sort')),
   });
 
   return Response.json({

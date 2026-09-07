@@ -23,10 +23,13 @@ export default function BlogSidebar({
   categories,
   currentSlug,
   featured,
+  sort,
 }: {
   categories: SidebarCategory[];
   currentSlug: string | null;
   featured: boolean;
+  /** URL 里显式合法的 sort（created|updated），非空时回显到侧栏链接，保住已选的排序 */
+  sort: string | null;
 }) {
   const [mainCollapsed, setMainCollapsed] = useState(false);
   const [collapsedSubs, setCollapsedSubs] = useState<Set<number>>(new Set());
@@ -79,6 +82,10 @@ export default function BlogSidebar({
     });
   }
 
+  /** 侧栏链接回显当前排序：追加 sort 参数（首个参数用 ?，已有参数用 &）。 */
+  const withSort = (href: string) =>
+    sort ? `${href}${href.includes('?') ? '&' : '?'}sort=${sort}` : href;
+
   return (
     <aside className="sidebar">
       <h3
@@ -94,7 +101,7 @@ export default function BlogSidebar({
       >
         <li className="category-item">
           <Link
-            href="/blog"
+            href={withSort('/blog')}
             className={`category-link${!currentSlug && !featured ? ' active' : ''}`}
           >
             <div className="category-content">
@@ -105,7 +112,7 @@ export default function BlogSidebar({
         </li>
         <li className="category-item">
           <Link
-            href="/blog?featured=1"
+            href={withSort('/blog?featured=1')}
             className={`category-link${featured ? ' active' : ''}`}
           >
             <div className="category-content">
@@ -135,7 +142,7 @@ export default function BlogSidebar({
               >
                 <li className="category-item">
                   <Link
-                    href={`/blog?category=${category.slug}`}
+                    href={withSort(`/blog?category=${category.slug}`)}
                     className={`sub-category-link${currentSlug === category.slug ? ' active' : ''}`}
                   >
                     {category.icon && <span className="icon" aria-hidden="true">{category.icon}</span>}
@@ -145,7 +152,7 @@ export default function BlogSidebar({
                 {category.children.map((child) => (
                   <li key={child.id} className="category-item">
                     <Link
-                      href={`/blog?category=${child.slug}`}
+                      href={withSort(`/blog?category=${child.slug}`)}
                       className={`sub-category-link${currentSlug === child.slug ? ' active' : ''}`}
                     >
                       <span>{child.name}</span>
@@ -157,7 +164,7 @@ export default function BlogSidebar({
           ) : (
             <li key={category.id} className="category-item">
               <Link
-                href={`/blog?category=${category.slug}`}
+                href={withSort(`/blog?category=${category.slug}`)}
                 className={`category-link${currentSlug === category.slug ? ' active' : ''}`}
               >
                 <div className="category-content">

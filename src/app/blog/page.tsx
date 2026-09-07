@@ -1,11 +1,14 @@
 import Link from 'next/link';
+import { cookies } from 'next/headers';
 import { requireCoreUser } from '@/lib/guard';
-import { listBlogs } from '@/lib/blog-service';
+import { COOKIE_NAME } from '@/lib/blog-sort-pref';
+import { listBlogs, parseSortParam } from '@/lib/blog-service';
 import { prisma } from '@/lib/db';
 import { categoryFullPath } from '@/lib/format';
 import { getCurrentUser, isCoreUser } from '@/lib/auth';
 import BlogSidebar from './BlogSidebar';
 import SearchForm from './SearchForm';
+import BlogSort from './BlogSort';
 import BlogPageJump from './BlogPageJump';
 
 export const dynamic = 'force-dynamic'; // 依赖查询参数，禁用静态化
@@ -15,6 +18,7 @@ interface SearchParams {
   category?: string;
   featured?: string;
   search?: string;
+  sort?: string;
 }
 
 export default async function BlogListPage({
@@ -26,6 +30,16 @@ export default async function BlogListPage({
   const sp = await searchParams;
   const featured = sp.featured === '1';
   const currentSlug = sp.category ?? null;
+  // 回显只认「URL 里显式且合法」的 sort —— 默认 created 与无参等价，不给 URL 补默认值。
+  const rawSort = sp.sort === 'created' || sp.sort === 'updated' ? sp.sort : null;
+  // 有效排序 = URL 显式合法 > cookie=updated > created(默认)。
+  // cookie 是 BlogSort 客户端写入的偏好镜像（非 httpOnly，见 blog-sort-pref.ts），
+  // 让无参首访 /blog 的首屏就直接按偏好直出，避免「先 created 水合后再翻 updated」。
+  // 列表排序与传给 <BlogSort initialSort> 的值必须同源 —— 同一帧由同一份 SSR 产出，
+  // 任何时刻「按钮高亮」与「列表序」才一致。⚠️ 依赖 force-dynamic + staleTimes.dynamic=0：
+  // 每次软导航都带当前 cookie 重新取数；去掉 force-dynamic 或改 staleTimes 会让此帧变陈旧。
+  const prefUpdated = (await cookies()).get(COOKIE_NAME)?.value === 'updated';
+  const effectiveSort: 'created' | 'updated' = rawSort ?? (prefUpdated ? 'updated' : 'created');
 
   const [result, categories, currentUser] = await Promise.all([
     listBlogs({
@@ -33,6 +47,7 @@ export default async function BlogListPage({
       categorySlug: sp.category ?? null,
       featured,
       search: sp.search ?? null,
+      sort: parseSortParam(effectiveSort),
     }),
     prisma.category.findMany({
       where: { parentId: null, isActive: true },
@@ -59,6 +74,7 @@ export default async function BlogListPage({
     if (sp.category) p.set('category', sp.category);
     if (sp.featured) p.set('featured', sp.featured);
     if (sp.search) p.set('search', sp.search);
+    if (rawSort) p.set('sort', rawSort);
     p.set('page', String(page));
     return `?${p.toString()}`;
   };
@@ -67,6 +83,7 @@ export default async function BlogListPage({
     const p = new URLSearchParams();
     if (sp.category) p.set('category', sp.category);
     if (sp.featured) p.set('featured', sp.featured);
+    if (rawSort) p.set('sort', rawSort);
     const s = p.toString();
     return s ? `/blog?${s}` : '/blog';
   })();
@@ -94,6 +111,7 @@ export default async function BlogListPage({
               featured={featured}
               search={sp.search ?? ''}
               clearHref={clearHref}
+              sort={rawSort}
             />
           </div>
 
@@ -114,9 +132,12 @@ export default async function BlogListPage({
             categories={categories}
             currentSlug={currentSlug}
             featured={featured}
+            sort={rawSort}
           />
 
           <main className="blog-content">
+            {/* 无条件渲染：空结果页也要能执行「LS→cookie 迁移」的恢复 effect */}
+            <BlogSort initialSort={effectiveSort} />
             {result.blogs.length > 0 && (
               <div className="blog-list">
                 {result.blogs.map((b) => (

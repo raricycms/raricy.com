@@ -178,6 +178,14 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
 - 发起私聊弹窗 `.chat-new-modal`：搜索框 `.chat-new-search` + 结果项 `.chat-new-item`（头像 / 昵称 / 角色 / 自己标记）。
 - 响应式：`≤900px` 时侧栏变抽屉，`.chat-page--drawer-open` 展开。
 
+### 6.6 博客列表排序工具栏（`pages/blog/_menu.scss`）
+
+`/blog` 列表顶部的「发布时间 / 更新时间」切换（组件 `src/app/blog/BlogSort.tsx`）：
+
+- `.blog-sort`：容器，列表区顶部右对齐一行（`justify-content: flex-end`），**空结果态也渲染**（要挂载客户端恢复 effect）。
+- `.blog-sort-btn`：胶囊按钮（`border-radius: 999px`），默认 `--color-text-secondary` 字、`--color-background-content` 底；hover 转品牌字；`.active` 态品牌浅色底（`--color-brand-secondary`）+ 品牌字（`--color-brand-primary`）+ 加粗 —— 与侧栏选中态同一套令牌。
+- 可访问性：容器 `role="group"`，按钮 `type="button"` + `aria-pressed`。
+
 ## 7. 图标方案
 
 **不用图标字体 / icon 库**，采用「SVG + CSS mask」：`components/_icons.scss` 定义 `.icon` 基类，用 `mask-image` 引用 `public/static/img/icons/*.svg`，颜色跟随 `currentColor`（即继承 `color`），天然适配亮/暗主题。
