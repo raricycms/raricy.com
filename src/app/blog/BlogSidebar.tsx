@@ -39,7 +39,9 @@ export default function BlogSidebar({
     const parentIds = categories.filter((c) => c.children.length > 0).map((c) => c.id);
 
     function initializeCollapse() {
-      const isMobile = window.innerWidth <= 820;
+      // 与 _menu.scss 的 ≤992px 单列断点对齐：平板（821–992）目录也不再默认展开，
+      // 否则「分类 → 第一篇博客」之间横着几百像素的展开列表，纵向利用率太差。
+      const isMobile = window.innerWidth <= 992;
       if (isMobile) {
         setMainCollapsed(true);
         setCollapsedSubs(new Set(parentIds));

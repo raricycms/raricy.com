@@ -576,9 +576,10 @@ a {
 @media (max-width: 992px) {
     .blog-layout {
         flex-direction: column;
-        gap: 20px;
+        gap: 14px;
+        margin-top: 14px;
     }
-    
+
     .sidebar {
         flex: none;
         position: static;
@@ -586,16 +587,70 @@ a {
         height: auto;               /* Mobile/tablet: auto height */
         max-height: none;           /* Remove fixed height cap */
         overflow: visible;          /* No internal scroll; page grows with content */
+        margin-bottom: 0;           /* 单列下间距交给 .blog-layout 的 gap，不再额外 30px */
+        padding: 14px 20px;
+        border-radius: 20px;
     }
-    
+
+    /* 折叠态（默认）下目录只是细条标题：小标题 + 小行距，给文章让出空间 */
+    .sidebar-title {
+        font-size: 1.35rem;
+        margin-bottom: 0;
+        padding-bottom: 0;
+    }
+
+    /* 展开后的目录也压紧行距（仍是折叠态为主，行距只在展开时显形） */
+    .category-item {
+        margin-bottom: 4px;
+    }
+
+    .category-link {
+        padding: 7px 10px;
+        font-size: 0.85rem;
+    }
+
+    .sub-category-list {
+        margin: 4px 0 0 12px;
+    }
+
+    .sub-category-link {
+        padding: 6px 10px;
+        font-size: 0.8rem;
+    }
+
+    /* 排序条不再独占大片空白：紧贴目录，小一号 */
+    .blog-sort {
+        margin: 2px 0 10px;
+    }
+
+    .blog-sort-btn {
+        padding: 5px 12px;
+        font-size: 0.8rem;
+    }
+
+    /* hero 收紧：标题/副文案/搜索逐级压缩 */
+    .blogs-hero {
+        padding: 30px 0 18px;
+    }
+
     .blogs-hero h1 {
-        font-size: 3rem;
+        font-size: 2.4rem;
+        margin-bottom: 4px;
+    }
+
+    .blogs-hero p {
+        font-size: 1rem;
+        margin-bottom: 14px;
+    }
+
+    .blog-search {
+        margin-top: 12px;
     }
 }
 
 @media (max-width: 768px) {
     .sidebar {
-        padding: 16px;
+        padding: 12px 14px;
         height: auto;               /* Ensure auto height on smaller screens */
         max-height: none;
         overflow: visible;
@@ -616,43 +671,64 @@ a {
         margin-bottom: 0;
     }
 
-    /* 手机端侧边栏标题更明显 */
+    /* 手机端侧边栏标题：整行可点，保持小巧 */
     .sidebar-title {
-        padding: 12px 16px;
-        margin: -16px -16px 20px -16px;
-        border-radius: 12px 12px 0 0;
+        font-size: 1.15rem;
+        padding: 4px 10px;
+        margin: -12px -14px 0;
+        border-radius: 12px;
     }
-    
+
     .blog-item {
-        padding: 16px 18px;
+        padding: 14px 16px;
+        border-radius: 18px;
+        margin-bottom: 10px;
     }
-    
+
     .blog-header {
         flex-direction: column;
         align-items: flex-start;
-        gap: 8px;
+        gap: 6px;
     }
-    
+
     .blog-title {
-        font-size: 1.1rem;
+        font-size: 1.05rem;
         margin-right: 0;
     }
-    
+
     .menu-blog-meta {
         flex-direction: column;
         align-items: flex-start;
         gap: 8px;
     }
-    
+
     .blogs-hero {
-        padding: 40px 0 30px;
+        padding: 22px 0 12px;
     }
-    
+
+    .blogs-hero h1 {
+        font-size: 1.9rem;
+    }
+
+    .blogs-hero p {
+        font-size: 0.92rem;
+        margin-bottom: 10px;
+    }
+
+    .blog-search {
+        margin-top: 10px;
+    }
+
     .blog-layout {
-        margin-top: 20px;
+        margin-top: 10px;
+        gap: 10px;
+    }
+
+    .blog-sort {
+        margin: 2px 0 8px;
     }
 
     .sub-category-list {
-        margin-left: 16px;
+        margin-left: 10px;
     }
 }
