@@ -10,21 +10,18 @@ a {
   }
 }
 // 专注模式横幅（/blog 列表页顶部）—— 提示当前视图被过滤，「此处」深链
-// /settings#focus-mode 关闭。色调沿用 brand-secondary 浅底 + brand 文字组合
-//（与 .upload-button 同源），暗色主题下仍由 CSS 变量自适应。
+// /settings#focus-mode 关闭。低调处理：无底色、小字灰调，不抢正文视觉。
 .focus-banner {
     max-width: 1140px;
-    margin: 16px auto 0;
-    padding: 10px 20px;
+    margin: 12px auto 0;
+    padding: 0 20px 8px;
     text-align: center;
-    font-size: 0.9rem;
-    background: var(--color-brand-secondary);
-    color: var(--color-text-primary);
-    border-radius: 999px;
+    font-size: 0.82rem;
+    color: var(--color-text-tertiary);
 
     a {
-        color: var(--color-brand-primary);
-        font-weight: 700;
+        color: var(--color-text-secondary);
+        font-weight: 600;
         text-decoration: underline;
     }
 }

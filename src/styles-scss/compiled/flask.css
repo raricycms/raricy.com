@@ -2788,17 +2788,15 @@ a:hover {
 
 .focus-banner {
   max-width: 1140px;
-  margin: 16px auto 0;
-  padding: 10px 20px;
+  margin: 12px auto 0;
+  padding: 0 20px 8px;
   text-align: center;
-  font-size: 0.9rem;
-  background: var(--color-brand-secondary);
-  color: var(--color-text-primary);
-  border-radius: 999px;
+  font-size: 0.82rem;
+  color: var(--color-text-tertiary);
 }
 .focus-banner a {
-  color: var(--color-brand-primary);
-  font-weight: 700;
+  color: var(--color-text-secondary);
+  font-weight: 600;
   text-decoration: underline;
 }
 
