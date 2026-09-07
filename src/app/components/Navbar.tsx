@@ -51,9 +51,7 @@ export default function Navbar({ user }: { user: SafeUser | null }) {
             </li>
             {isCoreUser(user) && (
               <li>
-                <Link className="site-link" href="/chat">
-                  <span className="icon icon-chat-dots_new" aria-hidden="true" style={{ marginRight: 6 }}></span>聊天
-                </Link>
+                <Link className="site-link" href="/chat">聊天</Link>
               </li>
             )}
           </ul>

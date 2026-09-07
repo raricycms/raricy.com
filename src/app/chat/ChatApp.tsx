@@ -73,7 +73,6 @@ function MessageItem({
           <Link className="chat-msg__name" href={`/u/${msg.author.id}`}>
             {msg.author.username}
           </Link>
-          {msg.author.is_admin && <span className="chat-msg__admin">管理</span>}
           <span className="chat-msg__time">{fmtTime(msg.created_at)}</span>
           <span className="chat-msg__actions">
             {!msg.is_deleted && (

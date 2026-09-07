@@ -9,12 +9,6 @@ declare global {
   }
 }
 
-const ROLE_LABEL: Record<string, string> = {
-  owner: '站长',
-  admin: '管理员',
-  core: '认证',
-};
-
 export default function NewChatModal({
   currentUserId,
   onClose,
@@ -108,7 +102,6 @@ export default function NewChatModal({
                 <div className="chat-new-empty">没有匹配的用户</div>
               ) : (
                 filtered.map((u) => {
-                  const label = ROLE_LABEL[u.role] ?? '认证';
                   const isSelf = u.id === currentUserId;
                   return (
                     <button
@@ -121,7 +114,6 @@ export default function NewChatModal({
                       <img className="chat-new-item__avatar" src={`/api/avatar/${u.id}`} alt="" loading="lazy" />
                       <span className="chat-new-item__name">{u.username}</span>
                       {isSelf && <span className="chat-new-item__tag">（自己）</span>}
-                      <span className="chat-new-item__role">{label}</span>
                     </button>
                   );
                 })
