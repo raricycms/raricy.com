@@ -12,7 +12,7 @@ src/styles-scss/
 ├── base/         reset、root（CSS 变量）、排版、表单、Bootstrap fallback
 ├── components/   按钮、导航、图标、弹窗、卡片、告警、表单控件、toast、分页
 ├── layout/       容器、栅格、顶栏、页脚、后台侧边栏
-├── pages/        各页面样式（首页、博客、游戏、管理后台…）
+├── pages/        各页面样式（首页、博客、聊天、游戏、通知、管理后台…）
 ├── utilities/    间距、显示、flex、文本工具类
 ├── compiled/     编译产物 flask.css（不要手改）
 └── main.scss     入口，控制 import 顺序
@@ -40,6 +40,7 @@ src/styles-scss/
 | `--color-background-page` | `#F8FAFC` | 页面背景 |
 | `--color-background-card` | `#fff` | 卡片 / 顶栏 / 底栏背景 |
 | `--color-background-content` | `#eff2f5` | 输入框、代码块、内容底色 |
+| `--color-background-card-unrend` | `#fffdf0` | 通知未读卡片底（浅色侧；仅定义未见引用，见 §12 遗留） |
 | `--color-background-subtle` | `#f3f4f6` | 弱背景（hover、徽章） |
 | `--color-background-highlight` | `#eef2ff` | 高亮背景 |
 | `--color-border` | `#E2E8F0` | 常规边框 |
@@ -63,6 +64,7 @@ src/styles-scss/
 | `--color-background-page` | `#131517` |
 | `--color-background-card` | `#181A1D` |
 | `--color-background-content` | `#21252A` |
+| `--color-background-card-unread` | `#08102D` | 通知未读卡片底（`.notification-card.unread`，深色专用） |
 | `--color-background-subtle` | `#1e2024` |
 | `--color-background-highlight` | `#1a2040` |
 | `--color-border` | `#334155` |
@@ -98,6 +100,17 @@ src/styles-scss/
 - 容器：`$container-max: 1140px`
 
 > `abstracts/_theme-map.scss` 里只有一个 light 主题的 map，配套的 `themeify` / `themed` mixin 已被注释停用。**实际主题切换完全靠 CSS 变量 + `[data-theme]`**，不要用旧的 theme-map 方案。
+
+### 2.5 Fluent（fd-）别名令牌
+
+OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令牌（沿用新页面注释里的 "Fluent Design" 命名），定义在 `base/_root.scss`，**全部以 `var()` 别名指向 2.1 / 2.2 的 `--color-*` 体系**，随 `[data-theme]` 自动切换；深色主题只覆写个别值（如 `--fd-accent-soft`）。新增页面可复用，不必自己再造一套：
+
+- 文字：`--fd-ink` / `--fd-ink-2` / `--fd-ink-3`（主 / 次 / 弱文本）
+- 品牌：`--fd-accent`（=`--color-brand-primary`）、`--fd-accent-tint`（浅色高亮底）、`--fd-accent-soft`
+- 状态：`--fd-danger` / `--fd-danger-soft`、`--fd-success` / `--fd-success-soft`
+- 字号：`--fd-text-base`（0.95rem）/ `--fd-text-sm`（0.85rem）/ `--fd-text-xs`（0.75rem）
+- 间距：`--fd-space-1`（4px）… `--fd-space-8`（32px），4px 递进
+- 工具类：`utilities/_text.scss` 的 `.u-text-sm` 等引用 fd 字号令牌
 
 ## 3. 排版
 
@@ -155,6 +168,16 @@ src/styles-scss/
 - `.pagination`：居中，`.page-link` 卡片底 + 边框；激活页品牌色实底白字。
 - `.alert`：Bootstrap 风格 4 色 + `body.dark-mode` 适配。
 
+### 6.5 聊天页（`pages/_chat.scss`）
+
+`/chat` 是双栏工作台，页面高度 `calc(100vh - 62px)`、`overflow: hidden`，色板全部走 CSS 变量随明暗主题：
+
+- 会话侧栏 `.chat-sidebar`：固定 280px（`border-right` 分隔），会话项 `.chat-chan`（头像 / 标题 / 预览 / 未读徽标 / 删除），头部 `.chat-sidebar__head` 带折叠钮 —— `.chat-page--collapsed` 时收到 60px 只留图标。
+- 消息主区 `.chat-main`：头部标题 + 操作；消息气泡 `.chat-msg`（自己发的加 `.chat-msg--mine`），含作者名 / 时间 / 操作 / 图片 / 引用回复 / 已删占位 `.chat-msg__deleted`。
+- 输入条 `.chat-composer`：多行输入 + 图床按钮 `.chat-composer__img-btn` + 发送 `.chat-composer__send`，支持回复引用。
+- 发起私聊弹窗 `.chat-new-modal`：搜索框 `.chat-new-search` + 结果项 `.chat-new-item`（头像 / 昵称 / 角色 / 自己标记）。
+- 响应式：`≤900px` 时侧栏变抽屉，`.chat-page--drawer-open` 展开。
+
 ## 7. 图标方案
 
 **不用图标字体 / icon 库**，采用「SVG + CSS mask」：`components/_icons.scss` 定义 `.icon` 基类，用 `mask-image` 引用 `public/static/img/icons/*.svg`，颜色跟随 `currentColor`（即继承 `color`），天然适配亮/暗主题。
@@ -203,6 +226,7 @@ src/styles-scss/
 ## 12. 已知遗留 / 注意事项
 
 - `compiled/flask.css` 是产物，勿手改。
+- 通知未读底变量名不对称：通知页 `.notification-card.unread` 引用的是**深色侧** `--color-background-card-unread`；浅色侧只定义了拼写不同的 `--color-background-card-unrend`（`#fffdf0`）且无任何引用——疑似笔误遗留，浅色未读态实际只显示左边黄条（`--color-border-unread`）。新增代码不要再踩这两个名字。
 - 个别文件残留 `--box-bg` / `--text` / `--muted-color` 等旧变量名（来自迁移前的站点 CSS），它们没有在 `:root` 定义，会落到 fallback。新代码用新的 `--color-*` 体系。
 - `body.dark-mode`（旧 Flask 时代的深色写法）与新 `[data-theme]` 并存，只在个别 Bootstrap fallback 组件里用到，属历史债务，不推广。
 - `abstracts/_theme-map.scss` 的 light map 与 `themeify` mixin 已停用，不要基于它扩展。
