@@ -58,9 +58,10 @@ test.describe('认证主链路', () => {
     expect(new URL(page.url()).pathname).toBe('/'); // GET /logout 应重定向回首页
     expect(await serverSeesAuthenticated(page)).toBe(false);
     // 顶栏切回未登录态。用 toHaveCount 而非 toBeVisible：移动端（iPhone 13 视口）下
-    // 整个 .nav-collapse 折在汉堡菜单里，登录链接在 DOM 里但 hidden ——
+    // 导航折进汉堡菜单，登录链接在 DOM 里但 hidden ——
     // 断可见性会让这条用例只在桌面视口成立，且失败信息像「登出没生效」，纯属误导。
-    await expect(page.locator('.nav-login')).toHaveCount(1);
+    // 类名是 Next Navbar 的 site-login-btn（Flask 时代的 .nav-login 已随迁移废弃）。
+    await expect(page.locator('.site-login-btn')).toHaveCount(1);
     await expect(page.locator('#userDropdownToggle')).toHaveCount(0);
 
     // 登出必须是服务端认定的：再访问需要登录的页面应被打回

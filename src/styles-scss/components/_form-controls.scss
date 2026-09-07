@@ -25,7 +25,11 @@
 .form-control:focus {
   color: var(--color-text-primary);
   background-color: var(--color-background-card);
-  border: 5px solid var(--color-brand-secondary);
+  // 聚焦环用 box-shadow 而非 border：常态 border:none，若聚焦改成 5px 边框，
+  // 字段会随焦点撑高 10px、失焦瞬间塌缩 —— 整张表单下方内容位移，
+  // 点按中的 checkbox/按钮会被「挪走」（注册页 e2e 的勾选失败即此因）。
+  // 0 0 0 5px 无模糊的硬环观感与 5px 边框一致，但不参与布局。
+  box-shadow: 0 0 0 5px var(--color-brand-secondary);
   outline: 0;
 }
 

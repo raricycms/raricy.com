@@ -1500,7 +1500,7 @@ body.dark-mode .alert-danger {
 .form-control:focus {
   color: var(--color-text-primary);
   background-color: var(--color-background-card);
-  border: 5px solid var(--color-brand-secondary);
+  box-shadow: 0 0 0 5px var(--color-brand-secondary);
   outline: 0;
 }
 
@@ -3069,6 +3069,35 @@ a:hover {
 /* 右侧博客列表 */
 .blog-content {
   flex: 1;
+}
+
+/* 列表排序工具栏（发布时间/更新时间；列表顶部右对齐，空结果态也渲染） */
+.blog-sort {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 16px;
+}
+
+.blog-sort-btn {
+  padding: 6px 14px;
+  border: none;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 400;
+  color: var(--color-text-secondary);
+  background: var(--color-background-content);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.blog-sort-btn:hover {
+  color: var(--color-brand-primary);
+}
+.blog-sort-btn.active {
+  background: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+  font-weight: 600;
 }
 
 .blog-item {
