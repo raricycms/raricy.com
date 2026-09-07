@@ -158,7 +158,9 @@ function ensureMathJax(): TypesetContext {
       CC: '\\mathbb{C}', PP: '\\mathbb{P}', EE: '\\mathbb{E}', FF: '\\mathbb{F}',
     },
   });
-  typesetCtx.chtml = new CHTML({ enableMenu: false, fontCache: 'global' });
+  // ⚠️ 只传 mathjax-full 3.x 认得的选项。enableMenu/fontCache 是 v4 才有的
+  // 配置，写在 3.2.2 上只会得到两条 Invalid option 警告且配置不生效。
+  typesetCtx.chtml = new CHTML();
   typesetCtx.ready = true;
   return typesetCtx;
 }
@@ -166,12 +168,19 @@ function ensureMathJax(): TypesetContext {
 function typesetMath(root: HTMLElement): void {
   const ctx = ensureMathJax();
   if (!ctx.tex || !ctx.chtml) return;
-  // mathjax.document 接受真实 DOM 节点，render() 同步改写 in-place。
-  const doc = mathjax.document(root, { InputJax: ctx.tex, OutputJax: ctx.chtml });
   try {
-    doc.render();
+    // ⚠️ 绝不能把页面上的容器传给 mathjax.document(元素) —— 它会把传入元素
+    // **搬进一个新建的空文档**（脱离页面），正文会整体从原位置消失（详情页
+    // 正文渲染为空的根因）。正确用法：在全局 document 上建实例，用
+    // findMath({ elements: [root] }) 把扫描限定在本容器内，updateDocument 把
+    // mjx-container 就地写回，其余 DOM 与已绑定的事件一概不动。
+    const mathDocument = mathjax.document(document, {
+      InputJax: ctx.tex,
+      OutputJax: ctx.chtml,
+    });
+    mathDocument.findMath({ elements: [root] }).compile().getMetrics().typeset().updateDocument();
   } catch {
-    /* 公式语法错误时静默保留原文，不影响页面其他内容 */
+    // 公式语法错误时静默保留原文，不影响页面其他内容
   }
 }
 
