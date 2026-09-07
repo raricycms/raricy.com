@@ -1,7 +1,20 @@
 'use client';
 
+// 云剪贴板 上传/编辑表单
+//
+// - 编辑器：vditor（与 BlogForm 对齐，vditor@3.10.7），icon sprite + KaTeX 从
+//   /static/vditor 本地加载，避免运行时依赖 unpkg。
+// - Math（LaTeX）：开启 preview.math（KaTeX 引擎），IR 模式下输入 $$..$$ 即可见渲染。
+// - 提交：新建 → POST /api/clipboard；编辑 → PUT /api/clipboard/:id。
+// - 保留 Flask 行为：Ctrl/⌘+S 手动保存（编辑态）、autoSave 每分钟自动保存、
+//   publicity 是否公开。
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Vditor from 'vditor';
+import 'vditor/dist/index.css';
+
+// 与 BlogForm 共用同一份本地静态资源（同路径部署在 public/static/vditor/）。
+const VDITOR_LOCAL_CDN = '/static/vditor';
 
 function toast(msg: string, type: string) {
   if (typeof window === 'undefined') return;
@@ -25,6 +38,13 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
   const [publicity, setPublicity] = useState(clip ? clip.publicity : true);
   const [autoSave, setAutoSave] = useState(false);
 
+  // vditor 句柄 + 加载状态；fallback 文本框给 vditor 加载失败时用。
+  const vditorRef = useRef<Vditor | null>(null);
+  const vditorLoadedRef = useRef(false);
+  const editorDivRef = useRef<HTMLDivElement>(null);
+  const fallbackMsgRef = useRef<HTMLParagraphElement>(null);
+  const fallbackRef = useRef<HTMLTextAreaElement>(null);
+
   const titleRef = useRef(title);
   const contentRef = useRef(content);
   const publicityRef = useRef(publicity);
@@ -32,12 +52,35 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
   contentRef.current = content;
   publicityRef.current = publicity;
 
+  // 取最新内容：优先 vditor，回退 fallback 文本框。
+  function getContent(): string {
+    if (vditorLoadedRef.current && vditorRef.current) {
+      return vditorRef.current.getValue();
+    }
+    return fallbackRef.current?.value ?? contentRef.current ?? '';
+  }
+
   async function saveClipboard(stayOnPage: boolean) {
     const data = {
-      title: titleRef.current,
-      content: contentRef.current,
+      title: titleRef.current.trim(),
+      // vditor 在编辑模式会保留标题外的 markdown 文本；fallback 时直接读 textarea。
+      content: getContent(),
       publicity: publicityRef.current,
     };
+
+    if (!data.title || !data.content) {
+      toast('标题和正文不能为空', 'warning');
+      return;
+    }
+    if (data.title.length > 30) {
+      toast('标题不能超过30个字符', 'warning');
+      return;
+    }
+    if (data.content.length > 250000) {
+      toast('正文不能超过250000个字符', 'warning');
+      return;
+    }
+
     try {
       // 编辑态命中 PUT /api/clipboard/[id]（对齐 Flask POST /clipboard/<id>/edit）；
       // 新建态命中 POST /api/clipboard（对齐 Flask POST /clipboard/upload）。
@@ -55,6 +98,7 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
       if (response.ok && result.code === 200) {
         if (stayOnPage) {
           toast('保存成功！', 'success');
+          // 编辑态保存后清空 vditor 之外的文案 cache 不必要；保留即可。
         } else {
           router.push(`/clipboard/${result.id}`);
         }
@@ -108,6 +152,59 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
     return () => clearInterval(timer);
   }, [isEdit, autoSave]);
 
+  // 初始化 vditor —— 与 BlogForm 用同一份本地 CDN，开启 math（KaTeX）支持。
+  useEffect(() => {
+    let cancelled = false;
+
+    function showFallback() {
+      if (editorDivRef.current) editorDivRef.current.style.display = 'none';
+      if (fallbackMsgRef.current) fallbackMsgRef.current.style.display = 'block';
+      const fb = fallbackRef.current;
+      if (fb) {
+        fb.style.display = 'block';
+        if (!fb.value && contentRef.current) fb.value = contentRef.current;
+      }
+      vditorLoadedRef.current = false;
+    }
+
+    try {
+      if (cancelled) return;
+      vditorRef.current = new Vditor('clipboard-editor', {
+        minHeight: 400,
+        mode: 'ir',
+        cdn: VDITOR_LOCAL_CDN,
+        // 启用 LaTeX：IR 模式下输入 $$..$$ 立即用本地 KaTeX 渲染。
+        preview: { math: { engine: 'KaTeX' } },
+        toolbar: [
+          'emoji', 'headings', 'bold', 'italic', 'strike', 'link', '|',
+          'list', 'ordered-list', 'check', 'outdent', 'indent', '|',
+          'quote', 'line', 'code', 'inline-code', 'math', 'upload', 'table', '|',
+          'undo', 'redo', 'preview', 'export',
+        ],
+        counter: { enable: true, type: 'text' },
+        upload: { url: '/api/images', accept: 'image/*', max: 10 * 1024 * 1024 },
+        cache: isEdit ? { enable: false } : { enable: true, id: 'clipboard-upload-editor' },
+        value: contentRef.current ?? '',
+      });
+      vditorLoadedRef.current = true;
+    } catch {
+      showFallback();
+    }
+
+    return () => {
+      cancelled = true;
+      // 销毁 vditor 实例，避免 React 严格模式 / 路由切换后节点还在内存里。
+      try {
+        vditorRef.current?.destroy?.();
+      } catch {
+        /* noop */
+      }
+      vditorRef.current = null;
+      vditorLoadedRef.current = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     // 提交前停止自动保存（对齐 Flask stopAutoSave()）。
@@ -130,6 +227,14 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
         <div className="clipboard-form__reminder">
           提示：编辑过程中可按 <kbd>Ctrl+S</kbd> 手动保存，以免内容丢失。也可以勾选下方
           {'"自动保存"'}开关，每分钟自动保存一次。
+          <br />
+          支持 Markdown 与 LaTeX（<code>$inline$</code> / <code>{'$$block$$'}</code>）。
+        </div>
+      )}
+
+      {!isEdit && (
+        <div className="clipboard-form__reminder">
+          支持 Markdown 与 LaTeX（<code>$inline$</code> / <code>{'$$block$$'}</code>）。
         </div>
       )}
 
@@ -149,14 +254,42 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
           </div>
 
           <div className="clipboard-form__group">
-            <label htmlFor="content">正文</label>
+            <label htmlFor="clipboard-editor">正文（支持 Markdown 与 LaTeX）</label>
+            <div
+              id="clipboard-editor"
+              ref={editorDivRef}
+              style={{
+                height: '50vh',
+                background: 'var(--color-background-page)',
+                border: '1px solid var(--color-border)',
+                borderRadius: '8px',
+              }}
+            />
+            <p
+              id="clipboard-editor-fallback-message"
+              ref={fallbackMsgRef}
+              className="clipboard-form__reminder"
+              style={{ display: 'none', marginTop: '8px' }}
+            >
+              Markdown 编辑器加载失败，已切换到基础文本输入框。
+            </p>
             <textarea
-              id="content"
-              name="content"
-              placeholder="请输入正文内容"
+              id="clipboard-editor-fallback"
+              ref={fallbackRef}
               rows={15}
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
+              placeholder="请输入正文内容"
+              style={{
+                display: 'none',
+                width: '100%',
+                padding: 'var(--space-3, 12px)',
+                border: '1px solid var(--color-border)',
+                borderRadius: '8px',
+                background: 'var(--color-background-card)',
+                color: 'var(--color-text-primary)',
+                fontSize: '1rem',
+                lineHeight: 1.6,
+                fontFamily: 'ui-monospace, monospace',
+              }}
             />
           </div>
 
