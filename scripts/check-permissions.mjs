@@ -84,13 +84,10 @@ const MAP = {
   // ── core（@authenticated_required）──
   // 这一档整体漏过一次：12 个接口只判了「登录」没判「核心用户」，role=user
   // （注册了但从没用邀请码认证的人）用不了界面却 curl 得动 —— 点赞/建剪贴板/
-  // 投票/照片墙/投喂/申诉实测全 200。邀请码体系等于失效。故把它们钉进比对。
+  // 投票/投喂/申诉实测全 200。邀请码体系等于失效。故把它们钉进比对。
   like_toggle: 'blogs/[id]/like',
   feed_fish_api: 'blogs/[id]/feed',
   create_appeal: 'audit/[id]/appeal',
-  api_place: 'photowall',
-  api_items: 'photowall',
-  api_update: 'photowall/[id]',
   create_api: 'votes',
   cast_vote: 'votes/[id]/vote',
   api_quota: 'images/quota',

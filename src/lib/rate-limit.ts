@@ -42,7 +42,7 @@ function snapshotPath(): string {
  *
  * ⚠️ **key 必须自带场景前缀**（如 `like:h:${userId}` / `like:d:${userId}`）。
  * rule 不参与分桶 —— 同一个 key 配不同 rule 会共用同一计数桶、互相消耗配额。
- * 现有调用方都遵守了该约定（见 blog/comment/vote/photowall/image 各处），
+ * 现有调用方都遵守了该约定（见 blog/comment/vote/image 各处），
  * 这里用一条断言把它从「口头约定」变成「会报错的契约」。
  *
  * @returns { allowed, remaining, retryAfterMs }

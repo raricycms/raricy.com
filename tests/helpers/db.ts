@@ -60,7 +60,7 @@ export async function resetDb() {
     'comment_likes', 'blog_comments', 'blog_likes', 'blog_feeds',
     'blog_contents', 'blogs', 'categories',
     'vote_records', 'vote_options', 'votes',
-    'clip_text', 'clipboards', 'image_hosting', 'photo_wall_items',
+    'clip_text', 'clipboards', 'image_hosting',
     'daily_checkins', 'fish_transactions', 'notifications',
     'admin_action_appeals', 'admin_action_logs',
     'user_bans', 'invite_codes', 'users',

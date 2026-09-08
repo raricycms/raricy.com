@@ -77,7 +77,7 @@ test.describe('角色门控', () => {
 //
 // 上面那组测的是页面门控。而这批 API 一度只判了「登录」不判「核心用户」——
 // role=user（注册了但从没用邀请码认证的人）用不了界面，却 curl 得动：
-// 点赞、建剪贴板、投票、建投票、看照片墙、投喂、申诉，实测全部 200。
+// 点赞、建剪贴板、投票、建投票、投喂、申诉，实测全部 200。
 // 邀请码/core 体系的意义就是「未认证用户不能做这些」，等于整体失效。
 //
 // 页面挡了、接口没挡，是这一类漏洞的共同形状 —— 所以这里只打接口，不走 UI。
@@ -92,7 +92,6 @@ test.describe('核心用户门槛（接口层）', () => {
     { name: '图床列表', method: 'GET', path: '/api/images' },
     { name: '投票列表', method: 'GET', path: '/api/votes' },
     { name: '建投票', method: 'POST', path: '/api/votes', body: { title: 't', options: ['a', 'b'] } },
-    { name: '照片墙', method: 'GET', path: '/api/photowall' },
   ];
 
   for (const c of CASES) {

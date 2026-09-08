@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 const p = new PrismaClient();
-const models = ['user','blog','blogContent','blogLike','blogComment','commentLike','category','notification','clipBoard','clipText','imageHosting','photoWallItem','vote','voteOption','voteRecord','dailyCheckIn','fishTransaction','blogFeed','adminActionLog','adminActionAppeal','inviteCode','userBan'];
+const models = ['user','blog','blogContent','blogLike','blogComment','commentLike','category','notification','clipBoard','clipText','imageHosting','vote','voteOption','voteRecord','dailyCheckIn','fishTransaction','blogFeed','adminActionLog','adminActionAppeal','inviteCode','userBan'];
 let fail = 0;
 try {
   // 1) read first row of EVERY model — catches any datetime/JSON conversion error per table

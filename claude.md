@@ -90,13 +90,13 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
   （不做任何本地写入）。dev 环境走 fallback 仅写本地。
 
 ### 软删除
-- 永不物理删除（站长手动例外）：`Blog.ignore`、`BlogComment.is_deleted`、`ImageHosting.ignore`、`Vote.ignore`、`ClipBoard.ignore`、`PhotoWallItem.ignore`。
+- 永不物理删除（站长手动例外）：`Blog.ignore`、`BlogComment.is_deleted`、`ImageHosting.ignore`、`Vote.ignore`、`ClipBoard.ignore`。
 - `is_deleted=true` 且无子评论 → 自动从楼中楼里隐藏。
 
 ### 限频
 - 内存限频 `src/lib/rate-limit.ts`，**桶随 10 分钟清扫落盘**（`instance/rate-limit-snapshot.json`，原子写；`RATE_LIMIT_SNAPSHOT_PATH` 可覆盖），重启回灌不丢窗口；测试环境不自动回灌（确定性）。
 - 单进程语义；多实例部署需换 Redis（已知限制）。
-- 进程内规则：点赞 100/h 500/d、评论 1200/d、投票 30/h、图床 75/h、照片墙 30/h 300/d。
+- 进程内规则：点赞 100/h 500/d、评论 1200/d、投票 30/h、图床 75/h。
 
 ### 文件落盘
 - 头像 `instance/avatars/<uuid>.png`，头像目录可由 `AVATARS_DIR` 覆盖。

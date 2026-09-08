@@ -40,7 +40,7 @@ for (const route of ROUTES) {
     navCount = await page.locator('header.site-navbar').count();
     footerCount = await page.locator('footer.site-footer').count();
     const html = await page.content();
-    flaskClasses = (html.match(/class="[^"]*\b(site-|home-|feature-|admin-|auth-page|register-container|game-card|tool-|story-|clipboard-|image-hosting|vote-|checkin-|photo-wall|fish-|profile-|settings-|fortune-)/g) || []).length;
+    flaskClasses = (html.match(/class="[^"]*\b(site-|home-|feature-|admin-|auth-page|register-container|game-card|tool-|story-|clipboard-|image-hosting|vote-|checkin-|fish-|profile-|settings-|fortune-)/g) || []).length;
     apFdClasses = (html.match(/class="[^"]*\b(ap-|fd-)/g) || []).length;
     await page.screenshot({ path: path.join(OUT, `visual-${route.name}.png`), fullPage: true });
   } catch (e) {

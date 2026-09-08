@@ -263,7 +263,7 @@ function startNotificationHeartbeat() {
 function enhanceFileInputs() {
     document.querySelectorAll('input[type="file"]').forEach(function (input) {
         if (input.dataset.filepick) return;
-        // 跳过由自定义 UI 驱动、本就隐藏的（图床拖拽区、照片墙）
+        // 跳过由自定义 UI 驱动、本就隐藏的（图床拖拽区）
         if (input.hasAttribute('hidden') || input.style.display === 'none') return;
         input.dataset.filepick = '1';
 

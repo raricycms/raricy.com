@@ -75,7 +75,6 @@ model User {
   notificationsSent     Notification[]      @relation("NotificationActor")
   clipboards            ClipBoard[]
   images                ImageHosting[]
-  photoWallItems        PhotoWallItem[]
   votes                 Vote[]
   voteRecords           VoteRecord[]
   checkins              DailyCheckIn[]
@@ -350,7 +349,7 @@ model ClipText {
   @@map("clip_text")
 }
 
-// ── 图床与照片墙 ─────────────────────────────────────────────────────────────
+// ── 图床 ─────────────────────────────────────────────────────────────────────
 
 model ImageHosting {
   id        String    @id
@@ -363,7 +362,6 @@ model ImageHosting {
   ignore    Boolean?  @default(false)
 
   author    User            @relation(fields: [authorId], references: [id])
-  wallItems PhotoWallItem[]
   chatMessages ChatMessage[]
   @@index([authorId], map: "ix_image_hosting_author_id")
   @@index([createdAt], map: "ix_image_hosting_created_at")
@@ -371,30 +369,6 @@ model ImageHosting {
   @@index([ignore], map: "ix_image_hosting_ignore")
 
   @@map("image_hosting")
-}
-
-model PhotoWallItem {
-  id        String    @id
-  imageId   String    @map("image_id")
-  x         Float     @default(0)
-  y         Float     @default(0)
-  rotation  Float     @default(0)
-  zIndex    Int       @default(0) @map("z_index")
-  scale     Float     @default(1)
-  authorId  String    @map("author_id")
-  createdAt DateTime? @map("created_at")
-  updatedAt DateTime? @map("updated_at")
-  ignore    Boolean?  @default(false)
-
-  image  ImageHosting @relation(fields: [imageId], references: [id])
-  author User         @relation(fields: [authorId], references: [id])
-  @@index([authorId], map: "ix_photo_wall_items_author_id")
-  @@index([createdAt], map: "ix_photo_wall_items_created_at")
-  @@index([id], map: "ix_photo_wall_items_id")
-  @@index([ignore], map: "ix_photo_wall_items_ignore")
-  @@index([imageId], map: "ix_photo_wall_items_image_id")
-
-  @@map("photo_wall_items")
 }
 
 // ── 投票 ─────────────────────────────────────────────────────────────────────

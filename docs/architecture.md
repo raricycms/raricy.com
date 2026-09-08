@@ -90,7 +90,6 @@
 | `/checkin` · `/api/checkin` | page + API | 每日签到 |
 | `/clipboard` · `/clipboard/[id]` · `/api/clipboard/*` | page + API | 云剪贴板 |
 | `/image` · `/image/admin` · `/api/images/*` | page + API | 图床 + 管理 |
-| `/photowall` · `/api/photowall/*` | page + API | 照片墙 |
 | `/story` · `/story/[...path]` | page | 故事合集/阅读 |
 | `/tool` · `/tool/<sub>` · `/api/game/*` | page + API | 工具集 + 9 款游戏 |
 | `/admin/*` · `/api/admin/*` | page + API | 管理后台（被 `@admin_required` 守卫） |
@@ -110,7 +109,7 @@
 | 数据层 | `db.ts` · `db-time.ts` · `format.ts` |
 | 博客域 | `blog-service.ts` · `feed-service.ts` · `comment-service.ts` · `spider-service.ts` |
 | 通知 / 审计 | `notification-service.ts` · `broadcast-service.ts` · `audit-service.ts` · `admin-appeal-service.ts` |
-| 投票 / 签到 / 剪贴板 / 照片墙 | `vote-service.ts` · `checkin-service.ts` · `clipboard-service.ts` · `photowall-service.ts` |
+| 投票 / 签到 / 剪贴板 | `vote-service.ts` · `checkin-service.ts` · `clipboard-service.ts` |
 | 图床 | `image-service.ts` · `image-upload.ts` |
 | 故事 | `story-service.ts` |
 | 小鱼干 | `fish-service.ts` · `fish-admin.ts` · `account-client.ts` |
@@ -167,8 +166,6 @@ blog:comment     1200/d
 vote:create      10/h
 vote:cast        30/h
 image:upload     75/h
-photowall:create 30/h
-photowall:update 300/h
 fish:admin       5/s     (CLI grant/deduct 用)
 ```
 
@@ -266,7 +263,6 @@ fish:admin       5/s     (CLI grant/deduct 用)
 | `ImageHosting.ignore` | false | 图床 |
 | `Vote.ignore` | false | 投票 |
 | `ClipBoard.ignore` | false | 剪贴板 |
-| `PhotoWallItem.ignore` | false | 照片墙 |
 
 ### 角色体系与权限装饰器
 
@@ -280,7 +276,7 @@ fish:admin       5/s     (CLI grant/deduct 用)
 
 | 实体 | ID |
 |------|----|
-| User · Blog · BlogContent · Comment · PhotoWall · Notification | UUID4 |
+| User · Blog · BlogContent · Comment · Notification | UUID4 |
 | ClipBoard · Vote · ImageHosting | 短 ID（base62） |
 | Category · AdminActionLog · AdminActionAppeal · UserBan | 自增整数 |
 

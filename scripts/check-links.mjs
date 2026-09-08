@@ -139,7 +139,7 @@ for (const f of srcFiles) {
 // ── 3. 不得回源老站 ──────────────────────────────────────────────────────────
 // Flask 删掉之后这些链接会直接 404。工具菜单曾经就是这么把 5 个工具指回老站的。
 // 只拦「回源本站老路径」，外站链接（GitHub、智慧河 zhh.raricy.com 等）是正常的。
-const BACKLINK = /(?:^|\/\/)(?:www\.)?raricy\.com\/(tool|blog|auth|image|vote|clipboard|photowall|checkin)\b/;
+const BACKLINK = /(?:^|\/\/)(?:www\.)?raricy\.com\/(tool|blog|auth|image|vote|clipboard|checkin)\b/;
 for (const f of srcFiles) {
   const txt = fs.readFileSync(f, 'utf8');
   if (/FLASK_ORIGIN/.test(txt)) {

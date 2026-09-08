@@ -1,8 +1,8 @@
 import Link from 'next/link';
-import { getCurrentUser, isCoreUser } from '@/lib/auth';
+import { getCurrentUser } from '@/lib/auth';
 
 // 玩具（game）菜单 — 对齐 Flask `app/templates/game/menu.html`。
-// 9 款游戏 + 照片墙 + 即将到来占位。
+// 9 款游戏 + 即将到来占位。
 
 export const dynamic = 'force-dynamic';
 
@@ -70,12 +70,8 @@ const games: GameCard[] = [
   },
 ];
 
-const PHOTOWALL_DESC =
-  '在软木板上自由张贴照片，拖动、旋转、缩放，和朋友一起装饰一面共同的回忆墙。';
-
 export default async function GameMenuPage() {
   const user = await getCurrentUser();
-  const canEnterPhotowall = isCoreUser(user);
 
   // 专注模式：整页锁屏（入口禁用只是第一道，菜单页直接不给进）；
   // 已开的游戏子页 /game/* 不受影响（可直达，返回链会落回本页）。
@@ -110,26 +106,6 @@ export default async function GameMenuPage() {
 
       <section className="game-section">
         <div className="game-grid">
-          {canEnterPhotowall ? (
-            <Link href="/photowall" className="game-card">
-              <div className="game-card__body">
-                <span className="game-card__icon game-card__icon--photowall" aria-hidden="true" />
-                <h3 className="game-card__title">照片墙</h3>
-                <p className="game-card__desc">{PHOTOWALL_DESC}</p>
-                <span className="game-card__btn">进入照片墙</span>
-              </div>
-            </Link>
-          ) : (
-            <div className="game-card game-card--locked" aria-disabled="true">
-              <div className="game-card__body">
-                <span className="game-card__icon game-card__icon--photowall" aria-hidden="true" />
-                <h3 className="game-card__title">照片墙</h3>
-                <p className="game-card__desc">{PHOTOWALL_DESC}</p>
-                <span className="game-card__hint">请先登录并通过认证</span>
-              </div>
-            </div>
-          )}
-
           {games.map((g) => (
             <Link key={g.href} href={g.href} className="game-card">
               <div className="game-card__body">

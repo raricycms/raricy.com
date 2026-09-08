@@ -157,10 +157,20 @@ test.describe('专注模式（设置 → 各处生效）', () => {
     await expect(lobbyRow).toContainText(FOCUS_TITLE);
     await expect(lobbyRow.locator('.chat-chan__badge')).toHaveCount(0);
 
-    // 主区：专注空态而非大区内容（无 URL ?channel=lobby 残留）
-    await page.goto('/chat?channel=lobby');
-    await expect(page).toHaveURL(/\/chat$/);
-    await expect(page.locator('.chat-main__empty')).toContainText('已开启专注模式');
+    // 主区：不得再落在大区 —— ?channel=lobby 必须被改写。落点取决于当时有没有可用
+    // 私聊（本套件 desktop 轮次先跑，会在库里留下一条私聊，mobile 复跑时它仍在）：
+    // 无私聊 → ChatApp 清 URL 到 /chat、显示专注空态；有私聊 → 有意跳到第一条可用
+    // 私聊（见 ChatApp 首载选频道策略注释「退回第一个可用行」）。两种都是正确行为，
+    // 共同不变量是：URL 不再指向大区、主区也不渲染大区内容（哨兵消息只在 大区 出现）。
+    // ChatApp 水合后的频道跳转可能与 goto 竞态，稳定抛「Navigation interrupted」
+    // （触发与否取决于前置用例时序，整轮跑必现、单文件跑不一定 —— 别依赖运气）。
+    // 跳转目标正是下面 toHaveURL 要验证的落点，中断本身无害，这里直接吞掉；
+    // 产品回归（专注模式下仍可停留大区）会表现为 URL 停在 ?channel=lobby，
+    // 由下一行断言兜住。
+    await page.goto('/chat?channel=lobby', { waitUntil: 'commit' }).catch(() => {});
+    await expect(page).toHaveURL(/\/chat(?:\?channel=(?!lobby)[^&]*)?$/);
+    await expect(page.locator('.chat-main')).toBeVisible();
+    await expect(page.locator('.chat-main')).not.toContainText('大区历史消息-预览哨兵');
 
     // API 直打大区被服务端拦
     const send = await page.request.post('/api/chat/channels/lobby/messages', {
@@ -205,8 +215,8 @@ test.describe('专注模式（设置 → 各处生效）', () => {
     await expect(page.locator('h1', { hasText: '玩具' })).toBeVisible();
     await expect(page.locator('.game-card--focus-lock')).toContainText('已开启专注模式');
     await expect(page.locator('a[href="/settings#focus-mode"]')).toBeVisible();
-    // 九个游戏卡不渲染
-    await expect(page.locator('a.game-card:not([href="/photowall"])')).toHaveCount(0);
+    // 游戏卡不渲染
+    await expect(page.locator('a.game-card')).toHaveCount(0);
 
     // 子页直达不受影响（RSC 内嵌 payload 会含导航 title 文案，故断言真实 UI 而非 body 全文）
     await page.goto('/game/gomoku');

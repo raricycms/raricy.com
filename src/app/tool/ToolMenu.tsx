@@ -48,16 +48,6 @@ const SITE: Tool[] = [
   },
   {
     cat: 'site',
-    kw: '照片墙 photo 照片 软木板',
-    href: '/photowall',
-    emoji: '📸',
-    title: '照片墙',
-    desc: '社区共享软木板，贴照片、旋转、缩放',
-    tags: ['社区', '照片', '共创'],
-    coreOnly: true,
-  },
-  {
-    cat: 'site',
     kw: 'cattca 工具',
     href: '/tool/cattca',
     emoji: '🛠️',

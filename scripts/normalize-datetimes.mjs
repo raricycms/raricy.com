@@ -47,7 +47,6 @@ const DATETIME_COLUMNS = {
   clipboards: ['created_at'],
   clip_text: ['updated_at'],
   image_hosting: ['created_at'],
-  photo_wall_items: ['created_at', 'updated_at'],
   votes: ['created_at'],
   vote_records: ['created_at'],
   daily_checkins: ['checkin_date', 'created_at'],
