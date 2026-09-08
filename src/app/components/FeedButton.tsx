@@ -1,15 +1,15 @@
 'use client';
 
 // FeedButton — 文章详情页「读者交互区」。对齐 Flask 三个组件的可见/可交互形态：
-//   • like_system：.read-controls（点赞按钮 + 鱼干图标投喂触发按钮 + 返回上页）
+//   • like_system：.read-controls（两行按钮：点赞/投喂，返回上页/管理文章）
 //   • feed_fish_system：两步式投喂弹窗（选数量 → 确认），由投喂按钮触发
-//   • admin_controls + modal_system：管理员/作者可见的「查看点赞者/投喂者/编辑/删除」
-//     及对应模态框（点赞者列表 / 投喂者列表 / 删除确认）
+//   • admin_controls + modal_system：管理员/作者的「管理文章」弹窗统一收拢
+//     「查看点赞者 / 查看投喂者 / 编辑文章(作者) / 删除文章」，弹窗内按视图切换
 //
 // 由 blog/[id]/page.tsx 挂载。点赞 → POST /api/blogs/:id/like；投喂 → POST /api/blogs/:id/feed。
 
 import { useCallback, useEffect, useState } from 'react';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Fish, Heart, Pencil, Settings, Trash2 } from 'lucide-react';
 
 const FEED_CAP = 5;
 
@@ -45,9 +45,9 @@ interface Props {
   initialLiked: boolean;
   /** 点赞总数。 */
   initialLikes: number;
-  /** 是否显示管理区（管理员 或 作者本人）。 */
+  /** 是否显示「管理文章」入口（管理员 或 作者本人）。 */
   canManage: boolean;
-  /** 是否作者本人（显示编辑入口）。 */
+  /** 是否作者本人（管理弹窗内显示编辑入口）。 */
   canEdit: boolean;
   /** 管理员删除他人文章（删除需填写原因）。 */
   isAdminDelete: boolean;
@@ -176,8 +176,8 @@ export default function FeedButton({
     }
   }
 
-  // ── 模态框（点赞者 / 投喂者 / 删除确认）─────────────────────────────────────
-  type ModalKind = 'likers' | 'feeders' | 'delete' | null;
+  // ── 「管理文章」弹窗（menu 目录 → likers / feeders / delete 子视图）─────────
+  type ModalKind = 'menu' | 'likers' | 'feeders' | 'delete' | null;
   const [modal, setModal] = useState<ModalKind>(null);
 
   // ESC 关闭
@@ -256,6 +256,7 @@ export default function FeedButton({
     [blogId]
   );
 
+  // 从「管理文章」目录进入子视图：先切视图再拉列表，保证列表状态与视图同步
   function openLikers() {
     setModal('likers');
     void loadLikers(1);
@@ -298,39 +299,53 @@ export default function FeedButton({
 
   return (
     <>
-      {/* 点赞系统 + 投喂触发 + 返回（对齐 like_system 的 .read-controls）*/}
+      {/* 读者交互区两行按钮：第一行 点赞/投喂，第二行 返回上页/管理文章 */}
       <div className="read-controls" id="read-controls">
-        <button
-          id="like-btn"
-          className={`like-btn${liked ? ' liked' : ''}`}
-          onClick={handleLike}
-          disabled={likeBusy}
-          aria-label="点赞"
-        >
-          <span className="icon icon-heart-fill" aria-hidden="true"></span>
-          <span>{liked ? '已点赞' : '点赞'}</span>
-          <span className="like-count-badge" id="like-count">
-            {likes}
-          </span>
-        </button>
+        <div className="read-controls__row">
+          <button
+            id="like-btn"
+            className={`like-btn${liked ? ' liked' : ''}`}
+            onClick={handleLike}
+            disabled={likeBusy}
+            aria-label="点赞"
+          >
+            <span className="icon icon-heart-fill" aria-hidden="true"></span>
+            <span>{liked ? '已点赞' : '点赞'}</span>
+            <span className="like-count-badge" id="like-count">
+              {likes}
+            </span>
+          </button>
 
-        <button
-          id="feed-fish-btn"
-          className={`fish-btn${fed > 0 ? ' fish-btn--fed' : ''}`}
-          onClick={openFeedModal}
-          disabled={isAuth && fed >= FEED_CAP}
-          aria-label="投喂小鱼干"
-        >
-          <span className="icon icon-fish" aria-hidden="true"></span>
-          <span>投喂</span>
-          <span className="fish-count-badge" id="fish-count">
-            {fishCount}
-          </span>
-        </button>
+          <button
+            id="feed-fish-btn"
+            className={`fish-btn${fed > 0 ? ' fish-btn--fed' : ''}`}
+            onClick={openFeedModal}
+            disabled={isAuth && fed >= FEED_CAP}
+            aria-label="投喂小鱼干"
+          >
+            <span className="icon icon-fish" aria-hidden="true"></span>
+            <span>投喂</span>
+            <span className="fish-count-badge" id="fish-count">
+              {fishCount}
+            </span>
+          </button>
+        </div>
 
-        <button onClick={() => history.back()} className="read-btn">
-          <ArrowLeft aria-hidden="true" /> 返回上页
-        </button>
+        <div className="read-controls__row">
+          <button onClick={() => history.back()} className="read-btn">
+            <ArrowLeft aria-hidden="true" /> 返回上页
+          </button>
+          {canManage && (
+            <button
+              id="admin-manage-btn"
+              className="read-btn"
+              onClick={() => setModal('menu')}
+              aria-label="管理文章"
+            >
+              <Settings aria-hidden="true" /> 管理文章
+            </button>
+          )}
+        </div>
       </div>
 
       {/* 小鱼干投喂弹窗（feed_fish_system）*/}
@@ -370,27 +385,48 @@ export default function FeedButton({
         </div>
       </div>
 
-      {/* 管理员/作者控制（admin_controls）*/}
+      {/* 「管理文章」目录 Modal：收拢 查看点赞者 / 查看投喂者 / 编辑(作者) / 删除 入口 */}
       {canManage && (
-        <div className="admin-controls">
-          <button id="admin-likers-btn" className="read-btn" onClick={openLikers}>
-            <span className="icon icon-heart-fill" aria-hidden="true" style={{ marginRight: '0.4rem' }}></span>查看点赞者
-          </button>
-          <button id="admin-feeders-btn" className="read-btn" onClick={openFeeders}>
-            <span className="icon icon-fish" aria-hidden="true" style={{ marginRight: '0.4rem' }}></span>查看投喂者
-          </button>
-          {canEdit && (
-            <a href={`/blog/${blogId}/edit`} className="read-btn">
-              编辑文章
-            </a>
-          )}
-          <button
-            id="admin-delete-btn"
-            className="read-btn"
-            onClick={() => setModal('delete')}
-          >
-            删除文章
-          </button>
+        <div
+          className={`modal${modal === 'menu' ? ' is-open' : ''}`}
+          id="manageMenuModal"
+          role="dialog"
+          aria-hidden={modal !== 'menu'}
+          onClick={(e) => e.target === e.currentTarget && setModal(null)}
+        >
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">
+                  <Settings aria-hidden="true" style={{ marginRight: '0.5rem' }} />
+                  管理文章
+                </h5>
+                <button type="button" className="btn-close" aria-label="Close" onClick={() => setModal(null)} />
+              </div>
+              <div className="modal-body">
+                <div className="manage-menu">
+                  <button type="button" className="manage-menu__item" onClick={openLikers}>
+                    <Heart aria-hidden="true" /> 查看点赞者
+                  </button>
+                  <button type="button" className="manage-menu__item" onClick={openFeeders}>
+                    <Fish aria-hidden="true" /> 查看投喂者
+                  </button>
+                  {canEdit && (
+                    <a href={`/blog/${blogId}/edit`} className="manage-menu__item">
+                      <Pencil aria-hidden="true" /> 编辑文章
+                    </a>
+                  )}
+                  <button
+                    type="button"
+                    className="manage-menu__item manage-menu__item--danger"
+                    onClick={() => setModal('delete')}
+                  >
+                    <Trash2 aria-hidden="true" /> 删除文章
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -569,7 +605,8 @@ export default function FeedButton({
                 )}
               </div>
               <div className="modal-footer">
-                <button type="button" className="button button-primary" onClick={() => setModal(null)}>
+                {/* 取消：回到「管理文章」目录而非直接关闭 */}
+                <button type="button" className="button button-primary" onClick={() => setModal('menu')}>
                   取消
                 </button>
                 <button
