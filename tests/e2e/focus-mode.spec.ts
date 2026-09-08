@@ -70,13 +70,26 @@ test.describe('专注模式（设置 → 各处生效）', () => {
     await setFocus(page, false);
   });
 
-  test('设置页开关开 → 刷新回显开；博客横幅「此处」深链到设置锚点', async ({ page }) => {
+  test('设置页开关 → 顶栏玩具即时生效；刷新回显开；博客横幅「此处」深链到设置锚点', async ({ page }) => {
     await loginViaApi(page, SEED_USERS.core.username);
 
     // 设置页 UI 开关（点击 label；input 视觉隐藏）
     await page.goto('/settings');
     await clickFocusToggle(page);
     await expect(page.locator('#focusAlert')).toContainText('已保存');
+    // 顶栏「玩具」当场切禁用态 —— saveFocus 成功后 router.refresh() 重渲染服务端
+    // layout，无需整页跳转即与服务端 users.focus_mode 对齐（回归：曾停留旧态到下次重载）
+    const navToy = page.locator('span.site-link.is-disabled', { hasText: '玩具' });
+    await expect(navToy).toHaveAttribute('title', FOCUS_TITLE);
+    // 再关再开：链接恢复、再次禁用（同一机制双向验证）
+    await clickFocusToggle(page);
+    await expect(page.locator('#focusAlert')).toContainText('已保存');
+    await expect(page.locator('a.site-link[href="/game"]')).toHaveCount(1);
+    await expect(page.locator('span.site-link.is-disabled')).toHaveCount(0);
+    await clickFocusToggle(page);
+    await expect(page.locator('#focusAlert')).toContainText('已保存');
+    await expect(navToy).toHaveAttribute('aria-disabled', 'true');
+
     await page.goto('/settings');
     await expect(page.locator('#toggleFocus')).toBeChecked();
 

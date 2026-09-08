@@ -141,6 +141,9 @@ export default function SettingsPage() {
       const result = await res.json();
       if (res.ok && result.code === 200) {
         setFocusAlert({ msg: '专注模式设置已保存', type: 'success' });
+        // 顶栏「玩具」/首页卡片等服务端组件按 users.focus_mode 渲染 —— 不 refresh
+        // 则当前会话顶栏仍是旧态（软导航不会重跑 root layout），需整页重载才恢复。
+        router.refresh();
       } else {
         setFocusAlert({ msg: result.message || '保存失败', type: 'danger' });
         setState((s) => ({ ...s, focusMode: !value }));
