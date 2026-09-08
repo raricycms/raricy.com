@@ -1,4 +1,15 @@
 // Bootstrap-like modal (no Bootstrap required)
+//
+// 小屏（或内容高的弹窗）必须能滚：早期 overlay 是 overflow:visible + 垂直居中，
+// 内容比视口高时上下同时溢出、又没有滚动容器 —— 「保存」这类底部按钮永远点不到。
+// 实测 390×664（iPhone 13）下栏目编辑弹窗高 823px，按钮整条在屏外；桌面 720px 高
+// 也只是按钮中心恰好卡在 707px 才侥幸能点。
+//
+// 两个坑：
+//   1. flex 容器里 align-items:center 会把超高内容的**顶部**挤出可滚区域（滚不上去），
+//      所以垂直定位交给子元素的 margin:auto —— 空间不足时 auto 边距退化为 0，
+//      从顶部开始排布，两端都滚得到；空间足够时仍是居中。
+//   2. 容器要留 padding，滚动到两端时不贴边。
 .modal {
   position: fixed;
   inset: 0;
@@ -7,6 +18,8 @@
   justify-content: center;
   background: rgba(0, 0, 0, 0.5);
   z-index: 1050;
+  overflow-y: auto;
+  padding: 1rem 0;
 }
 
 .modal.is-open { display: flex; }
@@ -14,10 +27,8 @@
 .modal-dialog {
   width: calc(100% - 2rem);
   max-width: 500px;
-  margin: 1.75rem auto;
+  margin: auto;
 }
-
-.modal-dialog.modal-dialog-centered { margin: 0 auto; }
 
 .modal-content {
   padding: 10px;

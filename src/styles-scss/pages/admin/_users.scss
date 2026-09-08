@@ -115,6 +115,10 @@
 }
 
 // Modal overlay (for ban/unban/notification modals)
+//
+// 与 components/_modal.scss 的 .modal 同一套「可滚弹窗」约定：内容比视口高时整层可滚，
+// 垂直定位交给子元素 margin:auto（flex 的 align-items:center 会把超高内容的顶部挤出
+// 可滚区域）。栏目编辑弹窗在 390×664 下高 823px，不加这两条「保存」按钮点不到。
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -126,11 +130,15 @@
   display: none;
   align-items: center;
   justify-content: center;
+  overflow-y: auto;
+  padding: 1rem 0;
 
   &.show {
     display: flex;
   }
 }
+
+.modal-overlay .modal-dialog { margin: auto; }
 
 // Responsive
 @media (max-width: 576px) {
