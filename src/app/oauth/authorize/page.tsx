@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import { LockKeyhole } from 'lucide-react';
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import {
@@ -161,7 +162,7 @@ export default async function AuthorizePage({ searchParams }: PageProps) {
       <section className="fd-settings-card">
         <header className="fd-settings-card__head u-mb-5">
           <span className="fd-settings-card__icon" aria-hidden="true">
-            🔐
+            <LockKeyhole />
           </span>
           <h1 className="fd-settings-card__title">授权应用访问你的账号</h1>
         </header>

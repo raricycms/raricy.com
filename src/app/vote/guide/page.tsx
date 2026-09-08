@@ -7,7 +7,7 @@ export const metadata = { title: '投票箱使用指南 · 聪明山' };
 export default function VoteGuidePage() {
   const html = loadGuideHtml('投票箱使用指南.md');
   return (
-    <GuideShell backHref="/vote" backLabel="← 返回投票箱">
+    <GuideShell backHref="/vote" backLabel="返回投票箱">
       {html}
     </GuideShell>
   );

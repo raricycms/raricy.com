@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { ArrowRight, Bell } from 'lucide-react';
 import type { NotificationDTO } from '@/lib/notification-service';
 
 declare global {
@@ -143,7 +144,7 @@ export default function NotificationItems({ initial }: { initial: NotificationDT
       {items.length === 0 ? (
         <div className="empty-state">
           <div className="empty-state-icon" aria-hidden="true">
-            🔔
+            <Bell />
           </div>
           <h3>暂无通知</h3>
           <p>你还没有任何通知，保持关注最新动态！</p>
@@ -194,12 +195,12 @@ export default function NotificationItems({ initial }: { initial: NotificationDT
               )}
               {n.object.type === 'blog' && n.object.id && (
                 <Link href={`/blog/${n.object.id}`} className="notification-blog-link">
-                  查看博客 →
+                  查看博客 <ArrowRight aria-hidden="true" />
                 </Link>
               )}
               {n.object.type === 'chat' && n.object.id && (
                 <Link href={`/chat?channel=${encodeURIComponent(n.object.id)}`} className="notification-blog-link">
-                  查看对话 →
+                  查看对话 <ArrowRight aria-hidden="true" />
                 </Link>
               )}
             </div>

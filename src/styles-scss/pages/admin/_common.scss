@@ -66,6 +66,10 @@
   font-size: 0.9rem;
   color: var(--color-text-secondary);
   font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
 }
 
 // Inline stats bar (used on articles page)

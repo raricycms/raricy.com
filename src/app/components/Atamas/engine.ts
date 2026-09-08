@@ -8,7 +8,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { MAX_ELEMENTS } from './constants';
-import type { RingElement, PendingElement, AtamasUiSnapshot } from './constants';
+import type { RingElement, PendingElement, AtamasUiSnapshot, MessageKind } from './constants';
 import { getTranslation, formatTranslation } from './i18n';
 import { drawAtamas } from './render';
 
@@ -59,6 +59,7 @@ export class AtamasEngine {
 
   state: GameState;
   private message = '';
+  private messageKind: MessageKind = 'plain';
   private currentAction = '';
   private gameOverAnimProgress = 0;
   private gameOverAnimationId: number | null = null;
@@ -116,8 +117,9 @@ export class AtamasEngine {
   }
 
   // ── 消息 / 当前动作 / 快照 ─────────────────────────────────────────────────
-  private setMessage(html: string): void {
-    this.message = html;
+  private setMessage(text: string, kind: MessageKind = 'plain'): void {
+    this.message = text;
+    this.messageKind = kind;
     this.emit();
   }
 
@@ -138,11 +140,11 @@ export class AtamasEngine {
 
     let recall: AtamasUiSnapshot['recall'];
     if (cooldownComplete && hasStateToRecall) {
-      recall = { disabled: false, text: getTranslation('recall') || '↩ Recall', title: 'Recall last move' };
+      recall = { disabled: false, text: getTranslation('recall') || 'Undo', title: 'Recall last move' };
     } else if (cooldownComplete) {
-      recall = { disabled: true, text: `↩ ${roundsLeft}`, title: 'Place an element first' };
+      recall = { disabled: true, text: String(roundsLeft), title: 'Place an element first' };
     } else {
-      recall = { disabled: true, text: `↩ ${roundsLeft}`, title: formatTranslation('recallCooldown', { n: roundsLeft }) };
+      recall = { disabled: true, text: String(roundsLeft), title: formatTranslation('recallCooldown', { n: roundsLeft }) };
     }
 
     const preview: (PendingElement | null)[] = [0, 1, 2].map((i) =>
@@ -156,6 +158,7 @@ export class AtamasEngine {
       preview,
       recall,
       message: this.message,
+      messageKind: this.messageKind,
       currentAction: this.currentAction,
     });
   }
@@ -222,6 +225,7 @@ export class AtamasEngine {
     this.updateUI();
     s.needsRedraw = true;
     this.message = getTranslation('clickRingArea');
+    this.messageKind = 'plain';
     this.currentAction = getTranslation('placeNumber');
     this.emit();
   }
@@ -355,7 +359,8 @@ export class AtamasEngine {
       if (!hasPlusMerge) {
         s.gameOver = true;
         s.pendingElement = null;
-        this.message = `💥 ${getTranslation('gameOver')}! ${getTranslation('diskFull')}<br>🏆 ${getTranslation('score')}: ${s.totalScore} | ${getTranslation('maxPlate')}: ${s.maxPlate}`;
+        this.message = `${getTranslation('gameOver')}! ${getTranslation('diskFull')} · ${getTranslation('score')}: ${s.totalScore} | ${getTranslation('maxPlate')}: ${s.maxPlate}`;
+        this.messageKind = 'gameOver';
         this.currentAction = getTranslation('gameOver');
         this.startGameOverAnimation();
         this.emit();
@@ -473,7 +478,7 @@ export class AtamasEngine {
           s.animating = false;
           this.updateUI();
           s.needsRedraw = true;
-          this.setMessage(formatTranslation('mergeComplete', { round: s.round - 1 }));
+          this.setMessage(formatTranslation('mergeComplete', { round: s.round - 1 }), 'merge');
         }
       }, 300);
       return;
@@ -489,7 +494,7 @@ export class AtamasEngine {
           s.animating = false;
           this.updateUI();
           s.needsRedraw = true;
-          this.setMessage(formatTranslation('mergeComplete', { round: s.round - 1 }));
+          this.setMessage(formatTranslation('mergeComplete', { round: s.round - 1 }), 'merge');
           if (s.elements.length < MAX_ELEMENTS) this.getNextFromQueue();
         }
       }, 300);
@@ -568,7 +573,7 @@ export class AtamasEngine {
           s.animating = false;
           this.updateUI();
           s.needsRedraw = true;
-          this.setMessage(formatTranslation('mergeComplete', { round: s.round - 1 }));
+          this.setMessage(formatTranslation('mergeComplete', { round: s.round - 1 }), 'merge');
           if (s.elements.length < MAX_ELEMENTS) this.getNextFromQueue();
         }
       }, 300);
@@ -580,7 +585,7 @@ export class AtamasEngine {
     const s = this.state;
     if (s.gameOver || s.animating) return false;
     if (!s.pendingElement) {
-      this.setMessage(getTranslation('noElementWaiting'));
+      this.setMessage(getTranslation('noElementWaiting'), 'warn');
       return false;
     }
 
@@ -656,7 +661,7 @@ export class AtamasEngine {
           );
           if (s.elements.length < MAX_ELEMENTS) this.getNextFromQueue();
         } else {
-          const plusType = newElement.isBlackGolden ? '🌟 Black+' : '➕ Plus';
+          const plusType = newElement.isBlackGolden ? 'Black+' : 'Plus';
           this.setMessage(formatTranslation('plusPlaced', { type: plusType }));
           if (!this.checkPlusMerge()) {
             this.later(() => {
@@ -676,19 +681,19 @@ export class AtamasEngine {
   recall(): void {
     const s = this.state;
     if (!s.canRecall) {
-      this.setMessage(getTranslation('recallNotAvailableYet'));
+      this.setMessage(getTranslation('recallNotAvailableYet'), 'warn');
       return;
     }
     if (!s.previousState) {
-      this.setMessage(getTranslation('noMoveToRecall'));
+      this.setMessage(getTranslation('noMoveToRecall'), 'warn');
       return;
     }
     if (s.animating) {
-      this.setMessage(getTranslation('cannotRecallDuringAnimation'));
+      this.setMessage(getTranslation('cannotRecallDuringAnimation'), 'warn');
       return;
     }
     if (s.gameOver) {
-      this.setMessage(getTranslation('gameOver'));
+      this.setMessage(getTranslation('gameOver'), 'gameOver');
       return;
     }
 
@@ -708,6 +713,7 @@ export class AtamasEngine {
     this.updateUI();
     s.needsRedraw = true;
     this.message = getTranslation('moveRecalled');
+    this.messageKind = 'recall';
     if (s.pendingElement) {
       this.currentAction =
         s.pendingElement.type === 'number'
@@ -740,11 +746,11 @@ export class AtamasEngine {
     const s = this.state;
     if (s.gameOver || s.animating) {
       if (s.gameOver)
-        this.setMessage(`⛔ ${getTranslation('gameOver')}, ${getTranslation('clickRingArea')}`);
+        this.setMessage(`${getTranslation('gameOver')}, ${getTranslation('clickRingArea')}`, 'warn');
       return;
     }
     if (!s.pendingElement) {
-      this.setMessage(getTranslation('waiting'));
+      this.setMessage(getTranslation('waiting'), 'plain');
       return;
     }
 
@@ -752,7 +758,7 @@ export class AtamasEngine {
     const innerRadius = radius * 0.6;
     const outerRadius = radius * 1.15;
     if (dist < innerRadius || dist > outerRadius) {
-      this.setMessage(getTranslation('clickOnRing'));
+      this.setMessage(getTranslation('clickOnRing'), 'warn');
       return;
     }
 
@@ -777,6 +783,7 @@ export class AtamasEngine {
       this.updateUI();
       s.needsRedraw = true;
       this.message = getTranslation('firstElementPlaced');
+      this.messageKind = 'plain';
       this.getNextFromQueue();
       return;
     }
@@ -884,6 +891,7 @@ export class AtamasEngine {
     s.needsRedraw = true;
     this.updateUI();
     this.message = getTranslation('gameReset');
+    this.messageKind = 'reset';
     this.currentAction = getTranslation('placeNumber');
     this.emit();
   }

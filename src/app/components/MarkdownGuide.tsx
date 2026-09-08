@@ -2,6 +2,7 @@ import Link from 'next/link';
 import fs from 'node:fs';
 import path from 'node:path';
 import { marked } from 'marked';
+import { ArrowLeft } from 'lucide-react';
 
 // Markdown 指南页面的共享外壳：从 docs/ 读取仓库内可信文档，服务端渲染为 HTML
 //（fenced code + tables），并统一排版样式。四份指南（cattca / 云剪贴板 / 图床 /
@@ -60,7 +61,7 @@ export function GuideShell({
       <style>{GUIDE_STYLES}</style>
       <div className="guide wrap">
         <Link href={backHref} className="guide__back">
-          {backLabel}
+          <ArrowLeft aria-hidden="true" /> {backLabel}
         </Link>
         <div className="guide__content" dangerouslySetInnerHTML={{ __html: children }} />
       </div>

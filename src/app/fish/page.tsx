@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import { ReceiptText } from 'lucide-react';
 import { getCurrentUser } from '@/lib/auth';
 import { loginUrlWithNext } from '@/lib/safe-url';
 import { getBalance, getTodayCheckinFish } from '@/lib/fish-service';
@@ -33,7 +34,9 @@ export default async function FishPage() {
             </div>
           )}
           <div className="fish-card__actions">
-            <Link href="/fish/transactions" className="fish-card__link">📋 查看流水</Link>
+            <Link href="/fish/transactions" className="fish-card__link">
+              <ReceiptText aria-hidden="true" /> 查看流水
+            </Link>
           </div>
           <div className="fish-card__info">
             <p>每日签到可获得小鱼干，更多获取方式即将开放…</p>

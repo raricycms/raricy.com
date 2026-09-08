@@ -4,13 +4,28 @@
 // 搜索、过滤、分组与卡片均走 tool-new-* BEM 类。
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
+import {
+  ArrowRight,
+  Binary,
+  Braces,
+  Clipboard,
+  Code,
+  Hash,
+  Image,
+  Link2,
+  Lock,
+  Mail,
+  Vote,
+  Wrench,
+  type LucideIcon,
+} from 'lucide-react';
 
 type Cat = 'site' | 'codec' | 'crypto';
 type Tool = {
   cat: Cat;
   kw: string;
   href: string;
-  emoji: string;
+  icon: LucideIcon;
   title: string;
   desc: string;
   tags: string[];
@@ -22,7 +37,7 @@ const SITE: Tool[] = [
     cat: 'site',
     kw: '云剪贴板 clipboard 云端 文本 分享',
     href: '/clipboard',
-    emoji: '📋',
+    icon: Clipboard,
     title: '云剪贴板',
     desc: '云端文本存储与分享',
     tags: ['云端', '分享', '文本'],
@@ -31,7 +46,7 @@ const SITE: Tool[] = [
     cat: 'site',
     kw: '图床 图片 image 上传 托管',
     href: '/image',
-    emoji: '🖼️',
+    icon: Image,
     title: '图床',
     desc: '图片上传与托管分享',
     tags: ['图片', '上传', '分享'],
@@ -40,7 +55,7 @@ const SITE: Tool[] = [
     cat: 'site',
     kw: '投票 vote 问卷 调查',
     href: '/vote',
-    emoji: '🗳️',
+    icon: Vote,
     title: '投票箱',
     desc: '创建和参与投票，支持嵌入博客文章',
     tags: ['投票', '问卷'],
@@ -50,7 +65,7 @@ const SITE: Tool[] = [
     cat: 'site',
     kw: 'cattca 工具',
     href: '/tool/cattca',
-    emoji: '🛠️',
+    icon: Wrench,
     title: 'Cattca',
     desc: '其他工具功能',
     tags: ['工具'],
@@ -61,7 +76,7 @@ const CODEC: Tool[] = [
     cat: 'codec',
     kw: 'base base64 base58 编码 解码',
     href: '/tool/base',
-    emoji: '🔣',
+    icon: Braces,
     title: 'Base 编码',
     desc: 'Base16 / 32 / 36 / 58 / 62 / 64 / 85 / 91 / 92',
     tags: ['Base64', 'Base58', '+7'],
@@ -70,7 +85,7 @@ const CODEC: Tool[] = [
     cat: 'codec',
     kw: 'hex 十六进制 字节 bytes 转换',
     href: '/tool/hex',
-    emoji: '🔡',
+    icon: Binary,
     title: 'Hex 编码',
     desc: '十六进制与字节流互转',
     tags: ['Hex', 'Bytes'],
@@ -79,7 +94,7 @@ const CODEC: Tool[] = [
     cat: 'codec',
     kw: 'url 编码 解码 percent query',
     href: '/tool/url',
-    emoji: '🔗',
+    icon: Link2,
     title: 'URL 编码',
     desc: 'URL 百分号编码 / 解码',
     tags: ['URL', 'Web', '编码'],
@@ -88,7 +103,7 @@ const CODEC: Tool[] = [
     cat: 'codec',
     kw: 'html 实体 entity 转义 escape',
     href: '/tool/html',
-    emoji: '📰',
+    icon: Code,
     title: 'HTML 编码',
     desc: 'HTML 实体编码 / 解码，支持常用符号和特殊字符',
     tags: ['Entity', 'Escape'],
@@ -97,7 +112,7 @@ const CODEC: Tool[] = [
     cat: 'codec',
     kw: 'quoted-printable mime rfc2045 邮件',
     href: '/tool/qp',
-    emoji: '✉️',
+    icon: Mail,
     title: 'Quoted-printable',
     desc: '邮件 MIME Quoted-Printable 编 / 解码',
     tags: ['MIME', 'RFC2045'],
@@ -108,7 +123,7 @@ const CRYPTO: Tool[] = [
     cat: 'crypto',
     kw: 'hash 哈希 sha md5 校验',
     href: '/tool/hash',
-    emoji: '#️⃣',
+    icon: Hash,
     title: '哈希计算',
     desc: 'SHA-256 / SHA-1 / SHA-512 / MD5 等',
     tags: ['SHA-256', 'MD5'],
@@ -117,7 +132,7 @@ const CRYPTO: Tool[] = [
     cat: 'crypto',
     kw: 'aes 加密 解密 对称 cbc gcm',
     href: '/tool/aes',
-    emoji: '🔒',
+    icon: Lock,
     title: 'AES',
     desc: '常见模式（CBC / CTR / GCM）与填充',
     tags: ['AES', '密钥'],
@@ -130,7 +145,10 @@ function ToolCard({ t }: { t: Tool }) {
       <div className="tool-new-card__header">
         <div className="tool-new-card__header-info">
           <h3 className="title">
-            <span aria-hidden="true">{t.emoji}</span> {t.title}
+            <span aria-hidden="true">
+              <t.icon />
+            </span>{' '}
+            {t.title}
           </h3>
           <p className="description">{t.desc}</p>
         </div>
@@ -143,7 +161,9 @@ function ToolCard({ t }: { t: Tool }) {
         ))}
       </div>
       <div className="tool-new-card__footer">
-        <span className="btn">开始使用 →</span>
+        <span className="btn">
+          开始使用 <ArrowRight aria-hidden="true" />
+        </span>
       </div>
     </>
   );

@@ -1,5 +1,6 @@
 import { Fragment } from 'react';
 import Link from 'next/link';
+import { ArrowLeft } from 'lucide-react';
 import { resolvePath } from '@/lib/story-service';
 import type { CollectionResult } from '@/lib/story-service';
 
@@ -50,10 +51,12 @@ export default async function StoryRootPage() {
           <div className="story-back">
             {path.includes('/') ? (
               <Link href={`/story/${path.slice(0, path.lastIndexOf('/'))}`}>
-                ← 返回上级
+                <ArrowLeft aria-hidden="true" /> 返回上级
               </Link>
             ) : (
-              <Link href="/story">← 返回故事首页</Link>
+              <Link href="/story">
+                <ArrowLeft aria-hidden="true" /> 返回故事首页
+              </Link>
             )}
           </div>
         )}

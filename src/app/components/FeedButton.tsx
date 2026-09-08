@@ -9,6 +9,7 @@
 // 由 blog/[id]/page.tsx 挂载。点赞 → POST /api/blogs/:id/like；投喂 → POST /api/blogs/:id/feed。
 
 import { useCallback, useEffect, useState } from 'react';
+import { ArrowLeft } from 'lucide-react';
 
 const FEED_CAP = 5;
 
@@ -328,7 +329,7 @@ export default function FeedButton({
         </button>
 
         <button onClick={() => history.back()} className="read-btn">
-          ← 返回上页
+          <ArrowLeft aria-hidden="true" /> 返回上页
         </button>
       </div>
 
@@ -419,7 +420,7 @@ export default function FeedButton({
                           <img
                             src={u.avatar_url || `/api/avatar/${u.id}`}
                             alt={u.username}
-                            style={{ width: 32, height: 32, borderRadius: 4, marginRight: 10 }}
+                            style={{ width: 32, height: 32, borderRadius: '8%', marginRight: 10 }}
                           />
                           <strong>{u.username || '匿名用户'}</strong>
                         </div>
@@ -484,7 +485,7 @@ export default function FeedButton({
                             <img
                               src={f.avatar_path ? `/api/avatar/${f.user_id}` : `/api/avatar/${f.user_id}`}
                               alt={f.username}
-                              style={{ width: 32, height: 32, borderRadius: 4, marginRight: 10 }}
+                              style={{ width: 32, height: 32, borderRadius: '8%', marginRight: 10 }}
                             />
                             <strong>{f.username || '未知用户'}</strong>
                           </div>

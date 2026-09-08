@@ -394,6 +394,19 @@
     border-color: var(--color-success-primary);
     background: var(--color-success-secondary);
   }
+
+  // 「我的投票」✓ 标记（原为 JS 里拼接文本字符，现用 mask 勾号图标）
+  &--voted .vote-embed-option-label::after {
+    content: '';
+    display: inline-block;
+    width: 1em;
+    height: 1em;
+    margin-left: 0.35em;
+    vertical-align: -0.15em;
+    background-color: var(--color-success-primary);
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") no-repeat center / contain;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") no-repeat center / contain;
+  }
 }
 
 .vote-embed-bar {

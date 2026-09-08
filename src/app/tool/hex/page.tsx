@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect } from 'react';
+import { ArrowLeft } from 'lucide-react';
 
 export default function HexToolPage() {
   useEffect(() => {
@@ -296,7 +297,13 @@ export default function HexToolPage() {
     <section className="py-4 base-tool-page">
       <div className="container">
         <div className="d-flex align-items-center mb-3">
-          <Link href="/tool" className="text-decoration-none me-2">←</Link>
+          <Link
+            href="/tool"
+            className="text-decoration-none me-2"
+            aria-label="返回工具箱"
+          >
+            <ArrowLeft aria-hidden="true" />
+          </Link>
           <h1 className="mb-0 tool-new-hero__title">Hex 查看 / 编辑</h1>
         </div>
         <p className="tool-new-hero__description">在浏览器中完成：文件 → Hex 查看与编辑 → 下载为修改后的文件。</p>

@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { ArrowLeft } from 'lucide-react';
 import Game2048 from '@/app/components/Game2048';
 
 export const metadata = {
@@ -9,7 +10,7 @@ export default function Game2048Page() {
   return (
     <div className="container game-2048-page">
       <Link href="/game" className="game-2048-back">
-        ← 返回玩具
+        <ArrowLeft aria-hidden="true" /> 返回玩具
       </Link>
       <Game2048 />
     </div>

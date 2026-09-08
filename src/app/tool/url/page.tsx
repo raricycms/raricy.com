@@ -3,6 +3,7 @@
 // 逐字对齐原 Flask 模板 tool/url.html（纯前端计算）。
 import Link from 'next/link';
 import { useState } from 'react';
+import { ArrowLeft, ArrowLeftRight, ArrowRight } from 'lucide-react';
 
 export default function UrlToolPage() {
   const [left, setLeft] = useState('');
@@ -167,13 +168,13 @@ export default function UrlToolPage() {
             <div className="mid-actions h-100">
               <div className="d-flex flex-column gap-3 w-100 align-items-center">
                 <button className="btn btn-primary" onClick={encodeLeftToRight}>
-                  编码 →
+                  编码 <ArrowRight aria-hidden="true" />
                 </button>
                 <button className="btn btn-outline-primary" onClick={decodeRightToLeft}>
-                  ← 解码
+                  <ArrowLeft aria-hidden="true" /> 解码
                 </button>
                 <button className="btn btn-outline-secondary" onClick={swap}>
-                  ⇄ 交换两侧
+                  <ArrowLeftRight aria-hidden="true" /> 交换两侧
                 </button>
               </div>
             </div>

@@ -81,6 +81,15 @@ export interface PendingElement {
   forRound?: number;
 }
 
+/** 消息语义分类：UI 渲染端按 kind 配图标（Atamas.tsx MSG_ICON） */
+export type MessageKind =
+  | 'gameOver'
+  | 'merge'
+  | 'recall'
+  | 'reset'
+  | 'warn'
+  | 'plain';
+
 /** 推给 React 的 UI 快照（对齐原站 DOM 更新点） */
 export interface AtamasUiSnapshot {
   score: number;
@@ -89,8 +98,10 @@ export interface AtamasUiSnapshot {
   /** 预览队列前 3 个元素（null = 空槽显示 "?"） */
   preview: (PendingElement | null)[];
   recall: { disabled: boolean; text: string; title: string };
-  /** messageBox.innerHTML 对应内容（可含 HTML） */
+  /** 消息文本（纯文本，不含 HTML/emoji 前缀） */
   message: string;
+  /** 消息语义分类，决定渲染端的图标 */
+  messageKind: MessageKind;
   /** currentAction 文案 */
   currentAction: string;
 }

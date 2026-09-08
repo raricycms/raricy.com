@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { Clipboard } from 'lucide-react';
 
 // 云剪贴板菜单
 function showToast(msg: string, type: string) {
@@ -122,7 +123,7 @@ export default function ClipboardMenu() {
       {!loadingList && clips.length === 0 && (
         <div className="clipboard-list__empty">
           <div className="clipboard-list__empty-icon" aria-hidden="true">
-            📋
+            <Clipboard />
           </div>
           <div className="clipboard-list__empty-text">还没有剪贴板</div>
           <div className="clipboard-list__empty-subtext">点击上方按钮创建你的第一个剪贴板。</div>

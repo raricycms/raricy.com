@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { ArrowLeft } from 'lucide-react';
 import CubeRoll from '@/app/components/CubeRoll';
 
 export const metadata = {
@@ -9,7 +10,7 @@ export default function CubePage() {
   return (
     <div className="container cube-page">
       <Link href="/game" className="cube-back">
-        ← 返回玩具
+        <ArrowLeft aria-hidden="true" /> 返回玩具
       </Link>
       <h1 className="game-hero__title">立方体滚滚</h1>
       <p className="game-hero__description">

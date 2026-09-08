@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { Vote } from 'lucide-react';
 import { requireCoreUser } from '@/lib/guard';
 import { listVotes } from '@/lib/vote-service';
 import { VoteRedirect, VoteCopyButton } from './VoteMenuClient';
@@ -52,7 +53,7 @@ export default async function VoteListPage() {
       ) : (
         <div className="vote-list__empty">
           <div className="vote-list__empty-icon" aria-hidden="true">
-            🗳️
+            <Vote />
           </div>
           <div className="vote-list__empty-text">还没有投票</div>
           <div className="vote-list__empty-subtext">点击上方按钮创建你的第一个投票。</div>

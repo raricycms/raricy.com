@@ -7,7 +7,7 @@ export const metadata = { title: 'Cattca 语法指南 · 聪明山' };
 export default function CattcaGuidePage() {
   const html = loadGuideHtml('cattca-guide.md');
   return (
-    <GuideShell backHref="/tool/cattca" backLabel="← 返回 Cattca 编辑器">
+    <GuideShell backHref="/tool/cattca" backLabel="返回 Cattca 编辑器">
       {html}
     </GuideShell>
   );

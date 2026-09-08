@@ -18,22 +18,22 @@ export default function AdminShell({
   const items: AdminNavItem[] = [
     ...(hasAdminRights(user)
       ? ([
-          { href: '/admin', label: '管理概览', icon: '📊', exact: true },
-          { href: '/admin/blogs', label: '文章管理', icon: '📝' },
+          { href: '/admin', label: '管理概览', icon: 'chart', exact: true },
+          { href: '/admin/blogs', label: '文章管理', icon: 'doc' },
         ] as AdminNavItem[])
       : []),
     ...(isCoreUser(user)
-      ? ([{ href: '/admin/users', label: '用户管理', icon: '👥' }] as AdminNavItem[])
+      ? ([{ href: '/admin/users', label: '用户管理', icon: 'users' }] as AdminNavItem[])
       : []),
     ...(isOwner(user)
       ? ([
-          { href: '/admin/broadcast', label: '通知发送', icon: '📢' },
-          { href: '/admin/categories', label: '栏目管理', icon: '🗂️' },
-          { href: '/admin/appeals', label: '申诉管理', icon: '⚖️' },
+          { href: '/admin/broadcast', label: '通知发送', icon: 'megaphone' },
+          { href: '/admin/categories', label: '栏目管理', icon: 'folder' },
+          { href: '/admin/appeals', label: '申诉管理', icon: 'scale' },
         ] as AdminNavItem[])
       : []),
     ...(isCoreUser(user)
-      ? ([{ href: '/audit', label: '操作日志', icon: '📋' }] as AdminNavItem[])
+      ? ([{ href: '/audit', label: '操作日志', icon: 'list' }] as AdminNavItem[])
       : []),
   ];
 

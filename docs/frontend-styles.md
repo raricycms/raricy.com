@@ -128,7 +128,38 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
 - 按钮 / 链接 / 表单选择器 / 徽章 / 导航项 → `border-radius: 999px`（胶囊）
 - 卡片 → `30px`（首页 feature-card、登录/注册容器、博客正文容器、弹窗内容）
 - 普通面板 / 分页 / 输入框 → `10px`（`$radius-large`）或 `6–8px`
-- 图标 / 头像 → 方形小圆角（`border-radius: 5%`）或圆形
+- 图标徽章 → 按场景取圆形（`50%`）或胶囊（`999px`）
+- 头像 → 方形小圆角，统一 `border-radius: 8%`（规范与全站清单见 §4.1；不用圆形头像）
+
+### 4.1 头像圆角规范（全站统一 8%）
+
+> 2026-09 统一：此前各页面头像圆角漂移在 `4px–10px` / `5%–25%` 之间，观感不一；现全站收敛为同一比例。
+
+**头像一律 `border-radius: 8%`**（≈ 尺寸 × 1/12.5），用百分比而非固定 px——随头像尺寸自动缩放，不同尺寸下圆角观感一致：
+
+| 头像尺寸 | 20px | 24px | 28px | 32px | 34px | 120px |
+|----------|------|------|------|------|------|-------|
+| 实际圆角 | 1.6px | 1.9px | 2.2px | 2.6px | 2.7px | 9.6px |
+
+要点：
+
+- **不用圆形头像**（历史上曾有 `border-radius: 50%` 的写法，按「方形小圆角」取向移除——残留注释见 `pages/blog/_menu.scss`）。
+- 内联样式同样写 `border-radius: '8%'`，不要写死 px（例：FeedButton 弹窗名单）。
+- 现有落点清单（改样式或加新头像时对照，勿再漂移）：
+
+| 位置 | 选择器 / 出处 | 尺寸 |
+|------|--------------|------|
+| 顶栏用户头像 | `.site-user-avatar`（layout/_header.scss） | 32px |
+| 个人主页大图 | `.profile-hero__avatar`（pages/_profile.scss） | 120px |
+| 聊天 · 频道列表 / 折叠图标 | `.chat-chan__avatar` / `.chat-chan__icon`（pages/_chat.scss） | 34px |
+| 聊天 · 会话标题栏 | `.chat-main__peer-avatar`（pages/_chat.scss） | 32px |
+| 聊天 · 消息作者 | `.chat-msg__avatar`（pages/_chat.scss） | 34px |
+| 新会话弹窗列表 | `.chat-new-item__avatar`（pages/_chat.scss） | 32px |
+| 签到排行榜（含占位） | `.checkin-leaderboard__avatar` / `-placeholder`（pages/_checkin.scss） | 32px |
+| 后台用户卡片 | `.user-card__avatar`（pages/admin/_users.scss） | 28px |
+| 博客列表 / 详情作者 | `.blog-author img`（pages/blog/_menu.scss，博客列表与详情页共用） | 20px |
+| 博客评论作者 | `.comment-author-avatar`（pages/blog/_blog.scss） | 24px |
+| Feed 弹窗名单（点赞 / 动态） | FeedButton.tsx 内联 style（两处） | 32px |
 
 ## 5. 布局
 

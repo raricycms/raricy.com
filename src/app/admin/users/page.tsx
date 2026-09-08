@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { Megaphone } from 'lucide-react';
 import { getCurrentUser, isOwner } from '@/lib/auth';
 import { listUsers } from '@/lib/admin-user-service';
 import AdminUserActions from '@/app/components/AdminUserActions';
@@ -71,7 +72,7 @@ export default async function AdminUsersPage({
             <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 600 }}>用户列表</h2>
             {owner && (
               <Link href="/admin/broadcast" className="btn btn-primary">
-                📢 通知发送中心
+                <Megaphone aria-hidden="true" /> 通知发送中心
               </Link>
             )}
           </div>

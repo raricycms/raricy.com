@@ -570,3 +570,39 @@
     .atamas-top-bar-btn, .atamas-language-btn { padding: 6px 10px; font-size: 0.75rem; }
     .atamas-language-dropdown { min-width: 140px; }
 }
+
+// ── SVG 图标排布（lucide/自绘图标 + 文字按钮统一 flex 居中） ────────────────
+.atamas-top-bar-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.atamas-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.atamas-turn-info {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.atamas-message {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.atamas-message__icon,
+.atamas-turn-info__icon {
+    flex: none;
+}
+
+.atamas-top-bar__title svg {
+    margin-right: 0.12em;
+}

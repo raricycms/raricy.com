@@ -24,6 +24,8 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { ArrowLeft } from 'lucide-react';
+import { SuitIcon, type SuitGlyph } from '@/app/components/GameIcons';
 
 // ─── 常量（对齐 speed.js 顶部）───────────────────────────────────────────────
 const SUITS = ['♥', '♦', '♠', '♣'] as const;
@@ -298,7 +300,9 @@ export default function SpeedGame() {
     return (
       <div className={`speed-card speed-card--${color}${extraClass}`}>
         <div className="speed-card__value">{card.value}</div>
-        <div className="speed-card__suit">{card.suit}</div>
+        <div className="speed-card__suit">
+          <SuitIcon suit={card.suit as SuitGlyph} />
+        </div>
       </div>
     );
   };
@@ -335,7 +339,7 @@ export default function SpeedGame() {
   return (
     <div className="speed-page">
       <Link href="/game" className="speed-back">
-        ← 返回玩具
+        <ArrowLeft aria-hidden="true" /> 返回玩具
       </Link>
 
       <div className="speed-wrapper">

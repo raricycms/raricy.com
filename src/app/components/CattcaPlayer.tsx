@@ -282,8 +282,10 @@ const CattcaPlayer = forwardRef<CattcaPlayerHandle, CattcaPlayerProps>(function 
         title.textContent = '段落 ' + ++segmentCount;
 
         const icon = document.createElement('span');
-        icon.className = cfg.toggle;
-        icon.textContent = '▼';
+        icon.className = cfg.toggle + ' is-open'; // 新段落 body 未折叠 = 展开态
+        // 折叠箭头用内联 SVG（镜像拷贝 innerHTML 会原样复制，无需额外处理）
+        icon.innerHTML =
+          '<svg class="rc-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
 
         header.appendChild(title);
         header.appendChild(icon);
@@ -328,6 +330,9 @@ const CattcaPlayer = forwardRef<CattcaPlayerHandle, CattcaPlayerProps>(function 
       if (currentSegment) {
         const body = currentSegment.querySelector('.' + cssEscape(cfg.body));
         if (body) body.classList.add(cfg.collapsed);
+        // 上一段自动收起 → 折叠箭头同步为 ▼（收起态）
+        const icon = currentSegment.querySelector('.' + cssEscape(cfg.toggle));
+        if (icon) icon.classList.remove('is-open');
       }
       currentSegment = null;
       outputBuffer = '';
@@ -343,10 +348,10 @@ const CattcaPlayer = forwardRef<CattcaPlayerHandle, CattcaPlayerProps>(function 
       if (!body || !icon) return;
       if (body.classList.contains(cfg.collapsed)) {
         body.classList.remove(cfg.collapsed);
-        icon.textContent = '▲';
+        icon.classList.add('is-open'); // 展开 = ▲
       } else {
         body.classList.add(cfg.collapsed);
-        icon.textContent = '▼';
+        icon.classList.remove('is-open'); // 收起 = ▼
       }
     };
 

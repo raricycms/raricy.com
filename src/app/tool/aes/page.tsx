@@ -3,6 +3,7 @@
 // 逐字对齐原 Flask 模板 tool/aes.html（纯前端计算，使用 Web Crypto）。
 import Link from 'next/link';
 import { useState } from 'react';
+import { ArrowLeft, ArrowLeftRight, ArrowRight } from 'lucide-react';
 
 const te = new TextEncoder();
 const td = new TextDecoder();
@@ -172,7 +173,7 @@ export default function AesToolPage() {
       <div>
         <div className="tool-new-hero__title-row">
           <Link href="/tool" className="tool-new-hero__back">
-            ← 返回工具箱
+            <ArrowLeft aria-hidden="true" /> 返回工具箱
           </Link>
           <h1 className="tool-new-hero__title">AES 加/解密</h1>
         </div>
@@ -271,13 +272,13 @@ export default function AesToolPage() {
             <div className="mid-actions h-100">
               <div className="d-flex flex-column gap-3 w-100 align-items-center">
                 <button className="btn btn-primary" onClick={encrypt}>
-                  加密 →
+                  加密 <ArrowRight aria-hidden="true" />
                 </button>
                 <button className="btn btn-outline-primary" onClick={decrypt}>
-                  ← 解密
+                  <ArrowLeft aria-hidden="true" /> 解密
                 </button>
                 <button className="btn btn-outline-secondary" onClick={swap}>
-                  ⇄ 交换两侧
+                  <ArrowLeftRight aria-hidden="true" /> 交换两侧
                 </button>
               </div>
             </div>

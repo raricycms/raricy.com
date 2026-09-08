@@ -43,6 +43,7 @@
     "fernet": "^0.3.3",
     "highlight.js": "^11.11.1",
     "jose": "^5.9.6",
+    "lucide-react": "^1.42.0",
     "marked": "^18.0.6",
     "mathjax-full": "^3.2.2",
     "next": "^15.1.4",

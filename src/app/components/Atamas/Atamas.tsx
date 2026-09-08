@@ -13,7 +13,20 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { AtamasUiSnapshot } from './constants';
+import {
+  ArrowLeft,
+  ChevronDown,
+  CircleCheck,
+  Flag,
+  Moon,
+  RotateCcw,
+  Sun,
+  Target,
+  TriangleAlert,
+  Undo2,
+} from 'lucide-react';
+import { AtamasRingIcon } from '@/app/components/GameIcons';
+import type { AtamasUiSnapshot, MessageKind } from './constants';
 import { BASECOLORS, FRONTCOLORS } from './constants';
 import { AtamasEngine } from './engine';
 import { THEME_COOKIE, COOKIE_MAX_AGE } from '@/lib/atamas-pref';
@@ -30,9 +43,19 @@ const EMPTY_SNAPSHOT: AtamasUiSnapshot = {
   maxPlate: 0,
   elementCount: 0,
   preview: [null, null, null],
-  recall: { disabled: true, text: '↩ Recall', title: '' },
+  recall: { disabled: true, text: 'Undo', title: '' },
   message: '',
+  messageKind: 'plain',
   currentAction: '',
+};
+
+// 状态消息 → 图标（引擎只推纯文本 + kind，图标在渲染层配）
+const MSG_ICON: Partial<Record<MessageKind, React.ReactNode>> = {
+  gameOver: <Flag aria-hidden="true" />,
+  merge: <CircleCheck aria-hidden="true" />,
+  recall: <Undo2 aria-hidden="true" />,
+  reset: <RotateCcw aria-hidden="true" />,
+  warn: <TriangleAlert aria-hidden="true" />,
 };
 
 // 警示灯类名（对齐 updateWarningLights）：18→3 绿，19→2 黄，≥20→1 红
@@ -175,13 +198,14 @@ export default function Atamas({
     <div className={`game-atamas-page${lightMode ? ' light-mode' : ''}`} id="atamasPage">
       <div className="game-atamas-wrapper">
         <Link href="/game" className="game-atamas-back">
-          ← 返回玩具
+          <ArrowLeft aria-hidden="true" /> 返回玩具
         </Link>
 
         <div className="atamas-container">
           {/* Top Bar */}
           <div className="atamas-top-bar">
             <h1 className="atamas-top-bar__title" style={{ fontFamily: activeFont }}>
+              <AtamasRingIcon />
               {getTranslation('title')}
             </h1>
             <div className="atamas-top-bar__actions">
@@ -196,7 +220,9 @@ export default function Atamas({
                   }}
                 >
                   <span>{activeName}</span>
-                  <span className="arrow">▼</span>
+                  <span className="arrow" aria-hidden="true">
+                    <ChevronDown />
+                  </span>
                 </button>
                 <div className="atamas-language-dropdown">
                   {sortedLanguageCodes().map((code) => (
@@ -217,6 +243,7 @@ export default function Atamas({
                 style={{ fontFamily: activeFont }}
                 onClick={toggleTheme}
               >
+                {lightMode ? <Moon aria-hidden="true" /> : <Sun aria-hidden="true" />}{' '}
                 {lightMode ? getTranslation('darkMode') : getTranslation('lightMode')}
               </button>
             </div>
@@ -287,7 +314,7 @@ export default function Atamas({
               style={{ fontFamily: activeFont }}
               onClick={() => engineRef.current?.reset()}
             >
-              {getTranslation('reset')}
+              <RotateCcw aria-hidden="true" /> {getTranslation('reset')}
             </button>
             <button
               type="button"
@@ -297,18 +324,24 @@ export default function Atamas({
               disabled={snap.recall.disabled}
               onClick={() => engineRef.current?.recall()}
             >
-              {snap.recall.text}
+              <Undo2 aria-hidden="true" /> {snap.recall.text}
             </button>
             <div className="atamas-turn-info" style={{ fontFamily: activeFont }}>
-              🎯 <strong>{snap.currentAction}</strong>
+              <span className="atamas-turn-info__icon" aria-hidden="true">
+                <Target />
+              </span>
+              <strong>{snap.currentAction}</strong>
             </div>
           </div>
 
-          <div
-            className="atamas-message"
-            style={{ fontFamily: activeFont }}
-            dangerouslySetInnerHTML={{ __html: snap.message }}
-          />
+          <div className="atamas-message" style={{ fontFamily: activeFont }}>
+            {MSG_ICON[snap.messageKind] && (
+              <span className="atamas-message__icon" aria-hidden="true">
+                {MSG_ICON[snap.messageKind]}
+              </span>
+            )}
+            {snap.message && <span>{snap.message}</span>}
+          </div>
 
           {/* Bottom Bar */}
           <div className="atamas-bottom-bar">

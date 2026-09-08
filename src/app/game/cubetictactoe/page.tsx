@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { ArrowLeft } from 'lucide-react';
 import CubeTicTacToe from '@/app/components/CubeTicTacToe';
 
 export const metadata = {
@@ -12,7 +13,7 @@ export default function CubeTicTacToePage() {
   return (
     <>
       <Link href="/game" className="cubettt-back">
-        ← 返回玩具
+        <ArrowLeft aria-hidden="true" /> 返回玩具
       </Link>
       <CubeTicTacToe />
     </>

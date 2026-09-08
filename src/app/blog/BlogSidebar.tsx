@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import { ChevronDown, Home, Star } from 'lucide-react';
 
 // 分类侧栏 — Flask BEM（与 blog/menu.html 一一对应）
 // 服务端注入 props；客户端仅做折叠交互（≤820px 自动收拢）。
@@ -95,7 +96,9 @@ export default function BlogSidebar({
         onClick={toggleMainCategories}
       >
         <span>分类</span>
-        <span className="toggle-icon">▼</span>
+        <span className="toggle-icon" aria-hidden="true">
+          <ChevronDown />
+        </span>
       </h3>
       <ul
         className={`category-list${mainCollapsed ? ' collapsed' : ''}`}
@@ -107,7 +110,9 @@ export default function BlogSidebar({
             className={`category-link${!currentSlug && !featured ? ' active' : ''}`}
           >
             <div className="category-content">
-              <span className="icon">🏠</span>
+              <span className="icon" aria-hidden="true">
+                <Home />
+              </span>
               <span>全部文章</span>
             </div>
           </Link>
@@ -118,7 +123,9 @@ export default function BlogSidebar({
             className={`category-link${featured ? ' active' : ''}`}
           >
             <div className="category-content">
-              <span className="icon">🌟</span>
+              <span className="icon" aria-hidden="true">
+                <Star />
+              </span>
               <span>精选</span>
             </div>
           </Link>
@@ -136,7 +143,9 @@ export default function BlogSidebar({
                   {category.icon && <span className="icon" aria-hidden="true">{category.icon}</span>}
                   <span>{category.name}</span>
                 </div>
-                <span className="category-toggle">▼</span>
+                <span className="category-toggle" aria-hidden="true">
+                  <ChevronDown />
+                </span>
               </div>
               <ul
                 className={`sub-category-list${collapsedSubs.has(category.id) ? ' collapsed' : ''}`}

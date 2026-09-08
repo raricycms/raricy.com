@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { TriangleAlert } from 'lucide-react';
 
 // 创建表单：name 必填；redirectUris 一行一个。
 // 成功后弹一次性 modal 展示 clientId + clientSecret，「我已保存」确认后关闭并刷新表格。
@@ -155,9 +156,27 @@ export default function ApplicationCreateForm() {
         <div className="oauth-modal-overlay" role="dialog" aria-modal="true">
           <div className="oauth-modal">
             <h2>应用已创建</h2>
-            <p style={{ color: 'var(--color-text-secondary)', marginBottom: 16 }}>
-              ⚠️ <strong style={{ color: 'var(--color-warning-primary)' }}>client_secret 仅此一次显示</strong>，
-              请立即复制到安全的地方。关闭此弹窗后无法再次查看。
+            <p
+              style={{
+                color: 'var(--color-text-secondary)',
+                marginBottom: 16,
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: 6,
+              }}
+            >
+              <TriangleAlert
+                aria-hidden="true"
+                style={{
+                  color: 'var(--color-warning-primary)',
+                  flex: 'none',
+                  marginTop: 2,
+                }}
+              />
+              <span>
+                <strong style={{ color: 'var(--color-warning-primary)' }}>client_secret 仅此一次显示</strong>
+                ，请立即复制到安全的地方。关闭此弹窗后无法再次查看。
+              </span>
             </p>
 
             <div className="oauth-modal__field">

@@ -7,7 +7,7 @@ export const metadata = { title: '云剪贴板使用指南 · 聪明山' };
 export default function ClipboardGuidePage() {
   const html = loadGuideHtml('云剪贴板使用指南.md');
   return (
-    <GuideShell backHref="/clipboard" backLabel="← 返回云剪贴板">
+    <GuideShell backHref="/clipboard" backLabel="返回云剪贴板">
       {html}
     </GuideShell>
   );

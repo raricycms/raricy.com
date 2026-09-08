@@ -7,7 +7,7 @@ export const metadata = { title: '图床使用指南 · 聪明山' };
 export default function ImageGuidePage() {
   const html = loadGuideHtml('图床使用指南.md');
   return (
-    <GuideShell backHref="/image" backLabel="← 返回图床">
+    <GuideShell backHref="/image" backLabel="返回图床">
       {html}
     </GuideShell>
   );

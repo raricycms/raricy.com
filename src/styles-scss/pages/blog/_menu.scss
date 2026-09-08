@@ -523,13 +523,9 @@ a {
 .blog-author img {
     width: 20px;
     height: 20px;
-    /* border-radius: 50%; 去掉圆形，变成方形 */
-    border-radius: 4px;
+    /* 头像统一小圆角 8%（全站规范，见 docs/frontend-styles.md §4.1） */
+    border-radius: 8%;
     object-fit: cover;
-}
-
-.blog-date {
-    color: #adb5bd;
 }
 
 .blog-category-tag {
@@ -557,11 +553,25 @@ a {
 /* 响应式设计 */
 
 /* 桌面端：排序条不再占右列顶部（否则首篇博客比目录矮一截），
-   浮到 .blog-layout 上方的留白带（hero 底 padding 40 + layout margin 30 ≈ 70px，
-   top:-52 + 高 ~33 刚好落在带内），右列首篇上边界与目录齐平。 */
+   悬浮在 hero 与列表之间的页面底色带上，右列首篇上边界与目录齐平。
+
+   ⚠️ 停放带由两段拼成：hero 底 padding 10 + .blog-layout margin-top 60 = 70px。
+   排序条 top:-52 + 高 ~28 落在带内 8~36px 处（上下各留 8/24px 余量），hero 内容
+   底沿到首篇博客的总距与旧值 (40+30) 相同，密度不变。三个数必须联动 —— 曾因
+   hero 底 padding 40 让色块伸进带内，排序条上半截 ~22px 压在 hero 色块上；
+   专注模式关闭时（无 focus-banner 垫高 layout）即表现为「与 hero 重叠」。 */
 @media (min-width: 993px) {
   .blog-content {
     position: relative;
+  }
+
+  /* 停放带两段（hero 收底 / layout 让顶），与 .blog-sort 的 top:-52 联动，勿单独改 */
+  .blogs-hero {
+    padding-bottom: 10px;
+  }
+
+  .blog-layout {
+    margin-top: 60px;
   }
 
   .blog-sort {

@@ -45,3 +45,11 @@
 
 .icon-clipboard   { -webkit-mask-image: url('/static/img/icons/clipboard.svg');   mask-image: url('/static/img/icons/clipboard.svg'); }
 .icon-link        { -webkit-mask-image: url('/static/img/icons/link.svg');        mask-image: url('/static/img/icons/link.svg'); }
+/* lucide 内联 SVG + 自绘 rc-icon：1em 随字号缩放、颜色走 currentColor */
+svg.lucide,
+svg.rc-icon {
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.125em;
+  flex: none;
+}

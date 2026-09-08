@@ -314,7 +314,9 @@
 
 .checkin-leaderboard__rank {
   width: 36px;
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-weight: 700;
   font-size: 0.9rem;
   color: var(--color-text-secondary);
@@ -344,7 +346,7 @@
 .checkin-leaderboard__avatar {
   width: 32px;
   height: 32px;
-  border-radius: $radius-small;
+  border-radius: 8%;
   object-fit: cover;
   flex-shrink: 0;
 }
@@ -352,7 +354,7 @@
 .checkin-leaderboard__avatar-placeholder {
   width: 32px;
   height: 32px;
-  border-radius: $radius-small;
+  border-radius: 8%;
   background: var(--color-background-subtle);
   flex-shrink: 0;
 }
@@ -747,4 +749,15 @@
   &--active {
     display: block;
   }
+}
+
+// 签到按钮 loading 态的旋转图标
+@keyframes rc-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.checkin-button .spin {
+  animation: rc-spin 1s linear infinite;
 }

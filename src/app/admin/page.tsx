@@ -1,5 +1,13 @@
 import { prisma } from '@/lib/db';
 import AdminStatNumber from '@/app/components/AdminStatNumber';
+import {
+  ClipboardList,
+  FileText,
+  Heart,
+  MessageCircle,
+  Users,
+  type LucideIcon,
+} from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,12 +21,27 @@ export default async function AdminDashboardPage() {
     prisma.blog.count({ where: { ignore: false, categoryId: null } }),
   ]);
 
-  const cards: Array<{ number: number; label: string; variant: string }> = [
-    { number: totalBlogs, label: '📄 总文章数', variant: 'admin-stat-card--blue' },
-    { number: likesAgg._sum.likesCount ?? 0, label: '❤️ 总点赞数', variant: 'admin-stat-card--red' },
-    { number: totalComments, label: '💬 总评论数', variant: 'admin-stat-card--green' },
-    { number: totalUsers, label: '👥 总用户数', variant: 'admin-stat-card--purple' },
-    { number: uncategorizedBlogs, label: '📋 未分类文章', variant: 'admin-stat-card--amber' },
+  const cards: Array<{
+    number: number;
+    label: string;
+    variant: string;
+    icon: LucideIcon;
+  }> = [
+    { number: totalBlogs, label: '总文章数', variant: 'admin-stat-card--blue', icon: FileText },
+    {
+      number: likesAgg._sum.likesCount ?? 0,
+      label: '总点赞数',
+      variant: 'admin-stat-card--red',
+      icon: Heart,
+    },
+    { number: totalComments, label: '总评论数', variant: 'admin-stat-card--green', icon: MessageCircle },
+    { number: totalUsers, label: '总用户数', variant: 'admin-stat-card--purple', icon: Users },
+    {
+      number: uncategorizedBlogs,
+      label: '未分类文章',
+      variant: 'admin-stat-card--amber',
+      icon: ClipboardList,
+    },
   ];
 
   return (
@@ -35,7 +58,10 @@ export default async function AdminDashboardPage() {
               <div className="admin-stat-card__number">
                 <AdminStatNumber value={c.number} />
               </div>
-              <div className="admin-stat-card__label">{c.label}</div>
+              <div className="admin-stat-card__label">
+                <c.icon aria-hidden="true" />
+                <span>{c.label}</span>
+              </div>
             </div>
           ))}
         </div>

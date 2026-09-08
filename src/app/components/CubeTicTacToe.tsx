@@ -21,6 +21,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Handshake, PartyPopper } from 'lucide-react';
 
 type Player = 'red' | 'blue';
 type Axis = 'x' | 'y' | 'z';
@@ -406,13 +407,19 @@ export default function CubeTicTacToe() {
       {/* 信息面板 */}
       <div className="cubettt-info">
         {winner && (
-          <div className="cubettt-info__winner" style={{ display: 'block' }}>
-            🎉 {playerName(winner)}获胜！
+          <div
+            className="cubettt-info__winner"
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+          >
+            <PartyPopper aria-hidden="true" /> {playerName(winner)}获胜！
           </div>
         )}
         {isDraw && (
-          <div className="cubettt-info__draw" style={{ display: 'block' }}>
-            🤝 平局！
+          <div
+            className="cubettt-info__draw"
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+          >
+            <Handshake aria-hidden="true" /> 平局！
           </div>
         )}
         {!gameEnded && (

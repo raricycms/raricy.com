@@ -6,6 +6,7 @@
 // 键盘快捷键。游戏运行区（含全屏）由 CattcaPlayer（tool 变体）承载。
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { ArrowLeft, Play, Redo2, Undo2 } from 'lucide-react';
 import CattcaPlayer, { CattcaPlayerHandle } from '@/app/components/CattcaPlayer';
 
 const EXAMPLE_SCRIPT = [
@@ -282,7 +283,7 @@ export default function CattcaToolPage() {
     <div className="story-cattca cattca-tool">
       <div className="container">
         <Link href="/tool" className="story-cattca__back">
-          ← 返回工具箱
+          <ArrowLeft aria-hidden="true" /> 返回工具箱
         </Link>
 
         <div className="cattca-tool__grid">
@@ -324,21 +325,21 @@ export default function CattcaToolPage() {
             />
             <div className="cattca-tool__button-group">
               <button className="cattca-tool__btn cattca-tool__btn--primary" onClick={runScript}>
-                ▶运行脚本
+                <Play aria-hidden="true" /> 运行脚本
               </button>
               <button
                 className="cattca-tool__btn cattca-tool__btn--secondary"
                 onClick={undo}
                 disabled={undoDisabled}
               >
-                ↶ 撤回
+                <Undo2 aria-hidden="true" /> 撤回
               </button>
               <button
                 className="cattca-tool__btn cattca-tool__btn--secondary"
                 onClick={redo}
                 disabled={redoDisabled}
               >
-                ↷ 重做
+                <Redo2 aria-hidden="true" /> 重做
               </button>
               <button className="cattca-tool__btn cattca-tool__btn--secondary" onClick={saveScript}>
                 保存脚本

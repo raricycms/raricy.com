@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { Fragment } from 'react';
 import { notFound } from 'next/navigation';
+import { ArrowLeft, ArrowRight } from 'lucide-react';
 import { resolvePath } from '@/lib/story-service';
 import type { CollectionResult, StoryResult } from '@/lib/story-service';
 import CattcaPlayer from '@/app/components/CattcaPlayer';
@@ -66,7 +67,8 @@ function CollectionView({ data }: { data: CollectionResult }) {
         {basePath && (
           <div className="story-back">
             <Link href={backTarget(basePath)}>
-              {basePath.includes('/') ? '← 返回上级' : '← 返回故事首页'}
+              <ArrowLeft aria-hidden="true" />{' '}
+              {basePath.includes('/') ? '返回上级' : '返回故事首页'}
             </Link>
           </div>
         )}
@@ -166,7 +168,7 @@ function MarkdownView({ data }: { data: StoryResult }) {
             className="story-card__btn story-card__btn--ghost"
             aria-hidden="true"
           >
-            ← 上一章
+            <ArrowLeft aria-hidden="true" /> 上一章
           </span>
           <Link
             href={data.parentPath ? `/story/${data.parentPath}` : '/story'}
@@ -178,7 +180,7 @@ function MarkdownView({ data }: { data: StoryResult }) {
             className="story-card__btn story-card__btn--ghost"
             aria-hidden="true"
           >
-            下一章 →
+            下一章 <ArrowRight aria-hidden="true" />
           </span>
         </nav>
       </article>
@@ -212,7 +214,8 @@ function CattcaView({ data }: { data: StoryResult }) {
         </div>
         <div className="story-back">
           <Link href={data.parentPath ? `/story/${data.parentPath}` : '/story'}>
-            {data.parentPath ? '← 返回合集' : '← 返回故事首页'}
+            <ArrowLeft aria-hidden="true" />{' '}
+            {data.parentPath ? '返回合集' : '返回故事首页'}
           </Link>
         </div>
       </header>

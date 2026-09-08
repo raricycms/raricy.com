@@ -310,7 +310,7 @@ export default function MarkdownRenderer({ content }: { content: string }) {
           const v = data.data as { title: string; total_votes: number; user_voted: number | null; options: { id: number; label: string; count: number; percentage: number }[] };
           const rows = v.options.map((o) => {
             const mine = v.user_voted === o.id;
-            return `<div class="vote-embed-option vote-embed-option--result${mine ? ' vote-embed-option--voted' : ''}"><div class="vote-embed-bar" style="width:${o.percentage}%"></div><div class="vote-embed-option-content"><span class="vote-embed-option-label">${escapeHtml(o.label)}${mine ? ' ✓' : ''}</span><span class="vote-embed-option-stats">${o.count} 票 · ${o.percentage}%</span></div></div>`;
+            return `<div class="vote-embed-option vote-embed-option--result${mine ? ' vote-embed-option--voted' : ''}"><div class="vote-embed-bar" style="width:${o.percentage}%"></div><div class="vote-embed-option-content"><span class="vote-embed-option-label">${escapeHtml(o.label)}</span><span class="vote-embed-option-stats">${o.count} 票 · ${o.percentage}%</span></div></div>`;
           }).join('');
           el.innerHTML = `${rows}<p class="vote-embed-total">共 ${v.total_votes} 票</p>`;
         })

@@ -37,11 +37,6 @@ a {
     gap: 20px;
 }
 
-.blog-date::before {
-    content: '📅';
-    margin-right: 5px;
-}
-
 .blog-content-container {
     max-width: 900px;
     margin: 40px auto 60px;
@@ -314,6 +309,10 @@ a {
     transition: all 0.3s ease;
     min-width: 120px;
     text-align: center;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
 }
 
 .read-btn:hover {
@@ -470,7 +469,7 @@ a {
     .comment-author-avatar {
         width: 24px;
         height: 24px;
-        border-radius: 10%;
+        border-radius: 8%;
         object-fit: cover;
     }
 }

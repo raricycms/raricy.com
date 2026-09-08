@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { ArrowDown, ArrowRight, Image as ImageIcon, Menu, MessageCircle } from 'lucide-react';
 import type { ChatChannelDTO, ChatMessageDTO } from '@/lib/chat-shared';
 import {
   CHAT_LOBBY_ID,
@@ -151,7 +152,7 @@ function SidebarRow({
     >
       {isLobby ? (
         <span className="chat-chan__icon" aria-hidden="true">
-          💬
+          <MessageCircle />
         </span>
       ) : (
         <span className="chat-chan__avatar">
@@ -666,7 +667,7 @@ export default function ChatApp({
                 onClick={() => setDrawerOpen((v) => !v)}
                 aria-label="切换会话列表"
               >
-                ☰
+                <Menu />
               </button>
               {activeChannel.kind === 'direct' && activeChannel.peer && (
                 <Link className="chat-main__peer-avatar" href={`/u/${activeChannel.peer.id}`}>
@@ -680,7 +681,7 @@ export default function ChatApp({
               </h1>
               {activeChannel.kind === 'direct' && activeChannel.peer && (
                 <Link className="chat-main__profile-link" href={`/u/${activeChannel.peer.id}`}>
-                  个人资料 →
+                  个人资料 <ArrowRight aria-hidden="true" />
                 </Link>
               )}
             </header>
@@ -716,7 +717,7 @@ export default function ChatApp({
                 if (lastIdRef.current) void markRead(activeRef.current!, lastIdRef.current);
                 setNewCount(0);
               }}>
-                {newCount} 条新消息 ↓
+                {newCount} 条新消息 <ArrowDown aria-hidden="true" />
               </button>
             )}
 
@@ -762,7 +763,7 @@ export default function ChatApp({
                   disabled={uploadingImage}
                   title="上传图片（图床）"
                 >
-                  {uploadingImage ? '…' : '🖼'}
+                  {uploadingImage ? '…' : <ImageIcon aria-hidden="true" />}
                 </button>
                 <textarea
                   className="chat-composer__input"

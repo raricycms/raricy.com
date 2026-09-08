@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
+import { ArrowLeft } from 'lucide-react';
 
 interface GamePageShellProps {
   title: string;
@@ -24,7 +25,7 @@ export default function GamePageShell({
   return (
     <div className={`container ${pageClass}`}>
       <Link href="/game" className={backClass}>
-        ← 返回玩具
+        <ArrowLeft aria-hidden="true" /> 返回玩具
       </Link>
       <h1 className="game-hero__title">{title}</h1>
       {description && <p className="game-hero__description">{description}</p>}

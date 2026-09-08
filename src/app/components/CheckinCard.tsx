@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { LoaderCircle, Sparkles } from 'lucide-react';
+import { MedalIcon } from '@/app/components/GameIcons';
 import type { LeaderboardEntry } from '@/lib/checkin-service';
 
 // ── 全局 toast（原站 base.js 注入 window.showToast） ──────────────────────────
@@ -307,13 +309,17 @@ export default function CheckinCard({
     (btnPhase === 'success' ? ' checkin-button--success' : '') +
     (btnPhase === 'done' ? ' checkin-button--done' : '');
   const btnText =
-    btnPhase === 'loading'
-      ? '⏳ 签到中...'
-      : btnPhase === 'success'
-        ? ''
-        : done
-          ? '今日已签到'
-          : '每日签到';
+    btnPhase === 'loading' ? (
+      <>
+        <LoaderCircle className="spin" aria-hidden="true" /> 签到中…
+      </>
+    ) : btnPhase === 'success' ? (
+      ''
+    ) : done ? (
+      '今日已签到'
+    ) : (
+      '每日签到'
+    );
 
   return (
     <div className="checkin-card">
@@ -370,7 +376,15 @@ export default function CheckinCard({
         <div className="fortune-modal__backdrop" onClick={closeModal} />
         <div className="fortune-modal__content">
           <div className="fortune-modal__header">
-            <h3>{modalPending ? '🃏 继续完成签到' : '签到成功！'}</h3>
+            <h3>
+              {modalPending ? (
+                <>
+                  <Sparkles aria-hidden="true" /> 继续完成签到
+                </>
+              ) : (
+                '签到成功！'
+              )}
+            </h3>
             <p>{modalPending ? '上次签到还未选牌，选择一张运势卡吧' : '选择一张运势卡，看看今天的运气如何'}</p>
           </div>
 
@@ -443,7 +457,6 @@ export default function CheckinCard({
 }
 
 // ── 排行榜（单容器 + 天数/运势 双 tab 切换，对齐原站 switchLeaderboardTab） ──
-const MEDAL: Record<number, string> = { 1: '🥇', 2: '🥈', 3: '🥉' };
 const RANK_CLASS: Record<number, string> = {
   1: ' checkin-leaderboard__rank--top1',
   2: ' checkin-leaderboard__rank--top2',
@@ -475,7 +488,11 @@ function LeaderboardList({
           }
         >
           <span className={`checkin-leaderboard__rank${RANK_CLASS[e.rank] ?? ''}`}>
-            {MEDAL[e.rank] ?? `#${e.rank}`}
+            {e.rank >= 1 && e.rank <= 3 ? (
+              <MedalIcon rank={e.rank as 1 | 2 | 3} />
+            ) : (
+              `#${e.rank}`
+            )}
           </span>
           <Link className="checkin-leaderboard__user" href={`/u/${e.userId}`}>
             {e.avatarPath ? (
