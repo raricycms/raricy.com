@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 declare global {
@@ -286,14 +287,25 @@ function CommentItem({
   const canDelete = isAdmin || (!!currentUserId && currentUserId === node.author.id);
   // 管理员删他人评论需填写原因
   const requiresReason = isAdmin && (!node.author.id || node.author.id !== currentUserId);
+  const authorAvatar = node.author.avatar_url ? (
+    <img className="comment-author-avatar" src={node.author.avatar_url} alt={authorName} />
+  ) : null;
 
   return (
     <li className="comment-item">
       <div className="comment-meta">
-        {node.author.avatar_url && (
-          <img className="comment-author-avatar" src={node.author.avatar_url} alt={authorName} />
+        {node.author.id ? (
+          // 有账号的评论者：点击头像/名称跳转个人主页
+          <Link href={`/u/${node.author.id}`} className="comment-author-link" title={authorName}>
+            {authorAvatar}
+            <span>{authorName}</span>
+          </Link>
+        ) : (
+          <>
+            {authorAvatar}
+            <span>{authorName}</span>
+          </>
         )}
-        <span>{authorName}</span>
       </div>
 
       {/* content_html 由服务端 HTML 转义并转 <br>，仅含安全实体，可安全注入 */}
