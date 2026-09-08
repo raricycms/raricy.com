@@ -29,11 +29,11 @@ export interface ListParams {
   focusMode?: boolean;
 }
 
-const DEFAULT_PER_PAGE = 100;
+const DEFAULT_PER_PAGE = 200;
 
 export async function listBlogs(params: ListParams) {
   const page = Math.max(1, params.page ?? 1);
-  // 上限留到默认值的两倍（内部调用/未来扩展有余量），仍防「?perPage=100000 拖库」
+  // 每页上限与默认一致（200 篇/页），仍防「?perPage=100000 拖库」
   const perPage = Math.min(200, Math.max(1, params.perPage ?? DEFAULT_PER_PAGE));
 
   const where: Prisma.BlogWhereInput = { ignore: false };

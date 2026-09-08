@@ -9,6 +9,7 @@ import { apiOk, apiErr } from '@/lib/format';
 import {
   getClip,
   updateClip,
+  deleteClip,
   CLIP_TITLE_MAX,
   CLIP_CONTENT_MAX,
 } from '@/lib/clipboard-service';
@@ -84,4 +85,22 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
   }
 
   return apiOk({ id: result.id }, 'success');
+}
+
+// DELETE /api/clipboard/:id — 软删除剪贴板（登录必需）
+//   对齐 Flask DELETE /clipboard/<clip_id>：软删除/不存在 → 404；
+//   非作者且非站长 → 403。仅置 ignore=true，数据保留。
+export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const { id } = await ctx.params;
+  const user = await getCurrentUser();
+  if (!user) return apiErr(401, '请先登录');
+  if (!isCoreUser(user)) return apiErr(403, '需要核心用户权限');
+
+  const result = await deleteClip(id, user.id, isOwner(user));
+  if (!result.ok) {
+    if (result.reason === 'forbidden') return apiErr(403, '您不是该剪贴板的作者，无法删除！');
+    return apiErr(404, '剪贴板不存在');
+  }
+
+  return apiOk({}, 'success');
 }

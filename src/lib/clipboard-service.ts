@@ -130,6 +130,35 @@ export async function updateClip(
   return { ok: true, id: clipId };
 }
 
+export type DeleteClipResult = { ok: true } | { ok: false; reason: 'not_found' | 'forbidden' };
+
+/**
+ * 软删除剪贴板（对齐 Flask ClipService.delete_clipboard）。
+ * - 取剪贴板并排除软删除（ignore=true）→ not_found。
+ * - 权限=作者本人或站长（对齐 Flask delete 路由：作者或 is_owner，站长可删任何人的）。
+ * - 仅把 ignore 置 true，数据保留，站长可恢复。
+ */
+export async function deleteClip(
+  clipId: string,
+  actorId: string,
+  actorIsOwner: boolean
+): Promise<DeleteClipResult> {
+  const clip = await prisma.clipBoard.findFirst({
+    where: { id: clipId, ignore: false },
+    select: { id: true, authorId: true },
+  });
+
+  if (!clip) return { ok: false, reason: 'not_found' };
+  if (clip.authorId !== actorId && !actorIsOwner) return { ok: false, reason: 'forbidden' };
+
+  await prisma.clipBoard.update({
+    where: { id: clipId },
+    data: { ignore: true },
+  });
+
+  return { ok: true };
+}
+
 export type GetClipResult =
   | { ok: true; clip: ClipDetail }
   | { ok: false; reason: 'not_found' | 'forbidden' };

@@ -100,6 +100,9 @@ export default function ClipboardMenu() {
           </button>
         </div>
         <div className="clipboard-navigation__actions">
+          <Link href="/clipboard/guide" className="action-button">
+            使用指南
+          </Link>
           <Link href="/clipboard/upload" className="action-button primary">
             创建剪贴板
           </Link>

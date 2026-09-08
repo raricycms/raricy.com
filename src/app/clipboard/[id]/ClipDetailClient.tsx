@@ -89,11 +89,11 @@ export function ClipActions({
 }) {
   const [copied, setCopied] = useState(false);
 
-  // 删除（对齐 Flask delete_clipboard：确认 → DELETE 当前路径 → 成功回主页）
+  // 删除（对齐 Flask delete_clipboard：确认 → DELETE /api/clipboard/:id → 成功回主页）
   const handleDelete = async () => {
     if (!confirm('确认要删除吗？')) return;
     try {
-      const res = await fetch(`/clipboard/${clipId}`, { method: 'DELETE' });
+      const res = await fetch(`/api/clipboard/${clipId}`, { method: 'DELETE' });
       if (res.ok) {
         alert('删除成功！');
         window.location.href = '/clipboard';

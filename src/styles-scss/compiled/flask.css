@@ -666,20 +666,21 @@ body {
     transition: max-height 0.25s ease;
   }
   .site-navbar.open .site-navbar-collapse {
-    max-height: 500px;
+    max-height: 260px;
     overflow: visible;
   }
   .site-nav {
-    flex-direction: column;
-    gap: 0;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
     margin-left: 0;
-    align-items: center;
+    gap: 0.5rem;
   }
   .site-link {
     padding: 0.5rem;
   }
   .site-actions {
-    justify-content: flex-start;
+    justify-content: center;
   }
 }
 /* Site footer (custom, no Bootstrap dependency) */

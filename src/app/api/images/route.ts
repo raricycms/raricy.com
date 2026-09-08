@@ -62,6 +62,11 @@ export async function POST(req: Request) {
   const file = form.get('file');
   if (!(file instanceof File)) return apiErr(400, '请选择文件');
 
+  // compress 表单字段对齐 Flask：缺省按压缩处理（Vditor/BlogForm 上传不带该字段，
+  // Flask 侧 Vditor 路径默认 compress=1）；图床页复选框勾选发 '1'、取消发 '0'。
+  // 【曾经的 bug】该字段被忽略，复选框取消勾选也不影响结果 —— 与 Flask 语义不符。
+  const compress = form.get('compress') !== '0';
+
   const mimeType = file.type;
   if (!ALLOWED_MIMETYPES.has(mimeType)) {
     return apiErr(400, '不支持的文件格式，仅允许 PNG、JPEG、GIF、WebP、SVG');
@@ -98,6 +103,7 @@ export async function POST(req: Request) {
     buffer,
     mimeType,
     filename: file.name,
+    compress,
   });
 
   return apiOk({ id: saved.id, url: `/api/images/${saved.id}/raw` }, '上传成功');

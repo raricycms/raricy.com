@@ -223,7 +223,8 @@ export interface SavedImage {
 }
 
 /**
- * 压缩 → 生成唯一 ID → 写盘 → 落库，返回最终元信息（fileSize 为压缩后大小）。
+ * 压缩 → 生成唯一 ID → 写盘 → 落库，返回最终元信息（fileSize 为最终落库字节数）。
+ * compress=false 时跳过压缩，原样存储（对齐 Flask compress 参数的语义）。
  * 调用方负责登录/禁言/MIME/尺寸/配额/限频等前置校验。
  */
 export async function saveUpload(input: {
@@ -231,9 +232,11 @@ export async function saveUpload(input: {
   buffer: Buffer;
   mimeType: string;
   filename: string;
+  compress?: boolean;
 }): Promise<SavedImage> {
   const filename = sanitizeFilename(input.filename);
-  const finalBuffer = await compressImage(input.buffer, input.mimeType);
+  const finalBuffer =
+    input.compress === false ? input.buffer : await compressImage(input.buffer, input.mimeType);
 
   // 生成唯一 ID（碰撞极低，最多重试 10 次）
   let id = '';

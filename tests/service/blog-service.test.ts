@@ -700,7 +700,7 @@ describe('listBlogs / 排序与分页', () => {
     expect((await listBlogs({ page: -5 })).page).toBe(1);
     expect((await listBlogs({ perPage: 9999 })).perPage).toBe(200);
     expect((await listBlogs({ perPage: 0 })).perPage).toBe(1);
-    expect((await listBlogs({})).perPage, '默认每页 100').toBe(100);
+    expect((await listBlogs({})).perPage, '默认每页 200').toBe(200);
   });
 });
 

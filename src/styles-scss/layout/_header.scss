@@ -456,17 +456,22 @@ body {
     transition: max-height 0.25s ease;
   }
 
+  // 展开后实际高度约 1–2 行导航 + actions ≈ 150px 内，max-height 定 260px 即可
+  // （原来 500px 时内容早已展开，剩余过渡时间全花在动画空区上）。
   .site-navbar.open .site-navbar-collapse {
-    max-height: 500px;
+    max-height: 260px;
     overflow: visible;
   }
 
   .site-nav {
-    flex-direction: column;
-    gap: 0;
+    // 5 个入口各只有两个汉字，整行竖排太浪费高度：平铺一行、放不下自动折行居中。
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
     // 桌面端靠 margin-left 把导航推离品牌位，移动端整个 collapse 居中布局，需清掉该偏移
     margin-left: 0;
-    align-items: center;
+    // 桌面端是 gap 15px + padding 1rem，这里 padding .5rem，gap .5rem → 字间距一致 ≈ 24px
+    gap: 0.5rem;
   }
 
   .site-link {
@@ -474,7 +479,7 @@ body {
   }
 
   .site-actions {
-    justify-content: flex-start;
+    justify-content: center;
   }
 }
 

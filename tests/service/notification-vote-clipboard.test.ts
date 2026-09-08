@@ -45,12 +45,13 @@ import {
   createClip,
   updateClip,
   getClip,
+  deleteClip,
   listUserClips,
   CLIP_TITLE_MAX,
   CLIP_CONTENT_MAX,
   CLIP_PER_USER_MAX,
 } from '@/lib/clipboard-service';
-import { PUT as clipPut } from '@/app/api/clipboard/[id]/route';
+import { PUT as clipPut, DELETE as clipDelete } from '@/app/api/clipboard/[id]/route';
 import { POST as clipPost } from '@/app/api/clipboard/route';
 import { POST as votesPost } from '@/app/api/votes/route';
 
@@ -1646,6 +1647,67 @@ describe('clipboard-service', () => {
     });
   });
 
+  // ── 删除 ──────────────────────────────────────────────────────────────
+  describe('deleteClip', () => {
+    it('作者本人软删除：ignore=true、行与正文保留，列表与详情都不再见', async () => {
+      const author = await makeUser();
+      const r = (await createClip(author.id, { title: 't', content: 'c' })) as { ok: true; id: string };
+
+      expect(await deleteClip(r.id, author.id, false)).toEqual({ ok: true });
+
+      // 软删除 ≠ 物理删除：行还在，正文也还在
+      expect(await prisma.clipBoard.count({ where: { id: r.id } })).toBe(1);
+      expect(await prisma.clipText.count({ where: { clipId: r.id } })).toBe(1);
+      expect((await prisma.clipBoard.findUnique({ where: { id: r.id } }))!.ignore).toBe(true);
+      // 对作者本人也是 not_found（对齐 Flask：get 先过滤 ignore）
+      expect(await getClip(r.id, author.id)).toEqual({ ok: false, reason: 'not_found' });
+      expect(await listUserClips(author.id)).toEqual([]);
+    });
+
+    it('删除不是作者的剪贴板 → forbidden（即便对方是 core）', async () => {
+      const author = await makeUser();
+      const other = await makeUser({ role: 'core' });
+      const r = (await createClip(author.id, { title: 't', content: 'c' })) as { ok: true; id: string };
+
+      expect(await deleteClip(r.id, other.id, false)).toEqual({ ok: false, reason: 'forbidden' });
+      expect((await prisma.clipBoard.findUnique({ where: { id: r.id } }))!.ignore).toBe(false);
+    });
+
+    it('★ 站长能删任何人的剪贴板（对齐 Flask delete：作者或 is_owner）', async () => {
+      const author = await makeUser();
+      const r = (await createClip(author.id, { title: 't', content: 'c' })) as { ok: true; id: string };
+
+      expect(await deleteClip(r.id, 'owner-actor', true)).toEqual({ ok: true });
+      expect((await prisma.clipBoard.findUnique({ where: { id: r.id } }))!.ignore).toBe(true);
+
+      // 反面：同一个人不带站长身份就该被挡 —— 证明放行确实来自 actorIsOwner
+      const r2 = (await createClip(author.id, { title: 't', content: 'c' })) as { ok: true; id: string };
+      expect(await deleteClip(r2.id, 'owner-actor', false)).toEqual({ ok: false, reason: 'forbidden' });
+    });
+
+    it('已软删除 / 不存在的 id → not_found', async () => {
+      const author = await makeUser();
+      const r = (await createClip(author.id, { title: 't', content: 'c' })) as { ok: true; id: string };
+      await prisma.clipBoard.update({ where: { id: r.id }, data: { ignore: true } });
+
+      expect(await deleteClip(r.id, author.id, false)).toEqual({ ok: false, reason: 'not_found' });
+      expect(await deleteClip('nosuchid', author.id, false)).toEqual({ ok: false, reason: 'not_found' });
+    });
+
+    it('删除后仍计入 200 上限（对齐 Flask：count 不带 ignore 过滤，防删了再建刷额度）', async () => {
+      const u = await makeUser();
+      for (let i = 0; i < 200; i++) {
+        await prisma.clipBoard.create({
+          data: { id: `seed${String(i).padStart(4, '0')}`, title: 't', authorId: u.id, createdAt: new Date() },
+        });
+      }
+      const r = (await createClip(u.id, { title: '第 201 条', content: 'c' })) as { ok: true; id: string };
+      expect(await deleteClip(r.id, u.id, false)).toEqual({ ok: true });
+      // 删掉的这条照样占坑：再建就被拒
+      expect(await createClip(u.id, { title: '再建', content: 'c' })).toEqual({ ok: false, reason: 'limit' });
+    });
+  });
+
   // ── 长度上限与文案（活在 API route 层）─────────────────────────────────
   //
   // 「标题/内容长度上限与文案」这两件事 service 层没有，只有 route 有。
@@ -1739,6 +1801,71 @@ describe('clipboard-service', () => {
       );
       expect(res.status).toBe(400);
       expect(await res.json()).toMatchObject({ code: 400, message: '一个用户只能发布200篇云剪贴板！' });
+    });
+
+    it('DELETE /api/clipboard/:id 作者本人 → 200 且软删除', async () => {
+      const author = await makeUser({ role: 'core' });
+      const r = (await createClip(author.id, { title: 't', content: 'c' })) as { ok: true; id: string };
+
+      mockCurrentUser = author as SafeUser;
+      const res = await clipDelete(new Request('http://x', { method: 'DELETE' }), {
+        params: Promise.resolve({ id: r.id }),
+      });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({ code: 200, message: 'success' });
+      expect((await prisma.clipBoard.findUnique({ where: { id: r.id } }))!.ignore).toBe(true);
+    });
+
+    it('DELETE 非作者 → 403「您不是该剪贴板的作者，无法删除！」', async () => {
+      const author = await makeUser({ role: 'core' });
+      const other = await makeUser({ role: 'core' });
+      const r = (await createClip(author.id, { title: 't', content: 'c' })) as { ok: true; id: string };
+
+      mockCurrentUser = other as SafeUser;
+      const res = await clipDelete(new Request('http://x', { method: 'DELETE' }), {
+        params: Promise.resolve({ id: r.id }),
+      });
+      expect(res.status).toBe(403);
+      expect(await res.json()).toMatchObject({ code: 403, message: '您不是该剪贴板的作者，无法删除！' });
+      expect((await prisma.clipBoard.findUnique({ where: { id: r.id } }))!.ignore).toBe(false);
+    });
+
+    it('DELETE 站长可删别人的剪贴板（对齐 Flask is_owner 分支）', async () => {
+      const author = await makeUser({ role: 'core' });
+      const owner = await makeUser({ role: 'owner' });
+      const r = (await createClip(author.id, { title: 't', content: 'c' })) as { ok: true; id: string };
+
+      mockCurrentUser = owner as SafeUser;
+      const res = await clipDelete(new Request('http://x', { method: 'DELETE' }), {
+        params: Promise.resolve({ id: r.id }),
+      });
+      expect(res.status).toBe(200);
+      expect((await prisma.clipBoard.findUnique({ where: { id: r.id } }))!.ignore).toBe(true);
+    });
+
+    it('DELETE 不存在 / 已软删除 → 404；未登录 → 401', async () => {
+      const author = await makeUser({ role: 'core' });
+      mockCurrentUser = author as SafeUser;
+      expect(
+        (await clipDelete(new Request('http://x', { method: 'DELETE' }), {
+          params: Promise.resolve({ id: 'nosuchid' }),
+        })).status
+      ).toBe(404);
+
+      const r = (await createClip(author.id, { title: 't', content: 'c' })) as { ok: true; id: string };
+      await prisma.clipBoard.update({ where: { id: r.id }, data: { ignore: true } });
+      expect(
+        (await clipDelete(new Request('http://x', { method: 'DELETE' }), {
+          params: Promise.resolve({ id: r.id }),
+        })).status
+      ).toBe(404);
+
+      mockCurrentUser = null;
+      expect(
+        (await clipDelete(new Request('http://x', { method: 'DELETE' }), {
+          params: Promise.resolve({ id: r.id }),
+        })).status
+      ).toBe(401);
     });
   });
 });

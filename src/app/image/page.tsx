@@ -3,6 +3,7 @@ import { requireCoreUser } from '@/lib/guard';
 import { listUserImages } from '@/lib/image-service';
 import { getQuotaLimitMb, getUserUsedBytes } from '@/lib/image-upload';
 import ImageUploader, { ImageGallery } from '@/app/components/ImageUploader';
+import { GuidePill } from '@/app/components/MarkdownGuide';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,15 +41,29 @@ export default async function ImageGalleryPage() {
       <div className="image-hosting-header">
         <h1 className="image-hosting-title">图床</h1>
         <p className="image-hosting-subtitle">上传图片，获取分享链接</p>
-        {owner && (
-          <a
-            href="/image/admin"
-            className="image-hosting-admin-bar__btn"
-            style={{ marginTop: 'var(--fd-space-3)' }}
-          >
-            管理所有图片
-          </a>
-        )}
+        <div
+          style={{
+            display: 'flex',
+            gap: 'var(--fd-space-3)',
+            justifyContent: 'center',
+            marginTop: 'var(--fd-space-3)',
+          }}
+        >
+          <GuidePill href="/image/guide" />
+          {owner && (
+            <a
+              href="/image/admin"
+              style={{
+                fontSize: '0.8125rem',
+                color: 'var(--color-text-secondary)',
+                textDecoration: 'none',
+                alignSelf: 'center',
+              }}
+            >
+              管理所有图片
+            </a>
+          )}
+        </div>
       </div>
 
       <div className="image-hosting-quota">

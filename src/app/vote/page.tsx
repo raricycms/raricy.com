@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { requireCoreUser } from '@/lib/guard';
 import { listVotes } from '@/lib/vote-service';
 import { VoteRedirect, VoteCopyButton } from './VoteMenuClient';
+import { GuidePill } from '@/app/components/MarkdownGuide';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,6 +17,7 @@ export default async function VoteListPage() {
       <div className="vote-navigation">
         <VoteRedirect />
         <div className="vote-navigation__actions">
+          <GuidePill href="/vote/guide" />
           <Link href="/vote/create" className="action-button primary">
             创建投票
           </Link>
