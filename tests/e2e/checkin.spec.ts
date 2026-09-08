@@ -145,8 +145,17 @@ test('恢复态：只签到不翻牌 → 刷新后自动弹「继续完成签到
   expect(mine[0].amount).toBe(value);
   expect(mine[0].idempotency_key).toBe(`checkin-${user.id}-${todayUtc8()}`);
 
-  // 刷新：pending 消失、运势落定、不再自动弹卡
-  await page.goto('/checkin');
+  // 刷新：pending 消失、运势落定、不再自动弹卡。
+  //
+  // 【为什么要重试】closeModal 里调了 router.refresh()（刷新排行榜 / 顶栏绿点），
+  // Next 把这次 RSC 刷新应用成一次**软导航**（HistoryUpdater 的 history.replaceState）。
+  // 若紧跟着的整页刷新与它撞车，WebKit 下 page.goto 会抛「Navigation … is interrupted
+  // by another navigation …」—— trace 实测：goto 的文档请求被 cancel，紧接着又提交了
+  // 一条 /checkin（Referer: /checkin）。产品侧没问题（真人不会在关弹窗 20ms 后硬刷新），
+  // 是这里时序太紧；被打断就再发一次。
+  await expect(async () => {
+    await page.goto('/checkin', { timeout: 10_000 });
+  }).toPass({ timeout: 15_000 });
   await expect(page.locator('.fortune-modal--open')).toHaveCount(0);
   await expect(page.locator('.checkin-today-fortune')).toContainText(String(value));
 });
