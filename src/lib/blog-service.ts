@@ -145,6 +145,8 @@ export async function listBlogs(params: ListParams) {
         authorId: true,
         author: { select: { username: true } },
         category: { select: { name: true, parentId: true, parent: { select: { name: true } } } },
+        // 排序按 content.updatedAt，行数据也要带上（列表 API 出 updated_at 字段用）
+        content: { select: { updatedAt: true } },
       },
     }),
   ]);

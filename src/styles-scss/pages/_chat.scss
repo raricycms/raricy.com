@@ -114,6 +114,60 @@
   }
 }
 
+// 行 + 「⋯」菜单按钮：按钮放兄弟节点（button 里套 button 是非法 HTML）
+.chat-chan-wrap {
+  position: relative;
+}
+.chat-chan__more {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: var(--color-background-card);
+  color: var(--color-text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.chat-chan__more svg {
+  width: 16px;
+  height: 16px;
+}
+.chat-chan-wrap:hover .chat-chan__more,
+.chat-chan__more:focus-visible {
+  opacity: 1;
+}
+.chat-chan__more:hover {
+  background: var(--color-background-highlight);
+  color: var(--color-brand-primary);
+}
+// 触屏没有 hover：常显，否则没法静音/删除会话
+@media (hover: none) {
+  .chat-chan__more {
+    opacity: 1;
+  }
+}
+// 折叠态侧栏只有 60px，放不下
+.chat-page--collapsed .chat-chan__more {
+  display: none;
+}
+
+.chat-chan__muted {
+  width: 12px;
+  height: 12px;
+  margin-right: 4px;
+  vertical-align: -1px;
+  color: var(--color-text-tertiary);
+}
+
 .chat-chan__icon,
 .chat-chan__avatar {
   flex: none;
@@ -273,6 +327,33 @@
   text-overflow: ellipsis;
 }
 
+// 头部：搜索按钮 + 「个人资料」链接都靠右，中间用弹性空位把标题推左
+.chat-main__spacer {
+  flex: 1;
+}
+
+.chat-main__search {
+  flex: none;
+  border: none;
+  background: var(--color-background-content);
+  color: var(--color-text-secondary);
+  border-radius: 8px;
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.chat-main__search:hover {
+  background: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+}
+.chat-main__search svg {
+  width: 16px;
+  height: 16px;
+}
+
 .chat-main__profile-link {
   margin-left: auto;
   font-size: 0.8rem;
@@ -328,6 +409,50 @@
   font-size: 0.95rem;
 }
 
+// 日期分隔线：居中的细线 + 日期胶囊（跨天消息之间的时间锚点）
+.chat-date-sep {
+  align-self: center;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin: 6px 0 2px;
+  color: var(--color-text-tertiary);
+  font-size: 0.75rem;
+}
+.chat-date-sep::before,
+.chat-date-sep::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--color-border);
+}
+.chat-date-sep span {
+  flex: none;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--color-background-subtle);
+}
+
+// 「以下是新消息」：品牌色细线 + 文案
+.chat-list__new-sep {
+  align-self: center;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  color: var(--color-brand-primary);
+  font-size: 0.75rem;
+}
+.chat-list__new-sep::before,
+.chat-list__new-sep::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--color-brand-primary);
+  opacity: 0.4;
+}
+
 // 消息气泡
 .chat-msg {
   display: flex;
@@ -339,17 +464,54 @@
   flex-direction: row-reverse;
 }
 
+// 同人连续消息：省略头像与名字，并收紧与上一条的间距（视觉上并成一簇）。
+// 头像位置留出等宽空位，保证气泡左右对齐不跳。
+.chat-msg--grouped {
+  margin-top: -8px;
+}
+// 头像用 opacity 隐藏而不是 visibility: hidden —— 后者会让头像彻底不可点，
+// 而头像是「拍一拍 / @ta / 访问主页」的入口。opacity: 0 保留占位与点击区域，
+// 悬停时淡入（Slack/Discord 的连续消息就是这个交互）。
+.chat-msg--grouped .chat-msg__avatar {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.chat-msg--grouped:hover .chat-msg__avatar,
+.chat-msg--grouped .chat-msg__avatar:focus-visible {
+  opacity: 1;
+}
+.chat-msg--grouped .chat-msg__name {
+  display: none;
+}
+// 触屏没有 hover：分组消息的头像常显，否则没法打开头像菜单
+@media (hover: none) {
+  .chat-msg--grouped .chat-msg__avatar {
+    opacity: 1;
+  }
+}
+
+// 头像本身是按钮（点开选项框：拍一拍 / 主页 / @ta），按按钮重置外观
 .chat-msg__avatar {
   flex: none;
   width: 34px;
   height: 34px;
+  padding: 0;
+  border: none;
   border-radius: 8%;
   overflow: hidden;
+  background: var(--color-background-content);
+  cursor: pointer;
+  transition: box-shadow 0.15s ease;
 }
 .chat-msg__avatar img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  display: block;
+}
+.chat-msg__avatar:hover,
+.chat-msg__avatar:focus-visible {
+  box-shadow: 0 0 0 2px var(--color-brand-primary);
 }
 
 .chat-msg__body {
@@ -386,6 +548,14 @@
   color: var(--color-warning-primary);
 }
 
+.chat-msg__receipt {
+  font-size: 0.72rem;
+  color: var(--color-text-tertiary);
+}
+.chat-msg__receipt.is-read {
+  color: var(--color-brand-primary);
+}
+
 .chat-msg__time {
   white-space: nowrap;
 }
@@ -418,8 +588,10 @@
 }
 
 .chat-msg__reply {
+  font: inherit;
   font-size: 0.78rem;
   padding: 4px 8px;
+  border: none;
   border-left: 3px solid var(--color-brand-primary);
   background: var(--color-background-subtle);
   border-radius: 6px;
@@ -428,6 +600,11 @@
   word-break: break-word;
   max-height: 60px;
   overflow: hidden;
+  cursor: pointer;
+  text-align: left;
+}
+.chat-msg__reply:hover {
+  background: var(--color-background-highlight);
 }
 .chat-msg__reply-name {
   color: var(--color-brand-primary);
@@ -452,6 +629,45 @@
   border-top-left-radius: 4px;
 }
 
+// 正文里 @到我 → 整条消息高亮（左右各用一条品牌色竖条，方向跟着气泡走）。
+// 明暗两套主题都靠 highlight 令牌取底色，自己发的消息同样覆盖（压过 brand-secondary）
+.chat-msg__content--mention {
+  background: var(--color-background-highlight);
+  box-shadow: inset 3px 0 0 var(--color-brand-primary);
+}
+.chat-msg--mine .chat-msg__content--mention {
+  background: var(--color-background-highlight);
+  box-shadow: inset -3px 0 0 var(--color-brand-primary);
+}
+
+// 跳转命中（点回复摘要 / 搜索结果）→ 整条消息短暂高亮，2 秒后由 JS 摘掉类名。
+// 用动画而非静态类：不改变布局，也不会盖掉 @我 的高亮底色。
+.chat-msg--highlight {
+  border-radius: 8px;
+  animation: chat-msg-flash 2s ease-out;
+}
+@keyframes chat-msg-flash {
+  0%,
+  60% {
+    background: var(--color-background-highlight);
+    box-shadow: 0 0 0 2px var(--color-brand-primary);
+  }
+  100% {
+    background: transparent;
+    box-shadow: 0 0 0 2px transparent;
+  }
+}
+
+// 正文里自动识别的链接（linkify）：只认 http(s)，rel/target 在组件里写死
+.chat-msg__link {
+  color: var(--color-brand-primary);
+  text-decoration: underline;
+  word-break: break-all;
+}
+.chat-msg__link:hover {
+  text-decoration: none;
+}
+
 .chat-msg__deleted {
   color: var(--color-text-secondary);
   font-style: italic;
@@ -470,7 +686,163 @@
   font-size: 0.8rem;
 }
 
+// 消息里的博客引用卡（整卡可点 → /blog/{id}；软删后走 __blog-missing 占位）
+.chat-msg__blog {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-background-content);
+  color: var(--color-text-primary);
+  text-decoration: none;
+  align-self: flex-start;
+  max-width: 320px;
+}
+.chat-msg__blog:hover {
+  border-color: var(--color-brand-primary);
+}
+.chat-msg--mine .chat-msg__blog {
+  background: var(--color-brand-secondary);
+  border-color: transparent;
+  align-self: flex-end;
+}
+.chat-msg__blog-icon {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-background-card);
+  color: var(--color-brand-primary);
+}
+.chat-msg__blog-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.chat-msg__blog-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chat-msg__blog-desc {
+  font-size: 0.78rem;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chat-msg__blog-author {
+  font-size: 0.72rem;
+  color: var(--color-text-tertiary);
+}
+.chat-msg__blog-arrow {
+  flex: none;
+  font-size: 0.9rem;
+  color: var(--color-text-tertiary);
+}
+.chat-msg__blog-missing {
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+}
+
+// 拍一拍：微信/QQ 式的居中系统行（无头像、无气泡、灰字）
+.chat-pat {
+  align-self: center;
+  max-width: 90%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 10px;
+  font-size: 0.78rem;
+  color: var(--color-text-secondary);
+  text-align: center;
+  word-break: break-word;
+}
+// 本人被拍 → 品牌色 + 浅底胶囊，比普通灰字更醒目（明暗主题各自取令牌）
+.chat-pat--me {
+  color: var(--color-brand-primary);
+  font-weight: 700;
+  background: var(--color-brand-secondary);
+  border-radius: 999px;
+  padding: 3px 14px;
+}
+.chat-pat__text {
+  min-width: 0;
+}
+// 拍一拍没有气泡可挂操作，删除键改为 hover 时才出现
+.chat-pat__btn {
+  display: none;
+  flex: none;
+}
+.chat-pat:hover .chat-pat__btn {
+  display: inline-block;
+}
+
+// 头像选项框（portal 到 body、position: fixed —— 位置由 AvatarMenu 实测后写入）
+.chat-avatar-menu {
+  position: fixed;
+  z-index: 60;
+  min-width: 148px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-background-card);
+  box-shadow: var(--shadow-card-hover);
+}
+.chat-avatar-menu__item {
+  display: block;
+  width: 100%;
+  padding: 7px 12px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-size: 0.85rem;
+  font-family: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.chat-avatar-menu__item:hover {
+  background: var(--color-background-subtle);
+  color: var(--color-brand-primary);
+}
+.chat-avatar-menu__item--danger {
+  color: var(--color-warning-primary);
+}
+
+.chat-avatar-menu__item--cancel {
+  color: var(--color-text-secondary);
+  text-align: center;
+}
+.chat-avatar-menu__sep {
+  height: 1px;
+  margin: 2px 6px;
+  background: var(--color-border);
+}
+
 // 新消息浮动条
+// 正在输入提示（贴在输入区上方，3.5 秒无信号自动消失）
+.chat-typing {
+  padding: 2px 18px 6px;
+  font-size: 0.78rem;
+  color: var(--color-text-secondary);
+  font-style: italic;
+}
+
 .chat-jump-new {
   position: sticky;
   bottom: 76px;
@@ -486,7 +858,7 @@
   box-shadow: var(--shadow-card);
 }
 
-// ── 输入条 ──────────────────────────────────────────────────────────────────
+// ── 输入区（QQ 式：附件条在上、整块圆角面板，幽灵工具条嵌在面板顶部内侧）─────
 
 .chat-composer {
   flex: none;
@@ -497,6 +869,8 @@
   flex-direction: column;
   gap: 8px;
 }
+
+// 附件条（回复 / 引用博客 / 待发图片）统一在输入框面板上方
 
 .chat-composer__reply {
   display: flex;
@@ -521,6 +895,23 @@
   color: var(--color-text-secondary);
   cursor: pointer;
   font-size: 1rem;
+}
+
+// 引用博客草稿 chip（与 __reply 同族，左侧书本图标标识）
+.chat-composer__blog {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  background: var(--color-background-subtle);
+  border-left: 3px solid var(--color-brand-primary);
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+.chat-composer__blog-icon {
+  flex: none;
+  color: var(--color-brand-primary);
 }
 
 .chat-composer__image {
@@ -548,58 +939,83 @@
   line-height: 1;
 }
 
-.chat-composer__row {
+// 输入框整块面板：横向填满；幽灵工具条嵌顶部内侧 → 变高文本框 → 底条（发送右下）
+.chat-composer__panel {
   display: flex;
-  align-items: flex-end;
-  gap: 8px;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: var(--color-background-card);
+  padding: 4px 8px 8px;
 }
 
-.chat-composer__img-btn {
-  flex: none;
-  width: 38px;
-  height: 38px;
-  border: 1px solid var(--color-border);
-  background: var(--color-background-content);
-  border-radius: 10px;
-  cursor: pointer;
-  font-size: 1.1rem;
+// 幽灵工具条：无背景无边框，hover 才显浅底（QQ 风格）
+.chat-composer__toolbar {
   display: flex;
   align-items: center;
+  gap: 2px;
+}
+.chat-composer__icon-btn {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 1.15rem;
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
+  padding: 0;
 }
-.chat-composer__img-btn:hover:not(:disabled) {
-  border-color: var(--color-brand-primary);
+.chat-composer__icon-btn:hover:not(:disabled) {
+  background: var(--color-background-subtle);
+  color: var(--color-brand-primary);
 }
-.chat-composer__img-btn:disabled {
+.chat-composer__icon-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
 .chat-composer__input {
-  flex: 1;
   resize: none;
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-  background: var(--color-background-content);
+  border: none;
+  background: transparent;
   color: var(--color-text-primary);
-  padding: 9px 12px;
-  font-size: 0.92rem;
-  line-height: 1.4;
-  min-height: 38px;
-  max-height: 140px;
+  padding: 6px;
+  font-size: 0.95rem;
+  line-height: 1.5;
   font-family: inherit;
+  min-height: 72px;
+  max-height: 176px;
+  overflow-y: auto;
 }
 .chat-composer__input:focus {
   outline: none;
-  border-color: var(--color-brand-primary);
-  background: var(--color-background-card);
+}
+
+// 面板底条：左侧提示文字 + 右下角发送（QQ9 风格）
+.chat-composer__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 2px 0;
+}
+.chat-composer__hint {
+  font-size: 0.72rem;
+  color: var(--color-text-tertiary);
+  user-select: none;
 }
 
 .chat-composer__send {
   flex: none;
   border: none;
   border-radius: 999px;
-  padding: 9px 20px;
+  padding: 6px 20px;
   background: var(--color-brand-secondary);
   color: var(--color-brand-primary);
   font-weight: 700;
@@ -703,6 +1119,138 @@
   color: var(--color-success-primary);
 }
 
+// ── 引用博客弹窗 ─────────────────────────────────────────────────────────────
+
+.chat-blog-modal {
+  max-width: 500px;
+  width: calc(100vw - 40px);
+}
+
+.chat-blog-list {
+  max-height: 400px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.chat-blog-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  text-align: left;
+}
+.chat-blog-item:hover:not(:disabled) {
+  background: var(--color-background-subtle);
+}
+
+.chat-blog-item__icon {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+}
+.chat-blog-item__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.chat-blog-item__title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chat-blog-item__meta {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+// ── 弹窗分页条（发起私聊 / 引用博客共用）────────────────────────────────────
+
+// 搜索结果条目（复用私聊弹窗的列表容器）
+.chat-search-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  color: var(--color-text-primary);
+}
+.chat-search-item:hover {
+  background: var(--color-background-subtle);
+}
+.chat-search-item__head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 0.78rem;
+  color: var(--color-text-secondary);
+}
+.chat-search-item__author {
+  font-weight: 600;
+  color: var(--color-brand-primary);
+}
+.chat-search-item__text {
+  font-size: 0.88rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--color-border);
+}
+.chat-pager__btn {
+  border: 1px solid var(--color-border);
+  background: var(--color-background-content);
+  color: var(--color-text-primary);
+  border-radius: 8px;
+  padding: 4px 12px;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.chat-pager__btn:hover:not(:disabled) {
+  border-color: var(--color-brand-primary);
+  color: var(--color-brand-primary);
+}
+.chat-pager__btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.chat-pager__info {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+}
+
 // ── 响应式 ──────────────────────────────────────────────────────────────────
 
 @media (max-width: 900px) {
@@ -759,5 +1307,16 @@
   }
   .chat-msg__image {
     max-width: 100%;
+  }
+  .chat-msg__blog {
+    max-width: 100%;
+  }
+
+  // 窄屏：底条只保留发送键，面板内边距收紧
+  .chat-composer__hint {
+    display: none;
+  }
+  .chat-composer {
+    padding: 8px 8px 10px;
   }
 }

@@ -2,12 +2,20 @@
 
 import type { Category } from '@prisma/client';
 
-/** 统一 API 响应格式，对齐 Flask 的 { code, message, ...data }。 */
+/**
+ * 统一 API 响应格式，对齐 Flask 的 { code, message, ...data }。
+ *
+ * 一律 no-store：这些响应大多按 cookie 现算（当前用户 / 未读 / 会话列表），
+ * 不该被浏览器或中间缓存留下副本 —— 聊天、通知这类私有数据尤其如此。
+ */
 export function apiOk<T extends object>(data: T = {} as T, message = 'ok') {
-  return Response.json({ code: 200, message, ...data });
+  return Response.json(
+    { code: 200, message, ...data },
+    { headers: { 'Cache-Control': 'no-store' } }
+  );
 }
 export function apiErr(code: number, message: string, extra: object = {}) {
-  return Response.json({ code, message, ...extra }, { status: code });
+  return Response.json({ code, message, ...extra }, { status: code, headers: { 'Cache-Control': 'no-store' } });
 }
 
 /** 分类完整路径，对齐 Category.get_full_path()。 */

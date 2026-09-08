@@ -10,7 +10,10 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 - **Prisma 6** 直连 SQLite（`file:../instance/database/db.db`）
 - **JWT** 会话 + `session_version` 失效机制（对齐旧 Flask-Login）
 - **FastAPI 账户微服务** 独立仓库部署，本仓通过 HTTP 调用
-- **npx prisma migrate** 是迁移正典；老 Alembic 历史已基线化为 `prisma/migrations/0_init/`
+- **迁移走手写 SQL**：`prisma/migrations/<n>_<name>/migration.sql` + `npm run migrate -- up`
+  （目录自动扫描，无 manifest）；**不要用 `prisma migrate dev` / `db push` 动真实库**
+  （见 docs/deploy.md §「修改 schema 后」）。`schema.prisma` 需同步改——测试库由 `db push` 按它建表。
+  老 Alembic 历史已基线化为 `prisma/migrations/0_init/`
 
 历史架构是 Flask 单体（2026-07 之前），已被替换。**不要修改或恢复任何 Flask 代码**——所有 Flask 引用都已在 git 历史中删除。
 

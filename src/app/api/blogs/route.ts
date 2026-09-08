@@ -13,11 +13,19 @@ import { getCurrentUser, isCoreUser, hasAdminRights, isCurrentlyBanned } from '@
 import { sendNotification } from '@/lib/notification-service';
 import { prisma } from '@/lib/db';
 
-// GET /api/blogs?page=&category=&featured=&search=&sort=
+// GET /api/blogs?page=&per_page=&category=&featured=&search=&sort=
+// per_page：可选（缺省走服务默认 200，行为不变）；传了则 clamp 1..50
+// （聊天「引用博客」弹窗用 20 条一页）。
 export async function GET(req: Request) {
   const url = new URL(req.url);
+  const perPageRaw = url.searchParams.get('per_page');
+  const parsedPerPage = Number.parseInt(perPageRaw ?? '', 10);
   const result = await listBlogs({
     page: parseInt(url.searchParams.get('page') || '1', 10),
+    perPage:
+      perPageRaw != null && Number.isFinite(parsedPerPage)
+        ? Math.min(50, Math.max(1, parsedPerPage))
+        : undefined,
     categorySlug: url.searchParams.get('category'),
     featured: url.searchParams.get('featured') === '1',
     search: url.searchParams.get('search'),
@@ -39,6 +47,7 @@ export async function GET(req: Request) {
       fishCount?: number | null;
       isFeatured?: boolean | null;
       category?: { name: string } | null;
+      content?: { updatedAt: Date | null } | null;
     }) => ({
       id: b.id,
       title: b.title,
@@ -46,6 +55,7 @@ export async function GET(req: Request) {
       author_id: b.authorId,
       author: b.author?.username ?? null,
       date: b.createdAt ? ymd(b.createdAt) : null,
+      updated_at: b.content?.updatedAt ? ymd(b.content.updatedAt) : null,
       likes_count: b.likesCount ?? 0,
       comments_count: b.commentsCount ?? 0,
       fish_count: b.fishCount ?? 0,

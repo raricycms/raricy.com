@@ -1,12 +1,18 @@
 import { listChannelsForUser, listMessages, type ChatMessageDTO } from '@/lib/chat-service';
-import { apiOk } from '@/lib/format';
+import { apiErr, apiOk } from '@/lib/format';
+import { rateLimit, RULES } from '@/lib/rate-limit';
 import { parsePosInt, requireChatUser } from '../_auth';
 
 // GET /api/chat/poll?channel=<id>&after=<id>
-// 聊天页短轮询单端点：一次带回侧栏全部频道（含未读）+ 活动频道的新消息（增量）。
+// 聊天页对账轮询（实时消息已改走 SSE，这里只做兜底与低频对账）。
 export async function GET(req: Request) {
   const user = await requireChatUser();
   if (user instanceof Response) return user;
+
+  // 全站最重的接口（一次列表 = 若干次 DB 查询），补一条限频兜住异常客户端。
+  // 正常客户端约 1~2 次/分钟，碰不到 120/分钟的额度。
+  const limited = rateLimit(`chat:poll:${user.id}`, RULES.chatPoll);
+  if (!limited.allowed) return apiErr(429, '请求过于频繁，请稍后再试');
 
   const url = new URL(req.url);
   const channelId = url.searchParams.get('channel') ?? '';

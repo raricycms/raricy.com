@@ -17,7 +17,12 @@ import { nowForDb } from './db-time';
 
 const DEFAULT_PER_PAGE = 20;
 
-export type NotifyPrefKey = 'notifyLike' | 'notifyEdit' | 'notifyDelete' | 'notifyAdmin';
+export type NotifyPrefKey =
+  | 'notifyLike'
+  | 'notifyEdit'
+  | 'notifyDelete'
+  | 'notifyAdmin'
+  | 'notifyChat';
 
 /**
  * action 字符串 → 通知偏好字段的**精确映射表**。
@@ -53,6 +58,9 @@ const ACTION_PREF_MAP: Readonly<Record<string, NotifyPrefKey>> = {
   // notifyAdmin 也照发。两者都是「管理类通知」（前者发给管理员，后者是管理决定的回执）。
   申诉结果: 'notifyAdmin',
   栏目发文提醒: 'notifyAdmin',
+  // ── notify_chat ── 聊天类通知（私聊消息 / 大区 @我），与四个既有开关并列
+  私聊消息: 'notifyChat',
+  聊天提到你: 'notifyChat',
 };
 
 /**
@@ -102,7 +110,13 @@ export async function sendNotification(input: SendNotificationInput) {
 
   const recipient = await prisma.user.findUnique({
     where: { id: recipientId },
-    select: { notifyLike: true, notifyEdit: true, notifyDelete: true, notifyAdmin: true },
+    select: {
+      notifyLike: true,
+      notifyEdit: true,
+      notifyDelete: true,
+      notifyAdmin: true,
+      notifyChat: true,
+    },
   });
   if (!recipient) return null;
 
@@ -142,8 +156,26 @@ export async function sendCoalescedChatNotification(input: {
   actorId: string;
   channelId: string;
   preview: string;
+  /** 通知标题（默认「私聊消息」；大区 @ 用「聊天提到你」） */
+  action?: string;
 }) {
-  const { recipientId, actorId, channelId, preview } = input;
+  const { recipientId, actorId, channelId, preview, action = '私聊消息' } = input;
+
+  // 两道闸门（这条路径不走 sendNotification，偏好过滤必须自己做）：
+  //   1. 账号级 notifyChat 开关 —— 关掉则所有聊天通知都不发；
+  //   2. 会话级静音 mutedAt —— 只静这一条会话。
+  // 未读徽标不受这两者影响（静音 ≠ 已读）。
+  const recipient = await prisma.user.findUnique({
+    where: { id: recipientId },
+    select: {
+      notifyChat: true,
+      chatMembers: { where: { channelId }, select: { mutedAt: true } },
+    },
+  });
+  if (!recipient) return null;
+  if (recipient.notifyChat === false) return null;
+  if (recipient.chatMembers[0]?.mutedAt) return null;
+
   const now = nowForDb();
   return prisma.$transaction(async (tx) => {
     const existing = await tx.notification.findFirst({
@@ -167,7 +199,7 @@ export async function sendCoalescedChatNotification(input: {
       data: {
         id: crypto.randomUUID(),
         timestamp: now,
-        action: '私聊消息',
+        action,
         recipientId,
         actorId,
         objectType: 'chat',

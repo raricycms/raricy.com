@@ -22,6 +22,7 @@ export default async function ChatPage({
   return (
     <ChatApp
       currentUserId={user.id}
+      currentUsername={user.username}
       isAdmin={hasAdminRights(user)}
       initialChannel={typeof sp.channel === 'string' && sp.channel ? sp.channel : null}
       initialSidebarCollapsed={collapsedPref}

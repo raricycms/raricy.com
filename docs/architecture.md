@@ -129,7 +129,7 @@ API 端点位于 `src/app/api/<group>/<verb>/route.ts`，**薄**层：参数校�
 
 ### 6.2 数据层
 
-- **Prisma schema**：`prisma/schema.prisma` 与真实库 1:1 映射。改 schema 后 `npx prisma migrate dev --name xxx` 生成 SQL。
+- **Prisma schema**：`prisma/schema.prisma` 与真实库 1:1 映射。改 schema 时**手写** `prisma/migrations/<n>_<name>/migration.sql` 并同步 schema.prisma，然后 `npm run migrate -- up` 应用（见 docs/deploy.md「修改 schema 后」；生产库禁止 `prisma migrate dev` / `db push`）。
 - **时间戳列**：INTEGER 毫秒（与 Prisma 默认 SQLite 写入格式对齐）。
 - **派生时间**：`src/lib/db-time.ts` 的 `nowForDb()` 提供当前 Unix 毫秒。所有显式 "插入时间" 都走它，不依赖数据库 `DEFAULT now()`。
 - **Prisma 客户端**：单例在 `src/lib/db.ts`，开发模式 HMR 安全。

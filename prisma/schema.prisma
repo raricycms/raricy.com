@@ -45,6 +45,9 @@ model User {
   notifyEdit   Boolean? @default(true) @map("notify_edit")
   notifyDelete Boolean? @default(true) @map("notify_delete")
   notifyAdmin  Boolean? @default(true) @map("notify_admin")
+  // 聊天通知总开关（私聊消息 / 大区 @我）：关掉后不再产生 chat 类通知，
+  // 未读徽标照常（静音会话是另一层，见 ChatMember.mutedAt）
+  notifyChat   Boolean? @default(true) @map("notify_chat")
 
   showRecentBlogs    Boolean @default(true) @map("show_recent_blogs")
   showRecentComments Boolean @default(true) @map("show_recent_comments")
@@ -632,6 +635,10 @@ model ChatMember {
   userId            String    @map("user_id")
   // 读游标：未读数 = 频道内 id > 该值且未软删的消息数
   lastReadMessageId Int       @default(0) @map("last_read_message_id")
+  // 静音：非空即该会话不产生通知（未读徽标照常显示）
+  mutedAt           DateTime? @map("muted_at")
+  // 会话隐藏：隐藏时记下「当时的频道最大消息 id」；之后有新消息（id 更大）就重新出现
+  hiddenAfterMessageId Int?   @map("hidden_after_message_id")
   createdAt         DateTime? @map("created_at")
 
   channel ChatChannel @relation(fields: [channelId], references: [id])
@@ -652,6 +659,12 @@ model ChatMessage {
   imageId    String?   @map("image_id")
   // 引用回复的消息 id（须同频道且未软删）
   replyTo    Int?      @map("reply_to")
+  // 引用博客的 UUID（blogs.id；无 relation —— 同 image_id 策略：博客软删不挡聊天，
+  // 渲染期由 chat-service 按当前 Blog 行解析，软删后给 [博客已删除] 占位）
+  blogId     String?   @map("blog_id")
+  // 拍一拍的目标用户 id（无 relation —— 同上策略：username 读时解析、不存快照）。
+  // 非空即「拍一拍」消息：正文/图片/引用博客一律为空，前端渲染为居中灰字系统行。
+  patTargetId String?  @map("pat_target_id")
   isDeleted  Boolean?  @default(false) @map("is_deleted")
   createdAt  DateTime? @map("created_at")
 

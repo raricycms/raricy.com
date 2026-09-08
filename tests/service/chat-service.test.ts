@@ -20,6 +20,7 @@ import { __resetRateLimitStore } from '@/lib/rate-limit';
 import {
   CHAT_LOBBY_ID,
   CHAT_DELETED_TEXT,
+  PAT_TARGET_FALLBACK,
   listChannelsForUser,
   ensureLobbyMembership,
   startDirectChannel,
@@ -49,6 +50,25 @@ async function makeImage(authorId: string, opts: { ignore?: boolean } = {}) {
       ignore: opts.ignore ?? false,
     },
   });
+}
+
+/** 造一篇可被引用的博客（blogs + blog_contents 各一行）。 */
+async function makeBlog(authorId: string, opts: { ignore?: boolean; title?: string } = {}) {
+  const id = crypto.randomUUID();
+  const now = nowForDb();
+  await prisma.blog.create({
+    data: {
+      id,
+      title: opts.title ?? '被引用的博客',
+      authorId,
+      createdAt: now,
+      ignore: opts.ignore ?? false,
+    },
+  });
+  await prisma.blogContent.create({
+    data: { blogId: id, content: '测试正文', updatedAt: now },
+  });
+  return id;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -251,6 +271,178 @@ describe('发消息校验', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 3.5 消息引用博客（「引用博客」链接卡）
+//    只存 blog_id 不存快照：读时按 Blog 当前行解析 → 博客后来被软删，历史消息要
+//    退化为占位（blog_missing），不能露已删内容；发送时对 ignore=1 必须拒。
+// ─────────────────────────────────────────────────────────────────────────────
+
+type BlogQuoteMsg = {
+  id: number;
+  content: string;
+  blog: {
+    id: string;
+    title: string;
+    description: string;
+    author: string | null;
+    updated_at: string | null;
+  } | null;
+  blog_missing: boolean;
+};
+
+describe('消息引用博客', () => {
+  it('空正文 + 引用博客可发；blog 读时映射当前行（标题/简介/作者/更新时间）', async () => {
+    const a = await makeUser({ role: 'core', username: 'blogger' });
+    const b = await makeUser({ role: 'core' });
+    const blogId = await makeBlog(a.id);
+
+    const sent = await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: b.id, blogId, content: '   ' });
+    expect(sent.ok).toBe(true);
+    const m = (sent as { message: BlogQuoteMsg }).message;
+    expect(m.blog_missing).toBe(false);
+    expect(m.blog?.id).toBe(blogId);
+    expect(m.blog?.title).toBe('被引用的博客');
+    expect(m.blog?.description).toBe('');
+    expect(m.blog?.author).toBe('blogger');
+    expect(typeof m.blog?.updated_at).toBe('string');
+  });
+
+  it('引用的博客不存在或已软删 → blogInvalid', async () => {
+    const a = await makeUser({ role: 'core' });
+    const b = await makeUser({ role: 'core' });
+
+    const ghost = await sendMessage({
+      channelId: CHAT_LOBBY_ID,
+      authorId: b.id,
+      blogId: crypto.randomUUID(),
+      content: '',
+    });
+    expect((ghost as { error: string }).error).toBe('blogInvalid');
+
+    const gone = await makeBlog(a.id, { ignore: true });
+    const deleted = await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: b.id, blogId: gone, content: '' });
+    expect((deleted as { error: string }).error).toBe('blogInvalid');
+  });
+
+  it('引用消息正文超 500 字 → captionTooLong（博客视同附件）', async () => {
+    const a = await makeUser({ role: 'core' });
+    const b = await makeUser({ role: 'core' });
+    const blogId = await makeBlog(a.id);
+    const cap = await sendMessage({
+      channelId: CHAT_LOBBY_ID,
+      authorId: b.id,
+      blogId,
+      content: 'y'.repeat(501),
+    });
+    expect((cap as { error: string }).error).toBe('captionTooLong');
+  });
+
+  it('引用的博客之后被软删 → 读回占位 blog_missing（不露已删内容）', async () => {
+    const a = await makeUser({ role: 'core' });
+    const blogId = await makeBlog(a.id);
+    const sent = await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: a.id, blogId, content: '' });
+    expect(sent.ok).toBe(true);
+    const msgId = (sent as { message: { id: number } }).message.id;
+
+    await prisma.blog.update({ where: { id: blogId }, data: { ignore: true } });
+
+    const list = await listMessages(CHAT_LOBBY_ID, a.id);
+    expect(list.ok).toBe(true);
+    const msgs = (list as { messages: BlogQuoteMsg[] }).messages;
+    const target = msgs.find((x) => x.id === msgId);
+    expect(target?.blog).toBeNull();
+    expect(target?.blog_missing).toBe(true);
+  });
+});
+
+describe('拍一拍', () => {
+  type PatMsg = {
+    id: number;
+    content: string;
+    image: unknown;
+    blog: unknown;
+    pat: { target_id: string; target_name: string } | null;
+  };
+
+  it('发拍一拍：正文/附件一律清空，只留目标 id；读回解析当前用户名', async () => {
+    const a = await makeUser({ role: 'core', username: '拍拍怪' });
+    const b = await makeUser({ role: 'core', username: '被拍的人' });
+    const blogId = await makeBlog(a.id);
+
+    const sent = await sendMessage({
+      channelId: CHAT_LOBBY_ID,
+      authorId: a.id,
+      patTargetId: b.id,
+      // 拍一拍忽略这些附件/正文，防止借它绕开内容校验
+      content: '正文应被忽略',
+      blogId,
+    });
+    expect(sent.ok).toBe(true);
+    const m = (sent as { message: PatMsg }).message;
+    expect(m.pat).toEqual({ target_id: b.id, target_name: '被拍的人' });
+    expect(m.content).toBe('');
+    expect(m.blog).toBeNull();
+
+    const list = await listMessages(CHAT_LOBBY_ID, a.id);
+    const back = (list as { messages: PatMsg[] }).messages.find((x) => x.id === m.id);
+    expect(back?.pat?.target_name).toBe('被拍的人');
+  });
+
+  it('允许拍自己（微信/QQ 同款）', async () => {
+    const a = await makeUser({ role: 'core', username: '自拍' });
+    const sent = await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: a.id, patTargetId: a.id });
+    expect(sent.ok).toBe(true);
+    expect((sent as { message: PatMsg }).message.pat).toEqual({
+      target_id: a.id,
+      target_name: '自拍',
+    });
+  });
+
+  it('目标用户不存在 → patInvalid', async () => {
+    const a = await makeUser({ role: 'core' });
+    const res = await sendMessage({
+      channelId: CHAT_LOBBY_ID,
+      authorId: a.id,
+      patTargetId: crypto.randomUUID(),
+    });
+    expect((res as { error: string }).error).toBe('patInvalid');
+  });
+
+  it('侧栏预览给「拍了拍 X」，不显示空串', async () => {
+    const a = await makeUser({ role: 'core' });
+    const b = await makeUser({ role: 'core', username: '目标' });
+    await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: a.id, patTargetId: b.id });
+
+    const list = await listChannelsForUser(a.id);
+    expect(list.find((c) => c.id === CHAT_LOBBY_ID)?.last_message?.content).toBe('拍了拍 目标');
+  });
+
+  it('目标用户行缺失 → 读回占位名（不炸、不露空）', async () => {
+    const a = await makeUser({ role: 'core' });
+    const b = await makeUser({ role: 'core' });
+    const sent = await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: a.id, patTargetId: b.id });
+    const msgId = (sent as { message: { id: number } }).message.id;
+
+    // 模拟目标行被清理（pat_target_id 无外键 → 消息行仍在）
+    await prisma.$executeRawUnsafe('DELETE FROM users WHERE id = ?', b.id);
+
+    const list = await listMessages(CHAT_LOBBY_ID, a.id);
+    const back = (list as { messages: PatMsg[] }).messages.find((x) => x.id === msgId);
+    expect(back?.pat?.target_name).toBe(PAT_TARGET_FALLBACK);
+  });
+
+  it('拍一拍也走限频（不因没有正文而豁免）', async () => {
+    const a = await makeUser({ role: 'core' });
+    const b = await makeUser({ role: 'core' });
+    for (let i = 0; i < 30; i++) {
+      const r = await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: a.id, patTargetId: b.id });
+      expect(r.ok).toBe(true);
+    }
+    const over = await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: a.id, patTargetId: b.id });
+    expect((over as { error: string }).error).toBe('rateLimited');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 4. 私聊通知：会话合并 + 已读清通知
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -384,14 +576,30 @@ describe('搜索可私聊用户', () => {
     await makeUser({ role: 'user', username: 'gamma' });
 
     const all = await searchCoreUsers('', me.id);
-    const names = all.map((u) => u.username);
+    expect(all.total).toBe(2); // core+ 且非自己：alpha + beta
+    const names = all.users.map((u) => u.username);
     expect(names).not.toContain('me_user');
     expect(names).toContain('alpha');
     expect(names).toContain('beta');
     expect(names).not.toContain('gamma');
 
     const hit = await searchCoreUsers('al', me.id);
-    expect(hit.map((u) => u.username)).toEqual(['alpha']);
+    expect(hit.users.map((u) => u.username)).toEqual(['alpha']);
+  });
+
+  it('offset/limit 分页 + total 总数', async () => {
+    const me = await makeUser({ role: 'core', username: 'pager_me' });
+    for (let i = 0; i < 5; i++) {
+      await makeUser({ role: 'core', username: `page_u${i}` });
+    }
+    const p1 = await searchCoreUsers('', me.id, 2, 0);
+    const p2 = await searchCoreUsers('', me.id, 2, 2);
+    const p3 = await searchCoreUsers('', me.id, 2, 4);
+    expect(p1.total).toBe(5);
+    const ids = [...p1.users, ...p2.users, ...p3.users].map((u) => u.id);
+    // 三页各 2/2/1 条且无重叠
+    expect(ids).toHaveLength(5);
+    expect(new Set(ids).size).toBe(5);
   });
 
   it('ensureLobbyMembership 在频道缺失时也会兜底建行', async () => {
@@ -492,5 +700,270 @@ describe('专注模式：聊天大区禁用', () => {
     const did = (direct as { channel: { id: string } }).channel.id;
     const directAccess = await canAccessChannel(did, a.id, true);
     expect(directAccess.allowed).toBe(true);
+  });
+});
+// ─────────────────────────────────────────────────────────────────────────────
+// 8. 软删的附件必须一并消失（P0：删掉的图/博客卡/回复引用不能再下发）
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('软删消息不返回附件', () => {
+  it('带图消息软删后 image / image_missing 均为空', async () => {
+    const a = await makeUser({ role: 'core' });
+    const b = await makeUser({ role: 'core' });
+    const ch = (await startDirectChannel(a.id, b.id)) as { channel: { id: string } };
+    const img = await makeImage(a.id);
+    const sent = (await sendMessage({
+      channelId: ch.channel.id,
+      authorId: a.id,
+      content: '带图',
+      imageId: img.id,
+    })) as { message: { id: number } };
+    await softDeleteMessage(sent.message.id, { id: a.id, role: 'core' });
+
+    const list = (await listMessages(ch.channel.id, b.id)) as {
+      messages: { image: unknown; image_missing: boolean; is_deleted: boolean }[];
+    };
+    expect(list.messages[0].is_deleted).toBe(true);
+    expect(list.messages[0].image).toBeNull();
+    expect(list.messages[0].image_missing).toBe(false);
+  });
+
+  it('引用博客的消息软删后 blog 为空', async () => {
+    const a = await makeUser({ role: 'core' });
+    const b = await makeUser({ role: 'core' });
+    const ch = (await startDirectChannel(a.id, b.id)) as { channel: { id: string } };
+    const blogId = await makeBlog(a.id);
+    const sent = (await sendMessage({
+      channelId: ch.channel.id,
+      authorId: a.id,
+      blogId,
+    })) as { message: { id: number } };
+    await softDeleteMessage(sent.message.id, { id: a.id, role: 'core' });
+
+    const list = (await listMessages(ch.channel.id, b.id)) as {
+      messages: { blog: unknown; blog_missing: boolean }[];
+    };
+    expect(list.messages[0].blog).toBeNull();
+    expect(list.messages[0].blog_missing).toBe(false);
+  });
+
+  it('回复消息软删后 reply 为空（不残留引用块）', async () => {
+    const a = await makeUser({ role: 'core' });
+    const b = await makeUser({ role: 'core' });
+    const ch = (await startDirectChannel(a.id, b.id)) as { channel: { id: string } };
+    const base = (await sendMessage({
+      channelId: ch.channel.id,
+      authorId: b.id,
+      content: '原消息',
+    })) as { message: { id: number } };
+    const sent = (await sendMessage({
+      channelId: ch.channel.id,
+      authorId: a.id,
+      content: '回复',
+      replyTo: base.message.id,
+    })) as { message: { id: number } };
+    await softDeleteMessage(sent.message.id, { id: a.id, role: 'core' });
+
+    const list = (await listMessages(ch.channel.id, b.id)) as {
+      messages: { id: number; reply: unknown }[];
+    };
+    const target = list.messages.find((m) => m.id === sent.message.id);
+    expect(target?.reply).toBeNull();
+  });
+
+  it('拍一拍软删后仍带 pat（前端要渲染居中删除占位行）', async () => {
+    const a = await makeUser({ role: 'core' });
+    const sent = (await sendMessage({
+      channelId: CHAT_LOBBY_ID,
+      authorId: a.id,
+      patTargetId: a.id,
+    })) as { message: { id: number } };
+    await softDeleteMessage(sent.message.id, { id: a.id, role: 'core' });
+
+    const list = (await listMessages(CHAT_LOBBY_ID, a.id)) as {
+      messages: { id: number; pat: unknown; is_deleted: boolean }[];
+    };
+    const target = list.messages.find((m) => m.id === sent.message.id);
+    expect(target?.is_deleted).toBe(true);
+    expect(target?.pat).not.toBeNull();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 9. 侧栏预览：纯图片消息不能显示空串
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('侧栏预览占位', () => {
+  it('纯图片消息（无图注）预览为 [图片]', async () => {
+    const a = await makeUser({ role: 'core' });
+    const b = await makeUser({ role: 'core' });
+    const ch = (await startDirectChannel(a.id, b.id)) as { channel: { id: string } };
+    const img = await makeImage(a.id);
+    await sendMessage({ channelId: ch.channel.id, authorId: a.id, imageId: img.id });
+
+    const list = await listChannelsForUser(a.id);
+    const row = list.find((c) => c.id === ch.channel.id);
+    expect(row?.last_message?.content).toBe('[图片]');
+  });
+
+  it('引用博客（无正文）预览为 [博客]', async () => {
+    const a = await makeUser({ role: 'core' });
+    const b = await makeUser({ role: 'core' });
+    const ch = (await startDirectChannel(a.id, b.id)) as { channel: { id: string } };
+    const blogId = await makeBlog(a.id);
+    await sendMessage({ channelId: ch.channel.id, authorId: a.id, blogId });
+
+    const list = await listChannelsForUser(a.id);
+    const row = list.find((c) => c.id === ch.channel.id);
+    expect(row?.last_message?.content).toBe('[博客]');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 10. 越权/脏输入的兜底（拍一拍目标、读游标归属、搜索结果字段）
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('拍一拍目标限定本会话成员', () => {
+  it('私聊里拍一个与本会话无关的人 → patInvalid', async () => {
+    const a = await makeUser({ role: 'core' });
+    const b = await makeUser({ role: 'core' });
+    const outsider = await makeUser({ role: 'core' });
+    const ch = (await startDirectChannel(a.id, b.id)) as { channel: { id: string } };
+
+    const res = await sendMessage({
+      channelId: ch.channel.id,
+      authorId: a.id,
+      patTargetId: outsider.id,
+    });
+    expect(res.ok).toBe(false);
+    expect((res as { error: string }).error).toBe('patInvalid');
+  });
+
+  it('私聊里拍对方 / 拍自己都可以', async () => {
+    const a = await makeUser({ role: 'core' });
+    const b = await makeUser({ role: 'core' });
+    const ch = (await startDirectChannel(a.id, b.id)) as { channel: { id: string } };
+
+    expect((await sendMessage({ channelId: ch.channel.id, authorId: a.id, patTargetId: b.id })).ok).toBe(true);
+    expect((await sendMessage({ channelId: ch.channel.id, authorId: a.id, patTargetId: a.id })).ok).toBe(true);
+  });
+
+  it('大区里拍非成员仍允许（大区本就无成员限制）', async () => {
+    const a = await makeUser({ role: 'core' });
+    const stranger = await makeUser({ role: 'core' });
+    const res = await sendMessage({
+      channelId: CHAT_LOBBY_ID,
+      authorId: a.id,
+      patTargetId: stranger.id,
+    });
+    expect(res.ok).toBe(true);
+  });
+});
+
+describe('读游标只能落在本频道的消息上', () => {
+  it('传入别的频道的消息 id → 回落为「本频道当前最大 id」', async () => {
+    const a = await makeUser({ role: 'core' });
+    const b = await makeUser({ role: 'core' });
+    const ch = (await startDirectChannel(a.id, b.id)) as { channel: { id: string } };
+
+    // 大区先有一条（id 小），私聊里再发一条（id 大）
+    const lobbyMsg = (await sendMessage({
+      channelId: CHAT_LOBBY_ID,
+      authorId: a.id,
+      content: '大区消息',
+    })) as { message: { id: number } };
+    await sendMessage({ channelId: ch.channel.id, authorId: a.id, content: '私聊消息' });
+
+    // 给私聊频道传大区的 id：不该把游标推到那个值
+    const upTo = await markChannelRead(ch.channel.id, b.id, lobbyMsg.message.id);
+    const row = await prisma.chatMember.findUnique({
+      where: { uq_chat_member_channel_user: { channelId: ch.channel.id, userId: b.id } },
+      select: { lastReadMessageId: true },
+    });
+    // 回落后应为私聊里的最大 id（大于大区那条，但不是「被传进来的那个」的语义）
+    expect(upTo).toBeGreaterThan(0);
+    expect(row?.lastReadMessageId).toBe(upTo);
+    // 未读归零（私聊里只有那一条，已被本频道最大 id 覆盖）
+    const list = await listChannelsForUser(b.id);
+    expect(list.find((c) => c.id === ch.channel.id)?.unread_count).toBe(0);
+  });
+});
+
+describe('用户搜索结果不再暴露角色', () => {
+  it('返回项只有 id 与 username', async () => {
+    const me = await makeUser({ role: 'core' });
+    await makeUser({ role: 'admin', username: 'role_probe' });
+    const { users } = await searchCoreUsers('role_probe', me.id);
+    expect(users).toHaveLength(1);
+    expect(Object.keys(users[0]).sort()).toEqual(['id', 'username']);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 11. 频道列表的查询次数（N+1 批量化后应与频道数无关）
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('频道列表查询次数', () => {
+  it('10 个私聊频道下仍是常数级调用（旧实现约 46 次）', async () => {
+    const me = await makeUser({ role: 'core' });
+    for (let i = 0; i < 10; i++) {
+      const other = await makeUser({ role: 'core' });
+      const ch = (await startDirectChannel(me.id, other.id)) as { channel: { id: string } };
+      await sendMessage({ channelId: ch.channel.id, authorId: other.id, content: `hi ${i}` });
+    }
+
+    // 给 Prisma 模型方法套一层计数器（只统计模型调用；$queryRaw 在 client 上，另算）
+    const tally: Record<string, number> = {};
+    const models = ['chatChannel', 'chatMember', 'chatMessage', 'user', 'notification'] as const;
+    const restore: (() => void)[] = [];
+    for (const m of models) {
+      const model = prisma[m] as unknown as Record<string, (...a: unknown[]) => unknown>;
+      for (const key of Object.keys(model)) {
+        const fn = model[key];
+        if (typeof fn !== 'function') continue;
+        model[key] = (...args: unknown[]) => {
+          tally[`${m}.${key}`] = (tally[`${m}.${key}`] ?? 0) + 1;
+          return (fn as (...a: unknown[]) => unknown).apply(model, args);
+        };
+        restore.push(() => {
+          model[key] = fn;
+        });
+      }
+    }
+
+    try {
+      const list = await listChannelsForUser(me.id);
+      expect(list).toHaveLength(11); // 大区 + 10 私聊（顺带验证批量结果没丢）
+    } finally {
+      restore.forEach((f) => f());
+    }
+
+    const total = Object.values(tally).reduce((a, b) => a + b, 0);
+    expect(total, JSON.stringify(tally)).toBeLessThanOrEqual(8);
+    // 逐频道的那两条查询必须彻底消失
+    expect(tally['chatMessage.count'] ?? 0).toBe(0);
+    expect(tally['chatMessage.findFirst'] ?? 0).toBe(0);
+    expect(tally['chatMember.findUnique'] ?? 0).toBe(0);
+  });
+});
+
+describe('私聊已读回执字段（C7）', () => {
+  it('频道 DTO 带 peer_last_read_message_id；大区为 null', async () => {
+    const a = await makeUser({ role: 'core' });
+    const b = await makeUser({ role: 'core' });
+    const ch = (await startDirectChannel(a.id, b.id)) as { channel: { id: string } };
+    const sent = (await sendMessage({
+      channelId: ch.channel.id,
+      authorId: a.id,
+      content: 'hi',
+    })) as { message: { id: number } };
+    await markChannelRead(ch.channel.id, b.id, sent.message.id);
+
+    const aList = await listChannelsForUser(a.id);
+    const dm = aList.find((c) => c.id === ch.channel.id);
+    expect(dm?.peer_last_read_message_id).toBe(sent.message.id);
+
+    const lobby = aList.find((c) => c.id === CHAT_LOBBY_ID);
+    expect(lobby?.peer_last_read_message_id ?? null).toBeNull();
   });
 });

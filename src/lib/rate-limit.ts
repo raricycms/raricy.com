@@ -164,4 +164,9 @@ export const RULES = {
   imageUploadHourly: { limit: 75, windowMs: 60 * 60 * 1000 },
   chatMinute: { limit: 30, windowMs: 60 * 1000 },
   chatDaily: { limit: 800, windowMs: 24 * 60 * 60 * 1000 },
+  /** 聊天对账轮询：实时消息已走 SSE，正常客户端约 1~2 次/分钟/标签页；
+   *  这个额度只用来兜住异常客户端（它是全站最重的接口）。 */
+  chatPoll: { limit: 120, windowMs: 60 * 1000 },
+  /** 发起私聊（可能建新频道行）：防脚本批量建空会话骚扰他人侧栏。 */
+  chatNewChannel: { limit: 20, windowMs: 60 * 1000 },
 } as const;
