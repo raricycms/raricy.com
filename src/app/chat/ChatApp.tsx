@@ -1,6 +1,14 @@
 'use client';
 
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { flushSync } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -353,6 +361,33 @@ export default function ChatApp({
     if (el) el.scrollTo({ top: el.scrollHeight, behavior });
   }, []);
 
+  /**
+   * 待执行的「滚到底」请求（null = 没有）。见 scrollAfterCommit。
+   */
+  const scrollAfterCommitRef = useRef<ScrollBehavior | null>(null);
+
+  /**
+   * 请求「下一次 messages 提交后滚到底」。
+   *
+   * 【为什么不能直接 rAF】React 的提交走调度器（并发渲染还会分片让出主线程），
+   * rAF 回调完全可能早于提交执行 —— 那一刻 DOM 还是旧的（首次进入频道时列表甚至
+   * 是空的），scrollTo 到旧的 scrollHeight 等于没滚，于是停在顶部（实测：手机
+   * CPU 降速 4× 必现，scrollHeight 从 550 涨到 2830 而 scrollTop 一直是 0）。
+   * 记成待办交给下面的 layout effect：它在提交后、绘制前执行，DOM 一定是最新的，
+   * 也不会闪。调用方需保证**本次操作确实会改 messages**，否则待办会留到下一次
+   * 提交才执行（把用户从历史里拽回底部）。
+   */
+  const scrollAfterCommit = useCallback((behavior: ScrollBehavior = 'auto') => {
+    scrollAfterCommitRef.current = behavior;
+  }, []);
+
+  useLayoutEffect(() => {
+    const behavior = scrollAfterCommitRef.current;
+    if (behavior === null) return;
+    scrollAfterCommitRef.current = null;
+    scrollToBottom(behavior);
+  }, [messages, scrollToBottom]);
+
   const isNearBottom = useCallback(() => {
     const el = listRef.current;
     if (!el) return true;
@@ -370,10 +405,11 @@ export default function ChatApp({
   /**
    * 把首页消息落进状态（游标 / 已读 / 滚动）。
    *
-   * @param sync 同步提交（flushSync）并同步滚到底。频道切换的 View Transition 必须
-   *   走这条路：过渡进行中浏览器既不渲染也不派发 requestAnimationFrame（实测回调里
-   *   等 rAF 会一直等到 4 秒超时被 abort），所以「新快照」拍到的必须是这一帧里已经
-   *   提交好的 DOM 与滚动位置 —— 否则拍到的是空列表 / 顶部。
+   * @param sync 同步提交（flushSync）。频道切换的 View Transition 必须走这条路：
+   *   过渡进行中浏览器既不渲染也不派发 requestAnimationFrame（实测回调里等 rAF
+   *   会一直等到 4 秒超时被 abort），所以「新快照」拍到的必须是这一帧里已经提交好
+   *   的 DOM 与滚动位置 —— 否则拍到的是空列表 / 顶部。滚动本身统一由 layout
+   *   effect 负责（见 scrollAfterCommit），flushSync 会连它一起同步跑完。
    */
   const commitMessages = useCallback(
     (channelId: string, list: ChatMessageDTO[], token: number, sync = false) => {
@@ -386,16 +422,12 @@ export default function ChatApp({
         setHasMore(list.length >= 50);
         setNewCount(0);
       };
-      if (sync) {
-        flushSync(apply);
-        scrollToBottom(); // DOM 已同步更新，直接滚到底
-      } else {
-        apply();
-        requestAnimationFrame(() => scrollToBottom());
-      }
+      scrollAfterCommit();
+      if (sync) flushSync(apply);
+      else apply();
       if (maxId) void markRead(channelId, maxId);
     },
-    [markRead, scrollToBottom]
+    [markRead, scrollAfterCommit]
   );
 
   const loadMessages = useCallback(
@@ -462,7 +494,7 @@ export default function ChatApp({
         if (!appendMessage(m)) return;
         lastIdRef.current = Math.max(lastIdRef.current, m.id);
         if (isNearBottom()) {
-          requestAnimationFrame(() => scrollToBottom());
+          scrollAfterCommit();
           if (document.hasFocus()) void markRead(aid, m.id);
         } else {
           setNewCount((n) => n + 1);
@@ -493,7 +525,7 @@ export default function ChatApp({
         )
       );
     },
-    [appendMessage, currentUserId, isNearBottom, markRead, reconcile, scrollToBottom]
+    [appendMessage, currentUserId, isNearBottom, markRead, reconcile, scrollAfterCommit]
   );
 
   const onTypingEvent = useCallback(
@@ -748,7 +780,7 @@ export default function ChatApp({
         const m = data.message as unknown as ChatMessageDTO;
         if (typeof m.id === 'number') {
           // SSE 回声可能已经先把这条推回来了 → 按 id 去重（见 appendMessage）
-          appendMessage(m);
+          const appended = appendMessage(m);
           lastIdRef.current = Math.max(lastIdRef.current, m.id);
           setText('');
           draftsRef.current.delete(aid); // 已发出 → 该频道草稿作废
@@ -758,7 +790,10 @@ export default function ChatApp({
           setNewCount(0);
           // 文本框高度随内容自动加高过 → 发送后复位
           if (textareaRef.current) textareaRef.current.style.height = '';
-          requestAnimationFrame(() => scrollToBottom());
+          // 自己发的消息一定滚到底。回声先到（append 返回 false）时它已在 DOM 里，
+          // 直接滚；而回声那条提交的滚动待办已由 onStreamMessage 挂上，双保险。
+          if (appended) scrollAfterCommit();
+          else scrollToBottom();
           if (document.hasFocus()) void markRead(aid, m.id);
         }
       } else {
@@ -769,7 +804,17 @@ export default function ChatApp({
     } finally {
       setSending(false);
     }
-  }, [appendMessage, sending, text, pendingImage, blogQuote, replyTarget, markRead, scrollToBottom]);
+  }, [
+    appendMessage,
+    sending,
+    text,
+    pendingImage,
+    blogQuote,
+    replyTarget,
+    markRead,
+    scrollAfterCommit,
+    scrollToBottom,
+  ]);
 
   // ── 拍一拍（头像选项框） ───────────────────────────────────────────────
   // 走发消息同一条接口（pat_target_id 非空即拍一拍）：复用频道访问校验与限频。
@@ -786,10 +831,11 @@ export default function ChatApp({
           const m = data.message as unknown as ChatMessageDTO;
           if (typeof m.id === 'number') {
             // 同 send：SSE 回声可能先到 → 按 id 去重（见 appendMessage）
-            appendMessage(m);
+            const appended = appendMessage(m);
             lastIdRef.current = Math.max(lastIdRef.current, m.id);
             setNewCount(0);
-            requestAnimationFrame(() => scrollToBottom());
+            if (appended) scrollAfterCommit();
+            else scrollToBottom();
             if (document.hasFocus()) void markRead(aid, m.id);
           }
         } else {
@@ -799,7 +845,7 @@ export default function ChatApp({
         toast('拍一拍失败，请重试', 'error');
       }
     },
-    [appendMessage, markRead, scrollToBottom]
+    [appendMessage, markRead, scrollAfterCommit, scrollToBottom]
   );
 
   // ── @ta：把「@用户名 」插到光标处（无光标则追加到末尾）────────────────────
