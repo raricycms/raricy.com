@@ -2,6 +2,8 @@ import type { Metadata } from 'next';
 import { requireCoreUser } from '@/lib/guard';
 import { isCurrentlyBanned } from '@/lib/auth';
 import { getCategoryHierarchy } from '@/lib/blog-service';
+import { ymdhms } from '@/lib/format';
+import { hoursUntil } from '@/lib/db-time';
 import BlogForm, { type BlogFormBanInfo } from '@/app/components/BlogForm';
 
 export const dynamic = 'force-dynamic';
@@ -10,25 +12,18 @@ export const metadata: Metadata = {
   title: 'Raricy.com - 发布文章',
 };
 
-// 对齐 Flask datetime_format 默认格式
-function fmtDateTime(d: Date | null): string | null {
-  if (!d) return null;
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
-}
-
 // 发布文章 — Flask BEM
 export default async function UploadBlogPage() {
   const user = await requireCoreUser();
 
   let banInfo: BlogFormBanInfo | null = null;
   if (isCurrentlyBanned(user)) {
+    // banUntilText 走 ymdhms、remainingHours 走 hoursUntil —— 两者都是「UTC+8 墙上时间」
+    // 口径（见 db-time.ts）；用本地 getter / Date.now() 会按服务器时区或真实 UTC 平移。
     banInfo = {
       reason: user.banReason ?? '',
-      banUntilText: fmtDateTime(user.banUntil),
-      remainingHours: user.banUntil
-        ? (user.banUntil.getTime() - Date.now()) / 3600000
-        : null,
+      banUntilText: ymdhms(user.banUntil),
+      remainingHours: hoursUntil(user.banUntil),
     };
   }
 

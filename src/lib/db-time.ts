@@ -49,3 +49,15 @@ export function todayStr(): string {
 export function dayStart(ymd: string): Date {
   return new Date(`${ymd}T00:00:00.000Z`);
 }
+
+/**
+ * 距某个**库内时间戳**还有多少小时（已过期则为负）。传入 null/undefined 返回 null。
+ *
+ * 库内时间戳是「UTC+8 墙上时间贴 Z」，所以减数必须是 nowForDb() 而不是 Date.now() ——
+ * 用真实 UTC 相减会凭空多出 8 小时（禁言 1 小时显示成「剩余约 9.0 小时」）。
+ * 这是 ban 剩余时间唯一合法的算法，勿在调用点手写减法。
+ */
+export function hoursUntil(d: Date | null | undefined): number | null {
+  if (!d) return null;
+  return (d.getTime() - nowForDb().getTime()) / 3600000;
+}

@@ -199,7 +199,10 @@ export async function replayPendingSyncs(
   opts: { olderThanMs?: number; limit?: number } = {}
 ): Promise<ReplayResult> {
   const graceMs = opts.olderThanMs ?? 60 * 1000;
-  const cutoff = new Date(Date.now() - graceMs);
+  // 账本 createdAt 走 nowForDb()（UTC+8 墙上时间贴 Z），比较必须同一把钟 ——
+  // 用真实 Date.now() 会让宽限期变成「8 小时 + graceMs」，崩溃后的 pending 行
+  // 8 小时内扫不到（sync-retry 静默空转）。见 src/lib/db-time.ts。
+  const cutoff = new Date(nowForDb().getTime() - graceMs);
   const rows = await prisma.accountSyncLedger.findMany({
     where: { status: { in: ['pending', 'failed'] }, createdAt: { lt: cutoff } },
     orderBy: { createdAt: 'asc' },

@@ -6,7 +6,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { prisma } from './db';
-import { nowForDb, dayStart, todayStr } from './db-time';
+import { nowForDb, dayStart, todayStr, hoursUntil } from './db-time';
 import { ymdhms } from './format';
 import { rateLimit, RULES } from './rate-limit';
 import type { Prisma } from '@prisma/client';
@@ -416,7 +416,9 @@ export async function getCategoryPostingMeta(categoryId: number) {
 export function banActionMessage(user: { banUntil?: Date | null; banReason?: string | null }): string {
   let remainingText = '';
   if (user.banUntil) {
-    const remainingHours = (user.banUntil.getTime() - Date.now()) / 3600000;
+    // 必须走 hoursUntil（nowForDb 口径）—— banUntil 是「UTC+8 墙上时间贴 Z」，
+    // 拿真实 UTC 的 Date.now() 相减会多报 8 小时。见 src/lib/db-time.ts。
+    const remainingHours = hoursUntil(user.banUntil) ?? 0;
     remainingText =
       remainingHours > 24
         ? `剩余约${(remainingHours / 24).toFixed(1)}天`

@@ -128,7 +128,9 @@ export async function getLogDetail(logId: number): Promise<LogDetail | null> {
 /** 公示日志分页列表（对齐 list_public_logs：public + 近 30 天 + 最新在前）。 */
 export async function listPublicLogs(params: ListLogsParams) {
   const page = Math.max(1, params.page ?? 1);
-  const cutoff = new Date(Date.now() - WINDOW_DAYS * 24 * 60 * 60 * 1000);
+  // 窗口起点与写入 createdAt 同口径（nowForDb，UTC+8 墙上时间贴 Z）——
+  // 用真实 Date.now() 会把窗口拉成「30 天 + 8 小时」。同文件当日频控见下方注释。
+  const cutoff = new Date(nowForDb().getTime() - WINDOW_DAYS * 24 * 60 * 60 * 1000);
 
   const where: Prisma.AdminActionLogWhereInput = {
     visibility: 'public',
