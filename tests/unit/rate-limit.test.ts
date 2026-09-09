@@ -10,10 +10,11 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { rateLimit, RULES } from '@/lib/rate-limit';
+import { rateLimit, isRateLimited, recordRateLimitHit, RULES } from '@/lib/rate-limit';
 
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
+const MIN15 = 15 * 60 * 1000;
 
 /** 每个用例一个独立 key，避免模块级 store 串味。 */
 let seq = 0;
@@ -184,6 +185,8 @@ describe('RULES 全站配额（与 docs/全站限额与频控汇总.md 对齐，
     { name: 'chatDaily', limit: 800, windowMs: DAY, desc: '聊天发言 800 次/天' },
     { name: 'chatPoll', limit: 120, windowMs: 60_000, desc: '聊天对账轮询 120 次/分' },
     { name: 'chatNewChannel', limit: 20, windowMs: 60_000, desc: '发起私聊 20 次/分' },
+    { name: 'loginPerIp', limit: 30, windowMs: MIN15, desc: '登录失败 30 次/15 分/IP' },
+    { name: 'loginPerUser', limit: 10, windowMs: MIN15, desc: '登录失败 10 次/15 分/账号' },
   ] as const;
 
   for (const e of EXPECTED) {
@@ -211,6 +214,47 @@ describe('RULES 全站配额（与 docs/全站限额与频控汇总.md 对齐，
     expect(rateLimit(key, rule, t + HOUR).allowed, '整点滑出后应恢复').toBe(true);
   });
 });
+describe('isRateLimited / recordRateLimitHit（失败才计数，登录用）', () => {
+  it('只查不记：反复查不会把自己查到超限', () => {
+    const key = k('peek');
+    const rule = { limit: 3, windowMs: 1000 };
+    const t = 13_000_000;
+    for (let i = 0; i < 50; i++) {
+      expect(isRateLimited(key, rule, t), '查询本身不应计数').toBe(false);
+    }
+  });
+
+  it('查 + 记 N 次后达到上限（第 limit 次记录后开始拒）', () => {
+    const key = k('peek-record');
+    const rule = { limit: 3, windowMs: 1000 };
+    const t = 14_000_000;
+    for (let i = 0; i < rule.limit; i++) {
+      expect(isRateLimited(key, rule, t), `记到第 ${i} 次时仍未超限`).toBe(false);
+      recordRateLimitHit(key, t);
+    }
+    expect(isRateLimited(key, rule, t), '记满 limit 次后必须拒').toBe(true);
+  });
+
+  it('窗口滑出后自动恢复', () => {
+    const key = k('peek-expire');
+    const rule = { limit: 1, windowMs: 1000 };
+    const t = 15_000_000;
+    recordRateLimitHit(key, t);
+    expect(isRateLimited(key, rule, t + 500)).toBe(true);
+    expect(isRateLimited(key, rule, t + 1001), '整窗滑出后应恢复').toBe(false);
+  });
+
+  it('与 rateLimit 共用同一个桶（同一 key 可混用两种计数方式）', () => {
+    const key = k('peek-shared');
+    const rule = { limit: 2, windowMs: 1000 };
+    const t = 16_000_000;
+    rateLimit(key, rule, t); // 记 1 次
+    expect(isRateLimited(key, rule, t), 'rateLimit 记的命中，isRateLimited 要看得见').toBe(false);
+    recordRateLimitHit(key, t); // 记第 2 次
+    expect(isRateLimited(key, rule, t)).toBe(true);
+  });
+});
+
 describe('快照持久化（重启不丢窗口）', () => {
   let seq2 = 0;
   const tmpFile = () =>

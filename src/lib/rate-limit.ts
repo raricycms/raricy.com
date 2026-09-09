@@ -65,6 +65,37 @@ export function rateLimit(key: string, rule: RateRule, now = Date.now()) {
   return { allowed: true, remaining: rule.limit - bucket.hits.length, retryAfterMs: 0 };
 }
 
+/**
+ * 只查不记（不改变计数）—— 供「失败才计数」的路径使用（登录）。
+ *
+ * 【为什么要拆出这一对】`rateLimit` 是「查 + 记」一体的，适合点赞这类
+ * **每次调用都算一次操作**的场景。但登录不同：成功的登录不该消耗配额 ——
+ * 否则正常用户（以及 e2e 里反复登录同一批种子账号的用例）会被自己的成功记录
+ * 挡在门外。故登录走 `isRateLimited` 先查、失败后 `recordRateLimitHit` 补记。
+ *
+ * 两者与 rateLimit 共用同一 store 与同一套窗口裁剪，可混用同一 key。
+ */
+export function isRateLimited(key: string, rule: RateRule, now = Date.now()): boolean {
+  const bucket = store.get(key);
+  if (!bucket) return false;
+  const cutoff = now - rule.windowMs;
+  const hits = bucket.hits.filter((t) => t > cutoff);
+  if (hits.length !== bucket.hits.length) {
+    bucket.hits = hits;
+    store.set(key, bucket);
+  }
+  return hits.length >= rule.limit;
+}
+
+/** 记一次命中（配合 isRateLimited 用于「失败才计数」）。 */
+export function recordRateLimitHit(key: string, now = Date.now()): void {
+  const bucket = store.get(key) ?? { hits: [] };
+  bucket.hits.push(now);
+  store.set(key, bucket);
+  dirty = true;
+  maybeSweep(now);
+}
+
 // ── 惰性清理 + 落盘 ─────────────────────────────────────────────────────────
 
 const SWEEP_INTERVAL_MS = 10 * 60 * 1000; // 10 分钟（清扫与落盘共用同一节拍）
@@ -169,4 +200,13 @@ export const RULES = {
   chatPoll: { limit: 120, windowMs: 60 * 1000 },
   /** 发起私聊（可能建新频道行）：防脚本批量建空会话骚扰他人侧栏。 */
   chatNewChannel: { limit: 20, windowMs: 60 * 1000 },
+  /**
+   * 登录限频（Flask 侧无对应配额，属新增）。
+   * 两个维度分别计数，任一超限即 429，且**只统计失败**（见 isRateLimited）：
+   *   · IP —— 挡「一台机器扫一批账号」；
+   *   · 用户名（小写归一）—— 挡「一批机器打同一个账号」。
+   * 顺带也是 CPU 保护：每次尝试都要跑一次 scrypt。
+   */
+  loginPerIp: { limit: 30, windowMs: 15 * 60 * 1000 },
+  loginPerUser: { limit: 10, windowMs: 15 * 60 * 1000 },
 } as const;
