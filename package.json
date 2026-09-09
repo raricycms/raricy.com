@@ -35,7 +35,9 @@
     "dev:css": "sass src/styles-scss/main.scss:src/styles-scss/compiled/flask.css --style=expanded --load-path=src/styles-scss --watch",
     "prepare:vditor": "node scripts/copy-vditor-assets.mjs",
     "vditor:check": "node scripts/copy-vditor-assets.mjs --check",
-    "postinstall": "node scripts/copy-vditor-assets.mjs"
+    "prepare:mathjax": "node scripts/copy-mathjax-fonts.mjs",
+    "mathjax:check": "node scripts/copy-mathjax-fonts.mjs --check",
+    "postinstall": "node scripts/copy-vditor-assets.mjs && node scripts/copy-mathjax-fonts.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.2.1",

@@ -28,7 +28,10 @@ export const SEED_BLOG = {
   description: 'E2E 列表页用的摘要',
   content:
     `# E2E 标题\n\n${BLOG_BODY_MARKER}\n\n- 列表项一\n- 列表项二\n\n` +
-    `行内公式 $\\int_0^1 x^2 \\, dx = 1/3$ 与化学式 $\\ce{H2O}$ 验证 MathJax 模块化加载。\n`,
+    `行内公式 $\\int_0^1 x^2 \\, dx = 1/3$ 与化学式 $\\ce{H2O}$ 验证 MathJax 模块化加载。\n\n` +
+    // 跨行块级公式 + 公式里的 `<` 与 `&`：分别盯住「$$ 被替换串语义吞掉」
+    // 与「未转义被 HTML 解析器吃掉」两个历史 bug（见 tests/unit/markdown-math.test.ts）
+    `$$\n\\begin{cases} x>b & \\text{大} \\\\ x<b & \\text{小} \\end{cases}\n$$\n`,
 };
 
 /**

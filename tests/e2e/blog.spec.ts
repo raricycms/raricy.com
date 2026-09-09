@@ -82,6 +82,24 @@ test('博客详情页里的数学公式被 MathJax 渲染', async ({ page }) => 
   await page.goto(`/blog/${SEED_BLOG.id}`);
   // CHTML 输出会以 <mjx-container jax="CHTML"> 包裹每个公式。
   await expect(page.locator('mjx-container[jax="CHTML"]').first()).toBeVisible({ timeout: 15_000 });
+
+  // 跨行块级公式必须是 display 模式（历史 bug：$$ 被替换串语义吞成 $，
+  // 跨行时连 MathJax 都不会启动，公式以原始文本显示）。
+  await expect(page.locator('mjx-container[jax="CHTML"][display="true"]').first()).toBeVisible({
+    timeout: 15_000,
+  });
+  // 公式里的 `<` 必须完整：未转义会被 HTML 解析器当成标签起始、公式只剩半截，
+  // 残句喂给 MathJax 必然报错。CSS 生成的字形不在 textContent 里，所以按
+  // MathJax 的错误节点断言（截断 → mjx-merror），而不是比对文字。
+  await expect(page.locator('mjx-merror')).toHaveCount(0);
+
+  // CHTML 的 @font-face 必须指向同源静态目录：默认的相对路径在 /blog/xxx 下
+  // 会解析成 /blog/js/… 而 404，公式只能用回退字体渲染。
+  // 用 textContent 取值：<style> 在 head 里不参与渲染，toContainText 走
+  // innerText 会拿到空串。
+  await expect
+    .poll(() => page.locator('#MJX-CHTML-styles').textContent(), { timeout: 15_000 })
+    .toContain('/static/mathjax/woff-v2/');
 });
 
 // ── 排序（发布时间 / 更新时间）+ 前端记忆 ──────────────────────────────────────

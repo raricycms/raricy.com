@@ -16,6 +16,7 @@ import { CHTML } from 'mathjax-full/js/output/chtml.js';
 import { RegisterHTMLHandler } from 'mathjax-full/js/handlers/html.js';
 import { AllPackages } from 'mathjax-full/js/input/tex/AllPackages.js';
 import { BLOG_SANITIZE_OPTIONS, isValidVoteId, renderVoteFallback } from '@/lib/blog-markdown';
+import { protectMath, restoreMath } from '@/lib/markdown-math';
 
 // ── 内容引用预处理器（对齐 clipboard-processor.js，端点改为 Next API）───────────
 class ContentRefProcessor {
@@ -161,7 +162,12 @@ function ensureMathJax(): TypesetContext {
   });
   // ⚠️ 只传 mathjax-full 3.x 认得的选项。enableMenu/fontCache 是 v4 才有的
   // 配置，写在 3.2.2 上只会得到两条 Invalid option 警告且配置不生效。
-  typesetCtx.chtml = new CHTML();
+  //
+  // fontURL 必须显式给绝对路径：默认值 `js/output/chtml/fonts/tex-woff-v2` 是
+  // 相对路径，会按**当前页面**解析（/clipboard/xxx 下就变成 /clipboard/js/…），
+  // 一律 404 —— 公式只能用回退字体渲染，字形与间距都不对。字体文件由
+  // scripts/copy-mathjax-fonts.mjs 从 mathjax-full 拷到 public/static/mathjax/。
+  typesetCtx.chtml = new CHTML({ fontURL: '/static/mathjax/woff-v2' });
   typesetCtx.ready = true;
   return typesetCtx;
 }
@@ -186,8 +192,8 @@ function typesetMath(root: HTMLElement): void {
 }
 
 export default function MarkdownRenderer({ content }: { content: string }) {
-  const [html, setHtml] = useState('');
-  const [ready, setReady] = useState(false);
+  /** 渲染结果 + 抽出的公式数量（决定要不要跑 MathJax，见 markdown-math.ts）。 */
+  const [doc, setDoc] = useState<{ html: string; mathCount: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useHljsThemeStyles();
@@ -198,13 +204,9 @@ export default function MarkdownRenderer({ content }: { content: string }) {
     (async () => {
       let text = await new ContentRefProcessor().preprocess(content ?? '');
 
-      // 保护数学公式，避免被 Markdown 破坏
-      const placeholders: Record<string, string> = {};
-      let n = 0;
-      text = text.replace(/\$\$([\s\S]*?)\$\$/g, (m) => { const p = `MATHBLOCK${n++}PLACEHOLDER`; placeholders[p] = m; return p; });
-      text = text.replace(/\\\[([\s\S]*?)\\\]/g, (m) => { const p = `MATHLATEXB${n++}PLACEHOLDER`; placeholders[p] = m; return p; });
-      text = text.replace(/\$([^$\n]+?)\$/g, (m) => { const p = `MATHINLINE${n++}PLACEHOLDER`; placeholders[p] = m; return p; });
-      text = text.replace(/\\\(([\s\S]*?)\\\)/g, (m) => { const p = `MATHLATEXI${n++}PLACEHOLDER`; placeholders[p] = m; return p; });
+      // 保护数学公式，避免被 Markdown 破坏（还原时的两个坑见 markdown-math.ts）
+      const math = protectMath(text);
+      text = math.text;
 
       // marked 实例（gfm 任务列表原生支持）+ 自定义代码块渲染（高亮 + 复制按钮）。
       // 外链 target=_blank / rel 加固在渲染后的 DOM 后处理里统一完成。
@@ -227,11 +229,11 @@ export default function MarkdownRenderer({ content }: { content: string }) {
       });
 
       let out = m.parse(text, { async: false }) as string;
-      Object.keys(placeholders).forEach((p) => { out = out.replace(new RegExp(p, 'g'), placeholders[p]); });
+      out = restoreMath(out, math.placeholders);
 
       // 白名单是安全边界，集中定义在 src/lib/blog-markdown.ts（改动请同步其单测）。
       const clean = DOMPurify.sanitize(out, BLOG_SANITIZE_OPTIONS);
-      if (!cancelled) { setHtml(clean); setReady(true); }
+      if (!cancelled) setDoc({ html: clean, mathCount: math.count });
     })();
     return () => { cancelled = true; };
   }, [content]);
@@ -239,7 +241,7 @@ export default function MarkdownRenderer({ content }: { content: string }) {
   // 渲染后处理：代码高亮、复制按钮、图片放大、外链加固、投票嵌入、MathJax
   useEffect(() => {
     const root = containerRef.current;
-    if (!root || !html) return;
+    if (!root || !doc) return;
 
     // 复制按钮
     root.querySelectorAll<HTMLButtonElement>('.copy-btn').forEach((btn) => {
@@ -308,22 +310,23 @@ export default function MarkdownRenderer({ content }: { content: string }) {
         .catch(() => renderVoteFallback(el, vid));
     });
 
-    // MathJax 数学公式
-    const hasMath = /\$\$|\\\[|\\\]|\$[^$\n]+\$|\\\(|\\\)/.test(root.innerHTML);
-    if (hasMath) {
+    // MathJax 数学公式。判据是抽取阶段的公式计数，而不是在渲染后的 HTML 上
+    // 正则嗅探 —— 跨行块级公式（cases/aligned）用 `\$[^$\n]+\$` 嗅不出来，
+    // 一漏就是整页公式全不排版（历史 bug，见 markdown-math.ts）。
+    if (doc.mathCount > 0) {
       typesetMath(root);
     }
-  }, [html]);
+  }, [doc]);
 
   return (
     <div className="blog-content-container-container">
-      {ready ? (
+      {doc ? (
         <div
           ref={containerRef}
           className="blog-content-container"
           id="userContentContainer"
           // 已经 DOMPurify 净化
-          dangerouslySetInnerHTML={{ __html: html }}
+          dangerouslySetInnerHTML={{ __html: doc.html }}
         />
       ) : (
         <div

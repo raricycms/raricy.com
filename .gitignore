@@ -37,6 +37,10 @@ coverage/
 # 不要直接入库（保持 /public/static/vditor/ 由 `npm run prepare:vditor` 重建）
 /public/static/vditor/
 
+# MathJax CHTML 的 woff 字体 —— 同上，从 mathjax-full 拷贝，
+# 由 `npm run prepare:mathjax` 重建（MarkdownRenderer 的 fontURL 指向这里）
+/public/static/mathjax/
+
 # Python 副产物（历史迁移文档里的代码示例等可能产生）
 __pycache__/
 *.pyc
