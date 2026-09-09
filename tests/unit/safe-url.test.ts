@@ -44,6 +44,26 @@ describe('safeNextPath：只放行站内绝对路径', () => {
     expect(safeNextPath('/\\/evil.com')).toBe('/');
   });
 
+  it('★ 控制字符变形一律拒绝 —— URL 解析器解析前会剥掉 TAB/LF/CR', () => {
+    // `/<TAB>/evil.com` 经 new URL 解析后等于 `//evil.com` → 跨站跳转。
+    // 它以 `/` 开头、也不含 `\`，上面逐条字符串检查全都看不见，必须单独挡。
+    expect(safeNextPath('/\t/evil.com')).toBe('/');
+    expect(safeNextPath('/\n/evil.com')).toBe('/');
+    expect(safeNextPath('/\r/evil.com')).toBe('/');
+    // 编码形态本身无害：URL 解析器不会把路径里的 %09 解码成 TAB，仍是站内。
+    // 危险的是**解码后**的 TAB —— 那正是登录页 URLSearchParams 交给我们的东西。
+    expect(
+      new URL(safeNextPath('/%09/evil.com'), 'https://raricy.com').origin,
+      '编码形态解析后仍站内'
+    ).toBe('https://raricy.com');
+    expect(safeNextPath(`/a${String.fromCharCode(0)}b`), 'NUL').toBe('/');
+    expect(safeNextPath('/a b'), '裸空格（站内路径里应为 %20）').toBe('/');
+  });
+
+  it('回归：证明上面那条挡得有道理（不加检查时浏览器确实会跨站）', () => {
+    expect(new URL('/\t/evil.com', 'https://raricy.com').origin).toBe('https://evil.com');
+  });
+
   it('回跳到 API 没有意义（用户只会看到一坨 JSON）', () => {
     expect(safeNextPath('/api/auth/login')).toBe('/');
     expect(safeNextPath('/api/checkin')).toBe('/');

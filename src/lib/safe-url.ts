@@ -21,6 +21,12 @@ export function safeNextPath(next: string | null | undefined): string {
   if (next.startsWith('//')) return '/';
   // /\evil.com —— 部分浏览器把反斜杠按 / 解析，等价于协议相对 URL。
   if (next.includes('\\')) return '/';
+  // 控制字符（TAB / LF / CR / NUL 等）：URL 解析器在解析前会**直接剥掉** TAB/LF/CR，
+  // 于是 `/<TAB>/evil.com` 被解析成 `//evil.com` → 跨站跳转。
+  // 上面的逐条字符串检查看不见这种变形（它以 `/` 开头、也不含 `\`），必须单独挡。
+  // 站内合法路径里的空格等字符本来就是 %xx 编码的，出现裸控制字符即异常。
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u0020\u007f]/.test(next)) return '/';
   // 回跳到接口没有意义，用户只会看到一坨 JSON。
   if (next.startsWith('/api/')) return '/';
   return next;
