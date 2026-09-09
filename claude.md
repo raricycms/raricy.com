@@ -118,6 +118,7 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 - 每次写完或改完一个功能 / 修复 / 文档后立即 `git commit`，不要积攒等用户来问。
 - 一个 commit 只做一件事；不同语义（feat / fix / chore / docs / refactor）的改动必须拆开。
 - 提交后默认不 push，等用户明确说 push 再推。
+- **commit message 不加 `Co-Authored-By: Claude ...`**，也不要任何 Claude / Anthropic 署名 —— 只署仓库作者本人。
 
 ## 迁移史速查
 
