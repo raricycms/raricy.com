@@ -50,7 +50,7 @@ export default async function BlogListPage({
   const [result, categories] = await Promise.all([
     listBlogs({
       page: parseInt(sp.page || '1', 10),
-      perPage: 100, // 目录每页 100 篇（服务默认 200 是 /api/blogs 的契约，不动）
+      perPage: 50, // 目录每页 50 篇（服务默认 200 是 /api/blogs 的契约，不动）
       categorySlug: sp.category ?? null,
       featured,
       search: sp.search ?? null,
