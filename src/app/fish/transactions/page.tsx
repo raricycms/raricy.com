@@ -145,9 +145,7 @@ export default async function FishTransactionsPage({
                 </Link>
               )}
 
-              <span className="page-jump">
-                <FishPageJump totalPages={data.pages} current={data.page} />
-              </span>
+              <FishPageJump totalPages={data.pages} current={data.page} />
             </div>
           )}
         </>

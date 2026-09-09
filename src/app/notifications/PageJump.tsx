@@ -32,7 +32,8 @@ export default function PageJump({ totalPages, current }: { totalPages: number; 
           if (e.key === 'Enter') jump();
         }}
       />
-      <button type="button" onClick={jump} className="page-btn">
+      {/* page-link 提供外观（与相邻页码同款），page-btn 只补 cursor/margin —— 对齐 Flask 的 class="page-link page-btn" */}
+      <button type="button" onClick={jump} className="page-link page-btn">
         跳转
       </button>
     </span>
