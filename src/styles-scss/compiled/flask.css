@@ -1741,6 +1741,65 @@ body.dark-mode .alert-danger {
   white-space: nowrap;
 }
 
+/* 被 iframe 嵌入时的「跳出」提示条（FrameBuster.tsx）。
+   固定视口底部居中：顶部已被固定顶栏（.site-navbar，z-index 1030）占住，
+   底部只剩正文与页脚，不挡内容。 */
+.frame-buster {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 1080;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: calc(100% - 24px);
+  padding: 8px 12px;
+  background: var(--color-background-card);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  font-size: 0.9rem;
+}
+
+.frame-buster__text {
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+/* 配色对齐 .button-primary（浅底 + 品牌字色，悬停转实心），随 [data-theme] 自动切换 */
+.frame-buster__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+  font-weight: bold;
+  white-space: nowrap;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+.frame-buster__btn:hover {
+  background: var(--color-brand-primary);
+  color: #fff;
+}
+.frame-buster__btn:active {
+  filter: brightness(0.6);
+}
+
+/* 窄屏：撑满可用宽度，文案可换行 */
+@media (max-width: 480px) {
+  .frame-buster {
+    left: 12px;
+    right: 12px;
+    transform: none;
+    justify-content: space-between;
+  }
+  .frame-buster__text {
+    white-space: normal;
+  }
+}
 .u-mt-8 {
   margin-top: 8px !important;
 }

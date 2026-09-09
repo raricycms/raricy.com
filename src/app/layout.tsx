@@ -6,6 +6,7 @@ import '@/styles-scss/compiled/flask.css';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import NotificationHeartbeat from './components/NotificationHeartbeat';
+import FrameBuster from './components/FrameBuster';
 import { getCurrentUser } from '@/lib/auth';
 
 export const metadata: Metadata = {
@@ -36,6 +37,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <NotificationHeartbeat />
         <main>{children}</main>
         <Footer />
+        {/* 被 iframe 嵌入时显示「全屏打开」提示条（正常访问时不渲染） */}
+        <FrameBuster />
         {/* Flask 顶栏交互脚本：主题旋转切换 / 用户下拉 / 移动端折叠 / toast */}
         <Script src="/static/js/core/base.js" strategy="afterInteractive" />
       </body>
