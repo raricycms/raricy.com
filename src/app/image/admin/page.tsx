@@ -1,5 +1,6 @@
 import { requireOwner } from '@/lib/guard';
 import { listAllImages, getTotalStorageBytes } from '@/lib/image-service';
+import { ymdhms } from '@/lib/format';
 import ImageAdminTable, { type AdminImageRow } from '@/app/components/ImageAdminTable';
 
 export const dynamic = 'force-dynamic';
@@ -33,7 +34,7 @@ export default async function ImageAdminPage({
     filename: img.filename,
     authorName: img.authorName,
     fileSize: img.fileSize,
-    createdAt: img.createdAt ? img.createdAt.toISOString() : '',
+    createdAt: ymdhms(img.createdAt) ?? '',
   }));
 
   const pageHref = (p: number) => {

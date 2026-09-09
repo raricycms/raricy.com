@@ -113,12 +113,14 @@ export default function NotificationItems({ initial }: { initial: NotificationDT
   }
 
   // 对齐 Flask datetime_format('%m-%d %H:%M')：不含年份。
+  // 一律 getUTC* 读：库内时间戳是「UTC+8 墙上时间贴 Z」（见 src/lib/db-time.ts），
+  // 本地 getter 会被浏览器时区再平移一次（UTC+8 下整体 +8 小时）。
   function fmt(ts: string | null): string {
     if (!ts) return '';
     const d = new Date(ts);
     if (Number.isNaN(d.getTime())) return '';
     const p = (n: number) => String(n).padStart(2, '0');
-    return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+    return `${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;
   }
 
   return (

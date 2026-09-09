@@ -12,6 +12,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { ymdhms } from '@/lib/format';
 
 export interface AdminUserActionsProps {
   user: {
@@ -41,8 +42,10 @@ interface BanRecord {
   lifted_by: string | null;
 }
 
-// 对齐 Flask showBanHistory 的 new Date(x).toLocaleString()。
-const fmtTime = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : '');
+// 库内时间戳是「UTC+8 墙上时间贴 Z」（见 src/lib/db-time.ts），必须走 ymdhms
+// （toISOString 切片）原样吐回墙上时间。原先的 new Date(iso).toLocaleString()
+// 会按浏览器时区再平移一次 —— UTC+8 浏览器下整体 +8 小时（20:00 显示成次日 04:00）。
+const fmtTime = (iso: string | null) => (iso ? (ymdhms(new Date(iso)) ?? '') : '');
 
 export default function AdminUserActions({ user, isOwner, currentUserId }: AdminUserActionsProps) {
   const router = useRouter();

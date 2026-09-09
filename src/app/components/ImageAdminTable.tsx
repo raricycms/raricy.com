@@ -13,7 +13,7 @@ export interface AdminImageRow {
   filename: string;
   authorName: string | null;
   fileSize: number;
-  createdAt: string; // 已按 Flask to_dict 的 isoformat 序列化
+  createdAt: string; // 已在服务端按 UTC+8 墙上时间格式化为 'YYYY-MM-DD HH:MM:SS'（见 lib/format.ts）
 }
 
 // 图床管理表格 + 站长硬删除交互，逐字对齐 Flask image_hosting/admin.html。
