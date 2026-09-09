@@ -12,9 +12,17 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Vditor from 'vditor';
 import 'vditor/dist/index.css';
-
-// 与 BlogForm 共用同一份本地静态资源（同路径部署在 public/static/vditor/）。
-const VDITOR_LOCAL_CDN = '/static/vditor';
+// 跟随站点 <html data-theme> 的亮/暗切换 —— 与 BlogForm 共用同一份实现
+// （本地 CDN 常量也在这里），避免两边漂移。
+import {
+  VDITOR_LOCAL_CDN,
+  applyVditorTheme,
+  isDarkTheme,
+  removeHljsTheme,
+  syncHljsTheme,
+  vditorThemeOptions,
+  watchVditorTheme,
+} from '@/lib/vditor-theme';
 
 function toast(msg: string, type: string) {
   if (typeof window === 'undefined') return;
@@ -155,6 +163,7 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
   // 初始化 vditor —— 与 BlogForm 用同一份本地 CDN，开启 math（KaTeX）支持。
   useEffect(() => {
     let cancelled = false;
+    let unwatchTheme: (() => void) | null = null;
 
     function showFallback() {
       if (editorDivRef.current) editorDivRef.current.style.display = 'none';
@@ -169,12 +178,17 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
 
     try {
       if (cancelled) return;
+      const dark = isDarkTheme();
+      const { theme, contentTheme } = vditorThemeOptions(dark);
+      // 必须在 new Vditor 之前 —— 靠 addStyle 的 id 去重接管代码高亮那条轨道
+      syncHljsTheme(dark);
       vditorRef.current = new Vditor('clipboard-editor', {
         minHeight: 400,
         mode: 'ir',
         cdn: VDITOR_LOCAL_CDN,
+        theme,
         // 启用 LaTeX：IR 模式下输入 $$..$$ 立即用本地 KaTeX 渲染。
-        preview: { math: { engine: 'KaTeX' } },
+        preview: { math: { engine: 'KaTeX' }, theme: { current: contentTheme } },
         toolbar: [
           'emoji', 'headings', 'bold', 'italic', 'strike', 'link', '|',
           'list', 'ordered-list', 'check', 'outdent', 'indent', '|',
@@ -191,8 +205,15 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
       showFallback();
     }
 
+    if (vditorLoadedRef.current) {
+      unwatchTheme = watchVditorTheme((dark) => applyVditorTheme(vditorRef.current, dark));
+    }
+
     return () => {
       cancelled = true;
+      unwatchTheme?.();
+      // 该 <link> 挂在 head 上是全局的，留着会盖掉文章页 MarkdownRenderer 的 hljs 主题
+      removeHljsTheme();
       // 销毁 vditor 实例，避免 React 严格模式 / 路由切换后节点还在内存里。
       try {
         vditorRef.current?.destroy?.();

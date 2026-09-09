@@ -109,6 +109,40 @@ test.describe('vditor 跟随站点主题', () => {
     expect(notFound, `vditor 资源 404：${notFound.join(', ')}`).toEqual([]);
   });
 
+  // 云剪贴板编辑器与博客编辑器共用 src/lib/vditor-theme.ts 那一份实现。
+  // 此前两边各写各的，云剪贴板漏接了主题 —— 暗色站点里编辑器始终是白的。
+  test('云剪贴板编辑器同样跟随主题', async ({ page, isMobile }) => {
+    const notFound: string[] = [];
+    page.on('response', (r) => {
+      if (r.status() === 404 && /vditor/.test(r.url())) notFound.push(r.url());
+    });
+
+    await loginViaApi(page, SEED_USERS.core.username);
+    await page.goto('/clipboard/upload');
+
+    const editor = page.locator('#clipboard-editor.vditor');
+    await expect(editor).toBeVisible();
+
+    await openNavIfMobile(page, isMobile);
+
+    await switchToTheme(page, 'light');
+    await expect(editor).not.toHaveClass(/vditor--dark/);
+    await expect(page.locator(CONTENT_THEME)).toHaveAttribute('href', /content-theme\/light\.css$/);
+    await expect(page.locator(HLJS_STYLE)).toHaveAttribute('href', /styles\/github\.min\.css$/);
+
+    const lightToolbarBg = await toolbarBgSettled(page);
+
+    await switchToTheme(page, 'dark');
+    await expect(editor).toHaveClass(/vditor--dark/);
+    await expect(page.locator(CONTENT_THEME)).toHaveAttribute('href', /content-theme\/dark\.css$/);
+    await expect(page.locator(HLJS_STYLE)).toHaveAttribute('href', /styles\/monokai\.min\.css$/);
+
+    const darkToolbarBg = await toolbarBgSettled(page);
+    expect(darkToolbarBg).not.toBe(lightToolbarBg);
+
+    expect(notFound, `vditor 资源 404：${notFound.join(', ')}`).toEqual([]);
+  });
+
   test('离开编辑页后移除全局 hljs <link>，不污染文章页', async ({ page, isMobile }) => {
     // #vditorHljsStyle 挂在 <head> 上、全局作用于 .hljs。留着的话，
     // 客户端跳转回文章页会盖掉 MarkdownRenderer 自己的代码高亮主题。

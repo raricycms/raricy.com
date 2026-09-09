@@ -9,44 +9,17 @@ import { useEffect, useRef } from 'react';
 import Vditor from 'vditor';
 import 'vditor/dist/index.css';
 import type { CategoryHierarchy } from '@/lib/blog-service';
-
-// vditor 默认会从远端拉 icon sprite / 预览用 KaTeX；本仓把这些资源拷到
-// public/static/vditor/，并把 cdn 指向这个本地路径，避免运行时依赖 unpkg。
-const VDITOR_LOCAL_CDN = '/static/vditor';
-
-// ── 跟随站点 <html data-theme> 的亮/暗切换 ───────────────────────────────────
-// vditor 的主题是三条独立轨道，得分别接：
-//   1. theme               外壳（工具栏 / 边框 / 图标 / 输入区底色）→ .vditor--dark 类
-//   2. preview.theme.current  正文排版（.vditor-reset 文字色、引用、表格）→ content-theme/*.css
-//   3. 代码高亮            .hljs-* 配色 → <link id="vditorHljsStyle">
-// 前两条走官方 setTheme(theme, contentTheme)；第三条见 syncHljsTheme 注释。
-const HLJS_STYLE_ID = 'vditorHljsStyle';
-
-// 亮/暗各取一套，跟文章页 MarkdownRenderer 保持同款（亮 github / 暗 monokai）。
-// 两边都是全局作用于 .hljs 的，选同一套才不会互相盖 —— 编辑器逛完回文章页，
-// 代码块配色不会被带跑。
-const HLJS_THEME = { light: 'github', dark: 'monokai' } as const;
-
-function isDarkTheme(): boolean {
-  return document.documentElement.getAttribute('data-theme') === 'dark';
-}
-
-// vditor 自己的 setCodeTheme 拼的是 `${codeTheme}.css`，但 npm 包里只有
-// `${codeTheme}.min.css` —— 给 setTheme 传第三个参数必 404，且它会先把原来的
-// <link> remove 掉，结果是代码高亮全裸。所以这条轨道自己管：
-// vditor 的 addStyle 按 id 去重，抢先插一个同 id 的 <link>，它就不会再插自己那份。
-function syncHljsTheme(dark: boolean) {
-  const name = dark ? HLJS_THEME.dark : HLJS_THEME.light;
-  const href = `${VDITOR_LOCAL_CDN}/dist/js/highlight.js/styles/${name}.min.css`;
-  let link = document.getElementById(HLJS_STYLE_ID) as HTMLLinkElement | null;
-  if (!link) {
-    link = document.createElement('link');
-    link.id = HLJS_STYLE_ID;
-    link.rel = 'stylesheet';
-    document.head.appendChild(link);
-  }
-  if (link.getAttribute('href') !== href) link.setAttribute('href', href);
-}
+// 跟随站点 <html data-theme> 的亮/暗切换 —— 三条轨道（外壳 / 正文 / 代码高亮）
+// 的实现见 src/lib/vditor-theme.ts，云剪贴板编辑器共用同一份。
+import {
+  VDITOR_LOCAL_CDN,
+  applyVditorTheme,
+  isDarkTheme,
+  removeHljsTheme,
+  syncHljsTheme,
+  vditorThemeOptions,
+  watchVditorTheme,
+} from '@/lib/vditor-theme';
 
 function toast(msg: string, type: string) {
   if (typeof window === 'undefined') return;
@@ -87,7 +60,7 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
   useEffect(() => {
     if (banInfo) return;
     let cancelled = false;
-    let themeObserver: MutationObserver | null = null;
+    let unwatchTheme: (() => void) | null = null;
 
     function showFallback() {
       if (editorDivRef.current) editorDivRef.current.style.display = 'none';
@@ -103,17 +76,18 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
     try {
       if (cancelled) return;
       const dark = isDarkTheme();
+      const { theme, contentTheme } = vditorThemeOptions(dark);
       // 必须在 new Vditor 之前 —— 靠 addStyle 的 id 去重接管代码高亮那条轨道
       syncHljsTheme(dark);
       vditorRef.current = new Vditor('editor', {
         minHeight: 500,
         mode: 'ir',
         cdn: VDITOR_LOCAL_CDN,
-        theme: dark ? 'dark' : 'classic',
+        theme,
         // path 不用写：Options.merge() 会从 cdn 推导出
         // /static/vditor/dist/css/content-theme（light.css / dark.css 均已落盘）。
         // merge 是深合并，只写 current 不会冲掉 preview.hljs 等默认值。
-        preview: { theme: { current: dark ? 'dark' : 'light' } },
+        preview: { theme: { current: contentTheme } },
         toolbar: [
           'emoji', 'headings', 'bold', 'italic', 'strike', 'link', '|',
           'list', 'ordered-list', 'check', 'outdent', 'indent', '|',
@@ -131,23 +105,14 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
     }
 
     if (vditorLoadedRef.current) {
-      themeObserver = new MutationObserver(() => {
-        const dark = isDarkTheme();
-        syncHljsTheme(dark);
-        // 只传前两个参数 —— 第三个 codeTheme 会 404，见 syncHljsTheme 注释
-        vditorRef.current?.setTheme(dark ? 'dark' : 'classic', dark ? 'dark' : 'light');
-      });
-      themeObserver.observe(document.documentElement, {
-        attributes: true,
-        attributeFilter: ['data-theme'],
-      });
+      unwatchTheme = watchVditorTheme((dark) => applyVditorTheme(vditorRef.current, dark));
     }
 
     return () => {
       cancelled = true;
-      themeObserver?.disconnect();
+      unwatchTheme?.();
       // 该 <link> 挂在 head 上是全局的，留着会盖掉文章页 MarkdownRenderer 的 hljs 主题
-      document.getElementById(HLJS_STYLE_ID)?.remove();
+      removeHljsTheme();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
