@@ -12041,6 +12041,11 @@ input:checked + .settings-toggle__slider::before {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  align-items: flex-start;
+}
+
+.chat-msg--mine .chat-msg__body {
+  align-items: flex-end;
 }
 
 .chat-msg__meta {

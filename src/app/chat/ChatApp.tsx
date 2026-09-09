@@ -55,8 +55,6 @@ const DRAWER_MAX_WIDTH = 900;
 const DOM_CAP = 300;
 /** 折叠后点一次「展开更早」放回的条数。 */
 const REVEAL_STEP = 50;
-/** 同人连续消息的合并窗口（分钟）。 */
-const GROUP_WINDOW_MIN = 5;
 
 type ApiEnvelope = { code: number; message: string; [k: string]: unknown };
 
@@ -121,15 +119,6 @@ function uploadImage(fd: FormData): Promise<UploadResult> {
     xhr.onabort = () => reject(new Error('abort'));
     xhr.send(fd);
   });
-}
-
-/** 两条消息相差多少分钟（时间戳缺失/非法时返回 Infinity，即不合并）。 */
-function minutesApart(a: string | null, b: string | null): number {
-  if (!a || !b) return Number.POSITIVE_INFINITY;
-  const ta = new Date(a).getTime();
-  const tb = new Date(b).getTime();
-  if (Number.isNaN(ta) || Number.isNaN(tb)) return Number.POSITIVE_INFINITY;
-  return Math.abs(tb - ta) / 60000;
 }
 
 /**
@@ -1273,15 +1262,15 @@ export default function ChatApp({
               {visibleMessages.map((m, i, arr) => {
                 const prev = i > 0 ? arr[i - 1] : null;
                 const showDate = !prev || dayKey(prev.created_at) !== dayKey(m.created_at);
-                // 同人连续消息：5 分钟内、且两条都不是拍一拍/带引用 → 省略头像与名字
+                // 同人连续消息：上一条还是同一个人（中间没人插话）→ 省略头像与名字。
+                // 不看时间间隔、也不看有没有引用 —— 头像只在「这一串的第一条」上出现。
+                // 拍一拍是居中系统行，视觉上打断了气泡簇，两侧都不并进来。
                 const grouped =
                   !showDate &&
                   !!prev &&
                   prev.author.id === m.author.id &&
-                  !m.reply &&
                   !m.pat &&
-                  !prev.pat &&
-                  minutesApart(prev.created_at, m.created_at) < GROUP_WINDOW_MIN;
+                  !prev.pat;
                 // 「以下是新消息」分隔线：进频道时的已读位置之后的第一条
                 const showNewSep =
                   newCount > 0 &&

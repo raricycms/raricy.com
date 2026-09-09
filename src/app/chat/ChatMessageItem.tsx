@@ -84,7 +84,7 @@ export interface ChatMessageItemProps {
   currentUsername: string;
   /** 被锚点/搜索跳转命中 → 短暂高亮（见 ChatApp 的 jumpToMessage） */
   highlighted?: boolean;
-  /** 与上一条同人、5 分钟内、且不带引用 → 省略头像与名字（连续消息合并） */
+  /** 与上一条同一作者、中间没人插话 → 省略头像与名字（连续消息合并） */
   grouped?: boolean;
   /** 私聊里「我发出的最后一条」的送达状态（对方读游标决定）；其他消息不传 */
   receipt?: 'read' | 'unread' | null;
