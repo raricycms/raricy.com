@@ -60,7 +60,7 @@ async function setupUserOffLobby(page: Page, browser: Browser) {
   await page.goto(`/chat?channel=${dmId}`);
   await expect(page.locator('.chat-main')).toBeVisible();
 
-  return { me, speaker, close: () => speakerCtx.close() };
+  return { me, speaker, dmId, close: () => speakerCtx.close() };
 }
 
 test.describe('未读角标：大区只认 @', () => {
@@ -83,6 +83,54 @@ test.describe('未读角标：大区只认 @', () => {
       await expect(lobbyRow.locator('.chat-chan__mark')).toHaveCount(1);
       await expect(lobbyRow.locator('.chat-chan__mark--num')).toHaveCount(0);
       await expect(lobbyRow).toHaveClass(/has-unread/);
+    } finally {
+      await close();
+    }
+  });
+});
+
+test.describe('顶栏徽标：聊天未读并入「消息」', () => {
+  // 聊天消息不再进通知列表，未读改由顶栏铃铛上的徽标体现（/api/notifications/count
+  // 返回 { count, dot }）。这里验的就是那条链路：SSE 收到消息 → 客户端喊一声 →
+  // 徽标重算。数字与红点两种形态都覆盖。
+
+  test('私聊新消息 → 徽标显示未读条数；读掉后消失', async ({ page, browser }) => {
+    const { speaker, dmId, close } = await setupUserOffLobby(page, browser);
+    try {
+      const badge = page.locator('#notificationBadge');
+      // 私聊已读、大区无 @、没有站内通知 → 徽标隐藏
+      await expect(badge).toBeHidden();
+
+      // 切到大区：私聊变成非活动频道，新消息才会留下未读（活动频道会被自动已读）
+      await page.goto(`/chat?channel=${LOBBY}`);
+      await expect(page.locator('.chat-main')).toBeVisible();
+
+      await postMessage(speaker, dmId, `e2e-badge-${uniqueTag()}`);
+      await expect(badge).toBeVisible();
+      await expect(badge).toHaveText('1');
+      await expect(badge).not.toHaveClass(/is-dot/);
+
+      // 读掉这条私聊 → 整页重载后徽标回到隐藏
+      const read = await page.request.post(`/api/chat/channels/${dmId}/read`);
+      expect(read.status()).toBe(200);
+      await page.goto(`/chat?channel=${LOBBY}`);
+      await expect(badge).toBeHidden();
+    } finally {
+      await close();
+    }
+  });
+
+  test('大区 @ 我 → 徽标只亮小红点（不显数字）', async ({ page, browser }) => {
+    const { me, speaker, close } = await setupUserOffLobby(page, browser);
+    try {
+      const badge = page.locator('#notificationBadge');
+      await expect(badge).toBeHidden();
+
+      // setup 停在私聊上 → 大区是非活动频道，@ 消息不会被自动读掉
+      await postMessage(speaker, LOBBY, `@${me.username} 顶栏红点`);
+      await expect(badge).toBeVisible();
+      await expect(badge).toHaveClass(/is-dot/);
+      expect(await badge.textContent()).toBe('');
     } finally {
       await close();
     }

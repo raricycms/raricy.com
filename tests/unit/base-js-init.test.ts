@@ -271,6 +271,71 @@ describe('通知未读数心跳：登录态下每 20s 自动轮询一次', () =>
   });
 });
 
+describe('顶栏徽标渲染：数字 / 小红点 / 隐藏', () => {
+  //
+  // 服务端 /api/notifications/count 返回 { count, dot }：
+  //   count = 通知未读 + 聊天未读条数；count 为 0 而 dot 为 true → 小红点
+  //   （聊天大区只有 @ 我时才亮，没有条数）。三种状态互相切换时 class 必须干净 ——
+  //   红点态残留 is-dot 会把数字徽标缩成 8px 圆点。
+  async function renderBadge(payload: Record<string, unknown>) {
+    document.body.innerHTML = `
+      <meta name="user-authenticated" content="true">
+      <meta name="notification-api-url" content="/api/notifications/count">
+      <span class="notification-badge" id="notificationBadge" style="display: none">0</span>
+    `;
+    (globalThis as any).fetch = () =>
+      Promise.resolve({ ok: true, json: () => Promise.resolve({ code: 200, ...payload }) });
+    new Function(BASE_JS)();
+    // 等 fetch → json() 两级微任务跑完
+    await new Promise((r) => setTimeout(r, 0));
+    return document.getElementById('notificationBadge') as HTMLElement;
+  }
+
+  it('count > 0 → 显示数字，不带红点样式', async () => {
+    const badge = await renderBadge({ count: 3, dot: false });
+    expect(badge.style.display).toBe('flex');
+    expect(badge.textContent).toBe('3');
+    expect(badge.classList.contains('is-dot')).toBe(false);
+    expect(badge.classList.contains('large-count')).toBe(false);
+  });
+
+  it('count = 0 且 dot = true → 只显示小红点（无数字）', async () => {
+    const badge = await renderBadge({ count: 0, dot: true });
+    expect(badge.style.display).toBe('flex');
+    expect(badge.textContent).toBe('');
+    expect(badge.classList.contains('is-dot')).toBe(true);
+  });
+
+  it('count = 0 且 dot = false → 隐藏', async () => {
+    const badge = await renderBadge({ count: 0, dot: false });
+    expect(badge.style.display).toBe('none');
+    expect(badge.classList.contains('has-notifications')).toBe(false);
+  });
+
+  it('count > 99 → 显示 99+', async () => {
+    const badge = await renderBadge({ count: 120, dot: false });
+    expect(badge.textContent).toBe('99+');
+    expect(badge.classList.contains('large-count')).toBe(true);
+  });
+
+  it('红点 → 数字：is-dot 必须被摘掉（否则数字徽标被缩成圆点）', async () => {
+    const badge = await renderBadge({ count: 0, dot: true });
+    expect(badge.classList.contains('is-dot')).toBe(true);
+
+    // 再跑一次心跳，服务端返回数字
+    (globalThis as any).fetch = () =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ code: 200, count: 2, dot: false }),
+      });
+    (window as any).updateNotificationCount();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(badge.textContent).toBe('2');
+    expect(badge.classList.contains('is-dot')).toBe(false);
+  });
+});
+
 describe('移动端：点击导航链接后 navbar 自动收起', () => {
   // jsdom 没有 window.matchMedia，base.js 会兜底成 isMobile()=false；
   // 这里桩成 matches:true 模拟手机端，才能走到移动端收起分支。

@@ -137,7 +137,9 @@ function createToastContainer() {
     return container;
 }
 
-// 获取并更新通知数量
+// 获取并更新顶栏徽标
+// 服务端返回 { count, dot }：count = 通知未读 + 聊天未读条数（显示数字）；
+// count 为 0 而 dot 为 true → 只显示小红点（聊天大区只有被 @ 时才亮，无条数）。
 function updateNotificationCount() {
     if (!window.isUserAuthenticated) {
         console.log('用户未登录，跳过通知数量更新');
@@ -156,8 +158,10 @@ function updateNotificationCount() {
             const badge = document.getElementById('notificationBadge');
             if (badge) {
                 const count = data.count || 0;
+                const dot = !!data.dot;
                 if (count > 0) {
                     badge.style.display = 'flex';
+                    badge.classList.remove('is-dot');
                     if (count > 99) {
                         badge.textContent = '99+';
                         badge.classList.add('large-count');
@@ -166,9 +170,16 @@ function updateNotificationCount() {
                         badge.classList.remove('large-count');
                     }
                     badge.classList.add('has-notifications');
+                } else if (dot) {
+                    badge.style.display = 'flex';
+                    badge.textContent = '';
+                    badge.classList.remove('large-count');
+                    badge.classList.add('is-dot');
+                    badge.classList.add('has-notifications');
                 } else {
                     badge.style.display = 'none';
                     badge.classList.remove('has-notifications');
+                    badge.classList.remove('is-dot');
                 }
             }
         })
@@ -242,7 +253,7 @@ window.refreshNotificationCount = function() {
     updateNotificationCount();
 };
 
-// 通知未读数心跳：每 20s 轮询一次顶栏红点数字。
+// 顶栏徽标心跳：每 20s 轮询一次未读数（通知 + 聊天）。
 // 为什么需要它：Next 客户端路由切换（soft navigation）不会重载本文件、布局也
 // 不重挂载，若只在整页加载时拉一次，跨页（如聊天来了新消息）后数字会一直旧。
 // 切页那一下的即时刷新由根布局的 NotificationHeartbeat 组件负责（它监听不到

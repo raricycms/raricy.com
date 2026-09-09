@@ -559,6 +559,14 @@ a:hover {
   font-size: 0.65rem;
   padding: 1px 4px;
 }
+.notification-badge.is-dot {
+  top: 7px;
+  right: 7px;
+  min-width: 8px;
+  width: 8px;
+  height: 8px;
+  padding: 0;
+}
 
 .theme-toggle-button {
   position: relative;

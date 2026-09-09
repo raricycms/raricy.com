@@ -1,13 +1,13 @@
 // chat-service.ts —— 在线聊天区业务逻辑
 //
-// 【为什么测这些】聊天区是「自增游标 + 懒建成员 + 软删除 + 越权隔离 + 会话合并通知」
+// 【为什么测这些】聊天区是「自增游标 + 懒建成员 + 软删除 + 越权隔离 + 未读汇总」
 // 的组合模块，任何一条写错都不会报错，只会静默漏数据 / 放错人：
 //   1. 大区懒建成员基线 = 当时最大消息 id —— 算错会让从未进过聊天室的用户看到全量未读，
 //      或让新用户把历史当未读。
 //   2. 私聊频道「成员制」：非成员拉消息/发消息必须被拒（越权隔离是私聊的第一道墙）。
 //   3. 图片归属校验：只能发「自己上传且未软删」的图（图床是站内资源，防止引用他人私有文件）。
 //   4. 引用回复必须同频道且存活；软删后引用/正文都要给出占位，不能露原始内容。
-//   5. 私聊通知「会话合并」：连发 N 条只留 1 条未读通知，打开会话后一并清掉。
+//   5. 聊天未读不进通知列表：私聊计条数、大区只在被 @ 时亮红点（顶栏徽标口径）。
 //   6. 软删除权限：本人随意删；管理员删他人必须带原因并落审计（申诉数据源）。
 //   7. 限频仿评论：资源校验通过才扣额度。
 //
@@ -30,6 +30,9 @@ import {
   canAccessChannel,
   softDeleteMessage,
   searchCoreUsers,
+  getChatUnreadSummary,
+  setChannelMuted,
+  hideChannel,
 } from '@/lib/chat-service';
 
 beforeEach(async () => {
@@ -553,11 +556,11 @@ describe('拍一拍', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 4. 私聊通知：会话合并 + 已读清通知
+// 4. 聊天未读：不进通知列表，统一走顶栏徽标汇总（getChatUnreadSummary）
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('私聊通知（会话合并）', () => {
-  it('连发多条只产生一条未读通知，detail 刷新为最新一条', async () => {
+describe('聊天消息不产生站内通知', () => {
+  it('私聊连发多条也不产生通知', async () => {
     const a = await makeUser({ role: 'core' });
     const b = await makeUser({ role: 'core' });
     const started = (await startDirectChannel(a.id, b.id)) as { channel: { id: string } };
@@ -567,41 +570,108 @@ describe('私聊通知（会话合并）', () => {
       await sendMessage({ channelId, authorId: a.id, content: `hi ${i}` });
     }
 
-    const notifs = await prisma.notification.findMany({
-      where: { recipientId: b.id, objectType: 'chat', objectId: channelId },
-    });
-    expect(notifs).toHaveLength(1);
-    expect(notifs[0].read).toBe(false);
-    expect(notifs[0].detail).toBe('hi 3');
-    expect(notifs[0].action).toBe('私聊消息');
+    expect(await prisma.notification.count({ where: { recipientId: b.id } })).toBe(0);
   });
 
-  it('大区消息不产生通知', async () => {
+  it('大区 @ 我同样不产生通知', async () => {
+    const a = await makeUser({ role: 'core' });
+    const b = await makeUser({ role: 'core', username: 'lobby_mention' });
+    await sendMessage({
+      channelId: CHAT_LOBBY_ID,
+      authorId: a.id,
+      content: '@lobby_mention 在吗',
+    });
+    expect(await prisma.notification.count({ where: { recipientId: b.id } })).toBe(0);
+  });
+});
+
+describe('顶栏徽标汇总 getChatUnreadSummary', () => {
+  it('私聊未读计入 count；读掉后归零', async () => {
     const a = await makeUser({ role: 'core' });
     const b = await makeUser({ role: 'core' });
-    await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: a.id, content: 'lobby' });
-    const count = await prisma.notification.count({ where: { recipientId: b.id } });
-    expect(count).toBe(0);
+    const ch = (await startDirectChannel(a.id, b.id)) as { channel: { id: string } };
+
+    const first = (await sendMessage({
+      channelId: ch.channel.id,
+      authorId: a.id,
+      content: '1',
+    })) as { message: { id: number } };
+    await sendMessage({ channelId: ch.channel.id, authorId: a.id, content: '2' });
+
+    expect(await getChatUnreadSummary(b.id)).toEqual({ count: 2, dot: false });
+
+    // 只读到第一条 → 还剩一条
+    await markChannelRead(ch.channel.id, b.id, first.message.id);
+    expect(await getChatUnreadSummary(b.id)).toEqual({ count: 1, dot: false });
+
+    // 缺省 = 读到频道最大 id → 清零
+    await markChannelRead(ch.channel.id, b.id);
+    expect(await getChatUnreadSummary(b.id)).toEqual({ count: 0, dot: false });
   });
 
-  it('markChannelRead 把该会话的未读通知一并清掉', async () => {
+  it('大区普通未读不算，只有 @ 到我才亮红点', async () => {
+    const a = await makeUser({ role: 'core' });
+    const b = await makeUser({ role: 'core', username: 'lobby_dot' });
+    // 先进一次大区：懒建成员基线（没有成员行时未读恒为 0，测不出 dot）
+    await listChannelsForUser(b.id);
+
+    await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: a.id, content: '普通消息' });
+    expect(await getChatUnreadSummary(b.id)).toEqual({ count: 0, dot: false });
+
+    await sendMessage({
+      channelId: CHAT_LOBBY_ID,
+      authorId: a.id,
+      content: '@lobby_dot 叫你',
+    });
+    expect(await getChatUnreadSummary(b.id)).toEqual({ count: 0, dot: true });
+  });
+
+  it('自己 @ 自己不算（与侧栏同口径：作者排除）', async () => {
+    const b = await makeUser({ role: 'core', username: 'self_dot' });
+    await listChannelsForUser(b.id);
+    await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: b.id, content: '@self_dot 记一下' });
+    expect(await getChatUnreadSummary(b.id)).toEqual({ count: 0, dot: false });
+  });
+
+  it('专注模式下大区不计（@ 也不亮）', async () => {
+    const a = await makeUser({ role: 'core' });
+    const b = await makeUser({ role: 'core', username: 'focus_dot' });
+    await listChannelsForUser(b.id);
+    await sendMessage({
+      channelId: CHAT_LOBBY_ID,
+      authorId: a.id,
+      content: '@focus_dot 叫你',
+    });
+
+    expect(await getChatUnreadSummary(b.id)).toEqual({ count: 0, dot: true });
+    expect(await getChatUnreadSummary(b.id, true)).toEqual({ count: 0, dot: false });
+  });
+
+  it('静音会话不计入徽标，但侧栏未读徽标照常（静音 ≠ 已读）', async () => {
     const a = await makeUser({ role: 'core' });
     const b = await makeUser({ role: 'core' });
-    const started = (await startDirectChannel(a.id, b.id)) as { channel: { id: string } };
-    const channelId = started.channel.id;
-    const sent = (await sendMessage({ channelId, authorId: a.id, content: 'hi' })) as {
-      message: { id: number };
-    };
+    const ch = (await startDirectChannel(a.id, b.id)) as { channel: { id: string } };
+    await setChannelMuted(ch.channel.id, b.id, true);
 
-    await markChannelRead(channelId, b.id, sent.message.id);
+    await sendMessage({ channelId: ch.channel.id, authorId: a.id, content: 'x' });
 
-    const notifs = await prisma.notification.findMany({
-      where: { recipientId: b.id, objectType: 'chat', objectId: channelId },
-    });
-    expect(notifs).toHaveLength(1);
-    expect(notifs[0].read).toBe(true);
-    const chans = await listChannelsForUser(b.id);
-    expect(chans.find((c) => c.id === channelId)?.unread_count).toBe(0);
+    expect(await getChatUnreadSummary(b.id)).toEqual({ count: 0, dot: false });
+    const row = (await listChannelsForUser(b.id)).find((c) => c.id === ch.channel.id);
+    expect(row?.unread_count).toBe(1);
+  });
+
+  it('隐藏的会话不计；隐藏后又来新消息则重新计入', async () => {
+    const a = await makeUser({ role: 'core' });
+    const b = await makeUser({ role: 'core' });
+    const ch = (await startDirectChannel(a.id, b.id)) as { channel: { id: string } };
+    await sendMessage({ channelId: ch.channel.id, authorId: a.id, content: '旧消息' });
+
+    await hideChannel(ch.channel.id, b.id);
+    expect(await getChatUnreadSummary(b.id)).toEqual({ count: 0, dot: false });
+
+    // 新消息 id 更大 → 会话重新出现（微信语义），未读也随之重新计入
+    await sendMessage({ channelId: ch.channel.id, authorId: a.id, content: '新消息' });
+    expect((await getChatUnreadSummary(b.id)).count).toBeGreaterThan(0);
   });
 });
 

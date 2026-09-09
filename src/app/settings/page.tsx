@@ -10,7 +10,6 @@ interface ProfileState {
   notifyEdit: boolean;
   notifyDelete: boolean;
   notifyAdmin: boolean;
-  notifyChat: boolean;
   showRecentBlogs: boolean;
   showRecentComments: boolean;
   focusMode: boolean;
@@ -22,7 +21,6 @@ const EMPTY: ProfileState = {
   notifyEdit: true,
   notifyDelete: true,
   notifyAdmin: true,
-  notifyChat: true,
   showRecentBlogs: true,
   showRecentComments: true,
   focusMode: false,
@@ -40,7 +38,6 @@ export default function SettingsPage() {
   const [bioAlert, setBioAlert] = useState<Alert | null>(null);
   const [privacyAlert, setPrivacyAlert] = useState<Alert | null>(null);
   const [focusAlert, setFocusAlert] = useState<Alert | null>(null);
-  const [notifyAlert, setNotifyAlert] = useState<Alert | null>(null);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -66,7 +63,6 @@ export default function SettingsPage() {
             notifyEdit: !!data.profile.notifyEdit,
             notifyDelete: !!data.profile.notifyDelete,
             notifyAdmin: !!data.profile.notifyAdmin,
-            notifyChat: !!data.profile.notifyChat,
             showRecentBlogs: !!data.profile.showRecentBlogs,
             showRecentComments: !!data.profile.showRecentComments,
             focusMode: !!data.profile.focusMode,
@@ -160,30 +156,6 @@ export default function SettingsPage() {
     }
   }
 
-  async function saveNotifyChat(value: boolean) {
-    setState((s) => ({ ...s, notifyChat: value }));
-    try {
-      const res = await fetch('/api/users/me', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({ notifyChat: value }),
-      });
-      const result = await res.json();
-      if (res.ok && result.code === 200) {
-        setNotifyAlert({ msg: '通知设置已保存', type: 'success' });
-      } else {
-        setNotifyAlert({ msg: result.message || '保存失败', type: 'danger' });
-        setState((s) => ({ ...s, notifyChat: !value }));
-      }
-    } catch {
-      setNotifyAlert({ msg: '网络错误，请稍后再试', type: 'danger' });
-      setState((s) => ({ ...s, notifyChat: !value }));
-    } finally {
-      setTimeout(() => setNotifyAlert(null), 3000);
-    }
-  }
-
   async function submitPassword(e: React.FormEvent) {
     e.preventDefault();
     const currentPw = currentPassword.trim();
@@ -244,10 +216,6 @@ export default function SettingsPage() {
 
   const focusAlertClass = focusAlert
     ? `settings-alert settings-alert--${focusAlert.type}`
-    : 'settings-alert d-none';
-
-  const notifyAlertClass = notifyAlert
-    ? `settings-alert settings-alert--${notifyAlert.type}`
     : 'settings-alert d-none';
 
   return (
@@ -339,35 +307,6 @@ export default function SettingsPage() {
             {passwordSubmitting ? '提交中…' : '确认修改'}
           </button>
         </form>
-      </div>
-
-      {/* ====== Section 2.5: 通知 ====== */}
-      <div className="settings-card">
-        <div className="settings-card__header">
-          <span className="icon icon-gear"></span>
-          <h2 className="settings-card__title">通知设置</h2>
-        </div>
-        <p className="settings-card__desc">
-          控制聊天相关通知。关闭后不再收到私聊消息与大区 @我的提醒（未读徽标不受影响，
-          打开聊天仍能看到未读）。单个会话还可以在聊天侧栏里单独静音。
-        </p>
-        <div className={notifyAlertClass} id="notifyAlert">{notifyAlert?.msg ?? ''}</div>
-
-        <div className="settings-toggle-row">
-          <div className="settings-toggle-row__label">
-            <span className="settings-toggle-row__title">聊天通知</span>
-            <span className="settings-toggle-row__desc">私聊消息与大区里 @我的提醒</span>
-          </div>
-          <label className="settings-toggle">
-            <input
-              type="checkbox"
-              id="toggleNotifyChat"
-              checked={state.notifyChat}
-              onChange={(e) => saveNotifyChat(e.target.checked)}
-            />
-            <span className="settings-toggle__slider"></span>
-          </label>
-        </div>
       </div>
 
       {/* ====== Section 3: Privacy ====== */}

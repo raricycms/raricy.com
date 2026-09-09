@@ -17,12 +17,7 @@ import { nowForDb } from './db-time';
 
 const DEFAULT_PER_PAGE = 20;
 
-export type NotifyPrefKey =
-  | 'notifyLike'
-  | 'notifyEdit'
-  | 'notifyDelete'
-  | 'notifyAdmin'
-  | 'notifyChat';
+export type NotifyPrefKey = 'notifyLike' | 'notifyEdit' | 'notifyDelete' | 'notifyAdmin';
 
 /**
  * action 字符串 → 通知偏好字段的**精确映射表**。
@@ -58,9 +53,6 @@ const ACTION_PREF_MAP: Readonly<Record<string, NotifyPrefKey>> = {
   // notifyAdmin 也照发。两者都是「管理类通知」（前者发给管理员，后者是管理决定的回执）。
   申诉结果: 'notifyAdmin',
   栏目发文提醒: 'notifyAdmin',
-  // ── notify_chat ── 聊天类通知（私聊消息 / 大区 @我），与四个既有开关并列
-  私聊消息: 'notifyChat',
-  聊天提到你: 'notifyChat',
 };
 
 /**
@@ -115,7 +107,6 @@ export async function sendNotification(input: SendNotificationInput) {
       notifyEdit: true,
       notifyDelete: true,
       notifyAdmin: true,
-      notifyChat: true,
     },
   });
   if (!recipient) return null;
@@ -139,76 +130,6 @@ export async function sendNotification(input: SendNotificationInput) {
       detail,
       read: false,
     },
-  });
-}
-
-/**
- * 私聊消息通知（**会话合并**）：同一会话对方连续发消息时，只要该会话在本端仍未读，
- * 就只保留**一条**通知 —— 找到该会话最近一条未读 chat 通知，更新其 actor/timestamp/
- * detail（刷新到顶部）；没有未读通知才新建。对齐主流 IM「一个会话一条未读提醒」，
- * 避免离线很久后铃铛被同会话消息刷屏。
- *
- * 始终送达（不查偏好）：私聊属于强提醒，且 action『私聊消息』不在 ACTION_PREF_MAP。
- * 会话被打开/阅读时，由 chat-service.markChannelRead 把对应 chat 通知批量标已读。
- */
-export async function sendCoalescedChatNotification(input: {
-  recipientId: string;
-  actorId: string;
-  channelId: string;
-  preview: string;
-  /** 通知标题（默认「私聊消息」；大区 @ 用「聊天提到你」） */
-  action?: string;
-}) {
-  const { recipientId, actorId, channelId, preview, action = '私聊消息' } = input;
-
-  // 两道闸门（这条路径不走 sendNotification，偏好过滤必须自己做）：
-  //   1. 账号级 notifyChat 开关 —— 关掉则所有聊天通知都不发；
-  //   2. 会话级静音 mutedAt —— 只静这一条会话。
-  // 未读徽标不受这两者影响（静音 ≠ 已读）。
-  const recipient = await prisma.user.findUnique({
-    where: { id: recipientId },
-    select: {
-      notifyChat: true,
-      chatMembers: { where: { channelId }, select: { mutedAt: true } },
-    },
-  });
-  if (!recipient) return null;
-  if (recipient.notifyChat === false) return null;
-  if (recipient.chatMembers[0]?.mutedAt) return null;
-
-  const now = nowForDb();
-  return prisma.$transaction(async (tx) => {
-    const existing = await tx.notification.findFirst({
-      where: {
-        recipientId,
-        objectType: 'chat',
-        objectId: channelId,
-        read: false,
-      },
-      orderBy: { timestamp: 'desc' },
-      select: { id: true },
-    });
-    if (existing) {
-      return tx.notification.update({
-        where: { id: existing.id },
-        data: { actorId, timestamp: now, detail: preview, read: false },
-        select: { id: true },
-      });
-    }
-    return tx.notification.create({
-      data: {
-        id: crypto.randomUUID(),
-        timestamp: now,
-        action,
-        recipientId,
-        actorId,
-        objectType: 'chat',
-        objectId: channelId,
-        detail: preview,
-        read: false,
-      },
-      select: { id: true },
-    });
   });
 }
 

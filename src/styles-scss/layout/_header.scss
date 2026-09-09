@@ -333,13 +333,24 @@ a {
   // border: 2px solid #212529;
   // box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
   
-  &.has-notifications { 
-    animation: pulse 2s infinite; 
+  &.has-notifications {
+    animation: pulse 2s infinite;
   }
-  
-  &.large-count { 
-    font-size: 0.65rem; 
-    padding: 1px 4px; 
+
+  &.large-count {
+    font-size: 0.65rem;
+    padding: 1px 4px;
+  }
+
+  // 只有大区 @ 我、没有可计数的未读 → 小红点，不显数字。
+  // 8px 圆点摆在数字徽标的圆心处（18px 徽标 top/right 2px ⇒ 圆心距角 11px）。
+  &.is-dot {
+    top: 7px;
+    right: 7px;
+    min-width: 8px;
+    width: 8px;
+    height: 8px;
+    padding: 0;
   }
 }
 

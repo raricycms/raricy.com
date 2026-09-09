@@ -1,9 +1,8 @@
-// chat-prefs.test.ts —— 聊天偏好：静音 / 隐藏会话 / 聊天通知开关 / @ 提醒
+// chat-prefs.test.ts —— 聊天偏好：静音 / 隐藏会话 / @ 口径
 //
-// 【为什么测这些】四条都是「静默失效」型逻辑：写错了不会报错，只会让用户
-// 「明明关了通知还在响」或者「明明隐藏了会话又冒出来」。
-//   · 静音只影响通知，不能顺手把未读徽标也吞了（静音 ≠ 已读）；
-//   · notifyChat 是账号级开关，必须拦住所有聊天通知（私聊 + @）；
+// 【为什么测这些】三条都是「静默失效」型逻辑：写错了不会报错，只会让用户
+// 「明明静音了铃铛还响」或者「明明隐藏了会话又冒出来」。
+//   · 静音只影响顶栏徽标，不能顺手把侧栏未读徽标也吞了（静音 ≠ 已读）；
 //   · 隐藏会话记的是「当时最大消息 id」，新消息（id 更大）要让它重新出现；
 //   · @ 的口径必须与前端高亮一致（`@bob` 不能命中 `@bobby`）。
 
@@ -19,16 +18,13 @@ import {
   hideChannel,
   startDirectChannel,
   sendMessage,
+  getChatUnreadSummary,
 } from '@/lib/chat-service';
 
 beforeEach(async () => {
   await resetDb();
   __resetRateLimitStore();
 });
-
-async function notificationCount(recipientId: string): Promise<number> {
-  return prisma.notification.count({ where: { recipientId, objectType: 'chat' } });
-}
 
 describe('extractMentions（与前端 isMentioned 同口径）', () => {
   it('@名字 后跟空白或行尾才算；前缀相同不误伤', () => {
@@ -45,23 +41,21 @@ describe('extractMentions（与前端 isMentioned 同口径）', () => {
 });
 
 describe('静音会话（D2）', () => {
-  it('静音后不再产生通知；取消静音恢复', async () => {
+  it('静音后不计入顶栏徽标；取消静音后重新计入（未读本身没丢）', async () => {
     const a = await makeUser({ role: 'core' });
     const b = await makeUser({ role: 'core' });
     const ch = (await startDirectChannel(a.id, b.id)) as { channel: { id: string } };
 
     await sendMessage({ channelId: ch.channel.id, authorId: a.id, content: '第一条' });
-    expect(await notificationCount(b.id)).toBe(1);
+    expect(await getChatUnreadSummary(b.id)).toEqual({ count: 1, dot: false });
 
-    // 清掉未读通知，便于观察下一条
-    await prisma.notification.deleteMany({ where: { recipientId: b.id } });
     await setChannelMuted(ch.channel.id, b.id, true);
     await sendMessage({ channelId: ch.channel.id, authorId: a.id, content: '静音中' });
-    expect(await notificationCount(b.id)).toBe(0);
+    expect(await getChatUnreadSummary(b.id)).toEqual({ count: 0, dot: false });
 
+    // 取消静音：静音期间的未读仍在（静音 ≠ 已读），只是刚才没上徽标
     await setChannelMuted(ch.channel.id, b.id, false);
-    await sendMessage({ channelId: ch.channel.id, authorId: a.id, content: '取消静音后' });
-    expect(await notificationCount(b.id)).toBe(1);
+    expect(await getChatUnreadSummary(b.id)).toEqual({ count: 2, dot: false });
   });
 
   it('静音不影响未读徽标（静音 ≠ 已读）', async () => {
@@ -87,34 +81,6 @@ describe('静音会话（D2）', () => {
     const list = await listChannelsForUser(a.id);
     expect(list.find((c) => c.id === CHAT_LOBBY_ID)?.unread_count).toBe(0);
     expect(list.find((c) => c.id === CHAT_LOBBY_ID)?.muted).toBe(true);
-  });
-});
-
-describe('聊天通知总开关（D3）', () => {
-  it('关掉 notifyChat 后私聊与 @ 通知都不发', async () => {
-    const a = await makeUser({ role: 'core' });
-    const b = await makeUser({ role: 'core', username: 'quiet_user' });
-    const ch = (await startDirectChannel(a.id, b.id)) as { channel: { id: string } };
-    await prisma.user.update({ where: { id: b.id }, data: { notifyChat: false } });
-
-    await sendMessage({ channelId: ch.channel.id, authorId: a.id, content: '私聊' });
-    await sendMessage({
-      channelId: CHAT_LOBBY_ID,
-      authorId: a.id,
-      content: '@quiet_user 大区喊你',
-    });
-
-    expect(await notificationCount(b.id)).toBe(0);
-  });
-
-  it('开关缺省（null）视为开启', async () => {
-    const a = await makeUser({ role: 'core' });
-    const b = await makeUser({ role: 'core' });
-    await prisma.user.update({ where: { id: b.id }, data: { notifyChat: null } });
-    const ch = (await startDirectChannel(a.id, b.id)) as { channel: { id: string } };
-
-    await sendMessage({ channelId: ch.channel.id, authorId: a.id, content: 'x' });
-    expect(await notificationCount(b.id)).toBe(1);
   });
 });
 
@@ -150,55 +116,6 @@ describe('隐藏会话（D4）', () => {
     const outsider = await makeUser({ role: 'core' });
     const ch = (await startDirectChannel(a.id, b.id)) as { channel: { id: string } };
     expect((await hideChannel(ch.channel.id, outsider.id)).ok).toBe(false);
-  });
-});
-
-describe('@ 提醒（D5）', () => {
-  it('大区 @ 到的人收到「聊天提到你」通知（同频道合并为一条）', async () => {
-    const a = await makeUser({ role: 'core' });
-    const b = await makeUser({ role: 'core', username: 'alice_target' });
-
-    await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: a.id, content: '@alice_target 在吗' });
-    const rows = await prisma.notification.findMany({ where: { recipientId: b.id } });
-    expect(rows).toHaveLength(1);
-    expect(rows[0].action).toBe('聊天提到你');
-    expect(rows[0].detail).toContain('@了你');
-
-    // 同一频道再 @ 一次 → 仍是同一条（会话合并）
-    await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: a.id, content: '@alice_target 再问一次' });
-    expect(await notificationCount(b.id)).toBe(1);
-  });
-
-  it('@ 自己不发通知；@ 不存在的用户名不发', async () => {
-    const a = await makeUser({ role: 'core', username: 'self_mention' });
-    await sendMessage({
-      channelId: CHAT_LOBBY_ID,
-      authorId: a.id,
-      content: '@self_mention @nobody_here 你好',
-    });
-    expect(await notificationCount(a.id)).toBe(0);
-  });
-
-  it('@ 非 core+ 用户不发（他们进不了聊天）', async () => {
-    const a = await makeUser({ role: 'core' });
-    const plain = await makeUser({ role: 'user', username: 'plain_user' });
-    await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: a.id, content: '@plain_user 你好' });
-    expect(await notificationCount(plain.id)).toBe(0);
-  });
-
-  it('私聊里 @ 不触发（只有两个人）', async () => {
-    const a = await makeUser({ role: 'core' });
-    const b = await makeUser({ role: 'core', username: 'dm_target' });
-    const ch = (await startDirectChannel(a.id, b.id)) as { channel: { id: string } };
-    await sendMessage({
-      channelId: ch.channel.id,
-      authorId: a.id,
-      content: '@dm_target 你好',
-    });
-    // 只有一条私聊消息通知，没有额外的「聊天提到你」
-    const rows = await prisma.notification.findMany({ where: { recipientId: b.id } });
-    expect(rows).toHaveLength(1);
-    expect(rows[0].action).toBe('私聊消息');
   });
 });
 

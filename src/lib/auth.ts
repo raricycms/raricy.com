@@ -34,7 +34,6 @@ const PUBLIC_USER_SELECT = {
   notifyEdit: true,
   notifyDelete: true,
   notifyAdmin: true,
-  notifyChat: true,
   showRecentBlogs: true,
   showRecentComments: true,
   focusMode: true,

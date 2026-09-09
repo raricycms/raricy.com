@@ -45,9 +45,6 @@ model User {
   notifyEdit   Boolean? @default(true) @map("notify_edit")
   notifyDelete Boolean? @default(true) @map("notify_delete")
   notifyAdmin  Boolean? @default(true) @map("notify_admin")
-  // 聊天通知总开关（私聊消息 / 大区 @我）：关掉后不再产生 chat 类通知，
-  // 未读徽标照常（静音会话是另一层，见 ChatMember.mutedAt）
-  notifyChat   Boolean? @default(true) @map("notify_chat")
 
   showRecentBlogs    Boolean @default(true) @map("show_recent_blogs")
   showRecentComments Boolean @default(true) @map("show_recent_comments")

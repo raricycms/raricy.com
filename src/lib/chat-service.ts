@@ -20,7 +20,6 @@ import { prisma } from './db';
 import { nowForDb } from './db-time';
 import { hasAdminRights } from './auth';
 import { rateLimit, RULES } from './rate-limit';
-import { sendCoalescedChatNotification } from './notification-service';
 import { logAdminAction } from './admin-user-service';
 import { publishToAll, publishToUsers } from './chat-bus';
 import {
@@ -173,6 +172,54 @@ export async function canAccessChannel(
 // ── 频道：列表 + 未读 ───────────────────────────────────────────────────────
 
 /**
+ * 各频道未读数（消息 id > 该频道读游标且未软删）。
+ *
+ * 每个频道的读游标不同，Prisma 的 where 表达不了「逐行比较」，只能落到 SQL：
+ * chat_members × chat_messages 按各自游标过滤后按频道 group by。
+ * （is_deleted 在库里是 INTEGER 0/1，且历史行可能为 NULL，两个都要挡。）
+ * 返回 Map：channelId → 条数（无未读的频道不出现在结果里）。
+ */
+async function countUnreadByChannel(
+  userId: string,
+  channelIds: string[]
+): Promise<Map<string, number>> {
+  if (!channelIds.length) return new Map();
+  const rows = await prisma.$queryRaw<{ channelId: string; unread: number | bigint }[]>`
+    SELECT m.channel_id AS channelId, COUNT(msg.id) AS unread
+    FROM chat_members m
+    LEFT JOIN chat_messages msg
+      ON msg.channel_id = m.channel_id
+     AND msg.id > m.last_read_message_id
+     AND (msg.is_deleted = 0 OR msg.is_deleted IS NULL)
+    WHERE m.user_id = ${userId}
+      AND m.channel_id IN (${Prisma.join(channelIds)})
+    GROUP BY m.channel_id
+  `;
+  return new Map(rows.map((r) => [r.channelId, Number(r.unread)]));
+}
+
+/**
+ * 大区里「游标之后 @ 到我」的消息条数。
+ *
+ * 判定必须与前端 @ 高亮同一份规则 —— 所以**不建 mention 表**：落表等于多一份真相，
+ * 还要迁移和回填。SQL 的 LIKE 只做预筛（超集：大小写不敏感、用户名里的 _ 是通配符），
+ * 精确判定交回 extractMentions；预筛把取回行数从「全部未读」压到「字面含 @我」。
+ */
+async function countLobbyMentionsSince(userId: string, cursor: number): Promise<number> {
+  const rows = await prisma.$queryRaw<{ content: string; username: string }[]>`
+    SELECT msg.content AS content, u.username AS username
+    FROM chat_messages msg
+    JOIN users u ON u.id = ${userId}
+    WHERE msg.channel_id = ${CHAT_LOBBY_ID}
+      AND msg.id > ${cursor}
+      AND (msg.is_deleted = 0 OR msg.is_deleted IS NULL)
+      AND msg.author_id <> ${userId}
+      AND msg.content LIKE '%@' || u.username || '%'
+  `;
+  return rows.filter((r) => extractMentions(r.content).includes(r.username)).length;
+}
+
+/**
  * 拉当前用户的全部频道（大区 + 私聊），带 peer、未读数、最后一条消息预览。
  * 大区固定置顶；私聊按「有未读优先，其次最近活跃」排序。
  */
@@ -225,44 +272,15 @@ export async function listChannelsForUser(
   const channelIds = channels.map((c) => c.id);
 
   // ── 2) 未读数：一条 SQL 覆盖全部频道 ──
-  // 每个频道的读游标不同，Prisma 的 where 表达不了「逐行比较」，只能落到 SQL：
-  // chat_members × chat_messages 按各自游标过滤后按频道 group by。
-  // （is_deleted 在库里是 INTEGER 0/1，且历史行可能为 NULL，两个都要挡。）
-  const unreadRows = channelIds.length
-    ? await prisma.$queryRaw<{ channelId: string; unread: number | bigint }[]>`
-        SELECT m.channel_id AS channelId, COUNT(msg.id) AS unread
-        FROM chat_members m
-        LEFT JOIN chat_messages msg
-          ON msg.channel_id = m.channel_id
-         AND msg.id > m.last_read_message_id
-         AND (msg.is_deleted = 0 OR msg.is_deleted IS NULL)
-        WHERE m.user_id = ${userId}
-          AND m.channel_id IN (${Prisma.join(channelIds)})
-        GROUP BY m.channel_id
-      `
-    : [];
-  const unreadByChannel = new Map(unreadRows.map((r) => [r.channelId, Number(r.unread)]));
+  const unreadByChannel = await countUnreadByChannel(userId, channelIds);
 
   // ── 2.5) 大区：未读里有没有 @ 到我 ──
-  // 大区是公共频道，普通未读不提示（产品口径：只有「有人叫你」才亮红点）。判定必须
-  // 与 @ 通知同一份规则 —— 所以**不建 mention 表**：落表等于多一份真相，还要迁移和
-  // 回填。SQL 的 LIKE 只做预筛（超集：大小写不敏感、用户名里的 _ 是通配符），精确
-  // 判定交回 extractMentions；预筛把取回行数从「全部未读」压到「字面含 @我」。
-  // 只在「大区确实有未读」时才查，多数用户每次对账都跳过这一条。
+  // 大区是公共频道，普通未读不提示（产品口径：只有「有人叫你」才亮红点）。只在
+  // 「大区确实有未读」时才查，多数用户每次对账都跳过这一条。
   const lobbyCursor = cursorByChannel.get(CHAT_LOBBY_ID) ?? 0;
   let lobbyMentions = 0;
   if (!focusMode && (unreadByChannel.get(CHAT_LOBBY_ID) ?? 0) > 0) {
-    const rows = await prisma.$queryRaw<{ content: string; username: string }[]>`
-      SELECT msg.content AS content, u.username AS username
-      FROM chat_messages msg
-      JOIN users u ON u.id = ${userId}
-      WHERE msg.channel_id = ${CHAT_LOBBY_ID}
-        AND msg.id > ${lobbyCursor}
-        AND (msg.is_deleted = 0 OR msg.is_deleted IS NULL)
-        AND msg.author_id <> ${userId}
-        AND msg.content LIKE '%@' || u.username || '%'
-    `;
-    lobbyMentions = rows.filter((r) => extractMentions(r.content).includes(r.username)).length;
+    lobbyMentions = await countLobbyMentionsSince(userId, lobbyCursor);
   }
 
   // ── 3) 每个频道的最后一条 ──
@@ -406,13 +424,86 @@ export async function listChannelsForUser(
   return valid.map(({ _order, _lastId, ...dto }) => dto);
 }
 
+export interface ChatUnreadSummary {
+  /** 私聊未读条数合计（大区普通消息不算，口径与侧栏一致） */
+  count: number;
+  /** 大区未读里有 @ 到我 —— 顶栏显示小红点（公共频道不显数字） */
+  dot: boolean;
+}
+
+/**
+ * 顶栏徽标用的聊天未读汇总。聊天消息不再进通知列表（见 sendMessage），未读改由
+ * 顶栏那个徽标体现 —— 所以口径必须与侧栏 hasUnreadMark **完全一致**：
+ *   • 私聊 → 未读条数；
+ *   • 大区 → 只在未读里有 @ 我时亮红点（普通消息不打扰）；
+ *   • 静音会话 → 不计（静音 = 别在铃铛上打扰我；侧栏徽标照常，静音 ≠ 已读）；
+ *   • 已隐藏（「删除会话」）且此后没有新消息 → 不计（与侧栏不显示它同一口径）；
+ *   • 专注模式 → 大区不计（大区对开启者不可见）。
+ *
+ * **纯读**：不懒建大区成员行 —— 本函数由顶栏每 20s 轮询，读路径不能写库。
+ * 没有成员行 = 从未进过聊天室 = 无未读，语义正好（与 ensureLobbyMembership 的
+ * 「历史不算未读」同一口径）。
+ */
+export async function getChatUnreadSummary(
+  userId: string,
+  focusMode = false
+): Promise<ChatUnreadSummary> {
+  const memberships = await prisma.chatMember.findMany({
+    where: { userId, mutedAt: null },
+    select: {
+      channelId: true,
+      lastReadMessageId: true,
+      hiddenAfterMessageId: true,
+      channel: { select: { kind: true } },
+    },
+  });
+  if (!memberships.length) return { count: 0, dot: false };
+
+  const unreadByChannel = await countUnreadByChannel(
+    userId,
+    memberships.map((m) => m.channelId)
+  );
+
+  // 已隐藏且此后没有新消息 → 不计。判据与 listChannelsForUser 一致：比「隐藏时的
+  // 频道最大消息 id」大才算「隐藏之后又来了新消息」（新消息 id 更大 → 会话重新出现）。
+  const hiddenIds = memberships
+    .filter((m) => m.hiddenAfterMessageId != null)
+    .map((m) => m.channelId);
+  const maxIdByChannel = new Map<string, number>();
+  if (hiddenIds.length) {
+    const maxRows = await prisma.chatMessage.groupBy({
+      by: ['channelId'],
+      where: { channelId: { in: hiddenIds }, isDeleted: false },
+      _max: { id: true },
+    });
+    for (const r of maxRows) maxIdByChannel.set(r.channelId, r._max.id ?? 0);
+  }
+
+  let count = 0;
+  let dot = false;
+  for (const m of memberships) {
+    if ((unreadByChannel.get(m.channelId) ?? 0) <= 0) continue;
+    const hiddenAfter = m.hiddenAfterMessageId;
+    if (hiddenAfter != null && (maxIdByChannel.get(m.channelId) ?? 0) <= hiddenAfter) continue;
+
+    if (m.channel.kind === CHAT_KIND_LOBBY) {
+      if (!focusMode && (await countLobbyMentionsSince(userId, m.lastReadMessageId)) > 0) {
+        dot = true;
+      }
+    } else {
+      count += unreadByChannel.get(m.channelId) ?? 0;
+    }
+  }
+  return { count, dot };
+}
+
 // ── 会话偏好：静音 / 隐藏 ───────────────────────────────────────────────────
 
 export type ChannelPrefResult = { ok: true } | { ok: false; error: 'forbidden' | 'notFound' };
 
 /**
- * 设置会话静音。静音只影响通知（不产生 chat 通知），未读徽标照常。
- * 大区也允许静音（它本来不发通知，但保持接口一致）。
+ * 设置会话静音。静音只影响顶栏徽标（该会话不计入未读汇总，见 getChatUnreadSummary），
+ * 侧栏未读徽标照常 —— 静音 ≠ 已读。大区也允许静音（静音后连 @ 红点也不再上报顶栏）。
  */
 export async function setChannelMuted(
   channelId: string,
@@ -883,7 +974,7 @@ export type SendMessageResult =
 
 /**
  * 发消息。先做资源/内容校验（避免非法请求烧限频额度），再扣限频（仿博客评论）。
- * 私聊发送成功后给其他成员发**会话合并**通知（通知失败不回滚消息本身）。
+ * 不产生站内通知 —— 聊天未读统一由顶栏徽标体现（见 getChatUnreadSummary）。
  */
 export async function sendMessage(input: SendMessageInput): Promise<SendMessageResult> {
   const { channelId, authorId, imageId, blogId, patTargetId, replyTo, focusMode } = input;
@@ -911,11 +1002,10 @@ export async function sendMessage(input: SendMessageInput): Promise<SendMessageR
   // 拍一拍：不携带正文/图片/博客，只校验目标用户存在（允许拍自己，同微信/QQ）。
   // 私聊里还要求目标必须是本会话成员 —— 否则能拍一个与会话无关的人，对方侧栏
   // 会冒出「A 拍了拍 X」。
-  let patTargetName: string | null = null;
   if (isPatMsg) {
     const target = await prisma.user.findUnique({
       where: { id: patTargetId! },
-      select: { username: true },
+      select: { id: true },
     });
     if (!target) return { ok: false, error: 'patInvalid', message: '被拍的用户不存在' };
     if (access.kind === CHAT_KIND_DIRECT) {
@@ -925,7 +1015,6 @@ export async function sendMessage(input: SendMessageInput): Promise<SendMessageR
       });
       if (!inChannel) return { ok: false, error: 'patInvalid', message: '对方不在该会话中' };
     }
-    patTargetName = target.username;
   } else if (!isAttachMsg) {
     if (!content) return { ok: false, error: 'empty', message: '消息内容不能为空' };
     if (content.length > CHAT_TEXT_MAX) {
@@ -1006,8 +1095,8 @@ export async function sendMessage(input: SendMessageInput): Promise<SendMessageR
     throw e;
   }
 
-  // 4) 私聊：给其他成员发合并通知（私聊只有两成员；大区不打扰）
-  //    成员列表顺带给下面的 SSE 推送复用，省一次查询。
+  // 4) 私聊成员列表：SSE 推送要用（大区广播给全部在线连接，不需要）。
+  //    这里**不再发站内通知** —— 聊天未读统一由顶栏徽标体现。
   let directMemberIds: string[] | null = null;
   if (access.kind === CHAT_KIND_DIRECT) {
     try {
@@ -1016,79 +1105,15 @@ export async function sendMessage(input: SendMessageInput): Promise<SendMessageR
         select: { userId: true },
       });
       directMemberIds = members.map((m) => m.userId);
-      const recipients = directMemberIds.filter((uid) => uid !== authorId);
-      if (recipients.length) {
-        const me = await prisma.user.findUnique({
-          where: { id: authorId },
-          select: { username: true },
-        });
-        const collapsed = content.replace(/\s+/g, ' ').trim();
-        const previewBody =
-          collapsed.length > CHAT_PREVIEW_MAX ? `${collapsed.slice(0, CHAT_PREVIEW_MAX)}…` : collapsed;
-        const preview = isPatMsg
-          ? `拍了拍 ${patTargetName}`
-          : isImageMsg
-            ? `[图片]${previewBody ? ` ${previewBody}` : ''}`
-            : isBlogMsg
-              ? `[博客]${previewBody ? ` ${previewBody}` : ''}`
-              : previewBody;
-        await Promise.all(
-          recipients.map((rid) =>
-            sendCoalescedChatNotification({
-              recipientId: rid,
-              actorId: authorId,
-              channelId,
-              preview: preview || '[图片]',
-            })
-          )
-        );
-      }
     } catch (e) {
-      // 通知失败不影响消息本身（对齐评论）
-      console.error(`[chat-service] 私聊通知失败（channelId=${channelId}, authorId=${authorId}）:`, e);
-    }
-  }
-
-  // 4.5) 大区 @ 提醒：正文里 @ 到的 core+ 用户各发一条通知（会话合并，同一频道
-  //      只留一条未读）。私聊只有两人，@ 无意义，跳过。
-  if (access.kind === CHAT_KIND_LOBBY && !isPatMsg && content) {
-    try {
-      const names = extractMentions(content);
-      if (names.length) {
-        const mentioned = await prisma.user.findMany({
-          where: {
-            username: { in: names },
-            NOT: { id: authorId },
-            role: { in: CORE_ROLES },
-          },
-          select: { id: true },
-        });
-        const collapsed = content.replace(/\s+/g, ' ').trim();
-        const previewBody =
-          collapsed.length > CHAT_PREVIEW_MAX
-            ? `${collapsed.slice(0, CHAT_PREVIEW_MAX)}…`
-            : collapsed;
-        await Promise.all(
-          mentioned.map((u) =>
-            sendCoalescedChatNotification({
-              recipientId: u.id,
-              actorId: authorId,
-              channelId,
-              preview: `@了你：${previewBody}`,
-              action: '聊天提到你',
-            })
-          )
-        );
-      }
-    } catch (e) {
-      // @ 提醒失败不影响消息本身（对齐通知的容错口径）
-      console.error(`[chat-service] @ 提醒失败（channelId=${channelId}）:`, e);
+      // 取成员失败不影响消息本身：少一次实时推送，下一次对账会补上
+      console.error(`[chat-service] 私聊成员查询失败（channelId=${channelId}）:`, e);
     }
   }
 
   const [dto] = await attachImagesAndReplies([created]);
 
-  // 5) SSE 实时推送（尽力而为：推送失败不影响消息本身，对齐通知的容错口径）
+  // 5) SSE 实时推送（尽力而为：推送失败不影响消息本身，下一次对账会补上）
   try {
     const event = { type: 'message' as const, channel_id: channelId, message: dto };
     if (access.kind === CHAT_KIND_LOBBY) {
@@ -1108,8 +1133,8 @@ export async function sendMessage(input: SendMessageInput): Promise<SendMessageR
 // ── 已读 ────────────────────────────────────────────────────────────────────
 
 /**
- * 推进某频道读游标到给定消息 id（缺省 = 频道当前最大 id），并把该会话的未读
- * chat 通知一并标已读（铃铛随会话打开而清零）。私聊非成员静默忽略。
+ * 推进某频道读游标到给定消息 id（缺省 = 频道当前最大 id）。私聊非成员静默忽略。
+ * 聊天未读不进通知列表，读游标推进后顶栏徽标自然随之下降（见 getChatUnreadSummary）。
  */
 export async function markChannelRead(
   channelId: string,
@@ -1146,17 +1171,6 @@ export async function markChannelRead(
     where: { uq_chat_member_channel_user: { channelId, userId } },
     create: { channelId, userId, lastReadMessageId: upTo, createdAt: now },
     update: { lastReadMessageId: { set: upTo } },
-  });
-
-  // 该会话的合并通知一并标已读（私聊专用；大区无通知）
-  await prisma.notification.updateMany({
-    where: {
-      recipientId: userId,
-      objectType: 'chat',
-      objectId: channelId,
-      read: false,
-    },
-    data: { read: true },
   });
 
   // 私聊已读回执：告诉对方「我读到哪了」（大区人多，不推）

@@ -323,7 +323,6 @@ export interface ProfilePatch {
   notifyEdit?: boolean;
   notifyDelete?: boolean;
   notifyAdmin?: boolean;
-  notifyChat?: boolean;
   showRecentBlogs?: boolean;
   showRecentComments?: boolean;
   /** 专注模式（账号级浏览偏好，见 schema User.focusMode） */
@@ -352,7 +351,6 @@ export async function updateOwnProfile(userId: string, patch: ProfilePatch): Pro
   if (typeof patch.notifyEdit === 'boolean') data.notifyEdit = patch.notifyEdit;
   if (typeof patch.notifyDelete === 'boolean') data.notifyDelete = patch.notifyDelete;
   if (typeof patch.notifyAdmin === 'boolean') data.notifyAdmin = patch.notifyAdmin;
-  if (typeof patch.notifyChat === 'boolean') data.notifyChat = patch.notifyChat;
   if (typeof patch.showRecentBlogs === 'boolean') data.showRecentBlogs = patch.showRecentBlogs;
   if (typeof patch.showRecentComments === 'boolean') {
     data.showRecentComments = patch.showRecentComments;
@@ -378,7 +376,6 @@ export async function updateOwnProfile(userId: string, patch: ProfilePatch): Pro
       notifyEdit: true,
       notifyDelete: true,
       notifyAdmin: true,
-      notifyChat: true,
       showRecentBlogs: true,
       showRecentComments: true,
       focusMode: true,
@@ -399,7 +396,6 @@ export async function updateOwnProfile(userId: string, patch: ProfilePatch): Pro
       notifyEdit: updated.notifyEdit ?? true,
       notifyDelete: updated.notifyDelete ?? true,
       notifyAdmin: updated.notifyAdmin ?? true,
-      notifyChat: updated.notifyChat ?? true,
       showRecentBlogs: updated.showRecentBlogs,
       showRecentComments: updated.showRecentComments,
       focusMode: updated.focusMode,

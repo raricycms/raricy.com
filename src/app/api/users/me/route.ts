@@ -17,7 +17,6 @@ export async function GET() {
       notifyEdit: user.notifyEdit ?? true,
       notifyDelete: user.notifyDelete ?? true,
       notifyAdmin: user.notifyAdmin ?? true,
-      notifyChat: user.notifyChat ?? true,
       showRecentBlogs: user.showRecentBlogs,
       showRecentComments: user.showRecentComments,
       focusMode: user.focusMode,
