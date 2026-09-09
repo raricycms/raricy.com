@@ -243,6 +243,28 @@ export async function listChannelsForUser(
     : [];
   const unreadByChannel = new Map(unreadRows.map((r) => [r.channelId, Number(r.unread)]));
 
+  // ── 2.5) 大区：未读里有没有 @ 到我 ──
+  // 大区是公共频道，普通未读不提示（产品口径：只有「有人叫你」才亮红点）。判定必须
+  // 与 @ 通知同一份规则 —— 所以**不建 mention 表**：落表等于多一份真相，还要迁移和
+  // 回填。SQL 的 LIKE 只做预筛（超集：大小写不敏感、用户名里的 _ 是通配符），精确
+  // 判定交回 extractMentions；预筛把取回行数从「全部未读」压到「字面含 @我」。
+  // 只在「大区确实有未读」时才查，多数用户每次对账都跳过这一条。
+  const lobbyCursor = cursorByChannel.get(CHAT_LOBBY_ID) ?? 0;
+  let lobbyMentions = 0;
+  if (!focusMode && (unreadByChannel.get(CHAT_LOBBY_ID) ?? 0) > 0) {
+    const rows = await prisma.$queryRaw<{ content: string; username: string }[]>`
+      SELECT msg.content AS content, u.username AS username
+      FROM chat_messages msg
+      JOIN users u ON u.id = ${userId}
+      WHERE msg.channel_id = ${CHAT_LOBBY_ID}
+        AND msg.id > ${lobbyCursor}
+        AND (msg.is_deleted = 0 OR msg.is_deleted IS NULL)
+        AND msg.author_id <> ${userId}
+        AND msg.content LIKE '%@' || u.username || '%'
+    `;
+    lobbyMentions = rows.filter((r) => extractMentions(r.content).includes(r.username)).length;
+  }
+
   // ── 3) 每个频道的最后一条 ──
   // groupBy 取各频道最大 id（Prisma 原生），再一条 findMany 取回（含作者）。
   // 不用窗口函数 raw SQL：那条路要把 DATETIME 列原样取回，解析结果依赖驱动。
@@ -369,6 +391,8 @@ export async function listChannelsForUser(
       title,
       peer,
       unread_count: unread,
+      // 大区只给「@ 我」计数（未读总数照旧返回，客户端对大区不拿它当提示）
+      mention_count: isLobby ? lobbyMentions : undefined,
       peer_last_read_message_id: peerLastRead,
       muted: mutedChannels.has(ch.id),
       last_message: lm,

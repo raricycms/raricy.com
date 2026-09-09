@@ -142,8 +142,9 @@ test.describe('聊天 SSE 实时推送', () => {
       const row = page.locator('.chat-chan', { hasText: marker }).first();
       await expect(row).toBeAttached({ timeout: 8000 });
       // 只断言「有未读且是正数」：desktop / mobile 两个 project 共用同一个 e2e 库，
-      // 私聊频道会被复用，徽标数不是固定的 1。
-      await expect(row.locator('.chat-chan__badge')).toHaveText(/^[1-9]\d*$/, { timeout: 8000 });
+      // 私聊频道会被复用，角标数不是固定的 1。
+      // 角标挂在图标右上角（.chat-chan__mark--num 里的数字），见 chat-unread-mark.spec.ts。
+      await expect(row.locator('.chat-chan__mark-num')).toHaveText(/^[1-9]\d*$/, { timeout: 8000 });
     } finally {
       await speakerCtx.close();
     }

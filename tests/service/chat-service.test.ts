@@ -120,6 +120,116 @@ describe('聊天大区：懒建成员基线', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 1.5 大区：@ 红点口径（mention_count）
+//    【为什么单列】大区是公共频道，未读提示只认「有人 @ 我」——普通新消息不打扰。
+//    判定分两段：SQL LIKE 预筛（超集：大小写不敏感、用户名里的 _ 是通配符）+
+//    extractMentions 精确过滤（负责边界：@bob 不能吃掉 @bobby）。两段任何一段写错
+//    都不会报错，只会「该亮的红点不亮 / 不该亮的一直亮」，所以逐条钉死。
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('聊天大区：@ 红点口径（mention_count）', () => {
+  const ME = 'chat_mention_me';
+
+  const lobbyOf = async (userId: string) =>
+    (await listChannelsForUser(userId)).find((c) => c.id === CHAT_LOBBY_ID);
+
+  it('普通消息不计；@ 到我才算（未读总数口径不变）', async () => {
+    const me = await makeUser({ role: 'core', username: ME });
+    const other = await makeUser({ role: 'core', username: 'chat_mention_other' });
+    await listChannelsForUser(me.id); // 先建基线 0，后续消息才都算未读
+
+    await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: other.id, content: '普通消息' });
+    let lobby = await lobbyOf(me.id);
+    expect(lobby?.unread_count).toBe(1);
+    expect(lobby?.mention_count).toBe(0);
+
+    await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: other.id, content: `@${ME} 在吗` });
+    lobby = await lobbyOf(me.id);
+    expect(lobby?.unread_count).toBe(2); // 未读总数照旧统计全部
+    expect(lobby?.mention_count).toBe(1); // 红点只看 @
+  });
+
+  it('@ 后面必须是空白或行尾（@bobby 不算 @bob）；行尾也认', async () => {
+    const me = await makeUser({ role: 'core', username: 'chat_bob' });
+    const other = await makeUser({ role: 'core' });
+    await listChannelsForUser(me.id);
+
+    // LIKE 预筛会命中（字面含 @chat_bob），精确过滤必须挡掉
+    await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: other.id, content: '@chat_bobby 你好' });
+    expect((await lobbyOf(me.id))?.mention_count).toBe(0);
+
+    await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: other.id, content: 'hello @chat_bob' });
+    expect((await lobbyOf(me.id))?.mention_count).toBe(1);
+  });
+
+  it('自己 @ 自己不算（与 @ 通知同一口径）', async () => {
+    const me = await makeUser({ role: 'core', username: ME });
+    await listChannelsForUser(me.id);
+    await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: me.id, content: `@${ME} 记一下` });
+    expect((await lobbyOf(me.id))?.mention_count).toBe(0);
+  });
+
+  it('已读推进后归零；再来一条 @ 重新累计', async () => {
+    const me = await makeUser({ role: 'core', username: ME });
+    const other = await makeUser({ role: 'core' });
+    await listChannelsForUser(me.id);
+    const r = await sendMessage({
+      channelId: CHAT_LOBBY_ID,
+      authorId: other.id,
+      content: `@${ME} 第一次`,
+    });
+    expect((await lobbyOf(me.id))?.mention_count).toBe(1);
+
+    await markChannelRead(CHAT_LOBBY_ID, me.id, (r as { message: { id: number } }).message.id);
+    const after = await lobbyOf(me.id);
+    expect(after?.unread_count).toBe(0);
+    expect(after?.mention_count).toBe(0);
+
+    await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: other.id, content: `@${ME} 第二次` });
+    expect((await lobbyOf(me.id))?.mention_count).toBe(1);
+  });
+
+  it('软删的 @ 消息不再算红点', async () => {
+    const me = await makeUser({ role: 'core', username: ME });
+    const other = await makeUser({ role: 'core' });
+    await listChannelsForUser(me.id);
+    const r = await sendMessage({
+      channelId: CHAT_LOBBY_ID,
+      authorId: other.id,
+      content: `@${ME} 待删`,
+    });
+    const msgId = (r as { message: { id: number } }).message.id;
+    expect((await lobbyOf(me.id))?.mention_count).toBe(1);
+
+    await softDeleteMessage(msgId, { id: other.id, role: 'core' });
+    expect((await lobbyOf(me.id))?.mention_count).toBe(0);
+  });
+
+  it('私聊不返回 mention_count（只有大区用得上）', async () => {
+    const a = await makeUser({ role: 'core' });
+    const b = await makeUser({ role: 'core' });
+    const r = await startDirectChannel(a.id, b.id);
+    const cid = (r as { channel: { id: string } }).channel.id;
+    await sendMessage({ channelId: cid, authorId: b.id, content: `@${a.username} 在吗` });
+
+    const row = (await listChannelsForUser(a.id)).find((c) => c.id === cid);
+    expect(row?.unread_count).toBe(1);
+    expect(row?.mention_count).toBeUndefined();
+  });
+
+  it('专注模式：大区行连 mention_count 都不给（禁用行不提示）', async () => {
+    const me = await makeUser({ role: 'core', username: ME });
+    const other = await makeUser({ role: 'core' });
+    await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: other.id, content: `@${ME} 在吗` });
+
+    const lobby = (await listChannelsForUser(me.id, true)).find((c) => c.id === CHAT_LOBBY_ID);
+    expect(lobby?.disabled).toBe(true);
+    expect(lobby?.unread_count).toBe(0);
+    expect(lobby?.mention_count).toBeUndefined();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 2. 私聊：频道复用 + 越权隔离
 // ─────────────────────────────────────────────────────────────────────────────
 

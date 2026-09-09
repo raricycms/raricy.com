@@ -188,6 +188,17 @@
   color: var(--color-text-tertiary);
 }
 
+// 图标 + 未读角标的定位容器：角标压在图标右上角**外侧**，而 __icon/__avatar 有
+// overflow: hidden（头像圆角靠它裁切）—— 角标放进去会被裁掉，所以容器只管定位，
+// 图标元素本身保持原样。
+.chat-chan__iconwrap {
+  position: relative;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  display: flex;
+}
+
 .chat-chan__icon,
 .chat-chan__avatar {
   flex: none;
@@ -207,8 +218,44 @@
   object-fit: cover;
 }
 
-.chat-page--collapsed .chat-chan__main,
-.chat-page--collapsed .chat-chan__badge {
+// 未读角标（微信式，挂在图标右上角）
+.chat-chan__mark {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  min-width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--color-warning-primary);
+  // 一圈与侧栏同色的描边，把角标从图标上「托」起来（不然贴着头像边缘糊成一团）
+  box-shadow: 0 0 0 2px var(--color-background-card);
+  pointer-events: none;
+}
+.chat-chan__mark--num {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.chat-chan__mark-num {
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.chat-page--collapsed .chat-chan__main {
+  display: none;
+}
+// 折叠轨道只有 60px：数字缩回小红点（60px 里塞不下「99+」那种宽度）
+.chat-page--collapsed .chat-chan__mark--num {
+  min-width: 10px;
+  height: 10px;
+  padding: 0;
+}
+.chat-page--collapsed .chat-chan__mark-num {
   display: none;
 }
 // 8(列表) + 5 + 34(头像) + 5 + 8 = 60 → 图标正好落在折叠轨道的中间
@@ -237,21 +284,6 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.chat-chan__badge {
-  flex: none;
-  min-width: 20px;
-  height: 20px;
-  padding: 0 6px;
-  border-radius: 999px;
-  background: var(--color-warning-primary);
-  color: #fff;
-  font-size: 0.72rem;
-  font-weight: 700;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
 }
 
 .chat-sidebar__empty {
@@ -314,6 +346,7 @@
 
 .chat-main__menu {
   display: none;
+  position: relative;
   border: none;
   background: var(--color-background-content);
   color: var(--color-text-secondary);
@@ -322,6 +355,18 @@
   height: 32px;
   cursor: pointer;
   flex: none;
+}
+// 汉堡红点（移动端抽屉关着时的唯一未读信号，见 ChatApp 的 anyUnreadMark）
+.chat-main__menu-dot {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--color-warning-primary);
+  box-shadow: 0 0 0 2px var(--color-background-card);
+  pointer-events: none;
 }
 
 .chat-main__peer-avatar {
@@ -1481,9 +1526,17 @@
     flex-basis: 300px;
     width: 300px;
   }
-  .chat-page--collapsed .chat-chan__main,
-  .chat-page--collapsed .chat-chan__badge {
+  .chat-page--collapsed .chat-chan__main {
     display: flex;
+  }
+  // 抽屉是 300px 的常规宽度：数字角标照常显示（折叠轨道那套「缩成红点」不适用）
+  .chat-page--collapsed .chat-chan__mark--num {
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+  }
+  .chat-page--collapsed .chat-chan__mark-num {
+    display: inline;
   }
   .chat-page--collapsed .chat-sidebar__title {
     max-width: none;

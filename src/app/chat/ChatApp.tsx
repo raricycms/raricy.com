@@ -25,7 +25,7 @@ import NewChatModal from './NewChatModal';
 import QuoteBlogModal from './QuoteBlogModal';
 import AvatarMenu, { type AvatarMenuAnchor } from './AvatarMenu';
 import ImageLightbox from './ImageLightbox';
-import ChatMessageItem, { dayKey, fmtDay } from './ChatMessageItem';
+import ChatMessageItem, { dayKey, fmtDay, isMentioned } from './ChatMessageItem';
 import ChatSidebar from './ChatSidebar';
 import ChatComposer, { IMAGE_ACCEPT, type ComposerBlogQuote } from './ChatComposer';
 import ChatSearchModal, { SearchButton } from './ChatSearchModal';
@@ -166,6 +166,22 @@ function previewOfMessage(m: ChatMessageDTO): string {
   return display.length > CHAT_PREVIEW_MAX ? `${display.slice(0, CHAT_PREVIEW_MAX)}…` : display;
 }
 
+/**
+ * 该会话有没有未读提示（侧栏角标 / 汉堡红点共用同一口径）。
+ * 私聊认未读条数；大区只认「未读里 @ 到我」—— 与服务端 listChannelsForUser
+ * 的 mention_count 一致，客户端本地累加（SSE）也走这里。
+ */
+function hasUnreadMark(c: ChatChannelDTO): boolean {
+  return c.kind === 'lobby' ? (c.mention_count ?? 0) > 0 : c.unread_count > 0;
+}
+
+/** 清掉某频道的未读提示（大区的 @ 计数一并清零，别留下一个孤零零的红点）。 */
+function clearUnreadMark(c: ChatChannelDTO): ChatChannelDTO {
+  return c.kind === 'lobby'
+    ? { ...c, unread_count: 0, mention_count: 0 }
+    : { ...c, unread_count: 0 };
+}
+
 
 // ── 主组件 ──────────────────────────────────────────────────────────────────
 
@@ -270,6 +286,12 @@ export default function ChatApp({
     [channels, activeId]
   );
 
+  /**
+   * 任何一个会话有未读提示 → 移动端汉堡按钮上标红点。抽屉拉开时红点隐藏
+   * （列表里已经看得见角标，汉堡上再来一个就重复了）。
+   */
+  const anyUnreadMark = useMemo(() => channels.some(hasUnreadMark), [channels]);
+
   // DOM 上限：只渲染最后 (总条数 − 折叠数) 条。
   // 自动折叠只增不减（展开由按钮主动减），切频道时 messages 归零 → 折叠数自动失效。
   // 已读回执只标「我发出的最后一条」（私聊里最有用，且不需要逐条渲染状态）
@@ -347,7 +369,7 @@ export default function ChatApp({
           body: JSON.stringify({ message_id: upTo }),
         });
         setChannels((prev) =>
-          prev.map((c) => (c.id === channelId ? { ...c, unread_count: 0 } : c))
+          prev.map((c) => (c.id === channelId ? clearUnreadMark(c) : c))
         );
       } catch {
         /* 已读失败不阻塞 */
@@ -451,7 +473,7 @@ export default function ChatApp({
       const merged = (data.channels as ChatChannelDTO[]).map((c) => {
         const floor = readFloorRef.current.get(c.id) ?? 0;
         const lastId = c.last_message?.id ?? 0;
-        return floor > 0 && lastId > 0 && floor >= lastId ? { ...c, unread_count: 0 } : c;
+        return floor > 0 && lastId > 0 && floor >= lastId ? clearUnreadMark(c) : c;
       });
       // 服务端列表不含空会话 → 补回本地刚发起、还没发过消息的私聊
       setChannels(withPendingDirects(merged, pendingDirectRef.current));
@@ -509,23 +531,33 @@ export default function ChatApp({
         return;
       }
       setChannels((prev) =>
-        prev.map((c) =>
-          c.id !== m.channel_id
-            ? c
-            : {
-                ...c,
-                unread_count: c.unread_count + 1,
-                last_message: {
-                  id: m.id,
-                  content: previewOfMessage(m),
-                  author_name: m.author.username,
-                  created_at: m.created_at,
-                },
-              }
-        )
+        prev.map((c) => {
+          if (c.id !== m.channel_id) return c;
+          // 大区：只有 @ 到我才亮红点，普通消息不打扰（与服务端 mention_count 同口径）
+          const mentioned = c.kind === 'lobby' && isMentioned(m.content, currentUsername);
+          return {
+            ...c,
+            unread_count: c.unread_count + 1,
+            mention_count: mentioned ? (c.mention_count ?? 0) + 1 : c.mention_count,
+            last_message: {
+              id: m.id,
+              content: previewOfMessage(m),
+              author_name: m.author.username,
+              created_at: m.created_at,
+            },
+          };
+        })
       );
     },
-    [appendMessage, currentUserId, isNearBottom, markRead, reconcile, scrollAfterCommit]
+    [
+      appendMessage,
+      currentUserId,
+      currentUsername,
+      isNearBottom,
+      markRead,
+      reconcile,
+      scrollAfterCommit,
+    ]
   );
 
   const onTypingEvent = useCallback(
@@ -1188,9 +1220,12 @@ export default function ChatApp({
                 type="button"
                 className="chat-main__menu"
                 onClick={() => setDrawerOpen((v) => !v)}
-                aria-label="切换会话列表"
+                aria-label={`切换会话列表${anyUnreadMark ? '（有新消息）' : ''}`}
               >
                 <Menu />
+                {anyUnreadMark && !drawerOpen && (
+                  <span className="chat-main__menu-dot" aria-hidden="true" />
+                )}
               </button>
               {activeChannel.kind === 'direct' && activeChannel.peer && (
                 <Link className="chat-main__peer-avatar" href={`/u/${activeChannel.peer.id}`}>

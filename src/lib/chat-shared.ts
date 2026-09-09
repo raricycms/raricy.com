@@ -77,6 +77,12 @@ export interface ChatChannelDTO {
   title: string;
   peer: { id: string; username: string } | null;
   unread_count: number;
+  /**
+   * 大区专属：未读消息里 @ 到我的条数（私聊恒为 undefined —— 私聊只有两人，
+   * @ 无意义）。大区的未读提示只认这个：公共频道里普通新消息不打扰，
+   * 只有「有人叫你」才亮红点。见 chat-service.listChannelsForUser。
+   */
+  mention_count?: number;
   /** 私聊：对方读到的最新消息 id（已读回执用；大区为 null）。 */
   peer_last_read_message_id?: number | null;
   /** 该会话已静音（只影响通知，未读徽标照常） */

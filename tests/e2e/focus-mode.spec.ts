@@ -155,7 +155,7 @@ test.describe('专注模式（设置 → 各处生效）', () => {
     await expect(lobbyRow).toHaveAttribute('title', FOCUS_TITLE);
     await expect(lobbyRow).not.toContainText('大区历史消息-预览哨兵');
     await expect(lobbyRow).toContainText(FOCUS_TITLE);
-    await expect(lobbyRow.locator('.chat-chan__badge')).toHaveCount(0);
+    await expect(lobbyRow.locator('.chat-chan__mark')).toHaveCount(0);
 
     // 主区：不得再落在大区 —— ?channel=lobby 必须被改写。落点取决于当时有没有可用
     // 私聊（本套件 desktop 轮次先跑，会在库里留下一条私聊，mobile 复跑时它仍在）：
