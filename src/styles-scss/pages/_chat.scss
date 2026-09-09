@@ -686,7 +686,9 @@
 .chat-msg__md p {
   margin: 0 0 0.5em;
 }
-// 标题不按 h1..h6 原尺寸（0.92rem 的气泡里塞 2em 会撑爆），统一成加粗小标题
+// 标题按层级小幅放大：气泡正文只有 0.92rem，h1 原尺寸 2em 会把气泡撑爆，
+// 但全压成 1em 又让 # 和 ###### 长得一模一样（层级信息全丢）。折中取
+// 1.35em → 0.95em 递减，行高收紧；h6 用次级色，保证最小的标题也能区分。
 .chat-msg__md h1,
 .chat-msg__md h2,
 .chat-msg__md h3,
@@ -694,8 +696,27 @@
 .chat-msg__md h5,
 .chat-msg__md h6 {
   margin: 0.7em 0 0.35em;
-  font-size: 1em;
   font-weight: 700;
+  line-height: 1.35;
+}
+.chat-msg__md h1 {
+  font-size: 1.35em;
+}
+.chat-msg__md h2 {
+  font-size: 1.25em;
+}
+.chat-msg__md h3 {
+  font-size: 1.15em;
+}
+.chat-msg__md h4 {
+  font-size: 1.08em;
+}
+.chat-msg__md h5 {
+  font-size: 1em;
+}
+.chat-msg__md h6 {
+  font-size: 0.95em;
+  color: var(--color-text-secondary);
 }
 .chat-msg__md ul,
 .chat-msg__md ol {

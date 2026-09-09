@@ -11911,8 +11911,33 @@ input:checked + .settings-toggle__slider::before {
 .chat-msg__md h5,
 .chat-msg__md h6 {
   margin: 0.7em 0 0.35em;
-  font-size: 1em;
   font-weight: 700;
+  line-height: 1.35;
+}
+
+.chat-msg__md h1 {
+  font-size: 1.35em;
+}
+
+.chat-msg__md h2 {
+  font-size: 1.25em;
+}
+
+.chat-msg__md h3 {
+  font-size: 1.15em;
+}
+
+.chat-msg__md h4 {
+  font-size: 1.08em;
+}
+
+.chat-msg__md h5 {
+  font-size: 1em;
+}
+
+.chat-msg__md h6 {
+  font-size: 0.95em;
+  color: var(--color-text-secondary);
 }
 
 .chat-msg__md ul,
