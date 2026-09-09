@@ -70,6 +70,8 @@ const MUST_IGNORE = [
   'instance/database/dev.db',
   '.env',
   '.env.production',
+  '.env.production.local',
+  '.env.local',
   'prisma/dev.db',
 ];
 for (const p of MUST_IGNORE) {
@@ -88,13 +90,15 @@ const tracked = git(['ls-files']).split('\n').filter(Boolean);
 // 产出噪音 —— 而一个总在误报的检查，下场就是被所有人忽略，等于没有。
 // 真密钥藏在测试里属于极异常情况，且上面「历史 + gitignore」那两道才是主防线。
 const SKIP = /(^|\/)(node_modules|\.next|dist|venv|tests?|__tests__)\/|\.(test|spec)\.[tj]sx?$/;
+// 扫描器自身：源码里必然含下面的正则字面量，扫自己只会自匹配。
+const SKIP_SELF = /^scripts\/check-secrets\.mjs$/;
 const ASSIGN = /\b(SECRET_KEY|INTERNAL_TOKEN|ACCOUNT_SYSTEM_KEY|FISH_ENCRYPTION_KEY|PRIVATE_KEY)\b\s*[:=]\s*['"]([^'"]{12,})['"]/g;
 // 明显是占位/测试的值不算
-const BENIGN = /example|placeholder|换成|xxx+|your[-_]|<.*>|^test|test-|dev-|e2e|not-?real|smoke|fake|dummy|生产的/i;
+const BENIGN = /example|placeholder|换成|改成|占位|待填|请填|xxx+|your[-_]|<.*>|^test|test-|dev-|e2e|not-?real|smoke|fake|dummy|生产的/i;
 
 let hard = 0;
 for (const f of tracked) {
-  if (SKIP.test(f)) continue;
+  if (SKIP.test(f) || SKIP_SELF.test(f)) continue;
   if (!/\.(ts|tsx|js|mjs|cjs|py|json|ya?ml|env\.example)$/.test(f)) continue;
   const txt = git(['show', `HEAD:${f}`]);
   for (const m of txt.matchAll(ASSIGN)) {

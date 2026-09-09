@@ -2,7 +2,14 @@
 /.next
 /out
 next-env.d.ts
+# 环境变量：真实密钥只存在于 .env*，绝不入库。
+# 只写 `.env` 不够 —— `.env.production` / `.env.local` 不匹配该模式，
+# 而 docs/deploy.md 恰恰让人创建 .env.production 放 SECRET_KEY，
+# 一次 `git add .` 就会把它推上远端（git 不会忘）。模板文件用 ! 显式放行。
 .env
+.env.*
+!.env.example
+!.env.production.example
 *.tsbuildinfo
 # 本地 SQLite 副本（含真实用户数据，绝不入库）
 /prisma/*.db
