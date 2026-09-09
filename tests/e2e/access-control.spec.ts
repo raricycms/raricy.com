@@ -56,6 +56,39 @@ test.describe('角色门控', () => {
     await expect(page.locator('.rainbow-error__code')).toHaveText('403');
   });
 
+  test('403 页不劝已登录用户「去登录」（他就是登录着才被挡的）', async ({ page }) => {
+    await loginViaApi(page, SEED_USERS.plain.username);
+
+    await page.goto('/blog');
+    await expect(page.locator('.rainbow-error__code')).toHaveText('403');
+
+    const actions = page.locator('.rainbow-error__actions');
+    await expect(actions.getByRole('link', { name: '去登录' })).toHaveCount(0);
+    await expect(actions.getByRole('link', { name: '返回首页' })).toBeVisible();
+    // 提示里点出当前账号 —— 用户第一反应是「我明明登录了」，得让他确认是不是登错号
+    await expect(page.locator('.rainbow-error__hint')).toContainText(SEED_USERS.plain.username);
+  });
+
+  test('管理员（非 owner）访问 /admin/oauth 原地 403，而不是 404', async ({ page }) => {
+    await loginViaApi(page, SEED_USERS.admin.username);
+
+    const res = await page.goto('/admin/oauth');
+    // 该页原先 redirect('/forbidden')，但项目里没有 /forbidden 路由 → 落到 404 页，
+    // 「权限不够」被显示成「页面不存在」。现在与其它 owner-only 页一致：原地 403。
+    expect(res?.status()).toBe(403);
+    await expect(page).toHaveURL(/\/admin\/oauth$/);
+    await expect(page.locator('.rainbow-error__code')).toHaveText('403');
+  });
+
+  test('站长访问 /admin/oauth 正常进入（收紧不能误伤）', async ({ page }) => {
+    await loginViaApi(page, SEED_USERS.owner.username);
+
+    const res = await page.goto('/admin/oauth');
+    expect(res?.status()).toBe(200);
+    await expect(page.locator('.rainbow-error__code')).toHaveCount(0);
+    await expect(page.locator('h1')).toHaveText('OAuth 应用');
+  });
+
   test('管理员访问 /admin 正常进入', async ({ page }) => {
     await loginViaApi(page, SEED_USERS.admin.username);
 

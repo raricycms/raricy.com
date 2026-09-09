@@ -1,4 +1,4 @@
-import { redirect } from 'next/navigation';
+import { forbidden, redirect } from 'next/navigation';
 import { getCurrentUser, isOwner } from '@/lib/auth';
 import { loginUrlWithNext } from '@/lib/safe-url';
 import { listOAuthApplications } from '@/lib/oauth';
@@ -11,7 +11,9 @@ export const dynamic = 'force-dynamic';
 export default async function AdminOAuthPage() {
   const user = await getCurrentUser();
   if (!user) redirect(loginUrlWithNext('/admin/oauth'));
-  if (!isOwner(user)) redirect('/forbidden');
+  // 原地渲染 403（同 guard.ts / admin/layout.tsx）。原先 redirect('/forbidden') 是
+  // 个死路：项目里没有 /forbidden 路由，管理员（非 owner）看到的是 404 而不是 403。
+  if (!isOwner(user)) forbidden();
 
   const apps = await listOAuthApplications();
 
