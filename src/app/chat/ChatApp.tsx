@@ -1,6 +1,7 @@
 'use client';
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowDown, ArrowRight, Menu } from 'lucide-react';
@@ -257,22 +258,50 @@ export default function ChatApp({
   }, []);
 
   // ── 拉消息（初始 / 切频道） ────────────────────────────────────────────
-  const loadMessages = useCallback(
-    async (channelId: string, token: number) => {
-      const data = await api(`/api/chat/channels/${channelId}/messages`);
-      if (data.code !== 200 || !Array.isArray(data.messages)) return;
+  /** 拉频道首页消息（纯网络，不落状态）。 */
+  const fetchMessages = useCallback(async (channelId: string): Promise<ChatMessageDTO[] | null> => {
+    const data = await api(`/api/chat/channels/${channelId}/messages`);
+    if (data.code !== 200 || !Array.isArray(data.messages)) return null;
+    return data.messages as ChatMessageDTO[];
+  }, []);
+
+  /**
+   * 把首页消息落进状态（游标 / 已读 / 滚动）。
+   *
+   * @param sync 同步提交（flushSync）并同步滚到底。频道切换的 View Transition 必须
+   *   走这条路：过渡进行中浏览器既不渲染也不派发 requestAnimationFrame（实测回调里
+   *   等 rAF 会一直等到 4 秒超时被 abort），所以「新快照」拍到的必须是这一帧里已经
+   *   提交好的 DOM 与滚动位置 —— 否则拍到的是空列表 / 顶部。
+   */
+  const commitMessages = useCallback(
+    (channelId: string, list: ChatMessageDTO[], token: number, sync = false) => {
       if (token !== viewTokenRef.current || channelId !== activeRef.current) return;
-      const list = data.messages as ChatMessageDTO[];
-      setMessages(list);
-      setHasMore(list.length >= 50);
       const maxId = list.length ? list[list.length - 1].id : 0;
       lastIdRef.current = maxId;
       unreadAnchorRef.current = maxId; // 「以下是新消息」分隔线的锚点
-      setNewCount(0);
-      requestAnimationFrame(() => scrollToBottom());
+      const apply = () => {
+        setMessages(list);
+        setHasMore(list.length >= 50);
+        setNewCount(0);
+      };
+      if (sync) {
+        flushSync(apply);
+        scrollToBottom(); // DOM 已同步更新，直接滚到底
+      } else {
+        apply();
+        requestAnimationFrame(() => scrollToBottom());
+      }
       if (maxId) void markRead(channelId, maxId);
     },
     [markRead, scrollToBottom]
+  );
+
+  const loadMessages = useCallback(
+    async (channelId: string, token: number, sync = false) => {
+      const list = await fetchMessages(channelId);
+      if (list) commitMessages(channelId, list, token, sync);
+    },
+    [fetchMessages, commitMessages]
   );
 
   // ── 对账（低频兜底）────────────────────────────────────────────────────
@@ -500,26 +529,65 @@ export default function ChatApp({
   }, []);
 
   // ── 切频道 ─────────────────────────────────────────────────────────────
+  /**
+   * 频道切换的「旧列表淡出、新列表淡入」。
+   *
+   * 用 View Transitions API：浏览器把切换前的列表拍成快照，新旧两张快照做交叉
+   * 淡入淡出（动画在 _chat.scss 的 ::view-transition-* 里）。回调里要**等新消息
+   * 拉回来再收尾** —— 否则淡入的是还没数据的空列表，消息随后才蹦出来；而这段
+   * 等待期间浏览器不渲染、不派发 rAF，所以状态必须用 flushSync 同步提交
+   * （见 commitMessages 的 sync 参数）。
+   * 浏览器不支持该 API / 用户要求减少动效 → 直接切，行为与旧版一致。
+   */
+  const switchWithFade = useCallback(
+    async (apply: () => void, load: () => Promise<unknown>) => {
+      const doc = document as Document & {
+        startViewTransition?: (cb: () => void | Promise<void>) => { finished: Promise<void> };
+      };
+      const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+      if (!doc.startViewTransition || reduceMotion) {
+        apply();
+        await load();
+        return;
+      }
+      await doc
+        .startViewTransition(async () => {
+          flushSync(apply);
+          await load();
+        })
+        .finished.catch(() => {
+          /* 过渡被浏览器跳过/中断（连续切换）→ 忽略，状态早已提交 */
+        });
+    },
+    []
+  );
+
   const selectChannel = useCallback(
     (id: string) => {
       if (id === activeRef.current) return;
-      stashDraft(activeRef.current);
-      setActiveId(id);
-      activeRef.current = id;
-      setMessages([]);
-      setReplyTarget(null);
-      setPendingImage(null);
-      setBlogQuote(null);
-      setNewCount(0);
-      setDrawerOpen(false);
-      setTypingNames([]);
-      lastIdRef.current = 0;
-      restoreDraft(id);
-      const token = ++viewTokenRef.current;
-      router.replace(`/chat?channel=${encodeURIComponent(id)}`, { scroll: false });
-      void loadMessages(id, token);
+      void switchWithFade(
+        () => {
+          stashDraft(activeRef.current);
+          setActiveId(id);
+          activeRef.current = id;
+          setMessages([]);
+          setReplyTarget(null);
+          setPendingImage(null);
+          setBlogQuote(null);
+          setNewCount(0);
+          setDrawerOpen(false);
+          setTypingNames([]);
+          lastIdRef.current = 0;
+          restoreDraft(id);
+          router.replace(`/chat?channel=${encodeURIComponent(id)}`, { scroll: false });
+        },
+        () => {
+          const token = ++viewTokenRef.current;
+          return loadMessages(id, token, true); // sync：View Transition 的「新」快照要拍到新消息
+        }
+      );
     },
-    [loadMessages, restoreDraft, router, stashDraft]
+    [loadMessages, restoreDraft, router, stashDraft, switchWithFade]
   );
 
   // ── 防御：poll 拉回的频道行若带 disabled（例如另一标签页把专注模式打开了，
@@ -883,32 +951,38 @@ export default function ChatApp({
   // ── 发起私聊（弹窗回调） ──────────────────────────────────────────────
   const onDirectCreated = useCallback(
     (ch: ChatChannelDTO) => {
-      setChannels((prev) => {
-        const idx = prev.findIndex((c) => c.id === ch.id);
-        if (idx >= 0) {
-          const next = [...prev];
-          next[idx] = ch;
-          return next;
+      void switchWithFade(
+        () => {
+          setChannels((prev) => {
+            const idx = prev.findIndex((c) => c.id === ch.id);
+            if (idx >= 0) {
+              const next = [...prev];
+              next[idx] = ch;
+              return next;
+            }
+            return [ch, ...prev];
+          });
+          setModalOpen(false);
+          stashDraft(activeRef.current);
+          setActiveId(ch.id);
+          activeRef.current = ch.id;
+          setMessages([]);
+          setReplyTarget(null);
+          setPendingImage(null);
+          setBlogQuote(null);
+          setNewCount(0);
+          setDrawerOpen(false);
+          lastIdRef.current = 0;
+          restoreDraft(ch.id);
+          router.replace(`/chat?channel=${encodeURIComponent(ch.id)}`, { scroll: false });
+        },
+        () => {
+          const token = ++viewTokenRef.current;
+          return loadMessages(ch.id, token, true); // sync：同 selectChannel
         }
-        return [ch, ...prev];
-      });
-      setModalOpen(false);
-      stashDraft(activeRef.current);
-      setActiveId(ch.id);
-      activeRef.current = ch.id;
-      setMessages([]);
-      setReplyTarget(null);
-      setPendingImage(null);
-      setBlogQuote(null);
-      setNewCount(0);
-      setDrawerOpen(false);
-      lastIdRef.current = 0;
-      restoreDraft(ch.id);
-      const token = ++viewTokenRef.current;
-      router.replace(`/chat?channel=${encodeURIComponent(ch.id)}`, { scroll: false });
-      void loadMessages(ch.id, token);
+      );
     },
-    [loadMessages, restoreDraft, router, stashDraft]
+    [loadMessages, restoreDraft, router, stashDraft, switchWithFade]
   );
 
   return (

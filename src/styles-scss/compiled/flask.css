@@ -11614,6 +11614,37 @@ input:checked + .settings-toggle__slider::before {
   gap: 14px;
 }
 
+.chat-list {
+  view-transition-name: chat-list;
+}
+
+::view-transition-old(root) {
+  animation: none;
+  opacity: 0;
+}
+
+::view-transition-new(root) {
+  animation: none;
+}
+
+::view-transition-old(chat-list) {
+  animation: chat-list-out 0.16s ease both;
+}
+
+::view-transition-new(chat-list) {
+  animation: chat-list-in 0.16s ease both;
+}
+
+@keyframes chat-list-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes chat-list-in {
+  from {
+    opacity: 0;
+  }
+}
 .chat-list__older {
   align-self: center;
   border: 1px solid var(--color-border);
