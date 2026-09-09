@@ -22,11 +22,13 @@ import {
   listBlogs,
   parseSortParam,
   toggleLike,
+  banActionMessage,
   BLOG_TITLE_MAX,
   BLOG_DESCRIPTION_MAX,
   BLOG_CONTENT_MAX,
   BLOG_DAILY_LIMIT,
 } from '@/lib/blog-service';
+import { nowForDb } from '@/lib/db-time';
 
 // ── 本地栏目工厂 ─────────────────────────────────────────────────────────────
 // 注：不用 helpers/db.ts 的 makeCategory —— 它当前是坏的（缺必填 slug、字段名
@@ -1400,5 +1402,39 @@ describe('listBlogs / 专注模式过滤', () => {
     const r = await listBlogs({ focusMode: true });
     expect(r.blogs.map((x) => x.id)).toEqual([bUncat.id]);
     expect(r.total).toBe(1);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// banActionMessage —— 禁言剩余时间必须与库内时钟同口径
+//
+// banUntil 由 banUser 按 nowForDb() + hours 写入（admin-user-service.ts），
+// 即「UTC+8 墙上时间贴 Z」。若用真实 Date.now() 相减，剩余时间会凭空多 8 小时
+// （禁言 1 小时显示「剩余约 9.0 小时」）。下面用真实 nowForDb() 构造，避免冻时钟。
+// ─────────────────────────────────────────────────────────────────────────────
+describe('banActionMessage —— 剩余时间与库内时钟同口径', () => {
+  it('刚禁言 1 小时 → 「剩余约1.0小时」（不是 9.0）', () => {
+    const banUntil = new Date(nowForDb().getTime() + 3600_000);
+    expect(banActionMessage({ banUntil, banReason: '刷屏' })).toBe(
+      '您已被禁言，无法执行此操作。剩余约1.0小时。原因：刷屏'
+    );
+  });
+
+  it('超过 24 小时走「天」文案', () => {
+    const banUntil = new Date(nowForDb().getTime() + 48 * 3600_000);
+    expect(banActionMessage({ banUntil })).toContain('剩余约2.0天');
+  });
+
+  it('永久禁言（banUntil 为 null）不带剩余时间（钉住现状：双句号）', () => {
+    expect(banActionMessage({ banUntil: null, banReason: '严重违规' })).toBe(
+      '您已被禁言，无法执行此操作。。原因：严重违规'
+    );
+  });
+
+  it('【回归】真实 Date.now() 相减会算成约 9 小时 —— 这条钉住两把钟的差', () => {
+    const banUntil = new Date(nowForDb().getTime() + 3600_000);
+    const wrongHours = (banUntil.getTime() - Date.now()) / 3600000;
+    expect(wrongHours, '错误算法：真实 UTC 与墙上时间相差 8 小时').toBeGreaterThan(8.99);
+    expect(banActionMessage({ banUntil }), '正确算法').toContain('剩余约1.0小时');
   });
 });

@@ -37,7 +37,7 @@ import {
   listUsers,
 } from '@/lib/admin-user-service';
 import { createAppeal, listPublicLogs } from '@/lib/audit-service';
-import { SITE_TZ_OFFSET_MS } from '@/lib/db-time';
+import { SITE_TZ_OFFSET_MS, nowForDb } from '@/lib/db-time';
 import { adjudicate, listAppeals } from '@/lib/admin-appeal-service';
 import { toContentHtml } from '@/lib/comment-service';
 
@@ -221,6 +221,33 @@ describe('logAdminAction（审计日志写入）', () => {
 
     expect((await latestLog('vis_default'))!.visibility).toBe('public');
     expect((await latestLog('vis_private'))!.visibility).toBe('private');
+  });
+
+  it('公示窗口是「近 30 天」，且起点与写入 createdAt 同口径（墙上时间）', async () => {
+    // createdAt 走 nowForDb()（UTC+8 墙上时间贴 Z）。若窗口起点用真实 Date.now()，
+    // 实际窗口会变成 30 天 + 8 小时 —— 超窗的日志多留 8 小时。这条从两侧钉住。
+    const admin = await makeUser({ role: 'admin' });
+    const now = nowForDb();
+    const makeLog = (action: string, ageHours: number) =>
+      prisma.adminActionLog.create({
+        data: {
+          action,
+          adminId: admin.id,
+          visibility: 'public',
+          createdAt: new Date(now.getTime() - ageHours * 3600_000),
+        },
+      });
+
+    await makeLog('win_edge_old', 30 * 24 + 2); // 30 天零 2 小时 → 已出窗
+    await makeLog('win_edge_new', 30 * 24 - 2); // 29 天 22 小时 → 仍在窗内
+
+    const { items } = await listPublicLogs({});
+    const actions = items.map((i) => i.action);
+
+    expect(actions).toContain('win_edge_new');
+    expect(actions, '超窗 2 小时必须已剔除（真实 UTC 起点会多留 8 小时）').not.toContain(
+      'win_edge_old'
+    );
   });
 });
 

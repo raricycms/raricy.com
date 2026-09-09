@@ -175,15 +175,14 @@ describe('ymd —— 对齐 Blog.to_dict 的 %Y-%m-%d', () => {
     expect(ymd(new Date(Date.UTC(2026, 0, 5, 12, 0, 0)))).toBe('2026-01-05');
   });
 
-  it('【钉住当前行为】按 UTC 切片，不按本地时区', () => {
-    // 实现是 d.toISOString().slice(0, 10) —— 恒为 UTC 日历日。
-    // 库里存的是 Flask 写入的 naive datetime（实为本地/UTC+8 语义），
-    // 因此 UTC+8 当天 00:00–07:59 的时间戳会被渲染成"前一天"。
-    // 此处只钉住现状，风险已在交付说明中单列。
-    const t = new Date(Date.UTC(2026, 6, 16, 23, 59, 59)); // UTC 7/16 深夜
-    expect(ymd(t), 'toISOString 取 UTC 日历日').toBe('2026-07-16');
+  it('【语义】按 UTC 切片 = 原样吐回 UTC+8 墙上日期，不会差一天', () => {
+    // 实现是 d.toISOString().slice(0, 10)。库里时间戳是「UTC+8 墙上时间贴 Z」
+    // （见 src/lib/db-time.ts），UTC 切片恰好就是那一天的墙上日期。
+    // 若哪天把库迁成真实 UTC 存储，这里才需要改成按 Asia/Shanghai 格式化。
+    const t = new Date(Date.UTC(2026, 6, 16, 23, 59, 59)); // 墙上 7/16 23:59:59
+    expect(ymd(t), 'toISOString 取 UTC 日历日 = 墙上日历日').toBe('2026-07-16');
 
-    const t2 = new Date(Date.UTC(2026, 6, 17, 0, 0, 0)); // UTC 刚跨到 7/17
+    const t2 = new Date(Date.UTC(2026, 6, 17, 0, 0, 0)); // 墙上 7/17 00:00:00
     expect(ymd(t2)).toBe('2026-07-17');
   });
 

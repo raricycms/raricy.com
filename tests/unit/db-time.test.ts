@@ -14,7 +14,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { nowForDb, todayStr, dayStart, SITE_TZ_OFFSET_MS } from '@/lib/db-time';
+import { nowForDb, todayStr, dayStart, hoursUntil, SITE_TZ_OFFSET_MS } from '@/lib/db-time';
 import { ymd } from '@/lib/format';
 
 afterEach(() => {
@@ -73,6 +73,36 @@ describe('dayStart：按天取区间的起点', () => {
     expect(new Date('2026-07-16T23:59:59.999Z') < end).toBe(true);
     // 次日零点不在区间内
     expect(new Date('2026-07-17T00:00:00.000Z') < end).toBe(false);
+  });
+});
+
+describe('hoursUntil：与库内时间戳的差（唯一合法的「还剩多久」算法）', () => {
+  it('banUntil = nowForDb() + 1h → 恰好 1.0 小时', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-16T04:00:00.000Z')); // UTC+8 12:00
+    const banUntil = new Date(nowForDb().getTime() + 3600_000);
+    expect(hoursUntil(banUntil)).toBeCloseTo(1, 6);
+  });
+
+  it('已过期 → 负值', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-16T04:00:00.000Z'));
+    const past = new Date(nowForDb().getTime() - 2 * 3600_000);
+    expect(hoursUntil(past)).toBeCloseTo(-2, 6);
+  });
+
+  it('null / undefined → null', () => {
+    expect(hoursUntil(null)).toBeNull();
+    expect(hoursUntil(undefined)).toBeNull();
+  });
+
+  it('【回归】用真实 Date.now() 相减会把 1 小时算成 9 小时（所以必须走 hoursUntil）', () => {
+    // 库内时间戳是「UTC+8 墙上时间贴 Z」，比真实 UTC 快 8 小时 —— 这条钉住两把钟的差。
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-16T04:00:00.000Z'));
+    const banUntil = new Date(nowForDb().getTime() + 3600_000);
+    expect((banUntil.getTime() - Date.now()) / 3600000, '错误算法').toBeCloseTo(9, 6);
+    expect(hoursUntil(banUntil), '正确算法').toBeCloseTo(1, 6);
   });
 });
 
