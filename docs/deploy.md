@@ -190,7 +190,11 @@ npm ci
 npm run build
 ```
 
-预期：`✓ Compiled successfully` + 70+ 页全列。
+`build` = `prisma generate && next build`，会先按当前 `schema.prisma` 重新生成 Prisma Client。
+**不要跳过它直接 `next build`**——否则 `node_modules/.prisma/client` 还是上次生成的旧类型，
+schema 新增字段（如 `focusMode`）会报 `Property 'x' does not exist on type 'SafeUser'`。
+
+预期：`✓ Generated Prisma Client` + `✓ Compiled successfully` + 70+ 页全列。
 
 ### 启动
 
@@ -367,7 +371,7 @@ npm ci
 # 如果 prisma/schema.prisma 改了（走项目自己的迁移脚本，不是 prisma migrate）
 DATABASE_URL="file:/绝对路径/instance/database/db.db" npm run migrate -- status
 DATABASE_URL="file:/绝对路径/instance/database/db.db" npm run migrate -- up
-npm run build
+npm run build     # 内含 prisma generate，会同步 Prisma Client 类型
 sudo systemctl restart raricy-next
 journalctl -u raricy-next -f    # 观察启动日志
 ```
