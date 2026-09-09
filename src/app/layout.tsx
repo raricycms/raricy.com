@@ -5,6 +5,7 @@ import Script from 'next/script';
 import '@/styles-scss/compiled/flask.css';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
+import FooterGate from './components/FooterGate';
 import NotificationHeartbeat from './components/NotificationHeartbeat';
 import FrameBuster from './components/FrameBuster';
 import { getCurrentUser } from '@/lib/auth';
@@ -36,7 +37,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         {/* 切页/bfcache 恢复时即时刷新顶栏未读数（20s 周期心跳在 base.js） */}
         <NotificationHeartbeat />
         <main>{children}</main>
-        <Footer />
+        {/* /chat 是满屏工作台，不渲染页脚（见 FooterGate） */}
+        <FooterGate>
+          <Footer />
+        </FooterGate>
         {/* 被 iframe 嵌入时显示「全屏打开」提示条（正常访问时不渲染） */}
         <FrameBuster />
         {/* Flask 顶栏交互脚本：主题旋转切换 / 用户下拉 / 移动端折叠 / toast */}

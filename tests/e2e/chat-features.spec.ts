@@ -290,3 +290,28 @@ test.describe('发起私聊', () => {
     await expect(page.locator('.chat-main__title')).toHaveText(SEED_USERS.owner.username);
   });
 });
+
+test.describe('聊天页布局', () => {
+  /**
+   * 聊天区是满屏工作台（.chat-page 高 calc(100vh - 62px)），站点页脚在它下面
+   * 会把文档撑过一屏 —— 多出整页滚动条，滚一下连输入框都被顶出视野。
+   * 断言落在「页脚不存在」+「文档没有溢出」两条上：只断言前者的话，将来若换成
+   * 用 CSS 隐藏（display:none 之外的写法）仍可能留下高度。
+   */
+  test('/chat 不渲染站点页脚，且整页没有滚动条', async ({ page, isMobile }) => {
+    await loginViaApi(page, SEED_USERS.core.username);
+    await page.goto('/chat');
+    await expect(page.locator('.chat-page')).toBeVisible();
+
+    await expect(page.locator('footer.site-footer')).toHaveCount(0);
+
+    // 移动端 viewport 高度在 Playwright 里是固定的，理论上同样成立；
+    // 但移动端还有地址栏/抽屉等变量，只对桌面端断言高度。
+    if (!isMobile) {
+      const overflow = await page.evaluate(
+        () => document.documentElement.scrollHeight - document.documentElement.clientHeight
+      );
+      expect(overflow, '聊天页不应出现整页滚动条').toBeLessThanOrEqual(1);
+    }
+  });
+});
