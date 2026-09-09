@@ -97,7 +97,7 @@ npm run db:normalize
 
 # 校验
 npm run prisma:generate
-npx prisma migrate status   # 期望:Database schema is up to date!
+npm run migrate -- status   # 期望:无 pending（跟踪表是项目自己的 _raricy_migrations）
 ```
 
 > ⚠️ 没有真实库可用时（全新 dev 机器 / CI），`db:normalize` 走空库分支会创建空 dev.db。
@@ -116,7 +116,8 @@ DATABASE_URL="file:../instance/database/db.db" npm run dev
 
 ```bash
 npm run prisma:generate
-npx prisma migrate status   # 期望:Database schema is up to date!
+DATABASE_URL="file:/绝对路径/instance/database/db.db" npm run migrate -- status
+# 期望:无 pending（库已在 0_init 基线之后，见下方「修改 schema 后」）
 
 DATABASE_URL="file:/绝对路径/instance/database/db.db" npm run diagnose
 # 段 3 会显示时间戳格式;Prisma 期望 INTEGER 毫秒。
@@ -135,10 +136,13 @@ npm run prepare:cutover -- \
 ### 全新部署（空目录起步）
 
 ```bash
-DATABASE_URL="file:/绝对路径/instance/database/db.db" npx prisma migrate deploy
+DATABASE_URL="file:/绝对路径/instance/database/db.db" npm run migrate -- up
 # 走 0_init 把所有表建好
 # 之后按 .env.production.example 填 SECRET_KEY / ACCOUNT_* 等即可
 ```
+
+> ⚠️ 不要用 `prisma migrate deploy` —— 本项目自己维护 `_raricy_migrations`
+> 跟踪表，Prisma 不认识它，会试图重放 0_init 然后冲突失败（见 §4「修改 schema 后」）。
 
 ### 修改 schema 后
 
@@ -360,8 +364,9 @@ sqlite3 /backup/db-20260718.db "select count(*) from users"
 cd /srv/raricy.com
 git pull
 npm ci
-# 如果 prisma/schema.prisma 改了
-DATABASE_URL="file:./instance/database/db.db" npx prisma migrate deploy
+# 如果 prisma/schema.prisma 改了（走项目自己的迁移脚本，不是 prisma migrate）
+DATABASE_URL="file:/绝对路径/instance/database/db.db" npm run migrate -- status
+DATABASE_URL="file:/绝对路径/instance/database/db.db" npm run migrate -- up
 npm run build
 sudo systemctl restart raricy-next
 journalctl -u raricy-next -f    # 观察启动日志
@@ -387,7 +392,7 @@ journalctl -u raricy-next -f    # 观察启动日志
 | 图床 413 | nginx `client_max_body_size` ≤ 1MB;改成 12m |
 | 小鱼干 503 | 账户服务不通或不配 `ACCOUNT_SERVICE_INTERNAL_TOKEN`(fail-closed) |
 | 登录 500 Conversion failed | 时间戳是 SQLAlchemy 文本格式;跑 `npm run prepare:cutover --` |
-| `prisma migrate dev` 提议 reset | 生产**永远不要**跑 `migrate dev`;改用 `migrate deploy` |
+| `prisma migrate dev` 提议 reset | 生产**永远不要**跑 `prisma migrate dev` / `db push`；改用 `npm run migrate -- up` |
 | 本地写后 E2E 跑 readonly database | Playwright e2e 测试库名必须唯一(见 `playwright.config.ts` 注释) |
 | 服务器一重启站就没了 | 没装 systemd unit;装一下 |
 | MySQL/Postgres 报错 | 不要用——本站是 SQLite;若想换库,先看 clauds.md 风险表 |

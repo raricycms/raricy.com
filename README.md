@@ -65,7 +65,9 @@ npm run dev                              # http://localhost:3000
 
 - 站内反代：`proxy_pass http://127.0.0.1:3000`，**务必**透传 `Host: $http_host` / `X-Forwarded-Host` / `X-Forwarded-Proto`。
 - `instance/` 需在部署机器上是**真实目录**：头像、图床、故事落盘。
-- 数据库以 Prisma 0_init 为基线；改 schema 跑 `prisma migrate dev --name ...`。
+- 数据库以 Prisma 0_init 为基线；改 schema 用 `npm run migrate -- up`（手写 SQL）。
+  **不要**跑 `prisma migrate dev` / `db push` —— 生产库没有 `_prisma_migrations` 表，
+  它们会提议 reset 整个库。详见 `docs/deploy.md` §4「修改 schema 后」。
 
 ## 关键约定
 
