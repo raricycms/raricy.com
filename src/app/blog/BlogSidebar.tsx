@@ -35,6 +35,16 @@ export default function BlogSidebar({
   const [mainCollapsed, setMainCollapsed] = useState(false);
   const [collapsedSubs, setCollapsedSubs] = useState<Set<number>>(new Set());
   const [collapsedLinks, setCollapsedLinks] = useState<Set<number>>(new Set());
+  /**
+   * JS 是否已接管折叠态。
+   *
+   * 自动折叠发生在下面的 useEffect（水合之后），而 SSR 直出的是展开态 —— 不接管的话
+   * 小屏会先画一帧展开的目录，再播放一段折叠动画（用户看到的「一进去是展开的，然后
+   * 收起来」）。`_menu.scss` 末尾用 `.js .sidebar:not(.sidebar--ready)` 让水合前就按
+   * 折叠渲染，这里挂载时补上 `--ready`：此时折叠态已经算好，两种渲染结果一致，那一帧
+   * 没有任何视觉变化。
+   */
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     const parentIds = categories.filter((c) => c.children.length > 0).map((c) => c.id);
@@ -53,6 +63,8 @@ export default function BlogSidebar({
     }
 
     initializeCollapse();
+    // 与上面同一次提交：折叠态与 --ready 一起落到 DOM，中间不存在「已接管但还没折叠」的帧
+    setReady(true);
 
     let timer: ReturnType<typeof setTimeout> | undefined;
     function onResize() {
@@ -90,7 +102,7 @@ export default function BlogSidebar({
     sort ? `${href}${href.includes('?') ? '&' : '?'}sort=${sort}` : href;
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar${ready ? ' sidebar--ready' : ''}`}>
       <h3
         className={`sidebar-title${mainCollapsed ? ' collapsed' : ''}`}
         onClick={toggleMainCategories}

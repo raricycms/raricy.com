@@ -16,8 +16,12 @@ export const metadata: Metadata = {
   icons: { icon: [{ url: '/static/img/favicon.png', type: 'image/png' }] },
 };
 
-// 防闪烁：CSS 加载前按 localStorage/系统偏好设 data-theme（对齐原 Flask base.html 内联脚本）
-const noFlashScript = `(function(){try{var t=localStorage.getItem('theme');if(t!=='light'&&t!=='dark'){t=(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';}document.documentElement.setAttribute('data-theme',t);}catch(e){}})();`;
+// 防闪烁：CSS 加载前按 localStorage/系统偏好设 data-theme（对齐原 Flask base.html 内联脚本）。
+// 顺带给 <html> 打上 .js：给「只有 JS 能接管的状态」一个判别位 —— 例如 /blog 侧栏在
+// ≤992px 下要按折叠渲染（见 _menu.scss 末尾），但那只在 JS 会接管折叠时才成立；
+// 禁用 JS 时目录必须保持展开可点，不能被折叠态误伤。脚本同步执行于 <head>，
+// 早于首帧绘制，故不会自己造成闪烁。
+const noFlashScript = `(function(){document.documentElement.classList.add('js');try{var t=localStorage.getItem('theme');if(t!=='light'&&t!=='dark'){t=(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';}document.documentElement.setAttribute('data-theme',t);}catch(e){}})();`;
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();

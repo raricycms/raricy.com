@@ -185,11 +185,18 @@ test('排序回显：updated 态下点侧栏分类，URL 保留 sort（不用二
   await page.goto(`/blog?sort=updated`);
   await expect(page.locator(`#id${SEED_BLOG2.id}`)).toBeVisible();
 
-  // 移动端（≤768px）侧栏分类默认折叠 —— 折叠时先点标题展开
-  const catLink = page.getByRole('link', { name: SEED_CATEGORY.name, exact: true });
-  if (!(await catLink.isVisible())) {
-    await page.locator('.sidebar-title').click();
+  // 移动端（≤992px）侧栏分类默认折叠 —— 折叠时先点标题展开。
+  // 必须等 JS 接管（--ready）：水合前目录由 CSS 藏起，这时点标题点了个空
+  // （React 还没挂上 onClick）。
+  await expect(page.locator('.sidebar')).toHaveClass(/sidebar--ready/);
+  // 判据取标题的 .collapsed 类，而不是链接的 isVisible()：折叠靠 max-height:0 +
+  // overflow:hidden，链接自身的布局盒还在（Playwright 判「可见」），点下去落在被裁掉的
+  // 区域上，被上面的元素接管 —— 表现为点击重试到超时。
+  const sidebarTitle = page.locator('.sidebar-title');
+  if (await sidebarTitle.evaluate((el) => el.classList.contains('collapsed'))) {
+    await sidebarTitle.click();
   }
+  const catLink = page.getByRole('link', { name: SEED_CATEGORY.name, exact: true });
   await catLink.click();
   await expect(page).toHaveURL(new RegExp(`category=${SEED_CATEGORY.slug}`));
   await expect(page).toHaveURL(/sort=updated/);
@@ -287,4 +294,47 @@ test('第三方核心用户视角：无「管理文章」，第二行只有返�
   await expect(rows.nth(1).getByRole('button')).toHaveCount(1);
   await expect(page.locator('#admin-manage-btn')).toHaveCount(0);
   await expect(page.locator('#manageMenuModal')).toHaveCount(0);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 侧栏首帧折叠
+//
+// 小屏（≤992px）的自动折叠发生在 useEffect（水合之后），而 SSR 直出的是展开态。
+// 若 CSS 不接管水合前那一帧，手机上就会「先看到展开的目录，再播放一段折叠动画」。
+// 阻断 Next 的 JS chunk = 停在「HTML 已解析、内联脚本已跑、但尚未水合」那一帧，
+// 正是用户看到的第一眼（CSS 在 /_next/static/css/ 下，不受影响）。
+// ─────────────────────────────────────────────────────────────────────────────
+const blockHydration = (page: Page) =>
+  page.route(/\/_next\/static\/.*\.js(\?.*)?$/, (route) => route.abort());
+
+test.describe('侧栏首帧折叠', () => {
+  test('手机宽度：水合前目录即折叠（不再先展开再播放折叠动画）', async ({ page }) => {
+    await blockHydration(page);
+    await page.setViewportSize({ width: 390, height: 844 });
+
+    await page.goto('/blog');
+    await expect(page.locator('.sidebar')).toBeVisible();
+    await expect(page.locator('.category-list')).toBeHidden();
+  });
+
+  test('桌面宽度：水合前目录仍是展开（不能误伤大屏）', async ({ page }) => {
+    await blockHydration(page);
+    await page.setViewportSize({ width: 1280, height: 800 });
+
+    await page.goto('/blog');
+    await expect(page.locator('.category-list')).toBeVisible();
+  });
+
+  // 折叠态只是「JS 会接管」的前提下的首帧优化；禁用 JS 时目录必须照旧展开可点，
+  // 否则导航入口在无脚本环境下就没了（渐进增强）。
+  test.describe('禁用 JS', () => {
+    test.use({ javaScriptEnabled: false });
+
+    test('小屏目录保持展开', async ({ page }) => {
+      await page.setViewportSize({ width: 390, height: 844 });
+
+      await page.goto('/blog');
+      await expect(page.locator('.category-list')).toBeVisible();
+    });
+  });
 });

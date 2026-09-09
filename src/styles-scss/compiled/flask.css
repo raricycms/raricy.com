@@ -3581,6 +3581,30 @@ a:hover {
     margin-left: 10px;
   }
 }
+/* ── 水合前（≤992px）：目录按「已折叠」渲染 ────────────────────────────────────
+   自动折叠发生在 BlogSidebar 的 useEffect（水合之后），而 SSR 直出的是展开态 ——
+   不接管的话，手机/平板会先画一帧展开的目录，再播放一段折叠动画（用户看到的
+   「一进去是展开的，然后收起来」）。这里让首帧就是折叠好的：BlogSidebar 挂载时
+   给 .sidebar 补上 --ready，此后完全由 .collapsed 类说话，两种渲染结果一致，
+   那一帧没有任何视觉变化。
+
+   前缀 .js（layout 的内联脚本在 <head> 同步打上）把这条限制在「JS 可用」时：
+   禁用 JS 就没有任何东西会接管折叠，目录必须保持展开可点，不能被藏起来。
+
+   放在文件末尾：与上面 ≤768px 的 `.sidebar .category-list:not(.collapsed)` 比，
+   多一个 .js 已经胜出，但同段内的两条仍靠源序压过更早的 :not(.collapsed)。 */
+@media (max-width: 992px) {
+  .js .sidebar:not(.sidebar--ready) .category-list,
+  .js .sidebar:not(.sidebar--ready) .sub-category-list {
+    max-height: 0;
+    opacity: 0;
+    margin-top: 0;
+    margin-bottom: 0;
+  }
+  .js .sidebar:not(.sidebar--ready) .sidebar-title .toggle-icon {
+    transform: rotate(-90deg);
+  }
+}
 .upload-hero {
   background: var(--color-background-page);
   padding: 50px 0 30px;
