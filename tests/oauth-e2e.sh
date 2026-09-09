@@ -168,8 +168,8 @@ CROSS_RES=$(curl -sS -o /dev/null -w "%{http_code}" -u "$CID:$CSECRET" \
   -H "Content-Type: application/x-www-form-urlencoded" \
   -d "grant_type=authorization_code&code=$CODE2&redirect_uri=$(printf %s "$REDIRECT_URI" | python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.stdin.read(),safe=""))')" \
   "$BASE/api/oauth/token")
-# 该 code 已被 step 5 的「错 redirect_uri」耗尽，此处只验证不被 CSRF 拦截
-# （会因 invalid_grant 返 400，但绝不会因 CSRF 返 403）
+# step 5 的错 redirect_uri 不再消费 code（绑定校验已进 updateMany 的 where），
+# 故此处用正确回调应正常兑换 → 200。无论 200/400，只要不是 403 就说明 CSRF 豁免生效。
 if [ "$CROSS_RES" = "400" ]; then ok "通过 CSRF 豁免（400 是预期：code 已被耗尽）"
 elif [ "$CROSS_RES" = "200" ]; then ok "通过 CSRF 豁免"
 else ko "应 400/200 实 $CROSS_RES（若 403 则是 CSRF 误杀）" ""; fi

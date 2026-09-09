@@ -237,8 +237,14 @@ export type ConsumeResult =
   | { ok: false; error: 'invalid' | 'expired' | 'already_used' | 'redirect_mismatch' };
 
 /**
- * 单次消费：原子 `update where { codeHash, usedAt: null }`，
+ * 单次消费：原子 `update where { codeHash, applicationId, redirectUri, usedAt: null }`，
  * 在 SQLite 单写者模式下天然串行化，恰好一次成功。
+ *
+ * 【为什么 redirectUri 必须进 where】RFC 6749 §4.1.3 要求授权码**绑定**签发时的
+ * redirect_uri。若只校验「是注册过的 URI 之一」，一个注册了多个回调地址的应用就
+ * 出现了缺口：为 A 回调签发的 code 可以用同一应用的 B 回调兑换到 token（code 注入）。
+ * 放进 where 还顺带修掉一个语义问题 —— 不匹配的尝试不再把 code 标记为已用。
+ *
  * 不匹配时再查一次原行以区分「不存在」/「已用」/「过期」/「redirect_uri 不一致」。
  */
 export async function consumeAuthorizationCode(
@@ -252,6 +258,7 @@ export async function consumeAuthorizationCode(
     where: {
       codeHash,
       applicationId,
+      redirectUri,
       usedAt: null,
       expiresAt: { gt: now },
     },
