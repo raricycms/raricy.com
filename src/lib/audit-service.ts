@@ -9,6 +9,7 @@
 
 import { prisma } from './db';
 import { nowForDb, dayStart, todayStr } from './db-time';
+import { sendNotification } from './notification-service';
 import type { Prisma } from '@prisma/client';
 
 const PER_PAGE = 20;
@@ -213,7 +214,7 @@ export type AppealResult =
  *   2. 该日志已有 accepted 申诉 → 拒绝
  *   3. 当日申诉数 ≥ 20 → 拒绝
  *   4. 同日志 + 同申诉人已存在 pending → 拒绝
- * 通过则创建 status='pending'。
+ * 通过则创建 status='pending'，并给所有 owner 发『申诉提交』通知（失败不影响申诉）。
  */
 export async function createAppeal(params: {
   logId: number;
@@ -278,6 +279,29 @@ export async function createAppeal(params: {
     select: { id: true },
   });
 
-  // 注：Flask 侧此处会给站长发通知；迁移期通知发送仍走 Flask，故此处从略。
+  // 通知站长（对齐 Flask create_appeal：给所有 owner 各发一条『申诉提交』）。
+  // 与评论/点赞同口径：通知失败不影响申诉本身，吞掉即可 —— 申诉已经落库，
+  // 站长在 /audit 列表里照样看得到。
+  try {
+    const owners = await prisma.user.findMany({
+      where: { role: 'owner' },
+      select: { id: true },
+    });
+    await Promise.all(
+      owners.map((o) =>
+        sendNotification({
+          recipientId: o.id,
+          action: '申诉提交',
+          actorId: params.appellantId,
+          objectType: 'admin_action_log',
+          objectId: String(params.logId),
+          detail: '有新的操作日志申诉等待处理',
+        })
+      )
+    );
+  } catch (e) {
+    console.warn(`[audit-service] 申诉已提交但通知站长失败（logId=${params.logId}）:`, e);
+  }
+
   return { ok: true, message: '申诉已提交', appealId: appeal.id };
 }

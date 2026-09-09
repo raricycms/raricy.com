@@ -1202,6 +1202,99 @@ describe('toggleLike / 限频（100 次/时）', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 7.5 点赞通知（对齐 Flask like_service.py:84-101）
+//
+// 【为什么钉这些】这段通知在 Next 移植时整段丢了：toggleLike 里根本没有
+// sendNotification，BlogLike.notificationSent 也从未被读写 —— 站上 4.3 万条历史
+// 「文章点赞」通知在迁移后彻底断流，而设置页的 notifyLike 开关跟着一起变成摆设。
+// 断言覆盖「发/不发/不重发」三条边界。
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('toggleLike / 点赞通知', () => {
+  it('首次点赞 → 作者收到一条『文章点赞』，并置 notificationSent', async () => {
+    const author = await makeUser();
+    const liker = await makeUser();
+    const b = await makeBlog({ authorId: author.id, title: '被赞的文章' });
+
+    await toggleLike(b.id, liker.id);
+
+    const notes = await prisma.notification.findMany({ where: { recipientId: author.id } });
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toMatchObject({
+      action: '文章点赞',
+      actorId: liker.id,
+      objectType: 'blog',
+      objectId: b.id,
+      read: false,
+    });
+    expect(notes[0].detail).toContain('被赞的文章');
+
+    const row = await prisma.blogLike.findUnique({
+      where: { uq_blog_like_blog_user: { blogId: b.id, userId: liker.id } },
+    });
+    expect(row!.notificationSent).toBe(true);
+  });
+
+  it('取消后重新点赞 → 不重复发（一人对一篇文章最多一条）', async () => {
+    const author = await makeUser();
+    const liker = await makeUser();
+    const b = await makeBlog({ authorId: author.id });
+
+    await toggleLike(b.id, liker.id); // 点赞 → 发
+    await toggleLike(b.id, liker.id); // 取消 → 不发
+    await toggleLike(b.id, liker.id); // 重新点亮 → 也不再发
+
+    expect(
+      await prisma.notification.count({ where: { recipientId: author.id, action: '文章点赞' } }),
+      'notificationSent 是「一人一篇只发一次」的守卫'
+    ).toBe(1);
+  });
+
+  it('作者给自己点赞 → 不通知', async () => {
+    const author = await makeUser();
+    const b = await makeBlog({ authorId: author.id });
+
+    await toggleLike(b.id, author.id);
+
+    expect(await prisma.notification.count({ where: { recipientId: author.id } })).toBe(0);
+  });
+
+  it('作者关掉 notifyLike → 不发通知，但点赞照常成功', async () => {
+    const author = await makeUser();
+    const liker = await makeUser();
+    const b = await makeBlog({ authorId: author.id });
+    await prisma.user.update({ where: { id: author.id }, data: { notifyLike: false } });
+
+    const r = (await toggleLike(b.id, liker.id)) as LikeOk;
+
+    expect(r).toMatchObject({ liked: true, likesCount: 1 });
+    expect(await prisma.notification.count({ where: { recipientId: author.id } })).toBe(0);
+
+    // 被偏好拦下 = 用户主动不要这类通知，标记保持「已发」：日后重新打开开关
+    // 也不该补发历史点赞（否则开关一开就炸出一堆陈年通知）。
+    const row = await prisma.blogLike.findUnique({
+      where: { uq_blog_like_blog_user: { blogId: b.id, userId: liker.id } },
+    });
+    expect(row!.notificationSent).toBe(true);
+  });
+
+  it('多人点赞 → 每人各发一条，互不吞并', async () => {
+    const author = await makeUser();
+    const b = await makeBlog({ authorId: author.id });
+    const u1 = await makeUser();
+    const u2 = await makeUser();
+
+    await toggleLike(b.id, u1.id);
+    await toggleLike(b.id, u2.id);
+
+    const notes = await prisma.notification.findMany({
+      where: { recipientId: author.id, action: '文章点赞' },
+    });
+    expect(notes.map((n) => n.actorId).sort()).toEqual([u1.id, u2.id].sort());
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 回归：时间戳存储格式与日期比较（2026-07-16 补测试时发现的最严重问题）
 //
 // 背景：scripts/normalize-datetimes.mjs 最初把 Flask 的空格格式时间戳转成 **TEXT ISO**。

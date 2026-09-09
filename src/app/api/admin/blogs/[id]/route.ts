@@ -94,18 +94,21 @@ export async function DELETE(req: Request, ctx: { params: Promise<{ id: string }
     /* 对齐 Flask：审计写入失败吞掉 */
   }
 
-  // 通知作者
-  try {
-    await sendNotification({
-      recipientId: blog.authorId,
-      action: '文章删除',
-      actorId: actor.id,
-      objectType: 'blog',
-      objectId: id,
-      detail: `你的文章《${blog.title}》已被管理员删除。理由：${reason}`,
-    });
-  } catch {
-    /* 通知失败不影响删除结果 */
+  // 通知作者（管理员删自己的文章不通知自己，对齐 Flask admin_delete_blog 的
+  // `blog_author_id != current_user.id`；审计日志仍然照写）
+  if (blog.authorId !== actor.id) {
+    try {
+      await sendNotification({
+        recipientId: blog.authorId,
+        action: '文章删除',
+        actorId: actor.id,
+        objectType: 'blog',
+        objectId: id,
+        detail: `你的文章《${blog.title}》已被管理员删除。理由：${reason}`,
+      });
+    } catch {
+      /* 通知失败不影响删除结果 */
+    }
   }
 
   return apiOk({ blog: result.data }, '文章已删除');

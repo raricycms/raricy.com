@@ -9,6 +9,7 @@ import { prisma } from './db';
 import { nowForDb, dayStart, todayStr, hoursUntil } from './db-time';
 import { ymdhms } from './format';
 import { rateLimit, RULES } from './rate-limit';
+import { sendNotification } from './notification-service';
 import type { Prisma } from '@prisma/client';
 
 export type BlogSort = 'created' | 'updated';
@@ -235,6 +236,9 @@ export async function getLikers(
 /**
  * 点赞切换（对齐 LikeService）：唯一约束 (blog_id,user_id) + 软删除 deleted 字段，
  * 计数在事务内原子增减。附带内存限频（100/时、500/天）。
+ *
+ * 点赞生效时给作者发一条『文章点赞』（对齐 Flask like_service.py:84-101），
+ * 用 BlogLike.notificationSent 保证「一人对一篇文章最多一条通知」。
  */
 export async function toggleLike(blogId: string, userId: string) {
   // 【先查存在性，再扣限频】对齐 Flask 的顺序。
@@ -252,9 +256,12 @@ export async function toggleLike(blogId: string, userId: string) {
     return { rateLimited: true as const };
   }
 
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     // 事务内再确认一次（并发下文章可能刚被软删）
-    const blog = await tx.blog.findFirst({ where: { id: blogId, ignore: false }, select: { id: true } });
+    const blog = await tx.blog.findFirst({
+      where: { id: blogId, ignore: false },
+      select: { id: true, authorId: true, title: true },
+    });
     if (!blog) return { notFound: true as const };
 
     const existing = await tx.blogLike.findUnique({
@@ -273,10 +280,53 @@ export async function toggleLike(blogId: string, userId: string) {
       });
     }
 
+    // 通知条件（对齐 Flask）：点赞生效 + 不是自赞 + 这条点赞记录从未发过通知。
+    // notificationSent 用 updateMany 原子抢占：并发下只有一方 count===1，
+    // 另一方拿不到就闭嘴，避免重复发。取消点赞不碰标记 —— 重新点亮也不再发
+    // （Flask 的「一个用户对一篇文章，最多只会发送一条通知」）。
+    let notify = false;
+    if (liked && blog.authorId !== userId) {
+      const claimed = await tx.blogLike.updateMany({
+        where: { blogId, userId, notificationSent: false },
+        data: { notificationSent: true },
+      });
+      notify = claimed.count === 1;
+    }
+
     const likesCount = await tx.blogLike.count({ where: { blogId, deleted: false } });
     await tx.blog.update({ where: { id: blogId }, data: { likesCount } });
-    return { liked, likesCount };
+    return { liked, likesCount, notify, authorId: blog.authorId, title: blog.title };
   });
+
+  if ('notFound' in result) return result;
+
+  // 通知放在事务提交之后：通知失败绝不能回滚已经生效的点赞（对齐 feed-service 的口径）。
+  if (result.notify) {
+    try {
+      await sendNotification({
+        recipientId: result.authorId,
+        action: '文章点赞',
+        actorId: userId,
+        objectType: 'blog',
+        objectId: blogId,
+        detail: `你的文章《${result.title}》收到了一个新的点赞！`,
+      });
+    } catch (e) {
+      // 发送异常（DB 故障等）→ 把标记放回去，下次重新点赞还能补发。
+      // 注意：作者关掉 notifyLike、或接收者不存在时 sendNotification 返回 null 而非
+      // 抛错 —— 那是用户主动不要这类通知，标记保持「已发」，不该因日后改主意补发历史点赞。
+      await prisma.blogLike
+        .updateMany({ where: { blogId, userId }, data: { notificationSent: false } })
+        .catch(() => {});
+      console.warn(
+        `[blog-service] 点赞成功但通知作者失败（不影响点赞结果）` +
+          `（blog=${blogId} author=${result.authorId}）:`,
+        e
+      );
+    }
+  }
+
+  return { liked: result.liked, likesCount: result.likesCount };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -807,6 +807,38 @@ describe('createAppeal（提交申诉）', () => {
     });
   });
 
+  // 对齐 Flask create_appeal：申诉落库后给所有 owner 各发一条『申诉提交』。
+  // 迁移时这段只留了句 TODO（audit-service.ts 原注释），补上后钉住收件人范围。
+  it('提交成功 → 给所有 owner 各发一条『申诉提交』，非 owner 不发', async () => {
+    const owner = await makeUser({ role: 'owner' });
+    const admin = await makeUser({ role: 'admin' }); // 管理员不是收件人
+    const user = await makeUser({ role: 'core' });
+    const logId = await makeLog({ action: 'ban_user', adminId: admin.id, targetUserId: user.id });
+
+    await createAppeal({ logId, appellantId: user.id, content: '我没刷屏' });
+
+    const notes = await prisma.notification.findMany({ where: { action: '申诉提交' } });
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toMatchObject({
+      recipientId: owner.id,
+      actorId: user.id,
+      objectType: 'admin_action_log',
+      objectId: String(logId),
+      read: false,
+    });
+    expect(notes[0].detail).toContain('申诉');
+  });
+
+  it('校验失败（纯空白内容）→ 不发通知', async () => {
+    await makeUser({ role: 'owner' });
+    const admin = await makeUser({ role: 'admin' });
+    const user = await makeUser({ role: 'core' });
+    const logId = await makeLog({ action: 'ban_user', adminId: admin.id, targetUserId: user.id });
+
+    expect((await createAppeal({ logId, appellantId: user.id, content: '   ' })).ok).toBe(false);
+    expect(await prisma.notification.count()).toBe(0);
+  });
+
   it('内容为空 / 纯空白 / 超 2000 字 → 拒绝', async () => {
     const admin = await makeUser({ role: 'admin' });
     const user = await makeUser({ role: 'core' });
