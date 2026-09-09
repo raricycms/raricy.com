@@ -185,8 +185,8 @@ describe('RULES 全站配额（与 docs/全站限额与频控汇总.md 对齐，
     { name: 'chatDaily', limit: 800, windowMs: DAY, desc: '聊天发言 800 次/天' },
     { name: 'chatPoll', limit: 120, windowMs: 60_000, desc: '聊天对账轮询 120 次/分' },
     { name: 'chatNewChannel', limit: 20, windowMs: 60_000, desc: '发起私聊 20 次/分' },
-    { name: 'loginPerIp', limit: 30, windowMs: MIN15, desc: '登录失败 30 次/15 分/IP' },
-    { name: 'loginPerUser', limit: 10, windowMs: MIN15, desc: '登录失败 10 次/15 分/账号' },
+    { name: 'loginPerIp', limit: 300, windowMs: MIN15, desc: '登录失败 300 次/15 分/IP' },
+    { name: 'loginPerUser', limit: 100, windowMs: MIN15, desc: '登录失败 100 次/15 分/账号' },
   ] as const;
 
   for (const e of EXPECTED) {

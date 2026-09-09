@@ -207,6 +207,6 @@ export const RULES = {
    *   · 用户名（小写归一）—— 挡「一批机器打同一个账号」。
    * 顺带也是 CPU 保护：每次尝试都要跑一次 scrypt。
    */
-  loginPerIp: { limit: 30, windowMs: 15 * 60 * 1000 },
-  loginPerUser: { limit: 10, windowMs: 15 * 60 * 1000 },
+  loginPerIp: { limit: 300, windowMs: 15 * 60 * 1000 },
+  loginPerUser: { limit: 100, windowMs: 15 * 60 * 1000 },
 } as const;

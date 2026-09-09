@@ -97,12 +97,13 @@ describe('登录限频', () => {
     ).toBe(401);
   });
 
-  it('成功登录不消耗配额（否则正常用户会被自己的成功记录挡住）', async () => {
+  // 每次成功登录都要跑一遍 scrypt，100+ 次会超过默认 5s 超时 —— 显式放宽。
+  it('成功登录不消耗配额（否则正常用户会被自己的成功记录挡住）', { timeout: 120_000 }, async () => {
     const username = 'gooduser';
     await makeUser({ username, passwordHash: await hashPassword('correct-horse') });
     const ip = { 'x-forwarded-for': '203.0.113.55' };
 
-    // 连续成功登录，次数远超 per-user 上限 —— 必须次次 200
+    // 连续成功登录，次数超过 per-user 上限 —— 必须次次 200
     for (let i = 0; i < RULES.loginPerUser.limit + 5; i++) {
       const res = await login(req({ username, password: 'correct-horse' }, ip));
       expect(res.status, `第 ${i + 1} 次成功登录不应被限频`).toBe(200);
