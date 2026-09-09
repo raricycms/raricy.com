@@ -15,15 +15,27 @@ import { memo, useState } from 'react';
 import Link from 'next/link';
 import { ArrowRight, BookOpenText } from 'lucide-react';
 import { CHAT_DELETED_TEXT, type ChatMessageDTO } from '@/lib/chat-shared';
+import { nowForDb } from '@/lib/db-time';
 import ChatMarkdown from './ChatMarkdown';
 
-/** 'MM-DD HH:mm'（与全站通知列表口径一致；库里存的是 UTC+8 墙上时间）。 */
+// ── 时间显示：一律 UTC+8 钟面 ─────────────────────────────────────────────────
+// 库里时间戳是「UTC+8 墙上时间，贴 Z 标签」（见 src/lib/db-time.ts）—— 也就是说
+// toISOString 里那串数字**本身就是 UTC+8 的钟面**。因此一律用 getUTC* 读；用
+// getHours() 这类本地 getter 会被浏览器时区再平移一次（UTC 下整体差 8 小时）。
+// 「今天 / 昨天」的参照点同理，取 nowForDb()（UTC+8 的现在）。
+
+/** 'MM-DD HH:mm'（UTC+8）。 */
 export function fmtTime(ts: string | null): string {
   if (!ts) return '';
   const d = new Date(ts);
   if (Number.isNaN(d.getTime())) return '';
   const p = (n: number) => String(n).padStart(2, '0');
-  return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  return `${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;
+}
+
+/** UTC+8 日历日键（用于日期分隔线的分组比较）。 */
+function dayKeyOf(d: Date): string {
+  return `${d.getUTCFullYear()}-${d.getUTCMonth() + 1}-${d.getUTCDate()}`;
 }
 
 /** 同一天的消息归为一组（日期分隔线用）。 */
@@ -31,7 +43,7 @@ export function dayKey(ts: string | null): string {
   if (!ts) return '';
   const d = new Date(ts);
   if (Number.isNaN(d.getTime())) return '';
-  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+  return dayKeyOf(d);
 }
 
 /** 日期分隔线文案：今天 / 昨天 / M月D日 / YYYY年M月D日。 */
@@ -39,15 +51,13 @@ export function fmtDay(ts: string | null): string {
   if (!ts) return '';
   const d = new Date(ts);
   if (Number.isNaN(d.getTime())) return '';
-  const today = new Date();
-  const key = dayKey(ts);
-  if (key === dayKey(today.toISOString())) return '今天';
-  const yest = new Date(today);
-  yest.setDate(yest.getDate() - 1);
-  if (key === dayKey(yest.toISOString())) return '昨天';
-  return d.getFullYear() === today.getFullYear()
-    ? `${d.getMonth() + 1}月${d.getDate()}日`
-    : `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
+  const now = nowForDb(); // UTC+8 的「现在」，否则跨零点前后会把今天判成昨天
+  const key = dayKeyOf(d);
+  if (key === dayKeyOf(now)) return '今天';
+  if (key === dayKeyOf(new Date(now.getTime() - 86_400_000))) return '昨天';
+  return d.getUTCFullYear() === now.getUTCFullYear()
+    ? `${d.getUTCMonth() + 1}月${d.getUTCDate()}日`
+    : `${d.getUTCFullYear()}年${d.getUTCMonth() + 1}月${d.getUTCDate()}日`;
 }
 
 /**
