@@ -15,6 +15,7 @@ import { TeX } from 'mathjax-full/js/input/tex.js';
 import { CHTML } from 'mathjax-full/js/output/chtml.js';
 import { RegisterHTMLHandler } from 'mathjax-full/js/handlers/html.js';
 import { AllPackages } from 'mathjax-full/js/input/tex/AllPackages.js';
+import { BLOG_SANITIZE_OPTIONS, isValidVoteId, renderVoteFallback } from '@/lib/blog-markdown';
 
 // ── 内容引用预处理器（对齐 clipboard-processor.js，端点改为 Next API）───────────
 class ContentRefProcessor {
@@ -228,21 +229,8 @@ export default function MarkdownRenderer({ content }: { content: string }) {
       let out = m.parse(text, { async: false }) as string;
       Object.keys(placeholders).forEach((p) => { out = out.replace(new RegExp(p, 'g'), placeholders[p]); });
 
-      const clean = DOMPurify.sanitize(out, {
-        ALLOWED_TAGS: [
-          'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'br', 'hr', 'div', 'span',
-          'strong', 'b', 'em', 'i', 'u', 's', 'del', 'code', 'pre', 'blockquote',
-          'ul', 'ol', 'li', 'a', 'img', 'table', 'thead', 'tbody', 'tr', 'th', 'td',
-          'details', 'summary', 'sub', 'sup', 'mark', 'input', 'button',
-          'video', 'source', 'track', 'audio',
-        ],
-        ALLOWED_ATTR: [
-          'href', 'title', 'alt', 'src', 'class', 'rel', 'target', 'width', 'height',
-          'align', 'colspan', 'rowspan', 'type', 'checked', 'disabled', 'data-code',
-          'data-vote-id', 'controls', 'autoplay', 'muted', 'loop', 'poster', 'preload',
-          'playsinline', 'crossorigin', 'kind', 'srclang', 'label',
-        ],
-      });
+      // 白名单是安全边界，集中定义在 src/lib/blog-markdown.ts（改动请同步其单测）。
+      const clean = DOMPurify.sanitize(out, BLOG_SANITIZE_OPTIONS);
       if (!cancelled) { setHtml(clean); setReady(true); }
     })();
     return () => { cancelled = true; };
@@ -301,12 +289,15 @@ export default function MarkdownRenderer({ content }: { content: string }) {
       if (el.dataset.rendered) return;
       const vid = el.getAttribute('data-vote-id');
       if (!vid) return;
+      // ★ 安全边界：data-vote-id 来自用户 Markdown（攻击者可控），见 src/lib/blog-markdown.ts。
+      // 校验不过就整个放弃 —— 不 fetch、不渲染，避免它被当成 URL 片段或 HTML 使用。
+      if (!isValidVoteId(vid)) { el.textContent = '[投票链接无效]'; return; }
       el.dataset.rendered = '1';
       el.textContent = '加载投票…';
       fetch(`/api/votes/${vid}`, { credentials: 'same-origin' })
         .then((r) => r.json())
         .then((data) => {
-          if (data.code !== 200 || !data.data) { el.innerHTML = `<a href="/vote/${vid}">[查看投票]</a>`; return; }
+          if (data.code !== 200 || !data.data) { renderVoteFallback(el, vid); return; }
           const v = data.data as { title: string; total_votes: number; user_voted: number | null; options: { id: number; label: string; count: number; percentage: number }[] };
           const rows = v.options.map((o) => {
             const mine = v.user_voted === o.id;
@@ -314,7 +305,7 @@ export default function MarkdownRenderer({ content }: { content: string }) {
           }).join('');
           el.innerHTML = `${rows}<p class="vote-embed-total">共 ${v.total_votes} 票</p>`;
         })
-        .catch(() => { el.innerHTML = `<a href="/vote/${vid}">[查看投票]</a>`; });
+        .catch(() => renderVoteFallback(el, vid));
     });
 
     // MathJax 数学公式
