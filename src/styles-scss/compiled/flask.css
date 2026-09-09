@@ -11241,6 +11241,10 @@ input:checked + .settings-toggle__slider::before {
   font-weight: 700;
   color: var(--color-text-primary);
   white-space: nowrap;
+  overflow: hidden;
+  min-width: 0;
+  max-width: 220px;
+  transition: max-width 0.2s ease, opacity 0.2s ease;
 }
 
 .chat-sidebar__collapse {
@@ -11261,7 +11265,8 @@ input:checked + .settings-toggle__slider::before {
 }
 
 .chat-page--collapsed .chat-sidebar__title {
-  display: none;
+  max-width: 0;
+  opacity: 0;
 }
 
 .chat-sidebar__list {
@@ -11274,8 +11279,7 @@ input:checked + .settings-toggle__slider::before {
 }
 
 .chat-page--collapsed .chat-sidebar__list {
-  padding: 8px 6px;
-  align-items: center;
+  padding: 8px;
 }
 
 .chat-chan {
@@ -11290,7 +11294,7 @@ input:checked + .settings-toggle__slider::before {
   color: var(--color-text-primary);
   cursor: pointer;
   text-align: left;
-  transition: background 0.15s ease;
+  transition: background 0.15s ease, padding 0.2s ease;
 }
 
 .chat-chan:hover {
@@ -11300,6 +11304,16 @@ input:checked + .settings-toggle__slider::before {
 .chat-chan.is-active {
   background: var(--color-background-highlight);
   box-shadow: inset 3px 0 0 var(--color-brand-primary);
+}
+
+.chat-page--collapsed .chat-chan.is-active {
+  background: transparent;
+  box-shadow: none;
+}
+
+.chat-page--collapsed .chat-chan.is-active .chat-chan__icon,
+.chat-page--collapsed .chat-chan.is-active .chat-chan__avatar {
+  box-shadow: 0 0 0 3px var(--color-brand-primary);
 }
 
 .chat-chan.has-unread .chat-chan__title {
@@ -11399,8 +11413,7 @@ input:checked + .settings-toggle__slider::before {
 }
 
 .chat-page--collapsed .chat-chan {
-  justify-content: center;
-  padding: 8px 0;
+  padding: 8px 5px;
 }
 
 .chat-chan__main {
@@ -12631,13 +12644,23 @@ input:checked + .settings-toggle__slider::before {
     width: 300px;
   }
   .chat-page--collapsed .chat-chan__main,
-  .chat-page--collapsed .chat-chan__badge,
-  .chat-page--collapsed .chat-sidebar__title {
+  .chat-page--collapsed .chat-chan__badge {
     display: flex;
   }
+  .chat-page--collapsed .chat-sidebar__title {
+    max-width: none;
+    opacity: 1;
+  }
   .chat-page--collapsed .chat-chan {
-    justify-content: flex-start;
     padding: 8px 10px;
+  }
+  .chat-page--collapsed .chat-chan.is-active {
+    background: var(--color-background-highlight);
+    box-shadow: inset 3px 0 0 var(--color-brand-primary);
+  }
+  .chat-page--collapsed .chat-chan.is-active .chat-chan__icon,
+  .chat-page--collapsed .chat-chan.is-active .chat-chan__avatar {
+    box-shadow: none;
   }
   .chat-page--collapsed .chat-new-btn {
     padding: 9px 14px;

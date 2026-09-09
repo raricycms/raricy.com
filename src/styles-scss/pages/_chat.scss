@@ -42,6 +42,12 @@
   font-weight: 700;
   color: var(--color-text-primary);
   white-space: nowrap;
+  overflow: hidden;
+  min-width: 0;
+  max-width: 220px;
+  // 折叠时把宽度收到 0 而不是 display: none —— display 不可过渡，标题一消失
+  // 折叠按钮就瞬间从最右跳到最左；收宽度能让它随右边界平滑左移。
+  transition: max-width 0.2s ease, opacity 0.2s ease;
 }
 
 .chat-sidebar__collapse {
@@ -61,7 +67,8 @@
 }
 
 .chat-page--collapsed .chat-sidebar__title {
-  display: none;
+  max-width: 0;
+  opacity: 0;
 }
 
 .chat-sidebar__list {
@@ -73,9 +80,11 @@
   gap: 4px;
 }
 
+// 折叠态：横向几何一律「左对齐 + 固定 padding」，**不要** center。
+// 居中意味着图标位置由侧栏当前宽度算出来 —— 折叠动画里宽度在变，图标就会先被
+// 甩到最右、再随着右边界滑回左边（用户看到的那个横跳）。左对齐则与宽度无关。
 .chat-page--collapsed .chat-sidebar__list {
-  padding: 8px 6px;
-  align-items: center;
+  padding: 8px;
 }
 
 .chat-chan {
@@ -90,7 +99,8 @@
   color: var(--color-text-primary);
   cursor: pointer;
   text-align: left;
-  transition: background 0.15s ease;
+  // padding 也参与折叠动画：10px → 5px 与宽度收缩同步，图标不跳
+  transition: background 0.15s ease, padding 0.2s ease;
 }
 .chat-chan:hover {
   background: var(--color-background-subtle);
@@ -98,6 +108,16 @@
 .chat-chan.is-active {
   background: var(--color-background-highlight);
   box-shadow: inset 3px 0 0 var(--color-brand-primary);
+}
+// 折叠态的行只剩一个头像：整行高亮 + 左侧竖条在 60px 轨道里看着莫名其妙，
+// 改成头像上一圈粗品牌色描边。用 box-shadow 而非 border —— 不占布局，头像不会被挤小。
+.chat-page--collapsed .chat-chan.is-active {
+  background: transparent;
+  box-shadow: none;
+}
+.chat-page--collapsed .chat-chan.is-active .chat-chan__icon,
+.chat-page--collapsed .chat-chan.is-active .chat-chan__avatar {
+  box-shadow: 0 0 0 3px var(--color-brand-primary);
 }
 .chat-chan.has-unread .chat-chan__title {
   color: var(--color-brand-primary);
@@ -191,9 +211,9 @@
 .chat-page--collapsed .chat-chan__badge {
   display: none;
 }
+// 8(列表) + 5 + 34(头像) + 5 + 8 = 60 → 图标正好落在折叠轨道的中间
 .chat-page--collapsed .chat-chan {
-  justify-content: center;
-  padding: 8px 0;
+  padding: 8px 5px;
 }
 
 .chat-chan__main {
@@ -1387,19 +1407,30 @@
     transform: translateX(0);
   }
 
-  // 折叠状态在移动端不生效（抽屉统一 300px）
+  // 折叠状态在移动端不生效（抽屉统一 300px）：标题、行内容、行几何全部还原
   .chat-page--collapsed .chat-sidebar {
     flex-basis: 300px;
     width: 300px;
   }
   .chat-page--collapsed .chat-chan__main,
-  .chat-page--collapsed .chat-chan__badge,
-  .chat-page--collapsed .chat-sidebar__title {
+  .chat-page--collapsed .chat-chan__badge {
     display: flex;
   }
+  .chat-page--collapsed .chat-sidebar__title {
+    max-width: none;
+    opacity: 1;
+  }
   .chat-page--collapsed .chat-chan {
-    justify-content: flex-start;
     padding: 8px 10px;
+  }
+  // 抽屉宽度够，选中态走常规的整行高亮，不要折叠态的描边圈
+  .chat-page--collapsed .chat-chan.is-active {
+    background: var(--color-background-highlight);
+    box-shadow: inset 3px 0 0 var(--color-brand-primary);
+  }
+  .chat-page--collapsed .chat-chan.is-active .chat-chan__icon,
+  .chat-page--collapsed .chat-chan.is-active .chat-chan__avatar {
+    box-shadow: none;
   }
   .chat-page--collapsed .chat-new-btn {
     padding: 9px 14px;
