@@ -16,6 +16,7 @@ import { LS_KEY, COOKIE_NAME, COOKIE_MAX_AGE } from '@/lib/chat-sidebar-pref';
 import NewChatModal from './NewChatModal';
 import QuoteBlogModal from './QuoteBlogModal';
 import AvatarMenu, { type AvatarMenuAnchor } from './AvatarMenu';
+import ImageLightbox from './ImageLightbox';
 import ChatMessageItem, { dayKey, fmtDay } from './ChatMessageItem';
 import ChatSidebar from './ChatSidebar';
 import ChatComposer, { IMAGE_ACCEPT, type ComposerBlogQuote } from './ChatComposer';
@@ -60,6 +61,53 @@ async function api(url: string, init?: RequestInit): Promise<ApiEnvelope> {
     code: res.status,
     message: `请求失败（HTTP ${res.status}）`,
   }))) as ApiEnvelope;
+}
+
+type UploadResult =
+  | { ok: true; id: string; url: string }
+  | { ok: false; message: string; status: number };
+
+/**
+ * 上传图片到图床（POST /api/images，multipart）。
+ *
+ * 【为什么用 XHR 而不是 fetch】微信内置浏览器（Android 的 X5 内核）对
+ * `fetch` + `FormData` 上传有已知的偶发失败 —— 请求发不出去或 body 丢失，
+ * 表现为时好时坏、而 Chrome 全绿。XHR 是社区通行的绕法，各端行为一致，
+ * 且这里也不需要 fetch 的流式能力。
+ *
+ * 只在**网络层**失败时 reject（onerror/onabort）；HTTP 状态码一律 resolve，
+ * 让调用方决定是重试还是把服务端文案展示给用户。
+ */
+function uploadImage(fd: FormData): Promise<UploadResult> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/images'); // 同源 → 会话 cookie 自动带上
+    xhr.onload = () => {
+      let body: { code?: number; message?: string; id?: unknown; url?: unknown } = {};
+      try {
+        body = JSON.parse(xhr.responseText) as typeof body;
+      } catch {
+        // 非 JSON 只可能是反代/网关的错误页（413/502/…）→ 用状态码兜底
+      }
+      if (
+        xhr.status === 200 &&
+        body.code === 200 &&
+        typeof body.id === 'string' &&
+        typeof body.url === 'string'
+      ) {
+        resolve({ ok: true, id: body.id, url: body.url });
+      } else {
+        resolve({
+          ok: false,
+          status: xhr.status,
+          message: body.message || `图片上传失败（HTTP ${xhr.status}）`,
+        });
+      }
+    };
+    xhr.onerror = () => reject(new Error('network'));
+    xhr.onabort = () => reject(new Error('abort'));
+    xhr.send(fd);
+  });
 }
 
 /** 两条消息相差多少分钟（时间戳缺失/非法时返回 Infinity，即不合并）。 */
@@ -185,6 +233,8 @@ export default function ChatApp({
   const pendingDirectRef = useRef<Map<string, ChatChannelDTO>>(new Map());
   /** 本地已读地板：频道 → 已确认读到的最新消息 id（用于压制对账响应造成的未读回跳）。 */
   const readFloorRef = useRef<Map<string, number>>(new Map());
+  /** 图片原位放大的覆盖层（点消息里的图不再新开窗口） */
+  const [lightbox, setLightbox] = useState<{ url: string } | null>(null);
   /** 跳转高亮：当前被锚点/搜索命中的消息 id（2 秒后自动清除）。 */
   const [highlightId, setHighlightId] = useState<number | null>(null);
   const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -779,6 +829,10 @@ export default function ChatApp({
     [currentUserId]
   );
 
+  /** 点消息里的图片 → 原位放大（覆盖层），不再新开窗口 */
+  const openLightbox = useCallback((url: string) => setLightbox({ url }), []);
+  const closeLightbox = useCallback(() => setLightbox(null), []);
+
   // ── 加载更早 ───────────────────────────────────────────────────────────
   const loadOlder = useCallback(async () => {
     const aid = activeRef.current;
@@ -883,14 +937,20 @@ export default function ChatApp({
         const fd = new FormData();
         fd.append('file', file);
         fd.append('compress', '1');
-        const data = await api('/api/images', { method: 'POST', body: fd });
-        if (data.code === 200 && typeof data.id === 'string' && typeof data.url === 'string') {
-          setPendingImage({ id: data.id, url: data.url });
-        } else {
-          toast(data.message || '图片上传失败', 'error');
+        let out: UploadResult;
+        try {
+          out = await uploadImage(fd);
+        } catch {
+          // 网络层失败（请求没发出去 / 连接被中断）重试一次：移动端弱网、微信内置
+          // 浏览器里第一次失败很常见，而重新选图的成本远高于悄悄重发一次。
+          // HTTP 层失败（413/403/…）走的是 resolve，不重试 —— 重发还是同样结果。
+          await new Promise((r) => setTimeout(r, 800));
+          out = await uploadImage(fd);
         }
+        if (out.ok) setPendingImage({ id: out.id, url: out.url });
+        else toast(out.message, 'error');
       } catch {
-        toast('图片上传失败，请重试', 'error');
+        toast('图片上传失败：网络中断，请重试', 'error');
       } finally {
         setUploadingImage(false);
         if (fileRef.current) fileRef.current.value = '';
@@ -1162,6 +1222,7 @@ export default function ChatApp({
                       onDelete={handleDelete}
                       onAvatarClick={openAvatarMenu}
                       onJumpToReply={jumpToMessage}
+                      onImageClick={openLightbox}
                     />
                   </Fragment>
                 );
@@ -1254,6 +1315,8 @@ export default function ChatApp({
           }}
         />
       )}
+
+      {lightbox && <ImageLightbox src={lightbox.url} alt="聊天图片" onClose={closeLightbox} />}
 
       {avatarMenu && (
         <AvatarMenu

@@ -93,6 +93,8 @@ export interface ChatMessageItemProps {
   onAvatarClick: (m: ChatMessageDTO, el: HTMLButtonElement) => void;
   /** 点击回复摘要 → 跳到被引用的原消息 */
   onJumpToReply: (messageId: number) => void;
+  /** 点击图片 → 原位放大（覆盖层），不新开窗口 */
+  onImageClick: (url: string) => void;
 }
 
 function ChatMessageItemInner({
@@ -108,6 +110,7 @@ function ChatMessageItemInner({
   onDelete,
   onAvatarClick,
   onJumpToReply,
+  onImageClick,
 }: ChatMessageItemProps) {
   const [imgError, setImgError] = useState(false);
 
@@ -160,7 +163,7 @@ function ChatMessageItemInner({
             src={msg.image.url}
             alt="聊天图片"
             loading="lazy"
-            onClick={() => window.open(msg.image!.url, '_blank', 'noopener')}
+            onClick={() => onImageClick(msg.image!.url)}
             onError={() => setImgError(true)}
           />
         )}

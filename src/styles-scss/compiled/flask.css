@@ -12059,6 +12059,40 @@ input:checked + .settings-toggle__slider::before {
   font-size: 0.8rem;
 }
 
+.chat-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.8);
+  cursor: zoom-out;
+}
+.chat-lightbox img {
+  max-width: 90%;
+  max-height: 90%;
+  object-fit: contain;
+  border-radius: 8px;
+  cursor: default;
+}
+
+.chat-lightbox__close {
+  position: absolute;
+  top: 16px;
+  right: 20px;
+  border: none;
+  background: transparent;
+  color: #fff;
+  font-size: 1.8rem;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.85;
+}
+.chat-lightbox__close:hover {
+  opacity: 1;
+}
+
 .chat-msg__blog {
   display: flex;
   align-items: center;
