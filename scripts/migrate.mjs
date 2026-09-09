@@ -44,13 +44,23 @@ const die = (msg, code = 1) => {
 
 // ── 迁移文件枚举 ────────────────────────────────────────────────────────────
 
+/**
+ * 排序键：目录名前缀的数字。**不能按字典序排** —— 那样 "10_drop_x" 会排在
+ * "1_oauth" 前面（'0' < '_'），10 号迁移先于 9 号执行；若它依赖前序 DDL
+ * （如删掉 9 号刚加的列）就会直接失败。无数字前缀的目录排到最后，按名字兜底。
+ */
+function migrationSortKey(name) {
+  const m = /^(\d+)/.exec(name);
+  return m ? Number(m[1]) : Number.MAX_SAFE_INTEGER;
+}
+
 function listMigrationDirs() {
   return fs
     .readdirSync(MIGRATIONS_DIR, { withFileTypes: true })
     .filter((d) => d.isDirectory())
     .map((d) => d.name)
     .filter((n) => fs.existsSync(path.join(MIGRATIONS_DIR, n, 'migration.sql')))
-    .sort();
+    .sort((a, b) => migrationSortKey(a) - migrationSortKey(b) || a.localeCompare(b));
 }
 
 function readMigrationSql(name) {
