@@ -6,13 +6,16 @@
 // 【为什么单独成文件 + React.memo】消息列表是全页最重的渲染子树：输入框每敲一个
 // 字都会 setText → ChatApp 重渲染 → 整棵列表重渲染。包上 memo 后，只要 props 引用
 // 不变就跳过（父组件里所有回调都必须是 useCallback 的稳定引用，见 ChatApp）。
+//
+// 【正文渲染】走 ChatMarkdown（Markdown → 净化 HTML）；回复摘要 / 侧栏预览等
+// 只露一行的位置仍按纯文本处理，不进 Markdown 管线。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { memo, useMemo, useState } from 'react';
+import { memo, useState } from 'react';
 import Link from 'next/link';
 import { ArrowRight, BookOpenText } from 'lucide-react';
 import { CHAT_DELETED_TEXT, type ChatMessageDTO } from '@/lib/chat-shared';
-import { linkify } from '@/lib/linkify';
+import ChatMarkdown from './ChatMarkdown';
 
 /** 'MM-DD HH:mm'（与全站通知列表口径一致；库里存的是 UTC+8 墙上时间）。 */
 export function fmtTime(ts: string | null): string {
@@ -45,31 +48,6 @@ export function fmtDay(ts: string | null): string {
   return d.getFullYear() === today.getFullYear()
     ? `${d.getMonth() + 1}月${d.getDate()}日`
     : `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
-}
-
-/** 正文渲染：纯文本 + 自动识别 http(s) 链接（无链接时输出与原来完全一致）。 */
-function ChatText({ content }: { content: string }) {
-  const parts = useMemo(() => linkify(content), [content]);
-  if (parts.length === 1 && parts[0].type === 'text') return <>{content}</>;
-  return (
-    <>
-      {parts.map((p, i) =>
-        p.type === 'link' ? (
-          <a
-            key={i}
-            className="chat-msg__link"
-            href={p.href}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            {p.text}
-          </a>
-        ) : (
-          <span key={i}>{p.text}</span>
-        )
-      )}
-    </>
-  );
 }
 
 /**
@@ -156,7 +134,7 @@ function ChatMessageItemInner({
       {msg.is_deleted ? (
         <span className="chat-msg__deleted">{msg.content}</span>
       ) : (
-        <ChatText content={msg.content} />
+        <ChatMarkdown content={msg.content} />
       )}
     </div>
   ) : null;

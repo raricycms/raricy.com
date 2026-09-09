@@ -4,6 +4,7 @@
 //   · 点回复摘要跳到原消息并高亮
 //   · 消息搜索 → 命中后跳转并高亮
 //   · 日期分隔线
+//   · Markdown 正文渲染 + XSS 不执行（原始 HTML / 伪协议）
 //
 // 【造数纪律】大区是全站共用频道：定位一律用本轮 uniqueTag 的哨兵串锚定，
 // 绝不断言「列表里有几条」。
@@ -106,6 +107,74 @@ test.describe('聊天功能：链接 / 跳转 / 搜索 / 日期分隔', () => {
     await expect(msgRow(page, marker)).toBeVisible();
     // 首条消息之前必定有一条日期分隔（今天/昨天/日期）
     await expect(page.locator('.chat-date-sep').first()).toBeAttached();
+  });
+});
+
+test.describe('Markdown 渲染', () => {
+  test('正文按 Markdown 渲染（粗体 / 行内代码 / 列表 / 引用）', async ({ page }) => {
+    const marker = `e2e-md-${uniqueTag()}`;
+    await loginViaApi(page, SEED_USERS.core.username);
+    await postLobby(
+      page,
+      [
+        marker,
+        '',
+        '**粗体标记** 和 `行内代码`',
+        '',
+        '- 列表项一',
+        '- 列表项二',
+        '',
+        '> 引用块',
+      ].join('\n')
+    );
+
+    await page.goto(`/chat?channel=${LOBBY}`);
+    const row = msgRow(page, marker);
+    await expect(row).toBeVisible();
+
+    const md = row.locator('.chat-msg__md');
+    await expect(md.locator('strong')).toHaveText('粗体标记');
+    await expect(md.locator('code')).toHaveText('行内代码');
+    await expect(md.locator('ul > li')).toHaveCount(2);
+    await expect(md.locator('blockquote')).toHaveText('引用块');
+    // Markdown 语法符号本身不该出现在可见文本里
+    await expect(md).not.toContainText('**粗体标记**');
+  });
+
+  test('原始 HTML / 伪协议一律不执行（XSS）', async ({ page }) => {
+    const marker = `e2e-xss-${uniqueTag()}`;
+    await loginViaApi(page, SEED_USERS.core.username);
+    await postLobby(
+      page,
+      [
+        marker,
+        '<img src=x onerror="window.__xssImg=1">',
+        '<script>window.__xssScript=1</script>',
+        '[点我](javascript:window.__xssLink=1)',
+        // marked 的 inRawBlock 裸文本通道：畸形标签（属性间缺空格）曾直出成真元素
+        'x<code><input type="password"y></code>请输入密码',
+      ].join('\n')
+    );
+
+    await page.goto(`/chat?channel=${LOBBY}`);
+    const row = msgRow(page, marker);
+    await expect(row).toBeVisible();
+
+    const md = row.locator('.chat-msg__md');
+    await expect(md.locator('script')).toHaveCount(0);
+    await expect(md.locator('img')).toHaveCount(0);
+    // 畸形标签不得渲染出真表单控件（含 GFM 任务列表之外的任何 input）
+    await expect(md.locator('input')).toHaveCount(0);
+    // 危险链接保留文字但摘掉 href（点了也不会执行）
+    await expect(md.locator('a', { hasText: '点我' })).not.toHaveAttribute('href');
+
+    // 真·执行探测：onerror / <script> / javascript: href 只要有一个生效，
+    // 这几个全局变量就会被赋值。
+    const executed = await page.evaluate(() => {
+      const w = window as unknown as Record<string, unknown>;
+      return [w.__xssImg, w.__xssScript, w.__xssLink].filter((v) => v !== undefined);
+    });
+    expect(executed).toEqual([]);
   });
 });
 

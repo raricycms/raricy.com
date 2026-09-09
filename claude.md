@@ -109,6 +109,9 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 
 ### Markdown / 内容渲染
 - 博客正文 / 评论 / 故事：客户端 marked + DOMPurify + highlight.js。
+- 聊天正文：`src/lib/chat-markdown.ts`（marked + DOMPurify）。白名单比博客更紧：原始 HTML
+  转义为可见文本、无 img/class/style/on\*、图片降级为链接、裸 URL 走 linkify（中文句读友好）。
+  改这里的白名单等于改安全边界，务必同步 `tests/unit/chat-markdown.test.ts`。
 - 剪贴板引用：`[@<8位>]`（剪贴板）/ `[@<9位>]`（投票）/ `[@<10位>]`（图床）—— 浏览器渲染时替换。
 
 ### 版本控制

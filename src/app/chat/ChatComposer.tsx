@@ -172,7 +172,7 @@ export default function ChatComposer({
           }}
         />
         <div className="chat-composer__foot">
-          <span className="chat-composer__hint">Enter 发送 · Shift+Enter 换行</span>
+          <span className="chat-composer__hint">Enter 发送 · Shift+Enter 换行 · 支持 Markdown</span>
           <button
             type="button"
             className="chat-composer__send"
