@@ -38,6 +38,11 @@ function toast(message: string, type: string) {
  */
 const RECONCILE_MS = 60_000;
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+/**
+ * 移动端抽屉断点：与 _chat.scss 的 `@media (max-width: 900px)` 对齐。该宽度以下
+ * 侧栏是抽屉（固定 300px，折叠态被 CSS 还原成常规宽度），折叠按钮在那里改关抽屉。
+ */
+const DRAWER_MAX_WIDTH = 900;
 /** DOM 上限：同时在 DOM 里的消息条数（超出从顶部折叠，消息仍在内存里）。 */
 const DOM_CAP = 300;
 /** 折叠后点一次「展开更早」放回的条数。 */
@@ -1111,6 +1116,13 @@ export default function ChatApp({
         activeId={activeId}
         collapsed={sidebarCollapsed}
         onToggleCollapse={() => {
+          // 移动端侧栏是抽屉：折叠态在那里被 CSS 还原（_chat.scss 统一 300px），
+          // 点按钮没有任何视觉反馈 —— 改为关闭抽屉，且**不写偏好**：手机上关一次
+          // 抽屉不该让桌面端下次进来也变成窄栏。
+          if (window.innerWidth <= DRAWER_MAX_WIDTH) {
+            setDrawerOpen(false);
+            return;
+          }
           const next = !sidebarCollapsed;
           setSidebarCollapsed(next);
           persistCollapsed(next);
