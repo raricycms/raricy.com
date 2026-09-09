@@ -55,7 +55,7 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 ### 数据与时间
 - 数据库走 SQLite 单进程；高并发写长期建议迁 Postgres。
 - 时间戳 **INTEGER 毫秒**（schema.prisma 与 Prisma 默认对齐）。规整是单向门，旧 Flask 的 `YYYY-MM-DD HH:MM:SS` 文本格式 Prisma 解析即抛 500。
-- **时间戳语义是「UTC+8 墙上时间贴 Z 标签」**（Flask datetime.now() 的历史遗留）。取当前时刻一律用 `nowForDb()`（src/lib/db-time.ts），**禁止无参 `new Date()`** —— tests/unit/db-time-guard.test.ts 静态守卫强制（src/lib、src/app/api、middleware、tests/helpers 范围内）。
+- **时间戳语义是「UTC+8 墙上时间贴 Z 标签」**（Flask datetime.now() 的历史遗留）。取当前时刻一律用 `nowForDb()`（src/lib/db-time.ts）；「还剩多久」用 `hoursUntil()`；展示一律 `ymd`/`ymdhms`（src/lib/format.ts）或 `getUTC*`。**禁止无参 `new Date()`、`new Date(Date.now(...))`、与 `Date.now()` 相减、`toLocale*`、本地 getter（`getHours` 等）** —— tests/unit/db-time-guard.test.ts 五条静态守卫强制（服务端范围：src/lib、src/app/api、middleware、tests/helpers；展示层范围：整个 src/）。
 - 密码哈希与历史 werkzeug **双向互通**——用户**无需重设密码**。
 - 鱼干密钥派生：`SECRET_KEY` 是派生源；`FISH_ENCRYPTION_KEY` 仅全新部署时填。
 - **鱼干存储单位 = 0.1 鱼干（整数）**（Float 时代已整数化，迁移 `3_fish_integer_units` 数据 ×10）。换算只在数据库边界：`src/lib/fish-units.ts` 的 `fishToUnits/unitsToFish`；业务层（服务入参/返回、DTO、前端）一律「鱼干」，最多 1 位小数。`fishToUnits` 拒绝超精度值（fail-loud）。SQLite 列保持 REAL 亲和但值全为整数（`prisma db pull` 会显示 Float，以 schema 注释为准）。`Blog.fishCount` 例外——它本来就是鱼干整数口径，无需换算。
