@@ -136,7 +136,7 @@ API 端点位于 `src/app/api/<group>/<verb>/route.ts`，**薄**层：参数校�
 
 ### 6.3 鱼干账户（跨进程）
 
-- **失败语义 — 写路径 fail-closed**：投喂 / 签到 / 注册建账户 / CLI grant|deduct **全部**遵循：本地事务先收集变更 → 远端账户服务同步成功 → 才 commit 本地事务。远端失败则本地事务回滚，返回 503 / 退出码 2。详见 `claude.md`。
+- **失败语义 — 写路径 fail-closed**：投喂 / 签到 / 注册建账户 / CLI grant|deduct **全部**遵循：本地事务先收集变更 → 远端账户服务同步成功 → 才 commit 本地事务。远端失败则本地事务回滚，返回 503 / 退出码 2。详见 `CLAUDE.md`。
 - **读路径**：默认走远端账户服务拿权威余额；远端不通则降级到本地 `users.driedFish`，并在响应里给出提示。
 - **双层鉴权**：`X-Internal-Token`（服务间共享）+ 用户/系统 API Key（`Authorization: Bearer <key>`）。
 - **API Key 加密**：`User.fishApiKeyEncrypted` 是 Fernet 加密。密钥派生：
@@ -305,5 +305,5 @@ fish:admin       5/s     (CLI grant/deduct 用)
 
 - `docs/deploy.md` — 部署 / 运行 / nginx / systemd
 - `docs/cli.md` — 运维 CLI 命令
-- `claude.md` — 关键约定 / 迁移史速查
+- `CLAUDE.md` — 关键约定 / 迁移史速查
 - 内容/玩法文档：`docs/atamas-game.md` · `docs/cattca-guide.md` · `docs/云剪贴板使用指南.md` 等
