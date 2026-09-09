@@ -25,7 +25,9 @@
   border-color: #f5c2c7;
 }
 
-body.dark-mode {
+// 主题走的是 <html data-theme>，不是 body.dark-mode —— 用旧选择器的话这几条
+// 深色规则永远不命中，暗色下 alert 一直是浅底深字（如博客禁言横幅、申诉提示）。
+[data-theme="dark"] {
   .alert-info { color: #cfe2ff; background-color: #0b284d; border-color: #133a6b; }
   .alert-warning { color: #ffecb5; background-color: #3a2d08; border-color: #4a3a0b; }
   .alert-danger { color: #f5c2c7; background-color: #4a0d12; border-color: #66131b; }

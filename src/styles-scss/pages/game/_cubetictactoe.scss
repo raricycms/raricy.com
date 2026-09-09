@@ -229,10 +229,18 @@
 }
 
 // Dark mode
+//
+// 注意别把 .cubettt-face 的底色直接写在 [data-theme="dark"] 下：它与
+// `.cubettt-cube--red .cubettt-face` 特异性相同（0,2,0），却排在其后，
+// 于是暗色下把红蓝棋子一并刷成灰色 —— 棋子看起来"消失"了。
+// 底色只改空格子，border 可以全体生效（与棋子底色不冲突）。
 [data-theme="dark"] {
   .cubettt-face {
-    background: rgba(60, 60, 60, 0.8);
     border-color: #555;
+  }
+
+  .cubettt-cube--empty .cubettt-face {
+    background: rgba(60, 60, 60, 0.8);
   }
 
   .cubettt-page.is-playing .cubettt-cube--empty:hover .cubettt-face {

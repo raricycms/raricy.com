@@ -1181,47 +1181,50 @@ export default function CubeRoll() {
   );
 }
 
-// 自包含样式（Flask 侧无 cube-* 等价 CSS；保留以维持视觉）
+// 自包含样式（Flask 侧无 cube-* 等价 CSS；保留以维持视觉）。
+// 颜色全部走 --color-* 主题令牌 —— 此前用的 --surface/--ink/--line 等变量在主题
+// 体系里并不存在，暗色下控件与画布外框仍是一块白。画布内部的绘制另行按
+// <html data-theme> 取调色板（见 render 的 dark 参数）。
 const CUBE_CSS = `
 .cube-roll { display: flex; flex-direction: column; align-items: center; gap: 16px; width: 100%; }
 .cube-roll__controls {
   display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-end; justify-content: center;
 }
 .cube-roll__group { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
-.cube-roll__label { font-size: .82rem; font-weight: 600; color: var(--muted, #888); }
+.cube-roll__label { font-size: .82rem; font-weight: 600; color: var(--color-text-secondary); }
 .cube-roll__select {
   padding: 7px 12px;
-  border: 1px solid var(--line-2, #ccc);
-  border-radius: var(--r-sm, 8px);
-  background: var(--surface, #fff);
-  color: var(--ink, #222);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-background-card);
+  color: var(--color-text-primary);
   font-size: .92rem; font-weight: 600;
   cursor: pointer;
 }
-.cube-roll__range { width: 160px; accent-color: var(--accent, #3f51b5); cursor: pointer; }
-.cube-roll__range-value { font-size: .82rem; font-weight: 600; color: var(--ink, #222); }
+.cube-roll__range { width: 160px; accent-color: var(--color-brand-primary); cursor: pointer; }
+.cube-roll__range-value { font-size: .82rem; font-weight: 600; color: var(--color-text-primary); }
 .cube-roll__btn {
   padding: 8px 20px;
-  border: 1px solid var(--line-2, #ccc);
-  border-radius: var(--r-sm, 8px);
-  background: var(--surface, #fff);
-  color: var(--ink, #222);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-background-card);
+  color: var(--color-text-primary);
   font-size: .95rem; font-weight: 600;
   cursor: pointer;
 }
-.cube-roll__btn:hover { background: var(--surface-2, #f5f5f5); }
+.cube-roll__btn:hover { background: var(--color-background-subtle); }
 .cube-roll__status {
   font-size: 1.1rem; font-weight: 600; min-height: 1.4em; text-align: center;
-  color: var(--ink, #222);
+  color: var(--color-text-primary);
 }
-.cube-roll__status--done { color: var(--accent, #1e66f5); }
+.cube-roll__status--done { color: var(--color-brand-primary); }
 .cube-roll__canvas-wrap {
   width: 100%;
   display: flex; justify-content: center;
   padding: 8px;
-  background: var(--surface, #fff);
-  border: 1px solid var(--line, #e0e0e0);
-  border-radius: var(--r-sm, 8px);
+  background: var(--color-background-card);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
   overflow-x: auto;
 }
 .cube-roll__canvas {

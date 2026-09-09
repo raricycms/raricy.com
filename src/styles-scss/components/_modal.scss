@@ -61,28 +61,25 @@
 .modal-body { padding: 1rem; }
 
 // List group styles used inside modal
+//
+// 全部走 --color-* 主题令牌。此前用的是 --border-color / --box-bg / --text 三个
+// **主题体系里并不存在**的变量，fallback 永远是浅色值 —— 暗色下「暂无申诉」
+// 这类条目是一块白底黑字。旧写法靠 body.dark-mode 兜底，但那个类从来没人加过
+// （主题走的是 <html data-theme>），所以兜底也没生效。
 .list-group {
-  border: 1px solid var(--border-color, #e9ecef);
+  border: 1px solid var(--color-border);
   border-radius: 0.5rem;
   overflow: hidden;
 }
 .list-group .list-group-item {
   display: block;
   padding: 0.5rem 0.75rem;
-  background: var(--box-bg, #ffffff);
-  color: var(--text, #2c3e50);
-  border-bottom: 1px solid var(--border-color, #e9ecef);
+  background: var(--color-background-card);
+  color: var(--color-text-primary);
+  border-bottom: 1px solid var(--color-border);
 }
 .list-group .list-group-item:last-child { border-bottom: none; }
 .list-group-item-action { cursor: pointer; }
-.list-group-item-action:hover { background: rgba(0, 0, 0, 0.03); }
-
-// Dark mode adjustments
-body.dark-mode {
-  .modal-content { border-color: #4a5568; }
-  .modal-header, .modal-footer { border-color: #4a5568; }
-  .list-group { border-color: #4a5568; }
-  .list-group .list-group-item { border-color: #4a5568; }
-}
+.list-group-item-action:hover { background: var(--color-background-subtle); }
 
 

@@ -60,6 +60,9 @@
   margin-top: 10px;
   margin-bottom: 10px;
   display: flex;
+  // 不写 align-items 时默认 stretch：<a> 做的次级按钮（如博客编辑页「取消」）
+  // 会被拉到与主按钮同高，文字顶格 —— 所以这里必须居中。
+  align-items: center;
   gap: 10px;
 }
 
@@ -155,6 +158,56 @@
   color: #fff;
   background-color: #dc3545;
   border-color: #dc3545;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+// 柔和 / 幽灵按钮 —— 投票详情页底部操作区在用（对齐 Flask 的 .btn-outline /
+// .btn-danger / .vote-detail__voters-toggle）。这三个修饰符此前**只出现在 JSX 里，
+// CSS 从未定义**：渲染出来是一排没有底色也没有边框的裸按钮，暗色下用浏览器默认色
+// 几乎看不见。颜色全部走主题令牌。
+.btn--ghost {
+  background: transparent;
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border);
+
+  &:hover:not(:disabled) {
+    border-color: var(--color-brand-primary);
+    color: var(--color-brand-primary);
+  }
+}
+
+.btn--danger-soft {
+  background: var(--color-warning-secondary);
+  color: var(--color-warning-primary);
+  border: none;
+
+  &:hover:not(:disabled) {
+    opacity: 0.9;
+  }
+}
+
+// 折叠开关（「查看详细投票情况」）：无底色、无边框的链接式按钮
+.btn--quiet {
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--color-brand-primary);
+  font-size: 0.875rem;
+
+  &:hover:not(:disabled) {
+    text-decoration: underline;
+  }
+}
+
+// 操作按钮行（投票详情页底部）：窄屏换行时保持间距
+.btn-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
 .btn-sm {

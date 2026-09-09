@@ -54,6 +54,8 @@
   font-size: 1.5rem;
 }
 
+// 状态文字按局面换色：默认（进行中）靛蓝，胜方红/蓝，平局灰。
+// 修饰符由组件按 kind 渲染（此前是组件内联 style 写死颜色，暗色下读不清）。
 .uttt-status {
   font-size: 1.3rem;
   margin: $space-4 0;
@@ -61,6 +63,10 @@
   min-height: 30px;
   color: #3f51b5;
   transition: color 0.3s;
+
+  &--x { color: #d32f2f; }
+  &--o { color: #1976d2; }
+  &--draw { color: #757575; }
 }
 
 .uttt-board {
@@ -206,6 +212,9 @@
 }
 
 // Dark mode
+//
+// 棋盘主体是硬编码的靛蓝色阶（浅色下才成立），暗色下要整组换掉：
+// 小棋盘 / 格子换成深靛蓝，胜负遮罩换成深底浅字，状态文字提亮。
 [data-theme="dark"] {
   .uttt-container {
     background: var(--color-background-card);
@@ -215,6 +224,44 @@
     border-color: #555;
     background-color: #555;
   }
+
+  .uttt-mini {
+    background-color: #39406b;
+  }
+
+  .uttt-mini--tied {
+    background-color: #4a4a4a;
+  }
+
+  .uttt-mini--playable:hover {
+    background-color: #2f5a3c;
+  }
+
+  .uttt-cell {
+    background-color: #232838;
+  }
+
+  .uttt-mini--active .uttt-cell:hover {
+    background-color: #2f4a3a;
+  }
+
+  .uttt-mini--won-x::after {
+    color: #ef5350;
+    background-color: rgba(120, 30, 35, 0.75);
+  }
+
+  .uttt-mini--won-o::after {
+    color: #64b5f6;
+    background-color: rgba(20, 60, 110, 0.75);
+  }
+
+  .uttt-status {
+    color: #9fa8da;
+  }
+
+  .uttt-status--x { color: #ef5350; }
+  .uttt-status--o { color: #64b5f6; }
+  .uttt-status--draw { color: #b0b0b0; }
 }
 
 // Responsive

@@ -955,11 +955,13 @@ export default function Gomoku() {
     [initGame]
   );
 
+  // 胜负文字用主题令牌着色。此前写死 var(--ink, #333) / var(--muted, #888) ——
+  // 这两个变量主题体系里并不存在，暗色下「黑方获胜」是深色底上的近黑色。
   const statusColor: string | undefined =
     statusKind === 'win-black'
-      ? 'var(--ink, #333)'
+      ? 'var(--color-text-primary)'
       : statusKind === 'win-white'
-        ? 'var(--muted, #888)'
+        ? 'var(--color-text-secondary)'
         : undefined;
 
   return (

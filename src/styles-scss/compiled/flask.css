@@ -948,6 +948,7 @@ body {
   margin-top: 10px;
   margin-bottom: 10px;
   display: flex;
+  align-items: center;
   gap: 10px;
 }
 
@@ -1048,6 +1049,47 @@ body {
   color: #fff;
   background-color: #dc3545;
   border-color: #dc3545;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn--ghost {
+  background: transparent;
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border);
+}
+.btn--ghost:hover:not(:disabled) {
+  border-color: var(--color-brand-primary);
+  color: var(--color-brand-primary);
+}
+
+.btn--danger-soft {
+  background: var(--color-warning-secondary);
+  color: var(--color-warning-primary);
+  border: none;
+}
+.btn--danger-soft:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.btn--quiet {
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--color-brand-primary);
+  font-size: 0.875rem;
+}
+.btn--quiet:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.btn-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
 .btn-sm {
@@ -1385,7 +1427,7 @@ svg.rc-icon {
 }
 
 .list-group {
-  border: 1px solid var(--border-color, #e9ecef);
+  border: 1px solid var(--color-border);
   border-radius: 0.5rem;
   overflow: hidden;
 }
@@ -1393,9 +1435,9 @@ svg.rc-icon {
 .list-group .list-group-item {
   display: block;
   padding: 0.5rem 0.75rem;
-  background: var(--box-bg, #ffffff);
-  color: var(--text, #2c3e50);
-  border-bottom: 1px solid var(--border-color, #e9ecef);
+  background: var(--color-background-card);
+  color: var(--color-text-primary);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .list-group .list-group-item:last-child {
@@ -1407,20 +1449,7 @@ svg.rc-icon {
 }
 
 .list-group-item-action:hover {
-  background: rgba(0, 0, 0, 0.03);
-}
-
-body.dark-mode .modal-content {
-  border-color: #4a5568;
-}
-body.dark-mode .modal-header, body.dark-mode .modal-footer {
-  border-color: #4a5568;
-}
-body.dark-mode .list-group {
-  border-color: #4a5568;
-}
-body.dark-mode .list-group .list-group-item {
-  border-color: #4a5568;
+  background: var(--color-background-subtle);
 }
 
 .alert {
@@ -1449,17 +1478,17 @@ body.dark-mode .list-group .list-group-item {
   border-color: #f5c2c7;
 }
 
-body.dark-mode .alert-info {
+[data-theme=dark] .alert-info {
   color: #cfe2ff;
   background-color: #0b284d;
   border-color: #133a6b;
 }
-body.dark-mode .alert-warning {
+[data-theme=dark] .alert-warning {
   color: #ffecb5;
   background-color: #3a2d08;
   border-color: #4a3a0b;
 }
-body.dark-mode .alert-danger {
+[data-theme=dark] .alert-danger {
   color: #f5c2c7;
   background-color: #4a0d12;
   border-color: #66131b;
@@ -6893,6 +6922,15 @@ body {
   color: #3f51b5;
   transition: color 0.3s;
 }
+.uttt-status--x {
+  color: #d32f2f;
+}
+.uttt-status--o {
+  color: #1976d2;
+}
+.uttt-status--draw {
+  color: #757575;
+}
 
 .uttt-board {
   display: grid;
@@ -7025,6 +7063,41 @@ body {
 [data-theme=dark] .uttt-board {
   border-color: #555;
   background-color: #555;
+}
+[data-theme=dark] .uttt-mini {
+  background-color: #39406b;
+}
+[data-theme=dark] .uttt-mini--tied {
+  background-color: #4a4a4a;
+}
+[data-theme=dark] .uttt-mini--playable:hover {
+  background-color: #2f5a3c;
+}
+[data-theme=dark] .uttt-cell {
+  background-color: #232838;
+}
+[data-theme=dark] .uttt-mini--active .uttt-cell:hover {
+  background-color: #2f4a3a;
+}
+[data-theme=dark] .uttt-mini--won-x::after {
+  color: #ef5350;
+  background-color: rgba(120, 30, 35, 0.75);
+}
+[data-theme=dark] .uttt-mini--won-o::after {
+  color: #64b5f6;
+  background-color: rgba(20, 60, 110, 0.75);
+}
+[data-theme=dark] .uttt-status {
+  color: #9fa8da;
+}
+[data-theme=dark] .uttt-status--x {
+  color: #ef5350;
+}
+[data-theme=dark] .uttt-status--o {
+  color: #64b5f6;
+}
+[data-theme=dark] .uttt-status--draw {
+  color: #b0b0b0;
 }
 
 @media (max-width: 520px) {
@@ -7554,8 +7627,10 @@ body {
 }
 
 [data-theme=dark] .cubettt-face {
-  background: rgba(60, 60, 60, 0.8);
   border-color: #555;
+}
+[data-theme=dark] .cubettt-cube--empty .cubettt-face {
+  background: rgba(60, 60, 60, 0.8);
 }
 [data-theme=dark] .cubettt-page.is-playing .cubettt-cube--empty:hover .cubettt-face {
   background: rgba(255, 255, 0, 0.5);

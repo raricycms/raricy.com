@@ -72,18 +72,20 @@ export default function UltimateTicTacToe() {
   const superWinner = useMemo(() => checkWinner(state.superBoardState), [state.superBoardState]);
   const boardFull = state.superBoardState.every((s) => s !== '');
 
+  // 颜色交给 .uttt-status--* 修饰符（见 _utictactoe.scss）—— 内联写死颜色在暗色下
+  // 没法跟随主题，靛蓝/红/蓝三档在深色背景上都读不清。
   const status = useMemo(() => {
     if (superWinner) {
-      if (superWinner === 'T') return { text: '平局！', color: '#757575' };
+      if (superWinner === 'T') return { text: '平局！', kind: 'draw' };
       return {
         text: `玩家 ${superWinner} 获胜！`,
-        color: superWinner === 'X' ? '#d32f2f' : '#1976d2',
+        kind: superWinner === 'X' ? 'x' : 'o',
       };
     }
-    if (boardFull) return { text: '平局！', color: '#757575' };
+    if (boardFull) return { text: '平局！', kind: 'draw' };
     return {
       text: `当前玩家: ${state.currentPlayer}${state.nextBoardIndex === null ? ' (自由选择)' : ''}`,
-      color: '#3f51b5',
+      kind: 'active',
     };
   }, [superWinner, boardFull, state.currentPlayer, state.nextBoardIndex]);
 
@@ -150,9 +152,7 @@ export default function UltimateTicTacToe() {
 
   return (
     <div className="uttt">
-      <div className="uttt-status" style={{ color: status.color }}>
-        {status.text}
-      </div>
+      <div className={`uttt-status uttt-status--${status.kind}`}>{status.text}</div>
 
       <div className={`uttt-board${freePlay ? ' uttt-board--free-play' : ''}`}>
         {state.superBoardState.map((superCell, i) => {
