@@ -22,7 +22,7 @@ import {
   SEED_CATEGORY,
   SEED_BLOG,
   SEED_BLOG2,
-  SEED_LOG,
+  SEED_LOGS,
 } from './seed';
 
 // 库路径由 playwright.config.ts 生成并经 env 传来（每轮唯一，原因见那边的注释）。
@@ -204,21 +204,24 @@ export default async function globalSetup() {
       data: { blogId: SEED_BLOG2.id, content: SEED_BLOG2.content, updatedAt: now },
     });
 
-    // 一条公示日志 —— /audit 列表页与 /audit/[id] 详情页的用例都靠它。
+    // 公示日志 —— /audit 列表页与 /audit/[id] 详情页的用例都靠它。
     // 没有它，那些用例只会静默 skip（跳过 ≠ 通过）。
-    await prisma.adminActionLog.create({
-      data: {
-        id: SEED_LOG.id,
-        action: SEED_LOG.action,
-        adminId: SEED_USERS.admin.id,
-        targetUserId: SEED_USERS.plain.id,
-        objectType: SEED_LOG.objectType,
-        objectId: SEED_LOG.objectId,
-        reason: SEED_LOG.reason,
-        visibility: 'public',
-        createdAt: nowForDb(),
-      },
-    });
+    // 每个 project 一条，当事人各不相同（原因见 seed.ts 的注释）。
+    for (const log of Object.values(SEED_LOGS)) {
+      await prisma.adminActionLog.create({
+        data: {
+          id: log.id,
+          action: log.action,
+          adminId: SEED_USERS.admin.id,
+          targetUserId: SEED_USERS[log.targetUser].id,
+          objectType: log.objectType,
+          objectId: log.objectId,
+          reason: log.reason,
+          visibility: 'public',
+          createdAt: nowForDb(),
+        },
+      });
+    }
   } finally {
     await prisma.$disconnect();
   }

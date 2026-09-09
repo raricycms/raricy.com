@@ -6,15 +6,15 @@
 // 入口申诉，而 Flask 里可以。这类「页面缺失 / 链接断头」tsc 不管、单测也不管
 // （单测直接调 service，不经过路由与页面），只有真的走一遍 HTTP 才暴露。
 //
-// 【为什么申诉用例要注册新用户】desktop 与 mobile 两个 project 共用同一个库。
-// 若都用种子里的 core 提交申诉，先跑的那个留下 pending，后跑的「首次提交」就会
-// 撞上「同人同日志只允许一条 pending」而误红。每次注册全新用户即可彻底避开。
-// 申诉 API 只要求登录（不要求 core），所以新注册的 role=user 也能提交 ——
-// 只有详情**页面**需要 core。
+// 【申诉用例为什么按 project 分日志】申诉只允许**当事人本人**提交（见
+// src/lib/audit-service.ts 的 createAppeal）。desktop 与 mobile 两个 project 共库，
+// 同一条日志被两边各申诉一次，后跑的会撞「同人同日志只允许一条 pending」——
+// 故 seed.ts 给每个 project 各备一条日志与一位当事人。
+// 提交申诉的接口要求 core+（详情**页面**同样要求 core）。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { test, expect } from '@playwright/test';
-import { SEED_USERS, SEED_LOG } from './seed';
+import { SEED_USERS, SEED_LOG, SEED_LOGS } from './seed';
 import { loginViaApi, registerFreshUser } from './helpers';
 
 test.describe('操作详情页', () => {
@@ -60,25 +60,40 @@ test.describe('操作详情页', () => {
 });
 
 test.describe('申诉链路', () => {
-  test('提交申诉 → 详情页可见；同人同日志重复提交被拒', async ({ page }) => {
-    const fresh = await registerFreshUser(page, { core: true }); // 申诉是 @authenticated_required，光注册不够
+  test('提交申诉 → 详情页可见；同人同日志重复提交被拒', async ({ page }, testInfo) => {
+    // 每个 project 用各自的日志与当事人 —— 申诉只允许当事人本人提交，
+    // 且 desktop/mobile 共库，同一条日志申诉两次会撞「同人同日志只允许一条 pending」。
+    const log = testInfo.project.name === 'mobile' ? SEED_LOGS.mobile : SEED_LOGS.desktop;
+    const target = SEED_USERS[log.targetUser];
+    await loginViaApi(page, target.username);
 
-    const content = `E2E 申诉 ${fresh.username}`;
-    const res = await page.request.post(`/api/audit/${SEED_LOG.id}/appeal`, { data: { content } });
+    const content = `E2E 申诉 ${target.username}`;
+    const res = await page.request.post(`/api/audit/${log.id}/appeal`, { data: { content } });
     expect(res.status()).toBe(200);
     expect((await res.json()).code).toBe(200);
 
     // 同人同日志只允许一条 pending
-    const dup = await page.request.post(`/api/audit/${SEED_LOG.id}/appeal`, {
+    const dup = await page.request.post(`/api/audit/${log.id}/appeal`, {
       data: { content: '再来一条' },
     });
     expect(dup.status()).toBe(400);
 
     // 换成 core 去看详情页 —— 申诉必须真的落库并渲染出来（服务端真值）
     await loginViaApi(page, SEED_USERS.core.username);
-    await page.goto(`/audit/${SEED_LOG.id}`);
+    await page.goto(`/audit/${log.id}`);
     await expect(page.locator('.list-group')).toContainText(content);
     await expect(page.locator('.list-group')).toContainText('待处理');
+  });
+
+  test('★ 非当事人提交申诉被拒（日志 id 公开，不校验即可替他人申诉）', async ({ page }) => {
+    const fresh = await registerFreshUser(page, { core: true }); // 光注册是 role=user，接口要求 core
+    const log = SEED_LOGS.desktop;
+
+    const res = await page.request.post(`/api/audit/${log.id}/appeal`, {
+      data: { content: `越权申诉 ${fresh.username}` },
+    });
+    expect(res.status()).toBe(400);
+    expect((await res.json()).message).toContain('只能对针对自己的操作记录申诉');
   });
 
   test('空内容申诉被拒', async ({ page }) => {

@@ -43,11 +43,34 @@ export const SEED_BLOG2 = {
   content: '# E2E 排序参照\n\n第二篇种子文章，仅用于列表排序断言。\n',
 };
 
-/** 一条公示的管理操作日志 —— /audit 列表与 /audit/[id] 详情页用例的锚点。 */
-export const SEED_LOG = {
-  id: 90001,
-  action: 'delete_comment',
-  objectType: 'comment',
-  objectId: 'e2e-comment-0001',
-  reason: 'E2E 用的操作原因',
-};
+/**
+ * 公示的管理操作日志 —— /audit 列表与 /audit/[id] 详情页用例的锚点。
+ *
+ * 【为什么两条、且各自指定当事人】申诉只允许**当事人本人**提交
+ * （createAppeal 校验 targetUserId === appellantId）。而 desktop / mobile 两个
+ * project 共用一个库：同一条日志被两边各申诉一次，后跑的会撞上「同人同日志只允许
+ * 一条 pending」。故每个 project 用各自的日志 + 各自的当事人。
+ *
+ * 当事人必须是 **core+**：提交申诉的接口要求 isCoreUser（plain 会 403）。
+ */
+export const SEED_LOGS = {
+  desktop: {
+    id: 90001,
+    action: 'delete_comment',
+    objectType: 'comment',
+    objectId: 'e2e-comment-0001',
+    reason: 'E2E 用的操作原因',
+    targetUser: 'core',
+  },
+  mobile: {
+    id: 90002,
+    action: 'delete_comment',
+    objectType: 'comment',
+    objectId: 'e2e-comment-0002',
+    reason: 'E2E 用的操作原因（mobile）',
+    targetUser: 'owner',
+  },
+} as const;
+
+/** 兼容只读用例的既有引用（列表/详情页只认这条）。 */
+export const SEED_LOG = SEED_LOGS.desktop;

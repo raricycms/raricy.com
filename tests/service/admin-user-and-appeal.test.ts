@@ -810,7 +810,7 @@ describe('createAppeal（提交申诉）', () => {
   it('内容为空 / 纯空白 / 超 2000 字 → 拒绝', async () => {
     const admin = await makeUser({ role: 'admin' });
     const user = await makeUser({ role: 'core' });
-    const logId = await makeLog({ action: 'ban_user', adminId: admin.id });
+    const logId = await makeLog({ action: 'ban_user', adminId: admin.id, targetUserId: user.id });
 
     for (const content of ['', '   ', 'x'.repeat(2001)]) {
       expect(await createAppeal({ logId, appellantId: user.id, content })).toMatchObject({
@@ -837,7 +837,7 @@ describe('createAppeal（提交申诉）', () => {
     const admin = await makeUser({ role: 'admin' });
     const u1 = await makeUser({ role: 'core' });
     const u2 = await makeUser({ role: 'core' });
-    const logId = await makeLog({ action: 'ban_user', adminId: admin.id });
+    const logId = await makeLog({ action: 'ban_user', adminId: admin.id, targetUserId: u1.id });
 
     await prisma.adminActionAppeal.create({
       data: {
@@ -851,33 +851,65 @@ describe('createAppeal（提交申诉）', () => {
     });
 
     // 连原申诉人自己也不行
-    for (const u of [u1, u2]) {
-      expect(await createAppeal({ logId, appellantId: u.id, content: '再来一次' })).toMatchObject({
-        ok: false,
-        message: '该操作申诉已被通过，无法再次申诉',
-      });
-    }
+    expect(await createAppeal({ logId, appellantId: u1.id, content: '再来一次' })).toMatchObject({
+      ok: false,
+      message: '该操作申诉已被通过，无法再次申诉',
+    });
+    // 非当事人连申诉资格都没有
+    expect(await createAppeal({ logId, appellantId: u2.id, content: '再来一次' })).toMatchObject({
+      ok: false,
+      message: '只能对针对自己的操作记录申诉',
+    });
   });
 
-  it('同日志 + 同申诉人已有 pending → 拒绝重复申诉；换个人则允许', async () => {
+  it('同日志 + 同申诉人已有 pending → 拒绝重复申诉；非当事人不可申诉', async () => {
     const admin = await makeUser({ role: 'admin' });
     const u1 = await makeUser({ role: 'core' });
     const u2 = await makeUser({ role: 'core' });
-    const logId = await makeLog({ action: 'delete_blog', adminId: admin.id });
+    const logId = await makeLog({ action: 'delete_blog', adminId: admin.id, targetUserId: u1.id });
 
     expect((await createAppeal({ logId, appellantId: u1.id, content: '一' })).ok).toBe(true);
     expect(await createAppeal({ logId, appellantId: u1.id, content: '二' })).toMatchObject({
       ok: false,
       message: '该日志已存在你提交的待处理申诉',
     });
-    // 另一个人对同一日志可以各自申诉
-    expect((await createAppeal({ logId, appellantId: u2.id, content: '三' })).ok).toBe(true);
+    // 别人对同一条日志没有申诉资格（日志 id 是公开的，不校验就能替他人申诉）
+    expect(await createAppeal({ logId, appellantId: u2.id, content: '三' })).toMatchObject({
+      ok: false,
+      message: '只能对针对自己的操作记录申诉',
+    });
+  });
+
+  it('★ 第三方不能替他人申诉（日志 id 公开，不校验即可越权解封）', async () => {
+    const admin = await makeUser({ role: 'admin' });
+    const victim = await makeUser({ role: 'core' });
+    const attacker = await makeUser({ role: 'core' });
+    const logId = await makeLog({ action: 'ban_user', adminId: admin.id, targetUserId: victim.id });
+
+    expect(
+      await createAppeal({ logId, appellantId: attacker.id, content: '放他一马' })
+    ).toMatchObject({
+      ok: false,
+      message: '只能对针对自己的操作记录申诉',
+      appealId: null,
+    });
+    expect(await prisma.adminActionAppeal.count({ where: { logId } })).toBe(0);
+  });
+
+  it('targetUserId 为空的日志（无当事人）不可申诉', async () => {
+    const admin = await makeUser({ role: 'admin' });
+    const user = await makeUser({ role: 'core' });
+    const logId = await makeLog({ action: 'delete_category', adminId: admin.id });
+    expect(await createAppeal({ logId, appellantId: user.id, content: '啊' })).toMatchObject({
+      ok: false,
+      message: '只能对针对自己的操作记录申诉',
+    });
   });
 
   it('rejected 之后可以对同一日志再次申诉（只有 pending 和 accepted 才拦）', async () => {
     const admin = await makeUser({ role: 'admin' });
     const user = await makeUser({ role: 'core' });
-    const logId = await makeLog({ action: 'delete_blog', adminId: admin.id });
+    const logId = await makeLog({ action: 'delete_blog', adminId: admin.id, targetUserId: user.id });
 
     await prisma.adminActionAppeal.create({
       data: {
@@ -915,7 +947,7 @@ describe('createAppeal（提交申诉）', () => {
       });
     }
     // 昨天的不计入
-    const oldLog = await makeLog({ action: 'delete_blog', adminId: admin.id });
+    const oldLog = await makeLog({ action: 'delete_blog', adminId: admin.id, targetUserId: user.id });
     await prisma.adminActionAppeal.create({
       data: {
         logId: oldLog,
@@ -927,15 +959,24 @@ describe('createAppeal（提交申诉）', () => {
       },
     });
 
-    const freshLog = await makeLog({ action: 'delete_blog', adminId: admin.id });
+    const freshLog = await makeLog({
+      action: 'delete_blog',
+      adminId: admin.id,
+      targetUserId: user.id,
+    });
     expect(await createAppeal({ logId: freshLog, appellantId: user.id, content: '第 21' })).toMatchObject(
       { ok: false, message: '今日申诉次数已达上限（20次）' }
     );
 
-    // 别人的额度不受影响
-    expect((await createAppeal({ logId: freshLog, appellantId: other.id, content: '我第一次' })).ok).toBe(
-      true
-    );
+    // 别人的额度不受影响（各自对自己的日志）
+    const otherLog = await makeLog({
+      action: 'delete_blog',
+      adminId: admin.id,
+      targetUserId: other.id,
+    });
+    expect(
+      (await createAppeal({ logId: otherLog, appellantId: other.id, content: '我第一次' })).ok
+    ).toBe(true);
   });
 });
 

@@ -228,9 +228,17 @@ export async function createAppeal(params: {
   // 日志必须存在
   const log = await prisma.adminActionLog.findUnique({
     where: { id: params.logId },
-    select: { id: true },
+    select: { id: true, targetUserId: true },
   });
   if (!log) return { ok: false, message: '日志不存在', appealId: null };
+
+  // ★ 只有被操作的目标用户本人能申诉 ★
+  // 日志 id 是公开的（/api/audit 列表里就有），若不校验，任何 core 用户都能替
+  // 别人提交申诉；一旦站长通过，等于第三方替他人解除了封禁 / 恢复了已删内容。
+  // targetUserId 为 null 的日志（如删栏目）没有「当事人」，一律不可申诉。
+  if (log.targetUserId !== params.appellantId) {
+    return { ok: false, message: '只能对针对自己的操作记录申诉', appealId: null };
+  }
 
   const acceptedExists = await prisma.adminActionAppeal.findFirst({
     where: { logId: params.logId, status: 'accepted' },
