@@ -27,7 +27,11 @@ import { ExternalLink } from 'lucide-react';
 // 当成跨站，多弹一个框 —— 无害，宁多勿少。
 //
 // 【失效场景】父页面若写了 <iframe sandbox> 且未开 allow-top-navigation(-by-user-activation)，
-// 点击会被浏览器静默拦下 —— 子页面无法绕过，只能靠响应头 CSP frame-ancestors 从源头拒绝。
+// 点击会被浏览器静默拦下 —— 子页面无法绕过。
+//
+// 【不要加 frame-ancestors】本站**刻意允许**被第三方 iframe 嵌入：有一部分用户只能从
+// iframe 进主站。所以别加 X-Frame-Options / CSP frame-ancestors（nginx 层也别加）——
+// 这里给的是一个跳出入口，不是拒绝对外嵌入。
 
 /** 最顶层祖先 frame 的 origin；取不到返回 null。 */
 function topAncestorOrigin(): string | null {

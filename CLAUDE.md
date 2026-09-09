@@ -72,6 +72,10 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 - 对外 Host 判定顺序：`ALLOWED_ORIGINS` → `X-Forwarded-Host` → `Host`。
 - 走 nginx 时务必 `proxy_set_header X-Forwarded-Host $http_host`，否则全站 POST 403。
 
+### iframe 嵌入
+- 本站**刻意允许**被第三方 iframe 嵌入 —— 有一部分用户只能从 iframe 进主站。**不要**加 `X-Frame-Options` / CSP `frame-ancestors`（nginx 层同样不要），也别把它当成「待补的安全响应头」。
+- 跨站嵌入时会话 cookie（`SameSite=Lax`）带不过去，页面显示为未登录；`src/app/components/FrameBuster.tsx` 只在这种情形弹居中模态框给跳出入口，同站嵌入 / 正常访问不渲染。
+
 ### 数据库迁移
 - **不用 `prisma migrate`**（schema.prisma 头禁了）—— 走 `npm run migrate`（脚本：`scripts/migrate.mjs`）。
 - 跟踪表：自己维护 `_raricy_migrations`；新迁移用 `CREATE TABLE IF NOT EXISTS` / `CREATE INDEX IF NOT EXISTS` 保持幂等。**含数据变换的迁移（如 ×10 整数化）只允许执行一次，由跟踪表保证，绝不手工重跑。**
