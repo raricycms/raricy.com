@@ -32,6 +32,10 @@ import { ExternalLink } from 'lucide-react';
 // 【不要加 frame-ancestors】本站**刻意允许**被第三方 iframe 嵌入：有一部分用户只能从
 // iframe 进主站。所以别加 X-Frame-Options / CSP frame-ancestors（nginx 层也别加）——
 // 这里给的是一个跳出入口，不是拒绝对外嵌入。
+//
+// 【故意不记忆】不用 sessionStorage/localStorage，每次整页加载都弹。这是与站长确认过的
+// 取舍：跨站 iframe 里永远显示未登录（cookie 带不过来），「全屏打开」是这批用户登录的
+// 唯一途径 —— 宁可每次提醒。别「顺手」改成记住关闭。
 
 /** 最顶层祖先 frame 的 origin；取不到返回 null。 */
 function topAncestorOrigin(): string | null {
