@@ -72,6 +72,41 @@ test.describe('聊天 SSE 实时推送', () => {
     }
   });
 
+  // 【为什么值得一条用例】自己发的消息会走两条链路回到客户端：POST 响应 + SSE 回声
+  // （回声是给同账号的其他标签页用的，不能省）。两条链路谁先到都可能 —— 早先只有 SSE
+  // 那一侧按 id 去重，POST 响应侧无脑 append，于是同一 id 渲染成两个气泡（React key
+  // 也撞）。这条用例钉死「一次 Enter = 一个气泡 + 一次 POST」。
+  test('自己发消息 → 只出现一个气泡（POST 响应与 SSE 回声按 id 去重）', async ({ page }) => {
+    await loginViaApi(page, SEED_USERS.core.username);
+
+    const posts: string[] = [];
+    page.on('request', (r) => {
+      if (r.method() === 'POST' && /\/api\/chat\/channels\/[^/]+\/messages$/.test(r.url())) {
+        posts.push(r.url());
+      }
+    });
+
+    await page.goto(`/chat?channel=${LOBBY}`);
+    await expect(page.locator('.chat-main')).toBeVisible();
+
+    const ta = page.locator('.chat-composer__input');
+    // 连发几轮：POST 响应与 SSE 回声的先后是时序竞争，单轮碰不上不代表没 bug
+    for (let i = 0; i < 3; i++) {
+      const marker = `e2e-sse-echo-${uniqueTag()}-${i}`;
+      const before = posts.length;
+      await ta.fill(marker);
+      await ta.press('Enter');
+      await expect(page.locator('.chat-msg', { hasText: marker }).first()).toBeVisible({
+        timeout: 8000,
+      });
+      // 等回声那条链路也跑完（否则可能在重复气泡出现之前就断言了）
+      await page.waitForTimeout(500);
+      expect(posts.length - before, `第 ${i} 轮发了不止一次 POST`).toBe(1);
+      const bubbles = page.locator('.chat-msg', { hasText: marker });
+      await expect(bubbles, `第 ${i} 轮出现了重复气泡`).toHaveCount(1);
+    }
+  });
+
   test('私聊消息推到非活动频道 → 侧栏未读徽标即时出现（含别人新发起的会话）', async ({
     page,
     browser,

@@ -304,6 +304,21 @@ export default function ChatApp({
   }, [loadMessages]);
 
   /**
+   * 追加一条消息（按 id 去重）。同一条消息会从两条链路回来：发送接口的响应、
+   * SSE 推给自己的回声（多标签页同步要靠它）—— 谁先谁后都可能，所以两条路径
+   * 必须共用这一个入口，否则同一条消息会出现两个气泡（同 id，React key 也撞）。
+   * 返回 false 表示列表里已有这条（调用方可以跳过滚动 / 未读等后续动作）。
+   */
+  const appendMessage = useCallback((m: ChatMessageDTO): boolean => {
+    const prev = messagesRef.current;
+    if (prev.some((x) => x.id === m.id)) return false;
+    const merged = [...prev, m].sort((a, b) => a.id - b.id);
+    messagesRef.current = merged;
+    setMessages(merged);
+    return true;
+  }, []);
+
+  /**
    * 收到一条实时消息。活动频道 → 合并进列表；其他频道 → 本地累加未读 + 更新预览
    * （下一次对账会以服务端为准，所以这里只是让侧栏「跟手」）。
    */
@@ -311,12 +326,9 @@ export default function ChatApp({
     (m: ChatMessageDTO) => {
       const aid = activeRef.current;
       if (m.channel_id === aid) {
-        const prev = messagesRef.current;
-        if (prev.some((x) => x.id === m.id)) return; // 自己发的也会被推回来 → 按 id 去重
-        const merged = [...prev, m].sort((a, b) => a.id - b.id);
-        messagesRef.current = merged;
-        setMessages(merged);
-        lastIdRef.current = merged[merged.length - 1].id;
+        // 自己发的也会被推回来；发送响应可能已经先到 → 按 id 去重（见 appendMessage）
+        if (!appendMessage(m)) return;
+        lastIdRef.current = Math.max(lastIdRef.current, m.id);
         if (isNearBottom()) {
           requestAnimationFrame(() => scrollToBottom());
           if (document.hasFocus()) void markRead(aid, m.id);
@@ -349,7 +361,7 @@ export default function ChatApp({
         )
       );
     },
-    [currentUserId, isNearBottom, markRead, reconcile, scrollToBottom]
+    [appendMessage, currentUserId, isNearBottom, markRead, reconcile, scrollToBottom]
   );
 
   const onTypingEvent = useCallback(
@@ -560,8 +572,9 @@ export default function ChatApp({
       if (data.code === 200) {
         const m = data.message as unknown as ChatMessageDTO;
         if (typeof m.id === 'number') {
-          setMessages((prev) => [...prev, m]);
-          lastIdRef.current = m.id;
+          // SSE 回声可能已经先把这条推回来了 → 按 id 去重（见 appendMessage）
+          appendMessage(m);
+          lastIdRef.current = Math.max(lastIdRef.current, m.id);
           setText('');
           draftsRef.current.delete(aid); // 已发出 → 该频道草稿作废
           setPendingImage(null);
@@ -581,7 +594,7 @@ export default function ChatApp({
     } finally {
       setSending(false);
     }
-  }, [sending, text, pendingImage, blogQuote, replyTarget, markRead, scrollToBottom]);
+  }, [appendMessage, sending, text, pendingImage, blogQuote, replyTarget, markRead, scrollToBottom]);
 
   // ── 拍一拍（头像选项框） ───────────────────────────────────────────────
   // 走发消息同一条接口（pat_target_id 非空即拍一拍）：复用频道访问校验与限频。
@@ -597,8 +610,9 @@ export default function ChatApp({
         if (data.code === 200) {
           const m = data.message as unknown as ChatMessageDTO;
           if (typeof m.id === 'number') {
-            setMessages((prev) => [...prev, m]);
-            lastIdRef.current = m.id;
+            // 同 send：SSE 回声可能先到 → 按 id 去重（见 appendMessage）
+            appendMessage(m);
+            lastIdRef.current = Math.max(lastIdRef.current, m.id);
             setNewCount(0);
             requestAnimationFrame(() => scrollToBottom());
             if (document.hasFocus()) void markRead(aid, m.id);
@@ -610,7 +624,7 @@ export default function ChatApp({
         toast('拍一拍失败，请重试', 'error');
       }
     },
-    [markRead, scrollToBottom]
+    [appendMessage, markRead, scrollToBottom]
   );
 
   // ── @ta：把「@用户名 」插到光标处（无光标则追加到末尾）────────────────────
