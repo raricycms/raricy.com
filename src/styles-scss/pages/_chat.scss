@@ -611,32 +611,28 @@
   font-weight: 600;
 }
 
+// 气泡：方形直角 + 黑白描边 + 无底色。
+// 描边取「文字主色」——浅色主题近黑、深色主题近白，正好是黑/白边框。
+// 自己发的与别人的不再靠底色区分（都没底色了），靠左右对齐 + 头像位置。
 .chat-msg__content {
   padding: 8px 12px;
-  border-radius: 14px;
-  background: var(--color-background-content);
+  border: 1px solid var(--color-text-primary);
+  border-radius: 0;
+  background: transparent;
   color: var(--color-text-primary);
   font-size: 0.92rem;
   line-height: 1.55;
   white-space: pre-wrap;
   word-break: break-word;
 }
-.chat-msg--mine .chat-msg__content {
-  background: var(--color-brand-secondary);
-  border-top-right-radius: 4px;
-}
-.chat-msg:not(.chat-msg--mine) .chat-msg__content {
-  border-top-left-radius: 4px;
-}
 
-// 正文里 @到我 → 整条消息高亮（左右各用一条品牌色竖条，方向跟着气泡走）。
-// 明暗两套主题都靠 highlight 令牌取底色，自己发的消息同样覆盖（压过 brand-secondary）
+// 正文里 @到我 → 描边换品牌色 + 内侧一条品牌色竖条（方向跟着气泡走）。
+// 无底色可用，只能靠描边与竖条做强调，明暗主题各自取令牌。
 .chat-msg__content--mention {
-  background: var(--color-background-highlight);
+  border-color: var(--color-brand-primary);
   box-shadow: inset 3px 0 0 var(--color-brand-primary);
 }
 .chat-msg--mine .chat-msg__content--mention {
-  background: var(--color-background-highlight);
   box-shadow: inset -3px 0 0 var(--color-brand-primary);
 }
 
@@ -780,10 +776,12 @@
   font-style: italic;
 }
 
+// 图片消息：与气泡同一套语言（方形直角 + 黑白描边），否则图片和文字气泡并排会很割裂
 .chat-msg__image {
   max-width: 260px;
   max-height: 320px;
-  border-radius: 12px;
+  border: 1px solid var(--color-text-primary);
+  border-radius: 0;
   cursor: zoom-in;
   display: block;
   background: var(--color-background-content);

@@ -11834,8 +11834,9 @@ input:checked + .settings-toggle__slider::before {
 
 .chat-msg__content {
   padding: 8px 12px;
-  border-radius: 14px;
-  background: var(--color-background-content);
+  border: 1px solid var(--color-text-primary);
+  border-radius: 0;
+  background: transparent;
   color: var(--color-text-primary);
   font-size: 0.92rem;
   line-height: 1.55;
@@ -11843,22 +11844,12 @@ input:checked + .settings-toggle__slider::before {
   word-break: break-word;
 }
 
-.chat-msg--mine .chat-msg__content {
-  background: var(--color-brand-secondary);
-  border-top-right-radius: 4px;
-}
-
-.chat-msg:not(.chat-msg--mine) .chat-msg__content {
-  border-top-left-radius: 4px;
-}
-
 .chat-msg__content--mention {
-  background: var(--color-background-highlight);
+  border-color: var(--color-brand-primary);
   box-shadow: inset 3px 0 0 var(--color-brand-primary);
 }
 
 .chat-msg--mine .chat-msg__content--mention {
-  background: var(--color-background-highlight);
   box-shadow: inset -3px 0 0 var(--color-brand-primary);
 }
 
@@ -12012,7 +12003,8 @@ input:checked + .settings-toggle__slider::before {
 .chat-msg__image {
   max-width: 260px;
   max-height: 320px;
-  border-radius: 12px;
+  border: 1px solid var(--color-text-primary);
+  border-radius: 0;
   cursor: zoom-in;
   display: block;
   background: var(--color-background-content);
