@@ -76,7 +76,10 @@ test.describe('聊天 SSE 实时推送', () => {
   // （回声是给同账号的其他标签页用的，不能省）。两条链路谁先到都可能 —— 早先只有 SSE
   // 那一侧按 id 去重，POST 响应侧无脑 append，于是同一 id 渲染成两个气泡（React key
   // 也撞）。这条用例钉死「一次 Enter = 一个气泡 + 一次 POST」。
-  test('自己发消息 → 只出现一个气泡（POST 响应与 SSE 回声按 id 去重）', async ({ page }) => {
+  test('自己发消息 → 只出现一个气泡（POST 响应与 SSE 回声按 id 去重）', async ({
+    page,
+    isMobile,
+  }) => {
     await loginViaApi(page, SEED_USERS.core.username);
 
     const posts: string[] = [];
@@ -95,7 +98,10 @@ test.describe('聊天 SSE 实时推送', () => {
       const marker = `e2e-sse-echo-${uniqueTag()}-${i}`;
       const before = posts.length;
       await ta.fill(marker);
-      await ta.press('Enter');
+      // 触屏设备的虚拟键盘没有 Shift，Enter 只能承担换行，发送交给按钮
+      //（ChatComposer 的 useCoarsePointer）。两种输入方式走的是同一条 send()。
+      if (isMobile) await page.locator('.chat-composer__send').click();
+      else await ta.press('Enter');
       await expect(page.locator('.chat-msg', { hasText: marker }).first()).toBeVisible({
         timeout: 8000,
       });

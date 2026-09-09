@@ -7,8 +7,25 @@
 // 输入框，状态上提更省事）。fileRef / textareaRef 由 ChatApp 持有并传入。
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { useEffect, useState } from 'react';
 import { BookOpenText, Image as ImageIcon } from 'lucide-react';
 import type { ChatMessageDTO } from '@/lib/chat-shared';
+
+// 触屏设备（手机/平板）的虚拟键盘没有 Shift 键，Enter 只能承担换行，
+// 发送交给右下角按钮。按指针/悬停能力判断，比 UA 嗅探稳，混合设备
+// （触屏笔记本外接键盘）也不会误判。SSR 先按桌面渲染，挂载后校正。
+function useCoarsePointer() {
+  const [coarse, setCoarse] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia?.('(hover: none) and (pointer: coarse)');
+    if (!mq) return;
+    setCoarse(mq.matches);
+    const onChange = (e: MediaQueryListEvent) => setCoarse(e.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+  return coarse;
+}
 
 // SVG 不在内联展示白名单：raw 路由对 SVG 强制 Content-Disposition: attachment
 // （防内联脚本执行的 XSS 设计），<img> 内联渲染必然失败，聊天场景只收位图。
@@ -57,6 +74,8 @@ export default function ChatComposer({
   onClearBlogQuote: () => void;
   onClearImage: () => void;
 }) {
+  const isTouch = useCoarsePointer();
+
   return (
     <div
       className="chat-composer"
@@ -147,7 +166,9 @@ export default function ChatComposer({
           ref={textareaRef}
           className="chat-composer__input"
           rows={1}
-          placeholder="输入消息，Enter 发送，Shift+Enter 换行"
+          placeholder={
+            isTouch ? '输入消息，Enter 换行，点「发送」提交' : '输入消息，Enter 发送，Shift+Enter 换行'
+          }
           value={text}
           onChange={(e) => {
             onTextChange(e.target.value);
@@ -157,6 +178,8 @@ export default function ChatComposer({
             el.style.height = `${Math.min(176, el.scrollHeight)}px`;
           }}
           onKeyDown={(e) => {
+            // 触屏：不拦截 Enter，走浏览器默认行为插入换行
+            if (isTouch) return;
             if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
               onSend();
@@ -172,7 +195,9 @@ export default function ChatComposer({
           }}
         />
         <div className="chat-composer__foot">
-          <span className="chat-composer__hint">Enter 发送 · Shift+Enter 换行 · 支持 Markdown</span>
+          <span className="chat-composer__hint">
+            {isTouch ? 'Enter 换行 · 点发送提交 · 支持 Markdown' : 'Enter 发送 · Shift+Enter 换行 · 支持 Markdown'}
+          </span>
           <button
             type="button"
             className="chat-composer__send"
