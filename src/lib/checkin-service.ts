@@ -31,7 +31,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { prisma } from './db';
-import { nowForDb } from './db-time';
+import { nowForDb, todayStr } from './db-time';
 import { addFish } from './fish-service';
 import { fishToUnits, unitsToFish } from './fish-units';
 import {
@@ -62,10 +62,12 @@ export function fortuneLabel(value: number | null | undefined): string {
   return FORTUNE_LABELS[value] ?? '';
 }
 
-/** UTC+8 当天的 YYYY-MM-DD（对齐 Flask _today_utc8）。 */
+/**
+ * UTC+8 当天的 YYYY-MM-DD（对齐 Flask _today_utc8）。
+ * 直接委托 db-time 的 todayStr()：同一个「本站时钟」只有一处实现，别再手写 Date.now()+8h。
+ */
 export function todayUtc8(): string {
-  const shifted = new Date(Date.now() + 8 * 3600 * 1000);
-  return shifted.toISOString().slice(0, 10); // "YYYY-MM-DD"
+  return todayStr();
 }
 
 /** 把 YYYY-MM-DD 转成存库用的 Date（零点 UTC）。 */
