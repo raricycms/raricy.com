@@ -45,7 +45,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <FooterGate>
           <Footer />
         </FooterGate>
-        {/* 被 iframe 嵌入时显示「全屏打开」提示条（正常访问时不渲染） */}
+        {/* 被跨站 iframe 嵌入时弹出居中提示框（同站嵌入 / 正常访问不渲染） */}
         <FrameBuster />
         {/* Flask 顶栏交互脚本：主题旋转切换 / 用户下拉 / 移动端折叠 / toast */}
         <Script src="/static/js/core/base.js" strategy="afterInteractive" />

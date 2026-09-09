@@ -1,62 +1,129 @@
 @use '../abstracts/variables' as v;
 
-/* 被 iframe 嵌入时的「跳出」提示条（FrameBuster.tsx）。
-   固定视口底部居中：顶部已被固定顶栏（.site-navbar，z-index 1030）占住，
-   底部只剩正文与页脚，不挡内容。 */
+/* 被跨站 iframe 嵌入时的居中模态框（FrameBuster.tsx）。
+   只跨站弹：同站嵌入与正常访问完全不渲染。
+
+   垂直居中照抄 _modal.scss 的结论：flex 容器上 align-items:center 会把超高内容的
+   顶部挤出可滚区域，所以定位交给子元素的 margin:auto，overlay 只负责 flex + 滚动。
+   z-index 10050：站内最高是 .modal-overlay 的 10000、toast 9999 —— 这条提示必须盖住一切。 */
 .frame-buster {
   position: fixed;
-  left: 50%;
-  bottom: v.$space-4;
-  transform: translateX(-50%);
-  z-index: 1080;
+  inset: 0;
+  z-index: 10050;
   display: flex;
   align-items: center;
-  gap: v.$space-3;
-  max-width: calc(100% - #{v.$space-6});
-  padding: v.$space-2 v.$space-3;
+  justify-content: center;
+  overflow-y: auto;
+  padding: v.$space-4 0;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.frame-buster__dialog {
+  width: calc(100% - #{v.$space-8});
+  max-width: 420px;
+  margin: auto;
+  padding: v.$space-4;
   background: var(--color-background-card);
-  border: 1px solid var(--color-border);
-  border-radius: v.$radius-large;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
-  font-size: 0.9rem;
+  color: var(--color-text-primary);
+  border-radius: 30px;
+  box-shadow: var(--shadow-card-brand);
+
+  /* 初始焦点落在这里（tabIndex={-1}）：读屏会念标题，且 Enter 不会误触「全屏打开」 */
+  &:focus {
+    outline: none;
+  }
 }
 
-.frame-buster__text {
-  color: var(--color-text-secondary);
-  white-space: nowrap;
+.frame-buster__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: v.$space-2;
+  margin-bottom: v.$space-3;
 }
 
-/* 配色对齐 .button-primary（浅底 + 品牌字色，悬停转实心），随 [data-theme] 自动切换 */
-.frame-buster__btn {
+.frame-buster__title {
+  margin: 0;
+  font-size: 1.125rem;
+}
+
+.frame-buster__close {
   display: inline-flex;
   align-items: center;
-  gap: v.$space-1;
-  padding: 6px v.$space-3;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: none;
+  border: none;
   border-radius: v.$radius-max;
-  background: var(--color-brand-secondary);
-  color: var(--color-brand-primary);
-  font-weight: bold;
-  white-space: nowrap;
-  transition: background-color 0.3s ease, color 0.3s ease;
+  color: var(--color-text-secondary);
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
 
   &:hover {
-    background: var(--color-brand-primary);
-    color: #fff;
+    background: var(--color-background-content);
+    color: var(--color-text-primary);
   }
   &:active {
     filter: brightness(0.6);
   }
 }
 
-/* 窄屏：撑满可用宽度，文案可换行 */
-@media (max-width: 480px) {
-  .frame-buster {
-    left: v.$space-3;
-    right: v.$space-3;
-    transform: none;
-    justify-content: space-between;
+.frame-buster__text {
+  margin: 0 0 v.$space-4;
+  color: var(--color-text-secondary);
+  line-height: 1.6;
+}
+
+/* 嵌入方 origin 单独强调：长域名换行，不撑破卡片 */
+.frame-buster__origin {
+  color: var(--color-text-primary);
+  word-break: break-all;
+}
+
+.frame-buster__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: v.$space-2;
+}
+
+/* 默认 ghost 按钮（「继续浏览」），--primary 走 .button-primary 配色（「全屏打开」） */
+.frame-buster__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: v.$space-1;
+  padding: 8px v.$space-4;
+  border: 1px solid var(--color-border);
+  border-radius: v.$radius-max;
+  background: none;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-weight: bold;
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color 0.3s ease, color 0.3s ease;
+
+  &:hover {
+    background: var(--color-background-content);
+    color: var(--color-text-primary);
   }
-  .frame-buster__text {
-    white-space: normal;
+  &:active {
+    filter: brightness(0.6);
+  }
+}
+
+.frame-buster__btn--primary {
+  border-color: transparent;
+  background: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+
+  &:hover {
+    background: var(--color-brand-primary);
+    color: #fff;
   }
 }
