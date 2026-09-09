@@ -59,10 +59,12 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       }
     : null;
 
+  // ⚠️【有意偏离 Flask】Flask 的 User.to_dict() 含 email，但本接口只要求 core，
+  // 等于把全站邮箱开放给任何一个邀请码持有者（公开资料接口 to_public_dict 反而
+  // 明确排除 email）。这里去掉：本接口的用途是禁言历史，UI 也没用到 email。
   const userDict = {
     id: user.id,
     username: user.username,
-    email: user.email,
     avatar_path: user.avatarPath,
     bio: user.bio ?? '',
     created_at: iso(user.createdAt),
