@@ -246,3 +246,47 @@ test.describe('会话偏好（静音 / 删除会话）', () => {
     await expect(row).toHaveCount(0, { timeout: 5000 });
   });
 });
+
+test.describe('发起私聊', () => {
+  /** 私聊行 = 带头像（.chat-chan__avatar）而非大区图标（.chat-chan__icon）的行。 */
+  function dmRow(page: import('@playwright/test').Page, peer: string) {
+    return page
+      .locator('.chat-chan-wrap', { hasText: peer })
+      .filter({ hasNot: page.locator('.chat-chan__icon') })
+      .first();
+  }
+
+  /**
+   * 点一次就进会话、且这一行要留得住。
+   *
+   * 【为什么是 admin ↔ owner】这条用例要的是「双方都还没发过消息」的空会话 ——
+   * 服务端列表刻意不返回空会话（防骚扰），正是这条用例要防的回归面。全套用例里
+   * 只有 core↔admin、core↔owner 被用过，admin↔owner 始终是空的。
+   *
+   * 【防的回归】URL 里的 ?channel= 是应用自己写的镜像。旧实现把它放在「首次加载」
+   * effect 的依赖里：发起私聊 → router.replace → effect 重跑 → 拉回不含空会话的
+   * 服务端列表整表替换 → 刚建的私聊被冲掉、选中态退回大区。于是「发起私聊要点
+   * 两次才成功」（第二次 URL 没变、effect 不重跑，才侥幸留下）。
+   */
+  test('点一次就进入会话，且对账后该行仍在侧栏', async ({ page, isMobile }) => {
+    await loginViaApi(page, SEED_USERS.admin.username);
+    await page.goto('/chat');
+    if (isMobile) await page.locator('.chat-main__menu').click();
+
+    await page.locator('.chat-new-btn').click();
+    await page.locator('.chat-new-item', { hasText: SEED_USERS.owner.username }).click();
+
+    // 弹窗关闭 + 直接进入该会话
+    await expect(page.locator('.chat-new-modal')).toHaveCount(0);
+    await expect(page.locator('.chat-main__title')).toHaveText(SEED_USERS.owner.username);
+
+    // 窗口重新聚焦 → 触发一次对账（整表替换 channels）。空会话必须被补回来。
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await page.waitForTimeout(1000);
+    // 移动端侧栏是抽屉，进会话时被关掉了 → 再拉开
+    if (isMobile) await page.locator('.chat-main__menu').click();
+
+    await expect(dmRow(page, SEED_USERS.owner.username)).toBeVisible();
+    await expect(page.locator('.chat-main__title')).toHaveText(SEED_USERS.owner.username);
+  });
+});

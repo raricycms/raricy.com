@@ -53,7 +53,13 @@ async function api(url: string, init?: RequestInit): Promise<ApiEnvelope> {
     ...init,
     headers: isForm ? undefined : { 'Content-Type': 'application/json' },
   });
-  return (await res.json().catch(() => ({ code: res.status, message: '请求失败' }))) as ApiEnvelope;
+  // 响应不是 JSON 只可能是「请求根本没到业务代码」：反代 413（图床超过
+  // client_max_body_size）/ 网关 502 / 未捕获异常的 500 错误页。带上状态码，
+  // 否则只剩一句「请求失败」，排查时无从下手。
+  return (await res.json().catch(() => ({
+    code: res.status,
+    message: `请求失败（HTTP ${res.status}）`,
+  }))) as ApiEnvelope;
 }
 
 /** 两条消息相差多少分钟（时间戳缺失/非法时返回 Infinity，即不合并）。 */
@@ -63,6 +69,29 @@ function minutesApart(a: string | null, b: string | null): number {
   const tb = new Date(b).getTime();
   if (Number.isNaN(ta) || Number.isNaN(tb)) return Number.POSITIVE_INFINITY;
   return Math.abs(tb - ta) / 60000;
+}
+
+/**
+ * 把「本地新建、双方还没发过消息」的私聊补回频道列表。
+ *
+ * 服务端列表刻意不含空会话（否则任何人点一下「发起私聊」，对方侧栏就凭空多出一行），
+ * 但发起方本人要看得见自己刚建的会话 —— 这里从 pending 表补回，并顺手清掉已经在
+ * 服务端列表里出现的条目（说明已有消息，此后以服务端为准）。
+ */
+function withPendingDirects(
+  list: ChatChannelDTO[],
+  pending: Map<string, ChatChannelDTO>
+): ChatChannelDTO[] {
+  if (pending.size === 0) return list;
+  for (const id of [...pending.keys()]) {
+    if (list.some((c) => c.id === id)) pending.delete(id);
+  }
+  const missing = [...pending.values()].filter((p) => !list.some((c) => c.id === p.id));
+  if (!missing.length) return list;
+  // 插在大区之后：与「新建会话排在私聊最前」的预期一致，且对账前后位置稳定
+  const at = list.findIndex((c) => c.kind === 'lobby');
+  const insertAt = at >= 0 ? at + 1 : 0;
+  return [...list.slice(0, insertAt), ...missing, ...list.slice(insertAt)];
 }
 
 /**
@@ -136,6 +165,24 @@ export default function ChatApp({
   textRef.current = text;
   /** 按频道暂存输入框草稿：切走时存、切回时恢复（否则给 A 打一半切到 B 会误发）。 */
   const draftsRef = useRef<Map<string, string>>(new Map());
+  /**
+   * 首屏初始频道，只在挂载时读一次。
+   *
+   * URL 里的 `?channel=` 是**应用自己写进去的镜像**（切频道时 router.replace），
+   * 不是驱动源 —— 若把它留在「首次加载」effect 的依赖里，每次切频道都会重跑
+   * 首次加载：拉一次 /api/chat/poll 再整表替换 channels。而服务端列表**不含
+   * 双方都还没发过消息的私聊**（防骚扰，见 listChannelsForUser），于是刚发起的
+   * 私聊被冲掉、选中态退回大区 —— 表现为「发起私聊要点两次才成功」（第二次
+   * 点的用户相同 → router.replace 目标 URL 没变 → effect 不重跑，才侥幸留下）。
+   */
+  const initialChannelRef = useRef(initialChannel);
+  /**
+   * 本地新建、双方还没发过消息的私聊。服务端列表不返回空会话，对账
+   * （reconcile）整表替换时要把它们补回侧栏，否则发起私聊后最多 60 秒
+   * （或窗口一失焦再聚焦）那一行就自己消失了。频道一旦在服务端列表里出现
+   * （有消息了）即从此表移除，之后以服务端为准。
+   */
+  const pendingDirectRef = useRef<Map<string, ChatChannelDTO>>(new Map());
   /** 本地已读地板：频道 → 已确认读到的最新消息 id（用于压制对账响应造成的未读回跳）。 */
   const readFloorRef = useRef<Map<string, number>>(new Map());
   /** 跳转高亮：当前被锚点/搜索命中的消息 id（2 秒后自动清除）。 */
@@ -319,7 +366,8 @@ export default function ChatApp({
         const lastId = c.last_message?.id ?? 0;
         return floor > 0 && lastId > 0 && floor >= lastId ? { ...c, unread_count: 0 } : c;
       });
-      setChannels(merged);
+      // 服务端列表不含空会话 → 补回本地刚发起、还没发过消息的私聊
+      setChannels(withPendingDirects(merged, pendingDirectRef.current));
       setChannelsLoaded(true);
     }
   }, []);
@@ -482,8 +530,11 @@ export default function ChatApp({
   }, [onStreamMessage, onTypingEvent, reconcile, reloadActive]);
 
   // ── 首次加载：频道列表 + 选定初始频道 ─────────────────────────────────
+  // 只在挂载时跑一次：initialChannel 从 ref 读（URL 是应用自己写的镜像，变了也不该
+  // 重跑首次加载 —— 见 initialChannelRef 的说明）。
   useEffect(() => {
     let alive = true;
+    const initialChannel = initialChannelRef.current;
     (async () => {
       const data = await api('/api/chat/poll');
       if (!alive || data.code !== 200) return;
@@ -515,7 +566,8 @@ export default function ChatApp({
     return () => {
       alive = false;
     };
-  }, [initialChannel, loadMessages, router]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadMessages, router]);
 
   // ── 草稿暂存 / 恢复（按频道） ────────────────────────────────────────────
   const stashDraft = useCallback((channelId: string | null) => {
@@ -925,6 +977,7 @@ export default function ChatApp({
           toast(data.message || '删除失败', 'error');
           return;
         }
+        pendingDirectRef.current.delete(ch.id); // 删了就别再被 pending 补回侧栏
         setChannels((prev) => prev.filter((c) => c.id !== ch.id));
         toast('会话已删除', 'success');
         // 删掉的正是当前打开的会话 → 切到第一个可用会话，没有就落空态
@@ -951,6 +1004,9 @@ export default function ChatApp({
   // ── 发起私聊（弹窗回调） ──────────────────────────────────────────────
   const onDirectCreated = useCallback(
     (ch: ChatChannelDTO) => {
+      // 空会话（双方都还没发过消息）不在服务端列表里 → 记进 pending 表，对账整表
+      // 替换时补回来；否则这一行会在下一次对账（≤60 秒，或窗口一失焦再聚焦）消失。
+      if (!ch.last_message) pendingDirectRef.current.set(ch.id, ch);
       void switchWithFade(
         () => {
           setChannels((prev) => {
@@ -960,7 +1016,10 @@ export default function ChatApp({
               next[idx] = ch;
               return next;
             }
-            return [ch, ...prev];
+            // 大区恒置顶（与服务端排序一致）→ 新会话插在它之后
+            const at = prev.findIndex((c) => c.kind === 'lobby');
+            const insertAt = at >= 0 ? at + 1 : 0;
+            return [...prev.slice(0, insertAt), ch, ...prev.slice(insertAt)];
           });
           setModalOpen(false);
           stashDraft(activeRef.current);
