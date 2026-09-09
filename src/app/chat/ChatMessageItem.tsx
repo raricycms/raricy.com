@@ -180,7 +180,19 @@ function ChatMessageItemInner({
         title="跳到这条消息"
       >
         <span className="chat-msg__reply-name">{msg.reply.author_name ?? ''}：</span>
-        <span className="chat-msg__reply-text">{msg.reply.content}</span>
+        {/* 被引用的是纯图片消息时正文为空 → 用缩略图代替文字（图已删/缺失时服务端
+            在 content 里给了占位文案，这里自然回落到文字分支） */}
+        {msg.reply.content ? (
+          <span className="chat-msg__reply-text">{msg.reply.content}</span>
+        ) : null}
+        {msg.reply.image_url ? (
+          <img
+            className="chat-msg__reply-thumb"
+            src={msg.reply.image_url}
+            alt="引用的图片"
+            loading="lazy"
+          />
+        ) : null}
       </button>
     ) : null;
 

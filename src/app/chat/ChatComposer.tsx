@@ -75,6 +75,12 @@ export default function ChatComposer({
   onClearImage: () => void;
 }) {
   const isTouch = useCoarsePointer();
+  // 回复条预览：被回复的是纯图片消息时正文为空 → 给占位文案（与侧栏预览同口径），
+  // 否则这一条会显示成「回复 某某：」后面空着。
+  const replyPreview = replyTarget
+    ? replyTarget.content ||
+      (replyTarget.image ? '[图片]' : replyTarget.image_missing ? '[图片已删除]' : '')
+    : '';
 
   return (
     <div
@@ -90,7 +96,7 @@ export default function ChatComposer({
       {replyTarget && (
         <div className="chat-composer__reply">
           <span className="chat-composer__reply-text">
-            回复 {replyTarget.author.username}：{replyTarget.content}
+            回复 {replyTarget.author.username}：{replyPreview}
           </span>
           <button
             type="button"

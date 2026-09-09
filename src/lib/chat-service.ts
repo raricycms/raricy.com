@@ -565,7 +565,13 @@ async function attachImagesAndReplies(rows: MessageRow[]): Promise<ChatMessageDT
 
   // 引用回复：批量按 replyTo 取（同频道、分页子集内），软删的回复照常给出占位。
   const replyIds = [...new Set(rows.map((r) => r.replyTo).filter((v): v is number => v != null))];
-  const replyMap = new Map<number, { id: number; content: string; isDeleted: boolean | null; author: { username: string } }>();
+  const replyMap = new Map<number, {
+    id: number;
+    content: string;
+    isDeleted: boolean | null;
+    imageId: string | null;
+    author: { username: string };
+  }>();
   if (replyIds.length) {
     const reps = await prisma.chatMessage.findMany({
       where: { id: { in: replyIds } },
@@ -573,10 +579,28 @@ async function attachImagesAndReplies(rows: MessageRow[]): Promise<ChatMessageDT
         id: true,
         content: true,
         isDeleted: true,
+        imageId: true,
         author: { select: { username: true } },
       },
     });
     for (const r of reps) replyMap.set(r.id, r);
+
+    // 被引用消息若是图片消息，引用块要出缩略图 → 与正文图片同一套「存在且未软删」
+    // 口径；已经取到的 id 不重复查，直接复用上面那张 imageMap。
+    const replyImageIds = [
+      ...new Set(
+        [...replyMap.values()]
+          .map((r) => r.imageId)
+          .filter((v): v is string => !!v && !imageMap.has(v))
+      ),
+    ];
+    if (replyImageIds.length) {
+      const imgs = await prisma.imageHosting.findMany({
+        where: { id: { in: replyImageIds }, ignore: false },
+        select: { id: true, mimeType: true },
+      });
+      for (const i of imgs) imageMap.set(i.id, i);
+    }
   }
 
   // 引用博客：批量按 blog_id 取当前行（blogs.ignore=1 / 行不存在 → blog_missing 占位，
@@ -620,6 +644,14 @@ async function attachImagesAndReplies(rows: MessageRow[]): Promise<ChatMessageDT
     const img = m.imageId ? imageMap.get(m.imageId) : undefined;
     const reply = m.replyTo != null ? replyMap.get(m.replyTo) : undefined;
     const blog = m.blogId ? blogMap.get(m.blogId) : undefined;
+    const replyImage = reply?.imageId ? imageMap.get(reply.imageId) : undefined;
+    // 引用块正文：被引用消息是纯图片消息时正文为空 —— 图还在就交给 image_url 渲染
+    // 缩略图，图没了给占位文案（否则引用块只剩「作者：」）。
+    const replyText = !reply
+      ? ''
+      : (reply.isDeleted ?? false)
+        ? CHAT_DELETED_TEXT
+        : reply.content || (reply.imageId && !replyImage ? '[图片已删除]' : '');
     return {
       id: m.id,
       channel_id: m.channelId,
@@ -654,9 +686,13 @@ async function attachImagesAndReplies(rows: MessageRow[]): Promise<ChatMessageDT
         !deleted && reply
           ? {
               id: reply.id,
-              content: (reply.isDeleted ?? false) ? CHAT_DELETED_TEXT : reply.content,
+              content: replyText,
               author_name: reply.author.username,
               is_deleted: reply.isDeleted ?? false,
+              image_url:
+                !(reply.isDeleted ?? false) && replyImage
+                  ? `/api/images/${replyImage.id}/raw`
+                  : null,
             }
           : null,
       is_deleted: deleted,

@@ -881,6 +881,59 @@ describe('软删消息不返回附件', () => {
     expect(target?.reply).toBeNull();
   });
 
+  it('引用图片消息：reply 带缩略图 URL、正文留空（前端渲染「作者：缩略图」）', async () => {
+    const a = await makeUser({ role: 'core' });
+    const b = await makeUser({ role: 'core' });
+    const ch = (await startDirectChannel(a.id, b.id)) as { channel: { id: string } };
+    const img = await makeImage(b.id);
+    const base = (await sendMessage({
+      channelId: ch.channel.id,
+      authorId: b.id,
+      imageId: img.id,
+      content: '',
+    })) as { message: { id: number } };
+    await sendMessage({
+      channelId: ch.channel.id,
+      authorId: a.id,
+      content: '这张图不错',
+      replyTo: base.message.id,
+    });
+
+    const list = (await listMessages(ch.channel.id, b.id)) as {
+      messages: { content: string; reply: { content: string; image_url: string | null } | null }[];
+    };
+    const reply = list.messages.find((m) => m.content === '这张图不错')?.reply;
+    expect(reply?.content).toBe('');
+    expect(reply?.image_url).toBe(`/api/images/${img.id}/raw`);
+  });
+
+  it('引用图片消息：图已软删 → reply 给占位文案而非空白', async () => {
+    const a = await makeUser({ role: 'core' });
+    const b = await makeUser({ role: 'core' });
+    const ch = (await startDirectChannel(a.id, b.id)) as { channel: { id: string } };
+    const img = await makeImage(b.id);
+    const base = (await sendMessage({
+      channelId: ch.channel.id,
+      authorId: b.id,
+      imageId: img.id,
+      content: '',
+    })) as { message: { id: number } };
+    await sendMessage({
+      channelId: ch.channel.id,
+      authorId: a.id,
+      content: '这张图不错',
+      replyTo: base.message.id,
+    });
+    await prisma.imageHosting.update({ where: { id: img.id }, data: { ignore: true } });
+
+    const list = (await listMessages(ch.channel.id, b.id)) as {
+      messages: { content: string; reply: { content: string; image_url: string | null } | null }[];
+    };
+    const reply = list.messages.find((m) => m.content === '这张图不错')?.reply;
+    expect(reply?.content).toBe('[图片已删除]');
+    expect(reply?.image_url).toBeNull();
+  });
+
   it('拍一拍软删后仍带 pat（前端要渲染居中删除占位行）', async () => {
     const a = await makeUser({ role: 'core' });
     const sent = (await sendMessage({

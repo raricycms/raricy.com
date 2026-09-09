@@ -12147,6 +12147,16 @@ input:checked + .settings-toggle__slider::before {
   font-weight: 600;
 }
 
+.chat-msg__reply-thumb {
+  display: inline-block;
+  vertical-align: middle;
+  max-width: 88px;
+  max-height: 40px;
+  margin-left: 4px;
+  border-radius: 4px;
+  object-fit: cover;
+}
+
 .chat-msg__content {
   padding: 8px 12px;
   border: 1px solid var(--color-text-primary);

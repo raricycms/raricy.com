@@ -714,6 +714,17 @@
   color: var(--color-brand-primary);
   font-weight: 600;
 }
+// 被引用消息是图片消息 → 引用块渲染缩略图（正文为空，不再只剩「作者：」）。
+// 40px 高 + 上下 4px padding 落在引用块 60px 的 max-height 之内，不会被裁掉。
+.chat-msg__reply-thumb {
+  display: inline-block;
+  vertical-align: middle;
+  max-width: 88px;
+  max-height: 40px;
+  margin-left: 4px;
+  border-radius: 4px;
+  object-fit: cover;
+}
 
 // 气泡：方形直角 + 黑白描边 + 无底色。
 // 描边取「文字主色」——浅色主题近黑、深色主题近白，正好是黑/白边框。

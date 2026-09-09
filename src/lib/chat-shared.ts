@@ -52,6 +52,11 @@ export interface ChatReplyDTO {
   content: string;
   author_name: string | null;
   is_deleted: boolean;
+  /**
+   * 被引用消息是图片消息且图仍可展示 → 缩略图 URL（此时 content 为空，前端渲染
+   * 「作者：<缩略图>」）；图已删/缺失为 null，由服务端在 content 里给占位文案。
+   */
+  image_url: string | null;
 }
 
 export interface ChatMessageDTO {
