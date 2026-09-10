@@ -67,8 +67,20 @@ export async function loginViaApi(page: Page, username: string) {
 /**
  * 注册一个全新用户并让浏览器 context 处于其登录态。返回用户信息。
  *
+ * 【什么时候必须用它而不是种子号】凡是**按用户计限频**的写操作，发言者/操作者
+ * 都该用一次性用户，别借种子号。种子号（e2e_core / e2e_admin）是两个 project
+ * 共用的，desktop 和 mobile 各跑一轮 —— 前一轮的配额还没滑出窗口，后一轮接着
+ * 消耗同一个桶，用例就会在**首条**操作上吃 429。
+ *
+ * 已踩过（见 4282a55）：chat-avatar-menu 与 chat-features 两条用例里，
+ * admin 在 60 秒内发满 30 条大区消息，`chat:m:e2e-user-admin` 达到 30/30。
+ * 当时是 desktop 那轮的发言还没过期。
+ *
+ * 相关的按用户限频额度（src/lib/rate-limit.ts 的 RULES）：大区发言 30/分钟、
+ * 800/天；投票 30/小时；图床 75/小时；点赞 100/小时。发帖量大的用例一律新号。
+ *
  * @param opts.core 注册后直接提到 core。默认 false（新注册就是 role=user）。
- *   需要 core 的场景：点赞/剪贴板/投票/申诉这些 @authenticated_required
+ *   需要 core 的场景：点赞/剪贴板/投票/申诉/聊天这些 @authenticated_required
  *   的接口 —— 光注册是用不了的，得先过邀请码认证。用例若忘了提权，会拿到 403，
  *   看起来像鉴权坏了，其实是没认证。
  */

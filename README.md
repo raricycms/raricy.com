@@ -49,6 +49,11 @@ npm run dev                              # http://localhost:3000
 | `npm test` | vitest 单测 |
 | `npm run e2e` | 端到端（直接跑 Playwright，**不**自动 build —— 改完代码请自行 `npm run build`） |
 | `npm run e2e:ci` | 同上，但先 build（CI / 全新环境用） |
+
+> `npm run e2e` 跑的是 `.next` 里的**现有构建产物**（`next start`）。改了
+> `src/` 却没重新 build 的话，测的是旧代码 —— 症状很隐蔽：刚加的日志/探针一行
+> 都不打、刚改的逻辑毫无反应，容易误判成代码没生效而去乱翻别处。改完源码先
+> `npm run build`，或直接用 `npm run e2e:ci`。
 | `npm run smoke` | 11 条只读冒烟（登录态/列表/详情/签到/图床/CSRF 等） |
 | `npm run diagnose` | 部署自检（版本 / .env / 库 / 密钥）；报红就别往下走 |
 | `npm run check:secrets` | 密钥与生产数据是否进过版本库 |

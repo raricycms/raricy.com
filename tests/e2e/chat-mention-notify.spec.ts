@@ -23,7 +23,14 @@ async function mentionCount(page: Page): Promise<number> {
   return body.notifications.filter((n) => n.action === '聊天提及').length;
 }
 
-/** 以指定身份发一条消息（可以是别的浏览器上下文，用来制造「别人在说话」）。 */
+/**
+ * 以指定身份发一条消息（可以是别的浏览器上下文，用来制造「别人在说话」）。
+ *
+ * ⚠️ 调用方传的是 SEED_USERS.admin —— 种子号在大区发言的限频桶（30 条/分钟）
+ * 是两个 project 共用的。本文件目前每个用例只发 1~3 条，离上限还很远；但若哪天
+ * 加用例把发帖量堆上去，务必改用 registerFreshUser 的一次性用户，
+ * 理由详见 helpers.ts 的 registerFreshUser（已踩过一次 429）。
+ */
 async function post(browser: Browser, username: string, channelId: string, content: string) {
   const ctx = await browser.newContext();
   const page = await ctx.newPage();
