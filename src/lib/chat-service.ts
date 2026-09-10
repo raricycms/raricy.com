@@ -18,9 +18,10 @@
 
 import { prisma } from './db';
 import { nowForDb } from './db-time';
-import { hasAdminRights } from './auth';
+import { hasAdminRights, isCurrentlyBanned } from './auth';
 import { rateLimit, RULES } from './rate-limit';
 import { logAdminAction } from './admin-user-service';
+import { sendNotification } from './notification-service';
 import { publishToAll, publishToUsers } from './chat-bus';
 import {
   CHAT_LOBBY_ID,
@@ -972,9 +973,97 @@ export type SendMessageResult =
       message: string;
     };
 
+/** 通知 action：消息里 @ 到某人时发送（见 notifyChannelMentions）。 */
+export const CHAT_MENTION_ACTION = '聊天提及';
+
+/**
+ * @ 提及通知：给正文里 @ 到的人逐个发一条站内通知。
+ *
+ * 【为什么只有 @ 才发】聊天消息本身不进通知列表 —— 未读统一由顶栏徽标体现（见
+ * getChatUnreadSummary）；只有「有人叫你」才值得打扰，口径与侧栏大区红点完全一致
+ * （hasUnreadMark 对大区也只认 @）。
+ *
+ * 【发给谁】逐条闸门过滤，全过才发：
+ *   • 不是自己（自己 @ 自己不发）；
+ *   • 不是禁言中的用户（进不了聊天，未读也不该在铃铛里吊着）；
+ *   • core+（只有 core+ 能进聊天）；
+ *   • 频道对他可见：
+ *       - 私聊：必须是本会话成员 —— 在**别人的私聊**里 @ 一个第三方，对方既看不到
+ *         那条消息，通知正文还会把别人私聊的内容漏出去，一律不发；
+ *       - 大区：开了专注模式就不发（大区对他不可见，同 canAccessChannel）。
+ *   • 没静音这个会话：静音 =「别在铃铛上打扰我」，与顶栏徽标同一口径。
+ *
+ * 【一人一条】按人去重（同一条消息里 @ 两次只发一条）；不同消息各发各的 ——
+ * 通知列表本来就是流水账，不做聚合。
+ *
+ * 【用户名精确匹配】与 countLobbyMentionsSince 同一规则：红点与通知必须对
+ * 「这条算不算 @ 我」给出**同一个答案**，否则会出现「有红点没通知」的自相矛盾。
+ *
+ * 失败只记日志：通知是消息的附赠品，不能因为它把已经落库的消息变成 500。
+ */
+async function notifyChannelMentions(params: {
+  channelId: string;
+  /** canAccessChannel 判出的频道类型（'lobby' | 'direct'） */
+  kind: string;
+  authorId: string;
+  /** 作者用户名：自己 @ 自己不算提及 */
+  authorName: string;
+  content: string;
+}): Promise<void> {
+  const { channelId, kind, authorId, authorName, content } = params;
+  const isLobby = kind === CHAT_KIND_LOBBY;
+
+  const names = extractMentions(content).filter((n) => n !== authorName);
+  if (!names.length) return;
+
+  const candidates = (
+    await prisma.user.findMany({
+      where: { username: { in: names } },
+      select: { id: true, role: true, focusMode: true, isBanned: true, banUntil: true },
+    })
+  ).filter(
+    (u) => u.id !== authorId && CORE_ROLES.includes(u.role) && !isCurrentlyBanned(u)
+  );
+  if (!candidates.length) return;
+
+  // 成员关系与静音状态一条查询取齐（大区没进过聊天室的用户没有成员行，但大区不需要成员）
+  const members = await prisma.chatMember.findMany({
+    where: { channelId, userId: { in: candidates.map((u) => u.id) } },
+    select: { userId: true, mutedAt: true },
+  });
+  const memberByUser = new Map(members.map((m) => [m.userId, m]));
+
+  // 正文折叠成一行再截断：通知列表是一行摘要，不展示换行与缩进
+  const collapsed = content.replace(/\s+/g, ' ').trim();
+  const preview =
+    collapsed.length > CHAT_PREVIEW_MAX ? `${collapsed.slice(0, CHAT_PREVIEW_MAX)}…` : collapsed;
+  const detail = isLobby ? `在聊天大区提到了你：${preview}` : `在私聊中提到了你：${preview}`;
+
+  for (const u of candidates) {
+    const member = memberByUser.get(u.id);
+    // 私聊只有成员能看：非成员 → 在别人的会话里被 @，不发（也挡掉了内容泄露）
+    if (!isLobby && !member) continue;
+    if (member?.mutedAt) continue; // 静音会话
+    if (isLobby && u.focusMode) continue; // 专注模式：大区不可见
+    await sendNotification({
+      recipientId: u.id,
+      action: CHAT_MENTION_ACTION,
+      actorId: authorId,
+      // 指会话不指消息：通知列表的「查看聊天」跳 /chat?channel=<id>。
+      // （消息 id 不进 object —— 两个 id 塞不进 (type, id) 两个字段，而会话链接
+      //   已经够用：点进去就落在最新消息上。）
+      objectType: 'chat_channel',
+      objectId: channelId,
+      detail,
+      prefKey: null, // 不受 notify_* 四个开关管辖（同评论回复：没有对应开关就不拦）
+    });
+  }
+}
+
 /**
  * 发消息。先做资源/内容校验（避免非法请求烧限频额度），再扣限频（仿博客评论）。
- * 不产生站内通知 —— 聊天未读统一由顶栏徽标体现（见 getChatUnreadSummary）。
+ * 不产生站内通知（@ 提及除外，见 notifyChannelMentions）—— 聊天未读统一由
+ * 顶栏徽标体现（见 getChatUnreadSummary）。
  */
 export async function sendMessage(input: SendMessageInput): Promise<SendMessageResult> {
   const { channelId, authorId, imageId, blogId, patTargetId, replyTo, focusMode } = input;
@@ -1096,7 +1185,8 @@ export async function sendMessage(input: SendMessageInput): Promise<SendMessageR
   }
 
   // 4) 私聊成员列表：SSE 推送要用（大区广播给全部在线连接，不需要）。
-  //    这里**不再发站内通知** —— 聊天未读统一由顶栏徽标体现。
+  //    这里**不发「新消息」通知** —— 聊天未读统一由顶栏徽标体现；
+  //    唯一会进通知列表的是 @ 提及（见第 6 步）。
   let directMemberIds: string[] | null = null;
   if (access.kind === CHAT_KIND_DIRECT) {
     try {
@@ -1125,6 +1215,21 @@ export async function sendMessage(input: SendMessageInput): Promise<SendMessageR
     }
   } catch (e) {
     console.error(`[chat-service] SSE 推送失败（channelId=${channelId}）:`, e);
+  }
+
+  // 6) @ 提及通知（聊天里唯一会进通知列表的东西；拍一拍没有正文，跳过）
+  if (!isPatMsg) {
+    try {
+      await notifyChannelMentions({
+        channelId,
+        kind: access.kind,
+        authorId,
+        authorName: dto.author.username,
+        content,
+      });
+    } catch (e) {
+      console.error(`[chat-service] @ 提及通知失败（channelId=${channelId}）:`, e);
+    }
   }
 
   return { ok: true, message: dto };

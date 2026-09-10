@@ -556,10 +556,11 @@ describe('拍一拍', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 4. 聊天未读：不进通知列表，统一走顶栏徽标汇总（getChatUnreadSummary）
+// 4. 聊天未读不进通知列表；唯一进列表的是 @ 提及（每条 @ 一条通知）
+//    —— 普通消息走顶栏徽标汇总（getChatUnreadSummary）
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('聊天消息不产生站内通知', () => {
+describe('聊天消息不产生站内通知（@ 除外）', () => {
   it('私聊连发多条也不产生通知', async () => {
     const a = await makeUser({ role: 'core' });
     const b = await makeUser({ role: 'core' });
@@ -573,14 +574,121 @@ describe('聊天消息不产生站内通知', () => {
     expect(await prisma.notification.count({ where: { recipientId: b.id } })).toBe(0);
   });
 
-  it('大区 @ 我同样不产生通知', async () => {
+  it('大区普通消息不产生通知', async () => {
     const a = await makeUser({ role: 'core' });
-    const b = await makeUser({ role: 'core', username: 'lobby_mention' });
+    const b = await makeUser({ role: 'core', username: 'lobby_quiet' });
+    await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: a.id, content: '大家好啊' });
+    expect(await prisma.notification.count({ where: { recipientId: b.id } })).toBe(0);
+  });
+});
+
+describe('@ 提及通知', () => {
+  /** 某人收到的 @ 通知条数。 */
+  const mentionCount = (userId: string) =>
+    prisma.notification.count({ where: { recipientId: userId, action: '聊天提及' } });
+
+  it('大区 @ 一次 → 一条通知；@ 两次（同一条消息）仍只发一条', async () => {
+    const a = await makeUser({ role: 'core' });
+    const b = await makeUser({ role: 'core' });
     await sendMessage({
       channelId: CHAT_LOBBY_ID,
       authorId: a.id,
-      content: '@lobby_mention 在吗',
+      content: `@${b.username} 在吗`,
     });
+    expect(await mentionCount(b.id)).toBe(1);
+
+    await sendMessage({
+      channelId: CHAT_LOBBY_ID,
+      authorId: a.id,
+      content: `@${b.username} @${b.username} 连叫两声`,
+    });
+    expect(await mentionCount(b.id)).toBe(2); // 两条消息各一条
+  });
+
+  it('通知带频道 objectId 与正文预览，actor 是发消息的人', async () => {
+    const a = await makeUser({ role: 'core' });
+    const b = await makeUser({ role: 'core' });
+    await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: a.id, content: `@${b.username} 看这个` });
+
+    const n = await prisma.notification.findFirst({ where: { recipientId: b.id } });
+    expect(n?.action).toBe('聊天提及');
+    expect(n?.actorId).toBe(a.id);
+    expect(n?.objectType).toBe('chat_channel');
+    expect(n?.objectId).toBe(CHAT_LOBBY_ID);
+    expect(n?.detail).toContain('聊天大区');
+    expect(n?.detail).toContain('看这个');
+  });
+
+  it('私聊里 @ 对方 → 通知；@ 会话外的第三人 → 不发（不给别人的私聊递话）', async () => {
+    const a = await makeUser({ role: 'core' });
+    const b = await makeUser({ role: 'core' });
+    const outsider = await makeUser({ role: 'core' });
+    const started = (await startDirectChannel(a.id, b.id)) as { channel: { id: string } };
+
+    await sendMessage({
+      channelId: started.channel.id,
+      authorId: a.id,
+      content: `@${b.username} 私聊叫你`,
+    });
+    await sendMessage({
+      channelId: started.channel.id,
+      authorId: a.id,
+      content: `@${outsider.username} 你也来`,
+    });
+
+    expect(await mentionCount(b.id)).toBe(1);
+    expect(await mentionCount(outsider.id)).toBe(0);
+  });
+
+  it('大区 @ 专注模式用户 → 不发（大区对他不可见）', async () => {
+    const a = await makeUser({ role: 'core' });
+    const b = await makeUser({ role: 'core', focusMode: true });
+    await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: a.id, content: `@${b.username} 在吗` });
+    expect(await mentionCount(b.id)).toBe(0);
+  });
+
+  it('静音的会话 → 不发（与顶栏徽标同一口径）；未静音照常发', async () => {
+    const a = await makeUser({ role: 'core' });
+    const b = await makeUser({ role: 'core' });
+    await setChannelMuted(CHAT_LOBBY_ID, b.id, true);
+    await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: a.id, content: `@${b.username} 在吗` });
+    expect(await mentionCount(b.id)).toBe(0);
+
+    await setChannelMuted(CHAT_LOBBY_ID, b.id, false);
+    await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: a.id, content: `@${b.username} 再来` });
+    expect(await mentionCount(b.id)).toBe(1);
+  });
+
+  it('自己 @ 自己 / @ 非 core 用户 → 不发', async () => {
+    const a = await makeUser({ role: 'core' });
+    const plain = await makeUser({ role: 'user' });
+    await sendMessage({
+      channelId: CHAT_LOBBY_ID,
+      authorId: a.id,
+      content: `@${a.username} 我 @ 我自己`,
+    });
+    await sendMessage({
+      channelId: CHAT_LOBBY_ID,
+      authorId: a.id,
+      content: `@${plain.username} 普通用户`,
+    });
+    expect(await mentionCount(a.id)).toBe(0);
+    expect(await mentionCount(plain.id)).toBe(0);
+  });
+
+  it('@bob 不会误伤 @bobby（边界与红点口径一致）', async () => {
+    const a = await makeUser({ role: 'core' });
+    const bob = await makeUser({ role: 'core', username: 'bob' });
+    const bobby = await makeUser({ role: 'core', username: 'bobby' });
+    await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: a.id, content: '@bobby 你好' });
+    expect(await mentionCount(bobby.id)).toBe(1);
+    expect(await mentionCount(bob.id)).toBe(0);
+  });
+
+  it('拍一拍不触发 @ 扫描（没有正文）', async () => {
+    const a = await makeUser({ role: 'core' });
+    const b = await makeUser({ role: 'core' });
+    await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: a.id, patTargetId: b.id });
     expect(await prisma.notification.count({ where: { recipientId: b.id } })).toBe(0);
   });
 });

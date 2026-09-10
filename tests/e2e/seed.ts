@@ -5,7 +5,16 @@
  *  不写死密文 —— 写死就等于把 werkzeug scrypt 的参数复制成了第二份真相。 */
 export const SEED_PASSWORD = 'e2e-Password-123';
 
-export const SEED_USERS = {
+/** 种子用户的字段：focusMode 只有需要它的那一行才写（其余留空 = 未开启）。 */
+type SeedUser = {
+  id: string;
+  username: string;
+  email: string;
+  role: string;
+  focusMode?: boolean;
+};
+
+export const SEED_USERS: Record<string, SeedUser> = {
   /** core：博客列表/详情等 requireCoreUser 页面的通行证 */
   core: { id: 'e2e-user-core', username: 'e2e_core', email: 'core@e2e.local', role: 'core' },
   /** admin：/admin 段的正向用例（非站长专属页）+ 站长专属页的反向用例 */
@@ -14,7 +23,18 @@ export const SEED_USERS = {
   owner: { id: 'e2e-user-owner', username: 'e2e_owner', email: 'owner@e2e.local', role: 'owner' },
   /** 普通 user：角色门控的反向用例（被 /blog 403、被 /admin 踢回登录页） */
   plain: { id: 'e2e-user-plain', username: 'e2e_plain', email: 'plain@e2e.local', role: 'user' },
-} as const;
+  /**
+   * core + 专注模式：@ 提及通知的排除用例（大区 @ 他时不该收到通知）。
+   * 单独开一个账号而不是把 core 掰成专注 —— 其余用例还要用 core 进大区。
+   */
+  focus: {
+    id: 'e2e-user-focus',
+    username: 'e2e_focus',
+    email: 'focus@e2e.local',
+    role: 'core',
+    focusMode: true,
+  },
+};
 
 export const SEED_CATEGORY = { name: 'E2E 栏目', slug: 'e2e-cat' };
 

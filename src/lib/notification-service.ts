@@ -60,6 +60,8 @@ const ACTION_PREF_MAP: Readonly<Record<string, NotifyPrefKey>> = {
  *
  * 返回 null = 不受偏好拦截、照常发送，这是**有意为之**而非兜底遗漏：
  *   • 评论回复 / 文章评论 —— Flask 与本项目都没有 notify_comment 开关，评论通知一律发；
+ *   • 聊天 @ 提及（chat-service.notifyChannelMentions）—— 同样无对应开关，调用方
+ *     显式传 prefKey: null 声明「不受管辖」，不落到这里查表；
  *   • 文章投喂 —— 同样无对应开关；
  *   • 管理员自由输入的 action（如「维护通知」「活动通知」）—— 猜不准就不猜，
  *     宁可发出去，也不要被错误归类的偏好静默吞掉。需要受管的调用方应显式传 prefKey。

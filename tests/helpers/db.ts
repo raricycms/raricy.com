@@ -100,6 +100,7 @@ export async function makeUser(opts: Partial<{
   banReason: string | null;
   driedFish: number;
   totalFortune: number;
+  focusMode: boolean;
 }> = {}) {
   const id = opts.id ?? uid();
   return prisma.user.create({
@@ -115,6 +116,7 @@ export async function makeUser(opts: Partial<{
       banReason: opts.banReason ?? null,
       driedFish: fishToUnits(opts.driedFish ?? 0), // 存储单位 = 0.1 鱼干（fish-units.ts）
       totalFortune: opts.totalFortune ?? 0,
+      focusMode: opts.focusMode ?? false,
       // 与生产写路径同钟：本库时间戳语义是「UTC+8 墙上时间贴 Z」（db-time.ts），
       // 种子数据也必须走 nowForDb()，否则冻结时钟的用例里两把钟不一致。
       createdAt: nowForDb(),
