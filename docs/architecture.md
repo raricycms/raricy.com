@@ -70,7 +70,7 @@
 │   └── migrations/         含 0_init 基线（已 apply 到 db.db）
 ├── scripts/                运维/自检/迁移/切换脚本
 ├── tests/                  vitest 单测 + Playwright e2e
-├── docs/                   玩家文档 + 运维文档（本文所在）
+├── docs/                   本文与运维文档；guide/ 为玩家/创作者文档
 ├── public/                 静态资源（图标 / CSS / favicon）
 └── instance/               gitignored: avatars/ database/ images/ stories/
 ```
@@ -306,4 +306,4 @@ fish:admin       5/s     (CLI grant/deduct 用)
 - `docs/deploy.md` — 部署 / 运行 / nginx / systemd
 - `docs/cli.md` — 运维 CLI 命令
 - `CLAUDE.md` — 关键约定 / 迁移史速查
-- 内容/玩法文档：`docs/atamas-game.md` · `docs/cattca-guide.md` · `docs/云剪贴板使用指南.md` 等
+- 内容/玩法文档：`docs/guide/` —— 玩家与创作者文档（atamas / cattca / 云剪贴板 / 图床 / 投票箱 / story）
