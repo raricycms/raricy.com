@@ -102,6 +102,58 @@ test.describe('聊天功能：链接 / 跳转 / 搜索 / 日期分隔', () => {
     await expect(msgRow(page, marker)).toHaveClass(/chat-msg--highlight/, { timeout: 5000 });
   });
 
+  /**
+   * 【这条用例守的是「跳出一屏」的路径】上面那条的目标就在最新 50 条里 —— 节点一直在
+   * DOM 里，跳转只是 scrollIntoView，走不到「换列表」的代码。目标落在窗口之外时才会
+   * 走那条路，而它曾经的实现是「把历史一页拼到列表头上」：列表一旦超过 DOM 上限，
+   * 自动折叠会把刚拼进来的目标连同上下文一起折叠掉（不在 DOM 里 → querySelector 落空），
+   * 表现就是点了搜索结果什么也没发生。现在改成整段换成目标所在的那一小段。
+   *
+   * 顺带钉住配套语义：窗口没顶到最新 ⇒ 进「历史视图」—— 最新那条不在列表里，
+   * 由「回到最新」浮标回到底部。
+   */
+  test('搜索命中一屏之外的消息 → 换成该消息所在的一段并高亮，可「回到最新」', async ({
+    page,
+  }) => {
+    const tag = uniqueTag();
+    const marker = `e2e-search-far-${tag}`;
+    const newest = `e2e-search-far-newest-${tag}`;
+
+    // 造数：把目标顶到首屏（最新 50 条）之外。发言限频 30 条/分钟/用户（见
+    // rate-limit.RULES.chatMinute），所以拆给两个一次性号，各发 ~28 条。
+    await registerFreshUser(page, { core: true });
+    await postLobby(page, `${marker} 久远的目标`);
+    for (let i = 0; i < 27; i++) await postLobby(page, `e2e-fill-${tag}-a${i}`);
+
+    await registerFreshUser(page, { core: true });
+    for (let i = 0; i < 27; i++) await postLobby(page, `e2e-fill-${tag}-b${i}`);
+    await postLobby(page, `${newest} 最新的一条`);
+
+    await page.goto(`/chat?channel=${LOBBY}`);
+    await expect(msgRow(page, newest)).toBeVisible();
+    // 前提成立才有意义：目标此刻不在 DOM 里（不在首屏那 50 条内）
+    await expect(msgRow(page, marker)).toHaveCount(0);
+
+    await page.locator('.chat-main__search').click();
+    await page.fill('.chat-new-search', marker);
+    const hit = page.locator('.chat-search-item', { hasText: marker });
+    await expect(hit).toBeVisible({ timeout: 8000 });
+    await hit.click();
+
+    // 跳过去了：高亮 + 真的落在列表可视区里（只断言「在 DOM 里」会漏掉「滚没滚过去」）
+    const row = msgRow(page, marker);
+    await expect(row).toHaveClass(/chat-msg--highlight/, { timeout: 5000 });
+    await expect(row).toBeInViewport();
+
+    // 历史视图：列表换成了目标那一段，最新那条被换下去了 → 浮标给出口
+    await expect(msgRow(page, newest)).toHaveCount(0);
+    const backToLatest = page.locator('.chat-jump-new');
+    await expect(backToLatest).toContainText('回到最新');
+    await backToLatest.click();
+    await expect(msgRow(page, newest)).toBeVisible();
+    await expect(backToLatest).toHaveCount(0);
+  });
+
   test('消息列表带日期分隔线', async ({ page }) => {
     const marker = `e2e-sep-${uniqueTag()}`;
     await loginViaApi(page, SEED_USERS.core.username);

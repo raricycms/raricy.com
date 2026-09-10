@@ -57,6 +57,8 @@ const DRAWER_MAX_WIDTH = 900;
 const DOM_CAP = 300;
 /** 折叠后点一次「展开更早」放回的条数。 */
 const REVEAL_STEP = 50;
+/** 跳转窗口：目标上下各留多少条上下文（约等于 loadOlder 的一页）。 */
+const JUMP_CONTEXT = 50;
 
 type ApiEnvelope = { code: number; message: string; [k: string]: unknown };
 
@@ -292,6 +294,15 @@ export default function ChatApp({
   const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** DOM 上限：从顶部折叠掉的消息条数（内存里仍在）。 */
   const [foldedCount, setFoldedCount] = useState(0);
+  /**
+   * 历史视图：列表停在一段久远的消息上，而不是最新那段（搜索 / 回复跳转跳远了才会进）。
+   *
+   * 进入后新消息**不并进列表** —— 列表里没有中间那一段，并进来等于在窗口边缘接出
+   * 一条时间不连续的消息；改为只计「N 条新消息」，由浮标 / 发消息换回最新一页。
+   */
+  const [historyView, setHistoryView] = useState(false);
+  const historyViewRef = useRef(historyView);
+  historyViewRef.current = historyView;
   /** 进入频道时的已读位置：「以下是新消息」分隔线的锚点。 */
   const unreadAnchorRef = useRef(0);
   /** 上次上报「正在输入」的时刻（客户端 2 秒节流，服务端另有 3 秒兜底） */
@@ -408,6 +419,13 @@ export default function ChatApp({
     if (el) el.scrollTo({ top: el.scrollHeight, behavior });
   }, []);
 
+  /** 命中高亮：亮 2 秒后自动清除（跳转的收尾动作，见 jumpToMessage）。 */
+  const flashHighlight = useCallback((messageId: number) => {
+    setHighlightId(messageId);
+    if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+    highlightTimerRef.current = setTimeout(() => setHighlightId(null), 2000);
+  }, []);
+
   /**
    * 待执行的「滚到底」请求（null = 没有）。见 scrollAfterCommit。
    */
@@ -428,12 +446,36 @@ export default function ChatApp({
     scrollAfterCommitRef.current = behavior;
   }, []);
 
+  /**
+   * 跳转待办：下次 messages 提交后滚到某条消息。
+   *
+   * 【为什么同样不能用 rAF】与 scrollAfterCommit 同因 —— 见那边的注解。跳转还多一层：
+   * 目标节点是**这次提交**才渲染出来的（窗口替换），rAF 早于提交时 querySelector 直接
+   * 找不到节点，表现是「点了搜索结果什么也没发生」。
+   */
+  const pendingJumpRef = useRef<{ channelId: string; messageId: number } | null>(null);
+
   useLayoutEffect(() => {
+    const jump = pendingJumpRef.current;
+    // 频道对不上 = 拉取期间切了频道，这条待办已经作废：既不能滚，也不能吃掉
+    // 切频道那次提交挂上的「滚到底」（见 commitMessages → scrollAfterCommit）。
+    if (jump && jump.channelId === activeRef.current) {
+      pendingJumpRef.current = null;
+      scrollAfterCommitRef.current = null; // 跳转优先，别让更早挂上的「滚到底」在下次提交时补刀
+      const el = listRef.current?.querySelector<HTMLElement>(
+        `[data-message-id="${jump.messageId}"]`
+      );
+      if (el) {
+        el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        flashHighlight(jump.messageId);
+      }
+      return;
+    }
     const behavior = scrollAfterCommitRef.current;
     if (behavior === null) return;
     scrollAfterCommitRef.current = null;
     scrollToBottom(behavior);
-  }, [messages, scrollToBottom]);
+  }, [messages, scrollToBottom, flashHighlight]);
 
   const isNearBottom = useCallback(() => {
     const el = listRef.current;
@@ -453,6 +495,9 @@ export default function ChatApp({
    * 判据，不会出现卡在中间地带反复横跳。绝大多数滚动事件在第一行就早退了。
    */
   const handleListScroll = useCallback(() => {
+    // 历史视图里「滚到底」滚到的是窗口底部，不是最新消息：既不算已读，也不清浮标
+    // （那时候 lastIdRef 还停在跳转前的最新 id，标下去等于把没看的消息全标成读过）。
+    if (historyViewRef.current) return;
     if (newCountRef.current === 0) return;
     if (!isNearBottom()) return;
     setNewCount(0);
@@ -488,6 +533,10 @@ export default function ChatApp({
         setMessages(list);
         setHasMore(list.length >= 50);
         setNewCount(0);
+        // 换上来的是「最新一页」→ 退出历史视图；折叠量一并归零（它是按上一次的
+        // 列表长度累计出来的，留着会让新列表的「展开更早」点半天没反应）。
+        setHistoryView(false);
+        setFoldedCount(0);
       };
       scrollAfterCommit();
       if (sync) flushSync(apply);
@@ -535,6 +584,26 @@ export default function ChatApp({
   }, [loadMessages]);
 
   /**
+   * 回到最新（历史视图的出口，也是「N 条新消息」浮标的动作）。
+   *
+   * 历史视图里列表只有历史那一段，直接滚到底滚到的是**窗口底部**而不是最新消息；
+   * 而且这期间的新消息都没并进列表 —— 所以必须整段换回最新一页（commitMessages
+   * 会连带清掉历史视图 / 折叠量 / 未读浮标并滚到底）。
+   * 非历史视图（只是不在底部）保持原样：平滑滚一下即可，不必重新拉接口。
+   */
+  const returnToPresent = useCallback(() => {
+    if (historyViewRef.current) {
+      reloadActive();
+      return;
+    }
+    scrollToBottom('smooth');
+    if (lastIdRef.current && activeRef.current) {
+      void markRead(activeRef.current, lastIdRef.current);
+    }
+    setNewCount(0);
+  }, [markRead, reloadActive, scrollToBottom]);
+
+  /**
    * 追加一条消息（按 id 去重）。同一条消息会从两条链路回来：发送接口的响应、
    * SSE 推给自己的回声（多标签页同步要靠它）—— 谁先谁后都可能，所以两条路径
    * 必须共用这一个入口，否则同一条消息会出现两个气泡（同 id，React key 也撞）。
@@ -557,6 +626,15 @@ export default function ChatApp({
     (m: ChatMessageDTO) => {
       const aid = activeRef.current;
       if (m.channel_id === aid) {
+        // 历史视图：列表停在久远的那一段，新消息接在窗口边缘就是一条时间不连续的消息
+        // → 不并进列表，只计数（浮标变成「N 条新消息」，点一下换回最新一页）。
+        if (historyViewRef.current) {
+          if (m.author.id !== currentUserId) {
+            setNewCount((n) => n + 1);
+            refreshTopbarBadge(); // 没读掉 → 顶栏徽标也要亮，20s 心跳兜底太慢
+          }
+          return;
+        }
         // 自己发的也会被推回来；发送响应可能已经先到 → 按 id 去重（见 appendMessage）
         if (!appendMessage(m)) return;
         lastIdRef.current = Math.max(lastIdRef.current, m.id);
@@ -644,7 +722,8 @@ export default function ChatApp({
         // 首连时若还没有任何消息游标（初始加载尚未回来），补拉一次当前频道 ——
         // 关掉「消息查询快照 → 订阅建立」之间的空窗。重连有 Last-Event-ID 补齐，
         // 不需要（也避免把正在翻历史的用户拽回底部）。
-        if (lastIdRef.current === 0) reloadActive();
+        // 历史视图下尤其不能补拉：会把刚跳过去的历史窗口冲掉（那里的游标本就不该更新）。
+        if (lastIdRef.current === 0 && !historyViewRef.current) reloadActive();
       };
       src.onmessage = (e) => {
         let ev: ChatStreamEvent;
@@ -861,8 +940,9 @@ export default function ChatApp({
       if (data.code === 200) {
         const m = data.message as unknown as ChatMessageDTO;
         if (typeof m.id === 'number') {
-          // SSE 回声可能已经先把这条推回来了 → 按 id 去重（见 appendMessage）
-          const appended = appendMessage(m);
+          // SSE 回声可能已经先把这条推回来了 → 按 id 去重（见 appendMessage）。
+          // 历史视图下回声会被 onStreamMessage 丢掉（窗口边缘不接新消息），这里也就不必管。
+          const appended = historyViewRef.current ? true : appendMessage(m);
           lastIdRef.current = Math.max(lastIdRef.current, m.id);
           setText('');
           draftsRef.current.delete(aid); // 已发出 → 该频道草稿作废
@@ -872,10 +952,17 @@ export default function ChatApp({
           setNewCount(0);
           // 文本框高度随内容自动加高过 → 发送后复位
           if (textareaRef.current) textareaRef.current.style.height = '';
-          // 自己发的消息一定滚到底。回声先到（append 返回 false）时它已在 DOM 里，
-          // 直接滚；而回声那条提交的滚动待办已由 onStreamMessage 挂上，双保险。
-          if (appended) scrollAfterCommit();
-          else scrollToBottom();
+          if (historyViewRef.current) {
+            // 历史视图：列表里没有「现在」那一段，append 上去等于在窗口边缘接一条不连续
+            // 的消息（还看不见）→ 直接换回最新一页，刚发的这条就在里面且会滚到底。
+            reloadActive();
+          } else if (appended) {
+            // 自己发的消息一定滚到底。回声先到（append 返回 false）时它已在 DOM 里，
+            // 直接滚；而回声那条提交的滚动待办已由 onStreamMessage 挂上，双保险。
+            scrollAfterCommit();
+          } else {
+            scrollToBottom();
+          }
           if (document.hasFocus()) void markRead(aid, m.id);
         }
       } else {
@@ -894,6 +981,7 @@ export default function ChatApp({
     blogQuote,
     replyTarget,
     markRead,
+    reloadActive,
     scrollAfterCommit,
     scrollToBottom,
   ]);
@@ -913,10 +1001,12 @@ export default function ChatApp({
           const m = data.message as unknown as ChatMessageDTO;
           if (typeof m.id === 'number') {
             // 同 send：SSE 回声可能先到 → 按 id 去重（见 appendMessage）
-            const appended = appendMessage(m);
+            const appended = historyViewRef.current ? true : appendMessage(m);
             lastIdRef.current = Math.max(lastIdRef.current, m.id);
             setNewCount(0);
-            if (appended) scrollAfterCommit();
+            // 历史视图：同 send —— 换回最新一页（拍一拍这条在里面），别在窗口边缘接一条
+            if (historyViewRef.current) reloadActive();
+            else if (appended) scrollAfterCommit();
             else scrollToBottom();
             if (document.hasFocus()) void markRead(aid, m.id);
           }
@@ -927,7 +1017,7 @@ export default function ChatApp({
         toast('拍一拍失败，请重试', 'error');
       }
     },
-    [appendMessage, markRead, scrollAfterCommit, scrollToBottom]
+    [appendMessage, markRead, reloadActive, scrollAfterCommit, scrollToBottom]
   );
 
   // ── @ta：把「@用户名 」插到光标处（无光标则追加到末尾）────────────────────
@@ -1007,18 +1097,25 @@ export default function ChatApp({
     setReplyTarget(m);
   }, []);
 
-  const flashHighlight = useCallback((messageId: number) => {
-    setHighlightId(messageId);
-    if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
-    highlightTimerRef.current = setTimeout(() => setHighlightId(null), 2000);
-  }, []);
-
-  /** 跳到某条消息（点回复摘要 / 搜索结果）：在列表里就滚过去，不在就先补拉一页。 */
+  /**
+   * 跳到某条消息（点回复摘要 / 搜索结果）。
+   *
+   *   • 已经在渲染出来的窗口里 → 直接滚过去 + 高亮，不动列表；
+   *   • 否则把列表**整段换成「以该消息为中心的一小段」**（上下各 JUMP_CONTEXT 条），
+   *     滚到目标并高亮 —— 目标必然在窗口内（见下方注解），并由 historyView 挂出
+   *     「回到最新」浮标。
+   *
+   * 【为什么整段换，而不是把历史一页拼到现有列表的头上（旧实现）】列表的渲染窗口是
+   * 「尾部 DOM_CAP 条」，拼接来的历史页在数组**头部**、又与原列表**不连续**（中间隔着
+   * 没加载的一段），于是：① 一旦列表超过 DOM_CAP，自动折叠会把刚拼进来的目标连同
+   * 上下文一起折叠掉 —— 节点根本不在 DOM 里，querySelector 找不到，表现就是「点了搜索
+   * 结果什么也没发生」（用户报的就是这个）；② 列表中间会凭空出现一段假的时间连续性
+   * （目标后面直接接上最近的消息）。换成独立窗口后两条都没了：目标居中，下方那
+   * JUMP_CONTEXT 条正是紧挨着它的消息。
+   */
   const jumpToMessage = useCallback(
     (messageId: number) => {
-      const find = () =>
-        listRef.current?.querySelector<HTMLElement>(`[data-message-id="${messageId}"]`);
-      const hit = find();
+      const hit = listRef.current?.querySelector<HTMLElement>(`[data-message-id="${messageId}"]`);
       if (hit) {
         hit.scrollIntoView({ block: 'center', behavior: 'smooth' });
         flashHighlight(messageId);
@@ -1026,21 +1123,37 @@ export default function ChatApp({
       }
       const aid = activeRef.current;
       if (!aid) return;
+      // 跳转整段换列表，跟切频道同级，要走同一套 token：拉取期间有别的加载落进列表
+      // 就放弃（免得把人家刚拉回来的列表盖掉）。不预先 ++ —— 拉取失败时不该作废别人。
+      const token = viewTokenRef.current;
       void (async () => {
-        const data = await api(`/api/chat/channels/${aid}/messages?before=${messageId + 1}`);
-        if (data.code !== 200 || !Array.isArray(data.messages)) return;
+        const [beforeRes, afterRes] = await Promise.all([
+          api(`/api/chat/channels/${aid}/messages?before=${messageId + 1}`),
+          // 多要一条：能拿到 JUMP_CONTEXT + 1 条 ⇒ 窗口之后还有更新的消息 ⇒ 历史视图
+          api(`/api/chat/channels/${aid}/messages?after=${messageId}&limit=${JUMP_CONTEXT + 1}`),
+        ]);
+        if (beforeRes.code !== 200 || !Array.isArray(beforeRes.messages)) return;
         if (aid !== activeRef.current) return; // 拉取期间切了频道 → 放弃
-        const older = data.messages as ChatMessageDTO[];
-        if (!older.length) return;
-        setMessages((prev) => {
-          const seen = new Set(prev.map((m) => m.id));
-          return [...older.filter((m) => !seen.has(m.id)), ...prev];
-        });
-        // 等这一帧渲染完再定位（否则节点还不存在）
-        requestAnimationFrame(() => {
-          find()?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-          flashHighlight(messageId);
-        });
+        if (token !== viewTokenRef.current) return; // 拉取期间列表已被（重）加载换掉 → 放弃
+        const older = beforeRes.messages as ChatMessageDTO[];
+        if (!older.length) return; // 空手而归就什么都别动（别人在飞的加载也不作废）
+        viewTokenRef.current++; // 由这份历史窗口接管，作废还在飞的加载
+        const newerAll =
+          afterRes.code === 200 && Array.isArray(afterRes.messages)
+            ? (afterRes.messages as ChatMessageDTO[])
+            : [];
+        const newer = newerAll.slice(0, JUMP_CONTEXT);
+        const win = [...older, ...newer];
+        const tail = win[win.length - 1];
+        setMessages(win);
+        setHasMore(older.length >= 50); // 与 loadOlder 同口径：这一页满了才还有更早的
+        setFoldedCount(0);
+        setNewCount(0);
+        setHistoryView(newerAll.length > JUMP_CONTEXT); // 窗口没顶到最新 → 历史视图
+        // 窗口顶到最新时它就是「当前」：游标跟着走，免得 SSE 首连再补拉一次把跳转冲掉
+        if (newerAll.length <= JUMP_CONTEXT && tail) lastIdRef.current = tail.id;
+        // 定位交给 layout effect（这次提交后节点才存在；rAF 可能早于提交）
+        pendingJumpRef.current = { channelId: aid, messageId };
       })();
     },
     [flashHighlight]
@@ -1382,13 +1495,12 @@ export default function ChatApp({
               </div>
             )}
 
-            {newCount > 0 && (
-              <button type="button" className="chat-jump-new" onClick={() => {
-                scrollToBottom('smooth');
-                if (lastIdRef.current) void markRead(activeRef.current!, lastIdRef.current);
-                setNewCount(0);
-              }}>
-                {newCount} 条新消息 <ArrowDown aria-hidden="true" />
+            {/* 浮标：历史视图下即使没有新消息也要有出口（列表里根本没有「最新」那一段，
+                滚到底也只是滚到窗口底部）；有新消息时按老样子报条数。 */}
+            {(newCount > 0 || historyView) && (
+              <button type="button" className="chat-jump-new" onClick={returnToPresent}>
+                {newCount > 0 ? `${newCount} 条新消息` : '回到最新'}{' '}
+                <ArrowDown aria-hidden="true" />
               </button>
             )}
 
