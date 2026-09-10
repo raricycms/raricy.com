@@ -37,7 +37,11 @@ test.describe('深色主题配色', () => {
   test('申诉详情：「暂无申诉」条目不是浅底', async ({ page }) => {
     await useDarkTheme(page);
     await loginViaApi(page, SEED_USERS.core.username);
-    await page.goto(`/audit/${SEED_LOGS.desktop.id}`);
+    // 必须用 theme 那条**专供只读**的日志：本用例的前提是「一条申诉都没有」，
+    // 而 audit-detail.spec 会往 desktop/mobile 两条上提交申诉。Playwright 按文件名
+    // 顺序跑（audit-detail < dark-theme），借用那两条的话全量跑时 <li> 里就躺着
+    // 别人的申诉，只有单跑本文件才是绿的 —— 典型的顺序依赖。
+    await page.goto(`/audit/${SEED_LOGS.theme.id}`);
 
     const item = page.locator('.list-group-item').first();
     await expect(item).toHaveText('暂无申诉');

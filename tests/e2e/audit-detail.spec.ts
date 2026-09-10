@@ -47,7 +47,14 @@ test.describe('操作详情页', () => {
 
   test('列表页的「详情」链接可达，且渲染出日志内容（这条链接曾经 404）', async ({ page }) => {
     await loginViaApi(page, SEED_USERS.core.username);
-    await page.goto('/audit');
+    // 【为什么要带 action 筛选】列表按 createdAt desc 分页（20/页），而每条种子日志
+    // 的 createdAt 都是**同一次 global-setup 里写下的**、时间戳完全相同 —— 排序
+    // 退化成不确定的次序。别的用例（每一条 registerFreshUser({core:true}) 都会写一条
+    // change_role）插进来的新日志又把它们往后挤：全量跑下来 90001 经常掉出第一页，
+    // `toHaveCount(1)` 找不到链接就挂，单跑本文件却是绿的。
+    // 按 delete_comment 筛选后，这一类型在 e2e 库里**只有种子那几条**（没有任何用例
+    // 删评论），页面窄到必然包含 90001，不再依赖分页次序。
+    await page.goto(`/audit?action=${SEED_LOG.action}`);
 
     const detailLink = page.locator(`a[href="/audit/${SEED_LOG.id}"]`);
     await expect(detailLink).toHaveCount(1);
