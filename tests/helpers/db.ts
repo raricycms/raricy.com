@@ -9,6 +9,7 @@ import fs from 'node:fs';
 import { prisma } from '@/lib/db';
 import { nowForDb } from '@/lib/db-time';
 import { fishToUnits } from '@/lib/fish-units';
+import { TEMPLATE_DB } from './db-template';
 
 // 测试库路径由 tests/setup.ts 生成为 tests/.tmp/test-<pid>-<rand>.db —— 每进程独立，
 // 避免多个 vitest 进程共用一个文件、互相 rmSync 重建（会随机报 no such table /
@@ -29,24 +30,36 @@ function assertTestDb() {
 
 let schemaReady = false;
 
-/** 首次调用时用 prisma db push 建表（幂等）。 */
+/**
+ * 首次调用时准备本测试文件的库（幂等）。
+ *
+ * 从 tests/global-setup.ts 建好的模板库**复制**一份，而不是自己再 `prisma db push`
+ * 一遍 —— 后者单次要 3s（prisma CLI 启动 + 引擎加载占 2.5s），每个测试文件都付一次
+ * 就是全量 38% 的开销。详见 tests/global-setup.ts 的注解。
+ */
 export function ensureSchema() {
   assertTestDb();
   if (schemaReady) return;
   const dbPath = process.env.DATABASE_URL!.replace(/^file:/, '').split('?')[0];
-  // 每轮从零开始，避免上次残留
+  // 每轮从零开始，避免同进程内上一个文件的残留（文件名带随机串，正常不重名）
   for (const suffix of ['', '-wal', '-shm']) {
     const f = dbPath + suffix;
     if (fs.existsSync(f)) fs.rmSync(f);
   }
-  // Windows 下 npm 可执行名是 npx.cmd（批处理），execFileSync 无法直接拉起
-  // （ENOENT / EINVAL）。execSync 默认走 shell（POSIX /bin/sh、Windows cmd.exe），
-  // 跨平台都能解析 npx。命令参数全是固定字面量，无注入面。
-  execSync('npx prisma db push --skip-generate --accept-data-loss', {
-    cwd: path.resolve(import.meta.dirname, '../..'),
-    env: { ...process.env, DATABASE_URL: process.env.DATABASE_URL },
-    stdio: 'pipe',
-  });
+  if (fs.existsSync(TEMPLATE_DB)) {
+    fs.copyFileSync(TEMPLATE_DB, dbPath);
+  } else {
+    // 兜底：globalSetup 没跑成（比如模板被手工删掉、或有人在跳过 config 的场景下
+    // 单独 import 本模块）时退回自建，保证用例仍能跑。
+    // Windows 下 npm 可执行名是 npx.cmd（批处理），execFileSync 无法直接拉起
+    // （ENOENT / EINVAL）。execSync 默认走 shell（POSIX /bin/sh、Windows cmd.exe），
+    // 跨平台都能解析 npx。命令参数全是固定字面量，无注入面。
+    execSync('npx prisma db push --skip-generate --accept-data-loss', {
+      cwd: path.resolve(import.meta.dirname, '../..'),
+      env: { ...process.env, DATABASE_URL: process.env.DATABASE_URL },
+      stdio: 'pipe',
+    });
+  }
   schemaReady = true;
 }
 
