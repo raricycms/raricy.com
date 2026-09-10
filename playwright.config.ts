@@ -38,6 +38,32 @@ const PORT = 3100; // 避开开发用的 3000
 const ACCOUNT_PORT = 3101; // 账户服务替身，见 tests/e2e/mock-account-service.ts
 const ACCOUNT_INTERNAL_TOKEN = 'e2e-internal-token';
 
+/**
+ * 真正需要 mobile 布局的 spec —— mobile project 只跑这些（见下方 projects 的注解）。
+ *
+ * 判据是「用例是否碰布局」，不是「文件里有没有 mobile 字样」：
+ *   · 用了 isMobile / viewportSize() 按布局分支的
+ *   · 依赖抽屉 / 侧栏折叠 / 汉堡菜单的
+ *
+ * 注意 testMatch 匹配的是**文件路径**，匹配不了 describe 名（实测：
+ * /^x\.spec\.ts:.*某describe/ 这种写法不报错但一个用例都选不中，是静默失效）。
+ * 所以粒度只能到文件 —— 一个文件里只要有用例要双跑，整个文件就都得双跑。
+ *
+ * 加新 spec 时的判断：用例里碰了汉堡菜单 / 抽屉 / 侧栏折叠 / viewport 尺寸，
+ * 就加进来；只是 goto 一个页面再断言内容，就不加。
+ */
+const RESPONSIVE_SPECS: RegExp[] = [
+  /chat-features\.spec\.ts$/,
+  /chat-sidebar\.spec\.ts$/,
+  /vditor-theme\.spec\.ts$/,
+  /chat-avatar-menu\.spec\.ts$/,
+  /chat-sse\.spec\.ts$/,
+  // 只有「移动端汉堡红点」那 2 条是移动端专属，另外 3 条是通用的未读角标语义。
+  // 粒度到不了 describe，整个文件跟着双跑 —— 多跑 3 条，换「不会漏掉那条
+  // test.skip(!isMobile) 的用例」。
+  /chat-unread-mark\.spec\.ts$/,
+];
+
 export default defineConfig({
   testDir: './tests/e2e',
   fullyParallel: false, // 共用一个测试库，串行更稳
@@ -54,9 +80,34 @@ export default defineConfig({
     screenshot: 'only-on-failure',
   },
 
+  // ── project 划分 ────────────────────────────────────────────────────────
+  //
+  // 原来两个 project 都把**每个**用例各跑一遍。但 23 个 spec 里只有 6 个真的
+  // 看 viewport，其余 17 个是「goto 一个页面 → 断言 DOM / 打接口」——
+  // 布局影响不到它们，mobile 那一遍纯属重复。
+  //
+  // 所以：desktop 跑全部，mobile 只跑 RESPONSIVE_SPECS。
+  //
+  // 为什么不反过来（把通用用例从 mobile 里排除）——两者等价，但那样要写 testIgnore，
+  // 而 testIgnore 在 project 级上会同时作用于两个 project（踩过：desktop 和 mobile
+  // 一起被排除，用例一条不剩）。desktop 保持默认全跑，没有这个坑。
+  //
+  // 【为什么不按 describe 细分】testMatch 只匹配文件路径，匹配不了 describe 名
+  // （实测 /^x\.spec\.ts:.*某describe/ 不报错但选不中任何用例，静默失效 ——
+  // 比报错更危险）。粒度只能到文件。
+  //
+  // 【为什么响应式的用例仍需 desktop 那一遍】这批用例大量写成
+  // `if (isMobile) 点抽屉菜单 else 点展开的侧栏` —— 同一个 test 覆盖两种布局，
+  // 只在 mobile 跑就等于桌面分支无人验证。所以 desktop 必须保留全量。
+  //
+  // 实测 300 → 179 个用例，耗时约减半。
   projects: [
     { name: 'desktop', use: { ...devices['Desktop Chrome'] } },
-    { name: 'mobile', use: { ...devices['iPhone 13'] } },
+    {
+      name: 'mobile',
+      use: { ...devices['iPhone 13'] },
+      testMatch: RESPONSIVE_SPECS,
+    },
   ],
 
   webServer: [
@@ -91,6 +142,11 @@ export default defineConfig({
       // 登录会「成功但不粘」。这正是线上踩过的坑；此处显式关掉，
       // 另有专门用例验证该判定逻辑本身。
       COOKIE_SECURE: 'false',
+      // 限频桶的快照落盘/回灌必须隔离到 tests/.tmp —— 不设它就会读写项目真实的
+      // instance/rate-limit-snapshot.json：跑一次 e2e 就把测试用户的配额写进
+      // 那边的持久状态（实测攒出 e2e-user-core 的 like 桶），且下一次启动还会
+      // 回灌进来。测试不该碰 instance/ 下的任何东西（同 DATABASE_URL 的纪律）。
+      RATE_LIMIT_SNAPSHOT_PATH: path.resolve(__dirname, 'tests/.tmp/e2e-rate-limit.json'),
       AVATARS_DIR: path.resolve(__dirname, 'tests/.tmp/e2e-avatars'),
       IMAGE_UPLOAD_FOLDER: path.resolve(__dirname, 'tests/.tmp/e2e-images'),
     },

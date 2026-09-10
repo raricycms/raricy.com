@@ -47,7 +47,8 @@ npm run dev                              # http://localhost:3000
 | `npm run dev` / `start` | 本地开发 / 生产启动 |
 | `npm run build` | 生产构建 |
 | `npm test` | vitest 单测 |
-| `npm run e2e` | 端到端（先 build 再跑 Playwright） |
+| `npm run e2e` | 端到端（直接跑 Playwright，**不**自动 build —— 改完代码请自行 `npm run build`） |
+| `npm run e2e:ci` | 同上，但先 build（CI / 全新环境用） |
 | `npm run smoke` | 11 条只读冒烟（登录态/列表/详情/签到/图床/CSRF 等） |
 | `npm run diagnose` | 部署自检（版本 / .env / 库 / 密钥）；报红就别往下走 |
 | `npm run check:secrets` | 密钥与生产数据是否进过版本库 |
