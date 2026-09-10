@@ -100,6 +100,16 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 - 永不物理删除（站长手动例外）：`Blog.ignore`、`BlogComment.is_deleted`、`ImageHosting.ignore`、`Vote.ignore`、`ClipBoard.ignore`。
 - `is_deleted=true` 且无子评论 → 自动从楼中楼里隐藏。
 
+### 聊天与通知的关系
+- **聊天消息不进通知列表**：未读由顶栏徽标体现（`/api/notifications/count` 合并
+  `getChatUnreadSummary`）——私聊计条数、大区只认被 @（小红点）。
+- **唯一进通知列表的是 @ 提及**（action `聊天提及`，一条 @ 一条通知）：`chat-service.notifyChannelMentions`。
+  逐条闸门：非自己 / 非禁言 / core+ / 频道对其可见（**私聊非成员不发**、**大区专注模式不发**）/
+  会话未静音。四个 `notify_*` 开关都不管它（调用方传 `prefKey: null`）。
+  判定与红点口径共用 `extractMentions`（用户名必须精确匹配）——改一处必须同步另一处。
+- 提拔/降级管理员（core↔admin）**仅站长**，入口在 `/admin/users` 的角色按钮；
+  `user↔core` 那对仍归管理员。见 `setRole` 的权限分档。
+
 ### 限频
 - 内存限频 `src/lib/rate-limit.ts`，**桶随 10 分钟清扫落盘**（`instance/rate-limit-snapshot.json`，原子写；`RATE_LIMIT_SNAPSHOT_PATH` 可覆盖），重启回灌不丢窗口；测试环境不自动回灌（确定性）。
 - 单进程语义；多实例部署需换 Redis（已知限制）。
