@@ -236,6 +236,7 @@ export default function ChatApp({
   /** 引用博客草稿（单附件：再选即替换） */
   const [blogQuote, setBlogQuote] = useState<ComposerBlogQuote | null>(null);
   const [quoteOpen, setQuoteOpen] = useState(false);
+  /** 未读新消息条数（「N 条新消息」浮标 + 「以下是新消息」分隔线的开关）。 */
   const [newCount, setNewCount] = useState(0);
   const [modalOpen, setModalOpen] = useState(false);
   /** 头像选项框：锚点信息（头像按钮矩形）在点击瞬间实测 */
@@ -259,6 +260,9 @@ export default function ChatApp({
   channelsRef.current = channels;
   const textRef = useRef(text);
   textRef.current = text;
+  /** newCount 的镜像：滚动是高频原生事件，回调里要读最新值，但不必因它重建监听。 */
+  const newCountRef = useRef(newCount);
+  newCountRef.current = newCount;
   /** 按频道暂存输入框草稿：切走时存、切回时恢复（否则给 A 打一半切到 B 会误发）。 */
   const draftsRef = useRef<Map<string, string>>(new Map());
   /**
@@ -436,6 +440,26 @@ export default function ChatApp({
     if (!el) return true;
     return el.scrollHeight - el.scrollTop - el.clientHeight < 140;
   }, []);
+
+  /**
+   * 用户自己滑到底 = 已读：清掉「N 条新消息」浮标（连带「以下是新消息」分隔线）
+   * 并把读游标推到最新。
+   *
+   * 【为什么非要有这个监听】newCount 只在「收到消息时不在底部」的分支里累加
+   * （见 onStreamMessage），而清零的路径原先只有「点浮标」和「切频道」两条 ——
+   * 手动把列表拖到底不经过任何一条，浮标就一直挂着（用户报的 bug）。
+   *
+   * 阈值与 isNearBottom 一致（140px），所以「浮标出现」与「浮标消失」是同一个
+   * 判据，不会出现卡在中间地带反复横跳。绝大多数滚动事件在第一行就早退了。
+   */
+  const handleListScroll = useCallback(() => {
+    if (newCountRef.current === 0) return;
+    if (!isNearBottom()) return;
+    setNewCount(0);
+    const aid = activeRef.current;
+    // 窗口失焦时 markRead 自己会跳过（没看就不能算读过）→ 顶栏徽标保持亮着
+    if (aid && lastIdRef.current) void markRead(aid, lastIdRef.current);
+  }, [isNearBottom, markRead]);
 
   // ── 拉消息（初始 / 切频道） ────────────────────────────────────────────
   /** 拉频道首页消息（纯网络，不落状态）。 */
@@ -1272,7 +1296,7 @@ export default function ChatApp({
               )}
             </header>
 
-            <div className="chat-list" ref={listRef}>
+            <div className="chat-list" ref={listRef} onScroll={handleListScroll}>
               {/* DOM 上限：超过 CAP 条时从顶部折叠（消息仍在内存里），
                   顶部按钮点一下往下放一页 —— 避免长会话把上万个节点堆在 DOM 里 */}
               {folded > 0 ? (

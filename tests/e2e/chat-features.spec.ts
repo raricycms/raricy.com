@@ -358,3 +358,90 @@ test.describe('进入聊天区停在最新消息', () => {
       .toBeLessThan(40);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 用户报的 bug：「1 条新消息」滑到底后不消失。
+//
+// 浮标只在「收到消息时不在底部」的分支里累加（onStreamMessage），原先只有点浮标
+// 和切频道两条清零路径 —— 手动把列表拖到底不经过任何一条。修复是给 .chat-list 挂
+// 滚动监听：到底即清零并推进读游标（见 ChatApp.handleListScroll）。
+//
+// 【为什么要两个浏览器上下文】要制造「我这个频道是非活动的、然后来了新消息」：
+// 说话的人在另一个上下文里，本页停在别的频道上。
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('新消息浮标', () => {
+  // 只用滚轮驱动滚动（真实用户的动作）。Mobile Safari 没有滚轮 —— 它走
+  // `touchmove` + 惯性，Playwright 模拟不出，而 scrollTo 这类程序化滚动**不会**
+  // 派发 scroll 事件，用它等于把被测的那条链路绕过去了（第一版就是这么写的，
+  // 移除修复后用例照样绿）。
+  test.skip(({ isMobile }) => isMobile, '程序化滚动不触发 scroll 事件，滚轮在移动端不可用');
+
+  test('滑到底后「N 条新消息」消失', async ({ page, browser }) => {
+    const me = await registerFreshUser(page, { core: true });
+
+    // 说话人：用管理员（别的用例也收发，但只发大区，不干扰这里的私聊）
+    const ctx = await browser.newContext();
+    const speaker = await ctx.newPage();
+    await loginViaApi(speaker, SEED_USERS.admin.username);
+    const created = await speaker.request.post('/api/chat/channels', {
+      data: { user_id: me.id },
+    });
+    expect(created.status()).toBe(200);
+    const dmId = ((await created.json()) as { channel: { id: string } }).channel.id;
+
+    try {
+      // 先把私聊撑过一屏，并让本页读到底（进频道即已读）
+      for (let i = 0; i < 8; i++) {
+        const res = await speaker.request.post(`/api/chat/channels/${dmId}/messages`, {
+          data: { content: `e2e-jump-${i} 稍长一点的内容，用来把列表撑过一屏。` },
+        });
+        expect(res.status(), await res.text()).toBe(200);
+      }
+      // 手机视口：一屏装不下 8 条
+      await page.setViewportSize({ width: 390, height: 600 });
+      await page.goto(`/chat?channel=${dmId}`);
+      const list = page.locator('.chat-list');
+      await expect(page.locator('.chat-msg').last()).toBeVisible();
+      // 前提：列表确实超出一屏 —— 否则「离开底部」与「滑到底」都无从谈起，
+      // 断言会在一个根本滚不动的列表上假绿
+      expect(
+        await list.evaluate((el) => el.scrollHeight - el.clientHeight),
+        '私聊没有超出一屏，本用例失去意义'
+      ).toBeGreaterThan(100);
+
+      // 往上翻，离开底部 —— 此时来的新消息才会累加浮标。
+      // 用滚轮而不是 scrollTo：scrollTo 一步到位，连 140px 的「接近底部」阈值都没
+      // 跨出去就停在顶上了；滚轮是真实用户的操作，滚动事件也一条不落。
+      await list.hover();
+      await page.mouse.wheel(0, -1000);
+      await expect.poll(() => list.evaluate((el) => el.scrollTop)).toBeLessThan(40);
+
+      const res = await speaker.request.post(`/api/chat/channels/${dmId}/messages`, {
+        data: { content: `e2e-jump-new-${uniqueTag()}` },
+      });
+      expect(res.status(), await res.text()).toBe(200);
+
+      const jump = page.locator('.chat-jump-new');
+      await expect(jump).toContainText('1 条新消息');
+      await expect(jump).toBeVisible();
+
+      // 手动滑到底 —— 用户报的就是这一步之后浮标还赖着不走。
+      // 先滚轮一段（真的离开底部，滚出浮标），再一路滚到底。
+      await page.mouse.wheel(0, 400);
+      await expect.poll(() => list.evaluate((el) => el.scrollTop)).toBeGreaterThan(100);
+      await page.mouse.wheel(0, 2000);
+      await page.mouse.wheel(0, 2000);
+      await expect(jump).toHaveCount(0, { timeout: 5000 });
+      // 断言真的到底了（否则「浮标消失」可能只是列表还没滚到位）
+      await expect
+        .poll(() => list.evaluate((el) => el.scrollHeight - el.clientHeight - el.scrollTop))
+        .toBeLessThan(140);
+      // 读游标也推进了：切走再切回来，浮标不再复现
+      await page.goto(`/chat?channel=${LOBBY}`);
+      await page.goto(`/chat?channel=${dmId}`);
+      await expect(page.locator('.chat-jump-new')).toHaveCount(0);
+    } finally {
+      await ctx.close();
+    }
+  });
+});
