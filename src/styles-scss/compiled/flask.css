@@ -3707,6 +3707,87 @@ a:hover {
     transform: rotate(-90deg);
   }
 }
+/* ── 目录列表的等待态（page.tsx 的 <Suspense> fallback）─────────────────────────
+   列表数据不 await，hero / 搜索框 / 侧栏先画，这块从挂起到补上大约一个 RTT。
+   尺寸逐项对齐真实元素（出处见各行注释），换入时列表不跳动。
+   ⚠️ 类名一律走 blog-skeleton-*，**不复用 .blog-item / .blog-list** ——
+   专注模式的用例断言 `.blog-item` 计数为 0，骨架顶着同名类出现会污染它。
+   取色只用 --color-* 令牌，明暗主题自动跟随。 */
+.blog-skeleton-line {
+  background: var(--color-background-subtle);
+  border-radius: 8px;
+  animation: blog-skeleton-pulse 1.4s ease-in-out infinite;
+}
+
+/* 出处：.blog-item（卡片底 / 30px 圆角 / 20px 23px 23px 28px 内距 / 16px 下距） */
+.blog-skeleton-card {
+  background: var(--color-background-card);
+  border-radius: 30px;
+  padding: 20px 23px 23px 28px;
+  margin-bottom: 16px;
+}
+
+/* 出处：.blog-header（桌面 flex 两端对齐、12px 下距；≤768px 转纵向 + 6px 间距） */
+.blog-skeleton-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+/* 各行高度取自实测：桌面 head 取 max(标题 29, 统计 25)=29，加 12 下距 + 描述(14+22+20)
+   + 作者 21 = 106，加卡片 43 内距 = 149，对齐 .blog-item 实测的 149.1。 */
+.blog-skeleton-line--heading {
+  height: 29px; /* 出处：.blog-title（1.3rem）实际占高 29.1 */
+  width: 42%;
+}
+
+.blog-skeleton-line--stats {
+  height: 25px; /* 出处：.blog-stats 实际占高 25 */
+  width: 20%;
+}
+
+.blog-skeleton-line--desc {
+  height: 22px; /* 出处：.blog-description 实际占高 21.6 */
+  width: 82%;
+  margin: 14px 0 20px; /* 出处：其 14.4 上距（与 header 的 12 折叠取大）与 20 下距 */
+}
+
+.blog-skeleton-line--meta {
+  height: 21px; /* 出处：.blog-author 实际占高 21 */
+  width: 26%;
+}
+
+@keyframes blog-skeleton-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .blog-skeleton-line {
+    animation: none;
+  }
+}
+/* 出处：≤768px 的 .blog-item / .blog-header / .blog-title
+   卡片内距转 28px、head 转纵向，合计 159.5，对齐移动端实测值。 */
+@media (max-width: 768px) {
+  .blog-skeleton-card {
+    padding: 14px 16px;
+    border-radius: 18px;
+    margin-bottom: 10px;
+  }
+  .blog-skeleton-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  .blog-skeleton-line--heading {
+    height: 23.5px; /* 出处：.blog-title 在 ≤768px 降到 1.05rem */
+  }
+}
 .upload-hero {
   background: var(--color-background-page);
   padding: 50px 0 30px;
