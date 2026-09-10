@@ -278,6 +278,33 @@ GET/HEAD/OPTIONS 视为安全方法，不校验。
 骨架（`BlogListSkeleton`）尺寸按真实元素逐项实测对齐，类名一律 `blog-skeleton-*`，
 **不复用 `.blog-item`**（专注模式用例断言它计数为 0）。
 
+**这套做法只值得用在载荷大的页面。** 收益 ≈ (载荷 − 外壳)/带宽 —— 骨架能提前多久
+出现，取决于「正文那部分要传多久」。实测各列表页的 RSC 载荷：
+
+| 页面 | 载荷 | 值不值得改 |
+|------|------|-----------|
+| `/blog` | 91 KB | ✅ 骨架可见窗口 ~300ms |
+| `/admin/users` | 39 KB | ⛔ 见下方硬约束 |
+| `/admin/appeals` | 26 KB | ⛔ 见下方硬约束 |
+| `/image`（162 张的重度用户） | 14 KB | ❌ 窗口 ~70ms |
+| `/vote` | 13 KB | ❌ 实测骨架只露 **42ms**，白加一层复杂度 |
+| `/u/[id]` | 13 KB | ❌ 同上 |
+| `/audit` | 3 KB | ❌ 外壳还只有个 `<h2>` |
+
+**★ 硬约束：调用 `router.refresh()` 的组件不能落在边界内。**
+
+`/admin/users` 按上面这条本该改（39 KB），实测**退回了**：`AdminUserActions` 在边界内
+调 `router.refresh()`，服务端数据已改（DB 与 RSC 载荷都确认是新的）但界面不更新 ——
+3 次里错 2 次。对照 `/blog`：`BlogSort` 在**边界外**调 refresh，更新边界内的列表，
+一切正常（有 e2e 覆盖）。所以：**refresh 的发起方必须在边界之外**。
+
+据此不能改：`/admin/users`（`AdminUserActions`）、`/admin/appeals`（`AdminAppealActions`）、
+`/image/admin`（`ImageAdminTable`）、`/checkin`（`CheckinCard`）—— 它们的 refresh 发起方
+都在列表内部。`/image` 勉强可以（`ImageUploader` 留在外壳、只把 gallery 进边界），
+但载荷只有 14 KB，不值得。
+
+改任何列表页之前，先 `grep -n "router.refresh()" <该页要放进边界的组件>` 确认一下。
+
 ## 8. 关键约定
 
 ### 软删除
