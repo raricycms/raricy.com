@@ -802,7 +802,7 @@ export type SearchMessagesResult =
  * 前端点一条 → 跳转到该条并高亮。
  *
  * 只搜当前频道：跨会话搜索要么泄露别的会话上下文，要么需要额外做频道维度分页，
- * 收益不抵复杂度（见 docs/chat-review.md 第 3 节）。
+ * 收益不抵复杂度。
  */
 export async function searchChannelMessages(
   channelId: string,

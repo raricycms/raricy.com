@@ -623,7 +623,7 @@ describe('getTodayCheckinFish', () => {
    * 存储形态必须与 scripts/normalize-datetimes.mjs 的真实产物一致 —— **INTEGER（Unix 毫秒）**。
    * 不要用 TEXT ISO 当夹具：那是旧版规整脚本的产物，会让 Prisma 的日期比较按 SQLite
    * 类型序（TEXT > INTEGER）而非数值进行（gte 恒真 / lt 恒假），已知会导致发文日限额
-   * 把历史文章全算成「今天」。详见 docs/nextjs-migration/03 的「为什么是 INTEGER」。
+   * 把历史文章全算成「今天」。
    */
   async function makeLegacyTx(userId: string, amount: number, type: string, isoTs: string) {
     await prisma.$executeRawUnsafe(

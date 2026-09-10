@@ -185,7 +185,8 @@ export function __resetRateLimitStore() {
   lastSweep = 0;
 }
 
-// 与 Flask 现有配额对齐（docs/全站限额与频控汇总.md）
+// 全站配额以本对象为**唯一权威**（Flask 时代的汇总文档已删除；
+// 旧配额值亦无须再对齐）。改数值 = 改全站行为，同步更新下面的注释口径。
 export const RULES = {
   likeHourly: { limit: 100, windowMs: 60 * 60 * 1000 },
   likeDaily: { limit: 500, windowMs: 24 * 60 * 60 * 1000 },

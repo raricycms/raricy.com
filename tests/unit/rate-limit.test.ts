@@ -172,7 +172,7 @@ describe('返回值形态', () => {
   });
 });
 
-describe('RULES 全站配额（与 docs/全站限额与频控汇总.md 对齐，改动即报警）', () => {
+describe('RULES 全站配额（src/lib/rate-limit.ts 即权威，改动即报警）', () => {
   // 这些数字是产品口径，不是实现细节 —— 任何改动都应是一次有意识的决定。
   const EXPECTED = [
     { name: 'likeHourly', limit: 100, windowMs: HOUR, desc: '点赞 100 次/时' },

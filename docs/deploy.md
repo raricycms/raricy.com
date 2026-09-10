@@ -231,8 +231,7 @@ ssl_certificate     /etc/letsencrypt/live/raricy.com/fullchain.pem;
 ssl_certificate_key /etc/letsencrypt/live/raricy.com/privkey.pem;
 ```
 
-完整配置参考 git 历史 `docs/nextjs-migration/nginx.conf.example`（已删除；如需可参考其本质 —— 主要关键头已列上）。
-
+关键头已列全 —— 照抄上面即可，不需要额外参考。
 ## 7. systemd unit 示例
 
 `/etc/systemd/system/raricy-next.service`：

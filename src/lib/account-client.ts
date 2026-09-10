@@ -423,8 +423,7 @@ export const accountClient = {
         // 这条日志是目前唯一的发现途径 —— 没有对账队列，也没有自动重试。
         // 故意打成**单行、带固定前缀的结构化 JSON**，便于日志系统按
         // `ACCOUNT_RECONCILE_REQUIRED` 关键字告警、并直接解析出对账所需字段。
-        // 长期方案（见 docs/nextjs-migration/06 的账户微服务联调项）：落一张对账表 +
-        // 后台重试，而不是靠人盯日志。
+        // 长期方案：落一张对账表 + 后台重试，而不是靠人盯日志。
         console.error(
           'ACCOUNT_RECONCILE_REQUIRED ' +
             JSON.stringify({

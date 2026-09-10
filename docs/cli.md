@@ -41,7 +41,7 @@ npm run cli -- promote-owner charlie
 
 对应账户微服务的复式记账。**写路径 fail-closed**：本地事务成功 commit 前，远端必须先同步成功；远端失败则本地事务回滚。
 
-详见 `CLAUDE.md` "鱼干写路径" 与 `docs/历史`（账户微服务拆分历史）。
+详见 `CLAUDE.md`「鱼干写路径」。
 
 | 命令 | 作用 |
 |------|------|

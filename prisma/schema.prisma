@@ -10,8 +10,8 @@
 //   否则报 "Conversion failed: input contains invalid characters"（已实测复现）。
 //   因此使用本 schema 前，数据库必须先规整为 ISO：
 //       npm run db:normalize            # 在副本上执行，见 scripts/normalize-datetimes.mjs
-//   规整后 Flask 侧若仍需读同库，需要给 SQLAlchemy 配 ISO 兼容类型
-//   （见 docs/nextjs-migration/03-数据库映射与陷阱.md 附录）；否则按“硬切换”处理。
+//   规整是单向门：Flask 侧（若仍在读同库）需要给 SQLAlchemy 配 ISO 兼容类型，
+//   否则按“硬切换”处理。
 //
 // 其它：
 //   • admin_action_logs.extra 是 JSON 列，SQLite 上 Prisma 无 Json 标量 → 映射 String，

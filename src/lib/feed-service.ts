@@ -231,7 +231,7 @@ export async function feedBlog(
       //
       // ⚠️ 这里是「读 → 判断 → 写」，**不是原子表达式**。当前之所以成立，是因为
       // SQLite 的写锁把并发事务串行化了（已用并发用例实测：同篇并发投喂不破 5）。
-      // **迁到 Postgres/MySQL 后（见 docs/nextjs-migration/03 §7）此处会失效** ——
+      // **迁到 Postgres/MySQL 后此处会失效** ——
       // READ COMMITTED 下两个事务可能同时读到 amount=3、各自 +2，结果 7 > 5。
       // 届时应改为原子条件写，例如：
       //   UPDATE blog_feeds SET amount = amount + ?

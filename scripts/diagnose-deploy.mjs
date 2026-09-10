@@ -151,7 +151,7 @@ if (dbPath && fs.existsSync(dbPath)) {
 
   if (PrismaClient) {
     const prisma = new PrismaClient({ log: [] });
-    const NORMALIZE_HINT = `对该库跑：node scripts/normalize-datetimes.mjs --source <你的库> --dest <新库>（详见 docs/nextjs-migration/03-数据库映射与陷阱.md）`;
+    const NORMALIZE_HINT = `对该库跑：node scripts/normalize-datetimes.mjs --source <你的库> --dest <新库>`;
 
     // 3.1 看真实存储类型。目标是 INTEGER（Unix 毫秒）—— 与 Prisma 自身写入格式一致。
     //     TEXT 存储即使能被 Prisma 读出，日期比较也会按 SQLite 类型序（INTEGER < TEXT）
