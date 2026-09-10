@@ -54,7 +54,7 @@ npm run dev                              # http://localhost:3000
 > `src/` 却没重新 build 的话，测的是旧代码 —— 症状很隐蔽：刚加的日志/探针一行
 > 都不打、刚改的逻辑毫无反应，容易误判成代码没生效而去乱翻别处。改完源码先
 > `npm run build`，或直接用 `npm run e2e:ci`。
-| `npm run smoke` | 11 条只读冒烟（登录态/列表/详情/签到/图床/CSRF 等） |
+| `npm run smoke` | 15 条只读冒烟（登录态/列表/详情/签到/图床/CSRF/指南页等） |
 | `npm run diagnose` | 部署自检（版本 / .env / 库 / 密钥）；报红就别往下走 |
 | `npm run check:secrets` | 密钥与生产数据是否进过版本库 |
 | `npm run check:links` | 站内断链静态扫描 |
