@@ -31,4 +31,14 @@ export default async function globalTeardown() {
       }
     }
   }
+
+  // 限频快照同理（路径见 playwright.config.ts 的 RATE_LIMIT_SNAPSHOT_PATH）。
+  // 它不像库名那样每轮唯一，所以必须显式清：留着的话下一轮会回灌上一轮的桶，
+  // 「两个用例在同一个 60 秒窗口里凑满 30 条发言」这种跨轮污染就成了薛定谔的 flaky
+  // —— 正是本轮踩到的那个 429。
+  try {
+    fs.rmSync(path.resolve(__dirname, '../.tmp/e2e-rate-limit.json'), { force: true });
+  } catch {
+    // 同上，删不掉不影响判定
+  }
 }
