@@ -106,7 +106,9 @@ test.describe('顶栏徽标：聊天未读并入「消息」', () => {
       await expect(page.locator('.chat-main')).toBeVisible();
 
       await postMessage(speaker, dmId, `e2e-badge-${uniqueTag()}`);
-      await expect(badge).toBeVisible();
+      // 徽标刷新是 2s 尾沿节流 + 一次收尾预约（见 ChatApp.refreshTopbarBadge），
+      // 默认 5s 断言超时在慢机器上贴着边 —— 给足一整个节流窗口 + 余量
+      await expect(badge).toBeVisible({ timeout: 12_000 });
       await expect(badge).toHaveText('1');
       await expect(badge).not.toHaveClass(/is-dot/);
 
@@ -120,7 +122,7 @@ test.describe('顶栏徽标：聊天未读并入「消息」', () => {
     }
   });
 
-  test('大区 @ 我 → 徽标只亮小红点（不显数字）', async ({ page, browser }) => {
+  test('大区 @ 我 → 收到一条「聊天提及」通知，徽标显条数', async ({ page, browser }) => {
     const { me, speaker, close } = await setupUserOffLobby(page, browser);
     try {
       const badge = page.locator('#notificationBadge');
@@ -128,7 +130,28 @@ test.describe('顶栏徽标：聊天未读并入「消息」', () => {
 
       // setup 停在私聊上 → 大区是非活动频道，@ 消息不会被自动读掉
       await postMessage(speaker, LOBBY, `@${me.username} 顶栏红点`);
-      await expect(badge).toBeVisible();
+      // 同上：等过 2s 的徽标节流窗口
+      await expect(badge).toBeVisible({ timeout: 12_000 });
+      // @ 产生的是**通知**（聊天里唯一进通知列表的东西，见 chat-service），
+      // 所以徽标此刻显示条数而不是大区小红点
+      await expect(badge).toHaveText('1');
+      await expect(badge).not.toHaveClass(/is-dot/);
+    } finally {
+      await close();
+    }
+  });
+
+  test('通知读掉、大区那条仍未读 → 徽标退化成小红点', async ({ page, browser }) => {
+    const { me, speaker, close } = await setupUserOffLobby(page, browser);
+    try {
+      const badge = page.locator('#notificationBadge');
+      await postMessage(speaker, LOBBY, `@${me.username} 红点`);
+      await expect(badge).toBeVisible({ timeout: 12_000 });
+
+      // 把通知全标已读：通知计数归零，但大区那条 @ 我仍未读 → 只剩小红点
+      const readAll = await page.request.post('/api/notifications/read-all');
+      expect(readAll.status()).toBe(200);
+      await page.goto('/notifications'); // 整页加载 → 顶栏徽标重算
       await expect(badge).toHaveClass(/is-dot/);
       expect(await badge.textContent()).toBe('');
     } finally {
