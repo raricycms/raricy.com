@@ -11,7 +11,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { expect, test } from '@playwright/test';
-import { loginViaApi, uniqueTag } from './helpers';
+import { loginViaApi, registerFreshUser, uniqueTag } from './helpers';
 import { SEED_USERS } from './seed';
 
 const LOBBY = 'lobby';
@@ -106,7 +106,12 @@ test.describe('聊天头像选项框', () => {
   });
 
   test('@到自己的消息高亮；前缀相同的 @e2e_corex 不误伤', async ({ page }) => {
-    await loginViaApi(page, SEED_USERS.admin.username);
+    // 发言者用一次性新用户，**不用种子号**：大区发言限频是 30 条/分钟/用户，
+    // 而 desktop / mobile 两个 project 会把本文件各跑一遍 —— 种子号的配额会被
+    // 前后相邻的用例（含另一个 project 那一轮）吃掉，本用例的首条发言就 429。
+    // 身份只要「不是 core」即可，谁发的不影响 @ 高亮的判定。
+    // （同 chat-features.spec.ts「进入聊天区停在最新消息」的写法）
+    await registerFreshUser(page, { core: true });
     const tag = uniqueTag();
     const hit = `@${SEED_USERS.core.username} 哨兵-${tag}`;
     const miss = `@${SEED_USERS.core.username}x 哨兵-${tag}`;

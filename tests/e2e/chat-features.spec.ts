@@ -63,7 +63,12 @@ test.describe('聊天功能：链接 / 跳转 / 搜索 / 日期分隔', () => {
     const orig = `e2e-orig-${tag}`;
     const reply = `e2e-reply-${tag}`;
 
-    await loginViaApi(page, SEED_USERS.admin.username);
+    // 发言者用一次性新用户，**不用种子号**：大区发言限频是 30 条/分钟/用户，
+    // 而 desktop / mobile 两个 project 会把本文件各跑一遍 —— 种子号的配额会被
+    // 另一轮 + 相邻用例吃掉，本用例的首条发言就 429（实测 chat:m:e2e-user-admin
+    // 达到 30/30）。这里只需要「一个和 core 不同的人」，是谁不影响回复跳转的判定。
+    // （同本文件「进入聊天区停在最新消息」的写法）
+    await registerFreshUser(page, { core: true });
     const origId = await postLobby(page, orig);
     await postLobby(page, reply, origId);
 
