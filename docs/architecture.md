@@ -209,7 +209,7 @@ GET/HEAD/OPTIONS 视为安全方法，不校验。
 
 详见 `docs/oauth.md`。
 
-## 7. 数据流（3 个典型路径）
+## 7. 数据流（4 个典型路径）
 
 ### 7.1 用户登录
 
@@ -248,6 +248,35 @@ GET/HEAD/OPTIONS 视为安全方法，不校验。
   → Server Component 渲染 Markdown 占位 + 注入数据
   → 客户端 marked + DOMPurify + highlight.js 完成正文
 ```
+
+### 7.4 浏览目录 /blog（列表读路径，流式）
+
+`page.tsx` **不 await 列表数据**，把 `listBlogs` 的 promise 交给 `<Suspense>` 里的
+`BlogListSection`：hero / 搜索框 / 侧栏分类在首个 flush 就画出来，列表随后补上。
+实测 RTT 300ms：hero+侧栏 400ms、列表 700ms（改前两者同为 ~790ms）。
+
+```
+浏览器 GET /blog
+  → middleware.ts  ✓ 同源
+  → page.tsx       requireCoreUser() → cookies() → 渲染 hero / 侧栏   ← 首个 flush
+  → BlogListSection  await listBlogs()                              ← 流式补上
+```
+
+**为什么不能用路由级 `loading.tsx`**（试过，三处回归，别再试）：
+
+1. 它把**整页**压成 fallback；React 靠内联脚本 `$RC` 把真实内容从 `<div hidden>`
+   换入，**无 JS 时永远停在骨架** —— 连 hero / 搜索 / 分类导航都没了，会踩掉
+   `tests/e2e/blog.spec.ts` 的「禁用 JS › 小屏目录保持展开」。Suspense 方案只罩列表。
+2. 守卫被推到挂起之后才跑，响应已以 200 冲出：匿名 `/blog` **307→200**、
+   `role=user` **403→200**。
+3. 边界让 DOM 非单调（内容 → 骨架 → 内容），`.blog-item` 计数/顺序与 cookie
+   稳态断言开始随机挂。
+
+**另一个反直觉点**：服务端本来就在分块（实测拆成 57 个 chunk），但**没有 Suspense
+边界时客户端是整体提交的** —— 分块换不来渐进绘制。「服务端在流式」≠「用户看得见流式」。
+
+骨架（`BlogListSkeleton`）尺寸按真实元素逐项实测对齐，类名一律 `blog-skeleton-*`，
+**不复用 `.blog-item`**（专注模式用例断言它计数为 0）。
 
 ## 8. 关键约定
 
