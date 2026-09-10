@@ -70,6 +70,54 @@ test.describe('聊天图片', () => {
     expect(newPages, '点图片不应新开窗口').toBe(0);
   });
 
+  test('放大层可缩放：按钮档位、百分比复位、滚轮', async ({ page }) => {
+    await loginViaApi(page, SEED_USERS.core.username);
+    const marker = `e2e-zoomctl-${uniqueTag()}`;
+    const imageId = await uploadViaApi(page.request);
+    const posted = await page.request.post(`/api/chat/channels/${LOBBY}/messages`, {
+      data: { content: marker, image_id: imageId },
+    });
+    expect(posted.status()).toBe(200);
+
+    await page.goto(`/chat?channel=${LOBBY}`);
+    const row = msgRow(page, marker);
+    await expect(row).toBeVisible();
+    await row.locator('.chat-msg__image').click();
+
+    const overlay = page.locator('.chat-lightbox');
+    await expect(overlay).toBeVisible();
+
+    const img = overlay.locator('.chat-lightbox__img');
+    const level = overlay.locator('.chat-lightbox__zoom-level');
+    const zoomIn = overlay.getByRole('button', { name: '放大' });
+    const zoomOut = overlay.getByRole('button', { name: '缩小' });
+
+    await expect(level).toHaveText('100%');
+    await expect(zoomOut).toBeDisabled(); // 已经是最小档
+
+    await zoomIn.click();
+    await expect(level).toHaveText('150%');
+    await expect(img).toHaveCSS('transform', /matrix\(1\.5,/);
+
+    await zoomIn.click();
+    await expect(level).toHaveText('200%');
+
+    // 百分比按钮 = 复位到原始大小，缩小按钮随之回到禁用
+    await level.click();
+    await expect(level).toHaveText('100%');
+    await expect(zoomOut).toBeDisabled();
+
+    // 滚轮向上放大一档（mobile project 是 WebKit 触摸设备，没有滚轮 → 跳过）
+    if (test.info().project.name !== 'mobile') {
+      await overlay.hover();
+      await page.mouse.wheel(0, -120);
+      await expect(level).toHaveText('150%');
+    }
+
+    await page.keyboard.press('Escape');
+    await expect(overlay).toHaveCount(0);
+  });
+
   test('上传第一次网络失败会自动重试一次', async ({ page }) => {
     await loginViaApi(page, SEED_USERS.core.username);
 

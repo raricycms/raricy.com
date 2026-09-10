@@ -12357,15 +12357,97 @@ input:checked + .settings-toggle__slider::before {
   justify-content: center;
   background: rgba(0, 0, 0, 0.8);
   cursor: zoom-out;
+  touch-action: none;
 }
-.chat-lightbox img {
+
+.chat-lightbox__img {
   max-width: 90%;
   max-height: 90%;
   object-fit: contain;
   border-radius: 8px;
   cursor: default;
+  transition: transform 0.18s ease;
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
+.chat-lightbox__img.is-zoomed {
+  cursor: grab;
+}
+
+.chat-lightbox__img.is-dragging {
+  cursor: grabbing;
+  transition: none;
+}
+
+.chat-lightbox__zoom {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(6px);
+  cursor: default;
+}
+
+.chat-lightbox__zoom-btn,
+.chat-lightbox__zoom-level {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+  border-radius: 999px;
+  opacity: 0.9;
+}
+.chat-lightbox__zoom-btn:hover:not(:disabled),
+.chat-lightbox__zoom-level:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.14);
+  opacity: 1;
+}
+.chat-lightbox__zoom-btn:disabled,
+.chat-lightbox__zoom-level:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.chat-lightbox__zoom-btn {
+  width: 34px;
+  height: 34px;
+}
+.chat-lightbox__zoom-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.chat-lightbox__zoom-level {
+  min-width: 56px;
+  height: 34px;
+  padding: 0 8px;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 640px) {
+  .chat-lightbox__zoom {
+    bottom: 32px;
+  }
+  .chat-lightbox__zoom-btn {
+    width: 40px;
+    height: 40px;
+  }
+  .chat-lightbox__zoom-btn svg {
+    width: 20px;
+    height: 20px;
+  }
+}
 .chat-lightbox__close {
   position: absolute;
   top: 16px;

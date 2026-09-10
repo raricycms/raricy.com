@@ -908,6 +908,11 @@
 
 // 图片原位放大（覆盖层）：点消息里的图不新开窗口，盖一层黑底放大看，
 // 点黑底 / Esc / 右上角 × 关闭。观感对齐博客正文与云剪贴板的图片放大。
+//
+// 缩放走 transform（见 ImageLightbox）：平移用 translate、倍数用 scale，都在
+// 合成层完成，不触发重排。因此这里**不能**给 .chat-lightbox__img 加 transition
+// 之外的尺寸约束变化 —— scale 放大后图片会盖住黑底，但覆盖层本身是 pointer-events
+// 的接收面，关闭依然靠点它没被图盖住的区域（或用 × / Esc）。
 .chat-lightbox {
   position: fixed;
   inset: 0;
@@ -917,13 +922,104 @@
   justify-content: center;
   background: rgba(0, 0, 0, 0.8);
   cursor: zoom-out;
+  // 触屏捏合时不要让浏览器抢去做页面缩放 / 下拉刷新
+  touch-action: none;
+}
 
-  img {
-    max-width: 90%;
-    max-height: 90%;
-    object-fit: contain;
-    border-radius: 8px;
+.chat-lightbox__img {
+  max-width: 90%;
+  max-height: 90%;
+  object-fit: contain;
+  border-radius: 8px;
+  cursor: default;
+  // 档位切换要有个过渡，否则「啪」地跳一下；拖动时关掉（见 .is-dragging）
+  transition: transform 0.18s ease;
+  // 放大后可拖动平移；1× 时是普通图片（default）
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.chat-lightbox__img.is-zoomed {
+  cursor: grab;
+}
+
+.chat-lightbox__img.is-dragging {
+  cursor: grabbing;
+  transition: none;
+}
+
+// 缩放控件：底部居中一条黑底胶囊。按钮用白色描边图标，与覆盖层同为深色场景，
+// 不跟随站点明暗主题（覆盖层本身就是黑底）。
+.chat-lightbox__zoom {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(6px);
+  cursor: default;
+}
+
+.chat-lightbox__zoom-btn,
+.chat-lightbox__zoom-level {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+  border-radius: 999px;
+  opacity: 0.9;
+
+  &:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.14);
+    opacity: 1;
+  }
+
+  &:disabled {
+    opacity: 0.35;
     cursor: default;
+  }
+}
+
+.chat-lightbox__zoom-btn {
+  width: 34px;
+  height: 34px;
+
+  svg {
+    width: 18px;
+    height: 18px;
+  }
+}
+
+.chat-lightbox__zoom-level {
+  min-width: 56px;
+  height: 34px;
+  padding: 0 8px;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
+
+// 移动端：控件离底边远一点（浏览器底部工具条会盖住），按钮也放大到可点面积
+@media (max-width: 640px) {
+  .chat-lightbox__zoom {
+    bottom: 32px;
+  }
+
+  .chat-lightbox__zoom-btn {
+    width: 40px;
+    height: 40px;
+
+    svg {
+      width: 20px;
+      height: 20px;
+    }
   }
 }
 
