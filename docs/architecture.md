@@ -130,13 +130,15 @@ API 端点位于 `src/app/api/<group>/<verb>/route.ts`，**薄**层：参数校�
 ### 6.2 数据层
 
 - **Prisma schema**：`prisma/schema.prisma` 与真实库 1:1 映射。改 schema 时**手写** `prisma/migrations/<n>_<name>/migration.sql` 并同步 schema.prisma，然后 `npm run migrate -- up` 应用（见 docs/deploy.md「修改 schema 后」；生产库禁止 `prisma migrate dev` / `db push`）。
-- **时间戳列**：INTEGER 毫秒（与 Prisma 默认 SQLite 写入格式对齐）。
-- **派生时间**：`src/lib/db-time.ts` 的 `nowForDb()` 提供当前 Unix 毫秒。所有显式 "插入时间" 都走它，不依赖数据库 `DEFAULT now()`。
+- **时间戳列**：INTEGER 毫秒（与 Prisma 默认 SQLite 写入格式对齐）。规整是**单向门** —— 旧 Flask 的 `YYYY-MM-DD HH:MM:SS` 文本格式 Prisma 解析即抛 500。
+- **时间戳语义**：存的是「**UTC+8 墙上时间贴 Z 标签**」，**不是真实 UTC 瞬间**（Flask `datetime.now()` 的历史遗留，normalize 只补 `T`/`Z` 不平移）。因此：取当前时刻一律用 `src/lib/db-time.ts` 的 `nowForDb()`（= `Date.now() + 8h`，与全库历史数据同钟）；「还剩多久」用 `hoursUntil()`；展示用 `ymd`/`ymdhms` 或 `getUTC*`。**禁止**无参 `new Date()`、`toLocale*`、本地 getter（`getHours` 等）。混用两把钟的后果**全是静默的**：禁言到期后多显示 8 小时、当日发文计数跨日错位。由 `tests/unit/db-time-guard.test.ts` 五条静态守卫强制。
 - **Prisma 客户端**：单例在 `src/lib/db.ts`，开发模式 HMR 安全。
 
 ### 6.3 鱼干账户（跨进程）
 
-- **失败语义 — 写路径 fail-closed**：投喂 / 签到 / 注册建账户 / CLI grant|deduct **全部**遵循：本地事务先收集变更 → 远端账户服务同步成功 → 才 commit 本地事务。远端失败则本地事务回滚，返回 503 / 退出码 2。详见 `CLAUDE.md`。
+- **失败语义 — 写路径 fail-closed**：投喂 / 签到 / 注册建账户 / CLI grant|deduct **全部**遵循：远端账户服务失败 → 本地写入被**补偿事务精确撤销**（对用户等价于回滚）→ 503 / 退出码 2。绝不静默成功。
+- **分层（`2_account_sync_ledger` 起）**：本地事务先提交（含 `account_sync_ledger` 一行 pending），远端 HTTP 在事务**外**调用 —— 成功标 `synced`，失败走补偿事务。HTTP **绝不能挪进事务**：那会让 SQLite 写锁被占用最长 `ACCOUNT_SERVICE_TIMEOUT`，并发写耗尽 busy_timeout 直接 `database is locked`。
+- **崩溃收敛**：任何「已提交 / 未同步」窗口都留一个 pending 账本行，`npm run cli -- fish sync-retry` 幂等重放收敛；补偿也失败则标 `failed` 并打 `ACCOUNT_RECONCILE_REQUIRED` 日志。详见 `src/lib/fish-sync.ts` 头部。
 - **读路径**：默认走远端账户服务拿权威余额；远端不通则降级到本地 `users.driedFish`，并在响应里给出提示。
 - **双层鉴权**：`X-Internal-Token`（服务间共享）+ 用户/系统 API Key（`Authorization: Bearer <key>`）。
 - **API Key 加密**：`User.fishApiKeyEncrypted` 是 Fernet 加密。密钥派生：
@@ -158,16 +160,10 @@ GET/HEAD/OPTIONS 视为安全方法，不校验。
 
 ### 6.5 限频
 
-`src/lib/rate-limit.ts` 进程内内存表（重启清空）。`RULES` 内置：
+`src/lib/rate-limit.ts`，进程内内存桶（单进程语义）。**配额表以该文件的 `RULES` 为唯一权威**，本文不复述具体数值 —— 那里有 12 条规则（点赞 / 评论 / 投票 / 图床 / 聊天 / 登录…），复述必 drift。两点不显然的行为：
 
-```
-blog:like        100/h, 500/d
-blog:comment     1200/d
-vote:create      10/h
-vote:cast        30/h
-image:upload     75/h
-fish:admin       5/s     (CLI grant/deduct 用)
-```
+- **桶会落盘**：随 10 分钟一次的惰性清扫写入 `instance/rate-limit-snapshot.json`（原子写；`RATE_LIMIT_SNAPSHOT_PATH` 可覆盖），进程启动时回灌 —— **重启不重置窗口**。不落盘的话，一次发版等于给所有人发免刷通行证，也放走进行中的刷量。测试环境不自动回灌，保证确定性。
+- **登录限频只统计失败**：IP 与用户名（小写归一）两个维度分别计数，任一超限即 429。所以正常用户不会被自己的成功登录挡住；顺带它也是 CPU 保护（每次尝试都要跑一次 scrypt）。
 
 **多实例部署时换 Redis**。本站单进程不踩该坑。
 
@@ -231,10 +227,14 @@ fish:admin       5/s     (CLI grant/deduct 用)
 ```
 浏览器 POST /api/blogs/<id>/feed
   → middleware.ts  ✓ 同源 + core+ (装饰器)
-  → feed-service.ts collectTransaction()   (本地 BEGIN)
-  → account-client.ts transfer()           (远端同步)
-       ├ 远端成功  → 本地 COMMIT
-       └ 远端失败  → 本地 ROLLBACK + 503
+  → feed-service.ts 本地事务：业务写入 + account_sync_ledger 登记一行 pending
+  → COMMIT                                  (快、无 IO —— 写锁不在此持有)
+  ── 以下在事务外 ──
+  → account-client.ts transfer()            (远端同步，幂等键)
+       ├ 成功  → settleSync('synced')
+       └ 失败  → 补偿事务：撤销本地写入 + 删账本行
+                   ├ 补偿成功 → 对用户仍等价于「回滚 + 503」
+                   └ 补偿失败 → settleSync('failed') + 对账日志
   → 响应 200 (成功) 或 503 (fail-closed)
 ```
 

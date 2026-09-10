@@ -15,7 +15,7 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
   （见 docs/deploy.md §「修改 schema 后」）。`schema.prisma` 需同步改——测试库由 `db push` 按它建表。
   老 Alembic 历史已基线化为 `prisma/migrations/0_init/`
 
-历史架构是 Flask 单体（2026-07 之前），已被替换。**不要修改或恢复任何 Flask 代码**——所有 Flask 引用都已在 git 历史中删除。
+历史架构是 Flask 单体（2026-07 之前），已被替换，源码已在 git 历史中删除。**不要修改或恢复任何 Flask 代码**。`src/` 里仍留有「对齐 Flask `@authenticated_required`」这类注释——那是给权限档位留的对照说明，不是待恢复的代码。
 
 ## 常用命令
 

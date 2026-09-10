@@ -134,7 +134,7 @@ curl -sS -X POST -H "Authorization: Bearer $ACCESS_TOKEN" \
 
 ## 7. 限频
 
-通过 `src/lib/rate-limit.ts` 进程内桶（重启丢失）。多实例部署时建议改 Redis。
+通过 `src/lib/rate-limit.ts` 进程内桶（单进程语义；桶随清扫落盘，**重启不重置窗口**）。多实例部署时建议改 Redis。
 
 | Key 格式 | 限制 |
 |----------|------|

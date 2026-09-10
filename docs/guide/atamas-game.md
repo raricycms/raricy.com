@@ -47,9 +47,13 @@ ATÅMAS（ATOMAS）是一个策略型圆盘组合游戏。玩家在圆形环上�
 ### 文件结构
 
 ```
-app/templates/game/atamas.html    # Jinja2 模板（继承 base.html）
-app/static/js/game/atamas.js      # 游戏核心逻辑（~2200行）
-app/static/scss/pages/_atamas.scss # 游戏样式
+src/app/components/Atamas/Atamas.tsx    # 组件外壳：状态、事件、主题同步
+src/app/components/Atamas/engine.ts     # 游戏核心逻辑
+src/app/components/Atamas/render.ts     # Canvas 绘制
+src/app/components/Atamas/i18n.ts       # 翻译表
+src/app/components/Atamas/constants.ts  # 常量
+src/app/game/atamas/page.tsx            # 路由页面
+src/styles-scss/pages/game/_atamas.scss # 游戏样式
 ```
 
 ### 渲染方式
@@ -72,12 +76,12 @@ app/static/scss/pages/_atamas.scss # 游戏样式
 
 ### 明暗模式
 
-独立的明暗模式切换，通过 `.game-atamas-page` 容器的 `.light-mode` class 控制。CSS 变量未与项目主题系统对接（待后续统一）。
+跟随站点全局主题：读 `<html data-theme>`，同步为容器的 `.light-mode` class，并用 `MutationObserver` 监听外部切换（见 `Atamas.tsx`）。
 
 ## 路由
 
 - URL：`/game/atamas`
-- 蓝图：`game_bp`
+- 页面：`src/app/game/atamas/page.tsx`
 - 不需要登录即可游玩
 
 ## 注意事项

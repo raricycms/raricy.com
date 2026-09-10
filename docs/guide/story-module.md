@@ -159,4 +159,4 @@ instance/stories/
 
 Cattca 使用 `</.../>` 作为控制分隔符。变量用 `</let>` / `</set>` 声明，流程用 `</goto>` / `</if>` / `</label>` 控制，交互用 `</input text>` / `</input case>` 获取用户输入。
 
-详见 `app/static/js/cattca.js` 中的 `CattcaInterpreter` 类。
+详见 `public/static/js/cattca.js` 中的 `CattcaInterpreter` 类。
