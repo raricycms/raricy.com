@@ -116,6 +116,28 @@ function jsonReq(body: unknown) {
   });
 }
 
+/**
+ * 批量灌满某个用户云剪贴板额度上限的种子行。
+ *
+ * 原先这些用例是 `for (…200 次) await prisma.clipBoard.create()` —— 200 次串行
+ * 往返 sqlite，单条用例要 6s+，并行跑时直接撞 vitest 默认 5s 超时。
+ * createMany 一次往返，同样的行数。
+ *
+ * createdAt 显式给而不是走默认：Id 是手工拼的 seed####，与 makeUser 的 runTag 无关。
+ */
+async function seedClipboardUpTo(authorId: string, count: number, opts: { ignore?: boolean } = {}) {
+  const now = new Date();
+  await prisma.clipBoard.createMany({
+    data: Array.from({ length: count }, (_, i) => ({
+      id: `seed${String(i).padStart(4, '0')}`,
+      title: 't',
+      authorId,
+      createdAt: now,
+      ignore: opts.ignore ?? false,
+    })),
+  });
+}
+
 /** 造一个带 N 个选项的投票（绕开 createVote 的限频，用于纯投票行为的用例）。 */
 async function makeVote(opts: {
   authorId: string;
@@ -147,6 +169,47 @@ async function makeVote(opts: {
     orderBy: { sortOrder: 'asc' },
   });
   return { id, options };
+}
+
+/**
+ * 批量造投票，返回形状与 makeVote 一致（每项带自己的 options）。
+ *
+ * 上限类用例要灌 100~150 个投票，原先逐个 await makeVote() 是 150 次往返
+ * （每次还带一次嵌套 create + 一次 findMany），单条用例 4~6s。这里改成
+ * 3 次往返：createMany 投票 → createMany 选项 → 一次 findMany 取回全部选项再分组。
+ *
+ * VoteOption.id 是自增，没法预先分配，所以选项得先落库再查回来 —— 这正是
+ * makeVote 内部那两步的批量版。返回的 options 同样按 sortOrder 升序。
+ */
+async function makeVotes(
+  count: number,
+  opts: { authorId: string; labels?: string[]; ignore?: boolean }
+): Promise<{ id: string; options: { id: number; label: string }[] }[]> {
+  const labels = opts.labels ?? ['A', 'B'];
+  const now = new Date();
+  const ids = Array.from({ length: count }, () => generateVoteId(9));
+
+  await prisma.vote.createMany({
+    data: ids.map((id) => ({
+      id,
+      title: 't',
+      authorId: opts.authorId,
+      isLocked: false,
+      ignore: opts.ignore ?? false,
+      createdAt: now,
+    })),
+  });
+  await prisma.voteOption.createMany({
+    data: ids.flatMap((voteId) =>
+      labels.map((label, i) => ({ voteId, label, sortOrder: i, voteCount: 0 }))
+    ),
+  });
+
+  const all = await prisma.voteOption.findMany({
+    where: { voteId: { in: ids } },
+    orderBy: { sortOrder: 'asc' },
+  });
+  return ids.map((id) => ({ id, options: all.filter((o) => o.voteId === id) }));
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -857,7 +920,7 @@ describe('vote-service', () => {
     it('已有 150 个投票的用户无法再创建，文案对齐 Flask', async () => {
       const u = await makeUser();
       // 直接落库绕开 10 次/时限频（限频挡不住这条上限该管的事）
-      for (let i = 0; i < 150; i++) await makeVote({ authorId: u.id });
+      await makeVotes(150, { authorId: u.id });
       expect(await prisma.vote.count({ where: { authorId: u.id } })).toBe(150);
 
       expect(await createVote(u.id, '第 151 个', ['A', 'B'])).toEqual({
@@ -869,7 +932,7 @@ describe('vote-service', () => {
 
     it('边界：99 个时还能建第 100 个，到 100 个就被拒', async () => {
       const u = await makeUser();
-      for (let i = 0; i < 99; i++) await makeVote({ authorId: u.id });
+      await makeVotes(99, { authorId: u.id });
 
       expect('id' in (await createVote(u.id, '第 100 个', ['A', 'B']))).toBe(true);
       expect(await prisma.vote.count({ where: { authorId: u.id } })).toBe(100);
@@ -883,7 +946,7 @@ describe('vote-service', () => {
       // 与 clipboard 的 200 上限不同：那边有意连软删除一起数（防删了再建刷额度），
       // 这边按 Flask 文案「最多创建 100 个投票」的字面语义，删掉的不该继续占坑。
       const u = await makeUser();
-      for (let i = 0; i < 150; i++) await makeVote({ authorId: u.id, ignore: true });
+      await makeVotes(150, { authorId: u.id, ignore: true });
       expect('id' in (await createVote(u.id, 'x', ['A', 'B']))).toBe(true);
     });
 
@@ -893,13 +956,16 @@ describe('vote-service', () => {
       // 一个投过 120 次票、但一个投票都没建过的用户，必须能正常创建。
       const author = await makeUser();
       const voter = await makeUser();
-      for (let i = 0; i < 120; i++) {
-        const v = await makeVote({ authorId: author.id });
-        // 直接落库绕开 30 次/时的投票限频
-        await prisma.voteRecord.create({
-          data: { voteId: v.id, optionId: v.options[0].id, userId: voter.id, createdAt: new Date() },
-        });
-      }
+      // 直接落库绕开 30 次/时的投票限频
+      const seeded = await makeVotes(120, { authorId: author.id });
+      await prisma.voteRecord.createMany({
+        data: seeded.map((v) => ({
+          voteId: v.id,
+          optionId: v.options[0].id,
+          userId: voter.id,
+          createdAt: new Date(),
+        })),
+      });
       expect(await prisma.voteRecord.count({ where: { userId: voter.id } })).toBe(120);
       expect(await prisma.vote.count({ where: { authorId: voter.id } })).toBe(0);
 
@@ -910,7 +976,7 @@ describe('vote-service', () => {
     it('上限按用户隔离', async () => {
       const a = await makeUser();
       const b = await makeUser();
-      for (let i = 0; i < 100; i++) await makeVote({ authorId: a.id });
+      await makeVotes(100, { authorId: a.id });
       expect(await createVote(a.id, 'x', ['A', 'B'])).toEqual({
         error: '每个用户最多创建 100 个投票',
       });
@@ -921,7 +987,7 @@ describe('vote-service', () => {
       // core：投票接口是 @authenticated_required，makeUser() 默认的 role:'user'
       // 会先吃 403，走不到这条用例要验的「上限文案」。
       const u = await makeUser({ role: 'core' });
-      for (let i = 0; i < 100; i++) await makeVote({ authorId: u.id });
+      await makeVotes(100, { authorId: u.id });
 
       mockCurrentUser = u as SafeUser;
       const res = await votesPost(
@@ -1150,8 +1216,7 @@ describe('vote-service', () => {
       const author = await makeUser();
       const voter = await makeUser();
       // 造 31 个投票，让 voter 逐个投 —— 每人一票的约束不会提前挡住
-      const votes = [];
-      for (let i = 0; i < 31; i++) votes.push(await makeVote({ authorId: author.id }));
+      const votes = await makeVotes(31, { authorId: author.id });
 
       for (let i = 0; i < 30; i++) {
         expect(await castVote(votes[i].id, votes[i].options[0].id, voter.id)).toEqual({ ok: true });
@@ -1196,8 +1261,7 @@ describe('vote-service', () => {
       }
 
       // 上面 36 次调用只该消耗 1 次配额，剩下 29 次仍可用
-      const votes = [];
-      for (let i = 0; i < 29; i++) votes.push(await makeVote({ authorId: u.id }));
+      const votes = await makeVotes(29, { authorId: u.id });
       for (const v of votes) {
         expect(await castVote(v.id, v.options[0].id, u.id)).toEqual({ ok: true });
       }
@@ -1209,8 +1273,7 @@ describe('vote-service', () => {
     it('被限频时不落库、不涨计数', async () => {
       const author = await makeUser();
       const voter = await makeUser();
-      const votes = [];
-      for (let i = 0; i < 31; i++) votes.push(await makeVote({ authorId: author.id }));
+      const votes = await makeVotes(31, { authorId: author.id });
       for (let i = 0; i < 30; i++) await castVote(votes[i].id, votes[i].options[0].id, voter.id);
 
       const last = votes[30];
@@ -1281,11 +1344,7 @@ describe('clipboard-service', () => {
       // Flask `if clip_count > 200: return None` 就是这个 off-by-one，TS 照抄了。
       // 这条钉住「和 Flask 一致」这件事本身 —— 见交付说明的讨论。
       const u = await makeUser();
-      for (let i = 0; i < 200; i++) {
-        await prisma.clipBoard.create({
-          data: { id: `seed${String(i).padStart(4, '0')}`, title: 't', authorId: u.id, createdAt: new Date() },
-        });
-      }
+      await seedClipboardUpTo(u.id, 200);
       const r = await createClip(u.id, { title: '第 201 条', content: 'c' });
       expect(r.ok).toBe(true);
       expect(await prisma.clipBoard.count({ where: { authorId: u.id } })).toBe(201);
@@ -1293,11 +1352,7 @@ describe('clipboard-service', () => {
 
     it('已有 201 条时拒绝，返回 limit 且不落库', async () => {
       const u = await makeUser();
-      for (let i = 0; i < 201; i++) {
-        await prisma.clipBoard.create({
-          data: { id: `seed${String(i).padStart(4, '0')}`, title: 't', authorId: u.id, createdAt: new Date() },
-        });
-      }
+      await seedClipboardUpTo(u.id, 201);
       expect(await createClip(u.id, { title: '第 202 条', content: 'c' })).toEqual({
         ok: false,
         reason: 'limit',
@@ -1308,17 +1363,7 @@ describe('clipboard-service', () => {
     it('软删除的剪贴板仍计入上限（对齐 Flask：count 不带 ignore 过滤）', async () => {
       // 这是有意的 —— 否则删了再建就能无限刷。但对用户不直观，值得记一笔。
       const u = await makeUser();
-      for (let i = 0; i < 201; i++) {
-        await prisma.clipBoard.create({
-          data: {
-            id: `seed${String(i).padStart(4, '0')}`,
-            title: 't',
-            authorId: u.id,
-            ignore: true, // 全是软删除的
-            createdAt: new Date(),
-          },
-        });
-      }
+      await seedClipboardUpTo(u.id, 201, { ignore: true });
       expect(await createClip(u.id, { title: 'x', content: 'c' })).toEqual({
         ok: false,
         reason: 'limit',
@@ -1328,11 +1373,7 @@ describe('clipboard-service', () => {
     it('上限按用户隔离', async () => {
       const a = await makeUser();
       const b = await makeUser();
-      for (let i = 0; i < 201; i++) {
-        await prisma.clipBoard.create({
-          data: { id: `seed${String(i).padStart(4, '0')}`, title: 't', authorId: a.id, createdAt: new Date() },
-        });
-      }
+      await seedClipboardUpTo(a.id, 201);
       expect(await createClip(a.id, { title: 'x', content: 'c' })).toEqual({ ok: false, reason: 'limit' });
       expect((await createClip(b.id, { title: 'x', content: 'c' })).ok).toBe(true);
     });
@@ -1696,11 +1737,7 @@ describe('clipboard-service', () => {
 
     it('删除后仍计入 200 上限（对齐 Flask：count 不带 ignore 过滤，防删了再建刷额度）', async () => {
       const u = await makeUser();
-      for (let i = 0; i < 200; i++) {
-        await prisma.clipBoard.create({
-          data: { id: `seed${String(i).padStart(4, '0')}`, title: 't', authorId: u.id, createdAt: new Date() },
-        });
-      }
+      await seedClipboardUpTo(u.id, 200);
       const r = (await createClip(u.id, { title: '第 201 条', content: 'c' })) as { ok: true; id: string };
       expect(await deleteClip(r.id, u.id, false)).toEqual({ ok: true });
       // 删掉的这条照样占坑：再建就被拒
@@ -1789,11 +1826,7 @@ describe('clipboard-service', () => {
 
     it('POST /api/clipboard 超限 → 400 「一个用户只能发布200篇云剪贴板！」', async () => {
       const author = await makeUser({ role: 'core' });
-      for (let i = 0; i < 201; i++) {
-        await prisma.clipBoard.create({
-          data: { id: `seed${String(i).padStart(4, '0')}`, title: 't', authorId: author.id, createdAt: new Date() },
-        });
-      }
+      await seedClipboardUpTo(author.id, 201);
 
       mockCurrentUser = author as SafeUser;
       const res = await clipPost(
