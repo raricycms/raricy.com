@@ -2,8 +2,9 @@
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AdminUserActions — 用户卡片的操作簇（对齐 Flask auth/management.html 的按钮 + 模态框）：
-//   查看 / 发通知（站长）/ 禁言·解除禁言 / 禁言历史 / 认证·取消认证（站长）。
-// 认证 = 设为 core，取消认证 = 设为 user，对应 Flask 的 promote/demote。
+//   查看 / 发通知（站长）/ 禁言·解除禁言 / 禁言历史 / 角色档位（仅站长）。
+// 认证 = 设为 core，取消认证 = 设为 user，对应 Flask 的 promote/demote；
+// 提拔管理员 / 降为核心用户是本项目新增的一对（Flask 侧只能上服务器跑 cli）。
 // 禁言 / 解除禁言 走 POST /api/admin/users/:id；角色变更走 PATCH。
 // 发通知 → POST /api/admin/notify-user（对齐 Flask sendNotificationTo）。
 // 禁言历史 → GET /api/users/:id/ban-history（对齐 Flask showBanHistory）。
@@ -93,6 +94,10 @@ export default function AdminUserActions({ user, isOwner, currentUserId }: Admin
     call(`/api/admin/users/${user.id}`, 'PATCH', { role: 'core' }, '用户认证成功！');
   const demote = () =>
     call(`/api/admin/users/${user.id}`, 'PATCH', { role: 'user' }, '取消认证成功！');
+  const promoteAdmin = () =>
+    call(`/api/admin/users/${user.id}`, 'PATCH', { role: 'admin' }, '已提拔为管理员！');
+  const demoteAdmin = () =>
+    call(`/api/admin/users/${user.id}`, 'PATCH', { role: 'core' }, '已降为核心用户！');
 
   function confirmBan() {
     const hours = parseFloat(banHours);
@@ -217,16 +222,44 @@ export default function AdminUserActions({ user, isOwner, currentUserId }: Admin
         </button>
       )}
 
-      {isOwner &&
-        (user.role === 'core' ? (
+      {/* 角色档位按钮（仅站长可见）。
+          按当前角色给**恰好一个**按钮，且必须与 setRole 的语义对上：
+            core  → 取消认证（降 user）/ 提拔管理员（升 admin）
+            admin → 降为核心用户（降 core）—— 注意这一档只能走「降级」按钮，
+                    旧实现在这里渲染的是「认证」，点了会调 PATCH {role:'core'}，
+                    等于对管理员显示一个把人降级的「认证」按钮，纯属反着来。
+            user  → 认证（升 core）
+            owner → 没有按钮（站长只能由 CLI 任免） */}
+      {isOwner && user.role === 'core' && (
+        <>
           <button type="button" className="btn btn-sm btn-warning" disabled={busy} onClick={demote}>
             取消认证
           </button>
-        ) : (
-          <button type="button" className="btn btn-sm btn-success" disabled={busy} onClick={promote}>
-            认证
+          <button
+            type="button"
+            className="btn btn-sm btn-success"
+            disabled={busy}
+            onClick={promoteAdmin}
+          >
+            提拔管理员
           </button>
-        ))}
+        </>
+      )}
+      {isOwner && user.role === 'admin' && (
+        <button
+          type="button"
+          className="btn btn-sm btn-warning"
+          disabled={busy}
+          onClick={demoteAdmin}
+        >
+          降为核心用户
+        </button>
+      )}
+      {isOwner && user.role !== 'core' && user.role !== 'admin' && user.role !== 'owner' && (
+        <button type="button" className="btn btn-sm btn-success" disabled={busy} onClick={promote}>
+          认证
+        </button>
+      )}
 
       {/* 禁言用户模态框 */}
       {modal === 'ban' && (

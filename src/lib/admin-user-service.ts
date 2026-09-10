@@ -180,7 +180,9 @@ const ADMIN_SETTABLE_ROLES: readonly Role[] = ['user', 'core'];
  *
  * 权限分档：
  *  • user↔core（即页面上的「认证 / 取消认证」）—— 管理员即可。
- *  • 涉及 admin 或 owner 的任何方向 —— 仅站长。
+ *  • 涉及 admin 或 owner 的任何方向 —— 仅站长。站长的用户管理页给出
+ *    core→admin（提拔管理员）与 admin→core（降为核心用户）两个按钮，
+ *    user↔core 那一对仍留给管理员日常使用。
  *  • 不能改自己的角色。
  *
  * 【为什么卡 admin 这一档】此前只拦了 owner，于是管理员可以直接
@@ -191,7 +193,8 @@ const ADMIN_SETTABLE_ROLES: readonly Role[] = ['user', 'core'];
  *
  * 这里比 Flask 略宽（Flask 连 user↔core 都要站长），是刻意保留的：
  * 日常给新人认证是管理员的常规工作，收到站长会把这条路堵死。
- * 但「谁能任命管理员」这条底线与 Flask 一致 —— 只有站长。
+ * 但「谁能任命管理员」这条底线与 Flask 一致 —— 只有站长。想撤掉一个管理员时
+ * 同理：只有站长能把他降回 core，管理员之间不能互降。
  */
 export async function setRole(p: SetRoleParams): Promise<AdminResult<{ role: string }>> {
   const newRole = p.newRole as Role;
