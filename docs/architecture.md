@@ -305,5 +305,5 @@ GET/HEAD/OPTIONS 视为安全方法，不校验。
 
 - `docs/deploy.md` — 部署 / 运行 / nginx / systemd
 - `docs/cli.md` — 运维 CLI 命令
-- `CLAUDE.md` — 关键约定 / 迁移史速查
+- `CLAUDE.md` — 关键约定（约束与反直觉决策）
 - 内容/玩法文档：`docs/guide/` —— 玩家与创作者文档（atamas / cattca / 云剪贴板 / 图床 / 投票箱 / story）

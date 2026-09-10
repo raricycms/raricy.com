@@ -1,7 +1,7 @@
 // 账户微服务的最小替身（仅供 E2E）。
 //
 // 【为什么非有不可】webServer 跑的是 next start，NODE_ENV=production。
-// 注册与签到都走 Phase 1.5 的 fail-closed 写路径：未配置 ACCOUNT_SERVICE_INTERNAL_TOKEN
+// 注册与签到都走 鱼干写路径的 fail-closed：未配置 ACCOUNT_SERVICE_INTERNAL_TOKEN
 // 时 assertRemoteRequiredInProduction() 直接抛 503（见 src/lib/account-client.ts）。
 // 即「不接账户服务就注册不了、签到不了」是**设计意图**，不是 bug。
 // 因此 E2E 想覆盖注册/登录/签到，就必须有个远端在。起真的 account-service 需要
@@ -12,7 +12,7 @@
 //
 // 【它不是什么】不复刻复式记账、不校验余额充足性。它只需让 fail-closed 分支「能过」，
 // 并把收到的转账记下来，好让用例断言「本地签到成功时远端确实记了账」——
-// 那正是 Phase 1.5 想保证、而单测（mock 掉客户端）证明不了的东西。
+// 那正是 fail-closed 想保证、而单测（mock 掉客户端）证明不了的东西。
 
 import http from 'node:http';
 import { randomUUID } from 'node:crypto';

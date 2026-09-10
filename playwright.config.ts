@@ -113,7 +113,7 @@ export default defineConfig({
   webServer: [
     {
       // 账户微服务替身。**不是可选项**：next start 下 NODE_ENV=production，
-      // 而注册/签到走 Phase 1.5 的 fail-closed —— 未配 ACCOUNT_SERVICE_INTERNAL_TOKEN
+      // 而注册/签到走 fail-closed 鱼干写路径 —— 未配 ACCOUNT_SERVICE_INTERNAL_TOKEN
       // 时 assertRemoteRequiredInProduction() 直接抛 503。不接远端就跑不了这两条主链路。
       command: `npx tsx tests/e2e/mock-account-service.ts`,
       port: ACCOUNT_PORT,

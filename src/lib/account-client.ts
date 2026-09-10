@@ -2,8 +2,12 @@
 // account-client.ts — 小鱼干账户微服务 HTTP 客户端（TS 版，对齐 Flask AccountClient）
 //
 // 对齐 Flask app/clients/account_client.py 的全部公开 API，并严格保持
-// **fail-closed** 写路径语义（详见 CLAUDE.md Phase 1.5 与 feed-service.ts）：
-//   本地先收集变更 → 远端同步成功后才 commit 本地 → 远端失败则整体回滚 + 返回明确错误。
+// **fail-closed** 写路径语义（详见 CLAUDE.md「鱼干写路径」 与 feed-service.ts）：
+//   远端失败 → 本地写入被补偿事务精确撤销（对用户等价于回滚）→ 上抛明确错误。
+//
+// ⚠️ 本文件只负责**发 HTTP**，不持有事务 —— 调用方（*fish-sync.ts*）负责
+// 「先提交本地 + 登记账本 → 事务外调本文件 → 失败补偿」。**绝不要把这里的
+// 调用挪进 SQLite 事务**：写锁会被占满整个 ACCOUNT_SERVICE_TIMEOUT。
 //
 // 认证：双层 —— X-Internal-Token（服务间共享密钥）+ 用户/系统 API Key。
 //   ⚠️ 账户服务实际用 `Authorization: Bearer <api_key>` 传递用户 Key（见
@@ -90,7 +94,7 @@ export class InviteCodeRaceError extends Error {
  *
  * 【为什么需要这道守卫】dev fallback 的本意是「本地没有账户服务时也能把切片跑起来」，
  * 但它在生产是 **fail-OPEN**：一旦漏配 ACCOUNT_SERVICE_INTERNAL_TOKEN，
- * 投喂/注册会静默地只写本地、只留一条 console.warn —— 与 Phase 1.5 的 fail-closed
+ * 投喂/注册会静默地只写本地、只留一条 console.warn —— 与鱼干写路径的 fail-closed
  * 意图完全相反，且几乎不会被发现（用户侧一切正常，直到对账时才发现账目对不上）。
  * 故生产环境一律拒绝，让问题在部署时就暴露。
  *

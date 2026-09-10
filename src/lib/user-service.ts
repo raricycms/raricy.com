@@ -133,7 +133,7 @@ export async function registerUser(input: RegisterInput): Promise<RegisterResult
     );
   }
 
-  // ── 建号（fail-closed，对齐 CLAUDE.md Phase 1.5 写路径）─────────────────────────
+  // ── 建号（fail-closed，对齐 CLAUDE.md「鱼干写路径」）─────────────────────────
   // 远端 HTTP 调用不在 SQLite 事务内（写锁占用问题，见 fish-sync.ts）：
   //   Tx A：建用户 + 原子占用邀请码 + 账本行 pending → 提交；
   //   Phase 2：ensureAccount（幂等）→ 成功则回写 fishApiKeyEncrypted + 账本标 synced；

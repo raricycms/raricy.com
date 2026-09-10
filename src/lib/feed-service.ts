@@ -3,7 +3,7 @@
 //
 // 投喂模型：投喂者付全额，作者获 80% 分成；单用户对单篇累计上限 5。
 //
-// ★★★ 写路径 fail-closed（CLAUDE.md Phase 1.5）★★★
+// ★★★ 写路径 fail-closed（CLAUDE.md「鱼干写路径」）★★★
 //   远端 HTTP 调用**不在 SQLite 事务内**（写锁被占最长 5s 会拖垮并发写路径），
 //   改为「先提交本地 + 同步账本登记 + 事务外同步 + 失败补偿」：
 //   Tx A：扣投喂者 / 加作者 / BlogFeed / Blog.fishCount / 两条流水 + 账本行 pending

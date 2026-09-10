@@ -16,6 +16,8 @@ Next.js 15 + Prisma + SQLite 单进程部署，自有 `instance/` 数据目录�
 - **服务边界**：站点单进程；账户微服务（FastAPI）独立仓库部署
 - **前端**：服务端 / 客户端组件混用，marked + DOMPurify + highlight.js 渲染 Markdown
 
+组件与子系统的关系见 `docs/architecture.md`。
+
 ## 目录
 
 | 目录 | 说明 |
@@ -23,10 +25,10 @@ Next.js 15 + Prisma + SQLite 单进程部署，自有 `instance/` 数据目录�
 | `src/app/`     | App Router 页面与 API 路由 |
 | `src/lib/`     | 业务逻辑层 |
 | `src/middleware.ts` | CSRF 同源校验（反代下读 `X-Forwarded-Host`） |
-| `prisma/`      | schema.prisma、迁移、dev.db（gitignored） |
-| `scripts/`     | 自检 / 运维 / 数据补偿脚本（详见下方"工具脚本"） |
+| `prisma/`      | schema.prisma + migrations/（手写 SQL，见 `docs/deploy.md` §4） |
+| `scripts/`     | 自检 / 运维 / 数据补偿脚本（详见下方「工具脚本」） |
 | `tests/`       | vitest 单测 + Playwright e2e |
-| `docs/`        | 玩家面向的内容/玩法文档 |
+| `docs/`        | 全部文档 —— `docs/guide/` 给玩家与创作者，其余给开发运维。见 `docs/README.md` |
 | `instance/`    | 运行时数据（gitignored）：avatars / database / images / stories |
 | `public/`      | 静态资源（图标 / CSS / favicon） |
 
@@ -47,13 +49,8 @@ npm run dev                              # http://localhost:3000
 | `npm run dev` / `start` | 本地开发 / 生产启动 |
 | `npm run build` | 生产构建 |
 | `npm test` | vitest 单测 |
-| `npm run e2e` | 端到端（直接跑 Playwright，**不**自动 build —— 改完代码请自行 `npm run build`） |
+| `npm run e2e` | 端到端（直接跑 Playwright，**不**自动 build —— 见下方警告） |
 | `npm run e2e:ci` | 同上，但先 build（CI / 全新环境用） |
-
-> `npm run e2e` 跑的是 `.next` 里的**现有构建产物**（`next start`）。改了
-> `src/` 却没重新 build 的话，测的是旧代码 —— 症状很隐蔽：刚加的日志/探针一行
-> 都不打、刚改的逻辑毫无反应，容易误判成代码没生效而去乱翻别处。改完源码先
-> `npm run build`，或直接用 `npm run e2e:ci`。
 | `npm run smoke` | 15 条只读冒烟（登录态/列表/详情/签到/图床/CSRF/指南页等） |
 | `npm run diagnose` | 部署自检（版本 / .env / 库 / 密钥）；报红就别往下走 |
 | `npm run check:secrets` | 密钥与生产数据是否进过版本库 |
@@ -67,6 +64,11 @@ npm run dev                              # http://localhost:3000
 | `npm run prepare:cutover` | 切换期一次性：备份 → 规整 → 补偿 → diagnose |
 | `npm run instance:check` | 创建 instance/ 子目录 |
 
+> ⚠️ `npm run e2e` 跑的是 `.next` 里的**现有构建产物**（`next start`）。改了 `src/`
+> 却没重新 build 的话，测的是旧代码 —— 症状很隐蔽：刚加的日志/探针一行都不打、
+> 刚改的逻辑毫无反应，容易误判成代码没生效而去乱翻别处。改完源码先
+> `npm run build`，或直接用 `npm run e2e:ci`。
+
 ## 部署 / 运行
 
 - 站内反代：`proxy_pass http://127.0.0.1:3000`，**务必**透传 `Host: $http_host` / `X-Forwarded-Host` / `X-Forwarded-Proto`。
@@ -77,12 +79,5 @@ npm run dev                              # http://localhost:3000
 
 ## 关键约定
 
-- 软删除：`Blog.ignore` / `BlogComment.is_deleted` / `ImageHosting.ignore` 等永不物理删除（站长手动例外）。
-- 鱼干密钥派生：`SECRET_KEY` 仍是派生源；`FISH_ENCRYPTION_KEY` 仅在全新部署时填。
-- 限频：站内用 `src/lib/rate-limit.ts`（内存，进程级）；多实例部署需换 Redis。
-- 角色：`user` → `core` → `admin` → `owner`；`@authenticated_required` 意为 core+。
-
-## 内容/玩法文档
-
-`docs/atamas-game.md` `docs/cattca-guide.md` `docs/cattca-syntax.md`
-`docs/云剪贴板使用指南.md` `docs/内容引用语法指南.md` `docs/story-module.md`
+改代码前**先读 `CLAUDE.md`** —— 约束与反直觉决策都在那里（时间戳语义、鱼干写路径、
+iframe 刻意允许嵌入、软删除、聊天与通知的关系等）。此处不复述，避免第三份会 drift 的副本。
