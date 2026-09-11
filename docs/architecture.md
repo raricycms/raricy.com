@@ -15,7 +15,7 @@
 | CSRF | `src/middleware.ts` 对状态变更方法校验 `Origin`/`Referer` 同源 |
 | 文件落盘 | 头像/图床/故事落 `instance/`（gitignored） |
 | 鱼干账户 | 独立 FastAPI 微服务（本仓**只**通过 HTTP 调用，本仓无 Python） |
-| 渲染 | 博客 / 评论 / 故事 — 客户端 marked + DOMPurify + highlight.js |
+| 渲染 | 博客 / 评论 / 故事 — 客户端 marked + DOMPurify（详见 §6.7） |
 | 测试 | vitest 单测 + Playwright e2e |
 | 限频 | 进程内内存限频（`src/lib/rate-limit.ts`） |
 | 部署 | npm + nginx 反代 + systemd（建议） |
@@ -108,6 +108,7 @@
 | 认证 / 会话 | `auth.ts` · `session.ts` · `password.ts` · `invite-code.ts` · `user-service.ts` · `identicon.ts` |
 | 数据层 | `db.ts` · `db-time.ts` · `format.ts` |
 | 博客域 | `blog-service.ts` · `feed-service.ts` · `comment-service.ts` · `spider-service.ts` |
+| 富文本渲染 | `rich-text.ts`（共享管线）· `chat-markdown.ts` · `comment-markdown.ts` · `blog-markdown.ts` · `linkify.ts` |
 | 通知 / 审计 | `notification-service.ts` · `broadcast-service.ts` · `audit-service.ts` · `admin-appeal-service.ts` |
 | 投票 / 签到 / 剪贴板 | `vote-service.ts` · `checkin-service.ts` · `clipboard-service.ts` |
 | 图床 | `image-service.ts` · `image-upload.ts` |
@@ -179,11 +180,29 @@ GET/HEAD/OPTIONS 视为安全方法，不校验。
 
 ### 6.7 Markdown / 内容渲染
 
-| 场景 | 渲染方式 | 库 |
-|------|---------|---|
-| 博客正文 / 评论 / 故事 | **客户端**渲染 | marked + DOMPurify + highlight.js |
+| 场景 | 渲染方式 | 管线 |
+|------|---------|------|
+| 聊天正文 / 评论正文 | **客户端**渲染，同一套管线 | `rich-text.ts`（marked → DOMPurify → 后处理），白名单与链接类名见 `chat-markdown.ts` / `comment-markdown.ts` |
+| 博客正文 / 故事 | **客户端**渲染 | `MarkdownRenderer.tsx`（marked + DOMPurify + highlight.js + MathJax + `[@…]` 内容引用） |
 | 内容引用 `[@xxxxxxxxxx]` | 浏览器渲染时正则替换为剪贴板/投票/图床组件 | `src/app/components/blog/ContentEmbeds.tsx` |
 | 工具页 cattca-guide | **服务端**渲染 | marked（仅一次，可信文档） |
+
+**聊天与评论共用一条管线**（`rich-text.ts`）。两者的威胁模型与防线逐条相同，差别只在
+白名单与链接类名（`chat-msg__link` / `comment-link`），所以管线唯一、参数由调用方注入。
+各写一份的代价不是重复代码，是**防线漂移**：任一边漏打一个补丁另一边不会知道，而两边
+看起来都「有净化」。五道防线（裸 HTML / 伪协议 / 属性注入 / 外链图片 / 无 DOM 降级）
+在 `rich-text.ts` 文件头逐条讲，单测见 `tests/unit/{chat,comment}-markdown.test.ts`。
+
+两处**刻意不参数化**，因为它们是安全口径而非样式偏好：
+
+- `<img>` 一律不在白名单，`![](url)` 降级成链接 —— 发图走图床**附件**（`imageId`），
+  不允许正文嵌任意外链图片（跟踪像素 / 访客 IP 泄露 / 混合内容）。
+- 无 DOM（SSR）时一律退回转义纯文本。因此**服务端不渲染**这两处的正文，前端调用点
+  （`ChatMarkdown` / `CommentMarkdown`）都依赖「列表由客户端拉取、SSR 期零条」这个前提；
+  若将来改成服务端直出消息/评论，必须改成「挂载后再渲染」的门控写法，否则首帧不一致。
+
+评论的 `content_html`（服务端转义 + `<br>`）**站内已不再用于渲染** —— 保留给 spider API
+（外部只读接口，不能因为站内换了渲染方式就被打碎）与无 JS 降级。
 
 ### 6.8 OAuth 2.0 身份绑定（raricy 作为 IdP）
 
@@ -319,6 +338,11 @@ GET/HEAD/OPTIONS 视为安全方法，不校验。
 | `ImageHosting.ignore` | false | 图床 |
 | `Vote.ignore` | false | 投票 |
 | `ClipBoard.ignore` | false | 剪贴板 |
+
+**软删即抹掉附件与原文**：评论被软删后，序列化时 `content` 与 `content_html` 一律换成
+占位文案，`image` / `blog` 一律置空（`image_missing` / `blog_missing` 也置 false —— 软删
+不是「附件丢了」）。漏掉任何一项都等于「删了没删」：原文还在 DOM 里，或删掉的图仍能
+点开看原图。聊天消息同此口径（`chat-service.ts` 的 `attach…`）。
 
 ### 角色体系与权限装饰器
 

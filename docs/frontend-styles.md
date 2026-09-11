@@ -205,7 +205,7 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
 
 - 会话侧栏 `.chat-sidebar`：固定 280px（`border-right` 分隔），会话项 `.chat-chan`（头像 / 标题 / 预览 / 未读徽标 / 删除），头部 `.chat-sidebar__head` 带折叠钮 —— `.chat-page--collapsed` 时收到 60px 只留图标。
 - 消息主区 `.chat-main`：头部标题 + 操作；消息气泡 `.chat-msg`（自己发的加 `.chat-msg--mine`），含作者名 / 时间 / 操作 / 图片 / 引用回复 / 已删占位 `.chat-msg__deleted`。
-- 输入条 `.chat-composer`：多行输入 + 图床按钮 `.chat-composer__img-btn` + 发送 `.chat-composer__send`，支持回复引用。
+- 输入条 `.chat-composer`：附件条（回复 / 引用博客 / 待发图片）+ 面板（工具条 `.chat-composer__icon-btn` → 输入框 `.chat-composer__input` → 底条：提示 `.chat-composer__hint` + 发送 `.chat-composer__send`）。样式与评论区**共用** `components/_composer.scss` 的 `rich-composer($p)` mixin，组件也是同一个 `RichComposer`（`className` 注入 BEM 前缀，见 §11.1）。
 - 发起私聊弹窗 `.chat-new-modal`：搜索框 `.chat-new-search` + 结果项 `.chat-new-item`（头像 / 昵称 / 角色 / 自己标记）。
 - 响应式：`≤900px` 时侧栏变抽屉，`.chat-page--drawer-open` 展开。
 
@@ -261,6 +261,26 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
 5. 组件优先复用现有 `.button-*`、`.card`、`.form-control` 等类名，少写一次性样式。
 6. 响应式：从 `up(992px)` 多列 → `up(768px)` 两列 → 单列，字号同步降级。
 7. 深色主题检查：切到 `data-theme="dark"` 看一眼对比度（品牌色已选更亮的 `#23A5FF`）。
+
+### 11.1 跨场景复用的样式写成带前缀的 mixin
+
+同一套视觉用在两处（且两处的 BEM 前缀不同）时，**不要复制一份**，写成参数化 mixin，
+两边各 `@include` 一次：
+
+| 组件 | mixin | 用处 |
+|------|-------|------|
+| 富文本输入区 | `components/_composer.scss` → `rich-composer($p)` | 聊天 `chat-composer` / 评论 `comment-composer` |
+| Markdown 正文块级元素 | `components/_markdown-body.scss` → `rich-markdown($cls)` | 聊天 `chat-msg__md` / 评论 `comment-content__md` |
+
+复制一份的代价不是重复代码，是**必然 drift** —— 用户会看到「列表在聊天里长这样、在评论里
+长那样」，而这类不一致没有人会当成 bug 报上来。React 侧同理：`RichComposer` 的 BEM 前缀
+由 `className` 注入（见组件文件头）。
+
+⚠️ 改这类共享样式后，两处**都要**在页面上看一眼 —— 单测与构建都拦不住「另一边被改花了」。
+
+⚠️ 选择器权重陷阱：删掉旧样式时要确认新规则不会被更具体的老选择器盖掉。真实踩过：
+`.comment-form textarea`（0-1-1）权重高于 `.comment-composer__input`（0-1-0），不删旧规则
+就会把面板内的透明输入框重新涂成卡片底色，从外面看是一个突兀的色块。
 
 ## 12. 已知遗留 / 注意事项
 
