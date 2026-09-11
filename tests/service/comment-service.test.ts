@@ -87,10 +87,15 @@ async function seedBlog() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 1. 内容转义（不渲染 Markdown，对齐 markupsafe.escape + \n → <br>）
+// 1. 内容转义（contentHtml —— 服务端纯文本形态）
+//
+// 【注意它现在是什么】评论正文改为前端渲染 Markdown（src/lib/comment-markdown.ts），
+// contentHtml **不再是站内的渲染来源**，它保留给 spider API（外部只读接口）与无 JS
+// 降级。所以这里断言的是「转义 + 换行」，与改版前逐字相同 —— 外部契约不能被打碎。
+// Markdown 的解析与净化在 tests/unit/comment-markdown.test.ts。
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('toContentHtml：评论不支持 Markdown，只转义 + 换行', () => {
+describe('toContentHtml：服务端纯文本形态（只转义 + 换行，不解析 Markdown）', () => {
   it('转义 & < > " \' 五个字符（顺序不能反 —— 先转 < 再转 & 会二次转义）', () => {
     expect(toContentHtml(`<script>alert("x")&'`)).toBe(
       '&lt;script&gt;alert(&#34;x&#34;)&amp;&#39;'
@@ -108,7 +113,7 @@ describe('toContentHtml：评论不支持 Markdown，只转义 + 换行', () => 
     expect(toContentHtml('<br>'), '用户打的 <br> 字面量必须被转义').toBe('&lt;br&gt;');
   });
 
-  it('Markdown 语法原样保留（评论区不渲染）', () => {
+  it('Markdown 语法原样保留（这里是纯文本形态，渲染在客户端）', () => {
     expect(toContentHtml('**bold** `code`')).toBe('**bold** `code`');
   });
 });
@@ -270,6 +275,9 @@ describe('_filter_deleted_leaves：已删叶子过滤', () => {
     expect(tree.length, '删掉的父级是子评论的唯一挂载点，必须留作占位').toBe(1);
     expect(tree[0].is_deleted).toBe(true);
     expect(tree[0].content_html, '保留的已删节点内容显示为占位文案，不泄露原文').toBe('[该评论已删除]');
+    // content 是新增的 Markdown 原文列（前端渲染它），同样必须换成占位 ——
+    // 两个字段漏一个，「删了等于没删」。
+    expect(tree[0].content, 'content 原文列同样不泄露').toBe('[该评论已删除]');
     expect(tree[0].children.map((c) => c.content_html)).toEqual(['alive-child']);
   });
 
@@ -847,8 +855,9 @@ describe('序列化：snake_case 字段与作者信息', () => {
     const r = await createComment({ blogId: blog.id, authorId: author.id, content: 'x' });
     if (!r.ok) throw new Error('前置失败');
     expect(Object.keys(r.comment).sort()).toEqual([
-      'author', 'blog_id', 'children', 'content_html', 'created_at',
-      'id', 'is_deleted', 'likes_count', 'parent_id', 'root_id', 'status', 'updated_at',
+      'author', 'blog', 'blog_id', 'blog_missing', 'children', 'content', 'content_html',
+      'created_at', 'id', 'image', 'image_missing', 'is_deleted', 'likes_count',
+      'parent_id', 'root_id', 'status', 'updated_at',
     ]);
   });
 
@@ -1028,4 +1037,175 @@ describe('评论通知', () => {
   // 外键非空约束，无法自然构造出「通知目标不存在」的场景；强测需要 mock
   // notification-service，那会连带把本组另外 4 条「真实校验通知落库」的用例架空。
   // 该行为由 createComment 里 sendNotification 外层的 try/catch 保证（对齐 Flask try/except pass）。
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 12. 附件：图床图片 / 引用博客（对齐 chat_messages 的 image_id / blog_id）
+//
+// 这一组盯的是「引用不存快照 + 缺失给占位 + 软删即抹掉」三件事。它们的共同点是
+// **写错了不会报错**：少一个 image_missing 用户就以为引用丢了，软删没抹掉附件
+// 就等于「删掉的图仍能点开看原图」。
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 造一张图床图片（不落盘，只落库 —— 评论只引用 id，读路径不碰文件系统）。 */
+async function makeImage(authorId: string, opts: { ignore?: boolean } = {}) {
+  const id = `img${(++clock).toString().padStart(7, '0')}`; // 10 位，与图床 id 同形态
+  return prisma.imageHosting.create({
+    data: {
+      id,
+      filename: 'a.png',
+      fileSize: 123,
+      mimeType: 'image/png',
+      authorId,
+      createdAt: new Date(1700000000000 + clock * 1000),
+      isPublic: true,
+      ignore: opts.ignore ?? false,
+    },
+  });
+}
+
+describe('附件：图床图片', () => {
+  it('带回自己传的图 → image 解析出 url，image_missing=false', async () => {
+    const { author, blog } = await seedBlog();
+    const img = await makeImage(author.id);
+
+    const r = await createComment({
+      blogId: blog.id, authorId: author.id, content: '看图', imageId: img.id,
+    });
+    if (!r.ok) throw new Error(`前置失败：${r.message}`);
+    expect(r.comment.image).toEqual({
+      id: img.id,
+      url: `/api/images/${img.id}/raw`,
+      mime_type: 'image/png',
+    });
+    expect(r.comment.image_missing).toBe(false);
+
+    // 列表路径（attachAttachments 的另一条入口）口径必须一致
+    const tree = await listCommentsForBlog(blog.id);
+    expect(tree[0].image?.url).toBe(`/api/images/${img.id}/raw`);
+  });
+
+  it('允许空正文（引用一张图本身就是一条完整表达）', async () => {
+    const { author, blog } = await seedBlog();
+    const img = await makeImage(author.id);
+    const r = await createComment({ blogId: blog.id, authorId: author.id, content: '', imageId: img.id });
+    expect(r.ok).toBe(true);
+  });
+
+  it('引用别人的图 → imageInvalid（不能借别人的图，也不能拿它探测 id）', async () => {
+    const { blog } = await seedBlog();
+    const owner = await makeUser({ role: 'core' });
+    const stranger = await makeUser({ role: 'core' });
+    const theirs = await makeImage(owner.id);
+
+    const r = await createComment({
+      blogId: blog.id, authorId: stranger.id, content: '', imageId: theirs.id,
+    });
+    if (r.ok) throw new Error('不应允许引用他人的图片');
+    expect(r.error).toBe('imageInvalid');
+  });
+
+  it('图片 id 不存在 → imageInvalid（不是静默存下一个指向空气的 id）', async () => {
+    const { author, blog } = await seedBlog();
+    const r = await createComment({
+      blogId: blog.id, authorId: author.id, content: '', imageId: 'nonexistent0',
+    });
+    if (r.ok) throw new Error('不应通过');
+    expect(r.error).toBe('imageInvalid');
+  });
+
+  it('图被软删（ignore=true）→ 不解析成图，给 image_missing 占位', async () => {
+    const { author, blog } = await seedBlog();
+    const img = await makeImage(author.id);
+    const r = await createComment({ blogId: blog.id, authorId: author.id, content: '', imageId: img.id });
+    if (!r.ok) throw new Error('前置失败');
+
+    await prisma.imageHosting.update({ where: { id: img.id }, data: { ignore: true } });
+    const tree = await listCommentsForBlog(blog.id);
+    expect(tree[0].image).toBeNull();
+    expect(tree[0].image_missing, 'id 有值但图没了 → 必须给占位，不能装作没有附件').toBe(true);
+  });
+
+  it('带附件时正文按图注档限长（500），纯文字档仍是 2000', async () => {
+    const { author, blog } = await seedBlog();
+    const img = await makeImage(author.id);
+
+    const tooLongWithImage = await createComment({
+      blogId: blog.id, authorId: author.id, content: 'x'.repeat(501), imageId: img.id,
+    });
+    if (tooLongWithImage.ok) throw new Error('带附件不该放过 501 字');
+    expect(tooLongWithImage.error).toBe('captionTooLong');
+
+    // 同样长度但纯文字 → 通过（2000 以内）
+    const plain = await createComment({
+      blogId: blog.id, authorId: author.id, content: 'x'.repeat(501),
+    });
+    expect(plain.ok).toBe(true);
+  });
+});
+
+describe('附件：引用博客', () => {
+  it('引用存在的博客 → blog 解析出标题/作者，blog_missing=false', async () => {
+    const { author, blog } = await seedBlog();
+    const target = await makeBlog({ authorId: author.id, title: '被引用的文章' });
+
+    const r = await createComment({
+      blogId: blog.id, authorId: author.id, content: '', quoteBlogId: target.id,
+    });
+    if (!r.ok) throw new Error(`前置失败：${r.message}`);
+    expect(r.comment.blog?.id).toBe(target.id);
+    expect(r.comment.blog?.title).toBe('被引用的文章');
+    expect(r.comment.blog?.author).toBeTruthy();
+    expect(r.comment.blog_missing).toBe(false);
+  });
+
+  it('引用不存在的博客 → blogInvalid', async () => {
+    const { author, blog } = await seedBlog();
+    const r = await createComment({
+      blogId: blog.id, authorId: author.id, content: '', quoteBlogId: crypto.randomUUID(),
+    });
+    if (r.ok) throw new Error('不应通过');
+    expect(r.error).toBe('blogInvalid');
+  });
+
+  it('博客被软删（ignore=true）→ blog_missing 占位', async () => {
+    const { author, blog } = await seedBlog();
+    const target = await makeBlog({ authorId: author.id });
+    const r = await createComment({
+      blogId: blog.id, authorId: author.id, content: '', quoteBlogId: target.id,
+    });
+    if (!r.ok) throw new Error('前置失败');
+
+    await prisma.blog.update({ where: { id: target.id }, data: { ignore: true } });
+    const tree = await listCommentsForBlog(blog.id);
+    expect(tree[0].blog).toBeNull();
+    expect(tree[0].blog_missing).toBe(true);
+  });
+
+  it('★软删评论即抹掉附件（否则删掉的图仍能点开看原图）', async () => {
+    const { author, blog } = await seedBlog();
+    const img = await makeImage(author.id);
+    const target = await makeBlog({ authorId: author.id });
+
+    const r = await createComment({
+      blogId: blog.id, authorId: author.id, content: '带附件的评论',
+      imageId: img.id, quoteBlogId: target.id,
+    });
+    if (!r.ok) throw new Error('前置失败');
+    // 造一个存活子评论，让被删的父级作为占位保留在树里（否则会被叶子过滤摘掉）
+    await makeComment({
+      blogId: blog.id, authorId: author.id, content: 'child',
+      parentId: r.comment.id, rootId: r.comment.id,
+    });
+
+    await softDeleteComment(r.comment.id, { id: author.id, role: 'core' });
+    const tree = await listCommentsForBlog(blog.id);
+    const dead = tree.find((n) => n.id === r.comment.id);
+    if (!dead) throw new Error('保留的已删节点应作为占位存在');
+    expect(dead.image, '软删后不得再下发图片').toBeNull();
+    expect(dead.image_missing, '软删不是「图丢了」，不该出占位').toBe(false);
+    expect(dead.blog).toBeNull();
+    expect(dead.blog_missing).toBe(false);
+    expect(JSON.stringify(tree)).not.toContain(img.id);
+  });
 });

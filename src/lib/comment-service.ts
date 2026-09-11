@@ -1,10 +1,21 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // comment-service.ts — 评论业务逻辑（对齐 Flask CommentService）
 //
-// 楼中楼：parentId（直接父级）+ rootId（顶层评论串）。评论不渲染 Markdown：
-// 保存时仅 HTML 转义并把换行转 <br> 写入 contentHtml（对齐 markupsafe.escape）。
-// 软删除：isDeleted=true。列表时构建树并丢弃「无子评论的已删除叶子」
-// （对齐 _filter_deleted_leaves）。计数在事务内按「未删除数」重算。
+// 楼中楼：parentId（直接父级）+ rootId（顶层评论串）。软删除：isDeleted=true。
+// 列表时构建树并丢弃「无子评论的已删除叶子」（对齐 _filter_deleted_leaves）。
+// 计数在事务内按「未删除数」重算。
+//
+// 【正文与附件的存储口径】
+//   · content      —— 正文**原文**（Markdown 源）。下发到前端由 comment-markdown.ts
+//                     渲染；注意它是用户输入，前端必须走那条净化管线，绝不直接 innerHTML。
+//   · contentHtml  —— 服务端转义的纯文本 + <br>。**站内已不再用它渲染**，它保留给
+//                     spider API（外部只读接口，不能让它因为站内换了渲染方式而被打碎）
+//                     以及「没跑 JS」时的降级形态。
+//   · imageId / quoteBlogId —— 附件（图床图片 / 引用博客）。只存引用不存快照，
+//                     读时按当前行解析，缺失给占位 —— 与 chat_messages 同策略。
+//
+// ⚠️ 依赖 Prisma 6 的 findMany/orderBy，不依赖 DOM；Markdown 渲染全在前端
+//    （服务端没有 window，DOMPurify 会静默降级 —— 见 rich-text.ts 防线 5）。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { prisma } from './db';
@@ -17,6 +28,22 @@ import type { Prisma } from '@prisma/client';
 
 // ── 序列化输出（snake_case，对齐 Flask API JSON 形状）──────────────────────────
 
+/** 评论引用的图床图片（读时解析；图被软删 → null，由 image_missing 说明）。 */
+export interface CommentImageDTO {
+  id: string;
+  url: string;
+  mime_type: string;
+}
+
+/** 评论引用的博客（读时按当前 Blog 行解析，不存快照 —— 对齐 ChatBlogDTO）。 */
+export interface CommentBlogDTO {
+  id: string;
+  title: string;
+  description: string;
+  author: string | null; // 作者 username
+  updated_at: string | null; // ISO
+}
+
 export interface CommentNode {
   id: string;
   blog_id: string;
@@ -28,7 +55,20 @@ export interface CommentNode {
   };
   parent_id: string | null;
   root_id: string | null;
+  /**
+   * 正文原文（Markdown 源）。前端必须经 renderCommentMarkdown 净化后渲染 ——
+   * 它是用户输入，直接 innerHTML 等于开存储型 XSS。
+   */
+  content: string;
+  /** 服务端转义的纯文本 + <br>：spider API 与无 JS 降级用；站内不用它渲染。 */
   content_html: string;
+  /** 引用的图床图片；软删的评论一律为 null（连同 blog 一起抹掉）。 */
+  image: CommentImageDTO | null;
+  /** imageId 有值但图缺失/已软删 → 前端给 [图片已删除] 占位。 */
+  image_missing: boolean;
+  blog: CommentBlogDTO | null;
+  /** quoteBlogId 有值但博客缺失/已软删 → 前端给 [博客已删除] 占位。 */
+  blog_missing: boolean;
   status: string | null;
   is_deleted: boolean;
   likes_count: number;
@@ -38,6 +78,11 @@ export interface CommentNode {
 }
 
 const DELETED_PLACEHOLDER = '[该评论已删除]';
+
+/** 纯文本评论上限（对齐改版前的口径：评论文本一直允许到 2000）。 */
+export const COMMENT_TEXT_MAX = 2000;
+/** 带附件评论的图注上限（对齐聊天 CHAT_CAPTION_MAX：「图片 + 长文」一条排版会很难看）。 */
+export const COMMENT_CAPTION_MAX = 500;
 
 // markupsafe.escape 语义：& < > " ' → 实体
 function escapeHtml(s: string): string {
@@ -54,14 +99,17 @@ export function toContentHtml(content: string): string {
   return escapeHtml(content).replace(/\n/g, '<br>');
 }
 
-// Prisma 行的最小选择集（含作者用于序列化）
+// Prisma 行的最小选择集（含作者用于序列化；附件只取 id，读时批量解析）
 const commentSelect = {
   id: true,
   blogId: true,
   authorId: true,
   parentId: true,
   rootId: true,
+  content: true,
   contentHtml: true,
+  imageId: true,
+  quoteBlogId: true,
   status: true,
   isDeleted: true,
   likesCount: true,
@@ -85,7 +133,16 @@ function serializeRow(c: CommentRow): CommentNode {
     },
     parent_id: c.parentId,
     root_id: c.rootId,
+    // ★ 软删即抹掉原文 ★ 与 content_html 同一口径：保留的已删节点（有子评论）只显示
+    // 占位文案。若这里下发 content，前端渲染出来等于「删了等于没删」，且与原设计
+    // 「不泄露原文」直接冲突（tests/service/comment-service.test.ts 有专门用例）。
+    content: deleted ? DELETED_PLACEHOLDER : c.content ?? '',
     content_html: deleted ? DELETED_PLACEHOLDER : c.contentHtml ?? '',
+    // 附件默认空，由 attachAttachments 批量填（软删的一律保持 null，同 content）
+    image: null,
+    image_missing: false,
+    blog: null,
+    blog_missing: false,
     status: c.status,
     is_deleted: deleted,
     likes_count: c.likesCount ?? 0,
@@ -93,6 +150,105 @@ function serializeRow(c: CommentRow): CommentNode {
     updated_at: c.updatedAt ? c.updatedAt.toISOString() : null,
     children: [],
   };
+}
+
+/** 深度优先展平成数组（建树之后用它收集整棵树的附件 id）。 */
+function flatten(nodes: CommentNode[], out: CommentNode[] = []): CommentNode[] {
+  for (const n of nodes) {
+    out.push(n);
+    flatten(n.children, out);
+  }
+  return out;
+}
+
+/**
+ * 批量解析附件（图床图片 / 引用博客）并**就地**写回节点。
+ *
+ * 【为什么批量】评论区一次要下发整棵树（可能上百条），逐条查图 / 查博客就是 N+1。
+ * 这里把整棵树的 imageId / quoteBlogId 去重后各查一次，与 chat-service 的
+ * attachImagesAndReplies 同一套做法。
+ *
+ * 缺失语义：id 有值但行不存在或已软删 → *_missing=true 让前端出占位，而不是静默
+ * 当成「没有附件」（否则用户会以为引用丢了）。软删的评论一律不解析附件 —— 与
+ * chat-service「软删即抹掉附件」一致，否则删掉的图仍能点开看原图。
+ */
+async function attachAttachments(nodes: CommentNode[], rows: CommentRow[]): Promise<void> {
+  if (!nodes.length) return;
+  const byId = new Map(rows.map((r) => [r.id, r]));
+
+  const imageIds = [
+    ...new Set(
+      rows
+        .filter((r) => !(r.isDeleted ?? false))
+        .map((r) => r.imageId)
+        .filter((v): v is string => !!v)
+    ),
+  ];
+  const quoteIds = [
+    ...new Set(
+      rows
+        .filter((r) => !(r.isDeleted ?? false))
+        .map((r) => r.quoteBlogId)
+        .filter((v): v is string => !!v)
+    ),
+  ];
+
+  const imageMap = new Map<string, { id: string; mimeType: string }>();
+  if (imageIds.length) {
+    const imgs = await prisma.imageHosting.findMany({
+      where: { id: { in: imageIds }, ignore: false },
+      select: { id: true, mimeType: true },
+    });
+    for (const i of imgs) imageMap.set(i.id, i);
+  }
+
+  const blogMap = new Map<
+    string,
+    {
+      id: string;
+      title: string;
+      description: string;
+      author: { username: string } | null;
+      content: { updatedAt: Date | null } | null;
+    }
+  >();
+  if (quoteIds.length) {
+    const blogs = await prisma.blog.findMany({
+      where: { id: { in: quoteIds }, ignore: false },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        author: { select: { username: true } },
+        content: { select: { updatedAt: true } },
+      },
+    });
+    for (const b of blogs) blogMap.set(b.id, b);
+  }
+
+  for (const node of flatten(nodes)) {
+    const row = byId.get(node.id);
+    if (!row) continue;
+    const deleted = row.isDeleted ?? false;
+    const img = row.imageId ? imageMap.get(row.imageId) : undefined;
+    const blog = row.quoteBlogId ? blogMap.get(row.quoteBlogId) : undefined;
+    node.image =
+      !deleted && img
+        ? { id: img.id, url: `/api/images/${img.id}/raw`, mime_type: img.mimeType }
+        : null;
+    node.image_missing = !deleted && !!row.imageId && !img;
+    node.blog =
+      !deleted && blog
+        ? {
+            id: blog.id,
+            title: blog.title,
+            description: blog.description,
+            author: blog.author?.username ?? null,
+            updated_at: blog.content?.updatedAt ? blog.content.updatedAt.toISOString() : null,
+          }
+        : null;
+    node.blog_missing = !deleted && !!row.quoteBlogId && !blog;
+  }
 }
 
 /** 递归移除「无子评论的已删除评论」（对齐 _filter_deleted_leaves）。 */
@@ -129,6 +285,7 @@ export async function listCommentsForBlog(blogId: string): Promise<CommentNode[]
     else roots.push(node);
   }
 
+  await attachAttachments(roots, rows);
   return filterDeletedLeaves(roots);
 }
 
@@ -139,19 +296,31 @@ export interface CreateCommentInput {
   authorId: string;
   content: string;
   parentId?: string | null;
+  /** 引用的图床图片 id（须属于作者本人且未软删）。 */
+  imageId?: string | null;
+  /** 引用的博客 id（须存在且未软删）。 */
+  quoteBlogId?: string | null;
 }
 
 export type CreateCommentResult =
   | { ok: true; comment: CommentNode }
   | {
       ok: false;
-      error: 'rateLimited' | 'notFound' | 'empty' | 'tooLong' | 'parentInvalid';
+      error:
+        | 'rateLimited'
+        | 'notFound'
+        | 'empty'
+        | 'tooLong'
+        | 'captionTooLong'
+        | 'imageInvalid'
+        | 'blogInvalid'
+        | 'parentInvalid';
       message: string;
     };
 
 /**
  * 创建评论（对齐 CommentService.create_comment）。
- * 调用方负责登录 / 禁言校验；此处负责频率限制、内容校验、建 root_id、维护冗余计数。
+ * 调用方负责登录 / 禁言校验；此处负责频率限制、内容与附件校验、建 root_id、维护冗余计数。
  */
 export async function createComment(input: CreateCommentInput): Promise<CreateCommentResult> {
   const { blogId, authorId, parentId } = input;
@@ -163,8 +332,46 @@ export async function createComment(input: CreateCommentInput): Promise<CreateCo
   }
 
   const content = (input.content ?? '').trim();
-  if (!content) return { ok: false, error: 'empty', message: '评论内容不能为空' };
-  if (content.length > 2000) return { ok: false, error: 'tooLong', message: '评论内容不能超过2000字' };
+  const imageId = input.imageId || null;
+  const quoteBlogId = input.quoteBlogId || null;
+  // 附件消息允许空正文（对齐聊天：引用一张图 / 一篇文章本身就是一条完整表达）
+  const isAttach = !!imageId || !!quoteBlogId;
+
+  // 校验一律放在事务外：事务里只做写入，别让额外的读把 SQLite 写锁多占几毫秒
+  // （写锁争用是这套单进程 SQLite 的老毛病，见 docs/architecture.md）。
+  if (!isAttach) {
+    if (!content) return { ok: false, error: 'empty', message: '评论内容不能为空' };
+    if (content.length > COMMENT_TEXT_MAX) {
+      return { ok: false, error: 'tooLong', message: `评论内容不能超过${COMMENT_TEXT_MAX}字` };
+    }
+  } else {
+    // 带附件时按图注档限长：图片 + 2000 字在一条评论里排版会很难看（与聊天同口径）
+    if (content.length > COMMENT_CAPTION_MAX) {
+      return {
+        ok: false,
+        error: 'captionTooLong',
+        message: `图片或引用评论不能超过${COMMENT_CAPTION_MAX}字`,
+      };
+    }
+    if (imageId) {
+      // 必须是自己传的图：否则可以引用别人的图（乃至猜 id 探测未公开的图）。
+      // 与 chat-service.sendMessage 的 imageInvalid 判定逐字对齐。
+      const img = await prisma.imageHosting.findUnique({
+        where: { id: imageId },
+        select: { id: true, authorId: true, ignore: true },
+      });
+      if (!img || img.ignore || img.authorId !== authorId) {
+        return { ok: false, error: 'imageInvalid', message: '图片不存在或不属于你，请重新上传' };
+      }
+    }
+    if (quoteBlogId) {
+      const blog = await prisma.blog.findFirst({
+        where: { id: quoteBlogId, ignore: false },
+        select: { id: true },
+      });
+      if (!blog) return { ok: false, error: 'blogInvalid', message: '引用的博客不存在或已删除' };
+    }
+  }
 
   const contentHtml = toContentHtml(content);
   const now = nowForDb();
@@ -204,6 +411,8 @@ export async function createComment(input: CreateCommentInput): Promise<CreateCo
           rootId,
           content,
           contentHtml,
+          imageId,
+          quoteBlogId,
           status: 'approved',
           isDeleted: false,
           likesCount: 0,
@@ -257,7 +466,11 @@ export async function createComment(input: CreateCommentInput): Promise<CreateCo
       // 通知失败不影响评论本身（对齐 Flask 的 try/except pass）
     }
 
-    return { ok: true, comment: serializeRow(node.row) };
+    // 刚创建的这一条自带附件（若用户是「引用图 / 引用博客」提交的）—— 解析一次再返回，
+    // 否则前端要等到下次整树刷新才看得见自己刚发的图。
+    const comment = serializeRow(node.row);
+    await attachAttachments([comment], [node.row]);
+    return { ok: true, comment };
   } catch (e) {
     // 【不要把所有异常都洗成「文章不存在」】
     // 曾经这里是裸 `catch { return notFound }`：任何 DB 故障（外键冲突、磁盘错误、
