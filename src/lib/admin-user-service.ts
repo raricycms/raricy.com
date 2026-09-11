@@ -10,9 +10,11 @@
 // raw UPDATE + CAST 语义写入（SQLite 动态类型，文本可直接落进 JSON 列）。
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { randomBytes } from 'node:crypto';
 import { prisma } from './db';
 import { nowForDb } from './db-time';
-import { PUBLIC_USER_SELECT, isCurrentlyBanned, isOwner, type SafeUser } from './auth';
+import { hashPassword } from './password';
+import { PUBLIC_USER_SELECT, hasAdminRights, isCurrentlyBanned, isOwner, type SafeUser } from './auth';
 import { sendNotification } from './notification-service';
 import { kickUser } from './chat-bus';
 
@@ -423,4 +425,151 @@ export async function unbanUser(p: UnbanUserParams): Promise<AdminResult> {
   });
 
   return { ok: true, message: `用户 ${target.username} 的禁言已解除` };
+}
+
+// ── 重置密码（站长专用）──────────────────────────────────────────────────────
+//
+// 【为什么只能站长做，且不能对自己做】网页端的 changeOwnPassword 要求**先验原密码**。
+// 这个函数不需要原密码 —— 那正是它的用途（用户忘了密码 / 邮箱被盗后电话核实），
+// 也正因如此它是把「免密登录他人账号」的能力：给到管理员就等于给到所有人。
+// 不允许对自己用，是因为自助改密走网页端（需原密码），CLI 免密重置自己 = 会话劫持原语。
+
+const PASSWORD_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+
+/** 生成随机密码。用拒绝采样避免取模偏置（248 = 4 × 62）。 */
+function generatePassword(len = 16): string {
+  let out = '';
+  while (out.length < len) {
+    for (const b of randomBytes(len)) {
+      if (b >= 248) continue;
+      out += PASSWORD_ALPHABET[b % PASSWORD_ALPHABET.length];
+      if (out.length === len) break;
+    }
+  }
+  return out;
+}
+
+export interface ResetPasswordParams {
+  actor: SafeUser;
+  targetId: string;
+  /** null → 由服务生成 16 位随机密码（推荐：不进 shell 历史）。 */
+  newPassword: string | null;
+  reason: string;
+}
+
+export type ResetPasswordResult =
+  | { ok: true; message: string; password: string; generated: boolean; sessionVersion: number }
+  | { ok: false; code: number; message: string };
+
+/**
+ * 重置某用户的密码，并递增 sessionVersion 让它所有已登录会话立即失效。
+ *
+ * ⚠️ 审计日志里**绝不写密码**（reason 与 metadata 都不写）—— /audit 是公开页。
+ */
+export async function resetUserPassword(p: ResetPasswordParams): Promise<ResetPasswordResult> {
+  if (!isOwner(p.actor)) return { ok: false, code: 403, message: '仅站长可重置他人密码' };
+  if (p.targetId === p.actor.id) {
+    return { ok: false, code: 403, message: '不能重置自己的密码，请用网页端「修改密码」' };
+  }
+
+  const reason = (p.reason ?? '').trim();
+  if (!reason) return { ok: false, code: 400, message: '缺少重置原因' };
+  if (reason.length > BAN_REASON_MAX) {
+    return { ok: false, code: 400, message: `重置原因不能超过 ${BAN_REASON_MAX} 个字符` };
+  }
+
+  const target = await prisma.user.findUnique({
+    where: { id: p.targetId },
+    select: { id: true, username: true, sessionVersion: true },
+  });
+  if (!target) return { ok: false, code: 404, message: '用户不存在' };
+
+  const generated = p.newPassword === null;
+  const password = p.newPassword ?? generatePassword();
+  // 与 changeOwnPassword 同一条底线
+  if (password.length < 8) return { ok: false, code: 400, message: '新密码长度至少为 8 位' };
+
+  const passwordHash = await hashPassword(password);
+  const nextVersion = (target.sessionVersion ?? 0) + 1;
+
+  await prisma.user.update({
+    where: { id: target.id },
+    data: { passwordHash, sessionVersion: nextVersion },
+    select: { id: true },
+  });
+
+  // 断开已建立的 SSE 长连接（否则那条连接会继续收消息直到用户自己刷新）
+  kickUser(target.id);
+
+  await logAdminAction({
+    action: 'reset_password',
+    adminId: p.actor.id,
+    targetUserId: target.id,
+    objectType: 'user',
+    objectId: target.id,
+    reason,
+    metadata: { generated }, // ★ 只有「是不是生成的」，没有密码本身
+  });
+
+  return {
+    ok: true,
+    message: `已重置 ${target.username} 的密码`,
+    password,
+    generated,
+    sessionVersion: nextVersion,
+  };
+}
+
+// ── 强制下线 ─────────────────────────────────────────────────────────────────
+
+export interface ForceLogoutParams {
+  actor: SafeUser;
+  targetId: string;
+  reason?: string;
+}
+
+/**
+ * 强制某用户下线：递增 sessionVersion（会话立即失效）+ 踢 SSE 连接 + 审计 + 通知。
+ *
+ * 权限用 hasAdminRights 而不是 owner —— 强制下线严格弱于禁言，而禁言管理员已经能做。
+ */
+export async function forceLogout(p: ForceLogoutParams): Promise<AdminResult> {
+  if (!hasAdminRights(p.actor)) return { ok: false, code: 403, message: '需要管理员权限' };
+  if (p.targetId === p.actor.id) return { ok: false, code: 403, message: '不能强制自己下线' };
+
+  const target = await prisma.user.findUnique({
+    where: { id: p.targetId },
+    select: { id: true, username: true },
+  });
+  if (!target) return { ok: false, code: 404, message: '用户不存在' };
+
+  await prisma.user.update({
+    where: { id: target.id },
+    data: { sessionVersion: { increment: 1 } },
+    select: { id: true },
+  });
+  kickUser(target.id);
+
+  const reason = (p.reason ?? '').trim();
+  await logAdminAction({
+    action: 'force_logout',
+    adminId: p.actor.id,
+    targetUserId: target.id,
+    objectType: 'user',
+    objectId: target.id,
+    reason: reason || null,
+  });
+
+  // 不说一声就掉线会让人以为站点坏了
+  await sendNotification({
+    recipientId: target.id,
+    action: '强制下线',
+    actorId: p.actor.id,
+    objectType: 'user',
+    objectId: target.id,
+    detail: reason ? `你已被强制下线（${reason}），请重新登录。` : '你已被强制下线，请重新登录。',
+    force: true,
+  });
+
+  return { ok: true, message: `已强制 ${target.username} 下线` };
 }

@@ -9,6 +9,7 @@
 // 注意：不 select AdminActionLog.extra（JSON 列，驱动层拒读，见 audit-service）。
 // ─────────────────────────────────────────────────────────────────────────────
 
+import type { Prisma } from '@prisma/client';
 import { prisma } from './db';
 import { nowForDb } from './db-time';
 import { isOwner, type SafeUser } from './auth';
@@ -44,45 +45,35 @@ export type AppealRow = {
   } | null;
 };
 
-/** 申诉分页列表（带日志 + 申诉人 + 裁决人）。默认最新在前。 */
-export async function listAppeals(params: ListAppealsParams) {
-  const page = Math.max(1, params.page ?? 1);
-  const where = params.status ? { status: params.status } : {};
+/** 申诉行 + 关联日志的字段投影。列表与单条共用，避免两份 select 漂移。 */
+const APPEAL_SELECT = {
+  id: true,
+  content: true,
+  status: true,
+  decision: true,
+  createdAt: true,
+  decidedAt: true,
+  appellant: { select: { id: true, username: true } },
+  decider: { select: { id: true, username: true } },
+  log: {
+    // 不含 extra（JSON 列，驱动层拒读）
+    select: {
+      id: true,
+      action: true,
+      reason: true,
+      createdAt: true,
+      objectType: true,
+      objectId: true,
+      admin: { select: { id: true, username: true } },
+      targetUser: { select: { id: true, username: true } },
+    },
+  },
+} as const;
 
-  const [total, rows] = await Promise.all([
-    prisma.adminActionAppeal.count({ where }),
-    prisma.adminActionAppeal.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      skip: (page - 1) * PER_PAGE,
-      take: PER_PAGE,
-      select: {
-        id: true,
-        content: true,
-        status: true,
-        decision: true,
-        createdAt: true,
-        decidedAt: true,
-        appellant: { select: { id: true, username: true } },
-        decider: { select: { id: true, username: true } },
-        log: {
-          // 不含 extra（JSON 列）
-          select: {
-            id: true,
-            action: true,
-            reason: true,
-            createdAt: true,
-            objectType: true,
-            objectId: true,
-            admin: { select: { id: true, username: true } },
-            targetUser: { select: { id: true, username: true } },
-          },
-        },
-      },
-    }),
-  ]);
+type AppealDbRow = Prisma.AdminActionAppealGetPayload<{ select: typeof APPEAL_SELECT }>;
 
-  const items: AppealRow[] = rows.map((a) => ({
+function mapAppealRow(a: AppealDbRow): AppealRow {
+  return {
     id: a.id,
     content: a.content,
     status: a.status,
@@ -105,10 +96,44 @@ export async function listAppeals(params: ListAppealsParams) {
             : null,
         }
       : null,
-  }));
+  };
+}
+
+/** 申诉分页列表（带日志 + 申诉人 + 裁决人）。默认最新在前。 */
+export async function listAppeals(params: ListAppealsParams) {
+  const page = Math.max(1, params.page ?? 1);
+  const where = params.status ? { status: params.status } : {};
+
+  const [total, rows] = await Promise.all([
+    prisma.adminActionAppeal.count({ where }),
+    prisma.adminActionAppeal.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      skip: (page - 1) * PER_PAGE,
+      take: PER_PAGE,
+      select: APPEAL_SELECT,
+    }),
+  ]);
 
   const pages = Math.max(1, Math.ceil(total / PER_PAGE));
-  return { items, total, page, perPage: PER_PAGE, pages, hasPrev: page > 1, hasNext: page < pages };
+  return {
+    items: rows.map(mapAppealRow),
+    total,
+    page,
+    perPage: PER_PAGE,
+    pages,
+    hasPrev: page > 1,
+    hasNext: page < pages,
+  };
+}
+
+/** 单条申诉（确认屏用）。不存在返回 null。 */
+export async function getAppeal(appealId: number): Promise<AppealRow | null> {
+  const a = await prisma.adminActionAppeal.findUnique({
+    where: { id: appealId },
+    select: APPEAL_SELECT,
+  });
+  return a ? mapAppealRow(a) : null;
 }
 
 // ── 裁决 ─────────────────────────────────────────────────────────────────────

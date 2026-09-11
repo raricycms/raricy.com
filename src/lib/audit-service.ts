@@ -204,6 +204,120 @@ export async function listPublicLogs(params: ListLogsParams) {
   return { items, total, page, perPage: PER_PAGE, pages, hasPrev: page > 1, hasNext: page < pages };
 }
 
+// ── 管理端日志检索（运维 CLF 用）────────────────────────────────────────────
+
+export interface ListAdminLogsParams {
+  page?: number;
+  perPage?: number;
+  action?: string | null;
+  /** 按执行者用户名模糊筛选。 */
+  adminUsername?: string | null;
+  /** 按被处理用户用户名模糊筛选。 */
+  targetUsername?: string | null;
+  objectType?: string | null;
+  objectId?: string | null;
+  /** 默认 'all' —— 运维要看得见 visibility 非 public 的内部日志。 */
+  visibility?: 'all' | 'public' | 'internal';
+  since?: Date | null;
+  until?: Date | null;
+}
+
+/**
+ * 管理端审计日志检索。
+ *
+ * 与 listPublicLogs 的两处**刻意差异**：
+ *   1. 不强制 `visibility: 'public'` —— 公示页只该看到公开日志，运维要看到全部
+ *   2. 不设 30 天窗口 —— 排查陈年问题要能翻到任意久之前
+ *
+ * 未变的（也别改）：`extra` 那列是 SQLite 声明为 JSON 的列，Prisma 驱动层拒读，
+ * 必须走下面这段 raw + CAST 的绕行。这是本文件最容易悄悄坏掉的地方 ——
+ * 直接把 `extra` 加进 select 会在**运行时**抛 "Value JSON not supported"，
+ * tsc 与构建都不报。
+ */
+export async function listAdminLogs(params: ListAdminLogsParams) {
+  const page = Math.max(1, params.page ?? 1);
+  const perPage = Math.min(100, Math.max(1, params.perPage ?? PER_PAGE));
+
+  const where: Prisma.AdminActionLogWhereInput = {};
+  if (params.visibility === 'public') where.visibility = 'public';
+  else if (params.visibility === 'internal') where.visibility = { not: 'public' };
+  // 'all' / 未指定：不过滤 visibility
+
+  if (params.action) where.action = params.action;
+  if (params.objectType) where.objectType = params.objectType;
+  if (params.objectId) where.objectId = params.objectId;
+  if (params.adminUsername) where.admin = { is: { username: { contains: params.adminUsername } } };
+  if (params.targetUsername) {
+    where.targetUser = { is: { username: { contains: params.targetUsername } } };
+  }
+  if (params.since || params.until) {
+    where.createdAt = {
+      ...(params.since ? { gte: params.since } : {}),
+      ...(params.until ? { lte: params.until } : {}),
+    };
+  }
+
+  const [total, rows] = await Promise.all([
+    prisma.adminActionLog.count({ where }),
+    prisma.adminActionLog.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      skip: (page - 1) * perPage,
+      take: perPage,
+      select: {
+        id: true,
+        createdAt: true,
+        action: true,
+        adminId: true,
+        targetUserId: true,
+        objectType: true,
+        objectId: true,
+        reason: true,
+        visibility: true,
+        admin: { select: { username: true } },
+        targetUser: { select: { username: true } },
+        // 同 listPublicLogs：**不 select extra**，见上方说明
+      },
+    }),
+  ]);
+
+  const logIds = rows.map((r) => r.id);
+  const extraMap = new Map<number, string | null>();
+  if (logIds.length) {
+    const idList = logIds.filter((n) => Number.isInteger(n)).join(',');
+    const extraRows = (await prisma.$queryRawUnsafe(
+      `SELECT id, CAST(extra AS TEXT) AS extra FROM admin_action_logs WHERE id IN (${idList})`
+    )) as Array<{ id: number; extra: string | null }>;
+    for (const er of extraRows) extraMap.set(Number(er.id), er.extra);
+  }
+
+  const pending = logIds.length
+    ? await prisma.adminActionAppeal.findMany({
+        where: { logId: { in: logIds }, status: 'pending' },
+        select: { logId: true },
+      })
+    : [];
+  const hasPending = new Set(pending.map((p) => p.logId));
+
+  const items = rows.map((r) => ({
+    id: r.id,
+    createdAt: r.createdAt,
+    action: r.action,
+    admin: { id: r.adminId, username: r.admin?.username ?? null },
+    targetUser: r.targetUserId
+      ? { id: r.targetUserId, username: r.targetUser?.username ?? null }
+      : null,
+    object: r.objectType || r.objectId ? { type: r.objectType, id: r.objectId } : null,
+    reason: r.reason,
+    extra: parseExtra(extraMap.get(r.id)),
+    visibility: r.visibility,
+    hasPendingAppeal: hasPending.has(r.id),
+  }));
+
+  const pages = Math.max(1, Math.ceil(total / perPage));
+  return { items, total, page, perPage, pages, hasPrev: page > 1, hasNext: page < pages };
+}
+
 export type AppealResult =
   | { ok: true; message: string; appealId: number }
   | { ok: false; message: string; appealId: null };
