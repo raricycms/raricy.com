@@ -483,15 +483,91 @@ export async function findApplication(idOrClientId: string): Promise<OAuthApplic
 }
 
 // ── 用户连接管理（settings 页用） ───────────────────────────────────────────
+//
+// 【列表粒度 = 应用，不是 token】
+// v1 不发放 refresh_token，外部应用每次走一遍授权流程都会新签一条 90 天 token。
+// 「登录一次跳一次 /oauth/authorize」的集成方式很常见，于是同一用户在同一应用名下
+// 会积累多条存活 token。若列表按 token 展开，用户看到的就是同一个网站重复 N 行；
+// 而「解除绑定」若只吊销其中一条，用户以为解绑了、应用手里却还有 N-1 条有效凭证
+// （真安全漏洞）。故此处一律**按 applicationId 聚合**，解除也**按应用整体撤销**。
+//
+// 不选「重复授权时自动吊销旧 token」那条路：外部应用可能在多个实例/设备上各存一份
+// 令牌，静默吊销会让没重新授权过的那个实例突然 401。聚合显示对第三方零影响。
 
 export interface UserConnection {
-  tokenId: string; // = tokenHash（解除绑定时 DELETE /api/oauth/connections/[id]）
-  applicationId: string;
+  applicationId: string; // 解除绑定时 DELETE /api/oauth/connections/<applicationId>
   applicationName: string;
   applicationHomepageUrl: string | null;
-  scopes: Scope[];
-  createdAt: Date;
+  scopes: Scope[]; // 该应用名下所有存活 token 的 scope 并集（按首次出现顺序）
+  tokenCount: number; // 存活 token 条数；>1 即用户重复授权过同一个应用
+  firstAuthorizedAt: Date; // 最早一次授权
+  lastAuthorizedAt: Date; // 最近一次授权
+  expiresAt: Date; // 最晚到期时刻（最后一条 token 失效的时间）
+  lastUsedAt: Date | null; // 最近一次被调用；从未调用过为 null
+}
+
+/** listUserConnections 的聚合输入行（DB 侧已滤掉已撤销 / 已过期）。 */
+export interface ConnectionTokenRow {
+  applicationId: string;
+  scopes: string;
+  createdAt: Date | null;
   expiresAt: Date;
+  lastUsedAt: Date | null;
+  application: {
+    id: string;
+    name: string;
+    homepageUrl: string | null;
+    disabledAt: Date | null;
+  };
+}
+
+/**
+ * 把 token 行聚合成「一应用一行」。纯函数，便于直接单测聚合口径。
+ * `now` 显式传入而不是内部取：createdAt 允许为 null（schema 如此），缺失时按 now 兜底，
+ * 传参才能让结果可预期。
+ */
+export function aggregateConnections(
+  rows: ConnectionTokenRow[],
+  now: Date
+): UserConnection[] {
+  const byApp = new Map<string, UserConnection>();
+
+  for (const r of rows) {
+    if (r.application.disabledAt != null) continue; // 禁用应用不展示
+
+    const createdAt = r.createdAt ?? now;
+    const existing = byApp.get(r.applicationId);
+    if (!existing) {
+      byApp.set(r.applicationId, {
+        applicationId: r.applicationId,
+        applicationName: r.application.name,
+        applicationHomepageUrl: r.application.homepageUrl,
+        scopes: parseStoredScopes(r.scopes),
+        tokenCount: 1,
+        firstAuthorizedAt: createdAt,
+        lastAuthorizedAt: createdAt,
+        expiresAt: r.expiresAt,
+        lastUsedAt: r.lastUsedAt,
+      });
+      continue;
+    }
+
+    existing.tokenCount += 1;
+    if (createdAt < existing.firstAuthorizedAt) existing.firstAuthorizedAt = createdAt;
+    if (createdAt > existing.lastAuthorizedAt) existing.lastAuthorizedAt = createdAt;
+    if (r.expiresAt > existing.expiresAt) existing.expiresAt = r.expiresAt;
+    if (r.lastUsedAt && (!existing.lastUsedAt || r.lastUsedAt > existing.lastUsedAt)) {
+      existing.lastUsedAt = r.lastUsedAt;
+    }
+    for (const s of parseStoredScopes(r.scopes)) {
+      if (!existing.scopes.includes(s)) existing.scopes.push(s);
+    }
+  }
+
+  // 最近授权的排在前面（与旧的 orderBy createdAt desc 观感一致）
+  return [...byApp.values()].sort(
+    (a, b) => b.lastAuthorizedAt.getTime() - a.lastAuthorizedAt.getTime()
+  );
 }
 
 export async function listUserConnections(userId: string): Promise<UserConnection[]> {
@@ -502,38 +578,45 @@ export async function listUserConnections(userId: string): Promise<UserConnectio
       revokedAt: null,
       expiresAt: { gt: now },
     },
-    include: {
+    select: {
+      applicationId: true,
+      scopes: true,
+      createdAt: true,
+      expiresAt: true,
+      lastUsedAt: true,
       application: { select: { id: true, name: true, homepageUrl: true, disabledAt: true } },
     },
-    orderBy: { createdAt: 'desc' },
   });
-  return rows
-    .filter((r) => r.application.disabledAt == null) // 禁用应用的不展示
-    .map((r) => ({
-      tokenId: r.tokenHash,
-      applicationId: r.application.id,
-      applicationName: r.application.name,
-      applicationHomepageUrl: r.application.homepageUrl,
-      scopes: parseStoredScopes(r.scopes),
-      createdAt: r.createdAt ?? now,
-      expiresAt: r.expiresAt,
-    }));
+  return aggregateConnections(rows, now);
 }
 
-export async function revokeOwnTokenByHash(tokenHash: string, userId: string): Promise<boolean> {
-  if (!tokenHash || tokenHash.length !== 64) return false;
-  const row = await prisma.oAuthAccessToken.findUnique({
-    where: { tokenHash },
-    select: { userId: true, revokedAt: true },
-  });
-  if (!row || row.userId !== userId) return false;
-  if (row.revokedAt) return true; // 幂等
-  await prisma.oAuthAccessToken.update({
-    where: { tokenHash },
+export interface RevokeApplicationResult {
+  /** 该用户名下是否有这个应用的绑定记录（false → 路由回 404）。 */
+  found: boolean;
+  /** 本次实际撤销的 token 条数（已撤销的不重复计数）。 */
+  revoked: number;
+}
+
+/**
+ * 解除「用户 ↔ 应用」的整个绑定：撤销该用户名下该应用**全部**存活 token。
+ *
+ * 【为什么不是一个 token 一个 token 地解】设置页按应用聚合展示，按钮文案也是
+ * 「解除与 X 的绑定」；用户的心智模型是「这个网站再也不许读我的资料了」。
+ * 只吊销一条会留下仍然有效的凭证 —— 那是静默的越权，不是解绑。
+ */
+export async function revokeUserApplicationTokens(
+  userId: string,
+  applicationId: string
+): Promise<RevokeApplicationResult> {
+  const total = await prisma.oAuthAccessToken.count({ where: { userId, applicationId } });
+  if (total === 0) return { found: false, revoked: 0 };
+
+  // 幂等：已撤销的行不再计入（重复点按钮等价于成功）
+  const res = await prisma.oAuthAccessToken.updateMany({
+    where: { userId, applicationId, revokedAt: null },
     data: { revokedAt: nowForDb() },
-    select: { tokenHash: true },
   });
-  return true;
+  return { found: true, revoked: res.count };
 }
 
 // ── siteOrigin：解析 SITE_URL / ALLOWED_ORIGINS ──────────────────────────────

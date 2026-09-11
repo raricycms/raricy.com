@@ -2,14 +2,18 @@
 
 import { useEffect, useState } from 'react';
 
+// 一条 = 一个应用（不是一条 token）。外部应用每次重新授权都会新签一条 90 天 token，
+// 按 token 展开会让同一个网站重复出现 N 行 —— 聚合口径见 src/lib/oauth.ts。
 interface Connection {
-  tokenId: string;
   applicationId: string;
   applicationName: string;
   applicationHomepageUrl: string | null;
   scopes: string[];
-  createdAt: string;
+  tokenCount: number;
+  firstAuthorizedAt: string;
+  lastAuthorizedAt: string;
   expiresAt: string;
+  lastUsedAt: string | null;
 }
 
 interface Props {
@@ -45,11 +49,14 @@ export default function OAuthConnectionsList({ onAlert }: Props) {
     load();
   }, []);
 
-  const revoke = async (tokenId: string, name: string) => {
-    if (!window.confirm(`确定解除与「${name}」的绑定吗？`)) return;
-    setBusyId(tokenId);
+  // 按应用解绑：后端会撤销该应用名下**全部**存活 token，故提示里点明条数，
+  // 免得重复授权过的用户以为只撤掉一条。
+  const revoke = async (applicationId: string, name: string, tokenCount: number) => {
+    const extra = tokenCount > 1 ? `（该应用名下有 ${tokenCount} 个有效令牌，将一并撤销）` : '';
+    if (!window.confirm(`确定解除与「${name}」的绑定吗？${extra}`)) return;
+    setBusyId(applicationId);
     try {
-      const res = await fetch(`/api/oauth/connections/${encodeURIComponent(tokenId)}`, {
+      const res = await fetch(`/api/oauth/connections/${encodeURIComponent(applicationId)}`, {
         method: 'DELETE',
         credentials: 'include',
       });
@@ -58,7 +65,7 @@ export default function OAuthConnectionsList({ onAlert }: Props) {
         throw new Error(j.message || `解除失败 (${res.status})`);
       }
       onAlert('success', `已解除与「${name}」的绑定`);
-      setConns((prev) => (prev ? prev.filter((c) => c.tokenId !== tokenId) : prev));
+      setConns((prev) => (prev ? prev.filter((c) => c.applicationId !== applicationId) : prev));
     } catch (e) {
       onAlert('danger', e instanceof Error ? e.message : '解除失败');
     } finally {
@@ -84,7 +91,7 @@ export default function OAuthConnectionsList({ onAlert }: Props) {
   return (
     <div className="oauth-conn-list">
       {conns.map((c) => (
-        <div key={c.tokenId} className="oauth-conn-row">
+        <div key={c.applicationId} className="oauth-conn-row">
           <div className="oauth-conn-row__main">
             <div className="oauth-conn-row__name">
               {c.applicationHomepageUrl ? (
@@ -100,7 +107,9 @@ export default function OAuthConnectionsList({ onAlert }: Props) {
               )}
             </div>
             <div className="oauth-conn-row__meta">
-              授权于 {fmt(c.createdAt)}　·　到期 {fmt(c.expiresAt)}
+              授权于 {fmt(c.firstAuthorizedAt)}
+              {c.tokenCount > 1 && <>　·　{c.tokenCount} 次授权</>}
+              　·　到期 {fmt(c.expiresAt)}
             </div>
             <div className="oauth-conn-row__scopes">
               {c.scopes.map((s) => (
@@ -111,10 +120,10 @@ export default function OAuthConnectionsList({ onAlert }: Props) {
           <button
             type="button"
             className="settings-btn"
-            disabled={busyId === c.tokenId}
-            onClick={() => revoke(c.tokenId, c.applicationName)}
+            disabled={busyId === c.applicationId}
+            onClick={() => revoke(c.applicationId, c.applicationName, c.tokenCount)}
           >
-            {busyId === c.tokenId ? '解除中…' : '解除绑定'}
+            {busyId === c.applicationId ? '解除中…' : '解除绑定'}
           </button>
         </div>
       ))}

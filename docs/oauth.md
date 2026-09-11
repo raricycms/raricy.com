@@ -25,10 +25,25 @@ raricy.com 作为 **OAuth 2.0 Authorization Server**，让外部第三方应用�
 | `/api/oauth/token` | POST | client (HTTP Basic / body) | code → access_token |
 | `/api/oauth/userinfo` | GET | `Authorization: Bearer` | 返回 `{sub, username, avatar_url}` |
 | `/api/oauth/revoke` | POST | session **或** bearer | 吊销 token（RFC 7009） |
-| `/api/oauth/connections` | GET | raricy session | 当前用户已绑定的应用列表 |
-| `/api/oauth/connections/[id]` | DELETE | raricy session | 解除单个绑定 |
+| `/api/oauth/connections` | GET | raricy session | 当前用户已绑定的应用列表（**一应用一行**） |
+| `/api/oauth/connections/[applicationId]` | DELETE | raricy session | 解除与该应用的绑定（撤销其**全部**令牌） |
 | `/api/admin/oauth/applications` | GET / POST | owner | 列出 / 创建应用 |
 | `/api/admin/oauth/applications/[id]` | PATCH / DELETE | owner | 更新 / 软禁用 |
+
+### 2.1 绑定列表的粒度是「应用」，不是「令牌」
+
+v1 不发放 refresh_token，因此**每次走完授权流程都会新签一条 90 天令牌**。若外部应用
+在每次用户登录时都跳一遍 `/oauth/authorize`，同一用户在同一应用名下就会积累多条存活令牌。
+
+对应地，`/api/oauth/connections` **按 `applicationId` 聚合**——同一个应用只出现一行，
+另给 `tokenCount`（该应用名下的存活令牌数，>1 即重复授权过）与 `lastAuthorizedAt`。
+
+`DELETE /api/oauth/connections/[applicationId]` 是**整应用解绑**：撤销该用户名下该应用
+的**全部**存活令牌。这是刻意的——按钮语义是「解除与 X 的绑定」，只吊销一条会留下仍然
+有效的凭证，属于静默越权。重复点击幂等（返回 `revokedCount: 0`）。
+
+> 另一条路（重复授权时自动吊销旧令牌）**没有采用**：外部应用可能在多个实例/设备上各存
+> 一份令牌，静默吊销会让没重新授权过的那个实例突然 401。聚合显示对第三方零影响。
 
 ---
 
