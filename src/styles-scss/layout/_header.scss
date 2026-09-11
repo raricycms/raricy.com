@@ -1,8 +1,6 @@
 /* Site header (custom, no Bootstrap dependency) */
-
-* {
-  transition: color 0.3s ease, background-color 0.3s ease;
-}
+/* 注：本文件顶部原本还有一条 `* { transition: … }`，已收敛到 base/_reset.scss
+   （全局规则只留一处定义，见那里的说明）。 */
 
 a { 
   text-decoration: none;

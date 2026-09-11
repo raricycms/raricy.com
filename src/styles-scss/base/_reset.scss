@@ -5,3 +5,20 @@ body { margin: 0; }
 a { color: inherit; text-decoration: none; }
 img { max-width: 100%; height: auto; }
 
+/* 全局交互过渡 + 触屏高亮：**这里是唯一定义处**。
+ *
+ * 此前 _header.scss / blog/_blog.scss / blog/_menu.scss 各写了一份 `*` 规则叠加在
+ * 一起（共 4 条）。`*` 的权重都是 0-0-0，所以实际生效的只有**最后加载**的那条
+ * （pages/blog/menu），其余全是被覆盖的死代码 —— 改它们不会有任何效果，而看代码的人
+ * 会以为改对了。收敛到这里，位置与最终生效的那条一致，行为不变。
+ *
+ * ⚠️ 排查样式问题的坑：这条规则让**任何颜色变化都走 0.3s 过渡**，于是
+ * `getComputedStyle` 读到的是过渡中间值而不是级联的最终胜者。实测：注入一条更高权重
+ * 的 background-color 规则后立刻读，值仍停在旧颜色上，看起来像「规则没生效」；
+ * 等过渡跑完、或先禁掉 transition，才看得到真正的赢家。
+ * （验 CSS 级联时先 `* { transition: none !important }` 再读。） */
+* {
+  transition: color 0.3s ease, background-color 0.3s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
