@@ -20,10 +20,17 @@
 //   4. toLocale*                    按运行机器时区再平移一次（浏览器/服务器不在 UTC+8 就错）
 //   5. 本地 getter（getHours 等）    读墙上时间必须用 getUTC*（getTime 与时区无关，不在此列）
 //
-// 【范围】1–3 扫会写库 / 比对库内时间的服务端代码：src/lib、src/app/api、src/middleware.ts、
-// tests/helpers。**不含** src/app 页面组件 —— 客户端计时器、相对时间显示等用 new Date()
-// 与库内时钟无关，属合法用途。4–5 扫整个 src/（展示层），因为凡是渲染库内时间戳的地方，
-// 本地时区 API 一定会把墙上时间平移一次。
+// 【范围】分两档，**不是**按「服务端 / 展示层」一刀切：
+//
+//   · 规则 1–2 只扫会写库 / 取库内「当前时刻」的服务端代码：src/lib、src/app/api、
+//     src/middleware.ts、tests/helpers。**不含** src/app 页面组件 —— 纯客户端计时器
+//     用 new Date() 取「现在」与库内时钟无关，属合法用途。
+//   · 规则 3–5 扫整个 src/。因为它们的错法与在哪一端无关：**凡是碰库内时间戳的地方**
+//     （客户端也一样），与真实 Date.now() 相减就差 8 小时，本地时区 API 就会再平移一次。
+//     注意规则 3 匹配的是 Date.now()，而 hoursUntil() 用的是 nowForDb().getTime() ——
+//     正确写法天然不命中，所以它不需要白名单。
+//   · 唯一的白名单是 WHITELIST（db-time.ts，规则 1–2 用）与 LOCALE_WHITELIST
+//     （cattca 页，规则 4 用）。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { describe, expect, it } from 'vitest';

@@ -13,7 +13,8 @@
 //
 // 【约定二：时间戳只用同一把钟】
 // 与 tests/unit/db-time-guard.test.ts 同样的理由，但那个守卫的扫描范围是
-// src/lib、src/app/api、middleware、tests/helpers —— **不含 scripts/**。
+// src/lib、src/app/api、middleware、tests/helpers（规则 3–5 还会扫整个 src/）
+// —— **都不含 scripts/**。
 // CLI 会写库、会比对库内时间（比如审计日志的时间窗），所以这里补上。
 // 取「当前时刻」一律 nowForDb()；展示一律 ymd/ymdhms 或 getUTC*。
 //
