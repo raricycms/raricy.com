@@ -19,38 +19,65 @@ npm run cli -- stats overview  # 命令式：看一眼站点状态
 
 ## 一、交互式模式
 
-不带参数、且在真正的终端里跑，就会进菜单：
+不带参数、且在真正的终端里跑，就会进菜单。菜单用的是 inquirer 的**纵向列表**
+（方向键选、回车确认），**不是输编号**：
 
 ```
-聪明山 运维台                    审计身份：owner cms（可切换）
+? 聪明山 运维台 (Use arrow keys)
+❯ 用户  6 条命令
+  角色  7 条命令
+  博客  4 条命令
+  评论  4 条命令
+  云剪贴板  4 条命令
+  投票  4 条命令
+  图床  3 条命令
+  邀请码  3 条命令
+  小鱼干  5 条命令
+  审计日志  1 条命令
+  申诉  2 条命令
+  站点概览  1 条命令
+  OAuth 应用  4 条命令
+  审计身份：owner cms  切换
+  查看全部命令与用法  --help
+  退出
+```
 
-  1. 用户管理        5. 邀请码
-  2. 内容检索与恢复   6. 审计日志 / 申诉
-  3. 小鱼干          7. 站点概览
-  4. 角色            8. OAuth 应用
-  q. 退出
+选中分组后列的是**命令原名**（不是「搜博客」这类改写过的说法），每项后面跟着该命令的摘要：
 
-> 2
+```
+? 评论 (Use arrow keys)
+❯ ← 返回上一步
+  ✕ 取消本次操作
+  comment search  搜评论（含已删）
+  comment show    评论详情
+  comment restore 恢复被删除的评论
+  comment delete  删除评论
+```
 
-内容检索与恢复
-  1. 搜博客  2. 搜云剪贴板  3. 搜评论  4. 搜投票  5. 搜图床   b. 返回
-> 3
+接着按该命令的参数逐个提问。自由文本提示都带导航后缀；select 类参数同样是方向键列表：
 
-关键词（回车跳过 = 全部）> 报错
-状态  1. 全部（含已删除）  2. 仅未删除  3. 仅已删除
-作者（回车跳过）>
+```
+关键词（评论正文 / 作者用户名 / 所属文章标题；留空 = 最近一页）（:b 返回上一步，:q 回主菜单）› _
+状态 1. 全部（含已删除）  2. 仅未删除  3. 仅已删除
+```
 
-  [1] 我也遇到报错…      bob    2026-08-03  正常
-  [2] 这个问题报错在…    alice  2026-07-29  已删除
-  n. 下一页   k. 换关键词   b. 返回
-> 2
+写操作在动手前会弹确认框，逐项列出**具体将发生什么**（目标、字段级变更、后果），
+而不是笼统的「确定吗」：
 
+```
 ──────────────────────── 即将执行 ────────────────────────
 命令：comment restore
 执行者：owner cms（审计 admin_id = e43de295-…）
-  评论作者：alice   文章：《构建报错排查》
-  内容预览：这个问题报错在第三行…
-后果：BlogComment.isDeleted → false；重算文章评论计数；写 restore_comment 审计日志。
+
+  评论 id  …
+  原因     …
+
+──────────────────────────────────────────────────────
+评论作者：alice
+所属文章：《构建报错排查》
+正文预览：这个问题报错在第三行…
+变更：BlogComment.isDeleted → false；重算文章评论计数与最后评论时间。
+本次操作会写入审计日志（公开可见）。
 ──────────────────────────────────────────────────────
 确认执行？ (y/N) › _
 ```
@@ -59,8 +86,9 @@ npm run cli -- stats overview  # 命令式：看一眼站点状态
 
 - **不用背命令，也不用背 ID。** 凡是「选某个实体」的参数（文章 / 评论 / 剪贴板 /
   投票 / 图片 / 用户 / 申诉），向导都让你**输关键词 → 从结果里挑**。
-- **导航约定**：每层菜单都有 `b. 返回`；自由文本提示后写着 `（:b 返回上一步，:q 回主菜单）`；
-  select 类的前两项固定是「← 返回上一步 / ✕ 取消本次操作」。
+- **导航约定**：选命令的二级菜单、以及 select 类参数，前两项固定是
+  「← 返回上一步 / ✕ 取消本次操作」；自由文本提示后写着 `（:b 返回上一步，:q 回主菜单）`。
+  **顶层分组菜单没有返回项**（它已经是最外层），也没有字母快捷键 —— 全靠方向键。
 - **退回上一题会带出原答案当默认值**，不用重敲。
 - **`Ctrl-C` 只取消当前操作、回主菜单**，不退出整个工具；也不会留下半完成的写入。
 - **非交互（管道 / CI）下不会进菜单**，而是打印帮助后退出 —— 绝不会挂在 stdin 上等输入。
@@ -102,7 +130,7 @@ fi
 
 | 危险级别 | 命令 | 行为 |
 |----------|------|------|
-| 破坏性 | 角色变更 · 用户禁言 · 强制下线 · 重置密码 · 文章/评论/剪贴板/投票的删除与恢复 · 申诉裁决 | 终端里弹「即将执行」确认屏；非交互必须加 `--yes` |
+| 破坏性 | 角色变更 · 用户禁言 · 强制下线 · 重置密码 · 文章/评论/剪贴板/投票的删除与恢复 · **图床恢复** · 申诉裁决 | 终端里弹「即将执行」确认屏；非交互必须加 `--yes` |
 | 不可逆 | `invite revoke`（物理删除邀请码行） | 同上，且确认屏会额外标注「不可恢复」 |
 | 安全 | 各类检索 / 查看 / `stats overview` / `fish grant`、`fish deduct` / OAuth 应用管理 | 不确认 |
 
@@ -114,7 +142,7 @@ fi
 
 ### 审计身份
 
-写操作都会记一条审计日志（默认 `visibility: 'public'`，见 `/audit` 公示页）。审计主体：
+**多数**写操作会记一条审计日志（默认 `visibility: 'public'`，见 `/audit` 公示页）。审计主体：
 
 1. `--as <username>` 指定的用户；否则
 2. 库内**最早的站长**（`createdAt` 升序）；都没有则
@@ -122,6 +150,12 @@ fi
 
 **为什么不能伪造**：`admin_action_logs.admin_id` 与 `user_bans.admin_id` 都是指向
 `users.id` 的**真实外键**，而且审计日志的全部意义就在于「这是谁做的」。
+
+> ⚠️ **例外 —— 这些写操作不写审计日志，别在 `/audit` 里找**：
+> `fish grant` / `fish deduct` / `fish sync-retry`（理由见上方鱼干那一段：它的写路径是
+> 「本地事务 + 远端 HTTP + 补偿事务」三段结构，`logAdminAction` 挤进去会占满 SQLite 写锁；
+> 鱼干自己的账本是 `fish_transactions` + `account_sync_ledger`）、
+> `oauth create-app` / `oauth disable-app` / `oauth enable-app`、`invite generate`。
 
 ### 两个由此而来的限制
 
@@ -159,7 +193,7 @@ fi
 |------|------|
 | `user search [关键词]` | 按用户名 / 邮箱搜 |
 | `user show <username>` | 详情：角色 / 禁言 / 鱼干余额 / 文章数 / 评论数 |
-| `user reset-password <username> [generate\|manual] --reason <原因>` | 重置密码（旧会话全部失效） |
+| `user reset-password <username> [generate\|manual] [--password <新密码>] --reason <原因>` | 重置密码（旧会话全部失效）。`manual` 模式**必须**给 `--password`（≥8 位），`generate` 模式不用 |
 | `user ban <username> --hours N --reason <原因>` | 禁言 |
 | `user unban <username> [--reason <原因>]` | 解除禁言 |
 | `user force-logout <username> [--reason <原因>]` | 强制下线（比禁言轻一档） |
@@ -182,11 +216,11 @@ npm run cli -- user reset-password alice --reason "用户申诉邮箱被盗" --y
 | `blog search [关键词] [--status all\|active\|deleted]` | 搜文章，**含正文** |
 | `blog show <id>` / `blog restore <id>` / `blog delete <id> --reason <原因>` | 查看 / 恢复 / 删除 |
 | `comment search [关键词] [--blog <文章id>] [--status …]` | 搜评论 |
-| `comment show <id>` / `comment restore <id> --reason <原因>` / `comment delete <id> --reason <原因>` | 查看 / 恢复 / 删除 |
+| `comment show <id>` / `comment restore <id> [--reason <原因>]` / `comment delete <id> [--reason <原因>]` | 查看 / 恢复 / 删除。处理**他人**评论时 `--reason` 必填；动自己的评论可不填 |
 | `clip search [关键词] [--status …] [--publicity …]` | 搜云剪贴板（含私有） |
-| `clip show <id> [--full]` / `clip restore <id>` / `clip delete <id> --reason <原因>` | 查看 / 恢复 / 删除 |
-| `vote search` / `vote show` / `vote restore` / `vote delete` | 投票同上 |
-| `image search` / `image show` / `image restore` | 图床（**没有物理删除**） |
+| `clip show <id> [--full]` / `clip restore <id>` / `clip delete <id> [--reason <原因>]` | 查看 / 恢复 / 删除。`--reason` 可选 |
+| `vote search` / `vote show` / `vote restore [--reason <原因>]` / `vote delete --reason <原因>` | 投票同上。⚠️ **删除必填原因，恢复可不填** —— 两者不对称 |
+| `image search` / `image show` / `image restore` | 图床（**没有物理删除**）。⚠️ `image restore` 是破坏性操作，终端会弹确认屏，非交互必须 `--yes` |
 
 几处不显然的行为：
 
@@ -198,6 +232,9 @@ npm run cli -- user reset-password alice --reason "用户申诉邮箱被盗" --y
   清理过 —— 恢复一条文件已不在的记录，页面上会是坏图，这件事必须在动手**之前**看到。
 - **恢复评论时会提醒 `status ≠ approved` 的情况**：`isDeleted` 与 `status` 是两个正交的
   闸门，只翻前者的话评论恢复了也不会出现在评论区。
+- **每条 search 都支持 `--keyword` / `-q` 和 `--page`**（关键词也可以写成位置参数，
+  如 `blog search 报错栈`；翻页默认第 1 页）。上表为省版面只写了位置形式。
+  这两个参数在**向导里也会问**，不用记。
 
 ```bash
 # 典型流程：找回一篇被误删的文章
@@ -342,4 +379,5 @@ npm run cli -- fish pending                    # 未配账户服务时应有 pen
 **`--help` 与交互式向导会自动跟上** —— `scripts/cli/wizard.ts` 不需要改一行，因为它就是
 拿注册表的元数据当脚本用的。`tests/unit/cli-registry.test.ts` 会守住注册表自身的完整性
 （命名、位置参数序号、flag 不与全局冲突、危险命令必须写 `describe`），
-`tests/unit/cli-guards.test.ts` 会守住两条硬约定（`--help` 不加载 Prisma、时间戳只用一把钟）。
+`tests/unit/cli-guards.test.ts` 会守住**三条**硬约定（`--help` 不加载 Prisma、时间戳只用一把钟、
+不许顶层 await —— `scripts/` 按 CJS 语义执行）。
