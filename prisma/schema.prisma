@@ -258,6 +258,13 @@ model BlogComment {
   rootId      String?   @map("root_id")
   content     String
   contentHtml String?   @map("content_html")
+  // 引用的图床图片（上传走 /api/images，评论只存引用）。无 relation —— 与
+  // ChatMessage.imageId 同策略：图床清理不该被历史评论挡住，读时解析、缺了给占位。
+  imageId     String?   @map("image_id")
+  // 引用的博客（被评论的那篇之外的另一篇）。⚠️ 叫 quote_blog_id 而不是 blog_id ——
+  // 上面的 blogId 已被「评论所属文章」占用（带外键关系），两个语义不能同名。
+  // 同 imageId 策略：不加外键、博客软删不挡评论，读时按当前 Blog 行解析。
+  quoteBlogId String?   @map("quote_blog_id")
   status      String?   @default("approved")
   isDeleted   Boolean?  @default(false) @map("is_deleted")
   likesCount  Int?      @default(0) @map("likes_count")
