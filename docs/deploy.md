@@ -10,7 +10,7 @@
 | OS | Linux（Debian/Ubuntu/CentOS 全适用） | |
 | Node.js | ≥ 20.0.0 | 项目在 22 上实测 |
 | npm | ≥ 10 | `npm ci` 需要 |
-| SQLite | 系统自带（无独立安装） | 通过 `better-sqlite3` / Prisma 的 sqlite 引擎访问 |
+| SQLite | 库本身系统自带 | 应用走 Prisma 自带的 sqlite 引擎；运维脚本走 Node 内置 `node:sqlite` —— **不依赖 `better-sqlite3`**。但 `npm run prepare:cutover`（§3）与备份验证（§10）都调用系统 `sqlite3` **命令行**，用这两条路径就得装它（`apt install sqlite3`） |
 | nginx | 可选（直连 `:3000` 也行） | 推荐，反代配 cookie/CSRF 关键头 |
 | systemd | 可选 | 推荐，开机自启 + 自动重启 |
 | 账户服务 | 独立仓库部署；与本站 **HTTP 可达** | 否则鱼干写路径 fail-closed 503 |
@@ -93,15 +93,16 @@ cp .env.example .env       # DATABASE_URL="file:../instance/database/dev.db"
 npm run db:normalize
 #   等价于:scripts/normalize-datetimes.mjs --source ./instance/database/db.db \
 #                                          --dest ./instance/database/dev.db
-#   若 instance/database/db.db 不存在,则跳过复制,直接生成空 dev.db 跑 0_init。
+#   若 instance/database/db.db 不存在,脚本直接抛「源库不存在」退出,不会建空库。
 
 # 校验
 npm run prisma:generate
 npm run migrate -- status   # 期望:无 pending（跟踪表是项目自己的 _raricy_migrations）
 ```
 
-> ⚠️ 没有真实库可用时（全新 dev 机器 / CI），`db:normalize` 走空库分支会创建空 dev.db。
-> 这是 dev 体验，不是 prod 路径。
+> ⚠️ **没有真实库可用时**（全新 dev 机器 / CI），不要指望 `db:normalize` —— 源库不存在它会
+> 直接报错退出（`normalize-datetimes.mjs` 里是 `throw`），**没有「生成空库」的分支**。
+> 空库起步请走 §4「全新部署」的 `npm run migrate -- up`。
 
 ### dev 时想直接读真实库
 
@@ -208,7 +209,7 @@ npm start
 
 ## 6. nginx 反代
 
-放在 `proxy_pass http://127.0.0.1:3000` 后，**务必透传**以下三个头（缺一必出事）：
+放在 `proxy_pass http://127.0.0.1:3000` 后，**务必透传**以下头（`Host` 最关键，见行内注释）：
 
 ```nginx
 client_max_body_size 12m;   # 必配：图床单文件上限 10MB;nginx 默认 1MB
@@ -216,8 +217,8 @@ client_max_body_size 12m;   # 必配：图床单文件上限 10MB;nginx 默认 1
 location / {
     proxy_pass http://127.0.0.1:3000;
     proxy_http_version 1.1;
-    proxy_set_header Host              $http_host;     # ← 含端口,$host 不含
-    proxy_set_header X-Forwarded-Host  $http_host;     # ← 缺它:全站 POST 403
+    proxy_set_header Host              $http_host;     # ← 含端口,$host 不含。缺它:CSRF 全站 403(nginx 默认把它改成 upstream 地址)
+    proxy_set_header X-Forwarded-Host  $http_host;     # ← 备用来源:与 Host / ALLOWED_ORIGINS 命中任一即可
     proxy_set_header X-Forwarded-Proto $scheme;        # ← 缺它:登录成功但状态不粘
     proxy_set_header X-Real-IP         $remote_addr;
     proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
@@ -308,12 +309,13 @@ journalctl -u raricy-next -f       # 实时日志
 # 必跑
 cd /srv/raricy.com
 npm run diagnose -- --url https://raricy.com
-# 期望:5 段全绿
+# 期望:6 段全绿(带了 --url 会多跑一段线上活体检查)
 #   段 0:Node/Next 版本
-#   段 1:.env 必需变量
-#   段 2:数据库文件存在 + 可读写
-#   段 3:时间戳格式是 INTEGER 毫秒
-#   段 4:鱼干密钥能解开真实密文(5/5)
+#   段 1:环境变量
+#   段 2:数据库文件
+#   段 3:时间戳格式(登录 500 头号元凶)
+#   段 4:小鱼干密钥(切换前必查,错了不可逆)
+#   段 5:线上活体检查(仅当带 --url)
 
 # 11 条只读冒烟(需真实账号)
 npm run smoke -- --url https://raricy.com --user <核心用户> --pass <密码>
@@ -357,7 +359,7 @@ sqlite3 /backup/db-20260718.db "select count(*) from users"
 | 鱼干对账窗口日志 | grep `ACCOUNT_RECONCILE_REQUIRED` —— 出现要人工核账 |
 | 进程状态 | `systemctl status raricy-next` |
 | 数据库大小 | `du -sh /srv/raricy.com/instance/database/db.db` |
-| 404 异常 IP | grep `next-auth 401` 之类的（按需要） |
+| 404 异常 IP | 从 nginx access log 里筛 404 高频来源（按需要） |
 
 ## 12. 升级与日常运维
 
@@ -398,7 +400,7 @@ journalctl -u raricy-next -f    # 观察启动日志
 | `prisma migrate dev` 提议 reset | 生产**永远不要**跑 `prisma migrate dev` / `db push`；改用 `npm run migrate -- up` |
 | 本地写后 E2E 跑 readonly database | Playwright e2e 测试库名必须唯一(见 `playwright.config.ts` 注释) |
 | 服务器一重启站就没了 | 没装 systemd unit;装一下 |
-| MySQL/Postgres 报错 | 不要用——本站是 SQLite;若想换库,先看 clauds.md 风险表 |
+| MySQL/Postgres 报错 | 不要用——本站是 SQLite;若想换库,先看 `docs/architecture.md` §10 风险表 |
 
 ---
 
