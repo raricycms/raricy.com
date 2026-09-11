@@ -80,7 +80,7 @@
 | 路径 | 类型 | 说明 |
 |------|------|------|
 | `/` | page | 导航首页（不列文章） |
-| `/login` · `/register` · `/logout` | page | 认证 |
+| `/login` · `/register` | page | 认证（登出是 `POST /api/auth/logout`，**没有** GET 路由） |
 | `/blog` · `/blog/[id]` · `/blog/upload` · `/blog/[id]/edit` | page | 博客 |
 | `/api/blogs` · `/api/blogs/[id]` · `/api/spider/*` | API | 博客 API + 爬虫 API |
 | `/api/auth/authentic` · `/zhh` | API + route | 邀请码升 core · 邀请码生成（站长） |
@@ -93,9 +93,10 @@
 | `/story` · `/story/[...path]` | page | 故事合集/阅读 |
 | `/tool` · `/tool/<sub>` | page | 工具集（aes / base / hash / hex / html / qp / translate / url / cattca） |
 | `/game` · `/game/<sub>` · `/api/game/game_token` | page + API | 游戏菜单 + 9 款游戏（另有 `/game/wand` 演示页） |
-| `/admin/*` · `/api/admin/*` | page + API | 管理后台（角色校验见 §8） |
+| `/admin/*` · `/api/admin/*` | page + API | 管理后台（档位分页而异，见 §8） |
 | `/audit` · `/audit/[id]` | page | 审计日志公示 + 申诉 |
-| `/contact` · `/privacy` · `/terms` · `/forbidden` | page | 联系 / 隐私 / 条款 / 403 |
+| `/contact` · `/privacy` · `/terms` | page | 联系 / 隐私 / 条款 |
+| （无 URL）`forbidden.tsx` | 特殊文件 | 403 页本身；由 `forbidden()` 原地渲染，**不是** `/forbidden` 路由 |
 | `/sitemap.xml` · `/robots.txt` | route | sitemap.ts / robots.ts |
 | `/api/avatar/[id]` · `/api/images/[id]/raw` | API | 头像 / 图床原生分发 |
 | `/u/[username]` | page | 公开用户主页 |
@@ -133,6 +134,10 @@ API 端点位于 `src/app/api/<group>/<verb>/route.ts`，**薄**层：参数校�
 - **密码哈希**：`src/lib/password.ts` 选 `scrypt` / `pbkdf2:sha256`，与历史 werkzeug **字节级互通**——用户从 Flask 切到 Next 完全不感知。
 - **会话**：登录成功签发 JWT（`jose`，HS256），cookie 设 `HttpOnly` + `SameSite=Lax`。`Secure` 由 `X-Forwarded-Proto` 推断或 `COOKIE_SECURE` 显式控制。
 - **踢下线**：`User.sessionVersion` 单调递增。`session.ts` 解析 JWT 后比对当前 `user.sessionVersion`，不一致则视为失效。
+- **登出**：**只有** `POST /api/auth/logout`（`base.js` 的 `window.logout()` / `LogoutLink` 组件）。
+  清会话是状态变更，**不能有 GET 入口** —— GET 会被本人以外的东西发起（浏览器预取视口内的
+  `<Link>`、爬虫、第三方页面上的 `<img src="…/logout">`，而本站刻意允许被 iframe 嵌入），
+  症状是用户莫名其妙掉线。曾经确实有一个 `GET /logout`，被 403 页的一个链接踩中过。
 - **入口**：登录迁到 `core` 通过邀请码（注册时填，或注册后走 `/api/auth/authentic` 验证）。
 
 ### 6.2 数据层
@@ -358,13 +363,21 @@ GET/HEAD/OPTIONS 视为安全方法，不校验。
 
 ### 角色体系与鉴权门
 
-`src/lib/guard.ts` 是**页面级**鉴权门 —— async 函数，不是装饰器，共三个：
+`src/lib/guard.ts` 是**页面级**鉴权门 —— async 函数，不是装饰器，共四个：
 
 - `requireLogin()`（已登录）—— 只要求登录，角色够不够交给调用方
 - `requireCoreUser()`（已登录 + core+）= 对齐 Flask 旧 `@authenticated_required`
+- `requireAdmin()`（已登录 + admin+）—— 段内放宽后，由真正要管理权的页面自己把门
 - `requireOwner()`（仅站长）= 对齐 Flask 旧 `@owner_required`
 
 未登录 → `redirect('/login?next=<原URL>')` 回跳；已登录但角色不够 → `forbidden()` 原地渲染 403 页。
+
+**`/admin/*` 不是单一档位**：段级 layout（`admin/layout.tsx`）只判 core+ —— 因为段内的
+「用户管理」对齐 Flask `auth/management.html`，核心用户本来就能进（只读版：标题
+「用户列表」，无禁言 / 发通知 / 角色按钮）。段内需要更高权限的页面**各自把门**
+（URL 猜得到，侧栏藏起入口不等于挡住）：`/admin`、`/admin/blogs` 用 `requireAdmin()`；
+`/admin/oauth` 用 `isOwner()`；`broadcast` / `categories` / `appeals` 各自的
+`layout.tsx` 用 `requireOwner()`。新增段内路由请照抄其中一档，别默认继承。
 
 **API 路由不用它们**（重定向对 XHR 无意义）：各 `route.ts` 自取 `getCurrentUser()` 后返回
 `apiErr(403, …)`，管理端另用 `hasAdminRights()`（`src/lib/auth.ts`）之类的判定。

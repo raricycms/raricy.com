@@ -101,6 +101,12 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
   判定与红点口径共用 `extractMentions`（用户名必须精确匹配）——改一处必须同步另一处。
 - 提拔/降级管理员（core↔admin）**仅站长**，入口在 `/admin/users` 的角色按钮；
   `user↔core` 那对仍归管理员。见 `setRole` 的权限分档。
+- **`/admin/*` 不是单一档位**：段级 layout 只判 core+（`/admin/users` 对齐 Flask
+  `management.html`，核心用户能进只读版），段内 `/admin`、`/admin/blogs` 用
+  `requireAdmin()`，`/admin/oauth` 用 `isOwner()`，其余各自的 layout 用 `requireOwner()`。
+  新增段内路由要显式选一档，别默认继承段级的 core+。
+- **登出只有 `POST /api/auth/logout`**，没有 GET 入口。清会话是状态变更，GET 会被
+  预取 / 爬虫 / 第三方 `<img>` 发起，表现为「莫名其妙掉线」（线上发生过）。
 
 ### 限频
 - `src/lib/rate-limit.ts` 的 `RULES` 是**多数**配额的唯一权威，但**不是全部**：OAuth 的三条
