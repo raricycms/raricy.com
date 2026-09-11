@@ -10,7 +10,8 @@
 //     大区成员行懒创建，基线 = 当时最大消息 id（从未进过聊天室不把历史算未读）。
 //
 // 消息：id 自增整数（增量拉取 / 读游标基准）。软删除 is_deleted（对齐评论），永不物理删。
-// 正文纯文本入库（前端 JSX 自动转义渲染，无 contentHtml）；图片仅存 image_hosting 引用，
+// 正文以 Markdown **源文**入库（无 contentHtml）；渲染在客户端走 chat-markdown.ts 的
+// marked → DOMPurify 白名单（见 ChatMarkdown），故入库侧不做任何转义。图片仅存 image_hosting 引用，
 // 发送时强校验「图片归本人所有且未软删」。限频仿博客评论：资源存在性校验通过后才扣额度。
 //
 // 时间戳一律 nowForDb()（本库语义 = UTC+8 墙上时间贴 Z，见 db-time.ts）。

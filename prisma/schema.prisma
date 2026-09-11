@@ -657,7 +657,8 @@ model ChatMessage {
   id         Int       @id @default(autoincrement())
   channelId  String    @map("channel_id")
   authorId   String    @map("author_id")
-  // 正文纯文本（前端 JSX 转义渲染）；带图时此处放可选图注
+  // 正文为 Markdown 源文（客户端经 chat-markdown.ts 白名单净化后渲染，见 ChatMarkdown）；
+  // 带图 / 引用博客时此处放可选图注
   content    String    @default("")
   // 引用的图床图片（上传走 /api/images，消息只存引用）
   imageId    String?   @map("image_id")
