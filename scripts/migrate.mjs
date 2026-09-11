@@ -27,7 +27,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PrismaClient } from '@prisma/client';
 
-// 让脚本能直接 import src/lib 的 TS（与 cli.mjs 同套 tsx 解析）
+// 让脚本能直接 import src/lib 的 TS（与 cli.ts 同套 tsx 解析）
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 const MIGRATIONS_DIR = path.join(ROOT, 'prisma', 'migrations');

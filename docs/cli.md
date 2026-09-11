@@ -141,4 +141,4 @@ npm run cli -- oauth enable-app  AbCdEf123...
 | `scripts/diagnose-deploy.mjs` | 部署前自检（运行时版本 / `.env` / 数据库 / 密钥） |
 | `scripts/compensate-unclaimed-fortunes.mjs` | 一次性补偿「已签到未翻牌」的鱼干记录 |
 | `scripts/verify-account-integration.mjs` | 端到端对账账户微服务（需独立空库） |
-| `scripts/cli.mjs` | 即本文档描述的 CLI 实现 |
+| `scripts/cli.ts` | 即本文档描述的 CLI 实现 |

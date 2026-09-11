@@ -1,6 +1,6 @@
-#!/usr/bin/env node
+#!/usr/bin/env tsx
 // ─────────────────────────────────────────────────────────────────────────────
-// cli.mjs —— 运维命令行（对齐 Flask app/cli.py 的 `flask <cmd>`）
+// cli.ts —— 运维命令行（对齐 Flask app/cli.py 的 `flask <cmd>`）
 //
 // 【为什么必须有】Flask 侧有 8 个 CLI 命令（升降权限、发/扣鱼干…）。删掉 Flask 后
 // 若没有等价物，就**失去了给人升管理员、手动发鱼干的运维手段** —— 这类操作没有
@@ -28,19 +28,19 @@
 //    `flask import-blogs` 亦未迁：正文早已存 DB（BlogContent），该命令是历史导入工具。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { fileURLToPath } from 'node:url';
-import path from 'node:path';
-import { createRequire } from 'node:module';
-
-// 让脚本能直接 import src/lib 的 TS（走 tsx，与测试同一套解析）
-const require = createRequire(import.meta.url);
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+// 本文件**没有任何静态 import**：对 src/lib 的引用一律走函数内的 `await import()`，
+// 这样 `--help` 不必加载 Prisma（详见 main() 里的那行注释）。
+// 另注：本文件是 .ts，而 tsconfig 未开 allowImportingTsExtensions —— 动态 import
+// 的说明符一律**不写 .ts 后缀**，由 tsx 解析。
 
 // ── 输出（ANSI 颜色，对齐 Flask 的 click.echo 配色）─────────────────────────
-const red = (s) => `\x1b[31m${s}\x1b[0m`;
-const green = (s) => `\x1b[32m${s}\x1b[0m`;
-const yellow = (s) => `\x1b[33m${s}\x1b[0m`;
-const die = (msg, code = 1) => {
+const red = (s: string): string => `\x1b[31m${s}\x1b[0m`;
+const green = (s: string): string => `\x1b[32m${s}\x1b[0m`;
+const yellow = (s: string): string => `\x1b[33m${s}\x1b[0m`;
+// 这里的 `: (msg, code?) => never` 注解在 **const 上**是必须的，不是风格问题：
+// TS 只对「带显式类型注解的 const」做 never 收窄，光给函数表达式标返回类型不算。
+// 有了它，`if (!user) die(...)` 之后的代码块才会自动去掉 null 分支。
+const die: (msg: string, code?: number) => never = (msg, code = 1) => {
   console.error(msg);
   process.exit(code);
 };
@@ -48,7 +48,13 @@ const die = (msg, code = 1) => {
 // ── 角色命令的语义表（逐条对齐 app/cli.py）──────────────────────────────────
 //
 // 每项：允许从哪些角色变更、变更到什么、各分支的文案。文案逐字照抄 Flask。
-const ROLE_COMMANDS = {
+/** 角色命令的动作：notice = 无需变更的提示；set = 落到新角色；error = 拒绝执行。 */
+type RoleAction =
+  | { kind: 'notice'; msg: (u: string) => string }
+  | { kind: 'set'; to: string; msg: (u: string) => string }
+  | { kind: 'error'; msg: (u: string) => string };
+
+const ROLE_COMMANDS: Record<string, { run: (role: string) => RoleAction }> = {
   'promote-admin': {
     // 已是 admin/owner → 提示；owner 不降级（Flask: `if role != 'owner': role = 'admin'`）
     run: (role) =>
@@ -130,7 +136,7 @@ OAuth 2.0 第三方应用：
   }
 
   // 动态 import：让 --help 不必加载 Prisma
-  const { prisma } = await import('../src/lib/db.ts');
+  const { prisma } = await import('../src/lib/db');
 
   // ── 角色命令 ──────────────────────────────────────────────────────────────
   if (ROLE_COMMANDS[cmd]) {
@@ -162,7 +168,7 @@ OAuth 2.0 第三方应用：
     // 场景：进程在「本地已提交、远端未同步」之间崩溃（或补偿失败留下的 failed 行）。
     // 远端按幂等键重放，收敛后标 synced。详见 src/lib/fish-sync.ts。
     if (sub === 'sync-retry') {
-      const { replayPendingSyncs } = await import('../src/lib/fish-sync.ts');
+      const { replayPendingSyncs } = await import('../src/lib/fish-sync');
       const r = await replayPendingSyncs({ olderThanMs: 0, limit: 200 });
       if (r.total === 0) {
         console.log('没有待重放的同步账目（account_sync_ledger 无 pending/failed 行）。');
@@ -186,7 +192,7 @@ OAuth 2.0 第三方应用：
     if (!user) die(red(`错误：用户 ${username} 不存在`));
 
     if (sub === 'balance') {
-      const { getBalance } = await import('../src/lib/fish-service.ts');
+      const { getBalance } = await import('../src/lib/fish-service');
       console.log(`${username} 的小鱼干余额：${await getBalance(user.id)}`);
       process.exit(0);
     }
@@ -205,8 +211,8 @@ OAuth 2.0 第三方应用：
           ? '管理员手动赠送'
           : '管理员手动扣减';
 
-    const { adminGrantFish, adminDeductFish } = await import('../src/lib/fish-admin.ts');
-    const { accountServiceEnabled } = await import('../src/lib/account-client.ts');
+    const { adminGrantFish, adminDeductFish } = await import('../src/lib/fish-admin');
+    const { accountServiceEnabled } = await import('../src/lib/account-client');
     const remote = accountServiceEnabled();
     try {
       const balance =
@@ -227,10 +233,10 @@ OAuth 2.0 第三方应用：
       process.exit(0);
     } catch (e) {
       // fail-closed：本地写入已被补偿回滚，余额未变，返回退出码 2（对齐 Flask）
-      const isBiz = e && typeof e === 'object' && e.name === 'FishBusinessError';
+      const isBiz = e instanceof Error && e.name === 'FishBusinessError';
       if (isBiz) die(red(`错误：${e.message}`), 1);
       console.error(red('失败：账户服务同步失败，本地写入已补偿回滚'));
-      console.error(`  原因: ${e?.message ?? e}`);
+      console.error(`  原因: ${e instanceof Error ? e.message : String(e)}`);
       // driedFish 存的是 0.1 鱼干为单位（fish-units.ts），展示除以 10
       console.error(`  本地余额未变更（${(user.driedFish ?? 0) / 10}），请稍后重试。`);
       process.exit(2);
@@ -242,7 +248,7 @@ OAuth 2.0 第三方应用：
     const sub = argv[1];
     if (!sub) die(red('错误：缺少 oauth 子命令（create-app / list-apps / disable-app / enable-app）'));
 
-    const oauth = await import('../src/lib/oauth.ts');
+    const oauth = await import('../src/lib/oauth');
 
     if (sub === 'list-apps') {
       const apps = await oauth.listOAuthApplications();
