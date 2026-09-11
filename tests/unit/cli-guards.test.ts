@@ -57,6 +57,20 @@ function stripComments(src: string): string {
 
 const CLI_FILES = [CLI_ENTRY, ...collectFiles(CLI_DIR)];
 
+/**
+ * 顶层可以静态 import 的 src/lib 模块白名单。
+ *
+ * 目前只有 format.ts —— 它是纯展示辅助（ymd / ymdhms），**运行时零依赖**，
+ * 引入它不会把 Prisma 拖进 `--help` 的加载路径。日期展示必须与站内同一口径
+ * （库内存的是「UTC+8 墙上时间贴 Z 标签」，用本地时区 API 会再平移 8 小时），
+ * 与其在 CLI 里抄一份，不如直接复用。
+ *
+ * ⚠️ 这条白名单是**自校验**的：下面有一条用例断言 format.ts 没有任何运行时 import。
+ *    谁给 format.ts 加了依赖，那条用例会立刻红 —— 白名单不会悄悄失效。
+ */
+const LIB_ALLOWLIST = ['src/lib/format'];
+const FORMAT_FILE = path.join(ROOT, 'src', 'lib', 'format.ts');
+
 /** 在文件里跑一个正则，返回 `相对路径:行号` 形式的命中列表。 */
 function hits(re: RegExp): string[] {
   const found: string[] = [];
@@ -71,13 +85,16 @@ function hits(re: RegExp): string[] {
 }
 
 describe('运维 CLI：--help 不加载 Prisma', () => {
-  it('scripts/cli/** 不许顶层静态 import src/lib 的运行时值（只许 import type）', () => {
+  it('scripts/cli/** 不许顶层静态 import src/lib 的运行时值（只许 import type 与白名单）', () => {
     const offenders: string[] = [];
     for (const file of CLI_FILES) {
       const src = stripComments(fs.readFileSync(file, 'utf8'));
       for (const m of src.matchAll(RE_TOP_IMPORT)) {
         const spec = m[2];
         if (!spec.includes('src/lib') && !spec.startsWith('@/lib')) continue;
+        // '../../src/lib/format' / '@/lib/format' 都归一成 'src/lib/format'
+        const normalized = spec.replace(/\\/g, '/').replace(/^(\.\.\/)+/, '').replace(/^@\//, 'src/');
+        if (LIB_ALLOWLIST.includes(normalized)) continue;
         const line = src.slice(0, m.index).split('\n').length;
         offenders.push(`${path.relative(ROOT, file).replace(/\\/g, '/')}:${line}  from '${spec}'`);
       }
@@ -85,6 +102,17 @@ describe('运维 CLI：--help 不加载 Prisma', () => {
     expect(
       offenders,
       `这些顶层 import 会让 --help 也要加载 Prisma。改成 run() 里的 await import()，或改为 import type：\n  ${offenders.join('\n  ')}`
+    ).toEqual([]);
+  });
+
+  it('白名单之所以成立的依据：format.ts 没有任何运行时 import', () => {
+    const src = stripComments(fs.readFileSync(FORMAT_FILE, 'utf8'));
+    const runtimeImports = [...src.matchAll(RE_TOP_IMPORT)]
+      // 相对路径的运行时 import（import type 已被正则的 (?!type\b) 排除）
+      .map((m) => m[2]);
+    expect(
+      runtimeImports,
+      `src/lib/format.ts 现在有了运行时 import，CLI 的顶层白名单不再安全 —— 要么去掉那个 import，要么把 format 从白名单里移除并改回动态引入：\n  ${runtimeImports.join('\n  ')}`
     ).toEqual([]);
   });
 });

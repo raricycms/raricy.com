@@ -9,6 +9,7 @@ import { prisma } from './db';
 import type { Prisma } from '@prisma/client';
 import type { ServiceResult } from './admin-category-service';
 import { logAdminAction, type AdminResult } from './admin-user-service';
+import { sendNotification } from './notification-service';
 
 export interface AdminListParams {
   page?: number;
@@ -107,6 +108,66 @@ export async function setBlogIgnore(
   if (!blog) return { ok: false, message: '文章不存在' };
   await prisma.blog.update({ where: { id: blogId }, data: { ignore } });
   return { ok: true, data: { id: blogId, ignore } };
+}
+
+/**
+ * 管理员删他人文章：软删 + 审计日志 + 通知作者。**reason 必填**。
+ *
+ * 从 /api/admin/blogs/[id] 的 DELETE 里抽出来，好让运维 CLI 走同一条路径 ——
+ * 否则「必填理由 / 记日志 / 通知作者」这三件事会有第二份实现，而漏掉任何一件
+ * 都是静默的（作者不知道自己文章被删了，或者 /audit 上查无此事）。
+ *
+ * 作者本人删自己的文章走另一条路（/api/blogs/:id：不强制理由、不写日志、不通知）。
+ */
+export async function deleteBlogForAdmin(
+  blogId: string,
+  actor: { id: string; role: string },
+  reason: string
+): Promise<AdminResult<{ id: string; ignore: boolean }>> {
+  const trimmed = (reason ?? '').trim();
+  if (!trimmed) return { ok: false, code: 400, message: '请填写删除原因' };
+
+  const blog = await prisma.blog.findFirst({
+    where: { id: blogId, ignore: false },
+    select: { id: true, authorId: true, title: true },
+  });
+  if (!blog) return { ok: false, code: 404, message: '文章不存在' };
+
+  const result = await setBlogIgnore(blogId, true);
+  if (!result.ok) return { ok: false, code: 404, message: result.message };
+
+  // 审计日志（对齐 comment-service：审计失败不影响删除结果）
+  try {
+    await logAdminAction({
+      action: 'delete_blog',
+      adminId: actor.id,
+      targetUserId: blog.authorId,
+      objectType: 'blog',
+      objectId: blogId,
+      reason: trimmed,
+    });
+  } catch {
+    /* 对齐 Flask：审计写入失败吞掉 */
+  }
+
+  // 通知作者（管理员删自己的文章不通知自己，对齐 Flask admin_delete_blog 的
+  // `blog_author_id != current_user.id`；审计日志仍然照写）
+  if (blog.authorId !== actor.id) {
+    try {
+      await sendNotification({
+        recipientId: blog.authorId,
+        action: '文章删除',
+        actorId: actor.id,
+        objectType: 'blog',
+        objectId: blogId,
+        detail: `你的文章《${blog.title}》已被管理员删除。理由：${trimmed}`,
+      });
+    } catch {
+      /* 通知失败不影响删除结果 */
+    }
+  }
+
+  return { ok: true, message: '文章已删除', id: blogId, ignore: true };
 }
 
 /**

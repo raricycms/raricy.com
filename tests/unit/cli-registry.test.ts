@@ -64,10 +64,14 @@ describe('命令注册表：参数声明', () => {
     }
   });
 
-  it('一个参数不能既是位置参数又带 flag', () => {
+  // 注：允许一个参数**同时**声明 positional 与 flags（如 `user search foo` 与
+  // `user search --keyword foo` 等价）。解析器对二者的处理是无歧义的：带 `-` 前缀的
+  // token 走 flag 表，其余按顺序填位置槽。真正要守的是位置槽本身不打架 —— 见上一条
+  // 「序号从 0 开始且连续」（重复序号会被它抓到）。
+  it('可重复（repeatable）参数不能同时又占位置槽（位置参数没有「重复」语义）', () => {
     for (const { cmd, arg } of ALL_ARGS) {
-      if (arg.positional !== undefined) {
-        expect(arg.flags, `${cmd} 的 ${arg.name} 同时声明了 positional 与 flags`).toHaveLength(0);
+      if (arg.repeatable) {
+        expect(arg.positional, `${cmd} 的 ${arg.name} 既 repeatable 又占了位置槽`).toBeUndefined();
       }
     }
   });

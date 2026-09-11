@@ -10,6 +10,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { PrismaClient } from '@prisma/client';
+import { ymdhms } from '../../../src/lib/format';
+import { renderTable } from '../output';
 import { CliError, type CommandSpec } from '../types';
 
 /** 从 catch 的 unknown 里取错误名（strict 下 catch 变量是 unknown，不能直接读字段）。 */
@@ -132,10 +134,73 @@ export const fishCommands: CommandSpec[] = [
     })
   ),
   {
+    name: 'fish pending',
+    summary: '列出账本里未同步的鱼干账目',
+    group: 'fish',
+    order: 3,
+    readOnly: true,
+    args: [],
+    details: [
+      '看的是 account_sync_ledger：pending = 本地已提交、远端还没同步；',
+      'failed = 远端失败且补偿也失败，需要 fish sync-retry 重放。',
+      '两者都会由 sync-retry 收敛。',
+    ].join('\n'),
+    async run(ctx) {
+      const rows = await ctx.prisma.accountSyncLedger.findMany({
+        where: { status: { in: ['pending', 'failed'] } },
+        orderBy: { id: 'asc' },
+        select: {
+          id: true,
+          idempotencyKey: true,
+          operation: true,
+          status: true,
+          attempts: true,
+          lastError: true,
+          createdAt: true,
+        },
+      });
+
+      // payload 是 JSON 文本，里面是重建远端调用所需的非敏感参数。
+      // 按约定不含密钥（要重放时按 userId 重新解密），但也没必要原样打给操作者看。
+      if (rows.length === 0) {
+        return {
+          lines: [ctx.io.green('账本干净：没有 pending / failed 的鱼干账目。')],
+          json: { entries: [] },
+        };
+      }
+
+      const lines = renderTable(
+        [
+          { key: 'id', title: 'ID', align: 'right' },
+          { key: 'operation', title: '操作', maxWidth: 14 },
+          { key: 'status', title: '状态', maxWidth: 12 },
+          { key: 'attempts', title: '重试', align: 'right' },
+          { key: 'createdAt', title: '创建时间', maxWidth: 19 },
+          { key: 'lastError', title: '最后错误', maxWidth: 30 },
+        ],
+        rows.map((r) => ({
+          id: r.id,
+          operation: r.operation,
+          status: r.status,
+          attempts: r.attempts,
+          createdAt: ymdhms(r.createdAt) ?? '—',
+          lastError: r.lastError ?? '—',
+        })),
+        { maxWidth: ctx.io.width() }
+      );
+
+      return {
+        lines,
+        warnings: ['跑 `fish sync-retry` 可以重放这些账目。'],
+        json: { entries: rows },
+      };
+    },
+  },
+  {
     name: 'fish sync-retry',
     summary: '重放账本里 pending/failed 的远端同步',
     group: 'fish',
-    order: 3,
+    order: 4,
     readOnly: false,
     args: [],
     details: [

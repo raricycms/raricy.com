@@ -12,10 +12,34 @@
 
 import type { CommandSpec } from './types';
 import { roleCommands } from './commands/roles';
+import { userCommands } from './commands/users';
+import { blogCommands } from './commands/blogs';
+import { commentCommands } from './commands/comments';
+import { clipCommands } from './commands/clips';
+import { voteCommands } from './commands/votes';
+import { imageCommands } from './commands/images';
+import { inviteCommands } from './commands/invites';
 import { fishCommands } from './commands/fish';
+import { auditCommands } from './commands/audit';
+import { appealCommands } from './commands/appeals';
+import { statsCommands } from './commands/stats';
 import { oauthCommands } from './commands/oauth';
 
-export const COMMANDS: CommandSpec[] = [...roleCommands, ...fishCommands, ...oauthCommands];
+export const COMMANDS: CommandSpec[] = [
+  ...userCommands,
+  ...roleCommands,
+  ...blogCommands,
+  ...commentCommands,
+  ...clipCommands,
+  ...voteCommands,
+  ...imageCommands,
+  ...inviteCommands,
+  ...fishCommands,
+  ...auditCommands,
+  ...appealCommands,
+  ...statsCommands,
+  ...oauthCommands,
+];
 
 /** 按名字取命令。命令名可能多段（'oauth create-app'）。 */
 export function findCommand(name: string): CommandSpec | undefined {
