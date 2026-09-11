@@ -66,7 +66,7 @@
 ├── src/lib/                业务逻辑层（详见 §5）
 ├── src/middleware.ts       CSRF 同源校验
 ├── prisma/
-│   ├── schema.prisma       22 表 1:1 映射真实库
+│   ├── schema.prisma       28 表 1:1 映射真实库
 │   └── migrations/         含 0_init 基线（已 apply 到 db.db）
 ├── scripts/                运维/自检/迁移/切换脚本
 ├── tests/                  vitest 单测 + Playwright e2e
@@ -83,7 +83,7 @@
 | `/login` · `/register` · `/logout` | page | 认证 |
 | `/blog` · `/blog/[id]` · `/blog/upload` · `/blog/[id]/edit` | page | 博客 |
 | `/api/blogs` · `/api/blogs/[id]` · `/api/spider/*` | API | 博客 API + 爬虫 API |
-| `/auth/authentic` · `/auth/invite` | API | 邀请码升 core · 邀请码生成（站长） |
+| `/api/auth/authentic` · `/zhh` | API + route | 邀请码升 core · 邀请码生成（站长） |
 | `/fish` · `/fish/transactions` · `/api/fish/*` | page + API | 小鱼干面板 + 流水 |
 | `/notifications` · `/api/notifications/*` | page + API | 通知中心 |
 | `/vote` · `/vote/[id]` | page | 投票 |
@@ -91,8 +91,9 @@
 | `/clipboard` · `/clipboard/[id]` · `/api/clipboard/*` | page + API | 云剪贴板 |
 | `/image` · `/image/admin` · `/api/images/*` | page + API | 图床 + 管理 |
 | `/story` · `/story/[...path]` | page | 故事合集/阅读 |
-| `/tool` · `/tool/<sub>` · `/api/game/*` | page + API | 工具集 + 9 款游戏 |
-| `/admin/*` · `/api/admin/*` | page + API | 管理后台（被 `@admin_required` 守卫） |
+| `/tool` · `/tool/<sub>` | page | 工具集（aes / base / hash / hex / html / qp / translate / url / cattca） |
+| `/game` · `/game/<sub>` · `/api/game/game_token` | page + API | 游戏菜单 + 9 款游戏（另有 `/game/wand` 演示页） |
+| `/admin/*` · `/api/admin/*` | page + API | 管理后台（角色校验见 §8） |
 | `/audit` · `/audit/[id]` | page | 审计日志公示 + 申诉 |
 | `/contact` · `/privacy` · `/terms` · `/forbidden` | page | 联系 / 隐私 / 条款 / 403 |
 | `/sitemap.xml` · `/robots.txt` | route | sitemap.ts / robots.ts |
@@ -126,7 +127,7 @@ API 端点位于 `src/app/api/<group>/<verb>/route.ts`，**薄**层：参数校�
 - **密码哈希**：`src/lib/password.ts` 选 `scrypt` / `pbkdf2:sha256`，与历史 werkzeug **字节级互通**——用户从 Flask 切到 Next 完全不感知。
 - **会话**：登录成功签发 JWT（`jose`，HS256），cookie 设 `HttpOnly` + `SameSite=Lax`。`Secure` 由 `X-Forwarded-Proto` 推断或 `COOKIE_SECURE` 显式控制。
 - **踢下线**：`User.sessionVersion` 单调递增。`session.ts` 解析 JWT 后比对当前 `user.sessionVersion`，不一致则视为失效。
-- **入口**：登录迁到 `core` 通过邀请码（注册时填，或注册后 `/auth/authentic` 验证）。
+- **入口**：登录迁到 `core` 通过邀请码（注册时填，或注册后走 `/api/auth/authentic` 验证）。
 
 ### 6.2 数据层
 
@@ -152,10 +153,12 @@ API 端点位于 `src/app/api/<group>/<verb>/route.ts`，**薄**层：参数校�
 
 `src/middleware.ts` 对状态变更方法（POST/PUT/PATCH/DELETE）校验 `Origin` / `Referer` 与对外 Host 同源。
 
-对外 Host 判定顺序（**求稳**的口径）：
-1. `ALLOWED_ORIGINS`（显式配置，逗号分隔）—— 最可靠
-2. `X-Forwarded-Host`（nginx 透传）—— 反代下的次选
-3. `Host`（直连）—— 兜底
+对外 Host 是**三源并集**，不是优先级回退链：`ALLOWED_ORIGINS`（显式配置，逗号分隔）、
+`X-Forwarded-Host`（nginx 透传，多值取第一个）、`Host`（直连）三者全部并入同一个集合，
+请求的 `Origin` / `Referer` 命中其中**任一**即放行（`src/middleware.ts`）。
+
+所以配了 `ALLOWED_ORIGINS` 并不会让另外两个来源失效；反过来，三者只要有一个与浏览器发来的
+Origin 对得上即可，不必配全。
 
 GET/HEAD/OPTIONS 视为安全方法，不校验。
 
@@ -173,7 +176,7 @@ GET/HEAD/OPTIONS 视为安全方法，不校验。
 
 | 域 | 路径 | 上传入口 | 读取入口 |
 |----|------|---------|---------|
-| 头像 | `instance/avatars/<uuid>.png`（或 `AVATARS_DIR` 覆盖） | 上传时 PIL/Pillow 等价品（sharper fallback → identicon） | `src/app/api/avatar/[id]/route.ts` |
+| 头像 | `instance/avatars/<uuid>.png`（或 `AVATARS_DIR` 覆盖） | **无上传入口**：注册时 `avatarPath` 留空，头像由读取入口按 id 确定性生成；磁盘上的 `.png` 只有 Flask 时代的存量文件 | `src/app/api/avatar/[id]/route.ts`（有文件则回放，否则 `generateIdenticonSvg` 兜底，永不 404） |
 | 图床 | `instance/images/<id><ext>`（或 `IMAGE_UPLOAD_FOLDER` 覆盖） | `src/lib/image-upload.ts` — sharp 压缩 + MIME 嗅探 + 配额累计 | `src/app/api/images/[id]/raw/route.ts` |
 | 故事 | `instance/stories/<合集>/<故事>.md\|.cattca`（或 `STORIES_DIR` 覆盖） | 服务端直接落盘 | `src/lib/story-service.ts` 服务端 marked |
 
@@ -184,8 +187,9 @@ GET/HEAD/OPTIONS 视为安全方法，不校验。
 | 场景 | 渲染方式 | 管线 |
 |------|---------|------|
 | 聊天正文 / 评论正文 | **客户端**渲染，同一套管线 | `rich-text.ts`（marked → DOMPurify → 后处理），白名单与链接类名见 `chat-markdown.ts` / `comment-markdown.ts` |
-| 博客正文 / 故事 | **客户端**渲染 | `MarkdownRenderer.tsx`（marked + DOMPurify + highlight.js + MathJax + `[@…]` 内容引用） |
-| 内容引用 `[@xxxxxxxxxx]` | 浏览器渲染时正则替换为剪贴板/投票/图床组件 | `src/app/components/blog/ContentEmbeds.tsx` |
+| 博客正文 | **客户端**渲染 | `src/app/components/MarkdownRenderer.tsx`（marked + DOMPurify + highlight.js + MathJax + `[@…]` 内容引用） |
+| 故事正文 | **服务端**渲染 | `src/lib/story-service.ts` 的 `marked` + `stripScripts`。内容由站长直接写在 `instance/stories/`，按可信输入处理，**不走 DOMPurify / highlight.js** |
+| 内容引用 `[@…]` | 浏览器渲染时正则替换为剪贴板/投票/图床组件 | `src/app/components/MarkdownRenderer.tsx` 的 `ContentRefProcessor`（按 id 长度分流：8 位剪贴板 / 9 位投票 / 10 位图床） |
 | 工具页 cattca-guide | **服务端**渲染 | marked（仅一次，可信文档） |
 
 **聊天与评论共用一条管线**（`rich-text.ts`）。两者的威胁模型与防线逐条相同，差别只在
@@ -339,26 +343,33 @@ GET/HEAD/OPTIONS 视为安全方法，不校验。
 | `ImageHosting.ignore` | false | 图床 |
 | `Vote.ignore` | false | 投票 |
 | `ClipBoard.ignore` | false | 剪贴板 |
+| `ChatMessage.isDeleted` | false | 聊天消息 |
 
 **软删即抹掉附件与原文**：评论被软删后，序列化时 `content` 与 `content_html` 一律换成
 占位文案，`image` / `blog` 一律置空（`image_missing` / `blog_missing` 也置 false —— 软删
 不是「附件丢了」）。漏掉任何一项都等于「删了没删」：原文还在 DOM 里，或删掉的图仍能
 点开看原图。聊天消息同此口径（`chat-service.ts` 的 `attach…`）。
 
-### 角色体系与权限装饰器
+### 角色体系与鉴权门
 
-`src/lib/guard.ts` 暴露装饰器：
-- `requireUser()`（已登录）= Flask 旧 `@login_required`
-- `requireCore()`（已登录 + core+）= Flask 旧 `@authenticated_required`
-- `requireAdmin()` / `requireOwner()` = Flask 旧 `@admin_required` / `@owner_required`
-- API 端点用 `requireUser.json()` 等返回值以 JSON 拒，未授权时 403 而非 HTML 重定向
+`src/lib/guard.ts` 是**页面级**鉴权门 —— async 函数，不是装饰器，共三个：
+
+- `requireLogin()`（已登录）—— 只要求登录，角色够不够交给调用方
+- `requireCoreUser()`（已登录 + core+）= 对齐 Flask 旧 `@authenticated_required`
+- `requireOwner()`（仅站长）= 对齐 Flask 旧 `@owner_required`
+
+未登录 → `redirect('/login?next=<原URL>')` 回跳；已登录但角色不够 → `forbidden()` 原地渲染 403 页。
+
+**API 路由不用它们**（重定向对 XHR 无意义）：各 `route.ts` 自取 `getCurrentUser()` 后返回
+`apiErr(403, …)`，管理端另用 `hasAdminRights()`（`src/lib/auth.ts`）之类的判定。
 
 ### ID 风格
 
 | 实体 | ID |
 |------|----|
 | User · Blog · BlogContent · Comment · Notification | UUID4 |
-| ClipBoard · Vote · ImageHosting | 短 ID（base62） |
+| ClipBoard | 短 ID：**base36**（小写字母 + 数字，8 位，`short-id.ts`） |
+| Vote · ImageHosting | 短 ID：**base62**（9 位 / 10 位） |
 | Category · AdminActionLog · AdminActionAppeal · UserBan | 自增整数 |
 
 ## 9. 迁移史速查
@@ -378,7 +389,7 @@ GET/HEAD/OPTIONS 视为安全方法，不校验。
 | 进程内限频 | 多实例下各自计数，总限翻倍 | 多实例前先换 Redis |
 | `instance/` 在部署机器 | 需挂载真实目录否则上传 500 | 部署脚本里 `node scripts/check-instance.mjs` 兜底 |
 | 初次部署既有库 | `FISH_ENCRYPTION_KEY` 必须留空，否则解不开存量密文 | `npm run diagnose` 会校验 |
-| 反代未透传 `X-Forwarded-Host` | 全站 POST 403（CSRF 误杀） | `ALLOWED_ORIGINS="你的域名"` 兜底或修 nginx |
+| 反代改写了 `Host` 且未透传 `X-Forwarded-Host` | 浏览器 `Origin` 与三个来源都对不上 → 全站 POST 403（CSRF 误杀）。nginx 默认就把 `Host` 设成 `$proxy_host`（upstream 地址），所以**两个头都要显式透传** | `ALLOWED_ORIGINS="你的域名"` 兜底或修 nginx |
 
 ---
 
