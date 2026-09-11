@@ -382,9 +382,14 @@ export default function CommentSection({ blogId, currentUserId = null, isAdmin =
 
       {lightbox && <ImageLightbox src={lightbox} alt="评论图片" onClose={() => setLightbox(null)} />}
 
-      {/* 删除确认模态框（对齐 modal_system.html 的 commentDeleteModal）*/}
+      {/* 删除确认模态框（对齐 modal_system.html 的 commentDeleteModal）
+          ⚠️ 展开类是 `is-open` 而**不是** Bootstrap 的 `show`：站内 modal 是
+          src/styles-scss/components/_modal.scss 那套（.modal{display:none} +
+          .modal.is-open{display:flex}），`.fade`/`.show` 只控透明度、不控显隐。
+          写成 `show` 的话弹窗永远 display:none，删除按钮点了没反应 —— 评论删不掉。
+          同页 FeedButton 的删除框即此写法，保持同构。 */}
       <div
-        className={`modal fade${deleteTarget ? ' show' : ''}`}
+        className={`modal${deleteTarget ? ' is-open' : ''}`}
         id="commentDeleteModal"
         role="dialog"
         aria-hidden={!deleteTarget}
