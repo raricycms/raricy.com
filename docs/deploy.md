@@ -35,7 +35,8 @@ mkdir -p /srv/raricy.com/instance/{avatars,database,images,stories,blogs}
 chown -R www-data:www-data /srv/raricy.com/instance
 ```
 
-`blogs/` 是历史遗留空目录，可以不存在也不影响运行。
+`blogs/` 是历史遗留目录（**全新部署时是空的；从 `instance.zip` 还原的实例里可能有几千个 Flask 时代的存量文件**）。
+当前没有任何代码读写它，所以可以不存在也不影响运行。
 
 把生产 `db.db`、所有头像、所有图床、所有故事文件**按目录结构复制**到该处。
 

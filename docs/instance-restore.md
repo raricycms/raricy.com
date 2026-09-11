@@ -18,7 +18,9 @@
 归档里的库离「可用」差两件事，也正是下面第 2、3 步要做的：
 
 1. **时间戳是 TEXT**（`"2025-08-09 20:48:45.776483"`）—— Prisma 解析即抛 `Conversion failed`（登录 500）；
-2. **没有 `_raricy_migrations`** —— schema 停在 Flask 的最后一版，缺 OAuth / 账本 / 聊天等 9 个迁移。
+2. **没有 `_raricy_migrations`** —— schema 停在 Flask 的最后一版，缺**基线之后的全部迁移**
+   （OAuth / 账本 / 聊天 / 评论附件…）。**具体条数以 `npm run migrate -- status` 为准**，
+   别照抄某个数字 —— 每加一个迁移它就会变。
 
 ## 0. 前置
 
@@ -53,17 +55,17 @@ npm run db:normalize
 
 ```bash
 npm run migrate -- mark 0_init   # 表已存在 → 只登记，不执行 SQL
-npm run migrate -- up            # 应用 1_oauth … 9_chat_prefs
+npm run migrate -- up            # 应用基线之后的全部迁移（现为 1_oauth … 11_comment_attachments）
 ```
 
 `0_init` 是从 Flask 库反向生成的建表 SQL。**跳过 `mark` 直接 `up` 会在第一条 `CREATE TABLE "users"` 上失败**（表已存在）；失败不会留下半截 —— 第一条就炸，跟踪表也无记录。
 
-实测 9 个迁移约 23 秒。
+实测约 23 秒（撰写时为 9 个迁移；现已增至 11 个，耗时会略增）。
 
 ## 4. 验证
 
 ```bash
-npm run migrate -- status   # Applied 10 条，Pending 空
+npm run migrate -- status   # Pending 空；Applied = 迁移总数（当前 12 条 = 0_init + 11 个后续迁移）
 npm run migrate -- verify   # checksum 一致
 npm run diagnose            # 段 2/3 绿；段 4 需生产 SECRET_KEY
 ```
@@ -75,7 +77,7 @@ npm run diagnose            # 段 2/3 绿；段 4 需生产 SECRET_KEY
 | 表 | 31（30 业务表 + `sqlite_sequence`），与既有 `dev.db` 的表/索引定义**逐字节一致** |
 | 行数 | users 465 / blogs 6193 / comments 63231 / notifications 90174 |
 | 时间戳 | 全部 INTEGER 毫秒；Prisma 可读且日期比较正确 |
-| 结构变化 | `photo_wall_items` 已删（`6_drop_photowall`）；新增 oauth×3 / chat×3 / 账本 / 跟踪表 |
+| 结构变化 | `photo_wall_items` 已删（`6_drop_photowall`）；新增 oauth×3 / chat×3 / 账本 / 跟踪表；`users.notify_chat` 已删（`10_drop_notify_chat`）；`blog_comments` +`image_id`/`quote_blog_id`（`11_comment_attachments`） |
 
 最后一道是起服务读真页：
 
@@ -92,7 +94,7 @@ npm run dev     # 打开 /u/<用户 uuid>
 | 不基线化直接 `up` | `table "users" already exists` | 先 `mark 0_init` |
 | `SECRET_KEY` 用开发值 | diagnose 段 4：抽查 5 条解开 0 条 | 从生产 `.env` **原样**搬 —— 唯一不可逆的一步 |
 | 直接 `cp` 库文件 | WAL 下可能拷到不一致快照 | 用 `db:normalize` / `sqlite3 .backup` |
-| 源库不存在 | 脚本抛「源库不存在」 | deploy.md §4 说的「跳过复制」已过时，别指望 |
+| 源库不存在 | 脚本抛「源库不存在」 | 没有空库兜底分支；空库起步请走 `npm run migrate -- up`（deploy.md §4「全新部署」） |
 | `file:` 相对路径 | 基点相对 `prisma/`，不是项目根 | 用绝对路径最稳 |
 | `chat_channels` lobby 种子 | `created_at` 是 ISO 文本 | `4_chat` 写死的固定值，无比较用途，忽略 |
 | 手滑 `prisma migrate dev` / `db push` | 无视 `_raricy_migrations` 直接动 schema | 永远不要 |
