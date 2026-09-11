@@ -117,7 +117,9 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 - 上传时严格 MIME 嗅探 + 文件名净化（防 XSS / 路径穿越）。
 
 ### Markdown / 内容渲染
-- 博客正文 / 评论 / 故事：客户端 marked + DOMPurify + highlight.js。
+- 博客正文 / 评论：客户端 marked + DOMPurify + highlight.js。
+  **故事是服务端渲染**（`story-service.ts` 的 marked + `stripScripts`，不走 DOMPurify、无代码高亮）
+  —— 故事文件由站长直接写在 `instance/stories/`，按可信输入处理。见 `docs/architecture.md` §6.7。
 - 聊天正文：`src/lib/chat-markdown.ts`（marked + DOMPurify）。白名单比博客更紧。
   **改这里的白名单等于改安全边界**，务必同步 `tests/unit/chat-markdown.test.ts`。
 - 剪贴板引用：`[@<8位>]`（剪贴板）/ `[@<9位>]`（投票）/ `[@<10位>]`（图床）—— 浏览器渲染时替换。
