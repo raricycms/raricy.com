@@ -22,12 +22,13 @@ import {
 } from '@/lib/chat-shared';
 import { LS_KEY, COOKIE_NAME, COOKIE_MAX_AGE } from '@/lib/chat-sidebar-pref';
 import NewChatModal from './NewChatModal';
-import QuoteBlogModal from './QuoteBlogModal';
+import QuoteBlogModal from '../components/QuoteBlogModal';
 import AvatarMenu, { type AvatarMenuAnchor } from './AvatarMenu';
 import ImageLightbox from './ImageLightbox';
 import ChatMessageItem, { dayKey, fmtDay, isMentioned } from './ChatMessageItem';
 import ChatSidebar from './ChatSidebar';
-import ChatComposer, { IMAGE_ACCEPT, type ComposerBlogQuote } from './ChatComposer';
+import RichComposer, { type ComposerBlogQuote } from '../components/RichComposer';
+import { usePendingImage } from '../components/usePendingImage';
 import ChatSearchModal, { SearchButton } from './ChatSearchModal';
 
 declare global {
@@ -47,7 +48,6 @@ function toast(message: string, type: string) {
  * 兜底：未读数、最后一条预览、别人新发起的会话、成员变更。SSE 断了也能靠它自愈。
  */
 const RECONCILE_MS = 60_000;
-const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 /**
  * 移动端抽屉断点：与 _chat.scss 的 `@media (max-width: 900px)` 对齐。该宽度以下
  * 侧栏是抽屉（固定 300px，折叠态被 CSS 还原成常规宽度），折叠按钮在那里改关抽屉。
@@ -104,53 +104,6 @@ function refreshTopbarBadge() {
     badgeRefreshedAt = Date.now();
     window.updateNotificationCount?.();
   }, wait);
-}
-
-type UploadResult =
-  | { ok: true; id: string; url: string }
-  | { ok: false; message: string; status: number };
-
-/**
- * 上传图片到图床（POST /api/images，multipart）。
- *
- * 【为什么用 XHR 而不是 fetch】微信内置浏览器（Android 的 X5 内核）对
- * `fetch` + `FormData` 上传有已知的偶发失败 —— 请求发不出去或 body 丢失，
- * 表现为时好时坏、而 Chrome 全绿。XHR 是社区通行的绕法，各端行为一致，
- * 且这里也不需要 fetch 的流式能力。
- *
- * 只在**网络层**失败时 reject（onerror/onabort）；HTTP 状态码一律 resolve，
- * 让调用方决定是重试还是把服务端文案展示给用户。
- */
-function uploadImage(fd: FormData): Promise<UploadResult> {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', '/api/images'); // 同源 → 会话 cookie 自动带上
-    xhr.onload = () => {
-      let body: { code?: number; message?: string; id?: unknown; url?: unknown } = {};
-      try {
-        body = JSON.parse(xhr.responseText) as typeof body;
-      } catch {
-        // 非 JSON 只可能是反代/网关的错误页（413/502/…）→ 用状态码兜底
-      }
-      if (
-        xhr.status === 200 &&
-        body.code === 200 &&
-        typeof body.id === 'string' &&
-        typeof body.url === 'string'
-      ) {
-        resolve({ ok: true, id: body.id, url: body.url });
-      } else {
-        resolve({
-          ok: false,
-          status: xhr.status,
-          message: body.message || `图片上传失败（HTTP ${xhr.status}）`,
-        });
-      }
-    };
-    xhr.onerror = () => reject(new Error('network'));
-    xhr.onabort = () => reject(new Error('abort'));
-    xhr.send(fd);
-  });
 }
 
 /**
@@ -232,8 +185,8 @@ export default function ChatApp({
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [sending, setSending] = useState(false);
   const [text, setText] = useState('');
-  const [pendingImage, setPendingImage] = useState<{ id: string; url: string } | null>(null);
-  const [uploadingImage, setUploadingImage] = useState(false);
+  // 待发图片（选图 / 上传 / 校验的共用逻辑，与评论区同一套）
+  const { pendingImage, uploadingImage, pickImage, clearImage } = usePendingImage(toast);
   const [replyTarget, setReplyTarget] = useState<ChatMessageDTO | null>(null);
   /** 引用博客草稿（单附件：再选即替换） */
   const [blogQuote, setBlogQuote] = useState<ComposerBlogQuote | null>(null);
@@ -312,7 +265,6 @@ export default function ChatApp({
   const lastIdRef = useRef<number>(0);
   const viewTokenRef = useRef(0);
   const listRef = useRef<HTMLDivElement>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const activeChannel = useMemo(
@@ -872,7 +824,7 @@ export default function ChatApp({
           activeRef.current = id;
           setMessages([]);
           setReplyTarget(null);
-          setPendingImage(null);
+          clearImage();
           setBlogQuote(null);
           setNewCount(0);
           setDrawerOpen(false);
@@ -946,7 +898,7 @@ export default function ChatApp({
           lastIdRef.current = Math.max(lastIdRef.current, m.id);
           setText('');
           draftsRef.current.delete(aid); // 已发出 → 该频道草稿作废
-          setPendingImage(null);
+          clearImage();
           setBlogQuote(null);
           setReplyTarget(null);
           setNewCount(0);
@@ -1167,44 +1119,6 @@ export default function ChatApp({
     []
   );
 
-  // ── 图片上传（走图床） ────────────────────────────────────────────────
-  const pickImage = useCallback(
-    async (file: File) => {
-      if (file.size > MAX_IMAGE_BYTES) {
-        toast('图片不能超过 10MB', 'error');
-        return;
-      }
-      if (!IMAGE_ACCEPT.split(',').includes(file.type)) {
-        toast('仅支持 PNG / JPEG / GIF / WebP', 'error');
-        return;
-      }
-      setUploadingImage(true);
-      try {
-        const fd = new FormData();
-        fd.append('file', file);
-        fd.append('compress', '1');
-        let out: UploadResult;
-        try {
-          out = await uploadImage(fd);
-        } catch {
-          // 网络层失败（请求没发出去 / 连接被中断）重试一次：移动端弱网、微信内置
-          // 浏览器里第一次失败很常见，而重新选图的成本远高于悄悄重发一次。
-          // HTTP 层失败（413/403/…）走的是 resolve，不重试 —— 重发还是同样结果。
-          await new Promise((r) => setTimeout(r, 800));
-          out = await uploadImage(fd);
-        }
-        if (out.ok) setPendingImage({ id: out.id, url: out.url });
-        else toast(out.message, 'error');
-      } catch {
-        toast('图片上传失败：网络中断，请重试', 'error');
-      } finally {
-        setUploadingImage(false);
-        if (fileRef.current) fileRef.current.value = '';
-      }
-    },
-    []
-  );
-
   // ── 删除 ───────────────────────────────────────────────────────────────
   const handleDelete = useCallback(
     async (m: ChatMessageDTO) => {
@@ -1333,7 +1247,7 @@ export default function ChatApp({
           activeRef.current = ch.id;
           setMessages([]);
           setReplyTarget(null);
-          setPendingImage(null);
+          clearImage();
           setBlogQuote(null);
           setNewCount(0);
           setDrawerOpen(false);
@@ -1504,16 +1418,35 @@ export default function ChatApp({
               </button>
             )}
 
-            <ChatComposer
-              activeId={activeId}
+            <RichComposer
+              className="chat-composer"
               text={text}
               sending={sending}
+              sendDisabled={!activeId}
+              sendLabel="发送"
+              sendingLabel="发送中…"
+              placeholderLead="输入消息"
+              submitVerb="发送"
               pendingImage={pendingImage}
               uploadingImage={uploadingImage}
-              replyTarget={replyTarget}
+              // 回复条预览：被回复的是纯图片消息时正文为空 → 给占位文案（与侧栏预览同口径），
+              // 否则这一条会显示成「回复 某某：」后面空着。
+              replyChip={
+                replyTarget
+                  ? {
+                      label: `回复 ${replyTarget.author.username}`,
+                      text:
+                        replyTarget.content ||
+                        (replyTarget.image
+                          ? '[图片]'
+                          : replyTarget.image_missing
+                            ? '[图片已删除]'
+                            : ''),
+                    }
+                  : null
+              }
               blogQuote={blogQuote}
               textareaRef={textareaRef}
-              fileRef={fileRef}
               onTextChange={(v) => {
                 setText(v);
                 if (v) notifyTyping();
@@ -1523,7 +1456,7 @@ export default function ChatApp({
               onOpenQuote={() => setQuoteOpen(true)}
               onClearReply={() => setReplyTarget(null)}
               onClearBlogQuote={() => setBlogQuote(null)}
-              onClearImage={() => setPendingImage(null)}
+              onClearImage={clearImage}
             />
           </>
         ) : (
