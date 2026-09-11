@@ -45,7 +45,16 @@ export interface CommentBlogDTO {
   updated_at: string | null; // ISO
 }
 
-export interface CommentNode {
+/**
+ * 评论序列化的**公共部分** —— 站内评论树（本文件）与爬虫扁平列表
+ * （spider-service.ts）共用同一份实现。
+ *
+ * 【为什么单拆一层】爬虫接口是**对外契约**（无认证、使用方是站外的爬虫/聚合器），
+ * 它只需要这里列出的这些字段，且**不该**因为站内给评论加了 content / image / blog
+ * 就跟着变形状。此前两边各写一份序列化，逻辑逐字重复 —— 改了一处另一边不会变，
+ * 而且看代码很难发现。现在：公共部分唯一，各自只加自己的字段。
+ */
+export interface CommentBaseDTO {
   id: string;
   blog_id: string;
   author: {
@@ -56,13 +65,36 @@ export interface CommentNode {
   };
   parent_id: string | null;
   root_id: string | null;
+  /** 服务端转义的纯文本 + <br>：spider API 与无 JS 降级用；站内不用它渲染。 */
+  content_html: string;
+  status: string | null;
+  is_deleted: boolean;
+  likes_count: number;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+/** `serializeCommentBase` 只读这些列 —— 两边各自的行类型都满足它。 */
+export interface CommentBaseRow {
+  id: string;
+  blogId: string;
+  parentId: string | null;
+  rootId: string | null;
+  contentHtml: string | null;
+  status: string | null;
+  isDeleted: boolean | null;
+  likesCount: number | null;
+  createdAt: Date | null;
+  updatedAt: Date | null;
+  author: { id: string; username: string; role: string } | null;
+}
+
+export interface CommentNode extends CommentBaseDTO {
   /**
    * 正文原文（Markdown 源）。前端必须经 renderCommentMarkdown 净化后渲染 ——
    * 它是用户输入，直接 innerHTML 等于开存储型 XSS。
    */
   content: string;
-  /** 服务端转义的纯文本 + <br>：spider API 与无 JS 降级用；站内不用它渲染。 */
-  content_html: string;
   /** 引用的图床图片；软删的评论一律为 null（连同 blog 一起抹掉）。 */
   image: CommentImageDTO | null;
   /** imageId 有值但图缺失/已软删 → 前端给 [图片已删除] 占位。 */
@@ -70,11 +102,6 @@ export interface CommentNode {
   blog: CommentBlogDTO | null;
   /** quoteBlogId 有值但博客缺失/已软删 → 前端给 [博客已删除] 占位。 */
   blog_missing: boolean;
-  status: string | null;
-  is_deleted: boolean;
-  likes_count: number;
-  created_at: string | null;
-  updated_at: string | null;
   children: CommentNode[];
 }
 
@@ -121,7 +148,13 @@ const commentSelect = {
 
 type CommentRow = Prisma.BlogCommentGetPayload<{ select: typeof commentSelect }>;
 
-function serializeRow(c: CommentRow): CommentNode {
+/**
+ * 序列化的公共部分（站内树与爬虫扁平列表共用，见 CommentBaseDTO 的说明）。
+ *
+ * ⚠️ 软删的评论在这里就把 content_html 换成占位文案 —— 这是**唯一**一处，
+ * 两个调用方自动都拿到「不泄露原文」的行为。
+ */
+export function serializeCommentBase(c: CommentBaseRow): CommentBaseDTO {
   const deleted = c.isDeleted ?? false;
   return {
     id: c.id,
@@ -134,21 +167,28 @@ function serializeRow(c: CommentRow): CommentNode {
     },
     parent_id: c.parentId,
     root_id: c.rootId,
-    // ★ 软删即抹掉原文 ★ 与 content_html 同一口径：保留的已删节点（有子评论）只显示
-    // 占位文案。若这里下发 content，前端渲染出来等于「删了等于没删」，且与原设计
-    // 「不泄露原文」直接冲突（tests/service/comment-service.test.ts 有专门用例）。
-    content: deleted ? DELETED_PLACEHOLDER : c.content ?? '',
     content_html: deleted ? DELETED_PLACEHOLDER : c.contentHtml ?? '',
-    // 附件默认空，由 attachAttachments 批量填（软删的一律保持 null，同 content）
-    image: null,
-    image_missing: false,
-    blog: null,
-    blog_missing: false,
     status: c.status,
     is_deleted: deleted,
     likes_count: c.likesCount ?? 0,
     created_at: c.createdAt ? c.createdAt.toISOString() : null,
     updated_at: c.updatedAt ? c.updatedAt.toISOString() : null,
+  };
+}
+
+function serializeRow(c: CommentRow): CommentNode {
+  const deleted = c.isDeleted ?? false;
+  return {
+    ...serializeCommentBase(c),
+    // ★ 软删即抹掉原文 ★ 与 content_html 同一口径：保留的已删节点（有子评论）只显示
+    // 占位文案。若这里下发 content，前端渲染出来等于「删了等于没删」，且与原设计
+    // 「不泄露原文」直接冲突（tests/service/comment-service.test.ts 有专门用例）。
+    content: deleted ? DELETED_PLACEHOLDER : c.content ?? '',
+    // 附件默认空，由 attachAttachments 批量填（软删的一律保持 null，同 content）
+    image: null,
+    image_missing: false,
+    blog: null,
+    blog_missing: false,
     children: [],
   };
 }

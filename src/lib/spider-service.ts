@@ -6,39 +6,29 @@
 //   - getRecentComments ← CommentService.get_recent_comments（status='approved' 最近 100 条，含已删除占位）
 //   - getSpiderComment  ← CommentService.get_comment（id + is_deleted=false）
 //
-// 评论序列化形状与 comment-service.ts 的 serializeRow 逐字对齐（snake_case JSON），
-// 单独在此实现是为了产出「扁平（children 恒为 []）」的列表/单条结果。
+// 评论的**公共字段**序列化复用 comment-service.serializeCommentBase —— 两边各写一份
+// 逐字相同的实现，改了一处另一边不会变，而对外契约恰恰最不该 drift。
+// 这里只加自己的那一样东西：children 恒为 []（spider 出扁平列表，不是树）。
+// 契约用例见 tests/service/spider-comment.test.ts（断言键集合逐字相等，
+// 站内给评论新增字段时不会顺着漏到站外）。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { prisma } from './db';
-import { hasAdminRights } from './auth';
+import { serializeCommentBase, type CommentBaseDTO } from './comment-service';
 import { categoryFullPath, ymd } from './format';
 import type { Prisma } from '@prisma/client';
 
 // ── 评论扁平序列化（对齐 CommentService._serialize_comment）───────────────────
 
-export interface SpiderCommentDict {
-  id: string;
-  blog_id: string;
-  author: {
-    id: string | null;
-    username: string | null;
-    is_admin: boolean;
-    avatar_url: string | null;
-  };
-  parent_id: string | null;
-  root_id: string | null;
-  content_html: string;
-  status: string | null;
-  is_deleted: boolean;
-  likes_count: number;
-  created_at: string | null;
-  updated_at: string | null;
+/** 对外契约：公共部分 + 恒为空的 children。**不得**混入站内才有的字段。 */
+export interface SpiderCommentDict extends CommentBaseDTO {
   children: SpiderCommentDict[];
 }
 
-const DELETED_PLACEHOLDER = '[该评论已删除]';
-
+/**
+ * 只选公共序列化需要的列 —— 刻意**不含** content（Markdown 原文）/ image_id /
+ * quote_blog_id：那是站内才下发的字段，spider 没有必要把它们从库里读出来。
+ */
 const commentSelect = {
   id: true,
   blogId: true,
@@ -56,25 +46,9 @@ const commentSelect = {
 type CommentRow = Prisma.BlogCommentGetPayload<{ select: typeof commentSelect }>;
 
 function serializeComment(c: CommentRow): SpiderCommentDict {
-  const deleted = c.isDeleted ?? false;
   return {
-    id: c.id,
-    blog_id: c.blogId,
-    author: {
-      id: c.author?.id ?? null,
-      username: c.author?.username ?? null,
-      is_admin: c.author ? hasAdminRights(c.author) : false,
-      avatar_url: c.author ? `/api/avatar/${c.author.id}` : null,
-    },
-    parent_id: c.parentId,
-    root_id: c.rootId,
-    content_html: deleted ? DELETED_PLACEHOLDER : c.contentHtml ?? '',
-    status: c.status,
-    is_deleted: deleted,
-    likes_count: c.likesCount ?? 0,
-    created_at: c.createdAt ? c.createdAt.toISOString() : null,
-    updated_at: c.updatedAt ? c.updatedAt.toISOString() : null,
-    children: [], // 由构建树方法填充；扁平输出恒为空数组（对齐 Flask）
+    ...serializeCommentBase(c),
+    children: [], // 扁平输出恒为空数组（对齐 Flask）
   };
 }
 
