@@ -16,9 +16,14 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 
 ## 常用命令
 
-全表见 `README.md`「工具脚本」。这里只列**不显然**的几条：
+常用命令见 `README.md`「工具脚本」（那是精选，**不是全表**）；完整列表以 `package.json`
+的 `scripts` 为准。这里只列**不显然**的几条：
 
-- `npm ci`，不要 `npm install` —— 后者会把 Next 升到 16.x，启动即崩。
+- `npm ci`，不要 `npm install` —— 前者严格按 lockfile 安装，后者可能在 semver 范围内改写
+  lockfile 把依赖漂到更新的小版本。**真正会炸的是手动 `npm install next@latest`**：跨大版本
+  装到 Next 16 后启动即崩（`TypeError: Cannot read properties of undefined (reading 'map')`，
+  报错还指向 ignore-listed frames，完全看不出根因 —— 线上实际发生过）。
+  `package.json` 的 `^15.1.4` 本身到不了 16.x；`npm run diagnose` 段 0 会校验已装版本与声明同大版本。
 - `npm run e2e` **不**自动 build，跑的是 `.next` 里的现有产物。改了 `src/` 没重新 build
   的话，测的是旧代码 —— 症状是刚加的日志一行都不打，容易误判成代码没生效。用 `npm run e2e:ci` 或先 build。
 - `npx tsc --noEmit` **会读 `.next/types/`**（tsconfig 的 include 里有它）。所以它与上一条
@@ -53,8 +58,11 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 
 ### CSRF / 中间件
 - `src/middleware.ts` 仅校验写请求（POST / PUT / PATCH / DELETE）的 `Origin` / `Referer` 同源。
-- 对外 Host 判定顺序：`ALLOWED_ORIGINS` → `X-Forwarded-Host` → `Host`。
-- 走 nginx 时务必 `proxy_set_header X-Forwarded-Host $http_host`，否则全站 POST 403。
+- 对外 Host 是**三源并集**（不是优先级回退链）：`ALLOWED_ORIGINS`、`X-Forwarded-Host`、
+  `Host` 三个来源全部并进同一个 Set，`Origin`/`Referer` 命中**任一**即放行。
+- 走 nginx 时务必 `proxy_set_header Host $http_host` **和** `X-Forwarded-Host $http_host`。
+  真正致命的是 `Host` —— nginx 默认把它设成 `$proxy_host`（upstream 地址），浏览器 Origin
+  就与三个来源全对不上，全站 POST 403。
 
 ### iframe 嵌入
 - 本站**刻意允许**被第三方 iframe 嵌入 —— 有一部分用户只能从 iframe 进主站。**不要**加 `X-Frame-Options` / CSP `frame-ancestors`（nginx 层同样不要），也别把它当成「待补的安全响应头」。
@@ -95,7 +103,12 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
   `user↔core` 那对仍归管理员。见 `setRole` 的权限分档。
 
 ### 限频
-- `src/lib/rate-limit.ts`，**配额表以该文件的 `RULES` 为唯一权威**（别处不复述数值）。
+- `src/lib/rate-limit.ts` 的 `RULES` 是**多数**配额的唯一权威，但**不是全部**：OAuth 的三条
+  （authorize 30/min/user、token 60/min/clientId、userinfo 600/min/user）是各 route 里内联的
+  字面量，不在 `RULES` 里 —— 改 OAuth 限频要去 `src/app/api/oauth/*/route.ts` 找。
+- **对外文档会复述数值**，这是刻意的（站外读者要能自包含）：`docs/chat-bot.md` §10 镜像了
+  聊天那 7 条，`docs/guide/` 的投票 / 图床指南也各写了一份。改 `RULES` 数值时记得同步它们，
+  否则就是下一次 drift。
 - 单进程语义；多实例部署需换 Redis（已知限制）。
 
 ### 文件落盘

@@ -51,7 +51,7 @@ npm run dev                              # http://localhost:3000
 | `npm test` | vitest 单测 |
 | `npm run e2e` | 端到端（直接跑 Playwright，**不**自动 build —— 见下方警告） |
 | `npm run e2e:ci` | 同上，但先 build（CI / 全新环境用） |
-| `npm run smoke` | 15 条只读冒烟（登录态/列表/详情/签到/图床/CSRF/指南页等） |
+| `npm run smoke` | 15 条只读冒烟（登录态/列表/详情/图床/CSRF/指南页等，**不含签到** —— 打的是生产站，不做任何写操作） |
 | `npm run diagnose` | 部署自检（版本 / .env / 库 / 密钥）；报红就别往下走 |
 | `npm run check:secrets` | 密钥与生产数据是否进过版本库 |
 | `npm run check:links` | 站内断链静态扫描 |
