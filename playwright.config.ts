@@ -62,6 +62,9 @@ const RESPONSIVE_SPECS: RegExp[] = [
   // 粒度到不了 describe，整个文件跟着双跑 —— 多跑 3 条，换「不会漏掉那条
   // test.skip(!isMobile) 的用例」。
   /chat-unread-mark\.spec\.ts$/,
+  // 评论输入区与聊天共用 RichComposer：触屏下 useCoarsePointer 会把 Enter 从「发送」
+  // 改成「换行」，发送只剩右下角按钮 —— 那是只可能在移动端跑出来的分支。
+  /comment-rich\.spec\.ts$/,
 ];
 
 export default defineConfig({
