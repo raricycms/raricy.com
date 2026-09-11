@@ -22,6 +22,16 @@ export type ArgKind = 'string' | 'int' | 'number' | 'boolean';
 /** 解析后的参数表。repeatable 的参数是 string[]。 */
 export type Args = Record<string, string | number | boolean | string[] | undefined>;
 
+/**
+ * 交互式的「返回上一步 / 取消本次操作」哨兵值。
+ *
+ * 用 \u0000 前缀是刻意的：终端不可能产生这个字符，所以它绝不会与用户输入、
+ * 实体 id、或者枚举值（user/core/admin/owner）撞车 —— 比用 ':b' 之类的
+ * 可见字符串安全得多（那种约定下，一个真叫 ":b" 的输入就会被误判成导航）。
+ */
+export const NAV_BACK = '\u0000back';
+export const NAV_CANCEL = '\u0000cancel';
+
 /** 菜单 / 候选列表里的一个选项。 */
 export interface Choice {
   /** 最终写进 args 的值 —— 实体类参数就是它的 id / 枚举字面量。 */

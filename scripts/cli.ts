@@ -29,9 +29,17 @@ import {
   splitGlobals,
   type GlobalFlags,
 } from './cli/args';
+import { actorFor } from './cli/actor';
+import { executeCommand } from './cli/execute';
 import { createOutput, shouldUseColor } from './cli/output';
+import { createPrompter, isExitPromptError } from './cli/prompt';
 import { COMMANDS } from './cli/registry';
 import { CliError, type CmdOutput, type CommandSpec, type Output } from './cli/types';
+
+/** stdin 与 stdout 都是 TTY 才算交互模式；管道 / 重定向下一律不弹提示。 */
+function isInteractive(): boolean {
+  return process.stdin.isTTY === true && process.stdout.isTTY === true;
+}
 
 /** 执行一条已解析好的命令。返回值即进程退出码。 */
 async function execute(cmd: CommandSpec, argv: string[], flags: GlobalFlags): Promise<number> {
@@ -41,8 +49,21 @@ async function execute(cmd: CommandSpec, argv: string[], flags: GlobalFlags): Pr
   // ↓↓↓ 唯一一处加载 Prisma 的地方：--help 与参数错误都在此之前返回 ↓↓↓
   const { prisma } = await import('../src/lib/db');
   try {
-    const out = await cmd.run({ args, actor: null, prisma, io });
-    printResult(io, cmd, out, flags.json);
+    const actor = await actorFor(cmd, prisma, io, { as: flags.as });
+    const { output } = await executeCommand(cmd, args, {
+      prisma,
+      io,
+      prompter: createPrompter(),
+      actor,
+      interactive: isInteractive(),
+      yes: flags.yes,
+    });
+
+    if (output === null) {
+      io.error(io.yellow('已取消，未做任何改动。'));
+      return 0;
+    }
+    printResult(io, cmd, output, flags.json);
     return 0;
   } finally {
     await prisma.$disconnect().catch(() => {});
@@ -99,6 +120,12 @@ async function main(): Promise<void> {
   try {
     process.exitCode = await run();
   } catch (e) {
+    // Ctrl-C 落在提问期间 = 用户取消，不是崩溃。
+    if (isExitPromptError(e)) {
+      process.stderr.write('\n已取消，未做任何改动。\n');
+      process.exitCode = 0;
+      return;
+    }
     const io = createOutput({ color: shouldUseColor(flags), json: false });
     if (e instanceof CliError) {
       // --json 下错误也要是 JSON，脚本才能统一解析

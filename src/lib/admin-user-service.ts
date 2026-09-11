@@ -12,7 +12,7 @@
 
 import { prisma } from './db';
 import { nowForDb } from './db-time';
-import { isCurrentlyBanned, isOwner, type SafeUser } from './auth';
+import { PUBLIC_USER_SELECT, isCurrentlyBanned, isOwner, type SafeUser } from './auth';
 import { sendNotification } from './notification-service';
 import { kickUser } from './chat-bus';
 
@@ -119,6 +119,37 @@ function toRow(u: {
     currentlyBanned: isCurrentlyBanned({ isBanned: u.isBanned, banUntil: u.banUntil }),
     avatarPath: u.avatarPath,
   };
+}
+
+// ── SafeUser 载入（运维 CLI 解析审计主体用）─────────────────────────────────
+//
+// 【为什么需要这一组】CLI 没有登录会话，但写路径要往 admin_action_logs.admin_id /
+// user_bans.admin_id 落一条**真实外键**（不能用伪造 ID）。所以 CLI 必须能按用户名
+// 或「库内最早的站长」取回一个 SafeUser 形状的用户，拿它当 actor。
+//
+// 复用 auth.ts 的 PUBLIC_USER_SELECT，字段口径与 getCurrentUser() 完全一致。
+
+export async function loadSafeUserByUsername(username: string): Promise<SafeUser | null> {
+  const u = await prisma.user.findUnique({ where: { username }, select: PUBLIC_USER_SELECT });
+  return (u as SafeUser | null) ?? null;
+}
+
+export async function loadUserById(id: string): Promise<SafeUser | null> {
+  const u = await prisma.user.findUnique({ where: { id }, select: PUBLIC_USER_SELECT });
+  return (u as SafeUser | null) ?? null;
+}
+
+/**
+ * 库内最早的站长（createdAt 升序，id 兜底保证同秒创建时结果确定）。
+ * 与 oauth create-app 既有的 owner 回退口径一致。
+ */
+export async function loadDefaultOwner(): Promise<SafeUser | null> {
+  const u = await prisma.user.findFirst({
+    where: { role: 'owner' },
+    select: PUBLIC_USER_SELECT,
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+  });
+  return (u as SafeUser | null) ?? null;
 }
 
 // ── 列表（分页 + 用户名/邮箱搜索）────────────────────────────────────────────

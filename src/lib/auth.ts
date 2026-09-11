@@ -15,7 +15,12 @@ import type { User } from '@prisma/client';
 
 export type SafeUser = Omit<User, 'passwordHash' | 'fishApiKeyEncrypted'>;
 
-const PUBLIC_USER_SELECT = {
+/**
+ * SafeUser 形状的字段投影。导出给需要「拿到一个能当审计主体的用户」的调用方复用
+ * （admin-user-service 的 loadSafeUserByUsername / loadDefaultOwner，进而给运维 CLI），
+ * 避免同一份 22 个字段抄两遍、日后加字段只改一处。
+ */
+export const PUBLIC_USER_SELECT = {
   id: true,
   username: true,
   email: true,
