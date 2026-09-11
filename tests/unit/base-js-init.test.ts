@@ -271,68 +271,107 @@ describe('通知未读数心跳：登录态下每 20s 自动轮询一次', () =>
   });
 });
 
-describe('顶栏徽标渲染：数字 / 小红点 / 隐藏', () => {
+describe('顶栏提示渲染：铃铛数字（只数通知）+「聊天」链接小红点', () => {
   //
-  // 服务端 /api/notifications/count 返回 { count, dot }：
-  //   count = 通知未读 + 聊天未读条数；count 为 0 而 dot 为 true → 小红点
-  //   （聊天大区只有 @ 我时才亮，没有条数）。三种状态互相切换时 class 必须干净 ——
-  //   红点态残留 is-dot 会把数字徽标缩成 8px 圆点。
-  async function renderBadge(payload: Record<string, unknown>) {
+  // 服务端 /api/notifications/count 返回 { count, chatUnread }：
+  //   count      = 站内通知未读，喂铃铛数字（聊天**不计入** —— 数字必须等于通知
+  //                列表里的条数，否则点进去对不上）；
+  //   chatUnread = 聊天有未读（私聊条数 / 大区被 @），喂「聊天」链接上的小红点。
+  // 两个元素由同一次请求更新，故一并断言。
+  async function renderTopbar(payload: Record<string, unknown>) {
     document.body.innerHTML = `
       <meta name="user-authenticated" content="true">
       <meta name="notification-api-url" content="/api/notifications/count">
       <span class="notification-badge" id="notificationBadge" style="display: none">0</span>
+      <a class="site-link" href="/chat">聊天<span class="site-link__dot" id="chatUnreadDot" style="display: none"></span></a>
     `;
     (globalThis as any).fetch = () =>
       Promise.resolve({ ok: true, json: () => Promise.resolve({ code: 200, ...payload }) });
     new Function(BASE_JS)();
     // 等 fetch → json() 两级微任务跑完
     await new Promise((r) => setTimeout(r, 0));
-    return document.getElementById('notificationBadge') as HTMLElement;
+    return {
+      badge: document.getElementById('notificationBadge') as HTMLElement,
+      dot: document.getElementById('chatUnreadDot') as HTMLElement,
+    };
   }
 
-  it('count > 0 → 显示数字，不带红点样式', async () => {
-    const badge = await renderBadge({ count: 3, dot: false });
+  it('count > 0 → 铃铛显示数字', async () => {
+    const { badge } = await renderTopbar({ count: 3, chatUnread: false });
     expect(badge.style.display).toBe('flex');
     expect(badge.textContent).toBe('3');
-    expect(badge.classList.contains('is-dot')).toBe(false);
     expect(badge.classList.contains('large-count')).toBe(false);
   });
 
-  it('count = 0 且 dot = true → 只显示小红点（无数字）', async () => {
-    const badge = await renderBadge({ count: 0, dot: true });
-    expect(badge.style.display).toBe('flex');
-    expect(badge.textContent).toBe('');
-    expect(badge.classList.contains('is-dot')).toBe(true);
-  });
-
-  it('count = 0 且 dot = false → 隐藏', async () => {
-    const badge = await renderBadge({ count: 0, dot: false });
+  it('count = 0 → 铃铛隐藏', async () => {
+    const { badge } = await renderTopbar({ count: 0, chatUnread: false });
     expect(badge.style.display).toBe('none');
     expect(badge.classList.contains('has-notifications')).toBe(false);
   });
 
   it('count > 99 → 显示 99+', async () => {
-    const badge = await renderBadge({ count: 120, dot: false });
+    const { badge } = await renderTopbar({ count: 120, chatUnread: false });
     expect(badge.textContent).toBe('99+');
     expect(badge.classList.contains('large-count')).toBe(true);
   });
 
-  it('红点 → 数字：is-dot 必须被摘掉（否则数字徽标被缩成圆点）', async () => {
-    const badge = await renderBadge({ count: 0, dot: true });
-    expect(badge.classList.contains('is-dot')).toBe(true);
+  it('回归：聊天未读只点亮「聊天」红点，绝不进铃铛数字', async () => {
+    // 线上 bug：私聊消息不进通知列表，却计进了铃铛数字 —— 铃铛写着 5、点进去只有 2 条。
+    const { badge, dot } = await renderTopbar({ count: 0, chatUnread: true });
+    expect(badge.style.display, '聊天未读混进了铃铛数字').toBe('none');
+    expect(dot.style.display).toBe('block');
+  });
 
-    // 再跑一次心跳，服务端返回数字
+  it('通知 + 聊天未读同时有 → 两个提示各就各位', async () => {
+    const { badge, dot } = await renderTopbar({ count: 2, chatUnread: true });
+    expect(badge.textContent).toBe('2');
+    expect(dot.style.display).toBe('block');
+  });
+
+  it('聊天读干净 → 红点熄灭（同一次请求两个元素一起更新）', async () => {
+    const { badge, dot } = await renderTopbar({ count: 0, chatUnread: true });
+    expect(dot.style.display).toBe('block');
+
+    // 再跑一次心跳，服务端说聊天读干净了
     (globalThis as any).fetch = () =>
       Promise.resolve({
         ok: true,
-        json: () => Promise.resolve({ code: 200, count: 2, dot: false }),
+        json: () => Promise.resolve({ code: 200, count: 0, chatUnread: false }),
       });
     (window as any).updateNotificationCount();
     await new Promise((r) => setTimeout(r, 0));
 
-    expect(badge.textContent).toBe('2');
-    expect(badge.classList.contains('is-dot')).toBe(false);
+    expect(dot.style.display).toBe('none');
+    expect(badge.style.display).toBe('none');
+  });
+
+  it('大数字回落到 0：large-count 必须摘掉（残留会把下次的小数字缩成 0.65rem）', async () => {
+    const { badge } = await renderTopbar({ count: 120, chatUnread: false });
+    expect(badge.classList.contains('large-count')).toBe(true);
+
+    (globalThis as any).fetch = () =>
+      Promise.resolve({ ok: true, json: () => Promise.resolve({ code: 200, count: 0, chatUnread: false }) });
+    (window as any).updateNotificationCount();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(badge.style.display).toBe('none');
+    expect(badge.classList.contains('large-count')).toBe(false);
+  });
+
+  it('页面没有「聊天」链接（非 core+）时：铃铛照常，且不抛异常', async () => {
+    document.body.innerHTML = `
+      <meta name="user-authenticated" content="true">
+      <meta name="notification-api-url" content="/api/notifications/count">
+      <span class="notification-badge" id="notificationBadge" style="display: none">0</span>
+    `;
+    (globalThis as any).fetch = () =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ code: 200, count: 1, chatUnread: true }),
+      });
+    expect(() => new Function(BASE_JS)()).not.toThrow();
+    await new Promise((r) => setTimeout(r, 0));
+    expect((document.getElementById('notificationBadge') as HTMLElement).textContent).toBe('1');
   });
 });
 

@@ -7,7 +7,7 @@
 //   2. 私聊频道「成员制」：非成员拉消息/发消息必须被拒（越权隔离是私聊的第一道墙）。
 //   3. 图片归属校验：只能发「自己上传且未软删」的图（图床是站内资源，防止引用他人私有文件）。
 //   4. 引用回复必须同频道且存活；软删后引用/正文都要给出占位，不能露原始内容。
-//   5. 聊天未读不进通知列表：私聊计条数、大区只在被 @ 时亮红点（顶栏徽标口径）。
+//   5. 聊天未读不进通知列表：私聊计条数、大区只在被 @ 时算（顶栏「聊天」红点口径）。
 //   6. 软删除权限：本人随意删；管理员删他人必须带原因并落审计（申诉数据源）。
 //   7. 限频仿评论：资源校验通过才扣额度。
 //
@@ -557,7 +557,7 @@ describe('拍一拍', () => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 4. 聊天未读不进通知列表；唯一进列表的是 @ 提及（每条 @ 一条通知）
-//    —— 普通消息走顶栏徽标汇总（getChatUnreadSummary）
+//    —— 普通消息走顶栏「聊天」红点的汇总（getChatUnreadSummary），不占铃铛数字
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('聊天消息不产生站内通知（@ 除外）', () => {
@@ -647,7 +647,7 @@ describe('@ 提及通知', () => {
     expect(await mentionCount(b.id)).toBe(0);
   });
 
-  it('静音的会话 → 不发（与顶栏徽标同一口径）；未静音照常发', async () => {
+  it('静音的会话 → 不发（与顶栏红点同一口径）；未静音照常发', async () => {
     const a = await makeUser({ role: 'core' });
     const b = await makeUser({ role: 'core' });
     await setChannelMuted(CHAT_LOBBY_ID, b.id, true);
@@ -693,7 +693,7 @@ describe('@ 提及通知', () => {
   });
 });
 
-describe('顶栏徽标汇总 getChatUnreadSummary', () => {
+describe('顶栏「聊天」红点汇总 getChatUnreadSummary', () => {
   it('私聊未读计入 count；读掉后归零', async () => {
     const a = await makeUser({ role: 'core' });
     const b = await makeUser({ role: 'core' });
@@ -755,7 +755,7 @@ describe('顶栏徽标汇总 getChatUnreadSummary', () => {
     expect(await getChatUnreadSummary(b.id, true)).toEqual({ count: 0, dot: false });
   });
 
-  it('静音会话不计入徽标，但侧栏未读徽标照常（静音 ≠ 已读）', async () => {
+  it('静音会话不计入顶栏红点，但侧栏未读徽标照常（静音 ≠ 已读）', async () => {
     const a = await makeUser({ role: 'core' });
     const b = await makeUser({ role: 'core' });
     const ch = (await startDirectChannel(a.id, b.id)) as { channel: { id: string } };

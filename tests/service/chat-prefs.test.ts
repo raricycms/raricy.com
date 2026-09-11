@@ -2,7 +2,7 @@
 //
 // 【为什么测这些】三条都是「静默失效」型逻辑：写错了不会报错，只会让用户
 // 「明明静音了铃铛还响」或者「明明隐藏了会话又冒出来」。
-//   · 静音只影响顶栏徽标，不能顺手把侧栏未读徽标也吞了（静音 ≠ 已读）；
+//   · 静音只影响顶栏「聊天」红点，不能顺手把侧栏未读徽标也吞了（静音 ≠ 已读）；
 //   · 隐藏会话记的是「当时最大消息 id」，新消息（id 更大）要让它重新出现；
 //   · @ 的口径必须与前端高亮一致（`@bob` 不能命中 `@bobby`）。
 
@@ -41,7 +41,7 @@ describe('extractMentions（与前端 isMentioned 同口径）', () => {
 });
 
 describe('静音会话（D2）', () => {
-  it('静音后不计入顶栏徽标；取消静音后重新计入（未读本身没丢）', async () => {
+  it('静音后不计入顶栏红点；取消静音后重新计入（未读本身没丢）', async () => {
     const a = await makeUser({ role: 'core' });
     const b = await makeUser({ role: 'core' });
     const ch = (await startDirectChannel(a.id, b.id)) as { channel: { id: string } };
@@ -53,7 +53,7 @@ describe('静音会话（D2）', () => {
     await sendMessage({ channelId: ch.channel.id, authorId: a.id, content: '静音中' });
     expect(await getChatUnreadSummary(b.id)).toEqual({ count: 0, dot: false });
 
-    // 取消静音：静音期间的未读仍在（静音 ≠ 已读），只是刚才没上徽标
+    // 取消静音：静音期间的未读仍在（静音 ≠ 已读），只是刚才没上顶栏红点
     await setChannelMuted(ch.channel.id, b.id, false);
     expect(await getChatUnreadSummary(b.id)).toEqual({ count: 2, dot: false });
   });

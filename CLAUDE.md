@@ -82,8 +82,11 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 - `is_deleted=true` 且无子评论 → 自动从楼中楼里隐藏。
 
 ### 聊天与通知的关系
-- **聊天消息不进通知列表**：未读由顶栏徽标体现（`/api/notifications/count` 合并
-  `getChatUnreadSummary`）——私聊计条数、大区只认被 @（小红点）。
+- **聊天消息不进通知列表、也不进铃铛数字**：铃铛数字 = `getUnreadCount`，必须等于
+  通知列表的条目数。聊天未读改由顶栏「聊天」链接上的小红点体现 —— `/api/notifications/count`
+  另出 `chatUnread` 布尔（来自 `getChatUnreadSummary`：私聊有未读 / 大区被 @），
+  base.js 据此点亮 `#chatUnreadDot`。**别再把它加回 `count`**：那会让铃铛写着 5、
+  点进 `/notifications` 只有 2 条。
 - **唯一进通知列表的是 @ 提及**（action `聊天提及`，一条 @ 一条通知）：`chat-service.notifyChannelMentions`。
   逐条闸门：非自己 / 非禁言 / core+ / 频道对其可见（**私聊非成员不发**、**大区专注模式不发**）/
   会话未静音。四个 `notify_*` 开关都不管它（调用方传 `prefKey: null`）。

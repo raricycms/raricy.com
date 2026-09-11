@@ -429,18 +429,23 @@ export async function listChannelsForUser(
 export interface ChatUnreadSummary {
   /** 私聊未读条数合计（大区普通消息不算，口径与侧栏一致） */
   count: number;
-  /** 大区未读里有 @ 到我 —— 顶栏显示小红点（公共频道不显数字） */
+  /** 大区未读里有 @ 到我（公共频道不显数字，只值得一个红点） */
   dot: boolean;
 }
 
 /**
- * 顶栏徽标用的聊天未读汇总。聊天消息不再进通知列表（见 sendMessage），未读改由
- * 顶栏那个徽标体现 —— 所以口径必须与侧栏 hasUnreadMark **完全一致**：
- *   • 私聊 → 未读条数；
- *   • 大区 → 只在未读里有 @ 我时亮红点（普通消息不打扰）；
- *   • 静音会话 → 不计（静音 = 别在铃铛上打扰我；侧栏徽标照常，静音 ≠ 已读）；
+ * 顶栏「聊天」链接上那个小红点用的未读汇总。聊天消息不进通知列表（见 sendMessage），
+ * 未读也不算进铃铛数字（那会让数字大于列表条目数）—— 两条都归到「聊天」红点上，
+ * 由 /api/notifications/count 把它压成一个 chatUnread 布尔。所以口径必须与侧栏
+ * hasUnreadMark **完全一致**：
+ *   • 私聊 → 未读条数（count）；
+ *   • 大区 → 只在未读里有 @ 我时算（dot，普通消息不打扰）；
+ *   • 静音会话 → 不计（静音 = 别在顶栏上打扰我；侧栏徽标照常，静音 ≠ 已读）；
  *   • 已隐藏（「删除会话」）且此后没有新消息 → 不计（与侧栏不显示它同一口径）；
  *   • 专注模式 → 大区不计（大区对开启者不可见）。
+ *
+ * 调用方不区分 count / dot：红点只看「有没有」。拆成两个字段是为了保住「私聊计条数、
+ * 大区只认 @」这条口径本身（侧栏与测试都在用），不是为了在顶栏显示数字。
  *
  * **纯读**：不懒建大区成员行 —— 本函数由顶栏每 20s 轮询，读路径不能写库。
  * 没有成员行 = 从未进过聊天室 = 无未读，语义正好（与 ensureLobbyMembership 的
@@ -504,7 +509,7 @@ export async function getChatUnreadSummary(
 export type ChannelPrefResult = { ok: true } | { ok: false; error: 'forbidden' | 'notFound' };
 
 /**
- * 设置会话静音。静音只影响顶栏徽标（该会话不计入未读汇总，见 getChatUnreadSummary），
+ * 设置会话静音。静音只影响顶栏（该会话不计入未读汇总，见 getChatUnreadSummary），
  * 侧栏未读徽标照常 —— 静音 ≠ 已读。大区也允许静音（静音后连 @ 红点也不再上报顶栏）。
  */
 export async function setChannelMuted(
@@ -980,9 +985,9 @@ export const CHAT_MENTION_ACTION = '聊天提及';
 /**
  * @ 提及通知：给正文里 @ 到的人逐个发一条站内通知。
  *
- * 【为什么只有 @ 才发】聊天消息本身不进通知列表 —— 未读统一由顶栏徽标体现（见
- * getChatUnreadSummary）；只有「有人叫你」才值得打扰，口径与侧栏大区红点完全一致
- * （hasUnreadMark 对大区也只认 @）。
+ * 【为什么只有 @ 才发】聊天消息本身不进通知列表 —— 未读归顶栏「聊天」链接上的红点
+ * （见 getChatUnreadSummary）；只有「有人叫你」才值得进通知列表，口径与侧栏大区红点
+ * 完全一致（hasUnreadMark 对大区也只认 @）。
  *
  * 【发给谁】逐条闸门过滤，全过才发：
  *   • 不是自己（自己 @ 自己不发）；
@@ -992,7 +997,7 @@ export const CHAT_MENTION_ACTION = '聊天提及';
  *       - 私聊：必须是本会话成员 —— 在**别人的私聊**里 @ 一个第三方，对方既看不到
  *         那条消息，通知正文还会把别人私聊的内容漏出去，一律不发；
  *       - 大区：开了专注模式就不发（大区对他不可见，同 canAccessChannel）。
- *   • 没静音这个会话：静音 =「别在铃铛上打扰我」，与顶栏徽标同一口径。
+ *   • 没静音这个会话：静音 =「别在铃铛上打扰我」，与顶栏红点同一口径。
  *
  * 【一人一条】按人去重（同一条消息里 @ 两次只发一条）；不同消息各发各的 ——
  * 通知列表本来就是流水账，不做聚合。
@@ -1063,8 +1068,8 @@ async function notifyChannelMentions(params: {
 
 /**
  * 发消息。先做资源/内容校验（避免非法请求烧限频额度），再扣限频（仿博客评论）。
- * 不产生站内通知（@ 提及除外，见 notifyChannelMentions）—— 聊天未读统一由
- * 顶栏徽标体现（见 getChatUnreadSummary）。
+ * 不产生站内通知（@ 提及除外，见 notifyChannelMentions）—— 聊天未读归顶栏
+ * 「聊天」链接上的红点（见 getChatUnreadSummary），不占铃铛数字。
  */
 export async function sendMessage(input: SendMessageInput): Promise<SendMessageResult> {
   const { channelId, authorId, imageId, blogId, patTargetId, replyTo, focusMode } = input;
@@ -1186,7 +1191,7 @@ export async function sendMessage(input: SendMessageInput): Promise<SendMessageR
   }
 
   // 4) 私聊成员列表：SSE 推送要用（大区广播给全部在线连接，不需要）。
-  //    这里**不发「新消息」通知** —— 聊天未读统一由顶栏徽标体现；
+  //    这里**不发「新消息」通知** —— 聊天未读由顶栏「聊天」链接的红点体现；
   //    唯一会进通知列表的是 @ 提及（见第 6 步）。
   let directMemberIds: string[] | null = null;
   if (access.kind === CHAT_KIND_DIRECT) {
@@ -1240,7 +1245,7 @@ export async function sendMessage(input: SendMessageInput): Promise<SendMessageR
 
 /**
  * 推进某频道读游标到给定消息 id（缺省 = 频道当前最大 id）。私聊非成员静默忽略。
- * 聊天未读不进通知列表，读游标推进后顶栏徽标自然随之下降（见 getChatUnreadSummary）。
+ * 聊天未读不进通知列表，读游标推进后顶栏「聊天」红点自然随之熄灭（见 getChatUnreadSummary）。
  */
 export async function markChannelRead(
   channelId: string,

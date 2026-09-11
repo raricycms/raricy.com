@@ -34,7 +34,7 @@ import ChatSearchModal, { SearchButton } from './ChatSearchModal';
 declare global {
   interface Window {
     showToast?: (message: string, type?: string) => void;
-    /** base.js 暴露的顶栏徽标刷新入口（/static/js/core/base.js） */
+    /** base.js 暴露的顶栏提示刷新入口（/static/js/core/base.js） */
     updateNotificationCount?: () => void;
   }
 }
@@ -79,13 +79,13 @@ async function api(url: string, init?: RequestInit): Promise<ApiEnvelope> {
 }
 
 /**
- * 顶栏徽标刷新（2s 尾沿节流）。
+ * 顶栏提示刷新（2s 尾沿节流）。
  *
- * 聊天未读不再进通知列表，而是并入顶栏那个徽标（见 /api/notifications/count），
- * 所以「读掉一条 / 来了新消息」都要让徽标重算一次。节流是必要的：在聊天页连着收
- * 消息时每条都会触发一次已读上报，不节流等于每条消息多打一次计数接口。
- * 窗口内的请求不丢弃，而是**预约一次收尾刷新** —— 否则窗口里最后一次变更可能被
- * 吞掉（徽标停在旧值，直到下一次 20s 心跳）。
+ * 聊天未读不进通知列表，而是顶栏「聊天」链接上的那个红点（见
+ * /api/notifications/count 的 chatUnread），所以「读掉一条 / 来了新消息」都要让
+ * 红点重算一次。节流是必要的：在聊天页连着收消息时每条都会触发一次已读上报，
+ * 不节流等于每条消息多打一次计数接口。窗口内的请求不丢弃，而是**预约一次收尾
+ * 刷新** —— 否则窗口里最后一次变更可能被吞掉（红点停在旧值，直到下一次 20s 心跳）。
  */
 const BADGE_REFRESH_MS = 2_000;
 let badgeRefreshedAt = 0;
@@ -357,7 +357,7 @@ export default function ChatApp({
         setChannels((prev) =>
           prev.map((c) => (c.id === channelId ? clearUnreadMark(c) : c))
         );
-        // 顶栏徽标跟着降（聊天未读已并入它）
+        // 顶栏「聊天」红点跟着熄（聊天未读归它）
         refreshTopbarBadge();
       } catch {
         /* 已读失败不阻塞 */
@@ -454,7 +454,7 @@ export default function ChatApp({
     if (!isNearBottom()) return;
     setNewCount(0);
     const aid = activeRef.current;
-    // 窗口失焦时 markRead 自己会跳过（没看就不能算读过）→ 顶栏徽标保持亮着
+    // 窗口失焦时 markRead 自己会跳过（没看就不能算读过）→ 顶栏红点保持亮着
     if (aid && lastIdRef.current) void markRead(aid, lastIdRef.current);
   }, [isNearBottom, markRead]);
 
@@ -583,7 +583,7 @@ export default function ChatApp({
         if (historyViewRef.current) {
           if (m.author.id !== currentUserId) {
             setNewCount((n) => n + 1);
-            refreshTopbarBadge(); // 没读掉 → 顶栏徽标也要亮，20s 心跳兜底太慢
+            refreshTopbarBadge(); // 没读掉 → 顶栏红点也要亮，20s 心跳兜底太慢
           }
           return;
         }
@@ -595,7 +595,7 @@ export default function ChatApp({
           if (document.hasFocus()) void markRead(aid, m.id);
         } else {
           setNewCount((n) => n + 1);
-          // 没读掉（不在底部 / 窗口失焦）→ 顶栏徽标也要亮，20s 心跳兜底太慢
+          // 没读掉（不在底部 / 窗口失焦）→ 顶栏红点也要亮，20s 心跳兜底太慢
           refreshTopbarBadge();
         }
         return;
@@ -603,8 +603,8 @@ export default function ChatApp({
 
       // 非活动频道：自己的消息（其他标签页发的）/ 已删消息都不算未读
       if (m.author.id === currentUserId || m.is_deleted) return;
-      // 顶栏徽标跟着涨（聊天未读已并入它）。放在「新会话」分支之前：别人新发起的
-      // 私聊也要点亮徽标 —— 那条路径由 reconcile 落列表，不会走到下面的本地累加。
+      // 顶栏红点跟着亮（聊天未读归它）。放在「新会话」分支之前：别人新发起的
+      // 私聊也要点亮红点 —— 那条路径由 reconcile 落列表，不会走到下面的本地累加。
       refreshTopbarBadge();
       if (!channelsRef.current.some((c) => c.id === m.channel_id)) {
         void reconcile(); // 列表里还没有这个会话（别人新发起的私聊）→ 拉一次

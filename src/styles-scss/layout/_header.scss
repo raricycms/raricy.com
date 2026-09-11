@@ -127,10 +127,26 @@ a {
   border-radius: 999px;
   font-weight: 500;
   transition: color 0.3s ease, background-color 0.2s ease;
+  // 挂角用（.site-link__dot）
+  position: relative;
 
   &:hover {
     color: var(--color-brand-primary);
     background: var(--color-brand-secondary);
+  }
+
+  // 聊天未读小红点：挂在「聊天」链接右上角，由 base.js 按 /api/notifications/count
+  // 的 chatUnread 开关 display。只点红点不显数字 —— 铃铛的数字归站内通知，聊天未读
+  // 若也占个数字，点进通知列表就对不上（跨页数也说不清是哪个会话来的）。
+  &__dot {
+    position: absolute;
+    top: 2px;
+    right: 4px;
+    width: 8px;
+    height: 8px;
+    background: #dc3545;
+    border-radius: 50%;
+    animation: pulse 2s infinite;
   }
 
   // 专注模式禁用态（span 渲染，无导航）：淡化 + 不给 hover 反馈
@@ -338,17 +354,6 @@ a {
   &.large-count {
     font-size: 0.65rem;
     padding: 1px 4px;
-  }
-
-  // 只有大区 @ 我、没有可计数的未读 → 小红点，不显数字。
-  // 8px 圆点摆在数字徽标的圆心处（18px 徽标 top/right 2px ⇒ 圆心距角 11px）。
-  &.is-dot {
-    top: 7px;
-    right: 7px;
-    min-width: 8px;
-    width: 8px;
-    height: 8px;
-    padding: 0;
   }
 }
 

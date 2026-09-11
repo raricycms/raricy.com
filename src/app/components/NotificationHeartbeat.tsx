@@ -10,7 +10,7 @@ declare global {
   }
 }
 
-// 顶栏徽标（通知未读 + 聊天未读）「心跳」的换页即时刷新半边：
+// 顶栏两个提示（铃铛数字 +「聊天」红点）「心跳」的换页即时刷新半边：
 // root layout 在 Next 客户端路由切换（soft navigation）时不重挂载，base.js 又由
 // <Script strategy="afterInteractive"> 加载、只在整页加载时执行一次 —— 两者都感知
 // 不到路由变化。这里用 usePathname 监听切页，路由提交后立刻通知 base.js 拉一次

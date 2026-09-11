@@ -5,8 +5,8 @@ import { FOCUS_MODE_BLOCKED_TITLE } from '@/lib/focus-mode';
 import LogoutLink from './LogoutLink';
 
 // 顶栏 — Flask `base.html` 样式（site-* BEM + icon mask）
-// base.js 通过 id (#userDropdownToggle, #userDropdownMenu, #themeToggle, #notificationBadge, #checkinBadge)
-// 与 .open class 操纵此顶栏，故结构必须与 Flask 保持一致。
+// base.js 通过 id (#userDropdownToggle, #userDropdownMenu, #themeToggle, #notificationBadge,
+// #checkinBadge, #chatUnreadDot) 与 .open class 操纵此顶栏，故结构必须与 Flask 保持一致。
 export default function Navbar({ user }: { user: SafeUser | null }) {
   return (
     <header className="site-navbar" role="navigation">
@@ -60,7 +60,13 @@ export default function Navbar({ user }: { user: SafeUser | null }) {
             </li>
             {isCoreUser(user) && (
               <li>
-                <Link className="site-link" href="/chat">聊天</Link>
+                <Link className="site-link" href="/chat">
+                  聊天
+                  {/* 聊天未读红点（私聊有未读 / 大区被 @）：base.js 按
+                      /api/notifications/count 的 chatUnread 字段开关。
+                      不放铃铛上——铃铛数字必须等于通知列表的条目数。 */}
+                  <span className="site-link__dot" id="chatUnreadDot" style={{ display: 'none' }} />
+                </Link>
               </li>
             )}
           </ul>

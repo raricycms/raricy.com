@@ -137,9 +137,10 @@ function createToastContainer() {
     return container;
 }
 
-// 获取并更新顶栏徽标
-// 服务端返回 { count, dot }：count = 通知未读 + 聊天未读条数（显示数字）；
-// count 为 0 而 dot 为 true → 只显示小红点（聊天大区只有被 @ 时才亮，无条数）。
+// 获取并更新顶栏的两个提示（同一次请求喂两个元素）
+// 服务端返回 { count, chatUnread }：
+//   count      → 铃铛数字，只数站内通知（＝ /notifications 列表里的条数，聊天不计入）
+//   chatUnread → 「聊天」链接右上角的小红点（私聊有未读 / 大区被 @）
 function updateNotificationCount() {
     if (!window.isUserAuthenticated) {
         console.log('用户未登录，跳过通知数量更新');
@@ -158,10 +159,8 @@ function updateNotificationCount() {
             const badge = document.getElementById('notificationBadge');
             if (badge) {
                 const count = data.count || 0;
-                const dot = !!data.dot;
                 if (count > 0) {
                     badge.style.display = 'flex';
-                    badge.classList.remove('is-dot');
                     if (count > 99) {
                         badge.textContent = '99+';
                         badge.classList.add('large-count');
@@ -170,17 +169,17 @@ function updateNotificationCount() {
                         badge.classList.remove('large-count');
                     }
                     badge.classList.add('has-notifications');
-                } else if (dot) {
-                    badge.style.display = 'flex';
-                    badge.textContent = '';
-                    badge.classList.remove('large-count');
-                    badge.classList.add('is-dot');
-                    badge.classList.add('has-notifications');
                 } else {
                     badge.style.display = 'none';
                     badge.classList.remove('has-notifications');
-                    badge.classList.remove('is-dot');
+                    badge.classList.remove('large-count');
                 }
+            }
+
+            // 聊天未读：不算数字，只在「聊天」链接右上角点一个红点
+            const chatDot = document.getElementById('chatUnreadDot');
+            if (chatDot) {
+                chatDot.style.display = data.chatUnread ? 'block' : 'none';
             }
         })
         .catch(error => {

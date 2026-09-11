@@ -399,10 +399,21 @@ a:hover {
   border-radius: 999px;
   font-weight: 500;
   transition: color 0.3s ease, background-color 0.2s ease;
+  position: relative;
 }
 .site-link:hover {
   color: var(--color-brand-primary);
   background: var(--color-brand-secondary);
+}
+.site-link__dot {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  width: 8px;
+  height: 8px;
+  background: #dc3545;
+  border-radius: 50%;
+  animation: pulse 2s infinite;
 }
 .site-link.is-disabled {
   color: var(--color-text-tertiary);
@@ -573,14 +584,6 @@ a:hover {
 .notification-badge.large-count {
   font-size: 0.65rem;
   padding: 1px 4px;
-}
-.notification-badge.is-dot {
-  top: 7px;
-  right: 7px;
-  min-width: 8px;
-  width: 8px;
-  height: 8px;
-  padding: 0;
 }
 
 .theme-toggle-button {
