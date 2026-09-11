@@ -6,11 +6,14 @@
 //
 // ⚠️ 关键：DateTime 格式
 //   SQLAlchemy 以 "YYYY-MM-DD HH:MM:SS.ffffff"（空格分隔、无时区）写入；
-//   Prisma 的 SQLite 连接器按列的“声明类型 DATETIME”在驱动层解析，要求 ISO-8601，
-//   否则报 "Conversion failed: input contains invalid characters"（已实测复现）。
-//   因此使用本 schema 前，数据库必须先规整为 ISO：
+//   Prisma 的 SQLite 连接器按列的“声明类型 DATETIME”在驱动层解析，这种格式会直接报
+//   "Conversion failed: input contains invalid characters"（已实测复现）。
+//   因此使用本 schema 前，数据库必须先规整为 **INTEGER（Unix 毫秒）** —— 与 Prisma
+//   自己写入 SQLite 的存储格式一致：
 //       npm run db:normalize            # 在副本上执行，见 scripts/normalize-datetimes.mjs
-//   规整是单向门：Flask 侧（若仍在读同库）需要给 SQLAlchemy 配 ISO 兼容类型，
+//   （曾经转成 ISO 文本：Prisma 读得出，但 SQLite 跨存储类型比较按类型序而非数值，
+//     会让 gte 恒真 / lt 恒假 —— 表现为历史文章全被算成「今天发的」。）
+//   规整是单向门：Flask 侧（若仍在读同库）需要给 SQLAlchemy 配兼容类型，
 //   否则按“硬切换”处理。
 //
 // 其它：
@@ -555,7 +558,8 @@ model OAuthAuthorizationCode {
   applicationId String    @map("application_id")
   userId        String    @map("user_id")
   redirectUri   String    @map("redirect_uri")
-  // JSON 字符串数组，如 ["profile"]。SQLite 无数组类型。
+  // 空格分隔的 scope 串（当前只有 "profile"）。⚠️ **不是 JSON** —— 同一张表里
+  // redirect_uris 才是 JSON。编解码见 src/lib/oauth.ts 的 scopesToString / normalizeScopes。
   scopes        String
   expiresAt     DateTime  @map("expires_at")
   usedAt        DateTime? @map("used_at")
