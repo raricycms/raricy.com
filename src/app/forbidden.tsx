@@ -7,7 +7,13 @@ import { getCurrentUser } from '@/lib/auth';
 // 【按登录态分支】能走到这里的**基本都是已登录用户**：所有 guard 在未登录时都先
 // redirect 到 /login（见 lib/guard.ts、admin/layout.tsx），forbidden() 只留给
 // 「登录了但角色不够」。所以不能再无脑劝人「去登录」—— 对已登录的人那是个死循环
-// （登录页会把他送回来）。已登录时改为说明权限不足 + 给出换账号的出口。
+// （登录页会把他送回来）。已登录时只说明权限不足。
+//
+// 【这里曾经有个「换个账号」的 <Link href="/logout">，已删除】
+// 那是个会自己触发的登出：Next 在生产环境会预取视口内的链接，而 GET /logout 这条路
+// 由处理器做的事就是清会话 —— 于是「看一眼 403 页」=「被静默登出」。用户上报的
+// 「会自动退登」就是这个。现在登出只认 POST（见 /api/auth/logout），别再往这里
+// 放任何指向登出端点的链接；真要换账号，用户自己走顶栏的「退出登录」。
 export default async function Forbidden() {
   const user = await getCurrentUser();
 
@@ -44,14 +50,9 @@ export default async function Forbidden() {
           </p>
           <div className="rainbow-error__actions">
             {user ? (
-              <>
-                <Link href="/" className="rainbow-error__btn rainbow-error__btn--solid">
-                  <span className="icon icon-house"></span>返回首页
-                </Link>
-                <Link href="/logout" className="rainbow-error__btn rainbow-error__btn--ghost">
-                  <span className="icon icon-box-arrow-right"></span>换个账号
-                </Link>
-              </>
+              <Link href="/" className="rainbow-error__btn rainbow-error__btn--solid">
+                <span className="icon icon-house"></span>返回首页
+              </Link>
             ) : (
               <>
                 <Link href="/login" className="rainbow-error__btn rainbow-error__btn--solid">

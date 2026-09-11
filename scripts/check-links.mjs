@@ -36,7 +36,7 @@ const green = (s) => `\x1b[32m${s}\x1b[0m`;
 const bold = (s) => `\x1b[1m${s}\x1b[0m`;
 
 /** Next 的约定式产物 / 静态资源 —— 没有 page.tsx 但确实可访问。 */
-const SPECIAL = new Set(['/robots.txt', '/sitemap.xml', '/logout']);
+const SPECIAL = new Set(['/robots.txt', '/sitemap.xml']);
 const IGNORED_PREFIXES = ['/static/', '/_next'];
 
 function walk(dir, out = []) {

@@ -49,24 +49,53 @@ test.describe('认证主链路', () => {
       expect(new URL(page.url()).pathname).toBe(url);
     }
 
-    // 登出：走顶栏那个无 JS 依赖的 GET /logout（移动端下拉菜单是折叠的，
-    // 直接点 DOM 里的链接在 iPhone 视口下不可见，故用导航触发）
-    // 注意别在 goto 之后再 waitForURL('/')：goto 已经跟完了 302 并停在 '/'，
-    // 此时 waitForURL 是在等**下一次**导航，那次导航永远不会来 → 30s 超时，
-    // 且失败信息长得像「登出没跳转」，极具误导性。goto 返回即代表跳转已完成。
-    await page.goto('/logout');
-    expect(new URL(page.url()).pathname).toBe('/'); // GET /logout 应重定向回首页
-    expect(await serverSeesAuthenticated(page)).toBe(false);
-    // 顶栏切回未登录态。用 toHaveCount 而非 toBeVisible：移动端（iPhone 13 视口）下
-    // 导航折进汉堡菜单，登录链接在 DOM 里但 hidden ——
-    // 断可见性会让这条用例只在桌面视口成立，且失败信息像「登出没生效」，纯属误导。
+    // 登出：走顶栏用户下拉里的「退出登录」，这是**唯一**入口（POST /api/auth/logout）。
+    // 曾经这里 `goto('/logout')` —— 那条 GET 路由已连根删除：GET 登出会被别人发起
+    // （Next 预取视口内的 <Link>、第三方页面上的 <img src="/logout">），用户只看到
+    // 自己莫名其妙掉了线。别再把它加回来。
+    // base.js 的 window.logout() 先弹 confirm()，Playwright 默认**取消**对话框，
+    // 不挂这个 handler 的话点击等于什么都没发生。
+    page.on('dialog', (d) => d.accept());
+    await page.click('#userDropdownToggle');
+    await page.click('#userDropdownMenu a:has-text("退出登录")');
+    // 顶栏切回未登录态，即证明那次整页跳转（window.location.href='/'）已经跑完。
+    // 【为什么不用 waitForURL('/')】上面那个循环已经停在 '/' 了，URL 现在就是 '/' ——
+    // waitForURL 会立刻返回，等于什么都没等，断言跑在旧页面上。toHaveCount 会自动重试，
+    // 能真正等到重载后的 DOM。
+    // 用 toHaveCount 而非 toBeVisible：移动端（iPhone 13 视口）下导航折进汉堡菜单，
+    // 登录链接在 DOM 里但 hidden —— 断可见性会让这条用例只在桌面视口成立，
+    // 且失败信息像「登出没生效」，纯属误导。
     // 类名是 Next Navbar 的 site-login-btn（Flask 时代的 .nav-login 已随迁移废弃）。
     await expect(page.locator('.site-login-btn')).toHaveCount(1);
     await expect(page.locator('#userDropdownToggle')).toHaveCount(0);
+    expect(await serverSeesAuthenticated(page)).toBe(false);
 
     // 登出必须是服务端认定的：再访问需要登录的页面应被打回
     await page.goto('/checkin');
     await expect(page).toHaveURL(/\/login/);
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // 回归：登出不能被 GET 触发
+  //
+  // 线上症状是「会自动退登」——用户打开一个 403 页（那页曾挂着 <Link href="/logout">），
+  // Next 预取视口内的链接就把他的会话清掉了。根因是「GET 一打就清会话」这件事本身：
+  // 发起方不必是本人（预取、爬虫、第三方 <img src="/logout">），而本站刻意允许被
+  // iframe 嵌入。修法是让它不复存在，这条用例钉住它别回来。
+  // ───────────────────────────────────────────────────────────────────────────
+  test('★ 登出只认 POST：GET 打登出端点既不成功也不掉线', async ({ page }) => {
+    await loginViaUI(page, SEED_USERS.core.username);
+    expect(await serverSeesAuthenticated(page)).toBe(true);
+
+    for (const url of ['/logout', '/api/auth/logout']) {
+      const res = await page.request.get(url);
+      // 405（只导出了 POST）或 404（路由已删）都行 —— 反正不能是 200。
+      expect(res.status(), `${url} 不该再提供可用的 GET 登出`).not.toBe(200);
+    }
+
+    // 而且要真去导航一次才算数：上面若真清了 cookie，这一步服务端就认不出人了
+    await page.goto('/');
+    expect(await serverSeesAuthenticated(page), 'GET 打登出端点把人踢下线了').toBe(true);
   });
 
   test('密码错误不下发会话', async ({ page }) => {
