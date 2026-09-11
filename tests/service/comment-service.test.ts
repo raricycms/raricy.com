@@ -856,7 +856,7 @@ describe('序列化：snake_case 字段与作者信息', () => {
     if (!r.ok) throw new Error('前置失败');
     expect(Object.keys(r.comment).sort()).toEqual([
       'author', 'blog', 'blog_id', 'blog_missing', 'children', 'content', 'content_html',
-      'created_at', 'id', 'image', 'image_missing', 'is_deleted', 'likes_count',
+      'created_at', 'id', 'image', 'image_missing', 'is_deleted', 'liked', 'likes_count',
       'parent_id', 'root_id', 'status', 'updated_at',
     ]);
   });
@@ -1207,5 +1207,108 @@ describe('附件：引用博客', () => {
     expect(dead.blog).toBeNull();
     expect(dead.blog_missing).toBe(false);
     expect(JSON.stringify(tree)).not.toContain(img.id);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 13. 点赞（本次给后端补上前端入口，顺带补上缺失的限频）
+//
+// 盯三件事：
+//   · liked 是**随查看者而变**的 —— 同一棵评论树，A 看与 B 看结果不同；
+//   · liked 不得漏进 spider 契约（tests/service/spider-comment.test.ts 断言键集合）；
+//   · 限频的桶与博客点赞**分开**，否则新功能会顺带改掉既有行为。
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('评论点赞', () => {
+  it('toggle 往返：先赞后取消，likes_count 跟着走', async () => {
+    const { author, blog } = await seedBlog();
+    const liker = await makeUser({ role: 'core' });
+    const c = await createComment({ blogId: blog.id, authorId: author.id, content: 'x' });
+    if (!c.ok) throw new Error('前置失败');
+
+    const on = await toggleCommentLike(c.comment.id, liker.id);
+    expect(on).toEqual({ liked: true, likesCount: 1 });
+
+    const off = await toggleCommentLike(c.comment.id, liker.id);
+    expect(off).toEqual({ liked: false, likesCount: 0 });
+  });
+
+  it('两个用户各赞一次 → 计数为 2', async () => {
+    const { author, blog } = await seedBlog();
+    const u1 = await makeUser({ role: 'core' });
+    const u2 = await makeUser({ role: 'core' });
+    const c = await createComment({ blogId: blog.id, authorId: author.id, content: 'x' });
+    if (!c.ok) throw new Error('前置失败');
+
+    await toggleCommentLike(c.comment.id, u1.id);
+    const second = await toggleCommentLike(c.comment.id, u2.id);
+    expect(second).toEqual({ liked: true, likesCount: 2 });
+  });
+
+  it('★ liked 随查看者而变（同一棵树，A 看 true、B 看 false、未登录 false）', async () => {
+    const { author, blog } = await seedBlog();
+    const alice = await makeUser({ role: 'core' });
+    const bob = await makeUser({ role: 'core' });
+    const c = await createComment({ blogId: blog.id, authorId: author.id, content: 'x' });
+    if (!c.ok) throw new Error('前置失败');
+    await toggleCommentLike(c.comment.id, alice.id);
+
+    const [forAlice] = await listCommentsForBlog(blog.id, alice.id);
+    const [forBob] = await listCommentsForBlog(blog.id, bob.id);
+    const [anonymous] = await listCommentsForBlog(blog.id);
+
+    expect(forAlice.liked, 'A 赞过 → true').toBe(true);
+    expect(forAlice.likes_count).toBe(1);
+    expect(forBob.liked, 'B 没赞过 → false').toBe(false);
+    expect(forBob.likes_count, '但计数是所有人共享的').toBe(1);
+    expect(anonymous.liked, '未登录没有「我」→ false').toBe(false);
+  });
+
+  it('★ liked 不漏进 spider 契约（那是外部接口）', async () => {
+    const { author, blog } = await seedBlog();
+    const liker = await makeUser({ role: 'core' });
+    const c = await createComment({ blogId: blog.id, authorId: author.id, content: 'x' });
+    if (!c.ok) throw new Error('前置失败');
+    await toggleCommentLike(c.comment.id, liker.id);
+
+    const { getSpiderComment } = await import('@/lib/spider-service');
+    const out = await getSpiderComment(c.comment.id);
+    expect(out).not.toBeNull();
+    expect(out).not.toHaveProperty('liked');
+  });
+
+  it('软删的评论不可点赞 → notFound', async () => {
+    const { author, blog } = await seedBlog();
+    const liker = await makeUser({ role: 'core' });
+    const c = await createComment({ blogId: blog.id, authorId: author.id, content: 'x' });
+    if (!c.ok) throw new Error('前置失败');
+    await softDeleteComment(c.comment.id, { id: author.id, role: 'core' });
+
+    expect(await toggleCommentLike(c.comment.id, liker.id)).toEqual({ notFound: true });
+  });
+
+  it('不存在的 id → notFound（且不该消耗限频额度）', async () => {
+    const liker = await makeUser({ role: 'core' });
+    expect(await toggleCommentLike(crypto.randomUUID(), liker.id)).toEqual({ notFound: true });
+  });
+
+  it('★ 限频桶与博客点赞分开：刷满评论点赞不会挡住博客点赞', async () => {
+    const { author, blog } = await seedBlog();
+    const liker = await makeUser({ role: 'core' });
+    const c = await createComment({ blogId: blog.id, authorId: author.id, content: 'x' });
+    if (!c.ok) throw new Error('前置失败');
+
+    // 把评论点赞的桶灌满（键前缀 comment-like:）
+    for (let i = 0; i < RULES.likeHourly.limit; i++) {
+      rateLimit(`comment-like:h:${liker.id}`, RULES.likeHourly);
+      rateLimit(`comment-like:d:${liker.id}`, RULES.likeDaily);
+    }
+    const blocked = await toggleCommentLike(c.comment.id, liker.id);
+    expect(blocked, '评论点赞应被自己的桶挡住').toEqual({ rateLimited: true });
+
+    // 博客点赞用的是 like:h: —— 另一个桶，必须还能用
+    const { toggleLike } = await import('@/lib/blog-service');
+    const blogLike = await toggleLike(blog.id, liker.id);
+    expect(blogLike, '博客点赞不该被评论点赞的额度影响').not.toHaveProperty('rateLimited');
   });
 });

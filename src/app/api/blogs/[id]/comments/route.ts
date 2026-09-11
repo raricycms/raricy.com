@@ -3,9 +3,13 @@ import { getCurrentUser, isCurrentlyBanned } from '@/lib/auth';
 import { apiOk, apiErr } from '@/lib/format';
 
 // GET /api/blogs/:id/comments — 评论嵌套树（公开）
+//
+// 接口本身不需要登录（评论是公开内容），但登录时要把「谁在看」传下去 —— 每条评论的
+// liked 是随人而变的。未登录 → viewerId 为 null，liked 全为 false。
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
-  const comments = await listCommentsForBlog(id);
+  const viewer = await getCurrentUser();
+  const comments = await listCommentsForBlog(id, viewer?.id ?? null);
   return apiOk({ comments });
 }
 

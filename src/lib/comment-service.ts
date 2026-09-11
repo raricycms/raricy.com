@@ -102,6 +102,13 @@ export interface CommentNode extends CommentBaseDTO {
   blog: CommentBlogDTO | null;
   /** quoteBlogId 有值但博客缺失/已软删 → 前端给 [博客已删除] 占位。 */
   blog_missing: boolean;
+  /**
+   * 当前**查看者**有没有赞过这条。⚠️ 不在 CommentBaseDTO 里 —— 它是随人而变的，
+   * 而 spider 接口无认证（恒为未登录），把 liked 加进公共部分等于凭空改变对外契约
+   * （tests/service/spider-comment.test.ts 会挡住）。
+   * 未登录访问 / 已删除的评论一律 false（前者没有「我」，后者不可点赞）。
+   */
+  liked: boolean;
   children: CommentNode[];
 }
 
@@ -189,6 +196,8 @@ function serializeRow(c: CommentRow): CommentNode {
     image_missing: false,
     blog: null,
     blog_missing: false,
+    // 随人而变，由 attachLikes 按查看者批量填；未登录 / 软删恒为 false
+    liked: false,
     children: [],
   };
 }
@@ -304,10 +313,36 @@ function filterDeletedLeaves(nodes: CommentNode[]): CommentNode[] {
 }
 
 /**
+ * 按查看者批量填 `liked`（未登录传 null → 全部保持 false）。
+ *
+ * 与 attachAttachments 同样是「一次查完整棵树」的批量做法 —— 评论树可能上百条，
+ * 逐条查 CommentLike 就是 N+1。已删除的评论**不查也不标**：它们不可点赞
+ * （toggleCommentLike 对软删一律 notFound），前端也不给按钮。
+ */
+async function attachLikes(nodes: CommentNode[], viewerId: string | null): Promise<void> {
+  if (!viewerId) return;
+  const targets = flatten(nodes).filter((n) => !n.is_deleted);
+  if (!targets.length) return;
+
+  const likes = await prisma.commentLike.findMany({
+    where: { userId: viewerId, commentId: { in: targets.map((n) => n.id) } },
+    select: { commentId: true },
+  });
+  const likedIds = new Set(likes.map((l) => l.commentId));
+  for (const n of targets) n.liked = likedIds.has(n.id);
+}
+
+/**
  * 获取某文章的评论树（status='approved'，含已删除节点参与建树，
  * 最后丢弃无子的已删除叶子）。输入已按 createdAt 升序，天然保序。
+ *
+ * @param viewerId 当前登录用户（未登录传 null）。只影响每条评论的 `liked` ——
+ *                 评论树本身是公开的（GET 接口无认证）。
  */
-export async function listCommentsForBlog(blogId: string): Promise<CommentNode[]> {
+export async function listCommentsForBlog(
+  blogId: string,
+  viewerId: string | null = null
+): Promise<CommentNode[]> {
   const rows = await prisma.blogComment.findMany({
     where: { blogId, status: 'approved' },
     orderBy: { createdAt: 'asc' },
@@ -327,6 +362,7 @@ export async function listCommentsForBlog(blogId: string): Promise<CommentNode[]
   }
 
   await attachAttachments(roots, rows);
+  await attachLikes(roots, viewerId);
   return filterDeletedLeaves(roots);
 }
 
@@ -638,18 +674,41 @@ export async function softDeleteComment(
 
 export type ToggleLikeResult =
   | { liked: boolean; likesCount: number }
-  | { notFound: true };
+  | { notFound: true }
+  | { rateLimited: true };
 
 /**
  * 切换评论点赞（唯一约束 commentId+userId），维护 BlogComment.likesCount。
+ *
+ * 限频口径对齐 blog-service.toggleLike：先查存在性、再扣配额（刷不存在的 id 不该
+ * 烧掉自己的点赞额度），规则值同 RULES.likeHourly / likeDaily。
+ *
+ * ⚠️ 但**计桶的键与博客点赞分开**（`comment-like:` 前缀）：共用 `like:h:${userId}`
+ * 的话，给评论点赞会顶掉文章的额度、反之亦然 —— 那是「新增一个功能」顺带改变了
+ * 既有行为，不该发生。
+ *
+ * 【为什么不发通知】博客点赞会通知作者，评论点赞刻意不发：一篇文章的评论可能被同一
+ * 个人连赞多条，每条都推一次会把通知列表刷满。当前产品口径就是「评论点赞是轻互动，
+ * 不进通知」。（若将来要改，需先定「同一人对同一篇文章的多条评论只发一条」之类的闸门。）
  */
 export async function toggleCommentLike(commentId: string, userId: string): Promise<ToggleLikeResult> {
+  const exists = await prisma.blogComment.findFirst({
+    where: { id: commentId, isDeleted: false },
+    select: { id: true },
+  });
+  if (!exists) return { notFound: true as const };
+
+  const hourly = rateLimit(`comment-like:h:${userId}`, RULES.likeHourly);
+  const daily = rateLimit(`comment-like:d:${userId}`, RULES.likeDaily);
+  if (!hourly.allowed || !daily.allowed) return { rateLimited: true as const };
+
   return prisma.$transaction(async (tx) => {
-    const comment = await tx.blogComment.findUnique({
-      where: { id: commentId },
-      select: { id: true, isDeleted: true },
+    // 事务内再确认一次：并发下这条评论可能刚被软删
+    const comment = await tx.blogComment.findFirst({
+      where: { id: commentId, isDeleted: false },
+      select: { id: true },
     });
-    if (!comment || comment.isDeleted) return { notFound: true as const };
+    if (!comment) return { notFound: true as const };
 
     const existing = await tx.commentLike.findUnique({
       where: { uq_comment_like_comment_user: { commentId, userId } },

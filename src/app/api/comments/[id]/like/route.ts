@@ -9,6 +9,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
 
   const { id } = await ctx.params;
   const res = await toggleCommentLike(id, user.id);
+  if ('rateLimited' in res) return apiErr(429, '操作过于频繁，请稍后再试');
   if ('notFound' in res) return apiErr(404, '评论不存在或已删除');
 
   return apiOk({ liked: res.liked, likes_count: res.likesCount });
