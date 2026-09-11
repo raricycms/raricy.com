@@ -1,3 +1,6 @@
+@use '../components/composer' as composer;
+@use '../components/markdown-body' as markdown-body;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 在线聊天区（/chat）— 双栏工作台：会话侧栏（可折叠/移动端抽屉）+ 消息主区。
 // 全部使用 CSS 变量令牌，跟随 data-theme 明暗主题。
@@ -780,111 +783,11 @@
 }
 
 // ── Markdown 正文（ChatMarkdown）──────────────────────────────────────────────
-// 气泡只有 0.92rem / 行高 1.55，块级元素一律紧凑：外边距压到 0.5em，首尾贴边，
-// 否则一条「一段话 + 一个列表」的消息会比纯文本高出一倍。
-.chat-msg__md {
-  // 父级 .chat-msg__content 是 white-space: pre-wrap（纯文本回退态要用）：
-  // 不清掉的话，marked 输出的标签间换行会被当成空白保留 → 每行之间多出空行。
-  white-space: normal;
-  word-break: break-word;
-}
-.chat-msg__md > :first-child {
-  margin-top: 0;
-}
-.chat-msg__md > :last-child {
-  margin-bottom: 0;
-}
-.chat-msg__md p {
-  margin: 0 0 0.5em;
-}
-// 标题按层级小幅放大：气泡正文只有 0.92rem，h1 原尺寸 2em 会把气泡撑爆，
-// 但全压成 1em 又让 # 和 ###### 长得一模一样（层级信息全丢）。折中取
-// 1.35em → 0.95em 递减，行高收紧；h6 用次级色，保证最小的标题也能区分。
-.chat-msg__md h1,
-.chat-msg__md h2,
-.chat-msg__md h3,
-.chat-msg__md h4,
-.chat-msg__md h5,
-.chat-msg__md h6 {
-  margin: 0.7em 0 0.35em;
-  font-weight: 700;
-  line-height: 1.35;
-}
-.chat-msg__md h1 {
-  font-size: 1.35em;
-}
-.chat-msg__md h2 {
-  font-size: 1.25em;
-}
-.chat-msg__md h3 {
-  font-size: 1.15em;
-}
-.chat-msg__md h4 {
-  font-size: 1.08em;
-}
-.chat-msg__md h5 {
-  font-size: 1em;
-}
-.chat-msg__md h6 {
-  font-size: 0.95em;
-  color: var(--color-text-secondary);
-}
-.chat-msg__md ul,
-.chat-msg__md ol {
-  margin: 0 0 0.5em;
-  padding-left: 1.4em;
-}
-.chat-msg__md li {
-  margin: 0.15em 0;
-}
-// GFM 任务列表的复选框是禁用态（服务端不认识勾选状态，纯展示）
-.chat-msg__md li > input[type='checkbox'] {
-  margin-right: 0.35em;
-}
-.chat-msg__md blockquote {
-  margin: 0 0 0.5em;
-  padding: 2px 10px;
-  border-left: 3px solid var(--color-border);
-  color: var(--color-text-secondary);
-}
-.chat-msg__md code {
-  padding: 1px 4px;
-  border-radius: 4px;
-  background: var(--color-background-subtle);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.86em;
-  word-break: break-all;
-}
-.chat-msg__md pre {
-  margin: 0 0 0.5em;
-  padding: 8px 10px;
-  border-radius: 8px;
-  background: var(--color-background-subtle);
-  overflow-x: auto;
-}
-.chat-msg__md pre code {
-  padding: 0;
-  background: none;
-  word-break: normal;
-}
-// 表格可能比气泡宽：display:block + 横向滚动，不让它把气泡撑出屏幕
-.chat-msg__md table {
-  display: block;
-  max-width: 100%;
-  margin: 0 0 0.5em;
-  overflow-x: auto;
-  border-collapse: collapse;
-}
-.chat-msg__md th,
-.chat-msg__md td {
-  padding: 2px 8px;
-  border: 1px solid var(--color-border);
-}
-.chat-msg__md hr {
-  margin: 0.6em 0;
-  border: none;
-  border-top: 1px solid var(--color-border);
-}
+//
+// 块级元素的样式在 components/_markdown-body.scss —— 评论正文共用同一份（元素集合
+// 完全一致，写两份必然 drift）。这里只 @include 一次。
+
+@include markdown-body.rich-markdown('chat-msg__md');
 
 .chat-msg__deleted {
   color: var(--color-text-secondary);
@@ -1213,177 +1116,18 @@
 }
 
 // ── 输入区（QQ 式：附件条在上、整块圆角面板，幽灵工具条嵌在面板顶部内侧）─────
+//
+// 具体样式在 components/_composer.scss —— 它与评论区的输入区共用同一份（mixin 带
+// BEM 前缀参数）。这里只补聊天气泡场景专属的容器形态：它是聊天列的 flex 子项，
+// 需要顶部描边与固定不收缩。
+
+@include composer.rich-composer('chat-composer');
 
 .chat-composer {
   flex: none;
   border-top: 1px solid var(--color-border);
   background: var(--color-background-card);
   padding: 10px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-// 附件条（回复 / 引用博客 / 待发图片）统一在输入框面板上方
-
-.chat-composer__reply {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.8rem;
-  color: var(--color-text-secondary);
-  background: var(--color-background-subtle);
-  border-left: 3px solid var(--color-brand-primary);
-  padding: 4px 8px;
-  border-radius: 6px;
-}
-.chat-composer__reply-text {
-  flex: 1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.chat-composer__reply-close {
-  border: none;
-  background: transparent;
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  font-size: 1rem;
-}
-
-// 引用博客草稿 chip（与 __reply 同族，左侧书本图标标识）
-.chat-composer__blog {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.8rem;
-  color: var(--color-text-secondary);
-  background: var(--color-background-subtle);
-  border-left: 3px solid var(--color-brand-primary);
-  padding: 4px 8px;
-  border-radius: 6px;
-}
-.chat-composer__blog-icon {
-  flex: none;
-  color: var(--color-brand-primary);
-}
-
-.chat-composer__image {
-  position: relative;
-  width: fit-content;
-}
-.chat-composer__image img {
-  max-width: 120px;
-  max-height: 120px;
-  border-radius: 10px;
-  display: block;
-}
-.chat-composer__image-remove {
-  position: absolute;
-  top: -8px;
-  right: -8px;
-  width: 22px;
-  height: 22px;
-  border: none;
-  border-radius: 999px;
-  background: var(--color-warning-primary);
-  color: #fff;
-  cursor: pointer;
-  font-size: 0.85rem;
-  line-height: 1;
-}
-
-// 输入框整块面板：横向填满；幽灵工具条嵌顶部内侧 → 变高文本框 → 底条（发送右下）
-.chat-composer__panel {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  border: 1px solid var(--color-border);
-  border-radius: 14px;
-  background: var(--color-background-card);
-  padding: 4px 8px 8px;
-}
-
-// 幽灵工具条：无背景无边框，hover 才显浅底（QQ 风格）
-.chat-composer__toolbar {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-.chat-composer__icon-btn {
-  flex: none;
-  width: 30px;
-  height: 30px;
-  border: none;
-  background: transparent;
-  color: var(--color-text-secondary);
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 1.15rem;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-}
-.chat-composer__icon-btn:hover:not(:disabled) {
-  background: var(--color-background-subtle);
-  color: var(--color-brand-primary);
-}
-.chat-composer__icon-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.chat-composer__input {
-  resize: none;
-  border: none;
-  background: transparent;
-  color: var(--color-text-primary);
-  padding: 6px;
-  font-size: 0.95rem;
-  line-height: 1.5;
-  font-family: inherit;
-  min-height: 72px;
-  max-height: 176px;
-  overflow-y: auto;
-}
-.chat-composer__input:focus {
-  outline: none;
-}
-
-// 面板底条：左侧提示文字 + 右下角发送（QQ9 风格）
-.chat-composer__foot {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 2px 2px 0;
-}
-.chat-composer__hint {
-  font-size: 0.72rem;
-  color: var(--color-text-tertiary);
-  user-select: none;
-}
-
-.chat-composer__send {
-  flex: none;
-  border: none;
-  border-radius: 999px;
-  padding: 6px 20px;
-  background: var(--color-brand-secondary);
-  color: var(--color-brand-primary);
-  font-weight: 700;
-  font-size: 0.92rem;
-  cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
-}
-.chat-composer__send:hover:not(:disabled) {
-  background: var(--color-brand-primary);
-  color: #fff;
-}
-.chat-composer__send:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 // ── 发起私聊弹窗 ─────────────────────────────────────────────────────────────

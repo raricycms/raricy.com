@@ -19,6 +19,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { prisma } from './db';
+import { COMMENT_TEXT_MAX, COMMENT_CAPTION_MAX } from './comment-shared';
 import { nowForDb } from './db-time';
 import { hasAdminRights } from './auth';
 import { rateLimit, RULES } from './rate-limit';
@@ -79,10 +80,10 @@ export interface CommentNode {
 
 const DELETED_PLACEHOLDER = '[该评论已删除]';
 
-/** 纯文本评论上限（对齐改版前的口径：评论文本一直允许到 2000）。 */
-export const COMMENT_TEXT_MAX = 2000;
-/** 带附件评论的图注上限（对齐聊天 CHAT_CAPTION_MAX：「图片 + 长文」一条排版会很难看）。 */
-export const COMMENT_CAPTION_MAX = 500;
+// 字数上限是前后端共用的纯数据，定义在 comment-shared.ts（客户端组件 import 本文件
+// 会把 prisma / next/headers 打进浏览器包 —— 那个文件头解释了为什么）。这里 re-export
+// 只是为了让服务端调用方少一个 import。
+export { COMMENT_TEXT_MAX, COMMENT_CAPTION_MAX } from './comment-shared';
 
 // markupsafe.escape 语义：& < > " ' → 实体
 function escapeHtml(s: string): string {

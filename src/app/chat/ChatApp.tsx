@@ -24,7 +24,7 @@ import { LS_KEY, COOKIE_NAME, COOKIE_MAX_AGE } from '@/lib/chat-sidebar-pref';
 import NewChatModal from './NewChatModal';
 import QuoteBlogModal from '../components/QuoteBlogModal';
 import AvatarMenu, { type AvatarMenuAnchor } from './AvatarMenu';
-import ImageLightbox from './ImageLightbox';
+import ImageLightbox from '../components/ImageLightbox';
 import ChatMessageItem, { dayKey, fmtDay, isMentioned } from './ChatMessageItem';
 import ChatSidebar from './ChatSidebar';
 import RichComposer, { type ComposerBlogQuote } from '../components/RichComposer';
