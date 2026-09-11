@@ -11,7 +11,7 @@
 // --json 任一命中即关闭；FORCE_COLOR=1 可强制保留（CI 日志要看颜色时用）。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { ColumnSpec, Output } from './types';
+import type { CmdOutput, ColumnSpec, Output } from './types';
 
 // ── 颜色 ─────────────────────────────────────────────────────────────────────
 
@@ -180,6 +180,30 @@ export function renderTable(
   const body = rows.map((r) => renderRow(columns.map((c) => cellText(r[c.key]))));
 
   return [header, rule, ...body];
+}
+
+/**
+ * 打印一条命令的结果。两条前端共用。
+ *
+ * --json 时 stdout **只留一个 JSON 对象**，人读行一律抑制、提示行改走 stderr ——
+ * 这样 `npm run cli -- xxx --json | jq` 拿到的永远是干净可解析的 JSON。
+ */
+export function printResult(io: Output, cmdName: string, out: CmdOutput, jsonMode: boolean): void {
+  const notes = out.notes ?? [];
+  const warnings = out.warnings ?? [];
+
+  if (jsonMode) {
+    process.stdout.write(
+      JSON.stringify({ ok: true, command: cmdName, data: out.json ?? null }, null, 2) + '\n'
+    );
+    for (const n of notes) io.error(io.green(n));
+    for (const w of warnings) io.error(io.yellow(w));
+    return;
+  }
+
+  for (const l of out.lines ?? []) io.line(l);
+  for (const n of notes) io.line(io.green(n));
+  for (const w of warnings) io.line(io.yellow(w));
 }
 
 /** 渲染「键：值」块（单记录用，如 user show / stats overview）。 */

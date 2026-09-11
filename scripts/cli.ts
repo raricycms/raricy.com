@@ -31,7 +31,7 @@ import {
 } from './cli/args';
 import { actorFor } from './cli/actor';
 import { executeCommand } from './cli/execute';
-import { createOutput, shouldUseColor } from './cli/output';
+import { createOutput, printResult, shouldUseColor } from './cli/output';
 import { createPrompter, isExitPromptError } from './cli/prompt';
 import { COMMANDS } from './cli/registry';
 import { CliError, type CmdOutput, type CommandSpec, type Output } from './cli/types';
@@ -63,30 +63,11 @@ async function execute(cmd: CommandSpec, argv: string[], flags: GlobalFlags): Pr
       io.error(io.yellow('已取消，未做任何改动。'));
       return 0;
     }
-    printResult(io, cmd, output, flags.json);
+    printResult(io, cmd.name, output, flags.json);
     return 0;
   } finally {
     await prisma.$disconnect().catch(() => {});
   }
-}
-
-/** 人读输出；--json 时 stdout 只留一个 JSON 对象，其余一律走 stderr。 */
-function printResult(io: Output, cmd: CommandSpec, out: CmdOutput, jsonMode: boolean): void {
-  const notes = out.notes ?? [];
-  const warnings = out.warnings ?? [];
-
-  if (jsonMode) {
-    process.stdout.write(
-      JSON.stringify({ ok: true, command: cmd.name, data: out.json ?? null }, null, 2) + '\n'
-    );
-    for (const n of notes) io.error(io.green(n));
-    for (const w of warnings) io.error(io.yellow(w));
-    return;
-  }
-
-  for (const l of out.lines ?? []) io.line(l);
-  for (const n of notes) io.line(io.green(n));
-  for (const w of warnings) io.line(io.yellow(w));
 }
 
 async function run(): Promise<number> {
@@ -94,11 +75,25 @@ async function run(): Promise<number> {
   // 全局参数可能出现在任何位置，先整体摘一遍；剩下的 token 才是命令与它自己的参数。
   const { args: bare, flags } = splitGlobals(argv);
 
-  // 不带参数：交互模式留给下一步（TTY 下进菜单向导）。眼下先打印帮助，
-  // 且**非 TTY 时也必须打印帮助而不是猜** —— 管道 / 构建脚本里不能挂住等输入。
+  // 不带参数时两种走法：
+  //   TTY + 非 --json → 进交互式菜单向导（每一步都有提示，不用背命令）
+  //   其余（管道 / CI / --json）→ 打印帮助
+  // **非 TTY 时绝不能猜**：管道或构建脚本里弹提示 = 挂住等输入，看起来像卡死。
+  // --json 同理，它是给脚本用的，隐含非交互。
   if (bare.length === 0) {
-    process.stdout.write(generateHelp(COMMANDS) + '\n');
-    return 0;
+    if (!isInteractive() || flags.json) {
+      process.stdout.write(generateHelp(COMMANDS) + '\n');
+      return 0;
+    }
+
+    const io = createOutput({ color: shouldUseColor(flags), json: false });
+    const { prisma } = await import('../src/lib/db');
+    try {
+      const { wizardLoop } = await import('./cli/wizard');
+      return await wizardLoop({ prisma, io, prompter: createPrompter(), as: flags.as });
+    } finally {
+      await prisma.$disconnect().catch(() => {});
+    }
   }
 
   const resolved = resolveCommand(COMMANDS, bare);
