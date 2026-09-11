@@ -21,6 +21,12 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 - `npm ci`，不要 `npm install` —— 后者会把 Next 升到 16.x，启动即崩。
 - `npm run e2e` **不**自动 build，跑的是 `.next` 里的现有产物。改了 `src/` 没重新 build
   的话，测的是旧代码 —— 症状是刚加的日志一行都不打，容易误判成代码没生效。用 `npm run e2e:ci` 或先 build。
+- `npx tsc --noEmit` **会读 `.next/types/`**（tsconfig 的 include 里有它）。所以它与上一条
+  同源：`.next` 过期时，tsc 会对**早就删掉的路由**报 `Cannot find module '.../page.js'`。
+  实测过 4 条指向已删除的 `photowall` 路由的幻影错误，跑一次 `npm run build` 后自行消失。
+  看到「模块不存在」先 `npm run build`，别去翻源码找那个路由。
+  另注：`npm ci` 会连生成的 Prisma client 一起清掉（`postinstall` 不跑 `prisma generate`），
+  装完依赖若满屏 `Prisma has no exported member`，补一次 `npx prisma generate`。
 - `npm run cli -- <cmd>` —— 运维 CLI（角色 / 鱼干 / OAuth 应用），见 `docs/cli.md`。
 
 ## 关键约定
