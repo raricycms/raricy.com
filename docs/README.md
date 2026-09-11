@@ -29,7 +29,7 @@ raricy.com 的全部文档。分两层：**`guide/` 给玩家和内容创作者*
 |------|--------|
 | `architecture.md` | 进程拓扑 / 路由 / 子系统 / 数据流 / 风险 |
 | `deploy.md` | 从零到上线：环境、`.env`、数据库、systemd、nginx、TLS、备份、排障 |
-| `cli.md` | 运维 CLI：角色升降、鱼干发放、OAuth 应用注册 |
+| `cli.md` | 运维 CLI：交互式向导 / 命令式用法；角色、用户、内容检索与恢复、鱼干、邀请码、审计、申诉 |
 | `oauth.md` | raricy 作为 OAuth 2.0 IdP 的完整协议与集成 |
 | `chat-bot.md` | 聊天机器人接入：接口契约 / SSE / 限频（面向站外开发者，自包含） |
 | `frontend-styles.md` | SCSS 目录 / 设计令牌 / 组件约定 / 响应式 |

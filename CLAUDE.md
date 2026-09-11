@@ -27,7 +27,11 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
   看到「模块不存在」先 `npm run build`，别去翻源码找那个路由。
   另注：`npm ci` 会连生成的 Prisma client 一起清掉（`postinstall` 不跑 `prisma generate`），
   装完依赖若满屏 `Prisma has no exported member`，补一次 `npx prisma generate`。
-- `npm run cli -- <cmd>` —— 运维 CLI（角色 / 鱼干 / OAuth 应用），见 `docs/cli.md`。
+- `npm run cli` —— 运维台。**不带参数在 TTY 下进菜单向导**（引导式，不用背命令）；
+  `npm run cli -- <cmd>` 是命令式，给脚本/CI。见 `docs/cli.md`。
+  加命令只改 `scripts/cli/registry.ts` 的注册表 —— `--help` 与向导都由它生成，
+  `wizard.ts` 不用动。三条守卫盯着：注册表完整性、`--help` 不加载 Prisma、
+  `docs/cli.md` 必须覆盖每条命令（`tests/unit/cli-{registry,guards,docs}.test.ts`）。
 
 ## 关键约定
 
@@ -42,7 +46,9 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 - 角色：`user` → `core` → `admin` → `owner`
 - `core+` 通过邀请码升级，注册时填邀请码即升。
 - 会话 cookie：`HttpOnly`，`Secure` 由 `X-Forwarded-Proto` 自动判定（不走 nginx 时显式设 `COOKIE_SECURE`）。
-- 站长的「针对自己的申诉」不由自己裁决——`/api/admin/appeals/[id]/decide` 需要目标用户 ≠ 当前用户。
+- 站长的「针对自己的申诉」不由自己裁决——`adjudicate` 要求目标用户 ≠ 当前用户。
+  **闸门在 service 层**（`src/lib/admin-appeal-service.ts`），网页与运维 CLI 共用同一条
+  `adjudicate`，所以一处即覆盖两者。此前这句只写在文档里、代码里没有实现（已补）。
 - **OAuth 2.0**：raricy 作为 IdP，scope 仅 `profile`，只读。**改任何 OAuth 相关代码前先读 `docs/oauth.md`** —— 协议细节与安全约束（token 永不落库、redirect_uri 精确匹配、授权码单次使用）都在那里。
 
 ### CSRF / 中间件
