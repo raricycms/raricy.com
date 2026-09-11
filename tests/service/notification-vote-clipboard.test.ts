@@ -1340,17 +1340,29 @@ describe('clipboard-service', () => {
       expect(CLIP_PER_USER_MAX).toBe(200);
     });
 
-    it('已有 200 条时仍放行（判定是 count > 200，实际能存到 201 条）', async () => {
-      // Flask `if clip_count > 200: return None` 就是这个 off-by-one，TS 照抄了。
-      // 这条钉住「和 Flask 一致」这件事本身 —— 见交付说明的讨论。
+    it('已有 200 条时拒绝 —— 上限就是 200', async () => {
+      // 曾经是 `count > 200`（照抄 Flask 的 off-by-one，实际放行到 201 条），
+      // 已收紧为 `count >= 200`：站内文案与玩家指南一直写的都是 200。
       const u = await makeUser();
       await seedClipboardUpTo(u.id, 200);
-      const r = await createClip(u.id, { title: '第 201 条', content: 'c' });
+      expect(await createClip(u.id, { title: '第 201 条', content: 'c' })).toEqual({
+        ok: false,
+        reason: 'limit',
+      });
+      expect(await prisma.clipBoard.count({ where: { authorId: u.id } })).toBe(200);
+    });
+
+    it('已有 199 条时放行，第 200 条建得出来（边界是 200，不是 199）', async () => {
+      const u = await makeUser();
+      await seedClipboardUpTo(u.id, 199);
+      const r = await createClip(u.id, { title: '第 200 条', content: 'c' });
       expect(r.ok).toBe(true);
-      expect(await prisma.clipBoard.count({ where: { authorId: u.id } })).toBe(201);
+      expect(await prisma.clipBoard.count({ where: { authorId: u.id } })).toBe(200);
     });
 
     it('已有 201 条时拒绝，返回 limit 且不落库', async () => {
+      // 201 已经建不出来了 —— 这条守的是**存量数据**：Flask 时代放行过 201 条的用户，
+      // 迁过来之后必须照样被挡住，而不是靠「反正建不出第 201 条」侥幸成立。
       const u = await makeUser();
       await seedClipboardUpTo(u.id, 201);
       expect(await createClip(u.id, { title: '第 202 条', content: 'c' })).toEqual({
@@ -1735,12 +1747,15 @@ describe('clipboard-service', () => {
       expect(await deleteClip('nosuchid', author.id, false)).toEqual({ ok: false, reason: 'not_found' });
     });
 
-    it('删除后仍计入 200 上限（对齐 Flask：count 不带 ignore 过滤，防删了再建刷额度）', async () => {
+    it('删除后仍计入 200 上限（count 不带 ignore 过滤，防删了再建刷额度）', async () => {
       const u = await makeUser();
       await seedClipboardUpTo(u.id, 200);
-      const r = (await createClip(u.id, { title: '第 201 条', content: 'c' })) as { ok: true; id: string };
-      expect(await deleteClip(r.id, u.id, false)).toEqual({ ok: true });
-      // 删掉的这条照样占坑：再建就被拒
+      // 删掉一条腾出「空位」—— 但它照样占坑
+      const one = await prisma.clipBoard.findFirst({
+        where: { authorId: u.id },
+        select: { id: true },
+      });
+      expect(await deleteClip(one!.id, u.id, false)).toEqual({ ok: true });
       expect(await createClip(u.id, { title: '再建', content: 'c' })).toEqual({ ok: false, reason: 'limit' });
     });
   });

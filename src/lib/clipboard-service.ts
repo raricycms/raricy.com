@@ -13,7 +13,9 @@ import { generateShortId } from './short-id';
 // 校验上限，对齐 Flask validator()
 export const CLIP_TITLE_MAX = 40;
 export const CLIP_CONTENT_MAX = 50000;
-// 每用户剪贴板总数上限，对齐 Flask（count > 200 才拒绝，即最多 201 条）
+// 每用户剪贴板总数上限：count >= 200 时拒绝，即**最多 200 条**。
+// ⚠️ 有意与 Flask 不同：Flask 侧是 `count > 200 才拒绝`，实际放行到 201 条，
+//    与站内文案「一个用户只能发布200篇云剪贴板！」对不上。这里收紧成真正的 200。
 export const CLIP_PER_USER_MAX = 200;
 
 export interface CreateClipInput {
@@ -54,7 +56,7 @@ export async function createClip(
   if (lengthErr) return { ok: false, reason: lengthErr };
 
   const count = await prisma.clipBoard.count({ where: { authorId } });
-  if (count > CLIP_PER_USER_MAX) {
+  if (count >= CLIP_PER_USER_MAX) {
     return { ok: false, reason: 'limit' };
   }
 
