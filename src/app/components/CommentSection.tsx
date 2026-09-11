@@ -230,7 +230,9 @@ export default function CommentSection({ blogId, currentUserId = null, isAdmin =
         sendingLabel="发表中…"
         // 占位符不必再报一次「回复 某某」—— 正上方的回复条已经写着，重复只是噪音
         placeholderLead="说点什么…"
-        submitVerb="发表"
+        // 按键提示用「发送」（「Enter 发送」是固定说法）；按钮仍叫「发表评论」。
+        // submitVerb 只进占位符与提示文案，不影响按钮 —— 见 RichComposer 的 props。
+        submitVerb="发送"
         pendingImage={pendingImage}
         uploadingImage={uploadingImage}
         replyChip={
