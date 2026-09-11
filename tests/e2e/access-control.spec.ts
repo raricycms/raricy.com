@@ -39,7 +39,8 @@ test.describe('角色门控', () => {
     await loginViaApi(page, SEED_USERS.plain.username);
 
     const res = await page.goto('/admin');
-    // AdminLayout: hasAdminRights(user) 为假 → forbidden() 原地 403，URL 不变
+    // AdminLayout: isCoreUser(user) 为假 → forbidden() 原地 403，URL 不变
+    // （段级 layout 是 core+；/admin 这一页自己的 requireAdmin() 也拦得住 user）
     expect(res?.status()).toBe(403);
     await expect(page).toHaveURL(/\/admin$/);
     await expect(page.locator('.rainbow-error__code')).toHaveText('403');
@@ -95,6 +96,56 @@ test.describe('角色门控', () => {
     await page.goto('/admin');
     await expect(page).toHaveURL(/\/admin$/);
     await expect(page.locator('h1')).toContainText('管理概览');
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // /admin/* 的档位是**按页**分的，不是整齐一刀
+  //
+  // 回归背景：段级 layout 一度收在 hasAdminRights，而 AdminShell 的侧栏对 core 用户
+  // 就露出「用户管理」（对齐 Flask admin_base.html 的 is_core_user 门控）——
+  // 于是核心用户点进去必然 403：入口和门禁自相矛盾。Flask 侧 auth.user_management 的
+  // 装饰器是 @authenticated_required（core+），management.html 给核心用户看的是只读版。
+  // 修法是段级放宽到 core+，真正要管理权的页面各自把门。这组用例把两半都钉住。
+  // ───────────────────────────────────────────────────────────────────────────
+  test('★ 核心用户能进 /admin/users（只读版：标题「用户列表」，无禁言按钮）', async ({ page }) => {
+    await loginViaApi(page, SEED_USERS.core.username);
+
+    const res = await page.goto('/admin/users');
+    expect(res?.status(), '核心用户看用户管理被 403 了 —— 侧栏有入口、门禁却不认').toBe(200);
+    await expect(page.locator('h1')).toHaveText('用户列表');
+    await expect(page.locator('.rainbow-error__code')).toHaveCount(0);
+
+    // 只读：能看列表（「查看」是人人都有的），但没有点了必然 403 的动作按钮
+    await expect(page.locator('.user-card').first()).toBeVisible();
+    await expect(page.getByRole('button', { name: '禁言', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '解除禁言' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '认证' })).toHaveCount(0);
+  });
+
+  test('管理员进 /admin/users 是完整版（标题「用户管理」，禁言按钮在）', async ({ page }) => {
+    await loginViaApi(page, SEED_USERS.admin.username);
+
+    const res = await page.goto('/admin/users');
+    expect(res?.status()).toBe(200);
+    await expect(page.locator('h1')).toHaveText('用户管理');
+    // 种子里既有普通用户也有 core，必然至少渲染出一个可禁言的按钮
+    expect(await page.getByRole('button', { name: '禁言', exact: true }).count()).toBeGreaterThan(0);
+  });
+
+  test('普通用户（role=user）仍进不了 /admin/users', async ({ page }) => {
+    await loginViaApi(page, SEED_USERS.plain.username);
+    const res = await page.goto('/admin/users');
+    expect(res?.status()).toBe(403);
+  });
+
+  test('★ 放宽不能连带放行：核心用户进不了 /admin 与 /admin/blogs', async ({ page }) => {
+    await loginViaApi(page, SEED_USERS.core.username);
+
+    for (const url of ['/admin', '/admin/blogs']) {
+      const res = await page.goto(url);
+      expect(res?.status(), `${url} 只该给管理员 —— 段级放宽到 core 后页面得自己把门`).toBe(403);
+      await expect(page.locator('.rainbow-error__code')).toHaveText('403');
+    }
   });
 
   test('普通用户顶栏不出现「管理面板」入口', async ({ page }) => {

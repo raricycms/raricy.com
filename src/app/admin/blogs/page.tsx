@@ -1,3 +1,4 @@
+import { requireAdmin } from '@/lib/guard';
 import { listAdminBlogs } from '@/lib/admin-blog-service';
 import { listCategoriesTree } from '@/lib/admin-category-service';
 import { categoryFullPath, ymd } from '@/lib/format';
@@ -32,11 +33,16 @@ type BlogRow = {
 };
 
 // 文章栏目管理 — Fluent Design
+//
+// 改栏目 / 精选 / 删文章都是管理动作，core 用户看不了 —— 父 layout 已放宽到 core+
+// （用户管理要用），这一档由页面自己把住。
 export default async function AdminBlogsPage({
   searchParams,
 }: {
   searchParams: Promise<SearchParams>;
 }) {
+  await requireAdmin();
+
   const sp = await searchParams;
   const currentCategoryId = sp.category ?? '';
   const parsed = parseInt(currentCategoryId, 10);

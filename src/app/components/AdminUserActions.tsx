@@ -23,6 +23,8 @@ export interface AdminUserActionsProps {
     currentlyBanned: boolean;
   };
   isOwner: boolean;
+  /** 当前访问者是否有管理权（admin+）。见下方 banDisabled 一节的说明。 */
+  canManage: boolean;
   currentUserId: string;
 }
 
@@ -48,7 +50,12 @@ interface BanRecord {
 // 会按浏览器时区再平移一次 —— UTC+8 浏览器下整体 +8 小时（20:00 显示成次日 04:00）。
 const fmtTime = (iso: string | null) => (iso ? (ymdhms(new Date(iso)) ?? '') : '');
 
-export default function AdminUserActions({ user, isOwner, currentUserId }: AdminUserActionsProps) {
+export default function AdminUserActions({
+  user,
+  isOwner,
+  canManage,
+  currentUserId,
+}: AdminUserActionsProps) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [modal, setModal] = useState<null | 'ban' | 'unban' | 'notify' | 'banHistory'>(null);
@@ -184,32 +191,36 @@ export default function AdminUserActions({ user, isOwner, currentUserId }: Admin
         </button>
       )}
 
-      {user.currentlyBanned ? (
-        <button
-          type="button"
-          className="btn btn-sm btn-success"
-          disabled={busy}
-          onClick={() => {
-            setUnbanReason('');
-            setModal('unban');
-          }}
-        >
-          解除禁言
-        </button>
-      ) : (
-        <button
-          type="button"
-          className="btn btn-sm btn-warning"
-          disabled={busy || banDisabled}
-          onClick={() => {
-            setBanHours('24');
-            setBanReason('');
-            setModal('ban');
-          }}
-        >
-          禁言
-        </button>
-      )}
+      {/* 禁言 / 解除禁言：仅 admin+。核心用户进得来这一页（只读版，对齐 Flask
+          management.html 的 has_admin_rights 门控），但不该看到点了必然 403 的按钮。
+          对齐 Flask 的同一处分支：禁言历史对所有人可见，禁言/解除禁言只对 has_admin_rights。 */}
+      {canManage &&
+        (user.currentlyBanned ? (
+          <button
+            type="button"
+            className="btn btn-sm btn-success"
+            disabled={busy}
+            onClick={() => {
+              setUnbanReason('');
+              setModal('unban');
+            }}
+          >
+            解除禁言
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="btn btn-sm btn-warning"
+            disabled={busy || banDisabled}
+            onClick={() => {
+              setBanHours('24');
+              setBanReason('');
+              setModal('ban');
+            }}
+          >
+            禁言
+          </button>
+        ))}
 
       {user.currentlyBanned && (
         <button

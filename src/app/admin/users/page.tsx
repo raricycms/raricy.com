@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { Megaphone } from 'lucide-react';
-import { getCurrentUser, isOwner } from '@/lib/auth';
+import { getCurrentUser, hasAdminRights, isOwner } from '@/lib/auth';
 import { listUsers } from '@/lib/admin-user-service';
 import AdminUserActions from '@/app/components/AdminUserActions';
 
@@ -38,6 +38,11 @@ function pageWindow(page: number, pages: number, window = 3): (number | null)[] 
 }
 
 // 用户管理 — Fluent Design
+//
+// 【两个档位，同一页】对齐 Flask auth/management.html：core+ 就能进，但核心用户看到的是
+// **只读**版本 —— 标题「用户列表」、副标题「查看注册用户」，且不渲染禁言 / 解除禁言 /
+// 发通知 / 角色按钮（那些在 Flask 侧都有 has_admin_rights / is_owner 门控）。
+// 别再往这里加「反正后端会挡」的动作按钮：按钮点了弹 403 对用户就是坏掉的界面。
 export default async function AdminUsersPage({
   searchParams,
 }: {
@@ -46,6 +51,7 @@ export default async function AdminUsersPage({
   const sp = await searchParams;
   const me = await getCurrentUser();
   const owner = isOwner(me);
+  const canManage = hasAdminRights(me);
 
   const result = await listUsers({
     page: parseInt(sp.page || '1', 10),
@@ -62,8 +68,8 @@ export default async function AdminUsersPage({
   return (
     <>
       <section className="admin-hero">
-        <h1>用户管理</h1>
-        <p>管理用户角色、禁言与通知</p>
+        <h1>{canManage ? '用户管理' : '用户列表'}</h1>
+        <p>{canManage ? '管理用户角色、禁言与通知' : '查看注册用户'}</p>
       </section>
 
       <div className="admin-container">
@@ -125,6 +131,7 @@ export default async function AdminUsersPage({
                       currentlyBanned: u.currentlyBanned,
                     }}
                     isOwner={owner}
+                    canManage={canManage}
                     currentUserId={me!.id}
                   />
                 </div>

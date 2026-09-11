@@ -1,6 +1,6 @@
 import { forbidden, redirect } from 'next/navigation';
 import { headers } from 'next/headers';
-import { getCurrentUser, isCoreUser, isOwner, type SafeUser } from './auth';
+import { getCurrentUser, hasAdminRights, isCoreUser, isOwner, type SafeUser } from './auth';
 
 // ─── 内部工具：构造当前请求的 path（含 query），作为登录后回跳的 next 参数 ───
 //
@@ -36,6 +36,22 @@ export async function requireCoreUser(): Promise<SafeUser> {
     redirect(`/login?next=${encodeURIComponent(next)}`);
   }
   if (!isCoreUser(user)) forbidden();
+  return user;
+}
+
+// 已登录 + admin+（管理员或站长）。
+//
+// 【为什么需要它】/admin 段（admin/layout.tsx）是 core+ 的 —— 因为段内的「用户管理」
+// 对齐 Flask management.html，核心用户只能查看、本来就能进。于是段内那些**真的**
+// 要管理权的页面（概览、文章管理）必须自己去要这一档，不能再靠父 layout 兜。
+// 这与 broadcast / categories / appeals 各自的 layout.tsx 是同一个套路。
+export async function requireAdmin(): Promise<SafeUser> {
+  const user = await getCurrentUser();
+  if (!user) {
+    const next = await getSafeNextPath();
+    redirect(`/login?next=${encodeURIComponent(next)}`);
+  }
+  if (!hasAdminRights(user)) forbidden();
   return user;
 }
 
