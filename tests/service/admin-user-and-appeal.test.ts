@@ -1075,6 +1075,67 @@ describe('adjudicate（裁决申诉）', () => {
     expect((await adjudicate({ actor: asActor(plain), appealId: appeal.id, decision: 'accept' })).ok).toBe(false);
   });
 
+  // ★ CLAUDE.md 一直写着「站长的『针对自己的申诉』不由自己裁决」，但此前
+  //   路由与 service 都只判 isOwner —— 规则只存在于文档里。这条用例把它钉住。
+  it('★ 不能裁决针对自己的申诉', async () => {
+    const owner = await makeUser({ role: 'owner' });
+    const { appealId } = await makePendingAppeal({
+      action: 'delete_blog',
+      adminId: owner.id,
+      appellantId: owner.id,
+      targetUserId: owner.id,
+      objectType: 'blog',
+      objectId: 'blog-whatever',
+    });
+
+    expect(await adjudicate({ actor: asActor(owner), appealId, decision: 'accept' })).toMatchObject({
+      ok: false,
+      code: 403,
+      message: '不能裁决针对自己的申诉',
+    });
+
+    // 驳回同样不行 —— 自裁的风险不只是「放过自己」，也包括「把自己驳回」
+    expect(await adjudicate({ actor: asActor(owner), appealId, decision: 'reject' })).toMatchObject({
+      ok: false,
+      code: 403,
+    });
+
+    // 申诉状态不该被动过
+    const after = await prisma.adminActionAppeal.findUnique({ where: { id: appealId } });
+    expect(after!.status).toBe('pending');
+    expect(after!.decidedBy).toBeNull();
+  });
+
+  it('目标用户不是裁决者本人 → 正常放行（不要把闸门开得过宽）', async () => {
+    const owner = await makeUser({ role: 'owner' });
+    const victim = await makeUser({ role: 'core' });
+    const { appealId } = await makePendingAppeal({
+      action: 'delete_blog',
+      adminId: owner.id,
+      appellantId: victim.id,
+      targetUserId: victim.id,
+      objectType: 'blog',
+      objectId: 'blog-whatever',
+    });
+
+    expect((await adjudicate({ actor: asActor(owner), appealId, decision: 'reject' })).ok).toBe(true);
+  });
+
+  it('日志没有 targetUserId（历史数据）→ 不误伤，照常可裁决', async () => {
+    const owner = await makeUser({ role: 'owner' });
+    const victim = await makeUser({ role: 'core' });
+    const { appealId } = await makePendingAppeal({
+      action: 'delete_blog',
+      adminId: owner.id,
+      appellantId: victim.id,
+      targetUserId: null,
+      objectType: 'blog',
+      objectId: 'blog-whatever',
+    });
+
+    expect((await adjudicate({ actor: asActor(owner), appealId, decision: 'reject' })).ok).toBe(true);
+  });
+
   /** 造「日志 + 该日志的 pending 申诉」。 */
   async function makePendingAppeal(opts: {
     action: string;

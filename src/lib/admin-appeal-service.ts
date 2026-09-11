@@ -156,6 +156,16 @@ export async function adjudicate(p: AdjudicateParams): Promise<AdminResult> {
   if (!appeal) return { ok: false, code: 404, message: '申诉不存在' };
   if (appeal.status !== 'pending') return { ok: false, code: 400, message: '申诉已处理' };
 
+  // 不能裁决「针对自己」的申诉。申诉是对管理员权力的制衡 —— 如果被申诉的那条
+  // 操作的目标本人就是裁决者，这道闸就形同虚设（他可以给自己盖橡皮图章）。
+  //
+  // 注：createAppeal 强制「只有被处理的目标本人能申诉」（log.targetUserId ===
+  // appellantId），所以这里比对 log.targetUserId 与 actor 就够了。
+  // 放在 service 层而不是路由：网页与运维 CLI 走同一个 adjudicate，一处即覆盖两者。
+  if (appeal.log?.targetUserId && appeal.log.targetUserId === p.actor.id) {
+    return { ok: false, code: 403, message: '不能裁决针对自己的申诉' };
+  }
+
   const now = nowForDb();
   await prisma.adminActionAppeal.update({
     where: { id: appeal.id },
