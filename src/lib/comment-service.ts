@@ -670,6 +670,111 @@ export async function softDeleteComment(
   return { ok, error, message };
 }
 
+// ── 恢复到未删除（软删的逆操作）───────────────────────────────────────────────
+//
+// 【为什么分成两个函数】内核与审计外壳必须分开，否则「申诉裁决通过 → 恢复评论」
+// 会凭空多出一条审计日志：decideAppeal 自己写一条 decide_appeal，再调一个带审计的
+// 恢复函数就又写一条。审计日志是**公开**的（/audit 公示页），多出来的行是可见的
+// 行为变化。所以：
+//   restoreCommentRow —— 纯变更，不写日志、不发通知（decideAppeal 用这个）
+//   restoreComment    —— 变更 + 审计（运维 CLI 用这个）
+//
+// 【恢复是无损的】软删只翻 isDeleted 标志位，content / image 等列在库里原样保留
+//（「抹掉正文」发生在序列化层，见 docs/architecture.md §8）。所以恢复回来的
+// 评论是完整的，不需要备份。
+
+export type RestoreCommentResult =
+  | { ok: true }
+  | {
+      ok: false;
+      error: 'notFound' | 'forbidden' | 'reasonRequired' | 'reasonTooLong';
+      message: string;
+    };
+
+/**
+ * 恢复软删评论的**内核**：isDeleted=false + 在同一事务内按「未删除评论数」重算
+ * Blog.commentsCount 并刷新 lastCommentAt（与 softDeleteComment 的计数口径完全一致）。
+ *
+ * @returns 成功返回 { blogId, authorId }；评论不存在或本来就没被删 → null（幂等，不报错）
+ */
+export async function restoreCommentRow(
+  commentId: string
+): Promise<{ blogId: string; authorId: string } | null> {
+  return prisma.$transaction(async (tx) => {
+    const comment = await tx.blogComment.findUnique({
+      where: { id: commentId },
+      select: { id: true, blogId: true, authorId: true, isDeleted: true },
+    });
+    if (!comment || !comment.isDeleted) return null;
+
+    await tx.blogComment.update({ where: { id: comment.id }, data: { isDeleted: false } });
+
+    const commentsCount = await tx.blogComment.count({
+      where: { blogId: comment.blogId, isDeleted: false },
+    });
+    const latest = await tx.blogComment.findFirst({
+      where: { blogId: comment.blogId, isDeleted: false },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+    });
+    await tx.blog.update({
+      where: { id: comment.blogId },
+      data: { commentsCount, lastCommentAt: latest?.createdAt ?? null },
+    });
+
+    return { blogId: comment.blogId, authorId: comment.authorId };
+  });
+}
+
+/**
+ * 管理员恢复评论：restoreCommentRow + 一条 restore_comment 审计日志。
+ * 权限与 reason 口径镜像 softDeleteComment：恢复「他人」的评论需 reason 1..500。
+ *
+ * ⚠️ 只翻 isDeleted，**不动 status**：status ≠ 'approved' 的评论恢复后仍不会出现在
+ *    评论区（status 是正交的另一个闸门，见 filterDeletedLeaves 附近的说明）。
+ */
+export async function restoreComment(
+  commentId: string,
+  actor: DeleteActor,
+  reason?: string
+): Promise<RestoreCommentResult> {
+  const row = await restoreCommentRow(commentId);
+  if (!row) return { ok: false, error: 'notFound', message: '评论不存在或未被删除' };
+
+  const isAuthor = row.authorId === actor.id;
+  if (!isAuthor && !hasAdminRights(actor)) {
+    return { ok: false, error: 'forbidden', message: '无权恢复该评论' };
+  }
+
+  const adminRestoringOthers = !isAuthor && hasAdminRights(actor);
+  const trimmedReason = (reason ?? '').trim();
+  if (adminRestoringOthers) {
+    if (!trimmedReason) return { ok: false, error: 'reasonRequired', message: '请提供恢复原因' };
+    if (trimmedReason.length > 500) {
+      return { ok: false, error: 'reasonTooLong', message: '恢复原因过长（最多500字）' };
+    }
+  }
+
+  // 与删除路径同一口径：审计写入失败不回滚恢复本身
+  if (adminRestoringOthers) {
+    try {
+      await logAdminAction({
+        action: 'restore_comment',
+        adminId: actor.id,
+        targetUserId: row.authorId,
+        objectType: 'comment',
+        objectId: commentId,
+        reason: trimmedReason,
+        metadata: { blog_id: row.blogId },
+      });
+    } catch {
+      /* 审计写入失败不影响恢复结果 */
+    }
+  }
+
+  return { ok: true };
+}
+
 // ── 点赞切换 ─────────────────────────────────────────────────────────────────
 
 export type ToggleLikeResult =

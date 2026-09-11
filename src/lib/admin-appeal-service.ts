@@ -14,6 +14,7 @@ import { nowForDb } from './db-time';
 import { isOwner, type SafeUser } from './auth';
 import { sendNotification } from './notification-service';
 import { logAdminAction, unbanUser, type AdminResult } from './admin-user-service';
+import { restoreCommentRow } from './comment-service';
 
 const PER_PAGE = 20;
 
@@ -199,37 +200,16 @@ export async function adjudicate(p: AdjudicateParams): Promise<AdminResult> {
       appeal.log.objectType === 'comment' &&
       appeal.log.objectId
     ) {
-      // 恢复被删评论：isDeleted=False + 回补文章冗余计数。
-      // Flask 仅做 comments_count += 1；此处按任务要求参照 comment-service 的删除/新建路径，
-      // 在同一事务内按「未删除评论数」重算 commentsCount，并同步刷新 lastCommentAt
-      // （比 += 1 更健壮，且与 createComment/softDeleteComment 的计数口径一致）。
-      const commentId = appeal.log.objectId;
-      const restored = await prisma.$transaction(async (tx) => {
-        const comment = await tx.blogComment.findUnique({
-          where: { id: commentId },
-          select: { id: true, blogId: true, isDeleted: true },
-        });
-        if (!comment || !comment.isDeleted) return false;
-
-        await tx.blogComment.update({
-          where: { id: comment.id },
-          data: { isDeleted: false },
-        });
-
-        const commentsCount = await tx.blogComment.count({
-          where: { blogId: comment.blogId, isDeleted: false },
-        });
-        const latest = await tx.blogComment.findFirst({
-          where: { blogId: comment.blogId, isDeleted: false },
-          orderBy: { createdAt: 'desc' },
-          select: { createdAt: true },
-        });
-        await tx.blog.update({
-          where: { id: comment.blogId },
-          data: { commentsCount, lastCommentAt: latest?.createdAt ?? null },
-        });
-        return true;
-      });
+      // 恢复被删评论：isDeleted=false + 重算文章冗余计数，口径与 createComment /
+      // softDeleteComment 完全一致（在同一事务内按「未删除评论数」重算，并刷新
+      // lastCommentAt —— 比 Flask 的 comments_count += 1 更健壮）。
+      //
+      // ★ 这里用**不带审计**的 restoreCommentRow，而不是 comment-service 里带审计的
+      //   restoreComment：本次裁决已经由下面那条 decide_appeal 日志覆盖了，再写一条
+      //   restore_comment 就是凭空多出审计行 —— 而 /audit 是**公开页**，
+      //   多出来的行是用户可见的行为变化。这条由
+      //   tests/service/appeal-restore-extraction.test.ts 钉死。
+      const restored = await restoreCommentRow(appeal.log.objectId);
       if (restored) reversedNote = '，已恢复被删评论';
     }
   }
