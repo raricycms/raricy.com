@@ -21,7 +21,7 @@ raricy.com 作为 **OAuth 2.0 Authorization Server**，让外部第三方应用�
 | 端点 | 方法 | 鉴权 | 说明 |
 |------|------|------|------|
 | `/oauth/authorize` | GET | raricy session | 授权确认页（浏览器） |
-| `/api/oauth/authorize` | POST | raricy session | 用户点「同意」后 mint code + 302 回调 |
+| `/api/oauth/authorize` | POST | raricy session | 用户点「同意」后 mint code，返回 **200 + `{redirect_to}`**（由前端做顶层跳转，**不是 302**） |
 | `/api/oauth/token` | POST | client (HTTP Basic / body) | code → access_token |
 | `/api/oauth/userinfo` | GET | `Authorization: Bearer` | 返回 `{sub, username, avatar_url}` |
 | `/api/oauth/revoke` | POST | session **或** bearer | 吊销 token（RFC 7009） |
@@ -135,7 +135,7 @@ curl -sS -X POST -H "Authorization: Bearer $ACCESS_TOKEN" \
 | `client_secret` 存储 | werkzeug 兼容 scrypt（自带盐），与 `User.passwordHash` 同款 |
 | `redirect_uri` 校验 | **精确字符串相等**（OAuth 2.0 Security BCP §4.1；无通配 / 前缀 / 子串） |
 | 客户端鉴权 | HTTP Basic 优先（RFC 6749 §2.3.1） |
-| 授权码单次使用 | Prisma 原子 `update where {codeHash, usedAt: null}` 保证恰好一次 |
+| 授权码单次使用 | Prisma 原子 `updateMany where {codeHash, applicationId, redirectUri, usedAt: null, expiresAt: {gt: now}}` —— **五个条件全中才消费**，恰好一次，且绑定到当初那对 client / redirect_uri |
 | 授权码 TTL | 10 分钟 |
 | `redirect_uri` 一致性 | token 端再次校验与授权时一致（防 code 截获重定向） |
 | Token 比较时序 | 用 SQL PK 存在性查询；`client_secret` 走 `timingSafeEqual` |
