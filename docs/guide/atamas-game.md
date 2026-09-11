@@ -37,7 +37,7 @@ ATÅMAS（ATOMAS）是一个策略型圆盘组合游戏。玩家在圆形环上�
 |------|------|
 | 画布中心 | 显示待放置元素（数字或加号），带呼吸动画 |
 | 右侧预览面板 | 显示接下来 3 个元素（可折叠） |
-| 顶部栏 | 标题、语言选择器（30+ 语言）、明暗模式切换 |
+| 顶部栏 | 标题、语言选择器（24 种语言）、明暗模式切换 |
 | 信息面板 | Reset（重置）、Recall（撤销）、当前操作提示 |
 | 底部状态栏 | 最大值、分数、警告指示灯（18+ 元素时亮起） |
 | 悬停指示 | 鼠标悬停圆环时显示绿色目标位置指示器 |
@@ -72,7 +72,7 @@ src/styles-scss/pages/game/_atamas.scss # 游戏样式
 
 ### 语言系统
 
-内置 30+ 种语言的翻译表（`TRANSLATIONS` 对象），通过 `localStorage` 持久化语言偏好。UI 文本通过 `getTranslation(key)` / `formatTranslation(key, params)` 动态获取。
+内置 24 种语言的翻译表（`TRANSLATIONS` 对象），通过 `localStorage` 持久化语言偏好。UI 文本通过 `getTranslation(key)` / `formatTranslation(key, params)` 动态获取（缺键回退英文）。
 
 ### 明暗模式
 

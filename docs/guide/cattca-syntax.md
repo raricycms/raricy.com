@@ -176,8 +176,9 @@ input case 变量名: '选项1文本' -> 命令1: '选项2文本' -> 命令2: ..
 input text 变量名
 ```
 
-**示例：**
+**示例：**（变量必须先 `let` 声明，理由同 `random`）
 ```
+</let playerName = "";
 请输入你的名字：
 </input text playerName;/>
 欢迎，</apply playerName />！

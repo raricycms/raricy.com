@@ -78,14 +78,18 @@ ignore: false
 | `title` | string | 文件名 | 故事标题 |
 | `author` | string | 合集作者 | 作者 |
 | `genre` | string | `""` | 类型标签，不设则不显示 |
-| `ai_assisted` | bool | `false` | 设为 `true` 显示「AI辅助创作」标记 |
+| `ai_assisted` | bool | 继承合集 | 设为 `true` 显示「AI辅助创作」标记；不写则**继承所属合集的 `ai_assisted`**（合集也没写才是 `false`） |
 | `description` | string | `""` | 简介 |
 | `priority` | int | `0` | 排序优先级 |
 | `ignore` | bool | `false` | 设为 `true` 隐藏此故事 |
 
 #### Markdown 故事（`.md`）
 
-标准 Markdown 文件，前端使用 YAML frontmatter。正文由浏览器端渲染（marked.js + DOMPurify + highlight.js），支持 GFM 表格、任务列表、代码高亮等。
+标准 Markdown 文件，文件开头使用 YAML frontmatter。正文由**服务端**渲染
+（`src/lib/story-service.ts` 的 `marked` + `stripScripts`），支持 GFM 表格、任务列表等。
+
+> ⚠️ 与博客正文不同，故事正文**不走 DOMPurify、也没有 highlight.js**：故事文件由站长
+> 直接写在 `instance/stories/` 下，按可信内容处理（详见 `docs/architecture.md` §6.7）。
 
 #### 排版规则
 
@@ -102,9 +106,13 @@ ignore: false
 这里恢复正常缩进。
 ```
 
-**链接**：正文中的链接显示为品牌色，hover 时出现下划线。外部链接自动添加 `target="_blank" rel="noopener noreferrer nofollow"`。
+**链接**：正文中的链接显示为品牌色，hover 时出现下划线。
 
-**代码块**：带有复制按钮（右上角），高亮主题自动跟随亮色/暗色模式。
+> 博客正文会自动给外链加 `target="_blank" rel="noopener noreferrer nofollow"`，**故事页不会**
+> —— 故事走的是服务端 `marked`，没有这层后处理。需要新窗口打开的链接请在正文里自己写 HTML。
+
+**代码块**：无复制按钮，也没有语法高亮 —— 那两项是博客渲染器（`MarkdownRenderer.tsx`）
+的能力，故事页不走它。
 
 #### Cattca 互动小说（`.cattca`）
 
