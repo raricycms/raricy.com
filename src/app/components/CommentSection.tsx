@@ -20,7 +20,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { BookOpenText } from 'lucide-react';
+import { BookOpenText, Heart } from 'lucide-react';
 import RichComposer, { type ComposerBlogQuote } from './RichComposer';
 import QuoteBlogModal from './QuoteBlogModal';
 import ImageLightbox from './ImageLightbox';
@@ -69,9 +69,27 @@ interface CommentNode {
   status: string | null;
   is_deleted: boolean;
   likes_count: number;
+  /** 当前查看者赞没赞过（未登录恒 false）。服务端按 viewer 批量算，见 comment-service。 */
+  liked: boolean;
   created_at: string | null;
   updated_at: string | null;
   children: CommentNode[];
+}
+
+/**
+ * 在评论树里就地替换某一条（点赞要改的往往是深层节点）。
+ * 返回新树、不改原对象 —— React 靠引用变化触发重渲染。
+ */
+function mapNode(
+  nodes: CommentNode[],
+  id: string,
+  fn: (n: CommentNode) => CommentNode
+): CommentNode[] {
+  return nodes.map((n) => {
+    if (n.id === id) return fn(n);
+    if (!n.children.length) return n;
+    return { ...n, children: mapNode(n.children, id, fn) };
+  });
 }
 
 interface Props {
@@ -125,6 +143,8 @@ export default function CommentSection({ blogId, currentUserId = null, isAdmin =
   const [submitting, setSubmitting] = useState(false);
   const { pendingImage, uploadingImage, pickImage, clearImage } = usePendingImage(toast);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  /** 正在请求中的评论 id —— 防连点（乐观更新已经把界面改过了，再点一次会来回翻）。 */
+  const likeBusyRef = useRef<Set<string>>(new Set());
 
   // 删除确认模态框状态（对齐 comment-manager.js 的两步删除）
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
@@ -187,6 +207,60 @@ export default function CommentSection({ blogId, currentUserId = null, isAdmin =
     }
     setSubmitting(false);
   }, [text, replyTo, submitting, blogId, load, pendingImage, blogQuote, clearImage]);
+
+  /**
+   * 点赞 / 取消点赞。
+   *
+   * 【乐观更新】点赞是高频轻互动，等一个来回再变心形会有明显的迟滞感。所以先改本地、
+   * 再发请求，失败回滚到点击前的值。
+   *
+   * 【成功时以服务端返回为准】并发下计数可能已被别人改过，本地 +1 只是估算。
+   * 【防连点】请求在途时忽略同一条的再次点击 —— 否则乐观更新会来回翻，最终值取决于
+   * 响应到达顺序。
+   */
+  const toggleLike = useCallback(async (node: CommentNode) => {
+    if (likeBusyRef.current.has(node.id)) return;
+    const wasLiked = node.liked;
+    const wasCount = node.likes_count;
+
+    setComments((prev) =>
+      mapNode(prev, node.id, (n) => ({
+        ...n,
+        liked: !wasLiked,
+        likes_count: Math.max(0, wasCount + (wasLiked ? -1 : 1)),
+      }))
+    );
+
+    const rollback = () =>
+      setComments((prev) =>
+        mapNode(prev, node.id, (n) => ({ ...n, liked: wasLiked, likes_count: wasCount }))
+      );
+
+    likeBusyRef.current.add(node.id);
+    try {
+      const data = await api(`/api/comments/${node.id}/like`, { method: 'POST' });
+      if (data.code === 200) {
+        // 以服务端为准：并发下计数可能已被别人改过
+        setComments((prev) =>
+          mapNode(prev, node.id, (n) => ({
+            ...n,
+            liked: !!data.liked,
+            likes_count: typeof data.likes_count === 'number' ? data.likes_count : n.likes_count,
+          }))
+        );
+      } else {
+        rollback();
+        toast(data.message || '操作失败', 'error');
+      }
+    } catch {
+      // 网络层失败（fetch 直接 reject）—— 不回滚的话界面会停在一个「看起来赞了」
+      // 但服务端并不知道的状态。
+      rollback();
+      toast('网络错误，请重试', 'error');
+    } finally {
+      likeBusyRef.current.delete(node.id);
+    }
+  }, []);
 
   // 打开删除确认模态框（管理员删他人评论时要求填写原因）
   const openDeleteModal = useCallback((id: string, requiresReason: boolean) => {
@@ -284,6 +358,7 @@ export default function CommentSection({ blogId, currentUserId = null, isAdmin =
                   setReplyTo({ id: n.id, username: n.author.username ?? '匿名用户', preview: replyPreview(n) })
                 }
                 onDelete={openDeleteModal}
+                onToggleLike={toggleLike}
                 onImageClick={setLightbox}
                 canComment={canComment}
                 replyTo={replyTo}
@@ -367,6 +442,7 @@ function CommentItem({
   isAdmin,
   onReply,
   onDelete,
+  onToggleLike,
   onImageClick,
   canComment,
   replyTo,
@@ -377,6 +453,7 @@ function CommentItem({
   isAdmin: boolean;
   onReply: (node: CommentNode) => void;
   onDelete: (id: string, requiresReason: boolean) => void;
+  onToggleLike: (node: CommentNode) => void;
   onImageClick: (url: string) => void;
   canComment: boolean;
   replyTo: ReplyTarget | null;
@@ -439,6 +516,25 @@ function CommentItem({
       {node.blog_missing && <div className="comment-blog-missing">[博客已删除]</div>}
 
       <div className="actions">
+        {/* 点赞：已删除的占位节点不给按钮（服务端对它一律 notFound）。
+            未登录只读展示计数 —— 点不了的东西不该长成能点的样子。 */}
+        {!node.is_deleted && currentUserId ? (
+          <button
+            type="button"
+            className={`comment-like${node.liked ? ' is-liked' : ''}`}
+            onClick={() => onToggleLike(node)}
+            aria-pressed={node.liked}
+            aria-label={node.liked ? '取消点赞' : '点赞'}
+          >
+            <Heart aria-hidden="true" />
+            {node.likes_count > 0 && <span>{node.likes_count}</span>}
+          </button>
+        ) : !node.is_deleted && node.likes_count > 0 ? (
+          <span className="comment-like comment-like--static">
+            <Heart aria-hidden="true" />
+            <span>{node.likes_count}</span>
+          </span>
+        ) : null}
         {canComment && (
           <button type="button" className="button button-primary-small" onClick={() => onReply(node)}>
             回复
@@ -468,6 +564,7 @@ function CommentItem({
               isAdmin={isAdmin}
               onReply={onReply}
               onDelete={onDelete}
+              onToggleLike={onToggleLike}
               onImageClick={onImageClick}
               canComment={canComment}
               replyTo={replyTo}

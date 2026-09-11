@@ -3200,6 +3200,45 @@ a:hover {
   text-decoration: none;
 }
 
+.comment-like {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+  line-height: 1.7;
+  cursor: pointer;
+}
+.comment-like svg {
+  width: 14px;
+  height: 14px;
+}
+
+.comment-like:hover {
+  border-color: var(--color-brand-primary);
+  color: var(--color-brand-primary);
+}
+
+.comment-like.is-liked {
+  border-color: var(--color-brand-primary);
+  color: var(--color-brand-primary);
+}
+.comment-like.is-liked svg {
+  fill: currentColor;
+}
+
+.comment-like--static {
+  cursor: default;
+}
+.comment-like--static:hover {
+  border-color: var(--color-border);
+  color: var(--color-text-secondary);
+}
+
 .comment-image {
   display: block;
   max-width: min(220px, 100%);

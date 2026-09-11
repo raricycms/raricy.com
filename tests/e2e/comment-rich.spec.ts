@@ -184,3 +184,76 @@ test.describe('评论输入区（与聊天同源的 RichComposer）', () => {
     await expect(row.locator('.comment-content__md strong')).toHaveText('来自输入区');
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 评论点赞（本次给已有后端补上界面入口）
+//
+// 后端（toggleCommentLike + /api/comments/:id/like）一直都在，但前端从来没调用过。
+// 这里盯的是「界面真的接上了」以及「liked 是随人而变的」——后者是最容易做错的地方：
+// 服务端按 viewer 算，未登录/别人看都是 false。
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe('评论点赞', () => {
+  test.beforeEach(async ({ page }) => {
+    const res = await page.request.post('/api/auth/login', {
+      data: { username: SEED_USERS.core.username, password: 'e2e-Password-123' },
+    });
+    expect(res.status()).toBe(200);
+  });
+
+  test('点一下变已赞并 +1，再点取消', async ({ page }) => {
+    const marker = `e2e-like-${Date.now().toString(36)}`;
+    await postComment(page, { content: marker });
+
+    await page.goto(BLOG_URL);
+    const row = commentRow(page, marker);
+    const btn = row.locator('.comment-like');
+    await expect(btn).toBeVisible();
+    await expect(btn).not.toHaveClass(/is-liked/);
+    // 0 赞时只显示心形，不显示数字
+    await expect(btn.locator('span')).toHaveCount(0);
+
+    await btn.click();
+    await expect(btn).toHaveClass(/is-liked/);
+    await expect(btn.locator('span')).toHaveText('1');
+
+    await btn.click();
+    await expect(btn).not.toHaveClass(/is-liked/);
+    await expect(btn.locator('span')).toHaveCount(0);
+  });
+
+  test('★ 赞过之后刷新页面仍然是已赞（liked 落到了服务端，不是纯前端状态）', async ({ page }) => {
+    const marker = `e2e-like-persist-${Date.now().toString(36)}`;
+    await postComment(page, { content: marker });
+
+    await page.goto(BLOG_URL);
+    await commentRow(page, marker).locator('.comment-like').click();
+    await expect(commentRow(page, marker).locator('.comment-like')).toHaveClass(/is-liked/);
+
+    await page.reload();
+    const after = commentRow(page, marker).locator('.comment-like');
+    await expect(after).toHaveClass(/is-liked/);
+    await expect(after.locator('span')).toHaveText('1');
+  });
+
+  test('★ 别人看同一条是未赞（liked 随查看者而变）', async ({ page }) => {
+    const marker = `e2e-like-viewer-${Date.now().toString(36)}`;
+    await postComment(page, { content: marker });
+
+    await page.goto(BLOG_URL);
+    await commentRow(page, marker).locator('.comment-like').click();
+    await expect(commentRow(page, marker).locator('.comment-like')).toHaveClass(/is-liked/);
+
+    // 换个账号（admin 是另一个种子用户）
+    await page.request.post('/api/auth/logout').catch(() => {});
+    const res = await page.request.post('/api/auth/login', {
+      data: { username: SEED_USERS.admin.username, password: 'e2e-Password-123' },
+    });
+    expect(res.status()).toBe(200);
+
+    await page.goto(BLOG_URL);
+    const other = commentRow(page, marker).locator('.comment-like');
+    await expect(other, '别人看不该是已赞').not.toHaveClass(/is-liked/);
+    await expect(other.locator('span'), '但计数是共享的').toHaveText('1');
+  });
+});

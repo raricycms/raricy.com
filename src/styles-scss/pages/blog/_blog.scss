@@ -562,6 +562,47 @@ a {
     text-decoration: none;
 }
 
+// 点赞：胶囊按钮，已赞时品牌色 + 实心心形。未登录时同一个类名退化成静态展示
+// （--static 去掉手型与 hover），保证「赞数」位置一致。
+.comment-like {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 10px;
+    border: 1px solid var(--color-border);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--color-text-secondary);
+    font-size: 0.85rem;
+    line-height: 1.7;
+    cursor: pointer;
+
+    svg {
+        width: 14px;
+        height: 14px;
+    }
+}
+.comment-like:hover {
+    border-color: var(--color-brand-primary);
+    color: var(--color-brand-primary);
+}
+.comment-like.is-liked {
+    border-color: var(--color-brand-primary);
+    color: var(--color-brand-primary);
+
+    svg {
+        fill: currentColor;
+    }
+}
+.comment-like--static {
+    cursor: default;
+
+    &:hover {
+        border-color: var(--color-border);
+        color: var(--color-text-secondary);
+    }
+}
+
 // ── 评论附件 ─────────────────────────────────────────────────────────────────
 
 .comment-image {
