@@ -93,7 +93,8 @@
 | `/image/i/<id>` · `/auth/avatar/<id>` | rewrite | **不是路由**：Flask 时代的旧直链，由 `next.config.mjs` 的 `rewrites()` 映射到 `/api/images/<id>/raw`、`/api/avatar/<id>`。存量正文里写死的就是它们（见 `tests/e2e/legacy-urls.spec.ts`） |
 | `/story` · `/story/[...path]` | page | 故事合集/阅读 |
 | `/tool` · `/tool/<sub>` | page | 工具集（aes / base / hash / hex / html / qp / translate / url / cattca） |
-| `/game` · `/game/<sub>` · `/api/game/game_token` | page + API | 游戏菜单 + 9 款游戏（另有 `/game/wand` 演示页） |
+| `/game` · `/game/<sub>` · `/api/game/game_token` | page + API | 游戏菜单（**单机 / 联机两分区**）+ 9 款游戏（另有 `/game/wand` 演示页）。五子棋同时出现在两区，靠 `?mode=online` 切模式 |
+| `/api/game/gomoku/*` | API | 五子棋联机：建房 / 快照 / 加入 / 走子 / 认输 / 判胜 / 再来一局 + SSE 流。见 §6.9 |
 | `/admin/*` · `/api/admin/*` | page + API | 管理后台（档位分页而异，见 §8） |
 | `/audit` · `/audit/[id]` | page | 审计日志公示 + 申诉 |
 | `/contact` · `/privacy` · `/terms` | page | 联系 / 隐私 / 条款 |
@@ -113,11 +114,13 @@
 | 博客域 | `blog-service.ts` · `feed-service.ts` · `comment-service.ts` · `comment-shared.ts` · `blog-sort-pref.ts` · `spider-service.ts` |
 | 富文本渲染 | `rich-text.ts`（共享管线）· `chat-markdown.ts` · `comment-markdown.ts` · `blog-markdown.ts` · `markdown-math.ts` · `linkify.ts` · `vditor-theme.ts` |
 | 聊天 | `chat-service.ts` · `chat-bus.ts`（SSE 订阅）/ `chat-shared.ts`（DTO）· `chat-sidebar-pref.ts` · `focus-mode.ts` |
+| 实时传输 | `sse.ts` —— SSE 响应头 / 帧格式 / 重连与背压常量的**唯一出处**，聊天与五子棋联机共用。新增 SSE 路由一律 import 它，不要手抄响应头（`no-transform` 少一个字的后果见 §6.9） |
 | 通知 / 审计 | `notification-service.ts` · `broadcast-service.ts` · `audit-service.ts` · `admin-appeal-service.ts` |
 | 投票 / 签到 / 剪贴板 | `vote-service.ts` · `checkin-service.ts` · `clipboard-service.ts` |
 | 图床 | `image-service.ts` · `image-upload.ts`（服务端）· `image-client.ts`（浏览器侧选图上传，聊天与评论共用）· `vditor-upload.ts`（Vditor 编辑器的上传配置，博客与剪贴板共用；与 `/api/images` 的字段名/响应结构两端对齐，见 `tests/unit/vditor-upload.test.ts`） |
 | 故事 | `story-service.ts` |
-| 游戏 | `atamas-pref.ts` |
+| 游戏 · 通用 | `atamas-pref.ts` |
+| 游戏 · 五子棋联机 | `gomoku-rules.ts`（棋盘与胜负判定的**纯规则**，前端与 API 共用）· `gomoku-shared.ts`（DTO / SSE 事件 / 房间码规范化）· `gomoku-room.ts`（房间注册表 + 服务端权威判定）· `game-bus.ts`（按房间的进程内 SSE 订阅）。见 §6.9 |
 | 小鱼干 | `fish-service.ts` · `fish-admin.ts` · `fish-sync.ts`（账本 + 补偿，见 §6.3）· `fish-units.ts`（单位换算）· `account-client.ts` |
 | OAuth 2.0 | `oauth.ts`（见 `docs/oauth.md`） |
 | 管理域 | `admin-user-service.ts` · `admin-blog-service.ts` · `admin-category-service.ts` · `admin-comment-service.ts` · `admin-clipboard-service.ts` · `admin-vote-service.ts` · `admin-image-service.ts` · `admin-stats-service.ts` |
@@ -244,6 +247,46 @@ GET/HEAD/OPTIONS 视为安全方法，不校验。
 **核心库与端点**：`src/lib/oauth.ts`（纯函数 + Prisma 调用）；6 个 `/api/oauth/*` 路由 + `/oauth/authorize` 页 + `/admin/oauth` 管理页；CLI `oauth create-app / list-apps / disable-app / enable-app`。
 
 详见 `docs/oauth.md`。
+
+### 6.9 五子棋联机
+
+玩具区原本全是纯客户端单机 / 同屏双人。五子棋联机是第一个有服务端棋局状态的玩法。
+
+**为什么不开 WebSocket、不引 Redis。** 棋是回合制，一次走子间隔以秒计，SSE 的单向
+推送完全够用；而走子走 POST 白拿 CSRF 同源校验、限频与 session 鉴权（这三样 WS 都要
+自己重写）。更关键的是 Next 的 route handler 拿不到 HTTP upgrade —— 开 WS 得写自定义
+server，会顶掉 `next start -p 3000` 与 systemd unit。Redis 解决的「多实例 fanout」
+在单进程部署下不存在（同 §6.5 的限频）。
+
+**服务端权威。** 联网后客户端不可信（否则 POST 一句「我赢了」就行）。棋盘、轮次、
+胜负全在 `gomoku-room.ts`，客户端只渲染服务端下发的 `grid`。规则跑的是与前端**同一个**
+`gomoku-rules.ts`，不存在两份判定 —— 两边各写一份必然 drift，而且是静默的。
+
+> **校验与落子之间不得出现 `await`。** 单线程 Node + 无 await = 临界区天然原子。
+> 日后若为了「棋谱落库」在 `playMove` 里插一个 await，两个并发请求会同时通过轮次
+> 检查、同一格落两次子 —— 这类 bug 只在生产并发下复现。
+
+**协议：每次变化推全量状态。** 棋盘只有 225 格（约 1KB JSON），走子间隔以秒计。
+全量推送换来的是**没有增量协议的那一整类 bug**（漏推、乱序、断线后增量对不上）。
+因此也不需要 `Last-Event-ID` 补齐、环形缓冲与 resync —— SSE 一连上服务端就推一次
+当前状态（见 `rooms/[code]/stream/route.ts`），客户端按 `revision` 丢弃过期的即可。
+这比聊天那套简单一档，因为它推的是全量而非增量。
+
+**响应头复用 `sse.ts`。** `Cache-Control: no-transform` 少了的话，`next start` 的压缩
+中间件会把事件 gzip 攒到流结束才发（实测 4 条事件拖到 +1241ms 一次性到达），实时性
+归零 —— 而单测看不见、构建也不报错。故 chat 与 game 共用同一份常量。
+
+**生命周期。** 房号 6 位，字母表剔掉 `0/o/1/l/i`（要给人念、手抄、发消息）。房间码
+即邀请凭证，没有单独的邀请接口。空闲 30 分钟 / 空房 2 分钟回收；硬上限 `MAX_ROOMS=200`、
+单房观众 20、每用户并发连接 4。席位在房间存续期内不释放 —— 所以 `join` 是幂等的，
+「刷新页面回到原座」与「断线重连不丢座」是同一条路径。
+
+**权限。** 联机要求登录 + `core+` + 非专注模式，比单机子页严（单机匿名可玩、专注模式
+也能直达）。联机是社交行为，与聊天大区同等对待：服务端硬 403，不只是 UI 隐藏。专注
+模式变更时 `user-service` 会 `kickViewer` 掉该用户的联机连接，否则他能把手上这局下完。
+
+**判胜不做服务端定时器。** 对手掉线满 60 秒可由对方点「判胜」，时间由服务端在
+`claimAbandoned` 里复核 —— 少一类状态机 bug，且客户端伪造不了。对方重新连上即撤销资格。
 
 ## 7. 数据流（4 个典型路径）
 
@@ -407,6 +450,7 @@ GET/HEAD/OPTIONS 视为安全方法，不校验。
 |------|------|------|
 | SQLite 库级写锁 | 高并发写会互相 `database is locked` | 长期建议迁 Postgres（届时去 `DATABASE_URL` 的 `connection_limit/socket_timeout`） |
 | 进程内限频 | 多实例下各自计数，总限翻倍 | 多实例前先换 Redis |
+| 五子棋联机房间在进程内存 | 进程重启即失（进行中的对局作废，客户端显示「房间已失效」）；多实例下 A 实例建的房 B 实例查不到 | **已知限制不是 bug**，与 `chat-bus.ts` 同一前提。房间没进数据库是有意的：一局棋是短命会话，为它加表要连带迁移、清理与软删除口径，收益不抵成本 |
 | `instance/` 在部署机器 | 需挂载真实目录否则上传 500 | 部署脚本里 `node scripts/check-instance.mjs` 兜底 |
 | 初次部署既有库 | `FISH_ENCRYPTION_KEY` 必须留空，否则解不开存量密文 | `npm run diagnose` 会校验 |
 | 反代改写了 `Host` 且未透传 `X-Forwarded-Host` | 浏览器 `Origin` 与三个来源都对不上 → 全站 POST 403（CSRF 误杀）。nginx 默认就把 `Host` 设成 `$proxy_host`（upstream 地址），所以**两个头都要显式透传** | `ALLOWED_ORIGINS="你的域名"` 兜底或修 nginx |
