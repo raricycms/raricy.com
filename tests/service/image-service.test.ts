@@ -42,6 +42,8 @@ import {
   verifyImageMime,
 } from '@/lib/image-upload';
 import { resetDb, makeUser, prisma } from '../helpers/db';
+// 限频桶是进程内的 —— 这条用例要先把额度填到只剩一个，只能直接调它
+import { rateLimit, RULES } from '@/lib/rate-limit';
 
 // ── 磁盘隔离 ────────────────────────────────────────────────────────────────
 //
@@ -1758,6 +1760,16 @@ describe('verifyImageMime（内容 vs 声明）', () => {
 describe('POST /api/images（上传内容校验接线）', () => {
   let postImages: (req: Request) => Promise<Response>;
 
+  /** 上传接口的响应：单文件时有 id/url，多文件时看 items/failed。 */
+  interface UploadRouteBody {
+    code: number;
+    message: string;
+    id?: string;
+    url?: string;
+    items?: { filename: string; id: string; url: string }[];
+    failed?: { filename: string; message: string }[];
+  }
+
   beforeAll(async () => {
     ({ POST: postImages } = await import('@/app/api/images/route'));
   });
@@ -1772,7 +1784,7 @@ describe('POST /api/images（上传内容校验接线）', () => {
     const res = await postImages(
       new Request('http://localhost/api/images', { method: 'POST', body: form })
     );
-    return { res, body: (await res.json()) as { code: number; message: string } };
+    return { res, body: (await res.json()) as UploadRouteBody };
   }
 
   it('真 PNG 正常上传', async () => {
@@ -1854,5 +1866,165 @@ describe('POST /api/images（上传内容校验接线）', () => {
     const { res, body } = await upload(Buffer.from('<svg></svg>'), 'image/png', 'e.png');
     expect(res.status).toBe(400);
     expect(body.message).toBe('文件内容与声明的格式不匹配');
+  });
+
+  // ── 一次多个文件（vditor 多选 / 拖入多张）────────────────────────────────
+  //
+  // 字段名 `file` 重复出现即是多文件 —— vditor 的 multiple 就是这么发的。
+  // Flask 侧走的是 `file[]` 分支 + getlist，语义相同。
+
+  async function uploadMany(files: { bytes: Buffer; mime: string; name: string }[]) {
+    const form = new FormData();
+    for (const f of files) {
+      form.append('file', new File([new Uint8Array(f.bytes)], f.name, { type: f.mime }));
+    }
+    const res = await postImages(
+      new Request('http://localhost/api/images', { method: 'POST', body: form })
+    );
+    return { res, body: (await res.json()) as UploadRouteBody };
+  }
+
+  it('★ 一次两个文件：两条都落库、都进 items', async () => {
+    const u = await makeUser({ role: 'core' });
+    authState.user = { id: u.id, role: 'core' };
+    const png = await pngBytes();
+
+    const { res, body } = await uploadMany([
+      { bytes: png, mime: 'image/png', name: 'a.png' },
+      { bytes: png, mime: 'image/png', name: 'b.png' },
+    ]);
+
+    expect(res.status).toBe(200);
+    expect(body.items?.map((i) => i.filename)).toEqual(['a.png', 'b.png']);
+    expect(body.failed).toEqual([]);
+    for (const item of body.items ?? []) {
+      expect(item.url).toBe(`/api/images/${item.id}/raw`);
+    }
+    expect(await prisma.imageHosting.count({ where: { authorId: u.id } })).toBe(2);
+    // 多文件时不给 id/url：那是单文件的快捷字段，两个文件时给了就有歧义
+    expect(body.id).toBeUndefined();
+    expect(body.url).toBeUndefined();
+  });
+
+  it('单文件的响应形状与支持多文件之前一致', async () => {
+    // 图床页 / 聊天与评论选图 / 三条 e2e 都吃 id + url，这两个字段不能动
+    const u = await makeUser({ role: 'core' });
+    authState.user = { id: u.id, role: 'core' };
+
+    const { res, body } = await upload(await pngBytes(), 'image/png');
+    expect(res.status).toBe(200);
+    expect(typeof body.id).toBe('string');
+    expect(body.url).toBe(`/api/images/${body.id}/raw`);
+    expect(body.items).toHaveLength(1);
+  });
+
+  it('★ 部分失败：坏的带原因进 failed，好的照常落库', async () => {
+    const u = await makeUser({ role: 'core' });
+    authState.user = { id: u.id, role: 'core' };
+
+    const { res, body } = await uploadMany([
+      { bytes: await pngBytes(), mime: 'image/png', name: 'ok.png' },
+      { bytes: Buffer.from('not an image'), mime: 'image/png', name: 'bad.png' },
+    ]);
+
+    // ⚠️ 200 不再等于「全部成功」—— 调用方必须看 failed
+    expect(res.status).toBe(200);
+    expect(body.items?.map((i) => i.filename)).toEqual(['ok.png']);
+    expect(body.failed).toEqual([
+      { filename: 'bad.png', message: '文件内容与声明的格式不匹配' },
+    ]);
+    expect(await prisma.imageHosting.count({ where: { authorId: u.id } })).toBe(1);
+  });
+
+  it('★ 全部失败 → 400 + 第一个原因', async () => {
+    // 这条不是「为了兼容」：图床页只看 code === 200 就显示「上传成功」，
+    // 全失败返 200 会当着用户的面撒谎。
+    const u = await makeUser({ role: 'core' });
+    authState.user = { id: u.id, role: 'core' };
+
+    const { res, body } = await uploadMany([
+      { bytes: Buffer.from('nope'), mime: 'image/png', name: 'a.png' },
+      { bytes: Buffer.from('nope'), mime: 'image/png', name: 'b.png' },
+    ]);
+
+    expect(res.status).toBe(400);
+    expect(body.message).toBe('文件内容与声明的格式不匹配');
+    expect(await prisma.imageHosting.count({ where: { authorId: u.id } })).toBe(0);
+  });
+
+  it('★ 配额在批内累加（不是两张都拿同一个 used 去比）', async () => {
+    const u = await makeUser({ role: 'core' });
+    const png = await pngBytes();
+    const limitBytes = 50 * MB; // core 配额
+    // 只留下「正好装下第一张」的余量：used + png.length === limit（不是 >，所以第一张能过）。
+    // 第一张落库后 used 必然变大（fileSize ≥ 1），于是第二张一定超 ——
+    // 无论它压缩后是多少字节，这个断言都成立。
+    await makeImage({ authorId: u.id, fileSize: limitBytes - png.length });
+    authState.user = { id: u.id, role: 'core' };
+
+    const { body } = await uploadMany([
+      { bytes: png, mime: 'image/png', name: 'one.png' },
+      { bytes: png, mime: 'image/png', name: 'two.png' },
+    ]);
+
+    // 两张都按同一个初始 used 算的话会双双通过 —— 那就说明累加丢了
+    expect(body.items?.map((i) => i.filename)).toEqual(['one.png']);
+    expect(body.failed).toEqual([
+      { filename: 'two.png', message: '存储空间不足，你的配额为 50 MB' },
+    ]);
+  });
+
+  it('★ 限频按文件计：额度只剩一个时传两张，传满即止并逐条说明', async () => {
+    const u = await makeUser({ role: 'core' });
+    authState.user = { id: u.id, role: 'core' };
+
+    // 先把桶填到只剩 1 个额度（对齐 Flask：每个文件消耗一次）
+    const key = `image-upload:${u.id}`;
+    for (let i = 0; i < RULES.imageUploadHourly.limit - 1; i += 1) {
+      rateLimit(key, RULES.imageUploadHourly);
+    }
+    const png = await pngBytes();
+
+    const { body } = await uploadMany([
+      { bytes: png, mime: 'image/png', name: 'first.png' },
+      { bytes: png, mime: 'image/png', name: 'second.png' },
+    ]);
+
+    // 第一张吃掉最后一个额度；第二张不再消耗额度，直接说明原因
+    // （不是传一半才甩 429 —— 那会让用户既丢图又看不懂提示）
+    expect(body.items?.map((i) => i.filename)).toEqual(['first.png']);
+    expect(body.failed).toEqual([
+      { filename: 'second.png', message: '上传频率过高，请稍后再试' },
+    ]);
+  });
+
+  it('回显的文件名保证带扩展名（vditor 靠扩展名判「插图片还是插链接」）', async () => {
+    const u = await makeUser({ role: 'core' });
+    authState.user = { id: u.id, role: 'core' };
+
+    const { body } = await uploadMany([
+      { bytes: await pngBytes(), mime: 'image/png', name: '截图' },
+    ]);
+    expect(body.items?.[0]?.filename).toBe('截图.png');
+  });
+
+  it('请求体超限 → 413 + 能行动的文案（不是「无效的上传请求」）', async () => {
+    // nginx 超限回 413 HTML 错误页、Next 的中间件静默截断 body，两种都看不出是体积问题。
+    // 这里显式判 content-length，把它变成一句能照做的提示。
+    const u = await makeUser({ role: 'core' });
+    authState.user = { id: u.id, role: 'core' };
+
+    const form = new FormData();
+    form.append('file', new File([new Uint8Array(10)], 'a.png', { type: 'image/png' }));
+    const res = await postImages(
+      new Request('http://localhost/api/images', {
+        method: 'POST',
+        body: form,
+        headers: { 'content-length': String(13 * MB) },
+      })
+    );
+
+    expect(res.status).toBe(413);
+    expect(((await res.json()) as { message: string }).message).toContain('减少一次上传的图片数量');
   });
 });

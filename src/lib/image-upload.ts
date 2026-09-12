@@ -25,6 +25,19 @@ export const ALLOWED_MIMETYPES = new Set<string>([
 // 单文件上限（对齐 Flask MAX_IMAGE_SIZE 默认 10MB）
 export const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
 
+/**
+ * 单次上传**请求体**上限（一次可以带多个文件），与部署侧的两个闸门同值：
+ *   · nginx `client_max_body_size 12m`（docs/deploy.md「修改 schema 后」附近的部署要点）
+ *   · next.config.mjs 的 `middlewareClientMaxBodySize: '12mb'`
+ * 两个闸门超限的**表现不同，且都不指向根因**：nginx 回 413 + HTML 错误页（客户端解析不出、
+ * 只剩兜底文案），Next 的中间件则是**静默截断** body → multipart 解析失败 →
+ * 一句「无效的上传请求」。路由用它把这两种情况都变成能行动的错。
+ *
+ * 浏览器侧另有一道更保守的 11MB 闸门（src/lib/vditor-upload.ts 的 validate，
+ * 12MB 下留 1MB 给 multipart 每部分的头），两边数值**故意不同**，不是 drift。
+ */
+export const MAX_REQUEST_BYTES = 12 * 1024 * 1024;
+
 // 角色存储配额（MB），对齐 Flask QUOTA_LIMITS_MB
 export const QUOTA_LIMITS_MB: Record<string, number> = {
   core: 50,

@@ -65,4 +65,56 @@ for (const { name, url, editor } of EDITORS) {
     // ④ 不该同时弹错误提示
     await expect(page.locator('.vditor-tip')).toBeHidden();
   });
+
+  test(`${name}：一次选多张，全部插进 Markdown（含重名）`, async ({ page }) => {
+    await loginViaApi(page, SEED_USERS.core.username);
+    await page.goto(url);
+    await expect(page.locator(`${editor}.vditor`)).toBeVisible();
+
+    const input = page.locator('.vditor-toolbar input[type="file"]');
+    // multiple 打开后选择框真的带 multiple 属性 —— 否则浏览器只会让用户选一张
+    await expect(input).toHaveAttribute('multiple', 'multiple');
+
+    const uploaded: string[] = [];
+    page.on('request', (r) => {
+      if (r.url().includes('/api/images') && r.method() === 'POST') uploaded.push(r.url());
+    });
+
+    // 三张：两张**同名**（succMap 的键会撞，撞了 vditor 只会插一张）+ 一张不同名
+    await input.setInputFiles([
+      { name: 'shot.png', mimeType: 'image/png', buffer: PNG_1X1 },
+      { name: 'shot.png', mimeType: 'image/png', buffer: PNG_1X1 },
+      { name: 'other.png', mimeType: 'image/png', buffer: PNG_1X1 },
+    ]);
+
+    // 一次请求带三张（不是拆成三次）
+    await expect(page.locator(`${editor} img[src^="/api/images/"]`)).toHaveCount(3);
+    expect(uploaded).toHaveLength(1);
+    await expect(page.locator('.vditor-tip')).toBeHidden();
+  });
+
+  test(`${name}：一次选的图总体积超限时拦在上传之前`, async ({ page }) => {
+    await loginViaApi(page, SEED_USERS.core.username);
+    await page.goto(url);
+    await expect(page.locator(`${editor}.vditor`)).toBeVisible();
+
+    let posted = 0;
+    page.on('request', (r) => {
+      if (r.url().includes('/api/images') && r.method() === 'POST') posted += 1;
+    });
+
+    // 两张 6MB（合计 12MB > 11MB 闸门）。字节内容无所谓 —— 闸门在任何校验之前。
+    const big = Buffer.alloc(6 * 1024 * 1024);
+    await page.locator('.vditor-toolbar input[type="file"]').setInputFiles([
+      { name: 'big1.png', mimeType: 'image/png', buffer: big },
+      { name: 'big2.png', mimeType: 'image/png', buffer: big },
+    ]);
+
+    // 提示要说清怎么办（被 validate 拒时 vditor 不会重置 input.value，
+    // 用户重选同一批不会再触发 change，只说「太大了」会像点了没反应）
+    await expect(page.locator('.vditor-tip')).toContainText('分批');
+    // 关键：一张都没发出去。超限的 body 到了服务端只会变成看不懂的
+    // 「无效的上传请求」（Next 中间件静默截断）或 413 HTML 错误页。
+    expect(posted).toBe(0);
+  });
 }

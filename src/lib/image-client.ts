@@ -23,6 +23,17 @@ export const IMAGE_ACCEPT = 'image/png,image/jpeg,image/gif,image/webp';
 /** 单文件上限（与服务端 MAX_IMAGE_SIZE 同值；这里只是先拦一道，省一次白传）。 */
 export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 
+/**
+ * **一次请求**的总体积上限（多文件上传用；单文件的上限是上面那个）。
+ *
+ * 比部署侧的两个闸门（nginx `client_max_body_size 12m`、next.config 的
+ * `middlewareClientMaxBodySize: '12mb'`，见服务端 MAX_REQUEST_BYTES）低 1MB，
+ * 留给 multipart 每部分的头。撞上它们的表现都很差：nginx 回 413 HTML 错误页、
+ * Next 的中间件**静默截断** body（→「无效的上传请求」），两种都看不出是体积问题。
+ * 所以宁可在这边先拦下，给一句能行动的提示。
+ */
+export const MAX_UPLOAD_REQUEST_BYTES = 11 * 1024 * 1024;
+
 export type UploadResult =
   | { ok: true; id: string; url: string }
   | { ok: false; message: string; status: number };

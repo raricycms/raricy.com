@@ -380,6 +380,9 @@ Content-Type: multipart/form-data
 
 返回的图片 id 即发消息时的 `image_id`。限频 **75 次/小时**。
 
+（一个请求可以带多个同名 `file` 字段，此时响应里没有单个 `id`，成功的那几张在
+`items[].id`、失败的带原因在 `failed[]`。限频按**张数**计。一次传一张最省事。）
+
 ---
 
 ## 10. 限频
@@ -392,7 +395,7 @@ Content-Type: multipart/form-data
 | `chatDaily` | **800 次 / 24 小时** | 发消息 |
 | `chatPoll` | 120 次 / 分钟 | 历史消息接口（§8 全系列） |
 | `chatNewChannel` | 20 次 / 分钟 | 发起私聊（§9.1） |
-| `imageUploadHourly` | 75 次 / 小时 | 上传图片（§9.2） |
+| `imageUploadHourly` | 75 张 / 小时 | 上传图片（§9.2，按张数计） |
 | `loginPerIp` | 300 次 / 15 分钟 | 登录，**仅统计失败** |
 | `loginPerUser` | 100 次 / 15 分钟 | 登录，**仅统计失败** |
 
