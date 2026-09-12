@@ -330,6 +330,16 @@ test.describe('发起私聊', () => {
     if (isMobile) await page.locator('.chat-main__menu').click();
 
     await page.locator('.chat-new-btn').click();
+    // 先搜再点，别直接在整列表里找对端。
+    //
+    // 弹窗每页只取 20 条、按 createdAt desc 排（NewChatModal 的 PER_PAGE），而全套
+    // 用例会一路 registerFreshUser + 提权，攒出几十个 core 用户 —— 种子号 e2e_owner
+    // 是最老的一个，排在最末。只要总数越过 20，它就掉出第一页，用例以「找不到
+    // .chat-new-item」挂掉，看着像随机 flaky，实则取决于这轮跑了多少用例
+    // （desktop 全跑完才轮到 mobile，mobile 那次就更容易越线）。
+    // 实测踩过一次：仅因 seed.ts 多了一个 core 种子用户，就是 20 → 21 那一步。
+    // 走搜索与真人用法一致，也不受列表规模影响。
+    await page.fill('.chat-new-search', SEED_USERS.owner.username);
     await page.locator('.chat-new-item', { hasText: SEED_USERS.owner.username }).click();
 
     // 弹窗关闭 + 直接进入该会话
