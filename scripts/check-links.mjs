@@ -157,10 +157,15 @@ for (const f of srcFiles) {
 // ── 4. 图标类必须有定义 ──────────────────────────────────────────────────────
 // 图标靠 CSS 的 mask-image 上色，类名拼错不会报错，只会渲染成一个**纯黑方块**。
 // 联系页就这么顶着个黑方块：代码写 .icon-chat-dots，而 CSS 里叫 .icon-chat-dots_new。
-// 只查 icon-*：其余类名在 rebuild.css 里是重新设计过的，与 Flask 不对应属正常，
-// 拿「Flask 有而 Next 没有」当错报会淹没真问题。
+// 只查 icon-*：其余类名与 Flask 不对应属正常，拿「Flask 有而 Next 没有」当错报
+// 会淹没真问题。
 {
-  const cssText = ['src/app/rebuild.css', 'src/app/globals.css', 'public/static/css/legacy.css']
+  // 样式统一由 src/styles-scss/ 编译到 compiled/flask.css，layout.tsx 直接导入。
+  // 旧路径 src/app/rebuild.css / globals.css / public/static/css/legacy.css 已随迁移删除 ——
+  // 本检查曾长期指向它们，于是 cssText 恒为空，**每一个** icon-* 都被报成「无定义」，
+  // 24 条假阳性把真问题（下面那条断链）淹了。tests/unit/css-classes.test.ts 是同一条
+  // 检查的孪生实现，读的是同一个编译产物 —— 改这里记得对照那边。
+  const cssText = ['src/styles-scss/compiled/flask.css']
     .map((f) => {
       const p = path.join(ROOT, f);
       return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '';
