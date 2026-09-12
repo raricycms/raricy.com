@@ -108,6 +108,22 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 - **登出只有 `POST /api/auth/logout`**，没有 GET 入口。清会话是状态变更，GET 会被
   预取 / 爬虫 / 第三方 `<img>` 发起，表现为「莫名其妙掉线」（线上发生过）。
 
+### 玩具区与联机
+- 玩具区菜单分**单机 / 联机**两段（`/game` 一个页面，不分路由）。同时有两种模式的游戏
+  （当前只有五子棋）在两区各出现一次，进去是同一个页面，靠 `?mode=online` 切模式。
+- **联机房间状态在进程内存**（`src/lib/gomoku-room.ts`）—— 重启即失、多实例不共享，
+  与 `chat-bus.ts` 同一前提。**这是已知限制不是 bug**；房间没进数据库是有意的（一局棋
+  是短命会话，为它加表要连带迁移、清理与软删除口径）。
+- **服务端权威**：棋盘、轮次、胜负全在服务端，客户端只渲染。`playMove` 里
+  **校验与落子之间不得出现 `await`** —— 单线程 Node + 无 await 才是原子的。
+- **SSE 响应头一律取 `src/lib/sse.ts`**，新增 SSE 路由不许手抄。`no-transform`
+  少一个字的后果是全站 SSE 实时性归零，且单测看不见、构建不报错。
+- 联机要求**登录 + core+ + 非专注模式**（比单机严：单机匿名可玩、专注模式也能直达）。
+  专注模式变更时 `user-service` 会 `kickViewer`。改 `/game/*` 权限时注意
+  `requireCoreUser()` **只能在联机分支调**，无条件调会把单机也挡在门外。
+- 五子棋规则在 `src/lib/gomoku-rules.ts`，**前端与服务端共用同一份**（零依赖，
+  禁 import 任何 server-only）。长连（6 子以上）也算胜，改口径等于同时改两端。
+
 ### 限频
 - `src/lib/rate-limit.ts` 的 `RULES` 是**多数**配额的唯一权威，但**不是全部**：OAuth 的三条
   （authorize 30/min/user、token 60/min/clientId、userinfo 600/min/user）是各 route 里内联的
