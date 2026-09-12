@@ -680,10 +680,16 @@ export default function Gomoku() {
 
       if (!gameOverRef.current) {
         switchTurn();
+        // 【为什么这里要补一次 applyView】placeAndCheck 内部已经刷新过一次状态，
+        // 但那是在 switchTurn 之前 —— 读到的还是刚落子那方。AI 模式下 maybeAiMove
+        // 会再补一次，pvp 模式下它立刻返回，状态栏就永远停在「刚落子那方」，
+        // 回合提示慢一拍（玩家会以为还是对方走）。同一次事件里 setState 会合并，
+        // AI 模式随后覆盖成「AI 思考中…」，不会闪。
+        applyView();
         maybeAiMove();
       }
     },
-    [placeAndCheck, switchTurn, maybeAiMove]
+    [placeAndCheck, switchTurn, maybeAiMove, applyView]
   );
 
   const initGame = useCallback(
