@@ -22,6 +22,9 @@ raricy.com 的全部文档。分两层：**`guide/` 给玩家和内容创作者*
 | `guide/atamas-game.md` | ATÅMAS 圆盘组合游戏玩法 |
 | `guide/gomoku-online.md` | 五子棋联机对战：开房、邀请、掉线判胜、观战 |
 | `guide/tictactoe-online.md` | 井字棋联机对战：三子连线、平局、掉线判胜 |
+| `guide/xiangqi-online.md` | 中国象棋联机对战：红先、马蹩腿/象塞眼/炮翻山、困毙判负、长将判负 |
+| `guide/chess-online.md` | 国际象棋联机对战：易位、吃过路兵、升变、逼和与五十回合 |
+| `guide/draughts-online.md` | 国际跳棋联机对战：吃子强制、最大吃子、王的飞吃、连吃不中途升变 |
 
 ★ = 被站内页面渲染（`/clipboard/guide` · `/image/guide` · `/vote/guide` · `/tool/cattca-guide`）
 
