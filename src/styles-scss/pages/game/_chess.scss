@@ -1,0 +1,140 @@
+@use '../../abstracts/variables' as *;
+
+// ============================================================
+// Chess (国际象棋) — BEM namespace: .chess-*
+// ============================================================
+//
+// 【卡片 / 按钮 / 状态行 / 席位栏 / 房号条 / 进房面板】全在 _board.scss（.board-*），
+// 与另外四款棋共用。这里只有棋盘与页面壳。
+//
+// 【颜色为什么写死不跟主题】棋盘是"实体"：木头色深浅格 + 黑棋子/白棋子，
+// 换个主题就换一套棋盘配色的国际象棋没人见过。所以底色写死，**棋子的黑白靠
+// 填充色与描边区分**（不靠主题令牌）—— 白子填充白、黑子填充近黑，
+// 各配一圈反向描边，在深色页面与浅色页面上都能看清、且不可能看反。
+
+.chess-page {
+  min-height: calc(100vh - 62px);
+  padding-top: $space-6;
+  padding-bottom: $space-6;
+  background: var(--color-background-page);
+}
+
+.chess-back {
+  display: inline-block;
+  margin-bottom: $space-4;
+  color: var(--color-text-secondary);
+  font-size: 0.95rem;
+  text-decoration: none;
+  transition: color 0.2s ease;
+
+  &:hover {
+    color: var(--color-brand-primary);
+  }
+}
+
+// ── 棋盘 ──────────────────────────────────────────────────────
+
+.chess-board {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  width: min(100%, 32rem);
+  margin: 0 auto $space-3;
+  border: 2px solid #6b4f34;
+  border-radius: $radius-small;
+  overflow: hidden;
+  // 棋盘自带阴影，和卡片拉开层次
+  box-shadow: 0 6px 18px rgb(0 0 0 / 18%);
+}
+
+.chess-square {
+  position: relative;
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  // 格子里的字形大小随棋盘缩放
+  font-size: clamp(1.3rem, 5.2vw, 2.3rem);
+  line-height: 1;
+
+  &:disabled {
+    cursor: default;
+  }
+
+  &--light {
+    background: #f0d9b5;
+  }
+
+  &--dark {
+    background: #b58863;
+  }
+
+  // ── 高亮 ──
+  // 用 inset 阴影而不是背景色：背景色会盖掉格子本身的深浅，
+  // 一眼看去分不清这块是"被选中的深格"还是"没选中的浅格"。
+
+  // 选中的子
+  &--selected {
+    box-shadow: inset 0 0 0 4px rgb(255 196 0 / 85%);
+  }
+
+  // 走子路径上的中间落点（跳棋连吃用得上，国际象棋用不到但保持三款棋一致）
+  &--path {
+    box-shadow: inset 0 0 0 4px rgb(255 196 0 / 45%);
+  }
+
+  // 可以走的格子：中心一个半透明圆点
+  &--target::after {
+    content: '';
+    position: absolute;
+    width: 28%;
+    height: 28%;
+    border-radius: 50%;
+    background: rgb(30 30 30 / 32%);
+  }
+
+  // 最后一手走过的两格
+  &--last {
+    box-shadow: inset 0 0 0 3px rgb(66 133 244 / 55%);
+  }
+
+  // 终局高亮（被将死的王）
+  &--win {
+    box-shadow: inset 0 0 0 4px rgb(220 53 69 / 85%);
+  }
+
+  // 被将军的王
+  &--check {
+    background: radial-gradient(circle, rgb(220 53 69 / 85%) 0%, transparent 72%);
+  }
+}
+
+.chess-piece {
+  // 棋子是 Unicode 字形：白子填充白 + 深描边，黑子填充近黑 + 浅描边。
+  // 描边用 text-shadow 的四向偏移模拟（Unicode 字形没法单独描边）。
+  font-family: 'Segoe UI Symbol', 'Noto Sans Symbols 2', serif;
+  user-select: none;
+
+  &--white {
+    color: #fff;
+    text-shadow:
+      0 0 1px #2b2b2b,
+      1px 0 0 #2b2b2b,
+      -1px 0 0 #2b2b2b,
+      0 1px 0 #2b2b2b,
+      0 -1px 0 #2b2b2b;
+  }
+
+  &--black {
+    color: #262626;
+    text-shadow:
+      0 0 1px #f5f5f5,
+      1px 0 0 #f5f5f5,
+      -1px 0 0 #f5f5f5,
+      0 1px 0 #f5f5f5,
+      0 -1px 0 #f5f5f5;
+  }
+}

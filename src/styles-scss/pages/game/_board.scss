@@ -230,3 +230,23 @@
   color: var(--color-text-secondary);
   font-size: 0.9rem;
 }
+
+// 升变选择条（只有国际象棋用得上）。走到底线时弹出来问一句"升成什么"，
+// 选完才落子 —— 不报兵种就落子等于替玩家选了后，而升变成马有时是唯一的赢法。
+.board-promotion {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: $space-2;
+  flex-wrap: wrap;
+  margin-bottom: $space-3;
+  padding: $space-2 $space-3;
+  border: 1px solid var(--color-border-highlight);
+  border-radius: $radius-small;
+  background: var(--color-background-subtle);
+
+  &__label {
+    color: var(--color-text-secondary);
+    font-size: 0.9rem;
+  }
+}

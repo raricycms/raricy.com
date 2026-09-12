@@ -784,11 +784,13 @@ function parseSquareName(name: string): Square {
   return [row, col];
 }
 
-/** 供测试与 UI 用：这一手是不是升变（客户端据此在提交前弹兵种选择）。 */
-export function isPromotionMove(board: ChessBoard, move: MoveInput): boolean {
-  if (move.path.length !== 2) return false;
-  const [from, to] = [move.path[0], move.path[1]];
-  const cell = board.at(from[0], from[1]);
+/**
+ * 这一手是不是升变（客户端据此在提交前弹兵种选择）。
+ *
+ * 只看"起点上是不是兵"和"终点在不在最后一排"，**不碰棋盘对象** —— 联机那边手里
+ * 只有服务端下发的 `grid`，单机那边才有棋盘实例；做成纯函数两边才用得上同一份。
+ */
+export function isPromotionMove(cell: number, to: Square): boolean {
   return typeOf(cell) === PAWN && (to[0] === 0 || to[0] === SIZE - 1);
 }
 

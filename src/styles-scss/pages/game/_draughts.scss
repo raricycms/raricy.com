@@ -1,0 +1,129 @@
+@use '../../abstracts/variables' as *;
+
+// ============================================================
+// Draughts (国际跳棋) — BEM namespace: .draughts-*
+// ============================================================
+//
+// 【卡片 / 按钮 / 状态行 / 席位栏 / 房号条 / 进房面板】全在 _board.scss（.board-*）。
+// 这里只有棋盘与页面壳。
+//
+// 【颜色写死不跟主题】与国际象棋同理：棋盘是"实体"，木头色深格 + 米色浅格，
+// 换个主题就换一套配色的跳棋盘没人见过。棋子靠填充色（白/黑）区分，不靠主题令牌。
+
+.draughts-page {
+  min-height: calc(100vh - 62px);
+  padding-top: $space-6;
+  padding-bottom: $space-6;
+  background: var(--color-background-page);
+}
+
+.draughts-back {
+  display: inline-block;
+  margin-bottom: $space-4;
+  color: var(--color-text-secondary);
+  font-size: 0.95rem;
+  text-decoration: none;
+  transition: color 0.2s ease;
+
+  &:hover {
+    color: var(--color-brand-primary);
+  }
+}
+
+// ── 棋盘 ──────────────────────────────────────────────────────
+
+.draughts-board {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  width: min(100%, 34rem);
+  margin: 0 auto $space-3;
+  border: 2px solid #6b4f34;
+  border-radius: $radius-small;
+  overflow: hidden;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 18%);
+}
+
+.draughts-square {
+  position: relative;
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: none;
+
+  // 浅色格不是棋盘的一部分（棋子永远只落在深色格），渲染成不可交互的底纹
+  &--light {
+    background: #f0d9b5;
+  }
+
+  &--dark {
+    background: #b58863;
+    cursor: pointer;
+  }
+
+  &:disabled {
+    cursor: default;
+  }
+
+  &--selected {
+    box-shadow: inset 0 0 0 4px rgb(255 196 0 / 85%);
+  }
+
+  &--path {
+    box-shadow: inset 0 0 0 4px rgb(255 196 0 / 45%);
+  }
+
+  // 可以落子的点
+  &--target::after {
+    content: '';
+    position: absolute;
+    width: 30%;
+    height: 30%;
+    border-radius: 50%;
+    background: rgb(30 30 30 / 32%);
+  }
+
+  &--last {
+    box-shadow: inset 0 0 0 3px rgb(66 133 244 / 55%);
+  }
+
+  &--win {
+    box-shadow: inset 0 0 0 4px rgb(220 53 69 / 85%);
+  }
+}
+
+.draughts-piece {
+  // 棋子是画出来的圆片，不是字形 —— 兵与王的区别是"王多一个王冠记号"，
+  // 只靠颜色深浅区分不出来。
+  width: 72%;
+  height: 72%;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.15s ease;
+
+  &--white {
+    background: radial-gradient(circle at 35% 30%, #ffffff 0%, #dcdcdc 70%, #b9b9b9 100%);
+    border: 1px solid #8f8f8f;
+    color: #b8860b; // 王冠用金色，在白子上看得清
+  }
+
+  &--black {
+    background: radial-gradient(circle at 35% 30%, #5a5a5a 0%, #2a2a2a 70%, #111 100%);
+    border: 1px solid #000;
+    color: #ffd76a; // 王冠用金色，在黑子上也看得清
+  }
+
+  &--king {
+    box-shadow: 0 0 0 2px rgb(255 215 106 / 55%);
+  }
+
+  &__crown {
+    font-size: clamp(0.7rem, 2.6vw, 1.1rem);
+    line-height: 1;
+    user-select: none;
+  }
+}

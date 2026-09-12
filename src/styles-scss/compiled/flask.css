@@ -6743,6 +6743,21 @@ body {
   mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='10' fill='none' stroke='black' stroke-width='2'/%3E%3Ccircle cx='12' cy='12' r='3' fill='black'/%3E%3Ccircle cx='12' cy='4' r='2' fill='black'/%3E%3Ccircle cx='18' cy='8' r='2' fill='black'/%3E%3Ccircle cx='19' cy='16' r='2' fill='black'/%3E%3Ccircle cx='12' cy='21' r='2' fill='black'/%3E%3Ccircle cx='5' cy='16' r='2' fill='black'/%3E%3Ccircle cx='4' cy='8' r='2' fill='black'/%3E%3C/svg%3E");
   -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='10' fill='none' stroke='black' stroke-width='2'/%3E%3Ccircle cx='12' cy='12' r='3' fill='black'/%3E%3Ccircle cx='12' cy='4' r='2' fill='black'/%3E%3Ccircle cx='18' cy='8' r='2' fill='black'/%3E%3Ccircle cx='19' cy='16' r='2' fill='black'/%3E%3Ccircle cx='12' cy='21' r='2' fill='black'/%3E%3Ccircle cx='5' cy='16' r='2' fill='black'/%3E%3Ccircle cx='4' cy='8' r='2' fill='black'/%3E%3C/svg%3E");
 }
+.game-card__icon--xiangqi {
+  color: #b03a2e;
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='2' y='3' width='20' height='18' rx='2' fill='none' stroke='black' stroke-width='2'/%3E%3Cline x1='2' y1='9' x2='22' y2='9' stroke='black' stroke-width='1.2'/%3E%3Cline x1='2' y1='15' x2='22' y2='15' stroke='black' stroke-width='1.2'/%3E%3Cline x1='8' y1='3' x2='8' y2='9' stroke='black' stroke-width='1.2'/%3E%3Cline x1='16' y1='3' x2='16' y2='9' stroke='black' stroke-width='1.2'/%3E%3Cline x1='8' y1='15' x2='8' y2='21' stroke='black' stroke-width='1.2'/%3E%3Cline x1='16' y1='15' x2='16' y2='21' stroke='black' stroke-width='1.2'/%3E%3Ccircle cx='12' cy='12' r='2.6' fill='black'/%3E%3C/svg%3E");
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='2' y='3' width='20' height='18' rx='2' fill='none' stroke='black' stroke-width='2'/%3E%3Cline x1='2' y1='9' x2='22' y2='9' stroke='black' stroke-width='1.2'/%3E%3Cline x1='2' y1='15' x2='22' y2='15' stroke='black' stroke-width='1.2'/%3E%3Cline x1='8' y1='3' x2='8' y2='9' stroke='black' stroke-width='1.2'/%3E%3Cline x1='16' y1='3' x2='16' y2='9' stroke='black' stroke-width='1.2'/%3E%3Cline x1='8' y1='15' x2='8' y2='21' stroke='black' stroke-width='1.2'/%3E%3Cline x1='16' y1='15' x2='16' y2='21' stroke='black' stroke-width='1.2'/%3E%3Ccircle cx='12' cy='12' r='2.6' fill='black'/%3E%3C/svg%3E");
+}
+.game-card__icon--chess {
+  color: #4a4a4a;
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2v5M9.5 4.5h5' stroke='black' stroke-width='2' stroke-linecap='round' fill='none'/%3E%3Cpath d='M12 7c-3 0-5 2.2-5 5 0 2 1.2 3.4 2.4 4.4L8.6 19h6.8l-.8-2.6C15.8 15.4 17 14 17 12c0-2.8-2-5-5-5z' fill='black'/%3E%3Crect x='7' y='19' width='10' height='2.4' rx='1' fill='black'/%3E%3C/svg%3E");
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2v5M9.5 4.5h5' stroke='black' stroke-width='2' stroke-linecap='round' fill='none'/%3E%3Cpath d='M12 7c-3 0-5 2.2-5 5 0 2 1.2 3.4 2.4 4.4L8.6 19h6.8l-.8-2.6C15.8 15.4 17 14 17 12c0-2.8-2-5-5-5z' fill='black'/%3E%3Crect x='7' y='19' width='10' height='2.4' rx='1' fill='black'/%3E%3C/svg%3E");
+}
+.game-card__icon--draughts {
+  color: #1f6f8b;
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='14' r='7' fill='none' stroke='black' stroke-width='2'/%3E%3Ccircle cx='12' cy='14' r='2.8' fill='black'/%3E%3Cpath d='M7.5 6.5l2 2 2.5-3.5 2.5 3.5 2-2v3.5h-9z' fill='black'/%3E%3C/svg%3E");
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='14' r='7' fill='none' stroke='black' stroke-width='2'/%3E%3Ccircle cx='12' cy='14' r='2.8' fill='black'/%3E%3Cpath d='M7.5 6.5l2 2 2.5-3.5 2.5 3.5 2-2v3.5h-9z' fill='black'/%3E%3C/svg%3E");
+}
 .game-card__icon--coming {
   color: #94a3b8;
   mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='10' fill='none' stroke='black' stroke-width='2'/%3E%3Cpath d='M12 8v4M12 16h.01' stroke='black' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");
@@ -8369,6 +8384,23 @@ body {
   font-size: 0.9rem;
 }
 
+.board-promotion {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--color-border-highlight);
+  border-radius: 5px;
+  background: var(--color-background-subtle);
+}
+.board-promotion__label {
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}
+
 .gomoku-page {
   min-height: calc(100vh - 62px);
   padding-top: 24px;
@@ -8440,6 +8472,329 @@ body {
 .gomoku-stone--white {
   background: #fff;
   border: 1px solid #999;
+}
+
+.chess-page {
+  min-height: calc(100vh - 62px);
+  padding-top: 24px;
+  padding-bottom: 24px;
+  background: var(--color-background-page);
+}
+
+.chess-back {
+  display: inline-block;
+  margin-bottom: 16px;
+  color: var(--color-text-secondary);
+  font-size: 0.95rem;
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+.chess-back:hover {
+  color: var(--color-brand-primary);
+}
+
+.chess-board {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  width: min(100%, 32rem);
+  margin: 0 auto 12px;
+  border: 2px solid #6b4f34;
+  border-radius: 5px;
+  overflow: hidden;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+}
+
+.chess-square {
+  position: relative;
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: clamp(1.3rem, 5.2vw, 2.3rem);
+  line-height: 1;
+}
+.chess-square:disabled {
+  cursor: default;
+}
+.chess-square--light {
+  background: #f0d9b5;
+}
+.chess-square--dark {
+  background: #b58863;
+}
+.chess-square--selected {
+  box-shadow: inset 0 0 0 4px rgba(255, 196, 0, 0.85);
+}
+.chess-square--path {
+  box-shadow: inset 0 0 0 4px rgba(255, 196, 0, 0.45);
+}
+.chess-square--target::after {
+  content: "";
+  position: absolute;
+  width: 28%;
+  height: 28%;
+  border-radius: 50%;
+  background: rgba(30, 30, 30, 0.32);
+}
+.chess-square--last {
+  box-shadow: inset 0 0 0 3px rgba(66, 133, 244, 0.55);
+}
+.chess-square--win {
+  box-shadow: inset 0 0 0 4px rgba(220, 53, 69, 0.85);
+}
+.chess-square--check {
+  background: radial-gradient(circle, rgba(220, 53, 69, 0.85) 0%, transparent 72%);
+}
+
+.chess-piece {
+  font-family: "Segoe UI Symbol", "Noto Sans Symbols 2", serif;
+  user-select: none;
+}
+.chess-piece--white {
+  color: #fff;
+  text-shadow: 0 0 1px #2b2b2b, 1px 0 0 #2b2b2b, -1px 0 0 #2b2b2b, 0 1px 0 #2b2b2b, 0 -1px 0 #2b2b2b;
+}
+.chess-piece--black {
+  color: #262626;
+  text-shadow: 0 0 1px #f5f5f5, 1px 0 0 #f5f5f5, -1px 0 0 #f5f5f5, 0 1px 0 #f5f5f5, 0 -1px 0 #f5f5f5;
+}
+
+.xiangqi-page {
+  min-height: calc(100vh - 62px);
+  padding-top: 24px;
+  padding-bottom: 24px;
+  background: var(--color-background-page);
+}
+
+.xiangqi-back {
+  display: inline-block;
+  margin-bottom: 16px;
+  color: var(--color-text-secondary);
+  font-size: 0.95rem;
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+.xiangqi-back:hover {
+  color: var(--color-brand-primary);
+}
+
+.xiangqi-board {
+  position: relative;
+  aspect-ratio: 9/10;
+  width: min(100%, 30rem);
+  margin: 0 auto 12px;
+  background: #f3dbb0;
+  border: 3px solid #6b4f34;
+  border-radius: 5px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+}
+
+.xiangqi-lines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.xiangqi-lines line {
+  stroke: #6b4f34;
+  stroke-width: 0.03;
+  vector-effect: non-scaling-stroke;
+}
+
+.xiangqi-river {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #8a6a4a;
+  font-size: clamp(0.7rem, 2.4vw, 1rem);
+  letter-spacing: 0.35em;
+  pointer-events: none;
+}
+.xiangqi-river--left {
+  left: 6%;
+}
+.xiangqi-river--right {
+  right: 6%;
+}
+
+.xiangqi-points {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: repeat(9, 1fr);
+  grid-template-rows: repeat(10, 1fr);
+}
+
+.xiangqi-point {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+.xiangqi-point:disabled {
+  cursor: default;
+}
+.xiangqi-point--selected::before, .xiangqi-point--path::before, .xiangqi-point--last::before, .xiangqi-point--win::before {
+  content: "";
+  position: absolute;
+  width: 84%;
+  height: 74%;
+  border-radius: 50%;
+}
+.xiangqi-point--selected::before {
+  box-shadow: 0 0 0 3px rgba(255, 196, 0, 0.9);
+}
+.xiangqi-point--path::before {
+  box-shadow: 0 0 0 3px rgba(255, 196, 0, 0.45);
+}
+.xiangqi-point--last::before {
+  box-shadow: 0 0 0 3px rgba(66, 133, 244, 0.55);
+}
+.xiangqi-point--win::before {
+  box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.85);
+}
+.xiangqi-point--target::after {
+  content: "";
+  position: absolute;
+  width: 22%;
+  height: 20%;
+  border-radius: 50%;
+  background: rgba(60, 40, 20, 0.38);
+}
+
+.xiangqi-piece {
+  width: 84%;
+  height: 74%;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: clamp(0.8rem, 3.4vw, 1.5rem);
+  font-weight: 700;
+  line-height: 1;
+  user-select: none;
+  background: radial-gradient(circle at 35% 30%, #fffaf0 0%, #f0e0c0 72%, #dcc9a4 100%);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+.xiangqi-piece--red {
+  color: #c62828;
+  border: 1px solid #c62828;
+}
+.xiangqi-piece--black {
+  color: #212121;
+  border: 1px solid #212121;
+}
+.xiangqi-piece--check {
+  background: radial-gradient(circle at 35% 30%, #ffd9d9 0%, #ffb3b3 72%, #ff8f8f 100%);
+}
+
+.draughts-page {
+  min-height: calc(100vh - 62px);
+  padding-top: 24px;
+  padding-bottom: 24px;
+  background: var(--color-background-page);
+}
+
+.draughts-back {
+  display: inline-block;
+  margin-bottom: 16px;
+  color: var(--color-text-secondary);
+  font-size: 0.95rem;
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+.draughts-back:hover {
+  color: var(--color-brand-primary);
+}
+
+.draughts-board {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  width: min(100%, 34rem);
+  margin: 0 auto 12px;
+  border: 2px solid #6b4f34;
+  border-radius: 5px;
+  overflow: hidden;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+}
+
+.draughts-square {
+  position: relative;
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: none;
+}
+.draughts-square--light {
+  background: #f0d9b5;
+}
+.draughts-square--dark {
+  background: #b58863;
+  cursor: pointer;
+}
+.draughts-square:disabled {
+  cursor: default;
+}
+.draughts-square--selected {
+  box-shadow: inset 0 0 0 4px rgba(255, 196, 0, 0.85);
+}
+.draughts-square--path {
+  box-shadow: inset 0 0 0 4px rgba(255, 196, 0, 0.45);
+}
+.draughts-square--target::after {
+  content: "";
+  position: absolute;
+  width: 30%;
+  height: 30%;
+  border-radius: 50%;
+  background: rgba(30, 30, 30, 0.32);
+}
+.draughts-square--last {
+  box-shadow: inset 0 0 0 3px rgba(66, 133, 244, 0.55);
+}
+.draughts-square--win {
+  box-shadow: inset 0 0 0 4px rgba(220, 53, 69, 0.85);
+}
+
+.draughts-piece {
+  width: 72%;
+  height: 72%;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.15s ease;
+}
+.draughts-piece--white {
+  background: radial-gradient(circle at 35% 30%, #ffffff 0%, #dcdcdc 70%, #b9b9b9 100%);
+  border: 1px solid #8f8f8f;
+  color: #b8860b;
+}
+.draughts-piece--black {
+  background: radial-gradient(circle at 35% 30%, #5a5a5a 0%, #2a2a2a 70%, #111 100%);
+  border: 1px solid #000;
+  color: #ffd76a;
+}
+.draughts-piece--king {
+  box-shadow: 0 0 0 2px rgba(255, 215, 106, 0.55);
+}
+.draughts-piece__crown {
+  font-size: clamp(0.7rem, 2.6vw, 1.1rem);
+  line-height: 1;
+  user-select: none;
 }
 
 .tictactoe-page {

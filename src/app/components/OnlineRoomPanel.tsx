@@ -26,9 +26,15 @@ import { FOCUS_MODE_SETTINGS_HREF } from '@/lib/focus-mode';
  * 【只覆盖房间层那两个】棋盘自身的终局原因（将死 / 逼和 / 三次重复 / 长将…）
  * 各棋文案不同，由各棋的组件自己写 —— 这里返回空串，接上去不影响。
  */
-export function roomEndNote(reason: EndReason | null, iWon: boolean): string {
-  if (reason === 'resign') return iWon ? '（对手认输）' : '（你已认输）';
-  if (reason === 'abandoned') return iWon ? '（对手掉线）' : '（你掉线了）';
+export type OutcomePerspective = 'won' | 'lost' | 'neutral';
+
+export function roomEndNote(reason: EndReason | null, viewer: OutcomePerspective): string {
+  if (reason === 'resign') {
+    return viewer === 'won' ? '（对手认输）' : viewer === 'lost' ? '（你已认输）' : '（认输）';
+  }
+  if (reason === 'abandoned') {
+    return viewer === 'won' ? '（对手掉线）' : viewer === 'lost' ? '（你掉线了）' : '（掉线判负）';
+  }
   return '';
 }
 

@@ -110,6 +110,15 @@ export interface RoomBoard {
    */
   submit(player: Player, move: MoveInput): Outcome | null;
   getLastMove(): Move | null;
+  /**
+   * **可选**：`color` 的全部合法着法，会随每次全量状态下发给客户端做高亮。
+   *
+   * 走子类棋必须实现 —— 它们的合法着法取决于棋盘**之外**的状态（易位权利、
+   * 吃过路兵目标格、重复局面历史），客户端光看 grid 推不出来，刷新或重连之后
+   * 更推不出来（DTO 里没有着法历史）。落子类棋不必实现：空格点下去就行，
+   * 客户端自己看 grid 就知道哪格能落。
+   */
+  generateMoves?(color: Player): MoveInput[];
 }
 
 /**
@@ -193,6 +202,10 @@ function viewOf(room: Room, now: number): RoomView {
     rows: room.board.rows,
     cols: room.board.cols,
     lastMove: room.board.getLastMove(),
+    // 合法着法由棋盘自己算（走子类棋依赖棋盘之外的状态，客户端推不出来）。
+    // 只在"对局进行中且有这个能力"时给，免得客户端在终局后还标出可走的格子。
+    legalMoves:
+      room.status === 'playing' ? (room.board.generateMoves?.(room.turn) ?? []) : [],
     check: room.check,
     seats: { black: seatView(room.seats.black, now), white: seatView(room.seats.white, now) },
     spectatorCount: room.spectators.size,

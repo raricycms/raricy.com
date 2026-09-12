@@ -1,0 +1,180 @@
+@use '../../abstracts/variables' as *;
+
+// ============================================================
+// Xiangqi (中国象棋) — BEM namespace: .xiangqi-*
+// ============================================================
+//
+// 【卡片 / 按钮 / 状态行 / 席位栏 / 房号条 / 进房面板】全在 _board.scss（.board-*）。
+//
+// 【与国际象棋 / 跳棋最大的不同：棋子落在**交叉点**上】所以这里的每一格按钮代表
+// 一个交叉点，而棋盘线是一层 SVG（.xiangqi-lines）铺在下面。容器用 9 列 × 10 行的
+// 格子排布，交叉点落在格子中心 —— SVG 用 viewBox="0 0 9 10" 铺满容器，
+// 两边天然对齐，不必手调偏移。
+//
+// 【颜色写死不跟主题】棋盘是"实体"：木色底 + 墨线，红黑两色的字。换个主题就换一套
+// 配色的象棋盘没人见过。棋子靠字色（红/黑）+ 圆牌底色区分，不靠主题令牌。
+
+.xiangqi-page {
+  min-height: calc(100vh - 62px);
+  padding-top: $space-6;
+  padding-bottom: $space-6;
+  background: var(--color-background-page);
+}
+
+.xiangqi-back {
+  display: inline-block;
+  margin-bottom: $space-4;
+  color: var(--color-text-secondary);
+  font-size: 0.95rem;
+  text-decoration: none;
+  transition: color 0.2s ease;
+
+  &:hover {
+    color: var(--color-brand-primary);
+  }
+}
+
+// ── 棋盘 ──────────────────────────────────────────────────────
+
+.xiangqi-board {
+  position: relative;
+  // 9 列 × 10 行，每个格子是 1 个单位；棋盘线画在格子的中心线上，所以四周
+  // 天然留出半格的边距 —— 正好给棋子让出位置，不必额外加 padding。
+  aspect-ratio: 9 / 10;
+  width: min(100%, 30rem);
+  margin: 0 auto $space-3;
+  background: #f3dbb0;
+  border: 3px solid #6b4f34;
+  border-radius: $radius-small;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 18%);
+  overflow: hidden;
+}
+
+// 棋盘线：铺满容器，压在按钮下面
+.xiangqi-lines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+
+  line {
+    stroke: #6b4f34;
+    stroke-width: 0.03;
+    vector-effect: non-scaling-stroke;
+  }
+}
+
+// 「楚河」「漢界」：写在河界那一条空白里
+.xiangqi-river {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #8a6a4a;
+  font-size: clamp(0.7rem, 2.4vw, 1rem);
+  letter-spacing: 0.35em;
+  pointer-events: none;
+
+  &--left {
+    left: 6%;
+  }
+
+  &--right {
+    right: 6%;
+  }
+}
+
+// 交叉点层：与棋盘线同一个坐标系
+.xiangqi-points {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: repeat(9, 1fr);
+  grid-template-rows: repeat(10, 1fr);
+}
+
+.xiangqi-point {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+
+  &:disabled {
+    cursor: default;
+  }
+
+  // ── 高亮 ──
+  // 用圆环而不是背景色：交叉点本身没有"格子"，涂背景会变成一块突兀的方块。
+  &--selected::before,
+  &--path::before,
+  &--last::before,
+  &--win::before {
+    content: '';
+    position: absolute;
+    width: 84%;
+    height: 74%;
+    border-radius: 50%;
+  }
+
+  &--selected::before {
+    box-shadow: 0 0 0 3px rgb(255 196 0 / 90%);
+  }
+
+  &--path::before {
+    box-shadow: 0 0 0 3px rgb(255 196 0 / 45%);
+  }
+
+  &--last::before {
+    box-shadow: 0 0 0 3px rgb(66 133 244 / 55%);
+  }
+
+  &--win::before {
+    box-shadow: 0 0 0 3px rgb(220 53 69 / 85%);
+  }
+
+  // 可以落子的点：一个小圆点。放在交叉点正中。
+  &--target::after {
+    content: '';
+    position: absolute;
+    width: 22%;
+    height: 20%;
+    border-radius: 50%;
+    background: rgb(60 40 20 / 38%);
+  }
+}
+
+.xiangqi-piece {
+  // 棋子是圆牌 + 一个汉字。红黑两方用不同的字（帥/將、仕/士、相/象、炮/砲、兵/卒），
+  // 由规则模块的 glyphOf 给出。
+  width: 84%;
+  height: 74%;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: clamp(0.8rem, 3.4vw, 1.5rem);
+  font-weight: 700;
+  line-height: 1;
+  user-select: none;
+  background: radial-gradient(circle at 35% 30%, #fffaf0 0%, #f0e0c0 72%, #dcc9a4 100%);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 35%);
+
+  &--red {
+    color: #c62828;
+    border: 1px solid #c62828;
+  }
+
+  &--black {
+    color: #212121;
+    border: 1px solid #212121;
+  }
+
+  // 被将军的王：红圈再明显也不如换个底色，双方都看得见
+  &--check {
+    background: radial-gradient(circle at 35% 30%, #ffd9d9 0%, #ffb3b3 72%, #ff8f8f 100%);
+  }
+}

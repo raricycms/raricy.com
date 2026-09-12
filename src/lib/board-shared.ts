@@ -237,6 +237,19 @@ export interface RoomView {
   rows: number;
   cols: number;
   lastMove: Move | null;
+  /**
+   * **轮到走棋那一方的全部合法着法**，由服务端算好下发。
+   *
+   * 【为什么由服务端给而不是客户端自己算】走子类棋的合法着法取决于 `grid` **之外**
+   * 的状态：国际象棋的易位权利与吃过路兵目标格、中国象棋的重复局面历史，都不在
+   * 棋盘里。客户端光看 grid 是推不出来的 —— 刷新页面或断线重连之后更推不出来
+   * （DTO 里没有着法历史，重建不了）。让服务端连带下发，客户端就只负责画高亮，
+   * 一行规则都不用跑，也就**不可能与判定的那份 drift**。
+   *
+   * 落子类棋不需要（空格点下去就行），恒为空数组 —— 它们本来也拿不出这个能力。
+   * 对局进行中才有值；终局后为空。
+   */
+  legalMoves: MoveInput[];
   /** 轮到走棋那一方正被将军时，是被将的王所在格；否则 null。落子类棋恒为 null。 */
   check: Square | null;
   seats: { black: SeatView | null; white: SeatView | null };

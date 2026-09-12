@@ -34,6 +34,24 @@ const GOMOKU_BASE = {
   title: '五子棋',
 } as const;
 
+const XIANGQI_BASE = {
+  icon: 'game-card__icon--xiangqi',
+  href: '/game/xiangqi',
+  title: '中国象棋',
+} as const;
+
+const CHESS_BASE = {
+  icon: 'game-card__icon--chess',
+  href: '/game/chess',
+  title: '国际象棋',
+} as const;
+
+const DRAUGHTS_BASE = {
+  icon: 'game-card__icon--draughts',
+  href: '/game/draughts',
+  title: '国际跳棋',
+} as const;
+
 const SECTIONS: GameSection[] = [
   {
     key: 'solo',
@@ -93,6 +111,18 @@ const SECTIONS: GameSection[] = [
         title: 'ATÅMAS',
         desc: '在圆环上放置数字和加号，通过巧妙布局触发链式合并，挑战最高分！',
       },
+      {
+        ...XIANGQI_BASE,
+        desc: '红先黑后，9 路 10 行。马蹩腿、象塞眼、炮翻山、兵过河，将死或困毙即分胜负。',
+      },
+      {
+        ...CHESS_BASE,
+        desc: '白先黑后，8×8。王车易位、吃过路兵、兵升变俱全，将死取胜，逼和与五十回合判和。',
+      },
+      {
+        ...DRAUGHTS_BASE,
+        desc: '白先黑后，10×10 只走深色格。吃子强制、必须吃最多的一路，兵到底线成王。',
+      },
     ],
     soon: {
       title: '更多玩具筹备中',
@@ -117,10 +147,28 @@ const SECTIONS: GameSection[] = [
         desc: '三子连线就赢，一局不到一分钟。开一间房，隔空和真人下一盘。',
         cta: '创建 / 加入房间',
       },
+      {
+        ...XIANGQI_BASE,
+        href: `${XIANGQI_BASE.href}?mode=online`,
+        desc: '红先黑后，将死或困毙分胜负。开一间房，隔空下一盘完整的象棋。',
+        cta: '创建 / 加入房间',
+      },
+      {
+        ...CHESS_BASE,
+        href: `${CHESS_BASE.href}?mode=online`,
+        desc: '白先黑后，易位、吃过路兵、升变俱全。开一间房，隔空对弈。',
+        cta: '创建 / 加入房间',
+      },
+      {
+        ...DRAUGHTS_BASE,
+        href: `${DRAUGHTS_BASE.href}?mode=online`,
+        desc: '吃子强制、必须吃最多的一路。开一间房，隔空下一盘国际跳棋。',
+        cta: '创建 / 加入房间',
+      },
     ],
     soon: {
       title: '更多联机游戏筹备中',
-      desc: '五子棋与井字棋之外，其它棋类陆续跟上。',
+      desc: '五子棋、井字棋与三款棋类之外，其它玩法陆续跟上。',
     },
   },
 ];

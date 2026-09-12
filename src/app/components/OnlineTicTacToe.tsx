@@ -93,7 +93,7 @@ export default function OnlineTicTacToe({ initialRoom = null }: OnlineTicTacToeP
       if (!view.winner) return '对局结束';
       const iWon = isPlayer && view.winner === mySeat;
       // 三连判胜没有附加说明；认输 / 掉线由房间层的 endReason 补一句括注
-      return (iWon ? '你赢了！' : '你输了') + roomEndNote(view.endReason, iWon);
+      return (iWon ? '你赢了！' : '你输了') + roomEndNote(view.endReason, iWon ? 'won' : 'lost');
     }
     if (view.status === 'draw') return '平局！';
     if (!isPlayer) return '观战中';
