@@ -90,6 +90,10 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
         // /static/vditor/dist/css/content-theme（light.css / dark.css 均已落盘）。
         // merge 是深合并，只写 current 不会冲掉 preview.hljs 等默认值。
         preview: { theme: { current: contentTheme } },
+        // vditor 的 init 是异步的（先拉 i18n 脚本），这段窗口里改主题会被
+        // applyVditorTheme 跳过（实例还没建好，见该函数注释）。渲染完成时补一次，
+        // 免得编辑器停在旧主题上。
+        after: () => applyVditorTheme(vditorRef.current, isDarkTheme()),
         toolbar: [
           'emoji', 'headings', 'bold', 'italic', 'strike', 'link', '|',
           'list', 'ordered-list', 'check', 'outdent', 'indent', '|',

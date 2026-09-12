@@ -64,8 +64,15 @@ export function vditorThemeOptions(dark: boolean): {
 export function applyVditorTheme(vditor: Vditor | null, dark: boolean): void {
   syncHljsTheme(dark);
   const { theme, contentTheme } = vditorThemeOptions(dark);
+  // 【为什么不能只判 null】vditor 的 init 是**异步**的：构造函数先 addScript 拉
+  // i18n 脚本，`.then(() => this.init(id, options))` 才建出 this.vditor。也就是说
+  // `new Vditor(...)` 返回之后有一小段窗口，实例上还没有 .vditor，此时 setTheme
+  // 读 `this.vditor.options` 直接 TypeError —— 而且它抛在 MutationObserver 的回调里，
+  // 成为页面上一条未捕获错误。实测每次打开编辑器都会撞上：base.js 挂载后会再写一次
+  // <html data-theme>，正好落在这个窗口内。
   // 只传前两个参数 —— 第三个 codeTheme 会 404，见 syncHljsTheme 注释
-  vditor?.setTheme(theme, contentTheme);
+  if (!vditor || !vditor.vditor) return;
+  vditor.setTheme(theme, contentTheme);
 }
 
 /**

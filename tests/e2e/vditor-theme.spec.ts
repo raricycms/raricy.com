@@ -64,6 +64,20 @@ async function toolbarBgSettled(page: import('@playwright/test').Page): Promise<
   return prev;
 }
 
+/**
+ * 收集页面上未捕获的错误。
+ *
+ * vditor 的 init 是异步的（构造函数先 addScript 拉 i18n 脚本，拉完才建 this.vditor），
+ * 这段窗口里 applyVditorTheme 会读到还没有 .vditor 的实例并抛 TypeError —— 抛在
+ * MutationObserver 的回调里，页面上一点提示都没有，只是主题没跟上。base.js 挂载后
+ * 会重写一次 <html data-theme>，正好落在这个窗口内，所以每次打开编辑器都会撞上。
+ */
+function collectPageErrors(page: import('@playwright/test').Page): string[] {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  return errors;
+}
+
 test.describe('vditor 跟随站点主题', () => {
   test('亮/暗切换时外壳、正文、代码高亮三条轨道同步且无 404', async ({ page, isMobile }) => {
     // 切主题时会新拉 content-theme / hljs 的 css，任一 404 都说明路径拼错了
@@ -71,6 +85,7 @@ test.describe('vditor 跟随站点主题', () => {
     page.on('response', (r) => {
       if (r.status() === 404 && /vditor/.test(r.url())) notFound.push(r.url());
     });
+    const pageErrors = collectPageErrors(page);
 
     await loginViaApi(page, SEED_USERS.core.username);
     await page.goto('/blog/upload');
@@ -107,6 +122,7 @@ test.describe('vditor 跟随站点主题', () => {
     await expect(page.locator(HLJS_STYLE)).toHaveAttribute('href', /styles\/github\.min\.css$/);
 
     expect(notFound, `vditor 资源 404：${notFound.join(', ')}`).toEqual([]);
+    expect(pageErrors, `页面有未捕获错误：${pageErrors.join(' / ')}`).toEqual([]);
   });
 
   // 云剪贴板编辑器与博客编辑器共用 src/lib/vditor-theme.ts 那一份实现。
@@ -116,6 +132,7 @@ test.describe('vditor 跟随站点主题', () => {
     page.on('response', (r) => {
       if (r.status() === 404 && /vditor/.test(r.url())) notFound.push(r.url());
     });
+    const pageErrors = collectPageErrors(page);
 
     await loginViaApi(page, SEED_USERS.core.username);
     await page.goto('/clipboard/upload');
@@ -141,6 +158,7 @@ test.describe('vditor 跟随站点主题', () => {
     expect(darkToolbarBg).not.toBe(lightToolbarBg);
 
     expect(notFound, `vditor 资源 404：${notFound.join(', ')}`).toEqual([]);
+    expect(pageErrors, `页面有未捕获错误：${pageErrors.join(' / ')}`).toEqual([]);
   });
 
   test('离开编辑页后移除全局 hljs <link>，不污染文章页', async ({ page, isMobile }) => {
