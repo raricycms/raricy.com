@@ -34,6 +34,30 @@
     @media (max-width: 768px) {
         padding: $space-6 0;
     }
+
+    // 分区之间只留一段间距。两段各自 $space-8 会叠成一大块空白 ——
+    // 拆成「单机 / 联机」两段之后才有第二个 .game-section，此前看不出来。
+    & + & {
+        padding-top: 0;
+    }
+
+    &__title {
+        font-size: 1.75rem;
+        font-weight: 700;
+        color: var(--color-text-primary);
+        margin-bottom: $space-2;
+
+        @media (max-width: 768px) {
+            font-size: 1.5rem;
+        }
+    }
+
+    &__desc {
+        font-size: 1rem;
+        color: var(--color-text-secondary);
+        line-height: 1.6;
+        margin-bottom: $space-6;
+    }
 }
 
 .game-grid {

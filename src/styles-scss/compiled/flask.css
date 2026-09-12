@@ -6577,6 +6577,26 @@ body {
     padding: 24px 0;
   }
 }
+.game-section + .game-section {
+  padding-top: 0;
+}
+.game-section__title {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin-bottom: 8px;
+}
+@media (max-width: 768px) {
+  .game-section__title {
+    font-size: 1.5rem;
+  }
+}
+.game-section__desc {
+  font-size: 1rem;
+  color: var(--color-text-secondary);
+  line-height: 1.6;
+  margin-bottom: 24px;
+}
 
 .game-grid {
   display: grid;
