@@ -93,8 +93,9 @@
 | `/image/i/<id>` · `/auth/avatar/<id>` | rewrite | **不是路由**：Flask 时代的旧直链，由 `next.config.mjs` 的 `rewrites()` 映射到 `/api/images/<id>/raw`、`/api/avatar/<id>`。存量正文里写死的就是它们（见 `tests/e2e/legacy-urls.spec.ts`） |
 | `/story` · `/story/[...path]` | page | 故事合集/阅读 |
 | `/tool` · `/tool/<sub>` | page | 工具集（aes / base / hash / hex / html / qp / translate / url / cattca） |
-| `/game` · `/game/<sub>` · `/api/game/game_token` | page + API | 游戏菜单（**单机 / 联机两分区**）+ 9 款游戏（另有 `/game/wand` 演示页）。五子棋同时出现在两区，靠 `?mode=online` 切模式 |
+| `/game` · `/game/<sub>` · `/api/game/game_token` | page + API | 游戏菜单（**单机 / 联机两分区**）+ 10 款游戏（另有 `/game/wand` 演示页）。五子棋同时出现在两区，靠 `?mode=online` 切模式；井字棋只有联机一种玩法 |
 | `/api/game/gomoku/*` | API | 五子棋联机：建房 / 快照 / 加入 / 走子 / 认输 / 判胜 / 再来一局 + SSE 流。见 §6.9 |
+| `/api/game/tictactoe/*` | API | 井字棋联机：同一组端点，与五子棋共用房间层（`board-room.ts`）与 HTTP 错误映射（`api/game/_shared.ts`）。见 §6.9 |
 | `/admin/*` · `/api/admin/*` | page + API | 管理后台（档位分页而异，见 §8） |
 | `/audit` · `/audit/[id]` | page | 审计日志公示 + 申诉 |
 | `/contact` · `/privacy` · `/terms` | page | 联系 / 隐私 / 条款 |
@@ -120,7 +121,7 @@
 | 图床 | `image-service.ts` · `image-upload.ts`（服务端）· `image-client.ts`（浏览器侧选图上传，聊天与评论共用）· `vditor-upload.ts`（Vditor 编辑器的上传配置，博客与剪贴板共用；与 `/api/images` 的字段名/响应结构两端对齐，见 `tests/unit/vditor-upload.test.ts`） |
 | 故事 | `story-service.ts` |
 | 游戏 · 通用 | `atamas-pref.ts` |
-| 游戏 · 五子棋联机 | `gomoku-rules.ts`（棋盘与胜负判定的**纯规则**，前端与 API 共用）· `gomoku-shared.ts`（DTO / SSE 事件 / 房间码规范化）· `gomoku-room.ts`（房间注册表 + 服务端权威判定）· `game-bus.ts`（按房间的进程内 SSE 订阅）。见 §6.9 |
+| 游戏 · 联机棋类 | `board-shared.ts`（两种棋共用的协议：房间码 / 席位 / DTO / SSE 事件）· `board-room.ts`（**共用的房间注册表**：席位、观战、掉线判胜、TTL 回收、服务端权威判定）· `game-bus.ts`（按房间的进程内 SSE 订阅）。各游戏只提供自己的纯规则：`gomoku-rules.ts` / `tictactoe-rules.ts`，再由 `gomoku-room.ts` / `tictactoe-room.ts` 这两个**薄门面**把棋盘绑上去。见 §6.9 |
 | 小鱼干 | `fish-service.ts` · `fish-admin.ts` · `fish-sync.ts`（账本 + 补偿，见 §6.3）· `fish-units.ts`（单位换算）· `account-client.ts` |
 | OAuth 2.0 | `oauth.ts`（见 `docs/oauth.md`） |
 | 管理域 | `admin-user-service.ts` · `admin-blog-service.ts` · `admin-category-service.ts` · `admin-comment-service.ts` · `admin-clipboard-service.ts` · `admin-vote-service.ts` · `admin-image-service.ts` · `admin-stats-service.ts` |
@@ -248,9 +249,35 @@ GET/HEAD/OPTIONS 视为安全方法，不校验。
 
 详见 `docs/oauth.md`。
 
-### 6.9 五子棋联机
+### 6.9 联机棋类（五子棋 / 井字棋）
 
-玩具区原本全是纯客户端单机 / 同屏双人。五子棋联机是第一个有服务端棋局状态的玩法。
+玩具区原本全是纯客户端单机 / 同屏双人。五子棋联机是第一个有服务端棋局状态的玩法；
+井字棋联机是第二个，它接入时把两家共用的部分抽了出来。
+
+**分层：一份房间层 + 每款棋一份纯规则。** 两款棋的房间生命周期**完全一致**（建房 /
+入座 / 观战 / 掉线判胜 / 再来一局 / TTL 回收 / revision 语义），差别只在棋盘。所以：
+
+| 层 | 文件 | 归属 |
+|----|------|------|
+| 协议（房间码 / 席位 / DTO / SSE 事件） | `board-shared.ts` | 共用 |
+| 房间注册表 + 服务端权威判定 | `board-room.ts` | 共用 |
+| HTTP 错误码 → 状态码映射、联机闸门 | `api/game/_shared.ts` | 共用 |
+| 进程内 SSE 订阅 | `game-bus.ts` | 共用 |
+| 棋盘与胜负判定（纯规则，前后端同一份） | `gomoku-rules.ts` / `tictactoe-rules.ts` | 各自的 |
+| 只把棋盘绑上去的薄门面 | `gomoku-room.ts` / `tictactoe-room.ts` | 各自的 |
+| 客户端房间状态机（连接/重连/presence/判胜计时） | `components/useOnlineRoom.ts` | 共用 |
+| 进房面板与专注模式占位 | `components/OnlineRoomPanel.tsx` | 共用 |
+| 棋盘渲染、状态文案、控制按钮 | `components/Online{Gomoku,TicTacToe}.tsx` | 各自的 |
+
+玩法上的差异只有两处：棋盘尺寸（15×15 五连 vs 3×3 三连）与席位记号
+（黑白子 vs X/O）。**加第三款棋时只该新增「规则 + 门面 + 组件 + 8 条路由」**——
+若发现要动 `board-room.ts`，先问一句「这是棋类共性还是这款棋的特性」。
+
+**房号表是全局唯一的一张。** 两款棋的房间存在同一个 Map 里，房间带 `kind` 字段；
+每条操作都要求调用方声明自己期望的 `kind`，对不上按 `notFound` 处理 —— 五子棋的房号
+拿去井字棋的接口只会得到「房间不存在」，既不串号也不泄露「这个房号存在」。
+代价是 `MAX_ROOMS=200` 为两款棋共享（内存本来就是一个池子）。
+限频键按游戏分开（`game:gomoku:*` / `game:tictactoe:*`），额度不互相挤占。
 
 **为什么不开 WebSocket、不引 Redis。** 棋是回合制，一次走子间隔以秒计，SSE 的单向
 推送完全够用；而走子走 POST 白拿 CSRF 同源校验、限频与 session 鉴权（这三样 WS 都要
@@ -259,14 +286,14 @@ server，会顶掉 `next start -p 3000` 与 systemd unit。Redis 解决的「多
 在单进程部署下不存在（同 §6.5 的限频）。
 
 **服务端权威。** 联网后客户端不可信（否则 POST 一句「我赢了」就行）。棋盘、轮次、
-胜负全在 `gomoku-room.ts`，客户端只渲染服务端下发的 `grid`。规则跑的是与前端**同一个**
-`gomoku-rules.ts`，不存在两份判定 —— 两边各写一份必然 drift，而且是静默的。
+胜负全在 `board-room.ts`，客户端只渲染服务端下发的 `grid`。规则跑的是与前端**同一个**
+rules 模块，不存在两份判定 —— 两边各写一份必然 drift，而且是静默的。
 
 > **校验与落子之间不得出现 `await`。** 单线程 Node + 无 await = 临界区天然原子。
 > 日后若为了「棋谱落库」在 `playMove` 里插一个 await，两个并发请求会同时通过轮次
 > 检查、同一格落两次子 —— 这类 bug 只在生产并发下复现。
 
-**协议：每次变化推全量状态。** 棋盘只有 225 格（约 1KB JSON），走子间隔以秒计。
+**协议：每次变化推全量状态。** 棋盘最大 225 格（约 1KB JSON），走子间隔以秒计。
 全量推送换来的是**没有增量协议的那一整类 bug**（漏推、乱序、断线后增量对不上）。
 因此也不需要 `Last-Event-ID` 补齐、环形缓冲与 resync —— SSE 一连上服务端就推一次
 当前状态（见 `rooms/[code]/stream/route.ts`），客户端按 `revision` 丢弃过期的即可。
@@ -284,9 +311,15 @@ server，会顶掉 `next start -p 3000` 与 systemd unit。Redis 解决的「多
 **权限。** 联机要求登录 + `core+` + 非专注模式，比单机子页严（单机匿名可玩、专注模式
 也能直达）。联机是社交行为，与聊天大区同等对待：服务端硬 403，不只是 UI 隐藏。专注
 模式变更时 `user-service` 会 `kickViewer` 掉该用户的联机连接，否则他能把手上这局下完。
+路由层的分档：五子棋页 `/game/gomoku` 只有 `?mode=online` 那一支调 `requireCoreUser()`
+（单机必须保持匿名可玩），井字棋没有单机分支、无条件要求 `core+`。
 
 **判胜不做服务端定时器。** 对手掉线满 60 秒可由对方点「判胜」，时间由服务端在
 `claimAbandoned` 里复核 —— 少一类状态机 bug，且客户端伪造不了。对方重新连上即撤销资格。
+
+**已知限制（不是 bug）。** 房间在进程内存里：重启即失、多实例不共享 —— 与 `chat-bus.ts`
+同一前提。房间没有进数据库是有意的（一局棋是短命会话，为它加表要连带迁移、清理与软
+删除口径）。
 
 ## 7. 数据流（4 个典型路径）
 
