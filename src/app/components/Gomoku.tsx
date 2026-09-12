@@ -29,6 +29,7 @@ import {
   type Move,
   type Player,
 } from '@/lib/gomoku-rules';
+import GomokuCanvas from './GomokuCanvas';
 
 // ─── AI 常量（对齐 ai.js）─────────────────────────────────────────────────────
 // 规则常量（BOARD_SIZE / EMPTY / BLACK / WHITE / DIRECTIONS / WIN_LENGTH）与棋盘
@@ -372,185 +373,15 @@ class GomokuAI {
   }
 }
 
-// ─── 渲染调色板（对齐 renderer.js）───────────────────────────────────────────
-type Palette = {
-  boardBg: string;
-  gridLine: string;
-  starPoint: string;
-  stoneBlackHi: string;
-  stoneBlackLo: string;
-  stoneWhiteHi: string;
-  stoneWhiteLo: string;
-  lastMarker: string;
-  winGlow: string;
-};
-
-const LIGHT: Palette = {
-  boardBg: '#DEB887',
-  gridLine: '#333',
-  starPoint: '#333',
-  stoneBlackHi: '#666',
-  stoneBlackLo: '#111',
-  stoneWhiteHi: '#fff',
-  stoneWhiteLo: '#bbb',
-  lastMarker: '#e74c3c',
-  winGlow: 'rgba(255, 215, 0, 0.55)',
-};
-const DARK: Palette = {
-  boardBg: '#5D4037',
-  gridLine: '#aaa',
-  starPoint: '#aaa',
-  stoneBlackHi: '#666',
-  stoneBlackLo: '#111',
-  stoneWhiteHi: '#fff',
-  stoneWhiteLo: '#bbb',
-  lastMarker: '#ff6b6b',
-  winGlow: 'rgba(255, 215, 0, 0.45)',
-};
-
-const STAR_POINTS: ReadonlyArray<readonly [number, number]> = [
-  [3, 3],
-  [3, 7],
-  [3, 11],
-  [7, 3],
-  [7, 7],
-  [7, 11],
-  [11, 3],
-  [11, 7],
-  [11, 11],
-];
-
-type Sizing = { cellSize: number; margin: number; logicalSize: number };
-
-function computeSizing(containerWidth: number): Sizing {
-  const maxLogical = Math.min(containerWidth, 640);
-  let cellSize = Math.floor(maxLogical / (BOARD_SIZE + 1));
-  if (cellSize < 16) cellSize = 16;
-  const margin = cellSize;
-  const logicalSize = margin * 2 + cellSize * (BOARD_SIZE - 1);
-  return { cellSize, margin, logicalSize };
-}
-
-function drawBoard(
-  canvas: HTMLCanvasElement,
-  sizing: Sizing,
-  palette: Palette,
-  board: GomokuBoard,
-  lastMove: Move | null,
-  winningLine: Array<[number, number]> | null
-): void {
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return;
-  const { cellSize, margin, logicalSize } = sizing;
-  const P = palette;
-
-  // 背景
-  ctx.fillStyle = P.boardBg;
-  ctx.fillRect(0, 0, logicalSize, logicalSize);
-
-  // 网格线
-  ctx.strokeStyle = P.gridLine;
-  ctx.lineWidth = 1;
-  for (let i = 0; i < BOARD_SIZE; i++) {
-    const pos = margin + i * cellSize;
-    ctx.beginPath();
-    ctx.moveTo(margin, pos);
-    ctx.lineTo(margin + (BOARD_SIZE - 1) * cellSize, pos);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(pos, margin);
-    ctx.lineTo(pos, margin + (BOARD_SIZE - 1) * cellSize);
-    ctx.stroke();
-  }
-
-  // 星位
-  ctx.fillStyle = P.starPoint;
-  for (const [sr, sc] of STAR_POINTS) {
-    const sx = margin + sc * cellSize;
-    const sy = margin + sr * cellSize;
-    ctx.beginPath();
-    ctx.arc(sx, sy, cellSize * 0.1, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  // 胜利连线集合
-  let winSet: Set<number> | null = null;
-  if (winningLine && winningLine.length > 0) {
-    winSet = new Set<number>();
-    for (const [wr, wc] of winningLine) {
-      winSet.add(wr * BOARD_SIZE + wc);
-    }
-  }
-
-  // 棋子
-  for (let r = 0; r < BOARD_SIZE; r++) {
-    for (let c = 0; c < BOARD_SIZE; c++) {
-      const cell = board.grid[r][c];
-      if (cell === EMPTY) continue;
-
-      const cx = margin + c * cellSize;
-      const cy = margin + r * cellSize;
-      const radius = cellSize * 0.44;
-
-      if (winSet && winSet.has(r * BOARD_SIZE + c)) {
-        ctx.beginPath();
-        ctx.arc(cx, cy, radius + 4, 0, Math.PI * 2);
-        ctx.fillStyle = P.winGlow;
-        ctx.fill();
-      }
-
-      const grad = ctx.createRadialGradient(
-        cx - radius * 0.3,
-        cy - radius * 0.3,
-        radius * 0.1,
-        cx,
-        cy,
-        radius
-      );
-      if (cell === BLACK) {
-        grad.addColorStop(0, P.stoneBlackHi);
-        grad.addColorStop(1, P.stoneBlackLo);
-      } else {
-        grad.addColorStop(0, P.stoneWhiteHi);
-        grad.addColorStop(1, P.stoneWhiteLo);
-      }
-
-      ctx.beginPath();
-      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-      ctx.fillStyle = grad;
-      ctx.fill();
-
-      if (cell === WHITE) {
-        ctx.strokeStyle = '#999';
-        ctx.lineWidth = 0.5;
-        ctx.stroke();
-      }
-    }
-  }
-
-  // 最后一手标记
-  if (lastMove) {
-    const mx = margin + lastMove.col * cellSize;
-    const my = margin + lastMove.row * cellSize;
-    ctx.beginPath();
-    ctx.arc(mx, my, cellSize * 0.12, 0, Math.PI * 2);
-    ctx.fillStyle = P.lastMarker;
-    ctx.fill();
-  }
-}
-
 // ─── React 组件（对齐 main.js 控制器）────────────────────────────────────────
+// 画布（调色板 / DPR / resize / 主题 / 点击换算）全在 GomokuCanvas 里，
+// 与联机模式共用。本组件只剩本地对局的 AI 与状态机。
 type Mode = 'pvp' | 'ai';
 type StatusKind = 'turn' | 'thinking' | 'win-black' | 'win-white' | 'draw';
 
 export default function Gomoku() {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const wrapRef = useRef<HTMLDivElement | null>(null);
-
   const boardRef = useRef<GomokuBoard>(new GomokuBoard());
   const aiRef = useRef<GomokuAI | null>(null);
-  const sizingRef = useRef<Sizing>(computeSizing(480));
-  const darkRef = useRef<boolean>(false);
 
   // 运行时棋局状态（命令式，存 ref 以避免绘制耦合 React 渲染）
   const currentPlayerRef = useRef<Player>(BLACK);
@@ -566,20 +397,8 @@ export default function Gomoku() {
   const [statusKind, setStatusKind] = useState<StatusKind>('turn');
   const [undoDisabled, setUndoDisabled] = useState<boolean>(true);
 
-  const paletteOf = useCallback((): Palette => (darkRef.current ? DARK : LIGHT), []);
-
-  const render = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    drawBoard(
-      canvas,
-      sizingRef.current,
-      paletteOf(),
-      boardRef.current,
-      lastMoveRef.current,
-      winningLineRef.current
-    );
-  }, [paletteOf]);
+  // 棋盘是原地改的可变对象，引用不变 —— 靠这个计数器通知 GomokuCanvas 重绘。
+  const [viewSeq, setViewSeq] = useState<number>(0);
 
   const updateStatus = useCallback(() => {
     if (isAiThinkingRef.current) {
@@ -615,10 +434,11 @@ export default function Gomoku() {
   }, []);
 
   const applyView = useCallback(() => {
-    render();
+    // 自增而非比较：棋盘被原地改了，引用比不出变化（见 GomokuCanvas 文件头）
+    setViewSeq((n) => n + 1);
     updateStatus();
     refreshUndoDisabled();
-  }, [render, updateStatus, refreshUndoDisabled]);
+  }, [updateStatus, refreshUndoDisabled]);
 
   const placeAndCheck = useCallback(
     (row: number, col: number, player: Player) => {
@@ -729,93 +549,10 @@ export default function Gomoku() {
     applyView();
   }, [switchTurn, applyView]);
 
-  // 画布点击 → 像素转格
-  const onCanvasClick = useCallback(
-    (e: React.MouseEvent<HTMLCanvasElement>) => {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      const { cellSize, margin, logicalSize } = sizingRef.current;
-      const rect = canvas.getBoundingClientRect();
-      const scaleX = logicalSize / rect.width;
-      const scaleY = logicalSize / rect.height;
-      const x = (e.clientX - rect.left) * scaleX;
-      const y = (e.clientY - rect.top) * scaleY;
-
-      const col = Math.round((x - margin) / cellSize);
-      const row = Math.round((y - margin) / cellSize);
-      if (row < 0 || row >= BOARD_SIZE || col < 0 || col >= BOARD_SIZE) return;
-
-      const cx = margin + col * cellSize;
-      const cy = margin + row * cellSize;
-      const dist = Math.sqrt((x - cx) * (x - cx) + (y - cy) * (y - cy));
-      if (dist > cellSize * 0.45) return;
-
-      handleCellClick(row, col);
-    },
-    [handleCellClick]
-  );
-
-  // 尺寸调整（对齐 renderer.resize，含 devicePixelRatio）
-  const resize = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
-    const parent = wrapRef.current;
-    const containerWidth = parent
-      ? parent.clientWidth - 32
-      : Math.min(window.innerWidth - 32, 600);
-
-    const sizing = computeSizing(containerWidth);
-    sizingRef.current = sizing;
-
-    canvas.width = Math.floor(sizing.logicalSize * dpr);
-    canvas.height = Math.floor(sizing.logicalSize * dpr);
-    canvas.style.width = `${sizing.logicalSize}px`;
-    canvas.style.height = `${sizing.logicalSize}px`;
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.scale(dpr, dpr);
-    }
-    render();
-  }, [render]);
-
-  // 初始化 + 监听 resize / 主题
+  // 初始化（对齐 main.js）。画布的 resize / 主题 / 点击换算已移交 GomokuCanvas，
+  // 这里只剩本地对局自己的初始化。
   useEffect(() => {
-    darkRef.current =
-      typeof document !== 'undefined' &&
-      document.documentElement.getAttribute('data-theme') === 'dark';
-
-    resize();
     initGame('pvp');
-
-    let timer: number | null = null;
-    const onResize = () => {
-      if (timer) window.clearTimeout(timer);
-      timer = window.setTimeout(() => {
-        resize();
-      }, 150);
-    };
-    window.addEventListener('resize', onResize);
-
-    // 主题切换观察者（同步暗色调色板并重绘）
-    const observer = new MutationObserver(() => {
-      const dark = document.documentElement.getAttribute('data-theme') === 'dark';
-      if (dark !== darkRef.current) {
-        darkRef.current = dark;
-        render();
-      }
-    });
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['data-theme'],
-    });
-
-    return () => {
-      if (timer) window.clearTimeout(timer);
-      window.removeEventListener('resize', onResize);
-      observer.disconnect();
-    };
     // 仅挂载时执行
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -869,14 +606,13 @@ export default function Gomoku() {
       </div>
 
       {/* 棋盘 */}
-      <div className="gomoku-canvas-wrap" ref={wrapRef}>
-        <canvas
-          ref={canvasRef}
-          className="gomoku-canvas"
-          onClick={onCanvasClick}
-          aria-label="五子棋棋盘"
-        />
-      </div>
+      <GomokuCanvas
+        grid={boardRef.current.grid}
+        lastMove={lastMoveRef.current}
+        winningLine={winningLineRef.current}
+        version={viewSeq}
+        onCellClick={handleCellClick}
+      />
 
       {/* 控制 */}
       <div className="gomoku-controls">
