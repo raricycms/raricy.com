@@ -43,10 +43,9 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     'Cache-Control': img.isPublic
       ? 'public, max-age=31536000, immutable'
       : 'private, no-store',
-    // robots.txt 里 /api/ 整段被 disallow，会顺带挡掉公开图床的图片索引 ——
-    // 这里按图单张放行（私有图仍挡）。之所以用响应头而不是在 robots.txt 里
-    // `Allow: /api/images/`：图床的公开位是 /image/<id> 页面，图片本身被抓走
-    // 没有意义，而聊天消息里的图也共用这个 URL，不该出现在搜索结果里。
+    // robots.txt 里 /api/ 整段 disallow，只在 allow 列表里给 /api/images/ 开了口
+    // （见 src/app/robots.ts）—— 那是**按路径**放行，粒度不到单张图。私有图必须
+    // 逐张挡掉，靠的就是这个响应头：公开图 all、私有图 noindex。
     'X-Robots-Tag': img.isPublic ? 'all' : 'noindex',
   });
 

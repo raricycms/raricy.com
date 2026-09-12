@@ -1,8 +1,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // image-service.ts — 图床元信息读取（对齐 Flask app/web/image_hosting/service.py）
 //
-// 本切片只做“列出/查询元信息”。图片字节由 Flask 提供，经 next.config 的
-// `/image/:path*` rewrite 回源；真正的二进制上传（sharp 压缩 + 落盘）不在此实现。
+// 本切片做元信息读取 + 供 raw 路由分发字节（storagePathFor 拼磁盘路径）。
+// 真正的二进制上传（sharp 压缩 + 落盘）在 image-upload.ts。
+// 旧地址 `/image/i/<id>` 由 next.config.mjs 的 rewrites 映射到 raw 路由。
 // 软删除：ignore = true 排除。
 // ─────────────────────────────────────────────────────────────────────────────
 

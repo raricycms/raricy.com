@@ -12,6 +12,26 @@ const nextConfig = {
     // 给 multipart 边界留出余量。
     middlewareClientMaxBodySize: '12mb',
   },
+  // ── 旧 Flask 地址兼容（rewrite，不是跳转）────────────────────────────────
+  //
+  // Flask 的图床直链是 `/image/i/<id>`（app/web/image_hosting/__init__.py 的
+  // `@image_bp.route('/i/<image_id>')`），头像直链是 `/auth/avatar/<user_id>`
+  // （app/web/auth/profile.py）。迁移到 Next 后改成了 `/api/images/<id>/raw` 与
+  // `/api/avatar/<id>`，而**存量内容里的旧地址是写死在正文里的**（截至 2026-09：
+  // 55 篇博客 / 110 处 URL 指向 raricy.com 的旧图床地址），不接就会全变碎图。
+  //
+  // 用 rewrite 而不是 redirect：旧地址保持可用且**不改地址栏、不多一次往返**；
+  // 而且目标路由的 404 / 私有图鉴权 / SVG 强制 attachment / Cache-Control /
+  // X-Robots-Tag 全部自动继承，一行逻辑都不用复制。
+  //
+  // 注意：内容里还有一类老地址（`http://116.62.179.232:22822/image/i/...`）——
+  // host 写死在正文里，站内路由管不着，只能改存量内容，本文件救不了。
+  async rewrites() {
+    return [
+      { source: '/image/i/:id', destination: '/api/images/:id/raw' },
+      { source: '/auth/avatar/:id', destination: '/api/avatar/:id' },
+    ];
+  },
   // 部署打包时可开启 output:'standalone'；本地沙箱下其 file-tracing 复制步骤会 ENOENT，
   // 故本地默认关闭（不影响 npm start 预览）。部署时再打开。
   serverExternalPackages: ['sharp', 'fernet', '@prisma/client'],
