@@ -36,7 +36,12 @@ export function usageLine(cmd: CommandSpec): string {
     .map((a) => (a.required ? `<${a.name}>` : `[<${a.name}>]`));
   const flags = cmd.args
     .filter((a) => a.flags.length > 0)
-    .map((a) => (a.required ? `${primaryFlag(a)} <${a.name}>` : `[${primaryFlag(a)} <${a.name}>]`));
+    .map((a) => {
+      // 开关不带值：写成 `--dry-run <dryRun>` 会让人以为要传 true，
+      // 而他多半会照敲 —— 见 parseCommandArgs 的 flag 分支。
+      if (a.kind === 'boolean') return a.required ? primaryFlag(a) : `[${primaryFlag(a)}]`;
+      return a.required ? `${primaryFlag(a)} <${a.name}>` : `[${primaryFlag(a)} <${a.name}>]`;
+    });
   const parts = [cmd.name, ...positionals, ...flags];
   return `npm run cli -- ${parts.join(' ')}`;
 }
@@ -92,6 +97,12 @@ export function parseCommandArgs(cmd: CommandSpec, tokens: string[]): Args {
   let posIndex = 0;
 
   const assign = (spec: ArgSpec, raw: string): void => {
+    if (spec.kind === 'boolean') {
+      // 开关只能由 flag 提供（出现即真），已在上面那条分支处理完。
+      // 走到这里说明有人把开关声明成了位置参数 —— 与其当成字符串 `"true"` 静默放行
+      // （调用方写的是 `=== true`，永远为假），不如直接报出来。
+      throw new CliError(`错误：${spec.name} 是开关，不能作为位置参数传值`, 1, [usageLine(cmd)]);
+    }
     if (spec.kind === 'int') {
       const n = Number.parseInt(raw, 10);
       if (!Number.isInteger(n)) {
@@ -127,6 +138,28 @@ export function parseCommandArgs(cmd: CommandSpec, tokens: string[]): Args {
       const spec = byFlag.get(flagName);
       if (!spec) {
         throw new CliError(`错误：未知参数 ${flagName}`, 1, [usageLine(cmd)]);
+      }
+
+      // 开关（kind: 'boolean'）：出现即真，**不吞下一个 token**。
+      // 这条分支必须在「取下一个 token 当值」之前 —— 否则 `--dry-run --yes` 会把
+      // --yes 吃成 --dry-run 的值，而 `--dry-run` 单独出现会报「后面缺少值」。
+      if (spec.kind === 'boolean') {
+        if (inlineValue === null) {
+          args[spec.name] = true;
+        } else if (inlineValue === 'true') {
+          args[spec.name] = true;
+        } else if (inlineValue === 'false') {
+          args[spec.name] = false;
+        } else {
+          // 严格：不把 `--dry-run=0` / `=no` / `=yes` 当成真或假去猜。
+          // 猜错的代价是「以为只预览，实际真发了全站的鱼干」。
+          throw new CliError(
+            `错误：${flagName} 是开关，只接受 true / false，收到 ${inlineValue}`,
+            1,
+            [usageLine(cmd)]
+          );
+        }
+        continue;
       }
 
       if (inlineValue !== null) {
@@ -182,7 +215,8 @@ export function commandHelp(cmd: CommandSpec): string {
         a.flags.length > 0
           ? `${primary}${aliases.length > 0 ? ` (${aliases.join(', ')})` : ''}`
           : `<${a.name}>`;
-      lines.push(`  ${name.padEnd(22)} ${a.help}${a.required ? '（必填）' : ''}`);
+      const suffix = a.required ? '（必填）' : a.kind === 'boolean' ? '（开关，出现即为真）' : '';
+      lines.push(`  ${name.padEnd(22)} ${a.help}${suffix}`);
     }
     lines.push('');
   }

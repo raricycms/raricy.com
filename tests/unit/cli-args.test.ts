@@ -32,6 +32,13 @@ const POS0: ArgSpec = {
 };
 const POS1: ArgSpec = { name: 'amount', flags: [], positional: 1, kind: 'int', label: '数量', help: '数量' };
 const FLAG: ArgSpec = { name: 'description', flags: ['-d', '--description'], label: '说明', help: '说明' };
+const DRY_RUN: ArgSpec = {
+  name: 'dryRun',
+  flags: ['--dry-run'],
+  kind: 'boolean',
+  label: '只预览',
+  help: '只显示计划，不实际执行',
+};
 
 /** 断言抛的是 CliError 且退出码符合预期（参数错误一律 1）。 */
 function expectCliError(fn: () => unknown, code = 1): CliError {
@@ -201,5 +208,59 @@ describe('usageLine', () => {
     expect(usageLine(cmd)).toBe(
       'npm run cli -- demo run <username> [<amount>] [--description <description>]'
     );
+  });
+
+  it('开关渲染成 [--flag]，不带 <值> —— 否则运维会照敲 `--dry-run true`', () => {
+    const cmd = makeCmd([POS1, DRY_RUN]);
+    expect(usageLine(cmd)).toBe('npm run cli -- demo run [<amount>] [--dry-run]');
+  });
+});
+
+// 开关的失效方式是**静默的**：若解析器把 `--dry-run` 当成「缺值的字符串参数」，
+// 调用方写的是 `args.dryRun === true`，永远为假 —— 于是「只预览」变成「真发全站」。
+// 所以这一组是行为契约，不是实现细节。
+describe('parseCommandArgs：开关（kind: boolean）', () => {
+  it('出现即为真', () => {
+    const cmd = makeCmd([POS1, DRY_RUN]);
+    expect(parseCommandArgs(cmd, ['5', '--dry-run'])).toEqual({ amount: 5, dryRun: true });
+  });
+
+  it('★ 不吞下一个 token（--dry-run 5 与 5 --dry-run 等价）', () => {
+    const cmd = makeCmd([POS1, DRY_RUN]);
+    expect(parseCommandArgs(cmd, ['--dry-run', '5'])).toEqual({ amount: 5, dryRun: true });
+  });
+
+  it('★ 紧跟另一个 flag 时不会把对方吃成自己的值', () => {
+    const cmd = makeCmd([POS1, DRY_RUN, FLAG]);
+    expect(parseCommandArgs(cmd, ['5', '--dry-run', '-d', '说明'])).toEqual({
+      amount: 5,
+      dryRun: true,
+      description: '说明',
+    });
+  });
+
+  it('--dry-run=false 显式关掉；--dry-run=true 等价于只写 flag', () => {
+    const cmd = makeCmd([POS1, DRY_RUN]);
+    expect(parseCommandArgs(cmd, ['5', '--dry-run=false'])).toEqual({ amount: 5, dryRun: false });
+    expect(parseCommandArgs(cmd, ['5', '--dry-run=true'])).toEqual({ amount: 5, dryRun: true });
+  });
+
+  it('★ 不猜 --dry-run=0 / no / yes（猜错的代价是「以为只预览，实际发了全站」）', () => {
+    const cmd = makeCmd([POS1, DRY_RUN]);
+    for (const bad of ['--dry-run=0', '--dry-run=no', '--dry-run=yes', '--dry-run=TRUE']) {
+      const err = expectCliError(() => parseCommandArgs(cmd, ['5', bad]));
+      expect(err.message, bad).toContain('只接受 true / false');
+    }
+  });
+
+  it('没写就用 defaultValue', () => {
+    const cmd = makeCmd([POS1, { ...DRY_RUN, defaultValue: false }]);
+    expect(parseCommandArgs(cmd, ['5'])).toEqual({ amount: 5, dryRun: false });
+  });
+
+  it('★ 开关声明成位置参数 → 直接报错（不能当字符串 "true" 静默放行）', () => {
+    const cmd = makeCmd([{ ...DRY_RUN, flags: [], positional: 0 }]);
+    const err = expectCliError(() => parseCommandArgs(cmd, ['true']));
+    expect(err.message).toContain('开关');
   });
 });
