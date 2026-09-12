@@ -29,7 +29,13 @@ export default async function BlogListPage({
 }) {
   await requireCoreUser();
   const sp = await searchParams;
-  const featured = sp.featured === '1';
+  // ⚠️ 精选筛选是**三态**，别把布尔值直接递给 listBlogs：
+  //   '1' → true（只看精选） / '0' → false（只看非精选） / 缺省 → undefined（不筛）
+  // listBlogs 里 `featured: false` 是**生效的筛选**（对齐 Flask `if featured in (True, False)`），
+  // 所以「URL 没带 featured」若算成 false，「全部文章」和栏目目录就只剩非精选 ——
+  // 精选文整体消失，只有点侧栏「精选」才看得见（线上发生过的 bug）。
+  const featuredFilter = sp.featured === '1' ? true : sp.featured === '0' ? false : undefined;
+  const featured = featuredFilter === true; // 侧栏高亮 / 搜索表单回显用的布尔视图
   const currentSlug = sp.category ?? null;
   // 回显只认「URL 里显式且合法」的 sort —— 默认 created 与无参等价，不给 URL 补默认值。
   const rawSort = sp.sort === 'created' || sp.sort === 'updated' ? sp.sort : null;
@@ -56,7 +62,7 @@ export default async function BlogListPage({
     page: parseInt(sp.page || '1', 10),
     perPage: 50, // 目录每页 50 篇（服务默认 200 是 /api/blogs 的契约，不动）
     categorySlug: sp.category ?? null,
-    featured,
+    featured: featuredFilter,
     search: sp.search ?? null,
     sort: parseSortParam(effectiveSort),
     focusMode: focusOn,

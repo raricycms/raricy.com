@@ -20,6 +20,10 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const perPageRaw = url.searchParams.get('per_page');
   const parsedPerPage = Number.parseInt(perPageRaw ?? '', 10);
+  // 精选筛选三态，同 /blog 页：'1' → 只看精选，'0' → 只看非精选，缺省 → 不筛。
+  // 不能把「没传」算成 false —— 那是生效的筛选，会让精选文章从调用方的列表里
+  // 整体消失（QuoteBlogModal 就不传 featured，引用弹窗曾因此搜不到精选文）。
+  const featuredRaw = url.searchParams.get('featured');
   const result = await listBlogs({
     page: parseInt(url.searchParams.get('page') || '1', 10),
     perPage:
@@ -27,7 +31,7 @@ export async function GET(req: Request) {
         ? Math.min(50, Math.max(1, parsedPerPage))
         : undefined,
     categorySlug: url.searchParams.get('category'),
-    featured: url.searchParams.get('featured') === '1',
+    featured: featuredRaw === '1' ? true : featuredRaw === '0' ? false : undefined,
     search: url.searchParams.get('search'),
     sort: parseSortParam(url.searchParams.get('sort')),
   });
