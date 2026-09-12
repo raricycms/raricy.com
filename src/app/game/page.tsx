@@ -110,10 +110,17 @@ const SECTIONS: GameSection[] = [
         desc: '开一间房，把房号发给朋友，隔空对弈。支持观战。',
         cta: '创建 / 加入房间',
       },
+      {
+        href: '/game/tictactoe',
+        icon: 'game-card__icon--tictactoe',
+        title: '井字棋',
+        desc: '三子连线就赢，一局不到一分钟。开一间房，隔空和真人下一盘。',
+        cta: '创建 / 加入房间',
+      },
     ],
     soon: {
       title: '更多联机游戏筹备中',
-      desc: '先把五子棋打磨好，其它棋类陆续跟上。',
+      desc: '五子棋与井字棋之外，其它棋类陆续跟上。',
     },
   },
 ];

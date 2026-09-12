@@ -1,0 +1,116 @@
+@use '../../abstracts/variables' as *;
+
+// ============================================================
+// Tic-tac-toe (井字棋) — BEM namespace: .tictactoe-*
+// ============================================================
+//
+// 【只有棋盘与页面壳】卡片 / 按钮 / 状态行 / 席位栏 / 房号条 / 进房面板全在
+// _board.scss（.board-*），与五子棋共用 —— 井字棋是纯联机游戏，没有单机分支，
+// 所以这里的页面类只有 page / back 两条。
+//
+// 【棋盘用 DOM 而不是 canvas】3×3 只有九格，用 <button> 网格即可拿到键盘可达性、
+// 焦点环与无障碍语义，且端到端测试可以直接按格子点，不必做「像素 → 格」的换算
+// （五子棋那边因为 15×15 交叉点才非上画布不可）。
+
+.tictactoe-page {
+  min-height: calc(100vh - 62px);
+  padding-top: $space-6;
+  padding-bottom: $space-6;
+  background: var(--color-background-page);
+}
+
+.tictactoe-back {
+  display: inline-block;
+  margin-bottom: $space-4;
+  color: var(--color-text-secondary);
+  font-size: 0.95rem;
+  text-decoration: none;
+  transition: color 0.2s ease;
+
+  &:hover {
+    color: var(--color-brand-primary);
+  }
+}
+
+// ── 棋盘 ──────────────────────────────────────────────────────
+
+.tictactoe-board {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: $space-2;
+  max-width: 22rem;
+  margin: 0 auto $space-3;
+  // 棋盘整体是「一块板」，格子之间留缝但不留背景色，避免看起来像九张卡片
+  padding: $space-2;
+  border-radius: $radius-small;
+  background: var(--color-background-subtle);
+}
+
+.tictactoe-cell {
+  // 正方形格子：aspect-ratio 比 padding-top 百分比 hack 好读，且窄屏自动缩
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: clamp(2rem, 9vw, 3rem);
+  font-weight: 700;
+  line-height: 1;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  border: 1px solid var(--color-border);
+  border-radius: $radius-small;
+  background: var(--color-background-card);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+
+  &:hover:not(:disabled) {
+    background: var(--color-background-subtle);
+    border-color: var(--color-border-highlight);
+  }
+
+  &:disabled {
+    cursor: default;
+  }
+
+  // 空格子不可点（轮不到你 / 观战 / 断线）时别装作能点，但已落的子要保持清晰
+  &--locked:not(&--filled) {
+    opacity: 0.6;
+  }
+
+  &--x {
+    color: #e74c3c;
+  }
+
+  &--o {
+    color: #1e66f5;
+  }
+
+  // 最后一手：给个边，方便刚进房/重连的人一眼看出刚才发生了什么
+  &--last {
+    border-color: var(--color-border-highlight);
+  }
+
+  // 成三的那条线
+  &--win {
+    background: var(--color-background-subtle);
+    border-color: var(--color-brand-primary);
+    box-shadow: 0 0 0 2px var(--color-brand-primary) inset;
+  }
+}
+
+// ── 席位上的记号 ──────────────────────────────────────────────
+// 席位胶囊本身是通用的（.board-seat），记号由各游戏自己画 ——
+// 五子棋那边是黑白圆点（.gomoku-stone），井字棋是 X / O。
+
+.tictactoe-mark {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 700;
+
+  &--x {
+    color: #e74c3c;
+  }
+
+  &--o {
+    color: #1e66f5;
+  }
+}
