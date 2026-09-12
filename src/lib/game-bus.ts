@@ -80,6 +80,11 @@ export function connectionsIn(roomCode: string, viewerId: string): number {
   return n;
 }
 
+/** 某房间的连接总数（空房回收用：归零且无人走子即可回收）。 */
+export function roomConnections(roomCode: string): number {
+  return state.subs.get(roomCode)?.size ?? 0;
+}
+
 /** 某用户在全部房间的连接总数（并发上限用）。 */
 function connectionsOf(viewerId: string): number {
   let n = 0;
