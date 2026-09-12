@@ -62,7 +62,7 @@ class GomokuRoomBoard implements RoomBoard {
     // 【顺序要紧】**先判胜再判满**：第 225 手既连成五子又填满棋盘时，
     // 那是赢棋不是和棋。反过来写会把这一手判成平局 —— 玩家看得见，测试却未必有。
     const win = this.inner.checkWinAt(row, col, player);
-    if (win.won) return { status: 'won', highlight: win.line, reason: 'line' };
+    if (win.won) return { status: 'won', winner: player, highlight: win.line, reason: 'line' };
     if (this.inner.isFull()) return { status: 'draw', reason: 'board-full' };
     return { status: 'playing', check: null };
   }

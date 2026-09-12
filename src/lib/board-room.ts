@@ -418,7 +418,12 @@ export function playMove(
   if (!outcome) return { ok: false, error: 'illegalMove' }; // 契约：此时棋盘未被改动
 
   if (outcome.status === 'won') {
-    settle(room, 'won', { winner: seat, reason: outcome.reason, highlight: outcome.highlight });
+    // 赢家取自 outcome，**不是**"刚走完的那个人" —— 长将判负是走的人输（见 Outcome）
+    settle(room, 'won', {
+      winner: seatOfPlayer(outcome.winner),
+      reason: outcome.reason,
+      highlight: outcome.highlight,
+    });
   } else if (outcome.status === 'draw') {
     settle(room, 'draw', { winner: null, reason: outcome.reason, highlight: [] });
   } else {

@@ -683,7 +683,9 @@ export class ChessBoard {
         const cell = this.grid[r][c];
         if (cell === EMPTY) continue;
         const type = typeOf(cell);
-        if (type === KING) continue;
+        // `type === 0` 与 `cell === EMPTY` 等价，但 TS 不会替我们推 —— 显式写出来
+        // 才能把 type 收窄成 PieceType（否则下面 minors.push 的 type 还带着 0）
+        if (type === 0 || type === KING) continue;
         if (type === PAWN || type === ROOK || type === QUEEN) return false;
         minors.push({ type, squareColor: (r + c) % 2, color: colorOf(cell) as Color });
       }
@@ -715,7 +717,13 @@ export class ChessBoard {
     if (moves.length === 0) {
       if (checked) {
         const k = this.kingSquare(color);
-        return { status: 'won', highlight: k ? [k] : [], reason: 'checkmate' };
+        // 将死的是 `color`（此刻轮到走棋的一方），赢的是刚走完的那一方
+        return {
+          status: 'won',
+          winner: other(color),
+          highlight: k ? [k] : [],
+          reason: 'checkmate',
+        };
       }
       // 逼和 = 和棋。**这不是中国象棋的困毙**（那边无棋可走判负），别混。
       return { status: 'draw', reason: 'stalemate' };

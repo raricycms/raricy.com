@@ -158,7 +158,13 @@ export type EndReason =
  */
 export type Outcome =
   | { status: 'playing'; check: Square | null }
-  | { status: 'won'; highlight: Square[]; reason: EndReason }
+  /**
+   * `winner` **必须显式给出，不能默认是刚走完的那一方**。绝大多数终局确实是
+   * "走的人赢了"（将死 / 困毙 / 连成线），但**长将判负是走的人输** —— 一直在将军
+   * 的那方判负，而判终局正是在他刚走完那一刻触发的。靠约定去推就会把长将的胜负
+   * 判反，而那是一个只有下出长将才暴露、且双方都觉得自己赢了的错误。
+   */
+  | { status: 'won'; winner: Player; highlight: Square[]; reason: EndReason }
   | { status: 'draw'; reason: EndReason };
 
 /**

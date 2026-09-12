@@ -53,7 +53,7 @@ class TicTacToeRoomBoard implements RoomBoard {
     // （第 9 手），反过来写就把它判成平局了。tests/service/tictactoe-room.test.ts
     // 有一条平局用例正好走满九手，顺序错了会先在那里暴露。
     const win = this.inner.checkWinAt(row, col, player);
-    if (win.won) return { status: 'won', highlight: win.line, reason: 'line' };
+    if (win.won) return { status: 'won', winner: player, highlight: win.line, reason: 'line' };
     if (this.inner.isFull()) return { status: 'draw', reason: 'board-full' };
     return { status: 'playing', check: null };
   }
