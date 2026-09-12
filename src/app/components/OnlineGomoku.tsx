@@ -132,24 +132,46 @@ export default function OnlineGomoku({ initialRoom = null }: OnlineGomokuProps) 
     [post, enterRoom]
   );
 
-  /** 走子 / 认输 / 判胜 / 再来一局 —— 都是 POST 一个动作，拿回新状态。 */
-  const action = useCallback(
-    async (suffix: string, body?: unknown) => {
+  /**
+   * 走子 / 认输 / 判胜 / 再来一局 —— 都是 POST 一个动作，拿回新状态。
+   *
+   * 【为什么每条都写全路径而不是拼后缀】`scripts/check-links.mjs` 会静态校验源码里
+   * 的接口路径字面量有没有对应路由。拼后缀（房号后面再接一个变量）它只能看到两段
+   * 占位符连在一起，校验不了 —— 而路径写错一个字母就是线上 404。四条写全，检查才有效。
+   */
+  const run = useCallback(
+    async (fn: (code: string) => Promise<{ room?: GomokuRoomSnapshot }>) => {
       const current = snapshotRef.current;
       if (!current) return;
       setError(null);
       try {
-        const data = await post(
-          `/api/game/gomoku/rooms/${current.view.code}${suffix}`,
-          body
-        );
+        const data = await fn(current.view.code);
         if (data.room) applyView(data.room.view);
       } catch (e) {
         setError(errText(e));
       }
     },
-    [post, applyView]
+    [applyView]
   );
+
+  const playMove = useCallback(
+    (row: number, col: number) => {
+      void run((code) => post(`/api/game/gomoku/rooms/${code}/moves`, { row, col }));
+    },
+    [run, post]
+  );
+
+  const resign = useCallback(() => {
+    void run((code) => post(`/api/game/gomoku/rooms/${code}/resign`));
+  }, [run, post]);
+
+  const claim = useCallback(() => {
+    void run((code) => post(`/api/game/gomoku/rooms/${code}/claim`));
+  }, [run, post]);
+
+  const rematch = useCallback(() => {
+    void run((code) => post(`/api/game/gomoku/rooms/${code}/rematch`));
+  }, [run, post]);
 
   // 带房号进来自动加入（幂等；闩锁防 StrictMode 双跑）
   useEffect(() => {
@@ -262,9 +284,9 @@ export default function OnlineGomoku({ initialRoom = null }: OnlineGomokuProps) 
   const onCellClick = useCallback(
     (row: number, col: number) => {
       if (!canPlay) return;
-      void action('/moves', { row, col });
+      playMove(row, col);
     },
-    [canPlay, action]
+    [canPlay, playMove]
   );
 
   const copyLink = useCallback(async () => {
@@ -398,7 +420,7 @@ export default function OnlineGomoku({ initialRoom = null }: OnlineGomokuProps) 
       {/* 控制 */}
       <div className="gomoku-controls">
         {view.status === 'playing' && isPlayer && (
-          <button type="button" className="gomoku-btn" onClick={() => void action('/resign')}>
+          <button type="button" className="gomoku-btn" onClick={resign}>
             认输
           </button>
         )}
@@ -406,7 +428,7 @@ export default function OnlineGomoku({ initialRoom = null }: OnlineGomokuProps) 
           <button
             type="button"
             className="gomoku-btn"
-            onClick={() => void action('/claim')}
+            onClick={claim}
             disabled={!canClaim}
             title={canClaim ? '' : `对手掉线满 ${CLAIM_AFTER_MS / 1000} 秒后可判胜`}
           >
@@ -419,7 +441,7 @@ export default function OnlineGomoku({ initialRoom = null }: OnlineGomokuProps) 
           <button
             type="button"
             className="gomoku-btn gomoku-btn--primary"
-            onClick={() => void action('/rematch')}
+            onClick={rematch}
           >
             {view.rematchVotes > 0 && view.rematchVotes < 2
               ? '已申请，等对手'
