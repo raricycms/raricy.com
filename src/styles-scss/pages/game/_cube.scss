@@ -1,0 +1,23 @@
+@use '../../abstracts/variables' as *;
+
+// ---- 立方体滚滚 (CubeRoll) 页面壳 --------------------------------------------
+// 立方页直接渲染页面级容器（未走 GamePageShell），补上 .cube-page / .cube-back。
+
+.cube-page {
+    // 只设上下内边距，左右交给 .container，否则手机端贴屏边。
+    padding-top: $space-6;
+    padding-bottom: 40px;
+}
+
+.cube-back {
+    display: inline-block;
+    color: var(--color-text-secondary);
+    text-decoration: none;
+    font-size: 0.9rem;
+    margin-bottom: $space-4;
+    transition: color 0.2s;
+
+    &:hover {
+        color: var(--color-brand-primary);
+    }
+}

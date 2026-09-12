@@ -1,0 +1,688 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// raricy.com — Prisma schema (规范 / 目标态)
+//
+// 从现有 Flask/SQLAlchemy 数据库 1:1 映射而来。字段用 camelCase，通过 @map/@@map
+// 对齐真实 snake_case 表/列名，**不改动数据结构**。
+//
+// ⚠️ 关键：DateTime 格式
+//   SQLAlchemy 以 "YYYY-MM-DD HH:MM:SS.ffffff"（空格分隔、无时区）写入；
+//   Prisma 的 SQLite 连接器按列的“声明类型 DATETIME”在驱动层解析，这种格式会直接报
+//   "Conversion failed: input contains invalid characters"（已实测复现）。
+//   因此使用本 schema 前，数据库必须先规整为 **INTEGER（Unix 毫秒）** —— 与 Prisma
+//   自己写入 SQLite 的存储格式一致：
+//       npm run db:normalize            # 在副本上执行，见 scripts/normalize-datetimes.mjs
+//   （曾经转成 ISO 文本：Prisma 读得出，但 SQLite 跨存储类型比较按类型序而非数值，
+//     会让 gte 恒真 / lt 恒假 —— 表现为历史文章全被算成「今天发的」。）
+//   规整是单向门：Flask 侧（若仍在读同库）需要给 SQLAlchemy 配兼容类型，
+//   否则按“硬切换”处理。
+//
+// 其它：
+//   • admin_action_logs.extra 是 JSON 列，SQLite 上 Prisma 无 Json 标量 → 映射 String，
+//     应用层自行 JSON.parse/stringify。
+//   • 该库 schema 仍由 Flask-Migrate/Alembic 管理，**不要**对本库跑 prisma migrate。
+// ─────────────────────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ── 用户与权限 ───────────────────────────────────────────────────────────────
+
+model User {
+  id             String    @id
+  username       String    @unique(map: "ix_users_username")
+  email          String    @unique(map: "ix_users_email")
+  passwordHash   String    @map("password_hash")
+  createdAt      DateTime? @map("created_at")
+  lastLogin      DateTime? @map("last_login")
+  avatarPath     String?   @map("avatar_path")
+  bio            String?
+  sessionVersion Int       @default(0) @map("session_version")
+
+  notifyLike   Boolean? @default(true) @map("notify_like")
+  notifyEdit   Boolean? @default(true) @map("notify_edit")
+  notifyDelete Boolean? @default(true) @map("notify_delete")
+  notifyAdmin  Boolean? @default(true) @map("notify_admin")
+
+  showRecentBlogs    Boolean @default(true) @map("show_recent_blogs")
+  showRecentComments Boolean @default(true) @map("show_recent_comments")
+
+  // 专注模式：账号级浏览偏好（默认关）。开启后博客列表/侧栏隐藏 focusHidden 栏目，
+  // 聊天大区与「玩具」入口禁用。登出/游客不生效（见 docs/architecture.md 偏好约定）。
+  focusMode Boolean @default(false) @map("focus_mode")
+
+  isBanned  Boolean?  @default(false) @map("is_banned")
+  banUntil  DateTime? @map("ban_until")
+  banReason String?   @map("ban_reason")
+
+  role String @default("user")
+
+  totalFortune Int @default(0) @map("total_fortune")
+  // ⚠️ 存储单位 = 0.1 鱼干（整数）。原为 Float，已整数化防 IEEE754 账目漂移，
+  // 数据 ×10 见 prisma/migrations/3_fish_integer_units；换算见 src/lib/fish-units.ts。
+  // SQLite 列仍是 REAL 亲和（动态类型，整数值无损存取；db pull 会显示 Float，以此注释为准）。
+  driedFish Int @default(0) @map("dried_fish")
+
+  fishApiKeyEncrypted String? @map("fish_api_key_encrypted")
+
+  blogs                 Blog[]              @relation("BlogAuthor")
+  blogLikes             BlogLike[]
+  comments              BlogComment[]       @relation("CommentAuthor")
+  commentLikes          CommentLike[]
+  notificationsReceived Notification[]      @relation("NotificationRecipient")
+  notificationsSent     Notification[]      @relation("NotificationActor")
+  clipboards            ClipBoard[]
+  images                ImageHosting[]
+  votes                 Vote[]
+  voteRecords           VoteRecord[]
+  checkins              DailyCheckIn[]
+  fishTransactions      FishTransaction[]   @relation("FishTxUser")
+  fishTransactionsPeer  FishTransaction[]   @relation("FishTxRelated")
+  blogFeeds             BlogFeed[]
+  adminActionsPerformed AdminActionLog[]    @relation("LogAdmin")
+  adminActionsReceived  AdminActionLog[]    @relation("LogTarget")
+  appeals               AdminActionAppeal[] @relation("AppealAppellant")
+  appealsDecided        AdminActionAppeal[] @relation("AppealDecider")
+  invitesUsed           InviteCode[]
+  bansReceived          UserBan[]           @relation("BanUser")
+  bansIssued            UserBan[]           @relation("BanAdmin")
+  bansLifted            UserBan[]           @relation("BanLifter")
+  oauthAppsCreated      OAuthApplication[]      @relation("OAuthAppOwner")
+  oauthCodes            OAuthAuthorizationCode[]
+  oauthTokens           OAuthAccessToken[]
+  chatMembers           ChatMember[]            @relation("ChatMemberUser")
+  chatMessages          ChatMessage[]           @relation("ChatMessageAuthor")
+  @@index([id], map: "ix_users_id")
+  @@index([role], map: "ix_users_role")
+
+  @@map("users")
+}
+
+model InviteCode {
+  id        Int       @id @default(autoincrement())
+  code      String    @unique
+  isUsed    Boolean?  @default(false) @map("is_used")
+  createdAt DateTime? @map("created_at")
+  usedBy    String?   @map("used_by")
+
+  usedByUser User? @relation(fields: [usedBy], references: [id])
+
+  @@map("invite_codes")
+}
+
+model UserBan {
+  id       Int       @id @default(autoincrement())
+  userId   String    @map("user_id")
+  adminId  String    @map("admin_id")
+  bannedAt DateTime  @map("banned_at")
+  banUntil DateTime  @map("ban_until")
+  reason   String
+  isLifted Boolean?  @default(false) @map("is_lifted")
+  liftedAt DateTime? @map("lifted_at")
+  liftedBy String?   @map("lifted_by")
+
+  user   User  @relation("BanUser", fields: [userId], references: [id])
+  admin  User  @relation("BanAdmin", fields: [adminId], references: [id])
+  lifter User? @relation("BanLifter", fields: [liftedBy], references: [id])
+  @@index([adminId], map: "ix_user_bans_admin_id")
+  @@index([userId], map: "ix_user_bans_user_id")
+
+  @@map("user_bans")
+}
+
+// ── 博客 ─────────────────────────────────────────────────────────────────────
+
+model Blog {
+  id            String    @id
+  title         String
+  description   String    @default("")
+  authorId      String    @map("author_id")
+  createdAt     DateTime? @map("created_at")
+  ignore        Boolean?  @default(false)
+  likesCount    Int?      @default(0) @map("likes_count")
+  fishCount     Int       @default(0) @map("fish_count")
+  commentsCount Int?      @default(0) @map("comments_count")
+  lastCommentAt DateTime? @map("last_comment_at")
+  categoryId    Int?      @map("category_id")
+  isFeatured    Boolean?  @default(false) @map("is_featured")
+
+  author   User          @relation("BlogAuthor", fields: [authorId], references: [id])
+  category Category?     @relation(fields: [categoryId], references: [id])
+  content  BlogContent?
+  likes    BlogLike[]
+  comments BlogComment[]
+  feeds    BlogFeed[]
+  @@index([id], map: "ix_blogs_id")
+  @@index([title], map: "ix_blogs_title")
+  @@index([authorId], map: "ix_blogs_author_id")
+  @@index([categoryId], map: "ix_blogs_category_id")
+  @@index([isFeatured], map: "ix_blogs_is_featured")
+  @@index([lastCommentAt], map: "ix_blogs_last_comment_at")
+  @@index([ignore], map: "ix_blogs_ignore")
+  @@index([createdAt], map: "ix_blogs_created_at")
+
+  @@map("blogs")
+}
+
+model BlogContent {
+  blogId    String    @id @map("blog_id")
+  content   String
+  updatedAt DateTime? @map("updated_at")
+
+  blog Blog @relation(fields: [blogId], references: [id])
+
+  @@map("blog_contents")
+}
+
+model BlogLike {
+  id               Int       @id @default(autoincrement())
+  blogId           String    @map("blog_id")
+  userId           String    @map("user_id")
+  createdAt        DateTime? @map("created_at")
+  notificationSent Boolean   @default(false) @map("notification_sent")
+  deleted          Boolean   @default(false)
+  deletedAt        DateTime? @map("deleted_at")
+
+  blog Blog @relation(fields: [blogId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([blogId, userId], name: "uq_blog_like_blog_user")
+  @@index([blogId], map: "ix_blog_likes_blog_id")
+  @@index([userId], map: "ix_blog_likes_user_id")
+  @@map("blog_likes")
+}
+
+model BlogFeed {
+  id        Int       @id @default(autoincrement())
+  blogId    String    @map("blog_id")
+  userId    String    @map("user_id")
+  // ⚠️ 存储单位 = 0.1 鱼干（整数），原 Float 已整数化，见 User.driedFish 注释与
+  // prisma/migrations/3_fish_integer_units；换算见 src/lib/fish-units.ts。
+  // 业务上限 5 鱼干 = 50 单位。
+  amount    Int       @default(0)
+  createdAt DateTime? @map("created_at")
+  updatedAt DateTime? @map("updated_at")
+
+  blog Blog @relation(fields: [blogId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([blogId, userId], name: "uq_blog_feed_user")
+  @@index([blogId], map: "ix_blog_feeds_blog_id")
+  @@index([userId], map: "ix_blog_feeds_user_id")
+  @@map("blog_feeds")
+}
+
+// ── 分类 ─────────────────────────────────────────────────────────────────────
+
+model Category {
+  id                Int       @id @default(autoincrement())
+  name              String
+  slug              String    @unique(map: "ix_categories_slug")
+  description       String?   @default("")
+  parentId          Int?      @map("parent_id")
+  sortOrder         Int?      @default(0) @map("sort_order")
+  isActive          Boolean?  @default(true) @map("is_active")
+  icon              String?   @default("")
+  createdAt         DateTime? @map("created_at")
+  excludeFromAll    Boolean?  @default(false) @map("exclude_from_all")
+  adminOnlyPosting  Boolean?  @default(false) @map("admin_only_posting")
+  notifyAdminOnPost Boolean?  @default(false) @map("notify_admin_on_post")
+  // 专注模式隐藏：站长在栏目管理勾选；勾选根栏目时子栏目一并（由 listBlogs 子树展开）。
+  // 与 excludeFromAll 区别：这是「对开启专注模式的用户个人生效」，exclude 是全站生效。
+  focusHidden Boolean? @default(false) @map("focus_hidden")
+
+  parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children Category[] @relation("CategoryTree")
+  blogs    Blog[]
+  @@index([notifyAdminOnPost], map: "ix_categories_notify_admin_on_post")
+  @@index([adminOnlyPosting], map: "ix_categories_admin_only_posting")
+  @@index([sortOrder], map: "ix_categories_sort_order")
+  @@index([isActive], map: "ix_categories_is_active")
+  @@index([name], map: "ix_categories_name")
+  @@index([parentId], map: "ix_categories_parent_id")
+  @@index([excludeFromAll], map: "ix_categories_exclude_from_all")
+  @@index([focusHidden], map: "ix_categories_focus_hidden")
+
+  @@map("categories")
+}
+
+// ── 评论 ─────────────────────────────────────────────────────────────────────
+
+model BlogComment {
+  id          String    @id
+  blogId      String    @map("blog_id")
+  authorId    String    @map("author_id")
+  parentId    String?   @map("parent_id")
+  rootId      String?   @map("root_id")
+  content     String
+  contentHtml String?   @map("content_html")
+  // 引用的图床图片（上传走 /api/images，评论只存引用）。无 relation —— 与
+  // ChatMessage.imageId 同策略：图床清理不该被历史评论挡住，读时解析、缺了给占位。
+  imageId     String?   @map("image_id")
+  // 引用的博客（被评论的那篇之外的另一篇）。⚠️ 叫 quote_blog_id 而不是 blog_id ——
+  // 上面的 blogId 已被「评论所属文章」占用（带外键关系），两个语义不能同名。
+  // 同 imageId 策略：不加外键、博客软删不挡评论，读时按当前 Blog 行解析。
+  quoteBlogId String?   @map("quote_blog_id")
+  status      String?   @default("approved")
+  isDeleted   Boolean?  @default(false) @map("is_deleted")
+  likesCount  Int?      @default(0) @map("likes_count")
+  createdAt   DateTime? @map("created_at")
+  updatedAt   DateTime? @map("updated_at")
+
+  blog        Blog          @relation(fields: [blogId], references: [id])
+  author      User          @relation("CommentAuthor", fields: [authorId], references: [id])
+  parent      BlogComment?  @relation("CommentParent", fields: [parentId], references: [id])
+  children    BlogComment[] @relation("CommentParent")
+  root        BlogComment?  @relation("CommentRoot", fields: [rootId], references: [id])
+  descendants BlogComment[] @relation("CommentRoot")
+  likes       CommentLike[]
+  @@index([authorId], map: "ix_blog_comments_author_id")
+  @@index([blogId], map: "ix_blog_comments_blog_id")
+  @@index([createdAt], map: "ix_blog_comments_created_at")
+  @@index([isDeleted], map: "ix_blog_comments_is_deleted")
+  @@index([parentId], map: "ix_blog_comments_parent_id")
+  @@index([rootId], map: "ix_blog_comments_root_id")
+  @@index([status], map: "ix_blog_comments_status")
+
+  @@map("blog_comments")
+}
+
+model CommentLike {
+  id        Int       @id @default(autoincrement())
+  commentId String    @map("comment_id")
+  userId    String    @map("user_id")
+  createdAt DateTime? @map("created_at")
+
+  comment BlogComment @relation(fields: [commentId], references: [id])
+  user    User        @relation(fields: [userId], references: [id])
+
+  @@unique([commentId, userId], name: "uq_comment_like_comment_user")
+  @@index([commentId], map: "ix_comment_likes_comment_id")
+  @@index([userId], map: "ix_comment_likes_user_id")
+  @@map("comment_likes")
+}
+
+// ── 通知 ─────────────────────────────────────────────────────────────────────
+
+model Notification {
+  id          String    @id
+  timestamp   DateTime? @map("timestamp")
+  action      String
+  recipientId String    @map("recipient_id")
+  actorId     String?   @map("actor_id")
+  objectType  String?   @map("object_type")
+  objectId    String?   @map("object_id")
+  detail      String?
+  read        Boolean   @default(false)
+
+  recipient User  @relation("NotificationRecipient", fields: [recipientId], references: [id])
+  actor     User? @relation("NotificationActor", fields: [actorId], references: [id])
+  @@index([timestamp], map: "ix_notifications_timestamp")
+
+  @@map("notifications")
+}
+
+// ── 剪贴板 ───────────────────────────────────────────────────────────────────
+
+model ClipBoard {
+  id        String    @id
+  title     String
+  authorId  String    @map("author_id")
+  createdAt DateTime? @map("created_at")
+  ignore    Boolean?  @default(false)
+  publicity Boolean?  @default(true)
+
+  author  User      @relation(fields: [authorId], references: [id])
+  content ClipText?
+  @@index([authorId], map: "ix_clipboards_author_id")
+  @@index([createdAt], map: "ix_clipboards_created_at")
+  @@index([id], map: "ix_clipboards_id")
+  @@index([ignore], map: "ix_clipboards_ignore")
+  @@index([publicity], map: "ix_clipboards_publicity")
+  @@index([title], map: "ix_clipboards_title")
+
+  @@map("clipboards")
+}
+
+model ClipText {
+  clipId    String    @id @map("clip_id")
+  content   String
+  updatedAt DateTime? @map("updated_at")
+
+  clipboard ClipBoard @relation(fields: [clipId], references: [id])
+
+  @@map("clip_text")
+}
+
+// ── 图床 ─────────────────────────────────────────────────────────────────────
+
+model ImageHosting {
+  id        String    @id
+  filename  String
+  fileSize  Int       @map("file_size")
+  mimeType  String    @map("mime_type")
+  authorId  String    @map("author_id")
+  createdAt DateTime? @map("created_at")
+  isPublic  Boolean?  @default(true) @map("is_public")
+  ignore    Boolean?  @default(false)
+
+  author    User            @relation(fields: [authorId], references: [id])
+  chatMessages ChatMessage[]
+  @@index([authorId], map: "ix_image_hosting_author_id")
+  @@index([createdAt], map: "ix_image_hosting_created_at")
+  @@index([id], map: "ix_image_hosting_id")
+  @@index([ignore], map: "ix_image_hosting_ignore")
+
+  @@map("image_hosting")
+}
+
+// ── 投票 ─────────────────────────────────────────────────────────────────────
+
+model Vote {
+  id        String    @id
+  title     String
+  authorId  String    @map("author_id")
+  isLocked  Boolean?  @default(false) @map("is_locked")
+  ignore    Boolean?  @default(false)
+  createdAt DateTime? @map("created_at")
+
+  author  User         @relation(fields: [authorId], references: [id])
+  options VoteOption[]
+  records VoteRecord[]
+  @@index([authorId], map: "ix_votes_author_id")
+
+  @@map("votes")
+}
+
+model VoteOption {
+  id        Int    @id @default(autoincrement())
+  voteId    String @map("vote_id")
+  label     String
+  sortOrder Int?   @default(0) @map("sort_order")
+  voteCount Int?   @default(0) @map("vote_count")
+
+  vote    Vote         @relation(fields: [voteId], references: [id])
+  records VoteRecord[]
+  @@index([voteId], map: "ix_vote_options_vote_id")
+
+  @@map("vote_options")
+}
+
+model VoteRecord {
+  id        Int       @id @default(autoincrement())
+  voteId    String    @map("vote_id")
+  optionId  Int       @map("option_id")
+  userId    String    @map("user_id")
+  createdAt DateTime? @map("created_at")
+
+  vote   Vote       @relation(fields: [voteId], references: [id])
+  option VoteOption @relation(fields: [optionId], references: [id])
+  user   User       @relation(fields: [userId], references: [id])
+
+  @@unique([voteId, userId], name: "uq_vote_user")
+  @@index([voteId], map: "ix_vote_records_vote_id")
+  @@map("vote_records")
+}
+
+// ── 签到 ─────────────────────────────────────────────────────────────────────
+
+model DailyCheckIn {
+  id           Int       @id @default(autoincrement())
+  userId       String    @map("user_id")
+  checkinDate  DateTime  @map("checkin_date")
+  createdAt    DateTime? @map("created_at")
+  fortuneValue Int?      @map("fortune_value")
+  fortunePool  String?   @map("fortune_pool")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, checkinDate], name: "uq_user_checkin_date")
+  @@index([userId], map: "ix_daily_checkins_user_id")
+  @@map("daily_checkins")
+}
+
+// ── 小鱼干流水 ───────────────────────────────────────────────────────────────
+
+model FishTransaction {
+  id            Int       @id @default(autoincrement())
+  userId        String    @map("user_id")
+  // ⚠️ 存储单位 = 0.1 鱼干（整数），原 Float 已整数化，见 User.driedFish 注释与
+  // prisma/migrations/3_fish_integer_units；换算见 src/lib/fish-units.ts。
+  amount        Int
+  type          String
+  description   String?
+  referenceType String?   @map("reference_type")
+  referenceId   String?   @map("reference_id")
+  relatedUserId String?   @map("related_user_id")
+  createdAt     DateTime? @map("created_at")
+
+  user        User  @relation("FishTxUser", fields: [userId], references: [id])
+  relatedUser User? @relation("FishTxRelated", fields: [relatedUserId], references: [id])
+  @@index([type], map: "ix_fish_transactions_type")
+  @@index([relatedUserId], map: "ix_fish_transactions_related_user_id")
+  @@index([userId], map: "ix_fish_transactions_user_id")
+  @@index([createdAt], map: "ix_fish_transactions_created_at")
+
+  @@map("fish_transactions")
+}
+
+// ── 管理审计 ─────────────────────────────────────────────────────────────────
+
+model AdminActionLog {
+  id           Int       @id @default(autoincrement())
+  createdAt    DateTime? @map("created_at")
+  action       String
+  adminId      String    @map("admin_id")
+  targetUserId String?   @map("target_user_id")
+  objectType   String?   @map("object_type")
+  objectId     String?   @map("object_id")
+  reason       String?
+  // SQLite 上 Prisma 无 Json 标量：以 String 存原始 JSON 文本，应用层自行解析
+  extra        String?
+  visibility   String    @default("public")
+
+  admin      User                @relation("LogAdmin", fields: [adminId], references: [id])
+  targetUser User?               @relation("LogTarget", fields: [targetUserId], references: [id])
+  appeals    AdminActionAppeal[]
+  @@index([adminId], map: "ix_admin_action_logs_admin_id")
+  @@index([createdAt], map: "ix_admin_action_logs_created_at")
+  @@index([visibility], map: "ix_admin_action_logs_visibility")
+  @@index([objectId], map: "ix_admin_action_logs_object_id")
+  @@index([action], map: "ix_admin_action_logs_action")
+  @@index([targetUserId], map: "ix_admin_action_logs_target_user_id")
+
+  @@map("admin_action_logs")
+}
+
+model AdminActionAppeal {
+  id          Int       @id @default(autoincrement())
+  createdAt   DateTime? @map("created_at")
+  updatedAt   DateTime? @map("updated_at")
+  logId       Int       @map("log_id")
+  appellantId String    @map("appellant_id")
+  content     String
+  status      String    @default("pending")
+  decision    String?
+  decidedBy   String?   @map("decided_by")
+  decidedAt   DateTime? @map("decided_at")
+
+  log       AdminActionLog @relation(fields: [logId], references: [id])
+  appellant User           @relation("AppealAppellant", fields: [appellantId], references: [id])
+  decider   User?          @relation("AppealDecider", fields: [decidedBy], references: [id])
+  @@index([logId], map: "ix_admin_action_appeals_log_id")
+  @@index([createdAt], map: "ix_admin_action_appeals_created_at")
+  @@index([appellantId], map: "ix_admin_action_appeals_appellant_id")
+  @@index([status], map: "ix_admin_action_appeals_status")
+
+  @@map("admin_action_appeals")
+}
+
+// ── OAuth 2.0（外部应用身份绑定） ────────────────────────────────────────────
+// 仅用于「让第三方应用代表已登录用户读取基础资料」。v1 不发 write scope，
+// 因此 OAuthAccessToken 仅出现在读路径；refresh_token 不在 v1 范围内。
+//
+// 应用注册由 owner 经 CLI（npm run cli -- oauth create-app）或 /admin/oauth 完成；
+// 客户端鉴权走 client_id + client_secret（werkzeug 兼容 scrypt 哈希入库）；
+// 授权码 / access_token 不透明随机串，仅存 SHA-256 哈希作为 PK。
+
+model OAuthApplication {
+  id               String    @id
+  clientId         String    @unique @map("client_id")
+  clientSecretHash String    @map("client_secret_hash")
+  name             String
+  description      String?
+  homepageUrl      String?   @map("homepage_url")
+  // SQLite 无数组类型 → JSON 字符串（应用层 parse）。结构：["https://app.example.com/cb","..."]
+  redirectUris     String    @map("redirect_uris")
+  createdById      String    @map("created_by_id")
+  createdAt        DateTime? @map("created_at")
+  disabledAt       DateTime? @map("disabled_at")
+
+  createdBy         User                      @relation("OAuthAppOwner", fields: [createdById], references: [id])
+  authorizationCodes OAuthAuthorizationCode[]
+  accessTokens       OAuthAccessToken[]
+
+  @@index([clientId], map: "ix_oauth_apps_client_id")
+  @@index([createdById], map: "ix_oauth_apps_created_by_id")
+  @@map("oauth_applications")
+}
+
+model OAuthAuthorizationCode {
+  // 主键 = SHA-256(明文)，64 字符 hex。原始 code 仅在 /api/oauth/authorize 响应里出现一次。
+  codeHash      String    @id @map("code_hash")
+  applicationId String    @map("application_id")
+  userId        String    @map("user_id")
+  redirectUri   String    @map("redirect_uri")
+  // 空格分隔的 scope 串（当前只有 "profile"）。⚠️ **不是 JSON** —— 同一张表里
+  // redirect_uris 才是 JSON。编解码见 src/lib/oauth.ts 的 scopesToString / normalizeScopes。
+  scopes        String
+  expiresAt     DateTime  @map("expires_at")
+  usedAt        DateTime? @map("used_at")
+  createdAt     DateTime? @map("created_at")
+
+  application OAuthApplication @relation(fields: [applicationId], references: [id])
+  user        User             @relation(fields: [userId], references: [id])
+
+  @@index([applicationId, userId], map: "ix_oauth_codes_app_user")
+  @@index([expiresAt], map: "ix_oauth_codes_expires_at")
+  @@map("oauth_authorization_codes")
+}
+
+// ── 账户微服务同步账本（fail-closed 的落地机制） ─────────────────────────────
+// 远端 HTTP 调用不在 SQLite 事务内（否则写锁被占用最长 ACCOUNT_SERVICE_TIMEOUT，
+// 并发写直接 "database is locked"）。改用「先提交本地 + 账本登记 + 提交后同步 +
+// 失败补偿」：远端失败时补偿事务精确撤销本地写入（对用户仍等价于回滚 + 503）；
+// 进程在「已提交本地、远端未同步」之间崩溃时，账本行留 pending/failed，
+// 由 npm run cli -- fish sync-retry 幂等重放收敛。
+// payload 只存非敏感重放参数；密钥类字段（系统 Key / 用户 Key）不入库，
+// 重放时按 userId 重新解密。
+model AccountSyncLedger {
+  id             Int       @id @default(autoincrement())
+  // 幂等键 = 发往账户服务的 Idempotency-Key（feed 是 consume/income/refund 三键的根）
+  idempotencyKey String    @unique @map("idempotency_key")
+  operation      String // feed | checkin | admin_grant | admin_deduct | register
+  // JSON 字符串：重建远端调用所需的非敏感参数（SQLite 无数组/Json 标量）
+  payload        String
+  // pending → synced（远端已同步）/ compensated（远端失败且本地已补偿）/ failed（补偿也失败，待重放）
+  status         String    @default("pending")
+  attempts       Int       @default(0)
+  lastError      String?   @map("last_error")
+  createdAt      DateTime? @map("created_at")
+  updatedAt      DateTime? @map("updated_at")
+
+  @@index([status], map: "ix_account_sync_ledger_status")
+  @@index([createdAt], map: "ix_account_sync_ledger_created_at")
+  @@map("account_sync_ledger")
+}
+
+model OAuthAccessToken {
+  // 主键 = SHA-256(明文)，64 字符 hex。
+  tokenHash     String    @id @map("token_hash")
+  applicationId String    @map("application_id")
+  userId        String    @map("user_id")
+  scopes        String
+  expiresAt     DateTime  @map("expires_at")
+  revokedAt     DateTime? @map("revoked_at")
+  lastUsedAt    DateTime? @map("last_used_at")
+  createdAt     DateTime? @map("created_at")
+
+  application OAuthApplication @relation(fields: [applicationId], references: [id])
+  user        User             @relation(fields: [userId], references: [id])
+
+  @@index([applicationId, userId], map: "ix_oauth_tokens_app_user")
+  @@index([userId], map: "ix_oauth_tokens_user_id")
+  @@index([expiresAt], map: "ix_oauth_tokens_expires_at")
+  @@map("oauth_access_tokens")
+}
+
+// ── 在线聊天区（见 migration 4_chat / src/lib/chat-service.ts） ───────────────
+// 频道（大区 + 私聊）→ 成员（含读游标，用于未读）→ 消息（自增 id 作增量游标）。
+// 注意：image_id / reply_to 不在此库建外键（图床硬删 / 消息软删都不应被物理约束卡住），
+// 外键关系只在 Prisma 层表达（测试库 prisma db push 会建约束，生产走手写 migration.sql）。
+
+model ChatChannel {
+  id        String        @id
+  // 'lobby'（固定 id='lobby'，全局大区）| 'direct'（私聊，仅两成员）
+  kind      String        @default("direct")
+  createdAt DateTime?     @map("created_at")
+
+  members  ChatMember[]
+  messages ChatMessage[]
+
+  @@map("chat_channels")
+}
+
+model ChatMember {
+  id                Int       @id @default(autoincrement())
+  channelId         String    @map("channel_id")
+  userId            String    @map("user_id")
+  // 读游标：未读数 = 频道内 id > 该值且未软删的消息数
+  lastReadMessageId Int       @default(0) @map("last_read_message_id")
+  // 静音：非空即该会话不产生通知（未读徽标照常显示）
+  mutedAt           DateTime? @map("muted_at")
+  // 会话隐藏：隐藏时记下「当时的频道最大消息 id」；之后有新消息（id 更大）就重新出现
+  hiddenAfterMessageId Int?   @map("hidden_after_message_id")
+  createdAt         DateTime? @map("created_at")
+
+  channel ChatChannel @relation(fields: [channelId], references: [id])
+  user    User        @relation("ChatMemberUser", fields: [userId], references: [id])
+
+  @@unique([channelId, userId], name: "uq_chat_member_channel_user")
+  @@index([userId], map: "ix_chat_members_user_id")
+  @@map("chat_members")
+}
+
+model ChatMessage {
+  id         Int       @id @default(autoincrement())
+  channelId  String    @map("channel_id")
+  authorId   String    @map("author_id")
+  // 正文为 Markdown 源文（客户端经 chat-markdown.ts 白名单净化后渲染，见 ChatMarkdown）；
+  // 带图 / 引用博客时此处放可选图注
+  content    String    @default("")
+  // 引用的图床图片（上传走 /api/images，消息只存引用）
+  imageId    String?   @map("image_id")
+  // 引用回复的消息 id（须同频道且未软删）
+  replyTo    Int?      @map("reply_to")
+  // 引用博客的 UUID（blogs.id；无 relation —— 同 image_id 策略：博客软删不挡聊天，
+  // 渲染期由 chat-service 按当前 Blog 行解析，软删后给 [博客已删除] 占位）
+  blogId     String?   @map("blog_id")
+  // 拍一拍的目标用户 id（无 relation —— 同上策略：username 读时解析、不存快照）。
+  // 非空即「拍一拍」消息：正文/图片/引用博客一律为空，前端渲染为居中灰字系统行。
+  patTargetId String?  @map("pat_target_id")
+  isDeleted  Boolean?  @default(false) @map("is_deleted")
+  createdAt  DateTime? @map("created_at")
+
+  channel    ChatChannel  @relation(fields: [channelId], references: [id])
+  author     User         @relation("ChatMessageAuthor", fields: [authorId], references: [id])
+  image      ImageHosting? @relation(fields: [imageId], references: [id])
+  replyToMsg ChatMessage?  @relation("ChatMessageReply", fields: [replyTo], references: [id])
+  replies    ChatMessage[] @relation("ChatMessageReply")
+
+  @@index([channelId, id], map: "ix_chat_messages_channel_id_id")
+  @@map("chat_messages")
+}

@@ -1,0 +1,185 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// 富文本输入区（RichComposer）—— 聊天与评论共用
+//
+// 【为什么是 mixin 而不是普通类】两处的 DOM 与视觉完全一致，只有 BEM 前缀不同
+// （聊天 chat-composer / 评论 comment-composer，见 RichComposer.tsx 的
+// 「类名由调用方注入」）。写一份带前缀参数的 mixin，两边各 @include 一次 ——
+// 复制一份就是 170 行必然 drift 的样式。
+//
+// 用法：
+//   @use '../components/composer' as composer;
+//   @include composer.rich-composer('chat-composer');
+//
+// 结构（QQ 式）：附件条（回复 / 引用博客 / 待发图片）在上，下面一整块圆角面板
+// （幽灵工具条 → 自动加高文本框 → 底条：左侧提示 + 右下角提交）。
+// ─────────────────────────────────────────────────────────────────────────────
+
+@mixin rich-composer($p) {
+  .#{$p} {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  // 附件条（回复 / 引用博客 / 待发图片）统一在输入框面板上方
+
+  .#{$p}__reply {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.8rem;
+    color: var(--color-text-secondary);
+    background: var(--color-background-subtle);
+    border-left: 3px solid var(--color-brand-primary);
+    padding: 4px 8px;
+    border-radius: 6px;
+  }
+  .#{$p}__reply-text {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .#{$p}__reply-close {
+    border: none;
+    background: transparent;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    font-size: 1rem;
+  }
+
+  // 引用博客草稿 chip（与 __reply 同族，左侧书本图标标识）
+  .#{$p}__blog {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.8rem;
+    color: var(--color-text-secondary);
+    background: var(--color-background-subtle);
+    border-left: 3px solid var(--color-brand-primary);
+    padding: 4px 8px;
+    border-radius: 6px;
+  }
+  .#{$p}__blog-icon {
+    flex: none;
+    color: var(--color-brand-primary);
+  }
+
+  .#{$p}__image {
+    position: relative;
+    width: fit-content;
+  }
+  .#{$p}__image img {
+    max-width: 120px;
+    max-height: 120px;
+    border-radius: 10px;
+    display: block;
+  }
+  .#{$p}__image-remove {
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    width: 22px;
+    height: 22px;
+    border: none;
+    border-radius: 999px;
+    background: var(--color-warning-primary);
+    color: #fff;
+    cursor: pointer;
+    font-size: 0.85rem;
+    line-height: 1;
+  }
+
+  // 输入框整块面板：横向填满；幽灵工具条嵌顶部内侧 → 变高文本框 → 底条（提交按钮右下）
+  .#{$p}__panel {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    border: 1px solid var(--color-border);
+    border-radius: 14px;
+    background: var(--color-background-card);
+    padding: 4px 8px 8px;
+  }
+
+  // 幽灵工具条：无背景无边框，hover 才显浅底（QQ 风格）
+  .#{$p}__toolbar {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+  .#{$p}__icon-btn {
+    flex: none;
+    width: 30px;
+    height: 30px;
+    border: none;
+    background: transparent;
+    color: var(--color-text-secondary);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 1.15rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+  }
+  .#{$p}__icon-btn:hover:not(:disabled) {
+    background: var(--color-background-subtle);
+    color: var(--color-brand-primary);
+  }
+  .#{$p}__icon-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .#{$p}__input {
+    resize: none;
+    border: none;
+    background: transparent;
+    color: var(--color-text-primary);
+    padding: 6px;
+    font-size: 0.95rem;
+    line-height: 1.5;
+    font-family: inherit;
+    min-height: 72px;
+    max-height: 176px;
+    overflow-y: auto;
+  }
+  .#{$p}__input:focus {
+    outline: none;
+  }
+
+  // 面板底条：左侧提示文字 + 右下角提交
+  .#{$p}__foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 2px 2px 0;
+  }
+  .#{$p}__hint {
+    font-size: 0.72rem;
+    color: var(--color-text-tertiary);
+    user-select: none;
+  }
+
+  .#{$p}__send {
+    flex: none;
+    border: none;
+    border-radius: 999px;
+    padding: 6px 20px;
+    background: var(--color-brand-secondary);
+    color: var(--color-brand-primary);
+    font-weight: 700;
+    font-size: 0.92rem;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .#{$p}__send:hover:not(:disabled) {
+    background: var(--color-brand-primary);
+    color: #fff;
+  }
+  .#{$p}__send:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}

@@ -1,0 +1,179 @@
+@use '../../abstracts/variables' as *;
+
+// ============================================================
+// Gomoku (五子棋) — BEM namespace: .gomoku-*
+// ============================================================
+
+// 扁平结构：GamePageShell 直接把 .container 与 .gomoku-page 合并在同一元素上，
+// 不能用 display: flex（会把 返回链接/标题/介绍/棋盘 排成一行），改为普通块级流，
+// 棋盘容器用 .gomoku-container 的 margin: 0 auto 自居中。
+.gomoku-page {
+  min-height: calc(100vh - 62px);
+  // 只设上下内边距，左右交给 .container，否则手机端返回链接/标题贴屏边。
+  padding-top: $space-6;
+  padding-bottom: $space-6;
+  background: var(--color-background-page);
+}
+
+.gomoku-container {
+  text-align: center;
+  background: var(--color-background-card);
+  padding: $space-6;
+  border-radius: $radius-large;
+  box-shadow: var(--shadow-card);
+  max-width: 680px;
+  width: 100%;
+  margin: 0 auto;
+
+  @media (max-width: 640px) {
+    padding: $space-4 $space-3;
+    margin: 0 $space-2;
+    border-radius: $radius-small;
+  }
+}
+
+.gomoku-back {
+  display: inline-block;
+  margin-bottom: $space-4;
+  color: var(--color-text-secondary);
+  font-size: 0.95rem;
+  text-decoration: none;
+  transition: color 0.2s ease;
+
+  &:hover {
+    color: var(--color-brand-primary);
+  }
+}
+
+// ── Header ────────────────────────────────────────────────────
+
+.gomoku-header {
+  margin-bottom: $space-4;
+
+  &__title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--color-text-primary);
+    margin-bottom: $space-1;
+
+    @media (max-width: 640px) {
+      font-size: 1.3rem;
+    }
+  }
+
+  &__subtitle {
+    font-size: 0.95rem;
+    color: var(--color-text-secondary);
+    line-height: 1.5;
+  }
+}
+
+// ── Mode Selector ─────────────────────────────────────────────
+
+.gomoku-mode-selector {
+  display: flex;
+  justify-content: center;
+  gap: $space-6;
+  margin-bottom: $space-4;
+}
+
+.gomoku-mode-option {
+  display: flex;
+  align-items: center;
+  gap: $space-2;
+  cursor: pointer;
+  font-size: 0.95rem;
+  color: var(--color-text-primary);
+  user-select: none;
+
+  input[type="radio"] {
+    accent-color: var(--color-brand-primary);
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+  }
+}
+
+// ── Status ────────────────────────────────────────────────────
+
+.gomoku-status {
+  font-weight: 600;
+  font-size: 1.1rem;
+  min-height: 28px;
+  margin-bottom: $space-3;
+  color: var(--color-text-primary);
+  transition: color 0.2s ease;
+}
+
+// ── Canvas ────────────────────────────────────────────────────
+
+.gomoku-canvas-wrap {
+  display: flex;
+  justify-content: center;
+  margin-bottom: $space-3;
+}
+
+.gomoku-canvas {
+  cursor: pointer;
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+}
+
+// ── Controls ──────────────────────────────────────────────────
+
+.gomoku-controls {
+  display: flex;
+  gap: $space-3;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+// 组件只渲染基类 .gomoku-btn（未用 --new/--undo 修饰符），
+// 且按钮需随深浅主题切换 —— 用主题令牌，勿硬编码颜色。
+.gomoku-btn {
+  padding: $space-2 $space-4;
+  font-size: 0.95rem;
+  font-weight: 500;
+  border: 1px solid var(--color-border);
+  border-radius: $radius-small;
+  cursor: pointer;
+  background: var(--color-background-card);
+  color: var(--color-text-primary);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease, background-color 0.2s ease, border-color 0.2s ease;
+
+  &:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-sm);
+    background: var(--color-background-subtle);
+    border-color: var(--color-border-highlight);
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+  }
+
+  @media (max-width: 640px) {
+    padding: $space-2 $space-3;
+    font-size: 0.85rem;
+  }
+}
+
+// ── Dark mode ─────────────────────────────────────────────────
+
+[data-theme="dark"] {
+  .gomoku-container {
+    // background is handled by --color-background-card
+  }
+
+  .gomoku-status {
+    // Canvas handles board colours; text colours follow tokens
+  }
+}

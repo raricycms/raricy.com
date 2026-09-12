@@ -1,0 +1,119 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Markdown 正文（用户输入的渲染结果）—— 聊天气泡与评论正文共用
+//
+// 【为什么是 mixin】两处的正文都来自同一条净化管线（src/lib/rich-text.ts），
+// 元素集合完全一致（p / h1-h6 / ul / ol / blockquote / code / pre / table / hr /
+// 任务列表复选框）。写两份的话，改了一处另一边不会跟着变 —— 用户会看到「列表在
+// 聊天里长这样、在评论里长那样」，而这类不一致没有人会当成 bug 报上来。
+//
+// 参数是**完整类名**（两边的命名空间不同：.chat-msg__md / .comment-content__md）。
+//
+// ⚠️ 字号一律用 em：两个容器的基准字号不同（聊天气泡 0.92rem、评论 0.95rem），
+//    用固定 rem 会让同一段 Markdown 在两边缩放比例不一致。
+// ─────────────────────────────────────────────────────────────────────────────
+
+@mixin rich-markdown($cls) {
+  .#{$cls} {
+    // 父级可能是 white-space: pre-wrap（聊天气泡的纯文本回退态要用）：不清掉的话，
+    // marked 输出的标签间换行会被当成空白保留 → 每行之间多出空行。
+    white-space: normal;
+    word-break: break-word;
+  }
+  .#{$cls} > :first-child {
+    margin-top: 0;
+  }
+  .#{$cls} > :last-child {
+    margin-bottom: 0;
+  }
+  .#{$cls} p {
+    margin: 0 0 0.5em;
+  }
+  // 标题按层级小幅放大：容器基准字号本来就小（不到 1rem），h1 原尺寸 2em 会把容器
+  // 撑爆，但全压成 1em 又让 # 和 ###### 长得一模一样（层级信息全丢）。折中取
+  // 1.35em → 0.95em 递减，行高收紧；h6 用次级色，保证最小的标题也能区分。
+  .#{$cls} h1,
+  .#{$cls} h2,
+  .#{$cls} h3,
+  .#{$cls} h4,
+  .#{$cls} h5,
+  .#{$cls} h6 {
+    margin: 0.7em 0 0.35em;
+    font-weight: 700;
+    line-height: 1.35;
+  }
+  .#{$cls} h1 {
+    font-size: 1.35em;
+  }
+  .#{$cls} h2 {
+    font-size: 1.25em;
+  }
+  .#{$cls} h3 {
+    font-size: 1.15em;
+  }
+  .#{$cls} h4 {
+    font-size: 1.08em;
+  }
+  .#{$cls} h5 {
+    font-size: 1em;
+  }
+  .#{$cls} h6 {
+    font-size: 0.95em;
+    color: var(--color-text-secondary);
+  }
+  .#{$cls} ul,
+  .#{$cls} ol {
+    margin: 0 0 0.5em;
+    padding-left: 1.4em;
+  }
+  .#{$cls} li {
+    margin: 0.15em 0;
+  }
+  // GFM 任务列表的复选框是禁用态（不认识勾选状态，纯展示）
+  .#{$cls} li > input[type='checkbox'] {
+    margin-right: 0.35em;
+  }
+  .#{$cls} blockquote {
+    margin: 0 0 0.5em;
+    padding: 2px 10px;
+    border-left: 3px solid var(--color-border);
+    color: var(--color-text-secondary);
+  }
+  .#{$cls} code {
+    padding: 1px 4px;
+    border-radius: 4px;
+    background: var(--color-background-subtle);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.86em;
+    word-break: break-all;
+  }
+  .#{$cls} pre {
+    margin: 0 0 0.5em;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: var(--color-background-subtle);
+    overflow-x: auto;
+  }
+  .#{$cls} pre code {
+    padding: 0;
+    background: none;
+    word-break: normal;
+  }
+  // 表格可能比容器宽：display:block + 横向滚动，不让它把容器撑出屏幕
+  .#{$cls} table {
+    display: block;
+    max-width: 100%;
+    margin: 0 0 0.5em;
+    overflow-x: auto;
+    border-collapse: collapse;
+  }
+  .#{$cls} th,
+  .#{$cls} td {
+    padding: 2px 8px;
+    border: 1px solid var(--color-border);
+  }
+  .#{$cls} hr {
+    margin: 0.6em 0;
+    border: none;
+    border-top: 1px solid var(--color-border);
+  }
+}

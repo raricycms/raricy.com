@@ -1,0 +1,289 @@
+// checkin-service —— 翻牌发鱼干的 fail-closed 远端同步。
+//
+// 【为什么单独一个文件】需要 vi.mock 掉 account-client，而
+// tests/service/checkin-service.test.ts 测的是本地语义（UTC+8 边界/唯一约束/运势），
+// 用真实模块跑 dev fallback 分支。两者混在一起会互相干扰。
+//
+// 【两步式下的写路径】checkIn() 只建记录（无远端操作），**发钱点在
+// claimFortune()** —— 翻牌时才 累加运势 + 发鱼干 + 远端同步。故所有
+// fail-closed 断言都作用在 claim 上。
+//
+// 【为什么这块必须测】签到是发钱路径。曾经 checkin-service **完全没接账户微服务**
+// （0 处调用，只有一行「本切片仅写本地 DB」的注释），而 Flask 的 claim_fortune 是
+// 接了 fail-closed 的。后果：翻牌发的鱼只进本地库、远端账户毫不知情 ——
+// 账目从切换第一天起就开始分叉，且完全静默。
+//
+// fail-closed 的核心不变式：**远端失败 → 本地必须零痕迹**。
+// 两步式下「零痕迹」= 签到行还在（已签到状态保留），但 fortune_value 复原为
+// NULL、余额/流水/账本全部回退 —— 对用户等价于「这次翻牌没发生过，可重选」，
+// 对齐 Flask claim_fortune 的 rollback 语义。
+// 「本地已发鱼但远端没记账」是这里最危险的失败模式。
+
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+
+const { mockEnabled, mockTransfer } = vi.hoisted(() => ({
+  mockEnabled: vi.fn<() => boolean>(),
+  mockTransfer: vi.fn<(input: unknown) => Promise<unknown>>(),
+}));
+
+vi.mock('@/lib/account-client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/account-client')>();
+  return {
+    ...actual,
+    accountServiceEnabled: mockEnabled,
+    accountClient: { ...actual.accountClient, transfer: mockTransfer },
+  };
+});
+
+import { checkIn, claimFortune, todayUtc8 } from '@/lib/checkin-service';
+import { AccountServiceError, SYSTEM_USER_ID } from '@/lib/account-client';
+import { unitsToFish } from '@/lib/fish-units';
+import { resetDb, makeUser, prisma } from '../helpers/db';
+
+beforeEach(async () => {
+  await resetDb();
+  mockEnabled.mockReset();
+  mockTransfer.mockReset();
+});
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllEnvs();
+});
+
+/** 远端已配置且一切正常。 */
+function enableRemote() {
+  mockEnabled.mockReturnValue(true);
+  mockTransfer.mockResolvedValue({ ok: true });
+}
+
+/** 该用户当前的全部本地痕迹 —— 用于断言「零痕迹」/ 复原语义。 */
+async function snapshot(userId: string) {
+  const [u, checkins, txns, ledger, todayRow] = await Promise.all([
+    prisma.user.findUnique({ where: { id: userId }, select: { driedFish: true, totalFortune: true } }),
+    prisma.dailyCheckIn.count({ where: { userId } }),
+    prisma.fishTransaction.count({ where: { userId } }),
+    prisma.accountSyncLedger.count({ where: { operation: 'checkin' } }),
+    prisma.dailyCheckIn.findFirst({
+      where: { userId },
+      select: { fortuneValue: true },
+      orderBy: { checkinDate: 'desc' },
+    }),
+  ]);
+  return {
+    driedFish: u ? unitsToFish(u.driedFish) : 0, // 存储单位 → 鱼干
+    totalFortune: u?.totalFortune ?? 0,
+    checkins,
+    txns,
+    ledger,
+    /** 最近一行签到记录的值（两步式：失败后应复原为 NULL）。 */
+    rowFortune: todayRow?.fortuneValue ?? null,
+  };
+}
+
+describe('远端正常：签到 → 翻牌，远端被正确调用一次', () => {
+  it('调用 transfer：系统账户 → 用户，金额 = 翻出的运势值，幂等键 checkin-{userId}-{date}', async () => {
+    enableRemote();
+    const u = await makeUser({ driedFish: 0 });
+
+    // 第一步签到：不碰远端
+    const ci = await checkIn(u.id);
+    expect(ci.alreadyChecked).toBe(false);
+    expect(mockTransfer, '签到只是建记录 —— 不该触发任何远端调用').not.toHaveBeenCalled();
+
+    // 第二步翻牌：此刻才发鱼 + 远端同步
+    const cl = await claimFortune(u.id, 0);
+    expect(cl.ok).toBe(true);
+    if (!cl.ok || cl.alreadyClaimed) return;
+
+    expect(mockTransfer).toHaveBeenCalledTimes(1);
+    const arg = mockTransfer.mock.calls[0][0] as Record<string, unknown>;
+    expect(arg.fromUserId, '发放必须从系统账户出').toBe(SYSTEM_USER_ID);
+    expect(arg.toUserId).toBe(u.id);
+    expect(arg.amount, '远端金额必须与本地发的鱼干一致').toBe(cl.fortuneValue);
+    expect(arg.entryType).toBe('checkin');
+    expect(
+      arg.idempotencyKey,
+      '幂等键决定重复提交会不会重复发放 —— 必须按 用户+日期 唯一'
+    ).toBe(`checkin-${u.id}-${todayUtc8()}`);
+    expect(arg.description).toBe(`每日签到（运势值 ${cl.fortuneValue}）`);
+
+    // 本地也确实发了（签到行 + 翻牌流水 + 余额）
+    const s = await snapshot(u.id);
+    expect(s.driedFish).toBe(cl.fortuneValue);
+    expect(s.checkins).toBe(1);
+    expect(s.txns).toBe(1);
+  });
+
+  it('★ 本地先提交+账本登记 pending，远端同步在事务外（不占 SQLite 写锁）', async () => {
+    enableRemote();
+    const u = await makeUser({ driedFish: 0 });
+    await checkIn(u.id);
+
+    // 在 transfer 回调里用**独立连接**读库：此时本地事务必须【已提交】（先落账本后
+    // 同步），且 account_sync_ledger 里有本笔的 pending 行 —— 它是「已提交但未同步」
+    // 的恢复锚点：进程此时崩溃，sync-retry 仍可按幂等键重放收敛。
+    let fortuneDuringTransfer: number | null = null;
+    let pendingRows: number | null = null;
+    mockTransfer.mockImplementation(async () => {
+      const [rows, ledger] = await Promise.all([
+        prisma.$queryRawUnsafe<{ n: number }[]>(
+          `SELECT fortune_value AS n FROM daily_checkins WHERE user_id = ?`,
+          u.id
+        ),
+        prisma.accountSyncLedger.findMany({
+          where: { operation: 'checkin', status: 'pending' },
+          select: { idempotencyKey: true },
+        }),
+      ]);
+      fortuneDuringTransfer = rows[0]?.n ?? null;
+      pendingRows = ledger.length;
+      return { ok: true };
+    });
+
+    const cl = await claimFortune(u.id, 0);
+    expect(cl.ok).toBe(true);
+    expect(
+      fortuneDuringTransfer,
+      '远端调用时本地应已提交且 fortune_value 已落值（先提交+账本登记，再同步 —— HTTP 不占写锁）'
+    ).toBe(cl.ok ? cl.fortuneValue : null);
+    expect(pendingRows, '远端调用时账本里必须有本笔 pending 行').toBe(1);
+    // 成功后账本行应结算为 synced（审计可查）
+    const ledger = await prisma.accountSyncLedger.findFirst({ where: { operation: 'checkin' } });
+    expect(ledger?.status).toBe('synced');
+  });
+});
+
+describe('★ 远端失败 → 本地复原（fail-closed 的核心）', () => {
+  const FAILURES: Array<[string, unknown]> = [
+    ['AccountServiceError(503)', new AccountServiceError('远端不可达', 503)],
+    ['AccountServiceError(500)', new AccountServiceError('远端内部错误', 500)],
+    ['普通 Error', new Error('boom')],
+    ['网络中断 AbortError', Object.assign(new Error('aborted'), { name: 'AbortError' })],
+  ];
+
+  for (const [name, err] of FAILURES) {
+    it(`${name} → 抛错，签到行仍在（fortune_value 复原 NULL）、余额/流水/账本全回退`, async () => {
+      mockEnabled.mockReturnValue(true);
+      mockTransfer.mockRejectedValue(err);
+      const u = await makeUser({ driedFish: 10, totalFortune: 3 });
+      await checkIn(u.id); // 第一步签到成功（与远端无关）
+      const before = await snapshot(u.id);
+
+      await expect(
+        claimFortune(u.id, 0),
+        '远端失败必须抛错，不能静默成功'
+      ).rejects.toThrow();
+
+      const after = await snapshot(u.id);
+      expect(after, `${name} 后本地留下了痕迹 —— 本地发了鱼但远端没记账`).toEqual(before);
+      expect(after.driedFish).toBe(10);
+      expect(after.totalFortune).toBe(3);
+      expect(after.checkins).toBe(1);
+      expect(after.rowFortune, '行必须保留且复原为 NULL（用户保持「已签到未翻牌」可重选牌）').toBeNull();
+      expect(after.txns).toBe(0);
+      expect(after.ledger).toBe(0);
+    });
+  }
+
+  it('远端失败后重试成功 → 只记一次账（不会因为第一次失败而漏/重）', async () => {
+    mockEnabled.mockReturnValue(true);
+    mockTransfer.mockRejectedValueOnce(new AccountServiceError('临时故障', 503));
+    const u = await makeUser({ driedFish: 0 });
+    await checkIn(u.id);
+
+    await expect(claimFortune(u.id, 0)).rejects.toThrow();
+    let s = await snapshot(u.id);
+    expect(s).toMatchObject({ checkins: 1, txns: 0, driedFish: 0, rowFortune: null, ledger: 0 });
+
+    // 重试（补偿已把值复原 → 可重新翻牌）
+    mockTransfer.mockResolvedValue({ ok: true });
+    const cl = await claimFortune(u.id, 2);
+    expect(cl.ok).toBe(true);
+    if (!cl.ok || cl.alreadyClaimed) return;
+
+    s = await snapshot(u.id);
+    expect(s.checkins, '重试不应新建签到行（行从签到那刻就在）').toBe(1);
+    expect(s.txns, '重试后应恰好一条流水').toBe(1);
+    expect(s.driedFish, '余额 = 重试翻出的值').toBe(cl.fortuneValue);
+    expect(s.rowFortune).toBe(cl.fortuneValue);
+    expect(s.ledger).toBe(1);
+    const ledger = await prisma.accountSyncLedger.findFirst({ where: { operation: 'checkin' } });
+    expect(ledger?.status, '重试成功后账本行应结算为 synced').toBe('synced');
+  });
+
+  it('普通异常被包装成 AccountServiceError(503)（对齐 Flask 的兜底分支）', async () => {
+    mockEnabled.mockReturnValue(true);
+    mockTransfer.mockRejectedValue(new Error('unexpected'));
+    const u = await makeUser();
+    await checkIn(u.id);
+
+    await expect(claimFortune(u.id, 0)).rejects.toThrow(AccountServiceError);
+  });
+});
+
+describe('未配置账户服务时的行为', () => {
+  it('开发环境 → 签到静默成功（无 warn，本步无远端操作）；翻牌才 dev fallback：仅写本地并告警', async () => {
+    mockEnabled.mockReturnValue(false);
+    vi.stubEnv('NODE_ENV', 'development');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const u = await makeUser({ driedFish: 0 });
+
+    const ci = await checkIn(u.id);
+    expect(ci.alreadyChecked).toBe(false);
+    expect(warn, '签到没有跳过任何远端操作 —— 不该告警').not.toHaveBeenCalled();
+
+    const cl = await claimFortune(u.id, 0);
+    expect(cl.ok).toBe(true);
+    expect(mockTransfer, 'dev fallback 不该打远端').not.toHaveBeenCalled();
+    expect(warn, '翻牌是发钱点 —— dev fallback 必须留下告警，不能悄无声息').toHaveBeenCalledTimes(1);
+    const s = await snapshot(u.id);
+    expect(s).toMatchObject({ checkins: 1, txns: 1, driedFish: cl.ok ? cl.fortuneValue : 0 });
+    warn.mockRestore();
+  });
+
+  it('★ 生产环境 → 签到被拒（fail-closed，不能堆积无法翻牌的记录）', async () => {
+    mockEnabled.mockReturnValue(false);
+    vi.stubEnv('NODE_ENV', 'production');
+    const u = await makeUser({ driedFish: 0 });
+
+    // 漏配 ACCOUNT_SERVICE_INTERNAL_TOKEN 时若静默放行，签到会建一堆永远
+    // 无法 claim 的行（且翻牌若被放行会只发本地鱼干、远端毫无记账）——
+    // 与 fail-closed 相反。
+    await expect(
+      checkIn(u.id),
+      '生产环境漏配账户服务时签到必须被拒（fail-closed）'
+    ).rejects.toThrow(AccountServiceError);
+
+    expect(await snapshot(u.id)).toMatchObject({ checkins: 0, txns: 0, driedFish: 0 });
+  });
+
+  it('★ 生产环境 → 存量「已签到未翻牌」行的翻牌也被拒，行保持 NULL 零痕迹', async () => {
+    // prod 漏配时，守卫只能被迁移前/漏配窗口留下的 pending 行触发 —— 用 raw 插行造出来。
+    mockEnabled.mockReturnValue(false);
+    vi.stubEnv('NODE_ENV', 'production');
+    const u = await makeUser({ driedFish: 7, totalFortune: 2 });
+    const today = todayUtc8();
+    await prisma.$executeRawUnsafe(
+      `INSERT INTO daily_checkins (user_id, checkin_date, created_at, fortune_value, fortune_pool)
+       VALUES (?, ?, ?, NULL, '3,1,5,2,4')`,
+      u.id,
+      new Date(`${today}T00:00:00.000Z`).getTime(),
+      Date.now()
+    );
+
+    await expect(
+      claimFortune(u.id, 0),
+      '生产漏配时翻牌（发钱点）必须 fail-closed 拒绝'
+    ).rejects.toThrow(AccountServiceError);
+
+    const s = await snapshot(u.id);
+    expect(s).toMatchObject({
+      checkins: 1,
+      rowFortune: null, // 行保留、值仍 NULL —— 配置修复后用户还能翻
+      txns: 0,
+      driedFish: 7,
+      totalFortune: 2,
+      ledger: 0,
+    });
+  });
+});

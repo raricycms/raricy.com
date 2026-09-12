@@ -1,0 +1,201 @@
+body {
+    padding-top: 62px;
+    background: var(--color-background-page);
+    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    color: var(--color-text-primary);
+}
+
+.content-wrapper {
+    max-width: 900px;
+    margin: auto;
+    padding: 1rem;
+}
+
+.page-title {
+    font-size: 1.8rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+    text-align: center;
+}
+
+// 法律 / 协议页正文卡片（terms / privacy 页用，对齐博客详情卡片观感）
+.content-wrapper .legal-card {
+    background: var(--color-background-card);
+    border-radius: 20px;
+    padding: 2rem 2.5rem;
+    box-shadow: var(--shadow-card);
+    font-size: 1.05rem;
+    line-height: 1.9;
+    color: var(--color-text-primary);
+}
+.content-wrapper .legal-card p {
+    margin-bottom: 1.2em;
+    text-align: justify;
+}
+.content-wrapper .legal-card h2 {
+    font-size: 1.35rem;
+    font-weight: 600;
+    margin: 2em 0 1em;
+    padding-top: 1.2em;
+    border-top: 1px solid var(--color-border);
+}
+.content-wrapper .legal-card h2:first-of-type {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+}
+.content-wrapper .legal-card h3 {
+    font-size: 1.15rem;
+    font-weight: 600;
+    margin: 1.5em 0 0.6em;
+    color: var(--color-text-primary);
+}
+.content-wrapper .legal-card ul {
+    margin: 0 0 1.2em 1.4em;
+    padding: 0;
+}
+.content-wrapper .legal-card li {
+    margin-bottom: 0.5em;
+}
+.content-wrapper .legal-card a {
+    color: var(--color-brand-primary);
+}
+.content-wrapper .legal-card a:hover {
+    text-decoration: underline;
+}
+
+.btn-group {
+    margin-bottom: 1rem;
+    text-align: center;
+}
+
+.action-btn {
+    background: var(--color-background-card);
+    border: 1px solid var(--color-border);
+    color: var(--color-text-primary);
+    border-radius: 6px;
+    padding: 0.4rem 1rem;
+    margin: 0.2rem;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.action-btn:hover {
+    background: var(--color-background-subtle);
+}
+.btn-danger { color: var(--color-warning-primary); border-color: var(--color-warning-primary); }
+.btn-danger:hover { background: var(--color-warning-secondary); }
+
+.filter-btn {
+    background: var(--color-background-card);
+    border: 1px solid var(--color-border);
+    color: var(--color-text-primary);
+    border-radius: 6px;
+    padding: 0.3rem 0.8rem;
+    margin: 0.2rem;
+    font-size: 0.85rem;
+    text-decoration: none;
+}
+.filter-btn.active {
+    background: var(--color-brand-primary);
+    color: #fff;
+    border-color: var(--color-brand-primary);
+}
+
+.content-wrapper .notification-card {
+    background: var(--color-background-card);
+    border-radius: 10px;
+    padding: 0.6rem 1rem;
+    margin-bottom: 0.5rem;
+    margin-top: 0;
+    box-shadow: none;
+    border: none;
+}
+.content-wrapper .notification-card.unread {
+    border-left: 3px solid var(--color-border-unread);
+    background: var(--color-background-card-unread);
+}
+
+.notification-header {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+}
+
+.notification-action {
+    font-weight: 600;
+    font-size: 0.95rem;
+}
+
+.notification-unread-badge {
+    color: #e67e22;
+    font-size: 0.7rem;
+    font-weight: 600;
+    background: rgba(230, 126, 34, 0.15);
+    padding: 0.1rem 0.4rem;
+    border-radius: 3px;
+}
+
+.notification-meta {
+    font-size: 0.75rem;
+    color: var(--color-text-secondary);
+    flex: 1;
+    min-width: 0;
+}
+
+.notification-actions {
+    display: flex;
+    gap: 0.3rem;
+    margin-left: auto;
+}
+
+.btn-mark-read,
+.btn-delete {
+    font-size: 0.8rem;
+    padding: 0.25rem 0.7rem;
+    border-radius: 4px;
+    cursor: pointer;
+    white-space: nowrap;
+    border: 1px solid;
+}
+
+.btn-mark-read {
+    background: var(--color-success-secondary);
+    border-color: var(--color-success-primary);
+    color: var(--color-success-primary);
+}
+.btn-mark-read:hover { background: var(--color-success-primary); color: #fff; }
+
+.btn-delete {
+    background: var(--color-warning-secondary);
+    border-color: var(--color-warning-primary);
+    color: var(--color-warning-primary);
+}
+.btn-delete:hover { background: var(--color-warning-primary); color: #fff; }
+
+.notification-content {
+    margin: 0.3rem 0 0 0;
+    font-size: 0.85rem;
+    color: var(--color-text-secondary);
+    line-height: 1.4;
+}
+
+.notification-blog-link {
+    font-size: 0.75rem;
+    color: var(--color-brand-primary);
+    text-decoration: none;
+    display: inline-block;
+    margin-top: 0.2rem;
+}
+.notification-blog-link:hover { text-decoration: underline; }
+
+.empty-state {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: #777;
+}
+.empty-state-icon {
+    font-size: 3rem;
+    margin-bottom: 0.5rem;
+}

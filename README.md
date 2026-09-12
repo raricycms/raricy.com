@@ -1,63 +1,83 @@
-# 聪明山
+# 聪明山 · raricy.com
 
-基于 Flask 的个人网站，集博客、故事、工具集、剪贴板等功能于一体。
+个人网站（博客 / 故事 / 工具集 / 剪贴板 / 图床 / 投票 / 游戏）。
 
-**访问地址：https://raricy.com/**
+Next.js 15 + Prisma + SQLite 单进程部署，自有 `instance/` 数据目录。
+
+> 上一轮架构是 Flask 单体，2026-07 切到当前 Next.js 实现并已运行。
+> 迁移手册详见 git 历史与切换期提交的 commit message。
 
 ## 技术栈
 
-- **后端:** Python / Flask + SQLAlchemy + Flask-Login
-- **前端:** Jinja2 模板 + SCSS + 原生 JavaScript
-- **编辑器:** Vditor（Markdown）
-- **验证:** Cloudflare Turnstile
+- **框架**：Next.js 15 App Router + React 19 + TypeScript
+- **ORM**：Prisma 6，SQLite，`file:../instance/database/db.db`
+- **会话**：JWT（`jose`）+ `session_version` 失效机制
+- **认证**：密码哈希与历史 werkzeug **互通**，用户**无需重置密码**
+- **服务边界**：站点单进程；账户微服务（FastAPI）独立仓库部署
+- **前端**：服务端 / 客户端组件混用，marked + DOMPurify + highlight.js 渲染 Markdown
+
+组件与子系统的关系见 `docs/architecture.md`。
+
+## 目录
+
+| 目录 | 说明 |
+|------|------|
+| `src/app/`     | App Router 页面与 API 路由 |
+| `src/lib/`     | 业务逻辑层 |
+| `src/middleware.ts` | CSRF 同源校验（反代下读 `X-Forwarded-Host`） |
+| `prisma/`      | schema.prisma + migrations/（手写 SQL，见 `docs/deploy.md` §4） |
+| `scripts/`     | 自检 / 运维 / 数据补偿脚本（详见下方「工具脚本」） |
+| `tests/`       | vitest 单测 + Playwright e2e |
+| `docs/`        | 全部文档 —— `docs/guide/` 给玩家与创作者，其余给开发运维。见 `docs/README.md` |
+| `instance/`    | 运行时数据（gitignored）：avatars / database / images / stories |
+| `public/`      | 静态资源（图标 / CSS / favicon） |
 
 ## 快速开始
 
 ```bash
-# 1. 安装依赖
-pip install -r requirements.txt
-npm install
-
-# 2. 配置环境变量
-cp example.env .env   # 编辑 .env 填入实际值
-
-# 3. 初始化
-python check_instance.py
-flask db upgrade
-
-# 4. 启动
-python run.py
+node scripts/check-instance.mjs         # 首次创建 instance/{avatars,database,images,stories}
+npm ci                                   # 严格按 lockfile 装（不要 npm install）
+cp .env.example .env                     # 填 SECRET_KEY / FISH_ENCRYPTION_KEY
+npm run prisma:generate                  # 生成 Prisma Client
+npm run dev                              # http://localhost:3000
 ```
 
-## 管理
+## 工具脚本
 
-```bash
-flask promote-admin <username>    # 授予管理员权限
-flask promote-owner <username>    # 授予站长权限
-```
+| 命令 | 作用 |
+|------|------|
+| `npm run dev` / `start` | 本地开发 / 生产启动 |
+| `npm run build` | 生产构建 |
+| `npm test` | vitest 单测 |
+| `npm run e2e` | 端到端（直接跑 Playwright，**不**自动 build —— 见下方警告） |
+| `npm run e2e:ci` | 同上，但先 build（CI / 全新环境用） |
+| `npm run smoke` | 15 条只读冒烟（登录态/列表/详情/图床/CSRF/指南页等，**不含签到** —— 打的是生产站，不做任何写操作） |
+| `npm run diagnose` | 部署自检（版本 / .env / 库 / 密钥）；报红就别往下走 |
+| `npm run check:secrets` | 密钥与生产数据是否进过版本库 |
+| `npm run check:links` | 站内断链静态扫描 |
+| `npm run check:perms` | 权限档位回归（与历史 Flask 对照） |
+| `npm run prisma:pull` | 把库反向同步到 schema.prisma（手改 SQL 后用） |
+| `npm run db:normalize` | 源库复制 + 规整时间戳为 INTEGER 毫秒 |
+| `npm run db:compensate-fortunes` | 补偿"已签到未翻牌"的鱼干记录 |
+| `npm run cli` | 运维台。**不带参数进菜单向导**（引导式，不用背命令）；`npm run cli -- <命令>` 是命令式。覆盖角色 / 用户 / 内容检索与恢复 / 鱼干 / 邀请码 / 审计 / 申诉 / 概览 |
+| `npm run verify:account` | 端到端对账账户微服务 |
+| `npm run prepare:cutover` | 切换期一次性：备份 → 规整 → 补偿 → diagnose |
+| `npm run instance:check` | 创建 instance/ 子目录 |
 
-管理后台：`/auth/user_management`
+> ⚠️ `npm run e2e` 跑的是 `.next` 里的**现有构建产物**（`next start`）。改了 `src/`
+> 却没重新 build 的话，测的是旧代码 —— 症状很隐蔽：刚加的日志/探针一行都不打、
+> 刚改的逻辑毫无反应，容易误判成代码没生效而去乱翻别处。改完源码先
+> `npm run build`，或直接用 `npm run e2e:ci`。
 
-## 项目结构
+## 部署 / 运行
 
-| 目录                 | 说明                          |
-| ------------------ | --------------------------- |
-| `app/models/`      | 数据模型（User, Blog, Comment 等） |
-| `app/web/`         | 蓝图路由，按功能模块组织                |
-| `app/service/`     | 业务逻辑层（通知、审计日志）              |
-| `app/templates/`   | Jinja2 模板                   |
-| `app/static/scss/` | SCSS 样式源码                   |
-| `app/static/js/`   | JavaScript                  |
-| `app/extensions/`  | Flask 扩展初始化与装饰器             |
-| `app/utils/`       | 工具函数                        |
-| `migrations/`      | 数据库迁移文件                     |
+- 站内反代：`proxy_pass http://127.0.0.1:3000`，**务必**透传 `Host: $http_host` / `X-Forwarded-Host` / `X-Forwarded-Proto`。
+- `instance/` 需在部署机器上是**真实目录**：头像、图床、故事落盘。
+- 数据库以 Prisma 0_init 为基线；改 schema 用 `npm run migrate -- up`（手写 SQL）。
+  **不要**跑 `prisma migrate dev` / `db push` —— 生产库没有 `_prisma_migrations` 表，
+  它们会提议 reset 整个库。详见 `docs/deploy.md` §4「修改 schema 后」。
 
-## 详细文档
+## 关键约定
 
-- [部署与运行](docs/部署与运行.md)
-- [项目概述与技术架构](docs/项目概述与技术架构.md)
-- [前端样式构建指南](docs/前端样式构建指南.md)
-
-## 联系
-
-有任何建议，请通过 [https://raricy.com/contact](https://raricy.com/contact) 联系我。
+改代码前**先读 `CLAUDE.md`** —— 约束与反直觉决策都在那里（时间戳语义、鱼干写路径、
+iframe 刻意允许嵌入、软删除、聊天与通知的关系等）。此处不复述，避免第三份会 drift 的副本。

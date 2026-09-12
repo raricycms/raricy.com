@@ -1,0 +1,486 @@
+'use client';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AdminUserActions — 用户卡片的操作簇（对齐 Flask auth/management.html 的按钮 + 模态框）：
+//   查看 / 发通知（站长）/ 禁言·解除禁言 / 禁言历史 / 角色档位（仅站长）。
+// 认证 = 设为 core，取消认证 = 设为 user，对应 Flask 的 promote/demote；
+// 提拔管理员 / 降为核心用户是本项目新增的一对（Flask 侧只能上服务器跑 cli）。
+// 禁言 / 解除禁言 走 POST /api/admin/users/:id；角色变更走 PATCH。
+// 发通知 → POST /api/admin/notify-user（对齐 Flask sendNotificationTo）。
+// 禁言历史 → GET /api/users/:id/ban-history（对齐 Flask showBanHistory）。
+// ─────────────────────────────────────────────────────────────────────────────
+
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { ymdhms } from '@/lib/format';
+
+export interface AdminUserActionsProps {
+  user: {
+    id: string;
+    username: string;
+    role: string;
+    currentlyBanned: boolean;
+  };
+  isOwner: boolean;
+  /** 当前访问者是否有管理权（admin+）。见下方 banDisabled 一节的说明。 */
+  canManage: boolean;
+  currentUserId: string;
+}
+
+const toast = (msg: string, type: 'success' | 'error' | 'info' | 'warning' = 'info') => {
+  const w = window as unknown as { showToast?: (m: string, t: string) => void };
+  if (w.showToast) w.showToast(msg, type);
+};
+
+// 单条禁言历史（对齐 Flask UserBan.to_dict()）。
+interface BanRecord {
+  id: number;
+  banned_at: string | null;
+  ban_until: string | null;
+  reason: string;
+  is_lifted: boolean | null;
+  admin_username: string | null;
+  lifted_at: string | null;
+  lifted_by: string | null;
+}
+
+// 库内时间戳是「UTC+8 墙上时间贴 Z」（见 src/lib/db-time.ts），必须走 ymdhms
+// （toISOString 切片）原样吐回墙上时间。原先的 new Date(iso).toLocaleString()
+// 会按浏览器时区再平移一次 —— UTC+8 浏览器下整体 +8 小时（20:00 显示成次日 04:00）。
+const fmtTime = (iso: string | null) => (iso ? (ymdhms(new Date(iso)) ?? '') : '');
+
+export default function AdminUserActions({
+  user,
+  isOwner,
+  canManage,
+  currentUserId,
+}: AdminUserActionsProps) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [modal, setModal] = useState<null | 'ban' | 'unban' | 'notify' | 'banHistory'>(null);
+  const [banHours, setBanHours] = useState('24');
+  const [banReason, setBanReason] = useState('');
+  const [unbanReason, setUnbanReason] = useState('');
+  const [notifyType, setNotifyType] = useState('系统公告');
+  const [notifyContent, setNotifyContent] = useState('');
+  const [banHistory, setBanHistory] = useState<BanRecord[] | null>(null);
+  const [banHistoryLoading, setBanHistoryLoading] = useState(false);
+
+  // 对齐 Flask 发送通知模态框的通知类型预设。
+  const NOTIFY_TYPES = ['系统公告', '维护通知', '功能更新', '用户提醒', '警告通知', '活动通知'];
+
+  const isSelf = user.id === currentUserId;
+  const banDisabled = isSelf || user.role === 'owner' || user.role === 'admin';
+
+  async function call(url: string, method: string, payload: object, okMsg: string) {
+    setBusy(true);
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (data.code === 200) {
+        toast(data.message || okMsg, 'success');
+        setModal(null);
+        setTimeout(() => router.refresh(), 300);
+      } else {
+        toast(data.message || '操作失败', 'error');
+      }
+    } catch {
+      toast('操作失败，请稍后重试', 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const promote = () =>
+    call(`/api/admin/users/${user.id}`, 'PATCH', { role: 'core' }, '用户认证成功！');
+  const demote = () =>
+    call(`/api/admin/users/${user.id}`, 'PATCH', { role: 'user' }, '取消认证成功！');
+  const promoteAdmin = () =>
+    call(`/api/admin/users/${user.id}`, 'PATCH', { role: 'admin' }, '已提拔为管理员！');
+  const demoteAdmin = () =>
+    call(`/api/admin/users/${user.id}`, 'PATCH', { role: 'core' }, '已降为核心用户！');
+
+  function confirmBan() {
+    const hours = parseFloat(banHours);
+    if (!hours || hours <= 0) {
+      toast('请输入有效的禁言时长', 'warning');
+      return;
+    }
+    if (!banReason.trim()) {
+      toast('请输入禁言原因', 'warning');
+      return;
+    }
+    call(
+      `/api/admin/users/${user.id}`,
+      'POST',
+      { action: 'ban', hours, reason: banReason.trim() },
+      '禁言设置成功！'
+    );
+  }
+
+  function confirmUnban() {
+    call(
+      `/api/admin/users/${user.id}`,
+      'POST',
+      { action: 'unban', reason: unbanReason.trim() },
+      '禁言解除成功！'
+    );
+  }
+
+  function sendNotification() {
+    if (!notifyContent.trim()) {
+      toast('请输入通知内容', 'warning');
+      return;
+    }
+    call(
+      '/api/admin/notify-user',
+      'POST',
+      { recipientId: user.id, action: notifyType, detail: notifyContent.trim() },
+      '通知发送成功！'
+    );
+  }
+
+  // 拉取禁言历史（对齐 Flask auth.user_ban_history / showBanHistory）。
+  async function openBanHistory() {
+    setModal('banHistory');
+    setBanHistory(null);
+    setBanHistoryLoading(true);
+    try {
+      const res = await fetch(`/api/users/${user.id}/ban-history`, {
+        credentials: 'same-origin',
+      });
+      const data = await res.json();
+      if (data.code === 200 && Array.isArray(data.ban_history)) {
+        setBanHistory(data.ban_history as BanRecord[]);
+      } else {
+        setBanHistory([]);
+        toast(data.message || '获取禁言历史失败', 'error');
+      }
+    } catch {
+      setBanHistory([]);
+      toast('获取禁言历史失败', 'error');
+    } finally {
+      setBanHistoryLoading(false);
+    }
+  }
+
+  return (
+    <div className="user-card__buttons">
+      <Link href={`/u/${user.id}`} className="btn btn-sm btn-info">
+        查看
+      </Link>
+
+      {isOwner && (
+        <button
+          type="button"
+          className="btn btn-sm btn-secondary"
+          disabled={busy}
+          onClick={() => {
+            setNotifyType('系统公告');
+            setNotifyContent('');
+            setModal('notify');
+          }}
+        >
+          发通知
+        </button>
+      )}
+
+      {/* 禁言 / 解除禁言：仅 admin+。核心用户进得来这一页（只读版，对齐 Flask
+          management.html 的 has_admin_rights 门控），但不该看到点了必然 403 的按钮。
+          对齐 Flask 的同一处分支：禁言历史对所有人可见，禁言/解除禁言只对 has_admin_rights。 */}
+      {canManage &&
+        (user.currentlyBanned ? (
+          <button
+            type="button"
+            className="btn btn-sm btn-success"
+            disabled={busy}
+            onClick={() => {
+              setUnbanReason('');
+              setModal('unban');
+            }}
+          >
+            解除禁言
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="btn btn-sm btn-warning"
+            disabled={busy || banDisabled}
+            onClick={() => {
+              setBanHours('24');
+              setBanReason('');
+              setModal('ban');
+            }}
+          >
+            禁言
+          </button>
+        ))}
+
+      {user.currentlyBanned && (
+        <button
+          type="button"
+          className="btn btn-sm btn-info"
+          disabled={busy}
+          onClick={openBanHistory}
+        >
+          禁言历史
+        </button>
+      )}
+
+      {/* 角色档位按钮（仅站长可见）。
+          按当前角色给**恰好一个**按钮，且必须与 setRole 的语义对上：
+            core  → 取消认证（降 user）/ 提拔管理员（升 admin）
+            admin → 降为核心用户（降 core）—— 注意这一档只能走「降级」按钮，
+                    旧实现在这里渲染的是「认证」，点了会调 PATCH {role:'core'}，
+                    等于对管理员显示一个把人降级的「认证」按钮，纯属反着来。
+            user  → 认证（升 core）
+            owner → 没有按钮（站长只能由 CLI 任免） */}
+      {isOwner && user.role === 'core' && (
+        <>
+          <button type="button" className="btn btn-sm btn-warning" disabled={busy} onClick={demote}>
+            取消认证
+          </button>
+          <button
+            type="button"
+            className="btn btn-sm btn-success"
+            disabled={busy}
+            onClick={promoteAdmin}
+          >
+            提拔管理员
+          </button>
+        </>
+      )}
+      {isOwner && user.role === 'admin' && (
+        <button
+          type="button"
+          className="btn btn-sm btn-warning"
+          disabled={busy}
+          onClick={demoteAdmin}
+        >
+          降为核心用户
+        </button>
+      )}
+      {isOwner && user.role !== 'core' && user.role !== 'admin' && user.role !== 'owner' && (
+        <button type="button" className="btn btn-sm btn-success" disabled={busy} onClick={promote}>
+          认证
+        </button>
+      )}
+
+      {/* 禁言用户模态框 */}
+      {modal === 'ban' && (
+        <div className="modal-overlay show" onClick={() => !busy && setModal(null)}>
+          <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-content">
+              <div className="modal-header">
+                <h3 className="modal-title">禁言用户</h3>
+                <button type="button" className="btn-close" disabled={busy} onClick={() => setModal(null)}>
+                  ×
+                </button>
+              </div>
+              <div className="modal-body">
+                <div className="form-group">
+                  <label className="form-label">用户</label>
+                  <input type="text" className="form-control" readOnly value={user.username} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">禁言时长（小时）</label>
+                  <input
+                    type="number"
+                    className="form-control"
+                    min="1"
+                    value={banHours}
+                    onChange={(e) => setBanHours(e.target.value)}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">禁言原因</label>
+                  <textarea
+                    className="form-control"
+                    rows={3}
+                    placeholder="请输入禁言原因..."
+                    value={banReason}
+                    onChange={(e) => setBanReason(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => setModal(null)}>
+                  取消
+                </button>
+                <button type="button" className="btn btn-warning" disabled={busy} onClick={confirmBan}>
+                  确认禁言
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 解除禁言模态框 */}
+      {modal === 'unban' && (
+        <div className="modal-overlay show" onClick={() => !busy && setModal(null)}>
+          <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-content">
+              <div className="modal-header">
+                <h3 className="modal-title">解除禁言</h3>
+                <button type="button" className="btn-close" disabled={busy} onClick={() => setModal(null)}>
+                  ×
+                </button>
+              </div>
+              <div className="modal-body">
+                <div className="form-group">
+                  <label className="form-label">用户</label>
+                  <input type="text" className="form-control" readOnly value={user.username} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">解除原因（可选）</label>
+                  <textarea
+                    className="form-control"
+                    rows={3}
+                    placeholder="请输入解除禁言的原因..."
+                    value={unbanReason}
+                    onChange={(e) => setUnbanReason(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => setModal(null)}>
+                  取消
+                </button>
+                <button type="button" className="btn btn-success" disabled={busy} onClick={confirmUnban}>
+                  确认解除
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 发送通知模态框（对齐 Flask notificationModal） */}
+      {modal === 'notify' && (
+        <div className="modal-overlay show" onClick={() => !busy && setModal(null)}>
+          <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-content">
+              <div className="modal-header">
+                <h3 className="modal-title">发送通知</h3>
+                <button type="button" className="btn-close" disabled={busy} onClick={() => setModal(null)}>
+                  ×
+                </button>
+              </div>
+              <div className="modal-body">
+                <div className="form-group">
+                  <label className="form-label">接收用户</label>
+                  <input type="text" className="form-control" readOnly value={user.username} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">通知类型</label>
+                  <select
+                    className="form-control"
+                    value={notifyType}
+                    onChange={(e) => setNotifyType(e.target.value)}
+                  >
+                    {NOTIFY_TYPES.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">通知内容</label>
+                  <textarea
+                    className="form-control"
+                    rows={4}
+                    placeholder="请输入通知内容..."
+                    value={notifyContent}
+                    onChange={(e) => setNotifyContent(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => setModal(null)}>
+                  取消
+                </button>
+                <button type="button" className="btn btn-primary" disabled={busy} onClick={sendNotification}>
+                  发送
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 禁言历史模态框（对齐 Flask showBanHistory） */}
+      {modal === 'banHistory' && (
+        <div className="modal-overlay show" onClick={() => setModal(null)}>
+          <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-content">
+              <div className="modal-header">
+                <h3 className="modal-title">禁言历史</h3>
+                <button type="button" className="btn-close" onClick={() => setModal(null)}>
+                  ×
+                </button>
+              </div>
+              <div className="modal-body">
+                <p style={{ marginTop: 0 }}>
+                  用户 &quot;{user.username}&quot; 的禁言历史：
+                </p>
+                {banHistoryLoading ? (
+                  <p className="text-muted" style={{ margin: 0 }}>
+                    加载中…
+                  </p>
+                ) : banHistory && banHistory.length > 0 ? (
+                  <div
+                    style={{
+                      background: 'var(--color-background-subtle)',
+                      padding: '15px',
+                      borderRadius: '8px',
+                      maxHeight: '400px',
+                      overflowY: 'auto',
+                    }}
+                  >
+                    {banHistory.map((ban, index) => (
+                      <div
+                        key={ban.id}
+                        style={{ marginBottom: index === banHistory.length - 1 ? 0 : '1rem' }}
+                      >
+                        <div>
+                          {index + 1}. 禁言时间：{fmtTime(ban.banned_at)}
+                        </div>
+                        <div>结束时间：{fmtTime(ban.ban_until)}</div>
+                        <div>状态：{ban.is_lifted ? '已解除' : '进行中'}</div>
+                        <div>原因：{ban.reason}</div>
+                        <div>执行者：{ban.admin_username}</div>
+                        {ban.is_lifted && ban.lifted_by && (
+                          <>
+                            <div>解除时间：{fmtTime(ban.lifted_at)}</div>
+                            <div>解除者：{ban.lifted_by}</div>
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-muted" style={{ margin: 0 }}>
+                    暂无禁言记录
+                  </p>
+                )}
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-secondary" onClick={() => setModal(null)}>
+                  关闭
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
