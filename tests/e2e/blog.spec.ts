@@ -7,7 +7,14 @@
 // 断言 HTTP 状态或服务端 HTML 都发现不了；必须真跑浏览器、等脚本执行完再看 DOM。
 
 import { test, expect, type Page } from '@playwright/test';
-import { SEED_USERS, SEED_BLOG, SEED_BLOG2, SEED_CATEGORY, BLOG_BODY_MARKER } from './seed';
+import {
+  SEED_USERS,
+  SEED_BLOG,
+  SEED_BLOG2,
+  SEED_FEATURED_BLOG,
+  SEED_CATEGORY,
+  BLOG_BODY_MARKER,
+} from './seed';
 import { loginViaApi, registerFreshUser } from './helpers';
 
 /**
@@ -55,6 +62,32 @@ test('按栏目筛选命中种子文章', async ({ page }) => {
 test('搜索不匹配时列表为空（防「筛选条件被忽略」这类静默失效）', async ({ page }) => {
   await page.goto('/blog?search=绝不存在的关键词zzzqqq');
   await expect(page.locator(`#id${SEED_BLOG.id}`)).toHaveCount(0);
+});
+
+/**
+ * 【防的回归】精选文章必须在「全部文章」与所属栏目目录里照常出现。
+ *
+ * 曾经的失效模式在**调用方**而非 service：页面把「URL 没有 featured 参数」直接
+ * 算成 `featured: false` 传下去，而 service 里 false 是生效的筛选（只看非精选）——
+ * 于是精选文在目录里整体消失，只有点侧栏「精选」才看得见。service 自己的用例
+ * （tests/service/blog-service.test.ts 的「不传则两者都返回」）全绿，照样漏掉。
+ *
+ * 断言必须落在真实页面上：这条链路是 page → listBlogs 的参数传递，
+ * 只测 service 看不见。
+ */
+test('精选文章出现在「全部文章」与所属栏目目录里', async ({ page }) => {
+  const featured = page.locator(`#id${SEED_FEATURED_BLOG.id}`);
+
+  await page.goto('/blog');
+  await expect(featured, '精选文章没出现在「全部文章」列表里').toBeVisible();
+
+  await page.goto(`/blog?category=${SEED_CATEGORY.slug}`);
+  await expect(featured, '精选文章没出现在它所属栏目的目录里').toBeVisible();
+
+  // 「精选」页仍然只显示精选 —— 修「全部」不能反过来把非精选漏进去
+  await page.goto('/blog?featured=1');
+  await expect(featured).toBeVisible();
+  await expect(page.locator(`#id${SEED_BLOG.id}`), '精选页漏出了非精选文章').toHaveCount(0);
 });
 
 test('博客详情页把 Markdown 正文渲染成 HTML', async ({ page }) => {

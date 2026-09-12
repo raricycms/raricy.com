@@ -34,6 +34,22 @@ export const SEED_USERS: Record<string, SeedUser> = {
     role: 'core',
     focusMode: true,
   },
+  /**
+   * core + 25 条通知：/notifications 翻页用例的专属账号。
+   *
+   * 【为什么单开一个号】分页要 >20 条（每页 20）才出得来，25 条通知塞给 core 会
+   * 污染所有数通知的用例 —— chat-mention-notify 就按「当前登录身份收到的条数」
+   * 断言（它只数 action='聊天提及'，但 notify_* 偏好、未读角标那几条是数全部的）。
+   * 专用账号 + 谁都不碰，是唯一不会互相绊到的做法。
+   *
+   * core 是必须的：/notifications 走 requireCoreUser。
+   */
+  notif: {
+    id: 'e2e-user-notif',
+    username: 'e2e_notif',
+    email: 'notif@e2e.local',
+    role: 'core',
+  },
 };
 
 export const SEED_CATEGORY = { name: 'E2E 栏目', slug: 'e2e-cat' };
@@ -65,6 +81,41 @@ export const SEED_BLOG2 = {
   description: 'E2E 列表排序用例用的第二篇摘要',
   content: '# E2E 排序参照\n\n第二篇种子文章，仅用于列表排序断言。\n',
 };
+
+/**
+ * 第三篇种子文章 —— **精选**，栏目与另两篇相同（SEED_CATEGORY）。
+ *
+ * 【防的回归】目录页曾把「没有 featured 参数」当成 featured=false 传给 listBlogs，
+ * 而 service 那边 false 是**生效的筛选**（只看非精选，对齐 Flask
+ * `if featured in (True, False)`）—— 于是精选文章在「全部文章」和它自己的栏目里
+ * 双双消失，只有点侧栏「精选」才看得见。用它盯住这条。
+ *
+ * 时间刻意排在另两篇之后（发布最新、更新最旧），两种排序下都落在末尾：
+ * 加一篇进去不会打乱 blog.spec 里 cardOrder 断言的相对次序。
+ */
+export const SEED_FEATURED_BLOG = {
+  id: 'e2e-blog-0003',
+  title: 'E2E 精选文章',
+  description: 'E2E 精选可见性用例用的摘要',
+  content: '# E2E 精选\n\n这篇是精选，但仍应出现在「全部文章」与所属栏目里。\n',
+};
+
+/**
+ * 通知翻页用例的造数：25 条（每页 20 → 正好 2 页），全部发给 SEED_USERS.notif。
+ *
+ * 【为什么要 25 条】分页组件只在 pages > 1 时渲染，20 条以下连第 2 页的链接都没有，
+ * 用例会在「找不到 .page-link」上挂掉，看起来像分页坏了 —— 实则是造数不够。
+ *
+ * detail 带序号哨兵：断言「翻页后内容真的换了」比断言 URL 有意义得多 ——
+ * 曾经的失效模式正是 URL 变了、列表还是第一页（客户端组件用 useState(initial)
+ * 持有列表，软导航不重挂载就不吃新 props）。
+ */
+export const SEED_NOTIF_COUNT = 25;
+
+/** 第 i 条通知的正文哨兵，如 E2E-NOTIF-00 / E2E-NOTIF-24。 */
+export function notifDetail(i: number): string {
+  return `E2E-NOTIF-${String(i).padStart(2, '0')}`;
+}
 
 /**
  * 公示的管理操作日志 —— /audit 列表与 /audit/[id] 详情页用例的锚点。

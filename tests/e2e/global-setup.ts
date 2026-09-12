@@ -22,7 +22,10 @@ import {
   SEED_CATEGORY,
   SEED_BLOG,
   SEED_BLOG2,
+  SEED_FEATURED_BLOG,
   SEED_LOGS,
+  SEED_NOTIF_COUNT,
+  notifDetail,
 } from './seed';
 
 // 库路径由 playwright.config.ts 生成并经 env 传来（每轮唯一，原因见那边的注释）。
@@ -204,6 +207,49 @@ export default async function globalSetup() {
     await prisma.blogContent.create({
       data: { blogId: SEED_BLOG2.id, content: SEED_BLOG2.content, updatedAt: now },
     });
+
+    // 第三篇：精选。发布/更新都排在另两篇之后（4 天前 / 6 天前），
+    // 两种排序下都垫底，不打乱上面 cardOrder 断言的相对次序。
+    // 栏目与另两篇相同 —— 「精选文章要出现在它自己的栏目目录里」也要被盯住。
+    await prisma.blog.create({
+      data: {
+        id: SEED_FEATURED_BLOG.id,
+        authorId: SEED_USERS.core.id,
+        title: SEED_FEATURED_BLOG.title,
+        description: SEED_FEATURED_BLOG.description,
+        categoryId: category.id,
+        ignore: false,
+        isFeatured: true,
+        createdAt: new Date(now.getTime() - 4 * 86400_000),
+      },
+    });
+    await prisma.blogContent.create({
+      data: {
+        blogId: SEED_FEATURED_BLOG.id,
+        content: SEED_FEATURED_BLOG.content,
+        updatedAt: new Date(now.getTime() - 6 * 86400_000),
+      },
+    });
+
+    // 通知翻页造数：SEED_USERS.notif 名下 25 条（每页 20 → 2 页）。
+    // timestamp 逐条错开 1 分钟并**递减**，与 listNotifications 的 `timestamp desc`
+    // 一致 —— 全部同刻的话并列项顺序由 SQLite 自行决定，断言会随机漂。
+    // 第 0 条最新 → 第 1 页首条；第 24 条最旧 → 第 2 页末条。
+    for (let i = 0; i < SEED_NOTIF_COUNT; i++) {
+      await prisma.notification.create({
+        data: {
+          id: `e2e-notif-${String(i).padStart(2, '0')}`,
+          recipientId: SEED_USERS.notif.id,
+          action: '系统公告',
+          actorId: null,
+          objectType: null,
+          objectId: null,
+          detail: notifDetail(i),
+          read: false,
+          timestamp: new Date(now.getTime() - i * 60_000),
+        },
+      });
+    }
 
     // 公示日志 —— /audit 列表页与 /audit/[id] 详情页的用例都靠它。
     // 没有它，那些用例只会静默 skip（跳过 ≠ 通过）。
