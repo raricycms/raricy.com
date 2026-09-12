@@ -1,34 +1,14 @@
-// POST /api/game/gomoku/rooms/:code/claim — 对手掉线判胜
+// POST /api/game/gomoku/rooms/[code]/claim — 对手掉线判胜
 //
-// 无请求体，「我等了多久」由服务端自己算 —— 客户端只负责点按钮。
-// 掉线满 DISCONNECT_CLAIM_MS 才判胜（不满 → 409），对手重新连上即撤销资格（→ 409）。
-//
-// 【为什么不做服务端定时器】定时器要在房间状态机之外再维护一套「到点了判谁赢」，
-// 是另一类 bug 的来源。这里改成惰性判定：不变量是「disconnectedAt 为 null 就是在线」，
-// 判胜时现算。代价是必须有人点一下按钮，收益是少一整类状态。
+// 【本文件是声明，不是实现】八个 handler 的实现在 api/game/_shared.ts 的工厂里，
+// 五款棋共用同一份 —— 40 个 route.ts 各写一遍的话，改一处（换个限频档、给流加个
+// 响应头）要记得改 40 处，忘掉的那几处不会有任何测试转红。
+// 这里只声明「哪一款棋」与「哪一条路由」。
 
-import { apiErr, apiOk } from '@/lib/format';
-import { claimAbandoned } from '@/lib/gomoku-room';
-import { normalizeRoomCode } from '@/lib/board-shared';
-import { rateLimit, RULES } from '@/lib/rate-limit';
-import { requireGameUser, roomErrorResponse } from '../../../../_shared';
+import { roomApi } from '@/lib/gomoku-room';
+import { makeClaimHandler } from '../../../../_shared';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function POST(_req: Request, ctx: { params: Promise<{ code: string }> }) {
-  const user = await requireGameUser();
-  if (user instanceof Response) return user;
-
-  const { code: raw } = await ctx.params;
-  const code = normalizeRoomCode(raw);
-  if (!code) return apiErr(404, '房间不存在或已过期');
-
-  const limited = rateLimit(`game:gomoku:move:${user.id}`, RULES.gameMove);
-  if (!limited.allowed) return apiErr(429, '操作太频繁，请稍后再试');
-
-  const res = claimAbandoned(code, user.id);
-  if (!res.ok) return roomErrorResponse(res.error);
-
-  return apiOk({ room: res.value }, '已判胜');
-}
+export const POST = makeClaimHandler('gomoku', roomApi);

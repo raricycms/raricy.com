@@ -1,33 +1,14 @@
-// GET /api/game/tictactoe/rooms/:code — 取全量快照
+// GET /api/game/tictactoe/rooms/[code] — 取全量快照
 //
-// 用于刷新页面 / 断线重连 / 只读观战。不改变任何状态（不会让人入座 ——
-// 入座是 POST join 的事）。SSE 一连上也会推一份当前状态，这条是给
-// 「还没连上 SSE」和「resync 兜底」用的。
+// 【本文件是声明，不是实现】八个 handler 的实现在 api/game/_shared.ts 的工厂里，
+// 五款棋共用同一份 —— 40 个 route.ts 各写一遍的话，改一处（换个限频档、给流加个
+// 响应头）要记得改 40 处，忘掉的那几处不会有任何测试转红。
+// 这里只声明「哪一款棋」与「哪一条路由」。
 
-import { normalizeRoomCode } from '@/lib/board-shared';
-import { apiErr, apiOk } from '@/lib/format';
-import { rateLimit, RULES } from '@/lib/rate-limit';
-import { getSnapshot } from '@/lib/tictactoe-room';
-import { requireGameUser, roomErrorResponse } from '../../../_shared';
+import { roomApi } from '@/lib/tictactoe-room';
+import { makeSnapshotHandler } from '../../../_shared';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET(_req: Request, ctx: { params: Promise<{ code: string }> }) {
-  const user = await requireGameUser();
-  if (user instanceof Response) return user;
-
-  const { code: raw } = await ctx.params;
-  // 规范化放在查表之前：非法房号与不存在的房号回同一个 404，
-  // 免得把「这个房号格式对不对」变成一个可探测的信号。
-  const code = normalizeRoomCode(raw);
-  if (!code) return apiErr(404, '房间不存在或已过期');
-
-  const limited = rateLimit(`game:tictactoe:poll:${user.id}`, RULES.gamePoll);
-  if (!limited.allowed) return apiErr(429, '操作太频繁，请稍后再试');
-
-  const res = getSnapshot(code, user.id);
-  if (!res.ok) return roomErrorResponse(res.error);
-
-  return apiOk({ room: res.value });
-}
+export const GET = makeSnapshotHandler('tictactoe', roomApi);

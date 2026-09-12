@@ -1,30 +1,14 @@
-// POST /api/game/tictactoe/rooms/:code/rematch — 投票「再来一局」
+// POST /api/game/tictactoe/rooms/[code]/rematch — 投票「再来一局」
 //
-// 无请求体。双方各点一次即重开（同记号不换先：X 还是 X）。一票时对局仍是终局状态，
-// 客户端据 room.view.rematchVotes 显示「已申请，等对手」。
+// 【本文件是声明，不是实现】八个 handler 的实现在 api/game/_shared.ts 的工厂里，
+// 五款棋共用同一份 —— 40 个 route.ts 各写一遍的话，改一处（换个限频档、给流加个
+// 响应头）要记得改 40 处，忘掉的那几处不会有任何测试转红。
+// 这里只声明「哪一款棋」与「哪一条路由」。
 
-import { normalizeRoomCode } from '@/lib/board-shared';
-import { apiErr, apiOk } from '@/lib/format';
-import { rateLimit, RULES } from '@/lib/rate-limit';
-import { requestRematch } from '@/lib/tictactoe-room';
-import { requireGameUser, roomErrorResponse } from '../../../../_shared';
+import { roomApi } from '@/lib/tictactoe-room';
+import { makeRematchHandler } from '../../../../_shared';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function POST(_req: Request, ctx: { params: Promise<{ code: string }> }) {
-  const user = await requireGameUser();
-  if (user instanceof Response) return user;
-
-  const { code: raw } = await ctx.params;
-  const code = normalizeRoomCode(raw);
-  if (!code) return apiErr(404, '房间不存在或已过期');
-
-  const limited = rateLimit(`game:tictactoe:move:${user.id}`, RULES.gameMove);
-  if (!limited.allowed) return apiErr(429, '操作太频繁，请稍后再试');
-
-  const res = requestRematch(code, user.id);
-  if (!res.ok) return roomErrorResponse(res.error);
-
-  return apiOk({ room: res.value }, '已申请再来一局');
-}
+export const POST = makeRematchHandler('tictactoe', roomApi);
