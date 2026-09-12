@@ -114,7 +114,7 @@
 | 聊天 | `chat-service.ts` · `chat-bus.ts`（SSE 订阅）/ `chat-shared.ts`（DTO）· `chat-sidebar-pref.ts` · `focus-mode.ts` |
 | 通知 / 审计 | `notification-service.ts` · `broadcast-service.ts` · `audit-service.ts` · `admin-appeal-service.ts` |
 | 投票 / 签到 / 剪贴板 | `vote-service.ts` · `checkin-service.ts` · `clipboard-service.ts` |
-| 图床 | `image-service.ts` · `image-upload.ts`（服务端）· `image-client.ts`（浏览器侧选图上传，聊天与评论共用） |
+| 图床 | `image-service.ts` · `image-upload.ts`（服务端）· `image-client.ts`（浏览器侧选图上传，聊天与评论共用）· `vditor-upload.ts`（Vditor 编辑器的上传配置，博客与剪贴板共用；与 `/api/images` 的字段名/响应结构两端对齐，见 `tests/unit/vditor-upload.test.ts`） |
 | 故事 | `story-service.ts` |
 | 游戏 | `atamas-pref.ts` |
 | 小鱼干 | `fish-service.ts` · `fish-admin.ts` · `fish-sync.ts`（账本 + 补偿，见 §6.3）· `fish-units.ts`（单位换算）· `account-client.ts` |

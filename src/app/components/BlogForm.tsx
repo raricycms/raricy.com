@@ -20,6 +20,8 @@ import {
   vditorThemeOptions,
   watchVditorTheme,
 } from '@/lib/vditor-theme';
+// 上传配置（fieldName / 响应结构两端对齐）—— 与剪贴板编辑器共用，见该文件头注释
+import { vditorUploadOptions } from '@/lib/vditor-upload';
 
 function toast(msg: string, type: string) {
   if (typeof window === 'undefined') return;
@@ -95,7 +97,7 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
           'undo', 'redo', 'preview', 'export',
         ],
         counter: { enable: true, type: 'text' },
-        upload: { url: '/api/images', accept: 'image/*', max: 10 * 1024 * 1024 },
+        upload: vditorUploadOptions((msg) => toast(msg, 'error')),
         cache: isEdit ? { enable: false } : { enable: true, id: 'blog-upload-editor' },
         value: initialMarkdown,
       });
