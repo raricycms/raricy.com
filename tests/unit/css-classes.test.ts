@@ -8,9 +8,9 @@
 // 这种错既不会让构建失败、也不会让任何单测转红，tsc 更管不着 —— className 是字符串。
 // 只有肉眼看见才发现。故在此把「图标类必须有定义」钉成静态检查。
 //
-// 【范围】只查 icon-*：
-//   - 它们后果最严重且最隐蔽（黑方块，不是「样式没生效」那么温和）
-//   - 判定干净：icon-* 一律由 CSS 显式定义 mask-image，不存在动态拼接
+// 【范围】只查两类，都是「mask-image 图标」——判定干净，不存在动态拼接：
+//   - icon-*（联系页那个黑方块的来源）
+//   - game-card__icon--*（游戏菜单卡片图标，同一故障的第二个面；见文末那个 describe）
 // 其余类名不查 —— 项目里有大量 JS 钩子类（.article-checkbox、.toggle-featured）
 // 和纯语义包装类（.blog-detail）本就无样式，一并要求「必须有定义」只会制造噪音。
 // ─────────────────────────────────────────────────────────────────────────────
@@ -34,11 +34,11 @@ function readCss(): string {
     .join('\n');
 }
 
-function walk(dir: string, out: string[] = []): string[] {
+function walk(dir: string, out: string[] = [], exts: string[] = ['.tsx']): string[] {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     const p = path.join(dir, e.name);
-    if (e.isDirectory()) walk(p, out);
-    else if (e.name.endsWith('.tsx')) out.push(p);
+    if (e.isDirectory()) walk(p, out, exts);
+    else if (exts.some((x) => e.name.endsWith(x))) out.push(p);
   }
   return out;
 }
@@ -73,5 +73,48 @@ describe('图标类名与 CSS 定义一致', () => {
       .filter(([c]) => !defined.has(c))
       .map(([c, files]) => `.${c} ← ${[...files].join(', ')}`);
     expect(missing, `这些图标类没有 CSS 定义，会渲染成黑方块：\n${missing.join('\n')}`).toEqual([]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 游戏菜单图标 —— 同一故障的第二个面
+//
+// .game-card__icon 基类有 background-color: currentColor，形状全靠修饰符里的
+// mask-image 抠出来。而菜单数据里的 icon 是**裸字符串**（GameCard.icon），写错
+// 类名 tsc 不管、构建不报，页面上就是一枚纯色方块 —— 与上面那个 .icon-chat-dots
+// 黑方块同源，同样只有肉眼能发现。
+//
+// 【上面那个扫描覆盖不到它】图标类走的是对象属性（icon: 'game-card__icon--xxx'）
+// 与模板串（className={`game-card__icon ${g.icon}`}），都不是纯字面量 className，
+// 所以这里按「裸 token」扫 .ts/.tsx 全文 —— 也因此顺带覆盖了将来把菜单数据挪进
+// .ts 文件的情形。
+// ─────────────────────────────────────────────────────────────────────────────
+describe('游戏菜单图标类名与 CSS 定义一致', () => {
+  const css = readCss();
+  const defined = new Set(
+    Array.from(css.matchAll(/\.(game-card__icon--[\w-]+)\s*\{/g), (m) => m[1])
+  );
+
+  const used = new Map<string, Set<string>>();
+  for (const file of walk(path.join(ROOT, 'src'), [], ['.ts', '.tsx'])) {
+    const txt = fs.readFileSync(file, 'utf8');
+    for (const m of txt.matchAll(/game-card__icon--[\w-]+/g)) {
+      if (!used.has(m[0])) used.set(m[0], new Set());
+      used.get(m[0])!.add(path.relative(ROOT, file));
+    }
+  }
+
+  it('CSS 里确实定义了一批 game-card__icon--*（自检：别因为正则失效而空过）', () => {
+    expect(defined.size).toBeGreaterThan(5);
+    expect(used.size).toBeGreaterThan(5);
+  });
+
+  it('每个用到的 game-card__icon--* 都有 CSS 定义（否则渲染成纯色方块）', () => {
+    const missing = [...used.entries()]
+      .filter(([c]) => !defined.has(c))
+      .map(([c, files]) => `.${c} ← ${[...files].join(', ')}`);
+    expect(missing, `这些图标类没有 CSS 定义，会渲染成纯色方块：\n${missing.join('\n')}`).toEqual(
+      []
+    );
   });
 });
