@@ -45,6 +45,13 @@ export function normalizeRoomCode(raw: string | null | undefined): string | null
 export interface SeatView {
   name: string;
   connected: boolean;
+  /**
+   * 已掉线多久（ms）；在线时为 null。
+   * **由服务端算**（now - disconnectedAt）而不是让客户端拿时间戳自己减：
+   * 客户端的钟可能偏，而且刷新页面后光有 connected 是推不出「等了多久」的 ——
+   * 那会让判胜按钮永远不出现。客户端收到后按本地计时继续累加。
+   */
+  disconnectedForMs: number | null;
 }
 
 /**

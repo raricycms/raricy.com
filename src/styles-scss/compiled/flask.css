@@ -8317,11 +8317,143 @@ body {
   transform: none;
   box-shadow: none;
 }
+.gomoku-btn--primary {
+  background: var(--color-brand-primary);
+  border-color: var(--color-brand-primary);
+  color: #fff;
+}
+.gomoku-btn--primary:hover:not(:disabled) {
+  background: var(--color-brand-primary);
+  border-color: var(--color-brand-primary);
+  color: #fff;
+  filter: brightness(1.06);
+}
+.gomoku-btn--small {
+  padding: 4px 12px;
+  font-size: 0.85rem;
+}
 @media (max-width: 640px) {
   .gomoku-btn {
     padding: 8px 12px;
     font-size: 0.85rem;
   }
+}
+
+.gomoku-room-panel__title {
+  font-size: 1.25rem;
+  margin-bottom: 8px;
+  color: var(--color-text-primary);
+}
+.gomoku-room-panel__desc {
+  color: var(--color-text-secondary);
+  line-height: 1.6;
+  margin-bottom: 16px;
+}
+.gomoku-room-panel__join {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+.gomoku-room-panel__input {
+  flex: 1 1 12rem;
+  min-width: 0;
+  max-width: 16rem;
+  padding: 8px 12px;
+  font-size: 1rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  text-align: center;
+  border: 1px solid var(--color-border);
+  border-radius: 5px;
+  background: var(--color-background-page);
+  color: var(--color-text-primary);
+}
+.gomoku-room-panel__input:focus {
+  outline: none;
+  border-color: var(--color-border-highlight);
+}
+.gomoku-room-panel__error {
+  margin-top: 12px;
+  color: #dc3545;
+  font-size: 0.9rem;
+}
+
+.gomoku-banner {
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  border-radius: 5px;
+  border: 1px solid var(--color-border);
+  background: var(--color-background-subtle);
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}
+
+.gomoku-seats {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.gomoku-seat {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-background-page);
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}
+.gomoku-seat--active {
+  border-color: var(--color-border-highlight);
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+.gomoku-seat__stone {
+  display: inline-block;
+  width: 0.75em;
+  height: 0.75em;
+  border-radius: 50%;
+}
+.gomoku-seat--black .gomoku-seat__stone {
+  background: #111;
+}
+.gomoku-seat--white .gomoku-seat__stone {
+  background: #fff;
+  border: 1px solid #999;
+}
+.gomoku-seat--spec {
+  opacity: 0.8;
+}
+
+.gomoku-room-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.gomoku-room-bar__code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.15em;
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}
+
+.gomoku-hint {
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}
+
+.gomoku-canvas--disabled {
+  cursor: default;
 }
 
 .puzzle-page {

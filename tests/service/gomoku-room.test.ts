@@ -87,7 +87,11 @@ describe('建房', () => {
 
     expect(snap.you).toEqual({ role: 'player', seat: 'black' });
     expect(snap.view.status).toBe('waiting');
-    expect(snap.view.seats.black).toEqual({ name: '爱丽丝', connected: false });
+    expect(snap.view.seats.black).toEqual({
+      name: '爱丽丝',
+      connected: false,
+      disconnectedForMs: 0,
+    });
     expect(snap.view.seats.white).toBeNull();
     expect(snap.view.revision).toBe(1);
     expect(snap.view.grid).toHaveLength(BOARD_SIZE);
@@ -435,6 +439,34 @@ describe('对手掉线判胜', () => {
     expect(getSnapshotView(code).seats.white?.connected).toBe(true);
     // 哪怕过了很久，只要人还在就不能判胜
     expect(failWith(claimAbandoned(code, ALICE.id, T0 + 600_000))).toBe('opponentPresent');
+
+    backB();
+    offA();
+  });
+
+  it('快照给出「已掉线多久」，客户端据此决定何时显示判胜按钮', () => {
+    const created = unwrap(createRoom(ALICE, T0));
+    const code = created.view.code;
+    unwrap(joinRoom(code, BOB, T0));
+    const offA = connect(code, ALICE.id, T0);
+    const offB = connect(code, BOB.id, T0);
+
+    offB(T0 + 5_000); // 白方在 T0+5000 掉线
+
+    expect(
+      unwrap(getSnapshot(code, ALICE.id, T0 + 5_000)).view.seats.white
+    ).toMatchObject({ connected: false, disconnectedForMs: 0 });
+
+    // 时间由服务端算 —— 客户端刷新页面后也能知道已经等了多久
+    expect(
+      unwrap(getSnapshot(code, ALICE.id, T0 + 25_000)).view.seats.white?.disconnectedForMs
+    ).toBe(20_000);
+
+    // 重新连上后回到 null
+    const backB = connect(code, BOB.id, T0 + 30_000);
+    expect(
+      unwrap(getSnapshot(code, ALICE.id, T0 + 30_000)).view.seats.white
+    ).toMatchObject({ connected: true, disconnectedForMs: null });
 
     backB();
     offA();

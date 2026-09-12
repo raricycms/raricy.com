@@ -117,9 +117,13 @@ function otherSeat(seat: Seat): Seat {
   return seat === 'black' ? 'white' : 'black';
 }
 
-function seatView(holder: SeatHolder | null): SeatView | null {
+function seatView(holder: SeatHolder | null, now: number): SeatView | null {
   if (!holder) return null;
-  return { name: holder.name, connected: holder.disconnectedAt === null };
+  return {
+    name: holder.name,
+    connected: holder.disconnectedAt === null,
+    disconnectedForMs: holder.disconnectedAt === null ? null : now - holder.disconnectedAt,
+  };
 }
 
 /** 组装公开状态。**不含「你是谁」** —— 那一份由 snapshotFor 单独给。 */
@@ -132,7 +136,7 @@ function viewOf(room: Room, now: number): GomokuRoomView {
     winningLine: room.winningLine.map(([r, c]) => [r, c] as [number, number]),
     grid: room.board.grid.map((row) => row.slice()),
     lastMove: room.board.getLastMove(),
-    seats: { black: seatView(room.seats.black), white: seatView(room.seats.white) },
+    seats: { black: seatView(room.seats.black, now), white: seatView(room.seats.white, now) },
     spectatorCount: room.spectators.size,
     rematchVotes: room.rematchVotes.size,
     revision: room.revision,

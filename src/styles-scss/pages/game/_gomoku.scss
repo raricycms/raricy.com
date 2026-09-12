@@ -160,10 +160,169 @@
     box-shadow: none;
   }
 
+  // 主行动（建房 / 再来一局）
+  &--primary {
+    background: var(--color-brand-primary);
+    border-color: var(--color-brand-primary);
+    color: #fff;
+
+    &:hover:not(:disabled) {
+      background: var(--color-brand-primary);
+      border-color: var(--color-brand-primary);
+      color: #fff;
+      filter: brightness(1.06);
+    }
+  }
+
+  // 房号条里的小按钮
+  &--small {
+    padding: $space-1 $space-3;
+    font-size: 0.85rem;
+  }
+
   @media (max-width: 640px) {
     padding: $space-2 $space-3;
     font-size: 0.85rem;
   }
+}
+
+// ── 联机对战 ──────────────────────────────────────────────────
+// 房间面板 / 席位栏 / 连接横幅 / 房号条。一律走主题令牌，深浅色都要能看。
+
+.gomoku-room-panel {
+  &__title {
+    font-size: 1.25rem;
+    margin-bottom: $space-2;
+    color: var(--color-text-primary);
+  }
+
+  &__desc {
+    color: var(--color-text-secondary);
+    line-height: 1.6;
+    margin-bottom: $space-4;
+  }
+
+  &__join {
+    display: flex;
+    gap: $space-2;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-top: $space-4;
+  }
+
+  &__input {
+    flex: 1 1 12rem;
+    min-width: 0;
+    max-width: 16rem;
+    padding: $space-2 $space-3;
+    font-size: 1rem;
+    // 房号靠人念、手抄、发消息 —— 等宽 + 字距 + 大写，让易混字符好分辨
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    text-align: center;
+    border: 1px solid var(--color-border);
+    border-radius: $radius-small;
+    background: var(--color-background-page);
+    color: var(--color-text-primary);
+
+    &:focus {
+      outline: none;
+      border-color: var(--color-border-highlight);
+    }
+  }
+
+  &__error {
+    margin-top: $space-3;
+    // 站内错误红（同 _toast.scss / _button.scss），主题体系里没有 --color-danger
+    color: #dc3545;
+    font-size: 0.9rem;
+  }
+}
+
+// 连接中断横幅：醒目但不吓人 —— EventSource 会自己重连上
+.gomoku-banner {
+  margin-bottom: $space-3;
+  padding: $space-2 $space-3;
+  border-radius: $radius-small;
+  border: 1px solid var(--color-border);
+  background: var(--color-background-subtle);
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}
+
+.gomoku-seats {
+  display: flex;
+  gap: $space-2;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-bottom: $space-3;
+}
+
+.gomoku-seat {
+  display: inline-flex;
+  align-items: center;
+  gap: $space-2;
+  padding: $space-1 $space-3;
+  border: 1px solid var(--color-border);
+  border-radius: $radius-max;
+  background: var(--color-background-page);
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+
+  // 轮到谁走
+  &--active {
+    border-color: var(--color-border-highlight);
+    color: var(--color-text-primary);
+    font-weight: 600;
+  }
+
+  // 棋子小圆点：与棋盘上的黑白子对应
+  &__stone {
+    display: inline-block;
+    width: 0.75em;
+    height: 0.75em;
+    border-radius: 50%;
+  }
+
+  &--black &__stone {
+    background: #111;
+  }
+
+  &--white &__stone {
+    background: #fff;
+    border: 1px solid #999;
+  }
+
+  &--spec {
+    opacity: 0.8;
+  }
+}
+
+.gomoku-room-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: $space-2;
+  flex-wrap: wrap;
+  margin-bottom: $space-3;
+
+  &__code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: 0.15em;
+    color: var(--color-text-secondary);
+    font-size: 0.9rem;
+  }
+}
+
+.gomoku-hint {
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}
+
+// 落不了子时（轮不到你 / 观战 / 断线）光标别装作能点
+.gomoku-canvas--disabled {
+  cursor: default;
 }
 
 // ── Dark mode ─────────────────────────────────────────────────
