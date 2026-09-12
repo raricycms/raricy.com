@@ -39,7 +39,13 @@ import type { Prisma } from '@prisma/client';
 
 type TxClient = Prisma.TransactionClient;
 
-export type SyncOperation = 'feed' | 'checkin' | 'admin_grant' | 'admin_deduct' | 'register';
+export type SyncOperation =
+  | 'feed'
+  | 'checkin'
+  | 'admin_grant'
+  | 'admin_deduct'
+  | 'compensate'
+  | 'register';
 
 /** 账本行状态机：pending → synced | compensated | failed（failed 可重放，见 replayPendingSyncs）。 */
 export type SyncStatus = 'pending' | 'synced' | 'compensated' | 'failed';
@@ -120,6 +126,24 @@ export async function executeSync(entry: {
         toUserId: toSystem ? SYSTEM_USER_ID : p.userId,
         amount: p.amount,
         entryType: entry.operation,
+        apiKey: accountConfig().systemKey,
+        description: p.description,
+        idempotencyKey: entry.idempotencyKey,
+      });
+      return;
+    }
+
+    // 全站群发补偿：与 admin_grant 同向（系统账户 → 用户），但 entryType 记
+    // 'system_compensate' 对齐 Flask —— 账户服务的流水里能一眼分出「补偿」与「手动赠送」。
+    // 单列一个 case（而不是复用 admin_grant）是为了让 fish pending 里显示得诚实：
+    // 借用 admin_grant 会让运维在账本上看到一批「管理员赠送」，而实际是系统补偿。
+    case 'compensate': {
+      const p = entry.payload as { userId: string; amount: number; description: string };
+      await accountClient.transfer({
+        fromUserId: SYSTEM_USER_ID,
+        toUserId: p.userId,
+        amount: p.amount,
+        entryType: 'system_compensate',
         apiKey: accountConfig().systemKey,
         description: p.description,
         idempotencyKey: entry.idempotencyKey,

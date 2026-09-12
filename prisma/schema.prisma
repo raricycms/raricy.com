@@ -585,7 +585,7 @@ model AccountSyncLedger {
   id             Int       @id @default(autoincrement())
   // 幂等键 = 发往账户服务的 Idempotency-Key（feed 是 consume/income/refund 三键的根）
   idempotencyKey String    @unique @map("idempotency_key")
-  operation      String // feed | checkin | admin_grant | admin_deduct | register
+  operation      String // feed | checkin | admin_grant | admin_deduct | compensate | register
   // JSON 字符串：重建远端调用所需的非敏感参数（SQLite 无数组/Json 标量）
   payload        String
   // pending → synced（远端已同步）/ compensated（远端失败且本地已补偿）/ failed（补偿也失败，待重放）

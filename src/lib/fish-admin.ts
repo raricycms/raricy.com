@@ -58,34 +58,45 @@ function makeAdminIdempotencyKey(kind: 'grant' | 'deduct', userId: string, amoun
 }
 
 /**
- * 管理员赠送小鱼干（fail-closed）。
+ * 账本 operation → `fish_transactions.type`。
+ *
+ * 补偿记 `system_compensate` 是对齐 Flask（`add_fish(..., 'system_compensate', ...)`）——
+ * 流水页上「系统补偿」和「管理员手动赠送」是两种能被区分开的事，别混成一个 type。
+ */
+const FISH_TX_TYPE: Record<'admin_grant' | 'compensate', string> = {
+  admin_grant: 'admin_grant',
+  compensate: 'system_compensate',
+};
+
+/**
+ * 赠送的写路径（fail-closed 三段结构）—— **唯一实现**。
+ *
+ * 【为什么幂等键与 operation 由调用方给】两处对「什么算同一笔」的定义不同：
+ *   • `fish grant` —— 每次执行都是一笔新发放 → 键带随机后缀（makeAdminIdempotencyKey）；
+ *   • 群发补偿 —— 同批次同用户必须拿到同一个键，重跑才会被远端幂等去重（断点续跑）。
+ * 补偿/回滚逻辑只有这一份：钱的路径各写一份，就是下一次「一边修了另一边没修」的起点。
+ *
+ * @param remoteEnabled 调用方预先查好的远端开关。批量场景（群发补偿）每人重查一次
+ *                      会把 dev fallback 的告警刷屏，所以由调用方查一次传进来。
  * @returns 变更后的余额
- * @throws FishBusinessError  参数非法
  * @throws AccountServiceError 远端同步失败（本地已补偿回滚，余额未变）
  */
-export async function adminGrantFish(
-  userId: string,
-  amount: number,
-  description = '管理员手动赠送'
-): Promise<number> {
-  assertValidAmount(amount);
-  const remoteEnabled = accountServiceEnabled();
-  if (!remoteEnabled) {
-    assertRemoteRequiredInProduction('赠送小鱼干');
-    console.warn(`[fish-admin] ACCOUNT_SERVICE 未配置，赠送仅写本地库（dev fallback）。user=${userId}`);
-  }
+export async function grantFishWithKey(opts: {
+  userId: string;
+  amount: number;
+  description: string;
+  idempotencyKey: string;
+  /** 账本 account_sync_ledger.operation（补偿记 'compensate'，fish pending 一眼能认出来）。 */
+  operation: 'admin_grant' | 'compensate';
+  remoteEnabled: boolean;
+}): Promise<number> {
+  const { userId, amount, description, idempotencyKey, operation, remoteEnabled } = opts;
 
-  // 幂等键含时间戳 + 随机后缀（见 makeAdminIdempotencyKey）：每次执行都是一笔新的发放。
-  const idempotencyKey = makeAdminIdempotencyKey('grant', userId, amount);
-  const entry = {
-    idempotencyKey,
-    operation: 'admin_grant' as const,
-    payload: { userId, amount, description },
-  };
+  const entry = { idempotencyKey, operation, payload: { userId, amount, description } };
 
   // Phase 1：本地事务（加余额 + 写流水 + 账本登记）。
   const phase1 = await prisma.$transaction(async (tx) => {
-    const fish = await addFish(tx, { userId, amount, type: 'admin_grant', description });
+    const fish = await addFish(tx, { userId, amount, type: FISH_TX_TYPE[operation], description });
     if (remoteEnabled) {
       await recordPendingSync(tx, entry);
     }
@@ -125,6 +136,35 @@ export async function adminGrantFish(
 
   const u = await prisma.user.findUnique({ where: { id: userId }, select: { driedFish: true } });
   return unitsToFish(u?.driedFish ?? 0);
+}
+
+/**
+ * 管理员赠送小鱼干（fail-closed）。
+ * @returns 变更后的余额
+ * @throws FishBusinessError  参数非法
+ * @throws AccountServiceError 远端同步失败（本地已补偿回滚，余额未变）
+ */
+export async function adminGrantFish(
+  userId: string,
+  amount: number,
+  description = '管理员手动赠送'
+): Promise<number> {
+  assertValidAmount(amount);
+  const remoteEnabled = accountServiceEnabled();
+  if (!remoteEnabled) {
+    assertRemoteRequiredInProduction('赠送小鱼干');
+    console.warn(`[fish-admin] ACCOUNT_SERVICE 未配置，赠送仅写本地库（dev fallback）。user=${userId}`);
+  }
+
+  return grantFishWithKey({
+    userId,
+    amount,
+    description,
+    // 幂等键含时间戳 + 随机后缀（见 makeAdminIdempotencyKey）：每次执行都是一笔新的发放。
+    idempotencyKey: makeAdminIdempotencyKey('grant', userId, amount),
+    operation: 'admin_grant',
+    remoteEnabled,
+  });
 }
 
 /**

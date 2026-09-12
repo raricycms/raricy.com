@@ -11,9 +11,11 @@ npm run cli -- --help          # 全部命令一览
 npm run cli -- stats overview  # 命令式：看一眼站点状态
 ```
 
-> **未迁移**：Flask 时代的 `flask fish compensate`（全站群发补偿，涉及限频 / 批次幂等 /
-> 断点续跑）与 `flask import-blogs`（历史博客导入；正文早已存 `BlogContent` 表）。
-> 需要时另写专用脚本（参考 `scripts/compensate-unclaimed-fortunes.mjs`）。
+> **未迁移**：Flask 时代的 `flask import-blogs`（历史博客导入；正文早已存
+> `BlogContent` 表）。需要时另写专用脚本（参考 `scripts/compensate-unclaimed-fortunes.mjs`）。
+>
+> ~~`flask fish compensate`~~ 已迁移为 `fish compensate`（见「小鱼干」一节）——
+> 语义有一处**有意偏离** Flask，那里写明了原因。
 
 ---
 
@@ -32,7 +34,7 @@ npm run cli -- stats overview  # 命令式：看一眼站点状态
   投票  4 条命令
   图床  3 条命令
   邀请码  3 条命令
-  小鱼干  5 条命令
+  小鱼干  6 条命令
   审计日志  1 条命令
   申诉  2 条命令
   站点概览  1 条命令
@@ -131,14 +133,18 @@ fi
 | 危险级别 | 命令 | 行为 |
 |----------|------|------|
 | 破坏性 | 角色变更 · 用户禁言 · 强制下线 · 重置密码 · 文章/评论/剪贴板/投票的删除与恢复 · **图床恢复** · 申诉裁决 | 终端里弹「即将执行」确认屏；非交互必须加 `--yes` |
-| 不可逆 | `invite revoke`（物理删除邀请码行） | 同上，且确认屏会额外标注「不可恢复」 |
+| 不可逆 | `invite revoke`（物理删除邀请码行） · **`fish compensate`（全站群发）** | 同上，且确认屏会额外标注「不可恢复」 |
 | 安全 | 各类检索 / 查看 / `stats overview` / `fish grant`、`fish deduct` / OAuth 应用管理 | 不确认 |
 
 确认屏会列出**具体将发生什么**（目标、字段级变更、后果、是否通知对方），而不是笼统的「确定吗」。
 
-> **鱼干为什么不在危险集里**：它的写路径已经是 fail-closed（远端失败即补偿回滚），
+> **鱼干为什么基本不在危险集里**：写路径已经是 fail-closed（远端失败即补偿回滚），
 > 且每一笔都留在 `fish_transactions` 与 `account_sync_ledger` 里可查可重放 ——
 > 再加一道确认只会让 `docs/` 里的示例不能直接粘贴执行。
+>
+> **`fish compensate` 是唯一的例外**，而且它要确认的理由不是「怕账目分叉」，
+> 是**规模**：一条命令改的是全站每个人的余额，敲错一个数量级就得再发一轮反向补偿
+> 才能拉平（`fish deduct` 一次只能扣一个人）。所以它标 `irreversible`。
 
 ### 审计身份
 
@@ -152,9 +158,9 @@ fi
 `users.id` 的**真实外键**，而且审计日志的全部意义就在于「这是谁做的」。
 
 > ⚠️ **例外 —— 这些写操作不写审计日志，别在 `/audit` 里找**：
-> `fish grant` / `fish deduct` / `fish sync-retry`（理由见上方鱼干那一段：它的写路径是
-> 「本地事务 + 远端 HTTP + 补偿事务」三段结构，`logAdminAction` 挤进去会占满 SQLite 写锁；
-> 鱼干自己的账本是 `fish_transactions` + `account_sync_ledger`）、
+> `fish grant` / `fish deduct` / `fish compensate` / `fish sync-retry`（理由见上方鱼干那一段：
+> 它的写路径是「本地事务 + 远端 HTTP + 补偿事务」三段结构，`logAdminAction` 挤进去会占满
+> SQLite 写锁；鱼干自己的账本是 `fish_transactions` + `account_sync_ledger`）、
 > `oauth create-app` / `oauth disable-app` / `oauth enable-app`、`invite generate`。
 
 ### 两个由此而来的限制
@@ -266,6 +272,7 @@ npm run cli -- blog restore 2b7ec270-be9c-4283-b1a2 --reason "作者申诉，误
 | `fish grant <username> <amount> [-d 说明]` | 赠送（fail-closed） |
 | `fish deduct <username> <amount> [-d 说明]` | 扣减（fail-closed） |
 | `fish balance <username>` | 查余额 |
+| `fish compensate <amount> [--rate 5] [--batch-id ID] [--dry-run]` | **全站群发补偿**（逐人原子） |
 | `fish pending` | 列出账本里未同步的账目 |
 | `fish sync-retry` | 重放 pending / failed 的远端同步 |
 
@@ -280,6 +287,42 @@ npm run cli -- blog restore 2b7ec270-be9c-4283-b1a2 --reason "作者申诉，误
 
 **崩在「本地已提交、远端未同步」之间怎么办**：`fish pending` 看残留，`fish sync-retry` 按
 幂等键重放收敛。`stats overview` 也会把这两个数字报出来。
+
+#### 全站群发补偿 `fish compensate`
+
+给全站**每一位**用户（含被禁言者 —— 补偿是系统行为，与个人状态无关）发放同样数量：
+
+```bash
+npm run cli -- fish compensate 10 --dry-run          # 先看计划，不动账
+npm run cli -- fish compensate 10 -d "故障补偿"      # 交互式会弹确认屏
+npm run cli -- fish compensate 10 -d "故障补偿" --yes # 脚本 / 非交互
+```
+
+**失败语义是「逐人原子」，不是「全有或全无」。** 每人独立走一次
+「本地事务提交 → 事务外远端同步 → 失败补偿」，所以中途失败**不回滚**已经发出去的部分：
+前 300 人拿到了，后面的没有。这是**有意偏离 Flask** 的：
+
+> Flask 那版是「一个大事务里给所有人加余额 → 逐个远端同步 → 全成功才 commit，任一失败
+> 整体 rollback」。那个结构要求远端 HTTP 留在事务内部，写锁会被占满整轮
+> （1000 人 @5 req/s ≈ 200 秒），期间全站写路径全部 `database is locked`。
+> 详见 `src/lib/fish-compensate.ts` 头部。
+
+**续跑**——用同一个批次 ID 重跑，已发放的会自动跳过：
+
+```bash
+# 批次 ID 在开跑前就打印出来（进程被杀也找得回），失败时退出码 2 的消息里也带完整续跑命令
+npm run cli -- fish compensate 10 --batch-id 3f9a2c81d0b4 --yes
+```
+
+去重靠的是由批次派生的**确定性幂等键**（`comp-{sha256('compensate-{batchId}-{userId}-{amount}')[:16]}`，
+与 Flask 逐字节同构）。这不是锦上添花，是必须的：若只是「重跑一遍」，本地会给已成功的
+人再加一次余额，而远端按同键幂等去重不会加 —— 两边记账当场分叉。
+
+**中止条件**：连续 5 位失败（判定远端整体不可用），或远端返回 429。中止不等于失败收场 ——
+已发放的照样算数，续跑即可。
+
+**账本里有 pending / failed 行的用户会被跳过并警告**，不会重新发放。正确顺序是
+先 `fish sync-retry` 收敛那些账目，再用同一个批次 ID 续跑。
 
 ### 审计日志与申诉
 
