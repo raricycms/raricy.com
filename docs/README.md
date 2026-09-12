@@ -32,6 +32,7 @@ raricy.com 的全部文档。分两层：**`guide/` 给玩家和内容创作者*
 | `cli.md` | 运维 CLI：交互式向导 / 命令式用法；角色、用户、内容检索与恢复、鱼干、邀请码、审计、申诉 |
 | `oauth.md` | raricy 作为 OAuth 2.0 IdP 的完整协议与集成 |
 | `chat-bot.md` | 聊天机器人接入：接口契约 / SSE / 限频（面向站外开发者，自包含） |
+| `comment-bot.md` | 评论区机器人接入：接口契约 / 轮询 / 限频（面向站外开发者，自包含） |
 | `frontend-styles.md` | SCSS 目录 / 设计令牌 / 组件约定 / 响应式 |
 | `instance-restore.md` | 从 `instance.zip` 还原数据目录与数据库（灾备） |
 
