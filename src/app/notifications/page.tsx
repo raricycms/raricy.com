@@ -40,7 +40,14 @@ export default async function NotificationsPage({
     <div className="content-wrapper">
       <h1 className="page-title">我的通知</h1>
 
-      <NotificationItems initial={result.notifications} />
+      {/*
+        key 必须带 page —— NotificationItems 用 useState(initial) 持有列表
+        （标记已读/删除就地更新 UI 需要），而翻页是同路由软导航，组件**不重挂载**，
+        新 props 进不了 state：URL 变成 ?page=2、SSR 也吐了第 2 页的数据，
+        列表却纹丝不动。带 page 的 key 让每次翻页重挂载一次，state 随之重置。
+        （别改成 useEffect 同步 props：那会和「就地更新」的 setItems 打架。）
+      */}
+      <NotificationItems key={result.page} initial={result.notifications} />
 
       {result.pages > 1 && (
         <nav className="pagination" aria-label="分页">
