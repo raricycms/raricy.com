@@ -66,6 +66,64 @@ const srcFiles = walk(SRC).filter((f) => f.endsWith('.ts') || f.endsWith('.tsx')
 const problems = [];
 
 /**
+ * 去掉注释，但**不动字符串与模板串里的内容**。
+ *
+ * 【为什么必须先剥注释】检查是拿正则扫源码文本的，而注释里出现的路径长得和真代码
+ * 一模一样。`forbidden.tsx` 里那句「这里曾经有个 <Link href="/logout">，已删除」
+ * 就被当成了一条真的断链，长期挂在输出里 —— 一条永远修不掉的假阳性，恰恰是训练
+ * 所有人无视这个脚本的最快方式（真问题混在同一条红字里，没人会再逐条看）。
+ *
+ * 【为什么自己做扫描而不是正则替换】行注释的两个斜杠也可能是 `https:` 的一半，
+ * 块注释的起头也可能出现在字符串里。所以按字符走一遍状态机：进了引号就照抄到
+ * 对应的收尾引号（含反斜杠转义），只有在引号之外才丢掉行注释直到行尾、以及
+ * 块注释的起止标记之间的内容。
+ * 正则字面量不单独处理 —— 本仓库的源码里没有以斜杠开头、看起来像注释的正则，
+ * 真要出现了也只会漏掉一小段文本，不会造成新的假阴性方向的问题。
+ */
+function stripComments(txt) {
+  let out = '';
+  let i = 0;
+  let quote = null; // null | "'" | '"' | '`'
+  while (i < txt.length) {
+    const ch = txt[i];
+    const next = txt[i + 1];
+
+    if (quote) {
+      out += ch;
+      if (ch === '\\') {
+        out += next ?? ''; // 转义：连下一个字符一起照抄，别把它当成收尾引号
+        i += 2;
+        continue;
+      }
+      if (ch === quote) quote = null;
+      i++;
+      continue;
+    }
+
+    if (ch === "'" || ch === '"' || ch === '`') {
+      quote = ch;
+      out += ch;
+      i++;
+      continue;
+    }
+    if (ch === '/' && next === '/') {
+      while (i < txt.length && txt[i] !== '\n') i++;
+      continue; // 换行本身留给下一轮，保住行号对齐（报错信息里不带行号，但便于肉眼比对）
+    }
+    if (ch === '/' && next === '*') {
+      i += 2;
+      while (i < txt.length && !(txt[i] === '*' && txt[i + 1] === '/')) i++;
+      i += 2;
+      continue;
+    }
+
+    out += ch;
+    i++;
+  }
+  return out;
+}
+
+/**
  * 抽出源码里所有字符串/模板串的**内容**。
  *
  * 必须先整体取出再归一 ${...}，不能直接用 [^\s]* 之类去凑：
@@ -107,7 +165,7 @@ function normalize(u) {
 // 切出半截路径来误报。
 const HREF_RE = /href\s*[=:]\s*\{?\s*(?:`([^`]*)`|'([^'\n]*)'|"([^"\n]*)")/g;
 for (const f of srcFiles.filter((f) => f.endsWith('.tsx'))) {
-  const txt = fs.readFileSync(f, 'utf8');
+  const txt = stripComments(fs.readFileSync(f, 'utf8'));
   for (const m of txt.matchAll(HREF_RE)) {
     const raw = m[1] ?? m[2] ?? m[3] ?? '';
     if (!raw.startsWith('/')) continue; // 绝对 URL 交给第 3 节
@@ -125,7 +183,7 @@ for (const f of srcFiles.filter((f) => f.endsWith('.tsx'))) {
 const API_SKIP = [/^\/api\/v1\//, /^\/api\/:/, /^\/api$/, /^\/api\/__/];
 for (const f of srcFiles) {
   if (f.endsWith('account-client.ts') || f.endsWith('middleware.ts') || f.endsWith('robots.ts')) continue;
-  const txt = fs.readFileSync(f, 'utf8');
+  const txt = stripComments(fs.readFileSync(f, 'utf8'));
   for (const lit of stringLiterals(txt)) {
     if (!lit.startsWith('/api/')) continue;
     const u = normalize(lit);
@@ -141,7 +199,7 @@ for (const f of srcFiles) {
 // 只拦「回源本站老路径」，外站链接（GitHub、智慧河 zhh.raricy.com 等）是正常的。
 const BACKLINK = /(?:^|\/\/)(?:www\.)?raricy\.com\/(tool|blog|auth|image|vote|clipboard|checkin)\b/;
 for (const f of srcFiles) {
-  const txt = fs.readFileSync(f, 'utf8');
+  const txt = stripComments(fs.readFileSync(f, 'utf8'));
   if (/FLASK_ORIGIN/.test(txt)) {
     problems.push(
       `还在用 FLASK_ORIGIN 回源老站：${path.relative(ROOT, f)}（Flask 删掉后必断）`
@@ -168,16 +226,16 @@ for (const f of srcFiles) {
   const cssText = ['src/styles-scss/compiled/flask.css']
     .map((f) => {
       const p = path.join(ROOT, f);
-      return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '';
+      return fs.existsSync(p) ? stripComments(fs.readFileSync(p, 'utf8')) : '';
     })
     .join('\n');
   // 组件内联的 <style>{X_CSS}</style> 也算 —— ATAMAS 整个游戏就是这么上样式的
-  const inlineCss = srcFiles.map((f) => fs.readFileSync(f, 'utf8')).join('\n');
+  const inlineCss = srcFiles.map((f) => stripComments(fs.readFileSync(f, 'utf8'))).join('\n');
   const allCss = cssText + '\n' + inlineCss;
 
   const seen = new Set();
   for (const f of srcFiles.filter((f) => f.endsWith('.tsx'))) {
-    const txt = fs.readFileSync(f, 'utf8');
+    const txt = stripComments(fs.readFileSync(f, 'utf8'));
     for (const m of txt.matchAll(/className=[{]?\s*[`'"]([^`'"]*)[`'"]/g)) {
       for (const cls of m[1].split(/\s+/)) {
         if (!/^icon-[\w-]+$/.test(cls) || seen.has(cls)) continue;
