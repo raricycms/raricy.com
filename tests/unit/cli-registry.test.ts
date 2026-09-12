@@ -12,8 +12,8 @@
 
 import { describe, expect, it } from 'vitest';
 import { COMMANDS, LEGACY_COMMANDS } from '../../scripts/cli/registry';
-import { GLOBAL_FLAGS } from '../../scripts/cli/args';
-import { GROUP_LABELS, type ArgSpec } from '../../scripts/cli/types';
+import { GLOBAL_FLAGS, parseCommandArgs, usageLine } from '../../scripts/cli/args';
+import { GROUP_LABELS, type ArgSpec, type CommandSpec } from '../../scripts/cli/types';
 
 const GLOBAL_SET = new Set<string>(GLOBAL_FLAGS);
 
@@ -149,5 +149,50 @@ describe('命令注册表：迁移完整性', () => {
 
   it('LEGACY_COMMANDS 自身不重复', () => {
     expect(new Set(LEGACY_COMMANDS).size).toBe(LEGACY_COMMANDS.length);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 声明出来的参数，得真的能敲。
+//
+// 【为什么单列一组】`clip show --full` 的 kind: 'boolean' 声明了却没人验过：
+// 解析器当时没有布尔分支，会掉进字符串分支去要值，于是 `--full` 永远报
+// 「后面缺少值」—— 这个 flag 从写下那天起就没在命令式前端跑通过。而
+// `--full true` 恰好能过（truthy 字符串），更让它藏了很久。
+//
+// 下面这组把「每条声明的参数都真的能解析」钉成会红的东西：拿注册表里的**真实
+// ArgSpec** 单独组一条最小命令去敲 —— 声明与解析器对不上，这里就炸。
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('★ 注册表里声明的参数真的能解析', () => {
+  const booleanArgs = ALL_ARGS.filter(({ arg }) => arg.kind === 'boolean');
+
+  it('确实存在开关参数（否则下面这组空转，等于没测）', () => {
+    expect(booleanArgs.length, '一个 boolean 参数都没有了？删掉这组测试').toBeGreaterThan(0);
+  });
+
+  for (const { cmd, arg } of booleanArgs) {
+    const flag = arg.flags.find((f) => f.startsWith('--')) ?? arg.flags[0];
+    it(`${cmd} 的 ${flag} 只写 flag 名就能解析成 true`, () => {
+      // 只保留这一个参数的最小命令：本组验的是「声明 ↔ 解析器」是否对得上，
+      // 不牵扯该命令其余的必填项。
+      const minimal: CommandSpec = {
+        name: 'probe run',
+        summary: '探针',
+        group: 'stats',
+        args: [{ ...arg, positional: undefined, required: false }],
+        async run() {
+          return {};
+        },
+      };
+      expect(parseCommandArgs(minimal, [flag])).toEqual({ [arg.name]: true });
+    });
+  }
+
+  it('usageLine 不为开关渲染 <值>（否则运维会照敲 `--full true`）', () => {
+    for (const { cmd, arg } of booleanArgs) {
+      const owner = COMMANDS.find((c) => c.name === cmd)!;
+      expect(usageLine(owner), `${cmd} 的 ${arg.name}`).not.toContain(`<${arg.name}>`);
+    }
   });
 });
