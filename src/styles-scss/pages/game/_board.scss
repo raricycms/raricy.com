@@ -1,0 +1,232 @@
+@use '../../abstracts/variables' as *;
+
+// ============================================================
+// Board game chrome (棋类通用外壳) — BEM namespace: .board-*
+// ============================================================
+//
+// 【为什么不是每款棋各写一套】卡片、按钮、状态行、席位栏、房号条、进房面板
+// 这几块与「下的是什么棋」无关：五子棋单机 / 五子棋联机 / 井字棋联机三处长得
+// 一模一样。各写一份的代价不是多打几个字，而是它们会**慢慢分叉** —— 改了一处的
+// 圆角忘了另一处，用户看到的是「同一个站里两个入口手感不一样」。
+//
+// 【边界】只放与具体棋无关的部分。棋盘（.gomoku-canvas / .tictactoe-board）、
+// 各游戏特有的页面壳（.gomoku-page / .tictactoe-page）留在各自的 partial。
+//
+// 【改名的代价】这些类在 2026-09 从 .gomoku-* 改名而来（当时井字棋联机接入，
+// 三个使用方需要同一套外壳）。类名是字符串，拼错不会构建失败也不会让单测转红 ——
+// 只会渲染成没有样式的裸元素。改名时务必 grep 全部使用方。
+
+// 卡片容器：GamePageShell 直接把 .container 与页面类合并在同一元素上，
+// 不能用 display: flex（会把 返回链接/标题/介绍/棋盘 排成一行），改为普通块级流，
+// 卡片用 margin: 0 auto 自居中。
+.board-card {
+  text-align: center;
+  background: var(--color-background-card);
+  padding: $space-6;
+  border-radius: $radius-large;
+  box-shadow: var(--shadow-card);
+  max-width: 680px;
+  width: 100%;
+  margin: 0 auto;
+
+  @media (max-width: 640px) {
+    padding: $space-4 $space-3;
+    margin: 0 $space-2;
+    border-radius: $radius-small;
+  }
+}
+
+// ── 状态行 ────────────────────────────────────────────────────
+
+.board-status {
+  font-weight: 600;
+  font-size: 1.1rem;
+  min-height: 28px;
+  margin-bottom: $space-3;
+  color: var(--color-text-primary);
+  transition: color 0.2s ease;
+}
+
+// ── 控制按钮行 ────────────────────────────────────────────────
+
+.board-controls {
+  display: flex;
+  gap: $space-3;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+// 按钮需随深浅主题切换 —— 用主题令牌，勿硬编码颜色。
+.board-btn {
+  padding: $space-2 $space-4;
+  font-size: 0.95rem;
+  font-weight: 500;
+  border: 1px solid var(--color-border);
+  border-radius: $radius-small;
+  cursor: pointer;
+  background: var(--color-background-card);
+  color: var(--color-text-primary);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease,
+    background-color 0.2s ease, border-color 0.2s ease;
+
+  &:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-sm);
+    background: var(--color-background-subtle);
+    border-color: var(--color-border-highlight);
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+  }
+
+  // 主行动（建房 / 再来一局）
+  &--primary {
+    background: var(--color-brand-primary);
+    border-color: var(--color-brand-primary);
+    color: #fff;
+
+    &:hover:not(:disabled) {
+      background: var(--color-brand-primary);
+      border-color: var(--color-brand-primary);
+      color: #fff;
+      filter: brightness(1.06);
+    }
+  }
+
+  // 房号条里的小按钮
+  &--small {
+    padding: $space-1 $space-3;
+    font-size: 0.85rem;
+  }
+
+  @media (max-width: 640px) {
+    padding: $space-2 $space-3;
+    font-size: 0.85rem;
+  }
+}
+
+// ── 联机房间 ──────────────────────────────────────────────────
+// 房间面板 / 席位栏 / 连接横幅 / 房号条。一律走主题令牌，深浅色都要能看。
+
+.board-room-panel {
+  &__title {
+    font-size: 1.25rem;
+    margin-bottom: $space-2;
+    color: var(--color-text-primary);
+  }
+
+  &__desc {
+    color: var(--color-text-secondary);
+    line-height: 1.6;
+    margin-bottom: $space-4;
+  }
+
+  &__join {
+    display: flex;
+    gap: $space-2;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-top: $space-4;
+  }
+
+  &__input {
+    flex: 1 1 12rem;
+    min-width: 0;
+    max-width: 16rem;
+    padding: $space-2 $space-3;
+    font-size: 1rem;
+    // 房号靠人念、手抄、发消息 —— 等宽 + 字距 + 大写，让易混字符好分辨
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    text-align: center;
+    border: 1px solid var(--color-border);
+    border-radius: $radius-small;
+    background: var(--color-background-page);
+    color: var(--color-text-primary);
+
+    &:focus {
+      outline: none;
+      border-color: var(--color-border-highlight);
+    }
+  }
+
+  &__error {
+    margin-top: $space-3;
+    // 站内错误红（同 _toast.scss / _button.scss），主题体系里没有 --color-danger
+    color: #dc3545;
+    font-size: 0.9rem;
+  }
+}
+
+// 连接中断横幅：醒目但不吓人 —— EventSource 会自己重连上
+.board-banner {
+  margin-bottom: $space-3;
+  padding: $space-2 $space-3;
+  border-radius: $radius-small;
+  border: 1px solid var(--color-border);
+  background: var(--color-background-subtle);
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}
+
+.board-seats {
+  display: flex;
+  gap: $space-2;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-bottom: $space-3;
+}
+
+.board-seat {
+  display: inline-flex;
+  align-items: center;
+  gap: $space-2;
+  padding: $space-1 $space-3;
+  border: 1px solid var(--color-border);
+  border-radius: $radius-max;
+  background: var(--color-background-page);
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+
+  // 轮到谁走
+  &--active {
+    border-color: var(--color-border-highlight);
+    color: var(--color-text-primary);
+    font-weight: 600;
+  }
+
+  // 围观人数徽标
+  &--spec {
+    opacity: 0.8;
+  }
+}
+
+.board-room-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: $space-2;
+  flex-wrap: wrap;
+  margin-bottom: $space-3;
+
+  &__code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: 0.15em;
+    color: var(--color-text-secondary);
+    font-size: 0.9rem;
+  }
+}
+
+.board-hint {
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}

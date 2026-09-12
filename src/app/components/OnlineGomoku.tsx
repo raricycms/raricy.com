@@ -4,355 +4,84 @@
 // OnlineGomoku.tsx — 五子棋联机对战
 //
 // 【服务端权威】本组件不做任何规则判定：能不能走、走哪儿合法、谁赢了，全由
-// 服务端说了算（见 lib/gomoku-room.ts）。这里只做三件事：把服务端下发的 grid
-// 画出来、把自己的点击 POST 上去、把实时帧应用进来。
+// 服务端说了算（见 lib/board-room.ts）。
 //
-// 【为什么是 SSE 不是 WebSocket】棋是回合制，走子间隔以秒计，单向下行完全够用；
-// 而走子走 POST 白拿 CSRF 同源校验、限频与 session 鉴权。开 WS 要自定义 server，
-// 会顶掉 next start 与 systemd unit。响应头那套坑全在 lib/sse.ts。
+// 【房间行为在 useOnlineRoom 里】连接、重连、可见性、presence、判胜倒计时、
+// 再来一局投票 —— 与井字棋共用同一份实现。这里只剩五子棋特有的：画 15×15 画布、
+// 写状态文案、摆控制按钮。改房间行为请去 hook 或 board-room.ts。
 //
-// 【revision 去重】走子的 POST 响应与 SSE 推的帧是同一份状态，谁先到不一定。
-// 两者都过 applyView，按 revision 丢弃过期的 —— 不去重的话棋盘会闪回上一手。
-//
-// 【StrictMode】next.config 开了 reactStrictMode，dev 下 effect 双跑。
-// 建房是按钮触发的（不会双跑），但带 ?room= 进来自动加入会 —— 用 joinedRef 闩住。
-// 何况服务端 join 本身幂等，重连/刷新都靠它回到原座。
+// 【路径字面量必须写全】下面的 ACTIONS 里每条 URL 都是完整字面量：
+// scripts/check-links.mjs 静态校验它们有没有对应路由，而拼出来的路径它看不见。
+// 详见 useOnlineRoom 的文件头。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import Link from 'next/link';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { BLACK, type Player } from '@/lib/gomoku-rules';
-import { FOCUS_MODE_SETTINGS_HREF } from '@/lib/focus-mode';
-import type {
-  GomokuRoomSnapshot,
-  GomokuRoomView,
-  GomokuStreamEvent,
-  RoomRole,
-  Seat,
-} from '@/lib/gomoku-shared';
+import { useCallback } from 'react';
+import { BLACK } from '@/lib/gomoku-rules';
 import GomokuCanvas from './GomokuCanvas';
+import OnlineRoomPanel from './OnlineRoomPanel';
+import { CLAIM_AFTER_MS, postJson, useOnlineRoom, type RoomActions } from './useOnlineRoom';
 
-/** 对手掉线满这么久，本方可以判胜（与服务端 DISCONNECT_CLAIM_MS 一致）。 */
-const CLAIM_AFTER_MS = 60_000;
-
-type ConnState = 'idle' | 'connecting' | 'open' | 'reconnecting' | 'dead';
+/**
+ * 五子棋的接口地址。**定义在模块级**：引用恒定，hook 的 useCallback 依赖不必
+ * 每次渲染都换新对象（换新会让 SSE 那个 effect 反复重建连接）。
+ */
+const ACTIONS: RoomActions = {
+  create: () => postJson('/api/game/gomoku/rooms'),
+  join: (code) => postJson(`/api/game/gomoku/rooms/${code}/join`),
+  move: (code, row, col) => postJson(`/api/game/gomoku/rooms/${code}/moves`, { row, col }),
+  resign: (code) => postJson(`/api/game/gomoku/rooms/${code}/resign`),
+  claim: (code) => postJson(`/api/game/gomoku/rooms/${code}/claim`),
+  rematch: (code) => postJson(`/api/game/gomoku/rooms/${code}/rematch`),
+  streamUrl: (code) => `/api/game/gomoku/rooms/${code}/stream`,
+  snapshotUrl: (code) => `/api/game/gomoku/rooms/${code}`,
+};
 
 export interface OnlineGomokuProps {
   initialRoom?: string | null;
 }
 
-function errText(e: unknown): string {
-  return e instanceof Error ? e.message : '出错了，请重试';
-}
-
 export default function OnlineGomoku({ initialRoom = null }: OnlineGomokuProps) {
-  const [snapshot, setSnapshot] = useState<GomokuRoomSnapshot | null>(null);
-  const [conn, setConn] = useState<ConnState>('idle');
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const [joinCode, setJoinCode] = useState(initialRoom ?? '');
-  /** 对手掉线后的本地秒表（配合服务端给的 disconnectedForMs 一起算）。 */
-  const [tick, setTick] = useState(0);
-
-  // 事件回调里要读最新快照，用 ref 避开闭包过期
-  const snapshotRef = useRef<GomokuRoomSnapshot | null>(null);
-  snapshotRef.current = snapshot;
-  /** StrictMode 闩锁：带 ?room= 进来自动加入只做一次。 */
-  const joinedRef = useRef(false);
-
-  const code = snapshot?.view.code ?? null;
-
-  /** 应用一份服务端状态。POST 响应与 SSE 帧都走这里，按 revision 去重。 */
-  const applyView = useCallback((view: GomokuRoomView) => {
-    setSnapshot((prev) => {
-      if (!prev) return prev; // 还没 join（you 未知），忽略
-      if (view.revision < prev.view.revision) return prev; // 过期帧
-      return { ...prev, view };
-    });
-    setTick(0); // 新状态到了，本地秒表归零（disconnectedForMs 已是服务端最新值）
-  }, []);
-
-  /** POST 一个联机接口，返回 data.room（若有）。 */
-  const post = useCallback(async (path: string, body?: unknown) => {
-    const res = await fetch(path, {
-      method: 'POST',
-      ...(body === undefined
-        ? {}
-        : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
-    });
-    const data = (await res.json().catch(() => ({}))) as {
-      message?: string;
-      room?: GomokuRoomSnapshot;
-    };
-    if (!res.ok) throw new Error(data.message || `请求失败（${res.status}）`);
-    return data;
-  }, []);
-
-  /** 进入房间：记录快照、把房号写回 URL（可分享/可收藏）。 */
-  const enterRoom = useCallback((room: GomokuRoomSnapshot) => {
-    setSnapshot(room);
-    setError(null);
-    setConn('connecting');
-    const url = new URL(window.location.href);
-    url.searchParams.set('mode', 'online');
-    url.searchParams.set('room', room.view.code);
-    // replaceState 而非 router.push：URL 只是应用状态自己的镜像，不该触发一次 RSC 往返
-    window.history.replaceState({}, '', url.toString());
-  }, []);
-
-  const createRoom = useCallback(async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      const data = await post('/api/game/gomoku/rooms');
-      if (data.room) enterRoom(data.room);
-    } catch (e) {
-      setError(errText(e));
-    } finally {
-      setBusy(false);
-    }
-  }, [post, enterRoom]);
-
-  const joinRoom = useCallback(
-    async (raw: string) => {
-      const value = raw.trim();
-      if (!value) return;
-      setBusy(true);
-      setError(null);
-      try {
-        const data = await post(`/api/game/gomoku/rooms/${encodeURIComponent(value)}/join`);
-        if (data.room) enterRoom(data.room);
-      } catch (e) {
-        setError(errText(e));
-      } finally {
-        setBusy(false);
-      }
-    },
-    [post, enterRoom]
-  );
-
-  /**
-   * 走子 / 认输 / 判胜 / 再来一局 —— 都是 POST 一个动作，拿回新状态。
-   *
-   * 【为什么每条都写全路径而不是拼后缀】`scripts/check-links.mjs` 会静态校验源码里
-   * 的接口路径字面量有没有对应路由。拼后缀（房号后面再接一个变量）它只能看到两段
-   * 占位符连在一起，校验不了 —— 而路径写错一个字母就是线上 404。四条写全，检查才有效。
-   */
-  const run = useCallback(
-    async (fn: (code: string) => Promise<{ room?: GomokuRoomSnapshot }>) => {
-      const current = snapshotRef.current;
-      if (!current) return;
-      setError(null);
-      try {
-        const data = await fn(current.view.code);
-        if (data.room) applyView(data.room.view);
-      } catch (e) {
-        setError(errText(e));
-      }
-    },
-    [applyView]
-  );
-
-  const playMove = useCallback(
-    (row: number, col: number) => {
-      void run((code) => post(`/api/game/gomoku/rooms/${code}/moves`, { row, col }));
-    },
-    [run, post]
-  );
-
-  const resign = useCallback(() => {
-    void run((code) => post(`/api/game/gomoku/rooms/${code}/resign`));
-  }, [run, post]);
-
-  const claim = useCallback(() => {
-    void run((code) => post(`/api/game/gomoku/rooms/${code}/claim`));
-  }, [run, post]);
-
-  const rematch = useCallback(() => {
-    void run((code) => post(`/api/game/gomoku/rooms/${code}/rematch`));
-  }, [run, post]);
-
-  // 带房号进来自动加入（幂等；闩锁防 StrictMode 双跑）
-  useEffect(() => {
-    if (!initialRoom || joinedRef.current) return;
-    joinedRef.current = true;
-    void joinRoom(initialRoom);
-  }, [initialRoom, joinRoom]);
-
-  // ── 实时流 ────────────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!code) return;
-    let es: EventSource | null = null;
-    let stopped = false;
-
-    const open = () => {
-      if (stopped) return;
-      setConn((c) => (c === 'idle' || c === 'connecting' ? 'connecting' : 'reconnecting'));
-      es = new EventSource(`/api/game/gomoku/rooms/${code}/stream`);
-
-      es.onopen = () => setConn('open');
-      es.onmessage = (ev) => {
-        try {
-          const event = JSON.parse(ev.data) as GomokuStreamEvent;
-          if (event.type === 'state') applyView(event.view);
-        } catch {
-          /* 坏帧忽略：下一帧仍是全量状态，不会因此丢数据 */
-        }
-      };
-      es.onerror = () => {
-        // EventSource 会自己按 retry 重连；readyState=CLOSED 表示它放弃了重试
-        // （服务端返了非 200：403 权限变了 / 404 房间过期）。
-        if (es && es.readyState === EventSource.CLOSED) {
-          setConn('dead');
-        } else {
-          setConn('reconnecting');
-        }
-      };
-    };
-
-    open();
-
-    // 标签页隐藏时主动断开：HTTP/1.1 同源并发上限 6，SSE 占一条且跨标签页共享连接池
-    // （同 ChatApp 的处理）。回前台再连，一连上就会收到全量状态，不会漏。
-    const onVisibility = () => {
-      if (document.hidden) {
-        es?.close();
-        es = null;
-        setConn('reconnecting');
-      } else if (!es) {
-        open();
-      }
-    };
-    document.addEventListener('visibilitychange', onVisibility);
-
-    return () => {
-      stopped = true;
-      document.removeEventListener('visibilitychange', onVisibility);
-      es?.close();
-    };
-  }, [code, applyView]);
-
-  // 连接彻底断了：区分「房间过期」与「权限变了」，好给不同的出路
-  useEffect(() => {
-    if (conn !== 'dead' || !code) return;
-    let cancelled = false;
-    void (async () => {
-      try {
-        const res = await fetch(`/api/game/gomoku/rooms/${code}`);
-        if (cancelled) return;
-        if (res.status === 403) {
-          const data = (await res.json().catch(() => ({}))) as { message?: string };
-          setError(data.message || '你现在无法进入这个房间');
-        } else {
-          setError('房间已失效（空闲超过 30 分钟会被回收）');
-        }
-      } catch {
-        if (!cancelled) setError('连接已断开');
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [conn, code]);
-
-  // ── 派生状态 ──────────────────────────────────────────────────────────────
-  const view = snapshot?.view ?? null;
-  const you = snapshot?.you ?? { role: 'spectator' as RoomRole, seat: null as Seat | null };
-
-  const mySeat: Seat | null = you.seat;
-  const oppSeat: Seat | null = mySeat === 'black' ? 'white' : mySeat === 'white' ? 'black' : null;
-  const opp = oppSeat && view ? view.seats[oppSeat] : null;
-  const oppGone = !!opp && !opp.connected;
-
-  // 对手掉线期间本地每秒 tick 一次，让「已掉线 N 秒」走起来
-  useEffect(() => {
-    if (!oppGone) return;
-    const timer = window.setInterval(() => setTick((n) => n + 1), 1000);
-    return () => window.clearInterval(timer);
-  }, [oppGone]);
-
-  const oppGoneMs = oppGone ? (opp?.disconnectedForMs ?? 0) + tick * 1000 : 0;
-  const canClaim =
-    view?.status === 'playing' && !!oppSeat && oppGoneMs >= CLAIM_AFTER_MS && conn === 'open';
-
-  const isPlayer = you.role === 'player' && !!mySeat;
-  const myTurn =
-    isPlayer && view?.status === 'playing' && (view.turn === BLACK) === (mySeat === 'black');
-  const canPlay = myTurn && conn === 'open';
+  // 五子棋单机与联机是同一个路由，靠 ?mode= 区分 —— 进房后必须把它写回 URL，
+  // 否则复制出去的邀请链接一刷新就掉回单机。
+  const room = useOnlineRoom(ACTIONS, initialRoom, { urlParams: { mode: 'online' } });
+  const {
+    view,
+    mySeat,
+    isPlayer,
+    myTurn,
+    canPlay,
+    conn,
+    error,
+    busy,
+    copied,
+    joinCode,
+    setJoinCode,
+    oppGone,
+    oppGoneMs,
+    canClaim,
+  } = room;
 
   const onCellClick = useCallback(
     (row: number, col: number) => {
       if (!canPlay) return;
-      playMove(row, col);
+      room.playMove(row, col);
     },
-    [canPlay, playMove]
+    [canPlay, room]
   );
 
-  const copyLink = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(window.location.href);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 2000);
-    } catch {
-      setError('复制失败，请手动从地址栏复制');
-    }
-  }, []);
-
-  const leave = useCallback(() => {
-    setSnapshot(null);
-    setConn('idle');
-    setError(null);
-    const url = new URL(window.location.href);
-    url.searchParams.set('mode', 'online');
-    url.searchParams.delete('room');
-    window.history.replaceState({}, '', url.toString());
-  }, []);
-
-  // ── 渲染 ──────────────────────────────────────────────────────────────────
-
   // 还没进房：房间面板
-  if (!snapshot || !view) {
+  if (!view) {
     return (
-      <div className="gomoku-container gomoku-room-panel">
-        <h2 className="gomoku-room-panel__title">五子棋 · 联机对战</h2>
-        <p className="gomoku-room-panel__desc">
-          开一间房，把链接发给朋友；也可以输入对方给的房号加入。需要核心用户权限。
-        </p>
-
-        <button
-          type="button"
-          className="gomoku-btn gomoku-btn--primary"
-          onClick={createRoom}
-          disabled={busy}
-        >
-          创建房间
-        </button>
-
-        <div className="gomoku-room-panel__join">
-          <input
-            className="gomoku-room-panel__input"
-            value={joinCode}
-            onChange={(e) => setJoinCode(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') void joinRoom(joinCode);
-            }}
-            placeholder="输入 6 位房号"
-            maxLength={12}
-            aria-label="房号"
-          />
-          <button
-            type="button"
-            className="gomoku-btn"
-            onClick={() => void joinRoom(joinCode)}
-            disabled={busy || !joinCode.trim()}
-          >
-            加入
-          </button>
-        </div>
-
-        {error && <p className="gomoku-room-panel__error">{error}</p>}
-      </div>
+      <OnlineRoomPanel
+        title="五子棋 · 联机对战"
+        desc="开一间房，把链接发给朋友；也可以输入对方给的房号加入。需要核心用户权限。"
+        joinCode={joinCode}
+        onJoinCodeChange={setJoinCode}
+        onCreate={() => void room.createRoom()}
+        onJoin={(code) => void room.joinRoom(code)}
+        busy={busy}
+        error={error}
+      />
     );
   }
 
@@ -369,41 +98,55 @@ export default function OnlineGomoku({ initialRoom = null }: OnlineGomokuProps) 
   })();
 
   return (
-    <div className="gomoku-container gomoku-online">
+    <div className="board-card">
       {conn !== 'open' && (
-        <div className="gomoku-banner" role="status">
+        <div className="board-banner" role="status">
           {conn === 'dead' ? '连接已断开' : '连接中断，正在重连…'}
         </div>
       )}
 
       {/* 席位栏 */}
-      <div className="gomoku-seats">
-        <span className={`gomoku-seat gomoku-seat--black${view.turn === BLACK && view.status === 'playing' ? ' gomoku-seat--active' : ''}`}>
-          <span className="gomoku-seat__stone" aria-hidden="true" />
+      <div className="board-seats">
+        <span
+          className={`board-seat${
+            view.turn === BLACK && view.status === 'playing' ? ' board-seat--active' : ''
+          }`}
+          data-seat="black"
+        >
+          <span className="gomoku-stone gomoku-stone--black" aria-hidden="true" />
           {view.seats.black?.name ?? '空位'}
           {view.seats.black && !view.seats.black.connected && '（掉线）'}
           {mySeat === 'black' && ' · 你'}
         </span>
-        <span className={`gomoku-seat gomoku-seat--white${view.turn !== BLACK && view.status === 'playing' ? ' gomoku-seat--active' : ''}`}>
-          <span className="gomoku-seat__stone" aria-hidden="true" />
+        <span
+          className={`board-seat${
+            view.turn !== BLACK && view.status === 'playing' ? ' board-seat--active' : ''
+          }`}
+          data-seat="white"
+        >
+          <span className="gomoku-stone gomoku-stone--white" aria-hidden="true" />
           {view.seats.white?.name ?? '空位'}
           {view.seats.white && !view.seats.white.connected && '（掉线）'}
           {mySeat === 'white' && ' · 你'}
         </span>
         {view.spectatorCount > 0 && (
-          <span className="gomoku-seat gomoku-seat--spec">围观 {view.spectatorCount}</span>
+          <span className="board-seat board-seat--spec">围观 {view.spectatorCount}</span>
         )}
       </div>
 
-      <div className="gomoku-status">{statusText}</div>
+      <div className="board-status">{statusText}</div>
 
       {/* 房号 + 复制链接 */}
-      <div className="gomoku-room-bar">
-        <span className="gomoku-room-bar__code">房号 {view.code.toUpperCase()}</span>
-        <button type="button" className="gomoku-btn gomoku-btn--small" onClick={copyLink}>
+      <div className="board-room-bar">
+        <span className="board-room-bar__code">房号 {view.code.toUpperCase()}</span>
+        <button
+          type="button"
+          className="board-btn board-btn--small"
+          onClick={() => void room.copyLink()}
+        >
           {copied ? '已复制' : '复制邀请链接'}
         </button>
-        <button type="button" className="gomoku-btn gomoku-btn--small" onClick={leave}>
+        <button type="button" className="board-btn board-btn--small" onClick={room.leave}>
           离开
         </button>
       </div>
@@ -418,17 +161,17 @@ export default function OnlineGomoku({ initialRoom = null }: OnlineGomokuProps) 
       />
 
       {/* 控制 */}
-      <div className="gomoku-controls">
+      <div className="board-controls">
         {view.status === 'playing' && isPlayer && (
-          <button type="button" className="gomoku-btn" onClick={resign}>
+          <button type="button" className="board-btn" onClick={room.resign}>
             认输
           </button>
         )}
-        {view.status === 'playing' && oppSeat && oppGone && (
+        {view.status === 'playing' && room.oppSeat && oppGone && (
           <button
             type="button"
-            className="gomoku-btn"
-            onClick={claim}
+            className="board-btn"
+            onClick={room.claim}
             disabled={!canClaim}
             title={canClaim ? '' : `对手掉线满 ${CLAIM_AFTER_MS / 1000} 秒后可判胜`}
           >
@@ -438,43 +181,18 @@ export default function OnlineGomoku({ initialRoom = null }: OnlineGomokuProps) 
           </button>
         )}
         {(view.status === 'won' || view.status === 'draw') && isPlayer && (
-          <button
-            type="button"
-            className="gomoku-btn gomoku-btn--primary"
-            onClick={rematch}
-          >
+          <button type="button" className="board-btn board-btn--primary" onClick={room.rematch}>
             {view.rematchVotes > 0 && view.rematchVotes < 2
               ? '已申请，等对手'
               : '再来一局（需双方同意）'}
           </button>
         )}
         {!isPlayer && (
-          <span className="gomoku-hint">
-            你在观战。两席坐满后加入的人自动成为观众。
-          </span>
+          <span className="board-hint">你在观战。两席坐满后加入的人自动成为观众。</span>
         )}
       </div>
 
-      {error && <p className="gomoku-room-panel__error">{error}</p>}
-    </div>
-  );
-}
-
-/** 专注模式下的占位（页面层用它，避免进房面板闪一下）。 */
-export function OnlineGomokuFocusLock() {
-  return (
-    <div className="gomoku-container">
-      <div className="game-card game-card--locked game-card--focus-lock">
-        <div className="game-card__body">
-          <h3 className="game-card__title">已开启专注模式</h3>
-          <p className="game-card__desc">
-            联机对战是社交玩法，「玩具」暂不可用。可在设置中随时关闭专注模式。
-          </p>
-          <Link className="game-card__btn game-card__btn--link" href={FOCUS_MODE_SETTINGS_HREF}>
-            前往设置关闭
-          </Link>
-        </div>
-      </div>
+      {error && <p className="board-room-panel__error">{error}</p>}
     </div>
   );
 }

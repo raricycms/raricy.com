@@ -9,7 +9,7 @@
 // 为什么不可省。**本路由不要手写响应头。**
 //
 // 【断线补齐就是「一连上推一次全量状态」】不需要 Last-Event-ID、环形缓冲或 resync：
-// 每帧都是完整状态，客户端按 revision 丢弃过期的即可。见 gomoku-shared.ts 文件头。
+// 每帧都是完整状态，客户端按 revision 丢弃过期的即可。见 board-shared.ts 文件头。
 //
 // 【鉴权在每次建立连接时重做】所以封禁/降权/专注模式变更后只要踢掉旧连接
 // （game-bus.kickViewer / user-service），重连就会重新判定 —— 拿 403 时
@@ -19,9 +19,9 @@
 import { apiErr } from '@/lib/format';
 import { canSubscribe, subscribe } from '@/lib/game-bus';
 import { getSnapshot, refreshPresence } from '@/lib/gomoku-room';
-import { normalizeRoomCode, type GomokuStreamEvent } from '@/lib/gomoku-shared';
+import { normalizeRoomCode, type RoomStreamEvent } from '@/lib/board-shared';
 import { SSE_HEADERS, SSE_QUEUE_LIMIT, SSE_RETRY_MS, sseFrame } from '@/lib/sse';
-import { requireGameUser, roomErrorResponse } from '../../../_shared';
+import { requireGameUser, roomErrorResponse } from '../../../../_shared';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -106,7 +106,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ code: string }>
         unsubscribe = off;
 
         // 一连上就推当前全量状态：这就是断线补齐（见文件头）。
-        write(sseFrame<GomokuStreamEvent>({ type: 'state', view: snapshot.value.view }));
+        write(sseFrame<RoomStreamEvent>({ type: 'state', view: snapshot.value.view }));
 
         // 订阅**之后**才刷新在线状态：早于订阅会数到 0，把刚连上的自己判成掉线。
         refreshPresence(code, user.id);

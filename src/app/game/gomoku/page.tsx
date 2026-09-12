@@ -1,7 +1,7 @@
 import GamePageShell from '@/app/components/GamePageShell';
 import Gomoku from '@/app/components/Gomoku';
-import { OnlineGomokuFocusLock } from '@/app/components/OnlineGomoku';
-import { normalizeRoomCode } from '@/lib/gomoku-shared';
+import { OnlineFocusLock } from '@/app/components/OnlineRoomPanel';
+import { normalizeRoomCode } from '@/lib/board-shared';
 import { requireCoreUser } from '@/lib/guard';
 
 // 读 searchParams（?mode= / ?room=）分发模式，故不能静态化。
@@ -41,9 +41,9 @@ export default async function GomokuPage({
   const user = await requireCoreUser();
 
   // 专注模式给一张带出路的提示卡，而不是 forbidden() —— 用户需要知道怎么关掉它。
-  // 服务端接口同样是硬 403（见 api/game/gomoku/_shared.ts）。
+  // 服务端接口同样是硬 403（见 api/game/_shared.ts）。
   const body = user.focusMode ? (
-    <OnlineGomokuFocusLock />
+    <OnlineFocusLock />
   ) : (
     <Gomoku defaultMode="online" initialRoom={normalizeRoomCode(sp.room ?? null)} />
   );

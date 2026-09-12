@@ -211,13 +211,13 @@ export const RULES = {
   loginPerIp: { limit: 300, windowMs: 15 * 60 * 1000 },
   loginPerUser: { limit: 100, windowMs: 15 * 60 * 1000 },
   /**
-   * 五子棋联机：建房与加入共用一条额度。
+   * 联机棋类（五子棋 / 井字棋共用同一份数值）：建房与加入。
    * 这两个动作都可能创建服务端状态（房间 / 观众席），而房间是**进程内内存** ——
    * 无限建房就是内存无界增长。MAX_ROOMS 是硬天花板，这里是软闸门。
    */
-  gomokuRoom: { limit: 10, windowMs: 60 * 1000 },
-  /** 五子棋联机：走子 / 认输 / 判胜 / 再来一局。走子间隔以秒计，只用来挡脚本。 */
-  gomokuMove: { limit: 120, windowMs: 60 * 1000 },
-  /** 五子棋联机：取快照。正常客户端只在重连 / 刷新时调，不是轮询接口。 */
-  gomokuPoll: { limit: 120, windowMs: 60 * 1000 },
+  gameRoom: { limit: 10, windowMs: 60 * 1000 },
+  /** 联机棋类：走子 / 认输 / 判胜 / 再来一局。走子间隔以秒计，只用来挡脚本。 */
+  gameMove: { limit: 120, windowMs: 60 * 1000 },
+  /** 联机棋类：取快照。正常客户端只在重连 / 刷新时调，不是轮询接口。 */
+  gamePoll: { limit: 120, windowMs: 60 * 1000 },
 } as const;

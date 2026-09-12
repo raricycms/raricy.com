@@ -10,7 +10,7 @@
 // 这个坑**单测完全看不见、构建也不报错** —— 所以响应头必须是常量、由所有 SSE 路由
 // 复用，而不是每个路由凭记忆手写一份。改本文件等于改全站所有 SSE 流的行为。
 //
-// 现有消费者：api/chat/stream/route.ts、api/game/gomoku/rooms/[code]/stream/route.ts。
+// 现有消费者：api/chat/stream/route.ts、api/game/{gomoku,tictactoe}/rooms/[code]/stream/route.ts。
 // 新增 SSE 路由请直接 import 这里的常量，不要手抄。
 // ─────────────────────────────────────────────────────────────────────────────
 

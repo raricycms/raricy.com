@@ -575,7 +575,7 @@ export default function GomokuLocal() {
         : undefined;
 
   return (
-    <div className="gomoku-container">
+    <div className="board-card">
       {/* 模式选择 */}
       <div className="gomoku-mode-selector" role="radiogroup" aria-label="对战模式">
         <label className="gomoku-mode-option">
@@ -601,7 +601,7 @@ export default function GomokuLocal() {
       </div>
 
       {/* 状态 */}
-      <div className="gomoku-status" style={statusColor ? { color: statusColor } : undefined}>
+      <div className="board-status" style={statusColor ? { color: statusColor } : undefined}>
         {statusText}
       </div>
 
@@ -615,13 +615,13 @@ export default function GomokuLocal() {
       />
 
       {/* 控制 */}
-      <div className="gomoku-controls">
-        <button type="button" className="gomoku-btn" onClick={() => initGame(modeRef.current)}>
+      <div className="board-controls">
+        <button type="button" className="board-btn" onClick={() => initGame(modeRef.current)}>
           新游戏
         </button>
         <button
           type="button"
-          className="gomoku-btn"
+          className="board-btn"
           onClick={undoMove}
           disabled={undoDisabled}
         >

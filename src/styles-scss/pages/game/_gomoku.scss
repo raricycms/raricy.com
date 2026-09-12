@@ -3,33 +3,17 @@
 // ============================================================
 // Gomoku (五子棋) — BEM namespace: .gomoku-*
 // ============================================================
+//
+// 【只放五子棋特有的】卡片 / 按钮 / 状态行 / 席位栏 / 房号条等联机外壳已经抽到
+// _board.scss（.board-*），五子棋单机与联机、井字棋联机三处共用那一套。
+// 这里只剩页面壳、模式选择器与棋盘画布。
 
-// 扁平结构：GamePageShell 直接把 .container 与 .gomoku-page 合并在同一元素上，
-// 不能用 display: flex（会把 返回链接/标题/介绍/棋盘 排成一行），改为普通块级流，
-// 棋盘容器用 .gomoku-container 的 margin: 0 auto 自居中。
 .gomoku-page {
   min-height: calc(100vh - 62px);
   // 只设上下内边距，左右交给 .container，否则手机端返回链接/标题贴屏边。
   padding-top: $space-6;
   padding-bottom: $space-6;
   background: var(--color-background-page);
-}
-
-.gomoku-container {
-  text-align: center;
-  background: var(--color-background-card);
-  padding: $space-6;
-  border-radius: $radius-large;
-  box-shadow: var(--shadow-card);
-  max-width: 680px;
-  width: 100%;
-  margin: 0 auto;
-
-  @media (max-width: 640px) {
-    padding: $space-4 $space-3;
-    margin: 0 $space-2;
-    border-radius: $radius-small;
-  }
 }
 
 .gomoku-back {
@@ -42,29 +26,6 @@
 
   &:hover {
     color: var(--color-brand-primary);
-  }
-}
-
-// ── Header ────────────────────────────────────────────────────
-
-.gomoku-header {
-  margin-bottom: $space-4;
-
-  &__title {
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: var(--color-text-primary);
-    margin-bottom: $space-1;
-
-    @media (max-width: 640px) {
-      font-size: 1.3rem;
-    }
-  }
-
-  &__subtitle {
-    font-size: 0.95rem;
-    color: var(--color-text-secondary);
-    line-height: 1.5;
   }
 }
 
@@ -94,17 +55,6 @@
   }
 }
 
-// ── Status ────────────────────────────────────────────────────
-
-.gomoku-status {
-  font-weight: 600;
-  font-size: 1.1rem;
-  min-height: 28px;
-  margin-bottom: $space-3;
-  color: var(--color-text-primary);
-  transition: color 0.2s ease;
-}
-
 // ── Canvas ────────────────────────────────────────────────────
 
 .gomoku-canvas-wrap {
@@ -120,219 +70,27 @@
   border-radius: 4px;
 }
 
-// ── Controls ──────────────────────────────────────────────────
-
-.gomoku-controls {
-  display: flex;
-  gap: $space-3;
-  justify-content: center;
-  flex-wrap: wrap;
-}
-
-// 组件只渲染基类 .gomoku-btn（未用 --new/--undo 修饰符），
-// 且按钮需随深浅主题切换 —— 用主题令牌，勿硬编码颜色。
-.gomoku-btn {
-  padding: $space-2 $space-4;
-  font-size: 0.95rem;
-  font-weight: 500;
-  border: 1px solid var(--color-border);
-  border-radius: $radius-small;
-  cursor: pointer;
-  background: var(--color-background-card);
-  color: var(--color-text-primary);
-  transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease, background-color 0.2s ease, border-color 0.2s ease;
-
-  &:hover:not(:disabled) {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-sm);
-    background: var(--color-background-subtle);
-    border-color: var(--color-border-highlight);
-  }
-
-  &:active {
-    transform: translateY(0);
-  }
-
-  &:disabled {
-    opacity: 0.45;
-    cursor: not-allowed;
-    transform: none;
-    box-shadow: none;
-  }
-
-  // 主行动（建房 / 再来一局）
-  &--primary {
-    background: var(--color-brand-primary);
-    border-color: var(--color-brand-primary);
-    color: #fff;
-
-    &:hover:not(:disabled) {
-      background: var(--color-brand-primary);
-      border-color: var(--color-brand-primary);
-      color: #fff;
-      filter: brightness(1.06);
-    }
-  }
-
-  // 房号条里的小按钮
-  &--small {
-    padding: $space-1 $space-3;
-    font-size: 0.85rem;
-  }
-
-  @media (max-width: 640px) {
-    padding: $space-2 $space-3;
-    font-size: 0.85rem;
-  }
-}
-
-// ── 联机对战 ──────────────────────────────────────────────────
-// 房间面板 / 席位栏 / 连接横幅 / 房号条。一律走主题令牌，深浅色都要能看。
-
-.gomoku-room-panel {
-  &__title {
-    font-size: 1.25rem;
-    margin-bottom: $space-2;
-    color: var(--color-text-primary);
-  }
-
-  &__desc {
-    color: var(--color-text-secondary);
-    line-height: 1.6;
-    margin-bottom: $space-4;
-  }
-
-  &__join {
-    display: flex;
-    gap: $space-2;
-    justify-content: center;
-    flex-wrap: wrap;
-    margin-top: $space-4;
-  }
-
-  &__input {
-    flex: 1 1 12rem;
-    min-width: 0;
-    max-width: 16rem;
-    padding: $space-2 $space-3;
-    font-size: 1rem;
-    // 房号靠人念、手抄、发消息 —— 等宽 + 字距 + 大写，让易混字符好分辨
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-    text-align: center;
-    border: 1px solid var(--color-border);
-    border-radius: $radius-small;
-    background: var(--color-background-page);
-    color: var(--color-text-primary);
-
-    &:focus {
-      outline: none;
-      border-color: var(--color-border-highlight);
-    }
-  }
-
-  &__error {
-    margin-top: $space-3;
-    // 站内错误红（同 _toast.scss / _button.scss），主题体系里没有 --color-danger
-    color: #dc3545;
-    font-size: 0.9rem;
-  }
-}
-
-// 连接中断横幅：醒目但不吓人 —— EventSource 会自己重连上
-.gomoku-banner {
-  margin-bottom: $space-3;
-  padding: $space-2 $space-3;
-  border-radius: $radius-small;
-  border: 1px solid var(--color-border);
-  background: var(--color-background-subtle);
-  color: var(--color-text-secondary);
-  font-size: 0.9rem;
-}
-
-.gomoku-seats {
-  display: flex;
-  gap: $space-2;
-  justify-content: center;
-  flex-wrap: wrap;
-  margin-bottom: $space-3;
-}
-
-.gomoku-seat {
-  display: inline-flex;
-  align-items: center;
-  gap: $space-2;
-  padding: $space-1 $space-3;
-  border: 1px solid var(--color-border);
-  border-radius: $radius-max;
-  background: var(--color-background-page);
-  color: var(--color-text-secondary);
-  font-size: 0.9rem;
-
-  // 轮到谁走
-  &--active {
-    border-color: var(--color-border-highlight);
-    color: var(--color-text-primary);
-    font-weight: 600;
-  }
-
-  // 棋子小圆点：与棋盘上的黑白子对应
-  &__stone {
-    display: inline-block;
-    width: 0.75em;
-    height: 0.75em;
-    border-radius: 50%;
-  }
-
-  &--black &__stone {
-    background: #111;
-  }
-
-  &--white &__stone {
-    background: #fff;
-    border: 1px solid #999;
-  }
-
-  &--spec {
-    opacity: 0.8;
-  }
-}
-
-.gomoku-room-bar {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: $space-2;
-  flex-wrap: wrap;
-  margin-bottom: $space-3;
-
-  &__code {
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    letter-spacing: 0.15em;
-    color: var(--color-text-secondary);
-    font-size: 0.9rem;
-  }
-}
-
-.gomoku-hint {
-  color: var(--color-text-secondary);
-  font-size: 0.9rem;
-}
-
 // 落不了子时（轮不到你 / 观战 / 断线）光标别装作能点
 .gomoku-canvas--disabled {
   cursor: default;
 }
 
-// ── Dark mode ─────────────────────────────────────────────────
+// ── 席位上的棋子小圆点 ────────────────────────────────────────
+// 与棋盘上的黑白子对应。席位胶囊本身是通用的（.board-seat），
+// 记号长什么样由各游戏自己画 —— 井字棋那边是 X / O 两个字母。
 
-[data-theme="dark"] {
-  .gomoku-container {
-    // background is handled by --color-background-card
+.gomoku-stone {
+  display: inline-block;
+  width: 0.75em;
+  height: 0.75em;
+  border-radius: 50%;
+
+  &--black {
+    background: #111;
   }
 
-  .gomoku-status {
-    // Canvas handles board colours; text colours follow tokens
+  &--white {
+    background: #fff;
+    border: 1px solid #999;
   }
 }

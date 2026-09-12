@@ -187,9 +187,9 @@ describe('RULES 全站配额（src/lib/rate-limit.ts 即权威，改动即报警
     { name: 'chatNewChannel', limit: 20, windowMs: 60_000, desc: '发起私聊 20 次/分' },
     { name: 'loginPerIp', limit: 300, windowMs: MIN15, desc: '登录失败 300 次/15 分/IP' },
     { name: 'loginPerUser', limit: 100, windowMs: MIN15, desc: '登录失败 100 次/15 分/账号' },
-    { name: 'gomokuRoom', limit: 10, windowMs: 60_000, desc: '五子棋建房/加入 10 次/分' },
-    { name: 'gomokuMove', limit: 120, windowMs: 60_000, desc: '五子棋走子/认输/判胜 120 次/分' },
-    { name: 'gomokuPoll', limit: 120, windowMs: 60_000, desc: '五子棋取快照 120 次/分' },
+    { name: 'gameRoom', limit: 10, windowMs: 60_000, desc: '联机棋类建房/加入 10 次/分' },
+    { name: 'gameMove', limit: 120, windowMs: 60_000, desc: '联机棋类走子/认输/判胜 120 次/分' },
+    { name: 'gamePoll', limit: 120, windowMs: 60_000, desc: '联机棋类取快照 120 次/分' },
   ] as const;
 
   for (const e of EXPECTED) {

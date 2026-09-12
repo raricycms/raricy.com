@@ -1,10 +1,13 @@
-// 五子棋联机接口的公共管道：鉴权与错误码 → HTTP 映射。
+// 联机棋类接口的公共管道：鉴权与错误码 → HTTP 映射。
 // （Next App Router 把 `_` 开头的文件当非路由，不会被当成 API 端点。）
+//
+// 【两种棋共用一份】五子棋与井字棋的权限档位、错误码集合完全一致 —— 各写一份
+// 必然出现「同一个错误在 A 游戏回 409、在 B 游戏回 400」这种静默的不一致。
 
 import { getCurrentUser, isCoreUser, type SafeUser } from '@/lib/auth';
+import type { RoomError } from '@/lib/board-shared';
 import { apiErr } from '@/lib/format';
 import { FOCUS_MODE_BLOCKED_TITLE } from '@/lib/focus-mode';
-import type { RoomError } from '@/lib/gomoku-room';
 
 export type GameUserResult = SafeUser | Response;
 
@@ -28,7 +31,7 @@ export async function requireGameUser(): Promise<GameUserResult> {
   return user;
 }
 
-/** 房间错误 → HTTP。集中一处，免得七条路由各写一份不一致的映射。 */
+/** 房间错误 → HTTP。集中一处，免得每种棋的七条路由各写一份不一致的映射。 */
 export function roomErrorResponse(error: RoomError): Response {
   switch (error) {
     case 'notFound':

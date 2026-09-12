@@ -39,7 +39,7 @@ async function asUser(browser: Browser, username: string) {
 async function createRoom(page: Page): Promise<string> {
   await page.goto('/game/gomoku?mode=online');
   await page.getByRole('button', { name: '创建房间' }).click();
-  await expect(page.locator('.gomoku-room-bar__code')).toBeVisible();
+  await expect(page.locator('.board-room-bar__code')).toBeVisible();
 
   const room = new URL(page.url()).searchParams.get('room');
   expect(room, '建房后 URL 里应带上房号（可分享链接的落点）').toBeTruthy();
@@ -76,21 +76,21 @@ test.describe('五子棋联机', () => {
 
       // B 打开 A 给的链接 → 自动入座执白
       await b.page.goto(`/game/gomoku?mode=online&room=${room}`);
-      await expect(b.page.locator('.gomoku-status')).toHaveText('等对手落子…');
-      await expect(a.page.locator('.gomoku-status')).toHaveText('轮到你走');
+      await expect(b.page.locator('.board-status')).toHaveText('等对手落子…');
+      await expect(a.page.locator('.board-status')).toHaveText('轮到你走');
 
       // A 在中心落一子
       const beforePaint = await b.page.locator('.gomoku-canvas').evaluate((c) => (c as HTMLCanvasElement).toDataURL());
       await clickCell(a.page, 7, 7);
 
       // B 端：状态变化 + 画布真的重绘了（棋子出现），全程没有刷新
-      await expect(b.page.locator('.gomoku-status')).toHaveText('轮到你走');
+      await expect(b.page.locator('.board-status')).toHaveText('轮到你走');
       const afterPaint = await b.page.locator('.gomoku-canvas').evaluate((c) => (c as HTMLCanvasElement).toDataURL());
       expect(afterPaint, 'B 的棋盘应已重绘出新落的子').not.toBe(beforePaint);
 
       // 轮到 B：B 落子后 A 端也应立刻可见
       await clickCell(b.page, 8, 8);
-      await expect(a.page.locator('.gomoku-status')).toHaveText('轮到你走');
+      await expect(a.page.locator('.board-status')).toHaveText('轮到你走');
     } finally {
       await a.ctx.close();
       await b.ctx.close();
@@ -103,7 +103,7 @@ test.describe('五子棋联机', () => {
     try {
       const room = await createRoom(a.page);
       await b.page.goto(`/game/gomoku?mode=online&room=${room}`);
-      await expect(b.page.locator('.gomoku-status')).toHaveText('等对手落子…');
+      await expect(b.page.locator('.board-status')).toHaveText('等对手落子…');
 
       // 黑（A）连成 (7,3)~(7,7)；白（B）在别处应着，四子不成五
       for (let i = 0; i < 5; i++) {
@@ -111,10 +111,10 @@ test.describe('五子棋联机', () => {
         if (i < 4) await clickCell(b.page, 9, 3 + i);
       }
 
-      await expect(a.page.locator('.gomoku-status')).toHaveText('你赢了！');
-      await expect(b.page.locator('.gomoku-status')).toHaveText('你输了');
+      await expect(a.page.locator('.board-status')).toHaveText('你赢了！');
+      await expect(b.page.locator('.board-status')).toHaveText('你输了');
       // 终局后不能再落子
-      await expect(b.page.locator('.gomoku-controls')).toContainText('再来一局');
+      await expect(b.page.locator('.board-controls')).toContainText('再来一局');
     } finally {
       await a.ctx.close();
       await b.ctx.close();
@@ -128,18 +128,18 @@ test.describe('五子棋联机', () => {
     try {
       const room = await createRoom(a.page);
       await b.page.goto(`/game/gomoku?mode=online&room=${room}`);
-      await expect(b.page.locator('.gomoku-status')).toHaveText('等对手落子…');
+      await expect(b.page.locator('.board-status')).toHaveText('等对手落子…');
 
       await c.page.goto(`/game/gomoku?mode=online&room=${room}`);
-      await expect(c.page.locator('.gomoku-status')).toHaveText('观战中');
-      await expect(c.page.locator('.gomoku-hint')).toContainText('观战');
-      await expect(c.page.locator('.gomoku-seat--spec')).toContainText('围观 1');
+      await expect(c.page.locator('.board-status')).toHaveText('观战中');
+      await expect(c.page.locator('.board-hint')).toContainText('观战');
+      await expect(c.page.locator('.board-seat--spec')).toContainText('围观 1');
 
       // 观众点击不产生任何落子：甲端状态不变
       const before = await c.page.locator('.gomoku-canvas').evaluate((x) => (x as HTMLCanvasElement).toDataURL());
       await clickCell(c.page, 7, 7);
       await a.page.waitForTimeout(500);
-      await expect(a.page.locator('.gomoku-status')).toHaveText('轮到你走');
+      await expect(a.page.locator('.board-status')).toHaveText('轮到你走');
       const after = await c.page.locator('.gomoku-canvas').evaluate((x) => (x as HTMLCanvasElement).toDataURL());
       expect(after, '观众的点击不该改变棋盘').toBe(before);
     } finally {
@@ -155,13 +155,13 @@ test.describe('五子棋联机', () => {
     try {
       const room = await createRoom(a.page);
       await b.page.goto(`/game/gomoku?mode=online&room=${room}`);
-      await expect(b.page.locator('.gomoku-status')).toHaveText('等对手落子…');
+      await expect(b.page.locator('.board-status')).toHaveText('等对手落子…');
 
       await b.page.reload();
 
-      // 还是白方（.gomoku-seat--white 里带「· 你」），没被挤成观众
-      await expect(b.page.locator('.gomoku-seat--white')).toContainText('你');
-      await expect(b.page.locator('.gomoku-hint')).toHaveCount(0);
+      // 还是白方（.board-seat[data-seat="white"] 里带「· 你」），没被挤成观众
+      await expect(b.page.locator('.board-seat[data-seat="white"]')).toContainText('你');
+      await expect(b.page.locator('.board-hint')).toHaveCount(0);
     } finally {
       await a.ctx.close();
       await b.ctx.close();
