@@ -70,7 +70,9 @@ describe('井字棋房间：建房与入座', () => {
 
     expect(snap.you).toEqual({ role: 'player', seat: 'black' });
     expect(snap.view.kind).toBe('tictactoe');
-    expect(snap.view.size).toBe(3);
+    // 尺寸是 rows/cols 而不是单个 size —— 中国象棋是 9×10，方形假设表达不了
+    expect(snap.view.rows).toBe(3);
+    expect(snap.view.cols).toBe(3);
     expect(snap.view.grid).toHaveLength(3);
     expect(snap.view.grid[0]).toHaveLength(3);
     expect(snap.view.status).toBe('waiting');
@@ -93,12 +95,12 @@ describe('井字棋房间：建房与入座', () => {
     const spec = unwrap(joinRoom(code, CAROL));
 
     expect(spec.you).toEqual({ role: 'spectator', seat: null });
-    expect(failWith(playMove(code, CAROL.id, 0, 0))).toBe('notASeat');
+    expect(failWith(playMove(code, CAROL.id, { path: [[0, 0]] }))).toBe('notASeat');
   });
 
   it('刷新页面回到原座（join 幂等，棋盘与 revision 都不动）', () => {
     const code = playingRoom();
-    unwrap(playMove(code, ALICE.id, 1, 1));
+    unwrap(playMove(code, ALICE.id, { path: [[1, 1]] }));
     const before = viewOf(code);
 
     const again = unwrap(joinRoom(code, ALICE));
@@ -112,39 +114,39 @@ describe('井字棋房间：建房与入座', () => {
 describe('井字棋房间：走子与胜负', () => {
   it('落子后轮次交替、lastMove 更新', () => {
     const code = playingRoom();
-    const after = unwrap(playMove(code, ALICE.id, 0, 0)).view;
+    const after = unwrap(playMove(code, ALICE.id, { path: [[0, 0]] })).view;
 
     expect(after.grid[0][0]).toBe(X);
     expect(after.turn).toBe(O);
-    expect(after.lastMove).toEqual({ row: 0, col: 0, player: X });
+    expect(after.lastMove).toEqual({ path: [[0, 0]], player: X });
   });
 
   it('抢别人的回合 → notYourTurn；已占位 → illegalMove', () => {
     const code = playingRoom();
-    expect(failWith(playMove(code, BOB.id, 0, 0))).toBe('notYourTurn');
+    expect(failWith(playMove(code, BOB.id, { path: [[0, 0]] }))).toBe('notYourTurn');
 
-    unwrap(playMove(code, ALICE.id, 0, 0));
-    expect(failWith(playMove(code, BOB.id, 0, 0))).toBe('illegalMove');
+    unwrap(playMove(code, ALICE.id, { path: [[0, 0]] }));
+    expect(failWith(playMove(code, BOB.id, { path: [[0, 0]] }))).toBe('illegalMove');
   });
 
   it('越界坐标 → illegalMove（3×3 的边界比五子棋紧得多）', () => {
     const code = playingRoom();
-    expect(failWith(playMove(code, ALICE.id, 0, BOARD_SIZE))).toBe('illegalMove');
-    expect(failWith(playMove(code, ALICE.id, -1, 0))).toBe('illegalMove');
+    expect(failWith(playMove(code, ALICE.id, { path: [[0, BOARD_SIZE]] }))).toBe('illegalMove');
+    expect(failWith(playMove(code, ALICE.id, { path: [[-1, 0]] }))).toBe('illegalMove');
   });
 
   it('三连即判胜：winner 落位、winningLine 是那三格', () => {
     const code = playingRoom();
     // X 走第一行，O 在第二行应着（两格不构成三连）
-    unwrap(playMove(code, ALICE.id, 0, 0));
-    unwrap(playMove(code, BOB.id, 1, 0));
-    unwrap(playMove(code, ALICE.id, 0, 1));
-    unwrap(playMove(code, BOB.id, 1, 1));
-    const view = unwrap(playMove(code, ALICE.id, 0, 2)).view;
+    unwrap(playMove(code, ALICE.id, { path: [[0, 0]] }));
+    unwrap(playMove(code, BOB.id, { path: [[1, 0]] }));
+    unwrap(playMove(code, ALICE.id, { path: [[0, 1]] }));
+    unwrap(playMove(code, BOB.id, { path: [[1, 1]] }));
+    const view = unwrap(playMove(code, ALICE.id, { path: [[0, 2]] })).view;
 
     expect(view.status).toBe('won');
     expect(view.winner).toBe('black');
-    expect(view.winningLine).toEqual([
+    expect(view.highlight).toEqual([
       [0, 0],
       [0, 1],
       [0, 2],
@@ -153,13 +155,13 @@ describe('井字棋房间：走子与胜负', () => {
 
   it('终局后不能再落子 → notPlaying', () => {
     const code = playingRoom();
-    unwrap(playMove(code, ALICE.id, 0, 0));
-    unwrap(playMove(code, BOB.id, 1, 0));
-    unwrap(playMove(code, ALICE.id, 0, 1));
-    unwrap(playMove(code, BOB.id, 1, 1));
-    unwrap(playMove(code, ALICE.id, 0, 2));
+    unwrap(playMove(code, ALICE.id, { path: [[0, 0]] }));
+    unwrap(playMove(code, BOB.id, { path: [[1, 0]] }));
+    unwrap(playMove(code, ALICE.id, { path: [[0, 1]] }));
+    unwrap(playMove(code, BOB.id, { path: [[1, 1]] }));
+    unwrap(playMove(code, ALICE.id, { path: [[0, 2]] }));
 
-    expect(failWith(playMove(code, BOB.id, 2, 2))).toBe('notPlaying');
+    expect(failWith(playMove(code, BOB.id, { path: [[2, 2]] }))).toBe('notPlaying');
   });
 
   it('满盘无三连 → 判和（9 手就走完一局，是井字棋最常见的结局）', () => {
@@ -174,12 +176,12 @@ describe('井字棋房间：走子与胜负', () => {
       [ALICE.id, 2, 1],
       [BOB.id, 2, 0],
     ];
-    for (const [who, r, c] of seq) expect(unwrap(playMove(code, who, r, c)).view.status).toBe('playing');
+    for (const [who, r, c] of seq) expect(unwrap(playMove(code, who, { path: [[r, c]] })).view.status).toBe('playing');
 
-    const last = unwrap(playMove(code, ALICE.id, 2, 2)).view;
+    const last = unwrap(playMove(code, ALICE.id, { path: [[2, 2]] })).view;
     expect(last.status).toBe('draw');
     expect(last.winner).toBeNull();
-    expect(last.winningLine).toEqual([]);
+    expect(last.highlight).toEqual([]);
   });
 });
 
@@ -219,7 +221,7 @@ describe('井字棋房间：认输 / 判胜 / 再来一局', () => {
     const code = unwrap(createRoom(ALICE, T0)).view.code;
     unwrap(joinRoom(code, BOB, T0));
 
-    unwrap(playMove(code, ALICE.id, 0, 0, T0 + 60_000));
+    unwrap(playMove(code, ALICE.id, { path: [[0, 0]] }, T0 + 60_000));
     sweepRooms(T0 + 60_001);
     expect(__roomCount()).toBe(1);
   });
@@ -231,7 +233,7 @@ describe('两种棋共用一张房号表：必须互不可见', () => {
 
     expect(failWith(getSnapshot(gomoku, ALICE.id))).toBe('notFound');
     expect(failWith(joinRoom(gomoku, BOB))).toBe('notFound');
-    expect(failWith(playMove(gomoku, ALICE.id, 0, 0))).toBe('notFound');
+    expect(failWith(playMove(gomoku, ALICE.id, { path: [[0, 0]] }))).toBe('notFound');
     expect(failWith(resign(gomoku, ALICE.id))).toBe('notFound');
   });
 

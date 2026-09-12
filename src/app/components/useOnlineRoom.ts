@@ -28,6 +28,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   FIRST,
+  type MoveInput,
   type RoomRole,
   type RoomSnapshot,
   type RoomStreamEvent,
@@ -55,7 +56,11 @@ export interface RoomPostResult {
 export interface RoomActions {
   create(): Promise<RoomPostResult>;
   join(code: string): Promise<RoomPostResult>;
-  move(code: string, row: number, col: number): Promise<RoomPostResult>;
+  /**
+   * 走一手。棋路的形状见 `MoveInput`（board-shared.ts）：落子类棋 `path` 只有一格，
+   * 走子类棋是起点→终点，连吃则更长。**整手一次提交**，没有半步状态。
+   */
+  move(code: string, move: MoveInput): Promise<RoomPostResult>;
   resign(code: string): Promise<RoomPostResult>;
   claim(code: string): Promise<RoomPostResult>;
   rematch(code: string): Promise<RoomPostResult>;
@@ -115,7 +120,7 @@ export interface OnlineRoom {
   canClaim: boolean;
   createRoom: () => Promise<void>;
   joinRoom: (raw: string) => Promise<void>;
-  playMove: (row: number, col: number) => void;
+  playMove: (move: MoveInput) => void;
   resign: () => void;
   claim: () => void;
   rematch: () => void;
@@ -229,8 +234,8 @@ export function useOnlineRoom(
   );
 
   const playMove = useCallback(
-    (row: number, col: number) => {
-      void run((c) => actions.move(c, row, col));
+    (move: MoveInput) => {
+      void run((c) => actions.move(c, move));
     },
     [run, actions]
   );

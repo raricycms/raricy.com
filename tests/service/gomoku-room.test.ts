@@ -143,7 +143,7 @@ describe('加入房间', () => {
 
   it('**幂等**：同一人重复加入拿回原席位，棋盘与 revision 都不动', () => {
     const code = playingRoom();
-    unwrap(playMove(code, ALICE.id, 7, 7));
+    unwrap(playMove(code, ALICE.id, { path: [[7, 7]] }));
 
     const before = getSnapshotView(code);
     const again = unwrap(joinRoom(code, ALICE));
@@ -188,58 +188,58 @@ describe('加入房间', () => {
 
 describe('走子校验矩阵', () => {
   it('房间不存在 → notFound', () => {
-    expect(failWith(playMove('zzzzzz', ALICE.id, 7, 7))).toBe('notFound');
+    expect(failWith(playMove('zzzzzz', ALICE.id, { path: [[7, 7]] }))).toBe('notFound');
   });
 
   it('观众走子 → notASeat（观众只能看）', () => {
     const code = playingRoom();
     unwrap(joinRoom(code, CAROL));
-    expect(failWith(playMove(code, CAROL.id, 7, 7))).toBe('notASeat');
+    expect(failWith(playMove(code, CAROL.id, { path: [[7, 7]] }))).toBe('notASeat');
   });
 
   it('非本房成员走子 → notASeat', () => {
     const code = playingRoom();
-    expect(failWith(playMove(code, 'u-stranger', 7, 7))).toBe('notASeat');
+    expect(failWith(playMove(code, 'u-stranger', { path: [[7, 7]] }))).toBe('notASeat');
   });
 
   it('还没开赛（等对手）→ notPlaying', () => {
     const created = unwrap(createRoom(ALICE));
-    expect(failWith(playMove(created.view.code, ALICE.id, 7, 7))).toBe('notPlaying');
+    expect(failWith(playMove(created.view.code, ALICE.id, { path: [[7, 7]] }))).toBe('notPlaying');
   });
 
   it('不是自己的回合 → notYourTurn', () => {
     const code = playingRoom();
     // 黑先，白方抢先走
-    expect(failWith(playMove(code, BOB.id, 7, 7))).toBe('notYourTurn');
+    expect(failWith(playMove(code, BOB.id, { path: [[7, 7]] }))).toBe('notYourTurn');
   });
 
   it('越界 → illegalMove', () => {
     const code = playingRoom();
-    expect(failWith(playMove(code, ALICE.id, -1, 0))).toBe('illegalMove');
-    expect(failWith(playMove(code, ALICE.id, 0, -1))).toBe('illegalMove');
-    expect(failWith(playMove(code, ALICE.id, BOARD_SIZE, 0))).toBe('illegalMove');
-    expect(failWith(playMove(code, ALICE.id, 0, BOARD_SIZE))).toBe('illegalMove');
+    expect(failWith(playMove(code, ALICE.id, { path: [[-1, 0]] }))).toBe('illegalMove');
+    expect(failWith(playMove(code, ALICE.id, { path: [[0, -1]] }))).toBe('illegalMove');
+    expect(failWith(playMove(code, ALICE.id, { path: [[BOARD_SIZE, 0]] }))).toBe('illegalMove');
+    expect(failWith(playMove(code, ALICE.id, { path: [[0, BOARD_SIZE]] }))).toBe('illegalMove');
   });
 
   it('非整数坐标 → illegalMove（JSON 里塞字符串/小数/NaN）', () => {
     const code = playingRoom();
-    expect(failWith(playMove(code, ALICE.id, 1.5, 0))).toBe('illegalMove');
-    expect(failWith(playMove(code, ALICE.id, 0, NaN))).toBe('illegalMove');
-    expect(failWith(playMove(code, ALICE.id, '7' as never, 7))).toBe('illegalMove');
+    expect(failWith(playMove(code, ALICE.id, { path: [[1.5, 0]] }))).toBe('illegalMove');
+    expect(failWith(playMove(code, ALICE.id, { path: [[0, NaN]] }))).toBe('illegalMove');
+    expect(failWith(playMove(code, ALICE.id, { path: [['7' as never, 7]] }))).toBe('illegalMove');
   });
 
   it('已占位 → illegalMove', () => {
     const code = playingRoom();
-    unwrap(playMove(code, ALICE.id, 7, 7));
-    expect(failWith(playMove(code, BOB.id, 7, 7))).toBe('illegalMove');
+    unwrap(playMove(code, ALICE.id, { path: [[7, 7]] }));
+    expect(failWith(playMove(code, BOB.id, { path: [[7, 7]] }))).toBe('illegalMove');
   });
 
   it('失败的一手不改变任何状态（轮次、revision、棋盘）', () => {
     const code = playingRoom();
     const before = getSnapshotView(code);
 
-    failWith(playMove(code, BOB.id, 7, 7)); // 不是他的回合
-    failWith(playMove(code, ALICE.id, 99, 99)); // 越界
+    failWith(playMove(code, BOB.id, { path: [[7, 7]] })); // 不是他的回合
+    failWith(playMove(code, ALICE.id, { path: [[99, 99]] })); // 越界
 
     const after = getSnapshotView(code);
     expect(after.turn).toBe(before.turn);
@@ -253,19 +253,19 @@ describe('走子成功', () => {
     const code = playingRoom();
     const before = getSnapshotView(code);
 
-    const after = unwrap(playMove(code, ALICE.id, 7, 7)).view;
+    const after = unwrap(playMove(code, ALICE.id, { path: [[7, 7]] })).view;
 
     expect(after.grid[7][7]).toBe(BLACK);
     expect(after.turn).toBe(WHITE);
-    expect(after.lastMove).toEqual({ row: 7, col: 7, player: BLACK });
+    expect(after.lastMove).toEqual({ path: [[7, 7]], player: BLACK });
     expect(after.revision).toBeGreaterThan(before.revision);
   });
 
   it('网格是副本：客户端拿到的那份改不动服务端棋盘', () => {
     const code = playingRoom();
-    const view = unwrap(playMove(code, ALICE.id, 7, 7)).view;
+    const view = unwrap(playMove(code, ALICE.id, { path: [[7, 7]] })).view;
 
-    view.grid[7][7] = 0 as never;
+    view.grid[7][7] = 0;
 
     expect(getSnapshotView(code).grid[7][7]).toBe(BLACK);
   });
@@ -277,8 +277,8 @@ describe('胜负判定', () => {
   /** 黑走 (7,4..8) 五连，白在别处应着。 */
   function blackWinsFive(code: string) {
     for (let i = 0; i < 5; i++) {
-      unwrap(playMove(code, ALICE.id, 7, 4 + i));
-      if (i < 4) unwrap(playMove(code, BOB.id, 9, 4 + i));
+      unwrap(playMove(code, ALICE.id, { path: [[7, 4 + i]] }));
+      if (i < 4) unwrap(playMove(code, BOB.id, { path: [[9, 4 + i]] }));
     }
   }
 
@@ -289,7 +289,7 @@ describe('胜负判定', () => {
     const view = getSnapshotView(code);
     expect(view.status).toBe('won');
     expect(view.winner).toBe('black');
-    expect(view.winningLine).toEqual([
+    expect(view.highlight).toEqual([
       [7, 4],
       [7, 5],
       [7, 6],
@@ -302,7 +302,7 @@ describe('胜负判定', () => {
     const code = playingRoom();
     blackWinsFive(code);
 
-    expect(failWith(playMove(code, BOB.id, 0, 0))).toBe('notPlaying');
+    expect(failWith(playMove(code, BOB.id, { path: [[0, 0]] }))).toBe('notPlaying');
   });
 
   it('长连（7 子）同样判胜 —— 靠最后补中间的空才走得出来', () => {
@@ -312,16 +312,16 @@ describe('胜负判定', () => {
     const code = playingRoom();
     const whiteFar = [0, 2, 4, 6, 8, 10]; // 白方在 0 列散着走，绝不凑成连
     for (const c of [3, 4, 5, 6, 8, 9]) {
-      unwrap(playMove(code, ALICE.id, 7, c));
-      unwrap(playMove(code, BOB.id, whiteFar.shift()!, 0));
+      unwrap(playMove(code, ALICE.id, { path: [[7, c]] }));
+      unwrap(playMove(code, BOB.id, { path: [[whiteFar.shift()!, 0]] }));
     }
     expect(getSnapshotView(code).status).toBe('playing'); // 还没连上
 
-    const view = unwrap(playMove(code, ALICE.id, 7, 7)).view;
+    const view = unwrap(playMove(code, ALICE.id, { path: [[7, 7]] })).view;
 
     expect(view.status).toBe('won');
     expect(view.winner).toBe('black');
-    expect(view.winningLine).toEqual([
+    expect(view.highlight).toEqual([
       [7, 3],
       [7, 4],
       [7, 5],
@@ -347,10 +347,10 @@ describe('胜负判定', () => {
     expect(blacks).toHaveLength(whites.length + 1); // 交替换手的前提
 
     for (let i = 0; i < blacks.length; i++) {
-      const blackMove = unwrap(playMove(code, ALICE.id, blacks[i][0], blacks[i][1]));
+      const blackMove = unwrap(playMove(code, ALICE.id, { path: [[blacks[i][0], blacks[i][1]]] }));
       expect(blackMove.view.status).toBe(i === blacks.length - 1 ? 'draw' : 'playing');
       if (i < whites.length) {
-        unwrap(playMove(code, BOB.id, whites[i][0], whites[i][1]));
+        unwrap(playMove(code, BOB.id, { path: [[whites[i][0], whites[i][1]]] }));
       }
     }
 
@@ -485,7 +485,7 @@ describe('对手掉线判胜', () => {
 describe('再来一局', () => {
   it('双方各点一次才重开；重开后棋盘清空、黑先，但**席位与 revision 不重置**', () => {
     const code = playingRoom();
-    unwrap(playMove(code, ALICE.id, 7, 7));
+    unwrap(playMove(code, ALICE.id, { path: [[7, 7]] }));
     unwrap(resign(code, BOB.id));
     const beforeRematch = getSnapshotView(code);
 
@@ -574,7 +574,7 @@ describe('房间回收', () => {
     const off = connect(code, ALICE.id, T0);
 
     const mid = T0 + __constants.IDLE_TTL_MS - 1;
-    unwrap(playMove(code, ALICE.id, 7, 7, mid));
+    unwrap(playMove(code, ALICE.id, { path: [[7, 7]] }, mid));
 
     sweepRooms(mid + 1000); // 距上次活动才 1 秒
     expect(__roomCount()).toBe(1);

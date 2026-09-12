@@ -17,8 +17,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useCallback } from 'react';
-import { markOf, O, X } from '@/lib/tictactoe-rules';
-import OnlineRoomPanel from './OnlineRoomPanel';
+import { asTicTacToeGrid, asTicTacToeMove, markOf, O, X } from '@/lib/tictactoe-rules';
+import OnlineRoomPanel, { roomEndNote } from './OnlineRoomPanel';
 import TicTacToeBoard from './TicTacToeBoard';
 import { CLAIM_AFTER_MS, postJson, useOnlineRoom, type RoomActions } from './useOnlineRoom';
 
@@ -29,7 +29,8 @@ import { CLAIM_AFTER_MS, postJson, useOnlineRoom, type RoomActions } from './use
 const ACTIONS: RoomActions = {
   create: () => postJson('/api/game/tictactoe/rooms'),
   join: (code) => postJson(`/api/game/tictactoe/rooms/${code}/join`),
-  move: (code, row, col) => postJson(`/api/game/tictactoe/rooms/${code}/moves`, { row, col }),
+  // 落子类棋：path 只有终点一格，没有起点
+  move: (code, move) => postJson(`/api/game/tictactoe/rooms/${code}/moves`, move),
   resign: (code) => postJson(`/api/game/tictactoe/rooms/${code}/resign`),
   claim: (code) => postJson(`/api/game/tictactoe/rooms/${code}/claim`),
   rematch: (code) => postJson(`/api/game/tictactoe/rooms/${code}/rematch`),
@@ -64,7 +65,8 @@ export default function OnlineTicTacToe({ initialRoom = null }: OnlineTicTacToeP
   const onCellClick = useCallback(
     (row: number, col: number) => {
       if (!canPlay) return;
-      room.playMove(row, col);
+      // 落子类棋：棋盘上只有一格可报，没有"从哪来"
+      room.playMove({ path: [[row, col]] });
     },
     [canPlay, room]
   );
@@ -89,7 +91,9 @@ export default function OnlineTicTacToe({ initialRoom = null }: OnlineTicTacToeP
     if (view.status === 'waiting') return '等待对手加入…';
     if (view.status === 'won') {
       if (!view.winner) return '对局结束';
-      return isPlayer && view.winner === mySeat ? '你赢了！' : '你输了';
+      const iWon = isPlayer && view.winner === mySeat;
+      // 三连判胜没有附加说明；认输 / 掉线由房间层的 endReason 补一句括注
+      return (iWon ? '你赢了！' : '你输了') + roomEndNote(view.endReason, iWon);
     }
     if (view.status === 'draw') return '平局！';
     if (!isPlayer) return '观战中';
@@ -151,10 +155,11 @@ export default function OnlineTicTacToe({ initialRoom = null }: OnlineTicTacToeP
         </button>
       </div>
 
+      {/* 收窄：房间层下发的是 number[][]，棋盘只认 0|X|O（见 tictactoe-rules 的 asTicTacToeGrid） */}
       <TicTacToeBoard
-        grid={view.grid}
-        lastMove={view.lastMove}
-        winningLine={view.winningLine.length > 0 ? view.winningLine : null}
+        grid={asTicTacToeGrid(view.grid)}
+        lastMove={asTicTacToeMove(view.lastMove)}
+        winningLine={view.highlight.length > 0 ? view.highlight : null}
         onCellClick={onCellClick}
         disabled={!canPlay}
       />

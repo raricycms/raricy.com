@@ -140,3 +140,28 @@ export class TicTacToeBoard {
     return this.moveHistory.slice();
   }
 }
+
+// ─── 房间层 DTO ↔ 本模块口径 的收窄 ─────────────────────────────────────────
+// 【为什么必须有这一步】房间层的 `grid` 是 `number[][]`（它对所有棋一视同仁，
+// 不解释格子里放的是什么，见 board-shared.ts），而本模块的 `Cell` 只有 0/X/O。
+// TS 不会把 `number` 收回成 `0|1|2`，**更不能靠 as 硬转** —— 渲染层拿它去查
+// `markOf`，一个野生数字会走到不属于它的分支。所以在这里显式收窄：不认识的取值
+// 一律当空格。
+//
+// 放在本模块（而不是组件里）是因为编码是本模块定的；参数用结构化的 `path` 形状
+// 而不是 import board-shared 的类型 —— 本模块零依赖，不得引入任何 import。
+
+/** 把房间层下发的棋盘收窄成井字棋的 `0|X|O` 棋盘；不认识的取值当空格。 */
+export function asTicTacToeGrid(grid: number[][]): Cell[][] {
+  return grid.map((row) => row.map((c) => (c === X || c === O ? c : EMPTY)));
+}
+
+/** 把房间层的 lastMove 收窄成井字棋的 `{row,col,player}`；空路径返回 null。 */
+export function asTicTacToeMove(move: {
+  path: Array<[number, number]>;
+  player: Player;
+} | null): Move | null {
+  if (!move || move.path.length === 0) return null;
+  const [row, col] = move.path[move.path.length - 1];
+  return { row, col, player: move.player };
+}

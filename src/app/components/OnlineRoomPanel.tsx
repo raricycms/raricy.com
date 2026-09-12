@@ -12,7 +12,25 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import Link from 'next/link';
+import type { EndReason } from '@/lib/board-shared';
 import { FOCUS_MODE_SETTINGS_HREF } from '@/lib/focus-mode';
+
+/**
+ * 「怎么结束的」→ 一句括注，接在「你赢了！/你输了」后面。
+ *
+ * 【为什么要有它】认输与掉线判胜在 RoomView 里同样是 `winner` 非空、`highlight` 为空，
+ * 客户端光看这两个字段分不出「将死」与「对手认输」—— 此前只能靠"highlight 是不是
+ * 空的"这种没人写下来的约定去猜，而一旦某款棋的将死恰好也不给 highlight，
+ * 就会显示成「你赢了（对手认输）」。现在由服务端给出的 endReason 说了算。
+ *
+ * 【只覆盖房间层那两个】棋盘自身的终局原因（将死 / 逼和 / 三次重复 / 长将…）
+ * 各棋文案不同，由各棋的组件自己写 —— 这里返回空串，接上去不影响。
+ */
+export function roomEndNote(reason: EndReason | null, iWon: boolean): string {
+  if (reason === 'resign') return iWon ? '（对手认输）' : '（你已认输）';
+  if (reason === 'abandoned') return iWon ? '（对手掉线）' : '（你掉线了）';
+  return '';
+}
 
 export interface OnlineRoomPanelProps {
   title: string;

@@ -167,3 +167,29 @@ export class GomokuBoard {
     return result;
   }
 }
+
+// ─── 房间层 DTO ↔ 本模块口径 的收窄 ─────────────────────────────────────────
+// 【为什么必须有这一步】房间层的 `grid` 是 `number[][]`（它对所有棋一视同仁，
+// 不解释格子里放的是什么，见 board-shared.ts），而本模块的 `Cell` 只有 0/1/2。
+// TS 不会把 `number` 收回成 `0|1|2`，**更不能靠 as 硬转** —— GomokuCanvas 的绘制
+// 是 `cell === BLACK ? 黑子 : 白子`，一个野生数字会被静默画成白棋。
+// 所以在这里显式收窄：不认识的取值一律当空格，宁可少画一个子，也不凭空多一个。
+//
+// 放在本模块（而不是各组件里）是因为**编码是本模块定的** —— 换编码时这里跟着改，
+// 不必去找散落各处的转换。参数用结构化的 `path` 形状而不是 import board-shared 的
+// 类型：本模块零依赖，不得引入任何 import。
+
+/** 把房间层下发的棋盘收窄成五子棋的 `0|1|2` 棋盘；不认识的取值当空格。 */
+export function asGomokuGrid(grid: number[][]): Cell[][] {
+  return grid.map((row) => row.map((c) => (c === BLACK || c === WHITE ? c : EMPTY)));
+}
+
+/** 把房间层的 lastMove 收窄成五子棋的 `{row,col,player}`；空路径返回 null。 */
+export function asGomokuMove(move: {
+  path: Array<[number, number]>;
+  player: Player;
+} | null): Move | null {
+  if (!move || move.path.length === 0) return null;
+  const [row, col] = move.path[move.path.length - 1];
+  return { row, col, player: move.player };
+}

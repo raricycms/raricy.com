@@ -16,9 +16,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useCallback } from 'react';
-import { BLACK } from '@/lib/gomoku-rules';
+import { BLACK, asGomokuGrid, asGomokuMove } from '@/lib/gomoku-rules';
 import GomokuCanvas from './GomokuCanvas';
-import OnlineRoomPanel from './OnlineRoomPanel';
+import OnlineRoomPanel, { roomEndNote } from './OnlineRoomPanel';
 import { CLAIM_AFTER_MS, postJson, useOnlineRoom, type RoomActions } from './useOnlineRoom';
 
 /**
@@ -28,7 +28,8 @@ import { CLAIM_AFTER_MS, postJson, useOnlineRoom, type RoomActions } from './use
 const ACTIONS: RoomActions = {
   create: () => postJson('/api/game/gomoku/rooms'),
   join: (code) => postJson(`/api/game/gomoku/rooms/${code}/join`),
-  move: (code, row, col) => postJson(`/api/game/gomoku/rooms/${code}/moves`, { row, col }),
+  // 落子类棋：path 只有终点一格，没有起点
+  move: (code, move) => postJson(`/api/game/gomoku/rooms/${code}/moves`, move),
   resign: (code) => postJson(`/api/game/gomoku/rooms/${code}/resign`),
   claim: (code) => postJson(`/api/game/gomoku/rooms/${code}/claim`),
   rematch: (code) => postJson(`/api/game/gomoku/rooms/${code}/rematch`),
@@ -64,7 +65,8 @@ export default function OnlineGomoku({ initialRoom = null }: OnlineGomokuProps) 
   const onCellClick = useCallback(
     (row: number, col: number) => {
       if (!canPlay) return;
-      room.playMove(row, col);
+      // 落子类棋：棋盘上只有一格可报，没有"从哪来"
+      room.playMove({ path: [[row, col]] });
     },
     [canPlay, room]
   );
@@ -89,7 +91,9 @@ export default function OnlineGomoku({ initialRoom = null }: OnlineGomokuProps) 
     if (view.status === 'waiting') return '等待对手加入…';
     if (view.status === 'won') {
       if (!view.winner) return '对局结束';
-      return isPlayer && view.winner === mySeat ? '你赢了！' : '你输了';
+      const iWon = isPlayer && view.winner === mySeat;
+      // 五连判胜没有附加说明；认输 / 掉线由房间层的 endReason 补一句括注
+      return (iWon ? '你赢了！' : '你输了') + roomEndNote(view.endReason, iWon);
     }
     if (view.status === 'draw') return '平局！';
     if (!isPlayer) return '观战中';
@@ -151,10 +155,11 @@ export default function OnlineGomoku({ initialRoom = null }: OnlineGomokuProps) 
         </button>
       </div>
 
+      {/* 收窄：房间层下发的是 number[][]，画布只认 0|1|2（见 gomoku-rules 的 asGomokuGrid） */}
       <GomokuCanvas
-        grid={view.grid}
-        lastMove={view.lastMove}
-        winningLine={view.winningLine.length > 0 ? view.winningLine : null}
+        grid={asGomokuGrid(view.grid)}
+        lastMove={asGomokuMove(view.lastMove)}
+        winningLine={view.highlight.length > 0 ? view.highlight : null}
         version={view.revision}
         onCellClick={onCellClick}
         disabled={!canPlay}

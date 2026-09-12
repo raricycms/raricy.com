@@ -3,18 +3,27 @@
 //
 // 【服务端权威】联网之后客户端不可信（否则直接 POST 一句「我赢了」就行）。
 // 棋盘、轮次、胜负全部由这里持有；客户端只渲染服务端下发的 grid。
-// 规则跑的是**各游戏自己的 rules 模块**（gomoku-rules / tictactoe-rules），
-// 而且前端与服务端共用同一份 —— 不存在两份判定。
+// 规则跑的是**各游戏自己的 rules 模块**，而且前端与服务端共用同一份 ——
+// 不存在两份判定。
 //
 // 【校验与落子之间不得出现 await】单线程 Node + 无 await = 临界区天然原子。
-// 日后若为了「把棋谱落库」在 playMove 里插一个 await，两个并发请求会同时通过
-// 轮次检查，同一格被落两次子 —— 这类 bug 只在生产并发下复现，本地怎么点都没事。
+// 这条**由接口形状保证，不只靠注释**：棋盘只暴露一个 `submit()`，解析、判合法、
+// 落子、判终局一次完成，房间层没有"先校验再落子"两步可拆，也就没有地方能插进
+// 一个 await（"顺手把棋谱落个库"是最容易发生的那次）。半步状态同理不存在：
+// 多步棋（跳棋连吃）整条路径一次提交。
+// 见 docs/architecture.md §6.9。
+//
+// 【两类棋共用这一层】落子类（五子棋 / 井字棋）与走子类（象棋 / 国际象棋 /
+// 国际跳棋）的房间生命周期一字不差：建房 / 入座 / 观战 / 掉线判胜 / 再来一局 /
+// TTL 回收 / revision 语义。差别只有「一手棋怎么表达、怎么判终局」，那条轴由
+// RoomBoard 抽象掉（见其注释）。**别在这里按 kind 分支** —— 一旦有第一个分支，
+// 后面每加一款棋都会在这里多一个 if，房间层就退化成五个游戏的大杂烩。
 //
 // 【状态放进程内存】与 chat-bus 同一前提：单进程部署，重启即失、多实例不共享。
 // 这是**已知限制不是 bug**（见 docs/architecture.md §10）。房间没进数据库是有意的 ——
 // 一局棋是短命会话，为它加表要连带迁移、清理与软删除口径，收益不抵成本。
 //
-// 【两种棋共用一张表】房号因此全局唯一，`kind` 字段标明归属；每条对外操作都要求
+// 【多种棋共用一张表】房号因此全局唯一，`kind` 字段标明归属；每条对外操作都要求
 // 调用方声明自己期望的 kind，对不上按 notFound 处理 —— 井字棋的路由拿不到五子棋的
 // 房间，也不会泄露「这个房号存在，只是不属于你」。
 //
@@ -26,8 +35,12 @@ import { closeRoom, connectionsIn, publishToRoom, roomConnections } from './game
 import {
   FIRST,
   SECOND,
+  isIntegerSquare,
   type Cell,
+  type EndReason,
   type Move,
+  type MoveInput,
+  type Outcome,
   type Player,
   type RoomError,
   type RoomKind,
@@ -39,6 +52,7 @@ import {
   type RoomView,
   type Seat,
   type SeatView,
+  type Square,
   otherSeat,
   seatOfPlayer,
   ROOM_ALPHABET,
@@ -66,30 +80,42 @@ export interface RoomUser {
 
 /**
  * 房间层用得上的棋盘能力。**结构性接口**：各游戏的 Board 类按这个形状写即可，
- * 不必 implements（五子棋的 GomokuBoard 就是这么直接满足的）。
+ * 不必 implements。
  *
- * 刻意只列房间真正调用到的七个方法 —— 游戏自己的增值方法（五子棋 AI 的
- * getCandidateCells、悔棋用的 undo）留在各自的 rules 模块，不污染这里。
+ * 【为什么只有 submit 一个动作方法】把"校验 / 落子 / 判终局"合成一次调用：
+ *   • 原子性从"注释约定"变成"接口上做不到别的"（见文件头）；
+ *   • 走子类的合法性判定本来就要看**整个局面**（走后不能自将、飞将、易位穿将），
+ *     `isValidMove` 与 `applyMove` 拆开只会诱使实现者把 `inCheck` 之类的结果缓存
+ *     在两步之间 —— 那个缓存既容易过期，又会在浏览器里跑（同一份规则前端也用）；
+ *   • 非法着法有了统一的出口：返回 null 且**保证棋盘没被改动**，房间层不必关心
+ *     实现者是不是先落子后判错。
+ *
+ * 【submit 的契约】对**任何**输入都不抛异常；不合法返回 null 且不改变棋盘。
+ * 这条由各棋的规则测试兜（见 tests/unit/*-rules.test.ts 的 fuzz 用例）——
+ * 抛异常会让房间停在"棋盘改了但轮次没翻"的永久错位状态上。
+ *
+ * 【reset 的语义】回到开局。走子类棋必须连易位权利 / 吃过路兵目标格 / 半回合计数 /
+ * 重复局面历史一起清掉 —— 漏掉的表现是"再来一局后还能易位"。房间层自己不用它
+ * （再来一局是换一张新棋盘，见 requestRematch），单机的"新对局"用。
  */
 export interface RoomBoard {
-  readonly size: number;
+  readonly rows: number;
+  readonly cols: number;
   grid: Cell[][];
+  /** 回到开局。见上面 reset 的语义。 */
   reset(): void;
-  isValidMove(row: number, col: number): boolean;
-  placeStone(row: number, col: number, player: Player): boolean;
-  /** 在 (row,col) 落子后是否形成本游戏的胜型；line 是高亮的格子。 */
-  checkWinAt(
-    row: number,
-    col: number,
-    player: Player
-  ): { won: boolean; line: Array<[number, number]> };
-  isFull(): boolean;
+  /**
+   * 走一手。`player` 是**走这一手的人**（房间层已校验过轮次）。
+   * 判终局要判的是**对手**还有没有解 —— 别拿"当前该谁走"去判，会差一步。
+   */
+  submit(player: Player, move: MoveInput): Outcome | null;
   getLastMove(): Move | null;
 }
 
 /**
- * 一种棋的规格：房间层只需要知道怎么造一张空棋盘，别的（边长、胜型）由棋盘
- * 自己带着 —— 与其把 winLength 之类的参数透传一路，不如让棋盘自己说了算。
+ * 一种棋的规格：房间层只需要知道怎么造一张空棋盘，别的（尺寸、走法、胜负）由棋盘
+ * 自己带着 —— 与其把 rows/cols 之类的参数透传一路，不如让棋盘自己说了算。
+ * （`createBoard` 同时是"再来一局"的实现：换一张新棋盘，比 reset 少一整类漏字段的 bug。）
  */
 export interface GameDefinition {
   kind: RoomKind;
@@ -110,7 +136,9 @@ interface Room {
   status: RoomStatus;
   turn: Player;
   winner: Seat | null;
-  winningLine: Array<[number, number]>;
+  endReason: EndReason | null;
+  highlight: Square[];
+  check: Square | null;
   seats: { black: SeatHolder | null; white: SeatHolder | null };
   spectators: Set<string>;
   rematchVotes: Set<string>;
@@ -158,11 +186,14 @@ function viewOf(room: Room, now: number): RoomView {
     status: room.status,
     turn: room.turn,
     winner: room.winner,
-    winningLine: room.winningLine.map(([r, c]) => [r, c] as [number, number]),
+    endReason: room.endReason,
+    highlight: room.highlight.map(([r, c]) => [r, c] as Square),
     // 逐行浅拷贝：客户端拿到的那份改不动服务端棋盘
     grid: room.board.grid.map((row) => row.slice()),
-    size: room.board.size,
+    rows: room.board.rows,
+    cols: room.board.cols,
     lastMove: room.board.getLastMove(),
+    check: room.check,
     seats: { black: seatView(room.seats.black, now), white: seatView(room.seats.white, now) },
     spectatorCount: room.spectators.size,
     rematchVotes: room.rematchVotes.size,
@@ -194,6 +225,44 @@ function roomOf(def: GameDefinition, code: string): Room | null {
   return room;
 }
 
+/**
+ * 把客户端发来的东西收成一份形状可信的 MoveInput；形状不对返回 null。
+ *
+ * 【这里只管"像不像一手棋"，不管"这手棋合不合法"】坐标是不是整数、path 是不是
+ * 非空数组、promotion 是不是单个字符 —— 这些不依赖任何棋的规则，收在一处免得
+ * 五条路由各写一份（漏掉的那条在线上是 500 而不是干净的 400）。
+ * 走法本身（挡子、自将、飞将、最大吃子…）一律交给各棋的 `submit`。
+ *
+ * 【整数校验必须留在这里】五子棋的 `isValidMove` 只判边界不判整数，
+ * 而井字棋的自己判了 —— 依赖各棋自觉就会漏。tests/service/gomoku-room.test.ts
+ * 有 `1.5` / `NaN` / `'7'` 三条钉子钉着这个行为。
+ */
+function sanitizeMoveInput(board: RoomBoard, raw: unknown): MoveInput | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const input = raw as { path?: unknown; promotion?: unknown };
+
+  if (!Array.isArray(input.path)) return null;
+  // 上限 = 盘面格子数：连吃再长也不可能超过"每步吃掉一个子"。给了上限就不必担心
+  // 有人拿一个十万项的数组来撑爆内存 —— 校验本身也要是廉价的。
+  if (input.path.length === 0 || input.path.length > board.rows * board.cols) return null;
+
+  const path: Square[] = [];
+  for (const sq of input.path) {
+    if (!isIntegerSquare(sq)) return null;
+    path.push([sq[0], sq[1]]);
+  }
+
+  let promotion: string | undefined;
+  if (input.promotion != null) {
+    // 只挡形状（单个字符）。**字符本身认不认识交给 rules 模块** —— 它才知道
+    // 这一手是不是升变、"k" 这种乱填该按非法拒掉。
+    if (typeof input.promotion !== 'string' || input.promotion.length !== 1) return null;
+    promotion = input.promotion;
+  }
+
+  return { path, ...(promotion ? { promotion } : {}) };
+}
+
 /** 房号生成：随机取 6 位，撞了就重试。 */
 function generateCode(): string | null {
   for (let attempt = 0; attempt < 50; attempt++) {
@@ -204,6 +273,23 @@ function generateCode(): string | null {
     if (!state.rooms.has(code)) return code;
   }
   return null; // 理论上到不了（31^6 的空间 + 200 房上限）
+}
+
+/**
+ * 终局落账。三条终局路径（走子判终局 / 认输 / 掉线判胜）共用，
+ * 免得某一条忘了清 check 或忘了写 endReason。
+ */
+function settle(
+  room: Room,
+  status: 'won' | 'draw',
+  opts: { winner: Seat | null; reason: EndReason; highlight: Square[] }
+): void {
+  room.status = status;
+  room.winner = opts.winner;
+  room.endReason = opts.reason;
+  room.highlight = opts.highlight;
+  // 将军与终局互斥：分出结果之后 check 不再有意义
+  room.check = null;
 }
 
 // ── 对外操作 ────────────────────────────────────────────────────────────────
@@ -226,7 +312,9 @@ export function createRoom(
     status: 'waiting',
     turn: FIRST,
     winner: null,
-    winningLine: [],
+    endReason: null,
+    highlight: [],
+    check: null,
     seats: { black: { userId: user.id, name: user.name, disconnectedAt: now }, white: null },
     // ↑ 建房者此刻还没连上 SSE，先当掉线；SSE 一订阅就 refreshPresence 转在线。
     //   这样「建完房没连上就跑了」不会留下一个显示在线的假席位。
@@ -272,7 +360,7 @@ export function joinRoom(
       room.seats[free] = { userId: user.id, name: user.name, disconnectedAt: now };
       if (room.seats.black && room.seats.white) {
         room.status = 'playing';
-        // 双方就位，后手方等先手方落子
+        // 双方就位，后手方等先手方走子
         room.turn = FIRST;
       }
       touch(room, now);
@@ -302,15 +390,14 @@ export function getSnapshot(
 }
 
 /**
- * 走子。**校验与落子之间不得 await**（见文件头）。
- * 校验顺序刻意从便宜到贵：房间 → 在座 → 对局中 → 轮次 → 合法性。
+ * 走子。**从校验到落子到判终局是棋盘的 `submit` 一次调用，中间不可能有 await。**
+ * 房间层自己只做最便宜的几道闸：房间 → 在座 → 对局中 → 轮次 → 形状。
  */
 export function playMove(
   def: GameDefinition,
   code: string,
   userId: string,
-  row: number,
-  col: number,
+  rawMove: MoveInput,
   now = Date.now()
 ): RoomResult<RoomSnapshot> {
   const room = roomOf(def, code);
@@ -323,22 +410,21 @@ export function playMove(
 
   if (seat !== seatOfPlayer(room.turn)) return { ok: false, error: 'notYourTurn' };
 
-  if (!Number.isInteger(row) || !Number.isInteger(col)) return { ok: false, error: 'illegalMove' };
-  if (!room.board.isValidMove(row, col)) return { ok: false, error: 'illegalMove' };
+  const move = sanitizeMoveInput(room.board, rawMove);
+  if (!move) return { ok: false, error: 'illegalMove' };
 
-  // ── 临界区开始：到 publish 为止不得出现 await ──
-  room.board.placeStone(row, col, room.turn);
+  // ── 临界区开始：一次调用走完校验与落子，到 publish 为止不得出现 await ──
+  const outcome = room.board.submit(room.turn, move);
+  if (!outcome) return { ok: false, error: 'illegalMove' }; // 契约：此时棋盘未被改动
 
-  const win = room.board.checkWinAt(row, col, room.turn);
-  if (win.won) {
-    room.status = 'won';
-    room.winner = seat;
-    room.winningLine = win.line;
-  } else if (room.board.isFull()) {
-    room.status = 'draw';
-    room.winner = null;
-    room.winningLine = [];
+  if (outcome.status === 'won') {
+    settle(room, 'won', { winner: seat, reason: outcome.reason, highlight: outcome.highlight });
+  } else if (outcome.status === 'draw') {
+    settle(room, 'draw', { winner: null, reason: outcome.reason, highlight: [] });
   } else {
+    room.endReason = null;
+    room.highlight = [];
+    room.check = outcome.check;
     room.turn = room.turn === FIRST ? SECOND : FIRST;
   }
   // ── 临界区结束 ──
@@ -362,9 +448,7 @@ export function resign(
   if (!seat) return { ok: false, error: 'notASeat' };
   if (room.status !== 'playing') return { ok: false, error: 'notPlaying' };
 
-  room.status = 'won';
-  room.winner = otherSeat(seat);
-  room.winningLine = [];
+  settle(room, 'won', { winner: otherSeat(seat), reason: 'resign', highlight: [] });
   touch(room, now);
   publishState(room, now);
   return { ok: true, value: snapshotFor(room, userId, now) };
@@ -395,9 +479,7 @@ export function claimAbandoned(
     return { ok: false, error: 'notDisconnectedLongEnough' };
   }
 
-  room.status = 'won';
-  room.winner = seat;
-  room.winningLine = [];
+  settle(room, 'won', { winner: seat, reason: 'abandoned', highlight: [] });
   touch(room, now);
   publishState(room, now);
   return { ok: true, value: snapshotFor(room, userId, now) };
@@ -405,6 +487,13 @@ export function claimAbandoned(
 
 /**
  * 投票「再来一局」。双方各点一次即重开。
+ *
+ * 【换一张新棋盘，而不是 board.reset()】走子类棋的"开局"不止是格子摆回去：
+ * 易位权利、吃过路兵目标格、半回合计数、重复局面历史都在 grid 之外。
+ * 靠 reset 逐个清，漏一个就是"再来一局后还能易位"这种只有下到特定局面才暴露的
+ * 静默错误；而 `createBoard()` 天然给出一个干净开局，一个字段都不会漏。
+ * （单机的"新对局"仍走 reset —— 那条路径由各棋的规则测试盯着 reset 与全新棋盘等价。）
+ *
  * **保持同色不换先** —— 换先要引入席位与颜色的映射，边界情况多而收益为零。
  */
 export function requestRematch(
@@ -425,11 +514,13 @@ export function requestRematch(
   room.rematchVotes.add(userId);
 
   if (room.rematchVotes.size >= 2) {
-    room.board.reset();
+    room.board = def.createBoard();
     room.status = 'playing';
     room.turn = FIRST;
     room.winner = null;
-    room.winningLine = [];
+    room.endReason = null;
+    room.highlight = [];
+    room.check = null;
     room.rematchVotes.clear();
   }
   // revision 继续递增，**不重置** —— 重置会让客户端的「丢弃过期状态」判断失效
@@ -482,8 +573,8 @@ export function makeRoomApi(def: GameDefinition) {
     joinRoom: (code: string, user: RoomUser, now?: number) => joinRoom(def, code, user, now),
     getSnapshot: (code: string, userId: string, now?: number) =>
       getSnapshot(def, code, userId, now),
-    playMove: (code: string, userId: string, row: number, col: number, now?: number) =>
-      playMove(def, code, userId, row, col, now),
+    playMove: (code: string, userId: string, move: MoveInput, now?: number) =>
+      playMove(def, code, userId, move, now),
     resign: (code: string, userId: string, now?: number) => resign(def, code, userId, now),
     claimAbandoned: (code: string, userId: string, now?: number) =>
       claimAbandoned(def, code, userId, now),
