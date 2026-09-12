@@ -85,6 +85,15 @@ export function roomConnections(roomCode: string): number {
   return state.subs.get(roomCode)?.size ?? 0;
 }
 
+/**
+ * 该用户还能不能再建连接。
+ * 给 SSE 路由在建流**之前**判定用 —— 等 subscribe 返回 null 时流已经建好了，
+ * 那时只能关掉流让 EventSource 打转，回不了正经的 429。
+ */
+export function canSubscribe(viewerId: string): boolean {
+  return connectionsOf(viewerId) < MAX_CONNECTIONS_PER_VIEWER;
+}
+
 /** 某用户在全部房间的连接总数（并发上限用）。 */
 function connectionsOf(viewerId: string): number {
   let n = 0;
