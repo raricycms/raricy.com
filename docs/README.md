@@ -20,6 +20,7 @@ raricy.com 的全部文档。分两层：**`guide/` 给玩家和内容创作者*
 | `guide/内容引用语法指南.md` | `[@<内容ID>]` 在博客里嵌入内容 |
 | `guide/story-module.md` | 故事模块：文件结构 / 合集嵌套 / URL |
 | `guide/atamas-game.md` | ATÅMAS 圆盘组合游戏玩法 |
+| `guide/gomoku-online.md` | 五子棋联机对战：开房、邀请、掉线判胜、观战 |
 
 ★ = 被站内页面渲染（`/clipboard/guide` · `/image/guide` · `/vote/guide` · `/tool/cattca-guide`）
 
