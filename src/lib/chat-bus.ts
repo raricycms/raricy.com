@@ -14,7 +14,12 @@
 // 因此这里**不需要**消息队列或重试，可靠性的兜底在「重连补齐」那一层。
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { sseFrame } from './sse';
 import type { ChatStreamEvent } from './chat-shared';
+
+// sseFrame 的实现已抽到 ./sse（与游戏 SSE 共用同一份帧格式与响应头常量）。
+// 这里重导出，保持既有 import 路径（含 tests/service/chat-bus.test.ts）不变。
+export { sseFrame };
 
 /** 心跳间隔：防中间设备（反代 / NAT / 运营商）把空闲长连接掐掉。 */
 const HEARTBEAT_MS = 25_000;
@@ -38,12 +43,6 @@ interface BusState {
 
 const globalForBus = globalThis as unknown as { __chatBus?: BusState };
 const state: BusState = (globalForBus.__chatBus ??= { subs: new Map(), timer: null });
-
-/** 组装一帧 SSE。id 只给消息事件用（浏览器靠它回传 Last-Event-ID 做断线补齐）。 */
-export function sseFrame(event: ChatStreamEvent, id?: number): string {
-  const idLine = id != null ? `id: ${id}\n` : '';
-  return `${idLine}data: ${JSON.stringify(event)}\n\n`;
-}
 
 function deliverOne(sub: ChatSubscriber, chunk: string): void {
   let ok = true;

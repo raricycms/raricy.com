@@ -5,12 +5,9 @@
 // 发消息仍走 POST /api/chat/channels/:id/messages —— 单向推送足够，且限频/校验
 // 那一整套逻辑一行不用改。
 //
-// 【响应头为什么必须带 no-transform】next start 默认挂压缩中间件
-// （node_modules/next/dist/server/lib/router-server.js:110，除非 next.config 里
-// compress:false）。实测：裸 text/event-stream 会被 gzip 并**攒到流结束才发**
-// （4 条事件在 +1241ms 一次性到达），实时性归零；带上 Cache-Control: no-transform
-// 后 compression 跳过压缩，事件逐条实时到达（+311/+604/+904/+1205ms）。
-// X-Accel-Buffering: no 是给 nginx 的（无 nginx 时无害）。
+// 【响应头】全部取自 @/lib/sse 的 SSE_HEADERS —— 那边的文件头记着 no-transform
+// 为什么不可省（next start 的压缩中间件会把事件攒到流结束才发，实测 +1241ms
+// 一次性到达，实时性归零）。**本路由不要手写响应头。**
 //
 // 【断线补齐】浏览器 EventSource 重连时会带 Last-Event-ID（即最后一帧的 id:），
 // 服务端据此把漏掉的消息补发；积压超过窗口则发 resync 让客户端整页重拉。
@@ -19,19 +16,16 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { requireChatUser } from '../_auth';
-import { subscribe, sseFrame, type ChatSubscriber } from '@/lib/chat-bus';
+import { subscribe, type ChatSubscriber } from '@/lib/chat-bus';
+import { SSE_HEADERS, SSE_QUEUE_LIMIT, SSE_RETRY_MS, sseFrame } from '@/lib/sse';
 import { listMessagesSince } from '@/lib/chat-service';
 import type { ChatStreamEvent } from '@/lib/chat-shared';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-/** 浏览器重连间隔（毫秒）；断线后按此节奏自动重连。 */
-const RETRY_MS = 3000;
 /** 单次断线补齐上限：超过就让客户端整页重拉，避免一次灌爆内存。 */
 const BACKFILL_LIMIT = 100;
-/** 背压阈值：积压这么多帧还没被消费，说明客户端已经卡死 → 断开重连。 */
-const QUEUE_LIMIT = 512;
 
 export async function GET(req: Request) {
   const user = await requireChatUser();
@@ -66,7 +60,7 @@ export async function GET(req: Request) {
         };
 
         // 首帧：重连节奏 + 注释帧（让浏览器/中间层立刻见到字节，避免被当成空响应）
-        if (!write(`retry: ${RETRY_MS}\n\n: connected\n\n`)) {
+        if (!write(`retry: ${SSE_RETRY_MS}\n\n: connected\n\n`)) {
           // 首帧就写不进去 = 流已经废了，别再注册订阅（否则要等 abort 才回收）
           cleanup();
           try {
@@ -112,19 +106,10 @@ export async function GET(req: Request) {
         cleanup();
       },
     },
-    { highWaterMark: QUEUE_LIMIT }
+    { highWaterMark: SSE_QUEUE_LIMIT }
   );
 
-  return new Response(stream, {
-    headers: {
-      'Content-Type': 'text/event-stream; charset=utf-8',
-      // no-transform 必须保留：它让 next start 的压缩中间件跳过本响应（见文件头注释）
-      'Cache-Control': 'no-cache, no-transform',
-      Connection: 'keep-alive',
-      // nginx 侧禁缓冲（无 nginx 时该头无副作用）
-      'X-Accel-Buffering': 'no',
-    },
-  });
+  return new Response(stream, { headers: SSE_HEADERS });
 }
 
 /** 补齐断线期间漏掉的消息；积压超窗口则发 resync 让客户端整页重拉。 */
