@@ -60,8 +60,11 @@
 
   line {
     stroke: #6b4f34;
+    // 线宽用**用户单位**（1 单位 = 一格），随棋盘一起缩放。
+    // 【别加 vector-effect: non-scaling-stroke】那会让 stroke-width 按设备像素解释，
+    // 于是 0.03 就是 0.03px —— 棋盘线细到看不见，而页面看上去只是"一片木色"，
+    // 不像坏了，像设计如此。
     stroke-width: 0.03;
-    vector-effect: non-scaling-stroke;
   }
 }
 

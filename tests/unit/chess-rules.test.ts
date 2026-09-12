@@ -273,8 +273,10 @@ describe('国际象棋：升变', () => {
 
   it('isPromotionMove 认得出来（客户端据此在提交前弹选择）', () => {
     const b = board('4k3/1P6/8/8/8/8/8/4K3 w - - 0 1');
-    expect(isPromotionMove(b, { path: [[1, 1], [0, 1]] })).toBe(true);
-    expect(isPromotionMove(b, { path: [[1, 1], [1, 0]] })).toBe(false);
+    // 起点上是兵、终点在最后一排 → 是升变
+    expect(isPromotionMove(b.at(1, 1), [0, 1])).toBe(true);
+    expect(isPromotionMove(b.at(1, 1), [1, 0])).toBe(false);
+    expect(isPromotionMove(b.at(7, 4), [0, 4])).toBe(false); // 王走到头也不是升变
   });
 });
 

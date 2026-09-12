@@ -54,6 +54,32 @@ test.describe('国际象棋联机（将死）', () => {
     }
   });
 
+  test('格色符合国际象棋惯例：a1 深、h1 浅（右下角是浅色格）', async ({ page }) => {
+    // 这条不是洁癖：整个棋盘就是黑白相间的，"哪种格子在左下"看错一眼就会发现，
+    // 但写反了页面照样能走子、e2e 照样全绿 —— 只有肉眼或这条断言看得见。
+    await page.goto('/game/chess');
+    await expect(page.locator(CHESS_BOARD.board)).toBeVisible();
+
+    const lum = (r: number, c: number) =>
+      page
+        .locator(`.chess-square[data-row="${r}"][data-col="${c}"]`)
+        .evaluate((el) => {
+          const m = /rgb\((\d+),\s*(\d+),\s*(\d+)\)/.exec(getComputedStyle(el).backgroundColor);
+          return m ? Number(m[1]) + Number(m[2]) + Number(m[3]) : -1;
+        });
+
+    const a1 = await lum(7, 0);
+    const h1 = await lum(7, 7);
+    const a8 = await lum(0, 0);
+    const h8 = await lum(0, 7);
+    expect(a1, 'a1 应当是深色格').toBeLessThan(h1);
+    expect(a8, 'a8 应当是浅色格').toBeGreaterThan(h8);
+    // 同色的两个角：a8 与 h1 都浅、a1 与 h8 都深
+    // （a1 与 a8 同列相隔 7 格，颜色**相反** —— 拿它们比会得出反的结论）
+    expect(Math.abs(a8 - h1)).toBeLessThan(50);
+    expect(Math.abs(a1 - h8)).toBeLessThan(50);
+  });
+
   test('易位：王横走两格，车跟着挪过来', async ({ page }) => {
     // 单机里走一遍即可 —— 联机那条链路已经由通用用例覆盖
     await page.goto('/game/chess');

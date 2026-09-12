@@ -50,6 +50,30 @@ test.describe('中国象棋联机（象棋特有）', () => {
   });
 });
 
+test.describe('中国象棋（棋盘绘制）', () => {
+  test('棋盘线画出来了，且**没有**被 non-scaling-stroke 变成 0.03px', async ({ page }) => {
+    // 【为什么值得单测】线宽用的是用户单位（1 单位 = 一格），随棋盘一起缩放。
+    // 一旦给它加上 `vector-effect: non-scaling-stroke`，stroke-width 就按**设备像素**
+    // 解释，0.03 就是 0.03px —— 棋盘线细到看不见。页面看上去只是"一片木色"，
+    // 不像坏了，像设计如此，而且照样能走子、其它用例照样全绿。
+    await page.goto('/game/xiangqi');
+    await expect(page.locator(XIANGQI_BOARD.board)).toBeVisible();
+
+    const lines = page.locator('.xiangqi-lines line');
+    expect(await lines.count()).toBeGreaterThan(20); // 10 横 + 9 竖（中间七条断成两段）+ 4 斜
+
+    const first = lines.first();
+    expect(await first.evaluate((el) => getComputedStyle(el).vectorEffect)).not.toBe(
+      'non-scaling-stroke'
+    );
+    expect(await first.evaluate((el) => getComputedStyle(el).strokeWidth)).not.toBe('0px');
+
+    // 河界：中间七条竖线是断开的，所以竖线段的条数多于 9
+    const verticals = page.locator('.xiangqi-lines line[x1][y1="0.5"]');
+    expect(await verticals.count()).toBeGreaterThan(9);
+  });
+});
+
 describeCommonOnlineRules({
   game: 'xiangqi',
   label: '中国象棋',

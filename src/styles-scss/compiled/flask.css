@@ -8604,7 +8604,6 @@ body {
 .xiangqi-lines line {
   stroke: #6b4f34;
   stroke-width: 0.03;
-  vector-effect: non-scaling-stroke;
 }
 
 .xiangqi-river {
