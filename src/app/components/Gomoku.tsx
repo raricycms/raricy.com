@@ -2,11 +2,14 @@
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 五子棋（Gomoku）— 从 Flask 侧 app/static/js/game/gomoku/{constants,board,ai,
-// renderer,main}.js 忠实移植到 React 客户端组件。纯前端逻辑，无服务端依赖。
+// renderer,main}.js 忠实移植到 React 客户端组件。
 //
-// 规则要点（与原实现一一对应）：
-//   • 15×15 棋盘；黑先（BLACK=1），白后（WHITE=2）。
-//   • 四方向扫描（右 / 下 / 右下 / 左下），任一方向连成 ≥5 子即获胜。
+// 【规则不在这里】棋盘模型与胜负判定已抽到 @/lib/gomoku-rules —— 联机对战时
+// 服务端要用同一份代码判胜负，两边各写一份必然 drift。规则口径（15×15 / 黑先 /
+// 四方向 ≥5 连 / 长连也算胜）见那边的文件头。本文件只剩三件事：前端 AI、
+// canvas 渲染、本地对局状态机。
+//
+// 本组件覆盖的玩法：
 //   • 双人对战（pvp）或人机对战（ai，人执黑、AI 执白）。
 //   • AI：即时制胜/拦截快路 + 深度 4 的 Minimax + Alpha-Beta 剪枝，
 //     基于模式（活四/冲四/活三…）的启发式评估，候选宽度 12。
@@ -16,23 +19,21 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  BLACK,
+  BOARD_SIZE,
+  DIRECTIONS,
+  EMPTY,
+  GomokuBoard,
+  WHITE,
+  type Move,
+  type Player,
+} from '@/lib/gomoku-rules';
 
-// ─── 常量（对齐 constants.js）────────────────────────────────────────────────
-const BOARD_SIZE = 15;
-const EMPTY = 0;
-const BLACK = 1;
-const WHITE = 2;
-type Cell = typeof EMPTY | typeof BLACK | typeof WHITE;
-type Player = typeof BLACK | typeof WHITE;
-
-/** 方向向量：右、下、右下、左下 */
-const DIRECTIONS: ReadonlyArray<readonly [number, number]> = [
-  [0, 1],
-  [1, 0],
-  [1, 1],
-  [1, -1],
-];
-
+// ─── AI 常量（对齐 ai.js）─────────────────────────────────────────────────────
+// 规则常量（BOARD_SIZE / EMPTY / BLACK / WHITE / DIRECTIONS / WIN_LENGTH）与棋盘
+// 模型 GomokuBoard 已抽到 @/lib/gomoku-rules —— 服务端判胜负要跑同一份代码。
+// 下面这些只服务前端的 AI，服务端永不 import。
 const SCORE = {
   FIVE: 1000000,
   OPEN_FOUR: 100000,
@@ -45,144 +46,10 @@ const SCORE = {
   CENTER_WEIGHT: 3,
 } as const;
 
-const WIN_LENGTH = 5;
 const MAX_DEPTH = 4;
 const CANDIDATE_WIDTH = 12;
 const DEFENSE_WEIGHT = 1.05;
 const INF = 1e9;
-
-type Move = { row: number; col: number; player: Player };
-
-// ─── 棋盘模型（对齐 board.js）─────────────────────────────────────────────────
-class GomokuBoard {
-  size: number;
-  grid: Cell[][];
-  moveHistory: Move[];
-  moveCount: number;
-
-  constructor(size = BOARD_SIZE) {
-    this.size = size;
-    this.grid = [];
-    this.moveHistory = [];
-    this.moveCount = 0;
-    this.reset();
-  }
-
-  reset(): void {
-    this.grid = [];
-    for (let r = 0; r < this.size; r++) {
-      this.grid[r] = new Array<Cell>(this.size).fill(EMPTY);
-    }
-    this.moveHistory = [];
-    this.moveCount = 0;
-  }
-
-  isValidMove(row: number, col: number): boolean {
-    return (
-      row >= 0 &&
-      row < this.size &&
-      col >= 0 &&
-      col < this.size &&
-      this.grid[row][col] === EMPTY
-    );
-  }
-
-  placeStone(row: number, col: number, player: Player): boolean {
-    if (!this.isValidMove(row, col)) return false;
-    this.grid[row][col] = player;
-    this.moveHistory.push({ row, col, player });
-    this.moveCount++;
-    return true;
-  }
-
-  undo(): Move | null {
-    const move = this.moveHistory.pop();
-    if (!move) return null;
-    this.grid[move.row][move.col] = EMPTY;
-    this.moveCount--;
-    return move;
-  }
-
-  /** 检查 (row,col) 落子是否形成五连。返回 { won, line }。 */
-  checkWinAt(
-    row: number,
-    col: number,
-    player: Player
-  ): { won: boolean; line: Array<[number, number]> } {
-    for (const [dr, dc] of DIRECTIONS) {
-      const line: Array<[number, number]> = [[row, col]];
-
-      let r = row + dr;
-      let c = col + dc;
-      while (r >= 0 && r < this.size && c >= 0 && c < this.size && this.grid[r][c] === player) {
-        line.push([r, c]);
-        r += dr;
-        c += dc;
-      }
-      r = row - dr;
-      c = col - dc;
-      while (r >= 0 && r < this.size && c >= 0 && c < this.size && this.grid[r][c] === player) {
-        line.unshift([r, c]);
-        r -= dr;
-        c -= dc;
-      }
-
-      if (line.length >= WIN_LENGTH) {
-        return { won: true, line };
-      }
-    }
-    return { won: false, line: [] };
-  }
-
-  isFull(): boolean {
-    return this.moveCount >= this.size * this.size;
-  }
-
-  getLastMove(): Move | null {
-    if (this.moveHistory.length === 0) return null;
-    return this.moveHistory[this.moveHistory.length - 1];
-  }
-
-  getHistory(): Move[] {
-    return this.moveHistory.slice();
-  }
-
-  /** 距任一子 range 步内的空格候选；空盘只返回中心。 */
-  getCandidateCells(range = 2): Array<{ row: number; col: number }> {
-    const seen = new Set<number>();
-    let hasStone = false;
-
-    const addCell = (r: number, c: number): void => {
-      if (r < 0 || r >= this.size || c < 0 || c >= this.size) return;
-      if (this.grid[r][c] !== EMPTY) return;
-      seen.add(r * this.size + c);
-    };
-
-    for (let r = 0; r < this.size; r++) {
-      for (let c = 0; c < this.size; c++) {
-        if (this.grid[r][c] !== EMPTY) {
-          hasStone = true;
-          for (let dr = -range; dr <= range; dr++) {
-            for (let dc = -range; dc <= range; dc++) {
-              addCell(r + dr, c + dc);
-            }
-          }
-        }
-      }
-    }
-
-    if (!hasStone) {
-      const center = Math.floor(this.size / 2);
-      return [{ row: center, col: center }];
-    }
-
-    const result: Array<{ row: number; col: number }> = [];
-    for (const key of seen) {
-      result.push({ row: Math.floor(key / this.size), col: key % this.size });
-    }
-    return result;
-  }
-}
 
 // ─── AI 引擎（对齐 ai.js）─────────────────────────────────────────────────────
 class GomokuAI {
