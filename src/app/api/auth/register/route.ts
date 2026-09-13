@@ -22,13 +22,20 @@ export async function POST(req: Request) {
     return apiErr(400, '请求体格式错误');
   }
 
-  // 人机验证（禁用时 verifyTurnstile 直接返回 true）。
-  const ip =
-    req.headers.get('cf-connecting-ip') ??
-    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
-    undefined;
-  const passed = await verifyTurnstile(body.turnstileToken ?? '', ip);
-  if (!passed) {
+  // 人机验证（禁用时 verifyTurnstile 直接放行）。
+  //
+  // ⚠️ 两类失败必须分开报：token 不合格是 400（用户重试有用）；校验服务不可用
+  // （网络 / 超时 / 密钥没配）是 503 —— 后者若也报「人机验证失败」，用户会去反复
+  // 折腾一个他无能为力的验证码，排查方向也被带偏（线上实际发生过：生产机连不上
+  // challenges.cloudflare.com，全员注册失败却显示人机验证失败）。
+  //
+  // 这里是 **fail-closed**：校验服务不可用时注册被拒。若要改成可用性优先的降级放行
+  // （代价是那段时间没有人机校验），把 unavailable 分支改成不 return 即可。
+  const check = await verifyTurnstile(body.turnstileToken ?? '');
+  if (!check.ok) {
+    if (check.kind === 'unavailable') {
+      return apiErr(503, '人机验证服务暂时不可用，请稍后再试');
+    }
     return apiErr(400, '人机验证失败，请重试');
   }
 
