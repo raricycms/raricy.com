@@ -191,12 +191,32 @@ describe('战术题库 —— 快路', () => {
 });
 
 describe('战术题库 —— 双威胁', () => {
-  it('有双活三的必胜点时走它（困难档）', () => {
-    const b = position([
+  /** 十字形：黑在 (7,6)(7,8)(6,7)(8,7)，补 (7,7) 同时成两个活三。 */
+  const doubleThree = () =>
+    position([
       [7, 6, BLACK], [7, 8, BLACK], [6, 7, BLACK], [8, 7, BLACK],
       [12, 12, WHITE], [12, 13, WHITE],
     ]);
-    expect(findBestMove(b, BLACK, { difficulty: 'hard' })).toMatchObject({ row: 7, col: 7 });
+
+  // 【为什么把预算压到 1 个节点】这是在钉 **L1 快路本身**，不是钉搜索。
+  // 双活三要三步才兑现（补活四 → 对手挡一端 → 成五），深搜也能找到 —— 用默认
+  // 预算测的话，L1 整个删掉这条用例照样绿。预算压到 1 之后搜索一步都跑不动，
+  // 走出来的着法只可能来自 L1 的组合判据（四三 / 双活三）。
+  it('双活三由 L1 快路直接认出来（搜索预算压到 1）', () => {
+    const m = findBestMove(doubleThree(), BLACK, { difficulty: 'hard', maxNodes: 1 });
+    // **分值才是这条用例的判据，不是落点**。预算耗尽时引擎退回根节点排序第一的
+    // 候选，而 (7,7) 的局部价值本来就最高 —— 光断言落点的话，L1 整块删掉照样绿
+    // （实测过：旧引擎在这里也返回 (7,7)，但分值是 0）。
+    expect(m).toMatchObject({ row: 7, col: 7 });
+    expect(m.score).toBe(100_000_000);
+  });
+
+  it('对手的双活三点必须去占掉，而不是等搜索发现', () => {
+    // 同一个局面换成白方走：白必须抢 (7,7)，否则黑补上就是双活三。
+    // 同样是 L1 的 `mustBlock` 分支 —— 预算压到 1，搜索帮不上忙。
+    const m = findBestMove(doubleThree(), WHITE, { difficulty: 'hard', maxNodes: 1 });
+    expect(m).toMatchObject({ row: 7, col: 7 });
+    expect(m.score).toBe(50_000_000);
   });
 
   it('对手的跳活三（三子中间留空）必须补在空档上', () => {
