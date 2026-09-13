@@ -462,6 +462,12 @@ function segment(cells: Uint8Array, pos: number, player: Player, dir: number): U
  * 跳子处理掉了，因为「差一格」本来就不要求这 4 个子连续。
  *
  * 调用前 cells[pos] 必须已经是 player。
+ *
+ * 【必须去重】含中心的 5 格窗口有 5 个（起点 1..5），同一个空点可能同时属于其中
+ * 两个 —— 例如黑在 0,1,2 上、中心是 3、9 也是黑：窗口 `0..4` 与 `1..5` 都以
+ * **同一个** 4 号格为成五点，于是它被数两遍。成五点是**集合**，不去重就会把
+ * 「一个成五点的冲四」变成「两个成五点的活四」，活四/活三的判定全跟着错。
+ * 候选位只有 11 个，用位掩码去重，不需要额外分配。
  */
 function dirWinCells(cells: Uint8Array, pos: number, player: Player, dir: number): number[] {
   const r0 = (pos / SIZE) | 0;
@@ -470,6 +476,7 @@ function dirWinCells(cells: Uint8Array, pos: number, player: Player, dir: number
   const dc = DIRS[dir][1];
   const seg = segment(cells, pos, player, dir);
   const out: number[] = [];
+  let seen = 0;
   for (let s = 1; s <= 5; s++) {
     let mine = 0;
     let blocked = false;
@@ -484,6 +491,9 @@ function dirWinCells(cells: Uint8Array, pos: number, player: Player, dir: number
       }
     }
     if (blocked || mine !== 4) continue;
+    const bit = 1 << hole;
+    if (seen & bit) continue;
+    seen |= bit;
     const off = hole - 5;
     const rr = r0 + off * dr;
     const cc = c0 + off * dc;
@@ -538,7 +548,12 @@ function dirHasOpenFourNext(
     const flat = rr * SIZE + cc;
     if (cells[flat] !== EMPTY) continue;
     cells[flat] = player;
-    const open = winCells(cells, pos, player).length >= 2;
+    // 【必须只看 dir 这一个方向 —— 这里曾经调四方向版的 `winCells`】那样会把
+    // **另一个方向**上已有的那个成五点一起数进来：本方向补一子只是个**冲四**，
+    // 加上别处那个「1」就凑成 2，于是眠三被误判成活三。而 `analyzeMove` 进到这里
+    // 时（`wc.length < 2`）恰好保证全局最多只有 1 个成五点 —— 正是那个「1」会
+    // 从别的方向串味过来。按方向判定既修掉误判，又比原来快约 4 倍。
+    const open = dirWinCells(cells, pos, player, dir).length >= 2;
     cells[flat] = EMPTY;
     if (open) return true;
   }
