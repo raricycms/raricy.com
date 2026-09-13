@@ -17,6 +17,15 @@ import { hashPassword } from './password';
 import { PUBLIC_USER_SELECT, hasAdminRights, isCurrentlyBanned, isOwner, type SafeUser } from './auth';
 import { sendNotification } from './notification-service';
 import { kickUser } from './chat-bus';
+// 建号复用公开注册那条 fail-closed 链路的内核（已查证两边不成环：user-service 不反向依赖本文件）
+import {
+  buildPlaceholderEmail,
+  createUserAccount,
+  mapCreateFailure,
+  validateEmail,
+  validateUsername,
+  PLACEHOLDER_EMAIL_DOMAIN,
+} from './user-service';
 
 const DEFAULT_PER_PAGE = 50;
 const MAX_PER_PAGE = 100;
@@ -572,4 +581,115 @@ export async function forceLogout(p: ForceLogoutParams): Promise<AdminResult> {
   });
 
   return { ok: true, message: `已强制 ${target.username} 下线` };
+}
+
+// ── 站长建号 ─────────────────────────────────────────────────────────────────
+
+export interface AdminCreateUserParams {
+  actor: SafeUser;
+  username: string;
+  /** 留空（null/空串）则由 `buildPlaceholderEmail(username)` 合成占位邮箱。 */
+  email?: string | null;
+  password: string;
+  reason?: string | null;
+}
+
+export type AdminCreateUserResult = AdminResult<{
+  user: { id: string; username: string; role: string };
+  email: string;
+  emailSynthesized: boolean;
+}>;
+
+/**
+ * 站长直接建号：跳过人机验证与邀请码，角色直接是 `core`。
+ *
+ * 【为什么存在】生产机到 challenges.cloudflare.com 的出口被墙，Turnstile 的服务端校验
+ * 不可用；站长选择**继续开着** Turnstile（等于关闭匿名注册以防批量注册），改为手动给
+ * 自己认可的人开号。人机验证只在 /api/auth/register 的路由层，故这里天然不涉及。
+ *
+ * 【权限】闸门在 service 层，网页与运维 CLI 共用 —— 照 resetUserPassword 的样板。
+ * 【角色】硬编码 'core'，**不接受 role 入参**：否则这里就成了第二个「谁能任命管理员」的
+ * 入口（见 setRole 的分档注释）。要提拔用 setRole。
+ * 【审计】写 create_user。**绝不写密码，也不写邮箱**（/audit 是公开页，只留结构性的布尔）。
+ */
+export async function adminCreateUser(p: AdminCreateUserParams): Promise<AdminCreateUserResult> {
+  if (!isOwner(p.actor)) return { ok: false, code: 403, message: '仅站长可创建用户' };
+
+  const username = (p.username ?? '').trim();
+  const password = p.password ?? '';
+  const reason = (p.reason ?? '').trim() || '站长手动建号';
+  const emailInput = (p.email ?? '').trim();
+
+  // ── 先做完所有廉价的格式校验，再碰数据库 ──
+  if (!username) return { ok: false, code: 400, message: '缺少用户名' };
+  const uv = validateUsername(username);
+  if (!uv.ok) return { ok: false, code: 400, message: uv.message };
+
+  if (reason.length > BAN_REASON_MAX) {
+    return { ok: false, code: 400, message: `原因不能超过 ${BAN_REASON_MAX} 个字符` };
+  }
+
+  // 密码由站长手填（本入口不生成），底线与 resetUserPassword / changeOwnPassword 一致；
+  // 上限对齐公开注册（werkzeug 那侧的长度约束）。
+  if (password.length < 8) return { ok: false, code: 400, message: '密码长度至少为 8 位' };
+  if (password.length > 100) return { ok: false, code: 400, message: '密码过长！' };
+
+  const emailSynthesized = emailInput === '';
+  if (!emailSynthesized) {
+    if (!validateEmail(emailInput)) return { ok: false, code: 400, message: '邮箱格式不正确' };
+    if (emailInput.length > 100) return { ok: false, code: 400, message: '邮箱过长!' };
+    // 占位域保留给系统合成。让站长手填会造出分不清真假的模糊行。
+    if (emailInput.toLowerCase().endsWith(`@${PLACEHOLDER_EMAIL_DOMAIN}`)) {
+      return { ok: false, code: 400, message: '该域名保留给占位邮箱，请留空由系统合成' };
+    }
+  }
+  // ⚠️ 合成值是机器生成的，**不要**拿 validateEmail 校验它：那个正则的 local part 是
+  // ASCII 白名单，会把中文用户名判成非法邮箱。理由见 buildPlaceholderEmail 的注释。
+  const email = emailSynthesized ? buildPlaceholderEmail(username) : emailInput;
+
+  // 与 registerUser 同序的预检，只为尽早给出人话；并发下真正的防线是唯一约束（内核里收口）。
+  if (await prisma.user.findUnique({ where: { username } })) {
+    return { ok: false, code: 400, message: '用户名已存在' };
+  }
+  if (await prisma.user.findUnique({ where: { email } })) {
+    return { ok: false, code: 400, message: '邮箱已存在' };
+  }
+
+  const r = await createUserAccount({
+    username,
+    email,
+    password,
+    role: 'core', // ← 硬编码：本入口不开放 role
+    remoteRequiredLabel: '建号',
+  });
+
+  if (!r.ok) {
+    if (r.failure.kind === 'precondition') {
+      // 本入口没传 beforeCommit，正常走不到这里；真出现了就是 bug，按 fail-closed 兜底。
+      console.error('[admin-user-service] 建号出现意外的前置失败:', r.failure.cause);
+      return { ok: false, code: 503, message: '建号失败，请稍后重试' };
+    }
+    return { ok: false, ...mapCreateFailure(r.failure, '建号') };
+  }
+
+  await logAdminAction({
+    action: 'create_user',
+    adminId: p.actor.id,
+    targetUserId: r.id,
+    objectType: 'user',
+    objectId: r.id,
+    reason,
+    // ★ 只有结构性事实，没有密码 —— 也没有邮箱本身（上面 reason 里同样不写）
+    metadata: { role: 'core', email_synthesized: emailSynthesized },
+  });
+
+  return {
+    ok: true,
+    message: emailSynthesized
+      ? `已创建 ${username}（core，占位邮箱 ${email}）`
+      : `已创建 ${username}（core）`,
+    user: { id: r.id, username, role: r.role },
+    email,
+    emailSynthesized,
+  };
 }

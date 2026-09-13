@@ -26,7 +26,7 @@ npm run cli -- stats overview  # 命令式：看一眼站点状态
 
 ```
 ? 聪明山 运维台 (Use arrow keys)
-❯ 用户  6 条命令
+❯ 用户  7 条命令
   角色  7 条命令
   博客  4 条命令
   评论  4 条命令
@@ -132,7 +132,7 @@ fi
 
 | 危险级别 | 命令 | 行为 |
 |----------|------|------|
-| 破坏性 | 角色变更 · 用户禁言 · 强制下线 · 重置密码 · 文章/评论/剪贴板/投票的删除与恢复 · **图床恢复** · 申诉裁决 | 终端里弹「即将执行」确认屏；非交互必须加 `--yes` |
+| 破坏性 | 角色变更 · 用户禁言 · 强制下线 · 重置密码 · **站长建号** · 文章/评论/剪贴板/投票的删除与恢复 · **图床恢复** · 申诉裁决 | 终端里弹「即将执行」确认屏；非交互必须加 `--yes` |
 | 不可逆 | `invite revoke`（物理删除邀请码行） · **`fish compensate`（全站群发）** | 同上，且确认屏会额外标注「不可恢复」 |
 | 安全 | 各类检索 / 查看 / `stats overview` / `fish grant`、`fish deduct` / OAuth 应用管理 | 不确认 |
 
@@ -203,6 +203,7 @@ fi
 | `user ban <username> --hours N --reason <原因>` | 禁言 |
 | `user unban <username> [--reason <原因>]` | 解除禁言 |
 | `user force-logout <username> [--reason <原因>]` | 强制下线（比禁言轻一档） |
+| `user create <username> --password <初始密码> [--email <邮箱>] [--reason <原因>]` | 新建账号：站长专属，不经过人机验证与邀请码，角色直接是 core（见下） |
 
 ```bash
 # 重置密码：默认生成 16 位随机密码，只显示一次
@@ -211,6 +212,26 @@ npm run cli -- user reset-password alice --reason "用户申诉邮箱被盗" --y
 ```
 
 新密码**永远不会进审计日志** —— `/audit` 是公开页。
+
+#### user create（站长建号）
+
+生产机到 Cloudflare 的出口被墙，Turnstile 的服务端校验不可用。站长**继续开着**验证码
+（等于关闭匿名注册以防批量注册），改用这条命令手动给认可的人开号。管理后台的
+**用户管理 → 新建用户**是同一个功能的网页入口，规则完全一致。
+
+```bash
+# 不填邮箱 → 自动合成 <用户名>@users.invalid（RFC 2606 保留 TLD，永不投递）
+npm run cli -- user create alice --password 'Hunter2Hunter2' --reason "朋友，验证码过不去" --yes
+
+# 有真实邮箱就填上，别用占位邮箱
+npm run cli -- user create bob --password 'Hunter2Hunter2' --email bob@example.com --yes
+```
+
+- **不消耗邀请码** —— 角色直接给 `core`，不走「邀请码升级」那条路。
+- 密码与邮箱都**不会**进审计日志：`/audit` 是公开页，那里只记 `create_user` 这个动作。
+- 邮箱留空的账号**收不到任何邮件**（当前站内也没有邮件功能，但别指望它能用来找回）。
+- 账户服务不可用时这条命令**退出码 2**（和 `fish grant` 一样），且本地不会留下半截用户 ——
+  建号走的是与网页注册同一条 fail-closed 链路。
 
 ### 内容检索与恢复
 

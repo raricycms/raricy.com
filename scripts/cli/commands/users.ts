@@ -360,4 +360,110 @@ export const userCommands: CommandSpec[] = [
       return { lines: [ctx.io.green(`成功：${r.message}`)], json: { username: target.username } };
     },
   },
+
+  {
+    name: 'user create',
+    summary: '新建账号（站长专属，跳过人机验证，直接是 core）',
+    group: 'users',
+    order: 6,
+    needsActor: true,
+    danger: 'destructive',
+    details: [
+      '生产机到 Cloudflare 的出口不通、Turnstile 的服务端校验不可用，站长改用这个入口',
+      '手动给自己认可的人开号。人机验证只在网页注册的路由层，这里天然不涉及。',
+      '',
+      '不消耗邀请码 —— 角色直接给 core，而不是走「邀请码升级」那条路。',
+      '密码必须由你指定并转告对方；它不会写进审计日志（/audit 是公开页）。',
+    ].join('\n'),
+    args: [
+      {
+        name: 'username',
+        flags: [],
+        positional: 0,
+        required: true,
+        label: '用户名',
+        help: '3-20 位，字母 / 数字 / 下划线 / 连字符（可以是中文）',
+        // ⚠️ 不能复用上面那个 usernameArg：它带 search 源（userSource），而这个号
+        // 还不存在，向导会列出一张空表让人无从选起。
+        prompt: { type: 'input' as const },
+      },
+      {
+        name: 'password',
+        flags: ['--password'],
+        required: true,
+        secret: true,
+        label: '初始密码',
+        help: '至少 8 位。由你转告对方；⚠️ 会留在 shell 历史里',
+        prompt: { type: 'password' as const },
+        validate: (raw: string) => (raw.length >= 8 ? null : '密码长度至少为 8 位'),
+      },
+      {
+        name: 'email',
+        flags: ['--email'],
+        label: '邮箱',
+        help: '留空 = 自动合成 <用户名>@users.invalid（不可投递，仅占位）',
+        prompt: { type: 'input' as const },
+      },
+      {
+        name: 'reason',
+        flags: ['--reason', '-r'],
+        label: '原因（写进审计日志）',
+        help: '可选，默认「站长手动建号」',
+        prompt: { type: 'input' as const },
+        validate: (raw: string) => (raw.trim().length > 200 ? '原因过长（最多 200 字）' : null),
+      },
+    ],
+    async describe(ctx) {
+      const username = String(ctx.args.username);
+      const email = ctx.args.email ? String(ctx.args.email).trim() : '';
+
+      // 只读预检：重名要在确认之前就说清楚，别让人确认完才收到「已存在」
+      const existing = await ctx.prisma.user.findUnique({
+        where: { username },
+        select: { id: true },
+      });
+      if (existing) throw new CliError(`错误：用户名 ${username} 已被占用`);
+
+      const { buildPlaceholderEmail } = await import('../../../src/lib/user-service');
+      return [
+        `新用户：${username}（角色 core）`,
+        `邮箱：${email || `${buildPlaceholderEmail(username)}（自动合成，不可投递）`}`,
+        '不消耗邀请码，也不经过人机验证。',
+        '密码取自 --password，会留在 shell 历史里 —— 建完请转告对方。',
+        '本次操作会写入审计日志（**不含密码**，公开可见）。',
+      ];
+    },
+    async run(ctx) {
+      const { adminCreateUser } = await import('../../../src/lib/admin-user-service');
+      const r = await adminCreateUser({
+        actor: requireActor(ctx),
+        username: String(ctx.args.username),
+        password: String(ctx.args.password),
+        email: ctx.args.email ? String(ctx.args.email) : null,
+        reason: ctx.args.reason ? String(ctx.args.reason) : null,
+      });
+      // 账户服务同步失败用 exit 2（与 fish grant/deduct 的既有语义一致）
+      if (!r.ok) throw new CliError(`错误：${r.message}`, r.code === 503 ? 2 : 1);
+
+      const warnings: string[] = ['⚠️  请通过安全渠道把初始密码转告对方。'];
+      if (r.emailSynthesized) {
+        warnings.push('⚠️  邮箱是自动合成的，这个账号收不到任何邮件。');
+      }
+
+      return {
+        lines: [
+          ctx.io.green(`成功：已创建 ${r.user.username}（${r.user.role}）`),
+          '',
+          ...renderKv([
+            ['用户 ID', r.user.id],
+            ['用户名', r.user.username],
+            ['角色', r.user.role],
+            ['邮箱', r.email + (r.emailSynthesized ? '（自动合成，不可投递）' : '')],
+          ]),
+        ],
+        warnings,
+        json: { ...r.user, email: r.email, emailSynthesized: r.emailSynthesized },
+      };
+    },
+  },
 ];

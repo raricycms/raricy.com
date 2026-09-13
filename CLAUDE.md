@@ -78,6 +78,10 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 - 四条写路径（投喂 / 签到 / CLI grant|deduct / 注册建号）全部 **fail-closed**：
   远端账户服务失败 → 本地写入被**补偿事务精确撤销**（对用户等价于回滚）→ 503。
   绝不静默成功。这是设计如此，不要改。
+- **注册建号有两个入口，但是同一条路径**：网页公开注册（带人机验证 + 可选邀请码）与
+  **站长建号**（`/admin/users` 的「新建用户」、`npm run cli -- user create`，跳过人机验证与
+  邀请码、直接 `core`）。两者共用 `user-service.ts` 的 `createUserAccount` 内核，
+  校验与文案各自留在调用方 —— 改的时候别各修一处。
 - **远端 HTTP 绝不能在 SQLite 事务内** —— 写锁会被占满整个超时，并发写直接
   `database is locked`。现行流程（`src/lib/fish-sync.ts` + `account_sync_ledger`）
   与崩溃收敛机制见 `docs/architecture.md` §6.3。
