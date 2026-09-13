@@ -125,11 +125,17 @@ describe('棋型判定 —— 活三与双活三', () => {
     expect(a.winning).toBe(false);
   });
 
-  it('一手同时造出两个方向的活三 = 双活三，是必胜手', () => {
-    // 十字：中心补一手，横竖各成一个活三，对手只能挡一边
-    const a = analyze(['.X.', 'X_X', '.X.']);
-    expect(a.openThrees).toBe(2);
-    expect(a.winning).toBe(true);
+  it('一手同时造出两个方向的活三 —— 白棋是必胜手，黑棋是禁手', () => {
+    // 十字：中心补一手，横竖各成一个活三，对手只能挡一边。
+    // 【为什么要分颜色断言】这正是禁手改动的核心：**同一个形状**，白棋是教科书
+    // 级的必胜手，黑棋根本走不上去 —— `winning` 必须按颜色给。两条断言写在一起，
+    // 免得以后有人只改一边。
+    // 注意片段里的棋子要跟着被测的那一方走（`X` 黑 / `O` 白），否则测的是
+    // 「白子落在一堆黑子里」，`openThrees` 会是 0。
+    expect(analyze(['.O.', 'O_O', '.O.'], WHITE).openThrees).toBe(2);
+    expect(analyze(['.O.', 'O_O', '.O.'], WHITE).winning).toBe(true);
+    expect(analyze(['.X.', 'X_X', '.X.'], BLACK).openThrees).toBe(2);
+    expect(analyze(['.X.', 'X_X', '.X.'], BLACK).winning).toBe(false);
   });
 
   it('只有一个方向成三时不叫双活三', () => {
@@ -222,12 +228,23 @@ describe('战术题库 —— 双威胁', () => {
       [12, 12, WHITE], [12, 13, WHITE],
     ]);
 
+  /** 同一个十字形，换成白棋。白没有禁手，双活三仍然是必胜手。 */
+  const whiteDoubleThree = () =>
+    position([
+      [7, 6, WHITE], [7, 8, WHITE], [6, 7, WHITE], [8, 7, WHITE],
+      [12, 12, BLACK], [12, 13, BLACK],
+    ]);
+
   // 【为什么把预算压到 1 个节点】这是在钉 **L1 快路本身**，不是钉搜索。
   // 双活三要三步才兑现（补活四 → 对手挡一端 → 成五），深搜也能找到 —— 用默认
   // 预算测的话，L1 整个删掉这条用例照样绿。预算压到 1 之后搜索一步都跑不动，
   // 走出来的着法只可能来自 L1 的组合判据（四三 / 双活三）。
-  it('双活三由 L1 快路直接认出来（搜索预算压到 1）', () => {
-    const m = findBestMove(doubleThree(), BLACK, { difficulty: 'normal', maxNodes: 1 });
+  //
+  // 【为什么换成白棋】禁手上线前这条用的是黑棋的十字。现在黑棋补 (7,7) 是**三三
+  // 禁手**，L1 对黑棋不再把它当必胜手（`winning` 按颜色判，见 `MoveAnalysis`），
+  // 那条用例的前提就没了。白棋没有禁手，是这条快路现在唯一能测的一方。
+  it('白棋的双活三由 L1 快路直接认出来（搜索预算压到 1）', () => {
+    const m = findBestMove(whiteDoubleThree(), WHITE, { difficulty: 'normal', maxNodes: 1 });
     // **分值才是这条用例的判据，不是落点**。预算耗尽时引擎退回根节点排序第一的
     // 候选，而 (7,7) 的局部价值本来就最高 —— 光断言落点的话，L1 整块删掉照样绿
     // （实测过：旧引擎在这里也返回 (7,7)，但分值是 0）。
@@ -235,14 +252,35 @@ describe('战术题库 —— 双威胁', () => {
     expect(m.score).toBe(100_000_000);
   });
 
-  it('对手的双活三点必须去占掉', () => {
-    // 同一个局面换成白方走：白必须抢 (7,7)，否则黑补上就是双活三。
-    const m = findBestMove(doubleThree(), WHITE, { difficulty: 'normal', maxNodes: 1 });
-    // 【这里曾经还断言 `m.score === 50_000_000`】那条断言钉的是「L1 快路直接返回」
-    // 这个**实现细节**。现在挡点不再直接返回、而是交给搜索（见 `findBestMove` 里
-    // 关于 mustBlock 的注释），分值自然变成搜索值 —— 断言细节就废了。
-    // 留下的是真正要守的性质：**白必须占住那个点**。
-    expect(m).toMatchObject({ row: 7, col: 7 });
+  // 【这条的旧版本是「对手的双活三点必须去占掉」】它让白棋抢 (7,7) 来阻止黑棋
+  // 成双活三。禁手上线后这个前提消失了：黑棋补 (7,7) 是禁手，他根本走不上去，
+  // 白棋没有必须占它的理由。改钉真正的新性质 —— **引擎不许选那个点，也不许
+  // 把它报成必胜**。留着这条注释是因为旧直觉很容易被照搬回来。
+  it('黑棋的双活三点是禁手，引擎不许选它、也不许报成必胜', () => {
+    const b = doubleThree();
+    expect(b.isForbidden(7, 7, BLACK)).toBe(true);
+
+    const m = findBestMove(b, BLACK, { difficulty: 'normal', maxNodes: 1 });
+    expect(m).not.toMatchObject({ row: 7, col: 7 });
+    // 50_000_000 是「挡住对手成五」这一档的分；禁手点不该够到它，更不该是 1e8
+    expect(m.score).toBeLessThan(50_000_000);
+  });
+
+  // 风险 #2 的回归网：过滤器写宽了会把**合法胜法**一起滤掉 —— 而活四正是黑棋
+  // 在新规则下最主要的赢法。少了这条，「黑棋有活四却不走、棋力骤降」不会报错。
+  it('黑棋的活四仍然算必胜手（过滤不能把合法胜法一起滤掉）', () => {
+    const b = position([
+      [7, 4, BLACK], [7, 5, BLACK], [7, 6, BLACK],
+      [12, 12, WHITE], [12, 13, WHITE],
+    ]);
+    // 先钉规则层：单方向的活四**不是**四四禁手（同一方向两个成五点是活四）
+    expect(b.isForbidden(7, 7, BLACK)).toBe(false);
+
+    // 不钉具体落点：三连的两端 (7,3) 与 (7,7) 补上都是活四，都赢 —— 钉哪一个
+    // 都是钉实现细节。要守的性质是「引擎认得活四，而且报的是必胜分」。
+    const m = findBestMove(b, BLACK, { difficulty: 'normal', maxNodes: 1 });
+    expect(m.score).toBe(100_000_000);
+    expect(analyzeMoveAt(b, m.row, m.col, BLACK).winCellCount).toBeGreaterThanOrEqual(2);
   });
 
   it('对手的跳活三（三子中间留空）必须被化解：走完白做不出活四', () => {
@@ -363,6 +401,52 @@ describe('不变量 —— 契约与安全网', () => {
       b.placeStone(m.row, m.col, p);
       if (b.checkWinAt(m.row, m.col, p).won) break;
       turn = 1 - turn;
+    }
+  });
+
+  // 【禁手上线后新增的安全网】规则层只会**拒绝**禁手落子，它不会替引擎挑一手
+  // 别的棋 —— 所以「引擎选了禁手点」的表现是「这一手没了」：单机里静默不走、
+  // 自对弈工具里直接抛错。各层都过滤了一遍，但 `findBestMove` 有六处 return，
+  // 漏一处的代价很隐蔽，所以要有一条端到端的不变量盯着。
+  // 【上面那条「永远不走禁手点」覆盖面广，但**它自己证明不了网是紧的**：把闸门
+  // 与树内过滤都关掉，它照样能绿 —— 那盘棋里引擎压根没想过走禁手点。
+  //
+  // 这一条是**专门喂给过滤器的**，构造上花了点心思：
+  //   · 黑横竖各三子，中心 (7,7) 补上就是**四四禁手**；
+  //   · 两端**必须用白子堵死**（(7,3) 与 (3,7)）。不堵的话黑棋会改走 (7,3)
+  //     或 (8,7) 做合法活四 —— 那也是一手赢棋，引擎挑那个就绕开了这道题，
+  //     测试就又变成假网（实测踩过）。
+  // 堵死之后黑棋除 (7,7) 之外没有任何逼胜手段，而 (7,7) 造出的双冲四在
+  // free-style 口径下是**白棋挡不住的双杀** —— 关掉过滤，搜索一定会选它。】
+  it('黑棋的四四点不许走（搜索很想要它，但它是禁手）', () => {
+    const b = position([
+      [7, 3, WHITE], [7, 4, BLACK], [7, 5, BLACK], [7, 6, BLACK],
+      [3, 7, WHITE], [4, 7, BLACK], [5, 7, BLACK], [6, 7, BLACK],
+      [12, 12, WHITE], [12, 13, WHITE],
+    ]);
+    expect(b.forbiddenKind(7, 7, BLACK)).toBe('double-four');
+
+    const m = findBestMove(b, BLACK, { difficulty: 'easy', maxNodes: 6000 });
+    expect(
+      b.forbiddenKind(m.row, m.col, BLACK),
+      `引擎走了禁手点 (${m.row},${m.col})`
+    ).toBeNull();
+  });
+
+  it('永远不走黑棋的禁手点', () => {
+    const b = new GomokuBoard();
+    b.placeStone(7, 7, BLACK);
+    b.placeStone(7, 8, WHITE);
+    for (let i = 0; i < 24; i++) {
+      const p: Player = i % 2 === 0 ? WHITE : BLACK;
+      const m = findBestMove(b, p, { maxNodes: 3000 });
+      expect(b.isValidMove(m.row, m.col), `第 ${i} 手落在已占位 (${m.row},${m.col})`).toBe(true);
+      expect(
+        b.forbiddenKind(m.row, m.col, p),
+        `第 ${i} 手 ${p === BLACK ? '黑' : '白'} 走了禁手点 (${m.row},${m.col})`
+      ).toBeNull();
+      b.placeStone(m.row, m.col, p);
+      if (b.checkWinAt(m.row, m.col, p).won) break;
     }
   });
 

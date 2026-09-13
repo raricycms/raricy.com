@@ -68,11 +68,13 @@ import {
   EMPTY as RULES_EMPTY,
   WHITE as RULES_WHITE,
   DIRECTIONS,
+  WIN_LENGTH,
   countFourDirs as rulesCountFourDirs,
   dirHasOpenFour as rulesDirHasOpenFour,
   flatCells,
-  makesFive as rulesMakesFive,
+  forbiddenKindAt as rulesForbiddenKindAt,
   otherOf as rulesOtherOf,
+  runLenAt as rulesRunLenAt,
   winCells as rulesWinCells,
   type GomokuBoard,
   type Player,
@@ -101,10 +103,32 @@ const EMPTY = RULES_EMPTY;
  * 那会给每次调用多加一个栈帧，而这些函数正是按「每节点几百次」计的。
  */
 const otherOf = rulesOtherOf;
-const makesFive = rulesMakesFive;
 const winCells = rulesWinCells;
 const countFourDirs = rulesCountFourDirs;
 const dirHasOpenFour = rulesDirHasOpenFour;
+const runLen = rulesRunLenAt;
+const forbiddenKindAt = rulesForbiddenKindAt;
+
+/**
+ * 这一手是不是**真正赢棋**的成五。
+ *
+ * 【为什么不能直接用 `makesFive`】`makesFive` 是 `>= WIN_LENGTH`，也就是「长连也算
+ * 胜」的 free-style 口径。禁手上线后长连对黑棋是**禁手**（根本落不下去），只有白棋
+ * 才算胜。黑棋若照 `makesFive` 判，`XXXX_X` 中间那手补下去是六连，会被当成赢棋 ——
+ * 而那一手走不出来，引擎就会"赢"在一个不存在的着法上。
+ *
+ * 五连仍然优先：某个方向恰好成五就是胜，哪怕别处同时是长连。所以**先扫一遍有没有
+ * 恰好五**这件事不能按方向边扫边判 —— 那样会随方向顺序摇摆。
+ */
+function isFiveWin(cells: Uint8Array, pos: number, player: Player): boolean {
+  let overline = false;
+  for (let d = 0; d < 4; d++) {
+    const n = runLen(cells, SIZE, pos, player, d);
+    if (n === WIN_LENGTH) return true;
+    if (n > WIN_LENGTH) overline = true;
+  }
+  return overline && player !== BLACK;
+}
 
 export type Difficulty = 'easy' | 'normal';
 
@@ -138,7 +162,7 @@ export interface AiOptions {
 
 /** `analyzeMoveAt` 的结果：这一手会造出什么。 */
 export interface MoveAnalysis {
-  /** 直接成五。 */
+  /** 直接成五（**按颜色口径**：黑棋必须恰好五连，白棋长连也算）。 */
   five: boolean;
   /** 成五点数量（去重）。≥2 即活四 —— 对手一手挡不住。 */
   winCellCount: number;
@@ -147,8 +171,10 @@ export interface MoveAnalysis {
   /** 造出活三的方向数。≥2 即双活三。 */
   openThrees: number;
   /**
-   * 是否是**必胜手**（对手一手挡不住）。判据是经典的四条组合：
-   * 活四 / 双四 / 四三 / 双活三。
+   * 是否是**必胜手**（对手一手挡不住）。**判据按颜色分**：
+   *   白棋 —— 经典四条：活四 / 双四 / 四三 / 双活三；
+   *   黑棋 —— 只剩 活四 / 四三。**双三与双四是黑棋的禁手**，那一手根本走不上去，
+   *           当然也不是必胜手。
    */
   winning: boolean;
 }
@@ -176,7 +202,7 @@ const DIRS = DIRECTIONS;
  *   ⇒ 2·W[3] < W[4] < 4·W[3]
  * 取 W[3]=1000 / W[4]=3000 满足。**要调参只动这个数组**，别去改公式。
  *
- * W[5] 取极大值纯粹是防御：搜索在落子那一瞬间就用 makesFive 判胜了，
+ * W[5] 取极大值纯粹是防御：搜索在落子那一瞬间就用 isFiveWin 判胜了，
  * 叶子理论上不会出现五连。
  */
 const W = [0, 1, 30, 1000, 3000, 10_000_000];
@@ -433,7 +459,7 @@ function bumpNear(near: Int32Array, pos: number, delta: number): void {
 // 与窗口计数不同，这里是**精确**的：能区分活四与冲四、活三与眠三。代价高，
 // 所以只用在每步一次的威胁分析上，绝不进搜索热循环。
 //
-// 【实现住在 gomoku-rules.ts】原语（`makesFive` / `winCells` / `countFourDirs` /
+// 【实现住在 gomoku-rules.ts】原语（`runLenAt` / `winCells` / `countFourDirs` /
 // `dirHasOpenFour`）已经下沉到规则模块 —— 服务端判禁手要用同一套棋型，而那边
 // 零依赖、不得 import 本文件。这里通过顶部的局部别名取用，行为与之前完全一致。
 
@@ -455,7 +481,7 @@ export function analyzeMoveAt(
 function analyzeMove(cells: Uint8Array, pos: number, player: Player): MoveAnalysis {
   cells[pos] = player;
   try {
-    if (makesFive(cells, SIZE, pos, player)) {
+    if (isFiveWin(cells, pos, player)) {
       return { five: true, winCellCount: 5, fours: 4, openThrees: 0, winning: true };
     }
     const wc = winCells(cells, SIZE, pos, player);
@@ -467,8 +493,17 @@ function analyzeMove(cells: Uint8Array, pos: number, player: Player): MoveAnalys
         if (dirHasOpenFour(cells, SIZE, pos, player, d)) openThrees++;
       }
     }
+    // 【必胜手的判据按颜色分】**黑棋的双三与双四是禁手**（走不上去），对黑棋不再
+    // 是「必胜」，而是「这一手根本不存在」。黑棋只剩两类合法必胜手：
+    //   活四 —— 恰好一个方向上有 ≥2 个成五点（`fours === 1` 时 `wc.length` 就是
+    //           该方向的个数，所以 `fours === 1 && wc.length >= 2` 正是活四；
+    //           两个方向都有四就是双四 = 禁手，走不到这里）；
+    //   四三 —— 一个四配一个活三。
+    // 白棋没有禁手，四条经典组合原样保留。
     const winning =
-      wc.length >= 2 || fours >= 2 || (fours >= 1 && openThrees >= 1) || openThrees >= 2;
+      player === BLACK
+        ? fours === 1 && (wc.length >= 2 || openThrees >= 1)
+        : wc.length >= 2 || fours >= 2 || (fours >= 1 && openThrees >= 1) || openThrees >= 2;
     return { five: false, winCellCount: wc.length, fours, openThrees, winning };
   } finally {
     cells[pos] = EMPTY;
@@ -838,12 +873,52 @@ class Search {
     bumpNear(this.near, pos, -1);
   }
 
-  /** 该空点落子后是否直接成五（落下再撤回）。 */
+  /** 该空点落子后是否直接成五（落下再撤回）。按颜色口径，见 `isFiveWin`。 */
   private winsBy(pos: number, player: Player): boolean {
     this.place(pos, player);
-    const win = makesFive(this.cells, SIZE, pos, player);
+    const win = isFiveWin(this.cells, pos, player);
     this.unplace(pos);
     return win;
+  }
+
+  /**
+   * 空点 pos 对 player 是不是**禁手点**（黑棋的三三 / 四四 / 长连）。白棋恒假。
+   *
+   * 【为什么可以无脑调】`forbiddenKindAt` 内部第一件事就是判 `player !== BLACK ||
+   * cells[pos] !== EMPTY` 直接返回 —— 白棋与占位格零成本。黑棋这边它自己会落子、
+   * 分类、复原（`cells` 单向写入，不动 `evalSum` 与 `near`，与 `analyzeMove` 同一条
+   * 契约，见类头的说明）。
+   *
+   * 【用在「每手一次」的快路上】VCF / VCT 的候选只有几个到几十个，完整分类的代价
+   * 可以忽略；搜索树里的每节点过滤走的是带免费筛选的 `blackForbidden`。
+   */
+  forbiddenAt(pos: number, player: Player): boolean {
+    return forbiddenKindAt(this.cells, SIZE, pos, player) !== null;
+  }
+
+  /**
+   * `forbiddenAt` 的**带免费筛选**版本，给搜索树用 —— 那里每节点要对几十个候选
+   * 挨个判，完整分类（~1000 次操作/点）会把完成深度压掉一层，而「深度台阶才是
+   * 棋力来源」是实测钉过的。
+   *
+   * 筛选依据（健全，只可能多筛不可能漏）：
+   *   一手黑棋要构成 长连 / 四四 / 三三，落子后某条线上必有「4 我 / 1 空」或
+   *   「3 我 / 2 空」的 5 格窗口 —— 换算到落子前，该点必属于 `scanThreats` 已经
+   *   算好的 `meFive` ∪ `meFour` ∪ `meThree`。三个列表的成员测试是 O(1) 的
+   *   `seen[pos] === gen`，而 `scanThreats` 每个节点本来就要跑一次。
+   *
+   * 【`meThree` 只在 `wantThree` 打开时才有内容】所以黑棋的节点上，调用方必须
+   * 传 `scanThreats(player, ply, player === BLACK)` —— 否则三三会从筛子里漏掉。
+   */
+  private blackForbidden(pos: number, t: ThreatLists, gen: number): boolean {
+    if (
+      t.seenMeFive[pos] !== gen &&
+      t.seenMeFour[pos] !== gen &&
+      t.seenMeThree[pos] !== gen
+    ) {
+      return false;
+    }
+    return forbiddenKindAt(this.cells, SIZE, pos, BLACK) !== null;
   }
 
   // ── L0 ──
@@ -881,13 +956,16 @@ class Search {
   findWinningMove(cands: readonly number[], player: Player): number {
     for (let i = 0; i < cands.length; i++) {
       const pos = cands[i];
+      // 禁手点走不上去 —— 对黑棋它既不是必胜手，也不该被拿去当「必须挡的点」。
+      // 放在最前面：`analyzeMove` 判定昂贵，禁手分类的成本与之同阶，先筛掉更省。
+      if (this.forbiddenAt(pos, player)) continue;
       // `analyzeMove` 自己会落子再撤回，所以必须在 place 之前调（它要求该格为空）
       const a = analyzeMove(this.cells, pos, player);
-      // 成五 / 活四 / 双四：对手一手挡不住
+      // 成五 / 活四：对手一手挡不住
       if (a.five || a.winCellCount >= 2) return pos;
       // 四三 / 双活三：同样是必胜手，但**前提是对手没有冲四** —— 他冲四逼应
       // 就能把我的双威胁拆掉。对手真有冲四时该由 L2 的 VCF 去算，这里不越权。
-      if (!((a.fours >= 1 && a.openThrees >= 1) || a.openThrees >= 2)) continue;
+      if (!a.winning) continue;
       this.place(pos, player);
       const t = this.scanThreats(player, L1_LAYER);
       const oppForcing = t.oppFiveN > 0 || t.oppFourN > 0;
@@ -920,7 +998,15 @@ class Search {
     if (depth <= 0 || this.abortedFast()) return -1;
     const t = this.scanThreats(player, VCF_OUT + depth);
     // 轮到我而我能成五 —— 直接赢（递归里这一支是必需的，根节点上层已经判过）
-    if (t.meFiveN > 0) return t.meFive[0];
+    //
+    // 【为什么是循环而不是 `return t.meFive[0]`】`meFive` 是**窗口计数**的产物，
+    // 里面混着「成恰好五」与「成长连」两种点，它自己分不出来。对白棋两者都算胜，
+    // 对黑棋长连是禁手 —— 照着 `meFive[0]` 返回，黑棋就会"赢"在一手落不下去的
+    // 棋上。所以逐个用 `winsBy` 验（黑棋要求恰好五）。全是长连点就落下去继续走
+    // 冲四的循环：那说明这一手不是成五，只是被窗口计数误收进来的。
+    for (let i = 0; i < t.meFiveN; i++) {
+      if (this.winsBy(t.meFive[i], player)) return t.meFive[i];
+    }
 
     const opp = otherOf(player);
     const fours = t.meFour;
@@ -931,14 +1017,23 @@ class Search {
       // 用 `oppFiveLeft` 而不是直接看 `t.oppFiveN`：定理保证**我落子绝不会给
       // 对手造出新的成五点**，所以只需扣掉「我正好占掉的那个」。
       if (this.oppFiveLeft(t, pos) > 0) continue;
+      // 黑棋的禁手点走不上去 —— 这一手本身不成立，谈不上「连杀的第一步」。
+      if (this.forbiddenAt(pos, player)) continue;
 
       this.place(pos, player);
       const wc = winCells(this.cells, SIZE, pos, player);
       let found = false;
       if (wc.length >= 2) {
-        // 活四 / 双四：对手一手挡不住
+        // 活四（对手一手挡不住）。**对黑棋这里不必再分「双四」**：双四是禁手，
+        // 上面那道 `forbiddenAt` 已经把那种点筛掉了，能走到这里的一定是单方向
+        // 的活四。
         found = true;
-      } else if (wc.length === 1) {
+      } else if (
+        wc.length === 1 &&
+        // 黑棋：那个唯一成五点若补下去是长连，这手就补不上去，也就逼不住对手 ——
+        // 这一路不是杀。不加这条会报出假杀（对手"必须"去挡一个不存在的威胁）。
+        (player !== BLACK || this.winsBy(wc[0], player))
+      ) {
         // 冲四：对手只有这一个解招，替他落上再看下一层
         this.place(wc[0], opp);
         found = this.vcf(player, depth - 1) !== -1;
@@ -950,6 +1045,14 @@ class Search {
       if (this.stopped) return -1;
     }
     return -1;
+  }
+
+  /** `t.meFive` 里有没有一个**真能成五**的点（黑棋的长连点不算，见 `isFiveWin`）。 */
+  private hasRealFive(t: ThreatLists, player: Player): boolean {
+    for (let i = 0; i < t.meFiveN; i++) {
+      if (this.winsBy(t.meFive[i], player)) return true;
+    }
+    return false;
   }
 
   /** 我落在 `pos` 之后，对手还剩几个成五点（见 `vcf` 里引用那条定理）。 */
@@ -997,6 +1100,9 @@ class Search {
     out.length = 0;
     for (let i = 0; i < t2.meFourN; i++) {
       const q = t2.meFour[i];
+      // 黑棋：这个「补一子成活四」的点若本身是禁手（双四 / 长连），他就根本
+      // 走不上去，也就不构成威胁 —— 不能拿来当「我这一手是活三」的凭据。
+      if (this.forbiddenAt(q, player)) continue;
       this.place(q, player);
       const n = winCells(this.cells, SIZE, q, player).length;
       this.unplace(q);
@@ -1025,7 +1131,10 @@ class Search {
   vctAttack(player: Player, depth: number): number {
     if (depth <= 0 || this.abortedFast()) return -1;
     const t = this.scanThreats(player, VCT_OUT + depth, true);
-    if (t.meFiveN > 0) return t.meFive[0];
+    // 逐个验而不是取 `meFive[0]` —— 见 `vcf` 里同一条注释（黑棋的长连点混在里面）
+    for (let i = 0; i < t.meFiveN; i++) {
+      if (this.winsBy(t.meFive[i], player)) return t.meFive[i];
+    }
     // 对手有成五点：我任何不是成五的着法之后他都先赢（成五已在上一行返回）
     if (t.oppFiveN > 0) return -1;
 
@@ -1039,12 +1148,16 @@ class Search {
     for (let i = 0; i < foursN; i++) {
       const pos = fours[i];
       if (this.oppFiveLeft(t, pos) > 0) continue;
+      // 黑棋的禁手点走不上去。`meThree` 是超集，「双三」正落在里面 —— 不筛掉
+      // 就会把一手落不下去的棋当成杀棋的第一步。
+      if (this.forbiddenAt(pos, player)) continue;
       if (this.vctTry(player, opp, pos, depth)) return pos;
       if (this.stopped) return -1;
     }
     for (let i = 0; i < threesN; i++) {
       const pos = threes[i];
       if (this.oppFiveLeft(t, pos) > 0) continue;
+      if (this.forbiddenAt(pos, player)) continue;
       if (this.vctTry(player, opp, pos, depth)) return pos;
       if (this.stopped) return -1;
     }
@@ -1057,15 +1170,23 @@ class Search {
     const t2 = this.scanThreats(player, VCT_IN + depth, false);
     let ok = false;
 
+    // 【黑棋为什么要多验一道】`meFive` 是窗口计数，黑棋的**长连点**混在里面 ——
+    // 那些点他落不下去，所以「有 N 个成五点」对黑棋未必等于「我下一手就赢」。
+    // 只要有一个是**真五**就够了（下一手立刻成五），全是长连点则这一手不成立，
+    // 既不能判胜，也不该替对手落上去假装是先手。
+    const realFive = player !== BLACK || this.hasRealFive(t2, player);
     if (t2.meFiveN >= 2) {
       // 活四 / 双四：对手一手挡不住
-      ok = true;
-    } else if (t2.meFiveN === 1) {
+      ok = realFive;
+    } else if (t2.meFiveN === 1 && realFive) {
       // 冲四：解招唯一。（他不可能靠成五抢先 —— 上一层的 `oppFiveN > 0` 已经挡掉，
       // 而我落子不会给他造出新的成五点。）
       this.place(t2.meFive[0], opp);
       ok = this.vctAttack(player, depth - 1) !== -1;
       this.unplace(t2.meFive[0]);
+    } else if (t2.meFiveN > 0) {
+      // 成五点全是黑棋走不上去的长连点 —— 不是威胁
+      ok = false;
     } else {
       const replies = this.vctReplies(depth, t2, player);
       // 空 = 这一手没造出活三（眠三或做棋），不是逼着 —— 不算数，绝不能判胜：
@@ -1174,10 +1295,28 @@ class Search {
     out.length = 0;
     const gen = ++this.moveGen;
 
+    // 【黑棋的禁手点不生成】规则层只会**拒绝**那一手，不会替引擎挑别的棋，所以
+    // 引擎自己不能把禁手点放进候选表 —— 放进去了 `negamax` 就会 `place` 一个
+    // 根本不存在的局面，搜出来的分数是假的。
+    //
+    // 这里用**免费筛选**（`blackForbidden`）：不在 `meFive ∪ meFour ∪ meThree` 里的
+    // 点不可能是任何一种禁手形状，而那三个列表的成员测试是 O(1) 的
+    // `seen[pos] === gen`，`scanThreats` 又本来就每节点跑一次。中盘的平静节点
+    // （三个列表都空）因此是**零开销**；只有战术节点才逐点做完整分类。
+    //
+    // 【为什么筛选必须健全（不能漏）】漏掉一个禁手点 = 引擎以为那一手能走，
+    // 于是整条线的分数都建立在假局面上。多筛掉合法的点则是棋力下降但不报错 ——
+    // 两者都要避免，所以筛的是「**不可能**是禁手」这个必要条件的反面。
+    const keep =
+      player === BLACK
+        ? (p: number): boolean => !this.blackForbidden(p, t, gen)
+        : (): boolean => true;
+
     if (t.oppFiveN > 0) {
       for (let i = 0; i < t.oppFiveN; i++) {
         const p = t.oppFive[i];
         if (this.inMoves[p] === gen) continue;
+        if (!keep(p)) continue;
         this.inMoves[p] = gen;
         out.push(p);
       }
@@ -1187,6 +1326,7 @@ class Search {
     for (let i = 0; i < t.meFourN; i++) {
       const p = t.meFour[i];
       if (this.inMoves[p] === gen) continue;
+      if (!keep(p)) continue;
       this.inMoves[p] = gen;
       out.push(p);
     }
@@ -1215,6 +1355,7 @@ class Search {
     packed.sort((a, b) => b - a);
     for (let i = 0; i < packed.length && out.length < width; i++) {
       const p = packed[i] % 256;
+      if (!keep(p)) continue;
       this.inMoves[p] = gen;
       out.push(p);
     }
@@ -1226,6 +1367,7 @@ class Search {
     for (let i = 0; i < t.oppFourN; i++) {
       const p = t.oppFour[i];
       if (this.inMoves[p] === gen) continue;
+      if (!keep(p)) continue;
       this.inMoves[p] = gen;
       out.push(p);
     }
@@ -1268,9 +1410,16 @@ class Search {
     depth: number,
     first: number
   ): { pos: number; score: number; complete: boolean } {
-    const t = this.scanThreats(aiPlayer, 0);
-    // 轮到我而我能成五 → 直接就是这一手
-    if (t.meFiveN > 0) return { pos: t.meFive[0], score: WIN_SCORE, complete: true };
+    // `wantThree` 只在黑棋的节点上打开 —— 禁手筛选要靠 `meThree` 兜住「三三」，
+    // 见 `blackForbidden`。白棋没有禁手，白开这一份是白花钱。
+    const t = this.scanThreats(aiPlayer, 0, aiPlayer === BLACK);
+    // 轮到我而我能成五 → 直接就是这一手。**逐个验而不是直接取 `meFive[0]`**：
+    // `meFive` 是窗口计数的产物，黑棋的长连点混在里面，那些点走不上去。
+    for (let i = 0; i < t.meFiveN; i++) {
+      if (this.winsBy(t.meFive[i], aiPlayer)) {
+        return { pos: t.meFive[i], score: WIN_SCORE, complete: true };
+      }
+    }
     const moves = this.buildMoves(aiPlayer, 0, t, first);
     let bestPos = moves.length > 0 ? moves[0] : -1;
     let bestScore = -INF;
@@ -1280,7 +1429,7 @@ class Search {
       const pos = moves[i];
       const childCanWin = this.oppFiveSurvives(t, pos);
       this.place(pos, aiPlayer);
-      const s = makesFive(this.cells, SIZE, pos, aiPlayer)
+      const s = isFiveWin(this.cells, pos, aiPlayer)
         ? WIN_SCORE
         : -this.negamax(depth - 1, -INF, -alpha, otherOf(aiPlayer), 1, childCanWin);
       this.unplace(pos);
@@ -1326,10 +1475,13 @@ class Search {
     // 地平线：走子方立刻能成五，就不该再看静态分了
     if (depth <= 0) return canWinNow ? WIN_SCORE - ply : this.evaluateFor(player);
 
-    const t = this.scanThreats(player, ply);
+    // 黑棋的节点要 `meThree` 兜住「三三」禁手，见 `blackForbidden`
+    const t = this.scanThreats(player, ply, player === BLACK);
     // 轮到我了而我能成五 —— 这一层就赢了，不必再往下搜。
-    // 这比「落子后检查 makesFive」更早一步，顺便把成五的树砍掉一大块。
-    if (t.meFiveN > 0) return WIN_SCORE - ply;
+    // 这比「落子后检查 isFiveWin」更早一步，顺便把成五的树砍掉一大块。
+    for (let i = 0; i < t.meFiveN; i++) {
+      if (this.winsBy(t.meFive[i], player)) return WIN_SCORE - ply;
+    }
 
     const moves = this.buildMoves(player, ply, t, -1);
     if (moves.length === 0) return this.evaluateFor(player);
@@ -1349,7 +1501,7 @@ class Search {
       const childCanWin = this.oppFiveSurvives(t, pos);
       this.place(pos, player);
       // 越快取胜越好：减去 ply，浅层的胜利分更高
-      let s = makesFive(this.cells, SIZE, pos, player)
+      let s = isFiveWin(this.cells, pos, player)
         ? WIN_SCORE - ply
         : -this.negamax(reduced, -beta, -alpha, otherOf(player), ply + 1, childCanWin);
       // 减层搜出来的着法若真的超过 alpha，就按原深度重搜，免得误剪
@@ -1399,24 +1551,48 @@ export function findBestMove(
   const cands = s.candidates();
   if (cands.length === 0) return { row: mid, col: mid, score: 0, depth: 0, nodes: 0 };
 
+  /**
+   * **出口总闸**：黑棋的禁手点一律不许交出去。
+   *
+   * 【为什么要有这一道，而不是只在各层各自过滤】下面有六处 return，其中三处
+   * （`oppWin` / `mustBlock` / 一层都没搜完时的兜底）交出去的其实是**对手的点**
+   * —— 那些点同样可能是黑棋的禁手点。各层各筛一遍容易漏，而漏一处的表现是
+   * 「AI 这一手没了」：单机里静默不走、自对弈工具里直接抛错，都很难往回追。
+   * 总闸挡在所有出口上，以后加新的返回路径也绕不过去。
+   *
+   * 【各层的过滤仍然要保留】总闸只保证「交出去的棋合法」，它换出来的那一手是
+   * 随便挑的合法候选，不带任何搜索信息 —— 强度还是靠各层自己筛干净。
+   */
+  const emit = (pos: number, score: number, depth: number): AiResult => {
+    if (aiPlayer !== BLACK || pos < 0 || !s.forbiddenAt(pos, BLACK)) {
+      return toMove(pos, score, depth);
+    }
+    // 换一个合法候选。走到这里说明有一条路径漏了过滤 —— 交出一手走得出去的棋
+    // 总好过交出一手走不出去的。候选表里全是禁手点在 15×15 上不可能发生。
+    for (let i = 0; i < cands.length; i++) {
+      if (!s.forbiddenAt(cands[i], BLACK)) return toMove(cands[i], 0, 0);
+    }
+    return toMove(pos, score, depth);
+  };
+
   // L0 —— 一步成五 / 一步挡五
   const myWin = s.findImmediateWin(cands, aiPlayer);
-  if (myWin !== -1) return toMove(myWin, WIN_SCORE, 0);
+  if (myWin !== -1) return emit(myWin, WIN_SCORE, 0);
   const oppWin = s.findImmediateWin(cands, opp);
-  if (oppWin !== -1) return toMove(oppWin, WIN_SCORE / 2, 0);
+  if (oppWin !== -1) return emit(oppWin, WIN_SCORE / 2, 0);
 
   // L1 —— 精确威胁分析：我有必胜手就走；对手有就得抢那个点
   let mustBlock = -1;
   if (params.useThreats) {
     const win = s.findWinningMove(cands, aiPlayer);
-    if (win !== -1) return toMove(win, WIN_SCORE, 0);
+    if (win !== -1) return emit(win, WIN_SCORE, 0);
     mustBlock = s.findWinningMove(cands, opp);
   }
 
   // L2 —— VCF 连杀。对手有必胜点时也先看一眼：能先杀就不用防守了。
   if (params.useVcf) {
     const v = s.vcf(aiPlayer, VCF_MAX_DEPTH);
-    if (v !== -1) return toMove(v, WIN_SCORE, 0);
+    if (v !== -1) return emit(v, WIN_SCORE, 0);
   }
 
   // L2.5 —— VCT 连杀。迭代加深：先找短杀，找到了就不必再往深处搜。
@@ -1428,7 +1604,7 @@ export function findBestMove(
   if (params.useVct && mustBlock === -1) {
     for (let d = 4; d <= VCT_MAX_DEPTH; d += 2) {
       const v = s.vctAttack(aiPlayer, d);
-      if (v !== -1) return toMove(v, WIN_SCORE, 0);
+      if (v !== -1) return emit(v, WIN_SCORE, 0);
       if (s.isStopped) break;
     }
   }
@@ -1472,8 +1648,8 @@ export function findBestMove(
   // 报出那条快路的分值），否则退回根节点的首个候选、分值报 0 —— 不要把 -INF
   // 当成一个「分数」传出去。
   if (reached === 0) {
-    return mustBlock !== -1 ? toMove(mustBlock, WIN_SCORE / 2, 0) : toMove(bestPos, 0, 0);
+    return mustBlock !== -1 ? emit(mustBlock, WIN_SCORE / 2, 0) : emit(bestPos, 0, 0);
   }
 
-  return toMove(bestPos, bestScore, reached);
+  return emit(bestPos, bestScore, reached);
 }
