@@ -305,22 +305,43 @@ describe('胜负判定', () => {
     expect(failWith(playMove(code, BOB.id, { path: [[0, 0]] }))).toBe('notPlaying');
   });
 
-  it('长连（7 子）同样判胜 —— 靠最后补中间的空才走得出来', () => {
-    // 【为什么不能顺序填】从左往右连填 5 子时，第 5 子就已经判胜、对局结束，
-    // 第 6 子根本没机会落。要造出长连，必须把**中间那格留到最后**：
-    // 黑先在 3/4/5/6 与 8/9 各落，最后补 7 把两段接成一条 7 连。
-    const code = playingRoom();
-    const whiteFar = [0, 2, 4, 6, 8, 10]; // 白方在 0 列散着走，绝不凑成连
-    for (const c of [3, 4, 5, 6, 8, 9]) {
-      unwrap(playMove(code, ALICE.id, { path: [[7, c]] }));
-      unwrap(playMove(code, BOB.id, { path: [[whiteFar.shift()!, 0]] }));
+  /**
+   * 造一条 7 连。**必须把中间那格留到最后**：从左往右顺序填时第 5 子就判胜、
+   * 对局结束，第 6 子根本没机会落。所以先在 3/4/5/6 与 8/9 各落，最后补 7 把
+   * 两段接成一条。
+   *
+   * 【注意手数】黑棋先手，所以造连的那一方必须正好拿到最后一手：黑棋造 7 连走
+   * 第 13 手（黑 7 子、白 6 子），白棋造 7 连走第 14 手（黑 7 子、白 7 子）。
+   * 直接让白棋先走会撞 `notYourTurn`。
+   */
+  function buildSeven(code: string, builder: 'black' | 'white'): void {
+    const far = [0, 2, 4, 6, 8, 10, 12]; // 陪走的那方在 0 行散着走，绝不凑成连
+    const gap = [3, 4, 5, 6, 8, 9];
+    if (builder === 'black') {
+      for (const c of gap) {
+        unwrap(playMove(code, ALICE.id, { path: [[7, c]] }));
+        unwrap(playMove(code, BOB.id, { path: [[0, far.shift()!]] }));
+      }
+    } else {
+      for (const c of gap) {
+        unwrap(playMove(code, ALICE.id, { path: [[0, far.shift()!]] }));
+        unwrap(playMove(code, BOB.id, { path: [[7, c]] }));
+      }
+      unwrap(playMove(code, ALICE.id, { path: [[0, far.shift()!]] }));
     }
+    // 最后一手「补中间那格」留给调用方 —— 那正是要断言的那一手
+  }
+
+  it('白棋长连（7 子）判胜 —— 白棋没有禁手', () => {
+    const code = playingRoom();
+    buildSeven(code, 'white');
     expect(getSnapshotView(code).status).toBe('playing'); // 还没连上
 
-    const view = unwrap(playMove(code, ALICE.id, { path: [[7, 7]] })).view;
+    const view = unwrap(playMove(code, BOB.id, { path: [[7, 7]] })).view;
 
     expect(view.status).toBe('won');
-    expect(view.winner).toBe('black');
+    expect(view.winner).toBe('white');
+    expect(view.endReason).toBe('line');
     expect(view.highlight).toEqual([
       [7, 3],
       [7, 4],
@@ -330,6 +351,40 @@ describe('胜负判定', () => {
       [7, 8],
       [7, 9],
     ]);
+  });
+
+  // 【这条是 2026-09 改口径的直接产物】在此之前长连也算胜，黑棋同样走得出来 ——
+  // 同一份构造在那个口径下是"黑棋长连判胜"的用例。现在黑棋的长连是禁手点，
+  // 走不上去，而且**棋盘一格不能动**（一次落子被拒不该留下痕迹）。
+  it('黑棋的长连点是禁手，落子被拒且棋盘不动', () => {
+    const code = playingRoom();
+    buildSeven(code, 'black');
+    const before = getSnapshotView(code);
+
+    expect(failWith(playMove(code, ALICE.id, { path: [[7, 7]] }))).toBe('illegalMove');
+
+    const after = getSnapshotView(code);
+    expect(after.status).toBe('playing');
+    expect(after.turn).toBe(before.turn); // 被拒的一手不换手
+    expect(after.grid).toEqual(before.grid);
+    expect(after.lastMove).toEqual(before.lastMove);
+  });
+
+  it('黑棋的三三禁手同样被拒（不是只有长连）', () => {
+    // 十字：黑在中心补一手，横竖各成一个活三 —— Renju 里这是黑棋的禁手点
+    const code = playingRoom();
+    const whiteFar = [0, 2, 4, 6];
+    for (const [r, c] of [
+      [6, 7],
+      [8, 7],
+      [7, 6],
+      [7, 8],
+    ] as Array<[number, number]>) {
+      unwrap(playMove(code, ALICE.id, { path: [[r, c]] }));
+      unwrap(playMove(code, BOB.id, { path: [[0, whiteFar.shift()!]] }));
+    }
+
+    expect(failWith(playMove(code, ALICE.id, { path: [[7, 7]] }))).toBe('illegalMove');
   });
 
   it('满盘无五连 → 判和（draw，无 winner）', () => {

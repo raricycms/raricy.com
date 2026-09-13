@@ -230,6 +230,10 @@ export default function GomokuLocal() {
       if (gameOverRef.current) return;
       if (isAiThinkingRef.current) return;
       if (!boardRef.current.isValidMove(row, col)) return;
+      // 禁手点（黑棋三三 / 四四 / 长连）走不上去。口径是**拒绝落子**，不是判负 ——
+      // 所以这里静默挡掉，状态栏不动。**别顺手改成「落子后判负」**：那要同时改
+      // 判定链路、状态行文案与联机协议，而且和规则模块的口径就分家了。
+      if (boardRef.current.isForbidden(row, col, currentPlayerRef.current)) return;
 
       // AI 模式下只有人类那一方可以点（人类可能执黑也可能执白）
       if (modeRef.current === 'ai' && currentPlayerRef.current !== humanPlayerRef.current) return;

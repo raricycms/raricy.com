@@ -56,6 +56,11 @@ class GomokuRoomBoard implements RoomBoard {
     if (move.path.length !== 1) return null;
     const [row, col] = move.path[0];
 
+    // 禁手点（黑棋的三三 / 四四 / 长连）走不上去 —— 必须在 placeStone **之前**判：
+    // 本方法的契约是「返回 null 时棋盘未改动」（见 board-room.ts 的 RoomBoard），
+    // 而先落子再 undo 会污染 moveHistory。判定算法在规则模块里，这里一行都没有。
+    if (this.inner.isForbidden(row, col, player)) return null;
+
     // placeStone 内部会先判空位与越界，不合法直接返回 false 且**不改棋盘**。
     if (!this.inner.placeStone(row, col, player)) return null;
 

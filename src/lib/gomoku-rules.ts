@@ -13,9 +13,17 @@
 // 【规则口径 · 改动前必读】
 //   • 15×15；黑先（BLACK=1），白后（WHITE=2）。
 //   • 四方向扫描（右 / 下 / 右下 / 左下），任一方向连成 ≥5 子即获胜。
-//   • **长连（6 子及以上）也算胜** —— checkWinAt 用的是 `line.length >= WIN_LENGTH`，
-//     即 free-style 口径，与 Flask 版一致。别「顺手」改成恰好五连：那会同时改变
-//     前端本地对局与服务端判定的行为，且两侧一起静默变化。
+//   • **先手（黑棋）禁手**：三三 / 四四 / 长连（≥6 连）是**禁手点**，黑棋走不上去。
+//     白棋没有禁手，长连照样算胜。
+//   • 禁手是**拒绝落子**口径，不是 Renju 的「判负」：`forbiddenKind` 在落子**之前**
+//     问，返回非 null 就拒绝这一手，棋盘一格不动。所以棋盘上永远不会出现黑棋的
+//     长连或四四 —— 这正是 `checkWinAt` 的 `>= WIN_LENGTH` 不需要按颜色分岔的原因。
+//   • 五连优先于一切禁手：一手若在某个方向恰好成五，那就是胜，即使同时在别处形成
+//     禁手形状。而长连不是五连，是禁手。
+//
+// 【口径是 2026-09 从 free-style 改过来的】在此之前本站是「长连也算胜」的自由
+// 五子棋，那时先手优势大到同引擎自对弈黑 100% 全胜，棋力根本显不出来。改动的
+// 决定与实测见 `docs/guide/gomoku-online.md`。
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const BOARD_SIZE = 15;
@@ -236,6 +244,71 @@ export function flatCells(grid: Cell[][], size: number): Uint8Array {
   return cells;
 }
 
+// ─── 先手禁手（Renju 口径）───────────────────────────────────────────────────
+
+/** 黑棋的三种禁手形状。 */
+export type ForbiddenKind = 'overline' | 'double-four' | 'double-three';
+
+/**
+ * 黑棋落在 `pos` 会不会形成禁手 —— **落子前的查询**，`cells[pos]` 必须是空格。
+ *
+ * 判定顺序（顺序是有意义的，别重排）：
+ *   ① **恰好五连 → 合法**。五连优先于一切禁手：一手若在某方向恰好成五，那就是胜，
+ *      哪怕同时在别的方向形成禁手形状。（长连不是五连，见 ②。）
+ *   ② **长连（≥6 连）→ 禁手**。
+ *   ③ **四四** —— 落子后在 ≥2 个**方向**上造出「四」。按方向计数，不是按成五点数：
+ *      同一方向上有两个成五点是「活四」（合法且是必胜手），两个方向各一个才是四四。
+ *   ④ **三三** —— 落子后在 ≥2 个方向上造出活三，**且一个四都没有**时才判。
+ *      四三、四三三（一个四 + 两个三）都是合法着法，标准 Renju 亦然。
+ *
+ * 【保真度边界 · 刻意取的实务口径】完整 Renju 的「活三」是递归定义的：它能够长成
+ * 的那个活四，本身不能是禁手四。本实现只用「存在一点补上后本方向有 ≥2 个成五点」
+ * 判定活三，没有往下递归。会误判的极端形状是：那个活四的两个成五点**都**是长连点
+ * （即补上去只会造出六连）。真要精化，就在 `dirHasOpenFour` 里要求候选补子的
+ * `runLenAt` 恰为 5 —— 那一步目前没做。
+ *
+ * 白棋恒返回 `null`（Renju 只约束先手）。
+ */
+export function forbiddenKindAt(
+  cells: Uint8Array,
+  size: number,
+  pos: number,
+  player: Player
+): ForbiddenKind | null {
+  if (player !== BLACK || cells[pos] !== EMPTY) return null;
+  cells[pos] = BLACK;
+  try {
+    // ① / ② —— 四个方向的连长。runLenAt 两侧各最多数 4 格，够分辨 5 与 6。
+    const n0 = runLenAt(cells, size, pos, BLACK, 0);
+    const n1 = runLenAt(cells, size, pos, BLACK, 1);
+    const n2 = runLenAt(cells, size, pos, BLACK, 2);
+    const n3 = runLenAt(cells, size, pos, BLACK, 3);
+    if (n0 === WIN_LENGTH || n1 === WIN_LENGTH || n2 === WIN_LENGTH || n3 === WIN_LENGTH) {
+      return null;
+    }
+    if (n0 > WIN_LENGTH || n1 > WIN_LENGTH || n2 > WIN_LENGTH || n3 > WIN_LENGTH) {
+      return 'overline';
+    }
+    // ③ 四四 —— 按方向数「造出四」的方向数
+    let fours = 0;
+    for (let d = 0; d < 4; d++) {
+      if (dirWinCells(cells, size, pos, BLACK, d).length > 0) fours++;
+    }
+    if (fours >= 2) return 'double-four';
+    // ④ 三三 —— 有四就不判（四三 / 四三三都合法）
+    if (fours === 0) {
+      let threes = 0;
+      for (let d = 0; d < 4; d++) {
+        if (dirHasOpenFour(cells, size, pos, BLACK, d)) threes++;
+      }
+      if (threes >= 2) return 'double-three';
+    }
+    return null;
+  } finally {
+    cells[pos] = EMPTY;
+  }
+}
+
 // ─── 棋盘模型（对齐 board.js）─────────────────────────────────────────────────
 export class GomokuBoard {
   size: number;
@@ -319,6 +392,29 @@ export class GomokuBoard {
 
   isFull(): boolean {
     return this.moveCount >= this.size * this.size;
+  }
+
+  /**
+   * 黑棋落在 (row,col) 会是哪种禁手；不是禁手（含白棋、含非空格）返回 `null`。
+   *
+   * 【为什么是「落子前的查询」】本站取**拒绝落子**口径：禁手点走不出来，而不是
+   * 走了判负。所以调用方在 `placeStone` **之前**问，非 null 就拒绝这一手 ——
+   * 这样棋盘一格都不动，满足房间层 `RoomBoard.submit` 的契约「返回 null 时棋盘
+   * 未改动」。**不要改成「先落子再 undo」**：`undo` 会污染 `moveHistory`。
+   */
+  forbiddenKind(row: number, col: number, player: Player): ForbiddenKind | null {
+    if (player !== BLACK || !this.isValidMove(row, col)) return null;
+    return forbiddenKindAt(
+      flatCells(this.grid, this.size),
+      this.size,
+      row * this.size + col,
+      player
+    );
+  }
+
+  /** (row,col) 是否是黑棋的禁手点。语义见 `forbiddenKind`。 */
+  isForbidden(row: number, col: number, player: Player): boolean {
+    return this.forbiddenKind(row, col, player) !== null;
   }
 
   getLastMove(): Move | null {
