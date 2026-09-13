@@ -244,6 +244,9 @@ const PARAMS: Record<Difficulty, Params> = {
 /** VCF 的递归层上限。每层都要落一子，超过这个深度已不现实。 */
 const VCF_MAX_DEPTH = 10;
 
+/** LMR：排序靠前的这几个着法不减层搜（装着造四点与最有希望的做棋点）。 */
+const LMR_FULL_MOVES = 3;
+
 // ─── 小工具 ──────────────────────────────────────────────────────────────────
 
 function otherOf(p: Player): Player {
@@ -613,6 +616,9 @@ class Search {
   private rankBufs: number[][] = [];
   /** 每层复用的着法缓冲（`buildMoves` 的产出）。 */
   private moveBufs: number[][] = [];
+  /** 每层着法缓冲里「启发式段」的起止下标，见 `buildMoves` 与 LMR。 */
+  private heurFrom: number[] = [];
+  private heurTo: number[] = [];
   /** 每层的威胁扫描结果。 */
   private threats: ThreatLists[] = [];
   /** 威胁扫描的去重「代」号，每次扫描自增。 */
@@ -904,7 +910,11 @@ class Search {
     // 写成「没满才补」时，对手的威胁一多，候选表就被 oppFour 占满，引擎只会
     // 一味挨打、做不出自己的棋 —— 实测表现是困难档执黑 4 局全部下到满盘和棋
     // （执白反而 4 局全胜、52 手结束，因为后手本来就该以应对为主）。
+    //
+    // 这一段的下标记下来给 LMR 用：**只有启发式着法允许减层搜**。减到威胁着法
+    // 头上就等于把防守方的解招剪掉，假杀会立刻回来。
     const width = this.params.candidateWidth;
+    this.heurFrom[ply] = out.length;
     const cands = this.collect(ply);
     const packed = this.rankBuf(ply);
     packed.length = 0;
@@ -920,6 +930,7 @@ class Search {
     for (let i = 0; i < packed.length && out.length < width; i++) {
       out.push(packed[i] % 256);
     }
+    this.heurTo[ply] = out.length;
 
     // 对手的造四点：**一个都不许漏**，这是不产生假杀的关键。排在最后是为了
     // 不挤占做棋的名额 —— 顺序不影响正确性，alpha-beta 的剪枝只会剪掉更差的
@@ -996,11 +1007,24 @@ class Search {
     let best = -INF;
     for (let i = 0; i < moves.length; i++) {
       const pos = moves[i];
+      // 后续着法先按减两层搜（LMR）：它们本来就被排序排在后面，多半不会好过
+      // 前面那些；真要是好过，下面会以完整深度重搜一遍。
+      // **只减启发式那一段**（`heurFrom..heurTo`）—— 威胁着法（我的造四点、
+      // 对手的造四点）一律全深度，减到它们头上就等于把防守方的解招剪掉。
+      const reduced =
+        depth >= 3 && i >= this.heurFrom[ply] && i < this.heurTo[ply] && i >= LMR_FULL_MOVES
+          ? depth - 2
+          : depth - 1;
+
       this.place(pos, player);
       // 越快取胜越好：减去 ply，浅层的胜利分更高
-      const s = makesFive(this.cells, pos, player)
+      let s = makesFive(this.cells, pos, player)
         ? WIN_SCORE - ply
-        : -this.negamax(depth - 1, -beta, -alpha, otherOf(player), ply + 1);
+        : -this.negamax(reduced, -beta, -alpha, otherOf(player), ply + 1);
+      // 减层搜出来的着法若真的超过 alpha，就按原深度重搜，免得误剪
+      if (reduced < depth - 1 && s > alpha) {
+        s = -this.negamax(depth - 1, -beta, -alpha, otherOf(player), ply + 1);
+      }
       this.unplace(pos);
       if (s > best) best = s;
       if (best > alpha) alpha = best;
