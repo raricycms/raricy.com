@@ -61,17 +61,32 @@ async function postComment(page: Page, body: { content: string }) {
   expect(res.status(), `发评论失败: ${await res.text()}`).toBe(200);
 }
 
-async function loginAs(page: Page, username: string) {
-  const res = await page.request.post('/api/auth/login', {
-    data: { username, password: SEED_PASSWORD },
+/**
+ * 本文件的登录态**只取一次**，然后逐用例注入 cookie。
+ *
+ * 【为什么不能每个用例各登录一次】登录限频是按**用户名**计的
+ * （RULES.loginPerUser = 100 / 15 分钟，见 /api/auth/login 的 ipKey/userKey 双维度）。
+ * e2e 全量跑一轮约 4 分钟 —— 所有登录都落在同一个窗口里，而种子号 core 被十几个
+ * spec 共用，本来就贴着上限。本文件若再加 9 次登录，就会把 auth.spec.ts 的
+ * 「密码错误不下发会话」顶成 429（那条用例断言的是 toast 文案「用户名或密码错误」，
+ * 限频时服务端回的是另一句，于是它以「鉴权坏了」的假象挂掉）。实测踩过。
+ */
+let sessionCookies: Awaited<ReturnType<APIRequestContext['storageState']>>['cookies'] = [];
+
+test.beforeAll(async ({ request }) => {
+  const res = await request.post('/api/auth/login', {
+    data: { username: SEED_USERS.core.username, password: SEED_PASSWORD },
   });
-  expect(res.status()).toBe(200);
-}
+  expect(res.status(), '种子号 core 登录失败（是不是被别的 spec 用限频了？）').toBe(200);
+  sessionCookies = (await request.storageState()).cookies;
+});
+
+test.beforeEach(async ({ context }) => {
+  // 每个用例都是全新 context（cookie jar 是空的），把上面那次的会话注进去
+  await context.addCookies(sessionCookies);
+});
 
 test.describe('评论区的内容引用', () => {
-  test.beforeEach(async ({ page }) => {
-    await loginAs(page, SEED_USERS.core.username);
-  });
 
   test('★ 10 位图床引用：渲染成内联图片，点开原位放大且不新开窗口', async ({ page }) => {
     const marker = `e2e-refimg-${Date.now().toString(36)}`;
@@ -153,9 +168,6 @@ test.describe('评论区的内容引用', () => {
 });
 
 test.describe('从图床选择（评论输入区）', () => {
-  test.beforeEach(async ({ page }) => {
-    await loginAs(page, SEED_USERS.core.username);
-  });
 
   test('★ 弹出图床列表 → 选一张 → 变成待发附件 → 发送后评论带图', async ({ page }) => {
     const marker = `e2e-picker-${Date.now().toString(36)}`;
@@ -196,9 +208,6 @@ test.describe('从图床选择（评论输入区）', () => {
 });
 
 test.describe('聊天区的内容引用', () => {
-  test.beforeEach(async ({ page }) => {
-    await loginAs(page, SEED_USERS.core.username);
-  });
 
   /** 按哨兵串定位消息行（回复引用块里也会出现原文，必须限定在正文内匹配）。 */
   function msgRow(page: Page, marker: string) {
