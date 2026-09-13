@@ -148,27 +148,74 @@ function main(): void {
   console.log(`${a.name}  vs  ${b.name} —— 共 ${games} 个开局 × 两色 = ${games * 2} 局\n`);
 
   const tally: Record<string, number> = { [a.name]: 0, [b.name]: 0, 和棋: 0 };
+  /** 每个开局 a 拿了几分（0 / 1 / 2）—— 配对统计的原始素材。 */
+  const pairScores: number[] = [];
+  let aBoth = 0;
+  let aSplit = 0;
+  let aNone = 0;
+
   for (let i = 0; i < games; i++) {
     const o = OPENINGS[i % OPENINGS.length];
+    let aPoints = 0;
     // 同一开局下两遍：a 执黑一遍、b 执黑一遍，消掉先手优势
     for (const [black, white] of [
       [a, b],
       [b, a],
     ] as Array<[Contestant, Contestant]>) {
       const r = playGame(black, white, o);
-      if (r.winner === 0) tally['和棋']++;
-      else if (r.winner === BLACK) tally[black.name]++;
-      else tally[white.name]++;
+      if (r.winner === 0) {
+        tally['和棋']++;
+        aPoints += 0.5;
+      } else if (r.winner === BLACK) {
+        tally[black.name]++;
+        if (black === a) aPoints += 1;
+      } else {
+        tally[white.name]++;
+        if (white === a) aPoints += 1;
+      }
       console.log(
         `  ${o.name.padEnd(14)} ${black.name.padEnd(16)}执黑  ${String(r.plies).padStart(3)} 手  → ${
           r.winner === 0 ? '和棋' : (r.winner === BLACK ? black.name : white.name) + ' 胜'
         }`
       );
     }
+    pairScores.push(aPoints);
+    if (aPoints === 2) aBoth++;
+    else if (aPoints === 1) aSplit++;
+    else aNone++;
   }
+
   console.log(`\n${a.name}: ${tally[a.name]} 胜`);
   console.log(`${b.name}: ${tally[b.name]} 胜`);
   console.log(`和棋: ${tally['和棋']}`);
+
+  // ── 胜负比之外，还要给出**不确定性** ────────────────────────────────────────
+  // 60 局、胜率 75% 时标准误约 5.6 个百分点，95% 置信区间宽达 ±11 —— 不写区间
+  // 的话，一个 68% 和一个 82% 看起来都像「七成」，实际上分不出高下。
+  const n = games * 2;
+  const p = (tally[a.name] + 0.5 * tally['和棋']) / n;
+  const se = Math.sqrt((p * (1 - p)) / n);
+  const pct = (x: number): string => `${(x * 100).toFixed(1)}%`;
+  console.log(
+    `\n【${a.name} 的得分率】${pct(p)}  （${n} 局，95% 置信区间 ${pct(Math.max(0, p - 1.96 * se))} ~ ${pct(
+      Math.min(1, p + 1.96 * se)
+    )}）`
+  );
+  // 配对视角：同一开局两局全胜 / 一胜一负 / 全负。开局本身的倾向被消掉之后，
+  // 「两局全胜」的个数才是棋力差最干净的读数。
+  console.log(
+    `【按开局配对】${a.name} 两局全胜 ${aBoth} 个开局 · 一胜一负 ${aSplit} 个 · 全负 ${aNone} 个`
+  );
+  // 配对均值：每个开局贡献 0~2 分，用它的标准差算标准误（比二项口径更贴近这个设计）
+  const meanPair = pairScores.reduce((s, x) => s + x, 0) / pairScores.length;
+  const varPair =
+    pairScores.reduce((s, x) => s + (x - meanPair) * (x - meanPair), 0) /
+    Math.max(1, pairScores.length - 1);
+  const sePair = Math.sqrt(varPair / pairScores.length) / 2;
+  console.log(
+    `【配对均值】每开局 ${meanPair.toFixed(2)}/2 分，折合得分率 ${pct(meanPair / 2)}` +
+      ` ± ${(1.96 * sePair * 100).toFixed(1)}pp`
+  );
 }
 
 main();
