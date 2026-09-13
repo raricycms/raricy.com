@@ -12,8 +12,9 @@ export const dynamic = 'force-dynamic';
 export const metadata = { title: '五子棋 · 聪明山' };
 
 const SOLO_DESC =
-  '15×15 棋盘，五子连线即获胜。支持双人对战与人机对战，AI 分简单 / 普通两档，可选执黑先手或执白后手。';
-const ONLINE_DESC = '创建房间或输入房号，和真人对手隔空对弈。支持观战。';
+  '15×15 棋盘，五子连线即获胜，先手（黑棋）有三三 / 四四 / 长连禁手。支持双人对战与人机对战，AI 分简单 / 普通两档，可选执黑先手或执白后手。';
+const ONLINE_DESC =
+  '创建房间或输入房号，和真人对手隔空对弈。黑棋同样有禁手。支持观战。';
 
 export default async function GomokuPage({
   searchParams,

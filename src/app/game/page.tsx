@@ -103,7 +103,7 @@ const SECTIONS: GameSection[] = [
       {
         ...GOMOKU_BASE,
         href: '/game/gomoku',
-        desc: '15×15 棋盘五子连线，支持双人对战和人机对战，AI 分两档难度、可选先后手。',
+        desc: '15×15 棋盘五子连线，黑棋有三三 / 四四 / 长连禁手。支持双人对战和人机对战，AI 分两档难度、可选先后手。',
       },
       {
         href: '/game/atamas',
@@ -137,7 +137,7 @@ const SECTIONS: GameSection[] = [
       {
         ...GOMOKU_BASE,
         href: '/game/gomoku?mode=online',
-        desc: '开一间房，把房号发给朋友，隔空对弈。支持观战。',
+        desc: '开一间房，把房号发给朋友，隔空对弈。黑棋有三三 / 四四 / 长连禁手。支持观战。',
         cta: '创建 / 加入房间',
       },
       {
