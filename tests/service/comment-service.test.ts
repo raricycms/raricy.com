@@ -884,13 +884,13 @@ describe('序列化：snake_case 字段与作者信息', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 9. 频率限制（1200 条/天，对齐 RULES.commentDaily）
+// 9. 频率限制（2000 条/天，对齐 RULES.commentDaily）
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('频率限制：每日 1200 条', () => {
+describe('频率限制：每日 2000 条', () => {
   it('打满配额后 → rateLimited', async () => {
     const { author, blog } = await seedBlog();
-    // 直接把该用户的桶灌满（1200 次真实建评论太慢），key 与 service 内部约定一致
+    // 直接把该用户的桶灌满（2000 次真实建评论太慢），key 与 service 内部约定一致
     const key = `comment:d:${author.id}`;
     for (let i = 0; i < RULES.commentDaily.limit; i++) rateLimit(key, RULES.commentDaily);
 
@@ -898,7 +898,7 @@ describe('频率限制：每日 1200 条', () => {
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.error).toBe('rateLimited');
-    expect(r.message).toContain('1200');
+    expect(r.message).toContain('2000');
     expect(await prisma.blogComment.count(), '超限时不该落库').toBe(0);
   });
 
