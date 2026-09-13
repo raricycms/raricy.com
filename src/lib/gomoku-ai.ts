@@ -48,13 +48,26 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import {
-  BLACK,
+  BLACK as RULES_BLACK,
   BOARD_SIZE,
-  EMPTY,
-  WHITE,
+  EMPTY as RULES_EMPTY,
+  WHITE as RULES_WHITE,
   type GomokuBoard,
   type Player,
 } from './gomoku-rules';
+
+/**
+ * 【为什么抄一份本地常量】具名 import 进来的是**活绑定**，在 CJS/ESM 互操作层上
+ * 表现为访问器属性读取，而不是普通变量。这三个常量出现在每节点要跑几百遍的热循环
+ * 里（`collect` 扫 225 格、`place`/`unplace`、`buildMoves`），CPU profile 实测
+ * 「模块绑定访问」这一项吃掉了 31% 的时间 —— 比棋型扫描还多。转存成模块内的普通
+ * const 之后就是一次局部读取。
+ *
+ * 值仍然来自 gomoku-rules，不是另抄一份字面量，所以不存在 drift。
+ */
+const BLACK = RULES_BLACK;
+const WHITE = RULES_WHITE;
+const EMPTY = RULES_EMPTY;
 
 export type Difficulty = 'normal' | 'hard';
 
@@ -200,6 +213,29 @@ const LINES: ReadonlyArray<LineDesc> = (() => {
   return out;
 })();
 
+/**
+ * `SPAN[dir * CELLS + pos]`：低 4 位是「该方向上还能往回走几步」，高 4 位是
+ * 「还能往前走几步」，都截到 4。`orderScore` 靠它一次性划出「经过该点的窗口
+ * 起点范围」，省掉热循环里那 20 次边界判断（原实现每个窗口调两次 `inBoard`）。
+ */
+const SPAN: Uint8Array = (() => {
+  const t = new Uint8Array(4 * CELLS);
+  for (let dir = 0; dir < 4; dir++) {
+    const dr = DIRS[dir][0];
+    const dc = DIRS[dir][1];
+    for (let r = 0; r < SIZE; r++) {
+      for (let c = 0; c < SIZE; c++) {
+        let back = 0;
+        while (back < 4 && inBoard(r - (back + 1) * dr, c - (back + 1) * dc)) back++;
+        let fwd = 0;
+        while (fwd < 4 && inBoard(r + (fwd + 1) * dr, c + (fwd + 1) * dc)) fwd++;
+        t[dir * CELLS + r * SIZE + c] = back | (fwd << 4);
+      }
+    }
+  }
+  return t;
+})();
+
 interface Params {
   maxDepth: number;
   candidateWidth: number;
@@ -236,7 +272,11 @@ const PARAMS: Record<Difficulty, Params> = {
     useVcf: false,
   },
   hard: {
-    maxDepth: 10,
+    // 深度上限只是护栏，正常情况下够不着 —— 迭代加深永远吃满时间预算，
+    // 真正决定停在哪一层的是预算。**别把它调回 10**：引擎提速之后 3 秒已经能
+    // 爬到更深处，上限卡在那里会让「多给时间」重新变得没有意义（那正是上一轮
+    // 「600ms 与 3s 都是深度 6」的成因之一）。上限只需低于 `L1_LAYER`。
+    maxDepth: 14,
     candidateWidth: 16,
     timeBudgetMs: 3000,
     useThreats: true,
@@ -505,8 +545,15 @@ function evaluate(cells: Uint8Array, player: Player): number {
 /**
  * 走法排序分：`我的局部价值 + 1.05 × 对手的局部价值`。**只用于排序**。
  *
- * 局部价值 = 过该点的所有 5 格窗口查表求和（4 方向 × 5 个偏移 = 20 个窗口），
- * 与 evaluate 同一套权重，所以排序信号与评估口径天然一致，但便宜两个数量级。
+ * 局部价值 = 过该点的所有 5 格窗口查表求和（4 方向 × 最多 5 个偏移 = 20 个窗口），
+ * 与 evaluate 同一套权重，所以排序信号与评估口径天然一致。
+ *
+ * 【为什么是「一趟读 9 格 + 滑窗」而不是「每个窗口读 5 格」】这是全引擎最热的
+ * 函数：`buildMoves` 对**每一个**候选格都要调它一次，中盘上百个候选就是每节点
+ * 上万次读取。原实现每个窗口从零拼一遍 5 格（4×5×5 = 100 次读取 + 20 次边界
+ * 判断），而同一个方向上相邻窗口有 4 格是重叠的 —— 一次读满 9 格（-4..+4）
+ * 之后，沿方向滑动复用（与 evaluate 完全同一套进制滑动），就只剩 13 次读取。
+ * 边界也不必再逐窗口判：`SPAN` 预先算好了每个方向能走多远。
  *
  * **两种视角在同一次遍历里算完** —— 窗口集合与视角无关，只有进制数字映射不同。
  * 分开算等于把最热的这个函数白跑两遍。
@@ -519,24 +566,35 @@ function orderScore(cells: Uint8Array, pos: number, player: Player): number {
   let mine = 0;
   let theirs = 0;
   for (let dir = 0; dir < 4; dir++) {
+    const sp = SPAN[dir * CELLS + pos];
+    const lo = -(sp & 15);
+    const hi = (sp >> 4) - 4;
+    // 空区间 = 这个方向上摆不下一个 5 格窗口
+    if (lo > hi) continue;
     const dr = DIRS[dir][0];
     const dc = DIRS[dir][1];
-    for (let off = -4; off <= 0; off++) {
-      const sr = r0 + off * dr;
-      const sc = c0 + off * dc;
-      // 窗口是一条直线，只要两个端点都在盘内，中间 3 格必然也在
-      if (!inBoard(sr, sc) || !inBoard(sr + 4 * dr, sc + 4 * dc)) continue;
-      let a = 0;
-      let b = 0;
-      let p = 1;
-      for (let k = 0; k < 5; k++) {
-        const rr = sr + k * dr;
-        const cc = sc + k * dc;
-        const v = rr === r0 && cc === c0 ? player : cells[rr * SIZE + cc];
-        a += dMe[v] * p;
-        b += dOp[v] * p;
-        p *= 3;
-      }
+    const step = dr * SIZE + dc;
+    // 起点窗口老老实实拼一遍 —— 落在 [lo, hi] 里就保证 5 格全在盘内
+    let a = 0;
+    let b = 0;
+    let p = 1;
+    for (let k = 0; k < 5; k++) {
+      const off = lo + k;
+      const v = off === 0 ? player : cells[pos + off * step];
+      a += dMe[v] * p;
+      b += dOp[v] * p;
+      p *= 3;
+    }
+    mine += WINDOW_TABLE[a];
+    theirs += WINDOW_TABLE[b];
+    // 之后滑窗：弹掉最低位、整体除 3、把新格补成最高位（3^4 = 81）
+    for (let off = lo + 1; off <= hi; off++) {
+      const o = off - 1;
+      const n = off + 4;
+      const vo = o === 0 ? player : cells[pos + o * step];
+      const vi = n === 0 ? player : cells[pos + n * step];
+      a = (a - dMe[vo]) / 3 + dMe[vi] * 81;
+      b = (b - dOp[vo]) / 3 + dOp[vi] * 81;
       mine += WINDOW_TABLE[a];
       theirs += WINDOW_TABLE[b];
     }
@@ -626,6 +684,13 @@ class Search {
   private threats: ThreatLists[] = [];
   /** 威胁扫描的去重「代」号，每次扫描自增。 */
   private threatGen = 0;
+  /**
+   * `buildMoves` 用：「这一格已经在候选表里了吗」的 O(1) 判据（配 `moveGen` 代）。
+   * 原实现用 `out.includes(pos)`，在「威胁点 + 上百个启发式候选」的循环里是
+   * O(n²) 的线性扫。代号的用法与 `pushUnique` 一致：不清理，只比对。
+   */
+  private inMoves = new Int32Array(CELLS);
+  private moveGen = 0;
 
   private rankBuf(layer: number): number[] {
     while (this.rankBufs.length <= layer) this.rankBufs.push([]);
@@ -901,13 +966,24 @@ class Search {
   private buildMoves(player: Player, ply: number, t: ThreatLists, first: number): number[] {
     const out = this.moveBuf(ply);
     out.length = 0;
+    const gen = ++this.moveGen;
 
     if (t.oppFiveN > 0) {
-      for (let i = 0; i < t.oppFiveN; i++) out.push(t.oppFive[i]);
+      for (let i = 0; i < t.oppFiveN; i++) {
+        const p = t.oppFive[i];
+        if (this.inMoves[p] === gen) continue;
+        this.inMoves[p] = gen;
+        out.push(p);
+      }
       return out;
     }
 
-    for (let i = 0; i < t.meFourN; i++) out.push(t.meFour[i]);
+    for (let i = 0; i < t.meFourN; i++) {
+      const p = t.meFour[i];
+      if (this.inMoves[p] === gen) continue;
+      this.inMoves[p] = gen;
+      out.push(p);
+    }
 
     // 启发式补足：**威胁点再多也要补满宽度**，不能写成「没满才补」。
     // 写成「没满才补」时，对手的威胁一多，候选表就被 oppFour 占满，引擎只会
@@ -918,20 +994,23 @@ class Search {
     // 头上就等于把防守方的解招剪掉，假杀会立刻回来。
     const width = this.params.candidateWidth;
     this.heurFrom[ply] = out.length;
-    const cands = this.collect(ply);
     const packed = this.rankBuf(ply);
     packed.length = 0;
-    for (let i = 0; i < cands.length; i++) {
-      const pos = cands[i];
-      if (out.includes(pos)) continue;
-      // **必须取整**：1.05 会引入小数，而下面靠 `% 256` 取回下标 ——
-      // 带小数的打包值解出来的坐标是 7.8 这种非法格子。
-      const s = Math.round(orderScore(this.cells, pos, player));
-      packed.push((s + SORT_BIAS) * 256 + pos);
+    const { near, cells } = this;
+    // 与 `collect` 融合成一个 225 格的全扫：省掉一个中间数组，也省一遍遍历
+    for (let i = 0; i < CELLS; i++) {
+      if (near[i] > 0 && cells[i] === EMPTY && this.inMoves[i] !== gen) {
+        // **必须取整**：1.05 会引入小数，而下面靠 `% 256` 取回下标 ——
+        // 带小数的打包值解出来的坐标是 7.8 这种非法格子。
+        const s = Math.round(orderScore(cells, i, player));
+        packed.push((s + SORT_BIAS) * 256 + i);
+      }
     }
     packed.sort((a, b) => b - a);
     for (let i = 0; i < packed.length && out.length < width; i++) {
-      out.push(packed[i] % 256);
+      const p = packed[i] % 256;
+      this.inMoves[p] = gen;
+      out.push(p);
     }
     this.heurTo[ply] = out.length;
 
@@ -939,7 +1018,10 @@ class Search {
     // 不挤占做棋的名额 —— 顺序不影响正确性，alpha-beta 的剪枝只会剪掉更差的
     // 着法，而假杀来自「根本没生成」，不来自「生成后被剪」。
     for (let i = 0; i < t.oppFourN; i++) {
-      if (!out.includes(t.oppFour[i])) out.push(t.oppFour[i]);
+      const p = t.oppFour[i];
+      if (this.inMoves[p] === gen) continue;
+      this.inMoves[p] = gen;
+      out.push(p);
     }
 
     // PV 优先：上一层迭代找到的最佳着法排最前，剪枝收益最大。
