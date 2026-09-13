@@ -223,13 +223,13 @@ export function dirHasOpenFour(
   return false;
 }
 
-/** 落子在 `pos` 后是否已成五连（长连也算，`n >= 5`）。调用前 cells[pos] 须已是 player。 */
-export function makesFive(cells: Uint8Array, size: number, pos: number, player: Player): boolean {
-  for (let d = 0; d < 4; d++) {
-    if (runLenAt(cells, size, pos, player, d) >= WIN_LENGTH) return true;
-  }
-  return false;
-}
+/**
+ * 【这里曾经有一个 `makesFive`，已删】它的语义是 `runLenAt >= WIN_LENGTH`，也就是
+ * free-style 的「长连也算胜」—— 而禁手上线后那对黑棋是**错的**（长连走不上去）。
+ * 引擎侧对应的是 `gomoku-ai.ts` 里按颜色分岔的 `isFiveWin`；规则侧要判五连就直接
+ * 用 `runLenAt` 跟 `WIN_LENGTH` 比。**别把 `>= 5` 的版本再加回来**：留着它只会
+ * 诱导出「黑棋把长连当成胜」那类静默错误。
+ */
 
 /** 把二维棋盘压成扁平数组 —— 上面这些原语的输入形状。 */
 export function flatCells(grid: Cell[][], size: number): Uint8Array {
