@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ExternalLink } from 'lucide-react';
 
 // FrameBuster —— 页面被**跨站** <iframe> 嵌入时，弹一个居中模态框，给用户「跳出」入口。
@@ -14,6 +14,23 @@ import { ExternalLink } from 'lucide-react';
 // 劫持整个浏览器窗口），顶层跳转必须由用户手势触发。所以这里只做两件事：检测是否
 // 被嵌、渲染一个 <a target="_top">，真正的跳转交给点击本身。
 //
+// 【跳出失败（本组件存在的理由之二）】有些嵌入方给 iframe 挂了 sandbox 且没开
+// allow-top-navigation —— 此时 <a target="_top"> 与 window.top.location.href = 都被
+// 浏览器**静默**拦下（Chrome 只在控制台留一行，不抛错），子页面拿不到任何信号，
+// 用户看到的就是「点了没反应」。被这么反馈过，所以点击后按两段走：
+//   ① 照常交给 <a target="_top">；同时起一个宽限定时器，醒来时若自己还在 frame 里
+//      （跳成了这份文档就已被换掉，定时器不会醒）→ 改开新窗口。
+//      window.open 是子页面最后一张牌：sandbox 的 allow-top-navigation 只管顶层导航。
+//   ② window.open 也被拦（父页面连 allow-popups 都没开，或弹窗拦截器挡下）时返回
+//      null —— 据此把按钮切成第二段提示。Safari 的弹窗拦截器不肯放行定时器里发起的
+//      window.open，第二段这一下与用户手势在同一个任务里，它才放行。
+// sandbox 两项全禁时浏览器层面无解，只能靠用户右键复制链接 —— 这是浏览器边界，
+// 不是本组件能绕的；第二段文案因此把「右键复制链接」写出来，别让用户对着死按钮点。
+//
+// 【宽限期是启发式】500ms 的依据是「被拦下是瞬时的」：允许的话导航在 t=0 就开始了。
+// 极慢的网络下顶层导航可能尚未提交，会在原来那个标签页之外多开一个 —— 相比「点了
+// 没反应」，这个代价可以接受。别为了消掉它把定时器去掉，那是把唯一的信号也去掉了。
+//
 // 【检测】window.self !== window.top 只比较引用，同域跨域都安全；去读
 // window.top.location 才会因跨域抛 SecurityError。放在 useEffect 而非渲染期：
 // SSR 没有 window，且正常访问时不该先渲染一个框再被移除（代价是水合后才弹，页面
@@ -26,8 +43,8 @@ import { ExternalLink } from 'lucide-react';
 // 【误判】isSameSite 只比 hostname，兄弟子域（a.raricy.com 嵌 b.raricy.com）会被
 // 当成跨站，多弹一个框 —— 无害，宁多勿少。
 //
-// 【失效场景】父页面若写了 <iframe sandbox> 且未开 allow-top-navigation(-by-user-activation)，
-// 点击会被浏览器静默拦下 —— 子页面无法绕过。
+// 【失效场景】父页面若写了 <iframe sandbox> 且既没开 allow-top-navigation(-by-user-activation)
+// 也没开 allow-popups，两段都跳不出去 —— 子页面无法绕过（见上）。
 //
 // 【不要加 frame-ancestors】本站**刻意允许**被第三方 iframe 嵌入：有一部分用户只能从
 // iframe 进主站。所以别加 X-Frame-Options / CSP frame-ancestors（nginx 层也别加）——
@@ -70,9 +87,15 @@ function isSameSite(a: string, b: string): boolean {
   }
 }
 
+/** 点「全屏打开」后等这么久再判断顶层导航是否被拦下（依据见文件头【宽限期是启发式】）。 */
+const ESCAPE_GRACE_MS = 500;
+
 export default function FrameBuster() {
   const [embed, setEmbed] = useState<{ href: string; embedder: string } | null>(null);
+  // 第二段：顶层导航与新窗口都没成，只换文案与按钮动作，弹窗结构不变。
+  const [escapeBlocked, setEscapeBlocked] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
+  const escapeTimer = useRef<number | null>(null);
 
   useEffect(() => {
     if (window.self === window.top) return; // 正常访问，不渲染
@@ -81,16 +104,60 @@ export default function FrameBuster() {
     setEmbed({ href: window.location.href, embedder: top });
   }, []);
 
+  // 兜底定时器随模态一起收摊：模态关掉或组件卸载后别再凭空弹出一个窗口。
+  useEffect(() => {
+    if (!embed) return;
+    return () => {
+      if (escapeTimer.current !== null) {
+        window.clearTimeout(escapeTimer.current);
+        escapeTimer.current = null;
+      }
+    };
+  }, [embed]);
+
+  /** 新窗口是子页面最后一张牌。**不用 'noopener' 特性串而是事后置空 opener**：
+   *  noopener 会让返回值恒为 null，那就分不清「开成了」与「被拦了」了。 */
+  const openInNewWindow = useCallback(() => {
+    if (!embed) return;
+    const win = window.open(embed.href, '_blank');
+    if (win) win.opener = null;
+    else setEscapeBlocked(true); // 被 sandbox 的 allow-popups 或弹窗拦截器挡下
+  }, [embed]);
+
+  const closeModal = useCallback(() => {
+    setEmbed(null);
+    setEscapeBlocked(false);
+  }, []);
+
+  const onEscapeClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    // 带修饰键的点击浏览器自己会开新标签页（顶层仍在 iframe 里），再补一发兜底
+    // 就成了两个标签页 —— 让它们走原生路径，不参与兜底。
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+
+    if (escapeBlocked) {
+      // 第二段：这次 window.open 与用户手势在同一个任务里，Safari 那样严格的
+      // 弹窗拦截器（不肯放行定时器里发起的 window.open）也会放行。
+      e.preventDefault();
+      openInNewWindow();
+      return;
+    }
+
+    if (escapeTimer.current !== null) window.clearTimeout(escapeTimer.current);
+    escapeTimer.current = window.setTimeout(() => {
+      escapeTimer.current = null;
+      // 还在 iframe 里 = 顶层导航没跳成（跳成了这份文档已经被换掉，定时器不会醒）
+      if (window.top !== window.self) openInNewWindow();
+    }, ESCAPE_GRACE_MS);
+  };
+
   // 弹窗打开期间：Esc 关闭 + 焦点锁在卡片内 + 背景不滚动。
   // Esc 监听挂在 window 上 —— 用户点到嵌入方页面后，跨域 iframe 收不到按键，
   // 只能靠点回 iframe 区域或按钮；这是浏览器边界，绕不过去。
   useEffect(() => {
     if (!embed) return;
-    const close = () => setEmbed(null);
-
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        close();
+        closeModal();
         return;
       }
       if (e.key !== 'Tab') return;
@@ -121,7 +188,7 @@ export default function FrameBuster() {
       window.removeEventListener('keydown', onKey);
       document.body.style.overflow = prevOverflow;
     };
-  }, [embed]);
+  }, [embed, closeModal]);
 
   if (!embed) return null;
 
@@ -143,27 +210,38 @@ export default function FrameBuster() {
           <button
             type="button"
             className="frame-buster__close"
-            onClick={() => setEmbed(null)}
+            onClick={closeModal}
             aria-label="关闭"
           >
             ×
           </button>
         </div>
-        <p className="frame-buster__text">
-          此页面正被 <strong className="frame-buster__origin">{embed.embedder}</strong> 以
-          iframe 嵌入。跨站嵌入时浏览器不会带上登录凭证，页面会显示为未登录，部分功能也不可用。
-        </p>
+        {escapeBlocked ? (
+          <p className="frame-buster__text">
+            嵌入方拦截了本页跳出，新窗口也没能打开。请再点一次
+            <strong>「在新窗口打开」</strong>；若仍然没有反应，右键该按钮复制链接地址，
+            粘贴到浏览器地址栏打开。
+          </p>
+        ) : (
+          <p className="frame-buster__text">
+            此页面正被 <strong className="frame-buster__origin">{embed.embedder}</strong> 以
+            iframe 嵌入。跨站嵌入时浏览器不会带上登录凭证，页面会显示为未登录，部分功能也不可用。
+          </p>
+        )}
         <div className="frame-buster__actions">
-          <button type="button" className="frame-buster__btn" onClick={() => setEmbed(null)}>
+          <button type="button" className="frame-buster__btn" onClick={closeModal}>
             继续浏览
           </button>
+          {/* 仍是 <a target="_top">：正常嵌入下点一下就走，修饰键点击/右键复制链接照旧可用。
+              跳出兜底全在 onClick 里（见文件头【跳出失败】）。 */}
           <a
             className="frame-buster__btn frame-buster__btn--primary"
             href={embed.href}
             target="_top"
+            onClick={onEscapeClick}
           >
             <ExternalLink size={16} aria-hidden="true" />
-            全屏打开
+            {escapeBlocked ? '在新窗口打开' : '全屏打开'}
           </a>
         </div>
       </div>
