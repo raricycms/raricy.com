@@ -252,6 +252,8 @@ interface Params {
   useThreats: boolean;
   /** L2：VCF 连续冲四连杀。 */
   useVcf: boolean;
+  /** L2.5：VCT 连续威胁（冲四 ∪ 活三）连杀。 */
+  useVct: boolean;
 }
 
 /**
@@ -290,6 +292,7 @@ const PARAMS: Record<Difficulty, Params> = {
     timeBudgetMs: 200,
     useThreats: false,
     useVcf: false,
+    useVct: false,
   },
   // 普通：1s 一手。会主动做双威胁、会算 VCF 连杀、会挡对手的双威胁。
   normal: {
@@ -302,6 +305,7 @@ const PARAMS: Record<Difficulty, Params> = {
     timeBudgetMs: 1000,
     useThreats: true,
     useVcf: true,
+    useVct: false,
   },
   // 困难：3s 一手。**这一档最终要换上性质不同的算法（VCT 威胁空间搜索），
   // 在那个 commit 落地之前它与「普通」同算法，只是时间多 2 秒。**
@@ -311,6 +315,7 @@ const PARAMS: Record<Difficulty, Params> = {
     timeBudgetMs: 3000,
     useThreats: true,
     useVcf: true,
+    useVct: true,
   },
 };
 
@@ -325,6 +330,11 @@ const VCF_MAX_DEPTH = 10;
  */
 const VCF_OUT = 20;
 const L1_LAYER = 15;
+/** VCT 的两个层基址：攻方节点自己的扫描，以及落子之后那一次。同样要拉开。 */
+const VCT_OUT = 60;
+const VCT_IN = 100;
+/** VCT 的迭代加深上限。再深就只是白烧时间 —— 实战连杀很少超过这个步数。 */
+const VCT_MAX_DEPTH = 8;
 /**
  * 快路（L1/L2/L2.5）能吃掉的时间比例与节点上限。
  *
@@ -335,7 +345,7 @@ const L1_LAYER = 15;
  * 剩下的留给 L3 搜索，不会出现「快路吃光预算、搜索一步没跑、只好退回随手棋」。
  */
 const FAST_BUDGET_FRACTION = 0.4;
-const FAST_NODE_BUDGET = 60_000;
+const FAST_NODE_BUDGET = 400_000;
 
 /** LMR：排序靠前的这几个着法不减层搜（装着造四点与最有希望的做棋点）。 */
 const LMR_FULL_MOVES = 3;
@@ -645,16 +655,24 @@ interface ThreatLists {
   meFive: Int32Array;
   /** 我方落子即造出「四」的点（补一格就成五）。 */
   meFour: Int32Array;
+  /**
+   * 我方落子即造出「三」的点（落子后的窗口是 3 我 / 2 空）。**只是活三的
+   * 超集** —— 里面混着眠三。只有 VCT 用得上，所以由 `wantThree` 开关控制，
+   * 默认不收集：`scanThreats` 是搜索最热的函数，普通搜索不需要这个列表。
+   */
+  meThree: Int32Array;
   /** 对手落子即成的点 —— 这些是必须堵的。 */
   oppFive: Int32Array;
   /** 对手落子即造出四的点 —— 这些是防守方的解招，一个都不许漏。 */
   oppFour: Int32Array;
   seenMeFive: Int32Array;
   seenMeFour: Int32Array;
+  seenMeThree: Int32Array;
   seenOppFive: Int32Array;
   seenOppFour: Int32Array;
   meFiveN: number;
   meFourN: number;
+  meThreeN: number;
   oppFiveN: number;
   oppFourN: number;
 }
@@ -739,14 +757,17 @@ class Search {
       this.threats.push({
         meFive: new Int32Array(CELLS),
         meFour: new Int32Array(CELLS),
+        meThree: new Int32Array(CELLS),
         oppFive: new Int32Array(CELLS),
         oppFour: new Int32Array(CELLS),
         seenMeFive: new Int32Array(CELLS),
         seenMeFour: new Int32Array(CELLS),
+        seenMeThree: new Int32Array(CELLS),
         seenOppFive: new Int32Array(CELLS),
         seenOppFour: new Int32Array(CELLS),
         meFiveN: 0,
         meFourN: 0,
+        meThreeN: 0,
         oppFiveN: 0,
         oppFourN: 0,
       });
@@ -767,13 +788,19 @@ class Search {
       this.deadline = performance.now() + params.timeBudgetMs;
     }
     this.shouldStopFn = opts.shouldStop;
-    // 快路预算（见 `abortedFast`）。时间上取总预算的一个比例；节点上，若调用方
-    // 给了 `maxNodes`（测试用的确定性口径）就与它共用 —— 否则快路会绕过那个上限，
-    // 把「预算压到 1 个节点，答案只可能来自 L1 快路」这类用例悄悄变成假绿。
+    // 快路预算（见 `abortedFast`）。**两种口径都按同一个比例切**：
+    //   • 时间口径：快路最多吃掉四成时间
+    //   • 节点口径（调用方给了 `maxNodes`）：快路最多吃掉四成节点
+    // 【为什么节点口径也必须切】第一版让快路与 `maxNodes` 共用整个预算，于是
+    // VCT 能把节点预算**全部吃光**，L3 搜索一个节点都跑不到 —— 那不是一个
+    // 「慢一点」的问题，是引擎直接退化成随手棋。两种口径必须语义一致。
     const now = performance.now();
     this.fastDeadline =
       this.deadline === Infinity ? Infinity : now + (this.deadline - now) * FAST_BUDGET_FRACTION;
-    this.fastNodeLimit = this.nodeBudget === Infinity ? FAST_NODE_BUDGET : this.nodeBudget;
+    this.fastNodeLimit =
+      this.nodeBudget === Infinity
+        ? FAST_NODE_BUDGET
+        : Math.max(1, Math.floor(this.nodeBudget * FAST_BUDGET_FRACTION));
   }
 
   loadBoard(board: GomokuBoard): void {
@@ -1024,6 +1051,134 @@ class Search {
     return t.oppFiveN;
   }
 
+  // ── L2.5：VCT（连续威胁取胜）──
+  //
+  // VCF 只认冲四，VCT 把逼着集合扩到「冲四 ∪ 活三」。这是五子棋引擎棋力的主要
+  // 来源（Allis 的 threat-space search）：对手每一手都必须应一个**真威胁**，树
+  // 因此很窄，同时间能算到十几层，而 alpha-beta 到八层就停了。中盘那些「有杀但
+  // 看不见」的局面正是胜负手。
+  //
+  // 【正确性的唯一约束】攻方着法可以多给（多给只是搜不出胜、白花时间），
+  // **守方解招绝不能漏** —— 漏一个就会报出根本不存在的必胜。这和 `buildMoves` 里
+  // 「oppFour 永远不许截断」是同一条教训（历史上那处截断让困难档对旧 AI 八局
+  // 全败，整局报 99999996 这种假杀分）。
+
+  /** 每个递归深度一份解招缓冲 —— 递归会往里写，共用一个会被就地清空。 */
+  private replyBufs: number[][] = [];
+
+  private replyBuf(depth: number): number[] {
+    while (this.replyBufs.length <= depth) this.replyBufs.push([]);
+    return this.replyBufs[depth];
+  }
+
+  /**
+   * 算出「我落子在 `pos` 之后，对手的**全部**解招」。
+   *
+   * 返回空数组 = 这一手不是逼着，整条线不算数。判据就是第一段是否为空：
+   *
+   *   (a) 「我再落一子就成活四」的点 —— 不占它就挡不住我下一步活四。这是活三的
+   *       完整解招集（挡在别处都拦不住），**同时也是「这一手到底是不是活三」的
+   *       判据** —— `meThree` 只是超集，眠三混在里面，那种点算出来 (a) 是空的。
+   *   (b) 对手自己的造四点 —— 反冲四抢先手。他冲四我若不应就丢先手，连击断掉；
+   *       应了则轮到他的回合，我的活三也废了。所以反冲四同样是解招。
+   *       （他造*活三*不算 —— 我连续逼着时他根本没有自由回合去兑现。）
+   */
+  private vctReplies(depth: number, t2: ThreatLists, player: Player): number[] {
+    const out = this.replyBuf(depth);
+    out.length = 0;
+    for (let i = 0; i < t2.meFourN; i++) {
+      const q = t2.meFour[i];
+      this.place(q, player);
+      const n = winCells(this.cells, q, player).length;
+      this.unplace(q);
+      if (n >= 2) out.push(q);
+    }
+    if (out.length === 0) return out;
+    for (let i = 0; i < t2.oppFourN; i++) {
+      const q = t2.oppFour[i];
+      if (!out.includes(q)) out.push(q);
+    }
+    return out;
+  }
+
+  /**
+   * VCT 的攻方节点：轮到我走，试出一条只靠连续威胁就能取胜的路。
+   *
+   * 判胜的三档，与 `vcf` 同构，只是多了活三那一档：
+   *   • 落子即成五              → 赢
+   *   • 落子造出 ≥2 个成五点（活四）→ 赢（对手一手挡不住）
+   *   • 落子造出 1 个成五点（冲四）→ 对手只有唯一解招，替他落上再看下一层
+   *   • 落子造出活三            → 对手有若干解招，**每一个都必须仍然输**才算赢
+   *   其余（眠三、做棋）一律跳过 —— 不逼着的着法在这里没有意义。
+   *
+   * 返回制胜着法，找不到返回 -1。
+   */
+  vctAttack(player: Player, depth: number): number {
+    if (depth <= 0 || this.abortedFast()) return -1;
+    const t = this.scanThreats(player, VCT_OUT + depth, true);
+    if (t.meFiveN > 0) return t.meFive[0];
+    // 对手有成五点：我任何不是成五的着法之后他都先赢（成五已在上一行返回）
+    if (t.oppFiveN > 0) return -1;
+
+    const opp = otherOf(player);
+    const fours = t.meFour;
+    const foursN = t.meFourN;
+    const threes = t.meThree;
+    const threesN = t.meThreeN;
+
+    // 先冲四后活三：冲四是绝对先手、更容易兑现，先搜它能更快撞到短杀
+    for (let i = 0; i < foursN; i++) {
+      const pos = fours[i];
+      if (this.oppFiveLeft(t, pos) > 0) continue;
+      if (this.vctTry(player, opp, pos, depth)) return pos;
+      if (this.stopped) return -1;
+    }
+    for (let i = 0; i < threesN; i++) {
+      const pos = threes[i];
+      if (this.oppFiveLeft(t, pos) > 0) continue;
+      if (this.vctTry(player, opp, pos, depth)) return pos;
+      if (this.stopped) return -1;
+    }
+    return -1;
+  }
+
+  /** 试一手 `pos`：对手怎么应都还是输，才返回 true。 */
+  private vctTry(player: Player, opp: Player, pos: number, depth: number): boolean {
+    this.place(pos, player);
+    const t2 = this.scanThreats(player, VCT_IN + depth, false);
+    let ok = false;
+
+    if (t2.meFiveN >= 2) {
+      // 活四 / 双四：对手一手挡不住
+      ok = true;
+    } else if (t2.meFiveN === 1) {
+      // 冲四：解招唯一。（他不可能靠成五抢先 —— 上一层的 `oppFiveN > 0` 已经挡掉，
+      // 而我落子不会给他造出新的成五点。）
+      this.place(t2.meFive[0], opp);
+      ok = this.vctAttack(player, depth - 1) !== -1;
+      this.unplace(t2.meFive[0]);
+    } else {
+      const replies = this.vctReplies(depth, t2, player);
+      // 空 = 这一手没造出活三（眠三或做棋），不是逼着 —— 不算数，绝不能判胜：
+      // 那样等于假设对手会配合我。
+      if (replies.length > 0) {
+        ok = true;
+        for (let i = 0; i < replies.length; i++) {
+          this.place(replies[i], opp);
+          const stillWin = this.vctAttack(player, depth - 1) !== -1;
+          this.unplace(replies[i]);
+          if (!stillWin) {
+            ok = false;
+            break;
+          }
+        }
+      }
+    }
+
+    this.unplace(pos);
+    return ok;
+  }
+
   // ── L3：迭代加深 Negamax ──
 
   /**
@@ -1039,10 +1194,11 @@ class Search {
    * 关键的是这个视角是**全盘**的：它不看「这一手经过了哪条线」，所以对手在
    * 别处布下的三、四一样会被收进 oppFour —— 那正是防守方的解招集合。
    */
-  private scanThreats(player: Player, layer: number): ThreatLists {
+  private scanThreats(player: Player, layer: number, wantThree = false): ThreatLists {
     const t = this.threatAt(layer);
     t.meFiveN = 0;
     t.meFourN = 0;
+    t.meThreeN = 0;
     t.oppFiveN = 0;
     t.oppFourN = 0;
     const gen = ++this.threatGen;
@@ -1070,6 +1226,11 @@ class Search {
           } else if (meN === 3) {
             t.meFourN = pushUnique(t.meFour, t.seenMeFour, t.meFourN, e0, gen);
             t.meFourN = pushUnique(t.meFour, t.seenMeFour, t.meFourN, e1, gen);
+          } else if (meN === 2 && wantThree) {
+            // 只在 VCT 要求时收集：这是**活三的超集**（眠三也在里面），
+            // 由调用方用精确棋型分析再筛一道。
+            t.meThreeN = pushUnique(t.meThree, t.seenMeThree, t.meThreeN, e0, gen);
+            t.meThreeN = pushUnique(t.meThree, t.seenMeThree, t.meThreeN, e1, gen);
           }
         }
         if (meN === 0) {
@@ -1347,6 +1508,38 @@ export function findBestMove(
   if (params.useVcf) {
     const v = s.vcf(aiPlayer, VCF_MAX_DEPTH);
     if (v !== -1) return toMove(v, WIN_SCORE, 0);
+  }
+
+  // L2.5 —— VCT 连杀。迭代加深：先找短杀，找到了就不必再往深处搜。
+  //
+  // **对手已有必胜手时整段跳过**，这是有理由的省时：L1 报出的 `mustBlock` 意味着
+  // 对手下一手就能造活四（三步内成五），而 VCT 靠活三堆出来的杀至少要六七步 ——
+  // 追不上的。至于**三步内**就能兑现的杀（先手活四），L2 的 VCF 已经找过了，
+  // 它跑在这一行之前。所以这里省下的是纯浪费，不是机会。
+  if (params.useVct && mustBlock === -1) {
+    for (let d = 4; d <= VCT_MAX_DEPTH; d += 2) {
+      const v = s.vctAttack(aiPlayer, d);
+      if (v !== -1) return toMove(v, WIN_SCORE, 0);
+      if (s.isStopped) break;
+    }
+  }
+
+  // 防守：对手也会算杀，而我的连杀够不着时，至少把他连杀的**起手**占掉 ——
+  // 和 L1 的 `mustBlock` 一个道理。放在这里（而不是更早）是有意的：只在确认
+  // 自己没有必胜手之后才做，所以它绝不会拦下我方的杀棋。
+  if (mustBlock === -1 && params.useVcf) {
+    const o = s.vcf(opp, VCF_MAX_DEPTH);
+    if (o !== -1) mustBlock = o;
+  }
+  if (mustBlock === -1 && params.useVct) {
+    for (let d = 4; d <= VCT_MAX_DEPTH; d += 2) {
+      const o = s.vctAttack(opp, d);
+      if (o !== -1) {
+        mustBlock = o;
+        break;
+      }
+      if (s.isStopped) break;
+    }
   }
 
   if (mustBlock !== -1) return toMove(mustBlock, WIN_SCORE / 2, 0);

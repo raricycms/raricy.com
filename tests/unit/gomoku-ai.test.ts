@@ -23,7 +23,7 @@ import {
   WHITE,
   type Player,
 } from '@/lib/gomoku-rules';
-import { analyzeMoveAt, findBestMove, type MoveAnalysis } from '@/lib/gomoku-ai';
+import { analyzeMoveAt, findBestMove, type Difficulty, type MoveAnalysis } from '@/lib/gomoku-ai';
 
 // ─── 摆局面的辅助 ────────────────────────────────────────────────────────────
 // `.` 空、`X` 黑、`O` 白、`_` 待分析的空点。
@@ -242,6 +242,57 @@ describe('战术题库 —— 双威胁', () => {
     // 5e7 是「挡住对手成五」那条快路使用的分值，必胜手是 1e8
     expect(m.score, `报出了 ${m.score}，像是假杀`).toBeLessThan(50_000_000);
     expect(b.isValidMove(m.row, m.col)).toBe(true);
+  });
+});
+
+describe('算杀层 —— 三档都不许在平静局面报假杀', () => {
+  /** 5 万是「挡住对手成五」那条快路的分值，必胜手是 1 亿。 */
+  const NOT_A_WIN = 50_000_000;
+
+  /**
+   * 撒在 3 的整数倍格点上的散局。
+   *
+   * 【为什么用格点而不是随机撒】要让这条用例**永远不会因为局面本身有杀而假红**。
+   * 任意两子的切比雪夫距离恒为 3 ⇒ 任何 5 格窗口里最多两子 ⇒ 局面里不可能有
+   * 成五、四、活三。于是「引擎报出 ≥5 万」就只可能来自算杀层看走了眼，
+   * 不可能是它真找到了什么。
+   */
+  function scattered(seed: number): GomokuBoard {
+    let s = seed >>> 0;
+    const rnd = (): number => {
+      s = (s * 1664525 + 1013904223) >>> 0;
+      return s / 4294967296;
+    };
+    const spots: Array<[number, number]> = [];
+    for (let a = 0; a < 3; a++) for (let b = 0; b < 3; b++) spots.push([3 + 3 * a, 3 + 3 * b]);
+    // Fisher–Yates，种子固定 → 局面可复现
+    for (let i = spots.length - 1; i > 0; i--) {
+      const j = Math.floor(rnd() * (i + 1));
+      [spots[i], spots[j]] = [spots[j], spots[i]];
+    }
+    const b = new GomokuBoard();
+    spots.slice(0, 6).forEach(([r, c], i) => b.placeStone(r, c, i % 2 === 0 ? BLACK : WHITE));
+    return b;
+  }
+
+  // 【这条守的是什么】VCT 的判胜条件是「对手的解招集是空的」。**漏掉任何一个
+  // 守方解招，就会报出根本不存在的必胜**，然后拿它去走废棋 —— 历史上
+  // `buildMoves` 截断 `oppFour` 就是这么让困难档对旧 AI 八局全败的。
+  // 三档一起扫：VCF（普通档也开着）与 VCT 走的是同一套判胜结构。
+  it('无杀局面里报出的分值不许够到「必胜」', () => {
+    const tiers: Difficulty[] = ['easy', 'normal', 'hard'];
+    const bad: string[] = [];
+    for (let seed = 1; seed <= 3; seed++) {
+      for (const p of [BLACK, WHITE] as Player[]) {
+        for (const d of tiers) {
+          const m = findBestMove(scattered(seed), p, { difficulty: d, maxNodes: 30_000 });
+          if (m.score >= NOT_A_WIN) {
+            bad.push(`seed=${seed} 档=${d} 执=${p === BLACK ? '黑' : '白'} 报 ${m.score}`);
+          }
+        }
+      }
+    }
+    expect(bad, `这些局面报出了必胜分：\n${bad.join('\n')}`).toEqual([]);
   });
 });
 
