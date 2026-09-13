@@ -37,6 +37,205 @@ export const WIN_LENGTH = 5;
 
 export type Move = { row: number; col: number; player: Player };
 
+/** 对方那一方。 */
+export function otherOf(player: Player): Player {
+  return player === BLACK ? WHITE : BLACK;
+}
+
+// ─── 棋型判定（扁平数组核心）─────────────────────────────────────────────────
+// 【这一层为什么在 rules 而不是 AI 里】判断「活四 / 冲四 / 活三 / 长连」是**规则**，
+// 服务端要用它（禁手判定、以及将来的其它口径），而服务端只跑本模块 —— 本模块
+// 零依赖，不得 import 本文件之外的任何东西。所以原语只能住在这里，由 AI **反向
+// import**（rules ← ai 是禁止的方向：那会把整个引擎拖进服务端 bundle）。
+//
+// 【为什么不各写一份】两份棋型判定迟早会 drift，而且是静默的：改了一处、漏了
+// 另一处，只在某些局面下判错。这与 `gomoku-room.ts` 文件头那条「前端单机与服务端
+// 就会跑出两份判定」是同一个教训。
+//
+// 【形状约定】参数一律是**扁平数组 + size**：AI 内部本来就是扁平 `Uint8Array`，
+// 直接传进来零转换。`size` 必须是参数而不是常量 —— `GomokuBoard` 支持自定义
+// 尺寸（测试里用到）。这些函数全是纯函数，只读 cells，唯一的例外是
+// `GomokuBoard` 上的方法（它们自己负责压平与复原）。
+
+/**
+ * 过 `pos` 沿 `dir` 的连续同色子数，**含 `pos` 自己**。
+ * 调用前 `cells[pos]` 必须已经是 `player`。
+ *
+ * 这是长连判定的原语：`=== 5` 是五连、`>= 6` 是长连。两侧各最多数 4 格就够了 ——
+ * 要区分的只是「恰好 5」与「6 以上」，不需要知道到底几连。
+ */
+export function runLenAt(
+  cells: Uint8Array,
+  size: number,
+  pos: number,
+  player: Player,
+  dir: number
+): number {
+  const r0 = (pos / size) | 0;
+  const c0 = pos % size;
+  const dr = DIRECTIONS[dir][0];
+  const dc = DIRECTIONS[dir][1];
+  let n = 1;
+  for (let sign = 1; sign >= -1; sign -= 2) {
+    for (let s = 1; s <= 4; s++) {
+      const r = r0 + sign * s * dr;
+      const c = c0 + sign * s * dc;
+      if (r < 0 || r >= size || c < 0 || c >= size || cells[r * size + c] !== player) break;
+      n++;
+    }
+  }
+  return n;
+}
+
+/**
+ * 以中心格为原点，沿 dir 取出 11 格（左右各 5）。越界的格子记为**对手子** ——
+ * 棋盘边界就是封堵，这样「边上的三不是活三」自动成立，不需要特判。
+ *
+ * 取 5 而不是 4 是因为判断活四要再看一格：`_XXXX_` 的第二个成五点在 5 格外。
+ */
+function segment(cells: Uint8Array, size: number, pos: number, player: Player, dir: number): Uint8Array {
+  const opp = otherOf(player);
+  const r0 = (pos / size) | 0;
+  const c0 = pos % size;
+  const dr = DIRECTIONS[dir][0];
+  const dc = DIRECTIONS[dir][1];
+  const seg = new Uint8Array(11);
+  for (let k = -5; k <= 5; k++) {
+    const r = r0 + k * dr;
+    const c = c0 + k * dc;
+    if (r < 0 || r >= size || c < 0 || c >= size) seg[k + 5] = opp;
+    else if (k === 0) seg[k + 5] = player;
+    else seg[k + 5] = cells[r * size + c];
+  }
+  return seg;
+}
+
+/**
+ * 某个方向上「再填哪一格就能成五」的空格（扁平下标）。
+ *
+ * 做法：在 11 格窗口里枚举 5 个**包含中心**的 5 格窗口（起点 1..5）。某个窗口里
+ * 没有对手子且恰好有 4 个我方子时，它缺的那一格就是成五点 —— 这一步顺带把跳子
+ * 处理掉了，因为「差一格」本来就不要求这 4 个子连续。
+ *
+ * 调用前 `cells[pos]` 必须已经是 `player`。
+ *
+ * 【必须去重】同一个空点可能同时属于两个含中心的窗口（例如黑在 0,1,2、中心是 3、
+ * 9 也是黑时，窗口 `0..4` 与 `1..5` 都以 4 号格为成五点），会被数两遍。成五点是
+ * **集合**，不去重就会把「一个成五点的冲四」变成「两个成五点的活四」，活三与
+ * 活四的判定全跟着错。候选位只有 11 个，用位掩码去重，不需要额外分配。
+ */
+function dirWinCells(
+  cells: Uint8Array,
+  size: number,
+  pos: number,
+  player: Player,
+  dir: number
+): number[] {
+  const r0 = (pos / size) | 0;
+  const c0 = pos % size;
+  const dr = DIRECTIONS[dir][0];
+  const dc = DIRECTIONS[dir][1];
+  const seg = segment(cells, size, pos, player, dir);
+  const out: number[] = [];
+  let seen = 0;
+  for (let s = 1; s <= 5; s++) {
+    let mine = 0;
+    let blocked = false;
+    let hole = -1;
+    for (let k = 0; k < 5; k++) {
+      const v = seg[s + k];
+      if (v === player) mine++;
+      else if (v === EMPTY) hole = s + k;
+      else {
+        blocked = true;
+        break;
+      }
+    }
+    if (blocked || mine !== 4) continue;
+    const bit = 1 << hole;
+    if (seen & bit) continue;
+    seen |= bit;
+    const off = hole - 5;
+    out.push((r0 + off * dr) * size + (c0 + off * dc));
+  }
+  return out;
+}
+
+/**
+ * 落子在 `pos` 后，四个方向上「再填哪一格就能成五」的空格集合（去重）。
+ * 个数就是这一手造出的成五点数量：`>= 2` 活四（对手一手挡不住）、`= 1` 冲四/跳四。
+ */
+export function winCells(cells: Uint8Array, size: number, pos: number, player: Player): number[] {
+  const out: number[] = [];
+  for (let d = 0; d < 4; d++) {
+    const list = dirWinCells(cells, size, pos, player, d);
+    for (let i = 0; i < list.length; i++) {
+      if (!out.includes(list[i])) out.push(list[i]);
+    }
+  }
+  return out;
+}
+
+/** 这一手在几个**方向**上成四（该方向至少有一个成五点）。`>= 2` 即双四。 */
+export function countFourDirs(cells: Uint8Array, size: number, pos: number, player: Player): number {
+  let n = 0;
+  for (let d = 0; d < 4; d++) {
+    if (dirWinCells(cells, size, pos, player, d).length > 0) n++;
+  }
+  return n;
+}
+
+/** 该方向上**同一个方向**是否还有 ≥2 个成五点 —— 即「再走一步能成活四」。 */
+export function dirHasOpenFour(
+  cells: Uint8Array,
+  size: number,
+  pos: number,
+  player: Player,
+  dir: number
+): boolean {
+  const r0 = (pos / size) | 0;
+  const c0 = pos % size;
+  const dr = DIRECTIONS[dir][0];
+  const dc = DIRECTIONS[dir][1];
+  for (let k = -5; k <= 5; k++) {
+    if (k === 0) continue;
+    const r = r0 + k * dr;
+    const c = c0 + k * dc;
+    if (r < 0 || r >= size || c < 0 || c >= size) continue;
+    const flat = r * size + c;
+    if (cells[flat] !== EMPTY) continue;
+    cells[flat] = player;
+    // 【必须只看 dir 这一个方向 —— 这里曾经调四方向版的 `winCells`】那样会把
+    // **另一个方向**上已有的成五点一起数进来：本方向补一子只是个冲四，加上别处
+    // 那个「1」就凑成 2，眠三被误判成活三。
+    const open = dirWinCells(cells, size, pos, player, dir).length >= 2;
+    cells[flat] = EMPTY;
+    if (open) return true;
+  }
+  return false;
+}
+
+/** 落子在 `pos` 后是否已成五连（长连也算，`n >= 5`）。调用前 cells[pos] 须已是 player。 */
+export function makesFive(cells: Uint8Array, size: number, pos: number, player: Player): boolean {
+  for (let d = 0; d < 4; d++) {
+    if (runLenAt(cells, size, pos, player, d) >= WIN_LENGTH) return true;
+  }
+  return false;
+}
+
+/** 把二维棋盘压成扁平数组 —— 上面这些原语的输入形状。 */
+export function flatCells(grid: Cell[][], size: number): Uint8Array {
+  const cells = new Uint8Array(size * size);
+  for (let r = 0; r < size; r++) {
+    const row = grid[r];
+    for (let c = 0; c < size; c++) {
+      const v = row[c];
+      if (v !== EMPTY) cells[r * size + c] = v;
+    }
+  }
+  return cells;
+}
+
 // ─── 棋盘模型（对齐 board.js）─────────────────────────────────────────────────
 export class GomokuBoard {
   size: number;

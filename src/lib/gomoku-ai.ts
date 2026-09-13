@@ -60,6 +60,13 @@ import {
   BOARD_SIZE,
   EMPTY as RULES_EMPTY,
   WHITE as RULES_WHITE,
+  DIRECTIONS,
+  countFourDirs as rulesCountFourDirs,
+  dirHasOpenFour as rulesDirHasOpenFour,
+  flatCells,
+  makesFive as rulesMakesFive,
+  otherOf as rulesOtherOf,
+  winCells as rulesWinCells,
   type GomokuBoard,
   type Player,
 } from './gomoku-rules';
@@ -76,6 +83,21 @@ import {
 const BLACK = RULES_BLACK;
 const WHITE = RULES_WHITE;
 const EMPTY = RULES_EMPTY;
+
+/**
+ * 棋型原语也转存一份局部别名 —— 理由同上。它们住在 `gomoku-rules.ts`（服务端
+ * 判禁手要用同一份，见那里的注释），但都在热循环里被调用，活绑定的访问器开销
+ * 同样要吃一遍。
+ *
+ * 注意签名：rules 侧的原语一律**多吃一个 `size`**（那边要支持自定义棋盘尺寸），
+ * 所以调用方要显式传 `SIZE`。没有在这里包一层 `(cells,pos,player) => …` 的薄壳：
+ * 那会给每次调用多加一个栈帧，而这些函数正是按「每节点几百次」计的。
+ */
+const otherOf = rulesOtherOf;
+const makesFive = rulesMakesFive;
+const winCells = rulesWinCells;
+const countFourDirs = rulesCountFourDirs;
+const dirHasOpenFour = rulesDirHasOpenFour;
 
 export type Difficulty = 'easy' | 'normal';
 
@@ -129,13 +151,15 @@ export interface MoveAnalysis {
 const SIZE = BOARD_SIZE;
 const CELLS = SIZE * SIZE;
 
-/** 方向向量（与 gomoku-rules 的 DIRECTIONS 同序）：右、下、右下、左下。 */
-const DIRS: ReadonlyArray<readonly [number, number]> = [
-  [0, 1],
-  [1, 0],
-  [1, 1],
-  [1, -1],
-];
+/**
+ * 方向向量：右、下、右下、左下。
+ *
+ * 【为什么直接引用 rules 的表】棋型原语已经下沉到 `gomoku-rules.ts`，那边按
+ * `DIRECTIONS[dir]` 取向量。这里若再抄一份字面量，两张表一旦顺序不一致，
+ * `dir` 这个下标在两个模块里就是两个意思 —— 而且是静默的（AI 算活三、rules 判
+ * 禁手，各按各的表走）。共用同一张表，drift 在类型上就不可能发生。
+ */
+const DIRS = DIRECTIONS;
 
 /**
  * `W[k]` = 一个「只有我方子与空位、其中 k 个我方子」的 5 格窗口值多少分。
@@ -375,10 +399,6 @@ const LMR_FULL_MOVES = 3;
 
 // ─── 小工具 ──────────────────────────────────────────────────────────────────
 
-function otherOf(p: Player): Player {
-  return p === BLACK ? WHITE : BLACK;
-}
-
 function inBoard(r: number, c: number): boolean {
   return r >= 0 && r < SIZE && c >= 0 && c < SIZE;
 }
@@ -405,160 +425,10 @@ function bumpNear(near: Int32Array, pos: number, delta: number): void {
 // ─── 棋型判定（精确，用于 L0/L1/L2）─────────────────────────────────────────
 // 与窗口计数不同，这里是**精确**的：能区分活四与冲四、活三与眠三。代价高，
 // 所以只用在每步一次的威胁分析上，绝不进搜索热循环。
-
-/** 落子在 pos 后是否已成五连。调用前 cells[pos] 必须已经是 player。 */
-function makesFive(cells: Uint8Array, pos: number, player: Player): boolean {
-  const r0 = (pos / SIZE) | 0;
-  const c0 = pos % SIZE;
-  for (let d = 0; d < 4; d++) {
-    const dr = DIRS[d][0];
-    const dc = DIRS[d][1];
-    let n = 1;
-    for (let s = 1; s <= 4; s++) {
-      const rr = r0 + s * dr;
-      const cc = c0 + s * dc;
-      if (!inBoard(rr, cc) || cells[rr * SIZE + cc] !== player) break;
-      n++;
-    }
-    for (let s = 1; s <= 4; s++) {
-      const rr = r0 - s * dr;
-      const cc = c0 - s * dc;
-      if (!inBoard(rr, cc) || cells[rr * SIZE + cc] !== player) break;
-      n++;
-    }
-    if (n >= 5) return true;
-  }
-  return false;
-}
-
-/**
- * 以中心格为原点，沿 dir 取出 11 格（左右各 5）。越界记为对手子 —— 棋盘边界
- * 就是封堵，这样「边上的三不是活三」自动成立，不需要特判。
- *
- * 取 5 而不是 4 是因为判断活四要再看一格：`_XXXX_` 的第二个成五点在 5 格外。
- */
-function segment(cells: Uint8Array, pos: number, player: Player, dir: number): Uint8Array {
-  const opp = otherOf(player);
-  const r0 = (pos / SIZE) | 0;
-  const c0 = pos % SIZE;
-  const dr = DIRS[dir][0];
-  const dc = DIRS[dir][1];
-  const seg = new Uint8Array(11);
-  for (let k = -5; k <= 5; k++) {
-    const rr = r0 + k * dr;
-    const cc = c0 + k * dc;
-    if (!inBoard(rr, cc)) seg[k + 5] = opp;
-    else if (k === 0) seg[k + 5] = player;
-    else seg[k + 5] = cells[rr * SIZE + cc];
-  }
-  return seg;
-}
-
-/**
- * 某个方向上「再填哪一格就能成五」的空格（扁平下标）。
- *
- * 做法：在 11 格窗口里枚举 5 个**包含中心**的 5 格窗口（起点 1..5）。某个窗口
- * 里没有对手子且恰好有 4 个我方子时，它缺的那一格就是成五点 —— 这一步顺带把
- * 跳子处理掉了，因为「差一格」本来就不要求这 4 个子连续。
- *
- * 调用前 cells[pos] 必须已经是 player。
- *
- * 【必须去重】含中心的 5 格窗口有 5 个（起点 1..5），同一个空点可能同时属于其中
- * 两个 —— 例如黑在 0,1,2 上、中心是 3、9 也是黑：窗口 `0..4` 与 `1..5` 都以
- * **同一个** 4 号格为成五点，于是它被数两遍。成五点是**集合**，不去重就会把
- * 「一个成五点的冲四」变成「两个成五点的活四」，活四/活三的判定全跟着错。
- * 候选位只有 11 个，用位掩码去重，不需要额外分配。
- */
-function dirWinCells(cells: Uint8Array, pos: number, player: Player, dir: number): number[] {
-  const r0 = (pos / SIZE) | 0;
-  const c0 = pos % SIZE;
-  const dr = DIRS[dir][0];
-  const dc = DIRS[dir][1];
-  const seg = segment(cells, pos, player, dir);
-  const out: number[] = [];
-  let seen = 0;
-  for (let s = 1; s <= 5; s++) {
-    let mine = 0;
-    let blocked = false;
-    let hole = -1;
-    for (let k = 0; k < 5; k++) {
-      const v = seg[s + k];
-      if (v === player) mine++;
-      else if (v === 0) hole = s + k;
-      else {
-        blocked = true;
-        break;
-      }
-    }
-    if (blocked || mine !== 4) continue;
-    const bit = 1 << hole;
-    if (seen & bit) continue;
-    seen |= bit;
-    const off = hole - 5;
-    const rr = r0 + off * dr;
-    const cc = c0 + off * dc;
-    if (inBoard(rr, cc)) out.push(rr * SIZE + cc);
-  }
-  return out;
-}
-
-/**
- * 落子在 pos 后，四个方向上「再填哪一格就能成五」的空格集合（去重）。
- * 个数就是这一手造出的成五点数量：≥2 活四（对手一手挡不住）、=1 冲四/跳四。
- */
-function winCells(cells: Uint8Array, pos: number, player: Player): number[] {
-  const out: number[] = [];
-  for (let d = 0; d < 4; d++) {
-    const list = dirWinCells(cells, pos, player, d);
-    for (let i = 0; i < list.length; i++) {
-      if (!out.includes(list[i])) out.push(list[i]);
-    }
-  }
-  return out;
-}
-
-/** 这一手在几个方向上成四。≥2 即双四。 */
-function countFourDirs(cells: Uint8Array, pos: number, player: Player): number {
-  let n = 0;
-  for (let d = 0; d < 4; d++) {
-    if (dirWinCells(cells, pos, player, d).length > 0) n++;
-  }
-  return n;
-}
-
-/**
- * 该方向是否还存在「再走一步能成活四」的空点 —— 即活三。只看一个方向，
- * 调用方对四方向汇总（要求两个**不同方向**都成立，才是双活三）。
- */
-function dirHasOpenFourNext(
-  cells: Uint8Array,
-  pos: number,
-  player: Player,
-  dir: number
-): boolean {
-  const r0 = (pos / SIZE) | 0;
-  const c0 = pos % SIZE;
-  const dr = DIRS[dir][0];
-  const dc = DIRS[dir][1];
-  for (let k = -5; k <= 5; k++) {
-    if (k === 0) continue;
-    const rr = r0 + k * dr;
-    const cc = c0 + k * dc;
-    if (!inBoard(rr, cc)) continue;
-    const flat = rr * SIZE + cc;
-    if (cells[flat] !== EMPTY) continue;
-    cells[flat] = player;
-    // 【必须只看 dir 这一个方向 —— 这里曾经调四方向版的 `winCells`】那样会把
-    // **另一个方向**上已有的那个成五点一起数进来：本方向补一子只是个**冲四**，
-    // 加上别处那个「1」就凑成 2，于是眠三被误判成活三。而 `analyzeMove` 进到这里
-    // 时（`wc.length < 2`）恰好保证全局最多只有 1 个成五点 —— 正是那个「1」会
-    // 从别的方向串味过来。按方向判定既修掉误判，又比原来快约 4 倍。
-    const open = dirWinCells(cells, pos, player, dir).length >= 2;
-    cells[flat] = EMPTY;
-    if (open) return true;
-  }
-  return false;
-}
+//
+// 【实现住在 gomoku-rules.ts】原语（`makesFive` / `winCells` / `countFourDirs` /
+// `dirHasOpenFour`）已经下沉到规则模块 —— 服务端判禁手要用同一套棋型，而那边
+// 零依赖、不得 import 本文件。这里通过顶部的局部别名取用，行为与之前完全一致。
 
 /** 对外的精确分析入口：给定局面与空点，返回这一手会造出什么。 */
 export function analyzeMoveAt(
@@ -567,13 +437,7 @@ export function analyzeMoveAt(
   col: number,
   player: Player
 ): MoveAnalysis {
-  const cells = new Uint8Array(CELLS);
-  for (let r = 0; r < SIZE; r++) {
-    for (let c = 0; c < SIZE; c++) {
-      const v = board.grid[r][c];
-      if (v !== EMPTY) cells[r * SIZE + c] = v;
-    }
-  }
+  const cells = flatCells(board.grid, SIZE);
   const pos = row * SIZE + col;
   if (cells[pos] !== EMPTY) {
     return { five: false, winCellCount: 0, fours: 0, openThrees: 0, winning: false };
@@ -584,16 +448,16 @@ export function analyzeMoveAt(
 function analyzeMove(cells: Uint8Array, pos: number, player: Player): MoveAnalysis {
   cells[pos] = player;
   try {
-    if (makesFive(cells, pos, player)) {
+    if (makesFive(cells, SIZE, pos, player)) {
       return { five: true, winCellCount: 5, fours: 4, openThrees: 0, winning: true };
     }
-    const wc = winCells(cells, pos, player);
-    const fours = wc.length > 0 ? countFourDirs(cells, pos, player) : 0;
+    const wc = winCells(cells, SIZE, pos, player);
+    const fours = wc.length > 0 ? countFourDirs(cells, SIZE, pos, player) : 0;
     let openThrees = 0;
     // 已经成四时就轮不到活三了，省掉这一大块开销
     if (wc.length < 2) {
       for (let d = 0; d < 4; d++) {
-        if (dirHasOpenFourNext(cells, pos, player, d)) openThrees++;
+        if (dirHasOpenFour(cells, SIZE, pos, player, d)) openThrees++;
       }
     }
     const winning =
@@ -771,8 +635,8 @@ class Search {
   /**
    * 全盘窗口累加分，**黑方视角**（`windowValue` 的口径）。由 `place`/`unplace`
    * 增量维护 —— 绝不要直接写 `this.cells[...]`，那会让它与棋盘悄悄失配。
-   * 唯一的例外是 `dirHasOpenFourNext` 在 `analyzeMove` 里的临时借位，它在同一
-   * 次调用内成对复原，期间不读分。
+   * 唯一的例外是 `dirHasOpenFour`（住在 `gomoku-rules.ts`）在 `analyzeMove`
+   * 里的临时借位，它在同一次调用内成对复原，期间不读分。
    */
   private evalSum = 0;
   /** 快路是否已超支（只掐快路，不影响 L3，见 `abortedFast`）。 */
@@ -970,7 +834,7 @@ class Search {
   /** 该空点落子后是否直接成五（落下再撤回）。 */
   private winsBy(pos: number, player: Player): boolean {
     this.place(pos, player);
-    const win = makesFive(this.cells, pos, player);
+    const win = makesFive(this.cells, SIZE, pos, player);
     this.unplace(pos);
     return win;
   }
@@ -1062,7 +926,7 @@ class Search {
       if (this.oppFiveLeft(t, pos) > 0) continue;
 
       this.place(pos, player);
-      const wc = winCells(this.cells, pos, player);
+      const wc = winCells(this.cells, SIZE, pos, player);
       let found = false;
       if (wc.length >= 2) {
         // 活四 / 双四：对手一手挡不住
@@ -1127,7 +991,7 @@ class Search {
     for (let i = 0; i < t2.meFourN; i++) {
       const q = t2.meFour[i];
       this.place(q, player);
-      const n = winCells(this.cells, q, player).length;
+      const n = winCells(this.cells, SIZE, q, player).length;
       this.unplace(q);
       if (n >= 2) out.push(q);
     }
@@ -1409,7 +1273,7 @@ class Search {
       const pos = moves[i];
       const childCanWin = this.oppFiveSurvives(t, pos);
       this.place(pos, aiPlayer);
-      const s = makesFive(this.cells, pos, aiPlayer)
+      const s = makesFive(this.cells, SIZE, pos, aiPlayer)
         ? WIN_SCORE
         : -this.negamax(depth - 1, -INF, -alpha, otherOf(aiPlayer), 1, childCanWin);
       this.unplace(pos);
@@ -1478,7 +1342,7 @@ class Search {
       const childCanWin = this.oppFiveSurvives(t, pos);
       this.place(pos, player);
       // 越快取胜越好：减去 ply，浅层的胜利分更高
-      let s = makesFive(this.cells, pos, player)
+      let s = makesFive(this.cells, SIZE, pos, player)
         ? WIN_SCORE - ply
         : -this.negamax(reduced, -beta, -alpha, otherOf(player), ply + 1, childCanWin);
       // 减层搜出来的着法若真的超过 alpha，就按原深度重搜，免得误剪
