@@ -6,11 +6,11 @@
 // tests/unit/gomoku-ai.test.ts 的战术题库与不变量负责。
 //
 // 用法：
-//   npx tsx scripts/gomoku-selfplay.ts                        # 普通 vs 困难，各 2 万节点
-//   npx tsx scripts/gomoku-selfplay.ts normal:1000t hard:3000t # 自己指定预算
-//   npx tsx scripts/gomoku-selfplay.ts normal:1000t hard:3000t 30
+//   npx tsx scripts/gomoku-selfplay.ts                        # 简单 vs 普通，各 2 万节点
+//   npx tsx scripts/gomoku-selfplay.ts easy:200t normal:1000t # 自己指定预算
+//   npx tsx scripts/gomoku-selfplay.ts easy:200t normal:1000t 30
 //
-// 配置写法：`<难度>:<预算>`，难度只能是 easy / normal / hard，预算以 `n` 结尾是
+// 配置写法：`<难度>:<预算>`，难度只能是 easy / normal，预算以 `n` 结尾是
 // 节点数、以 `t` 结尾是毫秒。节点预算是确定性的（同样的参数跑两次结果完全一致），
 // 墙钟不是。非法难度**直接抛错退出**，不会静默测成别的东西。
 //
@@ -94,7 +94,7 @@ interface Contestant {
   opts: AiOptions;
 }
 
-const DIFFICULTIES: readonly string[] = ['easy', 'normal', 'hard'];
+const DIFFICULTIES: readonly string[] = ['easy', 'normal'];
 
 function parse(spec: string): Contestant {
   const [diff, budget = ''] = spec.split(':');
@@ -141,8 +141,9 @@ function playGame(
 }
 
 function main(): void {
-  const a = parse(process.argv[2] ?? 'normal:20000n');
-  const b = parse(process.argv[3] ?? 'hard:20000n');
+  // 两个默认值必须**不同档**，否则默认跑的是同源对局 —— 那种比分没有任何意义
+  const a = parse(process.argv[2] ?? 'easy:20000n');
+  const b = parse(process.argv[3] ?? 'normal:20000n');
   const games = Number(process.argv[4] ?? OPENINGS.length);
 
   console.log(`${a.name}  vs  ${b.name} —— 共 ${games} 个开局 × 两色 = ${games * 2} 局\n`);

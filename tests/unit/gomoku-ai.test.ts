@@ -173,12 +173,12 @@ describe('战术题库 —— 快路', () => {
     expect(findBestMove(b, BLACK)).toMatchObject({ row: 7, col: 7 });
   });
 
-  it('对手有活三时必须应对（困难档）', () => {
+  it('对手有活三时必须应对（普通档）', () => {
     const b = position([
       [7, 5, WHITE], [7, 6, WHITE], [7, 7, WHITE],
       [9, 9, BLACK], [10, 10, BLACK],
     ]);
-    const m = findBestMove(b, BLACK, { difficulty: 'hard' });
+    const m = findBestMove(b, BLACK, { difficulty: 'normal' });
     // 白方走完这一手后应该拿不到活四
     b.placeStone(m.row, m.col, BLACK);
     for (let c = 3; c <= 9; c++) {
@@ -203,7 +203,7 @@ describe('战术题库 —— 双威胁', () => {
   // 预算测的话，L1 整个删掉这条用例照样绿。预算压到 1 之后搜索一步都跑不动，
   // 走出来的着法只可能来自 L1 的组合判据（四三 / 双活三）。
   it('双活三由 L1 快路直接认出来（搜索预算压到 1）', () => {
-    const m = findBestMove(doubleThree(), BLACK, { difficulty: 'hard', maxNodes: 1 });
+    const m = findBestMove(doubleThree(), BLACK, { difficulty: 'normal', maxNodes: 1 });
     // **分值才是这条用例的判据，不是落点**。预算耗尽时引擎退回根节点排序第一的
     // 候选，而 (7,7) 的局部价值本来就最高 —— 光断言落点的话，L1 整块删掉照样绿
     // （实测过：旧引擎在这里也返回 (7,7)，但分值是 0）。
@@ -213,7 +213,7 @@ describe('战术题库 —— 双威胁', () => {
 
   it('对手的双活三点必须去占掉', () => {
     // 同一个局面换成白方走：白必须抢 (7,7)，否则黑补上就是双活三。
-    const m = findBestMove(doubleThree(), WHITE, { difficulty: 'hard', maxNodes: 1 });
+    const m = findBestMove(doubleThree(), WHITE, { difficulty: 'normal', maxNodes: 1 });
     // 【这里曾经还断言 `m.score === 50_000_000`】那条断言钉的是「L1 快路直接返回」
     // 这个**实现细节**。现在挡点不再直接返回、而是交给搜索（见 `findBestMove` 里
     // 关于 mustBlock 的注释），分值自然变成搜索值 —— 断言细节就废了。
@@ -233,7 +233,7 @@ describe('战术题库 —— 双威胁', () => {
       [7, 5, WHITE], [7, 7, WHITE], [7, 8, WHITE],
       [5, 5, BLACK], [9, 9, BLACK],
     ]);
-    const m = findBestMove(b, BLACK, { difficulty: 'hard' });
+    const m = findBestMove(b, BLACK, { difficulty: 'normal' });
     b.placeStone(m.row, m.col, BLACK);
     for (let c = 3; c <= 10; c++) {
       if (b.isValidMove(7, c)) {
@@ -251,14 +251,14 @@ describe('战术题库 —— 双威胁', () => {
       [7, 7, BLACK], [7, 9, WHITE], [5, 3, BLACK],
       [9, 5, WHITE], [3, 7, BLACK], [11, 9, WHITE],
     ]);
-    const m = findBestMove(b, BLACK, { difficulty: 'hard', maxNodes: 20000 });
+    const m = findBestMove(b, BLACK, { difficulty: 'normal', maxNodes: 20000 });
     // 5e7 是「挡住对手成五」那条快路使用的分值，必胜手是 1e8
     expect(m.score, `报出了 ${m.score}，像是假杀`).toBeLessThan(50_000_000);
     expect(b.isValidMove(m.row, m.col)).toBe(true);
   });
 });
 
-describe('算杀层 —— 三档都不许在平静局面报假杀', () => {
+describe('算杀层 —— 两档都不许在平静局面报假杀', () => {
   /** 5 万是「挡住对手成五」那条快路的分值，必胜手是 1 亿。 */
   const NOT_A_WIN = 50_000_000;
 
@@ -291,9 +291,10 @@ describe('算杀层 —— 三档都不许在平静局面报假杀', () => {
   // 【这条守的是什么】VCT 的判胜条件是「对手的解招集是空的」。**漏掉任何一个
   // 守方解招，就会报出根本不存在的必胜**，然后拿它去走废棋 —— 历史上
   // `buildMoves` 截断 `oppFour` 就是这么让困难档对旧 AI 八局全败的。
-  // 三档一起扫：VCF（普通档也开着）与 VCT 走的是同一套判胜结构。
+  // 两档一起扫：VCF 与 VCT 走的是同一套判胜结构（VCT 目前两档都没开，但用例留着，
+  // 重新启用时不会缺守卫）。
   it('无杀局面里报出的分值不许够到「必胜」', () => {
-    const tiers: Difficulty[] = ['easy', 'normal', 'hard'];
+    const tiers: Difficulty[] = ['easy', 'normal'];
     const bad: string[] = [];
     for (let seed = 1; seed <= 3; seed++) {
       for (const p of [BLACK, WHITE] as Player[]) {
@@ -318,7 +319,7 @@ describe('不变量 —— 契约与安全网', () => {
       [6, 6, BLACK], [8, 8, WHITE], [5, 9, BLACK], [9, 5, WHITE],
     ]);
     const before = JSON.stringify(b.grid);
-    findBestMove(b, BLACK, { difficulty: 'hard' });
+    findBestMove(b, BLACK, { difficulty: 'normal' });
     expect(JSON.stringify(b.grid)).toBe(before);
     expect(b.getHistory()).toHaveLength(8);
   });
@@ -353,7 +354,7 @@ describe('不变量 —— 契约与安全网', () => {
     ];
     for (const cells of cases) {
       const b = position(cells);
-      const m = findBestMove(b, BLACK, { difficulty: 'hard' });
+      const m = findBestMove(b, BLACK, { difficulty: 'normal' });
       expect(
         winsByPlaying(b, m.row, m.col, BLACK),
         `局面 ${JSON.stringify(cells)} 走成了 (${m.row},${m.col})，没成五`
@@ -378,7 +379,7 @@ describe('不变量 —— 契约与安全网', () => {
       [3, 7, BLACK], [11, 9, WHITE],
     ]);
     let calls = 0;
-    const m = findBestMove(b, BLACK, { difficulty: 'hard', shouldStop: () => ++calls > 2 });
+    const m = findBestMove(b, BLACK, { difficulty: 'normal', shouldStop: () => ++calls > 2 });
     // 中止后仍然必须给出一手合法着法
     expect(b.isValidMove(m.row, m.col)).toBe(true);
   });

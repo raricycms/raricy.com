@@ -56,7 +56,7 @@ test.describe('五子棋单机', () => {
     await expect(page.locator('input[name="gomoku-difficulty"]')).toHaveCount(0);
 
     await page.locator('input[name="gomoku-mode"][value="ai"]').check();
-    await expect(page.locator('input[name="gomoku-difficulty"][value="hard"]')).toBeVisible();
+    await expect(page.locator('input[name="gomoku-difficulty"][value="normal"]')).toBeVisible();
     await expect(page.locator('input[name="gomoku-first"][value="white"]')).toBeVisible();
 
     // 切回双人对战应收起来
@@ -66,7 +66,7 @@ test.describe('五子棋单机', () => {
 
   test('选「我执白后手」时 AI 自己开局，一次都不用点棋盘', async ({ page }) => {
     await page.goto('/game/gomoku');
-    // 先切人机（默认简单档，200ms 一手，不必等困难档那 3 秒）
+    // 先切人机（默认简单档，200ms 一手，不必等普通档那 1 秒）
     await page.locator('input[name="gomoku-mode"][value="ai"]').check();
     // 再选执白 —— 这一下会重开一局，AI 执黑先手
     await page.locator('input[name="gomoku-first"][value="white"]').check();
@@ -76,13 +76,13 @@ test.describe('五子棋单机', () => {
     await expect(page.locator('.board-status')).toHaveText('白方落子', { timeout: 20_000 });
   });
 
-  // 【这条测的是 worker 存在的理由】困难档要思考好几秒。搜索若是同步跑在主线程上，
+  // 【这条测的是 worker 存在的理由】普通档要思考足足 1 秒。搜索若是同步跑在主线程上，
   // 这几秒里整页是死的 —— 按钮点不动、状态栏定格。所以「思考期间点得动新游戏」
   // 就是「搜索没占着主线程」的判据；哪天有人把 AI 挪回主线程，这条会超时。
-  test('困难档思考期间页面不卡：能点得动「新游戏」', async ({ page }) => {
+  test('思考期间页面不卡：能点得动「新游戏」', async ({ page }) => {
     await page.goto('/game/gomoku');
     await page.locator('input[name="gomoku-mode"][value="ai"]').check();
-    await page.locator('input[name="gomoku-difficulty"][value="hard"]').check();
+    await page.locator('input[name="gomoku-difficulty"][value="normal"]').check();
 
     await clickCell(page, 7, 7);
     await expect(page.locator('.board-status')).toContainText('思考中', { timeout: 10_000 });

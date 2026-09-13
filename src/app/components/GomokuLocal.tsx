@@ -412,16 +412,6 @@ export default function GomokuLocal() {
                 />
                 <span>普通</span>
               </label>
-              <label className="gomoku-mode-option">
-                <input
-                  type="radio"
-                  name="gomoku-difficulty"
-                  value="hard"
-                  checked={difficulty === 'hard'}
-                  onChange={() => onDifficultyChange('hard')}
-                />
-                <span>困难</span>
-              </label>
             </div>
           </div>
 
