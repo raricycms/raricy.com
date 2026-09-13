@@ -742,6 +742,21 @@
   line-height: 1.55;
   white-space: pre-wrap;
   word-break: break-word;
+  // ★ 这条是「代码块在移动端把消息列表顶出横向滚动」的唯一修法，别删。
+  //
+  // 气泡的宽度来自 .chat-msg__body 的 align-items: flex-start ⇒ 它是 fit-content，
+  // 即 min(max-content, 可用宽度)，但**下限是 min-content**。代码块（pre）不折行，
+  // 它的 min-content 就是最长那一行的整宽 —— 一行 60 字符的代码能把气泡撑到 1173px
+  // （390px 屏实测），于是 .chat-list（overflow-y: auto，横轴随之变成 auto）开始
+  // 横向滚动，看起来就是「屏幕被顶出去了」。
+  //
+  // 注意 min-width: 0 **不管用**：那是主轴方向的最小尺寸，而这里是**列**向 flex 的
+  // 交叉轴，fit-content 的算法只认 min/max-width 与可用宽度。所以要用 max-width
+  // 把上限钉死在容器宽度上 —— 之后 pre 拿到确定的宽度，它自己的 overflow-x: auto
+  // 才真正生效（代码块内部横滑，页面不动）。
+  //
+  // 短消息不受影响：fit-content 本来就只有几十 px，min(短, 100%) 仍是几十 px。
+  max-width: 100%;
 }
 
 // 正文里 @到我 → 描边换品牌色 + 内侧一条品牌色竖条（方向跟着气泡走）。

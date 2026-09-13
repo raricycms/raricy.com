@@ -13373,6 +13373,7 @@ input:checked + .settings-toggle__slider::before {
   line-height: 1.55;
   white-space: pre-wrap;
   word-break: break-word;
+  max-width: 100%;
 }
 
 .chat-msg__content--mention {
