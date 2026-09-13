@@ -158,6 +158,17 @@ export interface AiOptions {
   timeBudgetMs?: number;
   /** 协作式取消。每 1024 个节点检查一次。 */
   shouldStop?: () => boolean;
+  /**
+   * 覆盖难度表里的威胁层开关。**只给测试与 `scripts/gomoku-selfplay.ts` 用**，
+   * 产品面仍然只有「简单 / 普通」两档。
+   *
+   * 【为什么留这个口子】要做「同一档、只差一个开关」的等时间 A/B（例如 VCT 到底
+   * 值不值得开），否则只能往 `PARAMS` 里临时加一档 —— 那会污染产品面，而且测完
+   * 就不知道该不该删。不传时完全走难度表的默认值。
+   */
+  useThreats?: boolean;
+  useVcf?: boolean;
+  useVct?: boolean;
 }
 
 /** `analyzeMoveAt` 的结果：这一手会造出什么。 */
@@ -384,6 +395,25 @@ const PARAMS: Record<Difficulty, Params> = {
     useVct: false,
   },
 };
+
+/**
+ * 难度表的参数，叠加 `AiOptions` 里的覆盖开关。
+ *
+ * 无覆盖时**原样返回表里那一份**（不复制）：`Params` 在搜索里被高频读，
+ * 而每个难度只有一份，没有理由每手都新建一个对象。
+ */
+function paramsFor(opts: AiOptions): Params {
+  const base = PARAMS[opts.difficulty ?? 'easy'];
+  if (opts.useThreats === undefined && opts.useVcf === undefined && opts.useVct === undefined) {
+    return base;
+  }
+  return {
+    ...base,
+    useThreats: opts.useThreats ?? base.useThreats,
+    useVcf: opts.useVcf ?? base.useVcf,
+    useVct: opts.useVct ?? base.useVct,
+  };
+}
 
 /** VCF 的递归层上限。每层都要落一子，超过这个深度已不现实。 */
 const VCF_MAX_DEPTH = 10;
@@ -1530,7 +1560,7 @@ export function findBestMove(
   aiPlayer: Player,
   opts: AiOptions = {}
 ): AiResult {
-  const params = PARAMS[opts.difficulty ?? 'easy'];
+  const params = paramsFor(opts);
   const mid = (SIZE / 2) | 0;
 
   if (board.getHistory().length === 0) {
