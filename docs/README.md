@@ -17,7 +17,7 @@ raricy.com 的全部文档。分两层：**`guide/` 给玩家和内容创作者*
 | `guide/投票箱使用指南.md` ★ | 创建投票、嵌入博客 |
 | `guide/cattca-guide.md` ★ | Cattca 互动叙事入门（零基础） |
 | `guide/cattca-syntax.md` | Cattca 脚本语法参考（命令逐条） |
-| `guide/内容引用语法指南.md` | `[@<内容ID>]` 在博客里嵌入内容 |
+| `guide/内容引用语法指南.md` | `[@<内容ID>]` 在博客 / 评论 / 聊天里嵌入内容 |
 | `guide/story-module.md` | 故事模块：文件结构 / 合集嵌套 / URL |
 | `guide/atamas-game.md` | ATÅMAS 圆盘组合游戏玩法 |
 | `guide/gomoku-online.md` | 五子棋联机对战：开房、邀请、掉线判胜、观战 |
