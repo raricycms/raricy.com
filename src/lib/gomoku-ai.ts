@@ -539,37 +539,17 @@ function analyzeMove(cells: Uint8Array, pos: number, player: Player): MoveAnalys
 // ─── 评估 ────────────────────────────────────────────────────────────────────
 
 /**
- * 全盘评估，返回 **player 视角**的分值。
+ * 一个 5 格窗口对**黑方视角**总分的贡献：只有黑子时 `+W[黑子数]`、只有白子时
+ * `-W[白子数]`、空窗口或两色都有时 0。
  *
- * 对每条线的每个 5 格窗口：只含 player 的子与空位时加 `W[我方子数]`，只含对手
- * 的子与空位时减 `W[对手子数]`。窗口里同时有两色则一文不值。
+ * 【为什么可以固定成黑方视角】原来那个逐窗口算 `WINDOW_TABLE[a] - WINDOW_TABLE[b]`
+ * 的写法（a 以 player 为「我」、b 以对手为「我」），把两项展开就知道差值只可能是
+ * 上面三种之一 —— **与 player 无关**。于是 `evaluate(cells, WHITE)` 恒等于
+ * `-evaluate(cells, BLACK)`，增量维护一份黑方视角的累加分就够了，取分时翻符号。
  */
-function evaluate(cells: Uint8Array, player: Player): number {
-  const dMe = DIGIT_AS_ME[player];
-  const dOp = DIGIT_AS_ME[otherOf(player)];
-  let score = 0;
-  for (let li = 0; li < LINES.length; li++) {
-    const { start, step, len } = LINES[li];
-    // 首个窗口老老实实拼一遍
-    let a = 0;
-    let b = 0;
-    let p = 1;
-    for (let k = 0; k < 5; k++) {
-      const v = cells[start + k * step];
-      a += dMe[v] * p;
-      b += dOp[v] * p;
-      p *= 3;
-    }
-    score += WINDOW_TABLE[a] - WINDOW_TABLE[b];
-    // 之后滑窗：弹掉最低位、整体除 3、把新格补成最高位（3^4 = 81）。
-    // 除 3 一定整除 —— 减掉的正是 k=0 那一项。
-    for (let i = 1; i + 5 <= len; i++) {
-      a = (a - dMe[cells[start + (i - 1) * step]]) / 3 + dMe[cells[start + (i + 4) * step]] * 81;
-      b = (b - dOp[cells[start + (i - 1) * step]]) / 3 + dOp[cells[start + (i + 4) * step]] * 81;
-      score += WINDOW_TABLE[a] - WINDOW_TABLE[b];
-    }
-  }
-  return score;
+function windowValue(black: number, white: number): number {
+  if (black > 0) return white > 0 ? 0 : W[black];
+  return white > 0 ? -W[white] : 0;
 }
 
 /**
@@ -721,6 +701,13 @@ class Search {
    */
   private inMoves = new Int32Array(CELLS);
   private moveGen = 0;
+  /**
+   * 全盘窗口累加分，**黑方视角**（`windowValue` 的口径）。由 `place`/`unplace`
+   * 增量维护 —— 绝不要直接写 `this.cells[...]`，那会让它与棋盘悄悄失配。
+   * 唯一的例外是 `dirHasOpenFourNext` 在 `analyzeMove` 里的临时借位，它在同一
+   * 次调用内成对复原，期间不读分。
+   */
+  private evalSum = 0;
 
   private rankBuf(layer: number): number[] {
     while (this.rankBufs.length <= layer) this.rankBufs.push([]);
@@ -771,11 +758,9 @@ class Search {
     for (let r = 0; r < SIZE; r++) {
       for (let c = 0; c < SIZE; c++) {
         const v = board.grid[r][c];
-        if (v !== EMPTY) {
-          const pos = r * SIZE + c;
-          this.cells[pos] = v;
-          bumpNear(this.near, pos, 1);
-        }
+        // 走 `place` 而不是直接写 cells —— 这样 evalSum 与 near 的初值由同一条
+        // 路径产生，不可能出现「摆子忘了维护增量」那类只有搜索变弱、不报错的 bug。
+        if (v !== EMPTY) this.place(r * SIZE + c, v);
       }
     }
   }
@@ -812,12 +797,62 @@ class Search {
     return this.stopped;
   }
 
+  /**
+   * 落子 / 撤子时增量维护 `evalSum` —— 返回「过 `pos` 的所有窗口」贡献值的变化量。
+   *
+   * 【为什么要增量】全盘评估原本要扫 594 个窗口（约 1200 次读取），而它跑在**每个
+   * 叶子**上，叶子又占节点总数的大半。改动一格只影响**过该点的窗口** —— 4 个方向、
+   * 每个方向最多 5 个窗口包含它（共 ≤20 个），其余窗口的值一个都没变，重算纯属浪费。
+   *
+   * 【为什么每格只读 4 格】窗口里恰好只有一格会变（`pos` 自己，它在窗口内的偏移是
+   * `-o`）。而 `place` 只落在空格上、`unplace` 只撤销自己的子，所以那一格的**旧值
+   * 恒为已知**（由 `oldValue` 传入），不必读。
+   *
+   * 【o 的范围怎么来的】把窗口起点相对 `pos` 的偏移记作 o，窗口覆盖 `o..o+4`；则
+   * `pos` 在窗口里 ⟺ `o ∈ [-4, 0]`，窗口不出界 ⟺ `o >= -back` 且 `o + 4 <= fwd`。
+   * `SPAN` 存的正是这两个量（各截到 4，截断在这里是安全的：我们本来也只要到 4）。
+   */
+  private stepEval(pos: number, oldValue: number, newValue: number): number {
+    const cells = this.cells;
+    let delta = 0;
+    for (let dir = 0; dir < 4; dir++) {
+      const sp = SPAN[dir * CELLS + pos];
+      const back = sp & 15;
+      const fwd = sp >> 4;
+      const oLo = back >= 4 ? -4 : -back;
+      const oHi = fwd >= 4 ? 0 : fwd - 4;
+      if (oLo > oHi) continue;
+      const step = DIRS[dir][0] * SIZE + DIRS[dir][1];
+      for (let o = oLo; o <= oHi; o++) {
+        let black = 0;
+        let white = 0;
+        for (let k = 0; k < 5; k++) {
+          if (o + k === 0) continue;
+          const v = cells[pos + (o + k) * step];
+          if (v === BLACK) black++;
+          else if (v === WHITE) white++;
+        }
+        delta +=
+          windowValue(black + (newValue === BLACK ? 1 : 0), white + (newValue === WHITE ? 1 : 0)) -
+          windowValue(black + (oldValue === BLACK ? 1 : 0), white + (oldValue === WHITE ? 1 : 0));
+      }
+    }
+    return delta;
+  }
+
+  /** 当前局面对 `player` 的评估分（`evalSum` 是黑方视角，见 `windowValue`）。 */
+  private evaluateFor(player: Player): number {
+    return player === BLACK ? this.evalSum : -this.evalSum;
+  }
+
   private place(pos: number, player: Player): void {
+    this.evalSum += this.stepEval(pos, EMPTY, player);
     this.cells[pos] = player;
     bumpNear(this.near, pos, 1);
   }
 
   private unplace(pos: number): void {
+    this.evalSum += this.stepEval(pos, this.cells[pos], EMPTY);
     this.cells[pos] = EMPTY;
     bumpNear(this.near, pos, -1);
   }
@@ -1157,7 +1192,7 @@ class Search {
     this.nodes++;
     if (this.aborted()) return 0;
     // 地平线：走子方立刻能成五，就不该再看静态分了
-    if (depth <= 0) return canWinNow ? WIN_SCORE - ply : evaluate(this.cells, player);
+    if (depth <= 0) return canWinNow ? WIN_SCORE - ply : this.evaluateFor(player);
 
     const t = this.scanThreats(player, ply);
     // 轮到我了而我能成五 —— 这一层就赢了，不必再往下搜。
@@ -1165,7 +1200,7 @@ class Search {
     if (t.meFiveN > 0) return WIN_SCORE - ply;
 
     const moves = this.buildMoves(player, ply, t, -1);
-    if (moves.length === 0) return evaluate(this.cells, player);
+    if (moves.length === 0) return this.evaluateFor(player);
 
     let best = -INF;
     for (let i = 0; i < moves.length; i++) {
