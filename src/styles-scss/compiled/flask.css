@@ -8427,6 +8427,31 @@ body {
   margin-bottom: 16px;
 }
 
+.gomoku-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.gomoku-option-group {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.gomoku-option-title {
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+}
+
+.gomoku-option-group .gomoku-mode-selector {
+  margin-bottom: 0;
+  gap: 16px;
+}
+
 .gomoku-mode-option {
   display: flex;
   align-items: center;

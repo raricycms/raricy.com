@@ -38,6 +38,36 @@
   margin-bottom: $space-4;
 }
 
+// ── 人机模式的选项组（难度 / 先手）────────────────────────────
+// 选项行复用上面的 .gomoku-mode-selector / .gomoku-mode-option，
+// 这里只加「纵向堆叠 + 每组一行小标题」的外壳。
+
+.gomoku-options {
+  display: flex;
+  flex-direction: column;
+  gap: $space-2;
+  margin-bottom: $space-4;
+}
+
+.gomoku-option-group {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: $space-3;
+  flex-wrap: wrap;
+}
+
+.gomoku-option-title {
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+}
+
+// 组内的选项行不需要自己的下边距（间距由 .gomoku-options 的 gap 管）
+.gomoku-option-group .gomoku-mode-selector {
+  margin-bottom: 0;
+  gap: $space-4;
+}
+
 .gomoku-mode-option {
   display: flex;
   align-items: center;

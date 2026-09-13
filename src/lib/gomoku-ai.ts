@@ -218,9 +218,12 @@ interface Params {
  * 8:0 胜旧 AI。真正拉开差距的是威胁驱动的着法生成，不是深度。
  *
  * `hard` 在此之上开 L1 双威胁与 L2 VCF，并把深度放到 10；同样 8:0 胜旧 AI。
- * `timeBudgetMs` 600 是**主线程**上的墙钟上限：搜索每次都吃满它（迭代加深永远
- * 搜不完），所以它就是玩家实际感到的卡顿。实测 2 万节点只要约 135ms，
- * 600ms 已留足余量，不必再调高。
+ *
+ * 【关于 timeBudgetMs】搜索每次都会吃满它（迭代加深永远搜不完），所以这个值
+ * 就是玩家实际等待的时长。困难档给 3s 是因为**多给时间确实能换到深度**：
+ * 600ms → 深度 6，3s → 深度 8（靠 LMR 才成立；没有 LMR 时给到 3s 也还是 6）。
+ * 这 3 秒跑在 Web Worker 上，主线程全程空闲 —— **不要把它改回主线程**，
+ * 那样每走一步整页冻死 3 秒。
  *
  * 两档都不加随机扰动：保持确定性，测试与复现才有意义。
  */
@@ -235,7 +238,7 @@ const PARAMS: Record<Difficulty, Params> = {
   hard: {
     maxDepth: 10,
     candidateWidth: 16,
-    timeBudgetMs: 600,
+    timeBudgetMs: 3000,
     useThreats: true,
     useVcf: true,
   },

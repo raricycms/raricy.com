@@ -25,7 +25,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { BLACK, GomokuBoard, WHITE, type Move, type Player } from '@/lib/gomoku-rules';
-import { findBestMove } from '@/lib/gomoku-ai';
+import { findBestMove, type Difficulty } from '@/lib/gomoku-ai';
 import GomokuCanvas from './GomokuCanvas';
 import type { AiProtocolMove, AiRequest, AiResponse } from './gomoku-ai-protocol';
 
@@ -33,7 +33,16 @@ import type { AiProtocolMove, AiRequest, AiResponse } from './gomoku-ai-protocol
 // 画布（调色板 / DPR / resize / 主题 / 点击换算）全在 GomokuCanvas 里，
 // 与联机模式共用。本组件只剩本地对局的 AI 与状态机。
 type Mode = 'pvp' | 'ai';
+type HumanSide = 'black' | 'white';
 type StatusKind = 'turn' | 'thinking' | 'win-black' | 'win-white' | 'draw';
+
+/** 棋盘上「谁执黑/执白」到 Player 的换算。人类选的是颜色，引擎要的是 Player。 */
+function playerOf(side: HumanSide): Player {
+  return side === 'black' ? BLACK : WHITE;
+}
+
+/** 「思考中」后面跳动的点。worker 让主线程空着，所以指示器可以是活的。 */
+const THINKING_DOTS = ['·', '··', '···'];
 
 export default function GomokuLocal() {
   const boardRef = useRef<GomokuBoard>(new GomokuBoard());
@@ -54,12 +63,18 @@ export default function GomokuLocal() {
   const lastMoveRef = useRef<Move | null>(null);
   const isAiThinkingRef = useRef<boolean>(false);
   const modeRef = useRef<Mode>('pvp');
+  /** 谁执黑/谁执白。人机模式下人类可以选，所以不能写死「人恒执黑」。 */
+  const humanPlayerRef = useRef<Player>(BLACK);
+  const aiPlayerRef = useRef<Player>(WHITE);
 
   // DOM 展示态
   const [mode, setMode] = useState<Mode>('pvp');
+  const [difficulty, setDifficulty] = useState<Difficulty>('normal');
+  const [humanSide, setHumanSide] = useState<HumanSide>('black');
   const [statusText, setStatusText] = useState<string>('黑方落子');
   const [statusKind, setStatusKind] = useState<StatusKind>('turn');
   const [undoDisabled, setUndoDisabled] = useState<boolean>(true);
+  const [thinkingDots, setThinkingDots] = useState<number>(0);
 
   // 棋盘是原地改的可变对象，引用不变 —— 靠这个计数器通知 GomokuCanvas 重绘。
   const [viewSeq, setViewSeq] = useState<number>(0);
@@ -91,11 +106,19 @@ export default function GomokuLocal() {
     setStatusKind('turn');
   }, []);
 
+  /**
+   * AI 先手时，它开局那一手不算「可悔的」—— 悔棋不该把棋盘撤成「轮到 AI 走
+   * 却没人走」的状态。人类执黑时这个值是 0，退化成原来的「撤到空盘」。
+   */
+  const openingMoves = useCallback((): number => {
+    return modeRef.current === 'ai' && aiPlayerRef.current === BLACK ? 1 : 0;
+  }, []);
+
   const refreshUndoDisabled = useCallback(() => {
     setUndoDisabled(
-      boardRef.current.getHistory().length === 0 || isAiThinkingRef.current
+      boardRef.current.getHistory().length <= openingMoves() || isAiThinkingRef.current
     );
-  }, []);
+  }, [openingMoves]);
 
   const applyView = useCallback(() => {
     // 自增而非比较：棋盘被原地改了，引用比不出变化（见 GomokuCanvas 文件头）
@@ -162,20 +185,21 @@ export default function GomokuLocal() {
   const maybeAiMove = useCallback(() => {
     if (modeRef.current !== 'ai') return;
     if (gameOverRef.current) return;
-    if (currentPlayerRef.current !== WHITE) return;
+    if (currentPlayerRef.current !== aiPlayerRef.current) return;
 
     isAiThinkingRef.current = true;
     updateStatus();
     refreshUndoDisabled();
 
     const board = boardRef.current;
+    const aiPlayer = aiPlayerRef.current;
     const moves: AiProtocolMove[] = board
       .getHistory()
       .map((m) => ({ row: m.row, col: m.col, player: m.player }));
     const id = ++requestSeqRef.current;
 
     const apply = (row: number, col: number): void => {
-      placeAndCheck(row, col, WHITE);
+      placeAndCheck(row, col, aiPlayer);
       isAiThinkingRef.current = false;
       if (!gameOverRef.current) switchTurn();
       applyView();
@@ -184,14 +208,15 @@ export default function GomokuLocal() {
     const worker = ensureAiWorker();
     if (worker) {
       pendingRef.current = { id, apply };
-      const req: AiRequest = { id, moves, player: WHITE, difficulty: 'normal' };
+      const req: AiRequest = { id, moves, player: aiPlayer, difficulty };
       worker.postMessage(req);
       return;
     }
 
-    const best = findBestMove(board, WHITE, { difficulty: 'normal' });
+    const best = findBestMove(board, aiPlayer, { difficulty });
     apply(best.row, best.col);
   }, [
+    difficulty,
     updateStatus,
     refreshUndoDisabled,
     ensureAiWorker,
@@ -206,8 +231,8 @@ export default function GomokuLocal() {
       if (isAiThinkingRef.current) return;
       if (!boardRef.current.isValidMove(row, col)) return;
 
-      // AI 模式下仅人类（黑）可点
-      if (modeRef.current === 'ai' && currentPlayerRef.current !== BLACK) return;
+      // AI 模式下只有人类那一方可以点（人类可能执黑也可能执白）
+      if (modeRef.current === 'ai' && currentPlayerRef.current !== humanPlayerRef.current) return;
 
       placeAndCheck(row, col, currentPlayerRef.current);
 
@@ -226,7 +251,7 @@ export default function GomokuLocal() {
   );
 
   const initGame = useCallback(
-    (nextMode: Mode) => {
+    (nextMode: Mode, nextDifficulty: Difficulty, nextHumanSide: HumanSide) => {
       // 先把在途的 AI 结果作废并掐掉 worker，再动棋盘。
       // 顺序反过来的话，迟到的结果会在**新**棋盘上落子。
       resetAiWorker();
@@ -239,9 +264,16 @@ export default function GomokuLocal() {
       isAiThinkingRef.current = false;
       modeRef.current = nextMode;
 
+      const human = playerOf(nextHumanSide);
+      humanPlayerRef.current = human;
+      aiPlayerRef.current = human === BLACK ? WHITE : BLACK;
+
       applyView();
+
+      // AI 执黑时由它开局（空盘引擎直接给天元）
+      if (nextMode === 'ai' && aiPlayerRef.current === BLACK) maybeAiMove();
     },
-    [resetAiWorker, applyView]
+    [resetAiWorker, applyView, maybeAiMove]
   );
 
   const undoMove = useCallback(() => {
@@ -249,10 +281,17 @@ export default function GomokuLocal() {
     if (boardRef.current.getHistory().length === 0) return;
 
     if (modeRef.current === 'ai') {
-      // 撤销两步：AI 的 + 人的；人类恒执黑
-      boardRef.current.undo();
-      boardRef.current.undo();
-      currentPlayerRef.current = BLACK;
+      // 撤到「又轮到人类」为止 —— 也就是撤掉 AI 那一手 + 人类那一手。
+      // 先撤一手再判断，是因为进来时**正是**人类的回合，条件直接判会一次都不撤。
+      // 人类执白时 AI 的开局手不在可撤范围内（openingMoves），撤到底会停在它上面。
+      const opening = openingMoves();
+      do {
+        boardRef.current.undo();
+        switchTurn();
+      } while (
+        boardRef.current.getHistory().length > opening &&
+        currentPlayerRef.current !== humanPlayerRef.current
+      );
     } else {
       boardRef.current.undo();
       switchTurn();
@@ -262,12 +301,12 @@ export default function GomokuLocal() {
     winningLineRef.current = null;
     lastMoveRef.current = boardRef.current.getLastMove();
     applyView();
-  }, [switchTurn, applyView]);
+  }, [openingMoves, switchTurn, applyView]);
 
   // 初始化（对齐 main.js）。画布的 resize / 主题 / 点击换算已移交 GomokuCanvas，
   // 这里只剩本地对局自己的初始化。
   useEffect(() => {
-    initGame('pvp');
+    initGame('pvp', 'normal', 'black');
     // 卸载时把 worker 线程收掉，别让它留在后台
     return () => {
       requestSeqRef.current++;
@@ -279,12 +318,37 @@ export default function GomokuLocal() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // 「思考中」后面跳动的点。搜索跑在 worker 上、主线程是空的，所以这个间隔
+  // 真的会按时触发 —— 老实现里主线程被同步搜索占死，加了也只会定格。
+  useEffect(() => {
+    if (statusKind !== 'thinking') return;
+    const t = window.setInterval(() => setThinkingDots((n) => (n + 1) % 3), 400);
+    return () => window.clearInterval(t);
+  }, [statusKind]);
+
+  // 改任意一项都重开一局（与原来「切模式即重开」的行为一致）
   const onModeChange = useCallback(
     (value: Mode) => {
       setMode(value);
-      initGame(value);
+      initGame(value, difficulty, humanSide);
     },
-    [initGame]
+    [initGame, difficulty, humanSide]
+  );
+
+  const onDifficultyChange = useCallback(
+    (value: Difficulty) => {
+      setDifficulty(value);
+      initGame('ai', value, humanSide);
+    },
+    [initGame, humanSide]
+  );
+
+  const onHumanSideChange = useCallback(
+    (value: HumanSide) => {
+      setHumanSide(value);
+      initGame('ai', difficulty, value);
+    },
+    [initGame, difficulty]
   );
 
   // 胜负文字用主题令牌着色。此前写死 var(--ink, #333) / var(--muted, #888) ——
@@ -322,9 +386,68 @@ export default function GomokuLocal() {
         </label>
       </div>
 
+      {/* 人机模式才有难度与先手 —— 双人对战下调它们没有意义 */}
+      {mode === 'ai' && (
+        <div className="gomoku-options">
+          <div className="gomoku-option-group">
+            <span className="gomoku-option-title">难度</span>
+            <div className="gomoku-mode-selector" role="radiogroup" aria-label="AI 难度">
+              <label className="gomoku-mode-option">
+                <input
+                  type="radio"
+                  name="gomoku-difficulty"
+                  value="normal"
+                  checked={difficulty === 'normal'}
+                  onChange={() => onDifficultyChange('normal')}
+                />
+                <span>普通</span>
+              </label>
+              <label className="gomoku-mode-option">
+                <input
+                  type="radio"
+                  name="gomoku-difficulty"
+                  value="hard"
+                  checked={difficulty === 'hard'}
+                  onChange={() => onDifficultyChange('hard')}
+                />
+                <span>困难</span>
+              </label>
+            </div>
+          </div>
+
+          <div className="gomoku-option-group">
+            <span className="gomoku-option-title">先手</span>
+            <div className="gomoku-mode-selector" role="radiogroup" aria-label="谁先手">
+              <label className="gomoku-mode-option">
+                <input
+                  type="radio"
+                  name="gomoku-first"
+                  value="black"
+                  checked={humanSide === 'black'}
+                  onChange={() => onHumanSideChange('black')}
+                />
+                <span>我执黑先手</span>
+              </label>
+              <label className="gomoku-mode-option">
+                <input
+                  type="radio"
+                  name="gomoku-first"
+                  value="white"
+                  checked={humanSide === 'white'}
+                  onChange={() => onHumanSideChange('white')}
+                />
+                <span>我执白后手</span>
+              </label>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 状态 */}
       <div className="board-status" style={statusColor ? { color: statusColor } : undefined}>
-        {statusText}
+        {statusKind === 'thinking'
+          ? `AI 思考中${THINKING_DOTS[thinkingDots]}`
+          : statusText}
       </div>
 
       {/* 棋盘 */}
@@ -338,7 +461,11 @@ export default function GomokuLocal() {
 
       {/* 控制 */}
       <div className="board-controls">
-        <button type="button" className="board-btn" onClick={() => initGame(modeRef.current)}>
+        <button
+          type="button"
+          className="board-btn"
+          onClick={() => initGame(modeRef.current, difficulty, humanSide)}
+        >
           新游戏
         </button>
         <button
