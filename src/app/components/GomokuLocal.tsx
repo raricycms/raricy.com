@@ -1,377 +1,33 @@
 'use client';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 五子棋**本地对局**（pvp / 人机）— 从 Flask 侧 app/static/js/game/gomoku/{constants,board,ai,
-// renderer,main}.js 忠实移植到 React 客户端组件。
+// 五子棋**本地对局**（pvp / 人机）。
 //
-// 【规则不在这里】棋盘模型与胜负判定已抽到 @/lib/gomoku-rules —— 联机对战时
-// 服务端要用同一份代码判胜负，两边各写一份必然 drift。规则口径（15×15 / 黑先 /
-// 四方向 ≥5 连 / 长连也算胜）见那边的文件头。本文件只剩三件事：前端 AI、
-// canvas 渲染、本地对局状态机。
+// 【规则与 AI 都不在这里】棋盘模型与胜负判定在 @/lib/gomoku-rules（联机对战时
+// 服务端要用同一份代码判胜负，两边各写一份必然 drift）；AI 引擎在 @/lib/gomoku-ai。
+// 本文件只剩 canvas 渲染与本地对局状态机。
+//
+// 【AI 跑在 Web Worker 里】困难档的思考是**秒级**的，而搜索是纯同步紧循环 ——
+// 放主线程上就是整页冻死那么多秒。组件只负责把着法历史发给 worker、把结果收
+// 回来，见 gomoku-ai.worker.ts。
+//
+// 【一次只认一个在途请求】`requestSeq` 每发一次请求自增，回来的结果对不上号
+// 就丢掉；重开一局 / 切模式时直接 `terminate()` 掉 worker 并换新的。这样
+// 「AI 还在想，玩家点了新游戏」不会在空棋盘上落下一颗迟到的子 —— 老实现用
+// 裸 setTimeout 且从不 clearTimeout，回调触发时才去读 AI 实例，真的有这个 bug。
 //
 // 本组件覆盖的玩法：
 //   • 双人对战（pvp）或人机对战（ai，人执黑、AI 执白）。
-//   • AI：即时制胜/拦截快路 + 深度 4 的 Minimax + Alpha-Beta 剪枝，
-//     基于模式（活四/冲四/活三…）的启发式评估，候选宽度 12。
 //   • 悔棋：pvp 撤销 1 步；ai 撤销 2 步（AI 的 + 人的）。重新开始。
 //
 // 棋盘用 <canvas> 绘制（与原实现一致），棋局状态存于 ref，命令式重绘。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  BLACK,
-  BOARD_SIZE,
-  DIRECTIONS,
-  EMPTY,
-  GomokuBoard,
-  WHITE,
-  type Move,
-  type Player,
-} from '@/lib/gomoku-rules';
+import { BLACK, GomokuBoard, WHITE, type Move, type Player } from '@/lib/gomoku-rules';
+import { findBestMove } from '@/lib/gomoku-ai';
 import GomokuCanvas from './GomokuCanvas';
-
-// ─── AI 常量（对齐 ai.js）─────────────────────────────────────────────────────
-// 规则常量（BOARD_SIZE / EMPTY / BLACK / WHITE / DIRECTIONS / WIN_LENGTH）与棋盘
-// 模型 GomokuBoard 已抽到 @/lib/gomoku-rules —— 服务端判胜负要跑同一份代码。
-// 下面这些只服务前端的 AI，服务端永不 import。
-const SCORE = {
-  FIVE: 1000000,
-  OPEN_FOUR: 100000,
-  CLOSED_FOUR: 10000,
-  OPEN_THREE: 5000,
-  CLOSED_THREE: 500,
-  OPEN_TWO: 200,
-  CLOSED_TWO: 50,
-  OPEN_ONE: 10,
-  CENTER_WEIGHT: 3,
-} as const;
-
-const MAX_DEPTH = 4;
-const CANDIDATE_WIDTH = 12;
-const DEFENSE_WEIGHT = 1.05;
-const INF = 1e9;
-
-// ─── AI 引擎（对齐 ai.js）─────────────────────────────────────────────────────
-class GomokuAI {
-  board: GomokuBoard;
-  aiPlayer: Player;
-  humanPlayer: Player;
-
-  constructor(board: GomokuBoard, aiPlayer: Player) {
-    this.board = board;
-    this.aiPlayer = aiPlayer;
-    this.humanPlayer = aiPlayer === BLACK ? WHITE : BLACK;
-  }
-
-  getBestMove(): { row: number; col: number } {
-    const candidates = this.board.getCandidateCells(2);
-
-    // 快路 1：AI 能否立即取胜？
-    for (const { row: cr, col: cc } of candidates) {
-      this.board.placeStone(cr, cc, this.aiPlayer);
-      const wr = this.board.checkWinAt(cr, cc, this.aiPlayer);
-      this.board.undo();
-      if (wr.won) return { row: cr, col: cc };
-    }
-
-    // 快路 2：必须拦截人类？
-    for (const { row: cr, col: cc } of candidates) {
-      this.board.placeStone(cr, cc, this.humanPlayer);
-      const wr = this.board.checkWinAt(cr, cc, this.humanPlayer);
-      this.board.undo();
-      if (wr.won) return { row: cr, col: cc };
-    }
-
-    // 走法排序：为每个候选打分
-    const scored = candidates.map((c) => {
-      const off = this.quickEval(c.row, c.col, this.aiPlayer);
-      const def = this.quickEval(c.row, c.col, this.humanPlayer);
-      return { row: c.row, col: c.col, score: off + def * DEFENSE_WEIGHT };
-    });
-    scored.sort((a, b) => b.score - a.score);
-
-    // 对靠前候选做 Minimax 搜索
-    let bestScore = -INF;
-    let bestMove: { row: number; col: number } = scored[0];
-    const topN = Math.min(scored.length, CANDIDATE_WIDTH);
-
-    for (let i = 0; i < topN; i++) {
-      const r = scored[i].row;
-      const c = scored[i].col;
-      this.board.placeStone(r, c, this.aiPlayer);
-
-      const winCheck = this.board.checkWinAt(r, c, this.aiPlayer);
-      let score: number;
-      if (winCheck.won) {
-        score = SCORE.FIVE;
-      } else if (this.board.isFull()) {
-        score = 0;
-      } else {
-        score = this.minimax(MAX_DEPTH - 1, -INF, INF, false);
-      }
-
-      this.board.undo();
-
-      if (score > bestScore) {
-        bestScore = score;
-        bestMove = { row: r, col: c };
-      }
-    }
-
-    return bestMove;
-  }
-
-  private minimax(depth: number, alpha: number, beta: number, maximizing: boolean): number {
-    if (depth === 0) {
-      return this.evaluateBoard();
-    }
-
-    const player: Player = maximizing ? this.aiPlayer : this.humanPlayer;
-    const candidates = this.board.getCandidateCells(2);
-
-    const scored = candidates.map((c) => ({
-      row: c.row,
-      col: c.col,
-      score: this.quickEval(c.row, c.col, player),
-    }));
-    scored.sort((a, b) => b.score - a.score);
-    const limit = Math.min(scored.length, CANDIDATE_WIDTH);
-
-    if (maximizing) {
-      let best = -INF;
-      for (let i = 0; i < limit; i++) {
-        const r = scored[i].row;
-        const c = scored[i].col;
-        this.board.placeStone(r, c, player);
-
-        const winCheck = this.board.checkWinAt(r, c, player);
-        let childScore: number;
-        if (winCheck.won) {
-          childScore = SCORE.FIVE;
-        } else if (this.board.isFull()) {
-          childScore = 0;
-        } else {
-          childScore = this.minimax(depth - 1, alpha, beta, false);
-        }
-
-        this.board.undo();
-
-        if (childScore > best) best = childScore;
-        if (best > alpha) alpha = best;
-        if (alpha >= beta) break;
-      }
-      return best;
-    } else {
-      let best = INF;
-      for (let i = 0; i < limit; i++) {
-        const r = scored[i].row;
-        const c = scored[i].col;
-        this.board.placeStone(r, c, player);
-
-        const winCheck = this.board.checkWinAt(r, c, player);
-        let childScore: number;
-        if (winCheck.won) {
-          childScore = -SCORE.FIVE;
-        } else if (this.board.isFull()) {
-          childScore = 0;
-        } else {
-          childScore = this.minimax(depth - 1, alpha, beta, true);
-        }
-
-        this.board.undo();
-
-        if (childScore < best) best = childScore;
-        if (best < beta) beta = best;
-        if (alpha >= beta) break;
-      }
-      return best;
-    }
-  }
-
-  private evaluateBoard(): number {
-    const aiScore = this.scanLines(this.aiPlayer);
-    const humanScore = this.scanLines(this.humanPlayer);
-
-    let centerBonus = 0;
-    const center = Math.floor(BOARD_SIZE / 2);
-    for (let r = 0; r < BOARD_SIZE; r++) {
-      for (let c = 0; c < BOARD_SIZE; c++) {
-        if (this.board.grid[r][c] === this.aiPlayer) {
-          centerBonus += Math.max(0, BOARD_SIZE - Math.abs(r - center) - Math.abs(c - center));
-        }
-        if (this.board.grid[r][c] === this.humanPlayer) {
-          centerBonus -= Math.max(0, BOARD_SIZE - Math.abs(r - center) - Math.abs(c - center));
-        }
-      }
-    }
-
-    return aiScore - humanScore * DEFENSE_WEIGHT + centerBonus * SCORE.CENTER_WEIGHT;
-  }
-
-  private scanLines(player: Player): number {
-    let total = 0;
-    // 行
-    for (let r = 0; r < BOARD_SIZE; r++) total += this.evalLine(r, 0, 0, 1, player);
-    // 列
-    for (let c = 0; c < BOARD_SIZE; c++) total += this.evalLine(0, c, 1, 0, player);
-    // 主对角线 ↘
-    for (let r = 0; r < BOARD_SIZE; r++) total += this.evalLine(r, 0, 1, 1, player);
-    for (let c = 1; c < BOARD_SIZE; c++) total += this.evalLine(0, c, 1, 1, player);
-    // 副对角线 ↙
-    for (let r = 0; r < BOARD_SIZE; r++) total += this.evalLine(r, BOARD_SIZE - 1, 1, -1, player);
-    for (let c = 0; c < BOARD_SIZE - 1; c++) total += this.evalLine(0, c, 1, -1, player);
-    return total;
-  }
-
-  private evalLine(
-    startR: number,
-    startC: number,
-    dr: number,
-    dc: number,
-    player: Player
-  ): number {
-    let score = 0;
-    let r = startR;
-    let c = startC;
-
-    while (r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE) {
-      const cell = this.board.grid[r][c];
-
-      if (cell === EMPTY || cell !== player) {
-        r += dr;
-        c += dc;
-        continue;
-      }
-
-      const runR = r;
-      const runC = c;
-      let count = 0;
-      while (
-        r >= 0 &&
-        r < BOARD_SIZE &&
-        c >= 0 &&
-        c < BOARD_SIZE &&
-        this.board.grid[r][c] === player
-      ) {
-        count++;
-        r += dr;
-        c += dc;
-      }
-
-      const beforeR = runR - dr;
-      const beforeC = runC - dc;
-      const afterR = r;
-      const afterC = c;
-      const openBefore =
-        this.inBounds(beforeR, beforeC) && this.board.grid[beforeR][beforeC] === EMPTY;
-      const openAfter =
-        this.inBounds(afterR, afterC) && this.board.grid[afterR][afterC] === EMPTY;
-      const openEnds = (openBefore ? 1 : 0) + (openAfter ? 1 : 0);
-
-      score += this.classifyScore(count, openEnds);
-    }
-
-    return score;
-  }
-
-  private quickEval(row: number, col: number, player: Player): number {
-    let score = 0;
-    for (const [dr, dc] of DIRECTIONS) {
-      score += this.evalDirVirtual(row, col, dr, dc, player);
-    }
-    const center = Math.floor(BOARD_SIZE / 2);
-    score +=
-      Math.max(0, BOARD_SIZE - Math.abs(row - center) - Math.abs(col - center)) *
-      SCORE.CENTER_WEIGHT;
-    return score;
-  }
-
-  private evalDirVirtual(
-    row: number,
-    col: number,
-    dr: number,
-    dc: number,
-    player: Player
-  ): number {
-    let count = 1;
-    let openEnds = 0;
-    let jumpBonus = 0;
-
-    // 正方向
-    let r = row + dr;
-    let c = col + dc;
-    while (this.inBounds(r, c) && this.board.grid[r][c] === player) {
-      count++;
-      r += dr;
-      c += dc;
-    }
-    if (this.inBounds(r, c) && this.board.grid[r][c] === EMPTY) {
-      openEnds++;
-      let jr = r + dr;
-      let jc = c + dc;
-      if (this.inBounds(jr, jc) && this.board.grid[jr][jc] === player) {
-        while (this.inBounds(jr, jc) && this.board.grid[jr][jc] === player) {
-          jumpBonus++;
-          jr += dr;
-          jc += dc;
-        }
-      }
-    }
-
-    // 负方向
-    r = row - dr;
-    c = col - dc;
-    while (this.inBounds(r, c) && this.board.grid[r][c] === player) {
-      count++;
-      r -= dr;
-      c -= dc;
-    }
-    if (this.inBounds(r, c) && this.board.grid[r][c] === EMPTY) {
-      openEnds++;
-      let jr = r - dr;
-      let jc = c - dc;
-      if (this.inBounds(jr, jc) && this.board.grid[jr][jc] === player) {
-        while (this.inBounds(jr, jc) && this.board.grid[jr][jc] === player) {
-          jumpBonus++;
-          jr -= dr;
-          jc -= dc;
-        }
-      }
-    }
-
-    count += Math.floor(jumpBonus * 0.8);
-    return this.classifyScore(count, openEnds);
-  }
-
-  private classifyScore(count: number, openEnds: number): number {
-    if (count >= 5) return SCORE.FIVE;
-    if (count === 4) {
-      if (openEnds >= 2) return SCORE.OPEN_FOUR;
-      if (openEnds === 1) return SCORE.CLOSED_FOUR;
-      return 0;
-    }
-    if (count === 3) {
-      if (openEnds >= 2) return SCORE.OPEN_THREE;
-      if (openEnds === 1) return SCORE.CLOSED_THREE;
-      return 0;
-    }
-    if (count === 2) {
-      if (openEnds >= 2) return SCORE.OPEN_TWO;
-      if (openEnds === 1) return SCORE.CLOSED_TWO;
-      return 0;
-    }
-    if (count === 1) {
-      if (openEnds >= 2) return SCORE.OPEN_ONE;
-      return 0;
-    }
-    return 0;
-  }
-
-  private inBounds(r: number, c: number): boolean {
-    return r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE;
-  }
-}
+import type { AiProtocolMove, AiRequest, AiResponse } from './gomoku-ai-protocol';
 
 // ─── React 组件（对齐 main.js 控制器）────────────────────────────────────────
 // 画布（调色板 / DPR / resize / 主题 / 点击换算）全在 GomokuCanvas 里，
@@ -381,7 +37,15 @@ type StatusKind = 'turn' | 'thinking' | 'win-black' | 'win-white' | 'draw';
 
 export default function GomokuLocal() {
   const boardRef = useRef<GomokuBoard>(new GomokuBoard());
-  const aiRef = useRef<GomokuAI | null>(null);
+
+  // ── AI worker ──
+  const aiWorkerRef = useRef<Worker | null>(null);
+  /** 每发一次请求自增；回来的结果对不上就说明局面已经变了，丢掉。 */
+  const requestSeqRef = useRef<number>(0);
+  /** 在途请求的落点回调。worker 是单线程串行的，所以只可能有一个。 */
+  const pendingRef = useRef<{ id: number; apply: (row: number, col: number) => void } | null>(
+    null
+  );
 
   // 运行时棋局状态（命令式，存 ref 以避免绘制耦合 React 渲染）
   const currentPlayerRef = useRef<Player>(BLACK);
@@ -462,6 +126,39 @@ export default function GomokuLocal() {
     currentPlayerRef.current = currentPlayerRef.current === BLACK ? WHITE : BLACK;
   }, []);
 
+  /** 惰性创建 AI worker。只在真的要人机对战时才建，pvp 模式不浪费线程。 */
+  const ensureAiWorker = useCallback((): Worker | null => {
+    if (aiWorkerRef.current) return aiWorkerRef.current;
+    try {
+      const w = new Worker(new URL('./gomoku-ai.worker.ts', import.meta.url));
+      w.onmessage = (e: MessageEvent<AiResponse>) => {
+        const p = pendingRef.current;
+        // 对不上号 = 局面已经被重置过（重开一局 / 悔棋 / 切模式），丢弃
+        if (!p || p.id !== e.data.id) return;
+        pendingRef.current = null;
+        p.apply(e.data.row, e.data.col);
+      };
+      aiWorkerRef.current = w;
+      return w;
+    } catch {
+      // 建不起来（老浏览器 / 打包异常）就退回主线程，宁可卡一下也不能不能玩
+      return null;
+    }
+  }, []);
+
+  /**
+   * 作废在途请求并销毁 worker。
+   *
+   * `terminate()` 是唯一能真正**打断** worker 的手段 —— 搜索是同步紧循环，
+   * 收不到 message。重开一局时不做这一步的话，那个线程会白烧掉整个思考时间。
+   */
+  const resetAiWorker = useCallback(() => {
+    requestSeqRef.current++;
+    pendingRef.current = null;
+    aiWorkerRef.current?.terminate();
+    aiWorkerRef.current = null;
+  }, []);
+
   const maybeAiMove = useCallback(() => {
     if (modeRef.current !== 'ai') return;
     if (gameOverRef.current) return;
@@ -471,21 +168,37 @@ export default function GomokuLocal() {
     updateStatus();
     refreshUndoDisabled();
 
-    window.setTimeout(() => {
-      const ai = aiRef.current;
-      if (!ai) return;
+    const board = boardRef.current;
+    const moves: AiProtocolMove[] = board
+      .getHistory()
+      .map((m) => ({ row: m.row, col: m.col, player: m.player }));
+    const id = ++requestSeqRef.current;
 
-      const move = ai.getBestMove();
-      placeAndCheck(move.row, move.col, WHITE);
-
+    const apply = (row: number, col: number): void => {
+      placeAndCheck(row, col, WHITE);
       isAiThinkingRef.current = false;
-
-      if (!gameOverRef.current) {
-        switchTurn();
-      }
+      if (!gameOverRef.current) switchTurn();
       applyView();
-    }, 30);
-  }, [updateStatus, refreshUndoDisabled, placeAndCheck, switchTurn, applyView]);
+    };
+
+    const worker = ensureAiWorker();
+    if (worker) {
+      pendingRef.current = { id, apply };
+      const req: AiRequest = { id, moves, player: WHITE, difficulty: 'normal' };
+      worker.postMessage(req);
+      return;
+    }
+
+    const best = findBestMove(board, WHITE, { difficulty: 'normal' });
+    apply(best.row, best.col);
+  }, [
+    updateStatus,
+    refreshUndoDisabled,
+    ensureAiWorker,
+    placeAndCheck,
+    switchTurn,
+    applyView,
+  ]);
 
   const handleCellClick = useCallback(
     (row: number, col: number) => {
@@ -514,6 +227,10 @@ export default function GomokuLocal() {
 
   const initGame = useCallback(
     (nextMode: Mode) => {
+      // 先把在途的 AI 结果作废并掐掉 worker，再动棋盘。
+      // 顺序反过来的话，迟到的结果会在**新**棋盘上落子。
+      resetAiWorker();
+
       boardRef.current.reset();
       currentPlayerRef.current = BLACK;
       gameOverRef.current = false;
@@ -522,11 +239,9 @@ export default function GomokuLocal() {
       isAiThinkingRef.current = false;
       modeRef.current = nextMode;
 
-      aiRef.current = nextMode === 'ai' ? new GomokuAI(boardRef.current, WHITE) : null;
-
       applyView();
     },
-    [applyView]
+    [resetAiWorker, applyView]
   );
 
   const undoMove = useCallback(() => {
@@ -553,6 +268,13 @@ export default function GomokuLocal() {
   // 这里只剩本地对局自己的初始化。
   useEffect(() => {
     initGame('pvp');
+    // 卸载时把 worker 线程收掉，别让它留在后台
+    return () => {
+      requestSeqRef.current++;
+      pendingRef.current = null;
+      aiWorkerRef.current?.terminate();
+      aiWorkerRef.current = null;
+    };
     // 仅挂载时执行
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -631,45 +353,3 @@ export default function GomokuLocal() {
     </div>
   );
 }
-
-// 自包含样式已迁移至 src/styles-scss/pages/game/_gomoku.scss / 编译产物 flask.css
-const _UNUSED_GMK_CSS = `
-.gmk { display: flex; flex-direction: column; align-items: center; gap: 14px; width: 100%; }
-.gmk__modes { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
-.gmk__mode {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 6px 14px;
-  border: 1px solid var(--line-2, #ccc);
-  border-radius: var(--r-sm, 8px);
-  background: var(--surface, #fff);
-  color: var(--ink, #222);
-  font-size: .9rem; font-weight: 600;
-  cursor: pointer;
-}
-.gmk__mode input { accent-color: var(--accent, #3f51b5); cursor: pointer; }
-.gmk__status {
-  font-size: 1.1rem; font-weight: 600; min-height: 1.4em; text-align: center;
-  color: var(--ink, #222);
-}
-.gmk__canvas-wrap {
-  width: 100%;
-  display: flex; justify-content: center;
-  padding: 8px;
-  background: var(--surface, #fff);
-  border: 1px solid var(--line, #e0e0e0);
-  border-radius: var(--r-sm, 8px);
-}
-.gmk__canvas { display: block; touch-action: manipulation; cursor: pointer; border-radius: 4px; }
-.gmk__controls { display: flex; gap: 12px; }
-.gmk__btn {
-  padding: 8px 20px;
-  border: 1px solid var(--line-2, #ccc);
-  border-radius: var(--r-sm, 8px);
-  background: var(--surface, #fff);
-  color: var(--ink, #222);
-  font-size: .95rem; font-weight: 600;
-  cursor: pointer;
-}
-.gmk__btn:hover:not(:disabled) { background: var(--surface-2, #f5f5f5); }
-.gmk__btn:disabled { opacity: .45; cursor: not-allowed; }
-`;
