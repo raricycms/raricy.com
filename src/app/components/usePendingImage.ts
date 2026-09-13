@@ -37,7 +37,16 @@ export function usePendingImage(toast: (message: string, type: string) => void) 
     [toast]
   );
 
+  /**
+   * 直接用一张**已存在**的图床图片（「从图床选择」选择器的回调）。
+   *
+   * 与 pickImage 落在同一个 state、同一条发送路径（`image_id`），区别只是没有上传
+   * 那一步 —— 所以列表里选中的图与服务端校验（必须是自己上传且未软删）天然一致。
+   * 单附件语义不变：再选一张即替换。
+   */
+  const pickFromLibrary = useCallback((image: PendingImage) => setPendingImage(image), []);
+
   const clearImage = useCallback(() => setPendingImage(null), []);
 
-  return { pendingImage, uploadingImage, pickImage, clearImage };
+  return { pendingImage, uploadingImage, pickImage, pickFromLibrary, clearImage };
 }

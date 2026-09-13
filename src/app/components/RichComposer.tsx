@@ -21,9 +21,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useRef, useState } from 'react';
-import { BookOpenText, Image as ImageIcon } from 'lucide-react';
+import { BookOpenText, Image as ImageIcon, Images } from 'lucide-react';
 import { IMAGE_ACCEPT } from '@/lib/image-client';
 import type { PendingImage } from './usePendingImage';
+import ImagePickerModal from './ImagePickerModal';
 
 // 触屏设备（手机/平板）的虚拟键盘没有 Shift 键，Enter 只能承担换行，
 // 发送交给右下角按钮。按指针/悬停能力判断，比 UA 嗅探稳，混合设备
@@ -71,6 +72,7 @@ export default function RichComposer({
   onTextChange,
   onSend,
   onPickImage,
+  onPickFromLibrary,
   onOpenQuote,
   onClearReply,
   onClearBlogQuote,
@@ -97,6 +99,8 @@ export default function RichComposer({
   onTextChange: (value: string) => void;
   onSend: () => void;
   onPickImage: (file: File) => void;
+  /** 「从图床选择」选中一张已有的图（与上传落在同一条待发附件状态上）。 */
+  onPickFromLibrary: (image: PendingImage) => void;
   onOpenQuote: () => void;
   onClearReply: () => void;
   onClearBlogQuote: () => void;
@@ -113,6 +117,8 @@ export default function RichComposer({
   const isTouch = useCoarsePointer();
   // 文件 input 归自己持有：选完立即清 value，否则连续选同一个文件不会再触发 change。
   const fileRef = useRef<HTMLInputElement | null>(null);
+  // 图床选择弹窗也归自己持有（同 fileRef 的道理：开合是个纯 UI 状态，调用方不关心）。
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   return (
     <div
@@ -189,6 +195,16 @@ export default function RichComposer({
           >
             {uploadingImage ? '…' : <ImageIcon aria-hidden="true" />}
           </button>
+          <button
+            type="button"
+            className={`${className}__icon-btn`}
+            onClick={() => setPickerOpen(true)}
+            disabled={uploadingImage}
+            title="从图床选择"
+            aria-label="从图床选择"
+          >
+            <Images aria-hidden="true" />
+          </button>
           <input
             ref={fileRef}
             type="file"
@@ -252,6 +268,16 @@ export default function RichComposer({
           </button>
         </div>
       </div>
+
+      {pickerOpen && (
+        <ImagePickerModal
+          onClose={() => setPickerOpen(false)}
+          onPick={(image) => {
+            onPickFromLibrary(image);
+            setPickerOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 }

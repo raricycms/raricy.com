@@ -141,7 +141,8 @@ export default function CommentSection({ blogId, currentUserId = null, isAdmin =
   const [quoteOpen, setQuoteOpen] = useState(false);
   const [lightbox, setLightbox] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const { pendingImage, uploadingImage, pickImage, clearImage } = usePendingImage(toast);
+  const { pendingImage, uploadingImage, pickImage, pickFromLibrary, clearImage } =
+    usePendingImage(toast);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   /** 正在请求中的评论 id —— 防连点（乐观更新已经把界面改过了，再点一次会来回翻）。 */
   const likeBusyRef = useRef<Set<string>>(new Set());
@@ -317,6 +318,7 @@ export default function CommentSection({ blogId, currentUserId = null, isAdmin =
         onTextChange={setText}
         onSend={() => void submit()}
         onPickImage={(f) => void pickImage(f)}
+        onPickFromLibrary={pickFromLibrary}
         onOpenQuote={() => setQuoteOpen(true)}
         onClearReply={() => setReplyTo(null)}
         onClearBlogQuote={() => setBlogQuote(null)}

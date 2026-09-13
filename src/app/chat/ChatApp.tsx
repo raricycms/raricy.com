@@ -188,7 +188,8 @@ export default function ChatApp({
   const [sending, setSending] = useState(false);
   const [text, setText] = useState('');
   // 待发图片（选图 / 上传 / 校验的共用逻辑，与评论区同一套）
-  const { pendingImage, uploadingImage, pickImage, clearImage } = usePendingImage(toast);
+  const { pendingImage, uploadingImage, pickImage, pickFromLibrary, clearImage } =
+    usePendingImage(toast);
   const [replyTarget, setReplyTarget] = useState<ChatMessageDTO | null>(null);
   /** 引用博客草稿（单附件：再选即替换） */
   const [blogQuote, setBlogQuote] = useState<ComposerBlogQuote | null>(null);
@@ -1458,6 +1459,7 @@ export default function ChatApp({
               }}
               onSend={() => void send()}
               onPickImage={(f) => void pickImage(f)}
+              onPickFromLibrary={pickFromLibrary}
               onOpenQuote={() => setQuoteOpen(true)}
               onClearReply={() => setReplyTarget(null)}
               onClearBlogQuote={() => setBlogQuote(null)}
