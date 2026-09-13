@@ -84,7 +84,11 @@ export default function VoteEmbed({
 
   return (
     <div className="vote-embed-widget">
-      {isLocked && <span className="vote-embed-badge badge-locked">已锁定</span>}
+      {/* 这里**不**渲染「已锁定」徽章：详情页的 meta 行（page.tsx）已经有一个，
+          两边都写就会并排出现两个一模一样的徽章。原站 Flask 的 detail.html 也只
+          在 meta 行里放 badge —— 徽章属于页面元信息，不属于组件本身。
+          （博客正文里的嵌入没有 meta 行，那个由 blog-markdown.ts 的
+           buildVoteWidget 渲染自己的徽章，与原站 vote-embed.js 一致。） */}
       {showResults && <p className="vote-embed-total">共 {total} 票</p>}
 
       {options.map((o) => {

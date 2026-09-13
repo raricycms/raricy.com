@@ -330,6 +330,15 @@
 }
 
 // ---------- 博客嵌入组件 ----------
+//
+// ⚠️ 组件内部的类一律**嵌在 .vote-embed-widget 里**写，不是排版洁癖：
+// 博客正文里的嵌入落在 .blog-content-container 内部，那里的元素级规则权重是 0-1-1
+// （`.blog-content-container p` / `a`），会盖掉组件自己的 0-1-0 —— 实测两处：
+//   · 「共 X 票」被撑成 1.5em 下边距（本该 0.5rem）并两端对齐；
+//   · 「查看详情」被涂成品牌蓝（本该是次要文字色）。
+// 多嵌一层把权重提到 0-2-0，口径就归组件自己，两种嵌入位置渲染一致。
+// 两个例外留在顶层 —— 它们**不在**组件里：.vote-embed-badge（详情页 meta 行）
+// 与 .vote-embed-fallback（投票加载失败时的兜底链接，直接挂在 .vote-embed 上）。
 .vote-embed-widget {
   background: var(--color-background-card);
   border: 1px solid var(--color-border);
@@ -337,13 +346,137 @@
   padding: 1rem 1.25rem;
   margin: 1rem 0;
   max-width: 500px;
-}
 
-.vote-embed-title {
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--color-text-primary);
-  margin-bottom: 0.5rem;
+  .vote-embed-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    margin-bottom: 0.5rem;
+  }
+
+  .vote-embed-total {
+    font-size: 0.8rem;
+    color: var(--color-text-secondary);
+    margin-bottom: 0.5rem;
+  }
+
+  .vote-embed-option {
+    // 可选项是 <button>、结果行是 <div>：浏览器默认给按钮 inline-block（收缩宽度）+
+    // UA 字体，不写这几条时同一个组件在「可投票」与「已投票」两种状态下宽度、
+    // 字体都不一样 —— 详情页刚投完票会看到整列突然变宽变字体。
+    display: block;
+    width: 100%;
+    text-align: left;
+    font-family: inherit;
+    border: 1px solid var(--color-border);
+    border-radius: 0.375rem;
+    padding: 0.6rem 0.8rem;
+    margin-bottom: 0.4rem;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    position: relative;
+    overflow: hidden;
+    background: var(--color-background-card);
+
+    &:hover {
+      border-color: var(--color-brand-primary);
+    }
+
+    &--selected {
+      border-color: var(--color-brand-primary);
+      background: var(--color-brand-secondary);
+    }
+
+    &--result {
+      cursor: default;
+      &:hover { border-color: var(--color-border); }
+    }
+
+    &--voted {
+      border-color: var(--color-success-primary);
+      background: var(--color-success-secondary);
+    }
+
+    // 「我的投票」✓ 标记（原为 JS 里拼接文本字符，现用 mask 勾号图标）
+    &--voted .vote-embed-option-label::after {
+      content: '';
+      display: inline-block;
+      width: 1em;
+      height: 1em;
+      margin-left: 0.35em;
+      vertical-align: -0.15em;
+      background-color: var(--color-success-primary);
+      -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") no-repeat center / contain;
+      mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") no-repeat center / contain;
+    }
+  }
+
+  .vote-embed-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    background: var(--color-brand-secondary);
+    border-radius: 0.375rem;
+    z-index: 0;
+    transition: width 0.5s ease;
+  }
+
+  .vote-embed-option-content {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .vote-embed-option-label {
+    font-size: 0.875rem;
+    color: var(--color-text-primary);
+  }
+
+  .vote-embed-option-stats {
+    font-size: 0.75rem;
+    color: var(--color-text-secondary);
+    white-space: nowrap;
+    margin-left: 0.5rem;
+  }
+
+  .vote-embed-submit {
+    margin-top: 0.5rem;
+    padding: 0.45rem 1.5rem;
+    background: var(--color-brand-primary);
+    color: #fff;
+    border: none;
+    border-radius: 0.375rem;
+    font-family: inherit; // 同 .vote-embed-option：<button> 不继承正文字体
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+
+    &:hover {
+      opacity: 0.9;
+    }
+
+    &:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+  }
+
+  // 独占一行：与投票按钮同排时（可投票态）两者会紧贴在一起、看不出是两回事
+  .vote-embed-link {
+    display: block;
+    margin-top: 0.6rem;
+    font-size: 0.8rem;
+    color: var(--color-text-secondary);
+    text-decoration: none;
+
+    &:hover {
+      color: var(--color-brand-primary);
+      text-decoration: underline;
+    }
+  }
 }
 
 .vote-embed-badge {
@@ -356,121 +489,6 @@
   &.badge-locked {
     background: var(--color-warning-secondary);
     color: var(--color-warning-primary);
-  }
-}
-
-.vote-embed-total {
-  font-size: 0.8rem;
-  color: var(--color-text-secondary);
-  margin-bottom: 0.5rem;
-}
-
-.vote-embed-option {
-  border: 1px solid var(--color-border);
-  border-radius: 0.375rem;
-  padding: 0.6rem 0.8rem;
-  margin-bottom: 0.4rem;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  position: relative;
-  overflow: hidden;
-  background: var(--color-background-card);
-
-  &:hover {
-    border-color: var(--color-brand-primary);
-  }
-
-  &--selected {
-    border-color: var(--color-brand-primary);
-    background: var(--color-brand-secondary);
-  }
-
-  &--result {
-    cursor: default;
-    &:hover { border-color: var(--color-border); }
-  }
-
-  &--voted {
-    border-color: var(--color-success-primary);
-    background: var(--color-success-secondary);
-  }
-
-  // 「我的投票」✓ 标记（原为 JS 里拼接文本字符，现用 mask 勾号图标）
-  &--voted .vote-embed-option-label::after {
-    content: '';
-    display: inline-block;
-    width: 1em;
-    height: 1em;
-    margin-left: 0.35em;
-    vertical-align: -0.15em;
-    background-color: var(--color-success-primary);
-    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") no-repeat center / contain;
-    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") no-repeat center / contain;
-  }
-}
-
-.vote-embed-bar {
-  position: absolute;
-  top: 0;
-  left: 0;
-  height: 100%;
-  background: var(--color-brand-secondary);
-  border-radius: 0.375rem;
-  z-index: 0;
-  transition: width 0.5s ease;
-}
-
-.vote-embed-option-content {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.vote-embed-option-label {
-  font-size: 0.875rem;
-  color: var(--color-text-primary);
-}
-
-.vote-embed-option-stats {
-  font-size: 0.75rem;
-  color: var(--color-text-secondary);
-  white-space: nowrap;
-  margin-left: 0.5rem;
-}
-
-.vote-embed-submit {
-  margin-top: 0.5rem;
-  padding: 0.45rem 1.5rem;
-  background: var(--color-brand-primary);
-  color: #fff;
-  border: none;
-  border-radius: 0.375rem;
-  font-size: 0.85rem;
-  cursor: pointer;
-  transition: all 0.2s ease;
-
-  &:hover {
-    opacity: 0.9;
-  }
-
-  &:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
-}
-
-.vote-embed-link {
-  display: inline-block;
-  margin-top: 0.5rem;
-  font-size: 0.8rem;
-  color: var(--color-text-secondary);
-  text-decoration: none;
-
-  &:hover {
-    color: var(--color-brand-primary);
-    text-decoration: underline;
   }
 }
 

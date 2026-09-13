@@ -15,7 +15,7 @@ import { TeX } from 'mathjax-full/js/input/tex.js';
 import { CHTML } from 'mathjax-full/js/output/chtml.js';
 import { RegisterHTMLHandler } from 'mathjax-full/js/handlers/html.js';
 import { AllPackages } from 'mathjax-full/js/input/tex/AllPackages.js';
-import { BLOG_SANITIZE_OPTIONS, isValidVoteId, renderVoteFallback } from '@/lib/blog-markdown';
+import { BLOG_SANITIZE_OPTIONS, renderVoteEmbed } from '@/lib/blog-markdown';
 import { protectMath, restoreMath } from '@/lib/markdown-math';
 
 // ── 内容引用预处理器（对齐 clipboard-processor.js，端点改为 Next API）───────────
@@ -286,28 +286,13 @@ export default function MarkdownRenderer({ content }: { content: string }) {
       };
     });
 
-    // 投票嵌入：拉取投票数据，渲染结果条（对齐 vote-embed.js 的只读结果视图）
+    // 投票嵌入：拉数据 → 渲染完整小组件（标题 / 可投票 / 结果视图 / 详情页入口）。
+    // 构造与交互都在 src/lib/blog-markdown.ts —— 那里是安全边界（id 校验 + 只用 DOM API
+    // 写入），并有 jsdom 单测钉住结构。data-vote-id 来自用户 Markdown，校验也在那边做。
     root.querySelectorAll<HTMLElement>('.vote-embed[data-vote-id]').forEach((el) => {
       if (el.dataset.rendered) return;
-      const vid = el.getAttribute('data-vote-id');
-      if (!vid) return;
-      // ★ 安全边界：data-vote-id 来自用户 Markdown（攻击者可控），见 src/lib/blog-markdown.ts。
-      // 校验不过就整个放弃 —— 不 fetch、不渲染，避免它被当成 URL 片段或 HTML 使用。
-      if (!isValidVoteId(vid)) { el.textContent = '[投票链接无效]'; return; }
       el.dataset.rendered = '1';
-      el.textContent = '加载投票…';
-      fetch(`/api/votes/${vid}`, { credentials: 'same-origin' })
-        .then((r) => r.json())
-        .then((data) => {
-          if (data.code !== 200 || !data.data) { renderVoteFallback(el, vid); return; }
-          const v = data.data as { title: string; total_votes: number; user_voted: number | null; options: { id: number; label: string; count: number; percentage: number }[] };
-          const rows = v.options.map((o) => {
-            const mine = v.user_voted === o.id;
-            return `<div class="vote-embed-option vote-embed-option--result${mine ? ' vote-embed-option--voted' : ''}"><div class="vote-embed-bar" style="width:${o.percentage}%"></div><div class="vote-embed-option-content"><span class="vote-embed-option-label">${escapeHtml(o.label)}</span><span class="vote-embed-option-stats">${o.count} 票 · ${o.percentage}%</span></div></div>`;
-          }).join('');
-          el.innerHTML = `${rows}<p class="vote-embed-total">共 ${v.total_votes} 票</p>`;
-        })
-        .catch(() => renderVoteFallback(el, vid));
+      void renderVoteEmbed(el, el.getAttribute('data-vote-id'));
     });
 
     // MathJax 数学公式。判据是抽取阶段的公式计数，而不是在渲染后的 HTML 上
@@ -344,8 +329,4 @@ export default function MarkdownRenderer({ content }: { content: string }) {
       )}
     </div>
   );
-}
-
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
