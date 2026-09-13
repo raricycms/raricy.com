@@ -298,16 +298,25 @@ describe('私聊：建频道与越权隔离', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('发消息校验', () => {
-  it('空内容拒绝；超长拒绝', async () => {
+  it('空内容拒绝；超长拒绝（上限 5000，闭区间）', async () => {
     const a = await makeUser({ role: 'core' });
     const empty = await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: a.id, content: '  ' });
     expect((empty as { error: string }).error).toBe('empty');
+
+    const atLimit = await sendMessage({
+      channelId: CHAT_LOBBY_ID,
+      authorId: a.id,
+      content: 'x'.repeat(5000),
+    });
+    expect(atLimit.ok, '恰好 5000 字应放行').toBe(true);
+
     const long = await sendMessage({
       channelId: CHAT_LOBBY_ID,
       authorId: a.id,
-      content: 'x'.repeat(1001),
+      content: 'x'.repeat(5001),
     });
     expect((long as { error: string }).error).toBe('tooLong');
+    expect((long as { message: string }).message).toBe('消息不能超过5000字');
   });
 
   it('图片必须归发送者所有且未软删', async () => {
@@ -332,18 +341,30 @@ describe('发消息校验', () => {
     expect((ghost as { error: string }).error).toBe('imageInvalid');
   });
 
-  it('带图消息允许空正文（图注可选），图注超限拒绝', async () => {
+  it('带图消息允许空正文（图注可选），图注超限拒绝（两档同值 5000）', async () => {
     const a = await makeUser({ role: 'core' });
     const img = await makeImage(a.id);
     const ok = await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: a.id, imageId: img.id, content: '' });
     expect(ok.ok).toBe(true);
+
+    // 2026-09 起 CHAT_CAPTION_MAX 与 CHAT_TEXT_MAX 同值。这里钉住「恰好 5000 放行、
+    // 5001 拒」，防止将来有人只改其中一个常量。
+    const atLimit = await sendMessage({
+      channelId: CHAT_LOBBY_ID,
+      authorId: a.id,
+      imageId: img.id,
+      content: 'y'.repeat(5000),
+    });
+    expect(atLimit.ok, '带图恰好 5000 字应放行').toBe(true);
+
     const cap = await sendMessage({
       channelId: CHAT_LOBBY_ID,
       authorId: a.id,
       imageId: img.id,
-      content: 'y'.repeat(501),
+      content: 'y'.repeat(5001),
     });
     expect((cap as { error: string }).error).toBe('captionTooLong');
+    expect((cap as { message: string }).message).toBe('图片或引用消息不能超过5000字');
   });
 
   it('引用回复必须同频道且存活', async () => {
@@ -436,7 +457,7 @@ describe('消息引用博客', () => {
     expect((deleted as { error: string }).error).toBe('blogInvalid');
   });
 
-  it('引用消息正文超 500 字 → captionTooLong（博客视同附件）', async () => {
+  it('引用消息正文超 5000 字 → captionTooLong（博客视同附件）', async () => {
     const a = await makeUser({ role: 'core' });
     const b = await makeUser({ role: 'core' });
     const blogId = await makeBlog(a.id);
@@ -444,7 +465,7 @@ describe('消息引用博客', () => {
       channelId: CHAT_LOBBY_ID,
       authorId: b.id,
       blogId,
-      content: 'y'.repeat(501),
+      content: 'y'.repeat(5001),
     });
     expect((cap as { error: string }).error).toBe('captionTooLong');
   });

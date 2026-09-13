@@ -30,6 +30,8 @@ import {
   CHAT_DELETED_TEXT,
   CHAT_FOCUS_BLOCKED_TITLE,
   CHAT_PREVIEW_MAX,
+  CHAT_TEXT_MAX,
+  CHAT_CAPTION_MAX,
   PAT_TARGET_FALLBACK,
   type ChatAuthorDTO,
   type ChatMessageDTO,
@@ -45,6 +47,8 @@ export {
   CHAT_DELETED_TEXT,
   CHAT_FOCUS_BLOCKED_TITLE,
   CHAT_PREVIEW_MAX,
+  CHAT_TEXT_MAX,
+  CHAT_CAPTION_MAX,
   PAT_TARGET_FALLBACK,
   type ChatAuthorDTO,
   type ChatImageDTO,
@@ -59,8 +63,10 @@ export {
 
 export const CHAT_KIND_LOBBY = 'lobby';
 export const CHAT_KIND_DIRECT = 'direct';
-export const CHAT_TEXT_MAX = 1000; // 纯文本消息上限
-export const CHAT_CAPTION_MAX = 500; // 带图消息的图注上限
+// 字数上限是前后端共用的纯数据，定义在 chat-shared.ts（客户端组件 import 本文件
+// 会把 auth.ts → next/headers 打进浏览器包）。上面那段 re-export 已把两个常量带出去，
+// 服务端调用方照旧 `from '@/lib/chat-service'` 即可；**别再在这里重新定义一份**
+// —— 曾经就是因此让 ChatApp 抄了一份硬编码副本，改常量不会跟着变。
 export const CHAT_INITIAL_LIMIT = 50; // 首次加载 / 每页拉取条数
 const CORE_ROLES = ['core', 'admin', 'owner'];
 

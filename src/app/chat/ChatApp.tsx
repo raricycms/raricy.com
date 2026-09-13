@@ -19,6 +19,8 @@ import {
   CHAT_LOBBY_TITLE,
   CHAT_DELETED_TEXT,
   CHAT_PREVIEW_MAX,
+  CHAT_TEXT_MAX,
+  CHAT_CAPTION_MAX,
 } from '@/lib/chat-shared';
 import { LS_KEY, COOKIE_NAME, COOKIE_MAX_AGE } from '@/lib/chat-sidebar-pref';
 import NewChatModal from './NewChatModal';
@@ -868,14 +870,17 @@ export default function ChatApp({
     const aid = activeRef.current;
     if (!aid || sending) return;
     const content = text.trim();
-    // 博客引用视同附件（对齐带图消息）：允许空正文，文字上限 500
+    // 博客引用视同附件（对齐带图消息）：允许空正文
     const hasAttach = !!pendingImage || !!blogQuote;
     if (!content && !hasAttach) {
       toast('消息内容不能为空', 'info');
       return;
     }
-    if (content.length > (hasAttach ? 500 : 1000)) {
-      toast(hasAttach ? '图片或引用消息不能超过500字' : '消息不能超过1000字', 'info');
+    // 上限来自 chat-shared（与服务端同源）。此前这里写的是硬编码的 500 / 1000，
+    // 改服务端常量不会跟着变 —— 现已改成 import。
+    const limit = hasAttach ? CHAT_CAPTION_MAX : CHAT_TEXT_MAX;
+    if (content.length > limit) {
+      toast(hasAttach ? `图片或引用消息不能超过${limit}字` : `消息不能超过${limit}字`, 'info');
       return;
     }
     setSending(true);
@@ -1457,6 +1462,11 @@ export default function ChatApp({
               onClearReply={() => setReplyTarget(null)}
               onClearBlogQuote={() => setBlogQuote(null)}
               onClearImage={clearImage}
+              hintExtra={
+                text.length > (pendingImage || blogQuote ? CHAT_CAPTION_MAX : CHAT_TEXT_MAX)
+                  ? `已超出${pendingImage || blogQuote ? CHAT_CAPTION_MAX : CHAT_TEXT_MAX}字上限`
+                  : `最多${pendingImage || blogQuote ? CHAT_CAPTION_MAX : CHAT_TEXT_MAX}字`
+              }
             />
           </>
         ) : (

@@ -321,12 +321,10 @@ export default function CommentSection({ blogId, currentUserId = null, isAdmin =
         onClearReply={() => setReplyTo(null)}
         onClearBlogQuote={() => setBlogQuote(null)}
         onClearImage={clearImage}
-        footerSlot={
-          <span>
-            {text.length > (pendingImage || blogQuote ? COMMENT_CAPTION_MAX : COMMENT_TEXT_MAX)
-              ? `已超出${pendingImage || blogQuote ? COMMENT_CAPTION_MAX : COMMENT_TEXT_MAX}字上限`
-              : `最多${pendingImage || blogQuote ? COMMENT_CAPTION_MAX : COMMENT_TEXT_MAX}字 · 支持 Markdown`}
-          </span>
+        hintExtra={
+          text.length > (pendingImage || blogQuote ? COMMENT_CAPTION_MAX : COMMENT_TEXT_MAX)
+            ? `已超出${pendingImage || blogQuote ? COMMENT_CAPTION_MAX : COMMENT_TEXT_MAX}字上限`
+            : `最多${pendingImage || blogQuote ? COMMENT_CAPTION_MAX : COMMENT_TEXT_MAX}字`
         }
       />
     </div>

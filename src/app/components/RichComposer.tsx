@@ -75,7 +75,7 @@ export default function RichComposer({
   onClearReply,
   onClearBlogQuote,
   onClearImage,
-  footerSlot,
+  hintExtra,
 }: {
   /** BEM 前缀，见文件头「类名由调用方注入」。 */
   className: string;
@@ -101,8 +101,14 @@ export default function RichComposer({
   onClearReply: () => void;
   onClearBlogQuote: () => void;
   onClearImage: () => void;
-  /** 底条左侧提示的额外内容（评论用它显示字数上限）。 */
-  footerSlot?: React.ReactNode;
+  /**
+   * 底条左侧提示的**前置**内容（聊天与评论都用它显示字数上限）。
+   *
+   * 【为什么是前置而不是整体替换】曾经它是整体替换默认提示的，于是评论区的
+   * 「Enter 发送 · Shift+Enter 换行 · 支持 Markdown」被顶掉了 —— 而聊天要加
+   * 字数提示时同样会丢掉按键说明。前置就只是「多一句」，两边都完整。
+   */
+  hintExtra?: React.ReactNode;
 }) {
   const isTouch = useCoarsePointer();
   // 文件 input 归自己持有：选完立即清 value，否则连续选同一个文件不会再触发 change。
@@ -231,10 +237,10 @@ export default function RichComposer({
         />
         <div className={`${className}__foot`}>
           <span className={`${className}__hint`}>
-            {footerSlot ??
-              (isTouch
-                ? `Enter 换行 · 点${submitVerb}提交 · 支持 Markdown`
-                : `Enter ${submitVerb} · Shift+Enter 换行 · 支持 Markdown`)}
+            {hintExtra ? <>{hintExtra} · </> : null}
+            {isTouch
+              ? `Enter 换行 · 点${submitVerb}提交 · 支持 Markdown`
+              : `Enter ${submitVerb} · Shift+Enter 换行 · 支持 Markdown`}
           </span>
           <button
             type="button"

@@ -8,6 +8,16 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const CHAT_LOBBY_ID = 'lobby';
+/** 纯文本消息上限。 */
+export const CHAT_TEXT_MAX = 5000;
+/**
+ * 带附件（图床图片 / 引用博客）消息的图注上限。
+ *
+ * 【2026-09 起与纯文本档同值】此前是 500。理由与「为什么仍留两个常量」见
+ * src/lib/comment-shared.ts 的 COMMENT_CAPTION_MAX —— 两边刻意保持同一口径，
+ * 改一处请同步另一处。
+ */
+export const CHAT_CAPTION_MAX = 5000;
 export const CHAT_LOBBY_TITLE = '聊天大区';
 export const CHAT_DELETED_TEXT = '[该消息已删除]';
 /** 侧栏消息预览截断长度（服务端 listChannelsForUser 与客户端本地累加共用同一口径）。 */

@@ -743,21 +743,21 @@ describe('边界：createComment 的异常输入', () => {
     expect(row!.content).toBe('hi');
   });
 
-  it('2000 字边界：恰好 2000 通过，2001 拒绝', async () => {
+  it('5000 字边界：恰好 5000 通过，5001 拒绝', async () => {
     const { author, blog } = await seedBlog();
-    const ok = await createComment({ blogId: blog.id, authorId: author.id, content: 'a'.repeat(2000) });
-    expect(ok.ok, '恰好 2000 字应放行（上限是闭区间）').toBe(true);
+    const ok = await createComment({ blogId: blog.id, authorId: author.id, content: 'a'.repeat(5000) });
+    expect(ok.ok, '恰好 5000 字应放行（上限是闭区间）').toBe(true);
 
-    const bad = await createComment({ blogId: blog.id, authorId: author.id, content: 'a'.repeat(2001) });
+    const bad = await createComment({ blogId: blog.id, authorId: author.id, content: 'a'.repeat(5001) });
     expect(bad.ok).toBe(false);
     if (bad.ok) return;
     expect(bad.error).toBe('tooLong');
-    expect(bad.message).toBe('评论内容不能超过2000字');
+    expect(bad.message).toBe('评论内容不能超过5000字');
   });
 
-  it('长度按 trim 后计算（2000 字 + 首尾空格仍应通过）', async () => {
+  it('长度按 trim 后计算（5000 字 + 首尾空格仍应通过）', async () => {
     const { author, blog } = await seedBlog();
-    const r = await createComment({ blogId: blog.id, authorId: author.id, content: `  ${'a'.repeat(2000)}  ` });
+    const r = await createComment({ blogId: blog.id, authorId: author.id, content: `  ${'a'.repeat(5000)}  ` });
     expect(r.ok).toBe(true);
   });
 });
@@ -1126,21 +1126,32 @@ describe('附件：图床图片', () => {
     expect(tree[0].image_missing, 'id 有值但图没了 → 必须给占位，不能装作没有附件').toBe(true);
   });
 
-  it('带附件时正文按图注档限长（500），纯文字档仍是 2000', async () => {
+  it('带附件时走图注档：两档现已同值（5000），故 5001 字两档都拒', async () => {
     const { author, blog } = await seedBlog();
     const img = await makeImage(author.id);
 
+    // 2026-09 起 COMMENT_CAPTION_MAX 与 COMMENT_TEXT_MAX 同值（站长要求统一到 5000）。
+    // 这条用例因此不再对照「带附件更短」，改为钉住**两档确实同一上限**——
+    // 将来若有人只改其中一个常量，这里会红。
     const tooLongWithImage = await createComment({
-      blogId: blog.id, authorId: author.id, content: 'x'.repeat(501), imageId: img.id,
+      blogId: blog.id, authorId: author.id, content: 'x'.repeat(5001), imageId: img.id,
     });
-    if (tooLongWithImage.ok) throw new Error('带附件不该放过 501 字');
+    if (tooLongWithImage.ok) throw new Error('带附件不该放过 5001 字');
     expect(tooLongWithImage.error).toBe('captionTooLong');
+    expect(tooLongWithImage.message).toBe('图片或引用评论不能超过5000字');
 
-    // 同样长度但纯文字 → 通过（2000 以内）
+    // 同样长度但纯文字 → 也拒（同一上限），错误码走的是纯文本档
     const plain = await createComment({
-      blogId: blog.id, authorId: author.id, content: 'x'.repeat(501),
+      blogId: blog.id, authorId: author.id, content: 'x'.repeat(5001),
     });
-    expect(plain.ok).toBe(true);
+    if (plain.ok) throw new Error('纯文本档不该放过 5001 字');
+    expect(plain.error).toBe('tooLong');
+
+    // 带附件 + 5000 字（恰好到顶）→ 通过
+    const atLimit = await createComment({
+      blogId: blog.id, authorId: author.id, content: 'x'.repeat(5000), imageId: img.id,
+    });
+    expect(atLimit.ok, '带附件恰好 5000 字应放行').toBe(true);
   });
 });
 
