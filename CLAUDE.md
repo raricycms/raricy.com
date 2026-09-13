@@ -67,6 +67,7 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 ### iframe 嵌入
 - 本站**刻意允许**被第三方 iframe 嵌入 —— 有一部分用户只能从 iframe 进主站。**不要**加 `X-Frame-Options` / CSP `frame-ancestors`（nginx 层同样不要），也别把它当成「待补的安全响应头」。
 - 跨站嵌入时会话 cookie（`SameSite=Lax`）带不过去，页面显示为未登录；`src/app/components/FrameBuster.tsx` 只在这种情形弹居中模态框给跳出入口，同站嵌入 / 正常访问不渲染。
+- **跳出是两段**：先 `<a target="_top">`，被嵌入方的 `sandbox` 静默拦下时（浏览器不抛错、只在控制台留一行）等 500ms 再 `window.open` 开新窗口 —— 后者是子页面最后一张牌。若嵌入方**连 `allow-popups` 都没开**，两段都失效，此时只能提示用户右键复制链接：这是浏览器边界，**不要**再去找「更狠的跳法」，没有。也别为了绕开它去改 session cookie 的 `SameSite=None`（那会把跨站 POST 的会话一并放进来，得不偿失）。
 
 ### 数据库迁移
 - **不用 `prisma migrate`**（schema.prisma 头禁了）—— 走 `npm run migrate`（脚本：`scripts/migrate.mjs`）。
