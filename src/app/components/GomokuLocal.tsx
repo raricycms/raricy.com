@@ -69,7 +69,7 @@ export default function GomokuLocal() {
 
   // DOM 展示态
   const [mode, setMode] = useState<Mode>('pvp');
-  const [difficulty, setDifficulty] = useState<Difficulty>('normal');
+  const [difficulty, setDifficulty] = useState<Difficulty>('easy');
   const [humanSide, setHumanSide] = useState<HumanSide>('black');
   const [statusText, setStatusText] = useState<string>('黑方落子');
   const [statusKind, setStatusKind] = useState<StatusKind>('turn');
@@ -306,7 +306,7 @@ export default function GomokuLocal() {
   // 初始化（对齐 main.js）。画布的 resize / 主题 / 点击换算已移交 GomokuCanvas，
   // 这里只剩本地对局自己的初始化。
   useEffect(() => {
-    initGame('pvp', 'normal', 'black');
+    initGame('pvp', 'easy', 'black');
     // 卸载时把 worker 线程收掉，别让它留在后台
     return () => {
       requestSeqRef.current++;
@@ -392,6 +392,16 @@ export default function GomokuLocal() {
           <div className="gomoku-option-group">
             <span className="gomoku-option-title">难度</span>
             <div className="gomoku-mode-selector" role="radiogroup" aria-label="AI 难度">
+              <label className="gomoku-mode-option">
+                <input
+                  type="radio"
+                  name="gomoku-difficulty"
+                  value="easy"
+                  checked={difficulty === 'easy'}
+                  onChange={() => onDifficultyChange('easy')}
+                />
+                <span>简单</span>
+              </label>
               <label className="gomoku-mode-option">
                 <input
                   type="radio"

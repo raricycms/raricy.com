@@ -6,12 +6,13 @@
 // tests/unit/gomoku-ai.test.ts 的战术题库与不变量负责。
 //
 // 用法：
-//   npx tsx scripts/gomoku-selfplay.ts                      # 普通 vs 困难，各 2 万节点
-//   npx tsx scripts/gomoku-selfplay.ts hard:600t hard:3000t # 自己指定预算
-//   npx tsx scripts/gomoku-selfplay.ts hard:600t hard:3000t 30
+//   npx tsx scripts/gomoku-selfplay.ts                        # 普通 vs 困难，各 2 万节点
+//   npx tsx scripts/gomoku-selfplay.ts normal:1000t hard:3000t # 自己指定预算
+//   npx tsx scripts/gomoku-selfplay.ts normal:1000t hard:3000t 30
 //
-// 配置写法：`<难度>:<预算>`，预算以 `n` 结尾是节点数、以 `t` 结尾是毫秒。
-// 节点预算是确定性的（同样的参数跑两次结果完全一致），墙钟不是。
+// 配置写法：`<难度>:<预算>`，难度只能是 easy / normal / hard，预算以 `n` 结尾是
+// 节点数、以 `t` 结尾是毫秒。节点预算是确定性的（同样的参数跑两次结果完全一致），
+// 墙钟不是。非法难度**直接抛错退出**，不会静默测成别的东西。
 //
 // 【为什么必须用一批「胜负各半」的开局 —— 这是本文件存在的理由】
 // 直接拿胜负 A/B 同源引擎的两个版本是**测不出棋力的**。双方同源时棋局结果由
@@ -93,9 +94,20 @@ interface Contestant {
   opts: AiOptions;
 }
 
+const DIFFICULTIES: readonly string[] = ['easy', 'normal', 'hard'];
+
 function parse(spec: string): Contestant {
-  const [diff, budget] = spec.split(':');
+  const [diff, budget = ''] = spec.split(':');
+  // 【为什么这里要显式校验，不能用 `as Difficulty`】跨过这道转换的非法档位不会
+  // 当场报错 —— 它会一路走到 `PARAMS[undefined]`，然后在 `Search` 里以
+  // 「reading 'maxDepth' of undefined」炸掉，或者更糟：`findBestMove` 的
+  // `?? 'easy'` 只兜 `undefined`，兜不住一个**拼错的字符串**，于是你以为在测
+  // 「困难」，实际测的是别的东西。宁可在这里就退出。
+  if (!DIFFICULTIES.includes(diff)) {
+    throw new Error(`未知难度「${diff}」，可选：${DIFFICULTIES.join(' / ')}`);
+  }
   const n = Number(budget.slice(0, -1));
+  if (!Number.isFinite(n) || n <= 0) throw new Error(`配置「${spec}」的预算不合法`);
   const opts: AiOptions =
     budget.endsWith('t')
       ? { difficulty: diff as Difficulty, timeBudgetMs: n }

@@ -77,7 +77,7 @@ const BLACK = RULES_BLACK;
 const WHITE = RULES_WHITE;
 const EMPTY = RULES_EMPTY;
 
-export type Difficulty = 'normal' | 'hard';
+export type Difficulty = 'easy' | 'normal' | 'hard';
 
 export interface AiMove {
   row: number;
@@ -94,7 +94,7 @@ export interface AiResult extends AiMove {
 }
 
 export interface AiOptions {
-  /** 默认 'normal'。 */
+  /** 默认 'easy'。 */
   difficulty?: Difficulty;
   /**
    * 节点预算。与 timeBudgetMs **先到者生效**。
@@ -255,48 +255,57 @@ interface Params {
 }
 
 /**
- * 难度参数表。
+ * 难度参数表 —— 三档：简单 / 普通 / 困难。
  *
- * `normal` 沿用被替换掉的那套搜索参数（深度 4 / 宽度 12），但**着法生成与评估
+ * `easy` 沿用被替换掉的那套搜索参数（深度 4 / 宽度 12），但**着法生成与评估
  * 都换掉了**，所以它并不等于旧 AI：实测（每手 2 万节点、先后手各半、8 局）
  * 8:0 胜旧 AI。真正拉开差距的是威胁驱动的着法生成，不是深度。
  *
- * `hard` 在此之上开 L1 双威胁与 L2 VCF，深度上限只作护栏（见下）；同样 8:0 胜旧 AI。
+ * `normal` 在此之上开 L1 双威胁与 L2 VCF（会做四三 / 双活三，也会算冲四连杀）。
  *
  * 【关于 timeBudgetMs】搜索每次都会吃满它（迭代加深永远搜不完），所以这个值
- * 就是玩家实际等待的时长。困难档给 3s 是因为**多给时间确实能换到深度**：
- * 600ms → 深度 6，3s → 深度 8（靠 LMR 才成立；没有 LMR 时给到 3s 也还是 6）。
- * 这 3 秒跑在 Web Worker 上，主线程全程空闲 —— **不要把它改回主线程**，
- * 那样每走一步整页冻死 3 秒。
+ * 就是玩家实际等待的时长。三档都跑在 Web Worker 上，主线程全程空闲 ——
+ * **不要把它改回主线程**，那样每走一步整页冻死。
  *
- * 【3 秒到底值多少棋力 —— 实测分解】用胜负各半的开局跑对局（见
- * `scripts/gomoku-selfplay.ts`，那个文件的注释解释了为什么不能用「谁赢」直接
- * 比同源引擎）：
- *   3s vs 600ms（新旧引擎各自对打）  ≈ 65%（32 局 21:11）
- *   新引擎 vs 旧引擎（同为 600ms）    ≈ 54%（80 局 43:37，p≈0.25，**不显著**）
+ * 【多给时间到底值多少棋力 —— 上一轮（两档时代）的实测分解】用胜负各半的开局
+ * 跑对局（见 `scripts/gomoku-selfplay.ts`，那个文件的注释解释了为什么不能用
+ * 「谁赢」直接比同源引擎）：
+ *   同一套算法 3s vs 600ms        ≈ 65%（52 局 34:18，p≈0.013）
+ *   新引擎 vs 旧引擎（同为 600ms） ≈ 54%（80 局 43:37，p≈0.25，**不显著**）
  * 两条反直觉的结论，改这块之前先看一眼：
  *   1. **时间能买到的棋力有上限**。同一套算法多给 5 倍时间只等于「深度 6 →
  *      深度 8」，对局胜率就停在六成多 —— 这不是碾压，别指望靠加时间完胜。
  *   2. **提速本身不等于变强**。600ms 那档新旧引擎都只搜到深度 6，所以 2.4 倍
  *      的节点吞吐在等时间下换不出多一层，胜率自然没差别。提速只在**恰好跨过
- *      一个深度台阶**的地方兑现（这里是 3s：旧引擎搜不完深度 8，新引擎能）。
- *      想让提速变成棋力，盯「完成深度」这个量，别盯节点数。
+ *      一个深度台阶**的地方兑现。想让提速变成棋力，盯「完成深度」这个量，
+ *      别盯节点数。
  *
- * 两档都不加随机扰动：保持确定性，测试与复现才有意义。
+ * 三档都不加随机扰动：保持确定性，测试与复现才有意义。
  */
 const PARAMS: Record<Difficulty, Params> = {
-  normal: {
+  // 简单：默认档。200ms 一手，开局够快，但仍然认得出跳子棋型与一步成五。
+  easy: {
     maxDepth: 4,
     candidateWidth: 12,
     timeBudgetMs: 200,
     useThreats: false,
     useVcf: false,
   },
-  hard: {
+  // 普通：1s 一手。会主动做双威胁、会算 VCF 连杀、会挡对手的双威胁。
+  normal: {
     // 深度上限只是护栏，正常情况下够不着 —— 迭代加深永远吃满时间预算，
-    // 真正决定停在哪一层的是预算。**别把它调回 10**：引擎提速之后 3 秒已经能
-    // 爬到更深处，上限卡在那里会让「多给时间」重新变得没有意义（那正是上一轮
-    // 「600ms 与 3s 都是深度 6」的成因之一）。上限只需低于 `L1_LAYER`。
+    // 真正决定停在哪一层的是预算。**别把它调小**：上限卡得太低会让「多给
+    // 时间」重新变得没有意义（那正是上一轮「600ms 与 3s 都是深度 6」的
+    // 成因之一）。上限只需低于 `L1_LAYER`。
+    maxDepth: 14,
+    candidateWidth: 16,
+    timeBudgetMs: 1000,
+    useThreats: true,
+    useVcf: true,
+  },
+  // 困难：3s 一手。**这一档最终要换上性质不同的算法（VCT 威胁空间搜索），
+  // 在那个 commit 落地之前它与「普通」同算法，只是时间多 2 秒。**
+  hard: {
     maxDepth: 14,
     candidateWidth: 16,
     timeBudgetMs: 3000,
@@ -1202,7 +1211,7 @@ export function findBestMove(
   aiPlayer: Player,
   opts: AiOptions = {}
 ): AiResult {
-  const params = PARAMS[opts.difficulty ?? 'normal'];
+  const params = PARAMS[opts.difficulty ?? 'easy'];
   const mid = (SIZE / 2) | 0;
 
   if (board.getHistory().length === 0) {

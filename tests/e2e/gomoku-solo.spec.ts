@@ -66,7 +66,7 @@ test.describe('五子棋单机', () => {
 
   test('选「我执白后手」时 AI 自己开局，一次都不用点棋盘', async ({ page }) => {
     await page.goto('/game/gomoku');
-    // 先切人机（默认普通档，开局快，不必等困难档那 3 秒）
+    // 先切人机（默认简单档，200ms 一手，不必等困难档那 3 秒）
     await page.locator('input[name="gomoku-mode"][value="ai"]').check();
     // 再选执白 —— 这一下会重开一局，AI 执黑先手
     await page.locator('input[name="gomoku-first"][value="white"]').check();

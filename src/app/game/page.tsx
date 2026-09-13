@@ -103,7 +103,7 @@ const SECTIONS: GameSection[] = [
       {
         ...GOMOKU_BASE,
         href: '/game/gomoku',
-        desc: '15×15 棋盘五子连线，支持双人对战和人机对战，AI 分两档难度、可选先后手。',
+        desc: '15×15 棋盘五子连线，支持双人对战和人机对战，AI 分三档难度、可选先后手。',
       },
       {
         href: '/game/atamas',
