@@ -35,7 +35,9 @@ import {
   unbanUser,
   setRole,
   listUsers,
+  adminCreateUser,
 } from '@/lib/admin-user-service';
+import { verifyPassword } from '@/lib/password';
 import { createAppeal, listPublicLogs } from '@/lib/audit-service';
 import { SITE_TZ_OFFSET_MS, nowForDb } from '@/lib/db-time';
 import { adjudicate, listAppeals } from '@/lib/admin-appeal-service';
@@ -1549,5 +1551,155 @@ describe('listAppeals（申诉列表）', () => {
     expect(after.total).toBe(1);
     expect(after.items[0].decider!.username).toBe('the_owner');
     expect(after.items[0].decidedAt).not.toBeNull();
+  });
+});
+
+// ── 站长建号（跳过人机验证与邀请码，直接 core）────────────────────────────────
+//
+// 【为什么单独测】这是全站唯一一个「不经过公开注册就能凭空造出一个 core 用户」的入口，
+// 三条边界都不能松：① 非站长必须挡住（admin 也不行）；② 角色不许被带偏成 user，也不许
+// 被利用成第二个「任命管理员」的口子；③ 审计要留痕但不能留密码（/audit 是公开页）。
+
+describe('adminCreateUser', () => {
+  const PW = 'pw12345678';
+
+  it('owner 建号成功：直接 core、密码可登录、sessionVersion 从 0 起', async () => {
+    const owner = await makeUser({ role: 'owner' });
+    const r = await adminCreateUser({ actor: asActor(owner), username: 'newbie', password: PW });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.user.role).toBe('core');
+
+    const row = await prisma.user.findUnique({ where: { id: r.user.id } });
+    expect(row?.role).toBe('core');
+    expect(row?.sessionVersion).toBe(0);
+    expect(row?.createdAt).not.toBeNull();
+    expect(await verifyPassword(PW, row!.passwordHash)).toBe(true);
+  });
+
+  it('邮箱留空 → 合成占位邮箱，并如实回报 emailSynthesized', async () => {
+    const owner = await makeUser({ role: 'owner' });
+    const r = await adminCreateUser({ actor: asActor(owner), username: 'noemail', password: PW });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.emailSynthesized).toBe(true);
+    expect(r.email).toBe('noemail@users.invalid');
+    expect((await prisma.user.findUnique({ where: { username: 'noemail' } }))?.email).toBe(
+      'noemail@users.invalid'
+    );
+  });
+
+  it('站长手填邮箱 → 用站长给的，emailSynthesized=false', async () => {
+    const owner = await makeUser({ role: 'owner' });
+    const r = await adminCreateUser({
+      actor: asActor(owner),
+      username: 'withemail',
+      email: 'real@example.com',
+      password: PW,
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.emailSynthesized).toBe(false);
+    expect((await prisma.user.findUnique({ where: { username: 'withemail' } }))?.email).toBe(
+      'real@example.com'
+    );
+  });
+
+  it('★ 中文用户名 + 留空邮箱也能建出来（合成值不能过 validateEmail 那道 ASCII 正则）', async () => {
+    const owner = await makeUser({ role: 'owner' });
+    const r = await adminCreateUser({ actor: asActor(owner), username: '张三-李四', password: PW });
+    expect(r.ok).toBe(true);
+    expect((await prisma.user.findUnique({ where: { username: '张三-李四' } }))?.role).toBe('core');
+  });
+
+  it('★ 非站长一律 403，且不留任何副作用', async () => {
+    for (const role of ['admin', 'core', 'user'] as const) {
+      const actor = await makeUser({ role });
+      const users = await prisma.user.count();
+      const logs = await prisma.adminActionLog.count();
+      const r = await adminCreateUser({
+        actor: asActor(actor),
+        username: `x_${role}`,
+        password: PW,
+      });
+      expect(r).toMatchObject({ ok: false, code: 403, message: '仅站长可创建用户' });
+      expect(await prisma.user.count()).toBe(users);
+      expect(await prisma.adminActionLog.count()).toBe(logs);
+    }
+  });
+
+  it('本入口与邀请码无关：一个码都不会被消耗', async () => {
+    const owner = await makeUser({ role: 'owner' });
+    await prisma.inviteCode.create({
+      data: { code: 'unusedcode12', isUsed: false, createdAt: nowForDb() },
+    });
+    await adminCreateUser({ actor: asActor(owner), username: 'invfree', password: PW });
+    expect(await prisma.inviteCode.count({ where: { isUsed: true } })).toBe(0);
+  });
+
+  it('写 create_user 审计，但 reason 与 extra 里都没有密码', async () => {
+    const owner = await makeUser({ role: 'owner' });
+    const secret = 'SuperSecret123';
+    const r = await adminCreateUser({ actor: asActor(owner), username: 'audited', password: secret });
+    expect(r.ok).toBe(true);
+
+    const log = await latestLog('create_user');
+    expect(log?.adminId).toBe(owner.id);
+    expect(log?.objectType).toBe('user');
+    expect(log?.visibility).toBe('public');
+
+    const extra = await readExtra(log!.id);
+    expect(`${log!.reason ?? ''} ${extra ?? ''}`).not.toContain(secret);
+    expect(extra).toContain('email_synthesized');
+  });
+
+  it('拒绝路径一律不建号、不写日志', async () => {
+    const owner = await makeUser({ role: 'owner' });
+    const users = await prisma.user.count();
+
+    const bad = [
+      { username: 'ab', password: PW }, // 用户名过短
+      { username: 'okname1', password: 'short' }, // 密码 < 8
+      { username: 'okname2', password: 'p'.repeat(101) }, // 密码 > 100
+      { username: 'okname3', password: PW, email: 'not-an-email' }, // 邮箱格式
+      { username: 'okname4', password: PW, email: 'x@users.invalid' }, // 占位域保留
+    ];
+    for (const b of bad) {
+      const r = await adminCreateUser({ actor: asActor(owner), ...b });
+      expect(r.ok, `本应被拒：${JSON.stringify(b)}`).toBe(false);
+      if (!r.ok) expect(r.code).toBe(400);
+    }
+
+    expect(await prisma.user.count()).toBe(users);
+    expect(await prisma.adminActionLog.count()).toBe(0);
+  });
+
+  it('用户名 / 邮箱已存在 → 400，且不写日志', async () => {
+    const owner = await makeUser({ role: 'owner' });
+    await makeUser({ username: 'dupe', email: 'dupe@example.com' });
+
+    expect(
+      await adminCreateUser({ actor: asActor(owner), username: 'dupe', password: PW })
+    ).toMatchObject({ ok: false, code: 400, message: '用户名已存在' });
+    expect(
+      await adminCreateUser({
+        actor: asActor(owner),
+        username: 'otherone',
+        email: 'dupe@example.com',
+        password: PW,
+      })
+    ).toMatchObject({ ok: false, code: 400, message: '邮箱已存在' });
+
+    expect(await prisma.adminActionLog.count()).toBe(0);
+  });
+
+  it('★ 并发同名：至多一个成功，且库里只会有一行', async () => {
+    const owner = await makeUser({ role: 'owner' });
+    const results = await Promise.all([
+      adminCreateUser({ actor: asActor(owner), username: 'raced', password: PW }),
+      adminCreateUser({ actor: asActor(owner), username: 'raced', password: PW }),
+    ]);
+    expect(results.filter((r) => r.ok)).toHaveLength(1);
+    expect(await prisma.user.count({ where: { username: 'raced' } })).toBe(1);
   });
 });

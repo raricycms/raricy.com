@@ -18,6 +18,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 
 import {
   registerUser,
+  createUserAccount,
   validateUsername,
   validateEmail,
   changeOwnPassword,
@@ -1100,5 +1101,100 @@ describe('updateOwnProfile 的成功文案', () => {
     await updateOwnProfile(u.id, { bio: '只改简介' });
     const row = await prisma.user.findUnique({ where: { id: u.id } });
     expect(row?.focusMode).toBe(true);
+  });
+});
+
+// ── 建号内核（公开注册 / 站长建号共用）────────────────────────────────────────
+//
+// 内核**没有预检** —— 唯一约束是并发下唯一的防线。所以这里直接连着建两个同名/同邮箱的
+// 号来逼出 P2002，验证它被映射成 400 而不是塌成 503：后者会把「用户名已存在」报成
+// 「注册失败，请稍后重试」，把用户和排查的人都指向错误的方向。
+
+describe('createUserAccount（建号内核）', () => {
+  const base = {
+    password: 'pw12345678',
+    role: 'core',
+    remoteRequiredLabel: '建号',
+  };
+
+  it('用户名撞唯一约束 → unique_violation/username', async () => {
+    await makeUser({ username: 'taken', email: 'taken@example.com' });
+    const r = await createUserAccount({ ...base, username: 'taken', email: 'other@example.com' });
+    expect(r).toMatchObject({ ok: false, failure: { kind: 'unique_violation', field: 'username' } });
+  });
+
+  it('邮箱撞唯一约束 → unique_violation/email', async () => {
+    await makeUser({ username: 'someone', email: 'taken@example.com' });
+    const r = await createUserAccount({ ...base, username: 'brandnew', email: 'taken@example.com' });
+    expect(r).toMatchObject({ ok: false, failure: { kind: 'unique_violation', field: 'email' } });
+  });
+
+  it('冲突时事务整体回滚，不留半截用户', async () => {
+    await makeUser({ username: 'taken', email: 'taken@example.com' });
+    const before = await prisma.user.count();
+    await createUserAccount({ ...base, username: 'taken', email: 'fresh@example.com' });
+    expect(await prisma.user.count()).toBe(before);
+  });
+
+  it('成功路径：role 由调用方给定，sessionVersion 从 0 起', async () => {
+    const r = await createUserAccount({ ...base, username: 'fresh', email: 'fresh@example.com' });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.role).toBe('core');
+    expect(r.sessionVersion).toBe(0);
+    expect((await prisma.user.findUnique({ where: { id: r.id } }))?.role).toBe('core');
+  });
+
+  it('beforeCommit 抛错 → precondition，且整事务回滚（不建号）', async () => {
+    const boom = new Error('precheck failed');
+    const before = await prisma.user.count();
+    const r = await createUserAccount({
+      ...base,
+      username: 'aborted',
+      email: 'aborted@example.com',
+      beforeCommit: async () => {
+        throw boom;
+      },
+    });
+    expect(r.ok).toBe(false);
+    if (r.ok || r.failure.kind !== 'precondition') {
+      throw new Error(`期望 precondition，实际：${JSON.stringify(r)}`);
+    }
+    // 原样传回，调用方才能认出自己的哨兵（如 InviteCodeRaceError）
+    expect(r.failure.cause).toBe(boom);
+    expect(await prisma.user.count()).toBe(before);
+  });
+});
+
+// ── 占位邮箱的保留域 ────────────────────────────────────────────────────────
+
+describe('registerUser：占位邮箱的保留域', () => {
+  it('不允许公开注册 users.invalid —— 否则任何人都能抢注占位邮箱', async () => {
+    const r = await registerUser({
+      username: 'bob',
+      email: 'bob@users.invalid',
+      password: 'pw12345678',
+    });
+    expect(r).toMatchObject({ ok: false, code: 400, message: '邮箱格式不正确' });
+    expect(await prisma.user.findUnique({ where: { username: 'bob' } })).toBeNull();
+  });
+
+  it('大小写不敏感', async () => {
+    const r = await registerUser({
+      username: 'bob',
+      email: 'BOB@Users.Invalid',
+      password: 'pw12345678',
+    });
+    expect(r).toMatchObject({ ok: false, code: 400, message: '邮箱格式不正确' });
+  });
+
+  it('★ 新规则插在长度检查之后，不改动既有校验顺序（用户名重复仍优先）', async () => {
+    await makeUser({ username: 'bob', email: 'bob@example.com' });
+    const r = await registerUser({
+      username: 'bob',
+      email: 'bob@users.invalid',
+      password: 'pw12345678',
+    });
+    expect(r.message).toBe('用户名已存在');
   });
 });
