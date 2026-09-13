@@ -1524,24 +1524,19 @@ export function findBestMove(
     }
   }
 
-  // 防守：对手也会算杀，而我的连杀够不着时，至少把他连杀的**起手**占掉 ——
-  // 和 L1 的 `mustBlock` 一个道理。放在这里（而不是更早）是有意的：只在确认
-  // 自己没有必胜手之后才做，所以它绝不会拦下我方的杀棋。
-  if (mustBlock === -1 && params.useVcf) {
-    const o = s.vcf(opp, VCF_MAX_DEPTH);
-    if (o !== -1) mustBlock = o;
-  }
-  if (mustBlock === -1 && params.useVct) {
-    for (let d = 4; d <= VCT_MAX_DEPTH; d += 2) {
-      const o = s.vctAttack(opp, d);
-      if (o !== -1) {
-        mustBlock = o;
-        break;
-      }
-      if (s.isStopped) break;
-    }
-  }
-
+  // 【为什么这里**不**去算对手的 VCF / VCT】一度加过：跑一遍对手的算杀，找到
+  // 就把他的起手占掉。已删除，理由是实测出来的，不是审美：
+  //
+  // 逐手诊断（走一局 hard vs normal，打出每手的深度/分值/耗时）显示，被压制的
+  // 一方会**整局都在 0~2ms 内返回「挡」**，3 秒预算一秒没用上，而对面每一手都
+  // 在正常搜索 —— 于是「思考 3 秒」的那档反而比「思考 1 秒」的那档搜得少。
+  //
+  // 机制上说得通：**占掉一个连杀的起手，通常挡不住那个连杀**（对手换个起手
+  // 接着来），却实打实地放弃了一次搜索。而这条捷径一旦命中就直接 return，
+  // 搜索根本没机会找一个更好的应法（比如反先）。
+  //
+  // L1 的 `mustBlock`（对手下一手就成活四，三步内成五）保留不动 —— 那种局面
+  // 确实没有别的选择；这里去掉的是**我这一版新加的**、没经过验证的两条。
   if (mustBlock !== -1) return toMove(mustBlock, WIN_SCORE / 2, 0);
 
   // L3 —— 迭代加深。每完成一层才覆盖结果，预算到点就用上一层的。
