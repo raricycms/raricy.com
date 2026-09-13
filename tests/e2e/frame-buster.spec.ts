@@ -19,12 +19,15 @@ import { test, expect, type FrameLocator, type Page } from '@playwright/test';
 /** 与服务同实例、不同 hostname → 浏览器视作跨站。 */
 const CROSS_SITE_SRC = 'http://localhost:3100/';
 
-/** 在父页里注入一个全屏 iframe，返回它的 FrameLocator。 */
-async function embed(page: Page, src: string): Promise<FrameLocator> {
-  await page.evaluate((iframeSrc) => {
+/** 在父页里注入一个全屏 iframe，返回它的 FrameLocator。
+ *  `sandbox` 缺省不设 —— 多数用例要的就是「普通嵌入」；给了就照原样写进 sandbox 属性。 */
+async function embed(page: Page, src: string, sandbox?: string): Promise<FrameLocator> {
+  await page.evaluate(({ iframeSrc, sandboxAttr }) => {
     document.getElementById('e2e-embed')?.remove();
     const f = document.createElement('iframe');
     f.id = 'e2e-embed';
+    // sandbox 必须在 src 之前挂上：先加载再改 sandbox，Chrome 会强制重载整个文档
+    if (sandboxAttr) f.setAttribute('sandbox', sandboxAttr);
     f.src = iframeSrc;
     Object.assign(f.style, {
       position: 'fixed',
@@ -38,7 +41,7 @@ async function embed(page: Page, src: string): Promise<FrameLocator> {
       zIndex: '2147483647',
     });
     document.body.appendChild(f);
-  }, src);
+  }, { iframeSrc: src, sandboxAttr: sandbox ?? '' });
   return page.frameLocator('#e2e-embed');
 }
 
@@ -76,6 +79,16 @@ test.describe('FrameBuster：跨站 iframe 嵌入提示', () => {
     await expect(frame.locator('.frame-buster')).toBeVisible({ timeout: 15_000 });
   });
 
+  test('普通嵌入 → 「全屏打开」把顶层窗口导航走', async ({ page }) => {
+    await page.goto('/');
+    const frame = await embed(page, CROSS_SITE_SRC);
+    await expect(frame.locator('.frame-buster')).toBeVisible({ timeout: 15_000 });
+
+    await frame.getByRole('link', { name: '全屏打开' }).click();
+    // 顶层窗口整个换成 iframe 里的那个地址（不是开新标签页）—— 正常嵌入下这一跳就够了
+    await page.waitForURL(/localhost:3100/, { timeout: 15_000 });
+  });
+
   test('正常访问与同站嵌入 → 什么都不渲染', async ({ page }) => {
     await page.goto('/');
     await expect(page.locator('.frame-buster')).toHaveCount(0); // 顶层访问
@@ -85,5 +98,44 @@ test.describe('FrameBuster：跨站 iframe 嵌入提示', () => {
     // SSR 输出没有该属性 —— 它出现即证明同一批 effect（含 FrameBuster 的检测）已经跑过。
     await expect(frame.locator('#hero-canvas')).toHaveAttribute('width', /\d+/);
     await expect(frame.locator('.frame-buster')).toHaveCount(0);
+  });
+});
+
+// 嵌入方给 iframe 挂 sandbox 时，「跳出」会逐级失效。三档分别对应组件里的两段兜底：
+//   无 sandbox             → <a target="_top"> 直接跳走（上面那条普通嵌入用例）
+//   allow-popups           → 顶层导航被拦，500ms 后 window.open 接住
+//   两样都不开              → 只能把按钮切成第二段提示，别让用户对着死按钮点
+test.describe('FrameBuster：sandbox 挡住跳出时的兜底', () => {
+  test('未开 allow-top-navigation、开了 allow-popups → 转而开新窗口', async ({ page }) => {
+    await page.goto('/');
+    const frame = await embed(page, CROSS_SITE_SRC, 'allow-scripts allow-same-origin allow-popups');
+    await expect(frame.locator('.frame-buster')).toBeVisible({ timeout: 15_000 });
+
+    // 用 context 的 page 事件而不是 page 的 popup 事件：只是不想依赖「新窗口与
+    // 这张 page 的 opener 关联」——组件会顺手把新窗口的 opener 置空。**实测两个都触发**
+    // （opener 关联在窗口创建时就定了，事后置空不影响），所以这里不是绕坑，只是选了个
+    // 耦合更少的写法。
+    const popupPromise = page.context().waitForEvent('page', { timeout: 20_000 });
+    await frame.getByRole('link', { name: '全屏打开' }).click();
+
+    const popup = await popupPromise;
+    await popup.waitForLoadState('domcontentloaded');
+    expect(popup.url()).toContain('localhost:3100');
+    // 顶层窗口纹丝不动 —— 这正是「点了没反应」的那一档，兜底是唯一的出口
+    expect(page.url()).toContain('127.0.0.1:3100');
+  });
+
+  test('sandbox 两样都不开 → 按钮切成第二段，提示右键复制链接', async ({ page }) => {
+    await page.goto('/');
+    const frame = await embed(page, CROSS_SITE_SRC, 'allow-scripts allow-same-origin');
+    await expect(frame.locator('.frame-buster')).toBeVisible({ timeout: 15_000 });
+
+    await frame.getByRole('link', { name: '全屏打开' }).click();
+
+    // 顶层导航被拦 + window.open 返回 null（宽限 500ms 后才判定）→ 第二段文案
+    await expect(frame.getByRole('link', { name: '在新窗口打开' })).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(frame.locator('.frame-buster__text')).toContainText('复制链接');
   });
 });
