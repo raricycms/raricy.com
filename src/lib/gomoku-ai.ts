@@ -30,18 +30,21 @@
 // `_XXX__` 的窗口计数完全相同，因为「填哪一格能连成五」本身就允许中间有空格。
 // 于是跳子不需要任何特例，还能预计算成一张 3^5 = 243 项的查找表。
 //
-// 【已知问题 · hard 档还不够强，先别接进 UI】
-// L3 是宽度截断的搜索，一旦把防守方的解招挤出候选表，它就会报出并不存在的
-// 「必胜」并去追那手废棋 —— 实测 hard 对旧 AI 八局全败，整局几乎每手都报
-// 99999996 这种假杀分。改成「防守方不设上限」后假杀消失、分数回到正常评估值，
-// 但代价是防守方分支上百，同样的节点预算下自己够得着的深度被吃掉（20000 节点时
-// 实际只到深度 4，与 normal 持平），**结果 hard 仍然赢不了旧 AI（0:8），
-// 与 normal 的战绩（4:4）相比没有优势**。
+// 【为什么着法生成是「威胁驱动」而不是「排序截前 N 名」】
+// 这是整套引擎最关键的一处，也是踩过坑的地方。直觉做法是把邻近的候选格交给
+// 启发式排序、截前 N 名 —— 但那样**防守方的解招会被挤出候选表**，搜索接着就会
+// 看见一段「对方全程不设防」的连五，报出一个根本不存在的必胜，然后去走那手
+// 废棋。实测那样配的难度档对旧 AI 八局全败，整局几乎每手都报 99999996 这种假杀分。
 //
-// 要真正做强，需要在候选生成上做文章（无条件纳入双方所有「能成四」的点，
-// 而不是靠启发式排序挤名额），或者上威胁空间搜索 / 置换表。在那之前：
-// `hard` 不得接进 UI —— 接进去就是把一个比现状更弱的 AI 给玩家。
-// L0/L1/L2 的战术是精确判定的，本身没问题，测试也钉住了。
+// 正确的做法是让「哪些点必须考虑」由**精确枚举**给出，而不是靠排序去猜。
+// 见 `Search.scanThreats`：一遍全盘窗口扫描就能同时拿到双方的成五点与造四点，
+// 而「对手的造四点」正是防守方的解招集合。无条件纳入它，假杀就没了。
+//
+// 另一半是 `buildMoves` 里那条「威胁点再多也要补满宽度」—— 少了它，威胁一多
+// 候选表就被对手的威胁占满，引擎只会挨打、做不出自己的棋（实测：困难档执黑
+// 四局全部下到满盘和棋，执白反而四局全胜）。
+//
+// 实测战绩（每手 2 万节点、先后手各半、8 局）：普通档与困难档都是 **8:0** 胜旧 AI。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import {
@@ -205,17 +208,19 @@ interface Params {
   useThreats: boolean;
   /** L2：VCF 连续冲四连杀。 */
   useVcf: boolean;
-  /** 是否随搜索层数收窄候选宽度（见 `Search.widthFor`）。 */
-  narrowByPly: boolean;
 }
 
 /**
  * 难度参数表。
  *
- * `normal` 刻意沿用被替换掉的那套参数（深度 4 / 宽度 12），对齐「普通」这一档
- * 原有的棋力定位。实测（每手 2 万节点、先后手各半、8 局）与旧 AI 打成 4:4 ——
- * 确实是对齐了，别指望它明显更强。窗口计数看得见跳子，但深度只到 4，优势被
- * 搜索层数抵掉了。
+ * `normal` 沿用被替换掉的那套搜索参数（深度 4 / 宽度 12），但**着法生成与评估
+ * 都换掉了**，所以它并不等于旧 AI：实测（每手 2 万节点、先后手各半、8 局）
+ * 8:0 胜旧 AI。真正拉开差距的是威胁驱动的着法生成，不是深度。
+ *
+ * `hard` 在此之上开 L1 双威胁与 L2 VCF，并把深度放到 10；同样 8:0 胜旧 AI。
+ * `timeBudgetMs` 600 是**主线程**上的墙钟上限：搜索每次都吃满它（迭代加深永远
+ * 搜不完），所以它就是玩家实际感到的卡顿。实测 2 万节点只要约 135ms，
+ * 600ms 已留足余量，不必再调高。
  *
  * 两档都不加随机扰动：保持确定性，测试与复现才有意义。
  */
@@ -226,15 +231,13 @@ const PARAMS: Record<Difficulty, Params> = {
     timeBudgetMs: 200,
     useThreats: false,
     useVcf: false,
-    narrowByPly: false,
   },
   hard: {
     maxDepth: 10,
     candidateWidth: 16,
-    timeBudgetMs: 900,
+    timeBudgetMs: 600,
     useThreats: true,
     useVcf: true,
-    narrowByPly: true,
   },
 };
 
@@ -535,12 +538,62 @@ function orderScore(cells: Uint8Array, pos: number, player: Player): number {
   return mine + theirs * 1.05;
 }
 
+// ─── 威胁扫描 ────────────────────────────────────────────────────────────────
+
+/**
+ * 一次全盘窗口扫描的产出：双方各自的「成五点」与「造四点」。
+ *
+ * 这四个列表直接就是着法生成的骨架（见 `Search.buildMoves`）—— 有了它们，
+ * 「哪些点必须考虑」是**精确枚举**出来的，不靠启发式排序去猜。
+ */
+interface ThreatLists {
+  /** 我方落子即成的点。 */
+  meFive: Int32Array;
+  /** 我方落子即造出「四」的点（补一格就成五）。 */
+  meFour: Int32Array;
+  /** 对手落子即成的点 —— 这些是必须堵的。 */
+  oppFive: Int32Array;
+  /** 对手落子即造出四的点 —— 这些是防守方的解招，一个都不许漏。 */
+  oppFour: Int32Array;
+  seenMeFive: Int32Array;
+  seenMeFour: Int32Array;
+  seenOppFive: Int32Array;
+  seenOppFour: Int32Array;
+  meFiveN: number;
+  meFourN: number;
+  oppFiveN: number;
+  oppFourN: number;
+}
+
+/** 按「代」去重地写入，返回新的计数 —— 同一个点会被多条线、多个窗口重复命中。 */
+function pushUnique(
+  list: Int32Array,
+  seen: Int32Array,
+  n: number,
+  pos: number,
+  gen: number
+): number {
+  if (pos < 0 || seen[pos] === gen) return n;
+  seen[pos] = gen;
+  list[n] = pos;
+  return n + 1;
+}
+
 // ─── 搜索 ────────────────────────────────────────────────────────────────────
 
 /**
  * 搜索状态。持有一份扁平的棋盘副本与邻近计数，落子/撤销都成对，
  * 生命周期内不改动调用方的 GomokuBoard —— 这正是「返回时棋盘逐格不变」的来源。
  */
+/**
+ * L1 用的威胁扫描层号。
+ *
+ * 层号只是缓冲区的下标，取一个**不与别人撞车**的值即可：搜索占 0..maxDepth
+ * （≤10），VCF 占 `20 + depth`（20..31）。取 15 留出余量，同时让「层 → 缓冲区」
+ * 那张数组只分配十几项 —— 每项是 8 个 225 长的 Int32Array，取大了纯属浪费。
+ */
+const L1_LAYER = 15;
+
 class Search {
   private cells = new Uint8Array(CELLS);
   private near = new Int32Array(CELLS);
@@ -556,8 +609,44 @@ class Search {
 
   /** 每层复用的候选缓冲，避免热循环里反复分配数组。 */
   private buf: number[][] = [];
-  /** 每层复用的排序缓冲（打包值 + 输出），同样是为了不给 GC 添活。 */
-  private ordBuf: Array<{ packed: number[]; out: number[] }> = [];
+  /** 每层复用的排序缓冲，同样是为了不给 GC 添活。 */
+  private rankBufs: number[][] = [];
+  /** 每层复用的着法缓冲（`buildMoves` 的产出）。 */
+  private moveBufs: number[][] = [];
+  /** 每层的威胁扫描结果。 */
+  private threats: ThreatLists[] = [];
+  /** 威胁扫描的去重「代」号，每次扫描自增。 */
+  private threatGen = 0;
+
+  private rankBuf(layer: number): number[] {
+    while (this.rankBufs.length <= layer) this.rankBufs.push([]);
+    return this.rankBufs[layer];
+  }
+
+  private moveBuf(layer: number): number[] {
+    while (this.moveBufs.length <= layer) this.moveBufs.push([]);
+    return this.moveBufs[layer];
+  }
+
+  private threatAt(layer: number): ThreatLists {
+    while (this.threats.length <= layer) {
+      this.threats.push({
+        meFive: new Int32Array(CELLS),
+        meFour: new Int32Array(CELLS),
+        oppFive: new Int32Array(CELLS),
+        oppFour: new Int32Array(CELLS),
+        seenMeFive: new Int32Array(CELLS),
+        seenMeFour: new Int32Array(CELLS),
+        seenOppFive: new Int32Array(CELLS),
+        seenOppFour: new Int32Array(CELLS),
+        meFiveN: 0,
+        meFourN: 0,
+        oppFiveN: 0,
+        oppFourN: 0,
+      });
+    }
+    return this.threats[layer];
+  }
 
   constructor(params: Params, opts: AiOptions, aiPlayer: Player) {
     this.params = params;
@@ -648,9 +737,33 @@ class Search {
 
   // ── L1 ──
 
+  /**
+   * 候选里有没有「必胜手」—— 落子后对手一手挡不住。
+   *
+   * 判据：落子后**成五点 ≥2**。对手堵掉一个还剩一个，下一步必成五 —— 这就是
+   * 活四与双四，两者都是必胜。精确判定，不吃评估权重。
+   *
+   * 【不能用「造四点 ≥2」代替】看着像，其实是错的：同一条线上的两个造四点
+   * （比如 `XX_X_`，两个空位都能补成四）每个都只是会被堵掉的冲四，走成一个
+   * 冲四、对手挡住、另一个照样被挡，**根本不是杀**。这个错我犯过一次 ——
+   * 表现是困难档一路报「必胜」却越走越亏，最后输棋。差别在于：造四点是
+   * 「我有几种方式做四」，成五点才是「我有几个点能直接成五」。
+   *
+   * 【为什么不在这里判四三】「一个四 + 一个活三」要再算一层「哪些点能造活四」，
+   * 代价高；而四三在威胁驱动的搜索里会自己浮出来 —— 冲四逼应、再成活四，
+   * 每一步都落在 `buildMoves` 的强制层上。所以 L1 只做最可靠的那一条。
+   *
+   * 【调用前提】只在对手没有即成五点时才调（`findBestMove` 里 L0 已经先判过），
+   * 否则对手会先成五，我这边的活四不作数。
+   */
   findWinningMove(cands: readonly number[], player: Player): number {
     for (let i = 0; i < cands.length; i++) {
-      if (analyzeMove(this.cells, cands[i], player).winning) return cands[i];
+      const pos = cands[i];
+      this.place(pos, player);
+      let win = makesFive(this.cells, pos, player);
+      if (!win) win = this.scanThreats(player, L1_LAYER).meFiveN >= 2;
+      this.unplace(pos);
+      if (win) return pos;
     }
     return -1;
   }
@@ -704,62 +817,126 @@ class Search {
   // ── L3：迭代加深 Negamax ──
 
   /**
-   * 走法排序：`我的局部价值 + 1.05 × 对手的局部价值`，截取前 width 个。
+   * 扫一遍全盘窗口，产出双方的成五点与造四点。
    *
-   * 第二项是关键 —— 老实现只按「我这步能得多少分」排序，完全没算「这步能挡住
-   * 对手什么」，挡点被排到后面，alpha-beta 剪枝效率因此很低。
+   * 【为什么一遍窗口扫描就够，不需要棋型识别】窗口是**连续五格**，于是：
+   *   • 5 个我方子 + 0 个对方子   → 已成五（调用方负责，这里不收集）
+   *   • 4 个我方子 + 1 个空       → 那个空位是**成五点**
+   *   • 3 个我方子 + 2 个空       → 两个空位都是**造四点**
+   * 「五格里有四个我的子」按定义就是一个四 —— 再补一格必成五，所以那两个空位
+   * 都是「落子即造四」的点。跳子、夹心、边角全都自动成立，没有特例。
+   *
+   * 关键的是这个视角是**全盘**的：它不看「这一手经过了哪条线」，所以对手在
+   * 别处布下的三、四一样会被收进 oppFour —— 那正是防守方的解招集合。
    */
-  private orderMoves(player: Player, layer: number, first: number): number[] {
-    const cands = this.collect(layer);
-    while (this.ordBuf.length <= layer) this.ordBuf.push({ packed: [], out: [] });
-    const { packed, out } = this.ordBuf[layer];
-    packed.length = 0;
-    out.length = 0;
-    const n = cands.length;
-    if (n === 0) return out;
-    for (let i = 0; i < n; i++) {
-      const pos = cands[i];
-      // **必须取整**：1.05 会引入小数，而下面靠 `% 256` 取回下标 ——
-      // 带小数的打包值解出来的坐标是 7.8 这种非法格子。
-      const s = Math.round(orderScore(this.cells, pos, player));
-      // 打包成 (score + BIAS) * 256 + pos 后按数值倒序排：pos < 256 无损，
-      // 省掉比较器闭包与索引数组分配。
-      packed.push((s + SORT_BIAS) * 256 + pos);
+  private scanThreats(player: Player, layer: number): ThreatLists {
+    const t = this.threatAt(layer);
+    t.meFiveN = 0;
+    t.meFourN = 0;
+    t.oppFiveN = 0;
+    t.oppFourN = 0;
+    const gen = ++this.threatGen;
+    const cells = this.cells;
+    for (let li = 0; li < LINES.length; li++) {
+      const { start, step, len } = LINES[li];
+      for (let i = 0; i + 5 <= len; i++) {
+        const base = start + i * step;
+        let meN = 0;
+        let oppN = 0;
+        let e0 = -1;
+        let e1 = -1;
+        for (let k = 0; k < 5; k++) {
+          const pos = base + k * step;
+          const v = cells[pos];
+          if (v === EMPTY) {
+            if (e0 < 0) e0 = pos;
+            else if (e1 < 0) e1 = pos;
+          } else if (v === player) meN++;
+          else oppN++;
+        }
+        if (oppN === 0) {
+          if (meN === 4) {
+            t.meFiveN = pushUnique(t.meFive, t.seenMeFive, t.meFiveN, e0, gen);
+          } else if (meN === 3) {
+            t.meFourN = pushUnique(t.meFour, t.seenMeFour, t.meFourN, e0, gen);
+            t.meFourN = pushUnique(t.meFour, t.seenMeFour, t.meFourN, e1, gen);
+          }
+        }
+        if (meN === 0) {
+          if (oppN === 4) {
+            t.oppFiveN = pushUnique(t.oppFive, t.seenOppFive, t.oppFiveN, e0, gen);
+          } else if (oppN === 3) {
+            t.oppFourN = pushUnique(t.oppFour, t.seenOppFour, t.oppFourN, e0, gen);
+            t.oppFourN = pushUnique(t.oppFour, t.seenOppFour, t.oppFourN, e1, gen);
+          }
+        }
+      }
     }
-    packed.sort((a, b) => b - a);
-    const width = this.widthFor(layer, player);
-    // PV 优先：上一层迭代找到的最佳着法排最前，剪枝收益最大
-    if (first >= 0) out.push(first);
-    for (let i = 0; i < packed.length && out.length < width; i++) {
-      const pos = packed[i] % 256;
-      if (pos === first) continue;
-      out.push(pos);
-    }
-    return out;
+    return t;
   }
 
   /**
-   * 每一层的候选宽度。
+   * 威胁驱动的着法生成。返回顺序就是优先级：
+   *   1. 对手能成五 → **只有挡点**（我方能成五已在调用方判掉，会更早返回）
+   *   2. 双方所有「造四点」—— 一个都不许砍
+   *   3. 启发式补足到 `candidateWidth`
    *
-   * `normal` 全层用同一个宽度 —— 它的定位是「对齐旧的 AI 棋力」，而旧实现就是
-   * 深度 4 / 宽度 12 一用到底，收窄会让它比原来更弱。
+   * 第 2 条是这套引擎能不能下棋的关键。前一版把候选一律交给启发式排序再截前
+   * N 名，于是**防守方的解招被挤出候选表**：搜索接着就会看见一段「对方全程
+   * 不设防」的连五，报出一个根本不存在的必胜，然后去走那手废棋。实测那样配的
+   * 困难档对旧 AI 八局全败，整局几乎每手都报 99999996 这种假杀分。
+   * 把 `oppFour` 无条件纳入之后，解招再也不会被截断，假杀随之消失。
    *
-   * **防守方一律给全部候选，不设上限。** 这不是保守，是正确性要求：只要把防守方
-   * 的解招挤出候选表，搜索就会看见一段「对方全程不设防」的连五，报出一个根本
-   * 不存在的「必胜」，然后去追那手废棋。实测（hard 对旧 AI）：防守方拿 48 个候选时
-   * 整局几乎每一手都报 99999996/99999998 的假杀，0:8 输光；改成不设上限后分数
-   * 立刻回到正常的评估值（-3 / 43 / -1057 这种）。
-   *
-   * **代价很大**：防守方分支动辄上百，节点预算几乎全花在对手身上，同样预算下
-   * 自己够得着的深度显著变浅（20000 节点时 hard 实际只到深度 4，与 normal 持平）。
-   * 所以 hard 目前**并不比 normal 强**，别把它接进 UI —— 见文件头「已知问题」。
+   * 第 1 条顺带把树砍小了：强制挡的分支通常只有 1~3，比按启发式铺开便宜得多。
    */
-  private widthFor(ply: number, player: Player): number {
-    const w = this.params.candidateWidth;
-    if (!this.params.narrowByPly) return w;
-    if (ply === 0 || player !== this.aiPlayer) return CELLS;
-    if (ply <= 2) return Math.max(8, w >> 1);
-    return Math.max(5, w >> 2);
+  private buildMoves(player: Player, ply: number, t: ThreatLists, first: number): number[] {
+    const out = this.moveBuf(ply);
+    out.length = 0;
+
+    if (t.oppFiveN > 0) {
+      for (let i = 0; i < t.oppFiveN; i++) out.push(t.oppFive[i]);
+      return out;
+    }
+
+    for (let i = 0; i < t.meFourN; i++) out.push(t.meFour[i]);
+
+    // 启发式补足：**威胁点再多也要补满宽度**，不能写成「没满才补」。
+    // 写成「没满才补」时，对手的威胁一多，候选表就被 oppFour 占满，引擎只会
+    // 一味挨打、做不出自己的棋 —— 实测表现是困难档执黑 4 局全部下到满盘和棋
+    // （执白反而 4 局全胜、52 手结束，因为后手本来就该以应对为主）。
+    const width = this.params.candidateWidth;
+    const cands = this.collect(ply);
+    const packed = this.rankBuf(ply);
+    packed.length = 0;
+    for (let i = 0; i < cands.length; i++) {
+      const pos = cands[i];
+      if (out.includes(pos)) continue;
+      // **必须取整**：1.05 会引入小数，而下面靠 `% 256` 取回下标 ——
+      // 带小数的打包值解出来的坐标是 7.8 这种非法格子。
+      const s = Math.round(orderScore(this.cells, pos, player));
+      packed.push((s + SORT_BIAS) * 256 + pos);
+    }
+    packed.sort((a, b) => b - a);
+    for (let i = 0; i < packed.length && out.length < width; i++) {
+      out.push(packed[i] % 256);
+    }
+
+    // 对手的造四点：**一个都不许漏**，这是不产生假杀的关键。排在最后是为了
+    // 不挤占做棋的名额 —— 顺序不影响正确性，alpha-beta 的剪枝只会剪掉更差的
+    // 着法，而假杀来自「根本没生成」，不来自「生成后被剪」。
+    for (let i = 0; i < t.oppFourN; i++) {
+      if (!out.includes(t.oppFour[i])) out.push(t.oppFour[i]);
+    }
+
+    // PV 优先：上一层迭代找到的最佳着法排最前，剪枝收益最大。
+    // 放在最后做，免得它占掉一个名额。多搜一手不会带来假杀（假杀来自**漏搜**
+    // 解招），所以即使它不在候选集里也值得先搜。
+    if (first >= 0) {
+      const at = out.indexOf(first);
+      if (at > 0) out.splice(at, 1);
+      out.unshift(first);
+    }
+    return out;
   }
 
   /**
@@ -771,7 +948,10 @@ class Search {
     depth: number,
     first: number
   ): { pos: number; score: number; complete: boolean } {
-    const moves = this.orderMoves(aiPlayer, 0, first);
+    const t = this.scanThreats(aiPlayer, 0);
+    // 轮到我而我能成五 → 直接就是这一手
+    if (t.meFiveN > 0) return { pos: t.meFive[0], score: WIN_SCORE, complete: true };
+    const moves = this.buildMoves(aiPlayer, 0, t, first);
     let bestPos = moves.length > 0 ? moves[0] : -1;
     let bestScore = -INF;
     let alpha = -INF;
@@ -805,7 +985,12 @@ class Search {
     if (this.aborted()) return 0;
     if (depth <= 0) return evaluate(this.cells, player);
 
-    const moves = this.orderMoves(player, ply, -1);
+    const t = this.scanThreats(player, ply);
+    // 轮到我了而我能成五 —— 这一层就赢了，不必再往下搜。
+    // 这比「落子后检查 makesFive」更早一步，顺便把成五的树砍掉一大块。
+    if (t.meFiveN > 0) return WIN_SCORE - ply;
+
+    const moves = this.buildMoves(player, ply, t, -1);
     if (moves.length === 0) return evaluate(this.cells, player);
 
     let best = -INF;
