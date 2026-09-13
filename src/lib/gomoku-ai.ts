@@ -649,6 +649,13 @@ interface ThreatLists {
   meThreeN: number;
   oppFiveN: number;
   oppFourN: number;
+  /**
+   * 这一份列表是**哪一代**扫描填的。`seen*` 数组是按代去重的（`pushUnique`），
+   * 而调用方要拿「代」判断「这个点在这一份列表里吗」—— 那就必须拿**扫描自己盖的
+   * 那个章**，不能拿调用方自己的计数器：`threatGen` 与 `moveGen` 是两套独立递增
+   * 的计数，互相之间没有任何关系，比对它们等于比对两个无关的随机数。
+   */
+  gen: number;
 }
 
 /** 按「代」去重地写入，返回新的计数 —— 同一个点会被多条线、多个窗口重复命中。 */
@@ -744,6 +751,7 @@ class Search {
         meThreeN: 0,
         oppFiveN: 0,
         oppFourN: 0,
+        gen: 0,
       });
     }
     return this.threats[layer];
@@ -940,7 +948,8 @@ class Search {
    * 【`meThree` 只在 `wantThree` 打开时才有内容】所以黑棋的节点上，调用方必须
    * 传 `scanThreats(player, ply, player === BLACK)` —— 否则三三会从筛子里漏掉。
    */
-  private blackForbidden(pos: number, t: ThreatLists, gen: number): boolean {
+  private blackForbidden(pos: number, t: ThreatLists): boolean {
+    const gen = t.gen;
     if (
       t.seenMeFive[pos] !== gen &&
       t.seenMeFour[pos] !== gen &&
@@ -1262,6 +1271,7 @@ class Search {
     t.oppFiveN = 0;
     t.oppFourN = 0;
     const gen = ++this.threatGen;
+    t.gen = gen;
     const cells = this.cells;
     for (let li = 0; li < LINES.length; li++) {
       const { start, step, len } = LINES[li];
@@ -1339,7 +1349,7 @@ class Search {
     // 两者都要避免，所以筛的是「**不可能**是禁手」这个必要条件的反面。
     const keep =
       player === BLACK
-        ? (p: number): boolean => !this.blackForbidden(p, t, gen)
+        ? (p: number): boolean => !this.blackForbidden(p, t)
         : (): boolean => true;
 
     if (t.oppFiveN > 0) {
