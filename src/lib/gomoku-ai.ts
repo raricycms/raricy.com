@@ -317,6 +317,26 @@ const PARAMS: Record<Difficulty, Params> = {
 /** VCF 的递归层上限。每层都要落一子，超过这个深度已不现实。 */
 const VCF_MAX_DEPTH = 10;
 
+/**
+ * 各类搜索占用的 `ThreatLists` 层号基址。**互不重叠是硬要求**：层号相同的两次
+ * 扫描拿到的是**同一个数组对象**，递归一深就会把外层正在遍历的列表就地清空。
+ * 老实现正是踩了这个坑（`collect(20+depth)` 与外层内层相差 1，递归下去正好
+ * 覆盖父层的候选表），所以这里把间距拉开到 20。
+ */
+const VCF_OUT = 20;
+const L1_LAYER = 15;
+/**
+ * 快路（L1/L2/L2.5）能吃掉的时间比例与节点上限。
+ *
+ * 【为什么快路必须有独立预算】老实现的 `aborted()` 只在 `negamax` 里被调，而
+ * VCF 跑在 L3 **之前**，那时 `this.stopped` 恒为 false —— 也就是说时间预算、
+ * 节点预算、`shouldStop` 在 VCF 里**全部失效**，只靠深度上限兜底。病理局面下
+ * 这会让「3 秒档」思考到几十秒。有了独立预算之后，快路最多吃掉四成时间，
+ * 剩下的留给 L3 搜索，不会出现「快路吃光预算、搜索一步没跑、只好退回随手棋」。
+ */
+const FAST_BUDGET_FRACTION = 0.4;
+const FAST_NODE_BUDGET = 60_000;
+
 /** LMR：排序靠前的这几个着法不减层搜（装着造四点与最有希望的做棋点）。 */
 const LMR_FULL_MOVES = 3;
 
@@ -659,15 +679,6 @@ function pushUnique(
  * 搜索状态。持有一份扁平的棋盘副本与邻近计数，落子/撤销都成对，
  * 生命周期内不改动调用方的 GomokuBoard —— 这正是「返回时棋盘逐格不变」的来源。
  */
-/**
- * L1 用的威胁扫描层号。
- *
- * 层号只是缓冲区的下标，取一个**不与别人撞车**的值即可：搜索占 0..maxDepth
- * （≤10），VCF 占 `20 + depth`（20..31）。取 15 留出余量，同时让「层 → 缓冲区」
- * 那张数组只分配十几项 —— 每项是 8 个 225 长的 Int32Array，取大了纯属浪费。
- */
-const L1_LAYER = 15;
-
 class Search {
   private cells = new Uint8Array(CELLS);
   private near = new Int32Array(CELLS);
@@ -708,6 +719,10 @@ class Search {
    * 次调用内成对复原，期间不读分。
    */
   private evalSum = 0;
+  /** 快路是否已超支（只掐快路，不影响 L3，见 `abortedFast`）。 */
+  private fastStopped = false;
+  private fastDeadline = Infinity;
+  private fastNodeLimit = Infinity;
 
   private rankBuf(layer: number): number[] {
     while (this.rankBufs.length <= layer) this.rankBufs.push([]);
@@ -752,6 +767,13 @@ class Search {
       this.deadline = performance.now() + params.timeBudgetMs;
     }
     this.shouldStopFn = opts.shouldStop;
+    // 快路预算（见 `abortedFast`）。时间上取总预算的一个比例；节点上，若调用方
+    // 给了 `maxNodes`（测试用的确定性口径）就与它共用 —— 否则快路会绕过那个上限，
+    // 把「预算压到 1 个节点，答案只可能来自 L1 快路」这类用例悄悄变成假绿。
+    const now = performance.now();
+    this.fastDeadline =
+      this.deadline === Infinity ? Infinity : now + (this.deadline - now) * FAST_BUDGET_FRACTION;
+    this.fastNodeLimit = this.nodeBudget === Infinity ? FAST_NODE_BUDGET : this.nodeBudget;
   }
 
   loadBoard(board: GomokuBoard): void {
@@ -795,6 +817,29 @@ class Search {
     else if (performance.now() >= this.deadline) this.stopped = true;
     else if (this.shouldStopFn?.()) this.stopped = true;
     return this.stopped;
+  }
+
+  /**
+   * 快路（L1 / VCF / VCT）专用的预算检查。与 `aborted` 分开的理由见
+   * `FAST_BUDGET_FRACTION`：快路超支只该让**快路自己**收手，不该把 L3 搜索也
+   * 一起掐掉 —— 那会让引擎退回随手棋。节点同样计进 `this.nodes`，所以
+   * `AiResult.nodes` 的口径不变。
+   */
+  private abortedFast(): boolean {
+    this.nodes++;
+    if (this.stopped || this.fastStopped) return true;
+    // 节点上限**每次都查**（一次整数比较，可以忽略），时钟才按 1024 的节奏查。
+    // 两者合在一起按节奏查是错的：`maxNodes: 1` 这种极小预算下，第一次调用时
+    // 节点数还落在节拍之外，快路会一路跑下去 —— 那正好废掉「预算压到 1 个节点、
+    // 答案只可能来自 L1 快路」这类用例的前提。
+    if (this.nodes >= this.fastNodeLimit) {
+      this.fastStopped = true;
+      return true;
+    }
+    if ((this.nodes & 1023) !== 0) return false;
+    if (performance.now() >= this.fastDeadline) this.fastStopped = true;
+    else if (this.shouldStopFn?.()) this.fastStopped = true;
+    return this.fastStopped;
   }
 
   /**
@@ -919,47 +964,64 @@ class Search {
   // ── L2：VCF（连续冲四取胜）──
   //
   // 只搜「我冲四 → 对手唯一应对 → 我再冲四 → …」直到成五。分支极小，但能看见
-  // 纯启发式搜索看不到的远处连杀。判失败的三种情形都在这一个函数里：
-  //   • 我方这一手没造出四（不是逼着）
-  //   • 对手能抢先成五
-  //   • 递归下去再也冲不出五
+  // 纯启发式搜索看不到的远处连杀。
+  //
+  // 【这一版换掉了候选生成】老实现每个节点扫 225 格收候选，再对每个候选落子 +
+  // `winCells` 试一下「是不是冲四」，并且**在候选循环体内**又扫一次 225 格去查
+  // 对手能不能成五。现在整件事由一次 `scanThreats` 做完：它产出的 `meFour` 就是
+  // 「落子即造四」的点集（3 我/2 空的窗口里的那两个空位），与老实现那个
+  // 「落子后 winCells 非空」的判据**逐点等价**，而且一次全盘窗口扫描比
+  // 225 格扫描 + 225 次落子试算便宜得多。
+  //
+  // 【顺带修掉一个真 bug】老实现用 `collect(20+depth)` 取外层候选、递归里用
+  // `collect(21+(depth-1))` 取内层 —— 两者是**同一个数组对象**（层号都是 20+depth），
+  // 于是递归返回后父层正在遍历的候选表已被就地清空重填，父层接着遍历的是**别人的
+  // 候选**。表现为「漏掉一部分连杀」（不会报假杀，因为每个候选仍然要过验证），
+  // 属于那种只有棋力变弱、不报错的缺陷。现在层基址间距拉到 20，不再重叠。
 
   /** 返回制胜着法，找不到返回 -1。 */
   vcf(player: Player, depth: number): number {
-    if (depth <= 0 || this.stopped) return -1;
-    const cands = this.collect(20 + depth);
+    if (depth <= 0 || this.abortedFast()) return -1;
+    const t = this.scanThreats(player, VCF_OUT + depth);
+    // 轮到我而我能成五 —— 直接赢（递归里这一支是必需的，根节点上层已经判过）
+    if (t.meFiveN > 0) return t.meFive[0];
+
     const opp = otherOf(player);
-    for (let i = 0; i < cands.length; i++) {
-      const pos = cands[i];
+    const fours = t.meFour;
+    const foursN = t.meFourN;
+    for (let i = 0; i < foursN; i++) {
+      const pos = fours[i];
+      // 对手能先成五，这条线就废了 —— 他比我的冲四快一步。
+      // 用 `oppFiveLeft` 而不是直接看 `t.oppFiveN`：定理保证**我落子绝不会给
+      // 对手造出新的成五点**，所以只需扣掉「我正好占掉的那个」。
+      if (this.oppFiveLeft(t, pos) > 0) continue;
+
       this.place(pos, player);
+      const wc = winCells(this.cells, pos, player);
       let found = false;
-
-      if (makesFive(this.cells, pos, player)) {
+      if (wc.length >= 2) {
+        // 活四 / 双四：对手一手挡不住
         found = true;
-      } else {
-        const threats = winCells(this.cells, pos, player);
-        if (threats.length > 0) {
-          // 我方造出了四 → 对手必须应。但他若能先成五，这条线就废了。
-          const oppCands = this.collect(21 + depth);
-          if (this.findImmediateWin(oppCands, opp) === -1) {
-            if (threats.length >= 2) {
-              // 活四：对手一手挡不住
-              found = true;
-            } else {
-              const block = threats[0];
-              this.place(block, opp);
-              found = this.vcf(player, depth - 1) !== -1;
-              this.unplace(block);
-            }
-          }
-        }
+      } else if (wc.length === 1) {
+        // 冲四：对手只有这一个解招，替他落上再看下一层
+        this.place(wc[0], opp);
+        found = this.vcf(player, depth - 1) !== -1;
+        this.unplace(wc[0]);
       }
-
       this.unplace(pos);
+
       if (found) return pos;
       if (this.stopped) return -1;
     }
     return -1;
+  }
+
+  /** 我落在 `pos` 之后，对手还剩几个成五点（见 `vcf` 里引用那条定理）。 */
+  private oppFiveLeft(t: ThreatLists, pos: number): number {
+    for (let i = 0; i < t.oppFiveN; i++) {
+      if (t.oppFive[i] === pos) return t.oppFiveN - 1;
+    }
+    return t.oppFiveN;
   }
 
   // ── L3：迭代加深 Negamax ──
