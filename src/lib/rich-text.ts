@@ -30,7 +30,13 @@
 //      之类 UI 类名去冒充博客卡片。
 //   4. 外链图片 —— <img> 不在白名单，`![](url)` 降级成链接：发图走图床**附件**
 //      （imageId），不允许正文里嵌任意外链图片（第三方跟踪像素 / 访客 IP 泄露 /
-//      混合内容告警）。评论与聊天共用这条口径，故此处**不提供开关**。
+//      混合内容告警）。评论与聊天共用这条口径。
+//      ⚠️ **唯一的例外是 `[@<10位图床ID>]`** —— 它不是「放开了这个白名单」，
+//      而是全程绕开白名单：`[@id]` 本身就是纯文本，marked 原样留着，等 DOMPurify
+//      净化完之后，再由 embedImageRefs 用 createElement 把它换成
+//      <img src="/api/images/<id>/raw">。因此用户手写的 <img> 与 `![](外链)` 的
+//      待遇**一点没变**；能出现的图片只有我们自己构造的站内图床 URL 这一种形态
+//      （id 还先过严格形态）。细节见 src/lib/content-refs.ts 的文件头。
 //   5. 服务端无 DOM —— DOMPurify 在没有 window 时 sanitize 会**原样返回输入**
 //      （purify.js: `if (!DOMPurify.isSupported) return dirty`），这是个静默的
 //      安全洞。故此处显式拦：净化不可用 → 只输出转义纯文本，绝不透传 HTML。
@@ -44,6 +50,7 @@
 import { Marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { linkify } from './linkify';
+import { embedImageRefs } from './content-refs';
 
 /**
  * 只放行 http(s) / mailto / 站内相对路径。
@@ -221,10 +228,12 @@ export function createRichTextRenderer(options: RichTextOptions): RichTextRender
       ALLOW_ARIA_ATTR: false,
       ALLOW_UNKNOWN_PROTOCOLS: false,
     });
-    // clean 已由 DOMPurify 净化：这里再解析一次只是为了补类名 / linkify / 链接加固
+    // clean 已由 DOMPurify 净化：这里再解析一次只是为了补类名 / 内联图片 / linkify / 链接加固
     const holder = document.createElement('div');
     holder.innerHTML = clean;
     restrictInputs(holder);
+    // ★ 内联图床图（`[@<10位ID>]`）—— 必须是净化之后，见 content-refs.ts 的说明
+    embedImageRefs(holder);
     linkifyTextNodes(holder);
     hardenLinks(holder, linkClass);
     return holder.innerHTML;

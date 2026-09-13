@@ -3183,6 +3183,17 @@ a:hover {
   border-top: 1px solid var(--color-border);
 }
 
+.comment-content__md img {
+  display: block;
+  max-width: min(260px, 100%);
+  max-height: 320px;
+  margin: 0.4em 0;
+  border: 1px solid var(--color-text-primary);
+  border-radius: 8px;
+  cursor: zoom-in;
+  background: var(--color-background-content);
+}
+
 .comment-form {
   margin: 12px 0 18px;
 }
@@ -13421,6 +13432,17 @@ input:checked + .settings-toggle__slider::before {
   margin: 0.6em 0;
   border: none;
   border-top: 1px solid var(--color-border);
+}
+
+.chat-msg__md img {
+  display: block;
+  max-width: min(260px, 100%);
+  max-height: 320px;
+  margin: 0.4em 0;
+  border: 1px solid var(--color-text-primary);
+  border-radius: 8px;
+  cursor: zoom-in;
+  background: var(--color-background-content);
 }
 
 .chat-msg__deleted {

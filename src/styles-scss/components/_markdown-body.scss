@@ -116,4 +116,18 @@
     border: none;
     border-top: 1px solid var(--color-border);
   }
+  // 内联图床图（正文里的 `[@<10位ID>]`，见 src/lib/content-refs.ts）。
+  // ⚠️ 与**附件**图（.chat-msg__image / .comment-image）不是一回事：附件图是气泡 /
+  //    评论的独立附件，各有各的尺寸与圆角语言；这里的图是正文流里的一段，跟着
+  //    文字排。两者都留 cursor: zoom-in（都点得开 ImageLightbox）。
+  .#{$cls} img {
+    display: block;
+    max-width: min(260px, 100%);
+    max-height: 320px;
+    margin: 0.4em 0;
+    border: 1px solid var(--color-text-primary);
+    border-radius: 8px;
+    cursor: zoom-in;
+    background: var(--color-background-content);
+  }
 }
