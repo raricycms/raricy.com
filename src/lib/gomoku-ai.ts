@@ -1036,6 +1036,24 @@ class Search {
   }
 
   /**
+   * 对手在 `m` 落子之后，**还有没有**即成五点 —— 也就是轮到对手时他能不能立刻成五。
+   *
+   * 【为什么这是个 O(1) 的问题】一条定理：**我方落子绝不会给对手造出新的成五点**。
+   * 因为「对手的成五点 c」要求某个 5 格窗口里已经有 4 个对手子、c 空着 —— 该窗口
+   * 已经没有别的空位了，所以它不可能包含我刚落的那一子。于是对手的成五点集合
+   * 只会**减少**，减少的唯一方式就是我正好占掉其中一个。
+   *
+   * 这条定理让「叶节点是否被将杀」不必再扫一遍全盘：父节点本来就算过对手的成五
+   * 点（`scanThreats` 一次给出双方），这里只需看看除了 `m` 之外还剩没剩。
+   */
+  private oppFiveSurvives(t: ThreatLists, m: number): boolean {
+    for (let i = 0; i < t.oppFiveN; i++) {
+      if (t.oppFive[i] !== m) return true;
+    }
+    return false;
+  }
+
+  /**
    * 根节点一层搜索。返回 `complete=false` 表示被预算打断，结果不可信 ——
    * 迭代加深要靠这个标志丢弃半截的一层。
    */
@@ -1054,10 +1072,11 @@ class Search {
     let complete = true;
     for (let i = 0; i < moves.length; i++) {
       const pos = moves[i];
+      const childCanWin = this.oppFiveSurvives(t, pos);
       this.place(pos, aiPlayer);
       const s = makesFive(this.cells, pos, aiPlayer)
         ? WIN_SCORE
-        : -this.negamax(depth - 1, -INF, -alpha, otherOf(aiPlayer), 1);
+        : -this.negamax(depth - 1, -INF, -alpha, otherOf(aiPlayer), 1, childCanWin);
       this.unplace(pos);
       if (this.stopped) {
         // 被预算打断的一层一律作废，迭代加深会退回上一层的结果。
@@ -1075,11 +1094,31 @@ class Search {
     return { pos: bestPos, score: bestScore, complete };
   }
 
-  /** Negamax + Alpha-Beta。返回值是**当前走子方视角**的分值。 */
-  private negamax(depth: number, alpha: number, beta: number, player: Player, ply: number): number {
+  /**
+   * Negamax + Alpha-Beta。返回值是**当前走子方视角**的分值。
+   *
+   * `canWinNow` = 「本节点的走子方现在就能成五」，由父节点用 `oppFiveSurvives` 算好
+   * 传下来。它只在 `depth <= 0` 那一支用得上，但那一支正是**地平线**：如果叶子不
+   * 知道对手下一步就能成五，整棵搜索的偶数层深度就都白加了 —— 每一条线的最末端
+   * 都是瞎的，白方尤其吃亏（防守全靠看清对方下一手能不能成五）。老实现就是
+   * `depth <= 0` 直接 `evaluate`。
+   *
+   * 【为什么不让叶子自己扫一遍】`scanThreats` 要扫全盘 594 个窗口，而叶子占了
+   * 节点总数的大半 —— 那样等于凭空多出一大块开销。父节点本来就已经算出对手的
+   * 成五点了，传下来是免费的。
+   */
+  private negamax(
+    depth: number,
+    alpha: number,
+    beta: number,
+    player: Player,
+    ply: number,
+    canWinNow: boolean
+  ): number {
     this.nodes++;
     if (this.aborted()) return 0;
-    if (depth <= 0) return evaluate(this.cells, player);
+    // 地平线：走子方立刻能成五，就不该再看静态分了
+    if (depth <= 0) return canWinNow ? WIN_SCORE - ply : evaluate(this.cells, player);
 
     const t = this.scanThreats(player, ply);
     // 轮到我了而我能成五 —— 这一层就赢了，不必再往下搜。
@@ -1101,14 +1140,15 @@ class Search {
           ? depth - 2
           : depth - 1;
 
+      const childCanWin = this.oppFiveSurvives(t, pos);
       this.place(pos, player);
       // 越快取胜越好：减去 ply，浅层的胜利分更高
       let s = makesFive(this.cells, pos, player)
         ? WIN_SCORE - ply
-        : -this.negamax(reduced, -beta, -alpha, otherOf(player), ply + 1);
+        : -this.negamax(reduced, -beta, -alpha, otherOf(player), ply + 1, childCanWin);
       // 减层搜出来的着法若真的超过 alpha，就按原深度重搜，免得误剪
       if (reduced < depth - 1 && s > alpha) {
-        s = -this.negamax(depth - 1, -beta, -alpha, otherOf(player), ply + 1);
+        s = -this.negamax(depth - 1, -beta, -alpha, otherOf(player), ply + 1, childCanWin);
       }
       this.unplace(pos);
       if (s > best) best = s;
