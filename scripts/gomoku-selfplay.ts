@@ -96,34 +96,77 @@ interface Contestant {
 
 const DIFFICULTIES: readonly string[] = ['easy', 'normal'];
 
+/**
+ * 可以让脚本覆盖的威胁层开关。**这不是产品面的难度档** —— `PARAMS` 里只有
+ * 「简单 / 普通」两档，这里只是让脚本能做「同一档、只差一个开关」的等时间 A/B
+ * （例如 VCT 到底值不值得开），而不必往难度表里塞一个临时的第三档。
+ */
+const OVERRIDES: Record<string, 'useThreats' | 'useVcf' | 'useVct'> = {
+  threats: 'useThreats',
+  vcf: 'useVcf',
+  vct: 'useVct',
+};
+
+/** `<难度>:<预算>[开关…]`，例如 `normal:1000t+vct-threats`。 */
+const SPEC = /^(\d+)([tn])((?:\s*[+-][a-z]+)*)$/;
+
 function parse(spec: string): Contestant {
   const [diff, budget = ''] = spec.split(':');
   // 【为什么这里要显式校验，不能用 `as Difficulty`】跨过这道转换的非法档位不会
   // 当场报错 —— 它会一路走到 `PARAMS[undefined]`，然后在 `Search` 里以
   // 「reading 'maxDepth' of undefined」炸掉，或者更糟：`findBestMove` 的
   // `?? 'easy'` 只兜 `undefined`，兜不住一个**拼错的字符串**，于是你以为在测
-  // 「困难」，实际测的是别的东西。宁可在这里就退出。
+  // 「困难」，实际测的是别的东西。宁可在这里就退出。开关名同理。
   if (!DIFFICULTIES.includes(diff)) {
     throw new Error(`未知难度「${diff}」，可选：${DIFFICULTIES.join(' / ')}`);
   }
-  const n = Number(budget.slice(0, -1));
+  const m = SPEC.exec(budget.trim());
+  if (!m) {
+    throw new Error(
+      `配置「${spec}」不合法。写法：<难度>:<预算>[开关…]，` +
+        `预算以 n 结尾是节点数、t 是毫秒；开关如 +vct / -threats。可选开关：${Object.keys(OVERRIDES).join(' / ')}`
+    );
+  }
+  const n = Number(m[1]);
   if (!Number.isFinite(n) || n <= 0) throw new Error(`配置「${spec}」的预算不合法`);
   const opts: AiOptions =
-    budget.endsWith('t')
+    m[2] === 't'
       ? { difficulty: diff as Difficulty, timeBudgetMs: n }
       : { difficulty: diff as Difficulty, maxNodes: n };
+  for (const flag of m[3].split(/\s+/).filter(Boolean)) {
+    const on = flag[0] === '+';
+    const field = OVERRIDES[flag.slice(1)];
+    if (!field) {
+      throw new Error(`未知开关「${flag}」，可选：${Object.keys(OVERRIDES).join(' / ')}`);
+    }
+    opts[field] = on;
+  }
   return { name: spec, opts };
 }
 
+/** 一局的战绩 + 深度的原始素材。 */
+interface GameResult {
+  winner: Player | 0;
+  plies: number;
+  /** 每一手实际完成的搜索深度（`AiResult.depth`）之和与手数，按执黑/执白分开记。 */
+  depthSum: [number, number];
+  depthMoves: [number, number];
+}
+
 /** 下完一整局，返回胜者（和棋返回 0）。 */
-function playGame(
-  black: Contestant,
-  white: Contestant,
-  opening: Opening
-): { winner: Player | 0; plies: number } {
+function playGame(black: Contestant, white: Contestant, opening: Opening): GameResult {
   const board = new GomokuBoard();
   for (const [r, c, p] of opening.stones) board.placeStone(r, c, p);
   let turn: Player = opening.toMove;
+  const depthSum: [number, number] = [0, 0];
+  const depthMoves: [number, number] = [0, 0];
+
+  const finish = (winner: Player | 0, plies: number): GameResult => ({
+    winner,
+    plies,
+    depthSum,
+    depthMoves,
+  });
 
   for (let ply = 0; ply < 225; ply++) {
     const side = turn === BLACK ? black : white;
@@ -132,12 +175,23 @@ function playGame(
       // 引擎给出非法着法就是 bug，直接抛出，别把它混进战绩里
       throw new Error(`${side.name} 在 (${move.row},${move.col}) 走出非法着法`);
     }
+    // 【引擎走了禁手点也是 bug，同样直接抛】规则层只会**拒绝**那一手，不会替
+    // 引擎挑别的棋 —— 落到这里的表现会是「这一手没了」，混进战绩里就成了一个
+    // 看不懂的败局。抛出来才能一眼看见是过滤漏了。
+    const bad = board.forbiddenKind(move.row, move.col, turn);
+    if (bad !== null) {
+      throw new Error(`${side.name}（${turn === BLACK ? '黑' : '白'}）走了禁手点「${bad}」 (${move.row},${move.col})`);
+    }
+    const slot = turn === BLACK ? 0 : 1;
+    depthSum[slot] += move.depth;
+    depthMoves[slot] += 1;
+
     board.placeStone(move.row, move.col, turn);
-    if (board.checkWinAt(move.row, move.col, turn).won) return { winner: turn, plies: ply + 1 };
-    if (board.isFull()) return { winner: 0, plies: ply + 1 };
+    if (board.checkWinAt(move.row, move.col, turn).won) return finish(turn, ply + 1);
+    if (board.isFull()) return finish(0, ply + 1);
     turn = turn === BLACK ? WHITE : BLACK;
   }
-  return { winner: 0, plies: 225 };
+  return finish(0, 225);
 }
 
 function main(): void {
@@ -154,6 +208,11 @@ function main(): void {
   let aBoth = 0;
   let aSplit = 0;
   let aNone = 0;
+  /** 先手/后手的胜场数 —— 用来回答「禁手到底有没有把先手优势削下来」。 */
+  const bySeat: [number, number] = [0, 0];
+  /** 每一方自己的完成深度（分母是该方走过的总手数）。 */
+  const depthSum: Record<string, number> = { [a.name]: 0, [b.name]: 0 };
+  const depthMoves: Record<string, number> = { [a.name]: 0, [b.name]: 0 };
 
   for (let i = 0; i < games; i++) {
     const o = OPENINGS[i % OPENINGS.length];
@@ -169,10 +228,17 @@ function main(): void {
         aPoints += 0.5;
       } else if (r.winner === BLACK) {
         tally[black.name]++;
+        bySeat[0]++;
         if (black === a) aPoints += 1;
       } else {
         tally[white.name]++;
+        bySeat[1]++;
         if (white === a) aPoints += 1;
+      }
+      for (const side of [black, white]) {
+        const slot = side === black ? 0 : 1;
+        depthSum[side.name] += r.depthSum[slot];
+        depthMoves[side.name] += r.depthMoves[slot];
       }
       console.log(
         `  ${o.name.padEnd(14)} ${black.name.padEnd(16)}执黑  ${String(r.plies).padStart(3)} 手  → ${
@@ -189,6 +255,23 @@ function main(): void {
   console.log(`\n${a.name}: ${tally[a.name]} 胜`);
   console.log(`${b.name}: ${tally[b.name]} 胜`);
   console.log(`和棋: ${tally['和棋']}`);
+  // 【先手优势的读数】free-style 下同源引擎自对弈是黑 100% 全胜（见文件头），
+  // 禁手生效后这个数应当明显离开 100%。**它仍是 100% 就说明规则没生效，或者
+  // 引擎在自爆** —— 那是回归信号，不是棋力信号，别拿这一局的比分下结论。
+  console.log(
+    `【先后手】执黑胜 ${bySeat[0]} 局 · 执白胜 ${bySeat[1]} 局` +
+      `（黑 ${((bySeat[0] / Math.max(1, bySeat[0] + bySeat[1])) * 100).toFixed(1)}%）`
+  );
+  // 【为什么报完成深度】引擎的棋力来自**跨过深度台阶**，不是来自节点数（见
+  // gomoku-ai.ts 里那段实测）。加了禁手过滤之后如果深度掉了，胜率的变化就分不清
+  // 是「规则让黑棋变弱」还是「过滤太贵拖垮了搜索」—— 这个数就是用来分开它们的。
+  for (const side of [a, b]) {
+    const n = depthMoves[side.name];
+    console.log(
+      `【完成深度】${side.name} 平均 ${n > 0 ? (depthSum[side.name] / n).toFixed(2) : '—'}` +
+        `（${n} 手，depth=0 的快路手也计入）`
+    );
+  }
 
   // ── 胜负比之外，还要给出**不确定性** ────────────────────────────────────────
   // 60 局、胜率 75% 时标准误约 5.6 个百分点，95% 置信区间宽达 ±11 —— 不写区间
