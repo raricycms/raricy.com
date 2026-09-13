@@ -211,23 +211,36 @@ describe('战术题库 —— 双威胁', () => {
     expect(m.score).toBe(100_000_000);
   });
 
-  it('对手的双活三点必须去占掉，而不是等搜索发现', () => {
+  it('对手的双活三点必须去占掉', () => {
     // 同一个局面换成白方走：白必须抢 (7,7)，否则黑补上就是双活三。
-    // 同样是 L1 的 `mustBlock` 分支 —— 预算压到 1，搜索帮不上忙。
     const m = findBestMove(doubleThree(), WHITE, { difficulty: 'hard', maxNodes: 1 });
+    // 【这里曾经还断言 `m.score === 50_000_000`】那条断言钉的是「L1 快路直接返回」
+    // 这个**实现细节**。现在挡点不再直接返回、而是交给搜索（见 `findBestMove` 里
+    // 关于 mustBlock 的注释），分值自然变成搜索值 —— 断言细节就废了。
+    // 留下的是真正要守的性质：**白必须占住那个点**。
     expect(m).toMatchObject({ row: 7, col: 7 });
-    expect(m.score).toBe(50_000_000);
   });
 
-  it('对手的跳活三（三子中间留空）必须补在空档上', () => {
+  it('对手的跳活三（三子中间留空）必须被化解：走完白做不出活四', () => {
     // 白在 (7,5)(7,7)(7,8)，空档 (7,6)。白补上就是 `_OOOO_` 活四，挡不住 ——
-    // 所以黑必须自己占掉 (7,6)。这是老引擎完全看不见的形状：它只数连续子，
-    // 会把 (7,5) 和 (7,7)(7,8) 看成一段孤子和一个二。
+    // 黑必须化解。这是老引擎完全看不见的形状：它只数连续子，会把 (7,5) 和
+    // (7,7)(7,8) 看成一段孤子和一个二。
+    //
+    // **断言的是性质，不是某一格**：占空档 (7,6) 能化解，但先堵住一端
+    // （(7,4) 或 (7,9)）同样能 —— 那样白补 (7,6) 只剩一个成五点，是个冲四。
+    // 原先钉死 (7,6) 是因为快路总是返回那一格，属于把实现细节写进了期望值。
     const b = position([
       [7, 5, WHITE], [7, 7, WHITE], [7, 8, WHITE],
       [5, 5, BLACK], [9, 9, BLACK],
     ]);
-    expect(findBestMove(b, BLACK, { difficulty: 'hard' })).toMatchObject({ row: 7, col: 6 });
+    const m = findBestMove(b, BLACK, { difficulty: 'hard' });
+    b.placeStone(m.row, m.col, BLACK);
+    for (let c = 3; c <= 10; c++) {
+      if (b.isValidMove(7, c)) {
+        const a = analyzeMoveAt(b, 7, c, WHITE);
+        expect(a.winCellCount, `黑走完 (${m.row},${m.col}) 后白在 (7,${c}) 仍能成活四`).toBeLessThan(2);
+      }
+    }
   });
 
   it('平静局面不会报出「必胜」（宽度截断出假杀的回归）', () => {
