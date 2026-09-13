@@ -190,12 +190,12 @@ export function __resetRateLimitStore() {
 export const RULES = {
   likeHourly: { limit: 100, windowMs: 60 * 60 * 1000 },
   likeDaily: { limit: 500, windowMs: 24 * 60 * 60 * 1000 },
-  commentDaily: { limit: 1200, windowMs: 24 * 60 * 60 * 1000 },
+  commentDaily: { limit: 2000, windowMs: 24 * 60 * 60 * 1000 },
   voteCreateHourly: { limit: 10, windowMs: 60 * 60 * 1000 },
   voteHourly: { limit: 30, windowMs: 60 * 60 * 1000 },
   imageUploadHourly: { limit: 75, windowMs: 60 * 60 * 1000 },
   chatMinute: { limit: 30, windowMs: 60 * 1000 },
-  chatDaily: { limit: 800, windowMs: 24 * 60 * 60 * 1000 },
+  chatDaily: { limit: 2000, windowMs: 24 * 60 * 60 * 1000 },
   /** 聊天对账轮询：实时消息已走 SSE，正常客户端约 1~2 次/分钟/标签页；
    *  这个额度只用来兜住异常客户端（它是全站最重的接口）。 */
   chatPoll: { limit: 120, windowMs: 60 * 1000 },

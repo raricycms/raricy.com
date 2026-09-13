@@ -405,7 +405,13 @@ export async function createComment(input: CreateCommentInput): Promise<CreateCo
   // 每日频率限制（对齐 RULES.commentDaily，按用户键）
   const daily = rateLimit(`comment:d:${authorId}`, RULES.commentDaily);
   if (!daily.allowed) {
-    return { ok: false, error: 'rateLimited', message: '今日评论已达上限（1200条），请明日再试' };
+    // 条数从常量取，不写死 —— 文案里出现数字就必须与 RULES 同源，否则改配额时
+    // 这句会静默地说错（此前就是这么漂的：常量改了、文案还写着旧数）。
+    return {
+      ok: false,
+      error: 'rateLimited',
+      message: `今日评论已达上限（${RULES.commentDaily.limit}条），请明日再试`,
+    };
   }
 
   const content = (input.content ?? '').trim();
