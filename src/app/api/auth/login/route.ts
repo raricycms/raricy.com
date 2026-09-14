@@ -1,22 +1,17 @@
 import { prisma } from '@/lib/db';
 import { nowForDb } from '@/lib/db-time';
-import { verifyPassword } from '@/lib/password';
-import { isRateLimited, recordRateLimitHit, RULES } from '@/lib/rate-limit';
+import { verifyCredentials } from '@/lib/credential-auth';
+import { clientIp } from '@/lib/request-ip';
 import { createSessionToken, SESSION_COOKIE, sessionCookieOptions } from '@/lib/session';
 import { apiErr } from '@/lib/format';
 import { cookies } from 'next/headers';
 
-/** 反代后的真实客户端 IP（与 register 路由同一取法）。取不到就跳过 IP 维度。 */
-function clientIp(req: Request): string | undefined {
-  return (
-    req.headers.get('cf-connecting-ip') ??
-    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
-    undefined
-  );
-}
-
 // POST /api/auth/login  { username, password }
 // 复刻 Flask 登录：校验密码（werkzeug 兼容）→ 签发会话（携带 session_version 快照）。
+//
+// 【校验与限频在 credential-auth.ts】那是与鱼干市场无状态接口**共用**的实现：
+// 两个门口都是「未认证即可跑一次 scrypt」，防线各写一份必然 drift，
+// 而松的那一份就是绕过口。本路由只负责「校验通过之后」的事：签发 cookie + 记 lastLogin。
 export async function POST(req: Request) {
   let body: { username?: string; password?: string };
   try {
@@ -28,31 +23,11 @@ export async function POST(req: Request) {
   const password = body.password || '';
   if (!username || !password) return apiErr(400, '用户名和密码不能为空');
 
-  // 限频：IP 与用户名双维度（见 RULES.loginPerIp / loginPerUser 的注释）。
-  // **只统计失败** —— 成功登录不消耗配额，否则正常用户（以及反复登录的自动化）
-  // 会被自己的成功记录挡在门外。检查放在查库与 verifyPassword 之前，
-  // 被挡的请求不消耗 scrypt。用户名小写归一，否则改个大小写就换了个计数桶。
-  const ip = clientIp(req);
-  const ipKey = ip ? `login:ip:${ip}` : null;
-  const userKey = `login:user:${username.toLowerCase()}`;
-  if ((ipKey && isRateLimited(ipKey, RULES.loginPerIp)) || isRateLimited(userKey, RULES.loginPerUser)) {
-    return apiErr(429, '尝试过于频繁，请 15 分钟后再试');
-  }
+  const cred = await verifyCredentials(username, password, clientIp(req));
+  if (!cred.ok) return apiErr(cred.status, cred.message);
+  const user = cred.user;
 
-  // 支持用户名或邮箱登录
-  const user = await prisma.user.findFirst({
-    where: { OR: [{ username }, { email: username }] },
-    select: { id: true, username: true, passwordHash: true, sessionVersion: true, role: true },
-  });
-
-  // 统一错误，避免用户名枚举
-  if (!user || !(await verifyPassword(password, user.passwordHash))) {
-    if (ipKey) recordRateLimitHit(ipKey);
-    recordRateLimitHit(userKey);
-    return apiErr(401, '用户名或密码错误');
-  }
-
-  const token = await createSessionToken({ uid: user.id, sv: user.sessionVersion ?? 0 });
+  const token = await createSessionToken({ uid: user.id, sv: user.sessionVersion });
   const store = await cookies();
   store.set(SESSION_COOKIE, token, await sessionCookieOptions());
 
