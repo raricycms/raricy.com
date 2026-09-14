@@ -192,6 +192,13 @@ describe('RULES 全站配额（src/lib/rate-limit.ts 即权威，改动即报警
     { name: 'gamePoll', limit: 120, windowMs: 60_000, desc: '联机棋类取快照 120 次/分' },
     { name: 'transferHourly', limit: 30, windowMs: HOUR, desc: '鱼干转账 30 次/时' },
     { name: 'transferDaily', limit: 200, windowMs: DAY, desc: '鱼干转账 200 次/天' },
+    {
+      name: 'fishApiPerUser',
+      limit: 20,
+      windowMs: 60_000,
+      desc: '鱼干市场无状态接口 20 次/分/账号（成功也计数：每次都要跑 scrypt）',
+    },
+    { name: 'fishApiPerIp', limit: 120, windowMs: 60_000, desc: '鱼干市场无状态接口 120 次/分/IP' },
   ] as const;
 
   for (const e of EXPECTED) {

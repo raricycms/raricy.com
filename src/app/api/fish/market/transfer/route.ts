@@ -1,38 +1,51 @@
-import { getCurrentUser, isCurrentlyBanned } from '@/lib/auth';
 import { apiOk, apiErr } from '@/lib/format';
-import { transferFish } from '@/lib/fish-market-service';
+import { transferFish, findTransferTargetByUsername } from '@/lib/fish-market-service';
 import { AccountServiceError } from '@/lib/account-client';
+import { requireMarketActor } from '../_auth';
 
 // fernet / node:crypto 需 Node 运行时（非 Edge）。
 export const runtime = 'nodejs';
 
-// POST /api/fish/market/transfer { to_user_id, amount, note? } — 用户间转账（无手续费）。
+// POST /api/fish/market/transfer — 用户间转账（无手续费）。
 //
-// 【权限档位：登录 + 非禁言】**不要求 core+** —— 与 /fish 面板、签到同一档。
-// 投喂要求 core+ 是因为它挂在博客页上（博客本身 core+ 才能看），转账是鱼干的
-// 通用能力：任何能签到拿鱼干的人都该能转。
+// body: { to_user_id? | to_username?, amount, note?, username?, password? }
+//
+// 【两种鉴权】有会话 cookie → 当前登录用户；没有会话 → 请求体里的
+// `username` + `password`（站外脚本「单次发包」，不签发会话）。详见 ../_auth.ts。
+// 权限档位：登录（或凭据有效）+ 非禁言，**不要求 core+** —— 与 /fish 面板、签到同档。
+//
+// 【收款人两种写法】网页挑完人手里就是 id，用 `to_user_id`；站外脚本通常只有
+// 用户名，用 `to_username`（精确匹配，同 /api/auth/login 的匹配口径）。
 export async function POST(req: Request) {
-  const user = await getCurrentUser();
-  if (!user) return apiErr(401, '请先登录');
-  if (isCurrentlyBanned(user)) return apiErr(403, '你已被禁言，暂时无法转账');
-
-  let toUserId: string;
-  let amount: number;
-  let note: string | null;
+  let body: Record<string, unknown>;
   try {
-    const body = await req.json();
-    if (typeof body !== 'object' || body === null) return apiErr(400, '无效的请求');
-    toUserId = typeof body.to_user_id === 'string' ? body.to_user_id : '';
-    // 与 feed 路由同款：数字或数字字符串都能收，其余（NaN / 非数字）交给 service 判 400。
-    amount = Number(body.amount);
-    note = typeof body.note === 'string' ? body.note : null;
+    const parsed = await req.json();
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      return apiErr(400, '无效的请求');
+    }
+    body = parsed as Record<string, unknown>;
   } catch {
     return apiErr(400, '请求体格式错误');
   }
-  if (!toUserId) return apiErr(400, '请选择收款人');
+
+  const actor = await requireMarketActor(req, body);
+  if (actor instanceof Response) return actor;
+
+  let toUserId = typeof body.to_user_id === 'string' ? body.to_user_id.trim() : '';
+  if (!toUserId) {
+    const toUsername = typeof body.to_username === 'string' ? body.to_username.trim() : '';
+    if (!toUsername) return apiErr(400, '请提供 to_user_id 或 to_username');
+    const target = await findTransferTargetByUsername(toUsername);
+    if (!target) return apiErr(404, '接收者不存在');
+    toUserId = target.id;
+  }
+
+  // 与 feed 路由同款：数字或数字字符串都能收，其余（NaN / 非数字）交给 service 判 400。
+  const amount = Number(body.amount);
+  const note = typeof body.note === 'string' ? body.note : null;
 
   try {
-    const res = await transferFish(user.id, toUserId, amount, note);
+    const res = await transferFish(actor.id, toUserId, amount, note);
     if (!res.ok) return apiErr(res.code, res.message);
 
     return apiOk({

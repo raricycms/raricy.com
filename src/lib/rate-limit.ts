@@ -229,4 +229,14 @@ export const RULES = {
    */
   transferHourly: { limit: 30, windowMs: 60 * 60 * 1000 },
   transferDaily: { limit: 200, windowMs: 24 * 60 * 60 * 1000 },
+  /**
+   * 鱼干市场的**无状态**接口（凭据随请求走，不签发会话）。
+   * **成功也计数** —— 与会话路径不同：无状态路径每次请求都要跑一次 scrypt
+   * （32MB + 数十毫秒），不封顶就是一个廉价的 CPU / 内存放大器；
+   * 会话路径只验 JWT，不花这个 CPU，因此不消耗这条配额。
+   * 桶键：fish-api:{用户名小写} / fish-api:ip:{IP}。
+   * 失败另有更紧的一道：与 /api/auth/login 共用 login:user: / login:ip:（见 credential-auth.ts）。
+   */
+  fishApiPerUser: { limit: 20, windowMs: 60 * 1000 },
+  fishApiPerIp: { limit: 120, windowMs: 60 * 1000 },
 } as const;

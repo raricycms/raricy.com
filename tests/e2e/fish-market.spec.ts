@@ -12,8 +12,11 @@
 
 import { test, expect, type APIRequestContext, type Page } from '@playwright/test';
 import { registerFreshUser, loginViaApi } from './helpers';
+import { SEED_PASSWORD } from './seed';
 
 const ACCOUNT_MOCK = 'http://127.0.0.1:3101';
+/** 站点自身（无状态发包要打真实服务，不能只打替身）。 */
+const BASE_URL = 'http://127.0.0.1:3100';
 
 interface RemoteTransfer {
   from_user_id: string;
@@ -168,4 +171,77 @@ test('余额不足与转给自己：前端拦住 + 服务端 400，远端无新�
   // 余额一分未动
   await page.reload();
   await expect(page.locator('.market-card__balance-number')).toHaveText(String(balance));
+});
+
+test('无状态单次发包：不带任何 cookie，仅凭用户名 + 密码转账 / 查余额 / 查流水', async ({
+  page,
+  playwright,
+  request,
+}) => {
+  const sender = await registerFreshUser(page);
+  const balance = await fundByCheckin(page);
+  const recipient = await registerFreshUser(page);
+
+  // 全新 context —— 与浏览器那条会话**完全隔离**，一个 cookie 都没有
+  const anon = await playwright.request.newContext({ baseURL: BASE_URL });
+  expect((await anon.storageState()).cookies, '前提：这个 context 确实无会话').toHaveLength(0);
+
+  try {
+    // ── 转账：一次发包，凭据在 body 里 ───────────────────────────────────
+    const res = await anon.post('/api/fish/market/transfer', {
+      data: {
+        username: sender.username,
+        password: SEED_PASSWORD,
+        to_username: recipient.username,
+        amount: 1,
+        note: '机器人转账',
+      },
+    });
+    expect(res.status(), await res.text()).toBe(200);
+    const json = await res.json();
+    expect(json.recipient.username).toBe(recipient.username);
+    expect(json.balance).toBe(balance - 1);
+    expect(JSON.stringify(json), '响应里绝不能回显密码').not.toContain(SEED_PASSWORD);
+
+    // 远端确实记了这一笔（跨进程链路真的通了，不只是本地改了数）
+    const mine = (await remoteTransfers(request)).filter(
+      (t) => t.from_user_id === sender.id && t.entry_type === 'transfer'
+    );
+    expect(mine).toHaveLength(1);
+    expect(mine[0].to_user_id).toBe(recipient.id);
+
+    // ── 查余额 ──────────────────────────────────────────────────────────
+    const bal = await anon.post('/api/fish/market/balance', {
+      data: { username: sender.username, password: SEED_PASSWORD },
+    });
+    expect(bal.status()).toBe(200);
+    expect((await bal.json()).balance).toBe(balance - 1);
+
+    // ── 查流水（带 type 筛选）───────────────────────────────────────────
+    const txs = await anon.post('/api/fish/market/transactions', {
+      data: { username: sender.username, password: SEED_PASSWORD, type: 'transfer_all' },
+    });
+    expect(txs.status()).toBe(200);
+    const txJson = await txs.json();
+    expect(txJson.total).toBe(1);
+    expect(txJson.transactions[0]).toMatchObject({ amount: -1, type: 'transfer' });
+
+    // ── 密码错误 → 401，且分文不动 ──────────────────────────────────────
+    const bad = await anon.post('/api/fish/market/transfer', {
+      data: {
+        username: sender.username,
+        password: 'definitely-not-the-password',
+        to_username: recipient.username,
+        amount: 1,
+      },
+    });
+    expect(bad.status()).toBe(401);
+    expect((await bad.json()).message).toBe('用户名或密码错误');
+    expect(
+      (await remoteTransfers(request)).filter((t) => t.from_user_id === sender.id),
+      '凭据错误不能产生第二笔'
+    ).toHaveLength(1);
+  } finally {
+    await anon.dispose();
+  }
 });

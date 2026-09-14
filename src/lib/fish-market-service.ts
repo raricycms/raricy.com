@@ -98,6 +98,21 @@ export async function searchTransferTargets(
 }
 
 /**
+ * 按用户名**精确**查收款人（站外脚本手里只有用户名，没有 id）。
+ * 找不到返回 null。匹配口径与 /api/auth/login 一致：区分大小写、不做模糊匹配 ——
+ * 转账是钱的路径，「看起来像」不算数。
+ */
+export async function findTransferTargetByUsername(
+  username: string
+): Promise<TransferTarget | null> {
+  const u = await prisma.user.findUnique({
+    where: { username },
+    select: { id: true, username: true },
+  });
+  return u;
+}
+
+/**
  * 用户间转账：发送者扣 amount、接收者得 amount，零手续费，一次远端调用。
  *
  * @param note 可选留言（同一句话进双方流水的描述与远端记账的 description）
