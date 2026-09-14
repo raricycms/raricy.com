@@ -157,6 +157,35 @@ export function encryptApiKey(plain: string, cfg = accountConfig()): string {
 }
 
 /**
+ * 生成用户间转账的幂等键（≤64 字符，实测 45）。
+ * 格式：transfer-{sha256(from-to-units-nonce)[:16]}-{ts}-{nonce}
+ *
+ * 【为什么把 id 哈希掉】两个 userId 各 36 字符，原样拼进去是 102 字符，超过账户服务
+ * 的 64 字符上限（对照 checkin-{userId}-{date} 只嵌一个 id，55 字符刚好装得下）。
+ *
+ * 【为什么必须带随机 nonce】秒级时间戳下，同一用户对**同额**的两次转账会得到同一个键，
+ * 第二笔会被账户服务当幂等重放**静默去重**：远端只记一笔、本地记两笔，账目无声分叉。
+ * 转账是「点一次就是一笔新交易」，每次都必须有自己的键 —— 同
+ * fish-admin.makeAdminIdempotencyKey 的理由。
+ *
+ * @param nonce 随机后缀（randomBytes(4).toString('hex')，8 字符）。同时进哈希输入，
+ *              便于按日志里的 nonce 复核。
+ */
+export function makeTransferIdempotencyKey(
+  fromUserId: string,
+  toUserId: string,
+  units: number,
+  nonce: string
+): string {
+  const short = crypto
+    .createHash('sha256')
+    .update(`${fromUserId}-${toUserId}-${units}-${nonce}`)
+    .digest('hex')
+    .slice(0, 16);
+  return `transfer-${short}-${Math.floor(Date.now() / 1000)}-${nonce}`;
+}
+
+/**
  * 生成投喂操作的幂等键（≤64 字符，对齐 Flask _make_feed_idempotency_key）。
  * 格式：feed-{sha256(blogId-userId-count)[:16]}-{suffix}
  */

@@ -24,8 +24,9 @@ vi.mock('@/lib/account-client', async (importOriginal) => {
 });
 
 import { replayPendingSyncs } from '@/lib/fish-sync';
+import { encryptApiKey } from '@/lib/account-client';
 import { nowForDb } from '@/lib/db-time';
-import { resetDb, prisma } from '../helpers/db';
+import { resetDb, makeUser, prisma } from '../helpers/db';
 
 beforeEach(async () => {
   await resetDb();
@@ -112,5 +113,85 @@ describe('replayPendingSyncs —— 宽限期与账本同钟（UTC+8 墙上时�
     });
     expect(row?.status, '不落 failed 也能下次继续重放').toBe('pending');
     expect(row?.lastError).toContain('502');
+  });
+});
+
+// ── 转账（鱼干市场）与穷尽性守卫 ─────────────────────────────────────────────
+
+/** 造一条任意 operation / payload 的账本行（时间衰减同上）。 */
+async function makeLedgerRowOf(
+  key: string,
+  operation: string,
+  payload: Record<string, unknown>,
+  minutesAgo: number
+) {
+  const at = new Date(nowForDb().getTime() - minutesAgo * 60 * 1000);
+  await prisma.accountSyncLedger.create({
+    data: {
+      idempotencyKey: key,
+      operation,
+      payload: JSON.stringify(payload),
+      status: 'pending',
+      createdAt: at,
+      updatedAt: at,
+    },
+  });
+}
+
+describe('operation=transfer 的重放', () => {
+  it('按账本键重放，并用**重新解密**的发送者 Key 调远端', async () => {
+    // 本文件只 mock 了 accountClient.transfer，encrypt/decryptApiKey 都是真身 ——
+    // 这里存一份真能解开的密文，好覆盖「密钥不入 payload，重放时按 userId 重取」。
+    const sender = await makeUser({ driedFish: 0 });
+    await prisma.user.update({
+      where: { id: sender.id },
+      data: { fishApiKeyEncrypted: encryptApiKey('sender-plain-key') },
+    });
+    const key = 'transfer-replay-1';
+    await makeLedgerRowOf(
+      key,
+      'transfer',
+      {
+        fromUserId: sender.id,
+        toUserId: 'u-target',
+        amount: 3.5,
+        description: '转给「某人」',
+      },
+      5
+    );
+
+    const res = await replayPendingSyncs();
+
+    expect(res.synced).toBe(1);
+    expect(mockTransfer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fromUserId: sender.id,
+        toUserId: 'u-target',
+        amount: 3.5,
+        entryType: 'transfer',
+        apiKey: 'sender-plain-key',
+        idempotencyKey: key,
+      })
+    );
+
+    const row = await prisma.accountSyncLedger.findUnique({ where: { idempotencyKey: key } });
+    expect(row?.status).toBe('synced');
+  });
+});
+
+describe('executeSync 的穷尽性守卫', () => {
+  it('未知 operation 必须抛错，绝不静默标 synced（远端没收到请求却记已同步）', async () => {
+    await makeLedgerRowOf('k-unknown', 'no_such_operation', {}, 5);
+
+    const res = await replayPendingSyncs();
+
+    expect(res.synced, '掉出 switch 返回 undefined 会被当成成功 —— 这条用例钉住它').toBe(0);
+    expect(res.stillFailing).toBe(1);
+    const row = await prisma.accountSyncLedger.findUnique({
+      where: { idempotencyKey: 'k-unknown' },
+    });
+    expect(row?.status).not.toBe('synced');
+    expect(row?.lastError).toContain('未知的同步操作类型');
+    expect(mockTransfer).not.toHaveBeenCalled();
   });
 });

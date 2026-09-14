@@ -220,4 +220,13 @@ export const RULES = {
   gameMove: { limit: 120, windowMs: 60 * 1000 },
   /** 联机棋类：取快照。正常客户端只在重连 / 刷新时调，不是轮询接口。 */
   gamePoll: { limit: 120, windowMs: 60 * 1000 },
+  /**
+   * 鱼干转账（鱼干市场）。**唯一有配额的鱼干写路径** —— 投喂 / 签到 / CLI 都没有，
+   * 因为它们只能把钱给「文章作者」或「系统」，而转账是唯一能把鱼干推给任意第三方的
+   * 路径：没有配额的话，一个脚本能把鱼干当消息刷给别人（连带刷出站内通知）。
+   * 键必须自带自己的前缀（transfer:h: / transfer:d:）—— rule 不参与分桶，
+   * 复用别的前缀会与那边共用计数桶、互相吃额度。
+   */
+  transferHourly: { limit: 30, windowMs: 60 * 60 * 1000 },
+  transferDaily: { limit: 200, windowMs: 24 * 60 * 60 * 1000 },
 } as const;

@@ -190,6 +190,8 @@ describe('RULES 全站配额（src/lib/rate-limit.ts 即权威，改动即报警
     { name: 'gameRoom', limit: 10, windowMs: 60_000, desc: '联机棋类建房/加入 10 次/分' },
     { name: 'gameMove', limit: 120, windowMs: 60_000, desc: '联机棋类走子/认输/判胜 120 次/分' },
     { name: 'gamePoll', limit: 120, windowMs: 60_000, desc: '联机棋类取快照 120 次/分' },
+    { name: 'transferHourly', limit: 30, windowMs: HOUR, desc: '鱼干转账 30 次/时' },
+    { name: 'transferDaily', limit: 200, windowMs: DAY, desc: '鱼干转账 200 次/天' },
   ] as const;
 
   for (const e of EXPECTED) {

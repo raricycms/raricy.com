@@ -45,7 +45,8 @@ export type SyncOperation =
   | 'admin_grant'
   | 'admin_deduct'
   | 'compensate'
-  | 'register';
+  | 'register'
+  | 'transfer';
 
 /** 账本行状态机：pending → synced | compensated | failed（failed 可重放，见 replayPendingSyncs）。 */
 export type SyncStatus = 'pending' | 'synced' | 'compensated' | 'failed';
@@ -201,6 +202,43 @@ export async function executeSync(entry: {
         );
       }
       return;
+    }
+
+    // 用户间转账（鱼干市场）：**单笔**远端调用 —— 不像 feed 是「consume/income/refund
+    // 三键的根」，这里的 idempotencyKey 就是发往远端的那个键。
+    // 发送者的 Key 是这笔转账的唯一凭证，同样不入 payload（重放时按 fromUserId 重新解密）；
+    // 缺 Key / 解密失败 → AccountServiceError，账本行留 pending 等人处理。
+    case 'transfer': {
+      const p = entry.payload as {
+        fromUserId: string;
+        toUserId: string;
+        amount: number;
+        description: string;
+      };
+      const sender = await prisma.user.findUnique({
+        where: { id: p.fromUserId },
+        select: { fishApiKeyEncrypted: true },
+      });
+      const senderApiKey = decryptApiKey(sender?.fishApiKeyEncrypted ?? '');
+      await accountClient.transfer({
+        fromUserId: p.fromUserId,
+        toUserId: p.toUserId,
+        amount: p.amount,
+        entryType: 'transfer',
+        apiKey: senderApiKey,
+        description: p.description,
+        idempotencyKey: entry.idempotencyKey,
+      });
+      return;
+    }
+
+    // 穷尽性守卫：SyncOperation 加了新成员却漏写 case 时，其它 case 都不匹配，
+    // 函数会掉出 switch 返回 undefined —— 而 replayPendingSyncs 把 undefined 当成功，
+    // 直接 settle('synced')：**远端从未收到请求，账本却记着已同步**。
+    // 这种漏写 tsc 本来不报（switch 的 case 是可选的），靠这里赋给 never 顶出来。
+    default: {
+      const unhandled: never = entry.operation;
+      throw new Error(`未知的同步操作类型: ${String(unhandled)}`);
     }
   }
 }
