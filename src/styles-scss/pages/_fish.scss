@@ -62,6 +62,10 @@
 }
 
 .fish-card__actions {
+  display: flex;
+  gap: $space-2;
+  justify-content: center;
+  flex-wrap: wrap;
   margin-bottom: $space-4;
 }
 
@@ -79,6 +83,20 @@
 
   &:hover {
     background: var(--color-brand-secondary);
+  }
+
+  // 主行动（鱼干市场）：品牌色实底白字 —— 与「查看流水」并排时不抢眼而是**指路**，
+  // 因为市场才是这一页从此多出来的那个去处。常态/悬停反转，同全站胶囊按钮族。
+  &--primary {
+    background: var(--color-brand-primary);
+    color: #fff;
+    font-weight: 600;
+
+    &:hover {
+      background: var(--color-brand-primary);
+      filter: brightness(1.1);
+      transform: translateY(-1px);
+    }
   }
 }
 

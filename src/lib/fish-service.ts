@@ -113,6 +113,9 @@ export async function getTransactions(
   if (type) {
     // feed_all：投喂与被投喂（对齐 Flask 特例）
     if (type === 'feed_all') where.type = { in: ['feed', 'feed_receive'] };
+    // transfer_all：转出与转入（鱼干市场）。两侧的 type 不同（transfer /
+    // transfer_receive），只看一个会漏掉半边账 —— 与 feed_all 同一个理由。
+    else if (type === 'transfer_all') where.type = { in: ['transfer', 'transfer_receive'] };
     else where.type = type;
   }
 

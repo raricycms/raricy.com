@@ -1,0 +1,540 @@
+@use '../abstracts/variables' as *;
+
+// ═══════════════════════════════════════════════════════
+//  鱼干市场（/fish/market）—— 转账
+//
+//  视觉语言与 /fish 同源：卡片 30px 圆角 + 胶囊按钮 + 全部走 --color-* 令牌
+//  （随 <html data-theme> 自动明暗）。类块前缀 market-*，与 fish-card__* 分开 ——
+//  两页各有各的布局，共用类名会让改一边静默改到另一边（frontend-styles §11.1）。
+//  弹窗外壳（.modal-overlay/.modal-dialog/.modal-content/.modal-header）是
+//  通用组件，直接用，不重写。
+// ═══════════════════════════════════════════════════════
+
+.market-subtitle {
+  text-align: center;
+  color: var(--color-text-secondary);
+  font-size: 0.95rem;
+  margin: -$space-2 0 $space-6;
+}
+
+// ── 转账卡片 ────────────────────────────────────────────────────────────────
+
+.market-card {
+  max-width: 480px;
+  margin: 0 auto $space-4;
+  padding: $space-6;
+  background: var(--color-background-card);
+  border-radius: 30px;
+  box-shadow: var(--shadow-card);
+
+  @media (max-width: 768px) {
+    padding: $space-4;
+    border-radius: 20px;
+  }
+}
+
+.market-card__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: $space-2;
+  padding: $space-4;
+  margin-bottom: $space-6;
+  background: var(--color-background-subtle);
+  border-radius: $radius-large;
+}
+
+.market-card__balance-label {
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+}
+
+.market-card__balance-number {
+  font-size: 2rem;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--color-brand-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.market-card__balance-unit {
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+}
+
+// ── 表单字段 ────────────────────────────────────────────────────────────────
+
+.market-field {
+  margin-bottom: $space-4;
+}
+
+.market-field__label {
+  display: block;
+  margin-bottom: $space-2;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.market-field__hint {
+  margin: $space-1 0 0;
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  text-align: right;
+}
+
+.market-field__hint--error {
+  color: var(--color-warning-primary);
+  font-weight: 500;
+  text-align: left;
+}
+
+// 收款人：未选中 = 虚线「空位」；已选中 = 卡片内的一行身份条
+.market-recipient-pick {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: $space-4;
+  border: 1.5px dashed var(--color-border);
+  border-radius: $radius-large;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover:not(:disabled) {
+    border-color: var(--color-brand-primary);
+    background: var(--color-brand-secondary);
+    color: var(--color-brand-primary);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.market-recipient {
+  display: flex;
+  align-items: center;
+  gap: $space-3;
+  padding: $space-3 $space-4;
+  border: 1px solid var(--color-border);
+  border-radius: $radius-large;
+  background: var(--color-background-subtle);
+}
+
+.market-recipient__avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 8%;
+  object-fit: cover;
+  flex: none;
+}
+
+.market-recipient__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.market-recipient__change {
+  flex: none;
+  padding: $space-1 $space-3;
+  border: none;
+  border-radius: $radius-max;
+  background: var(--color-background-card);
+  color: var(--color-brand-primary);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover:not(:disabled) {
+    background: var(--color-brand-primary);
+    color: #fff;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+// 金额：大号数字输入（与 .form-control 同族的 15px 圆角 / 内容底色）
+.market-amount {
+  display: flex;
+  align-items: center;
+  gap: $space-2;
+  padding: $space-3 $space-4;
+  background: var(--color-background-content);
+  border: 2px solid transparent;
+  border-radius: 15px;
+  transition: all 0.2s ease;
+
+  &:focus-within {
+    background: var(--color-background-card);
+    border-color: var(--color-brand-secondary);
+  }
+}
+
+.market-amount__input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-size: 1.5rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+
+  &::placeholder {
+    color: var(--color-text-secondary);
+    opacity: 0.5;
+    font-weight: 500;
+  }
+}
+
+.market-amount__unit {
+  flex: none;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.market-quick {
+  display: flex;
+  gap: $space-2;
+  margin-top: $space-2;
+}
+
+.market-quick__btn {
+  padding: 2px $space-3;
+  border: 1px solid var(--color-border);
+  border-radius: $radius-max;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover:not(:disabled) {
+    border-color: var(--color-brand-primary);
+    background: var(--color-brand-secondary);
+    color: var(--color-brand-primary);
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+}
+
+.market-note {
+  width: 100%;
+}
+
+// 摘要条：手续费 0 + 转账后余额
+.market-summary {
+  display: flex;
+  justify-content: space-between;
+  gap: $space-3;
+  margin: $space-6 0 $space-4;
+  padding: $space-3 $space-4;
+  background: var(--color-background-highlight);
+  border-radius: $radius-large;
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+
+  strong {
+    color: var(--color-text-primary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  // 权重：.market-summary strong 是 0-1-1，光写 .market-summary__free（0-1-0）
+  // 会被上面那条盖掉（改样式时最容易踩的坑，见 frontend-styles §11.1）。
+  strong.market-summary__free {
+    color: var(--color-success-primary);
+  }
+}
+
+.market-submit {
+  display: block;
+  width: 100%;
+  padding: $space-3 $space-4;
+  border: none;
+  border-radius: $radius-max;
+  background: var(--color-brand-primary);
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover:not(:disabled) {
+    filter: brightness(1.1);
+    transform: translateY(-1px);
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+}
+
+.market-foot {
+  text-align: center;
+  margin-top: $space-4;
+}
+
+.market-foot__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+  transition: color 0.2s ease;
+
+  svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  &:hover {
+    color: var(--color-brand-primary);
+  }
+}
+
+// ── 收款人选择弹窗 ──────────────────────────────────────────────────────────
+
+.market-picker {
+  max-width: 420px;
+}
+
+.market-modal-close {
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 1.5rem;
+  line-height: 1;
+  padding: 0 $space-2;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--color-text-primary);
+  }
+}
+
+.market-picker__search {
+  width: 100%;
+  margin-bottom: $space-3;
+}
+
+.market-picker__list {
+  display: flex;
+  flex-direction: column;
+  gap: $space-1;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+.market-picker__empty {
+  padding: $space-6;
+  text-align: center;
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}
+
+.market-picker__item {
+  display: flex;
+  align-items: center;
+  gap: $space-3;
+  width: 100%;
+  padding: $space-2 $space-3;
+  border: none;
+  border-radius: $radius-large;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-size: 0.95rem;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+
+  &:hover {
+    background: var(--color-brand-secondary);
+  }
+}
+
+.market-picker__avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 8%;
+  object-fit: cover;
+  flex: none;
+}
+
+.market-picker__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.market-picker__pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $space-2;
+  margin-top: $space-3;
+}
+
+.market-picker__page-btn {
+  padding: $space-1 $space-3;
+  border: 1px solid var(--color-border);
+  border-radius: $radius-max;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover:not(:disabled) {
+    border-color: var(--color-brand-primary);
+    color: var(--color-brand-primary);
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+}
+
+.market-picker__page-info {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+}
+
+// ── 确认转账弹窗 ────────────────────────────────────────────────────────────
+
+.market-confirm {
+  max-width: 380px;
+}
+
+.market-confirm__to {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: $space-3;
+  margin-bottom: $space-4;
+}
+
+.market-confirm__avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 8%;
+  object-fit: cover;
+  flex: none;
+}
+
+.market-confirm__name {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.market-confirm__rows {
+  margin: 0 0 $space-4;
+  padding: $space-4;
+  background: var(--color-background-subtle);
+  border-radius: $radius-large;
+}
+
+.market-confirm__row {
+  display: flex;
+  justify-content: space-between;
+  gap: $space-3;
+  padding: $space-1 0;
+  font-size: 0.9rem;
+
+  dt {
+    flex: none;
+    color: var(--color-text-secondary);
+  }
+
+  dd {
+    margin: 0;
+    min-width: 0;
+    color: var(--color-text-primary);
+    font-weight: 600;
+    text-align: right;
+    word-break: break-word;
+  }
+
+  // 与 .market-summary 同一个权重陷阱：dd 规则是 0-1-1，修饰符必须写成复合选择器
+  dd.market-confirm__free {
+    color: var(--color-success-primary);
+  }
+
+  // 留言是自由文本，不该跟着上面的金额一起加粗
+  dd.market-confirm__note {
+    font-weight: 500;
+  }
+}
+
+.market-confirm__row--total {
+  margin-top: $space-2;
+  padding-top: $space-3;
+  border-top: 1px solid var(--color-border);
+}
+
+.market-confirm__actions {
+  display: flex;
+  gap: $space-3;
+}
+
+.market-confirm__cancel,
+.market-confirm__ok {
+  flex: 1;
+  padding: $space-3;
+  border: none;
+  border-radius: $radius-max;
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.market-confirm__cancel {
+  background: var(--color-background-subtle);
+  color: var(--color-text-secondary);
+
+  &:hover:not(:disabled) {
+    color: var(--color-text-primary);
+    background: var(--color-border);
+  }
+}
+
+.market-confirm__ok {
+  background: var(--color-brand-primary);
+  color: #fff;
+
+  &:hover:not(:disabled) {
+    filter: brightness(1.1);
+  }
+}
