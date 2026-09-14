@@ -85,7 +85,7 @@
 | `/api/blogs` · `/api/blogs/[id]` · `/api/spider/*` | API | 博客 API + 爬虫 API |
 | `/api/auth/authentic` · `/zhh` | API + route | 邀请码升 core · 邀请码生成（站长） |
 | `/fish` · `/fish/transactions` · `/api/fish/*` | page + API | 小鱼干面板 + 流水 |
-| `/fish/market` · `/api/fish/market/*` | page + API | 鱼干市场（第一期只有**用户间转账**，无手续费）：`POST transfer` / `GET users`（收款人搜索）。写路径见 §6.3 |
+| `/fish/market` · `/api/fish/market/*` | page + API | 鱼干市场（第一期只有**用户间转账**，无手续费）：`POST transfer` / `GET users`（收款人搜索）/ `POST balance`、`POST transactions`（站外脚本用的无状态查询）。写路径见 §6.3；对外契约见 `docs/fish-bot.md` |
 | `/notifications` · `/api/notifications/*` | page + API | 通知中心 |
 | `/vote` · `/vote/[id]` | page | 投票 |
 | `/checkin` · `/api/checkin` | page + API | 每日签到 |
@@ -128,6 +128,7 @@
 | OAuth 2.0 | `oauth.ts`（见 `docs/oauth.md`） |
 | 管理域 | `admin-user-service.ts` · `admin-blog-service.ts` · `admin-category-service.ts` · `admin-comment-service.ts` · `admin-clipboard-service.ts` · `admin-vote-service.ts` · `admin-image-service.ts` · `admin-stats-service.ts` |
 | 工具 / 安全 | `short-id.ts` · `safe-url.ts` · `guard.ts` · `rate-limit.ts` · `turnstile.ts` |
+| 鉴权基建 | `credential-auth.ts`（「用户名+密码」校验，`/api/auth/login` 与鱼干市场无状态接口**共用**，限频桶也共用）· `request-ip.ts`（反代后取真实 IP） |
 
 > 上表是**穷尽** `src/lib/*.ts` 的（新增文件记得补一行）—— §6.3、§8 会引用其中若干，
 > 之前整块漏了聊天子域与 `oauth.ts`，导致正文引用的文件在本表里查不到。

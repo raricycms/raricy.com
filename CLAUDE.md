@@ -57,6 +57,12 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 - **OAuth 2.0**：raricy 作为 IdP，scope 仅 `profile`，只读。**改任何 OAuth 相关代码前先读 `docs/oauth.md`** —— 协议细节与安全约束（token 永不落库、redirect_uri 精确匹配、授权码单次使用）都在那里。
 
 ### CSRF / 中间件
+- **鱼干市场的三个接口（transfer / balance / transactions）有两个门**：有会话走会话，
+  没有会话就读请求体里的 `username` + `password`（站外脚本「单次发包」，见
+  `src/app/api/fish/market/_auth.ts` 与 `docs/fish-bot.md`）。改这几个接口的**权限或
+  限频**时必须两个门一起看 —— 只改会话那半，凭据那半就是绕过口。
+  凭据校验与 `/api/auth/login` **共用同一份实现与同一对限频桶**
+  （`src/lib/credential-auth.ts`）：同一份凭据、同一个撞库预算，别各抄一份。
 - `src/middleware.ts` 仅校验写请求（POST / PUT / PATCH / DELETE）的 `Origin` / `Referer` 同源。
 - 对外 Host 是**三源并集**（不是优先级回退链）：`ALLOWED_ORIGINS`、`X-Forwarded-Host`、
   `Host` 三个来源全部并进同一个 Set，`Origin`/`Referer` 命中**任一**即放行。
@@ -177,7 +183,8 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
   （authorize 30/min/user、token 60/min/clientId、userinfo 600/min/user）是各 route 里内联的
   字面量，不在 `RULES` 里 —— 改 OAuth 限频要去 `src/app/api/oauth/*/route.ts` 找。
 - **对外文档会复述数值**，这是刻意的（站外读者要能自包含）：`docs/chat-bot.md` §10 镜像了
-  聊天那 7 条，`docs/guide/` 的投票 / 图床指南也各写了一份。改 `RULES` 数值时记得同步它们，
+  聊天那 7 条，`docs/fish-bot.md` §4 镜像了转账、市场无状态接口与凭据校验失败的配额，
+  `docs/guide/` 的投票 / 图床指南也各写了一份。改 `RULES` 数值时记得同步它们，
   否则就是下一次 drift。
 - 单进程语义；多实例部署需换 Redis（已知限制）。
 
