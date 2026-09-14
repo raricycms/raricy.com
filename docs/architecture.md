@@ -85,6 +85,7 @@
 | `/api/blogs` · `/api/blogs/[id]` · `/api/spider/*` | API | 博客 API + 爬虫 API |
 | `/api/auth/authentic` · `/zhh` | API + route | 邀请码升 core · 邀请码生成（站长） |
 | `/fish` · `/fish/transactions` · `/api/fish/*` | page + API | 小鱼干面板 + 流水 |
+| `/fish/market` · `/api/fish/market/*` | page + API | 鱼干市场（第一期只有**用户间转账**，无手续费）：`POST transfer` / `GET users`（收款人搜索）。写路径见 §6.3 |
 | `/notifications` · `/api/notifications/*` | page + API | 通知中心 |
 | `/vote` · `/vote/[id]` | page | 投票 |
 | `/checkin` · `/api/checkin` | page + API | 每日签到 |
@@ -123,7 +124,7 @@
 | 故事 | `story-service.ts` |
 | 游戏 · 通用 | `atamas-pref.ts` |
 | 游戏 · 联机棋类 | `board-shared.ts`（五款棋共用的协议：房间码 / 席位 / 棋路 / DTO / SSE 事件）· `board-room.ts`（**共用的房间注册表**：席位、观战、掉线判胜、TTL 回收、服务端权威判定）· `game-bus.ts`（按房间的进程内 SSE 订阅）· `api/game/_shared.ts`（40 条路由的 handler 工厂）。各游戏只提供自己的纯规则：`{gomoku,tictactoe,xiangqi,chess,draughts}-rules.ts`，再由各自的 `-room.ts` **薄门面**把棋盘绑上去（走子类棋不需要适配器，棋盘本身就满足 `RoomBoard`）。见 §6.9 |
-| 小鱼干 | `fish-service.ts` · `fish-admin.ts` · `fish-sync.ts`（账本 + 补偿，见 §6.3）· `fish-units.ts`（单位换算）· `account-client.ts` |
+| 小鱼干 | `fish-service.ts` · `fish-admin.ts` · `fish-market-service.ts`（用户间转账，见 §6.3）· `fish-sync.ts`（账本 + 补偿，见 §6.3）· `fish-units.ts`（单位换算）· `account-client.ts` |
 | OAuth 2.0 | `oauth.ts`（见 `docs/oauth.md`） |
 | 管理域 | `admin-user-service.ts` · `admin-blog-service.ts` · `admin-category-service.ts` · `admin-comment-service.ts` · `admin-clipboard-service.ts` · `admin-vote-service.ts` · `admin-image-service.ts` · `admin-stats-service.ts` |
 | 工具 / 安全 | `short-id.ts` · `safe-url.ts` · `guard.ts` · `rate-limit.ts` · `turnstile.ts` |
@@ -155,7 +156,8 @@ API 端点位于 `src/app/api/<group>/<verb>/route.ts`，**薄**层：参数校�
 
 ### 6.3 鱼干账户（跨进程）
 
-- **失败语义 — 写路径 fail-closed**：投喂 / 签到 / 注册建账户 / CLI grant|deduct **全部**遵循：远端账户服务失败 → 本地写入被**补偿事务精确撤销**（对用户等价于回滚）→ 503 / 退出码 2。绝不静默成功。
+- **失败语义 — 写路径 fail-closed**：投喂 / 签到 / 注册建账户 / CLI grant|deduct / 用户间转账（鱼干市场）**全部**遵循：远端账户服务失败 → 本地写入被**补偿事务精确撤销**（对用户等价于回滚）→ 503 / 退出码 2。绝不静默成功。
+  - 转账（`fish-market-service.ts`）是其中唯一**单次远端调用**的路径：没有 feed 的「Step1 成功 → Step2 失败 → 远端退款」中间态，别照抄那套退款；也是唯一带限频配额的鱼干写路径。补偿退接收者时若他已把钱花掉 → 补偿整体回滚，交由账本 `failed` + `sync-retry` 正向重放收敛（**绝不部分撤销**，那会凭空造出鱼干）。
 - **分层（`2_account_sync_ledger` 起）**：本地事务先提交（含 `account_sync_ledger` 一行 pending），远端 HTTP 在事务**外**调用 —— 成功标 `synced`，失败走补偿事务。HTTP **绝不能挪进事务**：那会让 SQLite 写锁被占用最长 `ACCOUNT_SERVICE_TIMEOUT`，并发写耗尽 busy_timeout 直接 `database is locked`。
 - **崩溃收敛**：任何「已提交 / 未同步」窗口都留一个 pending 账本行，`npm run cli -- fish sync-retry` 幂等重放收敛；补偿也失败则标 `failed` 并打 `ACCOUNT_RECONCILE_REQUIRED` 日志。详见 `src/lib/fish-sync.ts` 头部。
 - **读路径**：默认走远端账户服务拿权威余额；远端不通则降级到本地 `users.driedFish`，并在响应里给出提示。
