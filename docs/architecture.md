@@ -95,7 +95,7 @@
 | `/image/i/<id>` · `/auth/avatar/<id>` | rewrite | **不是路由**：Flask 时代的旧直链，由 `next.config.mjs` 的 `rewrites()` 映射到 `/api/images/<id>/raw`、`/api/avatar/<id>`。存量正文里写死的就是它们（见 `tests/e2e/legacy-urls.spec.ts`） |
 | `/story` · `/story/[...path]` | page | 故事合集/阅读 |
 | `/tool` · `/tool/<sub>` | page | 工具集（aes / base / hash / hex / html / qp / translate / url / cattca） |
-| `/game` · `/game/<sub>` · `/api/game/game_token` | page + API | 游戏菜单（**单机 / 联机两分区**）+ 13 款游戏（另有 `/game/wand` 演示页）。五子棋、中国象棋、国际象棋、国际跳棋同时出现在两区，靠 `?mode=online` 切模式；井字棋只有联机一种玩法 |
+| `/game` · `/game/<sub>` · `/api/game/game_token` | page + API | 游戏菜单（**单机 / 联机两分区**，**联机分区仅核心用户可见** —— 与各联机页的 `requireCoreUser` 同档）+ 13 款游戏（另有 `/game/wand` 演示页）。五子棋、中国象棋、国际象棋、国际跳棋同时出现在两区，靠 `?mode=online` 切模式；井字棋只有联机一种玩法 |
 | `/api/game/gomoku/*` | API | 五子棋联机：建房 / 快照 / 加入 / 坐席位 / 退席位 / 走子 / 认输 / 判胜 / 悔棋 / 回应悔棋 / 再来一局 + SSE 流。见 §6.9 |
 | `/api/game/tictactoe/*` | API | 井字棋联机：同一组端点，与五子棋共用房间层（`board-room.ts`）与 HTTP 错误映射（`api/game/_shared.ts`）。见 §6.9 |
 | `/api/game/{xiangqi,chess,draughts}/*` | API | 中国象棋 / 国际象棋 / 国际跳棋联机：同样是那 10 个端点，实现全部来自 `api/game/_shared.ts` 的 handler 工厂，`route.ts` 只是「import + 一行赋值」。见 §6.9 |
