@@ -72,12 +72,14 @@ export async function loginViaApi(page: Page, username: string) {
  * 共用的，desktop 和 mobile 各跑一轮 —— 前一轮的配额还没滑出窗口，后一轮接着
  * 消耗同一个桶，用例就会在**首条**操作上吃 429。
  *
- * 已踩过（见 4282a55）：chat-avatar-menu 与 chat-features 两条用例里，
- * admin 在 60 秒内发满 30 条大区消息，`chat:m:e2e-user-admin` 达到 30/30。
- * 当时是 desktop 那轮的发言还没过期。
+ * 已踩过（见 4282a55）：chat-avatar-menu 与 chat-features 两条用例里，admin 在
+ * 60 秒内把当时的发言额度（30/分钟）顶满，`chat:m:e2e-user-admin` 达到 30/30 ——
+ * 当时是 desktop 那轮的发言还没过期。（该额度 2026-09-15 已放宽到 120/分钟，
+ * 但结论不变：种子号的桶是两个 project 共用的，写操作密集的用例一律新号。）
  *
- * 相关的按用户限频额度（src/lib/rate-limit.ts 的 RULES）：大区发言 30/分钟、
- * 800/天；投票 30/小时；图床 75/小时；点赞 100/小时。发帖量大的用例一律新号。
+ * 相关的按用户限频额度**以 src/lib/rate-limit.ts 的 RULES 为准**，别抄数字 ——
+ * 这里曾经漂过（写着「800/天」时实际已是 2000）。发言 / 投票 / 图床上传 / 点赞
+ * 都按用户计桶。
  *
  * @param opts.core 注册后直接提到 core。默认 false（新注册就是 role=user）。
  *   需要 core 的场景：点赞/剪贴板/投票/申诉/聊天这些 @authenticated_required

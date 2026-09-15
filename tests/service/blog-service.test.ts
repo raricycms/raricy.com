@@ -29,6 +29,7 @@ import {
   BLOG_DAILY_LIMIT,
 } from '@/lib/blog-service';
 import { nowForDb } from '@/lib/db-time';
+import { RULES } from '@/lib/rate-limit';
 
 // ── 本地栏目工厂 ─────────────────────────────────────────────────────────────
 // 注：不用 helpers/db.ts 的 makeCategory —— 它当前是坏的（缺必填 slug、字段名
@@ -1158,15 +1159,20 @@ describe('toggleLike / 目标文章不存在', () => {
   });
 });
 
-describe('toggleLike / 限频（100 次/时）', () => {
-  it('第 101 次 → { rateLimited: true }', async () => {
+describe('toggleLike / 限频（RULES.likeHourly —— 数值不写死）', () => {
+  it('打满小时额度后 → { rateLimited: true }', async () => {
     const u = await makeUser();
     const b = await makeBlog({});
-    for (let i = 0; i < 100; i++) {
+    // 循环上界从 RULES 取：写死数字的话，放宽配额时这条会以「第 N 次应仍在额度内」
+    // 失败，看起来像点赞坏了，其实只是断言过期了（本次放宽 100→300 时正是如此）。
+    const limit = RULES.likeHourly.limit;
+    for (let i = 0; i < limit; i++) {
       const r = await toggleLike(b.id, u.id);
       expect(r, `第 ${i + 1} 次应仍在额度内`).not.toEqual({ rateLimited: true });
     }
-    expect(await toggleLike(b.id, u.id), '第 101 次应被限频').toEqual({ rateLimited: true });
+    expect(await toggleLike(b.id, u.id), `第 ${limit + 1} 次应被限频`).toEqual({
+      rateLimited: true,
+    });
   });
 
   // 【回归】无效请求不得消耗配额。
@@ -1176,8 +1182,9 @@ describe('toggleLike / 限频（100 次/时）', () => {
     const u = await makeUser();
     const b = await makeBlog({});
 
-    // 200 次无效请求（远超 100 的额度）
-    for (let i = 0; i < 200; i++) {
+    // 无效请求数**必须超过当前额度**，否则这条用例就算通过也证明不了什么
+    const over = RULES.likeHourly.limit + 100;
+    for (let i = 0; i < over; i++) {
       expect(await toggleLike('ghost-blog', u.id)).toEqual({ notFound: true });
     }
 
@@ -1194,7 +1201,7 @@ describe('toggleLike / 限频（100 次/时）', () => {
     const gone = await makeBlog({ ignore: true });
     const ok = await makeBlog({});
 
-    for (let i = 0; i < 200; i++) {
+    for (let i = 0; i < RULES.likeHourly.limit + 100; i++) {
       expect(await toggleLike(gone.id, u.id)).toEqual({ notFound: true });
     }
     expect(await toggleLike(ok.id, u.id)).not.toEqual({ rateLimited: true });

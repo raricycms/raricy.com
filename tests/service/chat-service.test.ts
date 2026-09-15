@@ -16,7 +16,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { resetDb, makeUser, prisma } from '../helpers/db';
 import { nowForDb } from '@/lib/db-time';
-import { __resetRateLimitStore } from '@/lib/rate-limit';
+import { __resetRateLimitStore, RULES } from '@/lib/rate-limit';
 import {
   CHAT_LOBBY_ID,
   CHAT_DELETED_TEXT,
@@ -388,9 +388,11 @@ describe('发消息校验', () => {
     expect((del as { error: string }).error).toBe('replyInvalid');
   });
 
-  it('超过每分钟 30 条限频后第 31 条被拒（资源校验先行）', async () => {
+  it('超过每分钟额度（RULES.chatMinute）后下一条被拒（资源校验先行）', async () => {
     const a = await makeUser({ role: 'core' });
-    for (let i = 0; i < 30; i++) {
+    // 额度从 RULES 取，不写死：写死的话改配额时这条会变成「第 N 条应仍在额度内」失败，
+    // 而它本该验的是「打满之后下一条被拒」这个行为本身。
+    for (let i = 0; i < RULES.chatMinute.limit; i++) {
       const r = await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: a.id, content: `n${i}` });
       expect(r.ok).toBe(true);
     }
@@ -567,7 +569,7 @@ describe('拍一拍', () => {
   it('拍一拍也走限频（不因没有正文而豁免）', async () => {
     const a = await makeUser({ role: 'core' });
     const b = await makeUser({ role: 'core' });
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < RULES.chatMinute.limit; i++) {
       const r = await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: a.id, patTargetId: b.id });
       expect(r.ok).toBe(true);
     }

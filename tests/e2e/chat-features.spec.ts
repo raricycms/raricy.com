@@ -63,7 +63,7 @@ test.describe('聊天功能：链接 / 跳转 / 搜索 / 日期分隔', () => {
     const orig = `e2e-orig-${tag}`;
     const reply = `e2e-reply-${tag}`;
 
-    // 发言者用一次性新用户，**不用种子号**：大区发言限频是 30 条/分钟/用户，
+    // 发言者用一次性新用户，**不用种子号**：大区发言限频是 120 条/分钟/用户，
     // 种子号在两个 project 之间共用，另一轮的发言还没滑出 60 秒窗口就会把配额
     // 顶满（实测 chat:m:e2e-user-admin 达到 30/30，详见 helpers.ts 的
     // registerFreshUser）。这里只需要「一个和 core 不同的人」，是谁不影响回复跳转。
@@ -119,8 +119,9 @@ test.describe('聊天功能：链接 / 跳转 / 搜索 / 日期分隔', () => {
     const marker = `e2e-search-far-${tag}`;
     const newest = `e2e-search-far-newest-${tag}`;
 
-    // 造数：把目标顶到首屏（最新 50 条）之外。发言限频 30 条/分钟/用户（见
-    // rate-limit.RULES.chatMinute），所以拆给两个一次性号，各发 ~28 条。
+    // 造数：把目标顶到首屏（最新 50 条）之外。发言限频按 RULES.chatMinute 计（滑动
+    // 分钟窗口），所以拆给两个一次性号各发一半 —— 额度比这里用到的宽松（2026-09-15
+    // 放宽后 120/分），拆号只是为了不把全部 56 条压在一个号的窗口上。
     await registerFreshUser(page, { core: true });
     await postLobby(page, `${marker} 久远的目标`);
     for (let i = 0; i < 27; i++) await postLobby(page, `e2e-fill-${tag}-a${i}`);

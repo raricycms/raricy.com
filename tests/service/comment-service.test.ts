@@ -884,13 +884,13 @@ describe('序列化：snake_case 字段与作者信息', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 9. 频率限制（2000 条/天，对齐 RULES.commentDaily）
+// 9. 频率限制（日档，对齐 RULES.commentDaily —— 数值不写死，见下面的断言）
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('频率限制：每日 2000 条', () => {
+describe('频率限制：每日配额', () => {
   it('打满配额后 → rateLimited', async () => {
     const { author, blog } = await seedBlog();
-    // 直接把该用户的桶灌满（2000 次真实建评论太慢），key 与 service 内部约定一致
+    // 直接把该用户的桶灌满（真实建评论太慢），key 与 service 内部约定一致
     const key = `comment:d:${author.id}`;
     for (let i = 0; i < RULES.commentDaily.limit; i++) rateLimit(key, RULES.commentDaily);
 
@@ -898,7 +898,9 @@ describe('频率限制：每日 2000 条', () => {
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.error).toBe('rateLimited');
-    expect(r.message).toContain('2000');
+    // 文案里的条数必须与配额同源：写死数字的话，改配额时这条断言会假失败，
+    // 而它本该验的是「文案确实复述了当前配额」。
+    expect(r.message).toContain(String(RULES.commentDaily.limit));
     expect(await prisma.blogComment.count(), '超限时不该落库').toBe(0);
   });
 

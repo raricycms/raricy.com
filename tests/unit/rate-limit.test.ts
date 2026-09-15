@@ -176,14 +176,14 @@ describe('返回值形态', () => {
 describe('RULES 全站配额（src/lib/rate-limit.ts 即权威，改动即报警）', () => {
   // 这些数字是产品口径，不是实现细节 —— 任何改动都应是一次有意识的决定。
   const EXPECTED = [
-    { name: 'likeHourly', limit: 100, windowMs: HOUR, desc: '点赞 100 次/时' },
-    { name: 'likeDaily', limit: 500, windowMs: DAY, desc: '点赞 500 次/天' },
-    { name: 'commentDaily', limit: 2000, windowMs: DAY, desc: '评论 2000 次/天' },
+    { name: 'likeHourly', limit: 300, windowMs: HOUR, desc: '点赞 300 次/时' },
+    { name: 'likeDaily', limit: 1500, windowMs: DAY, desc: '点赞 1500 次/天' },
+    { name: 'commentDaily', limit: 8000, windowMs: DAY, desc: '评论 8000 次/天' },
     { name: 'voteCreateHourly', limit: 10, windowMs: HOUR, desc: '投票创建 10 次/时' },
     { name: 'voteHourly', limit: 30, windowMs: HOUR, desc: '投票 30 次/时' },
-    { name: 'imageUploadHourly', limit: 75, windowMs: HOUR, desc: '图床上传 75 次/时' },
-    { name: 'chatMinute', limit: 30, windowMs: 60_000, desc: '聊天发言 30 次/分' },
-    { name: 'chatDaily', limit: 2000, windowMs: DAY, desc: '聊天发言 2000 次/天' },
+    { name: 'imageUploadHourly', limit: 200, windowMs: HOUR, desc: '图床上传 200 次/时' },
+    { name: 'chatMinute', limit: 120, windowMs: 60_000, desc: '聊天发言 120 次/分' },
+    { name: 'chatDaily', limit: 8000, windowMs: DAY, desc: '聊天发言 8000 次/天' },
     { name: 'chatPoll', limit: 120, windowMs: 60_000, desc: '聊天对账轮询 120 次/分' },
     { name: 'chatNewChannel', limit: 20, windowMs: 60_000, desc: '发起私聊 20 次/分' },
     { name: 'loginPerIp', limit: 300, windowMs: MIN15, desc: '登录失败 300 次/15 分/IP' },
