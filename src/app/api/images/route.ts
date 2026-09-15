@@ -179,7 +179,7 @@ export async function POST(req: Request) {
   if (items.length === 0) return apiErr(400, failed[0]?.message || '图片上传失败');
 
   // ⚠️ 200 / code 200 **不再等于「全部成功」** —— 看 failed 数组。所有现有调用方要么
-  // 只发一个文件（图床页 / 聊天与评论选图），要么自己解析 items（vditor 编辑器），
+  // 只发一个文件（图床页 / 讨论与评论选图），要么自己解析 items（vditor 编辑器），
   // 所以无害；但新调用方不许拿 code === 200 当「都传上去了」。
   // id / url 只在「恰好一个文件且零失败」时给出 —— 三个单文件调用方的契约因此逐字不变。
   return apiOk(

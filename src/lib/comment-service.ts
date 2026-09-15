@@ -417,7 +417,7 @@ export async function createComment(input: CreateCommentInput): Promise<CreateCo
   const content = (input.content ?? '').trim();
   const imageId = input.imageId || null;
   const quoteBlogId = input.quoteBlogId || null;
-  // 附件消息允许空正文（对齐聊天：引用一张图 / 一篇文章本身就是一条完整表达）
+  // 附件消息允许空正文（对齐讨论：引用一张图 / 一篇文章本身就是一条完整表达）
   const isAttach = !!imageId || !!quoteBlogId;
 
   // 校验一律放在事务外：事务里只做写入，别让额外的读把 SQLite 写锁多占几毫秒
@@ -428,7 +428,7 @@ export async function createComment(input: CreateCommentInput): Promise<CreateCo
       return { ok: false, error: 'tooLong', message: `评论内容不能超过${COMMENT_TEXT_MAX}字` };
     }
   } else {
-    // 带附件时按图注档限长：图片 + 2000 字在一条评论里排版会很难看（与聊天同口径）
+    // 带附件时按图注档限长：图片 + 2000 字在一条评论里排版会很难看（与讨论同口径）
     if (content.length > COMMENT_CAPTION_MAX) {
       return {
         ok: false,

@@ -4,7 +4,7 @@ import { rateLimit, RULES } from '@/lib/rate-limit';
 import { parsePosInt, requireChatUser } from '../_auth';
 
 // GET /api/chat/poll?channel=<id>&after=<id>
-// 聊天页对账轮询（实时消息已改走 SSE，这里只做兜底与低频对账）。
+// 讨论页对账轮询（实时消息已改走 SSE，这里只做兜底与低频对账）。
 export async function GET(req: Request) {
   const user = await requireChatUser();
   if (user instanceof Response) return user;

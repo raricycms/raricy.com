@@ -8,7 +8,7 @@ import type { ReactNode } from 'react';
 // 【为什么需要它】`/chat` 是满屏工作台（.chat-page 高 calc(100vh - 62px) + overflow:
 // hidden），而 layout 里的页脚是文档流的最后一块：body 是 flex column、main flex:1，
 // 页脚一出，文档就比视口高出一截 —— 页面平白多出整条滚动条，滚一下连输入框都被顶出
-// 视野。聊天页不需要页脚，去掉后 62px 顶栏 + 聊天区正好一屏。
+// 视野。讨论页不需要页脚，去掉后 62px 顶栏 + 讨论区正好一屏。
 //
 // 【为什么是客户端门控而不是布局】根 layout 无条件渲染页脚，子路由的 layout 无法
 // 「移除」父级的 UI；要让页脚只对部分路由消失，只能在渲染处判断路径。用 RSC 的

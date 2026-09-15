@@ -53,7 +53,7 @@ model User {
   showRecentComments Boolean @default(true) @map("show_recent_comments")
 
   // 专注模式：账号级浏览偏好（默认关）。开启后博客列表/侧栏隐藏 focusHidden 栏目，
-  // 聊天大区与「玩具」入口禁用。登出/游客不生效（见 docs/architecture.md 偏好约定）。
+  // 讨论大区与「玩具」入口禁用。登出/游客不生效（见 docs/architecture.md 偏好约定）。
   focusMode Boolean @default(false) @map("focus_mode")
 
   isBanned  Boolean?  @default(false) @map("is_banned")
@@ -620,7 +620,7 @@ model OAuthAccessToken {
   @@map("oauth_access_tokens")
 }
 
-// ── 在线聊天区（见 migration 4_chat / src/lib/chat-service.ts） ───────────────
+// ── 在线讨论区（见 migration 4_chat / src/lib/chat-service.ts） ───────────────
 // 频道（大区 + 私聊）→ 成员（含读游标，用于未读）→ 消息（自增 id 作增量游标）。
 // 注意：image_id / reply_to 不在此库建外键（图床硬删 / 消息软删都不应被物理约束卡住），
 // 外键关系只在 Prisma 层表达（测试库 prisma db push 会建约束，生产走手写 migration.sql）。
@@ -668,7 +668,7 @@ model ChatMessage {
   imageId    String?   @map("image_id")
   // 引用回复的消息 id（须同频道且未软删）
   replyTo    Int?      @map("reply_to")
-  // 引用博客的 UUID（blogs.id；无 relation —— 同 image_id 策略：博客软删不挡聊天，
+  // 引用博客的 UUID（blogs.id；无 relation —— 同 image_id 策略：博客软删不挡讨论，
   // 渲染期由 chat-service 按当前 Blog 行解析，软删后给 [博客已删除] 占位）
   blogId     String?   @map("blog_id")
   // 拍一拍的目标用户 id（无 relation —— 同上策略：username 读时解析、不存快照）。

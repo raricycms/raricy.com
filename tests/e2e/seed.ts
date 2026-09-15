@@ -39,7 +39,7 @@ export const SEED_USERS: Record<string, SeedUser> = {
    *
    * 【为什么单开一个号】分页要 >20 条（每页 20）才出得来，25 条通知塞给 core 会
    * 污染所有数通知的用例 —— chat-mention-notify 就按「当前登录身份收到的条数」
-   * 断言（它只数 action='聊天提及'，但 notify_* 偏好、未读角标那几条是数全部的）。
+   * 断言（它只数 action='讨论提及'，但 notify_* 偏好、未读角标那几条是数全部的）。
    * 专用账号 + 谁都不碰，是唯一不会互相绊到的做法。
    *
    * core 是必须的：/notifications 走 requireCoreUser。

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // ─────────────────────────────────────────────────────────────────────────────
-// chat-markdown.test.ts —— 聊天 Markdown 渲染管线的安全边界
+// chat-markdown.test.ts —— 讨论 Markdown 渲染管线的安全边界
 //
 // 【为什么用 jsdom】管线依赖真实 DOM（DOMPurify 走浏览器解析器），且只有真解析一遍
 // 才能回答「输出里到底有没有可执行的东西」。断言一律落在**解析后的 DOM 结构**上，

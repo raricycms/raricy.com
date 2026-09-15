@@ -147,8 +147,8 @@ async function resolveDuplicate(
  * 搜索转账收款人：任意用户（**不限 core+** —— 鱼干可以转给任何人），排除自己。
  * query 为空时返回最近注册的一批。按 username 匹配，返回分页总数供弹窗算页数。
  *
- * 与 chat-service.searchCoreUsers 同形，差异只在「不筛 role」：聊天是 core+ 专属，
- * 转账不是。若将来聊天那边改了筛选口径，别顺手把这里也改过去。
+ * 与 chat-service.searchCoreUsers 同形，差异只在「不筛 role」：讨论是 core+ 专属，
+ * 转账不是。若将来讨论那边改了筛选口径，别顺手把这里也改过去。
  */
 export async function searchTransferTargets(
   query: string,
@@ -455,7 +455,7 @@ export async function transferFish(
 
     // 通知接收者：**在提交与同步之后**发（钱已结算完，不能因通知失败而退回）；
     // 补偿路径绝不发（否则用户收到「有人给你转了钱」但那笔钱已被回滚）。
-    // 无对应偏好开关（同「文章投喂」「聊天提及」），显式声明不受偏好拦截。
+    // 无对应偏好开关（同「文章投喂」「讨论提及」），显式声明不受偏好拦截。
     try {
       await sendNotification({
         recipientId: recipient.id,

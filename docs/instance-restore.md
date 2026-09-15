@@ -20,7 +20,7 @@
 
 1. **时间戳是 TEXT**（`"2025-08-09 20:48:45.776483"`）—— Prisma 解析即抛 `Conversion failed`（登录 500）；
 2. **没有 `_raricy_migrations`** —— schema 停在 Flask 的最后一版，缺**基线之后的全部迁移**
-   （OAuth / 账本 / 聊天 / 评论附件…）。**具体条数以 `npm run migrate -- status` 为准**，
+   （OAuth / 账本 / 讨论 / 评论附件…）。**具体条数以 `npm run migrate -- status` 为准**，
    别照抄某个数字 —— 每加一个迁移它就会变。
 
 ## 0. 前置

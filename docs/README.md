@@ -17,8 +17,8 @@ raricy.com 的全部文档。分两层：**`guide/` 给玩家和内容创作者*
 | `guide/投票箱使用指南.md` ★ | 创建投票、嵌入博客 |
 | `guide/cattca-guide.md` ★ | Cattca 互动叙事入门（零基础） |
 | `guide/cattca-syntax.md` | Cattca 脚本语法参考（命令逐条） |
-| `guide/内容引用语法指南.md` | `[@<内容ID>]` 在博客 / 评论 / 聊天里嵌入内容 |
-| `guide/表情包使用指南.md` | `[@合集/表情]` 在评论 / 聊天里发表情；站长加素材 |
+| `guide/内容引用语法指南.md` | `[@<内容ID>]` 在博客 / 评论 / 讨论里嵌入内容 |
+| `guide/表情包使用指南.md` | `[@合集/表情]` 在评论 / 讨论里发表情；站长加素材 |
 | `guide/story-module.md` | 故事模块：文件结构 / 合集嵌套 / URL |
 
 ★ = 被站内页面渲染（`/clipboard/guide` · `/image/guide` · `/vote/guide` · `/tool/cattca-guide`）
@@ -31,7 +31,7 @@ raricy.com 的全部文档。分两层：**`guide/` 给玩家和内容创作者*
 | `deploy.md` | 从零到上线：环境、`.env`、数据库、systemd、nginx、TLS、备份、排障 |
 | `cli.md` | 运维 CLI：交互式向导 / 命令式用法；角色、用户、内容检索与恢复、鱼干、邀请码、审计、申诉 |
 | `oauth.md` | raricy 作为 OAuth 2.0 IdP 的完整协议与集成 |
-| `chat-bot.md` | 聊天机器人接入：接口契约 / SSE / 限频（面向站外开发者，自包含） |
+| `chat-bot.md` | 讨论机器人接入：接口契约 / SSE / 限频（面向站外开发者，自包含） |
 | `comment-bot.md` | 评论区机器人接入：接口契约 / 轮询 / 限频（面向站外开发者，自包含） |
 | `fish-bot.md` | 鱼干机器人接入：**无状态**转账 / 余额 / 流水（凭据随请求走）、限频与重试纪律（面向站外开发者，自包含） |
 | `frontend-styles.md` | SCSS 目录 / 设计令牌 / 组件约定 / 响应式 |

@@ -1,8 +1,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// 富文本输入区（RichComposer）—— 聊天与评论共用
+// 富文本输入区（RichComposer）—— 讨论与评论共用
 //
 // 【为什么是 mixin 而不是普通类】两处的 DOM 与视觉完全一致，只有 BEM 前缀不同
-// （聊天 chat-composer / 评论 comment-composer，见 RichComposer.tsx 的
+// （讨论 chat-composer / 评论 comment-composer，见 RichComposer.tsx 的
 // 「类名由调用方注入」）。写一份带前缀参数的 mixin，两边各 @include 一次 ——
 // 复制一份就是 170 行必然 drift 的样式。
 //

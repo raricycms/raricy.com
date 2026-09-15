@@ -1,4 +1,4 @@
-// 聊天接口统一鉴权：仅 core+（页面层 requireCoreUser 之外，接口必须自检）。
+// 讨论接口统一鉴权：仅 core+（页面层 requireCoreUser 之外，接口必须自检）。
 import { getCurrentUser, isCoreUser, isCurrentlyBanned, type SafeUser } from '@/lib/auth';
 import { apiErr } from '@/lib/format';
 
@@ -8,7 +8,7 @@ export async function requireChatUser(): Promise<ChatUserResult> {
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '请先登录');
   if (!isCoreUser(user)) return apiErr(403, '需要核心用户权限');
-  if (isCurrentlyBanned(user)) return apiErr(403, '你已被禁言，暂时无法聊天');
+  if (isCurrentlyBanned(user)) return apiErr(403, '你已被禁言，暂时无法讨论');
   return user;
 }
 

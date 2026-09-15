@@ -1,4 +1,4 @@
-// 聊天 SSE —— 推送与断线补齐（chat-service 的 sendMessage / listMessagesSince）
+// 讨论 SSE —— 推送与断线补齐（chat-service 的 sendMessage / listMessagesSince）
 //
 // 【为什么测这些】
 //   1. 推送投递对象：大区广播所有在线、私聊推全体成员（含发送者自己的其他标签页）。

@@ -1,22 +1,22 @@
 'use client';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// RichComposer.tsx — 富文本输入区（聊天与评论共用）
+// RichComposer.tsx — 富文本输入区（讨论与评论共用）
 //
 // 结构：附件条（回复 / 引用博客 / 待发图片）在上，下面一整块圆角面板
 //       （幽灵工具条 → 自动加高文本框 → 底条：左侧提示 + 右下角提交）。
 //
-// 【为什么共用】评论区要跟聊天区一样的输入体验（Markdown / 图床附件 / 引用博客），
+// 【为什么共用】评论区要跟讨论区一样的输入体验（Markdown / 图床附件 / 引用博客），
 // 而这些东西的行为细节都是踩出来的 —— 触屏设备没有 Shift 键所以 Enter 只能换行、
 // 粘贴与拖拽要走同一条上传校验链路、文本框要清高重算才能正确长高。复制一份必然 drift。
 //
 // 【状态仍在调用方】本组件是纯展示 + 回调：草稿、待发图片、回复目标都由调用方持有
-// （聊天还要按频道存草稿、要在点 @ 时操作 textarea，状态上提更省事）。
+// （讨论还要按频道存草稿、要在点 @ 时操作 textarea，状态上提更省事）。
 //
 // 【类名由调用方注入】`className` 是整棵子树的 BEM 前缀：
-//   · 聊天传 'chat-composer'    → chat-composer__input / __send …
+//   · 讨论传 'chat-composer'    → chat-composer__input / __send …
 //   · 评论传 'comment-composer' → comment-composer__input / __send …
-// 这样两类场景各有一套样式，而组件本身只有一份（聊天既有的 CSS 与 e2e 选择器
+// 这样两类场景各有一套样式，而组件本身只有一份（讨论既有的 CSS 与 e2e 选择器
 // 一个字节都不用改）。
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -86,7 +86,7 @@ export default function RichComposer({
   className: string;
   text: string;
   sending: boolean;
-  /** 除「正在发送」之外的禁用原因（聊天：没有选中频道）。 */
+  /** 除「正在发送」之外的禁用原因（讨论：没有选中频道）。 */
   sendDisabled?: boolean;
   sendLabel: string;
   sendingLabel: string;
@@ -112,24 +112,24 @@ export default function RichComposer({
    * 点了表情面板里的一个表情，参数是 token `[@合集/表情]`。
    *
    * 【为什么交回 token，而不是本组件自己插进 textarea 再让调用方发送】
-   * 聊天要「点一下立刻发出去」，而发送读的是调用方的 text state；React 的 setState
+   * 讨论要「点一下立刻发出去」，而发送读的是调用方的 text state；React 的 setState
    * 是批处理的 —— 本组件 setText 之后，父组件在**同一批次里**读到的 text 还是旧值。
    * 直接发的结果是弹「消息内容不能为空」，或者更糟：**把上一次的草稿当表情消息
    * 发出去**。所以「插不插、发不发」必须由调用方定：
    *   · 评论 → setText(v => insertAtCaret(ta, v, token))   留在草稿里
-   *   · 聊天 → sendWith(token)                             绕开 textarea 直接发
+   *   · 讨论 → sendWith(token)                             绕开 textarea 直接发
    */
   onStickerPick: (token: string) => void;
   /**
    * 选完一个表情要不要关面板。
-   * 聊天 true（发完就走）；评论 false（通常是连着挑好几个再落笔）。
+   * 讨论 true（发完就走）；评论 false（通常是连着挑好几个再落笔）。
    */
   stickerPickClosesPanel?: boolean;
   /**
-   * 底条左侧提示的**前置**内容（聊天与评论都用它显示字数上限）。
+   * 底条左侧提示的**前置**内容（讨论与评论都用它显示字数上限）。
    *
    * 【为什么是前置而不是整体替换】曾经它是整体替换默认提示的，于是评论区的
-   * 「Enter 发送 · Shift+Enter 换行 · 支持 Markdown」被顶掉了 —— 而聊天要加
+   * 「Enter 发送 · Shift+Enter 换行 · 支持 Markdown」被顶掉了 —— 而讨论要加
    * 字数提示时同样会丢掉按键说明。前置就只是「多一句」，两边都完整。
    */
   hintExtra?: React.ReactNode;

@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// comment-rich.spec.ts —— 评论区的富文本输入系统（对齐聊天区）
+// comment-rich.spec.ts —— 评论区的富文本输入系统（对齐讨论区）
 //
 // 覆盖：
 //   · Markdown 真的渲染了（服务端只存原文，渲染发生在浏览器）
@@ -170,7 +170,7 @@ test.describe('评论富文本', () => {
   });
 });
 
-test.describe('评论输入区（与聊天同源的 RichComposer）', () => {
+test.describe('评论输入区（与讨论同源的 RichComposer）', () => {
   test('输入区具备 Markdown 工具条与提交按钮；空内容提交被拦下', async ({ page }) => {
     const res = await page.request.post('/api/auth/login', {
       data: { username: SEED_USERS.core.username, password: 'e2e-Password-123' },
@@ -180,7 +180,7 @@ test.describe('评论输入区（与聊天同源的 RichComposer）', () => {
     await page.goto(BLOG_URL);
     const composer = page.locator('.comment-composer').first();
     await expect(composer).toBeVisible();
-    // 与聊天同一套结构（只是 BEM 前缀不同）：工具条四个按钮 + 文本域 + 提交
+    // 与讨论同一套结构（只是 BEM 前缀不同）：工具条四个按钮 + 文本域 + 提交
     await expect(composer.locator('.comment-composer__input')).toBeVisible();
     await expect(composer.locator('.comment-composer__send')).toBeVisible();
     // 按 aria-label 逐个点名，而不是只数个数 —— 数量断言说不出「少了哪一个」

@@ -3,8 +3,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // CommentSection.tsx — 博客评论区（楼中楼 + 软删除 + 附件）
 //
-// 【输入区与聊天同源】正文支持 Markdown、可传图床图片、可引用博客 —— 全部复用
-// src/app/components/RichComposer（与聊天同一份组件，样式前缀换成 comment-composer），
+// 【输入区与讨论同源】正文支持 Markdown、可传图床图片、可引用博客 —— 全部复用
+// src/app/components/RichComposer（与讨论同一份组件，样式前缀换成 comment-composer），
 // 上传走同一套 usePendingImage / image-client。
 //
 // 【正文的渲染】服务端下发 content（Markdown 原文），这里经 renderCommentMarkdown
@@ -14,7 +14,7 @@
 // （保留给 spider API 与无 JS 降级）。
 //
 // 【回复是「就地」的】点某条评论的「回复」，表单整块移动到那条评论下方（不是弹窗）。
-// 这是评论与聊天的语义差异：聊天回复是引用一条消息，评论回复是挂到某个父级下面
+// 这是评论与讨论的语义差异：讨论回复是引用一条消息，评论回复是挂到某个父级下面
 // （parent_id 决定楼中楼的位置）。两边的输入区长得一样，语义不混。
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -110,7 +110,7 @@ interface ReplyTarget {
   preview: string;
 }
 
-/** 回复条预览文案：与聊天同一口径 —— 正文为空时按附件给占位，别显示成「回复 某某：」空着。 */
+/** 回复条预览文案：与讨论同一口径 —— 正文为空时按附件给占位，别显示成「回复 某某：」空着。 */
 function replyPreview(node: CommentNode): string {
   const collapsed = node.content.replace(/\s+/g, ' ').trim();
   if (collapsed) return collapsed.length > 40 ? `${collapsed.slice(0, 40)}…` : collapsed;

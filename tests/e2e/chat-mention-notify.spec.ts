@@ -1,9 +1,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // chat-mention-notify.spec.ts —— @ 提及通知
 //
-// 【防的回归】聊天的产品口径是「收到消息不打扰，被 @ 才打扰」：
-//   · 普通聊天消息**不**进通知列表（未读走顶栏徽标，见 chat-unread-mark.spec）；
-//   · 每条 @ 我 的消息产生一条通知，通知里带「查看聊天」回到该会话；
+// 【防的回归】讨论的产品口径是「收到消息不打扰，被 @ 才打扰」：
+//   · 普通讨论消息**不**进通知列表（未读走顶栏徽标，见 chat-unread-mark.spec）；
+//   · 每条 @ 我 的消息产生一条通知，通知里带「查看讨论」回到该会话；
 //   · 在别人的私聊里被 @、专注模式下在大区被 @ —— 都不该收到通知。
 //
 // 【造数纪律】大区是全站共用频道：只断言「我这个全新用户」的通知，不数总数。
@@ -20,7 +20,7 @@ async function mentionCount(page: Page): Promise<number> {
   const res = await page.request.get('/api/notifications?page=1');
   expect(res.status()).toBe(200);
   const body = (await res.json()) as { notifications: { action: string }[] };
-  return body.notifications.filter((n) => n.action === '聊天提及').length;
+  return body.notifications.filter((n) => n.action === '讨论提及').length;
 }
 
 /**
@@ -63,13 +63,13 @@ test.describe('@ 提及通知', () => {
       try {
         expect(await mentionCount(page), '@ 一次应当收到一条').toBe(1);
 
-        // 通知列表页：类型、正文预览与「查看聊天」入口
+        // 通知列表页：类型、正文预览与「查看讨论」入口
         await page.goto('/notifications');
-        const card = page.locator('.notification-card', { hasText: '聊天提及' }).first();
+        const card = page.locator('.notification-card', { hasText: '讨论提及' }).first();
         await expect(card).toBeVisible();
         await expect(card.locator('.notification-content')).toContainText(tag);
-        await expect(card.locator('.notification-content')).toContainText('聊天大区');
-        const link = card.locator('a', { hasText: '查看聊天' });
+        await expect(card.locator('.notification-content')).toContainText('讨论大区');
+        const link = card.locator('a', { hasText: '查看讨论' });
         await expect(link).toHaveAttribute('href', `/chat?channel=${LOBBY}`);
       } finally {
         await mentionCtx.close();

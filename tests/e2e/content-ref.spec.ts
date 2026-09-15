@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// content-ref.spec.ts —— 评论 / 聊天正文里的 `[@ ]` 内容引用 + 「从图床选择」
+// content-ref.spec.ts —— 评论 / 讨论正文里的 `[@ ]` 内容引用 + 「从图床选择」
 //
-// 【为什么必须走真浏览器】服务端不渲染评论 / 聊天正文（没有 window，DOMPurify 会
+// 【为什么必须走真浏览器】服务端不渲染评论 / 讨论正文（没有 window，DOMPurify 会
 // 静默降级成转义纯文本），所以「引用有没有展开」「图片有没有出来」在接口层看不出来
 // —— 接口返回的 content 本来就是原文。单测（tests/unit/content-refs.test.ts）管
 // 管线的白名单与安全边界，这里管「装到页面上之后还是对的」。
@@ -207,7 +207,7 @@ test.describe('从图床选择（评论输入区）', () => {
   });
 });
 
-test.describe('聊天区的内容引用', () => {
+test.describe('讨论区的内容引用', () => {
 
   /** 按哨兵串定位消息行（回复引用块里也会出现原文，必须限定在正文内匹配）。 */
   function msgRow(page: Page, marker: string) {
@@ -219,7 +219,7 @@ test.describe('聊天区的内容引用', () => {
   test('★ 10 位图床引用内联成图片，8 位剪贴板引用内联成正文', async ({ page }) => {
     const marker = `e2e-chatref-${Date.now().toString(36)}`;
     const imageId = await uploadViaApi(page.request);
-    const clipId = await createClipViaApi(page.request, '聊天里的剪贴板正文');
+    const clipId = await createClipViaApi(page.request, '讨论里的剪贴板正文');
 
     const posted = await page.request.post(`/api/chat/channels/${LOBBY}/messages`, {
       data: { content: `${marker} 图 [@${imageId}] 文 [@${clipId}]` },
@@ -235,11 +235,11 @@ test.describe('聊天区的内容引用', () => {
     await expect(inline).toHaveAttribute('src', `/api/images/${imageId}/raw`);
 
     // 剪贴板正文被内联进来了
-    await expect(row.locator('.chat-msg__content')).toContainText('聊天里的剪贴板正文');
+    await expect(row.locator('.chat-msg__content')).toContainText('讨论里的剪贴板正文');
     await expect(row.locator('.chat-msg__content')).not.toContainText('[@');
   });
 
-  test('★ 9 位投票引用不展开（聊天正文里没有投票组件）', async ({ page }) => {
+  test('★ 9 位投票引用不展开（讨论正文里没有投票组件）', async ({ page }) => {
     const marker = `e2e-chatvote-${Date.now().toString(36)}`;
     const voteId = 'vOtE12345';
     const posted = await page.request.post(`/api/chat/channels/${LOBBY}/messages`, {

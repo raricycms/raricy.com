@@ -67,7 +67,7 @@ export default function PrivacyPage() {
         用于在您登录后维持认证状态，属于技术必要型 Cookie。
       </p>
       <p>
-        2.2 部分界面偏好（博客列表排序方式、聊天侧栏折叠）以 localStorage 存储，并用同名
+        2.2 部分界面偏好（博客列表排序方式、讨论侧栏折叠）以 localStorage 存储，并用同名
         偏好 Cookie（blog_sort、chat_sidebar_collapsed，均为一年期、非 httpOnly、Path=/）
         同步给服务端，仅用于让相应页面在您下次访问时按您的偏好直接呈现首屏，避免加载后跳变。
         浅色/深色主题偏好仅存于 localStorage，不上送服务端。这些 Cookie 不用于任何追踪或

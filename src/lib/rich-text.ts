@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // rich-text.ts — 用户输入正文 → 安全 HTML 的**共享管线**（marked → DOMPurify → 后处理）
 //
-// 【为什么单独成模块】聊天正文与评论正文是同一类东西：**用户输入**，且渲染进所有
+// 【为什么单独成模块】讨论正文与评论正文是同一类东西：**用户输入**，且渲染进所有
 // 登录用户都能看到的公共区域 —— 一处 XSS 等于全站会话沦陷（偷 cookie / 冒名发消息
 // / CSRF 写操作）。两者的威胁模型与防线**逐条相同**，差别只在白名单与链接类名。
 //
@@ -10,7 +10,7 @@
 // 另一边不会知道，而两边看起来都「有净化」。
 //
 // 所以本文件是唯一管线，白名单 / 类名 / 缓存上限由调用方注入：
-//   · src/lib/chat-markdown.ts    → 聊天气泡（linkClass: chat-msg__link）
+//   · src/lib/chat-markdown.ts    → 讨论气泡（linkClass: chat-msg__link）
 //   · src/lib/comment-markdown.ts → 评论正文（linkClass: comment-link）
 //
 // ⚠️ 改本文件 = 改安全边界。单测在 tests/unit/chat-markdown.test.ts（五道防线逐条
@@ -30,7 +30,7 @@
 //      之类 UI 类名去冒充博客卡片。
 //   4. 外链图片 —— <img> 不在白名单，`![](url)` 降级成链接：发图走图床**附件**
 //      （imageId），不允许正文里嵌任意外链图片（第三方跟踪像素 / 访客 IP 泄露 /
-//      混合内容告警）。评论与聊天共用这条口径。
+//      混合内容告警）。评论与讨论共用这条口径。
 //      ⚠️ **唯一的例外是 `[@<10位图床ID>]`** —— 它不是「放开了这个白名单」，
 //      而是全程绕开白名单：`[@id]` 本身就是纯文本，marked 原样留着，等 DOMPurify
 //      净化完之后，再由 embedImageRefs 用 createElement 把它换成
@@ -121,7 +121,7 @@ function createMarked(): Marked {
       // 开始标签，后续文本 token 就带 escaped=true，而默认 renderer 对 escaped 文本
       // **原样输出**（不转义）。于是「marked 的 tag 正则认不出、浏览器却认」的畸形标签
       // 能绕过 renderer.html 直出为真元素 —— 实测 `<input type="password"y>`（属性之间
-      // 缺空格）会在每个浏览者的聊天里渲染出一个真实密码框（钓鱼）。
+      // 缺空格）会在每个浏览者的讨论里渲染出一个真实密码框（钓鱼）。
       // 这里在渲染前把 escaped 文本转义掉，并保留 escaped=true 让默认 renderer 直接输出。
       if (token.type === 'text' && token.escaped) {
         token.text = escapeHtml(token.text);
@@ -211,7 +211,7 @@ function hardenLinks(root: HTMLElement, linkClass: string): void {
 
 /**
  * 建一个渲染器。每个渲染器持有**自己的** marked 实例与缓存 —— 白名单不同就不能
- * 共用缓存，否则会把聊天口径的 HTML 喂给评论（反之亦然）。
+ * 共用缓存，否则会把讨论口径的 HTML 喂给评论（反之亦然）。
  */
 export function createRichTextRenderer(options: RichTextOptions): RichTextRenderer {
   const { allowedTags, allowedAttr, linkClass, cacheMax } = options;

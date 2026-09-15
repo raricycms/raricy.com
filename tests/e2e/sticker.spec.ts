@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// sticker.spec.ts —— 表情包（评论 + 聊天）
+// sticker.spec.ts —— 表情包（评论 + 讨论）
 //
-// 【为什么必须走真浏览器】服务端不渲染评论 / 聊天正文（没有 window，DOMPurify 会
+// 【为什么必须走真浏览器】服务端不渲染评论 / 讨论正文（没有 window，DOMPurify 会
 // 静默降级成转义纯文本），所以「表情有没有出图」「404 有没有降级回字面量」在接口层
 // 看不出来 —— 接口返回的 content 本来就是原文。单测（tests/unit/sticker-refs.test.ts）
 // 管语法的白名单与安全边界，这里管「装到页面上之后还是对的」。
@@ -9,7 +9,7 @@
 // 覆盖面：
 //   · 面板数据源：合集 / 显示名 / ignore 的合集不出现
 //   · 图片路由：真出图、nosniff、**隐藏合集 404**、穿越形态 404
-//   · 聊天：点表情 → 直接发送（一条纯 token 的消息）
+//   · 讨论：点表情 → 直接发送（一条纯 token 的消息）
 //   · 评论：点表情 → 插到输入框，**不发送**（草稿保住）
 //   · 正文渲染：token → 内联 <img class="rich-sticker-ref">，且不带图床那个类名
 //   · **404 降级**：不存在的表情退回纯文本 token（onerror 事件委托）
@@ -120,7 +120,7 @@ test.describe('表情包：数据源与图片路由', () => {
 // ── 正文渲染 ────────────────────────────────────────────────────────────────
 
 test.describe('表情包：正文渲染', () => {
-  test('聊天正文里的 token 渲染成内联表情图', async ({ page }) => {
+  test('讨论正文里的 token 渲染成内联表情图', async ({ page }) => {
     await loginViaApi(page, SEED_USERS.core.username);
     const marker = `e2e-sticker-${uniqueTag()}`;
     await postMessage(page, `${marker} ${TOKEN}`);
@@ -171,7 +171,7 @@ test.describe('表情包：正文渲染', () => {
 // ── 输入区 ──────────────────────────────────────────────────────────────────
 
 test.describe('表情包：输入区', () => {
-  test('聊天：点面板里的表情 → 直接发送（不经过输入框）', async ({ page }) => {
+  test('讨论：点面板里的表情 → 直接发送（不经过输入框）', async ({ page }) => {
     const user = await registerFreshUser(page, { core: true });
     await page.goto(`/chat?channel=${LOBBY}`);
 

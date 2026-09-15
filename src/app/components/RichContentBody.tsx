@@ -1,7 +1,7 @@
 'use client';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// RichContentBody.tsx — 用户正文的渲染壳（聊天与评论共用）
+// RichContentBody.tsx — 用户正文的渲染壳（讨论与评论共用）
 //
 // 真正干活的两件事都不在这里：
 //   · marked → DOMPurify → 后处理：src/lib/rich-text.ts（由调用方以 render 传入）
@@ -11,7 +11,7 @@
 // 挂点击放大**。正文是 dangerouslySetInnerHTML 塞进去的，挂不上 React onClick，
 // 所以在容器上做事件委托 —— 用 ImageLightbox（与附件图同一个看图器）。
 //
-// 【为什么单独一个组件】聊天与评论的渲染壳本来是两份同构代码（ChatMarkdown /
+// 【为什么单独一个组件】讨论与评论的渲染壳本来是两份同构代码（ChatMarkdown /
 // CommentMarkdown），各自只差一个类名与一个 render 函数。本次两边都要加「异步
 // 展开 + 图片点击」，再各写一份就是必然 drift —— 与 rich-text.ts 文件头讲的是
 // 同一个理由。两个薄壳因此退化成「传类名 + 传 render」。

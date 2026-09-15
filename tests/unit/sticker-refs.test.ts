@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // ─────────────────────────────────────────────────────────────────────────────
-// sticker-refs.test.ts —— 评论 / 聊天里表情包引用 `[@合集/表情]` 的**语法边界与安全面**
+// sticker-refs.test.ts —— 评论 / 讨论里表情包引用 `[@合集/表情]` 的**语法边界与安全面**
 //
 // 【与 content-refs.test.ts 的分工】那份钉图床引用，这份钉表情引用。两条旁路同构
 // （都是「净化之后由我们自己的代码 createElement 建 <img>」），所以这里的用例也
@@ -16,7 +16,7 @@
 //   3. **不许误伤 8 / 10 位引用** —— 那两种是精确长度 + 纯字母数字，而表情 token
 //      必含 `/`，天然不撞；这条用例把它钉死。
 //
-// 【两份渲染器都要跑】照 content-refs.test.ts 的 parity 写法：评论与聊天白名单
+// 【两份渲染器都要跑】照 content-refs.test.ts 的 parity 写法：评论与讨论白名单
 // 逐字相同、只差链接类名，一处漏打补丁另一处不会知道。
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -42,7 +42,7 @@ function mount(render: (s: string) => string, content: string): HTMLElement {
 }
 
 const RENDERERS = [
-  { name: '聊天', render: renderChatMarkdown },
+  { name: '讨论', render: renderChatMarkdown },
   { name: '评论', render: renderCommentMarkdown },
 ] as const;
 

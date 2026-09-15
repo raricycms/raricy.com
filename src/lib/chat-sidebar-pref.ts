@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// chat-sidebar-pref.ts — 聊天侧栏折叠偏好的存储键（零依赖，server/client 共用）
+// chat-sidebar-pref.ts — 讨论侧栏折叠偏好的存储键（零依赖，server/client 共用）
 //
 // 折叠偏好存两处，职责不同（对齐 blog-sort-pref 的镜像模型）：
 //  - localStorage（LS_KEY）：长命记忆 + 存量迁移源。key 保持 'chat.sidebarCollapsed'

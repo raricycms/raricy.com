@@ -12,7 +12,7 @@ src/styles-scss/
 ├── base/         reset、root（CSS 变量）、排版、表单、Bootstrap fallback
 ├── components/   按钮、导航、图标、弹窗、卡片、告警、表单控件、toast、分页
 ├── layout/       容器、栅格、顶栏、页脚、后台侧边栏
-├── pages/        各页面样式（首页、博客、聊天、通知、管理后台…）
+├── pages/        各页面样式（首页、博客、讨论、通知、管理后台…）
 ├── utilities/    间距、显示、flex、文本工具类
 ├── compiled/     编译产物 flask.css（不要手改）
 └── main.scss     入口，控制 import 顺序
@@ -151,9 +151,9 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
 |------|--------------|------|
 | 顶栏用户头像 | `.site-user-avatar`（layout/_header.scss） | 32px |
 | 个人主页大图 | `.profile-hero__avatar`（pages/_profile.scss） | 120px |
-| 聊天 · 频道列表 / 折叠图标 | `.chat-chan__avatar` / `.chat-chan__icon`（pages/_chat.scss） | 34px |
-| 聊天 · 会话标题栏 | `.chat-main__peer-avatar`（pages/_chat.scss） | 32px |
-| 聊天 · 消息作者 | `.chat-msg__avatar`（pages/_chat.scss） | 34px |
+| 讨论 · 频道列表 / 折叠图标 | `.chat-chan__avatar` / `.chat-chan__icon`（pages/_chat.scss） | 34px |
+| 讨论 · 会话标题栏 | `.chat-main__peer-avatar`（pages/_chat.scss） | 32px |
+| 讨论 · 消息作者 | `.chat-msg__avatar`（pages/_chat.scss） | 34px |
 | 新会话弹窗列表 | `.chat-new-item__avatar`（pages/_chat.scss） | 32px |
 | 签到排行榜（含占位） | `.checkin-leaderboard__avatar` / `-placeholder`（pages/_checkin.scss） | 32px |
 | 后台用户卡片 | `.user-card__avatar`（pages/admin/_users.scss） | 28px |
@@ -199,7 +199,7 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
 - `.pagination`：居中，`.page-link` 卡片底 + 边框；激活页品牌色实底白字。
 - `.alert`：Bootstrap 风格 4 色 + `body.dark-mode` 适配。
 
-### 6.5 聊天页（`pages/_chat.scss`）
+### 6.5 讨论页（`pages/_chat.scss`）
 
 `/chat` 是双栏工作台，页面高度 `calc(100vh - 62px)`、`overflow: hidden`，色板全部走 CSS 变量随明暗主题：
 
@@ -275,10 +275,10 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
 
 | 组件 | mixin | 用处 |
 |------|-------|------|
-| 富文本输入区 | `components/_composer.scss` → `rich-composer($p)` | 聊天 `chat-composer` / 评论 `comment-composer` |
-| Markdown 正文块级元素 | `components/_markdown-body.scss` → `rich-markdown($cls)` | 聊天 `chat-msg__md` / 评论 `comment-content__md` |
+| 富文本输入区 | `components/_composer.scss` → `rich-composer($p)` | 讨论 `chat-composer` / 评论 `comment-composer` |
+| Markdown 正文块级元素 | `components/_markdown-body.scss` → `rich-markdown($cls)` | 讨论 `chat-msg__md` / 评论 `comment-content__md` |
 
-复制一份的代价不是重复代码，是**必然 drift** —— 用户会看到「列表在聊天里长这样、在评论里
+复制一份的代价不是重复代码，是**必然 drift** —— 用户会看到「列表在讨论里长这样、在评论里
 长那样」，而这类不一致没有人会当成 bug 报上来。React 侧同理：`RichComposer` 的 BEM 前缀
 由 `className` 注入（见组件文件头）。
 

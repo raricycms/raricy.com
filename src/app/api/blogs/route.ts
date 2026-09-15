@@ -15,7 +15,7 @@ import { prisma } from '@/lib/db';
 
 // GET /api/blogs?page=&per_page=&category=&featured=&search=&sort=
 // per_page：可选（缺省走服务默认 200，行为不变）；传了则 clamp 1..50
-// （聊天「引用博客」弹窗用 20 条一页）。
+// （讨论「引用博客」弹窗用 20 条一页）。
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const perPageRaw = url.searchParams.get('per_page');

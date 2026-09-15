@@ -1907,7 +1907,7 @@ describe('POST /api/images（上传内容校验接线）', () => {
   });
 
   it('单文件的响应形状与支持多文件之前一致', async () => {
-    // 图床页 / 聊天与评论选图 / 三条 e2e 都吃 id + url，这两个字段不能动
+    // 图床页 / 讨论与评论选图 / 三条 e2e 都吃 id + url，这两个字段不能动
     const u = await makeUser({ role: 'core' });
     authState.user = { id: u.id, role: 'core' };
 

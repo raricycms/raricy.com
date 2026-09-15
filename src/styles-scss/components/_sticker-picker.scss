@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// 表情面板（StickerPicker）—— 聊天与评论的输入区共用
+// 表情面板（StickerPicker）—— 讨论与评论的输入区共用
 //
 // 放在 components/ 而不是 pages/_chat.scss：它由 RichComposer 持有，评论区同样在用，
 // 理由与 _image-picker.scss 一字不差。

@@ -114,13 +114,13 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 - 永不物理删除（站长手动例外）。字段清单见 `docs/architecture.md` §8。
 - `is_deleted=true` 且无子评论 → 自动从楼中楼里隐藏。
 
-### 聊天与通知的关系
-- **聊天消息不进通知列表、也不进铃铛数字**：铃铛数字 = `getUnreadCount`，必须等于
-  通知列表的条目数。聊天未读改由顶栏「聊天」链接上的小红点体现 —— `/api/notifications/count`
+### 讨论与通知的关系
+- **讨论消息不进通知列表、也不进铃铛数字**：铃铛数字 = `getUnreadCount`，必须等于
+  通知列表的条目数。讨论未读改由顶栏「讨论」链接上的小红点体现 —— `/api/notifications/count`
   另出 `chatUnread` 布尔（来自 `getChatUnreadSummary`：私聊有未读 / 大区被 @），
   base.js 据此点亮 `#chatUnreadDot`。**别再把它加回 `count`**：那会让铃铛写着 5、
   点进 `/notifications` 只有 2 条。
-- **唯一进通知列表的是 @ 提及**（action `聊天提及`，一条 @ 一条通知）：`chat-service.notifyChannelMentions`。
+- **唯一进通知列表的是 @ 提及**（action `讨论提及`，一条 @ 一条通知）：`chat-service.notifyChannelMentions`。
   逐条闸门：非自己 / 非禁言 / core+ / 频道对其可见（**私聊非成员不发**、**大区专注模式不发**）/
   会话未静音。四个 `notify_*` 开关都不管它（调用方传 `prefKey: null`）。
   判定与红点口径共用 `extractMentions`（用户名必须精确匹配）——改一处必须同步另一处。
@@ -138,7 +138,7 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
   （authorize 30/min/user、token 60/min/clientId、userinfo 600/min/user）是各 route 里内联的
   字面量，不在 `RULES` 里 —— 改 OAuth 限频要去 `src/app/api/oauth/*/route.ts` 找。
 - **对外文档会复述数值**，这是刻意的（站外读者要能自包含）：`docs/chat-bot.md` §10 镜像了
-  聊天那 7 条，`docs/fish-bot.md` §4 镜像了转账、市场无状态接口与凭据校验失败的配额，
+  讨论那 7 条，`docs/fish-bot.md` §4 镜像了转账、市场无状态接口与凭据校验失败的配额，
   `docs/guide/` 的投票 / 图床指南也各写了一份。改 `RULES` 数值时记得同步它们，
   否则就是下一次 drift。
 - 单进程语义；多实例部署需换 Redis（已知限制）。
@@ -152,14 +152,14 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 - 博客正文 / 评论：客户端 marked + DOMPurify + highlight.js。
   **故事是服务端渲染**（`story-service.ts` 的 marked + `stripScripts`，不走 DOMPurify、无代码高亮）
   —— 故事文件由站长直接写在 `instance/stories/`，按可信输入处理。见 `docs/architecture.md` §6.7。
-- 聊天正文：`src/lib/chat-markdown.ts`（marked + DOMPurify）。白名单比博客更紧。
+- 讨论正文：`src/lib/chat-markdown.ts`（marked + DOMPurify）。白名单比博客更紧。
   **改这里的白名单等于改安全边界**，务必同步 `tests/unit/chat-markdown.test.ts`。
 - 内容引用 `[@<8位>]`（剪贴板）/ `[@<9位>]`（投票）/ `[@<10位>]`（图床）—— 浏览器渲染时替换。
   语法细节见 `docs/guide/内容引用语法指南.md`。
   **两条管道，别混**：博客 / 剪贴板走 `MarkdownRenderer.tsx` 的 `ContentRefProcessor`
-  （异步、三种都支持、带投票组件与代码高亮）；评论 / 聊天走 `src/lib/content-refs.ts`
+  （异步、三种都支持、带投票组件与代码高亮）；评论 / 讨论走 `src/lib/content-refs.ts`
   （同步、**只支持 8 位与 10 位**、剪贴板最多 1 条且超 2000 字截断、投票不展开）。
-- **评论 / 聊天里的图床图是「绕开白名单」而不是「放开白名单」**：`[@10位]` 本身就是纯文本，
+- **评论 / 讨论里的图床图是「绕开白名单」而不是「放开白名单」**：`[@10位]` 本身就是纯文本，
   marked 原样留着，等 DOMPurify 净化**之后**再由 `embedImageRefs` 用 `createElement`
   把它换成 `<img>`。所以 `rich-text.ts` 防线 4（img 不在白名单、`![](外链)` 降级成链接）
   一个字都没改，用户手写的 `<img>` 照旧被转义。**别为了「支持图片」把 img 加进白名单** ——
@@ -173,7 +173,7 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
   棋子能入库，唯一理由是 BSD-3 明文授予了再分发权；玩具区移除时已随之下线）。
 - 语法 **`[@合集/表情]`**，斜杠分隔 —— 文件名不可能含 `/`，切分唯一；含 `/` 也天然免疫
   `content-refs.ts` 那两条**精确长度**正则（`{8}`/`{10}` 只认字母数字），不会误伤。
-- **只在评论与聊天生效**，博客正文里原样显示（那边是另一条异步管线，与「9 位投票在
+- **只在评论与讨论生效**，博客正文里原样显示（那边是另一条异步管线，与「9 位投票在
   评论里不展开」是同一类有意的口径差异）。
 - **正则一个 `\s*` 都不能有**：`extractMentions` 跑在**原始正文**上，token 允许空白的话
   `[@猫 猫/开心]` 里的 `@猫 ` 正好满足它的 `(?=\s|$)` → **凭空给叫「猫」的用户发通知**。
@@ -189,7 +189,7 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 - **span 类名与图床图不同**（`rich-sticker-ref` vs `rich-image-ref`）：`RichContentBody`
   按后者判定点开大图，共用会让点表情弹灯箱；`_markdown-body.scss` 那条通用的
   `img { display: block }` 也要靠类名盖掉，否则行内表情会把整行断开。
-- **聊天点表情是「直接发送」，评论是「插入光标处」**。前者必须走
+- **讨论点表情是「直接发送」，评论是「插入光标处」**。前者必须走
   `sendWith(token, { keepDraft: true })` —— `send` 从闭包读 `text`，先插再发会撞
   React 批处理（轻则「内容不能为空」，重则把上一段草稿当表情发出去）。
   keepDraft 同时保证不带附件、不清草稿。

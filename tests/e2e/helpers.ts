@@ -82,7 +82,7 @@ export async function loginViaApi(page: Page, username: string) {
  * 都按用户计桶。
  *
  * @param opts.core 注册后直接提到 core。默认 false（新注册就是 role=user）。
- *   需要 core 的场景：点赞/剪贴板/投票/申诉/聊天这些 @authenticated_required
+ *   需要 core 的场景：点赞/剪贴板/投票/申诉/讨论这些 @authenticated_required
  *   的接口 —— 光注册是用不了的，得先过邀请码认证。用例若忘了提权，会拿到 403，
  *   看起来像鉴权坏了，其实是没认证。
  */

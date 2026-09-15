@@ -135,8 +135,8 @@ a {
     background: var(--color-brand-secondary);
   }
 
-  // 聊天未读小红点：挂在「聊天」链接右上角，由 base.js 按 /api/notifications/count
-  // 的 chatUnread 开关 display。只点红点不显数字 —— 铃铛的数字归站内通知，聊天未读
+  // 讨论未读小红点：挂在「讨论」链接右上角，由 base.js 按 /api/notifications/count
+  // 的 chatUnread 开关 display。只点红点不显数字 —— 铃铛的数字归站内通知，讨论未读
   // 若也占个数字，点进通知列表就对不上（跨页数也说不清是哪个会话来的）。
   &__dot {
     position: absolute;

@@ -206,7 +206,7 @@ export default function NotificationItems({ initial }: { initial: NotificationDT
                   href={`/chat?channel=${encodeURIComponent(n.object.id)}`}
                   className="notification-blog-link"
                 >
-                  查看聊天 <ArrowRight aria-hidden="true" />
+                  查看讨论 <ArrowRight aria-hidden="true" />
                 </Link>
               )}
             </div>

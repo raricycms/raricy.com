@@ -4,9 +4,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 // 收款人选择弹窗 —— 搜索任意用户（服务端已排除自己）。
 //
-// 结构与交互对齐聊天页的「发起私聊」弹窗（NewChatModal）：200ms 防抖搜索 + 分页。
-// 但类名是市场自己的（.market-*）：那边是聊天域的 BEM，两处复用同一套类名会让
-// 「改聊天弹窗样式」静默改到这里（frontend-styles §11.1 讲的 drift）。
+// 结构与交互对齐讨论页的「发起私聊」弹窗（NewChatModal）：200ms 防抖搜索 + 分页。
+// 但类名是市场自己的（.market-*）：那边是讨论域的 BEM，两处复用同一套类名会让
+// 「改讨论弹窗样式」静默改到这里（frontend-styles §11.1 讲的 drift）。
 // 通用外壳（.modal-overlay / .modal-dialog / .modal-content）是共用组件，照用。
 
 declare global {

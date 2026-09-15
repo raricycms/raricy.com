@@ -133,7 +133,7 @@ export default function ChatSidebar({
   return (
     <aside className="chat-sidebar" aria-label="会话列表">
       <div className="chat-sidebar__head">
-        <span className="chat-sidebar__title">聊天</span>
+        <span className="chat-sidebar__title">讨论</span>
         <button
           type="button"
           className="chat-sidebar__collapse"

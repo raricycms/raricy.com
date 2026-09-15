@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// chat-sse.spec.ts —— 聊天实时推送（SSE）端到端
+// chat-sse.spec.ts —— 讨论实时推送（SSE）端到端
 //
 // 【为什么要 E2E】SSE 是「流式响应 + 长连接 + 浏览器 EventSource 自动重连」的组合：
 //   · 响应头错一个（比如少了 Cache-Control: no-transform）→ next start 的压缩中间件
@@ -41,7 +41,7 @@ async function postAs(
   return ctx;
 }
 
-test.describe('聊天 SSE 实时推送', () => {
+test.describe('讨论 SSE 实时推送', () => {
   test('响应头必须带 no-transform（否则 next start 的压缩会攒帧）', async ({ page }) => {
     await loginViaApi(page, SEED_USERS.core.username);
     await page.goto(`/chat?channel=${LOBBY}`);

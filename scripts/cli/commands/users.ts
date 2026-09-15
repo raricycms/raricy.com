@@ -268,7 +268,7 @@ export const userCommands: CommandSpec[] = [
       return [
         `目标用户：${target.username}（当前 ${target.role}${target.isBanned ? '，已处于禁言中' : ''}）`,
         `禁言 ${hours} 小时`,
-        '后果：立即踢下线 + 断开聊天长连接；期间不能发文、评论、聊天。',
+        '后果：立即踢下线 + 断开讨论长连接；期间不能发文、评论、讨论。',
         '本次操作会写入审计日志（公开可见），并通知被禁言者 —— 对方可以就此申诉。',
       ];
     },
@@ -344,7 +344,7 @@ export const userCommands: CommandSpec[] = [
       if (target.id === actor.id) throw new CliError('错误：不能强制自己下线');
       return [
         `目标用户：${target.username}（${target.role}）`,
-        '后果：该用户所有已登录会话立即失效，并断开聊天长连接；重新登录即可继续。',
+        '后果：该用户所有已登录会话立即失效，并断开讨论长连接；重新登录即可继续。',
         '本次操作会写入审计日志（公开可见），并通知本人。',
       ];
     },

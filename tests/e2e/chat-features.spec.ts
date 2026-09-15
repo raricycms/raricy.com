@@ -41,7 +41,7 @@ function msgRow(page: import('@playwright/test').Page, marker: string) {
   });
 }
 
-test.describe('聊天功能：链接 / 跳转 / 搜索 / 日期分隔', () => {
+test.describe('讨论功能：链接 / 跳转 / 搜索 / 日期分隔', () => {
   test('正文里的 http(s) 链接渲染成可点链接，且带 noopener', async ({ page }) => {
     const marker = `e2e-link-${uniqueTag()}`;
     const url = 'https://example.com/e2e-link-target';
@@ -399,9 +399,9 @@ test.describe('发起私聊', () => {
   });
 });
 
-test.describe('聊天页布局', () => {
+test.describe('讨论页布局', () => {
   /**
-   * 聊天区是满屏工作台（.chat-page 高 calc(100vh - 62px)），站点页脚在它下面
+   * 讨论区是满屏工作台（.chat-page 高 calc(100vh - 62px)），站点页脚在它下面
    * 会把文档撑过一屏 —— 多出整页滚动条，滚一下连输入框都被顶出视野。
    * 断言落在「页脚不存在」+「文档没有溢出」两条上：只断言前者的话，将来若换成
    * 用 CSS 隐藏（display:none 之外的写法）仍可能留下高度。
@@ -419,7 +419,7 @@ test.describe('聊天页布局', () => {
       const overflow = await page.evaluate(
         () => document.documentElement.scrollHeight - document.documentElement.clientHeight
       );
-      expect(overflow, '聊天页不应出现整页滚动条').toBeLessThanOrEqual(1);
+      expect(overflow, '讨论页不应出现整页滚动条').toBeLessThanOrEqual(1);
     }
   });
 });
@@ -433,7 +433,7 @@ test.describe('聊天页布局', () => {
 // 恰好是对的（用例会假绿），把 CPU 降到 1/4（手机的真实情形）才稳定复现。
 // 降速靠 CDP，故只在 Chromium 跑。
 // ─────────────────────────────────────────────────────────────────────────────
-test.describe('进入聊天区停在最新消息', () => {
+test.describe('进入讨论区停在最新消息', () => {
   test.skip(({ browserName }) => browserName !== 'chromium', 'CPU 降速依赖 CDP（仅 Chromium）');
   test.use({ viewport: { width: 390, height: 844 } });
 

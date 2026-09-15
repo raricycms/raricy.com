@@ -9,5 +9,5 @@
 /** 专注模式下禁用入口的统一 hover 提示（原生 title）。 */
 export const FOCUS_MODE_BLOCKED_TITLE = '已开启专注模式，无法使用该功能';
 
-/** 设置页专注模式卡片的锚点（横幅「此处」/ 聊天空态同源）。 */
+/** 设置页专注模式卡片的锚点（横幅「此处」/ 讨论空态同源）。 */
 export const FOCUS_MODE_SETTINGS_HREF = '/settings#focus-mode';

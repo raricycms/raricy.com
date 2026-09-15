@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// image-client.ts — 浏览器侧「选图 → 图床上传」的公共部分（聊天与评论共用）
+// image-client.ts — 浏览器侧「选图 → 图床上传」的公共部分（讨论与评论共用）
 //
 // 【为什么单独成模块】这里的每一行都是踩出来的，复制一份必然 drift：
 //   · XHR 而非 fetch —— 微信内置浏览器（Android X5 内核）对 fetch + FormData 上传有
@@ -16,7 +16,7 @@
  * 文件选择的 accept —— 与上传前的 MIME 校验共用这一份。
  *
  * SVG 不在内联展示白名单：raw 路由对 SVG 强制 Content-Disposition: attachment
- * （防内联脚本执行的 XSS 设计），<img> 内联渲染必然失败，聊天/评论场景只收位图。
+ * （防内联脚本执行的 XSS 设计），<img> 内联渲染必然失败，讨论/评论场景只收位图。
  */
 export const IMAGE_ACCEPT = 'image/png,image/jpeg,image/gif,image/webp';
 

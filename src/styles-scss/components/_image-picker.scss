@@ -1,8 +1,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// 图床选择器（ImagePickerModal）—— 聊天与评论的输入区共用
+// 图床选择器（ImagePickerModal）—— 讨论与评论的输入区共用
 //
 // 放在 components/ 而不是 pages/_chat.scss：它由 RichComposer 持有，评论区同样在用，
-// 挂到聊天页的 partial 下会变成「评论区用着一个叫 chat-* 的东西」。
+// 挂到讨论页的 partial 下会变成「评论区用着一个叫 chat-* 的东西」。
 //
 // 弹窗外壳（.modal-overlay / .modal-dialog / .modal-content / .modal-header）沿用
 // 站内既有那套，见 pages/admin/_users.scss 与 components/_modal.scss；这里只写

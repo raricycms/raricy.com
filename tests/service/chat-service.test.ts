@@ -1,13 +1,13 @@
-// chat-service.ts —— 在线聊天区业务逻辑
+// chat-service.ts —— 在线讨论区业务逻辑
 //
-// 【为什么测这些】聊天区是「自增游标 + 懒建成员 + 软删除 + 越权隔离 + 未读汇总」
+// 【为什么测这些】讨论区是「自增游标 + 懒建成员 + 软删除 + 越权隔离 + 未读汇总」
 // 的组合模块，任何一条写错都不会报错，只会静默漏数据 / 放错人：
-//   1. 大区懒建成员基线 = 当时最大消息 id —— 算错会让从未进过聊天室的用户看到全量未读，
+//   1. 大区懒建成员基线 = 当时最大消息 id —— 算错会让从未进过讨论室的用户看到全量未读，
 //      或让新用户把历史当未读。
 //   2. 私聊频道「成员制」：非成员拉消息/发消息必须被拒（越权隔离是私聊的第一道墙）。
 //   3. 图片归属校验：只能发「自己上传且未软删」的图（图床是站内资源，防止引用他人私有文件）。
 //   4. 引用回复必须同频道且存活；软删后引用/正文都要给出占位，不能露原始内容。
-//   5. 聊天未读不进通知列表：私聊计条数、大区只在被 @ 时算（顶栏「聊天」红点口径）。
+//   5. 讨论未读不进通知列表：私聊计条数、大区只在被 @ 时算（顶栏「讨论」红点口径）。
 //   6. 软删除权限：本人随意删；管理员删他人必须带原因并落审计（申诉数据源）。
 //   7. 限频仿评论：资源校验通过才扣额度。
 //
@@ -78,7 +78,7 @@ async function makeBlog(authorId: string, opts: { ignore?: boolean; title?: stri
 // 1. 大区：懒建成员基线 + 未读数
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('聊天大区：懒建成员基线', () => {
+describe('讨论大区：懒建成员基线', () => {
   it('列表会幂等建大区频道与成员行，基线为当前最大消息 id', async () => {
     const a = await makeUser({ role: 'core' });
     const channels = await listChannelsForUser(a.id);
@@ -92,7 +92,7 @@ describe('聊天大区：懒建成员基线', () => {
 
   it('先有历史消息的用户入队，历史不算未读；原有成员能看到新消息未读', async () => {
     const a = await makeUser({ role: 'core' });
-    // A 先进聊天室（基线 0），此时还没有消息
+    // A 先进讨论室（基线 0），此时还没有消息
     await listChannelsForUser(a.id);
 
     for (let i = 0; i < 3; i++) {
@@ -100,7 +100,7 @@ describe('聊天大区：懒建成员基线', () => {
       expect(res.ok).toBe(true);
     }
 
-    // B 现在才第一次进聊天室：基线 = 最大消息 id（3），历史不显示未读
+    // B 现在才第一次进讨论室：基线 = 最大消息 id（3），历史不显示未读
     const b = await makeUser({ role: 'core' });
     const bChannels = await listChannelsForUser(b.id);
     expect(bChannels.find((c) => c.id === CHAT_LOBBY_ID)?.unread_count).toBe(0);
@@ -130,7 +130,7 @@ describe('聊天大区：懒建成员基线', () => {
 //    都不会报错，只会「该亮的红点不亮 / 不该亮的一直亮」，所以逐条钉死。
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('聊天大区：@ 红点口径（mention_count）', () => {
+describe('讨论大区：@ 红点口径（mention_count）', () => {
   const ME = 'chat_mention_me';
 
   const lobbyOf = async (userId: string) =>
@@ -579,11 +579,11 @@ describe('拍一拍', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 4. 聊天未读不进通知列表；唯一进列表的是 @ 提及（每条 @ 一条通知）
-//    —— 普通消息走顶栏「聊天」红点的汇总（getChatUnreadSummary），不占铃铛数字
+// 4. 讨论未读不进通知列表；唯一进列表的是 @ 提及（每条 @ 一条通知）
+//    —— 普通消息走顶栏「讨论」红点的汇总（getChatUnreadSummary），不占铃铛数字
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('聊天消息不产生站内通知（@ 除外）', () => {
+describe('讨论消息不产生站内通知（@ 除外）', () => {
   it('私聊连发多条也不产生通知', async () => {
     const a = await makeUser({ role: 'core' });
     const b = await makeUser({ role: 'core' });
@@ -608,7 +608,7 @@ describe('聊天消息不产生站内通知（@ 除外）', () => {
 describe('@ 提及通知', () => {
   /** 某人收到的 @ 通知条数。 */
   const mentionCount = (userId: string) =>
-    prisma.notification.count({ where: { recipientId: userId, action: '聊天提及' } });
+    prisma.notification.count({ where: { recipientId: userId, action: '讨论提及' } });
 
   it('大区 @ 一次 → 一条通知；@ 两次（同一条消息）仍只发一条', async () => {
     const a = await makeUser({ role: 'core' });
@@ -634,11 +634,11 @@ describe('@ 提及通知', () => {
     await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: a.id, content: `@${b.username} 看这个` });
 
     const n = await prisma.notification.findFirst({ where: { recipientId: b.id } });
-    expect(n?.action).toBe('聊天提及');
+    expect(n?.action).toBe('讨论提及');
     expect(n?.actorId).toBe(a.id);
     expect(n?.objectType).toBe('chat_channel');
     expect(n?.objectId).toBe(CHAT_LOBBY_ID);
-    expect(n?.detail).toContain('聊天大区');
+    expect(n?.detail).toContain('讨论大区');
     expect(n?.detail).toContain('看这个');
   });
 
@@ -716,7 +716,7 @@ describe('@ 提及通知', () => {
   });
 });
 
-describe('顶栏「聊天」红点汇总 getChatUnreadSummary', () => {
+describe('顶栏「讨论」红点汇总 getChatUnreadSummary', () => {
   it('私聊未读计入 count；读掉后归零', async () => {
     const a = await makeUser({ role: 'core' });
     const b = await makeUser({ role: 'core' });
@@ -927,7 +927,7 @@ describe('搜索可私聊用户', () => {
 //    发消息/拉消息对 lobby 一律 forbidden；私聊全程不受影响。
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('专注模式：聊天大区禁用', () => {
+describe('专注模式：讨论大区禁用', () => {
   it('listChannelsForUser(focus)：lobby 行 disabled 且无预览无未读，不建成员行', async () => {
     const a = await makeUser({ role: 'core' });
     // 先在大区留一条历史消息（focus 前）
@@ -938,7 +938,7 @@ describe('专注模式：聊天大区禁用', () => {
     expect(lobby?.disabled).toBe(true);
     expect(lobby?.last_message).toBeNull();
     expect(lobby?.unread_count).toBe(0);
-    expect(lobby?.title).toBe('聊天大区');
+    expect(lobby?.title).toBe('讨论大区');
     // 置顶语义保持（_order 已剥掉，直接断言它是第一行）
     expect(channels[0]?.id).toBe(CHAT_LOBBY_ID);
     // focus 期间不得把成员基线建出来（否则关掉 focus 后历史全变未读）

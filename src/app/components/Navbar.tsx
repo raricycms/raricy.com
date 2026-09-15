@@ -47,8 +47,8 @@ export default function Navbar({ user }: { user: SafeUser | null }) {
             {isCoreUser(user) && (
               <li>
                 <Link className="site-link" href="/chat">
-                  聊天
-                  {/* 聊天未读红点（私聊有未读 / 大区被 @）：base.js 按
+                  讨论
+                  {/* 讨论未读红点（私聊有未读 / 大区被 @）：base.js 按
                       /api/notifications/count 的 chatUnread 字段开关。
                       不放铃铛上——铃铛数字必须等于通知列表的条目数。 */}
                   <span className="site-link__dot" id="chatUnreadDot" style={{ display: 'none' }} />

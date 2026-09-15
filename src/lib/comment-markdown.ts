@@ -1,12 +1,12 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // comment-markdown.ts — 评论正文的 Markdown → 安全 HTML
 //
-// 【与聊天同管线，同白名单】实现全在 src/lib/rich-text.ts（五道防线在那边逐条讲）。
-// 评论和聊天是同一类东西 —— 用户输入、渲染给所有登录用户看的公共区域 —— 所以
+// 【与讨论同管线，同白名单】实现全在 src/lib/rich-text.ts（五道防线在那边逐条讲）。
+// 评论和讨论是同一类东西 —— 用户输入、渲染给所有登录用户看的公共区域 —— 所以
 // 白名单**刻意与 chat-markdown.ts 逐字相同**：两边能写的东西一样，用户不必记
-// 「这句话在评论里能排版、在聊天里不能」。
+// 「这句话在评论里能排版、在讨论里不能」。
 //
-// 与聊天的唯一差别是链接类名：聊天气泡的 `.chat-msg__link` 有自己的字号 / 颜色，
+// 与讨论的唯一差别是链接类名：讨论气泡的 `.chat-msg__link` 有自己的字号 / 颜色，
 // 套到评论区会显得突兀，故单独一个 `comment-link`（样式见 pages/blog/_blog.scss）。
 //
 // ⚠️ 改这里 = 改安全边界。对等单测：tests/unit/comment-markdown.test.ts
@@ -27,7 +27,7 @@ const ALLOWED_ATTR = ['href', 'title', 'colspan', 'rowspan', 'start', 'type', 'c
 /** 评论正文里链接的类名（样式在 pages/blog/_blog.scss 的 .comment-content 下）。 */
 const LINK_CLASS = 'comment-link';
 
-/** 评论比聊天少得多：一篇博客至多几百条，上限给 200 足够覆盖当前展开的评论树。 */
+/** 评论比讨论少得多：一篇博客至多几百条，上限给 200 足够覆盖当前展开的评论树。 */
 const CACHE_MAX = 200;
 
 const renderer = createRichTextRenderer({

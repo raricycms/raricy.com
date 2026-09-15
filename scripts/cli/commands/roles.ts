@@ -111,7 +111,7 @@ async function describeRoleChange(
   return [
     `目标用户：${username}（当前 ${user.role}）`,
     `变更：${user.role} → ${to}`,
-    '后果：该用户已建立的聊天长连接会被踢掉，角色在下次请求时生效。',
+    '后果：该用户已建立的讨论长连接会被踢掉，角色在下次请求时生效。',
     '本次操作会写入审计日志（默认公开可见，见 /audit 公示页）。',
   ];
 }
@@ -190,7 +190,7 @@ export const roleCommands: CommandSpec[] = [
         prompt: {
           type: 'select',
           choices: [
-            { value: 'core', label: 'core', hint: '核心用户：能发文、进聊天' },
+            { value: 'core', label: 'core', hint: '核心用户：能发文、进讨论' },
             { value: 'user', label: 'user', hint: '普通用户：取消认证' },
             { value: 'admin', label: 'admin', hint: '管理员：可禁言、管内容（仅站长可设）' },
             { value: 'owner', label: 'owner', hint: '站长：全权限（仅站长可设）' },
@@ -211,7 +211,7 @@ export const roleCommands: CommandSpec[] = [
       return [
         `目标用户：${username}（当前 ${user.role}）`,
         `变更：${user.role} → ${target}`,
-        '后果：该用户已建立的聊天长连接会被踢掉，角色在下次请求时生效。',
+        '后果：该用户已建立的讨论长连接会被踢掉，角色在下次请求时生效。',
         '本次操作会写入审计日志（默认公开可见，见 /audit 公示页）。',
       ];
     },

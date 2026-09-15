@@ -1,13 +1,13 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// chat-service.ts — 在线聊天区业务逻辑
+// chat-service.ts — 在线讨论区业务逻辑
 //
 // 会话模型：
-//   • 全局「聊天大区」：chat_channels 里固定一行 kind='lobby'、id='lobby'
+//   • 全局「讨论大区」：chat_channels 里固定一行 kind='lobby'、id='lobby'
 //     （迁移 4_chat 种子化；服务层也兜底 upsert，保证测试库无种子也能跑）。
 //     core+ 用户均可看可发，无需成员关系。
 //   • 私聊：kind='direct'，恰好两名成员（发起时一起建成员行）。
 //   • 读游标：chat_members.last_read_message_id；未读数 = 频道内 id > 游标且未软删。
-//     大区成员行懒创建，基线 = 当时最大消息 id（从未进过聊天室不把历史算未读）。
+//     大区成员行懒创建，基线 = 当时最大消息 id（从未进过讨论室不把历史算未读）。
 //
 // 消息：id 自增整数（增量拉取 / 读游标基准）。软删除 is_deleted（对齐评论），永不物理删。
 // 正文以 Markdown **源文**入库（无 contentHtml）；渲染在客户端走 chat-markdown.ts 的
@@ -442,8 +442,8 @@ export interface ChatUnreadSummary {
 }
 
 /**
- * 顶栏「聊天」链接上那个小红点用的未读汇总。聊天消息不进通知列表（见 sendMessage），
- * 未读也不算进铃铛数字（那会让数字大于列表条目数）—— 两条都归到「聊天」红点上，
+ * 顶栏「讨论」链接上那个小红点用的未读汇总。讨论消息不进通知列表（见 sendMessage），
+ * 未读也不算进铃铛数字（那会让数字大于列表条目数）—— 两条都归到「讨论」红点上，
  * 由 /api/notifications/count 把它压成一个 chatUnread 布尔。所以口径必须与侧栏
  * hasUnreadMark **完全一致**：
  *   • 私聊 → 未读条数（count）；
@@ -456,7 +456,7 @@ export interface ChatUnreadSummary {
  * 大区只认 @」这条口径本身（侧栏与测试都在用），不是为了在顶栏显示数字。
  *
  * **纯读**：不懒建大区成员行 —— 本函数由顶栏每 20s 轮询，读路径不能写库。
- * 没有成员行 = 从未进过聊天室 = 无未读，语义正好（与 ensureLobbyMembership 的
+ * 没有成员行 = 从未进过讨论室 = 无未读，语义正好（与 ensureLobbyMembership 的
  * 「历史不算未读」同一口径）。
  */
 export async function getChatUnreadSummary(
@@ -576,14 +576,14 @@ export type StartDirectResult =
 
 /**
  * 发起/复用与某用户的私聊：存在互为成员且 kind='direct' 的频道则直接返回，否则新建。
- * 目标用户必须是 core+（只有 core+ 能进聊天），且不能是自己。
+ * 目标用户必须是 core+（只有 core+ 能进讨论），且不能是自己。
  */
 export async function startDirectChannel(meId: string, otherId: string): Promise<StartDirectResult> {
   if (otherId === meId) return { ok: false, error: 'self', message: '不能和自己私聊' };
 
   const other = await prisma.user.findUnique({ where: { id: otherId }, select: { id: true, role: true } });
   if (!other || !CORE_ROLES.includes(other.role)) {
-    return { ok: false, error: 'notFound', message: '对方不存在或无权使用聊天' };
+    return { ok: false, error: 'notFound', message: '对方不存在或无权使用讨论' };
   }
 
   // 限频：发起私聊也是写操作（可能建新频道行），防脚本刷频道
@@ -967,7 +967,7 @@ export interface SendMessageInput {
   /** 拍一拍目标用户 id；非空即拍一拍消息（正文/附件一律忽略，只校验目标存在） */
   patTargetId?: string | null;
   replyTo?: number | null;
-  /** 专注模式：开启者对聊天大区不可发言（服务端由路由按 user.focusMode 填入） */
+  /** 专注模式：开启者对讨论大区不可发言（服务端由路由按 user.focusMode 填入） */
   focusMode?: boolean;
 }
 
@@ -990,19 +990,19 @@ export type SendMessageResult =
     };
 
 /** 通知 action：消息里 @ 到某人时发送（见 notifyChannelMentions）。 */
-export const CHAT_MENTION_ACTION = '聊天提及';
+export const CHAT_MENTION_ACTION = '讨论提及';
 
 /**
  * @ 提及通知：给正文里 @ 到的人逐个发一条站内通知。
  *
- * 【为什么只有 @ 才发】聊天消息本身不进通知列表 —— 未读归顶栏「聊天」链接上的红点
+ * 【为什么只有 @ 才发】讨论消息本身不进通知列表 —— 未读归顶栏「讨论」链接上的红点
  * （见 getChatUnreadSummary）；只有「有人叫你」才值得进通知列表，口径与侧栏大区红点
  * 完全一致（hasUnreadMark 对大区也只认 @）。
  *
  * 【发给谁】逐条闸门过滤，全过才发：
  *   • 不是自己（自己 @ 自己不发）；
- *   • 不是禁言中的用户（进不了聊天，未读也不该在铃铛里吊着）；
- *   • core+（只有 core+ 能进聊天）；
+ *   • 不是禁言中的用户（进不了讨论，未读也不该在铃铛里吊着）；
+ *   • core+（只有 core+ 能进讨论）；
  *   • 频道对他可见：
  *       - 私聊：必须是本会话成员 —— 在**别人的私聊**里 @ 一个第三方，对方既看不到
  *         那条消息，通知正文还会把别人私聊的内容漏出去，一律不发；
@@ -1042,7 +1042,7 @@ async function notifyChannelMentions(params: {
   );
   if (!candidates.length) return;
 
-  // 成员关系与静音状态一条查询取齐（大区没进过聊天室的用户没有成员行，但大区不需要成员）
+  // 成员关系与静音状态一条查询取齐（大区没进过讨论室的用户没有成员行，但大区不需要成员）
   const members = await prisma.chatMember.findMany({
     where: { channelId, userId: { in: candidates.map((u) => u.id) } },
     select: { userId: true, mutedAt: true },
@@ -1053,7 +1053,7 @@ async function notifyChannelMentions(params: {
   const collapsed = stripStickerTokens(content).replace(/\s+/g, ' ').trim();
   const preview =
     collapsed.length > CHAT_PREVIEW_MAX ? `${collapsed.slice(0, CHAT_PREVIEW_MAX)}…` : collapsed;
-  const detail = isLobby ? `在聊天大区提到了你：${preview}` : `在私聊中提到了你：${preview}`;
+  const detail = isLobby ? `在讨论大区提到了你：${preview}` : `在私聊中提到了你：${preview}`;
 
   for (const u of candidates) {
     const member = memberByUser.get(u.id);
@@ -1065,7 +1065,7 @@ async function notifyChannelMentions(params: {
       recipientId: u.id,
       action: CHAT_MENTION_ACTION,
       actorId: authorId,
-      // 指会话不指消息：通知列表的「查看聊天」跳 /chat?channel=<id>。
+      // 指会话不指消息：通知列表的「查看讨论」跳 /chat?channel=<id>。
       // （消息 id 不进 object —— 两个 id 塞不进 (type, id) 两个字段，而会话链接
       //   已经够用：点进去就落在最新消息上。）
       objectType: 'chat_channel',
@@ -1078,8 +1078,8 @@ async function notifyChannelMentions(params: {
 
 /**
  * 发消息。先做资源/内容校验（避免非法请求烧限频额度），再扣限频（仿博客评论）。
- * 不产生站内通知（@ 提及除外，见 notifyChannelMentions）—— 聊天未读归顶栏
- * 「聊天」链接上的红点（见 getChatUnreadSummary），不占铃铛数字。
+ * 不产生站内通知（@ 提及除外，见 notifyChannelMentions）—— 讨论未读归顶栏
+ * 「讨论」链接上的红点（见 getChatUnreadSummary），不占铃铛数字。
  */
 export async function sendMessage(input: SendMessageInput): Promise<SendMessageResult> {
   const { channelId, authorId, imageId, blogId, patTargetId, replyTo, focusMode } = input;
@@ -1201,7 +1201,7 @@ export async function sendMessage(input: SendMessageInput): Promise<SendMessageR
   }
 
   // 4) 私聊成员列表：SSE 推送要用（大区广播给全部在线连接，不需要）。
-  //    这里**不发「新消息」通知** —— 聊天未读由顶栏「聊天」链接的红点体现；
+  //    这里**不发「新消息」通知** —— 讨论未读由顶栏「讨论」链接的红点体现；
   //    唯一会进通知列表的是 @ 提及（见第 6 步）。
   let directMemberIds: string[] | null = null;
   if (access.kind === CHAT_KIND_DIRECT) {
@@ -1233,7 +1233,7 @@ export async function sendMessage(input: SendMessageInput): Promise<SendMessageR
     console.error(`[chat-service] SSE 推送失败（channelId=${channelId}）:`, e);
   }
 
-  // 6) @ 提及通知（聊天里唯一会进通知列表的东西；拍一拍没有正文，跳过）
+  // 6) @ 提及通知（讨论里唯一会进通知列表的东西；拍一拍没有正文，跳过）
   if (!isPatMsg) {
     try {
       await notifyChannelMentions({
@@ -1255,7 +1255,7 @@ export async function sendMessage(input: SendMessageInput): Promise<SendMessageR
 
 /**
  * 推进某频道读游标到给定消息 id（缺省 = 频道当前最大 id）。私聊非成员静默忽略。
- * 聊天未读不进通知列表，读游标推进后顶栏「聊天」红点自然随之熄灭（见 getChatUnreadSummary）。
+ * 讨论未读不进通知列表，读游标推进后顶栏「讨论」红点自然随之熄灭（见 getChatUnreadSummary）。
  */
 export async function markChannelRead(
   channelId: string,
@@ -1376,7 +1376,7 @@ export async function softDeleteMessage(
         targetUserId: outcome.audit.targetUserId,
         objectType: 'chat_message',
         objectId: String(messageId),
-        reason: outcome.audit.reason || '违反聊天区规则',
+        reason: outcome.audit.reason || '违反讨论区规则',
         metadata: { channel_id: outcome.audit.channelId },
       });
     } catch {
@@ -1392,7 +1392,7 @@ export async function softDeleteMessage(
 // ── 用户搜索（发起私聊弹窗）──────────────────────────────────────────────────
 
 /**
- * 搜索可私聊对象：仅 core+（只有 core+ 能用聊天），排除自己。
+ * 搜索可私聊对象：仅 core+（只有 core+ 能用讨论），排除自己。
  * query 为空时返回最近注册的一批 core+ 用户。按 username 匹配。
  * 返回分页结果 + 总数（弹窗要算总页数）。
  */

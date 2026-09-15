@@ -271,19 +271,19 @@ describe('通知未读数心跳：登录态下每 20s 自动轮询一次', () =>
   });
 });
 
-describe('顶栏提示渲染：铃铛数字（只数通知）+「聊天」链接小红点', () => {
+describe('顶栏提示渲染：铃铛数字（只数通知）+「讨论」链接小红点', () => {
   //
   // 服务端 /api/notifications/count 返回 { count, chatUnread }：
-  //   count      = 站内通知未读，喂铃铛数字（聊天**不计入** —— 数字必须等于通知
+  //   count      = 站内通知未读，喂铃铛数字（讨论**不计入** —— 数字必须等于通知
   //                列表里的条数，否则点进去对不上）；
-  //   chatUnread = 聊天有未读（私聊条数 / 大区被 @），喂「聊天」链接上的小红点。
+  //   chatUnread = 讨论有未读（私聊条数 / 大区被 @），喂「讨论」链接上的小红点。
   // 两个元素由同一次请求更新，故一并断言。
   async function renderTopbar(payload: Record<string, unknown>) {
     document.body.innerHTML = `
       <meta name="user-authenticated" content="true">
       <meta name="notification-api-url" content="/api/notifications/count">
       <span class="notification-badge" id="notificationBadge" style="display: none">0</span>
-      <a class="site-link" href="/chat">聊天<span class="site-link__dot" id="chatUnreadDot" style="display: none"></span></a>
+      <a class="site-link" href="/chat">讨论<span class="site-link__dot" id="chatUnreadDot" style="display: none"></span></a>
     `;
     (globalThis as any).fetch = () =>
       Promise.resolve({ ok: true, json: () => Promise.resolve({ code: 200, ...payload }) });
@@ -315,24 +315,24 @@ describe('顶栏提示渲染：铃铛数字（只数通知）+「聊天」链接
     expect(badge.classList.contains('large-count')).toBe(true);
   });
 
-  it('回归：聊天未读只点亮「聊天」红点，绝不进铃铛数字', async () => {
+  it('回归：讨论未读只点亮「讨论」红点，绝不进铃铛数字', async () => {
     // 线上 bug：私聊消息不进通知列表，却计进了铃铛数字 —— 铃铛写着 5、点进去只有 2 条。
     const { badge, dot } = await renderTopbar({ count: 0, chatUnread: true });
-    expect(badge.style.display, '聊天未读混进了铃铛数字').toBe('none');
+    expect(badge.style.display, '讨论未读混进了铃铛数字').toBe('none');
     expect(dot.style.display).toBe('block');
   });
 
-  it('通知 + 聊天未读同时有 → 两个提示各就各位', async () => {
+  it('通知 + 讨论未读同时有 → 两个提示各就各位', async () => {
     const { badge, dot } = await renderTopbar({ count: 2, chatUnread: true });
     expect(badge.textContent).toBe('2');
     expect(dot.style.display).toBe('block');
   });
 
-  it('聊天读干净 → 红点熄灭（同一次请求两个元素一起更新）', async () => {
+  it('讨论读干净 → 红点熄灭（同一次请求两个元素一起更新）', async () => {
     const { badge, dot } = await renderTopbar({ count: 0, chatUnread: true });
     expect(dot.style.display).toBe('block');
 
-    // 再跑一次心跳，服务端说聊天读干净了
+    // 再跑一次心跳，服务端说讨论读干净了
     (globalThis as any).fetch = () =>
       Promise.resolve({
         ok: true,
@@ -358,7 +358,7 @@ describe('顶栏提示渲染：铃铛数字（只数通知）+「聊天」链接
     expect(badge.classList.contains('large-count')).toBe(false);
   });
 
-  it('页面没有「聊天」链接（非 core+）时：铃铛照常，且不抛异常', async () => {
+  it('页面没有「讨论」链接（非 core+）时：铃铛照常，且不抛异常', async () => {
     document.body.innerHTML = `
       <meta name="user-authenticated" content="true">
       <meta name="notification-api-url" content="/api/notifications/count">

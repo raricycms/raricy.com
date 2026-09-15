@@ -2,7 +2,7 @@
 // focus-mode.spec.ts —— 专注模式（账号级浏览偏好）
 //
 // 【功能面】/settings 打开后：博客列表与侧栏隐藏「专注隐藏」栏目及其文章并显示
-// 关闭横幅；聊天大区（lobby）侧栏行禁用、无最近一条预览。
+// 关闭横幅；讨论大区（lobby）侧栏行禁用、无最近一条预览。
 //
 // 【造数纪律 —— 与全库 spec 共存】
 //   • 动态幂等：被标记栏目用 uniqueTag 的 slug 现场建（owner API），文章走
@@ -127,7 +127,7 @@ test.describe('专注模式（设置 → 各处生效）', () => {
     await expect(page.locator('body')).toContainText(BLOG_BODY_MARKER, { timeout: 15_000 });
   });
 
-  test('聊天：大区行禁用且无最近一条预览；API 直打大区 403；私聊不拦', async ({ page }) => {
+  test('讨论：大区行禁用且无最近一条预览；API 直打大区 403；私聊不拦', async ({ page }) => {
     await loginViaApi(page, SEED_USERS.core.username);
 
     // 先在专注前于大区留一条消息（focus 后它不该出现在预览里）
@@ -141,7 +141,7 @@ test.describe('专注模式（设置 → 各处生效）', () => {
     // 侧栏大区行：存在但禁用、title/预览为专注文案、无最近一条预览内容
     // （移动端侧栏是抽屉，DOM 存在但可能不可见 → 用 toBeAttached 而非 toBeVisible）
     await page.goto('/chat');
-    const lobbyRow = page.locator('.chat-chan', { hasText: '聊天大区' });
+    const lobbyRow = page.locator('.chat-chan', { hasText: '讨论大区' });
     await expect(lobbyRow).toBeAttached();
     await expect(lobbyRow).toHaveAttribute('aria-disabled', 'true');
     await expect(lobbyRow).toHaveAttribute('title', FOCUS_TITLE);

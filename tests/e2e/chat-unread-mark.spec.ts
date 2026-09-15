@@ -62,10 +62,10 @@ async function setupUserOffLobby(page: Page, browser: Browser) {
   // 【必须等首屏频道列表落地，别删】大区成员行由 listChannelsForUser **懒建**，
   // 基线 = 建行那一刻的最大消息 id（历史不算未读）。若不等它完成就发大区消息，
   // 建行可能落在那条消息之后 → 它被当成「历史」不算未读，chatUnread 于是为 false
-  // ——而 @ 的通知在发送时就已落库，铃铛照样显 1。症状是「铃铛有数字、聊天红点不亮」
+  // ——而 @ 的通知在发送时就已落库，铃铛照样显 1。症状是「铃铛有数字、讨论红点不亮」
   // 的假失败（mobile 那一轮跑在整套最后，慢一点就踩中）。
   // 大区行出现 = 池子已建好，此后的大区消息必被算作未读。
-  await expect(page.locator('.chat-chan', { hasText: '聊天大区' }).first()).toBeAttached();
+  await expect(page.locator('.chat-chan', { hasText: '讨论大区' }).first()).toBeAttached();
 
   return { me, speaker, dmId, close: () => speakerCtx.close() };
 }
@@ -74,7 +74,7 @@ test.describe('未读角标：大区只认 @', () => {
   test('大区普通消息不亮红点，被 @ 才亮（红点，不带数字）', async ({ page, browser }) => {
     const { me, speaker, close } = await setupUserOffLobby(page, browser);
     try {
-      const lobbyRow = page.locator('.chat-chan', { hasText: '聊天大区' }).first();
+      const lobbyRow = page.locator('.chat-chan', { hasText: '讨论大区' }).first();
       await expect(lobbyRow).toBeAttached();
       await expect(lobbyRow.locator('.chat-chan__mark')).toHaveCount(0);
 
@@ -96,11 +96,11 @@ test.describe('未读角标：大区只认 @', () => {
   });
 });
 
-test.describe('顶栏「聊天」链接红点：聊天未读不进铃铛', () => {
-  // 聊天消息不进通知列表（唯一进列表的是 @ 提及，见 chat-service），所以聊天未读
+test.describe('顶栏「讨论」链接红点：讨论未读不进铃铛', () => {
+  // 讨论消息不进通知列表（唯一进列表的是 @ 提及，见 chat-service），所以讨论未读
   // 绝不能计进铃铛数字 —— 线上就这样：铃铛写着 3，点进 /notifications 只有 1 条。
   // 现在两条各归各的（/api/notifications/count 返回 { count, chatUnread }）：
-  // 铃铛数字 = 通知列表；私聊未读 / 大区被 @ → 「聊天」链接右上角的小红点。
+  // 铃铛数字 = 通知列表；私聊未读 / 大区被 @ → 「讨论」链接右上角的小红点。
   //
   // 红点开关是 base.js 写的**行内 display**，故断言走 toHaveCSS 而不是 toBeVisible：
   // 移动端整个顶栏折叠成 max-height:0（_header.scss），被裁掉的元素在 Playwright
@@ -108,7 +108,7 @@ test.describe('顶栏「聊天」链接红点：聊天未读不进铃铛', () =>
 
   const dot = (page: Page) => page.locator('#chatUnreadDot');
 
-  test('私聊新消息 → 只亮「聊天」红点，铃铛毫不动静', async ({ page, browser }) => {
+  test('私聊新消息 → 只亮「讨论」红点，铃铛毫不动静', async ({ page, browser }) => {
     const { speaker, dmId, close } = await setupUserOffLobby(page, browser);
     try {
       const badge = page.locator('#notificationBadge');
@@ -137,7 +137,7 @@ test.describe('顶栏「聊天」链接红点：聊天未读不进铃铛', () =>
     }
   });
 
-  test('大区 @ 我 → 通知进铃铛显条数，「聊天」红点同时亮', async ({ page, browser }) => {
+  test('大区 @ 我 → 通知进铃铛显条数，「讨论」红点同时亮', async ({ page, browser }) => {
     const { me, speaker, close } = await setupUserOffLobby(page, browser);
     try {
       const badge = page.locator('#notificationBadge');
@@ -145,8 +145,8 @@ test.describe('顶栏「聊天」链接红点：聊天未读不进铃铛', () =>
 
       // setup 停在私聊上 → 大区是非活动频道，@ 消息不会被自动读掉
       await postMessage(speaker, LOBBY, `@${me.username} 顶栏红点`);
-      // @ 是聊天里唯一进通知列表的东西（见 chat-service.notifyChannelMentions），
-      // 所以铃铛显数字；大区那条未读同时点亮聊天红点 —— 两个指示器互不干扰
+      // @ 是讨论里唯一进通知列表的东西（见 chat-service.notifyChannelMentions），
+      // 所以铃铛显数字；大区那条未读同时点亮讨论红点 —— 两个指示器互不干扰
       await expect(badge).toHaveText('1', { timeout: 12_000 });
       await expect(badge).toBeVisible();
       await expect(dot(page)).toHaveCSS('display', 'block');
@@ -163,7 +163,7 @@ test.describe('顶栏「聊天」链接红点：聊天未读不进铃铛', () =>
       await expect(badge).toHaveText('1', { timeout: 12_000 });
 
       // 把通知全标已读 → 铃铛必须整个消失（旧实现这里会退化成一个小红点，等于
-      // 用红点暗示「通知列表里有东西」，可列表已经空了）。聊天未读不受影响。
+      // 用红点暗示「通知列表里有东西」，可列表已经空了）。讨论未读不受影响。
       const readAll = await page.request.post('/api/notifications/read-all');
       expect(readAll.status()).toBe(200);
       await page.goto('/notifications'); // 整页加载 → 顶栏两个提示一起重算

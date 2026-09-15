@@ -85,9 +85,9 @@ async function api(url: string, init?: RequestInit): Promise<ApiEnvelope> {
 /**
  * 顶栏提示刷新（2s 尾沿节流）。
  *
- * 聊天未读不进通知列表，而是顶栏「聊天」链接上的那个红点（见
+ * 讨论未读不进通知列表，而是顶栏「讨论」链接上的那个红点（见
  * /api/notifications/count 的 chatUnread），所以「读掉一条 / 来了新消息」都要让
- * 红点重算一次。节流是必要的：在聊天页连着收消息时每条都会触发一次已读上报，
+ * 红点重算一次。节流是必要的：在讨论页连着收消息时每条都会触发一次已读上报，
  * 不节流等于每条消息多打一次计数接口。窗口内的请求不丢弃，而是**预约一次收尾
  * 刷新** —— 否则窗口里最后一次变更可能被吞掉（红点停在旧值，直到下一次 20s 心跳）。
  */
@@ -364,7 +364,7 @@ export default function ChatApp({
         setChannels((prev) =>
           prev.map((c) => (c.id === channelId ? clearUnreadMark(c) : c))
         );
-        // 顶栏「聊天」红点跟着熄（聊天未读归它）
+        // 顶栏「讨论」红点跟着熄（讨论未读归它）
         refreshTopbarBadge();
       } catch {
         /* 已读失败不阻塞 */
@@ -610,7 +610,7 @@ export default function ChatApp({
 
       // 非活动频道：自己的消息（其他标签页发的）/ 已删消息都不算未读
       if (m.author.id === currentUserId || m.is_deleted) return;
-      // 顶栏红点跟着亮（聊天未读归它）。放在「新会话」分支之前：别人新发起的
+      // 顶栏红点跟着亮（讨论未读归它）。放在「新会话」分支之前：别人新发起的
       // 私聊也要点亮红点 —— 那条路径由 reconcile 落列表，不会走到下面的本地累加。
       refreshTopbarBadge();
       if (!channelsRef.current.some((c) => c.id === m.channel_id)) {
@@ -890,7 +890,7 @@ export default function ChatApp({
     // ⚠️ 回复**不在**此列 —— 它既不破例允许空正文，也不该把上限压到图注档。
     // 【踩过的坑】这里曾把「要不要带 reply_to」也写成 `hasAttach &&`，于是挂着回复
     // 目标的**纯文字**消息发出去时 reply_to 被静默丢掉：用户点了回复、写完发出去，
-    // 消息照常出现，只是引用块没了 —— 表现就是「聊天区没法引用别人的消息」。
+    // 消息照常出现，只是引用块没了 —— 表现就是「讨论区没法引用别人的消息」。
     // 带图/带博客引用时反而是好的，所以只在纯文字回复上复现。
     // 站外机器人不受影响（直接往接口打 reply_to），于是症状看着像「机器人可以、
     // 普通用户不行」—— 其实是客户端这一行的锅，与服务端鉴权无关。
@@ -1362,7 +1362,7 @@ export default function ChatApp({
               )}
               {messages.length === 0 && (
                 <div className="chat-list__empty">
-                  {activeChannel.kind === 'lobby' ? '聊天大区空荡荡，说点什么吧' : '还没有消息，打个招呼吧'}
+                  {activeChannel.kind === 'lobby' ? '讨论大区空荡荡，说点什么吧' : '还没有消息，打个招呼吧'}
                 </div>
               )}
               {visibleMessages.map((m, i, arr) => {
@@ -1470,7 +1470,7 @@ export default function ChatApp({
                 if (v) notifyTyping();
               }}
               onSend={() => void send()}
-              // 聊天：点一下立刻发出去（微信手感）。keepDraft 让待发的图片 / 引用 /
+              // 讨论：点一下立刻发出去（微信手感）。keepDraft 让待发的图片 / 引用 /
               // 写了一半的正文原样留着 —— 表情是个轻量动作，不该顺手把草稿一起发掉。
               onStickerPick={(token) => void sendWith(token, { keepDraft: true })}
               onPickImage={(f) => void pickImage(f)}
@@ -1490,7 +1490,7 @@ export default function ChatApp({
           <div className="chat-main__empty">
             {channelsLoaded && initialFocusMode ? (
               <>
-                已开启专注模式，聊天大区暂不可用。可发起私聊，或{' '}
+                已开启专注模式，讨论大区暂不可用。可发起私聊，或{' '}
                 <Link className="chat-main__focus-link" href="/settings#focus-mode">
                   前往设置
                 </Link>{' '}
@@ -1531,7 +1531,7 @@ export default function ChatApp({
         />
       )}
 
-      {lightbox && <ImageLightbox src={lightbox.url} alt="聊天图片" onClose={closeLightbox} />}
+      {lightbox && <ImageLightbox src={lightbox.url} alt="讨论图片" onClose={closeLightbox} />}
 
       {avatarMenu && (
         <AvatarMenu

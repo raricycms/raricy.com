@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// chat-image.spec.ts —— 聊天图片
+// chat-image.spec.ts —— 讨论图片
 //   · 点图片原位放大（覆盖层），不新开窗口
 //   · 上传第一次网络失败自动重试一次（弱网 / 微信内置浏览器）
 //
@@ -37,7 +37,7 @@ function msgRow(page: Page, marker: string) {
   });
 }
 
-test.describe('聊天图片', () => {
+test.describe('讨论图片', () => {
   test('点图片原位放大、不新开窗口，Esc 关闭', async ({ page }) => {
     await loginViaApi(page, SEED_USERS.core.username);
     const marker = `e2e-zoom-${uniqueTag()}`;

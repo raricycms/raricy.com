@@ -1,7 +1,7 @@
 'use client';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// StickerPicker.tsx — 表情面板（评论与聊天共用，由 RichComposer 承载）
+// StickerPicker.tsx — 表情面板（评论与讨论共用，由 RichComposer 承载）
 //
 // 【数据源】GET /api/stickers（要登录）。返回「合集 → 表情」，站长往
 // instance/stickers/ 里拷文件即生效，前端不需要任何构建步骤。

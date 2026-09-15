@@ -139,8 +139,8 @@ function createToastContainer() {
 
 // 获取并更新顶栏的两个提示（同一次请求喂两个元素）
 // 服务端返回 { count, chatUnread }：
-//   count      → 铃铛数字，只数站内通知（＝ /notifications 列表里的条数，聊天不计入）
-//   chatUnread → 「聊天」链接右上角的小红点（私聊有未读 / 大区被 @）
+//   count      → 铃铛数字，只数站内通知（＝ /notifications 列表里的条数，讨论不计入）
+//   chatUnread → 「讨论」链接右上角的小红点（私聊有未读 / 大区被 @）
 function updateNotificationCount() {
     if (!window.isUserAuthenticated) {
         console.log('用户未登录，跳过通知数量更新');
@@ -176,7 +176,7 @@ function updateNotificationCount() {
                 }
             }
 
-            // 聊天未读：不算数字，只在「聊天」链接右上角点一个红点
+            // 讨论未读：不算数字，只在「讨论」链接右上角点一个红点
             const chatDot = document.getElementById('chatUnreadDot');
             if (chatDot) {
                 chatDot.style.display = data.chatUnread ? 'block' : 'none';
@@ -250,9 +250,9 @@ window.refreshNotificationCount = function() {
     updateNotificationCount();
 };
 
-// 顶栏徽标心跳：每 20s 轮询一次未读数（通知 + 聊天）。
+// 顶栏徽标心跳：每 20s 轮询一次未读数（通知 + 讨论）。
 // 为什么需要它：Next 客户端路由切换（soft navigation）不会重载本文件、布局也
-// 不重挂载，若只在整页加载时拉一次，跨页（如聊天来了新消息）后数字会一直旧。
+// 不重挂载，若只在整页加载时拉一次，跨页（如讨论来了新消息）后数字会一直旧。
 // 切页那一下的即时刷新由根布局的 NotificationHeartbeat 组件负责（它监听不到
 // 整页加载，两者互补）；本定时器是持续兜底。
 const NOTIFY_HEARTBEAT_KEY = '__raricyNotifyHeartbeat';

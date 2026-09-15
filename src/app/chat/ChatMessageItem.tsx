@@ -161,7 +161,7 @@ function ChatMessageItemInner({
           <img
             className="chat-msg__image"
             src={msg.image.url}
-            alt="聊天图片"
+            alt="讨论图片"
             loading="lazy"
             onClick={() => onImageClick(msg.image!.url)}
             onError={() => setImgError(true)}

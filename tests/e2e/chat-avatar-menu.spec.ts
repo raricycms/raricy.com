@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// chat-avatar-menu.spec.ts —— 聊天消息头像的选项框（拍一拍 / 访问个人主页 / @ta / 取消）
+// chat-avatar-menu.spec.ts —— 讨论消息头像的选项框（拍一拍 / 访问个人主页 / @ta / 取消）
 // 与配套的两条渲染规则：拍一拍系统行、@我 的消息高亮。
 //
 // 【为什么要 E2E】选项框是 portal + fixed 定位 + 全局监听（外部点击 / Esc / 滚动）
@@ -29,7 +29,7 @@ function msgRow(page: import('@playwright/test').Page, marker: string) {
   return page.locator('.chat-msg', { hasText: marker });
 }
 
-test.describe('聊天头像选项框', () => {
+test.describe('讨论头像选项框', () => {
   test('点头像弹出选项框（不再直跳主页）：三项 + 分割线 + 取消', async ({ page }) => {
     // 让 admin 发消息 → core 看到时头像在左侧，顺带覆盖「左对齐」定位分支
     await loginViaApi(page, SEED_USERS.admin.username);

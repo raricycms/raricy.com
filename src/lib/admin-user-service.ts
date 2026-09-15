@@ -264,7 +264,7 @@ export async function setRole(p: SetRoleParams): Promise<AdminResult<{ role: str
     select: { id: true },
   });
 
-  // 角色变更可能收回/放开聊天权限（core 才能进聊天）→ 踢掉已建立的 SSE 连接，
+  // 角色变更可能收回/放开讨论权限（core 才能进讨论）→ 踢掉已建立的 SSE 连接，
   // 让浏览器重连时重新走 requireChatUser 鉴权。
   kickUser(p.targetId);
 

@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// chat-shared.ts — 聊天区「纯常量 + DTO 类型」，供服务端与客户端共享。
+// chat-shared.ts — 讨论区「纯常量 + DTO 类型」，供服务端与客户端共享。
 //
 // 【为什么要单独拆一个文件】ChatApp / NewChatModal 是客户端组件（'use client'），
 // 而 chat-service.ts 依赖 auth.ts → next/headers（cookies）等 server-only 模块，
@@ -18,11 +18,11 @@ export const CHAT_TEXT_MAX = 5000;
  * 改一处请同步另一处。
  */
 export const CHAT_CAPTION_MAX = 5000;
-export const CHAT_LOBBY_TITLE = '聊天大区';
+export const CHAT_LOBBY_TITLE = '讨论大区';
 export const CHAT_DELETED_TEXT = '[该消息已删除]';
 /** 侧栏消息预览截断长度（服务端 listChannelsForUser 与客户端本地累加共用同一口径）。 */
 export const CHAT_PREVIEW_MAX = 60;
-// 专注模式禁用文案（聊天场景别名）：单一来源在 focus-mode.ts，聊天侧保留语义化名字
+// 专注模式禁用文案（讨论场景别名）：单一来源在 focus-mode.ts，讨论侧保留语义化名字
 export { FOCUS_MODE_BLOCKED_TITLE as CHAT_FOCUS_BLOCKED_TITLE } from './focus-mode';
 
 export interface ChatAuthorDTO {

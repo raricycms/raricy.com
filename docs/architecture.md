@@ -113,11 +113,11 @@
 | 数据层 | `db.ts` · `db-time.ts` · `format.ts` |
 | 博客域 | `blog-service.ts` · `feed-service.ts` · `comment-service.ts` · `comment-shared.ts` · `blog-sort-pref.ts` · `spider-service.ts` |
 | 富文本渲染 | `rich-text.ts`（共享管线）· `chat-markdown.ts` · `comment-markdown.ts` · `blog-markdown.ts` · `markdown-math.ts` · `linkify.ts` · `vditor-theme.ts` |
-| 聊天 | `chat-service.ts` · `chat-bus.ts`（SSE 订阅）/ `chat-shared.ts`（DTO）· `chat-sidebar-pref.ts` · `focus-mode.ts` |
-| 实时传输 | `sse.ts` —— SSE 响应头 / 帧格式 / 重连与背压常量的**唯一出处**，聊天在用。新增 SSE 路由一律 import 它，不要手抄响应头（`no-transform` 少一个字的后果见该文件头注释） |
+| 讨论 | `chat-service.ts` · `chat-bus.ts`（SSE 订阅）/ `chat-shared.ts`（DTO）· `chat-sidebar-pref.ts` · `focus-mode.ts` |
+| 实时传输 | `sse.ts` —— SSE 响应头 / 帧格式 / 重连与背压常量的**唯一出处**，讨论在用。新增 SSE 路由一律 import 它，不要手抄响应头（`no-transform` 少一个字的后果见该文件头注释） |
 | 通知 / 审计 | `notification-service.ts` · `broadcast-service.ts` · `audit-service.ts` · `admin-appeal-service.ts` |
 | 投票 / 签到 / 剪贴板 | `vote-service.ts` · `checkin-service.ts` · `clipboard-service.ts` |
-| 图床 | `image-service.ts` · `image-upload.ts`（服务端）· `image-client.ts`（浏览器侧选图上传，聊天与评论共用）· `vditor-upload.ts`（Vditor 编辑器的上传配置，博客与剪贴板共用；与 `/api/images` 的字段名/响应结构两端对齐，见 `tests/unit/vditor-upload.test.ts`） |
+| 图床 | `image-service.ts` · `image-upload.ts`（服务端）· `image-client.ts`（浏览器侧选图上传，讨论与评论共用）· `vditor-upload.ts`（Vditor 编辑器的上传配置，博客与剪贴板共用；与 `/api/images` 的字段名/响应结构两端对齐，见 `tests/unit/vditor-upload.test.ts`） |
 | 故事 | `story-service.ts` |
 | 小鱼干 | `fish-service.ts` · `fish-admin.ts` · `fish-market-service.ts`（用户间转账，见 §6.3）· `fish-sync.ts`（账本 + 补偿，见 §6.3）· `fish-units.ts`（单位换算）· `account-client.ts` |
 | OAuth 2.0 | `oauth.ts`（见 `docs/oauth.md`） |
@@ -127,7 +127,7 @@
 | 配额白名单 | `service-accounts.ts`（`FISH_SERVICE_ACCOUNTS` 里的账号走 `SERVICE_QUOTA`：转账 500/时、5000/天。给「站外银行」这类自动化账号用，撤销即删配置） |
 
 > 上表是**穷尽** `src/lib/*.ts` 的（新增文件记得补一行）—— §6.3、§8 会引用其中若干，
-> 之前整块漏了聊天子域与 `oauth.ts`，导致正文引用的文件在本表里查不到。
+> 之前整块漏了讨论子域与 `oauth.ts`，导致正文引用的文件在本表里查不到。
 
 API 端点位于 `src/app/api/<group>/<verb>/route.ts`，**薄**层：参数校验 + 权限校验 + 调 `src/lib/*` + 组装响应。
 
@@ -181,7 +181,7 @@ GET/HEAD/OPTIONS 视为安全方法，不校验。
 
 ### 6.5 限频
 
-`src/lib/rate-limit.ts`，进程内内存桶（单进程语义）。**配额表以该文件的 `RULES` 为唯一权威**，本文不复述具体数值 —— 那里有 12 条规则（点赞 / 评论 / 投票 / 图床 / 聊天 / 登录…），复述必 drift。两点不显然的行为：
+`src/lib/rate-limit.ts`，进程内内存桶（单进程语义）。**配额表以该文件的 `RULES` 为唯一权威**，本文不复述具体数值 —— 那里有 12 条规则（点赞 / 评论 / 投票 / 图床 / 讨论 / 登录…），复述必 drift。两点不显然的行为：
 
 - **桶会落盘**：随 10 分钟一次的惰性清扫写入 `instance/rate-limit-snapshot.json`（原子写；`RATE_LIMIT_SNAPSHOT_PATH` 可覆盖），进程启动时回灌 —— **重启不重置窗口**。不落盘的话，一次发版等于给所有人发免刷通行证，也放走进行中的刷量。测试环境不自动回灌，保证确定性。
 - **登录限频只统计失败**：IP 与用户名（小写归一）两个维度分别计数，任一超限即 429。所以正常用户不会被自己的成功登录挡住；顺带它也是 CPU 保护（每次尝试都要跑一次 scrypt）。
@@ -217,14 +217,14 @@ GET/HEAD/OPTIONS 视为安全方法，不校验。
 
 | 场景 | 渲染方式 | 管线 |
 |------|---------|------|
-| 聊天正文 / 评论正文 | **客户端**渲染，同一套管线 | `rich-text.ts`（marked → DOMPurify → 后处理），白名单与链接类名见 `chat-markdown.ts` / `comment-markdown.ts` |
+| 讨论正文 / 评论正文 | **客户端**渲染，同一套管线 | `rich-text.ts`（marked → DOMPurify → 后处理），白名单与链接类名见 `chat-markdown.ts` / `comment-markdown.ts` |
 | 博客正文 | **客户端**渲染 | `src/app/components/MarkdownRenderer.tsx`（marked + DOMPurify + highlight.js + MathJax + `[@…]` 内容引用） |
 | 故事正文 | **服务端**渲染 | `src/lib/story-service.ts` 的 `marked` + `stripScripts`。内容由站长直接写在 `instance/stories/`，按可信输入处理，**不走 DOMPurify / highlight.js** |
 | 内容引用 `[@…]` | 浏览器渲染时正则替换为剪贴板/投票/图床组件 | `src/app/components/MarkdownRenderer.tsx` 的 `ContentRefProcessor`（按 id 长度分流：8 位剪贴板 / 9 位投票 / 10 位图床）。**表情包不在这条管道上** |
-| 表情包 `[@合集/表情]` | 浏览器渲染时替换为内联 `<img>`（**仅评论 / 聊天**） | `src/lib/sticker-refs.ts` 的 `embedStickerRefs`，在 `rich-text.ts` 里紧跟 `embedImageRefs` 之后调用 |
+| 表情包 `[@合集/表情]` | 浏览器渲染时替换为内联 `<img>`（**仅评论 / 讨论**） | `src/lib/sticker-refs.ts` 的 `embedStickerRefs`，在 `rich-text.ts` 里紧跟 `embedImageRefs` 之后调用 |
 | 工具页 cattca-guide | **服务端**渲染 | marked（仅一次，可信文档） |
 
-**聊天与评论共用一条管线**（`rich-text.ts`）。两者的威胁模型与防线逐条相同，差别只在
+**讨论与评论共用一条管线**（`rich-text.ts`）。两者的威胁模型与防线逐条相同，差别只在
 白名单与链接类名（`chat-msg__link` / `comment-link`），所以管线唯一、参数由调用方注入。
 各写一份的代价不是重复代码，是**防线漂移**：任一边漏打一个补丁另一边不会知道，而两边
 看起来都「有净化」。五道防线（裸 HTML / 伪协议 / 属性注入 / 外链图片 / 无 DOM 降级）
@@ -383,12 +383,12 @@ div 会卸载重挂，`deps=[]` 的监听器永远附不上。
 | `ImageHosting.ignore` | false | 图床 |
 | `Vote.ignore` | false | 投票 |
 | `ClipBoard.ignore` | false | 剪贴板 |
-| `ChatMessage.isDeleted` | false | 聊天消息 |
+| `ChatMessage.isDeleted` | false | 讨论消息 |
 
 **软删即抹掉附件与原文**：评论被软删后，序列化时 `content` 与 `content_html` 一律换成
 占位文案，`image` / `blog` 一律置空（`image_missing` / `blog_missing` 也置 false —— 软删
 不是「附件丢了」）。漏掉任何一项都等于「删了没删」：原文还在 DOM 里，或删掉的图仍能
-点开看原图。聊天消息同此口径（`chat-service.ts` 的 `attach…`）。
+点开看原图。讨论消息同此口径（`chat-service.ts` 的 `attach…`）。
 
 ### 角色体系与鉴权门
 
