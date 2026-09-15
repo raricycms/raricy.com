@@ -42,6 +42,7 @@ import {
   makeTransferIdempotencyKey,
   AccountServiceError,
 } from './account-client';
+import { isServiceAccount, SERVICE_QUOTA } from './service-accounts';
 import {
   recordPendingSync,
   settleSync,
@@ -285,8 +286,10 @@ export async function transferFish(
 
   // 限频（放在校验之后：刷不存在的用户名不该烧掉自己的额度，对齐点赞/评论）。
   // 转账是**唯一**有配额的鱼干写路径 —— 也是唯一能把鱼干推给任意第三方的路径。
-  const hourly = rateLimit(`transfer:h:${fromUserId}`, RULES.transferHourly);
-  const daily = rateLimit(`transfer:d:${fromUserId}`, RULES.transferDaily);
+  // 白名单账号（站外银行这类）走 SERVICE_QUOTA 抬高的一组，见 service-accounts.ts。
+  const quota = isServiceAccount(fromUserId) ? SERVICE_QUOTA : RULES;
+  const hourly = rateLimit(`transfer:h:${fromUserId}`, quota.transferHourly);
+  const daily = rateLimit(`transfer:d:${fromUserId}`, quota.transferDaily);
   if (!hourly.allowed || !daily.allowed) {
     return { ok: false, code: 429, message: '转账太频繁了，请稍后再试' };
   }

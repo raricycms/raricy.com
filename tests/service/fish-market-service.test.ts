@@ -279,6 +279,44 @@ describe('客户端幂等键（dev fallback 下的已知边界）', () => {
   });
 });
 
+describe('服务账号配额白名单', () => {
+  it('白名单账号可以超过普通账号的小时上限（30 → 500）', async () => {
+    const { sender, recipient } = await scene(100, 0);
+    vi.stubEnv('FISH_SERVICE_ACCOUNTS', sender.id);
+
+    // 普通账号在 30 笔后会 429（上面那条用例钉着），白名单账号这里转 35 笔应当全过
+    for (let i = 0; i < 35; i++) {
+      const r = await transferFish(sender.id, recipient.id, 0.1);
+      expect(r.ok, `第 ${i + 1} 笔：白名单账号不该撞普通配额`).toBe(true);
+    }
+    expect(await balanceOf(recipient.id)).toBe(3.5);
+  });
+
+  it('白名单之外的账号不受影响（同一进程内仍按 30 笔/时 限）', async () => {
+    const { sender, recipient } = await scene(100, 0);
+    const other = await makeUser({ driedFish: 100 });
+    vi.stubEnv('FISH_SERVICE_ACCOUNTS', other.id);
+
+    for (let i = 0; i < RULES.transferHourly.limit; i++) {
+      await transferFish(sender.id, recipient.id, 0.1);
+    }
+    const blocked = await transferFish(sender.id, recipient.id, 0.1);
+
+    expect(blocked.ok).toBe(false);
+    if (!blocked.ok) expect(blocked.code).toBe(429);
+  });
+
+  it('config 里的空白与空项被忽略（`a, , b` 不会把空串当成账号）', async () => {
+    const { sender, recipient } = await scene(100, 0);
+    vi.stubEnv('FISH_SERVICE_ACCOUNTS', ` , ${sender.id} , `);
+
+    for (let i = 0; i < 32; i++) {
+      const r = await transferFish(sender.id, recipient.id, 0.1);
+      expect(r.ok, `第 ${i + 1} 笔`).toBe(true);
+    }
+  });
+});
+
 describe('searchTransferTargets', () => {
   it('按用户名包含匹配、排除自己、返回总数', async () => {
     const me = await makeUser({ username: 'fan_qie' });

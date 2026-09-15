@@ -11,6 +11,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { rateLimit, isRateLimited, recordRateLimitHit, RULES } from '@/lib/rate-limit';
+import { SERVICE_QUOTA } from '@/lib/service-accounts';
 
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
@@ -212,6 +213,16 @@ describe('RULES 全站配额（src/lib/rate-limit.ts 即权威，改动即报警
 
   it('RULES 的键集合完整且无多余项（新增配额需同步本用例与文档）', () => {
     expect(Object.keys(RULES).sort()).toEqual(EXPECTED.map((e) => e.name).sort());
+  });
+
+  it('服务账号配额每一项都必须**高于**普通账号（否则白名单形同虚设）', () => {
+    for (const [key, rule] of Object.entries(SERVICE_QUOTA)) {
+      const base = RULES[key as keyof typeof RULES] as { limit: number; windowMs: number };
+      expect(base, `RULES.${key} 不存在，SERVICE_QUOTA 覆盖了个不存在的配额`).toBeDefined();
+      expect(rule.limit, `SERVICE_QUOTA.${key} 必须大于 RULES.${key}`).toBeGreaterThan(base.limit);
+      // 窗口不同则两个数值不可比（「500/时」和「300/分」谁大？）—— 保持一致是刻意的约束
+      expect(rule.windowMs, `SERVICE_QUOTA.${key} 的窗口必须与 RULES 同口径`).toBe(base.windowMs);
+    }
   });
 
   it('RULES 可直接喂给 rateLimit（配额落地自检：第 limit+1 次被拒）', () => {
