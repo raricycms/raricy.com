@@ -83,6 +83,47 @@ test.describe('聊天功能：链接 / 跳转 / 搜索 / 日期分隔', () => {
     await expect(msgRow(page, orig)).toHaveClass(/chat-msg--highlight/, { timeout: 5000 });
   });
 
+  /**
+   * 【这条守的是「UI 真的把 reply_to 发出去了」】上面那条用例的回复是**直接打接口**
+   * 发的（postLobby 带 replyTo），整个前端发送链路一步都没走 —— 于是「点回复 → 写完
+   * → 发出去」这条路上 reply_to 被静默丢掉时，它照样全绿（用户报的 bug 正是这么漏的）。
+   *
+   * 被引用方特意是**另一个账号**：用户的说法是「没法引用**别人**的消息」。
+   * 纯文字是必须的 —— 带图 / 带博客引用时那条路径恰好是好的，用附件会把 bug 盖住。
+   */
+  test('点「回复」发一条纯文字消息 → 引用块挂在新消息上（走 UI 发送路径）', async ({ page }) => {
+    const tag = uniqueTag();
+    const orig = `e2e-reply-ui-orig-${tag}`;
+    const body = `e2e-reply-ui-body-${tag}`;
+
+    // 被引用方用一次性新用户：大区是全站共用频道，种子号的发言额度要省着用
+    const peer = await registerFreshUser(page, { core: true });
+    await postLobby(page, orig);
+
+    await page.context().clearCookies();
+    await loginViaApi(page, SEED_USERS.core.username);
+    await page.goto(`/chat?channel=${LOBBY}`);
+
+    // 回复按钮是 hover 才显示的（.chat-msg__actions 默认 display:none）→ 先把指针停上去
+    const origRow = msgRow(page, orig);
+    await expect(origRow).toBeVisible();
+    await origRow.hover();
+    await origRow.locator('.chat-msg__btn', { hasText: '回复' }).click();
+
+    // 前置断言：真的进了回复态。这一步挂 = 按钮没接上，与「reply_to 没发出去」分开定位
+    await expect(page.locator('.chat-composer__reply')).toContainText(peer.username);
+
+    await page.locator('.chat-composer__input').fill(body);
+    await page.locator('.chat-composer__send').click();
+
+    // 关键断言：发出去的那条带着引用块，且引用的是原消息与原作者
+    const sentRow = msgRow(page, body);
+    await expect(sentRow).toBeVisible();
+    const quote = sentRow.locator('.chat-msg__reply');
+    await expect(quote).toContainText(peer.username);
+    await expect(quote).toContainText(orig);
+  });
+
   test('搜索命中后跳转并高亮该条消息', async ({ page }) => {
     const marker = `e2e-search-${uniqueTag()}`;
     await loginViaApi(page, SEED_USERS.core.username);
