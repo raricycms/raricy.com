@@ -394,7 +394,7 @@ describe('移动端：点击导航链接后 navbar 自动收起', () => {
   const MOBILE_NAVBAR = `
     <nav class="site-navbar">
       <button class="site-navbar-toggler" aria-expanded="false"></button>
-      <a class="site-link" href="/game">玩具</a>
+      <a class="site-link" href="/blog">博客</a>
       <a class="site-login-btn" href="/login"><span class="icon icon-person-circle"></span>登录</a>
       <div class="site-user-dropdown">
         <button class="site-user-dropdown-toggle" aria-expanded="false"></button>

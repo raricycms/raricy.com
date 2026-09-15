@@ -55,36 +55,6 @@ test.describe('深色主题配色', () => {
     expect(luminance(color), `条目文字色 ${color} 太暗`).toBeGreaterThan(128);
   });
 
-  test('立方棋：暗色下红蓝棋子与空格子底色不同', async ({ page }) => {
-    await useDarkTheme(page);
-    await page.goto('/game/cubetictactoe');
-
-    // 落一子（组件是本地双人，红方先手）
-    await page.locator('.cubettt-cube').first().dispatchEvent('click');
-    await expect(page.locator('.cubettt-cube--red')).toHaveCount(1);
-
-    const faceBg = (sel: string) =>
-      page.locator(sel).first().evaluate((el) => getComputedStyle(el).backgroundColor);
-
-    // .cubettt-face 上有 background-color 的 0.2s 过渡：落子瞬间读到的是起始色，
-    // 必须等它落定再断言（否则用例时快时慢地"测出"回归）。
-    await expect
-      .poll(async () => {
-        const [red, empty] = await Promise.all([
-          faceBg('.cubettt-cube--red .cubettt-face'),
-          faceBg('.cubettt-cube--empty .cubettt-face'),
-        ]);
-        return red !== empty;
-      })
-      .toBe(true);
-
-    // 回归点：暗色规则曾把红蓝棋子一并刷成空格子的灰，棋子看起来"消失"
-    const red = await faceBg('.cubettt-cube--red .cubettt-face');
-    const [r, g, b] = (red.match(/[\d.]+/g) ?? []).map(Number);
-    expect(r, `红方棋子底色 ${red} 不偏红`).toBeGreaterThan(g);
-    expect(r, `红方棋子底色 ${red} 不偏红`).toBeGreaterThan(b);
-  });
-
   test('投票详情：暗色下底部按钮有可见边框与文字色', async ({ page }) => {
     await useDarkTheme(page);
     await loginViaApi(page, SEED_USERS.core.username);

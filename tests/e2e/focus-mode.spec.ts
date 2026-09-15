@@ -2,8 +2,7 @@
 // focus-mode.spec.ts —— 专注模式（账号级浏览偏好）
 //
 // 【功能面】/settings 打开后：博客列表与侧栏隐藏「专注隐藏」栏目及其文章并显示
-// 关闭横幅；聊天大区（lobby）侧栏行禁用、无最近一条预览；「玩具」（/game）导航
-// 与首页卡片禁用、/game 菜单页锁屏；游戏子页可直达。
+// 关闭横幅；聊天大区（lobby）侧栏行禁用、无最近一条预览。
 //
 // 【造数纪律 —— 与全库 spec 共存】
 //   • 动态幂等：被标记栏目用 uniqueTag 的 slug 现场建（owner API），文章走
@@ -70,25 +69,18 @@ test.describe('专注模式（设置 → 各处生效）', () => {
     await setFocus(page, false);
   });
 
-  test('设置页开关 → 顶栏玩具即时生效；刷新回显开；博客横幅「此处」深链到设置锚点', async ({ page }) => {
+  test('设置页开关 → 保存生效、刷新回显开；博客横幅「此处」深链到设置锚点', async ({ page }) => {
     await loginViaApi(page, SEED_USERS.core.username);
 
     // 设置页 UI 开关（点击 label；input 视觉隐藏）
     await page.goto('/settings');
     await clickFocusToggle(page);
     await expect(page.locator('#focusAlert')).toContainText('已保存');
-    // 顶栏「玩具」当场切禁用态 —— saveFocus 成功后 router.refresh() 重渲染服务端
-    // layout，无需整页跳转即与服务端 users.focus_mode 对齐（回归：曾停留旧态到下次重载）
-    const navToy = page.locator('span.site-link.is-disabled', { hasText: '玩具' });
-    await expect(navToy).toHaveAttribute('title', FOCUS_TITLE);
-    // 再关再开：链接恢复、再次禁用（同一机制双向验证）
+    // 再关再开：同一机制双向验证
     await clickFocusToggle(page);
     await expect(page.locator('#focusAlert')).toContainText('已保存');
-    await expect(page.locator('a.site-link[href="/game"]')).toHaveCount(1);
-    await expect(page.locator('span.site-link.is-disabled')).toHaveCount(0);
     await clickFocusToggle(page);
     await expect(page.locator('#focusAlert')).toContainText('已保存');
-    await expect(navToy).toHaveAttribute('aria-disabled', 'true');
 
     await page.goto('/settings');
     await expect(page.locator('#toggleFocus')).toBeChecked();
@@ -193,37 +185,6 @@ test.describe('专注模式（设置 → 各处生效）', () => {
     expect(msg.status()).toBe(200);
   });
 
-  test('玩具：导航/首页卡片禁用带 title；/game 菜单页锁屏；子页直达', async ({ page }) => {
-    await loginViaApi(page, SEED_USERS.core.username);
-    await setFocus(page, true);
-
-    // 导航「玩具」变 span（无链接）带 title
-    await page.goto('/');
-    await expect(page.locator('a.site-link[href="/game"]')).toHaveCount(0);
-    const navToy = page.locator('span.site-link.is-disabled', { hasText: '玩具' });
-    await expect(navToy).toHaveAttribute('title', FOCUS_TITLE);
-    await expect(navToy).toHaveAttribute('aria-disabled', 'true');
-
-    // 首页「进入玩具区」卡片禁用（div 而非链接）
-    const gameCard = page.locator('.feature-card.card-game.is-disabled');
-    await expect(gameCard).toHaveCount(1);
-    await expect(gameCard).toHaveAttribute('title', FOCUS_TITLE);
-    await expect(page.locator('a.feature-card.card-game[href="/game"]')).toHaveCount(0);
-
-    // /game 菜单页锁屏
-    await page.goto('/game');
-    await expect(page.locator('h1', { hasText: '玩具' })).toBeVisible();
-    await expect(page.locator('.game-card--focus-lock')).toContainText('已开启专注模式');
-    await expect(page.locator('a[href="/settings#focus-mode"]')).toBeVisible();
-    // 游戏卡不渲染
-    await expect(page.locator('a.game-card')).toHaveCount(0);
-
-    // 子页直达不受影响（RSC 内嵌 payload 会含导航 title 文案，故断言真实 UI 而非 body 全文）
-    await page.goto('/game/gomoku');
-    await expect(page.locator('h1', { hasText: '五子棋' })).toBeVisible();
-    await expect(page.locator('.game-card--focus-lock')).toHaveCount(0);
-  });
-
   test('关闭后全部恢复', async ({ page }) => {
     await loginViaApi(page, SEED_USERS.core.username);
     const { id: catId } = await createFlaggedCategory(page);
@@ -237,8 +198,5 @@ test.describe('专注模式（设置 → 各处生效）', () => {
     await page.goto('/blog');
     await expect(page.locator(`.blog-item:has-text("${flagged.title}")`)).toHaveCount(1);
     await expect(page.locator('.focus-banner')).toHaveCount(0);
-    // 导航恢复可点
-    await expect(page.locator('a.site-link[href="/game"]')).toHaveCount(1);
-    await expect(page.locator('span.site-link.is-disabled')).toHaveCount(0);
   });
 });

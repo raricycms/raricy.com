@@ -155,46 +155,6 @@ test.describe('角色门控', () => {
     await expect(page.locator('#userDropdownMenu a[href="/admin"]')).toHaveCount(0);
   });
 
-  // ───────────────────────────────────────────────────────────────────────────
-  // 玩具菜单的「联机」分区
-  //
-  // 联机各页的闸门是 requireCoreUser（登录 + core+）。菜单若把它露给非核心用户，
-  // 用户点进去只能撞 403 —— 入口与门禁自相矛盾，与 /admin/users 那次回归同一形状。
-  // 故菜单必须与页面同档：非核心（含未登录）只见单机分区。
-  // ───────────────────────────────────────────────────────────────────────────
-  test('★ 玩具菜单：未登录只见「单机」分区，联机卡片一张都不露', async ({ page }) => {
-    await page.goto('/game');
-
-    await expect(page.locator('.game-section__title')).toHaveText(['单机']);
-    // 分区标题够不够？不够 —— 标题少一段不等于卡片少一张，故再数链接本身。
-    // 联机专属的 cta 文案与 mode=online / 纯联机的井字棋两条路径都钉住。
-    await expect(page.getByRole('link', { name: /创建 \/ 加入房间/ })).toHaveCount(0);
-    await expect(page.locator('a.game-card[href*="mode=online"]')).toHaveCount(0);
-    await expect(page.locator('a.game-card[href="/game/tictactoe"]')).toHaveCount(0);
-
-    // 反向：单机卡片还在（不然「全都不渲染」也会让上面三条绿）
-    expect(await page.locator('a.game-card').count()).toBeGreaterThan(0);
-  });
-
-  test('★ 玩具菜单：普通用户（role=user）同样看不到联机', async ({ page }) => {
-    await loginViaApi(page, SEED_USERS.plain.username);
-    await page.goto('/game');
-
-    await expect(page.locator('.game-section__title')).toHaveText(['单机']);
-    await expect(page.locator('a.game-card[href*="mode=online"]')).toHaveCount(0);
-  });
-
-  test('★ 玩具菜单：核心用户两段都在（收紧不能误伤）', async ({ page }) => {
-    await loginViaApi(page, SEED_USERS.core.username);
-    await page.goto('/game');
-
-    await expect(page.locator('.game-section__title')).toHaveText(['单机', '联机']);
-    await expect(page.locator('a.game-card[href="/game/tictactoe"]')).toHaveCount(1);
-    // 同时有两种模式的四款棋，联机卡片指向同一页面 + ?mode=online
-    for (const p of ['gomoku', 'xiangqi', 'chess', 'draughts']) {
-      await expect(page.locator(`a.game-card[href="/game/${p}?mode=online"]`)).toHaveCount(1);
-    }
-  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
