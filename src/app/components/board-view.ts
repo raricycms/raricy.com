@@ -26,6 +26,12 @@ export interface BoardViewProps {
   /** 轮到走棋那一方被将军时，王的格子；否则 null。跳棋没有将军，恒为 null。 */
   check: Square | null;
   selection: MoveSelection;
+  /**
+   * 上一次"点了却没选中任何东西"的格子（几百毫秒后自动清空）。棋盘据此给"点不动"
+   * 的反馈 —— **判定归各棋**：这一格是不是该走棋那一方的子、该不该抖，要自己看
+   * （国际跳棋用它来回答"为什么这枚子动不了"，见 DraughtsBoard）。
+   */
+  rejected: Square | null;
   onSquareClick: (row: number, col: number) => void;
   /** 点不动（轮不到你 / 观战 / 断线 / 已终局）。棋盘照常显示。 */
   disabled: boolean;

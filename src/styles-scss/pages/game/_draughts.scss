@@ -95,6 +95,38 @@
   &--win {
     box-shadow: inset 0 0 0 4px rgb(220 53 69 / 85%);
   }
+
+  // 「点不动」的反馈（点了自己的子却动不了 —— 多半是**吃子强制**把非吃子的子冻住了）。
+  // 抖的是**棋子**而不是格子：连木色底一起晃，看着像整块棋盘在抖。
+  // 红圈是瞬时的（类名由 useMoveSelection 在 500ms 后撤掉），与"被将军"那种持久红圈
+  // 不会混起来 —— 那个在象棋里才用得上，这里只是"刚才这一下不算数"。
+  &--rejected {
+    box-shadow: inset 0 0 0 3px rgb(220 53 69 / 70%);
+
+    .draughts-piece {
+      animation: draughts-reject 0.4s ease;
+    }
+  }
+}
+
+// 点不动时棋子左右抖两下。用百分比位移，随格子缩放。
+@keyframes draughts-reject {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-7%);
+  }
+  40% {
+    transform: translateX(7%);
+  }
+  60% {
+    transform: translateX(-4%);
+  }
+  80% {
+    transform: translateX(4%);
+  }
 }
 
 .draughts-piece {

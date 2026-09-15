@@ -31,6 +31,7 @@ export default function DraughtsBoardView({
   // 共用同一个 BoardViewProps，单机壳才能只写一份。
   check: _check,
   selection,
+  rejected,
   onSquareClick,
   disabled,
 }: BoardViewProps) {
@@ -46,10 +47,14 @@ export default function DraughtsBoardView({
 
           const square: Square = [r, c];
           const isKing = cell !== 0 && typeOf(cell) === KING;
+          // 「点不动」的反馈：刚点过、却没选中任何东西的格子。**空格不算** ——
+          // 点空处本来就是"取消选择"的手势，抖它就成噪音了。
+          const isRejected = rejected !== null && cell !== 0 && same(rejected, square);
 
           const classes = [
             'draughts-square',
             'draughts-square--dark',
+            isRejected ? 'draughts-square--rejected' : '',
             selection.path.length > 0 && same(selection.path[0], square)
               ? 'draughts-square--selected'
               : '',

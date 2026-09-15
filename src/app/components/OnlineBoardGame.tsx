@@ -176,6 +176,7 @@ export default function OnlineBoardGame({
         highlight={view.highlight}
         check={view.check}
         selection={selection}
+        rejected={selection.rejected}
         onSquareClick={(r, c) => selection.click([r, c])}
         disabled={locked}
       />

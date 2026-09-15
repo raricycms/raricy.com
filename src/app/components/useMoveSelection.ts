@@ -20,8 +20,9 @@
 //   • 还只是某条着法的前缀     → 记下这一跳，继续等下一个落点
 // 对两格着法（象棋 / 国际象棋）来说就是普通的一次点击，对跳棋则天然是逐跳连吃。
 //
-// 【`targets` 只在选中之后才有意义】没选子时，每条着法的第一格其实是我自己那些
-// 能动的子 —— 那是另一回事，不该被当成"可以走这儿"画出来。详见接口上的注释。
+// 【两条被棋盘点出来的东西不是一回事】`targets` 是"可以走这儿"，`rejected` 是
+// "点了没反应"。前者**只在选中之后**才有意义（没选子时它其实是我自己那些能动的子），
+// 后者是给玩家的一句"这儿点不动"，判定归各棋自己。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -51,6 +52,14 @@ export interface MoveSelection {
    * 没选子的情况排除掉：落点只在选中之后才有意义。
    */
   targets: Square[];
+  /**
+   * 上一次**点了却没选中任何东西**的格子（空格、敌子、以及自己但动不了的子）。
+   * 给棋盘拿去做"点不动"的反馈用；几百毫秒后自动清空，否则同一个格子再点不会重放。
+   *
+   * 【判定归调用方】这里只回答"这一格点了没反应"，回答不了"为什么" ——
+   * 是不是自己的子、为什么动不了，都要问各棋自己（见 DraughtsBoard 的用法）。
+   */
+  rejected: Square | null;
   /** 点一个格子。已选中的子照常显示，点别处会改选或取消。 */
   click: (square: Square) => void;
   clear: () => void;
@@ -70,11 +79,21 @@ export function useMoveSelection(
   resetKey: number
 ): MoveSelection {
   const [path, setPath] = useState<Square[]>([]);
+  const [rejected, setRejected] = useState<Square | null>(null);
 
   // 局面一变就清空（含对手走子、终局、再来一局）
   useEffect(() => {
     setPath([]);
+    setRejected(null);
   }, [resetKey]);
+
+  // "点不动"的反馈是**瞬时**的：抖完就撤。一直挂着的话，同一个格子再点一次
+  // 类名没变化，动画不会重放 —— 第二次点就跟没点一样。
+  useEffect(() => {
+    if (!rejected) return;
+    const timer = setTimeout(() => setRejected(null), 500);
+    return () => clearTimeout(timer);
+  }, [rejected]);
 
   const targets = useMemo(() => {
     // 没选子就没有"落点"可谈 —— 此时的 targets 是我自己那些能动的子（见接口上的注释）
@@ -114,11 +133,17 @@ export function useMoveSelection(
       // 3) 点不动。若这一格有自己的子，就是改选；否则当作取消。
       const isOwnPiece = legalMoves.some((m) => sameSquare(m.path[0], square));
       setPath(isOwnPiece ? [square] : []);
+      // 改选是成功的操作，不算"点不动"；其余（空格、敌子、自己但动不了的子）
+      // 留给棋盘去判断该不该给反馈 —— 这里只知道"点了没选中东西"。
+      if (!isOwnPiece) setRejected(square);
     },
     [canPlay, legalMoves, path, onPlay]
   );
 
-  const clear = useCallback(() => setPath([]), []);
+  const clear = useCallback(() => {
+    setPath([]);
+    setRejected(null);
+  }, []);
 
-  return { path, targets, click, clear };
+  return { path, targets, rejected, click, clear };
 }

@@ -127,6 +127,7 @@ export default function LocalBoardGame({
         highlight={outcome.status === 'won' ? outcome.highlight : []}
         check={outcome.status === 'playing' ? outcome.check : null}
         selection={selection}
+        rejected={selection.rejected}
         onSquareClick={(r, c) => selection.click([r, c])}
         disabled={locked}
       />
