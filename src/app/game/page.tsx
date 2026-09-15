@@ -1,11 +1,16 @@
 import Link from 'next/link';
-import { getCurrentUser } from '@/lib/auth';
+import { getCurrentUser, isCoreUser } from '@/lib/auth';
 
 // 玩具（game）菜单 — 对齐 Flask `app/templates/game/menu.html`，在其上分了
 // 「单机 / 联机」两个分区（Flask 时代全是单机，联机是后加的）。
 //
 // 【为什么是分区数组而不是给每张卡加 section 字段】渲染顺序即数据顺序，不必再维护
 // 一个必须与数组顺序保持同步的字符串枚举。对齐 /tool 的 blocks（ToolMenu.tsx）。
+//
+// 【联机分区按核心用户门控】联机的真实闸门是登录 + core+（各 /game/* 页的
+// requireCoreUser），菜单必须与它同档，否则菜单给了卡、页面不给进，用户白跑一趟撞 403。
+// 未登录也落在这里 —— isCoreUser(null) 为 false。口径与 /tool 的「投票箱仅对核心用户
+// 显示」一致。**别放宽成「登录即可见」**：普通用户点进去仍然是 403。
 
 export const dynamic = 'force-dynamic';
 
@@ -203,6 +208,9 @@ export default async function GameMenuPage() {
     );
   }
 
+  // 非核心用户（含未登录）只给单机分区。
+  const sections = isCoreUser(user) ? SECTIONS : SECTIONS.filter((s) => s.key !== 'online');
+
   return (
     <div className="container">
       <section className="game-hero">
@@ -210,7 +218,7 @@ export default async function GameMenuPage() {
         <p className="game-hero__description">一些聪明山小游戏。</p>
       </section>
 
-      {SECTIONS.map((sec) => (
+      {sections.map((sec) => (
         <section className="game-section" key={sec.key}>
           <h2 className="game-section__title">{sec.title}</h2>
           <p className="game-section__desc">{sec.desc}</p>
