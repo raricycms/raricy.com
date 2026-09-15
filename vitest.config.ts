@@ -34,6 +34,10 @@ export default defineConfig({
     },
     setupFiles: ['tests/setup.ts'],
   },
+  // 组件用 JSX。esbuild 默认是 classic 运行时（要 React 在作用域里），而 Next 走的是
+  // automatic —— 不加这一行，任何 import 组件的用例都会在渲染时抛 "React is not defined"。
+  // 已有的用例（use-move-selection 等）用 createElement 绕开了它，组件用例绕不开。
+  esbuild: { jsx: 'automatic' },
   resolve: {
     alias: { '@': path.resolve(import.meta.dirname, 'src') },
   },
