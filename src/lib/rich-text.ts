@@ -51,6 +51,7 @@ import { Marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { linkify } from './linkify';
 import { embedImageRefs } from './content-refs';
+import { embedStickerRefs } from './sticker-refs';
 
 /**
  * 只放行 http(s) / mailto / 站内相对路径。
@@ -234,6 +235,16 @@ export function createRichTextRenderer(options: RichTextOptions): RichTextRender
     restrictInputs(holder);
     // ★ 内联图床图（`[@<10位ID>]`）—— 必须是净化之后，见 content-refs.ts 的说明
     embedImageRefs(holder);
+    // ★ 内联表情（`[@合集/表情]`）★
+    //
+    // ① 同样必须在净化之后（理由同上）。
+    // ② 必须在 linkifyTextNodes 之前：linkify 只走文本节点，此刻表情已经是 <img>，
+    //    碰不到它。反过来虽然 STICKER 的字符集也排除了 `.` / `:` 不会出事，但那是
+    //    「靠字符集侥幸」，不是顺序保证。
+    // ③ **必须再走一遍树**：embedImageRefs 会把一个文本节点切成「文本 + img + 文本」，
+    //    表情这一遍得重新遍历才看得见新切出来的文本节点。两个函数各建自己的
+    //    TreeWalker，天然满足。
+    embedStickerRefs(holder);
     linkifyTextNodes(holder);
     hardenLinks(holder, linkClass);
     return holder.innerHTML;

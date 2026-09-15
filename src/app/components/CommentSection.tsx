@@ -26,6 +26,7 @@ import QuoteBlogModal from './QuoteBlogModal';
 import ImageLightbox from './ImageLightbox';
 import CommentMarkdown from './CommentMarkdown';
 import { usePendingImage } from './usePendingImage';
+import { insertAtCaret } from './textarea-insert';
 import { COMMENT_TEXT_MAX, COMMENT_CAPTION_MAX } from '@/lib/comment-shared';
 
 declare global {
@@ -317,6 +318,10 @@ export default function CommentSection({ blogId, currentUserId = null, isAdmin =
         textareaRef={textareaRef}
         onTextChange={setText}
         onSend={() => void submit()}
+        // 评论：插到光标处，**不直接发** —— 这是一篇正在写的评论，不能被一个表情吞掉。
+        // 面板也不关：挑表情通常是连着挑好几个。
+        onStickerPick={(token) => setText(insertAtCaret(textareaRef.current, text, token))}
+        stickerPickClosesPanel={false}
         onPickImage={(f) => void pickImage(f)}
         onPickFromLibrary={pickFromLibrary}
         onOpenQuote={() => setQuoteOpen(true)}

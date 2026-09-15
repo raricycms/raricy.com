@@ -34,6 +34,11 @@ const E2E_DB = path.resolve(
   `tests/.tmp/e2e-${process.pid}-${Math.random().toString(36).slice(2, 8)}.db`
 );
 process.env.E2E_DB = E2E_DB;
+
+// 表情素材目录同理要经 process.env 传 —— globalSetup 与 webServer 是两个进程，
+// 只写在 webServer.env 里的话 globalSetup 读不到（它要往这个目录造素材）。
+const E2E_STICKERS_DIR = path.resolve(__dirname, 'tests/.tmp/e2e-stickers');
+process.env.STICKERS_DIR = E2E_STICKERS_DIR;
 const PORT = 3100; // 避开开发用的 3000
 const ACCOUNT_PORT = 3101; // 账户服务替身，见 tests/e2e/mock-account-service.ts
 const ACCOUNT_INTERNAL_TOKEN = 'e2e-internal-token';
@@ -155,6 +160,9 @@ export default defineConfig({
       RATE_LIMIT_SNAPSHOT_PATH: path.resolve(__dirname, 'tests/.tmp/e2e-rate-limit.json'),
       AVATARS_DIR: path.resolve(__dirname, 'tests/.tmp/e2e-avatars'),
       IMAGE_UPLOAD_FOLDER: path.resolve(__dirname, 'tests/.tmp/e2e-images'),
+      // 表情素材同理：不设它就会去扫项目真实的 instance/stickers（本机可能真有素材），
+      // 「空素材」这类用例会因此随机通过或失败。
+      STICKERS_DIR: E2E_STICKERS_DIR,
     },
     },
   ],

@@ -31,6 +31,8 @@ import ChatMessageItem, { dayKey, fmtDay, isMentioned } from './ChatMessageItem'
 import ChatSidebar from './ChatSidebar';
 import RichComposer, { type ComposerBlogQuote } from '../components/RichComposer';
 import { usePendingImage } from '../components/usePendingImage';
+import { insertAtCaret } from '../components/textarea-insert';
+import { stripStickerTokens } from '@/lib/sticker-refs';
 import ChatSearchModal, { SearchButton } from './ChatSearchModal';
 
 declare global {
@@ -137,7 +139,9 @@ function withPendingDirects(
  */
 function previewOfMessage(m: ChatMessageDTO): string {
   if (m.pat) return `拍了拍 ${m.pat.target_name}`;
-  const collapsed = m.content.replace(/\s+/g, ' ').trim();
+  // 表情 token 换成 [表情]，与既有的 [图片]/[博客] 同口径。
+  // ⚠️ 服务端 listChannelsForUser 里那份必须同步改（见本函数上方的说明）。
+  const collapsed = stripStickerTokens(m.content).replace(/\s+/g, ' ').trim();
   const display = collapsed || (m.image ? '[图片]' : m.blog ? '[博客]' : '');
   return display.length > CHAT_PREVIEW_MAX ? `${display.slice(0, CHAT_PREVIEW_MAX)}…` : display;
 }
@@ -867,12 +871,19 @@ export default function ChatApp({
   }, [channels, activeId, router, selectChannel]);
 
   // ── 发送 ───────────────────────────────────────────────────────────────
-  const send = useCallback(async () => {
+  const sendWith = useCallback(async (raw: string, opts?: { keepDraft?: boolean }) => {
     const aid = activeRef.current;
     if (!aid || sending) return;
-    const content = text.trim();
+    // keepDraft：表情包那种「点一下就走」的轻量消息。它只发 token，**不带走**待发的
+    // 图片 / 引用 / 回复目标，也不清草稿 —— 用户写了一半的正文原样留着。
+    //
+    // 【为什么正文必须从参数来，而不是读 text state】React 的 setState 是批处理的：
+    // 表情面板若先 onTextChange(token) 再调发送，父组件在**同一批次里**读到的 text
+    // 还是旧值 —— 轻则弹「消息内容不能为空」，重则把上一次的草稿当表情消息发出去。
+    const keepDraft = opts?.keepDraft === true;
+    const content = raw.trim();
     // 博客引用视同附件（对齐带图消息）：允许空正文
-    const hasAttach = !!pendingImage || !!blogQuote;
+    const hasAttach = !keepDraft && (!!pendingImage || !!blogQuote);
     if (!content && !hasAttach) {
       toast('消息内容不能为空', 'info');
       return;
@@ -890,9 +901,9 @@ export default function ChatApp({
         method: 'POST',
         body: JSON.stringify({
           content,
-          ...(pendingImage ? { image_id: pendingImage.id } : {}),
-          ...(blogQuote ? { blog_id: blogQuote.id } : {}),
-          ...(replyTarget ? { reply_to: replyTarget.id } : {}),
+          ...(hasAttach && pendingImage ? { image_id: pendingImage.id } : {}),
+          ...(hasAttach && blogQuote ? { blog_id: blogQuote.id } : {}),
+          ...(hasAttach && replyTarget ? { reply_to: replyTarget.id } : {}),
         }),
       });
       if (data.code === 200) {
@@ -902,14 +913,16 @@ export default function ChatApp({
           // 历史视图下回声会被 onStreamMessage 丢掉（窗口边缘不接新消息），这里也就不必管。
           const appended = historyViewRef.current ? true : appendMessage(m);
           lastIdRef.current = Math.max(lastIdRef.current, m.id);
-          setText('');
-          draftsRef.current.delete(aid); // 已发出 → 该频道草稿作废
-          clearImage();
-          setBlogQuote(null);
-          setReplyTarget(null);
+          if (!keepDraft) {
+            setText('');
+            draftsRef.current.delete(aid); // 已发出 → 该频道草稿作废
+            clearImage();
+            setBlogQuote(null);
+            setReplyTarget(null);
+            // 文本框高度随内容自动加高过 → 发送后复位
+            if (textareaRef.current) textareaRef.current.style.height = '';
+          }
           setNewCount(0);
-          // 文本框高度随内容自动加高过 → 发送后复位
-          if (textareaRef.current) textareaRef.current.style.height = '';
           if (historyViewRef.current) {
             // 历史视图：列表里没有「现在」那一段，append 上去等于在窗口边缘接一条不连续
             // 的消息（还看不见）→ 直接换回最新一页，刚发的这条就在里面且会滚到底。
@@ -934,7 +947,6 @@ export default function ChatApp({
   }, [
     appendMessage,
     sending,
-    text,
     pendingImage,
     blogQuote,
     replyTarget,
@@ -943,6 +955,9 @@ export default function ChatApp({
     scrollAfterCommit,
     scrollToBottom,
   ]);
+
+  /** 发送输入框里的正文（原入口，行为一字不变）。 */
+  const send = useCallback(() => void sendWith(text), [sendWith, text]);
 
   // ── 拍一拍（头像选项框） ───────────────────────────────────────────────
   // 走发消息同一条接口（pat_target_id 非空即拍一拍）：复用频道访问校验与限频。
@@ -980,25 +995,11 @@ export default function ChatApp({
 
   // ── @ta：把「@用户名 」插到光标处（无光标则追加到末尾）────────────────────
   // 末尾那个空格是格式约定：消息渲染时也靠它做边界（见 isMentioned）。
-  const insertMention = useCallback((username: string) => {
-    const snippet = `@${username} `;
-    const ta = textareaRef.current;
-    if (!ta) {
-      setText((t) => t + snippet);
-      return;
-    }
-    const start = ta.selectionStart ?? ta.value.length;
-    const end = ta.selectionEnd ?? start;
-    setText(ta.value.slice(0, start) + snippet + ta.value.slice(end));
-    requestAnimationFrame(() => {
-      ta.focus();
-      const caret = start + snippet.length;
-      ta.setSelectionRange(caret, caret);
-      // 程序化赋值不触发 onChange 的自动加高，这里补一次
-      ta.style.height = 'auto';
-      ta.style.height = `${Math.min(176, ta.scrollHeight)}px`;
-    });
-  }, []);
+  // 插入本身抽到 textarea-insert.ts —— 评论区插表情要走同一段（同样的三个坑）
+  const insertMention = useCallback(
+    (username: string) => setText(insertAtCaret(textareaRef.current, text, `@${username} `)),
+    [text]
+  );
 
   const openAvatarMenu = useCallback(
     (m: ChatMessageDTO, el: HTMLButtonElement) => {
@@ -1458,6 +1459,9 @@ export default function ChatApp({
                 if (v) notifyTyping();
               }}
               onSend={() => void send()}
+              // 聊天：点一下立刻发出去（微信手感）。keepDraft 让待发的图片 / 引用 /
+              // 写了一半的正文原样留着 —— 表情是个轻量动作，不该顺手把草稿一起发掉。
+              onStickerPick={(token) => void sendWith(token, { keepDraft: true })}
               onPickImage={(f) => void pickImage(f)}
               onPickFromLibrary={pickFromLibrary}
               onOpenQuote={() => setQuoteOpen(true)}

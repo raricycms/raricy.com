@@ -24,6 +24,7 @@ import { rateLimit, RULES } from './rate-limit';
 import { logAdminAction } from './admin-user-service';
 import { sendNotification } from './notification-service';
 import { publishToAll, publishToUsers } from './chat-bus';
+import { stripStickerTokens } from './sticker-refs';
 import {
   CHAT_LOBBY_ID,
   CHAT_LOBBY_TITLE,
@@ -391,7 +392,8 @@ export async function listChannelsForUser(
           id: last.id,
           content: (() => {
             if (patName) return `拍了拍 ${patName}`;
-            const collapsed = last.content.replace(/\s+/g, ' ').trim();
+            // 表情 token → [表情]（与客户端 previewOfMessage 逐字一致，见那边的注释）
+            const collapsed = stripStickerTokens(last.content).replace(/\s+/g, ' ').trim();
             // 正文为空的附件消息给个可读预览，避免侧栏显示「用户名：」这种空串
             // （口径与通知预览一致，见本文件 sendMessage 里的 preview）
             const display = collapsed
@@ -755,7 +757,9 @@ async function attachImagesAndReplies(rows: MessageRow[]): Promise<ChatMessageDT
       ? ''
       : (reply.isDeleted ?? false)
         ? CHAT_DELETED_TEXT
-        : reply.content || (reply.imageId && !replyImage ? '[图片已删除]' : '');
+        : // 引用块是一行摘要，表情 token 换成 [表情]（与侧栏预览、通知预览同口径）
+          stripStickerTokens(reply.content) ||
+          (reply.imageId && !replyImage ? '[图片已删除]' : '');
     return {
       id: m.id,
       channel_id: m.channelId,
@@ -1046,7 +1050,7 @@ async function notifyChannelMentions(params: {
   const memberByUser = new Map(members.map((m) => [m.userId, m]));
 
   // 正文折叠成一行再截断：通知列表是一行摘要，不展示换行与缩进
-  const collapsed = content.replace(/\s+/g, ' ').trim();
+  const collapsed = stripStickerTokens(content).replace(/\s+/g, ' ').trim();
   const preview =
     collapsed.length > CHAT_PREVIEW_MAX ? `${collapsed.slice(0, CHAT_PREVIEW_MAX)}…` : collapsed;
   const detail = isLobby ? `在聊天大区提到了你：${preview}` : `在私聊中提到了你：${preview}`;

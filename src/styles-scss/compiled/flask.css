@@ -2017,6 +2017,94 @@ svg.rc-icon {
   flex: none;
 }
 
+.sticker-picker {
+  margin-top: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-background-content);
+  overflow: hidden;
+}
+
+.sticker-picker__body {
+  height: 208px;
+  overflow-y: auto;
+}
+
+.sticker-picker__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
+  gap: 4px;
+  padding: 8px;
+}
+
+.sticker-picker__item {
+  padding: 4px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  aspect-ratio: 1/1;
+}
+.sticker-picker__item img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+.sticker-picker__item:hover {
+  background: var(--color-background-subtle);
+}
+
+.sticker-picker__tabs {
+  display: flex;
+  gap: 2px;
+  padding: 4px 6px;
+  border-top: 1px solid var(--color-border);
+  overflow-x: auto;
+}
+
+.sticker-picker__tab {
+  flex: none;
+  max-width: 120px;
+  padding: 4px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.sticker-picker__tab:hover {
+  color: var(--color-text-primary);
+}
+.sticker-picker__tab.is-active {
+  background: var(--color-background-subtle);
+  color: var(--color-text-primary);
+}
+
+.sticker-picker__state {
+  padding: 28px 12px;
+  text-align: center;
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}
+.sticker-picker__state svg {
+  width: 28px;
+  height: 28px;
+  opacity: 0.5;
+}
+.sticker-picker__state p {
+  margin: 8px 0 0;
+}
+
+.sticker-picker__hint {
+  font-size: 0.8rem;
+  opacity: 0.8;
+}
+
 .u-mt-8 {
   margin-top: 8px !important;
 }
@@ -3289,6 +3377,19 @@ a:hover {
   border-radius: 8px;
   cursor: zoom-in;
   background: var(--color-background-content);
+}
+
+.comment-content__md img.rich-sticker-ref {
+  display: inline-block;
+  vertical-align: text-bottom;
+  width: 1.6em;
+  height: 1.6em;
+  object-fit: contain;
+  margin: 0 0.15em;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  cursor: default;
 }
 
 .comment-form {
@@ -14286,6 +14387,19 @@ input:checked + .settings-toggle__slider::before {
   border-radius: 8px;
   cursor: zoom-in;
   background: var(--color-background-content);
+}
+
+.chat-msg__md img.rich-sticker-ref {
+  display: inline-block;
+  vertical-align: text-bottom;
+  width: 1.6em;
+  height: 1.6em;
+  object-fit: contain;
+  margin: 0 0.15em;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  cursor: default;
 }
 
 .chat-msg__deleted {

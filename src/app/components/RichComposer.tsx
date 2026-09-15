@@ -21,10 +21,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useRef, useState } from 'react';
-import { BookOpenText, Image as ImageIcon, Images } from 'lucide-react';
+import { BookOpenText, Image as ImageIcon, Images, Smile } from 'lucide-react';
 import { IMAGE_ACCEPT } from '@/lib/image-client';
 import type { PendingImage } from './usePendingImage';
 import ImagePickerModal from './ImagePickerModal';
+import StickerPicker from './StickerPicker';
 
 // 触屏设备（手机/平板）的虚拟键盘没有 Shift 键，Enter 只能承担换行，
 // 发送交给右下角按钮。按指针/悬停能力判断，比 UA 嗅探稳，混合设备
@@ -77,6 +78,8 @@ export default function RichComposer({
   onClearReply,
   onClearBlogQuote,
   onClearImage,
+  onStickerPick,
+  stickerPickClosesPanel = true,
   hintExtra,
 }: {
   /** BEM 前缀，见文件头「类名由调用方注入」。 */
@@ -106,6 +109,23 @@ export default function RichComposer({
   onClearBlogQuote: () => void;
   onClearImage: () => void;
   /**
+   * 点了表情面板里的一个表情，参数是 token `[@合集/表情]`。
+   *
+   * 【为什么交回 token，而不是本组件自己插进 textarea 再让调用方发送】
+   * 聊天要「点一下立刻发出去」，而发送读的是调用方的 text state；React 的 setState
+   * 是批处理的 —— 本组件 setText 之后，父组件在**同一批次里**读到的 text 还是旧值。
+   * 直接发的结果是弹「消息内容不能为空」，或者更糟：**把上一次的草稿当表情消息
+   * 发出去**。所以「插不插、发不发」必须由调用方定：
+   *   · 评论 → setText(v => insertAtCaret(ta, v, token))   留在草稿里
+   *   · 聊天 → sendWith(token)                             绕开 textarea 直接发
+   */
+  onStickerPick: (token: string) => void;
+  /**
+   * 选完一个表情要不要关面板。
+   * 聊天 true（发完就走）；评论 false（通常是连着挑好几个再落笔）。
+   */
+  stickerPickClosesPanel?: boolean;
+  /**
    * 底条左侧提示的**前置**内容（聊天与评论都用它显示字数上限）。
    *
    * 【为什么是前置而不是整体替换】曾经它是整体替换默认提示的，于是评论区的
@@ -119,6 +139,8 @@ export default function RichComposer({
   const fileRef = useRef<HTMLInputElement | null>(null);
   // 图床选择弹窗也归自己持有（同 fileRef 的道理：开合是个纯 UI 状态，调用方不关心）。
   const [pickerOpen, setPickerOpen] = useState(false);
+  // 表情面板同理 —— 开合是纯 UI 状态，调用方只关心「选中了哪个」。
+  const [stickerOpen, setStickerOpen] = useState(false);
 
   return (
     <div
@@ -205,6 +227,18 @@ export default function RichComposer({
           >
             <Images aria-hidden="true" />
           </button>
+          <button
+            type="button"
+            className={`${className}__icon-btn`}
+            onClick={() => setStickerOpen((v) => !v)}
+            title="表情"
+            aria-label="表情"
+            aria-expanded={stickerOpen}
+            // 供 StickerPicker 的「点外面关掉」识别并让开（否则会关了又开）
+            data-sticker-toggle
+          >
+            <Smile aria-hidden="true" />
+          </button>
           <input
             ref={fileRef}
             type="file"
@@ -268,6 +302,17 @@ export default function RichComposer({
           </button>
         </div>
       </div>
+
+      {/* 表情面板贴在输入区下方（不是居中弹窗）—— 理由见 StickerPicker 的文件头 */}
+      {stickerOpen && (
+        <StickerPicker
+          onClose={() => setStickerOpen(false)}
+          onPick={(token) => {
+            onStickerPick(token);
+            if (stickerPickClosesPanel) setStickerOpen(false);
+          }}
+        />
+      )}
 
       {pickerOpen && (
         <ImagePickerModal

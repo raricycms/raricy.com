@@ -7,6 +7,7 @@
 //   · database/       SQLite 主库（Prisma 直连；DATABASE_URL 指向这里）
 //   · images/         图床落盘目录（image-upload.ts 写入）
 //   · stories/        故事磁盘目录（story-service.ts 读取）
+//   · stickers/       表情包素材目录（sticker-service.ts 读取；<合集>/<表情>.gif|webp|png）
 //   · blogs/          历史遗留目录；当前已无写入，但保留以兼容老路径
 //
 // 部署侧一般由挂载点保证存在；本地开发或新机器无 instance/ 时，本脚本一键建好。
@@ -28,7 +29,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 // 时的行为等价。node 脚本若从其它目录被调用，固定写 ROOT 下符合直觉。
 const instanceRoot = path.join(ROOT, 'instance');
 
-const SUBDIRS = ['avatars', 'database', 'images', 'stories', 'blogs'];
+const SUBDIRS = ['avatars', 'database', 'images', 'stories', 'stickers', 'blogs'];
 
 let created = 0;
 for (const sub of SUBDIRS) {

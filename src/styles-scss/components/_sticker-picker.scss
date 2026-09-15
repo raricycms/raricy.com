@@ -1,0 +1,108 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// 表情面板（StickerPicker）—— 聊天与评论的输入区共用
+//
+// 放在 components/ 而不是 pages/_chat.scss：它由 RichComposer 持有，评论区同样在用，
+// 理由与 _image-picker.scss 一字不差。
+//
+// 【为什么不做成居中弹窗】它是**贴边面板**，从输入框下方长出来。除了贴近微信的交互
+// 习惯，还有一个硬理由：居中弹窗那套（.modal-overlay）会把焦点抢走，textarea 一失焦，
+// 移动端键盘就收起、插入位置也就丢了（详见 StickerPicker.tsx 的文件头）。
+// 所以这里既不遮罩、也不居中，就是输入区下面的一块。
+// ─────────────────────────────────────────────────────────────────────────────
+
+.sticker-picker {
+  margin-top: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-background-content);
+  overflow: hidden;
+}
+
+.sticker-picker__body {
+  // 固定高度而不是「随内容长」：切合集时面板不该跳高跳矮
+  height: 208px;
+  overflow-y: auto;
+}
+
+.sticker-picker__grid {
+  display: grid;
+  // 与图床选择器同款：auto-fill 让窄屏自动降列数，不写媒体查询
+  grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
+  gap: 4px;
+  padding: 8px;
+}
+
+.sticker-picker__item {
+  padding: 4px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  aspect-ratio: 1 / 1;
+
+  img {
+    width: 100%;
+    height: 100%;
+    // contain 而非 cover：表情是带透明背景的图，裁掉边缘就毁了
+    object-fit: contain;
+    display: block;
+  }
+
+  &:hover {
+    background: var(--color-background-subtle);
+  }
+}
+
+.sticker-picker__tabs {
+  display: flex;
+  gap: 2px;
+  padding: 4px 6px;
+  border-top: 1px solid var(--color-border);
+  overflow-x: auto;
+}
+
+.sticker-picker__tab {
+  flex: none;
+  max-width: 120px;
+  padding: 4px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--color-text-primary);
+  }
+
+  &.is-active {
+    background: var(--color-background-subtle);
+    color: var(--color-text-primary);
+  }
+}
+
+.sticker-picker__state {
+  padding: 28px 12px;
+  text-align: center;
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+
+  svg {
+    width: 28px;
+    height: 28px;
+    opacity: 0.5;
+  }
+
+  p {
+    margin: 8px 0 0;
+  }
+}
+
+.sticker-picker__hint {
+  font-size: 0.8rem;
+  opacity: 0.8;
+}

@@ -130,4 +130,24 @@
     cursor: zoom-in;
     background: var(--color-background-content);
   }
+  // 内联表情（正文里的 `[@合集/表情]`，见 src/lib/sticker-refs.ts）。
+  // ⚠️ 必须盖掉上面那条通用 img 规则 —— 那是给「图床引用图」写的（整行独占、
+  //    点开放大、带描边），而表情是**行内**的东西：不盖的话
+  //    「你好 [@猫猫/开心] 再见」会被 display:block 拆成三行。
+  //    类名与 rich-image-ref 刻意不同 —— RichContentBody 的点击放大只认后者，
+  //    用同一个类会让点表情弹出大图灯箱。cursor 也就不是 zoom-in。
+  .#{$cls} img.rich-sticker-ref {
+    display: inline-block;
+    vertical-align: text-bottom;
+    // 定死尺寸是**必须的**，不是美化：不定尺寸则表情加载完才撑开，聊天「发完滚到底」
+    // 会短一截，loading="lazy" 还会让视图边滚边跳版。
+    width: 1.6em;
+    height: 1.6em;
+    object-fit: contain;
+    margin: 0 0.15em;
+    border: none;
+    border-radius: 4px;
+    background: none;
+    cursor: default;
+  }
 }
