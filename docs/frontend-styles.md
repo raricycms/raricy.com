@@ -12,7 +12,7 @@ src/styles-scss/
 ├── base/         reset、root（CSS 变量）、排版、表单、Bootstrap fallback
 ├── components/   按钮、导航、图标、弹窗、卡片、告警、表单控件、toast、分页
 ├── layout/       容器、栅格、顶栏、页脚、后台侧边栏
-├── pages/        各页面样式（首页、博客、聊天、游戏、通知、管理后台…）
+├── pages/        各页面样式（首页、博客、聊天、通知、管理后台…）
 ├── utilities/    间距、显示、flex、文本工具类
 ├── compiled/     编译产物 flask.css（不要手改）
 └── main.scss     入口，控制 import 顺序
@@ -29,7 +29,7 @@ src/styles-scss/
 
 ## 2. 设计令牌（CSS 变量）
 
-主题令牌集中在 `src/styles-scss/base/_root.scss`，通过 `<html data-theme="light|dark">` 切换。所有组件样式必须引用这些变量，**禁止在组件里写死主题色**（游戏棋盘等有意的硬编码除外）。
+主题令牌集中在 `src/styles-scss/base/_root.scss`，通过 `<html data-theme="light|dark">` 切换。所有组件样式必须引用这些变量，**禁止在组件里写死主题色**（有意的硬编码除外）。
 
 ### 2.1 主色板（浅色 `data-theme="light"`）
 
@@ -167,7 +167,7 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
 - **顶栏**：`.site-navbar` 固定顶部（`position: fixed; top:0`），高 62px，背景 `--color-background-card`，阴影 `--shadow-card-brand`。`body` 有 `padding-top: 62px` 补偿。
 - **页脚**：`.site-footer`，背景卡片色 + 顶部分隔，内容容器同 1140px 体系。
 - **后台**：`.admin-layout` 左侧 220px 固定侧边栏（移动端折叠成横向标签条）+ 右侧滚动内容区，内容容器最大 1400px。
-- **栅格**：首页/游戏用 flex + `gap` 或 CSS Grid（`repeat(auto-fit, minmax(...))` / 显式 `repeat(3,1fr)`），**不用浮点栅格**。另有 `base/_grid.scss` 与 `base/_forms.scss` 提供 Bootstrap 风格行/列工具。
+- **栅格**：首页用 flex + `gap` 或 CSS Grid（`repeat(auto-fit, minmax(...))` / 显式 `repeat(3,1fr)`），**不用浮点栅格**。另有 `base/_grid.scss` 与 `base/_forms.scss` 提供 Bootstrap 风格行/列工具。
 - 页面骨架：`body { display:flex; flex-direction:column; min-height:100vh }` + `main { flex:1 0 auto }`，页脚始终贴底。
 
 ## 6. 组件风格要点
@@ -182,7 +182,7 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
 
 ### 6.2 卡片
 
-- 首页 `.feature-card` / 游戏 `.game-card`：卡片色背景 + 1px 边框 + `--shadow-card`，hover 升 `--shadow-card-brand` 并高亮边框。默认态与背景区分靠边框+阴影。
+- 首页 `.feature-card`：卡片色背景 + 1px 边框 + `--shadow-card`，hover 升 `--shadow-card-brand` 并高亮边框。默认态与背景区分靠边框+阴影。
 - 管理后台 `.admin-stat-card`：左侧 4px 彩色竖条区分类型（blue/green/amber/purple/red）。
 
 ### 6.3 表单控件（`components/_form-controls.scss`）
@@ -222,13 +222,13 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
 **不用图标字体 / icon 库**，采用「SVG + CSS mask」：`components/_icons.scss` 定义 `.icon` 基类，用 `mask-image` 引用 `public/static/img/icons/*.svg`，颜色跟随 `currentColor`（即继承 `color`），天然适配亮/暗主题。
 
 - 常用类：`.icon-bell`、`.icon-gear`、`.icon-person`、`.icon-house`、`.icon-fish`、`.icon-theme-toggle`、`.icon-book/controller/journal-text/tools`（首页四大入口）等。
-- 首页/游戏卡片的 `feature-icon` / `__icon` 用同一手法，给不同卡片指定不同 `color` 形成彩色图标（无需多色 SVG）。
+- 首页卡片的 `feature-icon` / `__icon` 用同一手法，给不同卡片指定不同 `color` 形成彩色图标（无需多色 SVG）。
 - 新增图标：放一个单色 SVG 到 `public/static/img/icons/`，在 SCSS 里加一条 mask 规则即可。
 - **例外：自带配色的多色图标不走 mask。** mask 是单色模板（只取形状，颜色一律来自
-  `currentColor`），所以**填充色与描边色必须分开**的图标套不进这条约定 —— 典型是国际象棋的
-  棋子：白子要「白填充 + 深描边」才在浅格上立得住，mask 会把这一层信息抹平。这类素材直接放
-  `public/static/img/` 下（棋子见 `chess/`），用 `<img>` 引用，配色烤在 SVG 里。
-  第三方素材还要在同目录留一份 `LICENSE.txt`（先例：`chess/`、
+  `currentColor`），所以**填充色与描边色必须分开**的图标套不进这条约定 —— 例如「白填充 +
+  深描边」才立得住的主体，mask 会把这一层信息抹平。这类素材直接放
+  `public/static/img/` 下，用 `<img>` 引用，配色烤在 SVG 里。
+  第三方素材还要在同目录留一份 `LICENSE.txt`（先例：
   `public/static/vditor/dist/js/mathjax/LICENSE`）。
 
 ## 8. 主题切换机制
@@ -295,4 +295,3 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
 - 个别文件残留 `--box-bg` / `--text` / `--muted-color` 等旧变量名（来自迁移前的站点 CSS），它们没有在 `:root` 定义，会落到 fallback。新代码用新的 `--color-*` 体系。
 - `body.dark-mode`（旧 Flask 时代的深色写法）与新 `[data-theme]` 并存，只在个别 Bootstrap fallback 组件里用到，属历史债务，不推广。
 - `abstracts/_theme-map.scss` 的 light map 与 `themeify` mixin 已停用，不要基于它扩展。
-- 游戏棋盘类样式（`pages/game/*`）为玩法所需，允许硬编码色值，与主题无关。

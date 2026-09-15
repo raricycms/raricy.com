@@ -95,10 +95,6 @@
 | `/image/i/<id>` · `/auth/avatar/<id>` | rewrite | **不是路由**：Flask 时代的旧直链，由 `next.config.mjs` 的 `rewrites()` 映射到 `/api/images/<id>/raw`、`/api/avatar/<id>`。存量正文里写死的就是它们（见 `tests/e2e/legacy-urls.spec.ts`） |
 | `/story` · `/story/[...path]` | page | 故事合集/阅读 |
 | `/tool` · `/tool/<sub>` | page | 工具集（aes / base / hash / hex / html / qp / translate / url / cattca） |
-| `/game` · `/game/<sub>` · `/api/game/game_token` | page + API | 游戏菜单（**单机 / 联机两分区**，**联机分区仅核心用户可见** —— 与各联机页的 `requireCoreUser` 同档）+ 13 款游戏（另有 `/game/wand` 演示页）。五子棋、中国象棋、国际象棋、国际跳棋同时出现在两区，靠 `?mode=online` 切模式；井字棋只有联机一种玩法 |
-| `/api/game/gomoku/*` | API | 五子棋联机：建房 / 快照 / 加入 / 坐席位 / 退席位 / 走子 / 认输 / 判胜 / 悔棋 / 回应悔棋 / 再来一局 + SSE 流。见 §6.9 |
-| `/api/game/tictactoe/*` | API | 井字棋联机：同一组端点，与五子棋共用房间层（`board-room.ts`）与 HTTP 错误映射（`api/game/_shared.ts`）。见 §6.9 |
-| `/api/game/{xiangqi,chess,draughts}/*` | API | 中国象棋 / 国际象棋 / 国际跳棋联机：同样是那 10 个端点，实现全部来自 `api/game/_shared.ts` 的 handler 工厂，`route.ts` 只是「import + 一行赋值」。见 §6.9 |
 | `/admin/*` · `/api/admin/*` | page + API | 管理后台（档位分页而异，见 §8） |
 | `/audit` · `/audit/[id]` | page | 审计日志公示 + 申诉 |
 | `/contact` · `/privacy` · `/terms` | page | 联系 / 隐私 / 条款 |
@@ -118,13 +114,11 @@
 | 博客域 | `blog-service.ts` · `feed-service.ts` · `comment-service.ts` · `comment-shared.ts` · `blog-sort-pref.ts` · `spider-service.ts` |
 | 富文本渲染 | `rich-text.ts`（共享管线）· `chat-markdown.ts` · `comment-markdown.ts` · `blog-markdown.ts` · `markdown-math.ts` · `linkify.ts` · `vditor-theme.ts` |
 | 聊天 | `chat-service.ts` · `chat-bus.ts`（SSE 订阅）/ `chat-shared.ts`（DTO）· `chat-sidebar-pref.ts` · `focus-mode.ts` |
-| 实时传输 | `sse.ts` —— SSE 响应头 / 帧格式 / 重连与背压常量的**唯一出处**，聊天与五子棋联机共用。新增 SSE 路由一律 import 它，不要手抄响应头（`no-transform` 少一个字的后果见 §6.9） |
+| 实时传输 | `sse.ts` —— SSE 响应头 / 帧格式 / 重连与背压常量的**唯一出处**，聊天在用。新增 SSE 路由一律 import 它，不要手抄响应头（`no-transform` 少一个字的后果见该文件头注释） |
 | 通知 / 审计 | `notification-service.ts` · `broadcast-service.ts` · `audit-service.ts` · `admin-appeal-service.ts` |
 | 投票 / 签到 / 剪贴板 | `vote-service.ts` · `checkin-service.ts` · `clipboard-service.ts` |
 | 图床 | `image-service.ts` · `image-upload.ts`（服务端）· `image-client.ts`（浏览器侧选图上传，聊天与评论共用）· `vditor-upload.ts`（Vditor 编辑器的上传配置，博客与剪贴板共用；与 `/api/images` 的字段名/响应结构两端对齐，见 `tests/unit/vditor-upload.test.ts`） |
 | 故事 | `story-service.ts` |
-| 游戏 · 通用 | `atamas-pref.ts` |
-| 游戏 · 联机棋类 | `board-shared.ts`（五款棋共用的协议：房间码 / 席位 / 棋路 / DTO / SSE 事件）· `board-room.ts`（**共用的房间注册表**：席位、观战、掉线判胜、TTL 回收、服务端权威判定）· `game-bus.ts`（按房间的进程内 SSE 订阅）· `api/game/_shared.ts`（60 条路由的 handler 工厂）。各游戏只提供自己的纯规则：`{gomoku,tictactoe,xiangqi,chess,draughts}-rules.ts`，再由各自的 `-room.ts` **薄门面**把棋盘绑上去（走子类棋不需要适配器，棋盘本身就满足 `RoomBoard`）。见 §6.9 |
 | 小鱼干 | `fish-service.ts` · `fish-admin.ts` · `fish-market-service.ts`（用户间转账，见 §6.3）· `fish-sync.ts`（账本 + 补偿，见 §6.3）· `fish-units.ts`（单位换算）· `account-client.ts` |
 | OAuth 2.0 | `oauth.ts`（见 `docs/oauth.md`） |
 | 管理域 | `admin-user-service.ts` · `admin-blog-service.ts` · `admin-category-service.ts` · `admin-comment-service.ts` · `admin-clipboard-service.ts` · `admin-vote-service.ts` · `admin-image-service.ts` · `admin-stats-service.ts` |
@@ -278,161 +272,6 @@ div 会卸载重挂，`deps=[]` 的监听器永远附不上。
 **核心库与端点**：`src/lib/oauth.ts`（纯函数 + Prisma 调用）；6 个 `/api/oauth/*` 路由 + `/oauth/authorize` 页 + `/admin/oauth` 管理页；CLI `oauth create-app / list-apps / disable-app / enable-app`。
 
 详见 `docs/oauth.md`。
-
-### 6.9 联机棋类（五款：五子棋 / 井字棋 / 中国象棋 / 国际象棋 / 国际跳棋）
-
-玩具区原本全是纯客户端单机 / 同屏双人。五子棋联机是第一个有服务端棋局状态的玩法；
-井字棋联机是第二个，它接入时把两家共用的部分抽了出来；三款棋类（2026-09）接入时
-又把「一手棋怎么表达、怎么判终局」这条轴抽了出来。
-
-**两类棋，一份房间层。** 五款棋的房间生命周期**完全一致**（建房 / 入座 / 观战 /
-掉线判胜 / 再来一局 / TTL 回收 / revision 语义）。真正的差异只有一条轴——
-「一手棋怎么表达、怎么判终局」，而它分成两类：
-
-| | 落子类（五子棋 / 井字棋） | 走子类（象棋 / 国际象棋 / 国际跳棋） |
-|---|---|---|
-| 一手棋 | `path` 只有一格（落在哪） | `path` 是起点→终点；连吃则更长 |
-| 目标格 | 必须是空格 | 可以是敌子（吃子） |
-| 胜负 | 最后一手连成一条线 | **整盘**判定（将死 / 无棋可走） |
-| 和棋 | 棋盘下满 | 逼和 / 五十回合 / 子力不足 / 三次重复 / 长将 |
-| 棋子编码 | 0 / 1 / 2 | 各棋自定（颜色 + 兵种） |
-
-所以 `board-shared.ts` 的 `Cell` 是 `number`（房间层不解释取值），
-`MoveInput.path` 统一成一条路径，`RoomBoard` 只留一个 `submit()`：
-
-```ts
-submit(player, move): Outcome | null   // 解析 + 判合法 + 落子 + 判终局，一次完成
-undo(): boolean                        // 撤掉最后一手；没有可撤的返回 false
-```
-
-`undo()` 与 `submit()` 是同一类东西：**单步、同步、原子**，没有「先校验再撤」两步可拆，
-也就同样没有地方能插进一个 `await`。各棋自己保证把这一手的**全部**影响还原
-（走子类棋包括易位权利、过路兵目标格、半回合计数与重复局面历史）—— 见
-「悔棋」一节。
-
-**为什么是单一入口而不是 `isValidMove` + `applyMove` + `outcomeAfter` 三步**：
-原子性从「注释约定」变成「接口上做不到别的」——没有两步可拆，就没有地方能插进一个
-`await`（「顺手把棋谱落个库」是最容易发生的那次，而那时棋盘已被改动）。同时非法着法
-有了统一出口：返回 `null` 且**保证棋盘未被改动**，不必关心实现者是不是先落子后判错。
-
-**分层：**
-
-| 层 | 文件 | 归属 |
-|----|------|------|
-| 协议（房间码 / 席位 / DTO / SSE 事件 / Outcome） | `board-shared.ts` | 共用 |
-| 房间注册表 + 服务端权威判定 | `board-room.ts` | 共用 |
-| 12 个 handler 工厂（60 条路由的实现） | `api/game/_shared.ts` | 共用 |
-| 进程内 SSE 订阅 | `game-bus.ts` | 共用 |
-| 棋盘与终局判定（纯规则，前后端同一份） | `{gomoku,tictactoe,xiangqi,chess,draughts}-rules.ts` | 各自的 |
-| 把棋盘绑上去的薄门面（走子类棋不需要适配器） | `{...}-room.ts` | 各自的 |
-| 客户端房间状态机（连接/重连/presence/判胜计时） | `components/useOnlineRoom.ts` | 共用 |
-| 进房面板与专注模式占位 | `components/OnlineRoomPanel.tsx` | 共用 |
-| 大厅：席位 + 观战台（头像 / 加入 / 换先 / 去观战台） | `components/BoardLobby.tsx` | 共用 |
-| 悔棋按钮与「对手请求」回应条 | `components/BoardUndoControls.tsx` | 共用 |
-| 选子交互（点子 → 高亮 → 落点，按路径前缀推进） | `components/useMoveSelection.ts` | 走子类共用 |
-| 单机对局壳（悔棋 / 新对局 / 升变） | `components/LocalBoardGame.tsx` | 走子类共用 |
-| 联机对局壳 | `components/OnlineBoardGame.tsx` | 走子类共用 |
-| 「某一方叫什么 / 终局怎么念」 | `components/board-specs.tsx` | 走子类共用（单机联机同一份） |
-| 棋盘渲染 + 接口地址（**URL 必须是字面量**） | `components/{Online,}{Gomoku,TicTacToe,Xiangqi,Chess,Draughts}.tsx` | 各自的 |
-
-**加第六款棋时该动哪条轴。** 落子类不必动 `board-room.ts`（照五子棋的样子加
-「规则 + 门面 + 10 条路由」即可）；走子类多半也不必 —— 它要的东西
-（`path` / `submit` / `Outcome.winner` / `legalMoves`）已经在协议里了。
-**真要动它时，先问一句「这是棋类共性还是这款棋的特性」**：本次接入三款棋类时改的
-正是共性那一半（一手棋怎么表达、终局怎么判、赢家怎么归属）。
-
-**`Outcome.winner` 必须显式给出。** 绝大多数终局是「刚走完的那一方赢」（将死 /
-困毙 / 连成线），但**长将判负是走的人输** —— 一直在将军的那方判负，而判终局恰好
-在他刚走完那一刻触发。靠「走的人赢」去推就会把长将的胜负判反，且双方都会觉得自己
-赢了；这是一个只有下出长将才暴露的错误。
-
-**`legalMoves` 由服务端下发。** 走子类棋的合法着法取决于 `grid` **之外**的状态
-（国际象棋的易位权利与吃过路兵目标格、中国象棋的重复局面历史），客户端光看 `grid`
-推不出来，刷新或断线重连之后更推不出来（DTO 里没有着法历史）。所以服务端把
-「轮到走棋那一方的全部合法着法」随每次全量状态一起推下去 —— 客户端因此**一行规则
-都不跑**，也就不可能与判定的那份 drift。落子类棋不提供（空格点下去就行）。
-
-**大厅：席位是点出来的，不是排出来的。** 没在对局中时，房间里显示两份名单 ——
-**对战席位**与**观战台**，都带头像与用户名（头像走站内既有的 `/api/avatar/<id>`，
-所以 `SeatView` 里带 `id`；除此之外不带别的身份信息）。空着的那一席是一个写着
-「加入」的按钮：观战台上的人点它入座，已经坐在另一席的人点它**换先**（原席位空出）。
-与对手互换座位不做（那要挪动别人的头像，是另一回事）。`playing` 时观战台整块隐藏 ——
-服务端干脆不下发名单，只给 `spectatorCount`（席位栏显示「围观 N」）。
-
-席位与后手/先手的映射仍是「坐哪一席」，所以**「开房的人执黑」只在没人换过座位时成立**：
-大厅允许换先，指南里因此写的是「坐哪一席就执哪一方」。
-
-**悔棋：撤 1 或 2 步，对手同意才生效。** 语义是「退回到轮到**我**走的那一刻」——
-`undoPlies(turn, seat)` 因此给出 1 步（我刚走完，对手还没应招）或 2 步（对手已经应招，
-连他那一步一起撤）。同意权在手对手上，也就不存在「看完对手应招再反悔」。
-
-请求**不冻结棋局**：任何一手走子都会把它作废（局面都变了，悔的就不再是那个局面），
-终局与再来一局同理 —— 所以它既不需要服务端定时器，也不会把房间卡在「等回应」上。
-
-**为什么要单独压一份 `checkStack`：** `check`（「轮到走子那方是否被将军」）是**历史信息**，
-撤回之后重算不出来（要走子类的棋盘生成整棵着法树才知道上一手走完时谁在被将），
-所以每走一手就把**走子前**的 `check` 压栈，撤几手弹几手。栈长即 `plyCount`（客户端据此
-判断按钮点不点得动）。**`requestRematch` 换棋盘时必须同时清空它**：不清的话第二局第一手
-会按上一局的步数撤，`room.turn` 与棋盘内部的 turn 就此错开，双方从此永久 `illegalMove`。
-
-**房号表是全局唯一的一张。** 五款棋的房间存在同一个 Map 里，房间带 `kind` 字段；
-每条操作都要求调用方声明自己期望的 `kind`，对不上按 `notFound` 处理 —— 五子棋的房号
-拿去井字棋的接口只会得到「房间不存在」，既不串号也不泄露「这个房号存在」。
-代价是 `MAX_ROOMS=200` 为五款棋共享（内存本来就是一个池子）。
-限频键按游戏分开（`game:<棋种>:*`），额度不互相挤占。棋类内部还分三档：建房与进房
-（`gameRoom`，10/分 —— 它们会新建房间与观战席位）、走子与席位（`gameMove`，120/分）、
-取快照（`gamePoll`，120/分）。**席位特意不跟 join 挤同一档**：客户端每次切回标签页都会
-自动坐回原席（见上面的席位规则），那点流量搁在 10/分 的桶里，正常人翻几下就被挡 ——
-表现是「座位没回来」。席位固定两个、不新建任何东西，本就该按高频动作算。
-
-**为什么不开 WebSocket、不引 Redis。** 棋是回合制，一次走子间隔以秒计，SSE 的单向
-推送完全够用；而走子走 POST 白拿 CSRF 同源校验、限频与 session 鉴权（这三样 WS 都要
-自己重写）。更关键的是 Next 的 route handler 拿不到 HTTP upgrade —— 开 WS 得写自定义
-server，会顶掉 `next start -p 3000` 与 systemd unit。Redis 解决的「多实例 fanout」
-在单进程部署下不存在（同 §6.5 的限频）。
-
-**服务端权威。** 联网后客户端不可信（否则 POST 一句「我赢了」就行）。棋盘、轮次、
-胜负全在 `board-room.ts`，客户端只渲染服务端下发的 `grid`。规则跑的是与前端**同一个**
-rules 模块，不存在两份判定 —— 两边各写一份必然 drift，而且是静默的。
-
-> **校验与落子之间不得出现 `await`。** 单线程 Node + 无 await = 临界区天然原子。
-> 日后若为了「棋谱落库」在 `playMove` 里插一个 await，两个并发请求会同时通过轮次
-> 检查、同一格落两次子 —— 这类 bug 只在生产并发下复现。
-
-**协议：每次变化推全量状态。** 棋盘最大 225 格（约 1KB JSON），走子间隔以秒计。
-全量推送换来的是**没有增量协议的那一整类 bug**（漏推、乱序、断线后增量对不上）。
-因此也不需要 `Last-Event-ID` 补齐、环形缓冲与 resync —— SSE 一连上服务端就推一次
-当前状态（见 `rooms/[code]/stream/route.ts`），客户端按 `revision` 丢弃过期的即可。
-这比聊天那套简单一档，因为它推的是全量而非增量。
-
-**响应头复用 `sse.ts`。** `Cache-Control: no-transform` 少了的话，`next start` 的压缩
-中间件会把事件 gzip 攒到流结束才发（实测 4 条事件拖到 +1241ms 一次性到达），实时性
-归零 —— 而单测看不见、构建也不报错。故 chat 与 game 共用同一份常量。
-
-**生命周期。** 房号 6 位，字母表剔掉 `0/o/1/l/i`（要给人念、手抄、发消息）。房间码
-即邀请凭证，没有单独的邀请接口。空闲 30 分钟 / 空房 2 分钟回收；硬上限 `MAX_ROOMS=200`、
-单房观众 20、每用户并发连接 4。
-
-**席位规则（2026-09 起）：** `playing` 时席位不释放（掉线只标记，对手据此判胜 ——
-见「判胜不做服务端定时器」），**其余状态（waiting / won / draw）里一掉线就把席位让出来**
-（人回到观战台，席位空着等下一个想坐的人）。由此得到一条不变量：**`playing` ⇒ 两席都有人**，
-所以混进来的新人永远偷不走对局中的座位。`join` 落点永远是**观战台**（进房 ≠ 入座），
-坐哪一席由本人在大厅里点（`takeSeat`）；「刷新页面回到原座」与「断线重连自动坐回原位」
-靠的是 join 幂等 + 建流首帧带回来的 `you`（`RoomStreamEvent`）—— 席位会被释放，
-客户端光看 `view` 是发现不了「我已经不在座位上了」的。
-
-**权限。** 联机要求登录 + `core+` + 非专注模式，比单机子页严（单机匿名可玩、专注模式
-也能直达）。联机是社交行为，与聊天大区同等对待：服务端硬 403，不只是 UI 隐藏。专注
-模式变更时 `user-service` 会 `kickViewer` 掉该用户的联机连接，否则他能把手上这局下完。
-路由层的分档：五子棋页 `/game/gomoku` 只有 `?mode=online` 那一支调 `requireCoreUser()`
-（单机必须保持匿名可玩），井字棋没有单机分支、无条件要求 `core+`。
-
-**判胜不做服务端定时器。** 对手掉线满 60 秒可由对方点「判胜」，时间由服务端在
-`claimAbandoned` 里复核 —— 少一类状态机 bug，且客户端伪造不了。对方重新连上即撤销资格。
-
-**已知限制（不是 bug）。** 房间在进程内存里：重启即失、多实例不共享 —— 与 `chat-bus.ts`
-同一前提。房间没有进数据库是有意的（一局棋是短命会话，为它加表要连带迁移、清理与软
-删除口径）。
 
 ## 7. 数据流（4 个典型路径）
 
@@ -596,7 +435,6 @@ rules 模块，不存在两份判定 —— 两边各写一份必然 drift，而
 |------|------|------|
 | SQLite 库级写锁 | 高并发写会互相 `database is locked` | 长期建议迁 Postgres（届时去 `DATABASE_URL` 的 `connection_limit/socket_timeout`） |
 | 进程内限频 | 多实例下各自计数，总限翻倍 | 多实例前先换 Redis |
-| 联机棋类房间在进程内存 | 进程重启即失（进行中的对局作废，客户端显示「房间已失效」）；多实例下 A 实例建的房 B 实例查不到 | **已知限制不是 bug**，与 `chat-bus.ts` 同一前提。房间没进数据库是有意的：一局棋是短命会话，为它加表要连带迁移、清理与软删除口径，收益不抵成本 |
 | `instance/` 在部署机器 | 需挂载真实目录否则上传 500 | 部署脚本里 `node scripts/check-instance.mjs` 兜底 |
 | 初次部署既有库 | `FISH_ENCRYPTION_KEY` 必须留空，否则解不开存量密文 | `npm run diagnose` 会校验 |
 | 反代改写了 `Host` 且未透传 `X-Forwarded-Host` | 浏览器 `Origin` 与三个来源都对不上 → 全站 POST 403（CSRF 误杀）。nginx 默认就把 `Host` 设成 `$proxy_host`（upstream 地址），所以**两个头都要显式透传** | `ALLOWED_ORIGINS="你的域名"` 兜底或修 nginx |
@@ -608,4 +446,4 @@ rules 模块，不存在两份判定 —— 两边各写一份必然 drift，而
 - `docs/deploy.md` — 部署 / 运行 / nginx / systemd
 - `docs/cli.md` — 运维 CLI 命令
 - `CLAUDE.md` — 关键约定（约束与反直觉决策）
-- 内容/玩法文档：`docs/guide/` —— 玩家与创作者文档（atamas / cattca / 云剪贴板 / 图床 / 投票箱 / story）
+- 内容/玩法文档：`docs/guide/` —— 玩家与创作者文档（cattca / 云剪贴板 / 图床 / 投票箱 / story）
