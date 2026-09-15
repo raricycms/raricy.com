@@ -172,3 +172,20 @@ export const SEED_LOGS = {
 
 /** 兼容只读用例的既有引用（列表/详情页只认这条）。 */
 export const SEED_LOG = SEED_LOGS.desktop;
+
+/**
+ * 表情包 e2e 素材的合集名 / 表情名。
+ *
+ * 素材本身由 global-setup.ts 的 seedStickers() 写进 tests/.tmp/e2e-stickers/
+ * （与 instance/stickers 同构：<合集>/<表情>.png + 可选 info.json）。
+ * spec 要靠这些名字拼 token，所以放在 seed 里 —— 别让 spec 去 import global-setup，
+ * 那个文件顶层有 `缺少 E2E_DB 就抛` 的自检，在 worker 进程里可能不成立。
+ */
+export const E2E_STICKERS = {
+  collection: '猫猫',
+  /** info.json 里的 title —— 刻意与目录名不同，用来验「面板显示的是显示名」。 */
+  collectionTitle: '猫猫合集',
+  names: ['开心', '难过'],
+  /** info.json 标了 ignore 的合集：列表里不该有，手打 token 也该取不到。 */
+  hidden: '私密',
+} as const;

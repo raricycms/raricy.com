@@ -17,6 +17,7 @@ import { PrismaClient } from '@prisma/client';
 import { hashPassword } from '../../src/lib/password';
 import { nowForDb } from '../../src/lib/db-time';
 import {
+  E2E_STICKERS,
   SEED_PASSWORD,
   SEED_USERS,
   SEED_CATEGORY,
@@ -50,6 +51,41 @@ function assertTestDb(dbPath: string) {
   if (!dbPath.includes(`${path.sep}tests${path.sep}.tmp${path.sep}`)) {
     throw new Error(`拒绝在非测试库上运行：${dbPath}（必须位于 tests/.tmp/ 下）`);
   }
+}
+
+/** 1×1 的合法 PNG（detectImageMime 只读文件头，但浏览器要能真渲染出来）。 */
+const PNG_1X1 = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64'
+);
+
+/**
+ * 造表情素材（instance/stickers 的等价物，指向 tests/.tmp/e2e-stickers）。
+ *
+ * 【为什么在 globalSetup 而不是 spec 的 beforeAll】服务端是**按请求惰性扫盘**的
+ * （见 sticker-service.ts 的三层缓存），素材必须在第一个 /api/stickers 请求之前就位。
+ * globalSetup 跑在 webServer 起来之后、用例开始之前，正好。
+ */
+function seedStickers() {
+  const root = process.env.STICKERS_DIR;
+  if (!root) throw new Error('缺少 STICKERS_DIR —— 见 playwright.config.ts 的 webServer.env');
+  if (!root.includes(`${path.sep}tests${path.sep}.tmp${path.sep}`)) {
+    throw new Error(`拒绝在非测试目录上造表情素材：${root}`);
+  }
+  fs.rmSync(root, { recursive: true, force: true });
+
+  const dir = path.join(root, E2E_STICKERS.collection);
+  fs.mkdirSync(dir, { recursive: true });
+  // 显示名与目录名刻意不同 —— 面板上要显示「猫猫合集」，而 token 里必须是「猫猫」
+  fs.writeFileSync(path.join(dir, 'info.json'), JSON.stringify({ title: E2E_STICKERS.collectionTitle }));
+  for (const n of E2E_STICKERS.names) {
+    fs.writeFileSync(path.join(dir, `${n}.png`), PNG_1X1);
+  }
+
+  const hiddenDir = path.join(root, E2E_STICKERS.hidden);
+  fs.mkdirSync(hiddenDir, { recursive: true });
+  fs.writeFileSync(path.join(hiddenDir, 'info.json'), JSON.stringify({ ignore: true }));
+  fs.writeFileSync(path.join(hiddenDir, '秘密.png'), PNG_1X1);
 }
 
 /**
@@ -107,6 +143,7 @@ export default async function globalSetup() {
   assertTestDb(E2E_DB);
   fs.mkdirSync(path.dirname(E2E_DB), { recursive: true });
   acquireLock();
+  seedStickers();
   // 每轮从零开始：上轮残留的用户会让「注册重名」「今天已签到」这类用例莫名其妙地挂
   for (const suffix of ['', '-wal', '-shm']) {
     fs.rmSync(E2E_DB + suffix, { force: true });
