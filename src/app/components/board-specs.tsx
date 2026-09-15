@@ -14,20 +14,36 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { EndReason, Player } from '@/lib/board-shared';
-import { WHITE as CHESS_WHITE, isPromotionMove } from '@/lib/chess-rules';
+import {
+  BISHOP,
+  KNIGHT,
+  QUEEN,
+  ROOK,
+  WHITE,
+  isPromotionMove,
+  piece,
+  WHITE as CHESS_WHITE,
+} from '@/lib/chess-rules';
 import { RED } from '@/lib/xiangqi-rules';
 import { WHITE as DRAUGHTS_WHITE } from '@/lib/draughts-rules';
+import { pieceIconSrc } from './chess-pieces';
 import ChessBoardView from './ChessBoard';
 import DraughtsBoardView from './DraughtsBoard';
 import XiangqiBoardView from './XiangqiBoard';
 import type { BoardSpec } from './board-view';
 
-/** 升变可选的四种。**没有王** —— 升变成王不是合法着法。 */
+/**
+ * 升变可选的四种。**没有王** —— 升变成王不是合法着法。
+ *
+ * `value` 是**发给服务端的 SAN 字母**（服务端按它认兵种），别改成别的；
+ * `iconSrc` 只是显示层，固定用白子那套：升变选择条挂在浅底的按钮上，
+ * 白子带深描边，亮暗主题下都看得清（黑子在这里会糊成一团）。
+ */
 const PROMOTION_CHOICES = [
-  { value: 'q', label: '后' },
-  { value: 'r', label: '车' },
-  { value: 'b', label: '象' },
-  { value: 'n', label: '马' },
+  { value: 'q', label: '后', iconSrc: pieceIconSrc(piece(WHITE, QUEEN)) },
+  { value: 'r', label: '车', iconSrc: pieceIconSrc(piece(WHITE, ROOK)) },
+  { value: 'b', label: '象', iconSrc: pieceIconSrc(piece(WHITE, BISHOP)) },
+  { value: 'n', label: '马', iconSrc: pieceIconSrc(piece(WHITE, KNIGHT)) },
 ] as const;
 
 export const CHESS_SPEC: BoardSpec = {

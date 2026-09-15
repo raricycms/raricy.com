@@ -8565,6 +8565,17 @@ body {
   color: var(--color-text-secondary);
   font-size: 0.9rem;
 }
+.board-promotion__icon {
+  width: 1.2em;
+  height: 1.2em;
+  vertical-align: -0.25em;
+  margin-right: 0.25em;
+  pointer-events: none;
+}
+.board-promotion .board-btn {
+  display: inline-flex;
+  align-items: center;
+}
 
 .gomoku-page {
   min-height: calc(100vh - 62px);

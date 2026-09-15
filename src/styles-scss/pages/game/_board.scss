@@ -319,4 +319,21 @@
     color: var(--color-text-secondary);
     font-size: 0.9rem;
   }
+
+  // 兵种图标。按按钮字号缩放（1em），所以跟文字一起变，不必另设断点。
+  // 固定白子那套：选择条是浅底按钮，白子带深描边，亮暗主题下都看得清。
+  &__icon {
+    width: 1.2em;
+    height: 1.2em;
+    vertical-align: -0.25em;
+    margin-right: 0.25em;
+    // 图是 <img>，点它一样要点到按钮上
+    pointer-events: none;
+  }
+
+  // 按钮本来是给纯文字用的行内块，图标进来后得让它居中排一行
+  .board-btn {
+    display: inline-flex;
+    align-items: center;
+  }
 }

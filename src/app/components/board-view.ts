@@ -74,8 +74,12 @@ export interface BoardSpec {
    * 不给就表示这款棋没有升变选择，落子即定。
    */
   isPromotion?: (cell: number, to: Square) => boolean;
-  /** 升变可选的兵种。有 `isPromotion` 时才用得上。 */
-  promotionChoices?: ReadonlyArray<{ value: string; label: string }>;
+  /**
+   * 升变可选的兵种。有 `isPromotion` 时才用得上。
+   * `iconSrc` 是图形文件路径（只有国际象棋给），对局壳不认识棋类，只会照着渲染。
+   * 允许 null：取图标的那步与棋盘共用同一个函数，它对空格返回 null。
+   */
+  promotionChoices?: ReadonlyArray<{ value: string; label: string; iconSrc?: string | null }>;
 }
 
 /** 单机壳要的全部东西 = 一款棋的规格 + 造棋盘的能力。 */

@@ -141,6 +141,9 @@ export default function LocalBoardGame({
               className="board-btn board-btn--small"
               onClick={() => choosePromotion(choice.value)}
             >
+              {choice.iconSrc && (
+                <img className="board-promotion__icon" src={choice.iconSrc} alt="" aria-hidden="true" />
+              )}
               {choice.label}
             </button>
           ))}
