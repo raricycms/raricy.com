@@ -18,6 +18,7 @@ import {
   describeCommonOnlineRules,
   pieceAt,
   playMove,
+  takeSeat,
 } from './board-game-helpers';
 import { SEED_USERS } from './seed';
 
@@ -29,6 +30,7 @@ test.describe('国际象棋联机（将死）', () => {
       const room = await createRoom(a.page, 'chess');
       await b.page.goto(`/game/chess?mode=online&room=${room}`);
       await expect(b.page.locator(CHESS_BOARD.board)).toBeVisible();
+      await takeSeat(b.page, 'white'); // 进房只落观战台，坐下才开局
 
       // 1. f3 e5 2. g4 Qh4#
       await playMove(a.page, CHESS_BOARD, [6, 5], [5, 5]); // f2-f3

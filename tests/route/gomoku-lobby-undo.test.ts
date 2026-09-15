@@ -212,17 +212,19 @@ describe('POST /rooms/:code/undo(+/respond) —— 悔棋', () => {
   });
 });
 
-describe('限频桶：大厅两条与 join 共用 gameRoom', () => {
-  it(`建房 + ${RULES.gameRoom.limit - 1} 次 join 之后被挡（重连自动回座绕不开它）`, async () => {
-    // 建房也吃同一个桶，所以这里只剩 limit - 1 次可用
+describe('限频桶：席位两条**不**与 join 挤同一档', () => {
+  it(`join 用满 ${RULES.gameRoom.limit}/分 之后席位照样坐得上去（席位走 gameMove 那一档）`, async () => {
+    // 建房与 join 都吃 gameRoom（会新建房间 / 观战席位，那是要闸门的资源），
+    // 所以建房先占掉一次，再灌满剩下的
     const code = await newRoom();
-
     for (let i = 0; i < RULES.gameRoom.limit - 1; i++) {
       expect((await join(code)).status, `第 ${i + 1} 次 join`).toBe(200);
     }
+    expect((await join(code)).status, 'join 已经满额').toBe(429);
 
-    // 同一个桶：换个接口（seat）也一样被挡 —— 限频键是 game:<棋种>:room:<userId>
-    const blocked = await seat(code, { seat: 'white' });
-    expect(blocked.status).toBe(429);
+    // 席位本身不新建任何东西（固定两个），而客户端**每次切回标签页**都会自动坐回原席 ——
+    // 那点流量搁在 10/分 的桶里，正常人翻几下就被挡，表现是"座位没回来"。
+    const taken = await seat(code, { seat: 'white' });
+    expect(taken.status).toBe(200);
   });
 });

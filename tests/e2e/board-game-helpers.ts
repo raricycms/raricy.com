@@ -275,7 +275,8 @@ export function describeCommonOnlineRules(opts: {
         await expect(b.page.locator('.board-seat[data-seat="black"]')).toContainText('你');
         // 一席空着还不是对局：大厅把观战台摆出来，等第三个人来坐另一席
         await expect(b.page.locator('.board-bench')).toBeVisible();
-        await expect(b.page.locator('.board-bench__empty')).toContainText('把链接发给朋友');
+        // 房主被从席位上放下来之后**落在观战台上**（还标着掉线），不是凭空消失
+        await expect(b.page.locator('.board-bench__item')).toContainText(SEED_USERS.core.username);
       } finally {
         await a.ctx.close(); // 已在上面关过，Playwright 的 close 是幂等的
         await b.ctx.close();

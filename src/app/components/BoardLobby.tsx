@@ -44,6 +44,7 @@ function Person({
   className,
   avatarClass,
   dataSeat,
+  prefix,
 }: {
   entry: SeatView;
   myId: string | null;
@@ -51,9 +52,12 @@ function Person({
   avatarClass: string;
   /** 席位 id（'black' / 'white'）。观战台上的人没有席位，不传。 */
   dataSeat?: Seat;
+  /** 席位前缀：「红方」/「白方」、黑子白子、X/O —— 由各棋自己给。 */
+  prefix?: ReactNode;
 }) {
   return (
     <span className={className} data-seat={dataSeat} data-seat-id={entry.id}>
+      {prefix}
       {/* 站内头像接口：没传过头像就是确定性 identicon，永不碎图 */}
       <img className={avatarClass} src={`/api/avatar/${entry.id}`} alt="" />
       {entry.name}
@@ -108,6 +112,7 @@ export default function BoardLobby({
               className={`board-seat${active ? ' board-seat--active' : ''}`}
               avatarClass="board-seat__avatar"
               dataSeat={seat}
+              prefix={seatLabel(playerOfSeat(seat))}
             />
           );
         })}

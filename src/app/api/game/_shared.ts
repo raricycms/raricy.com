@@ -215,8 +215,11 @@ export function makeJoinHandler(kind: RoomKind, api: GameRoomApi) {
 export function makeTakeSeatHandler(kind: RoomKind, api: GameRoomApi) {
   return async function POST(req: Request, ctx: CodeCtx): Promise<Response> {
     const { code: raw } = await ctx.params;
-    // 与 join 同一个限频桶：客户端重连后自动坐回原席走的也是这两个接口
-    const g = await gate(kind, raw, 'room', 'gameRoom');
+    // 走**走子那一档**（120/分），不跟 join 挤 10/分那档：席位是固定两个、不新建任何
+    // 东西，而**每次切回标签页**客户端都会自动坐回原席（见 useOnlineRoom 的 reclaimSeat），
+    // 那点流量搁在 10/分 的桶里，正常人翻几下就被挡了 —— 而 429 的表现是"座位没回来"。
+    // join/create 仍在紧桶里：它们会新建房间与观战席位，那才是需要闸门的资源。
+    const g = await gate(kind, raw, 'move', 'gameMove');
     if (g instanceof Response) return g;
 
     const body = (await req.json().catch(() => ({}))) as { seat?: unknown };
@@ -238,7 +241,7 @@ export function makeTakeSeatHandler(kind: RoomKind, api: GameRoomApi) {
 export function makeLeaveSeatHandler(kind: RoomKind, api: GameRoomApi) {
   return async function POST(_req: Request, ctx: CodeCtx): Promise<Response> {
     const { code: raw } = await ctx.params;
-    const g = await gate(kind, raw, 'room', 'gameRoom');
+    const g = await gate(kind, raw, 'move', 'gameMove'); // 同 takeSeat：走子那一档
     if (g instanceof Response) return g;
 
     const res = api.leaveSeat(g.code, { id: g.user.id, name: g.user.username });
