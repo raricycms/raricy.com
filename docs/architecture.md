@@ -96,9 +96,9 @@
 | `/story` · `/story/[...path]` | page | 故事合集/阅读 |
 | `/tool` · `/tool/<sub>` | page | 工具集（aes / base / hash / hex / html / qp / translate / url / cattca） |
 | `/game` · `/game/<sub>` · `/api/game/game_token` | page + API | 游戏菜单（**单机 / 联机两分区**）+ 13 款游戏（另有 `/game/wand` 演示页）。五子棋、中国象棋、国际象棋、国际跳棋同时出现在两区，靠 `?mode=online` 切模式；井字棋只有联机一种玩法 |
-| `/api/game/gomoku/*` | API | 五子棋联机：建房 / 快照 / 加入 / 走子 / 认输 / 判胜 / 再来一局 + SSE 流。见 §6.9 |
+| `/api/game/gomoku/*` | API | 五子棋联机：建房 / 快照 / 加入 / 坐席位 / 退席位 / 走子 / 认输 / 判胜 / 悔棋 / 回应悔棋 / 再来一局 + SSE 流。见 §6.9 |
 | `/api/game/tictactoe/*` | API | 井字棋联机：同一组端点，与五子棋共用房间层（`board-room.ts`）与 HTTP 错误映射（`api/game/_shared.ts`）。见 §6.9 |
-| `/api/game/{xiangqi,chess,draughts}/*` | API | 中国象棋 / 国际象棋 / 国际跳棋联机：同样是那 8 个端点，实现全部来自 `api/game/_shared.ts` 的 handler 工厂，`route.ts` 只是「import + 一行赋值」。见 §6.9 |
+| `/api/game/{xiangqi,chess,draughts}/*` | API | 中国象棋 / 国际象棋 / 国际跳棋联机：同样是那 10 个端点，实现全部来自 `api/game/_shared.ts` 的 handler 工厂，`route.ts` 只是「import + 一行赋值」。见 §6.9 |
 | `/admin/*` · `/api/admin/*` | page + API | 管理后台（档位分页而异，见 §8） |
 | `/audit` · `/audit/[id]` | page | 审计日志公示 + 申诉 |
 | `/contact` · `/privacy` · `/terms` | page | 联系 / 隐私 / 条款 |
@@ -124,7 +124,7 @@
 | 图床 | `image-service.ts` · `image-upload.ts`（服务端）· `image-client.ts`（浏览器侧选图上传，聊天与评论共用）· `vditor-upload.ts`（Vditor 编辑器的上传配置，博客与剪贴板共用；与 `/api/images` 的字段名/响应结构两端对齐，见 `tests/unit/vditor-upload.test.ts`） |
 | 故事 | `story-service.ts` |
 | 游戏 · 通用 | `atamas-pref.ts` |
-| 游戏 · 联机棋类 | `board-shared.ts`（五款棋共用的协议：房间码 / 席位 / 棋路 / DTO / SSE 事件）· `board-room.ts`（**共用的房间注册表**：席位、观战、掉线判胜、TTL 回收、服务端权威判定）· `game-bus.ts`（按房间的进程内 SSE 订阅）· `api/game/_shared.ts`（40 条路由的 handler 工厂）。各游戏只提供自己的纯规则：`{gomoku,tictactoe,xiangqi,chess,draughts}-rules.ts`，再由各自的 `-room.ts` **薄门面**把棋盘绑上去（走子类棋不需要适配器，棋盘本身就满足 `RoomBoard`）。见 §6.9 |
+| 游戏 · 联机棋类 | `board-shared.ts`（五款棋共用的协议：房间码 / 席位 / 棋路 / DTO / SSE 事件）· `board-room.ts`（**共用的房间注册表**：席位、观战、掉线判胜、TTL 回收、服务端权威判定）· `game-bus.ts`（按房间的进程内 SSE 订阅）· `api/game/_shared.ts`（60 条路由的 handler 工厂）。各游戏只提供自己的纯规则：`{gomoku,tictactoe,xiangqi,chess,draughts}-rules.ts`，再由各自的 `-room.ts` **薄门面**把棋盘绑上去（走子类棋不需要适配器，棋盘本身就满足 `RoomBoard`）。见 §6.9 |
 | 小鱼干 | `fish-service.ts` · `fish-admin.ts` · `fish-market-service.ts`（用户间转账，见 §6.3）· `fish-sync.ts`（账本 + 补偿，见 §6.3）· `fish-units.ts`（单位换算）· `account-client.ts` |
 | OAuth 2.0 | `oauth.ts`（见 `docs/oauth.md`） |
 | 管理域 | `admin-user-service.ts` · `admin-blog-service.ts` · `admin-category-service.ts` · `admin-comment-service.ts` · `admin-clipboard-service.ts` · `admin-vote-service.ts` · `admin-image-service.ts` · `admin-stats-service.ts` |
@@ -279,7 +279,13 @@ GET/HEAD/OPTIONS 视为安全方法，不校验。
 
 ```ts
 submit(player, move): Outcome | null   // 解析 + 判合法 + 落子 + 判终局，一次完成
+undo(): boolean                        // 撤掉最后一手；没有可撤的返回 false
 ```
+
+`undo()` 与 `submit()` 是同一类东西：**单步、同步、原子**，没有「先校验再撤」两步可拆，
+也就同样没有地方能插进一个 `await`。各棋自己保证把这一手的**全部**影响还原
+（走子类棋包括易位权利、过路兵目标格、半回合计数与重复局面历史）—— 见
+「悔棋」一节。
 
 **为什么是单一入口而不是 `isValidMove` + `applyMove` + `outcomeAfter` 三步**：
 原子性从「注释约定」变成「接口上做不到别的」——没有两步可拆，就没有地方能插进一个
@@ -292,12 +298,14 @@ submit(player, move): Outcome | null   // 解析 + 判合法 + 落子 + 判终�
 |----|------|------|
 | 协议（房间码 / 席位 / DTO / SSE 事件 / Outcome） | `board-shared.ts` | 共用 |
 | 房间注册表 + 服务端权威判定 | `board-room.ts` | 共用 |
-| 8 个 handler 工厂（40 条路由的实现） | `api/game/_shared.ts` | 共用 |
+| 12 个 handler 工厂（60 条路由的实现） | `api/game/_shared.ts` | 共用 |
 | 进程内 SSE 订阅 | `game-bus.ts` | 共用 |
 | 棋盘与终局判定（纯规则，前后端同一份） | `{gomoku,tictactoe,xiangqi,chess,draughts}-rules.ts` | 各自的 |
 | 把棋盘绑上去的薄门面（走子类棋不需要适配器） | `{...}-room.ts` | 各自的 |
 | 客户端房间状态机（连接/重连/presence/判胜计时） | `components/useOnlineRoom.ts` | 共用 |
 | 进房面板与专注模式占位 | `components/OnlineRoomPanel.tsx` | 共用 |
+| 大厅：席位 + 观战台（头像 / 加入 / 换先 / 去观战台） | `components/BoardLobby.tsx` | 共用 |
+| 悔棋按钮与「对手请求」回应条 | `components/BoardUndoControls.tsx` | 共用 |
 | 选子交互（点子 → 高亮 → 落点，按路径前缀推进） | `components/useMoveSelection.ts` | 走子类共用 |
 | 单机对局壳（悔棋 / 新对局 / 升变） | `components/LocalBoardGame.tsx` | 走子类共用 |
 | 联机对局壳 | `components/OnlineBoardGame.tsx` | 走子类共用 |
@@ -305,7 +313,7 @@ submit(player, move): Outcome | null   // 解析 + 判合法 + 落子 + 判终�
 | 棋盘渲染 + 接口地址（**URL 必须是字面量**） | `components/{Online,}{Gomoku,TicTacToe,Xiangqi,Chess,Draughts}.tsx` | 各自的 |
 
 **加第六款棋时该动哪条轴。** 落子类不必动 `board-room.ts`（照五子棋的样子加
-「规则 + 门面 + 8 条路由」即可）；走子类多半也不必 —— 它要的东西
+「规则 + 门面 + 10 条路由」即可）；走子类多半也不必 —— 它要的东西
 （`path` / `submit` / `Outcome.winner` / `legalMoves`）已经在协议里了。
 **真要动它时，先问一句「这是棋类共性还是这款棋的特性」**：本次接入三款棋类时改的
 正是共性那一半（一手棋怎么表达、终局怎么判、赢家怎么归属）。
@@ -320,6 +328,29 @@ submit(player, move): Outcome | null   // 解析 + 判合法 + 落子 + 判终�
 推不出来，刷新或断线重连之后更推不出来（DTO 里没有着法历史）。所以服务端把
 「轮到走棋那一方的全部合法着法」随每次全量状态一起推下去 —— 客户端因此**一行规则
 都不跑**，也就不可能与判定的那份 drift。落子类棋不提供（空格点下去就行）。
+
+**大厅：席位是点出来的，不是排出来的。** 没在对局中时，房间里显示两份名单 ——
+**对战席位**与**观战台**，都带头像与用户名（头像走站内既有的 `/api/avatar/<id>`，
+所以 `SeatView` 里带 `id`；除此之外不带别的身份信息）。空着的那一席是一个写着
+「加入」的按钮：观战台上的人点它入座，已经坐在另一席的人点它**换先**（原席位空出）。
+与对手互换座位不做（那要挪动别人的头像，是另一回事）。`playing` 时观战台整块隐藏 ——
+服务端干脆不下发名单，只给 `spectatorCount`（席位栏显示「围观 N」）。
+
+席位与后手/先手的映射仍是「坐哪一席」，所以**「开房的人执黑」只在没人换过座位时成立**：
+大厅允许换先，指南里因此写的是「坐哪一席就执哪一方」。
+
+**悔棋：撤 1 或 2 步，对手同意才生效。** 语义是「退回到轮到**我**走的那一刻」——
+`undoPlies(turn, seat)` 因此给出 1 步（我刚走完，对手还没应招）或 2 步（对手已经应招，
+连他那一步一起撤）。同意权在手对手上，也就不存在「看完对手应招再反悔」。
+
+请求**不冻结棋局**：任何一手走子都会把它作废（局面都变了，悔的就不再是那个局面），
+终局与再来一局同理 —— 所以它既不需要服务端定时器，也不会把房间卡在「等回应」上。
+
+**为什么要单独压一份 `checkStack`：** `check`（「轮到走子那方是否被将军」）是**历史信息**，
+撤回之后重算不出来（要走子类的棋盘生成整棵着法树才知道上一手走完时谁在被将），
+所以每走一手就把**走子前**的 `check` 压栈，撤几手弹几手。栈长即 `plyCount`（客户端据此
+判断按钮点不点得动）。**`requestRematch` 换棋盘时必须同时清空它**：不清的话第二局第一手
+会按上一局的步数撤，`room.turn` 与棋盘内部的 turn 就此错开，双方从此永久 `illegalMove`。
 
 **房号表是全局唯一的一张。** 五款棋的房间存在同一个 Map 里，房间带 `kind` 字段；
 每条操作都要求调用方声明自己期望的 `kind`，对不上按 `notFound` 处理 —— 五子棋的房号
@@ -353,8 +384,15 @@ rules 模块，不存在两份判定 —— 两边各写一份必然 drift，而
 
 **生命周期。** 房号 6 位，字母表剔掉 `0/o/1/l/i`（要给人念、手抄、发消息）。房间码
 即邀请凭证，没有单独的邀请接口。空闲 30 分钟 / 空房 2 分钟回收；硬上限 `MAX_ROOMS=200`、
-单房观众 20、每用户并发连接 4。席位在房间存续期内不释放 —— 所以 `join` 是幂等的，
-「刷新页面回到原座」与「断线重连不丢座」是同一条路径。
+单房观众 20、每用户并发连接 4。
+
+**席位规则（2026-09 起）：** `playing` 时席位不释放（掉线只标记，对手据此判胜 ——
+见「判胜不做服务端定时器」），**其余状态（waiting / won / draw）里一掉线就把席位让出来**
+（人回到观战台，席位空着等下一个想坐的人）。由此得到一条不变量：**`playing` ⇒ 两席都有人**，
+所以混进来的新人永远偷不走对局中的座位。`join` 落点永远是**观战台**（进房 ≠ 入座），
+坐哪一席由本人在大厅里点（`takeSeat`）；「刷新页面回到原座」与「断线重连自动坐回原位」
+靠的是 join 幂等 + 建流首帧带回来的 `you`（`RoomStreamEvent`）—— 席位会被释放，
+客户端光看 `view` 是发现不了「我已经不在座位上了」的。
 
 **权限。** 联机要求登录 + `core+` + 非专注模式，比单机子页严（单机匿名可玩、专注模式
 也能直达）。联机是社交行为，与聊天大区同等对待：服务端硬 403，不只是 UI 隐藏。专注
