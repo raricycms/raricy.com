@@ -95,8 +95,8 @@ export function isIntegerSquare(sq: unknown): sq is Square {
  *
  * - `promotion`：升变选择，只在国际象棋用（`'q'|'r'|'b'|'n'`）。
  *   **不是可选的**：走到升变却报不出兵种，服务端一律按非法着法拒绝，**不替玩家
- *   选后**。理由有两条：一是升变成马有时是唯一的赢法（抽将），替玩家选后就等于
- *   下错了一盘棋；二是联机没有悔棋，选错了收不回来。客户端跑的是同一份规则模块，
+ *   选后**。理由是升变成马有时是唯一的赢法（抽将），替玩家选后就等于替人下错了
+ *   一盘棋 —— 即便有悔棋（要对手同意）也补不回来。客户端跑的是同一份规则模块，
  *   它自己就知道这一手要不要升变，所以"拒绝"不会让正常玩家卡住。
  */
 export interface MoveInput {
@@ -190,6 +190,20 @@ export function otherSeat(seat: Seat): Seat {
   return seat === 'black' ? 'white' : 'black';
 }
 
+/**
+ * 悔棋要撤几步 —— 把局面退回到「轮到 `seat` 走」的那一刻。
+ *
+ * - 此刻轮对手走（我刚走完、对手还没应招）→ **1 步**：撤掉我刚走的那一步。
+ * - 此刻轮自己走（对手已经应招）→ **2 步**：自己那一步连同对手的应招一起撤掉
+ *   （只撤对手那步等于让他重走一遍，没有意义；悔棋悔的永远是**自己**的上一步）。
+ *
+ * **前后端共用同一份**：服务端据此执行回退，客户端据此决定「悔棋」按钮点不点得动。
+ * 两边各算一遍必然 drift，而 drift 的表现是按钮亮着却报 `nothingToUndo`。
+ */
+export function undoPlies(turn: Player, seat: Seat): 1 | 2 {
+  return seatOfPlayer(turn) === seat ? 2 : 1;
+}
+
 export type RoomStatus = 'waiting' | 'playing' | 'won' | 'draw';
 export type RoomRole = 'player' | 'spectator';
 
@@ -200,8 +214,17 @@ export type RoomRole = 'player' | 'spectator';
  */
 export type RoomKind = 'gomoku' | 'tictactoe' | 'xiangqi' | 'chess' | 'draughts';
 
-/** 席位在快照里的公开信息 —— **绝不含 userId**。 */
+/**
+ * 大厅名单里的一条：席位上的人与观战台上的人形状相同 —— 两处渲染的是同一样东西
+ * （头像 + 用户名 + 在线状态）。
+ *
+ * 【id 是刻意过线的】头像走站内既有的 `/api/avatar/<id>`（永不 404，identicon 兜底），
+ * 席位/观战台上不带头像就得让每个客户端各查一次库。id 本就半公开（头像接口、用户主页
+ * 都按它取），所以这里给；**但不带 email、封禁理由这些** —— 那些连站长以外的人都不该见。
+ */
 export interface SeatView {
+  /** 用户 id。客户端据此拼 `/api/avatar/<id>` 并标出「· 你」。 */
+  id: string;
   name: string;
   connected: boolean;
   /**
@@ -211,6 +234,25 @@ export interface SeatView {
    * 那会让判胜按钮永远不出现。客户端收到后按本地计时继续累加。
    */
   disconnectedForMs: number | null;
+}
+
+/** 观战台上的一条，与席位同形。 */
+export type SpectatorView = SeatView;
+
+/**
+ * 待回应的悔棋请求。
+ *
+ * 【只带席位，不带 userId】客户端靠 `by === mySeat` 区分「我发的」与「对手发的」，
+ * 不需要知道是谁发的 —— 房间里就两个人，名字在席位栏上摆着。
+ *
+ * `plies` 在**请求那一刻**算好存进房间，而不是等到有人同意时再算一遍：同意期间局面
+ * 只可能被走子改变，而走子会把整个请求清掉，所以存下来的那个数永远是当下这一刻的。
+ */
+export interface UndoRequest {
+  /** 谁发的（席位 id）。 */
+  by: Seat;
+  /** 要撤几步：见 `undoPlies()`。 */
+  plies: 1 | 2;
 }
 
 /**
@@ -253,7 +295,23 @@ export interface RoomView {
   /** 轮到走棋那一方正被将军时，是被将的王所在格；否则 null。落子类棋恒为 null。 */
   check: Square | null;
   seats: { black: SeatView | null; white: SeatView | null };
+  /**
+   * 观战台名单（房间里没在对战席上的人）。
+   *
+   * **对局进行中下发空数组** —— 大厅的规矩是「开局后隐藏观战台」，顺带也就不把
+   * 「现在谁在看」推给全房。`spectatorCount` 照旧always给，席位栏在对局中仍显示
+   * 「围观 N」。
+   */
+  spectators: SpectatorView[];
   spectatorCount: number;
+  /**
+   * 已走的步数（悔棋按钮据此判断能撤几步）。**是计数，不是着法历史** ——
+   * 协议里仍然没有任何一步棋的序列（见文件头「不要为了判重复局面把着法历史塞进
+   * DTO」）。悔棋会让它变小。
+   */
+  plyCount: number;
+  /** 待回应的悔棋请求；没有则 null。见 UndoRequest。 */
+  undoRequest: UndoRequest | null;
   /** 已经点了「再来一局」的人数（满 2 即重开）。 */
   rematchVotes: number;
   /** 单调递增，永不重置（含再来一局）。客户端据此丢弃过期的全量状态。 */
@@ -265,11 +323,23 @@ export interface RoomView {
 /** join / 快照接口的返回：公开状态 + 「你是谁」。 */
 export interface RoomSnapshot {
   view: RoomView;
-  you: { role: RoomRole; seat: Seat | null };
+  /** `id` 用来在大厅名单里标出「· 你」（席位与观战台都可能是你）。 */
+  you: { id: string; role: RoomRole; seat: Seat | null };
 }
 
-/** SSE 事件。只有全量状态一种，理由见文件头。 */
-export type RoomStreamEvent = { type: 'state'; view: RoomView };
+/**
+ * SSE 事件。只有全量状态一种，理由见文件头。
+ *
+ * 【`you` 只出现在**建流那一帧**】每条连接建立时服务端各写一帧（带 `you`），此后
+ * 的对局广播一律不带。这是**身份**的断线补齐：席位会被释放（见 board-room.ts 的
+ * 席位规则），重连回来时客户端光看 `view` 是发现不了「我已经不在座位上了」的 ——
+ * 席位空着时它甚至与「我还在座上但对手掉线」长得一模一样。带上这一帧，客户端才能
+ * 把「· 你」标对、并在自己的席位还空着时自动坐回去。
+ *
+ * 这与「全量状态」的设计不冲突：广播帧仍是同一份公开状态，`you` 只是建流时那条
+ * 连接自己的那一份，从不参与广播。
+ */
+export type RoomStreamEvent = { type: 'state'; view: RoomView; you?: RoomSnapshot['you'] };
 
 /** 房间操作的失败原因。各游戏的 service 与路由共用同一套（→ HTTP 映射见 api/game/_shared.ts）。 */
 export type RoomError =
@@ -282,6 +352,14 @@ export type RoomError =
   | 'tooManySpectators'
   | 'opponentPresent'
   | 'notDisconnectedLongEnough'
-  | 'nothingToRematch';
+  | 'nothingToRematch'
+  // ── 大厅：换座（takeSeat / leaveSeat）。注意 inGame 与 notPlaying 方向相反：
+  //    前者是「对局进行中不许动座位」，后者是「对局没在进行所以不能走子/悔棋」。
+  | 'seatTaken'
+  | 'inGame'
+  // ── 悔棋
+  | 'nothingToUndo'
+  | 'undoPending'
+  | 'noUndoRequest';
 
 export type RoomResult<T> = { ok: true; value: T } | { ok: false; error: RoomError };

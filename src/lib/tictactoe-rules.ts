@@ -131,6 +131,21 @@ export class TicTacToeBoard {
     return this.moveCount >= SIZE * SIZE;
   }
 
+  /**
+   * 撤掉最后一手。没有可撤的返回 false（**调用方要当它可能失败**：房间层据此判断
+   * 「这一手撤不动」，单机的悔棋按钮也靠它兜底）。
+   *
+   * 井字棋没有棋盘之外的状态要还原（没有易位权利、没有过路兵、没有重复局面历史），
+   * 所以"弹栈 + 清格"就是全部 —— 走子类那三张棋盘各有各的 unmake，别照抄这里。
+   */
+  undo(): boolean {
+    const move = this.moveHistory.pop();
+    if (!move) return false;
+    this.grid[move.row][move.col] = EMPTY;
+    this.moveCount--;
+    return true;
+  }
+
   getLastMove(): Move | null {
     if (this.moveHistory.length === 0) return null;
     return this.moveHistory[this.moveHistory.length - 1];

@@ -62,6 +62,10 @@ class TicTacToeRoomBoard implements RoomBoard {
     const last = this.inner.getLastMove();
     return last ? { path: [[last.row, last.col]], player: last.player } : null;
   }
+
+  undo(): boolean {
+    return this.inner.undo();
+  }
 }
 
 /** 井字棋在房间层里的身份。3×3、三连即胜由 TicTacToeBoard 自己带着。 */
@@ -80,7 +84,7 @@ const api = makeRoomApi(TICTACTOE_GAME);
 
 /**
  * 整套房间函数，给 `api/game/_shared.ts` 的 handler 工厂用。
- * 路由文件因此只剩「import + 一行赋值」，40 个 route.ts 不会各自漂移。
+ * 路由文件因此只剩「import + 一行赋值」，60 个 route.ts 不会各自漂移。
  */
 export const roomApi = api;
 
@@ -90,6 +94,10 @@ export const getSnapshot = api.getSnapshot;
 export const playMove = api.playMove;
 export const resign = api.resign;
 export const claimAbandoned = api.claimAbandoned;
+export const takeSeat = api.takeSeat;
+export const leaveSeat = api.leaveSeat;
+export const requestUndo = api.requestUndo;
+export const respondUndo = api.respondUndo;
 export const requestRematch = api.requestRematch;
 
 /** 仅供测试：清空井字棋的房间（不动其它棋的）。 */

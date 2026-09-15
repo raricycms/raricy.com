@@ -19,6 +19,7 @@
 
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { loginViaApi } from './helpers';
+import { takeSeat } from './board-game-helpers'; // 大厅：进房只落观战台，坐哪一席要自己点
 import { SEED_USERS } from './seed';
 
 /** 落子。棋盘是 DOM 九宫格，直接按服务端要的二维坐标选格子。 */
@@ -71,8 +72,10 @@ test.describe('井字棋联机', () => {
     try {
       const room = await createRoom(a.page);
 
-      // B 打开 A 给的链接 → 自动入座执 O
+      // B 打开 A 给的链接 → 落在观战台上，点 O 那一席「加入」才入座
       await b.page.goto(`/game/tictactoe?room=${room}`);
+      await expect(b.page.locator('.board-status')).toHaveText('等待对手加入…');
+      await takeSeat(b.page, 'white');
       await expect(b.page.locator('.board-status')).toHaveText('等对手落子…');
       await expect(a.page.locator('.board-status')).toHaveText('轮到你走');
 
@@ -103,7 +106,7 @@ test.describe('井字棋联机', () => {
     try {
       const room = await createRoom(a.page);
       await b.page.goto(`/game/tictactoe?room=${room}`);
-      await expect(b.page.locator('.board-status')).toHaveText('等对手落子…');
+      await takeSeat(b.page, 'white');
 
       // X（A）走第一行；O（B）在第二行应着，两格不成三连
       await clickCell(a.page, 0, 0);
@@ -137,7 +140,7 @@ test.describe('井字棋联机', () => {
     try {
       const room = await createRoom(a.page);
       await b.page.goto(`/game/tictactoe?room=${room}`);
-      await expect(b.page.locator('.board-status')).toHaveText('等对手落子…');
+      await takeSeat(b.page, 'white');
 
       // 井字棋最经典的结局：九手走满，谁也连不成三子
       // X: (0,0) (0,2) (1,0) (2,1) (2,2)   O: (0,1) (1,1) (1,2) (2,0)
@@ -171,7 +174,7 @@ test.describe('井字棋联机', () => {
     try {
       const room = await createRoom(a.page);
       await b.page.goto(`/game/tictactoe?room=${room}`);
-      await expect(b.page.locator('.board-status')).toHaveText('等对手落子…');
+      await takeSeat(b.page, 'white');
 
       await c.page.goto(`/game/tictactoe?room=${room}`);
       await expect(c.page.locator('.board-status')).toHaveText('观战中');
@@ -204,7 +207,7 @@ test.describe('井字棋联机', () => {
     try {
       const room = await createRoom(a.page);
       await b.page.goto(`/game/tictactoe?room=${room}`);
-      await expect(b.page.locator('.board-status')).toHaveText('等对手落子…');
+      await takeSeat(b.page, 'white');
 
       await b.page.reload();
 

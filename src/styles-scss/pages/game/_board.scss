@@ -208,6 +208,76 @@
   &--spec {
     opacity: 0.8;
   }
+
+  // 空席位：一个写着「加入 / 换先」的按钮。虚线边框是刻意的 —— 一眼能看出
+  // "这里还空着、点得动"，而有人坐着的席位不是按钮。
+  &--open {
+    border-style: dashed;
+    cursor: pointer;
+    font: inherit;
+
+    &:hover {
+      border-color: var(--color-border-highlight);
+      color: var(--color-text-primary);
+    }
+  }
+
+  // 席位上的头像。与观战台那份尺寸不同（席位是主角，观战台是一排配角）
+  &__avatar {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex: none;
+  }
+}
+
+// 观战台：**只在没在对局中时显示**（大厅的规矩）。对局进行中服务端根本不下发名单，
+// 所以这里既没有「隐藏」的分支，也不会出现空壳（见 BoardLobby.tsx）。
+.board-bench {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: $space-2;
+  margin-bottom: $space-3;
+
+  &__head {
+    display: flex;
+    align-items: center;
+    gap: $space-2;
+  }
+
+  &__list {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: $space-2;
+  }
+
+  &__item {
+    display: inline-flex;
+    align-items: center;
+    gap: $space-1;
+    padding: $space-1 $space-2;
+    border: 1px solid var(--color-border);
+    border-radius: $radius-max;
+    background: var(--color-background-subtle);
+    color: var(--color-text-secondary);
+    font-size: 0.9rem;
+  }
+
+  &__avatar {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex: none;
+  }
+
+  &__empty {
+    color: var(--color-text-secondary);
+    font-size: 0.9rem;
+  }
 }
 
 .board-room-bar {

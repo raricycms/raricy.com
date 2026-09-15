@@ -17,7 +17,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useCallback } from 'react';
+import type { Player } from '@/lib/board-shared';
 import { asTicTacToeGrid, asTicTacToeMove, markOf, O, X } from '@/lib/tictactoe-rules';
+import BoardLobby from './BoardLobby';
+import BoardUndoControls from './BoardUndoControls';
 import OnlineRoomPanel, { roomEndNote } from './OnlineRoomPanel';
 import TicTacToeBoard from './TicTacToeBoard';
 import { CLAIM_AFTER_MS, postJson, useOnlineRoom, type RoomActions } from './useOnlineRoom';
@@ -29,10 +32,16 @@ import { CLAIM_AFTER_MS, postJson, useOnlineRoom, type RoomActions } from './use
 const ACTIONS: RoomActions = {
   create: () => postJson('/api/game/tictactoe/rooms'),
   join: (code) => postJson(`/api/game/tictactoe/rooms/${code}/join`),
+  // 大厅：进房只落观战台，坐哪一席由 takeSeat 点名（seat 是 'black' | 'white'）
+  takeSeat: (code, seat) => postJson(`/api/game/tictactoe/rooms/${code}/seat`, { seat }),
+  leaveSeat: (code) => postJson(`/api/game/tictactoe/rooms/${code}/seat/leave`),
   // 落子类棋：path 只有终点一格，没有起点
   move: (code, move) => postJson(`/api/game/tictactoe/rooms/${code}/moves`, move),
   resign: (code) => postJson(`/api/game/tictactoe/rooms/${code}/resign`),
   claim: (code) => postJson(`/api/game/tictactoe/rooms/${code}/claim`),
+  undo: (code) => postJson(`/api/game/tictactoe/rooms/${code}/undo`),
+  undoRespond: (code, accept) =>
+    postJson(`/api/game/tictactoe/rooms/${code}/undo/respond`, { accept }),
   rematch: (code) => postJson(`/api/game/tictactoe/rooms/${code}/rematch`),
   streamUrl: (code) => `/api/game/tictactoe/rooms/${code}/stream`,
   snapshotUrl: (code) => `/api/game/tictactoe/rooms/${code}`,
@@ -61,6 +70,19 @@ export default function OnlineTicTacToe({ initialRoom = null }: OnlineTicTacToeP
     oppGoneMs,
     canClaim,
   } = room;
+
+  // 席位前缀：X / O 记号，颜色（先手是谁）由本棋的规则定 —— 先手席执 X
+  const seatLabel = useCallback(
+    (player: Player) => (
+      <span
+        className={`tictactoe-mark tictactoe-mark--${player === X ? 'x' : 'o'}`}
+        aria-hidden="true"
+      >
+        {markOf(player)}
+      </span>
+    ),
+    []
+  );
 
   const onCellClick = useCallback(
     (row: number, col: number) => {
@@ -109,38 +131,15 @@ export default function OnlineTicTacToe({ initialRoom = null }: OnlineTicTacToeP
         </div>
       )}
 
-      {/* 席位栏 */}
-      <div className="board-seats">
-        <span
-          className={`board-seat${
-            view.turn === X && view.status === 'playing' ? ' board-seat--active' : ''
-          }`}
-          data-seat="black"
-        >
-          <span className="tictactoe-mark tictactoe-mark--x" aria-hidden="true">
-            {markOf(X)}
-          </span>
-          {view.seats.black?.name ?? '空位'}
-          {view.seats.black && !view.seats.black.connected && '（掉线）'}
-          {mySeat === 'black' && ' · 你'}
-        </span>
-        <span
-          className={`board-seat${
-            view.turn !== X && view.status === 'playing' ? ' board-seat--active' : ''
-          }`}
-          data-seat="white"
-        >
-          <span className="tictactoe-mark tictactoe-mark--o" aria-hidden="true">
-            {markOf(O)}
-          </span>
-          {view.seats.white?.name ?? '空位'}
-          {view.seats.white && !view.seats.white.connected && '（掉线）'}
-          {mySeat === 'white' && ' · 你'}
-        </span>
-        {view.spectatorCount > 0 && (
-          <span className="board-seat board-seat--spec">围观 {view.spectatorCount}</span>
-        )}
-      </div>
+      {/* 席位栏 + 观战台 */}
+      <BoardLobby
+        view={view}
+        myId={room.myId}
+        mySeat={mySeat}
+        seatLabel={seatLabel}
+        onTakeSeat={room.takeSeat}
+        onLeaveSeat={room.leaveSeat}
+      />
 
       <div className="board-status">{statusText}</div>
 
@@ -166,6 +165,15 @@ export default function OnlineTicTacToe({ initialRoom = null }: OnlineTicTacToeP
 
       {/* 控制 */}
       <div className="board-controls">
+        <BoardUndoControls
+          playing={view.status === 'playing'}
+          isPlayer={isPlayer}
+          mySeat={mySeat}
+          undoRequest={room.undoRequest}
+          canRequest={room.canRequestUndo}
+          onRequest={room.requestUndo}
+          onRespond={room.respondUndo}
+        />
         {view.status === 'playing' && isPlayer && (
           <button type="button" className="board-btn" onClick={room.resign}>
             认输
@@ -191,8 +199,8 @@ export default function OnlineTicTacToe({ initialRoom = null }: OnlineTicTacToeP
               : '再来一局（需双方同意）'}
           </button>
         )}
-        {!isPlayer && (
-          <span className="board-hint">你在观战。两席坐满后加入的人自动成为观众。</span>
+        {!isPlayer && view.status === 'playing' && (
+          <span className="board-hint">你在观战。对局结束后回到大厅，就能坐上空出来的席位。</span>
         )}
       </div>
 

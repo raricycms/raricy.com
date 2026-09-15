@@ -19,6 +19,8 @@
 import { useCallback, useMemo, useState } from 'react';
 import type { MoveInput, Square } from '@/lib/board-shared';
 import { playerOfSeat } from '@/lib/board-shared';
+import BoardLobby from './BoardLobby';
+import BoardUndoControls from './BoardUndoControls';
 import OnlineRoomPanel, { roomEndNote } from './OnlineRoomPanel';
 import { CLAIM_AFTER_MS, useOnlineRoom, type RoomActions } from './useOnlineRoom';
 import { useMoveSelection } from './useMoveSelection';
@@ -140,35 +142,16 @@ export default function OnlineBoardGame({
         </div>
       )}
 
-      {/* 席位栏：座位 id 是 black/white（"第几个座位"），显示名由各棋自己给
+      {/* 席位栏 / 观战台：座位 id 是 black/white（"第几个座位"），显示名由各棋自己给
           —— 象棋的黑席执红，所以这里显示的是「红方」 */}
-      <div className="board-seats">
-        <span
-          className={`board-seat${
-            view.turn === 1 && view.status === 'playing' ? ' board-seat--active' : ''
-          }`}
-          data-seat="black"
-        >
-          {sideName(1)}
-          {view.seats.black ? ` · ${view.seats.black.name}` : ' · 空位'}
-          {view.seats.black && !view.seats.black.connected && '（掉线）'}
-          {mySeat === 'black' && ' · 你'}
-        </span>
-        <span
-          className={`board-seat${
-            view.turn === 2 && view.status === 'playing' ? ' board-seat--active' : ''
-          }`}
-          data-seat="white"
-        >
-          {sideName(2)}
-          {view.seats.white ? ` · ${view.seats.white.name}` : ' · 空位'}
-          {view.seats.white && !view.seats.white.connected && '（掉线）'}
-          {mySeat === 'white' && ' · 你'}
-        </span>
-        {view.spectatorCount > 0 && (
-          <span className="board-seat board-seat--spec">围观 {view.spectatorCount}</span>
-        )}
-      </div>
+      <BoardLobby
+        view={view}
+        myId={room.myId}
+        mySeat={mySeat}
+        seatLabel={sideName}
+        onTakeSeat={room.takeSeat}
+        onLeaveSeat={room.leaveSeat}
+      />
 
       <div className="board-status">{statusText}</div>
 
@@ -215,6 +198,15 @@ export default function OnlineBoardGame({
 
       {/* 控制 */}
       <div className="board-controls">
+        <BoardUndoControls
+          playing={view.status === 'playing'}
+          isPlayer={isPlayer}
+          mySeat={mySeat}
+          undoRequest={room.undoRequest}
+          canRequest={room.canRequestUndo}
+          onRequest={room.requestUndo}
+          onRespond={room.respondUndo}
+        />
         {view.status === 'playing' && isPlayer && (
           <button type="button" className="board-btn" onClick={room.resign}>
             认输

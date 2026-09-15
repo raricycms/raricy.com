@@ -22,7 +22,7 @@ vi.mock('@/lib/auth', async (importOriginal) => {
 import { makeUser, resetDb } from '../helpers/db';
 import { GET as streamRoom } from '@/app/api/game/gomoku/rooms/[code]/stream/route';
 import { __resetGameBus, connectionsIn, MAX_CONNECTIONS_PER_VIEWER, subscribe } from '@/lib/game-bus';
-import { __resetGomokuRooms, createRoom, getSnapshot, joinRoom } from '@/lib/gomoku-room';
+import { __resetGomokuRooms, createRoom, getSnapshot, takeSeat } from '@/lib/gomoku-room';
 
 beforeEach(async () => {
   await resetDb();
@@ -56,7 +56,9 @@ async function playingAsAlice() {
   const bob = await makeUser({ role: 'core' });
   const created = createRoom({ id: alice.id, name: alice.username });
   if (!created.ok) throw new Error('建房失败');
-  joinRoom(created.value.view.code, { id: bob.id, name: bob.username });
+  // 大厅语义：进房只落观战台，坐哪一席要显式点名
+  const seated = takeSeat(created.value.view.code, { id: bob.id, name: bob.username }, 'white');
+  if (!seated.ok) throw new Error('入座失败');
   mockUser.current = alice;
   return { alice, bob, code: created.value.view.code };
 }
@@ -88,8 +90,8 @@ describe('首帧与初始状态', () => {
     await reader.cancel();
   });
 
-  it('一连上就推一次全量状态（这就是断线补齐）', async () => {
-    const { code } = await playingAsAlice();
+  it('一连上就推一次全量状态（这就是断线补齐），并带上「你是谁」', async () => {
+    const { alice, code } = await playingAsAlice();
     const res = await call(code);
     const { reader, text } = await readChunks(res, 2);
 
@@ -101,6 +103,9 @@ describe('首帧与初始状态', () => {
     expect(event.view.code).toBe(code);
     expect(event.view.grid).toHaveLength(15);
     expect(event.view.status).toBe('playing');
+    // 【建流那一帧带 you】席位会被释放（没在对局中时掉线即释放），重连回来时光看 view
+    // 是发现不了「我已经不在座位上了」的 —— 客户端靠这一帧把身份认回来
+    expect(event.you).toEqual({ id: alice.id, role: 'player', seat: 'black' });
 
     await reader.cancel();
   });
@@ -169,7 +174,7 @@ describe('鉴权（每次建连都重做）', () => {
 });
 
 describe('断开后的收尾', () => {
-  it('取消流 → 注销订阅，席位主人转为「已掉线」', async () => {
+  it('对局中取消流 → 注销订阅，席位主人转为「已掉线」（判胜靠它）', async () => {
     const { alice, code } = await playingAsAlice();
 
     const res = await call(code);
@@ -183,14 +188,34 @@ describe('断开后的收尾', () => {
 
     await reader.cancel();
 
-    // 断开后：订阅没了，席位转为掉线（对手端据此显示并开始计时判胜）
+    // 对局中不释放席位，只标掉线（对手端据此显示并开始计时判胜）
     expect(connectionsIn(code, alice.id)).toBe(0);
     const after = getSnapshot(code, alice.id);
     if (!after.ok) throw new Error('快照失败');
     expect(after.value.view.seats.black?.connected).toBe(false);
+    expect(after.value.view.seats.black).not.toBeNull();
   });
 
-  it('断开后再连一次仍能拿到状态（重连即回到原座）', async () => {
+  it('**没在对局中**取消流 → 席位直接空出，人落到观战台', async () => {
+    // 只要一间 waiting 房：建房者坐在黑席上，白席还空着
+    const alice = await makeUser({ role: 'core' });
+    mockUser.current = alice;
+    const created = createRoom({ id: alice.id, name: alice.username });
+    if (!created.ok) throw new Error('建房失败');
+    const code = created.value.view.code;
+
+    const res = await call(code);
+    const { reader } = await readChunks(res, 2);
+    await reader.cancel();
+
+    const after = getSnapshot(code, alice.id);
+    if (!after.ok) throw new Error('快照失败');
+    expect(after.value.view.status).toBe('waiting');
+    expect(after.value.view.seats.black).toBeNull();
+    expect(after.value.view.spectators.map((s) => s.name)).toEqual([alice.username]);
+  });
+
+  it('断开后再连一次仍能拿到状态与身份（重连补齐就靠建流首帧）', async () => {
     const { alice, code } = await playingAsAlice();
 
     const first = await call(code);
@@ -204,7 +229,7 @@ describe('断开后的收尾', () => {
 
     const snap = getSnapshot(code, alice.id);
     if (!snap.ok) throw new Error('快照失败');
-    expect(snap.value.you).toEqual({ role: 'player', seat: 'black' });
+    expect(snap.value.you).toEqual({ id: alice.id, role: 'player', seat: 'black' });
 
     await reader.cancel();
   });

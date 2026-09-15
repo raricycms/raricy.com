@@ -17,14 +17,20 @@ import {
   createRoom,
   getSnapshot,
   joinRoom,
+  leaveSeat,
   playMove,
   refreshPresence,
   requestRematch,
+  requestUndo,
   resign,
+  respondUndo,
   sweepRooms,
+  takeSeat,
   type RoomError,
   type RoomResult,
+  type RoomUser,
 } from '@/lib/gomoku-room';
+import type { Seat } from '@/lib/board-shared';
 import { __resetGameBus, subscribe } from '@/lib/game-bus';
 import { BLACK, BOARD_SIZE, WHITE } from '@/lib/gomoku-rules';
 
@@ -47,11 +53,26 @@ function failWith<T>(r: RoomResult<T>): RoomError {
   return r.error;
 }
 
-/** 建一局已就位的对局：Alice 执黑、Bob 执白。返回房号。 */
+/** 坐到指定席位。大厅语义下进房只落观战台，坐哪儿要**显式点名**。 */
+function seatIn(code: string, user: RoomUser, seat: Seat, now?: number) {
+  return unwrap(takeSeat(code, user, seat, now));
+}
+
+/**
+ * 建一局已就位的对局：Alice 执黑、Bob 执白。返回房号。
+ *
+ * 【顺带把双方连上】真实对局里两个人就是连着 SSE 的，而房间层的规则是
+ * 「**没在对局中**时掉线即释放席位」—— 一局下完（won/draw）后再没人连着，
+ * 两个席位就都被放回观战台了，那些"终局之后还要操作座位"的用例会全部撞上 notASeat。
+ * 想构造掉线的对局请自己 `connect()` / 断开，别用这个helper。
+ */
 function playingRoom(): string {
   const created = unwrap(createRoom(ALICE));
-  unwrap(joinRoom(created.view.code, BOB));
-  return created.view.code;
+  const code = created.view.code;
+  seatIn(code, BOB, 'white');
+  connect(code, ALICE.id);
+  connect(code, BOB.id);
+  return code;
 }
 
 /**
@@ -85,9 +106,11 @@ describe('建房', () => {
   it('建房者执黑，白席为空，状态 waiting，revision 从 1 起', () => {
     const snap = unwrap(createRoom(ALICE));
 
-    expect(snap.you).toEqual({ role: 'player', seat: 'black' });
+    // you 里除了角色与席位还带自己的 id —— 大厅名单里标「· 你」靠它（席位与观战台都可能是你）
+    expect(snap.you).toEqual({ id: ALICE.id, role: 'player', seat: 'black' });
     expect(snap.view.status).toBe('waiting');
     expect(snap.view.seats.black).toEqual({
+      id: ALICE.id,
       name: '爱丽丝',
       connected: false,
       disconnectedForMs: 0,
@@ -107,7 +130,11 @@ describe('建房', () => {
     expect(getSnapshotView(code).seats.black?.connected).toBe(true);
 
     disconnect();
-    expect(getSnapshotView(code).seats.black?.connected).toBe(false);
+    // 没在对局中 → 席位直接空出（人回到观战台）。**这是刻意的**：waiting 房间里的席位
+    // 挡着下一个想坐的人，而掉线的人回来时会自动坐回原位（客户端侧，见 useOnlineRoom）。
+    const after = getSnapshotView(code);
+    expect(after.seats.black).toBeNull();
+    expect(after.spectators.map((s) => s.name)).toEqual(['爱丽丝']);
   });
 
   it('房号是 6 位、全在字母表内、不含易混字符', () => {
@@ -130,15 +157,66 @@ function getSnapshotView(code: string, userId = ALICE.id) {
   return unwrap(getSnapshot(code, userId)).view;
 }
 
-describe('加入房间', () => {
-  it('第二人入白席，状态转 playing，黑先', () => {
+describe('加入房间 / 大厅', () => {
+  it('进房只落观战台，**点席位才入座**：两席满才开场，黑先', () => {
     const created = unwrap(createRoom(ALICE));
-    const joined = unwrap(joinRoom(created.view.code, BOB));
+    const code = created.view.code;
 
-    expect(joined.you).toEqual({ role: 'player', seat: 'white' });
-    expect(joined.view.status).toBe('playing');
-    expect(joined.view.turn).toBe(BLACK);
-    expect(joined.view.seats.white?.name).toBe('鲍勃');
+    // 进房 ≠ 入座：先手/后手是本人点出来的，不该由"谁先点开链接"决定
+    const joined = unwrap(joinRoom(code, BOB));
+    expect(joined.you).toMatchObject({ role: 'spectator', seat: null });
+    expect(joined.view.spectators.map((s) => `${s.name}:${s.id}`)).toEqual([`鲍勃:${BOB.id}`]);
+    expect(joined.view.status).toBe('waiting'); // 还没开赛
+
+    const seated = seatIn(code, BOB, 'white');
+    expect(seated.you).toMatchObject({ role: 'player', seat: 'white' });
+    expect(seated.view.status).toBe('playing');
+    expect(seated.view.turn).toBe(BLACK);
+    expect(seated.view.seats.white?.name).toBe('鲍勃');
+    expect(seated.view.spectators).toHaveLength(0); // 入座即从观战台起身
+  });
+
+  it('坐已有人的席位 → seatTaken（不换人、也不顶掉别人）', () => {
+    // waiting 房间：建房者占着黑席，白席空着
+    const code = unwrap(createRoom(ALICE)).view.code;
+
+    expect(failWith(takeSeat(code, BOB, 'black'))).toBe('seatTaken');
+    expect(getSnapshotView(code).seats.black?.name).toBe('爱丽丝');
+    seatIn(code, BOB, 'white'); // 空着的那一席随时可以坐
+  });
+
+  it('对局进行中换座 → inGame（席位在这时只可能坐满）', () => {
+    const code = playingRoom();
+    expect(failWith(takeSeat(code, CAROL, 'black'))).toBe('inGame');
+    expect(failWith(leaveSeat(code, ALICE))).toBe('inGame'); // 席上的人也不许退
+    expect(failWith(leaveSeat(code, CAROL))).toBe('inGame'); // 不在座上的更轮不到
+  });
+
+  it('**换先**：坐在一席上的人点另一席，原席位空出来', () => {
+    const created = unwrap(createRoom(ALICE));
+    const code = created.view.code;
+
+    const moved = seatIn(code, ALICE, 'white'); // 建房者换到后手席
+    expect(moved.you).toMatchObject({ role: 'player', seat: 'white' });
+    expect(moved.view.seats.black).toBeNull();
+    expect(moved.view.seats.white?.name).toBe('爱丽丝');
+    expect(moved.view.status).toBe('waiting'); // 一席空着就还不是对局
+
+    // 坐回自己已经在的那一席是幂等的（客户端重连自动回座会撞上这条）
+    const again = seatIn(code, ALICE, 'white');
+    expect(again.view.revision).toBe(moved.view.revision);
+  });
+
+  it('退到观战台：席位空出、人落到名单里；不在座上退 → notASeat', () => {
+    const created = unwrap(createRoom(ALICE));
+    const code = created.view.code;
+
+    expect(failWith(leaveSeat(code, BOB))).toBe('notASeat');
+
+    const left = unwrap(leaveSeat(code, ALICE));
+    expect(left.you).toMatchObject({ role: 'spectator', seat: null });
+    expect(left.view.seats.black).toBeNull();
+    expect(left.view.spectators.map((s) => s.name)).toEqual(['爱丽丝']);
   });
 
   it('**幂等**：同一人重复加入拿回原席位，棋盘与 revision 都不动', () => {
@@ -148,7 +226,7 @@ describe('加入房间', () => {
     const before = getSnapshotView(code);
     const again = unwrap(joinRoom(code, ALICE));
 
-    expect(again.you).toEqual({ role: 'player', seat: 'black' }); // 没被挤成观众
+    expect(again.you).toMatchObject({ role: 'player', seat: 'black' }); // 没被挤成观众
     expect(again.view.revision).toBe(before.revision); // 没推流
     expect(again.view.grid[7][7]).toBe(BLACK); // 棋盘没被重置
     expect(again.view.status).toBe('playing');
@@ -162,7 +240,7 @@ describe('加入房间', () => {
     const code = playingRoom();
     const spec = unwrap(joinRoom(code, CAROL));
 
-    expect(spec.you).toEqual({ role: 'spectator', seat: null });
+    expect(spec.you).toMatchObject({ role: 'spectator', seat: null });
     expect(spec.view.spectatorCount).toBe(1);
     expect(spec.view.seats.white?.name).toBe('鲍勃'); // 没被顶掉
   });
@@ -448,7 +526,7 @@ describe('对手掉线判胜', () => {
   it('对手还在线 → opponentPresent', () => {
     const created = unwrap(createRoom(ALICE, T0));
     const code = created.view.code;
-    unwrap(joinRoom(code, BOB, T0));
+    seatIn(code, BOB, 'white', T0);
     const offA = connect(code, ALICE.id, T0);
     connect(code, BOB.id, T0);
 
@@ -459,7 +537,7 @@ describe('对手掉线判胜', () => {
   it('对手掉线但不满 60 秒 → notDisconnectedLongEnough；满 60 秒即可判胜', () => {
     const created = unwrap(createRoom(ALICE, T0));
     const code = created.view.code;
-    unwrap(joinRoom(code, BOB, T0));
+    seatIn(code, BOB, 'white', T0);
     const offA = connect(code, ALICE.id, T0);
     const offB = connect(code, BOB.id, T0);
 
@@ -484,7 +562,7 @@ describe('对手掉线判胜', () => {
   it('掉线者重新连上后不能再被判胜（重连即撤销，避免误判掉线吃亏）', () => {
     const created = unwrap(createRoom(ALICE, T0));
     const code = created.view.code;
-    unwrap(joinRoom(code, BOB, T0));
+    seatIn(code, BOB, 'white', T0);
     const offA = connect(code, ALICE.id, T0);
     const offB = connect(code, BOB.id, T0);
 
@@ -502,7 +580,7 @@ describe('对手掉线判胜', () => {
   it('快照给出「已掉线多久」，客户端据此决定何时显示判胜按钮', () => {
     const created = unwrap(createRoom(ALICE, T0));
     const code = created.view.code;
-    unwrap(joinRoom(code, BOB, T0));
+    seatIn(code, BOB, 'white', T0);
     const offA = connect(code, ALICE.id, T0);
     const offB = connect(code, BOB.id, T0);
 
@@ -530,7 +608,7 @@ describe('对手掉线判胜', () => {
   it('观众不能判胜（notASeat）', () => {
     const created = unwrap(createRoom(ALICE, T0));
     const code = created.view.code;
-    unwrap(joinRoom(code, BOB, T0));
+    seatIn(code, BOB, 'white', T0);
     unwrap(joinRoom(code, CAROL, T0));
 
     expect(failWith(claimAbandoned(code, CAROL.id, T0 + 600_000))).toBe('notASeat');
@@ -625,7 +703,7 @@ describe('房间回收', () => {
 
   it('走子会刷新活动时间，房间不会被误回收', () => {
     const code = unwrap(createRoom(ALICE, T0)).view.code;
-    unwrap(joinRoom(code, BOB, T0));
+    seatIn(code, BOB, 'white', T0);
     const off = connect(code, ALICE.id, T0);
 
     const mid = T0 + __constants.IDLE_TTL_MS - 1;
@@ -646,27 +724,316 @@ describe('房间回收', () => {
   });
 });
 
+// ── 席位与观战台的名单 ──────────────────────────────────────────────────────
+
+describe('席位 / 观战台名单', () => {
+  it('名单带 id（头像要用），但不带 email 这类身份信息', () => {
+    const created = unwrap(createRoom(ALICE));
+    const code = created.view.code;
+    unwrap(joinRoom(code, BOB));
+    const view = getSnapshotView(code);
+
+    expect(view.seats.black).toMatchObject({ id: ALICE.id, name: '爱丽丝' });
+    expect(view.spectators[0]).toMatchObject({ id: BOB.id, name: '鲍勃' });
+    // id 是刻意给出去的（`/api/avatar/<id>` 与「· 你」都要它），但**只能有它**：
+    // 这个结构会广播给全房，多一个字段就是多泄露一样东西。
+    expect(Object.keys(view.seats.black!).sort()).toEqual([
+      'connected',
+      'disconnectedForMs',
+      'id',
+      'name',
+    ]);
+    expect(Object.keys(view.spectators[0]).sort()).toEqual([
+      'connected',
+      'disconnectedForMs',
+      'id',
+      'name',
+    ]);
+  });
+
+  it('对局中不下发观战台名单（大厅的规矩是开局后隐藏观战台）', () => {
+    const code = playingRoom();
+    unwrap(joinRoom(code, CAROL));
+
+    const view = getSnapshotView(code);
+    expect(view.status).toBe('playing');
+    expect(view.spectators).toEqual([]); // 名单是空的
+    expect(view.spectatorCount).toBe(1); // 人数照旧给（席位栏显示「围观 N」）
+  });
+
+  it('观战台上的人掉线只标（掉线），不移出名单', () => {
+    // 用没在对局中的房间：对局中名单根本不下发（见下一条）
+    const code = unwrap(createRoom(ALICE)).view.code;
+    unwrap(joinRoom(code, CAROL));
+    const offC = connect(code, CAROL.id);
+    expect(getSnapshotView(code).spectators[0].connected).toBe(true);
+
+    offC();
+    const view = getSnapshotView(code);
+    expect(view.spectators).toHaveLength(1);
+    expect(view.spectators[0]).toMatchObject({ name: '卡罗尔', connected: false });
+  });
+
+  it('**playing ⇒ 两席都有人**：对局中掉线不释放席位（由判胜兜底）', () => {
+    const created = unwrap(createRoom(ALICE));
+    const code = created.view.code;
+    seatIn(code, BOB, 'white');
+    const offA = connect(code, ALICE.id);
+    connect(code, BOB.id);
+
+    offA();
+    const view = getSnapshotView(code);
+    expect(view.status).toBe('playing');
+    expect(view.seats.black).not.toBeNull(); // 还在座上，只是标了掉线
+    expect(view.seats.black?.connected).toBe(false);
+    expect(view.spectatorCount).toBe(0); // 没被放到观战台
+  });
+
+  it('对局结束（won）后掉线即释放席位，票也一并作废', () => {
+    const created = unwrap(createRoom(ALICE));
+    const code = created.view.code;
+    seatIn(code, BOB, 'white');
+    const offA = connect(code, ALICE.id);
+    const offB = connect(code, BOB.id);
+
+    unwrap(resign(code, BOB.id)); // 黑胜
+    unwrap(requestRematch(code, ALICE.id)); // 黑方投了一票
+    expect(getSnapshotView(code).rematchVotes).toBe(1);
+
+    offA(); // 黑方走人
+    const view = getSnapshotView(code);
+    expect(view.status).toBe('won'); // 终局状态不因为空出席位而改变
+    expect(view.seats.black).toBeNull();
+    expect(view.spectators.map((s) => s.name)).toEqual(['爱丽丝']);
+    expect(view.rematchVotes).toBe(0); // 不在座上的票不算数
+    offB();
+  });
+
+  it('结束后补位**不会**把对局拉回 playing（要重开得双方各点一次）', () => {
+    const created = unwrap(createRoom(ALICE));
+    const code = created.view.code;
+    seatIn(code, BOB, 'white');
+    const offA = connect(code, ALICE.id);
+    const offB = connect(code, BOB.id);
+    unwrap(resign(code, BOB.id));
+    offB(); // 白方离开，席位空出
+
+    const filled = seatIn(code, CAROL, 'white'); // 观战台的人补位
+    expect(filled.view.status).toBe('won'); // 仍然是上一局的终局
+    expect(filled.view.winner).toBe('black');
+    expect(filled.view.turn).toBe(BLACK);
+    expect(filled.view.seats.white?.name).toBe('卡罗尔');
+    offA();
+  });
+
+  it('终局时已经掉线的一方会被补一次释放（掉线是边沿触发的，不补就漏）', () => {
+    const created = unwrap(createRoom(ALICE));
+    const code = created.view.code;
+    seatIn(code, BOB, 'white');
+    const offA = connect(code, ALICE.id);
+    const offB = connect(code, BOB.id);
+
+    offB(); // 白方中途掉线（对局中：只标记，不释放）
+    expect(getSnapshotView(code).seats.white).not.toBeNull();
+
+    unwrap(resign(code, ALICE.id)); // 黑方认输收场 —— 白方此时已经不在线了
+    const view = getSnapshotView(code);
+    expect(view.status).toBe('won');
+    expect(view.seats.white).toBeNull(); // 收场时补上释放
+    expect(view.spectators.map((s) => s.name)).toEqual(['鲍勃']);
+    offA();
+  });
+});
+
+// ── 悔棋 ────────────────────────────────────────────────────────────────────
+
+describe('悔棋', () => {
+  /** 一连走 n 手（黑先交替），返回房号。 */
+  function playSome(code: string, n: number) {
+    const cols = [4, 5, 6, 7, 8, 9];
+    for (let i = 0; i < n; i++) {
+      unwrap(playMove(code, i % 2 === 0 ? ALICE.id : BOB.id, { path: [[7, cols[i]]] }));
+    }
+  }
+
+  it('撤 1 步：轮对手走时点悔棋（对手还没应招），撤回自己刚走的那一步', () => {
+    const code = playingRoom();
+    unwrap(playMove(code, ALICE.id, { path: [[7, 7]] }));
+
+    const req = unwrap(requestUndo(code, ALICE.id)).view;
+    expect(req.undoRequest).toEqual({ by: 'black', plies: 1 });
+    expect(req.plyCount).toBe(1);
+
+    const back = unwrap(respondUndo(code, BOB.id, true)).view;
+    expect(back.undoRequest).toBeNull();
+    expect(back.grid[7][7]).toBe(0); // 棋子收回
+    expect(back.lastMove).toBeNull();
+    expect(back.turn).toBe(BLACK); // 回到请求方走
+    expect(back.plyCount).toBe(0);
+  });
+
+  it('撤 2 步：轮自己走时（对手已应招）连对手那一步一起撤掉', () => {
+    const code = playingRoom();
+    playSome(code, 2); // 黑 (7,4)、白 (7,5)
+
+    const req = unwrap(requestUndo(code, ALICE.id)).view;
+    expect(req.undoRequest).toEqual({ by: 'black', plies: 2 });
+
+    const back = unwrap(respondUndo(code, BOB.id, true)).view;
+    expect(back.grid[7][4]).toBe(0);
+    expect(back.grid[7][5]).toBe(0);
+    expect(back.turn).toBe(BLACK);
+    expect(back.plyCount).toBe(0);
+  });
+
+  it('plyCount 与棋盘同生同灭（它就是悔棋那份栈的长度）', () => {
+    const code = playingRoom();
+    playSome(code, 3);
+    expect(getSnapshotView(code).plyCount).toBe(3);
+
+    // 轮黑走 → 白方要撤 2 步（自己那步 + 黑方那步）
+    unwrap(requestUndo(code, BOB.id));
+    expect(getSnapshotView(code).undoRequest).toEqual({ by: 'white', plies: 2 });
+
+    const back = unwrap(respondUndo(code, ALICE.id, true)).view;
+    expect(back.plyCount).toBe(1);
+    expect(back.grid[7][4]).toBe(BLACK); // 只剩黑方第一步
+    expect(back.turn).toBe(WHITE);
+    // 走子类的「被将军」高亮复原在 tests/service/chess-room.test.ts 里钉（五子棋没有将军）
+  });
+
+  it('拒绝：棋盘一动不动，轮次照旧', () => {
+    const code = playingRoom();
+    unwrap(playMove(code, ALICE.id, { path: [[7, 7]] }));
+    unwrap(requestUndo(code, ALICE.id));
+
+    const before = getSnapshotView(code);
+    const after = unwrap(respondUndo(code, BOB.id, false)).view;
+
+    expect(after.undoRequest).toBeNull();
+    expect(after.turn).toBe(before.turn);
+    expect(after.grid[7][7]).toBe(BLACK);
+    expect(after.plyCount).toBe(before.plyCount);
+  });
+
+  it('自己再点一次 = 撤回请求（同一个接口的 toggle）', () => {
+    const code = playingRoom();
+    unwrap(playMove(code, ALICE.id, { path: [[7, 7]] }));
+    unwrap(requestUndo(code, ALICE.id));
+
+    const cancelled = unwrap(requestUndo(code, ALICE.id)).view;
+    expect(cancelled.undoRequest).toBeNull();
+    expect(cancelled.grid[7][7]).toBe(BLACK); // 只是撤回了请求，棋子还在
+  });
+
+  it('对手已经发过请求 → undoPending（先回应那一条）', () => {
+    const code = playingRoom();
+    unwrap(playMove(code, ALICE.id, { path: [[7, 7]] }));
+    unwrap(requestUndo(code, ALICE.id));
+
+    expect(failWith(requestUndo(code, BOB.id))).toBe('undoPending');
+  });
+
+  it('没有可撤的棋 → nothingToUndo（开局第一手之前）', () => {
+    const code = playingRoom();
+    expect(failWith(requestUndo(code, ALICE.id))).toBe('nothingToUndo');
+    expect(failWith(requestUndo(code, BOB.id))).toBe('nothingToUndo');
+  });
+
+  it('回应自己的请求 → noUndoRequest；没有请求时回应也一样', () => {
+    const code = playingRoom();
+    expect(failWith(respondUndo(code, ALICE.id, true))).toBe('noUndoRequest');
+
+    unwrap(playMove(code, ALICE.id, { path: [[7, 7]] }));
+    unwrap(requestUndo(code, ALICE.id));
+    expect(failWith(respondUndo(code, ALICE.id, true))).toBe('noUndoRequest');
+  });
+
+  it('走一手就把待回应的请求作废（局面变了，悔的就不是那个局面）', () => {
+    const code = playingRoom();
+    playSome(code, 2);
+    unwrap(requestUndo(code, ALICE.id)); // 黑方请求撤 2 步
+    expect(getSnapshotView(code).undoRequest).not.toBeNull();
+
+    unwrap(playMove(code, ALICE.id, { path: [[7, 9]] })); // 黑方改主意，直接走
+    expect(getSnapshotView(code).undoRequest).toBeNull();
+  });
+
+  it('认输 / 判胜收场也作废待回应的请求', () => {
+    const code = playingRoom();
+    unwrap(playMove(code, ALICE.id, { path: [[7, 7]] }));
+    unwrap(requestUndo(code, ALICE.id));
+
+    const view = unwrap(resign(code, BOB.id)).view;
+    expect(view.status).toBe('won');
+    expect(view.undoRequest).toBeNull();
+  });
+
+  it('终局后不能悔棋 → notPlaying；观众悔棋 → notASeat', () => {
+    const code = playingRoom();
+    unwrap(joinRoom(code, CAROL));
+    unwrap(playMove(code, ALICE.id, { path: [[7, 7]] }));
+
+    expect(failWith(requestUndo(code, CAROL.id))).toBe('notASeat');
+    expect(failWith(respondUndo(code, CAROL.id, true))).toBe('notASeat');
+
+    unwrap(resign(code, BOB.id));
+    expect(failWith(requestUndo(code, ALICE.id))).toBe('notPlaying');
+  });
+
+  it('再来一局必须把悔棋的账一起清掉（否则第二局第一手会撤到上一局）', () => {
+    const code = playingRoom();
+    playSome(code, 5);
+    unwrap(resign(code, BOB.id)); // 黑胜，checkStack 里还留着 5 步
+    unwrap(requestRematch(code, ALICE.id));
+    unwrap(requestRematch(code, BOB.id)); // 重开，换新棋盘
+
+    const fresh = getSnapshotView(code);
+    expect(fresh.status).toBe('playing');
+    expect(fresh.plyCount).toBe(0); // ← 不变量：新棋盘的栈必须是空的
+
+    // 第一手之后再悔棋，撤的是**这一手**，不是上一局的残留
+    unwrap(playMove(code, ALICE.id, { path: [[7, 7]] }));
+    unwrap(requestUndo(code, ALICE.id));
+    const back = unwrap(respondUndo(code, BOB.id, true)).view;
+    expect(back.plyCount).toBe(0);
+    expect(back.grid[7][7]).toBe(0);
+    expect(back.turn).toBe(BLACK); // 撤完仍轮黑走 —— 与棋盘内部的 turn 一致
+  });
+
+  it('悔棋也会推流（revision 单调递增）', () => {
+    const code = playingRoom();
+    unwrap(playMove(code, ALICE.id, { path: [[7, 7]] }));
+    const r1 = getSnapshotView(code).revision;
+
+    const r2 = unwrap(requestUndo(code, ALICE.id)).view.revision;
+    const r3 = unwrap(respondUndo(code, BOB.id, true)).view.revision;
+
+    expect(r2).toBeGreaterThan(r1);
+    expect(r3).toBeGreaterThan(r2);
+  });
+});
+
 // ── 快照不泄露身份 ──────────────────────────────────────────────────────────
 
 describe('快照的隐私边界', () => {
-  it('公开状态只出显示名，绝不出 userId', () => {
-    const code = playingRoom();
-    const serialized = JSON.stringify(getSnapshotView(code));
-
-    expect(serialized).toContain('爱丽丝');
-    expect(serialized).toContain('鲍勃');
-    expect(serialized).not.toContain(ALICE.id);
-    expect(serialized).not.toContain(BOB.id);
-  });
-
   it('you 只对自己生效：同一房号不同人取快照，you 各不同', () => {
     const code = playingRoom();
     unwrap(joinRoom(code, CAROL));
 
-    expect(unwrap(getSnapshot(code, ALICE.id)).you).toEqual({ role: 'player', seat: 'black' });
-    expect(unwrap(getSnapshot(code, CAROL.id)).you).toEqual({ role: 'spectator', seat: null });
+    expect(unwrap(getSnapshot(code, ALICE.id)).you).toEqual({
+      id: ALICE.id,
+      role: 'player',
+      seat: 'black',
+    });
+    expect(unwrap(getSnapshot(code, CAROL.id)).you).toEqual({
+      id: CAROL.id,
+      role: 'spectator',
+      seat: null,
+    });
     // 陌生人也能看到公开状态（观战），但不是成员
     expect(unwrap(getSnapshot(code, 'u-stranger')).you).toEqual({
+      id: 'u-stranger',
       role: 'spectator',
       seat: null,
     });

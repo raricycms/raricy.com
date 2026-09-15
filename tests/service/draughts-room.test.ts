@@ -12,13 +12,18 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { BLACK, DraughtsBoard, KING, MAN, WHITE, glyphOf, isDark, piece } from '@/lib/draughts-rules';
-import { __resetGameBus } from '@/lib/game-bus';
+import { __resetGameBus, subscribe } from '@/lib/game-bus';
+import { refreshPresence } from '@/lib/board-room';
 import {
   __resetDraughtsRooms,
   __roomCount,
   createRoom,
   getSnapshot,
   joinRoom,
+  leaveSeat,
+  requestUndo,
+  respondUndo,
+  takeSeat,
   playMove,
   requestRematch,
   resign,
@@ -52,14 +57,48 @@ function failWith<T>(r: RoomResult<T>): string {
   return r.error;
 }
 
+/** 坐到指定席位（大厅语义：进房只落观战台，坐哪儿要显式点名）。 */
+function seatIn(
+  code: string,
+  user: { id: string; name: string },
+  seat: 'black' | 'white',
+  now?: number
+) {
+  return unwrap(takeSeat(code, user, seat, now));
+}
+
+/**
+ * 模拟一条 SSE 连接（真订阅 bus），并在连接/断开后刷新 presence。
+ * 席位在**没在对局中**时一断开就释放，所以"终局之后还要动座位"的用例得先把人连着。
+ */
+function connect(code: string, userId: string, at = Date.now()): () => void {
+  const off = subscribe({ roomCode: code, viewerId: userId, write: () => true, close: () => {} });
+  if (!off) throw new Error('订阅被 game-bus 拒绝（超过并发上限）');
+  refreshPresence(code, userId, at);
+  return () => {
+    off();
+    refreshPresence(code, userId, at);
+  };
+}
+
 function move(code: string, userId: string, path: Array<[number, number]>) {
   return playMove(code, userId, { path });
 }
 
+/**
+ * 建一局已就位的对局：Alice 执先手席、Bob 执后手席。返回房号。
+ *
+ * 【顺带把双方连上】没在对局中时掉线即释放席位（见 board-room.ts），而"终局之后还要
+ * 操作座位"的用例全靠席位还在 —— 真实对局里两个人本来就都连着。想构造掉线的对局
+ * 请自己 `connect()`，别用这个 helper。
+ */
 function playingRoom(): string {
   const created = unwrap(createRoom(ALICE));
-  unwrap(joinRoom(created.view.code, BOB));
-  return created.view.code;
+  const code = created.view.code;
+  seatIn(code, BOB, 'white');
+  connect(code, ALICE.id);
+  connect(code, BOB.id);
+  return code;
 }
 
 function viewOf(code: string, userId = ALICE.id) {
@@ -70,7 +109,7 @@ describe('国际跳棋房间：建房与入座', () => {
   it('10×10 棋盘、建房者执先手席、状态 waiting', () => {
     const snap = unwrap(createRoom(ALICE));
 
-    expect(snap.you).toEqual({ role: 'player', seat: 'black' });
+    expect(snap.you).toMatchObject({ role: 'player', seat: 'black' });
     expect(snap.view.kind).toBe('draughts');
     expect(snap.view.rows).toBe(10);
     expect(snap.view.cols).toBe(10);
@@ -102,9 +141,9 @@ describe('国际跳棋房间：建房与入座', () => {
 
   it('第二人入后手席，状态转 playing，仍由白方先走', () => {
     const created = unwrap(createRoom(ALICE));
-    const joined = unwrap(joinRoom(created.view.code, BOB));
+    const joined = seatIn(created.view.code, BOB, 'white');
 
-    expect(joined.you).toEqual({ role: 'player', seat: 'white' });
+    expect(joined.you).toMatchObject({ role: 'player', seat: 'white' });
     expect(joined.view.status).toBe('playing');
     expect(joined.view.turn).toBe(WHITE);
   });
@@ -113,7 +152,7 @@ describe('国际跳棋房间：建房与入座', () => {
     const code = playingRoom();
     const spec = unwrap(joinRoom(code, CAROL));
 
-    expect(spec.you).toEqual({ role: 'spectator', seat: null });
+    expect(spec.you).toMatchObject({ role: 'spectator', seat: null });
     expect(failWith(move(code, CAROL.id, [[6, 1], [5, 0]]))).toBe('notASeat');
   });
 });
@@ -223,5 +262,57 @@ describe('五种棋共用一张房号表：必须互不可见', () => {
     expect(__roomCount()).toBe(1);
     __resetDraughtsRooms();
     expect(__roomCount()).toBe(0);
+  });
+});
+
+// ── 悔棋（这里是**绑定**的钉子，房间层的悔棋矩阵在 gomoku-room.test.ts）──────────
+
+describe('国际跳棋房间：悔棋', () => {
+  it('撤 2 步后回到先手席走（先手席 = 1 = 白棋）', () => {
+    const code = playingRoom();
+    unwrap(
+      move(code, ALICE.id, [
+        [6, 1],
+        [5, 0],
+      ])
+    );
+    unwrap(
+      move(code, BOB.id, [
+        [3, 0],
+        [4, 1],
+      ])
+    );
+
+    expect(unwrap(requestUndo(code, ALICE.id)).view.undoRequest).toEqual({
+      by: 'black',
+      plies: 2,
+    });
+
+    const back = unwrap(respondUndo(code, BOB.id, true)).view;
+    expect(back.plyCount).toBe(0);
+    expect(back.turn).toBe(WHITE);
+    expect(back.grid[6][1]).toBe(piece(WHITE, MAN)); // 兵回到开局那一格
+    expect(back.grid[5][0]).toBe(0);
+    expect(back.grid[3][0]).toBe(piece(BLACK, MAN));
+  });
+
+  it('连吃是一整手，撤也是一整手（撤完不能留下半条路径）', () => {
+    const code = playingRoom();
+    // 走几步把黑棋送到能被连吃的位置代价太大，这里只钉**手数**：
+    // 撤 1 步之后 plyCount 必须正好减 1，棋盘与轮次同步。
+    unwrap(
+      move(code, ALICE.id, [
+        [6, 1],
+        [5, 0],
+      ])
+    );
+    const before = viewOf(code);
+
+    unwrap(requestUndo(code, ALICE.id));
+    const back = unwrap(respondUndo(code, BOB.id, true)).view;
+    expect(back.plyCount).toBe(before.plyCount - 1);
+    expect(back.turn).toBe(WHITE);
+    expect(back.grid[5][0]).toBe(0);
+    expect(back.grid[6][1]).toBe(piece(WHITE, MAN));
   });
 });

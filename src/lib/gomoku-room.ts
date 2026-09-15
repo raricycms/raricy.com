@@ -76,6 +76,11 @@ class GomokuRoomBoard implements RoomBoard {
     const last = this.inner.getLastMove();
     return last ? { path: [[last.row, last.col]], player: last.player } : null;
   }
+
+  /** 五子棋的 undo 返回被撤掉的那一手，房间层只要「撤没撤成」，所以翻成布尔。 */
+  undo(): boolean {
+    return this.inner.undo() !== null;
+  }
 }
 
 /** 五子棋在房间层里的身份。15×15、五连（长连也算）由 GomokuBoard 自己带着。 */
@@ -93,7 +98,7 @@ const api = makeRoomApi(GOMOKU_GAME);
 
 /**
  * 整套房间函数，给 `api/game/_shared.ts` 的 handler 工厂用。
- * 路由文件因此只剩「import + 一行赋值」，40 个 route.ts 不会各自漂移。
+ * 路由文件因此只剩「import + 一行赋值」，60 个 route.ts 不会各自漂移。
  */
 export const roomApi = api;
 
@@ -103,6 +108,10 @@ export const getSnapshot = api.getSnapshot;
 export const playMove = api.playMove;
 export const resign = api.resign;
 export const claimAbandoned = api.claimAbandoned;
+export const takeSeat = api.takeSeat;
+export const leaveSeat = api.leaveSeat;
+export const requestUndo = api.requestUndo;
+export const respondUndo = api.respondUndo;
 export const requestRematch = api.requestRematch;
 
 /** 仅供测试：清空五子棋的房间（不动其它棋的）。 */

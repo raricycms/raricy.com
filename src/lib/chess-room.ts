@@ -54,6 +54,10 @@ export const getSnapshot = api.getSnapshot;
 export const playMove = api.playMove;
 export const resign = api.resign;
 export const claimAbandoned = api.claimAbandoned;
+export const takeSeat = api.takeSeat;
+export const leaveSeat = api.leaveSeat;
+export const requestUndo = api.requestUndo;
+export const respondUndo = api.respondUndo;
 export const requestRematch = api.requestRematch;
 
 /** 仅供测试：清空国际象棋的房间（不动其它棋的）。 */

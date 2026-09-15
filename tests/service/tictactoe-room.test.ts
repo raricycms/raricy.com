@@ -11,7 +11,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { BLACK, BOARD_SIZE } from '@/lib/gomoku-rules';
 import { O, X } from '@/lib/tictactoe-rules';
-import { __resetGameBus } from '@/lib/game-bus';
+import { __resetGameBus, subscribe } from '@/lib/game-bus';
+import { refreshPresence } from '@/lib/board-room';
 import {
   __resetTicTacToeRooms,
   __roomCount,
@@ -19,6 +20,10 @@ import {
   createRoom,
   getSnapshot,
   joinRoom,
+  leaveSeat,
+  requestUndo,
+  respondUndo,
+  takeSeat,
   playMove,
   requestRematch,
   resign,
@@ -53,11 +58,44 @@ function failWith<T>(r: RoomResult<T>): string {
   return r.error;
 }
 
-/** 建一局已就位的对局：Alice 执 X、Bob 执 O。返回房号。 */
+/** 坐到指定席位（大厅语义：进房只落观战台，坐哪儿要显式点名）。 */
+function seatIn(
+  code: string,
+  user: { id: string; name: string },
+  seat: 'black' | 'white',
+  now?: number
+) {
+  return unwrap(takeSeat(code, user, seat, now));
+}
+
+/**
+ * 模拟一条 SSE 连接（真订阅 bus），并在连接/断开后刷新 presence。
+ * 席位在**没在对局中**时一断开就释放，所以"终局之后还要动座位"的用例得先把人连着。
+ */
+function connect(code: string, userId: string, at = Date.now()): () => void {
+  const off = subscribe({ roomCode: code, viewerId: userId, write: () => true, close: () => {} });
+  if (!off) throw new Error('订阅被 game-bus 拒绝（超过并发上限）');
+  refreshPresence(code, userId, at);
+  return () => {
+    off();
+    refreshPresence(code, userId, at);
+  };
+}
+
+/**
+ * 建一局已就位的对局：Alice 执 X、Bob 执 O。返回房号。
+ *
+ * 【顺带把双方连上】没在对局中时掉线即释放席位（见 board-room.ts），而"终局之后还要
+ * 操作座位"的用例全靠席位还在 —— 真实对局里两个人本来就都连着。想构造掉线的对局
+ * 请自己 `connect()`，别用这个 helper。
+ */
 function playingRoom(): string {
   const created = unwrap(createRoom(ALICE));
-  unwrap(joinRoom(created.view.code, BOB));
-  return created.view.code;
+  const code = created.view.code;
+  seatIn(code, BOB, 'white');
+  connect(code, ALICE.id);
+  connect(code, BOB.id);
+  return code;
 }
 
 function viewOf(code: string, userId = ALICE.id) {
@@ -68,7 +106,7 @@ describe('井字棋房间：建房与入座', () => {
   it('3×3 棋盘、建房者执先手席、状态 waiting', () => {
     const snap = unwrap(createRoom(ALICE));
 
-    expect(snap.you).toEqual({ role: 'player', seat: 'black' });
+    expect(snap.you).toMatchObject({ role: 'player', seat: 'black' });
     expect(snap.view.kind).toBe('tictactoe');
     // 尺寸是 rows/cols 而不是单个 size —— 中国象棋是 9×10，方形假设表达不了
     expect(snap.view.rows).toBe(3);
@@ -83,9 +121,9 @@ describe('井字棋房间：建房与入座', () => {
 
   it('第二人入后手席，状态转 playing，仍由先手落子', () => {
     const created = unwrap(createRoom(ALICE));
-    const joined = unwrap(joinRoom(created.view.code, BOB));
+    const joined = seatIn(created.view.code, BOB, 'white');
 
-    expect(joined.you).toEqual({ role: 'player', seat: 'white' });
+    expect(joined.you).toMatchObject({ role: 'player', seat: 'white' });
     expect(joined.view.status).toBe('playing');
     expect(joined.view.turn).toBe(X);
   });
@@ -94,7 +132,7 @@ describe('井字棋房间：建房与入座', () => {
     const code = playingRoom();
     const spec = unwrap(joinRoom(code, CAROL));
 
-    expect(spec.you).toEqual({ role: 'spectator', seat: null });
+    expect(spec.you).toMatchObject({ role: 'spectator', seat: null });
     expect(failWith(playMove(code, CAROL.id, { path: [[0, 0]] }))).toBe('notASeat');
   });
 
@@ -105,7 +143,7 @@ describe('井字棋房间：建房与入座', () => {
 
     const again = unwrap(joinRoom(code, ALICE));
 
-    expect(again.you).toEqual({ role: 'player', seat: 'black' });
+    expect(again.you).toMatchObject({ role: 'player', seat: 'black' });
     expect(again.view.revision).toBe(before.revision);
     expect(again.view.grid[1][1]).toBe(X);
   });
@@ -196,7 +234,7 @@ describe('井字棋房间：认输 / 判胜 / 再来一局', () => {
   it('对手掉线满 60 秒可判胜（时间由服务端复核）', () => {
     const T0 = 1_700_000_000_000;
     const code = unwrap(createRoom(ALICE, T0)).view.code;
-    unwrap(joinRoom(code, BOB, T0));
+    seatIn(code, BOB, 'white', T0);
 
     // 没有 SSE 连接 → 两席都算掉线；Alice 判胜的对象是 Bob
     expect(failWith(claimAbandoned(code, ALICE.id, T0 + 1000))).toBe('notDisconnectedLongEnough');
@@ -219,7 +257,7 @@ describe('井字棋房间：认输 / 判胜 / 再来一局', () => {
   it('走子会刷新活动时间，房间不会被误回收', () => {
     const T0 = 1_700_000_000_000;
     const code = unwrap(createRoom(ALICE, T0)).view.code;
-    unwrap(joinRoom(code, BOB, T0));
+    seatIn(code, BOB, 'white', T0);
 
     unwrap(playMove(code, ALICE.id, { path: [[0, 0]] }, T0 + 60_000));
     sweepRooms(T0 + 60_001);
@@ -254,5 +292,49 @@ describe('两种棋共用一张房号表：必须互不可见', () => {
     __resetTicTacToeRooms();
     expect(__roomCount()).toBe(0);
     expect(gomokuRoomCount()).toBe(1); // 清井字棋不该动五子棋
+  });
+});
+
+// ── 悔棋（这里是**绑定**的钉子，房间层的悔棋矩阵在 gomoku-room.test.ts）──────────
+
+describe('井字棋房间：悔棋', () => {
+  it('撤 2 步后轮次与棋盘一起退回到请求方走（先手席 = 1 = X 没接反）', () => {
+    const code = playingRoom();
+    unwrap(playMove(code, ALICE.id, { path: [[0, 0]] })); // X
+    unwrap(playMove(code, BOB.id, { path: [[1, 1]] })); // O
+    unwrap(playMove(code, ALICE.id, { path: [[0, 1]] })); // X
+
+    // 轮后手席走 → 后手席发起悔棋要**撤 2 步**（对手刚走那步连自己上一步一起撤）
+    expect(unwrap(requestUndo(code, BOB.id)).view.undoRequest).toEqual({
+      by: 'white',
+      plies: 2,
+    });
+
+    const back = unwrap(respondUndo(code, ALICE.id, true)).view;
+    expect(back.grid[0][0]).toBe(X); // 第一步留着
+    expect(back.grid[0][1]).toBe(0); // 对手那步收了
+    expect(back.grid[1][1]).toBe(0); // 自己那步也收了
+    expect(back.lastMove).toEqual({ path: [[0, 0]], player: X });
+    expect(back.plyCount).toBe(1);
+    expect(back.turn).toBe(O); // 退回到"轮到后手席走" = O
+
+    // 撤完还能接着下（撤的是棋盘上的子，不是"这一局"）
+    unwrap(playMove(code, BOB.id, { path: [[2, 2]] }));
+    expect(viewOf(code).grid[2][2]).toBe(O);
+  });
+
+  it('撤 1 步只收掉自己刚落的那一颗（对手还没应招）', () => {
+    const code = playingRoom();
+    unwrap(playMove(code, ALICE.id, { path: [[0, 0]] }));
+
+    expect(unwrap(requestUndo(code, ALICE.id)).view.undoRequest).toEqual({
+      by: 'black',
+      plies: 1,
+    });
+    const back = unwrap(respondUndo(code, BOB.id, true)).view;
+
+    expect(back.grid[0][0]).toBe(0);
+    expect(back.turn).toBe(X);
+    expect(back.plyCount).toBe(0);
   });
 });

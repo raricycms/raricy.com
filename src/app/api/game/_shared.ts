@@ -1,13 +1,13 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// 联机棋类接口的公共管道：鉴权、限频、错误码 → HTTP 映射，以及**八个 handler 工厂**。
+// 联机棋类接口的公共管道：鉴权、限频、错误码 → HTTP 映射，以及**十二个 handler 工厂**。
 // （Next App Router 把 `_` 开头的文件当非路由，不会被当成 API 端点。）
 //
 // 【为什么所有棋共用一份】五款棋的权限档位、错误码集合、限频档、响应形状完全一致 ——
 // 各写一份必然出现「同一个错误在 A 游戏回 409、在 B 游戏回 400」这种静默的不一致。
 //
-// 【为什么连 handler 都工厂化】每款棋 8 条路由 × 5 款棋 = 40 个 route.ts。除掉
+// 【为什么连 handler 都工厂化】每款棋 8 条路由 × 5 款棋 = 60 个 route.ts。除掉
 // 换掉 import 的那一行，它们是逐字相同的 —— 40 份拷贝的代价不是多打几千行，而是
-// 改一处（比如给流加一个响应头、给建房换一个限频档）要记得改 40 处，忘掉的那几处
+// 改一处（比如给流加一个响应头、给建房换一个限频档）要记得改 60 处，忘掉的那几处
 // 不会有任何测试转红。所以这里把每条路由的实现各写一遍，route.ts 只剩「声明式」的
 // import + 一行赋值（见各 route.ts 的文件头）。
 //
@@ -23,6 +23,7 @@ import type {
   RoomKind,
   RoomResult,
   RoomSnapshot,
+  Seat,
 } from '@/lib/board-shared';
 import { normalizeRoomCode, type RoomStreamEvent } from '@/lib/board-shared';
 import type { RoomUser } from '@/lib/board-room';
@@ -55,7 +56,7 @@ export async function requireGameUser(): Promise<GameUserResult> {
   return user;
 }
 
-/** 房间错误 → HTTP。集中一处，免得每种棋的八条路由各写一份不一致的映射。 */
+/** 房间错误 → HTTP。集中一处，免得每种棋的十条路由各写一份不一致的映射。 */
 export function roomErrorResponse(error: RoomError): Response {
   switch (error) {
     case 'notFound':
@@ -78,6 +79,18 @@ export function roomErrorResponse(error: RoomError): Response {
       return apiErr(409, '对手刚掉线，请稍候再试');
     case 'nothingToRematch':
       return apiErr(409, '对局尚未结束');
+    case 'seatTaken':
+      return apiErr(409, '那个位置已经有人了');
+    case 'inGame':
+      return apiErr(409, '对局进行中，不能换座位');
+    case 'nothingToUndo':
+      return apiErr(409, '现在没有可以撤回的棋');
+    case 'undoPending':
+      return apiErr(409, '对手已经发过悔棋请求，先回应那一条');
+    case 'noUndoRequest':
+      // 最常见的一手：你点「同意」的同时对手走了一手 —— 局面都变了，那条请求随之作废。
+      // 文案要说清楚，否则看着像"按钮坏了"。
+      return apiErr(409, '悔棋请求已失效（局面已变化）');
   }
 }
 
@@ -88,10 +101,14 @@ export function roomErrorResponse(error: RoomError): Response {
 export interface GameRoomApi {
   createRoom(user: RoomUser): RoomResult<RoomSnapshot>;
   joinRoom(code: string, user: RoomUser): RoomResult<RoomSnapshot>;
+  takeSeat(code: string, user: RoomUser, seat: Seat): RoomResult<RoomSnapshot>;
+  leaveSeat(code: string, user: RoomUser): RoomResult<RoomSnapshot>;
   getSnapshot(code: string, userId: string): RoomResult<RoomSnapshot>;
   playMove(code: string, userId: string, move: MoveInput): RoomResult<RoomSnapshot>;
   resign(code: string, userId: string): RoomResult<RoomSnapshot>;
   claimAbandoned(code: string, userId: string): RoomResult<RoomSnapshot>;
+  requestUndo(code: string, userId: string): RoomResult<RoomSnapshot>;
+  respondUndo(code: string, userId: string, accept: boolean): RoomResult<RoomSnapshot>;
   requestRematch(code: string, userId: string): RoomResult<RoomSnapshot>;
 }
 
@@ -124,7 +141,7 @@ async function gate(
 /** 路由上下文。Next 的 params 是 Promise（15+）。 */
 type CodeCtx = { params: Promise<{ code: string }> };
 
-// ── 八个 handler 工厂 ───────────────────────────────────────────────────────
+// ── 十二个 handler 工厂 ───────────────────────────────────────────────────────
 
 /**
  * POST /rooms —— 建房。
@@ -187,6 +204,51 @@ export function makeJoinHandler(kind: RoomKind, api: GameRoomApi) {
 }
 
 /**
+ * POST /rooms/:code/seat —— 坐上空着的那一席。body 是 `{ seat: 'black' | 'white' }`。
+ *
+ * 「哪一席」必须由调用方**点名**：先手/后手是本人的选择，服务端不替人挑
+ * （也因此进房只落观战台，见 makeJoinHandler）。已经坐在另一席的人调它就是换先 ——
+ * 只在目标席位空着时成立，想跟对手互换得对方自己点。
+ *
+ * 对局进行中一律拒绝（`inGame`）：中途换人等于偷走别人的局。
+ */
+export function makeTakeSeatHandler(kind: RoomKind, api: GameRoomApi) {
+  return async function POST(req: Request, ctx: CodeCtx): Promise<Response> {
+    const { code: raw } = await ctx.params;
+    // 与 join 同一个限频桶：客户端重连后自动坐回原席走的也是这两个接口
+    const g = await gate(kind, raw, 'room', 'gameRoom');
+    if (g instanceof Response) return g;
+
+    const body = (await req.json().catch(() => ({}))) as { seat?: unknown };
+    // 形状校验只在这里做一次（各棋十条路由共用），认不出的席位直接 400 ——
+    // 放进去的话房间层只会当成"那个位置有人"而回一个看不懂的 409。
+    if (body.seat !== 'black' && body.seat !== 'white') return apiErr(400, '席位不对');
+
+    const res = api.takeSeat(g.code, { id: g.user.id, name: g.user.username }, body.seat);
+    if (!res.ok) return roomErrorResponse(res.error);
+
+    return apiOk({ room: res.value }, '已入座');
+  };
+}
+
+/**
+ * POST /rooms/:code/seat/leave —— 从席位退到观战台。无请求体。
+ * 对局进行中同样拒绝（`inGame`）：认输、掉线判胜是给对局中的两条出路，不是"把座位让出来"。
+ */
+export function makeLeaveSeatHandler(kind: RoomKind, api: GameRoomApi) {
+  return async function POST(_req: Request, ctx: CodeCtx): Promise<Response> {
+    const { code: raw } = await ctx.params;
+    const g = await gate(kind, raw, 'room', 'gameRoom');
+    if (g instanceof Response) return g;
+
+    const res = api.leaveSeat(g.code, { id: g.user.id, name: g.user.username });
+    if (!res.ok) return roomErrorResponse(res.error);
+
+    return apiOk({ room: res.value }, '已退到观战台');
+  };
+}
+
+/**
  * POST /rooms/:code/moves —— 走子。body 是 `MoveInput`（`{ path, promotion? }`）。
  *
  * 客户端只报「我走了哪条路径」，轮次、合法性、胜负一律由服务端判定 ——
@@ -223,6 +285,51 @@ export function makeResignHandler(kind: RoomKind, api: GameRoomApi) {
     if (!res.ok) return roomErrorResponse(res.error);
 
     return apiOk({ room: res.value }, '已认输');
+  };
+}
+
+/**
+ * POST /rooms/:code/undo —— 请求悔棋。无请求体。
+ *
+ * **同一个接口也是「撤回」**：已经发过请求的人再调一次就把请求撤了（客户端上按钮写的是
+ * 「撤回」）。请求不冻结棋局、也不过期 —— 任何一手走子都会清掉它（局面都变了），
+ * 所以这里没有"到点作废"的定时器，也没有需要打扫的中间状态。
+ */
+export function makeUndoHandler(kind: RoomKind, api: GameRoomApi) {
+  return async function POST(_req: Request, ctx: CodeCtx): Promise<Response> {
+    const { code: raw } = await ctx.params;
+    const g = await gate(kind, raw, 'move', 'gameMove');
+    if (g instanceof Response) return g;
+
+    const res = api.requestUndo(g.code, g.user.id);
+    if (!res.ok) return roomErrorResponse(res.error);
+
+    // 不给文案：这次调用到底是"发出"还是"撤回"由房内的 undoRequest 说了算，客户端看状态即可
+    return apiOk({ room: res.value });
+  };
+}
+
+/**
+ * POST /rooms/:code/undo/respond —— 回应悔棋请求。body 是 `{ accept: boolean }`。
+ *
+ * 只有**对手**能回应（撤回自己的请求走 /undo）。最常见的失败是 `noUndoRequest`：
+ * 对手在你点「同意」的一瞬间走了一手，那条请求随之作废 —— 文案见 roomErrorResponse。
+ */
+export function makeUndoRespondHandler(kind: RoomKind, api: GameRoomApi) {
+  return async function POST(req: Request, ctx: CodeCtx): Promise<Response> {
+    const { code: raw } = await ctx.params;
+    const g = await gate(kind, raw, 'move', 'gameMove');
+    if (g instanceof Response) return g;
+
+    const body = (await req.json().catch(() => ({}))) as { accept?: unknown };
+    // 只认布尔：`accept: 'no'` 这种字符串进了房间层会被当成"同意"（真值），是那种
+    // 事后谁也想不通的错——所以在这里挡掉，不靠调用方自觉。
+    if (typeof body.accept !== 'boolean') return apiErr(400, '参数不对');
+
+    const res = api.respondUndo(g.code, g.user.id, body.accept);
+    if (!res.ok) return roomErrorResponse(res.error);
+
+    return apiOk({ room: res.value }, body.accept ? '已同意悔棋' : '已拒绝悔棋');
   };
 }
 
@@ -363,7 +470,17 @@ export function makeStreamHandler(kind: RoomKind, api: GameRoomApi) {
           unsubscribe = off;
 
           // 一连上就推当前全量状态：这就是断线补齐（见文件头）。
-          write(sseFrame<RoomStreamEvent>({ type: 'state', view: snapshot.value.view }));
+          // **顺带带上 `you`**（只有这一帧带，广播帧不带）：席位会被释放（没在对局中时
+          // 掉线即释放，见 board-room.ts 的席位规则），重连回来时光看 view 是发现不了
+          // 「我已经不在座位上了」的 —— 席位空着与"我还在座上、对手掉线"长得一模一样。
+          // 客户端据此把「· 你」标对，并在自己那一席还空着时自动坐回去。
+          write(
+            sseFrame<RoomStreamEvent>({
+              type: 'state',
+              view: snapshot.value.view,
+              you: snapshot.value.you,
+            })
+          );
 
           // 订阅**之后**才刷新在线状态：早于订阅会数到 0，把刚连上的自己判成掉线。
           refreshPresence(code, user.id);

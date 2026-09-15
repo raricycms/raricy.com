@@ -8471,6 +8471,63 @@ body {
 .board-seat--spec {
   opacity: 0.8;
 }
+.board-seat--open {
+  border-style: dashed;
+  cursor: pointer;
+  font: inherit;
+}
+.board-seat--open:hover {
+  border-color: var(--color-border-highlight);
+  color: var(--color-text-primary);
+}
+.board-seat__avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex: none;
+}
+
+.board-bench {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.board-bench__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.board-bench__list {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+.board-bench__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-background-subtle);
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}
+.board-bench__avatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex: none;
+}
+.board-bench__empty {
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}
 
 .board-room-bar {
   display: flex;

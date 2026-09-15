@@ -15,6 +15,7 @@
 
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { loginViaApi } from './helpers';
+import { takeSeat } from './board-game-helpers'; // 大厅：进房只落观战台，坐哪一席要自己点
 import { SEED_USERS } from './seed';
 
 /** 落子：(row, col) 是棋盘交叉点。换算依据见 GomokuCanvas 文件头。 */
@@ -74,8 +75,10 @@ test.describe('五子棋联机', () => {
     try {
       const room = await createRoom(a.page);
 
-      // B 打开 A 给的链接 → 自动入座执白
+      // B 打开 A 给的链接 → 落在观战台上，点白席「加入」才入座
       await b.page.goto(`/game/gomoku?mode=online&room=${room}`);
+      await expect(b.page.locator('.board-status')).toHaveText('等待对手加入…');
+      await takeSeat(b.page, 'white');
       await expect(b.page.locator('.board-status')).toHaveText('等对手落子…');
       await expect(a.page.locator('.board-status')).toHaveText('轮到你走');
 
@@ -103,7 +106,7 @@ test.describe('五子棋联机', () => {
     try {
       const room = await createRoom(a.page);
       await b.page.goto(`/game/gomoku?mode=online&room=${room}`);
-      await expect(b.page.locator('.board-status')).toHaveText('等对手落子…');
+      await takeSeat(b.page, 'white');
 
       // 黑（A）连成 (7,3)~(7,7)；白（B）在别处应着，四子不成五
       for (let i = 0; i < 5; i++) {
@@ -121,6 +124,37 @@ test.describe('五子棋联机', () => {
     }
   });
 
+  test('悔棋要对手同意：请求 → 同意 → 两端的棋子一起退回', async ({ browser }) => {
+    const a = await asUser(browser, SEED_USERS.core.username);
+    const b = await asUser(browser, SEED_USERS.admin.username);
+    try {
+      const room = await createRoom(a.page);
+      await b.page.goto(`/game/gomoku?mode=online&room=${room}`);
+      await takeSeat(b.page, 'white');
+
+      await clickCell(a.page, 7, 7);
+      const painted = await b.page.locator('.gomoku-canvas').evaluate((c) => (c as HTMLCanvasElement).toDataURL());
+
+      // A 刚落完子、轮对手 —— 撤 1 步
+      await a.page.getByRole('button', { name: '悔棋' }).click();
+      await expect(b.page.locator('.board-hint')).toContainText('对手请求悔棋');
+      await b.page.getByRole('button', { name: '同意' }).click();
+
+      // 两端都退回：棋子收回之后画布与下子前**一模一样**（像素级，不靠肉眼看）
+      await expect(a.page.locator('.board-status')).toContainText('轮到你走');
+      await expect
+        .poll(async () => b.page.locator('.gomoku-canvas').evaluate((c) => (c as HTMLCanvasElement).toDataURL()))
+        .not.toBe(painted);
+      const back = await a.page.locator('.gomoku-canvas').evaluate((c) => (c as HTMLCanvasElement).toDataURL());
+      await expect
+        .poll(async () => b.page.locator('.gomoku-canvas').evaluate((c) => (c as HTMLCanvasElement).toDataURL()))
+        .toBe(back);
+    } finally {
+      await a.ctx.close();
+      await b.ctx.close();
+    }
+  });
+
   test('第三人进入即观战：看得到棋盘，点不动', async ({ browser }) => {
     const a = await asUser(browser, SEED_USERS.core.username);
     const b = await asUser(browser, SEED_USERS.admin.username);
@@ -128,7 +162,7 @@ test.describe('五子棋联机', () => {
     try {
       const room = await createRoom(a.page);
       await b.page.goto(`/game/gomoku?mode=online&room=${room}`);
-      await expect(b.page.locator('.board-status')).toHaveText('等对手落子…');
+      await takeSeat(b.page, 'white');
 
       await c.page.goto(`/game/gomoku?mode=online&room=${room}`);
       await expect(c.page.locator('.board-status')).toHaveText('观战中');
@@ -155,7 +189,7 @@ test.describe('五子棋联机', () => {
     try {
       const room = await createRoom(a.page);
       await b.page.goto(`/game/gomoku?mode=online&room=${room}`);
-      await expect(b.page.locator('.board-status')).toHaveText('等对手落子…');
+      await takeSeat(b.page, 'white');
 
       await b.page.reload();
 

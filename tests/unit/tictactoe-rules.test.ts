@@ -186,3 +186,59 @@ describe('胜负：8 条线一条都不能漏', () => {
     }
   });
 });
+
+// ── 悔棋与历史 ──────────────────────────────────────────────────────────────
+// 【为什么补它】井字棋的 undo 是随联机悔棋（房间层连撤 1~2 步）一起加的：撤一手要
+// 把格子清空、moveCount 与 moveHistory 一起退，还要能**连撤**（对手已应招时一次撤两步）。
+
+describe('悔棋与历史', () => {
+  it('undo 清空该格、moveCount 与历史同步递减；空盘 undo 返回 false', () => {
+    const board = new TicTacToeBoard();
+    expect(board.undo()).toBe(false);
+
+    play(board, [
+      [0, 0, X],
+      [1, 1, O],
+    ]);
+
+    expect(board.undo()).toBe(true);
+    expect(board.grid[1][1]).toBe(TT_EMPTY);
+    expect(board.moveCount).toBe(1);
+    expect(board.getLastMove()).toEqual({ row: 0, col: 0, player: X });
+    expect(board.getHistory()).toEqual([{ row: 0, col: 0, player: X }]);
+  });
+
+  it('**连撤两步**（联机悔棋的常规形态：连对手那步一起撤）', () => {
+    const board = new TicTacToeBoard();
+    play(board, [
+      [0, 0, X],
+      [1, 1, O],
+      [0, 1, X],
+    ]);
+
+    expect(board.undo()).toBe(true);
+    expect(board.undo()).toBe(true);
+
+    expect(board.grid[0][0]).toBe(X); // 第一步留着
+    expect(board.grid[0][1]).toBe(TT_EMPTY);
+    expect(board.grid[1][1]).toBe(TT_EMPTY);
+    expect(board.moveCount).toBe(1);
+    expect(board.getLastMove()).toEqual({ row: 0, col: 0, player: X });
+    expect(board.isFull()).toBe(false);
+
+    // 撤完还能接着下，且胜负判定用的是**撤之后**的盘面
+    play(board, [[0, 1, O]]);
+    expect(board.checkWinAt(0, 0, X).won).toBe(false);
+    expect(board.checkWinAt(0, 1, O).won).toBe(false);
+  });
+
+  it('getHistory 返回副本，外部改动不会污染棋局', () => {
+    const board = new TicTacToeBoard();
+    play(board, [[0, 0, X]]);
+
+    board.getHistory().push({ row: 2, col: 2, player: O });
+
+    expect(board.getHistory()).toHaveLength(1);
+    expect(board.isValidMove(2, 2)).toBe(true);
+  });
+});

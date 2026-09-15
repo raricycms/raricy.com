@@ -16,7 +16,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useCallback } from 'react';
+import type { Player } from '@/lib/board-shared';
 import { BLACK, asGomokuGrid, asGomokuMove } from '@/lib/gomoku-rules';
+import BoardLobby from './BoardLobby';
+import BoardUndoControls from './BoardUndoControls';
 import GomokuCanvas from './GomokuCanvas';
 import OnlineRoomPanel, { roomEndNote } from './OnlineRoomPanel';
 import { CLAIM_AFTER_MS, postJson, useOnlineRoom, type RoomActions } from './useOnlineRoom';
@@ -28,10 +31,15 @@ import { CLAIM_AFTER_MS, postJson, useOnlineRoom, type RoomActions } from './use
 const ACTIONS: RoomActions = {
   create: () => postJson('/api/game/gomoku/rooms'),
   join: (code) => postJson(`/api/game/gomoku/rooms/${code}/join`),
+  // 大厅：进房只落观战台，坐哪一席由 takeSeat 点名（seat 是 'black' | 'white'）
+  takeSeat: (code, seat) => postJson(`/api/game/gomoku/rooms/${code}/seat`, { seat }),
+  leaveSeat: (code) => postJson(`/api/game/gomoku/rooms/${code}/seat/leave`),
   // 落子类棋：path 只有终点一格，没有起点
   move: (code, move) => postJson(`/api/game/gomoku/rooms/${code}/moves`, move),
   resign: (code) => postJson(`/api/game/gomoku/rooms/${code}/resign`),
   claim: (code) => postJson(`/api/game/gomoku/rooms/${code}/claim`),
+  undo: (code) => postJson(`/api/game/gomoku/rooms/${code}/undo`),
+  undoRespond: (code, accept) => postJson(`/api/game/gomoku/rooms/${code}/undo/respond`, { accept }),
   rematch: (code) => postJson(`/api/game/gomoku/rooms/${code}/rematch`),
   streamUrl: (code) => `/api/game/gomoku/rooms/${code}/stream`,
   snapshotUrl: (code) => `/api/game/gomoku/rooms/${code}`,
@@ -69,6 +77,17 @@ export default function OnlineGomoku({ initialRoom = null }: OnlineGomokuProps) 
       room.playMove({ path: [[row, col]] });
     },
     [canPlay, room]
+  );
+
+  // 席位前缀：黑席就是黑子（席位 id 是"第几个座位"，颜色由各棋自己定）
+  const seatLabel = useCallback(
+    (player: Player) => (
+      <span
+        className={`gomoku-stone gomoku-stone--${player === BLACK ? 'black' : 'white'}`}
+        aria-hidden="true"
+      />
+    ),
+    []
   );
 
   // 还没进房：房间面板
@@ -109,34 +128,15 @@ export default function OnlineGomoku({ initialRoom = null }: OnlineGomokuProps) 
         </div>
       )}
 
-      {/* 席位栏 */}
-      <div className="board-seats">
-        <span
-          className={`board-seat${
-            view.turn === BLACK && view.status === 'playing' ? ' board-seat--active' : ''
-          }`}
-          data-seat="black"
-        >
-          <span className="gomoku-stone gomoku-stone--black" aria-hidden="true" />
-          {view.seats.black?.name ?? '空位'}
-          {view.seats.black && !view.seats.black.connected && '（掉线）'}
-          {mySeat === 'black' && ' · 你'}
-        </span>
-        <span
-          className={`board-seat${
-            view.turn !== BLACK && view.status === 'playing' ? ' board-seat--active' : ''
-          }`}
-          data-seat="white"
-        >
-          <span className="gomoku-stone gomoku-stone--white" aria-hidden="true" />
-          {view.seats.white?.name ?? '空位'}
-          {view.seats.white && !view.seats.white.connected && '（掉线）'}
-          {mySeat === 'white' && ' · 你'}
-        </span>
-        {view.spectatorCount > 0 && (
-          <span className="board-seat board-seat--spec">围观 {view.spectatorCount}</span>
-        )}
-      </div>
+      {/* 席位栏 + 观战台 */}
+      <BoardLobby
+        view={view}
+        myId={room.myId}
+        mySeat={mySeat}
+        seatLabel={seatLabel}
+        onTakeSeat={room.takeSeat}
+        onLeaveSeat={room.leaveSeat}
+      />
 
       <div className="board-status">{statusText}</div>
 
@@ -167,6 +167,15 @@ export default function OnlineGomoku({ initialRoom = null }: OnlineGomokuProps) 
 
       {/* 控制 */}
       <div className="board-controls">
+        <BoardUndoControls
+          playing={view.status === 'playing'}
+          isPlayer={isPlayer}
+          mySeat={mySeat}
+          undoRequest={room.undoRequest}
+          canRequest={room.canRequestUndo}
+          onRequest={room.requestUndo}
+          onRespond={room.respondUndo}
+        />
         {view.status === 'playing' && isPlayer && (
           <button type="button" className="board-btn" onClick={room.resign}>
             认输
@@ -192,8 +201,8 @@ export default function OnlineGomoku({ initialRoom = null }: OnlineGomokuProps) 
               : '再来一局（需双方同意）'}
           </button>
         )}
-        {!isPlayer && (
-          <span className="board-hint">你在观战。两席坐满后加入的人自动成为观众。</span>
+        {!isPlayer && view.status === 'playing' && (
+          <span className="board-hint">你在观战。对局结束后回到大厅，就能坐上空出来的席位。</span>
         )}
       </div>
 

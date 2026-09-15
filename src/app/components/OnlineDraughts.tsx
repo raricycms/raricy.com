@@ -21,9 +21,15 @@ import { DRAUGHTS_SPEC } from './board-specs';
 const ACTIONS: RoomActions = {
   create: () => postJson('/api/game/draughts/rooms'),
   join: (code) => postJson(`/api/game/draughts/rooms/${code}/join`),
+  // 大厅：进房只落观战台，坐哪一席由 takeSeat 点名（seat 是 'black' | 'white'）
+  takeSeat: (code, seat) => postJson(`/api/game/draughts/rooms/${code}/seat`, { seat }),
+  leaveSeat: (code) => postJson(`/api/game/draughts/rooms/${code}/seat/leave`),
   move: (code, move) => postJson(`/api/game/draughts/rooms/${code}/moves`, move),
   resign: (code) => postJson(`/api/game/draughts/rooms/${code}/resign`),
   claim: (code) => postJson(`/api/game/draughts/rooms/${code}/claim`),
+  undo: (code) => postJson(`/api/game/draughts/rooms/${code}/undo`),
+  undoRespond: (code, accept) =>
+    postJson(`/api/game/draughts/rooms/${code}/undo/respond`, { accept }),
   rematch: (code) => postJson(`/api/game/draughts/rooms/${code}/rematch`),
   streamUrl: (code) => `/api/game/draughts/rooms/${code}/stream`,
   snapshotUrl: (code) => `/api/game/draughts/rooms/${code}`,

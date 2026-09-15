@@ -28,12 +28,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   FIRST,
+  undoPlies,
   type MoveInput,
   type RoomRole,
   type RoomSnapshot,
   type RoomStreamEvent,
   type RoomView,
   type Seat,
+  type SpectatorView,
+  type UndoRequest,
 } from '@/lib/board-shared';
 
 /** 对手掉线满这么久，本方可以判胜（与服务端 board-room 的 DISCONNECT_CLAIM_MS 一致）。 */
@@ -55,7 +58,12 @@ export interface RoomPostResult {
  */
 export interface RoomActions {
   create(): Promise<RoomPostResult>;
+  /** 进房：落点永远是**观战台**，坐哪一席由 takeSeat 点名（见 board-room.ts）。 */
   join(code: string): Promise<RoomPostResult>;
+  /** 坐上空着的一席。已经坐在另一席的人调它就是换先。 */
+  takeSeat(code: string, seat: Seat): Promise<RoomPostResult>;
+  /** 从席位退到观战台。 */
+  leaveSeat(code: string): Promise<RoomPostResult>;
   /**
    * 走一手。棋路的形状见 `MoveInput`（board-shared.ts）：落子类棋 `path` 只有一格，
    * 走子类棋是起点→终点，连吃则更长。**整手一次提交**，没有半步状态。
@@ -63,6 +71,10 @@ export interface RoomActions {
   move(code: string, move: MoveInput): Promise<RoomPostResult>;
   resign(code: string): Promise<RoomPostResult>;
   claim(code: string): Promise<RoomPostResult>;
+  /** 请求悔棋；自己已经有一条待回应的请求时，同一个接口就是撤回。 */
+  undo(code: string): Promise<RoomPostResult>;
+  /** 回应对手的悔棋请求。 */
+  undoRespond(code: string, accept: boolean): Promise<RoomPostResult>;
   rematch(code: string): Promise<RoomPostResult>;
   /** SSE 流地址。 */
   streamUrl(code: string): string;
@@ -98,8 +110,18 @@ export async function postJson(path: string, body?: unknown): Promise<RoomPostRe
 export interface OnlineRoom {
   snapshot: RoomSnapshot | null;
   view: RoomView | null;
+  /** 我的 userId —— 大厅名单里标「· 你」用（名单里的 id 就是我）。 */
+  myId: string | null;
   mySeat: Seat | null;
   oppSeat: Seat | null;
+  /** 观战台名单。对局进行中服务端下发空数组（大厅的规矩是开局后隐藏观战台）。 */
+  spectators: SpectatorView[];
+  /** 已走步数（悔棋按钮据此判断撤不撤得动）。 */
+  plyCount: number;
+  /** 待回应的悔棋请求；没有则 null。 */
+  undoRequest: UndoRequest | null;
+  /** 「悔棋」按钮点不点得动（含"我发的请求可以撤回"那一档）。 */
+  canRequestUndo: boolean;
   /** 我在这一局里是棋手（而非观众）。 */
   isPlayer: boolean;
   /** 轮到我走（服务端口径）。 */
@@ -120,9 +142,13 @@ export interface OnlineRoom {
   canClaim: boolean;
   createRoom: () => Promise<void>;
   joinRoom: (raw: string) => Promise<void>;
+  takeSeat: (seat: Seat) => void;
+  leaveSeat: () => void;
   playMove: (move: MoveInput) => void;
   resign: () => void;
   claim: () => void;
+  requestUndo: () => void;
+  respondUndo: (accept: boolean) => void;
   rematch: () => void;
   copyLink: () => Promise<void>;
   leave: () => void;
@@ -149,18 +175,53 @@ export function useOnlineRoom(
   snapshotRef.current = snapshot;
   /** StrictMode 闩锁：带 ?room= 进来自动加入只做一次。 */
   const joinedRef = useRef(false);
+  /** 自动坐回原席的在途闩（见 reclaimSeat）。 */
+  const reclaimingRef = useRef(false);
 
   const code = snapshot?.view.code ?? null;
 
-  /** 应用一份服务端状态。POST 响应与 SSE 帧都走这里，按 revision 去重。 */
-  const applyView = useCallback((view: RoomView) => {
+  /**
+   * 应用一份服务端状态。POST 响应与 SSE 帧都走这里，按 revision 去重。
+   *
+   * `you` 是可选的第二份：**只有建流那一帧**与换座类接口的响应带它（见 board-shared.ts
+   * 的 RoomStreamEvent）。它说的是「你是谁」，与局面的新旧无关 —— 所以 view 按 revision
+   * 丢弃过期帧，`you` 一律照单全收。少了这一步，席位被释放过的人会一直以为自己还在座上。
+   */
+  const applyView = useCallback((view: RoomView, you?: RoomSnapshot['you']) => {
     setSnapshot((prev) => {
       if (!prev) return prev; // 还没 join（you 未知），忽略
-      if (view.revision < prev.view.revision) return prev; // 过期帧
-      return { ...prev, view };
+      // 过期帧只丢 view：you 是身份，不跟着局面过期
+      if (view.revision < prev.view.revision) return you ? { ...prev, you } : prev;
+      return { view, you: you ?? prev.you };
     });
     setTick(0); // 新状态到了，本地秒表归零（disconnectedForMs 已是服务端最新值）
   }, []);
+
+  /**
+   * 重连后**自动坐回原来那一席**（只要还空着）。
+   *
+   * 【为什么需要】没在对局中时，一个人从席位上断开就等于把席位交出去了（见 board-room.ts
+   * 的席位规则），而客户端的 SSE 在标签页切到后台时会主动断开（省连接）—— 没有这一步，
+   * "切出去看一眼再回来"就变成"座位没了"。席位被别人抢先坐走时不抢（大厅里能看见是谁），
+   * 失败也**不报错**：坐不回去不是错误，大厅里点一下「加入」就行。
+   */
+  const reclaimSeat = useCallback(
+    async (seat: Seat) => {
+      if (reclaimingRef.current) return; // 在途闩：建流帧之后紧跟的帧可能重复触发
+      reclaimingRef.current = true;
+      try {
+        const current = snapshotRef.current;
+        if (!current) return;
+        const data = await actions.takeSeat(current.view.code, seat);
+        if (data.room) applyView(data.room.view, data.room.you);
+      } catch {
+        /* 席位被占了 / 被限频挡了：留在观战台，大厅里手点「加入」 */
+      } finally {
+        reclaimingRef.current = false;
+      }
+    },
+    [actions, applyView]
+  );
 
   /** 把房号写回地址栏（可分享 / 可收藏 / 刷新回到原局）。 */
   const writeUrl = useCallback(
@@ -217,7 +278,10 @@ export function useOnlineRoom(
     [actions, enterRoom]
   );
 
-  /** 走子 / 认输 / 判胜 / 再来一局 —— 都是 POST 一个动作，拿回新状态。 */
+  /**
+   * 走子 / 认输 / 判胜 / 换座 / 悔棋 / 再来一局 —— 都是 POST 一个动作，拿回新状态。
+   * 响应里的 `you` 一并应用：换座类接口会改身份（坐上空席、退到观战台都是）。
+   */
   const run = useCallback(
     async (fn: (code: string) => Promise<RoomPostResult>) => {
       const current = snapshotRef.current;
@@ -225,7 +289,7 @@ export function useOnlineRoom(
       setError(null);
       try {
         const data = await fn(current.view.code);
-        if (data.room) applyView(data.room.view);
+        if (data.room) applyView(data.room.view, data.room.you);
       } catch (e) {
         setError(errText(e));
       }
@@ -240,6 +304,17 @@ export function useOnlineRoom(
     [run, actions]
   );
 
+  const takeSeat = useCallback(
+    (seat: Seat) => {
+      void run((c) => actions.takeSeat(c, seat));
+    },
+    [run, actions]
+  );
+
+  const leaveSeat = useCallback(() => {
+    void run((c) => actions.leaveSeat(c));
+  }, [run, actions]);
+
   const resign = useCallback(() => {
     void run((c) => actions.resign(c));
   }, [run, actions]);
@@ -247,6 +322,17 @@ export function useOnlineRoom(
   const claim = useCallback(() => {
     void run((c) => actions.claim(c));
   }, [run, actions]);
+
+  const requestUndo = useCallback(() => {
+    void run((c) => actions.undo(c));
+  }, [run, actions]);
+
+  const respondUndo = useCallback(
+    (accept: boolean) => {
+      void run((c) => actions.undoRespond(c, accept));
+    },
+    [run, actions]
+  );
 
   const rematch = useCallback(() => {
     void run((c) => actions.rematch(c));
@@ -274,7 +360,23 @@ export function useOnlineRoom(
       es.onmessage = (ev) => {
         try {
           const event = JSON.parse(ev.data) as RoomStreamEvent;
-          if (event.type === 'state') applyView(event.view);
+          if (event.type !== 'state') return;
+
+          // 建流那一帧带 `you`（见 board-shared.ts）：它可能告诉我「你已经不在座位上了」——
+          // 没在对局中时断开过 SSE 就会被释放席位。原来那一席还空着就自动坐回去。
+          // 在被坐走的情况下不动手：大厅里能看见是谁坐了，硬抢才是错的。
+          const prev = snapshotRef.current;
+          const prevSeat = prev?.you.role === 'player' ? prev.you.seat : null;
+          if (
+            prevSeat !== null &&
+            event.you?.role === 'spectator' &&
+            event.view.status !== 'playing' &&
+            event.view.seats[prevSeat] === null
+          ) {
+            void reclaimSeat(prevSeat);
+          }
+
+          applyView(event.view, event.you);
         } catch {
           /* 坏帧忽略：下一帧仍是全量状态，不会因此丢数据 */
         }
@@ -310,7 +412,7 @@ export function useOnlineRoom(
       document.removeEventListener('visibilitychange', onVisibility);
       es?.close();
     };
-  }, [code, applyView, actions]);
+  }, [code, applyView, reclaimSeat, actions]);
 
   // 连接彻底断了：区分「房间过期」与「权限变了」，好给不同的出路
   useEffect(() => {
@@ -337,8 +439,13 @@ export function useOnlineRoom(
 
   // ── 派生状态 ──────────────────────────────────────────────────────────────
   const view = snapshot?.view ?? null;
-  const you = snapshot?.you ?? { role: 'spectator' as RoomRole, seat: null as Seat | null };
+  const you: RoomSnapshot['you'] = snapshot?.you ?? {
+    id: '',
+    role: 'spectator' as RoomRole,
+    seat: null as Seat | null,
+  };
 
+  const myId = you.id || null;
   const mySeat: Seat | null = you.seat;
   const oppSeat: Seat | null =
     mySeat === 'black' ? 'white' : mySeat === 'white' ? 'black' : null;
@@ -362,6 +469,22 @@ export function useOnlineRoom(
     isPlayer && view?.status === 'playing' && (view.turn === FIRST) === (mySeat === 'black');
   const canPlay = myTurn && conn === 'open';
 
+  // 观战台名单与悔棋状态。对局进行中服务端不下发名单（大厅规矩），所以恒为空数组。
+  const spectators = view?.spectators ?? [];
+  const plyCount = view?.plyCount ?? 0;
+  const undoRequest = view?.undoRequest ?? null;
+
+  // 撤几步算得出「撤到轮到我走」：与**服务端同一份** undoPlies（协议层导出）——
+  // 客户端各算一遍的表现是按钮亮着却报「没有可撤的棋」。
+  const canRequestUndo =
+    view?.status === 'playing' &&
+    isPlayer &&
+    mySeat !== null &&
+    conn === 'open' &&
+    // 自己那条待回应的请求要放行：那个按钮此刻是「撤回」
+    (undoRequest === null || undoRequest.by === mySeat) &&
+    plyCount >= undoPlies(view.turn, mySeat);
+
   const copyLink = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(window.location.href);
@@ -382,8 +505,13 @@ export function useOnlineRoom(
   return {
     snapshot,
     view,
+    myId,
     mySeat,
     oppSeat,
+    spectators,
+    plyCount,
+    undoRequest,
+    canRequestUndo,
     isPlayer,
     myTurn,
     canPlay,
@@ -398,9 +526,13 @@ export function useOnlineRoom(
     canClaim,
     createRoom,
     joinRoom,
+    takeSeat,
+    leaveSeat,
     playMove,
     resign,
     claim,
+    requestUndo,
+    respondUndo,
     rematch,
     copyLink,
     leave,

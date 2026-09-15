@@ -45,6 +45,16 @@ export async function createRoom(page: Page, game: string): Promise<string> {
   return room!;
 }
 
+/**
+ * 坐到某一席上去。**进房只落观战台**，坐哪一席要自己点（大厅的规矩）。
+ * 空席位是个写着「加入」的按钮；已经坐在另一席上的人点它就是「换先」。
+ */
+export async function takeSeat(page: Page, seat: 'black' | 'white'): Promise<void> {
+  await page.locator(`.board-seat--open[data-seat="${seat}"]`).click();
+  // 坐上去之后席位变成"有人"的那种（不再是按钮），并且标着「· 你」
+  await expect(page.locator(`.board-seat[data-seat="${seat}"]:not(.board-seat--open)`)).toContainText('你');
+}
+
 /** 点一个格子。坐标是**服务端坐标**（row, col），与棋盘的 data-row/data-col 一致。 */
 export async function clickSquare(
   page: Page,
@@ -120,6 +130,7 @@ export function describeCommonOnlineRules(opts: {
         const room = await createRoom(a.page, game);
         await b.page.goto(`/game/${game}?mode=online&room=${room}`);
         await expect(b.page.locator(sel.board)).toBeVisible();
+        await takeSeat(b.page, 'white'); // 进房只落观战台，坐下才开局
 
         await playMove(a.page, sel, firstMove.from, ...firstMove.hops);
 
@@ -147,6 +158,7 @@ export function describeCommonOnlineRules(opts: {
         const room = await createRoom(a.page, game);
         await b.page.goto(`/game/${game}?mode=online&room=${room}`);
         await expect(b.page.locator(sel.board)).toBeVisible();
+        await takeSeat(b.page, 'white');
 
         await c.page.goto(`/game/${game}?mode=online&room=${room}`);
         await expect(c.page.locator('.board-status')).toHaveText('观战中');
@@ -176,6 +188,7 @@ export function describeCommonOnlineRules(opts: {
         const room = await createRoom(a.page, game);
         await b.page.goto(`/game/${game}?mode=online&room=${room}`);
         await expect(b.page.locator(sel.board)).toBeVisible();
+        await takeSeat(b.page, 'white');
 
         await b.page.reload();
 
@@ -194,6 +207,7 @@ export function describeCommonOnlineRules(opts: {
         const room = await createRoom(a.page, game);
         await b.page.goto(`/game/${game}?mode=online&room=${room}`);
         await expect(b.page.locator(sel.board)).toBeVisible();
+        await takeSeat(b.page, 'white');
 
         await b.page.getByRole('button', { name: '认输' }).click();
 
@@ -205,6 +219,65 @@ export function describeCommonOnlineRules(opts: {
         await expect(a.page.locator('.board-controls')).toContainText('再来一局');
       } finally {
         await a.ctx.close();
+        await b.ctx.close();
+      }
+    });
+
+    test('悔棋要对手同意：请求 → 同意 → 两端一起退回', async ({ browser }) => {
+      const a = await asUser(browser, SEED_USERS.core.username);
+      const b = await asUser(browser, SEED_USERS.admin.username);
+      try {
+        const room = await createRoom(a.page, game);
+        await b.page.goto(`/game/${game}?mode=online&room=${room}`);
+        await expect(b.page.locator(sel.board)).toBeVisible();
+        await takeSeat(b.page, 'white');
+
+        await playMove(a.page, sel, firstMove.from, ...firstMove.hops);
+        const to = firstMove.hops[firstMove.hops.length - 1];
+        await expect(pieceAt(b.page, sel, to[0], to[1])).toHaveAttribute(
+          'data-piece',
+          expectAfterFirstMove.to
+        );
+
+        // A 刚走完、轮对手 —— 撤 1 步。请求发出后 B 端出现同意 / 拒绝
+        await a.page.getByRole('button', { name: '悔棋' }).click();
+        await expect(b.page.locator('.board-hint')).toContainText('对手请求悔棋');
+        await b.page.getByRole('button', { name: '同意' }).click();
+
+        // 两端都退回：起点还是那个子，终点回到空格
+        for (const page of [a.page, b.page]) {
+          await expect(pieceAt(page, sel, firstMove.from[0], firstMove.from[1])).toHaveAttribute(
+            'data-piece',
+            expectAfterFirstMove.to
+          );
+          await expect(pieceAt(page, sel, to[0], to[1])).toHaveAttribute('data-piece', '');
+        }
+        await expect(a.page.locator('.board-status')).toContainText('轮到你走');
+      } finally {
+        await a.ctx.close();
+        await b.ctx.close();
+      }
+    });
+
+    test('房主离开后席位空出：后来的人直接坐上那一席', async ({ browser }) => {
+      const a = await asUser(browser, SEED_USERS.core.username);
+      const b = await asUser(browser, SEED_USERS.admin.username);
+      try {
+        const room = await createRoom(a.page, game);
+        // 房主关掉页面 → 没在对局中，席位立刻空出（见 board-room.ts 的席位规则）
+        await a.ctx.close();
+
+        await b.page.goto(`/game/${game}?mode=online&room=${room}`);
+        const black = b.page.locator('.board-seat--open[data-seat="black"]');
+        await expect(black).toContainText('加入'); // 空出来的正是房主那一席
+        await black.click();
+
+        await expect(b.page.locator('.board-seat[data-seat="black"]')).toContainText('你');
+        // 一席空着还不是对局：大厅把观战台摆出来，等第三个人来坐另一席
+        await expect(b.page.locator('.board-bench')).toBeVisible();
+        await expect(b.page.locator('.board-bench__empty')).toContainText('把链接发给朋友');
+      } finally {
+        await a.ctx.close(); // 已在上面关过，Playwright 的 close 是幂等的
         await b.ctx.close();
       }
     });
