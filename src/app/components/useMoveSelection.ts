@@ -19,6 +19,9 @@
 //   • 点下去正好凑成一条完整着法 → 走子
 //   • 还只是某条着法的前缀     → 记下这一跳，继续等下一个落点
 // 对两格着法（象棋 / 国际象棋）来说就是普通的一次点击，对跳棋则天然是逐跳连吃。
+//
+// 【`targets` 只在选中之后才有意义】没选子时，每条着法的第一格其实是我自己那些
+// 能动的子 —— 那是另一回事，不该被当成"可以走这儿"画出来。详见接口上的注释。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -38,7 +41,15 @@ function isPrefix(path: Square[], full: Square[]): boolean {
 export interface MoveSelection {
   /** 已经点过的格子（含起点）。空数组 = 还没选子。 */
   path: Square[];
-  /** 现在可以点的下一格 —— 棋盘点出来的"可以走这儿"提示。 */
+  /**
+   * 选中之后**下一格能落在哪儿** —— 棋盘点出来的"可以走这儿"提示。没选子时为空。
+   *
+   * 【为什么没选子时是空的】`targets` 的原始定义是"现在可以点的下一格"，而在
+   * `path` 为空时，每条着法的第一格就是**我自己那些能动的子** —— 照单全收地画出来，
+   * 等于在每个自己的子身上点一个圆点（棋盘的 `--target` 就是这么用的）。那不是落点，
+   * 是"这枚子能动"的另一回事，而且绿了点之后看着像棋子长了脑袋。所以这里把
+   * 没选子的情况排除掉：落点只在选中之后才有意义。
+   */
   targets: Square[];
   /** 点一个格子。已选中的子照常显示，点别处会改选或取消。 */
   click: (square: Square) => void;
@@ -66,6 +77,8 @@ export function useMoveSelection(
   }, [resetKey]);
 
   const targets = useMemo(() => {
+    // 没选子就没有"落点"可谈 —— 此时的 targets 是我自己那些能动的子（见接口上的注释）
+    if (path.length === 0) return [];
     const next: Square[] = [];
     for (const move of legalMoves) {
       if (move.path.length <= path.length) continue; // 这一手已经走完了

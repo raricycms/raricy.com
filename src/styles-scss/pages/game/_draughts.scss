@@ -75,14 +75,17 @@
     box-shadow: inset 0 0 0 4px rgb(255 196 0 / 45%);
   }
 
-  // 可以落子的点
+  // 可以落子的点。
+  // 绿色与「为什么不能用半透明近黑」的理由同国际象棋（_chess.scss 的 --target）——
+  // 圆点画在棋子之上，黑子中心那个深色点等于隐形。跳棋的黑子同样是实心深色圆片，
+  // 所以这款棋一样需要它。（象棋不用改：它的棋子两面都是浅木色圆牌，深色点看得见。）
   &--target::after {
     content: '';
     position: absolute;
     width: 30%;
     height: 30%;
     border-radius: 50%;
-    background: rgb(30 30 30 / 32%);
+    background: #22c55e;
   }
 
   &--last {
