@@ -1,9 +1,14 @@
 import Link from 'next/link';
+import { getCurrentUser, isCoreUser } from '@/lib/auth';
 import HomeFooterNote from './components/HomeFooterNote';
 import HeroCanvas from './components/HeroCanvas';
 
 // 首页 — Flask `home/homepage.html` 样式（home-container / home-display / feature-card / home-btn）
-export default function HomePage() {
+export default async function HomePage() {
+  // 「讨论」卡与顶栏那项同档：/chat 走 requireCoreUser，非核心用户点进去只能撞 403。
+  // 入口与门禁必须同档 —— 这条在 access-control.spec 里钉着（同一形状的回归发生过）。
+  const user = await getCurrentUser();
+
   return (
     <>
       <section className="hero-section" id="home">
@@ -65,6 +70,19 @@ export default function HomePage() {
                 </div>
               </Link>
             </div>
+
+            {isCoreUser(user) && (
+              <div className="home-grid-item">
+                <Link className="feature-card card-chat" href="/chat">
+                  <div className="card-body home-text-center">
+                    <span className="feature-icon" aria-hidden="true"></span>
+                    <h4 className="card-title" style={{ marginBottom: '0.75rem' }}>讨论</h4>
+                    <p className="card-text">站内讨论区，欢迎在这里交流想法、分享发现。</p>
+                    <span className="home-btn home-btn--outline-success home-btn--sm">进入讨论</span>
+                  </div>
+                </Link>
+              </div>
+            )}
           </div>
         </div>
       </section>

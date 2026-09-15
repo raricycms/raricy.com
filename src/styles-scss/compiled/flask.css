@@ -2498,6 +2498,12 @@ svg.rc-icon {
   mask-image: url("/static/img/icons/tools.svg");
 }
 
+.card-chat .feature-icon {
+  color: #8b5cf6;
+  -webkit-mask-image: url("/static/img/icons/chat-dots_new.svg");
+  mask-image: url("/static/img/icons/chat-dots_new.svg");
+}
+
 /* 统计数据样式 */
 .stats-section {
   background: #f8f9fa;
