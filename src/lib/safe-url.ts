@@ -37,3 +37,37 @@ export function loginUrlWithNext(currentPath: string): string {
   const safe = safeNextPath(currentPath);
   return safe === '/' ? '/login' : `/login?next=${encodeURIComponent(safe)}`;
 }
+
+/**
+ * 校验「支付完成后回到商户」的地址（收银台 `/fish/pay` 的 `return` 参数）。
+ *
+ * ★ 与 safeNextPath 的规则**正好相反**：那里只放行站内路径，这里必须允许跨站
+ * （商户本来就住在别的域名下）。所以判据不是「在不在站内」，而是「像不像一个
+ * 正常的网页地址」：只收 http / https、不许带用户名密码、长度与字符集设上限。
+ *
+ * 【为什么这不是开放重定向】调用方只在**支付成功之后**把它渲染成一个**链接**
+ * （不是自动跳转），并且页面上会把目标主机名显示出来。攻击者拿它当跳板的话，
+ * 得先让受害者真付一笔钱 —— 成本比任何钓鱼链接都高。
+ *
+ * @returns 规范化后的地址；不可用时返回 null（页面就不显示返回按钮）
+ */
+export function safeExternalReturnUrl(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const s = raw.trim();
+  if (!s || s.length > 300) return null;
+  // 控制字符与空白：URL 解析器在解析前会剥掉 TAB/LF/CR，`java\nscript:` 这类变形
+  // 能骗过朴素的字符串检查（同 safeNextPath 的处理）。
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u0020\u007f]/.test(s)) return null;
+
+  let u: URL;
+  try {
+    u = new URL(s);
+  } catch {
+    return null;
+  }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+  // https://user:pass@evil.com —— 地址栏会显示成可信域名，是钓鱼惯用手法
+  if (u.username || u.password) return null;
+  return u.toString();
+}

@@ -1,0 +1,168 @@
+@use '../abstracts/variables' as *;
+
+// ═══════════════════════════════════════════════════════
+//  收银台（/fish/pay）—— 站外商户把用户送来付款的页面
+//
+//  卡片 / 字段 / 按钮全部复用 _fish-market.scss 的类（.market-card / .market-field /
+//  .market-amount / .market-summary / .market-submit）—— 同一套视觉用在两处，
+//  按 frontend-styles §11.1「写 mixin 而不是复制一份」的精神，这里只写收银台
+//  独有的部分：商户横幅、金额展示、结果面板、免责声明。
+// ═══════════════════════════════════════════════════════
+
+// ── 商户横幅：这一笔是**别人**发起的 ────────────────────────────────────────
+
+.pay-merchant {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: $space-1;
+  margin-bottom: $space-4;
+  padding: $space-3 $space-4;
+  background: var(--color-background-highlight);
+  border-radius: $radius-large;
+  text-align: center;
+}
+
+.pay-merchant__name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  word-break: break-word;
+}
+
+.pay-merchant__badge {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: var(--color-warning-primary);
+  background: var(--color-warning-secondary);
+  padding: 2px $space-2;
+  border-radius: $radius-max;
+}
+
+// ── 金额（只读展示，值由商户链接给定）──────────────────────────────────────
+
+// 与可输入的 .market-amount 同壳，但里面不是 input（金额不让改：改了商户对不上账）
+.pay-amount {
+  justify-content: space-between;
+}
+
+.pay-amount__value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.pay-note {
+  margin: 0;
+  padding: $space-3 $space-4;
+  background: var(--color-background-content);
+  border-radius: $radius-large;
+  color: var(--color-text-primary);
+  font-size: 0.95rem;
+  word-break: break-word;
+}
+
+.pay-disclaimer {
+  margin: $space-3 0 0;
+  font-size: 0.8rem;
+  line-height: 1.6;
+  color: var(--color-text-secondary);
+  text-align: center;
+}
+
+// ── 结果面板 ────────────────────────────────────────────────────────────────
+
+.pay-result {
+  text-align: center;
+}
+
+.pay-result__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  margin: 0 auto $space-4;
+  border-radius: 50%;
+  background: var(--color-success-secondary);
+  color: var(--color-success-primary);
+  font-size: 1.75rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.pay-result__title {
+  margin: 0 0 $space-3;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.pay-result__amount {
+  margin: 0 0 $space-1;
+  font-size: 2.25rem;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--color-brand-primary);
+  font-variant-numeric: tabular-nums;
+
+  span {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+  }
+}
+
+.pay-result__to,
+.pay-result__balance {
+  margin: $space-2 0 0;
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+}
+
+.pay-result__return {
+  display: inline-block;
+  width: auto;
+  margin-top: $space-6;
+  padding-left: $space-6;
+  padding-right: $space-6;
+  text-decoration: none;
+}
+
+.pay-result__hint {
+  margin: $space-3 0 0;
+  font-size: 0.8rem;
+  line-height: 1.6;
+  color: var(--color-text-secondary);
+}
+
+// ── 参数不合法时的错误卡 ────────────────────────────────────────────────────
+
+.pay-error {
+  text-align: center;
+}
+
+.pay-error__title {
+  margin: 0 0 $space-2;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.pay-error__message {
+  margin: 0 0 $space-3;
+  color: var(--color-warning-primary);
+  font-size: 0.95rem;
+}
+
+.pay-error__hint {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+
+  a {
+    color: var(--color-brand-primary);
+  }
+}

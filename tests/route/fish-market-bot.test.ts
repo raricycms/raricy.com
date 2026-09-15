@@ -495,3 +495,99 @@ describe('POST /api/fish/market/transactions', () => {
     expect((await res.json()).page).toBe(1);
   });
 });
+
+// ── 收银台（/fish/pay 的接口）──────────────────────────────────────────────
+//
+// 与上面那些「无状态」接口的关键区别：付款人**只能是会话用户**，且必须再输一次
+// 本人密码（step-up）。这里逐条钉住这两件事 —— 它们正是收银台的全部价值。
+
+describe('POST /api/fish/market/pay（收银台）', () => {
+  const payReq = (body: unknown) => pay(makeReq('/api/fish/market/pay', body));
+
+  it('没登录 → 401（body 里塞凭据也不行：这个接口不认无状态鉴权）', async () => {
+    const sender = await makeLoginableUser({ driedFish: 10 });
+    const recipient = await makeUser({ driedFish: 0 });
+
+    const res = await payReq({
+      to_user_id: recipient.id,
+      amount: 1,
+      password: PASSWORD,
+      username: sender.username,
+    });
+
+    expect(res.status).toBe(401);
+    expect(await prisma.fishTransaction.count()).toBe(0);
+  });
+
+  it('★ 已登录但不给密码 → 400（step-up 不可跳过）', async () => {
+    const sender = await makeLoginableUser({ driedFish: 10 });
+    const recipient = await makeUser({ driedFish: 0 });
+    session.token = await createSessionToken({ uid: sender.id, sv: 0 });
+
+    const res = await payReq({ to_user_id: recipient.id, amount: 1 });
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).message).toContain('密码');
+    expect(await prisma.fishTransaction.count()).toBe(0);
+  });
+
+  it('★ 密码错误 → 401 且零写入，并且消耗的是登录失败预算（不是第三条撞库通道）', async () => {
+    const sender = await makeLoginableUser({ driedFish: 10 });
+    const recipient = await makeUser({ driedFish: 0 });
+    session.token = await createSessionToken({ uid: sender.id, sv: 0 });
+    const key = `login:user:${sender.username.toLowerCase()}`;
+    const probe = { limit: 2, windowMs: 60_000 };
+
+    expect(isRateLimited(key, probe)).toBe(false);
+    for (let i = 0; i < 2; i++) {
+      const res = await payReq({ to_user_id: recipient.id, amount: 1, password: 'wrong' });
+      expect(res.status).toBe(401);
+    }
+
+    expect(isRateLimited(key, probe), 'step-up 失败必须记进 login:user:').toBe(true);
+    expect(await prisma.fishTransaction.count()).toBe(0);
+    expect(await balanceOf(sender.id)).toBe(10);
+  });
+
+  it('密码正确 → 付款成功，余额与流水都对', async () => {
+    const sender = await makeLoginableUser({ driedFish: 10 });
+    const recipient = await makeUser({ driedFish: 0 });
+    session.token = await createSessionToken({ uid: sender.id, sv: 0 });
+
+    const res = await payReq({
+      to_user_id: recipient.id,
+      amount: 2.5,
+      note: '订单 A-1',
+      password: PASSWORD,
+      idempotency_key: 'pay-abc123abc123abc1',
+    });
+
+    const json = await res.json();
+    expect(res.status, JSON.stringify(json)).toBe(200);
+    expect(json.amount).toBe(2.5);
+    expect(json.balance).toBe(7.5);
+    expect(await balanceOf(recipient.id)).toBe(2.5);
+    expect(await prisma.fishTransaction.count()).toBe(2);
+  });
+
+  it('被禁言 → 403', async () => {
+    const sender = await makeLoginableUser({ driedFish: 10, isBanned: true });
+    const recipient = await makeUser({ driedFish: 0 });
+    session.token = await createSessionToken({ uid: sender.id, sv: 0 });
+
+    const res = await payReq({ to_user_id: recipient.id, amount: 1, password: PASSWORD });
+
+    expect(res.status).toBe(403);
+  });
+
+  it('会话失效（sessionVersion 不匹配）→ 401，即使密码是对的', async () => {
+    const sender = await makeLoginableUser({ driedFish: 10 });
+    const recipient = await makeUser({ driedFish: 0 });
+    session.token = await createSessionToken({ uid: sender.id, sv: 99 });
+
+    const res = await payReq({ to_user_id: recipient.id, amount: 1, password: PASSWORD });
+
+    expect(res.status).toBe(401);
+    expect(await prisma.fishTransaction.count()).toBe(0);
+  });
+});

@@ -12,7 +12,7 @@
 
 import { test, expect, type APIRequestContext, type Page } from '@playwright/test';
 import { registerFreshUser, loginViaApi } from './helpers';
-import { SEED_PASSWORD } from './seed';
+import { SEED_PASSWORD, SEED_USERS } from './seed';
 
 const ACCOUNT_MOCK = 'http://127.0.0.1:3101';
 /** 站点自身（无状态发包要打真实服务，不能只打替身）。 */
@@ -171,6 +171,90 @@ test('余额不足与转给自己：前端拦住 + 服务端 400，远端无新�
   // 余额一分未动
   await page.reload();
   await expect(page.locator('.market-card__balance-number')).toHaveText(String(balance));
+});
+
+test('收银台：商户链接 → 核对 → 输密码支付 → 返回商户；参数非法时给出明确错误', async ({
+  page,
+  request,
+}) => {
+  const sender = await registerFreshUser(page);
+  const balance = await fundByCheckin(page);
+  const merchant = await registerFreshUser(page); // 站外商户 / 银行账号
+  await loginViaApi(page, sender.username);
+
+  const RETURN = 'https://bank.example/paid';
+  const payUrl =
+    `/fish/pay?to=${merchant.username}&amount=1&note=order-1` +
+    `&from=${encodeURIComponent('鱼干银行')}&return=${encodeURIComponent(RETURN)}`;
+
+  await page.goto(payUrl);
+
+  // 商户横幅必须明说「本站不验证商户身份」（商户名是链接里的自由文本）
+  await expect(page.locator('.pay-merchant__name')).toContainText('鱼干银行');
+  await expect(page.locator('.pay-merchant__badge')).toContainText('不验证商户身份');
+  await expect(page.locator('.market-recipient__name')).toHaveText(merchant.username);
+  await expect(page.locator('.pay-amount__value')).toHaveText('1');
+  await expect(page.locator('.pay-note')).toContainText('order-1');
+
+  // ── 没输密码：按钮禁用（step-up 不可跳过）───────────────────────────────
+  await expect(page.locator('.market-submit')).toBeDisabled();
+
+  // ── 密码错误：401 → toast 报错，钱一分不动 ───────────────────────────────
+  await page.locator('#pay-password').fill('definitely-not-the-password');
+  await page.locator('.market-submit').click();
+  await expect(page.locator('#toast-container .toast__body')).toContainText('用户名或密码错误');
+  await expect(page.locator('.pay-result')).toHaveCount(0);
+  expect(
+    (await remoteTransfers(request)).filter((t) => t.from_user_id === sender.id),
+    '密码错误绝不能产生转账'
+  ).toHaveLength(0);
+
+  // ── 正确密码：支付成功 + 远端记账 + 返回商户按钮 ────────────────────────
+  await page.locator('#pay-password').fill(SEED_PASSWORD);
+  await page.locator('.market-submit').click();
+
+  await expect(page.locator('.pay-result__title')).toContainText('支付成功');
+  await expect(page.locator('.pay-result__to')).toContainText(merchant.username);
+  await expect(page.locator('.pay-result__balance')).toContainText(String(balance - 1));
+  const backLink = page.locator('.pay-result__return');
+  await expect(backLink).toHaveAttribute('href', RETURN);
+  await expect(backLink, '返回按钮要显示目标主机名，让人看清去哪').toContainText('bank.example');
+
+  const mine = (await remoteTransfers(request)).filter((t) => t.from_user_id === sender.id);
+  expect(mine).toHaveLength(1);
+  expect(mine[0].to_user_id).toBe(merchant.id);
+  expect(mine[0].entry_type).toBe('transfer');
+
+  // ── 参数非法：友好错误页（不是 500，也不是渲染出半个支付页）────────────
+  await page.goto('/fish/pay?to=' + merchant.username + '&amount=1.23');
+  await expect(page.locator('.pay-error__message')).toContainText('金额参数无效');
+  await page.goto('/fish/pay?to=no_such_user_at_all&amount=1');
+  await expect(page.locator('.pay-error__message')).toContainText('收款人不存在');
+});
+
+test('收银台：未登录时跳本站登录页（密码只输在 raricy 域名下），登录后回到收银台', async ({
+  browser,
+}) => {
+  // 用一个真实存在的用户当收款人：收款人不存在会先撞上参数校验（那是另一条用例）。
+  const merchant = SEED_USERS.core.username;
+  const payPath = `/fish/pay?to=${merchant}&amount=1&from=${encodeURIComponent('某商户')}`;
+
+  // 全新 context：没有任何会话 cookie，模拟从商户站点点过来的陌生用户
+  const ctx = await browser.newContext();
+  const anonPage = await ctx.newPage();
+  try {
+    await anonPage.goto(payPath);
+
+    // 关键：跳的是**本站**登录页，且 next 带着回跳参数 —— 密码从这里开始
+    // 就只输入在 raricy 的域名下，商户站点全程接触不到。
+    await expect(anonPage).toHaveURL(/\/login\?next=/);
+    await expect(anonPage.locator('input[type="password"]')).toBeVisible();
+    const next = new URL(anonPage.url()).searchParams.get('next') ?? '';
+    expect(next, 'next 必须指回收银台并带上原参数').toContain('/fish/pay?');
+    expect(next).toContain('amount=1');
+  } finally {
+    await ctx.close();
+  }
 });
 
 test('无状态单次发包：不带任何 cookie，仅凭用户名 + 密码转账 / 查余额 / 查流水', async ({
