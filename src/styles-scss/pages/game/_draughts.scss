@@ -122,8 +122,21 @@
   }
 
   &__crown {
-    font-size: clamp(0.7rem, 2.6vw, 1.1rem);
-    line-height: 1;
-    user-select: none;
+    // 王冠是 mask 出来的矢量（public/static/img/icons/crown.svg），颜色跟着
+    // 上面的 currentColor 走 —— 白子金、黑子浅金，与从前一致。
+    //
+    // 尺寸按**棋子的百分比**给：从前这里写的是 font-size，而定不了墨迹的实际大小
+    // （占 em 的比例由字体决定），同一段 CSS 在不同设备上会得到不同大小的王冠。
+    width: 56%;
+    height: 56%;
+    background-color: currentColor;
+    -webkit-mask-image: url('/static/img/icons/crown.svg');
+    mask-image: url('/static/img/icons/crown.svg');
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    mask-position: center;
+    -webkit-mask-size: contain;
+    mask-size: contain;
   }
 }

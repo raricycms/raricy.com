@@ -84,8 +84,11 @@ export default function DraughtsBoardView({
                   }${isKing ? ' draughts-piece--king' : ''}`}
                   aria-hidden="true"
                 >
-                  {/* 王画一个王冠记号 —— 只靠颜色深浅区分不出兵与王 */}
-                  {isKing && <span className="draughts-piece__crown">♛</span>}
+                  {/* 王画一个王冠记号 —— 只靠颜色深浅区分不出兵与王。
+                      王冠是遮罩出来的矢量（public/static/img/icons/crown.svg），
+                      不是 ♛ 字形 —— 字形归设备字体管，而正文字体多半没有实心 ♛，
+                      会落到各平台不同的符号回退字体，大小与形状都不可控。 */}
+                  {isKing && <span className="draughts-piece__crown" aria-hidden="true" />}
                 </span>
               )}
             </button>

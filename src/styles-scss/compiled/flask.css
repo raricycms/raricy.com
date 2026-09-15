@@ -8975,9 +8975,17 @@ body {
   box-shadow: 0 0 0 2px rgba(255, 215, 106, 0.55);
 }
 .draughts-piece__crown {
-  font-size: clamp(0.7rem, 2.6vw, 1.1rem);
-  line-height: 1;
-  user-select: none;
+  width: 56%;
+  height: 56%;
+  background-color: currentColor;
+  -webkit-mask-image: url("/static/img/icons/crown.svg");
+  mask-image: url("/static/img/icons/crown.svg");
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
 }
 
 .tictactoe-page {
