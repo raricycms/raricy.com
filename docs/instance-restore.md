@@ -12,6 +12,7 @@
 | `instance/avatars/` | 483 个 PNG | 用户头像 |
 | `instance/images/` | 988 个文件 | 图床 |
 | `instance/stories/` | 8 个合集 / 289 个文件 | `.md` / `.cattca` / `info.json` |
+| `instance/stickers/` | 视站长放进来的素材而定 | 表情图 + 可选 `info.json`（`.gitignore` 掉，**授权来自第三方的图不入库**） |
 | `instance/blogs/` | 6195 个文件 | 历史遗留目录，当前无写入 |
 | `instance/app.db` | 0 字节 | 空壳，忽略 |
 

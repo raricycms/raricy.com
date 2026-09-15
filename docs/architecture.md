@@ -202,8 +202,22 @@ GET/HEAD/OPTIONS 视为安全方法，不校验。
 | 头像 | `instance/avatars/<uuid>.png`（或 `AVATARS_DIR` 覆盖） | **无上传入口**：注册时 `avatarPath` 留空，头像由读取入口按 id 确定性生成；磁盘上的 `.png` 只有 Flask 时代的存量文件 | `src/app/api/avatar/[id]/route.ts`（有文件则回放，否则 `generateIdenticonSvg` 兜底，永不 404） |
 | 图床 | `instance/images/<id><ext>`（或 `IMAGE_UPLOAD_FOLDER` 覆盖） | `src/lib/image-upload.ts` — sharp 压缩 + MIME 嗅探 + 配额累计 | `src/app/api/images/[id]/raw/route.ts` |
 | 故事 | `instance/stories/<合集>/<故事>.md\|.cattca`（或 `STORIES_DIR` 覆盖） | 服务端直接落盘 | `src/lib/story-service.ts` 服务端 marked |
+| 表情包 | `instance/stickers/<合集>/<表情>.{gif,webp,png,jpg}`（或 `STICKERS_DIR` 覆盖） | **无上传入口**：站长直接往目录里拷文件 | `src/app/api/stickers/[collection]/[name]/route.ts`（查扫盘 manifest，见 `src/lib/sticker-service.ts`） |
 
 磁盘目录必须**真实存在**（生产用 systemd/Data卷/挂载点），`node scripts/check-instance.mjs` 一键建好骨架。
+
+表情包那一栏有三点与其余几栏不同，改代码前先看一眼：
+
+- **它是唯一「没有上传入口」的存储域**（头像那个也无入口，但读取是 identicon 兜底）。
+  素材由站长从外部拷进来，所以**目录里没有任何上游校验** —— 图床那条链路的
+  `verifyImageMime` 在这里不存在。因此 raw 路由必须**按字节**复核类型并明确拒绝
+  SVG（`detectImageMime` + `ALLOWED_STICKER_MIME`），否则丢一个 `<svg onload=…>`
+  进来就是同源存储型 XSS。
+- **查表模型**：`resolveSticker()` 拿 collection / name 只当 map 的 key，**永不拼路径**
+  —— 与图床 raw 路由「先查库、再按库里的值拼路径」是同一种安全性来源。
+  `info.json` 的 `ignore` 必须在这里也拦一道，不能只在列表接口过滤。
+- **扫盘有缓存**（TTL 5s + 目录时间戳 + 60s 兜底全扫），与 `story-service.ts`
+  的无缓存扫盘不同 —— 理由见 `sticker-service.ts` 的文件头。
 
 ### 6.7 Markdown / 内容渲染
 
@@ -212,7 +226,8 @@ GET/HEAD/OPTIONS 视为安全方法，不校验。
 | 聊天正文 / 评论正文 | **客户端**渲染，同一套管线 | `rich-text.ts`（marked → DOMPurify → 后处理），白名单与链接类名见 `chat-markdown.ts` / `comment-markdown.ts` |
 | 博客正文 | **客户端**渲染 | `src/app/components/MarkdownRenderer.tsx`（marked + DOMPurify + highlight.js + MathJax + `[@…]` 内容引用） |
 | 故事正文 | **服务端**渲染 | `src/lib/story-service.ts` 的 `marked` + `stripScripts`。内容由站长直接写在 `instance/stories/`，按可信输入处理，**不走 DOMPurify / highlight.js** |
-| 内容引用 `[@…]` | 浏览器渲染时正则替换为剪贴板/投票/图床组件 | `src/app/components/MarkdownRenderer.tsx` 的 `ContentRefProcessor`（按 id 长度分流：8 位剪贴板 / 9 位投票 / 10 位图床） |
+| 内容引用 `[@…]` | 浏览器渲染时正则替换为剪贴板/投票/图床组件 | `src/app/components/MarkdownRenderer.tsx` 的 `ContentRefProcessor`（按 id 长度分流：8 位剪贴板 / 9 位投票 / 10 位图床）。**表情包不在这条管道上** |
+| 表情包 `[@合集/表情]` | 浏览器渲染时替换为内联 `<img>`（**仅评论 / 聊天**） | `src/lib/sticker-refs.ts` 的 `embedStickerRefs`，在 `rich-text.ts` 里紧跟 `embedImageRefs` 之后调用 |
 | 工具页 cattca-guide | **服务端**渲染 | marked（仅一次，可信文档） |
 
 **聊天与评论共用一条管线**（`rich-text.ts`）。两者的威胁模型与防线逐条相同，差别只在
@@ -231,6 +246,14 @@ GET/HEAD/OPTIONS 视为安全方法，不校验。
 
 评论的 `content_html`（服务端转义 + `<br>`）**站内已不再用于渲染** —— 保留给 spider API
 （外部只读接口，不能因为站内换了渲染方式就被打碎）与无 JS 降级。
+
+**表情图的 404 降级不在渲染管线里**，而在 `RichContentBody` 的容器上（捕获阶段的事件
+委托，监听 `error` 换回纯文本 token）。原因是那条管线**字符串进、字符串出**
+（`render()` 最后 `return holder.innerHTML`）：管线里建的 `<img>` 只是中间产物，
+挂在节点上的监听器在序列化那一刻全部丢失，React 那端是浏览器重新解析出来的另一批节点。
+资源类 `error` 事件**不冒泡但走捕获**，所以容器上一个监听器就够，且跟着容器的生命周期走。
+⚠️ 那个 `useEffect` 的依赖必须是 `[html]` —— 组件在 `html` 为空时 `return null`，
+div 会卸载重挂，`deps=[]` 的监听器永远附不上。
 
 ### 6.8 OAuth 2.0 身份绑定（raricy 作为 IdP）
 

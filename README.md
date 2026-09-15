@@ -29,13 +29,13 @@ Next.js 15 + Prisma + SQLite 单进程部署，自有 `instance/` 数据目录�
 | `scripts/`     | 自检 / 运维 / 数据补偿脚本（详见下方「工具脚本」） |
 | `tests/`       | vitest 单测 + Playwright e2e |
 | `docs/`        | 全部文档 —— `docs/guide/` 给玩家与创作者，其余给开发运维。见 `docs/README.md` |
-| `instance/`    | 运行时数据（gitignored）：avatars / database / images / stories |
+| `instance/`    | 运行时数据（gitignored）：avatars / database / images / stories / stickers |
 | `public/`      | 静态资源（图标 / CSS / favicon） |
 
 ## 快速开始
 
 ```bash
-node scripts/check-instance.mjs         # 首次创建 instance/{avatars,database,images,stories}
+node scripts/check-instance.mjs         # 首次创建 instance/{avatars,database,images,stories,stickers}
 npm ci                                   # 严格按 lockfile 装（不要 npm install）
 cp .env.example .env                     # 填 SECRET_KEY / FISH_ENCRYPTION_KEY
 npm run prisma:generate                  # 生成 Prisma Client
@@ -72,7 +72,7 @@ npm run dev                              # http://localhost:3000
 ## 部署 / 运行
 
 - 站内反代：`proxy_pass http://127.0.0.1:3000`，**务必**透传 `Host: $http_host` / `X-Forwarded-Host` / `X-Forwarded-Proto`。
-- `instance/` 需在部署机器上是**真实目录**：头像、图床、故事落盘。
+- `instance/` 需在部署机器上是**真实目录**：头像、图床、故事、表情包落盘。
 - 数据库以 Prisma 0_init 为基线；改 schema 用 `npm run migrate -- up`（手写 SQL）。
   **不要**跑 `prisma migrate dev` / `db push` —— 生产库没有 `_prisma_migrations` 表，
   它们会提议 reset 整个库。详见 `docs/deploy.md` §4「修改 schema 后」。

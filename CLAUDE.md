@@ -244,6 +244,39 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
   一个字都没改，用户手写的 `<img>` 照旧被转义。**别为了「支持图片」把 img 加进白名单** ——
   那会把外链图片一起放进来（跟踪像素 / 访客 IP 泄露）。
 
+### 表情包
+- 素材落 `instance/stickers/<合集>/<表情>.{gif,webp,png,jpg}`（`STICKERS_DIR` 覆盖），
+  **不入库** —— 授权来自第三方的图不能进公开仓库，git 历史还删不干净。代码开源、素材留
+  instance/，与 avatars/images/stories 同一套模式。**别照抄 `public/static/img/chess/`**
+  （那套棋子能入库只因为 BSD-3 明确授予再分发权）。
+- 语法 **`[@合集/表情]`**，斜杠分隔 —— 文件名不可能含 `/`，切分唯一；含 `/` 也天然免疫
+  `content-refs.ts` 那两条**精确长度**正则（`{8}`/`{10}` 只认字母数字），不会误伤。
+- **只在评论与聊天生效**，博客正文里原样显示（那边是另一条异步管线，与「9 位投票在
+  评论里不展开」是同一类有意的口径差异）。
+- **正则一个 `\s*` 都不能有**：`extractMentions` 跑在**原始正文**上，token 允许空白的话
+  `[@猫 猫/开心]` 里的 `@猫 ` 正好满足它的 `(?=\s|$)` → **凭空给叫「猫」的用户发通知**。
+  字符集也必须是白名单（否定式会把反引号放进来，被 marked 吃掉后静默退回字面量）。
+- **raw 路由必须按字节复核类型并拒绝 SVG**：表情目录**没有任何上游校验**（图床那边有
+  `verifyImageMime` 落盘、raw 路由信库不信盘）。丢一个 `<svg onload=…>` 进去就是同源
+  存储型 XSS。用 `detectImageMime` + `ALLOWED_STICKER_MIME`。
+- **查表不拼路径**：`resolveSticker()` 把两段只当 map 的 key（对齐图床 raw 的「查库再拼」）。
+  `info.json` 的 `ignore` 要在**这里**也拦一道 —— 只在列表接口过滤的话，手打 token 照样取得到图。
+- **404 降级用容器上的捕获阶段事件委托**（`RichContentBody`），不能挂在渲染管线里：
+  `rich-text.ts` 的 `render()` 是字符串进字符串出，管线里建的 `<img>` 只是中间产物。
+  那个 `useEffect` 依赖必须是 `[html]`（html 为空时组件 `return null`，div 会卸载重挂）。
+- **span 类名与图床图不同**（`rich-sticker-ref` vs `rich-image-ref`）：`RichContentBody`
+  按后者判定点开大图，共用会让点表情弹灯箱；`_markdown-body.scss` 那条通用的
+  `img { display: block }` 也要靠类名盖掉，否则行内表情会把整行断开。
+- **聊天点表情是「直接发送」，评论是「插入光标处」**。前者必须走
+  `sendWith(token, { keepDraft: true })` —— `send` 从闭包读 `text`，先插再发会撞
+  React 批处理（轻则「内容不能为空」，重则把上一段草稿当表情发出去）。
+  keepDraft 同时保证不带附件、不清草稿。
+- 预览口径**三处**同改（`ChatApp.previewOfMessage`、`chat-service` 的 `listChannelsForUser`
+  与通知预览），走 `stripStickerTokens` → `[表情]`。只改一边的症状是
+  「SSE 推来是 `[表情]`，一次对账后变成 `[@猫猫/开心]`」。
+- 加素材**不需要重启**（扫盘缓存 5s TTL + 目录时间戳 + 60s 兜底全扫），换同名文件内容
+  立刻生效。面向站长/玩家的说明见 `docs/guide/表情包使用指南.md`。
+
 ### 版本控制
 - 每次写完或改完一个功能 / 修复 / 文档后立即 `git commit`，不要积攒等用户来问。
 - 一个 commit 只做一件事；不同语义（feat / fix / chore / docs / refactor / test / build）的改动必须拆开。
