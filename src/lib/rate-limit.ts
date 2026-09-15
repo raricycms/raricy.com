@@ -187,15 +187,27 @@ export function __resetRateLimitStore() {
 
 // 全站配额以本对象为**唯一权威**（Flask 时代的汇总文档已删除；
 // 旧配额值亦无须再对齐）。改数值 = 改全站行为，同步更新下面的注释口径。
+//
+// ── 2026-09-15：互动类配额整体放宽（用户反馈正常使用会触限）────────────────
+// 背景：昨日（9/14）刚把两个日档提到 2000，一天内再撞 2000 条不可能是正常使用，
+// 说明瓶颈在**分钟档与点赞档**上 —— 于是按「相关档一起放宽」处理，而不是继续
+// 只抬日档（只抬日档等于让用户改撞一个锁 24 小时的天花板，比锁 60 秒惨得多）。
+// 放宽的只有正常用户会摸到的几档；投票 / 登录 / 联机棋 / 鱼干转账 / 发私聊 /
+// 对账轮询一概未动（它们各自防的是脚本与 CPU 放大，正常人离得很远）。
+//
+// ⚠️ **分钟档与日档必须一起看**：日档要 ≥ 分钟档 × 一段合理时长，否则放宽分钟档
+// 只是把撞墙时间往后推，撞的还是同一个日档，而日档一撞就是锁满整个滑动窗口。
 export const RULES = {
-  likeHourly: { limit: 100, windowMs: 60 * 60 * 1000 },
-  likeDaily: { limit: 500, windowMs: 24 * 60 * 60 * 1000 },
-  commentDaily: { limit: 2000, windowMs: 24 * 60 * 60 * 1000 },
+  likeHourly: { limit: 300, windowMs: 60 * 60 * 1000 },
+  likeDaily: { limit: 1500, windowMs: 24 * 60 * 60 * 1000 },
+  commentDaily: { limit: 8000, windowMs: 24 * 60 * 60 * 1000 },
   voteCreateHourly: { limit: 10, windowMs: 60 * 60 * 1000 },
   voteHourly: { limit: 30, windowMs: 60 * 60 * 1000 },
-  imageUploadHourly: { limit: 75, windowMs: 60 * 60 * 1000 },
-  chatMinute: { limit: 30, windowMs: 60 * 1000 },
-  chatDaily: { limit: 2000, windowMs: 24 * 60 * 60 * 1000 },
+  imageUploadHourly: { limit: 200, windowMs: 60 * 60 * 1000 },
+  /** 聊天发言（滑动窗口）。**拍一拍 / 表情 / 带图消息各算一条** —— 连拍或连点表情
+   *  时消耗得比打字快得多，这是它当初 30/分 被正常人摸到的主因。 */
+  chatMinute: { limit: 120, windowMs: 60 * 1000 },
+  chatDaily: { limit: 8000, windowMs: 24 * 60 * 60 * 1000 },
   /** 聊天对账轮询：实时消息已走 SSE，正常客户端约 1~2 次/分钟/标签页；
    *  这个额度只用来兜住异常客户端（它是全站最重的接口）。 */
   chatPoll: { limit: 120, windowMs: 60 * 1000 },
