@@ -31,8 +31,9 @@ vi.mock('@/lib/account-client', async (importOriginal) => {
 });
 
 import { transferFish } from '@/lib/fish-market-service';
-import { AccountServiceError } from '@/lib/account-client';
+import { AccountServiceError, makeClientIdempotencyKey } from '@/lib/account-client';
 import { fishToUnits, unitsToFish } from '@/lib/fish-units';
+import { nowForDb } from '@/lib/db-time';
 import { resetDb, makeUser, prisma } from '../helpers/db';
 import { __resetRateLimitStore } from '@/lib/rate-limit';
 
@@ -235,6 +236,161 @@ describe('远端失败 → 抛错且本地零痕迹', () => {
     const ledger = await prisma.accountSyncLedger.findMany();
     expect(ledger).toHaveLength(1);
     expect(ledger[0].status).toBe('synced');
+  });
+});
+
+// ── 客户端幂等键（站外脚本 / 收银台的「安全重试」）──────────────────────────
+//
+// 【为什么在这个文件里测】幂等去重靠的是**账本行**（唯一键 + payload 比对），
+// 而账本只在远端同步启用时才登记 —— 所以这一节的用例必须让远端处于启用态。
+// dev fallback 下的行为（不去重）在 fish-market-service.test.ts 里单独钉住。
+
+describe('客户端幂等键', () => {
+  it('★ 同键 + 同参数重发 → 不重复转账，返回 duplicated', async () => {
+    enableRemote();
+    const sender = await makeUserWithKey(100);
+    const recipient = await makeUser({ driedFish: 0 });
+
+    const first = await transferFish(sender.id, recipient.id, 10, '订单 42', {
+      clientIdempotencyKey: 'wd-0001',
+    });
+    expect(first.ok).toBe(true);
+
+    const second = await transferFish(sender.id, recipient.id, 10, '订单 42', {
+      clientIdempotencyKey: 'wd-0001',
+    });
+
+    expect(second.ok).toBe(true);
+    if (!second.ok) return;
+    expect(second.duplicated, '第二次必须是「重放」而不是新转账').toBe(true);
+    expect(second.balance, '余额 = 只扣了一次').toBe(90);
+
+    expect(mockTransfer, '远端只该被调用一次').toHaveBeenCalledTimes(1);
+    expect(await balanceOf(sender.id)).toBe(90);
+    expect(await balanceOf(recipient.id)).toBe(10);
+    expect(await prisma.fishTransaction.count()).toBe(2);
+    expect(await prisma.accountSyncLedger.count()).toBe(1);
+  });
+
+  it('同键 + 换了金额 / 收款人 / 留言 → 409，绝不静默改单', async () => {
+    enableRemote();
+    const sender = await makeUserWithKey(100);
+    const other = await makeUser({ driedFish: 0 });
+    const recipient = await makeUser({ driedFish: 0 });
+
+    const first = await transferFish(sender.id, recipient.id, 10, '订单 42', {
+      clientIdempotencyKey: 'wd-0002',
+    });
+    expect(first.ok).toBe(true);
+
+    const cases: [string, () => Promise<{ ok: boolean; code?: number }>][] = [
+      ['金额不同', () => transferFish(sender.id, recipient.id, 11, '订单 42', { clientIdempotencyKey: 'wd-0002' })],
+      ['收款人不同', () => transferFish(sender.id, other.id, 10, '订单 42', { clientIdempotencyKey: 'wd-0002' })],
+      ['留言不同', () => transferFish(sender.id, recipient.id, 10, '订单 43', { clientIdempotencyKey: 'wd-0002' })],
+    ];
+    for (const [label, run] of cases) {
+      const res = await run();
+      expect(res.ok, `${label}：必须拒绝`).toBe(false);
+      expect(res.code, label).toBe(409);
+    }
+
+    expect(mockTransfer).toHaveBeenCalledTimes(1);
+    expect(await balanceOf(sender.id)).toBe(90);
+  });
+
+  it('幂等键格式非法 → 400（长度 / 字符集）', async () => {
+    enableRemote();
+    const sender = await makeUserWithKey(100);
+    const recipient = await makeUser({ driedFish: 0 });
+
+    for (const bad of ['has space', 'a'.repeat(49), '斜杠/不行', '']) {
+      const res = await transferFish(sender.id, recipient.id, 10, null, {
+        clientIdempotencyKey: bad,
+      });
+      // 空串 = 没给键 → 走随机键（正常转账）；其余非法 → 400
+      if (bad === '') {
+        expect(res.ok).toBe(true);
+        continue;
+      }
+      expect(res.ok, `键「${bad}」应被拒`).toBe(false);
+      if (!res.ok) expect(res.code).toBe(400);
+    }
+    expect(mockTransfer).toHaveBeenCalledTimes(1);
+  });
+
+  it('失败后用同一个键重试是安全的（补偿已释放该键）', async () => {
+    enableRemote();
+    const sender = await makeUserWithKey(100);
+    const recipient = await makeUser({ driedFish: 0 });
+
+    mockTransfer.mockRejectedValueOnce(new AccountServiceError('账户服务不可达', 503));
+    await expect(
+      transferFish(sender.id, recipient.id, 10, null, { clientIdempotencyKey: 'wd-0003' })
+    ).rejects.toBeInstanceOf(AccountServiceError);
+    // 补偿成功后账本行被删（释放了幂等键），此时余额已回原值
+    expect(await balanceOf(sender.id)).toBe(100);
+    expect(await prisma.accountSyncLedger.count()).toBe(0);
+
+    mockTransfer.mockResolvedValue({ transaction_id: 'remote-ok' });
+    const retry = await transferFish(sender.id, recipient.id, 10, null, {
+      clientIdempotencyKey: 'wd-0003',
+    });
+
+    expect(retry.ok).toBe(true);
+    if (retry.ok) expect(retry.duplicated, '这仍是第一次成交，不是重放').toBeFalsy();
+    expect(await balanceOf(sender.id)).toBe(90);
+    expect(await prisma.fishTransaction.count()).toBe(2);
+  });
+
+  it('上一笔还没成交（pending）→ 409 提示用同一个键重试', async () => {
+    enableRemote();
+    const sender = await makeUserWithKey(100);
+    const recipient = await makeUser({ driedFish: 0 });
+
+    // 手工造一个 pending 行（模拟「已提交、远端未回」或正在处理中）
+    await prisma.accountSyncLedger.create({
+      data: {
+        idempotencyKey: makeClientIdempotencyKey(sender.id, 'wd-0004'),
+        operation: 'transfer',
+        payload: JSON.stringify({
+          fromUserId: sender.id,
+          toUserId: recipient.id,
+          amount: 10,
+          description: `转给「${recipient.username}」`,
+        }),
+        status: 'pending',
+        createdAt: nowForDb(),
+        updatedAt: nowForDb(),
+      },
+    });
+
+    const res = await transferFish(sender.id, recipient.id, 10, null, {
+      clientIdempotencyKey: 'wd-0004',
+    });
+
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.code).toBe(409);
+    expect(res.message).toContain('同一个键');
+    expect(mockTransfer, 'pending 说明还没成交，绝不能再来一笔').not.toHaveBeenCalled();
+    expect(await balanceOf(sender.id)).toBe(100);
+  });
+
+  it('不同用户用同一个客户端键互不影响（键里混了发送者哈希）', async () => {
+    enableRemote();
+    const a = await makeUserWithKey(100);
+    const b = await makeUserWithKey(100);
+    const recipient = await makeUser({ driedFish: 0 });
+
+    const ra = await transferFish(a.id, recipient.id, 5, null, { clientIdempotencyKey: 'order-1' });
+    const rb = await transferFish(b.id, recipient.id, 5, null, { clientIdempotencyKey: 'order-1' });
+
+    expect(ra.ok && rb.ok).toBe(true);
+    if (ra.ok) expect(ra.duplicated).toBeFalsy();
+    if (rb.ok) expect(rb.duplicated).toBeFalsy();
+    expect(mockTransfer).toHaveBeenCalledTimes(2);
+    expect(await balanceOf(a.id)).toBe(95);
+    expect(await balanceOf(b.id)).toBe(95);
   });
 });
 

@@ -186,6 +186,24 @@ export function makeTransferIdempotencyKey(
 }
 
 /**
+ * 由**调用方提供的**幂等键派生最终键（≤64 字符，实测最大 62）。
+ * 格式：xfer-{sha256(fromUserId)[:8]}-{clientKey}
+ *
+ * 【为什么要混进发送者哈希】客户端键只在调用方自己的命名空间里唯一
+ * （`wd-0007` 这种），两个不同的发送者完全可能撞上同一个字符串 ——
+ * 而账本的 idempotencyKey 是**全局唯一**的，不混进身份就会互相挡住。
+ *
+ * 【为什么与自动键分前缀】自动键是 `transfer-…`，这类是 `xfer-…`：
+ * 运维 grep 账本时一眼能看出「这笔是调用方给了键」还是「服务端自己生成的」。
+ *
+ * @param clientKey 调用方提供的键，须已通过 CLIENT_KEY_RE 校验（≤48 字符）
+ */
+export function makeClientIdempotencyKey(fromUserId: string, clientKey: string): string {
+  const short = crypto.createHash('sha256').update(fromUserId).digest('hex').slice(0, 8);
+  return `xfer-${short}-${clientKey}`;
+}
+
+/**
  * 生成投喂操作的幂等键（≤64 字符，对齐 Flask _make_feed_idempotency_key）。
  * 格式：feed-{sha256(blogId-userId-count)[:16]}-{suffix}
  */

@@ -43,16 +43,22 @@ export async function POST(req: Request) {
   // 与 feed 路由同款：数字或数字字符串都能收，其余（NaN / 非数字）交给 service 判 400。
   const amount = Number(body.amount);
   const note = typeof body.note === 'string' ? body.note : null;
+  // 可选：调用方自带的幂等键（站外脚本「超时后用同键重试」的唯一安全手段）。
+  const clientIdempotencyKey =
+    typeof body.idempotency_key === 'string' ? body.idempotency_key : null;
 
   try {
-    const res = await transferFish(actor.id, toUserId, amount, note);
+    const res = await transferFish(actor.id, toUserId, amount, note, { clientIdempotencyKey });
     if (!res.ok) return apiErr(res.code, res.message);
 
     return apiOk({
-      message: `已转给 ${res.recipient.username} ${res.amount} 条小鱼干`,
+      message: res.duplicated
+        ? `该笔已成交（重复请求，未重复扣款）：已转给 ${res.recipient.username} ${res.amount} 条小鱼干`
+        : `已转给 ${res.recipient.username} ${res.amount} 条小鱼干`,
       amount: res.amount,
       balance: res.balance,
       recipient: { id: res.recipient.id, username: res.recipient.username },
+      duplicated: !!res.duplicated,
     });
   } catch (e) {
     // 远端同步失败（fail-closed，本地已补偿回滚）→ 503，用户可重试。

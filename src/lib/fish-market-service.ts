@@ -38,6 +38,7 @@ import {
   accountServiceEnabled,
   assertRemoteRequiredInProduction,
   decryptApiKey,
+  makeClientIdempotencyKey,
   makeTransferIdempotencyKey,
   AccountServiceError,
 } from './account-client';
@@ -63,8 +64,83 @@ export interface TransferTarget {
 }
 
 export type TransferOutcome =
-  | { ok: true; amount: number; balance: number; recipient: TransferTarget }
+  | {
+      ok: true;
+      amount: number;
+      balance: number;
+      recipient: TransferTarget;
+      /** true = 客户端幂等键命中同一笔已成交的转账，本次**没有**再转账。 */
+      duplicated?: boolean;
+    }
   | { ok: false; code: number; message: string };
+
+/** 客户端幂等键的字面量口径（路由与文档同款）：1-48 位，禁空格与 URL 特殊字符。 */
+export const CLIENT_KEY_RE = /^[A-Za-z0-9_.:-]{1,48}$/;
+
+/** Prisma 唯一约束冲突（账本键撞车时用它区分「并发同键」与真故障）。 */
+function isUniqueViolation(e: unknown): boolean {
+  return (
+    typeof e === 'object' &&
+    e !== null &&
+    (e as { code?: string }).code === 'P2002'
+  );
+}
+
+/**
+ * 客户端幂等键命中**已有账本行**时的处理。三种局面各有各的对：
+ *   · 参数一致且已成交 → 原样回报（`duplicated: true`），一分钱都不再动；
+ *   · 参数不一致 → 409（同键换个参数是调用方的 bug，静默改单更糟）；
+ *   · 尚未成交（pending / failed）→ 409，让调用方稍后**用同一个键**重试
+ *     （远端同步由账本 + sync-retry 收敛，重试同一个键是安全的）。
+ */
+async function resolveDuplicate(
+  row: { payload: string; status: string },
+  expected: { fromUserId: string; toUserId: string; amount: number; description: string }
+): Promise<TransferOutcome> {
+  let payload: { toUserId?: string; amount?: number; description?: string } = {};
+  try {
+    payload = JSON.parse(row.payload) as typeof payload;
+  } catch {
+    /* 账本 payload 损坏：当作参数不一致处理，宁可 409 也不冒重复转账的险 */
+  }
+  if (
+    payload.toUserId !== expected.toUserId ||
+    payload.amount !== expected.amount ||
+    payload.description !== expected.description
+  ) {
+    return {
+      ok: false,
+      code: 409,
+      message: '该幂等键已用于另一笔转账（收款人 / 金额 / 留言不同），请换一个键',
+    };
+  }
+  if (row.status === 'synced') {
+    const [sender, recipient] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: expected.fromUserId },
+        select: { driedFish: true },
+      }),
+      prisma.user.findUnique({
+        where: { id: expected.toUserId },
+        select: { id: true, username: true },
+      }),
+    ]);
+    if (recipient) {
+      return {
+        ok: true,
+        amount: expected.amount,
+        balance: unitsToFish(sender?.driedFish ?? 0),
+        recipient,
+        duplicated: true,
+      };
+    }
+  }
+  return {
+    ok: false,
+    code: 409,
+    message: '该幂等键的上一笔仍在处理中，请稍后用同一个键重试',
+  };
+}
 
 /**
  * 搜索转账收款人：任意用户（**不限 core+** —— 鱼干可以转给任何人），排除自己。
@@ -115,7 +191,13 @@ export async function findTransferTargetByUsername(
 /**
  * 用户间转账：发送者扣 amount、接收者得 amount，零手续费，一次远端调用。
  *
+ * 【幂等键】`opts.clientIdempotencyKey` 由调用方提供（站外脚本 / 收银台）时：
+ * 同一个键 + **同样的收款人/金额/留言** 重发 = 返回原结果、绝不重复转账；
+ * 同一个键配不同的参数 = 409（不静默改单）；上一笔还在处理中 = 409（可稍后用同键重试）。
+ * 不提供时由服务端生成随机键 —— 此时**重试就是再转一笔**（见 docs/fish-bot.md §6）。
+ *
  * @param note 可选留言（同一句话进双方流水的描述与远端记账的 description）
+ * @param opts.clientIdempotencyKey ≤48 位，`[A-Za-z0-9_.:-]`
  * @returns 业务结果；远端同步失败**抛** AccountServiceError（本地已被补偿回滚）
  * @throws AccountServiceError 远端账户服务不可达 / 同步失败 → 路由据此返回 503
  */
@@ -123,7 +205,8 @@ export async function transferFish(
   fromUserId: string,
   toUserId: string,
   amount: number,
-  note?: string | null
+  note?: string | null,
+  opts?: { clientIdempotencyKey?: string | null }
 ): Promise<TransferOutcome> {
   // ── 入参校验（不写库、不打远端）──────────────────────────────────────────
   if (typeof amount !== 'number' || !Number.isFinite(amount) || amount <= 0) {
@@ -174,6 +257,32 @@ export async function transferFish(
     decryptApiKey(sender.fishApiKeyEncrypted);
   }
 
+  const description = cleanNote
+    ? `转给「${recipient.username}」：${cleanNote}`
+    : `转给「${recipient.username}」`;
+
+  // 幂等键**只算一次**，Phase 1/2/3 共用 —— 别像 feed 那样在 Phase 2 把表达式重抄
+  // 一遍（那里靠参数相同才碰巧一致，抄错一处就是静默的幂等失效）。
+  const clientKey = (opts?.clientIdempotencyKey ?? '').trim();
+  if (clientKey && !CLIENT_KEY_RE.test(clientKey)) {
+    return {
+      ok: false,
+      code: 400,
+      message: '幂等键格式不合法（1-48 位，仅字母数字与 _ . : -）',
+    };
+  }
+  const idempotencyKey = clientKey
+    ? makeClientIdempotencyKey(fromUserId, clientKey)
+    : makeTransferIdempotencyKey(fromUserId, recipient.id, units, randomBytes(4).toString('hex'));
+
+  // 调用方给了键 → 先看账本里有没有同一笔：有就按「重放」处理，绝不重复转账。
+  // 放在限频**之前**：重放请求不该消耗额度（调用方遇到超时就该用同键重试）。
+  const expected = { fromUserId, toUserId: recipient.id, amount, description };
+  if (clientKey) {
+    const existing = await prisma.accountSyncLedger.findUnique({ where: { idempotencyKey } });
+    if (existing) return resolveDuplicate(existing, expected);
+  }
+
   // 限频（放在校验之后：刷不存在的用户名不该烧掉自己的额度，对齐点赞/评论）。
   // 转账是**唯一**有配额的鱼干写路径 —— 也是唯一能把鱼干推给任意第三方的路径。
   const hourly = rateLimit(`transfer:h:${fromUserId}`, RULES.transferHourly);
@@ -182,19 +291,8 @@ export async function transferFish(
     return { ok: false, code: 429, message: '转账太频繁了，请稍后再试' };
   }
 
-  const description = cleanNote
-    ? `转给「${recipient.username}」：${cleanNote}`
-    : `转给「${recipient.username}」`;
-
-  // 幂等键**只生成一次**，Phase 1/2/3 共用 —— 别像 feed 那样在 Phase 2 把表达式重抄
-  // 一遍（那里靠参数相同才碰巧一致，抄错一处就是静默的幂等失效）。
   const entry: PendingSyncEntry = {
-    idempotencyKey: makeTransferIdempotencyKey(
-      fromUserId,
-      recipient.id,
-      units,
-      randomBytes(4).toString('hex')
-    ),
+    idempotencyKey,
     operation: 'transfer',
     payload: { fromUserId, toUserId: recipient.id, amount, description },
   };
@@ -206,6 +304,13 @@ export async function transferFish(
       message: string
     ) {
       super(message);
+    }
+  }
+
+  // 并发撞键的载体：Phase 1 撞上账本唯一约束时，把「重放的结果」原样带回外层。
+  class TransferDuplicateError extends Error {
+    constructor(public outcome: TransferOutcome) {
+      super('duplicate idempotency key');
     }
   }
 
@@ -264,6 +369,17 @@ export async function transferFish(
         inTxId: inTx.txId,
         balance: unitsToFish(after?.driedFish ?? 0),
       };
+    }).catch(async (e: unknown) => {
+      // 并发同键：另一个请求已经建好了账本行（唯一约束把这一笔挡下）。这不是故障 ——
+      // 回读那一行按「重放」处理（已成交就如实回报，未成交就让它稍后重试）。
+      // 只有调用方给了键才可能走到这里；没给键时键是随机的，撞不上。
+      if (clientKey && isUniqueViolation(e)) {
+        const row = await prisma.accountSyncLedger.findUnique({ where: { idempotencyKey } });
+        if (row) {
+          throw new TransferDuplicateError(await resolveDuplicate(row, expected));
+        }
+      }
+      throw e;
     });
 
     // ── Phase 2：事务外远端同步（提交后调用；失败走补偿，不再占用写锁）──────────
@@ -359,6 +475,10 @@ export async function transferFish(
   } catch (e) {
     if (e instanceof TransferBusinessError) {
       return { ok: false, code: e.code, message: e.message };
+    }
+    if (e instanceof TransferDuplicateError) {
+      // 并发撞键：本地写入已被唯一约束挡回（事务整体回滚），返回重放结果。
+      return e.outcome;
     }
     if (e instanceof AccountServiceError) {
       // 远端失败：本地已被补偿（等价于回滚），向上抛让路由返回 503。

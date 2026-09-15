@@ -31,6 +31,7 @@ beforeEach(async () => {
 });
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
 });
 
 /** 发送者 + 接收者的标准场景。 */
@@ -252,6 +253,29 @@ describe('transferFish —— 限频（唯一有配额的鱼干写路径）', ()
     expect(res.code).toBe(429);
     expect(await balanceOf(sender.id)).toBe(balanceAfterQuota);
     expect(await prisma.fishTransaction.count()).toBe(txCountAfterQuota);
+  });
+});
+
+describe('客户端幂等键（dev fallback 下的已知边界）', () => {
+  it('dev fallback **不去重**：没有账本行可查，同键两笔都会成交', async () => {
+    // 【为什么断言这个「坏」行为】幂等去重靠账本行（唯一键 + payload 比对），
+    // 而账本只在远端同步启用时登记（dev fallback 刻意不登记，免得积一堆永远
+    // 同步不出去的 pending）。所以这条限制必须**写在用例里**，而不是让人
+    // 在本地测试时踩到「幂等键不生效」却查不出原因。
+    // 生产不会出现这个状态：未配账户服务时 assertRemoteRequiredInProduction
+    // 直接 503，fail-closed（见 fish-market-failclosed.test.ts 的 prod 守卫用例）。
+    const { sender, recipient } = await scene(100, 0);
+
+    const a = await transferFish(sender.id, recipient.id, 10, null, {
+      clientIdempotencyKey: 'wd-dev-1',
+    });
+    const b = await transferFish(sender.id, recipient.id, 10, null, {
+      clientIdempotencyKey: 'wd-dev-1',
+    });
+
+    expect(a.ok && b.ok).toBe(true);
+    expect(await balanceOf(sender.id)).toBe(80);
+    expect(await prisma.accountSyncLedger.count(), 'dev fallback 不登记账本').toBe(0);
   });
 });
 
