@@ -882,8 +882,19 @@ export default function ChatApp({
     // 还是旧值 —— 轻则弹「消息内容不能为空」，重则把上一次的草稿当表情消息发出去。
     const keepDraft = opts?.keepDraft === true;
     const content = raw.trim();
-    // 博客引用视同附件（对齐带图消息）：允许空正文
-    const hasAttach = !keepDraft && (!!pendingImage || !!blogQuote);
+    // 待发的图片 / 博客引用 / 回复目标是否随这条消息一起发出去。keepDraft 那条轻量
+    // 路径不带 —— 点个表情不该顺手把草稿、图片、回复目标一起发掉。
+    const carryDraft = !keepDraft;
+    // 博客引用视同附件（对齐带图消息）：允许空正文、文字上限降到图注档。
+    //
+    // ⚠️ 回复**不在**此列 —— 它既不破例允许空正文，也不该把上限压到图注档。
+    // 【踩过的坑】这里曾把「要不要带 reply_to」也写成 `hasAttach &&`，于是挂着回复
+    // 目标的**纯文字**消息发出去时 reply_to 被静默丢掉：用户点了回复、写完发出去，
+    // 消息照常出现，只是引用块没了 —— 表现就是「聊天区没法引用别人的消息」。
+    // 带图/带博客引用时反而是好的，所以只在纯文字回复上复现。
+    // 站外机器人不受影响（直接往接口打 reply_to），于是症状看着像「机器人可以、
+    // 普通用户不行」—— 其实是客户端这一行的锅，与服务端鉴权无关。
+    const hasAttach = carryDraft && (!!pendingImage || !!blogQuote);
     if (!content && !hasAttach) {
       toast('消息内容不能为空', 'info');
       return;
@@ -901,9 +912,9 @@ export default function ChatApp({
         method: 'POST',
         body: JSON.stringify({
           content,
-          ...(hasAttach && pendingImage ? { image_id: pendingImage.id } : {}),
-          ...(hasAttach && blogQuote ? { blog_id: blogQuote.id } : {}),
-          ...(hasAttach && replyTarget ? { reply_to: replyTarget.id } : {}),
+          ...(carryDraft && pendingImage ? { image_id: pendingImage.id } : {}),
+          ...(carryDraft && blogQuote ? { blog_id: blogQuote.id } : {}),
+          ...(carryDraft && replyTarget ? { reply_to: replyTarget.id } : {}),
         }),
       });
       if (data.code === 200) {
