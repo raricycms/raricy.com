@@ -445,3 +445,58 @@ describe('国际象棋：reset 与全新棋盘等价', () => {
     expect(b.repetitionCount()).toBe(1);
   });
 });
+
+// ── 悔棋 ────────────────────────────────────────────────────────────────────
+// 【为什么值得单独钉】undo 与 make/unmake 的配对关系很容易写错：make 压栈、unmake 弹栈，
+// 而 undo 只该**看一眼栈顶**再交给 unmake。曾经它在调用 unmake 之前又弹了一次，
+// 于是撤一手掉两条记录 —— 第二手就再也撤不动（history 已经空了），lastMove 也跟着错。
+// 单机悔棋靠它，联机悔棋（房间层连撤 1~2 步）更是每次都连撤，所以这里钉死。
+
+describe('国际象棋：悔棋', () => {
+  it('撤一手与走之前**逐字段**相同（含易位权利 / 过路兵 / 半回合计数 / lastMove）', () => {
+    const b = board();
+    const s0 = snapshot(b);
+    play(b, [6, 4], [4, 4]); // e2-e4：兵动了，也留下了过路兵目标格
+    const s1 = snapshot(b);
+    play(b, [1, 0], [2, 0]); // a7-a6
+
+    expect(b.undo()).toBe(true);
+    expect(snapshot(b)).toBe(s1); // ← 撤的是 a6 那一手，不是 e4
+
+    expect(b.undo()).toBe(true);
+    expect(snapshot(b)).toBe(s0);
+  });
+
+  it('**连撤两手不需要中间走一手**，撤空了才返回 false', () => {
+    const b = board();
+    play(b, [6, 4], [4, 4]);
+    play(b, [1, 4], [3, 4]);
+    play(b, [7, 6], [5, 5]);
+
+    expect(b.undo()).toBe(true);
+    expect(b.undo()).toBe(true);
+    expect(b.undo()).toBe(true);
+    expect(b.undo()).toBe(false); // 空盘
+
+    expect(b.getLastMove()).toBeNull();
+    expect(snapshot(b)).toBe(snapshot(board()));
+    // 三次重复局面那份计数也得跟着退回来 —— 只增不减的话会凭空判和
+    expect(b.repetitionCount()).toBe(1);
+  });
+
+  it('连撤再重走，局面与计数与"从没走过"一致', () => {
+    const b = board();
+    play(b, [7, 6], [5, 5]); // Ng1-f3
+    play(b, [0, 6], [2, 5]); // Ng8-f6
+    for (let i = 0; i < 2; i++) expect(b.undo()).toBe(true);
+    expect(b.repetitionCount()).toBe(1);
+
+    play(b, [7, 6], [5, 5]);
+    play(b, [0, 6], [2, 5]);
+    const fresh = board();
+    play(fresh, [7, 6], [5, 5]);
+    play(fresh, [0, 6], [2, 5]);
+    expect(snapshot(b)).toBe(snapshot(fresh));
+    expect(b.repetitionCount()).toBe(fresh.repetitionCount());
+  });
+});

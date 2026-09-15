@@ -363,3 +363,40 @@ describe('中国象棋：reset 与全新棋盘等价', () => {
     expect(b.repetitionCount()).toBe(1);
   });
 });
+
+// ── 悔棋 ────────────────────────────────────────────────────────────────────
+// 【为什么值得单独钉】make 压栈、unmake 弹栈，而 undo 只该**看一眼栈顶**再交给 unmake。
+// 曾经它在 unmake 之前又弹了一次，于是撤一手掉两条记录：第二手再也撤不动（history
+// 已经空了），lastMove 也跟着错。单机悔棋与联机悔棋（房间层连撤 1~2 步）都靠它。
+
+describe('中国象棋：悔棋', () => {
+  it('撤一手与走之前**逐字段**相同（含 60 回合无吃子计数 / lastMove）', () => {
+    const b = board();
+    const s0 = snapshot(b);
+    play(b, [7, 1], [7, 4]); // 炮二平五
+    const s1 = snapshot(b);
+    play(b, [2, 7], [2, 4]); // 炮8平5
+
+    expect(b.undo()).toBe(true);
+    expect(snapshot(b)).toBe(s1);
+
+    expect(b.undo()).toBe(true);
+    expect(snapshot(b)).toBe(s0);
+  });
+
+  it('**连撤三手不需要中间走一手**，撤空了才返回 false', () => {
+    const b = board();
+    play(b, [7, 1], [7, 4]);
+    play(b, [2, 7], [2, 4]);
+    play(b, [9, 1], [7, 2]); // 马二进三
+
+    expect(b.undo()).toBe(true);
+    expect(b.undo()).toBe(true);
+    expect(b.undo()).toBe(true);
+    expect(b.undo()).toBe(false);
+
+    expect(b.getLastMove()).toBeNull();
+    expect(snapshot(b)).toBe(snapshot(board()));
+    expect(b.repetitionCount()).toBe(1);
+  });
+});

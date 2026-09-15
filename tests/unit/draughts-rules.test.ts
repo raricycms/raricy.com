@@ -395,3 +395,51 @@ describe('国际跳棋：reset 与全新棋盘等价', () => {
     expect(b.countPieces(WHITE)).toBe(20);
   });
 });
+
+// ── 悔棋 ────────────────────────────────────────────────────────────────────
+// 【为什么值得单独钉】make 压栈、unmake 弹栈，而 undo 只该**看一眼栈顶**再交给 unmake。
+// 曾经它在 unmake 之前又弹了一次，于是撤一手掉两条记录：第二手再也撤不动，lastMove
+// 也跟着错。单机悔棋与联机悔棋（房间层连撤 1~2 步）都靠它。
+
+describe('国际跳棋：悔棋', () => {
+  it('撤一手与走之前**逐字段**相同（含 25 回合计数 / lastMove）', () => {
+    const b = board();
+    const s0 = snapshot(b);
+    play(b, [
+      [6, 1],
+      [5, 0],
+    ]);
+    const s1 = snapshot(b);
+    play(b, [
+      [3, 0],
+      [4, 1],
+    ]);
+
+    expect(b.undo()).toBe(true);
+    expect(snapshot(b)).toBe(s1);
+
+    expect(b.undo()).toBe(true);
+    expect(snapshot(b)).toBe(s0);
+  });
+
+  it('**连撤两手不需要中间走一手**，撤空了才返回 false', () => {
+    const b = board();
+    play(b, [
+      [6, 1],
+      [5, 0],
+    ]);
+    play(b, [
+      [3, 0],
+      [4, 1],
+    ]);
+
+    expect(b.undo()).toBe(true);
+    expect(b.undo()).toBe(true);
+    expect(b.undo()).toBe(false);
+
+    expect(b.getLastMove()).toBeNull();
+    expect(snapshot(b)).toBe(snapshot(board()));
+    expect(b.repetitionCount()).toBe(1);
+    expect(b.countPieces(WHITE)).toBe(20);
+  });
+});

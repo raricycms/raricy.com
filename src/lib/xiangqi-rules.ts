@@ -247,8 +247,14 @@ export class XiangqiBoard {
     return this.lastMove;
   }
 
+  /**
+   * 悔棋：撤掉最后一手。没有可撤的返回 false。
+   * **只看栈顶、不 pop** —— `unmake` 自己会弹（它与 `make` 成对，走法生成里每探一个
+   * 候选就 make / unmake 一次）。这里再 pop 一次就会一手掉两条记录：第二手撤不动，
+   * `lastMove` 也跟着错。同 chess-rules.ts / draughts-rules.ts。
+   */
   undo(): boolean {
-    const a = this.history.pop();
+    const a = this.history[this.history.length - 1];
     if (!a) return false;
     this.unmake(a);
     return true;

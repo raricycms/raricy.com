@@ -284,9 +284,16 @@ export class ChessBoard {
     return this.lastMove;
   }
 
-  /** 单机悔棋用：把最后一手撤掉。没有可撤的返回 false。 */
+  /**
+   * 悔棋：把最后一手撤掉。没有可撤的返回 false。
+   *
+   * 【不要在这里 pop】`unmake` 自己会把这一条从 history 里弹掉（它与 `make` 成对，
+   * 走法生成里每探一个候选就 make / unmake 一次）。曾经这里也 pop 了一次，于是撤一手
+   * 掉两条记录：第二手就再也撤不动（`history.pop()` 拿到 undefined），而且 `lastMove`
+   * 也跟着错。所以这里只**看一眼栈顶**再交给 unmake。
+   */
   undo(): boolean {
-    const a = this.history.pop();
+    const a = this.history[this.history.length - 1];
     if (!a) return false;
     this.unmake(a);
     this.lastMove =
