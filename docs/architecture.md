@@ -85,7 +85,8 @@
 | `/api/blogs` · `/api/blogs/[id]` · `/api/spider/*` | API | 博客 API + 爬虫 API |
 | `/api/auth/authentic` · `/zhh` | API + route | 邀请码升 core · 邀请码生成（站长） |
 | `/fish` · `/fish/transactions` · `/api/fish/*` | page + API | 小鱼干面板 + 流水 |
-| `/fish/market` · `/api/fish/market/*` | page + API | 鱼干市场（第一期只有**用户间转账**，无手续费）：`POST transfer` / `GET users`（收款人搜索）/ `POST balance`、`POST transactions`（站外脚本用的无状态查询）。写路径见 §6.3；对外契约见 `docs/fish-bot.md` |
+| `/fish/market` · `/api/fish/market/*` | page + API | 鱼干市场（第一期只有**用户间转账**，无手续费）：`POST transfer`（支持客户端幂等键）/ `GET users`（收款人搜索）/ `POST balance`、`POST transactions`（站外脚本用的无状态查询，含 `since_id` 对账游标）/ `POST pay`（收银台专用）。写路径见 §6.3；对外契约见 `docs/fish-bot.md` |
+| `/fish/pay` | page | **收银台**：站外商户把用户送来付款（`?to= &amount= &note= &from= &return=`）。参数一律不可信，只做展示；付款必须**已登录 + 再输一次密码**（step-up），密码只输在本站域名下。不入索引 |
 | `/notifications` · `/api/notifications/*` | page + API | 通知中心 |
 | `/vote` · `/vote/[id]` | page | 投票 |
 | `/checkin` · `/api/checkin` | page + API | 每日签到 |
@@ -129,6 +130,7 @@
 | 管理域 | `admin-user-service.ts` · `admin-blog-service.ts` · `admin-category-service.ts` · `admin-comment-service.ts` · `admin-clipboard-service.ts` · `admin-vote-service.ts` · `admin-image-service.ts` · `admin-stats-service.ts` |
 | 工具 / 安全 | `short-id.ts` · `safe-url.ts` · `guard.ts` · `rate-limit.ts` · `turnstile.ts` |
 | 鉴权基建 | `credential-auth.ts`（「用户名+密码」校验，`/api/auth/login` 与鱼干市场无状态接口**共用**，限频桶也共用）· `request-ip.ts`（反代后取真实 IP） |
+| 配额白名单 | `service-accounts.ts`（`FISH_SERVICE_ACCOUNTS` 里的账号走 `SERVICE_QUOTA`：转账 500/时、5000/天。给「站外银行」这类自动化账号用，撤销即删配置） |
 
 > 上表是**穷尽** `src/lib/*.ts` 的（新增文件记得补一行）—— §6.3、§8 会引用其中若干，
 > 之前整块漏了聊天子域与 `oauth.ts`，导致正文引用的文件在本表里查不到。
@@ -159,6 +161,7 @@ API 端点位于 `src/app/api/<group>/<verb>/route.ts`，**薄**层：参数校�
 
 - **失败语义 — 写路径 fail-closed**：投喂 / 签到 / 注册建账户 / CLI grant|deduct / 用户间转账（鱼干市场）**全部**遵循：远端账户服务失败 → 本地写入被**补偿事务精确撤销**（对用户等价于回滚）→ 503 / 退出码 2。绝不静默成功。
   - 转账（`fish-market-service.ts`）是其中唯一**单次远端调用**的路径：没有 feed 的「Step1 成功 → Step2 失败 → 远端退款」中间态，别照抄那套退款；也是唯一带限频配额的鱼干写路径。补偿退接收者时若他已把钱花掉 → 补偿整体回滚，交由账本 `failed` + `sync-retry` 正向重放收敛（**绝不部分撤销**，那会凭空造出鱼干）。
+  - 转账支持**客户端幂等键**（`opts.clientIdempotencyKey`）：键进账本，重发同键同参数 → 直接返回原结果（`duplicated: true`）、同键不同参数 → 409、上一笔在途 → 409。**去重依赖账本行**，所以 dev fallback（不登记账本）下不去重 —— 生产不会出现该状态（未配账户服务时直接 503）。
 - **分层（`2_account_sync_ledger` 起）**：本地事务先提交（含 `account_sync_ledger` 一行 pending），远端 HTTP 在事务**外**调用 —— 成功标 `synced`，失败走补偿事务。HTTP **绝不能挪进事务**：那会让 SQLite 写锁被占用最长 `ACCOUNT_SERVICE_TIMEOUT`，并发写耗尽 busy_timeout 直接 `database is locked`。
 - **崩溃收敛**：任何「已提交 / 未同步」窗口都留一个 pending 账本行，`npm run cli -- fish sync-retry` 幂等重放收敛；补偿也失败则标 `failed` 并打 `ACCOUNT_RECONCILE_REQUIRED` 日志。详见 `src/lib/fish-sync.ts` 头部。
 - **读路径**：默认走远端账户服务拿权威余额；远端不通则降级到本地 `users.driedFish`，并在响应里给出提示。

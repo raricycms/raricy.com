@@ -90,6 +90,15 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
   转账发起退款 = 凭空造钱）。补偿失败的出路与其余路径相同：账本 `failed` +
   `fish sync-retry` 正向重放收敛。它也是**唯一**带限频配额的鱼干写路径
   （唯一能把鱼干推给任意第三方的路径）。见 `src/lib/fish-market-service.ts`。
+- **客户端幂等键**（`opts.clientIdempotencyKey`）是转账的「安全重试」开关，语义有
+  三条：同键同参数 → 返回原结果（`duplicated: true`，不重复转账）；同键不同参数 →
+  409；上一笔在途 → 409。去重**依赖账本行**（唯一键 + payload 比对），所以 dev
+  fallback 下不去重 —— 生产不会出现该状态（未配账户服务时直接 503）。
+  站外银行 / 记账机器人一律该带键，见 `docs/fish-bot.md` §6。
+- **服务账号配额白名单**：`FISH_SERVICE_ACCOUNTS`（逗号分隔的 user id）里的账号
+  在转账时走 `service-accounts.ts` 的 `SERVICE_QUOTA`（500/时、5000/天），其余人
+  走 `RULES`。抬配额 = 拿掉那个账号的反滥用闸门，所以是可撤销的运维决定 ——
+  别把它做成用户可自助申请的开关。
 - **注册建号有两个入口，但是同一条路径**：网页公开注册（带人机验证 + 可选邀请码）与
   **站长建号**（`/admin/users` 的「新建用户」、`npm run cli -- user create`，跳过人机验证与
   邀请码、直接 `core`）。两者共用 `user-service.ts` 的 `createUserAccount` 内核，
