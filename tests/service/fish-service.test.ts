@@ -19,6 +19,7 @@ import {
   getBalanceBatch,
   getTodayCheckinFish,
   getTransactions,
+  getTransactionsSince,
   getBalanceLeaderboard,
   addFish,
 } from '@/lib/fish-service';
@@ -531,6 +532,71 @@ describe('getTransactions', () => {
 });
 
 // ── 排行榜 ──────────────────────────────────────────────────────────────────
+
+describe('getTransactionsSince（对账游标）', () => {
+  it('返回 id > sinceId 的行，按 **id 升序**（游标必须单调，不能被时间反序搞乱）', async () => {
+    const u = await makeUser();
+    // 故意让 createdAt 与插入顺序相反：游标走 id，不看时间
+    const a = await makeTx({ userId: u.id, amount: 1, type: 'checkin', createdAt: new Date('2026-03-01') });
+    const b = await makeTx({ userId: u.id, amount: 2, type: 'checkin', createdAt: new Date('2026-01-01') });
+    const c = await makeTx({ userId: u.id, amount: 3, type: 'checkin', createdAt: new Date('2026-02-01') });
+
+    const rows = await getTransactionsSince(u.id, 0);
+    expect(rows.map((r) => r.id)).toEqual([a.id, b.id, c.id]);
+    expect(rows.map((r) => r.amount)).toEqual([1, 2, 3]);
+
+    const after = await getTransactionsSince(u.id, b.id);
+    expect(after.map((r) => r.id), '严格大于游标，游标那行不再重复出现').toEqual([c.id]);
+  });
+
+  it('推进游标不会漏行也不会重复（模拟对账方循环拉取）', async () => {
+    const u = await makeUser();
+    for (let i = 0; i < 7; i++) {
+      await makeTx({ userId: u.id, amount: i + 1, type: 'checkin' });
+    }
+
+    const seen: number[] = [];
+    let cursor = 0;
+    for (let round = 0; round < 10; round++) {
+      const rows = await getTransactionsSince(u.id, cursor, 3); // 每轮最多 3 条
+      if (rows.length === 0) break;
+      seen.push(...rows.map((r) => r.id));
+      cursor = rows[rows.length - 1].id;
+    }
+
+    expect(seen).toHaveLength(7);
+    expect(new Set(seen).size, '不重复').toBe(7);
+    expect([...seen].sort((x, y) => x - y), '不漏行').toEqual(seen);
+  });
+
+  it('只返回本人的流水（游标也一样不能越界）', async () => {
+    const a = await makeUser();
+    const b = await makeUser();
+    await makeTx({ userId: a.id, amount: 1, type: 'checkin' });
+    await makeTx({ userId: b.id, amount: 99, type: 'checkin' });
+
+    expect(await getTransactionsSince(a.id, 0)).toHaveLength(1);
+  });
+
+  it('type 筛选与分页查询同口径（transfer_all 覆盖转出与转入）', async () => {
+    const u = await makeUser();
+    const other = await makeUser();
+    await makeTx({ userId: u.id, amount: -fishToUnits(2), type: 'transfer', relatedUserId: other.id });
+    await makeTx({ userId: u.id, amount: fishToUnits(1), type: 'transfer_receive', relatedUserId: other.id });
+    await makeTx({ userId: u.id, amount: 3, type: 'checkin' });
+
+    expect(await getTransactionsSince(u.id, 0, 100, 'transfer_all')).toHaveLength(2);
+    expect(await getTransactionsSince(u.id, 0, 100, 'checkin')).toHaveLength(1);
+    expect(await getTransactionsSince(u.id, 0, 100, 'feed_all'), '没有投喂流水').toHaveLength(0);
+  });
+
+  it('limit 被封顶在 100（防止一次拉爆）', async () => {
+    const u = await makeUser();
+    for (let i = 0; i < 5; i++) await makeTx({ userId: u.id, amount: i + 1, type: 'checkin' });
+
+    expect(await getTransactionsSince(u.id, 0, 999)).toHaveLength(5); // 只有 5 条，但走的是 ≤100 的 take
+  });
+});
 
 describe('getBalanceLeaderboard', () => {
   it('按余额降序，rank 从 1 连续递增', async () => {

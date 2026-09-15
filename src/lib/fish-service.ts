@@ -89,6 +89,29 @@ export interface FishTxDTO {
   createdAt: string | null;
 }
 
+/** FishTransaction 行 → DTO（分页与增量两条读路径共用，避免字段漂移）。 */
+function toFishTxDTO(t: {
+  id: number;
+  amount: number;
+  type: string;
+  description: string | null;
+  referenceType: string | null;
+  referenceId: string | null;
+  relatedUserId: string | null;
+  createdAt: Date | null;
+}): FishTxDTO {
+  return {
+    id: t.id,
+    amount: unitsToFish(t.amount),
+    type: t.type,
+    description: t.description,
+    referenceType: t.referenceType,
+    referenceId: t.referenceId,
+    relatedUserId: t.relatedUserId,
+    createdAt: t.createdAt ? t.createdAt.toISOString() : null,
+  };
+}
+
 export interface TransactionsPage {
   transactions: FishTxDTO[];
   total: number;
@@ -97,6 +120,51 @@ export interface TransactionsPage {
   pages: number;
   hasPrev: boolean;
   hasNext: boolean;
+}
+
+/**
+ * 筛选条口径 → Prisma where。
+ *
+ * feed_all / transfer_all 是「合称」特例：一侧是支出、另一侧是收入，两个 type 都要。
+ * 分页查询与增量查询共用这一份 —— 两边各写一份必然 drift，而漏掉半边账是静默的。
+ */
+function applyTypeFilter(where: Prisma.FishTransactionWhereInput, type?: string | null): void {
+  if (!type) return;
+  if (type === 'feed_all') where.type = { in: ['feed', 'feed_receive'] };
+  else if (type === 'transfer_all') where.type = { in: ['transfer', 'transfer_receive'] };
+  else where.type = type;
+}
+
+/**
+ * 增量查询：`id > sinceId` 的流水，按 **id 升序**。
+ *
+ * 【为什么需要它】站外对账方（银行 / 记账机器人）不能靠翻页 —— 新行会不断插入，
+ * 页码在两次请求之间会漂移，结果是**漏记或重记客户的钱**。给一个单调游标就够：
+ * 取回 → 处理 → 把 `nextCursor` 存下来，构造上不可能漏。
+ *
+ * 用 id 而不是 createdAt 作游标：id 是自增主键，严格单调且同毫秒也不会并列
+ * （createdAt 是 INTEGER 毫秒，同毫秒多笔时无全序）。
+ *
+ * 【已知边界（文档同步）】转账被远端故障回滚时，那两条流水会被**删除**。
+ * 对账方若「一看见就入账」，可能入了一笔随后消失的钱 —— 所以拉取时请留一个
+ * 小滞后（只处理 createdAt 早于 now-10s 的行），见 docs/fish-bot.md §3.4。
+ */
+export async function getTransactionsSince(
+  userId: string,
+  sinceId: number,
+  limit = 100,
+  type?: string | null
+): Promise<FishTxDTO[]> {
+  const take = Math.min(100, Math.max(1, limit));
+  const where: Prisma.FishTransactionWhereInput = { userId, id: { gt: Math.max(0, sinceId) } };
+  applyTypeFilter(where, type);
+
+  const rows = await prisma.fishTransaction.findMany({
+    where,
+    orderBy: { id: 'asc' },
+    take,
+  });
+  return rows.map(toFishTxDTO);
 }
 
 /** 分页查询用户交易流水（对齐 get_transactions）。 */
@@ -110,14 +178,7 @@ export async function getTransactions(
   const pp = Math.min(100, Math.max(1, perPage));
 
   const where: Prisma.FishTransactionWhereInput = { userId };
-  if (type) {
-    // feed_all：投喂与被投喂（对齐 Flask 特例）
-    if (type === 'feed_all') where.type = { in: ['feed', 'feed_receive'] };
-    // transfer_all：转出与转入（鱼干市场）。两侧的 type 不同（transfer /
-    // transfer_receive），只看一个会漏掉半边账 —— 与 feed_all 同一个理由。
-    else if (type === 'transfer_all') where.type = { in: ['transfer', 'transfer_receive'] };
-    else where.type = type;
-  }
+  applyTypeFilter(where, type);
 
   const [total, rows] = await Promise.all([
     prisma.fishTransaction.count({ where }),
@@ -131,16 +192,7 @@ export async function getTransactions(
 
   const pages = Math.max(1, Math.ceil(total / pp));
   return {
-    transactions: rows.map((t) => ({
-      id: t.id,
-      amount: unitsToFish(t.amount),
-      type: t.type,
-      description: t.description,
-      referenceType: t.referenceType,
-      referenceId: t.referenceId,
-      relatedUserId: t.relatedUserId,
-      createdAt: t.createdAt ? t.createdAt.toISOString() : null,
-    })),
+    transactions: rows.map(toFishTxDTO),
     total,
     page: p,
     perPage: pp,

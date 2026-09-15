@@ -31,6 +31,7 @@ import { unitsToFish } from '@/lib/fish-units';
 import { POST as transfer } from '@/app/api/fish/market/transfer/route';
 import { POST as balanceApi } from '@/app/api/fish/market/balance/route';
 import { POST as transactionsApi } from '@/app/api/fish/market/transactions/route';
+import { POST as pay } from '@/app/api/fish/market/pay/route';
 
 const PASSWORD = 'bot-Password-123';
 
@@ -420,6 +421,62 @@ describe('POST /api/fish/market/transactions', () => {
     );
 
     expect((await res.json()).transactions).toHaveLength(1);
+  });
+
+  it('游标模式：since_id → 升序 + next_cursor + has_more', async () => {
+    const sender = await makeLoginableUser({ driedFish: 10 });
+    const recipient = await makeUser({ driedFish: 0 });
+    for (const amount of [1, 2, 3]) {
+      await transferReq({
+        username: sender.username,
+        password: PASSWORD,
+        to_username: recipient.username,
+        amount,
+      });
+    }
+
+    const first = await transactionsApi(
+      makeReq('/api/fish/market/transactions', {
+        username: sender.username,
+        password: PASSWORD,
+        since_id: 0,
+        limit: 2,
+      })
+    );
+    const page1 = await first.json();
+    expect(page1.mode).toBe('cursor');
+    expect(page1.transactions).toHaveLength(2);
+    expect(page1.has_more).toBe(true);
+    expect(page1.transactions[0].id).toBeLessThan(page1.transactions[1].id);
+
+    const second = await transactionsApi(
+      makeReq('/api/fish/market/transactions', {
+        username: sender.username,
+        password: PASSWORD,
+        since_id: page1.next_cursor,
+      })
+    );
+    const page2 = await second.json();
+    expect(page2.transactions).toHaveLength(1);
+    expect(page2.has_more).toBe(false);
+    // 两轮之间没有重叠（游标严格大于）
+    const ids = [...page1.transactions, ...page2.transactions].map((t: { id: number }) => t.id);
+    expect(new Set(ids).size).toBe(3);
+  });
+
+  it('非法的 since_id → 400（不静默退回翻页模式：那会让对账方以为在推进游标）', async () => {
+    const user = await makeLoginableUser({ driedFish: 1 });
+
+    for (const bad of ['abc', -1, 1.5]) {
+      const res = await transactionsApi(
+        makeReq('/api/fish/market/transactions', {
+          username: user.username,
+          password: PASSWORD,
+          since_id: bad,
+        })
+      );
+      expect(res.status, `since_id=${bad}`).toBe(400);
+    }
   });
 
   it('非法页码回落默认值而不是 400（分区页的输入不值得报错）', async () => {
