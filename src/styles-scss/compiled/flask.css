@@ -8704,8 +8704,6 @@ body {
   border: none;
   background: none;
   cursor: pointer;
-  font-size: clamp(1.3rem, 5.2vw, 2.3rem);
-  line-height: 1;
 }
 .chess-square:disabled {
   cursor: default;
@@ -8741,16 +8739,12 @@ body {
 }
 
 .chess-piece {
-  font-family: "Segoe UI Symbol", "Noto Sans Symbols 2", serif;
+  width: 86%;
+  height: 86%;
+  display: block;
   user-select: none;
-}
-.chess-piece--white {
-  color: #fff;
-  text-shadow: 0 0 1px #2b2b2b, 1px 0 0 #2b2b2b, -1px 0 0 #2b2b2b, 0 1px 0 #2b2b2b, 0 -1px 0 #2b2b2b;
-}
-.chess-piece--black {
-  color: #262626;
-  text-shadow: 0 0 1px #f5f5f5, 1px 0 0 #f5f5f5, -1px 0 0 #f5f5f5, 0 1px 0 #f5f5f5, 0 -1px 0 #f5f5f5;
+  -webkit-user-drag: none;
+  pointer-events: none;
 }
 
 .xiangqi-page {

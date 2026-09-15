@@ -224,6 +224,12 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
 - 常用类：`.icon-bell`、`.icon-gear`、`.icon-person`、`.icon-house`、`.icon-fish`、`.icon-theme-toggle`、`.icon-book/controller/journal-text/tools`（首页四大入口）等。
 - 首页/游戏卡片的 `feature-icon` / `__icon` 用同一手法，给不同卡片指定不同 `color` 形成彩色图标（无需多色 SVG）。
 - 新增图标：放一个单色 SVG 到 `public/static/img/icons/`，在 SCSS 里加一条 mask 规则即可。
+- **例外：自带配色的多色图标不走 mask。** mask 是单色模板（只取形状，颜色一律来自
+  `currentColor`），所以**填充色与描边色必须分开**的图标套不进这条约定 —— 典型是国际象棋的
+  棋子：白子要「白填充 + 深描边」才在浅格上立得住，mask 会把这一层信息抹平。这类素材直接放
+  `public/static/img/` 下（棋子见 `chess/`），用 `<img>` 引用，配色烤在 SVG 里。
+  第三方素材还要在同目录留一份 `LICENSE.txt`（先例：`chess/`、
+  `public/static/vditor/dist/js/mathjax/LICENSE`）。
 
 ## 8. 主题切换机制
 

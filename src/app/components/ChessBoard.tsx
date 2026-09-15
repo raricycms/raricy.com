@@ -16,29 +16,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { Square } from '@/lib/board-shared';
-import {
-  BISHOP,
-  KING,
-  KNIGHT,
-  PAWN,
-  QUEEN,
-  ROOK,
-  WHITE,
-  colorOf,
-  glyphOf,
-  typeOf,
-} from '@/lib/chess-rules';
+import { glyphOf } from '@/lib/chess-rules';
+import { pieceIconSrc, pieceName } from './chess-pieces';
 import type { BoardViewProps } from './board-view';
-
-/** 兵种 → Unicode 棋子字形。比字母好看得多，且不依赖自定义字体。 */
-const GLYPH: Record<number, string> = {
-  [PAWN]: '♟',
-  [KNIGHT]: '♞',
-  [BISHOP]: '♝',
-  [ROOK]: '♜',
-  [QUEEN]: '♛',
-  [KING]: '♚',
-};
 
 function same(a: Square, b: Square): boolean {
   return a[0] === b[0] && a[1] === b[1];
@@ -58,8 +38,7 @@ export default function ChessBoardView({
       {grid.map((row, r) =>
         row.map((cell, c) => {
           const square: Square = [r, c];
-          const glyph = cell === 0 ? null : GLYPH[typeOf(cell)];
-          const isWhite = cell !== 0 && colorOf(cell) === WHITE;
+          const iconSrc = pieceIconSrc(cell);
 
           const classes = [
             'chess-square',
@@ -87,20 +66,17 @@ export default function ChessBoardView({
               className={classes}
               data-row={r}
               data-col={c}
-              // 端到端测试按 data-piece 断言"这一格上是什么"，不必去解析字形。
+              // 端到端测试按 data-piece 断言"这一格上是什么"，不必去解析图形。
               // 取值来自规则模块的 glyphOf（大写 = 白），与 FEN 同一口径。
               data-piece={glyphOf(cell)}
-              aria-label={`第 ${8 - r} 行第 ${'abcdefgh'[c]} 列${glyph ? `，${glyph}` : '，空'}`}
+              // 棋子名念中文（"白兵"）而不是字形 —— 读屏按字形念是一串乱码
+              aria-label={`第 ${8 - r} 行第 ${'abcdefgh'[c]} 列${cell ? `，${pieceName(cell)}` : '，空'}`}
               disabled={disabled}
               onClick={() => onSquareClick(r, c)}
             >
-              {glyph && (
-                <span
-                  className={`chess-piece${isWhite ? ' chess-piece--white' : ' chess-piece--black'}`}
-                  aria-hidden="true"
-                >
-                  {glyph}
-                </span>
+              {/* 矢量棋子：白子与黑子是两套不同的文件，见 chess-pieces.ts 的文件头 */}
+              {iconSrc && (
+                <img className="chess-piece" src={iconSrc} alt="" draggable={false} aria-hidden="true" />
               )}
             </button>
           );

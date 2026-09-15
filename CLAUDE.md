@@ -204,6 +204,13 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
   各游戏的棋盘（`.chess-board` / `.xiangqi-board` / `.draughts-board`）留在各自的
   partial 里，按钮 / 状态行 / 席位栏 / 房号条 / 升变选择条共用 `.board-*`。
   改类名要 grep 全部使用方：类名是字符串，拼错既不报错也不让单测转红，只会渲染成裸元素。
+- **棋子是矢量图，不是字形**：国际象棋 12 枚棋子放在 `public/static/img/chess/`
+  （Cburnett 套，BSD-3，出处见同目录 `LICENSE.txt`），用 `<img>` 渲染；跳棋的王冠走
+  `public/static/img/icons/crown.svg` + mask。**别改回 Unicode 字形**（♟♞♝♜♛♚）——
+  那等于把观感交给用户设备字体：`'Segoe UI Symbol', …, serif` 这条栈在 Android/iOS 上
+  名存实亡，`♟`（U+265F）还是 emoji 码位会被彩色 emoji 字体接走，且 `font-size` 只定 em 框、
+  定不了棋子实际大小。黑子与白子是**两套不同的文件**（白填充+深描边 / 黑填充+浅细节线），
+  不是同一张图换色。
 
 ### 限频
 - `src/lib/rate-limit.ts` 的 `RULES` 是**多数**配额的唯一权威，但**不是全部**：OAuth 的三条
