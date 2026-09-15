@@ -139,8 +139,8 @@ function stripPyStrings(txt) {
 /**
  * 扫 Flask：函数名 → { level, file, ambiguous }
  *
- * ★ 函数名不是唯一的 ★ —— menu 在 vote / image_hosting / game / blog / tool / clipboard
- * 六个蓝图里各有一个，upload 在 blog / clipboard / image_hosting 三处且档位各不相同。
+ * ★ 函数名不是唯一的 ★ —— menu 在 vote / image_hosting / blog / tool / clipboard
+ * 五个蓝图里各有一个，upload 在 blog / clipboard / image_hosting 三处且档位各不相同。
  * 此前这里直接 out[fn] = {...}，后扫到的文件会**静默覆盖**先扫到的：谁映射 upload
  * 都可能拿到另一个模块的档位，然后得出一个看起来很正常的结论。
  * 现在重名的标记成 ambiguous，MAP 引用到它们时直接报错并要求用 '文件::函数名' 消歧。

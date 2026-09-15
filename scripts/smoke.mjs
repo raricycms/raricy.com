@@ -102,7 +102,7 @@ if (base.startsWith('https://')) {
 
 // ── 2. 公开页面 ─────────────────────────────────────────────────────────────
 console.log(bold('\n2. 公开页面'));
-for (const [p, name] of [['/', '首页'], ['/tool', '工具'], ['/game', '玩具'], ['/login', '登录页']]) {
+for (const [p, name] of [['/', '首页'], ['/tool', '工具'], ['/blog', '博客'], ['/login', '登录页']]) {
   try {
     const r = await get(p);
     if (r.status === 200) ok(`${name} ${p}`);

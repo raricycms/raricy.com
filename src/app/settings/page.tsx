@@ -141,8 +141,8 @@ export default function SettingsPage() {
       const result = await res.json();
       if (res.ok && result.code === 200) {
         setFocusAlert({ msg: '专注模式设置已保存', type: 'success' });
-        // 顶栏「玩具」/首页卡片等服务端组件按 users.focus_mode 渲染 —— 不 refresh
-        // 则当前会话顶栏仍是旧态（软导航不会重跑 root layout），需整页重载才恢复。
+        // 保存后刷新 RSC 树：/blog、/chat 等服务端页面按 users.focus_mode 渲染，
+        // 而软导航不会重跑 root layout。
         router.refresh();
       } else {
         setFocusAlert({ msg: result.message || '保存失败', type: 'danger' });
@@ -351,7 +351,7 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* ====== Section 3.5: 专注模式（id 供 /blog 横幅与 /game 锁屏深链跳转） ====== */}
+      {/* ====== Section 3.5: 专注模式（id 供 /blog 横幅深链跳转） ====== */}
       <div className="settings-card" id="focus-mode">
         <div className="settings-card__header">
           <span className="icon icon-controller"></span>
@@ -359,14 +359,14 @@ export default function SettingsPage() {
         </div>
         <p className="settings-card__desc">
           屏蔽干扰源，专心阅读。开启后：博客列表与侧栏将隐藏站长标记为「专注隐藏」的栏目及其文章；
-          聊天大区（聊天室）不可进入；「玩具」入口暂不可用。随时可在此关闭。
+          聊天大区（聊天室）不可进入。随时可在此关闭。
         </p>
         <div className={focusAlertClass} id="focusAlert">{focusAlert?.msg ?? ''}</div>
 
         <div className="settings-toggle-row">
           <div className="settings-toggle-row__label">
             <span className="settings-toggle-row__title">专注模式</span>
-            <span className="settings-toggle-row__desc">隐藏「专注隐藏」栏目，禁用聊天大区与玩具</span>
+            <span className="settings-toggle-row__desc">隐藏「专注隐藏」栏目，禁用聊天大区</span>
           </div>
           <label className="settings-toggle">
             <input

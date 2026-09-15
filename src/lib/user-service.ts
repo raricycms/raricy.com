@@ -14,7 +14,6 @@ import { prisma } from './db';
 import { nowForDb } from './db-time';
 import { hashPassword, verifyPassword } from './password';
 import { kickUser } from './chat-bus';
-import { kickViewer } from './game-bus';
 import {
   accountServiceEnabled,
   AccountServiceError,
@@ -568,9 +567,6 @@ export async function updateOwnProfile(userId: string, patch: ProfilePatch): Pro
   // （chat-bus 按连接建立时的 focusMode 过滤大区广播）。
   if ('focusMode' in data) {
     kickUser(userId);
-    // 联机对局同理：专注模式下不允许联机（见 api/game/_shared.ts 的闸门），
-    // 不踢的话一个专注模式用户可以把手头这局下完。重连会拿到 403，页面转锁屏提示。
-    kickViewer(userId);
   }
 
   return {

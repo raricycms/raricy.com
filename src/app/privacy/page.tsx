@@ -67,10 +67,10 @@ export default function PrivacyPage() {
         用于在您登录后维持认证状态，属于技术必要型 Cookie。
       </p>
       <p>
-        2.2 部分界面偏好（博客列表排序方式、浅色/深色主题、聊天侧栏折叠、游戏语言）
-        以 localStorage 存储，并用同名偏好 Cookie（blog_sort、theme、chat_sidebar_collapsed、
-        atamas_lang，均为一年期、非 httpOnly、Path=/）同步给服务端，仅用于让相应页面在您
-        下次访问时按您的偏好直接呈现首屏，避免加载后跳变。这些 Cookie 不用于任何追踪或
+        2.2 部分界面偏好（博客列表排序方式、聊天侧栏折叠）以 localStorage 存储，并用同名
+        偏好 Cookie（blog_sort、chat_sidebar_collapsed，均为一年期、非 httpOnly、Path=/）
+        同步给服务端，仅用于让相应页面在您下次访问时按您的偏好直接呈现首屏，避免加载后跳变。
+        浅色/深色主题偏好仅存于 localStorage，不上送服务端。这些 Cookie 不用于任何追踪或
         跨站用途，您随时可在浏览器设置中清除；清除后相关页面将回退到默认显示。
       </p>
       <p>

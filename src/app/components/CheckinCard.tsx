@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { LoaderCircle, Sparkles } from 'lucide-react';
-import { MedalIcon } from '@/app/components/GameIcons';
+import { MedalIcon } from '@/app/components/MedalIcon';
 import type { LeaderboardEntry } from '@/lib/checkin-service';
 
 // ── 全局 toast（原站 base.js 注入 window.showToast） ──────────────────────────

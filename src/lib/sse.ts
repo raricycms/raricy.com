@@ -10,7 +10,7 @@
 // 这个坑**单测完全看不见、构建也不报错** —— 所以响应头必须是常量、由所有 SSE 路由
 // 复用，而不是每个路由凭记忆手写一份。改本文件等于改全站所有 SSE 流的行为。
 //
-// 现有消费者：api/chat/stream/route.ts、api/game/{gomoku,tictactoe}/rooms/[code]/stream/route.ts。
+// 现有消费者：api/chat/stream/route.ts。
 // 新增 SSE 路由请直接 import 这里的常量，不要手抄。
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -33,9 +33,8 @@ export const SSE_QUEUE_LIMIT = 512;
 /**
  * 组装一帧 SSE。id 只给需要断线补齐的事件用（浏览器靠它回传 Last-Event-ID）。
  *
- * 泛型于事件类型：chat 与 game 各传自己的联合类型，帧格式完全一致 ——
- * 这也是两者唯一真正通用的部分（订阅注册表因生命周期不同而各自实现，
- * 见 chat-bus.ts / game-bus.ts 的文件头）。
+ * 泛型于事件类型：调用方传自己的联合类型，帧格式完全一致 ——
+ * 订阅注册表因生命周期不同而各自实现（见 chat-bus.ts 的文件头）。
  */
 export function sseFrame<T>(event: T, id?: number): string {
   const idLine = id != null ? `id: ${id}\n` : '';
