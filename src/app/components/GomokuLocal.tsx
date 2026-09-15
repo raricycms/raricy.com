@@ -16,15 +16,24 @@
 // 「AI 还在想，玩家点了新游戏」不会在空棋盘上落下一颗迟到的子 —— 老实现用
 // 裸 setTimeout 且从不 clearTimeout，回调触发时才去读 AI 实例，真的有这个 bug。
 //
+// 【回合是着法历史的函数，不是"走一手翻一次面"】`currentPlayerRef` 只是
+// `sideToMove(history)` 的一份同步副本 —— 每次动过棋盘（落子 / 悔棋 / 重开）都由
+// `syncTurn()` 重算一次。翻面在**终局那一手**上会算错：那一手走完没人接，回合停在
+// 落子方，而翻面会把它翻给对手，悔棋时再翻一次就成了「同一方连下两步」。详见
+// gomoku-rules 的 sideToMove 与 tests/unit/gomoku-local-undo.test.ts。
+// （联机那边同一条口径：board-room 的 respondUndo 把 room.turn 直接写成请求方的
+// 席位，也不连翻两次。）
+//
 // 本组件覆盖的玩法：
 //   • 双人对战（pvp）或人机对战（ai，人执黑、AI 执白）。
-//   • 悔棋：pvp 撤销 1 步；ai 撤销 2 步（AI 的 + 人的）。重新开始。
+//   • 悔棋：pvp 撤 1 步；ai 撤到「又轮到人类走」为止（人类走完 AI 立刻应招，通常
+//     是 2 步；人类那一手若直接终结了比赛就没有应招，撤 1 步）。重新开始。
 //
 // 棋盘用 <canvas> 绘制（与原实现一致），棋局状态存于 ref，命令式重绘。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { BLACK, GomokuBoard, WHITE, type Move, type Player } from '@/lib/gomoku-rules';
+import { BLACK, GomokuBoard, sideToMove, WHITE, type Move, type Player } from '@/lib/gomoku-rules';
 import { findBestMove, type Difficulty } from '@/lib/gomoku-ai';
 import GomokuCanvas from './GomokuCanvas';
 import type { AiProtocolMove, AiRequest, AiResponse } from './gomoku-ai-protocol';
@@ -120,12 +129,19 @@ export default function GomokuLocal() {
     );
   }, [openingMoves]);
 
+  /** 回合唯一的重算处：按剩下的着法历史定「接下来轮到谁」（见文件头）。 */
+  const syncTurn = useCallback(() => {
+    currentPlayerRef.current = sideToMove(boardRef.current.getHistory());
+  }, []);
+
   const applyView = useCallback(() => {
+    // 先同步回合再刷状态 —— 状态行读的就是它
+    syncTurn();
     // 自增而非比较：棋盘被原地改了，引用比不出变化（见 GomokuCanvas 文件头）
     setViewSeq((n) => n + 1);
     updateStatus();
     refreshUndoDisabled();
-  }, [updateStatus, refreshUndoDisabled]);
+  }, [syncTurn, updateStatus, refreshUndoDisabled]);
 
   const placeAndCheck = useCallback(
     (row: number, col: number, player: Player) => {
@@ -144,10 +160,6 @@ export default function GomokuLocal() {
     },
     [applyView]
   );
-
-  const switchTurn = useCallback(() => {
-    currentPlayerRef.current = currentPlayerRef.current === BLACK ? WHITE : BLACK;
-  }, []);
 
   /** 惰性创建 AI worker。只在真的要人机对战时才建，pvp 模式不浪费线程。 */
   const ensureAiWorker = useCallback((): Worker | null => {
@@ -201,7 +213,7 @@ export default function GomokuLocal() {
     const apply = (row: number, col: number): void => {
       placeAndCheck(row, col, aiPlayer);
       isAiThinkingRef.current = false;
-      if (!gameOverRef.current) switchTurn();
+      // 再刷一次：placeAndCheck 里那次读到的还是「AI 思考中…」（回合已由那边同步好）
       applyView();
     };
 
@@ -221,7 +233,6 @@ export default function GomokuLocal() {
     refreshUndoDisabled,
     ensureAiWorker,
     placeAndCheck,
-    switchTurn,
     applyView,
   ]);
 
@@ -240,18 +251,12 @@ export default function GomokuLocal() {
 
       placeAndCheck(row, col, currentPlayerRef.current);
 
-      if (!gameOverRef.current) {
-        switchTurn();
-        // 【为什么这里要补一次 applyView】placeAndCheck 内部已经刷新过一次状态，
-        // 但那是在 switchTurn 之前 —— 读到的还是刚落子那方。AI 模式下 maybeAiMove
-        // 会再补一次，pvp 模式下它立刻返回，状态栏就永远停在「刚落子那方」，
-        // 回合提示慢一拍（玩家会以为还是对方走）。同一次事件里 setState 会合并，
-        // AI 模式随后覆盖成「AI 思考中…」，不会闪。
-        applyView();
-        maybeAiMove();
-      }
+      // 【回合不用在这里翻】placeAndCheck → applyView 已按着法历史同步过（见 syncTurn），
+      // 状态行读到的就是刚落子之后的回合 —— 曾经这里补一次 switchTurn + applyView 正是
+      // 为了让回合提示不慢一拍，那件事现在在 applyView 里做，这里只剩「该 AI 了就喊它」。
+      if (!gameOverRef.current) maybeAiMove();
     },
-    [placeAndCheck, switchTurn, maybeAiMove, applyView]
+    [placeAndCheck, maybeAiMove]
   );
 
   const initGame = useCallback(
@@ -280,32 +285,45 @@ export default function GomokuLocal() {
     [resetAiWorker, applyView, maybeAiMove]
   );
 
+  /**
+   * 撤一手，并把回合同步回「被撤那一手的落子方」。没有可撤的返回 false。
+   *
+   * 【为什么不能用 switchTurn 翻回来】翻面只在「走完一手」时成立，而**终局那一手
+   * 不翻**（没人接着走）—— 刚有人获胜时当前回合还停在获胜方，此时悔棋再翻一次就把
+   * 他翻给了对手，对手连下两步。按剩下的历史重算没有这个前提（见 syncTurn）。
+   */
+  const undoOnce = useCallback((): boolean => {
+    if (!boardRef.current.undo()) return false;
+    syncTurn();
+    return true;
+  }, [syncTurn]);
+
   const undoMove = useCallback(() => {
     if (isAiThinkingRef.current) return;
     if (boardRef.current.getHistory().length === 0) return;
 
     if (modeRef.current === 'ai') {
-      // 撤到「又轮到人类」为止 —— 也就是撤掉 AI 那一手 + 人类那一手。
+      // 撤到「又轮到人类走」为止 —— 也就是把人类那一手连同它之后 AI 的应招一起撤掉。
       // 先撤一手再判断，是因为进来时**正是**人类的回合，条件直接判会一次都不撤。
+      // 判据是"轮到谁"而不是"撤几步"：人类那一手若直接终结了比赛，它后面**没有**
+      // AI 的应招，撤一步就够了（按固定步数撤会连 AI 上一步一起撤掉，人类白得一手）。
       // 人类执白时 AI 的开局手不在可撤范围内（openingMoves），撤到底会停在它上面。
       const opening = openingMoves();
       do {
-        boardRef.current.undo();
-        switchTurn();
+        if (!undoOnce()) break;
       } while (
         boardRef.current.getHistory().length > opening &&
         currentPlayerRef.current !== humanPlayerRef.current
       );
     } else {
-      boardRef.current.undo();
-      switchTurn();
+      undoOnce();
     }
 
     gameOverRef.current = false;
     winningLineRef.current = null;
     lastMoveRef.current = boardRef.current.getLastMove();
     applyView();
-  }, [openingMoves, switchTurn, applyView]);
+  }, [openingMoves, undoOnce, applyView]);
 
   // 初始化（对齐 main.js）。画布的 resize / 主题 / 点击换算已移交 GomokuCanvas，
   // 这里只剩本地对局自己的初始化。
