@@ -225,6 +225,17 @@
     }
   }
 
+  // 生成画报：中性底 + 常规字色 —— 与「账号设置」并排时主次分明（那个才是主行动）
+  &--poster {
+    background: var(--color-background-subtle);
+    color: var(--color-text-primary);
+
+    &:hover {
+      background: var(--color-background-highlight);
+      color: var(--color-brand-primary);
+    }
+  }
+
   &--password {
     background: var(--color-background-subtle);
     color: var(--color-text-secondary);

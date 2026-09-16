@@ -4,6 +4,7 @@ import { ReceiptText } from 'lucide-react';
 import { getCurrentUser } from '@/lib/auth';
 import { loginUrlWithNext } from '@/lib/safe-url';
 import { getBalance, getTodayCheckinFish } from '@/lib/fish-service';
+import PosterModal from '@/app/components/PosterModal';
 
 // 小鱼干余额页 — Flask BEM
 export const dynamic = 'force-dynamic';
@@ -40,6 +41,19 @@ export default async function FishPage() {
             <Link href="/fish/market" className="fish-card__link fish-card__link--primary">
               <span className="icon icon-market" aria-hidden="true"></span> 鱼干市场
             </Link>
+            {/* 收款码：生成一张图，别人扫了就能给我投喂 */}
+            <PosterModal
+              triggerClassName="fish-card__link poster-trigger"
+              label={
+                <>
+                  <span className="icon icon-fish" aria-hidden="true" /> 收款码
+                </>
+              }
+              src="/api/poster/collect"
+              downloadName={`聪明山-${user.username}-收款码.png`}
+              title="我的鱼干收款码"
+              hint="别人扫码后会打开收款页，由他自己填金额，再输密码确认付款。"
+            />
           </div>
           <div className="fish-card__info">
             <p>每日签到可获得小鱼干，更多获取方式即将开放…</p>

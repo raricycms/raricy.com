@@ -1,0 +1,125 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// 画报 / 收款码预览弹窗（PosterModal）
+//
+// 图是服务端渲染好的 PNG（/api/poster/...），这里只有弹窗、预览框与两个按钮。
+//
+// 弹窗外壳（.modal-overlay / .modal-dialog / .modal-content / .modal-header）沿用
+// 站内既有那套 —— 两个坑：展开类名是 **.show**（不是 Bootstrap 的 in），
+// 且 .modal-overlay 的定义其实在 pages/admin/_users.scss 里，不在 components/_modal.scss。
+// 与 _image-picker.scss / _fish-market.scss 是同一套用法。
+//
+// .poster-trigger 是给 <button> 的**复位**：站内没有全局 button reset，不写它就会
+// 拿到浏览器默认字体（不是站点字体）与灰色凸起边框。它只带复位属性、**不带任何外观** ——
+// 外观由调用方传进来的类（.profile-actions__btn / .fish-card__link）决定；那些规则在
+// pages/ 下、加载更晚，同权重下由它们赢。
+// ─────────────────────────────────────────────────────────────────────────────
+
+.poster-trigger {
+  font: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+// 画报是竖幅（750×1280 上下），弹窗窄一点、让图尽量占满可视高度
+.poster-modal {
+  max-width: 430px;
+}
+
+.poster-close {
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 1.3rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.poster-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+// 预览框：有底色，图加载出来之前也有稳定的高度，不会「加载完跳一下」
+.poster-frame {
+  width: 100%;
+  min-height: 240px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+  background: var(--color-background-subtle);
+  border-radius: 18px;
+}
+
+.poster-frame__img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 58vh;
+  object-fit: contain;
+  border-radius: 12px;
+}
+
+.poster-state {
+  margin: 0;
+  padding: 28px 18px;
+  text-align: center;
+  font-size: 0.875rem;
+  line-height: 1.8;
+  color: var(--color-text-secondary);
+
+  code {
+    font-size: 0.85em;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: var(--color-background-content);
+  }
+}
+
+.poster-actions {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+}
+
+.poster-actions__btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 9px 16px;
+  border-radius: 999px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  text-decoration: none;
+  background: var(--color-background-subtle);
+  color: var(--color-text-primary);
+  transition: background-color 0.2s, color 0.2s;
+
+  &:hover {
+    background: var(--color-background-highlight);
+  }
+
+  // 主行动：下载。常态/悬停反转，与全站胶囊按钮族一致
+  &--primary {
+    background: var(--color-brand-primary);
+    color: #fff;
+    font-weight: 600;
+
+    &:hover {
+      background: var(--color-brand-secondary);
+      color: var(--color-brand-primary);
+    }
+  }
+}
+
+.poster-hint {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.7;
+  text-align: center;
+  color: var(--color-text-secondary);
+}

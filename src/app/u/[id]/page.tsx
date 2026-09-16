@@ -5,6 +5,7 @@ import { getPublicProfile } from '@/lib/user-service';
 import { prisma } from '@/lib/db';
 import { ymd } from '@/lib/format';
 import ProfileTabs from './ProfileTabs';
+import PosterModal from '@/app/components/PosterModal';
 
 export const dynamic = 'force-dynamic';
 
@@ -186,6 +187,20 @@ export default async function PublicProfilePage({
                 <span className="icon icon-gear" aria-hidden="true" />
                 账号设置
               </Link>
+              {/* 画报只有本人能生成（路由同样只放行本人），所以入口只挂在自己的主页上 */}
+              <PosterModal
+                triggerClassName="profile-actions__btn profile-actions__btn--poster poster-trigger"
+                label={
+                  <>
+                    <span className="icon icon-link" aria-hidden="true" />
+                    生成画报
+                  </>
+                }
+                src={`/api/poster/profile/${profile.id}`}
+                downloadName={`聪明山-${profile.username}-主页画报.png`}
+                title="我的主页画报"
+                hint="保存后可以发到任何地方，扫图上的二维码就能打开你的主页。"
+              />
               {!isCoreAuthenticated && (
                 <Link href="/authentic" className="profile-actions__btn profile-actions__btn--auth">
                   <span className="icon icon-person-circle" aria-hidden="true" />
