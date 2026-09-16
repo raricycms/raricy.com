@@ -241,4 +241,10 @@ export const RULES = {
    */
   fishApiPerUser: { limit: 20, windowMs: 60 * 1000 },
   fishApiPerIp: { limit: 120, windowMs: 60 * 1000 },
+  /**
+   * 画报 / 收款码的 PNG 生成。一次请求 = 一次 sharp 光栅化（1500×2480，几十毫秒 CPU），
+   * 不封顶就能被拿来烤 CPU。桶键：poster:{用户 id}。
+   * 预览与下载各算一次，30/分对正常使用绰绰有余。
+   */
+  posterMinute: { limit: 30, windowMs: 60 * 1000 },
 } as const;
