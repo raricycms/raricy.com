@@ -843,6 +843,6 @@ describe('禁言用户', () => {
 
     // 记录现状：服务层放行。拦截点在 src/app/api/blogs/[id]/feed/route.ts:13
     // （getCurrentUser + isCurrentlyBanned → apiErr(403)）。
-    expect(r.ok, 'feed-service 不做禁言校验 —— 该职责在路由层，见交付说明').toBe(true);
+    expect(r.ok, 'feed-service 不做禁言校验 —— 该职责在路由层').toBe(true);
   });
 });

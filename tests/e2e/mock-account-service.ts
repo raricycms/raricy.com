@@ -8,7 +8,8 @@
 // Python + 它自己的库，对一条前端 E2E 链路来说太重；这里按客户端实际契约造个替身。
 //
 // 契约来源：src/lib/account-client.ts（路径、envelope、鉴权头），
-// 与 account-service/app/api/deps.py（Bearer 传用户 Key）。
+// 与 account-service 的 app/api/deps.py（Bearer 传用户 Key）—— 该服务已拆成独立仓库，
+// 本仓 git 历史 7d7be1c 之前还在，现已删除。
 //
 // 【它不是什么】不复刻复式记账、不校验余额充足性。它只需让 fail-closed 分支「能过」，
 // 并把收到的转账记下来，好让用例断言「本地签到成功时远端确实记了账」——

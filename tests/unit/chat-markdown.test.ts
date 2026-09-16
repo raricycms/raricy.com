@@ -147,7 +147,8 @@ describe('XSS：原始 HTML 一律当文本', () => {
     expect(elementsWithEventAttrs(root)).toEqual([]);
   });
 
-  // 回归：marked 的 inRawBlock 裸文本通道（见 chat-markdown.ts 的 walkTokens 补丁）。
+  // 回归：marked 的 inRawBlock 裸文本通道（walkTokens 补丁在 rich-text.ts，
+  // 渲染管线已从 chat-markdown.ts 抽走，那边只剩白名单）。
   // `<input type="password"y>` 这种「属性间缺空格」的畸形标签 marked 的 tag 正则认不出、
   // 浏览器却认，曾绕过 renderer.html 直出成真元素（每个浏览者看到一个假密码框）。
   it('畸形标签不会经 inRawBlock 裸文本通道直出', () => {

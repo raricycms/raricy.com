@@ -9,7 +9,8 @@
 // 跑在临时 SQLite 上（tests/helpers/db.ts 有硬校验，不会碰真实库）。
 //
 // ⚠️ 本文件中标注【与 Flask 不一致】的用例，钉的是**当前实现的实际行为**，
-//    不是期望行为。修复源码时这些断言应当被翻转 —— 详见交付说明。
+//    不是期望行为。**修复源码时应当删掉那些块并改成回归用例**（别只在旁边追加新块 ——
+//    曾发生过旧块留在原地、断言已翻转，读者据旧块得出「漏洞仍在」的相反结论）。
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { resetDb, makeUser, makeBlog, makeCategory, prisma } from '../helpers/db';
@@ -30,34 +31,6 @@ import {
 } from '@/lib/blog-service';
 import { nowForDb } from '@/lib/db-time';
 import { RULES } from '@/lib/rate-limit';
-
-// ── 本地栏目工厂 ─────────────────────────────────────────────────────────────
-// 注：不用 helpers/db.ts 的 makeCategory —— 它当前是坏的（缺必填 slug、字段名
-// adminOnly 在 schema 里叫 adminOnlyPosting），调用必抛。见交付说明。
-let catSeq = 0;
-function mkCat(
-  opts: Partial<{
-    name: string;
-    slug: string;
-    isActive: boolean;
-    parentId: number | null;
-    excludeFromAll: boolean;
-    sortOrder: number;
-  }> = {}
-) {
-  const n = ++catSeq;
-  return prisma.category.create({
-    data: {
-      name: opts.name ?? `cat_${n}`,
-      slug: opts.slug ?? `slug-${n}-${Math.random().toString(36).slice(2, 8)}`,
-      isActive: opts.isActive ?? true,
-      parentId: opts.parentId ?? null,
-      excludeFromAll: opts.excludeFromAll ?? false,
-      sortOrder: opts.sortOrder ?? 0,
-      createdAt: new Date(),
-    },
-  });
-}
 
 /** 合法的最小提交体，便于只改一个字段做单变量测试。 */
 const baseInput = (over: Record<string, unknown> = {}) => ({
@@ -197,14 +170,14 @@ describe('validateBlogData / 栏目校验', () => {
   });
 
   it('栏目存在且 isActive → 通过并回填 categoryId', async () => {
-    const cat = await mkCat({ isActive: true });
+    const cat = await makeCategory({ isActive: true });
     const r = await validateBlogData(baseInput({ category_id: cat.id }));
     expect(r.ok).toBe(true);
     expect((r as { data: { categoryId: number | null } }).data.categoryId).toBe(cat.id);
   });
 
   it('category_id 传字符串数字 → 也接受（对齐 Flask 的 int() 转换）', async () => {
-    const cat = await mkCat({ isActive: true });
+    const cat = await makeCategory({ isActive: true });
     const r = await validateBlogData(baseInput({ category_id: String(cat.id) }));
     expect(r.ok, '表单/JSON 常把 id 传成字符串').toBe(true);
     expect((r as { data: { categoryId: number | null } }).data.categoryId).toBe(cat.id);
@@ -217,7 +190,7 @@ describe('validateBlogData / 栏目校验', () => {
 
   it('栏目存在但已停用（isActive=false）→ 「选择的栏目不存在」', async () => {
     // Flask 的查询条件是 filter_by(id=..., is_active=True) —— 停用栏目等同不存在
-    const cat = await mkCat({ isActive: false });
+    const cat = await makeCategory({ isActive: false });
     const r = await validateBlogData(baseInput({ category_id: cat.id }));
     expect((r as { message: string }).message, '停用栏目不得再收新文').toBe('选择的栏目不存在');
   });
@@ -426,7 +399,7 @@ describe('createBlog', () => {
 
   it('元信息落 blogs 表、正文落 blog_contents 表（分表写入）', async () => {
     const u = await makeUser();
-    const cat = await mkCat({ name: '技术' });
+    const cat = await makeCategory({ name: '技术' });
     const id = await createBlog(u.id, {
       title: '我的标题',
       description: '我的摘要',
@@ -517,7 +490,7 @@ describe('updateBlog / 变更详情文案', () => {
 
   it('未分类 → 有栏目：「栏目从《未分类》改为《技术》」', async () => {
     const u = await makeUser();
-    const cat = await mkCat({ name: '技术' });
+    const cat = await makeCategory({ name: '技术' });
     const b = await makeBlog({ authorId: u.id, title: 'T', description: 'D', content: 'C', categoryId: null });
     const r = await updateBlog(b.id, { title: 'T', description: 'D', content: 'C', categoryId: cat.id });
     expect(r.changesDetail).toEqual(['栏目从《未分类》改为《技术》']);
@@ -525,7 +498,7 @@ describe('updateBlog / 变更详情文案', () => {
 
   it('有栏目 → 未分类：「栏目从《技术》改为《未分类》」', async () => {
     const u = await makeUser();
-    const cat = await mkCat({ name: '技术' });
+    const cat = await makeCategory({ name: '技术' });
     const b = await makeBlog({ authorId: u.id, title: 'T', description: 'D', content: 'C', categoryId: cat.id });
     const r = await updateBlog(b.id, { title: 'T', description: 'D', content: 'C', categoryId: null });
     expect(r.changesDetail, '缺省名必须是「未分类」').toEqual(['栏目从《技术》改为《未分类》']);
@@ -533,8 +506,8 @@ describe('updateBlog / 变更详情文案', () => {
 
   it('栏目 A → 栏目 B：新旧名称都取真实栏目名', async () => {
     const u = await makeUser();
-    const a = await mkCat({ name: '生活' });
-    const b2 = await mkCat({ name: '技术' });
+    const a = await makeCategory({ name: '生活' });
+    const b2 = await makeCategory({ name: '技术' });
     const b = await makeBlog({ authorId: u.id, title: 'T', description: 'D', content: 'C', categoryId: a.id });
     const r = await updateBlog(b.id, { title: 'T', description: 'D', content: 'C', categoryId: b2.id });
     expect(r.changesDetail).toEqual(['栏目从《生活》改为《技术》']);
@@ -543,7 +516,7 @@ describe('updateBlog / 变更详情文案', () => {
   it('多项同时变更 → 顺序固定为 标题 / 摘要 / 栏目 / 正文', async () => {
     // 顺序即通知里的展示顺序，Flask 的 append 顺序如此，不能乱
     const u = await makeUser();
-    const cat = await mkCat({ name: '技术' });
+    const cat = await makeCategory({ name: '技术' });
     const b = await makeBlog({ authorId: u.id, title: '旧', description: '旧摘要', content: '旧正文', categoryId: null });
     const r = await updateBlog(b.id, { title: '新', description: '新摘要', content: '新正文', categoryId: cat.id });
     expect(r.changesDetail).toEqual([
@@ -559,7 +532,7 @@ describe('updateBlog / hasChanges 语义与落库', () => {
   it('提交与原值完全相同 → hasChanges=false 且 changesDetail 为空', async () => {
     // 语义要点：这是「不给作者发编辑通知」的判据 —— 误判就会骚扰用户
     const u = await makeUser();
-    const cat = await mkCat({ name: '技术' });
+    const cat = await makeCategory({ name: '技术' });
     const b = await makeBlog({ authorId: u.id, title: 'T', description: 'D', content: 'C', categoryId: cat.id });
     const r = await updateBlog(b.id, { title: 'T', description: 'D', content: 'C', categoryId: cat.id });
     expect(r.hasChanges).toBe(false);
@@ -583,7 +556,7 @@ describe('updateBlog / hasChanges 语义与落库', () => {
 
   it('变更后元信息与正文都真的落库', async () => {
     const u = await makeUser();
-    const cat = await mkCat({ name: '技术' });
+    const cat = await makeCategory({ name: '技术' });
     const b = await makeBlog({ authorId: u.id, title: '旧', description: '旧摘要', content: '旧正文' });
     await updateBlog(b.id, { title: '新', description: '新摘要', content: '新正文', categoryId: cat.id });
 
@@ -809,8 +782,8 @@ describe('parseSortParam / 非法值一律回退 created', () => {
 describe('listBlogs / 分类过滤', () => {
   it('按 slug 过滤，只返回该分类的文章', async () => {
     const u = await makeUser();
-    const tech = await mkCat({ name: '技术', slug: 'tech' });
-    const life = await mkCat({ name: '生活', slug: 'life' });
+    const tech = await makeCategory({ name: '技术', slug: 'tech' });
+    const life = await makeCategory({ name: '生活', slug: 'life' });
     await makeBlog({ authorId: u.id, title: '技术文', categoryId: tech.id });
     await makeBlog({ authorId: u.id, title: '生活文', categoryId: life.id });
 
@@ -821,8 +794,8 @@ describe('listBlogs / 分类过滤', () => {
 
   it('一级栏目包含其子栏目的文章（对齐 Flask 的 child_ids 展开）', async () => {
     const u = await makeUser();
-    const parent = await mkCat({ name: '技术', slug: 'tech' });
-    const child = await mkCat({ name: '前端', slug: 'fe', parentId: parent.id });
+    const parent = await makeCategory({ name: '技术', slug: 'tech' });
+    const child = await makeCategory({ name: '前端', slug: 'fe', parentId: parent.id });
     await makeBlog({ authorId: u.id, title: '父栏目文', categoryId: parent.id, createdAt: new Date(2026, 0, 2) });
     await makeBlog({ authorId: u.id, title: '子栏目文', categoryId: child.id, createdAt: new Date(2026, 0, 1) });
 
@@ -832,8 +805,8 @@ describe('listBlogs / 分类过滤', () => {
 
   it('二级栏目只返回自己的文章（不上溯父栏目）', async () => {
     const u = await makeUser();
-    const parent = await mkCat({ name: '技术', slug: 'tech' });
-    const child = await mkCat({ name: '前端', slug: 'fe', parentId: parent.id });
+    const parent = await makeCategory({ name: '技术', slug: 'tech' });
+    const child = await makeCategory({ name: '前端', slug: 'fe', parentId: parent.id });
     await makeBlog({ authorId: u.id, title: '父栏目文', categoryId: parent.id });
     await makeBlog({ authorId: u.id, title: '子栏目文', categoryId: child.id });
 
@@ -851,7 +824,7 @@ describe('listBlogs / 分类过滤', () => {
 
   it('分类过滤时软删除依然生效', async () => {
     const u = await makeUser();
-    const tech = await mkCat({ slug: 'tech' });
+    const tech = await makeCategory({ slug: 'tech' });
     await makeBlog({ authorId: u.id, title: '正常', categoryId: tech.id });
     await makeBlog({ authorId: u.id, title: '已删', categoryId: tech.id, ignore: true });
     const r = await listBlogs({ categorySlug: 'tech' });
@@ -861,7 +834,7 @@ describe('listBlogs / 分类过滤', () => {
   // 【回归】停用栏目必须对外隐藏（对齐 Flask filter_by(slug=..., is_active=True)）。
   it('已停用的栏目（isActive=false）按 slug 查不到文章', async () => {
     const u = await makeUser();
-    const dead = await mkCat({ slug: 'dead', isActive: false });
+    const dead = await makeCategory({ slug: 'dead', isActive: false });
     await makeBlog({ authorId: u.id, title: '停用栏目下的文章', categoryId: dead.id });
     const r = await listBlogs({ categorySlug: 'dead' });
     expect(r.blogs, '停用栏目下的文章不该能通过 slug 直接访问').toEqual([]);
@@ -869,9 +842,9 @@ describe('listBlogs / 分类过滤', () => {
 
   it('停用的子栏目不被父栏目带出来', async () => {
     const u = await makeUser();
-    const parent = await mkCat({ slug: 'p' });
-    const deadChild = await mkCat({ slug: 'dead-child', isActive: false, parentId: parent.id });
-    const liveChild = await mkCat({ slug: 'live-child', parentId: parent.id });
+    const parent = await makeCategory({ slug: 'p' });
+    const deadChild = await makeCategory({ slug: 'dead-child', isActive: false, parentId: parent.id });
+    const liveChild = await makeCategory({ slug: 'live-child', parentId: parent.id });
     await makeBlog({ authorId: u.id, title: '停用子栏目文', categoryId: deadChild.id });
     await makeBlog({ authorId: u.id, title: '正常子栏目文', categoryId: liveChild.id });
 
@@ -883,8 +856,8 @@ describe('listBlogs / 分类过滤', () => {
 describe('listBlogs / 「全部文章」的 excludeFromAll 排除', () => {
   it('excludeFromAll=true 的分类，其文章不出现在全部文章', async () => {
     const u = await makeUser();
-    const hidden = await mkCat({ slug: 'hidden', excludeFromAll: true });
-    const normal = await mkCat({ slug: 'normal' });
+    const hidden = await makeCategory({ slug: 'hidden', excludeFromAll: true });
+    const normal = await makeCategory({ slug: 'normal' });
     await makeBlog({ authorId: u.id, title: '隐藏分类文', categoryId: hidden.id });
     await makeBlog({ authorId: u.id, title: '正常文', categoryId: normal.id });
 
@@ -894,7 +867,7 @@ describe('listBlogs / 「全部文章」的 excludeFromAll 排除', () => {
 
   it('但按 slug 直接访问该分类时仍可见', async () => {
     const u = await makeUser();
-    const hidden = await mkCat({ slug: 'hidden', excludeFromAll: true });
+    const hidden = await makeCategory({ slug: 'hidden', excludeFromAll: true });
     await makeBlog({ authorId: u.id, title: '隐藏分类文', categoryId: hidden.id });
     const r = await listBlogs({ categorySlug: 'hidden' });
     expect(r.blogs.map((b) => b.title), 'exclude_from_all 只影响「全部」聚合页').toEqual(['隐藏分类文']);
@@ -906,8 +879,8 @@ describe('listBlogs / 「全部文章」的 excludeFromAll 排除', () => {
   // **所有未分类文章就从首页消失**。Flask 显式写了 (category_id IS NULL) OR (...)。
   it('存在排除栏目时，未分类（categoryId=null）文章仍出现在全部文章', async () => {
     const u = await makeUser();
-    const hidden = await mkCat({ slug: 'hidden', excludeFromAll: true });
-    const normal = await mkCat({ slug: 'normal' });
+    const hidden = await makeCategory({ slug: 'hidden', excludeFromAll: true });
+    const normal = await makeCategory({ slug: 'normal' });
     await makeBlog({ authorId: u.id, title: '未分类文', categoryId: null, createdAt: new Date(2026, 0, 3) });
     await makeBlog({ authorId: u.id, title: '正常文', categoryId: normal.id, createdAt: new Date(2026, 0, 2) });
     await makeBlog({ authorId: u.id, title: '隐藏分类文', categoryId: hidden.id, createdAt: new Date(2026, 0, 1) });
@@ -922,9 +895,9 @@ describe('listBlogs / 「全部文章」的 excludeFromAll 排除', () => {
   // 【回归】排除必须级联到子栏目（Flask 遍历 ec.children）。
   it('excludeFromAll 的栏目，其子栏目的文章也不出现在全部文章', async () => {
     const u = await makeUser();
-    const hidden = await mkCat({ slug: 'hidden', excludeFromAll: true });
-    const hiddenChild = await mkCat({ slug: 'hidden-child', parentId: hidden.id });
-    const normal = await mkCat({ slug: 'normal' });
+    const hidden = await makeCategory({ slug: 'hidden', excludeFromAll: true });
+    const hiddenChild = await makeCategory({ slug: 'hidden-child', parentId: hidden.id });
+    const normal = await makeCategory({ slug: 'normal' });
     await makeBlog({ authorId: u.id, title: '子栏目文', categoryId: hiddenChild.id, createdAt: new Date(2026, 0, 2) });
     await makeBlog({ authorId: u.id, title: '正常文', categoryId: normal.id, createdAt: new Date(2026, 0, 1) });
 
@@ -935,7 +908,7 @@ describe('listBlogs / 「全部文章」的 excludeFromAll 排除', () => {
   // 【回归】排除逻辑与 featured 无关（Flask 只看有没有传 category_slug）。
   it('精选页同样排除 excludeFromAll 的栏目', async () => {
     const u = await makeUser();
-    const hidden = await mkCat({ slug: 'hidden', excludeFromAll: true });
+    const hidden = await makeCategory({ slug: 'hidden', excludeFromAll: true });
     const a = await makeBlog({ authorId: u.id, title: '隐藏栏目的精选文', categoryId: hidden.id });
     await prisma.blog.update({ where: { id: a.id }, data: { isFeatured: true } });
 
@@ -1160,7 +1133,9 @@ describe('toggleLike / 目标文章不存在', () => {
 });
 
 describe('toggleLike / 限频（RULES.likeHourly —— 数值不写死）', () => {
-  it('打满小时额度后 → { rateLimited: true }', async () => {
+  // 每次都是真实的 toggleLike（落库 + 通知），实测单跑 2.2s、4 worker 并行下会吃掉
+  // 5s 默认超时（已实测偶发红）。与 auth-login-ratelimit 的「百次循环」同款处理：显式放宽。
+  it('打满小时额度后 → { rateLimited: true }', { timeout: 20_000 }, async () => {
     const u = await makeUser();
     const b = await makeBlog({});
     // 循环上界从 RULES 取：写死数字的话，放宽配额时这条会以「第 N 次应仍在额度内」

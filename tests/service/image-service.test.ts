@@ -351,7 +351,7 @@ describe('storagePathFor（磁盘路径）', () => {
     }
   });
 
-  it('⚠️ storagePathFor 不校验 id —— 恶意 id 可逃出目录（记录现状，见交付说明）', async () => {
+  it('⚠️ storagePathFor 不校验 id —— 恶意 id 可逃出目录（记录现状）', async () => {
     // 现实中 id 只来自 generateImageId() 或 DB 查询命中的行，攻击者无法注入。
     // 但函数本身没有防线：一旦将来有调用方把用户输入直接当 id 传进来就会穿越。
     const escaped = path.resolve(storagePathFor('../../../etc/passwd', 'image/png'));
@@ -504,7 +504,7 @@ describe('getUserUsedBytes（已用字节）', () => {
     await softDeleteImage(img.id);
     expect(
       await getUserUsedBytes(u.id),
-      '软删后配额必须释放（磁盘文件仍在，是已知的空间泄漏 —— 见交付说明）'
+      '软删后配额必须释放（磁盘文件仍在，是已知的空间泄漏）'
     ).toBe(0);
   });
 
@@ -516,7 +516,8 @@ describe('getUserUsedBytes（已用字节）', () => {
 
     const used = await getUserUsedBytes(u.id);
     // 如实记录：Prisma 的 `ignore: false` 过滤在 SQL 里是 `ignore = 0`，NULL 不等于 0，
-    // 故 NULL 行不会被计入 —— 见交付说明「可疑之处」。
+    // 故 NULL 行不会被计入。与 Flask 侧「ignore 默认 False」的口径不一致，属已知差异。
+    // 【修复后删掉本块，改为回归用例】
     expect(used, `NULL ignore 行的计入行为（实测 used=${used}）`).toBe(0);
   });
 });
@@ -886,7 +887,8 @@ describe('listAllImages（管理端）', () => {
       await makeImage({ authorId: u.id, filename: 'b.png' });
 
       // Prisma 的 contains 在 SQLite 上直接拼进 LIKE，不转义通配符。
-      // 不是注入（值仍是绑定参数），但管理端搜索 '%' 会当成「全部」。见交付说明。
+      // 不是注入（值仍是绑定参数），但管理端搜索 '%' 会当成「全部」。
+      // 【修复后删掉本块，改为回归用例】
       expect(
         (await listAllImages(1, '%')).total,
         '如实记录：% 被当作 LIKE 通配符，命中全部 2 张'
