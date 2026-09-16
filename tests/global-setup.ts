@@ -45,8 +45,13 @@ function pidOf(file: string): number | null {
  * 终端的 vitest**，代价是自己漏出来的库也要躺满 24h。改成探活后，
  * 活跃的那个进程还在 → 不动；死掉的 → 本次启动就收。
  *
- * 残留风险只有一种：pid 被复用（旧库的 pid 正好等于某个无关的新进程）。
- * 概率低，且兜底有 STALE_MS —— 真撞上也只是少收一个文件。
+ * 【残留风险两类，都靠 STALE_MS 兜底】
+ *   1. pid 被复用 —— 旧库的 pid 正好等于某个无关的新进程。
+ *   2. EPERM 假阳性 —— pid 表里确实有这个号，但它属于**系统长驻进程**，不是 vitest。
+ *      实测这台机器 44 个 test-*.db 里有 25 个栽在这里（最老的躺了一周），
+ *      因为「进程存在但不归我管」与「另一个用户的 vitest」从 errno 分不开。
+ * 所以 EPERM 不再直接判活，而是退回年龄判断：年轻的不动（保住同机并发那个场景），
+ * 超过 STALE_MS 的收掉（否则上面那 25 个永远不会被回收）。
  */
 function sweepStale() {
   const cutoff = Date.now() - STALE_MS;
@@ -61,8 +66,12 @@ function sweepStale() {
         process.kill(pid, 0);
         alive = true;
       } catch (e) {
-        // EPERM = 进程存在但不是我的（保留）；ESRCH = 已死（回收）。
-        alive = (e as NodeJS.ErrnoException).code === 'EPERM';
+        // EPERM = 进程存在但不是我的：可能是另一个用户的 vitest（保留），
+        // 也可能是 pid 撞上系统长驻进程（假阳性）。两者分不开 → 退回年龄判断。
+        // ESRCH = 已死（回收）。
+        alive =
+          (e as NodeJS.ErrnoException).code === 'EPERM' &&
+          fs.statSync(full).mtimeMs >= cutoff;
       }
     }
 

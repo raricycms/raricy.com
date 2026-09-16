@@ -174,9 +174,14 @@ export function loadSnapshot(): number {
 if (process.env.NODE_ENV !== 'test') loadSnapshot();
 
 // 进程正常退出（发版 / PM2 stop）时尽力补一次落盘：'exit' 回调里只能做同步 IO。
-process.on('exit', () => {
-  if (dirty) flushSnapshot();
-});
+// 与上面的 loadSnapshot 对称：测试环境既不读也不写 —— 否则会把测试桶写进生产快照
+// （要靠 tests/setup.ts 的 RATE_LIMIT_SNAPSHOT_PATH 兜底，但守卫不该只靠调用方自觉）。
+// 测持久化的用例会显式调 flushSnapshot()，不受这里影响。
+if (process.env.NODE_ENV !== 'test') {
+  process.on('exit', () => {
+    if (dirty) flushSnapshot();
+  });
+}
 
 /** 仅供测试：清空所有计数桶与脏标记。 */
 export function __resetRateLimitStore() {
