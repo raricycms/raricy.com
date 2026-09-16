@@ -8,15 +8,26 @@ import type { CollectionResult } from '@/lib/story-service';
 // 【为什么单独一个文件】这两处原本各写了一份一模一样的合集渲染（hero + 面包屑 +
 // 返回 + 卡片网格），只有「根合集取不到 description 时兜底一句抬头文案」这一点不同。
 // 复制的那份迟早 drift —— 改文案时只改一边，就是下一次「首页说的和故事页说的不一样」。
-export function CollectionView({ data }: { data: CollectionResult }) {
+export function CollectionView({
+  data,
+  fallbackDescription,
+}: {
+  data: CollectionResult;
+  /**
+   * 合集的 info.json 没写 description 时显示的兜底抬头文案。
+   * **只有根合集会传**：子合集是数据，作者没写简介就不该被塞一句站级套话。
+   */
+  fallbackDescription?: string;
+}) {
   const { info, children, breadcrumbs } = data;
   const basePath = breadcrumbs.length ? breadcrumbs[breadcrumbs.length - 1].path : '';
+  const description = info.description || fallbackDescription || '';
 
   return (
     <>
       <section className="story-hero">
         <h1>{info.title}</h1>
-        {info.description && <p>{info.description}</p>}
+        {description && <p>{description}</p>}
       </section>
 
       <div className="container">

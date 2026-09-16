@@ -43,7 +43,7 @@ export default async function HomePage() {
                 <div className="card-body home-text-center">
                   <span className="feature-icon" aria-hidden="true"></span>
                   <h4 className="card-title" style={{ marginBottom: '0.75rem' }}>故事/小说</h4>
-                  <p className="card-text">聪明山故事集，这里有一些聪明山的原创故事和小说，也有代发的原创小说。</p>
+                  <p className="card-text">聪明山故事集，收录站内作者创作的原创小说与互动故事。</p>
                   <span className="home-btn home-btn--outline-primary home-btn--sm">开始阅读</span>
                 </div>
               </Link>
