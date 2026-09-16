@@ -12,7 +12,7 @@
 // 【风险与配套】白名单一生效，那个账号的唯一反滥用闸门就只剩「可撤销」这一层 ——
 // 它成为一根共享管道（A → 银行 → B 可以绕开每人 30/时的限制）。所以：
 //   · 只给真正需要的账号开口子，且额度仍是有限的（500/时、5000/天）；
-//   · 出事时的三档手段：移出白名单 → 禁言 → 封号（见 docs/fish-bot.md §4）。
+//   · 出事时的三档手段：移出白名单 → 禁言 → 封号（见 docs/bot/fish-bot.md §4）。
 //
 // 【按 user id 而不是用户名】用户名虽然不可改（updateOwnProfile 里没有这个字段），
 // 但 id 是更强的身份锚点，且不会因为「某人注册了个同名账号」之类的将来变化而漂移。
@@ -38,7 +38,7 @@ export function isServiceAccount(userId: string): boolean {
  *
  * 【为什么只抬转账这两条】无状态接口那条 20 次/分/账号是 **CPU 闸门**（每次请求
  * 都要跑一次 scrypt），不是业务额度 —— 站外银行的热循环应该用会话（登录一次
- * cookie 有效 30 天），会话路径根本不消耗它。见 docs/fish-bot.md §4。
+ * cookie 有效 30 天），会话路径根本不消耗它。见 docs/bot/fish-bot.md §4。
  */
 export const SERVICE_QUOTA = {
   transferHourly: { limit: 500, windowMs: 60 * 60 * 1000 },

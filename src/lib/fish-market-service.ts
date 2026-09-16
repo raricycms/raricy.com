@@ -195,7 +195,7 @@ export async function findTransferTargetByUsername(
  * 【幂等键】`opts.clientIdempotencyKey` 由调用方提供（站外脚本 / 收银台）时：
  * 同一个键 + **同样的收款人/金额/留言** 重发 = 返回原结果、绝不重复转账；
  * 同一个键配不同的参数 = 409（不静默改单）；上一笔还在处理中 = 409（可稍后用同键重试）。
- * 不提供时由服务端生成随机键 —— 此时**重试就是再转一笔**（见 docs/fish-bot.md §6）。
+ * 不提供时由服务端生成随机键 —— 此时**重试就是再转一笔**（见 docs/bot/fish-bot.md §6）。
  *
  * @param note 可选留言（同一句话进双方流水的描述与远端记账的 description）
  * @param opts.clientIdempotencyKey ≤48 位，`[A-Za-z0-9_.:-]`

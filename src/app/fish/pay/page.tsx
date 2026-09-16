@@ -10,7 +10,7 @@ import {
 import PayForm from '../PayForm';
 import PayErrorCard from '../PayError';
 
-// 收银台 —— 站外商户把用户送到这里付款（协议见 docs/fish-bot.md §9）。
+// 收银台 —— 站外商户把用户送到这里付款（协议见 docs/bot/fish-bot.md §9）。
 //
 // 设计要点：
 //   · 参数全部来自 URL、**一律不可信**：只用于展示与预填；钱的事一律由服务端复核

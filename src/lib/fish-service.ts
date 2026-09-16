@@ -147,7 +147,7 @@ function applyTypeFilter(where: Prisma.FishTransactionWhereInput, type?: string 
  *
  * 【已知边界（文档同步）】转账被远端故障回滚时，那两条流水会被**删除**。
  * 对账方若「一看见就入账」，可能入了一笔随后消失的钱 —— 所以拉取时请留一个
- * 小滞后（只处理 createdAt 早于 now-10s 的行），见 docs/fish-bot.md §3.4。
+ * 小滞后（只处理 createdAt 早于 now-10s 的行），见 docs/bot/fish-bot.md §3.3.1。
  */
 export async function getTransactionsSince(
   userId: string,

@@ -28,7 +28,7 @@ Next.js 15 + Prisma + SQLite 单进程部署，自有 `instance/` 数据目录�
 | `prisma/`      | schema.prisma + migrations/（手写 SQL，见 `docs/deploy.md` §4） |
 | `scripts/`     | 自检 / 运维 / 数据补偿脚本（详见下方「工具脚本」） |
 | `tests/`       | vitest 单测 + Playwright e2e |
-| `docs/`        | 全部文档 —— `docs/guide/` 给玩家与创作者，其余给开发运维。见 `docs/README.md` |
+| `docs/`        | 全部文档 —— `docs/guide/` 给玩家与创作者、`docs/bot/` 给站外机器人开发者，其余给开发运维。见 `docs/README.md` |
 | `instance/`    | 运行时数据（gitignored）：avatars / database / images / stories / stickers |
 | `public/`      | 静态资源（图标 / CSS / favicon） |
 

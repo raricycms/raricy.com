@@ -70,7 +70,7 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 ### CSRF / 中间件
 - **鱼干市场的三个接口（transfer / balance / transactions）有两个门**：有会话走会话，
   没有会话就读请求体里的 `username` + `password`（站外脚本「单次发包」，见
-  `src/app/api/fish/market/_auth.ts` 与 `docs/fish-bot.md`）。改这几个接口的**权限或
+  `src/app/api/fish/market/_auth.ts` 与 `docs/bot/fish-bot.md`）。改这几个接口的**权限或
   限频**时必须两个门一起看 —— 只改会话那半，凭据那半就是绕过口。
   凭据校验与 `/api/auth/login` **共用同一份实现与同一对限频桶**
   （`src/lib/credential-auth.ts`）：同一份凭据、同一个撞库预算，别各抄一份。
@@ -111,7 +111,7 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
   三条：同键同参数 → 返回原结果（`duplicated: true`，不重复转账）；同键不同参数 →
   409；上一笔在途 → 409。去重**依赖账本行**（唯一键 + payload 比对），所以 dev
   fallback 下不去重 —— 生产不会出现该状态（未配账户服务时直接 503）。
-  站外银行 / 记账机器人一律该带键，见 `docs/fish-bot.md` §6。
+  站外银行 / 记账机器人一律该带键，见 `docs/bot/fish-bot.md` §6。
 - **服务账号配额白名单**：`FISH_SERVICE_ACCOUNTS`（逗号分隔的 user id）里的账号
   在转账时走 `service-accounts.ts` 的 `SERVICE_QUOTA`（500/时、5000/天），其余人
   走 `RULES`。抬配额 = 拿掉那个账号的反滥用闸门，所以是可撤销的运维决定 ——
@@ -154,8 +154,8 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 - `src/lib/rate-limit.ts` 的 `RULES` 是**多数**配额的唯一权威，但**不是全部**：OAuth 的三条
   （authorize 30/min/user、token 60/min/clientId、userinfo 600/min/user）是各 route 里内联的
   字面量，不在 `RULES` 里 —— 改 OAuth 限频要去 `src/app/api/oauth/*/route.ts` 找。
-- **对外文档会复述数值**，这是刻意的（站外读者要能自包含）：`docs/chat-bot.md` §10 镜像了
-  讨论那 7 条，`docs/fish-bot.md` §4 镜像了转账、市场无状态接口与凭据校验失败的配额，
+- **对外文档会复述数值**，这是刻意的（站外读者要能自包含）：`docs/bot/chat-bot.md` §10 镜像了
+  讨论那 7 条，`docs/bot/fish-bot.md` §4 镜像了转账、市场无状态接口与凭据校验失败的配额，
   `docs/guide/` 的投票 / 图床指南也各写了一份。改 `RULES` 数值时记得同步它们，
   否则就是下一次 drift。
 - 单进程语义；多实例部署需换 Redis（已知限制）。
@@ -250,7 +250,8 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 
 ## 文档
 
-- **`docs/README.md`** —— 全部文档的索引（`docs/guide/` 给玩家与创作者，其余给开发运维）。
+- **`docs/README.md`** —— 全部文档的索引（分三层：`docs/guide/` 给玩家与创作者、
+  `docs/bot/` 给站外机器人开发者、根下给开发运维）。
 - **`README.md`** —— 快速开始 / 命令一览 / 部署要点。
 - 迁移清单以 `npm run migrate -- status` 为准 —— 别在文档里维护副本，会落后。
   几条需要背景的：`0_init` 是从原 db.db 反向生成的基线；`3_fish_integer_units`

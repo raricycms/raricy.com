@@ -85,7 +85,7 @@
 | `/api/blogs` · `/api/blogs/[id]` · `/api/spider/*` | API | 博客 API + 爬虫 API |
 | `/api/auth/authentic` · `/zhh` | API + route | 邀请码升 core · 邀请码生成（站长） |
 | `/fish` · `/fish/transactions` · `/api/fish/*` | page + API | 小鱼干面板 + 流水 |
-| `/fish/market` · `/api/fish/market/*` | page + API | 鱼干市场（第一期只有**用户间转账**，无手续费）：`POST transfer`（支持客户端幂等键）/ `GET users`（收款人搜索）/ `POST balance`、`POST transactions`（站外脚本用的无状态查询，含 `since_id` 对账游标）/ `POST pay`（收银台专用）。写路径见 §6.3；对外契约见 `docs/fish-bot.md` |
+| `/fish/market` · `/api/fish/market/*` | page + API | 鱼干市场（第一期只有**用户间转账**，无手续费）：`POST transfer`（支持客户端幂等键）/ `GET users`（收款人搜索）/ `POST balance`、`POST transactions`（站外脚本用的无状态查询，含 `since_id` 对账游标）/ `POST pay`（收银台专用）。写路径见 §6.3；对外契约见 `docs/bot/fish-bot.md` |
 | `/fish/pay` | page | **收银台**：站外商户把用户送来付款（`?to= &amount= &note= &from= &return=`）。参数一律不可信，只做展示；付款必须**已登录 + 再输一次密码**（step-up），密码只输在本站域名下。不入索引 |
 | `/fish/collect` | page | **扫码收款页**：`?to=<用户名>`，扫「鱼干收款码」落到这里。与收银台的区别是**金额由付款人自己填**（静态码不可能带金额）。前端是 `/fish/pay` 的**同一个组件**（`src/app/fish/PayForm.tsx`）的另一个变体，step-up 与幂等键完全共用 |
 | `/api/poster/profile/[id]` · `/api/poster/collect` | API | **画报 / 收款码出图**（PNG，仅本人）。渲染管线与四条约束见 §6.8 |

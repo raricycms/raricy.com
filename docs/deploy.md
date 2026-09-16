@@ -70,7 +70,7 @@ vim .env
 | `ALLOWED_ORIGINS` | ⚠️ | CSRF 白名单 | 必填或反代必透传 `X-Forwarded-Host` |
 | `COOKIE_SECURE` | 可选 | cookie `Secure` 标记 | 配错则登录"成功但不粘" |
 | `ACCOUNT_SERVICE_*` | ⚠️ | 账户微服务连接 | 投喂/签到/注册/CLI → 503 |
-| `FISH_SERVICE_ACCOUNTS` | 可选 | 鱼干服务账号白名单（逗号分隔的 **user id**）：转账配额 30/200 → 500/5000，给站外银行这类自动化账号用（`docs/fish-bot.md` §4） | 留空 = 无人享受高配额，不影响其他功能 |
+| `FISH_SERVICE_ACCOUNTS` | 可选 | 鱼干服务账号白名单（逗号分隔的 **user id**）：转账配额 30/200 → 500/5000，给站外银行这类自动化账号用（`docs/bot/fish-bot.md` §4） | 留空 = 无人享受高配额，不影响其他功能 |
 | `AVATARS_DIR` / `IMAGE_UPLOAD_FOLDER` / `STORIES_DIR` / `STICKERS_DIR` | 可选 | 头像 / 图床 / 故事 / 表情包路径（缺省是 `./instance/...`） | 找不到头像/图床 → 404；**找不到表情素材则全站表情静默降级成纯文本 token**（启动时打一行 warn），见 `docs/guide/表情包使用指南.md` |
 
 ### `SECRET_KEY` 的硬要求
