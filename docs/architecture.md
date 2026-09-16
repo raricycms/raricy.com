@@ -13,7 +13,7 @@
 | 鉴权 | JWT（`jose`）· 密码哈希与历史 werkzeug **双向互通**（用户无需改密） |
 | 会话 | JWT cookie + `User.sessionVersion` 失效机制（对齐旧 Flask-Login 的 `session_version`） |
 | CSRF | `src/middleware.ts` 对状态变更方法校验 `Origin`/`Referer` 同源 |
-| 文件落盘 | 头像/图床/故事落 `instance/`（gitignored） |
+| 文件落盘 | 头像/图床/故事/表情包落 `instance/`（gitignored，六个子目录见 §3） |
 | 鱼干账户 | 独立 FastAPI 微服务（本仓**只**通过 HTTP 调用，本仓无 Python） |
 | 渲染 | 博客 / 评论 / 故事 — 客户端 marked + DOMPurify（详见 §6.7） |
 | 测试 | vitest 单测 + Playwright e2e |
@@ -49,7 +49,9 @@
                      │ │   └── db.db    │
                      │ ├── avatars/     │   ⟨gitignored 部署时挂载⟩
                      │ ├── images/      │
-                     │ └── stories/     │
+                     │ ├── stories/     │
+                     │ ├── stickers/    │
+                     │ └── blogs/       │   ⟨Flask 遗留，当前无写入⟩
                      └──────────────────┘
 ```
 
@@ -72,7 +74,7 @@
 ├── tests/                  vitest 单测 + Playwright e2e
 ├── docs/                   本文与运维文档；guide/ 为玩家/创作者文档
 ├── public/                 静态资源（图标 / CSS / favicon）
-└── instance/               gitignored: avatars/ database/ images/ stories/
+└── instance/               gitignored: avatars/ database/ images/ stories/ stickers/ blogs/
 ```
 
 ## 4. 路由分布（src/app/）
@@ -103,7 +105,7 @@
 | （无 URL）`forbidden.tsx` | 特殊文件 | 403 页本身；由 `forbidden()` 原地渲染，**不是** `/forbidden` 路由 |
 | `/sitemap.xml` · `/robots.txt` | route | sitemap.ts / robots.ts |
 | `/api/avatar/[id]` · `/api/images/[id]/raw` | API | 头像 / 图床原生分发 |
-| `/u/[username]` | page | 公开用户主页 |
+| `/u/[id]` | page | 公开用户主页（**段名是用户 id（UUID），不是 username**）|
 
 ## 5. 业务逻辑层（src/lib/）
 
@@ -209,7 +211,7 @@ GET/HEAD/OPTIONS 视为安全方法，不校验。
 | 头像 | `instance/avatars/<uuid>.png`（或 `AVATARS_DIR` 覆盖） | **无上传入口**：注册时 `avatarPath` 留空，头像由读取入口按 id 确定性生成；磁盘上的 `.png` 只有 Flask 时代的存量文件 | `src/app/api/avatar/[id]/route.ts`（有文件则回放，否则 `generateIdenticonSvg` 兜底，永不 404） |
 | 图床 | `instance/images/<id><ext>`（或 `IMAGE_UPLOAD_FOLDER` 覆盖） | `src/lib/image-upload.ts` — sharp 压缩 + MIME 嗅探 + 配额累计 | `src/app/api/images/[id]/raw/route.ts` |
 | 故事 | `instance/stories/<合集>/<故事>.md\|.cattca`（或 `STORIES_DIR` 覆盖） | 服务端直接落盘 | `src/lib/story-service.ts` 服务端 marked |
-| 表情包 | `instance/stickers/<合集>/<表情>.{gif,webp,png,jpg}`（或 `STICKERS_DIR` 覆盖） | **无上传入口**：站长直接往目录里拷文件 | `src/app/api/stickers/[collection]/[name]/route.ts`（查扫盘 manifest，见 `src/lib/sticker-service.ts`） |
+| 表情包 | `instance/stickers/<合集>/<表情>.{gif,webp,png,jpg,jpeg}`（或 `STICKERS_DIR` 覆盖） | **无上传入口**：站长直接往目录里拷文件 | `src/app/api/stickers/[collection]/[name]/route.ts`（查扫盘 manifest，见 `src/lib/sticker-service.ts`） |
 
 磁盘目录必须**真实存在**（生产用 systemd/Data卷/挂载点），`node scripts/check-instance.mjs` 一键建好骨架。
 

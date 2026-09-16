@@ -10,7 +10,8 @@ Next.js 15 + Prisma + SQLite 单进程部署，自有 `instance/` 数据目录�
 ## 技术栈
 
 - **框架**：Next.js 15 App Router + React 19 + TypeScript
-- **ORM**：Prisma 6，SQLite，`file:../instance/database/db.db`
+- **ORM**：Prisma 6，SQLite —— 开发库 `instance/database/dev.db`（见 `.env`），
+  生产库 `db.db`（见 `.env.production.example`）。**两者是不同的文件**，别按文档去改错那个
 - **会话**：JWT（`jose`）+ `session_version` 失效机制
 - **认证**：密码哈希与历史 werkzeug **互通**，用户**无需重置密码**
 - **服务边界**：站点单进程；账户微服务（FastAPI）独立仓库部署
@@ -29,13 +30,13 @@ Next.js 15 + Prisma + SQLite 单进程部署，自有 `instance/` 数据目录�
 | `scripts/`     | 自检 / 运维 / 数据补偿脚本（详见下方「工具脚本」） |
 | `tests/`       | vitest 单测 + Playwright e2e |
 | `docs/`        | 全部文档 —— `docs/guide/` 给玩家与创作者、`docs/bot/` 给站外机器人开发者，其余给开发运维。见 `docs/README.md` |
-| `instance/`    | 运行时数据（gitignored）：avatars / database / images / stories / stickers |
+| `instance/`    | 运行时数据（gitignored）：avatars / database / images / stories / stickers / blogs |
 | `public/`      | 静态资源（图标 / CSS / favicon） |
 
 ## 快速开始
 
 ```bash
-node scripts/check-instance.mjs         # 首次创建 instance/{avatars,database,images,stories,stickers}
+node scripts/check-instance.mjs         # 首次创建 instance/{avatars,database,images,stories,stickers,blogs}
 npm ci                                   # 严格按 lockfile 装（不要 npm install）
 cp .env.example .env                     # 填 SECRET_KEY / FISH_ENCRYPTION_KEY
 npm run prisma:generate                  # 生成 Prisma Client

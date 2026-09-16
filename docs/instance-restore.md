@@ -12,9 +12,13 @@
 | `instance/avatars/` | 483 个 PNG | 用户头像 |
 | `instance/images/` | 988 个文件 | 图床 |
 | `instance/stories/` | 8 个合集 / 289 个文件 | `.md` / `.cattca` / `info.json` |
-| `instance/stickers/` | 视站长放进来的素材而定 | 表情图 + 可选 `info.json`（`.gitignore` 掉，**授权来自第三方的图不入库**） |
-| `instance/blogs/` | 6195 个文件 | 历史遗留目录，当前无写入 |
+| `instance/blogs/` | 6195 个**空目录**（0 文件）| 历史遗留目录，当前无写入 |
 | `instance/app.db` | 0 字节 | 空壳，忽略 |
+
+> ⚠️ **归档里没有 `instance/stickers/`**。它由 `scripts/check-instance.mjs` 在还原时建出来，
+> 但**内容是空的** —— 表情素材是站长手工放进去的、且**刻意不入库**（授权来自第三方的图
+> 不能进公开仓库）。所以从 `instance.zip` 还原的实例，表情是缺的，需要单独取回素材再放进去。
+> 缺素材时全站表情会静默降级成纯文本 token（`[@合集/表情]` 原样显示），不报错。
 
 归档里的库离「可用」差两件事，也正是下面第 2、3 步要做的：
 

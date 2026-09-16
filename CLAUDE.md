@@ -7,7 +7,8 @@ This file provides guidance to Claude Code when working with code in this reposi
 raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 图床 / 投票。
 
 - **Next.js 15** App Router + React 19 + TypeScript
-- **Prisma 6** 直连 SQLite（`file:../instance/database/db.db`）
+- **Prisma 6** 直连 SQLite —— 开发库 `instance/database/dev.db`（`.env`），生产库 `db.db`
+  （`.env.production.example`）。**两个不同的文件**，文档里笼统说「db.db」是旧笔误
 - **JWT** 会话 + `session_version` 失效机制（对齐旧 Flask-Login）
 - **FastAPI 账户微服务** 独立仓库部署，本仓通过 HTTP 调用
 - **迁移走手写 SQL**（**不要用 `prisma migrate`**）—— 详见下面「数据库迁移」

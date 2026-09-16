@@ -1,11 +1,11 @@
 #!/usr/bin/env tsx
 // ─────────────────────────────────────────────────────────────────────────────
-// prepare-cutover.mjs —— 把切换手册 §3.2~§3.6 的数据库那半段串成一条命令
+// prepare-cutover.mjs —— 把 docs/deploy.md「数据库准备」那半段串成一条命令
 //
-// 【为什么要有】手册那 7 步全靠人肉按顺序敲，而它们**有严格的先后依赖**，
+// 【为什么要有】手册那几步全靠人肉按顺序敲，而它们**有严格的先后依赖**，
 // 且每一步都得验完才能走下一步：
 //   · 备份没验就规整 → 出事时才发现备份是坏的，等于没备份
-//   · 没停 Flask 就规整 → 丢掉规整开始之后写入的行，而且**事后完全看不出来**
+//   · 没停掉写源库的进程就规整 → 丢掉规整开始之后写入的行，而且**事后完全看不出来**
 //   · 规整后没验墙上时间 → 全站时间静默漂 8 小时
 //   · 补偿没先 dry-run → 直接改 465 个用户的余额
 //   · 密钥没验就起服务 → 上线后被用户投诉才发现鱼干全废，而这一步不可逆
@@ -18,8 +18,9 @@
 //   4. 补偿未翻牌的签到（默认只预演）
 //   5. 跑 diagnose（含 SECRET_KEY 能否解开存量密文 —— 唯一不可逆的那步）
 //
-// 【它不做什么】停 Flask、起服务、切 nginx、TLS —— 那些依赖具体机器，
-// 手册 §3.1 / §3.7 / §3.8 讲得清楚，也该由人看着做。
+// 【它不做什么】停旧服务、起服务、切 nginx、TLS —— 那些依赖具体机器，
+// docs/deploy.md 的「依赖安装 + 构建 + 启动」/「nginx 反代」/「TLS 与会话 cookie」三节讲得清楚，
+// 也该由人看着做。
 //
 // 用法：
 //   # 预演（默认）—— 只读源库，产出规整后的新库，补偿只打印不写
@@ -94,8 +95,8 @@ step(0, '源库是否已停止写入');
 // 写入的行，而且**事后完全看不出来** —— 数据就是少了几条，没有任何报错。
 const wal = source + '-wal';
 if (fs.existsSync(wal) && fs.statSync(wal).size > 0) {
-  console.log(`  ${yellow('!')} 存在非空的 WAL（${fs.statSync(wal).size} 字节）—— Flask 可能还在跑`);
-  console.log(`     ${yellow('→ 先停掉 Flask（手册 §3.1）再来。带着写入做规整会静默丢数据')}`);
+  console.log(`  ${yellow('!')} 存在非空的 WAL（${fs.statSync(wal).size} 字节）—— 还有进程在写这个库`);
+  console.log(`     ${yellow('→ 先停掉它再来。带着写入做规整会静默丢数据，且事后看不出来')}`);
 } else {
   ok('未见活跃 WAL');
 }
@@ -252,7 +253,7 @@ if (sha(source) === sourceShaBefore) {
 
 console.log(bold('\n═══ 结论 ═══'));
 if (failed) {
-  console.log(red(`  ❌ ${failed} 项未通过 —— 别往下走（手册 §3.7 起服务之前必须全绿）\n`));
+  console.log(red(`  ❌ ${failed} 项未通过 —— 别往下走（起服务之前必须全绿）\n`));
   process.exit(1);
 }
 if (!apply && pending) {
@@ -260,4 +261,4 @@ if (!apply && pending) {
   process.exit(0);
 }
 console.log(green('  ✅ 数据库这半段准备就绪。'));
-console.log('     接下来是手册 §3.5 配 .env、§3.6 npm ci + build、§3.7 起服务、§3.8 切 nginx。\n');
+console.log('     接下来见 docs/deploy.md：§3 配 .env、§5 npm ci + build 与起服务、§6 切 nginx。\n');

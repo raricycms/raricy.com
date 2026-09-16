@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 // ─────────────────────────────────────────────────────────────────────────────
-// smoke.mjs —— 切换后的线上冒烟：把手册 §3.9 那批手工清单跑成一条命令
+// smoke.mjs —— 切换后的线上冒烟：把 docs/deploy.md §9「上线前自检」那批手工清单跑成一条命令
 //（11 条 + 4 个指南页；指南页那 4 条查的是正文而非状态码，见下方 §2b）
 //
 // 【为什么要有】切完 nginx 是凌晨，手册让你挨个点 11 样东西：首页、文章列表、详情、
@@ -163,7 +163,7 @@ try {
   if (same.status === 403) {
     bad(
       '同源请求也被当成 CSRF 拒了 —— 全站 POST 都会挂',
-      'nginx 少了 proxy_set_header X-Forwarded-Host $http_host，或 ALLOWED_ORIGINS 没配/配错（见 §3.8）'
+      'nginx 少了 proxy_set_header X-Forwarded-Host $http_host，或 ALLOWED_ORIGINS 没配/配错（见 docs/deploy.md §6 的 nginx 配置块）'
     );
   } else if (same.status === 500) {
     bad('登录接口 500', '多半是库没规整（Conversion failed）或 SECRET_KEY 不对，看 journalctl -u raricy-next');
@@ -204,7 +204,7 @@ if (!user || !pass) {
           `登录成功但登录态没粘住 —— 服务端给 http 站点下发了 Secure cookie（${droppedSecure.join(', ')}），浏览器会直接丢掉`,
           '要么把站点配成 HTTPS（推荐），要么临时设 COOKIE_SECURE=false（仅内网调试）。' +
             '若已在 nginx 后跑 HTTPS，那是 proxy_set_header X-Forwarded-Proto $scheme 漏了 —— ' +
-            'Next 靠它才知道对外是 https（见 §3.8）'
+            'Next 靠它才知道对外是 https（见 docs/deploy.md §6）'
         );
       } else {
         bad(
@@ -259,7 +259,7 @@ if (!user || !pass) {
     if (r.status === 413) {
       bad(
         '2MB 上传被回 413 —— nginx 把请求挡在门外了，图床只能传 1MB 以下的图',
-        'nginx 加 client_max_body_size 12m（见 §3.8 与 nginx.conf.example）'
+        'nginx 加 client_max_body_size 12m（见 docs/deploy.md §6 顶部的配置块）'
       );
     } else if (r.status === 400) {
       ok('2MB 请求穿过了 nginx（应用以 400 拒掉非法内容，未存任何数据）');

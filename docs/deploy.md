@@ -10,11 +10,11 @@
 | OS | Linux（Debian/Ubuntu/CentOS 全适用） | |
 | Node.js | ≥ 20.0.0 | 项目在 22 上实测 |
 | npm | ≥ 10 | `npm ci` 需要 |
-| SQLite | 库本身系统自带 | 应用走 Prisma 自带的 sqlite 引擎；运维脚本走 Node 内置 `node:sqlite` —— **不依赖 `better-sqlite3`**。但 `npm run prepare:cutover`（§3）与备份验证（§10）都调用系统 `sqlite3` **命令行**，用这两条路径就得装它（`apt install sqlite3`） |
+| SQLite | 库本身系统自带 | 应用走 Prisma 自带的 sqlite 引擎；运维脚本走 Node 内置 `node:sqlite` —— **不依赖 `better-sqlite3`**。但 `npm run prepare:cutover`（§4）与备份验证（§10）都调用系统 `sqlite3` **命令行**，用这两条路径就得装它（`apt install sqlite3`） |
 | nginx | 可选（直连 `:3000` 也行） | 推荐，反代配 cookie/CSRF 关键头 |
 | systemd | 可选 | 推荐，开机自启 + 自动重启 |
 | 账户服务 | 独立仓库部署；与本站 **HTTP 可达** | 否则鱼干写路径 fail-closed 503 |
-| **中文字体** | **必须有**（`fonts-noto-cjk` 或任意含 CJK 的字体） | 画报 / 收款码是服务端用 sharp（librsvg + fontconfig）光栅化的，**没有中文字体时画报上的字全是豆腐块**。二维码不受影响（矢量矩形），所以图能生成、也能扫 —— 只有字是方框，属于「半坏」状态，最容易漏掉。见 §5 的检查 |
+| **中文字体** | **必须有**（`fonts-noto-cjk` 或任意含 CJK 的字体） | 画报 / 收款码是服务端用 sharp（librsvg + fontconfig）光栅化的，**没有中文字体时画报上的字全是豆腐块**。二维码不受影响（矢量矩形），所以图能生成、也能扫 —— 只有字是方框，属于「半坏」状态，最容易漏掉。见 `npm run diagnose` 段 5「画报中文字体」 |
 
 装字体（Debian/Ubuntu；CentOS 用 `yum install google-noto-sans-cjk-fonts`）：
 
@@ -31,7 +31,7 @@ npm run diagnose                 # 第 5 节「画报中文字体」应当是 �
 
 ## 2. 数据目录准备（一次性）
 
-`instance/` 是**数据**（gitignored），含头像/图床/故事/数据库。部署机器需为**真实目录**：
+`instance/` 是**数据**（gitignored），含头像/图床/故事/表情包/数据库。部署机器需为**真实目录**：
 
 ```bash
 # 服务器上克隆仓库后
@@ -91,7 +91,7 @@ vim .env
 
 ## 4. 数据库准备
 
-> `instance/` 是**唯一的数据目录**。头像 / 图床 / 故事 / 数据库都在这里，部署只需挂载一处。
+> `instance/` 是**唯一的数据目录**。头像 / 图床 / 故事 / 表情包 / 数据库都在这里，部署只需挂载一处。
 >
 > | 数据库 | 路径 | 何时用 |
 > |--------|------|--------|
@@ -283,7 +283,7 @@ SyslogIdentifier=raricy-next
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full
-# 只放开真正要写的目录:头像 / 图床 / 故事 / 数据库
+# 只放开真正要写的目录:头像 / 图床 / 故事 / 表情包 / 数据库
 ReadWritePaths=/srv/raricy.com/instance
 
 [Install]
@@ -323,13 +323,15 @@ journalctl -u raricy-next -f       # 实时日志
 # 必跑
 cd /srv/raricy.com
 npm run diagnose -- --url https://raricy.com
-# 期望:6 段全绿(带了 --url 会多跑一段线上活体检查)
+# 期望:6 段全绿(带了 --url 会多跑第 6 段)
 #   段 0:Node/Next 版本
 #   段 1:环境变量
 #   段 2:数据库文件
 #   段 3:时间戳格式(登录 500 头号元凶)
 #   段 4:小鱼干密钥(切换前必查,错了不可逆)
-#   段 5:线上活体检查(仅当带 --url)
+#   段 5:画报中文字体 —— 服务器缺字体时画报上的字全是豆腐块,而二维码仍能扫
+#         (接口 200、图能生成、也能扫,是最容易漏掉的"半坏"状态)
+#   段 6:线上活体检查(仅当带 --url)
 
 # 11 条只读冒烟(需真实账号)
 npm run smoke -- --url https://raricy.com --user <核心用户> --pass <密码>

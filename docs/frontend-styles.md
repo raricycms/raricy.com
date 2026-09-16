@@ -167,7 +167,7 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
 - **顶栏**：`.site-navbar` 固定顶部（`position: fixed; top:0`），高 62px，背景 `--color-background-card`，阴影 `--shadow-card-brand`。`body` 有 `padding-top: 62px` 补偿。
 - **页脚**：`.site-footer`，背景卡片色 + 顶部分隔，内容容器同 1140px 体系。
 - **后台**：`.admin-layout` 左侧 220px 固定侧边栏（移动端折叠成横向标签条）+ 右侧滚动内容区，内容容器最大 1400px。
-- **栅格**：首页用 flex + `gap` 或 CSS Grid（`repeat(auto-fit, minmax(...))` / 显式 `repeat(3,1fr)`），**不用浮点栅格**。另有 `base/_grid.scss` 与 `base/_forms.scss` 提供 Bootstrap 风格行/列工具。
+- **栅格**：首页用 flex + `gap` 或 CSS Grid（`repeat(auto-fit, minmax(...))` / 显式 `repeat(3,1fr)`），**不用浮点栅格**。另有 `layout/_grid.scss` 与 `base/_forms.scss` 提供 Bootstrap 风格行/列工具。
 - 页面骨架：`body { display:flex; flex-direction:column; min-height:100vh }` + `main { flex:1 0 auto }`，页脚始终贴底。
 
 ## 6. 组件风格要点
