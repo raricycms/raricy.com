@@ -131,12 +131,40 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 - 永不物理删除（站长手动例外）。字段清单见 `docs/architecture.md` §8。
 - `is_deleted=true` 且无子评论 → 自动从楼中楼里隐藏。
 
+### 顶栏两个指示器（铃铛数字 + 讨论红点）
+- **实时值走 SSE**（`GET /api/notifications/stream`，订阅表 `src/lib/topbar-bus.ts`），
+  推的是**增量补丁** `{count?|chatUnread?|refresh?}`，客户端 merge（`base.js` 的
+  `applyTopbar`）。首帧是全量快照，重连即自愈 —— 所以**没有** Last-Event-ID / 断线补齐
+  （那是讨论流的语义，别照抄过来）。
+- **兜底快照 `GET /api/notifications/count` 不能删**：SSE 存在「连着但收不到」的半死状态，
+  只有轮询能纠正。base.js 两档：流连着 60s、没连上（含隐藏标签页，隐藏时主动断开以省
+  HTTP/1.1 那 6 条连接）20s。**改轮询间隔等于改 SSE 失效时的最坏表现**。
+- **谁的数字谁算**：`count` 由 `notification-service.pushUnreadCount` 推，`chatUnread`
+  由 `chat-service.pushChatDot` 推。两条纪律：`hasSubscriber` 必须在任何 `await` 之前
+  同步早退（没人连着就别查库），且**算值必须放在吞异常的 try 内** —— 调用点写的是
+  `void pushX(id)`，把 `await` 写到调用外面会让异常逃逸（`sendNotification` 没有
+  try/catch，而 `blog-service.toggleLike` 会在 catch 里回滚 `notificationSent`，
+  后果是**下次点赞重发一条通知**）。
+- **依赖方向决定了有些地方推不了精确值**：`chat-service → admin-user-service → user-service`
+  是一条单向链，所以 `admin-user-service` / `user-service` **不能 import `chat-service`**
+  （会成环）。那里只能：拒绝方向（禁言 / 降级到 user / 专注模式开启）推精确的
+  `{chatUnread:false}`；放开方向推 `{refresh:true}`，客户端据此重拉 count 路由。
+  **新增红点写路径时先确认它在链条的哪一侧**。
+- **权限变更分两类**：禁言 / 重置密码 / 强制下线都会递增 `sessionVersion`（会话已废）→
+  `kickUser` + `kickTopbarUser` 成对出现（重连时 401，EventSource 按规范不再重试）；
+  改角色 / 专注模式**只推不踢**（会话没废，铃铛照常要收推送）。
+- **`delete-read` 不需要推送**：它只删已读的，未读数不可能变。别看到别的路由收编了就
+  去给它补一条。
+- 已知缺口（由 60s 兜底收敛）：`softDeleteMessage` 减少未读时不推；`/notifications`
+  列表页本身不实时（铃铛会先动）。见 `docs/architecture.md` §5。
+
 ### 讨论与通知的关系
 - **讨论消息不进通知列表、也不进铃铛数字**：铃铛数字 = `getUnreadCount`，必须等于
   通知列表的条目数。讨论未读改由顶栏「讨论」链接上的小红点体现 —— `/api/notifications/count`
   另出 `chatUnread` 布尔（来自 `getChatUnreadSummary`：私聊有未读 / 大区被 @），
   base.js 据此点亮 `#chatUnreadDot`。**别再把它加回 `count`**：那会让铃铛写着 5、
-  点进 `/notifications` 只有 2 条。
+  点进 `/notifications` 只有 2 条。红点的三道闸门（core+ / 未禁言 / 专注模式）收在
+  `chat-service.getChatDotFor` 里，**count 路由与 SSE 推送路径共用同一份** —— 别搬回去。
 - **唯一进通知列表的是 @ 提及**（action `讨论提及`，一条 @ 一条通知）：`chat-service.notifyChannelMentions`。
   逐条闸门：非自己 / 非禁言 / core+ / 频道对其可见（**私聊非成员不发**、**大区专注模式不发**）/
   会话未静音。四个 `notify_*` 开关都不管它（调用方传 `prefKey: null`）。

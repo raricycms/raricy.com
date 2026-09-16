@@ -89,7 +89,7 @@
 | `/fish/pay` | page | **收银台**：站外商户把用户送来付款（`?to= &amount= &note= &from= &return=`）。参数一律不可信，只做展示；付款必须**已登录 + 再输一次密码**（step-up），密码只输在本站域名下。不入索引 |
 | `/fish/collect` | page | **扫码收款页**：`?to=<用户名>`，扫「鱼干收款码」落到这里。与收银台的区别是**金额由付款人自己填**（静态码不可能带金额）。前端是 `/fish/pay` 的**同一个组件**（`src/app/fish/PayForm.tsx`）的另一个变体，step-up 与幂等键完全共用 |
 | `/api/poster/profile/[id]` · `/api/poster/collect` | API | **画报 / 收款码出图**（PNG，仅本人）。渲染管线与四条约束见 §6.8 |
-| `/notifications` · `/api/notifications/*` | page + API | 通知中心 |
+| `/notifications` · `/api/notifications/*` | page + API | 通知中心。其中 `GET count` 是顶栏指示器的**兜底快照**，`GET stream` 是**实时流**（SSE，未登录 401；首帧全量快照 + 之后增量补丁，见 CLAUDE.md） |
 | `/vote` · `/vote/[id]` | page | 投票 |
 | `/checkin` · `/api/checkin` | page + API | 每日签到（**core+**：鱼干的赚取渠道，与投喂/点赞同档） |
 | `/clipboard` · `/clipboard/[id]` · `/api/clipboard/*` | page + API | 云剪贴板 |
@@ -116,7 +116,8 @@
 | 博客域 | `blog-service.ts` · `feed-service.ts` · `comment-service.ts` · `comment-shared.ts` · `blog-sort-pref.ts` · `spider-service.ts` |
 | 富文本渲染 | `rich-text.ts`（共享管线）· `chat-markdown.ts` · `comment-markdown.ts` · `blog-markdown.ts` · `markdown-math.ts` · `linkify.ts` · `vditor-theme.ts` |
 | 讨论 | `chat-service.ts` · `chat-bus.ts`（SSE 订阅）/ `chat-shared.ts`（DTO）· `chat-sidebar-pref.ts` · `focus-mode.ts` |
-| 实时传输 | `sse.ts` —— SSE 响应头 / 帧格式 / 重连与背压常量的**唯一出处**，讨论在用。新增 SSE 路由一律 import 它，不要手抄响应头（`no-transform` 少一个字的后果见该文件头注释） |
+| 实时传输 | `sse.ts` —— SSE 响应头 / 帧格式 / 重连与背压 / 心跳常量的**唯一出处**，两条流共用（讨论 `chat-bus.ts`、顶栏 `topbar-bus.ts`）。新增 SSE 路由一律 import 它，不要手抄响应头（`no-transform` 少一个字的后果见该文件头注释） |
+| 顶栏指示器 | `topbar-bus.ts` —— 铃铛未读数 + 讨论红点的 SSE 订阅表（推**增量补丁**，首帧全量快照由路由拼）。推送点与依赖方向约束见 CLAUDE.md「讨论与通知的关系」 |
 | 通知 / 审计 | `notification-service.ts` · `broadcast-service.ts` · `audit-service.ts` · `admin-appeal-service.ts` |
 | 投票 / 签到 / 剪贴板 | `vote-service.ts` · `checkin-service.ts` · `clipboard-service.ts` |
 | 图床 | `image-service.ts` · `image-upload.ts`（服务端）· `image-client.ts`（浏览器侧选图上传，讨论与评论共用）· `vditor-upload.ts`（Vditor 编辑器的上传配置，博客与剪贴板共用；与 `/api/images` 的字段名/响应结构两端对齐，见 `tests/unit/vditor-upload.test.ts`） |
