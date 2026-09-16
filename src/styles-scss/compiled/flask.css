@@ -2602,7 +2602,7 @@ svg.rc-icon {
 }
 
 .card-chat .feature-icon {
-  color: #8b5cf6;
+  color: #10b981;
   -webkit-mask-image: url("/static/img/icons/chat-dots_new.svg");
   mask-image: url("/static/img/icons/chat-dots_new.svg");
 }
