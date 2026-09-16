@@ -141,10 +141,18 @@
     vertical-align: text-bottom;
     // 定死尺寸是**必须的**，不是美化：不定尺寸则表情加载完才撑开，讨论「发完滚到底」
     // 会短一截，loading="lazy" 还会让视图边滚边跳版。
-    width: 1.6em;
-    height: 1.6em;
+    //
+    // 尺寸取 **4em ≈ 微信动画表情**（那边大表情约为字号的 4 倍）：1.6em 时期表情和
+    // 正文一样高，看上去只是个「带图表的字」，表情包的观感全丢了；4em 落在「比文字大
+    // 一圈、又远小于图床图」之间。方形框 + object-fit: contain ⇒ 非方形素材
+    // 按比例内缩留白，框本身仍是方的（行高不随素材长宽比跳）。
+    width: 4em;
+    height: 4em;
     object-fit: contain;
-    margin: 0 0.15em;
+    // 略放宽（0.15em → 0.2em）：表情大了之后与相邻文字只隔 2px 会贴在一起。
+    // 不再加大是给「只有一张表情」的气泡留余地 —— 那点外边距会与气泡的 12px 内边距
+    // 叠加，横向就明显比纵向（8px）松了。
+    margin: 0 0.2em;
     border: none;
     border-radius: 4px;
     background: none;
