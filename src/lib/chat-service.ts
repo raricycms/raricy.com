@@ -15,6 +15,20 @@
 // 发送时强校验「图片归本人所有且未软删」。限频仿博客评论：资源存在性校验通过后才扣额度。
 //
 // 时间戳一律 nowForDb()（本库语义 = UTC+8 墙上时间贴 Z，见 db-time.ts）。
+//
+// 【讨论未读的口径：不进铃铛】讨论消息**不进通知列表、也不进铃铛数字**。铃铛数 =
+// getUnreadCount，**必须等于 `/notifications` 列表里数得出来的条目数**；讨论未读改由顶栏
+// 「讨论」链接上的小红点体现。所以 `/api/notifications/count` 另出一个 `chatUnread` 布尔
+// （来自本文件的 getChatUnreadSummary：私聊有未读 / 大区被 @），base.js 据此点亮
+// `#chatUnreadDot`。**别把它并回 count** —— 那会让铃铛写着 5、点进去只有 2 条。
+//
+// 【红点的三道闸门：core+ / 未禁言 / 专注模式】全部收在 getChatDotFor 里，count 路由与
+// SSE 推送路径**共用同一份**。历史上它曾内联在 count 路由里，留两份必然 drift —— 别搬回去。
+//
+// 【依赖方向】chat-service → admin-user-service → user-service 是单向链，所以后两者
+// **不能 import 本文件**（成环）。它们要动红点时只能：拒绝方向（禁言 / 降级到 user /
+// 专注模式开启）推精确的 `{chatUnread:false}`；放开方向推 `{refresh:true}`，由客户端重拉
+// count 路由。新增红点写路径前先确认自己在这条链的哪一侧。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { prisma } from './db';

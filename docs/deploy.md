@@ -43,7 +43,7 @@ node scripts/check-instance.mjs
 或在部署脚本里嵌入：
 
 ```bash
-mkdir -p /srv/raricy.com/instance/{avatars,database,images,stories,blogs}
+mkdir -p /srv/raricy.com/instance/{avatars,database,images,stories,stickers,blogs}
 chown -R www-data:www-data /srv/raricy.com/instance
 ```
 
@@ -350,11 +350,12 @@ sqlite3 /srv/raricy.com/instance/database/db.db ".backup /backup/db-$(date +%Y%m
 
 ### 文件资产
 
-头像 / 图床 / 故事都是不可重建数据：
+头像 / 图床 / 故事 / 表情包都是不可重建数据（表情包素材由站长手工放进 `instance/stickers/`，
+**不入 git 仓库**，丢了就只能找原出处重下）：
 
 ```bash
 tar czf /backup/assets-$(date +%Y%m%d).tar.gz \
-  /srv/raricy.com/instance/{avatars,images,stories}
+  /srv/raricy.com/instance/{avatars,images,stories,stickers}
 ```
 
 ### 备份验证

@@ -149,7 +149,13 @@ curl -sS -X POST -H "Authorization: Bearer $ACCESS_TOKEN" \
 
 ## 7. 限频
 
-通过 `src/lib/rate-limit.ts` 进程内桶（单进程语义；桶随清扫落盘，**重启不重置窗口**）。多实例部署时建议改 Redis。
+复用 `src/lib/rate-limit.ts` 的进程内桶（单进程语义；桶随清扫落盘，**重启不重置窗口**）。
+多实例部署时建议改 Redis。
+
+> ⚠️ **配额值不在 `src/lib/rate-limit.ts` 的 `RULES` 里** —— 下表这三条是各 route 里
+> **内联的字面量**（`oauth/{authorize,token,userinfo}/route.ts` 各自 import `rateLimit()` 后
+> 就地传 `{ limit, windowMs }`）。改 OAuth 限频要去那三个 route 改，翻 `RULES` 是找不到的；
+> 反过来，做全站限频审计时也别漏掉它们。其余所有接口的配额才在 `RULES`。
 
 | Key 格式 | 限制 |
 |----------|------|
