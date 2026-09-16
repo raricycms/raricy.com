@@ -7,7 +7,7 @@ import {
   findTransferTargetByUsername,
   TRANSFER_NOTE_MAX,
 } from '@/lib/fish-market-service';
-import PayForm from './PayForm';
+import PayForm from '../PayForm';
 
 // 收银台 —— 站外商户把用户送到这里付款（协议见 docs/fish-bot.md §9）。
 //
@@ -112,6 +112,7 @@ export default async function FishPayPage({
       </h1>
 
       <PayForm
+        variant="cashier"
         toId={recipient.id}
         toUsername={recipient.username}
         amount={amount}

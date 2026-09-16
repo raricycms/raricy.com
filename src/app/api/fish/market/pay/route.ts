@@ -7,7 +7,10 @@ import { AccountServiceError } from '@/lib/account-client';
 
 export const runtime = 'nodejs';
 
-// POST /api/fish/market/pay — 收银台（/fish/pay）专用接口。
+// POST /api/fish/market/pay — 「付款」专用接口，两个页面共用：
+//   • /fish/pay     收银台（站外商户把用户送来付款）
+//   • /fish/collect 扫码收款页（扫别人的收款码付款）
+// 两者前端是**同一个组件**（src/app/fish/PayForm.tsx）的两个变体。
 //
 // body: { to_user_id, amount, note?, password, idempotency_key? }
 //
