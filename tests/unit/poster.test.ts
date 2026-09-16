@@ -174,6 +174,36 @@ describe('版式', () => {
     expect(svg).not.toContain('注册于');
   });
 
+  it('整幅满出血：四角必须不透明（图片是方的，圆角只会把角抠漏）', async () => {
+    // 曾经给背景矩形加过 rx=28，四个角变成透明的：弹窗里（浅灰底）露出四个灰色
+    // 小月牙，下载到手机上换个深色底看也是破的。方图里抠圆角 = 把角抠漏，
+    // 要圆角是展示端的事（CSS border-radius），不该烧进像素。
+    for (const svg of [
+      profile(),
+      buildCollectPosterSvg({
+        username: '聪明山上的猫',
+        qrText: 'https://raricy.com/fish/collect?to=x',
+        avatarDataUri: AVATAR,
+      }),
+    ]) {
+      const png = await rasterize(svg);
+      const { data, info } = await sharp(png)
+        .ensureAlpha()
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+      const alphaAt = (x: number, y: number) => data[(y * info.width + x) * 4 + 3];
+      const corners: Array<[number, number]> = [
+        [0, 0],
+        [info.width - 1, 0],
+        [0, info.height - 1],
+        [info.width - 1, info.height - 1],
+      ];
+      for (const [x, y] of corners) {
+        expect(alphaAt(x, y), `角点 (${x},${y}) 不该是透明的`).toBe(255);
+      }
+    }
+  });
+
   it('二维码内容以文字形式印在卡片上（去掉协议头）', () => {
     expect(profile({ qrText: 'https://raricy.com/u/abc' })).toContain('raricy.com/u/abc');
   });

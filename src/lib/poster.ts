@@ -413,15 +413,24 @@ function defs(theme: Theme): string {
   );
 }
 
-/** 收尾：算好的高度回填进 <svg> 与背景矩形（高度是算出来的，见文件头）。 */
+/**
+ * 收尾：算好的高度回填进 <svg>（高度是算出来的，见文件头）。
+ *
+ * ⚠️ 背景**不做圆角、整幅满出血**。曾经给背景矩形加过 rx=28，结果四个角是透明的：
+ * 弹窗里（浅灰底）会露出四个灰色小月牙，下载到手机上换个深色底看也是破的。
+ * 图片文件本身就是方的，在方图里抠圆角只会把角抠漏 —— 要圆角是**展示端**的事
+ * （`.poster-frame__img` 的 border-radius 就够），不该烧进像素里。
+ * tests/unit/poster.test.ts 有一条用例盯着四角的不透明度。
+ */
 function finish(theme: Theme, body: string[], height: number): string {
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" ` +
     `width="${POSTER_WIDTH}" height="${height}" viewBox="0 0 ${POSTER_WIDTH} ${height}" ` +
     `font-family="${FONT}">` +
     defs(theme) +
-    rect(0, 0, POSTER_WIDTH, height, 'url(#bg)', 28) +
-    rect(0, 0, POSTER_WIDTH, height, 'url(#glow)', 28) +
+    // 直角、满出血 —— 见上面 finish() 的注释，别再加 rx
+    rect(0, 0, POSTER_WIDTH, height, 'url(#bg)') +
+    rect(0, 0, POSTER_WIDTH, height, 'url(#glow)') +
     body.join('') +
     '</svg>'
   );
