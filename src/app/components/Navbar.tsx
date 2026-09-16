@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import type { SafeUser } from '@/lib/auth';
-import { hasAdminRights, isCoreUser } from '@/lib/auth';
+import { hasAdminRights } from '@/lib/auth';
 import LogoutLink from './LogoutLink';
 
 // 顶栏 — Flask `base.html` 样式（site-* BEM + icon mask）
@@ -28,7 +28,13 @@ export default function Navbar({ user }: { user: SafeUser | null }) {
         </button>
 
         <div className="site-navbar-collapse" id="siteNavbar">
+          {/* 条目顺序对齐首页的三张卡（故事 → 博客 → 工具）。 */}
           <ul className="site-nav">
+            <li>
+              <Link className="site-link" href="/story">
+                故事
+              </Link>
+            </li>
             <li>
               <Link className="site-link" href="/blog">
                 博客
@@ -44,17 +50,20 @@ export default function Navbar({ user }: { user: SafeUser | null }) {
                 日志
               </Link>
             </li>
-            {isCoreUser(user) && (
-              <li>
-                <Link className="site-link" href="/chat">
-                  讨论
-                  {/* 讨论未读红点（私聊有未读 / 大区被 @）：base.js 按
-                      /api/notifications/count 的 chatUnread 字段开关。
-                      不放铃铛上——铃铛数字必须等于通知列表的条目数。 */}
-                  <span className="site-link__dot" id="chatUnreadDot" style={{ display: 'none' }} />
-                </Link>
-              </li>
-            )}
+            {/* 讨论：**入口对所有人保留**，哪怕点进去是 403（匿名 → 跳登录）。
+                站长明确要过这一条，别再按「入口与门禁同档」把它藏起来 ——
+                那条例外只适用于「入口有、门禁却不认」的自相矛盾（如 /admin/users
+                的侧栏），不适用于「功能存在但你需要更高权限」这种正常阶梯。
+                门禁本身在 /chat（core+）与 requireChatUser，不在这里。 */}
+            <li>
+              <Link className="site-link" href="/chat">
+                讨论
+                {/* 讨论未读红点（私聊有未读 / 大区被 @）：base.js 按
+                    /api/notifications/count 的 chatUnread 字段开关。
+                    不放铃铛上——铃铛数字必须等于通知列表的条目数。 */}
+                <span className="site-link__dot" id="chatUnreadDot" style={{ display: 'none' }} />
+              </Link>
+            </li>
           </ul>
 
           <div className="site-actions">

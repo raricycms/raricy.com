@@ -209,3 +209,34 @@ test.describe('核心用户门槛（接口层）', () => {
     });
   }
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 「功能存在，但当前账号权限不够」——入口**保留**，不做同档隐藏
+//
+// 站长 2026-09 的明确口径：讨论的入口对所有人渲染（与顶栏「博客」「日志」同待遇），
+// 点进去 403 就 403。曾经按「入口与门禁同档」把讨论入口与首页讨论卡藏掉过 ——
+// 那是把一条**具体**的教训过度推广了：
+//   · 必须修的是 /admin/users 那种自相矛盾：入口有、门禁却不认（核心用户看得到
+//     侧栏「用户管理」却被 403）——那是入口和门禁**互相打架**；
+//   · 不该修的是「功能存在，但你权限不够」——那正是权限阶梯该有的样子，
+//     藏起来反而让人不知道站里有这个板块。
+// 这一组用例把两半都钉住，免得下次又有人「顺手对齐」把它藏回去。
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('入口保留：非核心用户看得到讨论入口，但进不去', () => {
+  test('匿名访客：顶栏与首页讨论卡都在', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.locator('.site-nav a[href="/chat"]')).toHaveCount(1);
+    await expect(page.locator('a.card-chat')).toBeVisible();
+  });
+
+  test('普通用户（role=user）：入口在，/chat 原地 403', async ({ page }) => {
+    await loginViaApi(page, SEED_USERS.plain.username);
+
+    await page.goto('/');
+    await expect(page.locator('.site-nav a[href="/chat"]')).toHaveCount(1);
+
+    const res = await page.goto('/chat');
+    expect(res?.status(), '讨论仍是 core+ 档：入口保留不等于放行').toBe(403);
+    await expect(page.locator('.rainbow-error__code')).toHaveText('403');
+  });
+});

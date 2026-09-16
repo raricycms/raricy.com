@@ -1,14 +1,15 @@
 import Link from 'next/link';
-import { getCurrentUser, isCoreUser } from '@/lib/auth';
 import HomeFooterNote from './components/HomeFooterNote';
 import HeroCanvas from './components/HeroCanvas';
 
 // 首页 — Flask `home/homepage.html` 样式（home-container / home-display / feature-card / home-btn）
-export default async function HomePage() {
-  // 「讨论」卡与顶栏那项同档：/chat 走 requireCoreUser，非核心用户点进去只能撞 403。
-  // 入口与门禁必须同档 —— 这条在 access-control.spec 里钉着（同一形状的回归发生过）。
-  const user = await getCurrentUser();
-
+//
+// 【四张卡都对所有人渲染，含「讨论」】/chat 是 core+ 档，非核心用户点进去会撞 403 ——
+// 这是**有意保留**的：功能存在、但需要更高权限，是正常的权限阶梯（与顶栏「博客」
+// 「日志」同一种待遇）。曾经按「入口与门禁同档」把讨论卡藏起来过，站长明确不要那样。
+// 注意别把这条与另一种情况混为一谈：/admin/users 那种「入口有、门禁却不认」的
+// 自相矛盾（核心用户看得到侧栏却被 403）才是必须修的，见 access-control.spec。
+export default function HomePage() {
   return (
     <>
       <section className="hero-section" id="home">
@@ -71,18 +72,16 @@ export default async function HomePage() {
               </Link>
             </div>
 
-            {isCoreUser(user) && (
-              <div className="home-grid-item">
-                <Link className="feature-card card-chat" href="/chat">
-                  <div className="card-body home-text-center">
-                    <span className="feature-icon" aria-hidden="true"></span>
-                    <h4 className="card-title" style={{ marginBottom: '0.75rem' }}>讨论</h4>
-                    <p className="card-text">站内讨论区，欢迎在这里交流想法、分享发现。</p>
-                    <span className="home-btn home-btn--outline-success home-btn--sm">进入讨论</span>
-                  </div>
-                </Link>
-              </div>
-            )}
+            <div className="home-grid-item">
+              <Link className="feature-card card-chat" href="/chat">
+                <div className="card-body home-text-center">
+                  <span className="feature-icon" aria-hidden="true"></span>
+                  <h4 className="card-title" style={{ marginBottom: '0.75rem' }}>讨论</h4>
+                  <p className="card-text">站内讨论区，欢迎在这里交流想法、分享发现。</p>
+                  <span className="home-btn home-btn--outline-success home-btn--sm">进入讨论</span>
+                </div>
+              </Link>
+            </div>
           </div>
         </div>
       </section>
