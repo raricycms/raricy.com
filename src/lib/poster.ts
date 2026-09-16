@@ -70,13 +70,17 @@ const FISH_PATH =
 const FISH_TRANSFORM =
   'translate(12,9) rotate(135) translate(-11.236,-6.042) translate(-1239.000000,-909.000000)';
 
-/** 主题配色。深蓝对主页、暖金对鱼干 —— 两个都是「深底 + 白卡片」，二维码对比度最高。 */
+/**
+ * 主题配色。深蓝对主页、暖金对鱼干 —— 两个都是「深底 + 白卡片」，二维码对比度最高。
+ *
+ * 两边的字段**不要求对称**：`accent` / `logo` 只服务小鱼干图标，主页画报改用站点 logo
+ * 之后就不需要了（留着会变成「这个颜色是干嘛的」式的死字段）。
+ */
 export const THEMES = {
   profile: {
     bg: ['#0B1220', '#152A4A', '#0B1220'],
     glow: '#2563EB',
     brand: '#E8EEF9',
-    accent: '#60A5FA',
     title: '#F4F8FF',
     muted: '#8FA2BC',
     faint: '#5C6B82',
@@ -84,7 +88,6 @@ export const THEMES = {
     chipBg: 'rgba(96,165,250,0.16)',
     chipFg: '#BFDBFE',
     qrDark: '#0F172A',
-    logo: '#2563EB',
   },
   collect: {
     bg: ['#1E1204', '#43290A', '#1E1204'],
@@ -155,7 +158,11 @@ function charEm(ch: string): number {
   return 0.8;
 }
 
-function textEm(s: string): number {
+/**
+ * 一段文本占几个 em（排版的唯一度量）。**导出是为了让用例能用同一把尺子去断言
+ * 「放得下」** —— 用例里另抄一份估算规则就等于把度量变成了两份真相。
+ */
+export function estimatedEm(s: string): number {
   return Array.from(s).reduce((n, c) => n + charEm(c), 0);
 }
 
@@ -188,7 +195,7 @@ export function wrapText(input: string, maxEm: number, maxLines = Infinity): str
 
   const kept = all.slice(0, maxLines);
   let last = kept[maxLines - 1];
-  while (last && textEm(last) + 1 > maxEm) {
+  while (last && estimatedEm(last) + 1 > maxEm) {
     last = Array.from(last).slice(0, -1).join('');
   }
   kept[maxLines - 1] = last + '…';
@@ -202,7 +209,7 @@ export function fitLine(
   baseSize: number,
   minSize = 20
 ): { size: number; text: string } {
-  const em = textEm(text) || 1;
+  const em = estimatedEm(text) || 1;
   if (em * baseSize <= maxWidth) return { size: baseSize, text };
 
   const ideal = maxWidth / em;
@@ -227,7 +234,28 @@ function round(n: number, digits = 2): number {
   return Number(n.toFixed(digits));
 }
 
-/** 小鱼干图标（以 (cx,cy) 为中心、边长 size）。 */
+/**
+ * 站点 logo（以 (cx,cy) 为中心、边长 size）—— `public/static/img/favicon.png` 的**矢量复刻**。
+ *
+ * 不嵌那张 60KB 的 PNG，理由有三：矢量在任何尺寸都清晰（画报要按 2× 光栅化）、
+ * SVG 体积小得多、且**不依赖 public/ 在运行时读得到**（`output: 'standalone'` 部署下
+ * public/ 是要另外拷的，用 fs 去读它在生产上是个隐患）。
+ *
+ * 几何是量出来的：原图 200×200，四个形状的包围盒与取色见下（改 favicon 时要同步）。
+ */
+export function siteLogo(cx: number, cy: number, size: number): string {
+  const s = size / 200;
+  return (
+    `<g transform="translate(${round(cx - size / 2)},${round(cy - size / 2)}) scale(${round(s, 5)})">` +
+    `<circle cx="67.5" cy="72.5" r="47" fill="#63BCFC"/>` + // 大蓝圆
+    `<circle cx="149" cy="48" r="22.5" fill="#FB797C"/>` + // 小红圆
+    `<path d="M135 86 L168 144 L102 144 Z" fill="#FFDB6F"/>` + // 黄三角
+    `<rect x="46" y="135" width="46" height="46" fill="#36CEBC"/>` + // 青方块
+    `</g>`
+  );
+}
+
+/** 小鱼干图标（以 (cx,cy) 为中心、边长 size）。收款码用它（那边鱼干才是主角）。 */
 export function fishGlyph(cx: number, cy: number, size: number, color: string): string {
   const s = size / 21;
   return (
@@ -276,7 +304,7 @@ function pill(
   bg: string,
   fg: string
 ): string {
-  const w = textEm(label) * size + size * 1.6;
+  const w = estimatedEm(label) * size + size * 1.6;
   const h = size * 1.9;
   return (
     rect(cx - w / 2, cy - h / 2, w, h, bg, h / 2) +
@@ -390,7 +418,15 @@ export function qrCard(opts: {
   }
 
   parts.push(text(POSTER_WIDTH / 2, captionY, opts.caption, 26, '#0F172A', 600));
-  if (opts.hint) parts.push(text(POSTER_WIDTH / 2, hintY, opts.hint, 19, '#8A7A96'));
+
+  if (opts.hint) {
+    // 提示行是**长度不可控**的那一行：主页画报印的是 `raricy.com/u/<id>`，
+    // 光一个 uuid 就 36 字符，19px 下算下来约 512px，而卡片只有 420px —— 直接顶出去。
+    // 所以按卡片内的可用宽度自适应：先缩字号，缩到下限还放不下才截断加省略号。
+    // （QR 本身才是真正承载链接的东西，这行只是给人看的，截断无所谓。）
+    const hintLine = fitLine(opts.hint, CARD_WIDTH - 2 * 32, 19, 13);
+    parts.push(text(POSTER_WIDTH / 2, hintY, hintLine.text, hintLine.size, '#8A7A96'));
+  }
 
   return { svg: parts.join(''), height, top: opts.top, size, cell };
 }
@@ -466,9 +502,10 @@ export function buildProfilePosterSvg(data: ProfilePosterData): string {
   const name = fitLine(data.username, 620, 46, 24);
   const body: string[] = [];
 
-  // 品牌行
-  body.push(fishGlyph(56, 66, 28, c.accent));
-  body.push(text(80, 74, '聪明山', 26, c.brand, 600, 'start'));
+  // 品牌行 —— 用站点 logo，不用小鱼干图标：这是「聪明山的主页画报」，
+  // 鱼干是货币图标，出现在主页画报上是跑错片场（收款码那张才该有鱼）。
+  body.push(siteLogo(58, 66, 32));
+  body.push(text(82, 74, '聪明山', 26, c.brand, 600, 'start'));
   body.push(text(POSTER_WIDTH - 56, 74, 'raricy.com', 22, c.faint, 400, 'end'));
 
   // 头像
@@ -516,7 +553,9 @@ export function buildProfilePosterSvg(data: ProfilePosterData): string {
     dark: c.qrDark,
     caption: '扫码访问我的主页',
     hint: data.qrText.replace(/^https?:\/\//, ''),
-    logo: (lx, ly, ls) => fishGlyph(lx, ly, ls, c.logo),
+    // 二维码中心也用站点 logo（四色标志压在白底圆角块上；四个颜色都不深，
+    // 中心这一小块对解码器而言仍是「亮区」，不会伤到 H 级纠错）
+    logo: (lx, ly, ls) => siteLogo(lx, ly, ls),
   });
   body.push(card.svg);
 
