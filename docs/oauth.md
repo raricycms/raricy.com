@@ -177,3 +177,18 @@ curl -sS -X POST -H "Authorization: Bearer $ACCESS_TOKEN" \
 | 仅 HTTP / HTTPS redirect | 加自定义 scheme 支持（mobile app） |
 | 单站点 cookie | 加 PKCE（RFC 7636）防 code 截获 + 适配 SPA / mobile |
 | `state` 仅透传 | 加 server-side state 校验防 CSRF on `/oauth/authorize` GET |
+
+---
+
+## 9. 端到端验证脚本
+
+`tests/oauth-e2e.sh` —— 手工跑的全流程验证，**11 项断言**，覆盖的多是单测不方便打的
+协议安全属性：授权码单次使用、`redirect_uri` 精确匹配、错 `client_secret` → 401、
+revoke 后 userinfo 失效、**RFC 7009 未知 token 也回 200**（不泄露存在性）、
+以及跨域 `Origin` 调 `/api/oauth/token` 印证 CSRF 豁免生效。
+
+前置：dev server 在跑、库内有一个测试用户与一个 OAuth 应用（client_id / secret 从
+§3a 的 CLI 输出拿）。用法见脚本头部注释（它把参数、运行方式都写在里面了）。
+
+> 它不在 `npm test` 里 —— 需要真实服务与库内数据，属**手工验证**工具，
+> 与 `npm run smoke` 同一类。改了 OAuth 的端点行为之后建议跑一遍。
