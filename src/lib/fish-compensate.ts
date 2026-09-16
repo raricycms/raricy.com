@@ -1,5 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// fish-compensate.ts —— 全站群发补偿（CLI `fish compensate`）
+// fish-compensate.ts —— 群发补偿（CLI `fish compensate`）
+//
+// 发放对象是**全部 core+ 用户**（不是全站注册用户）——理由见 eligibleUsers 的注释。
 //
 // 【与 Flask 版的关系：有意偏离】
 // Flask `flask fish compensate` 的结构是「一个大事务里给所有人 add_fish（不 commit）
@@ -126,9 +128,25 @@ async function ledgerStatus(idempotencyKey: string): Promise<LedgerStatus> {
   return row.status === 'failed' ? 'failed' : 'pending';
 }
 
-/** 全站用户（含被禁言者 —— 补偿是系统行为，与个人状态无关，对齐 Flask）。 */
-async function allUsers(): Promise<{ id: string; username: string }[]> {
+/**
+ * 补偿的发放对象：**只发 core+**（core / admin / owner）。
+ *
+ * 【为什么不是全站】鱼干是 core+ 体系的报酬 —— 站内全部赚取渠道（签到翻牌、投喂
+ * 分成）都在 core 门槛之后，非认证账号拿到鱼干也没有出口（发文章、投喂、投票都要
+ * core+）。给全站空投等于把它变成「注册就有鱼干」，与这套口径直接冲突；而且它
+ * 一次改的是全站余额，多发的人越多，回滚成本越高。
+ *
+ * 【为什么不排除被禁言者】补偿是系统行为，与个人当前状态无关（对齐 Flask 的
+ * `flask fish compensate`）—— 禁言只停发言权，不没收财产。
+ *
+ * ⚠️ 角色是**当前**角色：曾经是 core、后来被降回 user 的账号会被跳过。补偿不是
+ * 结算历史欠账，是「现在这批人每人发多少」，所以按当前角色取人是正确的口径。
+ */
+const COMPENSATE_ROLES = ['core', 'admin', 'owner'] as const;
+
+async function eligibleUsers(): Promise<{ id: string; username: string }[]> {
   return prisma.user.findMany({
+    where: { role: { in: [...COMPENSATE_ROLES] } },
     select: { id: true, username: true },
     orderBy: { createdAt: 'asc' },
   });
@@ -157,7 +175,7 @@ export async function planCompensation(opts: {
   rate?: number;
 }): Promise<CompensatePlan> {
   const rate = opts.rate ?? DEFAULT_COMPENSATE_RATE;
-  const users = await allUsers();
+  const users = await eligibleUsers();
 
   let alreadyDone = 0;
   let blocked = 0;
@@ -185,7 +203,7 @@ export async function planCompensation(opts: {
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /**
- * 给全站用户每人发放 `amount` 小鱼干（逐人原子，fail-closed）。
+ * 给全部 core+ 用户每人发放 `amount` 小鱼干（逐人原子，fail-closed）。
  *
  * 单用户失败不会回滚其他人 —— 失败者的本地写入已被各自的补偿事务精确撤销
  * （对那位用户等价于没发生），续跑用同一个 batchId 即可。
@@ -203,7 +221,7 @@ export async function compensateAllUsers(opts: CompensateOptions): Promise<Compe
   }
   const description = opts.description ?? '系统补偿';
 
-  const users = await allUsers();
+  const users = await eligibleUsers();
   const remoteEnabled = accountServiceEnabled();
 
   const result: CompensateResult = {

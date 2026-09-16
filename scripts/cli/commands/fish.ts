@@ -136,7 +136,7 @@ export const fishCommands: CommandSpec[] = [
   ),
   {
     name: 'fish compensate',
-    summary: '全站群发补偿（逐人原子，fail-closed）',
+    summary: '给全部 core+ 用户群发补偿（逐人原子，fail-closed）',
     group: 'fish',
     order: 3,
     danger: 'irreversible',
@@ -191,8 +191,13 @@ export const fishCommands: CommandSpec[] = [
       },
     ],
     details: [
-      '给全站每一位用户发放同样数量的小鱼干。**逐人原子**：每人走一次「本地事务提交 →',
-      '事务外远端同步 → 失败补偿」，中途失败**不回滚**已经发出去的部分。',
+      '给**全部 core+ 用户**（core / admin / owner）每人发放同样数量的小鱼干。',
+      '非核心账号一分不发：鱼干在站内的赚取渠道（签到翻牌、投喂分成）全在 core 门槛',
+      '之后，给它们空投等于「注册就有鱼干」，与这套口径冲突。被禁言者**照发** ——',
+      '补偿是系统行为，与个人当前状态无关。',
+      '',
+      '**逐人原子**：每人走一次「本地事务提交 → 事务外远端同步 → 失败补偿」，',
+      '中途失败**不回滚**已经发出去的部分。',
       '',
       '续跑：失败或中断后，用同一个 --batch-id 重跑，已发放的会自动跳过 —— 靠的是由',
       '批次派生的确定性幂等键（与 Flask `flask fish compensate` 逐字节同构）。批次 ID',
@@ -220,7 +225,7 @@ export const fishCommands: CommandSpec[] = [
       if (p.total === 0) return [];
 
       const lines = [
-        `  目标用户数：${p.total}（含被禁言用户 —— 补偿是系统行为，与个人状态无关）`,
+        `  目标用户数：${p.total}（全部 core+，含被禁言用户 —— 补偿是系统行为，与个人状态无关）`,
         `  每人发放：${amount} 小鱼干`,
         `  合计发放：${p.totalFish} 小鱼干`,
         `  远端限频：${rate} req/s（预计耗时约 ${(p.estimatedMs / 1000).toFixed(1)}s）`,

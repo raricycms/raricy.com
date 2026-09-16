@@ -7,6 +7,7 @@
 //      —— 这条最关键：漏了它就是「本地加了余额、远端被幂等去重没加」，两边记账分叉
 //   3. 幂等键与 Flask 逐字节同构（迁移前跑了一半的批次，换个实现也能续上）
 //   4. 账本里有 pending/failed 的人不许重发（该走 fish sync-retry）
+//   5. **只发 core+** —— 非核心账号没有鱼干赚取渠道，补偿不能成为例外（见下方专项）
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createHash } from 'node:crypto';
@@ -29,6 +30,7 @@ import {
   compensateAllUsers,
   compensateIdempotencyKey,
   makeBatchId,
+  planCompensation,
   MAX_CONSECUTIVE_FAILURES,
 } from '@/lib/fish-compensate';
 import { FishBusinessError } from '@/lib/fish-admin';
@@ -59,10 +61,16 @@ async function ledgerRow(idempotencyKey: string) {
   return prisma.accountSyncLedger.findUnique({ where: { idempotencyKey } });
 }
 
-/** 造 n 个用户，返回他们（顺序与补偿的处理顺序无关，断言一律用集合语义）。 */
+/**
+ * 造 n 个**补偿对象**用户（core+），返回他们。
+ *
+ * 顺序与补偿的处理顺序无关，断言一律用集合语义。
+ * 角色必须是 core+：补偿只发 core / admin / owner，默认的 `user` 会被整个跳过 ——
+ * 那正是「非 core+ 一分不发」这条规则要的效果，见文件末尾的专项用例。
+ */
 async function makeUsers(n: number) {
   const users = [];
-  for (let i = 0; i < n; i++) users.push(await makeUser({ driedFish: 0 }));
+  for (let i = 0; i < n; i++) users.push(await makeUser({ driedFish: 0, role: 'core' }));
   return users;
 }
 
@@ -130,7 +138,9 @@ describe('compensateAllUsers：正常发放', () => {
   });
 
   it('被禁言的用户照样发（补偿是系统行为，与个人状态无关）', async () => {
-    const banned = await makeUser({ driedFish: 0, isBanned: true, banReason: '测试' });
+    // role 必须是 core+：那才是「被禁言照发」要证的 —— 禁言不是降权，
+    // 它不该把人从发放对象里剔掉（详见「只发 core+」一组）
+    const banned = await makeUser({ driedFish: 0, role: 'core', isBanned: true, banReason: '测试' });
     const r = await compensateAllUsers({ amount: 4, batchId: 'batch-1', rate: FAST });
 
     expect(r.succeeded).toBe(1);
@@ -192,7 +202,7 @@ describe('★ 续跑：同一个 batchId 重跑不重复发放', () => {
     const [a] = await makeUsers(1);
     await compensateAllUsers({ amount: 6, batchId: 'batch-1', rate: FAST });
 
-    const b = await makeUser({ driedFish: 0 });
+    const b = await makeUser({ driedFish: 0, role: 'core' });
     const r = await compensateAllUsers({ amount: 6, batchId: 'batch-1', rate: FAST });
 
     expect(r).toMatchObject({ total: 2, succeeded: 1, skipped: 1 });
@@ -323,6 +333,51 @@ describe('★ 账本里 pending / failed 的用户不许重发', () => {
       expect(await balanceOf(users[1].id)).toBe(5);
     });
   }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 发放对象 = core+（core / admin / owner）
+//
+// 【为什么必须钉】这是全站唯一一条「一次改很多人余额」的路径。鱼干的赚取渠道
+// （签到翻牌、投喂分成）全在 core 门槛之后，一旦补偿把 `user` 也纳进来，就等于
+// 给未认证账号开了「注册即领鱼干」的口子 —— 而且是在服务器上静默发生的。
+// 反向的那半（core 照发、禁言照发）同样要钉：收紧不能误伤。
+// ─────────────────────────────────────────────────────────────────────────────
+describe('★ 只发 core+', () => {
+  it('role=user 一分不发，也不打远端', async () => {
+    const plain = await makeUser({ driedFish: 0 }); // 默认 role='user'
+    const core = await makeUser({ driedFish: 0, role: 'core' });
+
+    const r = await compensateAllUsers({ amount: 7, batchId: 'batch-1', rate: FAST });
+
+    expect(r.total, '目标集合里不该有 role=user').toBe(1);
+    expect(await balanceOf(plain.id), '非核心账号不该从补偿里拿到鱼干').toBe(0);
+    expect(await balanceOf(core.id)).toBe(7);
+    // 连远端都不该为它打一次 —— 少一次调用就是少一次记错账的机会
+    expect(mockTransfer).toHaveBeenCalledTimes(1);
+    expect(await prisma.accountSyncLedger.count()).toBe(1);
+  });
+
+  it('admin / owner 同样在发放范围内', async () => {
+    const admin = await makeUser({ driedFish: 0, role: 'admin' });
+    const owner = await makeUser({ driedFish: 0, role: 'owner' });
+
+    const r = await compensateAllUsers({ amount: 3, batchId: 'batch-1', rate: FAST });
+
+    expect(r.total).toBe(2);
+    expect(await balanceOf(admin.id)).toBe(3);
+    expect(await balanceOf(owner.id)).toBe(3);
+  });
+
+  it('planCompensation 与实发集合一致（预检屏上的数就是真会发的人数）', async () => {
+    await makeUser({ driedFish: 0 }); // user
+    await makeUser({ driedFish: 0, role: 'core' });
+    await makeUser({ driedFish: 0, role: 'owner' });
+
+    const p = await planCompensation({ amount: 5 });
+    expect(p.total, '确认屏把 role=user 也算进去的话，运维会以为要发给三个人').toBe(2);
+    expect(p.totalFish).toBe(10);
+  });
 });
 
 describe('参数校验', () => {

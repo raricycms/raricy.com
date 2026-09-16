@@ -133,7 +133,7 @@ fi
 | 危险级别 | 命令 | 行为 |
 |----------|------|------|
 | 破坏性 | 角色变更 · 用户禁言 · 强制下线 · 重置密码 · **站长建号** · 文章/评论/剪贴板/投票的删除与恢复 · **图床恢复** · 申诉裁决 | 终端里弹「即将执行」确认屏；非交互必须加 `--yes` |
-| 不可逆 | `invite revoke`（物理删除邀请码行） · **`fish compensate`（全站群发）** | 同上，且确认屏会额外标注「不可恢复」 |
+| 不可逆 | `invite revoke`（物理删除邀请码行） · **`fish compensate`（群发 core+）** | 同上，且确认屏会额外标注「不可恢复」 |
 | 安全 | 各类检索 / 查看 / `stats overview` / `fish grant`、`fish deduct` / OAuth 应用管理 | 不确认 |
 
 确认屏会列出**具体将发生什么**（目标、字段级变更、后果、是否通知对方），而不是笼统的「确定吗」。
@@ -143,7 +143,7 @@ fi
 > 再加一道确认只会让 `docs/` 里的示例不能直接粘贴执行。
 >
 > **`fish compensate` 是唯一的例外**，而且它要确认的理由不是「怕账目分叉」，
-> 是**规模**：一条命令改的是全站每个人的余额，敲错一个数量级就得再发一轮反向补偿
+> 是**规模**：一条命令改的是全部 core+ 用户的余额，敲错一个数量级就得再发一轮反向补偿
 > 才能拉平（`fish deduct` 一次只能扣一个人）。所以它标 `irreversible`。
 
 ### 审计身份
@@ -293,7 +293,7 @@ npm run cli -- blog restore 2b7ec270-be9c-4283-b1a2 --reason "作者申诉，误
 | `fish grant <username> <amount> [-d 说明]` | 赠送（fail-closed） |
 | `fish deduct <username> <amount> [-d 说明]` | 扣减（fail-closed） |
 | `fish balance <username>` | 查余额 |
-| `fish compensate <amount> [--rate 5] [--batch-id ID] [--dry-run]` | **全站群发补偿**（逐人原子） |
+| `fish compensate <amount> [--rate 5] [--batch-id ID] [--dry-run]` | **给全部 core+ 群发补偿**（逐人原子） |
 | `fish pending` | 列出账本里未同步的账目 |
 | `fish sync-retry` | 重放 pending / failed 的远端同步 |
 
@@ -309,9 +309,14 @@ npm run cli -- blog restore 2b7ec270-be9c-4283-b1a2 --reason "作者申诉，误
 **崩在「本地已提交、远端未同步」之间怎么办**：`fish pending` 看残留，`fish sync-retry` 按
 幂等键重放收敛。`stats overview` 也会把这两个数字报出来。
 
-#### 全站群发补偿 `fish compensate`
+#### 群发补偿 `fish compensate`
 
-给全站**每一位**用户（含被禁言者 —— 补偿是系统行为，与个人状态无关）发放同样数量：
+给**全部 core+ 用户**（core / admin / owner）发放同样数量。
+
+**非核心账号一分不发。** 鱼干在站内的赚取渠道（签到翻牌、投喂分成）全在 core 门槛之后，
+给 `user` 角色空投等于「注册就有鱼干」，与这套口径直接冲突；何况这条命令一次改的是全站
+余额，多发的人越多、回滚成本越高。**被禁言者照发** —— 补偿是系统行为，与个人当前状态无关，
+禁言只停发言权、不没收财产。取的是**当前**角色，所以曾降权的账号会被跳过。
 
 ```bash
 npm run cli -- fish compensate 10 --dry-run          # 先看计划，不动账
