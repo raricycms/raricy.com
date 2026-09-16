@@ -1,10 +1,12 @@
 // image-service.ts / image-upload.ts —— 图床（元信息读取 + 二进制上传 + 删除）。
 //
 // 【为什么值得重点测】
-//  1. **安全**：CLAUDE.md 把「SVG XSS 防护」和「文件名净化」明确列为安全设计。
-//     文件名净化一旦回退，攻击面是路径穿越（写盘逃出上传目录）；SVG 一旦以
-//     inline 下发，攻击面是同源 XSS（SVG 里可以写 <script>）。这两条必须钉死。
-//  2. **配额**：core 50MB / admin 50MB / owner 100MB 是 CLAUDE.md 写死的数字，
+//  1. **安全**：「SVG XSS 防护」与「文件名净化」两道闸门的依据在 `src/lib/image-upload.ts`
+//     头部（sanitizeFilename 用白名单字符集，不是黑名单）。文件名净化一旦回退，攻击面是
+//     路径穿越（写盘逃出上传目录）；SVG 一旦以 inline 下发，攻击面是同源 XSS（SVG 里可以
+//     写 <script>）。这两条必须钉死。
+//  2. **配额**：core 50MB / admin 50MB / owner 100MB 定义在 `src/lib/image-upload.ts` 的
+//     `QUOTA_LIMITS_MB`（抄自 Flask），**不是按角色递增的直觉值**（core 与 admin 同额）。
 //     算错要么用户传不上图，要么磁盘被打爆。边界（恰好满 / 超 1 字节）尤其关键。
 //  3. **软删 vs 硬删**：语义不同（保留磁盘文件 vs 删盘 + 删库行），弄反会丢数据。
 //
@@ -123,7 +125,7 @@ async function pngBytes(w = 12, h = 12): Promise<Buffer> {
 const MB = 1024 * 1024;
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 一、sanitizeFilename —— 路径穿越 / XSS 防护（CLAUDE.md 明确列为安全设计）
+// 一、sanitizeFilename —— 路径穿越 / XSS 防护（依据见 src/lib/image-upload.ts 头部）
 // ═════════════════════════════════════════════════════════════════════════════
 //
 // 对照 Flask sanitize_filename：
@@ -413,11 +415,11 @@ describe('generateImageId', () => {
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 四、配额 —— CLAUDE.md：core 50MB / admin 50MB / owner 100MB
+// 四、配额 —— core 50MB / admin 50MB / owner 100MB（QUOTA_LIMITS_MB）
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe('getQuotaLimitMb（角色 → 配额）', () => {
-  // 这三个数字直接来自 CLAUDE.md 与 Flask QUOTA_LIMITS_MB，改动必须是有意的。
+  // 这三个数字来自 src/lib/image-upload.ts 的 QUOTA_LIMITS_MB（对齐 Flask），改动必须是有意的。
   it('core = 50 MB', async () => {
     expect(getQuotaLimitMb('core')).toBe(50);
   });
@@ -1280,7 +1282,7 @@ describe('saveUpload', () => {
 // 十二、★ SVG XSS 防护 —— GET /api/images/:id/raw 的响应头
 // ═════════════════════════════════════════════════════════════════════════════
 //
-// CLAUDE.md：「SVG 图片以 Content-Disposition: attachment 提供」。
+// 「SVG 图片以 Content-Disposition: attachment 提供」（`src/app/api/images/[id]/raw/route.ts`）。
 // 为什么关键：SVG 是 XML，可以内嵌 <script>。若以 inline 在同源下渲染，
 // 等于给任意「能上传图片的用户」一个存储型 XSS。这一节把响应头钉死。
 //

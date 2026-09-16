@@ -3,7 +3,7 @@
 // 【为什么值得重点测】这是钱。任何一处算错、流水漏记、并发超扣，都是
 // 直接的资产损失且难以事后对账。因此本文件在真实 SQLite 上跑，不 mock DB。
 //
-// 【被测边界】按 CLAUDE.md，fish-service **只写本地 DB**，不直接调 AccountClient，
+// 【被测边界】fish-service **只写本地 DB**，不直接调 AccountClient（见该文件头部），
 // 所以无需 mock 远端。远端同步是调用方（feed-service / checkin-service）的责任。
 //
 // 【关于扣款】fish-service.ts **没有导出 deductFish**（Flask 侧 app/service/fish.py
@@ -271,7 +271,7 @@ describe('addFish（加钱 + 写流水）', () => {
 //
 // fish-service 未导出 deductFish，扣款语义内联在 feedBlog：
 //   updateMany({ where: { id, driedFish: { gte: amount } }, data: { decrement } })
-// 这正是 CLAUDE.md 说的「原子 UPDATE 防并发超扣」。以下验证它真的成立。
+// 这就是「原子 UPDATE 防并发超扣」。以下验证它真的成立。
 
 describe('扣款：余额不足', () => {
   it('余额不足时拒绝，且余额不变、不产生任何流水', async () => {
