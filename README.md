@@ -56,7 +56,6 @@ npm run dev                              # http://localhost:3000
 | `npm run diagnose` | 部署自检（版本 / .env / 库 / 密钥）；报红就别往下走 |
 | `npm run check:secrets` | 密钥与生产数据是否进过版本库 |
 | `npm run check:links` | 站内断链静态扫描 |
-| `npm run check:perms` | 权限档位回归（与历史 Flask 对照） |
 | `npm run prisma:pull` | 把库反向同步到 schema.prisma（手改 SQL 后用） |
 | `npm run db:normalize` | 源库复制 + 规整时间戳为 INTEGER 毫秒 |
 | `npm run db:compensate-fortunes` | 补偿"已签到未翻牌"的鱼干记录 |
