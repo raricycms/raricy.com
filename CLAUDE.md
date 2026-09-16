@@ -199,6 +199,26 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 - 加素材**不需要重启**（扫盘缓存 5s TTL + 目录时间戳 + 60s 兜底全扫），换同名文件内容
   立刻生效。面向站长/玩家的说明见 `docs/guide/表情包使用指南.md`。
 
+### 画报与鱼干收款码
+- **服务端出图**，两种：个人主页画报（`/api/poster/profile/<自己>`，二维码指向
+  `${SITE_URL}/u/<id>`）、鱼干收款码（`/api/poster/collect`，二维码指向
+  `${SITE_URL}/fish/collect?to=<用户名>`）。管线与四条约束见 `docs/architecture.md` §6.8。
+- **二维码永远是矢量 `<rect>`** —— 它是整张图里唯一不依赖服务器字体的部分。sharp 走
+  librsvg + fontconfig，**服务器缺中文字体时画报上的字全是豆腐块**，那时码仍要能扫。
+  部署要装 `fonts-noto-cjk`（`docs/deploy.md` §1），`npm run diagnose` 第 5 节有探针。
+  这个「半坏」状态最难发现：接口 200、图能生成、也能扫，只有字是方框。
+- **静默区 ≥ 4 模块、单元尺寸取整**。写死像素内边距踩过坑：短链接的模块更大，
+  静默区反而不够 4 个模块，**解码器直接失败而肉眼看图完全正常**。现在 cell 由
+  `floor(卡片宽 / (模块数 + 9))` 反推。`tests/unit/poster.test.ts` 会把渲染结果
+  **真解码**一遍 —— 改二维码相关的东西，那条用例是唯一的防线，别绕过它。
+- **纠错等级 H 不能降**：中心压了 logo。降级 = 「图好看但扫不出来」。
+- **`SITE_URL` 是二维码前缀的唯一来源**，且是服务端变量（无 `NEXT_PUBLIC_` 前缀）。
+  解析链在 `src/lib/site-url.ts`（`SITE_URL` → `ALLOWED_ORIGINS` → 空串），OAuth 的
+  userinfo 与画报共用这一份。**空串时必须 503，绝不生成相对路径的废码。**
+- **`src/app/fish/PayForm.tsx` 是收银台与收款页共用的同一份**（`variant` 分支），
+  别为 `/fish/collect` 另抄一个 —— 幂等键与 step-up 密码那条路径只能有一份实现。
+  `/fish/pay` 的 DOM 类名被 `tests/e2e/fish-market.spec.ts` 钉死，改之前先看那个用例。
+
 ### 版本控制
 - 每次写完或改完一个功能 / 修复 / 文档后立即 `git commit`，不要积攒等用户来问。
 - 一个 commit 只做一件事；不同语义（feat / fix / chore / docs / refactor / test / build）的改动必须拆开。
