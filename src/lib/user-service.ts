@@ -14,6 +14,7 @@ import { prisma } from './db';
 import { nowForDb } from './db-time';
 import { hashPassword, verifyPassword } from './password';
 import { kickUser } from './chat-bus';
+import { publishToUser } from './topbar-bus';
 import {
   accountServiceEnabled,
   AccountServiceError,
@@ -567,6 +568,11 @@ export async function updateOwnProfile(userId: string, patch: ProfilePatch): Pro
   // （chat-bus 按连接建立时的 focusMode 过滤大区广播）。
   if ('focusMode' in data) {
     kickUser(userId);
+    // 顶栏红点同样受专注模式影响（开启后大区不计入汇总）。这里**不踢顶栏流**：
+    // 会话没废，铃铛照常要收推送。推送值分两种（够不着 chat-service，会成环，
+    // 见 topbar-bus 的 TopbarPatch）：开启 → 大区不计 → 必为 false，推精确值；
+    // 关闭 → 大区里可能还压着 @ 我的未读，推「重算」让客户端走 count 路由。
+    publishToUser(userId, updated.focusMode ? { chatUnread: false } : { refresh: true });
   }
 
   return {

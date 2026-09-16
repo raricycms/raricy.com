@@ -10,7 +10,7 @@
 // 这个坑**单测完全看不见、构建也不报错** —— 所以响应头必须是常量、由所有 SSE 路由
 // 复用，而不是每个路由凭记忆手写一份。改本文件等于改全站所有 SSE 流的行为。
 //
-// 现有消费者：api/chat/stream/route.ts。
+// 现有消费者：api/chat/stream/route.ts（讨论）、api/notifications/stream/route.ts（顶栏指示器）。
 // 新增 SSE 路由请直接 import 这里的常量，不要手抄。
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -29,6 +29,15 @@ export const SSE_RETRY_MS = 3000;
 
 /** 背压阈值：积压这么多帧还没被消费，说明客户端已经卡死 → 断开重连。 */
 export const SSE_QUEUE_LIMIT = 512;
+
+/**
+ * 心跳间隔：防中间设备（反代 / NAT / 运营商）把空闲长连接掐掉。
+ *
+ * 两条流（讨论 `chat-bus.ts`、顶栏 `topbar-bus.ts`）共用这一个值 —— 各自持有一个
+ * 定时器，但间隔必须一致：它是对「反代多久掐空闲连接」这一个事实的编码，不该有两份。
+ * nginx 的 `proxy_read_timeout` 默认 60s，25s 留了一倍余量。
+ */
+export const SSE_HEARTBEAT_MS = 25_000;
 
 /**
  * 组装一帧 SSE。id 只给需要断线补齐的事件用（浏览器靠它回传 Last-Event-ID）。

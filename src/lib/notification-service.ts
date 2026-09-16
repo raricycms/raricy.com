@@ -14,6 +14,7 @@
 
 import { prisma } from './db';
 import { nowForDb } from './db-time';
+import { hasSubscriber, publishToUser } from './topbar-bus';
 
 const DEFAULT_PER_PAGE = 20;
 
@@ -120,7 +121,7 @@ export async function sendNotification(input: SendNotificationInput) {
     if (prefKey && recipient[prefKey] === false) return null;
   }
 
-  return prisma.notification.create({
+  const created = await prisma.notification.create({
     data: {
       id: crypto.randomUUID(),
       timestamp: nowForDb(),
@@ -133,6 +134,10 @@ export async function sendNotification(input: SendNotificationInput) {
       read: false,
     },
   });
+
+  // 未读数 +1 → 推给在线的本人（顶栏铃铛）。不 await：见 pushUnreadCount 的说明。
+  void pushUnreadCount(recipientId);
+  return created;
 }
 
 export interface ListParams {
@@ -197,12 +202,43 @@ export async function getUnreadCount(userId: string) {
   return prisma.notification.count({ where: { recipientId: userId, read: false } });
 }
 
-/** 标记单条为已读（限本人）。返回是否命中。 */
+/**
+ * 把该用户的**最新未读数**推给顶栏（SSE）。所有会让未读数变化的写路径末尾都调它。
+ *
+ * 三条纪律，缺一条都会出事：
+ *
+ * 1. **`hasSubscriber` 必须在任何 await 之前**：没人连着就不该去查库（绝大多数的通知
+ *    是发给离线用户的）。顺带让单测零成本 —— 没有订阅者时不产生浮动 Promise，
+ *    也就不会在 resetDb() 之后落地。
+ * 2. **算值放在 try 里面**：调用点写的是 `void pushUnreadCount(id)`，如果改成
+ *    `void publishToUser(id, { count: await getUnreadCount(id) })`，`await` 会先于
+ *    publishToUser 求值 —— 异常照样逃逸到调用方去。而 sendNotification 没有 try/catch，
+ *    它的调用方各自包着（如 blog-service.toggleLike 在 catch 里回滚 notificationSent），
+ *    于是「通知发失败」的假象会让下一次点赞**重发一条通知**。
+ * 3. **不 await、不抛**：推送失败不该影响主流程（通知已经写进去了），有兜底轮询收敛。
+ *    失败也不打日志 —— 有轮询兜着，日志只会变成噪声。
+ */
+export async function pushUnreadCount(userId: string): Promise<void> {
+  if (!hasSubscriber(userId)) return;
+  try {
+    publishToUser(userId, { count: await getUnreadCount(userId) });
+  } catch {
+    /* 推送失败无声：下一次事件或兜底轮询会纠正 */
+  }
+}
+
+/**
+ * 标记单条为已读（限本人）。返回是否命中。
+ *
+ * 写路径与顶栏推送相邻不是巧合 —— 每一处**改变未读数**的写都必须推一次，
+ * 否则「手机上点开看了，电脑上铃铛永远亮着」（比 20s 轮询还差）。
+ */
 export async function markRead(notificationId: string, userId: string) {
   const res = await prisma.notification.updateMany({
     where: { id: notificationId, recipientId: userId },
     data: { read: true },
   });
+  if (res.count > 0) void pushUnreadCount(userId);
   return res.count > 0;
 }
 
@@ -212,6 +248,7 @@ export async function markAllRead(userId: string) {
     where: { recipientId: userId, read: false },
     data: { read: true },
   });
+  if (res.count > 0) void pushUnreadCount(userId);
   return res.count;
 }
 
@@ -227,6 +264,7 @@ export async function batchMarkRead(notificationIds: string[], userId: string) {
     where: { id: { in: notificationIds }, recipientId: userId },
     data: { read: true },
   });
+  if (res.count > 0) void pushUnreadCount(userId);
   return res.count;
 }
 
@@ -239,5 +277,7 @@ export async function batchDelete(notificationIds: string[], userId: string) {
   const res = await prisma.notification.deleteMany({
     where: { id: { in: notificationIds }, recipientId: userId },
   });
+  // 删掉的可能是未读的 → 未读数会下降。单条删除的路由也走这里，别各写一份。
+  if (res.count > 0) void pushUnreadCount(userId);
   return res.count;
 }

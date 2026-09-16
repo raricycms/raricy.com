@@ -14,15 +14,14 @@
 // 因此这里**不需要**消息队列或重试，可靠性的兜底在「重连补齐」那一层。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { sseFrame } from './sse';
+import { SSE_HEARTBEAT_MS, sseFrame } from './sse';
 import type { ChatStreamEvent } from './chat-shared';
 
 // sseFrame 的实现已抽到 ./sse（与游戏 SSE 共用同一份帧格式与响应头常量）。
 // 这里重导出，保持既有 import 路径（含 tests/service/chat-bus.test.ts）不变。
 export { sseFrame };
 
-/** 心跳间隔：防中间设备（反代 / NAT / 运营商）把空闲长连接掐掉。 */
-const HEARTBEAT_MS = 25_000;
+// 心跳间隔取自 ./sse 的 SSE_HEARTBEAT_MS（与顶栏流共用同一个值，见该常量的注释）。
 
 export interface ChatSubscriber {
   userId: string;
@@ -146,7 +145,7 @@ function ensureHeartbeat(): void {
   if (state.timer) return;
   state.timer = setInterval(() => {
     for (const set of state.subs.values()) deliver(set, ': ping\n\n');
-  }, HEARTBEAT_MS);
+  }, SSE_HEARTBEAT_MS);
   // 不因心跳定时器拖住进程退出（测试 / 优雅重启）。Node 的 Timeout 才有 unref，
   // 浏览器/Edge 的 setInterval 返回 number —— 运行时判一下，不依赖类型定义。
   (state.timer as unknown as { unref?: () => void }).unref?.();

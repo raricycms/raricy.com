@@ -32,6 +32,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         {/* base.js 依赖这些 meta（对齐 Flask base.html 的服务端数据契约） */}
         <meta name="user-authenticated" content={user ? 'true' : 'false'} />
         {user && <meta name="notification-api-url" content="/api/notifications/count" />}
+        {/* 顶栏实时流。与上面那条分工不同：这条推**增量补丁**（实时值），上面那条是
+            **兜底快照**（首屏 / 切页 / 流没连上时）。两条都要留着 —— 见 base.js
+            scheduleHeartbeat 的注释。
+            只判 user 不判 core：铃铛人人都有，红点由服务端快照里的闸门给 false
+            （对齐 count 路由；讨论入口也正是对所有登录用户保留的）。 */}
+        {user && <meta name="notification-stream-url" content="/api/notifications/stream" />}
         {/* 签到是 core+ 档：非核心用户不给这个 meta，base.js 就不会去轮询、
             也不会点亮一个骗人的「可签到」徽标（它只看 checked_in 字段，
             403 响应里没有该字段 → 会被当成「没签到」而常亮）。
@@ -42,7 +48,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       </head>
       <body>
         <Navbar user={user} />
-        {/* 切页/bfcache 恢复时即时刷新顶栏未读数（20s 周期心跳在 base.js） */}
+        {/* 切页/bfcache 恢复时即时刷新顶栏未读数（实时值走 SSE，两档兜底轮询在 base.js） */}
         <NotificationHeartbeat />
         <main>{children}</main>
         {/* /chat 是满屏工作台，不渲染页脚（见 FooterGate） */}

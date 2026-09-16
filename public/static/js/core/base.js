@@ -3,6 +3,7 @@
 // 从meta标签读取服务器端数据
 const userAuthenticatedMeta = document.querySelector('meta[name="user-authenticated"]');
 const notificationApiUrlMeta = document.querySelector('meta[name="notification-api-url"]');
+const notificationStreamUrlMeta = document.querySelector('meta[name="notification-stream-url"]');
 const checkinApiUrlMeta = document.querySelector('meta[name="checkin-api-url"]');
 const logoutUrlMeta = document.querySelector('meta[name="logout-url"]');
 
@@ -18,6 +19,9 @@ function safeJsonParse(jsonString, defaultValue) {
 
 window.isUserAuthenticated = userAuthenticatedMeta ? (userAuthenticatedMeta.content === 'true') : false;
 window.notificationApiUrl = notificationApiUrlMeta ? notificationApiUrlMeta.content : null;
+// 顶栏实时流（SSE）。与上面的 notificationApiUrl 是两个不同的东西：
+// 前者是补丁推送，后者是兜底快照，缺一不可（见 scheduleHeartbeat 的注释）。
+window.notificationStreamUrl = notificationStreamUrlMeta ? notificationStreamUrlMeta.content : null;
 window.checkinApiUrl = checkinApiUrlMeta ? checkinApiUrlMeta.content : null;
 
 console.log('用户认证状态:', window.isUserAuthenticated);
@@ -137,7 +141,79 @@ function createToastContainer() {
     return container;
 }
 
-// 获取并更新顶栏的两个提示（同一次请求喂两个元素）
+// ── 顶栏两个指示器的状态 ────────────────────────────────────────────────────
+//
+// 数据有两个来源，落到同一处 DOM：
+//   · SSE 流（/api/notifications/stream）—— 服务端推来的**增量补丁**，实时值；
+//   · fetch 快照（/api/notifications/count）—— 首屏 / 切页 / 回到前台 / 兜底轮询。
+//     SSE 存在「连着但收不到」的半死状态（反代掐连接、NAT 超时），没有快照就没人纠正它。
+//
+// rev 是**版本号**，专治一类竞态：可见时的那次快照 fetch 发出（读到 count=0）→ 期间
+// 来了通知并由 SSE 推出（铃铛变 1）→ 快照响应后到、把 0 盖回去 → 铃铛熄掉且要等下一个
+// 事件才回来（这个竞态是接入 SSE 之后**新引入**的：以前只有一个数据源，无从打架）。
+// 落地前比对 rev，期间有推送落地就丢弃这份可能更旧的快照 —— 那个字段的权威值已经由
+// 推送写了，另一个字段的权威值来自首帧快照，丢掉是安全的。
+
+const TOPBAR_STATE_KEY = '__raricyTopbar';
+
+function topbarState() {
+    if (!window[TOPBAR_STATE_KEY]) {
+        window[TOPBAR_STATE_KEY] = {
+            es: null,          // 当前 EventSource（null = 没连）
+            pollTimer: null,   // 兜底轮询定时器
+            retryTimer: null,  // 流被永久关闭后的重建定时器
+            streamUp: false,   // 流是否处于 open 状态（决定轮询档位）
+            rev: 0             // 已落地数据的版本号，见上
+        };
+    }
+    return window[TOPBAR_STATE_KEY];
+}
+
+// 把一个补丁（或快照）落到 DOM 上。
+// 三个字段都是**绝对值**、且**缺哪个就不动哪个** —— 服务端推的是增量补丁
+// （见 src/lib/topbar-bus.ts），`{chatUnread:false}` 里没有 count，整体替换会把铃铛抹掉。
+function applyTopbar(data) {
+    if (!data) return;
+    const st = topbarState();
+
+    if (typeof data.count === 'number') {
+        const badge = document.getElementById('notificationBadge');
+        if (badge) {
+            const count = data.count;
+            if (count > 0) {
+                badge.style.display = 'flex';
+                if (count > 99) {
+                    badge.textContent = '99+';
+                    badge.classList.add('large-count');
+                } else {
+                    badge.textContent = count;
+                    badge.classList.remove('large-count');
+                }
+                badge.classList.add('has-notifications');
+            } else {
+                badge.style.display = 'none';
+                badge.classList.remove('has-notifications');
+                badge.classList.remove('large-count');
+            }
+        }
+    }
+
+    if (typeof data.chatUnread === 'boolean') {
+        // 讨论未读：不算数字，只在「讨论」链接右上角点一个红点
+        const chatDot = document.getElementById('chatUnreadDot');
+        if (chatDot) {
+            chatDot.style.display = data.chatUnread ? 'block' : 'none';
+        }
+    }
+
+    st.rev += 1;
+
+    // 「我不确定新值，你去重算」—— 服务端够不着计算函数的那些地方推这个
+    // （改角色、关闭专注模式；理由见 topbar-bus.ts 的 TopbarPatch）。
+    if (data.refresh === true) updateNotificationCount();
+}
+
+// 获取并更新顶栏的两个提示（一次请求喂两个元素）
 // 服务端返回 { count, chatUnread }：
 //   count      → 铃铛数字，只数站内通知（＝ /notifications 列表里的条数，讨论不计入）
 //   chatUnread → 「讨论」链接右上角的小红点（私聊有未读 / 大区被 @）
@@ -152,35 +228,15 @@ function updateNotificationCount() {
         return;
     }
 
+    const st = topbarState();
+    const startedRev = st.rev;
     console.log('正在获取通知数量...', window.notificationApiUrl);
     fetch(window.notificationApiUrl)
         .then(response => response.json())
         .then(data => {
-            const badge = document.getElementById('notificationBadge');
-            if (badge) {
-                const count = data.count || 0;
-                if (count > 0) {
-                    badge.style.display = 'flex';
-                    if (count > 99) {
-                        badge.textContent = '99+';
-                        badge.classList.add('large-count');
-                    } else {
-                        badge.textContent = count;
-                        badge.classList.remove('large-count');
-                    }
-                    badge.classList.add('has-notifications');
-                } else {
-                    badge.style.display = 'none';
-                    badge.classList.remove('has-notifications');
-                    badge.classList.remove('large-count');
-                }
-            }
-
-            // 讨论未读：不算数字，只在「讨论」链接右上角点一个红点
-            const chatDot = document.getElementById('chatUnreadDot');
-            if (chatDot) {
-                chatDot.style.display = data.chatUnread ? 'block' : 'none';
-            }
+            // 期间 SSE 推来更新的值 → 丢弃这份可能更旧的快照（见 rev 的说明）
+            if (st.rev !== startedRev) return;
+            applyTopbar(data);
         })
         .catch(error => {
             console.error('获取通知数量失败:', error);
@@ -250,20 +306,90 @@ window.refreshNotificationCount = function() {
     updateNotificationCount();
 };
 
-// 顶栏徽标心跳：每 20s 轮询一次未读数（通知 + 讨论）。
-// 为什么需要它：Next 客户端路由切换（soft navigation）不会重载本文件、布局也
-// 不重挂载，若只在整页加载时拉一次，跨页（如讨论来了新消息）后数字会一直旧。
-// 切页那一下的即时刷新由根布局的 NotificationHeartbeat 组件负责（它监听不到
-// 整页加载，两者互补）；本定时器是持续兜底。
-const NOTIFY_HEARTBEAT_KEY = '__raricyNotifyHeartbeat';
+// ── 顶栏实时流（SSE）+ 兜底轮询 ─────────────────────────────────────────────
+//
+// 为什么还需要轮询：SSE 只在**能收到帧**时才有用。反代掐掉连接、NAT 超时之后，
+// 浏览器这边的 EventSource 未必报错（半死状态），数字就此冻住 —— 只有这条定时器能纠正。
+// 所以它不能删。
+//
+// 两档间隔：流连着 → 60s（省负载）；没连上 → 20s。隐藏标签页同理（见
+// startTopbarStream 的注释：HTTP/1.1 每源只有 6 条连接且跨标签页共享，隐藏的标签页
+// 不该占坑），于是隐藏时回到 20s —— 与接入 SSE 之前**完全一致**，
+// 也就是说 SSE 万一彻底失效，最坏表现不会比过去差。
 
-function startNotificationHeartbeat() {
+const POLL_INTERVAL_CONNECTED_MS = 60 * 1000;
+const POLL_INTERVAL_FALLBACK_MS = 20 * 1000;
+
+// 幂等与两档是同一处代码：每次都先清掉上一轮再按当前档位重开，所以 initSiteChrome
+// 重复执行（HMR / 测试反复 new Function）既不会叠加定时器，也不会停留在旧档位。
+function scheduleHeartbeat() {
+    const st = topbarState();
     // 未登录（无 meta）或页面没有徽标（未登录态 Navbar 不渲染）时无意义，不空轮询
     if (!window.isUserAuthenticated || !window.notificationApiUrl) return;
     if (!document.getElementById('notificationBadge')) return;
-    // 幂等：initSiteChrome 可能重复执行（HMR / 测试反复 new Function），先清上一轮
-    if (window[NOTIFY_HEARTBEAT_KEY]) clearInterval(window[NOTIFY_HEARTBEAT_KEY]);
-    window[NOTIFY_HEARTBEAT_KEY] = setInterval(updateNotificationCount, 20 * 1000);
+    if (st.pollTimer) clearInterval(st.pollTimer);
+    st.pollTimer = setInterval(
+        updateNotificationCount,
+        st.streamUp ? POLL_INTERVAL_CONNECTED_MS : POLL_INTERVAL_FALLBACK_MS
+    );
+}
+
+function closeTopbarStream() {
+    const st = topbarState();
+    if (st.retryTimer) {
+        clearTimeout(st.retryTimer);
+        st.retryTimer = null;
+    }
+    if (st.es) {
+        try { st.es.close(); } catch (e) { /* 已关闭 */ }
+        st.es = null;
+    }
+    if (st.streamUp) {
+        st.streamUp = false;
+        scheduleHeartbeat(); // 回到 20s 档
+    }
+}
+
+function startTopbarStream() {
+    // 幂等：重复执行（initSiteChrome 可能重跑）先关掉上一轮，否则每次都多一条长连接
+    closeTopbarStream();
+
+    // jsdom 不实现 EventSource（单测环境），老浏览器也没有 → 早退，纯靠轮询兜底。
+    // 这一行不能省：裸写 new EventSource 会让所有跑 base.js 的单测同步抛错。
+    if (typeof window.EventSource === 'undefined') return;
+    if (!window.isUserAuthenticated || !window.notificationStreamUrl) return;
+    // 隐藏标签页不占连接（池子是跨标签页共享的）；切回可见时由 visibilitychange 重连
+    if (document.hidden) return;
+
+    const st = topbarState();
+    const es = new window.EventSource(window.notificationStreamUrl);
+    st.es = es;
+
+    es.onopen = function () {
+        st.streamUp = true;
+        scheduleHeartbeat(); // 切到 60s 档
+        // 不在这里补一次 fetch：服务端紧接着就会推首帧**全量快照**（见路由），
+        // 那一帧就是当前值。多拉一次纯属浪费，而且会打乱既有测试的精确调用计数。
+    };
+
+    es.onmessage = function (e) {
+        const data = safeJsonParse(e.data, null);
+        if (data) applyTopbar(data);
+    };
+
+    es.onerror = function () {
+        st.streamUp = false;
+        scheduleHeartbeat(); // 回到 20s 档
+        // readyState === 2（CLOSED）= 浏览器**永久放弃**这条连接（非 200 响应、如 401 / 502），
+        // 按规范不会再重试。我们自己隔一会儿重建一次：服务端重启造成的 502 能自愈；
+        // 会话真废了的话，重建会再吃一个 401，代价与那条 20s 轮询同级。
+        // readyState === 0（CONNECTING）= 普通断线，浏览器按服务端下发的 retry 自动重连，不用管。
+        if (st.es === es && es.readyState === 2) {
+            st.es = null;
+            if (st.retryTimer) clearTimeout(st.retryTimer);
+            st.retryTimer = setTimeout(startTopbarStream, 30 * 1000);
+        }
+    };
 }
 
 // 自定义文件选择器：接管所有可见的原生 input[type=file]
@@ -348,8 +474,20 @@ function initSiteChrome() {
 
     updateNotificationCount();
     updateCheckinIndicator();
-    startNotificationHeartbeat();
+    scheduleHeartbeat();
+    startTopbarStream();
     enhanceFileInputs();
+
+    // 标签页可见性：隐藏时断开长连接（池子跨标签页共享，见 startTopbarStream），
+    // 回到前台立刻重连并补一次快照。监听器挂在本轮的 AbortController 上，不累积。
+    document.addEventListener('visibilitychange', function () {
+        if (document.hidden) {
+            closeTopbarStream();
+            return;
+        }
+        startTopbarStream();
+        updateNotificationCount();
+    }, { signal });
 
     // 顶栏折叠
     const siteNavbar = document.querySelector('.site-navbar');
