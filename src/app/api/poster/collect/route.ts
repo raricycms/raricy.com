@@ -26,7 +26,8 @@ export async function GET() {
   return new Response(new Uint8Array(png), {
     headers: {
       'Content-Type': 'image/png',
-      'Content-Disposition': 'inline; filename="raricy-collect.png"',
+      // 只写 inline、不写 filename —— 理由见 api/poster/profile/[id]/route.ts
+      'Content-Disposition': 'inline',
       'Cache-Control': 'private, no-store',
       'X-Robots-Tag': 'noindex',
     },

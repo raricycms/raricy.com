@@ -31,8 +31,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   return new Response(new Uint8Array(png), {
     headers: {
       'Content-Type': 'image/png',
-      // 展示用；下载时的文件名由前端 <a download> 指定（同名头带中文要 RFC 5987 编码，没必要）
-      'Content-Disposition': 'inline; filename="raricy-poster.png"',
+      // 只写 inline、**不写 filename**：一旦这里给了文件名，浏览器就把它当成下载名，
+      // 前端 <a download="聪明山-xxx-主页画报.png"> 会被无视（实测：下载下来叫
+      // raricy-poster.png）。文件名交给调用方 —— 只有它知道用户名。
+      'Content-Disposition': 'inline',
       'Cache-Control': 'private, no-store',
       'X-Robots-Tag': 'noindex',
     },
