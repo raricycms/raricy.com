@@ -197,6 +197,12 @@ describe('RULES 全站配额（src/lib/rate-limit.ts 即权威，改动即报警
       desc: '鱼干市场无状态接口 20 次/分/账号（成功也计数：每次都要跑 scrypt）',
     },
     { name: 'fishApiPerIp', limit: 120, windowMs: 60_000, desc: '鱼干市场无状态接口 120 次/分/IP' },
+    {
+      name: 'posterMinute',
+      limit: 30,
+      windowMs: 60_000,
+      desc: '画报 / 收款码 PNG 生成 30 次/分/用户（一次请求 = 一次 sharp 光栅化）',
+    },
   ] as const;
 
   for (const e of EXPECTED) {
