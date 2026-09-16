@@ -8,6 +8,7 @@ import {
   TRANSFER_NOTE_MAX,
 } from '@/lib/fish-market-service';
 import PayForm from '../PayForm';
+import PayErrorCard from '../PayError';
 
 // 收银台 —— 站外商户把用户送到这里付款（协议见 docs/fish-bot.md §9）。
 //
@@ -48,20 +49,20 @@ function rebuildQuery(params: RawParams): string {
   return qs.toString();
 }
 
-/** 参数不合法时的统一展示（内容全是我们自己的文案，不含任何用户输入）。 */
+/** 参数不合法时的统一展示（卡片样式与 /fish/collect 共用，见 ../PayError）。 */
 function PayError({ message }: { message: string }) {
   return (
-    <div className="content-wrapper">
-      <h1 className="page-title">支付</h1>
-      <div className="market-card pay-error">
-        <p className="pay-error__title">无法发起支付</p>
-        <p className="pay-error__message">{message}</p>
-        <p className="pay-error__hint">
+    <PayErrorCard
+      heading="支付"
+      title="无法发起支付"
+      message={message}
+      hint={
+        <>
           请回到发起支付的站点重新进入，或
           <Link href="/fish"> 前往我的小鱼干</Link>。
-        </p>
-      </div>
-    </div>
+        </>
+      }
+    />
   );
 }
 
