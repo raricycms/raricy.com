@@ -1,7 +1,8 @@
 import { apiErr } from '@/lib/format';
 import { prisma } from '@/lib/db';
 import { rateLimit } from '@/lib/rate-limit';
-import { hasScope, oauthErr, siteOrigin, validateAccessToken } from '@/lib/oauth';
+import { hasScope, oauthErr, validateAccessToken } from '@/lib/oauth';
+import { siteOrigin } from '@/lib/site-url';
 
 // GET /api/oauth/userinfo
 // Authorization: Bearer <token> → { sub, username, avatar_url }

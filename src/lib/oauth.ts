@@ -619,32 +619,8 @@ export async function revokeUserApplicationTokens(
   return { found: true, revoked: res.count };
 }
 
-// ── siteOrigin：解析 SITE_URL / ALLOWED_ORIGINS ──────────────────────────────
-
-/**
- * 给 userinfo 拼绝对 avatar_url 用。优先 SITE_URL，回退 ALLOWED_ORIGINS 第一项。
- * 解析失败 → console.warn + 返回 ''（让 avatar_url 退化为相对路径，dev 凑合能跑）。
- */
-export function siteOrigin(): string {
-  const fromSite = (process.env.SITE_URL || '').trim().replace(/\/+$/, '');
-  if (fromSite) {
-    try {
-      return new URL(fromSite).origin;
-    } catch {
-      console.warn('[oauth] SITE_URL 不是合法 URL：', process.env.SITE_URL);
-    }
-  }
-  const allowed = (process.env.ALLOWED_ORIGINS || '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean)[0];
-  if (allowed) {
-    try {
-      return new URL(allowed.startsWith('http') ? allowed : `https://${allowed}`).origin;
-    } catch {
-      /* fallthrough */
-    }
-  }
-  console.warn('[oauth] SITE_URL 与 ALLOWED_ORIGINS 均未配置，avatar_url 将退化为相对路径');
-  return '';
-}
+// ── siteOrigin：已搬到 src/lib/site-url.ts ──────────────────────────────────
+//
+// 原先这里有一份内联实现。画报要拼绝对 URL（二维码前缀），于是把它搬到
+// site-url.ts 作为**唯一**实现 —— 回退链只有一份，不再各写一遍。
+// userinfo 直接从 '@/lib/site-url' 导入。
