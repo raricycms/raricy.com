@@ -14,18 +14,59 @@
 | nginx | 可选（直连 `:3000` 也行） | 推荐，反代配 cookie/CSRF 关键头 |
 | systemd | 可选 | 推荐，开机自启 + 自动重启 |
 | 账户服务 | 独立仓库部署；与本站 **HTTP 可达** | 否则鱼干写路径 fail-closed 503 |
-| **中文字体** | **必须有**（`fonts-noto-cjk` 或任意含 CJK 的字体） | 画报 / 收款码是服务端用 sharp（librsvg + fontconfig）光栅化的，**没有中文字体时画报上的字全是豆腐块**。二维码不受影响（矢量矩形），所以图能生成、也能扫 —— 只有字是方框，属于「半坏」状态，最容易漏掉。见 §5 的检查 |
+| **中文字体** | **必须有**（任意含 CJK 的字体，见下） | 画报 / 收款码是服务端用 sharp（librsvg + fontconfig）光栅化的，**没有中文字体时画报上的字全是豆腐块**。二维码不受影响（矢量矩形），所以图能生成、也能扫 —— 只有字是方框，属于「半坏」状态，最容易漏掉 |
 
-装字体（Debian/Ubuntu；CentOS 用 `yum install google-noto-sans-cjk-fonts`）：
+### 装中文字体（画报要用）
+
+**装哪一个**——画报只需要「常用汉字 + 拉丁字母」，两者都够用，差别在体积：
+
+| 包 | 装完体积 | 说明 |
+|----|---------|------|
+| `fonts-wqy-microhei` | **约 5 MB** | 文泉驿微米黑。**先试这个** —— 体积是 Noto 的 1/20，画报场景完全够 |
+| `fonts-noto-cjk` | 约 90 MB+ | Noto Sans CJK。字形更精致、覆盖含日韩，代价是体积 |
+
+`src/lib/poster.ts` 的字体栈把两个都列了（`'Noto Sans SC', …, 'WenQuanYi Micro Hei', …, sans-serif`），
+装哪个都能命中，不必改代码。
 
 ```bash
-apt install -y fonts-noto-cjk
-fc-cache -f                      # 刷新 fontconfig 缓存
+# Debian / Ubuntu
+apt update && apt install -y fonts-wqy-microhei     # 或 fonts-noto-cjk
+fc-cache -fv                                        # 必须刷新 fontconfig 缓存
+fc-list :lang=zh | head                             # 确认能列出中文字体
+
+# CentOS / RHEL / Alma / Rocky
+yum install -y wqy-microhei-fonts                   # 或 google-noto-sans-cjk-fonts
+fc-cache -fv
+
+# Alpine（将来容器化时）
+apk add --no-cache font-wqy-microhei && fc-cache -fv
+```
+
+装完**重启服务**再验：
+
+```bash
+systemctl restart <你的服务名>
 npm run diagnose                 # 第 5 节「画报中文字体」应当是 ✓
 ```
 
-> 探针原理：把「聪明山」与私用区三个码位（正常字体里必然没有字形）各渲一张图比对 ——
-> 缺字体时两组都是 .notdef（同一个豆腐块），逐像素相同。
+> **为什么要重启**：fontconfig 的字体集是**进程内缓存**，`next start` 早已初始化过它 ——
+> 不重启的话，新装的字体对那个进程不存在，你会以为「装了没用」。
+
+**没有 root、或不想装包**：往 fontconfig 会扫的目录里丢一个 ttf/otf 再刷缓存即可。
+用**系统级**目录（`/usr/local/share/fonts/`）而不是 `~/.local/share/fonts/` —— 除非你确定
+systemd 服务跑的就是那个用户，否则服务进程根本看不到用户级目录：
+
+```bash
+mkdir -p /usr/local/share/fonts
+# 从 Google Fonts（fonts.google.com/noto/specimen/Noto+Sans+SC → Download family）
+# 或 noto-cjk 的 GitHub Releases 取一个 .otf/.ttf，拷进来；WQY 见 wenq.org
+cp NotoSansSC-Regular.otf /usr/local/share/fonts/
+fc-cache -fv && fc-list :lang=zh
+```
+
+> 探针原理（`npm run diagnose` 第 5 节）：把「聪明山」与私用区三个码位
+> （正常字体里必然没有字形）各渲一张图比对 —— 缺字体时两组都是 .notdef
+> （同一个豆腐块），逐像素相同。它只能告诉你「有没有」，字体好不好看得自己看一眼画报。
 
 不需要：Python（已无任何 Flask 代码）、MySQL/Postgres（SQLite）。
 
