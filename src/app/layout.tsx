@@ -8,7 +8,7 @@ import Footer from './components/Footer';
 import FooterGate from './components/FooterGate';
 import NotificationHeartbeat from './components/NotificationHeartbeat';
 import FrameBuster from './components/FrameBuster';
-import { getCurrentUser } from '@/lib/auth';
+import { getCurrentUser, isCoreUser } from '@/lib/auth';
 
 export const metadata: Metadata = {
   title: '聪明山',
@@ -32,7 +32,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         {/* base.js 依赖这些 meta（对齐 Flask base.html 的服务端数据契约） */}
         <meta name="user-authenticated" content={user ? 'true' : 'false'} />
         {user && <meta name="notification-api-url" content="/api/notifications/count" />}
-        {user && <meta name="checkin-api-url" content="/api/checkin" />}
+        {/* 签到是 core+ 档：非核心用户不给这个 meta，base.js 就不会去轮询、
+            也不会点亮一个骗人的「可签到」徽标（它只看 checked_in 字段，
+            403 响应里没有该字段 → 会被当成「没签到」而常亮）。
+            入口本身仍留在顶栏，点进去是 403 —— 与讨论、博客同一种待遇。 */}
+        {isCoreUser(user) && <meta name="checkin-api-url" content="/api/checkin" />}
         {user && <meta name="logout-url" content="/api/auth/logout" />}
         <script dangerouslySetInnerHTML={{ __html: noFlashScript }} />
       </head>

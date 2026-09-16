@@ -57,6 +57,14 @@ test.describe('角色门控', () => {
     await expect(page.locator('.rainbow-error__code')).toHaveText('403');
   });
 
+  test('普通用户（role=user）访问 /checkin 得到 403（签到是鱼干的赚取渠道，core+ 档）', async ({ page }) => {
+    await loginViaApi(page, SEED_USERS.plain.username);
+
+    const res = await page.goto('/checkin');
+    expect(res?.status(), '签到给未认证账号开了自助领鱼干的口子').toBe(403);
+    await expect(page.locator('.rainbow-error__code')).toHaveText('403');
+  });
+
   test('403 页不劝已登录用户「去登录」（他就是登录着才被挡的）', async ({ page }) => {
     await loginViaApi(page, SEED_USERS.plain.username);
 
@@ -169,6 +177,11 @@ test.describe('角色门控', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 test.describe('核心用户门槛（接口层）', () => {
   // Flask 侧这些全是 @authenticated_required
+  //
+  // ⚠️ 只放**两个方向都无副作用**的调用。签到的写接口（POST /api/checkin 与
+  //    /claim）刻意不在此列：core 那一轮会真的给 e2e_core 建一条签到记录并翻牌发鱼，
+  //    改掉种子账号的余额，把别的用例绊倒。它们的方向断言在 checkin.spec 里
+  //    （用临时注册的账号，不碰种子）。这里放状态 GET 就够证明门槛在了。
   const CASES: Array<{ name: string; method: 'GET' | 'POST'; path: string; body?: object }> = [
     { name: '点赞', method: 'POST', path: `/api/blogs/${SEED_BLOG.id}/like` },
     { name: '投喂', method: 'POST', path: `/api/blogs/${SEED_BLOG.id}/feed`, body: { amount: 1 } },
@@ -177,6 +190,7 @@ test.describe('核心用户门槛（接口层）', () => {
     { name: '图床列表', method: 'GET', path: '/api/images' },
     { name: '投票列表', method: 'GET', path: '/api/votes' },
     { name: '建投票', method: 'POST', path: '/api/votes', body: { title: 't', options: ['a', 'b'] } },
+    { name: '签到状态', method: 'GET', path: '/api/checkin' },
   ];
 
   for (const c of CASES) {

@@ -1,5 +1,9 @@
 // 每日签到（两步式）：签到建记录 → 弹卡 → 翻牌定命 → 远端记账。
 //
+// 【档位：core+】签到是鱼干的赚取渠道，与投喂、点赞同档（普通账号不该有自助领鱼干
+// 的口子）。因此下面每条正向用例都用 `registerFreshUser(page, { core: true })` 造号 ——
+// 新注册默认是 role=user，不提权连签到按钮都点不动。反向用例见文件末尾。
+//
 // 【两步语义】签到（POST /api/checkin）只建记录：fortune_value=NULL、牌池洗好落库，
 // 不发鱼、不碰远端。翻牌（POST /api/checkin/claim，用户点选位置 0-4）才从落库牌池
 // 取 pool[chosenIndex] 赋值并发鱼 + 远端同步 —— 翻哪张拿哪个值，由翻牌的选择决定。
@@ -41,7 +45,7 @@ async function checkinTransfers(request: APIRequestContext, userId: string) {
 }
 
 test('首次签到 → 弹卡翻牌 → 运势落定并同步账户服务；同日再签被拒', async ({ page, request }) => {
-  const user = await registerFreshUser(page);
+  const user = await registerFreshUser(page, { core: true });
 
   // ── 第一步：签到（走真实 UI）────────────────────────────────────────────
   await page.goto('/checkin');
@@ -110,7 +114,7 @@ test('首次签到 → 弹卡翻牌 → 运势落定并同步账户服务；同�
 });
 
 test('恢复态：只签到不翻牌 → 刷新后自动弹「继续完成签到」→ 选牌补翻', async ({ page, request }) => {
-  const user = await registerFreshUser(page);
+  const user = await registerFreshUser(page, { core: true });
 
   // ── 只签到、不翻牌（模拟签到后关掉页面/请求中断）────────────────────────
   const ci = await page.request.post('/api/checkin', { data: {} });
@@ -161,7 +165,7 @@ test('恢复态：只签到不翻牌 → 刷新后自动弹「继续完成签到
 });
 
 test('claim 校验：越界/缺 index/非法 index 被拒，且不落值不发鱼', async ({ page, request }) => {
-  const user = await registerFreshUser(page);
+  const user = await registerFreshUser(page, { core: true });
 
   // 先签到，进入待翻牌态
   const ci = await page.request.post('/api/checkin', { data: {} });
@@ -192,7 +196,7 @@ test('claim 校验：越界/缺 index/非法 index 被拒，且不落值不发�
 });
 
 test('未签到就翻牌 → 「今天还没有签到」', async ({ page }) => {
-  await registerFreshUser(page);
+  await registerFreshUser(page, { core: true });
   const res = await page.request.post('/api/checkin/claim', { data: { chosenIndex: 0 } });
   expect(res.status()).toBe(400);
   expect((await res.json()).message).toContain('今天还没有签到');
@@ -205,4 +209,36 @@ test('未登录调用签到/翻牌接口返回 401', async ({ request }) => {
 
   const claim = await request.post('/api/checkin/claim', { data: { chosenIndex: 0 } });
   expect(claim.status()).toBe(401);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// core+ 门槛
+//
+// 【为什么签到是 core+】鱼干是 core+ 体系的报酬：赚取渠道（签到翻牌、投喂分成）全在
+// core 门槛之后。放开签到 = 给未认证账号一条自助领鱼干的路，而它拿到鱼干也没有出口。
+// 这条与 `access-control.spec` 的接口矩阵是同一个契约，但**翻牌那一步必须单独钉**：
+// 只挡 POST /api/checkin 而漏掉 /claim，就是「签到进不来、翻牌照样领」——
+// 而发鱼的恰恰是 claim。
+// ─────────────────────────────────────────────────────────────────────────────
+test('凡 core+ 门槛：role=user 签到与翻牌都 403，且一分鱼干都不发', async ({ page, request }) => {
+  const user = await registerFreshUser(page); // 默认就是 role=user
+  expect(user.id).toBeTruthy();
+
+  const ci = await page.request.post('/api/checkin', { data: {} });
+  expect(ci.status(), 'role=user 不该能签到').toBe(403);
+  expect((await ci.json()).message).toContain('核心用户');
+
+  const claim = await page.request.post('/api/checkin/claim', { data: { chosenIndex: 0 } });
+  expect(claim.status(), '翻牌才是发鱼的那一步，漏了它等于门槛形同虚设').toBe(403);
+
+  // 状态接口同样挡掉：base.js 靠它决定点不点亮签到徽标
+  const status = await page.request.get('/api/checkin');
+  expect(status.status()).toBe(403);
+
+  expect(await checkinTransfers(request, user.id), '被 403 的路径绝不能发鱼').toHaveLength(0);
+
+  // 入口仍在（与讨论、博客同一种待遇），但点进去是 403
+  const pageRes = await page.goto('/checkin');
+  expect(pageRes?.status()).toBe(403);
+  await expect(page.locator('.rainbow-error__code')).toHaveText('403');
 });

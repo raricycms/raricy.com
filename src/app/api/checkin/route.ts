@@ -1,12 +1,17 @@
-import { getCurrentUser } from '@/lib/auth';
+import { getCurrentUser, isCoreUser } from '@/lib/auth';
 import { apiOk, apiErr } from '@/lib/format';
 import { getTodayStatus, checkIn, fortuneLabel } from '@/lib/checkin-service';
 import { AccountServiceError } from '@/lib/account-client';
 
-// GET /api/checkin — 今日签到状态 + 累计天数 + 余额（需登录）
+// 签到档位：core+（与投喂、点赞同档）。页面挡了 core，接口也必须自检 ——
+// 否则未认证账号 curl 得动签到，等于绕过 core 拿鱼干（见 checkin/page.tsx 的说明）。
+const CORE_ONLY = '需要核心用户权限';
+
+// GET /api/checkin — 今日签到状态 + 累计天数 + 余额（需登录 + core）
 export async function GET() {
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '请先登录');
+  if (!isCoreUser(user)) return apiErr(403, CORE_ONLY);
 
   const s = await getTodayStatus(user.id);
   return apiOk({
@@ -26,6 +31,7 @@ export async function GET() {
 export async function POST() {
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '请先登录');
+  if (!isCoreUser(user)) return apiErr(403, CORE_ONLY);
 
   try {
     const result = await checkIn(user.id);

@@ -9,6 +9,11 @@
 // 【为什么用签到给新号发鱼】新注册用户余额为 0，而转账要真金白银。签到翻牌是 e2e 里
 // 唯一不绕开业务的造鱼方式（CLI grant 要拉子进程；直接改库等于绕开被测路径）。
 // 运势值 1-5 随机，所以断言只用「≥1」与相对变化，不写死数值。
+//
+// 【为什么**发款方**必须 core+ 而收款方不用】签到是 core+ 档（鱼干的赚取渠道全在 core
+// 门槛之后），所以凡是走 fundByCheckin 造鱼的账号都得先提权。收款方**刻意保持
+// role=user** —— 「非核心账号拿不到鱼干，但仍然收得到转账」正是这套口径要保住的一半，
+// 顺手就让每条转账用例都覆盖到它。
 
 import { test, expect, type APIRequestContext, type Page } from '@playwright/test';
 import { registerFreshUser, loginViaApi } from './helpers';
@@ -71,7 +76,7 @@ async function transferViaUI(page: Page, username: string, amount: string) {
 }
 
 test('转账全链路：入口 → 选收款人 → 二次确认 → 到账 + 远端记账', async ({ page, request }) => {
-  const sender = await registerFreshUser(page);
+  const sender = await registerFreshUser(page, { core: true });
   const balance = await fundByCheckin(page);
 
   // 收款人：另一个新号（注册会把浏览器切成它的登录态，稍后要切回来）
@@ -114,7 +119,7 @@ test('转账全链路：入口 → 选收款人 → 二次确认 → 到账 + �
 });
 
 test('连续两笔同额：远端收到两条**不同键**的记录（幂等键不能复用）', async ({ page, request }) => {
-  const sender = await registerFreshUser(page);
+  const sender = await registerFreshUser(page, { core: true });
   await fundByCheckin(page);
   const recipient = await registerFreshUser(page);
   await loginViaApi(page, sender.username);
@@ -136,7 +141,7 @@ test('连续两笔同额：远端收到两条**不同键**的记录（幂等键�
 });
 
 test('余额不足与转给自己：前端拦住 + 服务端 400，远端无新记录', async ({ page, request }) => {
-  const sender = await registerFreshUser(page);
+  const sender = await registerFreshUser(page, { core: true });
   const balance = await fundByCheckin(page);
   const recipient = await registerFreshUser(page);
   await loginViaApi(page, sender.username);
@@ -177,7 +182,7 @@ test('收银台：商户链接 → 核对 → 输密码支付 → 返回商户�
   page,
   request,
 }) => {
-  const sender = await registerFreshUser(page);
+  const sender = await registerFreshUser(page, { core: true });
   const balance = await fundByCheckin(page);
   const merchant = await registerFreshUser(page); // 站外商户 / 银行账号
   await loginViaApi(page, sender.username);
@@ -262,7 +267,7 @@ test('无状态单次发包：不带任何 cookie，仅凭用户名 + 密码转�
   playwright,
   request,
 }) => {
-  const sender = await registerFreshUser(page);
+  const sender = await registerFreshUser(page, { core: true });
   const balance = await fundByCheckin(page);
   const recipient = await registerFreshUser(page);
 

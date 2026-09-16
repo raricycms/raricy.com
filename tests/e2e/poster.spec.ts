@@ -97,7 +97,7 @@ test('画报接口的权限：只能给自己生成；未登录一律 401', asyn
 });
 
 test('扫码收款页：金额由付款人自己填，密码确认后到账', async ({ page }) => {
-  const payer = await registerFreshUser(page);
+  const payer = await registerFreshUser(page, { core: true });
   const balance = await fundByCheckin(page);
 
   await page.goto(`/fish/collect?to=${SEED_USERS.core.username}`);

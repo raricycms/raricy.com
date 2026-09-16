@@ -1,4 +1,4 @@
-import { getCurrentUser } from '@/lib/auth';
+import { getCurrentUser, isCoreUser } from '@/lib/auth';
 import { apiOk, apiErr } from '@/lib/format';
 import { claimFortune } from '@/lib/checkin-service';
 import { AccountServiceError } from '@/lib/account-client';
@@ -6,9 +6,13 @@ import { AccountServiceError } from '@/lib/account-client';
 // POST /api/checkin/claim — 第二步：翻牌定命（对齐 Flask api_claim_fortune）。
 // body: { chosenIndex: 0-4 } —— 用户点选的位置；服务端从签到落库的牌池里
 // 取 pool[chosenIndex] 赋值，此刻才发鱼干 + 累加 totalFortune + 远端同步。
+//
+// 档位与签到本体一致：core+。**这一步才是真正发鱼干的地方** —— 只挡 POST /api/checkin
+// 而漏掉这里，等于「签到进不来、翻牌照样领」。
 export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '请先登录');
+  if (!isCoreUser(user)) return apiErr(403, '需要核心用户权限');
 
   let chosenIndex: number;
   try {
