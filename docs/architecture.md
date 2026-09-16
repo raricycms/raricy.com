@@ -87,6 +87,8 @@
 | `/fish` · `/fish/transactions` · `/api/fish/*` | page + API | 小鱼干面板 + 流水 |
 | `/fish/market` · `/api/fish/market/*` | page + API | 鱼干市场（第一期只有**用户间转账**，无手续费）：`POST transfer`（支持客户端幂等键）/ `GET users`（收款人搜索）/ `POST balance`、`POST transactions`（站外脚本用的无状态查询，含 `since_id` 对账游标）/ `POST pay`（收银台专用）。写路径见 §6.3；对外契约见 `docs/fish-bot.md` |
 | `/fish/pay` | page | **收银台**：站外商户把用户送来付款（`?to= &amount= &note= &from= &return=`）。参数一律不可信，只做展示；付款必须**已登录 + 再输一次密码**（step-up），密码只输在本站域名下。不入索引 |
+| `/fish/collect` | page | **扫码收款页**：`?to=<用户名>`，扫「鱼干收款码」落到这里。与收银台的区别是**金额由付款人自己填**（静态码不可能带金额）。前端是 `/fish/pay` 的**同一个组件**（`src/app/fish/PayForm.tsx`）的另一个变体，step-up 与幂等键完全共用 |
+| `/api/poster/profile/[id]` · `/api/poster/collect` | API | **画报 / 收款码出图**（PNG，仅本人）。渲染管线与四条约束见 §6.8 |
 | `/notifications` · `/api/notifications/*` | page + API | 通知中心 |
 | `/vote` · `/vote/[id]` | page | 投票 |
 | `/checkin` · `/api/checkin` | page + API | 每日签到 |
@@ -109,7 +111,7 @@
 
 | 分组 | 文件 |
 |------|------|
-| 认证 / 会话 | `auth.ts` · `session.ts` · `password.ts` · `invite-code.ts` · `user-service.ts` · `identicon.ts` |
+| 认证 / 会话 | `auth.ts` · `session.ts` · `password.ts` · `invite-code.ts` · `user-service.ts` · `identicon.ts` · `avatar.ts`（头像字节的**唯一**解析处：`/api/avatar/[id]` 与画报共用同一份目录穿越守卫）· `site-url.ts`（`SITE_URL` → `ALLOWED_ORIGINS` 回退链的唯一实现，OAuth 的 userinfo 与画报的二维码前缀共用） |
 | 数据层 | `db.ts` · `db-time.ts` · `format.ts` |
 | 博客域 | `blog-service.ts` · `feed-service.ts` · `comment-service.ts` · `comment-shared.ts` · `blog-sort-pref.ts` · `spider-service.ts` |
 | 富文本渲染 | `rich-text.ts`（共享管线）· `chat-markdown.ts` · `comment-markdown.ts` · `blog-markdown.ts` · `markdown-math.ts` · `linkify.ts` · `vditor-theme.ts` |
@@ -119,6 +121,7 @@
 | 投票 / 签到 / 剪贴板 | `vote-service.ts` · `checkin-service.ts` · `clipboard-service.ts` |
 | 图床 | `image-service.ts` · `image-upload.ts`（服务端）· `image-client.ts`（浏览器侧选图上传，讨论与评论共用）· `vditor-upload.ts`（Vditor 编辑器的上传配置，博客与剪贴板共用；与 `/api/images` 的字段名/响应结构两端对齐，见 `tests/unit/vditor-upload.test.ts`） |
 | 故事 | `story-service.ts` |
+| 画报 / 收款码 | `poster.ts`（纯 SVG 构造，含二维码与转义）· `poster-render.ts`（取数 + 头像 + sharp 光栅化），见 §6.8 |
 | 小鱼干 | `fish-service.ts` · `fish-admin.ts` · `fish-market-service.ts`（用户间转账，见 §6.3）· `fish-sync.ts`（账本 + 补偿，见 §6.3）· `fish-units.ts`（单位换算）· `account-client.ts` |
 | OAuth 2.0 | `oauth.ts`（见 `docs/oauth.md`） |
 | 管理域 | `admin-user-service.ts` · `admin-blog-service.ts` · `admin-category-service.ts` · `admin-comment-service.ts` · `admin-clipboard-service.ts` · `admin-vote-service.ts` · `admin-image-service.ts` · `admin-stats-service.ts` |
@@ -249,7 +252,38 @@ GET/HEAD/OPTIONS 视为安全方法，不校验。
 ⚠️ 那个 `useEffect` 的依赖必须是 `[html]` —— 组件在 `html` 为空时 `return null`，
 div 会卸载重挂，`deps=[]` 的监听器永远附不上。
 
-### 6.8 OAuth 2.0 身份绑定（raricy 作为 IdP）
+### 6.8 画报与鱼干收款码（服务端出图）
+
+两种「发出去的图片」，都靠二维码把人带回站内。**全部在服务端生成**：
+
+| | 二维码指向 | 入口 |
+|---|---|---|
+| 个人主页画报 | `${SITE_URL}/u/<id>` | 自己主页的「生成画报」 |
+| 鱼干收款码 | `${SITE_URL}/fish/collect?to=<username>` | `/fish` 的「收款码」 |
+
+管线：`src/lib/poster.ts`（**纯** SVG 构造，不碰库/文件/ sharp）→
+`src/lib/poster-render.ts`（取数 + 头像 + `sharp`）→ `GET /api/poster/{profile/[id],collect}`。
+`sharp(buf, { density: 144 })` 把 750 宽的 SVG 光栅化成 1500 宽的 PNG（文字与二维码是矢量，放大不糊）。
+前端因此极薄：预览就是 `<img src="/api/poster/...">`，下载就是同源 `<a download>`。
+
+四条约束，改之前先读 `src/lib/poster.ts` 文件头：
+
+1. **二维码永远是矢量 `<rect>`，绝不用文字或 `<image>`。** 它是整张图里唯一不依赖
+   服务器字体的部分 —— sharp 走 librsvg + fontconfig，**服务器缺中文字体时所有文字
+   都会变豆腐块**，那时二维码仍必须能扫。字体要求见 `docs/deploy.md`，
+   `npm run diagnose` 第 5 节有探针。
+2. **纠错等级必须是 H。** 二维码中心压了 logo（主动挖掉一块），H 级容忍约 30%，
+   降到 M/Q 就可能「图好看但扫不出来」。
+3. **静默区 ≥ 4 模块、单元尺寸取整。** 这两条是踩出来的：内边距写死像素时，
+   短链接的模块更大、静默区反而不够 4 个模块，解码器直接失败而肉眼完全正常。
+   现在 cell 由 `floor(卡片宽 / (模块数 + 9))` 反推，尺寸全部从 cell 推出来。
+   `tests/unit/poster.test.ts` 会把渲染结果**真解码**一遍来钉住这条。
+4. **所有动态文本转义**（`escapeXml` + 去控制字符）。简介与用户名是用户可控的。
+
+出图前必须检查 `siteOrigin()` 非空 —— 拼不出绝对 URL 时直接 503，**绝不生成相对路径的废码**。
+`SITE_URL` 是服务端变量（无 `NEXT_PUBLIC_` 前缀），解析链见 `src/lib/site-url.ts`。
+
+### 6.9 OAuth 2.0 身份绑定（raricy 作为 IdP）
 
 让外部第三方应用以标准 OAuth 2.0 Authorization Code 模式读取 raricy 用户的基础资料。
 

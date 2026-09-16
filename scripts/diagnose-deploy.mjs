@@ -277,9 +277,54 @@ if (dbPath && fs.existsSync(dbPath)) {
   wrn('没有可读的数据库，跳过密钥验证');
 }
 
-// ── 5. 线上活体检查 ─────────────────────────────────────────────────────────
+// ── 5. 画报的中文字体 ───────────────────────────────────────────────────────
+//
+// 画报 / 收款码是服务端用 sharp（librsvg + fontconfig）把 SVG 光栅化成 PNG 的。
+// **服务器缺中文字体时，整张画报的文字会变成一排豆腐块** —— 而二维码完全正常
+// （它是矢量矩形，不走字体），所以图能生成、能扫，只有字是方框。这种「半坏」
+// 状态最难被发现：接口 200、图也有，没人会去看第二眼。
+//
+// 探针原理：拿「聪明山」与私用区三个码位（U+E000/E001/E002，正常字体里**必然**
+// 没有字形）各渲一张图。字体缺失时两组都会走 .notdef（同一个豆腐块），
+// 两张图逐像素相同；字体存在时「聪明山」是三个不同的字形，必然不同。
+head('5. 画报中文字体（sharp → librsvg → fontconfig）');
+try {
+  const { default: sharp } = await import('sharp');
+  const probe = (text) =>
+    sharp(
+      Buffer.from(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="240" height="60">' +
+          '<text x="10" y="46" font-size="40" ' +
+          "font-family=\"'Noto Sans SC','Source Han Sans SC','WenQuanYi Micro Hei','Microsoft YaHei',sans-serif\">" +
+          `${text}</text></svg>`,
+        'utf8'
+      ),
+      { density: 72 }
+    )
+      .png()
+      .toBuffer();
+
+  const [cjk, tofu] = await Promise.all([
+    probe('聪明山'),
+    probe(String.fromCharCode(0xe000, 0xe001, 0xe002)),
+  ]);
+
+  if (cjk.equals(tofu)) {
+    wrn(
+      '画报的中文大概率渲染成豆腐块（找不到中文字体）',
+      'Debian/Ubuntu：apt install fonts-noto-cjk；RHEL/CentOS：yum install google-noto-sans-cjk-fonts。' +
+        '装完重启服务。注意二维码不受影响，所以只看图「能不能扫」是发现不了的。'
+    );
+  } else {
+    ok('中文字体可用（画报文字能正常渲染）');
+  }
+} catch (e) {
+  wrn(`中文字体探针跳过：${String(e).split('\n')[0]}`, 'sharp 不可用？先在项目目录跑 npm ci');
+}
+
+// ── 6. 线上活体检查 ─────────────────────────────────────────────────────────
 if (urlArg) {
-  head(`5. 线上活体检查（${urlArg}）`);
+  head(`6. 线上活体检查（${urlArg}）`);
   const base = urlArg.replace(/\/$/, '');
   const isHttps = base.startsWith('https://');
   if (!isHttps) {

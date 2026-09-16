@@ -14,6 +14,18 @@
 | nginx | 可选（直连 `:3000` 也行） | 推荐，反代配 cookie/CSRF 关键头 |
 | systemd | 可选 | 推荐，开机自启 + 自动重启 |
 | 账户服务 | 独立仓库部署；与本站 **HTTP 可达** | 否则鱼干写路径 fail-closed 503 |
+| **中文字体** | **必须有**（`fonts-noto-cjk` 或任意含 CJK 的字体） | 画报 / 收款码是服务端用 sharp（librsvg + fontconfig）光栅化的，**没有中文字体时画报上的字全是豆腐块**。二维码不受影响（矢量矩形），所以图能生成、也能扫 —— 只有字是方框，属于「半坏」状态，最容易漏掉。见 §5 的检查 |
+
+装字体（Debian/Ubuntu；CentOS 用 `yum install google-noto-sans-cjk-fonts`）：
+
+```bash
+apt install -y fonts-noto-cjk
+fc-cache -f                      # 刷新 fontconfig 缓存
+npm run diagnose                 # 第 5 节「画报中文字体」应当是 ✓
+```
+
+> 探针原理：把「聪明山」与私用区三个码位（正常字体里必然没有字形）各渲一张图比对 ——
+> 缺字体时两组都是 .notdef（同一个豆腐块），逐像素相同。
 
 不需要：Python（已无任何 Flask 代码）、MySQL/Postgres（SQLite）。
 
