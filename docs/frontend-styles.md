@@ -54,7 +54,7 @@ src/styles-scss/
 | `--color-success-primary` | `#10b981` | 成功色（投喂、签到） |
 | `--color-success-secondary` | `rgba(16,185,129,0.1)` | 成功浅底 |
 | `--color-info-secondary` | `rgba(59,130,246,0.08)` | 信息浅底 |
-| `--color-star-primary` | `#f1c40f` | 收藏夹：黄色五角星（**唯一的黄色语义色**；`--color-warning-*` 其实是红） |
+| `--color-star-primary` | `#f1c40f` | 收藏夹：黄色五角星（**唯一的黄色语义色**；`--color-warning-*` 其实是红）。**只在「已收藏」与 hover 时用**，未收藏不亮 —— 见 §6.7 |
 | `--color-star-secondary` | `rgba(241,196,15,0.12)` | 收藏夹按钮的选中态浅底 |
 
 ### 2.2 主色板（深色 `data-theme="dark"`）
@@ -225,6 +225,29 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
 - `.blog-sort`：容器，列表区顶部右对齐一行（`justify-content: flex-end`），**空结果态也渲染**（要挂载客户端恢复 effect）。
 - `.blog-sort-btn`：胶囊按钮（`border-radius: 999px`），默认 `--color-text-secondary` 字、`--color-background-content` 底；hover 转品牌字；`.active` 态品牌浅色底（`--color-brand-secondary`）+ 品牌字（`--color-brand-primary`）+ 加粗 —— 与侧栏选中态同一套令牌。
 - 可访问性：容器 `role="group"`，按钮 `type="button"` + `aria-pressed`。
+
+### 6.7 文章详情页读者交互区（`pages/blog/_blog.scss` + `pages/_favorite.scss`）
+
+`.read-controls` 两行：第一行 **点赞 / 投喂 / 收藏**，第二行 返回上页 / 管理文章。
+三颗状态色都走「**未激活跟随 `currentColor`，激活才上色**」的同一套手法，别让任何一颗常亮：
+
+- `.like-btn` → `.liked` 红（`--color-warning-*`）；`.fish-btn` → `.fish-btn--fed` 绿（`--color-success-*`）；
+  `.favorite-btn` → `.favorited` 黄（`--color-star-*`）。
+- ⚠️ 星标曾经**恒亮**（给 `.icon-star-fill` 直接写死 `background-color`），后果是三颗里
+  只有它一直有颜色，「已收藏」反而看不出来。**不要**再给 `.icon-star-fill` 加 `background-color` ——
+  `.icon` 的机制就是 `background-color: currentColor`，颜色只由按钮的 `color` 决定（§7）。
+- 收藏按钮**没有计数徽标**（点赞/投喂有）：站内不显示一篇文章的被收藏数。
+
+**窄屏（≤768px）三颗必须压在同一行**（`flex-wrap: nowrap` + `flex: 1 1 0` 等宽平分 +
+`max-width: 24rem`），字号/内边距/徽标各收一档；`<360px` 退回按内容宽度并允许换行
+（再缩字号就开始牺牲可读性了）。这条**不能只看代码**：它是按中文字体度量算出来的临界值，
+所以 `tests/e2e/favorite-layout.spec.ts` 用真视口断几何，并登记在 `playwright.config.ts` 的
+`RESPONSIVE_SPECS` 里（desktop 那一遍同样要跑）。
+
+收藏夹选择器弹窗（`.favorite-picker__*`）：**名称独占一行，两颗创建按钮并排在下一行**
+（`.favorite-picker__new-actions`，`flex: 1 1 0` 等宽）。三者挤一行时「创建公开」会被挤到
+第二行，而两颗按钮代表的是**对等的两种性质**（创建后不可改），分行会被读成「公开是次要的」。
+`<360px` 退回上下堆叠。`/favorite` 页的创建/导入条复用同一组类。
 
 ## 7. 图标方案
 

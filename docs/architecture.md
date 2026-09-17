@@ -378,10 +378,26 @@ div 会卸载重挂，`deps=[]` 的监听器永远附不上。
   正是 `content-refs.ts` 里 `replaceClipboardRef` 改写成切片所规避的 bug 类型。
 - **上限是 3 张**，且必须是正文的确定性函数（与 `MAX_IMAGE_REFS` / `MAX_CLIPBOARD_REFS` 同口径）。
 
+**入口**（曾经一个都没有 —— `/favorite` 只能手敲 URL，功能做完却进不去）：
+
+- 顶栏**头像菜单 →「我的收藏夹」**。**不按档位条件渲染**（core 以下点进去是就地 403），
+  与顶栏「讨论」同一条口径 —— 入口不跟着藏。
+- 收藏夹选择器弹窗页脚的「管理收藏夹 →」。
+
+两处都有 `tests/e2e/favorite.spec.ts` 钉着（页脚那条在 `favorite-layout.spec.ts`）。
+
 **刻意不做的事**（都是需求明确要求的，别当成遗漏）：不显示任何一篇文章的被收藏数
 （`Blog` 上**没有**收藏计数列，`getBlogDetail` 的 select 也不该加）；作者**不收到**收藏
 通知（本子系统完全不碰 `notification-service` / `topbar-bus`）；没有修改 `isPublic`
 的接口（改性质只能靠「复制」，且复制是**快照**）。
+
+**UI 上两个「不算 bug 的临界值」**（细节见 `docs/frontend-styles.md` §6.7，几何由
+`tests/e2e/favorite-layout.spec.ts` 在真视口下断言）：
+
+- 星标**未收藏时不亮**（跟 `currentColor`），只在 hover 与已收藏时变黄 —— 与点赞/投喂同一套
+  状态色手法。别再给 `.icon-star-fill` 写死 `background-color`。
+- 窄屏（≤768px）点赞/投喂/收藏**压在同一行**等宽平分；`<360px` 与弹窗里两颗创建按钮
+  都退回「按内容宽度 / 上下堆叠」—— 那是按中文字体度量算出来的，不是拍脑袋的断点。
 
 **对外文档**：`docs/bot/favorite-bot.md`（自包含，含限频数值 —— 改 `RULES` 要同步）
 与 `docs/guide/收藏夹使用指南.md`。

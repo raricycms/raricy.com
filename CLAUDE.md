@@ -198,6 +198,12 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 占位 + `data-*`，为什么替换按区间切片）。对外见 `docs/bot/favorite-bot.md`（含限频数值，
 改 `RULES` 要同步）与 `docs/guide/收藏夹使用指南.md`。
 
+**改收藏夹按钮的样式前先看 `tests/e2e/favorite-layout.spec.ts`**（它按真视口断几何，
+并登记在 `playwright.config.ts` 的 `RESPONSIVE_SPECS` 里，desktop 与 mobile 都要过）：
+星标**未收藏时不许亮**（颜色只由 `.favorite-btn.favorited` 的 `color` 给，别再给
+`.icon-star-fill` 写死 `background-color`）；窄屏三颗按钮**必须同一行**等宽平分；
+选择器里**名称独占一行、两颗创建按钮并排**。断点值与理由见 `docs/frontend-styles.md` §6.7。
+
 ## 文档
 
 - **`docs/README.md`** —— 全部文档的索引（分三层：`docs/guide/` 给玩家与创作者、
