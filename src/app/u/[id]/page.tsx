@@ -59,11 +59,10 @@ export default async function PublicProfilePage({
     }),
     prisma.user.findUnique({
       where: { id: profile.id },
-      select: { totalFortune: true, lastLogin: true },
+      select: { lastLogin: true },
     }),
   ]);
   const likesReceived = likesAgg._sum.likesCount ?? 0;
-  const totalFortune = extra?.totalFortune ?? 0;
   const lastLogin = extra?.lastLogin ?? null;
 
   const blogsPages = Math.max(1, Math.ceil(blogsCount / PAGE_SIZE));
@@ -162,6 +161,7 @@ export default async function PublicProfilePage({
             </div>
           </div>
 
+          {/* 没有「运势值」格：站内不展示运势值总和（见 lib/checkin-service.ts 末尾） */}
           <div className="profile-stats">
             <div className="profile-stats__item">
               <div className="profile-stats__number">{blogsCount}</div>
@@ -174,10 +174,6 @@ export default async function PublicProfilePage({
             <div className="profile-stats__item">
               <div className="profile-stats__number">{commentsCount}</div>
               <div className="profile-stats__label">评论</div>
-            </div>
-            <div className="profile-stats__item">
-              <div className="profile-stats__number">{totalFortune}</div>
-              <div className="profile-stats__label">运势值</div>
             </div>
           </div>
 

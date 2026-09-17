@@ -10407,41 +10407,6 @@ input:checked + .settings-toggle__slider::before {
   transform: scale(0.97);
 }
 
-.checkin-leaderboard__tabs {
-  display: flex;
-  gap: 4px;
-  margin-bottom: 16px;
-  border-bottom: 2px solid var(--color-background-subtle);
-}
-
-.checkin-leaderboard__tab {
-  flex: 1;
-  padding: 10px 16px;
-  border: none;
-  background: transparent;
-  color: var(--color-text-secondary);
-  font-size: 0.95rem;
-  font-weight: 600;
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -2px;
-  transition: color 0.2s, border-color 0.2s;
-}
-.checkin-leaderboard__tab:hover {
-  color: var(--color-text-primary);
-}
-.checkin-leaderboard__tab--active {
-  color: var(--color-brand-primary);
-  border-bottom-color: var(--color-brand-primary);
-}
-
-.checkin-leaderboard__panel {
-  display: none;
-}
-.checkin-leaderboard__panel--active {
-  display: block;
-}
-
 @keyframes rc-spin {
   to {
     transform: rotate(360deg);

@@ -26,7 +26,6 @@ import {
   claimFortune,
   getTodayStatus,
   getCountLeaderboard,
-  getFortuneLeaderboard,
   type ClaimResult,
 } from '@/lib/checkin-service';
 import { getTodayCheckinFish } from '@/lib/fish-service';
@@ -958,72 +957,10 @@ describe('getCountLeaderboard（签到天数榜）', () => {
   });
 });
 
-describe('getFortuneLeaderboard（运势榜）', () => {
-  it('按 totalFortune 降序，rank 从 1 连续递增', async () => {
-    await prisma.user.update({
-      where: { id: (await makeUser({ username: 'low' })).id },
-      data: { totalFortune: 5 },
-    });
-    await prisma.user.update({
-      where: { id: (await makeUser({ username: 'high' })).id },
-      data: { totalFortune: 50 },
-    });
-    await prisma.user.update({
-      where: { id: (await makeUser({ username: 'mid' })).id },
-      data: { totalFortune: 20 },
-    });
-
-    const lb = await getFortuneLeaderboard();
-    expect(lb.map((e) => e.username)).toEqual(['high', 'mid', 'low']);
-    expect(lb.map((e) => e.value)).toEqual([50, 20, 5]);
-    expect(lb.map((e) => e.rank)).toEqual([1, 2, 3]);
-  });
-
-  it('只收 totalFortune > 0 的用户（0 与负数都不上榜）', async () => {
-    await makeUser({ username: 'zero' }); // 默认 0
-    const neg = await makeUser({ username: 'neg' });
-    await prisma.user.update({ where: { id: neg.id }, data: { totalFortune: -3 } });
-    const pos = await makeUser({ username: 'pos' });
-    await prisma.user.update({ where: { id: pos.id }, data: { totalFortune: 1 } });
-
-    expect((await getFortuneLeaderboard()).map((e) => e.username)).toEqual(['pos']);
-  });
-
-  it('limit 生效，取运势最高的前 N 名', async () => {
-    for (let i = 1; i <= 5; i++) {
-      const u = await makeUser({ username: `f${i}` });
-      await prisma.user.update({ where: { id: u.id }, data: { totalFortune: i * 10 } });
-    }
-    const lb = await getFortuneLeaderboard(2);
-    expect(lb.map((e) => e.value)).toEqual([50, 40]);
-  });
-
-  it('无人有运势时返回空数组', async () => {
-    await makeUser();
-    expect(await getFortuneLeaderboard()).toEqual([]);
-  });
-
-  it('翻牌写入的 totalFortune 立即反映到运势榜（读写口径一致）', async () => {
-    freezeUtc('2026-07-15T04:00:00.000Z');
-    const u = await makeUser({ username: 'fresh' });
-    const cl = await fullCheckin(u.id);
-    const lb = await getFortuneLeaderboard();
-    expect(lb).toHaveLength(1);
-    expect(lb[0]).toMatchObject({ rank: 1, userId: u.id, value: cl.fortuneValue });
-  });
-
-  it('返回字段收敛，不泄漏 email', async () => {
-    const u = await makeUser({ username: 'solo' });
-    await prisma.user.update({ where: { id: u.id }, data: { totalFortune: 7 } });
-    expect((await getFortuneLeaderboard())[0]).toEqual({
-      rank: 1,
-      userId: u.id,
-      username: 'solo',
-      avatarPath: null,
-      value: 7,
-    });
-  });
-});
+// （这里原先还有一组 getFortuneLeaderboard（运势榜）的用例，随运势榜一起下线 ——
+//   站内不展示任何人的运势值总和，那个查询函数也删了。totalFortune 本身的读写口径
+//   仍由上面「运势：totalFortune 累计」与 claim 的余额断言覆盖：数据继续存、继续维护，
+//   只是没有榜去读它。见 src/lib/checkin-service.ts 末尾。）
 
 // ── 回归：DailyCheckIn.created_at ───────────────────────────────────────────
 //

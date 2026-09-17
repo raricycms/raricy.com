@@ -29,7 +29,6 @@ type BtnPhase = 'idle' | 'loading' | 'success' | 'done';
 interface Props {
   checkedIn: boolean;
   totalCount: number;
-  totalFortune: number;
   fortuneValue: number | null;
   fortunePending: boolean;
   today: string;
@@ -39,7 +38,6 @@ interface Props {
 export default function CheckinCard({
   checkedIn,
   totalCount,
-  totalFortune,
   fortuneValue,
   fortunePending,
   today,
@@ -48,10 +46,8 @@ export default function CheckinCard({
   const router = useRouter();
 
   const [count, setCount] = useState(totalCount);
-  const [fortune, setFortune] = useState(totalFortune);
   const [todayFortune, setTodayFortune] = useState<number | null>(fortuneValue);
   const [countBounce, setCountBounce] = useState(false);
-  const [fortuneBounce, setFortuneBounce] = useState(false);
 
   const [btnPhase, setBtnPhase] = useState<BtnPhase>(checkedIn ? 'done' : 'idle');
 
@@ -136,10 +132,6 @@ export default function CheckinCard({
   function bounceCount() {
     setCountBounce(false);
     requestAnimationFrame(() => setCountBounce(true));
-  }
-  function bounceFortune() {
-    setFortuneBounce(false);
-    requestAnimationFrame(() => setFortuneBounce(true));
   }
 
   // 点击「每日签到」→ 第一步签到（API 请求中按钮显示「⏳ 签到中...」）→ 成功
@@ -278,7 +270,6 @@ export default function CheckinCard({
       }
 
       doneRef.current = true;
-      setFortune(data.total_fortune ?? fortune);
       runRevealAnimation(i, data.fortune_value, data.pool ?? []);
     } catch {
       setIsRevealed(false);
@@ -295,7 +286,6 @@ export default function CheckinCard({
       router.refresh();
       const w = window as unknown as { updateCheckinIndicator?: () => void };
       if (w.updateCheckinIndicator) w.updateCheckinIndicator();
-      bounceFortune();
     } else {
       // 未完成签到 —— 恢复按钮可点
       setBtnPhase('idle');
@@ -342,23 +332,14 @@ export default function CheckinCard({
         {btnText}
       </button>
 
+      {/* 统计只留签到天数 —— 「总运势值」不再展示（站内不出现运势值总和，
+          为什么见 checkin-service.ts 末尾的说明；下方「今日运势」是当天翻出的值，保留） */}
       <div className="checkin-stats">
         <div className="checkin-stats__item">
           <div className={'checkin-stats__value' + (countBounce ? ' checkin-stats__value--bounce' : '')}>
             {count}
           </div>
           <div className="checkin-stats__label">累计签到天数</div>
-        </div>
-        <div className="checkin-stats__item">
-          <div
-            className={
-              'checkin-stats__value checkin-stats__value--fortune' +
-              (fortuneBounce ? ' checkin-stats__value--bounce' : '')
-            }
-          >
-            {fortune}
-          </div>
-          <div className="checkin-stats__label">总运势值</div>
         </div>
       </div>
 
@@ -456,7 +437,7 @@ export default function CheckinCard({
   );
 }
 
-// ── 排行榜（单容器 + 天数/运势 双 tab 切换，对齐原站 switchLeaderboardTab） ──
+// ── 排行榜 ──
 const RANK_CLASS: Record<number, string> = {
   1: ' checkin-leaderboard__rank--top1',
   2: ' checkin-leaderboard__rank--top2',
@@ -512,65 +493,24 @@ function LeaderboardList({
   );
 }
 
+// 只剩签到天数榜 —— 原先「签到天数榜 / 运势榜」的双 tab 随运势榜一起下线：
+// 站内不展示任何人的运势值总和（见 checkin-service.ts 末尾的说明）。
 export function CheckinLeaderboards({
   countEntries,
-  fortuneEntries,
   currentUserId,
 }: {
   countEntries: LeaderboardEntry[];
-  fortuneEntries: LeaderboardEntry[];
   currentUserId: string;
 }) {
-  const [tab, setTab] = useState<'count' | 'fortune'>('count');
-
   return (
     <div className="checkin-leaderboard">
-      <div className="checkin-leaderboard__tabs">
-        <button
-          type="button"
-          className={
-            'checkin-leaderboard__tab' + (tab === 'count' ? ' checkin-leaderboard__tab--active' : '')
-          }
-          onClick={() => setTab('count')}
-        >
-          签到天数榜
-        </button>
-        <button
-          type="button"
-          className={
-            'checkin-leaderboard__tab' + (tab === 'fortune' ? ' checkin-leaderboard__tab--active' : '')
-          }
-          onClick={() => setTab('fortune')}
-        >
-          运势榜
-        </button>
-      </div>
-
-      <div
-        className={
-          'checkin-leaderboard__panel' + (tab === 'count' ? ' checkin-leaderboard__panel--active' : '')
-        }
-      >
-        <LeaderboardList
-          entries={countEntries}
-          unit="天"
-          emptyText="还没有人签到，快来抢占第一名吧！"
-          currentUserId={currentUserId}
-        />
-      </div>
-
-      <div
-        className={
-          'checkin-leaderboard__panel' + (tab === 'fortune' ? ' checkin-leaderboard__panel--active' : '')
-        }
-      >
-        <LeaderboardList
-          entries={fortuneEntries}
-          unit="运势"
-          emptyText="暂无运势数据，快去签到吧！"
-          currentUserId={currentUserId}
-        />
-      </div>
+      <h3 className="checkin-leaderboard__title">签到天数榜</h3>
+      <LeaderboardList
+        entries={countEntries}
+        unit="天"
+        emptyText="还没有人签到，快来抢占第一名吧！"
+        currentUserId={currentUserId}
+      />
     </div>
   );
 }

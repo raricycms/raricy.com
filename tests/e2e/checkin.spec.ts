@@ -111,6 +111,22 @@ test('首次签到 → 弹卡翻牌 → 运势落定并同步账户服务；同�
   await expect(page.locator('.checkin-today-fortune')).toContainText(String(value));
   // 累计签到天数落库为 1
   await expect(page.locator('.checkin-stats__item').first()).toContainText('1');
+
+  // 站内不展示运势值总和：签到卡只剩「累计签到天数」一格，榜单也只有签到天数榜
+  // （「今日运势」是这一把翻出来的值，保留 —— 两者别混为一谈）
+  await expect(page.locator('.checkin-stats__item')).toHaveCount(1);
+  await expect(page.locator('.checkin-leaderboard')).not.toContainText('运势');
+});
+
+test('个人资料页不展示运势值总和', async ({ page }) => {
+  // 这条与签到同文件：那个数字来自签到累计（users.total_fortune），是签到这条线上
+  // 唯一**公开**的露出面 —— 首页/资料页任何人都能看，故单独钉一条。
+  const user = await registerFreshUser(page, { core: true });
+  await page.goto(`/u/${user.id}`);
+
+  const stats = page.locator('.profile-stats');
+  await expect(stats).toContainText('文章'); // 自检：统计行确实渲染出来了
+  await expect(stats).not.toContainText('运势');
 });
 
 test('恢复态：只签到不翻牌 → 刷新后自动弹「继续完成签到」→ 选牌补翻', async ({ page, request }) => {

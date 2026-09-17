@@ -1,11 +1,7 @@
 import { redirect, forbidden } from 'next/navigation';
 import { getCurrentUser, isCoreUser } from '@/lib/auth';
 import { loginUrlWithNext } from '@/lib/safe-url';
-import {
-  getTodayStatus,
-  getCountLeaderboard,
-  getFortuneLeaderboard,
-} from '@/lib/checkin-service';
+import { getTodayStatus, getCountLeaderboard } from '@/lib/checkin-service';
 import CheckinCard, { CheckinLeaderboards } from '@/app/components/CheckinCard';
 
 // 签到 = 每日领鱼干，档位是 **core+**（与投喂、点赞、剪贴板同档）。
@@ -26,29 +22,20 @@ export default async function CheckinPage() {
   if (!user) redirect(loginUrlWithNext('/checkin'));
   if (!isCoreUser(user)) forbidden();
 
-  const [status, countLb, fortuneLb] = await Promise.all([
-    getTodayStatus(user.id),
-    getCountLeaderboard(),
-    getFortuneLeaderboard(),
-  ]);
+  const [status, countLb] = await Promise.all([getTodayStatus(user.id), getCountLeaderboard()]);
 
   return (
     <div className="checkin-page">
       <CheckinCard
         checkedIn={status.checkedIn}
         totalCount={status.totalCount}
-        totalFortune={status.totalFortune}
         fortuneValue={status.fortuneValue}
         fortunePending={status.fortunePending}
         today={status.today}
         username={user.username}
       />
 
-      <CheckinLeaderboards
-        countEntries={countLb}
-        fortuneEntries={fortuneLb}
-        currentUserId={user.id}
-      />
+      <CheckinLeaderboards countEntries={countLb} currentUserId={user.id} />
     </div>
   );
 }

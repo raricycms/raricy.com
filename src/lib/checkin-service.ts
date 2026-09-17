@@ -414,7 +414,7 @@ export interface LeaderboardEntry {
   userId: string;
   username: string;
   avatarPath: string | null;
-  value: number; // count 榜为天数，fortune 榜为总运势
+  value: number; // 累计签到天数
 }
 
 /** 签到天数榜（对齐 get_leaderboard）。 */
@@ -454,19 +454,11 @@ export async function getCountLeaderboard(limit = 50): Promise<LeaderboardEntry[
   return entries;
 }
 
-/** 运势榜：按 totalFortune 降序（对齐 get_fortune_leaderboard）。 */
-export async function getFortuneLeaderboard(limit = 50): Promise<LeaderboardEntry[]> {
-  const users = await prisma.user.findMany({
-    where: { totalFortune: { gt: 0 } },
-    orderBy: { totalFortune: 'desc' },
-    take: limit,
-    select: { id: true, username: true, avatarPath: true, totalFortune: true },
-  });
-  return users.map((u, i) => ({
-    rank: i + 1,
-    userId: u.id,
-    username: u.username,
-    avatarPath: u.avatarPath,
-    value: u.totalFortune,
-  }));
-}
+// 【为什么没有运势榜】站内不展示任何人的运势值总和：签到页的「总运势值」、运势榜、
+// 个人资料页的「运势值」三处都不再露面（站长要求）。运势值只在**当天**以「今日运势」
+// 的形式出现（翻牌弹窗与签到卡，见 CheckinCard 的 fortune-color--N）—— 那个是这一把
+// 翻出来的值，不是累计。
+//
+// totalFortune 这一列**仍在存、仍在维护**：claimFortune 里照旧累加，远端同步失败时
+// 照旧回退，compensate-unclaimed-fortunes.mjs 也照旧补记（见各文件头）。只是不再有
+// 排行榜读它 —— 别顺手把 getFortuneLeaderboard 加回来。

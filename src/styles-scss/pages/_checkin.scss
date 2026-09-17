@@ -709,47 +709,9 @@
   }
 }
 
-// ============================================================
-// 排行榜标签页系统
-// ============================================================
-
-.checkin-leaderboard__tabs {
-  display: flex;
-  gap: $space-1;
-  margin-bottom: $space-4;
-  border-bottom: 2px solid var(--color-background-subtle);
-}
-
-.checkin-leaderboard__tab {
-  flex: 1;
-  padding: 10px $space-4;
-  border: none;
-  background: transparent;
-  color: var(--color-text-secondary);
-  font-size: 0.95rem;
-  font-weight: 600;
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -2px;
-  transition: color 0.2s, border-color 0.2s;
-
-  &:hover {
-    color: var(--color-text-primary);
-  }
-
-  &--active {
-    color: var(--color-brand-primary);
-    border-bottom-color: var(--color-brand-primary);
-  }
-}
-
-.checkin-leaderboard__panel {
-  display: none;
-
-  &--active {
-    display: block;
-  }
-}
+// （原先这里有一套 .checkin-leaderboard__tabs / __tab / __panel 的标签页样式，
+//   随「运势榜」一起下线：榜单只剩签到天数榜，不再需要切换。见
+//   src/lib/checkin-service.ts 末尾的说明。）
 
 // 签到按钮 loading 态的旋转图标
 @keyframes rc-spin {
