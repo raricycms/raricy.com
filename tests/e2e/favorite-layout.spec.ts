@@ -190,6 +190,10 @@ test('收藏选择器：名称独占一行，两颗创建按钮并排且等宽�
     ).toBeLessThan(2);
   }
 
-  // 页脚有通往管理页的入口（否则 /favorite 只能靠手敲 URL）
-  await expect(modal.locator('.favorite-picker__manage')).toHaveAttribute('href', '/favorite');
+  // 页脚有通往管理页的入口（否则 /favorite 只能靠手敲 URL）。
+  // 断可见性而不只是 href：放在 .modal-footer 里但不给样式的话它照样在 DOM 里，
+  // 只是没人看得见 —— 那和没有入口是一回事。
+  const manage = modal.locator('.favorite-picker__manage');
+  await expect(manage).toBeVisible();
+  await expect(manage).toHaveAttribute('href', '/favorite');
 });
