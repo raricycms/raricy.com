@@ -130,6 +130,31 @@ export function buildFavoriteCardHtml(data: FavoriteCardData): string {
   );
 }
 
+/**
+ * 把 Markdown 里的**代码块与行内代码**用等长填充盖掉（只用于扫描，不改原文）。
+ *
+ * 【为什么需要】收藏夹的替换跑在 Markdown **源文**上（marked 之前），那一刻还不知道
+ * 哪段最后会变成 `<code>`。而「写在代码块 / 行内代码里的 `[@id]` 不展开 —— 要展示
+ * 语法本身时就这么写」是**已对外承诺**的行为（见 `docs/guide/内容引用语法指南.md`）。
+ * 不盖的话，`[@123456]` 会被换成一段 `<div>`，随后 marked 把整段当成代码块内容，
+ * DOMPurify 又放行 `div`/`ul`/`li`，于是**一张真卡片被渲染进 `<code>` 里**。
+ * （评论/讨论那条管线不存在这个问题：它跑在净化后的 DOM 上，可以明确跳过
+ *  `CODE`/`PRE` 父节点 —— 见 content-refs.ts 的 embedImageRefs。）
+ *
+ * 等长填充而不是删除，是为了让**下标与原文一一对应**，切片时不用做映射。
+ *
+ * 只处理围栏代码块（``` / ~~~）与单反引号行内代码 —— 缩进式代码块（行首 4 空格）
+ * 刻意不管：列表项里的续行也是 4 空格，误盖会吃掉正文里合法的引用。
+ */
+export function maskMarkdownCode(text: string): string {
+  let out = text;
+  // 围栏代码块：开围栏与闭围栏的符号串相同（3 个以上反引号或波浪线）
+  out = out.replace(/(`{3,}|~{3,})[\s\S]*?\1/g, (m) => 'x'.repeat(m.length));
+  // 行内代码：单反引号成对、不跨行（围栏已被盖成 x，这里不会再撞上它们）
+  out = out.replace(/`[^`\n]*`/g, (m) => 'x'.repeat(m.length));
+  return out;
+}
+
 /** 正文里的一处收藏夹引用（位置用于精确切片，见 replaceFavoriteRefs）。 */
 export interface FavoriteRefSlot {
   id: string;
@@ -142,14 +167,19 @@ export interface FavoriteRefSlot {
 /**
  * 扫出正文里所有收藏夹引用（含内部空白容忍，与博客侧那条 `\[@\s*(\w+)\s*\]` 同口径）。
  *
+ * 代码块与行内代码里的引用**不算**（见 maskMarkdownCode）—— 扫描跑在盖过码的副本上，
+ * 返回的 `match` 仍取自原文（两边等长，下标一一对应）。
+ *
  * ★ 每次调用新建正则 ★ 全局正则的 `lastIndex` 会在多次 exec 之间残留，复用同一个
  * 实例会让第二次调用从上次的位置继续（content-refs.ts 的 embedImageRefs 记着同一条）。
  */
 export function collectFavoriteRefs(text: string): FavoriteRefSlot[] {
+  const masked = maskMarkdownCode(text);
   const re = new RegExp(`\\[@\\s*([0-9]{${FAVORITE_ID_LEN}})\\s*\\]`, 'g');
   const out: FavoriteRefSlot[] = [];
-  for (const m of text.matchAll(re)) {
-    out.push({ id: m[1], match: m[0], start: m.index ?? 0 });
+  for (const m of masked.matchAll(re)) {
+    const start = m.index ?? 0;
+    out.push({ id: m[1], match: text.slice(start, start + m[0].length), start });
   }
   return out;
 }

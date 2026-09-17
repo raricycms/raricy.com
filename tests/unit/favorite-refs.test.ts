@@ -270,6 +270,47 @@ describe('collectFavoriteRefs —— 扫出正文里的所有引用', () => {
   });
 });
 
+describe('代码块与行内代码里的引用不算（对外承诺：代码里写的就是字面量）', () => {
+  it('行内代码里的不扫', () => {
+    expect(collectFavoriteRefs('看 `[@111111]` 这个样子')).toHaveLength(0);
+    // 码外的照扫
+    const mixed = collectFavoriteRefs('外面 [@111111] 里面 `[@222222]`');
+    expect(mixed.map((s) => s.id)).toEqual(['111111']);
+  });
+
+  it('围栏代码块里的不扫（``` 与 ~~~ 都算）', () => {
+    expect(collectFavoriteRefs('```\n[@111111]\n```')).toHaveLength(0);
+    expect(collectFavoriteRefs('~~~\n[@111111]\n~~~')).toHaveLength(0);
+    // 更长围栏（````）也要能被自己那对认出来
+    expect(collectFavoriteRefs('````\n[@111111]\n````')).toHaveLength(0);
+  });
+
+  it('围栏块之后的内容照扫', () => {
+    const text = '```\n[@111111]\n```\n\n正文 [@222222]';
+    expect(collectFavoriteRefs(text).map((s) => s.id)).toEqual(['222222']);
+  });
+
+  it('★ 盖码是等长的：码外引用的 start 仍指向原文正确位置', () => {
+    const text = '`[@000000]` 然后 [@111111] 结尾';
+    const slots = collectFavoriteRefs(text);
+    expect(slots).toHaveLength(1);
+    expect(text.slice(slots[0].start, slots[0].start + slots[0].match.length)).toBe('[@111111]');
+  });
+
+  it('★ 端到端：码里的引用原样留着，码外的换成卡片（卡片不会跑进 <code>）', () => {
+    const text = '外面 [@111111]\n\n代码里 `[@111111]`';
+    const html = new Map([['111111', '<div class="favorite-embed">卡片</div>']]);
+    const out = replaceFavoriteRefs(text, collectFavoriteRefs(text), html);
+    expect(out).toBe('外面 <div class="favorite-embed">卡片</div>\n\n代码里 `[@111111]`');
+  });
+
+  it('嵌套/跨行的行内代码不会误盖后面的正文', () => {
+    // 行内代码不跨行，所以第二行的引用不该被它吃掉
+    const text = '`未闭合的\n[@111111]';
+    expect(collectFavoriteRefs(text).map((s) => s.id)).toEqual(['111111']);
+  });
+});
+
 describe('MAX_FAVORITE_REFS', () => {
   it('是个小正数（卡片是块级的，插十几张会把正文冲成卡片墙）', () => {
     expect(MAX_FAVORITE_REFS).toBeGreaterThan(0);
