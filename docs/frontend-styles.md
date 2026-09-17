@@ -325,6 +325,13 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
   > 卡内按钮因此由 `--card-accent` 驱动（`.feature-card .home-btn`，0-2-0 压过
   > `.home-btn--outline-*` 的 0-1-0），它自己那支 `--outline-*` 变体只在卡片之外
   > 单独使用时才生效。
+- 卡内按钮的 hover 是**在同一支淡底上再叠一层同色**（12% → 约 23%）：
+  `box-shadow: inset 0 0 0 999px var(--card-glow)`。两个刻意之处 ——
+  ① 用 `inset box-shadow` 叠而**不是**换 `background`：`box-shadow` 参与过渡，
+  换 `background-image` 的渐变是离散跳变，会硬闪一下；② 不走「转实底 + 白字」
+  （那是最高级按钮的 hover 配方）：四张卡的色相里只有蓝压得住白字，琥珀 `#f59e0b`、
+  青 `#06b6d4`、绿 `#10b981` 配白字的对比度都不到 2.6:1。同一套 hover 配方要在
+  四张卡上都成立，所以统一「加深淡底」而不是「转实底」。
 - 管理后台 `.admin-stat-card`：用**卡片淡底 + 数字同色**区分类型（blue/green/amber/
   purple/red）。原先靠左侧 4px 彩色竖条，已按「无左侧边框」总则去掉；色值也从写死的
   hex 换成了令牌（站内没有紫色语义令牌，purple 与 blue 合并到品牌色系）。
@@ -357,7 +364,13 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
 
 `/chat` 是双栏工作台，页面高度 `calc(100vh - 62px)`、`overflow: hidden`，色板全部走 CSS 变量随明暗主题：
 
-- 会话侧栏 `.chat-sidebar`：固定 280px（`border-right` 分隔），会话项 `.chat-chan`（头像 / 标题 / 预览 / 未读徽标 / 删除），头部 `.chat-sidebar__head` 带折叠钮 —— `.chat-page--collapsed` 时收到 60px 只留图标。
+- 会话侧栏 `.chat-sidebar`：固定 280px，会话项 `.chat-chan`（头像 / 标题 / 预览 / 未读徽标 / 删除），头部 `.chat-sidebar__head` 带折叠钮 —— `.chat-page--collapsed` 时收到 60px 只留图标。
+  - **选中项只有「整行品牌淡底」这一种表达**（`.chat-chan.is-active`）。它原先还带一条
+    `box-shadow: inset 3px 0 0 品牌色` —— 那是伪装的 `border-left: 3px`，全站清左侧竖条时
+    漏掉了（按 `border-left` 搜是搜不到的）。折叠态则改用头像外一圈 3px 品牌描边
+    （60px 轨道里整行淡底会被头像占满、读不出来）。
+  - 同理，`@` 到我那条消息（`.chat-msg__content--mention`）用的是**品牌淡底 + 同色描边**，
+    不再是竖条（它原先左右各有一条镜像竖条，方向跟着气泡走 —— 一起删掉了，只删一边会不对称）。
 - 消息主区 `.chat-main`：头部标题 + 操作；消息气泡 `.chat-msg`（自己发的加 `.chat-msg--mine`），含作者名 / 时间 / 操作 / 图片 / 引用回复 / 已删占位 `.chat-msg__deleted`。
 - 输入条 `.chat-composer`：附件条（回复 / 引用博客 / 待发图片）+ 面板（工具条 `.chat-composer__icon-btn` → 输入框 `.chat-composer__input` → 底条：提示 `.chat-composer__hint` + 发送 `.chat-composer__send`）。样式与评论区**共用** `components/_composer.scss` 的 `rich-composer($p)` mixin，组件也是同一个 `RichComposer`（`className` 注入 BEM 前缀，见 §11.1）。
 - 发起私聊弹窗 `.chat-new-modal`：搜索框 `.chat-new-search` + 结果项 `.chat-new-item`（头像 / 昵称 / 角色 / 自己标记）。
@@ -392,11 +405,23 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
   `.icon` 的机制就是 `background-color: currentColor`，颜色只由按钮的 `color` 决定（§7）。
 - 收藏按钮**没有计数徽标**（点赞/投喂有）：站内不显示一篇文章的被收藏数。
 
-**窄屏（≤768px）三颗必须压在同一行**（`flex-wrap: nowrap` + `flex: 1 1 0` 等宽平分 +
-`max-width: 24rem`），字号/内边距/徽标各收一档；`<360px` 退回按内容宽度并允许换行
-（再缩字号就开始牺牲可读性了）。这条**不能只看代码**：它是按中文字体度量算出来的临界值，
-所以 `tests/e2e/favorite-layout.spec.ts` 用真视口断几何，并登记在 `playwright.config.ts` 的
-`RESPONSIVE_SPECS` 里（desktop 那一遍同样要跑）。
+**窄屏（≤768px）三颗只剩「图标 + 计数」竖排**，压在同一行、等宽平分
+（`flex-wrap: nowrap` + `flex: 1 1 0` + `max-width: 24rem`）：
+
+- **文字标签隐藏**（`> span:not([class])` —— 计数徽标也是 `span`，但它带类名，正好被排除）。
+  一排字换成一列之后，320px 档也宽松得很，原先 `<360px` 那条「退回按内容宽度 + 允许换行」
+  的兜底连同它的前提（文字宽度 339px 塞不下）一并删了。
+- **计数挪到图标正下方居中**，且不再是实底徽标，就是一行跟着按钮 `color` 走的小字。
+  DOM 不动，仍是原来那颗 `.like-count-badge` / `.fish-count-badge`。图标放大一档（1rem → 1.25rem）。
+- ⚠️ **高度由 `.read-controls__row` 的 `min-height: 44px` 钉死，两个断点共用**。
+  桌面端它由内容撑出（点赞/投喂 ≈44.3px、收藏 41.0px —— 徽标比文字行高），窄屏换成
+  竖排后内容更高；两边各写各的高度就会在断点前后跳一下（用户报的就是它）。窄屏那条里
+  **不要再写 `padding` / `font-size` 的整体缩放**，那正是原来会变矮的原因。
+- 这条**不能只看代码**：`tests/e2e/favorite-layout.spec.ts` 用真视口断几何，并登记在
+  `playwright.config.ts` 的 `RESPONSIVE_SPECS` 里（desktop 那一遍同样要跑）。
+  其中「窄屏高度 = 桌面高度」那条要在**同一个用例里换视口量两次**，且必须
+  **先 `setViewportSize` 再 `goto`** —— 三颗都带 `transition: all .3s ease`，
+  先加载再改视口会量到过渡起点的值（桌面端的），于是这个 bug 永远量不出来。
 
 收藏夹选择器弹窗（`.favorite-picker__*`）：**名称独占一行，两颗创建按钮并排在下一行**
 （`.favorite-picker__new-actions`，`flex: 1 1 0` 等宽）。三者挤一行时「创建公开」会被挤到
@@ -448,6 +473,10 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
 - 按钮**必须等宽**（`flex: 1 1 0`）—— 滑块按「第 i 格 × 一格宽」定位，不等宽就错位。
   个人主页两个页签的文字自带计数（「文章 (3)」「评论 (5)」）本来宽度不同，
   等宽后各占一半，是刻意的。
+- **未选中项在任何状态下都是灰字**（`--color-text-secondary`），**没有 hover 换色** ——
+  这不是漏写：① 触屏上浏览器会把最后一次点按的 `:hover` 留在元素上，hover 改色会让
+  「刚点过的那一项」一直亮着品牌蓝，像同时选中了两个；② 滑块本身已经在回答「选中哪个」，
+  指针划过再变蓝等于把这层意思分给了两个状态。次级 → 最高级空闲态那套递进留给按钮档。
 - `prefers-reduced-motion: reduce` 下关掉过渡。
 
 ## 7. 图标方案
@@ -473,6 +502,15 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
   或纯变量。`body.dark-mode` 那套旧写法已全部清除（含 `pages/_tool-new.scss` 里一套
   永不生效的第二配色与 `pages/blog/_blog.scss` 注释掉的旧令牌表）—— 全站只认
   `<html data-theme>`，没有任何代码会给 `body` 加 `.dark-mode`。
+- **`color-scheme`**：两个主题块里各写一行（`base/_root.scss`）。它是「原生控件
+  跟着页面明暗走」的开关 —— 缺了它，暗色主题下 Chrome 照样按浅色画滚动条、
+  `<select>` 下拉、日期选择器与 canvas 底色。**它管的不是样式，是浏览器自己画的那一层。**
+- **滚动条**：`base/_root.scss` 里一组全局 `::-webkit-scrollbar`（10px 轨道、
+  `--color-text-secondary` 的 thumb、hover 变品牌蓝、2px 透明描边 + `background-clip:
+  padding-box` 让视觉上是 6px 细条而手感仍是 10px）。**刻意不写 `scrollbar-color` /
+  `scrollbar-width`** —— 按规范它们一旦生效就会让 `::-webkit-scrollbar` 整族失效
+  （Chrome 121+ 已支持），圆角与 hover 都没了；不写的代价是 Firefox 只得 `color-scheme`
+  那层的原生暗色条，而它已经满足「跟着主题走」。
 
 ## 9. 响应式断点
 
@@ -513,6 +551,10 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
    切掉一截 —— 那是两套形状语言的混搭。表达「这是哪一类/已选中」用**淡底 + 同色字**。
    两个例外：正文渲染出的 `blockquote`（内容语义，Markdown 通行约定）、
    CSS 画的箭头三角形。同理，卡片 hover 只提阴影，不做垂直位移。
+   ⚠️ **这类竖条不一定写成 `border-left`** —— 讨论区侧栏的选中项与 `@` 我到的消息
+   那两处都是 `box-shadow: inset 3px 0 0 品牌色`（伪装的左边框）。清的时候要按
+   「`box-shadow` 里带 `inset` 且 x 偏移为正」搜，只搜 `border-left` 一定漏。
+   还有一处必须连镜像一起删（`@` 提及那条右对齐时竖条翻到右边，只删一半会左右不对称）。
 9. **不留幽灵变量**：写 `var(--x)` 前确认 `base/_root.scss` 里真的有 `x`。变量不存在时
    整条声明在计算值阶段失效（退回 `unset`），**不报错** —— 历史上有过
    `--color-brand-primary-rgb`（聚焦环整个不存在）、`--color-bg-primary`（角标边框没了）、
@@ -556,8 +598,52 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
 - 403 页的彩虹色相循环（`pages/_error.scss` 的 `.rainbow-error__bg`）—— 同理，
   它不是主题表面。
 - `components/_bootstrap_fallback.scss` —— JS 不可用时的最小兜底，刻意不引令牌。
+- 设置页开关的圆钮 `background: #fff`（`pages/_settings.scss` 的
+  `.settings-toggle__slider::before`）—— 它**在两个主题下都必须是白的**（开关就长这样），
+  换 `--color-background-card` 会让暗色主题的钮跟着变深、压在 `--color-border` 的轨道上
+  反而消失。可读性由那圈 `0 1px 3px` 阴影兜住。
+- 画报（`src/lib/poster.ts`）与 identicon（`src/lib/identicon.ts`）里的配色 —— 输出的是
+  **图片**，不参与 `data-theme`。代价是它们各有一份色板副本，改品牌色时不会跟着变。
+- 各处**实底按钮/角标上的 `color: #fff`** —— 那是「实底 + 白字」配方的一部分，
+  两套主题下都成立（约 40 处，逐一核过）。
 
-**2026-09 已修（本节曾列为遗留，勿再按旧描述排查）**：
+**同类陷阱（已登记，还没踩）**：
+
+- `pages/blog/_menu.scss` 的 `.current-category .badge` 是**死规则**：唯一渲染
+  `.current-category` 的 `src/app/components/AdminArticlesManager.tsx` 里没有 `.badge`
+  子元素。一旦有人把它加回去，浅色主题下就是白字压半透明白底。
+- `src/app/tool/new_redirect/page.tsx` 里还有两处行内色（`#3498db` / `#e74c3c`）没令牌化 ——
+  那是 `pages/_tool-redirect.scss` 那轮「两页全部令牌化」的漏网，应是
+  `--color-brand-primary` / `--color-warning-primary`。
+- `src/app/components/CommentSection.tsx` 的根节点用 `className="blog-detail"`，与
+  `src/app/blog/[id]/page.tsx` 的外层 `<article>` **同名** —— 于是评论区又吃了一遍
+  `max-width: 940px` / `margin: 50px auto` / `padding: 0 20px` / `overflow-x: auto`，
+  比正文再内缩 20px、再下移 50px，并且自带一个滚动容器。改类名可一并消掉，但会动到
+  评论区的位置与宽度，需目视确认，故只登记未改（见 `tests/e2e/comment-layout.spec.ts` 末尾）。
+- `pages/_checkin.scss` 的 `@keyframes btnPulse` 光环写死浅色主题品牌蓝
+  `rgba(37,99,235,…)`，暗色下与按钮本体（`#23A5FF`）不同色 —— 只在 1s 的脉冲里可见，
+  且站内没有「品牌色 + 指定透明度」的令牌可用，暂留。
+
+**2026-09-18 已修（第二轮：滚动条 / 左侧竖条收尾 / 幽灵引用）**：
+
+- **滚动条**：全站此前既没有滚动条样式、也没有 `color-scheme`，暗色主题下浏览器
+  照画浅色滚动条（讨论区主区与侧栏、博客评论区都看得见）。见 §8。
+- **最后一条装饰性左侧竖条**已删：`pages/_chat.scss` 的 `.chat-msg__content--mention`
+  及其右侧镜像（`box-shadow: inset ±3px 0 0`）。同一文件的 `.chat-chan.is-active`
+  也是这一轮删的（它是漏网的伪 `border-left`）。
+- **评论区的横向滚动条**：`.comment-list` 同时写了 `width: 100%` + `padding-left: 15px` +
+  `margin-left: 15px` —— border-box 下 padding 算进 100%、margin 不算，于是每层楼中楼
+  向右溢出 15px，冒到最近的滚动容器上画出横向条。**缩进只保留 `padding-left`**。
+  另加 `tests/e2e/comment-layout.spec.ts` 钉住（登记在 `RESPONSIVE_SPECS`）。
+- **幽灵引用**：`pages/blog/_blog.scss` 的 `.read-hero { background: var(--background-color) }`
+  （`--background-color` 从未定义 → 标题带一直是透明的，死声明已删）、
+  `src/app/components/AdminCategoryEditor.tsx` 的 `var(--ink-3)` → `--fd-ink-3`。
+- **写死色**：`pages/_audit-logs.scss` 的 `#198754` → `--color-success-primary`；
+  `pages/_tool-new.scss` 的 `.tag-primary` 两支 `rgba(59,130,246,…)` →
+  `--color-accent-blue-soft`；`public/static/js/core/base.js` 里 `<meta name="theme-color">`
+  的浅色值 `#FBFBFD` → `#F8FAFC`（与 `--color-background-page` 对齐）。
+
+**2026-09 上旬已修（本节曾列为遗留，勿再按旧描述排查）**：
 
 - 通知未读底令牌的拼写错误 —— 浅色侧 `--color-background-card-unrend` 已改为
   `-unread`，浅色未读底色首次真正生效。
