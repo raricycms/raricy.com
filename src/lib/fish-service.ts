@@ -3,10 +3,15 @@
 //
 // 本切片实现读路径（余额 / 流水 / 排行榜）+ 一个供签到复用的本地写入 addFish()。
 //
-// ⚠️ 写路径 fail-closed 提醒：Flask 侧所有写路径（签到/投喂/CLI）都要求先向账户
-//   微服务同步成功再 commit 本地。addFish() 这里只写本地 DB —— 调用方（如
-//   checkin-service.claimFortune —— 两步式下签到只建记录，翻牌才发鱼）负责在
-//   正式环境接入远端同步。本迁移切片仅写本地。
+// ⚠️ 写路径 fail-closed：本函数**只在本地事务内加钱**，刻意不碰远端 ——
+//   它收的是调用方的 tx，而远端 HTTP 绝不能放进事务（写锁会被占满整个超时，
+//   并发写直接 database is locked，见 docs/architecture.md §6.3）。
+//
+//   远端同步与失败补偿是**调用方**的责任，统一走 src/lib/fish-sync.ts 的账本机制：
+//   本地事务提交时顺带记一行 pending，事务外调远端，失败则用补偿事务精确撤销
+//   （对用户等价于「回滚 + 503」）。四个调用方：
+//   checkin-service（翻牌发鱼）、feed-service（作者分成）、
+//   fish-admin（CLI grant / deduct）、fish-market-service（转账收款方）。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { prisma } from './db';
@@ -147,7 +152,7 @@ function applyTypeFilter(where: Prisma.FishTransactionWhereInput, type?: string 
  *
  * 【已知边界（文档同步）】转账被远端故障回滚时，那两条流水会被**删除**。
  * 对账方若「一看见就入账」，可能入了一笔随后消失的钱 —— 所以拉取时请留一个
- * 小滞后（只处理 createdAt 早于 now-10s 的行），见 docs/fish-bot.md §3.4。
+ * 小滞后（只处理 createdAt 早于 now-10s 的行），见 docs/bot/fish-bot.md §3.3.1。
  */
 export async function getTransactionsSince(
   userId: string,

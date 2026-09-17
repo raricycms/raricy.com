@@ -14,7 +14,8 @@ declare global {
 // root layout 在 Next 客户端路由切换（soft navigation）时不重挂载，base.js 又由
 // <Script strategy="afterInteractive"> 加载、只在整页加载时执行一次 —— 两者都感知
 // 不到路由变化。这里用 usePathname 监听切页，路由提交后立刻通知 base.js 拉一次
-// 最新未读数；20s 周期轮询的兜底半边在 base.js 的 startNotificationHeartbeat 里。
+// 最新未读数；持续兜底的另一半在 base.js 的 scheduleHeartbeat 里（流连着 60s、
+// 没连上 20s）。注意这里拉的是**快照**，与 SSE 推的补丁落到同一处 DOM（见 applyTopbar）。
 export default function NotificationHeartbeat() {
   const pathname = usePathname();
   const mounted = useRef(false);

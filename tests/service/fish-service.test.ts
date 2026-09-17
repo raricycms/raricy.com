@@ -3,14 +3,14 @@
 // 【为什么值得重点测】这是钱。任何一处算错、流水漏记、并发超扣，都是
 // 直接的资产损失且难以事后对账。因此本文件在真实 SQLite 上跑，不 mock DB。
 //
-// 【被测边界】按 CLAUDE.md，fish-service **只写本地 DB**，不直接调 AccountClient，
+// 【被测边界】fish-service **只写本地 DB**，不直接调 AccountClient（见该文件头部），
 // 所以无需 mock 远端。远端同步是调用方（feed-service / checkin-service）的责任。
 //
 // 【关于扣款】fish-service.ts **没有导出 deductFish**（Flask 侧 app/service/fish.py
 // 有 deduct_fish）。Next 侧唯一的扣款路径是 feed-service.feedBlog 里内联的
 // 原子 updateMany(where driedFish >= amount)。为了回答「会不会并发超扣」这个
 // 最关键的问题，下面「扣款与并发超扣」一节直接打 feedBlog —— 它是当前实现里
-// 真实存在的扣款语义。详见交付说明。
+// 真实存在的扣款语义。
 
 import { describe, it, expect, beforeEach } from 'vitest';
 
@@ -31,7 +31,8 @@ beforeEach(async () => {
   await resetDb();
 });
 
-/** 直接落一条流水（read 路径用例需要可控的 createdAt，addFish 不写该字段）。
+/** 直接落一条流水。read 路径用例需要**可控的** createdAt —— addFish 一律写
+ *  nowForDb()，测不了跨日 / 排序边界，故这里绕开它自己 create。
  *  amount 参数为鱼干（业务单位）；入库自动 ×10（存储单位 = 0.1 鱼干，fish-units.ts）。 */
 async function makeTx(opts: {
   userId: string;
@@ -271,7 +272,7 @@ describe('addFish（加钱 + 写流水）', () => {
 //
 // fish-service 未导出 deductFish，扣款语义内联在 feedBlog：
 //   updateMany({ where: { id, driedFish: { gte: amount } }, data: { decrement } })
-// 这正是 CLAUDE.md 说的「原子 UPDATE 防并发超扣」。以下验证它真的成立。
+// 这就是「原子 UPDATE 防并发超扣」。以下验证它真的成立。
 
 describe('扣款：余额不足', () => {
   it('余额不足时拒绝，且余额不变、不产生任何流水', async () => {
@@ -644,7 +645,8 @@ describe('getBalanceLeaderboard', () => {
     for (const n of ['a', 'b', 'c']) await makeUser({ username: n, driedFish: 10 });
     const first = (await getBalanceLeaderboard(2)).map((e) => e.username);
     expect(first, '仍应返回 2 条').toHaveLength(2);
-    // 记录现状：orderBy 只有 driedFish desc，并列时的取舍无确定性保证。见交付说明。
+    // 记录现状：orderBy 只有 driedFish desc，并列时的取舍无确定性保证。
+    // 【修复后删掉本块，改为回归用例】
   });
 
   it('返回 userId / username / avatarPath 字段，不泄漏 email 等敏感字段', async () => {
@@ -678,7 +680,8 @@ describe('getBalanceLeaderboard', () => {
 // 这依赖 created_at 的**存储格式**，而 Prisma 与 Flask/SQLAlchemy 的存法不同：
 //   · Flask/SQLAlchemy → TEXT 'YYYY-MM-DD HH:MM:SS' → date() 可解析 ✅
 //   · Prisma           → INTEGER 毫秒时间戳        → date() 返回 NULL ❌
-// 下面的用例如实记录这一现状（含两个 BUG），不替源码打补丁。见交付说明。
+// 下面的用例如实记录这一现状（含两个 BUG），不替源码打补丁。
+// 【修复后删掉本块，改为回归用例】
 describe('getTodayCheckinFish', () => {
   /** UTC+8 今天（与被测实现同口径）。 */
   const todayUtc8 = () => new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);

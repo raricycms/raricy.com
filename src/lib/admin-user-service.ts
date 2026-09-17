@@ -17,6 +17,7 @@ import { hashPassword } from './password';
 import { PUBLIC_USER_SELECT, hasAdminRights, isCurrentlyBanned, isOwner, type SafeUser } from './auth';
 import { sendNotification } from './notification-service';
 import { kickUser } from './chat-bus';
+import { kickTopbarUser, publishToUser } from './topbar-bus';
 // 建号复用公开注册那条 fail-closed 链路的内核（已查证两边不成环：user-service 不反向依赖本文件）
 import {
   buildPlaceholderEmail,
@@ -268,6 +269,12 @@ export async function setRole(p: SetRoleParams): Promise<AdminResult<{ role: str
   // 让浏览器重连时重新走 requireChatUser 鉴权。
   kickUser(p.targetId);
 
+  // 顶栏红点同样受角色影响（非 core 不进讨论，红点必为 false）。这里**不踢顶栏流**：
+  // 会话没废，铃铛照常要收推送。推送值分两种（够不着 chat-service，会成环 ——
+  // chat-service → admin-user-service → user-service，见 topbar-bus 的 TopbarPatch）：
+  //   降级到 user → 必为 false，推精确值；升级 → 可能是 true（有未读私聊），推「重算」。
+  publishToUser(p.targetId, newRole === 'user' ? { chatUnread: false } : { refresh: true });
+
   await logAdminAction({
     action: 'change_role',
     adminId: p.actor.id,
@@ -345,7 +352,12 @@ export async function banUser(p: BanUserParams): Promise<AdminResult<{ banId: nu
 
   // 禁言即刻生效：踢掉已建立的 SSE 连接（否则那条长连接会继续收消息，
   // 直到用户自己刷新）。断开后 EventSource 重连 → requireChatUser 返回 403 → 关闭。
+  //
+  // 顶栏流一起踢：上面递增了 sessionVersion，这个人的会话已经废了 —— 重连时
+  // getCurrentUser() 为 null → 401 → EventSource 按规范不再重试（正是我们要的）。
+  // 同理的还有重置密码与强制下线，三处都要成对出现。
   kickUser(target.id);
+  kickTopbarUser(target.id);
 
   await logAdminAction({
     action: 'ban_user',
@@ -507,8 +519,10 @@ export async function resetUserPassword(p: ResetPasswordParams): Promise<ResetPa
     select: { id: true },
   });
 
-  // 断开已建立的 SSE 长连接（否则那条连接会继续收消息直到用户自己刷新）
+  // 断开已建立的 SSE 长连接（否则那条连接会继续收消息直到用户自己刷新）。
+  // 顶栏流成对踢 —— 会话已随 sessionVersion 失效，见 banUser 处的说明。
   kickUser(target.id);
+  kickTopbarUser(target.id);
 
   await logAdminAction({
     action: 'reset_password',
@@ -557,7 +571,9 @@ export async function forceLogout(p: ForceLogoutParams): Promise<AdminResult> {
     data: { sessionVersion: { increment: 1 } },
     select: { id: true },
   });
+  // 两个流都要断 —— 会话已废，重连会 401（见 banUser 处的说明）
   kickUser(target.id);
+  kickTopbarUser(target.id);
 
   const reason = (p.reason ?? '').trim();
   await logAdminAction({

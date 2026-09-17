@@ -1,13 +1,18 @@
-import { getCurrentUser, isCoreUser, isCurrentlyBanned } from '@/lib/auth';
+import { getCurrentUser } from '@/lib/auth';
 import { getUnreadCount } from '@/lib/notification-service';
-import { getChatUnreadSummary } from '@/lib/chat-service';
+import { getChatDotFor } from '@/lib/chat-service';
 
-// GET /api/notifications/count — base.js 顶栏轮询用（20s 心跳 + 切页即时刷新）。
+// GET /api/notifications/count — 顶栏两个指示器的**兜底快照**。
+//
+// 【角色】实时值走 SSE（/api/notifications/stream，见 topbar-bus.ts），本接口是它的
+// 兜底与首屏：base.js 在流没连上时按 20s 轮询、连上后降到 60s，外加切页 / 回到前台 /
+// 收到 {refresh:true} 时的即时重拉。**它不能被删掉** —— SSE 存在「连着但收不到」的
+// 半死状态（反代掐连接、NAT 超时），那种时候只有它能纠正数字。
 //
 // 返回 { count, chatUnread }，两个字段喂两个不同的顶栏指示器：
 //   count      → 铃铛数字：**只数站内通知**，即 /notifications 列表里数得出来的那些；
 //   chatUnread → 「讨论」链接右上角的小红点：私聊有未读 / 大区被 @ 我
-//                （口径见 chat-service.getChatUnreadSummary）。
+//                （口径见 chat-service.getChatUnreadSummary / getChatDotFor）。
 //
 // 【为什么讨论不算进 count】讨论消息不进通知列表（见 chat-service.sendMessage），
 // 早先把「通知未读 + 讨论未读条数」合成一个数字后，铃铛数字永远大于点进去的条目数
@@ -17,14 +22,12 @@ export async function GET() {
   const user = await getCurrentUser();
   if (!user) return Response.json({ code: 200, count: 0, chatUnread: false });
 
-  // 禁言中的用户进不了讨论页（requireChatUser 403），未读自然也不该在红点上吊着。
-  const [notificationCount, chat] = await Promise.all([
+  // 两个指示器各算各的。红点的闸门（core+ / 未禁言 / 专注模式 / 静音 / 隐藏）收在
+  // getChatDotFor 里，与 SSE 推送路径共用同一份 —— 别把闸门搬回这里，那会变成两份。
+  const [count, chatUnread] = await Promise.all([
     getUnreadCount(user.id),
-    isCoreUser(user) && !isCurrentlyBanned(user)
-      ? getChatUnreadSummary(user.id, user.focusMode)
-      : Promise.resolve({ count: 0, dot: false }),
+    getChatDotFor(user.id),
   ]);
 
-  // 私聊条数与大区 @ 红点在顶栏合流成一个红点：这里不需要区分来源。
-  return Response.json({ code: 200, count: notificationCount, chatUnread: chat.count > 0 || chat.dot });
+  return Response.json({ code: 200, count, chatUnread });
 }

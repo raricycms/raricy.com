@@ -945,7 +945,8 @@ describe('getCountLeaderboard（签到天数榜）', () => {
 
   it('⚠️ 天数并列时无第二排序键 —— 取舍由 SQLite 决定，结果不稳定', async () => {
     // Flask get_leaderboard 的 order_by 是 (count desc, max(created_at) asc)：
-    // 并列时「更早签到的人」排前面。Next 侧丢了这个次级排序键。见交付说明。
+    // 并列时「更早签到的人」排前面。Next 侧丢了这个次级排序键。
+    // 【修复后删掉本块，改为回归用例】
     for (const n of ['tieA', 'tieB', 'tieC']) {
       const u = await makeUser({ username: n });
       await makeLegacyCheckin(u.id, '2026-07-01', 3, '3,1,5,2,4');

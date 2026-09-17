@@ -2,12 +2,13 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // check-instance.mjs —— 初始化运行时数据目录骨架
 //
-// 【为什么需要】`instance/` 是 gitignored 的运行数据底盘，里面分四类：
-//   · avatars/        用户头像 PNG（web-next /api/avatar/[id] 读取）
+// 【为什么需要】`instance/` 是 gitignored 的运行数据底盘，里面分六类：
+//   · avatars/        用户头像 PNG（src/app/api/avatar/[id] 读取）
 //   · database/       SQLite 主库（Prisma 直连；DATABASE_URL 指向这里）
 //   · images/         图床落盘目录（image-upload.ts 写入）
 //   · stories/        故事磁盘目录（story-service.ts 读取）
-//   · stickers/       表情包素材目录（sticker-service.ts 读取；<合集>/<表情>.gif|webp|png）
+//   · stickers/       表情包素材目录（sticker-service.ts 读取；
+//                     <合集>/<表情>.gif|webp|png|jpg|jpeg —— 五种，见该文件 EXT_PRIORITY）
 //   · blogs/          历史遗留目录；当前已无写入，但保留以兼容老路径
 //
 // 部署侧一般由挂载点保证存在；本地开发或新机器无 instance/ 时，本脚本一键建好。

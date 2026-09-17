@@ -15,15 +15,30 @@
 // 发送时强校验「图片归本人所有且未软删」。限频仿博客评论：资源存在性校验通过后才扣额度。
 //
 // 时间戳一律 nowForDb()（本库语义 = UTC+8 墙上时间贴 Z，见 db-time.ts）。
+//
+// 【讨论未读的口径：不进铃铛】讨论消息**不进通知列表、也不进铃铛数字**。铃铛数 =
+// getUnreadCount，**必须等于 `/notifications` 列表里数得出来的条目数**；讨论未读改由顶栏
+// 「讨论」链接上的小红点体现。所以 `/api/notifications/count` 另出一个 `chatUnread` 布尔
+// （来自本文件的 getChatUnreadSummary：私聊有未读 / 大区被 @），base.js 据此点亮
+// `#chatUnreadDot`。**别把它并回 count** —— 那会让铃铛写着 5、点进去只有 2 条。
+//
+// 【红点的三道闸门：core+ / 未禁言 / 专注模式】全部收在 getChatDotFor 里，count 路由与
+// SSE 推送路径**共用同一份**。历史上它曾内联在 count 路由里，留两份必然 drift —— 别搬回去。
+//
+// 【依赖方向】chat-service → admin-user-service → user-service 是单向链，所以后两者
+// **不能 import 本文件**（成环）。它们要动红点时只能：拒绝方向（禁言 / 降级到 user /
+// 专注模式开启）推精确的 `{chatUnread:false}`；放开方向推 `{refresh:true}`，由客户端重拉
+// count 路由。新增红点写路径前先确认自己在这条链的哪一侧。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { prisma } from './db';
 import { nowForDb } from './db-time';
-import { hasAdminRights, isCurrentlyBanned } from './auth';
+import { hasAdminRights, isCoreUser, isCurrentlyBanned } from './auth';
 import { rateLimit, RULES } from './rate-limit';
 import { logAdminAction } from './admin-user-service';
 import { sendNotification } from './notification-service';
 import { publishToAll, publishToUsers } from './chat-bus';
+import { hasSubscriber, publishToUser } from './topbar-bus';
 import { stripStickerTokens } from './sticker-refs';
 import {
   CHAT_LOBBY_ID,
@@ -455,7 +470,8 @@ export interface ChatUnreadSummary {
  * 调用方不区分 count / dot：红点只看「有没有」。拆成两个字段是为了保住「私聊计条数、
  * 大区只认 @」这条口径本身（侧栏与测试都在用），不是为了在顶栏显示数字。
  *
- * **纯读**：不懒建大区成员行 —— 本函数由顶栏每 20s 轮询，读路径不能写库。
+ * **纯读**：不懒建大区成员行 —— 本函数既喂顶栏轮询、也被 SSE 推送路径调用，
+ * 两条路都是读路径，不能写库。
  * 没有成员行 = 从未进过讨论室 = 无未读，语义正好（与 ensureLobbyMembership 的
  * 「历史不算未读」同一口径）。
  */
@@ -512,6 +528,48 @@ export async function getChatUnreadSummary(
   return { count, dot };
 }
 
+/**
+ * 顶栏红点该不该亮 —— `getChatUnreadSummary` 的**布尔化**，把「core+ / 未禁言」这两道
+ * 闸门收进这里。原先它们内联在 /api/notifications/count 里，现在推送路径也要同一套判断，
+ * 留两份必然 drift（一处改了另一处不改，红点与轮询各说各话）。
+ *
+ * 需要自己取一次 user 行：推送路径发生在某个写操作的末尾，那里手上只有 userId。
+ * 按主键读一次，代价可忽略。
+ *
+ * 与 getChatUnreadSummary 同样是**纯读**（不懒建大区成员行）——见那边的说明。
+ */
+export async function getChatDotFor(userId: string): Promise<boolean> {
+  const u = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true, focusMode: true, isBanned: true, banUntil: true },
+  });
+  // 非 core+ / 禁言中：进不了讨论页，红点自然不该亮（对齐 count 路由的口径）
+  if (!isCoreUser(u) || isCurrentlyBanned(u)) return false;
+
+  const summary = await getChatUnreadSummary(userId, u?.focusMode ?? false);
+  return summary.count > 0 || summary.dot;
+}
+
+/**
+ * 把该用户**最新的红点状态**推给顶栏（SSE）。
+ *
+ * 三条纪律同 notification-service.pushUnreadCount：同步早退（没人连着不去算）、
+ * 算值放在 try 内（调用点写的是 `void pushChatDot(...)`，把 await 写在调用外面会让异常
+ * 逃逸到调用方）、不 await 不抛（有兜底轮询收敛）。
+ *
+ * ⚠️ 这里是**真算**（3~5 次查询），所以调用点要克制 —— 只在红点**可能**变了时调。
+ * 典型反例：大区普通消息。红点只认 @（见 getChatUnreadSummary），普通消息不可能改变
+ * 它的值，别推。
+ */
+async function pushChatDot(userId: string): Promise<void> {
+  if (!hasSubscriber(userId)) return;
+  try {
+    publishToUser(userId, { chatUnread: await getChatDotFor(userId) });
+  } catch {
+    /* 推送失败无声：兜底轮询会纠正 */
+  }
+}
+
 // ── 会话偏好：静音 / 隐藏 ───────────────────────────────────────────────────
 
 export type ChannelPrefResult = { ok: true } | { ok: false; error: 'forbidden' | 'notFound' };
@@ -544,6 +602,8 @@ export async function setChannelMuted(
     },
     update: { mutedAt: muted ? nowForDb() : null },
   });
+  // 静音会改变红点（静音会话不计入汇总）——推给本人
+  void pushChatDot(userId);
   return { ok: true };
 }
 
@@ -565,6 +625,8 @@ export async function hideChannel(channelId: string, userId: string): Promise<Ch
     where: { uq_chat_member_channel_user: { channelId, userId } },
     data: { hiddenAfterMessageId: agg._max.id ?? 0 },
   });
+  // 隐藏会让该会话的未读不再计红点 ——推给本人
+  void pushChatDot(userId);
   return { ok: true };
 }
 
@@ -1073,6 +1135,9 @@ async function notifyChannelMentions(params: {
       detail,
       prefKey: null, // 不受 notify_* 四个开关管辖（同评论回复：没有对应开关就不拦）
     });
+    // 大区被 @ → 顶栏红点亮。sendNotification 只推铃铛那一格，红点是另一格，得单独推。
+    // 私聊不用推：同一条消息在上面的 direct 分支已经推过全体成员（被 @ 者必是成员）。
+    if (isLobby) void pushChatDot(u.id);
   }
 }
 
@@ -1228,6 +1293,12 @@ export async function sendMessage(input: SendMessageInput): Promise<SendMessageR
     } else if (directMemberIds) {
       // 私聊推给全体成员（含发送者自己 → 多标签页同步；客户端按消息 id 去重）
       publishToUsers(directMemberIds, event, dto.id);
+      // 收件人的顶栏红点：私聊来了新消息 → 亮。**排除作者自己** ——
+      // 他刚发的消息在他自己的读游标推进之前也算「未读」，推给他会先亮后灭
+      // （ChatApp 紧跟其后的 markChannelRead 会再推一次正确值），白闪一下。
+      for (const uid of directMemberIds) {
+        if (uid !== authorId) void pushChatDot(uid);
+      }
     }
   } catch (e) {
     console.error(`[chat-service] SSE 推送失败（channelId=${channelId}）:`, e);
@@ -1310,6 +1381,11 @@ export async function markChannelRead(
       console.error(`[chat-service] 已读回执推送失败（channelId=${channelId}）:`, e);
     }
   }
+
+  // 读游标推进 → 顶栏红点该熄了（读掉全部未读时）。推给本人 ——
+  // 不动 pushChatDot 里「算值」那一步：静音 / 隐藏 / 是否还有别的未读会话，
+  // 都在 getChatUnreadSummary 里判，这里只负责触发重算。
+  void pushChatDot(userId);
   return upTo;
 }
 

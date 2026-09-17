@@ -85,7 +85,7 @@ Content-Type: application/json
 - **注册时带有效邀请码** → 直接是 core（推荐，全自动）；
 - **让站长在服务器上执行**：`npm run cli -- promote-core mycommentbot`
 
-> 这两条路与讨论机器人完全相同（`docs/chat-bot.md` §2.2）。
+> 这两条路与讨论机器人完全相同（`docs/bot/chat-bot.md` §2.2）。
 
 ---
 

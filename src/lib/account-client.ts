@@ -10,8 +10,9 @@
 // 调用挪进 SQLite 事务**：写锁会被占满整个 ACCOUNT_SERVICE_TIMEOUT。
 //
 // 认证：双层 —— X-Internal-Token（服务间共享密钥）+ 用户/系统 API Key。
-//   ⚠️ 账户服务实际用 `Authorization: Bearer <api_key>` 传递用户 Key（见
-//   account-service/app/api/deps.py:extract_api_key），而**不是** X-Api-Key。
+//   ⚠️ 账户服务实际用 `Authorization: Bearer <api_key>` 传递用户 Key（见其仓库的
+//   app/api/deps.py:extract_api_key —— 该服务已拆成独立仓库，本仓 git 历史 7d7be1c
+//   之前还在），而**不是** X-Api-Key。
 //   本客户端因此沿用 Bearer，与 Flask 客户端一致。
 //
 // 用户 API Key 以 Fernet 加密存于 User.fishApiKeyEncrypted。解密密钥派生方式

@@ -13,7 +13,7 @@
 | 鉴权 | JWT（`jose`）· 密码哈希与历史 werkzeug **双向互通**（用户无需改密） |
 | 会话 | JWT cookie + `User.sessionVersion` 失效机制（对齐旧 Flask-Login 的 `session_version`） |
 | CSRF | `src/middleware.ts` 对状态变更方法校验 `Origin`/`Referer` 同源 |
-| 文件落盘 | 头像/图床/故事落 `instance/`（gitignored） |
+| 文件落盘 | 头像/图床/故事/表情包落 `instance/`（gitignored，六个子目录见 §3） |
 | 鱼干账户 | 独立 FastAPI 微服务（本仓**只**通过 HTTP 调用，本仓无 Python） |
 | 渲染 | 博客 / 评论 / 故事 — 客户端 marked + DOMPurify（详见 §6.7） |
 | 测试 | vitest 单测 + Playwright e2e |
@@ -49,7 +49,9 @@
                      │ │   └── db.db    │
                      │ ├── avatars/     │   ⟨gitignored 部署时挂载⟩
                      │ ├── images/      │
-                     │ └── stories/     │
+                     │ ├── stories/     │
+                     │ ├── stickers/    │
+                     │ └── blogs/       │   ⟨Flask 遗留，当前无写入⟩
                      └──────────────────┘
 ```
 
@@ -72,7 +74,7 @@
 ├── tests/                  vitest 单测 + Playwright e2e
 ├── docs/                   本文与运维文档；guide/ 为玩家/创作者文档
 ├── public/                 静态资源（图标 / CSS / favicon）
-└── instance/               gitignored: avatars/ database/ images/ stories/
+└── instance/               gitignored: avatars/ database/ images/ stories/ stickers/ blogs/
 ```
 
 ## 4. 路由分布（src/app/）
@@ -85,13 +87,13 @@
 | `/api/blogs` · `/api/blogs/[id]` · `/api/spider/*` | API | 博客 API + 爬虫 API |
 | `/api/auth/authentic` · `/zhh` | API + route | 邀请码升 core · 邀请码生成（站长） |
 | `/fish` · `/fish/transactions` · `/api/fish/*` | page + API | 小鱼干面板 + 流水 |
-| `/fish/market` · `/api/fish/market/*` | page + API | 鱼干市场（第一期只有**用户间转账**，无手续费）：`POST transfer`（支持客户端幂等键）/ `GET users`（收款人搜索）/ `POST balance`、`POST transactions`（站外脚本用的无状态查询，含 `since_id` 对账游标）/ `POST pay`（收银台专用）。写路径见 §6.3；对外契约见 `docs/fish-bot.md` |
+| `/fish/market` · `/api/fish/market/*` | page + API | 鱼干市场（第一期只有**用户间转账**，无手续费）：`POST transfer`（支持客户端幂等键）/ `GET users`（收款人搜索）/ `POST balance`、`POST transactions`（站外脚本用的无状态查询，含 `since_id` 对账游标）/ `POST pay`（收银台专用）。写路径见 §6.3；对外契约见 `docs/bot/fish-bot.md` |
 | `/fish/pay` | page | **收银台**：站外商户把用户送来付款（`?to= &amount= &note= &from= &return=`）。参数一律不可信，只做展示；付款必须**已登录 + 再输一次密码**（step-up），密码只输在本站域名下。不入索引 |
 | `/fish/collect` | page | **扫码收款页**：`?to=<用户名>`，扫「鱼干收款码」落到这里。与收银台的区别是**金额由付款人自己填**（静态码不可能带金额）。前端是 `/fish/pay` 的**同一个组件**（`src/app/fish/PayForm.tsx`）的另一个变体，step-up 与幂等键完全共用 |
 | `/api/poster/profile/[id]` · `/api/poster/collect` | API | **画报 / 收款码出图**（PNG，仅本人）。渲染管线与四条约束见 §6.8 |
-| `/notifications` · `/api/notifications/*` | page + API | 通知中心 |
+| `/notifications` · `/api/notifications/*` | page + API | 通知中心。其中 `GET count` 是顶栏指示器的**兜底快照**（**不能删**：SSE 有「连着但收不到」的半死状态），`GET stream` 是**实时流**（SSE，未登录 401；首帧全量快照 + 之后增量补丁）。推送点纪律与依赖方向见 `src/lib/topbar-bus.ts` 头部 |
 | `/vote` · `/vote/[id]` | page | 投票 |
-| `/checkin` · `/api/checkin` | page + API | 每日签到（**core+**：鱼干的赚取渠道，与投喂/点赞同档） |
+| `/checkin` · `/api/checkin` · `/api/checkin/claim` | page + API | 每日签到（**core+**：鱼干的赚取渠道，与投喂/点赞同档）。**三处都要判** —— 发鱼的其实是 `claim`，见 §8 |
 | `/clipboard` · `/clipboard/[id]` · `/api/clipboard/*` | page + API | 云剪贴板 |
 | `/image` · `/image/admin` · `/api/images/*` | page + API | 图床 + 管理 |
 | `/image/i/<id>` · `/auth/avatar/<id>` | rewrite | **不是路由**：Flask 时代的旧直链，由 `next.config.mjs` 的 `rewrites()` 映射到 `/api/images/<id>/raw`、`/api/avatar/<id>`。存量正文里写死的就是它们（见 `tests/e2e/legacy-urls.spec.ts`） |
@@ -103,7 +105,7 @@
 | （无 URL）`forbidden.tsx` | 特殊文件 | 403 页本身；由 `forbidden()` 原地渲染，**不是** `/forbidden` 路由 |
 | `/sitemap.xml` · `/robots.txt` | route | sitemap.ts / robots.ts |
 | `/api/avatar/[id]` · `/api/images/[id]/raw` | API | 头像 / 图床原生分发 |
-| `/u/[username]` | page | 公开用户主页 |
+| `/u/[id]` | page | 公开用户主页（**段名是用户 id（UUID），不是 username**）|
 
 ## 5. 业务逻辑层（src/lib/）
 
@@ -114,23 +116,27 @@
 | 认证 / 会话 | `auth.ts` · `session.ts` · `password.ts` · `invite-code.ts` · `user-service.ts` · `identicon.ts` · `avatar.ts`（头像字节的**唯一**解析处：`/api/avatar/[id]` 与画报共用同一份目录穿越守卫）· `site-url.ts`（`SITE_URL` → `ALLOWED_ORIGINS` 回退链的唯一实现，OAuth 的 userinfo 与画报的二维码前缀共用） |
 | 数据层 | `db.ts` · `db-time.ts` · `format.ts` |
 | 博客域 | `blog-service.ts` · `feed-service.ts` · `comment-service.ts` · `comment-shared.ts` · `blog-sort-pref.ts` · `spider-service.ts` |
-| 富文本渲染 | `rich-text.ts`（共享管线）· `chat-markdown.ts` · `comment-markdown.ts` · `blog-markdown.ts` · `markdown-math.ts` · `linkify.ts` · `vditor-theme.ts` |
+| 富文本渲染 | `rich-text.ts`（共享管线）· `chat-markdown.ts` · `comment-markdown.ts` · `blog-markdown.ts` · `content-refs.ts`（评论/讨论那条**同步**管线：只认 8 位与 10 位，9 位投票刻意不展开）· `markdown-math.ts` · `linkify.ts` · `vditor-theme.ts` |
+| 表情包 | `sticker-refs.ts`（`[@合集/表情]` → 内联 `<img>`，跑在`rich-text.ts` 的净化**之后**）· `sticker-service.ts`（素材扫盘与三层缓存）。安全边界与正则纪律见两者头部；玩家向说明见 `docs/guide/表情包使用指南.md` |
 | 讨论 | `chat-service.ts` · `chat-bus.ts`（SSE 订阅）/ `chat-shared.ts`（DTO）· `chat-sidebar-pref.ts` · `focus-mode.ts` |
-| 实时传输 | `sse.ts` —— SSE 响应头 / 帧格式 / 重连与背压常量的**唯一出处**，讨论在用。新增 SSE 路由一律 import 它，不要手抄响应头（`no-transform` 少一个字的后果见该文件头注释） |
+| 实时传输 | `sse.ts` —— SSE 响应头 / 帧格式 / 重连与背压 / 心跳常量的**唯一出处**，两条流共用（讨论 `chat-bus.ts`、顶栏 `topbar-bus.ts`）。新增 SSE 路由一律 import 它，不要手抄响应头（`no-transform` 少一个字的后果见该文件头注释） |
+| 顶栏指示器 | `topbar-bus.ts` —— 铃铛未读数 + 讨论红点的 SSE 订阅表（推**增量补丁**，首帧全量快照由路由拼）。推送点纪律（`hasSubscriber` 同步早退、算值必须在吞异常的 try 内）与依赖方向约束**见该文件头部** |
 | 通知 / 审计 | `notification-service.ts` · `broadcast-service.ts` · `audit-service.ts` · `admin-appeal-service.ts` |
 | 投票 / 签到 / 剪贴板 | `vote-service.ts` · `checkin-service.ts` · `clipboard-service.ts` |
 | 图床 | `image-service.ts` · `image-upload.ts`（服务端）· `image-client.ts`（浏览器侧选图上传，讨论与评论共用）· `vditor-upload.ts`（Vditor 编辑器的上传配置，博客与剪贴板共用；与 `/api/images` 的字段名/响应结构两端对齐，见 `tests/unit/vditor-upload.test.ts`） |
 | 故事 | `story-service.ts` |
 | 画报 / 收款码 | `poster.ts`（纯 SVG 构造，含二维码与转义）· `poster-render.ts`（取数 + 头像 + sharp 光栅化），见 §6.8 |
-| 小鱼干 | `fish-service.ts` · `fish-admin.ts` · `fish-market-service.ts`（用户间转账，见 §6.3）· `fish-sync.ts`（账本 + 补偿，见 §6.3）· `fish-units.ts`（单位换算）· `account-client.ts` |
+| 小鱼干 | `fish-service.ts` · `fish-admin.ts` · `fish-market-service.ts`（用户间转账，见 §6.3）· `fish-sync.ts`（账本 + 补偿，见 §6.3）· `fish-compensate.ts`（`fish compensate` 群发补偿，只发 core+，见 `docs/cli.md` 与文件头）· `fish-units.ts`（单位换算；`Blog.fishCount` 是**例外**，见文件头）· `account-client.ts` |
 | OAuth 2.0 | `oauth.ts`（见 `docs/oauth.md`） |
 | 管理域 | `admin-user-service.ts` · `admin-blog-service.ts` · `admin-category-service.ts` · `admin-comment-service.ts` · `admin-clipboard-service.ts` · `admin-vote-service.ts` · `admin-image-service.ts` · `admin-stats-service.ts` |
 | 工具 / 安全 | `short-id.ts` · `safe-url.ts` · `guard.ts` · `rate-limit.ts` · `turnstile.ts` |
 | 鉴权基建 | `credential-auth.ts`（「用户名+密码」校验，`/api/auth/login` 与鱼干市场无状态接口**共用**，限频桶也共用）· `request-ip.ts`（反代后取真实 IP） |
 | 配额白名单 | `service-accounts.ts`（`FISH_SERVICE_ACCOUNTS` 里的账号走 `SERVICE_QUOTA`：转账 500/时、5000/天。给「站外银行」这类自动化账号用，撤销即删配置） |
 
-> 上表是**穷尽** `src/lib/*.ts` 的（新增文件记得补一行）—— §6.3、§8 会引用其中若干，
-> 之前整块漏了讨论子域与 `oauth.ts`，导致正文引用的文件在本表里查不到。
+> 上表是**穷尽** `src/lib/*.ts` 的（新增文件记得补一行）—— §6.3、§8 会引用其中若干。
+> 这张表漏过两次（先是讨论子域与 `oauth.ts`，后是 `content-refs.ts` / `sticker-refs.ts` /
+> `sticker-service.ts` / `fish-compensate.ts`），症状都是正文引用的文件在本表里查不到。
+> 核对命令：`comm -13 <(本表提取的文件名) <(ls src/lib/*.ts | xargs -n1 basename)`。
 
 API 端点位于 `src/app/api/<group>/<verb>/route.ts`，**薄**层：参数校验 + 权限校验 + 调 `src/lib/*` + 组装响应。
 
@@ -184,7 +190,13 @@ GET/HEAD/OPTIONS 视为安全方法，不校验。
 
 ### 6.5 限频
 
-`src/lib/rate-limit.ts`，进程内内存桶（单进程语义）。**配额表以该文件的 `RULES` 为唯一权威**，本文不复述具体数值 —— 那里有 12 条规则（点赞 / 评论 / 投票 / 图床 / 讨论 / 登录…），复述必 drift。两点不显然的行为：
+`src/lib/rate-limit.ts`，进程内内存桶（单进程语义）。**配额表以该文件的 `RULES` 为唯一权威**，本文不复述具体数值（点赞 / 评论 / 投票 / 图床 / 讨论 / 登录…），复述必 drift。
+
+> ⚠️ `RULES` **不是全部配额**。OAuth 的三条（authorize 30/min/user、token 60/min/clientId、
+> userinfo 600/min/user）是各 route 里**内联的字面量**，去 `src/app/api/oauth/*/route.ts` 找，
+> 不在 `RULES` 里 —— 见 `docs/oauth.md` §7。做全站限频审计时最容易漏掉它们。
+
+另有三点不显然的行为：
 
 - **桶会落盘**：随 10 分钟一次的惰性清扫写入 `instance/rate-limit-snapshot.json`（原子写；`RATE_LIMIT_SNAPSHOT_PATH` 可覆盖），进程启动时回灌 —— **重启不重置窗口**。不落盘的话，一次发版等于给所有人发免刷通行证，也放走进行中的刷量。测试环境不自动回灌，保证确定性。
 - **登录限频只统计失败**：IP 与用户名（小写归一）两个维度分别计数，任一超限即 429。所以正常用户不会被自己的成功登录挡住；顺带它也是 CPU 保护（每次尝试都要跑一次 scrypt）。
@@ -199,7 +211,7 @@ GET/HEAD/OPTIONS 视为安全方法，不校验。
 | 头像 | `instance/avatars/<uuid>.png`（或 `AVATARS_DIR` 覆盖） | **无上传入口**：注册时 `avatarPath` 留空，头像由读取入口按 id 确定性生成；磁盘上的 `.png` 只有 Flask 时代的存量文件 | `src/app/api/avatar/[id]/route.ts`（有文件则回放，否则 `generateIdenticonSvg` 兜底，永不 404） |
 | 图床 | `instance/images/<id><ext>`（或 `IMAGE_UPLOAD_FOLDER` 覆盖） | `src/lib/image-upload.ts` — sharp 压缩 + MIME 嗅探 + 配额累计 | `src/app/api/images/[id]/raw/route.ts` |
 | 故事 | `instance/stories/<合集>/<故事>.md\|.cattca`（或 `STORIES_DIR` 覆盖） | 服务端直接落盘 | `src/lib/story-service.ts` 服务端 marked |
-| 表情包 | `instance/stickers/<合集>/<表情>.{gif,webp,png,jpg}`（或 `STICKERS_DIR` 覆盖） | **无上传入口**：站长直接往目录里拷文件 | `src/app/api/stickers/[collection]/[name]/route.ts`（查扫盘 manifest，见 `src/lib/sticker-service.ts`） |
+| 表情包 | `instance/stickers/<合集>/<表情>.{gif,webp,png,jpg,jpeg}`（或 `STICKERS_DIR` 覆盖） | **无上传入口**：站长直接往目录里拷文件 | `src/app/api/stickers/[collection]/[name]/route.ts`（查扫盘 manifest，见 `src/lib/sticker-service.ts`） |
 
 磁盘目录必须**真实存在**（生产用 systemd/Data卷/挂载点），`node scripts/check-instance.mjs` 一键建好骨架。
 
@@ -445,6 +457,24 @@ div 会卸载重挂，`deps=[]` 的监听器永远附不上。
 **API 路由不用它们**（重定向对 XHR 无意义）：各 `route.ts` 自取 `getCurrentUser()` 后返回
 `apiErr(403, …)`，管理端另用 `hasAdminRights()`（`src/lib/auth.ts`）之类的判定。
 
+**档位阶梯：页面与接口必须同档，但入口不跟着藏。** 一个功能有页面 + 若干接口时，
+**每一层都要自己判**，别只挡离用户最近的那层。签到是标准例子（全部 core+）：
+
+| 层 | 判定 |
+|----|------|
+| `/checkin` 页面 | `isCoreUser(user)` → 渲染 403 页（不用 `requireCoreUser`，理由见该文件头）|
+| `POST /api/checkin` | `isCoreUser` → `apiErr(403, CORE_ONLY)` |
+| `POST /api/checkin/claim` | `isCoreUser` → `apiErr(403, '需要核心用户权限')` |
+
+> ⚠️ **发鱼的其实是 `claim`**（签到只是翻牌的入场券）。只挡 `/api/checkin` 而不挡 claim，
+> 等于没挡 —— 直接 POST claim 就能拿鱼干。新增「页面 + 多接口」的档位功能时照此三处对照。
+
+**「入口不跟着藏」是刻意的**：拿签到举例，顶栏图标对**所有人**渲染（与博客、讨论同待遇），
+未登录点了跳登录、非 core 点进去原地 403。但 `layout.tsx` 只给 core+ 发
+`checkin-api-url` 这个 meta —— 否则 `base.js` 会拿 403 响应点亮一个**骗人的「可签到」徽标**。
+即：**门禁收紧，入口照给，但别给「你能用」的假信号**。这条在 `tests/e2e/access-control.spec.ts`
+的「入口保留」一组有契约。
+
 ### ID 风格
 
 | 实体 | ID |
@@ -479,5 +509,5 @@ div 会卸载重挂，`deps=[]` 的监听器永远附不上。
 
 - `docs/deploy.md` — 部署 / 运行 / nginx / systemd
 - `docs/cli.md` — 运维 CLI 命令
-- `CLAUDE.md` — 关键约定（约束与反直觉决策）
+- `../CLAUDE.md` — 关键约定（约束与反直觉决策）
 - 内容/玩法文档：`docs/guide/` —— 玩家与创作者文档（cattca / 云剪贴板 / 图床 / 投票箱 / story）

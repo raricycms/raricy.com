@@ -12,9 +12,13 @@
 | `instance/avatars/` | 483 个 PNG | 用户头像 |
 | `instance/images/` | 988 个文件 | 图床 |
 | `instance/stories/` | 8 个合集 / 289 个文件 | `.md` / `.cattca` / `info.json` |
-| `instance/stickers/` | 视站长放进来的素材而定 | 表情图 + 可选 `info.json`（`.gitignore` 掉，**授权来自第三方的图不入库**） |
-| `instance/blogs/` | 6195 个文件 | 历史遗留目录，当前无写入 |
+| `instance/blogs/` | 6195 个**空目录**（0 文件）| 历史遗留目录，当前无写入 |
 | `instance/app.db` | 0 字节 | 空壳，忽略 |
+
+> ⚠️ **归档里没有 `instance/stickers/`**。它由 `scripts/check-instance.mjs` 在还原时建出来，
+> 但**内容是空的** —— 表情素材是站长手工放进去的、且**刻意不入库**（授权来自第三方的图
+> 不能进公开仓库）。所以从 `instance.zip` 还原的实例，表情是缺的，需要单独取回素材再放进去。
+> 缺素材时全站表情会静默降级成纯文本 token（`[@合集/表情]` 原样显示），不报错。
 
 归档里的库离「可用」差两件事，也正是下面第 2、3 步要做的：
 
@@ -35,7 +39,7 @@ npm run prisma:generate
 
 ```bash
 unzip -q instance.zip -d .
-node scripts/check-instance.mjs # 幂等：补齐 instance/{avatars,database,images,stories,blogs}
+node scripts/check-instance.mjs # 幂等：补齐 instance/{avatars,database,images,stories,stickers,blogs}
 ```
 
 ## 2. 规整时间戳（TEXT → INTEGER 毫秒）
@@ -95,7 +99,7 @@ npm run dev     # 打开 /u/<用户 uuid>
 | 不基线化直接 `up` | `table "users" already exists` | 先 `mark 0_init` |
 | `SECRET_KEY` 用开发值 | diagnose 段 4：抽查 5 条解开 0 条 | 从生产 `.env` **原样**搬 —— 唯一不可逆的一步 |
 | 直接 `cp` 库文件 | WAL 下可能拷到不一致快照 | 用 `db:normalize` / `sqlite3 .backup` |
-| 源库不存在 | 脚本抛「源库不存在」 | 没有空库兜底分支；空库起步请走 `npm run migrate -- up`（deploy.md §4「全新部署」） |
+| 源库不存在 | 脚本抛「源库不存在」 | 没有空库兜底分支；空库起步请走 `npm run migrate -- up`（`docs/deploy.md` §4「全新部署（空目录起步）」） |
 | `file:` 相对路径 | 基点相对 `prisma/`，不是项目根 | 用绝对路径最稳 |
 | `chat_channels` lobby 种子 | `created_at` 是 ISO 文本 | `4_chat` 写死的固定值，无比较用途，忽略 |
 | 手滑 `prisma migrate dev` / `db push` | 无视 `_raricy_migrations` 直接动 schema | 永远不要 |

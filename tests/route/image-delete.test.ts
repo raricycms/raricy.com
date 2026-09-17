@@ -10,7 +10,7 @@
 //
 // 本文件打的是真实 route handler（不 mock Prisma），只 mock 登录态。
 
-import { describe, it, expect, beforeEach, beforeAll, vi } from 'vitest';
+import { describe, it, expect, beforeEach, beforeAll, afterAll, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -30,13 +30,24 @@ import { storagePathFor } from '@/lib/image-upload';
 import { DELETE as deleteImage } from '@/app/api/images/[id]/route';
 import { DELETE as adminDeleteImage } from '@/app/api/images/admin/[id]/route';
 
-beforeAll(() => {
-  fs.mkdirSync(TEST_UPLOAD_DIR, { recursive: true });
-  // 兜底：确认没指到真实目录（Windows 路径是反斜杠，归一化后校验，
-  // 与 tests/helpers/db.ts 的 assertTestDb 同一处理）
+/** 兜底：确认没指到真实目录（Windows 路径是反斜杠，归一化后校验，
+ *  与 tests/helpers/db.ts 的 assertTestDb 同一处理）。 */
+function assertTempDir() {
   if (!TEST_UPLOAD_DIR.replace(/\\/g, '/').includes('/tests/.tmp/')) {
     throw new Error(`拒绝在非临时目录上跑：${TEST_UPLOAD_DIR}`);
   }
+}
+
+beforeAll(() => {
+  fs.mkdirSync(TEST_UPLOAD_DIR, { recursive: true });
+  assertTempDir();
+});
+
+// 与 tests/service/image-service.test.ts 同款：跑完删掉自己造的 png。
+// 此前没有这段，每次运行留下 8 个文件。
+afterAll(() => {
+  assertTempDir();
+  fs.rmSync(TEST_UPLOAD_DIR, { recursive: true, force: true });
 });
 
 beforeEach(async () => {

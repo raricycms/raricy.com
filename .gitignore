@@ -44,3 +44,6 @@ coverage/
 # Python 副产物（历史迁移文档里的代码示例等可能产生）
 __pycache__/
 *.pyc
+
+# 数据库文章的本地导出（数千个 md + 一份 db 副本，含真实用户数据）—— 不入库
+/blog-export/

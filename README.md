@@ -10,7 +10,8 @@ Next.js 15 + Prisma + SQLite 单进程部署，自有 `instance/` 数据目录�
 ## 技术栈
 
 - **框架**：Next.js 15 App Router + React 19 + TypeScript
-- **ORM**：Prisma 6，SQLite，`file:../instance/database/db.db`
+- **ORM**：Prisma 6，SQLite —— 开发库 `instance/database/dev.db`（见 `.env`），
+  生产库 `db.db`（见 `.env.production.example`）。**两者是不同的文件**，别按文档去改错那个
 - **会话**：JWT（`jose`）+ `session_version` 失效机制
 - **认证**：密码哈希与历史 werkzeug **互通**，用户**无需重置密码**
 - **服务边界**：站点单进程；账户微服务（FastAPI）独立仓库部署
@@ -28,14 +29,14 @@ Next.js 15 + Prisma + SQLite 单进程部署，自有 `instance/` 数据目录�
 | `prisma/`      | schema.prisma + migrations/（手写 SQL，见 `docs/deploy.md` §4） |
 | `scripts/`     | 自检 / 运维 / 数据补偿脚本（详见下方「工具脚本」） |
 | `tests/`       | vitest 单测 + Playwright e2e |
-| `docs/`        | 全部文档 —— `docs/guide/` 给玩家与创作者，其余给开发运维。见 `docs/README.md` |
-| `instance/`    | 运行时数据（gitignored）：avatars / database / images / stories / stickers |
+| `docs/`        | 全部文档 —— `docs/guide/` 给玩家与创作者、`docs/bot/` 给站外机器人开发者，其余给开发运维。见 `docs/README.md` |
+| `instance/`    | 运行时数据（gitignored）：avatars / database / images / stories / stickers / blogs |
 | `public/`      | 静态资源（图标 / CSS / favicon） |
 
 ## 快速开始
 
 ```bash
-node scripts/check-instance.mjs         # 首次创建 instance/{avatars,database,images,stories,stickers}
+node scripts/check-instance.mjs         # 首次创建 instance/{avatars,database,images,stories,stickers,blogs}
 npm ci                                   # 严格按 lockfile 装（不要 npm install）
 cp .env.example .env                     # 填 SECRET_KEY / FISH_ENCRYPTION_KEY
 npm run prisma:generate                  # 生成 Prisma Client
@@ -55,7 +56,6 @@ npm run dev                              # http://localhost:3000
 | `npm run diagnose` | 部署自检（版本 / .env / 库 / 密钥）；报红就别往下走 |
 | `npm run check:secrets` | 密钥与生产数据是否进过版本库 |
 | `npm run check:links` | 站内断链静态扫描 |
-| `npm run check:perms` | 权限档位回归（与历史 Flask 对照） |
 | `npm run prisma:pull` | 把库反向同步到 schema.prisma（手改 SQL 后用） |
 | `npm run db:normalize` | 源库复制 + 规整时间戳为 INTEGER 毫秒 |
 | `npm run db:compensate-fortunes` | 补偿"已签到未翻牌"的鱼干记录 |
@@ -80,4 +80,6 @@ npm run dev                              # http://localhost:3000
 ## 关键约定
 
 改代码前**先读 `CLAUDE.md`** —— 约束与反直觉决策都在那里（时间戳语义、鱼干写路径、
-iframe 刻意允许嵌入、软删除、讨论与通知的关系等）。此处不复述，避免第三份会 drift 的副本。
+iframe 刻意允许嵌入、软删除、讨论与通知的关系等）。其中的**「红线」一节每次都要看**，
+其余各节是指针（展开在源码文件头与 `docs/architecture.md`，用到再看）。
+此处不复述，避免第三份会 drift 的副本。

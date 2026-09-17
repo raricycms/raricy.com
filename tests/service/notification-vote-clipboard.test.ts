@@ -219,7 +219,7 @@ async function makeVotes(
 describe('notification-service', () => {
   // ── 通知偏好：本组最重要的语义 ──────────────────────────────────────────
   //
-  // CLAUDE.md：「发送前检查用户通知偏好，除非 force=True」。
+  // 「发送前检查用户通知偏好，除非 force=True」（见 `notification-service.ts` 头部）。
   // 关掉某类偏好后，对应类型的通知**必须不落库** —— 不是标记已读、不是过滤，
   // 是根本不创建。这条挂了用户就会收到自己明确关掉的推送。
   describe('通知偏好拦截', () => {

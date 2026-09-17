@@ -10,7 +10,7 @@ import { useState } from 'react';
 // 钱那条路径只能有一份实现，所以用 variant 分支，**不要为收款页另抄一个组件**。
 //
 // 调用方：
-//   • /fish/pay     variant="cashier" —— 站外商户把用户送来付款（docs/fish-bot.md §9）
+//   • /fish/pay     variant="cashier" —— 站外商户把用户送来付款（docs/bot/fish-bot.md §9）
 //   • /fish/collect variant="collect" —— 扫别人的收款码付款（金额由付款人自己填）
 //
 // 【为什么这里要再输一次密码】站内自己转账只需点一下确认（人是自己点的、看得见上下文）；
@@ -19,7 +19,7 @@ import { useState } from 'react';
 //
 // 【幂等键】键 = 「每次页面加载一个随机基」+ 金额：同键重试（超时后再点一次）服务端
 // 认得出是同一笔，不会重复扣款；改了金额就是另一个意图、自动换新键。
-// 见 docs/fish-bot.md §6。
+// 见 docs/bot/fish-bot.md §6。
 //
 // ⚠️ cashier 分支的 DOM 类名与文案被 tests/e2e/fish-market.spec.ts 钉死了，改动它
 // 之前先看那个用例。

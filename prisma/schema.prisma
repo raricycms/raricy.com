@@ -145,6 +145,8 @@ model Blog {
   createdAt     DateTime? @map("created_at")
   ignore        Boolean?  @default(false)
   likesCount    Int?      @default(0) @map("likes_count")
+  // ⚠️ 与下面那些「存储单位 = 0.1 鱼干」的列**不同**：这列是**鱼干**口径的整数（投喂累加），
+  // 未经 Float 时代、未被 3_fish_integer_units 触碰，**不参与 fish-units 换算**。别顺手统一。
   fishCount     Int       @default(0) @map("fish_count")
   commentsCount Int?      @default(0) @map("comments_count")
   lastCommentAt DateTime? @map("last_comment_at")

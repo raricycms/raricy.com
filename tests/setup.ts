@@ -20,6 +20,15 @@ const TAG = `${process.pid}-${Math.random().toString(36).slice(2, 8)}`;
 const TEST_DB = path.join(TMP_DIR, `test-${TAG}.db`);
 
 process.env.DATABASE_URL = `file:${TEST_DB}`;
+
+// 限频快照同理，必须在任何 @/lib/rate-limit 被 import 之前改指。
+// 它的默认落点是 instance/rate-limit-snapshot.json —— 那是**生产运行时状态**
+// （重启不重置窗口，见该文件头部）。不重定向的话，任何触发清扫落盘的用例都会把它
+// 覆盖成测试桶（实测：rate-limit.test.ts 里走真实 Date.now() 的那条会让 10 分钟节拍
+// 立即满足 → flushSnapshot() 写默认路径）。playwright 侧早有同样做法，见
+// playwright.config.ts 的 RATE_LIMIT_SNAPSHOT_PATH；vitest 侧此前漏了。
+process.env.RATE_LIMIT_SNAPSHOT_PATH = path.join(TMP_DIR, 'rate-limit-snapshot.json');
+
 process.env.SECRET_KEY = 'test-secret-key-do-not-use-in-prod';
 // NODE_ENV 由 vitest 自动置为 'test'，无需（也不能，@types/node 标了 readonly）在此赋值。
 

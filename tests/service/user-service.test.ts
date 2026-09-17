@@ -12,7 +12,12 @@
 // 但它由 accountServiceEnabled() 门控，而后者只看 ACCOUNT_SERVICE_INTERNAL_TOKEN。
 // tests/setup.ts 已 delete 掉该变量 → remoteEnabled === false → 走 dev fallback
 // （只建本地用户 + 一条 console.warn）。所以本文件聚焦本地 DB 语义，
-// 不去打真实 HTTP。远端 fail-closed 分支的覆盖见交付说明。
+// 不去打真实 HTTP。
+//
+// ⚠️ **已知缺口**：registerUser 的远端 fail-closed 分支（建号时远端失败 → 补偿回滚）
+// **目前没有测试覆盖**。五条 fail-closed 写路径里，投喂 / 签到 / CLI / 转账各有
+// 对应的 *-failclosed 用例，只有建号这条没有 —— 想补的话照 tests/service/
+// checkin-failclosed.test.ts 的 mock 方式（vi.mock accountServiceEnabled + AccountClient）。
 
 import { describe, it, expect, beforeEach } from 'vitest';
 
@@ -251,7 +256,8 @@ describe('registerUser：必填与唯一性', () => {
   it('用户名重复的判定区分大小写（记录现状：Alice 与 alice 是两个账号）', async () => {
     await makeUser({ username: 'Alice' });
     const r = await registerUser(goodInput({ username: 'alice' }));
-    // 唯一索引是 SQLite 默认的二进制比较 → 大小写敏感。见交付说明「可疑之处」。
+    // 唯一索引是 SQLite 默认的二进制比较 → 大小写敏感。与 Flask 侧口径一致属巧合，
+    // 不是有意设计。若要改成大小写不敏感，这里会是第一个红的地方。
     expect(r.ok, 'alice 与 Alice 当前被视为不同用户名').toBe(true);
   });
 
@@ -398,19 +404,6 @@ describe('registerUser：邀请码', () => {
     expect(r.message).toBe('用户名过短（至少3个字符）');
   });
 
-  // ───────────────────────────────────────────────────────────────────────────
-  // ⚠️ BUG-A（现状固化测试，非「期望行为」）：registerUser 邀请码可被并发双花。
-  //
-  // 成因：registerUser 的「查码」（findUnique，第 103 行）在 $transaction **之外**，
-  // 而事务内标记已用用的是 `update where:{ id }` —— 没有 isUsed:false 兜底。
-  // 两个请求都能读到 isUsed=false，各自建号升 core，第二个 update 只是把
-  // isUsed 又写成 true 并覆盖 usedBy。对比 verifyInviteAndUpgrade：它用的是
-  // `updateMany where:{ code, isUsed:false }` + count===0 判定，并发下是安全的
-  // —— 同一份语义，两条路径实现不一致。
-  //
-  // 下面钉的是**当前实测行为**（本地 5 次重跑稳定复现 cores=2）。修好之后这条会
-  // 变红 —— 那正是它的目的：把断言改成 1，并删掉本注释。详见交付说明。
-  // ───────────────────────────────────────────────────────────────────────────
   // 【回归 · BUG-A】一次性邀请码不得被并发双花。
   // 曾经：查码在事务外，事务内用 update where:{id} 无 isUsed:false 兜底 →
   // 两个并发注册都读到 isUsed=false → **双双升到 core**，一个码兑出 2 个权限。
@@ -710,7 +703,8 @@ describe('verifyInviteAndUpgrade', () => {
   // invite_codes.used_by 有指向 users.id 的外键，标记已用时触发 P2003。
   // 好的一面：外键挡住了写入，码没被白白消耗掉（下面断言了这点）。
   // 坏的一面：这是本文件里唯一会 throw 的返回路径 —— 其余分支一律返回 {ok,code,message}。
-  // 调用方若按「返回结果对象」的约定写代码就会漏接，路由 500。详见交付说明。
+  // 调用方若按「返回结果对象」的约定写代码就会漏接，路由 500。
+  // 【修复后删掉本块，改为回归用例】
   it('⚠️ BUG-B 现状固化：userId 不存在时抛 P2003 而非返回错误对象（但码未被消耗）', async () => {
     await makeInvite({ code: 'ghostcode123' });
 
@@ -790,7 +784,8 @@ describe('verifyInviteAndUpgrade', () => {
     const r = await verifyInviteAndUpgrade(u.id, 'secondcode12');
     expect(r.ok).toBe(true);
     expect((await prisma.user.findUniqueOrThrow({ where: { id: u.id } })).role).toBe('core');
-    // 记录：第二个码被白白消耗掉了。见交付说明。
+    // 记录现状：已是 core 的用户再兑一个码，第二个码被白白消耗掉（不升级、不退码）。
+    // 【修复后删掉本块，改为回归用例】
     expect(
       (await prisma.inviteCode.findUniqueOrThrow({ where: { code: 'secondcode12' } })).isUsed
     ).toBe(true);

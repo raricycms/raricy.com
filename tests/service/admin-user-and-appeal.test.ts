@@ -5,7 +5,7 @@
 //
 //   1. 禁言不是「改一个 bool」，而是一次五写：user.isBanned/banUntil/banReason
 //      + UserBan 历史 + sessionVersion++（强制下线）+ AdminActionLog + 通知。
-//      漏掉 UserBan 历史 → 审计断链（CLAUDE.md 明确要求 ban_user 自动建历史）；
+//      漏掉 UserBan 历史 → 审计断链（`admin-user-service.ts` 的 ban_user 分支自动建历史）；
 //      漏掉 sessionVersion++ → 被禁言的人当前会话还能继续发言，禁言形同虚设。
 //   2. 自动过期：banUntil 过去了就不算禁言，靠 isCurrentlyBanned 纯函数判定，
 //      DB 里 isBanned 仍是 true。service 层返回的 currentlyBanned 必须跟纯函数
@@ -282,7 +282,7 @@ describe('banUser（禁言）', () => {
     // 2) 强制下线：sessionVersion 必须 +1，否则被禁言者当前会话还能继续操作
     expect(u!.sessionVersion).toBe(4);
 
-    // 3) UserBan 历史（CLAUDE.md：ban_user() 自动创建历史记录）
+    // 3) UserBan 历史（ban_user 自动创建，见 admin-user-service.ts）
     const bans = await prisma.userBan.findMany({ where: { userId: target.id } });
     expect(bans).toHaveLength(1);
     expect(bans[0]).toMatchObject({
@@ -1077,8 +1077,9 @@ describe('adjudicate（裁决申诉）', () => {
     expect((await adjudicate({ actor: asActor(plain), appealId: appeal.id, decision: 'accept' })).ok).toBe(false);
   });
 
-  // ★ CLAUDE.md 一直写着「站长的『针对自己的申诉』不由自己裁决」，但此前
-  //   路由与 service 都只判 isOwner —— 规则只存在于文档里。这条用例把它钉住。
+  // ★ 「站长的『针对自己的申诉』不由自己裁决」这条闸门放在 service 层
+  //   （admin-appeal-service.ts 的 adjudicate，见该文件头部），网页与运维 CLI 共用。
+  //   历史教训：它曾长期只写在文档里、路由与 service 都只判 isOwner —— 这条用例把它钉住。
   it('★ 不能裁决针对自己的申诉', async () => {
     const owner = await makeUser({ role: 'owner' });
     const { appealId } = await makePendingAppeal({

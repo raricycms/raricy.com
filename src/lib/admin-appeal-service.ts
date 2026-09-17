@@ -7,6 +7,11 @@
 // （commentsCount 重算 + lastCommentAt 刷新）。均对齐 Flask decide_appeal。
 //
 // 注意：不 select AdminActionLog.extra（JSON 列，驱动层拒读，见 audit-service）。
+//
+// 【站长的「针对自己的申诉」不由自己裁决】adjudicate 要求申诉的操作目标（log.targetUserId）
+// ≠ 当前裁决者，相等则 403。不设这道闸，管理员自己裁决针对自己的处理 = 给自己盖橡皮图章，
+// 申诉这道制衡形同虚设。**闸门刻意放在 service 层**（不是各调用方）：网页 `/admin/appeals`
+// 与运维 CLI 共用同一条 adjudicate，一处即覆盖两者 —— 新增第三条裁决入口时别再各判一次。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { Prisma } from '@prisma/client';
