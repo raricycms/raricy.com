@@ -338,7 +338,16 @@ export default function CommentSection({ blogId, currentUserId = null, isAdmin =
   ) : null;
 
   return (
-    <div className="blog-detail">
+    /* ⚠️ 这里**曾经**写的是 `className="blog-detail"` —— 与 `src/app/blog/[id]/page.tsx`
+       正文外层那个 `<article>` 同名。同名即同规则：评论区于是白拿了一份页面级容器样式
+       （max-width 940 / margin 50px auto / padding 0 16px / overflow-x auto），后果是
+       左右比正文卡各宽 4px（手机端窄 16px），并自带一个滚动容器 —— 楼中楼缩进一旦溢出，
+       横条就画在它身上（见 `tests/e2e/comment-layout.spec.ts`）。
+       现在改用**与正文同一层壳**：`.blog-content-container-container` 就是「文章正文列」，
+       MarkdownRenderer 的根节点用的也是它（`components/MarkdownRenderer.tsx`）。两处同宽
+       同边距，且檐沟只有一份定义（桌面 20px / 窄屏 0，见 `_blog.scss` 的 768px 档），
+       不会 drift —— 别再在这里写死一个 padding。 */
+    <div className="blog-content-container-container">
       <section className="comment-section" id="comment-section">
         {canComment ? (
           // 顶部只在未回复任何评论时渲染表单；回复时表单移动到评论下方
