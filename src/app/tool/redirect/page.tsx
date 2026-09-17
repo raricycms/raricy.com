@@ -96,29 +96,6 @@ export default function RedirectToolPage() {
 
   return (
     <>
-      <style>{`
-        .rdr-hero{background:radial-gradient(1200px 400px at 10% -10%,rgba(13,110,253,.25),transparent 60%),radial-gradient(900px 300px at 90% -20%,rgba(111,66,193,.25),transparent 60%),linear-gradient(180deg,#0d6efd10,transparent);border-bottom:1px solid rgba(255,255,255,.08);padding:3rem 0}
-        .rdr-wrap{width:100%;max-width:960px;margin:0 auto;padding:0 1rem}
-        .rdr-card{background:var(--surface,rgba(255,255,255,.85));backdrop-filter:blur(6px);border:1px solid var(--line,rgba(0,0,0,.06));border-radius:14px;transition:transform .2s ease,box-shadow .2s ease;max-width:720px;margin:0 auto}
-        .rdr-card:hover{transform:translateY(-2px);box-shadow:0 10px 24px rgba(0,0,0,.08)}
-        .rdr-card__body{padding:1.75rem}
-        .rdr-title{font-size:2rem;font-weight:700;margin-bottom:.75rem}
-        .rdr-muted{color:var(--ink-2,#6c757d)}
-        .rdr-label{font-weight:600;display:block;margin-bottom:.5rem}
-        .rdr-input{width:100%;padding:.6rem .8rem;border:1px solid var(--line,#dee2e6);border-radius:.4rem;background:var(--surface-2,#fff);color:inherit;font-family:'Monaco','Menlo','Ubuntu Mono',monospace}
-        .rdr-field{margin-bottom:1.25rem}
-        .rdr-help{font-size:.85rem;color:var(--ink-2,#6c757d);margin-top:.35rem}
-        .rdr-btn{background:linear-gradient(135deg,#0d6efd,#3b8bfd);border:none;color:#fff;padding:.8rem 1rem;border-radius:.5rem;font-size:1.05rem;font-weight:600;width:100%;cursor:pointer;transition:all .3s ease}
-        .rdr-btn:hover{background:linear-gradient(135deg,#0b5ed7,#2c7ce6);transform:translateY(-1px)}
-        .rdr-scut{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:.5rem}
-        .rdr-scut__btn{padding:.5rem;border:1px solid rgba(0,0,0,.125);border-radius:.4rem;background:transparent;color:var(--accent,#f0ad4e);font-weight:500;cursor:pointer;transition:all .2s ease}
-        .rdr-scut__btn:hover{transform:translateY(-1px);box-shadow:0 4px 8px rgba(0,0,0,.1)}
-        .rdr-preview{background:var(--surface-2,#f8f9fa);border:1px solid var(--line,#dee2e6);border-radius:.375rem;padding:.75rem;font-family:'Monaco','Menlo','Ubuntu Mono',monospace;font-size:.875rem;word-break:break-all}
-        .rdr-count{font-size:1.25rem;font-weight:600;color:#dc3545}
-        .rdr-warn{background:linear-gradient(135deg,#fff3cd,#ffeaa7);border:1px solid #ffeaa7;border-radius:.5rem;padding:1rem;color:#5c4a00;margin-top:1rem}
-        .rdr-warn ul{margin:0;padding-left:1.2rem;font-size:.85rem}
-        .rdr-hr{border:0;border-top:1px solid var(--line,rgba(0,0,0,.1));margin:1.25rem 0}
-      `}</style>
 
       <section className="rdr-hero">
         <div className="rdr-wrap">

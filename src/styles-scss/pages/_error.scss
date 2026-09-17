@@ -1,5 +1,7 @@
 // Error pages (404, 403, 500) — theme-aware, consistent with site design system
 
+@use '../abstracts/mixins' as m;
+
 .error-page {
   display: flex;
   align-items: center;
@@ -189,5 +191,252 @@
       justify-content: center;
       text-align: center;
     }
+  }
+}
+
+
+// ── 404（app/not-found.tsx）───────────────────────────────────────────────────
+//
+// 这一份原先写在 TSX 的 <style> 块里。收进 SCSS 的同时按本次规范改了两处：
+//   · 卡片去掉 1px 描边（无边框总则），边界由 --shadow-card 承担
+//   · 两个按钮归三档体系：--solid 原为品牌实底白字（那是「最高级」的 **hover**
+//     态），改为空闲态的品牌浅底；--ghost 原为描边，改次级（无底色）。
+//     两者的 hover 不再是 `translateY(-2px)` —— 全站按钮不做垂直位移。
+
+.nf {
+  position: relative;
+  min-height: calc(100vh - 62px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  background: var(--color-background-page);
+  overflow: hidden;
+}
+
+.nf__glow {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 440px;
+  height: 440px;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(circle, var(--color-brand-secondary) 0%, transparent 70%);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.nf__card {
+  position: relative;
+  max-width: 480px;
+  width: 100%;
+  padding: 52px 44px;
+  border-radius: 30px;
+  background: var(--color-background-card);
+  border: none;
+  box-shadow: var(--shadow-card);
+  text-align: center;
+}
+
+.nf__code {
+  font-size: clamp(5rem, 18vw, 7.5rem);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  color: var(--color-brand-primary);
+}
+
+.nf__title {
+  font-size: clamp(1.4rem, 4vw, 1.8rem);
+  font-weight: 700;
+  margin-top: 6px;
+  color: var(--color-text-primary);
+}
+
+.nf__divider {
+  width: 48px;
+  height: 3px;
+  border-radius: 999px;
+  margin: 18px auto 0;
+  background: linear-gradient(90deg, var(--color-brand-primary), transparent);
+}
+
+.nf__msg {
+  margin-top: 18px;
+  font-size: 1.02rem;
+  line-height: 1.7;
+  color: var(--color-text-primary);
+}
+
+.nf__hint {
+  margin-top: 8px;
+  font-size: 0.9rem;
+  line-height: 1.7;
+  color: var(--color-text-secondary);
+}
+
+.nf__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 30px;
+}
+
+.nf__btn {
+  @include m.btn-secondary;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 11px 24px;
+  font-size: 0.95rem;
+  font-weight: 600;
+
+  .icon {
+    width: 1.05rem;
+    height: 1.05rem;
+  }
+}
+
+.nf__btn--solid {
+  @include m.btn-primary;
+}
+
+.nf__btn--ghost {
+  // 已由 .nf__btn 的次级档覆盖，这里只保留类名以备差异化
+}
+
+// ── 403（app/forbidden.tsx）───────────────────────────────────────────────────
+//
+// 同样从 TSX 的 <style> 块收进来。这一页是**刻意的例外**：彩虹色相循环的全屏
+// 背景 + 深色玻璃卡片，白字写死是它的设计本身，不跟随 [data-theme]（背景不是
+// 主题表面，跟着切换反而会更糟）。所以这里保留那些白色与半透明白。
+//
+// 但两处仍然要修：
+//   · `border-radius: var(--r-pill)` —— --r-pill **从未定义**，按钮一直是直角，
+//     改为 999px（这正是本次统一要消灭的幽灵变量之一）
+//   · hover 的 `translateY(-2px)` —— 全站按钮不做垂直位移
+
+.rainbow-error {
+  position: relative;
+  min-height: calc(100vh - 64px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  overflow: hidden;
+  text-align: center;
+}
+
+.rainbow-error__bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: linear-gradient(
+    to bottom right,
+    #ff8c8c,
+    #ffc060,
+    #ffff66,
+    #80ffb0,
+    #99e6ff,
+    #a090ff,
+    #eeb0ee
+  );
+  background-size: 100% 100%;
+  animation: rainbow-hue-cycle 3s linear infinite;
+}
+
+@keyframes rainbow-hue-cycle {
+  from { filter: hue-rotate(0deg); }
+  to { filter: hue-rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rainbow-error__bg { animation: none; }
+}
+
+.rainbow-error__box {
+  position: relative;
+  z-index: 1;
+  max-width: 560px;
+  width: 100%;
+  padding: 44px 40px;
+  border-radius: 20px;
+  background: rgba(0, 0, 0, 0.58);
+  border: none;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+  color: #fff;
+}
+
+.rainbow-error__code {
+  font-size: clamp(4.5rem, 15vw, 7rem);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  text-shadow: 0 0 24px rgba(255, 255, 255, 0.45);
+}
+
+.rainbow-error__title {
+  font-size: clamp(1.4rem, 4vw, 1.9rem);
+  font-weight: 700;
+  margin-top: 8px;
+  color: #fff;
+}
+
+.rainbow-error__msg {
+  margin-top: 14px;
+  font-size: 1.02rem;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.rainbow-error__hint {
+  margin-top: 8px;
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.72);
+  line-height: 1.7;
+}
+
+.rainbow-error__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 30px;
+}
+
+.rainbow-error__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 11px 22px;
+  border-radius: 999px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  transition: box-shadow 0.2s ease, background-color 0.2s ease, color 0.2s ease;
+
+  .icon {
+    width: 1.05rem;
+    height: 1.05rem;
+  }
+}
+
+.rainbow-error__btn--solid {
+  background: #fff;
+  color: #1d1d1f;
+
+  &:hover {
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.25);
+  }
+}
+
+.rainbow-error__btn--ghost {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.24);
   }
 }

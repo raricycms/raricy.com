@@ -28,7 +28,7 @@ const GUIDE_STYLES = `
   .guide__content h2{font-size:1.4rem;font-weight:600;margin:2.5rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid var(--color-border)}
   .guide__content h3{font-size:1.15rem;font-weight:600;margin:1.75rem 0 .75rem}
   .guide__content p{margin:.75rem 0}
-  .guide__content code{background:var(--color-background-content);padding:.15rem .35rem;border-radius:3px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:.875em;color:#b5730a}
+  .guide__content code{background:var(--color-background-content);padding:.15rem .35rem;border-radius:6px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:.875em;color:var(--color-star-primary)}
   .guide__content pre{background:var(--color-background-content);padding:1rem 1.25rem;border-radius:12px;overflow-x:auto;margin:1rem 0;font-size:.875rem;line-height:1.6}
   .guide__content pre code{background:none;padding:0;color:var(--color-text-primary);font-size:inherit}
   .guide__content blockquote{border-left:3px solid var(--color-brand-primary);margin:1rem 0;padding:.5rem 1rem;background:var(--color-background-content);color:var(--color-text-secondary);border-radius:0 .25rem .25rem 0}
@@ -41,7 +41,8 @@ const GUIDE_STYLES = `
   .guide__content a{color:var(--color-brand-primary)}
   .guide__content hr{border:none;border-top:1px solid var(--color-border);margin:2rem 0}
   /* 行内代码的暖色没有对应的主题令牌，暗色单独提亮一档（pre 里的代码仍是正文色） */
-  [data-theme="dark"] .guide__content code{color:#e0a458}
+  /* 行内代码的琥珀色改走星色令牌（站内唯一的黄系令牌），明暗自动跟随，
+     故这条暗色覆写不再需要。 */
   [data-theme="dark"] .guide__content pre code{color:var(--color-text-primary)}
   @media (max-width:768px){.guide__content{padding:1.5rem}.guide__content h1{font-size:1.6rem}}
 `;
