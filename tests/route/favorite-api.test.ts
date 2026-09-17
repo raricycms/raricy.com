@@ -37,6 +37,7 @@ import { POST as copyApi } from '@/app/api/favorites/[id]/copy/route';
 import { GET as exportApi } from '@/app/api/favorites/[id]/export/route';
 import { POST as importApi } from '@/app/api/favorites/import/route';
 import { GET as spiderApi } from '@/app/api/spider/favorites/[id]/route';
+import { GET as posterApi } from '@/app/api/poster/favorite/[id]/route';
 
 function jsonReq(path: string, method: string, body?: unknown) {
   return new Request(`http://localhost${path}`, {
@@ -320,6 +321,91 @@ describe('导入', () => {
     expect(body.created).toBe(2);
     expect(body.skipped).toBe(1);
     expect(body.favorite.public_id).toBeNull();
+  });
+});
+
+// ── 分享二维码（画报）────────────────────────────────────────────────────────
+
+describe('GET /api/poster/favorite/:publicId', () => {
+  const OLD = { SITE_URL: process.env.SITE_URL, ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS };
+  afterEach(() => {
+    process.env.SITE_URL = OLD.SITE_URL;
+    process.env.ALLOWED_ORIGINS = OLD.ALLOWED_ORIGINS;
+  });
+
+  /** 建一个公开收藏夹，返回它的句柄与所有者 id。 */
+  async function seeded() {
+    const u = await makeUser({ role: 'core' });
+    await login(u.id);
+    const fav = (await (
+      await createApi(jsonReq('/api/favorites', 'POST', { title: '分享', isPublic: true }))
+    ).json()).favorite;
+    return { userId: u.id, fav };
+  }
+
+  it('未登录 → 401；非 core → 403', async () => {
+    const { fav } = await seeded();
+    session.token = undefined;
+    expect((await posterApi(jsonReq('', 'GET'), ctx({ id: fav.public_id }))).status).toBe(401);
+
+    const plain = await makeUser({ role: 'user' });
+    await login(plain.id);
+    expect((await posterApi(jsonReq('', 'GET'), ctx({ id: fav.public_id }))).status).toBe(403);
+  });
+
+  it('★ 拿不到公开句柄就 404 —— 私密收藏夹结构性不可达', async () => {
+    const u = await makeUser({ role: 'core' });
+    await login(u.id);
+    const priv = (await (
+      await createApi(jsonReq('/api/favorites', 'POST', { title: '私藏', isPublic: false }))
+    ).json()).favorite;
+    expect(priv.public_id).toBeNull();
+
+    // 用内部 UUID 与「假句柄」都出不了图
+    expect((await posterApi(jsonReq('', 'GET'), ctx({ id: priv.id }))).status).toBe(404);
+    expect((await posterApi(jsonReq('', 'GET'), ctx({ id: '000001' }))).status).toBe(404);
+  });
+
+  it('SITE_URL 未配置 → 503（绝不生成相对路径的废码）', async () => {
+    const { fav, userId } = await seeded();
+    process.env.SITE_URL = '';
+    process.env.ALLOWED_ORIGINS = '';
+    await login(userId);
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const res = await posterApi(jsonReq('', 'GET'), ctx({ id: fav.public_id }));
+    expect(res.status).toBe(503);
+  });
+
+  it('配好 SITE_URL → 200 + image/png，且响应头不写 filename', async () => {
+    const { fav, userId } = await seeded();
+    process.env.SITE_URL = 'https://raricy.com';
+    await login(userId);
+    const res = await posterApi(jsonReq('', 'GET'), ctx({ id: fav.public_id }));
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Content-Type')).toBe('image/png');
+    // 只写 inline、不写 filename —— 否则前端 <a download="..."> 会被浏览器无视
+    expect(res.headers.get('Content-Disposition')).toBe('inline');
+    expect(res.headers.get('Cache-Control')).toBe('private, no-store');
+    expect(res.headers.get('X-Robots-Tag')).toBe('noindex');
+    // 真的出了一张 PNG（魔法字节）
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    expect(bytes.length).toBeGreaterThan(1000);
+    expect([...bytes.slice(0, 4)]).toEqual([0x89, 0x50, 0x4e, 0x47]);
+  });
+
+  it('限频：超过 30 次/分被拒（与另两张海报共桶）', async () => {
+    const { fav, userId } = await seeded();
+    process.env.SITE_URL = 'https://raricy.com';
+    await login(userId);
+    let limited = false;
+    for (let i = 0; i < 35; i++) {
+      const res = await posterApi(jsonReq('', 'GET'), ctx({ id: fav.public_id }));
+      if (res.status === 429) {
+        limited = true;
+        break;
+      }
+    }
+    expect(limited).toBe(true);
   });
 });
 
