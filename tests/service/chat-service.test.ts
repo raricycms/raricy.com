@@ -714,6 +714,62 @@ describe('@ 提及通知', () => {
     await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: a.id, patTargetId: b.id });
     expect(await prisma.notification.count({ where: { recipientId: b.id } })).toBe(0);
   });
+
+  it('读到该会话 → 该会话的 @ 通知自动已读；别的会话与别的 action 都不动', async () => {
+    const a = await makeUser({ role: 'core' });
+    const b = await makeUser({ role: 'core' });
+    await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: a.id, content: `@${b.username} 大区` });
+    const dm = (await startDirectChannel(a.id, b.id)) as { channel: { id: string } };
+    await sendMessage({ channelId: dm.channel.id, authorId: a.id, content: `@${b.username} 私聊` });
+
+    // 一条别种通知，objectId 故意撞上频道 id —— 只按 objectId 清的话这里就会被误伤
+    const other = await prisma.notification.create({
+      data: {
+        id: crypto.randomUUID(),
+        timestamp: nowForDb(),
+        action: '文章点赞',
+        recipientId: b.id,
+        objectType: 'blog',
+        objectId: CHAT_LOBBY_ID,
+        read: false,
+      },
+    });
+    const lobbyMention = await prisma.notification.findFirst({
+      where: { recipientId: b.id, objectId: CHAT_LOBBY_ID, action: '讨论提及' },
+    });
+    const dmMention = await prisma.notification.findFirst({
+      where: { recipientId: b.id, objectId: dm.channel.id },
+    });
+    const unread = () => prisma.notification.count({ where: { recipientId: b.id, read: false } });
+    const readOf = async (id: string) =>
+      (await prisma.notification.findUnique({ where: { id }, select: { read: true } }))?.read;
+    expect(await unread()).toBe(3);
+
+    // 读大区 → 只清大区那条
+    await markChannelRead(CHAT_LOBBY_ID, b.id);
+    expect(await readOf(lobbyMention!.id)).toBe(true);
+    expect(await readOf(dmMention!.id)).toBe(false);
+    expect(await readOf(other.id)).toBe(false);
+    expect(await unread()).toBe(2);
+
+    // 读那个私聊 → 轮到它那条
+    await markChannelRead(dm.channel.id, b.id);
+    expect(await readOf(dmMention!.id)).toBe(true);
+    expect(await readOf(other.id)).toBe(false);
+    expect(await unread()).toBe(1);
+  });
+
+  it('读到该会话只清未读：本来已读的不重复清（count 归零后铃铛不再有它）', async () => {
+    const a = await makeUser({ role: 'core' });
+    const b = await makeUser({ role: 'core' });
+    await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: a.id, content: `@${b.username} 在吗` });
+
+    await markChannelRead(CHAT_LOBBY_ID, b.id);
+    expect(await prisma.notification.count({ where: { recipientId: b.id, read: false } })).toBe(0);
+    // 再读一次（客户端每次看新消息都会推游标）不炸、也不复活
+    await markChannelRead(CHAT_LOBBY_ID, b.id);
+    expect(await prisma.notification.count({ where: { recipientId: b.id, read: false } })).toBe(0);
+  });
 });
 
 describe('顶栏「讨论」红点汇总 getChatUnreadSummary', () => {

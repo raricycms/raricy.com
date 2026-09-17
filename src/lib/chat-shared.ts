@@ -22,6 +22,15 @@ export const CHAT_LOBBY_TITLE = '讨论大区';
 export const CHAT_DELETED_TEXT = '[该消息已删除]';
 /** 侧栏消息预览截断长度（服务端 listChannelsForUser 与客户端本地累加共用同一口径）。 */
 export const CHAT_PREVIEW_MAX = 60;
+/**
+ * 讨论 @ 提及通知的 objectType；objectId 即频道 id（大区就是 `lobby`）。
+ *
+ * 【为什么要有这个常量】它是「通知」与「讨论」之间唯一的连线，两头各认一次：
+ * 通知侧按它清某个会话的已读（notification-service.markChannelNotificationsRead），
+ * 列表侧按它渲染「查看讨论」入口（NotificationItems）。写歪一个字符不报错 ——
+ * 通知照发、只是永远清不掉 / 点不动，所以字面量收在这里一处。
+ */
+export const CHAT_NOTIFY_OBJECT_TYPE = 'chat_channel';
 // 专注模式禁用文案（讨论场景别名）：单一来源在 focus-mode.ts，讨论侧保留语义化名字
 export { FOCUS_MODE_BLOCKED_TITLE as CHAT_FOCUS_BLOCKED_TITLE } from './focus-mode';
 

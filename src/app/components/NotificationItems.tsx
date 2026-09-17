@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { ArrowRight, Bell } from 'lucide-react';
 import type { NotificationDTO } from '@/lib/notification-service';
+import { CHAT_NOTIFY_OBJECT_TYPE } from '@/lib/chat-shared';
 
 declare global {
   interface Window {
@@ -200,8 +201,8 @@ export default function NotificationItems({ initial }: { initial: NotificationDT
                   查看博客 <ArrowRight aria-hidden="true" />
                 </Link>
               )}
-              {/* @ 提及通知（objectType='chat_channel'，objectId=频道 id，见 chat-service） */}
-              {n.object.type === 'chat_channel' && n.object.id && (
+              {/* @ 提及通知（objectType 见 CHAT_NOTIFY_OBJECT_TYPE，objectId=频道 id，见 chat-service） */}
+              {n.object.type === CHAT_NOTIFY_OBJECT_TYPE && n.object.id && (
                 <Link
                   href={`/chat?channel=${encodeURIComponent(n.object.id)}`}
                   className="notification-blog-link"

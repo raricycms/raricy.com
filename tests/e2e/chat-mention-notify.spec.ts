@@ -79,6 +79,39 @@ test.describe('@ 提及通知', () => {
     }
   });
 
+  test('读到该会话 → 那条 @ 通知自动已读（铃铛归零，条目仍在列表里）', async ({ page, browser }) => {
+    const me = await registerFreshUser(page, { core: true });
+
+    const ctx = await post(
+      browser,
+      SEED_USERS.admin.username,
+      LOBBY,
+      `@${me.username} 自动已读 ${uniqueTag()}`
+    );
+    try {
+      expect(await mentionCount(page), '@ 一次应当收到一条').toBe(1);
+      const bellCount = async () => {
+        const res = await page.request.get('/api/notifications/count');
+        expect(res.status()).toBe(200);
+        return ((await res.json()) as { count: number }).count;
+      };
+      expect(await bellCount(), '铃铛上应当挂着这条未读').toBe(1);
+
+      // 读到该会话。网页端进大区 / 在大区里看新消息时会自己发这个请求（ChatApp.markRead），
+      // 这里直接打接口 —— 无头环境下客户端已读要求 document.hasFocus()，不可靠
+      // （同 chat-unread-mark.spec.ts 的注释）。
+      const read = await page.request.post(`/api/chat/channels/${LOBBY}/read`);
+      expect(read.status()).toBe(200);
+      expect(await bellCount(), '读到该会话 = 那条 @ 已看见，铃铛归零').toBe(0);
+
+      // 清的是「未读」不是「条目」：通知还在列表里（已读态），没有被删掉
+      await page.goto('/notifications');
+      await expect(page.locator('.notification-card', { hasText: '讨论提及' }).first()).toBeVisible();
+    } finally {
+      await ctx.close();
+    }
+  });
+
   test('在别人的私聊里被 @ 不会收到通知', async ({ page, browser }) => {
     // 我起一个私聊对象；另外两人另起一个私聊，在里面 @ 我 → 我看不到那条消息，就不该有通知
     const me = await registerFreshUser(page, { core: true });

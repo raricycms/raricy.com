@@ -21,6 +21,8 @@
 // 「讨论」链接上的小红点体现。所以 `/api/notifications/count` 另出一个 `chatUnread` 布尔
 // （来自本文件的 getChatUnreadSummary：私聊有未读 / 大区被 @），base.js 据此点亮
 // `#chatUnreadDot`。**别把它并回 count** —— 那会让铃铛写着 5、点进去只有 2 条。
+// 唯一进列表的是 @ 提及，而它**读了就清**：进这个会话（markChannelRead）即标已读，
+// 所以铃铛上还挂着就说明人还没看那个会话。正在看时更是连条目都不产生（见 notifyChannelMentions）。
 //
 // 【红点的三道闸门：core+ / 未禁言 / 专注模式】全部收在 getChatDotFor 里，count 路由与
 // SSE 推送路径**共用同一份**。历史上它曾内联在 count 路由里，留两份必然 drift —— 别搬回去。
@@ -36,7 +38,7 @@ import { nowForDb } from './db-time';
 import { hasAdminRights, isCoreUser, isCurrentlyBanned } from './auth';
 import { rateLimit, RULES } from './rate-limit';
 import { logAdminAction } from './admin-user-service';
-import { sendNotification } from './notification-service';
+import { markChannelNotificationsRead, sendNotification } from './notification-service';
 import { publishToAll, publishToUsers } from './chat-bus';
 import { hasSubscriber, publishToUser } from './topbar-bus';
 import { stripStickerTokens } from './sticker-refs';
@@ -48,6 +50,7 @@ import {
   CHAT_PREVIEW_MAX,
   CHAT_TEXT_MAX,
   CHAT_CAPTION_MAX,
+  CHAT_NOTIFY_OBJECT_TYPE,
   PAT_TARGET_FALLBACK,
   type ChatAuthorDTO,
   type ChatMessageDTO,
@@ -1074,6 +1077,10 @@ export const CHAT_MENTION_ACTION = '讨论提及';
  * 【一人一条】按人去重（同一条消息里 @ 两次只发一条）；不同消息各发各的 ——
  * 通知列表本来就是流水账，不做聚合。
  *
+ * 【读了就清】这条通知不是发出去就不管了：对方进这个会话（或在里面看新消息）时，
+ * markChannelRead 会把它标已读（见那边）。所以「通知还在铃铛上挂着」等价于
+ * 「他还没看这个会话」—— 页面上看到的数字因此永远说得通。
+ *
  * 【用户名精确匹配】与 countLobbyMentionsSince 同一规则：红点与通知必须对
  * 「这条算不算 @ 我」给出**同一个答案**，否则会出现「有红点没通知」的自相矛盾。
  *
@@ -1130,7 +1137,7 @@ async function notifyChannelMentions(params: {
       // 指会话不指消息：通知列表的「查看讨论」跳 /chat?channel=<id>。
       // （消息 id 不进 object —— 两个 id 塞不进 (type, id) 两个字段，而会话链接
       //   已经够用：点进去就落在最新消息上。）
-      objectType: 'chat_channel',
+      objectType: CHAT_NOTIFY_OBJECT_TYPE,
       objectId: channelId,
       detail,
       prefKey: null, // 不受 notify_* 四个开关管辖（同评论回复：没有对应开关就不拦）
@@ -1326,7 +1333,11 @@ export async function sendMessage(input: SendMessageInput): Promise<SendMessageR
 
 /**
  * 推进某频道读游标到给定消息 id（缺省 = 频道当前最大 id）。私聊非成员静默忽略。
- * 讨论未读不进通知列表，读游标推进后顶栏「讨论」红点自然随之熄灭（见 getChatUnreadSummary）。
+ *
+ * 两件事一起发生，缺一不可：
+ *   • 讨论**未读**不进通知列表，读游标推进后顶栏「讨论」红点自然熄灭（见 getChatUnreadSummary）；
+ *   • 该会话里 **@ 我**的通知（唯一进列表的那种）随之标已读 —— 人已经把消息看了，
+ *     铃铛就不该继续吊着。这也让机器人的 /read 与网页端行为一致（见 docs/bot/chat-bot.md §7.6）。
  */
 export async function markChannelRead(
   channelId: string,
@@ -1380,6 +1391,15 @@ export async function markChannelRead(
     } catch (e) {
       console.error(`[chat-service] 已读回执推送失败（channelId=${channelId}）:`, e);
     }
+  }
+
+  // 读到这个会话 = 该会话里 @ 我的都看见了 → 把对应的通知一并标已读（铃铛数字随之下降）。
+  // 这是「进大区，那条 @ 自己消掉」的实现；在此之前读游标只推未读、通知要手动去
+  // /notifications 点。失败只记日志：已读不该因为通知记账失败而 500。
+  try {
+    await markChannelNotificationsRead(userId, channelId);
+  } catch (e) {
+    console.error(`[chat-service] 清会话通知失败（channelId=${channelId}）:`, e);
   }
 
   // 读游标推进 → 顶栏红点该熄了（读掉全部未读时）。推给本人 ——

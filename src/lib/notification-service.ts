@@ -15,6 +15,7 @@
 import { prisma } from './db';
 import { nowForDb } from './db-time';
 import { hasSubscriber, publishToUser } from './topbar-bus';
+import { CHAT_NOTIFY_OBJECT_TYPE } from './chat-shared';
 
 const DEFAULT_PER_PAGE = 20;
 
@@ -240,6 +241,34 @@ export async function markRead(notificationId: string, userId: string) {
   });
   if (res.count > 0) void pushUnreadCount(userId);
   return res.count > 0;
+}
+
+/**
+ * 把某个讨论会话的未读通知标记为已读（限本人），返回命中条数。
+ *
+ * 【什么时候调】「读到这个会话了」＝ 该会话里 @ 我的都看见了 —— 唯一调用点是
+ * chat-service.markChannelRead（进频道 / 停在频道里看新消息都会推读游标）。
+ * 这就是「进了大区，铃铛里那条 @ 自己消掉」的实现；在此之前读游标只推未读，
+ * 通知得手动去 /notifications 点已读。
+ *
+ * 【为什么认 objectType 而不只认 objectId】objectId 是裸字符串，别的通知将来
+ * 撞上同一个值不该被误清。只动讨论 @ 提及这一种（口径见 chat-shared 的常量）。
+ *
+ * 与 markRead / markAllRead 同样的纪律：命中就推一次未读数，否则「手机上进大区看过，
+ * 电脑上铃铛还亮着」要等 20s 兜底轮询才纠正。
+ */
+export async function markChannelNotificationsRead(userId: string, channelId: string) {
+  const res = await prisma.notification.updateMany({
+    where: {
+      recipientId: userId,
+      read: false,
+      objectType: CHAT_NOTIFY_OBJECT_TYPE,
+      objectId: channelId,
+    },
+    data: { read: true },
+  });
+  if (res.count > 0) void pushUnreadCount(userId);
+  return res.count;
 }
 
 /** 标记全部未读为已读，返回标记数量。 */
