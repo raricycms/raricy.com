@@ -288,7 +288,10 @@ function switchTheme(themeName) {
     root.setAttribute('data-theme', config['data-theme']);
     localStorage.setItem('theme', themeName);
     const tc = document.querySelector('meta[name="theme-color"]');
-    if (tc) tc.setAttribute('content', config['data-theme'] === 'dark' ? '#131517' : '#FBFBFD');
+    // 这两支是 --color-background-page 的明暗两值，手抄在此（JS 读不到 CSS 变量）。
+    // 浅色那支曾写成 #FBFBFD，与令牌的 #F8FAFC 已经漂了 —— 改了令牌不会带动这里，
+    // 改令牌时记得回来对一眼。深色 #131517 与令牌一致。
+    if (tc) tc.setAttribute('content', config['data-theme'] === 'dark' ? '#131517' : '#F8FAFC');
     console.log('切换主题:', themeName);
 }
 

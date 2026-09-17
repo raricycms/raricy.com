@@ -151,8 +151,11 @@
         color: var(--color-text-secondary);
         
         &.tag-primary {
-          background: rgba(59, 130, 246, 0.1);
-          border-color: rgba(59, 130, 246, 0.2);
+          /* 原为写死的 rgba(59,130,246,…) —— 那是**浅色主题**那支蓝，而同一块里
+             color 走的是 var(--color-brand-primary)（暗色会变成 #23A5FF）。深色下
+             于是只剩一行亮蓝字，淡底与描边都没了。改用分类强调色的 -soft 令牌。 */
+          background: var(--color-accent-blue-soft);
+          border-color: var(--color-accent-blue-soft);
           color: var(--color-brand-primary);
         }
       }

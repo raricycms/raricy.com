@@ -31,7 +31,9 @@
 
   .log-row__type::after {
     content: "（已撤回）";
-    color: #198754;
+    /* 原为写死的 #198754 —— 深底上发闷（同文件上面的 .status-badge 早已令牌化，
+       只有这条 ::after 漏了）。 */
+    color: var(--color-success-primary);
     margin-left: 4px;
     font-weight: 500;
   }

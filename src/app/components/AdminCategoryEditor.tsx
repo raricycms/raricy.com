@@ -233,7 +233,7 @@ export default function AdminCategoryEditor({ initialCategories, initialParents 
               {c.icon ? `${c.icon} ` : ''}
               {c.name}
             </span>
-            <code className="mono" style={{ fontSize: '.8rem', color: 'var(--ink-3)' }}>{c.slug}</code>
+            <code className="mono" style={{ fontSize: '.8rem', color: 'var(--fd-ink-3)' }}>{c.slug}</code>
             {!c.is_active && <span className="badge-danger">已停用</span>}
             {flags(c).map((t) => (
               <span key={t} className="badge-secondary">

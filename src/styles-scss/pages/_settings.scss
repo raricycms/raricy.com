@@ -232,6 +232,9 @@
       height: 20px;
       left: 3px;
       top: 3px;
+      /* 圆钮**刻意写死白色**：它在两个主题下都必须是白的（开关就长这样），
+         换 --color-background-card 会让暗色主题的钮跟着变深、压在 --color-border
+         的轨道上反而消失。可读性由下面那圈 0 1px 3px 的阴影兜住。 */
       background: #fff;
       border-radius: 50%;
       transition: transform 0.25s ease;
