@@ -111,14 +111,14 @@
   }
 }
 
-// ---- 脚本输入框 ----
+// ---- 脚本输入框（多行 → 20px 圆角）----
 .cattca-tool__script-input {
   flex: 1;
   width: 100%;
   min-height: 300px;
-  padding: $space-3;
-  border: 1px solid var(--color-border);
-  border-radius: $radius-large;
+  padding: 12px 16px;
+  border: none;
+  border-radius: 20px;
   background: var(--color-background-page);
   color: var(--color-text-primary);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
@@ -126,12 +126,11 @@
   line-height: 1.7;
   resize: vertical;
   caret-color: var(--color-brand-primary);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition: box-shadow 0.2s ease;
 
   &:focus {
     outline: none;
-    border-color: var(--color-brand-primary);
-    box-shadow: 0 0 0 3px var(--color-brand-secondary);
+    box-shadow: var(--shadow-focus-brand);
   }
 
   &::placeholder {

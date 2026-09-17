@@ -92,6 +92,14 @@ a {
     width: 100%;
 }
 
+/* 只有内嵌了按钮的那种搜索框才需要右侧留白 —— 所以这条挂在 .search-field 上，
+   而不是共用类 .search-input 上：/tool 的搜索框没有按钮，/clipboard 与 /vote 的
+   按钮是 flex 兄弟而非内嵌，三处都不该凭空多出 80px 空隙。
+   80px = 按钮宽约 65px（0.9rem 的「搜索」+ 左右各 18px）+ 4px 贴边 + 余量。 */
+.search-field .search-input {
+    padding-right: 80px;
+}
+
 /* 输入框 + 内嵌搜索按钮的定位上下文。
    高度不写死：由里面的 input 撑出来，按钮再用 top/bottom 贴边（见 .search-btn），
    这样改字号或内距时按钮自动跟着变高，不必猜行高。 */
@@ -102,17 +110,14 @@ a {
     min-width: 0;
 }
 
-/* 胶囊形、无边框。
-   ⚠️ `.search-input` 是**共用类**，剪贴板 / 工具 / 投票三处也用它，各自的页样式
-   （pages/_clipboard.scss、_tool-new.scss、_vote.scss）把 padding / border /
-   border-radius / background / focus 全部重声明了一遍，以更高的选择器权重压过这里。
-   改这条前先确认那三处仍然完整override，否则它们的输入框会一起变成胶囊。 */
+/* 胶囊形、无边框 —— **全站搜索框的唯一定义**。
+   `.search-input` 是共用类（博客 / 剪贴板 / 工具 / 投票四处都用）。此前那三处各自
+   把它完整重声明了一遍（描边 + 5~10px 圆角 + 卡片底色），以更高的选择器权重压过
+   这里，于是四个搜索框长得各不相同。本次统一把那三条重声明删了 ——
+   **改这条就是改全站四个搜索框**，不要再在页面样式里另抄一份。 */
 .search-input {
     flex: 1;
     padding: 10px 16px;
-    /* 右侧给内嵌按钮让位 —— 按钮宽约 65px（0.9rem 的「搜索」+ 左右各 18px），
-       再加 4px 贴边，留一点余量免得长文本顶到按钮底下 */
-    padding-right: 80px;
     border: none;
     border-radius: 999px;
     background: var(--color-background-page);

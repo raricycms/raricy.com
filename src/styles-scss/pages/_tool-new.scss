@@ -46,28 +46,11 @@
     &__search {
       max-width: 500px;
       margin-bottom: $space-4;
-      
+
+      /* 此处原有 .search-input 的完整重声明（1px 描边 / 10px 圆角 / 卡片底色），
+         已删除 —— 全站搜索框统一走 blog/_menu.scss 里的那一条。 */
       .search-input {
         width: 100%;
-        padding: $space-3 $space-4;
-        border: 1px solid var(--color-border);
-        border-radius: $radius-large;
-        background: var(--color-background-card);
-        color: var(--color-text-primary);
-        font-size: 1rem;
-        transition: all 0.2s ease;
-        
-        &:focus {
-          outline: none;
-          border-color: var(--color-brand-primary);
-          /* 原为 rgba(var(--color-brand-primary-rgb), .1)，而该令牌从未定义 ——
-             box-shadow 在计算值阶段整条失效，聚焦环一直是不存在的。 */
-          box-shadow: var(--shadow-focus-brand);
-        }
-        
-        &::placeholder {
-          color: var(--color-text-secondary);
-        }
       }
     }
     

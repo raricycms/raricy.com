@@ -170,20 +170,39 @@
   }
 }
 
-// 金额：大号数字输入（与 .form-control 同族的 15px 圆角 / 内容底色）
+/* 金额：大号数字 + 单位后缀。**外壳就是字段本身** —— 胶囊、页面底色、聚焦光晕
+   全挂在这里；里面的 input 只负责文字，必须透明且不吃自己的聚焦环。
+   原先外壳是「内容底色 + 2px 透明边框 + 15px 圆角」，而 PayForm 又给内层 input
+   同时挂了 .form-control，于是出现「胶囊输入框套在方角外壳里」的双层底色与
+   双重聚焦反馈。 */
 .market-amount {
   display: flex;
   align-items: center;
   gap: $space-2;
   padding: $space-3 $space-4;
-  background: var(--color-background-content);
-  border: 2px solid transparent;
-  border-radius: 15px;
-  transition: all 0.2s ease;
+  background: var(--color-background-page);
+  border: none;
+  border-radius: $radius-max;
+  transition: box-shadow 0.2s ease;
 
   &:focus-within {
-    background: var(--color-background-card);
-    border-color: var(--color-brand-secondary);
+    box-shadow: var(--shadow-focus-brand);
+  }
+
+  /* 内层归零。用 .market-amount input（0-1-1）而不是 .market-amount__input
+     （0-1-0）：后者会被 input.form-control（0-1-1）压掉背景与聚焦环。 */
+  input {
+    flex: 1;
+    min-width: 0;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+
+    &:focus {
+      box-shadow: none;
+    }
   }
 }
 

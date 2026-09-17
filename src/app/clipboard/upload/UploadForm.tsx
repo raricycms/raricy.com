@@ -282,15 +282,13 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
 
           <div className="clipboard-form__group">
             <label htmlFor="clipboard-editor">正文（支持 Markdown 与 LaTeX）</label>
+            {/* 外观走 .clipboard-form__editor（见 styles-scss/pages/_clipboard.scss）——
+                此前是行内 style，带 1px 描边与 8px 圆角，改主题/改规范都得来这里翻。 */}
             <div
               id="clipboard-editor"
               ref={editorDivRef}
-              style={{
-                height: '50vh',
-                background: 'var(--color-background-page)',
-                border: '1px solid var(--color-border)',
-                borderRadius: '8px',
-              }}
+              className="clipboard-form__editor"
+              style={{ height: '50vh' }}
             />
             <p
               id="clipboard-editor-fallback-message"
@@ -305,18 +303,9 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
               ref={fallbackRef}
               rows={15}
               placeholder="请输入正文内容"
-              style={{
-                display: 'none',
-                width: '100%',
-                padding: 'var(--space-3, 12px)',
-                border: '1px solid var(--color-border)',
-                borderRadius: '8px',
-                background: 'var(--color-background-card)',
-                color: 'var(--color-text-primary)',
-                fontSize: '1rem',
-                lineHeight: 1.6,
-                fontFamily: 'ui-monospace, monospace',
-              }}
+              className="clipboard-form__fallback"
+              // display 由脚本切换（编辑器加载失败时显示），故留在行内
+              style={{ display: 'none' }}
             />
           </div>
 

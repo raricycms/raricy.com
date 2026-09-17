@@ -91,14 +91,21 @@
   }
 
   // 输入框整块面板：横向填满；幽灵工具条嵌顶部内侧 → 变高文本框 → 底条（提交按钮右下）
+  /* 输入面板**就是那个字段**（多行 → 20px 圆角），所以底色与聚焦光晕挂在这里，
+     里面的 textarea 保持透明无边框。原先面板是「1px 描边 + 14px 圆角 + 卡片底色」，
+     与全站字段的无边框语言不符，聚焦也没有任何反馈。 */
   .#{$p}__panel {
     display: flex;
     flex-direction: column;
     gap: 4px;
-    border: 1px solid var(--color-border);
-    border-radius: 14px;
-    background: var(--color-background-card);
+    border: none;
+    border-radius: 20px;
+    background: var(--color-background-page);
     padding: 4px 8px 8px;
+    transition: box-shadow 0.2s ease;
+  }
+  .#{$p}__panel:focus-within {
+    box-shadow: var(--shadow-focus-brand);
   }
 
   // 幽灵工具条：无背景无边框，hover 才显浅底（QQ 风格）

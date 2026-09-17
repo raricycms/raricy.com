@@ -61,23 +61,27 @@
 
 // --- Inputs ---
 
+/* 与全站字段同一套外观（无边框 + 页面底色 + 品牌蓝聚焦光晕）。
+   圆角按内容是否单行分：输入框胶囊，多行 20px。 */
 .settings-input {
   width: 100%;
-  padding: 10px 14px;
-  border: 1px solid var(--color-border);
-  border-radius: $radius-large;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 999px;
   background: var(--color-background-page);
   color: var(--color-text-primary);
   font-size: 0.95rem;
-  transition: border-color 0.2s ease;
+  transition: box-shadow 0.2s ease;
   box-sizing: border-box;
 
   &:focus {
     outline: none;
-    border-color: var(--color-brand-primary);
+    box-shadow: var(--shadow-focus-brand);
   }
 
   &--textarea {
+    border-radius: 20px;
+    padding: 12px 16px;
     min-height: 110px;
     resize: vertical;
     line-height: 1.6;

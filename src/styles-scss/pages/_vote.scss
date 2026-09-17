@@ -35,41 +35,13 @@
     flex: 1;
     max-width: 400px;
 
-    .search-input {
-      flex: 1;
-      padding: 0.6rem 0.9rem;
-      border: 1px solid var(--color-border);
-      border-radius: 0.375rem;
-      background: var(--color-background-card);
-      color: var(--color-text-primary);
-      font-size: 0.9rem;
-
-      &:focus {
-        outline: none;
-        border-color: var(--color-brand-primary);
-        box-shadow: 0 0 0 3px var(--color-brand-secondary);
-      }
-
-      &::placeholder {
-        color: var(--color-text-secondary);
-      }
-    }
+    /* 此处原有 .search-input 的完整重声明（1px 描边 / 0.375rem 圆角 / 卡片底色），
+       已删除 —— 全站搜索框统一走 blog/_menu.scss 里的那一条。 */
 
     .search-button {
+      @include m.btn-primary;
       padding: 0.6rem 1.2rem;
-      background: var(--color-background-subtle);
-      border: 1px solid var(--color-border);
-      border-radius: 0.375rem;
-      color: var(--color-text-primary);
       font-size: 0.9rem;
-      cursor: pointer;
-      transition: all 0.2s ease;
-
-      &:hover {
-        background: var(--color-brand-primary);
-        border-color: var(--color-brand-primary);
-        color: #fff;
-      }
     }
   }
 
@@ -218,20 +190,26 @@
       font-size: 0.925rem;
     }
 
+    /* 单行 → 胶囊，与全站字段同一套外观（.vote-option-input 没有自己的样式，
+       吃的就是这条） */
     input[type="text"] {
       width: 100%;
-      padding: 0.6rem 0.8rem;
-      border: 1px solid var(--color-border);
-      border-radius: 0.375rem;
+      padding: 10px 16px;
+      border: none;
+      border-radius: 999px;
       background: var(--color-background-page);
       color: var(--color-text-primary);
       font-size: 0.925rem;
       box-sizing: border-box;
+      transition: box-shadow 0.2s ease;
 
       &:focus {
         outline: none;
-        border-color: var(--color-brand-primary);
-        box-shadow: 0 0 0 3px var(--color-brand-secondary);
+        box-shadow: var(--shadow-focus-brand);
+      }
+
+      &::placeholder {
+        color: var(--color-text-secondary);
       }
     }
   }

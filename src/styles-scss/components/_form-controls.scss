@@ -1,4 +1,20 @@
-// Bootstrap-like form controls (no Bootstrap dependency)
+// ── 表单控件（无 Bootstrap 依赖）─────────────────────────────────────────────
+//
+// 全站字段只有一套外观，基准是博客首页的搜索框（见 pages/blog/_menu.scss 的
+// .search-input）：**无边框、页面底色、聚焦品牌蓝光晕**。
+//
+// 【圆角判据 —— 硬规则，别按页面逐处调】
+//   当且仅当「内部元素仅为一行文字」时恰好为胶囊形：
+//     input / select  → 999px
+//     textarea        → 20px
+//   输入框内部嵌了按钮时（.search-field + .search-btn），按钮圆角与输入框一致，
+//   两者弧线贴合。
+//
+// ⚠️ 下面这些值此前是 15px 圆角 + --color-background-content 底色，且带
+// `!important`。那个 `!important` 会压掉组件自己的 :focus 背景切换（作者重要性
+// 高于作者普通声明，与特异性无关）—— 所以「聚焦时换成卡片底色」这条一直是死的。
+// 现已去掉：与搜索框一致，聚焦**只加光晕、不换底**，也就没有这个问题了。
+
 .form-group { margin-bottom: 1rem; }
 
 .form-label { color: var(--color-text-primary); display: inline-block; margin-bottom: 0.5rem; font-weight: 500; }
@@ -10,51 +26,85 @@
 .form-control {
   display: block;
   width: 100%;
-  padding: 1rem 1rem;
+  padding: 10px 16px;
   font-size: 0.9rem;
   line-height: 1.5;
-  color: var(--color-text-primary) !important;
-  background-color: var(--color-background-content) !important;
+  color: var(--color-text-primary);
+  background-color: var(--color-background-page);
   background-clip: padding-box;
   border: none;
-  border-radius: 15px;
   resize: vertical;
-  padding: 5px 10px;
-}
+  transition: box-shadow 0.2s ease;
 
-.form-control:focus {
-  color: var(--color-text-primary);
-  background-color: var(--color-background-card);
-  // 聚焦环用 box-shadow 而非 border：常态 border:none，若聚焦改成 5px 边框，
-  // 字段会随焦点撑高 10px、失焦瞬间塌缩 —— 整张表单下方内容位移，
+  // 聚焦环用 box-shadow 而非 border：常态 border:none，若聚焦改成边框，
+  // 字段会随焦点撑高、失焦瞬间塌缩 —— 整张表单下方内容位移，
   // 点按中的 checkbox/按钮会被「挪走」（注册页 e2e 的勾选失败即此因）。
-  // 0 0 0 5px 无模糊的硬环观感与 5px 边框一致，但不参与布局。
-  box-shadow: 0 0 0 5px var(--color-brand-secondary);
-  outline: 0;
+  // 光晕不参与布局，所以没有这个问题。
+  &:focus {
+    outline: 0;
+    box-shadow: var(--shadow-focus-brand);
+  }
+
+  &::placeholder {
+    color: var(--color-text-secondary);
+  }
 }
 
-.form-option { display: block; padding: 0.375rem 0.75rem; font-size: 1rem; line-height: 1.5; color: var(--color-text-primary); background-color: var(--color-background-content); cursor: pointer; }
+// 单行 → 胶囊
+input.form-control,
+select.form-control {
+  border-radius: 999px;
+}
 
+// 多行 → 固定圆角（比胶囊收敛，与「一行才是胶囊」的判据配套）
+textarea.form-control {
+  border-radius: 20px;
+  padding: 12px 16px;
+}
+
+// 紧凑变体（管理页在用；此前**只有类名、没有样式**，一直吃默认内距）
+.form-control-sm {
+  padding: 6px 12px;
+  font-size: 0.85rem;
+}
+
+.form-option { display: block; padding: 0.375rem 0.75rem; font-size: 1rem; line-height: 1.5; color: var(--color-text-primary); background-color: var(--color-background-page); cursor: pointer; }
+
+// <select> 属于字段而不是按钮：与 .form-control 同一套外观（原先它是
+// 品牌浅底 + 品牌字 + 粗体，那是「最高级按钮」的样子，不是输入框的样子）。
 .form-select {
   display: block;
-  padding: 8px 12px;
-  font-size: 14px;
+  padding: 10px 16px;
+  font-size: 0.9rem;
   line-height: 1.5;
   border-radius: 999px;
   border: none;
-  font-weight: bold;
-  color: var(--color-brand-primary);
-  background-color: var(--color-brand-secondary);
+  color: var(--color-text-primary);
+  background-color: var(--color-background-page);
+  cursor: pointer;
+  transition: box-shadow 0.2s ease;
+
+  &:focus {
+    outline: 0;
+    box-shadow: var(--shadow-focus-brand);
+  }
 }
 
 .form-text { display: block; margin-top: 0.25rem; font-size: 0.875rem; color: var(--color-text-secondary); }
 
-.invalid-feedback { display: none; width: 100%; margin-top: .25rem; font-size: .875rem; color: #dc3545; }
+.invalid-feedback { display: none; width: 100%; margin-top: .25rem; font-size: .875rem; color: var(--color-warning-primary); }
 
+/* ⚠️ 字段常态是 border: none，所以这里的 border-color 只在**同时**给了可见边框时
+   才有意义 —— 目前无效态是靠 .invalid-feedback 的文字表达的。若以后要给错误字段
+   描边，必须同时在常态预留一条 transparent 边框，否则字段会在报错时长高。 */
 .is-invalid, .was-validated .form-control:invalid {
-  border-color: #dc3545;
-  padding-right: calc(0.75rem + 0.1875rem);
+  border-color: var(--color-warning-primary);
   background-image: none;
+}
+
+.is-invalid:focus,
+.was-validated .form-control:invalid:focus {
+  box-shadow: 0 0 0 3px var(--color-warning-secondary);
 }
 .is-invalid ~ .invalid-feedback,
 .was-validated .form-control:invalid ~ .invalid-feedback { display: block; }
@@ -62,7 +112,7 @@
 .form-check { display: block; min-height: 1.5rem; padding-left: 1.5rem; margin-bottom: .5rem; }
 .form-check-input { width: 1rem; height: 1rem; margin-left: -1.5rem; margin-top: 0.25rem; vertical-align: top; background-color: var(--color-text-tertiary); border: none; appearance: none; border-radius: 999px; cursor: pointer; }
 .form-check-input:checked { background-color: var(--color-brand-primary); }
-.form-check-input:focus { outline: 0; box-shadow: 0 0 0 0.2rem rgba(13,110,253,.25); border-color: #86b7fe; }
+.form-check-input:focus { outline: 0; box-shadow: 0 0 0 3px var(--color-brand-secondary); }
 .form-check-label { color: var(--color-text-primary);cursor: pointer; a { color: var(--color-brand-primary); text-decoration: none; }}
 
 // Dark mode tweaks

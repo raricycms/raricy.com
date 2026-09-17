@@ -97,20 +97,26 @@
   gap: 8px;
 }
 
+/* 单行搜索 → 胶囊，与全站字段同一套外观。原为 4px 圆角 + 描边 + 卡片底色；
+   聚焦环是写死的 rgba(0,123,255,.25)（Bootstrap 蓝，不在主题体系内）。 */
 .user-search-input {
   flex: 1;
   max-width: 320px;
-  padding: 8px 12px;
-  border: 1px solid var(--color-border);
-  border-radius: 4px;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 999px;
   font-size: 0.9rem;
-  background: var(--color-background-card);
+  background: var(--color-background-page);
   color: var(--color-text-primary);
+  transition: box-shadow 0.2s ease;
 
   &:focus {
     outline: none;
-    border-color: var(--color-brand-primary);
-    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+    box-shadow: var(--shadow-focus-brand);
+  }
+
+  &::placeholder {
+    color: var(--color-text-secondary);
   }
 }
 

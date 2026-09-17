@@ -1,6 +1,7 @@
 // 云剪贴板页面样式
 @use '../abstracts/variables' as *;
 @use '../abstracts/mixins' as m;
+
 .clipboard {
   // 页面容器
   &-page {
@@ -53,27 +54,10 @@
         flex-direction: column;
       }
       
-      .search-input {
-        flex: 1;
-        padding: $space-3;
-        border: 1px solid var(--color-border);
-        border-radius: $radius-small;
-        background: var(--color-background-card);
-        color: var(--color-text-primary);
-        font-size: 1rem;
-        transition: all 0.2s ease;
-        
-        &:focus {
-          outline: none;
-          border-color: var(--color-brand-primary);
-          box-shadow: 0 0 0 3px var(--color-brand-secondary);
-        }
-        
-        &::placeholder {
-          color: var(--color-text-secondary);
-        }
-      }
-      
+      /* 此处原有 .search-input 的完整重声明（1px 描边 / 5px 圆角 / 卡片底色）。
+         已删除：全站搜索框统一走 blog/_menu.scss 里的那一条（胶囊 + 无边框 +
+         页面底色 + 品牌蓝光晕）。 */
+
       .search-button {
         @include m.btn-primary;
         padding: $space-3 $space-4;
@@ -350,8 +334,8 @@
     
     &__reminder {
       background: var(--color-brand-secondary);
-      border: 1px solid var(--color-brand-primary);
-      border-radius: $radius-small;
+      border: none;
+      border-radius: $radius-large;
       padding: $space-3 $space-4;
       margin-bottom: $space-4;
       color: var(--color-brand-primary);
@@ -379,35 +363,92 @@
         font-size: 1rem;
       }
       
-      input[type="text"],
-      textarea {
+      /* 与全站字段同一套外观：无边框 + 页面底色 + 品牌蓝聚焦光晕。
+         圆角按内容是否单行分：单行输入框胶囊，多行 textarea 20px。 */
+      input[type="text"] {
         width: 100%;
-        padding: $space-3;
-        border: 1px solid var(--color-border);
-        border-radius: $radius-small;
-        background: var(--color-background-card);
+        padding: 10px 16px;
+        border: none;
+        border-radius: 999px;
+        background: var(--color-background-page);
         color: var(--color-text-primary);
         font-size: 1rem;
-        transition: all 0.2s ease;
-        
+        box-sizing: border-box;
+        transition: box-shadow 0.2s ease;
+
         &:focus {
           outline: none;
-          border-color: var(--color-brand-primary);
-          box-shadow: 0 0 0 3px var(--color-brand-secondary);
+          box-shadow: var(--shadow-focus-brand);
         }
-        
+
+        &::placeholder {
+          color: var(--color-text-secondary);
+        }
+      }
+
+      textarea {
+        width: 100%;
+        min-height: 200px;
+        padding: 12px 16px;
+        border: none;
+        border-radius: 20px;
+        background: var(--color-background-page);
+        color: var(--color-text-primary);
+        font-size: 1rem;
+        resize: vertical;
+        font-family: inherit;
+        line-height: 1.6;
+        box-sizing: border-box;
+        transition: box-shadow 0.2s ease;
+
+        &:focus {
+          outline: none;
+          box-shadow: var(--shadow-focus-brand);
+        }
+
         &::placeholder {
           color: var(--color-text-secondary);
         }
       }
       
-      textarea {
-        min-height: 200px;
-        resize: vertical;
-        font-family: inherit;
-        line-height: 1.6;
+      /* Vditor 挂载点：多行编辑器 → 20px 圆角。这套值原先写在 UploadForm.tsx 的
+         行内 style 上（含 1px 描边），挪出来才能跟随主题与本次规范。 */
+      &__editor {
+        background: var(--color-background-page);
+        border: none;
+        border-radius: 20px;
+        overflow: hidden;
+        transition: box-shadow 0.2s ease;
+
+        &:focus-within {
+          box-shadow: var(--shadow-focus-brand);
+        }
       }
-      
+
+      /* Vditor 加载失败时的兜底文本框（display 由脚本切换，留在行内） */
+      &__fallback {
+        width: 100%;
+        padding: $space-3 $space-4;
+        border: none;
+        border-radius: 20px;
+        background: var(--color-background-page);
+        color: var(--color-text-primary);
+        font-size: 1rem;
+        line-height: 1.6;
+        font-family: ui-monospace, monospace;
+        box-sizing: border-box;
+        transition: box-shadow 0.2s ease;
+
+        &:focus {
+          outline: none;
+          box-shadow: var(--shadow-focus-brand);
+        }
+
+        &::placeholder {
+          color: var(--color-text-secondary);
+        }
+      }
+
       &--checkbox {
         display: flex;
         align-items: center;

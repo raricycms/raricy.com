@@ -1744,23 +1744,37 @@ svg.rc-icon {
 .form-control {
   display: block;
   width: 100%;
-  padding: 1rem 1rem;
+  padding: 10px 16px;
   font-size: 0.9rem;
   line-height: 1.5;
-  color: var(--color-text-primary) !important;
-  background-color: var(--color-background-content) !important;
+  color: var(--color-text-primary);
+  background-color: var(--color-background-page);
   background-clip: padding-box;
   border: none;
-  border-radius: 15px;
   resize: vertical;
-  padding: 5px 10px;
+  transition: box-shadow 0.2s ease;
+}
+.form-control:focus {
+  outline: 0;
+  box-shadow: var(--shadow-focus-brand);
+}
+.form-control::placeholder {
+  color: var(--color-text-secondary);
 }
 
-.form-control:focus {
-  color: var(--color-text-primary);
-  background-color: var(--color-background-card);
-  box-shadow: 0 0 0 5px var(--color-brand-secondary);
-  outline: 0;
+input.form-control,
+select.form-control {
+  border-radius: 999px;
+}
+
+textarea.form-control {
+  border-radius: 20px;
+  padding: 12px 16px;
+}
+
+.form-control-sm {
+  padding: 6px 12px;
+  font-size: 0.85rem;
 }
 
 .form-option {
@@ -1769,20 +1783,25 @@ svg.rc-icon {
   font-size: 1rem;
   line-height: 1.5;
   color: var(--color-text-primary);
-  background-color: var(--color-background-content);
+  background-color: var(--color-background-page);
   cursor: pointer;
 }
 
 .form-select {
   display: block;
-  padding: 8px 12px;
-  font-size: 14px;
+  padding: 10px 16px;
+  font-size: 0.9rem;
   line-height: 1.5;
   border-radius: 999px;
   border: none;
-  font-weight: bold;
-  color: var(--color-brand-primary);
-  background-color: var(--color-brand-secondary);
+  color: var(--color-text-primary);
+  background-color: var(--color-background-page);
+  cursor: pointer;
+  transition: box-shadow 0.2s ease;
+}
+.form-select:focus {
+  outline: 0;
+  box-shadow: var(--shadow-focus-brand);
 }
 
 .form-text {
@@ -1797,13 +1816,20 @@ svg.rc-icon {
   width: 100%;
   margin-top: 0.25rem;
   font-size: 0.875rem;
-  color: #dc3545;
+  color: var(--color-warning-primary);
 }
 
+/* ⚠️ 字段常态是 border: none，所以这里的 border-color 只在**同时**给了可见边框时
+   才有意义 —— 目前无效态是靠 .invalid-feedback 的文字表达的。若以后要给错误字段
+   描边，必须同时在常态预留一条 transparent 边框，否则字段会在报错时长高。 */
 .is-invalid, .was-validated .form-control:invalid {
-  border-color: #dc3545;
-  padding-right: 0.9375rem;
+  border-color: var(--color-warning-primary);
   background-image: none;
+}
+
+.is-invalid:focus,
+.was-validated .form-control:invalid:focus {
+  box-shadow: 0 0 0 3px var(--color-warning-secondary);
 }
 
 .is-invalid ~ .invalid-feedback,
@@ -1837,8 +1863,7 @@ svg.rc-icon {
 
 .form-check-input:focus {
   outline: 0;
-  box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
-  border-color: #86b7fe;
+  box-shadow: 0 0 0 3px var(--color-brand-secondary);
 }
 
 .form-check-label {
@@ -1980,16 +2005,22 @@ svg.rc-icon {
   margin-left: 0.8rem;
 }
 
+/* 单行数字 → 胶囊，与全站字段同一套外观（原为 6px 圆角 + 描边 + 卡片底色） */
 .page-input {
   width: 3.5rem;
-  padding: 0.35rem 0.4rem;
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
+  padding: 0.4rem 0.6rem;
+  border: none;
+  border-radius: 999px;
   font-size: 0.85rem;
   text-align: center;
-  background: var(--color-background-card);
+  background: var(--color-background-page);
   color: var(--color-text-primary);
+  transition: box-shadow 0.2s ease;
   -moz-appearance: textfield;
+}
+.page-input:focus {
+  outline: 0;
+  box-shadow: var(--shadow-focus-brand);
 }
 
 .page-input::-webkit-outer-spin-button,
@@ -3401,14 +3432,22 @@ a:hover {
   line-height: 1;
 }
 
+/* 输入面板**就是那个字段**（多行 → 20px 圆角），所以底色与聚焦光晕挂在这里，
+   里面的 textarea 保持透明无边框。原先面板是「1px 描边 + 14px 圆角 + 卡片底色」，
+   与全站字段的无边框语言不符，聚焦也没有任何反馈。 */
 .comment-composer__panel {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  border: 1px solid var(--color-border);
-  border-radius: 14px;
-  background: var(--color-background-card);
+  border: none;
+  border-radius: 20px;
+  background: var(--color-background-page);
   padding: 4px 8px 8px;
+  transition: box-shadow 0.2s ease;
+}
+
+.comment-composer__panel:focus-within {
+  box-shadow: var(--shadow-focus-brand);
 }
 
 .comment-composer__toolbar {
@@ -4067,6 +4106,14 @@ a:hover {
   width: 100%;
 }
 
+/* 只有内嵌了按钮的那种搜索框才需要右侧留白 —— 所以这条挂在 .search-field 上，
+   而不是共用类 .search-input 上：/tool 的搜索框没有按钮，/clipboard 与 /vote 的
+   按钮是 flex 兄弟而非内嵌，三处都不该凭空多出 80px 空隙。
+   80px = 按钮宽约 65px（0.9rem 的「搜索」+ 左右各 18px）+ 4px 贴边 + 余量。 */
+.search-field .search-input {
+  padding-right: 80px;
+}
+
 /* 输入框 + 内嵌搜索按钮的定位上下文。
    高度不写死：由里面的 input 撑出来，按钮再用 top/bottom 贴边（见 .search-btn），
    这样改字号或内距时按钮自动跟着变高，不必猜行高。 */
@@ -4077,17 +4124,14 @@ a:hover {
   min-width: 0;
 }
 
-/* 胶囊形、无边框。
-   ⚠️ `.search-input` 是**共用类**，剪贴板 / 工具 / 投票三处也用它，各自的页样式
-   （pages/_clipboard.scss、_tool-new.scss、_vote.scss）把 padding / border /
-   border-radius / background / focus 全部重声明了一遍，以更高的选择器权重压过这里。
-   改这条前先确认那三处仍然完整override，否则它们的输入框会一起变成胶囊。 */
+/* 胶囊形、无边框 —— **全站搜索框的唯一定义**。
+   `.search-input` 是共用类（博客 / 剪贴板 / 工具 / 投票四处都用）。此前那三处各自
+   把它完整重声明了一遍（描边 + 5~10px 圆角 + 卡片底色），以更高的选择器权重压过
+   这里，于是四个搜索框长得各不相同。本次统一把那三条重声明删了 ——
+   **改这条就是改全站四个搜索框**，不要再在页面样式里另抄一份。 */
 .search-input {
   flex: 1;
   padding: 10px 16px;
-  /* 右侧给内嵌按钮让位 —— 按钮宽约 65px（0.9rem 的「搜索」+ 左右各 18px），
-     再加 4px 贴边，留一点余量免得长文本顶到按钮底下 */
-  padding-right: 80px;
   border: none;
   border-radius: 999px;
   background: var(--color-background-page);
@@ -5832,20 +5876,26 @@ body {
   font-size: 15px;
   color: var(--color-text-primary);
 }
+.story-cattca__input-area {
+  /* 单行 → 胶囊，与全站字段同一套外观（原为描边 + 卡片底色 + 只变边框色的聚焦态） */
+}
 .story-cattca__input-area input[type=text] {
   width: 100%;
   padding: 12px 16px;
-  border: 1px solid var(--color-border);
+  border: none;
   border-radius: 999px;
-  background: var(--color-background-card);
+  background: var(--color-background-page);
   color: var(--color-text-primary);
   font-size: 15px;
   margin-bottom: 10px;
   outline: none;
-  transition: border-color 0.2s;
+  transition: box-shadow 0.2s;
 }
 .story-cattca__input-area input[type=text]:focus {
-  border-color: var(--color-brand-primary);
+  box-shadow: var(--shadow-focus-brand);
+}
+.story-cattca__input-area input[type=text]::placeholder {
+  color: var(--color-text-secondary);
 }
 .story-cattca__input-area button {
   background: var(--color-brand-primary);
@@ -5973,26 +6023,11 @@ body {
 .tool-new-hero__search {
   max-width: 500px;
   margin-bottom: 16px;
+  /* 此处原有 .search-input 的完整重声明（1px 描边 / 10px 圆角 / 卡片底色），
+     已删除 —— 全站搜索框统一走 blog/_menu.scss 里的那一条。 */
 }
 .tool-new-hero__search .search-input {
   width: 100%;
-  padding: 12px 16px;
-  border: 1px solid var(--color-border);
-  border-radius: 10px;
-  background: var(--color-background-card);
-  color: var(--color-text-primary);
-  font-size: 1rem;
-  transition: all 0.2s ease;
-}
-.tool-new-hero__search .search-input:focus {
-  outline: none;
-  border-color: var(--color-brand-primary);
-  /* 原为 rgba(var(--color-brand-primary-rgb), .1)，而该令牌从未定义 ——
-     box-shadow 在计算值阶段整条失效，聚焦环一直是不存在的。 */
-  box-shadow: var(--shadow-focus-brand);
-}
-.tool-new-hero__search .search-input::placeholder {
-  color: var(--color-text-secondary);
 }
 .tool-new-hero__filters {
   display: flex;
@@ -6231,9 +6266,9 @@ body {
   flex: 1;
   width: 100%;
   min-height: 300px;
-  padding: 12px;
-  border: 1px solid var(--color-border);
-  border-radius: 10px;
+  padding: 12px 16px;
+  border: none;
+  border-radius: 20px;
   background: var(--color-background-page);
   color: var(--color-text-primary);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
@@ -6241,12 +6276,11 @@ body {
   line-height: 1.7;
   resize: vertical;
   caret-color: var(--color-brand-primary);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition: box-shadow 0.2s ease;
 }
 .cattca-tool__script-input:focus {
   outline: none;
-  border-color: var(--color-brand-primary);
-  box-shadow: 0 0 0 3px var(--color-brand-secondary);
+  box-shadow: var(--shadow-focus-brand);
 }
 .cattca-tool__script-input::placeholder {
   color: var(--color-text-secondary);
@@ -6472,23 +6506,10 @@ body {
     flex-direction: column;
   }
 }
-.clipboard-navigation__search .search-input {
-  flex: 1;
-  padding: 12px;
-  border: 1px solid var(--color-border);
-  border-radius: 5px;
-  background: var(--color-background-card);
-  color: var(--color-text-primary);
-  font-size: 1rem;
-  transition: all 0.2s ease;
-}
-.clipboard-navigation__search .search-input:focus {
-  outline: none;
-  border-color: var(--color-brand-primary);
-  box-shadow: 0 0 0 3px var(--color-brand-secondary);
-}
-.clipboard-navigation__search .search-input::placeholder {
-  color: var(--color-text-secondary);
+.clipboard-navigation__search {
+  /* 此处原有 .search-input 的完整重声明（1px 描边 / 5px 圆角 / 卡片底色）。
+     已删除：全站搜索框统一走 blog/_menu.scss 里的那一条（胶囊 + 无边框 +
+     页面底色 + 品牌蓝光晕）。 */
 }
 .clipboard-navigation__search .search-button {
   border: none;
@@ -6840,8 +6861,8 @@ body {
 }
 .clipboard-form__reminder {
   background: var(--color-brand-secondary);
-  border: 1px solid var(--color-brand-primary);
-  border-radius: 5px;
+  border: none;
+  border-radius: 10px;
   padding: 12px 16px;
   margin-bottom: 16px;
   color: var(--color-brand-primary);
@@ -6866,32 +6887,86 @@ body {
   margin-bottom: 8px;
   font-size: 1rem;
 }
-.clipboard-form__group input[type=text],
-.clipboard-form__group textarea {
+.clipboard-form__group {
+  /* 与全站字段同一套外观：无边框 + 页面底色 + 品牌蓝聚焦光晕。
+     圆角按内容是否单行分：单行输入框胶囊，多行 textarea 20px。 */
+}
+.clipboard-form__group input[type=text] {
   width: 100%;
-  padding: 12px;
-  border: 1px solid var(--color-border);
-  border-radius: 5px;
-  background: var(--color-background-card);
+  padding: 10px 16px;
+  border: none;
+  border-radius: 999px;
+  background: var(--color-background-page);
   color: var(--color-text-primary);
   font-size: 1rem;
-  transition: all 0.2s ease;
+  box-sizing: border-box;
+  transition: box-shadow 0.2s ease;
 }
-.clipboard-form__group input[type=text]:focus,
-.clipboard-form__group textarea:focus {
+.clipboard-form__group input[type=text]:focus {
   outline: none;
-  border-color: var(--color-brand-primary);
-  box-shadow: 0 0 0 3px var(--color-brand-secondary);
+  box-shadow: var(--shadow-focus-brand);
 }
-.clipboard-form__group input[type=text]::placeholder,
-.clipboard-form__group textarea::placeholder {
+.clipboard-form__group input[type=text]::placeholder {
   color: var(--color-text-secondary);
 }
 .clipboard-form__group textarea {
+  width: 100%;
   min-height: 200px;
+  padding: 12px 16px;
+  border: none;
+  border-radius: 20px;
+  background: var(--color-background-page);
+  color: var(--color-text-primary);
+  font-size: 1rem;
   resize: vertical;
   font-family: inherit;
   line-height: 1.6;
+  box-sizing: border-box;
+  transition: box-shadow 0.2s ease;
+}
+.clipboard-form__group textarea:focus {
+  outline: none;
+  box-shadow: var(--shadow-focus-brand);
+}
+.clipboard-form__group textarea::placeholder {
+  color: var(--color-text-secondary);
+}
+.clipboard-form__group {
+  /* Vditor 挂载点：多行编辑器 → 20px 圆角。这套值原先写在 UploadForm.tsx 的
+     行内 style 上（含 1px 描边），挪出来才能跟随主题与本次规范。 */
+}
+.clipboard-form__group__editor {
+  background: var(--color-background-page);
+  border: none;
+  border-radius: 20px;
+  overflow: hidden;
+  transition: box-shadow 0.2s ease;
+}
+.clipboard-form__group__editor:focus-within {
+  box-shadow: var(--shadow-focus-brand);
+}
+.clipboard-form__group {
+  /* Vditor 加载失败时的兜底文本框（display 由脚本切换，留在行内） */
+}
+.clipboard-form__group__fallback {
+  width: 100%;
+  padding: 12px 16px;
+  border: none;
+  border-radius: 20px;
+  background: var(--color-background-page);
+  color: var(--color-text-primary);
+  font-size: 1rem;
+  line-height: 1.6;
+  font-family: ui-monospace, monospace;
+  box-sizing: border-box;
+  transition: box-shadow 0.2s ease;
+}
+.clipboard-form__group__fallback:focus {
+  outline: none;
+  box-shadow: var(--shadow-focus-brand);
+}
+.clipboard-form__group__fallback::placeholder {
+  color: var(--color-text-secondary);
 }
 .clipboard-form__group--checkbox {
   display: flex;
@@ -7217,21 +7292,25 @@ body {
   gap: 8px;
   max-width: 500px;
 }
+.image-hosting-admin-bar {
+  /* 单行搜索 → 胶囊，与全站字段同一套外观 */
+}
 .image-hosting-admin-bar__input {
   flex: 1;
-  padding: 8px 12px;
-  border: 1px solid var(--color-border);
-  border-radius: 5px;
-  background: var(--color-background-card);
+  padding: 10px 16px;
+  border: none;
+  border-radius: 999px;
+  background: var(--color-background-page);
   color: var(--color-text-primary);
   font-size: 0.9rem;
+  transition: box-shadow 0.2s ease;
 }
 .image-hosting-admin-bar__input::placeholder {
   color: var(--color-text-secondary);
 }
 .image-hosting-admin-bar__input:focus {
   outline: none;
-  border-color: var(--color-brand-primary);
+  box-shadow: var(--shadow-focus-brand);
 }
 
 .image-hosting-admin-table-wrap {
@@ -7364,38 +7443,32 @@ body {
   gap: 0.5rem;
   flex: 1;
   max-width: 400px;
+  /* 此处原有 .search-input 的完整重声明（1px 描边 / 0.375rem 圆角 / 卡片底色），
+     已删除 —— 全站搜索框统一走 blog/_menu.scss 里的那一条。 */
 }
-.vote-navigation__search .search-input {
-  flex: 1;
-  padding: 0.6rem 0.9rem;
-  border: 1px solid var(--color-border);
-  border-radius: 0.375rem;
-  background: var(--color-background-card);
-  color: var(--color-text-primary);
-  font-size: 0.9rem;
+.vote-navigation__search .search-button {
+  border: none;
+  border-radius: 999px;
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+  font-weight: bold;
+  cursor: pointer;
+  transition: color 0.25s ease, background-color 0.25s ease, filter 0.15s ease;
 }
-.vote-navigation__search .search-input:focus {
-  outline: none;
-  border-color: var(--color-brand-primary);
-  box-shadow: 0 0 0 3px var(--color-brand-secondary);
+.vote-navigation__search .search-button:hover:not(:disabled) {
+  background-color: var(--color-brand-primary);
+  color: #fff;
 }
-.vote-navigation__search .search-input::placeholder {
-  color: var(--color-text-secondary);
+.vote-navigation__search .search-button:active:not(:disabled) {
+  filter: brightness(0.5);
+}
+.vote-navigation__search .search-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 .vote-navigation__search .search-button {
   padding: 0.6rem 1.2rem;
-  background: var(--color-background-subtle);
-  border: 1px solid var(--color-border);
-  border-radius: 0.375rem;
-  color: var(--color-text-primary);
   font-size: 0.9rem;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-.vote-navigation__search .search-button:hover {
-  background: var(--color-brand-primary);
-  border-color: var(--color-brand-primary);
-  color: #fff;
 }
 .vote-navigation__actions .action-button {
   border: none;
@@ -7558,20 +7631,27 @@ body {
   margin-bottom: 0.4rem;
   font-size: 0.925rem;
 }
+.vote-form__group {
+  /* 单行 → 胶囊，与全站字段同一套外观（.vote-option-input 没有自己的样式，
+     吃的就是这条） */
+}
 .vote-form__group input[type=text] {
   width: 100%;
-  padding: 0.6rem 0.8rem;
-  border: 1px solid var(--color-border);
-  border-radius: 0.375rem;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 999px;
   background: var(--color-background-page);
   color: var(--color-text-primary);
   font-size: 0.925rem;
   box-sizing: border-box;
+  transition: box-shadow 0.2s ease;
 }
 .vote-form__group input[type=text]:focus {
   outline: none;
-  border-color: var(--color-brand-primary);
-  box-shadow: 0 0 0 3px var(--color-brand-secondary);
+  box-shadow: var(--shadow-focus-brand);
+}
+.vote-form__group input[type=text]::placeholder {
+  color: var(--color-text-secondary);
 }
 .vote-form__hint {
   font-weight: 400;
@@ -8582,22 +8662,26 @@ body {
   margin: 0 0 16px;
 }
 
+/* 与全站字段同一套外观（无边框 + 页面底色 + 品牌蓝聚焦光晕）。
+   圆角按内容是否单行分：输入框胶囊，多行 20px。 */
 .settings-input {
   width: 100%;
-  padding: 10px 14px;
-  border: 1px solid var(--color-border);
-  border-radius: 10px;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 999px;
   background: var(--color-background-page);
   color: var(--color-text-primary);
   font-size: 0.95rem;
-  transition: border-color 0.2s ease;
+  transition: box-shadow 0.2s ease;
   box-sizing: border-box;
 }
 .settings-input:focus {
   outline: none;
-  border-color: var(--color-brand-primary);
+  box-shadow: var(--shadow-focus-brand);
 }
 .settings-input--textarea {
+  border-radius: 20px;
+  padding: 12px 16px;
   min-height: 110px;
   resize: vertical;
   line-height: 1.6;
@@ -9433,20 +9517,25 @@ input:checked + .settings-toggle__slider::before {
   gap: 8px;
 }
 
+/* 单行搜索 → 胶囊，与全站字段同一套外观。原为 4px 圆角 + 描边 + 卡片底色；
+   聚焦环是写死的 rgba(0,123,255,.25)（Bootstrap 蓝，不在主题体系内）。 */
 .user-search-input {
   flex: 1;
   max-width: 320px;
-  padding: 8px 12px;
-  border: 1px solid var(--color-border);
-  border-radius: 4px;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 999px;
   font-size: 0.9rem;
-  background: var(--color-background-card);
+  background: var(--color-background-page);
   color: var(--color-text-primary);
+  transition: box-shadow 0.2s ease;
 }
 .user-search-input:focus {
   outline: none;
-  border-color: var(--color-brand-primary);
-  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+  box-shadow: var(--shadow-focus-brand);
+}
+.user-search-input::placeholder {
+  color: var(--color-text-secondary);
 }
 
 .modal-overlay {
@@ -10096,19 +10185,39 @@ input:checked + .settings-toggle__slider::before {
   cursor: not-allowed;
 }
 
+/* 金额：大号数字 + 单位后缀。**外壳就是字段本身** —— 胶囊、页面底色、聚焦光晕
+   全挂在这里；里面的 input 只负责文字，必须透明且不吃自己的聚焦环。
+   原先外壳是「内容底色 + 2px 透明边框 + 15px 圆角」，而 PayForm 又给内层 input
+   同时挂了 .form-control，于是出现「胶囊输入框套在方角外壳里」的双层底色与
+   双重聚焦反馈。 */
 .market-amount {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 12px 16px;
-  background: var(--color-background-content);
-  border: 2px solid transparent;
-  border-radius: 15px;
-  transition: all 0.2s ease;
+  background: var(--color-background-page);
+  border: none;
+  border-radius: 999px;
+  transition: box-shadow 0.2s ease;
 }
 .market-amount:focus-within {
-  background: var(--color-background-card);
-  border-color: var(--color-brand-secondary);
+  box-shadow: var(--shadow-focus-brand);
+}
+.market-amount {
+  /* 内层归零。用 .market-amount input（0-1-1）而不是 .market-amount__input
+     （0-1-0）：后者会被 input.form-control（0-1-1）压掉背景与聚焦环。 */
+}
+.market-amount input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.market-amount input:focus {
+  box-shadow: none;
 }
 
 .market-amount__input {
@@ -12626,14 +12735,22 @@ input:checked + .settings-toggle__slider::before {
   line-height: 1;
 }
 
+/* 输入面板**就是那个字段**（多行 → 20px 圆角），所以底色与聚焦光晕挂在这里，
+   里面的 textarea 保持透明无边框。原先面板是「1px 描边 + 14px 圆角 + 卡片底色」，
+   与全站字段的无边框语言不符，聚焦也没有任何反馈。 */
 .chat-composer__panel {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  border: 1px solid var(--color-border);
-  border-radius: 14px;
-  background: var(--color-background-card);
+  border: none;
+  border-radius: 20px;
+  background: var(--color-background-page);
   padding: 4px 8px 8px;
+  transition: box-shadow 0.2s ease;
+}
+
+.chat-composer__panel:focus-within {
+  box-shadow: var(--shadow-focus-brand);
 }
 
 .chat-composer__toolbar {
