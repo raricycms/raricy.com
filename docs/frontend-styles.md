@@ -609,20 +609,72 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
 
 **同类陷阱（已登记，还没踩）**：
 
+**同名嵌套（组件根复用了页面级容器类）** —— 与 `.blog-detail` 同一个形状。
+判据：该组件被渲染在任何**已经带同名类**的父节点里时，就会双份内缩 / 双份外边距。
+下列四条目前的状态各不相同，改之前先按判据自己走一遍 DOM：
+
+- `src/app/clipboard/upload/UploadForm.tsx` 的根节点 = `clipboard-page` + `clipboard-title`，
+  而 `clipboard/upload/page.tsx` 与 `clipboard/[id]/edit/page.tsx` **也**各自套了一层
+  `clipboard-page` → 双份 `padding: 24px 16px` + 双重宽度阶梯。upload 页更严重：
+  页面与组件各渲染一个 `<h1 class="clipboard-title">上传云剪贴板</h1>`，**同一页两个
+  内容相同的主标题**（a11y / SEO 硬伤；edit 页因 `isEdit` 分支不同文案而不重复）。
+  修法：组件根去掉这两个类，由两个页面各自提供外壳。
+- `src/app/admin/oauth/ApplicationRow.tsx` 的根节点 = `management-card`，而
+  `admin/oauth/page.tsx` 把它渲染在 `<section className="management-card">` **里面** →
+  卡中卡：双 30px padding、双描边、双底色。`pages/_oauth.scss` 的
+  `.management-card + .management-card { margin-top: 0 }` 只是把兄弟行之间的
+  `margin-top: 20px` 压掉，压不住卡壳本身。
+- `src/app/components/AdminArticlesManager.tsx` 的根节点 = `admin-container`（页面级容器：
+  `max-width: 1400px; margin: 32px auto; padding: 0 20px`）。**当前没爆**，纯属
+  `admin/blogs/page.tsx` 自己没写容器、由组件提供。一旦它被放进任何一个已有
+  `admin-container` 的 admin 页（另外 6 个都写了）立刻复现。这也与 §5 那条「页边距归容器、
+  行宽归内层上限」相悖 —— 容器该上提到 `admin/blogs/page.tsx`。
+- `src/app/fish/PayError.tsx` 的根节点 = `content-wrapper` + `page-title`（整页外壳）。
+  **当前不冲突**：它只出现在 `fish/pay` 与 `fish/collect` 的参数非法 early-return 分支，
+  与正常分支的 `content-wrapper` 不会同时渲染。但 `pages/_notifications.scss` 的注释
+  专门警告过 `.content-wrapper` 的后代选择器会随类名漂移，属同一类债。
+
+**同名不同义（两处定义指的是两回事）**：
+
+- `pages/admin/_articles.scss` 的 `.current-category`（后台文章表格里的**分类徽章**：
+  `padding` / `radius 20px` / 配 `.is-categorized` 换色）与 `pages/blog/_menu.scss` 的
+  同名类（博客分类栏的**「当前分类」标签**，只写 `margin-top: 12px`）都是根级 0-1-0，
+  互不知情。唯一消费方是 `AdminArticlesManager.tsx`（徽章那份），于是徽章白拿
+  `margin-top: 12px`。另见上面 `.current-category .badge` 那条死规则。
+- `.copy-btn`（`pages/blog/_blog.scss` 根级全局 vs `pages/_story.scss` 在
+  `.story-reader__content` 下整套重写）：注入点是 `components/MarkdownRenderer.tsx`
+  拼的内联 HTML 字符串，所以**任何**用了 MarkdownRenderer 的页面都会命中 blog 那份。
+  story 页目前靠 0-2-0 压 0-1-0 才没走样 —— 改 `_blog.scss` 里那条的权重就会穿透。
+- `.filter-btn`（`pages/_fish.scss` vs `pages/_notifications.scss`）：**后者一个属性都没
+  生效**（`main.scss` 里 notifications 先于 fish 加载，fish 全胜），而通知页压根没有
+  筛选栏 —— 唯一消费方是 `fish/transactions`。改 `_notifications.scss` 那份是静默无效的。
+
 - `pages/blog/_menu.scss` 的 `.current-category .badge` 是**死规则**：唯一渲染
   `.current-category` 的 `src/app/components/AdminArticlesManager.tsx` 里没有 `.badge`
   子元素。一旦有人把它加回去，浅色主题下就是白字压半透明白底。
 - `src/app/tool/new_redirect/page.tsx` 里还有两处行内色（`#3498db` / `#e74c3c`）没令牌化 ——
   那是 `pages/_tool-redirect.scss` 那轮「两页全部令牌化」的漏网，应是
   `--color-brand-primary` / `--color-warning-primary`。
-- `src/app/components/CommentSection.tsx` 的根节点用 `className="blog-detail"`，与
-  `src/app/blog/[id]/page.tsx` 的外层 `<article>` **同名** —— 于是评论区又吃了一遍
-  `max-width: 940px` / `margin: 50px auto` / `padding: 0 20px` / `overflow-x: auto`，
-  比正文再内缩 20px、再下移 50px，并且自带一个滚动容器。改类名可一并消掉，但会动到
-  评论区的位置与宽度，需目视确认，故只登记未改（见 `tests/e2e/comment-layout.spec.ts` 末尾）。
 - `pages/_checkin.scss` 的 `@keyframes btnPulse` 光环写死浅色主题品牌蓝
   `rgba(37,99,235,…)`，暗色下与按钮本体（`#23A5FF`）不同色 —— 只在 1s 的脉冲里可见，
   且站内没有「品牌色 + 指定透明度」的令牌可用，暂留。
+
+**2026-09-18 已修（第三轮：同名的类拆开）**：
+
+> 判据：**同一个类名出现在两处、而两处指的不是一回事**（同名嵌套最典型）。这类 bug
+> 不报错也不变色，只是让组件白拿一份页面级容器样式 —— 内缩、外边距、滚动容器全跟着走。
+
+- **`.blog-detail` 同名嵌套（本节此前登记为遗留）**：`src/app/components/CommentSection.tsx`
+  的根节点原来是 `className="blog-detail"`，与 `src/app/blog/[id]/page.tsx` 的正文外层
+  `<article>` 同名 → 评论区白拿 `max-width: 940px` / `margin: 50px auto` / `padding: 0 16px` /
+  `overflow-x: auto`。后果有二：评论块左右比正文卡各宽 4px（窄屏反而窄 16px），
+  以及**自带一个滚动容器**（`tests/e2e/comment-layout.spec.ts` 里那条横向滚动条正是画在
+  它身上的）。现改用**与正文同列的 `.blog-content-container-container`**（`MarkdownRenderer`
+  的根节点用的也是它）：左右边缘与正文卡完全对齐，桌面/窄屏两个断点都对，且檐沟只有一份
+  定义（桌面 20px / 窄屏 0），不会 drift。**别在评论根节点上另写 padding。**
+  顺带丢掉原属于 `.blog-detail` 的 50px 上外边距 —— 评论区与操作区的间距回到
+  `.read-controls` 自己的 40px（窄屏 30px）。该类名从此**只属于页面正文外层**。
+- 其余同名嵌套已登记待办，见下方「同类陷阱」。
 
 **2026-09-18 已修（第二轮：滚动条 / 左侧竖条收尾 / 幽灵引用）**：
 
