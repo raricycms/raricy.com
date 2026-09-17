@@ -98,21 +98,41 @@ a {
     width: 100%;
 }
 
+/* 输入框 + 内嵌搜索按钮的定位上下文。
+   高度不写死：由里面的 input 撑出来，按钮再用 top/bottom 贴边（见 .search-btn），
+   这样改字号或内距时按钮自动跟着变高，不必猜行高。 */
+.search-field {
+    position: relative;
+    display: flex;
+    flex: 1;
+    min-width: 0;
+}
+
+/* 胶囊形、无边框。
+   ⚠️ `.search-input` 是**共用类**，剪贴板 / 工具 / 投票三处也用它，各自的页样式
+   （pages/_clipboard.scss、_tool-new.scss、_vote.scss）把 padding / border /
+   border-radius / background / focus 全部重声明了一遍，以更高的选择器权重压过这里。
+   改这条前先确认那三处仍然完整override，否则它们的输入框会一起变成胶囊。 */
 .search-input {
     flex: 1;
     padding: 10px 16px;
-    border: 1px solid var(--color-border);
-    border-radius: 10px;
+    /* 右侧给内嵌按钮让位 —— 按钮宽约 65px（0.9rem 的「搜索」+ 左右各 18px），
+       再加 4px 贴边，留一点余量免得长文本顶到按钮底下 */
+    padding-right: 80px;
+    border: none;
+    border-radius: 999px;
     background: var(--color-background-page);
     color: var(--color-text-primary);
     font-size: 0.95rem;
-    transition: all 0.2s ease;
+    transition: box-shadow 0.2s ease;
     min-width: 0;
 
     &:focus {
         outline: none;
-        border-color: var(--color-brand-primary);
-        box-shadow: 0 0 0 3px var(--color-brand-secondary);
+        /* 偏移量为 0 的品牌色光晕。形状取自顶栏的常驻阴影 --shadow-card-brand
+           （同样 25px 模糊、同色系），只是抹掉那 2px 下偏移、并把不透明度提一档 ——
+           常驻阴影是「托住」顶栏，聚焦态得自己站得出来。 */
+        box-shadow: var(--shadow-focus-brand);
     }
 
     &::placeholder {
@@ -120,25 +140,38 @@ a {
     }
 }
 
+/* 搜索按钮：外观与交互对齐「创建」按钮（.upload-button）—— 常态品牌色浅底 + 品牌色字，
+   hover 反转成实底白字，active 整体压暗。
+   位置改为**嵌在输入框内部最右侧**：top/bottom 各留 4px，故高度比输入框矮 8px；
+   圆角与输入框同为胶囊，两条弧线贴合。 */
 .search-btn {
-    padding: 10px 20px;
-    background: var(--color-brand-primary);
-    color: #fff;
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    bottom: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 18px;
     border: none;
-    border-radius: 10px;
-    font-size: 0.95rem;
-    font-weight: 500;
+    border-radius: 999px;
+    background-color: var(--color-brand-secondary);
+    color: var(--color-brand-primary);
+    font-size: 0.9rem;
+    font-weight: 700;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: all 0.3s ease;
+    -webkit-tap-highlight-color: transparent;
+    outline: none;
     white-space: nowrap;
 
     &:hover {
-        opacity: 0.9;
-        transform: translateY(-1px);
+        color: #fff;
+        background-color: var(--color-brand-primary);
     }
 
     &:active {
-        transform: translateY(0);
+        filter: brightness(0.5);
     }
 }
 

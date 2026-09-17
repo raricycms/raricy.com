@@ -45,16 +45,19 @@ export default function SearchForm({
       {currentSlug && <input type="hidden" name="category" value={currentSlug} />}
       {featured && <input type="hidden" name="featured" value="1" />}
       {sort && <input type="hidden" name="sort" value={sort} />}
-      <input
-        type="search"
-        name="search"
-        defaultValue={search}
-        placeholder="搜索标题、作者、简介..."
-        className="search-input"
-      />
-      <button type="submit" className="search-btn">
-        搜索
-      </button>
+      {/* 输入框与按钮同一个定位上下文：按钮绝对定位嵌在胶囊内部最右侧 */}
+      <div className="search-field">
+        <input
+          type="search"
+          name="search"
+          defaultValue={search}
+          placeholder="搜索标题、作者、简介..."
+          className="search-input"
+        />
+        <button type="submit" className="search-btn">
+          搜索
+        </button>
+      </div>
       {search && (
         <Link href={clearHref} className="search-clear-btn">
           清除

@@ -30,6 +30,9 @@
     --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.08);
     --shadow-card-hover: 0 8px 30px rgba(0, 0, 0, 0.12);
     --shadow-card-brand: 0 2px 25px rgba(37, 99, 235, 0.15);
+    // 聚焦光晕：与 --shadow-card-brand 同色同模糊半径，但**偏移为 0**（四周均匀）。
+    // 不透明度比它高一档 —— 常驻阴影是「托住」元素，聚焦要自己站得出来。
+    --shadow-focus-brand: 0 0 25px rgba(37, 99, 235, 0.28);
 
     // Fluent (fd-) 令牌：映射站点主题体系，OAuth / 设置等新页面使用。
     // 全部别名引用上面的 --color-*，随 [data-theme] 自动切换。
@@ -79,6 +82,8 @@
     --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.3);
     --shadow-card-hover: 0 8px 30px rgba(0, 0, 0, 0.4);
     --shadow-card-brand: 0 2px 20px rgba(35, 165, 255, 0.1);
+    // 深色品牌蓝更亮，同样模糊半径下给到 0.32 就够醒目了（见浅色那份的说明）
+    --shadow-focus-brand: 0 0 20px rgba(35, 165, 255, 0.32);
 
     // 深色仅需覆盖与浅色不同的 fd 令牌（其余是 var() 别名，自动跟随主题）
     --fd-accent-soft: rgba(35, 165, 255, 0.18);
