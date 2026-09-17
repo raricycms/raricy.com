@@ -10,9 +10,11 @@
 //     `width: 100%` + `margin-left: 15px` 原样生效。border-box 下 padding 算在
 //     100% 里、margin 不算，所以每一层向右溢出 15px，冒泡到最近的可滚祖先。
 //
-// 用户报的症状：**评论区底部多出一条横向滚动条**。那个滚动容器是 CommentSection
-// 自己的根节点 —— 它也用了 `.blog-detail` 这个页面级类名（见文件末尾那条），因此
-// 白拿了一份 `overflow-x: auto`。
+// 用户报的症状：**评论区底部多出一条横向滚动条**。那个滚动容器当时是 CommentSection
+// 自己的根节点 —— 它误用了 `.blog-detail` 这个页面级类名，白拿了一份 `overflow-x: auto`。
+// 该类名已拆掉（改用与正文同列的 `.blog-content-container-container`，见文件末尾），
+// 于是溢出不再被就地裁掉而是**冒泡到 `<article class="blog-detail">`** —— 那也是滚动
+// 容器，所以下面 ① 把它一并量进去；只量 documentElement 会漏。
 //
 // 【本文件登记在 RESPONSIVE_SPECS 里】它验的是排版事实，窄屏换行行为不同，两个
 // project 都要跑。
@@ -61,13 +63,21 @@ test('楼中楼不横向溢出：评论区底部不该出现横向滚动条', as
   const report = await page.evaluate(() => {
     const section = document.querySelector('#comment-section');
     if (!section) return { missing: true, scrollers: [], lists: [] };
-    // CommentSection 的根节点（也挂着 .blog-detail）
-    const wrap = section.closest('.blog-detail') as HTMLElement;
+    // CommentSection 的根节点。
+    // ⚠️ 它的祖先 `<article class="blog-detail">` 也带 `overflow-x: auto`，必须一并量：
+    // 评论根不再是滚动容器之后，溢出会**冒泡到那一层**，只量 documentElement 会漏掉。
+    const wrap = section.parentElement as HTMLElement;
+    const article = section.closest('.blog-detail') as HTMLElement | null;
     const scrollers: string[] = [];
     const lists: string[] = [];
 
-    // ① 症状：整页 + 评论区里的每个滚动容器都不该有横向溢出
-    const nodes: HTMLElement[] = [document.documentElement, wrap, ...wrap.querySelectorAll<HTMLElement>('*')];
+    // ① 症状：整页 + 正文外层 + 评论区里的每个滚动容器都不该有横向溢出
+    const nodes: HTMLElement[] = [
+      document.documentElement,
+      ...(article ? [article] : []),
+      wrap,
+      ...wrap.querySelectorAll<HTMLElement>('*'),
+    ];
     for (const n of nodes) {
       if (n.scrollWidth > n.clientWidth + 1) {
         scrollers.push(`${n.tagName.toLowerCase()}.${n.className || '(无类名)'} +${n.scrollWidth - n.clientWidth}px`);
@@ -88,11 +98,16 @@ test('楼中楼不横向溢出：评论区底部不该出现横向滚动条', as
   expect(report.lists, `楼中楼右边界越过了父级：${report.lists.join('、')}`).toEqual([]);
 });
 
-// 备注（未修，待定）：CommentSection 的根节点用 `className="blog-detail"`，
-// 与 `src/app/blog/[id]/page.tsx` 的外层 `<article>` 同名 —— 于是它又吃了一遍
-// max-width: 940px / margin: 50px auto / padding: 0 16px（container-padding，原为
-// 写死的 20px）/ overflow-x: auto，评论区因此比正文再内缩 16px、再下移 50px，
-// 并且自带一个滚动容器（上面那条横向滚动条就是画在它身上的）。改类名可以一并消掉，
-// 但会动到评论区的位置与宽度，需要在真浏览器里目视确认，故此处只记录、未改。
+// 【2026-09-18 已修】CommentSection 的根节点原为 `className="blog-detail"`，与
+// `src/app/blog/[id]/page.tsx` 的外层 `<article>` 同名 —— 于是它又吃了一遍
+// max-width: 940px / margin: 50px auto / padding: 0 16px / overflow-x: auto，
+// 评论区因此自带一个滚动容器（上面那条横向滚动条正是画在它身上的），
+// 左右也比正文卡各宽 4px（窄屏则窄 16px）。
 //
-// （窄屏实测：评论文字落在 32px，与博客列表页 .blog-item 的 16+16 一致，故暂不算偏差。）
+// 现改为与正文同列的 `.blog-content-container-container`（MarkdownRenderer 的根节点
+// 用的也是它）：评论块左右边缘与正文卡**完全对齐**，两个断点都对；檐沟只有一份定义
+// （桌面 20px / 窄屏 0），不会再 drift。桌面比修前窄 4px、窄屏比修前宽 16px。
+//
+// ⚠️ 顺带丢掉的还有那个 50px 上外边距（原先与 `.read-controls` 的 40px 折叠成 50px）——
+// 现在评论区与操作区的间距就是 `.read-controls` 自己的 40px（窄屏 30px）。
+// 若日后觉得太挤，改 `.read-controls` 的下外边距，**不要**给评论根节点加 margin。
