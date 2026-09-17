@@ -71,6 +71,8 @@ export async function resetDb() {
   const tables = [
     'chat_messages', 'chat_members', 'chat_channels',
     'comment_likes', 'blog_comments', 'blog_likes', 'blog_feeds',
+    // 收藏夹引用 favorites 与 blogs，favorites 引用 users —— 都必须先于它们删
+    'favorite_items', 'favorites',
     'blog_contents', 'blogs', 'categories',
     'vote_records', 'vote_options', 'votes',
     'clip_text', 'clipboards', 'image_hosting',

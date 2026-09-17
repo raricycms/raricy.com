@@ -72,6 +72,7 @@ model User {
 
   blogs                 Blog[]              @relation("BlogAuthor")
   blogLikes             BlogLike[]
+  favorites             Favorite[]
   comments              BlogComment[]       @relation("CommentAuthor")
   commentLikes          CommentLike[]
   notificationsReceived Notification[]      @relation("NotificationRecipient")
@@ -159,6 +160,7 @@ model Blog {
   likes    BlogLike[]
   comments BlogComment[]
   feeds    BlogFeed[]
+  favoriteItems FavoriteItem[]
   @@index([id], map: "ix_blogs_id")
   @@index([title], map: "ix_blogs_title")
   @@index([authorId], map: "ix_blogs_author_id")
@@ -687,4 +689,62 @@ model ChatMessage {
 
   @@index([channelId, id], map: "ix_chat_messages_channel_id_id")
   @@map("chat_messages")
+}
+
+// ── 收藏夹 ───────────────────────────────────────────────────────────────────
+
+// 用户自建的博客收藏夹。软删（deleted/deletedAt），永不物理删。
+//
+// ⚠️ id 是 **UUID**，不是自增整数 —— 这不是随手选的：
+//   • 私密收藏夹按需求**没有**可分享的 6 位 id（publicId 为 NULL），所以所有者的
+//     管理页只能拿内部 id 当路由参数（/favorite/mine/<id>）。自增整数是**顺序可枚举**
+//     的，那样「私密收藏夹没有对外把手」就只靠每条路由都记得判所有权来兜底；
+//     UUID 让「某条路由忘了判」从「越权读到别人的私密收藏夹」降级成无害。
+//   • 与 §8 的 ID 口径一致：UUID4 用于 User / Blog / Comment 这类用户内容。
+//
+// ⚠️ publicId 非空 ⟺ isPublic 为真（见 src/lib/favorite-service.ts 的「不变量 1」）。
+//   私密收藏夹的 public_id 恒为 NULL —— 不是「有 id 但不显示」。SQLite 的 UNIQUE
+//   允许任意多个 NULL，所以私密行永远不可能意外获得把手。
+//   ⚠️ 反向不成立：**绝不**用 `public_id != NULL` 代替 `is_public = 1` 来判公开
+//   （历史行 / 未来的写路径都可能留下「is_public=0 但 public_id 还在」的活口）。
+model Favorite {
+  id        String    @id
+  /// 6 位数字的对外把手，**仅公开收藏夹有值**。全程按字符串处理（"000123" 不能被数字化）。
+  publicId  String?   @unique(map: "ix_favorites_public_id") @map("public_id")
+  userId    String    @map("user_id")
+  title     String
+  /// 创建时定，**此后不可修改**（没有任何接口能改它；改性质只能靠「复制」）。
+  isPublic  Boolean   @default(false) @map("is_public")
+  createdAt DateTime? @map("created_at")
+  deleted   Boolean   @default(false)
+  deletedAt DateTime? @map("deleted_at")
+
+  user  User           @relation(fields: [userId], references: [id])
+  items FavoriteItem[]
+
+  @@index([userId], map: "ix_favorites_user_id")
+  @@map("favorites")
+}
+
+// 收藏夹条目。形态刻意对齐 BlogLike（非可选 deleted + 配对 deletedAt + 命名唯一约束）：
+// 同一个博客可以被同一个用户放进**多个**收藏夹，所以唯一的粒度是 (收藏夹, 博客)，
+// 而不是 (用户, 博客)。
+//
+// ⚠️ 唯一约束是**物理**的、包含墓碑行，因此「移出后再加入」必须**复活旧行**
+//   （翻转 deleted），不能新插一行 —— 会撞唯一约束。见 favorite-service 的「不变量 8」。
+model FavoriteItem {
+  id         Int       @id @default(autoincrement())
+  favoriteId String    @map("favorite_id")
+  blogId     String    @map("blog_id")
+  createdAt  DateTime? @map("created_at")
+  deleted    Boolean   @default(false)
+  deletedAt  DateTime? @map("deleted_at")
+
+  favorite Favorite @relation(fields: [favoriteId], references: [id])
+  blog     Blog     @relation(fields: [blogId], references: [id])
+
+  @@unique([favoriteId, blogId], name: "uq_favorite_item")
+  @@index([favoriteId], map: "ix_favorite_items_favorite_id")
+  @@index([blogId], map: "ix_favorite_items_blog_id")
+  @@map("favorite_items")
 }
