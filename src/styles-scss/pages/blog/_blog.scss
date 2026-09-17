@@ -810,8 +810,14 @@ a {
         min-width: 100px;
     }
 
+    /* 窄屏：这层壳**不能再加内边距**。页边距归 .blog-detail（container-padding 16px），
+       壳里再压 10px 的话正文卡左边界落在 26px，而博客列表页的 .blog-item 就在 16px ——
+       用户报的「手机端文章页侧边距比别的页面大」正是它，而且越往里越明显：
+       正文文字 16+10+卡片内距 20 = 46px，列表页是 16+16 = 32px。
+       ⚠️ 桌面端那 20px 本次**不动**（只按用户反馈修窄屏）：它让卡片实际渲染 860px
+       而非声明的 max-width: 900px，要动属于改版，得连着阅读行宽一起议。 */
     .blog-content-container-container {
-        padding: 0 10px;
+        padding: 0;
     }
 
     .blog-content-container h1 {
