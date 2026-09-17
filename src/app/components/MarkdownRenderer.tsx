@@ -2,7 +2,9 @@
 
 // 博客正文客户端渲染：marked + DOMPurify + highlight.js（对齐 Flask markdown_renderer.js）。
 // 额外对齐（本波）：
-//   • 内容引用预处理（[@id]）：8位→剪贴板正文内联 / 9位→投票嵌入 / 10位→图床图片。
+//   • 内容引用预处理（[@id]）：8位→剪贴板正文内联 / 9位→投票嵌入 / 10位→图床图片 /
+//     6位→收藏夹卡片（**只在这条管线上**：评论与讨论走 rich-text.ts，那边刻意不认 6 位，
+//     与 9 位投票「只识别不展开」同向）。
 //   • MathJax：行内 $..$ / \(..\)、块级 $$..$$ / \[..\]、mhchem（mathjax-full 模块化 API）。
 //   • 代码高亮亮/暗双主题随 data-theme 切换（github / monokai，media 切换，对齐原站）。
 //   • 代码块「复制」按钮、图片点击放大、外链 target=_blank 加固、任务列表 checkbox。
@@ -17,6 +19,14 @@ import { RegisterHTMLHandler } from 'mathjax-full/js/handlers/html.js';
 import { AllPackages } from 'mathjax-full/js/input/tex/AllPackages.js';
 import { BLOG_SANITIZE_OPTIONS, renderVoteEmbed } from '@/lib/blog-markdown';
 import { protectMath, restoreMath } from '@/lib/markdown-math';
+import {
+  MAX_CARD_ITEMS,
+  buildFavoriteCardHtml,
+  collectFavoriteRefs,
+  favoriteFailureText,
+  isFavoriteId,
+  replaceFavoriteRefs,
+} from '@/lib/favorite-refs';
 
 // ── 内容引用预处理器（对齐 clipboard-processor.js，端点改为 Next API）───────────
 class ContentRefProcessor {
@@ -31,11 +41,15 @@ class ContentRefProcessor {
     const clipboardIds = new Set<string>();
     const voteIds = new Set<string>();
     const imageIds = new Set<string>();
+    const favoriteIds = new Set<string>();
     for (const m of matches) {
       const id = m[1];
       if (id.length === 8) clipboardIds.add(id);
       else if (id.length === 9) voteIds.add(id);
       else if (id.length === 10) imageIds.add(id);
+      // 6 位是收藏夹。用白名单判定（`^[0-9]{6}$`）而不是「长度 === 6」——
+      // 6 位字母/下划线的 token 必须落回字面量，不要去请求一次不存在的资源。
+      else if (isFavoriteId(id)) favoriteIds.add(id);
     }
 
     const clipboardFetches = [...clipboardIds]
@@ -68,7 +82,39 @@ class ContentRefProcessor {
       if (!this.cache.has(id)) this.cache.set(id, { type: 'image', url: `/api/images/${id}/raw` });
     }
 
-    await Promise.all([...clipboardFetches, ...voteFetches]);
+    // 收藏夹：拉**免认证**的那条公开读路径（与站外机器人同一个口径），拿到就
+    // 直接拼成卡片 HTML 存进 cache。取不到（不存在 / 私密 / 已软删 / 网络错误）
+    // 一律降级成失败文案，静默不抛 —— 调用方是 `void`。
+    const favoriteFetches = [...favoriteIds]
+      .filter((id) => !this.cache.has(id))
+      .map(async (id) => {
+        try {
+          const res = await fetch(`/api/spider/favorites/${id}`, { credentials: 'same-origin' });
+          if (!res.ok) throw new Error('failed');
+          const data = await res.json();
+          this.cache.set(id, {
+            type: 'favorite',
+            content: buildFavoriteCardHtml({
+              id,
+              title: typeof data.title === 'string' ? data.title : '',
+              count: typeof data.count === 'number' ? data.count : 0,
+              author: typeof data.author === 'string' ? data.author : undefined,
+              blogs: Array.isArray(data.blogs)
+                ? data.blogs
+                    .filter((b: unknown): b is { id: string; title: string } => {
+                      const o = b as { id?: unknown; title?: unknown };
+                      return typeof o?.id === 'string' && typeof o?.title === 'string';
+                    })
+                    .slice(0, MAX_CARD_ITEMS)
+                : [],
+            }),
+          });
+        } catch {
+          this.cache.set(id, { type: 'favorite', content: favoriteFailureText(id) });
+        }
+      });
+
+    await Promise.all([...clipboardFetches, ...voteFetches, ...favoriteFetches]);
 
     let processed = markdownContent;
     let count = 0;
@@ -87,6 +133,30 @@ class ContentRefProcessor {
       processed = processed.replace(fullMatch, () => replacement);
       count++;
     }
+
+    // ── 收藏夹卡片：**最后单独一趟**，且**按区间切片**而不是 replace ─────────────
+    //
+    // 两个「为什么」：
+    //   · 为什么放在最后：上面那个循环用的是 `processed.replace(fullMatch, …)`
+    //     （按内容搜索，不是按位置）。卡片 HTML 里含博客标题（不可信输入），标题里
+    //     若正好有 `[@8位]` 字样，那个循环会命中**插入内容里的那处** —— 也正是
+    //     content-refs.ts 里 replaceClipboardRef 改写成区间切片的原因。放在它后面做，
+    //     并且此后不再有任何扫描，插入的卡片就不可能被二次解释。
+    //   · 为什么重新扫一遍而不是复用上面的 matches：上面的循环已经改写过
+    //     `processed`，那批下标对应的是**原始**字符串，长度变了就不成立了。
+    //     这里对着当前字符串重新取一次位置，切片才是准的。
+    const slots = collectFavoriteRefs(processed);
+    if (slots.length > 0) {
+      const htmlById = new Map<string, string>();
+      for (const slot of slots) {
+        const hit = this.cache.get(slot.id);
+        if (hit?.type === 'favorite' && hit.content !== undefined) {
+          htmlById.set(slot.id, hit.content);
+        }
+      }
+      processed = replaceFavoriteRefs(processed, slots, htmlById);
+    }
+
     return processed;
   }
 }

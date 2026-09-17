@@ -140,6 +140,21 @@ export interface FavoriteRefSlot {
 }
 
 /**
+ * 扫出正文里所有收藏夹引用（含内部空白容忍，与博客侧那条 `\[@\s*(\w+)\s*\]` 同口径）。
+ *
+ * ★ 每次调用新建正则 ★ 全局正则的 `lastIndex` 会在多次 exec 之间残留，复用同一个
+ * 实例会让第二次调用从上次的位置继续（content-refs.ts 的 embedImageRefs 记着同一条）。
+ */
+export function collectFavoriteRefs(text: string): FavoriteRefSlot[] {
+  const re = new RegExp(`\\[@\\s*([0-9]{${FAVORITE_ID_LEN}})\\s*\\]`, 'g');
+  const out: FavoriteRefSlot[] = [];
+  for (const m of text.matchAll(re)) {
+    out.push({ id: m[1], match: m[0], start: m.index ?? 0 });
+  }
+  return out;
+}
+
+/**
  * 把正文里的收藏夹引用换成卡片 HTML，**按区间切片**。
  *
  * ★ 为什么不 `text.replace(match, html)` ★ 与 replaceClipboardRef 同一个理由：

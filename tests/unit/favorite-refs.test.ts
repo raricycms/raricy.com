@@ -21,6 +21,7 @@ import {
   favoriteFailureText,
   buildFavoriteCardHtml,
   replaceFavoriteRefs,
+  collectFavoriteRefs,
   type FavoriteRefSlot,
 } from '@/lib/favorite-refs';
 
@@ -224,6 +225,48 @@ describe('replaceFavoriteRefs —— 按区间切片，绝不重扫', () => {
 describe('favoriteFailureText', () => {
   it('与剪贴板的失败文案同构', () => {
     expect(favoriteFailureText('123456')).toBe('[收藏夹 123456 加载失败]');
+  });
+});
+
+describe('collectFavoriteRefs —— 扫出正文里的所有引用', () => {
+  it('给出 id / match / start（位置用于切片）', () => {
+    const text = '前 [@111111] 后';
+    const slots = collectFavoriteRefs(text);
+    expect(slots).toHaveLength(1);
+    expect(slots[0].id).toBe('111111');
+    expect(slots[0].match).toBe('[@111111]');
+    expect(text.slice(slots[0].start, slots[0].start + slots[0].match.length)).toBe('[@111111]');
+  });
+
+  it('容忍内部空白（match 要含空白，否则切不干净）', () => {
+    const text = '[@ 111111 ]';
+    const slots = collectFavoriteRefs(text);
+    expect(slots).toHaveLength(1);
+    expect(slots[0].match).toBe('[@ 111111 ]');
+    expect(slots[0].start).toBe(0);
+  });
+
+  it('6 位字母 / 其它长度都不算（与主循环的白名单判定一致）', () => {
+    expect(collectFavoriteRefs('[@abcdef]')).toHaveLength(0);
+    expect(collectFavoriteRefs('[@12345]')).toHaveLength(0);
+    expect(collectFavoriteRefs('[@1234567]')).toHaveLength(0);
+    // 8 位剪贴板 token 里恰好含 6 位数字也不该被切出来
+    expect(collectFavoriteRefs('[@12345678]')).toHaveLength(0);
+  });
+
+  it('多次调用互不干扰（全局正则的 lastIndex 不能残留）', () => {
+    const text = '[@111111] 与 [@222222]';
+    expect(collectFavoriteRefs(text)).toHaveLength(2);
+    expect(collectFavoriteRefs(text)).toHaveLength(2); // 第二次仍是 2 而不是 0/1
+  });
+
+  it('扫出来的 slot 直接喂给 replaceFavoriteRefs 就能用', () => {
+    const text = '看 [@111111] 和 [@222222]';
+    const html = new Map([
+      ['111111', 'A'],
+      ['222222', 'B'],
+    ]);
+    expect(replaceFavoriteRefs(text, collectFavoriteRefs(text), html)).toBe('看 A 和 B');
   });
 });
 
