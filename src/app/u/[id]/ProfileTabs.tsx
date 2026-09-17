@@ -1,5 +1,6 @@
 'use client';
 
+import type { CSSProperties } from 'react';
 import { useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -157,12 +158,22 @@ export default function ProfileTabs({
 
   return (
     <>
-      <div className="profile-tabs" role="tablist">
+      {/* 胶囊滑块：视觉与博客列表的排序切换共用 .segmented（见
+          styles-scss/components/_segmented.scss），但 **ARIA 保留 tablist/tab** ——
+          这里的语义确实是「两个页签切换同一个资料页的两块内容」，与排序那种
+          「一组互斥开关」不同。视觉共用、语义各按各的。
+          --seg-i / --seg-n 由这里传，滑块位移交给 CSS。 */}
+      <div
+        className="segmented profile-tabs"
+        role="tablist"
+        style={{ '--seg-i': tab === 'blogs' ? 0 : 1, '--seg-n': 2 } as CSSProperties}
+      >
+        <span className="segmented__thumb" aria-hidden="true" />
         <button
           type="button"
           role="tab"
           aria-selected={tab === 'blogs'}
-          className={`profile-tabs__tab${tab === 'blogs' ? ' profile-tabs__tab--active' : ''}`}
+          className={`segmented__btn profile-tabs__tab${tab === 'blogs' ? ' is-active' : ''}`}
           onClick={() => selectTab('blogs')}
         >
           文章 ({blogsCount})
@@ -171,7 +182,7 @@ export default function ProfileTabs({
           type="button"
           role="tab"
           aria-selected={tab === 'comments'}
-          className={`profile-tabs__tab${tab === 'comments' ? ' profile-tabs__tab--active' : ''}`}
+          className={`segmented__btn profile-tabs__tab${tab === 'comments' ? ' is-active' : ''}`}
           onClick={() => selectTab('comments')}
         >
           评论 ({commentsCount})

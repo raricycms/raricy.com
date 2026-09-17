@@ -356,15 +356,13 @@ a {
     margin: 0 0 16px;
 }
 
-/* 切页档：当前排序常驻最高级空闲态。原先空闲态铺的是 --color-background-content
-   灰底，与次级档「无底色」的规则不符，已去掉。 */
-.blog-sort-btn {
-    @include m.btn-tab;
+/* 滑块内的按钮只定尺寸 —— 几何（等宽、位移、轨道底色、动画）全部由
+   components/_segmented.scss 提供。 */
+.blog-sort .segmented__btn {
     padding: 6px 14px;
     font-size: 0.85rem;
     font-weight: 400;
 
-    &.active,
     &.is-active {
         font-weight: 600;
     }
@@ -630,7 +628,7 @@ a {
         margin: 2px 0 10px;
     }
 
-    .blog-sort-btn {
+    .blog-sort .segmented__btn {
         padding: 5px 12px;
         font-size: 0.8rem;
     }

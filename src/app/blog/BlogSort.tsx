@@ -1,8 +1,15 @@
 'use client';
 
 import { useEffect } from 'react';
+import type { CSSProperties } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { LS_KEY, COOKIE_NAME, COOKIE_MAX_AGE } from '@/lib/blog-sort-pref';
+
+/** 两个互斥选项。顺序即滑块里的顺序，下标直接喂给 --seg-i。 */
+const SORT_OPTIONS = [
+  { value: 'created', label: '发布时间' },
+  { value: 'updated', label: '更新时间' },
+] as const;
 
 // 博客列表排序切换 —「发布时间 / 更新时间」
 //
@@ -82,6 +89,9 @@ export default function BlogSort({ initialSort }: { initialSort: SortValue }) {
   const selected: SortValue =
     urlSort === 'created' || urlSort === 'updated' ? urlSort : initialSort;
 
+  /** 滑块位置。selected 只可能是两个合法值之一，故不会返回 -1。 */
+  const segIndex = SORT_OPTIONS.findIndex((o) => o.value === selected);
+
   // 迁移：URL 无 sort 参数 + 无 cookie（旧访客存量 LS / ITP 清 cookie 后自愈）+ LS=updated
   // → 补建 cookie 镜像并 replace 补参（补参后 effect 再跑即有显式 sort → 自终止，无循环）。
   // cookie 已存在 = 稳态，SSR 首屏已按偏好直出 —— 提前 return，不 replace、不重取数。
@@ -117,23 +127,33 @@ export default function BlogSort({ initialSort }: { initialSort: SortValue }) {
   }
 
   return (
-    <div className="blog-sort" role="group" aria-label="博客排序方式">
-      <button
-        type="button"
-        className={`blog-sort-btn${selected === 'created' ? ' active' : ''}`}
-        aria-pressed={selected === 'created'}
-        onClick={() => choose('created')}
+    <div className="blog-sort">
+      {/* 胶囊滑块。几何与动画见 styles-scss/components/_segmented.scss ——
+          --seg-n（选项数）与 --seg-i（当前项下标）由这里传进去，滑块的位移
+          由 CSS 算，组件不碰 DOM 位置。
+          ⚠️ 这里**必须**保持 role="group" + aria-pressed（而不是 role="tab"）：
+          它是「一组互斥开关」，且 blog.spec.ts 用
+          getByRole('button', { name: '更新时间' }) 定位 —— 换成 tab 角色后
+          按钮角色被覆盖，那条用例会直接失配。 */}
+      <div
+        className="segmented"
+        role="group"
+        aria-label="博客排序方式"
+        style={{ '--seg-i': segIndex, '--seg-n': SORT_OPTIONS.length } as CSSProperties}
       >
-        发布时间
-      </button>
-      <button
-        type="button"
-        className={`blog-sort-btn${selected === 'updated' ? ' active' : ''}`}
-        aria-pressed={selected === 'updated'}
-        onClick={() => choose('updated')}
-      >
-        更新时间
-      </button>
+        <span className="segmented__thumb" aria-hidden="true" />
+        {SORT_OPTIONS.map((o) => (
+          <button
+            key={o.value}
+            type="button"
+            className={`segmented__btn${selected === o.value ? ' is-active' : ''}`}
+            aria-pressed={selected === o.value}
+            onClick={() => choose(o.value)}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

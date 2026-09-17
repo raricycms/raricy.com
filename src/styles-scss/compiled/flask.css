@@ -2048,6 +2048,54 @@ textarea.form-control {
   white-space: nowrap;
 }
 
+.segmented {
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+  padding: 4px;
+  border-radius: 999px;
+  background: var(--color-background-content);
+}
+
+.segmented__thumb {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 4px;
+  width: calc((100% - 8px) / var(--seg-n, 2));
+  border-radius: 999px;
+  background: var(--color-brand-secondary);
+  transform: translateX(calc(var(--seg-i, 0) * 100%));
+  transition: transform 0.25s ease;
+  pointer-events: none;
+}
+
+.segmented__btn {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 0;
+  border: none;
+  background: transparent;
+  border-radius: 999px;
+  color: var(--color-text-secondary);
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.25s ease;
+}
+.segmented__btn.is-active, .segmented__btn:hover:not(:disabled) {
+  color: var(--color-brand-primary);
+}
+.segmented__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .segmented__thumb {
+    transition: none;
+  }
+}
 /* 被跨站 iframe 嵌入时的居中模态框（FrameBuster.tsx）。
    只跨站弹：同站嵌入与正常访问完全不渲染。
 
@@ -4475,46 +4523,14 @@ a:hover {
   margin: 0 0 16px;
 }
 
-/* 切页档：当前排序常驻最高级空闲态。原先空闲态铺的是 --color-background-content
-   灰底，与次级档「无底色」的规则不符，已去掉。 */
-.blog-sort-btn {
-  border: none;
-  border-radius: 999px;
-  background-color: transparent;
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  transition: color 0.25s ease, background-color 0.25s ease;
-}
-.blog-sort-btn:hover:not(:disabled) {
-  background-color: var(--color-brand-secondary);
-  color: var(--color-brand-primary);
-}
-.blog-sort-btn:active:not(:disabled) {
-  background-color: var(--color-brand-primary);
-  color: #fff;
-}
-.blog-sort-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.blog-sort-btn:active:not(:disabled) {
-  background-color: var(--color-brand-secondary);
-  color: var(--color-brand-primary);
-}
-.blog-sort-btn.is-active, .blog-sort-btn.active {
-  background-color: var(--color-brand-secondary);
-  color: var(--color-brand-primary);
-}
-.blog-sort-btn.is-active:hover:not(:disabled), .blog-sort-btn.is-active:active:not(:disabled), .blog-sort-btn.active:hover:not(:disabled), .blog-sort-btn.active:active:not(:disabled) {
-  background-color: var(--color-brand-secondary);
-  color: var(--color-brand-primary);
-}
-.blog-sort-btn {
+/* 滑块内的按钮只定尺寸 —— 几何（等宽、位移、轨道底色、动画）全部由
+   components/_segmented.scss 提供。 */
+.blog-sort .segmented__btn {
   padding: 6px 14px;
   font-size: 0.85rem;
   font-weight: 400;
 }
-.blog-sort-btn.active, .blog-sort-btn.is-active {
+.blog-sort .segmented__btn.is-active {
   font-weight: 600;
 }
 
@@ -4761,7 +4777,7 @@ a:hover {
   .blog-sort {
     margin: 2px 0 10px;
   }
-  .blog-sort-btn {
+  .blog-sort .segmented__btn {
     padding: 5px 12px;
     font-size: 0.8rem;
   }
@@ -8540,40 +8556,16 @@ body {
 
 .profile-tabs {
   display: flex;
-  gap: 4px;
+  width: 100%;
   margin-bottom: 16px;
-  background: var(--color-background-card);
-  border-radius: 30px;
-  padding: 4px;
-  box-shadow: var(--shadow-card);
-}
-@media (max-width: 768px) {
-  .profile-tabs {
-    border-radius: 20px;
-  }
 }
 
 .profile-tabs__tab {
-  flex: 1;
-  text-align: center;
   padding: 10px 20px;
-  border-radius: 26px;
   font-size: 0.95rem;
   font-weight: 500;
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  transition: all 0.2s ease;
+  text-align: center;
   user-select: none;
-  border: none;
-  background: transparent;
-}
-.profile-tabs__tab--active {
-  background: var(--color-brand-primary);
-  color: #fff;
-}
-.profile-tabs__tab:hover:not(.profile-tabs__tab--active) {
-  color: var(--color-text-primary);
-  background: var(--color-background-subtle);
 }
 
 .profile-tab-panel {

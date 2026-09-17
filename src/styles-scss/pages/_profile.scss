@@ -258,44 +258,26 @@
 }
 
 // --- Tabs ---
+//
+// 「文章 / 评论」页签复用 .segmented 胶囊滑块（几何、位移动画、轨道底色都在
+// components/_segmented.scss）。这里只留布局：撑满整行 + 下外边距。
+//
+// 原先它是自己画的一个「伪滑块」：轨道 30px 圆角 + 卡片底 + 投影，选中项把按钮
+// 直接涂成品牌实底白字 —— 那是**最高级按钮的 hover 态**，而不是「当前项」该有的
+// 空闲态；切换时也没有任何移动反馈，就是硬闪一下。
 
 .profile-tabs {
   display: flex;
-  gap: $space-1;
+  width: 100%;
   margin-bottom: $space-4;
-  background: var(--color-background-card);
-  border-radius: 30px;
-  padding: 4px;
-  box-shadow: var(--shadow-card);
-
-  @media (max-width: 768px) {
-    border-radius: 20px;
-  }
 }
 
 .profile-tabs__tab {
-  flex: 1;
-  text-align: center;
   padding: 10px 20px;
-  border-radius: 26px;
   font-size: 0.95rem;
   font-weight: 500;
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  transition: all 0.2s ease;
+  text-align: center;
   user-select: none;
-  border: none;
-  background: transparent;
-
-  &--active {
-    background: var(--color-brand-primary);
-    color: #fff;
-  }
-
-  &:hover:not(&--active) {
-    color: var(--color-text-primary);
-    background: var(--color-background-subtle);
-  }
 }
 
 // --- Tab panels ---

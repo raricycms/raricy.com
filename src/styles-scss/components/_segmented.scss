@@ -1,0 +1,81 @@
+// ── 胶囊滑块（分段切换）───────────────────────────────────────────────────────
+//
+// 【什么时候用】**只有「2 选 1 的互斥视图切换」才用它**。目前全站就两处：
+//   · 博客列表的「发布时间 / 更新时间」（pages/blog/_menu.scss）
+//   · 个人主页的「文章 / 评论」（pages/_profile.scss）
+//
+// 【什么时候**不要**用】它不是通用分段控件。别顺手往这些地方套：
+//   · 工具箱的分类筛选 —— N 选 1，选项数量不定，滑块宽度会被摊薄成一条细缝
+//   · .action-button 那类互斥按钮 —— 语义是「执行一个动作」，不是「换一种看法」
+//   · 设置页的开关 —— 那是 input[type=checkbox] 做的 switch，不是分段选择
+//   判断标准一句话：**这块滑块代表同一个视图的两种呈现**。但凡选项可能变多，
+//   或者点下去会提交/执行什么，就该用按钮。滥用会让「滑块 = 换个角度看同一份
+//   内容」这层意思失效，而它正是这个控件唯一的价值。
+//
+// 【几何】按钮**必须等宽**（flex: 1 1 0）—— 滑块的位置按「第 i 格 × 一格宽」
+// 计算，按钮不等宽就会与选项错位。个人主页两个页签的文字自带计数
+// （「文章 (3)」/「评论 (5)」）本来宽度不同，套上滑块后各占一半，是刻意的。
+//
+// 【驱动方式】容器上的 --seg-n（选项数）与 --seg-i（当前项下标，从 0 起）由组件
+// 传进来（React 的 style 即可）。因此**不需要 :has()**，也就没有旧引擎回退问题 ——
+// 用 :has() 的话还得再写一遍 @supports not 的降级样式。
+//
+// 【语义各自保留】视觉共用，但 ARIA 按场景给：博客排序是 role="group" +
+// aria-pressed（它是一组开关），个人主页页签是 role="tablist" + role="tab" +
+// aria-selected（它切换面板）。别为了「统一」把两者写成一样 —— 它们对读屏
+// 软件的含义本来就不同。
+
+.segmented {
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+  padding: 4px;
+  border-radius: 999px;
+  background: var(--color-background-content);
+}
+
+/// 滑块本体。纯装饰，不接收指针事件（点击要落到下面的按钮上）。
+.segmented__thumb {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 4px;
+  width: calc((100% - 8px) / var(--seg-n, 2));
+  border-radius: 999px;
+  background: var(--color-brand-secondary);
+  transform: translateX(calc(var(--seg-i, 0) * 100%));
+  transition: transform 0.25s ease;
+  pointer-events: none;
+}
+
+.segmented__btn {
+  position: relative; // 压住滑块（滑块是 absolute，按钮必须有定位 + z-index）
+  z-index: 1;
+  flex: 1 1 0;
+  border: none;
+  background: transparent;
+  border-radius: 999px;
+  color: var(--color-text-secondary);
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.25s ease;
+
+  // 当前项 = 「最高级按钮的空闲态」的文字色（底色由滑块承担）；
+  // hover 未选中项也给同一个色 —— 与切页档的递进一致。
+  &.is-active,
+  &:hover:not(:disabled) {
+    color: var(--color-brand-primary);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .segmented__thumb {
+    transition: none;
+  }
+}
