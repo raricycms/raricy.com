@@ -78,9 +78,8 @@ test('详情页：点赞 / 投喂 / 收藏 三颗在同一行，且标签不折�
   expect(info.sameRow, `三颗按钮没落在同一行（宽度 ${info.widths.join(' / ')}）`).toBe(true);
   expect(info.wrapped, `按钮标签折行了：${info.wrapped.join('、')}`).toEqual([]);
 
-  // ★ 窄屏专属契约：三颗**等宽**平分。桌面端刻意不等宽（跟随各自内容宽度，
-  //   与改造前一致）；<360px 又退回按内容宽度（见 _blog.scss 的兜底）。
-  //   所以这条只落在 360~768px 这一档 —— 它正是「压到一行」的做法本身。
+  // ★ 窄屏专属契约：三颗**等宽**平分。桌面端刻意不等宽（跟随各自内容宽度）。
+  //   窄屏没有下限兜底了 —— 文字标签隐藏后内容只剩约 34px，320px 档也塞得下。
   const vw = page.viewportSize()?.width ?? 0;
   if (vw >= 360 && vw <= 768) {
     const [a, b, c] = info.widths;
@@ -89,6 +88,69 @@ test('详情页：点赞 / 投喂 / 收藏 三颗在同一行，且标签不折�
       `${vw}px 下三颗应当等宽，实际 ${info.widths.join(' / ')}`
     ).toBeLessThan(2);
   }
+});
+
+/** 三颗按钮的渲染几何 + 内容构成（窄屏那条用例用）。 */
+async function readActions(page: import('@playwright/test').Page) {
+  return page
+    .locator('#read-controls .read-controls__row')
+    .first()
+    .evaluate((el) => {
+      const btns = [...el.querySelectorAll(':scope > button')] as HTMLElement[];
+      return btns.map((b) => {
+        const r = b.getBoundingClientRect();
+        // 文字标签是**没有类名**的那个 span（计数徽标也 span，但带类名）
+        const label = b.querySelector('span:not([class])') as HTMLElement | null;
+        const badge = b.querySelector('.like-count-badge, .fish-count-badge');
+        return {
+          h: +r.height.toFixed(2),
+          w: +r.width.toFixed(1),
+          labelShown: label ? label.getBoundingClientRect().height > 0 : false,
+          count: (badge?.textContent || '').trim(),
+        };
+      });
+    });
+}
+
+test('详情页：窄屏只留图标与计数，且三颗高度与桌面端一致', async ({ page }) => {
+  await registerFreshUser(page, { core: true });
+  const blogId = await createBlog(page, `窄屏操作区 ${uniqueTag()}`);
+
+  // ★ 先定视口、再导航 ★ 三颗都带 `transition: all 0.3s ease`，而 padding / gap /
+  //   flex 都在过渡属性里 —— 先加载再改视口，量到的是过渡**起点**的值（桌面端的），
+  //   于是「窄屏是不是变矮了」永远量不出来。同文件下面那条星标用例踩的是同一个坑，
+  //   只是那边是颜色、这边是几何。
+  async function at(width: number) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(`/blog/${blogId}`);
+    const row = page.locator('#read-controls .read-controls__row').first();
+    await expect(row.getByRole('button')).toHaveCount(3);
+    return readActions(page);
+  }
+
+  const desk = await at(800);
+  const mob = await at(390);
+
+  // 桌面端：三颗都带文字标签
+  expect(desk.map((b) => b.labelShown), '桌面端不该隐藏文字标签').toEqual([true, true, true]);
+  // 窄屏：标签全隐藏，只剩图标 + 计数（收藏那颗本来就没有计数）
+  expect(mob.map((b) => b.labelShown), '窄屏应当只留图标与计数').toEqual([false, false, false]);
+  expect(mob[0].count, '窄屏点赞的计数该还在').not.toBe('');
+  expect(mob[1].count, '窄屏投喂的计数该还在').not.toBe('');
+  expect(mob[2].count, '收藏本来就没有计数').toBe('');
+
+  // ★ 用户报的 bug：这三颗的高度在 768px 前后会变。高度由 _blog.scss 的
+  //   min-height: 44px 钉死（桌面端 44.31 / 44.00 的零头是计数徽标撑的）。
+  mob.forEach((b, i) => {
+    expect(
+      Math.abs(b.h - desk[i].h),
+      `第 ${i + 1} 颗的高度跨断点变了：桌面 ${desk[i].h}px → 窄屏 ${b.h}px`
+    ).toBeLessThan(1);
+  });
+
+  // 窄屏三颗等宽平分（与上一条用例同一契约，这里在 390px 上再钉一次）
+  const ws = mob.map((b) => b.w);
+  expect(Math.max(...ws) - Math.min(...ws), `窄屏三颗应当等宽，实际 ${ws.join(' / ')}`).toBeLessThan(2);
 });
 
 test('详情页：星标未收藏时不亮，收藏后才变黄', async ({ page }) => {

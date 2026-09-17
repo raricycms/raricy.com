@@ -77,6 +77,9 @@ const RESPONSIVE_SPECS: RegExp[] = [
   // 这类**靠浏览器排版才成立**的事实，且按 viewportSize() 分档（<360px 有兜底）。
   // 桌面那一遍同样要跑 —— 用户报的正是**电脑端**弹窗里两颗按钮被拆成两行。
   /favorite-layout\.spec\.ts$/,
+  // 评论区的横向溢出（楼中楼缩进把祖先撑宽）。同样是排版事实：border-box 下
+  // padding 算在 width: 100% 里、margin 不算，要靠浏览器排版才看得出溢出多少。
+  /comment-layout\.spec\.ts$/,
 ];
 
 export default defineConfig({
