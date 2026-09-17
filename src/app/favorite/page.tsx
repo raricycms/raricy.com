@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { ArrowLeft } from 'lucide-react';
 import { requireCoreUser } from '@/lib/guard';
 import { listOwnFavorites } from '@/lib/favorite-service';
 import FavoriteMenu from './FavoriteMenu';
@@ -29,8 +30,12 @@ export default async function FavoritePage() {
         }))}
       />
 
+      {/* 「去看文章」走 .read-btn（本页 FavoriteMenu 的六颗按钮用的就是它，博客详情页的
+          「返回上页」也是）—— 原先是一行没有样式的裸链接，看着不像能点的东西。 */}
       <p style={{ marginTop: '1.5rem' }}>
-        <Link href="/blog">← 去看文章</Link>
+        <Link href="/blog" className="read-btn">
+          <ArrowLeft aria-hidden="true" size={14} /> 去看文章
+        </Link>
       </p>
     </div>
   );
