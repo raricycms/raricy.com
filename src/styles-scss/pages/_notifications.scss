@@ -1,4 +1,6 @@
+@use '../abstracts/variables' as *;
 @use '../abstracts/mixins' as m;
+
 body {
     padding-top: 62px;
     background: var(--color-background-page);
@@ -73,55 +75,64 @@ body {
     text-decoration: underline;
 }
 
+/* ── 通知列表 ────────────────────────────────────────────────────────────────
+   设计参照博客首页的列表（pages/blog/_menu.scss 的 .blog-item）：
+   30px 圆角的卡片、无边框、hover 只提阴影。修改前这里是最陈旧的一页 ——
+   10px 圆角、未读靠左侧 3px 竖条、四个按钮各带 1px 描边、色值写死
+   #e67e22 与 #777，与博客页的视觉语言完全脱节。 */
+
 .btn-group {
-    margin-bottom: 1rem;
-    text-align: center;
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: $space-2;
+    margin-bottom: $space-4;
 }
 
+/* 两个批量操作归次级档（原先各自带 1px 描边 + 6px 圆角）。
+   .action-btn.btn-danger 的红色语义由 components/_button.scss 的
+   .btn-danger 提供 —— 本文件此前又定义了一遍 .btn-danger，
+   与组件层重名且颜色/边框各说各话，已删除（详见下方注释）。 */
 .action-btn {
-    background: var(--color-background-card);
-    border: 1px solid var(--color-border);
-    color: var(--color-text-primary);
-    border-radius: 6px;
-    padding: 0.4rem 1rem;
-    margin: 0.2rem;
+    @include m.btn-secondary;
+    padding: 0.5rem 1.1rem;
     font-size: 0.9rem;
-    cursor: pointer;
-    transition: background 0.2s;
 }
-.action-btn:hover {
-    background: var(--color-background-subtle);
-}
-.btn-danger { color: var(--color-warning-primary); border-color: var(--color-warning-primary); }
-.btn-danger:hover { background: var(--color-warning-secondary); }
 
+/* 报销：此处原有 `.btn-danger { color/border-color: 警示色 }` 一份，与
+   components/_button.scss 里同名 —— 两份各自生效一半（本文件胜在 color 与
+   border-color，组件层胜在 background），渲染结果全靠巧合。已删除，
+   统一由组件层那份（警示色的最高级档）说话。 */
+
+/* 通知页**没有**筛选栏；.filter-btn 唯一的使用方是 /fish/transactions 的
+   收支类型筛选。定义落在本文件里是历史遗留 —— 改了这里会同时改到鱼干流水页，
+   故按「切页档」统一（当前项常驻最高级空闲态）。 */
 .filter-btn {
-    background: var(--color-background-card);
-    border: 1px solid var(--color-border);
-    color: var(--color-text-primary);
-    border-radius: 6px;
-    padding: 0.3rem 0.8rem;
-    margin: 0.2rem;
+    @include m.btn-tab;
+    padding: 0.4rem 0.9rem;
     font-size: 0.85rem;
     text-decoration: none;
 }
-.filter-btn.active {
-    background: var(--color-brand-primary);
-    color: #fff;
-    border-color: var(--color-brand-primary);
-}
 
 .content-wrapper .notification-card {
+    position: relative;
     background: var(--color-background-card);
-    border-radius: 10px;
-    padding: 0.6rem 1rem;
-    margin-bottom: 0.5rem;
-    margin-top: 0;
+    border-radius: 30px;
+    padding: 1rem 1.5rem;
+    margin-bottom: 12px;
     box-shadow: none;
     border: none;
+    transition: box-shadow 0.2s ease;
+
+    /* 卡片 hover：只提阴影，不位移 —— 与博客首页 .blog-item 一致 */
+    &:hover {
+        box-shadow: var(--shadow-card-hover);
+    }
 }
+
+/* 未读：**不再用左侧竖条**。竖条与 30px 圆角是两种形状语言的混搭，而且卡片里
+   本来就有一个「未读」角标 —— 竖条是把同一句话说第二遍。现在只靠整卡淡底。 */
 .content-wrapper .notification-card.unread {
-    border-left: 3px solid var(--color-border-unread);
     background: var(--color-background-card-unread);
 }
 
@@ -135,15 +146,18 @@ body {
 .notification-action {
     font-weight: 600;
     font-size: 0.95rem;
+    color: var(--color-text-primary);
 }
 
+/* 「未读」角标。原为写死的 #e67e22（橙）配 rgba(230,126,34,.15) ——
+   不在主题体系内，暗色下不跟着变。改走品牌色对。 */
 .notification-unread-badge {
-    color: #e67e22;
+    color: var(--color-brand-primary);
     font-size: 0.7rem;
     font-weight: 600;
-    background: rgba(230, 126, 34, 0.15);
-    padding: 0.1rem 0.4rem;
-    border-radius: 3px;
+    background: var(--color-brand-secondary);
+    padding: 0.1rem 0.5rem;
+    border-radius: 999px;
 }
 
 .notification-meta {
@@ -155,56 +169,75 @@ body {
 
 .notification-actions {
     display: flex;
-    gap: 0.3rem;
+    gap: 0.4rem;
     margin-left: auto;
 }
 
+/* 单条的两个操作：无边框胶囊，语义色成对给出（原先各带 1px 描边 + 4px 圆角） */
 .btn-mark-read,
 .btn-delete {
     font-size: 0.8rem;
-    padding: 0.25rem 0.7rem;
-    border-radius: 4px;
+    padding: 0.3rem 0.8rem;
+    border: none;
+    border-radius: 999px;
     cursor: pointer;
     white-space: nowrap;
-    border: 1px solid;
+    transition: color 0.2s ease, background-color 0.2s ease, filter 0.15s ease;
 }
 
 .btn-mark-read {
     background: var(--color-success-secondary);
-    border-color: var(--color-success-primary);
     color: var(--color-success-primary);
 }
-.btn-mark-read:hover { background: var(--color-success-primary); color: #fff; }
+.btn-mark-read:hover:not(:disabled) { background: var(--color-success-primary); color: #fff; }
 
 .btn-delete {
     background: var(--color-warning-secondary);
-    border-color: var(--color-warning-primary);
     color: var(--color-warning-primary);
 }
-.btn-delete:hover { background: var(--color-warning-primary); color: #fff; }
+.btn-delete:hover:not(:disabled) { background: var(--color-warning-primary); color: #fff; }
+
+.btn-mark-read:disabled,
+.btn-delete:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
 
 .notification-content {
-    margin: 0.3rem 0 0 0;
+    margin: 0.4rem 0 0 0;
     font-size: 0.85rem;
     color: var(--color-text-secondary);
-    line-height: 1.4;
+    line-height: 1.5;
 }
 
 .notification-blog-link {
-    font-size: 0.75rem;
+    font-size: 0.78rem;
     color: var(--color-brand-primary);
     text-decoration: none;
-    display: inline-block;
-    margin-top: 0.2rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 0.4rem;
 }
 .notification-blog-link:hover { text-decoration: underline; }
 
 .empty-state {
     text-align: center;
     padding: 3rem 1rem;
-    color: #777;
+    color: var(--color-text-secondary);
 }
 .empty-state-icon {
     font-size: 3rem;
     margin-bottom: 0.5rem;
+    opacity: 0.5;
+}
+.empty-state h3 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    margin-bottom: 0.4rem;
+}
+.empty-state p {
+    font-size: 0.9rem;
+    color: var(--color-text-secondary);
 }
