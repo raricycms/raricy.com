@@ -4,8 +4,8 @@
 .u-text-nowrap { white-space: nowrap !important; }
 .u-color-ink-2 { color: var(--color-text-secondary) !important; }
 
-/* Legacy from site.css */
-.text-muted-strong { color: var(--muted-color) !important; }
+/* 此处原有 `.text-muted-strong { color: var(--muted-color) }`：--muted-color 从未定义，
+   规则整条失效，且没有任何 TSX 用它。需要弱化文字用下面的 .u-text-muted / .text-muted。 */
 
 /* Utilities (no Bootstrap) */
 .site-text-danger { color: var(--color-warning-primary) !important; }

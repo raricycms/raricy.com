@@ -522,10 +522,9 @@ a {
     }
 }
 
-.comment-btn {
-    background-color: var(--box-bg);
-    color: var(--text);
-}
+/* 此处原有 `.comment-btn { background-color: var(--box-bg); color: var(--text) }`：
+   两个令牌（--box-bg / --text）都从未定义，整条规则在计算值阶段失效；
+   且没有任何 TSX 用到 .comment-btn。已删。 */
 
 // ── 评论输入区（RichComposer）────────────────────────────────────────────────
 //
@@ -668,7 +667,9 @@ a {
 
 .comment-list {
     width: 100%;
-    background-color: var(--box-bg);
+    /* 原为 var(--box-bg)（从未定义 → 静默退回 transparent）。父级已经是卡片底色，
+       这里显式写 transparent 保持同一观感。 */
+    background-color: transparent;
     list-style: none;
     padding-left: 15px;
     margin-left: 15px;
@@ -775,36 +776,11 @@ a {
     }
 }
 
-/* CSS 变量 */
-// :root {
-//     --bg: #f3f5f7;
-//     --text: #2c3e50;
-//     --box-bg: #ffffff;
-//     --hero-bg: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-//     --btn-bg: #2c3e50;
-//     --btn-hover-bg: #34495e;
-//     --shadow: 0 2px 16px rgba(0, 0, 0, 0.06);
-//     --code-bg: #f8f9fa;
-//     --border-color: #e9ecef;
-//     --link-color: #3498db;
-//     --link-hover-color: #2980b9;
-//     --slim-color: #708090;
-// }
-
-// body.dark-mode {
-//     --bg: #121212;
-//     --text: #ecf0f1;
-//     --box-bg: #1e1e1e;
-//     --hero-bg: linear-gradient(135deg, #1c1d22 0%, #212224 100%);
-//     --btn-bg: #3498db;
-//     --btn-hover-bg: #2980b9;
-//     --shadow: 0 2px 16px rgba(0, 0, 0, 0.3);
-//     --code-bg: #262626;
-//     --border-color: #4a5568;
-//     --link-color: #5dade2;
-//     --link-hover-color: #3498db;
-//     --slim-color: #a0b0c0;
-// }
+/* 此处原有两大段注释掉的旧令牌表（`--bg` / `--text` / `--box-bg` / `--border-color` …）
+   与配套的 `body.dark-mode` 第二套暗色板。那套令牌**从未迁进** base/_root.scss，
+   但仍有规则在引用它们（本文件的 .comment-btn / .comment-list、utilities/_text.scss 的
+   .text-muted-strong）—— 引用点已一并清除，这里把注释掉的源头也删掉，
+   免得下次有人照着它又引一个不存在的变量。全站主题只认 `<html data-theme>`。 */
 
 body {
     background-color: var(--color-background-page);
@@ -813,13 +789,4 @@ body {
 }
 
 
-// .blog-content-container th,
-// .blog-content-container td {
-//     border-color: var(--border-color);
-// }
-
-
-// .blog-content-container a:hover {
-//     opaci
-// }
 

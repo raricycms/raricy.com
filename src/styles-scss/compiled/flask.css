@@ -46,7 +46,9 @@ img {
   --color-background-card: #fff;
   --color-background-page: #F8FAFC;
   --color-background-content: #eff2f5;
-  --color-background-card-unrend: #fffdf0;
+  /* 注意拼写是 -unread（曾误拼成 -unrend，导致浅色下 var() 解析失败 ——
+     未读底色静默退回 transparent，只有暗色是好的）。改名即修复。 */
+  --color-background-card-unread: #fffdf0;
   --color-background-subtle: #f3f4f6;
   --color-background-highlight: #eef2ff;
   --color-border: #E2E8F0;
@@ -2319,11 +2321,8 @@ svg.rc-icon {
   color: var(--color-text-secondary) !important;
 }
 
-/* Legacy from site.css */
-.text-muted-strong {
-  color: var(--muted-color) !important;
-}
-
+/* 此处原有 `.text-muted-strong { color: var(--muted-color) }`：--muted-color 从未定义，
+   规则整条失效，且没有任何 TSX 用它。需要弱化文字用下面的 .u-text-muted / .text-muted。 */
 /* Utilities (no Bootstrap) */
 .site-text-danger {
   color: var(--color-warning-primary) !important;
@@ -3193,11 +3192,9 @@ a:hover {
   color: var(--color-brand-primary);
 }
 
-.comment-btn {
-  background-color: var(--box-bg);
-  color: var(--text);
-}
-
+/* 此处原有 `.comment-btn { background-color: var(--box-bg); color: var(--text) }`：
+   两个令牌（--box-bg / --text）都从未定义，整条规则在计算值阶段失效；
+   且没有任何 TSX 用到 .comment-btn。已删。 */
 .comment-composer {
   display: flex;
   flex-direction: column;
@@ -3640,7 +3637,9 @@ a:hover {
 
 .comment-list {
   width: 100%;
-  background-color: var(--box-bg);
+  /* 原为 var(--box-bg)（从未定义 → 静默退回 transparent）。父级已经是卡片底色，
+     这里显式写 transparent 保持同一观感。 */
+  background-color: transparent;
   list-style: none;
   padding-left: 15px;
   margin-left: 15px;
@@ -3735,7 +3734,11 @@ a:hover {
     font-size: 0.9em !important;
   }
 }
-/* CSS 变量 */
+/* 此处原有两大段注释掉的旧令牌表（`--bg` / `--text` / `--box-bg` / `--border-color` …）
+   与配套的 `body.dark-mode` 第二套暗色板。那套令牌**从未迁进** base/_root.scss，
+   但仍有规则在引用它们（本文件的 .comment-btn / .comment-list、utilities/_text.scss 的
+   .text-muted-strong）—— 引用点已一并清除，这里把注释掉的源头也删掉，
+   免得下次有人照着它又引一个不存在的变量。全站主题只认 `<html data-theme>`。 */
 body {
   background-color: var(--color-background-page);
   color: var(--color-text-primary);
@@ -5666,7 +5669,9 @@ body {
 .tool-new-hero__search .search-input:focus {
   outline: none;
   border-color: var(--color-brand-primary);
-  box-shadow: 0 0 0 3px rgba(var(--color-brand-primary-rgb), 0.1);
+  /* 原为 rgba(var(--color-brand-primary-rgb), .1)，而该令牌从未定义 ——
+     box-shadow 在计算值阶段整条失效，聚焦环一直是不存在的。 */
+  box-shadow: var(--shadow-focus-brand);
 }
 .tool-new-hero__search .search-input::placeholder {
   color: var(--color-text-secondary);
@@ -5798,14 +5803,9 @@ body {
   opacity: 0.7;
 }
 
-.dark-mode {
-  --color-background-page: #0F172A;
-  --color-background-card: #1E293B;
-  --color-text-primary: #F1F5F9;
-  --color-text-secondary: #94A3B8;
-  --color-border: #334155;
-}
-
+/* 此处原有 `.dark-mode { … }` 一套独立的暗色变量。全站主题只认
+   `<html data-theme="dark">`（见 base/_root.scss），没有任何代码会给 body 加
+   `.dark-mode` —— 这是一套永不生效的第二配色，且色值与真暗色板不一致，已删。 */
 .cattca-tool {
   max-width: none;
   margin: 0;

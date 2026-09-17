@@ -71,7 +71,9 @@
         &:focus {
           outline: none;
           border-color: var(--color-brand-primary);
-          box-shadow: 0 0 0 3px rgba(var(--color-brand-primary-rgb), 0.1);
+          /* 原为 rgba(var(--color-brand-primary-rgb), .1)，而该令牌从未定义 ——
+             box-shadow 在计算值阶段整条失效，聚焦环一直是不存在的。 */
+          box-shadow: var(--shadow-focus-brand);
         }
         
         &::placeholder {
@@ -232,13 +234,6 @@
   }
 }
 
-
-
-// Manual dark mode class
-.dark-mode {
-  --color-background-page: #0F172A;
-  --color-background-card: #1E293B;
-  --color-text-primary: #F1F5F9;
-  --color-text-secondary: #94A3B8;
-  --color-border: #334155;
-}
+/* 此处原有 `.dark-mode { … }` 一套独立的暗色变量。全站主题只认
+   `<html data-theme="dark">`（见 base/_root.scss），没有任何代码会给 body 加
+   `.dark-mode` —— 这是一套永不生效的第二配色，且色值与真暗色板不一致，已删。 */

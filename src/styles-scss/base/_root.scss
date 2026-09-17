@@ -11,7 +11,9 @@
     --color-background-card: #fff;
     --color-background-page: #F8FAFC;
     --color-background-content: #eff2f5;
-    --color-background-card-unrend: #fffdf0;
+    /* 注意拼写是 -unread（曾误拼成 -unrend，导致浅色下 var() 解析失败 ——
+       未读底色静默退回 transparent，只有暗色是好的）。改名即修复。 */
+    --color-background-card-unread: #fffdf0;
     --color-background-subtle: #f3f4f6;
     --color-background-highlight: #eef2ff;
     --color-border: #E2E8F0;
