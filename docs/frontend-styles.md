@@ -305,9 +305,26 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
 ### 6.2 卡片
 
 - 首页 `.feature-card`（「探索」区四张功能卡）：**空闲不托阴影也不描边**，只有
-  卡片色背景 + 30px 圆角；**hover 才亮起主题蓝光晕**（`--shadow-card-brand`）。
-  四张卡是页面主体内容、不是浮层，空闲就给阴影会让四块各自「浮」起来把首页切碎；
-  改成「指到哪儿哪儿才浮起来」。禁用态（专注模式）连 hover 也不给反馈。
+  卡片色背景 + 30px 圆角；**hover 才亮起光晕**。四张卡是页面主体内容、不是浮层，
+  空闲就给阴影会让四块各自「浮」起来把首页切碎 —— 改成「指到哪儿哪儿才浮起来」。
+  禁用态（专注模式）连 hover 也不给反馈。
+
+  光晕是**卡片自己的颜色**，不是品牌蓝。每张卡只在 `.card-*` 上定义一次
+  `--card-accent`（色相）与 `--card-glow`（同色系的 `-soft` 淡色），
+  **图标、hover 光晕、卡内按钮三者都读这两个变量** ——
+
+  | 卡 | `--card-accent` | 图标 mask |
+  |----|-----------------|-----------|
+  | `.card-story` | `--color-accent-blue` | `book.svg` |
+  | `.card-blog` | `--color-accent-amber` | `journal-text.svg` |
+  | `.card-tool` | `--color-accent-cyan` | `tools.svg` |
+  | `.card-chat` | `--color-success-primary` | `chat-dots_new.svg` |
+
+  > 改卡片颜色只需改 `.card-*` 那一行。⚠️ 别再让图标、光晕、按钮各自取色 ——
+  > 那会做出「图标是琥珀的、光晕是蓝的、按钮还是品牌蓝」这种半拉子状态。
+  > 卡内按钮因此由 `--card-accent` 驱动（`.feature-card .home-btn`，0-2-0 压过
+  > `.home-btn--outline-*` 的 0-1-0），它自己那支 `--outline-*` 变体只在卡片之外
+  > 单独使用时才生效。
 - 管理后台 `.admin-stat-card`：用**卡片淡底 + 数字同色**区分类型（blue/green/amber/
   purple/red）。原先靠左侧 4px 彩色竖条，已按「无左侧边框」总则去掉；色值也从写死的
   hex 换成了令牌（站内没有紫色语义令牌，purple 与 blue 合并到品牌色系）。

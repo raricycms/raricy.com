@@ -78,7 +78,7 @@
    鼠标悬浮时才亮起主题蓝光晕（--shadow-card-brand，与顶栏常驻阴影同色系），
    即「指到哪儿哪儿才浮起来」。 */
 .feature-card { display: block; transition: box-shadow 0.3s ease; cursor: pointer;  border-radius: 30px; overflow: hidden; position: relative; height: 100%; background-color: var(--color-background-card); box-shadow: none; border: none;  }
-.feature-card:hover { box-shadow: var(--shadow-card-brand); }
+.feature-card:hover { box-shadow: 0 2px 25px var(--card-glow); }
 /* 专注模式禁用态（div 渲染，不导航）：淡化 + hover 不给卡片反馈 */
 .feature-card.is-disabled {
   cursor: default;
@@ -125,12 +125,35 @@
   -webkit-mask-size: contain;
   mask-size: contain;
 }
-/* 四张功能卡各一个色相 —— 那是**分类强调色**，不是语义色，故走 --color-accent-*。
-   原为写死的 #3b82f6 / #f59e0b / #06b6d4 / #10b981，暗色下不跟着变。 */
-.card-story .feature-icon { color: var(--color-accent-blue); -webkit-mask-image: url('/static/img/icons/book.svg'); mask-image: url('/static/img/icons/book.svg'); }
-.card-blog  .feature-icon { color: var(--color-accent-amber); -webkit-mask-image: url('/static/img/icons/journal-text.svg'); mask-image: url('/static/img/icons/journal-text.svg'); }
-.card-tool  .feature-icon { color: var(--color-accent-cyan); -webkit-mask-image: url('/static/img/icons/tools.svg'); mask-image: url('/static/img/icons/tools.svg'); }
-.card-chat  .feature-icon { color: var(--color-success-primary); -webkit-mask-image: url('/static/img/icons/chat-dots_new.svg'); mask-image: url('/static/img/icons/chat-dots_new.svg'); }
+/* ── 四张功能卡各一个色相 ────────────────────────────────────────────────────
+   卡片色只在这里定义一次：`--card-accent` 是卡片自己的颜色，`--card-glow` 是它
+   对应的光晕（取同色系的 -soft 淡色，与 --shadow-card-brand 的透明度同档）。
+   图标、hover 光晕、卡内按钮**三者都读这两个变量** —— 改卡片的颜色只需改一行，
+   不会出现「图标是蓝的、光晕是蓝的、按钮却还是品牌蓝」这种半拉子状态。
+
+   色相走 --color-accent-*（分类强调色，不是语义色）。原为写死的
+   #3b82f6 / #f59e0b / #06b6d4 / #10b981，暗色下不跟着变。 */
+.card-story { --card-accent: var(--color-accent-blue);      --card-glow: var(--color-accent-blue-soft); }
+.card-blog  { --card-accent: var(--color-accent-amber);     --card-glow: var(--color-accent-amber-soft); }
+.card-tool  { --card-accent: var(--color-accent-cyan);      --card-glow: var(--color-accent-cyan-soft); }
+.card-chat  { --card-accent: var(--color-success-primary);  --card-glow: var(--color-success-secondary); }
+
+/* 图标只需取色，形状（mask）仍各卡一支 */
+.feature-card .feature-icon { color: var(--card-accent); }
+
+.card-story .feature-icon { -webkit-mask-image: url('/static/img/icons/book.svg'); mask-image: url('/static/img/icons/book.svg'); }
+.card-blog  .feature-icon { -webkit-mask-image: url('/static/img/icons/journal-text.svg'); mask-image: url('/static/img/icons/journal-text.svg'); }
+.card-tool  .feature-icon { -webkit-mask-image: url('/static/img/icons/tools.svg'); mask-image: url('/static/img/icons/tools.svg'); }
+.card-chat  .feature-icon { -webkit-mask-image: url('/static/img/icons/chat-dots_new.svg'); mask-image: url('/static/img/icons/chat-dots_new.svg'); }
+
+/* 卡内按钮跟随卡片强调色（而非它自己那支 --outline-* 变体）。
+   选择器权重 0-2-0 高过 .home-btn--outline-*（0-1-0），故无需 !important。
+   page.tsx 里四张卡给的变体与卡片色相本来就是对应的（primary/warning/info/success
+   ↔ 蓝/琥珀/青/绿），所以观感与改前一致，但从此由 --card-accent 统一驱动。 */
+.feature-card .home-btn {
+  color: var(--card-accent);
+  background: var(--card-glow);
+}
 
 /* 此处原有 .stats-section / .stat-item / .stat-number 三条（含写死的 #f8f9fa 与
    #667eea）。没有任何 TSX 使用这三个类 —— 管理页用的是 .admin-stat-item 一族。
