@@ -40,6 +40,7 @@ import { rateLimit, RULES } from './rate-limit';
 import { logAdminAction } from './admin-user-service';
 import { markChannelNotificationsRead, sendNotification } from './notification-service';
 import { publishToAll, publishToUsers } from './chat-bus';
+import { isViewingChannel } from './chat-presence';
 import { hasSubscriber, publishToUser } from './topbar-bus';
 import { stripStickerTokens } from './sticker-refs';
 import {
@@ -1072,7 +1073,9 @@ export const CHAT_MENTION_ACTION = '讨论提及';
  *       - 私聊：必须是本会话成员 —— 在**别人的私聊**里 @ 一个第三方，对方既看不到
  *         那条消息，通知正文还会把别人私聊的内容漏出去，一律不发；
  *       - 大区：开了专注模式就不发（大区对他不可见，同 canAccessChannel）。
- *   • 没静音这个会话：静音 =「别在铃铛上打扰我」，与顶栏红点同一口径。
+ *   • 没静音这个会话：静音 =「别在铃铛上打扰我」，与顶栏红点同一口径；
+ *   • **没正在看这个会话**：人在这个会话里看着，再给铃铛塞一条纯属白打扰
+ *     （判据与失败方向见 chat-presence.ts 文件头）。
  *
  * 【一人一条】按人去重（同一条消息里 @ 两次只发一条）；不同消息各发各的 ——
  * 通知列表本来就是流水账，不做聚合。
@@ -1130,18 +1133,23 @@ async function notifyChannelMentions(params: {
     if (!isLobby && !member) continue;
     if (member?.mutedAt) continue; // 静音会话
     if (isLobby && u.focusMode) continue; // 专注模式：大区不可见
-    await sendNotification({
-      recipientId: u.id,
-      action: CHAT_MENTION_ACTION,
-      actorId: authorId,
-      // 指会话不指消息：通知列表的「查看讨论」跳 /chat?channel=<id>。
-      // （消息 id 不进 object —— 两个 id 塞不进 (type, id) 两个字段，而会话链接
-      //   已经够用：点进去就落在最新消息上。）
-      objectType: CHAT_NOTIFY_OBJECT_TYPE,
-      objectId: channelId,
-      detail,
-      prefKey: null, // 不受 notify_* 四个开关管辖（同评论回复：没有对应开关就不拦）
-    });
+    // 正在看这个会话 → 不进通知列表（他当场就看见了，铃铛闪一下纯属白打扰）。
+    // 注意**不能** continue：下面的红点照推 —— 未读就是未读，红点 / 侧栏徽标该亮
+    // 还是亮，只是铃铛不响。判不出「在看」时（报到没到 / 流断了 / 多实例）照常发。
+    if (!isViewingChannel(u.id, channelId)) {
+      await sendNotification({
+        recipientId: u.id,
+        action: CHAT_MENTION_ACTION,
+        actorId: authorId,
+        // 指会话不指消息：通知列表的「查看讨论」跳 /chat?channel=<id>。
+        // （消息 id 不进 object —— 两个 id 塞不进 (type, id) 两个字段，而会话链接
+        //   已经够用：点进去就落在最新消息上。）
+        objectType: CHAT_NOTIFY_OBJECT_TYPE,
+        objectId: channelId,
+        detail,
+        prefKey: null, // 不受 notify_* 四个开关管辖（同评论回复：没有对应开关就不拦）
+      });
+    }
     // 大区被 @ → 顶栏红点亮。sendNotification 只推铃铛那一格，红点是另一格，得单独推。
     // 私聊不用推：同一条消息在上面的 direct 分支已经推过全体成员（被 @ 者必是成员）。
     if (isLobby) void pushChatDot(u.id);

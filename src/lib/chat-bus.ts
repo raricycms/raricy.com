@@ -66,6 +66,18 @@ function deliver(set: Set<ChatSubscriber> | undefined, chunk: string): void {
   for (const sub of set) deliverOne(sub, chunk);
 }
 
+/**
+ * 该用户当前有没有活着的讨论流连接。**同步**返回。
+ *
+ * 调用方是 chat-presence：讨论流只在 /chat 页存在、且标签页一藏起来客户端就主动
+ * close（见 ChatApp 的 onVisible），所以「有连接」≈「讨论页开着且可见」—— 它给
+ * 「在看」提供了一个免费的离开信号，不必让客户端再报一次「我走了」。
+ * 与 topbar-bus.hasSubscriber 同名同义，只是另一张表。
+ */
+export function hasSubscriber(userId: string): boolean {
+  return (state.subs.get(userId)?.size ?? 0) > 0;
+}
+
 /** 注册一条连接；返回注销函数（路由在 stream 的 cancel 里调用）。 */
 export function subscribe(sub: ChatSubscriber): () => void {
   let set = state.subs.get(sub.userId);

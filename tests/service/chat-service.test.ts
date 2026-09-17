@@ -13,10 +13,18 @@
 //
 // 跑真实 SQLite（tests/.tmp/test.db），不 mock Prisma —— 唯一约束/外键/计数正是要验的。
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { resetDb, makeUser, prisma } from '../helpers/db';
 import { nowForDb } from '@/lib/db-time';
 import { __resetRateLimitStore, RULES } from '@/lib/rate-limit';
+import { reportViewing, __resetChatPresence } from '@/lib/chat-presence';
+import { subscribe as subscribeChat, __resetChatBus, type ChatSubscriber } from '@/lib/chat-bus';
+import {
+  subscribe as subscribeTopbar,
+  __resetTopbarBus,
+  type TopbarPatch,
+  type TopbarSubscriber,
+} from '@/lib/topbar-bus';
 import {
   CHAT_LOBBY_ID,
   CHAT_DELETED_TEXT,
@@ -38,7 +46,39 @@ import {
 beforeEach(async () => {
   await resetDb();
   __resetRateLimitStore();
+  __resetChatPresence();
+  __resetChatBus();
+  __resetTopbarBus();
 });
+
+/** 模拟「这个人开着 /chat 页」：讨论流连着（客户端切后台会自己关掉它）。 */
+function connectChat(userId: string): () => void {
+  const sub: ChatSubscriber = {
+    userId,
+    focusMode: false,
+    write: () => true,
+    close: () => {},
+  };
+  return subscribeChat(sub);
+}
+
+/** 模拟「顶栏指示器连着」：用来观察红点/铃铛推了什么。 */
+function connectTopbar(userId: string) {
+  const chunks: string[] = [];
+  const sub: TopbarSubscriber = {
+    userId,
+    write: (chunk) => {
+      chunks.push(chunk);
+      return true;
+    },
+    close: () => {},
+  };
+  subscribeTopbar(sub);
+  return {
+    chunks,
+    patches: () => chunks.map((c) => JSON.parse(c.slice(c.indexOf('data: ') + 6)) as TopbarPatch),
+  };
+}
 
 async function makeImage(authorId: string, opts: { ignore?: boolean } = {}) {
   return prisma.imageHosting.create({
@@ -757,6 +797,78 @@ describe('@ 提及通知', () => {
     expect(await readOf(dmMention!.id)).toBe(true);
     expect(await readOf(other.id)).toBe(false);
     expect(await unread()).toBe(1);
+  });
+
+  it('正在看这个会话 → 不进通知列表，但红点照常推（未读就是未读）', async () => {
+    const a = await makeUser({ role: 'core' });
+    const b = await makeUser({ role: 'core' });
+    await listChannelsForUser(b.id); // 懒建大区成员行：没有它时未读恒为 0，红点测不出来
+    const off = connectChat(b.id);
+    const topbar = connectTopbar(b.id);
+    reportViewing(b.id, CHAT_LOBBY_ID);
+
+    await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: a.id, content: `@${b.username} 在看呢` });
+
+    expect(await mentionCount(b.id), '人就在这个会话里看着，别再往铃铛里塞').toBe(0);
+    // pushChatDot 是 void 出去的异步，等它落帧再断言（当场断会偶发假红）
+    await vi.waitFor(() => {
+      expect(topbar.patches(), '红点照常亮：未读就是未读，只是不打扰').toContainEqual({
+        chatUnread: true,
+      });
+    });
+    off();
+  });
+
+  it('在看别的会话 / 连接已断 / 压根没报到 → 照常发通知', async () => {
+    const a = await makeUser({ role: 'core' });
+
+    // ① 报到的是别的会话（切到私聊去了）
+    const b1 = await makeUser({ role: 'core' });
+    const off1 = connectChat(b1.id);
+    reportViewing(b1.id, 'd_somewhere_else');
+    await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: a.id, content: `@${b1.username} 一` });
+    expect(await mentionCount(b1.id)).toBe(1);
+    off1();
+
+    // ② 报到过，但讨论流断了（关页面 / 切后台）→ 立刻不算在看
+    const b2 = await makeUser({ role: 'core' });
+    const off2 = connectChat(b2.id);
+    reportViewing(b2.id, CHAT_LOBBY_ID);
+    off2();
+    await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: a.id, content: `@${b2.username} 二` });
+    expect(await mentionCount(b2.id)).toBe(1);
+
+    // ③ 没报到过（网页端还没进过讨论区 / 报到的请求没到）
+    const b3 = await makeUser({ role: 'core' });
+    const off3 = connectChat(b3.id);
+    await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: a.id, content: `@${b3.username} 三` });
+    expect(await mentionCount(b3.id)).toBe(1);
+    off3();
+  });
+
+  it('私聊同样适用：正在看这个私聊不发，切走后再 @ 照常发', async () => {
+    const a = await makeUser({ role: 'core' });
+    const b = await makeUser({ role: 'core' });
+    const ch = (await startDirectChannel(a.id, b.id)) as { channel: { id: string } };
+    const off = connectChat(b.id);
+    reportViewing(b.id, ch.channel.id);
+
+    await sendMessage({
+      channelId: ch.channel.id,
+      authorId: a.id,
+      content: `@${b.username} 正聊着呢`,
+    });
+    expect(await mentionCount(b.id)).toBe(0);
+
+    // 切回大区（客户端切频道会重新报到）→ 这个私聊的 @ 照常进铃铛
+    reportViewing(b.id, CHAT_LOBBY_ID);
+    await sendMessage({
+      channelId: ch.channel.id,
+      authorId: a.id,
+      content: `@${b.username} 再看这个`,
+    });
+    expect(await mentionCount(b.id)).toBe(1);
+    off();
   });
 
   it('读到该会话只清未读：本来已读的不重复清（count 归零后铃铛不再有它）', async () => {

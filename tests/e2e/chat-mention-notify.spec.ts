@@ -4,7 +4,12 @@
 // 【防的回归】讨论的产品口径是「收到消息不打扰，被 @ 才打扰」：
 //   · 普通讨论消息**不**进通知列表（未读走顶栏徽标，见 chat-unread-mark.spec）；
 //   · 每条 @ 我 的消息产生一条通知，通知里带「查看讨论」回到该会话；
-//   · 在别人的私聊里被 @、专注模式下在大区被 @ —— 都不该收到通知。
+//   · 在别人的私聊里被 @、专注模式下在大区被 @ —— 都不该收到通知；
+//   · 读到该会话（进频道 / 在里面看新消息）→ 那条 @ 自动已读（铃铛归零，条目留在
+//     列表里以已读态）；用例走接口推进已读，不等客户端 —— 无头环境下客户端已读
+//     要求 document.hasFocus()，不可靠（同 chat-unread-mark.spec 的注释）；
+//   · **正在看这个会话**时被 @ → 连条目都不产生（客户端 /viewing 报到 + 服务端
+//     判「在看」，见 src/lib/chat-presence.ts）。
 //
 // 【造数纪律】大区是全站共用频道：只断言「我这个全新用户」的通知，不数总数。
 // ─────────────────────────────────────────────────────────────────────────────
@@ -107,6 +112,34 @@ test.describe('@ 提及通知', () => {
       // 清的是「未读」不是「条目」：通知还在列表里（已读态），没有被删掉
       await page.goto('/notifications');
       await expect(page.locator('.notification-card', { hasText: '讨论提及' }).first()).toBeVisible();
+    } finally {
+      await ctx.close();
+    }
+  });
+
+  test('正在看这个会话 → @ 我根本不产生通知（客户端报到 + 服务端判「在看」）', async ({ page, browser }) => {
+    const me = await registerFreshUser(page, { core: true });
+
+    // 停在讨论大区。客户端一进来就会 POST /viewing 报到「我正在看这个会话」——
+    // 等这次**响应**回来再发消息：服务端已经记下了，抑制判定才是确定性的
+    //（等请求发出不够，那只证明浏览器发得出去）。
+    const reported = page.waitForResponse(
+      (r) => r.url().includes('/viewing') && r.request().method() === 'POST'
+    );
+    await page.goto(`/chat?channel=${LOBBY}`);
+    await expect(page.locator('.chat-main')).toBeVisible();
+    await reported;
+
+    const ctx = await post(
+      browser,
+      SEED_USERS.admin.username,
+      LOBBY,
+      `@${me.username} 我在看着呢 ${uniqueTag()}`
+    );
+    try {
+      // 判据是**列表里有没有这条**，不是铃铛数字 —— 数字归零有两种成因（没产生 /
+      // 产生了又被自动已读），只有「列表里数不出条目」才证明是抑制生效。
+      expect(await mentionCount(page), '人就在大区里看着，不该再有这条通知').toBe(0);
     } finally {
       await ctx.close();
     }

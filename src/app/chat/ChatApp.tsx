@@ -53,6 +53,13 @@ function toast(message: string, type: string) {
  */
 const RECONCILE_MS = 60_000;
 /**
+ * 「我正在看这个会话」报到间隔。
+ *
+ * 服务端据此在你被 @ 时不发通知（见 src/lib/chat-presence.ts），TTL 是这里的 2.5 倍
+ * —— **改大等于让「在看」更容易判不出来**（判不出来就退回照常发通知，多打扰一次）。
+ */
+const VIEWING_PING_MS = 60_000;
+/**
  * 移动端抽屉断点：与 _chat.scss 的 `@media (max-width: 900px)` 对齐。该宽度以下
  * 侧栏是抽屉（固定 300px，折叠态被 CSS 还原成常规宽度），折叠按钮在那里改关抽屉。
  */
@@ -1188,6 +1195,41 @@ export default function ChatApp({
     lastTypingSentRef.current = now;
     void api(`/api/chat/channels/${aid}/typing`, { method: 'POST' });
   }, []);
+
+  // ── 报到「我正在看这个会话」─────────────────────────────────────────────
+  /**
+   * 服务端据此在你被 @ 时**不发通知** —— 人在这个会话里看着，铃铛再闪一下纯属白打扰
+   * （见 src/lib/chat-presence.ts）。判不出来只是退回照常发通知，不会静默丢。
+   *
+   * 【门槛为什么与 markRead 不同】markRead 要求 document.hasFocus()（没看就不能算读过，
+   * 那改的是**状态**）；这里只要求页面可见 —— 失焦但窗口还在眼前时「在看」依然成立，
+   * 而这时那条 @ 不发通知也不算丢：红点 / 侧栏徽标照常亮（调 /viewing 与 /read 是两回事，
+   * 别顺手把它们合成一个请求）。
+   */
+  const reportViewing = useCallback(() => {
+    const aid = activeRef.current;
+    if (!aid || document.hidden) return;
+    // 报不上就算了（网络抖动 / 服务端重启）：没有报到 = 照常发通知，失败方向是安全的
+    void api(`/api/chat/channels/${aid}/viewing`, { method: 'POST' }).catch(() => {});
+  }, []);
+
+  /**
+   * 报到时机：切频道（activeId 变）、回前台（可见性变回来 / 窗口重新获得焦点）、
+   * 以及每 60s 续一次 —— 服务端 TTL 是它的 2.5 倍，漏一次也还判得出「在看」。
+   * **离开不用报**：页面一藏起来聊天流就断了，服务端那边立刻不认（见 chat-presence.ts）。
+   */
+  useEffect(() => {
+    reportViewing();
+    const onVisible = () => reportViewing();
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    const iv = setInterval(reportViewing, VIEWING_PING_MS);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
+      clearInterval(iv);
+    };
+  }, [reportViewing, activeId]);
 
   // ── 回复 / 跳转原消息 ──────────────────────────────────────────────────
   // handleReply 必须是稳定引用：MessageItem 包了 memo，props 一变就白 memo 了。
