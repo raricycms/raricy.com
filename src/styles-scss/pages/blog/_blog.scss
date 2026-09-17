@@ -22,6 +22,15 @@ a {
        外层 .blog-detail 自己**没有**底色，补上去会在无底的正文上浮出一条色带 ——
        那是改版，不是修 bug。要改的话两页一起议。 */
     padding: 50px 0 30px;
+    /* 标题带的**内容**要跟正文列对齐：左右各 16px（container-padding）+ 宽度阶梯，
+       与列表页 .blogs-hero 里那层 `.container` 用的是同一套 mixin。
+       ⚠️ 此前这里只有纵向内边距：窄屏下 h1 实测**左 0 右 0**（而正文卡在 16px），
+       标题一长就贴着屏幕两边；宽屏上更是能一路横到 2000px 以外。
+       背景仍是无（见上），所以约束盒子不会看出边界 —— 这里只管内容。 */
+    @include m.container-padding;
+    @include m.site-width-ladder;
+    margin-left: auto;
+    margin-right: auto;
     text-align: center;
     h1 {
         font-size: 2.2rem;
