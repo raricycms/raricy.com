@@ -1,5 +1,7 @@
 // 投票箱样式
 
+@use '../abstracts/mixins' as m;
+
 // ---------- 公共 ----------
 .vote-page {
   max-width: 720px;
@@ -73,23 +75,15 @@
 
   &__actions {
     .action-button {
+      @include m.btn-secondary;
       padding: 0.6rem 1.5rem;
-      border-radius: 0.375rem;
       font-size: 0.9rem;
       font-weight: 500;
-      cursor: pointer;
-      border: none;
       text-decoration: none;
       display: inline-block;
-      transition: all 0.2s ease;
 
       &.primary {
-        background: var(--color-brand-primary);
-        color: #fff;
-
-        &:hover {
-          opacity: 0.9;
-        }
+        @include m.btn-primary;
       }
     }
   }
@@ -133,10 +127,10 @@
   text-decoration: none;
   transition: all 0.2s ease;
 
+  /* 卡片 hover：只提阴影，不位移 —— 与博客首页 .blog-item 一致 */
   &:hover {
     border-color: var(--color-brand-primary);
     box-shadow: var(--shadow-card-brand);
-    transform: translateY(-1px);
   }
 
   &__header {
@@ -442,25 +436,17 @@
     margin-left: 0.5rem;
   }
 
+  /* 归「最高级」档。font-family: inherit 必须保留 —— <button> 不继承正文字体，
+     与 .vote-embed-option 同一条纪律。 */
   .vote-embed-submit {
+    @include m.btn-primary;
     margin-top: 0.5rem;
     padding: 0.45rem 1.5rem;
-    background: var(--color-brand-primary);
-    color: #fff;
-    border: none;
-    border-radius: 0.375rem;
-    font-family: inherit; // 同 .vote-embed-option：<button> 不继承正文字体
+    font-family: inherit;
     font-size: 0.85rem;
-    cursor: pointer;
-    transition: all 0.2s ease;
-
-    &:hover {
-      opacity: 0.9;
-    }
 
     &:disabled {
       opacity: 0.4;
-      cursor: not-allowed;
     }
   }
 

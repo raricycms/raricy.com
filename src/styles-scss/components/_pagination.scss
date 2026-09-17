@@ -1,3 +1,5 @@
+@use '../abstracts/mixins' as m;
+
 .pagination {
     display: flex;
     justify-content: center;
@@ -6,23 +8,15 @@
     align-items: center;
     gap: 0.2rem;
 }
+/* 页码归「切页档」：当前页常驻最高级空闲态，按下不叠加变化。
+   原先当前页是实底白字（那是最高级的 hover 态），且每个页码都带 1px 描边、
+   6px 圆角 —— 与全站胶囊 + 无边框的语言不一致。 */
 .page-link {
+    @include m.btn-tab;
     padding: 0.4rem 0.7rem;
-    border: 1px solid var(--color-border);
-    border-radius: 6px;
-    background: var(--color-background-card);
     font-size: 0.85rem;
-    color: var(--color-text-primary);
     text-decoration: none;
     display: inline-block;
-}
-.page-link:hover {
-    background: var(--color-brand-secondary);
-}
-.page-link.active {
-    background: var(--color-brand-primary);
-    color: #fff;
-    border-color: var(--color-brand-primary);
 }
 .page-ellipsis {
     padding: 0.4rem 0.3rem;

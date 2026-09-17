@@ -1,28 +1,17 @@
 // New Tool Menu Styles - Clean design with dark mode support
 @use '../abstracts/variables' as *;
+@use '../abstracts/mixins' as m;
 
 // 药丸按钮：hero 筛选 pill 与 grid「更多开发者工具」展开按钮共用。
 // 独立成顶层规则，避免只作用于 .tool-new-hero__filters 内部。
+//
+// ⚠️ 这个类是**两用**的：筛选 pill 会挂 .active，而「更多开发者工具」那个展开
+// 按钮不会 —— 所以它必须能独立作为一个次级按钮成立。归「切页档」正好满足：
+// 无 .active 时就是次级样子。
 .filter-pill {
+  @include m.btn-tab;
   padding: $space-2 $space-3;
-  border: 1px solid var(--color-border);
-  border-radius: $radius-max;
-  background: var(--color-background-card);
-  color: var(--color-text-secondary);
   font-size: 0.875rem;
-  cursor: pointer;
-  transition: all 0.2s ease;
-
-  &:hover {
-    border-color: var(--color-brand-primary);
-    color: var(--color-brand-primary);
-  }
-
-  &.active {
-    background: var(--color-brand-primary);
-    border-color: var(--color-brand-primary);
-    color: white;
-  }
 }
 
 .tool-new {
@@ -137,9 +126,10 @@
     display: flex;
     flex-direction: column;
     
+    /* 卡片 hover：只提阴影，不位移 —— 与博客首页 .blog-item 一致。
+       阴影原先也是写死的 rgba(0,0,0,.1)，改用令牌。 */
     &:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+      box-shadow: var(--shadow-card-hover);
       border-color: var(--color-brand-primary);
     }
     
@@ -191,21 +181,16 @@
       justify-content: space-between;
       align-items: center;
       
+      /* ⚠️ 这条是 0-2-0，会盖掉 components/_button.scss 里的 .btn 与 .btn-primary。
+         所以它必须自己引用同一套 mixin —— 否则「工具页卡片底部的按钮」会悄悄
+         长回另一个样子。原写法还引用了从未定义的 --color-brand-primary-dark
+         （hover 整条失效，只提亮不提暗）并带 translateY(-1px)。 */
       .btn {
+        @include m.btn-primary;
         padding: $space-2 $space-3;
-        background: var(--color-brand-primary);
-        color: white;
-        border: none;
-        border-radius: $radius-small;
         font-size: 0.875rem;
         font-weight: 500;
         text-decoration: none;
-        transition: all 0.2s ease;
-        
-        &:hover {
-          background: var(--color-brand-primary-dark);
-          transform: translateY(-1px);
-        }
       }
     }
   }

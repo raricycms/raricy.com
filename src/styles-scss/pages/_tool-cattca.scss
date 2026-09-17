@@ -7,6 +7,7 @@
 // 全部走 --color-* / --shadow-* 主题令牌，随 [data-theme] 深浅自适应；
 // 尺寸沿用 $space-* / $radius-*，断点走 bp 混入，与全站体系一致。
 
+@use '../abstracts/mixins' as m;
 @use '../abstracts/variables' as *;
 @use '../abstracts/breakpoints' as bp;
 
@@ -147,27 +148,17 @@
 }
 
 // ---- 按钮基础（编辑器按钮 + 游戏运行区头部按钮共用）----
+// 归「次级」档：原先空闲是「页面底色 + 1px 描边」（又一个不在三档里的中间态），
+// 按无边框总则去掉描边。
 .cattca-tool__btn,
 .story-cattca__btn {
+  @include m.btn-secondary;
   padding: $space-2 $space-4;
-  border: 1px solid var(--color-border);
-  border-radius: $radius-large;
-  background: var(--color-background-page);
-  color: var(--color-text-primary);
   font-size: 0.875rem;
   font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-
-  &:hover:not(:disabled) {
-    background: var(--color-brand-secondary);
-    border-color: var(--color-brand-primary);
-    color: var(--color-brand-primary);
-  }
 
   &:disabled {
     opacity: 0.45;
-    cursor: not-allowed;
   }
 }
 
@@ -176,18 +167,9 @@
 .story-cattca__btn--secondary {
 }
 
-// ---- 主按钮（运行脚本）----
+// ---- 主按钮（运行脚本）---- 归「最高级」档。
 .cattca-tool__btn--primary {
-  background: var(--color-brand-primary);
-  border-color: var(--color-brand-primary);
-  color: #fff;
-
-  &:hover:not(:disabled) {
-    background: var(--color-brand-primary);
-    border-color: var(--color-brand-primary);
-    color: #fff;
-    opacity: 0.9;
-  }
+  @include m.btn-primary;
 }
 
 // ---- 游戏运行区头部（标题 + 全屏按钮）----

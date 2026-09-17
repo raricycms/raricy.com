@@ -2,7 +2,9 @@
 /* 注：本文件顶部原本还有一条 `* { transition: … }`，已收敛到 base/_reset.scss
    （全局规则只留一处定义，见那里的说明）。 */
 
-a { 
+@use '../abstracts/mixins' as m;
+
+a {
   text-decoration: none;
   &:hover {
     text-decoration: none;
@@ -119,21 +121,17 @@ a {
   }
 }
 
+/* 顶栏切页：归「切页档」。空闲为次级文字色（导航不是次级操作，但按规则它确实
+   落在次级这一层 —— 当前页才升到最高级空闲态）。当前页由 Navbar.tsx 用
+   usePathname() 挂 .is-active，按下不叠加变化。 */
 .site-link {
+  @include m.btn-tab;
   display: block;
-  color: var(--color-text-primary);
   text-decoration: none;
   padding: 0.5rem 1rem;
-  border-radius: 999px;
   font-weight: 500;
-  transition: color 0.3s ease, background-color 0.2s ease;
   // 挂角用（.site-link__dot）
   position: relative;
-
-  &:hover {
-    color: var(--color-brand-primary);
-    background: var(--color-brand-secondary);
-  }
 
   // 讨论未读小红点：挂在「讨论」链接右上角，由 base.js 按 /api/notifications/count
   // 的 chatUnread 开关 display。只点红点不显数字 —— 铃铛的数字归站内通知，讨论未读
@@ -144,7 +142,7 @@ a {
     right: 4px;
     width: 8px;
     height: 8px;
-    background: #dc3545;
+    background: var(--color-warning-primary);
     border-radius: 50%;
     animation: pulse 2s infinite;
   }
@@ -160,10 +158,6 @@ a {
       background: transparent;
     }
   }
-
-  // &.active {
-  //   color: --color-brand-primary;
-  // }
 }
 
 .site-actions { 
@@ -173,21 +167,14 @@ a {
 }
 
 .site-login-btn {
+  @include m.btn-primary;
   display: inline-flex;
-  background: var(--color-brand-secondary);
-  border: none;
-  color: var(--color-brand-primary);
   padding: 8px 16px;
-  border-radius: 20px;
   font-weight: 500;
-  transition: all 0.3s ease;
   text-decoration: none;
   align-items: center;
 
-  &:hover { 
-    background: var(--color-brand-primary); 
-    color: #fff; 
-    // transform: translateY(-1px); 
+  &:hover {
     text-decoration: none;
   }
 }
@@ -333,7 +320,7 @@ a {
   position: absolute;
   top: 2px;
   right: 2px;
-  background: #dc3545;
+  background: var(--color-warning-primary);
   color: #fff;
   border-radius: 50%;
   padding: 2px 6px;
@@ -414,9 +401,11 @@ a {
   right: 9px;
   width: 8px;
   height: 8px;
-  background: #22c55e;
+  background: var(--color-success-primary);
   border-radius: 50%;
-  border: 1.5px solid var(--color-bg-primary);
+  /* --color-bg-primary 从未定义（边界情况：border-color 退回 currentColor），
+     该点是顶栏卡片上的角标，压边应取卡片底色。 */
+  border: 1.5px solid var(--color-background-card);
   display: flex;
   align-items: center;
   justify-content: center;

@@ -1,4 +1,5 @@
 @use '../abstracts/variables' as v;
+@use '../abstracts/mixins' as m;
 
 .button {
   display: inline-block;
@@ -8,54 +9,34 @@
   text-align: center;
 }
 
+// 以下四类只保留各自的尺寸，表面与三态一律来自 mixin（见 abstracts/_mixins.scss 的
+// 「按钮三档」）。以前这四段是同一套配方抄了四遍，改一处漏三处。
 .button-primary {
-  background: var(--color-brand-secondary);
-  color: var(--color-brand-primary);
+  @include m.btn-primary;
   font-size: 16px;
-  font-weight: bold;
-  border-radius: 999px;
   padding: 10px 16px;
-  &:hover {
-    background: var(--color-brand-primary);
-    color: #fff;
-  }
-  &:active {
-    filter: brightness(0.6)
-  }
 }
 
 .button-primary-small {
-  background: var(--color-brand-secondary);
-  color: var(--color-brand-primary);
+  @include m.btn-primary;
   font-size: 12px;
-  font-weight: bold;
-  border-radius: 999px;
   padding: 5px 10px;
-  &:hover {
-    background: var(--color-brand-primary);
-    color: #fff;
-  }
-  &:active {
-    filter: brightness(0.6)
-  }
 }
 
-
+// 警示色的「最高级」：形状与三态同主按钮，只换配色成对。
 .button-warning {
-  background: var(--color-warning-secondary);
-  color: var(--color-warning-primary);
-  border-radius: 999px;
+  @include m.btn-primary;
   font-size: 16px;
-  font-weight: bold;
   padding: 10px 20px;
-  &:hover {
-    background: var(--color-warning-primary);
+  background-color: var(--color-warning-secondary);
+  color: var(--color-warning-primary);
+
+  &:hover:not(:disabled) {
+    background-color: var(--color-warning-primary);
     color: #fff;
   }
-  &:active {
-    filter: brightness(0.6)
-  }
 }
+
 .actions {
   margin-top: 10px;
   margin-bottom: 10px;
@@ -67,18 +48,15 @@
 }
 
 .button-warning-small {
-  background: var(--color-warning-secondary);
-  color: var(--color-warning-primary);
-  border-radius: 999px;
+  @include m.btn-primary;
   font-size: 12px;
-  font-weight: bold;
   padding: 5px 10px;
-  &:hover {
-    background: var(--color-warning-primary);
+  background-color: var(--color-warning-secondary);
+  color: var(--color-warning-primary);
+
+  &:hover:not(:disabled) {
+    background-color: var(--color-warning-primary);
     color: #fff;
-  }
-  &:active {
-    filter: brightness(0.6)
   }
 }
 
@@ -93,7 +71,12 @@
   color: #fff;
 }
 
-// Bootstrap-like button styles (no Bootstrap dependency)
+// ── Bootstrap 形状的按钮（无 Bootstrap 依赖）──────────────────────────────────
+//
+// 形状改为与全站一致：无边框、胶囊、按下不位移。色值全部走主题令牌 ——
+// 这一族此前用的是 Bootstrap 原始色（#0d6efd / #6c757d / #dc3545 …），
+// 既不在主题体系内，暗色下也不跟着变。
+
 .btn {
   display: inline-block;
   padding: 0.5rem 1rem;
@@ -101,63 +84,44 @@
   line-height: 1.5;
   text-align: center;
   cursor: pointer;
-  border: 1px solid transparent;
-  border-radius: 0.375rem;
-  transition: all 0.2s ease;
   user-select: none;
+  border: none;
+  border-radius: v.$radius-max;
 }
 
+// 最高级档
 .btn-primary {
-  color: #fff;
-  background-color: #0d6efd;
-  border-color: #0d6efd;
-}
-.btn-primary:hover {
-  background-color: #0b5ed7;
-  border-color: #0a58ca;
+  @include m.btn-primary;
 }
 
+// 次级档（原先的实底灰按钮 → 归入次级档，空闲为次级文字色）
 .btn-secondary {
-  color: #fff;
-  background-color: #6c757d;
-  border-color: #6c757d;
-}
-.btn-secondary:hover {
-  background-color: #5c636a;
-  border-color: #565e64;
+  @include m.btn-secondary;
 }
 
-.btn-outline-primary {
-  color: #0d6efd;
-  background-color: transparent;
-  border-color: #0d6efd;
-}
-.btn-outline-primary:hover {
-  color: #fff;
-  background-color: #0d6efd;
-  border-color: #0d6efd;
-}
-
+// 描边族 → 次级档。管理页普遍拿 `btn-primary` / `btn-outline-secondary` 当
+// 「选中 / 未选中」成对使用（如 admin/appeals 的状态筛选），归入这两档后
+// 恰好就是「当前项 = 最高级空闲态、其余 = 次级」，与顶栏切页同一套语言。
+.btn-outline-primary,
 .btn-outline-secondary {
-  color: #6c757d;
-  background-color: transparent;
-  border-color: #6c757d;
-}
-.btn-outline-secondary:hover {
-  color: #fff;
-  background-color: #6c757d;
-  border-color: #6c757d;
+  @include m.btn-secondary;
 }
 
+// 危险的次级按钮：空闲就带警示色 —— 破坏性操作不能等 hover 才说。
+// 三态递进仍与次级档同构，只是换成警示色系。
 .btn-outline-danger {
-  color: #dc3545;
-  background-color: transparent;
-  border-color: #dc3545;
-}
-.btn-outline-danger:hover {
-  color: #fff;
-  background-color: #dc3545;
-  border-color: #dc3545;
+  @include m.btn-secondary;
+  color: var(--color-warning-primary);
+
+  &:hover:not(:disabled) {
+    background-color: var(--color-warning-secondary);
+    color: var(--color-warning-primary);
+  }
+
+  &:active:not(:disabled) {
+    background-color: var(--color-warning-primary);
+    color: #fff;
+  }
 }
 
 .btn:disabled {
@@ -169,6 +133,10 @@
 // .btn-danger / .vote-detail__voters-toggle）。这三个修饰符此前**只出现在 JSX 里，
 // CSS 从未定义**：渲染出来是一排没有底色也没有边框的裸按钮，暗色下用浏览器默认色
 // 几乎看不见。颜色全部走主题令牌。
+// ⚠️ 全站唯一的「有边框」按钮，**刻意保留**：投票详情页底部操作区那几个
+// （「返回上页」等）在暗色下要是没有边框就只剩一行字，与背景糊在一起。
+// tests/e2e/dark-theme.spec.ts 断言的就是「暗色下这个按钮的边框必须非透明」——
+// 去掉边框会让那条用例失败，且确实是可读性倒退。这是「无边框」总则的唯一例外。
 .btn--ghost {
   background: transparent;
   color: var(--color-text-primary);
@@ -177,16 +145,19 @@
   &:hover:not(:disabled) {
     border-color: var(--color-brand-primary);
     color: var(--color-brand-primary);
+    background: var(--color-brand-secondary);
   }
 }
 
+// 警示色的次级按钮：空闲淡红底，hover 转成实底（与 .button-warning 同一套递进）
 .btn--danger-soft {
+  @include m.btn-primary;
   background: var(--color-warning-secondary);
   color: var(--color-warning-primary);
-  border: none;
 
   &:hover:not(:disabled) {
-    opacity: 0.9;
+    background-color: var(--color-warning-primary);
+    color: #fff;
   }
 }
 
@@ -210,58 +181,61 @@
   flex-wrap: wrap;
 }
 
+// 尺寸修饰符只改字号与内距，圆角一律继承 .btn 的胶囊 —— 此前它们各自把圆角
+// 改回 0.25rem / 0.3rem，于是同一排按钮里大小号是两种形状。
 .btn-sm {
   padding: 0.25rem 0.5rem;
   font-size: 0.875rem;
-  border-radius: 0.25rem;
 }
 
 .btn-lg {
   padding: 0.5rem 1rem;
   font-size: 1.25rem;
-  border-radius: 0.3rem;
 }
 
+// 语义色按钮：形状与三态同最高级档，只换配色。原来用的是 Bootstrap 原始色，
+// 既不随主题切换，也和站内色板无关。
 .btn-danger {
-  color: #fff;
-  background-color: #dc3545;
-  border-color: #dc3545;
-}
-.btn-danger:hover {
-  background-color: #bb2d3b;
-  border-color: #b02a37;
+  @include m.btn-primary;
+  background-color: var(--color-warning-secondary);
+  color: var(--color-warning-primary);
+
+  &:hover:not(:disabled) {
+    background-color: var(--color-warning-primary);
+    color: #fff;
+  }
 }
 
 .btn-success {
-  color: #fff;
-  background-color: #198754;
-  border-color: #198754;
-}
-.btn-success:hover {
-  background-color: #157347;
-  border-color: #146c43;
+  @include m.btn-primary;
+  background-color: var(--color-success-secondary);
+  color: var(--color-success-primary);
+
+  &:hover:not(:disabled) {
+    background-color: var(--color-success-primary);
+    color: #fff;
+  }
 }
 
+// 原为 Bootstrap 的琥珀 #ffc107。站内没有琥珀语义令牌，黄色那支
+// （--color-star-primary）在 base/_root.scss 里写明是收藏夹五角星的专用色、
+// 明确不许外借 —— 故归到站内唯一的警示色。用到它的都是降级 / 封禁这类
+// 破坏性管理操作，红色比琥珀更贴切。
 .btn-warning {
-  color: #000;
-  background-color: #ffc107;
-  border-color: #ffc107;
-}
-.btn-warning:hover {
-  color: #000;
-  background-color: #ffca2c;
-  border-color: #ffc720;
+  @include m.btn-primary;
+  background-color: var(--color-warning-secondary);
+  color: var(--color-warning-primary);
+
+  &:hover:not(:disabled) {
+    background-color: var(--color-warning-primary);
+    color: #fff;
+  }
 }
 
+// 原为 Bootstrap 的青色，站内无语义。实际用途是「查看主页」这类中性跳转，
+// 按层级归入次级档。
 .btn-info {
-  color: #000;
-  background-color: #0dcaf0;
-  border-color: #0dcaf0;
-}
-.btn-info:hover {
-  color: #000;
-  background-color: #31d2f2;
-  border-color: #25cff2;
+  @include m.btn-secondary;
 }
 
 // Close button (×) without image assets
@@ -285,44 +259,9 @@
 }
 .btn-close:hover { opacity: .75; }
 
-// Dark mode tweaks — project uses [data-theme="dark"] on <html>
-[data-theme="dark"] {
-  .btn-outline-primary { color: #5dade2; border-color: #5dade2; }
-  .btn-outline-primary:hover { background-color: #5dade2; border-color: #5dade2; color: #1e1e1e; }
-  .btn-outline-secondary { color: #a0aec0; border-color: #4a5568; }
-  .btn-outline-secondary:hover { background-color: #4a5568; color: #ecf0f1; }
-  .btn-outline-danger { color: #ff6b6b; border-color: #ff6b6b; }
-  .btn-outline-danger:hover { background-color: #ff6b6b; color: #1e1e1e; }
+/* 此处原有整块 `[data-theme="dark"] { .btn-* … }`，作用是给上面那些 Bootstrap
+   写死色补一套暗色值。既然配色全部换成 --color-* 令牌、随 [data-theme] 自动切换，
+   这块就没有存在意义了。唯一还需要暗色专门处理的 .btn--ghost 靠 --color-border，
+   同样已经是主题令牌。 */
 
-  .btn-success {
-    background-color: #157347;
-    border-color: #146c43;
-  }
-  .btn-success:hover {
-    background-color: #146c43;
-    border-color: #115c36;
-  }
-
-  .btn-warning {
-    color: #000;
-    background-color: #e0a800;
-    border-color: #d39e00;
-  }
-  .btn-warning:hover {
-    color: #000;
-    background-color: #d39e00;
-    border-color: #c69500;
-  }
-
-  .btn-info {
-    color: #000;
-    background-color: #0aa2c0;
-    border-color: #0997b3;
-  }
-  .btn-info:hover {
-    color: #000;
-    background-color: #0997b3;
-    border-color: #08859e;
-  }
-}
 

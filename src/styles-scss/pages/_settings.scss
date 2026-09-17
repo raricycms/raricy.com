@@ -1,4 +1,5 @@
 @use '../abstracts/variables' as *;
+@use '../abstracts/mixins' as m;
 
 // ============================================================
 // Settings page
@@ -115,25 +116,18 @@
 
 // --- Buttons ---
 
+/* 基础档 = 次级：原先空闲铺 --color-background-content 灰底 + 主文字色，
+   属于「没有档位」的中间态（既不是最高级也不像次级）。归次级后空闲为
+   次级文字色、无底色，hover 才升到最高级空闲态。 */
 .settings-btn {
+  @include m.btn-secondary;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: $space-2;
   padding: 8px 24px;
-  border-radius: $radius-max;
   font-size: 0.9rem;
   font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  border: none;
-  background: var(--color-background-content);
-  color: var(--color-text-primary);
-
-  &:hover:not(:disabled) {
-    background: var(--color-brand-secondary);
-    color: var(--color-brand-primary);
-  }
 
   &:disabled {
     opacity: 0.6;
@@ -141,13 +135,7 @@
   }
 
   &--primary {
-    background: var(--color-brand-secondary);
-    color: var(--color-brand-primary);
-
-    &:hover:not(:disabled) {
-      background: var(--color-brand-primary);
-      color: #fff;
-    }
+    @include m.btn-primary;
 
     &:disabled {
       opacity: 0.6;

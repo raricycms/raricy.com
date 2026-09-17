@@ -1,4 +1,5 @@
 @use '../abstracts/variables' as *;
+@use '../abstracts/mixins' as m;
 
 // ═══════════════════════════════════════════════════════
 //  鱼干市场（/fish/market）—— 转账
@@ -268,27 +269,19 @@
   }
 }
 
+/* 归「最高级」档：空闲品牌浅底、hover 反转成实底。
+   原先它是常驻实底 + hover 只提亮 1.1 —— 既不在三档体系里，hover 的
+   `translateY(-1px)` 还让整个按钮跳一下（本次全站清除的垂直位移反馈之一）。 */
 .market-submit {
+  @include m.btn-primary;
   display: block;
   width: 100%;
   padding: $space-3 $space-4;
-  border: none;
-  border-radius: $radius-max;
-  background: var(--color-brand-primary);
-  color: #fff;
   font-size: 1rem;
   font-weight: 700;
-  cursor: pointer;
-  transition: all 0.2s ease;
-
-  &:hover:not(:disabled) {
-    filter: brightness(1.1);
-    transform: translateY(-1px);
-  }
 
   &:disabled {
     opacity: 0.4;
-    cursor: not-allowed;
   }
 }
 

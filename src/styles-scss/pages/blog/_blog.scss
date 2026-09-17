@@ -1,5 +1,6 @@
 @use '../../components/composer' as composer;
 @use '../../components/markdown-body' as markdown-body;
+@use '../../abstracts/mixins' as m;
 
 /* 注：本文件顶部原本有两条 `*` 规则（transition / -webkit-tap-highlight-color），
    已收敛到 base/_reset.scss（全局规则只留一处定义）。 */
@@ -290,30 +291,9 @@ a {
     }
 }
 
-.read-btn {
-    background: #2c3e50;
-    color: white;
-    border: none;
-    padding: 12px 24px;
-    border-radius: 6px;
-    font-weight: 500;
-    text-decoration: none;
-    font-size: 1rem;
-    transition: all 0.3s ease;
-    min-width: 120px;
-    text-align: center;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-}
-
-.read-btn:hover {
-    background: #34495e;
-    color: white;
-    text-decoration: none;
-    transform: translateY(-1px);
-}
+/* .read-btn 的唯一定义在本文件靠后处（归「最高级」档），此处原有的一套
+   写死 #2c3e50 / #34495e 的旧配色已被它整体覆盖 —— 是死代码，且留着会让人
+   以为改这里有效。已删。 */
 
 /* 「管理文章」弹窗目录项：整行胶囊，危险项用红色语义 */
 .manage-menu {
@@ -686,16 +666,20 @@ a {
 }
 
 
+/* 博客详情页操作区（点赞/收藏/管理文章等）。尺寸与布局属性原先是分两条规则给的：
+   上面那条死规则供 padding / min-width / display，这条供配色 —— 合并成一条，
+   配色走 mixin。 */
 .read-btn {
-    background: var(--color-brand-secondary);
-    color: var(--color-brand-primary);
-    border-radius: 999px;
-    font-weight: bold;
+    @include m.btn-primary;
+    padding: 12px 24px;
+    min-width: 120px;
     font-size: 17px;
-    &:hover {
-        background: var(--color-brand-primary);
-        color: #fff;
-    }
+    text-decoration: none;
+    text-align: center;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
 }
 
 @media (max-width: 768px) {
@@ -718,9 +702,49 @@ a {
         margin: 20px auto 40px;
     }
     .read-controls {
-        padding: 0 15px;
+        padding: 0 10px;
         margin: 20px auto 30px;
         gap: 12px;
+    }
+
+    /* ── 窄屏：点赞 / 投喂 / 收藏 必须压在同一行 ────────────────────────────
+       原样（flex-wrap: wrap + 16px 间距 + 16px 字号）在 390px 上放不下第三颗，
+       收藏被挤到第二行单独一行 —— 看起来像个次要操作，而它是与点赞/投喂并列的
+       三颗之一。所以：不许换行，三颗等宽平分，内部间距与字号各收一档。
+       等宽（flex: 1 1 0）而不是按内容排：三颗宽度一致才读得出「并列」，
+       否则「收藏」因为字少会明显窄一截。min-width: 0 覆盖 .like-btn / .fish-btn
+       自身的内容宽度下限，允许它们真正被压缩到 1/3。 */
+    .read-controls__row {
+        width: 100%;
+        max-width: 24rem;
+        flex-wrap: nowrap;
+        gap: 6px;
+    }
+
+    .read-controls__row .like-btn,
+    .read-controls__row .fish-btn,
+    .read-controls__row .favorite-btn {
+        flex: 1 1 0;
+        min-width: 0;
+        justify-content: center;
+        gap: 3px;
+        padding: 8px 6px;
+        font-size: 0.85rem;
+
+        .icon {
+            width: 1rem;
+            height: 1rem;
+            flex: none;
+        }
+
+        /* 徽标收一档，且 flex: none —— 它是这三样里最该被压缩的，但压缩它
+           （数字被截断）比压缩文字更糟，所以干脆不让它参与伸缩，靠整体尺寸兜住。 */
+        .like-count-badge,
+        .fish-count-badge {
+            padding: 1px 4px;
+            font-size: 0.68rem;
+            flex: none;
+        }
     }
 
     .read-btn {
@@ -773,6 +797,27 @@ a {
     .blog-content-container .MathJax,
     .blog-content-container mjx-container[jax="CHTML"] {
         font-size: 0.9em !important;
+    }
+}
+
+/* 极窄屏（折叠屏外屏 / 320px 档）：三颗**真的**压不进一行了。
+ *
+ * 判据是实测算出来的，不是拍的：一颗按钮的内容宽度 = 内边距 12 + 图标 16 + 两处
+ * 内部间距 6 + 文字（"已点赞" 3 字 × 14px）42 + 徽标（4 位数）约 33 ≈ 109px，
+ * 三颗加行间距约 339px，再加 .read-controls 的左右内边距 20px ≈ 359px。
+ * 所以 <360px 时若还坚持一行，等宽只会把文字挤成「已/点/赞」竖排三行 ——
+ * 那比换行难看得多。这里退回按内容宽度、允许换行（2+1 两行）。
+ * 不继续缩字号：0.75rem 以下就开始牺牲可读性了。 */
+@media (max-width: 359px) {
+    .read-controls__row {
+        flex-wrap: wrap;
+    }
+
+    .read-controls__row .like-btn,
+    .read-controls__row .fish-btn,
+    .read-controls__row .favorite-btn {
+        flex: 0 0 auto;
+        white-space: nowrap;
     }
 }
 

@@ -132,9 +132,9 @@
   display: flex;
   flex-direction: column;
 
+  /* 卡片 hover：只提阴影，不位移 —— 与博客首页 .blog-item 一致 */
   &:hover {
     box-shadow: var(--shadow-card-hover);
-    transform: translateY(-3px);
   }
 
   // Collection card variant

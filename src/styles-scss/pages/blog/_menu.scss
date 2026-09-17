@@ -1,7 +1,9 @@
 /* 注：本文件顶部原本有 `* { transition / -webkit-tap-highlight-color }`，
    已收敛到 base/_reset.scss（全局规则只留一处定义）。 */
 
-a { 
+@use '../../abstracts/mixins' as m;
+
+a {
   text-decoration: none;
   &:hover {
     text-decoration: none;
@@ -45,23 +47,20 @@ a {
     }
 }
 
+/* 全站「最高级按钮」的基准。表面与三态由 mixin 提供（abstracts/_mixins.scss），
+   这里只留它自己的尺寸 —— width / font-size / gap 是这个按钮带图标的结果，
+   不跟着复制到别的按钮上。 */
 .upload-button {
+    @include m.btn-primary;
     margin: auto;
     margin-top: 10px;
     width: 105px;
-    color: var(--color-brand-primary);
-    background-color: var(--color-brand-secondary);
-    border: none;
     padding: 8px 10px;
     font-size: 20px;
-    font-weight: bold;
-    border-radius: 999px;
     display: flex;
     align-items: center;
     position: relative;
     gap: 10px;
-    cursor: pointer;
-    transition: all 0.3s ease;
     -webkit-tap-highlight-color: transparent;
     outline: none;
     .icon {
@@ -71,14 +70,9 @@ a {
         transition: all 0.3s ease;
     }
     &:hover {
-        color: #fff;
-        background-color: var(--color-brand-primary);
         .icon {
             color: #fff;
         }
-    }
-    &:active {
-        filter: brightness(0.5);
     }
 }
 
@@ -145,6 +139,7 @@ a {
    位置改为**嵌在输入框内部最右侧**：top/bottom 各留 4px，故高度比输入框矮 8px；
    圆角与输入框同为胶囊，两条弧线贴合。 */
 .search-btn {
+    @include m.btn-primary;
     position: absolute;
     top: 4px;
     right: 4px;
@@ -153,26 +148,11 @@ a {
     align-items: center;
     justify-content: center;
     padding: 0 18px;
-    border: none;
-    border-radius: 999px;
-    background-color: var(--color-brand-secondary);
-    color: var(--color-brand-primary);
     font-size: 0.9rem;
     font-weight: 700;
-    cursor: pointer;
-    transition: all 0.3s ease;
     -webkit-tap-highlight-color: transparent;
     outline: none;
     white-space: nowrap;
-
-    &:hover {
-        color: #fff;
-        background-color: var(--color-brand-primary);
-    }
-
-    &:active {
-        filter: brightness(0.5);
-    }
 }
 
 .search-clear-btn {
@@ -273,18 +253,18 @@ a {
     position: relative;
 }
 
+/* 分类栏 = 切页档：当前分类常驻最高级空闲态，按下不叠加变化。
+   原先这里靠 `border-left: 3px solid transparent` 占位、再由 .active 上色，
+   是「胶囊 + 左侧竖条」两种形状语言的混搭 —— 竖条已去掉，语义全部由底色承担。 */
 .category-link {
+    @include m.btn-tab;
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding: 10px 14px;
-    color: var(--color-text-secondary);
     text-decoration: none;
-    border-radius: 999px;
     font-size: 0.9rem;
     font-weight: 500;
-    transition: all 0.2s ease;
-    border-left: 3px solid transparent;
     position: relative;
     .collapsible {
         cursor: pointer;
@@ -292,9 +272,6 @@ a {
         .catogory-toggle {
             transform: rotate(-90deg);
         }
-    }
-    &:hover {
-        color: var(--color-brand-primary)
     }
 }
 
@@ -315,10 +292,7 @@ a {
 
 
 
-.category-link.active {
-    background: var(--color-brand-secondary);
-    color: var(--color-brand-primary);
-}
+/* .category-link.active 的规则已并入上面的 @include m.btn-tab */
 
 .category-link .icon,
 .category-item .icon {
@@ -346,26 +320,16 @@ a {
     opacity: 1;
 }
 
+/* 子分类与父分类同一档（原先色值是写死的 #8e9ba6，不在主题体系内，
+   暗色下不会跟着变） */
 .sub-category-link {
+    @include m.btn-tab;
     display: flex;
     align-items: center;
     padding: 8px 12px;
-    color: #8e9ba6;
     text-decoration: none;
-    border-radius: 6px;
     font-size: 0.85rem;
     font-weight: 400;
-    transition: all 0.2s ease;
-}
-
-.sub-category-link:hover {
-    color: var(--color-brand-primary);
-    text-decoration: none;
-}
-
-.sub-category-link.active {
-    background: var(--color-brand-secondary);
-    color: var(--color-brand-primary);
 }
 
 /* 右侧博客列表 */
@@ -382,24 +346,16 @@ a {
     margin: 0 0 16px;
 }
 
+/* 切页档：当前排序常驻最高级空闲态。原先空闲态铺的是 --color-background-content
+   灰底，与次级档「无底色」的规则不符，已去掉。 */
 .blog-sort-btn {
+    @include m.btn-tab;
     padding: 6px 14px;
-    border: none;
-    border-radius: 999px;
     font-size: 0.85rem;
     font-weight: 400;
-    color: var(--color-text-secondary);
-    background: var(--color-background-content);
-    cursor: pointer;
-    transition: all 0.2s ease;
 
-    &:hover {
-        color: var(--color-brand-primary);
-    }
-
-    &.active {
-        background: var(--color-brand-secondary);
-        color: var(--color-brand-primary);
+    &.active,
+    &.is-active {
         font-weight: 600;
     }
 }

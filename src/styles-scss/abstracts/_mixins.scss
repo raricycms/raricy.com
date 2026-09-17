@@ -29,4 +29,98 @@
   padding-right: v.$space-4;
 }
 
+// ── 按钮三档 ─────────────────────────────────────────────────────────────────
+//
+// 全站按钮只有三档，配方取自博客首页的「创建」按钮（.upload-button）。它们只统一
+// **表面与交互**，不统一尺寸 —— 各按钮保留自己的字号与内距（创建按钮的 20px 字号是
+// 它自带图标的结果，不该复制到别处）。
+//
+// 一条硬纪律：**任何一档都不做垂直位移**。此前散着十几处 `translateY(-1px/-2px)`
+// 的 hover 反馈，按下时按钮会跳 —— 反馈一律只用颜色（hover 换底、按下压暗）。
+
+/// 最高级：品牌浅底 + 品牌字；hover 反转成实底白字；按下整体压暗。
+@mixin btn-primary {
+  border: none;
+  border-radius: v.$radius-max;
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+  font-weight: bold;
+  cursor: pointer;
+  transition: color .25s ease, background-color .25s ease, filter .15s ease;
+
+  &:hover:not(:disabled) {
+    background-color: var(--color-brand-primary);
+    color: #fff;
+  }
+
+  &:active:not(:disabled) {
+    filter: brightness(.5);
+  }
+
+  &:disabled {
+    opacity: .5;
+    cursor: not-allowed;
+  }
+}
+
+/// 次级：不抢视线。空闲＝次级文字色、无底色；hover＝最高级空闲态；按下＝最高级 hover 态。
+/// 三态递进，所以它「越靠近越显眼」，而不是一上来就和主按钮争。
+@mixin btn-secondary {
+  border: none;
+  border-radius: v.$radius-max;
+  background-color: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: color .25s ease, background-color .25s ease;
+
+  &:hover:not(:disabled) {
+    background-color: var(--color-brand-secondary);
+    color: var(--color-brand-primary);
+  }
+
+  &:active:not(:disabled) {
+    background-color: var(--color-brand-primary);
+    color: #fff;
+  }
+
+  &:disabled {
+    opacity: .5;
+    cursor: not-allowed;
+  }
+}
+
+/// 切页 / 分类：视觉同次级，但「当前所在页」常驻最高级空闲态，
+/// 且**按下不叠加变化** —— 已经在的页面再点一下不该闪成实底。
+/// 用法：给当前项挂 `.is-active`（`.active` 作为历史写法一并认，见下）。
+@mixin btn-tab {
+  @include btn-secondary;
+
+  &:active:not(:disabled) {
+    background-color: var(--color-brand-secondary);
+    color: var(--color-brand-primary);
+  }
+
+  // `.active` 是站内早先的写法（博客分类栏、排序条、管理页筛选都在用）。
+  // 两套并存只为少改调用点；**新代码一律用 .is-active**。
+  &.is-active,
+  &.active {
+    background-color: var(--color-brand-secondary);
+    color: var(--color-brand-primary);
+
+    &:hover:not(:disabled),
+    &:active:not(:disabled) {
+      background-color: var(--color-brand-secondary);
+      color: var(--color-brand-primary);
+    }
+  }
+}
+
+// 容器宽度阶梯。顶栏（.site-container）与正文（.container）共用同一档，
+// 两者的左边缘才会对齐 —— 此前 .container 只在 ≥1200px 才有 max-width，
+// 992–1199px 区间正文是全幅、顶栏是 960px，一眼就能看出错位。
+@mixin site-width-ladder {
+  @include bp.up(bp.$bp-lg) { max-width: 960px; }
+  @include bp.up(bp.$bp-xl) { max-width: v.$container-max; }
+}
+
 

@@ -403,19 +403,47 @@ a:hover {
   display: block;
 }
 
+/* 顶栏切页：归「切页档」。空闲为次级文字色（导航不是次级操作，但按规则它确实
+   落在次级这一层 —— 当前页才升到最高级空闲态）。当前页由 Navbar.tsx 用
+   usePathname() 挂 .is-active，按下不叠加变化。 */
+.site-link {
+  border: none;
+  border-radius: 999px;
+  background-color: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: color 0.25s ease, background-color 0.25s ease;
+}
+.site-link:hover:not(:disabled) {
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+}
+.site-link:active:not(:disabled) {
+  background-color: var(--color-brand-primary);
+  color: #fff;
+}
+.site-link:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.site-link:active:not(:disabled) {
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+}
+.site-link.is-active, .site-link.active {
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+}
+.site-link.is-active:hover:not(:disabled), .site-link.is-active:active:not(:disabled), .site-link.active:hover:not(:disabled), .site-link.active:active:not(:disabled) {
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+}
 .site-link {
   display: block;
-  color: var(--color-text-primary);
   text-decoration: none;
   padding: 0.5rem 1rem;
-  border-radius: 999px;
   font-weight: 500;
-  transition: color 0.3s ease, background-color 0.2s ease;
   position: relative;
-}
-.site-link:hover {
-  color: var(--color-brand-primary);
-  background: var(--color-brand-secondary);
 }
 .site-link__dot {
   position: absolute;
@@ -423,7 +451,7 @@ a:hover {
   right: 4px;
   width: 8px;
   height: 8px;
-  background: #dc3545;
+  background: var(--color-warning-primary);
   border-radius: 50%;
   animation: pulse 2s infinite;
 }
@@ -444,20 +472,33 @@ a:hover {
 }
 
 .site-login-btn {
-  display: inline-flex;
-  background: var(--color-brand-secondary);
   border: none;
+  border-radius: 999px;
+  background-color: var(--color-brand-secondary);
   color: var(--color-brand-primary);
+  font-weight: bold;
+  cursor: pointer;
+  transition: color 0.25s ease, background-color 0.25s ease, filter 0.15s ease;
+}
+.site-login-btn:hover:not(:disabled) {
+  background-color: var(--color-brand-primary);
+  color: #fff;
+}
+.site-login-btn:active:not(:disabled) {
+  filter: brightness(0.5);
+}
+.site-login-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.site-login-btn {
+  display: inline-flex;
   padding: 8px 16px;
-  border-radius: 20px;
   font-weight: 500;
-  transition: all 0.3s ease;
   text-decoration: none;
   align-items: center;
 }
 .site-login-btn:hover {
-  background: var(--color-brand-primary);
-  color: #fff;
   text-decoration: none;
 }
 
@@ -578,7 +619,7 @@ a:hover {
   position: absolute;
   top: 2px;
   right: 2px;
-  background: #dc3545;
+  background: var(--color-warning-primary);
   color: #fff;
   border-radius: 50%;
   padding: 2px 6px;
@@ -649,9 +690,11 @@ a:hover {
   right: 9px;
   width: 8px;
   height: 8px;
-  background: #22c55e;
+  background: var(--color-success-primary);
   border-radius: 50%;
-  border: 1.5px solid var(--color-bg-primary);
+  /* --color-bg-primary 从未定义（边界情况：border-color 退回 currentColor），
+     该点是顶栏卡片上的角标，压边应取卡片底色。 */
+  border: 1.5px solid var(--color-background-card);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -935,51 +978,84 @@ body {
 }
 
 .button-primary {
-  background: var(--color-brand-secondary);
-  color: var(--color-brand-primary);
-  font-size: 16px;
-  font-weight: bold;
+  border: none;
   border-radius: 999px;
-  padding: 10px 16px;
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+  font-weight: bold;
+  cursor: pointer;
+  transition: color 0.25s ease, background-color 0.25s ease, filter 0.15s ease;
 }
-.button-primary:hover {
-  background: var(--color-brand-primary);
+.button-primary:hover:not(:disabled) {
+  background-color: var(--color-brand-primary);
   color: #fff;
 }
-.button-primary:active {
-  filter: brightness(0.6);
+.button-primary:active:not(:disabled) {
+  filter: brightness(0.5);
+}
+.button-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.button-primary {
+  font-size: 16px;
+  padding: 10px 16px;
 }
 
 .button-primary-small {
-  background: var(--color-brand-secondary);
-  color: var(--color-brand-primary);
-  font-size: 12px;
-  font-weight: bold;
+  border: none;
   border-radius: 999px;
-  padding: 5px 10px;
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+  font-weight: bold;
+  cursor: pointer;
+  transition: color 0.25s ease, background-color 0.25s ease, filter 0.15s ease;
 }
-.button-primary-small:hover {
-  background: var(--color-brand-primary);
+.button-primary-small:hover:not(:disabled) {
+  background-color: var(--color-brand-primary);
   color: #fff;
 }
-.button-primary-small:active {
-  filter: brightness(0.6);
+.button-primary-small:active:not(:disabled) {
+  filter: brightness(0.5);
+}
+.button-primary-small:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.button-primary-small {
+  font-size: 12px;
+  padding: 5px 10px;
 }
 
 .button-warning {
-  background: var(--color-warning-secondary);
-  color: var(--color-warning-primary);
+  border: none;
   border-radius: 999px;
-  font-size: 16px;
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
   font-weight: bold;
-  padding: 10px 20px;
+  cursor: pointer;
+  transition: color 0.25s ease, background-color 0.25s ease, filter 0.15s ease;
 }
-.button-warning:hover {
-  background: var(--color-warning-primary);
+.button-warning:hover:not(:disabled) {
+  background-color: var(--color-brand-primary);
   color: #fff;
 }
-.button-warning:active {
-  filter: brightness(0.6);
+.button-warning:active:not(:disabled) {
+  filter: brightness(0.5);
+}
+.button-warning:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.button-warning {
+  font-size: 16px;
+  padding: 10px 20px;
+  background-color: var(--color-warning-secondary);
+  color: var(--color-warning-primary);
+}
+.button-warning:hover:not(:disabled) {
+  background-color: var(--color-warning-primary);
+  color: #fff;
 }
 
 .actions {
@@ -991,19 +1067,34 @@ body {
 }
 
 .button-warning-small {
-  background: var(--color-warning-secondary);
-  color: var(--color-warning-primary);
+  border: none;
   border-radius: 999px;
-  font-size: 12px;
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
   font-weight: bold;
-  padding: 5px 10px;
+  cursor: pointer;
+  transition: color 0.25s ease, background-color 0.25s ease, filter 0.15s ease;
 }
-.button-warning-small:hover {
-  background: var(--color-warning-primary);
+.button-warning-small:hover:not(:disabled) {
+  background-color: var(--color-brand-primary);
   color: #fff;
 }
-.button-warning-small:active {
-  filter: brightness(0.6);
+.button-warning-small:active:not(:disabled) {
+  filter: brightness(0.5);
+}
+.button-warning-small:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.button-warning-small {
+  font-size: 12px;
+  padding: 5px 10px;
+  background-color: var(--color-warning-secondary);
+  color: var(--color-warning-primary);
+}
+.button-warning-small:hover:not(:disabled) {
+  background-color: var(--color-warning-primary);
+  color: #fff;
 }
 
 /* Legacy alias from site.css */
@@ -1025,68 +1116,108 @@ body {
   line-height: 1.5;
   text-align: center;
   cursor: pointer;
-  border: 1px solid transparent;
-  border-radius: 0.375rem;
-  transition: all 0.2s ease;
   user-select: none;
+  border: none;
+  border-radius: 999px;
 }
 
 .btn-primary {
-  color: #fff;
-  background-color: #0d6efd;
-  border-color: #0d6efd;
+  border: none;
+  border-radius: 999px;
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+  font-weight: bold;
+  cursor: pointer;
+  transition: color 0.25s ease, background-color 0.25s ease, filter 0.15s ease;
 }
-
-.btn-primary:hover {
-  background-color: #0b5ed7;
-  border-color: #0a58ca;
+.btn-primary:hover:not(:disabled) {
+  background-color: var(--color-brand-primary);
+  color: #fff;
+}
+.btn-primary:active:not(:disabled) {
+  filter: brightness(0.5);
+}
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .btn-secondary {
-  color: #fff;
-  background-color: #6c757d;
-  border-color: #6c757d;
-}
-
-.btn-secondary:hover {
-  background-color: #5c636a;
-  border-color: #565e64;
-}
-
-.btn-outline-primary {
-  color: #0d6efd;
+  border: none;
+  border-radius: 999px;
   background-color: transparent;
-  border-color: #0d6efd;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: color 0.25s ease, background-color 0.25s ease;
 }
-
-.btn-outline-primary:hover {
+.btn-secondary:hover:not(:disabled) {
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+}
+.btn-secondary:active:not(:disabled) {
+  background-color: var(--color-brand-primary);
   color: #fff;
-  background-color: #0d6efd;
-  border-color: #0d6efd;
+}
+.btn-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
+.btn-outline-primary,
 .btn-outline-secondary {
-  color: #6c757d;
+  border: none;
+  border-radius: 999px;
   background-color: transparent;
-  border-color: #6c757d;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: color 0.25s ease, background-color 0.25s ease;
 }
-
-.btn-outline-secondary:hover {
+.btn-outline-primary:hover:not(:disabled),
+.btn-outline-secondary:hover:not(:disabled) {
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+}
+.btn-outline-primary:active:not(:disabled),
+.btn-outline-secondary:active:not(:disabled) {
+  background-color: var(--color-brand-primary);
   color: #fff;
-  background-color: #6c757d;
-  border-color: #6c757d;
+}
+.btn-outline-primary:disabled,
+.btn-outline-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .btn-outline-danger {
-  color: #dc3545;
+  border: none;
+  border-radius: 999px;
   background-color: transparent;
-  border-color: #dc3545;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: color 0.25s ease, background-color 0.25s ease;
 }
-
-.btn-outline-danger:hover {
+.btn-outline-danger:hover:not(:disabled) {
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+}
+.btn-outline-danger:active:not(:disabled) {
+  background-color: var(--color-brand-primary);
   color: #fff;
-  background-color: #dc3545;
-  border-color: #dc3545;
+}
+.btn-outline-danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn-outline-danger {
+  color: var(--color-warning-primary);
+}
+.btn-outline-danger:hover:not(:disabled) {
+  background-color: var(--color-warning-secondary);
+  color: var(--color-warning-primary);
+}
+.btn-outline-danger:active:not(:disabled) {
+  background-color: var(--color-warning-primary);
+  color: #fff;
 }
 
 .btn:disabled {
@@ -1102,15 +1233,36 @@ body {
 .btn--ghost:hover:not(:disabled) {
   border-color: var(--color-brand-primary);
   color: var(--color-brand-primary);
+  background: var(--color-brand-secondary);
 }
 
 .btn--danger-soft {
-  background: var(--color-warning-secondary);
-  color: var(--color-warning-primary);
   border: none;
+  border-radius: 999px;
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+  font-weight: bold;
+  cursor: pointer;
+  transition: color 0.25s ease, background-color 0.25s ease, filter 0.15s ease;
 }
 .btn--danger-soft:hover:not(:disabled) {
-  opacity: 0.9;
+  background-color: var(--color-brand-primary);
+  color: #fff;
+}
+.btn--danger-soft:active:not(:disabled) {
+  filter: brightness(0.5);
+}
+.btn--danger-soft:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn--danger-soft {
+  background: var(--color-warning-secondary);
+  color: var(--color-warning-primary);
+}
+.btn--danger-soft:hover:not(:disabled) {
+  background-color: var(--color-warning-primary);
+  color: #fff;
 }
 
 .btn--quiet {
@@ -1133,59 +1285,119 @@ body {
 .btn-sm {
   padding: 0.25rem 0.5rem;
   font-size: 0.875rem;
-  border-radius: 0.25rem;
 }
 
 .btn-lg {
   padding: 0.5rem 1rem;
   font-size: 1.25rem;
-  border-radius: 0.3rem;
 }
 
 .btn-danger {
-  color: #fff;
-  background-color: #dc3545;
-  border-color: #dc3545;
+  border: none;
+  border-radius: 999px;
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+  font-weight: bold;
+  cursor: pointer;
+  transition: color 0.25s ease, background-color 0.25s ease, filter 0.15s ease;
 }
-
-.btn-danger:hover {
-  background-color: #bb2d3b;
-  border-color: #b02a37;
+.btn-danger:hover:not(:disabled) {
+  background-color: var(--color-brand-primary);
+  color: #fff;
+}
+.btn-danger:active:not(:disabled) {
+  filter: brightness(0.5);
+}
+.btn-danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn-danger {
+  background-color: var(--color-warning-secondary);
+  color: var(--color-warning-primary);
+}
+.btn-danger:hover:not(:disabled) {
+  background-color: var(--color-warning-primary);
+  color: #fff;
 }
 
 .btn-success {
-  color: #fff;
-  background-color: #198754;
-  border-color: #198754;
+  border: none;
+  border-radius: 999px;
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+  font-weight: bold;
+  cursor: pointer;
+  transition: color 0.25s ease, background-color 0.25s ease, filter 0.15s ease;
 }
-
-.btn-success:hover {
-  background-color: #157347;
-  border-color: #146c43;
+.btn-success:hover:not(:disabled) {
+  background-color: var(--color-brand-primary);
+  color: #fff;
+}
+.btn-success:active:not(:disabled) {
+  filter: brightness(0.5);
+}
+.btn-success:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn-success {
+  background-color: var(--color-success-secondary);
+  color: var(--color-success-primary);
+}
+.btn-success:hover:not(:disabled) {
+  background-color: var(--color-success-primary);
+  color: #fff;
 }
 
 .btn-warning {
-  color: #000;
-  background-color: #ffc107;
-  border-color: #ffc107;
+  border: none;
+  border-radius: 999px;
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+  font-weight: bold;
+  cursor: pointer;
+  transition: color 0.25s ease, background-color 0.25s ease, filter 0.15s ease;
 }
-
-.btn-warning:hover {
-  color: #000;
-  background-color: #ffca2c;
-  border-color: #ffc720;
+.btn-warning:hover:not(:disabled) {
+  background-color: var(--color-brand-primary);
+  color: #fff;
+}
+.btn-warning:active:not(:disabled) {
+  filter: brightness(0.5);
+}
+.btn-warning:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn-warning {
+  background-color: var(--color-warning-secondary);
+  color: var(--color-warning-primary);
+}
+.btn-warning:hover:not(:disabled) {
+  background-color: var(--color-warning-primary);
+  color: #fff;
 }
 
 .btn-info {
-  color: #000;
-  background-color: #0dcaf0;
-  border-color: #0dcaf0;
+  border: none;
+  border-radius: 999px;
+  background-color: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: color 0.25s ease, background-color 0.25s ease;
 }
-
-.btn-info:hover {
-  color: #000;
-  background-color: #31d2f2;
-  border-color: #25cff2;
+.btn-info:hover:not(:disabled) {
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+}
+.btn-info:active:not(:disabled) {
+  background-color: var(--color-brand-primary);
+  color: #fff;
+}
+.btn-info:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .btn-close {
@@ -1212,60 +1424,10 @@ body {
   opacity: 0.75;
 }
 
-[data-theme=dark] .btn-outline-primary {
-  color: #5dade2;
-  border-color: #5dade2;
-}
-[data-theme=dark] .btn-outline-primary:hover {
-  background-color: #5dade2;
-  border-color: #5dade2;
-  color: #1e1e1e;
-}
-[data-theme=dark] .btn-outline-secondary {
-  color: #a0aec0;
-  border-color: #4a5568;
-}
-[data-theme=dark] .btn-outline-secondary:hover {
-  background-color: #4a5568;
-  color: #ecf0f1;
-}
-[data-theme=dark] .btn-outline-danger {
-  color: #ff6b6b;
-  border-color: #ff6b6b;
-}
-[data-theme=dark] .btn-outline-danger:hover {
-  background-color: #ff6b6b;
-  color: #1e1e1e;
-}
-[data-theme=dark] .btn-success {
-  background-color: #157347;
-  border-color: #146c43;
-}
-[data-theme=dark] .btn-success:hover {
-  background-color: #146c43;
-  border-color: #115c36;
-}
-[data-theme=dark] .btn-warning {
-  color: #000;
-  background-color: #e0a800;
-  border-color: #d39e00;
-}
-[data-theme=dark] .btn-warning:hover {
-  color: #000;
-  background-color: #d39e00;
-  border-color: #c69500;
-}
-[data-theme=dark] .btn-info {
-  color: #000;
-  background-color: #0aa2c0;
-  border-color: #0997b3;
-}
-[data-theme=dark] .btn-info:hover {
-  color: #000;
-  background-color: #0997b3;
-  border-color: #08859e;
-}
-
+/* 此处原有整块 `[data-theme="dark"] { .btn-* … }`，作用是给上面那些 Bootstrap
+   写死色补一套暗色值。既然配色全部换成 --color-* 令牌、随 [data-theme] 自动切换，
+   这块就没有存在意义了。唯一还需要暗色专门处理的 .btn--ghost 靠 --color-border，
+   同样已经是主题令牌。 */
 /* Keep file to adhere to import order; header styles live in layout/_header.scss */
 /* Icon masking utilities using local SVG files; color follows currentColor */
 .icon {
@@ -1764,25 +1926,46 @@ svg.rc-icon {
   gap: 0.2rem;
 }
 
+/* 页码归「切页档」：当前页常驻最高级空闲态，按下不叠加变化。
+   原先当前页是实底白字（那是最高级的 hover 态），且每个页码都带 1px 描边、
+   6px 圆角 —— 与全站胶囊 + 无边框的语言不一致。 */
+.page-link {
+  border: none;
+  border-radius: 999px;
+  background-color: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: color 0.25s ease, background-color 0.25s ease;
+}
+.page-link:hover:not(:disabled) {
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+}
+.page-link:active:not(:disabled) {
+  background-color: var(--color-brand-primary);
+  color: #fff;
+}
+.page-link:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.page-link:active:not(:disabled) {
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+}
+.page-link.is-active, .page-link.active {
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+}
+.page-link.is-active:hover:not(:disabled), .page-link.is-active:active:not(:disabled), .page-link.active:hover:not(:disabled), .page-link.active:active:not(:disabled) {
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+}
 .page-link {
   padding: 0.4rem 0.7rem;
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
-  background: var(--color-background-card);
   font-size: 0.85rem;
-  color: var(--color-text-primary);
   text-decoration: none;
   display: inline-block;
-}
-
-.page-link:hover {
-  background: var(--color-brand-secondary);
-}
-
-.page-link.active {
-  background: var(--color-brand-primary);
-  color: #fff;
-  border-color: var(--color-brand-primary);
 }
 
 .page-ellipsis {
@@ -2416,15 +2599,18 @@ svg.rc-icon {
     grid-template-columns: repeat(4, 1fr);
   }
 }
-/* Buttons (home specific) */
+/* 首页功能卡上的引导标签。改「淡底 + 同色字」的胶囊，与博客首页的
+   .blog-likes / .blog-comments / .blog-fish 三个统计胶囊同一套观感 ——
+   原先它们是「透明底 + 1px 描边 + Bootstrap 原始色」，既不在主题体系内，
+   暗色下也不跟着变。 */
 .home-btn {
   display: inline-block;
   padding: 6px 14px;
-  border-radius: 20px;
+  border-radius: 999px;
   font-weight: 500;
   text-decoration: none;
   cursor: pointer;
-  border: 1px solid transparent;
+  border: none;
   transition: all 0.2s ease;
 }
 
@@ -2434,19 +2620,13 @@ svg.rc-icon {
 }
 
 .home-btn--outline-primary {
-  color: #0d6efd;
-  border-color: #0d6efd;
-  background: transparent;
-}
-
-.home-btn--outline-primary:hover {
-  background: rgba(13, 110, 253, 0.1);
+  color: var(--color-brand-primary);
+  background: var(--color-brand-secondary);
 }
 
 .home-btn--outline-secondary {
-  color: #6c757d;
-  border-color: #6c757d;
-  background: transparent;
+  color: var(--color-text-secondary);
+  background: var(--color-background-subtle);
 }
 
 .home-btn--outline-secondary[disabled] {
@@ -2455,33 +2635,19 @@ svg.rc-icon {
 }
 
 .home-btn--outline-warning {
-  color: #f59e0b;
-  border-color: #f59e0b;
-  background: transparent;
+  color: var(--color-warning-primary);
+  background: var(--color-warning-secondary);
 }
 
-.home-btn--outline-warning:hover {
-  background: rgba(245, 158, 11, 0.1);
-}
-
+/* 站内没有青色的语义令牌，info 归品牌色 */
 .home-btn--outline-info {
-  color: #06b6d4;
-  border-color: #06b6d4;
-  background: transparent;
-}
-
-.home-btn--outline-info:hover {
-  background: rgba(6, 182, 212, 0.1);
+  color: var(--color-brand-primary);
+  background: var(--color-brand-secondary);
 }
 
 .home-btn--outline-success {
-  color: #10b981;
-  border-color: #10b981;
-  background: transparent;
-}
-
-.home-btn--outline-success:hover {
-  background: rgba(16, 185, 129, 0.1);
+  color: var(--color-success-primary);
+  background: var(--color-success-secondary);
 }
 
 .hero-section {
@@ -2678,23 +2844,8 @@ svg.rc-icon {
   animation: fadeInUp 0.8s ease-out;
 }
 
-/* 按钮样式（备用） */
-.btn-custom {
-  background: linear-gradient(45deg, #667eea, #764ba2);
-  border: none;
-  border-radius: 25px;
-  padding: 12px 30px;
-  color: #fff;
-  font-weight: 500;
-  transition: all 0.3s ease;
-}
-
-.btn-custom:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
-  color: #fff;
-}
-
+/* 此处原有 `.btn-custom`：紫色渐变按钮，没有任何 TSX 使用它。
+   渐变两端 #667eea / #764ba2 都不在站内色板里。已删。 */
 /* 注：本文件顶部原本有两条 `*` 规则（transition / -webkit-tap-highlight-color），
    已收敛到 base/_reset.scss（全局规则只留一处定义）。 */
 a {
@@ -2974,31 +3125,9 @@ a:hover {
   flex-wrap: wrap;
 }
 
-.read-btn {
-  background: #2c3e50;
-  color: white;
-  border: none;
-  padding: 12px 24px;
-  border-radius: 6px;
-  font-weight: 500;
-  text-decoration: none;
-  font-size: 1rem;
-  transition: all 0.3s ease;
-  min-width: 120px;
-  text-align: center;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-}
-
-.read-btn:hover {
-  background: #34495e;
-  color: white;
-  text-decoration: none;
-  transform: translateY(-1px);
-}
-
+/* .read-btn 的唯一定义在本文件靠后处（归「最高级」档），此处原有的一套
+   写死 #2c3e50 / #34495e 的旧配色已被它整体覆盖 —— 是死代码，且留着会让人
+   以为改这里有效。已删。 */
 /* 「管理文章」弹窗目录项：整行胶囊，危险项用红色语义 */
 .manage-menu {
   display: flex;
@@ -3655,16 +3784,39 @@ a:hover {
   margin-left: 0;
 }
 
+/* 博客详情页操作区（点赞/收藏/管理文章等）。尺寸与布局属性原先是分两条规则给的：
+   上面那条死规则供 padding / min-width / display，这条供配色 —— 合并成一条，
+   配色走 mixin。 */
 .read-btn {
-  background: var(--color-brand-secondary);
-  color: var(--color-brand-primary);
+  border: none;
   border-radius: 999px;
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
   font-weight: bold;
-  font-size: 17px;
+  cursor: pointer;
+  transition: color 0.25s ease, background-color 0.25s ease, filter 0.15s ease;
 }
-.read-btn:hover {
-  background: var(--color-brand-primary);
+.read-btn:hover:not(:disabled) {
+  background-color: var(--color-brand-primary);
   color: #fff;
+}
+.read-btn:active:not(:disabled) {
+  filter: brightness(0.5);
+}
+.read-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.read-btn {
+  padding: 12px 24px;
+  min-width: 120px;
+  font-size: 17px;
+  text-decoration: none;
+  text-align: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 
 @media (max-width: 768px) {
@@ -3685,9 +3837,55 @@ a:hover {
     margin: 20px auto 40px;
   }
   .read-controls {
-    padding: 0 15px;
+    padding: 0 10px;
     margin: 20px auto 30px;
     gap: 12px;
+  }
+  /* ── 窄屏：点赞 / 投喂 / 收藏 必须压在同一行 ────────────────────────────
+     原样（flex-wrap: wrap + 16px 间距 + 16px 字号）在 390px 上放不下第三颗，
+     收藏被挤到第二行单独一行 —— 看起来像个次要操作，而它是与点赞/投喂并列的
+     三颗之一。所以：不许换行，三颗等宽平分，内部间距与字号各收一档。
+     等宽（flex: 1 1 0）而不是按内容排：三颗宽度一致才读得出「并列」，
+     否则「收藏」因为字少会明显窄一截。min-width: 0 覆盖 .like-btn / .fish-btn
+     自身的内容宽度下限，允许它们真正被压缩到 1/3。 */
+  .read-controls__row {
+    width: 100%;
+    max-width: 24rem;
+    flex-wrap: nowrap;
+    gap: 6px;
+  }
+  .read-controls__row .like-btn,
+  .read-controls__row .fish-btn,
+  .read-controls__row .favorite-btn {
+    flex: 1 1 0;
+    min-width: 0;
+    justify-content: center;
+    gap: 3px;
+    padding: 8px 6px;
+    font-size: 0.85rem;
+  }
+  .read-controls__row .like-btn .icon,
+  .read-controls__row .fish-btn .icon,
+  .read-controls__row .favorite-btn .icon {
+    width: 1rem;
+    height: 1rem;
+    flex: none;
+  }
+  .read-controls__row .like-btn,
+  .read-controls__row .fish-btn,
+  .read-controls__row .favorite-btn {
+    /* 徽标收一档，且 flex: none —— 它是这三样里最该被压缩的，但压缩它
+       （数字被截断）比压缩文字更糟，所以干脆不让它参与伸缩，靠整体尺寸兜住。 */
+  }
+  .read-controls__row .like-btn .like-count-badge,
+  .read-controls__row .like-btn .fish-count-badge,
+  .read-controls__row .fish-btn .like-count-badge,
+  .read-controls__row .fish-btn .fish-count-badge,
+  .read-controls__row .favorite-btn .like-count-badge,
+  .read-controls__row .favorite-btn .fish-count-badge {
+    padding: 1px 4px;
+    font-size: 0.68rem;
+    flex: none;
   }
   .read-btn {
     padding: 10px 16px;
@@ -3732,6 +3930,25 @@ a:hover {
   .blog-content-container .MathJax,
   .blog-content-container mjx-container[jax=CHTML] {
     font-size: 0.9em !important;
+  }
+}
+/* 极窄屏（折叠屏外屏 / 320px 档）：三颗**真的**压不进一行了。
+ *
+ * 判据是实测算出来的，不是拍的：一颗按钮的内容宽度 = 内边距 12 + 图标 16 + 两处
+ * 内部间距 6 + 文字（"已点赞" 3 字 × 14px）42 + 徽标（4 位数）约 33 ≈ 109px，
+ * 三颗加行间距约 339px，再加 .read-controls 的左右内边距 20px ≈ 359px。
+ * 所以 <360px 时若还坚持一行，等宽只会把文字挤成「已/点/赞」竖排三行 ——
+ * 那比换行难看得多。这里退回按内容宽度、允许换行（2+1 两行）。
+ * 不继续缩字号：0.75rem 以下就开始牺牲可读性了。 */
+@media (max-width: 359px) {
+  .read-controls__row {
+    flex-wrap: wrap;
+  }
+  .read-controls__row .like-btn,
+  .read-controls__row .fish-btn,
+  .read-controls__row .favorite-btn {
+    flex: 0 0 auto;
+    white-space: nowrap;
   }
 }
 /* 此处原有两大段注释掉的旧令牌表（`--bg` / `--text` / `--box-bg` / `--border-color` …）
@@ -3789,23 +4006,39 @@ a:hover {
   margin-bottom: 30px;
 }
 
+/* 全站「最高级按钮」的基准。表面与三态由 mixin 提供（abstracts/_mixins.scss），
+   这里只留它自己的尺寸 —— width / font-size / gap 是这个按钮带图标的结果，
+   不跟着复制到别的按钮上。 */
+.upload-button {
+  border: none;
+  border-radius: 999px;
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+  font-weight: bold;
+  cursor: pointer;
+  transition: color 0.25s ease, background-color 0.25s ease, filter 0.15s ease;
+}
+.upload-button:hover:not(:disabled) {
+  background-color: var(--color-brand-primary);
+  color: #fff;
+}
+.upload-button:active:not(:disabled) {
+  filter: brightness(0.5);
+}
+.upload-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 .upload-button {
   margin: auto;
   margin-top: 10px;
   width: 105px;
-  color: var(--color-brand-primary);
-  background-color: var(--color-brand-secondary);
-  border: none;
   padding: 8px 10px;
   font-size: 20px;
-  font-weight: bold;
-  border-radius: 999px;
   display: flex;
   align-items: center;
   position: relative;
   gap: 10px;
-  cursor: pointer;
-  transition: all 0.3s ease;
   -webkit-tap-highlight-color: transparent;
   outline: none;
 }
@@ -3815,15 +4048,8 @@ a:hover {
   color: var(--color-brand-primary);
   transition: all 0.3s ease;
 }
-.upload-button:hover {
-  color: #fff;
-  background-color: var(--color-brand-primary);
-}
 .upload-button:hover .icon {
   color: #fff;
-}
-.upload-button:active {
-  filter: brightness(0.5);
 }
 
 /* 搜索栏 */
@@ -3886,6 +4112,26 @@ a:hover {
    位置改为**嵌在输入框内部最右侧**：top/bottom 各留 4px，故高度比输入框矮 8px；
    圆角与输入框同为胶囊，两条弧线贴合。 */
 .search-btn {
+  border: none;
+  border-radius: 999px;
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+  font-weight: bold;
+  cursor: pointer;
+  transition: color 0.25s ease, background-color 0.25s ease, filter 0.15s ease;
+}
+.search-btn:hover:not(:disabled) {
+  background-color: var(--color-brand-primary);
+  color: #fff;
+}
+.search-btn:active:not(:disabled) {
+  filter: brightness(0.5);
+}
+.search-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.search-btn {
   position: absolute;
   top: 4px;
   right: 4px;
@@ -3894,24 +4140,11 @@ a:hover {
   align-items: center;
   justify-content: center;
   padding: 0 18px;
-  border: none;
-  border-radius: 999px;
-  background-color: var(--color-brand-secondary);
-  color: var(--color-brand-primary);
   font-size: 0.9rem;
   font-weight: 700;
-  cursor: pointer;
-  transition: all 0.3s ease;
   -webkit-tap-highlight-color: transparent;
   outline: none;
   white-space: nowrap;
-}
-.search-btn:hover {
-  color: #fff;
-  background-color: var(--color-brand-primary);
-}
-.search-btn:active {
-  filter: brightness(0.5);
 }
 
 .search-clear-btn {
@@ -4012,18 +4245,49 @@ a:hover {
   position: relative;
 }
 
+/* 分类栏 = 切页档：当前分类常驻最高级空闲态，按下不叠加变化。
+   原先这里靠 `border-left: 3px solid transparent` 占位、再由 .active 上色，
+   是「胶囊 + 左侧竖条」两种形状语言的混搭 —— 竖条已去掉，语义全部由底色承担。 */
+.category-link {
+  border: none;
+  border-radius: 999px;
+  background-color: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: color 0.25s ease, background-color 0.25s ease;
+}
+.category-link:hover:not(:disabled) {
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+}
+.category-link:active:not(:disabled) {
+  background-color: var(--color-brand-primary);
+  color: #fff;
+}
+.category-link:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.category-link:active:not(:disabled) {
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+}
+.category-link.is-active, .category-link.active {
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+}
+.category-link.is-active:hover:not(:disabled), .category-link.is-active:active:not(:disabled), .category-link.active:hover:not(:disabled), .category-link.active:active:not(:disabled) {
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+}
 .category-link {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 10px 14px;
-  color: var(--color-text-secondary);
   text-decoration: none;
-  border-radius: 999px;
   font-size: 0.9rem;
   font-weight: 500;
-  transition: all 0.2s ease;
-  border-left: 3px solid transparent;
   position: relative;
 }
 .category-link .collapsible {
@@ -4032,9 +4296,6 @@ a:hover {
 }
 .category-link .collapsible .catogory-toggle {
   transform: rotate(-90deg);
-}
-.category-link:hover {
-  color: var(--color-brand-primary);
 }
 
 .category-content {
@@ -4050,11 +4311,7 @@ a:hover {
   color: #adb5bd;
 }
 
-.category-link.active {
-  background: var(--color-brand-secondary);
-  color: var(--color-brand-primary);
-}
-
+/* .category-link.active 的规则已并入上面的 @include m.btn-tab */
 .category-link .icon,
 .category-item .icon {
   margin-right: 8px;
@@ -4081,26 +4338,47 @@ a:hover {
   opacity: 1;
 }
 
+/* 子分类与父分类同一档（原先色值是写死的 #8e9ba6，不在主题体系内，
+   暗色下不会跟着变） */
+.sub-category-link {
+  border: none;
+  border-radius: 999px;
+  background-color: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: color 0.25s ease, background-color 0.25s ease;
+}
+.sub-category-link:hover:not(:disabled) {
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+}
+.sub-category-link:active:not(:disabled) {
+  background-color: var(--color-brand-primary);
+  color: #fff;
+}
+.sub-category-link:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.sub-category-link:active:not(:disabled) {
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+}
+.sub-category-link.is-active, .sub-category-link.active {
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+}
+.sub-category-link.is-active:hover:not(:disabled), .sub-category-link.is-active:active:not(:disabled), .sub-category-link.active:hover:not(:disabled), .sub-category-link.active:active:not(:disabled) {
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+}
 .sub-category-link {
   display: flex;
   align-items: center;
   padding: 8px 12px;
-  color: #8e9ba6;
   text-decoration: none;
-  border-radius: 6px;
   font-size: 0.85rem;
   font-weight: 400;
-  transition: all 0.2s ease;
-}
-
-.sub-category-link:hover {
-  color: var(--color-brand-primary);
-  text-decoration: none;
-}
-
-.sub-category-link.active {
-  background: var(--color-brand-secondary);
-  color: var(--color-brand-primary);
 }
 
 /* 右侧博客列表 */
@@ -4117,23 +4395,46 @@ a:hover {
   margin: 0 0 16px;
 }
 
+/* 切页档：当前排序常驻最高级空闲态。原先空闲态铺的是 --color-background-content
+   灰底，与次级档「无底色」的规则不符，已去掉。 */
 .blog-sort-btn {
-  padding: 6px 14px;
   border: none;
   border-radius: 999px;
+  background-color: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: color 0.25s ease, background-color 0.25s ease;
+}
+.blog-sort-btn:hover:not(:disabled) {
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+}
+.blog-sort-btn:active:not(:disabled) {
+  background-color: var(--color-brand-primary);
+  color: #fff;
+}
+.blog-sort-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.blog-sort-btn:active:not(:disabled) {
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+}
+.blog-sort-btn.is-active, .blog-sort-btn.active {
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+}
+.blog-sort-btn.is-active:hover:not(:disabled), .blog-sort-btn.is-active:active:not(:disabled), .blog-sort-btn.active:hover:not(:disabled), .blog-sort-btn.active:active:not(:disabled) {
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+}
+.blog-sort-btn {
+  padding: 6px 14px;
   font-size: 0.85rem;
   font-weight: 400;
-  color: var(--color-text-secondary);
-  background: var(--color-background-content);
-  cursor: pointer;
-  transition: all 0.2s ease;
 }
-.blog-sort-btn:hover {
-  color: var(--color-brand-primary);
-}
-.blog-sort-btn.active {
-  background: var(--color-brand-secondary);
-  color: var(--color-brand-primary);
+.blog-sort-btn.active, .blog-sort-btn.is-active {
   font-weight: 600;
 }
 
@@ -4976,10 +5277,10 @@ body {
   transition: all 0.3s ease;
   display: flex;
   flex-direction: column;
+  /* 卡片 hover：只提阴影，不位移 —— 与博客首页 .blog-item 一致 */
 }
 .story-card:hover {
   box-shadow: var(--shadow-card-hover);
-  transform: translateY(-3px);
 }
 .story-card--collection {
   background: linear-gradient(135deg, var(--color-background-card) 0%, var(--color-brand-secondary) 100%);
@@ -5606,23 +5907,40 @@ body {
   }
 }
 .filter-pill {
-  padding: 8px 12px;
-  border: 1px solid var(--color-border);
+  border: none;
   border-radius: 999px;
-  background: var(--color-background-card);
+  background-color: transparent;
   color: var(--color-text-secondary);
-  font-size: 0.875rem;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: color 0.25s ease, background-color 0.25s ease;
 }
-.filter-pill:hover {
-  border-color: var(--color-brand-primary);
+.filter-pill:hover:not(:disabled) {
+  background-color: var(--color-brand-secondary);
   color: var(--color-brand-primary);
 }
-.filter-pill.active {
-  background: var(--color-brand-primary);
-  border-color: var(--color-brand-primary);
-  color: white;
+.filter-pill:active:not(:disabled) {
+  background-color: var(--color-brand-primary);
+  color: #fff;
+}
+.filter-pill:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.filter-pill:active:not(:disabled) {
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+}
+.filter-pill.is-active, .filter-pill.active {
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+}
+.filter-pill.is-active:hover:not(:disabled), .filter-pill.is-active:active:not(:disabled), .filter-pill.active:hover:not(:disabled), .filter-pill.active:active:not(:disabled) {
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+}
+.filter-pill {
+  padding: 8px 12px;
+  font-size: 0.875rem;
 }
 
 .tool-new-hero {
@@ -5723,10 +6041,11 @@ body {
   height: 100%;
   display: flex;
   flex-direction: column;
+  /* 卡片 hover：只提阴影，不位移 —— 与博客首页 .blog-item 一致。
+     阴影原先也是写死的 rgba(0,0,0,.1)，改用令牌。 */
 }
 .tool-new-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-card-hover);
   border-color: var(--color-brand-primary);
 }
 .tool-new-card__header {
@@ -5768,21 +6087,36 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  /* ⚠️ 这条是 0-2-0，会盖掉 components/_button.scss 里的 .btn 与 .btn-primary。
+     所以它必须自己引用同一套 mixin —— 否则「工具页卡片底部的按钮」会悄悄
+     长回另一个样子。原写法还引用了从未定义的 --color-brand-primary-dark
+     （hover 整条失效，只提亮不提暗）并带 translateY(-1px)。 */
+}
+.tool-new-card__footer .btn {
+  border: none;
+  border-radius: 999px;
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+  font-weight: bold;
+  cursor: pointer;
+  transition: color 0.25s ease, background-color 0.25s ease, filter 0.15s ease;
+}
+.tool-new-card__footer .btn:hover:not(:disabled) {
+  background-color: var(--color-brand-primary);
+  color: #fff;
+}
+.tool-new-card__footer .btn:active:not(:disabled) {
+  filter: brightness(0.5);
+}
+.tool-new-card__footer .btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 .tool-new-card__footer .btn {
   padding: 8px 12px;
-  background: var(--color-brand-primary);
-  color: white;
-  border: none;
-  border-radius: 5px;
   font-size: 0.875rem;
   font-weight: 500;
   text-decoration: none;
-  transition: all 0.2s ease;
-}
-.tool-new-card__footer .btn:hover {
-  background: var(--color-brand-primary-dark);
-  transform: translateY(-1px);
 }
 .tool-new-empty {
   text-align: center;
@@ -5927,38 +6261,58 @@ body {
 
 .cattca-tool__btn,
 .story-cattca__btn {
-  padding: 8px 16px;
-  border: 1px solid var(--color-border);
-  border-radius: 10px;
-  background: var(--color-background-page);
-  color: var(--color-text-primary);
-  font-size: 0.875rem;
-  font-weight: 500;
+  border: none;
+  border-radius: 999px;
+  background-color: transparent;
+  color: var(--color-text-secondary);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: color 0.25s ease, background-color 0.25s ease;
 }
 .cattca-tool__btn:hover:not(:disabled),
 .story-cattca__btn:hover:not(:disabled) {
-  background: var(--color-brand-secondary);
-  border-color: var(--color-brand-primary);
+  background-color: var(--color-brand-secondary);
   color: var(--color-brand-primary);
+}
+.cattca-tool__btn:active:not(:disabled),
+.story-cattca__btn:active:not(:disabled) {
+  background-color: var(--color-brand-primary);
+  color: #fff;
+}
+.cattca-tool__btn:disabled,
+.story-cattca__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.cattca-tool__btn,
+.story-cattca__btn {
+  padding: 8px 16px;
+  font-size: 0.875rem;
+  font-weight: 500;
 }
 .cattca-tool__btn:disabled,
 .story-cattca__btn:disabled {
   opacity: 0.45;
-  cursor: not-allowed;
 }
 
 .cattca-tool__btn--primary {
-  background: var(--color-brand-primary);
-  border-color: var(--color-brand-primary);
-  color: #fff;
+  border: none;
+  border-radius: 999px;
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+  font-weight: bold;
+  cursor: pointer;
+  transition: color 0.25s ease, background-color 0.25s ease, filter 0.15s ease;
 }
 .cattca-tool__btn--primary:hover:not(:disabled) {
-  background: var(--color-brand-primary);
-  border-color: var(--color-brand-primary);
+  background-color: var(--color-brand-primary);
   color: #fff;
-  opacity: 0.9;
+}
+.cattca-tool__btn--primary:active:not(:disabled) {
+  filter: brightness(0.5);
+}
+.cattca-tool__btn--primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .story-cattca__game-header {
@@ -6137,50 +6491,82 @@ body {
   color: var(--color-text-secondary);
 }
 .clipboard-navigation__search .search-button {
-  padding: 12px 16px;
-  background: var(--color-brand-primary);
-  color: white;
   border: none;
-  border-radius: 5px;
+  border-radius: 999px;
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+  font-weight: bold;
+  cursor: pointer;
+  transition: color 0.25s ease, background-color 0.25s ease, filter 0.15s ease;
+}
+.clipboard-navigation__search .search-button:hover:not(:disabled) {
+  background-color: var(--color-brand-primary);
+  color: #fff;
+}
+.clipboard-navigation__search .search-button:active:not(:disabled) {
+  filter: brightness(0.5);
+}
+.clipboard-navigation__search .search-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.clipboard-navigation__search .search-button {
+  padding: 12px 16px;
   font-size: 1rem;
   font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-.clipboard-navigation__search .search-button:hover {
-  background: var(--color-brand-primary);
-  opacity: 0.9;
-  transform: translateY(-1px);
 }
 .clipboard-navigation__actions {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  /* 次级档：原先空闲是「页面底色 + 1px 描边」，按无边框总则去掉了边框，
+     层级交由底色与文字色承担。 */
+}
+.clipboard-navigation__actions .action-button {
+  border: none;
+  border-radius: 999px;
+  background-color: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: color 0.25s ease, background-color 0.25s ease;
+}
+.clipboard-navigation__actions .action-button:hover:not(:disabled) {
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+}
+.clipboard-navigation__actions .action-button:active:not(:disabled) {
+  background-color: var(--color-brand-primary);
+  color: #fff;
+}
+.clipboard-navigation__actions .action-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 .clipboard-navigation__actions .action-button {
   padding: 8px 12px;
-  background: var(--color-background-page);
-  border: 1px solid var(--color-border);
-  border-radius: 5px;
-  color: var(--color-text-primary);
   text-decoration: none;
   font-size: 0.875rem;
   font-weight: 500;
-  transition: all 0.2s ease;
-}
-.clipboard-navigation__actions .action-button:hover {
-  background: var(--color-brand-secondary);
-  border-color: var(--color-brand-primary);
-  color: var(--color-brand-primary);
 }
 .clipboard-navigation__actions .action-button.primary {
-  background: var(--color-brand-primary);
-  border-color: var(--color-brand-primary);
-  color: white;
+  border: none;
+  border-radius: 999px;
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+  font-weight: bold;
+  cursor: pointer;
+  transition: color 0.25s ease, background-color 0.25s ease, filter 0.15s ease;
 }
-.clipboard-navigation__actions .action-button.primary:hover {
-  background: var(--color-brand-primary);
-  opacity: 0.9;
+.clipboard-navigation__actions .action-button.primary:hover:not(:disabled) {
+  background-color: var(--color-brand-primary);
+  color: #fff;
+}
+.clipboard-navigation__actions .action-button.primary:active:not(:disabled) {
+  filter: brightness(0.5);
+}
+.clipboard-navigation__actions .action-button.primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 .clipboard-list {
   display: grid;
@@ -6215,16 +6601,12 @@ body {
   text-decoration: none;
   color: inherit;
   display: block;
+  /* 卡片 hover：只提阴影，不位移 —— 与博客首页 .blog-item 一致 */
 }
 .clipboard-item:hover {
-  transform: translateY(-2px);
   box-shadow: var(--shadow-card-brand);
   border-color: var(--color-brand-primary);
   background: var(--color-brand-secondary);
-}
-.clipboard-item:active {
-  transform: translateY(0);
-  transition: all 0.1s ease;
 }
 .clipboard-item:focus {
   outline: 2px solid var(--color-brand-primary);
@@ -6372,39 +6754,78 @@ body {
   flex-wrap: wrap;
 }
 .clipboard-detail__actions .action-button {
+  border: none;
+  border-radius: 999px;
+  background-color: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: color 0.25s ease, background-color 0.25s ease;
+}
+.clipboard-detail__actions .action-button:hover:not(:disabled) {
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+}
+.clipboard-detail__actions .action-button:active:not(:disabled) {
+  background-color: var(--color-brand-primary);
+  color: #fff;
+}
+.clipboard-detail__actions .action-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.clipboard-detail__actions .action-button {
   padding: 8px 12px;
-  background: var(--color-background-page);
-  border: 1px solid var(--color-border);
-  border-radius: 5px;
-  color: var(--color-text-primary);
   text-decoration: none;
   font-size: 0.875rem;
   font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-.clipboard-detail__actions .action-button:hover {
-  background: var(--color-brand-secondary);
-  border-color: var(--color-brand-primary);
-  color: var(--color-brand-primary);
 }
 .clipboard-detail__actions .action-button.primary {
-  background: var(--color-brand-primary);
-  border-color: var(--color-brand-primary);
-  color: white;
+  border: none;
+  border-radius: 999px;
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+  font-weight: bold;
+  cursor: pointer;
+  transition: color 0.25s ease, background-color 0.25s ease, filter 0.15s ease;
 }
-.clipboard-detail__actions .action-button.primary:hover {
-  background: var(--color-brand-primary);
-  opacity: 0.9;
+.clipboard-detail__actions .action-button.primary:hover:not(:disabled) {
+  background-color: var(--color-brand-primary);
+  color: #fff;
+}
+.clipboard-detail__actions .action-button.primary:active:not(:disabled) {
+  filter: brightness(0.5);
+}
+.clipboard-detail__actions .action-button.primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 .clipboard-detail__actions .action-button.danger {
-  background: var(--color-warning-secondary);
-  border-color: var(--color-warning-primary);
+  border: none;
+  border-radius: 999px;
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+  font-weight: bold;
+  cursor: pointer;
+  transition: color 0.25s ease, background-color 0.25s ease, filter 0.15s ease;
+}
+.clipboard-detail__actions .action-button.danger:hover:not(:disabled) {
+  background-color: var(--color-brand-primary);
+  color: #fff;
+}
+.clipboard-detail__actions .action-button.danger:active:not(:disabled) {
+  filter: brightness(0.5);
+}
+.clipboard-detail__actions .action-button.danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.clipboard-detail__actions .action-button.danger {
+  background-color: var(--color-warning-secondary);
   color: var(--color-warning-primary);
 }
-.clipboard-detail__actions .action-button.danger:hover {
-  background: var(--color-warning-primary);
-  color: white;
+.clipboard-detail__actions .action-button.danger:hover:not(:disabled) {
+  background-color: var(--color-warning-primary);
+  color: #fff;
 }
 .clipboard-form {
   background: var(--color-background-card);
@@ -6486,25 +6907,33 @@ body {
   font-weight: normal;
 }
 .clipboard-form__submit {
-  padding: 12px 24px;
-  background: var(--color-brand-primary);
   border: none;
-  border-radius: 5px;
-  color: white;
+  border-radius: 999px;
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+  font-weight: bold;
+  cursor: pointer;
+  transition: color 0.25s ease, background-color 0.25s ease, filter 0.15s ease;
+}
+.clipboard-form__submit:hover:not(:disabled) {
+  background-color: var(--color-brand-primary);
+  color: #fff;
+}
+.clipboard-form__submit:active:not(:disabled) {
+  filter: brightness(0.5);
+}
+.clipboard-form__submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.clipboard-form__submit {
+  padding: 12px 24px;
   font-size: 1rem;
   font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-.clipboard-form__submit:hover {
-  background: var(--color-brand-primary);
-  opacity: 0.9;
-  transform: translateY(-1px);
 }
 .clipboard-form__submit:disabled {
   background: var(--color-text-secondary);
-  cursor: not-allowed;
-  transform: none;
+  color: var(--color-background-card);
 }
 
 @media (max-width: 768px) {
@@ -6660,9 +7089,9 @@ body {
   border-radius: 10px;
   overflow: hidden;
   transition: transform 0.2s, box-shadow 0.2s;
+  /* 卡片 hover：只提阴影，不位移 —— 与博客首页 .blog-item 一致 */
 }
 .image-hosting-card:hover {
-  transform: translateY(-2px);
   box-shadow: var(--shadow-card-hover);
 }
 .image-hosting-card__preview {
@@ -6969,22 +7398,51 @@ body {
   color: #fff;
 }
 .vote-navigation__actions .action-button {
-  padding: 0.6rem 1.5rem;
-  border-radius: 0.375rem;
-  font-size: 0.9rem;
-  font-weight: 500;
-  cursor: pointer;
   border: none;
-  text-decoration: none;
-  display: inline-block;
-  transition: all 0.2s ease;
+  border-radius: 999px;
+  background-color: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: color 0.25s ease, background-color 0.25s ease;
 }
-.vote-navigation__actions .action-button.primary {
-  background: var(--color-brand-primary);
+.vote-navigation__actions .action-button:hover:not(:disabled) {
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+}
+.vote-navigation__actions .action-button:active:not(:disabled) {
+  background-color: var(--color-brand-primary);
   color: #fff;
 }
-.vote-navigation__actions .action-button.primary:hover {
-  opacity: 0.9;
+.vote-navigation__actions .action-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.vote-navigation__actions .action-button {
+  padding: 0.6rem 1.5rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  text-decoration: none;
+  display: inline-block;
+}
+.vote-navigation__actions .action-button.primary {
+  border: none;
+  border-radius: 999px;
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+  font-weight: bold;
+  cursor: pointer;
+  transition: color 0.25s ease, background-color 0.25s ease, filter 0.15s ease;
+}
+.vote-navigation__actions .action-button.primary:hover:not(:disabled) {
+  background-color: var(--color-brand-primary);
+  color: #fff;
+}
+.vote-navigation__actions .action-button.primary:active:not(:disabled) {
+  filter: brightness(0.5);
+}
+.vote-navigation__actions .action-button.primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .vote-list {
@@ -7019,11 +7477,11 @@ body {
   padding: 1rem 1.25rem;
   text-decoration: none;
   transition: all 0.2s ease;
+  /* 卡片 hover：只提阴影，不位移 —— 与博客首页 .blog-item 一致 */
 }
 .vote-item:hover {
   border-color: var(--color-brand-primary);
   box-shadow: var(--shadow-card-brand);
-  transform: translateY(-1px);
 }
 .vote-item__header {
   display: flex;
@@ -7276,24 +7734,38 @@ body {
   white-space: nowrap;
   margin-left: 0.5rem;
 }
+.vote-embed-widget {
+  /* 归「最高级」档。font-family: inherit 必须保留 —— <button> 不继承正文字体，
+     与 .vote-embed-option 同一条纪律。 */
+}
+.vote-embed-widget .vote-embed-submit {
+  border: none;
+  border-radius: 999px;
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+  font-weight: bold;
+  cursor: pointer;
+  transition: color 0.25s ease, background-color 0.25s ease, filter 0.15s ease;
+}
+.vote-embed-widget .vote-embed-submit:hover:not(:disabled) {
+  background-color: var(--color-brand-primary);
+  color: #fff;
+}
+.vote-embed-widget .vote-embed-submit:active:not(:disabled) {
+  filter: brightness(0.5);
+}
+.vote-embed-widget .vote-embed-submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 .vote-embed-widget .vote-embed-submit {
   margin-top: 0.5rem;
   padding: 0.45rem 1.5rem;
-  background: var(--color-brand-primary);
-  color: #fff;
-  border: none;
-  border-radius: 0.375rem;
   font-family: inherit;
   font-size: 0.85rem;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-.vote-embed-widget .vote-embed-submit:hover {
-  opacity: 0.9;
 }
 .vote-embed-widget .vote-embed-submit:disabled {
   opacity: 0.4;
-  cursor: not-allowed;
 }
 .vote-embed-widget .vote-embed-link {
   display: block;
@@ -7335,9 +7807,12 @@ body {
  *   · .favorite-embed —— 正文里 `[@六位ID]` 展开出来的收藏夹卡片
  */
 /* ── 详情页的收藏按钮（参照 .like-btn / .fish-btn 的 pill 形态）─────────────
- * ⚠️ 星标**始终是黄色**：直接给 .icon-star-fill 的 background-color，而不是靠
- * currentColor —— .icon 的机制是 `background-color: currentColor`，不覆盖的话未收藏
- * 时星星跟着文字变灰，而需求要的正是「黄色的五角星」。
+ * ⚠️ 星标**未收藏时不亮**：走 .icon 的 `background-color: currentColor`（与心形 /
+ * 小鱼同一个机制）—— 未收藏时跟着文字是灰的，hover 与已收藏才变黄。
+ * 这里曾经写死 `.icon-star-fill { background-color: 黄色 }`（想让五角星恒亮），
+ * 后果是三颗并排的按钮里只有它是常亮的，「已收藏」反而看不出来 —— 那正是状态色
+ * 存在的意义。所以颜色只由 `.favorite-btn.favorited` 的 color 给。
+ *
  * 另外这按钮**没有计数徽标**（与点赞/投喂刻意不同）：站内不显示一篇文章的被收藏数，
  * 因为收藏夹可以复制，那个数字既无意义又会让作者以为「有人收藏了我的文章」。 */
 .favorite-btn {
@@ -7361,9 +7836,6 @@ body {
 .favorite-btn:disabled {
   opacity: 0.7;
   cursor: not-allowed;
-}
-.favorite-btn .icon-star-fill {
-  background-color: var(--color-star-primary);
 }
 
 .favorite-btn.favorited {
@@ -7610,13 +8082,50 @@ body {
   color: var(--color-text-secondary);
 }
 
+/* 新建 / 导入区：**名称独占一行，两颗按钮并排在下一行**。
+ * 三者曾经同挤一个 flex 行（`flex-wrap: wrap` + 输入框 `flex: 1`），在 500px 宽的
+ * 弹窗里正好放不下第三颗 —— 于是「新收藏夹名称」和「创建私密」占了一行、
+ * 「创建公开」被挤到第二行。那不只是难看：两颗按钮**代表对等的两种性质**，分行的
+ * 样子会让人以为「公开」是次要选项，而这恰恰是本功能最不能出歧义的地方
+ * （性质一经创建不可修改，选错只能靠复制补救）。
+ * `.favorite-picker__new` 同时被 /favorite 页的 FavoriteMenu 复用，故修在这里。 */
 .favorite-picker__new {
   display: flex;
+  flex-direction: column;
   gap: 0.5rem;
-  flex-wrap: wrap;
   margin-top: 0.75rem;
 }
 
+.favorite-picker__new-actions {
+  display: flex;
+  gap: 0.5rem;
+  /* 两颗等宽平分。min-width: 0 覆盖 .read-btn 的 min-width: 120px —— 那一份是给
+     页面上平铺按钮定的，在弹窗里会把两颗挤成「一颗宽一颗窄」。 */
+}
+.favorite-picker__new-actions .read-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 10px 8px;
+  font-size: 0.9rem;
+}
+
+/* 窄屏：弹窗正文只剩 ~300px，两颗按钮各 ~150px。0.9rem 时「创建私密收藏夹」
+   （7 字 + 图标）约 143px，已在临界，收小一档留出余量。 */
+@media (max-width: 400px) {
+  .favorite-picker__new-actions .read-btn {
+    padding: 10px 6px;
+    font-size: 0.82rem;
+  }
+}
+/* 极窄屏（<360px，与 .read-controls 的兜底同一个断点）：两颗并排时每颗只剩
+   ~114px，而「创建私密收藏夹」需要 ~134px，硬挤只会把标签折成两行。
+   改为各占一整行 —— 都满宽，所以「两种性质对等」这层意思仍在，只是不再并排。
+   不继续缩字号（0.82rem 已经在临界，再小就开始难读）。 */
+@media (max-width: 359px) {
+  .favorite-picker__new-actions {
+    flex-direction: column;
+  }
+}
 .favorite-picker__input {
   flex: 1;
   min-width: 8rem;
@@ -7625,6 +8134,17 @@ body {
   border-radius: 0.375rem;
   background: var(--color-background-card);
   color: var(--color-text-primary);
+}
+
+/* 选择器页脚通往管理页 —— 会点开选择器的人，正是想整理收藏夹的人。 */
+.favorite-picker__manage {
+  margin-left: auto;
+  color: var(--color-brand-primary);
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+.favorite-picker__manage:hover {
+  text-decoration: underline;
 }
 
 .profile-page {
@@ -8110,36 +8630,61 @@ body {
   margin-bottom: 4px;
 }
 
+/* 基础档 = 次级：原先空闲铺 --color-background-content 灰底 + 主文字色，
+   属于「没有档位」的中间态（既不是最高级也不像次级）。归次级后空闲为
+   次级文字色、无底色，hover 才升到最高级空闲态。 */
+.settings-btn {
+  border: none;
+  border-radius: 999px;
+  background-color: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: color 0.25s ease, background-color 0.25s ease;
+}
+.settings-btn:hover:not(:disabled) {
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+}
+.settings-btn:active:not(:disabled) {
+  background-color: var(--color-brand-primary);
+  color: #fff;
+}
+.settings-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 .settings-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
   padding: 8px 24px;
-  border-radius: 999px;
   font-size: 0.9rem;
   font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  border: none;
-  background: var(--color-background-content);
-  color: var(--color-text-primary);
-}
-.settings-btn:hover:not(:disabled) {
-  background: var(--color-brand-secondary);
-  color: var(--color-brand-primary);
 }
 .settings-btn:disabled {
   opacity: 0.6;
   cursor: default;
 }
 .settings-btn--primary {
-  background: var(--color-brand-secondary);
+  border: none;
+  border-radius: 999px;
+  background-color: var(--color-brand-secondary);
   color: var(--color-brand-primary);
+  font-weight: bold;
+  cursor: pointer;
+  transition: color 0.25s ease, background-color 0.25s ease, filter 0.15s ease;
 }
 .settings-btn--primary:hover:not(:disabled) {
-  background: var(--color-brand-primary);
+  background-color: var(--color-brand-primary);
   color: #fff;
+}
+.settings-btn--primary:active:not(:disabled) {
+  filter: brightness(0.5);
+}
+.settings-btn--primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 .settings-btn--primary:disabled {
   opacity: 0.6;
@@ -8672,10 +9217,10 @@ input:checked + .settings-toggle__slider::before {
   box-shadow: var(--shadow-xs);
   border-left: 4px solid var(--color-border);
   transition: all 0.3s ease;
+  /* 卡片 hover：只提阴影，不位移 —— 与博客首页 .blog-item 一致 */
 }
 .article-card:hover {
   box-shadow: var(--shadow-sm);
-  transform: translateY(-2px);
 }
 .article-card.is-selected {
   border-left-color: var(--color-border-highlight);
@@ -9080,14 +9625,27 @@ input:checked + .settings-toggle__slider::before {
   background: var(--color-brand-secondary);
 }
 .fish-card__link--primary {
-  background: var(--color-brand-primary);
-  color: #fff;
-  font-weight: 600;
+  border: none;
+  border-radius: 999px;
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+  font-weight: bold;
+  cursor: pointer;
+  transition: color 0.25s ease, background-color 0.25s ease, filter 0.15s ease;
 }
-.fish-card__link--primary:hover {
-  background: var(--color-brand-primary);
-  filter: brightness(1.1);
-  transform: translateY(-1px);
+.fish-card__link--primary:hover:not(:disabled) {
+  background-color: var(--color-brand-primary);
+  color: #fff;
+}
+.fish-card__link--primary:active:not(:disabled) {
+  filter: brightness(0.5);
+}
+.fish-card__link--primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.fish-card__link--primary {
+  font-weight: 600;
 }
 
 .fish-card__info {
@@ -9316,7 +9874,6 @@ input:checked + .settings-toggle__slider::before {
   border-color: var(--color-brand-primary);
   background: var(--color-brand-secondary);
   color: var(--color-brand-primary);
-  transform: translateY(-2px);
 }
 .feed-modal__amount-btn:disabled {
   opacity: 0.35;
@@ -9358,20 +9915,30 @@ input:checked + .settings-toggle__slider::before {
 }
 
 .feed-modal__confirm-btn {
-  display: inline-block;
-  padding: 8px 24px;
   border: none;
   border-radius: 999px;
-  background: var(--color-brand-primary);
-  color: #fff;
-  font-size: 0.9rem;
-  font-weight: 600;
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+  font-weight: bold;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: color 0.25s ease, background-color 0.25s ease, filter 0.15s ease;
 }
 .feed-modal__confirm-btn:hover:not(:disabled) {
-  filter: brightness(1.1);
-  transform: translateY(-1px);
+  background-color: var(--color-brand-primary);
+  color: #fff;
+}
+.feed-modal__confirm-btn:active:not(:disabled) {
+  filter: brightness(0.5);
+}
+.feed-modal__confirm-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.feed-modal__confirm-btn {
+  display: inline-block;
+  padding: 8px 24px;
+  font-size: 0.9rem;
+  font-weight: 600;
 }
 .feed-modal__confirm-btn:disabled {
   opacity: 0.4;
@@ -9618,26 +10185,38 @@ input:checked + .settings-toggle__slider::before {
   color: var(--color-success-primary);
 }
 
+/* 归「最高级」档：空闲品牌浅底、hover 反转成实底。
+   原先它是常驻实底 + hover 只提亮 1.1 —— 既不在三档体系里，hover 的
+   `translateY(-1px)` 还让整个按钮跳一下（本次全站清除的垂直位移反馈之一）。 */
+.market-submit {
+  border: none;
+  border-radius: 999px;
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+  font-weight: bold;
+  cursor: pointer;
+  transition: color 0.25s ease, background-color 0.25s ease, filter 0.15s ease;
+}
+.market-submit:hover:not(:disabled) {
+  background-color: var(--color-brand-primary);
+  color: #fff;
+}
+.market-submit:active:not(:disabled) {
+  filter: brightness(0.5);
+}
+.market-submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 .market-submit {
   display: block;
   width: 100%;
   padding: 12px 16px;
-  border: none;
-  border-radius: 999px;
-  background: var(--color-brand-primary);
-  color: #fff;
   font-size: 1rem;
   font-weight: 700;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-.market-submit:hover:not(:disabled) {
-  filter: brightness(1.1);
-  transform: translateY(-1px);
 }
 .market-submit:disabled {
   opacity: 0.4;
-  cursor: not-allowed;
 }
 
 .market-foot {
@@ -10176,11 +10755,14 @@ input:checked + .settings-toggle__slider::before {
   transition: opacity 0.3s;
   will-change: transform;
 }
+.checkin-button {
+  /* hover 不再上浮 —— 全站按钮一律不做垂直位移（博客「创建」按钮的配方）。
+     那道扫光（shimmer）是签到按钮自己的庆祝效果，保留。 */
+}
 @media (hover: hover) {
   .checkin-button:hover:not(:disabled) {
     background: var(--color-brand-primary);
     color: #fff;
-    transform: translateY(-2px);
     box-shadow: var(--shadow-card-brand);
   }
   .checkin-button:hover:not(:disabled)::before {
@@ -10189,7 +10771,7 @@ input:checked + .settings-toggle__slider::before {
   }
 }
 .checkin-button:active:not(:disabled) {
-  transform: scale(0.95);
+  filter: brightness(0.5);
 }
 .checkin-button:disabled {
   cursor: default;
@@ -12574,7 +13156,6 @@ input:checked + .settings-toggle__slider::before {
   border-color: var(--color-brand-primary);
   box-shadow: var(--shadow-card-brand);
   text-decoration: none;
-  transform: translateY(-2px);
 }
 .error-quick-link .icon {
   width: 1.4rem;

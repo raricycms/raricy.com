@@ -20,19 +20,19 @@
 @media (min-width: 768px) { .home-grid { grid-template-columns: repeat(2, 1fr); } }
 @media (min-width: 992px) { .home-grid { grid-template-columns: repeat(4, 1fr); } }
 
-/* Buttons (home specific) */
-.home-btn { display: inline-block; padding: 6px 14px; border-radius: 20px; font-weight: 500; text-decoration: none; cursor: pointer; border: 1px solid transparent; transition: all 0.2s ease; }
+/* 首页功能卡上的引导标签。改「淡底 + 同色字」的胶囊，与博客首页的
+   .blog-likes / .blog-comments / .blog-fish 三个统计胶囊同一套观感 ——
+   原先它们是「透明底 + 1px 描边 + Bootstrap 原始色」，既不在主题体系内，
+   暗色下也不跟着变。 */
+.home-btn { display: inline-block; padding: 6px 14px; border-radius: 999px; font-weight: 500; text-decoration: none; cursor: pointer; border: none; transition: all 0.2s ease; }
 .home-btn--sm { padding: 6px 12px; font-size: 0.9rem; }
-.home-btn--outline-primary { color: #0d6efd; border-color: #0d6efd; background: transparent; }
-.home-btn--outline-primary:hover { background: rgba(13,110,253,0.1); }
-.home-btn--outline-secondary { color: #6c757d; border-color: #6c757d; background: transparent; }
+.home-btn--outline-primary { color: var(--color-brand-primary); background: var(--color-brand-secondary); }
+.home-btn--outline-secondary { color: var(--color-text-secondary); background: var(--color-background-subtle); }
 .home-btn--outline-secondary[disabled] { opacity: 0.6; cursor: not-allowed; }
-.home-btn--outline-warning { color: #f59e0b; border-color: #f59e0b; background: transparent; }
-.home-btn--outline-warning:hover { background: rgba(245,158,11,0.1); }
-.home-btn--outline-info { color: #06b6d4; border-color: #06b6d4; background: transparent; }
-.home-btn--outline-info:hover { background: rgba(6,182,212,0.1); }
-.home-btn--outline-success { color: #10b981; border-color: #10b981; background: transparent; }
-.home-btn--outline-success:hover { background: rgba(16,185,129,0.1); }
+.home-btn--outline-warning { color: var(--color-warning-primary); background: var(--color-warning-secondary); }
+/* 站内没有青色的语义令牌，info 归品牌色 */
+.home-btn--outline-info { color: var(--color-brand-primary); background: var(--color-brand-secondary); }
+.home-btn--outline-success { color: var(--color-success-primary); background: var(--color-success-secondary); }
 
 .hero-section {
   background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
@@ -146,7 +146,6 @@
 }
 .fade-in-up { animation: fadeInUp 0.8s ease-out }
 
-/* 按钮样式（备用） */
-.btn-custom { background: linear-gradient(45deg, #667eea, #764ba2); border: none; border-radius: 25px; padding: 12px 30px; color: #fff; font-weight: 500; transition: all 0.3s ease; }
-.btn-custom:hover { transform: translateY(-2px); box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3); color: #fff; }
+/* 此处原有 `.btn-custom`：紫色渐变按钮，没有任何 TSX 使用它。
+   渐变两端 #667eea / #764ba2 都不在站内色板里。已删。 */
 

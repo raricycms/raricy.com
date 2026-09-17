@@ -167,8 +167,8 @@
   overflow: hidden;
   transition: transform .2s, box-shadow .2s;
 
+  /* 卡片 hover：只提阴影，不位移 —— 与博客首页 .blog-item 一致 */
   &:hover {
-    transform: translateY(-2px);
     box-shadow: var(--shadow-card-hover);
   }
 

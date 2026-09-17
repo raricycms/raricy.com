@@ -1,3 +1,4 @@
+@use '../abstracts/mixins' as m;
 @use '../abstracts/variables' as *;
 
 // ═══════════════════════════════════════════════════════
@@ -85,18 +86,12 @@
     background: var(--color-brand-secondary);
   }
 
-  // 主行动（鱼干市场）：品牌色实底白字 —— 与「查看流水」并排时不抢眼而是**指路**，
-  // 因为市场才是这一页从此多出来的那个去处。常态/悬停反转，同全站胶囊按钮族。
+  // 主行动（鱼干市场）：归「最高级」档。与同排的「查看流水」（次级：无底色、
+  // 次级文字色）仍然分得开 —— 主按钮空闲就有品牌浅底。
+  // 原先它是常驻实底白字 + hover 只提亮 1.1 并上浮 1px。
   &--primary {
-    background: var(--color-brand-primary);
-    color: #fff;
+    @include m.btn-primary;
     font-weight: 600;
-
-    &:hover {
-      background: var(--color-brand-primary);
-      filter: brightness(1.1);
-      transform: translateY(-1px);
-    }
   }
 }
 
@@ -343,7 +338,6 @@
     border-color: var(--color-brand-primary);
     background: var(--color-brand-secondary);
     color: var(--color-brand-primary);
-    transform: translateY(-2px);
   }
 
   &:disabled {
@@ -389,21 +383,11 @@
 }
 
 .feed-modal__confirm-btn {
+  @include m.btn-primary;
   display: inline-block;
   padding: $space-2 $space-6;
-  border: none;
-  border-radius: $radius-max;
-  background: var(--color-brand-primary);
-  color: #fff;
   font-size: 0.9rem;
   font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-
-  &:hover:not(:disabled) {
-    filter: brightness(1.1);
-    transform: translateY(-1px);
-  }
 
   &:disabled {
     opacity: 0.4;

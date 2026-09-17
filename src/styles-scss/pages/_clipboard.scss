@@ -1,5 +1,6 @@
 // 云剪贴板页面样式
 @use '../abstracts/variables' as *;
+@use '../abstracts/mixins' as m;
 .clipboard {
   // 页面容器
   &-page {
@@ -74,55 +75,29 @@
       }
       
       .search-button {
+        @include m.btn-primary;
         padding: $space-3 $space-4;
-        background: var(--color-brand-primary);
-        color: white;
-        border: none;
-        border-radius: $radius-small;
         font-size: 1rem;
         font-weight: 500;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        
-        &:hover {
-          background: var(--color-brand-primary);
-          opacity: 0.9;
-          transform: translateY(-1px);
-        }
       }
     }
-    
+
     &__actions {
       display: flex;
       gap: $space-2;
       flex-wrap: wrap;
-      
+
+      /* 次级档：原先空闲是「页面底色 + 1px 描边」，按无边框总则去掉了边框，
+         层级交由底色与文字色承担。 */
       .action-button {
+        @include m.btn-secondary;
         padding: $space-2 $space-3;
-        background: var(--color-background-page);
-        border: 1px solid var(--color-border);
-        border-radius: $radius-small;
-        color: var(--color-text-primary);
         text-decoration: none;
         font-size: 0.875rem;
         font-weight: 500;
-        transition: all 0.2s ease;
-        
-        &:hover {
-          background: var(--color-brand-secondary);
-          border-color: var(--color-brand-primary);
-          color: var(--color-brand-primary);
-        }
-        
+
         &.primary {
-          background: var(--color-brand-primary);
-          border-color: var(--color-brand-primary);
-          color: white;
-          
-          &:hover {
-            background: var(--color-brand-primary);
-            opacity: 0.9;
-          }
+          @include m.btn-primary;
         }
       }
     }
@@ -169,16 +144,11 @@
     color: inherit;
     display: block;
     
+    /* 卡片 hover：只提阴影，不位移 —— 与博客首页 .blog-item 一致 */
     &:hover {
-      transform: translateY(-2px);
       box-shadow: var(--shadow-card-brand);
       border-color: var(--color-brand-primary);
       background: var(--color-brand-secondary);
-    }
-    
-    &:active {
-      transform: translateY(0);
-      transition: all 0.1s ease;
     }
     
     &:focus {
@@ -343,42 +313,24 @@
       flex-wrap: wrap;
       
       .action-button {
+        @include m.btn-secondary;
         padding: $space-2 $space-3;
-        background: var(--color-background-page);
-        border: 1px solid var(--color-border);
-        border-radius: $radius-small;
-        color: var(--color-text-primary);
         text-decoration: none;
         font-size: 0.875rem;
         font-weight: 500;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        
-        &:hover {
-          background: var(--color-brand-secondary);
-          border-color: var(--color-brand-primary);
-          color: var(--color-brand-primary);
-        }
-        
+
         &.primary {
-          background: var(--color-brand-primary);
-          border-color: var(--color-brand-primary);
-          color: white;
-          
-          &:hover {
-            background: var(--color-brand-primary);
-            opacity: 0.9;
-          }
+          @include m.btn-primary;
         }
-        
+
         &.danger {
-          background: var(--color-warning-secondary);
-          border-color: var(--color-warning-primary);
+          @include m.btn-primary;
+          background-color: var(--color-warning-secondary);
           color: var(--color-warning-primary);
-          
-          &:hover {
-            background: var(--color-warning-primary);
-            color: white;
+
+          &:hover:not(:disabled) {
+            background-color: var(--color-warning-primary);
+            color: #fff;
           }
         }
       }
@@ -474,26 +426,14 @@
     }
     
     &__submit {
+      @include m.btn-primary;
       padding: $space-3 $space-6;
-      background: var(--color-brand-primary);
-      border: none;
-      border-radius: $radius-small;
-      color: white;
       font-size: 1rem;
       font-weight: 600;
-      cursor: pointer;
-      transition: all 0.2s ease;
-      
-      &:hover {
-        background: var(--color-brand-primary);
-        opacity: 0.9;
-        transform: translateY(-1px);
-      }
-      
+
       &:disabled {
         background: var(--color-text-secondary);
-        cursor: not-allowed;
-        transform: none;
+        color: var(--color-background-card);
       }
     }
   }

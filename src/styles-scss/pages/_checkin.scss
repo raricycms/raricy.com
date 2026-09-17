@@ -148,11 +148,12 @@
     will-change: transform;
   }
 
+  /* hover 不再上浮 —— 全站按钮一律不做垂直位移（博客「创建」按钮的配方）。
+     那道扫光（shimmer）是签到按钮自己的庆祝效果，保留。 */
   @media (hover: hover) {
     &:hover:not(:disabled) {
       background: var(--color-brand-primary);
       color: #fff;
-      transform: translateY(-2px);
       box-shadow: var(--shadow-card-brand);
 
       &::before {
@@ -162,8 +163,9 @@
     }
   }
 
+  // 按下与全站统一：压暗，不缩放
   &:active:not(:disabled) {
-    transform: scale(0.95);
+    filter: brightness(0.5);
   }
 
   &:disabled {
