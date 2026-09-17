@@ -282,3 +282,20 @@ test('未登录访客：/favorite 跳到登录页并带 next 回跳', async ({ p
   await fresh.close();
   void SEED_PASSWORD;
 });
+
+test('顶栏用户菜单里有「我的收藏夹」入口，点进去就是管理页', async ({ page }) => {
+  // 这条钉的是一个**曾经完全缺失**的东西：/favorite 是「创建 / 改名 / 删除 / 导出 /
+  // 导入」的唯一页面，但它当时不在任何导航、任何菜单、任何页面里 —— 只能手敲 URL。
+  // 功能做完了却进不去，等于没做。所以入口本身要有用例，而不只是页面能打开。
+  await registerFreshUser(page, { core: true });
+  await page.goto('/');
+
+  // base.js 在下拉 toggle 上挂 .open，菜单默认 display:none
+  await page.click('#userDropdownToggle');
+  const entry = page.locator('#userDropdownMenu a[href="/favorite"]');
+  await expect(entry).toBeVisible();
+  await entry.click();
+
+  await page.waitForURL(/\/favorite$/, { timeout: 15_000 });
+  await expect(page.locator('h1')).toContainText('我的收藏夹');
+});

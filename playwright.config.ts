@@ -73,6 +73,10 @@ const RESPONSIVE_SPECS: RegExp[] = [
   // 代码块顶破气泡是按**视口宽度**才出现的（窄屏可用宽度更小，同样的长代码行
   // 才会越过 fit-content 的上限）。桌面端跑它价值有限，移动端才是主场景。
   /chat-codeblock\.spec\.ts$/,
+  // 收藏夹的布局用例：断言的就是「三颗按钮同一行」「标签不折行」「名称独占一行」
+  // 这类**靠浏览器排版才成立**的事实，且按 viewportSize() 分档（<360px 有兜底）。
+  // 桌面那一遍同样要跑 —— 用户报的正是**电脑端**弹窗里两颗按钮被拆成两行。
+  /favorite-layout\.spec\.ts$/,
 ];
 
 export default defineConfig({
