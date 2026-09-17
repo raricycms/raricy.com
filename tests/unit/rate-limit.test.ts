@@ -203,6 +203,24 @@ describe('RULES 全站配额（src/lib/rate-limit.ts 即权威，改动即报警
       windowMs: 60_000,
       desc: '画报 / 收款码 PNG 生成 30 次/分/用户（一次请求 = 一次 sharp 光栅化）',
     },
+    {
+      name: 'favoriteCreateHourly',
+      limit: 20,
+      windowMs: HOUR,
+      desc: '新建 / 复制收藏夹 20 次/时（总量闸是 FAVORITE_PER_USER_MAX=200，不在 RULES）',
+    },
+    {
+      name: 'favoriteImportHourly',
+      limit: 10,
+      windowMs: HOUR,
+      desc: '导入收藏夹 10 次/时（一次最多 1000 条 upsert）',
+    },
+    {
+      name: 'spiderFavoritePerIp',
+      limit: 120,
+      windowMs: 60_000,
+      desc: '收藏夹免认证读取 120 次/分/IP（spider 命名空间里唯一有闸的一条）',
+    },
   ] as const;
 
   for (const e of EXPECTED) {

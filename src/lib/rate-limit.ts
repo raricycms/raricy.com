@@ -252,4 +252,28 @@ export const RULES = {
    * 预览与下载各算一次，30/分对正常使用绰绰有余。
    */
   posterMinute: { limit: 30, windowMs: 60 * 1000 },
+  /**
+   * 新建收藏夹。对照 voteCreateHourly（10/h）取宽松一档 —— 收藏夹是**用户整理自己
+   * 书签**的动作，正常人手速也就建几个；真正的总量闸是 FAVORITE_PER_USER_MAX=200
+   * （在 favorite-service 里用 count 判，不是 RULES）。桶键：fav:create:{用户 id}。
+   * 复制收藏夹**共用这条**（键前缀相同）—— 否则复制就是绕过创建限频的后门。
+   */
+  favoriteCreateHourly: { limit: 20, windowMs: 60 * 60 * 1000 },
+  /**
+   * 导入收藏夹。一次请求最多写 1000 条（FAVORITE_ITEMS_MAX），是本站最重的用户写
+   * 路径之一（N 条 upsert 在一个事务里），所以给得比创建紧一半。
+   * 桶键：fav:import:{用户 id}。
+   */
+  favoriteImportHourly: { limit: 10, windowMs: 60 * 60 * 1000 },
+  /**
+   * 收藏夹的**免认证**读取（/api/spider/favorites/:id）—— 全站唯一无会话的收藏夹
+   * 出口，没有会话就没法按用户分桶，只能按 IP。
+   *
+   * 【为什么必须有】spider 命名空间现有的三条路由**都没有限频**（历史遗留）：
+   * 它们只按 id 查单篇内容，滥用成本低。收藏夹这条会一次带出整个列表，是新加的
+   * 唯一一个有闸的 —— 别因为「邻居都没有」而把它删掉。
+   * 取不到 IP 时跳过该维度（见 credential-auth.ts 的 clientIp 约定，别传占位串）。
+   * 桶键：spider:fav:ip:{IP}。
+   */
+  spiderFavoritePerIp: { limit: 120, windowMs: 60 * 1000 },
 } as const;
