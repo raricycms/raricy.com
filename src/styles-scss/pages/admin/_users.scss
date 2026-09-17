@@ -51,29 +51,27 @@
   border-radius: 4px;
   font-weight: 500;
 
-  &--owner {
-    color: #dc3545;
-    background: rgba(220, 53, 69, 0.12);
-  }
-
+  /* 五个档位的色值全部换成令牌（原为写死的 Bootstrap 色，暗色下不跟着变）。
+     注意 owner 与 admin 在原实现里**是同一个红**，这里保持原样，只是换令牌。 */
+  &--owner,
   &--admin {
-    color: #dc3545;
-    background: rgba(220, 53, 69, 0.12);
+    color: var(--color-warning-primary);
+    background: var(--color-warning-secondary);
   }
 
   &--core {
-    color: #28a745;
-    background: rgba(40, 167, 69, 0.12);
+    color: var(--color-success-primary);
+    background: var(--color-success-secondary);
   }
 
   &--user {
-    color: #007bff;
-    background: rgba(0, 123, 255, 0.12);
+    color: var(--color-brand-primary);
+    background: var(--color-brand-secondary);
   }
 
   &--banned {
-    color: #ffc107;
-    background: rgba(255, 193, 7, 0.15);
+    color: var(--color-accent-amber);
+    background: var(--color-accent-amber-soft);
   }
 }
 

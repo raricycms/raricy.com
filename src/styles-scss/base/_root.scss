@@ -32,6 +32,20 @@
        与其它色系一样成对给出（secondary = 10% 淡底，用于按钮选中态的背景）。 */
     --color-star-primary: #f1c40f;
     --color-star-secondary: rgba(241, 196, 15, 0.12);
+    /* ── 分类强调色（categorical accent）────────────────────────────────────
+       用于**同一页面内需要彼此区分**的装饰性色相：首页四张功能卡的图标、
+       管理概览的统计卡、运势卡的五档。它们不是语义色（红=危险、绿=成功），
+       只是「把几项分开」的色相，所以单列一组 —— 免得有人拿 --color-warning-*
+       去充当其中的红，那是两回事。
+       与其它色系同构：成对给出（-soft 作淡底）。 */
+    --color-accent-blue: #3b82f6;
+    --color-accent-blue-soft: rgba(59, 130, 246, 0.12);
+    --color-accent-amber: #f59e0b;
+    --color-accent-amber-soft: rgba(245, 158, 11, 0.12);
+    --color-accent-cyan: #06b6d4;
+    --color-accent-cyan-soft: rgba(6, 182, 212, 0.12);
+    --color-accent-violet: #8b5cf6;
+    --color-accent-violet-soft: rgba(139, 92, 246, 0.12);
     --shadow-xs: 0 2px 10px rgba(0, 0, 0, 0.05);
     --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.1);
     --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.08);
@@ -87,6 +101,15 @@
     /* 暗色下把黄提亮一档，否则压在深底上发闷（#f1c40f 在 #131517 上对比度偏低） */
     --color-star-primary: #ffd93d;
     --color-star-secondary: rgba(255, 217, 61, 0.14);
+    /* 分类强调色：深底上各提亮一档，否则压不住（与 --color-star-primary 同理） */
+    --color-accent-blue: #60a5fa;
+    --color-accent-blue-soft: rgba(96, 165, 250, 0.16);
+    --color-accent-amber: #fbbf24;
+    --color-accent-amber-soft: rgba(251, 191, 36, 0.16);
+    --color-accent-cyan: #22d3ee;
+    --color-accent-cyan-soft: rgba(34, 211, 238, 0.16);
+    --color-accent-violet: #a78bfa;
+    --color-accent-violet-soft: rgba(167, 139, 250, 0.16);
     --shadow-xs: 0 2px 10px rgba(0, 0, 0, 0.2);
     --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.25);
     --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.3);

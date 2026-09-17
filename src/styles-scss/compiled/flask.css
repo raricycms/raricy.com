@@ -67,6 +67,20 @@ img {
      与其它色系一样成对给出（secondary = 10% 淡底，用于按钮选中态的背景）。 */
   --color-star-primary: #f1c40f;
   --color-star-secondary: rgba(241, 196, 15, 0.12);
+  /* ── 分类强调色（categorical accent）────────────────────────────────────
+     用于**同一页面内需要彼此区分**的装饰性色相：首页四张功能卡的图标、
+     管理概览的统计卡、运势卡的五档。它们不是语义色（红=危险、绿=成功），
+     只是「把几项分开」的色相，所以单列一组 —— 免得有人拿 --color-warning-*
+     去充当其中的红，那是两回事。
+     与其它色系同构：成对给出（-soft 作淡底）。 */
+  --color-accent-blue: #3b82f6;
+  --color-accent-blue-soft: rgba(59, 130, 246, 0.12);
+  --color-accent-amber: #f59e0b;
+  --color-accent-amber-soft: rgba(245, 158, 11, 0.12);
+  --color-accent-cyan: #06b6d4;
+  --color-accent-cyan-soft: rgba(6, 182, 212, 0.12);
+  --color-accent-violet: #8b5cf6;
+  --color-accent-violet-soft: rgba(139, 92, 246, 0.12);
   --shadow-xs: 0 2px 10px rgba(0, 0, 0, 0.05);
   --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.1);
   --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.08);
@@ -118,6 +132,15 @@ img {
   /* 暗色下把黄提亮一档，否则压在深底上发闷（#f1c40f 在 #131517 上对比度偏低） */
   --color-star-primary: #ffd93d;
   --color-star-secondary: rgba(255, 217, 61, 0.14);
+  /* 分类强调色：深底上各提亮一档，否则压不住（与 --color-star-primary 同理） */
+  --color-accent-blue: #60a5fa;
+  --color-accent-blue-soft: rgba(96, 165, 250, 0.16);
+  --color-accent-amber: #fbbf24;
+  --color-accent-amber-soft: rgba(251, 191, 36, 0.16);
+  --color-accent-cyan: #22d3ee;
+  --color-accent-cyan-soft: rgba(34, 211, 238, 0.16);
+  --color-accent-violet: #a78bfa;
+  --color-accent-violet-soft: rgba(167, 139, 250, 0.16);
   --shadow-xs: 0 2px 10px rgba(0, 0, 0, 0.2);
   --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.25);
   --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.3);
@@ -786,7 +809,7 @@ body {
 }
 
 .site-footer a {
-  color: #8899ef;
+  color: var(--color-brand-primary);
   text-decoration: none;
 }
 
@@ -1680,43 +1703,24 @@ svg.rc-icon {
 .alert {
   position: relative;
   padding: 0.75rem 1rem;
-  border: 1px solid transparent;
-  border-radius: 0.375rem;
+  border: none;
+  border-radius: 10px;
   margin-bottom: 1rem;
 }
 
 .alert-info {
-  color: #084298;
-  background-color: #cfe2ff;
-  border-color: #b6d4fe;
+  color: var(--color-brand-primary);
+  background-color: var(--color-brand-secondary);
 }
 
 .alert-warning {
-  color: #664d03;
-  background-color: #fff3cd;
-  border-color: #ffecb5;
+  color: var(--color-accent-amber);
+  background-color: var(--color-accent-amber-soft);
 }
 
 .alert-danger {
-  color: #842029;
-  background-color: #f8d7da;
-  border-color: #f5c2c7;
-}
-
-[data-theme=dark] .alert-info {
-  color: #cfe2ff;
-  background-color: #0b284d;
-  border-color: #133a6b;
-}
-[data-theme=dark] .alert-warning {
-  color: #ffecb5;
-  background-color: #3a2d08;
-  border-color: #4a3a0b;
-}
-[data-theme=dark] .alert-danger {
-  color: #f5c2c7;
-  background-color: #4a0d12;
-  border-color: #66131b;
+  color: var(--color-warning-primary);
+  background-color: var(--color-warning-secondary);
 }
 
 .alert-dismissible {
@@ -1938,20 +1942,22 @@ textarea.form-control {
   padding: 2px 6px;
 }
 
+/* toast 的深底白字是刻意的（浮层要跳出页面），但分类色仍走令牌 ——
+   原为 Bootstrap 的 #198754 / #dc3545 / #0d6efd / #fd7e14。 */
 .toast--success {
-  background: #198754;
+  background: var(--color-success-primary);
 }
 
 .toast--error {
-  background: #dc3545;
+  background: var(--color-warning-primary);
 }
 
 .toast--info {
-  background: #0d6efd;
+  background: var(--color-brand-primary);
 }
 
 .toast--warning {
-  background: #fd7e14;
+  background: var(--color-accent-amber);
 }
 
 .pagination {
@@ -2747,6 +2753,10 @@ textarea.form-control {
   background: var(--color-success-secondary);
 }
 
+/* ⚠️ 刻意保留的写死色：这是**首页自己的深色主视觉**（深蓝灰渐变 + 白字），
+   明暗两套主题下刻意保持一致，不随 [data-theme] 切换 —— 与 403 页的彩虹底同理。
+   改用令牌会让它在浅色主题下变成浅底，与其中的白字打架。
+   全站唯一一处「不跟主题走」的页面背景，除它之外都在 --color-* 体系内。 */
 .hero-section {
   background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
   min-height: 60vh;
@@ -2784,22 +2794,25 @@ textarea.form-control {
 }
 
 /* 卡片样式优化 */
+/* 首页「探索」区的四张功能卡。空闲**不托阴影也不描边** —— 它们是页面的主体内容，
+   不是浮在背景上的浮层，压一圈阴影只会让四块各自「浮」起来、把首页切碎。
+   鼠标悬浮时才亮起主题蓝光晕（--shadow-card-brand，与顶栏常驻阴影同色系），
+   即「指到哪儿哪儿才浮起来」。 */
 .feature-card {
   display: block;
-  transition: all 0.3s ease;
+  transition: box-shadow 0.3s ease;
   cursor: pointer;
   border-radius: 30px;
   overflow: hidden;
   position: relative;
   height: 100%;
   background-color: var(--color-background-card);
-  box-shadow: var(--shadow-card);
-  border: 1px solid var(--color-border);
+  box-shadow: none;
+  border: none;
 }
 
 .feature-card:hover {
   box-shadow: var(--shadow-card-brand);
-  border-color: var(--color-border-highlight);
 }
 
 /* 专注模式禁用态（div 渲染，不导航）：淡化 + hover 不给卡片反馈 */
@@ -2808,8 +2821,7 @@ textarea.form-control {
   opacity: 0.7;
 }
 .feature-card.is-disabled:hover {
-  box-shadow: var(--shadow-card);
-  border-color: var(--color-border);
+  box-shadow: none;
 }
 .feature-card.is-disabled .home-btn {
   opacity: 0.6;
@@ -2863,48 +2875,35 @@ textarea.form-control {
   mask-size: contain;
 }
 
+/* 四张功能卡各一个色相 —— 那是**分类强调色**，不是语义色，故走 --color-accent-*。
+   原为写死的 #3b82f6 / #f59e0b / #06b6d4 / #10b981，暗色下不跟着变。 */
 .card-story .feature-icon {
-  color: #3b82f6;
+  color: var(--color-accent-blue);
   -webkit-mask-image: url("/static/img/icons/book.svg");
   mask-image: url("/static/img/icons/book.svg");
 }
 
 .card-blog .feature-icon {
-  color: #f59e0b;
+  color: var(--color-accent-amber);
   -webkit-mask-image: url("/static/img/icons/journal-text.svg");
   mask-image: url("/static/img/icons/journal-text.svg");
 }
 
 .card-tool .feature-icon {
-  color: #06b6d4;
+  color: var(--color-accent-cyan);
   -webkit-mask-image: url("/static/img/icons/tools.svg");
   mask-image: url("/static/img/icons/tools.svg");
 }
 
 .card-chat .feature-icon {
-  color: #10b981;
+  color: var(--color-success-primary);
   -webkit-mask-image: url("/static/img/icons/chat-dots_new.svg");
   mask-image: url("/static/img/icons/chat-dots_new.svg");
 }
 
-/* 统计数据样式 */
-.stats-section {
-  background: #f8f9fa;
-  padding: 4rem 0;
-}
-
-.stat-item {
-  text-align: center;
-  padding: 2rem 1rem;
-}
-
-.stat-number {
-  font-size: 3rem;
-  font-weight: bold;
-  color: #667eea;
-  display: block;
-}
-
+/* 此处原有 .stats-section / .stat-item / .stat-number 三条（含写死的 #f8f9fa 与
+   #667eea）。没有任何 TSX 使用这三个类 —— 管理页用的是 .admin-stat-item 一族。
+   死代码，已删。 */
 /* 特色区域 */
 .features-section {
   padding: 5rem 0;
@@ -3378,7 +3377,7 @@ a:hover {
   left: 0;
   width: 0%;
   height: 3px;
-  background: #3498db;
+  background: var(--color-brand-primary);
   z-index: 1000;
   transition: width 0.1s ease;
 }
@@ -4435,7 +4434,7 @@ a:hover {
   font-size: 0.8rem;
   margin-left: 8px;
   transition: transform 0.3s ease;
-  color: #adb5bd;
+  color: var(--color-text-secondary);
 }
 
 /* .category-link.active 的规则已并入上面的 @include m.btn-tab */
@@ -8814,7 +8813,8 @@ body {
   height: 120px;
   border-radius: 8%;
   overflow: hidden;
-  background: linear-gradient(135deg, #f28391 0%, #2575fc 100%);
+  /* 头像占位底（图片加载前/无头像时露出）。原为写死的 #f28391 → #2575fc。 */
+  background: linear-gradient(135deg, var(--color-accent-blue), var(--color-accent-violet));
 }
 .profile-hero__avatar img {
   width: 100%;
@@ -9901,9 +9901,9 @@ input:checked + .settings-toggle__slider::before {
 .featured-flag {
   display: inline-block;
   padding: 4px 10px;
-  border-radius: 12px;
-  background: #fff3cd;
-  color: #856404;
+  border-radius: 999px;
+  background: var(--color-accent-amber-soft);
+  color: var(--color-accent-amber);
   font-size: 0.8rem;
   align-self: flex-start;
 }
@@ -9916,12 +9916,12 @@ input:checked + .settings-toggle__slider::before {
   white-space: nowrap;
 }
 .current-category.is-categorized {
-  background: #74b9ff;
-  color: #fff;
+  background: var(--color-accent-blue-soft);
+  color: var(--color-accent-blue);
 }
 .current-category.is-uncategorized {
-  background: #ffeaa7;
-  color: #d63031;
+  background: var(--color-accent-amber-soft);
+  color: var(--color-accent-amber);
 }
 
 .category-select {
@@ -10025,26 +10025,24 @@ input:checked + .settings-toggle__slider::before {
   padding: 2px 8px;
   border-radius: 4px;
   font-weight: 500;
+  /* 五个档位的色值全部换成令牌（原为写死的 Bootstrap 色，暗色下不跟着变）。
+     注意 owner 与 admin 在原实现里**是同一个红**，这里保持原样，只是换令牌。 */
 }
-.user-card__role--owner {
-  color: #dc3545;
-  background: rgba(220, 53, 69, 0.12);
-}
-.user-card__role--admin {
-  color: #dc3545;
-  background: rgba(220, 53, 69, 0.12);
+.user-card__role--owner, .user-card__role--admin {
+  color: var(--color-warning-primary);
+  background: var(--color-warning-secondary);
 }
 .user-card__role--core {
-  color: #28a745;
-  background: rgba(40, 167, 69, 0.12);
+  color: var(--color-success-primary);
+  background: var(--color-success-secondary);
 }
 .user-card__role--user {
-  color: #007bff;
-  background: rgba(0, 123, 255, 0.12);
+  color: var(--color-brand-primary);
+  background: var(--color-brand-secondary);
 }
 .user-card__role--banned {
-  color: #ffc107;
-  background: rgba(255, 193, 7, 0.15);
+  color: var(--color-accent-amber);
+  background: var(--color-accent-amber-soft);
 }
 
 .user-card__avatar {
@@ -10132,16 +10130,17 @@ input:checked + .settings-toggle__slider::before {
   border: 1px solid var(--color-border);
   color: var(--color-text-secondary);
   line-height: 1.4;
+  /* 原为写死的绿 #198754 / 橙 #fd7e14 与各自的浅底 —— 暗色下不跟着变。 */
 }
 .status-badge--reverted {
-  color: #198754;
-  border-color: #198754;
-  background: #e9f7ef;
+  color: var(--color-success-primary);
+  border-color: transparent;
+  background: var(--color-success-secondary);
 }
 .status-badge--pending {
-  color: #fd7e14;
-  border-color: #fd7e14;
-  background: #fff3e0;
+  color: var(--color-accent-amber);
+  border-color: transparent;
+  background: var(--color-accent-amber-soft);
 }
 
 .log-row--reverted td {
@@ -11612,23 +11611,23 @@ input:checked + .settings-toggle__slider::before {
 }
 
 .fortune-color--1 {
-  color: #6B7280;
+  color: var(--color-text-secondary);
 }
 
 .fortune-color--2 {
-  color: #10B981;
+  color: var(--color-success-primary);
 }
 
 .fortune-color--3 {
-  color: #3B82F6;
+  color: var(--color-accent-blue);
 }
 
 .fortune-color--4 {
-  color: #F59E0B;
+  color: var(--color-accent-amber);
 }
 
 .fortune-color--5 {
-  color: #EF4444;
+  color: var(--color-warning-primary);
 }
 
 .checkin-today-fortune {

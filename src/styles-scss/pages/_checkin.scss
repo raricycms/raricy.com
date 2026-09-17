@@ -376,12 +376,16 @@
 }
 
 // ---- 运势颜色体系 ----
+//
+// 五档由「灰 → 绿 → 蓝 → 琥珀 → 红」递进。原为写死的 #6B7280 / #10B981 /
+// #3B82F6 / #F59E0B / #EF4444 —— 暗色下不跟着变。第 1 档是「无」所以取弱文字色，
+// 第 2/5 档是语义（好 / 差），第 3/4 档只是换个色相，故走分类强调色。
 
-.fortune-color--1 { color: #6B7280; }
-.fortune-color--2 { color: #10B981; }
-.fortune-color--3 { color: #3B82F6; }
-.fortune-color--4 { color: #F59E0B; }
-.fortune-color--5 { color: #EF4444; }
+.fortune-color--1 { color: var(--color-text-secondary); }
+.fortune-color--2 { color: var(--color-success-primary); }
+.fortune-color--3 { color: var(--color-accent-blue); }
+.fortune-color--4 { color: var(--color-accent-amber); }
+.fortune-color--5 { color: var(--color-warning-primary); }
 
 // ---- 今日运势小标签 ----
 

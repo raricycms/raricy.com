@@ -47,9 +47,11 @@
   padding: 2px 6px;
 }
 
-.toast--success { background: #198754; }
-.toast--error { background: #dc3545; }
-.toast--info { background: #0d6efd; }
-.toast--warning { background: #fd7e14; }
+/* toast 的深底白字是刻意的（浮层要跳出页面），但分类色仍走令牌 ——
+   原为 Bootstrap 的 #198754 / #dc3545 / #0d6efd / #fd7e14。 */
+.toast--success { background: var(--color-success-primary); }
+.toast--error { background: var(--color-warning-primary); }
+.toast--info { background: var(--color-brand-primary); }
+.toast--warning { background: var(--color-accent-amber); }
 
 

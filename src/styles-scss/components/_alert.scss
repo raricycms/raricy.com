@@ -1,36 +1,30 @@
-// Simple alert styles to replace Bootstrap usage
+@use '../abstracts/variables' as v;
+
+// 提示条。原为 Bootstrap 的三组写死色（info 蓝 / warning 黄 / danger 红）配
+// 一套「浅底 + 描边」，另有一整块 [data-theme="dark"] 补丁专门给它们配色。
+// 现在三种都走令牌的**淡底 + 同色字**、无边框（与全站一致），描边与那块暗色
+// 补丁遂一并删除 —— 色值随 [data-theme] 自动切换，本来就不需要补丁。
 .alert {
   position: relative;
   padding: 0.75rem 1rem;
-  border: 1px solid transparent;
-  border-radius: 0.375rem;
+  border: none;
+  border-radius: v.$radius-large;
   margin-bottom: 1rem;
 }
 
 .alert-info {
-  color: #084298;
-  background-color: #cfe2ff;
-  border-color: #b6d4fe;
+  color: var(--color-brand-primary);
+  background-color: var(--color-brand-secondary);
 }
 
 .alert-warning {
-  color: #664d03;
-  background-color: #fff3cd;
-  border-color: #ffecb5;
+  color: var(--color-accent-amber);
+  background-color: var(--color-accent-amber-soft);
 }
 
 .alert-danger {
-  color: #842029;
-  background-color: #f8d7da;
-  border-color: #f5c2c7;
-}
-
-// 主题走的是 <html data-theme>，不是 body.dark-mode —— 用旧选择器的话这几条
-// 深色规则永远不命中，暗色下 alert 一直是浅底深字（如博客禁言横幅、申诉提示）。
-[data-theme="dark"] {
-  .alert-info { color: #cfe2ff; background-color: #0b284d; border-color: #133a6b; }
-  .alert-warning { color: #ffecb5; background-color: #3a2d08; border-color: #4a3a0b; }
-  .alert-danger { color: #f5c2c7; background-color: #4a0d12; border-color: #66131b; }
+  color: var(--color-warning-primary);
+  background-color: var(--color-warning-secondary);
 }
 
 // Dismissible / fade helpers

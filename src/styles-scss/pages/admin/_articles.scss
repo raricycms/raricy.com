@@ -62,13 +62,13 @@
   min-width: 200px;
 }
 
-// Featured flag
+// Featured flag（精选标记）—— 走分类强调色的琥珀
 .featured-flag {
   display: inline-block;
   padding: 4px 10px;
-  border-radius: 12px;
-  background: #fff3cd;
-  color: #856404;
+  border-radius: 999px;
+  background: var(--color-accent-amber-soft);
+  color: var(--color-accent-amber);
   font-size: 0.8rem;
   align-self: flex-start;
 }
@@ -82,13 +82,13 @@
   white-space: nowrap;
 
   &.is-categorized {
-    background: #74b9ff;
-    color: #fff;
+    background: var(--color-accent-blue-soft);
+    color: var(--color-accent-blue);
   }
 
   &.is-uncategorized {
-    background: #ffeaa7;
-    color: #d63031;
+    background: var(--color-accent-amber-soft);
+    color: var(--color-accent-amber);
   }
 }
 
