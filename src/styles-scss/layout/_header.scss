@@ -445,14 +445,20 @@ body {
     width: 100%;
     max-height: 0;
     overflow: hidden;
-    transition: max-height 0.25s ease;
+    // transition **不写在这里** —— 见展开态那条的说明。
   }
 
   // 展开后实际高度约 1–2 行导航 + actions ≈ 150px 内，max-height 定 260px 即可
   // （原来 500px 时内容早已展开，剩余过渡时间全花在动画空区上）。
+  //
+  // ⚠️ transition 只挂在展开态：收起因此是**瞬间**的。写在折叠态（原来那样）会让
+  // 收起也走一遍 max-height 260 → 0 的过渡 —— 那 0.25 秒里内容不是消失，而是被
+  // 逐帧裁掉，看着就是「点完 hamburger 菜单还赖着不走」。展开方向保留动画
+  // （内容从 0 撑开，有过渡才不突兀），收起方向要的是立刻让位。
   .site-navbar.open .site-navbar-collapse {
     max-height: 260px;
     overflow: visible;
+    transition: max-height 0.25s ease;
   }
 
   .site-nav {
