@@ -152,12 +152,16 @@ export default function FavoriteMenu({ favorites }: { favorites: Row[] }) {
           placeholder="新收藏夹名称"
           onChange={(e) => setTitle(e.target.value)}
         />
-        <button type="button" className="read-btn" disabled={busy} onClick={() => void create(false)}>
-          <Lock aria-hidden="true" size={14} /> 创建私密收藏夹
-        </button>
-        <button type="button" className="read-btn" disabled={busy} onClick={() => void create(true)}>
-          <Globe aria-hidden="true" size={14} /> 创建公开收藏夹
-        </button>
+        {/* 名称独占一行，两颗按钮并排在下一行 —— 理由见 _favorite.scss 的
+            .favorite-picker__new-actions（两者挤一行时第三颗会被挤到第二行） */}
+        <div className="favorite-picker__new-actions">
+          <button type="button" className="read-btn" disabled={busy} onClick={() => void create(false)}>
+            <Lock aria-hidden="true" size={14} /> 创建私密收藏夹
+          </button>
+          <button type="button" className="read-btn" disabled={busy} onClick={() => void create(true)}>
+            <Globe aria-hidden="true" size={14} /> 创建公开收藏夹
+          </button>
+        </div>
       </div>
 
       <div className="favorite-picker__new" style={{ marginBottom: '1.5rem' }}>
@@ -168,27 +172,29 @@ export default function FavoriteMenu({ favorites }: { favorites: Row[] }) {
           accept="application/json,.json"
           onChange={(e) => void pickFile(e.target.files?.[0])}
         />
-        <button
-          type="button"
-          className="read-btn"
-          disabled={busy || !pendingFile}
-          onClick={() => void doImport(false)}
-        >
-          <Upload aria-hidden="true" size={14} /> 导入为私密收藏夹
-        </button>
-        <button
-          type="button"
-          className="read-btn"
-          disabled={busy || !pendingFile}
-          onClick={() => void doImport(true)}
-        >
-          <Upload aria-hidden="true" size={14} /> 导入为公开收藏夹
-        </button>
+        <div className="favorite-picker__new-actions">
+          <button
+            type="button"
+            className="read-btn"
+            disabled={busy || !pendingFile}
+            onClick={() => void doImport(false)}
+          >
+            <Upload aria-hidden="true" size={14} /> 导入为私密收藏夹
+          </button>
+          <button
+            type="button"
+            className="read-btn"
+            disabled={busy || !pendingFile}
+            onClick={() => void doImport(true)}
+          >
+            <Upload aria-hidden="true" size={14} /> 导入为公开收藏夹
+          </button>
+        </div>
       </div>
 
       {rows.length === 0 ? (
         <div className="favorite-list__empty">
-          还没有收藏夹。建一个，然后在看文章时点左下角的黄色五角星把文章收进来。
+          还没有收藏夹。建一个，然后在看文章时点文章底部那颗星标把文章收进来。
         </div>
       ) : (
         <div className="favorite-list">

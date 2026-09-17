@@ -6,9 +6,12 @@
  */
 
 /* ── 详情页的收藏按钮（参照 .like-btn / .fish-btn 的 pill 形态）─────────────
- * ⚠️ 星标**始终是黄色**：直接给 .icon-star-fill 的 background-color，而不是靠
- * currentColor —— .icon 的机制是 `background-color: currentColor`，不覆盖的话未收藏
- * 时星星跟着文字变灰，而需求要的正是「黄色的五角星」。
+ * ⚠️ 星标**未收藏时不亮**：走 .icon 的 `background-color: currentColor`（与心形 /
+ * 小鱼同一个机制）—— 未收藏时跟着文字是灰的，hover 与已收藏才变黄。
+ * 这里曾经写死 `.icon-star-fill { background-color: 黄色 }`（想让五角星恒亮），
+ * 后果是三颗并排的按钮里只有它是常亮的，「已收藏」反而看不出来 —— 那正是状态色
+ * 存在的意义。所以颜色只由 `.favorite-btn.favorited` 的 color 给。
+ *
  * 另外这按钮**没有计数徽标**（与点赞/投喂刻意不同）：站内不显示一篇文章的被收藏数，
  * 因为收藏夹可以复制，那个数字既无意义又会让作者以为「有人收藏了我的文章」。 */
 .favorite-btn {
@@ -33,10 +36,6 @@
   &:disabled {
     opacity: 0.7;
     cursor: not-allowed;
-  }
-
-  .icon-star-fill {
-    background-color: var(--color-star-primary);
   }
 }
 
@@ -303,11 +302,51 @@
   color: var(--color-text-secondary);
 }
 
+/* 新建 / 导入区：**名称独占一行，两颗按钮并排在下一行**。
+ * 三者曾经同挤一个 flex 行（`flex-wrap: wrap` + 输入框 `flex: 1`），在 500px 宽的
+ * 弹窗里正好放不下第三颗 —— 于是「新收藏夹名称」和「创建私密」占了一行、
+ * 「创建公开」被挤到第二行。那不只是难看：两颗按钮**代表对等的两种性质**，分行的
+ * 样子会让人以为「公开」是次要选项，而这恰恰是本功能最不能出歧义的地方
+ * （性质一经创建不可修改，选错只能靠复制补救）。
+ * `.favorite-picker__new` 同时被 /favorite 页的 FavoriteMenu 复用，故修在这里。 */
 .favorite-picker__new {
   display: flex;
+  flex-direction: column;
   gap: 0.5rem;
-  flex-wrap: wrap;
   margin-top: 0.75rem;
+}
+
+.favorite-picker__new-actions {
+  display: flex;
+  gap: 0.5rem;
+
+  /* 两颗等宽平分。min-width: 0 覆盖 .read-btn 的 min-width: 120px —— 那一份是给
+     页面上平铺按钮定的，在弹窗里会把两颗挤成「一颗宽一颗窄」。 */
+  .read-btn {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 10px 8px;
+    font-size: 0.9rem;
+  }
+}
+
+/* 窄屏：弹窗正文只剩 ~300px，两颗按钮各 ~150px。0.9rem 时「创建私密收藏夹」
+   （7 字 + 图标）约 143px，已在临界，收小一档留出余量。 */
+@media (max-width: 400px) {
+  .favorite-picker__new-actions .read-btn {
+    padding: 10px 6px;
+    font-size: 0.82rem;
+  }
+}
+
+/* 极窄屏（<360px，与 .read-controls 的兜底同一个断点）：两颗并排时每颗只剩
+   ~114px，而「创建私密收藏夹」需要 ~134px，硬挤只会把标签折成两行。
+   改为各占一整行 —— 都满宽，所以「两种性质对等」这层意思仍在，只是不再并排。
+   不继续缩字号（0.82rem 已经在临界，再小就开始难读）。 */
+@media (max-width: 359px) {
+  .favorite-picker__new-actions {
+    flex-direction: column;
+  }
 }
 
 .favorite-picker__input {
@@ -318,4 +357,16 @@
   border-radius: 0.375rem;
   background: var(--color-background-card);
   color: var(--color-text-primary);
+}
+
+/* 选择器页脚通往管理页 —— 会点开选择器的人，正是想整理收藏夹的人。 */
+.favorite-picker__manage {
+  margin-left: auto;
+  color: var(--color-brand-primary);
+  text-decoration: none;
+  font-size: 0.9rem;
+
+  &:hover {
+    text-decoration: underline;
+  }
 }

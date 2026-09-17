@@ -230,7 +230,9 @@ export default function FavoriteButton({ blogId, isAuth, isCore, initialFavorite
               )}
 
               {/* 两个入口分开列，是为了让「私密 / 公开」的性质差异在**建之前**就可见 ——
-                  性质一经创建不可修改，所以不能在一个含糊的「新建」里让用户事后才发现。 */}
+                  性质一经创建不可修改，所以不能在一个含糊的「新建」里让用户事后才发现。
+                  名称独占一行、两颗按钮在下一行并排（见 _favorite.scss 的
+                  .favorite-picker__new-actions）：三者挤一行时第三颗会被挤下去。 */}
               <div className="favorite-picker__new">
                 <input
                   className="favorite-picker__input"
@@ -240,25 +242,34 @@ export default function FavoriteButton({ blogId, isAuth, isCore, initialFavorite
                   placeholder="新收藏夹名称"
                   onChange={(e) => setNewTitle(e.target.value)}
                 />
-                <button
-                  type="button"
-                  className="read-btn"
-                  disabled={creating}
-                  onClick={() => void create(false)}
-                  title="只有你能看到；不显示 ID，无法分享、无法被机器人读取，但可以导出 JSON"
-                >
-                  <Lock aria-hidden="true" size={14} /> 创建私密收藏夹
-                </button>
-                <button
-                  type="button"
-                  className="read-btn"
-                  disabled={creating}
-                  onClick={() => void create(true)}
-                  title="任何人可见；有 6 位 ID，可以分享、生成二维码、用 [@ID] 内嵌到文章里"
-                >
-                  <Globe aria-hidden="true" size={14} /> 创建公开收藏夹
-                </button>
+                <div className="favorite-picker__new-actions">
+                  <button
+                    type="button"
+                    className="read-btn"
+                    disabled={creating}
+                    onClick={() => void create(false)}
+                    title="只有你能看到；不显示 ID，无法分享、无法被机器人读取，但可以导出 JSON"
+                  >
+                    <Lock aria-hidden="true" size={14} /> 创建私密收藏夹
+                  </button>
+                  <button
+                    type="button"
+                    className="read-btn"
+                    disabled={creating}
+                    onClick={() => void create(true)}
+                    title="任何人可见；有 6 位 ID，可以分享、生成二维码、用 [@ID] 内嵌到文章里"
+                  >
+                    <Globe aria-hidden="true" size={14} /> 创建公开收藏夹
+                  </button>
+                </div>
               </div>
+            </div>
+            {/* 会点开选择器的人，正是想整理收藏夹的人 —— 把管理入口放在这里，
+                否则它只存在于顶栏头像菜单里，等于没有入口。 */}
+            <div className="modal-footer">
+              <a className="favorite-picker__manage" href="/favorite">
+                管理收藏夹 →
+              </a>
             </div>
           </div>
         </div>
