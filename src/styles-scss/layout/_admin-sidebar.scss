@@ -40,8 +40,10 @@
   font-weight: 500;
   color: var(--color-text-secondary);
   text-decoration: none;
-  border-left: 3px solid transparent;
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  /* 活动项原先靠 `border-left: 3px solid 品牌色` 标识；竖条已按全站规范去掉，
+     且侧栏是圆角胶囊（border-radius: 999px），竖条与胶囊本就是两种形状语言的
+     混搭。标识改由 .admin-sidebar__item--active 的底色 + 字色承担。 */
+  transition: background 0.15s ease, color 0.15s ease;
 
   &:hover {
     background: var(--color-background-subtle);
@@ -50,9 +52,8 @@
   }
 
   &--active {
-    background: var(--color-background-subtle);
+    background: var(--color-brand-secondary);
     color: var(--color-brand-primary);
-    border-left-color: var(--color-brand-primary);
     font-weight: 600;
   }
 }
@@ -106,11 +107,9 @@
   .admin-sidebar__item {
     padding: 6px 12px;
     font-size: 0.82rem;
-    border-left: none;
-    border-radius: 6px;
+    border-radius: 999px;
 
     &--active {
-      border-left: none;
       background: var(--color-brand-primary);
       color: #fff;
     }

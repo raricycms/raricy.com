@@ -34,13 +34,18 @@
   margin-bottom: 28px;
 }
 
+/* 统计卡。原先是「1px 描边 + 左侧 4px 彩色竖条」，竖条已按全站规范去掉，
+   1px 描边也一并去掉（无边框总则）—— 卡的边界改由阴影承担，与博客首页
+   .blog-item 一致。五个变体的区分改由「卡片淡底 + 数字同色」表达，
+   色值全部走主题令牌（原为写死的 #3b82f6 / #10b981 / #f59e0b / #8b5cf6 / #ef4444）。
+   ⚠️ 站内没有紫色语义令牌，--color-brand-secondary 与 --color-star-secondary
+   是仅有的两对可用暖/冷色，故 purple 与 blue 合并到品牌色系（图标与文案仍能区分）。 */
 .admin-stat-card {
   background: var(--color-background-card);
-  border-radius: 10px;
+  border-radius: 20px;
   padding: 20px;
   box-shadow: var(--shadow-xs);
-  border: 1px solid var(--color-border);
-  border-left: 4px solid;
+  border: none;
   text-align: center;
   transition: box-shadow 0.2s ease;
 
@@ -48,11 +53,23 @@
     box-shadow: var(--shadow-sm);
   }
 
-  &--blue   { border-left-color: #3b82f6; }
-  &--green  { border-left-color: #10b981; }
-  &--amber  { border-left-color: #f59e0b; }
-  &--purple { border-left-color: #8b5cf6; }
-  &--red    { border-left-color: #ef4444; }
+  &--blue,
+  &--purple {
+    background: var(--color-brand-secondary);
+    .admin-stat-card__number { color: var(--color-brand-primary); }
+  }
+  &--green {
+    background: var(--color-success-secondary);
+    .admin-stat-card__number { color: var(--color-success-primary); }
+  }
+  &--amber {
+    background: var(--color-star-secondary);
+    .admin-stat-card__number { color: var(--color-star-primary); }
+  }
+  &--red {
+    background: var(--color-warning-secondary);
+    .admin-stat-card__number { color: var(--color-warning-primary); }
+  }
 }
 
 .admin-stat-card__number {

@@ -602,6 +602,7 @@ a {
 
 // 引用博客链接卡（整卡可点 → 博客详情页）。观感对齐讨论里的 .chat-msg__blog，
 // 但底色用 subtle：评论区是文章流的延续，不需要气泡那种强对比。
+/* 评论里引用的博客卡。去掉 1px 描边与左侧品牌竖条，改用品牌淡底。 */
 .comment-blog {
     display: inline-flex;
     align-items: center;
@@ -609,10 +610,9 @@ a {
     max-width: 100%;
     margin: 6px 0;
     padding: 6px 10px;
-    border: 1px solid var(--color-border);
-    border-left: 3px solid var(--color-brand-primary);
-    border-radius: 8px;
-    background: var(--color-background-subtle);
+    border: none;
+    border-radius: 999px;
+    background: var(--color-brand-secondary);
     color: inherit;
     text-decoration: none;
 }
@@ -656,10 +656,10 @@ a {
     margin-bottom: 15px;
     overflow-wrap: break-word;
     margin-top: 15px;
-    border-left: 3px solid var(--color-brand-secondary);
+    /* 楼中楼原先靠 `border-left: 3px solid 品牌淡色` 表示层级；竖条已按全站
+       规范去掉，层级改由缩进（padding-left / margin-left）单独承担。 */
     line-height: 1.5;
     .comment-section > & {
-        border-left: none;
         padding-left: 0;
         margin-left: 0;
     }

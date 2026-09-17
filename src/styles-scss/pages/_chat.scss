@@ -694,13 +694,13 @@
   color: var(--color-warning-primary);
 }
 
+/* 被引用的那条消息。左侧竖条已按全站规范去掉，改用品牌淡底标识。 */
 .chat-msg__reply {
   font: inherit;
   font-size: 0.78rem;
   padding: 4px 8px;
   border: none;
-  border-left: 3px solid var(--color-brand-primary);
-  background: var(--color-background-subtle);
+  background: var(--color-brand-secondary);
   border-radius: 6px;
   color: var(--color-text-secondary);
   white-space: pre-wrap;

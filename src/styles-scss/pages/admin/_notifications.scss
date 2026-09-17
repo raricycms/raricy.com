@@ -23,9 +23,10 @@
     background-color: var(--color-background-subtle);
   }
 
+  /* 选中态原有左侧 4px 竖条 + 淡底；竖条已按全站规范去掉，淡底单独承担
+     （同一行里还有复选框，状态不会丢）。 */
   &.is-selected {
     background-color: var(--color-background-highlight);
-    border-left: 4px solid var(--color-border-highlight);
   }
 }
 

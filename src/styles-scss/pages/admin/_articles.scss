@@ -6,7 +6,7 @@
   padding: 20px;
   margin-bottom: 15px;
   box-shadow: var(--shadow-xs);
-  border-left: 4px solid var(--color-border);
+  border: none;
   transition: all 0.3s ease;
 
   /* 卡片 hover：只提阴影，不位移 —— 与博客首页 .blog-item 一致 */
@@ -14,8 +14,9 @@
     box-shadow: var(--shadow-sm);
   }
 
+  /* 选中态原先靠左侧竖条变蓝表示；竖条已按全站规范去掉，改由整卡淡底承担
+     （与侧栏、分类栏的选中态同一套语言）。 */
   &.is-selected {
-    border-left-color: var(--color-border-highlight);
     background: var(--color-background-highlight);
   }
 }

@@ -29,7 +29,7 @@ const GUIDE_STYLES = `
   .guide__content h3{font-size:1.15rem;font-weight:600;margin:1.75rem 0 .75rem}
   .guide__content p{margin:.75rem 0}
   .guide__content code{background:var(--color-background-content);padding:.15rem .35rem;border-radius:3px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:.875em;color:#b5730a}
-  .guide__content pre{background:var(--color-background-content);padding:1rem 1.25rem;border-radius:.375rem;overflow-x:auto;margin:1rem 0;border-left:3px solid var(--color-brand-primary);font-size:.875rem;line-height:1.6}
+  .guide__content pre{background:var(--color-background-content);padding:1rem 1.25rem;border-radius:12px;overflow-x:auto;margin:1rem 0;font-size:.875rem;line-height:1.6}
   .guide__content pre code{background:none;padding:0;color:var(--color-text-primary);font-size:inherit}
   .guide__content blockquote{border-left:3px solid var(--color-brand-primary);margin:1rem 0;padding:.5rem 1rem;background:var(--color-background-content);color:var(--color-text-secondary);border-radius:0 .25rem .25rem 0}
   .guide__content ul,.guide__content ol{margin:.75rem 0;padding-left:1.75rem}
