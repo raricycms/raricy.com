@@ -189,6 +189,15 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 纠错 H、静默区 ≥4 模块 —— `tests/unit/poster.test.ts` 会真解码）。收银台与收款页共用
 `src/app/fish/PayForm.tsx` 的 `variant` 分支，别另抄一个。
 
+### 收藏夹
+
+`docs/architecture.md` §6.10 + `src/lib/favorite-service.ts` 头部（**六条不变量**，
+尤其是「private 的 `public_id` 恒为 NULL —— 没有句柄而不是藏起来」、
+「判对外可见永远用 `isPublic` 而非 `publicId != null`」、「不继承站长的越权读」）。
+`[@六位]` 的纯逻辑在 `src/lib/favorite-refs.ts` 头部（为什么卡片是成品 HTML 而不是
+占位 + `data-*`，为什么替换按区间切片）。对外见 `docs/bot/favorite-bot.md`（含限频数值，
+改 `RULES` 要同步）与 `docs/guide/收藏夹使用指南.md`。
+
 ## 文档
 
 - **`docs/README.md`** —— 全部文档的索引（分三层：`docs/guide/` 给玩家与创作者、

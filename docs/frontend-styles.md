@@ -54,6 +54,8 @@ src/styles-scss/
 | `--color-success-primary` | `#10b981` | 成功色（投喂、签到） |
 | `--color-success-secondary` | `rgba(16,185,129,0.1)` | 成功浅底 |
 | `--color-info-secondary` | `rgba(59,130,246,0.08)` | 信息浅底 |
+| `--color-star-primary` | `#f1c40f` | 收藏夹：黄色五角星（**唯一的黄色语义色**；`--color-warning-*` 其实是红） |
+| `--color-star-secondary` | `rgba(241,196,15,0.12)` | 收藏夹按钮的选中态浅底 |
 
 ### 2.2 主色板（深色 `data-theme="dark"`）
 
@@ -78,6 +80,8 @@ src/styles-scss/
 | `--color-success-primary` | `#10b981` |
 | `--color-success-secondary` | `rgba(16,185,129,0.12)` |
 | `--color-info-secondary` | `rgba(59,130,246,0.12)` |
+| `--color-star-primary` | `#ffd93d`（比浅色侧提亮一档，否则压在深底上发闷） |
+| `--color-star-secondary` | `rgba(255,217,61,0.14)` |
 
 ### 2.3 阴影
 

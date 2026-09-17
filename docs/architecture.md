@@ -116,13 +116,14 @@
 | 认证 / 会话 | `auth.ts` · `session.ts` · `password.ts` · `invite-code.ts` · `user-service.ts` · `identicon.ts` · `avatar.ts`（头像字节的**唯一**解析处：`/api/avatar/[id]` 与画报共用同一份目录穿越守卫）· `site-url.ts`（`SITE_URL` → `ALLOWED_ORIGINS` 回退链的唯一实现，OAuth 的 userinfo 与画报的二维码前缀共用） |
 | 数据层 | `db.ts` · `db-time.ts` · `format.ts` |
 | 博客域 | `blog-service.ts` · `feed-service.ts` · `comment-service.ts` · `comment-shared.ts` · `blog-sort-pref.ts` · `spider-service.ts` |
-| 富文本渲染 | `rich-text.ts`（共享管线）· `chat-markdown.ts` · `comment-markdown.ts` · `blog-markdown.ts` · `content-refs.ts`（评论/讨论那条**同步**管线：只认 8 位与 10 位，9 位投票刻意不展开）· `markdown-math.ts` · `linkify.ts` · `vditor-theme.ts` |
+| 富文本渲染 | `rich-text.ts`（共享管线）· `chat-markdown.ts` · `comment-markdown.ts` · `blog-markdown.ts` · `content-refs.ts`（评论/讨论那条**同步**管线：只认 8 位与 10 位，9 位投票与 6 位收藏夹刻意不展开）· `favorite-refs.ts`（`[@六位]` 卡片：**只在博客/剪贴板**那条管线生效，见 §6.9）· `markdown-math.ts` · `linkify.ts` · `vditor-theme.ts` |
 | 表情包 | `sticker-refs.ts`（`[@合集/表情]` → 内联 `<img>`，跑在`rich-text.ts` 的净化**之后**）· `sticker-service.ts`（素材扫盘与三层缓存）。安全边界与正则纪律见两者头部；玩家向说明见 `docs/guide/表情包使用指南.md` |
 | 讨论 | `chat-service.ts` · `chat-bus.ts`（SSE 订阅）/ `chat-shared.ts`（DTO）· `chat-presence.ts`（「谁正在看哪个会话」—— 进程内，决定被 @ 时发不发通知）· `chat-sidebar-pref.ts` · `focus-mode.ts` |
 | 实时传输 | `sse.ts` —— SSE 响应头 / 帧格式 / 重连与背压 / 心跳常量的**唯一出处**，两条流共用（讨论 `chat-bus.ts`、顶栏 `topbar-bus.ts`）。新增 SSE 路由一律 import 它，不要手抄响应头（`no-transform` 少一个字的后果见该文件头注释） |
 | 顶栏指示器 | `topbar-bus.ts` —— 铃铛未读数 + 讨论红点的 SSE 订阅表（推**增量补丁**，首帧全量快照由路由拼）。推送点纪律（`hasSubscriber` 同步早退、算值必须在吞异常的 try 内）与依赖方向约束**见该文件头部** |
 | 通知 / 审计 | `notification-service.ts` · `broadcast-service.ts` · `audit-service.ts` · `admin-appeal-service.ts` |
 | 投票 / 签到 / 剪贴板 | `vote-service.ts` · `checkin-service.ts` · `clipboard-service.ts` |
+| 收藏夹 | `favorite-service.ts`（六条不变量见文件头）· `favorite-refs.ts`（`[@六位]` 的纯逻辑），见 §6.9 |
 | 图床 | `image-service.ts` · `image-upload.ts`（服务端）· `image-client.ts`（浏览器侧选图上传，讨论与评论共用）· `vditor-upload.ts`（Vditor 编辑器的上传配置，博客与剪贴板共用；与 `/api/images` 的字段名/响应结构两端对齐，见 `tests/unit/vditor-upload.test.ts`） |
 | 故事 | `story-service.ts` |
 | 画报 / 收款码 | `poster.ts`（纯 SVG 构造，含二维码与转义）· `poster-render.ts`（取数 + 头像 + sharp 光栅化），见 §6.8 |
@@ -235,7 +236,7 @@ GET/HEAD/OPTIONS 视为安全方法，不校验。
 | 讨论正文 / 评论正文 | **客户端**渲染，同一套管线 | `rich-text.ts`（marked → DOMPurify → 后处理），白名单与链接类名见 `chat-markdown.ts` / `comment-markdown.ts` |
 | 博客正文 | **客户端**渲染 | `src/app/components/MarkdownRenderer.tsx`（marked + DOMPurify + highlight.js + MathJax + `[@…]` 内容引用） |
 | 故事正文 | **服务端**渲染 | `src/lib/story-service.ts` 的 `marked` + `stripScripts`。内容由站长直接写在 `instance/stories/`，按可信输入处理，**不走 DOMPurify / highlight.js** |
-| 内容引用 `[@…]` | 浏览器渲染时正则替换为剪贴板/投票/图床组件 | `src/app/components/MarkdownRenderer.tsx` 的 `ContentRefProcessor`（按 id 长度分流：8 位剪贴板 / 9 位投票 / 10 位图床）。**表情包不在这条管道上** |
+| 内容引用 `[@…]` | 浏览器渲染时正则替换为剪贴板/投票/图床/收藏夹组件 | `src/app/components/MarkdownRenderer.tsx` 的 `ContentRefProcessor`（按 id 长度分流：6 位收藏夹 / 8 位剪贴板 / 9 位投票 / 10 位图床）。**表情包不在这条管道上**。收藏夹卡片是在主循环**之后**单独一趟、按区间切片替换的，理由见 §6.10 |
 | 表情包 `[@合集/表情]` | 浏览器渲染时替换为内联 `<img>`（**仅评论 / 讨论**） | `src/lib/sticker-refs.ts` 的 `embedStickerRefs`，在 `rich-text.ts` 里紧跟 `embedImageRefs` 之后调用 |
 | 工具页 cattca-guide | **服务端**渲染 | marked（仅一次，可信文档） |
 
@@ -318,6 +319,72 @@ div 会卸载重挂，`deps=[]` 的监听器永远附不上。
 **核心库与端点**：`src/lib/oauth.ts`（纯函数 + Prisma 调用）；6 个 `/api/oauth/*` 路由 + `/oauth/authorize` 页 + `/admin/oauth` 管理页；CLI `oauth create-app / list-apps / disable-app / enable-app`。
 
 详见 `docs/oauth.md`。
+
+### 6.10 收藏夹（favorites）
+
+用户自建的博客合辑。一个用户可有 200 个收藏夹，一个收藏夹可有 1000 篇，
+**同一篇文章可以同时进同一用户的多个收藏夹**（所以唯一约束的粒度是「收藏夹 × 博客」，
+不是「用户 × 博客」）。
+
+**两张表**（`prisma/migrations/12_favorites/migration.sql`）：
+
+| 表 | 角色 | PK |
+|----|------|-----|
+| `favorites` | 收藏夹本体（标题 / 公开或私密 / 6 位对外 ID） | **UUID4** |
+| `favorite_items` | 条目，软删（`deleted` + `deletedAt`） | 自增 Int |
+
+**六条不变量**（全部集中在 `src/lib/favorite-service.ts` 的文件头，改动前先读）：
+
+1. `publicId` 非空 ⟺ `isPublic` 为真。**私密收藏夹的 `public_id` 恒为 NULL** ——
+   不是「有 ID 但不显示」，而是**没有对外句柄**。所以二维码 / `[@ID]` / bot 接口 /
+   复制链接全都无处可泄，不依赖每个展示点都记得不显示。
+   ⚠️ 判「对外可见」**永远用 `isPublic`，绝不用 `publicId != null`**。
+2. 一切对外读取都必须过 `PUBLIC_FAVORITE_WHERE`（`isPublic` + `deleted`）——
+   含软删判定，否则「永不物理删」等于删掉的收藏夹永远可读。
+3. 所有权守卫照 `clipboard-service.getClip` 的口径：调用方必须显式传 `viewerId`，
+   不给默认放行的参数。
+4. **不继承站长的越权读**。`getClip` 让 owner 角色能读别人的私密剪贴板；收藏夹刻意
+   不设这个后门 —— 私密收藏夹只有创建者本人，有用例钉住。
+5. 「私密」与「不存在」对外**同为 404**，不确认存在性。
+6. 复制与导入用**显式字段白名单**构造新行，绝不 `{...source}` 展开。
+
+**ID 形态。** `favorites.id` 是 UUID 而不是自增 Int：所有者管理页的路由参数就是它
+（`/favorite/mine/<uuid>`，因为私密收藏夹没有 6 位句柄），自增整数顺序可枚举 ——
+那会把「私密不可被他人读」压在「每条路由都记得判所有权」上；UUID 让漏判从越权降级成
+无害。**6 位数字 ID**（`public_id`）是公开收藏夹的对外句柄，空间仅 10^6，生成时
+**必须查重**（拒绝采样 + 重试 10 次），不能像剪贴板那样不查。
+
+**路由**：
+
+| 路径 | 档位 | 说明 |
+|------|------|------|
+| `/favorite` · `/favorite/mine/[uuid]` · `/favorite/[publicId]` · `/favorite/guide` | core+ | 后者是公开分享页，解析走 `getPublicFavorite` |
+| `/api/favorites`（GET/POST）· `/api/favorites/[id]`（GET/PATCH/DELETE）· `…/items` · `…/copy` · `…/export` · `/api/favorites/import` | core+ | 每条各自判档（§8 的档位阶梯）；`PATCH` **只接受 `title`**，改 `isPublic` 明确报 400 |
+| `/api/poster/favorite/[publicId]` | core+ | 分享二维码 PNG，复用 `RULES.posterMinute`；**只按公开句柄查**，所以私密收藏夹结构性不可达 |
+| `/api/spider/favorites/[publicId]` | **免认证** | 站外机器人的唯一入口，只返回公开且未软删的；spider 系列里**唯一有限频**的一条 |
+
+**`[@六位]` 引用。** 只在博客 / 云剪贴板那条管线生效（`MarkdownRenderer` 的
+`ContentRefProcessor`），评论与讨论**刻意不认**（与 9 位投票「只识别不展开」同向）。
+纯逻辑在 `src/lib/favorite-refs.ts`。
+
+三处反直觉的实现细节，改动前务必读：
+
+- **卡片是成品 HTML，不是「占位 div + `data-*` + 后处理建 DOM」**。因为
+  `BLOG_SANITIZE_OPTIONS` 是 `ALLOW_DATA_ATTR: false`，新加 `data-favorite-id` 会被
+  DOMPurify **静默剥掉**（占位符消失、卡片永不出现、完全不报错）；而 `div`/`ul`/`li`/`a`
+  与 `class`/`href` 本来就在白名单内。投票之所以必须两段式是因为它可交互，卡片是静态的。
+- **替换在最后单独一趟、且按区间切片**，不用 `String.replace`。卡片里含博客标题
+  （不可信输入），标题里若正好有 `[@8位]` 字样，按内容替换会命中**插入内容里的那处** ——
+  正是 `content-refs.ts` 里 `replaceClipboardRef` 改写成切片所规避的 bug 类型。
+- **上限是 3 张**，且必须是正文的确定性函数（与 `MAX_IMAGE_REFS` / `MAX_CLIPBOARD_REFS` 同口径）。
+
+**刻意不做的事**（都是需求明确要求的，别当成遗漏）：不显示任何一篇文章的被收藏数
+（`Blog` 上**没有**收藏计数列，`getBlogDetail` 的 select 也不该加）；作者**不收到**收藏
+通知（本子系统完全不碰 `notification-service` / `topbar-bus`）；没有修改 `isPublic`
+的接口（改性质只能靠「复制」，且复制是**快照**）。
+
+**对外文档**：`docs/bot/favorite-bot.md`（自包含，含限频数值 —— 改 `RULES` 要同步）
+与 `docs/guide/收藏夹使用指南.md`。
 
 ## 7. 数据流（4 个典型路径）
 
@@ -430,6 +497,8 @@ div 会卸载重挂，`deps=[]` 的监听器永远附不上。
 | `Vote.ignore` | false | 投票 |
 | `ClipBoard.ignore` | false | 剪贴板 |
 | `ChatMessage.isDeleted` | false | 讨论消息 |
+| `Favorite.deleted` | false | 收藏夹（配对 `deletedAt`） |
+| `FavoriteItem.deleted` | false | 收藏夹条目（配对 `deletedAt`） |
 
 **软删即抹掉附件与原文**：评论被软删后，序列化时 `content` 与 `content_html` 一律换成
 占位文案，`image` / `blog` 一律置空（`image_missing` / `blog_missing` 也置 false —— 软删
@@ -482,7 +551,13 @@ div 会卸载重挂，`deps=[]` 的监听器永远附不上。
 | User · Blog · BlogContent · Comment · Notification | UUID4 |
 | ClipBoard | 短 ID：**base36**（小写字母 + 数字，8 位，`short-id.ts`） |
 | Vote · ImageHosting | 短 ID：**base62**（9 位 / 10 位） |
+| Favorite | UUID4（所有者管理页的路由参数；不可枚举，见 §6.10）＋ 可选 `publicId`：**6 位纯数字**，**仅公开收藏夹有值** |
+| FavoriteItem | 自增整数（join 行） |
 | Category · AdminActionLog · AdminActionAppeal · UserBan | 自增整数 |
+
+> 各 ID 的**长度**互不重叠是**有意的**：`[@…]` 引用语法只按长度分流，6 位是收藏夹、
+> 8 位剪贴板、9 位投票、10 位图床。新增任何「会出现在正文引用里的 ID」都要先确认
+> 长度没被占用（博客是 UUID、含连字符，根本进不了那条正则）。
 
 ## 9. 迁移史速查
 
