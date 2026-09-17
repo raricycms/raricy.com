@@ -3497,10 +3497,16 @@ a:hover {
   transition: width 0.1s ease;
 }
 
+/* 940px 是**阅读行宽上限**（同 .blog-content-container 的 900px），页边距则是 16px ——
+   与 .container 的 container-padding 同值。此前这里写的是 20px：窄屏下正文比别的页面
+   （博客列表、通知、设置……凡走 .container 的）每边多缩进 4px，是「文章页边距看起来
+   比别人宽」的来源。`_menu.scss` 的 .focus-banner 踩过同一个坑（20px vs 16px），
+   已按同一判据改掉：**页边距归容器，行宽归内层上限**（docs/frontend-styles.md §5）。 */
 .blog-detail {
   max-width: 940px;
   margin: 50px auto;
-  padding: 0 20px;
+  padding-left: 16px;
+  padding-right: 16px;
   overflow-x: auto;
 }
 
@@ -3934,17 +3940,20 @@ a:hover {
   font-size: 0.85rem;
 }
 
-/* 评论里引用的博客卡。去掉 1px 描边与左侧品牌竖条，改用品牌淡底。 */
+/* ⚠️ 这里曾经是**胶囊**（border-radius: 999px + 品牌淡底 + 无描边）。胶囊是全站
+   「单行元素」的形态（按钮 / 单行输入框 / 徽章 / 切页 —— docs/frontend-styles.md §4），
+   而这张卡内部是**两行**（标题 + 作者），压进胶囊后两行字挤在圆弧里，正是用户看到的
+   「评论区引用的博客变成了胶囊」。两行及以上一律走 10px 那档。 */
 .comment-blog {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   max-width: 100%;
   margin: 6px 0;
-  padding: 6px 10px;
-  border: none;
-  border-radius: 999px;
-  background: var(--color-brand-secondary);
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-background-content);
   color: inherit;
   text-decoration: none;
 }
@@ -3953,9 +3962,16 @@ a:hover {
   border-color: var(--color-brand-primary);
 }
 
+/* 图标方框：与 .chat-msg__blog-icon 同尺寸同圆角（卡片底色 + 品牌字色） */
 .comment-blog__icon {
   flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
   display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-background-card);
   color: var(--color-brand-primary);
 }
 
@@ -4133,8 +4149,14 @@ a:hover {
     font-size: 0.9rem;
     min-width: 100px;
   }
+  /* 窄屏：这层壳**不能再加内边距**。页边距归 .blog-detail（container-padding 16px），
+     壳里再压 10px 的话正文卡左边界落在 26px，而博客列表页的 .blog-item 就在 16px ——
+     用户报的「手机端文章页侧边距比别的页面大」正是它，而且越往里越明显：
+     正文文字 16+10+卡片内距 20 = 46px，列表页是 16+16 = 32px。
+     ⚠️ 桌面端那 20px 本次**不动**（只按用户反馈修窄屏）：它让卡片实际渲染 860px
+     而非声明的 max-width: 900px，要动属于改版，得连着阅读行宽一起议。 */
   .blog-content-container-container {
-    padding: 0 10px;
+    padding: 0;
   }
   .blog-content-container h1 {
     font-size: 1.5rem;
@@ -10417,6 +10439,23 @@ input:checked + .settings-toggle__slider::before {
   font-weight: 600;
 }
 
+@media (max-width: 480px) {
+  .fish-card__actions {
+    gap: 4px;
+  }
+  .fish-card__link {
+    gap: 4px;
+    padding: 8px 12px;
+  }
+  .fish-card__link-prefix {
+    display: none;
+  }
+}
+@media (max-width: 360px) {
+  .fish-card__link {
+    padding: 8px;
+  }
+}
 .fish-card__info {
   font-size: 0.875rem;
   color: var(--color-text-secondary);
