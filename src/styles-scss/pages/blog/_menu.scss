@@ -11,10 +11,15 @@ a {
 }
 // 专注模式横幅（/blog 列表页顶部）—— 提示当前视图被过滤，「此处」深链
 // /settings#focus-mode 关闭。低调处理：无底色、小字灰调，不抢正文视觉。
+/* 宽度与内距原先写死 1140 / 20px（正文是 16px）—— 窄屏下横幅比正文宽 8px、
+   宽屏下又窄 8px，且 992–1199 区间正文全幅时它仍是 1140。改为与 .container
+   同一套阶梯，两者始终对齐。 */
 .focus-banner {
-    max-width: 1140px;
+    width: 100%;
     margin: 12px auto 0;
-    padding: 0 20px 8px;
+    padding-bottom: 8px;
+    @include m.container-padding;
+    @include m.site-width-ladder;
     text-align: center;
     font-size: 0.82rem;
     color: var(--color-text-tertiary);

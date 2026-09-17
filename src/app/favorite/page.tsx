@@ -14,7 +14,7 @@ export default async function FavoritePage() {
   const favorites = await listOwnFavorites(user.id);
 
   return (
-    <div className="container" style={{ padding: '2rem 0' }}>
+    <div className="container" style={{ paddingTop: '2rem', paddingBottom: '2rem' }}>
       <h1 className="favorite-detail__title" style={{ marginBottom: '1.25rem' }}>
         我的收藏夹
       </h1>

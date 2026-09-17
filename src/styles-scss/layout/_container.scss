@@ -2,12 +2,18 @@
 @use '../abstracts/breakpoints' as bp;
 @use '../abstracts/mixins' as m;
 
+/* 全站正文容器。宽度阶梯与顶栏 .site-container 共用同一个 mixin
+   （abstracts/_mixins.scss 的 site-width-ladder），两者的左边缘才会对齐。
+
+   ⚠️ 此前这里**只有 ≥1200px 一档** max-width：992–1199px 区间正文是全幅的，
+   而顶栏已经收到 960px —— 宽屏笔记本上正文比顶栏宽出一大截，是「各页边距
+   看起来不一样」的主要来源之一。补上 992 档即修复。 */
 .container {
   width: 100%;
   margin-left: auto;
   margin-right: auto;
   color: var(--color-text-primary);
   @include m.container-padding;
-  @include bp.up(bp.$bp-xl) { max-width: v.$container-max; }
+  @include m.site-width-ladder;
 }
 

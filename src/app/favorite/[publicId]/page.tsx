@@ -32,7 +32,7 @@ export default async function FavoritePublicPage({
   const isMine = fav.authorName === user.username;
 
   return (
-    <div className="container" style={{ padding: '2rem 0' }}>
+    <div className="container" style={{ paddingTop: '2rem', paddingBottom: '2rem' }}>
       <div className="favorite-detail__head">
         <h1 className="favorite-detail__title">{fav.title}</h1>
         <span className="favorite-badge favorite-badge--public">公开</span>

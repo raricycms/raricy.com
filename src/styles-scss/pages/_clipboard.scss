@@ -4,16 +4,14 @@
 
 .clipboard {
   // 页面容器
+  /* 宽度走统一阶梯（原为「<1200px 全幅 + ≥1200px 1140」的老写法） */
   &-page {
     width: 100%;
     padding: $space-6 16px;
     margin-left: auto;
     margin-right: auto;
-    
-    @media (min-width: 1200px) {
-      max-width: 1140px;
-    }
-    
+    @include m.site-width-ladder;
+
     @media (max-width: 768px) {
       padding: $space-4 16px;
     }

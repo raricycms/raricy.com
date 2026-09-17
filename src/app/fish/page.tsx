@@ -19,7 +19,7 @@ export default async function FishPage() {
   ]);
 
   return (
-    <div className="container" style={{ padding: '2rem 0' }}>
+    <div className="container" style={{ paddingTop: '2rem', paddingBottom: '2rem' }}>
       <div className="fish-card">
         <div className="fish-card__header">
           <span className="fish-card__title"><span className="icon icon-fish" aria-hidden="true" style={{ marginRight: '0.5rem' }}></span>小鱼干</span>

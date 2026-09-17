@@ -1,3 +1,4 @@
+@use '../abstracts/mixins' as m;
 body {
     padding-top: 62px;
     background: var(--color-background-page);
@@ -5,10 +6,18 @@ body {
     color: var(--color-text-primary);
 }
 
+/* 9 个页面（通知 / 条款 / 隐私 / 联系 / 注册资格 / fish 五页）在用的外层包裹。
+   ⚠️ **不要把它换成 .container**：本文件里的 .notification-card、.legal-card 等
+   都写成 `.content-wrapper .xxx`（0-2-0）的后代选择器，JSX 一换类名，那些卡片
+   会静默变成无样式的裸 div —— 而 e2e 断言的是类名与条目数，不会报错。
+   所以做法是**把宽度定义改成和 .container 一样**，类名留在原处。
+   原先它是 max-width: 900px，比博客首页的正文窄 240px。 */
 .content-wrapper {
-    max-width: 900px;
-    margin: auto;
-    padding: 1rem;
+    width: 100%;
+    margin-left: auto;
+    margin-right: auto;
+    @include m.container-padding;
+    @include m.site-width-ladder;
 }
 
 .page-title {

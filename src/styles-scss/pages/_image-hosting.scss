@@ -1,13 +1,15 @@
+@use '../abstracts/mixins' as m;
 @use '../abstracts/variables' as *;
 
 // ============================================================
 // Image Hosting — user page & admin
 // ============================================================
 
+/* 宽度走统一阶梯（原为「恒定 1140」，≥992 视口下比正文宽） */
 .image-hosting-page {
-  max-width: $container-max;
   margin: 0 auto;
   padding: $space-8 $space-4;
+  @include m.site-width-ladder;
 }
 
 .image-hosting-header {

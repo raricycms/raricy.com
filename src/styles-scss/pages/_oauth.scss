@@ -1,4 +1,5 @@
 // pages/_oauth.scss
+@use '../abstracts/mixins' as m;
 @use '../abstracts/variables' as *;
 
 // ============================================================
@@ -11,9 +12,9 @@
 
 // ---------- 授权页布局 ----------
 .fd-page {
-  max-width: $container-max;
   margin: 0 auto;
   padding: $space-8 16px;
+  @include m.site-width-ladder;
 
   &--narrow {
     max-width: 600px; // 对齐登录/注册容器宽度

@@ -23,29 +23,18 @@ a {
   box-shadow: var(--shadow-card-brand);
 }
 
+/* 宽度阶梯与正文 .container 共用同一个 mixin —— 顶栏与正文左边缘对齐。
+   内距也统一到 16px（原为 15px，与正文差 1px，宽屏下能看出来）。 */
 .site-container {
   width: 100%;
-  padding-right: 15px;
-  padding-left: 15px;
   margin-right: auto;
   margin-left: auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
   height: 62px;
-}
-
-// 响应式容器宽度
-@media (min-width: 992px) { 
-  .site-container { 
-    max-width: 960px; 
-  } 
-}
-
-@media (min-width: 1200px) { 
-  .site-container { 
-    max-width: 1140px; 
-  } 
+  @include m.container-padding;
+  @include m.site-width-ladder;
 }
 
 .site-brand {

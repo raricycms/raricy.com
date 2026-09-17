@@ -1,10 +1,11 @@
+@use '../abstracts/mixins' as m;
 /* Homepage styles migrated from template */
 
 /* Layout utilities for homepage (no Bootstrap) */
 
 
-.home-container { width: 100%; padding-left: 16px; padding-right: 16px; margin-left: auto; margin-right: auto; }
-@media (min-width: 1200px) { .home-container { max-width: 1140px; } }
+/* 与 .container 同一套阶梯（原为「<1200px 全幅 + ≥1200px 1140」的老写法） */
+.home-container { width: 100%; margin-left: auto; margin-right: auto; padding-left: 16px; padding-right: 16px; @include m.site-width-ladder; }
 .home-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 16px; }
 .home-col-12 { flex: 0 0 100%; max-width: 100%; }
 .home-col-6 { flex: 0 0 100%; max-width: 100%; }
