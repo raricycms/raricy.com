@@ -6,6 +6,10 @@
 
 :root,
   [data-theme="light"] {
+    /* 原生控件（滚动条、<select> 下拉、日期选择器、canvas 底色）的明暗开关。
+       缺了它，暗色主题下 Chrome 照样按**浅色**画这一整套 —— 讨论区的主区与侧栏
+       都是常驻滚动容器，那条浅灰白滚动条压在深底上最扎眼。 */
+    color-scheme: light;
     --color-brand-primary: #2563EB;
     --color-brand-secondary: rgba(37, 99, 235, 0.1);
     --color-background-card: #fff;
@@ -79,6 +83,7 @@
     --fd-space-8: 32px;
   }
   [data-theme="dark"] {
+    color-scheme: dark;
     --color-brand-primary: #23A5FF;
     --color-brand-secondary: rgba(35,165,255,0.1);
     --color-background-page: #131517;
@@ -131,6 +136,41 @@
 html, body { height: 100%; }
 body { min-height: 100vh; display: flex; flex-direction: column; }
 main { flex: 1 0 auto; }
+
+/* ── 滚动条 ─────────────────────────────────────────────────────────────────
+   全站此前**既没有滚动条样式、也没有 color-scheme**，浏览器按自己的默认色画：
+   暗色主题下一条浅色滚动条压在深底上。讨论区的消息主区与侧栏、博客详情页都是
+   常驻滚动容器，一眼就看见。
+
+   分两层，各管一段：
+   · color-scheme（上面两个主题块里）—— 那个才是「原生控件跟着页面明暗」的开关，
+     Firefox 与旧引擎靠的就是它；
+   · ::-webkit-scrollbar 一族 —— Chromium（以及「始终显示滚动条」的 Safari）
+     额外画成站内令牌色（圆角细条）。Safari 在默认的 overlay 模式下不画自定义
+     滚动条，那时它吃的是上面那层的原生配色。
+
+   刻意**不写** scrollbar-color / scrollbar-width：按规范这两个一旦生效，就会让
+   ::-webkit-scrollbar 整族失效（Chrome 121+ 已支持它们）—— 那时圆角与 hover
+   变蓝都没了。不写它们的代价是 Firefox 只得上面那层的原生暗色条；那已满足
+   「跟着主题走」，换来 Chrome 里一条与全站圆角语言一致的滚动条，划算。 */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  /* 看着 6px、摸着还是 10px：2px 透明描边 + background-clip: padding-box。
+     不这么写，10px 宽的槽会被底色填满，「细条」就只剩两端那点倒角。 */
+  background: var(--color-text-secondary);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+  border-radius: 999px;
+}
+/* background 是简写，会把 background-clip 重置回 border-box —— 这里必须再写一次，
+   否则 hover 时滚动条会突然变粗一圈。 */
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-brand-primary);
+  background-clip: padding-box;
+}
+/* 两轴都能滚时右下角那块小方块：默认是白的，暗色下会露馅 */
+::-webkit-scrollbar-corner { background: transparent; }
 
 
 
