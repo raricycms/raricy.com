@@ -271,6 +271,21 @@ export function fishGlyph(cx: number, cy: number, size: number, color: string): 
   );
 }
 
+/**
+ * 五角星图标（以 (cx,cy) 为中心、边长 size）。收藏夹分享画报用它。
+ *
+ * 路径取自 Bootstrap Icons 的 star-fill（MIT，与站内 icons/ 里那批同源，
+ * 也见 public/static/img/icons/star-fill.svg）。16×16 的 viewBox 需要缩放到 size。
+ */
+export function starGlyph(cx: number, cy: number, size: number, color: string): string {
+  const s = size / 16;
+  return (
+    `<g transform="translate(${round(cx - size / 2)},${round(cy - size / 2)}) scale(${round(s, 4)})" fill="${color}">` +
+    `<path d="M3.612 15.443c-.386.198-.824-.149-.746-.592l.83-4.73L.173 6.765c-.329-.314-.158-.888.283-.95l4.898-.696L7.538.792c.197-.39.73-.39.927 0l2.184 4.327 4.898.696c.441.062.612.636.282.95l-3.522 3.356.83 4.73c.078.443-.36.79-.746.592L8 13.187l-4.389 2.256z"/>` +
+    `</g>`
+  );
+}
+
 /** 圆角矩形。 */
 function rect(
   x: number,
@@ -606,6 +621,62 @@ export function buildCollectPosterSvg(data: CollectPosterData): string {
     caption: '扫码即可付款',
     hint: '在聪明山输入金额与密码',
     logo: (lx, ly, ls) => fishGlyph(lx, ly, ls, c.logo),
+  });
+  body.push(card.svg);
+
+  const footerY = card.top + card.height + FOOTER_GAP;
+  body.push(text(cx, footerY, '聪明山 · raricy.com', 20, c.faint));
+  return finish(c, body, footerY + FOOTER_BASELINE);
+}
+
+// ── 收藏夹分享二维码 ────────────────────────────────────────────────────────
+
+export interface FavoritePosterData {
+  /** 收藏夹标题（用户输入，渲染前已过 escapeXml / stripControlChars）。 */
+  title: string;
+  /** 6 位对外 ID —— 只有**公开**收藏夹才有；私密收藏夹根本到不了这里。 */
+  publicId: string;
+  /** 条目数（画报上显示「共 N 篇」）。 */
+  count: number;
+  /** 二维码内容（公开收藏夹的绝对地址）。 */
+  qrText: string;
+}
+
+/**
+ * 收藏夹分享二维码。
+ *
+ * 沿用收款码那套**奶油金 + 深棕字**的浅底主题（THEMES.collect）—— 黄色五角星本来就
+ * 是奶油金的同色系，另起一套只会多一份要维护的配色。
+ *
+ * 画报上会印出 6 位 ID：它本来就是公开句柄（页面、二维码、bot 接口都用它），
+ * 印出来方便对方手打 `[@ID]` 把收藏夹嵌进文章。
+ * ⚠️ 私密收藏夹没有 ID 也不该有二维码 —— 那条约束在路由层（只按 publicId 查、且
+ *    必须过 PUBLIC_FAVORITE_WHERE），这里不做判定，别把它当第二道防线。
+ */
+export function buildFavoritePosterSvg(data: FavoritePosterData): string {
+  const c = THEMES.collect;
+  const cx = POSTER_WIDTH / 2;
+  const title = fitLine(data.title, 620, 40, 22);
+  const body: string[] = [];
+
+  // 标题区：星标在上、标题在下（与收款码同构，对称摆放，不必估算标题宽度）
+  body.push(starGlyph(cx, 108, 76, c.accent));
+  body.push(text(cx, 188, '收藏夹分享', 38, c.brand, 700, 'middle', 2));
+
+  body.push(text(cx, 268, title.text, title.size, c.title, 700));
+  body.push(text(cx, 312, `共 ${data.count} 篇`, 22, c.muted));
+
+  // 6 位 ID 单独一颗 chip —— 它是「手打 [@ID]」的凭据，所以给等宽感（加字距）
+  body.push(pill(cx, 366, `[@${data.publicId}]`, 24, c.chipBg, c.chipFg));
+
+  // 二维码卡片 + 页脚
+  const card = qrCard({
+    top: 420,
+    content: data.qrText,
+    dark: c.qrDark,
+    caption: '扫码即可打开收藏夹',
+    hint: '在聪明山查看全部条目',
+    logo: (lx, ly, ls) => starGlyph(lx, ly, ls, c.logo),
   });
   body.push(card.svg);
 

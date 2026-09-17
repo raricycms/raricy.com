@@ -17,7 +17,7 @@ import { prisma } from '@/lib/db';
 import { resolveAvatar } from '@/lib/avatar';
 import { ymd } from '@/lib/format';
 import { absoluteUrl } from '@/lib/site-url';
-import { buildCollectPosterSvg, buildProfilePosterSvg } from '@/lib/poster';
+import { buildCollectPosterSvg, buildFavoritePosterSvg, buildProfilePosterSvg } from '@/lib/poster';
 
 /** 逻辑坐标 → 实际像素的倍率（2× 高清）。 */
 const POSTER_DENSITY = 144;
@@ -98,6 +98,29 @@ export async function renderCollectPoster(user: {
     username: user.username,
     qrText: absoluteUrl(`/fish/collect?to=${encodeURIComponent(user.username)}`),
     avatarDataUri: await avatarDataUri(user.id),
+  });
+  return rasterize(svg);
+}
+
+/**
+ * 收藏夹分享二维码。
+ *
+ * 二维码指向 `/favorite/<6 位 ID>` —— 该地址只解析**公开且未软删**的收藏夹
+ * （服务层的 getPublicFavorite 过 PUBLIC_FAVORITE_WHERE）。所以这个函数拿到的
+ * 一定是公开收藏夹：调用方（路由）必须先做过那道判定，这里不做第二道防线。
+ *
+ * 与收款码共用 THEMES.collect（奶油金浅底）—— 黄色五角星本来就是同色系。
+ */
+export async function renderFavoritePoster(data: {
+  title: string;
+  publicId: string;
+  count: number;
+}): Promise<Buffer> {
+  const svg = buildFavoritePosterSvg({
+    title: data.title,
+    publicId: data.publicId,
+    count: data.count,
+    qrText: absoluteUrl(`/favorite/${data.publicId}`),
   });
   return rasterize(svg);
 }

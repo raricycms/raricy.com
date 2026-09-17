@@ -16,6 +16,7 @@ import jsQR from 'jsqr';
 
 import {
   buildCollectPosterSvg,
+  buildFavoritePosterSvg,
   buildProfilePosterSvg,
   CARD_WIDTH,
   escapeXml,
@@ -165,6 +166,27 @@ describe('二维码：渲染成 PNG 之后必须真的能扫出来', () => {
     expect(qrModuleCount('https://raricy.com/u/x')).toBeLessThan(
       qrModuleCount('https://raricy.com/u/9f8c1d2e-4a3b-4c5d-8e7f-0123456789ab')
     );
+  });
+
+  it.each(payloads.slice(0, 4))('收藏夹分享码：%s', async (text) => {
+    const svg = buildFavoritePosterSvg({
+      title: '我的收藏夹',
+      publicId: '123456',
+      count: 7,
+      qrText: text,
+    });
+    expect(await decode(svg)).toBe(text);
+  });
+
+  it('收藏夹分享码：超长标题不挤坏二维码', async () => {
+    const text = 'https://raricy.com/favorite/123456';
+    const svg = buildFavoritePosterSvg({
+      title: '一'.repeat(200), // fitLine 会缩字号 + 截断
+      publicId: '123456',
+      count: 1000,
+      qrText: text,
+    });
+    expect(await decode(svg)).toBe(text);
   });
 });
 
