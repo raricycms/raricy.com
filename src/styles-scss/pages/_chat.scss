@@ -108,15 +108,18 @@
 .chat-chan:hover {
   background: var(--color-background-subtle);
 }
+// 选中态 = 整行品牌淡底，**没有左侧竖条**。
+// 原先这里有一条 `box-shadow: inset 3px 0 0 品牌色`（等价于 border-left: 3px）——
+// 全站「去掉装饰性左侧边框」时漏掉了它（它是 box-shadow 不是 border，按 border-left
+// 搜是搜不到的）。侧栏这一列现在只剩「底色不同」这一种选中表达，与 .admin-sidebar
+// 的活动项一致。
 .chat-chan.is-active {
   background: var(--color-background-highlight);
-  box-shadow: inset 3px 0 0 var(--color-brand-primary);
 }
-// 折叠态的行只剩一个头像：整行高亮 + 左侧竖条在 60px 轨道里看着莫名其妙，
+// 折叠态的行只剩一个头像：整行高亮在 60px 轨道里会被头像占满、读不出底色，
 // 改成头像上一圈粗品牌色描边。用 box-shadow 而非 border —— 不占布局，头像不会被挤小。
 .chat-page--collapsed .chat-chan.is-active {
   background: transparent;
-  box-shadow: none;
 }
 .chat-page--collapsed .chat-chan.is-active .chat-chan__icon,
 .chat-page--collapsed .chat-chan.is-active .chat-chan__avatar {
@@ -759,14 +762,18 @@
   max-width: 100%;
 }
 
-// 正文里 @到我 → 描边换品牌色 + 内侧一条品牌色竖条（方向跟着气泡走）。
-// 无底色可用，只能靠描边与竖条做强调，明暗主题各自取令牌。
+// 正文里 @到我 → 描边换品牌色 + 品牌淡底。
+// 原先是「描边 + 内侧一条品牌色竖条（方向跟着气泡走）」，那条竖条是全站**最后一处**
+// 装饰性左侧边框，而且是用 box-shadow: inset 3px 0 0 模拟的 —— 按 border-left 搜
+// 根本搜不到，两轮清理都漏了它。已按「去掉装饰性左侧边框」的规范删掉；它同时有个
+// 右侧镜像（自己发的消息把竖条翻到右边，让方向跟着气泡走），两条一起删，否则会
+// 做成左右不对称。
+// 强调改由**品牌淡底**承担 —— 与全站「淡底 + 同色字」那一套一致。气泡本身是无底色的
+// （自己发的与别人的靠左右对齐 + 头像区分，不靠底色），淡底只出现在 @到我这一种状态上，
+// 不参与「谁发的」这层区分。
 .chat-msg__content--mention {
   border-color: var(--color-brand-primary);
-  box-shadow: inset 3px 0 0 var(--color-brand-primary);
-}
-.chat-msg--mine .chat-msg__content--mention {
-  box-shadow: inset -3px 0 0 var(--color-brand-primary);
+  background: var(--color-brand-secondary);
 }
 
 // 跳转命中（点回复摘要 / 搜索结果）→ 整条消息短暂高亮，2 秒后由 JS 摘掉类名。
@@ -1422,7 +1429,6 @@
   // 抽屉宽度够，选中态走常规的整行高亮，不要折叠态的描边圈
   .chat-page--collapsed .chat-chan.is-active {
     background: var(--color-background-highlight);
-    box-shadow: inset 3px 0 0 var(--color-brand-primary);
   }
   .chat-page--collapsed .chat-chan.is-active .chat-chan__icon,
   .chat-page--collapsed .chat-chan.is-active .chat-chan__avatar {
