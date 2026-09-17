@@ -99,7 +99,7 @@ npm run dev     # 打开 /u/<用户 uuid>
 | 不基线化直接 `up` | `table "users" already exists` | 先 `mark 0_init` |
 | `SECRET_KEY` 用开发值 | diagnose 段 4：抽查 5 条解开 0 条 | 从生产 `.env` **原样**搬 —— 唯一不可逆的一步 |
 | 直接 `cp` 库文件 | WAL 下可能拷到不一致快照 | 用 `db:normalize` / `sqlite3 .backup` |
-| 源库不存在 | 脚本抛「源库不存在」 | 没有空库兜底分支；空库起步请走 `npm run migrate -- up`（deploy.md §4「全新部署」） |
+| 源库不存在 | 脚本抛「源库不存在」 | 没有空库兜底分支；空库起步请走 `npm run migrate -- up`（`docs/deploy.md` §4「全新部署（空目录起步）」） |
 | `file:` 相对路径 | 基点相对 `prisma/`，不是项目根 | 用绝对路径最稳 |
 | `chat_channels` lobby 种子 | `created_at` 是 ISO 文本 | `4_chat` 写死的固定值，无比较用途，忽略 |
 | 手滑 `prisma migrate dev` / `db push` | 无视 `_raricy_migrations` 直接动 schema | 永远不要 |

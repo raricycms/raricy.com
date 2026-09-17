@@ -425,5 +425,5 @@ journalctl -u raricy-next -f    # 观察启动日志
 
 - `docs/architecture.md` —— 项目架构 / 路由 / 子系统
 - `docs/cli.md` —— 运维 CLI（提升权限、发扣鱼干）
-- `README.md` —— 快速开始
-- `CLAUDE.md` —— 关键约定
+- `../README.md` —— 快速开始
+- `../CLAUDE.md` —— 关键约定
