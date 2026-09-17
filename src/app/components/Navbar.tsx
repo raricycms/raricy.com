@@ -2,6 +2,7 @@ import Link from 'next/link';
 import type { SafeUser } from '@/lib/auth';
 import { hasAdminRights } from '@/lib/auth';
 import LogoutLink from './LogoutLink';
+import NavLink from './NavLink';
 
 // 顶栏 — Flask `base.html` 样式（site-* BEM + icon mask）
 // base.js 通过 id (#userDropdownToggle, #userDropdownMenu, #themeToggle, #notificationBadge,
@@ -31,24 +32,24 @@ export default function Navbar({ user }: { user: SafeUser | null }) {
           {/* 条目顺序对齐首页的三张卡（故事 → 博客 → 工具）。 */}
           <ul className="site-nav">
             <li>
-              <Link className="site-link" href="/story">
+              <NavLink className="site-link" href="/story">
                 故事
-              </Link>
+              </NavLink>
             </li>
             <li>
-              <Link className="site-link" href="/blog">
+              <NavLink className="site-link" href="/blog">
                 博客
-              </Link>
+              </NavLink>
             </li>
             <li>
-              <Link className="site-link" href="/tool">
+              <NavLink className="site-link" href="/tool">
                 工具
-              </Link>
+              </NavLink>
             </li>
             <li>
-              <Link className="site-link" href="/audit">
+              <NavLink className="site-link" href="/audit">
                 日志
-              </Link>
+              </NavLink>
             </li>
             {/* 讨论：**入口对所有人保留**，哪怕点进去是 403（匿名 → 跳登录）。
                 站长明确要过这一条，别再按「入口与门禁同档」把它藏起来 ——
@@ -56,13 +57,13 @@ export default function Navbar({ user }: { user: SafeUser | null }) {
                 的侧栏），不适用于「功能存在但你需要更高权限」这种正常阶梯。
                 门禁本身在 /chat（core+）与 requireChatUser，不在这里。 */}
             <li>
-              <Link className="site-link" href="/chat">
+              <NavLink className="site-link" href="/chat">
                 讨论
                 {/* 讨论未读红点（私聊有未读 / 大区被 @）：base.js 按
                     /api/notifications/count 的 chatUnread 字段开关。
                     不放铃铛上——铃铛数字必须等于通知列表的条目数。 */}
                 <span className="site-link__dot" id="chatUnreadDot" style={{ display: 'none' }} />
-              </Link>
+              </NavLink>
             </li>
           </ul>
 
@@ -111,6 +112,15 @@ export default function Navbar({ user }: { user: SafeUser | null }) {
                     <li role="none">
                       <Link className="site-dropdown-item" role="menuitem" href="/fish">
                         <span className="icon icon-fish" style={{ marginRight: '.5rem' }} aria-hidden="true"></span>小鱼干
+                      </Link>
+                    </li>
+                    {/* 收藏夹：这里曾经**没有任何入口** —— /favorite 只能靠手敲 URL 到达，
+                        而它是「创建/改名/删除/导出/导入」的唯一管理页，等于功能做完却进不去。
+                        不对档位设条件（core 以下点了是就地 403），与顶栏「讨论」同一条口径：
+                        入口不跟着藏。 */}
+                    <li role="none">
+                      <Link className="site-dropdown-item" role="menuitem" href="/favorite">
+                        <span className="icon icon-star-fill" style={{ marginRight: '.5rem' }} aria-hidden="true"></span>我的收藏夹
                       </Link>
                     </li>
                     {hasAdminRights(user) && (
