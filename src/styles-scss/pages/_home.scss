@@ -153,6 +153,16 @@
 .feature-card .home-btn {
   color: var(--card-accent);
   background: var(--card-glow);
+
+  /* hover = 最高级按钮的那套配方（实底 + 白字），只是实底取**卡片自己的颜色**
+     而不是品牌蓝 —— 与卡内按钮空闲态的取色口径一致（图标 / 光晕 / 按钮三者同源）。
+     ⚠️ 四张卡里只有蓝配白字够看（琥珀 #f59e0b / 青 #06b6d4 / 绿 #10b981 配白的
+     对比度都不到 2.6:1），这是「同一行四颗按钮行为必须一致」的代价，已知并接受；
+     真要提升可读性得动那三支强调色本身，那是改色板，不在按钮这一层解决。 */
+  &:hover {
+    background: var(--card-accent);
+    color: #fff;
+  }
 }
 
 /* 此处原有 .stats-section / .stat-item / .stat-number 三条（含写死的 #f8f9fa 与
