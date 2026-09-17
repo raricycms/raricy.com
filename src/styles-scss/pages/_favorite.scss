@@ -48,12 +48,16 @@
  * 由 MarkdownRenderer 的预处理器**直接产出成品 HTML**（不是投票那种占位 + 后处理），
  * 所以这里的类名必须与 src/lib/favorite-refs.ts 的 buildFavoriteCardHtml 保持一致。 */
 .favorite-embed {
+  /* 左侧那条金色竖条是这张卡此前唯一的「收藏夹」身份提示，但它与全站
+     「无左侧边框」的规范冲突。改由**星色淡底**承担同一语义 ——
+     --color-star-* 这一对本来就是为收藏夹引入的。
+     卡片 HTML 由 src/lib/favorite-refs.ts 的 buildFavoriteCardHtml 直接产出，
+     但那是**成品 HTML 里的类名**，样式在这里，所以只改 SCSS 即可。 */
   margin: 1.25rem 0;
   padding: 1rem 1.25rem;
-  background: var(--color-background-card);
-  border: 1px solid var(--color-border);
-  border-left: 3px solid var(--color-star-primary);
-  border-radius: 0.5rem;
+  background: var(--color-star-secondary);
+  border: none;
+  border-radius: 16px;
 
   &__head {
     display: flex;
@@ -349,14 +353,25 @@
   }
 }
 
+/* 单行 → 胶囊，与全站字段同一套外观 */
 .favorite-picker__input {
   flex: 1;
   min-width: 8rem;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--color-border);
-  border-radius: 0.375rem;
-  background: var(--color-background-card);
+  padding: 10px 16px;
+  border: none;
+  border-radius: 999px;
+  background: var(--color-background-page);
   color: var(--color-text-primary);
+  transition: box-shadow 0.2s ease;
+
+  &:focus {
+    outline: none;
+    box-shadow: var(--shadow-focus-brand);
+  }
+
+  &::placeholder {
+    color: var(--color-text-secondary);
+  }
 }
 
 /* 选择器页脚通往管理页 —— 会点开选择器的人，正是想整理收藏夹的人。 */
