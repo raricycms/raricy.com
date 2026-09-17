@@ -154,6 +154,11 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 任何方向仅站长**）见 `src/lib/admin-user-service.ts` 的 `setRole`；@ 提及的逐条闸门见
 `chat-service.notifyChannelMentions`。
 
+**@ 通知「读了就清、在看就不发」**：读到某个会话（进频道 / 停在里面看新消息）会把**该会话**的
+@ 通知一并标已读；**正在看这个会话时那条通知根本不产生**（红点与未读徽标照常亮）。判据在
+`src/lib/chat-presence.ts`（客户端报到 + 讨论流连接 + TTL，判不出就照常发）。这不是「讨论未读
+混进铃铛」—— 铃铛有数 = 有 @ 且他还没看那个会话。
+
 ### 限频
 
 `docs/architecture.md` §6.5 + `src/lib/rate-limit.ts` 的 `RULES`（多数配额的唯一权威）。
