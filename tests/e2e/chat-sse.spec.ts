@@ -156,4 +156,52 @@ test.describe('讨论 SSE 实时推送', () => {
       await speakerCtx.close();
     }
   });
+
+  // 【为什么值得一条用例】标签页隐藏时前端会主动 close 掉 SSE（连接池是跨标签页共享的），
+  // 回前台重连的是**新的 EventSource 对象** —— last event id 是对象自己的属性（规范：初值
+  // 空串），新对象不带 Last-Event-ID，服务端那个 backfill 整段跳过；而 60 秒那趟对账只拉
+  // 频道列表、不拉消息正文。于是「切走 → 别人发消息 → 切回」这段时间的消息**谁都不补**，
+  // 消息区停在旧内容上（侧栏角标会动，所以看着像只坏了消息区）—— 手机端最容易碰到。
+  // 这条用例钉死回前台必须自己补上；改动前它必然失败（要等切频道或刷新才看得到）。
+  test('切后台期间的消息，切回前台自己补上（重连的新连接没有 Last-Event-ID）', async ({
+    page,
+    browser,
+  }) => {
+    const warm = `e2e-sse-bg-warm-${uniqueTag()}`;
+    const marker = `e2e-sse-bg-${uniqueTag()}`;
+    // Playwright 没有「把标签页切到后台」的 API（CDP 里也没有稳定的那个开关），
+    // 用改写 document.hidden + 派发 visibilitychange 模拟：前端两处判断（closeStream /
+    // catchUpActive）读的都是它。jsdom 侧同款手法见 tests/unit/base-js-topbar-stream.test.ts。
+    const setHidden = (hidden: boolean) =>
+      page.evaluate((h) => {
+        Object.defineProperty(document, 'hidden', { configurable: true, get: () => h });
+        document.dispatchEvent(new Event('visibilitychange'));
+      }, hidden);
+
+    await loginViaApi(page, SEED_USERS.core.username);
+    await page.goto(`/chat?channel=${LOBBY}`);
+    await expect(page.locator('.chat-main')).toBeVisible();
+
+    const speakerCtx = await postAs(browser, SEED_USERS.admin.username, LOBBY, warm);
+    try {
+      // 先等一条经 SSE 到的消息：既证明流已经连上，也把游标推起来（游标为 0 时补齐不拉，
+      // 那是首屏加载自己的活）
+      await expect(page.locator('.chat-msg', { hasText: warm })).toBeVisible({ timeout: 8000 });
+
+      await setHidden(true);
+      const sent = await speakerCtx.request.post(`/api/chat/channels/${LOBBY}/messages`, {
+        data: { content: marker },
+      });
+      expect(sent.status()).toBe(200);
+      // 隐藏期间这条**不该**出现。这一条断言是为了保证用例真的在测「重连」：若流其实
+      // 还连着，它会被 SSE 直接推到，下面的断言就成了假绿。
+      await page.waitForTimeout(1000);
+      await expect(page.locator('.chat-msg', { hasText: marker })).toHaveCount(0);
+
+      await setHidden(false);
+      await expect(page.locator('.chat-msg', { hasText: marker })).toBeVisible({ timeout: 8000 });
+    } finally {
+      await speakerCtx.close();
+    }
+  });
 });

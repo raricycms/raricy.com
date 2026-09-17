@@ -63,6 +63,14 @@ const DOM_CAP = 300;
 const REVEAL_STEP = 50;
 /** 跳转窗口：目标上下各留多少条上下文（约等于 loadOlder 的一页）。 */
 const JUMP_CONTEXT = 50;
+/**
+ * 回前台补齐一次最多并进多少条（还要多要一条来判断后面还有没有）。
+ *
+ * 与 /api/chat/channels/:id/messages 的默认页大小同值，但**不能 import
+ * CHAT_INITIAL_LIMIT** —— 那个常量在 chat-service.ts 里，客户端 import 会把
+ * auth → next/headers 一起打进浏览器包。改服务端页大小时这里要跟着看一眼。
+ */
+const CATCHUP_LIMIT = 50;
 
 type ApiEnvelope = { code: number; message: string; [k: string]: unknown };
 
@@ -350,24 +358,55 @@ export default function ChatApp({
   }, []);
 
   // ── 已读 ────────────────────────────────────────────────────────────────
+  /**
+   * 每频道的读上报状态：`inFlight` = 已有一条在飞，`pending` = 在飞期间收到的最新 id。
+   *
+   * 读游标是单调的，一串连收里只有最后一条值得上报 —— 中间那些纯属白打；而且服务端是
+   * `set` 不是 `max`（见 markChannelRead），并发落库时**最后到达**的可能是个更小的 id，
+   * 反把游标退回去（本地地板压得住角标，只在服务端留个脏值，等下次消息自愈）；私聊还会
+   * 给对方推同样多条 read 回执。回前台补齐一次喂进一整页消息时，这种并发从「偶尔一条」
+   * 变成「一次几十个」，所以在这里收口：在飞时只记下最大的 id，等它回来补发一次。
+   * 本地地板 / 清角标 / 顶栏红点照常推进，省掉的只是中间那些请求。
+   */
+  const readReportRef = useRef<{ inFlight: Set<string>; pending: Map<string, number> }>({
+    inFlight: new Set(),
+    pending: new Map(),
+  });
+
   const markRead = useCallback(
     async (channelId: string, upTo: number) => {
       if (!upTo || !document.hasFocus() || document.hidden) return;
       // 本地已读地板：对账返回的未读数若还没反映这次已读，就用它压成 0，
       // 避免「刚清掉的徽标被一个更早发出的响应盖回来」的闪烁。
       readFloorRef.current.set(channelId, upTo);
+      const st = readReportRef.current;
+      if (st.inFlight.has(channelId)) {
+        if (upTo > (st.pending.get(channelId) ?? 0)) st.pending.set(channelId, upTo);
+        return;
+      }
+      st.inFlight.add(channelId);
       try {
-        await api(`/api/chat/channels/${channelId}/read`, {
-          method: 'POST',
-          body: JSON.stringify({ message_id: upTo }),
-        });
-        setChannels((prev) =>
-          prev.map((c) => (c.id === channelId ? clearUnreadMark(c) : c))
-        );
-        // 顶栏「讨论」红点跟着熄（讨论未读归它）
-        refreshTopbarBadge();
+        let target = upTo;
+        while (target) {
+          await api(`/api/chat/channels/${channelId}/read`, {
+            method: 'POST',
+            body: JSON.stringify({ message_id: target }),
+          });
+          setChannels((prev) =>
+            prev.map((c) => (c.id === channelId ? clearUnreadMark(c) : c))
+          );
+          // 顶栏「讨论」红点跟着熄（讨论未读归它）
+          refreshTopbarBadge();
+          // 补发在飞期间攒下的那个 id（只认更大的：更小的报上去等于把游标退回去）
+          const next = st.pending.get(channelId) ?? 0;
+          st.pending.delete(channelId);
+          target = next > target ? next : 0;
+        }
       } catch {
         /* 已读失败不阻塞 */
+      } finally {
+        st.inFlight.delete(channelId);
+        st.pending.delete(channelId);
       }
     },
     []
@@ -647,6 +686,64 @@ export default function ChatApp({
     ]
   );
 
+  /**
+   * 补齐「断开期间漏掉的消息」，只补当前频道。
+   *
+   * 【为什么非有不可】标签页隐藏时会主动 close 掉 SSE（连接池跨标签页共享，见下面那个
+   * effect）；回前台 openStream() 建的是**新的 EventSource 对象** —— 而 last event id 是
+   * 对象自己的属性（规范：初值空串），新对象**不带 Last-Event-ID** → 服务端 stream 路由
+   * 取到 0，backfill 整段跳过。于是这段缺口谁都不补：服务端不补（没游标）、onopen 只在
+   * lastIdRef===0 时补（只有首连）、对账只拉频道列表（没有消息正文）—— 列表就停在旧内容
+   * 上，正是「切回前台消息不更新」那个 bug（侧栏角标会动，所以看着像只坏了消息区）。
+   *
+   * 同理，一帧带 id: 的帧都还没收到过时（lastEventId 仍是空串）断线重连也不带这个头；
+   * 半死状态（连着但收不到）更是没人管 —— 所以定时器里也必须调，不能只在回前台调。
+   *
+   * 【为什么不并进 reconcile】reconcile 是 onStreamMessage 的依赖（见那边「新会话」分支），
+   * 反过来调 onStreamMessage 就是循环依赖。职责也不同：那个拉频道列表，这个拉当前频道消息。
+   *
+   * 【为什么只补当前频道】未读 / 预览由 reconcile 拿服务端真值整表覆盖；这里若把别的频道
+   * 的消息也喂进 onStreamMessage 的「非活动频道」分支，就会在那份真值之上再本地累加一次
+   * 未读 —— 两个响应谁先到都可能，侧栏角标会凭空多出来。
+   */
+  const catchUpActive = useCallback(async () => {
+    // 隐藏中不拉（回前台还会再调）；历史视图里列表是「过去那一段」的窗口，在窗口边缘接
+    // 一条新消息就是不连续（见 onStreamMessage 的同款判断）。游标为 0 = 首屏还没加载完，
+    // 那条路自己会拉；这行也是 after=0 的保险 —— parsePosInt 把 0 当成缺省，服务端会返回
+    // **最新一页**而不是空集，接上去就是凭空的重复。
+    if (document.hidden || historyViewRef.current || !lastIdRef.current) return;
+    const aid = activeRef.current;
+    if (!aid) return;
+    // 与 jumpToMessage 同一套作废语义：拉取期间被切频道 / resync / 整页重载换过列表，
+    // 这份响应就作废（不预先 ++ —— 空手而归时不该作废别人在飞的加载）。
+    const token = viewTokenRef.current;
+    const after = lastIdRef.current;
+    // 走频道消息接口而不是 /api/chat/poll：后者要顺带算全部频道的未读 + 预览（全站最重的
+    // 接口，而 reconcile 刚在同一拍打过一次），这里只要一个频道的增量；而且它能带 limit ——
+    // 多要一条即可**精确**判断积压有没有超过一页（poll 固定 50 条，客户端猜不出是不是截断）。
+    try {
+      const data = await api(
+        `/api/chat/channels/${aid}/messages?after=${after}&limit=${CATCHUP_LIMIT + 1}`
+      );
+      if (data.code !== 200 || !Array.isArray(data.messages)) return;
+      if (token !== viewTokenRef.current || aid !== activeRef.current) return;
+      const list = data.messages as ChatMessageDTO[];
+      if (!list.length) return;
+      // 积压超过一页：after 只取得到「游标之后最早的一页」，接上去列表尾部就不是最新那条
+      // 了 —— 看着停在「现在」，其实中间空了一段（与历史视图同一个坑）。整页换新，与
+      // resync 的处理一致（commitMessages 会顺带退出历史视图 / 清浮标 / 滚到底）。
+      if (list.length > CATCHUP_LIMIT) {
+        reloadActive();
+        return;
+      }
+      // 逐条走 SSE 那条路：按 id 去重、推进游标、贴底就滚 + 已读、离底就计「N 条新消息」。
+      // **别再写第二份合并逻辑** —— 去重与游标只有 appendMessage / onStreamMessage 一个入口。
+      for (const m of list) onStreamMessage(m);
+    } catch {
+      // 补拉失败不打扰用户（离线切回来正是这个情形）：回前台 / 下一拍对账还会再来
+    }
+  }, [onStreamMessage, reloadActive]);
+
   const onTypingEvent = useCallback(
     (ev: { channel_id: string; user_id: string; username: string }) => {
       if (ev.channel_id !== activeRef.current || ev.user_id === currentUserId) return;
@@ -669,7 +766,12 @@ export default function ChatApp({
   // ── SSE 连接生命周期 ────────────────────────────────────────────────────
   // 标签页隐藏时主动断开：浏览器对同一源的并发连接数有硬上限（HTTP/1.1 为 6），
   // 一条 SSE 就占一条，而且这个池子是**跨标签页共享**的 —— 隐藏的标签页不该占坑。
-  // 回到前台重连，服务端按 Last-Event-ID 补齐期间漏掉的消息。
+  // 回到前台重连，隐藏期间那段由 catchUpActive 补（**不是** Last-Event-ID —— 自己 close
+  // 再 new 出来的连接没有游标，服务端不会 backfill，见那边的文件头）。
+  //
+  // ⚠️ 本 effect 的依赖必须全是稳定引用：变一次就 teardown + 重连，而每次重连都是一次
+  // 「新对象没游标」的缺口 —— 依赖不稳等于每渲染一次就复现一次那个漏消息的 bug。
+  // catchUpActive 只读 ref、只依赖 onStreamMessage / reloadActive 两个稳定引用。
   useEffect(() => {
     let es: EventSource | null = null;
 
@@ -679,9 +781,11 @@ export default function ChatApp({
       es = src;
       src.onopen = () => {
         // 首连时若还没有任何消息游标（初始加载尚未回来），补拉一次当前频道 ——
-        // 关掉「消息查询快照 → 订阅建立」之间的空窗。重连有 Last-Event-ID 补齐，
-        // 不需要（也避免把正在翻历史的用户拽回底部）。
-        // 历史视图下尤其不能补拉：会把刚跳过去的历史窗口冲掉（那里的游标本就不该更新）。
+        // 关掉「消息查询快照 → 订阅建立」之间的空窗。
+        // ⚠️ 只有**同一个 EventSource 对象**的浏览器自动重连才带 Last-Event-ID；这个
+        // effect 自己 close 再 new 出来的连接是没游标的（见 catchUpActive），所以缺口
+        // 一律由 catchUpActive 补，别在这里指望补齐。这里也不补：会把正在翻历史的用户
+        // 拽回底部（那些游标本就不该更新）。
         if (lastIdRef.current === 0 && !historyViewRef.current) reloadActive();
       };
       src.onmessage = (e) => {
@@ -720,13 +824,21 @@ export default function ChatApp({
         return;
       }
       openStream();
+      // 重连只恢复「往后」的推送，隐藏期间那段得自己补 —— 新连接没有 Last-Event-ID，
+      // 服务端不会 backfill（见 catchUpActive）。整页换列表的那种（resync）不在这里管。
+      void catchUpActive();
       void reconcile();
     };
 
     openStream();
     document.addEventListener('visibilitychange', onVisible);
     window.addEventListener('focus', onVisible);
-    const iv = setInterval(() => void reconcile(), RECONCILE_MS);
+    // 定时器除了对账还要补消息：SSE 有「连着但收不到」的半死状态（见 CLAUDE.md 红线），
+    // 且一帧带 id: 的都没收到过时断线重连也不带 Last-Event-ID —— 这两条只有这里能自愈。
+    const iv = setInterval(() => {
+      void reconcile();
+      void catchUpActive();
+    }, RECONCILE_MS);
 
     return () => {
       closeStream();
@@ -734,7 +846,7 @@ export default function ChatApp({
       window.removeEventListener('focus', onVisible);
       clearInterval(iv);
     };
-  }, [onStreamMessage, onTypingEvent, reconcile, reloadActive]);
+  }, [catchUpActive, onStreamMessage, onTypingEvent, reconcile, reloadActive]);
 
   // ── 首次加载：频道列表 + 选定初始频道 ─────────────────────────────────
   // 只在挂载时跑一次：initialChannel 从 ref 读（URL 是应用自己写的镜像，变了也不该
