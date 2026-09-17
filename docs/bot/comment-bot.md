@@ -165,7 +165,8 @@ GET /api/auth/me
 | `429` | 触发限频 | `今日评论已达上限（8000条），请明日再试` |
 
 > ⚠️ **站内接口一律 `Cache-Control: no-store`**，别在客户端缓存这些响应。
-> spider 接口没有这个头，但它在服务端也不做缓存 —— 轮询时请自行控制频率（§9）。
+> spider 系列中较新的接口（如 `GET /api/spider/favorites/:id`）也带这个头；
+> 评论 / 博客那几条早期接口没有，但它们在服务端也不做缓存 —— 轮询时请自行控制频率（§9）。
 
 ---
 
@@ -266,7 +267,11 @@ GET /api/spider/comments
 ```http
 GET /api/spider/comments/:id     → 裸 CommentNode 对象；不存在或已删除 → 404 {code,message}
 GET /api/spider/blogs/:id        → { "meta": {…}, "content": "Markdown 正文" }；不存在 → 404
+GET /api/spider/favorites/:id    → { "id","title","author","count","blogs" }；不存在 → 404 {code,message}
 ```
+
+> 收藏夹那条的完整口径（含限频）见 `docs/bot/favorite-bot.md`。此处只点一句：
+> 它**只读公开收藏夹**，且是 spider 系列里**唯一有限频**的一条。
 
 `meta` 里有 `title` / `author` / `category` / `comments_count` 等，方便机器人在
 回复时引用文章标题。
@@ -327,6 +332,7 @@ Content-Type: application/json
 | `[@a1b2c3d4]` | 8 位 | 内联云剪贴板的正文（该剪贴板须公开，或你是作者） |
 | `[@AbCdEf1234]` | 10 位 | 内联图床图片 —— 渲染成 `/api/images/<ID>/raw` 的图 |
 | `[@vOtE12345]` | 9 位 | 投票 —— **评论里不展开**，原样显示 |
+| `[@123456]` | 6 位数字 | 收藏夹 —— **评论里不展开**，原样显示（只有博客正文会渲染成卡片） |
 
 要点：
 

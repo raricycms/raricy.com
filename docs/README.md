@@ -38,9 +38,10 @@ raricy.com 的全部文档。分三层：**`guide/` 给玩家和内容创作者*
 | `guide/cattca-syntax.md` | Cattca 脚本语法参考（命令逐条） |
 | `guide/内容引用语法指南.md` | `[@<内容ID>]` 在博客 / 评论 / 讨论里嵌入内容 |
 | `guide/表情包使用指南.md` | `[@合集/表情]` 在评论 / 讨论里发表情；站长加素材 |
+| `guide/收藏夹使用指南.md` ★ | 收藏夹：私密 / 公开的区别、复制、分享、导入导出 |
 | `guide/story-module.md` | 故事模块：文件结构 / 合集嵌套 / URL |
 
-★ = 被站内页面渲染（`/clipboard/guide` · `/image/guide` · `/vote/guide` · `/tool/cattca-guide`）
+★ = 被站内页面渲染（`/clipboard/guide` · `/image/guide` · `/vote/guide` · `/favorite/guide` · `/tool/cattca-guide`）
 
 ## 开发与运维
 
@@ -55,7 +56,7 @@ raricy.com 的全部文档。分三层：**`guide/` 给玩家和内容创作者*
 
 ## bot/ —— 站外机器人开发者
 
-三份都是**自包含**的：站外读者不用读本站源码就能对接。也因此它们**复述**了限频数值
+四份都是**自包含**的：站外读者不用读本站源码就能对接。也因此它们**复述**了限频数值
 与错误码 —— 改 `src/lib/rate-limit.ts` 的 `RULES` 或接口口径时**必须同步**（见
 `../CLAUDE.md`「限频」节），否则就是下一次 drift。
 
@@ -64,6 +65,7 @@ raricy.com 的全部文档。分三层：**`guide/` 给玩家和内容创作者*
 | `bot/chat-bot.md` | 讨论机器人接入：接口契约 / SSE / 消息与表情 / 正在输入、已读与报到 / 限频 |
 | `bot/comment-bot.md` | 评论区机器人接入：接口契约 / 轮询 / 限频 |
 | `bot/fish-bot.md` | 鱼干机器人接入：**无状态**转账 / 余额 / 流水（凭据随请求走）、限频与重试纪律；§9 收银台 |
+| `bot/favorite-bot.md` | 收藏夹读取：按 6 位 ID 读**公开**收藏夹；**免认证**、只读、按 IP 限频 |
 
 ## 相关
 
