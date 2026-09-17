@@ -3485,10 +3485,10 @@ a:hover {
 .comment-content__md img.rich-sticker-ref {
   display: inline-block;
   vertical-align: text-bottom;
-  width: 1.6em;
-  height: 1.6em;
+  width: 4em;
+  height: 4em;
   object-fit: contain;
-  margin: 0 0.15em;
+  margin: 0 0.2em;
   border: none;
   border-radius: 4px;
   background: none;
@@ -11324,10 +11324,10 @@ input:checked + .settings-toggle__slider::before {
 .chat-msg__md img.rich-sticker-ref {
   display: inline-block;
   vertical-align: text-bottom;
-  width: 1.6em;
-  height: 1.6em;
+  width: 4em;
+  height: 4em;
   object-fit: contain;
-  margin: 0 0.15em;
+  margin: 0 0.2em;
   border: none;
   border-radius: 4px;
   background: none;
