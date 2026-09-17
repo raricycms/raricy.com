@@ -80,6 +80,9 @@ const RESPONSIVE_SPECS: RegExp[] = [
   // 评论区的横向溢出（楼中楼缩进把祖先撑宽）。同样是排版事实：border-box 下
   // padding 算在 width: 100% 里、margin 不算，要靠浏览器排版才看得出溢出多少。
   /comment-layout\.spec\.ts$/,
+  // 小鱼干余额页的三颗行动：窄屏靠「藏前缀 + 收内边距」压在同一行，差几个像素就换行 ——
+  // 同样是只有浏览器排版才说得清的事实。桌面那一遍验的是「文案没被压掉」。
+  /fish-layout\.spec\.ts$/,
 ];
 
 export default defineConfig({

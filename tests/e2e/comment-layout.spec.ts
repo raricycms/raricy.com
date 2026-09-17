@@ -90,7 +90,9 @@ test('楼中楼不横向溢出：评论区底部不该出现横向滚动条', as
 
 // 备注（未修，待定）：CommentSection 的根节点用 `className="blog-detail"`，
 // 与 `src/app/blog/[id]/page.tsx` 的外层 `<article>` 同名 —— 于是它又吃了一遍
-// max-width: 940px / margin: 50px auto / padding: 0 20px / overflow-x: auto，
-// 评论区因此比正文再内缩 20px、再下移 50px，并且自带一个滚动容器（上面那条
-// 横向滚动条就是画在它身上的）。改类名可以一并消掉，但会动到评论区的位置与宽度，
-// 需要在真浏览器里目视确认，故此处只记录、未改。
+// max-width: 940px / margin: 50px auto / padding: 0 16px（container-padding，原为
+// 写死的 20px）/ overflow-x: auto，评论区因此比正文再内缩 16px、再下移 50px，
+// 并且自带一个滚动容器（上面那条横向滚动条就是画在它身上的）。改类名可以一并消掉，
+// 但会动到评论区的位置与宽度，需要在真浏览器里目视确认，故此处只记录、未改。
+//
+// （窄屏实测：评论文字落在 32px，与博客列表页 .blog-item 的 16+16 一致，故暂不算偏差。）
