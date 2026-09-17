@@ -88,8 +88,13 @@ src/styles-scss/
 | `--shadow-card` | `0 4px 20px rgba(0,0,0,.08)` | `rgba(0,0,0,.3)` |
 | `--shadow-card-hover` | `0 8px 30px rgba(0,0,0,.12)` | `rgba(0,0,0,.4)` |
 | `--shadow-card-brand` | `0 2px 25px rgba(37,99,235,.15)` | `0 2px 20px rgba(35,165,255,.1)` |
+| `--shadow-focus-brand` | `0 0 25px rgba(37,99,235,.28)` | `0 0 20px rgba(35,165,255,.32)` |
 
 卡片 hover 统一升到 `--shadow-card-brand`（品牌色光晕），同时边框切 `--color-border-highlight`。
+
+`--shadow-focus-brand` 是**聚焦态**专用的光晕（博客搜索框在用）：与 `--shadow-card-brand`
+同色同模糊半径，但偏移为 `0`（四周均匀），不透明度高一档 —— 常驻阴影是「托住」元素，
+聚焦态得自己站得出来。不要拿它当常驻阴影用。
 
 ### 2.4 SCSS 侧令牌
 
