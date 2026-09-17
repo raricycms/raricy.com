@@ -8,6 +8,7 @@ import FeedButton from '@/app/components/FeedButton';
 import ReadingProgress from '@/app/blog/ReadingProgress';
 import { getCurrentUser, hasAdminRights, isCoreUser } from '@/lib/auth';
 import { getFeedStatus } from '@/lib/feed-service';
+import { isBlogFavorited } from '@/lib/favorite-service';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,7 +18,7 @@ export default async function BlogDetailPage({ params }: { params: Promise<{ id:
   const [blog, user] = await Promise.all([getBlogDetail(id), getCurrentUser()]);
   if (!blog) notFound();
 
-  const [feedStatus, likeRow] = await Promise.all([
+  const [feedStatus, likeRow, favorited] = await Promise.all([
     user ? getFeedStatus(blog.id, user.id) : Promise.resolve({ fed: 0 }),
     user
       ? prisma.blogLike.findUnique({
@@ -25,6 +26,8 @@ export default async function BlogDetailPage({ params }: { params: Promise<{ id:
           select: { deleted: true },
         })
       : Promise.resolve(null),
+    // 星标按钮的初始态。只查「有没有」—— 刻意**不查总数**：站内不显示被收藏数。
+    user ? isBlogFavorited(user.id, blog.id) : Promise.resolve(false),
   ]);
 
   const isAuth = !!user;
@@ -67,6 +70,7 @@ export default async function BlogDetailPage({ params }: { params: Promise<{ id:
           canManage={canManage}
           canEdit={isAuthor}
           isAdminDelete={isAdminDelete}
+          initialFavorited={favorited}
           footerCopyright={`作者：${blog.author?.username} | 版权归原作者所有`}
         />
 

@@ -28,6 +28,10 @@
 .icon-theme-toggle { -webkit-mask-image: url('/static/img/icons/theme-toggle.svg'); mask-image: url('/static/img/icons/theme-toggle.svg'); }
 
 .icon-heart-fill { -webkit-mask-image: url('/static/img/icons/heart-fill.svg'); mask-image: url('/static/img/icons/heart-fill.svg'); }
+/* 收藏夹（黄色五角星）。类名跟随 SVG 文件名（heart-fill.svg → .icon-heart-fill），
+   不要写成 .icon-star —— 那会与文件脱钩，下一个照文件名找的人会找不到。
+   颜色由 .favorite-btn 的 color 给（.icon 是 currentColor + mask-image）。 */
+.icon-star-fill   { -webkit-mask-image: url('/static/img/icons/star-fill.svg');     mask-image: url('/static/img/icons/star-fill.svg'); }
 
 .icon-chat-dots_new { -webkit-mask-image: url('/static/img/icons/chat-dots_new.svg'); mask-image: url('/static/img/icons/chat-dots_new.svg'); }
 

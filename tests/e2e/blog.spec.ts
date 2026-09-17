@@ -252,11 +252,16 @@ test('详情页交互区：点赞/投喂一行、返回/管理一行（作者视
   const rows = controls.locator('.read-controls__row');
   await expect(rows).toHaveCount(2);
 
-  // 第一行：点赞 + 投喂（标签后带计数徽标，用前缀匹配）
+  // 第一行：点赞 + 投喂 + 收藏（点赞/投喂标签后带计数徽标，用前缀匹配）
   const row0 = rows.nth(0);
   await expect(row0.getByRole('button', { name: /点赞/ })).toBeVisible();
   await expect(row0.getByRole('button', { name: /投喂/ })).toBeVisible();
-  await expect(row0.getByRole('button')).toHaveCount(2);
+  // 收藏夹按钮：黄色五角星，且**刻意没有计数徽标**（站内不显示被收藏数）
+  const favBtn = row0.locator('#favorite-btn');
+  await expect(favBtn).toBeVisible();
+  await expect(favBtn.locator('.icon-star-fill')).toBeVisible();
+  await expect(favBtn.locator('.like-count-badge, .fish-count-badge')).toHaveCount(0);
+  await expect(row0.getByRole('button')).toHaveCount(3);
 
   // 第二行：返回上页 + 管理文章；旧的管理按钮不再平铺在页面上
   const row1 = rows.nth(1);
@@ -321,6 +326,8 @@ test('第三方核心用户视角：无「管理文章」，第二行只有返�
   await expect(rows).toHaveCount(2);
   await expect(rows.nth(0).getByRole('button', { name: /点赞/ })).toBeVisible();
   await expect(rows.nth(0).getByRole('button', { name: /投喂/ })).toBeVisible();
+  // 收藏对所有人渲染（入口不跟着档位藏），只是非 core 点了会就地提示
+  await expect(rows.nth(0).locator('#favorite-btn')).toBeVisible();
 
   // 第二行只剩「返回上页」，没有管理入口、也没有管理弹窗
   await expect(rows.nth(1).getByRole('button', { name: '返回上页' })).toBeVisible();

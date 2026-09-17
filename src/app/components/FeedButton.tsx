@@ -10,6 +10,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { ArrowLeft, Fish, Heart, Pencil, Settings, Trash2 } from 'lucide-react';
+import FavoriteButton from './FavoriteButton';
 
 const FEED_CAP = 5;
 
@@ -53,6 +54,8 @@ interface Props {
   isAdminDelete: boolean;
   /** 单篇文章版权声明，注入页脚 .footer-copy（对齐 Flask block copyright）。 */
   footerCopyright?: string;
+  /** 当前用户的任一收藏夹是否含本文 —— 星标按钮的初始态（未登录传 false）。 */
+  initialFavorited?: boolean;
 }
 
 export default function FeedButton({
@@ -68,6 +71,7 @@ export default function FeedButton({
   canEdit,
   isAdminDelete,
   footerCopyright,
+  initialFavorited = false,
 }: Props) {
   // 单篇文章版权声明注入页脚 .footer-copy（对齐 Flask blog.html 的 {% block copyright %}，
   // 替换默认「© 2026 聪明山」）。共享 Footer 组件不可改，故挂载时改写、卸载时还原。
@@ -329,6 +333,15 @@ export default function FeedButton({
               {fishCount}
             </span>
           </button>
+
+          {/* 收藏夹（黄色五角星）。刻意**不带计数徽标** —— 站内不显示被收藏数。
+              组件自带选择器弹窗；对所有人渲染，档位判断在组件内做。 */}
+          <FavoriteButton
+            blogId={blogId}
+            isAuth={isAuth}
+            isCore={isCore}
+            initialFavorited={initialFavorited}
+          />
         </div>
 
         <div className="read-controls__row">
