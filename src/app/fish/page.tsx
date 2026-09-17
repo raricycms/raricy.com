@@ -35,11 +35,19 @@ export default async function FishPage() {
             </div>
           )}
           <div className="fish-card__actions">
-            <Link href="/fish/transactions" className="fish-card__link">
-              <ReceiptText aria-hidden="true" /> 查看流水
+            {/* 文案拆成「前缀 + 正文」，前缀在窄屏由 CSS 隐藏（见 _fish.scss 的 480px 档）。
+                ⚠️ 两段必须包在**同一个** <span> 里：.fish-card__link 是 inline-flex，
+                散着写会让「查看」自己变成一个 flex 项，与「流水」之间吃一道 8px 的 gap ——
+                桌面上就渲染成「查看 流水」（实测颗宽 120px，正常是 112px）。包起来之后整条
+                文案是一个 flex 项，内部按行内文本连排，图标与文字之间只剩 flex 自己的 gap。
+                图标与这段文案之间**不要留空格**（换行即可，JSX 会吃掉含换行的空白）。 */}
+            <Link href="/fish/transactions" className="fish-card__link" aria-label="查看流水">
+              <ReceiptText aria-hidden="true" />
+              <span className="fish-card__link-label"><span className="fish-card__link-prefix">查看</span>流水</span>
             </Link>
-            <Link href="/fish/market" className="fish-card__link fish-card__link--primary">
-              <span className="icon icon-market" aria-hidden="true"></span> 鱼干市场
+            <Link href="/fish/market" className="fish-card__link fish-card__link--primary" aria-label="鱼干市场">
+              <span className="icon icon-market" aria-hidden="true"></span>
+              <span className="fish-card__link-label"><span className="fish-card__link-prefix">鱼干</span>市场</span>
             </Link>
             {/* 收款码：生成一张图，别人扫了就能给我投喂 */}
             <PosterModal

@@ -95,6 +95,56 @@
   }
 }
 
+// 窄屏（≤480px）：三颗行动必须压在同一行。
+//
+// 为什么 480px 以下会在中间断开：可用宽度不是视口宽度，得扣掉**两层**水平留白 ——
+// .container 的容器内边距 $space-4×2（16px×2）与 .fish-card 窄屏下的内边距
+// $space-6×2（24px×2），合计 80px（即「可用 = 视口 − 80」）。于是 390px 视口只剩
+// 310px，而完整文案下三颗合计 347.2px（实测：字号 0.9rem = 14.4px、CJK 1em/字、
+// svg.lucide 被 _icons.scss 统一成 1em、span.icon 1.2rem）+ 两处 8px 间距 = 363.2px，
+// 第三颗（收款码）必然被挤到第二行。
+//
+// 两步压缩（实测 390px 下 245.6px，余量 64px）：
+//   ① 隐藏「查看 / 鱼干」两个前缀，文案变成 2/2/3 字 → 347.2 → 269.6px；
+//   ② gap 与**左右**内边距收到 $space-1 / $space-3（图标与文字之间那 8px 一并收到 4px）
+//      → 237.6px，加间距 245.6px。
+// ⚠️ **纵向内边距不动**（仍是 $space-2）：它对宽度没有贡献，收了只会让这三颗在窄屏
+// 变矮 —— 与 _blog.scss 里「窄屏不许整体缩放 padding/font-size」是同一条纪律。
+//
+// 360px 档可用 280px（余量 34px）；320px 档可用只有 240px，差 5.6px，见下面那条。
+// 再往下真放不下时，由 .fish-card__actions 现成的 flex-wrap 兜底退回两行，而不是溢出。
+//
+// 断点取 480px 而不是 576/768：按上面的数，完整文案要到视口约 443px 才开始放不下
+// （363.2 + 80），480px 是留了余量的最近一档，且与本文件 .feed-modal__content 的
+// 窄屏档一致。桌面端文案不变（仍是「查看流水 / 鱼干市场 / 收款码」）—— 前缀只在窄屏
+// display:none，DOM 里始终完整，aria-label 也照旧给出完整动作名。
+@media (max-width: 480px) {
+  .fish-card__actions {
+    gap: $space-1;
+  }
+
+  .fish-card__link {
+    gap: $space-1;
+    padding: $space-2 $space-3;
+  }
+
+  // 前缀（查看 / 鱼干）窄屏隐藏，只剩「流水 / 市场 / 收款码」。
+  // ⚠️ 它外面那层 .fish-card__link-label 没有样式、却是**必需的**：整条文案必须是
+  // .fish-card__link（inline-flex）的**一个**子元素，否则「查看」与「流水」会各自成为
+  // flex 项、中间吃一道 gap，桌面端就渲染成「查看 流水」。别把这层壳删了。
+  .fish-card__link-prefix {
+    display: none;
+  }
+}
+
+// 320px 档（iPhone SE 一代这类）单独再收一档：240px 的可用宽度差 5.6px，横向再收到
+// $space-2（省 8px/颗 = 24px）即够。纵向本来就是 $space-2，这里四边同值、不动高度。
+@media (max-width: 360px) {
+  .fish-card__link {
+    padding: $space-2;
+  }
+}
+
 .fish-card__info {
   font-size: 0.875rem;
   color: var(--color-text-secondary);
