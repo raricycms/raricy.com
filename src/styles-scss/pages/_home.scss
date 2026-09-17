@@ -35,6 +35,10 @@
 .home-btn--outline-info { color: var(--color-brand-primary); background: var(--color-brand-secondary); }
 .home-btn--outline-success { color: var(--color-success-primary); background: var(--color-success-secondary); }
 
+/* ⚠️ 刻意保留的写死色：这是**首页自己的深色主视觉**（深蓝灰渐变 + 白字），
+   明暗两套主题下刻意保持一致，不随 [data-theme] 切换 —— 与 403 页的彩虹底同理。
+   改用令牌会让它在浅色主题下变成浅底，与其中的白字打架。
+   全站唯一一处「不跟主题走」的页面背景，除它之外都在 --color-* 体系内。 */
 .hero-section {
   background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
   min-height: 60vh;
@@ -69,15 +73,18 @@
 .hero-content { position: relative; z-index: 2; }
 
 /* 卡片样式优化 */
-.feature-card { display: block; transition: all 0.3s ease; cursor: pointer;  border-radius: 30px; overflow: hidden; position: relative; height: 100%; background-color: var(--color-background-card); box-shadow: var(--shadow-card); border: 1px solid var(--color-border);  }
-.feature-card:hover { box-shadow: var(--shadow-card-brand); border-color: var(--color-border-highlight); }
+/* 首页「探索」区的四张功能卡。空闲**不托阴影也不描边** —— 它们是页面的主体内容，
+   不是浮在背景上的浮层，压一圈阴影只会让四块各自「浮」起来、把首页切碎。
+   鼠标悬浮时才亮起主题蓝光晕（--shadow-card-brand，与顶栏常驻阴影同色系），
+   即「指到哪儿哪儿才浮起来」。 */
+.feature-card { display: block; transition: box-shadow 0.3s ease; cursor: pointer;  border-radius: 30px; overflow: hidden; position: relative; height: 100%; background-color: var(--color-background-card); box-shadow: none; border: none;  }
+.feature-card:hover { box-shadow: var(--shadow-card-brand); }
 /* 专注模式禁用态（div 渲染，不导航）：淡化 + hover 不给卡片反馈 */
 .feature-card.is-disabled {
   cursor: default;
   opacity: 0.7;
   &:hover {
-    box-shadow: var(--shadow-card);
-    border-color: var(--color-border);
+    box-shadow: none;
   }
   .home-btn {
     opacity: 0.6;
@@ -118,15 +125,16 @@
   -webkit-mask-size: contain;
   mask-size: contain;
 }
-.card-story .feature-icon { color: #3b82f6; -webkit-mask-image: url('/static/img/icons/book.svg'); mask-image: url('/static/img/icons/book.svg'); }
-.card-blog  .feature-icon { color: #f59e0b; -webkit-mask-image: url('/static/img/icons/journal-text.svg'); mask-image: url('/static/img/icons/journal-text.svg'); }
-.card-tool  .feature-icon { color: #06b6d4; -webkit-mask-image: url('/static/img/icons/tools.svg'); mask-image: url('/static/img/icons/tools.svg'); }
-.card-chat  .feature-icon { color: #10b981; -webkit-mask-image: url('/static/img/icons/chat-dots_new.svg'); mask-image: url('/static/img/icons/chat-dots_new.svg'); }
+/* 四张功能卡各一个色相 —— 那是**分类强调色**，不是语义色，故走 --color-accent-*。
+   原为写死的 #3b82f6 / #f59e0b / #06b6d4 / #10b981，暗色下不跟着变。 */
+.card-story .feature-icon { color: var(--color-accent-blue); -webkit-mask-image: url('/static/img/icons/book.svg'); mask-image: url('/static/img/icons/book.svg'); }
+.card-blog  .feature-icon { color: var(--color-accent-amber); -webkit-mask-image: url('/static/img/icons/journal-text.svg'); mask-image: url('/static/img/icons/journal-text.svg'); }
+.card-tool  .feature-icon { color: var(--color-accent-cyan); -webkit-mask-image: url('/static/img/icons/tools.svg'); mask-image: url('/static/img/icons/tools.svg'); }
+.card-chat  .feature-icon { color: var(--color-success-primary); -webkit-mask-image: url('/static/img/icons/chat-dots_new.svg'); mask-image: url('/static/img/icons/chat-dots_new.svg'); }
 
-/* 统计数据样式 */
-.stats-section { background: #f8f9fa; padding: 4rem 0; }
-.stat-item { text-align: center; padding: 2rem 1rem; }
-.stat-number { font-size: 3rem; font-weight: bold; color: #667eea; display: block; }
+/* 此处原有 .stats-section / .stat-item / .stat-number 三条（含写死的 #f8f9fa 与
+   #667eea）。没有任何 TSX 使用这三个类 —— 管理页用的是 .admin-stat-item 一族。
+   死代码，已删。 */
 
 /* 特色区域 */
 .features-section { padding: 5rem 0; background: var(--color-background-page); }
