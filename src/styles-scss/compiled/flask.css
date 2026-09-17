@@ -41,6 +41,10 @@ img {
 
 :root,
 [data-theme=light] {
+  /* 原生控件（滚动条、<select> 下拉、日期选择器、canvas 底色）的明暗开关。
+     缺了它，暗色主题下 Chrome 照样按**浅色**画这一整套 —— 讨论区的主区与侧栏
+     都是常驻滚动容器，那条浅灰白滚动条压在深底上最扎眼。 */
+  color-scheme: light;
   --color-brand-primary: #2563EB;
   --color-brand-secondary: rgba(37, 99, 235, 0.1);
   --color-background-card: #fff;
@@ -110,6 +114,7 @@ img {
 }
 
 [data-theme=dark] {
+  color-scheme: dark;
   --color-brand-primary: #23A5FF;
   --color-brand-secondary: rgba(35,165,255,0.1);
   --color-background-page: #131517;
@@ -163,6 +168,52 @@ body {
 
 main {
   flex: 1 0 auto;
+}
+
+/* ── 滚动条 ─────────────────────────────────────────────────────────────────
+   全站此前**既没有滚动条样式、也没有 color-scheme**，浏览器按自己的默认色画：
+   暗色主题下一条浅色滚动条压在深底上。讨论区的消息主区与侧栏、博客详情页都是
+   常驻滚动容器，一眼就看见。
+
+   分两层，各管一段：
+   · color-scheme（上面两个主题块里）—— 那个才是「原生控件跟着页面明暗」的开关，
+     Firefox 与旧引擎靠的就是它；
+   · ::-webkit-scrollbar 一族 —— Chromium（以及「始终显示滚动条」的 Safari）
+     额外画成站内令牌色（圆角细条）。Safari 在默认的 overlay 模式下不画自定义
+     滚动条，那时它吃的是上面那层的原生配色。
+
+   刻意**不写** scrollbar-color / scrollbar-width：按规范这两个一旦生效，就会让
+   ::-webkit-scrollbar 整族失效（Chrome 121+ 已支持它们）—— 那时圆角与 hover
+   变蓝都没了。不写它们的代价是 Firefox 只得上面那层的原生暗色条；那已满足
+   「跟着主题走」，换来 Chrome 里一条与全站圆角语言一致的滚动条，划算。 */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  /* 看着 6px、摸着还是 10px：2px 透明描边 + background-clip: padding-box。
+     不这么写，10px 宽的槽会被底色填满，「细条」就只剩两端那点倒角。 */
+  background: var(--color-text-secondary);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+  border-radius: 999px;
+}
+
+/* background 是简写，会把 background-clip 重置回 border-box —— 这里必须再写一次，
+   否则 hover 时滚动条会突然变粗一圈。 */
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-brand-primary);
+  background-clip: padding-box;
+}
+
+/* 两轴都能滚时右下角那块小方块：默认是白的，暗色下会露馅 */
+::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 /* Styles to approximate Bootstrap when CDN fails (optional use) */
@@ -780,11 +831,11 @@ body {
     width: 100%;
     max-height: 0;
     overflow: hidden;
-    transition: max-height 0.25s ease;
   }
   .site-navbar.open .site-navbar-collapse {
     max-height: 260px;
     overflow: visible;
+    transition: max-height 0.25s ease;
   }
   .site-nav {
     flex-direction: row;
@@ -2088,7 +2139,7 @@ textarea.form-control {
   white-space: nowrap;
   transition: color 0.25s ease;
 }
-.segmented__btn.is-active, .segmented__btn:hover:not(:disabled) {
+.segmented__btn.is-active {
   color: var(--color-brand-primary);
 }
 .segmented__btn:disabled {
@@ -2935,6 +2986,15 @@ textarea.form-control {
 .feature-card .home-btn {
   color: var(--card-accent);
   background: var(--card-glow);
+  /* hover = 最高级按钮的那套配方（实底 + 白字），只是实底取**卡片自己的颜色**
+     而不是品牌蓝 —— 与卡内按钮空闲态的取色口径一致（图标 / 光晕 / 按钮三者同源）。
+     ⚠️ 四张卡里只有蓝配白字够看（琥珀 #f59e0b / 青 #06b6d4 / 绿 #10b981 配白的
+     对比度都不到 2.6:1），这是「同一行四颗按钮行为必须一致」的代价，已知并接受；
+     真要提升可读性得动那三支强调色本身，那是改色板，不在按钮这一层解决。 */
+}
+.feature-card .home-btn:hover {
+  background: var(--card-accent);
+  color: #fff;
 }
 
 /* 此处原有 .stats-section / .stat-item / .stat-number 三条（含写死的 #f8f9fa 与
@@ -2988,7 +3048,13 @@ a:hover {
 }
 
 .read-hero {
-  background: var(--background-color);
+  /* 此处原有 `background: var(--background-color)` —— `--background-color` 全站
+     从未定义过，整条声明在计算值阶段被静默丢弃。也就是说文章页顶部这条标题带
+     **一直是透明的**（露出 body 的 --color-background-page），现在的外观就是它
+     真实的样子。按「引用前先确认变量存在」的纪律把死声明删掉，而不是补一个
+     --color-background-card：列表页的同位元素 .blogs-hero 是卡片底色带，而文章页
+     外层 .blog-detail 自己**没有**底色，补上去会在无底的正文上浮出一条色带 ——
+     那是改版，不是修 bug。要改的话两页一起议。 */
   padding: 50px 0 30px;
   text-align: center;
 }
@@ -3260,6 +3326,19 @@ a:hover {
 /* .read-btn 的唯一定义在本文件靠后处（归「最高级」档），此处原有的一套
    写死 #2c3e50 / #34495e 的旧配色已被它整体覆盖 —— 是死代码，且留着会让人
    以为改这里有效。已删。 */
+/* ── 点赞 / 投喂 / 收藏 三颗的高度基准 ──────────────────────────────────────
+   桌面端它们由内容撑出，且**三颗并不一样高**：点赞 / 投喂 ≈ 44.3px（计数徽标
+   比文字行高），收藏 41.0px（没有徽标）。窄屏换成竖排后内容更高，两边各写各的
+   高度就会跳 —— 用户报的「768px 前后这三颗的高度会变」正是它。
+   钉在桌面端那个数上（44.3 取整 44px）并三颗共用：断点前后一致，顺带把同一行
+   里 44.3 / 41.0 那 3.3px 的差也抹平了 —— 并排的三颗本就该一样高。
+   ⚠️ 改桌面端的上下内边距或字号时，这个数要跟着复核（下面窄屏的竖排内容也一样）。 */
+.read-controls__row .like-btn,
+.read-controls__row .fish-btn,
+.read-controls__row .favorite-btn {
+  min-height: 44px;
+}
+
 /* 「管理文章」弹窗目录项：整行胶囊，危险项用红色语义 */
 .manage-menu {
   display: flex;
@@ -3910,8 +3989,12 @@ a:hover {
      这里显式写 transparent 保持同一观感。 */
   background-color: transparent;
   list-style: none;
+  /* ⚠️ 层级缩进**只由 padding-left 承担**，绝不能再配一个同值的 margin-left。
+     box-sizing: border-box 下 padding 算在 width: 100% 之内，而 margin 不算 ——
+     两者都写时每一层楼中楼都会向右溢出 15px（嵌套层数 × 15px），冒泡到最近的
+     滚动容器 .blog-detail（overflow-x: auto）上，就是评论区底部那条横向滚动条。
+     `.comment-section > &` 那条重置只压得住顶层，压不住嵌在 <li> 里的那些。 */
   padding-left: 15px;
-  margin-left: 15px;
   margin-bottom: 15px;
   overflow-wrap: break-word;
   margin-top: 15px;
@@ -3981,13 +4064,20 @@ a:hover {
     margin: 20px auto 30px;
     gap: 12px;
   }
-  /* ── 窄屏：点赞 / 投喂 / 收藏 必须压在同一行 ────────────────────────────
-     原样（flex-wrap: wrap + 16px 间距 + 16px 字号）在 390px 上放不下第三颗，
-     收藏被挤到第二行单独一行 —— 看起来像个次要操作，而它是与点赞/投喂并列的
-     三颗之一。所以：不许换行，三颗等宽平分，内部间距与字号各收一档。
-     等宽（flex: 1 1 0）而不是按内容排：三颗宽度一致才读得出「并列」，
-     否则「收藏」因为字少会明显窄一截。min-width: 0 覆盖 .like-btn / .fish-btn
-     自身的内容宽度下限，允许它们真正被压缩到 1/3。 */
+  /* ── 窄屏：点赞 / 投喂 / 收藏 只剩「图标 + 计数」竖排，三颗必须压在同一行 ──
+     三颗等宽平分、不许换行（原样 flex-wrap: wrap + 16px 间距 + 16px 字号在 390px
+     上放不下第三颗，收藏被挤到第二行 —— 看起来像次要操作，而它与点赞/投喂并列）。
+     等宽（flex: 1 1 0）而不是按内容排：三颗宽度一致才读得出「并列」。
+     min-width: 0 覆盖 .like-btn / .fish-btn 自身的内容宽度下限。
+
+     内容改竖排：**文字标签隐藏，计数挪到图标正下方居中**（DOM 不动，仍是原来
+     那颗 .like-count-badge 元素），图标放大一档（1rem → 1.25rem）。
+     宽度因此不再是问题 —— 一排字换成一列之后，390px 下三颗宽松得很。
+
+     ⚠️ 高度**不在这里调**：由上面的 min-height: 44px 钉死（= 桌面端高度）。
+     原来这里写的是 `padding: 8px 6px; font-size: .85rem` 那套整体缩放，
+     那正是「768px 前后这三颗会变矮」的原因，已删。竖排内容
+     5 + 20 + 2 + 11.2 + 5 = 43.2px，装得下 44px，不需要再压内边距。 */
   .read-controls__row {
     width: 100%;
     max-width: 24rem;
@@ -3999,23 +4089,31 @@ a:hover {
   .read-controls__row .favorite-btn {
     flex: 1 1 0;
     min-width: 0;
+    flex-direction: column;
+    align-items: center;
     justify-content: center;
-    gap: 3px;
-    padding: 8px 6px;
-    font-size: 0.85rem;
+    gap: 2px;
+    padding: 5px 6px;
+    /* 文字标签：窄屏不显示。用 span:not([class]) 选它 —— 计数徽标也是 span，
+       但它带类名，正好被这条排除在外（这正是「只留图标与计数」去掉的那一半）。 */
+  }
+  .read-controls__row .like-btn > span:not([class]),
+  .read-controls__row .fish-btn > span:not([class]),
+  .read-controls__row .favorite-btn > span:not([class]) {
+    display: none;
   }
   .read-controls__row .like-btn .icon,
   .read-controls__row .fish-btn .icon,
   .read-controls__row .favorite-btn .icon {
-    width: 1rem;
-    height: 1rem;
+    width: 1.25rem;
+    height: 1.25rem;
     flex: none;
   }
   .read-controls__row .like-btn,
   .read-controls__row .fish-btn,
   .read-controls__row .favorite-btn {
-    /* 徽标收一档，且 flex: none —— 它是这三样里最该被压缩的，但压缩它
-       （数字被截断）比压缩文字更糟，所以干脆不让它参与伸缩，靠整体尺寸兜住。 */
+    /* 计数：不再是实底徽标，就是图标下方的一行小字，颜色跟着按钮走
+       （点赞的橙、投喂的绿、已收藏的黄本来就都挂在按钮的 color 上）。 */
   }
   .read-controls__row .like-btn .like-count-badge,
   .read-controls__row .like-btn .fish-count-badge,
@@ -4023,8 +4121,11 @@ a:hover {
   .read-controls__row .fish-btn .fish-count-badge,
   .read-controls__row .favorite-btn .like-count-badge,
   .read-controls__row .favorite-btn .fish-count-badge {
-    padding: 1px 4px;
-    font-size: 0.68rem;
+    background: none;
+    padding: 0;
+    color: inherit;
+    font-size: 0.7rem;
+    line-height: 1;
     flex: none;
   }
   .read-btn {
@@ -4072,25 +4173,12 @@ a:hover {
     font-size: 0.9em !important;
   }
 }
-/* 极窄屏（折叠屏外屏 / 320px 档）：三颗**真的**压不进一行了。
- *
- * 判据是实测算出来的，不是拍的：一颗按钮的内容宽度 = 内边距 12 + 图标 16 + 两处
- * 内部间距 6 + 文字（"已点赞" 3 字 × 14px）42 + 徽标（4 位数）约 33 ≈ 109px，
- * 三颗加行间距约 339px，再加 .read-controls 的左右内边距 20px ≈ 359px。
- * 所以 <360px 时若还坚持一行，等宽只会把文字挤成「已/点/赞」竖排三行 ——
- * 那比换行难看得多。这里退回按内容宽度、允许换行（2+1 两行）。
- * 不继续缩字号：0.75rem 以下就开始牺牲可读性了。 */
-@media (max-width: 359px) {
-  .read-controls__row {
-    flex-wrap: wrap;
-  }
-  .read-controls__row .like-btn,
-  .read-controls__row .fish-btn,
-  .read-controls__row .favorite-btn {
-    flex: 0 0 auto;
-    white-space: nowrap;
-  }
-}
+/* 此处原有 `@media (max-width: 359px)` 的极窄屏兜底：三颗退回按内容宽度、
+ * 允许换行（2+1 两行）。它的全部依据是**文字**的宽度 —— 一颗 = 内边距 12 +
+ * 图标 16 + 内间距 6 + 「已点赞」42 + 徽标 33 ≈ 109px，三颗 339px，再加
+ * .read-controls 的左右内边距 20px，320px 档确实塞不下。
+ * 窄屏改成「图标 + 计数」竖排后，一颗只剩约 34px 宽，三颗在 320px 上也绰绰有余，
+ * 这条兜底连同它的前提一并消失，已删。 */
 /* 此处原有两大段注释掉的旧令牌表（`--bg` / `--text` / `--box-bg` / `--border-color` …）
    与配套的 `body.dark-mode` 第二套暗色板。那套令牌**从未迁进** base/_root.scss，
    但仍有规则在引用它们（本文件的 .comment-btn / .comment-list、utilities/_text.scss 的
@@ -6287,8 +6375,11 @@ body {
   color: var(--color-text-secondary);
 }
 .tool-new-card__tags .tag.tag-primary {
-  background: rgba(59, 130, 246, 0.1);
-  border-color: rgba(59, 130, 246, 0.2);
+  /* 原为写死的 rgba(59,130,246,…) —— 那是**浅色主题**那支蓝，而同一块里
+     color 走的是 var(--color-brand-primary)（暗色会变成 #23A5FF）。深色下
+     于是只剩一行亮蓝字，淡底与描边都没了。改用分类强调色的 -soft 令牌。 */
+  background: var(--color-accent-blue-soft);
+  border-color: var(--color-accent-blue-soft);
   color: var(--color-brand-primary);
 }
 .tool-new-card__footer {
@@ -9403,6 +9494,9 @@ body {
   height: 20px;
   left: 3px;
   top: 3px;
+  /* 圆钮**刻意写死白色**：它在两个主题下都必须是白的（开关就长这样），
+     换 --color-background-card 会让暗色主题的钮跟着变深、压在 --color-border
+     的轨道上反而消失。可读性由下面那圈 0 1px 3px 的阴影兜住。 */
   background: #fff;
   border-radius: 50%;
   transition: transform 0.25s ease;
@@ -10184,7 +10278,9 @@ input:checked + .settings-toggle__slider::before {
 }
 .log-row--reverted .log-row__type::after {
   content: "（已撤回）";
-  color: #198754;
+  /* 原为写死的 #198754 —— 深底上发闷（同文件上面的 .status-badge 早已令牌化，
+     只有这条 ::after 漏了）。 */
+  color: var(--color-success-primary);
   margin-left: 4px;
   font-weight: 500;
 }
@@ -12105,12 +12201,10 @@ input:checked + .settings-toggle__slider::before {
 
 .chat-chan.is-active {
   background: var(--color-background-highlight);
-  box-shadow: inset 3px 0 0 var(--color-brand-primary);
 }
 
 .chat-page--collapsed .chat-chan.is-active {
   background: transparent;
-  box-shadow: none;
 }
 
 .chat-page--collapsed .chat-chan.is-active .chat-chan__icon,
@@ -12751,11 +12845,7 @@ input:checked + .settings-toggle__slider::before {
 
 .chat-msg__content--mention {
   border-color: var(--color-brand-primary);
-  box-shadow: inset 3px 0 0 var(--color-brand-primary);
-}
-
-.chat-msg--mine .chat-msg__content--mention {
-  box-shadow: inset -3px 0 0 var(--color-brand-primary);
+  background: var(--color-brand-secondary);
 }
 
 .chat-msg--highlight {
@@ -13706,7 +13796,6 @@ input:checked + .settings-toggle__slider::before {
   }
   .chat-page--collapsed .chat-chan.is-active {
     background: var(--color-background-highlight);
-    box-shadow: inset 3px 0 0 var(--color-brand-primary);
   }
   .chat-page--collapsed .chat-chan.is-active .chat-chan__icon,
   .chat-page--collapsed .chat-chan.is-active .chat-chan__avatar {
