@@ -308,9 +308,25 @@ export default function ChatApp({
   const folded = Math.min(foldedCount, maxFold);
   const visibleMessages = folded > 0 ? messages.slice(folded) : messages;
 
+  /**
+   * 自动折叠：列表**尾部**长了多少条，就把折叠量往上推多少条。
+   *
+   * 【为什么不是「不到 maxFold 就设成 maxFold」】那是每次渲染都往上钳一次 ——
+   * 「展开更早」刚减下去的值，下一拍 effect 又钳回原位：按钮点了没反应，只在中间那一帧
+   * 闪一下（用户报的就是这个）。这里跟的是「长了多少」，不是「离上限差多少」。
+   *
+   * 【为什么只认尾部】首条变了 = 头部拼进了历史（「加载更早」拉回来的），那批正是用户
+   * 点名要看的，顺手折掉等于那一下点击什么也没发生。整表替换（切频道 / 回最新 / resync）
+   * 各自有 setFoldedCount(0)，也不该按增量算。
+   */
+  const foldMarkRef = useRef<{ first: number | null; len: number }>({ first: null, len: 0 });
   useEffect(() => {
-    if (maxFold > foldedCount) setFoldedCount(maxFold);
-  }, [maxFold, foldedCount]);
+    const prev = foldMarkRef.current;
+    const first = messages[0]?.id ?? null;
+    foldMarkRef.current = { first, len: messages.length };
+    if (first == null || first !== prev.first || messages.length <= prev.len) return;
+    setFoldedCount((c) => c + (messages.length - prev.len));
+  }, [messages]);
 
   // ── 侧栏折叠偏好（对齐 blog.sort 的镜像模型）──────────────────────────────
   // localStorage 长命记忆；cookie（chat_sidebar_collapsed，只存 '1'=折叠）是 SSR
