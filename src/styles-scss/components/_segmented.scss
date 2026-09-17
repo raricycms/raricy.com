@@ -1,3 +1,5 @@
+@use '../abstracts/variables' as v;
+
 // ── 胶囊滑块（分段切换）───────────────────────────────────────────────────────
 //
 // 【什么时候用】**只有「2 选 1 的互斥视图切换」才用它**。目前全站就两处：
@@ -30,7 +32,7 @@
   display: inline-flex;
   align-items: stretch;
   padding: 4px;
-  border-radius: 999px;
+  border-radius: v.$radius-max;
   background: var(--color-background-content);
 }
 
@@ -41,7 +43,7 @@
   bottom: 4px;
   left: 4px;
   width: calc((100% - 8px) / var(--seg-n, 2));
-  border-radius: 999px;
+  border-radius: v.$radius-max;
   background: var(--color-brand-secondary);
   transform: translateX(calc(var(--seg-i, 0) * 100%));
   transition: transform 0.25s ease;
@@ -54,7 +56,7 @@
   flex: 1 1 0;
   border: none;
   background: transparent;
-  border-radius: 999px;
+  border-radius: v.$radius-max;
   color: var(--color-text-secondary);
   font: inherit;
   cursor: pointer;

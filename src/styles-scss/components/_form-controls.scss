@@ -1,3 +1,4 @@
+@use '../abstracts/variables' as v;
 // ── 表单控件（无 Bootstrap 依赖）─────────────────────────────────────────────
 //
 // 全站字段只有一套外观，基准是博客首页的搜索框（见 pages/blog/_menu.scss 的
@@ -53,12 +54,12 @@
 // 单行 → 胶囊
 input.form-control,
 select.form-control {
-  border-radius: 999px;
+  border-radius: v.$radius-max;
 }
 
 // 多行 → 固定圆角（比胶囊收敛，与「一行才是胶囊」的判据配套）
 textarea.form-control {
-  border-radius: 20px;
+  border-radius: v.$radius-field;
   padding: 12px 16px;
 }
 

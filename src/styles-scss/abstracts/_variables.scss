@@ -7,7 +7,14 @@
 
 // $shadow-brand: 0 2px 25px rgba(37, 99, 235, 0.15);
 
+// 圆角三级 + 两个专用值。判据是「形状由内容形态决定」，不是按页面随手挑：
+//   胶囊（$radius-max）   —— 单行元素：按钮、单行输入框、徽章、导航项、切页
+//   $radius-card 30px    —— 卡片：博客条目、通知卡、登录容器、正文容器
+//   $radius-field 20px   —— 多行字段：textarea、多行输入面板
+//   $radius-large / -small —— 次级面板与小组件（分页、代码块、内联标记）
 $radius-max: 999px;
+$radius-card: 30px;
+$radius-field: 20px;
 $radius-large: 10px;
 $radius-small: 5px;
 

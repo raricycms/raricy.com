@@ -189,6 +189,19 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 纠错 H、静默区 ≥4 模块 —— `tests/unit/poster.test.ts` 会真解码）。收银台与收款页共用
 `src/app/fish/PayForm.tsx` 的 `variant` 分支，别另抄一个。
 
+### 前端样式
+
+**`docs/frontend-styles.md` 是唯一权威**（含按钮三档、输入框圆角判据、容器阶梯、
+胶囊滑块的适用范围）。改任何样式前先读它。三条最容易踩的：
+
+- **按钮只有三档**（`abstracts/_mixins.scss` 的 `btn-primary` / `btn-secondary` /
+  `btn-tab`），别另抄一份；任何一档都不做垂直位移。
+- **输入框圆角当且仅当「一行文字」时是胶囊**，多行走 20px。聚焦一律用
+  `--shadow-focus-brand`，**绝不用 `border`**（会让字段随焦点变高、下方内容位移）。
+- **写 `var(--x)` 前确认它存在**。变量不存在时不报错，整条声明静默失效 ——
+  已经踩过 `--color-brand-primary-rgb`、`--color-bg-primary`、`--r-pill`、
+  拼错的 `--color-background-card-unrend` 等六处。
+
 ### 收藏夹
 
 `docs/architecture.md` §6.10 + `src/lib/favorite-service.ts` 头部（**六条不变量**，
