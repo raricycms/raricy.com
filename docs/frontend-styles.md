@@ -22,10 +22,18 @@ src/styles-scss/
 
 - `npm run build:css` — 一次性编译到 `src/styles-scss/compiled/flask.css`（expanded，无 sourcemap）
 - `npm run dev:css` — 监听模式，改 SCSS 自动重编译
+- `npm run build` — 生产构建，**先跑一遍 `build:css`** 再 `next build`
 
 编译产物由 [src/app/layout.tsx](../src/app/layout.tsx) 以 `import '@/styles-scss/compiled/flask.css'` 全局引入。
 
 > ⚠️ 改样式改 SCSS 源文件，改完跑 `build:css`（或开着 `dev:css`）。`compiled/flask.css` 是产物，直接手改会在下次编译时被覆盖。
+> 产物**仍然入库**：`npm run build` 重编的是它自己那一份，而 `npm run dev` / `npm run e2e` /
+> 三条守卫（`css-classes` / `css-js-classes` / `check:links`）读的都是**库里那一份**。
+> 所以改完 SCSS 照旧要把重编结果一起提交，别指望构建替你补上。
+
+行尾：`.css` / `.scss` 一律 LF，由根目录 [.gitattributes](../.gitattributes) 声明。
+不声明的话，`core.autocrlf=true` 的机器上每次 `build:css` 都会留下一个内容其实
+完全相同的假 `M`，还会把 `git pull` 挡下来（详见该文件注释）。
 
 ## 2. 设计令牌（CSS 变量）
 
@@ -577,7 +585,9 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
 
 1. 主题色一律用 `_root.scss` 的 CSS 变量，别写死色值。
 2. 圆角 / 间距 / 阴影复用 2.4 节的令牌，别自造一套。
-3. 改 SCSS 后跑 `npm run build:css`，提交时**带上编译产物**（`compiled/flask.css`）——线上跑的就是它。
+3. 改 SCSS 后跑 `npm run build:css`，提交时**带上编译产物**（`compiled/flask.css`）。
+   `npm run build` 会在 `next build` 前自动重编一遍，但 dev / e2e / 守卫读的是库里这一份，
+   **不能因此省掉提交**。
 4. 图标优先复用 `public/static/img/icons/` 现成 SVG + mask 方案，别引 icon 库。
 5. 组件优先复用现有 `.button-*`、`.card`、`.form-control` 等类名，少写一次性样式。
    **按钮与输入框一律引 mixin / 既有类，不要另抄一份**：按钮是
