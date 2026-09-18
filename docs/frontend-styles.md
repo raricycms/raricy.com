@@ -688,6 +688,14 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
 - `.filter-btn`（`pages/_fish.scss` vs `pages/_notifications.scss`）：**后者一个属性都没
   生效**（`main.scss` 里 notifications 先于 fish 加载，fish 全胜），而通知页压根没有
   筛选栏 —— 唯一消费方是 `fish/transactions`。改 `_notifications.scss` 那份是静默无效的。
+- `.notification-card`（`pages/_notifications.scss` 的 `.content-wrapper .notification-card`
+  vs `pages/admin/_notifications.scss` 的裸 `.notification-card`）：**同名不同义** ——
+  前者是通知中心的一条通知（30px 圆角、无边框、12px 下距），后者是 `/admin/broadcast`
+  的整块面板（32px 内距、1px 描边、10px 圆角），**唯一消费方是 `admin/broadcast/page.tsx`**。
+  通知中心那份靠 0-2-0 压住了它的内距 / 圆角 / 底色，**唯独 `margin-top: 30px` 没人接**
+  ——卡片之间于是隔 30px 而不是 12px（相邻外边距折叠取大者，那条 `margin-bottom` 根本不
+  参与）。通知中心用 `margin-top: 0` 抵消，**不是冗余，别删**。「按博客卡片风格重做」
+  （`276848d`）时把原有的这一行弄丢了；手机端的密度同样被它拦着，一并核过。
 
 - `pages/blog/_menu.scss` 的 `.current-category .badge` 是**死规则**：唯一渲染
   `.current-category` 的 `src/app/components/AdminArticlesManager.tsx` 里没有 `.badge`
