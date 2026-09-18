@@ -31,6 +31,13 @@ ok() { PASS=$((PASS+1)); echo "  ✓ $1"; }
 ko() { FAIL=$((FAIL+1)); echo "  ✗ $1"; echo "    $2"; }
 section() { echo ""; echo "── $1 ──"; }
 
+# 表单值里的 URL 要做百分号编码：只保留 RFC 3986 的 unreserved（A-Za-z0-9-_.~），
+# 其余一律 %XX（空格编成 %20，不是 +）。用 node 实现 —— 本机不一定有可用的 python3
+# （store 占位符会静默输出空串），而 node 必然在：下面 mint 授权码已依赖 `npx tsx`。
+urlencode() {
+  printf %s "$1" | node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>process.stdout.write(encodeURIComponent(s).replace(/[!\x27()*]/g,m=>"%"+m.charCodeAt(0).toString(16).toUpperCase())))'
+}
+
 # ── 0. 准备：登录拿 cookie ─────────────────────────────────────────────────
 section "0. 登录拿 session cookie"
 COOKIES=$(mktemp)
@@ -74,7 +81,7 @@ rm -f /tmp/oauth-mint.mts
 # ── 2. /api/oauth/token: code → access_token ─────────────────────────────
 section "2. POST /api/oauth/token"
 TOK_RES=$(curl -sS -u "$CID:$CSECRET" -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "grant_type=authorization_code&code=$CODE&redirect_uri=$(printf %s "$REDIRECT_URI" | python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.stdin.read(),safe=""))')" \
+  -d "grant_type=authorization_code&code=$CODE&redirect_uri=$(urlencode "$REDIRECT_URI")" \
   "$BASE/api/oauth/token")
 AT=$(echo "$TOK_RES" | node -e "let s='';process.stdin.on('data',c=>s+=c).on('end',()=>{try{console.log(JSON.parse(s).access_token||'')}catch{console.log('')}})")
 [ -n "$AT" ] && ok "拿到 access_token (长度 ${#AT})" || ko "exchange 失败" "$TOK_RES"
@@ -91,7 +98,7 @@ echo "$UI_RES" | grep -q "\"sub\":\"$TEST_USER\\|\"username\":\"$TEST_USER" \
 section "4. 同一 code 第二次 exchange (单次使用)"
 SECOND=$(curl -sS -o /dev/null -w "%{http_code}" -u "$CID:$CSECRET" \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "grant_type=authorization_code&code=$CODE&redirect_uri=$(printf %s "$REDIRECT_URI" | python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.stdin.read(),safe=""))')" \
+  -d "grant_type=authorization_code&code=$CODE&redirect_uri=$(urlencode "$REDIRECT_URI")" \
   "$BASE/api/oauth/token")
 [ "$SECOND" = "400" ] && ok "返回 400" || ko "应 400 实 $SECOND" ""
 
@@ -131,7 +138,7 @@ MISMATCH=$(curl -sS -o /dev/null -w "%{http_code}" -u "$CID:$CSECRET" \
 section "6. 错 client_secret"
 WRONG=$(curl -sS -o /dev/null -w "%{http_code}" -u "$CID:wrongsecret" \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "grant_type=authorization_code&code=$CODE2&redirect_uri=$(printf %s "$REDIRECT_URI" | python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.stdin.read(),safe=""))')" \
+  -d "grant_type=authorization_code&code=$CODE2&redirect_uri=$(urlencode "$REDIRECT_URI")" \
   "$BASE/api/oauth/token")
 [ "$WRONG" = "401" ] && ok "返回 401" || ko "应 401 实 $WRONG" ""
 
@@ -166,7 +173,7 @@ section "11. 跨域 Origin 调 /api/oauth/token (CSRF 豁免)"
 CROSS_RES=$(curl -sS -o /dev/null -w "%{http_code}" -u "$CID:$CSECRET" \
   -H "Origin: https://external.example.com" \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "grant_type=authorization_code&code=$CODE2&redirect_uri=$(printf %s "$REDIRECT_URI" | python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.stdin.read(),safe=""))')" \
+  -d "grant_type=authorization_code&code=$CODE2&redirect_uri=$(urlencode "$REDIRECT_URI")" \
   "$BASE/api/oauth/token")
 # step 5 的错 redirect_uri 不再消费 code（绑定校验已进 updateMany 的 where），
 # 故此处用正确回调应正常兑换 → 200。无论 200/400，只要不是 403 就说明 CSRF 豁免生效。
