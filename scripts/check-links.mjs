@@ -223,6 +223,10 @@ for (const f of srcFiles) {
   // 本检查曾长期指向它们，于是 cssText 恒为空，**每一个** icon-* 都被报成「无定义」，
   // 24 条假阳性把真问题（下面那条断链）淹了。tests/unit/css-classes.test.ts 是同一条
   // 检查的孪生实现，读的是同一个编译产物 —— 改这里记得对照那边。
+  //
+  // 另有一条**不**在这里孪生的检查：JS 注入的类名（base.js 的 `.filepick` 一族 ——
+  // 那套 DOM 在 .tsx 里一个都搜不到，图标这条正则扫不到它），实现见
+  // tests/unit/css-js-classes.test.ts。加新检查前先想清楚放哪边，别各写一份。
   const cssText = ['src/styles-scss/compiled/flask.css']
     .map((f) => {
       const p = path.join(ROOT, f);
