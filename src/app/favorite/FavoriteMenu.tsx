@@ -209,9 +209,12 @@ export default function FavoriteMenu({ favorites }: { favorites: Row[] }) {
                     {row.isPublic ? '公开' : '私密'}
                   </span>
                   <span>{row.itemCount} 篇</span>
-                  {/* 只有公开收藏夹有 6 位句柄；私密的那格**什么都不渲染** */}
+                  {/* 只有公开收藏夹有 6 位句柄；私密的那格**什么都不渲染**。
+                      写的是 JSX 文本 + 表达式，别把模板字符串的 `${}` 搬进来 ——
+                      写成 `[@${row.publicId}]` 会原样渲染出「[@$123456]」，
+                      而那个句柄是要拿去粘进 `[@六位ID]` 引用的。 */}
                   {row.isPublic && row.publicId && (
-                    <span className="favorite-handle">[@${row.publicId}]</span>
+                    <span className="favorite-handle">[@{row.publicId}]</span>
                   )}
                 </div>
               </div>

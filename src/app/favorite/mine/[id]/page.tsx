@@ -38,9 +38,11 @@ export default async function FavoriteMineDetailPage({
       <div className="favorite-detail__meta">
         <span>共 {fav.items.length} 篇</span>
         {/* 6 位句柄只对公开收藏夹出现 —— 私密收藏夹没有它，这格就整块不渲染。
-            ⚠️ 不要在这里补一句「私密收藏夹 ID 不可见」之类的占位文案。 */}
+            ⚠️ 不要在这里补一句「私密收藏夹 ID 不可见」之类的占位文案。
+            这是 JSX 文本 + 表达式，不是模板字符串：写成 `[@${fav.publicId}]`
+            会连那个 `$` 一起渲染出来。 */}
         {fav.isPublic && fav.publicId && (
-          <span className="favorite-handle">[@${fav.publicId}]</span>
+          <span className="favorite-handle">[@{fav.publicId}]</span>
         )}
         <span>创建者：{fav.authorName}</span>
       </div>
