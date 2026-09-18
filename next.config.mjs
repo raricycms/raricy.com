@@ -1,3 +1,5 @@
+import path from 'node:path';
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -41,9 +43,13 @@ const nextConfig = {
   // /api/images/[id]/raw 读 instance/images），前端也全部改用 /api/* 路径，
   // 因此不再需要把 /auth/avatar、/image 代理回 Flask —— web-next 已完全独立于 Flask。
   // SCSS 来自 Flask 项目的 app/static/scss 整树拷贝（src/styles-scss/）。
-  // 运行 npm run build:css（一次性）或 dev:css（监听）把 SCSS 编译到
-  // src/styles-scss/compiled/flask.css，由 src/app/layout.tsx 全局导入。
-  sassOptions: { includePaths: ['./src/styles-scss'] },
+  // src/app/layout.tsx 直接 import 入口 main.scss，由 Next 自己编译
+  // （dev 走 HMR，build 走下面的 sassOptions），没有任何手工编译步骤，也不入库产物。
+  //
+  // includePaths 用绝对路径：相对的会被 sass-loader 按 process.cwd() 解析，是 cwd 敏感的。
+  // 注意它**目前用不到** —— 71 个 SCSS 文件全是显式相对 `@use`（Sass 解析时先相对当前
+  // 文件找），实测带不带它输出完全一致。留着当保险，别在构建报找不到样式表时先怀疑它。
+  sassOptions: { includePaths: [path.join(import.meta.dirname, 'src/styles-scss')] },
 };
 
 export default nextConfig;

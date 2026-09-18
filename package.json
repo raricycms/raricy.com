@@ -8,7 +8,7 @@
   "description": "raricy.com (聪明山) — Next.js + Prisma + SQLite. 单进程部署，自有 instance/ 数据目录。",
   "scripts": {
     "dev": "next dev -p 3000",
-    "build": "prisma generate && npm run build:css && next build",
+    "build": "prisma generate && next build",
     "start": "next start -p 3000",
     "lint": "next lint",
     "prisma:pull": "prisma db pull",
@@ -31,8 +31,7 @@
     "smoke": "tsx scripts/smoke.mjs",
     "check:secrets": "node scripts/check-secrets.mjs",
     "instance:check": "node scripts/check-instance.mjs",
-    "build:css": "sass src/styles-scss/main.scss:src/styles-scss/compiled/flask.css --style=expanded --load-path=src/styles-scss --no-source-map",
-    "dev:css": "sass src/styles-scss/main.scss:src/styles-scss/compiled/flask.css --style=expanded --load-path=src/styles-scss --watch",
+    "css:probe": "sass src/styles-scss/main.scss:src/styles-scss/compiled/flask.css --style=expanded --load-path=src/styles-scss --no-source-map",
     "prepare:vditor": "node scripts/copy-vditor-assets.mjs",
     "vditor:check": "node scripts/copy-vditor-assets.mjs --check",
     "prepare:mathjax": "node scripts/copy-mathjax-fonts.mjs",
