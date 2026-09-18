@@ -33,9 +33,15 @@ src/styles-scss/
 用 `<link>` 直接引产物路径。要跑探针先 `npm run css:probe`；日常开发与部署都用不到它。
 名字里刻意不带 `build:` —— 它不在构建链上，别让名字把人骗了。
 
-三条守卫（`css-classes` / `css-js-classes` / `check:links` §4）读的 CSS 由
-[scripts/compiled-css.mjs](../scripts/compiled-css.mjs) **现编**入口 SCSS —— 不读任何落盘产物，
-也**不能**改成扫 SCSS 源（`&--has` 这类嵌套在源里没有展开后的字面量，扫源会假阳性）。
+四条守卫（`css-classes` / `css-js-classes` / `css-tsx-classes` / `check:links` §4）读的
+CSS 由 [scripts/compiled-css.mjs](../scripts/compiled-css.mjs) **现编**入口 SCSS —— 不读任何
+落盘产物，也**不能**改成扫 SCSS 源（`&--has` 这类嵌套在源里没有展开后的字面量，
+扫源会假阳性）。
+
+其中 `css-tsx-classes`（`tests/unit/css-tsx-classes.test.ts`）是**无样式类名的权威名单**：
+.tsx/.ts 里写了、CSS 里没有的类名，要么补样式，要么在那份 `UNSTYLED` / `CONSUMED`
+里登记一行并写清理由（`.clipboard-markdown-content` 这类包装就在那儿）。下面 §12
+再提到「某个类刻意没有样式」时，以那份名单为准，别在这里另抄一份。
 
 行尾：`.css` / `.scss` 一律 LF，由根目录 [.gitattributes](../.gitattributes) 声明。
 
@@ -718,6 +724,44 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
   `rgba(37,99,235,…)`，暗色下与按钮本体（`#23A5FF`）不同色 —— 只在 1s 的脉冲里可见，
   且站内没有「品牌色 + 指定透明度」的令牌可用，暂留。
 
+**2026-09-18 已修（第五轮：样式写了、但没写到能命中的地方）**：
+
+> 判据：**类名在 .tsx 里用了，编译产物里没有定义**。与第四轮的区别是这个筛选不看
+> 旧 `rebuild.css` 有没有 —— 这几处**从来没在任何一个文件里有过定义**，
+> 所以「旧文件里有过的才补」那轮把它们全漏在了名单外。
+>
+> 起因是第四轮之后重新扫了一遍（这次连 `.tsx` 里带 `${}` 的模板串一起解析）。
+> 扫出的缺口分两种，第二种更隐蔽：**规则写了，但选择器谁也命中不了**。
+>
+> 这一轮起由 `tests/unit/css-tsx-classes.test.ts` 盯着（见 §1）。
+
+- **收银台 `/fish/pay` 的四个类写在 JSX 里、CSS 从来没有过**：`.pay-quick` /
+  `.pay-quick__btn`（快捷金额那排）落回浏览器默认按钮 —— 灰底、方角、Arial 13px，
+  且三颗按钮彼此零间隙；`.pay-amount__input` 少了金额档，同一个 `PayForm` 换个 variant
+  金额就从 24px 粗体掉成 14.4px 常规体；`.pay-amount__error` 与正文同色，读不出是报错。
+  修法是**补上它们的 `market-*` 孪生类**（`market-quick` / `market-quick__btn` /
+  `market-amount__input` / `market-field__hint--error`）—— `_fish-pay.scss` 头部
+  本来就写着「卡片/字段/按钮全部复用 `_fish-market.scss` 的类」，这几个类名漏了而已。
+  只有 `.pay-quick__hint` 在市场上没有对应物，写在 `_fish-pay.scss`。
+
+- **剪贴板编辑器：`.clipboard-form__editor` / `__fallback` 的嵌套层级写错**
+  （`_clipboard.scss` 里落进了 `&__group` 内部）→ 编译成 `.clipboard-form__group__editor`
+  这个 **DOM 里不存在的选择器**。规则一直在，只是没人能命中它：`#clipboard-editor`
+  于是吃 Vditor 自带的 `1px 描边 + 3px 圆角`，既没有页面底色也没有聚焦光晕
+  （违反 §4.2 的三条）。b81a201 把外观从行内 style 挪进 SCSS 时就是这么错的。
+  ⚠️ 修的时候带上 `#clipboard-editor`：`.vditor` 与它同为 0-1-0，而
+  `vditor/dist/index.css` 是**页面段的独立 chunk**（主 SCSS 挂在 layout 段、先加载），
+  等权重下后到的赢 —— 不带 id 会被盖掉。
+
+- **`.chat-search-item__time` 漏了 `white-space: nowrap`**：`fmtTime` 输出
+  「09-18 19:00」中间那个空格是折行点，作者名一长，flex 就把它压到 min-content
+  并在空格处断成两行（同一次提交里 `__head` / `__author` / `__text` 都写了，漏了这一条）。
+
+- **两个死类名删掉了**：`.article-checkbox`（`AdminArticlesManager`）与
+  `.toggle-featured`（`AdminBlogActions`）—— 它们一直以「JS 钩子类」的名义被引用在
+  守卫的注释里，作为「.tsx 类名不查」的理由，但**全仓没有任何 JS 消费它们**
+  （复选框与按钮都是 React 状态驱动的）。这不是「刻意无样式」，是死代码。
+
 **2026-09-18 已修（第四轮：SCSS 拆分漏搬的那一整块）**：
 
 > 判据：**类名在代码里还在用、编译产物里没有定义、而旧 `rebuild.css` 里有定义**。
@@ -743,6 +787,12 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
     `.comment-item` 的细线则恢复了（纯纵向，不影响溢出）。
   - `.modal-dialog-centered` —— 现在的 `.modal.is-open` 已是 flex 居中、`.modal-dialog`
     还有 `margin: auto`；补上它反而把对话框变成 flex 容器、压过现有居中。
+- **「用了但没有样式」里有一批是正确的**（纯语义包装 / 占位修饰类 / 命名钩子）——
+  完整名单连同逐条理由在 `tests/unit/css-tsx-classes.test.ts` 的 `UNSTYLED` / `CONSUMED`，
+  **这里不重抄**：`.chat-msg__reply-text`（属性全部继承自父级 button）、
+  `.fish-card__body`、`.fish-card__link-label`、`.home-grid-item`、
+  `.clipboard-markdown-content`、`.rc-medal`、`.nf__btn--ghost` 与两个
+  `*__btn--secondary`（空规则占位）。下次扫描报出这些不必再查一遍。
 - **`.form-hint` / `.file-hint` 看着像 `.form-text` 的重复，其实不是**：它们所在的
   元素挂的是 `.text-muted`（只给颜色），删掉就只剩一行没有字号/行高/上边距的裸字。
   判断「某类是不是纯遗留」要连**同一个元素上还挂了什么**一起看，不能只比规则内容。
