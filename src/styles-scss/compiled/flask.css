@@ -5909,6 +5909,15 @@ body {
   margin-bottom: 12px;
   box-shadow: none;
   border: none;
+  /* ⚠️ `margin-top: 0` 不是冗余 —— 它在抵消**另一个页面的规则**：
+     `pages/admin/_notifications.scss` 里有一条裸的 `.notification-card`
+     （/admin/broadcast 的面板），本文件先于它加载、两条同为 0-1-0 时它全胜；
+     本规则是 0-2-0，把它写的 padding / radius / border / 底色都压住了，
+     唯独 margin-top: 30px 没人接 —— 于是卡片之间是 30px 而不是 12px
+     （相邻外边距折叠取大者，margin-bottom 那条根本不参与）。
+     「按博客卡片风格重做」那次重写时把原有的 margin-top: 0 弄丢了（不是有意去掉），
+     这行是补回来的。改这里请连带看 ≤768px 那一档：手机端的密度同样被它拦着。 */
+  margin-top: 0;
   transition: box-shadow 0.2s ease;
   /* 卡片 hover：只提阴影，不位移 —— 与博客首页 .blog-item 一致 */
 }
@@ -6018,6 +6027,34 @@ body {
   text-decoration: underline;
 }
 
+/* ── 手机端（≤768px）：与博客目录同一套密度 ────────────────────────────────────
+   卡片数值逐字对齐 pages/blog/_menu.scss 的 `@media (max-width: 768px)` 里那份
+   .blog-item（14px 16px 内距 / 18px 圆角 / 10px 下距）—— 两页在手机上前翻后翻，
+   卡片应该是同一种卡片。
+
+   头部在桌面端是「一行塞四样」：动作 + 未读角标 + 时间来源 + 两个按钮。桌面够宽，
+   窄屏则把 `flex: 1` 的时间来源挤成**一字一行**的竖排 —— 未读角标与两个按钮同时在
+   场时，整卡实测 266px 高（.notification-header 自己就占 141px），比同屏的博客卡
+   还高出一截。这里改成确定性的两行：第一行动作 + 角标 + 操作（靠右），
+   第二行时间来源独占整行。 */
+@media (max-width: 768px) {
+  .content-wrapper .notification-card {
+    padding: 14px 16px;
+    border-radius: 18px;
+    margin-bottom: 10px;
+  }
+  .notification-header {
+    gap: 0.35rem 0.6rem; /* 行距压紧、列距不动 */
+  }
+  /* 两行的关键在 `order`：把时间来源排到 .notification-actions **之后**，
+     再用 flex-basis: 100% 撑满一行（撑满即保证它起新行）。少了 order，它会先
+     在末尾换行、两个按钮被顶进第三行 —— 那是三行，反而更松。
+     顺带：不再需要「挤到多窄都要塞下」，一字一行的情况不会再出现。 */
+  .notification-meta {
+    order: 1;
+    flex: 1 1 100%;
+  }
+}
 .empty-state {
   text-align: center;
   padding: 3rem 1rem;
