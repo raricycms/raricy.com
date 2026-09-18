@@ -21,8 +21,17 @@ import { prisma } from '@/lib/db';
 // （讨论「引用博客」弹窗用 20 条一页）。
 // search_fields：逗号分隔的搜索字段，可选值见 ALL_SEARCH_FIELDS。
 //   **缺省 = 标题 / 简介 / 作者名**（与改动前逐字一致；引用弹窗走的就是这条）。
-//   含 content（正文）时要求 core+ 登录，并计入 RULES.blogSearchMinute。
+//   含 content（正文）时另计入 RULES.blogSearchMinute（见下）。
+//
+// 【鉴权】需 core+ 登录，与 `/blog` 页面同档（见 `docs/architecture.md` §8
+// 「档位阶梯：页面与接口必须同档，每层都自己判」）。
+// 这条此前完全免认证：匿名拉一次就能拿到全站文章的标题、简介、作者名、栏目与计数 ——
+// 与 `/api/blogs/:id` 合起来等于把整个博客区敞开。未登录 → 401；非 core → 403。
 export async function GET(req: Request) {
+  const user = await getCurrentUser();
+  if (!user) return apiErr(401, '请先登录');
+  if (!isCoreUser(user)) return apiErr(403, '需要核心用户权限');
+
   const url = new URL(req.url);
   const perPageRaw = url.searchParams.get('per_page');
   const parsedPerPage = Number.parseInt(perPageRaw ?? '', 10);
@@ -49,13 +58,10 @@ export async function GET(req: Request) {
   }
 
   // 正文是重活：一次请求 = count + findMany 两次全表 LIKE 扫描（正文约 48.6MB）。
-  // 所以只对 core+ 开放，且与 /blog 页面**共用** blog:search:{userId} 这条配额 ——
-  // 同一笔开销就该共用同一个预算，否则两条路各 30 次/分等于额度翻倍。
-  // 匿名 / 非 core 要正文一律**明确报错**：静默忽略会让调用方以为搜了正文。
+  // 所以与 /blog 页面**共用** blog:search:{userId} 这条配额 —— 同一笔开销就该共用
+  // 同一个预算，否则两条路各 30 次/分等于额度翻倍。
+  // 档位不在这里判：本路由整体已在上方收成 core+，此处只管**多久能来一次**。
   if (fields.includes('content')) {
-    const user = await getCurrentUser();
-    if (!user) return apiErr(401, '请先登录');
-    if (!isCoreUser(user)) return apiErr(403, '需要核心用户权限');
     const gate = rateLimit(`blog:search:${user.id}`, RULES.blogSearchMinute);
     if (!gate.allowed) return apiErr(429, '搜索太频繁了，请稍后再试');
   }

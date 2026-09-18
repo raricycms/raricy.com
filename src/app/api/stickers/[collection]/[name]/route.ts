@@ -16,10 +16,14 @@ function notFound(): Response {
 
 // GET /api/stickers/:collection/:name — 从磁盘串流表情图片字节
 //
-// 【刻意不做登录校验】博客对未登录读者是公开的，公开评论里嵌的表情必须也取得到
-// —— 与 /api/images/[id]/raw 只对**私有图**设卡是同一个道理。这里没有「私有表情」
-// 这个概念：隐藏合集（info.json 的 ignore）由 resolveSticker 拦成 404，
-// 那是「不出现在面板里」，不是访问控制。
+// 【刻意不做登录校验】表情素材是**站点素材**，不是用户数据：它不属于任何账号、
+// 也不随会话变化，所以这条路由压根没有「档位」可言 —— 与 /api/images/[id]/raw 只对
+// **私有图**设卡是同一个道理（那里有档位，因为图有作者、有 isPublic；这里两样都没有）。
+// 这里也没有「私有表情」这个概念：隐藏合集（info.json 的 ignore）由 resolveSticker
+// 拦成 404，那是「不出现在面板里」，不是访问控制。
+//
+// ⚠️ 别把这条读成「博客对未登录读者公开」的先例 —— 恰恰相反：博客读路径是 core+ 档。
+// 全站哪些读口是有意匿名的，以 tests/unit/anonymous-read-guard.test.ts 的台账为准。
 export async function GET(
   _req: Request,
   ctx: { params: Promise<{ collection: string; name: string }> }

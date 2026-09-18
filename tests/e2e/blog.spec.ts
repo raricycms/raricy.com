@@ -82,19 +82,23 @@ test('搜索正文：正文独有词能搜到，并显示命中处的片段', as
 /**
  * 【防的回归】/api/blogs 的默认搜索范围被放宽成 'all'。
  *
- * 该接口完全匿名，且被「引用博客」弹窗按防抖实时消费 —— 一旦放宽，任何访客
- * 每敲一个键就是一次约 48.6MB 的全站正文扫描，而且线上不会报任何错，只是悄悄变慢。
+ * 该接口被「引用博客」弹窗按防抖实时消费 —— 一旦放宽，每敲一个键就是一次约 48.6MB
+ * 的全站正文扫描，而且线上不会报任何错，只是悄悄变慢。
+ * （收成 core+ 只缩小了能触发它的人群，没有消除这笔开销 —— core+ 本来就是主要用户。）
  */
-test('/api/blogs 默认仍不搜正文，且匿名要正文会被明确拒绝', async ({ page, request }) => {
+test('/api/blogs 默认不搜正文；core+ 之外连接口都进不去', async ({ page, request }) => {
+  // page.request 带上 beforeEach 里登录的 core 会话
   const res = await page.request.get(`/api/blogs?search=${BLOG_BODY_MARKER}`);
   expect(res.status()).toBe(200);
   const body = (await res.json()) as { blogs: unknown[] };
-  expect(body.blogs, '默认字段集不含正文 = 全表扫描不开放给任何访客').toHaveLength(0);
+  expect(body.blogs, '默认字段集不含正文 = 全表扫描不因缺参数而开放').toHaveLength(0);
 
-  // 显式点名要正文：core+ 之外一律明确报错。
+  // 匿名：整条路由已是 core+ 档，在**参数解析之前**就挡掉。
   // `request` 是独立的 APIRequestContext（不带 page 的会话 cookie）。
   const anon = await request.get('/api/blogs?search=x&search_fields=content');
-  expect(anon.status(), '静默忽略会让调用方以为搜了正文').toBe(401);
+  expect(anon.status(), '闸门在参数解析之前，否则 400 会变成白名单探针').toBe(401);
+  const anonPlain = await request.get('/api/blogs?search=x');
+  expect(anonPlain.status(), '不只是正文那条路 —— 整条路由都收成 core+').toBe(401);
 });
 
 /**
