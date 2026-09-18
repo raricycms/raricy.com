@@ -248,7 +248,7 @@ async function BlogListSection({
 
       {result.blogs.length === 0 && (
         <div className="no-blogs">
-          <i className="bi bi-journal-x" aria-hidden="true"></i>
+          <i className="icon icon-journal-text" aria-hidden="true"></i>
           <p>暂无博客文章</p>
         </div>
       )}

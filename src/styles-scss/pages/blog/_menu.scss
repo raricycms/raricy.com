@@ -539,8 +539,14 @@ a {
     color: var(--color-text-secondary);
 }
 
-.no-blogs i {
-    font-size: 3rem;
+// 空状态图标走站内 mask-image 那套（.icon .icon-*），底色取 currentColor
+// → 自动继承上面那条 --color-text-secondary。
+// ⚠️ 尺寸必须写 width/height：.icon 是固定 1.2rem，**不随 font-size 缩放**
+// （这行原先写的是 font-size: 3rem —— 那是给 Bootstrap Icons 的字体图标用的，
+//  而站内从没加载过那套字体，所以那个 <i> 一直是个 3rem 的空白）。
+.no-blogs .icon {
+    width: 3rem;
+    height: 3rem;
     margin-bottom: 16px;
     opacity: 0.5;
 }

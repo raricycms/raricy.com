@@ -1334,6 +1334,12 @@
   font-weight: 600;
   color: var(--color-brand-primary);
 }
+// fmtTime 输出「09-18 19:00」，中间那个空格是**可折行点**：作者名一长，flex 就把
+// 这一格压到 min-content，时间戳在这里断成两行（baseline 对齐随即失效，条目也被撑高）。
+// 同族的 __text 与聊天气泡里的 .chat-msg__time 都是 nowrap，这里补上同一档。
+.chat-search-item__time {
+  white-space: nowrap;
+}
 .chat-search-item__text {
   font-size: 0.88rem;
   white-space: nowrap;
