@@ -216,7 +216,7 @@ export default function PayForm({
           <div className="market-amount pay-amount">
             <input
               id="pay-amount"
-              className="form-control pay-amount__input"
+              className="form-control market-amount__input pay-amount__input"
               type="text"
               inputMode="decimal"
               autoComplete="off"
@@ -227,12 +227,12 @@ export default function PayForm({
             />
             <span className="market-amount__unit">小鱼干</span>
           </div>
-          <div className="pay-quick">
+          <div className="market-quick pay-quick">
             {QUICK.map((v) => (
               <button
                 type="button"
                 key={v}
-                className="pay-quick__btn"
+                className="market-quick__btn pay-quick__btn"
                 onClick={() => setAmountText(String(v))}
                 disabled={busy}
               >
@@ -241,7 +241,11 @@ export default function PayForm({
             ))}
             <span className="pay-quick__hint">快捷金额</span>
           </div>
-          {amountError && <p className="pay-amount__error">{amountError}</p>}
+          {amountError && (
+            <p className="market-field__hint market-field__hint--error pay-amount__error">
+              {amountError}
+            </p>
+          )}
         </div>
       ) : (
         <div className="market-field">

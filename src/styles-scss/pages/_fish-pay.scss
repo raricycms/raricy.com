@@ -54,6 +54,14 @@
   font-variant-numeric: tabular-nums;
 }
 
+// 「快捷金额」小字标签。整排（.market-quick）复用鱼干市场那三颗胶囊，
+// 但市场那一排只有按钮、没有这枚标签，故这一条是收银台独有的。
+// 不写 margin-left —— 行内的 gap（来自 .market-quick）已经把间距给了。
+.pay-quick__hint {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+}
+
 .pay-note {
   margin: 0;
   padding: $space-3 $space-4;
