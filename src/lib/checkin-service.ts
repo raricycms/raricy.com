@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// checkin-service.ts — 每日签到业务逻辑（对齐 Flask app/service/checkin.py）
+// checkin-service.ts — 每日签到业务逻辑
 //
-// 【两步式：签到 → 翻牌定命】（Flask 原始设计，本文件忠实复原）
+// 【两步式：签到 → 翻牌定命】（两步是刻意的，别合并成一步）
 //   1. checkIn()：只建当日记录 —— fortune_value 留 NULL、fortune_pool 洗好落库。
 //      不发鱼、不累加 totalFortune、不碰账户服务。成功即「已签到、待翻牌」。
 //   2. claimFortune()：用户点选一张牌（chosenIndex 0-4）—— 服务端从**签到当时
@@ -15,14 +15,14 @@
 //
 // 【发鱼干的 fail-closed 机制】详见 src/lib/fish-sync.ts：本地事务先提交 + 账本
 //   登记 pending → 提交后调远端 → 失败走补偿事务。**补偿把 fortune_value 复原为
-//   NULL（行保留）**，用户保持「已签到未翻牌」可重选牌 —— 对齐 Flask claim_fortune
-//   的 rollback 语义（rollback 后同样回到待翻牌态）。绝不可删行：删行会释放唯一
+//   NULL（行保留）**，用户保持「已签到未翻牌」可重选牌 —— 补偿后必须回到待翻牌态
+//   （用户看不出刚才失败过，与从没翻过牌一样）。绝不可删行：删行会释放唯一
 //   约束，让用户误以为要重新签到，且当天会重复占天数。
 //
-// 【幂等键】checkin-{userId}-{date}：claim 是唯一发钱点，键与旧版完全一致，
+// 【幂等键】checkin-{userId}-{date}：claim 是唯一发钱点，键沿用旧的拼接格式，
 //   重复提交/重放不会重复发放。
 //
-// 【已知语义副作用（Flask 同款，非 bug）】跨 UTC+8 午夜窗口：用户在 23:59 签到、
+// 【已知语义副作用，非 bug】跨 UTC+8 午夜窗口：用户在 23:59 签到、
 //   00:00 后才点牌 → claim 按「今天」查不到记录 → 400「今天还没有签到」，
 //   那张牌作废。一步式没有这个窗口 —— 这是回到两步式的固有代价。
 //
@@ -63,7 +63,7 @@ export function fortuneLabel(value: number | null | undefined): string {
 }
 
 /**
- * UTC+8 当天的 YYYY-MM-DD（对齐 Flask _today_utc8）。
+ * UTC+8 当天的 YYYY-MM-DD。
  * 直接委托 db-time 的 todayStr()：同一个「本站时钟」只有一处实现，别再手写 Date.now()+8h。
  */
 export function todayUtc8(): string {
@@ -105,7 +105,7 @@ export interface CheckinStatus {
   driedFish: number;
 }
 
-/** 今日签到状态 + 累计天数 + 余额（对齐 get_today_status）。 */
+/** 今日签到状态 + 累计天数 + 余额。 */
 export async function getTodayStatus(userId: string): Promise<CheckinStatus> {
   const today = todayUtc8();
 
@@ -148,7 +148,7 @@ export async function checkIn(userId: string): Promise<CheckinResult> {
   const checkinDate = dateAtDay(today);
   const pool = shuffledPool();
 
-  // 生产漏配置守卫（比 Flask 严的运营防线，fail-closed 哲学）：
+  // 生产漏配置守卫（fail-closed 运营防线）：
   // 本步虽无远端调用，但若 prod 漏配 ACCOUNT_SERVICE，签到行会堆积成永远无法
   // claim 的死记录 —— 直接拒绝比放行更安全。dev 下静默放行（无 warn：
   // 本步没有跳过任何远端操作，真正的发钱点 claimFortune 才会告警）。
@@ -158,7 +158,7 @@ export async function checkIn(userId: string): Promise<CheckinResult> {
 
   try {
     // createdAt 必须显式写：schema 里是 DateTime? 且无 @default(now())，
-    // 而 Flask 模型是 default=datetime.now（真实库 2170 行全部有值）。
+    // 而真实库 2170 行全部有值（历史上由默认值兜住）。
     // 漏写会让排行榜的次级排序键（max(created_at) asc）失效。
     await prisma.dailyCheckIn.create({
       data: { userId, checkinDate, fortunePool: pool, createdAt: nowForDb() },
@@ -217,7 +217,7 @@ async function idempotentResult(userId: string, record: { fortuneValue: number |
  * 服务端从池中取 pool[chosenIndex] 赋值给 fortune_value，并发鱼干 + 累加
  * totalFortune + 远端账户同步。翻牌才是命运揭晓的一刻 —— 用户的选择决定结果。
  *
- * 判序对齐 Flask claim_fortune（顺序不能乱）：
+ * 判序（顺序不能乱，每一步都在拦一类具体错误）：
  *   ① 无当天记录 → 「今天还没有签到」；
  *   ② fortune_value 已定 → 幂等成功返回（已在①之后、index 校验之前 ——
  *      已翻过牌的用户带非法 index 再来，返回的是现值而非「无效的选择」）；
@@ -225,7 +225,7 @@ async function idempotentResult(userId: string, record: { fortuneValue: number |
  *   ④ index 非整数/越界 → 「无效的选择」（绝不静默随机开盲盒：用户想选某张牌
  *      却拿到随机牌，且翻牌只能一次、无法重来）；
  *   ⑤ 原子 UPDATE … WHERE fortune_value IS NULL —— 并发翻牌只赢一个，
- *      rowcount==0 的输家幂等返回（对齐 Flask 的 atomic update，防 TOCTOU 双发鱼）。
+ *      rowcount==0 的输家幂等返回（原子认领，防 TOCTOU 双发鱼）。
  *
  * @param chosenIndex 必填，0-4。
  */
@@ -266,7 +266,7 @@ export async function claimFortune(userId: string, chosenIndex: number): Promise
     );
   }
 
-  // 远端幂等键（与旧版完全一致，重复提交不会重复发放）。
+  // 远端幂等键（拼接格式沿用旧版 —— 跨版本重放照样被远端去重，不会重复发放）。
   const entry: PendingSyncEntry = {
     idempotencyKey: `checkin-${userId}-${today}`,
     operation: 'checkin',
@@ -284,8 +284,8 @@ export async function claimFortune(userId: string, chosenIndex: number): Promise
     //   fortune_value 原子置值（NULL → value）+ totalFortune + 鱼干 + 流水 +
     //   账本行 pending 全部原子提交；远端同步在事务外进行（详见 fish-sync.ts）。
     const phase1 = await prisma.$transaction(async (tx) => {
-      // 原子认领：并发翻牌只有一个能拿到 count>0（对齐 Flask 的
-      // UPDATE … WHERE fortune_value IS NULL + rowcount 判断）
+      // 原子认领：并发翻牌只有一个能拿到 count>0
+      // （UPDATE … WHERE fortune_value IS NULL + rowcount 判断）
       const claim = await tx.dailyCheckIn.updateMany({
         where: { userId, checkinDate, fortuneValue: null },
         data: { fortuneValue },
@@ -331,7 +331,7 @@ export async function claimFortune(userId: string, chosenIndex: number): Promise
       } catch (syncErr) {
         // ── Phase 3：远端失败 → 补偿事务把 fortune_value 复原为 NULL ──────────
         //   【不变式】复原而非删行：用户保持「已签到未翻牌」，可重选牌再 claim；
-        //   删行会释放唯一约束 → 用户误以为要重新签到（与 Flask rollback 语义背离）。
+        //   删行会释放唯一约束 → 用户误以为要重新签到（背离补偿后应有的状态）。
         //   复原守卫用本笔的 value —— 若值已被并发改写（count==0），说明
         //   局面已被别笔 claim 接管，绝不能回退余额（会扣错钱），交给 reconcile。
         try {
@@ -376,8 +376,8 @@ export async function claimFortune(userId: string, chosenIndex: number): Promise
       }
     }
   } catch (e) {
-    // 远端失败：本地已被补偿（复原为待翻牌态，等价于 Flask 的 rollback），
-    // 向上抛让路由返回 503。对齐 Flask：`except AccountClientError: rollback; raise`
+    // 远端失败：本地已被补偿（复原为待翻牌态），向上抛让路由返回 503 ——
+    // 「补偿 + 抛错」必须成对，绝不能吞成翻牌成功。
     if (e instanceof AccountServiceError) {
       console.warn(
         `[checkin-service] 账户服务翻牌同步失败，fortune_value 已复原为 NULL，` +
@@ -385,7 +385,7 @@ export async function claimFortune(userId: string, chosenIndex: number): Promise
       );
       throw e;
     }
-    // 兜底：意外异常也按 fail-closed 处理，包装成 503（对齐 Flask 的兜底分支）。
+    // 兜底：意外异常也按 fail-closed 处理，包装成 503。
     // 注意别把它吞成「翻牌成功」——本地已复原，静默成功会让用户以为拿到运势了。
     console.error(`[checkin-service] 翻牌异常（user=${userId} date=${today}）:`, e);
     throw new AccountServiceError(`账户服务暂不可用，签到失败: ${String(e)}`, 503);
@@ -417,9 +417,9 @@ export interface LeaderboardEntry {
   value: number; // 累计签到天数
 }
 
-/** 签到天数榜（对齐 get_leaderboard）。 */
+/** 签到天数榜。 */
 export async function getCountLeaderboard(limit = 50): Promise<LeaderboardEntry[]> {
-  // 排序键对齐 Flask get_leaderboard：
+  // 排序键：
   //   ORDER BY count(id) DESC, max(created_at) ASC  —— 天数并列时「先签到的人」排前。
   // 只按 count 排的话，并列 + limit 截断时谁上榜由 SQLite 决定，没有确定性。
   const grouped = await prisma.dailyCheckIn.groupBy({

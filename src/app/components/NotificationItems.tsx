@@ -17,7 +17,7 @@ function toast(message: string, type: string) {
 }
 
 // 紧凑通知列表：初始数据由 Server Component 注入。标记已读 / 删除均走 API 后就地更新 UI，
-// 交互（确认框 + toast 反馈）对齐 Flask notifications.html。
+// 交互为确认框 + toast 反馈。
 export default function NotificationItems({ initial }: { initial: NotificationDTO[] }) {
   const [items, setItems] = useState<NotificationDTO[]>(initial);
   const [busy, setBusy] = useState<string | null>(null); // 正在处理的 id / 'all' / 'read'
@@ -113,7 +113,7 @@ export default function NotificationItems({ initial }: { initial: NotificationDT
     }
   }
 
-  // 对齐 Flask datetime_format('%m-%d %H:%M')：不含年份。
+  // 时间显示格式「%m-%d %H:%M」：不含年份。
   // 一律 getUTC* 读：库内时间戳是「UTC+8 墙上时间贴 Z」（见 src/lib/db-time.ts），
   // 本地 getter 会被浏览器时区再平移一次（UTC+8 下整体 +8 小时）。
   function fmt(ts: string | null): string {

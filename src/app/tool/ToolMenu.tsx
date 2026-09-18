@@ -1,6 +1,6 @@
 'use client';
 
-// 工具箱菜单 — 对齐 Flask `app/templates/tool/new_menu.html`。
+// 工具箱菜单。
 // 搜索、过滤、分组与卡片均走 tool-new-* BEM 类。
 import Link from 'next/link';
 import { useMemo, useState } from 'react';

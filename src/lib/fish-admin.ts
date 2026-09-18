@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// fish-admin.ts — 管理员手动发/扣小鱼干（对齐 Flask app/cli.py 的 `flask fish grant|deduct`）
+// fish-admin.ts — 管理员手动发/扣小鱼干（运维 CLI 与补偿批量的底层实现）
 //
 // ★★★ 写路径 fail-closed（CLAUDE.md「鱼干写路径」）★★★
 //   本地变更（余额 + 流水 + 账本行）先在一个事务里提交，远端同步在**事务外**进行
@@ -46,8 +46,8 @@ function assertValidAmount(amount: number): void {
 /**
  * 幂等键：`cli-grant|deduct-{userId}-{ts}-{amount}-{nonce6}`。
  *
- * 对齐 Flask `cli-grant-{id}-{ts}-{amount}` 的人读格式，**另加 6 位随机后缀**：
- * 秒级时间戳下，同一用户对同金额的两次操作会得到同一个键 —— 旧版（无账本）时这
+ * 人读格式 `cli-{kind}-{userId}-{ts}-{amount}`，**另加 6 位随机后缀**：
+ * 秒级时间戳下，同一用户对同金额的两次操作会得到同一个键 —— 没有后缀时这
  * 意味着第二次发放会被账户服务当幂等重放**静默去重**（远端只记一笔、本地发两笔，
  * 账目无声分叉）；并发时还会让本地账本行的唯一约束互相踩踏。每次执行都是独立的
  * 一笔新发放，就该有独立的键。
@@ -60,7 +60,7 @@ function makeAdminIdempotencyKey(kind: 'grant' | 'deduct', userId: string, amoun
 /**
  * 账本 operation → `fish_transactions.type`。
  *
- * 补偿记 `system_compensate` 是对齐 Flask（`add_fish(..., 'system_compensate', ...)`）——
+ * 补偿记 `system_compensate`（专属值，不与 admin_grant 混用）——
  * 流水页上「系统补偿」和「管理员手动赠送」是两种能被区分开的事，别混成一个 type。
  */
 const FISH_TX_TYPE: Record<'admin_grant' | 'compensate', string> = {

@@ -7,7 +7,7 @@ import { apiErr } from '@/lib/format';
 import { cookies } from 'next/headers';
 
 // POST /api/auth/login  { username, password }
-// 复刻 Flask 登录：校验密码（werkzeug 兼容）→ 签发会话（携带 session_version 快照）。
+// 登录流程：校验密码（兼容旧版 werkzeug 哈希）→ 签发会话（携带 session_version 快照）。
 //
 // 【校验与限频在 credential-auth.ts】那是与鱼干市场无状态接口**共用**的实现：
 // 两个门口都是「未认证即可跑一次 scrypt」，防线各写一份必然 drift，

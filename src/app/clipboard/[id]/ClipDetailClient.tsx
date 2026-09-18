@@ -1,15 +1,15 @@
 'use client';
 
-// 剪贴板详情的客户端交互层：把 Flask detail.html 里的原生 JS 逻辑用 React 等价实现。
+// 剪贴板详情的客户端交互层：把页面上原来靠原生 JS 做的交互用 React 等价实现。
 //   - 行内 ID 复制按钮（.clipboard-detail__header__inline-copy）
 //   - 底部操作栏（编辑 / 删除 / 复制正文 / 返回主页 / 返回上页）
-//   - 正文图片点击放大（覆盖层，与 Flask addImageZoom 一致，纯内联样式）
+//   - 正文图片点击放大（覆盖层，纯内联样式）
 // 正文渲染仍交给 MarkdownRenderer（不改该组件）。
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import MarkdownRenderer from '@/app/components/MarkdownRenderer';
 
-// 通用文本复制 + 按钮反馈（对齐 Flask copyTextToClipboard / fallbackCopy）
+// 通用文本复制 + 按钮反馈（navigator.clipboard，不可用时落到 execCommand）
 async function copyText(text: string): Promise<boolean> {
   try {
     if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -36,9 +36,9 @@ async function copyText(text: string): Promise<boolean> {
   }
 }
 
-// 页脚版权覆写：对齐 Flask 模板的 {% block copyright %} 覆写。
+// 页脚版权覆写：给本页换一段页脚版权文案。
 // 共享 Footer（layout 里渲染）不可改，故在客户端把 .footer-copy 文本替换掉，
-// 卸载时还原——效果等价于 Flask detail.html / 403.html 覆写 copyright 块。
+// 卸载时还原。
 export function FooterCopyright({ text }: { text: string }) {
   useEffect(() => {
     const el = document.querySelector('.footer-copy');
@@ -89,7 +89,7 @@ export function ClipActions({
 }) {
   const [copied, setCopied] = useState(false);
 
-  // 删除（对齐 Flask delete_clipboard：确认 → DELETE /api/clipboard/:id → 成功回主页）
+  // 删除（确认 → DELETE /api/clipboard/:id → 成功回主页）
   const handleDelete = async () => {
     if (!confirm('确认要删除吗？')) return;
     try {
@@ -143,7 +143,7 @@ export function ClipActions({
   );
 }
 
-// 正文容器 + 图片点击放大（对齐 Flask addImageZoom；正文本身由 MarkdownRenderer 渲染）
+// 正文容器 + 图片点击放大（正文本身由 MarkdownRenderer 渲染）
 export function ClipContent({ content }: { content: string }) {
   const ref = useRef<HTMLDivElement>(null);
 

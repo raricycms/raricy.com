@@ -1,8 +1,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// comment-service.ts — 评论业务逻辑（对齐 Flask CommentService）
+// comment-service.ts — 评论业务逻辑
 //
 // 楼中楼：parentId（直接父级）+ rootId（顶层评论串）。软删除：isDeleted=true。
-// 列表时构建树并丢弃「无子评论的已删除叶子」（对齐 _filter_deleted_leaves）。
+// 列表时构建树并丢弃「无子评论的已删除叶子」（否则会看到一排 [该评论已删除] 占位）。
 // 计数在事务内按「未删除数」重算。
 //
 // 【正文与附件的存储口径】
@@ -27,7 +27,7 @@ import { sendNotification } from './notification-service';
 import { logAdminAction } from './admin-user-service';
 import type { Prisma } from '@prisma/client';
 
-// ── 序列化输出（snake_case，对齐 Flask API JSON 形状）──────────────────────────
+// ── 序列化输出（snake_case —— 前端直接消费这个形状，别改成 camelCase）────────
 
 /** 评论引用的图床图片（读时解析；图被软删 → null，由 image_missing 说明）。 */
 export interface CommentImageDTO {
@@ -119,7 +119,8 @@ const DELETED_PLACEHOLDER = '[该评论已删除]';
 // 只是为了让服务端调用方少一个 import。
 export { COMMENT_TEXT_MAX, COMMENT_CAPTION_MAX } from './comment-shared';
 
-// markupsafe.escape 语义：& < > " ' → 实体
+// HTML 转义：& < > " ' → 实体。引号用数字实体（&#34; / &#39;）—— 库里存量的
+// contentHtml 就是这个形式，换写法会让新旧两批数据的转义口径不一致。
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, '&amp;')
@@ -301,7 +302,7 @@ async function attachAttachments(nodes: CommentNode[], rows: CommentRow[]): Prom
   }
 }
 
-/** 递归移除「无子评论的已删除评论」（对齐 _filter_deleted_leaves）。 */
+/** 递归移除「无子评论的已删除评论」（有子评论的保留成占位，见 DELETED_PLACEHOLDER）。 */
 function filterDeletedLeaves(nodes: CommentNode[]): CommentNode[] {
   const result: CommentNode[] = [];
   for (const node of nodes) {
@@ -396,7 +397,7 @@ export type CreateCommentResult =
     };
 
 /**
- * 创建评论（对齐 CommentService.create_comment）。
+ * 创建评论。
  * 调用方负责登录 / 禁言校验；此处负责频率限制、内容与附件校验、建 root_id、维护冗余计数。
  */
 export async function createComment(input: CreateCommentInput): Promise<CreateCommentResult> {
@@ -462,7 +463,7 @@ export async function createComment(input: CreateCommentInput): Promise<CreateCo
 
   try {
     const node = await prisma.$transaction(async (tx) => {
-      // 带出 title/authorId 供事务提交后发通知（对齐 Flask 的评论通知）
+      // 带出 title/authorId 供事务提交后发通知
       const blog = await tx.blog.findFirst({
         where: { id: blogId, ignore: false },
         select: { id: true, title: true, authorId: true },
@@ -521,9 +522,9 @@ export async function createComment(input: CreateCommentInput): Promise<CreateCo
     if ('notFound' in node) return { ok: false, error: 'notFound', message: '文章不存在' };
     if ('parentInvalid' in node) return { ok: false, error: 'parentInvalid', message: '父评论不存在或已删除' };
 
-    // 发送通知（对齐 Flask CommentService.create_comment）：
+    // 发送通知：
     //   回复 → 通知被回复者；顶层 → 通知文章作者；两者都排除「自己评自己」。
-    // 与 Flask 一致：通知失败不影响主流程（评论已提交成功），故整体 try/catch 吞掉。
+    // 通知失败不影响主流程（评论已提交成功），故整体 try/catch 吞掉。
     try {
       const { blogTitle, blogAuthorId, parentAuthorId: pAuthor } = node.notify;
       if (pAuthor && pAuthor !== authorId) {
@@ -546,7 +547,7 @@ export async function createComment(input: CreateCommentInput): Promise<CreateCo
         });
       }
     } catch {
-      // 通知失败不影响评论本身（对齐 Flask 的 try/except pass）
+      // 通知失败不影响评论本身（评论已落库，不回滚）
     }
 
     // 刚创建的这一条自带附件（若用户是「引用图 / 引用博客」提交的）—— 解析一次再返回，
@@ -587,13 +588,13 @@ export type DeleteCommentResult =
   | { ok: true }
   | {
       ok: false;
-      // reasonRequired / reasonTooLong：管理员删他人评论时的原因校验（对齐 Flask）
+      // reasonRequired / reasonTooLong：管理员删他人评论时的原因校验
       error: 'notFound' | 'forbidden' | 'reasonRequired' | 'reasonTooLong';
       message: string;
     };
 
 /**
- * 软删除评论（对齐 delete_comment）：作者本人或管理员可删。
+ * 软删除评论：作者本人或管理员可删。
  * 删除后重算文章未删除评论数与 lastCommentAt。
  *
  * @param reason 管理员删「他人」评论时必填（1..500）；作者删自己的可省略。
@@ -618,7 +619,7 @@ export async function softDeleteComment(
       return { ok: false as const, error: 'forbidden' as const, message: '无权删除该评论' };
     }
 
-    // 对齐 Flask：管理员删「他人」评论时必须给出原因（1..500），作者删自己的不需要。
+    // 管理员删「他人」评论时必须给出原因（1..500），作者删自己的不需要。
     const adminDeletingOthers = !isAuthor && hasAdminRights(actor);
     const trimmedReason = (reason ?? '').trim();
     if (adminDeletingOthers) {
@@ -651,9 +652,9 @@ export async function softDeleteComment(
     };
   });
 
-  // 记录管理员操作日志（对齐 Flask：管理员删他人评论才记）。
+  // 记录管理员操作日志（管理员删他人评论才记 —— 作者删自己的不进公示）。
   // 这条日志是 /audit 公示与申诉流程的数据来源 —— 缺了用户就无法申诉。
-  // 与 Flask 一致：日志失败不回滚删除本身。
+  // 日志失败不回滚删除本身。
   if (outcome.ok && outcome.audit) {
     try {
       await logAdminAction({
@@ -666,7 +667,7 @@ export async function softDeleteComment(
         metadata: { blog_id: outcome.audit.blogId },
       });
     } catch {
-      /* 审计写入失败不影响删除结果（对齐 Flask 的 try/except pass） */
+      /* 审计写入失败不影响删除结果（删除已落库，不回滚） */
     }
   }
 

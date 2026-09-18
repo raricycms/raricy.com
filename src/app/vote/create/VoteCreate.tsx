@@ -24,7 +24,7 @@ export default function VoteCreate() {
     }
     setOptions((prev) => {
       const next = [...prev, ''];
-      // 与 Flask 一致：新增选项后自动聚焦到新生成的输入框
+      // 新增选项后自动聚焦到新生成的输入框（省得再点一下）
       requestAnimationFrame(() => {
         optionInputsRef.current[next.length - 1]?.focus();
       });

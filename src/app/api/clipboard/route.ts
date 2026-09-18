@@ -1,7 +1,5 @@
 // GET  /api/clipboard        — 列出当前用户的剪贴板
 // POST /api/clipboard        — 新建剪贴板（登录必需）
-//
-// 对齐 Flask app/web/clipboard/__init__.py 的 menu / upload 路由与 validator()。
 
 import { getCurrentUser, isCoreUser } from '@/lib/auth';
 import { apiOk, apiErr } from '@/lib/format';
@@ -15,7 +13,7 @@ import {
 export async function GET() {
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '请先登录');
-  // 对齐 Flask @authenticated_required：需核心用户（core 及以上）。
+  // 需核心用户（core 及以上）。
   // 页面挡了 core，但接口没挡 —— 未认证用户用不了界面，却 curl 得动。
   if (!isCoreUser(user)) return apiErr(403, '需要核心用户权限');
 
@@ -33,7 +31,7 @@ export async function GET() {
 export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '请先登录');
-  // 对齐 Flask @authenticated_required：需核心用户（core 及以上）。
+  // 需核心用户（core 及以上）。
   // 页面挡了 core，但接口没挡 —— 未认证用户用不了界面，却 curl 得动。
   if (!isCoreUser(user)) return apiErr(403, '需要核心用户权限');
 
@@ -46,7 +44,7 @@ export async function POST(req: Request) {
 
   const data = (body ?? {}) as Record<string, unknown>;
 
-  // 校验，对齐 Flask validator()
+  // 校验：类型 + 长度上限
   const { title, content, publicity } = data;
   if (typeof publicity !== 'boolean') {
     return apiErr(400, 'wrong publicity format');

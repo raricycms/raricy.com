@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { ChevronDown, Home, Star } from 'lucide-react';
 
-// 分类侧栏 — Flask BEM（与 blog/menu.html 一一对应）
+// 分类侧栏 — 折叠目录的一套类名（category-item / category-toggle / category-content）
 // 服务端注入 props；客户端仅做折叠交互（≤820px 自动收拢）。
 interface SidebarChild {
   id: number;

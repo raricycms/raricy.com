@@ -1,8 +1,8 @@
-// GET /zhh — 生成邀请码（对齐 Flask home_bp /zhh：@owner_required + generate_invite_code()）
+// GET /zhh — 生成邀请码（仅站长可访问的 GET 视图，纯文本返回）
 //
-// 原实现是一个仅站长可访问的 GET 视图，直接把新生成的邀请码作为纯文本返回。
-// 这里保持同一 URL 与语义：站长 → 返回 12 位邀请码文本；非站长 → 403（对齐原
-// @owner_required 的 abort(403)）。robots.txt / robots.ts 已 Disallow: /zhh/。
+// 站长 → 返回 12 位邀请码文本；非站长 → 403。
+// 码格式必须与存量已发出的码一致（12 位 base62，注册侧按 length===12 校验），
+// 不能改。robots.txt / robots.ts 已 Disallow: /zhh/。
 import { getCurrentUser, isOwner } from '@/lib/auth';
 import { generateInviteCode } from '@/lib/invite-code';
 

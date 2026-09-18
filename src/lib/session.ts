@@ -1,11 +1,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// session.ts — 基于 JWT 的会话（替代 Flask-Login 的签名 cookie）
+// session.ts — 基于 JWT 的会话
 //
-// 设计对齐 Flask 侧的 session_version 失效机制：cookie 里存 { uid, sv }，
+// session_version 失效机制：cookie 里存 { uid, sv }，
 // 每次取用户时用 DB 里的 user.sessionVersion 比对，不一致即视为登出
 // （改密码 / 强制下线时后端自增 sessionVersion 即可让所有旧 cookie 失效）。
 //
-// 说明：Flask 用的是 itsdangerous 签名的 session cookie，格式与 JWT 不同，
+// 说明：旧版用的是 itsdangerous 签名的 session cookie，格式与 JWT 不同，
 // 二者不互通——这意味着切换到 Next 时用户需要重新登录一次（可接受，已在迁移
 // 文档中说明）。密码哈希互通，因此重新登录不需要改密码。
 // ─────────────────────────────────────────────────────────────────────────────
@@ -54,7 +54,7 @@ export async function verifySessionToken(token: string): Promise<SessionPayload 
  * 为什么不能简单写 `secure: NODE_ENV === 'production'`：
  * 站点若走纯 HTTP（未上 TLS），带 Secure 的 cookie 会被浏览器直接丢弃 ——
  * 表现为「登录接口返回 200 登录成功，但会话不粘、刷新仍未登录」，且无任何报错。
- * 原 Flask 未设置 SESSION_COOKIE_SECURE（默认 False），HTTP 下可用；此处对齐该行为。
+ * 故默认值是「不设 Secure」—— 这是有意选择，别顺手改成「production 即强制」。
  *
  * ⚠️ 安全提醒：HTTP 下会话 cookie 以明文传输，链路上任何人都可窃取并冒用会话。
  * 生产站点应上 TLS；COOKIE_SECURE=false 仅作为过渡期的显式选择。

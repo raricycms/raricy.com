@@ -1,9 +1,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// turnstile.ts — Cloudflare Turnstile 服务端校验（对齐 Flask flask-turnstile）。
+// turnstile.ts — Cloudflare Turnstile 服务端校验。
 //
-// Flask 行为（app/web/auth/sign_up.py）：
-//   if config['TURNSTILE_AVAILABLE'] and not turnstile.verify(token): 拒绝
-// 即：未启用 Turnstile 时直接放行。这里镜像该逻辑：
+// 开关语义（注册流程依赖它）：
+//   env TURNSTILE_AVAILABLE === 'True' 时才校验 token，不通过即拒绝；
 //   env TURNSTILE_AVAILABLE !== 'True' → 放行（视为通过 / 已禁用）。
 //
 // 【为什么返回值不是 boolean】
@@ -63,7 +62,7 @@ type SiteverifyBody = { success?: boolean; 'error-codes'?: string[]; hostname?: 
  */
 export async function verifyTurnstile(token: string): Promise<TurnstileResult> {
   if (process.env.TURNSTILE_AVAILABLE !== 'True') {
-    return { ok: true }; // 未启用 → 放行（镜像 Flask）
+    return { ok: true }; // 未启用 → 放行
   }
 
   const secret = process.env.TURNSTILE_SECRET_KEY;

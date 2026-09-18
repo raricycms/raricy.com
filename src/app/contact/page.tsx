@@ -3,8 +3,8 @@ import FooterNote from '@/app/components/FooterNote';
 
 export const metadata: Metadata = { title: 'Raricy.com - 联系我们' };
 
-// 联系页 — Flask BEM
-// 对齐 app/templates/home/contact.html：用 content-wrapper 包裹 + page-title 标题。
+// 联系页
+// 样式：用 content-wrapper 包裹 + page-title 标题。
 export default function ContactPage() {
   return (
     <div className="content-wrapper">

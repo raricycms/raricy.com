@@ -1,6 +1,6 @@
 // POST /api/admin/appeals/[id] { decision:'accept'|'reject', note? } — 裁决申诉
 //
-// 权限：**仅站长**，对齐 Flask 的 decide_appeal（@admin_required + @owner_required）。
+// 权限：**仅站长**。
 // 此前只判 hasAdminRights —— 申诉是对管理员权力的制衡，让管理员自己裁决申诉
 // 等于把这道制衡取消掉（包括裁决针对自己那条操作的申诉）。
 import { getCurrentUser, isOwner } from '@/lib/auth';

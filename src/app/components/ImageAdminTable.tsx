@@ -16,7 +16,7 @@ export interface AdminImageRow {
   createdAt: string; // 已在服务端按 UTC+8 墙上时间格式化为 'YYYY-MM-DD HH:MM:SS'（见 lib/format.ts）
 }
 
-// 图床管理表格 + 站长硬删除交互，逐字对齐 Flask image_hosting/admin.html。
+// 图床管理表格 + 站长硬删除交互。
 //   · 「永久删除」→ confirm → DELETE /api/images/admin/:id → 移除行 + toast
 export default function ImageAdminTable({ images }: { images: AdminImageRow[] }) {
   const router = useRouter();

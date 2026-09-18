@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 
 const ACTION_TYPES = ['ban_user', 'unban_user', 'delete_blog', 'delete_comment'];
 
-// 操作类型筛选 — 对齐 Flask admin_action_logs.html
+// 操作类型筛选
 export default function ActionFilter({ action }: { action: string }) {
   const router = useRouter();
   return (

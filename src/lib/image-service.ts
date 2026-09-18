@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// image-service.ts — 图床元信息读取（对齐 Flask app/web/image_hosting/service.py）
+// image-service.ts — 图床元信息读取
 //
 // 本切片做元信息读取 + 供 raw 路由分发字节（storagePathFor 拼磁盘路径）。
 // 真正的二进制上传（sharp 压缩 + 落盘）在 image-upload.ts。
@@ -82,9 +82,9 @@ export async function listUserImages(userId: string): Promise<ImageMeta[]> {
   return images.map(serialize);
 }
 
-// ── 管理端（站长）：全站图片列表 + 总用量，对齐 get_all_images / get_total_storage_bytes ──
+// ── 管理端（站长）：全站图片列表 + 总用量 ──────────────────────────────────────
 
-const ADMIN_PER_PAGE = 30; // 对齐 Flask get_all_images(per_page=30)
+const ADMIN_PER_PAGE = 30; // 管理端每页 30 条
 
 export interface AdminImagePage {
   images: ImageMeta[];
@@ -94,9 +94,9 @@ export interface AdminImagePage {
 }
 
 /**
- * 全站未软删图片分页列表（最新在前），对齐 get_all_images。
- * search 命中「文件名 contains」或「上传者用户名 contains」（对齐 Flask 的
- * filename.contains OR author_id in (username 命中的用户)）。
+ * 全站未软删图片分页列表（最新在前）。
+ * search 命中「文件名 contains」或「上传者用户名 contains」
+ * （即 filename.contains OR author_id in (username 命中的用户)）。
  */
 export async function listAllImages(
   page = 1,

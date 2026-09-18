@@ -12,7 +12,7 @@ function siteUrl(): string {
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const base = siteUrl();
 
-  // 静态路由（对齐 Flask sitemap static_pages：首页 / 故事根 / 博客菜单）
+  // 静态路由（首页 / 故事根 / 博客菜单）
   const staticRoutes: MetadataRoute.Sitemap = [
     { url: `${base}/`, changeFrequency: 'daily', priority: 1 },
     { url: `${base}/blog`, changeFrequency: 'daily', priority: 0.8 },

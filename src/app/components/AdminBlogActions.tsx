@@ -1,10 +1,10 @@
 'use client';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AdminBlogActions — 文章列表单行的操作簇（对齐 Flask manage_articles.html 行内动作）：
+// AdminBlogActions — 文章列表单行的操作簇：
 //   栏目下拉（category-select）+ 查看 + 设为精选/取消精选。
 //   改栏目 / 切精选走 PATCH /api/admin/blogs/:id，成功后 router.refresh() 让服务端重渲染，
-//   等价于 Flask 的就地更新 current-category / featured-flag。
+//   效果与就地更新 current-category / featured-flag 相同。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState } from 'react';
@@ -16,7 +16,7 @@ export interface CategoryOpt {
   label: string; // 含图标前缀；子栏目形如「　└ 图标 名称」
 }
 
-// 对齐 Flask render_category_options：按父栏目分组的 <optgroup>。
+// 栏目下拉数据：按父栏目分组的 <optgroup>。
 //   label   = 父栏目「图标 名称」（optgroup 标题）
 //   options = 父栏目自身（图标 名称）+ 其子栏目（　└ 图标 名称）
 export interface CategoryGroup {
@@ -96,7 +96,7 @@ export default function AdminBlogActions({
         <Link href={`/blog/${blogId}`} className="btn btn-sm btn-outline-primary" target="_blank">
           查看
         </Link>
-        {/* 对齐 Flask manage_articles 的「编辑」按钮 → /blog/<id>/edit */}
+        {/* 「编辑」按钮 → /blog/<id>/edit */}
         <Link href={`/blog/${blogId}/edit`} className="btn btn-sm btn-outline-secondary">
           编辑
         </Link>

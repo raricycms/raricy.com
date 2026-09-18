@@ -3,13 +3,12 @@
 //
 // 发放对象是**全部 core+ 用户**（不是全站注册用户）——理由见 eligibleUsers 的注释。
 //
-// 【与 Flask 版的关系：有意偏离】
-// Flask `flask fish compensate` 的结构是「一个大事务里给所有人 add_fish（不 commit）
-// → 逐个调远端 → 全成功才 commit，任一失败整体 rollback」。那个结构把远端 HTTP 放进了
-// SQLite 事务内部：写锁被占用 N × (1/rate) 秒（1000 人 @5req/s = 200 秒），这期间全站
-// 写路径全部 database is locked；而且「远端已成功、本地 commit 失败」会造成无法察觉的
-// 分叉 —— 正是 fail-closed 要防的反面。CLAUDE.md「鱼干写路径」明令禁止，故本移植版
-// **不照搬那个结构**。
+// 【为什么不写成「一个大事务全发完」】
+// 那种结构（大事务里给所有人加钱、不提交；逐个调远端；全成功才提交，任一失败整体
+// 回滚）把远端 HTTP 放进了 SQLite 事务内部：写锁被占用 N × (1/rate) 秒
+// （1000 人 @5req/s = 200 秒），这期间全站写路径全部 database is locked；
+// 而且「远端已成功、本地 commit 失败」会造成无法察觉的分叉 —— 正是 fail-closed
+// 要防的反面。CLAUDE.md「鱼干写路径」明令禁止，故本实现**不走那个结构**。
 //
 // 【本版语义：逐人原子】
 // 每位用户走一次 grantFishWithKey 的三段结构（本地事务提交 → 事务外远端同步 →
@@ -18,7 +17,7 @@
 //
 // 【续跑靠幂等键，而不是靠整体回滚】
 // 键由批次派生：comp-{sha256('compensate-{batchId}-{userId}-{amount}')[:16]} ——
-// 与 Flask **逐字节同构**（所以哪怕某个批次是迁移前在 Flask 上跑了一半，这里用同一个
+// 派生方式与旧版**逐字节相同**（所以哪怕某个批次当年只跑了一半，这里用同一个
 // batchId 续跑，远端照样按同一个键去重）。同一个 --batch-id 重跑时：
 //   • 账本里该键已是 synced → 跳过（已经发过了，不能再发一次）；
 //   • 该键是 pending / failed → 不动，提示先跑 `fish sync-retry`；
@@ -40,7 +39,7 @@ import {
 } from './account-client';
 import { FishBusinessError, grantFishWithKey } from './fish-admin';
 
-/** 远端同步速率（req/s）。对齐 Flask 的 `--rate` 默认值。 */
+/** 远端同步速率（req/s）默认值（CLI 的 --rate 可覆盖）。 */
 export const DEFAULT_COMPENSATE_RATE = 5;
 
 /**
@@ -85,7 +84,7 @@ export interface CompensateResult {
   remoteSynced: boolean;
 }
 
-/** 新批次 ID：12 位 hex，对齐 Flask 的 `uuid.uuid4().hex[:12]`。 */
+/** 新批次 ID：12 位 hex（48 位随机，够防撞，也够短好抄给人）。 */
 export function makeBatchId(): string {
   return randomBytes(6).toString('hex');
 }
@@ -93,12 +92,12 @@ export function makeBatchId(): string {
 /**
  * 补偿的幂等键：`comp-{sha256('compensate-{batchId}-{userId}-{amount}')[:16]}`。
  *
- * 与 Flask `flask fish compensate` 的算法**逐字节同构**，刻意保留：
- * 迁移前用某个 batchId 在 Flask 上跑了一半的批次，这里传同一个 batchId 就能接着跑，
+ * 派生算法**逐字节照旧版**，刻意保留：
+ * 当年用某个 batchId 只跑了一半的批次，这里传同一个 batchId 就能接着跑，
  * 远端按同一个键去重。
  *
  * 之所以走哈希短键而不是可读拼接：账户服务要求幂等键 1–64 字符且仅 [a-zA-Z0-9_-]，
- * 而 userId(36) + batchId + amount 拼起来就超了（同 feed 的 _make_feed_idempotency_key 处境）。
+ * 而 userId(36) + batchId + amount 拼起来就超了（同 feed 密钥的处境）。
  */
 export function compensateIdempotencyKey(
   batchId: string,
@@ -115,7 +114,7 @@ export function compensateIdempotencyKey(
  * 该键在账本里的状态。
  *
  * 按唯一索引**点查**，不按批次扫全表 —— 键里那 16 位哈希把批次信息摊平了，
- * 从键本身认不出批次（这正是与 Flask 同构的代价）。每位用户一次点查，
+ * 从键本身认不出批次（这正是沿用旧版算法的代价）。每位用户一次点查，
  * 相对后面那次远端 HTTP 可以忽略不计。
  */
 async function ledgerStatus(idempotencyKey: string): Promise<LedgerStatus> {
@@ -136,8 +135,8 @@ async function ledgerStatus(idempotencyKey: string): Promise<LedgerStatus> {
  * core+）。给全站空投等于把它变成「注册就有鱼干」，与这套口径直接冲突；而且它
  * 一次改的是全站余额，多发的人越多，回滚成本越高。
  *
- * 【为什么不排除被禁言者】补偿是系统行为，与个人当前状态无关（对齐 Flask 的
- * `flask fish compensate`）—— 禁言只停发言权，不没收财产。
+ * 【为什么不排除被禁言者】补偿是系统行为，与个人当前状态无关 ——
+ * 禁言只停发言权，不没收财产。
  *
  * ⚠️ 角色是**当前**角色：曾经是 core、后来被降回 user 的账号会被跳过。补偿不是
  * 结算历史欠账，是「现在这批人每人发多少」，所以按当前角色取人是正确的口径。

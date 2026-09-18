@@ -3,8 +3,8 @@ import LegalCard from '@/app/components/LegalCard';
 
 export const metadata: Metadata = { title: 'Raricy.com - 用户协议' };
 
-// 用户协议 — Flask BEM
-// 对齐 app/templates/home/terms.html：用 content-wrapper 包裹 + page-title 标题，正文装入 .legal-card。
+// 用户协议 — 布局约定
+// 用 content-wrapper 包裹 + page-title 标题，正文装入 .legal-card。
 export default function TermsPage() {
   return (
     <div className="content-wrapper">

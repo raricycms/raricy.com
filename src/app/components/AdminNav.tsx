@@ -33,7 +33,7 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   list: ClipboardList,
 };
 
-// 管理侧边栏导航 — Flask `admin_base.html` 样式
+// 管理侧边栏导航 — admin-sidebar__nav 列表
 // active 高亮：精确 vs 前缀匹配由 item.exact 决定。
 export default function AdminNav({ items }: { items: AdminNavItem[] }) {
   const pathname = usePathname();

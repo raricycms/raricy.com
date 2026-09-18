@@ -1,7 +1,7 @@
 'use client';
 
-// Cattca 脚本编辑器 —— 对齐 Flask app/templates/tool/cattca.html 的双面板结构
-// （编辑器面板 + 游戏运行面板）。编辑器面板承载：语法指南链接、状态、文本框、
+// Cattca 脚本编辑器 —— 双面板结构（编辑器面板 + 游戏运行面板）。
+// 编辑器面板承载：语法指南链接、状态、文本框、
 // 运行/撤回/重做/保存/加载/示例按钮、撤销历史、localStorage 自动保存/恢复、
 // 键盘快捷键。游戏运行区（含全屏）由 CattcaPlayer（tool 变体）承载。
 import Link from 'next/link';

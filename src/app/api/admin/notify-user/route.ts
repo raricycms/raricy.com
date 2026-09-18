@@ -1,9 +1,8 @@
 // POST /api/admin/notify-user { recipientId, action, detail, objectType?, objectId? }
-//   管理员向单个用户发送通知（对齐 Flask auth.send_notification_to_user →
-//   app/service/notifications.admin_send_notification_to_user）。
-//   权限对齐 Flask send_notification_to_user 的 @owner_required：仅站长可定向发通知。
+//   管理员向单个用户发送通知。
+//   权限：仅站长可定向发通知。
 //   偏好：显式 prefKey:'notifyAdmin'（见下方调用处注释）。原先是 force:true 完全绕过偏好
-//   （忠实复刻 Flask 的「偏好开关是摆设」），现改为受「管理员通知」开关管辖 —— 这是刻意的
+//   （偏好开关形同虚设），现改为受「管理员通知」开关管辖 —— 这是刻意的
 //   行为改进：定向通知本就属管理类，理应尊重用户关掉的管理员通知开关。
 import { getCurrentUser, isOwner } from '@/lib/auth';
 import { sendNotification } from '@/lib/notification-service';
@@ -26,13 +25,13 @@ export async function POST(req: Request) {
   const action = body && typeof body.action === 'string' ? body.action.trim() : '';
   const detail = body && typeof body.detail === 'string' ? body.detail.trim() : '';
 
-  // 对齐 Flask required_fields = ['recipient_id', 'action', 'detail']
+  // 必填字段：recipient_id / action / detail
   if (!recipientId || !action || !detail) return apiErr(400, '缺少必要参数');
 
   const objectType = body && typeof body.objectType === 'string' && body.objectType ? body.objectType : null;
   const objectId = body && typeof body.objectId === 'string' && body.objectId ? body.objectId : null;
 
-  // 对齐 Flask：先校验接收者存在
+  // 先校验接收者存在
   const recipient = await prisma.user.findUnique({
     where: { id: recipientId },
     select: { username: true },

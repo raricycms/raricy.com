@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// feed-service.ts — 文章投喂小鱼干（对齐 Flask app/web/blog/services/feed_fish_service.py）
+// feed-service.ts — 文章投喂小鱼干
 //
 // 投喂模型：投喂者付全额，作者获 80% 分成；单用户对单篇累计上限 5。
 //
@@ -54,7 +54,7 @@ export interface FeedError {
   message: string;
 }
 
-/** 查询用户对某文章的投喂状态（对齐 get_feed_status）。 */
+/** 查询用户对某文章的投喂状态（是否已投 + 累计投喂量 + 上限）。 */
 export async function getFeedStatus(
   blogId: string,
   userId: string
@@ -75,10 +75,10 @@ export interface FeederRow {
 }
 
 /**
- * 投喂者列表（对齐 Flask feed_fish_service.get_feeders）。
+ * 投喂者列表。
  *
- * 排序按投喂量倒序（不是时间）—— 与 Flask 一致：这个列表给作者看「谁投得最多」。
- * 字段名用 snake_case 是因为前端 FeedButton 直接消费该形状（对齐 Flask 的 JSON）。
+ * 排序按投喂量倒序（不是时间）—— 这个列表给作者看「谁投得最多」。
+ * 字段名用 snake_case 是因为前端 FeedButton 直接消费该形状，别改成 camelCase。
  */
 export async function getFeeders(
   blogId: string,
@@ -391,7 +391,7 @@ export async function feedBlog(
       }
     }
 
-    // 通知文章作者（对齐 Flask feed_fish：自投喂不通知；**在提交与同步之后**发，
+    // 通知文章作者（自投喂不通知；**在提交与同步之后**发，
     // 且通知失败不影响已成功的投喂 —— 钱已经结算完了，不能因为发通知失败而退回）。
     if (userId !== blog.authorId) {
       try {

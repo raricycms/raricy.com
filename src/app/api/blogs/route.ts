@@ -79,13 +79,13 @@ export async function GET(req: Request) {
   });
 }
 
-// POST /api/blogs — 发布新文章（对齐 Flask blog.upload 的 POST 分支）
-// 顺序严格对齐：登录 → 禁言 → 核心用户 → 校验 → 日限额 → 栏目管理员专属 → 建文 → 通知。
+// POST /api/blogs — 发布新文章
+// 处理顺序固定：登录 → 禁言 → 核心用户 → 校验 → 日限额 → 栏目管理员专属 → 建文 → 通知。
 export async function POST(req: Request) {
   const user = await getCurrentUser();
-  if (!user) return apiErr(401, '请先登录'); // Flask @login_required（API 返回 JSON 401）
+  if (!user) return apiErr(401, '请先登录'); // 需登录（API 返回 JSON 401）
 
-  // 禁言检查（upload 对所有用户生效，含管理员）
+  // 禁言检查（对所有用户生效，含管理员）
   if (isCurrentlyBanned(user)) return apiErr(403, banActionMessage(user));
 
   // 仅核心用户可发布
@@ -115,7 +115,7 @@ export async function POST(req: Request) {
 
   const blogId = await createBlog(user.id, v.data);
 
-  // 栏目发文提醒：通知所有管理员/站长（跳过自己），失败忽略（对齐 Flask try/except pass）
+  // 栏目发文提醒：通知所有管理员/站长（跳过自己），失败忽略
   if (v.data.categoryId != null && notifyEffective) {
     const admins = await prisma.user.findMany({
       where: { role: { in: ['admin', 'owner'] } },

@@ -19,7 +19,7 @@ export async function generateMetadata({
   return { title: blog ? `编辑文章 - ${blog.title}` : '编辑文章 - Raricy.com' };
 }
 
-// 编辑文章 — Flask BEM
+// 编辑文章 — 与发布页共用 BlogForm 与 upload-hero 页头
 export default async function EditBlogPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireCoreUser();
   const { id } = await params;

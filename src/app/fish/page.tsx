@@ -6,7 +6,7 @@ import { loginUrlWithNext } from '@/lib/safe-url';
 import { getBalance, getTodayCheckinFish } from '@/lib/fish-service';
 import PosterModal from '@/app/components/PosterModal';
 
-// 小鱼干余额页 — Flask BEM
+// 小鱼干余额页 — fish-card 一套类名
 export const dynamic = 'force-dynamic';
 
 export default async function FishPage() {

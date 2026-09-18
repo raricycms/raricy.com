@@ -135,7 +135,7 @@ export async function executeSync(entry: {
     }
 
     // 全站群发补偿：与 admin_grant 同向（系统账户 → 用户），但 entryType 记
-    // 'system_compensate' 对齐 Flask —— 账户服务的流水里能一眼分出「补偿」与「手动赠送」。
+    // 'system_compensate' —— 账户服务的流水里能一眼分出「补偿」与「手动赠送」。
     // 单列一个 case（而不是复用 admin_grant）是为了让 fish pending 里显示得诚实：
     // 借用 admin_grant 会让运维在账本上看到一批「管理员赠送」，而实际是系统补偿。
     case 'compensate': {

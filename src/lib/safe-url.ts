@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// safe-url.ts —— 登录回跳地址的安全校验（对齐 Flask app/web/auth/sign_in.py:12 is_safe_url）
+// safe-url.ts —— 登录回跳地址的安全校验
 //
 // 单独成文件而不是放进 guard.ts：guard.ts 会连带拉进 getCurrentUser → cookies()，
 // 那是服务端专用的；而登录页是 'use client'，import 它会把服务端代码打进客户端包。
@@ -32,7 +32,7 @@ export function safeNextPath(next: string | null | undefined): string {
   return next;
 }
 
-/** 拼出带回跳的登录地址：/login?next=<当前路径>（对齐 Flask-Login 的 login_view 行为）。 */
+/** 拼出带回跳的登录地址：/login?next=<当前路径>。next 不合法就不带（回根路径）。 */
 export function loginUrlWithNext(currentPath: string): string {
   const safe = safeNextPath(currentPath);
   return safe === '/' ? '/login' : `/login?next=${encodeURIComponent(safe)}`;

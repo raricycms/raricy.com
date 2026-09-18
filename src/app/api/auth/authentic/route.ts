@@ -2,7 +2,7 @@ import { getCurrentUser } from '@/lib/auth';
 import { verifyInviteAndUpgrade } from '@/lib/user-service';
 import { apiErr } from '@/lib/format';
 
-// POST /api/auth/authentic — 邀请码验证 + 角色升级（对齐 Flask POST /auth/authentic）
+// POST /api/auth/authentic — 邀请码验证 + 角色升级
 //
 // 需登录。请求体沿用原站字段名：{ authentic_code }。
 // 校验通过 → 标记邀请码已用 + 普通用户升级为核心用户，返回 { code:200, message:'验证成功' }。

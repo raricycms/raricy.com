@@ -7,7 +7,7 @@ import CattcaPlayer from '@/app/components/CattcaPlayer';
 import { CollectionView } from '../CollectionView';
 import StoryReaderClient from './StoryReaderClient';
 
-// 故事路径页 — Flask BEM 样式
+// 故事路径页 — 样式走 story-reader__* / story-cattca__* 类命名
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 

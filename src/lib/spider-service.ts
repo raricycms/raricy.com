@@ -1,10 +1,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // spider-service.ts — 爬虫（搜索引擎）只读 API 业务逻辑
 //
-// 忠实移植 Flask app/web/blog/spider_api.py（无认证，供搜索引擎抓取，刻意为之）：
-//   - getSpiderBlog     ← BlogService.get_blog_detail（对齐 Blog.to_dict + content/liked/user_fed）
-//   - getRecentComments ← CommentService.get_recent_comments（status='approved' 最近 100 条，含已删除占位）
-//   - getSpiderComment  ← CommentService.get_comment（id + is_deleted=false）
+// 三个只读端点（无认证，供搜索引擎抓取，刻意为之）：
+//   - getSpiderBlog     —— Blog 公开字段 + content/liked/user_fed
+//   - getRecentComments —— status='approved' 最近 100 条，含已删除占位
+//   - getSpiderComment  —— 按 id 查，is_deleted=false
 //
 // 评论的**公共字段**序列化复用 comment-service.serializeCommentBase —— 两边各写一份
 // 逐字相同的实现，改了一处另一边不会变，而对外契约恰恰最不该 drift。
@@ -18,7 +18,7 @@ import { serializeCommentBase, type CommentBaseDTO } from './comment-service';
 import { categoryFullPath, ymd } from './format';
 import type { Prisma } from '@prisma/client';
 
-// ── 评论扁平序列化（对齐 CommentService._serialize_comment）───────────────────
+// ── 评论扁平序列化（对外契约，见 tests/service/spider-comment.test.ts）──────────
 
 /** 对外契约：公共部分 + 恒为空的 children。**不得**混入站内才有的字段。 */
 export interface SpiderCommentDict extends CommentBaseDTO {
@@ -48,12 +48,12 @@ type CommentRow = Prisma.BlogCommentGetPayload<{ select: typeof commentSelect }>
 function serializeComment(c: CommentRow): SpiderCommentDict {
   return {
     ...serializeCommentBase(c),
-    children: [], // 扁平输出恒为空数组（对齐 Flask）
+    children: [], // 扁平输出恒为空数组
   };
 }
 
 /**
- * 最近评论（对齐 CommentService.get_recent_comments）：
+ * 最近评论：
  * status='approved'，按 created_at 倒序，最多 limit 条。
  * 注意：不过滤 is_deleted —— 已删除但已批准的评论也会出现（content_html 为占位符）。
  */
@@ -107,8 +107,8 @@ export interface SpiderBlogResult {
 }
 
 /**
- * 博客详情（对齐 BlogService.get_blog_detail）：
- * blog 不存在或 ignore=true → null（Flask 侧 abort(404)）。
+ * 博客详情：
+ * blog 不存在或 ignore=true → null（路由据此回 404）。
  * 爬虫无认证，current_user 未登录 → liked / user_fed 恒为 false。
  */
 export async function getSpiderBlog(blogId: string): Promise<SpiderBlogResult | null> {

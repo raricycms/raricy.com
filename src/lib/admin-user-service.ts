@@ -1,8 +1,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// admin-user-service.ts — 用户管理 / 禁言（对齐 Flask app/web/auth/user_management.py）
+// admin-user-service.ts — 用户管理 / 禁言
 //
 // 纯函数 + 显式参数，与项目其它 service 风格一致。所有写路径都会写一条
-// AdminActionLog（visibility 默认 'public'，对齐 Flask log_admin_action）。
+// AdminActionLog（visibility 默认 'public' —— 默认进 /audit 公示，要内部留痕才显式传别的值）。
 //
 // 关于 admin_action_logs.extra：该列在 SQLite 里声明类型是 JSON，Prisma 的 SQLite
 // 连接器在驱动层拒绝 SELECT 它（"Value JSON not supported"，audit-service 已注明）。
@@ -189,7 +189,7 @@ export async function listUsers(params: ListUsersParams) {
     prisma.user.count({ where }),
     prisma.user.findMany({
       where,
-      orderBy: { createdAt: 'asc' }, // 对齐 Flask user_management
+      orderBy: { createdAt: 'asc' },
       skip: (page - 1) * perPage,
       take: perPage,
       select: USER_SELECT,
@@ -231,12 +231,12 @@ const ADMIN_SETTABLE_ROLES: readonly Role[] = ['user', 'core'];
  * 【为什么卡 admin 这一档】此前只拦了 owner，于是管理员可以直接
  * `PATCH /api/admin/users/:id {"role":"admin"}` 造出新的管理员（实测 200，
  * 角色真的落库）。UI 上没有这个按钮，但接口收任意角色 —— 藏起按钮不等于挡住。
- * Flask 侧压根做不到这件事：它的 /promote 硬编码只做 user→core，且是 @owner_required，
- * 想加管理员只能上服务器跑 `flask promote-admin`。
+ * 这个洞来自「接口收任意角色」本身：更早的版本压根没有提拔管理员的接口
+ * （要加管理员只能上服务器跑运维命令），所以这个洞当时不存在。
  *
- * 这里比 Flask 略宽（Flask 连 user↔core 都要站长），是刻意保留的：
- * 日常给新人认证是管理员的常规工作，收到站长会把这条路堵死。
- * 但「谁能任命管理员」这条底线与 Flask 一致 —— 只有站长。想撤掉一个管理员时
+ * ⚠️ 把 user↔core 下放给管理员是**有意的**：
+ * 日常给新人认证是管理员的常规工作，全收到站长会把这条路堵死。
+ * 但「谁能任命管理员」这条底线不动 —— 只有站长。想撤掉一个管理员时
  * 同理：只有站长能把他降回 core，管理员之间不能互降。
  */
 export async function setRole(p: SetRoleParams): Promise<AdminResult<{ role: string }>> {
@@ -297,7 +297,7 @@ export interface BanUserParams {
 }
 
 /**
- * 禁言用户（对齐 Flask ban_user）：
+ * 禁言用户：
  *  创建 UserBan + 置 user.isBanned/banUntil/banReason + 递增 sessionVersion（强制下线）
  *  + 写 AdminActionLog + 给被禁言者发通知。
  */
@@ -391,7 +391,7 @@ export interface UnbanUserParams {
 }
 
 /**
- * 解除禁言（对齐 Flask lift_ban）：清标志 + 标记最近一条 UserBan lifted + 写日志 + 通知。
+ * 解除禁言：清标志 + 标记最近一条 UserBan lifted + 写日志 + 通知。
  */
 export async function unbanUser(p: UnbanUserParams): Promise<AdminResult> {
   const reason = (p.reason ?? '').trim();
@@ -412,7 +412,7 @@ export async function unbanUser(p: UnbanUserParams): Promise<AdminResult> {
     select: { id: true },
   });
 
-  // 标记最近一条未解除的 UserBan（对齐 lift_ban：banned_at desc 取第一条）
+  // 标记最近一条未解除的 UserBan（按 bannedAt desc 取第一条）
   const latest = await prisma.userBan.findFirst({
     where: { userId: target.id, isLifted: false },
     orderBy: { bannedAt: 'desc' },
@@ -646,7 +646,7 @@ export async function adminCreateUser(p: AdminCreateUserParams): Promise<AdminCr
   }
 
   // 密码由站长手填（本入口不生成），底线与 resetUserPassword / changeOwnPassword 一致；
-  // 上限对齐公开注册（werkzeug 那侧的长度约束）。
+  // 上限与公开注册共用同一条策略（见 user-service 的 100 字符校验）—— 两条入口别漂移。
   if (password.length < 8) return { ok: false, code: 400, message: '密码长度至少为 8 位' };
   if (password.length > 100) return { ok: false, code: 400, message: '密码过长！' };
 

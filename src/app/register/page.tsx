@@ -10,7 +10,7 @@ function showToast(msg: string, type: string) {
   if (w.showToast) w.showToast(msg, type);
 }
 
-// 注册页 — Flask BEM
+// 注册页 — 样式结构：auth-page > .container > register-container > register-header
 export default function RegisterPage() {
   const router = useRouter();
   const [username, setUsername] = useState('');

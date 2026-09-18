@@ -3,9 +3,9 @@ import { prisma } from '@/lib/db';
 import { getCurrentUser, hasAdminRights } from '@/lib/auth';
 import { apiErr } from '@/lib/format';
 
-// GET /api/blogs/:id/feeders — 投喂者列表（对齐 Flask blog_bp /<blog_id>/feeders）
+// GET /api/blogs/:id/feeders — 投喂者列表
 //
-// 权限：登录 + 仅作者本人或管理员可见 —— 与 Flask 一致。
+// 权限：登录 + 仅作者本人或管理员可见。
 export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '请先登录');

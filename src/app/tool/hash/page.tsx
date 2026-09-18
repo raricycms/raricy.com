@@ -1,6 +1,6 @@
 'use client';
 
-// 逐字对齐原 Flask 模板 tool/hash.html（纯前端计算）。
+// 纯前端计算。
 import Link from 'next/link';
 import { useRef, useState } from 'react';
 

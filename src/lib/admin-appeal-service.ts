@@ -1,10 +1,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// admin-appeal-service.ts — 申诉列表 + 裁决（对齐 Flask app/service/audit_log.py:decide_appeal）
+// admin-appeal-service.ts — 申诉列表 + 裁决
 //
 // 裁决时：置 status/decision/decidedBy/decidedAt + 写 AdminActionLog + 通知申诉人。
 // 通过（accept）时尽力而为地撤回原动作：ban_user 自动解禁；delete_blog 恢复文章
 // （ignore=False）；delete_comment 恢复评论（isDeleted=False）并回补文章冗余计数
-// （commentsCount 重算 + lastCommentAt 刷新）。均对齐 Flask decide_appeal。
+// （commentsCount 重算 + lastCommentAt 刷新）。
 //
 // 注意：不 select AdminActionLog.extra（JSON 列，驱动层拒读，见 audit-service）。
 //
@@ -150,10 +150,10 @@ export interface AdjudicateParams {
 }
 
 /**
- * 裁决申诉（对齐 decide_appeal）。accept→status 'accepted'，reject→'rejected'。
+ * 裁决申诉。accept→status 'accepted'，reject→'rejected'。
  * accept 时尝试撤回原动作（当前：ban_user 自动解禁）。
  *
- * 权限：**仅站长**（Flask 的 decide_appeal 是 @admin_required + @owner_required）。
+ * 权限：**仅站长**（管理档与站长档两道都判，实际只有站长能过）。
  * 校验放在 service 层而不只在路由，是与群发同一套纵深防御：申诉是对管理员权力的
  * 制衡，管理员能自己裁决申诉的话这道闸就形同虚设。
  */
@@ -225,7 +225,7 @@ export async function adjudicate(p: AdjudicateParams): Promise<AdminResult> {
       appeal.log.objectType === 'blog' &&
       appeal.log.objectId
     ) {
-      // 恢复被删文章：ignore=False（仅当当前处于软删除态，对齐 Flask decide_appeal）。
+      // 恢复被删文章：ignore=False（仅当当前处于软删除态）。
       const blogId = appeal.log.objectId;
       const blog = await prisma.blog.findUnique({
         where: { id: blogId },
@@ -242,7 +242,7 @@ export async function adjudicate(p: AdjudicateParams): Promise<AdminResult> {
     ) {
       // 恢复被删评论：isDeleted=false + 重算文章冗余计数，口径与 createComment /
       // softDeleteComment 完全一致（在同一事务内按「未删除评论数」重算，并刷新
-      // lastCommentAt —— 比 Flask 的 comments_count += 1 更健壮）。
+      // lastCommentAt —— 重算不会把历史漂移累积进去，比在旧计数上 +1 更健壮）。
       //
       // ★ 这里用**不带审计**的 restoreCommentRow，而不是 comment-service 里带审计的
       //   restoreComment：本次裁决已经由下面那条 decide_appeal 日志覆盖了，再写一条

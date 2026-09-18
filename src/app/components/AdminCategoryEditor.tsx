@@ -325,7 +325,7 @@ export default function AdminCategoryEditor({ initialCategories, initialParents 
                 <div className="form-group">
                   <label className="form-label">父栏目</label>
                   {/* 父栏目仅可选一级栏目（二级层级，子栏目不可再作父级），
-                      故此处按 Flask render_category_options 的样式给每项加图标前缀；
+                      选项文案与文章管理的栏目下拉同一格式，即「图标 名称」前缀；
                       因无可选子级，不出现「　└ 名称」子项。 */}
                   <select
                     className="form-select"

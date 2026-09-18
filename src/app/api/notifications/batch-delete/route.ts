@@ -4,7 +4,7 @@ import { batchDelete } from '@/lib/notification-service';
 import { parseNotificationIds } from '../batch-params';
 
 // DELETE /api/notifications/batch-delete { notification_ids: string[] }
-//   批量删除通知（需登录，限本人）。硬删除，对齐 Flask notifications.api_batch_delete。
+//   批量删除通知（需登录，限本人）。硬删除（通知表没有软删标记，删就是删行）。
 export async function DELETE(req: Request) {
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '请先登录');

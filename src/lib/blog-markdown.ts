@@ -69,7 +69,7 @@ export function renderVoteFallback(el: HTMLElement, vid: string): void {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 投票小组件（对齐 Flask app/static/js/blog/vote-embed.js 的 buildWidget）
+// 投票小组件
 //
 // 【修的是什么】这里原先只渲染「结果行」—— 没有标题、没有投票入口、没有去详情页的
 // 链接，且最外层少了 .vote-embed-widget（卡片背景/边框/内边距/宽度全挂在那个类上），
@@ -96,12 +96,12 @@ export interface VoteEmbedData {
   options: VoteOptionData[];
 }
 
-/** 可投票 = 未锁定且本人未投过（对齐 Flask 的 canVote）。 */
+/** 可投票 = 未锁定且本人未投过。 */
 function canVote(data: VoteEmbedData): boolean {
   return !data.is_locked && data.user_voted == null;
 }
 
-/** 结果行：进度条 + 「N 票 · X%」，本人投的那项加 ✓ 高亮（对齐 Flask 结果分支）。 */
+/** 结果行：进度条 + 「N 票 · X%」，本人投的那项加 ✓ 高亮。 */
 function buildResultRow(doc: Document, o: VoteOptionData, mine: boolean): HTMLElement {
   const row = doc.createElement('div');
   row.className = `vote-embed-option vote-embed-option--result${mine ? ' vote-embed-option--voted' : ''}`;
@@ -191,7 +191,7 @@ export function buildVoteWidget(el: HTMLElement, voteId: string, data: VoteEmbed
     widget.appendChild(submit);
   }
 
-  // 详情页入口：新窗口打开，别把读者的阅读位置顶掉（对齐 Flask 的 target="_blank"）
+  // 详情页入口：新窗口打开，别把读者的阅读位置顶掉
   const link = doc.createElement('a');
   link.className = 'vote-embed-link';
   link.setAttribute('href', `/vote/${voteId}`);
@@ -204,7 +204,7 @@ export function buildVoteWidget(el: HTMLElement, voteId: string, data: VoteEmbed
   el.appendChild(widget);
 }
 
-/** 选中 + 提交（仅可投票时绑定）。投票成功后重新拉取并整体重绘，对齐 Flask 的 renderEmbed。 */
+/** 选中 + 提交（仅可投票时绑定）。投票成功后重新拉取并整体重绘。 */
 function attachVoteHandlers(el: HTMLElement, voteId: string, data: VoteEmbedData): void {
   if (!canVote(data)) return;
 

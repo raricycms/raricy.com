@@ -85,8 +85,8 @@ export async function getSiteStats(): Promise<SiteStats> {
     prisma.imageHosting.count({ where: { ignore: true } }),
     // ★ 磁盘占用统计的是**全部**行，含已软删 —— 软删只翻标志位，文件还躺在
     //   instance/images/ 里。运维要的是「这块盘被占了多少」，不是「有效图片有多大」。
-    //   注意这与 image-service.getTotalStorageBytes()（只算未软删、对齐 Flask 的
-    //   get_total_storage_bytes，图床管理页在用）是两个不同的口径，别互相替换。
+    //   注意这与 image-service.getTotalStorageBytes()（只算未软删，图床管理页在用）
+    //   是两个不同的口径，别互相替换。
     prisma.imageHosting.aggregate({ _sum: { fileSize: true } }),
     prisma.vote.count(),
     prisma.vote.count({ where: { ignore: true } }),

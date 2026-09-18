@@ -4,9 +4,9 @@ import { hasAdminRights } from '@/lib/auth';
 import LogoutLink from './LogoutLink';
 import NavLink from './NavLink';
 
-// 顶栏 — Flask `base.html` 样式（site-* BEM + icon mask）
+// 顶栏 — 站点顶部导航（site-* BEM 类 + 图标 mask 着色）
 // base.js 通过 id (#userDropdownToggle, #userDropdownMenu, #themeToggle, #notificationBadge,
-// #checkinBadge, #chatUnreadDot) 与 .open class 操纵此顶栏，故结构必须与 Flask 保持一致。
+// #checkinBadge, #chatUnreadDot) 与 .open class 操纵此顶栏，故这些 id / class 改不得。
 export default function Navbar({ user }: { user: SafeUser | null }) {
   return (
     <header className="site-navbar" role="navigation">

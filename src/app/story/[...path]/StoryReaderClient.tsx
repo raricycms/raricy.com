@@ -1,17 +1,17 @@
 'use client';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// StoryReaderClient — Markdown 阅读页的客户端增强（忠实移植 reader.html 尾部脚本）。
+// StoryReaderClient — Markdown 阅读页的客户端增强。
 //
-// 两件事，逐字对齐 Flask app/templates/story/reader.html 的 extra_js：
+// 两件事：
 //   1. 顶部阅读进度条：随滚动填充 width，并让渐隐区域随进度动态缩小
 //      （0% 时右端 15% 渐隐，100% 时全填满无渐隐）。
 //   2. 键盘翻页：← 点上一章、→ 点下一章（查 .story-reader__nav 内带 title 的锚点）。
-//      与 Flask 一致——服务端从不提供 prev/next 章 URL（views.py 未传），
-//      故导航项恒为 ghost <span>，此监听是等价的空操作机制，不臆造章节接口。
+//      服务端从不提供 prev/next 章 URL，故导航项恒为 ghost <span>，
+//      此监听是等价的空操作机制，不臆造章节接口。
 //
 // hljs 主题同步不在此实现：Next 侧 Markdown 为服务端渲染、highlight 已固化，
-// 无 reader.html 里客户端 marked+hljs 的运行期主题切换需求（看不见的差异，忽略）。
+// 无客户端 marked+hljs 的运行期主题切换需求（看不见的差异，忽略）。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useRef } from 'react';
@@ -22,7 +22,7 @@ export default function StoryReaderClient() {
   useEffect(() => {
     const progress = progressRef.current;
 
-    // 阅读进度条（对齐 reader.html 第 108-118 行）。
+    // 阅读进度条。
     const onScroll = () => {
       if (!progress) return;
       const h = document.documentElement.scrollHeight - window.innerHeight;
@@ -34,7 +34,7 @@ export default function StoryReaderClient() {
         'linear-gradient(to right, var(--color-brand-primary) ' + fadeStart + '%, transparent 100%)';
     };
 
-    // 键盘导航（对齐 reader.html 第 121-130 行）。
+    // 键盘导航。
     const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;

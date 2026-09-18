@@ -11,7 +11,7 @@ function toast(msg: string, type: string) {
   if (w.showToast) w.showToast(msg, type);
 }
 
-// 登录页 — Flask `auth/login.html` 样式（auth-page > .container > register-container > register-header）
+// 登录页 — 样式结构：auth-page > .container > register-container > register-header
 export default function LoginPage() {
   const router = useRouter();
   const [next, setNext] = useState('');

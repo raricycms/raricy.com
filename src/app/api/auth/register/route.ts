@@ -5,9 +5,9 @@ import { verifyTurnstile } from '@/lib/turnstile';
 import { cookies } from 'next/headers';
 
 // POST /api/auth/register  { username, email, password, invite_code?, turnstileToken? }
-// 复刻 Flask 注册：Turnstile 校验 → 校验 → 建号（有效邀请码升级 core）→ 立即登录（下发会话 cookie）。
+// 注册流程：Turnstile 校验 → 校验 → 建号（有效邀请码升级 core）→ 立即登录（下发会话 cookie）。
 //
-// Turnstile：对齐 Flask sign_up.py —— 启用时校验 token，未启用时放行（见 verifyTurnstile）。
+// Turnstile：启用时校验 token，未启用时放行（见 verifyTurnstile）。
 export async function POST(req: Request) {
   let body: {
     username?: string;

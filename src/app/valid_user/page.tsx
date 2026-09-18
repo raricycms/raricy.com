@@ -3,9 +3,8 @@ import FooterNote from '@/app/components/FooterNote';
 
 export const metadata: Metadata = { title: 'raricy.com - 获取注册资格' };
 
-// 获取注册资格页 — Flask BEM
-// 模板本体的 content 块为空（详见 app/templates/home/valid_user.html），
-// 这里只保留一个简短的「邀请码流程」说明 + footer note，与原站保持一致。
+// 获取注册资格页 — 布局约定
+// 本页不含任何操作控件：只保留一个简短的「邀请码流程」说明 + footer note。
 export default function ValidUserPage() {
   return (
     <div className="content-wrapper">

@@ -1,9 +1,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// admin-category-service.ts — 栏目管理业务逻辑（对齐 Flask CategoryService）
+// admin-category-service.ts — 栏目管理业务逻辑
 //
-// 与 Flask 解耦风格一致：纯函数 + 显式参数。
-// 删除采用物理删除（对齐 CategoryService.delete_category），但会先阻断：
-//   • 该栏目下仍有文章（含 ignore=true 的软删除文章，与 Flask 一致，Flask 不带 ignore 过滤）
+// 纯函数 + 显式参数，与站内其它 service 同一风格。
+// 删除采用物理删除，但会先阻断：
+//   • 该栏目下仍有文章（含 ignore=true 的软删除文章 —— 刻意不带 ignore 过滤：
+//     软删只是翻标志位，那些行还在、仍指着这个栏目）
 //   • 该栏目下仍有子栏目
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -30,7 +31,7 @@ export type ServiceResult<T = undefined> =
   | { ok: true; data: T }
   | { ok: false; message: string };
 
-/** 序列化为前端友好的字典（对齐 Category.to_dict）。 */
+/** 序列化为前端友好的字典（snake_case，前端直接消费）。 */
 export function categoryToDict(c: Category) {
   return {
     id: c.id,
@@ -51,8 +52,8 @@ export function categoryToDict(c: Category) {
 
 /**
  * 层级列表：一级栏目（parentId=null）+ 其子栏目，各带文章数量。
- * 与 Flask get_hierarchy 不同的是：这里管理端要看到所有栏目（含未启用），
- * 且附带文章计数用于删除判断展示。
+ * ⚠️ 管理端口径：要看到**所有**栏目（含未启用），不能像前台那样只给启用中的 ——
+ * 停用的栏目照样要能改回来。且附带文章计数用于删除判断展示。
  */
 export async function listCategoriesTree() {
   const all = await prisma.category.findMany({
@@ -220,7 +221,7 @@ export async function toggleCategoryActive(id: number): Promise<ServiceResult<Ca
   return { ok: true, data: category };
 }
 
-/** 物理删除（对齐 CategoryService.delete_category），有子栏目或文章则阻断。 */
+/** 物理删除（有子栏目或文章则阻断）。 */
 export async function deleteCategory(id: number): Promise<ServiceResult> {
   const existing = await prisma.category.findUnique({ where: { id } });
   if (!existing) return { ok: false, message: '栏目不存在' };

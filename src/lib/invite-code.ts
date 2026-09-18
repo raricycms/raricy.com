@@ -1,11 +1,12 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// invite-code.ts — 邀请码生成（对齐 Flask app/utils/invite_code.py:generate_invite_code）
+// invite-code.ts — 邀请码生成
 //
-// 原实现：raw = random.getrandbits(64) → base62 编码 → .ljust(12, '0')[:12]
-//   · base62 字符集用 base62 PyPI 包默认表（数字 + 大写 + 小写）。
-//   · 右填 '0' 到 12 位再截断为 12，因此产物恒为 12 字符（注册时校验 length===12）。
-// 语义等价迁移：用 crypto.getRandomValues 取 64 位随机数（比 random 更均匀），
-// 其余编码 / 补位 / 落库逻辑逐一对齐。created_at 对齐模型 default=datetime.now。
+// 码的形状（不可改：库里的存量码、注册侧的 length===12 校验都按它）：
+//   raw = 64 位随机数 → base62 编码 → 右填 '0' 到 12 位、再截断为 12
+//   · base62 字符集是 0-9A-Za-z 的默认表（数字 + 大写 + 小写）。
+//   · 因此产物恒为 12 字符。
+// 随机数用 crypto.getRandomValues 取 64 位（比旧版的 random 更均匀）；
+// created_at 用 nowForDb() 写入（UTC+8 墙上时间，见 db-time.ts）。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { prisma } from './db';

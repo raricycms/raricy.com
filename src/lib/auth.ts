@@ -1,10 +1,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // auth.ts — 服务端取当前用户 + 角色/禁言判定
 //
-// 复刻 Flask 侧 user_loader 的语义：
+// 会话解析语义：
 //   1. 读 cookie → 验签 → 得到 { uid, sv }
 //   2. 按 uid 载入用户；比对 sv 与 user.sessionVersion，不一致 → 视为未登录
-//   3. 角色体系 user → core → admin → owner，与 User 模型的属性方法一一对应
+//   3. 角色体系 user → core → admin → owner（逐档包含，判定见下面的三个 isXxx）
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { cookies } from 'next/headers';
@@ -59,13 +59,13 @@ export async function getCurrentUser(): Promise<SafeUser | null> {
   });
   if (!user) return null;
 
-  // session_version 失效检查（对齐 Flask）
+  // session_version 失效检查：重置密码 / 禁言 / 强制下线都会递增版本 → 旧 cookie 立即作废
   if ((user.sessionVersion ?? 0) !== payload.sv) return null;
 
   return user as SafeUser;
 }
 
-// ── 角色判定（对齐 User 模型属性）────────────────────────────────────────────
+// ── 角色判定（逐档包含：user < core < admin < owner）────────────────────────
 
 export function isOwner(u: { role?: string } | null): boolean {
   return !!u && u.role === 'owner';
@@ -78,10 +78,10 @@ export function isCoreUser(u: { role?: string } | null): boolean {
 }
 
 /**
- * 当前是否处于禁言中（含自动过期判定，对齐 is_currently_banned）。
+ * 当前是否处于禁言中（含自动过期判定）。
  *
  * 【为什么用 nowForDb() 而不是 new Date()】banUntil 存的是「UTC+8 墙上时间」
- * （banUser 按 nowForDb() + hours 计算，Flask 亦为 datetime.now() + timedelta）。
+ * （banUser 按 nowForDb() + hours 计算 —— 写入与比较必须用同一把尺子）。
  * 若拿真实 UTC 的 new Date() 去比，两把尺子差 8 小时 —— 禁言 1 小时会实际生效 9 小时。
  * 比较双方必须用同一个时钟。见 src/lib/db-time.ts。
  */

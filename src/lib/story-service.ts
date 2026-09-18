@@ -1,24 +1,24 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// story-service.ts — 故事模块服务端读盘（忠实移植 Flask app/web/story/services.py）
+// story-service.ts — 故事模块服务端读盘
 //
 // 磁盘结构（真实数据在 repo 根的 instance/stories/，可用 env STORIES_DIR 覆盖）：
 //   • 顶层 = 若干「合集」文件夹，每个可含 info.json {title,description,author,
 //     priority,ignore,ai_assisted}。
 //   • 合集内可有 .md（markdown 故事）/ .cattca（互动小说）文件，以及子文件夹
 //     （子合集，可多级嵌套）。
-//   • 互动小说常见形态：子文件夹内放 content.cattca —— 按 Flask 逻辑，该子文件夹
+//   • 互动小说常见形态：子文件夹内放 content.cattca —— 按既有规则，该子文件夹
 //     被当作「合集」，其中 content.cattca 解析为一篇名为 "content" 的故事。
 //     （即不特殊处理 content.* 文件名，纯粹沿用「目录=合集 / 文件=故事」的规则。）
 //
-// 与 Flask 对齐的关键点：
-//   • get_collection：先 listdir 按小写名排序，再遍历；.md/.cattca → 故事条目，
+// 关键规则（磁盘上的真实数据即按它组织，改则既有故事读不出来）：
+//   • 合集：先按小写名排序目录项，再遍历；.md/.cattca → 故事条目，
 //     子目录（排除 __pycache__）→ 合集条目；条目自身 ignore=true 则跳过。
-//     最终 sort key = (priority, bool(description))，reverse=True（稳定排序，
+//     最终 sort key = (priority, bool(description))，降序（稳定排序，
 //     故同优先级/同描述状态下保持名称升序）。
-//   • get_story：path 拆成 parent/story_id，在 parent 目录里找 <story_id>.md
+//   • 单篇：path 拆成 parent/story_id，在 parent 目录里找 <story_id>.md
 //     或 <story_id>.cattca；frontmatter 头解析 title/author/genre/ai_assisted；
 //     ai_assisted 未在文章头声明时继承父合集设置。
-//   • resolve：路径先当合集解析（目录存在且未 ignore），否则当故事解析，否则 404。
+//   • 路径解析：先当合集解析（目录存在且未 ignore），否则当故事解析，否则 404。
 //
 // 防御式设计（对齐任务要求，真实数据不得崩溃）：
 //   • 所有 fs 读取 try/catch；缺目录、坏 JSON、坏 frontmatter、无权限 → 跳过/返回
@@ -205,7 +205,7 @@ function parseFrontmatter(raw: string): Parsed {
   return { meta, content: text.slice(m[0].length) };
 }
 
-/** 字数统计（移植 app/utils/markdown_countword.py 的 non_whitespace_characters）。 */
+/** 字数统计：非空白字符数（先剔代码块/行内代码/图片/HTML 标签，见下）。 */
 function countNonWhitespace(content: string): number {
   let c = content;
   c = c.replace(/```[\s\S]*?```/g, ''); // 代码块
@@ -226,7 +226,7 @@ function sanitizeParts(parts: string[]): string[] | null {
   for (const raw of parts) {
     const seg = decodeSegment(raw);
     if (seg === null) return null;
-    const trimmed = seg.replace(/\/+$/g, ''); // 去尾部斜杠（对齐 Flask rstrip('/')）
+    const trimmed = seg.replace(/\/+$/g, ''); // 去尾部斜杠（避免多出一条空段）
     if (trimmed === '') continue; // 跳过空段（如尾斜杠产生）
     if (
       trimmed === '.' ||
@@ -255,7 +255,6 @@ function decodeSegment(raw: string): string | null {
 
 /**
  * 读取给定路径的合集。空数组 = 根目录。目录不存在或 ignore=true → null。
- * 忠实移植 Flask StoryService.get_collection。
  */
 export function getCollection(pathParts: string[]): CollectionResult | null {
   const safe = sanitizeParts(pathParts);
@@ -274,7 +273,7 @@ export function getCollection(pathParts: string[]): CollectionResult | null {
   const description = str(info['description']);
 
   const children: CollectionChild[] = [];
-  // 先按小写名排序（对齐 Flask，保证稳定排序的名称升序基线）
+  // 先按小写名排序（稳定排序的名称升序基线，下面的双键排序靠它保底）
   const entries = readdirSafe(collDir).sort((a, b) =>
     a.toLowerCase() < b.toLowerCase() ? -1 : a.toLowerCase() > b.toLowerCase() ? 1 : 0,
   );
@@ -305,7 +304,7 @@ export function getCollection(pathParts: string[]): CollectionResult | null {
     }
   }
 
-  // 稳定排序：priority desc，再 hasDescription desc（对齐 Flask reverse=True 双键）
+  // 稳定排序：priority desc，再 hasDescription desc（双键降序）
   children.sort((a, b) => {
     if (a.priority !== b.priority) return b.priority - a.priority;
     const ad = a.description ? 1 : 0;
@@ -350,7 +349,7 @@ function buildStoryChild(
   };
 }
 
-/** 统计目录内条目数（.md/.cattca 文件 + 子目录，排除 __pycache__），对齐 Flask _count_items。 */
+/** 统计目录内条目数（.md/.cattca 文件 + 子目录，排除 __pycache__）。 */
 function countItems(dir: string): number {
   let count = 0;
   for (const name of readdirSafe(dir)) {
@@ -374,7 +373,7 @@ function buildBreadcrumbs(parts: string[]): Breadcrumb[] {
 // ── 故事读取 ────────────────────────────────────────────────────────────────
 
 /**
- * 读取单篇故事。忠实移植 Flask StoryService.get_story：path 拆 parent/story_id，
+ * 读取单篇故事：path 拆成 parent/story_id，
  * 在 parent 目录里找 <story_id>.md 或 <story_id>.cattca。找不到 → null。
  * markdown 走 renderMarkdown；cattca 返回原文。
  */
@@ -453,7 +452,7 @@ export function getStory(pathParts: string[]): StoryResult | null {
 
 /**
  * 解析任意路径：先当合集，否则当故事，否则 notfound。
- * 对齐 Flask views.resolve_path（合集优先）。空数组 = 根合集。
+ * 合集优先。空数组 = 根合集。
  */
 export function resolvePath(pathParts: string[]): ResolveResult {
   const safe = sanitizeParts(pathParts);
@@ -472,7 +471,7 @@ export function resolvePath(pathParts: string[]): ResolveResult {
   return { kind: 'notfound' };
 }
 
-// ── markdown 渲染（服务端，对齐 Flask 服务端渲染 + 去脚本） ──────────────────
+// ── markdown 渲染（服务端渲染 + 去脚本：故事按可信输入处理） ──────────────────
 
 import { marked } from 'marked';
 

@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// fish-service.ts — 小鱼干服务（对齐 Flask app/service/fish.py）
+// fish-service.ts — 小鱼干服务
 //
 // 本切片实现读路径（余额 / 流水 / 排行榜）+ 一个供签到复用的本地写入 addFish()。
 //
@@ -32,7 +32,7 @@ export async function getBalance(userId: string): Promise<number> {
 }
 
 /**
- * 批量查询余额（对齐 get_balance_batch）。返回 {userId: balance}。
+ * 批量查询余额。返回 {userId: balance}。
  * 不存在的 userId 对应 0；最多支持 500 个 ID，超出截断。
  */
 export async function getBalanceBatch(userIds: string[]): Promise<Record<string, number>> {
@@ -48,18 +48,18 @@ export async function getBalanceBatch(userIds: string[]): Promise<Record<string,
   return result;
 }
 
-/** UTC+8 当天日期 YYYY-MM-DD（对齐 Flask app/service/checkin._today_utc8）。 */
+/** UTC+8 当天日期 YYYY-MM-DD。 */
 function todayUtc8(): string {
   return todayStr(); // 统一走 db-time 的时区约定
 }
 
 /**
- * 今日签到获得的小鱼干数量（对齐 get_today_checkin_fish）。未签到返回 0。
+ * 今日签到获得的小鱼干数量。未签到返回 0。
  *
  * 取 UTC+8 今天首条 checkin 流水的 amount。
  *
  * 【为什么不用 SQLite 的 date(created_at)】
- * Flask/SQLAlchemy 把 DATETIME 存为 TEXT，date() 能解析；但 **Prisma 往 SQLite 写
+ * 老数据把 DATETIME 存为 TEXT，date() 能解析；但 **Prisma 往 SQLite 写
  * DateTime 时存的是 INTEGER（Unix 毫秒）**，date(整数) 返回 NULL —— 即所有由 Next
  * 写入的签到流水都匹配不上，今日签到会静默显示为 0。切换后同一列会 TEXT/INTEGER
  * 混存（老数据 TEXT、新数据 INTEGER），任何裸 SQL 日期函数都不可靠。
@@ -68,7 +68,7 @@ function todayUtc8(): string {
 export async function getTodayCheckinFish(userId: string): Promise<number> {
   const today = todayUtc8();
   // 【时区约定】库里存的是「UTC+8 墙上时间，贴 Z 标签」——
-  // Flask 用 datetime.now() 写 naive 本地时间（生产服务器 TZ=UTC+8，已由数据反推证实：
+  // 旧版用 datetime.now() 写 naive 本地时间（生产服务器 TZ=UTC+8，已由数据反推证实：
   // daily_checkins 里 date(created_at) 与显式按 UTC+8 算的 checkin_date 2170/2170 全等），
   // normalize-datetimes 只补 'T'/'Z' 不做平移，故墙上时间被原样保留。
   // 因此这里**不做时区平移**，直接按墙上日期取区间；checkin-service 的 dateAtDay 同此约定。
@@ -172,7 +172,7 @@ export async function getTransactionsSince(
   return rows.map(toFishTxDTO);
 }
 
-/** 分页查询用户交易流水（对齐 get_transactions）。 */
+/** 分页查询用户交易流水。 */
 export async function getTransactions(
   userId: string,
   page = 1,
@@ -215,7 +215,7 @@ export interface FishLeaderboardEntry {
   balance: number;
 }
 
-/** 小鱼干余额排行榜（对齐 get_balance_leaderboard）。 */
+/** 小鱼干余额排行榜。 */
 export async function getBalanceLeaderboard(limit = 50): Promise<FishLeaderboardEntry[]> {
   const users = await prisma.user.findMany({
     where: { driedFish: { gt: 0 } },
@@ -245,7 +245,7 @@ export interface AddFishInput {
 }
 
 /**
- * 增加小鱼干 + 写流水（对齐 add_fish，仅本地写）。必须在一个事务里调用，
+ * 增加小鱼干 + 写流水（仅本地写）。必须在一个事务里调用，
  * tx 由调用方从 prisma.$transaction 传入，以便与其它写入原子提交。
  *
  * @returns 创建的流水行 id —— 供写路径的远端同步失败补偿（fish-sync）精确删除。
@@ -273,7 +273,7 @@ export async function addFish(tx: TxClient, input: AddFishInput): Promise<{ txId
       referenceId: input.referenceId ?? null,
       relatedUserId: input.relatedUserId ?? null,
       // 必须显式写：schema 里 createdAt 是 DateTime? 且**没有** @default(now())
-      //（对齐既有库结构），漏写会让整条流水时间为 NULL —— 流水倒序会乱、今日签到判定失效。
+      //（既有库结构如此），漏写会让整条流水时间为 NULL —— 流水倒序会乱、今日签到判定失效。
       // 用 nowForDb() 而非 new Date()：本库时间戳语义是「UTC+8 墙上时间贴 Z」，
       // 详见 src/lib/db-time.ts 的说明。
       createdAt: nowForDb(),

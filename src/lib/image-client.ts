@@ -80,7 +80,7 @@ function uploadImage(fd: FormData): Promise<UploadResult> {
  * 校验 + 上传一个用户选中的文件。**不弹 toast、不碰状态** —— 由调用方决定怎么反馈。
  *
  * 校验不通过时同样 resolve 成 { ok:false }（message 已写好），调用方一视同仁地 toast。
- * compress=1 对齐 Flask 的 Vditor 上传路径（图床页那个复选框是另一个入口）。
+ * 走 Vditor 上传路径时固定 compress=1（图床页那个复选框是另一个入口）。
  */
 export async function uploadImageFile(file: File): Promise<UploadResult> {
   if (file.size > MAX_IMAGE_BYTES) {

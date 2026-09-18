@@ -3,7 +3,7 @@
 import type { Category } from '@prisma/client';
 
 /**
- * 统一 API 响应格式，对齐 Flask 的 { code, message, ...data }。
+ * 统一 API 响应格式：{ code, message, ...data }。
  *
  * 一律 no-store：这些响应大多按 cookie 现算（当前用户 / 未读 / 会话列表），
  * 不该被浏览器或中间缓存留下副本 —— 讨论、通知这类私有数据尤其如此。
@@ -33,7 +33,7 @@ export function ymd(d: Date | null | undefined): string | null {
 }
 
 /**
- * 'YYYY-MM-DD HH:MM:SS'（对齐 Flask 的 .strftime('%Y-%m-%d %H:%M:%S')）。
+ * 'YYYY-MM-DD HH:MM:SS'（旧版 .strftime('%Y-%m-%d %H:%M:%S') 的输出形态）。
  *
  * 用 toISOString 切片而非 toLocaleString：库里存的已经是 UTC+8 墙上时间
  * （见 db-time.ts），toISOString 按 UTC 解读正好把那个墙上时间原样吐回来。

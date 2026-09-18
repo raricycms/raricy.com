@@ -12,7 +12,7 @@ export const metadata: Metadata = {
   title: 'Raricy.com - 发布文章',
 };
 
-// 发布文章 — Flask BEM
+// 发布文章 — 表单为共用的 BlogForm，页头为 upload-hero
 export default async function UploadBlogPage() {
   const user = await requireCoreUser();
 

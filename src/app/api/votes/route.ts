@@ -4,7 +4,7 @@ import { apiErr } from '@/lib/format';
 
 // GET /api/votes — 投票列表（只列自己创建的，ignore=false，最新在前；需核心用户）
 //
-// 对齐 Flask /vote/ menu 的 @authenticated_required。此前完全没判权，
+// 需核心用户（core 及以上）。此前完全没判权，
 // 未认证用户 curl 就能拿到全站投票列表 —— 页面挡了 core，接口漏了。
 export async function GET() {
   const user = await getCurrentUser();
@@ -32,7 +32,7 @@ export async function GET() {
 export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '请先登录');
-  // 对齐 Flask @authenticated_required：需核心用户（core 及以上）。
+  // 需核心用户（core 及以上）。
   // 页面挡了 core，但接口没挡 —— 未认证用户用不了界面，却 curl 得动。
   if (!isCoreUser(user)) return apiErr(403, '需要核心用户权限');
 

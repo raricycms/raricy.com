@@ -147,7 +147,6 @@ export function vditorUploadOptions(onError: (message: string) => void): IUpload
     // 不写就是 vditor 的默认值 `file[]`，服务端取不到 → 400 请选择文件
     fieldName: 'file',
     // 多选：vditor 会把 N 个文件 append 到同一个 `file` 字段，服务端 getAll 收下。
-    // （Flask 侧走的是 `file[]` 分支，语义相同，只是字段名不同。）
     multiple: true,
     // accept 只作用于选择框的过滤：vditor 自己的校验只比对 `image/` 这一级
     // （validateFile 里 type.split('/')[0]），挡不住具体格式，真正的白名单在服务端。

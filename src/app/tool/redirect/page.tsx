@@ -1,6 +1,6 @@
 'use client';
 
-// 逐字对齐原 Flask 模板 tool/redirect.html（纯前端）。
+// 纯前端工具。
 import { useEffect, useRef, useState } from 'react';
 
 type Shortcut = { url: string; title: string; label: string };

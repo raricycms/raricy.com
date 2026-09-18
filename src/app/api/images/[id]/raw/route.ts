@@ -13,7 +13,7 @@ function notFound(): Response {
 // GET /api/images/:id/raw — 从磁盘串流图片字节
 //   · ignore → 404
 //   · 私有图（isPublic = false）→ 仅作者 / 管理员可见
-//   · SVG → Content-Disposition: attachment（强制下载，防内联 XSS，对齐 Flask）
+//   · SVG → Content-Disposition: attachment（强制下载，防内联 XSS）
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
   const img = await getImageForServe(id);

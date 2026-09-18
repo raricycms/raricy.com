@@ -40,7 +40,7 @@ export default async function BlogDetailPage({ params }: { params: Promise<{ id:
 
   return (
     <>
-      {/* 阅读进度条（对齐 Flask blog.html 顶部 .reading-progress） */}
+      {/* 阅读进度条（页面顶部那条 .reading-progress） */}
       <div className="reading-progress" />
       {/* 客户端绑定 scroll → 进度条宽度 */}
       <ReadingProgress />

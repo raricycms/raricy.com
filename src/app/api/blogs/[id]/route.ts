@@ -37,16 +37,16 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   });
 }
 
-// PUT /api/blogs/:id — 编辑文章（对齐 Flask blog.edit_blog 的 POST 分支）
-// 权限：仅作者本人（对齐 Flask，非作者一律 403 '无权编辑该文章'；FeedButton 也仅对作者显示编辑入口）。
+// PUT /api/blogs/:id — 编辑文章
+// 权限：仅作者本人（非作者一律 403 '无权编辑该文章'；FeedButton 也仅对作者显示编辑入口）。
 // 顺序：文章存在(未软删) → 作者本人 → 禁言(管理员除外) → 校验 → 栏目管理员专属 → 更新 → （管理员编辑他人时）通知。
 export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
 
   const user = await getCurrentUser();
-  if (!user) return apiErr(401, '请先登录'); // Flask @login_required
+  if (!user) return apiErr(401, '请先登录'); // 需登录
 
-  // 文章存在且未软删（对齐 `if not blog or blog.ignore: abort(404)`）
+  // 文章存在且未软删（软删等同不存在 → 404）
   const blog = await prisma.blog.findFirst({
     where: { id, ignore: false },
     select: { id: true, authorId: true },
@@ -56,7 +56,7 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
   // 权限：仅作者本人
   if (blog.authorId !== user.id) return apiErr(403, '无权编辑该文章');
 
-  // 禁言检查（管理员除外，对齐 check_user_ban_status_for_admin）
+  // 禁言检查（管理员除外）
   if (!hasAdminRights(user) && isCurrentlyBanned(user)) {
     return apiErr(403, banActionMessage(user));
   }
@@ -75,7 +75,7 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
 
   const { hasChanges, changesDetail } = await updateBlog(id, v.data);
 
-  // 管理员编辑他人文章时通知作者（对齐 Flask；因本路由仅作者可入，此分支实际不会触发）。
+  // 管理员编辑他人文章时通知作者（因本路由仅作者可入，此分支实际不会触发）。
   if (hasChanges && hasAdminRights(user) && blog.authorId !== user.id) {
     try {
       const changesText = changesDetail.length ? changesDetail.join('、') : '文章内容已更新';
@@ -95,7 +95,7 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
   return apiOk({ blog_id: id, redirect: `/blog/${id}` }, '更新成功');
 }
 
-// DELETE /api/blogs/:id — 作者本人删自己的文章（对齐 Flask blog.delete_blog 的作者分支）
+// DELETE /api/blogs/:id — 作者本人删自己的文章
 // 权限：仅作者本人。管理员删他人请走 /api/admin/blogs/:id（要求 reason + 写日志 + 通知作者）。
 export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();

@@ -12,7 +12,7 @@ interface SearchParams {
   type?: string;
 }
 
-// 对齐 datetime_format('%Y-%m-%d %H:%M')
+// 时间格式 YYYY-MM-DD HH:MM
 // 一律 getUTC* 读：库内时间戳是「UTC+8 墙上时间贴 Z」（见 src/lib/db-time.ts），
 // 本地 getter 会按**服务器时区**平移 —— 服务器 TZ=UTC 时碰巧对，TZ=UTC+8 时整体 +8 小时。
 function fmtDateTime(iso: string | null): string {
@@ -32,7 +32,7 @@ const FILTERS: { label: string; type: string | null }[] = [
   { label: '消费', type: 'purchase' },
 ];
 
-// 小鱼干流水页 — Flask BEM
+// 小鱼干流水页 — content-wrapper / page-title / fish-filter-bar 一套类名
 export default async function FishTransactionsPage({
   searchParams,
 }: {

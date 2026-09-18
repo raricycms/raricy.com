@@ -1,14 +1,13 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// notification-service.ts — 通知业务逻辑（对齐 Flask app/service/notifications.py）
+// notification-service.ts — 通知业务逻辑
 //
-// 与 Flask 解耦风格一致：纯函数 + 显式参数。
+// 风格与其它 service 一致：纯函数 + 显式参数。
 //   • 列表：recipientId = 当前用户，timestamp 倒序，20/页，带 actor.username。
 //   • 未读数 / 标记单条已读 / 全部已读 / 批量已读 / 批量删除。
 //   • sendNotification 尊重接收者的 notify_* 偏好（除非 force）——
-//     Flask 侧 send_notification 收了 force 参数却从头到尾没查过偏好（已核实
-//     app/service/notifications.py），即原站的偏好开关是摆设；判定只散落在少数
-//     调用点（如 like_service 的 author.notify_like）。TS 侧真的实现了检查，
-//     属**有意的行为改进**（真实库 465 个用户无一关过开关，影响面为零）。
+//     旧版虽然收了 force 参数却从头到尾没查过偏好，偏好开关形同摆设；判定只散落在
+//     少数调用点。这里真的实现了检查，属**有意的行为改进**
+//     （真实库 465 个用户无一关过开关，影响面为零）。
 //     映射靠 ACTION_PREF_MAP 精确查表，不做子串嗅探；自由文本调用方显式传 prefKey。
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -30,7 +29,8 @@ export type NotifyPrefKey = 'notifyLike' | 'notifyEdit' | 'notifyDelete' | 'noti
  * 就会归到 notifyDelete —— 用户开着「管理员通知」，这条管理员通知却被 delete
  * 偏好吞掉。自由文本 × 子串优先级 = 串扰，只能靠精确表根治。
  *
- * 偏好字段的语义以模型注释为准（app/models/user.py:23-26），四个开关都很窄：
+ * 偏好字段的语义以 schema 为准（User.notifyLike / notifyEdit / notifyDelete /
+ * notifyAdmin），四个开关都很窄：
  *   notify_like「文章被点赞通知」/ notify_edit「文章被编辑通知」
  *   notify_delete「文章被删除通知」/ notify_admin「管理员通知」
  * key 取自真实库中实际存在的 action，外加代码里在用但库中暂无的两个（文章编辑、图片删除）。
@@ -61,7 +61,7 @@ const ACTION_PREF_MAP: Readonly<Record<string, NotifyPrefKey>> = {
  * 将 action 映射到用户通知偏好字段。**未在表中的 action 返回 null**。
  *
  * 返回 null = 不受偏好拦截、照常发送，这是**有意为之**而非兜底遗漏：
- *   • 评论回复 / 文章评论 —— Flask 与本项目都没有 notify_comment 开关，评论通知一律发；
+ *   • 评论回复 / 文章评论 —— 从来没有 notify_comment 开关，评论通知一律发；
  *   • 讨论 @ 提及（chat-service.notifyChannelMentions）—— 同样无对应开关，调用方
  *     显式传 prefKey: null 声明「不受管辖」，不落到这里查表；
  *   • 文章投喂 —— 同样无对应开关；
@@ -118,7 +118,7 @@ export async function sendNotification(input: SendNotificationInput) {
   if (!force) {
     // 调用方显式传了 prefKey（含 null）就以它为准，不再靠 action 猜。
     const prefKey = input.prefKey !== undefined ? input.prefKey : prefForAction(action);
-    // 偏好字段可空，缺省视为开启（对齐 Flask getattr(..., True)）
+    // 偏好字段可空，缺省视为开启（只有显式 false 才拦）
     if (prefKey && recipient[prefKey] === false) return null;
   }
 
@@ -283,7 +283,7 @@ export async function markAllRead(userId: string) {
 
 /**
  * 批量标记为已读（限本人），返回命中条数。
- * 对齐 Flask batch_mark_notifications_read：过滤条件只有 id IN (...) + recipient_id，
+ * 过滤条件只有 id IN (...) + recipient_id，
  * **不带 read=False**，所以已读的条目也会被计入 count（命中即算，非「本次真正翻转的条数」）。
  * recipientId 是越权防线：别人的通知 id 混进来只会匹配不到，不会被改。
  */
@@ -298,7 +298,8 @@ export async function batchMarkRead(notificationIds: string[], userId: string) {
 }
 
 /**
- * 批量删除（限本人），返回删除条数。硬删除，对齐 Flask batch_delete_notifications。
+ * 批量删除（限本人），返回删除条数。**硬删除** —— Notification 表没有软删字段，
+ * 这里是真删行，与站内其它「删除」不同，改动前先看清楚。
  * 同上：recipientId 过滤挡住越权删除别人通知。
  */
 export async function batchDelete(notificationIds: string[], userId: string) {

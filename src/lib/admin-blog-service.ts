@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// admin-blog-service.ts — 文章管理业务逻辑（对齐 Flask BlogService 管理端方法）
+// admin-blog-service.ts — 文章管理业务逻辑
 //
 // 与用户端 blog-service 不同：管理端列出**所有**文章（含 ignore=true 软删除）。
 // 提供精选切换、软删除/恢复（ignore 字段）、改栏目。
@@ -88,7 +88,7 @@ export async function listAdminBlogs(params: AdminListParams) {
   return { blogs, total, page, perPage, pages, hasPrev: page > 1, hasNext: page < pages };
 }
 
-/** 设置精选状态（对齐 BlogService.update_featured）。 */
+/** 设置精选状态。 */
 export async function setBlogFeatured(
   blogId: string,
   isFeatured: boolean
@@ -147,11 +147,11 @@ export async function deleteBlogForAdmin(
       reason: trimmed,
     });
   } catch {
-    /* 对齐 Flask：审计写入失败吞掉 */
+    /* 审计写入失败吞掉：日志失败不该让删除本身回滚 */
   }
 
-  // 通知作者（管理员删自己的文章不通知自己，对齐 Flask admin_delete_blog 的
-  // `blog_author_id != current_user.id`；审计日志仍然照写）
+  // 通知作者（管理员删自己的文章不通知自己 —— 自己删自己没什么可通知的；
+  // 审计日志仍然照写）
   if (blog.authorId !== actor.id) {
     try {
       await sendNotification({
@@ -209,7 +209,7 @@ export async function restoreBlog(
   return { ok: true, message: '已恢复文章', id: blogId };
 }
 
-/** 改栏目（对齐 CategoryService.update_article_category）。categoryId=null → 未分类。 */
+/** 改栏目。categoryId=null → 未分类。 */
 export async function setBlogCategory(
   blogId: string,
   categoryId: number | null

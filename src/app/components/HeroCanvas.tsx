@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 
-// 首页星空背景 — 逐字节对齐 Flask homepage.html 的内联脚本（保留 Flask 原行为）
+// 首页星空背景 — canvas 粒子动画（80 个星点漂移 + 边界反弹；页面隐藏时暂停动画）
 export default function HeroCanvas() {
   const ref = useRef<HTMLCanvasElement | null>(null);
 

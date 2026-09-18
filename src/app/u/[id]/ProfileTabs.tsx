@@ -5,7 +5,7 @@ import { useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
-// 个人主页「文章 / 评论」标签页 — Flask BEM 样式
+// 个人主页「文章 / 评论」标签页 — 类名走 segmented + profile-tabs__*
 // tab 切换在客户端完成；分页走整页刷新。
 interface BlogItem {
   id: string;

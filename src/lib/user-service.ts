@@ -1,10 +1,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // user-service.ts — 用户注册 / 公开资料 / 本人资料更新
 //
-// 对齐 Flask 侧：
-//   • 注册     app/web/auth/sign_up.py（校验用户名/邮箱/密码、邀请码升级为 core）
-//   • 公开资料 app/web/auth/profile.py + User.to_public_dict()（绝不含 email）
-//   • 资料更新 app/web/auth/settings.py（bio、隐私可见性、通知偏好）
+// 三块职责：
+//   • 注册     校验用户名/邮箱/密码、邀请码升级为 core
+//   • 公开资料 对外序列化（**绝不含 email**）
+//   • 资料更新 bio、隐私可见性、通知偏好
 //
 // 与其它 service 一致：纯函数 + 显式参数，方便测试与复用。
 // ─────────────────────────────────────────────────────────────────────────────
@@ -47,7 +47,7 @@ export function validateUsername(username: string): { ok: boolean; message: stri
   return { ok: true, message: 'ok' };
 }
 
-/** 邮箱格式（与 Flask verify_email 的正则一致）。 */
+/** 邮箱格式（正则不要改：存量用户的邮箱都是按它校验进来的）。 */
 export function validateEmail(email: string): boolean {
   return /^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]{2,}$/.test(email);
 }
@@ -89,7 +89,8 @@ export interface RegisterResult {
 }
 
 /**
- * 注册新用户。校验顺序对齐 Flask：用户名重复 → 用户名格式 → 邮箱重复 → 邮箱格式 → 长度。
+ * 注册新用户。校验顺序（tests/service/user-service.test.ts 逐条钉着）：
+ * 用户名重复 → 用户名格式 → 邮箱重复 → 邮箱格式 → 长度。
  * 提供有效未用邀请码时升级为 'core' 并把邀请码标记为已用（同一事务内幂等）。
  */
 export async function registerUser(input: RegisterInput): Promise<RegisterResult> {
@@ -118,7 +119,7 @@ export async function registerUser(input: RegisterInput): Promise<RegisterResult
   if (!validateEmail(email)) {
     return { ok: false, code: 400, message: '邮箱格式不正确' };
   }
-  // 长度限制（对齐 Flask：密码/邮箱 ≤ 100）
+  // 长度限制：密码/邮箱 ≤ 100
   if (password.length > 100) return { ok: false, code: 400, message: '密码过长！' };
   if (email.length > 100) return { ok: false, code: 400, message: '邮箱过长!' };
 
@@ -247,9 +248,9 @@ function isUniqueViolation(e: unknown): boolean {
  *   Phase 2：ensureAccount（幂等）→ 成功则回写 fishApiKeyEncrypted + 账本标 synced；
  *   失败 → 补偿事务：删用户 + 调用方的回滚由 beforeCommit 的事务语义一并撤销 + 删账本行。
  *
- * ⚠️ 与 Flask sign_up.py 的差异：Flask 侧 create_account 是 fire-and-forget（失败仅
- *    记 warning、不阻塞注册，靠首次鱼干操作时 _ensure_account_exists 补注册）。本切片
- *    按任务要求 + fail-closed 约定改为强一致：远端故障即建号失败。
+ * ⚠️ 【有意偏离旧版】旧版建号是 fire-and-forget（失败仅记 warning、不阻塞注册，
+ *    靠首次鱼干操作时补注册）。这里按 fail-closed 约定改为强一致：
+ *    远端故障即建号失败。
  *
  * 头像通过 /api/avatar/[id] 按 id 确定性生成，无需落盘文件，故 avatarPath 留空。
  */
@@ -543,9 +544,8 @@ export async function updateOwnProfile(userId: string, patch: ProfilePatch): Pro
     return { ok: false, code: 400, message: '没有可更新的字段' };
   }
 
-  // 文案对齐 Flask：那边是两个端点两套文案 —— update_bio → 「资料已保存」、
-  // update_privacy → 「隐私设置已保存」。这里合并成了一个 PATCH，故按本次实际改了
-  // 什么来选文案：只动隐私/通知开关 → 隐私文案；只要动了 bio → 资料文案。
+  // 文案按本次实际改了什么来选（两句话都沿用既有措辞，别改）：
+  // 只动隐私/通知开关 → 「隐私设置已保存」；只要动了 bio → 「资料已保存」。
   const touchedBio = 'bio' in data;
   const savedMessage = touchedBio ? '资料已保存' : '隐私设置已保存';
 
@@ -601,14 +601,15 @@ export interface ChangePasswordResult {
 }
 
 /**
- * 修改本人密码，逐条对齐 Flask auth.change_password 的校验顺序与文案：
+ * 修改本人密码。以下校验顺序与文案是既有契约
+ * （tests/service/user-service.test.ts 逐条钉着，勿改）：
  *   1. 三项必填            → '请填写完整的信息'
  *   2. 原密码校验失败      → '原密码不正确'
  *   3. 新密码两次不一致    → '两次输入的新密码不一致'
  *   4. 新密码长度 < 8      → '新密码长度至少为 8 位'
  *   5. 新旧密码相同        → '新密码不能与原密码相同'
- * 成功后重写哈希并 **自增 session_version**（对齐 Flask：使所有旧会话失效）。
- * 调用方（route）负责随后清除当前会话 cookie（等价 Flask 的 logout_user）。
+ * 成功后重写哈希并 **自增 session_version**（使所有旧会话失效）。
+ * 调用方（route）负责随后清除当前会话 cookie（清掉本机这一个，其余靠上面的自增）。
  */
 export async function changeOwnPassword(
   userId: string,
@@ -664,13 +665,13 @@ export interface AuthenticResult {
 }
 
 /**
- * 邀请码验证，对齐 Flask auth.authentic（POST）：
- *   • verify_invite_code：长度必须为 12，且邀请码存在且未被使用；否则 '邀请码无效'
- *   • mark_invite_code_used：标记 is_used / used_by（这里用 updateMany + isUsed:false 兜住并发）
- *   • 角色升级：仅当当前仍为普通用户（role == 'user'）时升级为 'core'
+ * 邀请码验证：
+ *   • 校验：长度必须为 12，且邀请码存在且未被使用；否则 '邀请码无效'
+ *   • 标记已用：写 isUsed / usedBy（用 updateMany + isUsed:false 兜住并发）
+ *   • 角色升级：仅当当前仍为普通用户（role === 'user'）时升级为 'core'
  */
 export async function verifyInviteAndUpgrade(userId: string, code: string): Promise<AuthenticResult> {
-  // 对齐 verify_invite_code：长度必须恰为 12
+  // 长度必须恰为 12（生成侧恒产 12 位，见 invite-code.ts）
   if (code.length !== 12) {
     return { ok: false, code: 400, message: '邀请码无效' };
   }
@@ -689,7 +690,7 @@ export async function verifyInviteAndUpgrade(userId: string, code: string): Prom
     return { ok: false, code: 400, message: '邀请码无效' };
   }
 
-  // 仅当仍为普通用户时升级为核心用户（对齐 Flask 的 role == 'user' 判定）
+  // 仅当仍为普通用户（role === 'user'）时升级为核心用户：管理员/站长不会被降级
   await prisma.user.updateMany({
     where: { id: userId, role: 'user' },
     data: { role: 'core' },

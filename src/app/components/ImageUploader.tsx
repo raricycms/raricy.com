@@ -113,7 +113,7 @@ export default function ImageUploader() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ImageGallery — 图片网格 + 预览模态框（复刻原生 menu.html 的全部交互）
+// ImageGallery — 图片网格 + 预览模态框
 //   · 卡片点击 → 打开预览模态框
 //   · 复制图片ID（复制后按钮图标切为对勾，1.5s 复原）
 //   · 新窗口打开 / 删除（confirm → DELETE → 移除卡片 + toast）
@@ -252,7 +252,7 @@ export function ImageGallery({ images, isOwner = false }: { images: GalleryImage
               <button className="image-hosting-card__btn" id="preview-copy-btn" onClick={copyPreviewLink}>
                 {previewCopied ? '已复制' : '复制图片ID'}
               </button>
-              {/* owner 专属：图片管理。对齐 Flask image.admin（/image/admin 图床专属管理页）。 */}
+              {/* owner 专属：图片管理（/image/admin 图床专属管理页）。 */}
               {isOwner && (
                 <a className="image-hosting-card__btn" href="/image/admin">图片管理</a>
               )}

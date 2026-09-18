@@ -1,10 +1,8 @@
 // POST /api/admin/broadcast { detail, action?, targetGroup?, objectType?, objectId? }
 //
-// 权限：**仅站长**。对齐 Flask —— 那边群发在三处都卡了站长：
-//   · 页面 admin_notifications        @owner_required
-//   · 接口 send_notification_to_user  @owner_required
-//   · service 层 notifications.py:321 显式判 is_owner（「仅站长可群发」）
-// 此前这里只判 hasAdminRights，任何管理员都能给全站发通知 —— 比 Flask 松。
+// 权限：**仅站长**。群发一次触达全站，是本站影响面最大的操作 ——
+// 因此路由与 service 层各判一次，只对站长放开。
+// 此前这里只判 hasAdminRights，任何管理员都能给全站发通知，故收紧到站长一档。
 import { getCurrentUser, isOwner } from '@/lib/auth';
 import { broadcast, type TargetGroup } from '@/lib/broadcast-service';
 import { apiOk, apiErr } from '@/lib/format';

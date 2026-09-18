@@ -6,16 +6,15 @@ import { isOwner } from '@/lib/auth';
 import { ymdhms } from '@/lib/format';
 import AppealForm from './AppealForm';
 
-// 操作详情页（对齐 Flask audit.log_detail / admin_action_log_detail.html）。
+// 操作详情页。
 //
 // 这个页面此前**不存在**：/audit 列表里每行的「详情」链接都指向它，全部 404；
 // 更要紧的是提交申诉的 API（/api/audit/[id]/appeal）因此成了孤儿 —— 用户根本
-// 没有入口申诉，而 Flask 里是可以的。
+// 没有入口申诉。
 //
-// 与 Flask 的一处差异：「通过/驳回」按钮不在这里重复实现。Next 侧已有专门的
-// /admin/appeals 审批页（含批量、筛选），这里只给入口，避免同一操作两处维护。
-// 该入口仅对站长显示 —— 审批是站长专属（对齐 Flask decide_appeal 的
-// @owner_required），给管理员看这条提示只会把他们送去一个 403 页面。
+// 「通过/驳回」按钮不在这里重复实现：/admin/appeals 已有专门的审批页
+// （含批量、筛选），这里只给入口，避免同一操作两处维护。
+// 该入口仅对站长显示 —— 审批是站长专属，给管理员看这条提示只会把他们送去一个 403 页面。
 
 export const dynamic = 'force-dynamic';
 

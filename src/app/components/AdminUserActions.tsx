@@ -1,13 +1,13 @@
 'use client';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AdminUserActions — 用户卡片的操作簇（对齐 Flask auth/management.html 的按钮 + 模态框）：
-//   查看 / 发通知（站长）/ 禁言·解除禁言 / 禁言历史 / 角色档位（仅站长）。
-// 认证 = 设为 core，取消认证 = 设为 user，对应 Flask 的 promote/demote；
-// 提拔管理员 / 降为核心用户是本项目新增的一对（Flask 侧只能上服务器跑 cli）。
+// AdminUserActions — 用户卡片的操作簇：
+//   查看 / 发通知（仅站长）/ 禁言·解除禁言 / 禁言历史 / 角色档位（仅站长）。
+// 认证 = 设为 core，取消认证 = 设为 user。
+// 提拔管理员 / 降为核心用户是新增的一对（旧版只能上服务器跑 cli）。
 // 禁言 / 解除禁言 走 POST /api/admin/users/:id；角色变更走 PATCH。
-// 发通知 → POST /api/admin/notify-user（对齐 Flask sendNotificationTo）。
-// 禁言历史 → GET /api/users/:id/ban-history（对齐 Flask showBanHistory）。
+// 发通知 → POST /api/admin/notify-user（仅站长）。
+// 禁言历史 → GET /api/users/:id/ban-history（核心用户 core+ 即可查）。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState } from 'react';
@@ -33,7 +33,7 @@ const toast = (msg: string, type: 'success' | 'error' | 'info' | 'warning' = 'in
   if (w.showToast) w.showToast(msg, type);
 };
 
-// 单条禁言历史（对齐 Flask UserBan.to_dict()）。
+// 单条禁言历史。
 interface BanRecord {
   id: number;
   banned_at: string | null;
@@ -67,7 +67,7 @@ export default function AdminUserActions({
   const [banHistory, setBanHistory] = useState<BanRecord[] | null>(null);
   const [banHistoryLoading, setBanHistoryLoading] = useState(false);
 
-  // 对齐 Flask 发送通知模态框的通知类型预设。
+  // 发送通知模态框的通知类型预设。
   const NOTIFY_TYPES = ['系统公告', '维护通知', '功能更新', '用户提醒', '警告通知', '活动通知'];
 
   const isSelf = user.id === currentUserId;
@@ -146,7 +146,7 @@ export default function AdminUserActions({
     );
   }
 
-  // 拉取禁言历史（对齐 Flask auth.user_ban_history / showBanHistory）。
+  // 拉取禁言历史。
   async function openBanHistory() {
     setModal('banHistory');
     setBanHistory(null);
@@ -191,9 +191,9 @@ export default function AdminUserActions({
         </button>
       )}
 
-      {/* 禁言 / 解除禁言：仅 admin+。核心用户进得来这一页（只读版，对齐 Flask
-          management.html 的 has_admin_rights 门控），但不该看到点了必然 403 的按钮。
-          对齐 Flask 的同一处分支：禁言历史对所有人可见，禁言/解除禁言只对 has_admin_rights。 */}
+      {/* 禁言 / 解除禁言：仅 admin+。核心用户进得来这一页（只读版），
+          但不该看到点了必然 403 的按钮，故按 canManage 门控；
+          同一处分支里禁言历史入口对所有人可见，只有禁言/解除禁言需要管理权。 */}
       {canManage &&
         (user.currentlyBanned ? (
           <button
@@ -362,7 +362,7 @@ export default function AdminUserActions({
         </div>
       )}
 
-      {/* 发送通知模态框（对齐 Flask notificationModal） */}
+      {/* 发送通知模态框 */}
       {modal === 'notify' && (
         <div className="modal-overlay show" onClick={() => !busy && setModal(null)}>
           <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
@@ -416,7 +416,7 @@ export default function AdminUserActions({
         </div>
       )}
 
-      {/* 禁言历史模态框（对齐 Flask showBanHistory） */}
+      {/* 禁言历史模态框 */}
       {modal === 'banHistory' && (
         <div className="modal-overlay show" onClick={() => setModal(null)}>
           <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>

@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 
-// 页脚 — Flask `base.html` 样式（site-footer + site-footer-container/site-footer-row/social-links）
+// 页脚 — site-footer / site-footer-container / site-footer-row / social-links 布局
 export default function Footer({ children }: { children?: ReactNode }) {
   return (
     <footer className="site-footer">

@@ -99,7 +99,7 @@ interface Props {
   currentUserId?: string | null;
   /** 当前用户是否有管理员权限（可删他人评论）。 */
   isAdmin?: boolean;
-  /** 是否可发表评论（对齐 Flask：已登录 且 核心用户）。未传则回退到「已登录」。 */
+  /** 是否可发表评论（已登录 且 核心用户）。未传则回退到「已登录」。 */
   canComment?: boolean;
 }
 
@@ -148,7 +148,7 @@ export default function CommentSection({ blogId, currentUserId = null, isAdmin =
   /** 正在请求中的评论 id —— 防连点（乐观更新已经把界面改过了，再点一次会来回翻）。 */
   const likeBusyRef = useRef<Set<string>>(new Set());
 
-  // 删除确认模态框状态（对齐 comment-manager.js 的两步删除）
+  // 删除确认模态框状态（两步删除：确认之后可能还要填原因）
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [deleteRequiresReason, setDeleteRequiresReason] = useState(false);
   const [deleteReason, setDeleteReason] = useState('');
@@ -396,7 +396,7 @@ export default function CommentSection({ blogId, currentUserId = null, isAdmin =
 
       {lightbox && <ImageLightbox src={lightbox} alt="评论图片" onClose={() => setLightbox(null)} />}
 
-      {/* 删除确认模态框（对齐 modal_system.html 的 commentDeleteModal）
+      {/* 删除确认模态框
           ⚠️ 展开类是 `is-open` 而**不是** Bootstrap 的 `show`：站内 modal 是
           src/styles-scss/components/_modal.scss 那套（.modal{display:none} +
           .modal.is-open{display:flex}），`.fade`/`.show` 只控透明度、不控显隐。

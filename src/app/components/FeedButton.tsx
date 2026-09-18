@@ -1,9 +1,9 @@
 'use client';
 
-// FeedButton — 文章详情页「读者交互区」。对齐 Flask 三个组件的可见/可交互形态：
-//   • like_system：.read-controls（两行按钮：点赞/投喂，返回上页/管理文章）
-//   • feed_fish_system：两步式投喂弹窗（选数量 → 确认），由投喂按钮触发
-//   • admin_controls + modal_system：管理员/作者的「管理文章」弹窗统一收拢
+// FeedButton — 文章详情页「读者交互区」。三块内容的可见/可交互形态：
+//   • 点赞 / 投喂两行按钮（.read-controls：点赞/投喂，返回上页/管理文章）
+//   • 两步式投喂弹窗（选数量 → 确认），由投喂按钮触发
+//   • 「管理文章」弹窗（管理员 / 作者）：统一收拢
 //     「查看点赞者 / 查看投喂者 / 编辑文章(作者) / 删除文章」，弹窗内按视图切换
 //
 // 由 blog/[id]/page.tsx 挂载。点赞 → POST /api/blogs/:id/like；投喂 → POST /api/blogs/:id/feed。
@@ -52,7 +52,7 @@ interface Props {
   canEdit: boolean;
   /** 管理员删除他人文章（删除需填写原因）。 */
   isAdminDelete: boolean;
-  /** 单篇文章版权声明，注入页脚 .footer-copy（对齐 Flask block copyright）。 */
+  /** 单篇文章版权声明，注入页脚 .footer-copy。 */
   footerCopyright?: string;
   /** 当前用户的任一收藏夹是否含本文 —— 星标按钮的初始态（未登录传 false）。 */
   initialFavorited?: boolean;
@@ -73,8 +73,8 @@ export default function FeedButton({
   footerCopyright,
   initialFavorited = false,
 }: Props) {
-  // 单篇文章版权声明注入页脚 .footer-copy（对齐 Flask blog.html 的 {% block copyright %}，
-  // 替换默认「© 2026 聪明山」）。共享 Footer 组件不可改，故挂载时改写、卸载时还原。
+  // 单篇文章版权声明注入页脚 .footer-copy，替换默认「© 2026 聪明山」。
+  // 共享 Footer 组件不可改，故挂载时改写、卸载时还原。
   useEffect(() => {
     if (!footerCopyright) return;
     const el = document.querySelector<HTMLElement>('.footer-copy');
@@ -361,7 +361,7 @@ export default function FeedButton({
         </div>
       </div>
 
-      {/* 小鱼干投喂弹窗（feed_fish_system）*/}
+      {/* 小鱼干投喂弹窗（两步式：选数量 → 确认）*/}
       <div className={`feed-modal${feedOpen ? ' feed-modal--open' : ''}`} id="feedModal">
         <div className="feed-modal__backdrop" onClick={() => setFeedOpen(false)} />
         <div className="feed-modal__content">

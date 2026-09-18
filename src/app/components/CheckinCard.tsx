@@ -7,14 +7,14 @@ import { LoaderCircle, Sparkles } from 'lucide-react';
 import { MedalIcon } from '@/app/components/MedalIcon';
 import type { LeaderboardEntry } from '@/lib/checkin-service';
 
-// ── 全局 toast（原站 base.js 注入 window.showToast） ──────────────────────────
+// ── 全局 toast（base.js 注入 window.showToast） ──────────────────────────────
 function toast(msg: string, type: string) {
   if (typeof window === 'undefined') return;
   const w = window as unknown as { showToast?: (m: string, t: string) => void };
   if (w.showToast) w.showToast(msg, type);
 }
 
-// ── 运势文案映射（对齐原站 FORTUNE_LABELS） ─────────────────────────────────
+// ── 运势文案映射（须与 checkin-service.ts 的 fortuneLabel 同值） ─────────────
 const FORTUNE_LABELS: Record<number, string> = {
   1: '平平淡淡也是真',
   2: '小有运气',
@@ -83,7 +83,7 @@ export default function CheckinCard({
     timers.current.push(t);
   };
 
-  // 已签到但未翻牌（恢复态）→ 进页短暂延时后自动弹出运势卡（对齐 Flask fortune_pending）
+  // 已签到但未翻牌（恢复态）→ 进页短暂延时后自动弹出运势卡
   useEffect(() => {
     if (!fortunePending) return;
     const t = setTimeout(() => {
@@ -105,7 +105,7 @@ export default function CheckinCard({
     };
   }, [modalOpen]);
 
-  // Esc 关闭弹窗（对齐原站 keydown 监听）
+  // Esc 关闭弹窗（document 级 keydown 监听）
   useEffect(() => {
     if (!modalOpen) return;
     const onKey = (e: KeyboardEvent) => {
@@ -135,8 +135,8 @@ export default function CheckinCard({
   }
 
   // 点击「每日签到」→ 第一步签到（API 请求中按钮显示「⏳ 签到中...」）→ 成功
-  // toast + 按钮转「今日已签到」→ 约 1.3s 后弹出运势卡等用户翻牌（对齐 Flask 的
-  // 先签到后翻牌时序；运势此刻未定，翻牌走 claim 才定）。
+  // toast + 按钮转「今日已签到」→ 约 1.3s 后弹出运势卡等用户翻牌（先签到
+  // 后翻牌的时序；运势此刻未定，翻牌走 claim 才定）。
   async function doCheckinFlow() {
     if (doneRef.current || busyRef.current || modalOpen) return;
     busyRef.current = true;

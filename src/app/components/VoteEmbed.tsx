@@ -1,12 +1,12 @@
 'use client';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// VoteEmbed — 投票交互组件（对齐 Flask app/templates/vote/detail.html）
+// VoteEmbed — 投票交互组件
 //   • 未投票且未锁定：展示可选项，点击选择 → 提交
 //   • 已投票 / 已锁定：展示结果（顶部"共 X 票" + 计数/百分比条），高亮已投项
 //
 // 同文件另导出两个客户端小组件（复制 ID、创建者管理控制），供 vote/[id]/page.tsx
-// 组装成与 Flask 逐项对齐的详情页交互。
+// 组装成完整的详情页交互。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState } from 'react';
@@ -56,7 +56,7 @@ export default function VoteEmbed({
       });
       const data = await res.json();
       if (data.code === 200) {
-        // 乐观更新本地结果并切到结果视图（Flask 原站是 location.reload()，此处等价切换）
+        // 乐观更新本地结果并切到结果视图（不整页重载，等价切换）
         const nextOptions = options.map((o) =>
           o.id === selected ? { ...o, count: o.count + 1 } : o
         );
@@ -69,7 +69,7 @@ export default function VoteEmbed({
         );
         setTotal(nextTotal);
         setUserVoted(selected);
-        // 刷新服务端组件，让顶部 meta"已投票"绿色徽章出现（对齐 Flask location.reload()）
+        // 刷新服务端组件，让顶部 meta"已投票"绿色徽章出现
         router.refresh();
       } else {
         alert('投票失败：' + (data.message || '未知错误'));
@@ -85,10 +85,9 @@ export default function VoteEmbed({
   return (
     <div className="vote-embed-widget">
       {/* 这里**不**渲染「已锁定」徽章：详情页的 meta 行（page.tsx）已经有一个，
-          两边都写就会并排出现两个一模一样的徽章。原站 Flask 的 detail.html 也只
-          在 meta 行里放 badge —— 徽章属于页面元信息，不属于组件本身。
+          两边都写就会并排出现两个一模一样的徽章 —— 徽章属于页面元信息，不属于组件本身。
           （博客正文里的嵌入没有 meta 行，那个由 blog-markdown.ts 的
-           buildVoteWidget 渲染自己的徽章，与原站 vote-embed.js 一致。） */}
+           buildVoteWidget 渲染自己的徽章。） */}
       {showResults && <p className="vote-embed-total">共 {total} 票</p>}
 
       {options.map((o) => {
@@ -143,7 +142,7 @@ export default function VoteEmbed({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// VoteIdCopy — ID 行 + 复制按钮（对齐 Flask copyVoteId：写剪贴板 →"已复制" 1.5s 回退）
+// VoteIdCopy — ID 行 + 复制按钮（写剪贴板 →"已复制" 1.5s 回退）
 // ─────────────────────────────────────────────────────────────────────────────
 export function VoteIdCopy({ voteId }: { voteId: string }) {
   const [copied, setCopied] = useState(false);
@@ -174,7 +173,7 @@ export function VoteIdCopy({ voteId }: { voteId: string }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// VoteDetailControls — 底部操作区（对齐 Flask vote-detail__actions / voters）
+// VoteDetailControls — 底部操作区
 //   • 所有人：返回上页
 //   • 创建者：锁定/解锁、删除，以及"查看详细投票情况"折叠
 // 管理动作通过传入的 server action 执行（锁定/解锁/删除），成功后刷新或跳转。
@@ -215,7 +214,7 @@ export function VoteDetailControls({
     setBusy(true);
     try {
       const err = await fn();
-      // 失败时（server action 返回错误信息）以原生 alert 呈现，对齐 Flask deleteVote
+      // 失败时（server action 返回错误信息）以原生 alert 呈现
       if (err && errPrefix) {
         alert(errPrefix + err);
         return;

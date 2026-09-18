@@ -1,12 +1,12 @@
 'use client';
 
-// 博客正文客户端渲染：marked + DOMPurify + highlight.js（对齐 Flask markdown_renderer.js）。
-// 额外对齐（本波）：
+// 博客正文客户端渲染：marked + DOMPurify + highlight.js。
+// 额外处理：
 //   • 内容引用预处理（[@id]）：8位→剪贴板正文内联 / 9位→投票嵌入 / 10位→图床图片 /
 //     6位→收藏夹卡片（**只在这条管线上**：评论与讨论走 rich-text.ts，那边刻意不认 6 位，
 //     与 9 位投票「只识别不展开」同向）。
 //   • MathJax：行内 $..$ / \(..\)、块级 $$..$$ / \[..\]、mhchem（mathjax-full 模块化 API）。
-//   • 代码高亮亮/暗双主题随 data-theme 切换（github / monokai，media 切换，对齐原站）。
+//   • 代码高亮亮/暗双主题随 data-theme 切换（github / monokai，media 切换）。
 //   • 代码块「复制」按钮、图片点击放大、外链 target=_blank 加固、任务列表 checkbox。
 import { useEffect, useRef, useState } from 'react';
 import { Marked } from 'marked';
@@ -28,7 +28,7 @@ import {
   replaceFavoriteRefs,
 } from '@/lib/favorite-refs';
 
-// ── 内容引用预处理器（对齐 clipboard-processor.js，端点改为 Next API）───────────
+// ── 内容引用预处理器（端点走 Next API）────────────────────────────────────────
 class ContentRefProcessor {
   private cache = new Map<string, { type: string; content?: string; error?: boolean; id?: string; url?: string }>();
   private MAX_ITEMS = 50;
@@ -161,7 +161,7 @@ class ContentRefProcessor {
   }
 }
 
-// ── hljs 双主题 CSS（对齐原站 blog/clipboard：亮=github，暗=monokai）─────────────
+// ── hljs 双主题 CSS（亮=github，暗=monokai）───────────────────────────────────
 // 说明：highlight.js 的两套主题 CSS 都作用于全局 .hljs，若同时生效会互相覆盖。
 // 因此内联为两个 <style>，仅让匹配当前 data-theme 的一份生效（另一份 media='not all'
 // 彻底禁用），并用 MutationObserver 监听 documentElement[data-theme] 切换。

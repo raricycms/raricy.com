@@ -1,6 +1,6 @@
 'use client';
 
-// 提交申诉表单（对齐 Flask admin_action_log_detail.html 的 submitAppeal）。
+// 提交申诉表单。
 // 拆成客户端组件：详情页本身是服务端组件，只有这一小块需要交互。
 
 import { useRouter } from 'next/navigation';

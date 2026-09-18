@@ -1,6 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // clipboard-service.ts — 云剪贴板业务逻辑
-//   （对齐 Flask app/web/clipboard/service.py:ClipService）
 //
 // 纯函数 + 显式参数，与 blog-service 风格一致。软删除：ClipBoard.ignore = true
 // 一律排除。ClipBoard 存元信息（title/publicity），ClipText 存正文，一对一分表。
@@ -10,12 +9,12 @@ import { prisma } from './db';
 import { nowForDb } from './db-time';
 import { generateShortId } from './short-id';
 
-// 校验上限，对齐 Flask validator()
+// 校验上限
 export const CLIP_TITLE_MAX = 40;
 export const CLIP_CONTENT_MAX = 50000;
 // 每用户剪贴板总数上限：count >= 200 时拒绝，即**最多 200 条**。
-// ⚠️ 有意与 Flask 不同：Flask 侧是 `count > 200 才拒绝`，实际放行到 201 条，
-//    与站内文案「一个用户只能发布200篇云剪贴板！」对不上。这里收紧成真正的 200。
+// ⚠️ 边界是有意的：写成 `count > 200 才拒绝` 会实际放行到 201 条，
+//    与站内文案「一个用户只能发布200篇云剪贴板！」对不上。这里就是真正的 200。
 export const CLIP_PER_USER_MAX = 200;
 
 export interface CreateClipInput {
@@ -32,9 +31,9 @@ export type CreateClipResult =
   | { ok: false; reason: 'limit' | ClipLengthReason };
 
 /**
- * 标题 / 正文长度校验（对齐 Flask validator()）。
+ * 标题 / 正文长度校验。
  * 合法返回 null，否则返回失败原因。空标题与超长标题同属 title_too_long 一条分支
- * （对齐 Flask：len<1 与 len>40 走同一个 'title too long'）。
+ * （len<1 与 len>40 走同一个 'title too long'，前端文案与此一一对应）。
  */
 function validateClipLength(title: string, content: string): ClipLengthReason | null {
   if (content.length > CLIP_CONTENT_MAX) return 'content_too_long';
@@ -43,10 +42,11 @@ function validateClipLength(title: string, content: string): ClipLengthReason | 
 }
 
 /**
- * 创建剪贴板（对齐 ClipService.create_clipboard）。
+ * 创建剪贴板。
  * 先校验长度（route 层也校验，但 service 自己必须设防：任何绕过 route 的调用方
- * 都不该能写超长数据）；再按 authorId 统计总数（含软删除，与 Flask 一致），
- * 超限返回 limit。最后生成 8 位短 ID，写 ClipBoard + ClipText。
+ * 都不该能写超长数据）；再按 authorId 统计总数（含软删除 —— 这个上限管的是
+ * 「这个人名下有多少行」，不是「有效几条」），超限返回 limit。
+ * 最后生成 8 位短 ID，写 ClipBoard + ClipText。
  */
 export async function createClip(
   authorId: string,
@@ -91,11 +91,12 @@ export type UpdateClipResult =
   | { ok: false; reason: 'not_found' | 'forbidden' | ClipLengthReason };
 
 /**
- * 编辑剪贴板（对齐 Flask edit 路由 + ClipService.update_clipboard）。
+ * 编辑剪贴板。
  * - 先校验长度（与 route 层同一套规则，service 自己也设防，见 createClip 的说明）。
- * - 再取剪贴板并排除软删除（ignore=true）→ not_found（对齐 get_clipboard 的 ignore 检查）。
- * - 权限=作者本人；非作者 → forbidden（对齐 Flask edit：仅作者，无 owner 例外）。
- * - 更新 title/publicity，并 upsert 正文（无 ClipText 记录时新建，对齐 update_clipboard）。
+ * - 再取剪贴板并排除软删除（ignore=true）→ not_found。
+ * - 权限=作者本人；非作者 → forbidden（**无站长例外** —— 站长能删任何人的，
+ *   但不能替别人改内容）。
+ * - 更新 title/publicity，并 upsert 正文（无 ClipText 记录时新建）。
  * - 不改动 ignore，保留软删除语义。
  */
 export async function updateClip(
@@ -135,9 +136,9 @@ export async function updateClip(
 export type DeleteClipResult = { ok: true } | { ok: false; reason: 'not_found' | 'forbidden' };
 
 /**
- * 软删除剪贴板（对齐 Flask ClipService.delete_clipboard）。
+ * 软删除剪贴板。
  * - 取剪贴板并排除软删除（ignore=true）→ not_found。
- * - 权限=作者本人或站长（对齐 Flask delete 路由：作者或 is_owner，站长可删任何人的）。
+ * - 权限=作者本人或站长（站长可删任何人的 —— 比编辑宽一档，见 updateClip）。
  * - 仅把 ignore 置 true，数据保留，站长可恢复。
  */
 export async function deleteClip(
@@ -176,17 +177,17 @@ export interface ClipDetail {
 }
 
 /**
- * 按 id 取剪贴板正文（对齐 ClipService.get_clipboard_with_content + detail 路由的权限）。
+ * 按 id 取剪贴板正文（含可见性判定）。
  * ignore=true（软删除）→ not_found；私有（publicity=false）且非作者 → forbidden。
  */
 /**
  * 取剪贴板详情。
  *
- * @param viewerIsOwner 观看者是否为站长。★ 别漏 ★ —— Flask 的判断是
- *   `not publicity and author_id != current_user.id and not current_user.is_owner`，
- *   站长能看任何人的私有剪贴板（他本来就有硬删图床、裁决申诉这类权限，
- *   看私有内容属于同一档）。这个例外一度漏掉，站长访问会吃 403，
- *   连页面上那个「删除」按钮都够不着 —— 而删除权限是给了他的。
+ * @param viewerIsOwner 观看者是否为站长。★ 别漏 ★ —— 可见性判定是
+ *   「publicity=true 或 本人 或 站长」：站长能看任何人的私有剪贴板
+ *   （他本来就有硬删图床、裁决申诉这类权限，看私有内容属于同一档）。
+ *   这个例外一度漏掉，站长访问会吃 403，连页面上那个「删除」按钮都够不着
+ *   —— 而删除权限是给了他的。
  *   调用方必须显式传，不给默认 true：默认放行的参数一旦漏传就是越权。
  */
 export async function getClip(
@@ -236,7 +237,7 @@ export interface ClipListItem {
 }
 
 /**
- * 列出某用户的剪贴板（对齐 ClipService.get_clipboard_byuserid）。
+ * 列出某用户的剪贴板。
  * 排除软删除，按 createdAt 倒序。
  */
 export async function listUserClips(userId: string): Promise<ClipListItem[]> {

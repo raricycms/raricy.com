@@ -6,8 +6,8 @@ import { sendNotification } from '@/lib/notification-service';
 // 文件路由需 Node 运行时（硬删要 fs.unlink 删磁盘文件）
 export const runtime = 'nodejs';
 
-// DELETE /api/images/admin/:id — 管理端硬删除（站长专属，对齐 Flask image.admin_delete_image）
-//   · @owner_required：仅站长可用（API 返回 JSON 403，而非 403 页面）
+// DELETE /api/images/admin/:id — 管理端硬删除（站长专属；硬删只有这一条路径）
+//   · 仅站长可用（API 返回 JSON 403，而非 403 页面）
 //   · 硬删除：物理删除磁盘文件 + 删库行
 //   · 删的不是自己的图 → 给上传者发通知（force=True，绕过通知偏好）
 export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -17,7 +17,7 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
 
   const { id } = await ctx.params;
 
-  // 对齐 Flask get_image_by_id：不过滤 ignore，取到即可硬删。
+  // 不过滤 ignore：**已软删的图也要能硬删**（软删只是标 ignore，磁盘文件还在）。
   const img = await getImageForServe(id);
   if (!img) return apiErr(400, '图片不存在');
 
@@ -26,7 +26,7 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
 
   await hardDeleteImage(id);
 
-  // 通知被删图片的上传者（非站长本人上传时），对齐 Flask 的 send_notification(force=True)
+  // 通知被删图片的上传者（非站长本人上传时）；force 绕过对方的通知偏好设置
   if (authorId !== user.id) {
     await sendNotification({
       recipientId: authorId,

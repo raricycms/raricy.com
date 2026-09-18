@@ -1,7 +1,7 @@
 // GET /api/users/[id]/ban-history
-//   查询某用户的禁言历史（对齐 Flask auth.user_ban_history）。
-//   Flask 返回 { user: user.to_dict(), ban_history: [ban.to_dict() ...] }，最近 10 条 banned_at 倒序。
-//   权限对齐 Flask user_ban_history 的 @authenticated_required：核心用户（core+）即可查询。
+//   查询某用户的禁言历史。
+//   返回 { user: {...}, ban_history: [...] }；ban_history 只取最近 10 条，banned_at 倒序。
+//   权限：需登录 + 核心用户（core+）即可查询（不是站长专属）。
 import { getCurrentUser, isCoreUser } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { apiOk, apiErr } from '@/lib/format';
@@ -16,7 +16,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   const { id } = await ctx.params;
 
   const user = await prisma.user.findUnique({ where: { id } });
-  if (!user) return apiErr(404, '用户不存在'); // 对齐 Flask get_or_404
+  if (!user) return apiErr(404, '用户不存在');
 
   const bans = await prisma.userBan.findMany({
     where: { userId: id },
@@ -28,7 +28,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     },
   });
 
-  // 对齐 UserBan.to_dict()
+  // 对外字段一律 snake_case：前端按此形状消费，改名要同步前端
   const ban_history = bans.map((b) => ({
     id: b.id,
     user_id: b.userId,
@@ -42,7 +42,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     lifted_by: b.lifter ? b.lifter.username : null,
   }));
 
-  // 对齐 User.to_dict()（含 get_ban_info：仅当前仍被禁言时返回，否则 null）
+  // 含 ban_info：仅当前仍被禁言时返回，否则 null
   // ⚠️ 比较双方必须同一把钟：banUntil 存的是「UTC+8 墙上时间贴 Z」（见 db-time.ts），
   // 若用真实 UTC 的 new Date() 比对会差 8 小时 —— 禁言到期后仍显示「禁言中」8 小时。
   const now = nowForDb();
@@ -59,9 +59,9 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       }
     : null;
 
-  // ⚠️【有意偏离 Flask】Flask 的 User.to_dict() 含 email，但本接口只要求 core，
-  // 等于把全站邮箱开放给任何一个邀请码持有者（公开资料接口 to_public_dict 反而
-  // 明确排除 email）。这里去掉：本接口的用途是禁言历史，UI 也没用到 email。
+  // ⚠️【刻意不含 email】本接口只要求 core，带上 email 等于把全站邮箱开放给任何一个
+  // 邀请码持有者（公开资料接口反而明确排除 email）。本接口的用途是禁言历史，
+  // UI 也没用到 email。
   const userDict = {
     id: user.id,
     username: user.username,

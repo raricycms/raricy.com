@@ -3,7 +3,7 @@ import { cookies } from 'next/headers';
 
 // POST /api/auth/logout — 登出的**唯一**入口（base.js 的 window.logout / LogoutLink 组件）。
 //
-// 【为什么只有 POST，连 Flask 的 GET 都不保留】
+// 【为什么只有 POST，连一个 GET 都不留】
 // 清会话是状态变更，而 GET 会被**别人**发起：浏览器预取、爬虫、第三方页面上的
 // <img src="…/logout">。本站刻意允许被 iframe 嵌入，这个面是真实可达的。
 // 真出过事：403 页曾挂一个 <Link href="/logout">，Next 在生产环境会预取视口内的

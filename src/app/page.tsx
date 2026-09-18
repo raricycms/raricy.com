@@ -2,7 +2,7 @@ import Link from 'next/link';
 import HomeFooterNote from './components/HomeFooterNote';
 import HeroCanvas from './components/HeroCanvas';
 
-// 首页 — Flask `home/homepage.html` 样式（home-container / home-display / feature-card / home-btn）
+// 首页 — 样式结构：home-container / home-display / feature-card / home-btn
 //
 // 【四张卡都对所有人渲染，含「讨论」】/chat 是 core+ 档，非核心用户点进去会撞 403 ——
 // 这是**有意保留**的：功能存在、但需要更高权限，是正常的权限阶梯（与顶栏「博客」

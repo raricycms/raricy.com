@@ -1,10 +1,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// audit-service.ts — 管理审计公示 + 申诉（对齐 Flask app/service/audit_log.py）
+// audit-service.ts — 管理审计公示 + 申诉
 //
-// 纯函数 + 显式参数，与 Flask 解耦风格一致。
+// 纯函数 + 显式参数，与其它 service 风格一致。
 //   • listPublicLogs：仅 visibility='public'、近 30 天、最新在前、分页；带管理员/目标
 //     用户名与“是否有待处理申诉”标记。extra 是 String? 列存原始 JSON 文本，需 guarded 解析。
-//   • createAppeal：镜像 Flask 的校验/频控（accepted 拦截、20/日、同日志同人 pending 唯一）。
+//   • createAppeal：校验/频控（accepted 拦截、20/日、同日志同人 pending 唯一）。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { prisma } from './db';
@@ -13,7 +13,7 @@ import { sendNotification } from './notification-service';
 import type { Prisma } from '@prisma/client';
 
 const PER_PAGE = 20;
-const WINDOW_DAYS = 30; // 对齐 Flask：仅公示近 30 天
+const WINDOW_DAYS = 30; // 仅公示近 30 天（更早的日志仍在库，只是不进公示页）
 const APPEAL_MAX_LEN = 2000;
 const APPEAL_DAILY_LIMIT = 20;
 
@@ -60,12 +60,11 @@ export interface LogDetail {
 /**
  * 单条公示日志 + 其全部申诉（承载 /audit/[id] 详情页）。
  *
- * ⚠️【有意偏离 Flask】Flask 的 get_log 是 get_or_404(log_id)，**不过滤 visibility** ——
- * 于是列表只公示 public，详情页却让任何 core 用户猜个 ID 就能看到内部日志。
- * 这里加上 visibility='public'：/audit 的定位就是「管理员操作日志公示」，
- * 非公示日志不该从公示页读出来。
+ * ⚠️【有意收紧】这里**过滤 visibility='public'**，而不是任何 core 用户按 ID 就能读 ——
+ * 否则列表只公示 public，详情页却让人猜个 ID 就看到内部日志。
+ * /audit 的定位就是「管理员操作日志公示」，非公示日志不该从公示页读出来。
  *
- * 当前真实库里 1391 条日志全部是 public，所以这个差异在今天是空谈、无行为变化；
+ * 当前真实库里 1391 条日志全部是 public，所以这道过滤今天不改变任何行为；
  * 加它是为了将来真出现内部日志时不泄露。
  *
  * 不套用列表那 30 天的时间窗：那个窗是「公示只列近期」的展示策略，
@@ -126,7 +125,7 @@ export async function getLogDetail(logId: number): Promise<LogDetail | null> {
   };
 }
 
-/** 公示日志分页列表（对齐 list_public_logs：public + 近 30 天 + 最新在前）。 */
+/** 公示日志分页列表（public + 近 30 天 + 最新在前）。 */
 export async function listPublicLogs(params: ListLogsParams) {
   const page = Math.max(1, params.page ?? 1);
   // 窗口起点与写入 createdAt 同口径（nowForDb，UTC+8 墙上时间贴 Z）——
@@ -165,7 +164,7 @@ export async function listPublicLogs(params: ListLogsParams) {
     }),
   ]);
 
-  // 待处理申诉标记：一次查询，映射 logId -> true（对齐 Flask has_pending）
+  // 待处理申诉标记：一次查询，映射 logId -> true
   const logIds = rows.map((r) => r.id);
 
   // 单独取 extra（用 CAST 绕过 JSON 列的驱动层转换问题）；生产库同样适用
@@ -323,7 +322,7 @@ export type AppealResult =
   | { ok: false; message: string; appealId: null };
 
 /**
- * 提交申诉（对齐 create_appeal）：
+ * 提交申诉：
  *   1. 内容非空、≤2000 字
  *   2. 该日志已有 accepted 申诉 → 拒绝
  *   3. 当日申诉数 ≥ 20 → 拒绝
@@ -393,7 +392,7 @@ export async function createAppeal(params: {
     select: { id: true },
   });
 
-  // 通知站长（对齐 Flask create_appeal：给所有 owner 各发一条『申诉提交』）。
+  // 通知站长（给所有 owner 各发一条『申诉提交』）。
   // 与评论/点赞同口径：通知失败不影响申诉本身，吞掉即可 —— 申诉已经落库，
   // 站长在 /audit 列表里照样看得到。
   try {

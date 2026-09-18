@@ -4,7 +4,7 @@ import { apiOk, apiErr } from '@/lib/format';
 
 // DELETE /api/comments/:id — 软删除评论（作者本人或管理员）
 // body（可选）: { reason?: string }
-//   对齐 Flask CommentService.delete_comment：管理员删「他人」评论时必须给出原因（1..500），
+//   管理员删「他人」评论时必须给出原因（1..500），
 //   并据此写 AdminActionLog —— 那条日志是 /audit 公示与用户申诉的数据来源。
 //   作者删自己的评论不需要原因。
 export async function DELETE(req: Request, ctx: { params: Promise<{ id: string }> }) {

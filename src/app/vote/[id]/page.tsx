@@ -16,7 +16,7 @@ export default async function VoteDetailPage({ params }: { params: Promise<{ id:
   const vote = await getVoteDetail(id, user?.id ?? null);
   if (!vote) notFound();
 
-  // 创建者才拉取每个选项的投票者名单（对齐 Flask get_vote 中 is_creator 分支的 opt.voters）
+  // 创建者才拉取每个选项的投票者名单（voters 只对创建者下发）
   let voterGroups: { label: string; count: number; voters: string[] }[] = [];
   if (vote.isCreator) {
     const records = await prisma.voteRecord.findMany({
@@ -38,7 +38,7 @@ export default async function VoteDetailPage({ params }: { params: Promise<{ id:
     }));
   }
 
-  // ── 创建者管理动作（server action，替代 Flask 的 fetch /vote/<id>/lock|unlock + DELETE）──
+  // ── 创建者管理动作（server action：锁定 / 解锁 / 删除）──
   async function lockVoteAction() {
     'use server';
     const me = await requireCoreUser();
@@ -70,7 +70,7 @@ export default async function VoteDetailPage({ params }: { params: Promise<{ id:
       where: { id, ignore: false },
       select: { authorId: true },
     });
-    // 失败时返回错误信息，交由客户端以 alert('删除失败：…') 呈现（对齐 Flask deleteVote）
+    // 失败时返回错误信息，交由客户端以 alert('删除失败：…') 呈现
     if (!v || v.authorId !== me.id) return '未知错误';
     await prisma.vote.update({ where: { id }, data: { ignore: true } });
     redirect('/vote');

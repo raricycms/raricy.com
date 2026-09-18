@@ -3,7 +3,7 @@ import { apiOk, apiErr } from '@/lib/format';
 import { claimFortune } from '@/lib/checkin-service';
 import { AccountServiceError } from '@/lib/account-client';
 
-// POST /api/checkin/claim — 第二步：翻牌定命（对齐 Flask api_claim_fortune）。
+// POST /api/checkin/claim — 第二步：翻牌定命。
 // body: { chosenIndex: 0-4 } —— 用户点选的位置；服务端从签到落库的牌池里
 // 取 pool[chosenIndex] 赋值，此刻才发鱼干 + 累加 totalFortune + 远端同步。
 //
@@ -20,7 +20,7 @@ export async function POST(req: Request) {
     if (typeof body !== 'object' || body === null) return apiErr(400, '无效的请求');
     if (body.chosenIndex == null) return apiErr(400, '请选择一个卡牌');
 
-    // 对齐 Flask 路由的 int(chosen_index) 强转：数字或整数字符串皆可。
+    // chosenIndex 两种写法都收：数字，或整数字符串。
     // 1.5 / 'abc' / true 这类不能静默取整 —— 翻牌只能一次，误转就是开盲盒。
     const raw = body.chosenIndex;
     if (typeof raw === 'string') {

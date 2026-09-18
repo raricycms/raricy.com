@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 
-// 博客详情页阅读进度条（对齐 Flask blog.html 顶部 .reading-progress）
+// 博客详情页阅读进度条（页面顶部那条 .reading-progress）
 // 直接根据 window.scrollY 与文档可滚动高度比例，实时更新 .reading-progress 元素的 width。
 // 不需要 client 端路由感知 —— 详情页内生效即可。
 export default function ReadingProgress() {

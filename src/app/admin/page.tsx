@@ -12,7 +12,7 @@ import {
 
 export const dynamic = 'force-dynamic';
 
-// 管理概览 — 对齐 Flask blog/admin_dashboard.html
+// 管理概览
 //
 // 站点统计属于管理信息，core 用户看不了 —— 父 layout 已放宽到 core+（用户管理要用），
 // 这一档由页面自己把住。

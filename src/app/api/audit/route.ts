@@ -1,4 +1,4 @@
-// GET /api/audit?page=&action= — 管理操作公示日志（对齐 Flask /audit/logs）
+// GET /api/audit?page=&action= — 管理操作公示日志
 import { listPublicLogs } from '@/lib/audit-service';
 
 export async function GET(req: Request) {

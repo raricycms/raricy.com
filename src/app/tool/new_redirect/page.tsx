@@ -1,6 +1,6 @@
 'use client';
 
-// 逐字对齐原 Flask 模板 tool/new_redirect.html（纯前端）。
+// 纯前端工具。
 import { useState } from 'react';
 
 type Shortcut = { name: string; url: string; color: string };

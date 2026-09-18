@@ -1,11 +1,11 @@
 'use client';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AdminArticlesManager — 文章栏目管理页的交互层（对齐 Flask manage_articles.html）：
+// AdminArticlesManager — 文章栏目管理页的交互层：
 //   • 复选框选择 + 已选择计数 + 全选当前页 / 清空选择
 //   • 批量操作栏：批量更新栏目 / 批量设为精选
 //   • 每行动作簇委托给 <AdminBlogActions>（栏目下拉 + 查看 + 设为精选）
-// Flask 用独立 batch API；Next 没有批量端点，这里对所选文章逐条 PATCH，
+// 没有批量更新端点，这里对所选文章逐条 PATCH，
 // 可见结果等价（toast + 列表刷新）。筛选/搜索用原生 GET 表单交给服务端重渲染。
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -47,7 +47,7 @@ const toast = (msg: string, type: 'success' | 'error' | 'info' | 'warning' = 'in
   if (w.showToast) w.showToast(msg, type);
 };
 
-// 分页页码窗口（window-of-3），对齐 Flask _macros.html / management.html：
+// 分页页码窗口（window-of-3）：
 // 始终显示首尾页，当前页 ±3 的范围显示页码，其余折叠为 …（null 表示省略号）。
 function pageWindow(page: number, pages: number, window = 3): (number | null)[] {
   const out: (number | null)[] = [];

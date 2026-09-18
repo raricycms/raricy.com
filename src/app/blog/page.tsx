@@ -31,7 +31,7 @@ export default async function BlogListPage({
   const sp = await searchParams;
   // ⚠️ 精选筛选是**三态**，别把布尔值直接递给 listBlogs：
   //   '1' → true（只看精选） / '0' → false（只看非精选） / 缺省 → undefined（不筛）
-  // listBlogs 里 `featured: false` 是**生效的筛选**（对齐 Flask `if featured in (True, False)`），
+  // listBlogs 里 `featured: false` 是**生效的筛选**（与「不筛」的 undefined 不是一回事），
   // 所以「URL 没带 featured」若算成 false，「全部文章」和栏目目录就只剩非精选 ——
   // 精选文整体消失，只有点侧栏「精选」才看得见（线上发生过的 bug）。
   const featuredFilter = sp.featured === '1' ? true : sp.featured === '0' ? false : undefined;

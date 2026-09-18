@@ -5,8 +5,7 @@ import { parseNotificationIds } from '../batch-params';
 
 // POST /api/notifications/batch-mark-read { notification_ids: string[] }
 //   批量标记通知为已读（需登录，限本人）。
-//   对齐 Flask notifications.api_batch_mark_read：入参 notification_ids，
-//   缺参 / 非数组各自 400，成功返回 count。
+//   入参 notification_ids；缺参 / 非数组各自 400，成功返回 count。
 export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '请先登录');

@@ -3,7 +3,7 @@
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useState } from 'react';
 
-// 分页跳转输入框 — Flask BEM
+// 分页跳转输入框 — 分页组的一套类名（page-jump / page-input / page-link）
 export default function BlogPageJump({
   totalPages,
   current,
@@ -35,7 +35,7 @@ export default function BlogPageJump({
         value={value}
         onChange={(e) => setValue(e.target.value)}
       />
-      {/* page-link 提供外观（与相邻页码同款），page-btn 只补 cursor/margin —— 对齐 Flask 的 class="page-link page-btn" */}
+      {/* page-link 提供外观（与相邻页码同款），page-btn 只补 cursor/margin */}
       <button type="button" onClick={jump} className="page-link page-btn">
         跳转
       </button>

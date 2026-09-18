@@ -1,7 +1,7 @@
 import { isOwner, hasAdminRights, isCoreUser, type SafeUser } from '@/lib/auth';
 import AdminNav, { type AdminNavItem } from '@/app/components/AdminNav';
 
-// 管理端母版 — Flask `admin_base.html` 样式（admin-layout + admin-sidebar + admin-content）
+// 管理端母版 — admin-layout / admin-sidebar / admin-content 三块布局
 //
 // 按角色逐项门控侧栏条目：
 //   管理概览 / 文章管理 → hasAdminRights

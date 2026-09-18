@@ -40,9 +40,9 @@ function pageWindow(page: number, pages: number, window = 3): (number | null)[] 
 
 // 用户管理 — Fluent Design
 //
-// 【两个档位，同一页】对齐 Flask auth/management.html：core+ 就能进，但核心用户看到的是
+// 【两个档位，同一页】core+ 就能进，但核心用户看到的是
 // **只读**版本 —— 标题「用户列表」、副标题「查看注册用户」，且不渲染禁言 / 解除禁言 /
-// 发通知 / 角色按钮（那些在 Flask 侧都有 has_admin_rights / is_owner 门控）。
+// 发通知 / 角色按钮（那些按钮各自另有 admin / owner 门控，只对够档的人渲染）。
 // 别再往这里加「反正后端会挡」的动作按钮：按钮点了弹 403 对用户就是坏掉的界面。
 export default async function AdminUsersPage({
   searchParams,

@@ -11,7 +11,7 @@ export default function robots(): MetadataRoute.Robots {
     rules: [
       {
         userAgent: '*',
-        // 后台/接口/鉴权路径不放给爬虫（对齐 Flask 无公开后台的意图）；
+        // 后台/接口/鉴权路径不放给爬虫（本站没有公开的后台页面）；
         // /chat 是登录后的内部工作台，同样不索引。
         // 图片放在 allow 列表里：图走 /api/images/<id>/raw，本会被 '/api/' 挡住，
         // 而公开图床的图本来就该能被抓（见 raw 路由的 X-Robots-Tag，私有图仍挡）。

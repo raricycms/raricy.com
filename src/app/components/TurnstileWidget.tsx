@@ -5,7 +5,7 @@
 //
 // 仅当 NEXT_PUBLIC_TURNSTILE_AVAILABLE === 'True' 时加载 CF 脚本并渲染 widget，
 // 每次校验完成通过 onToken(token) 回调把 token 交给表单；否则不渲染任何内容
-// （镜像 Flask：未启用 Turnstile 时注册页无验证控件）。
+// （未启用 Turnstile 时注册页无验证控件）。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useRef } from 'react';

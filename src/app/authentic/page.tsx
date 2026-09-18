@@ -3,8 +3,9 @@
 import { useState } from 'react';
 import Link from 'next/link';
 
-// 邀请码认证页，对齐 app/templates/auth/authentic.html。
-// 结构 / 文案 / 类名逐字对齐原模板；提交交互（禁用按钮 + 验证中… + toast + 成功跳回主页）用 React 等价实现。
+// 邀请码认证页。
+// 结构 / 文案 / 类名沿用既有约定（样式与 e2e 挂在它们上面），别顺手改；
+// 提交交互（禁用按钮 + 验证中… + toast + 成功跳回主页）用 React 实现。
 
 function toast(msg: string, type: string) {
   if (typeof window === 'undefined') return;

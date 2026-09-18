@@ -1,6 +1,6 @@
 'use client';
 
-// BlogForm — 发布/编辑文章表单（Flask BEM）
+// BlogForm — 发布/编辑文章表单
 //
 // - 编辑器：vditor npm 包（vditor@3.10.7），icon sprite + KaTeX 从 /static/vditor 本地加载
 // - 提交：新建 → POST /api/blogs；编辑 → PUT /api/blogs/:id

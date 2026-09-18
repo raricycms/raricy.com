@@ -13,9 +13,9 @@
 //      （它们只按 id 查单篇内容，滥用成本低），这条会一次带出整个列表，是新加的唯一
 //      一个有闸的 —— 别因为「邻居都没有」而删掉它。
 //
-// 响应形状照 spider 命名空间的既有口径：**裸 JSON**（没有 { code, message } 信封），
-// 对齐 Flask 的 /blog/spider/*。但**加了** Cache-Control: no-store ——
-// spider 现有几条没写这个头，是历史遗留，新接口不沿袭。
+// 响应形状照 spider 命名空间的既有口径：**裸 JSON**（没有 { code, message } 信封）。
+// 但**加了** Cache-Control: no-store —— spider 现有几条没写这个头，是历史遗留，
+// 新接口不沿袭。
 
 import { apiErr } from '@/lib/format';
 import { getPublicFavorite } from '@/lib/favorite-service';

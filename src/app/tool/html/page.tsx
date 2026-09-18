@@ -1,6 +1,6 @@
 'use client';
 
-// 逐字对齐原 Flask 模板 tool/html.html（纯前端计算）。
+// 纯前端计算。
 import Link from 'next/link';
 import { useState } from 'react';
 import { ArrowLeft, ArrowLeftRight, ArrowRight } from 'lucide-react';
@@ -18,7 +18,7 @@ export default function HtmlToolPage() {
   const [left, setLeft] = useState('');
   const [right, setRight] = useState('');
   const [status, setStatus] = useState('');
-  // useNamed 原模板存在但 encodeHTML 未据其分支（基本实体始终命名）；保留以对齐 UI。
+  // useNamed 开关保留在界面上，但 encodeHTML 不据它分支（基本实体始终命名）。
   const [useNamed, setUseNamed] = useState(true);
   const [encodeNonAscii, setEncodeNonAscii] = useState(true);
 

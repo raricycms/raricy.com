@@ -55,7 +55,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 }
 
 // DELETE /api/admin/blogs/:id — 管理员删他人文章
-// body: { reason: string }  (必填，对齐 Flask：管理员删帖必须填理由、记日志、通知作者)
+// body: { reason: string }  (必填：管理员删帖必须填理由、记日志、通知作者)
 // 作者本人删自己的文章请走 /api/blogs/:id，不写日志不强制 reason。
 //
 // 具体动作（软删 + 审计 + 通知作者）在 admin-blog-service.deleteBlogForAdmin ——

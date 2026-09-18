@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// image-upload.ts — 图床二进制上传（对齐 Flask app/web/image_hosting/service.py）
+// image-upload.ts — 图床二进制上传
 //
 // 负责：磁盘路径解析、文件名净化（XSS/路径穿越防护）、角色配额累计、sharp 压缩、
 // 落盘 + 落库。仅 Node 运行时可用（依赖 node:fs / node:crypto / sharp）。
@@ -10,7 +10,7 @@
 //     黑名单：黑名单永远漏。四步：剥非法字符 → 折叠连续点/空格 → 去前导 `.`/`-`/空格
 //     （防隐藏文件与相对路径）→ 截 200 字符。空结果兜底成 'image'，**永不返回空串**
 //     （空串会让调用方拼出目录路径）。
-//  2. QUOTA_LIMITS_MB —— core 50 / admin 50 / owner 100，直接抄自 Flask QUOTA_LIMITS_MB。
+//  2. QUOTA_LIMITS_MB —— core 50 / admin 50 / owner 100，沿用既有配额，别改。
 //     这三个数字是**有意的**（不是「按角色递增」的直觉值：core 与 admin 同额），
 //     改动必须是有意的；`tests/service/image-service.test.ts` 钉着边界（<= 而不是 <）。
 //     无权限角色由 getQuotaLimitMb 返回 0 → 路由 403，别绕过它直接索引这个表。
@@ -23,7 +23,7 @@ import sharp from 'sharp';
 import { prisma } from './db';
 import { nowForDb } from './db-time';
 
-// 允许的 MIME 白名单，对齐 Flask ALLOWED_MIMETYPES
+// 允许的 MIME 白名单（以下五项，扩大即放宽入站格式）
 export const ALLOWED_MIMETYPES = new Set<string>([
   'image/png',
   'image/jpeg',
@@ -32,7 +32,7 @@ export const ALLOWED_MIMETYPES = new Set<string>([
   'image/svg+xml',
 ]);
 
-// 单文件上限（对齐 Flask MAX_IMAGE_SIZE 默认 10MB）
+// 单文件上限 10MB
 export const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
 
 /**
@@ -48,7 +48,7 @@ export const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
  */
 export const MAX_REQUEST_BYTES = 12 * 1024 * 1024;
 
-// 角色存储配额（MB），对齐 Flask QUOTA_LIMITS_MB
+// 角色存储配额（MB），数值见上（core 与 admin 同额是有意的）
 export const QUOTA_LIMITS_MB: Record<string, number> = {
   core: 50,
   admin: 50,
@@ -76,12 +76,13 @@ const EXT_MAP: Record<string, string> = {
 // （nosniff 是第二道闸，但闸门不该只有一道；且 nosniff 挡不住直接声明 image/svg+xml
 // 却塞 HTML 的变体。）
 //
-// 对齐 Flask verify_image_mime（app/web/image_hosting/service.py）：
-//   · 位图：PIL 解出真实 format → 与声明的 MIME 比对，不符/解不开 → 拒绝
-//   · SVG：PIL 开不了 XML，改为文本前缀检查
-//   · 差异：Flask 无 Pillow 时 `return True`（信任浏览器）——这里不留这个后门，
+// 判定方式（纯字节比对，无第三方依赖）：
+//   · 位图：按 magic bytes 认出真实 format → 与声明的 MIME 比对，不符/认不出 → 拒绝
+//   · SVG：magic bytes 认不出 XML，改为文本前缀检查
+// 下面两处相对旧版是**收紧**，不要退回去：
+//   · 旧版在检测库不可用时会 `return True`（信任浏览器）——这里不留这个后门，
 //     纯字节比对无依赖，恒定生效。
-//   · 差异：Flask 的 SVG 分支是 `'<svg' in text[:1024]`（**子串**匹配），
+//   · 旧版的 SVG 分支是 `'<svg' in text[:1024]`（**子串**匹配），
 //     `<html><svg>` 这种也会放行。这里收紧为「跳过 BOM/prolog/注释/DOCTYPE 后
 //     必须以 <svg 开头」——真实 SVG 一定有 <svg 根元素，不会误伤。
 
@@ -137,7 +138,7 @@ export function detectImageMime(buffer: Buffer): string | null {
 
 /**
  * 校验「文件内容是否真是所声明的格式」。声明不在白名单、内容识别不出、
- * 或内容与声明不符 → false（对齐 Flask verify_image_mime 的拒绝语义）。
+ * 或内容与声明不符 → false（任一不满足即拒，不做例外）。
  */
 export function verifyImageMime(buffer: Buffer, claimedMime: string): boolean {
   if (!ALLOWED_MIMETYPES.has(claimedMime)) return false;
@@ -149,13 +150,13 @@ export function getUploadFolder(): string {
   return process.env.IMAGE_UPLOAD_FOLDER || path.resolve(process.cwd(), './instance/images');
 }
 
-/** 磁盘上的完整文件路径：<folder>/<id><ext>，对齐 Flask ImageHosting.storage_path。 */
+/** 磁盘上的完整文件路径：<folder>/<id><ext>（存量图片文件即按此命名，不可改）。 */
 export function storagePathFor(id: string, mimeType: string): string {
   return path.join(getUploadFolder(), id + (EXT_MAP[mimeType] ?? ''));
 }
 
 /**
- * 净化文件名，剥离可用于 XSS / 路径穿越的字符（对齐 Flask sanitize_filename）。
+ * 净化文件名，剥离可用于 XSS / 路径穿越的字符。白名单见下，不要换成黑名单。
  * 保留：Unicode 字母/数字（含 CJK）、下划线、点、连字符、空格。
  */
 export function sanitizeFilename(filename: string): string {
@@ -247,7 +248,7 @@ export interface SavedImage {
 
 /**
  * 压缩 → 生成唯一 ID → 写盘 → 落库，返回最终元信息（fileSize 为最终落库字节数）。
- * compress=false 时跳过压缩，原样存储（对齐 Flask compress 参数的语义）。
+ * compress=false 时跳过压缩，原样存储（图床页那个复选框即走这条）。
  * 调用方负责登录/禁言/MIME/尺寸/配额/限频等前置校验。
  */
 export async function saveUpload(input: {

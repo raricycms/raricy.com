@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 // 首页 footer 的额外文字 — 通过 portal 注入到 site-footer-left。
-// 对齐 Flask homepage.html 的 {% block footer_text %} 模式。
 export default function HomeFooterNote() {
   const [host, setHost] = useState<HTMLElement | null>(null);
 

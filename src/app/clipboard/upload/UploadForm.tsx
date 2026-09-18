@@ -6,7 +6,7 @@
 //   /static/vditor 本地加载，避免运行时依赖 unpkg。
 // - Math（LaTeX）：开启 preview.math（KaTeX 引擎），IR 模式下输入 $$..$$ 即可见渲染。
 // - 提交：新建 → POST /api/clipboard；编辑 → PUT /api/clipboard/:id。
-// - 保留 Flask 行为：Ctrl/⌘+S 手动保存（编辑态）、autoSave 每分钟自动保存、
+// - 交互约定：Ctrl/⌘+S 手动保存（编辑态）、autoSave 每分钟自动保存、
 //   publicity 是否公开。
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -92,8 +92,8 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
     }
 
     try {
-      // 编辑态命中 PUT /api/clipboard/[id]（对齐 Flask POST /clipboard/<id>/edit）；
-      // 新建态命中 POST /api/clipboard（对齐 Flask POST /clipboard/upload）。
+      // 编辑态命中 PUT /api/clipboard/[id]；
+      // 新建态命中 POST /api/clipboard。
       const url = isEdit ? `/api/clipboard/${clip!.id}` : '/api/clipboard';
       const method = isEdit ? 'PUT' : 'POST';
       const response = await fetch(url, {
@@ -234,7 +234,7 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    // 提交前停止自动保存（对齐 Flask stopAutoSave()）。
+    // 提交前停止自动保存。
     setAutoSave(false);
     await saveClipboard(false);
   }

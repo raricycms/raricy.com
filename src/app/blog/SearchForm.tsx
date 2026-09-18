@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { FormEvent } from 'react';
 
-// 博客搜索表单 — Flask BEM
+// 博客搜索表单 — 搜索组的一套类名（search-form / search-field / search-input）
 // 空搜索时拦截，去掉 search 参数并保留其他筛选。
 export default function SearchForm({
   currentSlug,

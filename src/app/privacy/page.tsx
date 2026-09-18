@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import LegalCard from '@/app/components/LegalCard';
 
-// 对齐 app/templates/home/privacy.html：用 content-wrapper 包裹 + page-title 标题，正文装入 .legal-card。
+// 用 content-wrapper 包裹 + page-title 标题，正文装入 .legal-card —— 法务页共用这套骨架。
 
 export const metadata: Metadata = { title: 'Raricy.com - 隐私政策' };
 

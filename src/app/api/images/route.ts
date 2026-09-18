@@ -19,7 +19,7 @@ export const runtime = 'nodejs';
 export async function GET() {
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '请先登录');
-  // 对齐 Flask @authenticated_required：需核心用户（core 及以上）。
+  // 需核心用户（core 及以上）。
   // 页面挡了 core，但接口没挡 —— 未认证用户用不了界面，却 curl 得动。
   if (!isCoreUser(user)) return apiErr(403, '需要核心用户权限');
 
@@ -55,18 +55,17 @@ function displayFilename(name: string, mimeType: string): string {
 
 // POST /api/images — multipart 二进制上传（登录 + 禁言校验）
 //
-// 流程复刻 Flask ImageService.upload_image：MIME 白名单 → 尺寸上限 →
+// 上传流程：MIME 白名单 → 尺寸上限 →
 // 角色配额累计 → 内存限频（75 次/时）→ sharp 压缩 → 10 位安全 ID 写盘 →
 // 落库（file_size 记压缩后字节）。
 //
 // 【一次可以传多个】表单字段 `file` 可以重复出现 —— vditor 多选时就是这么发的
-// （Flask 侧走的是 `file[]` 分支 + request.files.getlist，语义相同，只是字段名不同；
-// 本站统一用 `file`，vditor 那套 succMap/errFiles 的翻译留在客户端）。逐个文件跑
+// （本站统一用 `file`；vditor 那套 succMap/errFiles 的翻译留在客户端）。逐个文件跑
 // 同一条校验链：任一张不合格只让它自己进 failed，不影响同批的其它张。
 export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '请先登录');
-  // 对齐 Flask @authenticated_required：需核心用户（core 及以上）。
+  // 需核心用户（core 及以上）。
   // 页面挡了 core，但接口没挡 —— 未认证用户用不了界面，却 curl 得动。
   if (!isCoreUser(user)) return apiErr(403, '需要核心用户权限');
   if (isCurrentlyBanned(user)) return apiErr(403, '你已被禁言，暂时无法上传');
@@ -93,14 +92,14 @@ export async function POST(req: Request) {
   const files = form.getAll('file').filter((f): f is File => f instanceof File);
   if (files.length === 0) return apiErr(400, '请选择文件');
 
-  // compress 表单字段对齐 Flask：缺省按压缩处理（Vditor/BlogForm 上传不带该字段，
-  // Flask 侧 Vditor 路径默认 compress=1）；图床页复选框勾选发 '1'、取消发 '0'。
-  // 【曾经的 bug】该字段被忽略，复选框取消勾选也不影响结果 —— 与 Flask 语义不符。
+  // compress 表单字段：**缺省按压缩处理**（Vditor/BlogForm 上传不带该字段）；
+  // 图床页复选框勾选发 '1'、取消发 '0'。
+  // 【曾经的 bug】该字段被忽略，复选框取消勾选也不影响结果 —— 与「缺省即压缩」不符。
   // 注意它是**批级**的（一个请求一个值），不是逐文件。
   const compress = form.get('compress') !== '0';
 
   const limitBytes = limitMb * 1024 * 1024;
-  // 已用字节在批内累加 —— 对齐 Flask 每轮重查 used 的语义。它记的是**压缩后**大小，
+  // 已用字节在批内累加 —— 每张图都按「同批前面已落盘的量」判配额，不另查库。它记的是**压缩后**大小，
   // 所以只在落盘成功之后累加 saved.fileSize；累加压缩前大小会虚高、错误拒掉后面
   // 本来合法的文件（配额 50MB、已用 45MB、三张压缩后各 200KB 的截图就是例子）。
   let used = await getUserUsedBytes(user.id);
@@ -127,7 +126,7 @@ export async function POST(req: Request) {
 
       // 内容校验：file.type 是浏览器声明的，可伪造。必须比对真实 magic bytes，
       // 否则「SVG/HTML 字节 + 声明 image/png」可绕过 raw 路由的 SVG attachment 分支
-      // → 被浏览器嗅探为 SVG 渲染 → 同源 XSS。对齐 Flask verify_image_mime。
+      // → 被浏览器嗅探为 SVG 渲染 → 同源 XSS。
       if (!verifyImageMime(buffer, mimeType)) {
         failed.push({ filename, message: '文件内容与声明的格式不匹配' });
         continue;
@@ -146,8 +145,8 @@ export async function POST(req: Request) {
         continue;
       }
 
-      // 内存限频。位置与 Flask 一致：放在全部校验之后（被拒的文件不消耗额度），
-      // 且**按文件**计（Flask 的 validate_upload 每个文件消耗一次）。多张一次上传时
+      // 内存限频。位置刻意放在全部校验之后：被拒的文件不消耗额度，
+      // 用户改对重试时不会被刚才那几次失败挡住。且**按文件**计（每张各消耗一次）。多张一次上传时
       // 额度用尽即止 —— 传满的那部分照常入库，没轮到的逐条说明原因，不会传一半才 429。
       if (rateLimited) {
         failed.push({ filename, message: '上传频率过高，请稍后再试' });

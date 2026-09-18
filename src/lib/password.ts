@@ -90,7 +90,7 @@ export async function verifyPassword(password: string, stored: string): Promise<
 }
 
 /**
- * 生成 werkzeug 兼容的 scrypt 哈希（新注册/改密码时用），Flask 侧亦可校验。
+ * 生成 werkzeug 兼容的 scrypt 哈希（新注册/改密码时用），旧版亦可校验。
  * 与 werkzeug 默认参数一致：scrypt:32768:8:1，salt 16 字符，dklen=64。
  */
 // werkzeug 的 salt 字符集与长度：secrets.choice(ascii_letters + digits)，salt_length=16。

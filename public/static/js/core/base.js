@@ -514,7 +514,7 @@ function watchFileInputs() {
 // 注意：本文件在 Next 侧由 <Script strategy="afterInteractive"> 加载，此时
 // DOMContentLoaded 早已触发完毕——若仍只注册该事件的监听器，回调永远不会执行，
 // 顶栏折叠 / 用户下拉 / 通知计数等会全部失效。故改为：DOM 已就绪则立即初始化。
-// （原 Flask 由 base.html 内联 <script> 在解析期执行，赶得上该事件，故无此问题。）
+// 两条分支都保留（见文件末尾的 readyState 判断）：谁先到走谁，撤掉任一条都会失效。
 //
 // 用 AbortController 收集本轮 init 注册的所有监听器：再次进入 initSiteChrome()
 // （HMR、SPA 重挂载、或测试反复执行）时先 abort 上一轮，避免监听器累积 ——

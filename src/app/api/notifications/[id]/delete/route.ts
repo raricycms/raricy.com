@@ -3,7 +3,7 @@ import { apiErr } from '@/lib/format';
 import { batchDelete } from '@/lib/notification-service';
 
 // DELETE /api/notifications/:id/delete — 删除单条通知（需登录，限本人）
-// 对齐 Flask notifications.delete_notification：硬删除，按 recipient 校验归属。
+// 硬删除（通知表没有软删标记，删就是删行），按 recipient 校验归属。
 //
 // 走 batchDelete([id]) 而不是自己 deleteMany：删掉的可能是**未读**的（未读数会降，
 // 顶栏铃铛要跟着变），而推送挂在 service 层。单条删除的意义只是「长度为 1 的批量删除」，

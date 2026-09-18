@@ -1,8 +1,8 @@
 // GET /api/clipboard/:id — 单个剪贴板正文
-//   对齐 Flask detail 路由：软删除 → 404；私有且非作者/非站长 → 403。
+//   软删除 → 404；私有且非作者/非站长 → 403。
 // PUT /api/clipboard/:id — 编辑剪贴板（登录必需）
-//   对齐 Flask POST /clipboard/<id>/edit：软删除/不存在 → 404；非作者 → 403；
-//   校验对齐 validator()；成功返回 { code: 200, message: 'success', id }。
+//   软删除/不存在 → 404；非作者 → 403；
+//   校验通过后返回 { code: 200, message: 'success', id }。
 
 import { getCurrentUser, isOwner, isCoreUser } from '@/lib/auth';
 import { apiOk, apiErr } from '@/lib/format';
@@ -17,12 +17,12 @@ import {
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
   const user = await getCurrentUser();
-  // 对齐 Flask /clipboard/<id> 的 @authenticated_required：需核心用户。
+  // 需核心用户。
   // 页面挡了 core，但接口没挡 —— 未认证用户用不了界面，却 curl 得动。
   if (!user) return apiErr(401, '请先登录');
   if (!isCoreUser(user)) return apiErr(403, '需要核心用户权限');
 
-  // 站长可看私有剪贴板（对齐 Flask 的 `and not current_user.is_owner`）
+  // 站长可看私有剪贴板
   const result = await getClip(id, user.id, isOwner(user));
   if (!result.ok) {
     if (result.reason === 'forbidden') return apiErr(403, '该剪贴板为私有内容');
@@ -49,7 +49,7 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
   const { id } = await ctx.params;
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '请先登录');
-  // 对齐 Flask @authenticated_required：需核心用户（core 及以上）。
+  // 需核心用户（core 及以上）。
   // 页面挡了 core，但接口没挡 —— 未认证用户用不了界面，却 curl 得动。
   if (!isCoreUser(user)) return apiErr(403, '需要核心用户权限');
 
@@ -62,7 +62,7 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
 
   const data = (body ?? {}) as Record<string, unknown>;
 
-  // 校验，对齐 Flask validator()
+  // 校验：类型 + 长度上限
   const { title, content, publicity } = data;
   if (typeof publicity !== 'boolean') {
     return apiErr(400, 'wrong publicity format');
@@ -88,7 +88,7 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
 }
 
 // DELETE /api/clipboard/:id — 软删除剪贴板（登录必需）
-//   对齐 Flask DELETE /clipboard/<clip_id>：软删除/不存在 → 404；
+//   软删除/不存在 → 404；
 //   非作者且非站长 → 403。仅置 ignore=true，数据保留。
 export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;

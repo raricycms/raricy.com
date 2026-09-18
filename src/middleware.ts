@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CSRF 防护（原 Flask 无 CSRF token，仅靠同源；新架构补齐这一层）
+// CSRF 防护（对写请求做 Origin/Referer 同源校验）
 //
 // 会话走 httpOnly cookie，因此状态变更请求(POST/PUT/PATCH/DELETE)存在 CSRF 面。
 // 这里做 Origin/Referer 同源校验：跨站发起的写请求会带上攻击者的 Origin，
 // 与本站对外 Host 不符即拒绝。配合 SameSite=lax cookie，覆盖绝大多数 CSRF 向量。
 //
-// 【反向代理】对外 Host 的判定顺序（对齐 Flask 侧 ProxyFix 信任 X-Forwarded-Host 的做法）：
+// 【反向代理】对外 Host 的判定顺序（三条来源取并集）：
 //   1. ALLOWED_ORIGINS（显式配置，最可靠；反代/多域名部署建议直接配这个）
 //   2. X-Forwarded-Host（nginx 等反代透传的原始 Host）
 //   3. Host（直连时的兜底）

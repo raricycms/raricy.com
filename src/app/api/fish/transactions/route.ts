@@ -2,9 +2,9 @@ import { getCurrentUser } from '@/lib/auth';
 import { apiOk, apiErr } from '@/lib/format';
 import { getTransactions } from '@/lib/fish-service';
 
-// GET /api/fish/transactions — 当前用户流水分页（对齐 /fish/api/transactions，需登录）。
+// GET /api/fish/transactions — 当前用户流水分页（需登录）。
 // query: ?page=1&per_page=20&type=checkin|feed_all|admin_grant|purchase|...
-// 返回字段与 Flask 一致（snake_case，供外部项目消费）。
+// 返回字段固定 snake_case —— 外部项目按这个形状消费，属对外契约，别顺手改成 camelCase。
 export async function GET(req: Request) {
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '请先登录');

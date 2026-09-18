@@ -25,8 +25,8 @@ async function getSafeNextPath(): Promise<string> {
   return '/';
 }
 
-// 对齐原站 @authenticated_required：需登录 + 核心用户（core 及以上）。
-// 行为差异（与 Flask 对齐）：
+// 需登录 + 核心用户（core 及以上）。
+// 两道门的行为（改动即改全站入口表现）：
 //   - 未登录 → 302 重定向到 /login?next=<原URL>（让用户能登录后再回来）
 //   - 已登录但权限不够 → forbidden() 原地渲染 403 页
 export async function requireCoreUser(): Promise<SafeUser> {
@@ -42,7 +42,7 @@ export async function requireCoreUser(): Promise<SafeUser> {
 // 已登录 + admin+（管理员或站长）。
 //
 // 【为什么需要它】/admin 段（admin/layout.tsx）是 core+ 的 —— 因为段内的「用户管理」
-// 对齐 Flask management.html，核心用户只能查看、本来就能进。于是段内那些**真的**
+// 对核心用户只读开放（能看、不能改）。于是段内那些**真的**
 // 要管理权的页面（概览、文章管理）必须自己去要这一档，不能再靠父 layout 兜。
 // 这与 broadcast / categories / appeals 各自的 layout.tsx 是同一个套路。
 export async function requireAdmin(): Promise<SafeUser> {
@@ -55,7 +55,7 @@ export async function requireAdmin(): Promise<SafeUser> {
   return user;
 }
 
-// 对齐原站 @owner_required：仅站长可访问。
+// 仅站长（owner）可访问。全站最高一档，admin 也进不来。
 // 未登录 → 重定向到登录；已登录但非 owner → 403。
 export async function requireOwner(): Promise<SafeUser> {
   const user = await getCurrentUser();

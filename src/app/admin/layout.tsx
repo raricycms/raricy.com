@@ -4,18 +4,17 @@ import { getCurrentUser, isCoreUser } from '@/lib/auth';
 import { safeNextPath } from '@/lib/safe-url';
 import AdminShell from '@/app/components/AdminShell';
 
-// 管理端母版（对齐 Flask admin_base.html）。
+// 管理端母版。
 // 统一鉴权：/admin/* 下的页面需要**核心用户**权限。
 // 行为：
 //   - 未登录 → 307 重定向到 /login?next=<原URL>
 //   - 已登录但非 core+ → forbidden() 渲染 403
 //
-// 【为什么是 core 而不是 admin】这里的档位跟着 Flask 的 admin_base.html 走：那张母版
-// 的侧栏对 is_core_user 就露出「用户管理」与「操作日志」两项，而 Flask 的
-// auth.user_management 装饰器是 @authenticated_required（core+）——
-// management.html 里核心用户看到的是**只读**版本的同一页（标题「用户列表」，
-// 没有禁言 / 发通知 / 角色按钮）。原先这里收在 hasAdminRights，于是核心用户点侧栏
-// 里那个「用户管理」必然 403：入口和门禁自相矛盾。
+// 【为什么是 core 而不是 admin】这里的档位由「核心用户本来能做什么」决定：侧栏对 core
+// 用户就露出「用户管理」与「操作日志」两项，而两页本来也都是 core+ 档 —— 核心用户进
+// 用户管理看到的是**只读**版本的同一页（标题「用户列表」，没有禁言 / 发通知 / 角色按钮）。
+// 原先这里收在 hasAdminRights，于是核心用户点侧栏里那个「用户管理」必然 403：
+// 入口和门禁自相矛盾。
 //
 // 段内真正要管理权的页面各自把门（URL 猜得到，链接藏起来不等于挡住）：
 //   · /admin、/admin/blogs     → requireAdmin()（在各自 page.tsx 里）

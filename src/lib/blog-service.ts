@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// blog-service.ts — 博客业务逻辑（对齐 Flask app/web/blog/services/BlogService）
+// blog-service.ts — 博客业务逻辑
 //
-// 与 Flask 解耦风格一致：纯函数 + 显式参数，方便测试与复用。
+// 纯函数 + 显式参数，方便测试与复用。
 // 软删除：Blog.ignore = true 的一律排除（对齐 CLAUDE.md 的软删除约定）。
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -39,7 +39,7 @@ export async function listBlogs(params: ListParams) {
 
   const where: Prisma.BlogWhereInput = { ignore: false };
 
-  // 精选筛选：对齐 Flask `if featured in (True, False)` —— **false 也生效**（筛出非精选）。
+  // 精选筛选：**false 也生效**（筛出非精选）。
   // 写成 `if (params.featured)` 会让 featured=false 等同于不传，丢掉「只看非精选」的语义。
   if (params.featured !== undefined && params.featured !== null) {
     where.isFeatured = params.featured;
@@ -47,8 +47,7 @@ export async function listBlogs(params: ListParams) {
 
   if (params.categorySlug) {
     // 指定栏目：命中该栏目或其子栏目。
-    // isActive 过滤对齐 Flask `filter_by(slug=..., is_active=True)` 与
-    // `children.filter_by(is_active=True)` —— 停用栏目下的文章不应能通过 slug 直接访问。
+    // isActive 过滤（栏目与子栏目都判）—— 停用栏目下的文章不应能通过 slug 直接访问。
     const cat = await prisma.category.findFirst({
       where: { slug: params.categorySlug, isActive: true },
       select: { id: true, children: { where: { isActive: true }, select: { id: true } } },
@@ -60,17 +59,15 @@ export async function listBlogs(params: ListParams) {
       where.categoryId = -1; // 不存在/已停用的栏目 → 空结果
     }
   } else {
-    // 「全部文章」：排除 exclude_from_all 的栏目**及其子栏目**。
-    // 对齐 Flask：
-    //   excluded = Category.filter_by(exclude_from_all=True, is_active=True)
-    //   for ec in excluded: ids += [ec.id] + [child.id for child in ec.children if is_active]
-    //   query.filter((Blog.category_id.is_(None)) | (~Blog.category_id.in_(ids)))
+    // 「全部文章」：排除 exclude_from_all 的栏目**及其子栏目** —— 取启用中的
+    // exclude_from_all 栏目，把「它自己 + 它的启用子栏目」的 id 并成一个集合，
+    // 再滤掉 category_id 落在这个集合里的文章。
     //
     // ⚠️ 两个易错点：
     //  1. **必须显式保住 category_id IS NULL** —— SQL 里 `NULL NOT IN (...)` 求值为 NULL，
     //     只写 notIn 会把「未分类」文章一并滤掉。实测：只要站内存在任意一个
     //     exclude_from_all 栏目，所有未分类文章就从首页消失。
-    //  2. 该排除与 featured 无关（Flask 只看有没有传 category_slug）。写成
+    //  2. 该排除与 featured 无关（只看有没有传 category_slug）。写成
     //     `else if (!params.featured)` 会让精选页漏出被排除栏目的文章。
     const excluded = await prisma.category.findMany({
       where: { excludeFromAll: true, isActive: true },
@@ -185,11 +182,11 @@ export interface LikerRow {
 }
 
 /**
- * 点赞者列表（对齐 Flask LikeService.get_likers）。
+ * 点赞者列表。
  *
  * 只列未软删的点赞（deleted=false）—— 取消赞的人不该还出现在列表里。
- * 字段名用 snake_case、时间用 'YYYY-MM-DD HH:MM:SS'，都是对齐 Flask 的 JSON 形状，
- * 前端 FeedButton 直接消费。
+ * 字段名用 snake_case、时间用 'YYYY-MM-DD HH:MM:SS'，是前端 FeedButton
+ * 直接消费的 JSON 形状，别顺手改成 camelCase。
  *
  * @returns null 表示文章不存在（路由据此返回 404）
  */
@@ -223,7 +220,7 @@ export async function getLikers(
     users: likes.map((l) => ({
       id: l.user?.id ?? l.userId,
       username: l.user?.username ?? null,
-      // 头像由 Next 自己的 /api/avatar 提供（Flask 时代是 /auth/avatar/<id>）
+      // 头像由本站 /api/avatar 提供（永不 404，见 avatar.ts）
       avatar_url: `/api/avatar/${l.user?.id ?? l.userId}`,
       liked_at: ymdhms(l.createdAt),
     })),
@@ -234,14 +231,14 @@ export async function getLikers(
 }
 
 /**
- * 点赞切换（对齐 LikeService）：唯一约束 (blog_id,user_id) + 软删除 deleted 字段，
+ * 点赞切换：唯一约束 (blog_id,user_id) + 软删除 deleted 字段，
  * 计数在事务内原子增减。附带内存限频（100/时、500/天）。
  *
- * 点赞生效时给作者发一条『文章点赞』（对齐 Flask like_service.py:84-101），
+ * 点赞生效时给作者发一条『文章点赞』，
  * 用 BlogLike.notificationSent 保证「一人对一篇文章最多一条通知」。
  */
 export async function toggleLike(blogId: string, userId: string) {
-  // 【先查存在性，再扣限频】对齐 Flask 的顺序。
+  // 【先查存在性，再扣限频】顺序不能反。
   // 反过来（限频在最前）的话，刷一个不存在的 blogId 就能把自己 100 次/时的点赞额度
   // 烧光 —— 属于自伤，但没有任何理由让无效请求消耗配额。
   const exists = await prisma.blog.findFirst({
@@ -280,10 +277,10 @@ export async function toggleLike(blogId: string, userId: string) {
       });
     }
 
-    // 通知条件（对齐 Flask）：点赞生效 + 不是自赞 + 这条点赞记录从未发过通知。
+    // 通知条件：点赞生效 + 不是自赞 + 这条点赞记录从未发过通知。
     // notificationSent 用 updateMany 原子抢占：并发下只有一方 count===1，
     // 另一方拿不到就闭嘴，避免重复发。取消点赞不碰标记 —— 重新点亮也不再发
-    // （Flask 的「一个用户对一篇文章，最多只会发送一条通知」）。
+    // （即「一个用户对一篇文章，最多只会发送一条通知」）。
     let notify = false;
     if (liked && blog.authorId !== userId) {
       const claimed = await tx.blogLike.updateMany({
@@ -330,15 +327,14 @@ export async function toggleLike(blogId: string, userId: string) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 写路径（对齐 Flask BlogService.create_blog / update_blog + BlogValidator +
-// upload_blog / edit_blog 视图里的日限额、栏目管理员专属、通知逻辑）。
+// 写路径（发文 / 改文：校验 + 日限额 + 栏目管理员专属 + 通知逻辑）。
 // ─────────────────────────────────────────────────────────────────────────────
 
-// 对齐 BlogValidator 常量
-export const BLOG_TITLE_MAX = 30; // MAX_TITLE_LENGTH
-export const BLOG_DESCRIPTION_MAX = 100; // MAX_DESCRIPTION_LENGTH
-export const BLOG_CONTENT_MAX = 250000; // 正文上限（前端 BlogForm 同值校验，放宽自 200000）
-export const BLOG_DAILY_LIMIT = 20; // upload_blog 视图里的每日发文上限
+// 校验上限：前端 BlogForm.tsx 手抄了同一组数字（30 / 100 / 250000），改这里要同步改前端
+export const BLOG_TITLE_MAX = 30;
+export const BLOG_DESCRIPTION_MAX = 100;
+export const BLOG_CONTENT_MAX = 250000; // 正文上限（放宽自 200000）
+export const BLOG_DAILY_LIMIT = 20; // 每日发文上限
 
 export interface ValidatedBlogData {
   title: string;
@@ -352,8 +348,8 @@ export type ValidateBlogResult =
   | { ok: false; message: string };
 
 /**
- * 校验博客提交数据（对齐 BlogValidator.validate_blog_data）。
- * title/description 去空白；content 不去空白（对齐 `data.get('content') or ''`）。
+ * 校验博客提交数据。
+ * title/description 去空白；content 不去空白（原样取，缺字段当空串）。
  * 栏目存在性走 DB（is_active=True）。
  */
 export async function validateBlogData(raw: unknown): Promise<ValidateBlogResult> {
@@ -374,7 +370,7 @@ export async function validateBlogData(raw: unknown): Promise<ValidateBlogResult
   if (content.length > BLOG_CONTENT_MAX)
     return { ok: false, message: `内容不能超过${BLOG_CONTENT_MAX}个字符` };
 
-  // 栏目校验：空值放行为“未分类”；非空则必须存在且启用（对齐 int() + is_active 查询）
+  // 栏目校验：空值放行为“未分类”；非空则必须存在且启用
   let categoryId: number | null = null;
   const rawCat = data.category_id;
   if (rawCat) {
@@ -392,23 +388,22 @@ export async function validateBlogData(raw: unknown): Promise<ValidateBlogResult
 }
 
 /**
- * 字数统计（对齐 app/utils/markdown_countword.py，改为对字符串操作）。
- * 注意：Flask 博客写路径并不持久化字数，仅 story 模块使用此工具；此处按 brief 要求
- * 提供等价实现以备展示/复用，createBlog/updateBlog 不写入字数（与 Flask 一致）。
+ * 字数统计（对字符串操作）。
+ * 注意：博客写路径并不持久化字数，本工具给 story 模块用（也备展示/复用）；
+ * createBlog/updateBlog 不写入字数。
  */
 export function countMarkdownWords(input: string): {
   total_characters: number;
   non_whitespace_characters: number;
 } {
-  // 逐条对齐 app/utils/markdown_countword.py。
+  // 清洗规则逐条见下。
   //
-  // ⚠️ 关键：Python 侧**只有代码块那一条**加了 re.DOTALL，其余四条都是裸 `.`（不跨行）。
-  // JS 的 `.` 默认同样不跨行，故只有代码块该用 [\s\S]，其余必须保持 `.`。
+  // ⚠️ 关键：**只有代码块那一条**跨行匹配（[\s\S]），其余四条都是裸 `.`（不跨行）。
   // 若全用 [\s\S]，跨行内容会被多吞掉：例如 'a `x\ny` b'，
-  // Python 得 7/4（反引号不跨行，故 `x\ny` 未被当作行内代码消掉），
-  // 全用 [\s\S] 则得 3/2 —— 字数对不上。
+  // 本实现得 7/4（反引号不跨行，故 `x\ny` 未被当作行内代码消掉），
+  // 全用 [\s\S] 则得 3/2 —— 与既有统计口径对不上。
   let content = input;
-  content = content.replace(/```[\s\S]*?```/g, ''); // 代码块（Python 这条有 DOTALL）
+  content = content.replace(/```[\s\S]*?```/g, ''); // 代码块（唯一跨行的一条）
   content = content.replace(/`.*?`/g, ''); // 行内代码（不跨行）
   content = content.replace(/!\[.*?\]\(.*?\)/g, ''); // 图片（不跨行）
   content = content.replace(/\[(.*?)\]\(.*?\)/g, '$1'); // 链接，保留文本（不跨行）
@@ -421,7 +416,7 @@ export function countMarkdownWords(input: string): {
   };
 }
 
-/** 当日该作者已发布文章数（对齐 upload_blog：created_at >= 本地零点）。 */
+/** 当日该作者已发布文章数（created_at >= 本站时区的当日零点）。 */
 export async function countBlogsToday(authorId: string): Promise<number> {
   // 「当日」的零点必须用本站统一时钟（UTC+8 墙上时间，见 db-time.ts）：
   // new Date().setHours(0,0,0,0) 取的是**服务器时区**的午夜 —— 服务器 TZ 若是 UTC，
@@ -433,8 +428,7 @@ export async function countBlogsToday(authorId: string): Promise<number> {
 
 /**
  * 栏目发文元信息：合并父栏目标志，得出“仅管理员可发”与“发文通知管理员”的最终生效值，
- * 以及完整路径（对齐 upload_blog / edit_blog 里的 admin_only_effective / notify_effective /
- * Category.get_full_path）。
+ * 以及完整路径（父栏目勾了，子栏目跟着生效 —— 这是发布/编辑两处共用的口径）。
  */
 export async function getCategoryPostingMeta(categoryId: number) {
   const category = await prisma.category.findUnique({
@@ -462,7 +456,7 @@ export async function getCategoryPostingMeta(categoryId: number) {
   return { category, adminOnlyEffective, notifyEffective, fullPath };
 }
 
-/** 禁言时的操作错误文案（对齐 ban_check.check_user_ban_status 生成的 message）。 */
+/** 禁言时的操作错误文案（剩余时长 + 原因，全站禁言提示共用这一份）。 */
 export function banActionMessage(user: { banUntil?: Date | null; banReason?: string | null }): string {
   let remainingText = '';
   if (user.banUntil) {
@@ -478,7 +472,7 @@ export function banActionMessage(user: { banUntil?: Date | null; banReason?: str
   return `您已被禁言，无法执行此操作。${remainingText}。原因：${reason}`;
 }
 
-/** 栏目层级（供发布/编辑页下拉，对齐 Category.get_hierarchy：仅 is_active，按 sort_order）。 */
+/** 栏目层级（供发布/编辑页下拉：仅 is_active，按 sort_order，与前台树同口径）。 */
 export async function getCategoryHierarchy() {
   const roots = await prisma.category.findMany({
     where: { parentId: null, isActive: true },
@@ -499,7 +493,7 @@ export async function getCategoryHierarchy() {
 
 export type CategoryHierarchy = Awaited<ReturnType<typeof getCategoryHierarchy>>;
 
-/** 编辑页数据（对齐 BlogService.get_blog_for_edit）：ignore=true 视为不存在。 */
+/** 编辑页数据：ignore=true 视为不存在（软删的文章不可编辑）。 */
 export async function getBlogForEdit(blogId: string) {
   const blog = await prisma.blog.findFirst({
     where: { id: blogId, ignore: false },
@@ -524,9 +518,9 @@ export async function getBlogForEdit(blogId: string) {
 }
 
 /**
- * 创建博客（对齐 BlogService.create_blog）：UUID 主键，Blog + BlogContent 同事务写。
- * 未分类栏目 categoryId=null；is_featured 走 schema 默认 false（Flask 亦不显式设置）。
- * 磁盘 instance/blogs/<id> 目录为 Flask 遗留物，正文已入库，Next 侧不再创建。
+ * 创建博客：UUID 主键，Blog + BlogContent 同事务写（正文缺一条就是空文章，不能分两次提交）。
+ * 未分类栏目 categoryId=null；is_featured 走 schema 默认 false（不显式设置）。
+ * 磁盘 instance/blogs/<id> 目录是历史遗留物（旧数据残留），正文已入库，本站不再创建。
  */
 export async function createBlog(authorId: string, data: ValidatedBlogData): Promise<string> {
   const blogId = crypto.randomUUID();
@@ -548,8 +542,8 @@ export async function createBlog(authorId: string, data: ValidatedBlogData): Pro
 }
 
 /**
- * 更新博客（对齐 BlogService.update_blog）：逐字段比对生成 changesDetail，
- * 更新元信息并 upsert 正文。返回 null 表示文章不存在（对齐 (False, [])）。
+ * 更新博客：逐字段比对生成 changesDetail（改了什么就记什么，供「文章已编辑」通知用），
+ * 更新元信息并 upsert 正文。文章不存在时返回 hasChanges:false（不抛错，路由已先判过存在性）。
  */
 export async function updateBlog(
   blogId: string,
@@ -573,7 +567,7 @@ export async function updateBlog(
     hasChanges = true;
   }
 
-  // 栏目变化描述（对齐 old_category_name / new_category_name，缺省“未分类”）
+  // 栏目变化描述（新旧栏目名，缺省“未分类”）
   const oldCategoryName = blog.category?.name ?? '未分类';
   let newCategoryName = '未分类';
   if (data.categoryId != null) {

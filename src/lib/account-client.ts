@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// account-client.ts — 小鱼干账户微服务 HTTP 客户端（TS 版，对齐 Flask AccountClient）
+// account-client.ts — 小鱼干账户微服务 HTTP 客户端（TS 版）
 //
-// 对齐 Flask app/clients/account_client.py 的全部公开 API，并严格保持
+// 覆盖账户服务的全部公开 API，并严格保持
 // **fail-closed** 写路径语义（详见 CLAUDE.md「鱼干写路径」 与 feed-service.ts）：
 //   远端失败 → 本地写入被补偿事务精确撤销（对用户等价于回滚）→ 上抛明确错误。
 //
@@ -11,12 +11,12 @@
 //
 // 认证：双层 —— X-Internal-Token（服务间共享密钥）+ 用户/系统 API Key。
 //   ⚠️ 账户服务实际用 `Authorization: Bearer <api_key>` 传递用户 Key（见其仓库的
-//   app/api/deps.py:extract_api_key —— 该服务已拆成独立仓库，本仓 git 历史 7d7be1c
+//   extract_api_key —— 该服务已拆成独立仓库，本仓 git 历史 7d7be1c
 //   之前还在），而**不是** X-Api-Key。
-//   本客户端因此沿用 Bearer，与 Flask 客户端一致。
+//   本客户端因此沿用 Bearer：传成 X-Api-Key 会被服务端当未认证。
 //
 // 用户 API Key 以 Fernet 加密存于 User.fishApiKeyEncrypted。解密密钥派生方式
-// 与 Flask app/utils/AES.py / account_client.init_app 完全一致：
+// 与加密存量数据时完全一致（改了旧密文一律解不开）：
 //   key = base64url( SHA-256( FISH_ENCRYPTION_KEY || SECRET_KEY ) )   → Fernet
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -53,7 +53,7 @@ export interface AccountConfig {
   internalToken: string;
   systemKey: string;
   timeoutMs: number;
-  /** Fernet 密钥来源明文：优先 FISH_ENCRYPTION_KEY，回退 SECRET_KEY（对齐 Flask）。 */
+  /** Fernet 密钥来源明文：优先 FISH_ENCRYPTION_KEY，回退 SECRET_KEY（存量密文按此派生，改则解不开）。 */
   encryptionKeySource: string;
 }
 
@@ -111,11 +111,11 @@ export function assertRemoteRequiredInProduction(what: string): void {
   }
 }
 
-// ── Fernet 解密（对齐 Flask AES.py：SHA-256 派生 → Fernet）───────────────────
+// ── Fernet 解密（SHA-256 派生 → Fernet）───────────────────────────────────
 
 /**
  * 解密存于 User.fishApiKeyEncrypted 的用户 API Key。
- * 与 Flask 派生方式一致：base64url(sha256(keySource)) 作为 Fernet 密钥。
+ * 派生方式（与存量密文一致）：base64url(sha256(keySource)) 作为 Fernet 密钥。
  * 配置缺失或解密失败一律抛 AccountServiceError（503），供写路径 fail-closed。
  */
 export function decryptApiKey(encrypted: string, cfg = accountConfig()): string {
@@ -205,8 +205,12 @@ export function makeClientIdempotencyKey(fromUserId: string, clientKey: string):
 }
 
 /**
- * 生成投喂操作的幂等键（≤64 字符，对齐 Flask _make_feed_idempotency_key）。
+ * 生成投喂操作的幂等键（≤64 字符）。
  * 格式：feed-{sha256(blogId-userId-count)[:16]}-{suffix}
+ *
+ * 派生方式与旧版逐字节相同（**刻意保留**）：迁移前跑了一半的投喂，重跑时会算出
+ * 同一个键，远端照样按同键去重。suffix 区分同一笔的各个阶段（sync / consume /
+ * income / refund），换算法会让两边记账当场分叉。
  */
 export function makeFeedIdempotencyKey(
   blogId: string,
@@ -234,7 +238,8 @@ interface CallOpts {
 
 /**
  * 账户服务响应统一 envelope：{ code, data, message, request_id }。
- * Flask 客户端取 data.get('data', data)，这里同样把内层 data 解出返回。
+ * 有 data 字段就取内层（语义等同 data.get('data', data)），没有则原样返回整个 body ——
+ * 两种形状都要吃下，别把「没有 data」当成错误。
  */
 async function call<T>(opts: CallOpts, cfg = accountConfig()): Promise<T> {
   const ctrl = new AbortController();
@@ -420,7 +425,7 @@ export const accountClient = {
   },
 
   /**
-   * 投喂的远端两步转账（fail-closed，对齐 Flask feed_transfer）：
+   * 投喂的远端两步转账（fail-closed）：
    *   Step1 投喂者 → 系统（全额，用投喂者 Key）
    *   Step2 系统 → 作者（80% 分成，用系统 Key）
    * Step1 成功但 Step2 失败 → 补偿退款 Step1，使远端回到初始态，再抛出。

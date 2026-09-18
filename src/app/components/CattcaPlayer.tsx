@@ -3,9 +3,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // CattcaPlayer — 互动小说 Cattca 引擎的 React 宿主。
 //
-// 忠实移植 Flask 侧两个 runner：
-//   • app/templates/story/cattca.html（.story-cattca 输出 + 可折叠段落 + 选项/输入）
-//   • app/templates/tool/cattca.html（同一套逻辑，类名前缀 cattca__；额外含全屏模式）
+// 覆盖两个页面变体，共用同一套解释逻辑：
+//   • story 变体：.story-cattca 输出 + 可折叠段落 + 选项/输入
+//   • tool 变体：类名前缀 cattca__，额外含全屏模式
 //
 // 解释器本体在 public/static/js/cattca.js（ESM，导出 class CattcaInterpreter）。
 // 该文件不参与 Next 打包——通过动态注入的 <script type="module"> 引入并挂到
@@ -13,8 +13,8 @@
 // marked / DOMPurify 走 npm 依赖（与 MarkdownRenderer 同一套库）。
 //
 // tool 变体额外承载：游戏运行区标题栏 + 全屏按钮 + 全屏覆盖层，全屏内容通过
-// innerHTML 镜像同步（与 Flask cattca.html 的 syncToFullscreen 一致）。全屏切换
-// 通过 forwardRef 暴露给页面，供 Ctrl+F 快捷键调用。
+// innerHTML 镜像同步（innerHTML 拷贝带不走事件绑定，故同步完还要补绑，见 syncToFullscreen）。
+// 全屏切换通过 forwardRef 暴露给页面，供 Ctrl+F 快捷键调用。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import {
@@ -79,7 +79,7 @@ function loadCattca(): Promise<CattcaCtor> {
   return loaderPromise;
 }
 
-// ── 变体配置：story / tool 两套类名（对齐两份模板） ───────────────────────────
+// ── 变体配置：story / tool 两套类名 ──────────────────────────────────────────
 
 type Variant = 'story' | 'tool';
 
@@ -136,7 +136,7 @@ interface CattcaPlayerProps {
   variant?: Variant;
   // tool 变体：由页面按钮/快捷键递增以触发（重新）运行；0 或缺省表示尚未运行。
   runId?: number;
-  // tool 变体：运行结束/出错时向页面回报状态（对齐 Flask 的“运行完成 / 运行出错”）。
+  // tool 变体：运行结束/出错时向页面回报状态（“运行完成 / 运行出错”）。
   onStatus?: (text: string, type: 'ready' | 'running' | 'error') => void;
 }
 
@@ -187,7 +187,7 @@ const CattcaPlayer = forwardRef<CattcaPlayerHandle, CattcaPlayerProps>(function 
     [toggleFullscreen, setFullscreen],
   );
 
-  // 全屏全局快捷键：Esc 退出、F11 切换（对齐 Flask 的 document 级监听）。
+  // 全屏全局快捷键：Esc 退出、F11 切换（document 级监听）。
   useEffect(() => {
     if (!isTool) return;
     const onKey = (e: KeyboardEvent) => {
@@ -214,10 +214,10 @@ const CattcaPlayer = forwardRef<CattcaPlayerHandle, CattcaPlayerProps>(function 
 
     let cancelled = false;
 
-    // marked 配置（对齐两份 runner：breaks + gfm）。
+    // marked 配置（breaks + gfm）。
     marked.setOptions({ breaks: true, gfm: true });
 
-    // 可折叠输出系统 —— 与模板逐字节对齐的本地可变状态。
+    // 可折叠输出系统 —— 本地可变状态（当前段落 + 段落计数 + 输出缓冲）。
     let currentSegment: HTMLDivElement | null = null;
     let segmentCount = 0;
     let outputBuffer = '';
