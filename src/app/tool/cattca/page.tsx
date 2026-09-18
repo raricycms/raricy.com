@@ -288,7 +288,7 @@ export default function CattcaToolPage() {
 
         <div className="cattca-tool__grid">
           {/* 脚本编辑器面板 */}
-          <div className="cattca-tool__panel cattca-tool__panel--editor">
+          <div className="cattca-tool__panel">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <h2
                 className="story-cattca__panel-title"

@@ -270,7 +270,7 @@ export default function AdminArticlesManager({
                 <div className="d-flex align-items-center gap-2 mb-2">
                   <input
                     type="checkbox"
-                    className="form-check-input article-checkbox"
+                    className="form-check-input"
                     value={a.id}
                     checked={selected.has(a.id)}
                     onChange={() => toggle(a.id)}

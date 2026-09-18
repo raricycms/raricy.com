@@ -101,7 +101,7 @@ export default function AdminBlogActions({
           编辑
         </Link>
         <button
-          className="btn btn-sm btn-outline-secondary toggle-featured"
+          className="btn btn-sm btn-outline-secondary"
           data-article-id={blogId}
           disabled={busy}
           onClick={() => patch({ isFeatured: !initialFeatured })}
