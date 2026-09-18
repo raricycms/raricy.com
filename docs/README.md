@@ -53,7 +53,7 @@ raricy.com 的全部文档。分三层：**`guide/` 给玩家和内容创作者*
 | `oauth.md` | raricy 作为 OAuth 2.0 IdP 的完整协议与集成 |
 | `frontend-styles.md` | SCSS 目录 / 设计令牌 / 组件约定 / 响应式 |
 | `instance-restore.md` | 从 `instance.zip` 还原数据目录与数据库（灾备） |
-| `legacy-constraints.md` | 历史遗留约束：哪些不能删、为什么（含「不是框架痕迹」的辨析）；2026-09 注释清理记录与待决事项 |
+| `legacy-constraints.md` | 历史遗留约束：哪些不能删、为什么（含「不是框架痕迹」的辨析）；再清理这类注释的口径与待决事项 |
 
 ## bot/ —— 站外机器人开发者
 
