@@ -113,8 +113,9 @@ Next 侧早就不是「新版本」，而是这个项目的标准版本。继续
 | 问题 | 处置 |
 |---|---|
 | `tests/oauth-e2e.sh` 用 `python3` 做 URL 编码 —— 本机 `python3` 解析到 Microsoft Store 占位符，**退出码 0 但输出空串**，`redirect_uri=` 一直是空的 | ✅ 改成 node 实现的 `urlencode()`，与真 Python 逐字节对拍验证等价 |
-| 给 `prisma/migrations/0_init/migration.sql` 加头注释后，`migrate verify` 报 checksum 漂移（该命令比对**文件全文**哈希，注释也算） | ✅ 已 `npm run migrate -- mark 0_init` 修复。**存量库需要各跑一次 mark** —— 见 §8 |
-| `src/styles-scss/base/_bootstrap_fallback.scss` 实测无任何引用，但 `docs/frontend-styles.md` §12 把它列为「刻意保留」 | ❌ **未删**，两份文档口径不一致，交站长定夺（§8） |
+| 给 `prisma/migrations/0_init/migration.sql` 加头注释后，`migrate verify` 报 checksum 漂移（该命令比对**文件全文**哈希，注释也算） | ✅ 开发库已 `mark`；**存量库仍需各跑一次**（§8.3） |
+| `migrate verify` 在本机恒报 3 个漂移，与 SQL 内容无关 | ✅ **根因已修**：`checksumOf` 哈希文件全文，而 `.gitattributes` 没钉 `*.sql` 的行尾 —— 同一提交在 autocrlf 机器上是 CRLF、别处是 LF，算出两个哈希。现已钉 `*.sql text eol=lf` 并把跟踪表对齐，verify 全绿 |
+| `src/styles-scss/base/_bootstrap_fallback.scss`（Bootstrap CDN 挂掉时的兜底）实测无任何类名引用 | ✅ **已删**（连同 `main.scss` 的 `@use` 与 `docs/frontend-styles.md` §12 那条）。该文件的前提是「Bootstrap 从 CDN 加载」，而本站早已完全不用 Bootstrap |
 
 ## 5. 命名与目录的结构性遗留
 
@@ -156,25 +157,35 @@ git ls-tree -r 7d7be1c^ --name-only app/ # 列出旧 app/ 全树
 | 「旧实现 / 原实现」 | `src/lib/chat-service.ts`、`tests/global-setup.ts` 等 | 同上 —— 绝大多数是 Next-vs-Next 的历史，**是解释回归的正当线索，别扫** |
 | `ACCOUNT_SERVICE_URL` / `ACCOUNT_SYSTEM_KEY` | `.env*`、`src/lib/account-client.ts` | 指向 **FastAPI 账户微服务**（独立仓库）。它是 Python，但**不是 Flask，也不是本仓的代码** |
 | `{{` / `{%` | 各处 `.tsx` | JSX 的 `style={{…}}` 双花括号，不是 Jinja |
+| `Bootstrap 风格 / Bootstrap-like / no Bootstrap` | 十几处 `src/styles-scss/**` 注释 | **本站完全不用 Bootstrap**，这些是**类比**：类名（`.card` / `.table` / `.m*-*`）沿用了 Bootstrap 的命名与外观习惯，实现全是我们自己的。删了这些注释不会少一行样式 |
+| `Bootstrap 的 show / 不是 Bootstrap 那套` | `CommentSection.tsx`、`ImagePickerModal.tsx`、两个 e2e 用例 | **防混淆警告**，价值高：站内 modal 的展开类是 `is-open` / `show`，与 Bootstrap 的不是一回事，写错就点不开 |
+| `Bootstrap Icons` | `src/lib/poster.ts`、`src/styles-scss/pages/blog/_menu.scss` | 一个**图标库**的名字，与 Bootstrap 框架无关 |
 
 ## 8. 待决事项（需站长定夺）
 
-1. **三处代码字面量仍指向旧站 IP**（是行为不是注释，故未动）：
-   `src/app/tool/redirect/page.tsx` 的 `http://116.62.179.232`（还被标成「本站」）、
-   `src/app/tool/new_redirect/page.tsx` 的两条（「聪明山」`:5002`、「智慧河」`:22821`）、
-   `src/app/tool/translate/page.tsx` 的 `redirect('http://116.62.179.232:9198')`。
-   ⚠️ 顺带一提：`check-links.mjs` 的「不得写死绝对 URL」守卫只匹配 `raricy.com/...`，
-   **裸 IP 从它网眼里漏过去了**。
-2. **`_bootstrap_fallback.scss`**：实测无任何类名引用（`.bootstrap-failed` 全仓无人添加），
-   但 `docs/frontend-styles.md` §12 列为「刻意保留」。删或留需一并改那份文档。
-3. **`migrate verify` 在本机恒报 3 个漂移**（`3_fish_integer_units` / `4_chat` /
-   `11_comment_attachments`）——**与本次清理无关，是既有问题**。根因：`checksumOf()`
-   对**文件全文**取哈希，而本机 `core.autocrlf=true` 且 `.gitattributes` 只钉了
-   `*.css` / `*.scss` 为 LF，**`*.sql` 没钉**。于是同一提交在 Windows 检出是 CRLF、
-   Linux 是 LF，checksum 必然不同 —— `verify` 跨平台不可靠。
+1. ~~三处代码字面量指向旧站 IP~~ —— **不是问题，收回**。`src/app/tool/redirect`、
+   `new_redirect`、`translate` 里写死的 `116.62.179.232`（及其 `:5002` / `:22821` /
+   `:9198`）是**刻意的**：存在无法做 DNS 解析、只能用 IP 访问的用户，这些端口就是
+   给他们的入口。同理 `check-links.mjs` 的守卫**不该**去管裸 IP —— 它拦的是
+   「我们自己的代码指回已废弃的 `raricy.com` 老路径」，用户怎么访站不在它的范围。
+2. **`src/app/tool/redirect/` 与 `src/app/tool/new_redirect/` 两个页面是孤儿**：
+   文件在、路由可达，但**不在 `ToolMenu` 的 12 个工具里，全仓无任何引用**。
+   要么加回菜单，要么删掉 —— 需要你定。（`redirect` 那页的 `SHORTCUTS` 里
+   `116.62.179.232` 标着「本站」，与上面那条同理，是有意的。）
+3. **`0_init` 的 checksum（存量库必须做）**：本轮给它加了头注释，文件内容变了，
+   而 `migrate verify` 比的是**文件全文**哈希 —— 所以**每个已有库（含生产）**都要重记一次：
+
+   ```bash
+   npm run migrate -- verify        # 先看：除 0_init 外还有没有别的漂移
+   npm run migrate -- mark 0_init   # 重记基线（只登记，不执行 SQL）
+   ```
+
+   若 `verify` 还报出别的迁移漂移，**多半是行尾基准不一致**（本轮把 `.gitattributes`
+   钉成 `*.sql text eol=lf` 并统一了行尾，跟踪表里早先按 CRLF 记的那批会对不上）。
+   确认 `git diff` 干净（SQL 内容没变）后，对报出的每个 `mark` 一次即可。
+   `up` 全程不受影响（已应用的一律跳过）。
 4. **`src/app/components/CheckinCard.tsx` 的 `FORTUNE_LABELS[5]` 多一个尾随空格**
    （`'运势爆棚 '`），服务端 `checkin-service.ts` 那份没有。服务端有单测钉着，
    客户端那份没有，于是漂了 —— 翻牌弹窗渲染的是客户端这份。**疑似真 bug，未改**。
-5. **`0_init` 的 checksum**：本轮给它加了头注释（`mark 0_init` 已在开发库执行）。
-   **每个存量库（含生产）需各跑一次 `npm run migrate -- mark 0_init`**，否则
-   `npm run migrate -- verify` 会报该基线漂移。`up` 不受影响（已应用的一律跳过）。
+5. **`tests/e2e/fish-layout.spec.ts:60` 有一条既有的 tsc 报错**
+   （`innerText` 不存在于 `SVGElement`），与本次清理无关，本轮未动。
