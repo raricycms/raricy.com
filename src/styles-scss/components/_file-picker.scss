@@ -1,0 +1,109 @@
+@use '../abstracts/variables' as v;
+@use '../abstracts/mixins' as m;
+
+// ── 自定义文件选择器（public/static/js/core/base.js 的 enhanceFileInputs 注入）────
+//
+// 【它是怎么来的】页面上写的是**原生** `<input type="file">`，base.js 在运行时把它包进
+// `<div class="filepick">`，并补一颗 `<label class="filepick__btn">选择文件</label>`、
+// 一个文件名 `<span>` 和一个清除钮。所以这套类在 .tsx 里一个都搜不到 ——
+// 它们只出现在 base.js 里，改样式时别去 tsx 里找调用点。
+//
+// 【为什么原生 input 必须视觉隐藏】不隐藏的话，页面上会**同时**出现两套控件：
+// 浏览器自带的「选择文件 / 未选择文件」和注入的 label + span，四个元素并排。
+// 曾经就是这样：旧 rebuild.css 里那条 sr-only 规则随 SCSS 拆分一起丢了。
+// 隐藏**不能**用 `hidden` 属性或 `display:none` —— base.js 靠
+// `hasAttribute('hidden') || style.display === 'none'` 判断「这个已经被自定义 UI 接管了，
+// 别再包一层」（图床拖拽区就走这条早退）。这里用 clip-path 那套 sr-only：
+// 视觉上消失、仍留在可访问性树里、仍能被 Tab 聚焦，`<label for>` 转发点击照常工作。
+//
+// 【外观】字段形态与 .form-control 一致（无边框 + 页面底色 + 胶囊），因为它替代的就是
+// 一个字段；内嵌按钮照 §4.2 第 2 条「圆角与输入框一致、四边贴边 4px」，档位对齐
+// .search-btn —— 字段内的主操作走最高级。改按钮请改 mixin，别在这里另抄一份（§11.5）。
+.filepick {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 4px;
+  background: var(--color-background-page);
+  border-radius: v.$radius-max;
+  transition: box-shadow 0.2s ease;
+
+  /* 聚焦环走 box-shadow：常态无边框，改成 border 会让字段随焦点变高、下方内容位移
+     （§4.2 的硬规则）。焦点落在 sr-only 的 input 上时由 :focus-within 接住。 */
+  &:focus-within {
+    box-shadow: var(--shadow-focus-brand);
+  }
+
+  input[type='file'] {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: 0;
+    border: 0;
+    opacity: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    clip-path: inset(50%);
+  }
+}
+
+.filepick__btn {
+  @include m.btn-primary;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  /* 与 .form-control 同高：其内距 10px + 1.5 行高 (0.9rem → 21.6px) ≈ 41.6px，
+     本按钮 6px + 21.6px，外面再各 4px 贴边，合起来对齐。 */
+  padding: 6px 16px;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 未选择时用三级文字色，选了之后转主文字色 —— 一眼能看出「这个字段有值了」。 */
+.filepick__name {
+  flex: 1;
+  min-width: 0;
+  padding-right: 0.5rem;
+  font-size: 0.9rem;
+  color: var(--color-text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  &--has {
+    color: var(--color-text-primary);
+  }
+}
+
+/* 清除钮只在有文件时出现（base.js 给容器挂 .filepick--has）。
+   不走 btn-* 三档：它是图标钮不是文字按钮，且就地贴合字段高度。 */
+.filepick__clear {
+  flex: none;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: v.$radius-max;
+  background: transparent;
+  color: var(--color-text-tertiary);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.15s ease, background-color 0.15s ease;
+
+  &:hover {
+    color: var(--color-warning-primary);
+    background: var(--color-warning-secondary);
+  }
+}
+
+.filepick--has .filepick__clear {
+  display: inline-flex;
+}

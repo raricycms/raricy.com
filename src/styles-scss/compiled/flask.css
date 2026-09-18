@@ -2302,6 +2302,110 @@ textarea.form-control {
   color: #fff;
 }
 
+.filepick {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 4px;
+  background: var(--color-background-page);
+  border-radius: 999px;
+  transition: box-shadow 0.2s ease;
+  /* 聚焦环走 box-shadow：常态无边框，改成 border 会让字段随焦点变高、下方内容位移
+     （§4.2 的硬规则）。焦点落在 sr-only 的 input 上时由 :focus-within 接住。 */
+}
+.filepick:focus-within {
+  box-shadow: var(--shadow-focus-brand);
+}
+.filepick input[type=file] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  opacity: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
+.filepick__btn {
+  border: none;
+  border-radius: 999px;
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+  font-weight: bold;
+  cursor: pointer;
+  transition: color 0.25s ease, background-color 0.25s ease, filter 0.15s ease;
+}
+.filepick__btn:hover:not(:disabled) {
+  background-color: var(--color-brand-primary);
+  color: #fff;
+}
+.filepick__btn:active:not(:disabled) {
+  filter: brightness(0.5);
+}
+.filepick__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.filepick__btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  /* 与 .form-control 同高：其内距 10px + 1.5 行高 (0.9rem → 21.6px) ≈ 41.6px，
+     本按钮 6px + 21.6px，外面再各 4px 贴边，合起来对齐。 */
+  padding: 6px 16px;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 未选择时用三级文字色，选了之后转主文字色 —— 一眼能看出「这个字段有值了」。 */
+.filepick__name {
+  flex: 1;
+  min-width: 0;
+  padding-right: 0.5rem;
+  font-size: 0.9rem;
+  color: var(--color-text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.filepick__name--has {
+  color: var(--color-text-primary);
+}
+
+/* 清除钮只在有文件时出现（base.js 给容器挂 .filepick--has）。
+   不走 btn-* 三档：它是图标钮不是文字按钮，且就地贴合字段高度。 */
+.filepick__clear {
+  flex: none;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-text-tertiary);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+.filepick__clear:hover {
+  color: var(--color-warning-primary);
+  background: var(--color-warning-secondary);
+}
+
+.filepick--has .filepick__clear {
+  display: inline-flex;
+}
+
 .image-picker-modal {
   max-width: 560px;
   width: calc(100vw - 40px);

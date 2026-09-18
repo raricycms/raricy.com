@@ -456,6 +456,59 @@ function enhanceFileInputs() {
 
 window.enhanceFileInputs = enhanceFileInputs;
 
+// 客户端路由跳转后补做增强。
+//
+// enhanceFileInputs 只在 initSiteChrome 里跑一次，而 Next 的 <Link> 跳转**不重新加载文档**
+// —— 工具页与「我的收藏夹」的入口都在工具箱（ToolMenu 用的是 <Link>），所以从常规入口
+// 进去时那颗 file input 是 init 之后才挂上的，包装根本没生成：用户看到的是浏览器原生的
+// 「选择文件 / 未选择文件」（实测确认：整页刷新时 hasFilepick = true，客户端跳转 = false）。
+//
+// 用 MutationObserver 而不是「在 layout 里放个 usePathname() 的客户端组件」：后者与本文件
+// （<Script strategy="afterInteractive">）存在加载顺序竞态 —— 组件 effect 可能先于本文件
+// 执行，那时 window.enhanceFileInputs 还不存在。观察器在本文件内自足，且将来若有弹窗
+// 挂上 file input 也一并覆盖。
+//
+// 只在新增节点是/含 file input 时才调度，避免讨论区流式渲染时每帧空扫一遍 DOM。
+// enhanceFileInputs 自身有 data-filepick 幂等守卫，重复调用无副作用。
+const FILE_OBSERVER_KEY = '__raricyFileObserver';
+
+function watchFileInputs() {
+    const w = window;
+    // 重入先断开上一轮（与 SITE_CHROME_CTRL_KEY 同一套理由：反复执行不能累积观察器）
+    if (w[FILE_OBSERVER_KEY]) {
+        w[FILE_OBSERVER_KEY].disconnect();
+        w[FILE_OBSERVER_KEY] = null;
+    }
+    if (typeof w.MutationObserver !== 'function' || !document.body) return;
+
+    let scheduled = false;
+    const run = function () {
+        scheduled = false;
+        enhanceFileInputs();
+    };
+    const schedule = function () {
+        if (scheduled) return;
+        scheduled = true;
+        // 走 rAF：增强落在下一帧绘制之前，不会先闪一下原生控件
+        if (typeof w.requestAnimationFrame === 'function') w.requestAnimationFrame(run);
+        else w.setTimeout(run, 0);
+    };
+
+    const observer = new w.MutationObserver(function (records) {
+        for (let i = 0; i < records.length; i++) {
+            const added = records[i].addedNodes;
+            for (let j = 0; j < added.length; j++) {
+                const node = added[j];
+                if (node.nodeType !== 1) continue;
+                if (node.tagName === 'INPUT' && node.type === 'file') return schedule();
+                if (node.querySelector && node.querySelector('input[type="file"]')) return schedule();
+            }
+        }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    w[FILE_OBSERVER_KEY] = observer;
+}
+
 // 页面加载后：初始化顶栏交互与通知
 //
 // 注意：本文件在 Next 侧由 <Script strategy="afterInteractive"> 加载，此时
@@ -480,6 +533,7 @@ function initSiteChrome() {
     scheduleHeartbeat();
     startTopbarStream();
     enhanceFileInputs();
+    watchFileInputs();
 
     // 标签页可见性：隐藏时断开长连接（池子跨标签页共享，见 startTopbarStream），
     // 回到前台立刻重连并补一次快照。监听器挂在本轮的 AbortController 上，不累积。
