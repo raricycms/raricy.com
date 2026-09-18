@@ -61,6 +61,12 @@ src/styles-scss/
 | `--color-accent-cyan` / `-soft` | `#06b6d4` | 同上 |
 | `--color-accent-violet` / `-soft` | `#8b5cf6` | 同上 |
 
+> ⚠️ **`--color-text-tertiary` 不是「第三级文字」**：它的值（浅色 `#dde4ee`、暗色
+> `#2b3036`）是**背景/分割线**档，拿来写 `color` 几乎是隐形的。弱化文字一律用
+> `--color-text-secondary`（`--fd-ink-3` 映射的也是它，可作旁证）。
+> 名字里带 `text-` 所以极易误用 —— 补样式时从旧文件搬 `--ink-3` 要落在
+> `--color-text-secondary` 上（旧 `--ink-3` 是 `#86868B` 那样的可读灰）。
+
 ### 2.2 主色板（深色 `data-theme="dark"`）
 
 | 变量 | 值 |
@@ -692,6 +698,38 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
 - `pages/_checkin.scss` 的 `@keyframes btnPulse` 光环写死浅色主题品牌蓝
   `rgba(37,99,235,…)`，暗色下与按钮本体（`#23A5FF`）不同色 —— 只在 1s 的脉冲里可见，
   且站内没有「品牌色 + 指定透明度」的令牌可用，暂留。
+
+**2026-09-18 已修（第四轮：SCSS 拆分漏搬的那一整块）**：
+
+> 判据：**类名在代码里还在用、编译产物里没有定义、而旧 `rebuild.css` 里有定义**。
+> 这类故障构建不失败、tsc 管不着、肉眼也未必立刻发现（很多只是间距/圆角差一点），
+> 直到有人看见「某个按钮没有样式」才暴露。
+>
+> 起因：收藏夹的「选择文件」按钮顶着浏览器默认样式。根因是 `02f6ab5`（SCSS 拆分）
+> 把 `app/static/css/rebuild.css`（1892 行，末尾有一整段注释为「补齐审计发现的
+> 『用了但没定义』的类」的补丁层）拆进 `src/styles-scss/` 时，**那一整块没有跟着
+> 搬过去**，随后旧文件被删除。扫描确认：仍在引用的 1105 个类名里 145 个没有定义，
+> 其中 82 个旧文件里有过。已分批补齐 —— 文件选择器、工具页（hex 查看器 / 进度条 /
+> 面板 / 算法徽章）、工具类（间距 / 显示 / 弹性 / 栅格 / 文字）、后台残余
+> （`.card` / `.table` / `.badge-*` / `.page-item` / `.form-row` / `.wrap` …）。
+
+- **`enhanceFileInputs` 只在整页加载时跑过一次**，而 Next 的 `<Link>` 跳转不重载文档
+  —— 工具页与「我的收藏夹」的入口都在工具箱，所以**从常规入口进去时那颗 file input
+  是 init 之后才挂上的，自定义包装根本没生成**。现由 base.js 的 MutationObserver
+  补做（只在新增节点是/含 file input 时才调度，rAF 去重）。找这类时序问题的判据：
+  整页刷新正常、点链接进去不正常 → 十有八九是「只跑了一次」。
+- **刻意不补的两个**（写在这里免得下次扫描又当成缺口）：
+  - `.children` —— 旧规则 `margin-left: 24px + padding-left: 16px` 会与 `.comment-list`
+    已承担的缩进叠加，让每层楼向右溢出 15px（§12 上面那条横向滚动条）。
+    `.comment-item` 的细线则恢复了（纯纵向，不影响溢出）。
+  - `.modal-dialog-centered` —— 现在的 `.modal.is-open` 已是 flex 居中、`.modal-dialog`
+    还有 `margin: auto`；补上它反而把对话框变成 flex 容器、压过现有居中。
+- **`.form-hint` / `.file-hint` 看着像 `.form-text` 的重复，其实不是**：它们所在的
+  元素挂的是 `.text-muted`（只给颜色），删掉就只剩一行没有字号/行高/上边距的裸字。
+  判断「某类是不是纯遗留」要连**同一个元素上还挂了什么**一起看，不能只比规则内容。
+- **两个新守卫**：`tests/unit/css-js-classes.test.ts`（JS 注入的类名必须有定义 ——
+  `.filepick` 那套 DOM 在 `.tsx` 里一个都搜不到，图标那条检查扫不到它）与
+  `tests/unit/base-js-filepick.test.ts`（含「客户端路由跳转后插入的 input 也要被增强」）。
 
 **2026-09-18 已修（第三轮：同名的类拆开）**：
 
