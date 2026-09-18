@@ -11,7 +11,7 @@
 | 框架 | Next.js 15（App Router）· React 19 · TypeScript 5 |
 | ORM | Prisma 6（provider=sqlite），直连 `instance/database/db.db` |
 | 鉴权 | JWT（`jose`）· 密码哈希与历史 werkzeug **双向互通**（用户无需改密） |
-| 会话 | JWT cookie + `User.sessionVersion` 失效机制（对齐旧 Flask-Login 的 `session_version`） |
+| 会话 | JWT cookie + `User.sessionVersion` 失效机制（改密 / 禁言 / 强制下线时递增，旧会话立即全废） |
 | CSRF | `src/middleware.ts` 对状态变更方法校验 `Origin`/`Referer` 同源 |
 | 文件落盘 | 头像/图床/故事/表情包落 `instance/`（gitignored，六个子目录见 §3） |
 | 鱼干账户 | 独立 FastAPI 微服务（本仓**只**通过 HTTP 调用，本仓无 Python） |
@@ -51,7 +51,7 @@
                      │ ├── images/      │
                      │ ├── stories/     │
                      │ ├── stickers/    │
-                     │ └── blogs/       │   ⟨Flask 遗留，当前无写入⟩
+                     │ └── blogs/       │   ⟨历史遗留，当前无写入⟩
                      └──────────────────┘
 ```
 
@@ -96,7 +96,7 @@
 | `/checkin` · `/api/checkin` · `/api/checkin/claim` | page + API | 每日签到（**core+**：鱼干的赚取渠道，与投喂/点赞同档）。**三处都要判** —— 发鱼的其实是 `claim`，见 §8 |
 | `/clipboard` · `/clipboard/[id]` · `/api/clipboard/*` | page + API | 云剪贴板 |
 | `/image` · `/image/admin` · `/api/images/*` | page + API | 图床 + 管理 |
-| `/image/i/<id>` · `/auth/avatar/<id>` | rewrite | **不是路由**：Flask 时代的旧直链，由 `next.config.mjs` 的 `rewrites()` 映射到 `/api/images/<id>/raw`、`/api/avatar/<id>`。存量正文里写死的就是它们（见 `tests/e2e/legacy-urls.spec.ts`） |
+| `/image/i/<id>` · `/auth/avatar/<id>` | rewrite | **不是路由**：历史版本的旧直链，由 `next.config.mjs` 的 `rewrites()` 映射到 `/api/images/<id>/raw`、`/api/avatar/<id>`。存量正文里写死的就是它们（见 `tests/e2e/legacy-urls.spec.ts`） |
 | `/story` · `/story/[...path]` | page | 故事合集/阅读 |
 | `/tool` · `/tool/<sub>` | page | 工具集（aes / base / hash / hex / html / qp / translate / url / cattca） |
 | `/admin/*` · `/api/admin/*` | page + API | 管理后台（档位分页而异，见 §8） |
@@ -145,7 +145,7 @@ API 端点位于 `src/app/api/<group>/<verb>/route.ts`，**薄**层：参数校�
 
 ### 6.1 认证与会话
 
-- **密码哈希**：`src/lib/password.ts` 选 `scrypt` / `pbkdf2:sha256`，与历史 werkzeug **字节级互通**——用户从 Flask 切到 Next 完全不感知。
+- **密码哈希**：`src/lib/password.ts` 选 `scrypt` / `pbkdf2:sha256`，与历史 werkzeug **字节级互通**——从上一版实现接手的用户无需改密、完全不感知。
 - **会话**：登录成功签发 JWT（`jose`，HS256），cookie 设 `HttpOnly` + `SameSite=Lax`。`Secure` 由 `X-Forwarded-Proto` 推断或 `COOKIE_SECURE` 显式控制。
 - **踢下线**：`User.sessionVersion` 单调递增。`session.ts` 解析 JWT 后比对当前 `user.sessionVersion`，不一致则视为失效。
 - **登出**：**只有** `POST /api/auth/logout`（`base.js` 的 `window.logout()` / `LogoutLink` 组件）。
@@ -157,8 +157,8 @@ API 端点位于 `src/app/api/<group>/<verb>/route.ts`，**薄**层：参数校�
 ### 6.2 数据层
 
 - **Prisma schema**：`prisma/schema.prisma` 与真实库 1:1 映射。改 schema 时**手写** `prisma/migrations/<n>_<name>/migration.sql` 并同步 schema.prisma，然后 `npm run migrate -- up` 应用（见 docs/deploy.md「修改 schema 后」；生产库禁止 `prisma migrate dev` / `db push`）。
-- **时间戳列**：INTEGER 毫秒（与 Prisma 默认 SQLite 写入格式对齐）。规整是**单向门** —— 旧 Flask 的 `YYYY-MM-DD HH:MM:SS` 文本格式 Prisma 解析即抛 500。
-- **时间戳语义**：存的是「**UTC+8 墙上时间贴 Z 标签**」，**不是真实 UTC 瞬间**（Flask `datetime.now()` 的历史遗留，normalize 只补 `T`/`Z` 不平移）。因此：取当前时刻一律用 `src/lib/db-time.ts` 的 `nowForDb()`（= `Date.now() + 8h`，与全库历史数据同钟）；「还剩多久」用 `hoursUntil()`；展示用 `ymd`/`ymdhms` 或 `getUTC*`。**禁止**无参 `new Date()`、`toLocale*`、本地 getter（`getHours` 等）。混用两把钟的后果**全是静默的**：禁言到期后多显示 8 小时、当日发文计数跨日错位。由 `tests/unit/db-time-guard.test.ts` 五条静态守卫强制。
+- **时间戳列**：INTEGER 毫秒（与 Prisma 默认 SQLite 写入格式对齐）。规整是**单向门** —— 历史格式的 `YYYY-MM-DD HH:MM:SS` 文本 Prisma 解析即抛 500。
+- **时间戳语义**：存的是「**UTC+8 墙上时间贴 Z 标签**」，**不是真实 UTC 瞬间**（上一版实现 `datetime.now()` 留下的，normalize 只补 `T`/`Z` 不平移）。因此：取当前时刻一律用 `src/lib/db-time.ts` 的 `nowForDb()`（= `Date.now() + 8h`，与全库历史数据同钟）；「还剩多久」用 `hoursUntil()`；展示用 `ymd`/`ymdhms` 或 `getUTC*`。**禁止**无参 `new Date()`、`toLocale*`、本地 getter（`getHours` 等）。混用两把钟的后果**全是静默的**：禁言到期后多显示 8 小时、当日发文计数跨日错位。由 `tests/unit/db-time-guard.test.ts` 五条静态守卫强制。
 - **Prisma 客户端**：单例在 `src/lib/db.ts`，开发模式 HMR 安全。
 
 ### 6.3 鱼干账户（跨进程）
@@ -209,7 +209,7 @@ GET/HEAD/OPTIONS 视为安全方法，不校验。
 
 | 域 | 路径 | 上传入口 | 读取入口 |
 |----|------|---------|---------|
-| 头像 | `instance/avatars/<uuid>.png`（或 `AVATARS_DIR` 覆盖） | **无上传入口**：注册时 `avatarPath` 留空，头像由读取入口按 id 确定性生成；磁盘上的 `.png` 只有 Flask 时代的存量文件 | `src/app/api/avatar/[id]/route.ts`（有文件则回放，否则 `generateIdenticonSvg` 兜底，永不 404） |
+| 头像 | `instance/avatars/<uuid>.png`（或 `AVATARS_DIR` 覆盖） | **无上传入口**：注册时 `avatarPath` 留空，头像由读取入口按 id 确定性生成；磁盘上的 `.png` 只有历史存量文件 | `src/app/api/avatar/[id]/route.ts`（有文件则回放，否则 `generateIdenticonSvg` 兜底，永不 404） |
 | 图床 | `instance/images/<id><ext>`（或 `IMAGE_UPLOAD_FOLDER` 覆盖） | `src/lib/image-upload.ts` — sharp 压缩 + MIME 嗅探 + 配额累计 | `src/app/api/images/[id]/raw/route.ts` |
 | 故事 | `instance/stories/<合集>/<故事>.md\|.cattca`（或 `STORIES_DIR` 覆盖） | 服务端直接落盘 | `src/lib/story-service.ts` 服务端 marked |
 | 表情包 | `instance/stickers/<合集>/<表情>.{gif,webp,png,jpg,jpeg}`（或 `STICKERS_DIR` 覆盖） | **无上传入口**：站长直接往目录里拷文件 | `src/app/api/stickers/[collection]/[name]/route.ts`（查扫盘 manifest，见 `src/lib/sticker-service.ts`） |
@@ -528,14 +528,14 @@ div 会卸载重挂，`deps=[]` 的监听器永远附不上。
 `src/lib/guard.ts` 是**页面级**鉴权门 —— async 函数，不是装饰器，共四个：
 
 - `requireLogin()`（已登录）—— 只要求登录，角色够不够交给调用方
-- `requireCoreUser()`（已登录 + core+）= 对齐 Flask 旧 `@authenticated_required`
+- `requireCoreUser()`（已登录 + core+）—— 「核心用户」档：管理员与站长自然也过
 - `requireAdmin()`（已登录 + admin+）—— 段内放宽后，由真正要管理权的页面自己把门
-- `requireOwner()`（仅站长）= 对齐 Flask 旧 `@owner_required`
+- `requireOwner()`（仅站长）—— 全站最高一档，其它角色一律挡在外面
 
 未登录 → `redirect('/login?next=<原URL>')` 回跳；已登录但角色不够 → `forbidden()` 原地渲染 403 页。
 
 **`/admin/*` 不是单一档位**：段级 layout（`admin/layout.tsx`）只判 core+ —— 因为段内的
-「用户管理」对齐 Flask `auth/management.html`，核心用户本来就能进（只读版：标题
+「用户管理」核心用户本来就能进（只读版：标题
 「用户列表」，无禁言 / 发通知 / 角色按钮）。段内需要更高权限的页面**各自把门**
 （URL 猜得到，侧栏藏起入口不等于挡住）：`/admin`、`/admin/blogs` 用 `requireAdmin()`；
 `/admin/oauth` 用 `isOwner()`；`broadcast` / `categories` / `appeals` 各自的

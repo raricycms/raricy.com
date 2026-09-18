@@ -11,11 +11,11 @@ npm run cli -- --help          # 全部命令一览
 npm run cli -- stats overview  # 命令式：看一眼站点状态
 ```
 
-> **未迁移**：Flask 时代的 `flask import-blogs`（历史博客导入；正文早已存
+> **未迁移**：旧版 CLI 的 `import-blogs`（历史博客导入；正文早已存
 > `BlogContent` 表）。需要时另写专用脚本（参考 `scripts/compensate-unclaimed-fortunes.mjs`）。
 >
 > ~~`flask fish compensate`~~ 已迁移为 `fish compensate`（见「小鱼干」一节）——
-> 语义有一处**有意偏离** Flask，那里写明了原因。
+> 语义有一处**与历史实现有意不同**，那里写明了原因。
 
 ---
 
@@ -109,7 +109,7 @@ npm run cli -- stats overview  # 命令式：看一眼站点状态
 
 ## 三、退出码
 
-沿用 Flask 时代的 `click` 风格：
+沿用历史 CLI 的 `click` 风格（退出码约定）：
 
 | 退出码 | 含义 |
 |--------|------|
@@ -326,9 +326,9 @@ npm run cli -- fish compensate 10 -d "故障补偿" --yes # 脚本 / 非交互
 
 **失败语义是「逐人原子」，不是「全有或全无」。** 每人独立走一次
 「本地事务提交 → 事务外远端同步 → 失败补偿」，所以中途失败**不回滚**已经发出去的部分：
-前 300 人拿到了，后面的没有。这是**有意偏离 Flask** 的：
+前 300 人拿到了，后面的没有。这是**与历史实现有意不同**的：
 
-> Flask 那版是「一个大事务里给所有人加余额 → 逐个远端同步 → 全成功才 commit，任一失败
+> 旧版实现是「一个大事务里给所有人加余额 → 逐个远端同步 → 全成功才 commit，任一失败
 > 整体 rollback」。那个结构要求远端 HTTP 留在事务内部，写锁会被占满整轮
 > （1000 人 @5 req/s ≈ 200 秒），期间全站写路径全部 `database is locked`。
 > 详见 `src/lib/fish-compensate.ts` 头部。
@@ -341,7 +341,7 @@ npm run cli -- fish compensate 10 --batch-id 3f9a2c81d0b4 --yes
 ```
 
 去重靠的是由批次派生的**确定性幂等键**（`comp-{sha256('compensate-{batchId}-{userId}-{amount}')[:16]}`，
-与 Flask 逐字节同构）。这不是锦上添花，是必须的：若只是「重跑一遍」，本地会给已成功的
+与历史实现逐字节同构）。这不是锦上添花，是必须的：若只是「重跑一遍」，本地会给已成功的
 人再加一次余额，而远端按同键幂等去重不会加 —— 两边记账当场分叉。
 
 **中止条件**：连续 5 位失败（判定远端整体不可用），或远端返回 429。中止不等于失败收场 ——

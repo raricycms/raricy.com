@@ -68,7 +68,7 @@ fc-cache -fv && fc-list :lang=zh
 > （正常字体里必然没有字形）各渲一张图比对 —— 缺字体时两组都是 .notdef
 > （同一个豆腐块），逐像素相同。它只能告诉你「有没有」，字体好不好看得自己看一眼画报。
 
-不需要：Python（已无任何 Flask 代码）、MySQL/Postgres（SQLite）。
+不需要：Python（本仓无任何 Python 代码）、MySQL/Postgres（SQLite）。
 
 ## 2. 数据目录准备（一次性）
 
@@ -88,7 +88,7 @@ mkdir -p /srv/raricy.com/instance/{avatars,database,images,stories,stickers,blog
 chown -R www-data:www-data /srv/raricy.com/instance
 ```
 
-`blogs/` 是历史遗留目录（**全新部署时是空的；从 `instance.zip` 还原的实例里可能有几千个 Flask 时代的存量文件**）。
+`blogs/` 是历史遗留目录（**全新部署时是空的；从 `instance.zip` 还原的实例里可能有几千个历史的存量文件**）。
 当前没有任何代码读写它，所以可以不存在也不影响运行。
 
 把生产 `db.db`、所有头像、所有图床、所有故事文件**按目录结构复制**到该处。
@@ -179,7 +179,7 @@ DATABASE_URL="file:/绝对路径/instance/database/db.db" npm run diagnose
 # 段 3 会显示时间戳格式;Prisma 期望 INTEGER 毫秒。
 ```
 
-如果生产库是 Flask 时代的（DATETIME 列存 `"2026-07-16 10:00:00.123456"` 文本），Prisma 读到会抛 `Conversion failed`（登录 500）。**这要修，但不要直接覆盖原库**：
+如果生产库是历史格式的（DATETIME 列存 `"2026-07-16 10:00:00.123456"` 文本），Prisma 读到会抛 `Conversion failed`（登录 500）。**这要修，但不要直接覆盖原库**：
 
 ```bash
 # 推荐做法:复制 → 规整 → 换库
@@ -203,7 +203,7 @@ DATABASE_URL="file:/绝对路径/instance/database/db.db" npm run migrate -- up
 ### 修改 schema 后
 
 **本项目用 `scripts/migrate.mjs`，不用 `prisma migrate`**——因为：
-- `schema.prisma` 头部明确写了「不要 prisma migrate」（0_init 是从 Flask 1:1 抄来的，Prisma 不认识 alembic 迁移历史）
+- schema 由本仓 `scripts/migrate.mjs` + `_raricy_migrations` 跟踪表管理；`0_init` 是从历史库反向生成的基线，Prisma 不认识它
 - `prisma migrate deploy` 会试图重放 0_init 然后冲突失败（DB 没有 `_prisma_migrations` 表）
 - DateTime 格式陷阱需要我们自己 normalize，不能让 Prisma 自动跑
 
@@ -221,7 +221,7 @@ DATABASE_URL="file:../instance/database/dev.db" npm run migrate -- up       # �
 DATABASE_URL="file:/绝对路径/instance/database/db.db" npm run migrate -- status   # 看 pending
 DATABASE_URL="file:/绝对路径/instance/database/db.db" npm run migrate -- up       # 应用
 
-# 从 Flask 迁过来的现有库（首次部署 OAuth 等新功能时）
+# 从历史库接手的现有库（首次部署 OAuth 等新功能时）
 DATABASE_URL="file:/绝对路径/instance/database/db.db" npm run migrate -- mark 0_init
 DATABASE_URL="file:/绝对路径/instance/database/db.db" npm run migrate -- up
 ```
@@ -454,7 +454,7 @@ journalctl -u raricy-next -f    # 观察启动日志
 | 全站 POST 403 | `X-Forwarded-Host` 未透传;设 `ALLOWED_ORIGINS` 兜底 |
 | 图床 413 | nginx `client_max_body_size` ≤ 1MB;改成 12m |
 | 小鱼干 503 | 账户服务不通或不配 `ACCOUNT_SERVICE_INTERNAL_TOKEN`(fail-closed) |
-| 登录 500 Conversion failed | 时间戳是 SQLAlchemy 文本格式;跑 `npm run prepare:cutover --` |
+| 登录 500 Conversion failed | 只在接手历史库时遇到:时间戳是 SQLAlchemy 文本格式;跑 `npm run prepare:cutover --` |
 | `prisma migrate dev` 提议 reset | 生产**永远不要**跑 `prisma migrate dev` / `db push`；改用 `npm run migrate -- up` |
 | 本地写后 E2E 跑 readonly database | Playwright e2e 测试库名必须唯一(见 `playwright.config.ts` 注释) |
 | 服务器一重启站就没了 | 没装 systemd unit;装一下 |

@@ -56,7 +56,7 @@ curl -X POST https://raricy.com/api/fish/market/transfer \
 ### 2.2 凭据说明
 
 - `username` 字段**用户名或邮箱都认**（与网页登录一致）。
-- 校验的是账号密码本身（werkzeug/scrypt 哈希），与网页登录**完全同一份凭据**：
+- 校验的是账号密码本身（scrypt 哈希，werkzeug 兼容格式），与网页登录**完全同一份凭据**：
   改密码后旧凭据立即失效。
 - 密码只用于本次校验：不写日志、不回显、不落库、不换取任何长期凭证。
 

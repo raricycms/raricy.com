@@ -8,7 +8,7 @@
 
 | 路径 | 内容 | 备注 |
 |------|------|------|
-| `instance/database/db.db` | 163 MB / 23 张表 | **Flask 时代**的库：时间戳是 TEXT，迁移归 Alembic 管 |
+| `instance/database/db.db` | 163 MB / 23 张表 | **历史库**：时间戳是 TEXT，迁移历史归 Alembic 管（**仅指归档里这一个旧库**，还原后即由本仓 `_raricy_migrations` 接管） |
 | `instance/avatars/` | 483 个 PNG | 用户头像 |
 | `instance/images/` | 988 个文件 | 图床 |
 | `instance/stories/` | 8 个合集 / 289 个文件 | `.md` / `.cattca` / `info.json` |
@@ -23,7 +23,7 @@
 归档里的库离「可用」差两件事，也正是下面第 2、3 步要做的：
 
 1. **时间戳是 TEXT**（`"2025-08-09 20:48:45.776483"`）—— Prisma 解析即抛 `Conversion failed`（登录 500）；
-2. **没有 `_raricy_migrations`** —— schema 停在 Flask 的最后一版，缺**基线之后的全部迁移**
+2. **没有 `_raricy_migrations`** —— schema 停在历史库的最后一版，缺**基线之后的全部迁移**
    （OAuth / 账本 / 讨论 / 评论附件…）。**具体条数以 `npm run migrate -- status` 为准**，
    别照抄某个数字 —— 每加一个迁移它就会变。
 
@@ -63,7 +63,7 @@ npm run migrate -- mark 0_init   # 表已存在 → 只登记，不执行 SQL
 npm run migrate -- up            # 应用基线之后的全部迁移（现为 1_oauth … 11_comment_attachments）
 ```
 
-`0_init` 是从 Flask 库反向生成的建表 SQL。**跳过 `mark` 直接 `up` 会在第一条 `CREATE TABLE "users"` 上失败**（表已存在）；失败不会留下半截 —— 第一条就炸，跟踪表也无记录。
+`0_init` 是从历史库反向生成的建表 SQL。**跳过 `mark` 直接 `up` 会在第一条 `CREATE TABLE "users"` 上失败**（表已存在）；失败不会留下半截 —— 第一条就炸，跟踪表也无记录。
 
 实测约 23 秒（撰写时为 9 个迁移；现已增至 11 个，耗时会略增）。
 

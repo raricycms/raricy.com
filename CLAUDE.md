@@ -9,11 +9,20 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 - **Next.js 15** App Router + React 19 + TypeScript
 - **Prisma 6** 直连 SQLite —— 开发库 `instance/database/dev.db`（`.env`），生产库 `db.db`
   （`.env.production.example`）。**两个不同的文件**，文档里笼统说「db.db」是旧笔误
-- **JWT** 会话 + `session_version` 失效机制（对齐旧 Flask-Login）
+- **JWT** 会话 + `session_version` 失效机制（改密 / 强制下线时递增，旧会话立即失效）
 - **FastAPI 账户微服务** 独立仓库部署，本仓通过 HTTP 调用
 - **迁移走手写 SQL**（**不要用 `prisma migrate`**）—— 详见下面「数据库迁移」
 
-历史架构是 Flask 单体（2026-07 之前），已被替换，源码已在 git 历史中删除。**不要修改或恢复任何 Flask 代码**。`src/` 里仍留有「对齐 Flask `@authenticated_required`」这类注释——那是给权限档位留的对照说明，不是待恢复的代码。
+上一版是 Flask 单体（2026-07 被替换），源码已在 git 历史中删除（要考古从 `7d7be1c^` 检出），
+**工作区里已无 Python**。**不要修改或恢复任何 Flask 代码**。
+
+**代码注释不向已删除的实现看齐。** 「对齐 Flask `@authenticated_required`」这类写法是**悬空引用**
+——那些文件早不在工作区，读者查不到，等于没写。一律改成自足表述：说清规则本身，或说清
+「这么写是**刻意的** / 改了会**坏什么**」。同理，**别把我们自己定的设计说成被旧框架逼的** ——
+业务规则、算法、字段形状、幂等键都是我们自己的决定，与当年用什么框架无关。
+
+唯一例外是**数据的物理形态**：werkzeug 密码哈希格式、SQLAlchemy 写出的时间戳形态这类，
+它们确实是旧实现的产物且现在还躺在库里，照实写。清单见 `docs/legacy-constraints.md`。
 
 ## 常用命令
 
