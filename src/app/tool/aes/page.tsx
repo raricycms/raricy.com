@@ -169,13 +169,17 @@ export default function AesToolPage() {
   };
 
   return (
-    <section className="container tool-page">
-      <div>
-        <div className="tool-new-hero__title-row">
-          <Link href="/tool" className="tool-new-hero__back">
-            <ArrowLeft aria-hidden="true" /> 返回工具箱
+    <section className="py-4 base-tool-page">
+      <div className="container">
+        <div className="d-flex align-items-center mb-3">
+          <Link
+            href="/tool"
+            className="text-decoration-none me-2"
+            aria-label="返回工具箱"
+          >
+            <ArrowLeft aria-hidden="true" />
           </Link>
-          <h1 className="tool-new-hero__title">AES 加/解密</h1>
+          <h1 className="mb-0 tool-new-hero__title">AES 加/解密</h1>
         </div>
         <p className="tool-new-hero__description">
           前端完成 AES-CBC/CTR/GCM 加解密，支持十六进制或文本密钥，IV/Nonce 自定义。

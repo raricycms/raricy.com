@@ -471,9 +471,10 @@ export default function BaseToolPage() {
               return (
                 <span
                   key={key}
-                  className={`badge rounded-pill algo-badge${
-                    isActive ? ' active' : ' bg-light text-dark'
-                  }`}
+                  // 未选中态由 .algo-badge（btn-tab 档）自己给，不要外挂
+                  // .bg-light —— 那既盖不住它（utilities 在 pages 之前），
+                  // .text-dark 站内更是压根没有定义。
+                  className={`badge rounded-pill algo-badge${isActive ? ' active' : ''}`}
                   data-algo={key}
                   aria-pressed={isActive ? 'true' : 'false'}
                   onClick={() => setAlgo(key)}
