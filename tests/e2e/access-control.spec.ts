@@ -57,6 +57,21 @@ test.describe('角色门控', () => {
     await expect(page.locator('.rainbow-error__code')).toHaveText('403');
   });
 
+  test('普通用户（role=user）访问 /blog/<id>/edit：403，且标题不出现在 <title>', async ({ page }) => {
+    await loginViaApi(page, SEED_USERS.plain.username);
+
+    const res = await page.goto(`/blog/${SEED_BLOG.id}/edit`);
+    expect(res?.status(), '编辑页是 core+ + 作者本人').toBe(403);
+
+    // 【为什么单钉一条】该页的 `generateMetadata()` 在 `requireCoreUser()` **之前**
+    // 就裸调 `getBlogForEdit(id)` 把标题写进 `<title>` —— 页面 403 不等于响应里没带走
+    // 那个标题：metadata 与页面是两个独立的渲染步。这条断言把「两个步都要自己判」
+    // 钉成契约（若哪天 Next 的 `forbidden()` 行为变了，它会变红而不是静默泄露）。
+    await expect(page, '被拒绝的响应里不该带着这篇文章的标题').not.toHaveTitle(
+      new RegExp(SEED_BLOG.title)
+    );
+  });
+
   test('普通用户（role=user）访问 /checkin 得到 403（签到是鱼干的赚取渠道，core+ 档）', async ({ page }) => {
     await loginViaApi(page, SEED_USERS.plain.username);
 
