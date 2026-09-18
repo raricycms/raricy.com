@@ -413,13 +413,20 @@ export function mapCreateFailure(
 
 // ── 公开资料 ────────────────────────────────────────────────────────────────
 
+/** 查看者。`null` = 游客（未登录），**不是**「不判」。 */
+export interface ProfileViewer {
+  id: string;
+  isCore: boolean;
+}
+
 export interface PublicProfile {
   id: string;
   username: string;
   avatarPath: string | null;
   bio: string | null;
   createdAt: string | null;
-  role: string;
+  /** 档位不足时**为 null** —— 别拿它当「一定有」。渲染前必须挡空。 */
+  role: string | null;
   showRecentBlogs: boolean;
   showRecentComments: boolean;
   recentBlogs: { id: string; title: string; createdAt: string | null; likesCount: number }[];
@@ -432,8 +439,27 @@ export interface PublicProfile {
   }[];
 }
 
-/** 对外公开资料（无 email）。含最近文章/评论，受用户隐私开关控制。不存在返回 null。 */
-export async function getPublicProfile(userId: string): Promise<PublicProfile | null> {
+/**
+ * 对外公开资料（无 email）。**内容按查看者分档**，不存在返回 null。
+ *
+ * 【为什么不给 viewer 默认值】照 `clipboard-service.getClip` 的纪律：**默认放行的参数
+ * 一旦漏传就是越权**。所以 viewer 必传 —— 调用方要么给 `null`（游客），要么把登录态
+ * 显式算出来传进来，不能靠「不写就自动放行」。
+ *
+ * 【分档口径】`/u/:id` 是**匿名可达**的页面（主页画报的二维码会把站外人引到这里），
+ * 所以 profile 里能对游客露什么必须逐项想清楚：
+ *   · 一律可见：username / avatarPath / bio / createdAt + 两个开关的当前值（那是页面的主体）
+ *   · 仅本人或 core+ 可见：role 徽章、recentBlogs、recentComments
+ * 后者三项此前对全互联网开着 —— 而「最后登录时间」还不在本函数里，由 `src/app/u/[id]/page.tsx`
+ * 单独查，同样要按查看者收（连同统计行的计数与文章/评论标签区）。
+ *
+ * 注意两个开关（showRecentBlogs / showRecentComments）**照旧生效**，它们管的是「本人
+ * 愿不愿意展示」，与「查看者够不够格」是两个正交的问题：两边都放行才看得见。
+ */
+export async function getPublicProfile(
+  userId: string,
+  viewer: ProfileViewer | null
+): Promise<PublicProfile | null> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: {
@@ -449,7 +475,12 @@ export async function getPublicProfile(userId: string): Promise<PublicProfile | 
   });
   if (!user) return null;
 
-  const recentBlogs = user.showRecentBlogs
+  // 本人看自己永远放行（否则「我的主页」会因为我只是 role=user 就变空壳）；
+  // 其余人按档位：core+ 放行，游客与非 core 只拿到上面那几项身份字段。
+  const isSelf = viewer?.id === user.id;
+  const canSeeContent = isSelf || viewer?.isCore === true;
+
+  const recentBlogs = canSeeContent && user.showRecentBlogs
     ? await prisma.blog.findMany({
         where: { authorId: user.id, ignore: false },
         orderBy: { createdAt: 'desc' },
@@ -458,7 +489,7 @@ export async function getPublicProfile(userId: string): Promise<PublicProfile | 
       })
     : [];
 
-  const recentComments = user.showRecentComments
+  const recentComments = canSeeContent && user.showRecentComments
     ? await prisma.blogComment.findMany({
         where: { authorId: user.id, isDeleted: false, blog: { ignore: false } },
         orderBy: { createdAt: 'desc' },
@@ -479,7 +510,7 @@ export async function getPublicProfile(userId: string): Promise<PublicProfile | 
     avatarPath: user.avatarPath,
     bio: user.bio,
     createdAt: user.createdAt ? user.createdAt.toISOString() : null,
-    role: user.role,
+    role: canSeeContent ? user.role : null,
     showRecentBlogs: user.showRecentBlogs,
     showRecentComments: user.showRecentComments,
     recentBlogs: recentBlogs.map((b) => ({

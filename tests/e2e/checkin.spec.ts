@@ -120,7 +120,8 @@ test('首次签到 → 弹卡翻牌 → 运势落定并同步账户服务；同�
 
 test('个人资料页不展示运势值总和', async ({ page }) => {
   // 这条与签到同文件：那个数字来自签到累计（users.total_fortune），是签到这条线上
-  // 唯一**公开**的露出面 —— 首页/资料页任何人都能看，故单独钉一条。
+  // 唯一可能外露的面 —— 故单独钉一条，确认统计行里没有它。
+  // （资料页**匿名可达**，但统计行只对本人与 core+ 渲染；这里的账号正是本人。）
   const user = await registerFreshUser(page, { core: true });
   await page.goto(`/u/${user.id}`);
 

@@ -939,12 +939,22 @@ describe('updateOwnProfile：通知偏好与隐私开关', () => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // getPublicProfile —— 公开接口，字段必须收敛（尤其不能漏 email）
+//
+// ⚠️ 本函数**内容按查看者分档**（`/u/:id` 是匿名可达的页面，主页画报的二维码会把站外
+// 人引过来）：身份字段对所有人可见，role 徽章与最近文章/评论只给本人或 core+。
+// 故每个用例都必须显式给 viewer —— 这不是样板，是这条约束的可见化。
 // ─────────────────────────────────────────────────────────────────────────────
+
+/** 一个 ≠ 目标用户的 core+ 查看者：测「不是本人，但档位够」。 */
+async function coreViewer() {
+  const v = await makeUser({ role: 'core' });
+  return { id: v.id, isCore: true };
+}
 
 describe('getPublicProfile', () => {
   it('★ 绝不返回 email / passwordHash / fishApiKeyEncrypted（这是公开页面）', async () => {
     const u = await makeUser({ username: 'pub', email: 'secret@example.com' });
-    const p = await getPublicProfile(u.id);
+    const p = await getPublicProfile(u.id, await coreViewer());
     expect(p).not.toBeNull();
     const json = JSON.stringify(p);
     expect(json, 'email 出现在公开资料里 = 全站用户邮箱可被枚举').not.toContain('secret@example.com');
@@ -965,23 +975,83 @@ describe('getPublicProfile', () => {
   });
 
   it('用户不存在返回 null（不抛异常）', async () => {
-    expect(await getPublicProfile('ghost')).toBeNull();
+    expect(await getPublicProfile('ghost', null)).toBeNull();
   });
 
   it('createdAt 序列化为 ISO 字符串', async () => {
     const u = await makeUser();
-    const p = await getPublicProfile(u.id);
+    const p = await getPublicProfile(u.id, null);
     expect(p!.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
+
+  // ── 档位：谁能看到「内容」 ────────────────────────────────────────────────
+
+  it('★ 游客（viewer=null）：只拿身份字段，role 为 null、文章与评论一律为空', async () => {
+    const u = await makeUser({ username: 'host' });
+    await prisma.user.update({ where: { id: u.id }, data: { bio: '我的简介' } });
+    await makeBlog({ authorId: u.id, title: '不该被游客看到的文章' });
+    const blog = await makeBlog({ title: '某篇文章' });
+    await prisma.blogComment.create({
+      data: {
+        id: 'c-guest',
+        blogId: blog.id,
+        authorId: u.id,
+        content: '不该被游客看到的评论',
+        isDeleted: false,
+        createdAt: new Date(),
+      },
+    });
+
+    const p = await getPublicProfile(u.id, null);
+    // 身份字段照旧 —— 那才是「公开主页」的主体
+    expect(p!.username).toBe('host');
+    expect(p!.bio).toBe('我的简介');
+    // 内容一律收掉
+    expect(p!.role, 'role 泄露 = 游客能枚举出谁是管理员').toBeNull();
+    expect(p!.recentBlogs, '文章标题对全互联网开放 = 这次要堵的洞').toEqual([]);
+    expect(p!.recentComments, '评论片段同理').toEqual([]);
+    expect(JSON.stringify(p), '连标题都不该出现在载荷里').not.toContain('不该被游客看到');
+  });
+
+  it('非 core 登录用户（有账号但没认证）：同游客 —— 身份字段在，内容不在', async () => {
+    const u = await makeUser();
+    await makeBlog({ authorId: u.id, title: '文章' });
+    const plain = await makeUser({ role: 'user' });
+
+    const p = await getPublicProfile(u.id, { id: plain.id, isCore: false });
+    expect(p!.username).toBe(u.username);
+    expect(p!.role).toBeNull();
+    expect(p!.recentBlogs).toEqual([]);
+  });
+
+  it('★ 本人看自己的主页不受档位影响（否则普通用户的主页会变空壳）', async () => {
+    const u = await makeUser({ role: 'user' });
+    await makeBlog({ authorId: u.id, title: '我的文章' });
+
+    const p = await getPublicProfile(u.id, { id: u.id, isCore: false });
+    expect(p!.role).toBe('user');
+    expect(p!.recentBlogs.map((b) => b.title)).toEqual(['我的文章']);
+  });
+
+  it('档位与开关正交：本人把开关关掉后，连自己也看不到那条列表', async () => {
+    const u = await makeUser({ role: 'user' });
+    await makeBlog({ authorId: u.id, title: '我的文章' });
+    await updateOwnProfile(u.id, { showRecentBlogs: false });
+
+    const p = await getPublicProfile(u.id, { id: u.id, isCore: false });
+    expect(p!.recentBlogs, '开关管「愿不愿意展示」，与「谁够格」是两回事').toEqual([]);
+  });
+
+  // ── 隐私开关（口径不变，只是现在先过查看者档位这一关） ────────────────────
 
   it('showRecentBlogs=false 时不返回文章（隐私开关必须真的生效）', async () => {
     const u = await makeUser();
     await makeBlog({ authorId: u.id, title: '我的文章' });
 
-    expect((await getPublicProfile(u.id))!.recentBlogs, '默认开启时应能看到').toHaveLength(1);
+    expect((await getPublicProfile(u.id, await coreViewer()))!.recentBlogs, '默认开启时应能看到').toHaveLength(1);
 
     await updateOwnProfile(u.id, { showRecentBlogs: false });
-    const p = await getPublicProfile(u.id);
+    const p = await getPublicProfile(u.id, await coreViewer());
     expect(p!.recentBlogs, '关掉开关后必须为空，否则隐私设置形同虚设').toEqual([]);
     expect(p!.showRecentBlogs).toBe(false);
   });
@@ -990,7 +1060,7 @@ describe('getPublicProfile', () => {
     const u = await makeUser();
     await makeBlog({ authorId: u.id, title: '已删除', ignore: true });
     await makeBlog({ authorId: u.id, title: '正常' });
-    const p = await getPublicProfile(u.id);
+    const p = await getPublicProfile(u.id, await coreViewer());
     expect(p!.recentBlogs.map((b) => b.title)).toEqual(['正常']);
   });
 
@@ -1003,7 +1073,7 @@ describe('getPublicProfile', () => {
         createdAt: new Date(2026, 0, 1, 0, 0, i),
       });
     }
-    const p = await getPublicProfile(u.id);
+    const p = await getPublicProfile(u.id, await coreViewer());
     expect(p!.recentBlogs, '上限 10 篇').toHaveLength(10);
     expect(p!.recentBlogs[0].title, '最新的在最前').toBe('t11');
   });
@@ -1022,10 +1092,10 @@ describe('getPublicProfile', () => {
       },
     });
 
-    expect((await getPublicProfile(u.id))!.recentComments).toHaveLength(1);
+    expect((await getPublicProfile(u.id, await coreViewer()))!.recentComments).toHaveLength(1);
 
     await updateOwnProfile(u.id, { showRecentComments: false });
-    expect((await getPublicProfile(u.id))!.recentComments).toEqual([]);
+    expect((await getPublicProfile(u.id, await coreViewer()))!.recentComments).toEqual([]);
   });
 
   it('评论内容截断到 120 字（公开页不给全文）', async () => {
@@ -1041,7 +1111,7 @@ describe('getPublicProfile', () => {
         createdAt: new Date(),
       },
     });
-    const p = await getPublicProfile(u.id);
+    const p = await getPublicProfile(u.id, await coreViewer());
     expect(p!.recentComments[0].content).toHaveLength(120);
     expect(p!.recentComments[0].blogTitle, '应带上所属文章标题').toBe('某篇文章');
   });

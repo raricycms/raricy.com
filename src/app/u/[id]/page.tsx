@@ -33,7 +33,14 @@ export default async function PublicProfilePage({
 }) {
   const { id } = await params;
   const sp = await searchParams;
-  const profile = await getPublicProfile(id);
+
+  // 必须先取登录态：本页**匿名可达**（主页画报的二维码把站外人引到这里），
+  // 而 profile 里哪些字段对游客可见由查看者决定 —— 见 getPublicProfile 的分档口径。
+  const currentUser = await getCurrentUser();
+  const profile = await getPublicProfile(
+    id,
+    currentUser ? { id: currentUser.id, isCore: isCoreUser(currentUser) } : null
+  );
   if (!profile) notFound();
 
   const rawTab = Array.isArray(sp.tab) ? sp.tab[0] : sp.tab;
@@ -41,28 +48,42 @@ export default async function PublicProfilePage({
   const blogPage = parsePage(sp.blog_page);
   const commentPage = parsePage(sp.comment_page);
 
-  const currentUser = await getCurrentUser();
   const isOwnProfile = currentUser?.id === profile.id;
   const isCoreAuthenticated = isCoreUser(currentUser);
+  // 与 getPublicProfile 里那条同口径：本人 或 core+。**两处必须一致** —— 服务层把
+  // recentBlogs 按它清空了，页面若还用「用户开关」单独判，游客就会拿到一个空标签页
+  // 或者（更糟）从这里直接查出一份完整列表。见 `showBlogs`。
+  const canSeeContent = isOwnProfile || isCoreAuthenticated;
 
-  const showBlogs = isOwnProfile || profile.showRecentBlogs;
-  const showComments = isOwnProfile || profile.showRecentComments;
+  // 两个开关管「本人愿不愿意展示」，canSeeContent 管「查看者够不够格」，正交，都要过。
+  // 档位不够时是「没有这个标签页」，不是「列表为空」—— 后者等于承认内容存在。
+  const showBlogs = canSeeContent && (isOwnProfile || profile.showRecentBlogs);
+  const showComments = canSeeContent && (isOwnProfile || profile.showRecentComments);
 
+  // 计数与获赞同样是「内容」：档位不够时**连查都不查**（计数本身就是信息 ——
+  // 「这篇有 40 条讨论」在熟人社区里可能就够了）。四项一律用 canSeeContent 收口。
   const [blogsCount, commentsCount, likesAgg, extra] = await Promise.all([
-    prisma.blog.count({ where: { authorId: profile.id, ignore: false } }),
-    prisma.blogComment.count({
-      where: { authorId: profile.id, isDeleted: false, blog: { ignore: false } },
-    }),
-    prisma.blog.aggregate({
-      where: { authorId: profile.id, ignore: false },
-      _sum: { likesCount: true },
-    }),
-    prisma.user.findUnique({
-      where: { id: profile.id },
-      select: { lastLogin: true },
-    }),
+    canSeeContent ? prisma.blog.count({ where: { authorId: profile.id, ignore: false } }) : 0,
+    canSeeContent
+      ? prisma.blogComment.count({
+          where: { authorId: profile.id, isDeleted: false, blog: { ignore: false } },
+        })
+      : 0,
+    canSeeContent
+      ? prisma.blog.aggregate({
+          where: { authorId: profile.id, ignore: false },
+          _sum: { likesCount: true },
+        })
+      : null,
+    // 档位不够时**连查都不查**：不把这个值取进内存，就不存在「渲染时忘了挡」的活口。
+    canSeeContent
+      ? prisma.user.findUnique({
+          where: { id: profile.id },
+          select: { lastLogin: true },
+        })
+      : null,
   ]);
-  const likesReceived = likesAgg._sum.likesCount ?? 0;
+  const likesReceived = likesAgg?._sum.likesCount ?? 0;
   const lastLogin = extra?.lastLogin ?? null;
 
   const blogsPages = Math.max(1, Math.ceil(blogsCount / PAGE_SIZE));
@@ -130,9 +151,13 @@ export default async function PublicProfilePage({
             <div className="profile-hero__info">
               <div className="profile-hero__name-row">
                 <span className="profile-hero__username">{profile.username}</span>
-                <span className={`profile-hero__role-badge profile-hero__role-badge--${profile.role}`}>
-                  {ROLE_LABEL[profile.role] ?? profile.role}
-                </span>
+                {/* role 为 null = 查看者档位不够（游客 / 非 core）。徽章整块不渲染 ——
+                    别退化成「空字符串的徽章」，那会留下一个没有说明的空胶囊。 */}
+                {profile.role && (
+                  <span className={`profile-hero__role-badge profile-hero__role-badge--${profile.role}`}>
+                    {ROLE_LABEL[profile.role] ?? profile.role}
+                  </span>
+                )}
               </div>
 
               <p
@@ -162,20 +187,23 @@ export default async function PublicProfilePage({
           </div>
 
           {/* 没有「运势值」格：站内不展示运势值总和（见 lib/checkin-service.ts 末尾） */}
-          <div className="profile-stats">
-            <div className="profile-stats__item">
-              <div className="profile-stats__number">{blogsCount}</div>
-              <div className="profile-stats__label">文章</div>
+          {/* 计数也是内容：档位不够时整块不渲染 —— 只留头像 / 用户名 / 简介 / 注册时间 */}
+          {canSeeContent && (
+            <div className="profile-stats">
+              <div className="profile-stats__item">
+                <div className="profile-stats__number">{blogsCount}</div>
+                <div className="profile-stats__label">文章</div>
+              </div>
+              <div className="profile-stats__item">
+                <div className="profile-stats__number">{likesReceived}</div>
+                <div className="profile-stats__label">获赞</div>
+              </div>
+              <div className="profile-stats__item">
+                <div className="profile-stats__number">{commentsCount}</div>
+                <div className="profile-stats__label">评论</div>
+              </div>
             </div>
-            <div className="profile-stats__item">
-              <div className="profile-stats__number">{likesReceived}</div>
-              <div className="profile-stats__label">获赞</div>
-            </div>
-            <div className="profile-stats__item">
-              <div className="profile-stats__number">{commentsCount}</div>
-              <div className="profile-stats__label">评论</div>
-            </div>
-          </div>
+          )}
 
           {isOwnProfile && (
             <div className="profile-actions">
@@ -207,20 +235,24 @@ export default async function PublicProfilePage({
           )}
         </section>
 
-        <ProfileTabs
-          userId={profile.id}
-          initialTab={tab}
-          blogsCount={blogsCount}
-          commentsCount={commentsCount}
-          showBlogs={showBlogs}
-          showComments={showComments}
-          blogItems={blogItems}
-          commentItems={commentItems}
-          blogPage={blogPage}
-          blogPages={blogsPages}
-          commentPage={commentPage}
-          commentPages={commentsPages}
-        />
+        {/* 档位不够时整个标签区不渲染。别退化成「两个标签页 + 一句未公开提示」——
+            标签上的计数本身就把内容量透出去了。 */}
+        {canSeeContent && (
+          <ProfileTabs
+            userId={profile.id}
+            initialTab={tab}
+            blogsCount={blogsCount}
+            commentsCount={commentsCount}
+            showBlogs={showBlogs}
+            showComments={showComments}
+            blogItems={blogItems}
+            commentItems={commentItems}
+            blogPage={blogPage}
+            blogPages={blogsPages}
+            commentPage={commentPage}
+            commentPages={commentsPages}
+          />
+        )}
       </div>
     </div>
   );
