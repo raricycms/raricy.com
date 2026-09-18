@@ -15,6 +15,7 @@ import {
   Link2,
   Lock,
   Mail,
+  Star,
   Vote,
   Wrench,
   type LucideIcon,
@@ -60,6 +61,18 @@ const SITE: Tool[] = [
     desc: '创建和参与投票，支持嵌入博客文章',
     tags: ['投票', '问卷'],
     coreOnly: true,
+  },
+  {
+    cat: 'site',
+    kw: '收藏夹 favorite 收藏 星标 整理 分享',
+    href: '/favorite',
+    icon: Star,
+    title: '我的收藏夹',
+    desc: '收藏文章、整理成夹，公开的还能分享给别人',
+    tags: ['收藏', '整理'],
+    // 刻意**不设 coreOnly**：这一条原先挂在顶栏下拉菜单里，那里写明
+    // 「不对档位设条件（core 以下点了是就地 403）—— 入口不跟着藏」。
+    // 换了个入口位置，这条口径不变。
   },
   {
     cat: 'site',

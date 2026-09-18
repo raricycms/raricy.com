@@ -114,15 +114,12 @@ export default function Navbar({ user }: { user: SafeUser | null }) {
                         <span className="icon icon-fish" style={{ marginRight: '.5rem' }} aria-hidden="true"></span>小鱼干
                       </Link>
                     </li>
-                    {/* 收藏夹：这里曾经**没有任何入口** —— /favorite 只能靠手敲 URL 到达，
-                        而它是「创建/改名/删除/导出/导入」的唯一管理页，等于功能做完却进不去。
-                        不对档位设条件（core 以下点了是就地 403），与顶栏「讨论」同一条口径：
-                        入口不跟着藏。 */}
-                    <li role="none">
-                      <Link className="site-dropdown-item" role="menuitem" href="/favorite">
-                        <span className="icon icon-star-fill" style={{ marginRight: '.5rem' }} aria-hidden="true"></span>我的收藏夹
-                      </Link>
-                    </li>
+                    {/* 「我的收藏夹」原先挂在这里 —— 它是「创建/改名/删除/导出/导入」的
+                        唯一管理页，曾经只能靠手敲 URL 到达。现按站长的要求挪到
+                        `/tool` 的「站务工具」区（与云剪贴板 / 投票箱并列），
+                        那里才是「站内工具」的入口所在，下拉菜单只留账号类入口。
+                        口径不变：**不对档位设条件**（core 以下点了是就地 403），
+                        与顶栏「讨论」同一条口径 —— 入口不跟着藏。 */}
                     {hasAdminRights(user) && (
                       <li role="none">
                         <Link className="site-dropdown-item" role="menuitem" href="/admin">
