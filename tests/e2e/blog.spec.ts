@@ -337,6 +337,52 @@ test('第三方核心用户视角：无「管理文章」，第二行只有返�
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 编辑页那一排按钮：三颗必须一样大
+//
+// 用户报的：「保存修改」和「取消 / 返回阅读页」大小不一样。原样是「保存修改」走
+// `.button-primary`（16px / 10px 16px），两颗 `<a>` 走 `.button-primary-small`
+// （12px / 5px 10px）—— 同一排三种大小，读起来像三条互不相干的按钮。
+//
+// 为什么必须按**渲染后的几何**断言：三颗的字号内距写对了也还不一定一样高 ——
+// `<button>` 不继承正文字体（UA 给 Arial + 自带行高），而兄弟那颗是 `<a>`、继承站点
+// 字体栈，于是「保存修改」Arial、另两颗 Segoe UI，高度随平台差一两像素。
+// 静态看代码两处都「对」，只有浏览器排版说得清。
+// ─────────────────────────────────────────────────────────────────────────────
+test('编辑页：保存修改 / 取消 / 返回阅读页 三颗同高、同字号、同字体', async ({ page }) => {
+  await page.goto(`/blog/${SEED_BLOG.id}/edit`);
+  await expect(page.locator('#blog-form-container')).toBeVisible();
+
+  const btns = await page.evaluate(() =>
+    [...document.querySelectorAll('.blog-form-container .button')].map((el) => {
+      const r = el.getBoundingClientRect();
+      const cs = getComputedStyle(el);
+      return {
+        label: (el.textContent || '').trim(),
+        h: +r.height.toFixed(2),
+        fontSize: cs.fontSize,
+        fontFamily: cs.fontFamily,
+      };
+    })
+  );
+
+  // 顺序 = DOM 顺序：卡片顶部那颗「返回阅读页」，底部「保存修改 / 取消」
+  expect(btns.map((b) => b.label), '编辑页的按钮对不上').toEqual([
+    '返回阅读页',
+    '保存修改',
+    '取消',
+  ]);
+
+  const hs = btns.map((b) => b.h);
+  expect(Math.max(...hs) - Math.min(...hs), `三颗高度不一致：${hs.join(' / ')}`).toBeLessThan(1);
+  expect(new Set(btns.map((b) => b.fontSize)).size, '三颗字号不一致').toBe(1);
+  expect(new Set(btns.map((b) => b.fontFamily)).size, '三颗字体不一致（<button> 不继承正文字体）').toBe(1);
+
+  // 编辑卡片里不再出现文章 ID —— 那是内部句柄，列表页与阅读页都不显示它。
+  // （写作「ID:」「ID：」两种都要挡；正文页 hero 上那份不在这张卡里，不归这条管。）
+  await expect(page.locator('#blog-form-container')).not.toContainText(/ID\s*[:：]/);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 侧栏首帧折叠
 //
 // 小屏（≤992px）的自动折叠发生在 useEffect（水合之后），而 SSR 直出的是展开态。

@@ -283,16 +283,18 @@ test('未登录访客：/favorite 跳到登录页并带 next 回跳', async ({ p
   void SEED_PASSWORD;
 });
 
-test('顶栏用户菜单里有「我的收藏夹」入口，点进去就是管理页', async ({ page }) => {
+test('工具箱「站务工具」里有「我的收藏夹」入口，点进去就是管理页', async ({ page }) => {
   // 这条钉的是一个**曾经完全缺失**的东西：/favorite 是「创建 / 改名 / 删除 / 导出 /
   // 导入」的唯一页面，但它当时不在任何导航、任何菜单、任何页面里 —— 只能手敲 URL。
   // 功能做完了却进不去，等于没做。所以入口本身要有用例，而不只是页面能打开。
+  //
+  // 入口后来搬了家：从顶栏用户下拉菜单挪到 /tool 的「站务工具」区（与云剪贴板 /
+  // 投票箱并列）。搬的是门牌号，不是这条用例的意思 —— 「入口存在且点得进去」不变。
   await registerFreshUser(page, { core: true });
-  await page.goto('/');
+  await page.goto('/tool');
 
-  // base.js 在下拉 toggle 上挂 .open，菜单默认 display:none
-  await page.click('#userDropdownToggle');
-  const entry = page.locator('#userDropdownMenu a[href="/favorite"]');
+  // 站务工具区默认就展开（编码 / 加密两组才收在「更多开发者工具」里）
+  const entry = page.locator('a.tool-new-card[href="/favorite"]');
   await expect(entry).toBeVisible();
   await entry.click();
 

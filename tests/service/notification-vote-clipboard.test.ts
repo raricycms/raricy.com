@@ -1138,13 +1138,15 @@ describe('vote-service', () => {
       expect(opt!.voteCount).toBe(1);
     });
 
-    it('listVotes 排除软删除，最新在前，带 optionCount / totalVotes', async () => {
+    it('listVotes 排除软删除，最新在前，只列自己创建的，带 optionCount / totalVotes', async () => {
       const u = await makeUser({ username: 'author1' });
+      const other = await makeUser();
       const alive = await makeVote({ authorId: u.id, labels: ['A', 'B', 'C'] });
       await makeVote({ authorId: u.id, ignore: true }); // 软删除的不该出现
+      await makeVote({ authorId: other.id }); // 别人的
       await castVote(alive.id, alive.options[0].id, u.id);
 
-      const list = await listVotes();
+      const list = await listVotes(u.id);
       expect(list).toHaveLength(1);
       expect(list[0].id).toBe(alive.id);
       expect(list[0].authorName).toBe('author1');
