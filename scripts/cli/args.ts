@@ -4,7 +4,7 @@
 // 三个东西都从 registry 的元数据生成，不手写。向导（wizard.ts）走的是同一份
 // ArgSpec，只是把「从 argv 取值」换成「问用户」，校验函数共用。
 //
-// 退出码语义（对齐 Flask，历史约定不能动）：参数/用户错误一律退出码 1。
+// 退出码语义（CI / 脚本契约，不能改）：参数/用户错误一律退出码 1。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { CliError, GROUP_LABELS, type ArgSpec, type Args, type CommandSpec, type GroupId } from './types';

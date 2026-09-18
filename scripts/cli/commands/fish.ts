@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// fish.ts —— 小鱼干（对齐 Flask `flask fish ...`）
+// fish.ts —— 小鱼干（命令名与退出码对齐历史 CLI 的 fish 子命令）
 //
 // 写路径 fail-closed：远端账户服务失败 → 本地写入被补偿事务精确撤销（对用户等价于
 // 回滚）→ **退出码 2**。绝不静默成功。详见 src/lib/fish-admin.ts 与 CLAUDE.md。
@@ -121,7 +121,7 @@ export const fishCommands: CommandSpec[] = [
 
           return { lines, warnings, json: { username, amount, balance, remoteSynced: remote } };
         } catch (e) {
-          // fail-closed：本地写入已被补偿回滚，余额未变，返回退出码 2（对齐 Flask）
+          // fail-closed：本地写入已被补偿回滚，余额未变，返回退出码 2（脚本契约）
           if (errorName(e) === 'FishBusinessError') {
             throw new CliError(`错误：${errorMessage(e)}`, 1);
           }
@@ -200,11 +200,11 @@ export const fishCommands: CommandSpec[] = [
       '中途失败**不回滚**已经发出去的部分。',
       '',
       '续跑：失败或中断后，用同一个 --batch-id 重跑，已发放的会自动跳过 —— 靠的是由',
-      '批次派生的确定性幂等键（与 Flask `flask fish compensate` 逐字节同构）。批次 ID',
-      '在开跑前就打印出来，进程被杀也找得回。',
+      '批次派生的确定性幂等键（**必须逐字节稳定**：历史批次可能跑了一半，换算法就续',
+      '不上）。批次 ID 在开跑前就打印出来，进程被杀也找得回。',
       '',
-      '与 Flask 版的有意偏离：Flask 是「一个大事务发给所有人，远端 HTTP 在事务里，',
-      '任一失败整体回滚」—— 那会占满 SQLite 写锁整轮（1000 人 @5req/s ≈ 200 秒），',
+      '有意偏离「一个大事务发给所有人」的做法：远端 HTTP 若放进事务里，任一失败就整体',
+      '回滚 —— 那会占满 SQLite 写锁整轮（1000 人 @5req/s ≈ 200 秒），',
       '期间全站写路径 database is locked。详见 src/lib/fish-compensate.ts 头部。',
       '',
       '不写审计日志：理由同 fish grant / deduct —— 写路径是「本地事务 + 远端 HTTP +',
@@ -306,7 +306,7 @@ export const fishCommands: CommandSpec[] = [
       ];
       if (r.remoteSynced) lines.push('  已同步至账户服务');
 
-      // 有人没发成 / 整批中止 / 有卡住的账目 → 退出码 2（对齐 Flask 的「同步失败」），
+      // 有人没发成 / 整批中止 / 有卡住的账目 → 退出码 2（脚本契约里的「同步失败」），
       // 并把续跑命令原样交到运维手里，别让他自己拼批次 ID。
       if (r.failed.length > 0 || r.aborted || r.blocked.length > 0) {
         throw new CliError(

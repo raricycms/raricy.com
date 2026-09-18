@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // roles.ts —— 角色升降（user ↔ core ↔ admin ↔ owner）
 //
-// 【为什么走 setRole 而不是直写 users.role】入口的直接写库是 Flask 时代的遗留：
+// 【为什么走 setRole 而不是直写 users.role】入口的直接写库是历史遗留：
 // 它绕过审计日志、不踢已建立的连接、也不校验「不能改自己」。同一个操作走网页后台
 // 有记录、走 CLI 没有，审计日志于是有个大洞。setRole 把权限分档（谁能任命管理员）、
 // 审计、kickUser 都收在一处，CLI 与网页共用同一份不变量。
@@ -9,8 +9,8 @@
 // ⚠️ 行为变化：setRole 拒绝「修改自己的角色」。所以站点只有一个站长时，他不能
 //    用 CLI 把自己降级（--as 指定别人，或先加第二个站长）。
 //
-// 文案仍逐字照抄 Flask（包括「提示：xxx 已是管理员」这类 no-op 分支）——
-// 它们是脚本判定「有没有真的改」的依据，退出码也保持 0。
+// 文案是**刻意**保持不变的（包括「提示：xxx 已是管理员」这类 no-op 分支）——
+// 它们是脚本判定「有没有真的改」的依据，退出码也保持 0；改文案会打断既有自动化。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { CliError, type CommandSpec, type Ctx } from '../types';
@@ -26,7 +26,7 @@ type RoleAction =
 const TABLE: Record<string, { summary: string; run: (role: string) => RoleAction }> = {
   'promote-admin': {
     summary: '授予管理员（已是 admin/owner 则提示）',
-    // 已是 admin/owner → 提示；owner 不降级（Flask: `if role != 'owner': role = 'admin'`）
+    // 已是 admin/owner → 提示，不改动（promote-admin 绝不降级站长）
     run: (role) =>
       ['admin', 'owner'].includes(role)
         ? { kind: 'notice', msg: (u) => `提示：${u} 已是管理员` }
@@ -68,7 +68,7 @@ const TABLE: Record<string, { summary: string; run: (role: string) => RoleAction
   },
   'demote-owner': {
     summary: '移除站长（保留管理员）',
-    // 站长降为 admin（保留管理员），对齐 Flask
+    // 站长降为 admin（保留管理员），不是降为普通用户
     run: (role) =>
       role !== 'owner'
         ? { kind: 'notice', msg: (u) => `提示：${u} 不是站长` }

@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // raricy.com — Prisma schema (规范 / 目标态)
 //
-// 从现有 Flask/SQLAlchemy 数据库 1:1 映射而来。字段用 camelCase，通过 @map/@@map
+// 从既有的 SQLAlchemy 库 1:1 映射而来。字段用 camelCase，通过 @map/@@map
 // 对齐真实 snake_case 表/列名，**不改动数据结构**。
 //
 // ⚠️ 关键：DateTime 格式
@@ -13,13 +13,16 @@
 //       npm run db:normalize            # 在副本上执行，见 scripts/normalize-datetimes.mjs
 //   （曾经转成 ISO 文本：Prisma 读得出，但 SQLite 跨存储类型比较按类型序而非数值，
 //     会让 gte 恒真 / lt 恒假 —— 表现为历史文章全被算成「今天发的」。）
-//   规整是单向门：Flask 侧（若仍在读同库）需要给 SQLAlchemy 配兼容类型，
-//   否则按“硬切换”处理。
+//   规整是单向门：TEXT 一旦转成 INTEGER 就回不去了；此后仍按旧文本格式读这个库的读取方
+//   需自行适配，否则只能按“硬切换”处理。
 //
 // 其它：
 //   • admin_action_logs.extra 是 JSON 列，SQLite 上 Prisma 无 Json 标量 → 映射 String，
 //     应用层自行 JSON.parse/stringify。
-//   • 该库 schema 仍由 Flask-Migrate/Alembic 管理，**不要**对本库跑 prisma migrate。
+//   • 本库 schema 由本仓 scripts/migrate.mjs + _raricy_migrations 跟踪表管理，
+//     **不要**对本库跑 prisma migrate —— 它不认识 0_init 基线（0_init 是从历史库
+//     反向生成的建表 SQL），会把它当作未应用而重放，在第一条 CREATE TABLE 上
+//     冲突失败。
 // ─────────────────────────────────────────────────────────────────────────────
 
 generator client {

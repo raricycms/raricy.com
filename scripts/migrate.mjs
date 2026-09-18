@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // ─────────────────────────────────────────────────────────────────────────────
-// migrate.mjs —— 数据库迁移 runner（替代 Flask 时代的 `flask db upgrade`）
+// migrate.mjs —— 数据库迁移 runner（替代历史 CLI 的 `db upgrade`）
 //
 // 为什么不用 prisma migrate：schema.prisma 头部明确写了「不要对本库跑 prisma
-// migrate」——本库 0_init 是从 Flask SQLAlchemy 1:1 抄来的（Prisma migrate 不
-// 认识 alembic 迁移历史；DateTime 格式陷阱也要避开它的 normalize）。所有 schema
+// migrate」——本库 0_init 是从历史库反向生成的基线（Prisma migrate 不认识本库的
+// 迁移历史；DateTime 格式陷阱也要避开它的 normalize）。所有 schema
 // 改动一律走 prisma/migrations/<n>_<name>/migration.sql 手写 SQL，由本脚本统一应用。
 //
 // 用法：
@@ -135,7 +135,7 @@ function usage() {
 
 适用场景：
   • 全新部署：直接 \`npm run migrate -- up\`（依次应用 0_init / 1_oauth / ...）
-  • 从 Flask 切过来的现有库：
+  • 存量库（表已经在，只需补记基线）：
       npm run migrate -- mark 0_init    # 标记 0_init 为已应用
       npm run migrate -- up             # 之后只应用新迁移
   • 部署新代码：\`npm run migrate -- status\` 看看有没有 pending`);
@@ -188,7 +188,7 @@ async function cmdMark(prisma, name) {
   const sql = readMigrationSql(name);
   await markApplied(prisma, name, checksumOf(sql));
   console.log(green(`✓ ${name} 已标记为已应用（未执行 SQL）`));
-  console.log(yellow('  适用：库内表已经存在（来自其他途径，如 Flask / 手跑 SQL），不希望重复执行。'));
+  console.log(yellow('  适用：库内表已经存在（来自其他途径，如从旧库拷贝 / 手跑 SQL），不希望重复执行。'));
 }
 
 async function cmdVerify(prisma) {

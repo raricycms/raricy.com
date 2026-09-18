@@ -13,8 +13,8 @@
 //
 // 部署侧一般由挂载点保证存在；本地开发或新机器无 instance/ 时，本脚本一键建好。
 //
-// 【历史】这是 Python 时代 `check_instance.py` 的等价移植 —— 老脚本只 os/pathlib，
-// 与 Flask 解耦；新版本照搬行为，但用 Node 跑、不再依赖 Python。
+// 【行为】mkdir -p 语义：只补缺失的目录，已存在的原样保留，重复执行安全；
+// 不写任何文件、也不删任何东西 —— 目录里有数据时更不会被碰到。
 //
 // 用法：node scripts/check-instance.mjs
 // 退出码：0 全部已存在（创建 0 个）/ 创建成功；1 任何系统错误（如权限）。
@@ -26,8 +26,8 @@ import { mkdirSync } from 'node:fs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-// 锚定 ROOT（项目根）：和原 Python 在 `cd project && python check_instance.py`
-// 时的行为等价。node 脚本若从其它目录被调用，固定写 ROOT 下符合直觉。
+// 锚定 ROOT（项目根）：本脚本可能从任意 cwd 被调用，固定写 ROOT 下符合直觉，
+// 也避免「在哪跑就建到哪」的坑。
 const instanceRoot = path.join(ROOT, 'instance');
 
 const SUBDIRS = ['avatars', 'database', 'images', 'stories', 'stickers', 'blogs'];

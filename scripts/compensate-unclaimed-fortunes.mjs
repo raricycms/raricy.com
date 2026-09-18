@@ -3,21 +3,21 @@
 // compensate-unclaimed-fortunes.mjs
 //
 // 【为什么需要这个脚本】
-// Flask 的签到是**两步**：check_in() 先建记录（fortune_value=NULL、fortune_pool 已定），
-// 再由 claim_fortune() 让用户翻牌赋值 + 发鱼干。Next 侧曾合并成一步（签到即翻牌）、
-// 没有 claim 入口 —— 那时库里「已签到但未翻牌」的记录（fortune_value IS NULL）
-// 会永远翻不了牌。真实库里有 7 条这样的记录（最近一条 2026-07-15）。
+// 签到是**两步**：第一步只建记录（fortune_value=NULL、fortune_pool 已定），
+// 第二步由用户翻牌，赋值 + 发鱼干。曾有一段时间两步被合并成一步（签到即翻牌）、
+// 不留 claim 入口 —— 那期间留下的「已签到但未翻牌」记录（fortune_value IS NULL）
+// 就永远翻不了牌。真实库里有 7 条这样的记录（最近一条 2026-07-15）。
 //
 // 【现状】Next 侧已恢复两步式 claim 入口（POST /api/checkin/claim，见
 // checkin-service.claimFortune），用户自己就能在 UI 里补翻这些牌。本脚本只
 // 服务**不想/不能回到 UI 翻牌**的存量 pending 行（管理员代选），行为不变。
 //
-// 【补偿口径 —— 逐条对齐 Flask claim_fortune】
+// 【补偿口径 —— 与用户自己翻牌的落库效果逐条对齐】
 //   1. 从该记录**自己的** fortune_pool 里取一张（池是签到当时就定好的，不是现编）
 //   2. 原子置 fortune_value（WHERE fortune_value IS NULL，重复跑不会二次赋值）
 //   3. total_fortune += fortune_value
 //   4. 发等额鱼干 + 写一条 type='checkin' 的流水
-// 与 claim_fortune 唯一的差别：用户当时没选，只能由脚本代选 —— 默认取 index 0
+// 与用户自己翻牌唯一的差别：用户当时没选，只能由脚本代选 —— 默认取 index 0
 // （池本身已是随机洗牌的结果，取哪张都等价于随机）。可用 --index 覆盖。
 //
 // 【安全设计】
@@ -67,7 +67,7 @@ if (!Number.isInteger(chosenIndex) || chosenIndex < 0 || chosenIndex > 4) {
 
 // ── 工具 ─────────────────────────────────────────────────────────────────────
 
-/** 解析 "3,1,2,4,5" → [3,1,2,4,5]；非法返回 null（对齐 Flask _parse_pool）。 */
+/** 解析 "3,1,2,4,5" → [3,1,2,4,5]；不是 5 个数字（或为空）则返回 null。 */
 function parsePool(pool) {
   if (!pool) return null;
   const vals = String(pool)
@@ -173,7 +173,7 @@ let skipped = 0;
 db.exec('BEGIN');
 try {
   for (const p of plan) {
-    // 3.1 原子置 fortune_value —— 对齐 Flask 的 WHERE fortune_value IS NULL。
+    // 3.1 原子置 fortune_value —— 条件带 WHERE fortune_value IS NULL，只补没翻过牌的。
     //     重复执行本脚本时这里会 changes=0，从而不会二次发鱼。
     const upd = db
       .prepare(
@@ -200,7 +200,7 @@ try {
       p.user_id
     );
 
-    // 3.4 写流水（type/description 逐字对齐 Flask claim_fortune 里的 add_fish 调用）
+    // 3.4 写流水（type/description 与正常翻牌写入的逐字一致，别让同一批分成两种样子）
     //     created_at 存 INTEGER 毫秒 —— 与规整后的库、与 Prisma 的写入格式一致。
     //     amount 同样 ×10（存储单位）。
     db.prepare(

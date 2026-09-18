@@ -4,7 +4,7 @@ import path from 'node:path';
 const nextConfig = {
   reactStrictMode: true,
   experimental: {
-    // 启用 forbidden()/unauthorized() —— 让受控页在原地渲染 403 页(对齐原站 abort(403))
+    // 启用 forbidden()/unauthorized() —— 让受控页在原地渲染 403 页
     authInterrupts: true,
     // 请求体缓冲上限（默认 10MB）：有中间件时 Next 会把整个 body 缓冲进内存，
     // 超出部分被**直接截断**（只警告一句，不报错），路由拿到半截 body ——
@@ -14,13 +14,12 @@ const nextConfig = {
     // 给 multipart 边界留出余量。
     middlewareClientMaxBodySize: '12mb',
   },
-  // ── 旧 Flask 地址兼容（rewrite，不是跳转）────────────────────────────────
+  // ── 旧地址兼容（rewrite，不是跳转）──────────────────────────────────────
   //
-  // Flask 的图床直链是 `/image/i/<id>`（app/web/image_hosting/__init__.py 的
-  // `@image_bp.route('/i/<image_id>')`），头像直链是 `/auth/avatar/<user_id>`
-  // （app/web/auth/profile.py）。迁移到 Next 后改成了 `/api/images/<id>/raw` 与
-  // `/api/avatar/<id>`，而**存量内容里的旧地址是写死在正文里的**（截至 2026-09：
-  // 55 篇博客 / 110 处 URL 指向 raricy.com 的旧图床地址），不接就会全变碎图。
+  // 历史直链：图床是 `/image/i/<id>`，头像是 `/auth/avatar/<user_id>`；现在这两条
+  // 分别由 `/api/images/<id>/raw` 与 `/api/avatar/<id>` 承接，而**存量内容里的
+  // 旧地址是写死在正文里的**（截至 2026-09：55 篇博客 / 110 处 URL 指向
+  // raricy.com 的旧图床地址），不接就会全变碎图。
   //
   // 用 rewrite 而不是 redirect：旧地址保持可用且**不改地址栏、不多一次往返**；
   // 而且目标路由的 404 / 私有图鉴权 / SVG 强制 attachment / Cache-Control /
@@ -41,8 +40,9 @@ const nextConfig = {
   outputFileTracingRoot: import.meta.dirname,
   // 头像与图床已由 Next 原生分发（/api/avatar/[id] 读 instance/avatars、
   // /api/images/[id]/raw 读 instance/images），前端也全部改用 /api/* 路径，
-  // 因此不再需要把 /auth/avatar、/image 代理回 Flask —— web-next 已完全独立于 Flask。
-  // SCSS 来自 Flask 项目的 app/static/scss 整树拷贝（src/styles-scss/）。
+  // 因此 /auth/avatar、/image 这两个前缀也由本应用自己承接（上面的 rewrite 转发到
+  // 本应用的 /api/* 路由），没有需要代理到外部实现的路径了。
+  // SCSS 整树来自上一版实现（src/styles-scss/）。
   // src/app/layout.tsx 直接 import 入口 main.scss，由 Next 自己编译
   // （dev 走 HMR，build 走下面的 sassOptions），没有任何手工编译步骤，也不入库产物。
   //

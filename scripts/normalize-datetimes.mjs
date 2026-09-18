@@ -9,7 +9,7 @@
 // 遇到空格分隔格式会直接报 "Conversion failed: input contains invalid characters"。
 //
 // 幂等：只转换 typeof='text' 的值（已是 integer 的跳过），重复运行安全。
-// 既吃 Flask 原始的空格格式，也吃历史上被旧版脚本转成的 ISO 文本。
+// 既吃历史原始的空格格式，也吃历史上被旧版脚本转成的 ISO 文本。
 //
 // 用法：
 //   node scripts/normalize-datetimes.mjs --source ./instance/database/db.db --dest ./instance/database/dev.db
@@ -112,7 +112,7 @@ function main() {
         //
         // 幂等：只转 TEXT 型的值（typeof = 'text'），已是 integer 的跳过。
         // 两种来源都要吃下：
-        //   · Flask 原始格式 "2025-08-09 20:48:45.776483"（空格）
+        //   · 历史原始格式 "2025-08-09 20:48:45.776483"（空格）
         //   · 历史上被本脚本转成的 "2025-08-09T20:48:45.776Z"（ISO 文本）
         // strftime('%s') 按 UTC 解析这两种格式，再补上毫秒部分。
         const stmt = db.prepare(

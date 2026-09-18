@@ -7,7 +7,7 @@
 #   error: Your local changes to the following files would be overwritten by merge
 # 实测踩过。声明 eol=lf 后两边预期一致，这个假 M 不再出现。
 #
-# 历史上这条规则主要保的是入库的编译产物 flask.css；它已退出版本库
+# 历史上这条规则主要保的是入库的编译产物；它已退出版本库
 # （见 .gitignore），但规则对 SCSS 源与 tests/.tmp 下的手工探针产物同样有意义，
 # 故保留。入库的 .css / .scss blob 已全部是 LF，加这行不会让任何现存文件
 # 变成「已修改」。

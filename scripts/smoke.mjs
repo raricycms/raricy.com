@@ -274,9 +274,16 @@ if (!user || !pass) {
 console.log(bold('\n7. 门控'));
 try {
   const anon = await fetch(`${base}/blog`, { redirect: 'manual' });
-  if (anon.status === 403) ok('未登录访问 /blog → 403（对齐 Flask 的 abort(403)）');
-  else if (anon.status === 200) bad('未登录也能看 /blog —— 核心用户门槛没生效');
-  else ok(`未登录访问 /blog → HTTP ${anon.status}`);
+  // 匿名一律先登录（requireCoreUser）—— 早期曾对匿名原地 403，那是被取代的旧语义。
+  if (anon.status === 302 || anon.status === 307) {
+    const loc = anon.headers.get('location') ?? '';
+    if (loc.includes('next=')) ok('未登录访问 /blog → 跳登录页且带回跳地址');
+    else bad(`/blog 跳转但没带 ?next=：${loc}`);
+  } else if (anon.status === 200) {
+    bad('未登录也能看 /blog —— 核心用户门槛没生效');
+  } else {
+    bad(`未登录访问 /blog → HTTP ${anon.status}，预期跳转到登录页`);
+  }
 
   const admin = await fetch(`${base}/admin`, { redirect: 'manual' });
   if (admin.status === 307 || admin.status === 302) {

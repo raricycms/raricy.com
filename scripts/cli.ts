@@ -7,17 +7,17 @@
 //   2. 解析 argv、构造 Ctx
 //   3. 统一的输出与退出码
 //
-// 用法（对照 Flask）：
-//   flask promote-admin <u>   →  npm run cli -- promote-admin <u>
-//   flask fish grant <u> <n>  →  npm run cli -- fish grant <u> <n> [-d "说明"]
+// 命令对照（旧调用 → 新调用）：
+//   promote-admin <u>   →  npm run cli -- promote-admin <u>
+//   fish grant <u> <n>  →  npm run cli -- fish grant <u> <n> [-d "说明"]
 //
-// 退出码（对齐 Flask）：0 成功 / 1 参数或用户错误 / 2 账户服务同步失败（本地已回滚）
+// 退出码（CI / 脚本契约，不可改）：0 成功 / 1 参数或用户错误 / 2 账户服务同步失败（本地已回滚）
 //
 // ⚠️ 惰性加载约定：本文件**不静态 import 任何 src/lib 的运行时值**，Prisma 只在
 //    真正要执行命令时才 `await import()`。所以 `--help` 与向导菜单在没有数据库的
 //    机器上也能渲染，且是瞬时的。
 //
-// ⚠️ 未迁移：`flask import-blogs`（历史博客导入；正文早已存 BlogContent 表）。
+// ⚠️ 未迁移：历史 CLI 的 `import-blogs`（历史博客导入；正文早已存 BlogContent 表）。
 //    需要时另写专用脚本。
 // ─────────────────────────────────────────────────────────────────────────────
 

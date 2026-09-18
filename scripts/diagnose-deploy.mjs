@@ -92,7 +92,7 @@ head('0. 运行时版本');
 
 head('1. 环境变量');
 if (!process.env.SECRET_KEY) {
-  bad('SECRET_KEY 未配置 → session.ts 会抛错 → 登录必 500', '在 .env.production 填 SECRET_KEY（照搬 Flask 生产值）');
+  bad('SECRET_KEY 未配置 → session.ts 会抛错 → 登录必 500', '在 .env.production 填 SECRET_KEY（沿用历史生产环境的值）');
 } else {
   ok(`SECRET_KEY 已配置（长度 ${process.env.SECRET_KEY.length}）`);
 }
@@ -212,8 +212,8 @@ if (dbPath && fs.existsSync(dbPath)) {
 //
 // 【为什么必须切换前查】这是整个切换里**唯一不可逆**的一项。每个用户在账户微服务
 // 的 API Key 用 Fernet 加密存在 users.fish_api_key_encrypted，密钥由 SECRET_KEY 派生
-// （Flask: base64url(sha256(SECRET_KEY))，见 app/clients/account_client.py:93）。
-// SECRET_KEY 换了，或者给 FISH_ENCRYPTION_KEY 填了值（Flask 根本没这个变量，
+// （历史实现：base64url(sha256(SECRET_KEY))）。
+// SECRET_KEY 换了，或者给 FISH_ENCRYPTION_KEY 填了值（历史实现里没有这个变量，
 // 填了 Next 就改用它派生），全库密文立刻解不开 —— 465 个用户的鱼干功能集体失效，
 // 且密文本身没坏、只是没了钥匙。
 //
@@ -224,10 +224,10 @@ if (dbPath && fs.existsSync(dbPath)) {
   if (process.env.FISH_ENCRYPTION_KEY) {
     bad(
       'FISH_ENCRYPTION_KEY 有值 —— 存量密文是用 SECRET_KEY 加密的，它一填就全解不开',
-      '留空即可（回退 SECRET_KEY，与 Flask 一致）。仅全新部署、库里没有任何存量密文时才谈得上设它'
+      '留空即可（回退 SECRET_KEY，与历史生产一致）。仅全新部署、库里没有任何存量密文时才谈得上设它'
     );
   } else {
-    ok('FISH_ENCRYPTION_KEY 留空（回退 SECRET_KEY，与 Flask 一致）');
+    ok('FISH_ENCRYPTION_KEY 留空（回退 SECRET_KEY，与历史生产一致）');
   }
 
   try {
@@ -244,7 +244,7 @@ if (dbPath && fs.existsSync(dbPath)) {
           '若这是真实生产库，说明账户服务还没给用户建过号；切换后首次用到鱼干时才会建'
         );
       } else if (!process.env.SECRET_KEY) {
-        bad('SECRET_KEY 未设置，无法验证', '把 Flask 生产 .env 里的 SECRET_KEY 原样搬过来');
+        bad('SECRET_KEY 未设置，无法验证', '把历史生产 .env 里的 SECRET_KEY 原样搬过来');
       } else {
         const { decryptApiKey } = await import('../src/lib/account-client.ts');
         let good = 0;
@@ -262,7 +262,7 @@ if (dbPath && fs.existsSync(dbPath)) {
         } else {
           bad(
             `SECRET_KEY 不对：抽查 ${rows.length} 条，只解开 ${good} 条（${errs[0] ?? ''}）`,
-            'SECRET_KEY 必须与当前 Flask 生产环境用的完全一致 —— 它在服务器的 .env 里，不在仓库。' +
+            'SECRET_KEY 必须与历史生产环境用的完全一致 —— 它在服务器的 .env 里，不在仓库。' +
               '仓库里的是开发用的，解不开任何生产密文'
           );
         }

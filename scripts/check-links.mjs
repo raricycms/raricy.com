@@ -5,8 +5,8 @@
 // 【为什么需要】这类错 tsc 完全不管（href 和 fetch 的 URL 都只是字符串字面量），
 // 单测也不管（单测直接 import service 函数，压根不经过路由与页面）。迁移过程中
 // 已经因此漏掉三处，全是用户可见的功能断裂：
-//   · 工具菜单把 5 个工具指回老站 Flask，而它们在 Next 侧早就实现好了
-//   · 博客列表的「创建文章」按钮指向 /blog/upload_blog（Flask 老路径）→ 404
+//   · 工具菜单的 5 个工具用了写死主机名的绝对 URL，而它们在本站早就实现好了
+//   · 博客列表的「创建文章」按钮指向 /blog/upload_blog（已废弃的老路径）→ 404
 //   · /audit 列表的「详情」链接指向不存在的 /audit/[id] → 404，
 //     连带让提交申诉的 API 成了没有入口的孤儿，用户根本无法申诉
 //
@@ -17,7 +17,7 @@
 // 【它查什么】
 //   1. src/**/*.tsx 里的 href="/..."       → 必须存在对应的 page.tsx
 //   2. src/**/*.{ts,tsx} 里的 "/api/..."   → 必须存在对应的 route.ts
-//   3. 工具菜单不得出现指向老站的绝对 URL（Flask 一删就 404）
+//   3. 工具菜单不得出现写死主机名的绝对 URL（必须写本站路径，否则会 404）
 //
 // 【它不查什么】动态拼出来的地址（`/blog/${slug}`）只能核对到路径形状，
 // 拼错的 slug 值查不出来 —— 那是 E2E 的活。
@@ -160,7 +160,7 @@ function normalize(u) {
 
 // ── 1. href → page ──────────────────────────────────────────────────────────
 // 同时覆盖 JSX 的 href="..." 与对象字面量的 href: '...'（工具菜单用的是后者，
-// 只认 href= 的话，那 5 个指回老站的工具链接一个都抓不到）。
+// 只认 href= 的话，那 5 个写死主机名的工具链接一个都抓不到）。
 // 按引号类型分开匹配，不能图省事写成 [`'"]([^`'"]*)[`'"] —— 模板串里常有引号
 // （href={`/story/${path.lastIndexOf('/')}`}），那样会在内层引号处截断，
 // 切出半截路径来误报。
@@ -195,20 +195,21 @@ for (const f of srcFiles) {
   }
 }
 
-// ── 3. 不得回源老站 ──────────────────────────────────────────────────────────
-// Flask 删掉之后这些链接会直接 404。工具菜单曾经就是这么把 5 个工具指回老站的。
+// ── 3. 不得写死绝对 URL ──────────────────────────────────────────────────────
+// 写死主机名的绝对 URL 会绕开站内路由，指向的老路径又已经不存在 —— 点了就是 404。
+// 工具菜单曾经就是这么把 5 个工具指出去的（而它们在本站早就实现好了）。
 // 只拦「回源本站老路径」，外站链接（GitHub、智慧河 zhh.raricy.com 等）是正常的。
 const BACKLINK = /(?:^|\/\/)(?:www\.)?raricy\.com\/(tool|blog|auth|image|vote|clipboard|checkin)\b/;
 for (const f of srcFiles) {
   const txt = stripComments(fs.readFileSync(f, 'utf8'));
   if (/FLASK_ORIGIN/.test(txt)) {
     problems.push(
-      `还在用 FLASK_ORIGIN 回源老站：${path.relative(ROOT, f)}（Flask 删掉后必断）`
+      `还在用 FLASK_ORIGIN 回源：${path.relative(ROOT, f)}（该变量已废弃删除，回源必然失败）`
     );
   }
   for (const lit of stringLiterals(txt)) {
     if (BACKLINK.test(lit)) {
-      problems.push(`疑似回源老站（Flask 删掉后会 404）：${bold(lit)}  ← ${path.relative(ROOT, f)}`);
+      problems.push(`疑似写死主机名的老路径（会 404）：${bold(lit)}  ← ${path.relative(ROOT, f)}`);
     }
   }
 }
@@ -216,8 +217,8 @@ for (const f of srcFiles) {
 // ── 4. 图标类必须有定义 ──────────────────────────────────────────────────────
 // 图标靠 CSS 的 mask-image 上色，类名拼错不会报错，只会渲染成一个**纯黑方块**。
 // 联系页就这么顶着个黑方块：代码写 .icon-chat-dots，而 CSS 里叫 .icon-chat-dots_new。
-// 只查 icon-*：其余类名与 Flask 不对应属正常，拿「Flask 有而 Next 没有」当错报
-// 会淹没真问题。
+// 只查 icon-*：图标缺 CSS 必出黑方块；其余类名没有定义却是正常的（JS 钩子、
+// 状态位如 .open、测试选择器都不需要样式），拿它一律当错报会淹没真问题。
 {
   // 样式统一由 src/styles-scss/main.scss **现编**（scripts/compiled-css.mjs），不读落盘产物。
   // 旧路径 src/app/rebuild.css / globals.css / public/static/css/legacy.css 已随迁移删除 ——
