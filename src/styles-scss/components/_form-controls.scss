@@ -91,6 +91,25 @@ textarea.form-control {
   }
 }
 
+/* ── 展开后的列表（原生弹出层）必须自己上色 ───────────────────────────────────
+   这一层不在字段的盒子里：条目的 `color` 是从 <select> 继承下来的（暗色下即
+   --color-text-primary 的近白），**底色却由浏览器/系统决定**。两者不一致时，
+   展开就是一片「白底白字」——看起来像没适配夜间模式，且没有任何报错。
+   color-scheme（base/_root.scss）给的是浏览器画这一层的**明暗基准**，
+   实测不足以让底色与字色始终配对，所以这里把条目颜色显式钉成主题令牌。
+
+   写法上 `option` 与 `optgroup` 都要给：background-color 不继承，
+   只给 optgroup 的话，它名下的选项仍然是透明底。
+   唯一不归我们管的是**高亮行**——那一行由浏览器自己画选中态（不受这两条影响）。 */
+.form-select,
+select.form-control {
+  option,
+  optgroup {
+    background-color: var(--color-background-card);
+    color: var(--color-text-primary);
+  }
+}
+
 .form-text { display: block; margin-top: 0.25rem; font-size: 0.875rem; color: var(--color-text-secondary); }
 
 .invalid-feedback { display: none; width: 100%; margin-top: .25rem; font-size: .875rem; color: var(--color-warning-primary); }

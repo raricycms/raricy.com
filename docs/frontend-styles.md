@@ -379,7 +379,14 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
   所以「聚焦时换成卡片底色」这条一直**是死代码**。现已去掉：与搜索框一致，
   聚焦只加光晕、不换底。今后也不要在这里加 `!important`，它会静默吃掉所有聚焦态与
   变体色。
-- `.form-select`：品牌色胶囊（品牌底 + 品牌字 + 粗体）。
+- `.form-select` / `select.form-control`：与 `.form-control` **同一套外观**（无边框、
+  `--color-background-page` 底、胶囊圆角、聚焦光晕）。**不再是「品牌底 + 品牌字 + 粗体」**
+  ——那是「最高级按钮」的样子，`<select>` 属于字段而不是按钮。
+- **展开后的列表（原生弹出层）要自己上色**：`option` / `optgroup` 显式给
+  `--color-background-card` 底 + `--color-text-primary` 字。条目的字色本来就从 `<select>`
+  继承（暗色下是近白），而**底色由浏览器/系统决定**；两者不一致时展开就是白底白字，
+  看起来像「没适配夜间模式」，且不报错。`color-scheme` 只管浏览器画那一层的**明暗基准**
+  （见 §8），不足以保证底色与字色配对，所以这两条不能删。高亮行仍由浏览器自己画。
 - `.form-check-input`：圆形 checkbox，选中变品牌色。
 - 校验态：`.is-invalid` + `.invalid-feedback`（红色）。
 - **文件选择器**（`components/_file-picker.scss`，`.filepick` 一族）：这套类**在 `.tsx` 里
@@ -564,6 +571,11 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
 - **`color-scheme`**：两个主题块里各写一行（`base/_root.scss`）。它是「原生控件
   跟着页面明暗走」的开关 —— 缺了它，暗色主题下 Chrome 照样按浅色画滚动条、
   `<select>` 下拉、日期选择器与 canvas 底色。**它管的不是样式，是浏览器自己画的那一层。**
+- ⚠️ **但 `color-scheme` 不是「原生控件一定好看」的保证，别拿它当唯一手段。**
+  `<select>` 展开后的列表就是反例：条目字色继承页面（暗色下近白），底色却由
+  浏览器/系统拍板 —— 不保证跟着页面的 `color-scheme` 走，于是白底白字。
+  凡是「字色我们能定、底色我们不能定」的原生层，都要像 §6.3 那样把两层一起钉死，
+  不能只留一行 `color-scheme`。
 - **滚动条**：`base/_root.scss` 里一组全局 `::-webkit-scrollbar`（10px 轨道、
   `--color-text-secondary` 的 thumb、hover 变品牌蓝、2px 透明描边 + `background-clip:
   padding-box` 让视觉上是 6px 细条而手感仍是 10px）。**刻意不写 `scrollbar-color` /
