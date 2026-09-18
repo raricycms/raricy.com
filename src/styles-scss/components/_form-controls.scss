@@ -124,3 +124,30 @@ textarea.form-control {
 //   .form-check-input { background-color: #1e1e1e; border-color: #4a5568; }
 // }
 
+
+/* ── 随 SCSS 拆分（02f6ab5）丢失的那一批 ────────────────────────────────────── */
+
+/* 两栏表单行（后台广播页的「通知范围」）。窄屏自动折成一列。 */
+.form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 16px;
+
+  > * {
+    flex: 1;
+    min-width: 200px;
+  }
+}
+
+/* 字段下方的说明文字。与 .form-text 同一档外观 —— 但**不能**直接复用 .form-text：
+   这两个类所在的元素挂的是 .text-muted（只给颜色），没有 .form-text，
+   删掉这两条就会只剩一行没有字号/行高/上边距的裸字。 */
+.form-hint,
+.file-hint {
+  display: block;
+  margin-top: 8px;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+}

@@ -1,0 +1,28 @@
+@use '../abstracts/variables' as v;
+
+// ── Bootstrap 风格的小徽章 ───────────────────────────────────────────────────
+//
+// 站内的状态标签有自己的族（`.status-badge`、`.favorite-badge`、`.vote-embed-badge`）
+// 且各有各的语义配色；这一份只是把模板里一路带过来的 `.badge-*` 补上，
+// **不是**新的通用徽章体系 —— 新代码请用既有的具名族，别再造一个。
+//
+// 随 SCSS 拆分（02f6ab5）丢失：AdminCategoryEditor 里的「前缀/后缀」标签于是变成
+// 一行没有底色的裸字。
+.badge-danger,
+.badge-secondary {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: v.$radius-max;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.badge-danger {
+  background: var(--color-warning-secondary);
+  color: var(--color-warning-primary);
+}
+
+.badge-secondary {
+  background: var(--color-background-subtle);
+  color: var(--color-text-secondary);
+}

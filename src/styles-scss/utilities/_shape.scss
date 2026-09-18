@@ -1,0 +1,16 @@
+@use '../abstracts/variables' as v;
+
+// ── 形状 / 配色工具（Bootstrap 风格的 .rounded* / .bg-*）──────────────────────
+//
+// 与 utilities/ 下其他几族同理：模板一路带过来的类，随 SCSS 拆分（02f6ab5）丢了。
+// 圆角值走 tokens（§4 的圆角语言），不是随手写的 px。
+
+// 「次级面板」那一档圆角 —— 不是 $radius-card(30px) 的大卡
+.rounded { border-radius: v.$radius-large; }
+
+.rounded-pill { border-radius: v.$radius-max; }
+
+// 淡灰底。用于给一块区域「垫一下」（后台广播页的收件人预览）。
+// ⚠️ 想表达「这是哪一类 / 已选中」用 §11 第 8 条的**淡底 + 同色字**，
+// 不要只铺一个 .bg-light 就完事。
+.bg-light { background: var(--color-background-subtle); }

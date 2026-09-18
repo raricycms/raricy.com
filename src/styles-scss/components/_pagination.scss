@@ -56,3 +56,17 @@
     margin-left: 0.3rem;
     white-space: nowrap;
 }
+
+/* 页码项。`.pagination` 是 flex 容器，`<li>` 被 blockify 后本来就不画项目符号，
+   这条只是把「列表语义」与「视觉」彻底解耦，免得将来谁把 .pagination 的 display 改掉。 */
+.page-item {
+  list-style: none;
+}
+
+/* 不可点的页码（当前页指示「3/12」、省略号那几格）。
+   归 .page-item 之下而不是给 .disabled 单写一条 —— 站内 .disabled 只出现在这里
+   （另外几处 `disabled={busy}` 是 React 属性，不是类名）。 */
+.page-item.disabled .page-link {
+  opacity: 0.5;
+  pointer-events: none;
+}

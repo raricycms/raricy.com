@@ -1,0 +1,43 @@
+// ── 通用表格（Bootstrap 风格的 .table）────────────────────────────────────────
+//
+// 站内另有几套按场景写的表格（`.image-hosting-admin-table`、正文里 markdown 的表格、
+// 故事页的表格），那些各有各的密度与配色，别往这里合并。
+// 这一份给的是 /audit 这类「后台数据表」：等宽行距、表头小号大写、行间一条细线。
+//
+// 随 SCSS 拆分（02f6ab5）丢失 —— 于是 /audit 的表格没有分隔线也没有内距，
+// 每一行的列宽全靠内容挤，表头与正文分不开。
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+
+  th,
+  td {
+    padding: 12px 14px;
+    text-align: left;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  th {
+    color: var(--color-text-secondary);
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  td {
+    color: var(--color-text-primary);
+    vertical-align: top;
+  }
+
+  tbody tr:hover {
+    background: var(--color-background-subtle);
+  }
+}
+
+// 窄屏时让表格自己横向滚动，而不是把页面撑宽
+.table-responsive {
+  overflow-x: auto;
+}

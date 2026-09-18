@@ -330,6 +330,15 @@ input, select, textarea {
   }
 }
 
+/* `.guide wrap`（MarkdownGuide 的根节点）同挂一个元素：`.guide` 负责居中与行宽
+   （820px），`.wrap` 只补两侧内距。旧文件里它读 `var(--wrap)`，而那个变量从来
+   没有定义过 —— 规则里的 max-width 整条失效，只剩 padding 生效。这里索性只写
+   真正起作用的那部分，不再保留一个幽灵变量的引用。 */
+.wrap {
+  width: 100%;
+  padding-inline: 16px;
+}
+
 /* 列间距走 --gutter 变量（Bootstrap 的口径：gutter 是**列之间**的距离，
    单侧内距是它的一半）。默认 16px，正好等于拆分前写死的 8px 单侧内距 ——
    所以不挂 .g-* 的行渲染不变。 */
@@ -1828,6 +1837,63 @@ svg.rc-icon {
   background: var(--color-background-subtle);
 }
 
+.card {
+  background: var(--color-background-card);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-xs);
+}
+
+.badge-danger,
+.badge-secondary {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.badge-danger {
+  background: var(--color-warning-secondary);
+  color: var(--color-warning-primary);
+}
+
+.badge-secondary {
+  background: var(--color-background-subtle);
+  color: var(--color-text-secondary);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+.table th,
+.table td {
+  padding: 12px 14px;
+  text-align: left;
+  border-bottom: 1px solid var(--color-border);
+}
+.table th {
+  color: var(--color-text-secondary);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.table td {
+  color: var(--color-text-primary);
+  vertical-align: top;
+}
+.table tbody tr:hover {
+  background: var(--color-background-subtle);
+}
+
+.table-responsive {
+  overflow-x: auto;
+}
+
 .alert {
   position: relative;
   padding: 0.75rem 1rem;
@@ -2019,6 +2085,31 @@ textarea.form-control {
   text-decoration: none;
 }
 
+/* ── 随 SCSS 拆分（02f6ab5）丢失的那一批 ────────────────────────────────────── */
+/* 两栏表单行（后台广播页的「通知范围」）。窄屏自动折成一列。 */
+.form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.form-row > * {
+  flex: 1;
+  min-width: 200px;
+}
+
+/* 字段下方的说明文字。与 .form-text 同一档外观 —— 但**不能**直接复用 .form-text：
+   这两个类所在的元素挂的是 .text-muted（只给颜色），没有 .form-text，
+   删掉这两条就会只剩一行没有字号/行高/上边距的裸字。 */
+.form-hint,
+.file-hint {
+  display: block;
+  margin-top: 8px;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+}
+
 /* Toasts (no Bootstrap) */
 .toast-container {
   position: fixed;
@@ -2179,6 +2270,20 @@ textarea.form-control {
   cursor: pointer;
   margin-left: 0.3rem;
   white-space: nowrap;
+}
+
+/* 页码项。`.pagination` 是 flex 容器，`<li>` 被 blockify 后本来就不画项目符号，
+   这条只是把「列表语义」与「视觉」彻底解耦，免得将来谁把 .pagination 的 display 改掉。 */
+.page-item {
+  list-style: none;
+}
+
+/* 不可点的页码（当前页指示「3/12」、省略号那几格）。
+   归 .page-item 之下而不是给 .disabled 单写一条 —— 站内 .disabled 只出现在这里
+   （另外几处 `disabled={busy}` 是 React 属性，不是类名）。 */
+.page-item.disabled .page-link {
+  opacity: 0.5;
+  pointer-events: none;
 }
 
 .segmented {
@@ -3049,6 +3154,18 @@ textarea.form-control {
 
 .mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.rounded {
+  border-radius: 10px;
+}
+
+.rounded-pill {
+  border-radius: 999px;
+}
+
+.bg-light {
+  background: var(--color-background-subtle);
 }
 
 /* Homepage styles migrated from template */
@@ -4422,6 +4539,25 @@ a:hover {
 .comment-section > .comment-list {
   padding-left: 0;
   margin-left: 0;
+}
+
+/* 每条评论：一条细线 + 上下内距，把相邻两楼分开。
+   随 SCSS 拆分（02f6ab5）丢失 —— 于是整片评论区没有分隔，几层楼糊成一团。
+
+   ⚠️ 只恢复**这一条**。旧文件里紧挨着的
+   `.comment-item .children { margin-left: 24px; padding-left: 16px; border-left: … }`
+   **不能**一起搬回来：楼中楼的缩进已经由 .comment-list 的 padding-left 单独承担，
+   再叠一个同值的 margin-left 就会让每层楼向右溢出 15px（那条横向滚动条的成因，
+   见上面 .comment-list 里的整段说明，tests/e2e/comment-layout.spec.ts 钉着它）。 */
+.comment-item {
+  padding: 18px 0;
+  border-top: 1px solid var(--color-border);
+}
+
+/* 嵌套列表的第一楼紧跟父楼，不要顶出一条线来断掉从属关系 */
+.comment-item .children .comment-item:first-child {
+  padding-top: 0;
+  border-top: none;
 }
 
 /* 博客详情页操作区（点赞/收藏/管理文章等）。尺寸与布局属性原先是分两条规则给的：

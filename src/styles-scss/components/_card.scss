@@ -1,2 +1,20 @@
-.card-custom { }
+@use '../abstracts/variables' as v;
 
+// ── 通用卡片（Bootstrap 风格的 .card）────────────────────────────────────────
+//
+// 站内的卡片大多有自己具名的族，且各有性格：首页 `.feature-card`（空闲不托阴影也不
+// 描边，hover 才亮光晕）、后台 `.management-card`（8px 圆角 + xs 阴影）、
+// 列表项 `.notification-card` / `.clipboard-item` / `.favorite-item`。**别往这里合并** ——
+// 那几种「什么时候浮起来」的规则是刻意不同的。
+//
+// 这一份只补模板带过来的 `.card`：/audit 与后台广播页的几块信息面板。
+// 随 SCSS 拆分（02f6ab5）丢失后，它们是直接摊在页面底色上的一段文字。
+.card {
+  background: var(--color-background-card);
+  border: 1px solid var(--color-border);
+  border-radius: v.$radius-large;
+  box-shadow: var(--shadow-xs);
+}
+
+// 此处原有 `.card-custom { }`：一条空规则，没有任何 TSX 用它（旧文件里就是个占位）。
+// 留着只会让「这个类是不是有用」变成一个要翻代码才能回答的问题，故删。

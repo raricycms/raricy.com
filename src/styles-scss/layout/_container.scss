@@ -17,3 +17,12 @@
   @include m.site-width-ladder;
 }
 
+
+/* `.guide wrap`（MarkdownGuide 的根节点）同挂一个元素：`.guide` 负责居中与行宽
+   （820px），`.wrap` 只补两侧内距。旧文件里它读 `var(--wrap)`，而那个变量从来
+   没有定义过 —— 规则里的 max-width 整条失效，只剩 padding 生效。这里索性只写
+   真正起作用的那部分，不再保留一个幽灵变量的引用。 */
+.wrap {
+  width: 100%;
+  padding-inline: v.$space-4;
+}

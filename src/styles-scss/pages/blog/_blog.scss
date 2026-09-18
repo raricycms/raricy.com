@@ -715,6 +715,25 @@ a {
 }
 
 
+/* 每条评论：一条细线 + 上下内距，把相邻两楼分开。
+   随 SCSS 拆分（02f6ab5）丢失 —— 于是整片评论区没有分隔，几层楼糊成一团。
+
+   ⚠️ 只恢复**这一条**。旧文件里紧挨着的
+   `.comment-item .children { margin-left: 24px; padding-left: 16px; border-left: … }`
+   **不能**一起搬回来：楼中楼的缩进已经由 .comment-list 的 padding-left 单独承担，
+   再叠一个同值的 margin-left 就会让每层楼向右溢出 15px（那条横向滚动条的成因，
+   见上面 .comment-list 里的整段说明，tests/e2e/comment-layout.spec.ts 钉着它）。 */
+.comment-item {
+    padding: 18px 0;
+    border-top: 1px solid var(--color-border);
+}
+
+/* 嵌套列表的第一楼紧跟父楼，不要顶出一条线来断掉从属关系 */
+.comment-item .children .comment-item:first-child {
+    padding-top: 0;
+    border-top: none;
+}
+
 /* 博客详情页操作区（点赞/收藏/管理文章等）。尺寸与布局属性原先是分两条规则给的：
    上面那条死规则供 padding / min-width / display，这条供配色 —— 合并成一条，
    配色走 mixin。 */
