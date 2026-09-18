@@ -2,7 +2,7 @@ import { listVotes, createVote } from '@/lib/vote-service';
 import { getCurrentUser, isCoreUser } from '@/lib/auth';
 import { apiErr } from '@/lib/format';
 
-// GET /api/votes — 投票列表（ignore=false，最新在前；需核心用户）
+// GET /api/votes — 投票列表（只列自己创建的，ignore=false，最新在前；需核心用户）
 //
 // 对齐 Flask /vote/ menu 的 @authenticated_required。此前完全没判权，
 // 未认证用户 curl 就能拿到全站投票列表 —— 页面挡了 core，接口漏了。
@@ -11,7 +11,7 @@ export async function GET() {
   if (!user) return apiErr(401, '请先登录');
   if (!isCoreUser(user)) return apiErr(403, '需要核心用户权限');
 
-  const votes = await listVotes();
+  const votes = await listVotes(user.id);
   return Response.json({
     code: 200,
     message: 'ok',

@@ -35,7 +35,8 @@ export function generateVoteId(length = 9): string {
   return chars.join('');
 }
 
-// ── 列表：ignore=false，最新在前，带 option_count / total_votes ────────────────
+// ── 列表：只列自己创建的（authorId），ignore=false，最新在前，
+//    带 option_count / total_votes ────────────────────────────────────────────
 export interface VoteListItem {
   id: string;
   title: string;
@@ -47,9 +48,13 @@ export interface VoteListItem {
   totalVotes: number;
 }
 
-export async function listVotes(): Promise<VoteListItem[]> {
+/**
+ * 列出某用户创建的投票（对齐 listUserClips 的形态）。
+ * 排除软删除，按 createdAt 倒序。
+ */
+export async function listVotes(userId: string): Promise<VoteListItem[]> {
   const votes = await prisma.vote.findMany({
-    where: { ignore: false },
+    where: { authorId: userId, ignore: false },
     orderBy: { createdAt: 'desc' },
     select: {
       id: true,

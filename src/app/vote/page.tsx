@@ -8,8 +8,8 @@ import { GuidePill } from '@/app/components/MarkdownGuide';
 export const dynamic = 'force-dynamic';
 
 export default async function VoteListPage() {
-  await requireCoreUser();
-  const votes = await listVotes();
+  const user = await requireCoreUser();
+  const votes = await listVotes(user.id);
 
   return (
     <div className="vote-page">
