@@ -14,7 +14,8 @@ type BlogRow = {
 const PER_PAGE = 20;
 
 // 「引用博客」选择弹窗：按更新时间倒序 + 标题/简介/作者搜索 + 分页。
-// 数据源是公开的 GET /api/blogs（sort=updated&search=&per_page=&page=）。
+// 数据源是 GET /api/blogs（sort=updated&search=&per_page=&page=），**需 core+ 会话**
+// —— 两个挂载点（评论编辑器、讨论）都在 core+ 页面下，请求带 same-origin 凭据。
 export default function QuoteBlogModal({
   onClose,
   onPick,

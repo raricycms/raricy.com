@@ -386,7 +386,8 @@ GET /api/stickers
 Cookie: raricy_session=<JWT>
 ```
 
-需要登录（你本来就登录着）。响应：
+需要 **core+** 登录（你本来就登录着，见 §2.2）。非 core 账号返回 `403 需要核心用户权限`。
+响应：
 
 ```jsonc
 {
