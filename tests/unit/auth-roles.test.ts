@@ -2,14 +2,14 @@
 //
 // 这些函数是全站鉴权的最底层：blog/admin 路由、API 权限检查都建立在它们之上。
 // 一旦某个角色被意外提权（比如未知角色字符串被当成 admin），影响面是整站。
-// 所以这里用「角色矩阵」把 Flask 的 user → core → admin → owner 体系逐格钉死。
+// 所以这里用「角色矩阵」把角色阶梯 user → core → admin → owner 逐格钉死。
 //
 // 不测 getCurrentUser：它依赖 cookie + DB，属于集成范畴，另有用例覆盖。
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { isOwner, hasAdminRights, isCoreUser, isCurrentlyBanned } from '@/lib/auth';
 
-/** 角色矩阵：对齐 Flask User 模型的 is_owner / has_admin_rights / is_core_user。 */
+/** 角色矩阵：每档角色在 isOwner / hasAdminRights / isCoreUser 三个判定上的期望值。 */
 const ROLE_MATRIX = [
   //  role       isOwner  hasAdminRights  isCoreUser
   { role: 'owner', owner: true, admin: true, core: true },
@@ -47,7 +47,7 @@ describe('角色矩阵（user → core → admin → owner 逐级包含）', () 
     expect(isCoreUser(core)).toBe(true);
   });
 
-  it('普通 user 三项全否（未通过邀请码认证，authenticated_required 应拦截）', () => {
+  it('普通 user 三项全否（未通过邀请码认证，requireCoreUser 应拦下）', () => {
     const user = { role: 'user' };
     expect([isOwner(user), hasAdminRights(user), isCoreUser(user)]).toEqual([false, false, false]);
   });
@@ -81,7 +81,7 @@ describe('null / 异常输入（未登录与防意外提权）', () => {
 
 // ── 禁言判定 ────────────────────────────────────────────────────────────────
 
-describe('isCurrentlyBanned —— 对齐 Flask is_currently_banned 的自动过期语义', () => {
+describe('isCurrentlyBanned —— 禁言的自动过期语义', () => {
   afterEach(() => {
     vi.useRealTimers();
   });
@@ -150,7 +150,7 @@ describe('isCurrentlyBanned —— 对齐 Flask is_currently_banned 的自动过
   });
 
   it('是纯判定，不产生副作用（不改传入对象；过期状态的落库由调用方负责）', () => {
-    // Flask 的 is_currently_banned 会顺手清掉过期禁言状态；TS 版只读不写。
+    // 判定只读不写：过期禁言状态的落库由调用方负责，这里不顺手改传入对象。
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
     const u = { isBanned: true, banUntil: past(1000) };

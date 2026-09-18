@@ -29,7 +29,7 @@ async function createBlog(
     data: { title, description: 'e2e 造数', content },
   });
   expect(res.status(), `建文章失败：${await res.text()}`).toBe(200);
-  // 字段名是 blog_id（对齐 Flask），不是 id
+  // 字段名是 blog_id（对外契约），不是 id
   const body = await res.json();
   expect(body.blog_id, `建文章没回 blog_id：${JSON.stringify(body)}`).toBeTruthy();
   return body.blog_id as string;

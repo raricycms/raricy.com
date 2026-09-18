@@ -24,7 +24,7 @@ test.describe('认证主链路', () => {
     await page.check('#agreeTerms');
     await page.click('button[type="submit"]');
 
-    // 注册成功后前端 setTimeout 1.8s 再 router.push('/login')（对齐 Flask register.html）
+    // 注册成功后前端 setTimeout 1.8s 再 router.push('/login')
     await page.waitForURL('**/login', { timeout: 15_000 });
 
     // 关键断言：注册接口下发的会话 cookie 必须被浏览器接受、并在**新的导航**里发回服务端。
@@ -65,7 +65,7 @@ test.describe('认证主链路', () => {
     // 用 toHaveCount 而非 toBeVisible：移动端（iPhone 13 视口）下导航折进汉堡菜单，
     // 登录链接在 DOM 里但 hidden —— 断可见性会让这条用例只在桌面视口成立，
     // 且失败信息像「登出没生效」，纯属误导。
-    // 类名是 Next Navbar 的 site-login-btn（Flask 时代的 .nav-login 已随迁移废弃）。
+    // 类名是 Next Navbar 的 site-login-btn。
     await expect(page.locator('.site-login-btn')).toHaveCount(1);
     await expect(page.locator('#userDropdownToggle')).toHaveCount(0);
     expect(await serverSeesAuthenticated(page)).toBe(false);
@@ -119,7 +119,7 @@ test.describe('登录回跳（next）', () => {
   test('带 next 登录后回到原页，而不是首页', async ({ page }) => {
     // Next 侧一度**完全忽略** next：登录页那个 name="next" 的 hidden input
     // 从没被发送过，跳转硬编码 '/'。于是「未登录点签到 → 登录 → 落到首页」，
-    // 用户还得自己再点一次。Flask 有 64 个 @login_required 路由都能正常回原页。
+    // 用户还得自己再点一次。
     await loginViaUI(page, SEED_USERS.core.username, SEED_PASSWORD, '/checkin');
     await expect(page).toHaveURL('/checkin');
     expect(await serverSeesAuthenticated(page)).toBe(true);

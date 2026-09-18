@@ -86,8 +86,8 @@ export const SEED_BLOG2 = {
  * 第三篇种子文章 —— **精选**，栏目与另两篇相同（SEED_CATEGORY）。
  *
  * 【防的回归】目录页曾把「没有 featured 参数」当成 featured=false 传给 listBlogs，
- * 而 service 那边 false 是**生效的筛选**（只看非精选，对齐 Flask
- * `if featured in (True, False)`）—— 于是精选文章在「全部文章」和它自己的栏目里
+ * 而 service 那边 false 是**生效的筛选**（只看非精选；只有真的传了 featured=false
+ * 才算「筛非精选」，不传 ≠ false）—— 于是精选文章在「全部文章」和它自己的栏目里
  * 双双消失，只有点侧栏「精选」才看得见。用它盯住这条。
  *
  * 时间刻意排在另两篇之后（发布最新、更新最旧），两种排序下都落在末尾：

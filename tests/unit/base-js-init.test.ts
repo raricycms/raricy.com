@@ -6,7 +6,8 @@
 // document.addEventListener('DOMContentLoaded', ...) 里，而 Next 用
 // <Script strategy="afterInteractive"> 加载它 —— 此时 DOMContentLoaded 早已触发，
 // 回调永远不会执行 → 移动端汉堡菜单、头像下拉、通知计数、签到指示全部失效。
-// （原 Flask 由 base.html 内联 <script> 在解析期执行，赶得上该事件，故无此问题。）
+// （base.js 由 <Script strategy="afterInteractive"> 在 DOMContentLoaded 之后才执行，
+//   故该事件不会再触发，监听器注册了也白等。）
 // 修复：readyState === 'loading' 才等事件，否则立即初始化。
 //
 // 这个测试的关键在于：**必须在 DOM 已就绪之后再执行 base.js**，
@@ -99,7 +100,7 @@ describe('回归：base.js 在 DOM 已就绪后加载时，仍须完成初始化
   });
 });
 
-describe('DOM 仍在解析时（原 Flask 的时序）也必须正常', () => {
+describe('DOM 仍在解析时也必须正常', () => {
   it('readyState=loading 时注册监听器，DOMContentLoaded 后完成初始化', () => {
     document.body.innerHTML = NAVBAR_HTML;
     (globalThis as any).fetch = () =>

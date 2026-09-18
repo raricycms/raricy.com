@@ -1,14 +1,14 @@
-// blog-service.ts —— 博客业务逻辑（对齐 Flask BlogService / BlogValidator）
+// blog-service.ts —— 博客业务逻辑
 //
 // 【为什么这么测】
-// 这一层是迁移的「语义契约」：Next 侧必须和 Flask 产出逐字一致的校验文案、
-// 一致的日限额边界、一致的软删除过滤。文案一旦漂移，前端提示就和老站不一样；
+// 这一层是「语义契约」：校验文案逐字、日限额边界、软删除过滤，三者都由本文件的
+// 断言钉住 —— 要改行为就得先改这里。文案一旦漂移，前端提示就与存量文案不一致；
 // 边界一旦漂移，用户要么被多拦一篇要么被多放一篇。所以这里的断言大量用
 // 「钉死字面量」而非 toContain —— 目的就是让任何无意的措辞改动直接红。
 //
 // 跑在临时 SQLite 上（tests/helpers/db.ts 有硬校验，不会碰真实库）。
 //
-// ⚠️ 本文件中标注【与 Flask 不一致】的用例，钉的是**当前实现的实际行为**，
+// ⚠️ 本文件中标注【记录现状】的用例，钉的是**当前实现的实际行为**，
 //    不是期望行为。**修复源码时应当删掉那些块并改成回归用例**（别只在旁边追加新块 ——
 //    曾发生过旧块留在原地、断言已翻转，读者据旧块得出「漏洞仍在」的相反结论）。
 
@@ -45,10 +45,10 @@ beforeEach(async () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 1. validateBlogData —— 文案逐字对齐 Flask BlogValidator.validate_blog_data
+// 1. validateBlogData —— 文案逐字固定
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('validateBlogData / 常量与 Flask 对齐', () => {
+describe('validateBlogData / 常量固定', () => {
   it('长度上限常量（30 / 100 / 250000）', () => {
     // 这三个数字前端也在用（字数计数器），漂了就会出现「前端说没超、后端说超了」
     expect(BLOG_TITLE_MAX, 'MAX_TITLE_LENGTH').toBe(30);
@@ -70,7 +70,7 @@ describe('validateBlogData / 缺参数', () => {
   });
 
   it('空对象 → 先撞标题校验，报「标题不能为空」', async () => {
-    // 对齐 Flask：`if not data` 只拦 falsy，{} 是 truthy 会往下走
+    // 规则：`if not data` 只拦 falsy，{} 是 truthy 会往下走
     const r = await validateBlogData({});
     expect((r as { message: string }).message).toBe('标题不能为空');
   });
@@ -102,7 +102,7 @@ describe('validateBlogData / 必填', () => {
     expect((r as { message: string }).message).toBe('标题不能为空');
   });
 
-  it('内容仅空白 → 通过（Flask 对 content 不 trim，`data.get("content") or ""` 里 "   " 为真）', async () => {
+  it('内容仅空白 → 通过（content 不 trim，`data.get("content") or ""` 里 "   " 为真）', async () => {
     // 这条容易被“顺手加个 trim”改坏 —— 语义差异必须钉住
     const r = await validateBlogData(baseInput({ content: '   ' }));
     expect(r.ok, 'content 不参与 trim，纯空白应视为非空').toBe(true);
@@ -118,7 +118,7 @@ describe('validateBlogData / 必填', () => {
 describe('validateBlogData / 长度上限（边界逐字对齐）', () => {
   it('标题恰好 30 字 → 通过；31 字 → 「标题不能超过30个字符」', async () => {
     const ok = await validateBlogData(baseInput({ title: 'a'.repeat(30) }));
-    expect(ok.ok, '恰好等于上限应放行（Flask 用 > 判断）').toBe(true);
+    expect(ok.ok, '恰好等于上限应放行（用 > 判断）').toBe(true);
 
     const bad = await validateBlogData(baseInput({ title: 'a'.repeat(31) }));
     expect((bad as { message: string }).message).toBe('标题不能超过30个字符');
@@ -176,7 +176,7 @@ describe('validateBlogData / 栏目校验', () => {
     expect((r as { data: { categoryId: number | null } }).data.categoryId).toBe(cat.id);
   });
 
-  it('category_id 传字符串数字 → 也接受（对齐 Flask 的 int() 转换）', async () => {
+  it('category_id 传字符串数字 → 也接受（按 int 解析）', async () => {
     const cat = await makeCategory({ isActive: true });
     const r = await validateBlogData(baseInput({ category_id: String(cat.id) }));
     expect(r.ok, '表单/JSON 常把 id 传成字符串').toBe(true);
@@ -189,7 +189,7 @@ describe('validateBlogData / 栏目校验', () => {
   });
 
   it('栏目存在但已停用（isActive=false）→ 「选择的栏目不存在」', async () => {
-    // Flask 的查询条件是 filter_by(id=..., is_active=True) —— 停用栏目等同不存在
+    // 查询条件是 id + isActive=true —— 停用栏目等同不存在
     const cat = await makeCategory({ isActive: false });
     const r = await validateBlogData(baseInput({ category_id: cat.id }));
     expect((r as { message: string }).message, '停用栏目不得再收新文').toBe('选择的栏目不存在');
@@ -273,7 +273,7 @@ describe('发文日限额 / countBlogsToday + BLOG_DAILY_LIMIT', () => {
     expect(await countBlogsToday(me.id)).toBe(1);
   });
 
-  it('软删除的文章仍占额度（对齐 Flask：查询不过滤 ignore）', async () => {
+  it('软删除的文章仍占额度（查询不过滤 ignore）', async () => {
     // 若日后加上 ignore=false 过滤，用户就能靠「发了删、删了发」绕过限额
     const u = await makeUser();
     await makeBlog({ authorId: u.id, createdAt: todayAt(0), ignore: true });
@@ -282,13 +282,13 @@ describe('发文日限额 / countBlogsToday + BLOG_DAILY_LIMIT', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 3. countMarkdownWords —— 对齐 app/utils/markdown_countword.py
-//    下列期望值均由 Python 原实现跑出来后写死，逐条比对。
+// 3. countMarkdownWords
+//    下列期望值均由历史实现实跑后写死（基准值），逐条比对。
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('countMarkdownWords / 与 Python 原实现逐样例对齐', () => {
+describe('countMarkdownWords / 与历史实现逐样例对齐', () => {
   it('纯文本中英混排', () => {
-    // Python 实测：{'total_characters': 16, 'non_whitespace_characters': 14}
+    // 历史实现实测：{'total_characters': 16, 'non_whitespace_characters': 14}
     expect(countMarkdownWords('你好世界 hello world')).toEqual({
       total_characters: 16,
       non_whitespace_characters: 14,
@@ -338,7 +338,7 @@ describe('countMarkdownWords / 与 Python 原实现逐样例对齐', () => {
 
   it('综合样例：标题 + 加粗 + 代码块 + 图片 + 链接 + 中英混排', () => {
     const md = '# 标题\n\n中英 mix 文本 **加粗**\n\n```js\nlet a=1\n```\n\n![img](a.png) [链接](b.com)';
-    // Python 实测：18 / 13
+    // 历史实现实测：18 / 13
     expect(countMarkdownWords(md)).toEqual({
       total_characters: 18,
       non_whitespace_characters: 13,
@@ -368,13 +368,13 @@ describe('countMarkdownWords / 与 Python 原实现逐样例对齐', () => {
   });
 
   // 【回归】跨行的行内反引号不该被整段吃掉。
-  // Python 的 r'`.*?`' **未开 DOTALL** → 不跨行 → 'a `x\ny` b' 保留为 'a x y b' = 7/4。
+  // 基准实现里的 r'`.*?`' **未开 DOTALL** → 不跨行 → 'a `x\ny` b' 保留为 'a x y b' = 7/4。
   // 曾经 TS 写成 /`[\s\S]*?`/g（跨行）→ 整段吃掉 → 'a b' = 3/2。
-  // 五条正则里只有代码块那条 Python 才开了 DOTALL，其余必须用不跨行的 `.`。
-  it('跨行的行内反引号不跨行匹配（与 Python 一致：7/4）', () => {
+  // 五条正则里只有代码块那条开了 DOTALL，其余必须用不跨行的 `.`。
+  it('跨行的行内反引号不跨行匹配（与基准实现一致：7/4）', () => {
     expect(
       countMarkdownWords('a `x\ny` b'),
-      '若用 [\\s\\S] 模拟 `.`，会漏掉 Python 未开 DOTALL 这一点'
+      '若用 [\\s\\S] 模拟 `.`，会漏掉基准实现未开 DOTALL 这一点'
     ).toEqual({ total_characters: 7, non_whitespace_characters: 4 });
   });
 });
@@ -386,7 +386,7 @@ describe('countMarkdownWords / 与 Python 原实现逐样例对齐', () => {
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 describe('createBlog', () => {
-  it('返回 UUID v4 主键（对齐 Flask 的 str(uuid.uuid4())）', async () => {
+  it('返回 UUID v4 主键', async () => {
     const u = await makeUser();
     const id = await createBlog(u.id, {
       title: 'T',
@@ -514,7 +514,7 @@ describe('updateBlog / 变更详情文案', () => {
   });
 
   it('多项同时变更 → 顺序固定为 标题 / 摘要 / 栏目 / 正文', async () => {
-    // 顺序即通知里的展示顺序，Flask 的 append 顺序如此，不能乱
+    // 顺序即通知里的展示顺序，契约如此，不能乱
     const u = await makeUser();
     const cat = await makeCategory({ name: '技术' });
     const b = await makeBlog({ authorId: u.id, title: '旧', description: '旧摘要', content: '旧正文', categoryId: null });
@@ -569,12 +569,12 @@ describe('updateBlog / hasChanges 语义与落库', () => {
     expect(content!.content).toBe('新正文');
   });
 
-  it('文章不存在 → { hasChanges: false, changesDetail: [] }（对齐 Flask 的 (False, [])）', async () => {
+  it('文章不存在 → { hasChanges: false, changesDetail: [] }', async () => {
     const r = await updateBlog('no-such-blog', { title: 'T', description: 'D', content: 'C', categoryId: null });
     expect(r).toEqual({ hasChanges: false, changesDetail: [] });
   });
 
-  it('正文行缺失时 upsert 创建（对齐 Flask：content_obj 不存在则 add）', async () => {
+  it('正文行缺失时 upsert 创建（content 行不存在则新建）', async () => {
     const u = await makeUser();
     // 故意造一篇没有 blog_contents 行的文章（历史数据里存在这种情况）
     await prisma.blog.create({
@@ -587,9 +587,9 @@ describe('updateBlog / hasChanges 语义与落库', () => {
     expect(content!.content).toBe('新正文');
   });
 
-  it('【与 Flask 不一致】软删除的文章仍可被 updateBlog 改（未过滤 ignore）', async () => {
-    // Flask 的 update_blog 用 Blog.query.get 也不过滤 ignore，行为其实一致；
-    // 但 getBlogForEdit 会过滤 —— 这里钉住 service 层不设防，权限得由调用方兜。
+  it('【记录现状】软删除的文章仍可被 updateBlog 改（未过滤 ignore）', async () => {
+    // service 层的 updateBlog 不过滤 ignore —— 与 getBlogForEdit 的口径不同；
+    // 这里钉住 service 层不设防，权限得由调用方兜。
     const u = await makeUser();
     const b = await makeBlog({ authorId: u.id, title: 'T', description: 'D', content: 'C', ignore: true });
     const r = await updateBlog(b.id, { title: 'T2', description: 'D', content: 'C', categoryId: null });
@@ -792,7 +792,7 @@ describe('listBlogs / 分类过滤', () => {
     expect(r.total).toBe(1);
   });
 
-  it('一级栏目包含其子栏目的文章（对齐 Flask 的 child_ids 展开）', async () => {
+  it('一级栏目包含其子栏目的文章（子栏目展开）', async () => {
     const u = await makeUser();
     const parent = await makeCategory({ name: '技术', slug: 'tech' });
     const child = await makeCategory({ name: '前端', slug: 'fe', parentId: parent.id });
@@ -831,7 +831,7 @@ describe('listBlogs / 分类过滤', () => {
     expect(r.blogs.map((b) => b.title)).toEqual(['正常']);
   });
 
-  // 【回归】停用栏目必须对外隐藏（对齐 Flask filter_by(slug=..., is_active=True)）。
+  // 【回归】停用栏目必须对外隐藏（按 slug 查时须带 isActive=true）。
   it('已停用的栏目（isActive=false）按 slug 查不到文章', async () => {
     const u = await makeUser();
     const dead = await makeCategory({ slug: 'dead', isActive: false });
@@ -876,7 +876,7 @@ describe('listBlogs / 「全部文章」的 excludeFromAll 排除', () => {
   // 【回归 · 用户可见】存在排除栏目时，未分类文章必须保留。
   // 曾经只写 { notIn: [...] }，而 SQL 里 `NULL NOT IN (...)` 求值为 NULL —— 未分类文章
   // 被连坐滤掉。后果：只要站内存在任意一个 exclude_from_all 栏目，
-  // **所有未分类文章就从首页消失**。Flask 显式写了 (category_id IS NULL) OR (...)。
+  // **所有未分类文章就从首页消失**。修法是显式补上 (category_id IS NULL) OR (...)。
   it('存在排除栏目时，未分类（categoryId=null）文章仍出现在全部文章', async () => {
     const u = await makeUser();
     const hidden = await makeCategory({ slug: 'hidden', excludeFromAll: true });
@@ -892,7 +892,7 @@ describe('listBlogs / 「全部文章」的 excludeFromAll 排除', () => {
     ).toEqual(['未分类文', '正常文']);
   });
 
-  // 【回归】排除必须级联到子栏目（Flask 遍历 ec.children）。
+  // 【回归】排除必须级联到子栏目（要遍历子栏目）。
   it('excludeFromAll 的栏目，其子栏目的文章也不出现在全部文章', async () => {
     const u = await makeUser();
     const hidden = await makeCategory({ slug: 'hidden', excludeFromAll: true });
@@ -905,7 +905,7 @@ describe('listBlogs / 「全部文章」的 excludeFromAll 排除', () => {
     expect(r.blogs.map((b) => b.title), '被排除栏目的子栏目文章漏了出来').toEqual(['正常文']);
   });
 
-  // 【回归】排除逻辑与 featured 无关（Flask 只看有没有传 category_slug）。
+  // 【回归】排除逻辑与 featured 无关（只看有没有传 categorySlug）。
   it('精选页同样排除 excludeFromAll 的栏目', async () => {
     const u = await makeUser();
     const hidden = await makeCategory({ slug: 'hidden', excludeFromAll: true });
@@ -967,7 +967,7 @@ describe('listBlogs / 搜索与精选', () => {
     expect(r.blogs.map((b) => b.title)).toEqual(['精选文']);
   });
 
-  // 【回归】featured=false 必须筛出「非精选」（对齐 Flask `if featured in (True, False)`）。
+  // 【回归】featured=false 必须筛出「非精选」（`if featured in (True, False)`：false 也得真的过滤）。
   // 曾经写 `if (params.featured)` → false 直接跳过，等同不传，丢掉了「只看非精选」的语义。
   it('featured=false 筛出非精选文章', async () => {
     const u = await makeUser();
@@ -1152,7 +1152,7 @@ describe('toggleLike / 限频（RULES.likeHourly —— 数值不写死）', () 
 
   // 【回归】无效请求不得消耗配额。
   // 曾经 rateLimit 跑在存在性检查之前 —— 刷一个不存在的 blogId 就能把自己
-  // 100 次/时的点赞额度烧光（自伤）。Flask 是先查存在性再扣限频。
+  // 100 次/时的点赞额度烧光（自伤）。正确顺序是先查存在性再扣限频。
   it('点不存在的文章不消耗额度', async () => {
     const u = await makeUser();
     const b = await makeBlog({});
@@ -1184,7 +1184,7 @@ describe('toggleLike / 限频（RULES.likeHourly —— 数值不写死）', () 
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 7.5 点赞通知（对齐 Flask like_service.py:84-101）
+// 7.5 点赞通知
 //
 // 【为什么钉这些】这段通知在 Next 移植时整段丢了：toggleLike 里根本没有
 // sendNotification，BlogLike.notificationSent 也从未被读写 —— 站上 4.3 万条历史
@@ -1279,7 +1279,7 @@ describe('toggleLike / 点赞通知', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 // 回归：时间戳存储格式与日期比较（2026-07-16 补测试时发现的最严重问题）
 //
-// 背景：scripts/normalize-datetimes.mjs 最初把 Flask 的空格格式时间戳转成 **TEXT ISO**。
+// 背景：scripts/normalize-datetimes.mjs 最初把历史库里的空格格式时间戳转成 **TEXT ISO**。
 // Prisma 能读，于是一路看着都正常；但 Prisma 做 DateTime 比较时绑定的是 INTEGER 毫秒，
 // 而 SQLite 跨存储类型比较**按类型序**（INTEGER < TEXT）而非数值：
 //    · gte  → 所有 TEXT 行恒真
@@ -1349,14 +1349,14 @@ describe('回归：日期比较必须按数值而非存储类型', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 回归：countMarkdownWords 必须与 Python 原实现逐字节一致
+// 回归：countMarkdownWords 必须与历史实现逐字节一致
 //
-// 下面的期望值由 **Python 原实现 app/utils/markdown_countword.py 实跑得出**（非手写）。
-// 关键：Python 里**只有代码块那一条**加了 re.DOTALL，其余四条（行内代码/图片/链接/
+// 下面的基准值由**历史实现实跑得出**（非手写），数值不得改动。
+// 关键：基准实现里**只有代码块那一条**加了 re.DOTALL，其余四条（行内代码/图片/链接/
 // HTML 标签）都是裸 `.`，不跨行。曾经 TS 全用了 [\s\S]（跨行），导致跨行内容被多吞：
-// 例如 'a `x\ny` b' → Python 得 7/4，全 [\s\S] 得 3/2。
+// 例如 'a `x\ny` b' → 基准得 7/4，全 [\s\S] 得 3/2。
 // ─────────────────────────────────────────────────────────────────────────────
-describe('countMarkdownWords 与 Python 原实现对拍', () => {
+describe('countMarkdownWords 与历史实现对拍', () => {
   const CASES: { input: string; total: number; nonWs: number }[] = [
   { input: "纯文本测试", total: 5, nonWs: 5 },
   { input: "a `x\ny` b", total: 7, nonWs: 4 },
@@ -1375,10 +1375,10 @@ describe('countMarkdownWords 与 Python 原实现对拍', () => {
   for (const c of CASES) {
     it(`${JSON.stringify(c.input)} → ${c.total}/${c.nonWs}`, () => {
       const r = countMarkdownWords(c.input);
-      expect(r.total_characters, `total_characters（Python 基准 ${c.total}）`).toBe(c.total);
+      expect(r.total_characters, `total_characters（基准值 ${c.total}）`).toBe(c.total);
       expect(
         r.non_whitespace_characters,
-        `non_whitespace_characters（Python 基准 ${c.nonWs}）`
+        `non_whitespace_characters（基准值 ${c.nonWs}）`
       ).toBe(c.nonWs);
     });
   }

@@ -1,7 +1,7 @@
 // db-time.ts —— 库内时间戳的时区约定。
 //
 // 【为什么需要这个约定】
-// Flask 用 datetime.now() 写 naive datetime，生产服务器 TZ=UTC+8 → 库里是「UTC+8 墙上时间」。
+// 历史实现用 datetime.now() 写 naive datetime，生产服务器 TZ=UTC+8 → 库里是「UTC+8 墙上时间」。
 // （服务器时区由真实数据反推证实：daily_checkins 中显式按 UTC+8 算的 checkin_date 与
 //   date(created_at) 2170/2170 全等；若服务器为 UTC，UTC 16:00–23:59 的 548 条签到必然跨日不等。）
 // normalize-datetimes 转换时不做时区平移，故墙上时间被原样保留。
@@ -33,7 +33,7 @@ describe('nowForDb：写库用的当前时间', () => {
   });
 });
 
-describe('与展示层自洽：写入 → 显示的日期必须和 Flask 一致', () => {
+describe('与展示层自洽：写入 → 显示的日期必须与历史数据语义一致', () => {
   it('UTC+8 早上 07:30 发的内容，列表页显示当天而不是前一天', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-07-15T23:30:00.000Z')); // UTC+8 = 2026-07-16 07:30
@@ -41,7 +41,7 @@ describe('与展示层自洽：写入 → 显示的日期必须和 Flask 一致'
     const written = nowForDb(); // 应写入的值
     expect(
       ymd(written),
-      '若写入用 new Date()（真实 UTC），这里会变成 2026-07-15 —— 比 Flask 早一天'
+      '若写入用 new Date()（真实 UTC），这里会变成 2026-07-15 —— 比历史数据早一天'
     ).toBe('2026-07-16');
   });
 

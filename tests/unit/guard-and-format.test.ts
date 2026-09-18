@@ -1,6 +1,6 @@
-// format.ts —— API 响应封装 + 展示辅助（对齐 Flask 的序列化约定）。
-// guard.ts  —— 服务端组件的权限闸门（对齐 Flask 的 @authenticated_required / @owner_required）。
-//   当前契约（07-24 迁移引入，与 Flask 的差异）：
+// format.ts —— API 响应封装 + 展示辅助（前端统一靠 data.code 判成功 / 失败）。
+// guard.ts  —— 服务端组件的权限闸门（未登录先跳登录页；已登录但权限不足 → 403）。
+//   当前契约（07-24 引入）：
 //   · 未登录 → redirect('/login?next=<原URL>') —— 保留目标 URL，登录后回跳
 //   · 已登录但权限不足 → forbidden() 原地渲染 403 页
 //   redirect / forbidden 都由 next/navigation 抛特殊错误中断渲染，测试里 mock 后同样抛。
@@ -8,7 +8,7 @@
 // 这两个模块都是纯逻辑，但都在"跨端对齐"的关键路径上：
 //   - apiErr 的 body.code 与 HTTP status 必须一致：前端统一靠 data.code === 200 判成功，
 //     一旦两者错位，前端会把失败当成功（或反之）。
-//   - guard 的角色边界一旦放宽，就是越权（图床管理页原为 @owner_required）。
+//   - guard 的角色边界一旦放宽，就是越权（图床管理页是仅站长可进的那类页面）。
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
@@ -60,7 +60,7 @@ beforeEach(() => {
 // format.ts
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('apiOk —— 成功响应（对齐 Flask 的 { code, message, ...data }）', () => {
+describe('apiOk —— 成功响应（{ code, message, ...data } 平铺结构）', () => {
   it('HTTP 200 + JSON Content-Type', async () => {
     const res = apiOk({ id: 'x' });
     expect(res.status).toBe(200);
@@ -135,7 +135,7 @@ describe('categoryFullPath —— 对齐 Category.get_full_path()', () => {
     ).toBe('技术 > Python');
   });
 
-  it('分隔符固定为 " > "（前后各一个空格，与 Flask 一致）', () => {
+  it('分隔符固定为 " > "（前后各一个空格）', () => {
     expect(categoryFullPath({ name: '子', parentId: 9, parent: { name: '父' } })).toContain(' > ');
   });
 
@@ -196,7 +196,7 @@ describe('ymd —— 对齐 Blog.to_dict 的 %Y-%m-%d', () => {
 // guard.ts
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('requireCoreUser —— 对齐 @authenticated_required（core 及以上）', () => {
+describe('requireCoreUser —— core 及以上放行，普通 user 拒绝', () => {
   for (const role of ['core', 'admin', 'owner']) {
     it(`✅ ${role} 通过，并原样返回该用户`, async () => {
       const u = userWithRole(role);
@@ -240,7 +240,7 @@ describe('requireCoreUser —— 对齐 @authenticated_required（core 及以上
   });
 });
 
-describe('requireOwner —— 对齐 @owner_required（仅站长）', () => {
+describe('requireOwner —— 仅站长放行，admin 也不放行', () => {
   it('✅ owner 通过，并原样返回该用户', async () => {
     const u = userWithRole('owner');
     auth.getCurrentUser.mockResolvedValue(u);

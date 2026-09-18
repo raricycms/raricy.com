@@ -150,7 +150,7 @@ export default async function globalSetup() {
   }
 
   const url = `file:${E2E_DB}`;
-  // 用 db push 而非 migrate：本库的 schema 是从 Flask 建好的库 introspect 出来的，
+  // 用 db push 而非 migrate：本库的 schema 是从历史实现建好的库 introspect 出来的，
   // 没有 migration 历史，migrate 会要求先 baseline。
   //
   // 直接用 node 跑 prisma 的 CLI 入口，不走 npx —— npx 在 Windows 上是 npx.cmd，

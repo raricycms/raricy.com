@@ -1,4 +1,4 @@
-// comment-service.ts —— 评论业务逻辑（对齐 Flask app/web/blog/services/comment_service.py）
+// comment-service.ts —— 评论业务逻辑
 //
 // 【为什么测这些】评论是全站唯一的「楼中楼 + 软删除 + 冗余计数」三合一模块，
 // 三条规则互相纠缠，任何一条写错都不会报错，只会静默丢数据：
@@ -129,7 +129,7 @@ describe('楼中楼：root_id 归属', () => {
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.comment.parent_id, '顶层评论无父级').toBeNull();
-    expect(r.comment.root_id, '顶层评论 root_id 为 null（对齐 Flask：root_id 不自指）').toBeNull();
+    expect(r.comment.root_id, '顶层评论 root_id 为 null（root_id 不自指）').toBeNull();
   });
 
   it('回复顶层评论：root_id 指向该顶层评论', async () => {
@@ -233,7 +233,7 @@ describe('楼中楼：树形结构与顺序', () => {
   });
 
   it('孤儿评论（父级不在结果集内）降级为顶层，不会整条丢失', async () => {
-    // 对齐 Flask：`if c.parent_id and c.parent_id in id_to_node` else roots.append
+    // 规则：parent_id 存在且能在结果集里找到父级才挂上去，否则降级为顶层。
     const { author, blog } = await seedBlog();
     const hidden = await makeComment({
       blogId: blog.id, authorId: author.id, content: 'hidden-parent', status: 'hidden',
@@ -392,7 +392,7 @@ describe('软删除：权限与落库', () => {
     expect(r.ok).toBe(true);
   });
 
-  // 对齐 Flask delete_comment：管理员删他人评论必须给原因（1..500）。
+  // 管理员删他人评论必须给原因（1..500）。
   // 这条日志是 /audit 公示与申诉的数据来源 —— 不填原因就不该放行。
   it.each(['admin', 'owner'] as const)('%s 删他人评论：未给原因 → 拒绝', async (role) => {
     const { author, blog } = await seedBlog();
@@ -449,7 +449,7 @@ describe('软删除：权限与落库', () => {
     expect(log!.reason).toBe('广告内容');
   });
 
-  it('作者删自己评论不写审计日志（对齐 Flask：只记管理员删他人）', async () => {
+  it('作者删自己评论不写审计日志（审计只记管理员删他人）', async () => {
     const { author, blog } = await seedBlog();
     const c = await makeComment({ blogId: blog.id, authorId: author.id });
 
@@ -676,8 +676,8 @@ describe('审核状态：pending / approved / hidden', () => {
   });
 
   it('status 为 NULL 的历史数据不出现在列表里（严格等值过滤）', async () => {
-    // 注意：schema 里 status 可空。Flask 侧 filter_by(status="approved") 同样不匹配 NULL，
-    // 语义一致 —— 但迁移历史数据时 status 必须显式写成 "approved"，否则评论集体消失。
+    // 注意：schema 里 status 可空，而过滤条件是严格等值 —— NULL 不匹配 "approved"。
+    // 所以迁移历史数据时 status 必须显式写成 "approved"，否则评论集体消失。
     const { author, blog } = await seedBlog();
     await makeComment({ blogId: blog.id, authorId: author.id, content: 'null-status', status: null });
     expect(await listCommentsForBlog(blog.id)).toEqual([]);
@@ -811,7 +811,7 @@ describe('边界：parentId 相关', () => {
   });
 
   it('回复一条 pending 的评论是允许的（parent 校验不看 status）', async () => {
-    // 记录当前语义：Flask 与 TS 都只校验 存在 / 同文章 / 未删除，不校验 status。
+    // 记录当前语义：parent 校验只看 存在 / 同文章 / 未删除，不看 status。
     // 后果：回复挂到 pending 父级上，列表里会因父级被过滤而上浮成顶层。
     const { author, blog } = await seedBlog();
     const pending = await makeComment({
@@ -850,7 +850,7 @@ describe('边界：listCommentsForBlog', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('序列化：snake_case 字段与作者信息', () => {
-  it('字段名与 Flask API JSON 形状一致', async () => {
+  it('字段名与 API JSON 形状一致', async () => {
     const { author, blog } = await seedBlog();
     const r = await createComment({ blogId: blog.id, authorId: author.id, content: 'x' });
     if (!r.ok) throw new Error('前置失败');
@@ -966,9 +966,9 @@ describe('评论点赞：toggle 与 likesCount', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 评论通知（对齐 Flask CommentService.create_comment 的 send_notification）
+// 评论通知
 //
-// 这块此前在 TS 侧完全缺失（测试补齐时发现）：Flask 会在有人评论/回复时通知
+// 这块此前完全缺失（测试补齐时发现）：有人评论/回复时必须通知
 // 文章作者或被回复者，否则用户永远不知道自己收到了互动。
 // ─────────────────────────────────────────────────────────────────────────────
 describe('评论通知', () => {
@@ -1013,7 +1013,7 @@ describe('评论通知', () => {
     expect(toFirst!.actorId).toBe(replier.id);
 
     const toAuthor = await prisma.notification.findFirst({ where: { recipientId: author.id } });
-    expect(toAuthor, '回复不应额外通知文章作者（对齐 Flask 的 if/elif）').toBeNull();
+    expect(toAuthor, '回复不应额外通知文章作者（顶层评论与回复二选一）').toBeNull();
   });
 
   it('自己评论自己的文章 → 不通知（排除自己）', async () => {
@@ -1038,7 +1038,7 @@ describe('评论通知', () => {
   // 注：「通知失败不影响评论」这条未写用例 —— Blog.authorId / BlogComment.authorId 都有
   // 外键非空约束，无法自然构造出「通知目标不存在」的场景；强测需要 mock
   // notification-service，那会连带把本组另外 4 条「真实校验通知落库」的用例架空。
-  // 该行为由 createComment 里 sendNotification 外层的 try/catch 保证（对齐 Flask try/except pass）。
+  // 该行为由 createComment 里 sendNotification 外层的 try/catch 保证（通知失败一律吞掉）。
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -9,14 +9,14 @@
 // fail-closed 断言都作用在 claim 上。
 //
 // 【为什么这块必须测】签到是发钱路径。曾经 checkin-service **完全没接账户微服务**
-// （0 处调用，只有一行「本切片仅写本地 DB」的注释），而 Flask 的 claim_fortune 是
-// 接了 fail-closed 的。后果：翻牌发的鱼只进本地库、远端账户毫不知情 ——
+// （0 处调用，只有一行「本切片仅写本地 DB」的注释），而翻牌发钱这条路径本就
+// 必须接 fail-closed。后果：翻牌发的鱼只进本地库、远端账户毫不知情 ——
 // 账目从切换第一天起就开始分叉，且完全静默。
 //
 // fail-closed 的核心不变式：**远端失败 → 本地必须零痕迹**。
 // 两步式下「零痕迹」= 签到行还在（已签到状态保留），但 fortune_value 复原为
 // NULL、余额/流水/账本全部回退 —— 对用户等价于「这次翻牌没发生过，可重选」，
-// 对齐 Flask claim_fortune 的 rollback 语义。
+// 即 claim 的 rollback 语义。
 // 「本地已发鱼但远端没记账」是这里最危险的失败模式。
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -211,7 +211,7 @@ describe('★ 远端失败 → 本地复原（fail-closed 的核心）', () => {
     expect(ledger?.status, '重试成功后账本行应结算为 synced').toBe('synced');
   });
 
-  it('普通异常被包装成 AccountServiceError(503)（对齐 Flask 的兜底分支）', async () => {
+  it('普通异常被包装成 AccountServiceError(503)（兜底分支）', async () => {
     mockEnabled.mockReturnValue(true);
     mockTransfer.mockRejectedValue(new Error('unexpected'));
     const u = await makeUser();

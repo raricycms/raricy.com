@@ -1,4 +1,4 @@
-// password.ts —— 与 Flask/werkzeug 的密码哈希互通。
+// password.ts —— 与 werkzeug 格式的密码哈希互通（存量用户哈希由 Python werkzeug 生成）。
 //
 // 这是整个迁移里最不能出错的一环：哈希不互通 = 465 个用户全部登不进来。
 //
@@ -7,7 +7,7 @@
 // 复现方式：
 //   python3.13 -m venv /tmp/wz && /tmp/wz/bin/pip install werkzeug
 //   /tmp/wz/bin/python -c "from werkzeug.security import generate_password_hash as g; print(g('correct horse battery staple', method='scrypt'))"
-// 用真哈希才能真正验证「Flask 生成 → Node 校验」这个方向；自产自销的往返测不了这个。
+// 用真哈希才能真正验证「werkzeug 生成 → Node 校验」这个方向；自产自销的往返测不了这个。
 
 import { describe, it, expect } from 'vitest';
 import { verifyPassword, hashPassword } from '@/lib/password';
@@ -30,7 +30,7 @@ const WERKZEUG_PBKDF2 = {
   hash: 'pbkdf2:sha256:1000000$0GVZ02AQIsWMIzBm$7948e0e65f8651432dd6b0d1d02dc07367e9307f42bf7c990ce32e43bea6e644',
 };
 
-describe('Flask → Node：校验 werkzeug 真实生成的 scrypt 哈希', () => {
+describe('werkzeug → Node：校验 werkzeug 真实生成的 scrypt 哈希', () => {
   it('ASCII 密码校验通过', async () => {
     await expect(
       verifyPassword(WERKZEUG_SCRYPT_ASCII.password, WERKZEUG_SCRYPT_ASCII.hash)
@@ -65,7 +65,7 @@ describe('Flask → Node：校验 werkzeug 真实生成的 scrypt 哈希', () =>
   });
 });
 
-describe('Flask → Node：校验 werkzeug 真实生成的 pbkdf2 哈希（旧用户）', () => {
+describe('werkzeug → Node：校验 werkzeug 真实生成的 pbkdf2 哈希（旧用户）', () => {
   it('pbkdf2:sha256 校验通过', async () => {
     await expect(
       verifyPassword(WERKZEUG_PBKDF2.password, WERKZEUG_PBKDF2.hash)
@@ -77,13 +77,13 @@ describe('Flask → Node：校验 werkzeug 真实生成的 pbkdf2 哈希（旧�
   });
 });
 
-describe('Node → Flask：hashPassword 的输出格式必须是 Flask 能校验的', () => {
+describe('Node → werkzeug：hashPassword 的输出格式必须是 werkzeug 能校验的', () => {
   it('输出符合 werkzeug scrypt 规范 scrypt:32768:8:1$salt$hex(128)', async () => {
     const h = await hashPassword('my-password-123');
     const m = h.match(/^scrypt:(\d+):(\d+):(\d+)\$([A-Za-z0-9]+)\$([0-9a-f]+)$/);
     expect(m, `不符合 werkzeug 格式: ${h}`).not.toBeNull();
     const [, N, r, p, salt, hex] = m!;
-    expect(Number(N)).toBe(32768); // 与 werkzeug 默认一致，否则 Flask 侧参数对不上
+    expect(Number(N)).toBe(32768); // 与 werkzeug 默认一致，否则存量哈希的校验方参数对不上
     expect(Number(r)).toBe(8);
     expect(Number(p)).toBe(1);
     expect(salt.length).toBe(16); // werkzeug 默认 salt 长度

@@ -13,13 +13,13 @@ import { generateShortId } from '@/lib/short-id';
 import { generateIdenticonSvg } from '@/lib/identicon';
 import { resetDb, prisma } from '../helpers/db';
 
-// base62 默认表（数字 + 大写 + 小写）——与 Flask 侧 base62 PyPI 包的 CHARSET_DEFAULT 一致
+// base62 默认表（数字 + 大写 + 小写）—— 存量邀请码要靠它解析，字符集必须与存量 ID 一致
 const BASE62 = /^[0-9A-Za-z]{12}$/;
-// short-id 字符集：小写字母 + 数字（对齐 Flask generate_stringid.py）
+// short-id 字符集：小写字母 + 数字（存量短 ID 的既定字符集，必须一致）
 const SHORTID_CHARS = /^[a-z0-9]+$/;
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 1. invite-code —— 对照 Flask app/utils/invite_code.py:generate_invite_code
+// 1. invite-code —— 12 位 base62，长度与字符集都是存量数据的既定契约
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe('generateInviteCode：12 位 base62（注册端按 length===12 硬校验）', () => {

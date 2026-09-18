@@ -124,8 +124,8 @@ describe('data-vote-id 逃逸回归（存储型 XSS）', () => {
 //
 // 【回归用例】这里曾经只渲染「结果行」：没有标题、没有投票入口、没有详情页链接，
 // 且最外层少了 .vote-embed-widget —— 而卡片背景 / 边框 / 内边距 / 宽度全挂在那个
-// 类上。于是博客正文里的投票箱既投不了票又是个裸条。原站（vote-embed.js）本是
-// **可投**的：未锁定 + 本人未投 → 可选项 + 投票按钮。
+// 类上。于是博客正文里的投票箱既投不了票又是个裸条 —— 而小组件本应**可投**：
+// 未锁定 + 本人未投 → 可选项 + 投票按钮。
 //
 // 断言落在 DOM 结构上（类名是字符串，拼错既不报错也不让构建失败）。
 // ─────────────────────────────────────────────────────────────────────────────
@@ -147,7 +147,7 @@ function widgetOf(data: VoteEmbedData = VOTE_DATA): HTMLElement {
   return el;
 }
 
-describe('投票小组件结构（对齐 Flask vote-embed.js）', () => {
+describe('投票小组件结构', () => {
   it('未投票未锁定：标题 + 可选项 + 投票按钮 + 详情链接', () => {
     const el = widgetOf();
     const widget = el.querySelector('.vote-embed-widget');

@@ -40,7 +40,7 @@ beforeEach(async () => {
 
 // ── 夹具 ────────────────────────────────────────────────────────────────────
 
-/** 造一个邀请码。默认 12 位（对齐 Flask generate_invite_code 的 base62 定长 12）。 */
+/** 造一个邀请码。默认 12 位（base62 定长 12）。 */
 async function makeInvite(opts: { code?: string; isUsed?: boolean; usedBy?: string } = {}) {
   const code = opts.code ?? `inv${Date.now().toString(36)}`.padEnd(12, '0').slice(0, 12);
   return prisma.inviteCode.create({
@@ -71,10 +71,10 @@ const goodInput = (over: Partial<Parameters<typeof registerUser>[0]> = {}) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// validateUsername —— 对齐 app/utils/verify_username.py
+// validateUsername
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('validateUsername（对齐 Flask verify_username.py）', () => {
+describe('validateUsername', () => {
   it('3-20 位边界：2 位过短、3 位通过、20 位通过、21 位过长', () => {
     expect(validateUsername('ab')).toEqual({ ok: false, message: '用户名过短（至少3个字符）' });
     expect(validateUsername('abc').ok, '3 位是下界，必须放行').toBe(true);
@@ -89,10 +89,10 @@ describe('validateUsername（对齐 Flask verify_username.py）', () => {
     expect(validateUsername('')).toMatchObject({ ok: false, message: '用户名过短（至少3个字符）' });
   });
 
-  it('Unicode 字母合法：中文 / 俄语 / 日文（Flask 的 \\p{L} 语义）', () => {
-    // 这几个正是 verify_username.py __main__ 里的示例用例
-    expect(validateUsername('张三-李四').ok, '中文 + 减号，Flask 侧标注为有效').toBe(true);
-    expect(validateUsername('русский-язык').ok, '俄语，Flask 侧标注为有效').toBe(true);
+  it('Unicode 字母合法：中文 / 俄语 / 日文（\\p{L} 语义）', () => {
+    // 这几个是历史实现自带的示例用例
+    expect(validateUsername('张三-李四').ok, '中文 + 减号，历史实现标注为有效').toBe(true);
+    expect(validateUsername('русский-язык').ok, '俄语，历史实现标注为有效').toBe(true);
     expect(validateUsername('ひらがな').ok).toBe(true);
   });
 
@@ -109,7 +109,7 @@ describe('validateUsername（对齐 Flask verify_username.py）', () => {
     expect(validateUsername('emoji😀x').ok, 'emoji 非法').toBe(false);
   });
 
-  it('不能以 _ 或 - 开头 / 结尾（文案逐字对齐 Flask）', () => {
+  it('不能以 _ 或 - 开头 / 结尾（文案逐字固定）', () => {
     expect(validateUsername('_invalid_start')).toEqual({
       ok: false,
       message: '用户名不能以 _ 或 - 开头',
@@ -184,7 +184,7 @@ describe('registerUser：成功路径', () => {
 
     const row = await prisma.user.findUniqueOrThrow({ where: { username: input.username } });
     expect(row.passwordHash, '明文入库 = 一次拖库全员裸奔').not.toBe('my-secret-pw');
-    expect(row.passwordHash, '必须是 werkzeug scrypt 格式，否则 Flask 侧校验不了').toMatch(
+    expect(row.passwordHash, '必须是 werkzeug scrypt 格式（存量哈希口径）').toMatch(
       /^scrypt:32768:8:1\$[A-Za-z0-9]{16}\$[0-9a-f]{128}$/
     );
     expect(
@@ -256,24 +256,24 @@ describe('registerUser：必填与唯一性', () => {
   it('用户名重复的判定区分大小写（记录现状：Alice 与 alice 是两个账号）', async () => {
     await makeUser({ username: 'Alice' });
     const r = await registerUser(goodInput({ username: 'alice' }));
-    // 唯一索引是 SQLite 默认的二进制比较 → 大小写敏感。与 Flask 侧口径一致属巧合，
+    // 唯一索引是 SQLite 默认的二进制比较 → 大小写敏感。这属巧合，
     // 不是有意设计。若要改成大小写不敏感，这里会是第一个红的地方。
     expect(r.ok, 'alice 与 Alice 当前被视为不同用户名').toBe(true);
   });
 
-  it('★ 校验顺序对齐 Flask：用户名重复 优先于 用户名格式', async () => {
+  it('★ 校验顺序（契约）：用户名重复 优先于 用户名格式', async () => {
     await makeUser({ username: '_taken_' }); // 既重复、格式又非法（下划线开头/结尾）
     const r = await registerUser(goodInput({ username: '_taken_' }));
     expect(r.message, '重复检查在格式检查之前').toBe('用户名已存在');
   });
 
-  it('★ 校验顺序对齐 Flask：用户名格式 优先于 邮箱重复', async () => {
+  it('★ 校验顺序（契约）：用户名格式 优先于 邮箱重复', async () => {
     await makeUser({ email: 'dup@example.com' });
     const r = await registerUser(goodInput({ username: 'a@b', email: 'dup@example.com' }));
     expect(r.message, '用户名格式检查在邮箱重复检查之前').toBe('用户名含非法字符');
   });
 
-  it('★ 校验顺序对齐 Flask：邮箱重复 优先于 邮箱格式', async () => {
+  it('★ 校验顺序（契约）：邮箱重复 优先于 邮箱格式', async () => {
     // 造一个「格式非法但已存在」的邮箱：直接落库绕过校验
     await prisma.user.create({
       data: {
@@ -308,7 +308,7 @@ describe('registerUser：格式与长度校验', () => {
     expect(await prisma.user.count()).toBe(0);
   });
 
-  it('密码 100 位通过、101 位 → 密码过长！（边界，含 Flask 原样的感叹号）', async () => {
+  it('密码 100 位通过、101 位 → 密码过长！（边界，感叹号属文案）', async () => {
     expect((await registerUser(goodInput({ password: 'a'.repeat(100) }))).ok, '100 位是上界').toBe(
       true
     );
@@ -316,7 +316,7 @@ describe('registerUser：格式与长度校验', () => {
     expect(r).toMatchObject({ ok: false, code: 400, message: '密码过长！' });
   });
 
-  it('邮箱 >100 位 → 邮箱过长!（注意 Flask 用的是半角叹号）', async () => {
+  it('邮箱 >100 位 → 邮箱过长!（注意这里用的是半角叹号）', async () => {
     const long = 'a'.repeat(95) + '@example.com'; // 107 位，格式合法但超长
     expect(long.length).toBeGreaterThan(100);
     const r = await registerUser(goodInput({ email: long }));
@@ -464,7 +464,7 @@ describe('registerUser：邀请码', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// changeOwnPassword —— 对齐 app/web/auth/settings.py:change_password
+// changeOwnPassword —— 校验旧密码 → 重写哈希 → 自增 sessionVersion（旧会话全废）
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('changeOwnPassword：成功路径', () => {
@@ -503,7 +503,7 @@ describe('changeOwnPassword：成功路径', () => {
     const row = await prisma.user.findUniqueOrThrow({ where: { id: u.id } });
     expect(await verifyPassword('newpassword1', row.passwordHash), '新密码必须能登').toBe(true);
     expect(await verifyPassword('oldpassword', row.passwordHash), '旧密码必须失效').toBe(false);
-    expect(row.passwordHash, 'Flask 侧要能校验这个哈希').toMatch(/^scrypt:32768:8:1\$/);
+    expect(row.passwordHash, '哈希格式必须与存量用户一致（werkzeug scrypt）').toMatch(/^scrypt:32768:8:1\$/);
   });
 
   it('只改密码，不误伤其它字段（角色、余额、邮箱）', async () => {
@@ -515,7 +515,7 @@ describe('changeOwnPassword：成功路径', () => {
     expect(row.email).toBe(u.email);
   });
 
-  it('密码字段前后空白被 trim（与 Flask 一致）', async () => {
+  it('密码字段前后空白被 trim', async () => {
     const u = await makeUserWithPassword('oldpassword');
     const r = await changeOwnPassword(u.id, '  oldpassword  ', ' newpassword1 ', ' newpassword1 ');
     expect(r.ok, `trim 后应通过，实际: ${r.message}`).toBe(true);
@@ -583,7 +583,7 @@ describe('changeOwnPassword：拒绝路径（必须密码不变 + sessionVersion
     await expectUntouched(u.id, 'oldpassword', 5);
   });
 
-  it('★ 校验顺序逐条对齐 Flask：必填 → 原密码 → 两次一致 → 长度 → 新旧相同', async () => {
+  it('★ 校验顺序逐条（契约）：必填 → 原密码 → 两次一致 → 长度 → 新旧相同', async () => {
     const u = await makeUserWithPassword('oldpassword', { sessionVersion: 0 });
 
     // 原密码错 + 两次不一致 + 太短 → 只报「原密码不正确」
@@ -624,7 +624,7 @@ describe('changeOwnPassword：拒绝路径（必须密码不变 + sessionVersion
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// verifyInviteAndUpgrade —— 对齐 app/web/auth/authentic.py
+// verifyInviteAndUpgrade —— 校验邀请码 → 提权为 core（一次性，码随即失效）
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('verifyInviteAndUpgrade', () => {
@@ -684,7 +684,7 @@ describe('verifyInviteAndUpgrade', () => {
   });
 
   it('★ 已是 admin/owner 的用户用码：码被消耗，但角色不会被降级为 core', async () => {
-    // 对齐 Flask：`if current_user.role == 'user': current_user.role = 'core'`
+    // 规则：只有恰好是 'user' 才升为 'core'，更高角色一律原样保留（不降级）
     for (const role of ['admin', 'owner', 'core'] as const) {
       await resetDb();
       const u = await makeUser({ role });
@@ -805,7 +805,7 @@ describe('updateOwnProfile：bio', () => {
     expect((await prisma.user.findUniqueOrThrow({ where: { id: u.id } })).bio).toBe('你好，我是喵');
   });
 
-  it('★ 500 字通过、501 字 → 个人简介不能超过 500 字（边界，文案对齐 Flask）', async () => {
+  it('★ 500 字通过、501 字 → 个人简介不能超过 500 字（边界，文案固定）', async () => {
     const u = await makeUser({ });
     expect((await updateOwnProfile(u.id, { bio: '字'.repeat(500) })).ok, '500 是上界').toBe(true);
 
@@ -824,7 +824,7 @@ describe('updateOwnProfile：bio', () => {
     expect(r.data!.bio, '存的是 trim 后的内容').toBe('字'.repeat(500));
   });
 
-  it('bio 为空串 / 纯空白 / null → 落库为 null（不是空串，对齐 Flask 的 bio if bio else None）', async () => {
+  it('bio 为空串 / 纯空白 / null → 落库为 null（不是空串：falsy 一律存 null）', async () => {
     for (const bio of ['', '   ', null]) {
       const u = await makeUser({ });
       await updateOwnProfile(u.id, { bio: '先写点东西' });
@@ -1047,9 +1047,9 @@ describe('getPublicProfile', () => {
   });
 });
 
-// 【回归】文案对齐 Flask 的两个端点两套文案。
-// Flask：update_bio → 「资料已保存」；update_privacy → 「隐私设置已保存」。
-// TS 合并成一个 PATCH，故按本次实际改了什么选文案。
+// 【回归】两套成功文案共用一条 PATCH。
+// 改 bio → 「资料已保存」；改隐私/通知开关 → 「隐私设置已保存」。
+// 现在合并成一个 PATCH，故按本次实际改了什么选文案。
 describe('updateOwnProfile 的成功文案', () => {
   it('改 bio → 「资料已保存」', async () => {
     const u = await makeUser();
@@ -1060,7 +1060,7 @@ describe('updateOwnProfile 的成功文案', () => {
   it('只改隐私/通知开关 → 「隐私设置已保存」', async () => {
     const u = await makeUser();
     const r = await updateOwnProfile(u.id, { notifyLike: false });
-    expect(r.message, 'Flask update_privacy 的文案是「隐私设置已保存」').toBe('隐私设置已保存');
+    expect(r.message, '改隐私开关的文案是「隐私设置已保存」').toBe('隐私设置已保存');
   });
 
   it('只改可见性开关 → 「隐私设置已保存」', async () => {

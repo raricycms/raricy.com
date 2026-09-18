@@ -6,7 +6,7 @@
 //     路径穿越（写盘逃出上传目录）；SVG 一旦以 inline 下发，攻击面是同源 XSS（SVG 里可以
 //     写 <script>）。这两条必须钉死。
 //  2. **配额**：core 50MB / admin 50MB / owner 100MB 定义在 `src/lib/image-upload.ts` 的
-//     `QUOTA_LIMITS_MB`（抄自 Flask），**不是按角色递增的直觉值**（core 与 admin 同额）。
+//     `QUOTA_LIMITS_MB`（**不是按角色递增的直觉值** —— core 与 admin 同额）。
 //     算错要么用户传不上图，要么磁盘被打爆。边界（恰好满 / 超 1 字节）尤其关键。
 //  3. **软删 vs 硬删**：语义不同（保留磁盘文件 vs 删盘 + 删库行），弄反会丢数据。
 //
@@ -128,7 +128,7 @@ const MB = 1024 * 1024;
 // 一、sanitizeFilename —— 路径穿越 / XSS 防护（依据见 src/lib/image-upload.ts 头部）
 // ═════════════════════════════════════════════════════════════════════════════
 //
-// 对照 Flask sanitize_filename：
+// sanitizeFilename 的规则：
 //   re.sub(r'[^\w.\- 一-鿿]', '', name)  → 只保留 Unicode 字母数字/下划线/点/连字符/空格
 //   折叠连续点、折叠连续空格、lstrip('. -')、截断 200、空则 'image'
 //
@@ -222,7 +222,7 @@ describe('sanitizeFilename（文件名净化）', () => {
   });
 
   describe('Unicode', () => {
-    it('中文名原样保留（对齐 Flask 的 一-鿿 白名单）', async () => {
+    it('中文名原样保留（一-鿿 在白名单字符集内）', async () => {
       expect(sanitizeFilename('照片.png')).toBe('照片.png');
       expect(sanitizeFilename('聪明山_封面 2026.jpg')).toBe('聪明山_封面 2026.jpg');
     });
@@ -334,7 +334,7 @@ describe('storagePathFor（磁盘路径）', () => {
     );
   });
 
-  it('未知 MIME 时无扩展名（对齐 Flask ext_map.get(mime, "")）', async () => {
+  it('未知 MIME 时无扩展名（映射缺省为空）', async () => {
     expect(storagePathFor('AbCdEf1234', 'application/x-msdownload')).toBe(
       path.join(TEST_UPLOAD_DIR, 'AbCdEf1234')
     );
@@ -367,7 +367,7 @@ describe('storagePathFor（磁盘路径）', () => {
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe('generateImageId', () => {
-  it('默认长度为 10（对齐 Flask generate_image_id）', async () => {
+  it('默认长度为 10', async () => {
     expect(generateImageId()).toHaveLength(10);
   });
 
@@ -419,7 +419,7 @@ describe('generateImageId', () => {
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe('getQuotaLimitMb（角色 → 配额）', () => {
-  // 这三个数字来自 src/lib/image-upload.ts 的 QUOTA_LIMITS_MB（对齐 Flask），改动必须是有意的。
+  // 这三个数字来自 src/lib/image-upload.ts 的 QUOTA_LIMITS_MB，改动必须是有意的。
   it('core = 50 MB', async () => {
     expect(getQuotaLimitMb('core')).toBe(50);
   });
@@ -496,7 +496,7 @@ describe('getUserUsedBytes（已用字节）', () => {
     expect(await getUserUsedBytes(a.id)).toBe(0);
   });
 
-  it('★ 软删除的图片不再占配额（对齐 Flask ignore == False 过滤）', async () => {
+  it('★ 软删除的图片不再占配额（过滤条件是 ignore == False）', async () => {
     const u = await makeUser({ role: 'core' });
     const img = await makeImage({ authorId: u.id, fileSize: 1000 });
     expect(await getUserUsedBytes(u.id)).toBe(1000);
@@ -508,7 +508,7 @@ describe('getUserUsedBytes（已用字节）', () => {
     ).toBe(0);
   });
 
-  it('ignore 为 NULL 的历史行也计入（Flask 侧 ignore 默认 False）', async () => {
+  it('ignore 为 NULL 的历史行也计入（存量数据 ignore 默认 False）', async () => {
     // schema 里 ignore 是 Boolean? —— 迁移来的老数据可能是 NULL。
     const u = await makeUser({ role: 'core' });
     const img = await makeImage({ authorId: u.id, fileSize: 500 });
@@ -516,7 +516,7 @@ describe('getUserUsedBytes（已用字节）', () => {
 
     const used = await getUserUsedBytes(u.id);
     // 如实记录：Prisma 的 `ignore: false` 过滤在 SQL 里是 `ignore = 0`，NULL 不等于 0，
-    // 故 NULL 行不会被计入。与 Flask 侧「ignore 默认 False」的口径不一致，属已知差异。
+    // 故 NULL 行不会被计入。与「ignore 默认 False」的存量数据口径不一致，属已知差异。
     // 【修复后删掉本块，改为回归用例】
     expect(used, `NULL ignore 行的计入行为（实测 used=${used}）`).toBe(0);
   });
@@ -601,7 +601,7 @@ describe('★ 配额边界（恰好满 / 超 1 字节）', () => {
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe('ALLOWED_MIMETYPES / extForMime', () => {
-  it('白名单恰好是 PNG/JPEG/GIF/WebP/SVG（对齐 Flask）', async () => {
+  it('白名单恰好是 PNG/JPEG/GIF/WebP/SVG', async () => {
     expect([...ALLOWED_MIMETYPES].sort()).toEqual([
       'image/gif',
       'image/jpeg',
@@ -761,7 +761,7 @@ describe('listAllImages（管理端）', () => {
     expect(r.images[0].filename).toBe('ok.png');
   });
 
-  it('每页 30 条（对齐 Flask per_page=30），pages 向上取整', async () => {
+  it('每页 30 条（per_page=30），pages 向上取整', async () => {
     const u = await makeUser({ role: 'core' });
     await seed(u.id, 35);
 
@@ -792,7 +792,7 @@ describe('listAllImages（管理端）', () => {
     expect(p1.images[0].filename, '第 35 张（i=34）最新').toBe('p34.png');
   });
 
-  it('越界页返回空列表而非报错（对齐 Flask error_out=False）', async () => {
+  it('越界页返回空列表而非报错', async () => {
     const u = await makeUser({ role: 'core' });
     await makeImage({ authorId: u.id });
     const r = await listAllImages(99);
@@ -828,7 +828,7 @@ describe('listAllImages（管理端）', () => {
       expect(r.images[0].filename).toBe('holiday-beach.png');
     });
 
-    it('命中上传者用户名（对齐 Flask 的 author_id in 子查询）', async () => {
+    it('命中上传者用户名（按 author_id 子查询匹配）', async () => {
       const alice = await makeUser({ role: 'core', username: 'alice' });
       const bob = await makeUser({ role: 'core', username: 'bob' });
       await makeImage({ authorId: alice.id, filename: 'x.png' });
@@ -1612,7 +1612,7 @@ describe('GET /api/images/:id/raw（SVG XSS 防护 + 私有图鉴权）', () => 
 // 【威胁模型】file.type 由浏览器声明，攻击者可任意伪造。若只看声明：
 //   上传 SVG/HTML 字节 + 声明 image/png → 绕过 raw 路由「只看 mimeType」的
 //   SVG attachment 分支 → 以 image/png 内联下发 → 浏览器嗅探成 SVG → 同源 XSS。
-// 对齐 Flask verify_image_mime 的拒绝语义：识别不出 / 与声明不符 → 一律拒绝。
+// 拒绝语义（契约）：识别不出 / 与声明不符 → 一律拒绝。
 
 describe('detectImageMime（由内容识别真实类型）', () => {
   it('识别真 PNG', async () => {
@@ -1733,7 +1733,7 @@ describe('verifyImageMime（内容 vs 声明）', () => {
     }
   });
 
-  it('★ 识别不出的内容一律拒绝（对齐 Flask：解不开 → False）', () => {
+  it('★ 识别不出的内容一律拒绝（解不开 → False）', () => {
     for (const mime of ALLOWED_MIMETYPES) {
       expect(verifyImageMime(Buffer.from('not an image at all'), mime)).toBe(false);
     }
@@ -1855,13 +1855,13 @@ describe('POST /api/images（上传内容校验接线）', () => {
   });
 
   it('内容校验先于配额（伪造上传不消耗额度）', async () => {
-    // 校验顺序对齐 Flask：白名单 → 内容 → 尺寸 → 配额 → 限频。
+    // 校验顺序（契约）：白名单 → 内容 → 尺寸 → 配额 → 限频。
     // 造一个**配额已满**的 core 用户：若配额先于内容被检查，这里会撞配额错误；
     // 拿到 400「内容不匹配」才说明内容校验确实在前。
     //
     // 此前这条用例用的是 role=user（配额为 0），并注释说「若内容校验没有前置，
-    // 这里会先撞 403」—— 那个前提是错的：Flask 的 @authenticated_required 是**装饰器**，
-    // 永远先于函数体跑，非核心用户根本到不了任何校验。当时能拿到 400，是因为
+    // 这里会先撞 403」—— 那个前提是错的：鉴权是**装饰器**，永远先于函数体跑，
+    // 非核心用户根本到不了任何校验。当时能拿到 400，是因为
     // Next 这个接口漏了核心用户判断（已修）。
     const u = await makeUser({ role: 'core' }); // core 配额 50MB
     await makeImage({ authorId: u.id, fileSize: 50 * 1024 * 1024 }); // 一把占满
@@ -1875,7 +1875,7 @@ describe('POST /api/images（上传内容校验接线）', () => {
   // ── 一次多个文件（vditor 多选 / 拖入多张）────────────────────────────────
   //
   // 字段名 `file` 重复出现即是多文件 —— vditor 的 multiple 就是这么发的。
-  // Flask 侧走的是 `file[]` 分支 + getlist，语义相同。
+  // （另一种约定是走 `file[]` 分支 + getlist，语义相同。）
 
   async function uploadMany(files: { bytes: Buffer; mime: string; name: string }[]) {
     const form = new FormData();
@@ -1982,7 +1982,7 @@ describe('POST /api/images（上传内容校验接线）', () => {
     const u = await makeUser({ role: 'core' });
     authState.user = { id: u.id, role: 'core' };
 
-    // 先把桶填到只剩 1 个额度（对齐 Flask：每个文件消耗一次）
+    // 先把桶填到只剩 1 个额度（每个文件消耗一次）
     const key = `image-upload:${u.id}`;
     for (let i = 0; i < RULES.imageUploadHourly.limit - 1; i += 1) {
       rateLimit(key, RULES.imageUploadHourly);

@@ -8,7 +8,7 @@
 //    （那是 TOCTOU）。并发/重复提交必须只发一次鱼干。
 // 3. **发鱼干**：这是钱。翻牌成功 → 余额、流水、totalFortune 三者必须同进同退。
 //
-// 【两步式语义（Flask 原始设计，本文件钉住）】checkIn() 只建记录
+// 【两步式语义（刻意如此设计，本文件钉住）】checkIn() 只建记录
 // （fortune_value=NULL、fortune_pool 已定）→ 用户在落库的牌池里选位置，
 // claimFortune() 取 pool[chosenIndex] 赋值并发鱼。翻哪张、拿哪个值由翻牌
 // 这一瞬间的选择决定 —— 而不是签到瞬间抽定后由前端演出。
@@ -69,7 +69,7 @@ async function makeLegacyCheckin(userId: string, ymd: string, fortune: number, p
   );
 }
 
-/** 插一条「已签到但未翻牌」的历史行（fortune_value NULL —— Flask 时代真实存在）。 */
+/** 插一条「已签到但未翻牌」的历史行（fortune_value NULL —— 历史库里真实存在这种行：签了到、没点牌）。 */
 async function makePendingCheckin(userId: string, ymd: string, pool: string) {
   await prisma.$executeRawUnsafe(
     `INSERT INTO daily_checkins (user_id, checkin_date, created_at, fortune_value, fortune_pool)
@@ -438,7 +438,7 @@ describe('运势：牌池与翻牌取值', () => {
     if (ci.alreadyChecked) return;
 
     const row = await prisma.dailyCheckIn.findFirstOrThrow({ where: { userId: u.id } });
-    expect(row.fortunePool, '签到那刻牌池就落库（Flask 同款），不是翻牌时才编').not.toBeNull();
+    expect(row.fortunePool, '签到那刻牌池就落库，不是翻牌时才编').not.toBeNull();
 
     const cl = await claimFortune(u.id, 3);
     expect(cl.ok).toBe(true);
@@ -562,7 +562,7 @@ describe('运势：牌池与翻牌取值', () => {
   // 【回归】越界 chosenIndex 必须报错，不能静默开盲盒。
   // 曾经的行为：-1/5/99/NaN 都被静默换成随机 index —— 用户想选某张牌却拿到随机牌，
   // 且翻牌只能一次、无法重来。NaN 尤其隐蔽（NaN >= 0 为 false → 落进随机分支）。
-  // Flask claim_fortune 对越界返回「无效的选择」。
+  // 契约定死：越界一律返回「无效的选择」，不许静默兜底。
   it('越界/非法 chosenIndex（-1 / 5 / 99 / NaN / 小数）→ 「无效的选择」且不落值', async () => {
     freezeUtc('2026-07-15T04:00:00.000Z');
     // 每轮换个新用户即可隔离（唯一约束是 (userId, checkinDate)）——
@@ -671,7 +671,7 @@ describe('运势：翻牌语义（两步式）', () => {
     const row1 = await prisma.dailyCheckIn.findFirstOrThrow({ where: { userId: u.id } });
     expect(
       row1.fortuneValue,
-      '两步式：checkIn() 建记录时 fortune_value 必须留 NULL（Flask 语义），等待 claim'
+      '两步式：checkIn() 建记录时 fortune_value 必须留 NULL，等 claim 才落值'
     ).toBeNull();
     expect(row1.fortunePool, '但牌池在签到时就洗好落库').not.toBeNull();
     expect((await getTodayStatus(u.id)).fortunePending).toBe(true);
@@ -688,7 +688,7 @@ describe('运势：翻牌语义（两步式）', () => {
   });
 
   it('迁移来的「已签到未翻牌」老行：识别为 pending，且能在 UI 里补翻（claim 复活）', async () => {
-    // Flask 时代真实存在这种行：签了到、没点牌。两步式恢复后，用户能重新翻这张牌。
+    // 历史库里真实存在这种行：签了到、没点牌。两步式恢复后，用户能重新翻这张牌。
     freezeUtc('2026-07-15T04:00:00.000Z');
     const u = await makeUser({ driedFish: 0 });
     await makePendingCheckin(u.id, '2026-07-15', '3,1,5,2,4');
@@ -752,9 +752,9 @@ describe('运势：翻牌语义（两步式）', () => {
     ).toMatchObject({ driedFish: fishToUnits(5), totalFortune: 0 });
   });
 
-  it('★ 跨 UTC+8 午夜：前一天签到、新一天翻牌 → 「今天还没有签到」（Flask 同款副作用）', async () => {
+  it('★ 跨 UTC+8 午夜：前一天签到、新一天翻牌 → 「今天还没有签到」（两步式的固有窗口）', async () => {
     // 两步式的固有窗口：23:59 签到、00:00 后点牌 —— claim 按「今天」找不到行。
-    // 这不是 bug，是与 Flask 一致的语义（一步式没有此窗口）；钉住防回归。
+    // 这不是 bug：两步式签到就是刻意这么设计的（一步式没有此窗口）；钉住防回归。
     const u = await makeUser();
 
     freezeUtc('2026-07-15T15:59:00.000Z'); // UTC+8 07-15 23:59
@@ -943,8 +943,8 @@ describe('getCountLeaderboard（签到天数榜）', () => {
   });
 
   it('⚠️ 天数并列时无第二排序键 —— 取舍由 SQLite 决定，结果不稳定', async () => {
-    // Flask get_leaderboard 的 order_by 是 (count desc, max(created_at) asc)：
-    // 并列时「更早签到的人」排前面。Next 侧丢了这个次级排序键。
+    // 正确的 order_by 是 (count desc, max(created_at) asc)：
+    // 并列时「更早签到的人」排前面。当前实现丢了这个次级排序键。
     // 【修复后删掉本块，改为回归用例】
     for (const n of ['tieA', 'tieB', 'tieC']) {
       const u = await makeUser({ username: n });
@@ -964,7 +964,7 @@ describe('getCountLeaderboard（签到天数榜）', () => {
 
 // ── 回归：DailyCheckIn.created_at ───────────────────────────────────────────
 //
-// Flask 侧 DailyCheckIn.created_at 有 `default=datetime.now`，字段恒有值，
+// created_at 在历史库里恒有值（建行时由默认值写入），
 // 且 get_leaderboard 用 max(created_at) 做并列次级排序键。
 // Next 侧 schema 是 `createdAt DateTime?` 且**无 @default(now())** —— 签到建行时
 // 不显式写就会落 NULL，让排行榜的次级排序键 max(created_at) asc 失效。

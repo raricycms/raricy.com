@@ -117,7 +117,7 @@ async function snapshot(feederId: string, authorId: string, blogId: string) {
 
 describe('feedBlog 入参校验', () => {
   it.each([
-    ['0（Flask: amount <= 0）', 0],
+    ['0（边界：amount <= 0）', 0],
     ['负数', -3],
     ['超过单笔上限 5', 6],
     ['小数', 1.5],
@@ -277,7 +277,7 @@ describe('★ 单用户单篇累计上限 5', () => {
     expect(blogRow.fishCount, '文章总量 = 5 + 5，文章本身没有上限').toBe(10);
   });
 
-  it('并发对同一篇投喂：累计绝不能突破 5（Flask 用原子 UPDATE ... WHERE amount+n<=5）', async () => {
+  it('并发对同一篇投喂：累计绝不能突破 5（必须靠原子 UPDATE ... WHERE amount+n<=5）', async () => {
     const { blog, feeder } = await scene({ feederFish: 100 });
 
     const results = await Promise.all(
@@ -461,13 +461,13 @@ describe('作者分成 80% 与金额守恒', () => {
     // 记录现状：本地两侧之和不守恒是**设计如此**，对账要看账户服务。
   });
 
-  it('自己投喂自己的文章：允许（对齐 Flask，不做拦截），净损失 20%', async () => {
+  it('自己投喂自己的文章：允许（刻意不做拦截），净损失 20%', async () => {
     const self = await makeUser({ driedFish: 10 });
     const blog = await makeBlog({ authorId: self.id, title: '自投' });
 
     const r = await feedBlog(blog.id, self.id, 5);
 
-    expect(r.ok, 'Flask feed_fish 无自投拦截，仅跳过通知 —— Next 保持一致').toBe(true);
+    expect(r.ok, '无自投拦截，仅跳过通知').toBe(true);
     const bal = unitsToFish(
       (await prisma.user.findUniqueOrThrow({ where: { id: self.id } })).driedFish
     );

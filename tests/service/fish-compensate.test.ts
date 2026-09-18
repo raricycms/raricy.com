@@ -5,7 +5,7 @@
 //   1. 逐人原子：某一位失败，只回滚这一位，不能连累已发放的人
 //   2. 续跑不重复发放：同一个 batchId 重跑，已 synced 的人必须原样跳过
 //      —— 这条最关键：漏了它就是「本地加了余额、远端被幂等去重没加」，两边记账分叉
-//   3. 幂等键与 Flask 逐字节同构（迁移前跑了一半的批次，换个实现也能续上）
+//   3. 幂等键逐字节固定（迁移前跑了一半的批次，换个实现也能续上）
 //   4. 账本里有 pending/failed 的人不许重发（该走 fish sync-retry）
 //   5. **只发 core+** —— 非核心账号没有鱼干赚取渠道，补偿不能成为例外（见下方专项）
 
@@ -74,9 +74,9 @@ async function makeUsers(n: number) {
   return users;
 }
 
-describe('compensateIdempotencyKey：与 Flask 同构', () => {
+describe('compensateIdempotencyKey：格式逐字节固定', () => {
   it('键 = comp-{sha256(compensate-batch-user-amount)[:16]}', () => {
-    // 手算一份「Flask 会算出的」键，验证逐字节一致 —— 这是跨实现续跑的前提。
+    // 手算一份期望键（不调被测函数），验证逐字节一致 —— 这是跨实现续跑的前提。
     const expected =
       'comp-' +
       createHash('sha256')
@@ -94,7 +94,7 @@ describe('compensateIdempotencyKey：与 Flask 同构', () => {
     expect(compensateIdempotencyKey('b1', 'u1', 6)).not.toBe(a);
   });
 
-  it('makeBatchId 是 12 位 hex（对齐 Flask uuid4().hex[:12]）', () => {
+  it('makeBatchId 是 12 位 hex', () => {
     expect(makeBatchId()).toMatch(/^[0-9a-f]{12}$/);
   });
 });

@@ -1,11 +1,11 @@
 // DELETE /api/images/:id 与 /api/images/admin/:id —— 软删 / 硬删的职责划分。
 //
-// 【为什么单独测这个】Flask 把两件事放在**两条独立路径**上：
-//   · 图床蓝图 `/image/<id>` DELETE      → ImageService.soft_delete_image（任何有权者）
-//   · admin 蓝图 `/image/admin/<id>` DELETE → 站长专属硬删（删盘 + 删行）
+// 【为什么单独测这个】软删与硬删本该各走一条**独立路径**：
+//   · `/api/images/<id>` DELETE       → 软删（任何有权者）
+//   · `/api/images/admin/<id>` DELETE → 站长专属硬删（删盘 + 删行）
 //
-// 迁移时我把它们揉进了同一个路由，并写成 `if (isOwner(user)) hardDelete(...)` ——
-// 后果是**站长永远无法软删**：连删自己的图都是物理删除、不可恢复，与原站行为不符。
+// 此前把两件事揉进了同一个路由，并写成 `if (isOwner(user)) hardDelete(...)` ——
+// 后果是**站长永远无法软删**：连删自己的图都是物理删除、不可恢复。
 // 这类「权限越高、行为越危险且无法选择」的分叉，测试不打就发现不了。
 //
 // 本文件打的是真实 route handler（不 mock Prisma），只 mock 登录态。
@@ -160,7 +160,7 @@ describe('DELETE /api/images/admin/:id —— 硬删（站长专属）', () => {
     expect(fs.existsSync(diskPath), '硬删应删磁盘文件').toBe(false);
   });
 
-  it('管理员（非站长）→ 403（对齐 Flask @owner_required）', async () => {
+  it('管理员（非站长）→ 403（硬删仅限站长）', async () => {
     const admin = await makeUser({ role: 'admin' });
     const { row } = await makeImageWithFile(admin.id);
 

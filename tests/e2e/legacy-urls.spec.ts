@@ -2,12 +2,12 @@ import { test, expect } from '@playwright/test';
 import { loginViaApi } from './helpers';
 import { SEED_USERS } from './seed';
 
-// Flask 时代的旧地址兼容（next.config.mjs 的 rewrites）。
+// 历史版本的旧地址兼容（next.config.mjs 的 rewrites）。
 //
 // 【为什么要 E2E】rewrite 是**构建期**配置，单测碰不到：它要么被 Next 认下来，
 // 要么整条路径静默 404，而 404 的后果是**存量文章里的图全变碎图**。
 // 截至 2026-09 的存量：55 篇博客 / 110 处 URL 写死的是
-// `https://raricy.com/image/i/<id>`（Flask 的 image_bp `/i/<image_id>`）。
+// `https://raricy.com/image/i/<id>`（历史版本的 `/i/<image_id>`）。
 //
 // 注意：内容里还有一类老地址是 `http://116.62.179.232:22822/image/i/...` ——
 // host 写死在正文里，站内 rewrite 管不着，本文件测不到、也不该测。
@@ -47,7 +47,7 @@ test('旧图床地址删掉的图仍然 404（rewrite 不能把 404 吞掉）', 
   expect(res.status()).toBe(404);
 });
 
-test('旧头像直链 /auth/avatar/<id> 可用（Flask 的 /auth/avatar/<user_id>）', async ({ page }) => {
+test('旧头像直链 /auth/avatar/<id> 可用（历史版本的 /auth/avatar/<user_id>）', async ({ page }) => {
   const { id } = SEED_USERS.core;
 
   const [oldRes, newRes] = await Promise.all([

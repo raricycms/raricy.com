@@ -6,11 +6,10 @@
 // 【被测边界】fish-service **只写本地 DB**，不直接调 AccountClient（见该文件头部），
 // 所以无需 mock 远端。远端同步是调用方（feed-service / checkin-service）的责任。
 //
-// 【关于扣款】fish-service.ts **没有导出 deductFish**（Flask 侧 app/service/fish.py
-// 有 deduct_fish）。Next 侧唯一的扣款路径是 feed-service.feedBlog 里内联的
-// 原子 updateMany(where driedFish >= amount)。为了回答「会不会并发超扣」这个
-// 最关键的问题，下面「扣款与并发超扣」一节直接打 feedBlog —— 它是当前实现里
-// 真实存在的扣款语义。
+// 【关于扣款】fish-service.ts **没有导出 deductFish**。唯一的扣款路径是
+// feed-service.feedBlog 里内联的原子 updateMany(where driedFish >= amount)。
+// 为了回答「会不会并发超扣」这个最关键的问题，下面「扣款与并发超扣」一节直接打
+// feedBlog —— 它是当前实现里真实存在的扣款语义。
 
 import { describe, it, expect, beforeEach } from 'vitest';
 
@@ -62,7 +61,7 @@ describe('getBalance', () => {
     expect(await getBalance(u.id)).toBe(42);
   });
 
-  it('用户不存在时返回 0 而非 null/抛错（对齐 Flask get_balance）', async () => {
+  it('用户不存在时返回 0 而非 null/抛错', async () => {
     expect(
       await getBalance('no-such-user'),
       '不存在的用户必须安全降级为 0，否则余额展示页会 500'
@@ -97,7 +96,7 @@ describe('getBalanceBatch', () => {
     expect(await getBalanceBatch([])).toEqual({});
   });
 
-  it('超过 500 个 ID 时截断到前 500（对齐 Flask，防止 IN 子句爆炸）', async () => {
+  it('超过 500 个 ID 时截断到前 500（防止 IN 子句爆炸）', async () => {
     const ids = Array.from({ length: 600 }, (_, i) => `id-${i}`);
     const r = await getBalanceBatch(ids);
     expect(Object.keys(r)).toHaveLength(500);
@@ -160,7 +159,7 @@ describe('addFish（加钱 + 写流水）', () => {
 
   // ── 金额边界 ──────────────────────────────────────────────────────────────
 
-  it('amount = 0 被拒绝（对齐 Flask add_fish 的 amount <= 0 校验）', async () => {
+  it('amount = 0 被拒绝（amount <= 0 一律拒绝）', async () => {
     const u = await makeUser({ driedFish: 5 });
     await expect(
       prisma.$transaction((tx) => addFish(tx, { userId: u.id, amount: 0, type: 'checkin' }))
@@ -233,7 +232,7 @@ describe('addFish（加钱 + 写流水）', () => {
 
   // ── 用户不存在 ────────────────────────────────────────────────────────────
 
-  it('用户不存在时抛错，且不留下孤儿流水（Flask 侧 rowcount==0 → ValueError）', async () => {
+  it('用户不存在时抛错，且不留下孤儿流水（update 影响 0 行即视为失败）', async () => {
     await expect(
       prisma.$transaction((tx) => addFish(tx, { userId: 'ghost', amount: 1, type: 'checkin' }))
     ).rejects.toThrow();
@@ -448,7 +447,7 @@ describe('getTransactions', () => {
     expect(new Set(ids).size, '三页拼起来应无重复无遗漏').toBe(25);
   });
 
-  it('越界页返回空列表而非报错（对齐 Flask error_out=False）', async () => {
+  it('越界页返回空列表而非报错', async () => {
     const u = await makeUser();
     await makeTx({ userId: u.id, amount: 1, type: 'checkin' });
     const r = await getTransactions(u.id, 99, 10);
@@ -484,7 +483,7 @@ describe('getTransactions', () => {
     expect(r.transactions[0].type).toBe('checkin');
   });
 
-  it("type='feed_all' 同时匹配 feed 与 feed_receive（Flask 特例）", async () => {
+  it("type='feed_all' 同时匹配 feed 与 feed_receive（聚合伪类型）", async () => {
     const u = await makeUser();
     await makeTx({ userId: u.id, amount: 1, type: 'checkin' });
     await makeTx({ userId: u.id, amount: -2, type: 'feed' });
@@ -677,9 +676,9 @@ describe('getBalanceLeaderboard', () => {
 // ── getTodayCheckinFish ─────────────────────────────────────────────────────
 
 // getTodayCheckinFish 用 $queryRaw + SQLite date(created_at) 比对 UTC+8 今天。
-// 这依赖 created_at 的**存储格式**，而 Prisma 与 Flask/SQLAlchemy 的存法不同：
-//   · Flask/SQLAlchemy → TEXT 'YYYY-MM-DD HH:MM:SS' → date() 可解析 ✅
-//   · Prisma           → INTEGER 毫秒时间戳        → date() 返回 NULL ❌
+// 这依赖 created_at 的**存储格式**，而历史实现与 Prisma 的存法不同：
+//   · 历史实现（SQLAlchemy）→ TEXT 'YYYY-MM-DD HH:MM:SS' → date() 可解析 ✅
+//   · Prisma                → INTEGER 毫秒时间戳        → date() 返回 NULL ❌
 // 下面的用例如实记录这一现状（含两个 BUG），不替源码打补丁。
 // 【修复后删掉本块，改为回归用例】
 describe('getTodayCheckinFish', () => {
@@ -761,7 +760,7 @@ describe('getTodayCheckinFish', () => {
     const [probe] = await prisma.$queryRawUnsafe<{ t: string; d: string | null }[]>(
       `SELECT typeof(created_at) t, date(created_at) d FROM fish_transactions LIMIT 1`
     );
-    expect(probe.t, 'Prisma 把 DateTime 存成 INTEGER 毫秒（Flask 存 TEXT）').toBe('integer');
+    expect(probe.t, 'Prisma 把 DateTime 存成 INTEGER 毫秒，不是 TEXT').toBe('integer');
     expect(probe.d, 'date(<整数毫秒>) 在 SQLite 里恒为 NULL —— 故实现不能依赖它').toBeNull();
 
     expect(

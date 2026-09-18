@@ -5,7 +5,7 @@
 // /api/blogs/:id/likers 和 /feeders，而 Next 侧没有对应路由 —— 点开「谁点了赞」
 // 必然 404。构建不会报错、单测不会红，只有真点进去才发现。补实现的同时把语义钉死。
 //
-// 重点钉三条（都是 Flask 的既有语义，漂了就是行为不一致）：
+// 重点钉三条（都是既有契约，漂了就是行为不一致）：
 //   1. 软删除的赞必须排除 —— 取消赞的人不该还挂在列表里
 //   2. 投喂者按投喂量倒序（不是时间序）—— 这个列表是给作者看「谁投得最多」
 //   3. limit 上限 200、下限 1，offset 不接受负数 —— 防止一次拉爆整张表
@@ -37,7 +37,7 @@ describe('getLikers', () => {
     expect(await getLikers('no-such-blog')).toBeNull();
   });
 
-  it('列出点赞者，字段形状对齐 Flask 的 JSON', async () => {
+  it('列出点赞者，字段形状固定', async () => {
     const author = await makeUser({ username: 'a1' });
     const blog = await makeBlog({ authorId: author.id });
     const u = await makeUser({ username: 'liker1' });
@@ -92,7 +92,7 @@ describe('getLikers', () => {
     expect(r!.limit).toBe(2);
   });
 
-  it('limit 被夹在 1..200，offset 不接受负数（对齐 Flask，防一次拉爆整表）', async () => {
+  it('limit 被夹在 1..200，offset 不接受负数（防一次拉爆整表）', async () => {
     const blog = await makeBlog();
     expect((await getLikers(blog.id, 0, 9999))!.limit).toBe(200);
     expect((await getLikers(blog.id, 0, 0))!.limit).toBe(1);
@@ -130,7 +130,7 @@ describe('getFeeders', () => {
     expect(r.feeders.map((f) => f.amount)).toEqual([5, 3, 1]);
   });
 
-  it('字段形状对齐 Flask 的 JSON', async () => {
+  it('字段形状固定', async () => {
     const blog = await makeBlog();
     const u = await makeUser({ username: 'feeder1' });
     await feed(blog.id, u.id, 2);

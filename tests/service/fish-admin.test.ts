@@ -80,7 +80,7 @@ describe('adminGrantFish：赠送', () => {
     expect(arg.toUserId).toBe(u.id);
     expect(arg.amount).toBe(3);
     expect(arg.entryType).toBe('admin_grant');
-    expect(String(arg.idempotencyKey), '幂等键对齐 Flask cli-grant-{id}-{ts}-{amount} + 并发安全后缀').toMatch(
+    expect(String(arg.idempotencyKey), '幂等键格式 cli-grant-{id}-{ts}-{amount} + 并发安全后缀').toMatch(
       new RegExp(`^cli-grant-${u.id}-\\d+-3-[0-9a-f]{6}$`)
     );
   });

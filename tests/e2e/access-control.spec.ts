@@ -2,8 +2,8 @@
 //
 // 【统一契约（对齐 src/lib/guard.ts / admin/layout.tsx 的现行语义）】
 //   · 未登录 → redirect('/login?next=…')：一律先登录（含 /blog —— 早期曾对匿名
-//     原地 403，那是 Flask abort(403) 的旧语义，已被「先登录再回来」取代）
-//   · 已登录但角色不够 → forbidden()：原地渲染 403 页，URL 不变（对齐 Flask abort(403)）
+//     原地 403，那是早期的旧语义，已被「先登录再回来」取代）
+//   · 已登录但角色不够 → forbidden()：原地渲染 403 页，URL 不变
 // 若哪天有人把 guard 改回「匿名也 403」或「低角色也跳登录」，这两组用例会让改动当场可见。
 
 import { test, expect } from '@playwright/test';
@@ -13,7 +13,7 @@ import { loginViaApi } from './helpers';
 test.describe('未登录访问受控页面', () => {
   test('/checkin 跳转登录页，并带上回跳地址', async ({ page }) => {
     await page.goto('/checkin');
-    // 带 ?next= 才能在登录后回到这里（对齐 Flask-Login 的 login_view 行为）。
+    // 带 ?next= 才能在登录后回到这里。
     // Next 侧一度只跳 '/login'、登录后一律回首页 —— 那是行为回归。
     await expect(page).toHaveURL('/login?next=%2Fcheckin');
     await expect(page.locator('#loginForm')).toBeVisible();
@@ -110,9 +110,8 @@ test.describe('角色门控', () => {
   // /admin/* 的档位是**按页**分的，不是整齐一刀
   //
   // 回归背景：段级 layout 一度收在 hasAdminRights，而 AdminShell 的侧栏对 core 用户
-  // 就露出「用户管理」（对齐 Flask admin_base.html 的 is_core_user 门控）——
-  // 于是核心用户点进去必然 403：入口和门禁自相矛盾。Flask 侧 auth.user_management 的
-  // 装饰器是 @authenticated_required（core+），management.html 给核心用户看的是只读版。
+  // 就露出「用户管理」—— 于是核心用户点进去必然 403：入口和门禁自相矛盾。
+  // 现行口径是该页对 core+ 开放只读版（标题「用户列表」、无禁言按钮），
   // 修法是段级放宽到 core+，真正要管理权的页面各自把门。这组用例把两半都钉住。
   // ───────────────────────────────────────────────────────────────────────────
   test('★ 核心用户能进 /admin/users（只读版：标题「用户列表」，无禁言按钮）', async ({ page }) => {
@@ -176,7 +175,7 @@ test.describe('角色门控', () => {
 // 页面挡了、接口没挡，是这一类漏洞的共同形状 —— 所以这里只打接口，不走 UI。
 // ─────────────────────────────────────────────────────────────────────────────
 test.describe('核心用户门槛（接口层）', () => {
-  // Flask 侧这些全是 @authenticated_required
+  // 这些接口一律 core+ 档
   //
   // ⚠️ 只放**两个方向都无副作用**的调用。签到的写接口（POST /api/checkin 与
   //    /claim）刻意不在此列：core 那一轮会真的给 e2e_core 建一条签到记录并翻牌发鱼，

@@ -2,9 +2,9 @@
 // broadcast-service.test.ts —— 群发通知
 //
 // 【为什么补】群发此前一个测试都没有，于是权限写错了也没人发现：
-// 路由只判 hasAdminRights，任何**管理员**都能给全站发通知 —— 而 Flask 在三处
-// 都卡了**站长**（页面 @owner_required、接口 @owner_required、service 层显式判
-// is_owner）。群发是本项目影响面最大的操作（一次触达全部 465 个用户），
+// 路由只判 hasAdminRights，任何**管理员**都能给全站发通知 —— 而正确口径是三处
+// 都卡**站长**（页面、接口、service 层各判一次，service 层判 is_owner）。
+// 群发是本项目影响面最大的操作（一次触达全部 465 个用户），
 // 权限松一级就是实打实的越权。
 //
 // 这里钉死的是「谁能群发」与「发给谁」，前者防越权，后者防错投。
@@ -19,7 +19,7 @@ beforeEach(resetDb);
 
 const asActor = (u: { id: string; role: string }): SafeUser => u as SafeUser;
 
-describe('broadcast 权限（对齐 Flask 的仅站长可群发）', () => {
+describe('broadcast 权限（仅站长可群发）', () => {
   it('★ 站长可以群发', async () => {
     const owner = await makeUser({ username: 'o', role: 'owner' });
     await makeUser({ username: 'u1', role: 'user' });
@@ -28,7 +28,7 @@ describe('broadcast 权限（对齐 Flask 的仅站长可群发）', () => {
     expect(r.ok).toBe(true);
   });
 
-  it('★ 管理员不能群发（此前是能的 —— 比 Flask 松了一级）', async () => {
+  it('★ 管理员不能群发（此前是能的 —— 权限松了一级）', async () => {
     const admin = await makeUser({ username: 'a', role: 'admin' });
     await makeUser({ username: 'u1', role: 'user' });
 

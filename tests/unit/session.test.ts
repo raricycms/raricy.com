@@ -5,8 +5,8 @@
 // 「登录成功」但会话不粘、刷新仍未登录，且无任何报错。
 // 修复：判定顺序 COOKIE_SECURE → X-Forwarded-Proto → NODE_ENV。
 //
-// 另一半是 session_version 失效机制（对齐 Flask-Login）：改密/强制下线时后端
-// 自增 sessionVersion，所有旧 token 立即失效。
+// 另一半是 session_version 失效机制：改密 / 强制下线时后端自增 sessionVersion，
+// 所有旧 token 立即失效。
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
@@ -39,7 +39,7 @@ afterEach(() => {
 });
 
 describe('cookie 名称', () => {
-  it('与 Flask 侧约定一致', () => {
+  it('cookie 名固定为 raricy_session（改名即让所有已登录会话失效）', () => {
     expect(SESSION_COOKIE).toBe('raricy_session');
   });
 });
@@ -132,7 +132,7 @@ describe('JWT 签发与校验', () => {
   });
 });
 
-describe('session_version 语义（对齐 Flask-Login 的会话失效）', () => {
+describe('session_version 语义（自增即让旧会话失效）', () => {
   it('token 里带的 sv 快照可被读出，供与 DB 比对', async () => {
     const token = await createSessionToken({ uid: 'u1', sv: 3 });
     const p = await verifySessionToken(token);

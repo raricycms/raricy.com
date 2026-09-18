@@ -1,5 +1,4 @@
 // admin-user-service.ts + admin-appeal-service.ts —— 禁言 / 审计日志 / 申诉裁决
-// （对齐 Flask app/web/auth/user_management.py + app/service/audit_log.py）
 //
 // 【为什么测这些】这两个 service 是全站权限最高、副作用最多、且失败最安静的一块：
 //
@@ -13,7 +12,7 @@
 //   3. 申诉通过要「撤销原操作」，三条撤销路径（解禁 / 恢复文章 / 恢复评论）各写
 //      不同的表，其中恢复评论还要回补 Blog.commentsCount / lastCommentAt 冗余字段
 //      —— 算错不报错，只会让列表页的评论数对不上详情页。
-//   4. AdminActionLog.extra 在生产库里是 JSON 声明列（Flask/alembic 建的），Prisma 驱动层
+//   4. AdminActionLog.extra 在生产库里是 JSON 声明列（历史 schema 迁移建的），Prisma 驱动层
 //      拒读，写入走 raw UPDATE。本测试库由 `prisma db push` 从 schema（extra String?）
 //      生成，列类型是 TEXT，所以这里「直接 select extra」其实读得到 —— 测试环境复现不了
 //      生产的那个坑。故断言一律走 audit-service 同款的 CAST(extra AS TEXT)：
@@ -215,7 +214,7 @@ describe('logAdminAction（审计日志写入）', () => {
     expect(await readExtra(emptyMeta)).toBeNull();
   });
 
-  it('visibility 默认 public（对齐 Flask log_admin_action），可显式覆盖', async () => {
+  it('visibility 默认 public，可显式覆盖', async () => {
     const admin = await makeUser({ role: 'admin' });
 
     await logAdminAction({ action: 'vis_default', adminId: admin.id });
@@ -650,7 +649,7 @@ describe('listUsers 的 currentlyBanned 与 isCurrentlyBanned 口径一致', () 
   });
 
   it('banUntil 为 null 且 isBanned=true（永久禁言的历史数据）→ currentlyBanned 为 true', async () => {
-    // banUser 造不出这种数据（hours 必须 > 0），但 Flask 时代/人工改库可能留下，
+    // banUser 造不出这种数据（hours 必须 > 0），但历史库/人工改库可能留下，
     // isCurrentlyBanned 对它的判定是「永久有效」—— 钉住这条语义
     const u = await makeUser({ username: 'zz_forever', isBanned: true, banUntil: null });
 
@@ -683,8 +682,8 @@ describe('setRole（角色变更）', () => {
     const plain = await makeUser({ role: 'user' });
 
     // 实测过：此前这里返回 200，角色真的落库，管理员 curl 一发就能造出新管理员。
-    // Flask 压根做不到 —— /promote 硬编码只做 user→core 且 @owner_required，
-    // 想加管理员只能上服务器跑 flask promote-admin。
+    // 而正确口径是：提权这条路历史上就只做 user→core 且限站长，
+    // 想加管理员只能上服务器 —— 「管理员自己造管理员」是必须堵死的口子。
     expect(
       await setRole({ actor: asActor(admin), targetId: plain.id, newRole: 'admin' })
     ).toMatchObject({ ok: false, code: 403, message: '仅站长可变更管理员/站长角色' });
@@ -809,7 +808,7 @@ describe('createAppeal（提交申诉）', () => {
     });
   });
 
-  // 对齐 Flask create_appeal：申诉落库后给所有 owner 各发一条『申诉提交』。
+  // 申诉落库后给所有 owner 各发一条『申诉提交』。
   // 迁移时这段只留了句 TODO（audit-service.ts 原注释），补上后钉住收件人范围。
   it('提交成功 → 给所有 owner 各发一条『申诉提交』，非 owner 不发', async () => {
     const owner = await makeUser({ role: 'owner' });
@@ -1019,7 +1018,7 @@ describe('createAppeal（提交申诉）', () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe('adjudicate（裁决申诉）', () => {
-  // ★ 权限：仅站长可裁决（对齐 Flask decide_appeal 的 @admin_required + @owner_required）。
+  // ★ 权限：仅站长可裁决。
   // 此前路由与 service 都只判 hasAdminRights —— 申诉是对管理员权力的制衡，
   // 管理员能自己裁决申诉的话这道闸形同虚设（包括裁决针对自己那条操作的申诉）。
   // 本块其余用例的 actor 因此一律用 owner：它们测的是「裁决逻辑」，不是「谁能裁决」。
@@ -1505,7 +1504,7 @@ describe('adjudicate（裁决申诉）', () => {
 describe('listAppeals（申诉列表）', () => {
   it('按 status 过滤，带出日志/申诉人/裁决人；裁决后从 pending 移到 accepted', async () => {
     // 管理员执行操作、站长裁决申诉 —— 这正是申诉制度的形状：
-    // 裁决是对管理员的制衡，故 adjudicate 仅站长（对齐 Flask 的 @owner_required）。
+    // 裁决是对管理员的制衡，故 adjudicate 仅站长。
     const admin = await makeUser({ role: 'admin', username: 'the_admin' });
     const owner = await makeUser({ role: 'owner', username: 'the_owner' });
     const user = await makeUser({ role: 'core', username: 'the_user' });

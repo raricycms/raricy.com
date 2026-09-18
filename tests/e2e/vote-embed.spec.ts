@@ -8,7 +8,7 @@
 //
 // 【回归的正是这么一断】blog-markdown.ts 里只实现了「结果行」那一支：没有标题、
 // 没有投票入口、也没有详情页链接，且最外层少了 .vote-embed-widget（卡片样式全挂在
-// 它上面）。原站（vote-embed.js）本是可投的。
+// 它上面）。而小组件本应**可投**。
 
 import { test, expect } from '@playwright/test';
 import { registerFreshUser } from './helpers';

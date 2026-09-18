@@ -2,7 +2,7 @@
 // broadcast-permission.spec.ts —— 群发的三层权限
 //
 // 群发一次触达全站，是本项目影响面最大的操作。此前路由只判 hasAdminRights，
-// 任何管理员都能给所有人发通知 —— 而 Flask 在页面、接口、service 三处都卡了站长。
+// 任何管理员都能给所有人发通知 —— 现行口径是页面、接口、service 三处都卡站长。
 //
 // 单测只覆盖 service 层；路由的判权与页面的门控要真发 HTTP 才验得到。
 // 尤其是页面：AdminShell 侧栏对非站长隐藏了「通知发送」入口，但 URL 猜得到 ——
@@ -48,9 +48,9 @@ test.describe('/admin/broadcast 页面', () => {
 });
 
 // ── 申诉审批同样是站长专属 ────────────────────────────────────────────────────
-// Flask 的 decide_appeal 是 @admin_required + @owner_required。Next 侧此前路由与
-// service 都只判 hasAdminRights —— 申诉是对管理员权力的制衡，管理员能自己裁决
-// （包括裁决针对自己那条操作的申诉）的话，这道闸就形同虚设。
+// 申诉审批只给站长。此前路由与 service 都只判 hasAdminRights —— 申诉是对管理员
+// 权力的制衡，管理员能自己裁决（包括裁决针对自己那条操作的申诉）的话，
+// 这道闸就形同虚设。
 
 test.describe('申诉审批（仅站长）', () => {
   test('★ 管理员 POST 裁决 → 403', async ({ page }) => {

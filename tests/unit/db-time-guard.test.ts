@@ -2,7 +2,7 @@
 // db-time-guard.test.ts —— 静态检查：库内时间戳只准用「同一把钟」读写与展示
 //
 // 【为什么要有】本库时间戳的语义是「UTC+8 墙上时间，贴 Z 标签」（见 src/lib/db-time.ts
-// 的完整来龙去脉）：Flask 时代 datetime.now()（服务器 TZ=UTC+8）写 naive 时间，
+// 的完整来龙去脉）：历史实现用 datetime.now()（服务器 TZ=UTC+8）写 naive 时间，
 // normalize 只补 'T'/'Z' 不平移。于是：
 //   • nowForDb() = Date.now() + 8h          ← 与全库历史数据同钟，**唯一合法的当前时刻**
 //   • new Date() = 真实 UTC 瞬间             ← 与库内语义差 8 小时

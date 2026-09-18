@@ -1,13 +1,12 @@
 // notification / vote / clipboard 三个 service 的真实 SQLite 用例
-// （对齐 Flask app/service/notifications.py、app/web/vote/、app/web/clipboard/）
 //
 // 【为什么把这三个放一起测】它们是本次迁移里「规则写在服务层、错了不报错只静默」
 // 的三块重灾区，各自有一条不能出错的核心语义：
 //
 //   1. notification：发送前必须查接收者的 notify_* 偏好（force 除外）。
 //      这条写漏了不会抛异常 —— 只会让关了通知的用户继续被打扰，或者反过来，
-//      映射写错让该发的通知被静默吞掉。Flask 侧这条判定是散在各调用点的
-//      （like_service 查 author.notify_like…），TS 侧收敛进了 prefForAction，
+//      映射写错让该发的通知被静默吞掉。这个判定原先散在各调用点
+//      （各处自己查 author.notifyLike…），后来收敛进了 prefForAction，
 //      收敛就意味着「action 字符串 → 偏好字段」的映射本身成了新的失败点。
 //   2. vote：每人一票靠 VoteRecord 的唯一约束 (vote_id, user_id) 兜底。
 //      先查后插的检查在并发下必然漏，唯一约束 + P2002 捕获才是真正的防线。
@@ -404,8 +403,8 @@ describe('notification-service', () => {
   // ── 接收者不存在 ──────────────────────────────────────────────────────
   describe('接收者不存在', () => {
     it('返回 null 且不落库（不抛外键错）', async () => {
-      // recipient_id 有外键约束，硬插会抛；服务必须先查用户挡掉。
-      // 对齐 Flask：`if not recipient: return`
+      // recipient_id 有外键约束，硬插会抛；服务必须先查用户挡掉：
+      // 接收者不存在 → 直接返回，不落库。
       const r = await sendNotification({ recipientId: 'no-such-user', action: '系统公告' });
       expect(r).toBeNull();
       expect(await prisma.notification.count()).toBe(0);
@@ -507,9 +506,9 @@ describe('notification-service', () => {
     });
   });
 
-  // ── 回归 3：批量已读 / 批量删除（补 Flask 的 batch 端点缺口）──────────────
+  // ── 回归 3：批量已读 / 批量删除（补上的 batch 端点缺口）──────────────────
   //
-  // Flask 有 /api/batch-mark-read(POST) 与 /api/batch-delete(DELETE)，TS 侧原先没有。
+  // /api/batch-mark-read(POST) 与 /api/batch-delete(DELETE) 原先都没有。
   // 这两个端点最要命的是**越权**：入参是一串 id，只要漏掉 recipient 过滤，
   // 任何人都能标记 / 删除别人的通知。下面每组都带一条越权探针。
   describe('批量已读 / 批量删除（service 层）', () => {
@@ -537,8 +536,8 @@ describe('notification-service', () => {
       expect((await prisma.notification.findUnique({ where: { id: theirs.id } }))!.read).toBe(false);
     });
 
-    it('batchMarkRead 已读条目也计入 count（对齐 Flask：过滤不带 read=False）', async () => {
-      // Flask batch_mark_notifications_read 的 query 只有 id.in_() + recipient_id，
+    it('batchMarkRead 已读条目也计入 count（过滤不带 read=False）', async () => {
+      // 这条 query 只有 id.in_() + recipient_id，
       // update() 返回的是**匹配数**而非「本次真正翻转数」。这条钉住这个语义差别，
       // 免得有人想当然加上 read:false 过滤把 count 改小。
       const me = await makeUser();
@@ -907,17 +906,17 @@ describe('vote-service', () => {
 
   // ── 总数上限 100 ──────────────────────────────────────────────────────
   //
-  // Flask app/web/vote/service.py 有 _MAX_VOTES_PER_USER = 100 的硬上限，TS 侧原本
-  // 完全没迁。现已补上 —— 但**按正确语义**补：Flask 原实现数的是
-  //   VoteRecord.query.filter_by(user_id=user_id).count()   ← 这人「投过」多少票
-  // 而按变量名与文案该数的是「这人**创建**了多少投票」。TS 侧按后者实现，
+  // 硬上限 MAX_VOTES_PER_USER = 100 原先完全没迁。现已补上 —— 但**按正确语义**补：
+  // 历史实现数的是
+  //   VoteRecord.filter(user_id=user_id).count()            ← 这人「投过」多少票
+  // 而按变量名与文案该数的是「这人**创建**了多少投票」。现按后者实现，
   // 即 Vote.authorId = userId AND ignore = false。下面几条把这个差异钉死。
   describe('每用户投票总数上限 100', () => {
-    it('常量与 Flask 的 100 对齐', () => {
+    it('常量是 100', () => {
       expect(MAX_VOTES_PER_USER).toBe(100);
     });
 
-    it('已有 150 个投票的用户无法再创建，文案对齐 Flask', async () => {
+    it('已有 150 个投票的用户无法再创建，文案固定', async () => {
       const u = await makeUser();
       // 直接落库绕开 10 次/时限频（限频挡不住这条上限该管的事）
       await makeVotes(150, { authorId: u.id });
@@ -944,14 +943,14 @@ describe('vote-service', () => {
 
     it('软删除的投票不计入上限（ignore=false 过滤生效）', async () => {
       // 与 clipboard 的 200 上限不同：那边有意连软删除一起数（防删了再建刷额度），
-      // 这边按 Flask 文案「最多创建 100 个投票」的字面语义，删掉的不该继续占坑。
+      // 这边按文案「最多创建 100 个投票」的字面语义，删掉的不该继续占坑。
       const u = await makeUser();
       await makeVotes(150, { authorId: u.id, ignore: true });
       expect('id' in (await createVote(u.id, 'x', ['A', 'B']))).toBe(true);
     });
 
-    it('数的是「自己创建的投票」，不是「自己投过的票」（Flask 原实现数错了对象）', async () => {
-      // Flask 数 VoteRecord.user_id —— 投够 100 次票的人会被禁止创建投票，而创建了
+    it('数的是「自己创建的投票」，不是「自己投过的票」（历史实现数错了对象）', async () => {
+      // 历史实现数 VoteRecord.userId —— 投够 100 次票的人会被禁止创建投票，而创建了
       // 1000 个投票的人反而畅通无阻。这条就是冲着那个错误对象来的探针：
       // 一个投过 120 次票、但一个投票都没建过的用户，必须能正常创建。
       const author = await makeUser();
@@ -969,7 +968,7 @@ describe('vote-service', () => {
       expect(await prisma.voteRecord.count({ where: { userId: voter.id } })).toBe(120);
       expect(await prisma.vote.count({ where: { authorId: voter.id } })).toBe(0);
 
-      // 若照抄 Flask 的错误实现，这里会返回「每个用户最多创建 100 个投票」
+      // 若照搬那个错误实现，这里会返回「每个用户最多创建 100 个投票」
       expect('id' in (await createVote(voter.id, '我的第一个投票', ['A', 'B']))).toBe(true);
     });
 
@@ -1230,9 +1229,9 @@ describe('vote-service', () => {
     });
 
     it('限频跑在存在性检查之后：投不存在的投票不吃配额', async () => {
-      // Flask cast_vote 是先查投票/选项/是否已投，最后才 check 限频；TS 原先把
+      // 正确顺序是先查投票/选项/是否已投，最后才 check 限频；此前 TS 把
       // rateLimit 提到了最前面，后果是对不存在的投票狂发请求就能把用户自己的
-      // 30 次/时 配额烧光（自伤）。现已对齐 Flask 的顺序，这条钉住它。
+      // 30 次/时 配额烧光（自伤）。现已改成正确顺序，这条钉住它。
       const u = await makeUser();
       for (let i = 0; i < 30; i++) {
         expect(await castVote('nonexist9', 1, u.id)).toEqual({ error: '投票不存在', status: 404 });
@@ -1338,12 +1337,12 @@ describe('clipboard-service', () => {
 
   // ── 总数上限 ──────────────────────────────────────────────────────────
   describe('每用户总数上限 200', () => {
-    it('常量与 Flask 的 200 对齐', () => {
+    it('常量是 200', () => {
       expect(CLIP_PER_USER_MAX).toBe(200);
     });
 
     it('已有 200 条时拒绝 —— 上限就是 200', async () => {
-      // 曾经是 `count > 200`（照抄 Flask 的 off-by-one，实际放行到 201 条），
+      // 曾经是 `count > 200`（off-by-one，实际放行到 201 条），
       // 已收紧为 `count >= 200`：站内文案与玩家指南一直写的都是 200。
       const u = await makeUser();
       await seedClipboardUpTo(u.id, 200);
@@ -1363,7 +1362,7 @@ describe('clipboard-service', () => {
     });
 
     it('已有 201 条时拒绝，返回 limit 且不落库', async () => {
-      // 201 已经建不出来了 —— 这条守的是**存量数据**：Flask 时代放行过 201 条的用户，
+      // 201 已经建不出来了 —— 这条守的是**存量数据**：历史上放行过 201 条的用户，
       // 迁过来之后必须照样被挡住，而不是靠「反正建不出第 201 条」侥幸成立。
       const u = await makeUser();
       await seedClipboardUpTo(u.id, 201);
@@ -1374,7 +1373,7 @@ describe('clipboard-service', () => {
       expect(await prisma.clipBoard.count({ where: { authorId: u.id } })).toBe(201);
     });
 
-    it('软删除的剪贴板仍计入上限（对齐 Flask：count 不带 ignore 过滤）', async () => {
+    it('软删除的剪贴板仍计入上限（count 不带 ignore 过滤）', async () => {
       // 这是有意的 —— 否则删了再建就能无限刷。但对用户不直观，值得记一笔。
       const u = await makeUser();
       await seedClipboardUpTo(u.id, 201, { ignore: true });
@@ -1429,10 +1428,10 @@ describe('clipboard-service', () => {
       expect(await getClip(r.id, other.id)).toEqual({ ok: false, reason: 'forbidden' });
       // 未登录访客同样拿不到
       expect(await getClip(r.id, undefined)).toEqual({ ok: false, reason: 'forbidden' });
-      // 注意：forbidden 而不是 not_found —— 会暴露「该 id 存在」，但对齐 Flask abort(403)
+      // 注意：forbidden 而不是 not_found —— 会暴露「该 id 存在」，但这是刻意的。
     });
 
-    it('★ 站长能看别人的私有剪贴板（对齐 Flask 的 `and not current_user.is_owner`）', async () => {
+    it('★ 站长能看别人的私有剪贴板（站长例外）', async () => {
       // 这个例外一度漏掉：getClip 只判了「非作者 → forbidden」，站长访问会吃 403，
       // 连详情页上那个只对他显示的「删除」按钮都够不着 —— 而删除权限是给了他的。
       // 上面那条用例覆盖了「别人看不到」，却没覆盖站长，于是漏网。
@@ -1563,7 +1562,7 @@ describe('clipboard-service', () => {
     });
 
     it('非作者不能编辑 → forbidden，且内容一个字都没变', async () => {
-      // Flask edit 路由只认作者，连 owner 都没例外 —— 这条钉住「没有偷偷加后门」
+      // 编辑只认作者，连 owner 都没例外 —— 这条钉住「没有偷偷加后门」
       const author = await makeUser();
       const other = await makeUser({ role: 'owner' }); // 站长也不行
       const r = (await createClip(author.id, { title: '原标题', content: '原正文' })) as {
@@ -1646,7 +1645,7 @@ describe('clipboard-service', () => {
         })
       ).toEqual({ ok: false, reason: 'content_too_long' });
 
-      // 空标题也走 title_too_long（对齐 Flask：len<1 与 len>40 同一分支）
+      // 空标题也走 title_too_long（len<1 与 len>40 同一分支）
       expect(await createClip(author.id, { title: '', content: 'c' })).toEqual({
         ok: false,
         reason: 'title_too_long',
@@ -1714,7 +1713,7 @@ describe('clipboard-service', () => {
       expect(await prisma.clipBoard.count({ where: { id: r.id } })).toBe(1);
       expect(await prisma.clipText.count({ where: { clipId: r.id } })).toBe(1);
       expect((await prisma.clipBoard.findUnique({ where: { id: r.id } }))!.ignore).toBe(true);
-      // 对作者本人也是 not_found（对齐 Flask：get 先过滤 ignore）
+      // 对作者本人也是 not_found（get 先过滤 ignore）
       expect(await getClip(r.id, author.id)).toEqual({ ok: false, reason: 'not_found' });
       expect(await listUserClips(author.id)).toEqual([]);
     });
@@ -1728,7 +1727,7 @@ describe('clipboard-service', () => {
       expect((await prisma.clipBoard.findUnique({ where: { id: r.id } }))!.ignore).toBe(false);
     });
 
-    it('★ 站长能删任何人的剪贴板（对齐 Flask delete：作者或 is_owner）', async () => {
+    it('★ 站长能删任何人的剪贴板（作者或站长）', async () => {
       const author = await makeUser();
       const r = (await createClip(author.id, { title: 't', content: 'c' })) as { ok: true; id: string };
 
@@ -1772,8 +1771,8 @@ describe('clipboard-service', () => {
   // 根本走不到要验的长度校验。用 core 不是为了绕过权限，而是因为这组测的是长度文案，
   // 权限那关有它自己的用例（见 e2e access-control「核心用户门槛（接口层）」）。
   describe('长度上限与错误文案（API route 层）', () => {
-    it('常量与 Flask validator() 对齐', () => {
-      expect(CLIP_TITLE_MAX).toBe(40); // app/web/clipboard/__init__.py: len(title) > 40
+    it('常量与长度校验边界一致', () => {
+      expect(CLIP_TITLE_MAX).toBe(40); // 边界：len(title) > 40
       expect(CLIP_CONTENT_MAX).toBe(50000); // len(content) > 50000
     });
 
@@ -1793,7 +1792,7 @@ describe('clipboard-service', () => {
       ).json();
       expect(tooLongTitle).toMatchObject({ code: 400, message: 'title too long' });
 
-      // 标题空串同样走 'title too long' 这条文案（对齐 Flask：len<1 与 len>40 同一分支）
+      // 标题空串同样走 'title too long' 这条文案（len<1 与 len>40 同一分支）
       const emptyTitle = await (await call({ title: '', content: 'c', publicity: true })).json();
       expect(emptyTitle).toMatchObject({ code: 400, message: 'title too long' });
 
@@ -1880,7 +1879,7 @@ describe('clipboard-service', () => {
       expect((await prisma.clipBoard.findUnique({ where: { id: r.id } }))!.ignore).toBe(false);
     });
 
-    it('DELETE 站长可删别人的剪贴板（对齐 Flask is_owner 分支）', async () => {
+    it('DELETE 站长可删别人的剪贴板（站长分支）', async () => {
       const author = await makeUser({ role: 'core' });
       const owner = await makeUser({ role: 'owner' });
       const r = (await createClip(author.id, { title: 't', content: 'c' })) as { ok: true; id: string };
