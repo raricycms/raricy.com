@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { Suspense } from 'react';
 import { cookies } from 'next/headers';
 import { requireCoreUser } from '@/lib/guard';
+import { rateLimit, RULES } from '@/lib/rate-limit';
 import { COOKIE_NAME } from '@/lib/blog-sort-pref';
 import { listBlogs, parseSortParam } from '@/lib/blog-service';
 import { prisma } from '@/lib/db';
@@ -27,7 +28,7 @@ export default async function BlogListPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
-  await requireCoreUser();
+  const viewer = await requireCoreUser();
   const sp = await searchParams;
   // ⚠️ 精选筛选是**三态**，别把布尔值直接递给 listBlogs：
   //   '1' → true（只看精选） / '0' → false（只看非精选） / 缺省 → undefined（不筛）
@@ -54,19 +55,37 @@ export default async function BlogListPage({
   const currentUser = await getCurrentUser();
   const focusOn = !!currentUser?.focusMode;
 
+  // ── 正文搜索限频 ──────────────────────────────────────────────────────────
+  // 只对**真的会扫正文**的请求计数（search 非空）。不能写成无条件计数 —— 那样光是
+  // 翻页 / 换栏目就把额度耗光了，限频会变成「限页」，正常用户翻两页就撞墙，
+  // 而且不报错、单测也测不出来，只有真实使用才会现形。
+  //
+  // rateLimit 是纯内存同步函数（内部无 await），所以这一步不改变本页的时序结构。
+  //
+  // ⚠️ 超限时**不创建** listBlogs 的 promise。创建即发起查询：照旧创建只是不 await
+  // 的话，两次全表扫描照跑，限频就只省了流量、没省 CPU，且没有任何症状。
+  const searching = (sp.search ?? '').trim().length > 0;
+  const searchLimited =
+    searching && !rateLimit(`blog:search:${viewer.id}`, RULES.blogSearchMinute).allowed;
+
   // ⚠️ 列表**不 await** —— 直接把 promise 交给下面 <Suspense> 里的 BlogListSection。
   // 这样 hero / 搜索框 / 侧栏分类在首个 flush 就能画出来，列表随后流式补上；
   // 若在这里 await，整页要等列表就绪才吐第一个字节（首屏与末屏同一时刻出现）。
   // 守卫不受影响：requireCoreUser 在上面已经 await 过，redirect/forbidden 早于任何 flush。
-  const result = listBlogs({
-    page: parseInt(sp.page || '1', 10),
-    perPage: 50, // 目录每页 50 篇（服务默认 200 是 /api/blogs 的契约，不动）
-    categorySlug: sp.category ?? null,
-    featured: featuredFilter,
-    search: sp.search ?? null,
-    sort: parseSortParam(effectiveSort),
-    focusMode: focusOn,
-  });
+  const result = searchLimited
+    ? null
+    : listBlogs({
+        page: parseInt(sp.page || '1', 10),
+        perPage: 50, // 目录每页 50 篇（服务默认 200 是 /api/blogs 的契约，不动）
+        categorySlug: sp.category ?? null,
+        featured: featuredFilter,
+        search: sp.search ?? null,
+        sort: parseSortParam(effectiveSort),
+        focusMode: focusOn,
+        // 公开目录页搜正文。这是全站唯一传 'all' 的地方 —— 其余调用方（/api/blogs、
+        // 引用弹窗）一律走默认 'meta'，别顺手放宽（见 ListParams.searchScope 的注释）。
+        searchScope: 'all',
+      });
 
   const categories = await prisma.category.findMany({
     where: { parentId: null, isActive: true },
@@ -162,9 +181,15 @@ export default async function BlogListPage({
             {/* 列表与分页都依赖 result，故连同分页一起放进边界内 ——
                 它们要么一起出现，要么一起等。fallback 用骨架，且**不复用 .blog-item**：
                 专注模式的用例断言 `.blog-item` 计数为 0，骨架顶着同名类出现会污染它。 */}
-            <Suspense fallback={<BlogListSkeleton />}>
-              <BlogListSection result={result} qs={qs} />
-            </Suspense>
+            {/* 被限频时 result 是 null（promise 压根没创建），直接出提示，
+                连 Suspense 都不进 —— 该分支不挂起，骨架不会闪。 */}
+            {result === null ? (
+              <SearchRateLimited />
+            ) : (
+              <Suspense fallback={<BlogListSkeleton />}>
+                <BlogListSection result={result} qs={qs} />
+              </Suspense>
+            )}
           </main>
         </div>
       </div>
@@ -225,7 +250,11 @@ async function BlogListSection({
                   </span>
                 </div>
               </div>
-              <p className="blog-description">{b.description}</p>
+              {/* 正文命中的片段优先于简介 —— 它回答「这篇为什么被搜出来」。
+                  复用 .blog-description 的样式（同为两行截断的次要文本），不新增类名。
+                  ⚠️ 纯文本插值：正文是原始 markdown 且含字面 HTML（库里实打实有
+                  XSS 演示代码），这里绝不进 dangerouslySetInnerHTML。 */}
+              <p className="blog-description">{b.snippet ?? b.description}</p>
               <div className="menu-blog-meta">
                 <div className="blog-author">
                   <Link
@@ -285,6 +314,24 @@ async function BlogListSection({
         </nav>
       )}
     </>
+  );
+}
+
+/**
+ * 正文搜索被限频时的提示（见 page 组件里的 blogSearchMinute 闸）。
+ *
+ * 【为什么文案必须与空结果可区分】写成「暂无博客文章」就是在说谎 —— 用户会得出
+ * 「没有搜到」的结论，而实际是请求压根没发出去。这种静默失效正是本仓库红线紧盯的
+ * 那类错，所以宁可多一句解释。
+ *
+ * 复用 .no-blogs 的容器样式（居中 + 次要色，零新 CSS）；但**不带**它那个文档图标
+ * —— 那个图标指向「这里没有内容」，与「请求被挡下了」是两回事。
+ */
+function SearchRateLimited() {
+  return (
+    <div className="no-blogs">
+      <p>搜索太频繁了，请稍候一分钟再试。</p>
+    </div>
   );
 }
 

@@ -28,6 +28,18 @@ export interface ListParams {
   sort?: BlogSort;
   /** 查看者开启了专注模式：过滤 focusHidden 栏目（含其子栏目）下的文章。 */
   focusMode?: boolean;
+  /**
+   * 搜索范围。**默认 'meta'** —— 只搜标题 / 简介 / 作者名。
+   * 'all' 才加上正文（1:1 的 BlogContent）。
+   *
+   * 【为什么是 opt-in 而不是默认放宽】正文合计约 48.6MB / 6193 篇，LIKE '%q%' 全表扫描
+   * 实测约 68ms/遍（count + findMany 走两遍约 136ms），而元数据搜索只要 1~2ms。
+   * /api/blogs 被 QuoteBlogModal 的**输入防抖**实时搜索消费 —— 默认放宽等于让用户
+   * 每敲一个键就扫一遍全站正文，而且不报错、只是悄悄变慢。
+   * 目前只有 /blog 列表页传 'all'（它在 requireCoreUser 之后，另有限频闸）。
+   * 管理端同款参数见 admin-blog-service.ts 的 searchScope。
+   */
+  searchScope?: 'meta' | 'all';
 }
 
 const DEFAULT_PER_PAGE = 200;
@@ -103,14 +115,21 @@ export async function listBlogs(params: ListParams) {
     }
   }
 
-  if (params.search && params.search.trim()) {
-    const q = params.search.trim();
+  // 搜索词在 findMany 之后还要用（补正文片段），所以在函数作用域里留着。
+  const q = params.search?.trim() || null;
+  // 正文范围是 opt-in 的重活（一次全表扫描），理由见 ListParams.searchScope。
+  const withContent = params.searchScope === 'all';
+
+  if (q) {
     // 用 AND 承载，避免与上面「保住 NULL」的 OR 互相覆盖（两者都写 where.OR 会后者胜出）。
     const searchOr: Prisma.BlogWhereInput = {
       OR: [
         { title: { contains: q } },
         { description: { contains: q } },
         { author: { is: { username: { contains: q } } } },
+        // 正文刻意存在独立的 blog_contents 表（列表查询不拖正文），
+        // 所以这里必须显式穿一层 relation 才搜得到。
+        ...(withContent ? [{ content: { is: { content: { contains: q } } } }] : []),
       ],
     };
     where.AND = Array.isArray(where.AND) ? [...where.AND, searchOr] : [searchOr];
@@ -149,8 +168,61 @@ export async function listBlogs(params: ListParams) {
     }),
   ]);
 
+  // 补正文片段。映射无条件做一遍，让返回类型统一（blogs 始终带 snippet 字段，
+  // 非正文搜索时为 null），调用方就不必区分两种形状。
+  const rows =
+    withContent && q
+      ? await attachSnippets(blogs, q)
+      : blogs.map((b) => ({ ...b, snippet: null as string | null }));
+
   const pages = Math.max(1, Math.ceil(total / perPage));
-  return { blogs, total, page, perPage, pages, hasPrev: page > 1, hasNext: page < pages };
+  return { blogs: rows, total, page, perPage, pages, hasPrev: page > 1, hasNext: page < pages };
+}
+
+/** 片段在命中处两侧各取的字符数。总长约 2×60，与 .blog-description 的两行截断相称。 */
+const SNIPPET_RADIUS = 60;
+
+/**
+ * 给搜索结果补「命中处的正文片段」，让列表页能回答「这篇为什么被搜出来」。
+ *
+ * 形状照抄 chat-service 的 attachImagesAndReplies：空数组早退 → 去重 id → 一次批量查
+ * → 建 Map → 挂载。**绝不把正文并进上面 findMany 的 select** —— 那会把每页最多 200 条
+ * × 平均 5KB 的正文全拉回来，而列表根本不用；这里只查当页那几条，且只多一次查询。
+ *
+ * 只给**正文确实命中**的行片段：标题 / 简介 / 作者命中的文章，正文里并没有这个词，
+ * 返回 null 让调用方回退到 description —— 否则卡片会顶出一段与关键词毫不相干的正文开头。
+ *
+ * ⚠️ 片段是**原始 markdown**（正文就是 md 原文，含代码块、链接、字面 HTML），
+ * 调用方必须以纯文本插值渲染，绝不进 dangerouslySetInnerHTML。
+ */
+async function attachSnippets<T extends { id: string }>(
+  rows: T[],
+  q: string
+): Promise<(T & { snippet: string | null })[]> {
+  if (!rows.length) return [];
+  const ids = [...new Set(rows.map((r) => r.id))];
+  const contents = await prisma.blogContent.findMany({
+    where: { blogId: { in: ids } },
+    select: { blogId: true, content: true },
+  });
+  const byId = new Map(contents.map((c) => [c.blogId, c.content]));
+  // 大小写口径：SQLite 的 LIKE 只对 ASCII 不敏感，而 toLowerCase 是 Unicode 感知的，
+  // 两者域不同。最坏情况是极端字符下少给一个片段（退化成显示简介），不是错误答案。
+  const needle = q.toLowerCase();
+  return rows.map((r) => {
+    const raw = byId.get(r.id);
+    if (!raw) return { ...r, snippet: null };
+    const at = raw.toLowerCase().indexOf(needle);
+    return { ...r, snippet: at < 0 ? null : makeSnippet(raw, at, q.length) };
+  });
+}
+
+/** 在命中处截取两侧上下文，并把换行 / 连续空白折成单个空格（卡片里是一段文本）。 */
+function makeSnippet(content: string, at: number, qLen: number): string {
+  const start = Math.max(0, at - SNIPPET_RADIUS);
+  const end = Math.min(content.length, at + qLen + SNIPPET_RADIUS);
+  const body = content.slice(start, end).replace(/\s+/g, ' ').trim();
+  return `${start > 0 ? '…' : ''}${body}${end < content.length ? '…' : ''}`;
 }
 
 export async function getBlogDetail(id: string) {

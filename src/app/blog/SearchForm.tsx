@@ -51,7 +51,7 @@ export default function SearchForm({
           type="search"
           name="search"
           defaultValue={search}
-          placeholder="搜索标题、作者、简介..."
+          placeholder="搜索标题、作者、简介、正文..."
           className="search-input"
         />
         <button type="submit" className="search-btn">

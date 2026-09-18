@@ -957,6 +957,72 @@ describe('listBlogs / 搜索与精选', () => {
     expect((await listBlogs({ search: '   ' })).total, '纯空白不应过滤掉所有文章').toBe(1);
   });
 
+  // ── 正文范围（searchScope: 'all'）─────────────────────────────────────────
+  // ⚠️ 这一组的**第一条是契约核心**。上面所有既有搜索用例的正文都是 makeBlog 的
+  // 默认值 '# hello'，所以「默认值被悄悄改成 'all'」不会让它们变红 —— 唯一能抓住
+  // 那个回归的就是下面的成对断言。别把它删了。
+
+  it("searchScope 默认 'meta'：正文里的词搜不到，显式 'all' 才搜得到", async () => {
+    const u = await makeUser();
+    await makeBlog({ authorId: u.id, title: '标题无关', content: '正文里有恐龙化石' });
+    expect((await listBlogs({ search: '恐龙化石' })).total, '默认不该搜正文').toBe(0);
+    const r = await listBlogs({ search: '恐龙化石', searchScope: 'all' });
+    expect(r.blogs.map((b) => b.title)).toEqual(['标题无关']);
+  });
+
+  it("searchScope 'all'：命中处给出正文片段，两侧带省略号且远短于全文", async () => {
+    const u = await makeUser();
+    await makeBlog({
+      authorId: u.id,
+      title: 'T',
+      content: `${'头'.repeat(200)}独特词${'尾'.repeat(200)}`,
+    });
+    const r = await listBlogs({ search: '独特词', searchScope: 'all' });
+    const snippet = r.blogs[0].snippet;
+    expect(snippet).toBeTruthy();
+    expect(snippet).toContain('独特词');
+    expect(snippet, '命中在正文中间，两侧都该有省略号').toMatch(/^….*…$/);
+    expect(snippet!.length, '片段不该把全文带出来').toBeLessThan(200);
+  });
+
+  it("searchScope 'all'：大小写不敏感，且片段取得回来", async () => {
+    const u = await makeUser();
+    await makeBlog({ authorId: u.id, title: 'T', content: '讲了 Rust 所有权' });
+    const r = await listBlogs({ search: 'rust', searchScope: 'all' });
+    expect(r.blogs).toHaveLength(1);
+    // SQLite 的 LIKE 对 ASCII 不区分大小写 —— 若片段那边按原样找，就会「命中了
+    // 但片段是 null」，而且不报错。这条钉住两侧口径一致。
+    expect(r.blogs[0].snippet, '命中了却取不到片段 = 大小写口径不一致').toContain('Rust');
+  });
+
+  it("searchScope 'all'：只命中标题/简介的文章不给正文片段", async () => {
+    const u = await makeUser();
+    await makeBlog({ authorId: u.id, title: '量子纠缠导论', content: '与关键词无关的正文' });
+    const r = await listBlogs({ search: '量子纠缠', searchScope: 'all' });
+    expect(r.blogs.map((b) => b.title)).toEqual(['量子纠缠导论']);
+    // 给 null 而不是「正文开头 N 字」—— 后者看着完全合理，却与命中点无关。
+    expect(r.blogs[0].snippet, '标题命中不该顶出一段无关的正文开头').toBeNull();
+  });
+
+  it("searchScope 'all'：LIKE 通配符命中（%）不产生假片段", async () => {
+    const u = await makeUser();
+    await makeBlog({ authorId: u.id, title: 'T', content: '正文里没有百分号' });
+    // '%' 进了 Prisma 的 contains 就是 LIKE '%%%'，命中一切；但正文里并没有这个
+    // 字符。此时必须给 null —— 拿「正文开头 N 字」冒充命中片段是这里最阴的错：
+    // 不报错、没人会当 bug 报，所以只能靠这条断言钉住。
+    const r = await listBlogs({ search: '%', searchScope: 'all' });
+    expect(r.blogs.length).toBeGreaterThan(0);
+    expect(r.blogs.every((b) => b.snippet === null)).toBe(true);
+  });
+
+  it("searchScope 'all'：搜不到任何文章时不炸（空 ids 早退）", async () => {
+    const u = await makeUser();
+    await makeBlog({ authorId: u.id, title: 'T' });
+    const r = await listBlogs({ search: '绝不存在的词zzzqqq', searchScope: 'all' });
+    expect(r.total).toBe(0);
+    expect(r.blogs).toEqual([]);
+  });
+
   it('featured=true → 只返回精选', async () => {
     const u = await makeUser();
     const a = await makeBlog({ authorId: u.id, title: '精选文' });

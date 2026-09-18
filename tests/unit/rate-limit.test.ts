@@ -221,6 +221,12 @@ describe('RULES 全站配额（src/lib/rate-limit.ts 即权威，改动即报警
       windowMs: 60_000,
       desc: '收藏夹免认证读取 120 次/分/IP（spider 命名空间里唯一有闸的一条）',
     },
+    {
+      name: 'blogSearchMinute',
+      limit: 30,
+      windowMs: 60_000,
+      desc: '博客正文搜索 30 次/分/用户（全站唯一为「读」设的闸：一次请求 = count + findMany 两次全表扫描，约 48.6MB 正文）',
+    },
   ] as const;
 
   for (const e of EXPECTED) {

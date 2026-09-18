@@ -24,6 +24,11 @@ export async function GET(req: Request) {
   // 不能把「没传」算成 false —— 那是生效的筛选，会让精选文章从调用方的列表里
   // 整体消失（QuoteBlogModal 就不传 featured，引用弹窗曾因此搜不到精选文）。
   const featuredRaw = url.searchParams.get('featured');
+  // ⚠️ 刻意**不传** searchScope（走默认 'meta'，只搜标题/简介/作者名）。
+  // 本接口完全匿名，且被「引用博客」弹窗按防抖实时消费（QuoteBlogModal）——
+  // 接上正文搜索等于把「每敲一个键就扫一遍约 48.6MB 正文」开放给任何访客。
+  // 正文范围只给 /blog 页面：它在 requireCoreUser() 之后，另有限频闸。
+  // 也不要为此加 ?scope= 参数 —— 那等于开了同一个口子。
   const result = await listBlogs({
     page: parseInt(url.searchParams.get('page') || '1', 10),
     perPage:

@@ -65,6 +65,34 @@ test('搜索不匹配时列表为空（防「筛选条件被忽略」这类静�
 });
 
 /**
+ * 【防的回归】page.tsx 忘了传 searchScope: 'all'。
+ *
+ * 这是本页唯一能抓住它的用例 —— service 层测不到「调用方传了什么参数」，
+ * 同下面那条「精选文章消失」的纪律（失效点在调用方而非 service）。
+ * 哨兵串只在种子文章的正文里，标题与简介都不含它。
+ */
+test('搜索正文：正文独有词能搜到，并显示命中处的片段', async ({ page }) => {
+  await page.goto(`/blog?search=${BLOG_BODY_MARKER}`);
+  const card = page.locator(`#id${SEED_BLOG.id}`);
+  await expect(card).toBeVisible();
+  // 被正文命中时，.blog-description 位置显示的是片段（含哨兵串）而不是简介
+  await expect(card.locator('.blog-description')).toContainText(BLOG_BODY_MARKER);
+});
+
+/**
+ * 【防的回归】/api/blogs 的默认搜索范围被放宽成 'all'。
+ *
+ * 该接口完全匿名，且被「引用博客」弹窗按防抖实时消费 —— 一旦放宽，任何访客
+ * 每敲一个键就是一次约 48.6MB 的全站正文扫描，而且线上不会报任何错，只是悄悄变慢。
+ */
+test('/api/blogs 仍不搜正文（匿名接口不能被放宽）', async ({ page }) => {
+  const res = await page.request.get(`/api/blogs?search=${BLOG_BODY_MARKER}`);
+  expect(res.status()).toBe(200);
+  const body = (await res.json()) as { blogs: unknown[] };
+  expect(body.blogs, '匿名接口接上正文搜索 = 把全表扫描开放给任何访客').toHaveLength(0);
+});
+
+/**
  * 【防的回归】精选文章必须在「全部文章」与所属栏目目录里照常出现。
  *
  * 曾经的失效模式在**调用方**而非 service：页面把「URL 没有 featured 参数」直接
