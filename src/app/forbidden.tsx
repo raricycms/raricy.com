@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { getCurrentUser } from '@/lib/auth';
 
-// 403 禁止访问页 —— 逐节点还原原 errorhandlers/403.html（彩虹渐变 + 色相循环）。
+// 403 禁止访问页 —— 彩虹渐变 + 色相循环（样式见 pages/_error.scss）。
 // 由 forbidden()（受控页非核心用户）在原地以 403 状态渲染。
 //
 // 【按登录态分支】能走到这里的**基本都是已登录用户**：所有 guard 在未登录时都先
