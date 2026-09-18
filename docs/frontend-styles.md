@@ -655,7 +655,6 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
   刻意保持一致的主视觉，改用令牌会让它在浅色主题下变浅底、与白字打架。
 - 403 页的彩虹色相循环（`pages/_error.scss` 的 `.rainbow-error__bg`）—— 同理，
   它不是主题表面。
-- `components/_bootstrap_fallback.scss` —— JS 不可用时的最小兜底，刻意不引令牌。
 - 设置页开关的圆钮 `background: #fff`（`pages/_settings.scss` 的
   `.settings-toggle__slider::before`）—— 它**在两个主题下都必须是白的**（开关就长这样），
   换 `--color-background-card` 会让暗色主题的钮跟着变深、压在 `--color-border` 的轨道上
