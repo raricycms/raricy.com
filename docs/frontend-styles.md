@@ -29,8 +29,9 @@ src/styles-scss/
 > ⚠️ 别把入口改名成 `main.module.scss`：`.module.` 后缀会让 Next 按 **CSS Modules**
 > 处理、把全站类名哈希化，样式整体失效。
 
-`npm run css:probe` 仍在，但**只服务离线调试**：`tests/.tmp/` 下那几个手工像素探针 HTML
-用 `<link>` 直接引产物路径。要跑探针先 `npm run css:probe`；日常开发与部署都用不到它。
+`npm run css:probe` 仍在，但**只服务离线调试**：产物是 `src/styles-scss/compiled/probe.css`，
+`tests/.tmp/` 下那几个手工像素探针 HTML 用 `<link>` 直接引它。要跑探针先 `npm run css:probe`；
+日常开发与部署都用不到它。
 名字里刻意不带 `build:` —— 它不在构建链上，别让名字把人骗了。
 
 四条守卫（`css-classes` / `css-js-classes` / `css-tsx-classes` / `check:links` §4）读的

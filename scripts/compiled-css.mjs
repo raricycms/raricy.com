@@ -6,7 +6,7 @@
 //   · tests/unit/css-js-classes.test.ts（JS 注入的类名必须有定义）
 //   · scripts/check-links.mjs §4       （icon-* 那条的孪生实现）
 //
-// 【为什么不读文件】编译产物原先入库（src/styles-scss/compiled/flask.css），
+// 【为什么不读文件】编译产物原先入库（src/styles-scss/compiled/probe.css），
 // 三条守卫读的都是那一份。产物一旦 stale，守卫验的就是「上一版样式」——
 // 而它恰恰是最容易忘记重编的东西。现编保证守卫看到的是当前 SCSS 真正编译出的
 // 结果，与浏览器拿到的一致。
