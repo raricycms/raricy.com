@@ -186,7 +186,7 @@ export const blogCommands: CommandSpec[] = [
         `作者：${blog.author?.username ?? '—'}`,
         '变更：Blog.ignore → false（重新出现在列表与详情页）',
         '注：评论从未被删过，随文章一起恢复可见，不需要额外操作。',
-        '本次操作会写入审计日志（公开可见）。',
+        '本次操作会写入审计日志（内部留痕，不进 /audit 公示页）。',
       ];
     },
     async run(ctx) {
@@ -216,14 +216,14 @@ export const blogCommands: CommandSpec[] = [
       const notify =
         blog.authorId === ctx.actor?.id
           ? '作者就是你自己，不会发通知。'
-          : `会通知作者 ${blog.author?.username ?? '—'}（对方可以就此申诉）。`;
+          : `会通知作者 ${blog.author?.username ?? '—'}；但日志不进公示页，对方因此无法走网页申诉（要留申诉渠道就用网页后台删）。`;
       return [
         `文章：《${blog.title}》`,
         `作者：${blog.author?.username ?? '—'}`,
         `原因：${String(ctx.args.reason)}`,
         `变更：Blog.ignore → true（软删，随时可用 blog restore 找回）`,
         notify,
-        '本次操作会写入审计日志（公开可见）。',
+        '本次操作会写入审计日志（内部留痕，不进 /audit 公示页）。',
       ];
     },
     async run(ctx) {

@@ -224,6 +224,27 @@ describe('logAdminAction（审计日志写入）', () => {
     expect((await latestLog('vis_private'))!.visibility).toBe('private');
   });
 
+  it('★ 后台运维（npm run cli）上下文里默认落 internal，跑完即失效', async () => {
+    // /audit 是顶栏挂着链接的公示页，后台运维的操作不该在上面刷屏（见 audit-context.ts）。
+    // 这条同时钉住两件事：圈内默认变 internal；圈外**不受影响**（不是模块级开关）。
+    const admin = await makeUser({ role: 'admin' });
+    const { runAsBackendOps } = await import('@/lib/audit-context');
+
+    await runAsBackendOps(async () => {
+      await logAdminAction({ action: 'vis_ops', adminId: admin.id });
+    });
+    await logAdminAction({ action: 'vis_after_ops', adminId: admin.id });
+
+    expect((await latestLog('vis_ops'))!.visibility).toBe('internal');
+    expect((await latestLog('vis_after_ops'))!.visibility).toBe('public');
+
+    // 显式传的 visibility 优先于上下文（上下文只管缺省值）
+    await runAsBackendOps(async () => {
+      await logAdminAction({ action: 'vis_ops_explicit', adminId: admin.id, visibility: 'public' });
+    });
+    expect((await latestLog('vis_ops_explicit'))!.visibility).toBe('public');
+  });
+
   it('公示窗口是「近 30 天」，且起点与写入 createdAt 同口径（墙上时间）', async () => {
     // createdAt 走 nowForDb()（UTC+8 墙上时间贴 Z）。若窗口起点用真实 Date.now()，
     // 实际窗口会变成 30 天 + 8 小时 —— 超窗的日志多留 8 小时。这条从两侧钉住。

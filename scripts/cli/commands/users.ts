@@ -42,7 +42,7 @@ const reasonArg = {
   flags: ['--reason', '-r'],
   required: true,
   label: '原因（写进审计日志）',
-  help: '1..200 字，会出现在 /audit 公示页与用户的申诉里',
+  help: '1..200 字，会写进内部审计日志（不进 /audit 公示页）',
   prompt: { type: 'input' as const },
   validate: (raw: string) => {
     const t = raw.trim();
@@ -207,7 +207,7 @@ export const userCommands: CommandSpec[] = [
         ctx.args.mode === 'manual'
           ? '新密码：使用 --password 传入的值。'
           : '新密码：随机生成，命令结束后仅显示一次。',
-        '本次操作会写入审计日志（**不含密码**，公开可见）。',
+        '本次操作会写入审计日志（**不含密码**；内部留痕，不进 /audit 公示页）。',
       ];
     },
     async run(ctx) {
@@ -269,7 +269,9 @@ export const userCommands: CommandSpec[] = [
         `目标用户：${target.username}（当前 ${target.role}${target.isBanned ? '，已处于禁言中' : ''}）`,
         `禁言 ${hours} 小时`,
         '后果：立即踢下线 + 断开讨论长连接；期间不能发文、评论、讨论。',
-        '本次操作会写入审计日志（公开可见），并通知被禁言者 —— 对方可以就此申诉。',
+        '本次操作会写入审计日志（内部留痕，不进 /audit 公示页），并通知被禁言者。',
+        '⚠️ 公示页上看不到这条日志 —— 对方因此**无法在网页上申诉**（申诉入口挂在公示日志上）。',
+        '   要保留申诉渠道，改用网页后台的用户管理禁言。',
       ];
     },
     async run(ctx) {
@@ -345,7 +347,7 @@ export const userCommands: CommandSpec[] = [
       return [
         `目标用户：${target.username}（${target.role}）`,
         '后果：该用户所有已登录会话立即失效，并断开讨论长连接；重新登录即可继续。',
-        '本次操作会写入审计日志（公开可见），并通知本人。',
+        '本次操作会写入审计日志（内部留痕，不进 /audit 公示页），并通知本人。',
       ];
     },
     async run(ctx) {
@@ -373,7 +375,7 @@ export const userCommands: CommandSpec[] = [
       '手动给自己认可的人开号。人机验证只在网页注册的路由层，这里天然不涉及。',
       '',
       '不消耗邀请码 —— 角色直接给 core，而不是走「邀请码升级」那条路。',
-      '密码必须由你指定并转告对方；它不会写进审计日志（/audit 是公开页）。',
+      '密码必须由你指定并转告对方；它不会写进审计日志（那里只记 create_user 这个动作）。',
     ].join('\n'),
     args: [
       {
@@ -430,7 +432,7 @@ export const userCommands: CommandSpec[] = [
         `邮箱：${email || `${buildPlaceholderEmail(username)}（自动合成，不可投递）`}`,
         '不消耗邀请码，也不经过人机验证。',
         '密码取自 --password，会留在 shell 历史里 —— 建完请转告对方。',
-        '本次操作会写入审计日志（**不含密码**，公开可见）。',
+        '本次操作会写入审计日志（**不含密码**；内部留痕，不进 /audit 公示页）。',
       ];
     },
     async run(ctx) {

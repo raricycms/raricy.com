@@ -108,9 +108,10 @@ export type RevokeInviteCodeResult =
  *     删掉就永久丢失，审计日志也重建不出来（用户行不受影响，没有级联，
  *     所以只是数据丢失 —— 但这就够了）。
  *
- * 【码值绝不进审计日志】logAdminAction 默认 visibility:'public'，而 /audit 是**公开页**。
- * 把 12 位邀请码写进 reason/metadata 等于把注册凭证发给所有 core 用户。
- * 所以只记 objectType + 数字 id。
+ * 【码值绝不进审计日志】12 位邀请码就是注册凭证，不该在库里多抄一份到审计表 ——
+ * 日志是要被翻、被导出、将来还可能被改成公示的。所以只记 objectType + 数字 id。
+ *（调用方目前只有运维 CLI，后台运维的日志落 visibility='internal'，见 audit-context.ts；
+ *  但这条纪律不跟着可见性走 —— 哪天网页端也接上撤销入口，日志就是公开的了。）
  */
 export async function revokeInviteCode(
   idOrCode: string,

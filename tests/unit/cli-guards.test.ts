@@ -136,6 +136,31 @@ describe('运维 CLI：时间戳只用一把钟', () => {
   });
 });
 
+describe('运维 CLI：后台操作不进前端公示页', () => {
+  // 【这条守什么】后台运维写下的审计日志必须落 visibility='internal' —— 否则站长的
+  // 批量操作会出现在顶栏「日志」（/audit）那张**公示页**上。机制是 scripts/cli.ts 把
+  // 整轮执行圈进 runAsBackendOps（见 src/lib/audit-context.ts），所以这里守的是
+  // 「入口还圈着」。
+  //
+  // 只检查这一个点是有意的：漏斗那一头（logAdminAction 的缺省值）由
+  // tests/service/admin-user-and-appeal.test.ts 的行为用例钉死，不需要在这里再抄一遍。
+  it('★ scripts/cli.ts 把整轮执行圈在 runAsBackendOps 里', () => {
+    const src = stripComments(fs.readFileSync(CLI_ENTRY, 'utf8'));
+    expect(
+      /runAsBackendOps\s*\(/.test(src),
+      'scripts/cli.ts 没有用 runAsBackendOps 包住 run() —— 后台操作会写进 /audit 公示页'
+    ).toBe(true);
+  });
+
+  it('audit-context 是纯 Node 内建模块（--help 的加载路径上不会拖进 Prisma）', () => {
+    const src = stripComments(fs.readFileSync(path.join(ROOT, 'src', 'lib', 'audit-context.ts'), 'utf8'));
+    const runtimeImports = [...src.matchAll(RE_TOP_IMPORT)].map((m) => m[2]);
+    for (const spec of runtimeImports) {
+      expect(spec, `audit-context.ts 引入了 ${spec}`).toBe('node:async_hooks');
+    }
+  });
+});
+
 describe('运维 CLI：CJS 语义', () => {
   it('不许顶层 await（scripts/ 下的 .ts 按 CJS 执行，没有顶层 await）', () => {
     expect(

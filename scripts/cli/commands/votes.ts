@@ -163,7 +163,7 @@ export const voteCommands: CommandSpec[] = [
         `作者：${vote.author?.username ?? '—'}`,
         '变更：Vote.ignore → false',
         '票数与选项从未被动过，恢复后计票原样可用。',
-        '本次操作会写入审计日志（公开可见）。',
+        '本次操作会写入审计日志（内部留痕，不进 /audit 公示页）。',
       ];
     },
     async run(ctx) {
@@ -193,7 +193,7 @@ export const voteCommands: CommandSpec[] = [
         flags: ['--reason', '-r'],
         required: true,
         label: '删除原因',
-        help: '会写进公开审计日志',
+        help: '会写进内部审计日志（不进 /audit 公示页）',
         prompt: { type: 'input' as const },
         validate: (raw: string) => (raw.trim() ? null : '必须填写删除原因'),
       },
@@ -205,7 +205,7 @@ export const voteCommands: CommandSpec[] = [
         `标题：${vote.title}`,
         `作者：${vote.author?.username ?? '—'}`,
         '变更：Vote.ignore → true（软删，随时可用 vote restore 找回）',
-        '本次操作会写入审计日志（公开可见）。',
+        '本次操作会写入审计日志（内部留痕，不进 /audit 公示页）。',
       ];
     },
     async run(ctx) {

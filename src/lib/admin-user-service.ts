@@ -2,7 +2,8 @@
 // admin-user-service.ts — 用户管理 / 禁言
 //
 // 纯函数 + 显式参数，与项目其它 service 风格一致。所有写路径都会写一条
-// AdminActionLog（visibility 默认 'public' —— 默认进 /audit 公示，要内部留痕才显式传别的值）。
+// AdminActionLog（visibility 缺省 'public' —— 默认进 /audit 公示；后台运维
+// （`npm run cli`）写下的那一批缺省 'internal'，见 audit-context.ts）。
 //
 // 关于 admin_action_logs.extra：该列在 SQLite 里声明类型是 JSON，Prisma 的 SQLite
 // 连接器在驱动层拒绝 SELECT 它（"Value JSON not supported"，audit-service 已注明）。
@@ -18,6 +19,7 @@ import { PUBLIC_USER_SELECT, hasAdminRights, isCurrentlyBanned, isOwner, type Sa
 import { sendNotification } from './notification-service';
 import { kickUser } from './chat-bus';
 import { kickTopbarUser, publishToUser } from './topbar-bus';
+import { defaultLogVisibility } from './audit-context';
 // 建号复用公开注册那条 fail-closed 链路的内核（已查证两边不成环：user-service 不反向依赖本文件）
 import {
   buildPlaceholderEmail,
@@ -57,7 +59,9 @@ export async function logAdminAction(input: LogAdminActionInput): Promise<number
       objectType: input.objectType ?? null,
       objectId: input.objectId ?? null,
       reason: input.reason ?? null,
-      visibility: input.visibility ?? 'public',
+      // 缺省值看「谁在写」：网页端 'public'（进 /audit 公示），
+      // 后台运维 'internal'（只进 CLI 的 audit log）—— 见 audit-context.ts
+      visibility: input.visibility ?? defaultLogVisibility(),
       createdAt: nowForDb(),
     },
     select: { id: true }, // 不回读 extra（JSON 列）

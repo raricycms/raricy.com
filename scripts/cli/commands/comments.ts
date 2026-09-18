@@ -45,7 +45,7 @@ const reasonArg = {
   name: 'reason',
   flags: ['--reason', '-r'],
   label: '原因',
-  help: '恢复/删除他人评论时必填（1..500 字），会写进公开审计日志',
+  help: '恢复/删除他人评论时必填（1..500 字），会写进内部审计日志',
   prompt: { type: 'input' as const },
   validate: (raw: string) => (raw.trim().length > 500 ? '原因过长（最多 500 字）' : null),
 };
@@ -202,7 +202,11 @@ export const commentCommands: CommandSpec[] = [
         // status 是正交的另一个闸门，恢复 isDeleted 不会让它出现 —— 必须说清楚
         lines.push(`⚠️ 该评论的审核状态是 ${c.status}（非 approved），恢复后仍不会出现在评论区。`);
       }
-      lines.push('本次操作会写入审计日志（公开可见）。');
+      lines.push(
+        c.authorId === ctx.actor?.id
+          ? '恢复自己的评论不写审计日志。'
+          : '本次操作会写入审计日志（内部留痕，不进 /audit 公示页）。'
+      );
       return lines;
     },
     async run(ctx) {
@@ -234,7 +238,9 @@ export const commentCommands: CommandSpec[] = [
         `正文预览：${preview(c.content, 60)}`,
         '变更：BlogComment.isDeleted → true（软删，随时可用 comment restore 找回）。',
         '删除后正文与附件在接口上一并抹掉；有子评论时该楼会显示为「该评论已删除」占位。',
-        mine ? '删自己的评论不写审计日志。' : '本次操作会写入审计日志（公开可见），对方可以申诉。',
+        mine
+          ? '删自己的评论不写审计日志。'
+          : '本次操作会写入审计日志（内部留痕，不进 /audit 公示页）；公示页上看不到它，对方因此无法走网页申诉。',
       ];
     },
     async run(ctx) {

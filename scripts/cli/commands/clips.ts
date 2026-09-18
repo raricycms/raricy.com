@@ -45,7 +45,7 @@ const reasonArg = {
   name: 'reason',
   flags: ['--reason', '-r'],
   label: '原因',
-  help: '会写进公开审计日志',
+  help: '会写进内部审计日志（不进 /audit 公示页）',
   prompt: { type: 'input' as const },
 };
 
@@ -195,7 +195,7 @@ export const clipCommands: CommandSpec[] = [
         clip.publicity
           ? '恢复后它是**公开**的：任何 core 用户都能通过链接访问。'
           : '它是私有剪贴板，恢复后仍只有作者与站长可见。',
-        '本次操作会写入审计日志（公开可见）。',
+        '本次操作会写入审计日志（内部留痕，不进 /audit 公示页）。',
       ];
     },
     async run(ctx) {
@@ -226,7 +226,7 @@ export const clipCommands: CommandSpec[] = [
         `标题：${clip.title}`,
         `作者：${clip.author?.username ?? '—'}`,
         '变更：ClipBoard.ignore → true（软删，随时可用 clip restore 找回）',
-        '本次操作会写入审计日志（公开可见）。',
+        '本次操作会写入审计日志（内部留痕，不进 /audit 公示页）。',
       ];
     },
     async run(ctx) {

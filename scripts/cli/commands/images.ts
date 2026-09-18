@@ -158,7 +158,7 @@ export const imageCommands: CommandSpec[] = [
         `文件名：${img.filename}`,
         `作者：${img.author?.username ?? '—'}`,
         '变更：ImageHosting.ignore → false',
-        '本次操作会写入审计日志（公开可见）。',
+        '本次操作会写入审计日志（内部留痕，不进 /audit 公示页）。',
       ];
       if (!img.fileExists) {
         // 这条必须在动手之前说 —— 恢复完才发现是坏图就晚了

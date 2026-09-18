@@ -112,7 +112,7 @@ async function describeRoleChange(
     `目标用户：${username}（当前 ${user.role}）`,
     `变更：${user.role} → ${to}`,
     '后果：该用户已建立的讨论长连接会被踢掉，角色在下次请求时生效。',
-    '本次操作会写入审计日志（默认公开可见，见 /audit 公示页）。',
+    '本次操作会写入审计日志（内部留痕，不进 /audit 公示页）。',
   ];
 }
 
@@ -212,7 +212,7 @@ export const roleCommands: CommandSpec[] = [
         `目标用户：${username}（当前 ${user.role}）`,
         `变更：${user.role} → ${target}`,
         '后果：该用户已建立的讨论长连接会被踢掉，角色在下次请求时生效。',
-        '本次操作会写入审计日志（默认公开可见，见 /audit 公示页）。',
+        '本次操作会写入审计日志（内部留痕，不进 /audit 公示页）。',
       ];
     },
     async run(ctx) {

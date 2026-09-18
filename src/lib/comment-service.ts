@@ -654,6 +654,8 @@ export async function softDeleteComment(
 
   // 记录管理员操作日志（管理员删他人评论才记 —— 作者删自己的不进公示）。
   // 这条日志是 /audit 公示与申诉流程的数据来源 —— 缺了用户就无法申诉。
+  //（运维 CLI 走的是同一条路径，只是它写下的日志标 internal：公示页看不到，
+  //  那条路径下的用户因此也申诉不了 —— 见 docs/cli.md「审计身份」。）
   // 日志失败不回滚删除本身。
   if (outcome.ok && outcome.audit) {
     try {
@@ -681,8 +683,9 @@ export async function softDeleteComment(
 //
 // 【为什么分成两个函数】内核与审计外壳必须分开，否则「申诉裁决通过 → 恢复评论」
 // 会凭空多出一条审计日志：decideAppeal 自己写一条 decide_appeal，再调一个带审计的
-// 恢复函数就又写一条。审计日志是**公开**的（/audit 公示页），多出来的行是可见的
-// 行为变化。所以：
+// 恢复函数就又写一条。**一次操作只许一条日志**：网页路径的日志进 /audit 公示页，
+// 多出来的行是用户可见的行为变化；后台运维（npm run cli）写的是内部日志，但这条
+// 纪律不跟着可见性走 —— 翻账时「谁做了什么」得一行对一事。所以：
 //   restoreCommentRow —— 纯变更，不写日志、不发通知（decideAppeal 用这个）
 //   restoreComment    —— 变更 + 审计（运维 CLI 用这个）
 //

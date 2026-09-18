@@ -143,6 +143,35 @@ describe('向导里的写操作', () => {
     expect(log, '角色变更没有写审计日志').not.toBeNull();
     expect(log!.adminId, '审计主体应是库内站长').toBe(owner.id);
     expect(log!.targetUserId).toBe(target.id);
+    // 直接调 wizardLoop（没圈 runAsBackendOps）= 网页端的写法，日志是**公开**的。
+    // 「圈内变内部」那条在下面一条用例里钉 —— 两条合起来说明可见性跟着上下文走，
+    // 而不是跟着命令走。
+    expect(log!.visibility).toBe('public');
+  });
+
+  it('★ 后台运维上下文里的写操作落内部日志，不进 /audit 公示页', async () => {
+    // scripts/cli.ts 把整轮执行圈进 runAsBackendOps（见 src/lib/audit-context.ts）。
+    // 这里把那一圈补上，断言的是用户实际会得到的两个结果：库里留着痕、公示页看不到。
+    const { runAsBackendOps } = await import('@/lib/audit-context');
+    const { listPublicLogs } = await import('@/lib/audit-service');
+
+    await makeUser({ username: 'owner1', role: 'owner' });
+    await makeUser({ username: 'alice', role: 'user' });
+
+    const s = scripted([
+      { pick: 'g:roles' },
+      { pick: 'promote-core' },
+      { text: 'alice' },
+      { confirm: true },
+      { pick: 'quit' },
+    ]);
+
+    await runAsBackendOps(() => wizardLoop(deps(s.prompter)));
+
+    const log = await prisma.adminActionLog.findFirst({ where: { action: 'change_role' } });
+    expect(log, '后台运维也要留痕（不是干脆不记）').not.toBeNull();
+    expect(log!.visibility).toBe('internal');
+    expect((await listPublicLogs({})).items, '后台操作出现在公示页上了').toHaveLength(0);
   });
 
   it('确认屏里带上执行者与后果说明（不是笼统的「确定吗」）', async () => {
