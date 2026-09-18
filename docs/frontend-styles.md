@@ -278,6 +278,13 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
 - 最高级的基准是博客首页的「创建」按钮（`.upload-button`）。统一的是**表面 + 交互**，
   不是尺寸 —— 各按钮保留自己的字号与内距。
 - 次级三态递进（越靠近越显眼），所以它不会一上来就和主按钮争。
+- `.button-*` 那一族只差尺寸与档位：`.button-primary`（16px / 10px 16px）、
+  `.button-primary-small`（12px / 5px 10px）、`.button-secondary`（**次级档，
+  尺寸同 `.button-primary`**）。同一排按钮要么共用一个尺寸，要么刻意一大一小 ——
+  博客编辑页那排踩过：`.button-primary`（保存修改）边上挂着两颗
+  `.button-primary-small`（取消 / 返回阅读页），三颗三种大小，读起来像三条互不相干的按钮。
+  那两颗现走 `.button-secondary`，尺寸与「保存修改」逐像素一致，表面归次级档、
+  不跟主按钮抢视线。
 - 切页档：「当前所在页」常驻最高级空闲态，且**按下不叠加变化** —— 已经在的页面
   再点一下不该闪成实底。当前项挂 `.is-active`（`.active` 作为历史写法一并认，
   **新代码用 `.is-active`**）。落点：顶栏 `.site-link`、博客分类栏 `.category-link` /
@@ -405,18 +412,22 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
   `.icon` 的机制就是 `background-color: currentColor`，颜色只由按钮的 `color` 决定（§7）。
 - 收藏按钮**没有计数徽标**（点赞/投喂有）：站内不显示一篇文章的被收藏数。
 
-**窄屏（≤768px）三颗只剩「图标 + 计数」竖排**，压在同一行、等宽平分
-（`flex-wrap: nowrap` + `flex: 1 1 0` + `max-width: 24rem`）：
+**窄屏（≤768px）三颗收成三个 44px 圆钮**，压在同一行、不许换行
+（`flex-wrap: nowrap` + `flex: 0 0 44px` + `max-width: 24rem`；横向交给
+`justify-content: space-evenly` —— 定宽之后不能再平分轨道宽度，**正圆要求宽 = 高**）：
 
 - **文字标签隐藏**（`> span:not([class])` —— 计数徽标也是 `span`，但它带类名，正好被排除）。
   一排字换成一列之后，320px 档也宽松得很，原先 `<360px` 那条「退回按内容宽度 + 允许换行」
   的兜底连同它的前提（文字宽度 339px 塞不下）一并删了。
-- **计数挪到图标正下方居中**，且不再是实底徽标，就是一行跟着按钮 `color` 走的小字。
-  DOM 不动，仍是原来那颗 `.like-count-badge` / `.fish-count-badge`。图标放大一档（1rem → 1.25rem）。
-- ⚠️ **高度由 `.read-controls__row` 的 `min-height: 44px` 钉死，两个断点共用**。
-  桌面端它由内容撑出（点赞/投喂 ≈44.3px、收藏 41.0px —— 徽标比文字行高），窄屏换成
-  竖排后内容更高；两边各写各的高度就会在断点前后跳一下（用户报的就是它）。窄屏那条里
-  **不要再写 `padding` / `font-size` 的整体缩放**，那正是原来会变矮的原因。
+- **计数落在圆钮外面、正下方居中**：44px 见方的圆钮里再挤一行数字，圆就不成圆了。
+  所以 `.like-count-badge` / `.fish-count-badge` 走 `position: absolute` + `top: 100%` +
+  `left: 50%`/`translateX(-50%)` —— DOM 不动（仍是按钮的孩子，点数字照样触发按钮），
+  也不占布局位置，因此**按钮自己还是 44px**。行上必须留 `padding-bottom: 16px` 接住它，
+  否则那行数字会压到下一行「返回上页 / 管理文章」。图标放大一档（1rem → 1.25rem）。
+- ⚠️ **高度由 `.read-controls__row` 的 `min-height: 44px` 钉死，两个断点共用**，
+  窄屏再补一个 `height: 44px` 把正圆坐实。桌面端它由内容撑出（点赞/投喂 ≈44.3px、
+  收藏 41.0px —— 徽标比文字行高）；两边各写各的高度就会在断点前后跳一下（用户报的就是它）。
+  窄屏那条里**不要再写 `padding` / `font-size` 的整体缩放**，那正是原来会变矮的原因。
 - 这条**不能只看代码**：`tests/e2e/favorite-layout.spec.ts` 用真视口断几何，并登记在
   `playwright.config.ts` 的 `RESPONSIVE_SPECS` 里（desktop 那一遍同样要跑）。
   其中「窄屏高度 = 桌面高度」那条要在**同一个用例里换视口量两次**，且必须
@@ -427,6 +438,14 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
 （`.favorite-picker__new-actions`，`flex: 1 1 0` 等宽）。三者挤一行时「创建公开」会被挤到
 第二行，而两颗按钮代表的是**对等的两种性质**（创建后不可改），分行会被读成「公开是次要的」。
 `<360px` 退回上下堆叠。`/favorite` 页的创建/导入条复用同一组类。
+
+正文里的收藏夹卡片（`.favorite-embed`，HTML 由 `src/lib/favorite-refs.ts` 的
+`buildFavoriteCardHtml` 直接产出）**与投票嵌入卡 `.vote-embed-widget` 同一副面孔**：
+`--color-background-card` 底 + 1px `--color-border` 描边。它先后用过「左侧金色竖条」与
+「`--color-star-secondary` 星色淡底」两种身份提示：前者违反 §11 第 8 条（无左侧边框），
+后者让**正文里整块发黄** —— 星色是「已收藏」的状态色（§2.1 写明它只在该处与 hover 时用），
+拿它当一整段正文的背景，读起来像那段内容被整个标记了。嵌入块靠**形状**（圆角 + 描边 +
+内距）与正文分开，不靠色相。
 
 ### 6.8 胶囊滑块（`components/_segmented.scss`）
 
