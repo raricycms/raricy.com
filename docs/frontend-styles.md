@@ -357,6 +357,21 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
 - `.form-select`：品牌色胶囊（品牌底 + 品牌字 + 粗体）。
 - `.form-check-input`：圆形 checkbox，选中变品牌色。
 - 校验态：`.is-invalid` + `.invalid-feedback`（红色）。
+- **文件选择器**（`components/_file-picker.scss`，`.filepick` 一族）：这套类**在 `.tsx` 里
+  一个都搜不到** —— 那 DOM 是 `public/static/js/core/base.js` 的 `enhanceFileInputs`
+  运行时注入的（把页面上写着的原生 `<input type="file">` 包进 `.filepick`，再补一颗
+  「选择文件」label、一个文件名 span、一个清除钮）。改样式别去 tsx 里找调用点。
+  两条不能删的：
+  ① **原生 input 必须视觉隐藏**（`.filepick input[type="file"]` 的 sr-only）。
+     不隐藏就会有**两套控件同屏**：浏览器自带的「选择文件 / 未选择文件」和注入的
+     label + span。隐藏也不能改用 `hidden` 属性或 `display:none` —— base.js 正是靠
+     `hasAttribute('hidden') || style.display === 'none'` 判断「这个已被自定义 UI 接管，
+     别再包一层」（图床拖拽区、讨论输入区走这条早退）。
+  ② 内嵌按钮走 `btn-primary` mixin（对齐 `.search-btn` 的「字段内主操作」档位），
+     几何照 §4.2 第 2 条：圆角与字段一致、四边贴边 4px。**别在这里另抄一份按钮样式。**
+  两个守卫盯着：样式侧是 `tests/unit/css-js-classes.test.ts`（JS 注入的类名必须有定义），
+  行为侧是 `tests/unit/base-js-filepick.test.ts`（含「客户端路由跳转后插入的 input 也要
+  被增强」—— Next 的 `<Link>` 不重载文档，只在 init 时跑一次是不够的）。
 
 ### 6.4 弹窗 / Toast / 分页 / 告警
 
