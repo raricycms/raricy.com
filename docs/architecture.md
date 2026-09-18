@@ -84,7 +84,7 @@
 | `/` | page | 导航首页（不列文章） |
 | `/login` · `/register` | page | 认证（登出是 `POST /api/auth/logout`，**没有** GET 路由） |
 | `/blog` · `/blog/[id]` · `/blog/upload` · `/blog/[id]/edit` | page | 博客 |
-| `/api/blogs` · `/api/blogs/[id]` · `/api/spider/*` | API | 博客 API + 爬虫 API |
+| `/api/blogs` · `/api/blogs/[id]` · `/api/spider/*` | API | 博客 API + 爬虫 API。**全部 core+**，与 `/blog` 页面同档（读口含正文搜索那条重活，见 §6.5）|
 | `/api/auth/authentic` · `/zhh` | API + route | 邀请码升 core · 邀请码生成（站长） |
 | `/fish` · `/fish/transactions` · `/api/fish/*` | page + API | 小鱼干面板 + 流水 |
 | `/fish/market` · `/api/fish/market/*` | page + API | 鱼干市场（第一期只有**用户间转账**，无手续费）：`POST transfer`（支持客户端幂等键）/ `GET users`（收款人搜索）/ `POST balance`、`POST transactions`（站外脚本用的无状态查询，含 `since_id` 对账游标）/ `POST pay`（收银台专用）。写路径见 §6.3；对外契约见 `docs/bot/fish-bot.md` |
@@ -105,7 +105,7 @@
 | （无 URL）`forbidden.tsx` | 特殊文件 | 403 页本身；由 `forbidden()` 原地渲染，**不是** `/forbidden` 路由 |
 | `/sitemap.xml` · `/robots.txt` | route | sitemap.ts / robots.ts |
 | `/api/avatar/[id]` · `/api/images/[id]/raw` | API | 头像 / 图床原生分发 |
-| `/u/[id]` | page | 公开用户主页（**段名是用户 id（UUID），不是 username**）|
+| `/u/[id]` | page | 公开用户主页（**段名是用户 id（UUID），不是 username**）。**匿名可达**（主页画报的二维码把站外人引到这里），故内容按查看者分档：身份字段人人可见，role 徽章 / 最近文章 / 最近评论 / 计数 / 最后登录只给本人或 core+ —— 收口在 `user-service.getPublicProfile` 与页面里，两边口径必须一致 |
 
 ## 5. 业务逻辑层（src/lib/）
 
@@ -573,6 +573,14 @@ div 会卸载重挂，`deps=[]` 的监听器永远附不上。
 
 > ⚠️ **发鱼的其实是 `claim`**（签到只是翻牌的入场券）。只挡 `/api/checkin` 而不挡 claim，
 > 等于没挡 —— 直接 POST claim 就能拿鱼干。新增「页面 + 多接口」的档位功能时照此三处对照。
+
+**读口也一样，而且漏了不报错。** 页面那道 guard 只挡浏览器：`/blog` 一直有
+`requireCoreUser()`，而同名的 `GET /api/blogs` 与 `GET /api/blogs/[id]` 长期免认证 ——
+匿名 curl 一次就能拿到全站目录与全文 Markdown。**「页面与接口必须同档」对读口同样成立。**
+全站哪些读口是**有意匿名**的，以 `tests/unit/anonymous-read-guard.test.ts` 的台账为准：
+新增一条没有守卫的 `GET` 会让该测试当场变红，逼你在「加档位」与「写进白名单并说明理由」
+之间选一个。已有的正例是 `GET /api/images/[id]/raw`（公开图匿名、私有图按档位）与
+`GET /api/users/[id]`（匿名可达但内容按查看者收敛）。
 
 **「入口不跟着藏」是刻意的**：拿签到举例，顶栏图标对**所有人**渲染（与博客、讨论同待遇），
 未登录点了跳登录、非 core 点进去原地 403。但 `layout.tsx` 只给 core+ 发
