@@ -1,10 +1,3 @@
--- 0_init — 基线：从历史库（SQLAlchemy 建出）反向生成的建表 SQL。
---
--- ⚠️ 接手已有库时必须先 `npm run migrate -- mark 0_init`（表已存在 → 只登记、不执行 SQL）；
---    直接 `up` 会在第一条 `CREATE TABLE "users"` 上失败。`up` 只用于空目录起步的新库。
---
--- 详见 docs/instance-restore.md §3 与 docs/deploy.md §4「全新部署（空目录起步）」。
-
 -- CreateTable
 CREATE TABLE "users" (
     "id" TEXT NOT NULL PRIMARY KEY,
