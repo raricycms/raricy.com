@@ -756,37 +756,46 @@ a {
         gap: 12px;
     }
 
-    /* ── 窄屏：点赞 / 投喂 / 收藏 只剩「图标 + 计数」竖排，三颗必须压在同一行 ──
-       三颗等宽平分、不许换行（原样 flex-wrap: wrap + 16px 间距 + 16px 字号在 390px
-       上放不下第三颗，收藏被挤到第二行 —— 看起来像次要操作，而它与点赞/投喂并列）。
-       等宽（flex: 1 1 0）而不是按内容排：三颗宽度一致才读得出「并列」。
-       min-width: 0 覆盖 .like-btn / .fish-btn 自身的内容宽度下限。
+    /* ── 窄屏：点赞 / 投喂 / 收藏 变成三颗圆钮，计数落在圆钮下方居中 ──
+       不许换行（原样 flex-wrap: wrap + 16px 间距 + 16px 字号在 390px 上放不下第三颗，
+       收藏被挤到第二行 —— 看起来像次要操作，而它与点赞/投喂并列）。
+       三颗定宽 44px 而不是平分轨道宽度：圆钮必须正圆，宽度就得等于高度。
+       横向由 space-evenly 摊开 —— 三颗仍是「并列」的一排，只是各自收成一个圆，
+       中间留白而不是像原来那样被拉成三条等宽长条。
 
-       内容改竖排：**文字标签隐藏，计数挪到图标正下方居中**（DOM 不动，仍是原来
-       那颗 .like-count-badge 元素），图标放大一档（1rem → 1.25rem）。
-       宽度因此不再是问题 —— 一排字换成一列之后，390px 下三颗宽松得很。
+       内容改竖排：**文字标签隐藏，计数挪到图标正下方居中**，图标放大一档
+       （1rem → 1.25rem）。图标正是圆钮的正中，计数则在**圆钮外面**下方 ——
+       见下面那条绝对定位的说明。
 
-       ⚠️ 高度**不在这里调**：由上面的 min-height: 44px 钉死（= 桌面端高度）。
-       原来这里写的是 `padding: 8px 6px; font-size: .85rem` 那套整体缩放，
-       那正是「768px 前后这三颗会变矮」的原因，已删。竖排内容
-       5 + 20 + 2 + 11.2 + 5 = 43.2px，装得下 44px，不需要再压内边距。 */
+       ⚠️ 高度**不在这里调**：由上面的 min-height: 44px 钉死（= 桌面端高度），
+       这里再补一个 height: 44px 把圆的正圆坐实。原来这里写的是
+       `padding: 8px 6px; font-size: .85rem` 那套整体缩放，
+       那正是「768px 前后这三颗会变矮」的原因，已删。 */
     .read-controls__row {
         width: 100%;
         max-width: 24rem;
         flex-wrap: nowrap;
+        justify-content: space-evenly;
         gap: 6px;
+        /* 给圆钮下方那颗数字留位。数字是绝对定位的（不参与布局），
+           不留这一条它会压到下一行「返回上页 / 管理文章」上。 */
+        padding-bottom: 16px;
     }
 
     .read-controls__row .like-btn,
     .read-controls__row .fish-btn,
     .read-controls__row .favorite-btn {
-        flex: 1 1 0;
-        min-width: 0;
+        position: relative;
+        flex: 0 0 44px;
+        width: 44px;
+        height: 44px;
+        padding: 0;
+        /* 44×44 的方盒，50% 就是正圆（原先是 999px 胶囊 —— 在方盒上等价，
+           写 50% 是为了让「这里要的是圆，不是胶囊」一眼看得出来）。 */
+        border-radius: 50%;
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: 2px;
-        padding: 5px 6px;
 
         /* 文字标签：窄屏不显示。用 span:not([class]) 选它 —— 计数徽标也是 span，
            但它带类名，正好被这条排除在外（这正是「只留图标与计数」去掉的那一半）。 */
@@ -800,16 +809,22 @@ a {
             flex: none;
         }
 
-        /* 计数：不再是实底徽标，就是图标下方的一行小字，颜色跟着按钮走
-           （点赞的橙、投喂的绿、已收藏的黄本来就都挂在按钮的 color 上）。 */
+        /* 计数：不再是实底徽标，也不是圆钮里的一行 —— 圆钮只有 44px 见方，
+           数字再挤进去圆就不成圆了。用绝对定位把它拉到圆钮**外面**的正下方居中：
+           DOM 不动（仍是按钮的孩子，点击它照样触发按钮），也不占布局位置，
+           所以按钮自己的高度还是那个 44px，跨断点不跳。 */
         .like-count-badge,
         .fish-count-badge {
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
             background: none;
             padding: 0;
             color: inherit;
             font-size: 0.7rem;
             line-height: 1;
-            flex: none;
+            white-space: nowrap;
         }
     }
 
