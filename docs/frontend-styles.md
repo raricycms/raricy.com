@@ -717,9 +717,6 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
 - `pages/blog/_menu.scss` 的 `.current-category .badge` 是**死规则**：唯一渲染
   `.current-category` 的 `src/app/components/AdminArticlesManager.tsx` 里没有 `.badge`
   子元素。一旦有人把它加回去，浅色主题下就是白字压半透明白底。
-- `src/app/tool/new_redirect/page.tsx` 里还有两处行内色（`#3498db` / `#e74c3c`）没令牌化 ——
-  那是 `pages/_tool-redirect.scss` 那轮「两页全部令牌化」的漏网，应是
-  `--color-brand-primary` / `--color-warning-primary`。
 - `pages/_checkin.scss` 的 `@keyframes btnPulse` 光环写死浅色主题品牌蓝
   `rgba(37,99,235,…)`，暗色下与按钮本体（`#23A5FF`）不同色 —— 只在 1s 的脉冲里可见，
   且站内没有「品牌色 + 指定透明度」的令牌可用，暂留。
