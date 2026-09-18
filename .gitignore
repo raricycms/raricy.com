@@ -41,6 +41,13 @@ coverage/
 # 由 `npm run prepare:mathjax` 重建（MarkdownRenderer 的 fontURL 指向这里）
 /public/static/mathjax/
 
+# SCSS 的编译产物 —— 全站样式由 src/app/layout.tsx 直接 import 入口
+# src/styles-scss/main.scss，交给 Next 自己编译（dev 走 HMR，build 走 sass-loader），
+# 产物既没人生成也没人读，自然不该入库。
+# 注意：`npm run build:css` 仍在，但它只是**离线调试**用（tests/.tmp/ 下的手工
+# 像素探针 HTML 靠它拿样式），不参与任何构建或测试流程。
+/src/styles-scss/compiled/
+
 # Python 副产物（历史迁移文档里的代码示例等可能产生）
 __pycache__/
 *.pyc
