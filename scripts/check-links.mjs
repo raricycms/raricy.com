@@ -226,9 +226,12 @@ for (const f of srcFiles) {
   // 所以这里编译失败**只报一条**并跳过整段：宁可说「编不出来」，也不要伪造 26 条「无定义」。
   // tests/unit/css-classes.test.ts 是同一条检查的孪生实现，用的是同一个 helper。
   //
-  // 另有一条**不**在这里孪生的检查：JS 注入的类名（base.js 的 `.filepick` 一族 ——
+  // 另有两条**不**在这里孪生的检查：JS 注入的类名（base.js 的 `.filepick` 一族 ——
   // 那套 DOM 在 .tsx 里一个都搜不到，图标这条正则扫不到它），实现见
-  // tests/unit/css-js-classes.test.ts。加新检查前先想清楚放哪边，别各写一份。
+  // tests/unit/css-js-classes.test.ts；以及 .tsx/.ts 的**全量**类名（带白名单），
+  // 见 tests/unit/css-tsx-classes.test.ts —— 那条比本节宽，但只在 vitest 里跑：
+  // 本脚本要给一个不装 node_modules 也能跑的自检，两条各留各的。
+  // 加新检查前先想清楚放哪边，别各写一份。
   let cssText = null;
   try {
     cssText = stripComments(compiledCss());

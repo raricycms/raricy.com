@@ -13,9 +13,9 @@
 // 【范围】只查 public/static/js/ 下的**字面量**类名。判定干净：
 //   · 模板字面量里的 `${...}` 是动态段，剥掉后再切词（`toast toast--${type}`）
 //   · 以 `-` 收尾的词是拼接前缀（`toast--`），不是完整类名，跳过
-//   · .tsx 里的类名**不查** —— 那里有大量 JS 钩子类（.article-checkbox、
-//     .toggle-featured）与纯语义包装（.home-grid-item）本就无样式，
-//     一并要求「必须有定义」只会制造噪音（见 css-classes.test.ts 开头的同类说明）
+//   · .tsx 里的类名**不查** —— 那是 tests/unit/css-tsx-classes.test.ts 的活
+//     （它带一份逐条写明理由的白名单；本文件只认字面量、不设名单，
+//      因为 base.js 造 DOM 时没有「纯语义包装」这种说法）
 //
 // 【与 scripts/check-links.mjs 的关系】那边 §4 查的是 icon-* 那一类（且还要并进组件内联
 // `<style>`），不在本文件孪生。**但两边的 CSS 来自同一处** —— 现编 src/styles-scss/main.scss，
