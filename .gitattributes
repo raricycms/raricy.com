@@ -9,7 +9,18 @@
 #
 # 历史上这条规则主要保的是入库的编译产物；它已退出版本库
 # （见 .gitignore），但规则对 SCSS 源与 tests/.tmp 下的手工探针产物同样有意义，
-# 故保留。入库的 .css / .scss blob 已全部是 LF，加这行不会让任何现存文件
-# 变成「已修改」。
+# 故保留。
 *.css text eol=lf
 *.scss text eol=lf
+
+# *.sql 是后补的，理由与样式那两条不同：
+#
+# `scripts/migrate.mjs` 的 verify 对迁移文件**全文**取 sha256（注释、行尾都算），
+# 而入库的迁移在 autocrlf=true 的机器上检出成 CRLF、在别的机器上是 LF ——
+# 同一份提交算出两个哈希。后果不是报错而是**恒假的漂移告警**：本机实测 3 个
+# 迁移（3_fish_integer_units / 4_chat / 11_comment_attachments）报 checksum
+# 不一致，与 SQL 内容毫无关系，白淹没真问题。
+#
+# 钉成 LF 后各平台一致。注意它**不是**为了让文件「变干净」：
+# verify 比的是工作区文件，所以改完要重新检出一次（见 docs/legacy-constraints.md §8）。
+*.sql text eol=lf
