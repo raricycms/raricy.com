@@ -409,44 +409,6 @@
         }
       }
       
-      /* Vditor 挂载点：多行编辑器 → 20px 圆角。这套值原先写在 UploadForm.tsx 的
-         行内 style 上（含 1px 描边），挪出来才能跟随主题与本次规范。 */
-      &__editor {
-        background: var(--color-background-page);
-        border: none;
-        border-radius: 20px;
-        overflow: hidden;
-        transition: box-shadow 0.2s ease;
-
-        &:focus-within {
-          box-shadow: var(--shadow-focus-brand);
-        }
-      }
-
-      /* Vditor 加载失败时的兜底文本框（display 由脚本切换，留在行内） */
-      &__fallback {
-        width: 100%;
-        padding: $space-3 $space-4;
-        border: none;
-        border-radius: 20px;
-        background: var(--color-background-page);
-        color: var(--color-text-primary);
-        font-size: 1rem;
-        line-height: 1.6;
-        font-family: ui-monospace, monospace;
-        box-sizing: border-box;
-        transition: box-shadow 0.2s ease;
-
-        &:focus {
-          outline: none;
-          box-shadow: var(--shadow-focus-brand);
-        }
-
-        &::placeholder {
-          color: var(--color-text-secondary);
-        }
-      }
-
       &--checkbox {
         display: flex;
         align-items: center;
@@ -463,7 +425,58 @@
         }
       }
     }
-    
+
+    /* Vditor 挂载点：多行编辑器 → 20px 圆角。这套值原先写在 UploadForm.tsx 的
+       行内 style 上（含 1px 描边），挪出来才能跟随主题与本次规范。
+
+       ⚠️ 这一块与下面那块**必须待在 &-form 这层**。它们叫 &__editor / &__fallback，
+       一旦落进上面那个 &__group 里，& 解析成 .clipboard-form__group，展开出来就是
+       .clipboard-form__group__editor —— DOM 里根本没有这个类名，整块规则静默失效
+       （b81a201 正是这么写错的，且编译产物里看不出异常：规则好端端地在那儿）。
+
+       ⚠️ 选择器里那个 #clipboard-editor 不是冗余：Vditor 初始化时会往这个 div 上挂
+       .vditor，而 vditor/dist/index.css 是**页面段的独立 chunk**（主 SCSS 挂在 layout
+       段，先于它加载）。等权重（0-1-0）下后到的那份赢，只写 .clipboard-form__editor
+       会被 Vditor 的 1px 描边 + 3px 圆角盖掉。带上 id 抬到 0-1-1 才与加载顺序无关。 */
+    &__editor,
+    #clipboard-editor {
+      background: var(--color-background-page);
+      border: none;
+      border-radius: 20px;
+      overflow: hidden;
+      transition: box-shadow 0.2s ease;
+
+      &:focus-within {
+        box-shadow: var(--shadow-focus-brand);
+      }
+    }
+
+    /* Vditor 加载失败时的兜底文本框（display 由脚本切换，留在行内）。
+       同上，不能落进 &__group。实际只补到 font-family —— 其余属性由
+       .clipboard-form__group textarea（0-1-1）接管，那份更具体、本来就在生效。 */
+    &__fallback {
+      width: 100%;
+      padding: $space-3 $space-4;
+      border: none;
+      border-radius: 20px;
+      background: var(--color-background-page);
+      color: var(--color-text-primary);
+      font-size: 1rem;
+      line-height: 1.6;
+      font-family: ui-monospace, monospace;
+      box-sizing: border-box;
+      transition: box-shadow 0.2s ease;
+
+      &:focus {
+        outline: none;
+        box-shadow: var(--shadow-focus-brand);
+      }
+
+      &::placeholder {
+        color: var(--color-text-secondary);
+      }
+    }
+
     &__submit {
       @include m.btn-primary;
       padding: $space-3 $space-6;
