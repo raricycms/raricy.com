@@ -1,8 +1,10 @@
 import type { Metadata } from 'next';
 import Script from 'next/script';
-// Flask 项目的 SCSS 编译产物（src/styles-scss/ → src/styles-scss/compiled/flask.css）
-// 重新编译：npm run build:css（一次性）/ dev:css（监听）
-import '@/styles-scss/compiled/flask.css';
+// 全站样式：SCSS 入口，由 Next 自己编译（sassOptions 见 next.config.mjs）。
+// 改 SCSS 直接生效，dev 下走 HMR，不需要任何手工编译步骤。
+// ⚠️ 别把它改名成 main.module.scss —— `.module.` 后缀会让 Next 按 CSS Modules
+//    处理、把全站类名哈希化，样式整体失效。
+import '@/styles-scss/main.scss';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import FooterGate from './components/FooterGate';
