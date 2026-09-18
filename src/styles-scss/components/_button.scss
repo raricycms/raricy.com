@@ -7,6 +7,12 @@
   border: none;
   cursor: pointer;
   text-align: center;
+  // `<button>` **不继承**正文字体（UA 默认给 Arial + 自带行高），而同一排里的
+  // 兄弟如果是 `<a>`，那一个继承站点字体栈 —— 两颗字号内距都一样，字面却是两种字体，
+  // 高度也会随平台差个一两像素。博客编辑页就是「保存修改」(`<button>`) 与
+  // 「取消 / 返回阅读页」(`<a>`) 同排，实测前者 Arial、后两者 Segoe UI。
+  // `.read-btn` 早就为此写了同一条，这里是同一个坑。
+  font-family: inherit;
 }
 
 // 以下四类只保留各自的尺寸，表面与三态一律来自 mixin（见 abstracts/_mixins.scss 的
@@ -21,6 +27,17 @@
   @include m.btn-primary;
   font-size: 12px;
   padding: 5px 10px;
+}
+
+// 次级档的 `.button-*`：表面走次级、尺寸**跟着 .button-primary 走**。
+// 博客编辑页一行里站着「保存修改」（最高级）+「取消」（次级），两颗必须一样大 ——
+// 一档按钮配一档尺寸，用户才不会把「大小不同」读成「层级不同」。原先那两颗 <a>
+// 挂的是 .button-primary-small（12px/5px 10px），于是同一排里三颗三种大小。
+// 只统一尺寸，不统一表面：取消 / 返回不该抢保存修改的视线。
+.button-secondary {
+  @include m.btn-secondary;
+  font-size: 16px;
+  padding: 10px 16px;
 }
 
 // 警示色的「最高级」：形状与三态同主按钮，只换配色成对。

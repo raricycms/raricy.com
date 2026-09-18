@@ -190,13 +190,11 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
   return (
     <section className="blog-form-container" id="blog-form-container">
       {isEdit && (
-        <div
-          className="d-flex justify-content-between align-items-center mb-3"
-        >
-          <div>
-            <h3 className="form-label">编辑文章 ID: {blog!.id}</h3>
-          </div>
-          <a href={`/blog/${blog!.id}`} className="button button-primary-small">
+        // 这里原先还有一行「编辑文章 ID: N」——文章 ID 是内部句柄，编辑者不需要它
+        // （列表 / 阅读页都不显示），已删。这颗退回阅读页的按钮是这一行仅剩的内容，
+        // 所以靠右对齐改成 justify-content-end：between 在只剩一个孩子时是左对齐的。
+        <div className="d-flex justify-content-end align-items-center mb-3">
+          <a href={`/blog/${blog!.id}`} className="button button-secondary">
             返回阅读页
           </a>
         </div>
@@ -328,7 +326,7 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
             {isEdit ? '保存修改' : '提交'}
           </button>
           {isEdit && (
-            <a href={`/blog/${blog!.id}`} className="button button-primary-small">
+            <a href={`/blog/${blog!.id}`} className="button button-secondary">
               取消
             </a>
           )}
