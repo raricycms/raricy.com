@@ -17,26 +17,22 @@
 //     .toggle-featured）与纯语义包装（.home-grid-item）本就无样式，
 //     一并要求「必须有定义」只会制造噪音（见 css-classes.test.ts 开头的同类说明）
 //
-// 【与 scripts/check-links.mjs 的关系】那边 §4 是 icon-* 那条检查的孪生实现（读同一个
-// 编译产物）。本条检查只在本文件里实现，check-links.mjs §4 有指针指过来，别各写一份。
+// 【与 scripts/check-links.mjs 的关系】那边 §4 查的是 icon-* 那一类（且还要并进组件内联
+// `<style>`），不在本文件孪生。**但两边的 CSS 来自同一处** —— 现编 src/styles-scss/main.scss，
+// 见 scripts/compiled-css.mjs。改取值逻辑改那个文件，别各写一份。
+//
+// 【CSS 从哪来】现编，不读入库产物；也**不能**改成扫 SCSS 源 —— 本文件正是那条判据的
+// 反例：`public/static/js/core/base.js` 的 `.filepick__name--has`，其定义在
+// src/styles-scss/components/_file-picker.scss 里是 `&--has` 嵌套，源里没有展开后的
+// 字面量，扫源会把它假阳性报成「无定义」。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
+import { compiledCss } from '../../scripts/compiled-css.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
-
-function readCss(): string {
-  // 扫编译产物（而非 SCSS 源）：浏览器实际加载的就是它。漏跑 build:css 时源里有类、
-  // 运行时没有，只扫 SCSS 会放行 —— 与 css-classes.test.ts 同一条理由。
-  return [
-    path.join(ROOT, 'src/styles-scss/compiled/flask.css'),
-  ]
-    .filter((p) => fs.existsSync(p))
-    .map((p) => fs.readFileSync(p, 'utf8'))
-    .join('\n');
-}
 
 function jsFiles(dir: string, out: string[] = []): string[] {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -55,7 +51,7 @@ const PATTERNS = [
 ];
 
 describe('JS 注入的类名与 CSS 定义一致', () => {
-  const css = readCss();
+  const css = compiledCss();
   // 宽松判定：类名只要作为选择器出现过即可。**不能**要求紧跟 `{` ——
   // 选择器列表（`.form-hint, .file-hint { … }`）里只有最后一个后面才是 `{`，
   // 严格写法会把列表里靠前的那些全报成「无定义」。

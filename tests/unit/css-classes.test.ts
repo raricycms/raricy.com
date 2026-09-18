@@ -12,26 +12,18 @@
 //   （来源是联系页那个黑方块）。
 // 其余类名不查 —— 项目里有大量 JS 钩子类（.article-checkbox、.toggle-featured）
 // 和纯语义包装类（.blog-detail）本就无样式，一并要求「必须有定义」只会制造噪音。
+//
+// 【CSS 从哪来】现编 src/styles-scss/main.scss（见 scripts/compiled-css.mjs），
+//   不读任何入库产物。**也不能改成扫 SCSS 源** —— `&--has` 这类嵌套在源里没有
+//   展开后的字面量，扫源会假阳性转红，理由详见那个 helper 的头部注释。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
+import { compiledCss } from '../../scripts/compiled-css.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
-
-function readCss(): string {
-  // 迁移后样式统一由 src/styles-scss/ 编译到 compiled/flask.css，layout.tsx 直接导入。
-  // 扫编译产物（而非 SCSS 源）才能回答「浏览器实际加载的 CSS 里有没有这个类」——
-  // 若只扫 SCSS，漏跑 build:css 时源里有类、运行时没有，黑方块照样出现而测试放行。
-  // （旧路径 src/app/rebuild.css / globals.css / public/static/css/legacy.css 已随迁移删除。）
-  return [
-    path.join(ROOT, 'src/styles-scss/compiled/flask.css'),
-  ]
-    .filter((p) => fs.existsSync(p))
-    .map((p) => fs.readFileSync(p, 'utf8'))
-    .join('\n');
-}
 
 function walk(dir: string, out: string[] = [], exts: string[] = ['.tsx']): string[] {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -43,7 +35,7 @@ function walk(dir: string, out: string[] = [], exts: string[] = ['.tsx']): strin
 }
 
 describe('图标类名与 CSS 定义一致', () => {
-  const css = readCss();
+  const css = compiledCss();
   // 只认「作为选择器出现」的：.icon-x{...}。出现在注释或 url() 里的不算。
   const defined = new Set(Array.from(css.matchAll(/\.(icon-[\w-]+)\s*\{/g), (m) => m[1]));
 

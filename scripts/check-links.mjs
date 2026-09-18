@@ -26,6 +26,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { compiledCss } from './compiled-css.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const APP = path.join(ROOT, 'src', 'app');
@@ -218,36 +219,42 @@ for (const f of srcFiles) {
 // 只查 icon-*：其余类名与 Flask 不对应属正常，拿「Flask 有而 Next 没有」当错报
 // 会淹没真问题。
 {
-  // 样式统一由 src/styles-scss/ 编译到 compiled/flask.css，layout.tsx 直接导入。
+  // 样式统一由 src/styles-scss/main.scss **现编**（scripts/compiled-css.mjs），不读落盘产物。
   // 旧路径 src/app/rebuild.css / globals.css / public/static/css/legacy.css 已随迁移删除 ——
   // 本检查曾长期指向它们，于是 cssText 恒为空，**每一个** icon-* 都被报成「无定义」，
-  // 24 条假阳性把真问题（下面那条断链）淹了。tests/unit/css-classes.test.ts 是同一条
-  // 检查的孪生实现，读的是同一个编译产物 —— 改这里记得对照那边。
+  // 24 条假阳性把真问题（下面那条断链）淹了。
+  // 所以这里编译失败**只报一条**并跳过整段：宁可说「编不出来」，也不要伪造 26 条「无定义」。
+  // tests/unit/css-classes.test.ts 是同一条检查的孪生实现，用的是同一个 helper。
   //
   // 另有一条**不**在这里孪生的检查：JS 注入的类名（base.js 的 `.filepick` 一族 ——
   // 那套 DOM 在 .tsx 里一个都搜不到，图标这条正则扫不到它），实现见
   // tests/unit/css-js-classes.test.ts。加新检查前先想清楚放哪边，别各写一份。
-  const cssText = ['src/styles-scss/compiled/flask.css']
-    .map((f) => {
-      const p = path.join(ROOT, f);
-      return fs.existsSync(p) ? stripComments(fs.readFileSync(p, 'utf8')) : '';
-    })
-    .join('\n');
-  // 组件内联的 <style>{X_CSS}</style> 也算 —— ATAMAS 整个游戏就是这么上样式的
-  const inlineCss = srcFiles.map((f) => stripComments(fs.readFileSync(f, 'utf8'))).join('\n');
-  const allCss = cssText + '\n' + inlineCss;
+  let cssText = null;
+  try {
+    cssText = stripComments(compiledCss());
+  } catch (err) {
+    problems.push(`SCSS 编译失败，图标类检查已跳过：${String(err.message).split('\n')[0]}`);
+  }
 
-  const seen = new Set();
-  for (const f of srcFiles.filter((f) => f.endsWith('.tsx'))) {
-    const txt = stripComments(fs.readFileSync(f, 'utf8'));
-    for (const m of txt.matchAll(/className=[{]?\s*[`'"]([^`'"]*)[`'"]/g)) {
-      for (const cls of m[1].split(/\s+/)) {
-        if (!/^icon-[\w-]+$/.test(cls) || seen.has(cls)) continue;
-        seen.add(cls);
-        if (!new RegExp('\\.' + cls.replace(/[-]/g, '\\-') + '(?![\\w-])').test(allCss)) {
-          problems.push(
-            `图标类无定义（会渲染成黑方块）：${bold('.' + cls)}  ← ${path.relative(ROOT, f)}`
-          );
+  if (cssText !== null) {
+    // 组件内联的 <style>{X_CSS}</style> 也算 —— ATAMAS 整个游戏就是这么上样式的。
+    // 这一半（连同上面的 stripComments）刻意留在本脚本，不进 helper：
+    // 它是本条检查相对 css-classes.test.ts 的增量，挪进去就静默丢了。
+    const inlineCss = srcFiles.map((f) => stripComments(fs.readFileSync(f, 'utf8'))).join('\n');
+    const allCss = cssText + '\n' + inlineCss;
+
+    const seen = new Set();
+    for (const f of srcFiles.filter((f) => f.endsWith('.tsx'))) {
+      const txt = stripComments(fs.readFileSync(f, 'utf8'));
+      for (const m of txt.matchAll(/className=[{]?\s*[`'"]([^`'"]*)[`'"]/g)) {
+        for (const cls of m[1].split(/\s+/)) {
+          if (!/^icon-[\w-]+$/.test(cls) || seen.has(cls)) continue;
+          seen.add(cls);
+          if (!new RegExp('\\.' + cls.replace(/[-]/g, '\\-') + '(?![\\w-])').test(allCss)) {
+            problems.push(
+              `图标类无定义（会渲染成黑方块）：${bold('.' + cls)}  ← ${path.relative(ROOT, f)}`
+            );
+          }
         }
       }
     }
