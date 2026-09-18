@@ -4,7 +4,7 @@ import { cookies } from 'next/headers';
 import { requireCoreUser } from '@/lib/guard';
 import { rateLimit, RULES } from '@/lib/rate-limit';
 import { COOKIE_NAME } from '@/lib/blog-sort-pref';
-import { listBlogs, parseSortParam } from '@/lib/blog-service';
+import { listBlogs, parseSortParam, ALL_SEARCH_FIELDS } from '@/lib/blog-service';
 import { prisma } from '@/lib/db';
 import { categoryFullPath } from '@/lib/format';
 import { getCurrentUser, isCoreUser } from '@/lib/auth';
@@ -82,9 +82,9 @@ export default async function BlogListPage({
         search: sp.search ?? null,
         sort: parseSortParam(effectiveSort),
         focusMode: focusOn,
-        // 公开目录页搜正文。这是全站唯一传 'all' 的地方 —— 其余调用方（/api/blogs、
-        // 引用弹窗）一律走默认 'meta'，别顺手放宽（见 ListParams.searchScope 的注释）。
-        searchScope: 'all',
+        // 公开目录页搜全部字段（含正文）。其余调用方（/api/blogs、引用弹窗）走默认的
+        // 标题/简介/作者，别顺手放宽（见 ListParams.searchFields 的注释）。
+        searchFields: ALL_SEARCH_FIELDS,
       });
 
   const categories = await prisma.category.findMany({

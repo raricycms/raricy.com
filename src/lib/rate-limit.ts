@@ -277,16 +277,20 @@ export const RULES = {
    */
   spiderFavoritePerIp: { limit: 120, windowMs: 60 * 1000 },
   /**
-   * 博客搜索的**正文**范围（/blog?search=）。全站唯一为「读」设的闸，因为它是唯一
-   * 一条一次请求就扫全表的读：正文合计约 48.6MB / 6193 篇，`LIKE '%q%'` 全表扫描实测
-   * 约 68ms/遍，而 count + findMany 会走两遍（约 136ms）。**元数据搜索只要 1~2ms，
-   * 不消耗这条配额** —— 只有 searchScope='all' 那条路径才算。
+   * 博客搜索的**正文**范围。站内唯一为「一次请求就扫全表」设的闸 —— 正文合计约
+   * 48.6MB / 6193 篇，`LIKE '%q%'` 全表扫描实测约 68ms/遍，而 count + findMany 会走
+   * 两遍（约 136ms）。元数据搜索只要 1~2ms，**不消耗这条配额**。
+   * （另两条读类配额 chatPoll / spiderFavoritePerIp 防的是请求数量，不是单请求体量。）
    *
-   * 【为什么是 30/分】搜索框是表单提交（GET），不是实时搜索，正常人每分钟个位数；
+   * 【谁在消耗】两条路径共用这一条配额，因为它们开销相同：
+   *   · `/blog?search=` 页面（requireCoreUser 之后）
+   *   · `GET /api/blogs?...&search_fields=content`（route 里做了 core+ 校验）
+   * 共用是刻意的 —— 各配一条等于额度翻倍。
+   *
+   * 【为什么是 30/分】网页搜索框是表单提交（GET）而非实时搜索，正常人每分钟个位数；
    * 30 留足余量，同时把单用户的最坏开销压在 30 × 136ms ≈ 4 秒 CPU/分（约 7% 单核）以内。
    * 带栏目筛选时 SQLite 走 ix_blogs_category_id 收窄，开销还要低一个量级。
-   * 桶键：blog:search:{用户 id} —— 这条路径在 requireCoreUser() 之后，拿得到 id
-   * （页面没有 Request 对象，clientIp 那条路走不通）。
+   * 桶键：blog:search:{用户 id}（页面侧没有 Request 对象，clientIp 那条路走不通）。
    */
   blogSearchMinute: { limit: 30, windowMs: 60 * 1000 },
 } as const;

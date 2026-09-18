@@ -85,11 +85,16 @@ test('搜索正文：正文独有词能搜到，并显示命中处的片段', as
  * 该接口完全匿名，且被「引用博客」弹窗按防抖实时消费 —— 一旦放宽，任何访客
  * 每敲一个键就是一次约 48.6MB 的全站正文扫描，而且线上不会报任何错，只是悄悄变慢。
  */
-test('/api/blogs 仍不搜正文（匿名接口不能被放宽）', async ({ page }) => {
+test('/api/blogs 默认仍不搜正文，且匿名要正文会被明确拒绝', async ({ page, request }) => {
   const res = await page.request.get(`/api/blogs?search=${BLOG_BODY_MARKER}`);
   expect(res.status()).toBe(200);
   const body = (await res.json()) as { blogs: unknown[] };
-  expect(body.blogs, '匿名接口接上正文搜索 = 把全表扫描开放给任何访客').toHaveLength(0);
+  expect(body.blogs, '默认字段集不含正文 = 全表扫描不开放给任何访客').toHaveLength(0);
+
+  // 显式点名要正文：core+ 之外一律明确报错。
+  // `request` 是独立的 APIRequestContext（不带 page 的会话 cookie）。
+  const anon = await request.get('/api/blogs?search=x&search_fields=content');
+  expect(anon.status(), '静默忽略会让调用方以为搜了正文').toBe(401);
 });
 
 /**

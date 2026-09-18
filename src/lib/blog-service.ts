@@ -14,6 +14,15 @@ import type { Prisma } from '@prisma/client';
 
 export type BlogSort = 'created' | 'updated';
 
+/** 可搜字段。`content` 是正文（1:1 的 BlogContent），代价见 ListParams.searchFields。 */
+export type SearchField = 'title' | 'description' | 'author' | 'content';
+
+/** 全部可搜字段（HTTP 层的 `search_fields` 白名单就取这个）。 */
+export const ALL_SEARCH_FIELDS = ['title', 'description', 'author', 'content'] as const;
+
+/** 缺省搜索范围 = 标题 / 简介 / 作者名，与 2026-09 之前的公开搜索逐字一致。 */
+export const DEFAULT_SEARCH_FIELDS: readonly SearchField[] = ['title', 'description', 'author'];
+
 /** 列表排序参数解析：只认显式 'updated'，其余（缺省/非法）一律回退 'created'（默认按发布时间）。 */
 export function parseSortParam(raw: unknown): BlogSort {
   return raw === 'updated' ? 'updated' : 'created';
@@ -29,17 +38,18 @@ export interface ListParams {
   /** 查看者开启了专注模式：过滤 focusHidden 栏目（含其子栏目）下的文章。 */
   focusMode?: boolean;
   /**
-   * 搜索范围。**默认 'meta'** —— 只搜标题 / 简介 / 作者名。
-   * 'all' 才加上正文（1:1 的 BlogContent）。
+   * 搜索字段。**缺省 = DEFAULT_SEARCH_FIELDS（标题 / 简介 / 作者名）**，与既有行为逐字一致；
+   * 传空数组也回退到这个默认值（避免 `OR: []` 静默变成「不过滤」而返回全站文章）。
    *
-   * 【为什么是 opt-in 而不是默认放宽】正文合计约 48.6MB / 6193 篇，LIKE '%q%' 全表扫描
-   * 实测约 68ms/遍（count + findMany 走两遍约 136ms），而元数据搜索只要 1~2ms。
-   * /api/blogs 被 QuoteBlogModal 的**输入防抖**实时搜索消费 —— 默认放宽等于让用户
-   * 每敲一个键就扫一遍全站正文，而且不报错、只是悄悄变慢。
-   * 目前只有 /blog 列表页传 'all'（它在 requireCoreUser 之后，另有限频闸）。
-   * 管理端同款参数见 admin-blog-service.ts 的 searchScope。
+   * ⚠️ 含 `content` 是**重活**：正文合计约 48.6MB / 6193 篇，`LIKE '%q%'` 全表扫描实测
+   * 约 68ms/遍，而 count + findMany 会走两遍（约 136ms）；元数据搜索只要 1~2ms。
+   * service 层管不了鉴权，所以**每个调用方必须自己把住**：
+   *   · `/blog` 页面 —— 在 requireCoreUser() 之后，另有限频闸（RULES.blogSearchMinute）
+   *   · `/api/blogs` —— route 里对 content 做 core+ 校验 + 同一条限频
+   * 绝不要把含 content 的默认值放给匿名调用方：那等于让每个访客每敲一个键就扫一遍全站
+   * 正文，而且不报错、只是悄悄变慢。
    */
-  searchScope?: 'meta' | 'all';
+  searchFields?: readonly SearchField[];
 }
 
 const DEFAULT_PER_PAGE = 200;
@@ -117,21 +127,22 @@ export async function listBlogs(params: ListParams) {
 
   // 搜索词在 findMany 之后还要用（补正文片段），所以在函数作用域里留着。
   const q = params.search?.trim() || null;
-  // 正文范围是 opt-in 的重活（一次全表扫描），理由见 ListParams.searchScope。
-  const withContent = params.searchScope === 'all';
+  // 空数组回退默认 —— 否则 `OR: []` 在 Prisma 里等价于「不过滤」，会静默返回全站文章。
+  const fields = params.searchFields?.length ? params.searchFields : DEFAULT_SEARCH_FIELDS;
+  // 正文范围是重活（一次全表扫描），也是唯一需要补片段的场合。
+  const withContent = fields.includes('content');
 
   if (q) {
+    const or: Prisma.BlogWhereInput[] = [];
+    if (fields.includes('title')) or.push({ title: { contains: q } });
+    if (fields.includes('description')) or.push({ description: { contains: q } });
+    if (fields.includes('author')) or.push({ author: { is: { username: { contains: q } } } });
+    // 正文刻意存在独立的 blog_contents 表（列表查询不拖正文），
+    // 所以这里必须显式穿一层 relation 才搜得到。
+    if (withContent) or.push({ content: { is: { content: { contains: q } } } });
+
     // 用 AND 承载，避免与上面「保住 NULL」的 OR 互相覆盖（两者都写 where.OR 会后者胜出）。
-    const searchOr: Prisma.BlogWhereInput = {
-      OR: [
-        { title: { contains: q } },
-        { description: { contains: q } },
-        { author: { is: { username: { contains: q } } } },
-        // 正文刻意存在独立的 blog_contents 表（列表查询不拖正文），
-        // 所以这里必须显式穿一层 relation 才搜得到。
-        ...(withContent ? [{ content: { is: { content: { contains: q } } } }] : []),
-      ],
-    };
+    const searchOr: Prisma.BlogWhereInput = { OR: or };
     where.AND = Array.isArray(where.AND) ? [...where.AND, searchOr] : [searchOr];
   }
 

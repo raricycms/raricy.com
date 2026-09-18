@@ -28,6 +28,7 @@ import {
   BLOG_DESCRIPTION_MAX,
   BLOG_CONTENT_MAX,
   BLOG_DAILY_LIMIT,
+  ALL_SEARCH_FIELDS,
 } from '@/lib/blog-service';
 import { nowForDb } from '@/lib/db-time';
 import { RULES } from '@/lib/rate-limit';
@@ -957,27 +958,51 @@ describe('listBlogs / 搜索与精选', () => {
     expect((await listBlogs({ search: '   ' })).total, '纯空白不应过滤掉所有文章').toBe(1);
   });
 
-  // ── 正文范围（searchScope: 'all'）─────────────────────────────────────────
+  // ── 按字段搜（searchFields）──────────────────────────────────────────────
   // ⚠️ 这一组的**第一条是契约核心**。上面所有既有搜索用例的正文都是 makeBlog 的
-  // 默认值 '# hello'，所以「默认值被悄悄改成 'all'」不会让它们变红 —— 唯一能抓住
-  // 那个回归的就是下面的成对断言。别把它删了。
+  // 默认值 '# hello'，所以「默认字段集被悄悄放宽成含 content」不会让它们变红 ——
+  // 唯一能抓住那个回归的就是那条「正文独有词默认搜不到」的成对断言。别删。
 
-  it("searchScope 默认 'meta'：正文里的词搜不到，显式 'all' 才搜得到", async () => {
+  it('searchFields 缺省不搜正文；显式含 content 才搜得到', async () => {
     const u = await makeUser();
     await makeBlog({ authorId: u.id, title: '标题无关', content: '正文里有恐龙化石' });
     expect((await listBlogs({ search: '恐龙化石' })).total, '默认不该搜正文').toBe(0);
-    const r = await listBlogs({ search: '恐龙化石', searchScope: 'all' });
+    const r = await listBlogs({ search: '恐龙化石', searchFields: ALL_SEARCH_FIELDS });
     expect(r.blogs.map((b) => b.title)).toEqual(['标题无关']);
   });
 
-  it("searchScope 'all'：命中处给出正文片段，两侧带省略号且远短于全文", async () => {
+  it('searchFields 只给 title：简介与正文里的词都搜不到', async () => {
+    const u = await makeUser();
+    await makeBlog({
+      authorId: u.id,
+      title: '甲',
+      description: '简介里有蜻蜓',
+      content: '正文里有恐龙化石',
+    });
+    // 钉住「按字段逐条 push」没写反 —— 只给 title 时，另外两个字段的命中都必须消失。
+    expect((await listBlogs({ search: '蜻蜓', searchFields: ['title'] })).total).toBe(0);
+    expect((await listBlogs({ search: '恐龙化石', searchFields: ['title'] })).total).toBe(0);
+    // 对照：同一批数据，带上对应字段就搜得到（证明上面不是碰巧全空）
+    expect((await listBlogs({ search: '蜻蜓', searchFields: ['title', 'description'] })).total).toBe(1);
+  });
+
+  it('searchFields 传空数组：回退默认字段集，不能变成「不过滤」', async () => {
+    const u = await makeUser();
+    await makeBlog({ authorId: u.id, title: '甲' });
+    await makeBlog({ authorId: u.id, title: '乙' });
+    // Prisma 里 `OR: []` 等价于不过滤 → 会静默返回全站文章，看着像功能正常。
+    // 回退默认后，「搜不到的词」仍然该是 0 条。
+    expect((await listBlogs({ search: '绝不存在的词zzz', searchFields: [] })).total).toBe(0);
+  });
+
+  it('searchFields 含 content：命中处给出正文片段，两侧带省略号且远短于全文', async () => {
     const u = await makeUser();
     await makeBlog({
       authorId: u.id,
       title: 'T',
       content: `${'头'.repeat(200)}独特词${'尾'.repeat(200)}`,
     });
-    const r = await listBlogs({ search: '独特词', searchScope: 'all' });
+    const r = await listBlogs({ search: '独特词', searchFields: ALL_SEARCH_FIELDS });
     const snippet = r.blogs[0].snippet;
     expect(snippet).toBeTruthy();
     expect(snippet).toContain('独特词');
@@ -985,40 +1010,40 @@ describe('listBlogs / 搜索与精选', () => {
     expect(snippet!.length, '片段不该把全文带出来').toBeLessThan(200);
   });
 
-  it("searchScope 'all'：大小写不敏感，且片段取得回来", async () => {
+  it('searchFields 含 content：大小写不敏感，且片段取得回来', async () => {
     const u = await makeUser();
     await makeBlog({ authorId: u.id, title: 'T', content: '讲了 Rust 所有权' });
-    const r = await listBlogs({ search: 'rust', searchScope: 'all' });
+    const r = await listBlogs({ search: 'rust', searchFields: ALL_SEARCH_FIELDS });
     expect(r.blogs).toHaveLength(1);
     // SQLite 的 LIKE 对 ASCII 不区分大小写 —— 若片段那边按原样找，就会「命中了
     // 但片段是 null」，而且不报错。这条钉住两侧口径一致。
     expect(r.blogs[0].snippet, '命中了却取不到片段 = 大小写口径不一致').toContain('Rust');
   });
 
-  it("searchScope 'all'：只命中标题/简介的文章不给正文片段", async () => {
+  it('searchFields 含 content：只命中标题/简介的文章不给正文片段', async () => {
     const u = await makeUser();
     await makeBlog({ authorId: u.id, title: '量子纠缠导论', content: '与关键词无关的正文' });
-    const r = await listBlogs({ search: '量子纠缠', searchScope: 'all' });
+    const r = await listBlogs({ search: '量子纠缠', searchFields: ALL_SEARCH_FIELDS });
     expect(r.blogs.map((b) => b.title)).toEqual(['量子纠缠导论']);
     // 给 null 而不是「正文开头 N 字」—— 后者看着完全合理，却与命中点无关。
     expect(r.blogs[0].snippet, '标题命中不该顶出一段无关的正文开头').toBeNull();
   });
 
-  it("searchScope 'all'：LIKE 通配符命中（%）不产生假片段", async () => {
+  it('searchFields 含 content：LIKE 通配符命中（%）不产生假片段', async () => {
     const u = await makeUser();
     await makeBlog({ authorId: u.id, title: 'T', content: '正文里没有百分号' });
     // '%' 进了 Prisma 的 contains 就是 LIKE '%%%'，命中一切；但正文里并没有这个
     // 字符。此时必须给 null —— 拿「正文开头 N 字」冒充命中片段是这里最阴的错：
     // 不报错、没人会当 bug 报，所以只能靠这条断言钉住。
-    const r = await listBlogs({ search: '%', searchScope: 'all' });
+    const r = await listBlogs({ search: '%', searchFields: ALL_SEARCH_FIELDS });
     expect(r.blogs.length).toBeGreaterThan(0);
     expect(r.blogs.every((b) => b.snippet === null)).toBe(true);
   });
 
-  it("searchScope 'all'：搜不到任何文章时不炸（空 ids 早退）", async () => {
+  it('searchFields 含 content：搜不到任何文章时不炸（空 ids 早退）', async () => {
     const u = await makeUser();
     await makeBlog({ authorId: u.id, title: 'T' });
-    const r = await listBlogs({ search: '绝不存在的词zzzqqq', searchScope: 'all' });
+    const r = await listBlogs({ search: '绝不存在的词zzzqqq', searchFields: ALL_SEARCH_FIELDS });
     expect(r.total).toBe(0);
     expect(r.blogs).toEqual([]);
   });

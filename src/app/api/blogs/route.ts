@@ -7,15 +7,21 @@ import {
   banActionMessage,
   createBlog,
   BLOG_DAILY_LIMIT,
+  ALL_SEARCH_FIELDS,
+  type SearchField,
 } from '@/lib/blog-service';
 import { categoryFullPath, ymd, apiOk, apiErr } from '@/lib/format';
 import { getCurrentUser, isCoreUser, hasAdminRights, isCurrentlyBanned } from '@/lib/auth';
+import { rateLimit, RULES } from '@/lib/rate-limit';
 import { sendNotification } from '@/lib/notification-service';
 import { prisma } from '@/lib/db';
 
-// GET /api/blogs?page=&per_page=&category=&featured=&search=&sort=
+// GET /api/blogs?page=&per_page=&category=&featured=&search=&search_fields=&sort=
 // per_page：可选（缺省走服务默认 200，行为不变）；传了则 clamp 1..50
 // （讨论「引用博客」弹窗用 20 条一页）。
+// search_fields：逗号分隔的搜索字段，可选值见 ALL_SEARCH_FIELDS。
+//   **缺省 = 标题 / 简介 / 作者名**（与改动前逐字一致；引用弹窗走的就是这条）。
+//   含 content（正文）时要求 core+ 登录，并计入 RULES.blogSearchMinute。
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const perPageRaw = url.searchParams.get('per_page');
@@ -24,11 +30,36 @@ export async function GET(req: Request) {
   // 不能把「没传」算成 false —— 那是生效的筛选，会让精选文章从调用方的列表里
   // 整体消失（QuoteBlogModal 就不传 featured，引用弹窗曾因此搜不到精选文）。
   const featuredRaw = url.searchParams.get('featured');
-  // ⚠️ 刻意**不传** searchScope（走默认 'meta'，只搜标题/简介/作者名）。
-  // 本接口完全匿名，且被「引用博客」弹窗按防抖实时消费（QuoteBlogModal）——
-  // 接上正文搜索等于把「每敲一个键就扫一遍约 48.6MB 正文」开放给任何访客。
-  // 正文范围只给 /blog 页面：它在 requireCoreUser() 之后，另有限频闸。
-  // 也不要为此加 ?scope= 参数 —— 那等于开了同一个口子。
+
+  // 搜索字段做白名单校验。**未知字段名直接 400，不静默丢弃** —— 调用方把 titel
+  // 拼错却拿到一份「看着正常、其实搜的是别的字段」的结果，是最难查的那类问题。
+  const fieldsRaw = url.searchParams.get('search_fields');
+  const fields: SearchField[] = [];
+  for (const raw of (fieldsRaw ?? '').split(',')) {
+    const name = raw.trim();
+    if (!name) continue;
+    if (!(ALL_SEARCH_FIELDS as readonly string[]).includes(name)) {
+      return apiErr(
+        400,
+        `未知的搜索字段 "${name}"，可选：${ALL_SEARCH_FIELDS.join(' / ')}`
+      );
+    }
+    const field = name as SearchField;
+    if (!fields.includes(field)) fields.push(field);
+  }
+
+  // 正文是重活：一次请求 = count + findMany 两次全表 LIKE 扫描（正文约 48.6MB）。
+  // 所以只对 core+ 开放，且与 /blog 页面**共用** blog:search:{userId} 这条配额 ——
+  // 同一笔开销就该共用同一个预算，否则两条路各 30 次/分等于额度翻倍。
+  // 匿名 / 非 core 要正文一律**明确报错**：静默忽略会让调用方以为搜了正文。
+  if (fields.includes('content')) {
+    const user = await getCurrentUser();
+    if (!user) return apiErr(401, '请先登录');
+    if (!isCoreUser(user)) return apiErr(403, '需要核心用户权限');
+    const gate = rateLimit(`blog:search:${user.id}`, RULES.blogSearchMinute);
+    if (!gate.allowed) return apiErr(429, '搜索太频繁了，请稍后再试');
+  }
+
   const result = await listBlogs({
     page: parseInt(url.searchParams.get('page') || '1', 10),
     perPage:
@@ -39,6 +70,8 @@ export async function GET(req: Request) {
     featured: featuredRaw === '1' ? true : featuredRaw === '0' ? false : undefined,
     search: url.searchParams.get('search'),
     sort: parseSortParam(url.searchParams.get('sort')),
+    // 没传 search_fields 时给 undefined，让 service 用 DEFAULT_SEARCH_FIELDS。
+    searchFields: fields.length ? fields : undefined,
   });
 
   return Response.json({
@@ -57,6 +90,7 @@ export async function GET(req: Request) {
       isFeatured?: boolean | null;
       category?: { name: string } | null;
       content?: { updatedAt: Date | null } | null;
+      snippet?: string | null;
     }) => ({
       id: b.id,
       title: b.title,
@@ -65,6 +99,10 @@ export async function GET(req: Request) {
       author: b.author?.username ?? null,
       date: b.createdAt ? ymd(b.createdAt) : null,
       updated_at: b.content?.updatedAt ? ymd(b.content.updatedAt) : null,
+      // 正文命中处的片段；没搜正文、或只在标题/简介/作者命中时是 null。
+      // 有它调用方才答得出「这篇为什么被搜出来」—— 片段本身是纯文本，
+      // 正文含字面 HTML，渲染侧必须走文本节点，别当 HTML 拼。
+      snippet: b.snippet ?? null,
       likes_count: b.likesCount ?? 0,
       comments_count: b.commentsCount ?? 0,
       fish_count: b.fishCount ?? 0,
