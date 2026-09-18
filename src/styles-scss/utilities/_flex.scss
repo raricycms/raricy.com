@@ -1,3 +1,5 @@
+@use '../abstracts/variables' as v;
+
 .u-flex { display: flex !important; }
 .u-items-center { align-items: center !important; }
 .u-justify-center { justify-content: center !important; }
@@ -7,4 +9,15 @@
 .align-items-center { align-items: center !important; }
 .justify-content-between { justify-content: space-between !important; }
 .flex-column { flex-direction: column !important; }
+
+// ── 随 SCSS 拆分（02f6ab5）丢失的那一批 ──────────────────────────────────────
+.flex-wrap { flex-wrap: wrap !important; }
+.flex-grow-1 { flex-grow: 1 !important; }
+.align-items-end { align-items: flex-end !important; }
+.align-items-stretch { align-items: stretch !important; }
+.justify-content-end { justify-content: flex-end !important; }
+
+.gap-1 { gap: v.$space-1 !important; }
+.gap-2 { gap: v.$space-2 !important; }
+.gap-3 { gap: v.$space-3 !important; }
 

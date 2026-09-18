@@ -31,6 +31,7 @@
 @use 'components/image-picker';
 @use 'components/sticker-picker';
 @use 'components/poster';
+@use 'components/progress';
 
 @use 'utilities/spacing';
 @use 'utilities/display';
@@ -45,6 +46,7 @@
 @use 'pages/notifications';
 @use 'pages/story';
 @use 'pages/tool-new';
+@use 'pages/tool-hex';
 @use 'pages/tool-redirect';
 @use 'pages/tool-cattca';
 @use 'pages/clipboard';

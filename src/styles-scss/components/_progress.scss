@@ -1,0 +1,69 @@
+@use '../abstracts/variables' as v;
+
+// ── 进度条与加载指示 ─────────────────────────────────────────────────────────
+//
+// 全站另有几套各自实现的进度条（图床 `.image-hosting-progress`、投票 `.vote-embed-bar`、
+// 故事阅读进度、博客阅读进度）—— 那些是组件私有形状，别合并。
+// 这一份是 **Bootstrap 风格的通用族**：/tool/hex 的文件加载进度就是
+// `<div class="progress"><div class="progress-bar progress-bar-striped progress-bar-animated">`
+// 那套写法，随 SCSS 拆分一起丢了，于是加载进度完全不可见（只有百分比文字在跳）。
+//
+// 宽度由 JS 内联给（`style={{ width: '0%' }}` → 加载时改 `style.width`），
+// 所以这里只负责轨道与填充的外观，**别写 width**。
+.progress {
+  height: 8px;
+  background: var(--color-background-subtle);
+  border-radius: v.$radius-max;
+  overflow: hidden;
+}
+
+.progress-bar {
+  height: 100%;
+  background: var(--color-brand-primary);
+  transition: width 0.3s ease;
+}
+
+.progress-bar-striped {
+  background-image: linear-gradient(
+    45deg,
+    rgba(255, 255, 255, 0.15) 25%,
+    transparent 25%,
+    transparent 50%,
+    rgba(255, 255, 255, 0.15) 50%,
+    rgba(255, 255, 255, 0.15) 75%,
+    transparent 75%,
+    transparent
+  );
+  background-size: 1rem 1rem;
+}
+
+.progress-bar-animated {
+  animation: progress-stripes 1s linear infinite;
+}
+
+@keyframes progress-stripes {
+  from {
+    background-position: 1rem 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+
+// 转圈指示（MarkdownRenderer 渲染中用它）。与进度条同属「加载指示」，故同文件。
+.spinner-border {
+  display: inline-block;
+  width: 2rem;
+  height: 2rem;
+  border: 3px solid var(--color-border);
+  border-top-color: var(--color-brand-primary);
+  border-radius: 50%;
+  animation: spinner-rotate 0.7s linear infinite;
+}
+
+// 名字带前缀：`spin` 太泛，将来别处再定义一个就互相覆盖了（静默的）
+@keyframes spinner-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}

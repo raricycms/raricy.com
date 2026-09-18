@@ -208,3 +208,120 @@
 /* 此处原有 `.dark-mode { … }` 一套独立的暗色变量。全站主题只认
    `<html data-theme="dark">`（见 base/_root.scss），没有任何代码会给 body 加
    `.dark-mode` —— 这是一套永不生效的第二配色，且色值与真暗色板不一致，已删。 */
+// ── 工具子页面的外壳与面板 ───────────────────────────────────────────────────
+//
+// /tool/{base,aes,hash,hex,url,qp,html} 七页共用同一套写法。这一块随 SCSS 拆分
+// （02f6ab5）一起丢了 —— 于是这些页面上「面板」不见了：输入区与结果区就是两块
+// 直接摊在页面底色上的文字，卡片底、描边、内距全没有。
+.base-tool-page {
+  padding: $space-8 0;
+}
+
+// 面板即输入框：单层描边，label 在上，内部的 textarea / input **无缝嵌入**
+// （去边框去底色去内距），焦点环加在整框上 —— 这样看起来是一个控件而不是
+// 「一个框里套另一个框」。所以下面那几条 .tool-panel 内部的覆盖不能删。
+.tool-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 14px $space-4;
+  background: var(--color-background-card);
+  border: 1px solid var(--color-border);
+  border-radius: $radius-field;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+
+  &:focus-within {
+    border-color: var(--color-brand-primary);
+    box-shadow: var(--shadow-focus-brand);
+  }
+
+  > .form-label {
+    margin-bottom: 10px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    color: var(--color-text-secondary);
+  }
+
+  textarea.form-control,
+  input.form-control {
+    flex: 1;
+    padding: 0;
+    border: none;
+    background: transparent;
+    box-shadow: none;
+    resize: none;
+
+    &:focus {
+      border: none;
+      background: transparent;
+      box-shadow: none;
+    }
+  }
+}
+
+// 结果区（各工具页右侧那块大 textarea）
+.result-area {
+  min-height: 240px;
+
+  @media (max-width: 767.98px) {
+    min-height: 168px;
+  }
+}
+
+// 只读结果的容器（/tool/hex 的 hex 面板外层）
+.viewer-panel {
+  background: var(--color-background-card);
+  border: 1px solid var(--color-border);
+  border-radius: $radius-field;
+}
+
+// 算法 / 模式选择：一排小胶囊，`.active` 表示当前选中。
+// 归「切页档」——同一排里选一个，与工具箱的 .filter-pill 是同一个交互。
+.algo-badge {
+  @include m.btn-tab;
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 14px;
+  border: none;
+  font-size: 0.875rem;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+// 算法徽章那一排的间距（Bootstrap 的 g-* 在这里被当成 gap 用）
+.algo-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $space-2;
+}
+
+// 「复制结果」之类贴在结果区右上角的按钮
+.btn-copy {
+  position: absolute;
+  right: 1rem;
+  top: 0.75rem;
+}
+
+// 键盘按键提示
+.kbd {
+  padding: 0 6px;
+  border: 1px solid var(--color-border);
+  border-bottom-width: 2px;
+  border-radius: $radius-small;
+  background: var(--color-background-subtle);
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+}
+
+// 垂直居中的一段操作区（工具页中间那张「请先选择文件」的占位卡）
+.mid-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100%;
+
+  .btn {
+    width: 140px;
+  }
+}

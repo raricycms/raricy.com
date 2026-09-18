@@ -1,5 +1,24 @@
-.row { display: flex; flex-wrap: wrap; margin-left: -8px; margin-right: -8px; }
-[class^="col-"], [class*=" col-"] { padding-left: 8px; padding-right: 8px; }
+/* 列间距走 --gutter 变量（Bootstrap 的口径：gutter 是**列之间**的距离，
+   单侧内距是它的一半）。默认 16px，正好等于拆分前写死的 8px 单侧内距 ——
+   所以不挂 .g-* 的行渲染不变。 */
+.row {
+  --gutter: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  margin-left: calc(var(--gutter) / -2);
+  margin-right: calc(var(--gutter) / -2);
+  row-gap: var(--gutter);
+}
+[class^="col-"], [class*=" col-"] { padding-left: calc(var(--gutter) / 2); padding-right: calc(var(--gutter) / 2); }
+
+/* 列间距档位。此前只在旧 rebuild.css 里有，随 SCSS 拆分丢了 —— 于是 .g-2/.g-3/.g-4
+   全部静默失效（没有 .g-* 规则时列距恒为默认的 16px，看不出「没生效」）。 */
+.g-0 { --gutter: 0; }
+.g-1 { --gutter: 4px; }
+.g-2 { --gutter: 8px; }
+.g-3 { --gutter: 16px; }
+.g-4 { --gutter: 24px; }
+.g-5 { --gutter: 32px; }
 
 /* Mobile-first: columns take full width by default (lower specificity so breakpoints override) */
 [class^="col-"], [class*=" col-"] { flex: 0 0 100%; max-width: 100%; }
@@ -10,9 +29,14 @@
 
 /* Responsive columns to mimic Bootstrap behavior */
 @media (min-width: 768px) {
+  .col-md-2 { flex: 0 0 16.6667%; max-width: 16.6667%; }
+  .col-md-4 { flex: 0 0 33.3333%; max-width: 33.3333%; }
   .col-md-6 { flex: 0 0 50%; max-width: 50%; }
+  .col-md-8 { flex: 0 0 66.6667%; max-width: 66.6667%; }
 }
 @media (min-width: 992px) {
+  .col-lg-2 { flex: 0 0 16.6667%; max-width: 16.6667%; }
+  .col-lg-5 { flex: 0 0 41.6667%; max-width: 41.6667%; }
   .col-lg-6 { flex: 0 0 50%; max-width: 50%; }
 }
 

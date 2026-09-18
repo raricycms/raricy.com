@@ -69,7 +69,7 @@
   min-width: 0;
   padding-right: 0.5rem;
   font-size: 0.9rem;
-  color: var(--color-text-tertiary);
+  color: var(--color-text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -92,7 +92,7 @@
   border: none;
   border-radius: v.$radius-max;
   background: transparent;
-  color: var(--color-text-tertiary);
+  color: var(--color-text-secondary);
   font-size: 1.1rem;
   line-height: 1;
   cursor: pointer;

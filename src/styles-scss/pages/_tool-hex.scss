@@ -1,0 +1,118 @@
+@use '../abstracts/variables' as v;
+
+// ── Hex 查看器（/tool/hex）────────────────────────────────────────────────────
+//
+// 这套类**一个都不在 JSX 里**：表头那行是 JSX 写死的，正文的每一行
+// （`hex-line` / `hex-offset` / `hex-bytes` / `byte` / `char` / `pad`）是
+// `src/app/tool/hex/page.tsx` 的虚拟滚动用 innerHTML 拼出来的 —— 改样式时两处都要顾到。
+// 本次随 SCSS 拆分一起丢失，于是三列（偏移 / 字节 / ASCII）整个塌成一列纯文本。
+//
+// 【三列必须严格等宽】表头与正文是**两套独立的 DOM**，靠同名的类各自定宽来对齐：
+// 偏移 96px、ASCII 184px 都是死的，字节列 `flex: 1` 撑满中间。少任何一条，
+// 表头的「00 01 02 …」就和正文的字节错位 —— 这正是这块最容易被改坏的地方。
+.hex-grid {
+  display: flex;
+  flex-direction: column;
+}
+
+/* 滚动容器。JS 读的就是它的 scrollTop（虚拟滚动按 scrollTop / rowHeight 算窗口），
+   所以 max-height 与 overflow 必须挂在这里，不能挪到 .hex-body 上 —— 挪了就没有
+   滚动条、scroll 事件不触发，正文永远只有首批那几百行。 */
+.hex-viewer {
+  max-height: 420px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--color-border);
+  border-radius: v.$radius-large;
+  background: var(--color-background-card);
+
+  @media (max-width: 767.98px) {
+    max-height: 320px;
+  }
+}
+
+/* 行高由 JS 按 24px 内联给出（虚拟滚动要按固定行高换算滚动位置），
+   这里只负责「三列横排 + 垂直居中」，**别写 height**。 */
+.hex-line {
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  /* 行宽由内容决定：窄屏时溢出给 .hex-viewer 横滚，逐列仍对齐 */
+  min-width: max-content;
+  font-size: 0.82rem;
+  line-height: 1.7;
+}
+
+.hex-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--color-background-subtle);
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+}
+
+.hex-offset {
+  flex: none;
+  width: 96px;
+  color: var(--color-text-secondary);
+  user-select: none;
+}
+
+/* 字节列：flex: 1 吃掉中间，.byte 自己定宽 —— 两者配合才有「逐列对齐」。
+   flex 容器会忽略纯空白文本节点，正好消掉 JS 拼接时的换行缩进。 */
+.hex-bytes {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  color: var(--color-text-primary);
+}
+
+.hex-ascii {
+  flex: none;
+  width: 184px;
+  padding-left: 14px;
+  border-left: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+  overflow: hidden;
+  white-space: pre;
+}
+
+.byte {
+  flex: none;
+  width: 26px;
+  text-align: center;
+}
+
+/* 每 8 个字节断开一次（第 8 个之后），一眼能数出列 */
+.byte.group-gap {
+  margin-right: 12px;
+}
+
+.char {
+  display: inline-block;
+  width: 11px;
+  text-align: center;
+}
+
+/* 虚拟滚动的首尾占位块：把「还没渲染的行」的高度撑出来，滚动条才不跳。
+   本身没有内容，不该被看到。 */
+.pad {
+  width: 100%;
+}
+
+/* 鼠标悬停 / 键盘聚焦的那一格（JS 给同一 data-index 的 byte 与 char 同时挂上） */
+.hex-viewer .active-cell {
+  background: var(--color-background-highlight);
+  color: var(--color-brand-primary);
+  border-radius: 3px;
+}
+
+/* 被改过的字节 —— 页面提示里写的「修改项将高亮」就靠这条 */
+.hex-viewer .byte.modified-cell,
+.hex-viewer .char.modified-cell {
+  color: var(--color-brand-primary);
+  font-weight: 700;
+}

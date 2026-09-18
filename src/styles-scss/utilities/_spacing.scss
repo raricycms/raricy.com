@@ -1,3 +1,17 @@
+@use '../abstracts/variables' as v;
+
+// ── 间距工具 ─────────────────────────────────────────────────────────────────
+//
+// 两族并存，别再各写一份：
+//   · `.u-*`  —— 站内自有的写法（少数几处）
+//   · Bootstrap 风格的 `.m*/p*-*` —— 从 Flask 模板一路带过来的，页面里大量在用
+//
+// ⚠️ 这一族**带 `!important`**，与同一个文件里的 `.mb-4` / `.mt-3` 一致。不是随手加的：
+//   页面里 `.p-3` 常与组件类同挂一个元素（`<div class="p-3 rounded tool-panel">`），
+//   两者权重都是 0-1-0，谁赢只看加载顺序 —— 去掉 `!important` 会让内距随 main.scss 的
+//   import 顺序漂移（改一次顺序，几个页面的内距就变了），而这种漂移没有测试拦得住。
+//   ⚠️ 也正因为它带 `!important`，**别往带这些类的元素上写 padding/margin 组件样式** ——
+//   写了也不会生效。
 .u-mt-8 { margin-top: 8px !important; }
 .u-mb-8 { margin-bottom: 8px !important; }
 .u-mb-4 { margin-bottom: 16px !important; }
@@ -11,3 +25,21 @@
 // Bootstrap-like aliases used in templates
 .mt-3 { margin-top: 1rem !important; }
 
+// ── 随 SCSS 拆分（02f6ab5）丢失的那一批 ──────────────────────────────────────
+// 档位按 Bootstrap：1=4px 2=8px 3=16px 4=24px 5=32px（5 用 32 而非 Bootstrap 的 48，
+// 旧文件就是这么定的，页面是按它排的）。
+.p-2 { padding: v.$space-2 !important; }
+.p-3 { padding: v.$space-4 !important; }
+.py-4 { padding-block: v.$space-6 !important; }
+.py-5 { padding-block: v.$space-8 !important; }
+
+.mb-0 { margin-bottom: 0 !important; }
+.mb-1 { margin-bottom: v.$space-1 !important; }
+.mb-2 { margin-bottom: v.$space-2 !important; }
+.mt-1 { margin-top: v.$space-1 !important; }
+.mt-2 { margin-top: v.$space-2 !important; }
+.mt-4 { margin-top: v.$space-6 !important; }
+.my-4 { margin-block: v.$space-6 !important; }
+.me-2 { margin-right: v.$space-2 !important; }
+.ml-2 { margin-left: v.$space-2 !important; }
+.ms-auto { margin-left: auto !important; }

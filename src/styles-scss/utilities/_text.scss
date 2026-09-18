@@ -15,3 +15,18 @@
 .text-danger { color: var(--color-warning-primary) !important; }
 .text-primary { color: var(--color-brand-primary) !important; }
 
+// ── 随 SCSS 拆分（02f6ab5）丢失的那一批 ──────────────────────────────────────
+// ⚠️ 带 `color` 的这几条**刻意不带 `!important`**：本文件开头那几条 `.u-text-muted`
+// 已经因为 `!important` 会盖掉任何组件配色被记在 docs/frontend-styles.md §12，
+// 别再扩大这个面。工具页上它们都用在没有组件配色的裸元素上，普通声明足够。
+.text-center { text-align: center; }
+.text-white { color: #fff; }
+.text-decoration-none { text-decoration: none; }
+
+.fw-semibold { font-weight: 600; }
+.font-weight-bold { font-weight: 700; }
+
+// 等宽字体。栈取自 components/_markdown-body.scss 里代码块那份 —— 全站统一这一条，
+// **不要写 `var(--mono)`**：仓库没有这个令牌（旧 rebuild.css 里有，是幽灵变量）。
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
