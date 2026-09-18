@@ -1,5 +1,5 @@
 import { softDeleteComment } from '@/lib/comment-service';
-import { getCurrentUser } from '@/lib/auth';
+import { getCurrentUser, isCoreUser } from '@/lib/auth';
 import { apiOk, apiErr } from '@/lib/format';
 
 // DELETE /api/comments/:id — 软删除评论（作者本人或管理员）
@@ -7,9 +7,16 @@ import { apiOk, apiErr } from '@/lib/format';
 //   管理员删「他人」评论时必须给出原因（1..500），
 //   并据此写 AdminActionLog —— 那条日志是 /audit 公示与用户申诉的数据来源。
 //   作者删自己的评论不需要原因。
+//
+// 【鉴权】需 core+ 登录。这里的 core+ 与下面的归属判定是**两层，别混**：
+//   · 档位：你有没有资格用评论区（与评论树 GET 同档）；
+//   · 归属：这一条是不是你的（`softDeleteComment` 里判作者/管理员）。
+// 少了档位这一层，一个非 core 账号就能删自己的历史评论 —— 而那些评论本就产自
+// 他还是 core 的时候。
 export async function DELETE(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '请先登录');
+  if (!isCoreUser(user)) return apiErr(403, '需要核心用户权限');
 
   const { id } = await ctx.params;
 

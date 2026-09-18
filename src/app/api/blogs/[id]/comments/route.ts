@@ -20,14 +20,20 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   return apiOk({ comments });
 }
 
-// POST /api/blogs/:id/comments — 创建评论（需登录，禁言禁止，每日限额）
+// POST /api/blogs/:id/comments — 创建评论（需 core+，禁言禁止，每日限额）
 // body: { content?: string, parent_id?: string, image_id?: string, quote_blog_id?: string }
 //
 // content 是 Markdown 源；渲染在客户端（src/lib/comment-markdown.ts），服务端只存原文
 // 并另存一份转义纯文本（contentHtml，给 spider API 与无 JS 降级）。
+//
+// 【鉴权】需 core+ 登录，与同文件上面的 GET 同档（见 `docs/architecture.md` §8
+// 「档位阶梯：页面与接口必须同档」）。此前只判登录，而 blog 详情页给评论框传的是
+// `canComment={isCore}` —— 界面不给非核心用户用，接口却放行，于是 curl 就能往
+// **自己都读不了的文章**上发评论。对外口径见 `docs/bot/comment-bot.md` §6。
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '请先登录');
+  if (!isCoreUser(user)) return apiErr(403, '需要核心用户权限');
   if (isCurrentlyBanned(user)) return apiErr(403, '您已被禁言，无法发表评论');
 
   const { id } = await ctx.params;

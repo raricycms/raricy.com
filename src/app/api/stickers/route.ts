@@ -1,4 +1,4 @@
-import { getCurrentUser } from '@/lib/auth';
+import { getCurrentUser, isCoreUser } from '@/lib/auth';
 import { apiErr, apiOk } from '@/lib/format';
 import { hasNoStickers, listStickerCollections } from '@/lib/sticker-service';
 
@@ -7,12 +7,16 @@ export const runtime = 'nodejs';
 
 // GET /api/stickers — 表情面板的数据源（合集 → 表情）。
 //
-// 【为什么要登录】评论要登录、讨论要 core+，能打开面板的人必然是登录用户。
-// 素材本身不是秘密（raw 路由对所有人开放，否则未登录读者看不到公开评论里的表情），
-// 这里挡的是「游客拿这个接口当免费图床清单爬」。
+// 【鉴权】需 core+ 登录：面板只挂在两个地方 —— 评论区与讨论的编辑器，两处都是 core+ 档。
+//
+// ⚠️ 别拿它跟**字节**路由（`/api/stickers/:collection/:name`）比：那条**有意匿名**，
+// 理由是素材本身不属于任何账号、对所有人的答案都一样（台账见
+// `tests/unit/anonymous-read-guard.test.ts`）。这条不一样 —— 它吐的是**全站合集的清单**，
+// 是枚举面（游客能拿它当免费图床清单爬），所以收在档位里面。两者一收一放是刻意的。
 export async function GET() {
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '请先登录');
+  if (!isCoreUser(user)) return apiErr(403, '需要核心用户权限');
 
   return apiOk({
     collections: listStickerCollections(),
