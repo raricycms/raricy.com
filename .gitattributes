@@ -1,12 +1,15 @@
 # 行尾统一 LF。
 #
-# 为什么必须显式声明：`src/styles-scss/compiled/flask.css` 是 sass 生成的产物，
-# 输出的是纯 LF；而 Windows 上 core.autocrlf=true 的仓库期待工作区是 CRLF。
-# 两边不一致时 git 会在每次 `npm run build:css` 之后挂一个**内容其实完全相同**的
-# 假 " M"（核对过 blob 与工作区哈希一致），并且在 `git pull` 时被它挡下：
+# 为什么显式声明：SCSS 源与 sass 的产物输出的都是纯 LF，而 Windows 上
+# core.autocrlf=true 的仓库期待工作区是 CRLF。两边不一致时 git 会挂一个
+# **内容其实完全相同**的假 " M"（当时核对过 blob 与工作区的哈希一致），
+# 并且在 `git pull` 时被它挡下：
 #   error: Your local changes to the following files would be overwritten by merge
 # 实测踩过。声明 eol=lf 后两边预期一致，这个假 M 不再出现。
 #
-# 入库的 .css / .scss blob 已全部是 LF，加这行不会让任何现存文件变成「已修改」。
+# 历史上这条规则主要保的是入库的编译产物 flask.css；它已退出版本库
+# （见 .gitignore），但规则对 SCSS 源与 tests/.tmp 下的手工探针产物同样有意义，
+# 故保留。入库的 .css / .scss blob 已全部是 LF，加这行不会让任何现存文件
+# 变成「已修改」。
 *.css text eol=lf
 *.scss text eol=lf

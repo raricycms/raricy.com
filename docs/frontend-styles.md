@@ -1,6 +1,6 @@
 # 前端样式规范
 
-> 概述：raricy.com（聪明山）的整套前端样式体系。来源是 `src/styles-scss/` 下的 SCSS，编译成 `src/styles-scss/compiled/flask.css` 后由 Next.js 全局引入。全站不依赖 Bootstrap——所有 Bootstrap 风格工具类都有本地 fallback 实现。
+> 概述：raricy.com（聪明山）的整套前端样式体系。来源是 `src/styles-scss/` 下的 SCSS，由 [src/app/layout.tsx](../src/app/layout.tsx) 引入入口文件、交给 Next.js 编译。全站不依赖 Bootstrap——所有 Bootstrap 风格工具类都有本地 fallback 实现。
 
 ## 1. 架构与构建
 
@@ -14,26 +14,29 @@ src/styles-scss/
 ├── layout/       容器、栅格、顶栏、页脚、后台侧边栏
 ├── pages/        各页面样式（首页、博客、讨论、通知、管理后台…）
 ├── utilities/    间距、显示、flex、文本工具类
-├── compiled/     编译产物 flask.css（不要手改）
 └── main.scss     入口，控制 import 顺序
 ```
 
-**构建命令**（见 `package.json`）：
+**构建**：[src/app/layout.tsx](../src/app/layout.tsx) 直接 `import '@/styles-scss/main.scss'`，
+**由 Next 自己编译**（`sassOptions` 见 `next.config.mjs`）：
 
-- `npm run build:css` — 一次性编译到 `src/styles-scss/compiled/flask.css`（expanded，无 sourcemap）
-- `npm run dev:css` — 监听模式，改 SCSS 自动重编译
-- `npm run build` — 生产构建，**先跑一遍 `build:css`** 再 `next build`
+- `npm run dev` — 改任意 SCSS 立即生效。HMR 带 source map，DevTools 里直接看到 `_*.scss` 的行号
+- `npm run build` — `next build` 编译进 `.next/static/css/`
 
-编译产物由 [src/app/layout.tsx](../src/app/layout.tsx) 以 `import '@/styles-scss/compiled/flask.css'` 全局引入。
+**没有手工编译步骤，也没有入库的编译产物**（`src/styles-scss/compiled/` 已进 `.gitignore`）。
+改样式只改 SCSS 源文件，不需要提交任何产物。
 
-> ⚠️ 改样式改 SCSS 源文件，改完跑 `build:css`（或开着 `dev:css`）。`compiled/flask.css` 是产物，直接手改会在下次编译时被覆盖。
-> 产物**仍然入库**：`npm run build` 重编的是它自己那一份，而 `npm run dev` / `npm run e2e` /
-> 三条守卫（`css-classes` / `css-js-classes` / `check:links`）读的都是**库里那一份**。
-> 所以改完 SCSS 照旧要把重编结果一起提交，别指望构建替你补上。
+> ⚠️ 别把入口改名成 `main.module.scss`：`.module.` 后缀会让 Next 按 **CSS Modules**
+> 处理、把全站类名哈希化，样式整体失效。
+
+`npm run build:css` 仍在，但**只服务离线调试**：`tests/.tmp/` 下那几个手工像素探针 HTML
+用 `<link>` 直接引产物路径。要跑探针先 `npm run build:css`；日常开发与部署都用不到它。
+
+三条守卫（`css-classes` / `css-js-classes` / `check:links` §4）读的 CSS 由
+[scripts/compiled-css.mjs](../scripts/compiled-css.mjs) **现编**入口 SCSS —— 不读任何落盘产物，
+也**不能**改成扫 SCSS 源（`&--has` 这类嵌套在源里没有展开后的字面量，扫源会假阳性）。
 
 行尾：`.css` / `.scss` 一律 LF，由根目录 [.gitattributes](../.gitattributes) 声明。
-不声明的话，`core.autocrlf=true` 的机器上每次 `build:css` 都会留下一个内容其实
-完全相同的假 `M`，还会把 `git pull` 挡下来（详见该文件注释）。
 
 ## 2. 设计令牌（CSS 变量）
 
@@ -585,9 +588,7 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
 
 1. 主题色一律用 `_root.scss` 的 CSS 变量，别写死色值。
 2. 圆角 / 间距 / 阴影复用 2.4 节的令牌，别自造一套。
-3. 改 SCSS 后跑 `npm run build:css`，提交时**带上编译产物**（`compiled/flask.css`）。
-   `npm run build` 会在 `next build` 前自动重编一遍，但 dev / e2e / 守卫读的是库里这一份，
-   **不能因此省掉提交**。
+3. 改 SCSS 直接改源文件就行，**没有产物要提交** —— dev 走 HMR，build 由 Next 编译。
 4. 图标优先复用 `public/static/img/icons/` 现成 SVG + mask 方案，别引 icon 库。
 5. 组件优先复用现有 `.button-*`、`.card`、`.form-control` 等类名，少写一次性样式。
    **按钮与输入框一律引 mixin / 既有类，不要另抄一份**：按钮是
@@ -634,7 +635,6 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
 
 ## 12. 已知遗留 / 注意事项
 
-- `compiled/flask.css` 是产物，勿手改。
 - `abstracts/_theme-map.scss` 的 light map 与 `themeify` mixin 已停用，不要基于它扩展。
 - `utilities/_text.scss` 里 `.u-text-muted` / `.text-primary` / `.text-danger` 等工具类
   带 `!important` 的 `color`，会盖掉**任何**组件颜色规则。给带这些类的元素写按钮态
