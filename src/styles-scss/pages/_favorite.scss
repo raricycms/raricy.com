@@ -48,15 +48,18 @@
  * 由 MarkdownRenderer 的预处理器**直接产出成品 HTML**（不是投票那种占位 + 后处理），
  * 所以这里的类名必须与 src/lib/favorite-refs.ts 的 buildFavoriteCardHtml 保持一致。 */
 .favorite-embed {
-  /* 左侧那条金色竖条是这张卡此前唯一的「收藏夹」身份提示，但它与全站
-     「无左侧边框」的规范冲突。改由**星色淡底**承担同一语义 ——
-     --color-star-* 这一对本来就是为收藏夹引入的。
+  /* 这里曾先后用「左侧金色竖条」与「星色淡底（--color-star-secondary）」当身份提示，
+     前者违反全站「无左侧边框」，后者则让**正文里整块发黄** —— 星色是「已收藏」的
+     状态色（--color-star-* 的用途边界见 base/_root.scss），拿它当一块正文的背景，
+     读起来像整段内容都被标记了。现在与正文里的另一张嵌入卡（投票的 .vote-embed-widget）
+     同一副面孔：卡片底 + 1px 常规描边。嵌入块靠**形状**（圆角 + 描边 + 内距）与正文分开，
+     不靠色相。
      卡片 HTML 由 src/lib/favorite-refs.ts 的 buildFavoriteCardHtml 直接产出，
      但那是**成品 HTML 里的类名**，样式在这里，所以只改 SCSS 即可。 */
   margin: 1.25rem 0;
   padding: 1rem 1.25rem;
-  background: var(--color-star-secondary);
-  border: none;
+  background: var(--color-background-card);
+  border: 1px solid var(--color-border);
   border-radius: 16px;
 
   &__head {
