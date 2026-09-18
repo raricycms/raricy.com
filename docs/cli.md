@@ -91,7 +91,8 @@ npm run cli -- stats overview  # 命令式：看一眼站点状态
 - **导航约定**：选命令的二级菜单、以及 select 类参数，前两项固定是
   「← 返回上一步 / ✕ 取消本次操作」；自由文本提示后写着 `（:b 返回上一步，:q 回主菜单）`。
   **顶层分组菜单没有返回项**（它已经是最外层），也没有字母快捷键 —— 全靠方向键。
-- **退回上一题会带出原答案当默认值**，不用重敲。
+- **退回上一题会带出原答案当默认值**，不用重敲；**与当前选择无关的题根本不问** ——
+  例如密码来源选了「生成随机密码」，就不会再问新密码（改回去的话先前填的那个也会作废）。
 - **`Ctrl-C` 只取消当前操作、回主菜单**，不退出整个工具；也不会留下半完成的写入。
 - **非交互（管道 / CI）下不会进菜单**，而是打印帮助后退出 —— 绝不会挂在 stdin 上等输入。
 
@@ -214,7 +215,7 @@ CLI 写下的每一条审计日志都落 `visibility='internal'`：**不进** `/
 |------|------|
 | `user search [关键词]` | 按用户名 / 邮箱搜 |
 | `user show <username>` | 详情：角色 / 禁言 / 鱼干余额 / 文章数 / 评论数 |
-| `user reset-password <username> [generate\|manual] [--password <新密码>] --reason <原因>` | 重置密码（旧会话全部失效）。`manual` 模式**必须**给 `--password`（≥8 位），`generate` 模式不用 |
+| `user reset-password <username> [generate\|manual] [--password <新密码>] --reason <原因>` | 重置密码（旧会话全部失效）。`manual` 模式**必须**给 `--password`（≥8 位）；`generate` 模式不给，**给了会报错**（不是静默忽略） |
 | `user ban <username> --hours N --reason <原因>` | 禁言 |
 | `user unban <username> [--reason <原因>]` | 解除禁言 |
 | `user force-logout <username> [--reason <原因>]` | 强制下线（比禁言轻一档） |

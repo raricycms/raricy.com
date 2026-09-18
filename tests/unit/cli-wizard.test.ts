@@ -215,6 +215,101 @@ describe('collectArgs：校验与必填', () => {
   });
 });
 
+// ── 密码 ─────────────────────────────────────────────────────────────────────
+//
+// 【为什么单列】`user reset-password` 选了「生成随机密码」却仍然被要求输入新密码，
+// 而且留空还会被「至少 8 位」打回来 —— 明明不用填的题，人却出不去（唯一出口是 Ctrl-C）。
+// 密码题必须和 input / number 用同一条规矩：不是必填就留空即跳过。
+describe('collectArgs：密码题', () => {
+  const PW: ArgSpec = {
+    name: 'password',
+    flags: ['--password'],
+    label: '新密码',
+    help: '密码',
+    prompt: { type: 'password' as const },
+    validate: (raw) => (raw.trim().length >= 8 ? null : '新密码长度至少为 8 位'),
+  };
+
+  it('★ 可选密码留空 = 不填（不重问、也不收空串）', async () => {
+    const s = scripted([{ text: 'alice' }, { secret: '' }]);
+    const d = deps(s.prompter);
+    expect(await collectArgs(cmd([NAME, PW]), d)).toEqual({ username: 'alice' });
+    expect(d.io.err.join('\n'), '留空被校验打回来了 —— 可选题又出不去了').toBe('');
+  });
+
+  it('★ 必填密码留空 → 原地重问', async () => {
+    const s = scripted([{ secret: '' }, { secret: 'Hunter2Hunter2' }]);
+    const d = deps(s.prompter);
+    expect(await collectArgs(cmd([{ ...PW, required: true }]), d)).toEqual({
+      password: 'Hunter2Hunter2',
+    });
+    expect(d.io.err.join('\n')).toContain('不能为空');
+  });
+
+  it('密码原样收下（判空用 trim，但收下的值不 trim —— 空格也是密码的一部分）', async () => {
+    const s = scripted([{ secret: '  Hunter22  ' }]);
+    expect(await collectArgs(cmd([PW]), deps(s.prompter))).toEqual({ password: '  Hunter22  ' });
+  });
+});
+
+// ── 条件跳题（skipIf）────────────────────────────────────────────────────────
+
+describe('collectArgs：条件跳题', () => {
+  const MODE: ArgSpec = {
+    name: 'mode',
+    flags: [],
+    positional: 0,
+    label: '密码来源',
+    help: '模式',
+    prompt: {
+      type: 'select',
+      choices: [
+        { value: 'generate', label: '生成随机密码' },
+        { value: 'manual', label: '手动输入' },
+      ],
+    },
+  };
+  const PW: ArgSpec = {
+    name: 'password',
+    flags: ['--password'],
+    label: '新密码',
+    help: '密码',
+    requiredIf: (a) => a.mode === 'manual',
+    skipIf: (a) => a.mode !== 'manual',
+    prompt: { type: 'password' as const },
+  };
+
+  it('★ 条件不成立时连问都不问（选了「生成随机密码」就不该要人输入密码）', async () => {
+    const s = scripted([{ pick: 'generate' }, { text: '原因' }]);
+    const args = await collectArgs(cmd([MODE, PW, DESC]), deps(s.prompter));
+    expect(args).toEqual({ mode: 'generate', description: '原因' });
+    expect(s.asked.join('\n'), '密码那题被问了').not.toContain('新密码');
+  });
+
+  it('条件成立时照常问、且按必填算', async () => {
+    const s = scripted([{ pick: 'manual' }, { secret: 'Hunter2Hunter2' }, { text: '' }]);
+    const args = await collectArgs(cmd([MODE, PW, DESC]), deps(s.prompter));
+    expect(args).toEqual({ mode: 'manual', password: 'Hunter2Hunter2' });
+  });
+
+  it('★ 退回改成跳过之后，先前收下的值会被丢掉（否则命令会以为自己收到了密码）', async () => {
+    // 走位：模式选 manual → 填了昵称 → 在说明那题按返回 → 再返回到模式题 → 改选 generate
+    // → 昵称题被跳过 → 说明。昵称必须从参数表里消失，不能留个「幽灵值」。
+    const NICK: ArgSpec = { name: 'nickname', flags: ['--nick'], label: '昵称', help: '昵称' };
+    const s = scripted([
+      { pick: 'manual' },
+      { text: '昵称A' },
+      { text: NAV_BACK },
+      { text: NAV_BACK },
+      { pick: 'generate' },
+      { text: '原因' },
+    ]);
+    const args = await collectArgs(cmd([MODE, { ...NICK, skipIf: (a) => a.mode === 'generate' }, DESC]), deps(s.prompter));
+    expect(args).toEqual({ mode: 'generate', description: '原因' });
+    expect(args).not.toHaveProperty('nickname');
+  });
+});
+
 // ── 先搜后选 ─────────────────────────────────────────────────────────────────
 
 describe('collectArgs：先搜后选（「不用背命令」的落点）', () => {
@@ -270,6 +365,16 @@ describe('collectArgs：先搜后选（「不用背命令」的落点）', () =>
   it('在候选列表里按「取消」→ 取消整个命令', async () => {
     const s = scripted([{ text: '报错' }, { pick: NAV_CANCEL }]);
     expect(await collectArgs(cmd([searchSpec()]), deps(s.prompter))).toBeNull();
+  });
+
+  it('★ 挑中的值也要过注册表的校验（原样收下的关键词也是用户输入）', async () => {
+    // 别的分支（input / select / password）都过 validate，搜索这条路以前不过 ——
+    // 于是「搜不到就把关键词原样当值」的兜底会把没校验过的输入直接交给命令。
+    const spec: ArgSpec = { ...searchSpec(), validate: (raw) => (raw === 'id-1' ? '这个不行' : null) };
+    const s = scripted([{ text: '报错' }, { pick: 'id-1' }, { text: '报错' }, { pick: 'id-2' }]);
+    const d = deps(s.prompter);
+    expect(await collectArgs(cmd([spec]), d)).toEqual({ target: 'id-2' });
+    expect(d.io.err.join('\n')).toContain('这个不行');
   });
 });
 

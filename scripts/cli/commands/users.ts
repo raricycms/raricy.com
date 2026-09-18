@@ -190,8 +190,11 @@ export const userCommands: CommandSpec[] = [
         flags: ['--password'],
         secret: true,
         requiredIf: (a) => a.mode === 'manual',
+        // 「生成随机密码」模式下这题与本次操作无关 —— 向导**连问都不问**。
+        // （命令式那边没有跳过的位置，误传的 --password 由 describe 挡下来。）
+        skipIf: (a) => a.mode !== 'manual',
         label: '新密码',
-        help: '至少 8 位；⚠️ 会留在 shell 历史里',
+        help: 'manual 模式必填（≥8 位）；generate 模式不要传（传了会报错，不会被忽略）；⚠️ 会留在 shell 历史里',
         prompt: { type: 'password' as const },
         validate: (raw) => (raw.trim().length >= 8 ? null : '新密码长度至少为 8 位'),
       },
@@ -201,6 +204,17 @@ export const userCommands: CommandSpec[] = [
       const target = await lookup(ctx, String(ctx.args.username));
       const actor = requireActor(ctx);
       if (target.id === actor.id) throw new CliError('错误：不能重置自己的密码，请用网页端「修改密码」');
+      // 命令式前端没有「跳题」的位置：`--password` 与 generate 同时出现时那个值会被
+      // **静默忽略**（run 只看 mode），比起报错来难查得多。向导那边由 skipIf 从源头
+      // 不问，所以这里挡到的只会是命令式。
+      if (ctx.args.mode !== 'manual' && ctx.args.password !== undefined) {
+        throw new CliError('错误：--password 只在 manual 模式下有效（当前模式是 generate）', 1, [
+          '  generate 模式会用系统随机密码，传进来的 --password 会被忽略。',
+          '  想用自己指定的密码 —— 把模式写成 manual：',
+          `    npm run cli -- user reset-password ${target.username} manual --password <新密码> --reason <原因>`,
+          '  想让系统生成随机密码：去掉 --password 即可。',
+        ]);
+      }
       return [
         `目标用户：${target.username}（${target.role}）`,
         '后果：该用户所有已登录会话立即失效，必须用新密码重新登录。',

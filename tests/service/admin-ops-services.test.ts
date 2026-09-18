@@ -11,7 +11,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { makeBlog, makeUser, prisma, resetDb } from '../helpers/db';
 import { forceLogout, resetUserPassword } from '@/lib/admin-user-service';
-import { listInviteCodes, revokeInviteCode } from '@/lib/invite-code';
+import { findInviteCode, listInviteCodes, revokeInviteCode } from '@/lib/invite-code';
 import { listAdminLogs } from '@/lib/audit-service';
 import { listAdminBlogs } from '@/lib/admin-blog-service';
 import { verifyPassword } from '@/lib/password';
@@ -178,6 +178,29 @@ describe('邀请码：列表与撤销', () => {
     expect((await listInviteCodes({ filter: 'unused' })).total).toBe(1);
     expect((await listInviteCodes({ filter: 'used' })).total).toBe(1);
     expect((await listInviteCodes({ filter: 'all' })).total).toBe(2);
+  });
+
+  it('★ 按码查得到「不在第一页」的码（确认屏与服务层必须看到同一行）', async () => {
+    // 运维 CLI 的确认屏早先是拿 listInviteCodes 翻第一页（perPage 封顶 100）去找的：
+    // 第 100 行之后的码会被误报成「找不到」，而 revokeInviteCode 明明能删。
+    // 两处共用 findInviteCode 之后，这种「确认屏说没有、服务层却删得掉」的分叉不会再出现。
+    await prisma.inviteCode.createMany({
+      data: Array.from({ length: 120 }, (_, i) => ({
+        code: `F${String(i).padStart(11, '0')}`,
+        isUsed: false,
+        createdAt: nowForDb(),
+      })),
+    });
+    expect(await prisma.inviteCode.count()).toBe(120);
+
+    const old = await findInviteCode('F00000000000');
+    expect(old, '第 100 行之外的码查不到').not.toBeNull();
+    expect((await findInviteCode(String(old!.id)))?.id, '同一个函数也要认数字 id').toBe(old!.id);
+  });
+
+  it('纯数字的码：先当 id 查（查不到）再当码查', async () => {
+    await makeCode('123456789012');
+    expect((await findInviteCode('123456789012'))?.code).toBe('123456789012');
   });
 
   it('★ 撤销未使用的码 → 物理删除', async () => {

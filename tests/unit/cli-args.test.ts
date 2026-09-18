@@ -69,6 +69,21 @@ describe('splitGlobals：全局参数可以出现在任何位置', () => {
     expect(splitGlobals(['-y']).flags.yes).toBe(true);
     expect(splitGlobals(['-h']).flags.help).toBe(true);
   });
+
+  it('--as=x 与 --as x 等价，且 inline 形式不吞后面那个 token', () => {
+    expect(splitGlobals(['--as=cms', 'blog', 'search'])).toEqual({
+      args: ['blog', 'search'],
+      flags: { help: false, json: false, yes: false, as: 'cms', noColor: false },
+    });
+  });
+
+  it('★ --as 缺值时报错，绝不静默退回「库内最早的站长」', () => {
+    // 静默退回的后果是把一次冒名操作记到另一个人头上 —— 审计主体错了比没有更糟。
+    for (const tokens of [['--as'], ['--as', ''], ['--as', '--json'], ['--as=']]) {
+      const err = expectCliError(() => splitGlobals(tokens));
+      expect(err.message).toContain('--as');
+    }
+  });
 });
 
 describe('resolveCommand：按最长前缀匹配', () => {
@@ -169,6 +184,15 @@ describe('parseCommandArgs：报错', () => {
     expect(expectCliError(() => parseCommandArgs(cmd, ['alice', 'abc'])).message).toContain('整数');
   });
 
+  it('★ 纯位置参数报错时要指名道姓，不能是 undefined', () => {
+    // `fish grant alice abc` / `appeal decide abc accept` 的 amount / id 都没有 flag，
+    // 早先这里会印出「错误：undefined 需要一个整数，收到 abc」—— 等于没说清是哪个参数。
+    const cmd = makeCmd([POS0, POS1]);
+    const msg = expectCliError(() => parseCommandArgs(cmd, ['alice', 'abc'])).message;
+    expect(msg).toContain(`<${POS1.name}>`);
+    expect(msg).not.toContain('undefined');
+  });
+
   it('validate 返回的中文错误会原样上报', () => {
     const cmd = makeCmd([
       {
@@ -213,6 +237,13 @@ describe('usageLine', () => {
   it('开关渲染成 [--flag]，不带 <值> —— 否则运维会照敲 `--dry-run true`', () => {
     const cmd = makeCmd([POS1, DRY_RUN]);
     expect(usageLine(cmd)).toBe('npm run cli -- demo run [<amount>] [--dry-run]');
+  });
+
+  it('★ 同时占位置槽与 flag 的参数只渲染一次（`<hours> --hours <hours>` 看着像要传两次）', () => {
+    // 真实例子：user ban <username> <hours> --hours <hours> --reason <reason>
+    const BOTH: ArgSpec = { name: 'hours', flags: ['--hours'], positional: 1, required: true, kind: 'int', label: '小时', help: '小时' };
+    const cmd = makeCmd([POS0, BOTH]);
+    expect(usageLine(cmd)).toBe('npm run cli -- demo run <username> <hours>');
   });
 });
 

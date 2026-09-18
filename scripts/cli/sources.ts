@@ -171,7 +171,16 @@ export function imageSource(): SearchSource {
   };
 }
 
-/** 待处理申诉。value = 申诉 id（数字，转成字符串）。 */
+/**
+ * 待处理申诉。value = 申诉 id（数字，转成字符串）。
+ *
+ * 搜索靠自己翻页：`listAppeals` 只按状态分页，**没有关键词参数**（检索面就是「按状态
+ * 翻页」）。翻 SEARCH_PAGES 页是刻意的折中 —— 全表扫描没意义，而只看第一页会让
+ * 「积压了很久的那条」搜不到，运维就卡在这儿选不了。真翻不到还有 allowFreeTextFallback
+ * 兜底：直接敲申诉编号。
+ */
+const APPEAL_SEARCH_PAGES = 5;
+
 export function appealSource(status = 'pending'): SearchSource {
   const toChoices = (
     rows: { id: number; status: string; content: string; appellant: { username: string | null } }[]
@@ -183,22 +192,27 @@ export function appealSource(status = 'pending'): SearchSource {
     }));
 
   return {
-    emptyHint: '申诉正文 / 申诉人片段',
+    emptyHint: '申诉正文 / 申诉人片段，或直接粘申诉编号',
     async initial() {
       const { listAppeals } = await import('../../src/lib/admin-appeal-service');
       return toChoices((await listAppeals({ page: 1, status })).items);
     },
     async search(q) {
       const { listAppeals } = await import('../../src/lib/admin-appeal-service');
-      const all = (await listAppeals({ page: 1, status })).items;
       const needle = q.toLowerCase();
-      return toChoices(
-        all.filter(
-          (a) =>
-            a.content.toLowerCase().includes(needle) ||
-            (a.appellant.username ?? '').toLowerCase().includes(needle)
-        )
-      );
+      const hits: { id: number; status: string; content: string; appellant: { username: string | null } }[] = [];
+      for (let page = 1; page <= APPEAL_SEARCH_PAGES; page++) {
+        const r = await listAppeals({ page, status });
+        hits.push(
+          ...r.items.filter(
+            (a) =>
+              a.content.toLowerCase().includes(needle) ||
+              (a.appellant.username ?? '').toLowerCase().includes(needle)
+          )
+        );
+        if (page >= r.pages) break;
+      }
+      return toChoices(hits);
     },
     allowFreeTextFallback: true, // 直接输申诉 id 也放行
   };

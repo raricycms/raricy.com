@@ -111,8 +111,11 @@ async function run(): Promise<number> {
 }
 
 async function main(): Promise<void> {
-  const flags = splitGlobals(process.argv.slice(2)).flags;
+  // splitGlobals 会为「--as 缺值」抛 CliError，所以它必须在 try 里跑 —— 但那句
+  // 又要给 catch 里的颜色/JSON 判定用，于是先给一份缺省值。
+  let flags: GlobalFlags = { help: false, json: false, yes: false, as: null, noColor: false };
   try {
+    flags = splitGlobals(process.argv.slice(2)).flags;
     // 整轮执行圈在「后台运维」上下文里：本次进程写下的一切审计日志都落
     // visibility='internal'，不进前端 /audit 公示页（见 src/lib/audit-context.ts）。
     // ★ 圈在最外层是刻意的：命令式与交互式两个前端都从这里进去 —— 将来再加入口，

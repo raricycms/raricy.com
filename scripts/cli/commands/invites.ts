@@ -128,19 +128,18 @@ export const inviteCommands: CommandSpec[] = [
     ],
     async describe(ctx) {
       const key = String(ctx.args.code).trim();
-      const { listInviteCodes } = await import('../../../src/lib/invite-code');
+      const { findInviteCode } = await import('../../../src/lib/invite-code');
 
-      // 先在库里找出来，好在确认屏上把「要删的是哪个」摆清楚
-      const asId = Number.parseInt(key, 10);
-      const page = await listInviteCodes({ page: 1, perPage: 100, filter: 'all' });
-      const row =
-        page.codes.find((c) => c.code === key) ??
-        (Number.isInteger(asId) ? page.codes.find((c) => c.id === asId) : undefined);
+      // 先在库里把它找出来，好在确认屏上把「要删的是哪个」摆清楚。
+      // ★ 必须走 findInviteCode（与 revokeInviteCode 同一个函数）：早先这里是拿
+      //   listInviteCodes 翻第一页（100 条）去找，第 100 行之后的码会被误报成
+      //   「找不到」，而服务层明明能删 —— 确认屏与服务层看到的必须是同一行。
+      const row = await findInviteCode(key);
 
       if (!row) throw new CliError(`错误：找不到邀请码 ${key}`);
       if (row.isUsed) {
         throw new CliError(
-          `错误：邀请码已被 ${row.usedByName ?? '某用户'} 使用，不能撤销（撤销会丢失邀请来源记录）`
+          `错误：邀请码已被 ${row.usedByUser?.username ?? '某用户'} 使用，不能撤销（撤销会丢失邀请来源记录）`
         );
       }
       return [

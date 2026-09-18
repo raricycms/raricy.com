@@ -12,7 +12,7 @@
 
 import { ymdhms } from '../../../src/lib/format';
 import { renderTable } from '../output';
-import { preview } from '../sources';
+import { appealSource, preview } from '../sources';
 import { CliError, type CommandSpec, type Ctx } from '../types';
 
 /** 取申诉；不存在即报错。 */
@@ -117,8 +117,10 @@ export const appealCommands: CommandSpec[] = [
         required: true,
         kind: 'int',
         label: '申诉编号',
-        help: '数字 id',
-        prompt: { type: 'input' as const },
+        help: '数字 id（交互模式下可先搜索再选）',
+        // 与文章 / 评论 / 用户同款的「先搜后选」：裁决一条申诉不该要求运维先去
+        // `appeal list` 里把编号抄下来。命令式那半边照旧收数字 id。
+        prompt: { type: 'search' as const, source: appealSource() },
         validate: (raw) => (/^\d+$/.test(raw.trim()) ? null : '申诉编号是数字'),
       },
       {

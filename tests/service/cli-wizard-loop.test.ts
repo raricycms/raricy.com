@@ -17,8 +17,14 @@ import { wizardLoop, type WizardDeps } from '../../scripts/cli/wizard';
 import type { Prompter } from '../../scripts/cli/prompt';
 import { NAV_CANCEL, type Output } from '../../scripts/cli/types';
 
-type Step = { text: string } | { pick: string } | { num: number } | { confirm: boolean };
-type StepKind = 'text' | 'pick' | 'num' | 'confirm';
+type Step =
+  | { text: string }
+  | { pick: string }
+  | { num: number }
+  | { confirm: boolean }
+  | { secret: string };
+// 注意不能写 keyof Step —— 联合类型的 keyof 求的是**键的交集**，结果是 never。
+type StepKind = 'text' | 'pick' | 'num' | 'confirm' | 'secret';
 
 /** 脚本化的假 Prompter；脚本用尽或对不上类型时直接抛错，避免用例静默走偏。 */
 function scripted(steps: Step[]) {
@@ -36,7 +42,9 @@ function scripted(steps: Step[]) {
     text: async (m) => (note(m), take('text') as string),
     num: async (m) => (note(m), take('num') as number),
     pick: async (m) => (note(m), take('pick') as string),
-    secret: async () => '',
+    // 也要走脚本（不能恒返回 ''）：恒空串会让「必填密码」那题原地重问，测试直接挂死 ——
+    // 挂死比报错难查得多。
+    secret: async (m) => (note(m), take('secret') as string),
   };
   return { prompter, asked };
 }
@@ -172,6 +180,57 @@ describe('向导里的写操作', () => {
     expect(log, '后台运维也要留痕（不是干脆不记）').not.toBeNull();
     expect(log!.visibility).toBe('internal');
     expect((await listPublicLogs({})).items, '后台操作出现在公示页上了').toHaveLength(0);
+  });
+
+  it('★ 密码来源选「生成随机密码」→ 向导根本不该问新密码', async () => {
+    // 回归：早先密码题的 prompt 是 password 类型，而那条分支不看「必填/可选」，
+    // 于是选了 generate 也照样要人输密码，留空还会被「至少 8 位」打回来 ——
+    // 唯一出口是 Ctrl-C。脚本里**没有 secret 步骤**：一旦问密码，假 Prompter
+    // 就会以「第 N 次提问期望 secret」炸掉。
+    await makeUser({ username: 'owner1', role: 'owner' });
+    const target = await makeUser({ username: 'alice', role: 'core' });
+
+    const s = scripted([
+      { pick: 'g:users' },
+      { pick: 'user reset-password' },
+      { text: 'alice' }, // 搜用户名
+      { pick: 'alice' }, // 从候选里挑（用户的 value 就是用户名）
+      { pick: 'generate' }, // 密码来源
+      { text: '用户申诉邮箱被盗' }, // 原因
+      { confirm: true },
+      { pick: 'quit' },
+    ]);
+    const d = deps(s.prompter);
+
+    await wizardLoop(d);
+
+    const after = await prisma.user.findUnique({ where: { id: target.id } });
+    expect(after!.sessionVersion, '密码没有被重置').toBe((target.sessionVersion ?? 0) + 1);
+    expect(d.io.out.join('\n')).toContain('新密码：'); // 生成的密码要显示一次
+  });
+
+  it('密码来源选「手动输入」→ 照常问密码（别把该问的也跳掉了）', async () => {
+    await makeUser({ username: 'owner1', role: 'owner' });
+    const target = await makeUser({ username: 'alice', role: 'core' });
+
+    const s = scripted([
+      { pick: 'g:users' },
+      { pick: 'user reset-password' },
+      { text: 'alice' },
+      { pick: 'alice' },
+      { pick: 'manual' },
+      { secret: 'Hunter2Hunter2' },
+      { text: '用户申诉邮箱被盗' },
+      { confirm: true },
+      { pick: 'quit' },
+    ]);
+    const d = deps(s.prompter);
+
+    await wizardLoop(d);
+
+    const after = await prisma.user.findUnique({ where: { id: target.id } });
+    expect(after!.sessionVersion).toBe((target.sessionVersion ?? 0) + 1);
+    expect(d.io.out.join('\n')).toContain('Hunter2Hunter2'); // 用的是手输的那个密码
   });
 
   it('确认屏里带上执行者与后果说明（不是笼统的「确定吗」）', async () => {

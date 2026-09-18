@@ -109,6 +109,14 @@ describe('命令注册表：参数声明', () => {
       }
     }
   });
+
+  it('skipIf 只加在非 required 的参数上（必填的题跳掉就永远收不到值）', () => {
+    for (const { cmd, arg } of ALL_ARGS) {
+      if (arg.skipIf) {
+        expect(arg.required, `${cmd} 的 ${arg.name} 同时标了 required 与 skipIf`).toBeFalsy();
+      }
+    }
+  });
 });
 
 describe('命令注册表：与前端约定的耦合', () => {

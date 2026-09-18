@@ -23,19 +23,31 @@ export const GLOBAL_FLAGS = ['--help', '-h', '--json', '--yes', '-y', '--as', '-
 const HELP_ALIASES = ['--help', '-h'];
 const YES_ALIASES = ['--yes', '-y'];
 
-/** 取命令的展示用主 flag 名（长的那个），错误信息里用它。 */
+/**
+ * 取命令的展示用主 flag 名（长的那个），错误信息里用它。
+ *
+ * 纯位置参数（`fish grant` 的 amount、`appeal decide` 的 id）**没有 flags 数组**，
+ * 退回 `<name>` 而不是 undefined —— 否则报错会变成
+ * 「错误：undefined 需要一个整数，收到 abc」，等于没说清是哪个参数。
+ */
 function primaryFlag(arg: ArgSpec): string {
-  return arg.flags.find((f) => f.startsWith('--')) ?? arg.flags[0];
+  return arg.flags.find((f) => f.startsWith('--')) ?? arg.flags[0] ?? `<${arg.name}>`;
 }
 
-/** 命令的用法行，`--help` 与「缺少参数」提示共用。 */
+/**
+ * 命令的用法行，`--help` 与「缺少参数」提示共用。
+ *
+ * 同时声明了位置槽与 flag 的参数（`user ban <hours>` / `--hours`）只按位置形式渲染
+ * 一次：两种写法等价，渲染两遍看着像「要传两次」（`<hours> --hours <hours>`）。
+ * flag 本身仍然列在 `--help` 的参数表里，不会因此变得不可发现。
+ */
 export function usageLine(cmd: CommandSpec): string {
   const positionals = cmd.args
     .filter((a) => a.positional !== undefined)
     .sort((a, b) => a.positional! - b.positional!)
     .map((a) => (a.required ? `<${a.name}>` : `[<${a.name}>]`));
   const flags = cmd.args
-    .filter((a) => a.flags.length > 0)
+    .filter((a) => a.flags.length > 0 && a.positional === undefined)
     .map((a) => {
       // 开关不带值：写成 `--dry-run <dryRun>` 会让人以为要传 true，
       // 而他多半会照敲 —— 见 parseCommandArgs 的 flag 分支。
@@ -68,7 +80,13 @@ export function resolveCommand(
   return null;
 }
 
-/** 把全局参数从任意位置摘出来，剩下的原样返回。 */
+/**
+ * 把全局参数从任意位置摘出来，剩下的原样返回。
+ *
+ * `--as` 缺值（或值是个 flag）时**直接报错**，绝不静默退回「库内最早的站长」：
+ * 那会把一次「以某人身份执行」的操作悄悄记到另一个人头上 —— 审计主体错了，
+ * 比没有主体更糟。这条是全函数唯一的抛错点。
+ */
 export function splitGlobals(tokens: string[]): { args: string[]; flags: GlobalFlags } {
   const flags: GlobalFlags = { help: false, json: false, yes: false, as: null, noColor: false };
   const args: string[] = [];
@@ -78,8 +96,16 @@ export function splitGlobals(tokens: string[]): { args: string[]; flags: GlobalF
     else if (YES_ALIASES.includes(t)) flags.yes = true;
     else if (t === '--json') flags.json = true;
     else if (t === '--no-color') flags.noColor = true;
-    else if (t === '--as') flags.as = tokens[++i] ?? null;
-    else args.push(t);
+    else if (t === '--as' || t.startsWith('--as=')) {
+      // `--as=x` 与命令自己的 flag 写法一致；写成 inline 时**不吞下一个 token**
+      //（`??` 短路，右边不求值）
+      const inline = t.startsWith('--as=') ? t.slice('--as='.length) : null;
+      const value = inline ?? tokens[++i];
+      if (value === undefined || value === '' || value.startsWith('-')) {
+        throw new CliError('错误：--as 后面缺少用户名', 1, ['  用法：npm run cli -- --as <用户名> <命令> …']);
+      }
+      flags.as = value;
+    } else args.push(t);
   }
   return { args, flags };
 }

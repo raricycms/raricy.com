@@ -217,7 +217,18 @@ export async function collectArgs(cmd: CommandSpec, deps: WizardDeps): Promise<A
 
   let i = 0;
   while (i < specs.length) {
-    const asked = await askArg(specs[i], args, deps);
+    const spec = specs[i];
+
+    // 条件跳题：这题与前面的选择无关（如「生成随机密码」模式下不问新密码）。
+    // ★ 跳过时必须**连已收的值一起丢掉**：先选 manual 填了密码、再退回改成 generate
+    //   的话，那个密码会留在参数表里，让命令以为自己收到了一个密码。
+    if (spec.skipIf?.(args) === true) {
+      delete args[spec.name];
+      i++;
+      continue;
+    }
+
+    const asked = await askArg(spec, args, deps);
 
     if (asked.kind === 'cancel') return null;
     if (asked.kind === 'back') {
@@ -225,12 +236,17 @@ export async function collectArgs(cmd: CommandSpec, deps: WizardDeps): Promise<A
       i--;
       continue;
     }
-    if (asked.kind === 'value') args[specs[i].name] = asked.value;
+    if (asked.kind === 'value') args[spec.name] = asked.value;
     i++;
   }
 
   // 与命令式前端同样的必填收口（这里兜住 requiredIf 在收齐参数后才成立的情形）
   for (const spec of specs) {
+    // 跳过的题既不填缺省值也不算必填 —— 否则注册表里一个「required + skipIf」的
+    // 组合会让这个循环永远收不齐参数（下面那行 return collectArgs 会无限重来）。
+    // 该组合已被 cli-registry.test.ts 禁止，这里是运行期兜底。
+    if (spec.skipIf?.(args) === true) continue;
+
     if (args[spec.name] === undefined && spec.defaultValue !== undefined) {
       args[spec.name] = spec.defaultValue;
     }
@@ -259,7 +275,7 @@ async function askArg(spec: ArgSpec, args: Args, deps: WizardDeps): Promise<Aske
 
   switch (prompt.type) {
     case 'search':
-      return askSearch(spec, prompt.source, deps);
+      return askSearch(spec, prompt.source, args, deps);
 
     case 'select': {
       const v = await deps.prompter.pick(label, prompt.choices, {
@@ -285,12 +301,21 @@ async function askArg(spec: ArgSpec, args: Args, deps: WizardDeps): Promise<Aske
     }
 
     case 'confirm': {
-      const b = await deps.prompter.confirm(label, false);
+      // 缺省值跟着注册表走：开关声明了 defaultValue: true 就该默认「是」，
+      // 固定问成 false 会让注册表里的缺省值在向导里静默失效。
+      const b = await deps.prompter.confirm(label, spec.defaultValue === true);
       return { kind: 'value', value: b };
     }
 
     case 'password': {
+      // 与 input / number 同一条规矩：**可选的题留空 = 不填**（走命令自己的缺省逻辑）。
+      // 少这一条，「可选」就只写在标签上：留空会被 validate 打回来（密码校验多半有
+      // 长度下限），人只能一直重填 —— 明明可以不填的题却出不去。
       const v = await deps.prompter.secret(label);
+      if (v.trim() === '') {
+        if (required) return retry(spec, args, deps, `「${spec.label}」不能为空。`);
+        return { kind: 'skip' };
+      }
       const err = spec.validate?.(v, args);
       if (err) return retry(spec, args, deps, err);
       return { kind: 'value', value: v };
@@ -298,7 +323,7 @@ async function askArg(spec: ArgSpec, args: Args, deps: WizardDeps): Promise<Aske
 
     default: {
       // 可重复参数：连续问，留空结束
-      if (spec.repeatable) return askRepeatable(spec, label, deps);
+      if (spec.repeatable) return askRepeatable(spec, label, args, deps);
 
       const dflt = typeof spec.defaultValue === 'string' ? spec.defaultValue : undefined;
       const v = await deps.prompter.text(label, { defaultValue: dflt });
@@ -323,7 +348,12 @@ async function retry(spec: ArgSpec, args: Args, deps: WizardDeps, message: strin
   return askArg(spec, args, deps);
 }
 
-async function askRepeatable(spec: ArgSpec, label: string, deps: WizardDeps): Promise<Asked> {
+async function askRepeatable(
+  spec: ArgSpec,
+  label: string,
+  args: Args,
+  deps: WizardDeps
+): Promise<Asked> {
   const values: string[] = [];
   for (;;) {
     const message = values.length === 0 ? label : `${spec.label}（再输一个，直接回车结束）`;
@@ -331,7 +361,9 @@ async function askRepeatable(spec: ArgSpec, label: string, deps: WizardDeps): Pr
     if (isNav(v)) return navResult(v);
     const trimmed = v.trim();
     if (trimmed === '') break;
-    const err = spec.validate?.(trimmed, { [spec.name]: values });
+    // 校验时把**已收的值**也放进去（`{...args, [name]: values}`）：别的分支给的都是
+    // 真实参数表，只有这里早先给的是个孤零零的对象 —— 跨参数规则会看不见前面收的东西。
+    const err = spec.validate?.(trimmed, { ...args, [spec.name]: values });
     if (err) {
       deps.io.error(deps.io.red(`  ${err}`));
       continue;
@@ -351,7 +383,12 @@ async function askRepeatable(spec: ArgSpec, label: string, deps: WizardDeps): Pr
  * 这是「不用背命令」的落点 —— 操作者不需要知道文章 UUID、申诉 id，输入一个词就行。
  * 关键词为空时退回 source.initial()（例如「最近 20 条」）。
  */
-async function askSearch(spec: ArgSpec, source: SearchSource, deps: WizardDeps): Promise<Asked> {
+async function askSearch(
+  spec: ArgSpec,
+  source: SearchSource,
+  args: Args,
+  deps: WizardDeps
+): Promise<Asked> {
   for (;;) {
     const kw = await deps.prompter.text(`${spec.label}：输入关键词搜索`, {
       placeholder: source.emptyHint,
@@ -378,6 +415,15 @@ async function askSearch(spec: ArgSpec, source: SearchSource, deps: WizardDeps):
     // 因为此刻「上一步」在这个流程里就是搜索框。
     if (picked === NAV_BACK) continue;
     if (picked === NAV_CANCEL) return { kind: 'cancel' };
+
+    // 挑中的值也要过一遍注册表里的校验，与 input / select 同一条规矩。
+    // 走的是 allowFreeTextFallback 那条路时尤其要紧 —— 那时 value 就是用户原样
+    // 敲进来的关键词，不是数据源给的 id。
+    const err = spec.validate?.(picked, args);
+    if (err) {
+      deps.io.error(deps.io.red(`  ${err}`));
+      continue; // 回到关键词输入重来
+    }
     return { kind: 'value', value: picked };
   }
 }

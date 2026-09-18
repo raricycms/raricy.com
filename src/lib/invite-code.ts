@@ -92,6 +92,40 @@ export async function listInviteCodes(params: InviteCodeListParams = {}) {
   };
 }
 
+/** findInviteCode 的返回行（撤销与运维 CLI 的确认屏共用同一份投影）。 */
+const INVITE_CODE_SELECT = {
+  id: true,
+  code: true,
+  isUsed: true,
+  createdAt: true,
+  usedBy: true,
+  usedByUser: { select: { username: true } },
+} as const;
+
+/**
+ * 按「数字 id」或「12 位码」取一行。
+ *
+ * 【为什么撤销与确认屏必须共用它】两处各写一份的话会立刻漂移，而且症状很别扭：
+ * 确认屏说「找不到邀请码」、服务层却能把它删掉（或反过来）。
+ *
+ * 【为什么不能像别处那样用列表接口去翻】`listInviteCodes` 按 createdAt 倒序分页、
+ * perPage 封顶 100 —— 拿它当查找用，第 100 行之后的码会被误报成「不存在」，
+ * 而这里是一次 findUnique，全表都能命中。
+ *
+ * id 与码的优先级：`String(asId) === key` 形状的先当 id 查（`007` 不当 7），
+ * 查不到再当码查 —— 纯数字的码虽然罕见（12 位全数字 ≈ 千万分之一），
+ * 不值得为它留一个「查不到」的坑。
+ */
+export async function findInviteCode(idOrCode: string) {
+  const key = idOrCode.trim();
+  const asId = Number.parseInt(key, 10);
+  if (Number.isInteger(asId) && String(asId) === key) {
+    const byId = await prisma.inviteCode.findUnique({ where: { id: asId }, select: INVITE_CODE_SELECT });
+    if (byId) return byId;
+  }
+  return prisma.inviteCode.findUnique({ where: { code: key }, select: INVITE_CODE_SELECT });
+}
+
 export type RevokeInviteCodeResult =
   | { ok: true; message: string }
   | { ok: false; code: number; message: string };
@@ -117,12 +151,7 @@ export async function revokeInviteCode(
   idOrCode: string,
   actor: { id: string; username: string }
 ): Promise<RevokeInviteCodeResult> {
-  const key = idOrCode.trim();
-  const asId = Number.parseInt(key, 10);
-
-  const row = Number.isInteger(asId) && String(asId) === key
-    ? await prisma.inviteCode.findUnique({ where: { id: asId }, select: { id: true, code: true, isUsed: true, usedBy: true } })
-    : await prisma.inviteCode.findUnique({ where: { code: key }, select: { id: true, code: true, isUsed: true, usedBy: true } });
+  const row = await findInviteCode(idOrCode);
 
   if (!row) return { ok: false, code: 404, message: '邀请码不存在' };
   if (row.isUsed) {

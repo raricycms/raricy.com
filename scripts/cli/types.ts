@@ -87,6 +87,17 @@ export interface ArgSpec {
   required?: boolean;
   /** 条件必填（如 appeal decide 的 note 在 reject 时必填）。 */
   requiredIf?: (args: Args) => boolean;
+  /**
+   * 条件跳题：为真时**向导连问都不问这一题**。
+   *
+   * 与 requiredIf 的分工：requiredIf 说「这题必填」，题照样问；skipIf 说「这题与
+   * 你前面的选择无关」—— 例如密码来源选了「生成随机密码」时，压根不该问新密码。
+   *（只给可选参数用：必填参数跳掉就永远收不到值，只有可选的题才谈得上「别问」。）
+   *
+   * ⚠️ 只作用于交互式向导。命令式前端照常解析、缺省值照常生效 —— 那边没有
+   *    「跳过」的位置，误传的值由命令自己在 describe 里挡（见 user reset-password）。
+   */
+  skipIf?: (args: Args) => boolean;
   /** 缺省值；命令式与向导都会在参数缺席时用它。 */
   defaultValue?: string | number | boolean;
   /** 交互模式的收集方式；缺省按 kind 推断。 */

@@ -192,6 +192,9 @@ export const commentCommands: CommandSpec[] = [
     async describe(ctx) {
       const c = await lookup(ctx, String(ctx.args.id));
       if (!c.isDeleted) throw new CliError('错误：该评论未被删除');
+      // 与 run() 同一道闸，提前跑到确认屏之前 —— 否则运维会先确认一遍、
+      // 再被「必须填写原因」打回来，白跑一轮。service 层还有一份（第三条路径进来也挡得住）。
+      requireReasonForOthers(ctx, c.authorId);
       const lines = [
         `评论作者：${c.author?.username ?? '—'}`,
         `所属文章：《${c.blog?.title ?? '—'}》`,
@@ -231,6 +234,8 @@ export const commentCommands: CommandSpec[] = [
     async describe(ctx) {
       const c = await lookup(ctx, String(ctx.args.id));
       if (c.isDeleted) throw new CliError('错误：该评论已被删除');
+      // 理由在确认之前就要求齐（见 restore 处同款说明）
+      requireReasonForOthers(ctx, c.authorId);
       const mine = c.authorId === ctx.actor?.id;
       return [
         `评论作者：${c.author?.username ?? '—'}${mine ? '（就是你自己）' : ''}`,

@@ -42,7 +42,7 @@ export interface Prompter {
   num(message: string, opts?: { defaultValue?: number }): Promise<number>;
   /** 单选。nav 为 true 时在最前面插入「返回上一步 / 取消」。 */
   pick(message: string, choices: Choice[], opts?: { pageSize?: number; nav?: boolean }): Promise<string>;
-  /** 密码输入（掩码 + 二次确认）。 */
+  /** 密码输入（掩码；**没有**二次确认 —— 别指望它替你把关打错的密码）。 */
   secret(message: string): Promise<string>;
 }
 
