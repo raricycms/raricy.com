@@ -361,7 +361,7 @@ div 会卸载重挂，`deps=[]` 的监听器永远附不上。
 | `/favorite` · `/favorite/mine/[uuid]` · `/favorite/[publicId]` · `/favorite/guide` | core+ | 后者是公开分享页，解析走 `getPublicFavorite` |
 | `/api/favorites`（GET/POST）· `/api/favorites/[id]`（GET/PATCH/DELETE）· `…/items` · `…/copy` · `…/export` · `/api/favorites/import` | core+ | 每条各自判档（§8 的档位阶梯）；`PATCH` **只接受 `title`**，改 `isPublic` 明确报 400 |
 | `/api/poster/favorite/[publicId]` | core+ | 分享二维码 PNG，复用 `RULES.posterMinute`；**只按公开句柄查**，所以私密收藏夹结构性不可达 |
-| `/api/spider/favorites/[publicId]` | **免认证** | 站外机器人的唯一入口，只返回公开且未软删的；spider 系列里**唯一有限频**的一条 |
+| `/api/spider/favorites/[publicId]` | core+ | 站外机器人的入口，只返回公开且未软删的；spider 系列里**唯一有限频**的一条（鉴权不替代限频） |
 
 **`[@六位]` 引用。** 只在博客 / 云剪贴板那条管线生效（`MarkdownRenderer` 的
 `ContentRefProcessor`），评论与讨论**刻意不认**（与 9 位投票「只识别不展开」同向）。
@@ -539,7 +539,7 @@ div 会卸载重挂，`deps=[]` 的监听器永远附不上。
 > **不是**「匿名可打」。读混的代价是实的：会把「这里该收 core 门」误判成「收登录门」，
 > 于是 role=user 那条路仍然是个洞。
 >
-> **接口语境里的「认证」是另一回事**：`免认证`（spider 系列接口）、账户服务的双层密钥、
+> **接口语境里的「凭据」是另一回事**：账户服务的双层密钥、鱼干市场无状态接口的凭据、
 > 登录限频那几处注释，说的都是**这个请求带没带凭据**，与角色轴无关。按主体分就不会错 ——
 > **主体是「人 / 账号」走角色轴，主体是「请求 / 接口」走凭据轴。**
 

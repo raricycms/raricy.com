@@ -8,7 +8,7 @@ import FavoriteDetailActions from '../FavoriteDetailActions';
 //
 // ⚠️ 需要 core+ 登录：整个博客区都是 core+ 的（/blog/[id] 也是），而这一页列出的正是
 //    博客链接 —— 做一张「游客打不开」的二维码没有意义。站外机器人 / 爬虫走的是
-//    免认证的 /api/spider/favorites/:id，不受这里的档位影响。
+//    /api/spider/favorites/:id，那条同样需 core+，两处档位一致。
 //
 // 解析走 getPublicFavorite（过 PUBLIC_FAVORITE_WHERE）：私密 / 不存在 / 已软删
 // 三者同为一个 404 —— 这一页**永远不会**渲染出私密收藏夹，它连句柄都没有。
@@ -27,7 +27,7 @@ export default async function FavoritePublicPage({
   const fav = res.favorite;
   // 这一页是只读的分享视图；作者自己来了就给一条回管理页的路。
   // 用用户名比对而不是往 getPublicFavorite 的返回值里加 userId ——
-  // 那个函数的产物同时喂给免认证的 spider 路由，往「公开」的结果里塞内部 id
+  // 那个函数的产物同时喂给 spider 路由（对外契约），往「公开」的结果里塞内部 id
   // 是在给下一个改动埋雷。
   const isMine = fav.authorName === user.username;
 

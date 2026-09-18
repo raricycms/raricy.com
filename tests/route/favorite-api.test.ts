@@ -3,7 +3,8 @@
 // 【为什么单独一个文件】这里打的是**真实 route handler**，重点在
 //   ① 档位分叉（未登录 401 / 非 core 403）—— 页面挡了 core、接口也必须挡，
 //      否则「用不了界面但 curl 得动」；
-//   ② 免认证的 spider 出口：私密 / 不存在 / 已软删**同为 404**，不确认存在性；
+//   ② spider 出口（需 core+）：私密 / 不存在 / 已软删**同为 404**，不确认存在性
+//      —— 但这是在**身份合格之后**才做的区分，档位不足在进业务逻辑前就 401/403 了；
 //   ③ 响应头（导出的 Content-Disposition 不能把用户标题直接拼进去）。
 // 与 service 层的用例（六条不变量、越权审计）关注点不同，混在一起会互相干扰。
 //
@@ -409,10 +410,13 @@ describe('GET /api/poster/favorite/:publicId', () => {
   });
 });
 
-// ── spider：唯一的免认证读路径 ───────────────────────────────────────────────
+// ── spider：需 core+ 的机器人读路径 ──────────────────────────────────────────
+//
+// 这几条曾经是**免认证**的。现在与站点的机器人模型一致：「一个 core+ 账号 + 会话
+// cookie」。所以下面每个用例都必须带着会话调，档位断言单独成两条。
 
-describe('GET /api/spider/favorites/:id（免认证）', () => {
-  /** 造一个公开收藏夹（带一篇博客），返回句柄与所有者 id（便于回头再登）。 */
+describe('GET /api/spider/favorites/:id（需 core+）', () => {
+  /** 造一个公开收藏夹（带一篇博客），返回句柄与所有者 id。**保持 core 会话**。 */
   async function seededPublic() {
     const u = await makeUser({ role: 'core' });
     const blog = await makeBlog({ authorId: u.id, title: '甲文' });
@@ -421,15 +425,28 @@ describe('GET /api/spider/favorites/:id（免认证）', () => {
       await createApi(jsonReq('/api/favorites', 'POST', { title: '分享', isPublic: true }))
     ).json()).favorite;
     await addItemApi(jsonReq('', 'POST', { blogId: blog.id }), ctx({ id: fav.id }));
-    session.token = undefined; // 后面一律不带会话
     return { userId: u.id, blog, fav };
   }
 
-  it('无会话可读，返回裸 JSON（无 { code, message } 信封）', async () => {
+  it('未登录 → 401（这条不再是免认证接口）', async () => {
+    const { fav } = await seededPublic();
+    session.token = undefined;
+    expect((await spiderApi(jsonReq('', 'GET'), ctx({ id: fav.public_id }))).status).toBe(401);
+  });
+
+  it('非 core → 403', async () => {
+    const { fav } = await seededPublic();
+    const plain = await makeUser({ role: 'user' });
+    await login(plain.id);
+    expect((await spiderApi(jsonReq('', 'GET'), ctx({ id: fav.public_id }))).status).toBe(403);
+  });
+
+  it('core 可读，返回裸 JSON（无 { code, message } 信封）', async () => {
     const { fav } = await seededPublic();
     const res = await spiderApi(jsonReq('', 'GET'), ctx({ id: fav.public_id }));
     expect(res.status).toBe(200);
     const body = await res.json();
+    // 成功路径不套信封是 spider 命名空间的既有口径，别因为加了鉴权就顺手改掉
     expect(body.code).toBeUndefined();
     expect(body.message).toBeUndefined();
     expect(body.id).toBe(fav.public_id);
@@ -446,19 +463,23 @@ describe('GET /api/spider/favorites/:id（免认证）', () => {
       await createApi(jsonReq('/api/favorites', 'POST', { title: '私藏', isPublic: false }))
     ).json()).favorite;
     expect(priv.public_id).toBeNull();
-    session.token = undefined;
 
-    // 拿内部 UUID 的前 6 位当真句柄去试（最接近「猜到」的情形）
+    // 拿内部 UUID 的前 6 位当真句柄去试（最接近「猜到」的情形）。
+    // 注意与上面的 401/403 是**不同档位**：身份已合格，此时才谈「存在但不可见」。
     const res = await spiderApi(jsonReq('', 'GET'), ctx({ id: priv.id.slice(0, 6) }));
     expect(res.status).toBe(404);
   });
 
   it('不存在的 id → 404', async () => {
+    const u = await makeUser({ role: 'core' });
+    await login(u.id);
     const res = await spiderApi(jsonReq('', 'GET'), ctx({ id: '000001' }));
     expect(res.status).toBe(404);
   });
 
   it('形态不对（非 6 位数字）→ 404', async () => {
+    const u = await makeUser({ role: 'core' });
+    await login(u.id);
     for (const bad of ['abcdef', '12345', '1234567', 'has-dash']) {
       const res = await spiderApi(jsonReq('', 'GET'), ctx({ id: bad }));
       expect(res.status, `应 404：${bad}`).toBe(404);
@@ -472,12 +493,11 @@ describe('GET /api/spider/favorites/:id（免认证）', () => {
 
     await login(userId); // 所有者删掉它
     expect((await deleteApi(jsonReq('', 'DELETE'), ctx({ id: fav.id }))).status).toBe(200);
-    session.token = undefined;
 
     expect((await spiderApi(jsonReq('', 'GET'), ctx({ id: fav.public_id }))).status).toBe(404);
   });
 
-  it('限频：超过 120 次/分被拒（spider 命名空间里唯一有闸的一条）', async () => {
+  it('限频：超过 120 次/分被拒（鉴权不替代限频）', async () => {
     const { fav } = await seededPublic();
     let limited = false;
     for (let i = 0; i < RULES.spiderFavoritePerIp.limit + 2; i++) {

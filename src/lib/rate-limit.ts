@@ -266,13 +266,14 @@ export const RULES = {
    */
   favoriteImportHourly: { limit: 10, windowMs: 60 * 60 * 1000 },
   /**
-   * 收藏夹的**免认证**读取（/api/spider/favorites/:id）—— 全站唯一无会话的收藏夹
-   * 出口，没有会话就没法按用户分桶，只能按 IP。
+   * 收藏夹读取（/api/spider/favorites/:id）—— 这条按 **IP** 分桶，而不是按用户 id：
+   * 它是全站唯一按 6 位公开句柄读的出口，桶要挡的是「拿一批句柄挨个试」这种扫法，
+   * 与调用者是哪个账号无关。
    *
-   * 【为什么必须有】spider 命名空间现有的三条路由**都没有限频**（历史遗留）：
-   * 它们只按 id 查单篇内容，滥用成本低。收藏夹这条会一次带出整个列表，是新加的
-   * 唯一一个有闸的 —— 别因为「邻居都没有」而把它删掉。
-   * 取不到 IP 时跳过该维度（见 credential-auth.ts 的 clientIp 约定，别传占位串）。
+   * 【为什么必须有】spider 命名空间里只有这条带闸：另外三条只按 id 查单篇内容，
+   * 滥用成本低。这条会一次带出整个列表，重得多 —— 别因为「邻居都没有」而删掉它。
+   * **鉴权（core+）不替代限频**：档位管「谁有资格」，限频管「多久能来一次」。
+   * 取不到 IP 时跳过该维度（clientIp 的约定见 src/lib/request-ip.ts，别传占位串）。
    * 桶键：spider:fav:ip:{IP}。
    */
   spiderFavoritePerIp: { limit: 120, windowMs: 60 * 1000 },

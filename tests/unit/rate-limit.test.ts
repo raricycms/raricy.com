@@ -219,7 +219,7 @@ describe('RULES 全站配额（src/lib/rate-limit.ts 即权威，改动即报警
       name: 'spiderFavoritePerIp',
       limit: 120,
       windowMs: 60_000,
-      desc: '收藏夹免认证读取 120 次/分/IP（spider 命名空间里唯一有闸的一条）',
+      desc: '收藏夹读取 120 次/分/IP（spider 命名空间里唯一有闸的一条；鉴权不替代限频）',
     },
     {
       name: 'blogSearchMinute',

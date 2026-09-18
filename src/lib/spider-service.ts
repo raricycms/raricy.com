@@ -1,7 +1,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// spider-service.ts — 爬虫（搜索引擎）只读 API 业务逻辑
+// spider-service.ts — 机器人（站外爬虫 / 聚合器）只读 API 业务逻辑
 //
-// 三个只读端点（无认证，供搜索引擎抓取，刻意为之）：
+// 三个只读端点。**鉴权在路由层**：需 core+ 登录（见 src/app/api/spider/*/route.ts）。
+// 本站的机器人模型一直是「一个 core+ 账号 + 会话 cookie」（docs/bot/chat-bot.md §2），
+// 这一组与之一致。因此这里的产物一律是与调用者无关的**公开 DTO** ——
+// 不要因为路由层拿得到会话，就往里加随人而变的字段。
 //   - getSpiderBlog     —— Blog 公开字段 + content/liked/user_fed
 //   - getRecentComments —— status='approved' 最近 100 条，含已删除占位
 //   - getSpiderComment  —— 按 id 查，is_deleted=false
@@ -109,7 +112,8 @@ export interface SpiderBlogResult {
 /**
  * 博客详情：
  * blog 不存在或 ignore=true → null（路由据此回 404）。
- * 爬虫无认证，current_user 未登录 → liked / user_fed 恒为 false。
+ * liked / user_fed 恒为 false —— 这两个字段随人而变，而本函数的产物是**公开 DTO**，
+ * 与调用者是谁无关。鉴权在路由层，拿得到会话也不往下传。
  */
 export async function getSpiderBlog(blogId: string): Promise<SpiderBlogResult | null> {
   const blog = await prisma.blog.findFirst({
@@ -150,8 +154,8 @@ export async function getSpiderBlog(blogId: string): Promise<SpiderBlogResult | 
     category_path: blog.category ? categoryFullPath(blog.category) : null,
     is_featured: blog.isFeatured ?? false,
     content, // 对齐 get_blog_detail：blog_dict['content'] = content
-    liked: false, // 爬虫无认证
-    user_fed: false, // 爬虫无认证
+    liked: false, // 公开 DTO：不随调用者变化（理由见 getSpiderBlog 的注释）
+    user_fed: false, // 同 liked
   };
 
   return { meta, content };

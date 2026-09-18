@@ -258,7 +258,7 @@ describe('getOwnFavorite —— 只有创建者本人（站长也没有例外）
   });
 });
 
-describe('getPublicFavorite —— 免认证读路径，必须严格过 PUBLIC_FAVORITE_WHERE', () => {
+describe('getPublicFavorite —— 非所有者读路径，必须严格过 PUBLIC_FAVORITE_WHERE', () => {
   it('公开收藏夹任何人可读', async () => {
     const u = await makeUser();
     const fav = await mk(u.id, '分享', true);

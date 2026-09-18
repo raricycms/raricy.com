@@ -49,10 +49,10 @@ export interface CommentBlogDTO {
  * 评论序列化的**公共部分** —— 站内评论树（本文件）与爬虫扁平列表
  * （spider-service.ts）共用同一份实现。
  *
- * 【为什么单拆一层】爬虫接口是**对外契约**（无认证、使用方是站外的爬虫/聚合器），
- * 它只需要这里列出的这些字段，且**不该**因为站内给评论加了 content / image / blog
- * 就跟着变形状。此前两边各写一份序列化，逻辑逐字重复 —— 改了一处另一边不会变，
- * 而且看代码很难发现。现在：公共部分唯一，各自只加自己的字段。
+ * 【为什么单拆一层】爬虫接口是**对外契约**（使用方是站外机器人；它现在需 core+ 登录，
+ * 但契约本身仍不该跟着站内改），它只需要这里列出的这些字段，且**不该**因为站内给评论
+ * 加了 content / image / blog 就跟着变形状。此前两边各写一份序列化，逻辑逐字重复 ——
+ * 改了一处另一边不会变，而且看代码很难发现。现在：公共部分唯一，各自只加自己的字段。
  */
 export interface CommentBaseDTO {
   id: string;
@@ -104,9 +104,12 @@ export interface CommentNode extends CommentBaseDTO {
   blog_missing: boolean;
   /**
    * 当前**查看者**有没有赞过这条。⚠️ 不在 CommentBaseDTO 里 —— 它是随人而变的，
-   * 而 spider 接口无认证（恒为未登录），把 liked 加进公共部分等于凭空改变对外契约
-   * （tests/service/spider-comment.test.ts 会挡住）。
-   * 未登录访问 / 已删除的评论一律 false（前者没有「我」，后者不可点赞）。
+   * 而公共部分是**与调用者无关的公开 DTO**（爬虫接口的对外契约）。把 liked 加进去
+   * 等于凭空改变对外契约（tests/service/spider-comment.test.ts 会挡住）。
+   *
+   * 别把「爬虫接口现在需 core+ 登录」当成放宽它的理由：**拿得到会话，不代表公开 DTO
+   * 要跟着调用者变**。这两件事是正交的。
+   * 已删除的评论一律 false（不可点赞）。
    */
   liked: boolean;
   children: CommentNode[];
@@ -337,8 +340,8 @@ async function attachLikes(nodes: CommentNode[], viewerId: string | null): Promi
  * 获取某文章的评论树（status='approved'，含已删除节点参与建树，
  * 最后丢弃无子的已删除叶子）。输入已按 createdAt 升序，天然保序。
  *
- * @param viewerId 当前登录用户（未登录传 null）。只影响每条评论的 `liked` ——
- *                 评论树本身是公开的（GET 接口无认证）。
+ * @param viewerId 查看者 id，只影响每条评论的 `liked`。评论内容本身是公开的，对所有
+ *                 读者一致（GET 路由需 core+ 登录，但保留 null 分支供内部调用与测试）。
  */
 export async function listCommentsForBlog(
   blogId: string,

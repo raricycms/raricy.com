@@ -82,8 +82,10 @@ class ContentRefProcessor {
       if (!this.cache.has(id)) this.cache.set(id, { type: 'image', url: `/api/images/${id}/raw` });
     }
 
-    // 收藏夹：拉**免认证**的那条公开读路径（与站外机器人同一个口径），拿到就
-    // 直接拼成卡片 HTML 存进 cache。取不到（不存在 / 私密 / 已软删 / 网络错误）
+    // 收藏夹：拉 spider 那条公开读路径（**需 core+**）。本组件目前的两个调用点
+    // （博客详情、剪贴板详情）都在 requireCoreUser() 之后，而这次 fetch 带
+    // same-origin 凭据，所以会话一定在 —— 若将来把它用在匿名页面上，这里会 401。
+    // 拿到就直接拼成卡片 HTML 存进 cache。取不到（不存在 / 私密 / 已软删 / 网络错误）
     // 一律降级成失败文案，静默不抛 —— 调用方是 `void`。
     const favoriteFetches = [...favoriteIds]
       .filter((id) => !this.cache.has(id))

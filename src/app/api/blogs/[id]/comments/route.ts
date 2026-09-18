@@ -1,15 +1,22 @@
 import { listCommentsForBlog, createComment } from '@/lib/comment-service';
-import { getCurrentUser, isCurrentlyBanned } from '@/lib/auth';
+import { getCurrentUser, isCoreUser, isCurrentlyBanned } from '@/lib/auth';
 import { apiOk, apiErr } from '@/lib/format';
 
-// GET /api/blogs/:id/comments — 评论嵌套树（公开）
+// GET /api/blogs/:id/comments — 评论嵌套树
 //
-// 接口本身不需要登录（评论是公开内容），但登录时要把「谁在看」传下去 —— 每条评论的
-// liked 是随人而变的。未登录 → viewerId 为 null，liked 全为 false。
+// 【鉴权】需 core+ 登录。评论内容本身是公开的，但这条接口对外只服务机器人，而本站的
+// 机器人模型是「一个 core+ 账号 + 会话 cookie」（见 docs/bot/chat-bot.md §2）——
+// 与 spider 命名空间同档。对外的唯一口径写在 docs/bot/comment-bot.md §6。
+// 未登录 → 401；已登录但非 core → 403。
+//
+// viewerId 传当前用户 id：每条评论的 liked 是随人而变的。
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
-  const { id } = await ctx.params;
   const viewer = await getCurrentUser();
-  const comments = await listCommentsForBlog(id, viewer?.id ?? null);
+  if (!viewer) return apiErr(401, '请先登录');
+  if (!isCoreUser(viewer)) return apiErr(403, '需要核心用户权限');
+
+  const { id } = await ctx.params;
+  const comments = await listCommentsForBlog(id, viewer.id);
   return apiOk({ comments });
 }
 

@@ -100,13 +100,14 @@ test('私密收藏夹：页面上**一个 ID 都不出现**，也没有二维码
   expect(raw).not.toContain('isPublic');
   expect(JSON.parse(raw).blogs).toHaveLength(1);
 
-  // 免认证的读取接口够不着它（私密没有句柄，取 UUID 前 6 位也查不到）
+  // spider 读取接口够不着它（私密没有句柄，取 UUID 前 6 位也查不到）。
+  // 这条用已登录的 page.request —— 档位不足会先撞 401/403，就测不到「句柄不存在」了。
   const spider = await page.request.get(`/api/spider/favorites/${created.favorite.id.slice(0, 6)}`);
   expect(spider.status()).toBe(404);
   void user;
 });
 
-test('公开收藏夹：显示 6 位 ID、有二维码入口、免认证接口可读', async ({ page }) => {
+test('公开收藏夹：显示 6 位 ID、有二维码入口、spider 接口需 core+ 才可读', async ({ page }) => {
   await registerFreshUser(page, { core: true });
   const blogId = await createBlog(page, `公开用例 ${uniqueTag()}`);
 
@@ -123,15 +124,20 @@ test('公开收藏夹：显示 6 位 ID、有二维码入口、免认证接口�
   // 公开的才有二维码入口（画报由 PosterModal 打开，图在点开时才取）
   await expect(page.getByRole('button', { name: /分享二维码/ })).toBeVisible();
 
-  // 免认证读得到：拿一个**没有会话**的 context 去打
+  // spider 出口需 core+：拿一个**没有会话**的 context 去打得被挡下。
+  // 这条曾经免认证，2026-09 起与站点的机器人模型（core+ 账号 + cookie）一致。
   const anon = await page.context().browser()!.newContext();
-  const res = await anon.request.get(`/api/spider/favorites/${publicId}`);
+  const denied = await anon.request.get(`/api/spider/favorites/${publicId}`);
+  expect(denied.status(), '这条不再是免认证接口').toBe(401);
+  await anon.close();
+
+  // 带 core 会话才读得到（page.request 继承了 beforeEach 的登录），且形状不变
+  const res = await page.request.get(`/api/spider/favorites/${publicId}`);
   expect(res.status()).toBe(200);
   const body = await res.json();
   expect(body.id).toBe(publicId);
   expect(body.title).toBe('公开夹子');
   expect(body.blogs).toHaveLength(1);
-  await anon.close();
 
   // 不存在的 ID → 404
   const missing = await page.request.get('/api/spider/favorites/000001');

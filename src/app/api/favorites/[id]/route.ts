@@ -4,8 +4,8 @@
 //
 // ⚠️ 这三条都是**所有者限定**（服务层的 getOwnFavorite / renameFavorite /
 // softDeleteFavorite 都以 userId 收口，站长也没有例外）。
-//   非所有者读公开收藏夹走 /api/spider/favorites/:publicId —— 全站只有那一条公开读路径，
-//   这样「公开可以、私密不行」的判断只需要在一个地方写对。
+//   非所有者读公开收藏夹走 /api/spider/favorites/:publicId（需 core+）—— 全站只有那一条
+//   非所有者读路径，这样「公开可以、私密不行」的判断只需要在一个地方写对。
 //
 // ⚠️ PATCH **只接受 title**。没有任何接口能改 isPublic：性质创建时定、此后不可变，
 //   改性质只能靠复制。若照着 clipboard 的 PUT（它接受 publicity）给这里也加一个字段，

@@ -297,8 +297,9 @@ export async function getOwnFavorite(
 }
 
 /**
- * 公开视图（按 6 位句柄）。**免认证**，所以这是全功能里唯一无会话的读路径，
- * 必须严格过 PUBLIC_FAVORITE_WHERE（不变量 2）—— 少一个条件就是私密收藏夹裸奔。
+ * 公开视图（按 6 位句柄）。鉴权在路由层（需 core+），但本函数**仍必须严格过
+ * PUBLIC_FAVORITE_WHERE**（不变量 2）—— 路由层判的是「你有没有资格读公开收藏夹」，
+ * 判不了「这个收藏夹是不是你的」，少一个条件就是私密收藏夹对全体 core+ 裸奔。
  */
 export async function getPublicFavorite(
   publicId: string

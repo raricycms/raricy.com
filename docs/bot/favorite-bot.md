@@ -1,4 +1,4 @@
-# 收藏夹读取接口（公开数据，免认证）
+# 收藏夹读取接口（公开数据，需 core+ 账号）
 
 > 面向站外开发者。**读完本文即可按 ID 读出一个公开收藏夹，无需阅读本站源码。**
 >
@@ -9,10 +9,13 @@
 
 ## 0. 一句话说清
 
-给一个 6 位收藏夹 ID，拿回它的标题、条目数与文章列表。**不需要账号、不需要 token。**
+给一个 6 位收藏夹 ID，拿回它的标题、条目数与文章列表。
+
+**需要一个 core+ 账号** —— 本站的机器人模型统一是「一个 core+ 账号 + 会话 cookie」
+（建号与提权见 `chat-bot.md` §2，登录换 cookie 见 §3）。带上 cookie 后：
 
 ```bash
-curl -s https://raricy.com/api/spider/favorites/123456
+curl -s -b jar.txt https://raricy.com/api/spider/favorites/123456
 ```
 
 ---
@@ -24,8 +27,8 @@ curl -s https://raricy.com/api/spider/favorites/123456
    私密收藏夹**根本没有 6 位 ID**（不是「有 ID 但不给看」），所以它在这里**结构性不可达** ——
    你不可能猜中一个不存在的东西。私密 / 不存在 / 已删除，三者对外**同为 404**，
    本站不确认某个 ID 是否存在过。
-3. **免认证，但有限频**（§4）。这是本站 `spider` 系列接口里**唯一带限频**的一条：
-   其余几条只按 ID 查单篇内容，而这条一次会带出整个列表。
+3. **需 core+ 账号，且有限频**（§2 鉴权、§4 限频）。这是本站 `spider` 系列接口里
+   **唯一带限频**的一条：其余几条只按 ID 查单篇内容，而这条一次会带出整个列表。
 4. **收藏与「点赞」无关。** 本站不公开一篇文章的被收藏数，作者也不会收到任何收藏通知 ——
    所以不要指望从这条接口或任何别的地方读到「某文章被收藏了多少次」。
 
@@ -33,7 +36,30 @@ curl -s https://raricy.com/api/spider/favorites/123456
 
 ## 2. 鉴权
 
-**没有。** 无需申请 token、无需白名单、无需站长开任何开关，直接 GET。
+需要一个 **core+ 账号 + 会话 cookie**。本站**没有 Bearer token**，也没有专用的
+「机器人接口」—— 机器人就是「一个 core+ 账号 + cookie」，本接口与 `spider` 系列
+其余几条都遵循这一模型。建号、提权、取 cookie 的完整流程见
+**`chat-bot.md` §2 与 §3**，这里只给最小可跑的版本：
+
+```bash
+# 1) 由人工在浏览器里注册一次，并提权到 core+（chat-bot.md §2）
+# 2) 用账号密码换 cookie（存进 jar.txt）
+curl -s -c jar.txt -X POST https://raricy.com/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"mybot","password":"********"}'
+
+# 3) 带上 cookie 调本接口
+curl -s -b jar.txt https://raricy.com/api/spider/favorites/123456
+```
+
+| 情况 | 响应 |
+|------|------|
+| 没带 cookie，或 cookie 已过期 / 被作废 | `401` |
+| 已登录，但角色不是 core 及以上 | `403` |
+
+> Cookie 名 `raricy_session`，有效期 **30 天**，`HttpOnly`、`SameSite=Lax`。
+> 改密码等操作会让旧 cookie 立刻失效（服务端有 `session_version` 快照）。
+> 收到 `401` 就重新登录一次即可。详见 `chat-bot.md` §3。
 
 ---
 
@@ -96,6 +122,9 @@ curl -s https://raricy.com/api/spider/favorites/123456
 
 超限一律返回 HTTP `429`（响应体是 `{"code":429,"message":"请求过于频繁，请稍后再试"}`）。
 
+> **鉴权与限频是两件事**：`401` / `403` 管「你有没有资格」，`429` 管「你来得有多快」。
+> 带上有效 cookie **不代表**可以绕开额度 —— 这条额度按来源 IP 计，与账号无关。
+
 > ⚠️ 判断一律只看 **HTTP 状态码 429**（别去匹配 message 文案，它可能变）。
 >
 > 计数存在服务端（进程内计数桶，定期落盘快照），**重启不会清零** —— 别指望靠重启洗掉自己的用量。
@@ -111,11 +140,16 @@ curl -s https://raricy.com/api/spider/favorites/123456
 | HTTP | 何时 | 机器人该怎么做 |
 |------|------|----------------|
 | `200` | 成功 | 正常解析 |
+| `401` | 没带 cookie，或 cookie 已过期 / 被作废（§2） | 重新登录一次再试；别把它当「接口挂了」 |
+| `403` | 已登录，但角色不是 core 及以上（§2） | **别再重试** —— 需要人工提权，见 `chat-bot.md` §2.2 |
 | `404` | ID 不存在 / 是私密收藏夹 / 已被删除 / 形态不是 6 位数字 | **别再重试**，四种情况对外没有区别，重试也不会有结果 |
 | `429` | 触发限频（§4） | 退避后重试，间隔 ≥ 1 分钟；不要把重试写成立即循环 |
 
 `404` 的响应体形如 `{"code":404,"message":"收藏夹不存在"}` —— 与 `spider` 系列里
 出错时的形状一致（成功时才是裸对象）。
+
+> ⚠️ **`401` / `403` 与 `404` 是不同档位，别混。** 身份没通过就根本走不到「这个 ID
+> 存不存在」那一步 —— 所以看到 `404` 说明 cookie 是好的，那是 ID 本身的问题。
 
 ---
 
@@ -124,9 +158,10 @@ curl -s https://raricy.com/api/spider/favorites/123456
 ```bash
 #!/usr/bin/env bash
 # 读出一个公开收藏夹，并把每条文章的站内地址打出来
+# 前置：jar.txt 是已登录的 core+ 账号 cookie（见 §2）
 ID="${1:?用法: $0 <6位收藏夹ID>}"
 
-resp=$(curl -s -w '\n%{http_code}' "https://raricy.com/api/spider/favorites/${ID}")
+resp=$(curl -s -b jar.txt -w '\n%{http_code}' "https://raricy.com/api/spider/favorites/${ID}")
 body=$(printf '%s' "$resp" | sed '$d')
 code=$(printf '%s' "$resp" | tail -n1)
 
@@ -160,6 +195,8 @@ for b in d["blogs"]:
 
 | 现象 | 原因 |
 |------|------|
+| 一直 401 | 没带 cookie / cookie 过期或被作废（改密码会作废旧会话）。重新登录，见 §2 |
+| 一直 403 | 账号不是 core+。注册出来是 `user`，需要提权一次，见 `chat-bot.md` §2.2 |
 | 一直 404 | ID 不是 6 位数字（比如把 `[@123456]` 整串传进来了）；或它不是公开收藏夹 |
 | 一直 429 | 同一出口 IP 下短时间内请求过多；也可能是同 IP 的其它客户端共用了这一份额度 |
 | `blogs` 是空数组 | 收藏夹是空的（创建了但没收录文章） |
