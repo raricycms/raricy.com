@@ -1061,6 +1061,7 @@ body {
   border: none;
   cursor: pointer;
   text-align: center;
+  font-family: inherit;
 }
 
 .button-primary {
@@ -1111,6 +1112,31 @@ body {
 .button-primary-small {
   font-size: 12px;
   padding: 5px 10px;
+}
+
+.button-secondary {
+  border: none;
+  border-radius: 999px;
+  background-color: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: color 0.25s ease, background-color 0.25s ease;
+}
+.button-secondary:hover:not(:disabled) {
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+}
+.button-secondary:active:not(:disabled) {
+  background-color: var(--color-brand-primary);
+  color: #fff;
+}
+.button-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.button-secondary {
+  font-size: 16px;
+  padding: 10px 16px;
 }
 
 .button-warning {
@@ -4101,36 +4127,45 @@ a:hover {
     margin: 20px auto 30px;
     gap: 12px;
   }
-  /* ── 窄屏：点赞 / 投喂 / 收藏 只剩「图标 + 计数」竖排，三颗必须压在同一行 ──
-     三颗等宽平分、不许换行（原样 flex-wrap: wrap + 16px 间距 + 16px 字号在 390px
-     上放不下第三颗，收藏被挤到第二行 —— 看起来像次要操作，而它与点赞/投喂并列）。
-     等宽（flex: 1 1 0）而不是按内容排：三颗宽度一致才读得出「并列」。
-     min-width: 0 覆盖 .like-btn / .fish-btn 自身的内容宽度下限。
+  /* ── 窄屏：点赞 / 投喂 / 收藏 变成三颗圆钮，计数落在圆钮下方居中 ──
+     不许换行（原样 flex-wrap: wrap + 16px 间距 + 16px 字号在 390px 上放不下第三颗，
+     收藏被挤到第二行 —— 看起来像次要操作，而它与点赞/投喂并列）。
+     三颗定宽 44px 而不是平分轨道宽度：圆钮必须正圆，宽度就得等于高度。
+     横向由 space-evenly 摊开 —— 三颗仍是「并列」的一排，只是各自收成一个圆，
+     中间留白而不是像原来那样被拉成三条等宽长条。
 
-     内容改竖排：**文字标签隐藏，计数挪到图标正下方居中**（DOM 不动，仍是原来
-     那颗 .like-count-badge 元素），图标放大一档（1rem → 1.25rem）。
-     宽度因此不再是问题 —— 一排字换成一列之后，390px 下三颗宽松得很。
+     内容改竖排：**文字标签隐藏，计数挪到图标正下方居中**，图标放大一档
+     （1rem → 1.25rem）。图标正是圆钮的正中，计数则在**圆钮外面**下方 ——
+     见下面那条绝对定位的说明。
 
-     ⚠️ 高度**不在这里调**：由上面的 min-height: 44px 钉死（= 桌面端高度）。
-     原来这里写的是 `padding: 8px 6px; font-size: .85rem` 那套整体缩放，
-     那正是「768px 前后这三颗会变矮」的原因，已删。竖排内容
-     5 + 20 + 2 + 11.2 + 5 = 43.2px，装得下 44px，不需要再压内边距。 */
+     ⚠️ 高度**不在这里调**：由上面的 min-height: 44px 钉死（= 桌面端高度），
+     这里再补一个 height: 44px 把圆的正圆坐实。原来这里写的是
+     `padding: 8px 6px; font-size: .85rem` 那套整体缩放，
+     那正是「768px 前后这三颗会变矮」的原因，已删。 */
   .read-controls__row {
     width: 100%;
     max-width: 24rem;
     flex-wrap: nowrap;
+    justify-content: space-evenly;
     gap: 6px;
+    /* 给圆钮下方那颗数字留位。数字是绝对定位的（不参与布局），
+       不留这一条它会压到下一行「返回上页 / 管理文章」上。 */
+    padding-bottom: 16px;
   }
   .read-controls__row .like-btn,
   .read-controls__row .fish-btn,
   .read-controls__row .favorite-btn {
-    flex: 1 1 0;
-    min-width: 0;
+    position: relative;
+    flex: 0 0 44px;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    /* 44×44 的方盒，50% 就是正圆（原先是 999px 胶囊 —— 在方盒上等价，
+       写 50% 是为了让「这里要的是圆，不是胶囊」一眼看得出来）。 */
+    border-radius: 50%;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 2px;
-    padding: 5px 6px;
     /* 文字标签：窄屏不显示。用 span:not([class]) 选它 —— 计数徽标也是 span，
        但它带类名，正好被这条排除在外（这正是「只留图标与计数」去掉的那一半）。 */
   }
@@ -4149,8 +4184,10 @@ a:hover {
   .read-controls__row .like-btn,
   .read-controls__row .fish-btn,
   .read-controls__row .favorite-btn {
-    /* 计数：不再是实底徽标，就是图标下方的一行小字，颜色跟着按钮走
-       （点赞的橙、投喂的绿、已收藏的黄本来就都挂在按钮的 color 上）。 */
+    /* 计数：不再是实底徽标，也不是圆钮里的一行 —— 圆钮只有 44px 见方，
+       数字再挤进去圆就不成圆了。用绝对定位把它拉到圆钮**外面**的正下方居中：
+       DOM 不动（仍是按钮的孩子，点击它照样触发按钮），也不占布局位置，
+       所以按钮自己的高度还是那个 44px，跨断点不跳。 */
   }
   .read-controls__row .like-btn .like-count-badge,
   .read-controls__row .like-btn .fish-count-badge,
@@ -4158,12 +4195,16 @@ a:hover {
   .read-controls__row .fish-btn .fish-count-badge,
   .read-controls__row .favorite-btn .like-count-badge,
   .read-controls__row .favorite-btn .fish-count-badge {
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
     background: none;
     padding: 0;
     color: inherit;
     font-size: 0.7rem;
     line-height: 1;
-    flex: none;
+    white-space: nowrap;
   }
   .read-btn {
     padding: 10px 16px;
@@ -8627,15 +8668,18 @@ body {
  * 由 MarkdownRenderer 的预处理器**直接产出成品 HTML**（不是投票那种占位 + 后处理），
  * 所以这里的类名必须与 src/lib/favorite-refs.ts 的 buildFavoriteCardHtml 保持一致。 */
 .favorite-embed {
-  /* 左侧那条金色竖条是这张卡此前唯一的「收藏夹」身份提示，但它与全站
-     「无左侧边框」的规范冲突。改由**星色淡底**承担同一语义 ——
-     --color-star-* 这一对本来就是为收藏夹引入的。
+  /* 这里曾先后用「左侧金色竖条」与「星色淡底（--color-star-secondary）」当身份提示，
+     前者违反全站「无左侧边框」，后者则让**正文里整块发黄** —— 星色是「已收藏」的
+     状态色（--color-star-* 的用途边界见 base/_root.scss），拿它当一块正文的背景，
+     读起来像整段内容都被标记了。现在与正文里的另一张嵌入卡（投票的 .vote-embed-widget）
+     同一副面孔：卡片底 + 1px 常规描边。嵌入块靠**形状**（圆角 + 描边 + 内距）与正文分开，
+     不靠色相。
      卡片 HTML 由 src/lib/favorite-refs.ts 的 buildFavoriteCardHtml 直接产出，
      但那是**成品 HTML 里的类名**，样式在这里，所以只改 SCSS 即可。 */
   margin: 1.25rem 0;
   padding: 1rem 1.25rem;
-  background: var(--color-star-secondary);
-  border: none;
+  background: var(--color-background-card);
+  border: 1px solid var(--color-border);
   border-radius: 16px;
 }
 .favorite-embed__head {
