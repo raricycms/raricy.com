@@ -53,14 +53,6 @@ const GUARD_RE = new RegExp(GUARD_SYMBOLS.join('|'));
  * 就必须从这张表里挪走、改成档位判定。
  */
 const PUBLIC_READ_ROUTES: Record<string, string> = {
-  // 审计日志公示页的数据源，只出公开档的条目（visibility='public'，后台运维写下的
-  // internal 条目不在此列，见 docs/cli.md）。
-  // ⚠️ **这条挂在白名单里不等于它已被审过**：`/audit` 页面是 core+ 档
-  // （`src/app/audit/layout.tsx`），而本接口匿名 —— 站外人能读到管理员的用户名、
-  // 被处置用户的名字与理由。若「公示」的本意只是「公示给站内成员」，这条应当一并收成
-  // core+；若意在对外透明（站长刻意公开），那就保持现状。**这是一个待站长拍板的问题，
-  // 不是既成结论。** 收口时两条要一起动（页面与接口同档）。
-  '/api/audit': '审计公示：只读 visibility=public 的条目；⚠️ 匿名与页面 core+ 不一致，待拍板',
   // 头像字节。没有头像时回落生成 identicon（永远 200），本就不构成访问控制。
   '/api/avatar/[id]': '头像字节：无头像时返回 identicon，无访问控制语义',
   // 表情素材字节。表情是站点素材不是用户数据；隐藏合集由 resolveSticker

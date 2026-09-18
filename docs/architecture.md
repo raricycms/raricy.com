@@ -100,7 +100,7 @@
 | `/story` · `/story/[...path]` | page | 故事合集/阅读 |
 | `/tool` · `/tool/<sub>` | page | 工具集（aes / base / hash / hex / html / qp / translate / url / cattca） |
 | `/admin/*` · `/api/admin/*` | page + API | 管理后台（档位分页而异，见 §8） |
-| `/audit` · `/audit/[id]` | page | 审计日志公示 + 申诉 |
+| `/audit` · `/audit/[id]` | page | 审计日志公示 + 申诉。页面（母版 `src/app/audit/layout.tsx`）、`GET /api/audit` 与提交申诉**同为 core+** —— 「公示」的口径是**公示给站内成员**，不是对外透明 |
 | `/contact` · `/privacy` · `/terms` | page | 联系 / 隐私 / 条款 |
 | （无 URL）`forbidden.tsx` | 特殊文件 | 403 页本身；由 `forbidden()` 原地渲染，**不是** `/forbidden` 路由 |
 | `/sitemap.xml` · `/robots.txt` | route | sitemap.ts / robots.ts |

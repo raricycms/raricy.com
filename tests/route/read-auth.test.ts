@@ -24,8 +24,11 @@ vi.mock('next/headers', () => ({
 
 import { resetDb, makeUser, makeBlog } from '../helpers/db';
 import { createSessionToken } from '@/lib/session';
+import { nowForDb } from '@/lib/db-time';
+import { prisma } from '@/lib/db';
 import { GET as blogDetail } from '@/app/api/blogs/[id]/route';
 import { GET as userProfile } from '@/app/api/users/[id]/route';
+import { GET as auditLogs } from '@/app/api/audit/route';
 
 const login = async (userId: string, sv = 0) => {
   session.token = await createSessionToken({ uid: userId, sv });
@@ -36,6 +39,7 @@ const ctx = <T extends object>(params: T) => ({ params: Promise.resolve(params) 
 
 const getBlog = (id: string) => blogDetail(new Request('http://localhost/'), ctx({ id }));
 const getUser = (id: string) => userProfile(new Request('http://localhost/'), ctx({ id }));
+const getAudit = () => auditLogs(new Request('http://localhost/api/audit'));
 
 beforeEach(async () => {
   await resetDb();
@@ -139,5 +143,54 @@ describe('GET /api/users/:id — 匿名可达，但内容按查看者收敛', ()
 
   it('用户不存在 → 404', async () => {
     expect((await getUser('ghost')).status).toBe(404);
+  });
+});
+
+describe('GET /api/audit — 已收紧为 core+', () => {
+  /** 造一条会进公示页的日志（visibility=public 且在 30 天窗口内）。 */
+  const seedLog = async (adminId: string) =>
+    prisma.adminActionLog.create({
+      data: {
+        action: '禁言',
+        adminId,
+        visibility: 'public',
+        reason: '测试',
+        createdAt: nowForDb(), // 窗口按 nowForDb 口径算，别用真 UTC
+      },
+    });
+
+  it('★ 匿名拿不到处置记录（含管理员与被处置用户的用户名）', async () => {
+    const admin = await makeUser({ role: 'admin' });
+    await seedLog(admin.id);
+
+    expect((await getAudit()).status).toBe(401);
+  });
+
+  it('非 core → 403', async () => {
+    const admin = await makeUser({ role: 'admin' });
+    await seedLog(admin.id);
+    const plain = await makeUser({ role: 'user' });
+    await login(plain.id);
+
+    expect((await getAudit()).status).toBe(403);
+  });
+
+  it('core 放行，且真的读得到那条日志（形状不变）', async () => {
+    const admin = await makeUser({ role: 'admin', username: 'mod' });
+    await seedLog(admin.id);
+    const viewer = await makeUser({ role: 'core' });
+    await login(viewer.id);
+
+    const res = await getAudit();
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      code: number;
+      logs: { action: string; admin: { username: string | null } }[];
+      pagination: { total: number };
+    };
+    expect(body.code).toBe(200);
+    expect(body.logs.map((l) => l.action)).toContain('禁言');
+    expect(body.logs[0].admin.username).toBe('mod');
+    expect(body.pagination.total).toBe(1);
   });
 });

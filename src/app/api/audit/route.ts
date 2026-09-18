@@ -1,7 +1,20 @@
 // GET /api/audit?page=&action= — 管理操作公示日志
+//
+// 【鉴权】需 core+ 登录，与 `/audit` 页面同档（见 `docs/architecture.md` §8
+// 「档位阶梯：页面与接口必须同档，每层都自己判」）。
+// 这条此前匿名可读 —— 而它返回的是**管理员与被处置用户的用户名、处置理由**，
+// 等于把站内的处置记录对全互联网敞开。「公示」在本站的口径是**公示给站内成员**
+// （母版 `src/app/audit/layout.tsx` 就是 `requireCoreUser()`），不是对外透明。
+// 未登录 → 401；非 core → 403。**成功路径的形状一字不动**。
 import { listPublicLogs } from '@/lib/audit-service';
+import { getCurrentUser, isCoreUser } from '@/lib/auth';
+import { apiErr } from '@/lib/format';
 
 export async function GET(req: Request) {
+  const user = await getCurrentUser();
+  if (!user) return apiErr(401, '请先登录');
+  if (!isCoreUser(user)) return apiErr(403, '需要核心用户权限');
+
   const url = new URL(req.url);
   const result = await listPublicLogs({
     page: parseInt(url.searchParams.get('page') || '1', 10),
