@@ -4,7 +4,7 @@
 
 Next.js 15 + Prisma + SQLite 单进程部署，自有 `instance/` 数据目录。
 
-> 上一轮架构是 Flask 单体，2026-07 切到当前 Next.js 实现并已运行。
+> 2026-07 由上一版实现重写为当前 Next.js 实现并已运行。
 > 迁移手册详见 git 历史与切换期提交的 commit message。
 
 ## 技术栈
