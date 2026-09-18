@@ -53,6 +53,7 @@ raricy.com 的全部文档。分三层：**`guide/` 给玩家和内容创作者*
 | `oauth.md` | raricy 作为 OAuth 2.0 IdP 的完整协议与集成 |
 | `frontend-styles.md` | SCSS 目录 / 设计令牌 / 组件约定 / 响应式 |
 | `instance-restore.md` | 从 `instance.zip` 还原数据目录与数据库（灾备） |
+| `flask-legacy-inventory.md` | Flask 残留全量盘点：哪些兼容层绝不能动、哪些是陈旧说法该改、哪些只是注释 |
 
 ## bot/ —— 站外机器人开发者
 
