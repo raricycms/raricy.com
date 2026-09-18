@@ -48,13 +48,17 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 }
 
 // PUT /api/blogs/:id — 编辑文章
-// 权限：仅作者本人（非作者一律 403 '无权编辑该文章'；FeedButton 也仅对作者显示编辑入口）。
-// 顺序：文章存在(未软删) → 作者本人 → 禁言(管理员除外) → 校验 → 栏目管理员专属 → 更新 → （管理员编辑他人时）通知。
+// 权限：core+ **且** 作者本人（非作者一律 403 '无权编辑该文章'；FeedButton 也仅对作者
+// 显示编辑入口）。两层别混：档位管「你有没有资格写文章」，归属管「这篇是不是你的」。
+// 顺序：登录 → core+ → 文章存在(未软删) → 作者本人 → 禁言(管理员除外) → 校验 → 栏目管理员专属 → 更新 → （管理员编辑他人时）通知。
 export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
 
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '请先登录'); // 需登录
+  // 编辑页是 `requireCoreUser()` + 作者（src/app/blog/[id]/edit/page.tsx:24,30），
+  // 接口必须同档。少了这一层，被降权（core→user）的作者仍能 curl 改自己的文章。
+  if (!isCoreUser(user)) return apiErr(403, '需要核心用户权限');
 
   // 文章存在且未软删（软删等同不存在 → 404）
   const blog = await prisma.blog.findFirst({
@@ -106,10 +110,12 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
 }
 
 // DELETE /api/blogs/:id — 作者本人删自己的文章
-// 权限：仅作者本人。管理员删他人请走 /api/admin/blogs/:id（要求 reason + 写日志 + 通知作者）。
+// 权限：core+ **且** 作者本人（同 PUT，两层别混）。
+// 管理员删他人请走 /api/admin/blogs/:id（要求 reason + 写日志 + 通知作者）。
 export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '请先登录');
+  if (!isCoreUser(user)) return apiErr(403, '需要核心用户权限');
 
   const { id } = await ctx.params;
   const blog = await prisma.blog.findFirst({

@@ -1,14 +1,15 @@
 import { getFeeders } from '@/lib/feed-service';
 import { prisma } from '@/lib/db';
-import { getCurrentUser, hasAdminRights } from '@/lib/auth';
+import { getCurrentUser, isCoreUser, hasAdminRights } from '@/lib/auth';
 import { apiErr } from '@/lib/format';
 
 // GET /api/blogs/:id/feeders — 投喂者列表
 //
-// 权限：登录 + 仅作者本人或管理员可见。
+// 权限：core+ **且**（作者本人或管理员），口径同 likers。
 export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '请先登录');
+  if (!isCoreUser(user)) return apiErr(403, '需要核心用户权限');
 
   const { id } = await ctx.params;
 
