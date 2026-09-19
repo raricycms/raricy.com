@@ -305,7 +305,7 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
             className="form-select"
             id="visibility"
             name="visibility"
-            defaultValue={blog?.visibility ?? 'private'}
+            defaultValue={blog?.visibility ?? 'internal'}
           >
             {BLOG_VISIBILITIES.map((v) => (
               <option key={v} value={v}>

@@ -1,8 +1,8 @@
-// 文章对外可见性（private / link / public）—— 第 1 期的对外读口。
+// 文章对外可见性（internal / link / public）—— 第 1 期的对外读口。
 //
 // 【为什么单独一个文件】这一域此前**没有**任何匿名读口：`/blog/<id>` 一直是 core+ 的
 // `requireCoreUser()`。可见性是全站第一个「游客能读到用户内容」的入口，所以它的正反
-// 两面都得钉住 —— 既钉「对外可见的确实读得到」，也钉「private 的确实读不到、而且
+// 两面都得钉住 —— 既钉「对外可见的确实读得到」，也钉「internal 的确实读不到、而且
 // 拒绝的那份响应里不带走标题」。
 //
 // 【为什么用 API 造数而不是往 seed.ts 加种子】seed.ts 的注释反复强调新种子会打乱
@@ -75,9 +75,9 @@ test.describe('文章对外可见性', () => {
     await expect(page.locator('#read-controls')).toHaveCount(0);
   });
 
-  test('private：匿名落到登录页，且标题不出现在 <title>', async ({ page }) => {
+  test('internal：匿名落到登录页，且标题不出现在 <title>', async ({ page }) => {
     await loginViaApi(page, SEED_USERS.core.username);
-    const id = await createBlogWith(page, 'private');
+    const id = await createBlogWith(page, 'internal');
     const title = (await (async () => {
       const r = await page.request.get(`/api/blogs/${id}`);
       return ((await r.json()) as { blog: { title: string } }).blog.title;
@@ -85,7 +85,7 @@ test.describe('文章对外可见性', () => {
     await becomeAnonymous(page);
 
     await page.goto(`/blog/${id}`);
-    // private 的语义是「仅站内 core+」（本站一直以来的样子），不是「不存在」——
+    // internal 的语义是「仅站内 core+」（本站一直以来的样子），不是「不存在」——
     // 所以访客拿到的是登录页，并且带上了回跳目标（登录完能回到这篇文章）。
     await expect(page).toHaveURL(new RegExp(`/login\\?next=%2Fblog%2F${id}`));
     await expect(page.locator('#loginForm')).toBeVisible();
@@ -94,14 +94,14 @@ test.describe('文章对外可见性', () => {
     await expect(page, '被拒绝的响应里不该带着这篇文章的标题').not.toHaveTitle(new RegExp(title));
   });
 
-  test('private：已登录但非 core → 403（没顺手把门放宽）', async ({ page }) => {
+  test('internal：已登录但非 core → 403（没顺手把门放宽）', async ({ page }) => {
     await loginViaApi(page, SEED_USERS.core.username);
-    const id = await createBlogWith(page, 'private');
+    const id = await createBlogWith(page, 'internal');
     await becomeAnonymous(page);
 
     await loginViaApi(page, SEED_USERS.plain.username);
     const res = await page.goto(`/blog/${id}`);
-    expect(res?.status(), 'role=user 读 private 文章应原地 403').toBe(403);
+    expect(res?.status(), 'role=user 读 internal 文章应原地 403').toBe(403);
     await expect(page.locator('.rainbow-error__code')).toHaveText('403');
   });
 
@@ -166,21 +166,21 @@ test.describe('分享卡片（OG）与索引口径', () => {
     expect(res.headers()['x-robots-tag'], 'link 档的卡片不许被索引').toBe('noindex');
   });
 
-  test('private 与不存在：OG 图同为 404，且响应体逐字相同（不确认存在性）', async ({ page }) => {
+  test('internal 与不存在：OG 图同为 404，且响应体逐字相同（不确认存在性）', async ({ page }) => {
     await loginViaApi(page, SEED_USERS.core.username);
-    const privateId = await createBlogWith(page, 'private');
+    const internalId = await createBlogWith(page, 'internal');
     await becomeAnonymous(page);
 
-    const privateRes = await page.request.get(`/api/og/blog/${privateId}`);
+    const internalRes = await page.request.get(`/api/og/blog/${internalId}`);
     const missingRes = await page.request.get('/api/og/blog/no-such-blog-id');
-    expect(privateRes.status(), 'private 文章不出卡片').toBe(404);
+    expect(internalRes.status(), 'internal 文章不出卡片').toBe(404);
     expect(missingRes.status()).toBe(404);
     // 「存在但你无权看」与「根本不存在」对外必须**逐字相同** —— 差一个字就是一个
     // 存在性探针（拿一批 id 挨个试，能筛出哪些是真实文章）。
-    expect(await privateRes.text()).toBe(await missingRes.text());
+    expect(await internalRes.text()).toBe(await missingRes.text());
   });
 
-  test('作者把文章从 public 改回 private，匿名立刻读不到（没有按 viewer 缓存住旧结果）', async ({
+  test('作者把文章从 public 改回 internal，匿名立刻读不到（没有按 viewer 缓存住旧结果）', async ({
     page,
   }) => {
     await loginViaApi(page, SEED_USERS.core.username);
@@ -192,7 +192,7 @@ test.describe('分享卡片（OG）与索引口径', () => {
     // 变回 core+ 改性质
     await loginViaApi(page, SEED_USERS.core.username);
     const patch = await page.request.put(`/api/blogs/${id}`, {
-      data: { title: `改回私密-${uniqueTag()}`, description: 'd', content: 'c', visibility: 'private' },
+      data: { title: `改回私密-${uniqueTag()}`, description: 'd', content: 'c', visibility: 'internal' },
     });
     expect(patch.ok(), `改性质失败：${patch.status()} ${await patch.text()}`).toBeTruthy();
 
@@ -206,18 +206,18 @@ test.describe('分享卡片（OG）与索引口径', () => {
     await loginViaApi(page, SEED_USERS.core.username);
     const pub = await createBlogWith(page, 'public');
     const link = await createBlogWith(page, 'link');
-    const priv = await createBlogWith(page, 'private');
+    const priv = await createBlogWith(page, 'internal');
     await becomeAnonymous(page);
 
     const sitemap = await (await page.request.get('/sitemap.xml')).text();
     expect(sitemap, 'public 文章要进 sitemap').toContain(`/blog/${pub}`);
     expect(sitemap, 'link 不该被列举').not.toContain(`/blog/${link}`);
-    expect(sitemap, 'private 不该被列举').not.toContain(`/blog/${priv}`);
+    expect(sitemap, 'internal 不该被列举').not.toContain(`/blog/${priv}`);
 
     const robots = await (await page.request.get('/robots.txt')).text();
     // 这三条是「对外文章可被抓」的全部机关，缺一条就会静默失效：
     //   · /blog/ 放行（压过 disallow: /blog —— RFC 9309 最长匹配优先）
-    //   · /login 挡住（否则 private 文章的 URL 会跟着 307 跳到带 UUID 的 next 参数上）
+    //   · /login 挡住（否则 internal 文章的 URL 会跟着 307 跳到带 UUID 的 next 参数上）
     //   · /api/og/ 放行（否则 /api/ 整段 disallow 会把分享卡片一起挡掉）
     expect(robots).toContain('Allow: /blog/');
     expect(robots).toContain('Disallow: /login');

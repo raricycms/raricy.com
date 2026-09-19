@@ -28,13 +28,13 @@ describe('站内列表的可见性标记', () => {
     expect(src).toContain('blog-visibility-tag');
   });
 
-  it('**不标** private —— 它是默认档，标它等于满屏噪音', () => {
-    // 站内数千篇默认全是 private。给默认值加标记，反而把 link/public 淹没在里面。
-    expect(hasBranch('private')).toBe(false);
+  it('**不标** internal —— 它是默认档，标它等于满屏噪音', () => {
+    // 站内数千篇默认全是 internal。给默认值加标记，反而把 link/public 淹没在里面。
+    expect(hasBranch('internal')).toBe(false);
   });
 
-  it('★ 除 private 外的**每一档**都必须有标记分支 —— 加第四档时这条会红', () => {
-    const missing = BLOG_VISIBILITIES.filter((v) => v !== 'private' && !hasBranch(v));
+  it('★ 除 internal 外的**每一档**都必须有标记分支 —— 加第四档时这条会红', () => {
+    const missing = BLOG_VISIBILITIES.filter((v) => v !== 'internal' && !hasBranch(v));
     expect(
       missing,
       '这些档位在 src/app/blog/page.tsx 里没有标记分支 —— 作者会把它们看成「没对外」，' +
@@ -56,7 +56,7 @@ describe('站内列表的可见性标记', () => {
   it('文案取自 VISIBILITY_BADGE，**不在 JSX 里写死**档名', () => {
     // 反例：直接写 <span>已公开</span>。那样改文案时两处会漂，加第四档时也不会被 tsc 逼到。
     for (const v of BLOG_VISIBILITIES) {
-      if (v === 'private') continue;
+      if (v === 'internal') continue;
       expect(src, `${v} 的文案应来自 {VISIBILITY_BADGE.${v}}`).toContain(
         `{VISIBILITY_BADGE.${v}}`
       );

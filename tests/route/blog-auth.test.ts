@@ -210,7 +210,7 @@ describe('博客 / 评论 / 表情的档位（15 个 core+ handler）', () => {
 // 这也正是 OG 路由**刻意不放在** `/api/blogs/[id]/og/` 的原因。
 //
 // 【它的判据与别处不同】没有会话档位，只有 **per-object 可见性**：任何人可请求，
-// 但只对 link / public 的文章返回 200。而「不存在」「已软删」「private」三者
+// 但只对 link / public 的文章返回 200。而「不存在」「已软删」「internal」三者
 // **必须完全同形**（404 且响应体逐字相同）—— 差一个字就是个存在性探针：
 // 拿一批 id 挨个试，能筛出哪些是真实文章。
 
@@ -246,8 +246,8 @@ describe('对外读口：GET /api/og/blog/:id（分享卡片）', () => {
     expect(res.headers.get('x-robots-tag'), 'link 档的卡片不许被索引').toBe('noindex');
   });
 
-  it('private / 软删 / 不存在：三者 404 且响应体**逐字相同**（不确认存在性）', async () => {
-    const priv = await seedBlogWith('private');
+  it('internal / 软删 / 不存在：三者 404 且响应体**逐字相同**（不确认存在性）', async () => {
+    const priv = await seedBlogWith('internal');
     const gone = await seedBlogWith('public', true);
 
     const res = await Promise.all(
@@ -259,7 +259,7 @@ describe('对外读口：GET /api/og/blog/:id（分享卡片）', () => {
     }
     const bodies = await Promise.all(res.map((r) => r.text()));
     expect(bodies[1], '「已软删」与「不存在」必须同形').toBe(bodies[2]);
-    expect(bodies[0], '「private」与「不存在」必须同形').toBe(bodies[2]);
+    expect(bodies[0], '「internal」与「不存在」必须同形').toBe(bodies[2]);
     expect(bodies[0], '不确认存在性：响应里不该带标题').not.toContain('OG 卡片标题');
   });
 
@@ -300,7 +300,7 @@ describe('PATCH /api/blogs/:id —— 可见性只能由**作者本人**改', ()
       where: { id: b.id },
       select: { visibility: true },
     });
-    expect(row?.visibility, '403 之后库里不许有任何变化').toBe('private');
+    expect(row?.visibility, '403 之后库里不许有任何变化').toBe('internal');
   });
 
   it('作者本人可以改，回显新档位与 changed', async () => {
@@ -317,16 +317,16 @@ describe('PATCH /api/blogs/:id —— 可见性只能由**作者本人**改', ()
 
   it('本来就那一档 → changed=false（幂等不是错误）', async () => {
     const author = await makeUser({ role: 'core' });
-    const b = await makeBlog({ authorId: author.id }); // 默认 private
+    const b = await makeBlog({ authorId: author.id }); // 默认 internal
     await login(author.id);
-    const res = await patchVis(b.id, 'private');
+    const res = await patchVis(b.id, 'internal');
     expect(res.status).toBe(200);
     expect(((await res.json()) as { changed: boolean }).changed).toBe(false);
   });
 
-  it('非法档位 → 400，且**库里不变**（尤其不能被静默打回 private）', async () => {
+  it('非法档位 → 400，且**库里不变**（尤其不能被静默打回 internal）', async () => {
     // 把 link 先立在那儿，再看这四次非法请求会不会把它冲掉 —— 若实现走了
-    // parseVisibility 的「空串/缺省 → private」那条路，`''` 这一发就会让一篇
+    // parseVisibility 的「空串/缺省 → internal」那条路，`''` 这一发就会让一篇
     // 凭链接可读的文章从站外消失。
     const author = await makeUser({ role: 'core' });
     const b = await makeBlog({ authorId: author.id });
@@ -361,7 +361,7 @@ describe('PATCH /api/blogs/:id —— 可见性只能由**作者本人**改', ()
       where: { id: b.id },
       select: { title: true, visibility: true },
     });
-    expect(row?.visibility).toBe('private');
+    expect(row?.visibility).toBe('internal');
     expect(row?.title, '多传的键不许生效').toBe('原标题');
   });
 

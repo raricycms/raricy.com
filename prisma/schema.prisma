@@ -159,14 +159,21 @@ model Blog {
   lastCommentAt DateTime? @map("last_comment_at")
   categoryId    Int?      @map("category_id")
   isFeatured    Boolean?  @default(false) @map("is_featured")
-  // 对外可见性三档：'private'（仅站内 core+ —— 也就是本站一直以来的样子）/
+  // 对外可见性三档：'internal'（仅站内 core+ —— 也就是本站一直以来的样子）/
   // 'link'（拿到链接的任何人可读，不列举、不索引）/ 'public'（可列举、可索引）。
   // 取值白名单在 src/lib/blog-visibility.ts（BLOG_VISIBILITIES + parseVisibility）：
   // SQLite 没有 enum，Prisma 在 sqlite provider 上也不支持 enum，所以这里只能存
   // String，校验全在 TS 那一层（写入只有一个入口 validateBlogData）。
   // 那个模块是零依赖的 —— 发文表单是客户端组件，而 blog-service 拖着 prisma 进不去。
   // ⚠️ 这一列只对**非 core 的查看者**生效：core+ 在博客域是全读的，他们不看这个值。
-  visibility    String    @default("private")
+  //
+  // 【第一档原来叫 private，2026-09 改成 internal（迁移 17）】'private' 在本仓库
+  // 已经是「只有本人」的意思（剪贴板的 publicity、收藏夹的 public_id 恒 NULL），
+  // 而这一档是**所有 core+ 成员都能看** —— 撞名会让人把它读成「作者私藏」。
+  // ⚠️ 生产库那份列默认值仍是旧的 'private'（SQLite 改不了列默认值，除非重建表；
+  // 而没有任何生产路径依赖它 —— createBlog 显式写这一列）。**别去「修复」它**，
+  // 见迁移 17 的头部注释。
+  visibility    String    @default("internal")
 
   author   User          @relation("BlogAuthor", fields: [authorId], references: [id])
   category Category?     @relation(fields: [categoryId], references: [id])

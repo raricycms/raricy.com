@@ -1,0 +1,29 @@
+-- 17_blog_visibility_internal —— 把第一档的值从 'private' 改名为 'internal'
+--
+-- 【为什么要改】'private' 在本仓库**已经是另一个东西的名字**：
+--   · 云剪贴板的「不公开」= 只有作者本人（和站长）：!isPublic && authorId !== viewerId
+--   · 收藏夹的「私密」   = 只有创建者本人：public_id 恒为 NULL（没有句柄，不是藏起来）
+-- 而博客这一档的语义是**所有 core+ 成员都能看** —— 它根本不是「私密」，是「站内」。
+-- 同一个词指两件事，读代码的人必然先误解一次；而误解的代价正好落在「什么会对外可见」上。
+--
+-- 讽刺的是**人话标签一直是对的**（VISIBILITY_LABEL.private = '仅站内可见'，
+-- 短标记 = '仅站内'）。这次只是把机器值对齐到它本来的意思。
+--
+-- ⚠️ 改名之后 `visibility !== 'private'` 会**对每一行都成立**（没有行再是 'private'），
+--    于是「不等于最不可见的那一档」静默变成「全部对外可见」。旧拼写因此必须继续被
+--    静态守卫拦着 —— 见 tests/unit/blog-visibility-guard.test.ts 顶部那组 BANNED。
+--
+-- 【本迁移是一条幂等 UPDATE，刻意不动表结构】
+-- SQLite 不支持 ALTER COLUMN：要改掉列上的 DEFAULT 'private' 就得**重建 blogs 表**，
+-- 而 blog_contents / blog_likes / blog_comments 三张表的外键指着它。不值得为一句默认值
+-- 冒那个险 —— 因为**没有生产路径依赖那个默认值**：
+--   · 唯一的建文入口 createBlog 显式写这一列（src/lib/blog-service.ts）
+--   · 靠默认值的只有测试助手，而测试库是 `prisma db push` 从 schema.prisma 生成的，
+--     默认值跟着 schema 走（已改成 'internal'）
+-- 所以生产库那份 DEFAULT 'private' 从本迁移起就是**死的**，留着即可 ——
+-- 但要知道它在那儿，别再有人去「修复」它（那才是真要重建表的那一刻）。
+--
+-- 【数据变换】按仓库约定，含数据变换的迁移只跑一次，由 _raricy_migrations 跟踪。
+-- 这一条天然幂等（重跑匹配 0 行），但**别手工重跑** —— 记账的意义就在于不靠人记。
+
+UPDATE "blogs" SET "visibility" = 'internal' WHERE "visibility" = 'private';

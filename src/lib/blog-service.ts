@@ -6,11 +6,11 @@
 //
 // ── 可见性四条不变量（`Blog.visibility`）─────────────────────────────────────
 //
-// 三档是 'private' / 'link' / 'public'，**只对非 core 的查看者生效** —— core+ 在
+// 三档是 'internal' / 'link' / 'public'，**只对非 core 的查看者生效** —— core+ 在
 // 博客域是全读的，压根不看这一列。所以这一列对任何 core+ 入口都是零行为变化。
 //
 // 【1】判「对外可见」**永远**用 EXTERNAL_VISIBILITIES / EXTERNAL_VISIBLE_BLOG_WHERE，
-//   绝不写 `visibility !== 'private'`，也别写 `not: 'private'`。那两种写法在加第四档
+//   绝不写 `visibility !== 'internal'`，也别写 `not: 'internal'`。那两种写法在加第四档
 //   时会**静默把新档一起放出去** —— 而「放出去」是不可逆的（搜索引擎与第三方存档会
 //   抓走副本）。有静态守卫盯着这条：tests/unit/blog-visibility-guard.test.ts。
 //
@@ -23,11 +23,11 @@
 // 【3】「对外可读」与「可列举 / 可索引」是**两件事**：link 档读得到，但不进 sitemap、
 //   不许索引。所以判可达用 EXTERNAL_*，sitemap 用 INDEXABLE_*，别混用。
 //
-// 【4】private 的语义是「仅站内 core+ 可见」，**不是「不存在」**：访客拿到的是登录页。
+// 【4】internal 的语义是「仅站内 core+ 可见」，**不是「不存在」**：访客拿到的是登录页。
 //   由此推出两件刻意的事：
 //   · **管理员 / 站长不需要豁免** —— 他们本来就在 core+ 里，压根不走可见性判定。
 //     这不是「忘了给管理员开后门」，是结构性豁免。
-//   · **作者不设后门** —— 被降权（core→user）的作者读不到自己当年的 private 文章。
+//   · **作者不设后门** —— 被降权（core→user）的作者读不到自己当年的 internal 文章。
 //     档位回答的是「你现在还配不配用这个区」，归属回答不了这个问题
 //     （见 `docs/architecture.md` §8「档位 vs 归属是两层」）。想加「作者可见自己」
 //     之前，先回去读那张表。
@@ -158,8 +158,8 @@ const DEFAULT_PER_PAGE = 200;
  *
  * 对外列表**另起了入口**（`listPublicBlogs`，见文件头不变量【5】），**本函数仍然不看
  * visibility**。**别给本函数加一个可选的 viewer 参数** —— 可选的参数一旦漏传，
- * 方向就是「把全站 private 文章喂给访客」，而这里没有任何编译期的东西能挡住它。
- * tests/service/blog-service.test.ts 有一条钉现状的用例：存在 private 文章时本函数
+ * 方向就是「把全站 internal 文章喂给访客」，而这里没有任何编译期的东西能挡住它。
+ * tests/service/blog-service.test.ts 有一条钉现状的用例：存在 internal 文章时本函数
  * **照旧返回它**；谁哪天顺手加了过滤，那条会立刻变红。
  */
 export async function listBlogs(params: ListParams) {
@@ -350,7 +350,7 @@ function makeSnippet(content: string, at: number, qLen: number): string {
 /**
  * 读一篇。`viewer` **必传**（null = 游客）。
  *
- * core+ 不加可见性条件（private 对他们就是「照常可读」）；非 core 只能拿到对外可见
+ * core+ 不加可见性条件（internal 对他们就是「照常可读」）；非 core 只能拿到对外可见
  * 的两档。**不判档位的读口别直接调它** —— 用下面两个具名出口，它们的名字说明了一切。
  *
  * 返回 null 的三种原因（**对外同形，不区分**）：不存在、已软删、档位不够。
@@ -756,7 +756,7 @@ export interface ValidatedBlogData {
   description: string;
   content: string;
   categoryId: number | null;
-  /** 对外可见性。缺省 'private' —— 旧客户端不带这个字段时**不得改变**任何文章的对外状态。 */
+  /** 对外可见性。缺省 'internal' —— 旧客户端不带这个字段时**不得改变**任何文章的对外状态。 */
   visibility: BlogVisibility;
 }
 
@@ -803,7 +803,7 @@ export async function validateBlogData(raw: unknown): Promise<ValidateBlogResult
   const description = (typeof data.description === 'string' ? data.description : '').trim();
   const content = typeof data.content === 'string' ? data.content : '';
 
-  // 可见性：缺省 private；非白名单值直接 400，**不静默丢弃**（同下面那批未知字段）
+  // 可见性：缺省 internal；非白名单值直接 400，**不静默丢弃**（同下面那批未知字段）
   const visibility = parseVisibility(data.visibility);
   if (visibility === null) {
     return {
@@ -1026,7 +1026,7 @@ export async function getBlogForEdit(blogId: string) {
     // 对得上的选项 —— 给个白名单外的值会让 `defaultValue` 落空、浏览器默认选第一项，
     // 于是「打开编辑页什么都不改、一保存就静默改了可见性」。唯一的写入口
     // （validateBlogData）已经在白名单上，这里只是兜底。
-    visibility: parseVisibility(blog.visibility) ?? 'private',
+    visibility: parseVisibility(blog.visibility) ?? 'internal',
     authorId: blog.authorId,
     contentMarkdown: blog.content?.content ?? '',
   };
@@ -1086,7 +1086,7 @@ export async function updateBlog(
   }
 
   // 可见性变化要单独记一条：它是**不可逆**的那类改动（一旦 public 被搜索引擎或第三方
-  // 存档抓走，改回 private 也收不回来），所以「文章已编辑」的通知里必须看得见它 ——
+  // 存档抓走，改回 internal 也收不回来），所以「文章已编辑」的通知里必须看得见它 ——
   // 只记「内容已更新」会让作者与管理员都错过这条最要紧的变更。
   if (blog.visibility !== data.visibility) {
     changesDetail.push(
@@ -1170,7 +1170,7 @@ export async function setBlogVisibility(
 
   // 列是 TEXT 且没有 CHECK 约束，历史值可能是脏的 —— 归一化到白名单再比较，
   // 否则一个脏值会让我们每次都判成「变了」并反复写库。
-  const from = parseVisibility(blog.visibility) ?? 'private';
+  const from = parseVisibility(blog.visibility) ?? 'internal';
   if (from === visibility) {
     return { changed: false, from, message: '可见性没有变化' };
   }

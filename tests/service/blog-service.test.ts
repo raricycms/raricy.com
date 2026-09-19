@@ -508,7 +508,7 @@ describe('createBlog', () => {
       description: 'D',
       content: 'C',
       categoryId: null,
-      visibility: 'private',
+      visibility: 'internal',
     });
     expect(id).toMatch(UUID_V4);
   });
@@ -521,7 +521,7 @@ describe('createBlog', () => {
       description: '我的摘要',
       content: '# 正文\n\n内容',
       categoryId: cat.id,
-      visibility: 'private',
+      visibility: 'internal',
     });
 
     const blog = await prisma.blog.findUnique({ where: { id } });
@@ -539,7 +539,7 @@ describe('createBlog', () => {
 
   it('新文章的默认值：ignore=false / isFeatured=false / 各计数为 0', async () => {
     const u = await makeUser();
-    const id = await createBlog(u.id, { title: 'T', description: 'D', content: 'C', categoryId: null, visibility: 'private' });
+    const id = await createBlog(u.id, { title: 'T', description: 'D', content: 'C', categoryId: null, visibility: 'internal' });
     const blog = await prisma.blog.findUnique({ where: { id } });
     expect(blog!.ignore, '新文章不能是软删除态').toBe(false);
     expect(blog!.isFeatured, '精选只能由管理员后置设置').toBe(false);
@@ -550,22 +550,22 @@ describe('createBlog', () => {
 
   it('categoryId 为 null → 落库为未分类', async () => {
     const u = await makeUser();
-    const id = await createBlog(u.id, { title: 'T', description: 'D', content: 'C', categoryId: null, visibility: 'private' });
+    const id = await createBlog(u.id, { title: 'T', description: 'D', content: 'C', categoryId: null, visibility: 'internal' });
     const blog = await prisma.blog.findUnique({ where: { id } });
     expect(blog!.categoryId).toBeNull();
   });
 
   it('每次调用生成不同主键', async () => {
     const u = await makeUser();
-    const a = await createBlog(u.id, { title: 'A', description: 'D', content: 'C', categoryId: null, visibility: 'private' });
-    const b = await createBlog(u.id, { title: 'B', description: 'D', content: 'C', categoryId: null, visibility: 'private' });
+    const a = await createBlog(u.id, { title: 'A', description: 'D', content: 'C', categoryId: null, visibility: 'internal' });
+    const b = await createBlog(u.id, { title: 'B', description: 'D', content: 'C', categoryId: null, visibility: 'internal' });
     expect(a).not.toBe(b);
   });
 
   it('作者不存在 → 整体失败，不留下孤儿正文（事务原子性）', async () => {
     const before = await prisma.blogContent.count();
     await expect(
-      createBlog('no-such-user', { title: 'T', description: 'D', content: 'C', categoryId: null, visibility: 'private' })
+      createBlog('no-such-user', { title: 'T', description: 'D', content: 'C', categoryId: null, visibility: 'internal' })
     ).rejects.toThrow();
     expect(await prisma.blogContent.count(), '写 blogs 失败时 blog_contents 不能有残留').toBe(before);
     expect(await prisma.blog.count()).toBe(0);
@@ -573,7 +573,7 @@ describe('createBlog', () => {
 
   it('刚创建的文章当天即计入日限额', async () => {
     const u = await makeUser();
-    await createBlog(u.id, { title: 'T', description: 'D', content: 'C', categoryId: null, visibility: 'private' });
+    await createBlog(u.id, { title: 'T', description: 'D', content: 'C', categoryId: null, visibility: 'internal' });
     expect(await countBlogsToday(u.id)).toBe(1);
   });
 });
@@ -586,7 +586,7 @@ describe('updateBlog / 变更详情文案', () => {
   it('标题变更 → 「标题从《旧》改为《新》」（书名号逐字对齐）', async () => {
     const u = await makeUser();
     const b = await makeBlog({ authorId: u.id, title: '旧标题', description: 'D', content: 'C' });
-    const r = await updateBlog(b.id, { title: '新标题', description: 'D', content: 'C', categoryId: null, visibility: 'private' });
+    const r = await updateBlog(b.id, { title: '新标题', description: 'D', content: 'C', categoryId: null, visibility: 'internal' });
     expect(r.hasChanges).toBe(true);
     expect(r.changesDetail).toEqual(['标题从《旧标题》改为《新标题》']);
   });
@@ -594,14 +594,14 @@ describe('updateBlog / 变更详情文案', () => {
   it('摘要变更 → 「摘要已更新」（不回显新旧内容）', async () => {
     const u = await makeUser();
     const b = await makeBlog({ authorId: u.id, title: 'T', description: '旧摘要', content: 'C' });
-    const r = await updateBlog(b.id, { title: 'T', description: '新摘要', content: 'C', categoryId: null, visibility: 'private' });
+    const r = await updateBlog(b.id, { title: 'T', description: '新摘要', content: 'C', categoryId: null, visibility: 'internal' });
     expect(r.changesDetail).toEqual(['摘要已更新']);
   });
 
   it('正文变更 → 「文章内容已更新」', async () => {
     const u = await makeUser();
     const b = await makeBlog({ authorId: u.id, title: 'T', description: 'D', content: '旧正文' });
-    const r = await updateBlog(b.id, { title: 'T', description: 'D', content: '新正文', categoryId: null, visibility: 'private' });
+    const r = await updateBlog(b.id, { title: 'T', description: 'D', content: '新正文', categoryId: null, visibility: 'internal' });
     expect(r.changesDetail).toEqual(['文章内容已更新']);
   });
 
@@ -609,7 +609,7 @@ describe('updateBlog / 变更详情文案', () => {
     const u = await makeUser();
     const cat = await makeCategory({ name: '技术' });
     const b = await makeBlog({ authorId: u.id, title: 'T', description: 'D', content: 'C', categoryId: null });
-    const r = await updateBlog(b.id, { title: 'T', description: 'D', content: 'C', categoryId: cat.id, visibility: 'private' });
+    const r = await updateBlog(b.id, { title: 'T', description: 'D', content: 'C', categoryId: cat.id, visibility: 'internal' });
     expect(r.changesDetail).toEqual(['栏目从《未分类》改为《技术》']);
   });
 
@@ -617,7 +617,7 @@ describe('updateBlog / 变更详情文案', () => {
     const u = await makeUser();
     const cat = await makeCategory({ name: '技术' });
     const b = await makeBlog({ authorId: u.id, title: 'T', description: 'D', content: 'C', categoryId: cat.id });
-    const r = await updateBlog(b.id, { title: 'T', description: 'D', content: 'C', categoryId: null, visibility: 'private' });
+    const r = await updateBlog(b.id, { title: 'T', description: 'D', content: 'C', categoryId: null, visibility: 'internal' });
     expect(r.changesDetail, '缺省名必须是「未分类」').toEqual(['栏目从《技术》改为《未分类》']);
   });
 
@@ -626,7 +626,7 @@ describe('updateBlog / 变更详情文案', () => {
     const a = await makeCategory({ name: '生活' });
     const b2 = await makeCategory({ name: '技术' });
     const b = await makeBlog({ authorId: u.id, title: 'T', description: 'D', content: 'C', categoryId: a.id });
-    const r = await updateBlog(b.id, { title: 'T', description: 'D', content: 'C', categoryId: b2.id, visibility: 'private' });
+    const r = await updateBlog(b.id, { title: 'T', description: 'D', content: 'C', categoryId: b2.id, visibility: 'internal' });
     expect(r.changesDetail).toEqual(['栏目从《生活》改为《技术》']);
   });
 
@@ -635,7 +635,7 @@ describe('updateBlog / 变更详情文案', () => {
     const u = await makeUser();
     const cat = await makeCategory({ name: '技术' });
     const b = await makeBlog({ authorId: u.id, title: '旧', description: '旧摘要', content: '旧正文', categoryId: null });
-    const r = await updateBlog(b.id, { title: '新', description: '新摘要', content: '新正文', categoryId: cat.id, visibility: 'private' });
+    const r = await updateBlog(b.id, { title: '新', description: '新摘要', content: '新正文', categoryId: cat.id, visibility: 'internal' });
     expect(r.changesDetail).toEqual([
       '标题从《旧》改为《新》',
       '摘要已更新',
@@ -651,7 +651,7 @@ describe('updateBlog / hasChanges 语义与落库', () => {
     const u = await makeUser();
     const cat = await makeCategory({ name: '技术' });
     const b = await makeBlog({ authorId: u.id, title: 'T', description: 'D', content: 'C', categoryId: cat.id });
-    const r = await updateBlog(b.id, { title: 'T', description: 'D', content: 'C', categoryId: cat.id, visibility: 'private' });
+    const r = await updateBlog(b.id, { title: 'T', description: 'D', content: 'C', categoryId: cat.id, visibility: 'internal' });
     expect(r.hasChanges).toBe(false);
     expect(r.changesDetail).toEqual([]);
   });
@@ -659,14 +659,14 @@ describe('updateBlog / hasChanges 语义与落库', () => {
   it('未分类 → 未分类（都是 null）不算变更', async () => {
     const u = await makeUser();
     const b = await makeBlog({ authorId: u.id, title: 'T', description: 'D', content: 'C', categoryId: null });
-    const r = await updateBlog(b.id, { title: 'T', description: 'D', content: 'C', categoryId: null, visibility: 'private' });
+    const r = await updateBlog(b.id, { title: 'T', description: 'D', content: 'C', categoryId: null, visibility: 'internal' });
     expect(r.hasChanges, 'null === null 不应被判成栏目变化').toBe(false);
   });
 
   it('无变更时仍然执行写入（幂等落库，不炸）', async () => {
     const u = await makeUser();
     const b = await makeBlog({ authorId: u.id, title: 'T', description: 'D', content: 'C' });
-    await updateBlog(b.id, { title: 'T', description: 'D', content: 'C', categoryId: null, visibility: 'private' });
+    await updateBlog(b.id, { title: 'T', description: 'D', content: 'C', categoryId: null, visibility: 'internal' });
     const after = await prisma.blog.findUnique({ where: { id: b.id } });
     expect(after!.title).toBe('T');
   });
@@ -675,7 +675,7 @@ describe('updateBlog / hasChanges 语义与落库', () => {
     const u = await makeUser();
     const cat = await makeCategory({ name: '技术' });
     const b = await makeBlog({ authorId: u.id, title: '旧', description: '旧摘要', content: '旧正文' });
-    await updateBlog(b.id, { title: '新', description: '新摘要', content: '新正文', categoryId: cat.id, visibility: 'private' });
+    await updateBlog(b.id, { title: '新', description: '新摘要', content: '新正文', categoryId: cat.id, visibility: 'internal' });
 
     const blog = await prisma.blog.findUnique({ where: { id: b.id } });
     expect(blog!.title).toBe('新');
@@ -687,7 +687,7 @@ describe('updateBlog / hasChanges 语义与落库', () => {
   });
 
   it('文章不存在 → { hasChanges: false, changesDetail: [] }', async () => {
-    const r = await updateBlog('no-such-blog', { title: 'T', description: 'D', content: 'C', categoryId: null, visibility: 'private' });
+    const r = await updateBlog('no-such-blog', { title: 'T', description: 'D', content: 'C', categoryId: null, visibility: 'internal' });
     expect(r).toEqual({ hasChanges: false, changesDetail: [] });
   });
 
@@ -697,7 +697,7 @@ describe('updateBlog / hasChanges 语义与落库', () => {
     await prisma.blog.create({
       data: { id: 'orphan-blog', title: 'T', description: 'D', authorId: u.id, createdAt: new Date() },
     });
-    const r = await updateBlog('orphan-blog', { title: 'T', description: 'D', content: '新正文', categoryId: null, visibility: 'private' });
+    const r = await updateBlog('orphan-blog', { title: 'T', description: 'D', content: '新正文', categoryId: null, visibility: 'internal' });
     expect(r.changesDetail, '旧正文视为空串，与新正文不同 → 记一条变更').toEqual(['文章内容已更新']);
 
     const content = await prisma.blogContent.findUnique({ where: { blogId: 'orphan-blog' } });
@@ -709,7 +709,7 @@ describe('updateBlog / hasChanges 语义与落库', () => {
     // 这里钉住 service 层不设防，权限得由调用方兜。
     const u = await makeUser();
     const b = await makeBlog({ authorId: u.id, title: 'T', description: 'D', content: 'C', ignore: true });
-    const r = await updateBlog(b.id, { title: 'T2', description: 'D', content: 'C', categoryId: null, visibility: 'private' });
+    const r = await updateBlog(b.id, { title: 'T2', description: 'D', content: 'C', categoryId: null, visibility: 'internal' });
     expect(r.hasChanges).toBe(true);
   });
 });
@@ -1722,7 +1722,7 @@ describe('banActionMessage —— 剩余时间与库内时钟同口径', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 对外可见性（private / link / public）—— 第 1 期的判定收口
+// 对外可见性（internal / link / public）—— 第 1 期的判定收口
 //
 // 四条不变量在 src/lib/blog-service.ts 文件头，这里逐条钉住。最要紧的是
 // 「listBlogs 不看 visibility」那条：它是**钉现状**的用例 —— 站内列表返回全量是对的
@@ -1732,7 +1732,7 @@ describe('banActionMessage —— 剩余时间与库内时钟同口径', () => {
 
 describe('可见性 / 常量与解析', () => {
   it('三个白名单数组钉死（加第四档时这三条会一起红，那正是要的）', () => {
-    expect([...BLOG_VISIBILITIES]).toEqual(['private', 'link', 'public']);
+    expect([...BLOG_VISIBILITIES]).toEqual(['internal', 'link', 'public']);
     expect(
       [...EXTERNAL_VISIBILITIES],
       'link 也读得到 —— 它与 public 的差别在列举与索引'
@@ -1745,10 +1745,10 @@ describe('可见性 / 常量与解析', () => {
     expect(INDEXABLE_BLOG_WHERE).toEqual({ visibility: { in: ['public'] } });
   });
 
-  it('parseVisibility：缺省 private —— 旧客户端不带这个字段时不得改变对外状态', () => {
-    expect(parseVisibility(undefined)).toBe('private');
-    expect(parseVisibility(null)).toBe('private');
-    expect(parseVisibility('')).toBe('private');
+  it('parseVisibility：缺省 internal —— 旧客户端不带这个字段时不得改变对外状态', () => {
+    expect(parseVisibility(undefined)).toBe('internal');
+    expect(parseVisibility(null)).toBe('internal');
+    expect(parseVisibility('')).toBe('internal');
   });
 
   it('parseVisibility：白名单内的原样返回', () => {
@@ -1756,7 +1756,7 @@ describe('可见性 / 常量与解析', () => {
   });
 
   it('parseVisibility：非白名单值返回 null（调用方报 400，**不静默丢弃**）', () => {
-    // 'pulbic' 这种拼错若被静默当成 private，调用方会拿到一份「看着正常」的结果
+    // 'pulbic' 这种拼错若被静默当成 internal，调用方会拿到一份「看着正常」的结果
     for (const bad of ['pulbic', 'PUBLIC', 'Public', 'unlisted', 3, {}, []]) {
       expect(parseVisibility(bad), `${JSON.stringify(bad)} 不该被接受`).toBeNull();
     }
@@ -1780,9 +1780,9 @@ describe('可见性 / getBlogDetail 的查看者矩阵', () => {
     await resetDb();
   });
 
-  it('游客（viewer=null）：只有 link / public 读得到，private 是 null', async () => {
+  it('游客（viewer=null）：只有 link / public 读得到，internal 是 null', async () => {
     const { ids } = await seedThreeVisibilities();
-    expect(await getBlogDetail(ids.private, null)).toBeNull();
+    expect(await getBlogDetail(ids.internal, null)).toBeNull();
     expect((await getBlogDetail(ids.link, null))?.id).toBe(ids.link);
     expect((await getBlogDetail(ids.public, null))?.id).toBe(ids.public);
   });
@@ -1790,7 +1790,7 @@ describe('可见性 / getBlogDetail 的查看者矩阵', () => {
   it('已登录但非 core：与游客**完全一致**（不该出现「匿名 200、登录的 role=user 403」）', async () => {
     const { ids } = await seedThreeVisibilities();
     const plain = { id: 'u-plain', isCore: false };
-    expect(await getBlogDetail(ids.private, plain)).toBeNull();
+    expect(await getBlogDetail(ids.internal, plain)).toBeNull();
     expect((await getBlogDetail(ids.link, plain))?.id).toBe(ids.link);
     expect((await getBlogDetail(ids.public, plain))?.id).toBe(ids.public);
   });
@@ -1821,14 +1821,14 @@ describe('可见性 / 对外出口', () => {
     await resetDb();
   });
 
-  it('getExternallyVisibleBlog：link / public 拿得到；private / 不存在 / 软删都是 null（三者同形）', async () => {
+  it('getExternallyVisibleBlog：link / public 拿得到；internal / 不存在 / 软删都是 null（三者同形）', async () => {
     const author = await makeUser({ role: 'core' });
     const mk = async (v: string) => {
       const b = await makeBlog({ authorId: author.id });
       await prisma.blog.update({ where: { id: b.id }, data: { visibility: v } });
       return b.id;
     };
-    const priv = await mk('private');
+    const priv = await mk('internal');
     const link = await mk('link');
     const pub = await mk('public');
     const gone = await mk('public');
@@ -1848,7 +1848,7 @@ describe('可见性 / 对外出口', () => {
       await prisma.blog.update({ where: { id: b.id }, data: { visibility: v, ignore } });
       return b.id;
     };
-    const priv = await mk('private');
+    const priv = await mk('internal');
     const link = await mk('link');
     const pub = await mk('public');
     const deleted = await mk('public', true);
@@ -1857,7 +1857,7 @@ describe('可见性 / 对外出口', () => {
     const ids = rows.map((r) => r.id);
     expect(ids).toContain(pub);
     expect(ids, 'link 不该被列举').not.toContain(link);
-    expect(ids, 'private 不该被列举').not.toContain(priv);
+    expect(ids, 'internal 不该被列举').not.toContain(priv);
     expect(ids, '软删的不该被列举').not.toContain(deleted);
     // lastModified 取正文的 updatedAt（没有正文行时回落 createdAt）
     expect(rows.find((r) => r.id === pub)?.updatedAt).toBeInstanceOf(Date);
@@ -1876,16 +1876,16 @@ describe('可见性 / listPublicBlogs —— 对外列表的唯一出口', () =>
     await resetDb();
   });
 
-  it('只出 public：link 与 private 都不出现（link 读得到，但不许被列举）', async () => {
+  it('只出 public：link 与 internal 都不出现（link 读得到，但不许被列举）', async () => {
     const author = await makeUser({ role: 'core' });
-    const priv = await mkBlog('private', { authorId: author.id, title: '甲的私密' });
+    const priv = await mkBlog('internal', { authorId: author.id, title: '甲的私密' });
     const link = await mkBlog('link', { authorId: author.id, title: '甲的持链' });
     const pub = await mkBlog('public', { authorId: author.id, title: '甲的公开' });
 
     const ids = (await listPublicBlogs({ perPage: 50 })).blogs.map((b) => b.id);
     expect(ids).toContain(pub);
     expect(ids, 'link 不该出现在对外列表上').not.toContain(link);
-    expect(ids, 'private 不该出现在对外列表上').not.toContain(priv);
+    expect(ids, 'internal 不该出现在对外列表上').not.toContain(priv);
   });
 
   it('软删的不出现', async () => {
@@ -1904,7 +1904,7 @@ describe('可见性 / listPublicBlogs —— 对外列表的唯一出口', () =>
     const noisy = await makeCategory({ excludeFromAll: true });
     const hidden = await makeCategory({ focusHidden: true });
 
-    await mkBlog('private', { authorId: author.id, categoryId: plain.id });
+    await mkBlog('internal', { authorId: author.id, categoryId: plain.id });
     await mkBlog('link', { authorId: author.id, categoryId: plain.id });
     await mkBlog('public', { authorId: author.id, categoryId: plain.id });
     await mkBlog('public', { authorId: author.id, categoryId: null });
@@ -1915,7 +1915,7 @@ describe('可见性 / listPublicBlogs —— 对外列表的唯一出口', () =>
     const listed = (await listPublicBlogs({ perPage: 50 })).blogs.map((b) => b.id).sort();
     const indexable = (await listIndexableBlogs()).map((r) => r.id).sort();
     expect(listed, 'sitemap 与 /explore 必须列同一个集合').toEqual(indexable);
-    // 7 篇里只有 4 篇算数：private / link 各一篇、以及那篇软删的 public。
+    // 7 篇里只有 4 篇算数：internal / link 各一篇、以及那篇软删的 public。
     // 剩下的 4 篇分别落在 plain、无栏目、excludeFromAll 栏目、focusHidden 栏目下 ——
     // 最后两个尤其要留着，它们钉的是不变量【6】。
     expect(listed.length).toBe(4);
@@ -1967,9 +1967,9 @@ describe('可见性 / listPublicBlogs —— 对外列表的唯一出口', () =>
     expect(await hit('搜得到的作者')).toEqual([id]);
   });
 
-  it('搜索只在公开集合内进行（private 文章即使标题命中也不出现）', async () => {
+  it('搜索只在公开集合内进行（internal 文章即使标题命中也不出现）', async () => {
     const author = await makeUser({ role: 'core' });
-    await mkBlog('private', { authorId: author.id, title: '独一无二的标题' });
+    await mkBlog('internal', { authorId: author.id, title: '独一无二的标题' });
     expect((await listPublicBlogs({ search: '独一无二的标题' })).blogs).toEqual([]);
   });
 
@@ -2050,7 +2050,7 @@ describe('可见性 / listPublicCategoryFacets —— 侧栏剪枝的数据源',
     const used = await makeCategory();
     const onlyPrivate = await makeCategory();
     await mkBlog('public', { authorId: author.id, categoryId: used.id });
-    await mkBlog('private', { authorId: author.id, categoryId: onlyPrivate.id });
+    await mkBlog('internal', { authorId: author.id, categoryId: onlyPrivate.id });
 
     const facets = await listPublicCategoryFacets();
     expect(facets.has(used.id)).toBe(true);
@@ -2072,11 +2072,11 @@ describe('可见性 / listPublicCategoryFacets —— 侧栏剪枝的数据源',
 });
 
 describe('可见性 / listBlogs 是站内列表，**不看** visibility（钉现状）', () => {
-  it('存在 private 文章时，listBlogs 照旧返回它', async () => {
+  it('存在 internal 文章时，listBlogs 照旧返回它', async () => {
     await resetDb();
     const author = await makeUser({ role: 'core' });
     const b = await makeBlog({ authorId: author.id, title: '私密文章' });
-    await prisma.blog.update({ where: { id: b.id }, data: { visibility: 'private' } });
+    await prisma.blog.update({ where: { id: b.id }, data: { visibility: 'internal' } });
 
     // 这是**刻意的现状**：listBlogs 的两个调用方（/blog 页面、GET /api/blogs）都是
     // core+ 档，而 core+ 在博客域是全读的 —— 可见性在这里没有意义。
@@ -2120,7 +2120,7 @@ describe('可见性 / 写路径落库与变更明细', () => {
       visibility: 'public',
     });
     expect(r.hasChanges).toBe(true);
-    // 人话短语，不是 'private' / 'public' 这种机器值
+    // 人话短语，不是 'internal' / 'public' 这种机器值
     expect(r.changesDetail).toContain('可见性从《仅站内可见》改为《对外公开》');
 
     const after = await prisma.blog.findUnique({
@@ -2138,28 +2138,28 @@ describe('可见性 / 写路径落库与变更明细', () => {
       description: 'D',
       content: 'C',
       categoryId: null,
-      visibility: 'private',
+      visibility: 'internal',
     });
     expect(r.hasChanges).toBe(false);
     expect(r.changesDetail).toEqual([]);
   });
 
-  it('未显式给 visibility 的文章是 private —— 存量绝不被误公开', async () => {
+  it('未显式给 visibility 的文章是 internal —— 存量绝不被误公开', async () => {
     await resetDb();
     const u = await makeUser({ role: 'core' });
     // makeBlog 不传 visibility，走 schema 默认 —— 老行迁移后就是这个值
     const b = await makeBlog({ authorId: u.id });
     const row = await prisma.blog.findUnique({ where: { id: b.id }, select: { visibility: true } });
-    expect(row?.visibility, 'DEFAULT 就是存量迁移本身').toBe('private');
+    expect(row?.visibility, 'DEFAULT 就是存量迁移本身').toBe('internal');
   });
 });
 
 describe('可见性 / 管理端是结构性豁免，不需要 if (isAdmin)', () => {
-  it('listAdminBlogs 必须能列出 private 文章', async () => {
+  it('listAdminBlogs 必须能列出 internal 文章', async () => {
     await resetDb();
     const u = await makeUser({ role: 'core' });
     const b = await makeBlog({ authorId: u.id, title: '私密文章' });
-    await prisma.blog.update({ where: { id: b.id }, data: { visibility: 'private' } });
+    await prisma.blog.update({ where: { id: b.id }, data: { visibility: 'internal' } });
 
     // 管理后台从不调用被可见性过滤的出口，所以「管理员能看见全部」是**结构性**的
     // —— 服务层里没有、也不该有 `if (isAdmin)` 分支。

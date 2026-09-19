@@ -67,7 +67,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 //
 // ⚠️ 特别是**管理员改不了别人的文章** —— PUT 的 403 早就确立了这条边界
 // （档位管「你有没有资格写文章」，归属管「这篇是不是你的」，见 blog-service 文件头
-// 不变量【4】）。「让管理员能把别人的私密文章推成公开」是个独立的隐私决定，
+// 不变量【4】）。「让管理员能把别人的站内文章推成公开」是个独立的隐私决定，
 // 不该顺手在这里实现。
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
@@ -99,8 +99,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   }
 
   // 取值必须**恰好**是三档之一。刻意不用 parseVisibility()：那把 '' 与缺省都归一化成
-  // 'private'（那是给表单 / 旧客户端设计的「没提这件事」语义）。而这条接口上「显式传了
-  // 一个空串」几乎一定是调用方写错了，静默当成「改成私密」会让他在文章从公网消失之后
+  // 'internal'（那是给表单 / 旧客户端设计的「没提这件事」语义）。而这条接口上「显式传了
+  // 一个空串」几乎一定是调用方写错了，静默当成「改成站内」会让他在文章从公网消失之后
   // 才发现。
   const raw = body.visibility;
   if (typeof raw !== 'string' || !(BLOG_VISIBILITIES as readonly string[]).includes(raw)) {
@@ -148,17 +148,17 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
   // 缺 `visibility` 键时**用库里现值补齐**。
   //
   // 这条路径是**整体覆盖**（没传的字段会被一起写掉），而 validateBlogData 对「键不存在」
-  // 给的是 'private' 这个**默认档**。直接放过去的话，一个只认识旧那 4 个键的调用方
+  // 给的是 'internal' 这个**默认档**。直接放过去的话，一个只认识旧那 4 个键的调用方
   // ——恰恰是 parseVisibility 的注释点名要保护的那类「不带这个字段的 bot」—— 改一次标题
-  // 就会把 link/public 的文章**静默改回私密**：对外消失、退出 sitemap，而已被抓走的
+  // 就会把 link/public 的文章**静默改回站内**：对外消失、退出 sitemap，而已被抓走的
   // 副本收不回来。所以缺键 = 不改动这一列，而不是 = 打回默认档。
   //
-  // 显式传 `"private"` 仍然照改 —— 那是明确的意图，与「压根没提这件事」不是一回事。
+  // 显式传 `"internal"` 仍然照改 —— 那是明确的意图，与「压根没提这件事」不是一回事。
   const payload =
     body && typeof body === 'object' && !Array.isArray(body) && !('visibility' in body)
       ? {
           ...(body as Record<string, unknown>),
-          visibility: parseVisibility(blog.visibility) ?? 'private',
+          visibility: parseVisibility(blog.visibility) ?? 'internal',
         }
       : body;
 

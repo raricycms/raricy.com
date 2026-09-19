@@ -52,9 +52,9 @@ export async function generateMetadata({
   return {
     title: `${blog.title} - 聪明山`,
     description: blog.description || undefined,
-    // private（只有 core+ 看得到）也发 noindex：成员视图同样不该被索引。
+    // internal（只有 core+ 看得到）也发 noindex：成员视图同样不该被索引。
     robots: indexable ? { index: true, follow: true } : { index: false, follow: false },
-    // 分享卡片只给**对外可见**的文章挂：private 文章连 OG 图路由都是 404，
+    // 分享卡片只给**对外可见**的文章挂：internal 文章连 OG 图路由都是 404，
     // 挂上去只会让抓取器白跑一趟。link 与 public 都挂 —— 差别在索引，不在能不能分享。
     ...(external
       ? {
@@ -88,7 +88,7 @@ export async function generateMetadata({
 // 视图。若按 visibility 分叉，「作者把文章设为公开」会顺手夺走他自己和全站的互动能力
 // —— 那会让人不敢用这个功能。对外视图是**访客的**视图，不是「公开文章的」视图。
 //
-// 【访客读不到时为什么不返回 404】private 的语义是「仅站内 core+ 可见」（本站一直
+// 【访客读不到时为什么不返回 404】internal 的语义是「仅站内 core+ 可见」（本站一直
 // 以来的样子），不是「不存在」。所以访客拿到登录页 —— 这对转型也是对的：告诉他
 // 「这是站内内容，登录可看」，而不是一个冷冰冰的 404。已登录但非 core 才 403。
 export default async function BlogDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -110,7 +110,7 @@ export default async function BlogDetailPage({ params }: { params: Promise<{ id:
   const isAuthor = !!user && user.id === blog.authorId;
 
   // 结构化数据只给 public 档 —— 与 generateMetadata 的 robots 同一个判据。
-  // link / private 的页面本来就 noindex，挂 JSON-LD 没有意义（搜索引擎不会读它），
+  // link / internal 的页面本来就 noindex，挂 JSON-LD 没有意义（搜索引擎不会读它），
   // 反而多一处要把可见性判对的地方。
   const indexable = (INDEXABLE_VISIBILITIES as readonly string[]).includes(blog.visibility);
 
@@ -201,7 +201,7 @@ export default async function BlogDetailPage({ params }: { params: Promise<{ id:
             isAdminDelete={isAdmin && !isAuthor}
             // 列是 TEXT、没有 CHECK 约束，所以归一化到白名单再下发 —— 脏值不该让弹窗
             // 里三个选项一个都不选中。
-            initialVisibility={parseVisibility(blog.visibility) ?? 'private'}
+            initialVisibility={parseVisibility(blog.visibility) ?? 'internal'}
             initialFavorited={favorited}
           />
         )}

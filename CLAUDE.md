@@ -47,6 +47,11 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
   `rm -rf` 会以 `Directory not empty` 半途失败，而失败信息看着像权限问题）。
   另注：`npm ci` 会连生成的 Prisma client 一起清掉（`postinstall` 不跑 `prisma generate`），
   装完依赖若满屏 `Prisma has no exported member`，补一次 `npx prisma generate`。
+  ⚠️ **改了 `schema.prisma` 的 `@default` 之后也必须重新 generate** —— 默认值是烘进
+  client 的（`create` 时会显式带上），而测试库那边 `db push` 已经按新 schema 建好了。
+  两边一不一致，**症状指向断言而不是根因**：2026-09 把 `Blog.visibility` 的默认值从
+  `'private'` 改成 `'internal'` 后，15 条用例报 `expected 'private' to be 'internal'`，
+  看着像「迁移没生效」，实际是 client 陈旧。
 - `npm run cli` —— 运维台。**不带参数在 TTY 下进菜单向导**（引导式，不用背命令）；
   `npm run cli -- <cmd>` 是命令式，给脚本/CI。见 `docs/cli.md`。
   加命令只改 `scripts/cli/registry.ts` 的注册表 —— `--help` 与向导都由它生成，

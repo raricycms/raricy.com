@@ -2,10 +2,10 @@
 //
 // 【为什么单独一个文件】`visibility` 是 blogs 的第五个键，而 PUT 是**整体覆盖**：
 // 「缺键」这一种输入在两条路径上的正确语义**不同**，而它们共用同一个
-// `validateBlogData`（它对缺键一律回 `'private'` 这个默认档）：
+// `validateBlogData`（它对缺键一律回 `'internal'` 这个默认档）：
 //
-//   · **创建**（`POST /api/blogs`）—— 缺键 = 默认档 private。正确：新文章本来就该
-//     fail-closed（`docs/architecture.md` §6.11 的表里 private 就是「默认」）。
+//   · **创建**（`POST /api/blogs`）—— 缺键 = 默认档 internal。正确：新文章本来就该
+//     fail-closed（`docs/architecture.md` §6.11 的表里 internal 就是「默认」）。
 //   · **编辑**（`PUT /api/blogs/:id`）—— 缺键 = **不改动这一列**。默认档在这里是错的：
 //     一个只认识旧那 4 个键的调用方（`parseVisibility` 的注释点名要保护的
 //     「不带这个字段的 bot」）改一次标题就会把 link/public 的文章静默改回私密 ——
@@ -89,15 +89,15 @@ describe('PUT /api/blogs/:id —— 缺 visibility = 不改动这一列', () => 
     });
   }
 
-  it('显式传 private 仍然照改（明确意图与「没提这件事」不是一回事）', async () => {
+  it('显式传 internal 仍然照改（明确意图与「没提这件事」不是一回事）', async () => {
     const author = await makeUser({ role: 'core' });
     const blog = await makeBlog({ authorId: author.id, title: 'T' });
     await prisma.blog.update({ where: { id: blog.id }, data: { visibility: 'public' } });
     await login(author.id);
 
-    const res = await updateBlog(put({ ...base, visibility: 'private' }), ctx(blog.id));
+    const res = await updateBlog(put({ ...base, visibility: 'internal' }), ctx(blog.id));
     expect(res.status).toBe(200);
-    expect(await visibilityOf(blog.id)).toBe('private');
+    expect(await visibilityOf(blog.id)).toBe('internal');
   });
 
   it('显式传非法值 → 400，且库里不变（回填不得把校验短路掉）', async () => {
@@ -109,14 +109,14 @@ describe('PUT /api/blogs/:id —— 缺 visibility = 不改动这一列', () => 
     const res = await updateBlog(put({ ...base, visibility: 'pulbic' }), ctx(blog.id));
     expect(res.status).toBe(400);
     expect(((await res.json()) as { message: string }).message).toBe(
-      '可见性取值不合法，可选：private / link / public'
+      '可见性取值不合法，可选：internal / link / public'
     );
     expect(await visibilityOf(blog.id)).toBe('link');
   });
 });
 
-describe('POST /api/blogs —— 缺 visibility = 默认档 private（与 PUT 相反，别一起改）', () => {
-  it('不传 visibility 建出来的文章是 private', async () => {
+describe('POST /api/blogs —— 缺 visibility = 默认档 internal（与 PUT 相反，别一起改）', () => {
+  it('不传 visibility 建出来的文章是 internal', async () => {
     const author = await makeUser({ role: 'core' });
     await login(author.id);
 
@@ -126,8 +126,8 @@ describe('POST /api/blogs —— 缺 visibility = 默认档 private（与 PUT �
 
     expect(
       await visibilityOf(blog_id),
-      '创建路径的缺省必须是 fail-closed 的 private —— 回填逻辑不许蔓延到这里'
-    ).toBe('private');
+      '创建路径的缺省必须是 fail-closed 的 internal —— 回填逻辑不许蔓延到这里'
+    ).toBe('internal');
   });
 
   it('传 visibility: public 建出来就是 public', async () => {

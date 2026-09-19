@@ -5,7 +5,7 @@
 // 可被搜索引擎列举、以及给作者一个「公开出去之后别人看到的是什么」的样张。
 //
 // 【断言「不存在」才是这里的价值】与 blog-visibility.spec.ts 同一条理由：列表的正确性
-// 主要不在于显示了什么，而在于**没显示什么** —— link 与 private 的标题一个都不该出现，
+// 主要不在于显示了什么，而在于**没显示什么** —— link 与 internal 的标题一个都不该出现，
 // 卡片上不该有计数，作者名不该是链接。这类断言必须在真浏览器里做。
 //
 // 【为什么用「共享前缀 + 唯一 tag」而不是直接断言第 1 页】e2e 库是 desktop 与 mobile
@@ -69,7 +69,7 @@ async function createBlog(
 }
 
 test.describe('对外列表 /explore', () => {
-  test('匿名打得开；只列 public —— link 与 private 都不在', async ({ page }) => {
+  test('匿名打得开；只列 public —— link 与 internal 都不在', async ({ page }) => {
     // 三篇共用一个**唯一前缀**，于是「搜这个前缀」恰好圈出这三篇：
     // 其中只有 public 那篇该出现，另外两篇的缺席才是这条用例的价值。
     const tag = uniqueTag();
@@ -77,7 +77,7 @@ test.describe('对外列表 /explore', () => {
     await ensureAuthor(page);
     const pub = await createBlog(page, 'public', `${prefix}-public`);
     const link = await createBlog(page, 'link', `${prefix}-link`);
-    const priv = await createBlog(page, 'private', `${prefix}-private`);
+    const priv = await createBlog(page, 'internal', `${prefix}-internal`);
     await becomeAnonymous(page);
 
     const res = await page.goto(`/explore?search=${encodeURIComponent(prefix)}`);
@@ -87,7 +87,7 @@ test.describe('对外列表 /explore', () => {
     const list = page.locator('.blog-list');
     await expect(list).toContainText(pub.title);
     await expect(list, 'link 不该被列举（读得到 ≠ 该被列举）').not.toContainText(link.title);
-    await expect(list, 'private 更不该被列举').not.toContainText(priv.title);
+    await expect(list, 'internal 更不该被列举').not.toContainText(priv.title);
   });
 
   test('裸 /explore 打得开（不依赖搜索也能用）', async ({ page }) => {
@@ -186,19 +186,19 @@ test.describe('对外列表 / 索引口径', () => {
     ).toHaveCount(0);
   });
 
-  test('sitemap 含 /explore 与 public 文章；link / private 都不进', async ({ page }) => {
+  test('sitemap 含 /explore 与 public 文章；link / internal 都不进', async ({ page }) => {
     const tag = uniqueTag();
     await ensureAuthor(page);
     const pub = await createBlog(page, 'public', `探索站点图-${tag}`);
     const link = await createBlog(page, 'link', `探索站点图-${tag}-link`);
-    const priv = await createBlog(page, 'private', `探索站点图-${tag}-private`);
+    const priv = await createBlog(page, 'internal', `探索站点图-${tag}-internal`);
     await becomeAnonymous(page);
 
     const sitemap = await (await page.request.get('/sitemap.xml')).text();
     expect(sitemap, '有公开文章时 /explore 自己也要进 sitemap').toContain('/explore');
     expect(sitemap, 'public 文章要进').toContain(`/blog/${pub.id}`);
     expect(sitemap, 'link 不该被列举').not.toContain(`/blog/${link.id}`);
-    expect(sitemap, 'private 不该被列举').not.toContain(`/blog/${priv.id}`);
+    expect(sitemap, 'internal 不该被列举').not.toContain(`/blog/${priv.id}`);
   });
 });
 
