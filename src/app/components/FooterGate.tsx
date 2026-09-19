@@ -5,7 +5,7 @@ import type { ReactNode } from 'react';
 
 // FooterGate —— 按路由决定要不要渲染站点页脚。
 //
-// 【为什么需要它】`/chat` 是满屏工作台（.chat-page 高 calc(100vh - 62px) + overflow:
+// 【为什么需要它】`/chat` 是满屏工作台（.chat-page 高 calc(100dvh - 62px) + overflow:
 // hidden），而 layout 里的页脚是文档流的最后一块：body 是 flex column、main flex:1，
 // 页脚一出，文档就比视口高出一截 —— 页面平白多出整条滚动条，滚一下连输入框都被顶出
 // 视野。讨论页不需要页脚，去掉后 62px 顶栏 + 讨论区正好一屏。

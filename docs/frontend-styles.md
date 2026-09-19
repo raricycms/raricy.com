@@ -282,7 +282,14 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
 - **页脚**：`.site-footer`，背景卡片色 + 顶部分隔，内容容器同 1140px 体系。
 - **后台**：`.admin-layout` 左侧 220px 固定侧边栏（移动端折叠成横向标签条）+ 右侧滚动内容区，内容容器最大 1400px。
 - **栅格**：首页用 flex + `gap` 或 CSS Grid（`repeat(auto-fit, minmax(...))` / 显式 `repeat(3,1fr)`），**不用浮点栅格**。另有 `layout/_grid.scss` 与 `base/_forms.scss` 提供 Bootstrap 风格行/列工具。
-- 页面骨架：`body { display:flex; flex-direction:column; min-height:100vh }` + `main { flex:1 0 auto }`，页脚始终贴底。
+- 页面骨架：`body { display:flex; flex-direction:column; height:100dvh; min-height:100dvh }` + `main { flex:1 0 auto }`，页脚始终贴底。
+
+  > ⚠️ **量视口高度一律写 `dvh`，不要只写 `vh`**（保住老浏览器就先写一行 `vh`、
+  > 下一行再写 `dvh`）。手机上 `vh` 量的是**地址栏收起时**的大视口，比眼前看得见的高度
+  > 多出约一条地址栏；文档因此比可见区高 → 页面平白能上下滑，而一滑地址栏就收起、
+  > 可见区随即变高，文档下沿之外露出**通栏一条底色**。
+  > 讨论区是唯一「整屏工作台」（`body` 与 `.chat-page` 必须严丝合缝，见 §6.5），
+  > 它对这个最敏感；其余页面只是白多出几十像素的滚动余量。
 
 ## 6. 组件风格要点
 
@@ -416,7 +423,7 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
 
 ### 6.5 讨论页（`pages/_chat.scss`）
 
-`/chat` 是双栏工作台，页面高度 `calc(100vh - 62px)`、`overflow: hidden`，色板全部走 CSS 变量随明暗主题：
+`/chat` 是双栏工作台，页面高度 `calc(100dvh - 62px)`（`vh` 兜底）、`overflow: hidden`，色板全部走 CSS 变量随明暗主题：
 
 - 会话侧栏 `.chat-sidebar`：固定 280px，会话项 `.chat-chan`（头像 / 标题 / 预览 / 未读徽标 / 删除），头部 `.chat-sidebar__head` 带折叠钮 —— `.chat-page--collapsed` 时收到 60px 只留图标。
   - **选中项只有「整行品牌淡底」这一种表达**（`.chat-chan.is-active`）。它原先还带一条

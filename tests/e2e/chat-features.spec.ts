@@ -401,26 +401,29 @@ test.describe('发起私聊', () => {
 
 test.describe('讨论页布局', () => {
   /**
-   * 讨论区是满屏工作台（.chat-page 高 calc(100vh - 62px)），站点页脚在它下面
+   * 讨论区是满屏工作台（.chat-page 高 calc(100dvh - 62px)），站点页脚在它下面
    * 会把文档撑过一屏 —— 多出整页滚动条，滚一下连输入框都被顶出视野。
    * 断言落在「页脚不存在」+「文档没有溢出」两条上：只断言前者的话，将来若换成
    * 用 CSS 隐藏（display:none 之外的写法）仍可能留下高度。
+   *
+   * ⚠️ 这条**抓不到**真正的手机端病根（`vh` = 地址栏收起时的大视口）：无头浏览器
+   * 里没有地址栏，`vh` 与 `dvh` 恰好相等，两版代码都是绿的。它守的是「文档别平地
+   * 高出一块」（页脚 / 多出来的块级元素）。地址栏那一条由
+   * tests/unit/viewport-height-guard.test.ts 静态盯着。
    */
-  test('/chat 不渲染站点页脚，且整页没有滚动条', async ({ page, isMobile }) => {
+  test('/chat 不渲染站点页脚，且整页没有滚动条', async ({ page }) => {
     await loginViaApi(page, SEED_USERS.core.username);
     await page.goto('/chat');
     await expect(page.locator('.chat-page')).toBeVisible();
 
     await expect(page.locator('footer.site-footer')).toHaveCount(0);
 
-    // 移动端 viewport 高度在 Playwright 里是固定的，理论上同样成立；
-    // 但移动端还有地址栏/抽屉等变量，只对桌面端断言高度。
-    if (!isMobile) {
-      const overflow = await page.evaluate(
-        () => document.documentElement.scrollHeight - document.documentElement.clientHeight
-      );
-      expect(overflow, '讨论页不应出现整页滚动条').toBeLessThanOrEqual(1);
-    }
+    // 两个 project 都断言：移动端视口在 Playwright 里虽是定值，但「抽屉 / 汉堡 /
+    // 触屏」那几档样式是窄屏才挂上的，桌面那一遍覆盖不到（原先是跳过移动端）。
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollHeight - document.documentElement.clientHeight
+    );
+    expect(overflow, '讨论页不应出现整页滚动条').toBeLessThanOrEqual(1);
   });
 });
 

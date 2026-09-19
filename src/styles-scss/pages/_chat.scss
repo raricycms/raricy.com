@@ -8,7 +8,16 @@
 
 .chat-page {
   display: flex;
+  // 高度 = 可见视口减顶栏（顶栏 62px 由 body 的 padding-top 让出，见 _header.scss）。
+  //
+  // ⚠️ dvh 那一行是手机端的命门，别删也别「统一成 vh」：
+  //   手机上 vh 量的是**地址栏收起时**的大视口，比眼前能看见的高度多出约一条地址栏。
+  //   页面比可见区高一截 → 讨论区能上下滑；而一滑地址栏就收起、可见区随即变高，
+  //   文档下沿之外露出**通栏一条底色**（≈ 一个顶栏高，就是「输入框下方那条黑条」）。
+  //   dvh 跟着地址栏收放，永远等于当前可见高度，两个症状一起消失。
+  //   老浏览器不认 dvh，退回上一行的 vh（即改动前的行为）。
   height: calc(100vh - 62px);
+  height: calc(100dvh - 62px);
   background: var(--color-background-page);
   overflow: hidden;
 }

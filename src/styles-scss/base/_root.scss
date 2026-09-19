@@ -133,8 +133,22 @@
 
 
 /* Ensure footer stays at bottom when content is short */
-html, body { height: 100%; }
-body { min-height: 100vh; display: flex; flex-direction: column; }
+html { height: 100%; }
+body {
+  /* ⚠️ dvh 那两行是手机端的命门，别删也别「统一成 vh」：
+     手机上 vh 量的是**地址栏收起时**的大视口，比眼前能看见的高度多出约一条地址栏。
+     body 因此比可见区高 → 页面平白能上下滑；而一滑地址栏就收起、可见区随即变高，
+     文档下沿之外露出**通栏一条底色**。dvh 跟着地址栏收放，永远等于可见高度。
+     讨论页的整屏工作台（.chat-page）直接踩在这条上 —— 它还要再减掉 62px 顶栏，
+     那边的 dvh 与这里是一对，缺一条症状就还在，见 pages/_chat.scss。
+     老浏览器不认 dvh，回落到上一行的百分比 / vh（即改动前的行为）。 */
+  height: 100%;
+  height: 100dvh;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
 main { flex: 1 0 auto; }
 
 /* ── 滚动条 ─────────────────────────────────────────────────────────────────
