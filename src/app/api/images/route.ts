@@ -55,9 +55,9 @@ function displayFilename(name: string, mimeType: string): string {
 
 // POST /api/images — multipart 二进制上传（登录 + 禁言校验）
 //
-// 上传流程：MIME 白名单 → 尺寸上限 →
-// 角色配额累计 → 内存限频（75 次/时）→ sharp 压缩 → 10 位安全 ID 写盘 →
-// 落库（file_size 记压缩后字节）。
+// 上传流程：MIME 白名单 → 内容嗅探 → 尺寸上限 →
+// 角色配额累计 → 内存限频（RULES.imageUploadHourly，**按张计**）→ sharp 压缩 →
+// 10 位安全 ID 写盘 → 落库（file_size 记压缩后字节）。
 //
 // 【一次可以传多个】表单字段 `file` 可以重复出现 —— vditor 多选时就是这么发的
 // （本站统一用 `file`；vditor 那套 succMap/errFiles 的翻译留在客户端）。逐个文件跑
