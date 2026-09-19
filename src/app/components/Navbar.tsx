@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import type { SafeUser } from '@/lib/auth';
-import { hasAdminRights } from '@/lib/auth';
+import { hasAdminRights, isCoreUser } from '@/lib/auth';
 import LogoutLink from './LogoutLink';
 import NavLink from './NavLink';
 
@@ -8,6 +8,20 @@ import NavLink from './NavLink';
 // base.js 通过 id (#userDropdownToggle, #userDropdownMenu, #themeToggle, #notificationBadge,
 // #checkinBadge, #chatUnreadDot) 与 .open class 操纵此顶栏，故这些 id / class 改不得。
 export default function Navbar({ user }: { user: SafeUser | null }) {
+  /**
+   * 「博客」指向哪 —— **按档位分流**：core+ 去站内全量 `/blog`，其余去对外公开列表
+   * `/explore`。
+   *
+   * ⚠️ 这**不是**「把入口藏起来」，别把它当成自相矛盾改回去。CLAUDE.md 与下面
+   * 「讨论」那段的「入口不跟着藏」，说的是**不要因为档位不够就把入口藏掉**
+   * （那种「入口有、门禁却不认」才是自相矛盾）。这里入口照旧对所有人渲染，只是
+   * 通向两个都能打开的列表 —— 访客点进去不再是一张登录页。
+   *
+   * 相关钉子：tests/e2e/access-control.spec.ts 的「入口保留」组，以及
+   * tests/e2e/explore.spec.ts 里对这两条去向的断言。
+   */
+  const blogHref = isCoreUser(user) ? '/blog' : '/explore';
+
   return (
     <header className="site-navbar" role="navigation">
       <div className="site-container">
@@ -37,7 +51,7 @@ export default function Navbar({ user }: { user: SafeUser | null }) {
               </NavLink>
             </li>
             <li>
-              <NavLink className="site-link" href="/blog">
+              <NavLink className="site-link" href={blogHref}>
                 博客
               </NavLink>
             </li>

@@ -1,15 +1,28 @@
 import Link from 'next/link';
+import { getCurrentUser, isCoreUser } from '@/lib/auth';
 import HomeFooterNote from './components/HomeFooterNote';
 import HeroCanvas from './components/HeroCanvas';
 
 // 首页 — 样式结构：home-container / home-display / feature-card / home-btn
 //
 // 【四张卡都对所有人渲染，含「讨论」】/chat 是 core+ 档，非核心用户点进去会撞 403 ——
-// 这是**有意保留**的：功能存在、但需要更高权限，是正常的权限阶梯（与顶栏「博客」
-// 「日志」同一种待遇）。曾经按「入口与门禁同档」把讨论卡藏起来过，站长明确不要那样。
+// 这是**有意保留**的：功能存在、但需要更高权限，是正常的权限阶梯（与顶栏「日志」
+// 同一种待遇）。曾经按「入口与门禁同档」把讨论卡藏起来过，站长明确不要那样。
 // 注意别把这条与另一种情况混为一谈：/admin/users 那种「入口有、门禁却不认」的
 // 自相矛盾（核心用户看得到侧栏却被 403）才是必须修的，见 access-control.spec。
-export default function HomePage() {
+//
+// 【「博客/文章」卡是这条口径的例外，且是有意的】它按档位**分流**而不是藏起来：
+// 卡对所有人渲染，只是 core+ 去 /blog（站内全量）、其余去 /explore（对外公开列表）。
+// 与顶栏「博客」同一条口径，理由写在那边的注释里。别把两者「统一」成 /blog ——
+// 那等于让访客点进一张登录页。
+export default async function HomePage() {
+  // 为分流取一次登录态。⚠️ 首页因此从同步组件变成 async，并比从前多一次
+  // getCurrentUser()（读 cookie + 一次主键查询）。根 layout 已经查过一次，但那个
+  // 函数没有 React cache()，两处不共享 —— 一次主键查询，可接受。要收口得给它加
+  // cache()，那动的是全站鉴权路径，得单独一批做并单独验。
+  const user = await getCurrentUser();
+  const blogHref = isCoreUser(user) ? '/blog' : '/explore';
+
   return (
     <>
       <section className="hero-section" id="home">
@@ -51,7 +64,7 @@ export default function HomePage() {
             </div>
 
             <div className="home-grid-item">
-              <Link className="feature-card card-blog" href="/blog">
+              <Link className="feature-card card-blog" href={blogHref}>
                 <div className="card-body home-text-center">
                   <span className="feature-icon" aria-hidden="true"></span>
                   <h4 className="card-title" style={{ marginBottom: '0.75rem' }}>博客/文章</h4>
