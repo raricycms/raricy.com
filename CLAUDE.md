@@ -213,7 +213,7 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 
 ### 文章对外可见性
 
-`docs/architecture.md` §6.11 + `src/lib/blog-service.ts` 头部（**四条不变量**）。
+`docs/architecture.md` §6.11 / §6.12 + `src/lib/blog-service.ts` 头部（**六条不变量**）。
 三档 `private` / `link` / `public`，**只对非 core 的查看者生效** —— core+ 在博客域
 是全读的，所以这一列对任何站内入口都是零行为变化，管理员也**不需要豁免**（那是结构性
 豁免，服务层里没有也不该有 `if (isAdmin)`）。
@@ -221,13 +221,26 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 - **判「对外可见」永远用白名单**（`EXTERNAL_VISIBILITIES` / `EXTERNAL_VISIBLE_BLOG_WHERE`），
   **绝不写 `{ not: 'private' }` 或 `visibility !== 'private'`** —— 加第四档时那两种写法会
   **静默把新档一起放出去**，而放出去不可逆（有静态守卫盯：`tests/unit/blog-visibility-guard.test.ts`）。
-- **不带查看者的读口必须走具名出口**（`getExternallyVisibleBlog` / `listIndexableBlogs`），
-  别各自手写 where —— 名字就是静态台账认得它的凭证。
+- **不带查看者的读口必须走具名出口**（`getExternallyVisibleBlog` / `listIndexableBlogs` /
+  `listPublicBlogs`），别各自手写 where —— 名字就是静态台账认得它的凭证。
 - **「对外可读」与「可列举 / 可索引」是两件事**：`link` 读得到，但不进 sitemap、不许索引。
-- **不给 `listBlogs` 加可见性过滤**（它是**站内**列表，调用方都是 core+）。对外列表要
-  另起入口 —— 已有一条钉现状的用例，谁加了过滤会当场红。
-- 词汇（三档的名字 / 白名单 / 解析）住在 `src/lib/blog-visibility.ts`，那是个**零依赖**
-  模块：发文表单是客户端组件，而 `blog-service` 拖着 prisma 进不了客户端包。
+- **sitemap 与 `/explore` 必须列同一个集合**（都用 `INDEXABLE_BLOG_WHERE`）。这不是洁癖：
+  多一层过滤就会出现「搜索引擎收录了一篇，读者在公开列表上翻不到」，而那条差异
+  **不会有任何报错**。同理 `exclude_from_all` / `focus_hidden` **不作用于对外列表** ——
+  它们是站内陈列规则与账号级偏好（有静态守卫盯：`tests/unit/explore-visibility-guard.test.ts`）。
+- **不给 `listBlogs` 加可见性过滤**（它是**站内**列表，调用方都是 core+）。对外列表
+  **已经另起了入口**（`listPublicBlogs`）—— 已有一条钉现状的用例，谁加了过滤会当场红。
+- **对外搜索绝不碰正文**，且那件事是**编译期**保证（`PublicSearchField = Exclude<SearchField,
+  'content'>`），不靠一句提醒。
+- 词汇（三档的名字 / 白名单 / 解析 / **两张人话表**）住在 `src/lib/blog-visibility.ts`，
+  那是个**零依赖**模块：发文表单与文章卡片都是客户端组件，而 `blog-service` 拖着 prisma
+  进不了客户端包。两张表都是 `Record<BlogVisibility, string>`，加第四档时 tsc 会因缺键报错。
+- **访客的「博客」入口按档位分流**（core+ → `/blog`，其余 → `/explore`）。这**不违反**
+  下面的「入口不跟着藏」—— 那条反对的是「因档位不够就把入口藏掉」；这里入口照旧对所有人
+  渲染。**别把它「统一」回 `/blog`**，那等于让访客点进一张登录页。
+- **JSON-LD 一律过 `src/lib/json-ld.ts` 的 `jsonLdScript()`**，别手写 `dangerouslySetInnerHTML`
+  —— 本站**没有 CSP**，一个含 `</script>` 的文章**标题**就是对外可索引页面上的一发 XSS。
+  机器读的时间戳一律过 `db-time.ts` 的 `isoWithOffset()`，不是裸 `toISOString()`。
 - 分享卡片走 sharp 复用 `poster.ts`，**别改用 `next/og` 的 Satori**（它不读系统字体栈，
   中文要自带字体二进制 = 第二条字体管线）。改版式几何前先跑 `tests/unit/og-card.test.ts`。
 

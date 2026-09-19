@@ -85,6 +85,7 @@
 | `/login` · `/register` | page | 认证（登出是 `POST /api/auth/logout`，**没有** GET 路由） |
 | `/blog` · `/blog/upload` · `/blog/[id]/edit` | page | 博客列表与编辑 —— **一律 core+** |
 | `/blog/[id]` | page | 文章详情。**按身份两种视图**：core+ 看成员视图（正文 + 互动 + 评论），访客看纯阅读视图。文章 `visibility` 为 link / public 时访客可读，private 时访客落到登录页（见 §6.11） |
+| `/explore` | page | **对外公开列表**（`public` 档，与 sitemap 同一个集合）。全站**唯一**不需要登录的浏览面，访客与非 core 的「博客」入口指向它（见 §6.12） |
 | `/api/blogs` · `/api/blogs/[id]` · `/api/categories` · `/api/spider/*` | API | 博客 API + 栏目清单 + 爬虫 API。**全部 core+**，与 `/blog` 页面同档（读口含正文搜索那条重活，见 §6.5）。`/api/categories` 是给发文方查 `category_id` 的读口（此前只有 `/api/admin/categories`，机器人无从枚举）；发文对外契约见 `docs/bot/blog-bot.md` |
 | `/api/og/blog/[id]` | API | **分享卡片 PNG**（OG 图）。无会话档位，逐篇判可见性：只对外可见的文章返回 200，其余与「不存在」同形 404。缓存与 `X-Robots-Tag` 按档位发（见 §6.11） |
 | `/api/auth/authentic` · `/zhh` | API + route | 邀请码升 core · 邀请码生成（站长） |
@@ -425,16 +426,16 @@ div 会卸载重挂，`deps=[]` 的监听器永远附不上。
 站内入口都是零行为变化，管理员 / 站长也**不需要豁免**（他们本来就在 core+ 里，是结构性
 豁免，服务层里没有也不该有 `if (isAdmin)`）。
 
-判定收在 `src/lib/blog-service.ts` 的**三个具名出口**（四条不变量在它的文件头）：
-不带查看者的读口必须走 `getExternallyVisibleBlog()` / `listIndexableBlogs()`；
-带查看者的走 `getBlogDetail(id, viewer)`。词汇（三档的名字、白名单、解析）住在
-`src/lib/blog-visibility.ts` —— 那是个**零依赖**模块，因为发文表单是客户端组件，
-而 `blog-service` 拖着 prisma 进不了客户端包。
+判定收在 `src/lib/blog-service.ts` 的**四个具名出口**（六条不变量在它的文件头）：
+不带查看者的读口必须走 `getExternallyVisibleBlog()` / `listIndexableBlogs()` /
+`listPublicBlogs()`；带查看者的走 `getBlogDetail(id, viewer)`。词汇（三档的名字、白名单、
+解析、两张人话表）住在 `src/lib/blog-visibility.ts` —— 那是个**零依赖**模块，因为发文
+表单与文章卡片都是客户端组件，而 `blog-service` 拖着 prisma 进不了客户端包。
 
 **「对外可读」与「可列举 / 可索引」是两件事**：`link` 读得到，但不进 sitemap、不许索引。
 所以判可达用 `EXTERNAL_VISIBILITIES`，sitemap 用 `INDEXABLE_VISIBILITIES`，别混用。
 
-**三个静态守卫盯着它**（都是「删掉就会静默坏掉」的那类）：
+**五个静态守卫盯着它**（都是「删掉就会静默坏掉」的那类）：
 - `tests/unit/blog-visibility-guard.test.ts` —— 不许写 `{ not: 'private' }` /
   `visibility !== 'private'`。那两种写法在加第四档时会**静默把新档一起放出去**，
   而放出去不可逆。
@@ -442,8 +443,14 @@ div 会卸载重挂，`deps=[]` 的监听器永远附不上。
   它是**新的一类**守卫（per-object 可见性，不是会话档位）。对外路由必须过它，
   台账才认得；它**不在** `PUBLIC_READ_ROUTES` 里，因为那张表的门槛明写
   「一旦开始返回用户内容就必须挪走」，而 OG 图恰恰返回用户内容。
+- `tests/unit/explore-visibility-guard.test.ts` —— 钉「对外列表与 sitemap 必须列同一个
+  集合」：两个出口的函数体里都必须出现 `INDEXABLE_BLOG_WHERE` 这个名字（见 §6.12）。
+- `tests/unit/blog-visibility-tag.test.ts` —— 钉站内列表卡片上「除 private 外每一档都有
+  标记」。那两个分支写死了字面量类名（`css-tsx-classes` 只认字面量），所以加第四档时
+  不会自动长出来，而作者会把没标记的文章看成「没对外」。
 - `tests/route/blog-auth.test.ts` 末尾那组 —— OG 图对 private / 已软删 / 不存在
-  **三者 404 且响应体逐字相同**（差一个字就是存在性探针）。
+  **三者 404 且响应体逐字相同**（差一个字就是存在性探针）；以及 `PATCH /api/blogs/:id`
+  的可见性改动**只有作者本人**能动（管理员也不行）。
 
 **分享卡片（OG 图）**：`/api/og/blog/<id>` 是 route handler，**不是**
 `opengraph-image.tsx` 文件约定（后者不在 `anonymous-read-guard` 的扫描面内，
@@ -473,6 +480,76 @@ disallow（断掉「private 文章 → 307 → next 参数里带 UUID」那条�
    本期刻意不动 —— 要收紧的正确做法是给 spider 单独一档或只读账号，
    **不是**在那条路由里加可见性过滤（那会把「站外聚合器能读什么」和「文章是否对外」
    这两件事混在一起）。
+
+### 6.12 对外公开列表 `/explore`
+
+第 1 期把「单篇读得到」打开了，但访客读完就是死胡同 —— 而从站外点进来的人**没有经过
+本站导航**。`/explore` 是第二条边，也是全站**唯一**不需要登录的浏览面。
+
+**取数只有一个出口**：`listPublicBlogs()`（`src/lib/blog-service.ts`），它以
+`...INDEXABLE_BLOG_WHERE` 起手，与 sitemap 的 `listIndexableBlogs()` **列同一个集合**。
+这条同源不是洁癖 —— 「可发现」的整个承诺就是「爬虫抓得到 ⟺ 公开列表上找得到」；
+若列表多一层过滤，就会出现「搜索引擎收录了一篇，读者在公开列表上翻不到」，而这条差异
+**不会有任何报错**。有静态守卫盯（见 §6.11 的守卫清单）。
+
+⚠️ **它按「结果集」判空，而不是按请求**：`exclude_from_all` 与 `focus_hidden`
+（`exclude_from_all` 是站内「全部文章」的陈列规则、`focus_hidden` 是账号级浏览偏好）
+**一律不作用于这里** —— 对外列表的资格只有一条 `visibility = public`。混合它们会直接
+破坏上面那条同源。
+
+**侧栏从公开集合反推**：`listPublicCategoryFacets()` 取出公开文章真正出现过的
+`category_id`，页面据此剪枝栏目树 —— 只列「自己或某个子栏目有公开文章」的栏目。
+空栏目是死链，也会给搜索引擎一批空页面（与 sitemap 不收空路径是同一条纪律）。
+它也刻意**不递归**：本站只支持两级栏目。
+
+**卡片上没有计数**（`.blog-stats` 整块不渲染）。对外视图没有评论区（§6.11），
+卡片上写「评论 12」却翻不到评论是自相矛盾的；点赞与鱼干更是站内的事。同理，
+**作者名是纯文本不链接** —— 作者页对外（`/u/<id>` 只列该用户的 public 文章）是个独立的
+对外读口，要单独想清楚，本期不做。卡片上的可见性短标记取自 `VISIBILITY_BADGE`
+（零依赖模块），加第四档时 tsc 会因 `Record<BlogVisibility, string>` 缺键报错。
+
+**索引口径**（三条互不重叠）：
+
+| 情形 | `robots` | canonical |
+|---|---|---|
+| 结果集为空 | `noindex, follow` | 自身 |
+| 带 `?search=` | `noindex, follow`（恒） | 自身（含 search） |
+| 其余 | `index, follow` | **自身**（含 `?category=` 与 `?page=`） |
+
+⚠️ **canonical 恒指向自身，别把分页指到第 1 页** —— 那等于告诉搜索引擎「第 2 页是第 1
+页的副本」，后几页的文章会跟着一起掉出索引。这是本仓库第一处用 `alternates.canonical`。
+空结果 → `noindex` 这一条与 sitemap 是**同一件事的两半**：`sitemap.ts` 也只在
+`listIndexableBlogs()` 非空时才把 `/explore` 列进去，否则就是「把一个自报 noindex 的
+URL 请来抓」。（`robots.ts` 的**路径级**规则不需要动 —— `/explore` 本来就未被 disallow，
+被 `allow: '/'` 覆盖。）
+
+**访客的两条「博客」入口按档位分流**：顶栏与首页卡都对所有人渲染，但 core+ 指向 `/blog`
+（站内全量）、其余指向 `/explore`。这不违反「入口不跟着藏」（§8）—— 那条反对的是
+**因档位不够就把入口藏掉**；这里入口照旧在，只是通向一个访客真能打开的页面。
+⚠️ 别把这当成自相矛盾「统一」回 `/blog`，那等于让访客点进一张登录页。
+另外，访客视图的文章底部还有一条回 `/explore` 的链接（`blog/[id]/page.tsx`）——
+那条边是给站外直接落地的读者准备的。
+
+**限频**：`/explore` 是本站**第一个匿名页面**的限频，没有会话可依，只能按 IP
+（`RULES.exploreSearchPerIp`，与 `ogImagePerIp` / `spiderFavoritePerIp` 同档）。
+**只对真的带搜索词的请求计数**，翻页 / 换栏目不计数 —— 否则限频会变成「限页」，
+正常访客翻两页就撞墙，而且不报错、单测也测不出来。超限时**不创建查询 promise**
+（创建即发起查询，限频就只省流量、没省 CPU），且提示文案必须与「没有结果」可区分。
+
+⚠️ **对外搜索绝不碰正文**：字段集是 `PublicSearchField = Exclude<SearchField, 'content'>`，
+所以那是**编译期**事实 —— 谁想把 `content` 加进去，tsc 当场拒绝，而不是等线上匿名用户
+把 48.6MB 正文扫一遍才发现。行为侧另有一条哨兵用例兜底。
+
+**它不能静态化**：根 layout 读 cookie 取登录态（顶栏要按档位渲染），整棵树因此都是动态的。
+写 `revalidate` 是自欺（不会生效，只会让下一个人以为这页有缓存）。
+
+**结构化数据**：public 文章页输出 `BlogPosting`（`src/lib/json-ld.ts` 的 `jsonLdScript()`）。
+⚠️ 本站**没有任何 CSP**（`next.config.mjs` 与 `src/middleware.ts` 都查过），转义写错时
+没有任何响应头兜底：一个含 `</script>` 的**标题**就能提前闭合脚本块，而文章页恰恰是对外
+可索引的。所以 `dangerouslySetInnerHTML` **一律过那个函数**，别在 JSX 里手写。
+`datePublished` / `dateModified` 一律过 `db-time.ts` 的 `isoWithOffset()` ——
+库内是「UTC+8 墙上时间贴 Z」，裸 `toISOString()` 会让机器以为它**晚** 8 小时发布
+（落在未来还可能让搜索引擎暂缓收录）。
 
 ## 7. 数据流（4 个典型路径）
 
