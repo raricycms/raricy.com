@@ -21,29 +21,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import crypto from 'node:crypto';
-import { createRequire } from 'node:module';
-
-// fernet 无类型声明；用 createRequire 以 CJS 方式加载并给出最小接口。
-const nodeRequire = createRequire(import.meta.url);
-
-interface FernetSecret {
-  readonly signingKey: unknown;
-  readonly encryptionKey: unknown;
-}
-interface FernetToken {
-  decode(): string;
-  encode(message?: string): string;
-}
-interface FernetLib {
-  Secret: new (secret64: string) => FernetSecret;
-  Token: new (opts: {
-    secret: FernetSecret;
-    token?: string;
-    message?: string;
-    ttl?: number;
-  }) => FernetToken;
-}
-const fernet = nodeRequire('fernet') as FernetLib;
+import { openSecret, sealSecret } from './secret-box';
 
 // 博客系统本身也是账户服务里的一个账户（用系统 Key 结算作者分成）。
 export const SYSTEM_USER_ID = 'raricy-blog-system';
@@ -112,6 +90,11 @@ export function assertRemoteRequiredInProduction(what: string): void {
 }
 
 // ── Fernet 解密（SHA-256 派生 → Fernet）───────────────────────────────────
+//
+// 密码学实现已抽到 src/lib/secret-box.ts（回调的签名密钥也要用同一套派生，
+// 抄两份必然 drift）。本文件只保留**自己的错误语义**：把 SecretBoxError 翻成
+// AccountServiceError(503)，以维持写路径的 fail-closed 契约 —— 那个 503 是
+// 调用方（fish-sync 的补偿事务）判别「这笔没成交」的依据，不能改成别的类型。
 
 /**
  * 解密存于 User.fishApiKeyEncrypted 的用户 API Key。
@@ -123,12 +106,7 @@ export function decryptApiKey(encrypted: string, cfg = accountConfig()): string 
     throw new AccountServiceError('缺少 FISH_ENCRYPTION_KEY / SECRET_KEY，无法解密用户账户 Key', 503);
   }
   try {
-    const derived = crypto.createHash('sha256').update(cfg.encryptionKeySource).digest();
-    const secret64 = derived.toString('base64url'); // 32 bytes → url-safe base64
-    const secret = new fernet.Secret(secret64);
-    // ttl:0 关闭 Fernet 令牌过期校验（存量密文可能是很久以前加密的）。
-    const token = new fernet.Token({ secret, token: encrypted, ttl: 0 });
-    return token.decode();
+    return openSecret(encrypted, cfg.encryptionKeySource);
   } catch (e) {
     if (e instanceof AccountServiceError) throw e;
     throw new AccountServiceError(`用户账户 Key 解密失败: ${String(e)}`, 503);
@@ -146,11 +124,7 @@ export function encryptApiKey(plain: string, cfg = accountConfig()): string {
     throw new AccountServiceError('缺少 FISH_ENCRYPTION_KEY / SECRET_KEY，无法加密用户账户 Key', 503);
   }
   try {
-    const derived = crypto.createHash('sha256').update(cfg.encryptionKeySource).digest();
-    const secret64 = derived.toString('base64url'); // 32 bytes → url-safe base64（与 decrypt 一致）
-    const secret = new fernet.Secret(secret64);
-    const token = new fernet.Token({ secret });
-    return token.encode(plain);
+    return sealSecret(plain, cfg.encryptionKeySource);
   } catch (e) {
     if (e instanceof AccountServiceError) throw e;
     throw new AccountServiceError(`用户账户 Key 加密失败: ${String(e)}`, 503);
