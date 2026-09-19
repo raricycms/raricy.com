@@ -711,6 +711,18 @@ a {
     .comment-section > & {
         padding-left: 0;
         margin-left: 0;
+        /* ★ 整片评论区**唯一**的横向滚动容器。
+           `.comment-item` 的 min-width 把深层楼中楼撑宽后，中间那些 .comment-list 都是
+           overflow: visible（不裁），溢出会一路上浮到这一层 —— 只在这里给滚动条，
+           于是整片评论区只有**一条**横条，而不是每层一条，也不是画在 .blog-detail 上那条。
+           ⚠️ 必须带 `.comment-section >` 限定：嵌套列表复用同一个 .comment-list 类名，
+           不加限定就是每层各成滚动容器、各画一条横条。
+           代价：overflow-x: auto 会把 overflow-y 也算成 auto（规范如此，.blog-detail 一样）。
+           评论区内部没有需要纵向逃逸的元素 —— 弹窗 / 灯箱都渲染在本列表**外面**
+           （CommentSection.tsx 里它们是 .comment-section 的兄弟）且是 position: fixed；
+           表情面板是流内块；本元素高度又是 auto，不出竖条。
+           横条画在整片评论区的底部：列表多高它就在多低处（触屏 / 触控板不受影响）。 */
+        overflow-x: auto;
     }
 }
 
@@ -726,6 +738,19 @@ a {
 .comment-item {
     padding: 18px 0;
     border-top: 1px solid var(--color-border);
+    /* ★ 一条评论的最窄宽度 —— 再窄正文就退化成「一行一个字」了。
+       可用宽度 = 容器宽 − .comment-list 的缩进 × (层数−1)，缩进是 15px（桌面）/ 8px（窄屏）。
+       不设地板的后果：390px 手机上第 44 层只剩 14px，一行一个字（用户报的就是它）；
+       设了之后窄屏第 16 层（238px）踩到地板，再深就改由顶层列表横向滚动兜住，
+       桌面则要第 43 层才踩到（868px 容器），基本不会遇到。
+       取值依据：评论里**不能换行**的最宽一行是 .actions —— components/_button.scss
+       那条 flex 行没写 flex-wrap：点赞胶囊 ~54 + 间距 10 + 回复 ~46 + 间距 10 +
+       删除 ~46 ≈ 166px，计数到三位数时 ≈186px；240 留了余量，也约等于 0.95rem 下的
+       15 个汉字。同时它必须低于**最窄**的容器（320px 屏 → 288px），否则根评论自己
+       就会顶出横条。
+       ⚠️ **必须是固定 px**：写成 min(240px, 100%) 之类，可用宽度一小于 240 就跟着缩
+       —— 那正是要修的症状。撑出去的部分由顶层列表的 overflow-x 接住（见上面 .comment-list）。 */
+    min-width: 240px;
 }
 
 /* 嵌套列表的第一楼紧跟父楼，不要顶出一条线来断掉从属关系 */
@@ -868,6 +893,15 @@ a {
        而非声明的 max-width: 900px，要动属于改版，得连着阅读行宽一起议。 */
     .blog-content-container-container {
         padding: 0;
+    }
+
+    /* 窄屏压缩楼中楼缩进：15px 在 390px 视口上每层吃掉 4% 可用宽度，几层下来正文就
+       退化成一行一个字（.comment-item 的 min-width 只是最后的兜底）。8px 取自 $space-2。
+       写**裸 .comment-list**（0-1-0）而不是 `.comment-section > .comment-list`：顶层那条
+       重置是 0-2-0，仍然压得住它 —— 顶层永远 padding-left: 0，只有嵌套层拿到 8px。
+       桌面端 15px 不动（只按窄屏反馈改）。 */
+    .comment-list {
+        padding-left: v.$space-2;
     }
 
     .blog-content-container h1 {
