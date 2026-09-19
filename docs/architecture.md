@@ -83,8 +83,10 @@
 |------|------|------|
 | `/` | page | 导航首页（不列文章） |
 | `/login` · `/register` | page | 认证（登出是 `POST /api/auth/logout`，**没有** GET 路由） |
-| `/blog` · `/blog/[id]` · `/blog/upload` · `/blog/[id]/edit` | page | 博客 |
+| `/blog` · `/blog/upload` · `/blog/[id]/edit` | page | 博客列表与编辑 —— **一律 core+** |
+| `/blog/[id]` | page | 文章详情。**按身份两种视图**：core+ 看成员视图（正文 + 互动 + 评论），访客看纯阅读视图。文章 `visibility` 为 link / public 时访客可读，private 时访客落到登录页（见 §6.11） |
 | `/api/blogs` · `/api/blogs/[id]` · `/api/categories` · `/api/spider/*` | API | 博客 API + 栏目清单 + 爬虫 API。**全部 core+**，与 `/blog` 页面同档（读口含正文搜索那条重活，见 §6.5）。`/api/categories` 是给发文方查 `category_id` 的读口（此前只有 `/api/admin/categories`，机器人无从枚举）；发文对外契约见 `docs/bot/blog-bot.md` |
+| `/api/og/blog/[id]` | API | **分享卡片 PNG**（OG 图）。无会话档位，逐篇判可见性：只对外可见的文章返回 200，其余与「不存在」同形 404。缓存与 `X-Robots-Tag` 按档位发（见 §6.11） |
 | `/api/auth/authentic` · `/zhh` | API + route | 邀请码升 core · 邀请码生成（站长） |
 | `/fish` · `/fish/transactions` · `/api/fish/*` | page + API | 小鱼干面板 + 流水 |
 | `/fish/market` · `/api/fish/market/*` | page + API | 鱼干市场（第一期只有**用户间转账**，无手续费）：`POST transfer`（支持客户端幂等键）/ `GET users`（收款人搜索）/ `POST balance`、`POST transactions`（站外脚本用的无状态查询，含 `since_id` 对账游标）/ `POST pay`（收银台专用）。写路径见 §6.3；对外契约见 `docs/bot/fish-bot.md` |
@@ -203,7 +205,6 @@ GET/HEAD/OPTIONS 视为安全方法，不校验。
 
 - **桶会落盘**：随 10 分钟一次的惰性清扫写入 `instance/rate-limit-snapshot.json`（原子写；`RATE_LIMIT_SNAPSHOT_PATH` 可覆盖），进程启动时回灌 —— **重启不重置窗口**。不落盘的话，一次发版等于给所有人发免刷通行证，也放走进行中的刷量。测试环境不自动回灌，保证确定性。
 - **登录限频只统计失败**：IP 与用户名（小写归一）两个维度分别计数，任一超限即 429。所以正常用户不会被自己的成功登录挡住；顺带它也是 CPU 保护（每次尝试都要跑一次 scrypt）。
-- **规则值与计桶的键是两回事**：同一条 `RULES.*` 可以被多处复用，但各处用自己的键前缀，**配额互不相干**。已知的有：博客点赞用 `like:h:`/`like:d:`，评论点赞复用同样的 `likeHourly`/`likeDaily` 数值但键是 `comment-like:h:`/`comment-like:d:` —— 分成两个桶是刻意的，共用会让「给评论点赞」顶掉「给文章点赞」的额度。改 `RULES` 的数值会同时影响两边；只想调一边得另立规则。
 
 **多实例部署时换 Redis**。本站单进程不踩该坑。
 
@@ -406,6 +407,70 @@ div 会卸载重挂，`deps=[]` 的监听器永远附不上。
 **对外文档**：`docs/bot/favorite-bot.md`（自包含，含限频数值 —— 改 `RULES` 要同步）
 与 `docs/guide/收藏夹使用指南.md`。
 
+### 6.11 文章对外可见性与分享（`Blog.visibility`）
+
+站内其余读口一律 core+（那是熟人社区的前提），但作者可以**逐篇**决定某一篇是否对外。
+三档：
+
+| `visibility` | 页面可达性 | 页面 `robots` | sitemap | OG 图 | OG 图 `X-Robots-Tag` |
+|---|---|---|---|---|---|
+| `private`（默认） | core+ 可读；访客 → 登录页 | `noindex, nofollow` | 不进 | 404 | — |
+| `link` | 任何人可读 | `noindex, nofollow` | 不进 | 200 | `noindex` |
+| `public` | 任何人可读 | `index, follow` | 进 | 200 | `all` |
+
+**这一列只对非 core 的查看者生效** —— core+ 在博客域是全读的，压根不看它。所以对任何
+站内入口都是零行为变化，管理员 / 站长也**不需要豁免**（他们本来就在 core+ 里，是结构性
+豁免，服务层里没有也不该有 `if (isAdmin)`）。
+
+判定收在 `src/lib/blog-service.ts` 的**三个具名出口**（四条不变量在它的文件头）：
+不带查看者的读口必须走 `getExternallyVisibleBlog()` / `listIndexableBlogs()`；
+带查看者的走 `getBlogDetail(id, viewer)`。词汇（三档的名字、白名单、解析）住在
+`src/lib/blog-visibility.ts` —— 那是个**零依赖**模块，因为发文表单是客户端组件，
+而 `blog-service` 拖着 prisma 进不了客户端包。
+
+**「对外可读」与「可列举 / 可索引」是两件事**：`link` 读得到，但不进 sitemap、不许索引。
+所以判可达用 `EXTERNAL_VISIBILITIES`，sitemap 用 `INDEXABLE_VISIBILITIES`，别混用。
+
+**三个静态守卫盯着它**（都是「删掉就会静默坏掉」的那类）：
+- `tests/unit/blog-visibility-guard.test.ts` —— 不许写 `{ not: 'private' }` /
+  `visibility !== 'private'`。那两种写法在加第四档时会**静默把新档一起放出去**，
+  而放出去不可逆。
+- `tests/unit/anonymous-read-guard.test.ts` 的 `getExternallyVisibleBlog` ——
+  它是**新的一类**守卫（per-object 可见性，不是会话档位）。对外路由必须过它，
+  台账才认得；它**不在** `PUBLIC_READ_ROUTES` 里，因为那张表的门槛明写
+  「一旦开始返回用户内容就必须挪走」，而 OG 图恰恰返回用户内容。
+- `tests/route/blog-auth.test.ts` 末尾那组 —— OG 图对 private / 已软删 / 不存在
+  **三者 404 且响应体逐字相同**（差一个字就是存在性探针）。
+
+**分享卡片（OG 图）**：`/api/og/blog/<id>` 是 route handler，**不是**
+`opengraph-image.tsx` 文件约定（后者不在 `anonymous-read-guard` 的扫描面内，
+而「匿名读口没人知道」正是那个守卫存在的理由）。走 sharp 复用 `poster.ts` 的构件，
+**不用 `next/og` 的 Satori** —— Satori 不读系统字体栈，中文要自带字体二进制，
+那会凭空造出第二条字体管线；而本站的字体约束已经写在 `docs/deploy.md` 与
+`npm run diagnose` 的探针里。
+
+⚠️ 它的响应头与三张画报**相反**，别顺手抄：画报是 `private, no-store` + `noindex`
+（用户自己保存的物料），OG 图是 `public, max-age=600` + 按档位发 `X-Robots-Tag`
+（要被 CDN 与社交爬虫取）。版式几何由 `tests/unit/og-card.test.ts` 按最坏情况钉住 ——
+初版把标题基线写死，2 行标题 + 2 行摘要时摘要正好压在页脚线上，而「是张合法 PNG」
+的断言全绿。
+
+**爬虫入口**（`robots.ts` / `sitemap.ts` 是这件事的两半，必须同进同退）：
+`/blog/` 从 disallow 里开口（用 RFC 9309 的最长匹配压过 `/blog`）、`/login` 补进
+disallow（断掉「private 文章 → 307 → next 参数里带 UUID」那条链）、`/api/og/` 开口。
+逐页 / 逐张的粒度由页面 `robots` 元数据与 `X-Robots-Tag` 收 ——
+与 `/api/images/[id]/raw` 按张发头是同一个手法。
+
+**风险**（详见 `src/lib/blog-visibility.ts` 与发文表单里的提示）：
+1. **一旦公开就近乎永久** —— 搜索引擎与第三方存档会抓走副本，改回 private 不收回
+   已抓走的副本，社交平台的卡片缓存（数周）也不撤回。
+2. 可见性**不扫描正文**。访客视图不展开 `[@…]` 内容引用、私有图床图对匿名仍 404，
+   所以不会因「设为公开」把别人的私密资源放出去；但作者自己写下的文字就是他自己公开的。
+3. `spider` 命名空间仍能读到全部 private 文章（档位是 core+ 的一个账号）。这是现状，
+   本期刻意不动 —— 要收紧的正确做法是给 spider 单独一档或只读账号，
+   **不是**在那条路由里加可见性过滤（那会把「站外聚合器能读什么」和「文章是否对外」
+   这两件事混在一起）。
+
 ## 7. 数据流（4 个典型路径）
 
 ### 7.1 用户登录
@@ -437,14 +502,34 @@ div 会卸载重挂，`deps=[]` 的监听器永远附不上。
 
 ### 7.3 浏览一篇文章（读路径）
 
+一条路由**两种视图**，分叉判据是 `isCore` 而不是 `visibility`（core+ 读一篇 public
+文章看到的仍是完整成员视图 —— 否则「设为公开」会顺手夺走作者自己与全站的互动能力）：
+
 ```
 浏览器 GET /blog/<id>
-  → middleware.ts  ✓ 同源 / 装饰器判定 core+
-  → blog-service.ts fetch()
-  → Prisma       查询 Blog + BlogContent + Category + 计数
+  → middleware.ts  ✓ 同源
+  → blog-service.getBlogDetail(id, viewer)   viewer = null（游客）/ { id, isCore }
+       非 core 叠 EXTERNAL_VISIBLE_BLOG_WHERE（core+ 不加条件）
+  → 查不到（不存在 / 已软删 / 档位不够，三者同形）→
+       未登录  → redirectToLogin('/blog/<id>')   私密不是「不存在」，访客拿登录页
+       非 core → forbidden()                     已登录但档位不够 → 原地 403
+       core+   → notFound()
   → Server Component 渲染 Markdown 占位 + 注入数据
+       core+ → 正文 + FeedButton + CommentSection（contentRefs='expand'）
+       访客 → **只有**标题 / 作者 / 正文（contentRefs='plain'），零站内 affordance
   → 客户端 marked + DOMPurify + highlight.js 完成正文
 ```
+
+⚠️ **原始 markdown 是作为 RSC prop 随首屏 payload 下发的** —— 「正文交给客户端渲染」
+不构成任何保护，闸门必须在服务端把串传出去之前（`docs/architecture.md` §6.7 那条管线）。
+
+⚠️ `MarkdownRenderer` 的 `contentRefs` 是**必传** prop：`'expand'` 会带 same-origin
+凭据去请求三条 core+ 接口（剪贴板 / 投票 / 收藏夹），`'plain'` 一次请求都不发、
+`[@…]` 原样保留字面量。访客视图那条是匿名页面上**唯一的内容泄露面**。
+
+⚠️ `generateMetadata()` 与页面是**两个独立的渲染步**，页面那道可见性判定管不到它 ——
+它必须自己判一次，判不过就返回中性标题、绝不回显（`tests/e2e/access-control.spec.ts`
+与 `tests/e2e/blog-visibility.spec.ts` 各有一条钉子）。
 
 ### 7.4 浏览目录 /blog（列表读路径，流式）
 
@@ -583,6 +668,12 @@ div 会卸载重挂，`deps=[]` 的监听器永远附不上。
 新增一条没有守卫的 `GET` 会让该测试当场变红，逼你在「加档位」与「写进白名单并说明理由」
 之间选一个。已有的正例是 `GET /api/images/[id]/raw`（公开图匿名、私有图按档位）与
 `GET /api/users/[id]`（匿名可达但内容按查看者收敛）。
+
+**「对外可见的文章」是这条的更远一步**（§6.11）：`/blog/<id>` 与 `/api/og/blog/<id>`
+**匿名可达**，但逐篇判可见性 —— 不在 `PUBLIC_READ_ROUTES` 白名单里，而是走
+`getExternallyVisibleBlog` 这个**具名出口**过 `GUARD_SYMBOLS` 那条判据。它是全站第一个
+「游客能读到用户内容」的入口，所以判定收在一个出口、白名单是**开区间**式的
+（`EXTERNAL_VISIBILITIES` 只列算数的档，加第四档时不会自动放行）。
 
 **「档位」与「归属」是两层，别用一个代替另一个。** 博客与评论域有多条接口同时要过两关：
 

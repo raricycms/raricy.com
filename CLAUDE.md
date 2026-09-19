@@ -211,6 +211,26 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
   已经踩过 `--color-brand-primary-rgb`、`--color-bg-primary`、`--r-pill`、
   拼错的 `--color-background-card-unrend` 等六处。
 
+### 文章对外可见性
+
+`docs/architecture.md` §6.11 + `src/lib/blog-service.ts` 头部（**四条不变量**）。
+三档 `private` / `link` / `public`，**只对非 core 的查看者生效** —— core+ 在博客域
+是全读的，所以这一列对任何站内入口都是零行为变化，管理员也**不需要豁免**（那是结构性
+豁免，服务层里没有也不该有 `if (isAdmin)`）。
+
+- **判「对外可见」永远用白名单**（`EXTERNAL_VISIBILITIES` / `EXTERNAL_VISIBLE_BLOG_WHERE`），
+  **绝不写 `{ not: 'private' }` 或 `visibility !== 'private'`** —— 加第四档时那两种写法会
+  **静默把新档一起放出去**，而放出去不可逆（有静态守卫盯：`tests/unit/blog-visibility-guard.test.ts`）。
+- **不带查看者的读口必须走具名出口**（`getExternallyVisibleBlog` / `listIndexableBlogs`），
+  别各自手写 where —— 名字就是静态台账认得它的凭证。
+- **「对外可读」与「可列举 / 可索引」是两件事**：`link` 读得到，但不进 sitemap、不许索引。
+- **不给 `listBlogs` 加可见性过滤**（它是**站内**列表，调用方都是 core+）。对外列表要
+  另起入口 —— 已有一条钉现状的用例，谁加了过滤会当场红。
+- 词汇（三档的名字 / 白名单 / 解析）住在 `src/lib/blog-visibility.ts`，那是个**零依赖**
+  模块：发文表单是客户端组件，而 `blog-service` 拖着 prisma 进不了客户端包。
+- 分享卡片走 sharp 复用 `poster.ts`，**别改用 `next/og` 的 Satori**（它不读系统字体栈，
+  中文要自带字体二进制 = 第二条字体管线）。改版式几何前先跑 `tests/unit/og-card.test.ts`。
+
 ### 收藏夹
 
 `docs/architecture.md` §6.10 + `src/lib/favorite-service.ts` 头部（**六条不变量**，
