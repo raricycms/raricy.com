@@ -42,6 +42,17 @@ const GUARD_SYMBOLS = [
   'requireChatUser', // src/app/api/chat/_auth.ts
   'requireCoreUser', // src/app/api/favorites/_shared.ts
   'requireMarketActor', // src/app/api/fish/market/_auth.ts
+  // ── per-object 可见性守卫（**不是**会话档位）─────────────────────────────────
+  //
+  // 上面那些判的是「你有没有资格用这个区」；这一个判的是「**这一篇**是不是对外可见」——
+  // 调用方拿不到会话也能读，但只读得到 link / public 档的文章，private / 已软删 /
+  // 不存在三种情况同形（都是 null → 404）。判定收在 src/lib/blog-service.ts 的
+  // EXTERNAL_VISIBLE_BLOG_WHERE 里，**别让调用方自己手写 where**：
+  // 具名出口是这条台账唯一认得的形状，也是「这个调用点确实做了可见性判定」的凭证。
+  //
+  // 前例是 /api/images/[id]/raw（它靠 getCurrentUser 过线，形态不同、意图相同：
+  // 都是「匿名可达，但逐条判该不该给你」）。
+  'getExternallyVisibleBlog', // src/lib/blog-service.ts
 ];
 
 const GUARD_RE = new RegExp(GUARD_SYMBOLS.join('|'));

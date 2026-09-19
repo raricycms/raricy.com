@@ -227,6 +227,12 @@ describe('RULES 全站配额（src/lib/rate-limit.ts 即权威，改动即报警
       windowMs: 60_000,
       desc: '博客正文搜索 30 次/分/用户（全站唯一为「读」设的闸：一次请求 = count + findMany 两次全表扫描，约 48.6MB 正文）',
     },
+    {
+      name: 'ogImagePerIp',
+      limit: 120,
+      windowMs: 60_000,
+      desc: '文章分享卡片 120 次/分/IP（匿名入口，每次请求 = 一次 sharp 光栅化 2400×1260 PNG）',
+    },
   ] as const;
 
   for (const e of EXPECTED) {

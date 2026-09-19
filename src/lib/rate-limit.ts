@@ -278,6 +278,22 @@ export const RULES = {
    */
   spiderFavoritePerIp: { limit: 120, windowMs: 60 * 1000 },
   /**
+   * 文章分享卡片（`/api/og/blog/:id`）—— 这条按 **IP** 分桶。
+   *
+   * 【为什么必须有】它是**匿名**入口，而且**每次请求 = 一次 sharp 光栅化**
+   * （取数 + 头像内嵌 + 2400×1260 PNG 编码）。没有会话可挂，桶只能在 IP 上。
+   * **鉴权不替代限频**：这里的「鉴权」是 per-object 的可见性判定（只放行对外可见的
+   * 文章），管的是「谁能看哪篇」，限频管的是「多久能来一次」。
+   * 取不到 IP 时跳过该维度（clientIp 的约定见 src/lib/request-ip.ts，别传占位串）。
+   * 桶键：og:blog:ip:{IP}。
+   *
+   * 【为什么与 spiderFavoritePerIp 同量级】两者都是「匿名 + 单次开销不小」的读口。
+   * 但注意 OG 图**本来就要被 social 爬虫取**，而且是 CDN 可缓存的（路由发
+   * `Cache-Control: public, max-age=600`）—— 正常流量会被缓存吃掉，这条闸挡的是
+   * 绕过缓存扫 id 的那种。
+   */
+  ogImagePerIp: { limit: 120, windowMs: 60 * 1000 },
+  /**
    * 博客搜索的**正文**范围。站内唯一为「一次请求就扫全表」设的闸 —— 正文合计约
    * 48.6MB / 6193 篇，`LIKE '%q%'` 全表扫描实测约 68ms/遍，而 count + findMany 会走
    * 两遍（约 136ms）。元数据搜索只要 1~2ms，**不消耗这条配额**。

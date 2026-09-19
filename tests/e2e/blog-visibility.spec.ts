@@ -117,3 +117,111 @@ test.describe('文章对外可见性', () => {
     await expect(page.locator('#comment-section')).toHaveCount(1);
   });
 });
+
+test.describe('分享卡片（OG）与索引口径', () => {
+  test('public：可索引 + 挂 OG 卡片；OG 图 200 且 X-Robots-Tag: all', async ({ page }) => {
+    await loginViaApi(page, SEED_USERS.core.username);
+    const id = await createBlogWith(page, 'public');
+    await becomeAnonymous(page);
+
+    await page.goto(`/blog/${id}`);
+    // public 不发 noindex
+    await expect(page.locator('meta[name="robots"]')).not.toHaveAttribute('content', /noindex/);
+    // og:image 指向本文章的卡片路由（有 metadataBase，所以是绝对地址 —— 断言含路径即可）
+    await expect(page.locator('meta[property="og:image"]')).toHaveAttribute(
+      'content',
+      new RegExp(`/api/og/blog/${id}`)
+    );
+    await expect(page.locator('meta[property="og:title"]')).toHaveAttribute(
+      'content',
+      /可见性-public-/
+    );
+
+    const res = await page.request.get(`/api/og/blog/${id}`);
+    expect(res.status(), 'OG 图对匿名必须 200').toBe(200);
+    expect(res.headers()['content-type']).toContain('image/png');
+    expect(res.headers()['x-robots-tag'], 'public 档的卡片可索引').toBe('all');
+    expect(res.headers()['cache-control'], 'OG 图要可缓存（与画报的 no-store 相反）').toContain(
+      'public'
+    );
+    // 真的是一张图，而不是空 body 或错误页
+    expect((await res.body()).byteLength).toBeGreaterThan(1000);
+  });
+
+  test('link：可读但**不可索引** —— 页面 noindex、卡片 X-Robots-Tag: noindex', async ({ page }) => {
+    await loginViaApi(page, SEED_USERS.core.username);
+    const id = await createBlogWith(page, 'link');
+    await becomeAnonymous(page);
+
+    await page.goto(`/blog/${id}`);
+    await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', /noindex/);
+    // link 也要有卡片（差别在索引，不在能不能分享）
+    await expect(page.locator('meta[property="og:image"]')).toHaveAttribute(
+      'content',
+      new RegExp(`/api/og/blog/${id}`)
+    );
+
+    const res = await page.request.get(`/api/og/blog/${id}`);
+    expect(res.status()).toBe(200);
+    expect(res.headers()['x-robots-tag'], 'link 档的卡片不许被索引').toBe('noindex');
+  });
+
+  test('private 与不存在：OG 图同为 404，且响应体逐字相同（不确认存在性）', async ({ page }) => {
+    await loginViaApi(page, SEED_USERS.core.username);
+    const privateId = await createBlogWith(page, 'private');
+    await becomeAnonymous(page);
+
+    const privateRes = await page.request.get(`/api/og/blog/${privateId}`);
+    const missingRes = await page.request.get('/api/og/blog/no-such-blog-id');
+    expect(privateRes.status(), 'private 文章不出卡片').toBe(404);
+    expect(missingRes.status()).toBe(404);
+    // 「存在但你无权看」与「根本不存在」对外必须**逐字相同** —— 差一个字就是一个
+    // 存在性探针（拿一批 id 挨个试，能筛出哪些是真实文章）。
+    expect(await privateRes.text()).toBe(await missingRes.text());
+  });
+
+  test('作者把文章从 public 改回 private，匿名立刻读不到（没有按 viewer 缓存住旧结果）', async ({
+    page,
+  }) => {
+    await loginViaApi(page, SEED_USERS.core.username);
+    const id = await createBlogWith(page, 'public');
+
+    await becomeAnonymous(page);
+    expect((await page.goto(`/blog/${id}`))?.status()).toBe(200);
+
+    // 变回 core+ 改性质
+    await loginViaApi(page, SEED_USERS.core.username);
+    const patch = await page.request.put(`/api/blogs/${id}`, {
+      data: { title: `改回私密-${uniqueTag()}`, description: 'd', content: 'c', visibility: 'private' },
+    });
+    expect(patch.ok(), `改性质失败：${patch.status()} ${await patch.text()}`).toBeTruthy();
+
+    await becomeAnonymous(page);
+    await page.goto(`/blog/${id}`);
+    await expect(page).toHaveURL(/\/login\?next=/);
+    expect((await page.request.get(`/api/og/blog/${id}`)).status()).toBe(404);
+  });
+
+  test('sitemap 只列 public；robots.txt 的对外开口到位', async ({ page }) => {
+    await loginViaApi(page, SEED_USERS.core.username);
+    const pub = await createBlogWith(page, 'public');
+    const link = await createBlogWith(page, 'link');
+    const priv = await createBlogWith(page, 'private');
+    await becomeAnonymous(page);
+
+    const sitemap = await (await page.request.get('/sitemap.xml')).text();
+    expect(sitemap, 'public 文章要进 sitemap').toContain(`/blog/${pub}`);
+    expect(sitemap, 'link 不该被列举').not.toContain(`/blog/${link}`);
+    expect(sitemap, 'private 不该被列举').not.toContain(`/blog/${priv}`);
+
+    const robots = await (await page.request.get('/robots.txt')).text();
+    // 这三条是「对外文章可被抓」的全部机关，缺一条就会静默失效：
+    //   · /blog/ 放行（压过 disallow: /blog —— RFC 9309 最长匹配优先）
+    //   · /login 挡住（否则 private 文章的 URL 会跟着 307 跳到带 UUID 的 next 参数上）
+    //   · /api/og/ 放行（否则 /api/ 整段 disallow 会把分享卡片一起挡掉）
+    expect(robots).toContain('Allow: /blog/');
+    expect(robots).toContain('Disallow: /login');
+    expect(robots).toContain('Allow: /api/og/');
+    expect(robots, '/blog 目录页本身仍是 core+，继续挡').toContain('Disallow: /blog');
+  });
+});

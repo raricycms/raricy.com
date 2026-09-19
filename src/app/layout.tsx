@@ -11,11 +11,17 @@ import FooterGate from './components/FooterGate';
 import NotificationHeartbeat from './components/NotificationHeartbeat';
 import FrameBuster from './components/FrameBuster';
 import { getCurrentUser, isCoreUser } from '@/lib/auth';
+import { siteBaseUrl } from '@/lib/site-url';
 
 export const metadata: Metadata = {
   title: '聪明山',
   description: '我们总将找到答案',
   icons: { icon: [{ url: '/static/img/favicon.png', type: 'image/png' }] },
+  // 相对 OG 图 URL（`images: [{ url: '/api/og/blog/...' }]`）必须有基准才拼得出绝对地址，
+  // 否则分享卡片抓不到图。
+  // ⚠️ siteBaseUrl() **永不抛**（解析失败回退正式域名）—— 这一行在模块作用域执行，
+  //    抛一次就是全站 500。改它之前先确认这个性质还在。
+  metadataBase: new URL(siteBaseUrl()),
 };
 
 // 防闪烁：CSS 加载前按 localStorage/系统偏好设 data-theme（内联脚本，随 <head> 同步执行）。

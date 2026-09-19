@@ -480,15 +480,15 @@ function defs(theme: Theme): string {
  * （`.poster-frame__img` 的 border-radius 就够），不该烧进像素里。
  * tests/unit/poster.test.ts 有一条用例盯着四角的不透明度。
  */
-function finish(theme: Theme, body: string[], height: number): string {
+function finish(theme: Theme, body: string[], height: number, width = POSTER_WIDTH): string {
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" ` +
-    `width="${POSTER_WIDTH}" height="${height}" viewBox="0 0 ${POSTER_WIDTH} ${height}" ` +
+    `width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" ` +
     `font-family="${FONT}">` +
     defs(theme) +
     // 直角、满出血 —— 见上面 finish() 的注释，别再加 rx
-    rect(0, 0, POSTER_WIDTH, height, 'url(#bg)') +
-    rect(0, 0, POSTER_WIDTH, height, 'url(#glow)') +
+    rect(0, 0, width, height, 'url(#bg)') +
+    rect(0, 0, width, height, 'url(#glow)') +
     body.join('') +
     '</svg>'
   );
@@ -683,4 +683,178 @@ export function buildFavoritePosterSvg(data: FavoritePosterData): string {
   const footerY = card.top + card.height + FOOTER_GAP;
   body.push(text(cx, footerY, '聪明山 · raricy.com', 20, c.faint));
   return finish(c, body, footerY + FOOTER_BASELINE);
+}
+
+// ── 分享卡片（OG 图）────────────────────────────────────────────────────────
+//
+// 【和上面三张画报不是一回事】那三张是「用户主动生成、保存、转发」的**物料**；
+// 这张是**渲染在链接旁边**的社交卡片（微信 / QQ / Twitter 的 unfurl），尺寸由平台定死。
+//
+// 【为什么不用 next/og 的 ImageResponse/Satori】字体。Satori **不读系统字体栈**，
+// 中文必须自带一份字体二进制（Noto Sans SC 一个字重全量约 10MB，还要按需子集化 →
+// 一个新构建步骤 + 一份新资产）。那等于凭空造出**第二条字体管线**，而本站的字体约束
+// 已经写在 docs/deploy.md 与 `npm run diagnose` 的探针里、poster.ts 的 FONT 就是那条栈。
+// 走 sharp = 一条字体管线、一份部署要求、一个探针；Satori 的失败样子（豆腐块）不在
+// 探针覆盖范围内。顺带还白拿一条：本文件唯一的文本出口是 text/pill → t() →
+// escapeXml(stripControlChars)，**铁律四由结构保证**，想忘也忘不掉。
+//
+// 【铁律一/二/三为什么不适用】本版式**不含二维码**，所以「矢量二维码 / 纠错 H /
+// 静默区 ≥4 模块」那三条都不必照搬。放二维码在这里也是冗余的 —— 卡片就渲染在链接
+// 旁边，扫码这个动作没有意义，而它会引入「图好看但扫不出来」的故障面。
+// 将来若真要加（例如截图转发场景），必须复用 qrCard() 并纳入真解码断言，别手搓。
+
+/** OG 卡片逻辑宽度（1.91:1，各平台通用比例）。 */
+export const OG_WIDTH = 1200;
+/** OG 卡片逻辑高度。 */
+export const OG_HEIGHT = 630;
+
+/** 左右内边距。 */
+const OG_PAD = 64;
+
+/**
+ * 版面栅格。**所有纵向坐标都在这里，别在函数体里散着写。**
+ *
+ * ⚠️ 改动这些数字之前先跑 `tests/unit/og-card.test.ts` —— 那里按**最坏情况**
+ * （2 行标题 + 2 行摘要）断言最后一条基线不会压到页脚分隔线上，而这条断言是有来历的：
+ * 初版把标题基线硬写成 392、行高 78，2 行标题 + 2 行摘要时摘要正好落在页脚线的位置上，
+ * 渲染出来是三行字叠在一起（样张肉眼可见，但「是张合法 PNG」的断言全绿）。
+ */
+export const OG_LAYOUT = {
+  /** 品牌行（logo + 站名 + 域名）的文字基线 / logo 中心。 */
+  brandBaseline: 80,
+  brandLogoCy: 72,
+  brandLogoSize: 36,
+  /** 作者行：头像中心与边长。 */
+  avatarCy: 170,
+  avatarSize: 80,
+  /** 标题：行高 / 字号。首行基线由 ogTextLayout() 算，不写死。 */
+  titleLineHeight: 70,
+  titleSize: 56,
+  /** 标题**最后一条**基线 → 摘要首行基线 的间距。 */
+  titleToDesc: 62,
+  /** 摘要：行高 / 字号。 */
+  descLineHeight: 40,
+  descSize: 26,
+  /** 页脚分隔线与页脚文字的基线。**固定** —— 内容多少都不改变它们。 */
+  footerRule: 538,
+  footerBaseline: 578,
+  /** 标题块的上下留白带：从作者行下方到页脚分隔线上方。 */
+  bandTop: 240,
+  bandBottom: 514,
+  /**
+   * 字形下沿余量（基线往下这么多算「实际占到了这里」）。CJK 字体通常 ~0.12em，
+   * 这里给 0.22em 的余量：宁可留白，也不要在不同中文字体下偶尔压线。
+   */
+  descender: 0.22,
+  /** 字形上沿比例（基线往上这么多算字顶）—— 只用于把整块居中，不是精确度量。 */
+  ascender: 0.8,
+} as const;
+
+/** 标题 / 摘要各自最多画几行。 */
+export const OG_TITLE_MAX_LINES = 2;
+export const OG_DESC_MAX_LINES = 2;
+
+/**
+ * 按**实际行数**算纵向排版。
+ *
+ * 把「标题 + 摘要」整块在 `bandTop`..`bandBottom` 之间**垂直居中**，而不是给标题写死
+ * 一条基线。写死那版的毛病在两端都难看：短标题（一行）在中下部留一大块死白，
+ * 长标题（两行 + 两行摘要）又把摘要顶到页脚线上。实测过 —— 初版就是后者，
+ * 摘要与页脚分隔线叠在一起（样张肉眼可见，而「是张合法 PNG」的断言全绿）。
+ *
+ * 抽成函数是为了让单测能用**同一个算式**断言最坏情况不越界，而不是把几何抄第二遍。
+ */
+export function ogTextLayout(
+  titleLines: number,
+  descLines: number
+): { titleBaseline: number; descBaseline: number } {
+  const L = OG_LAYOUT;
+  const span =
+    (titleLines - 1) * L.titleLineHeight +
+    (descLines > 0 ? L.titleToDesc + (descLines - 1) * L.descLineHeight : 0);
+  const visualTop = L.titleSize * L.ascender;
+  const visualBottom = (descLines > 0 ? L.descSize : L.titleSize) * L.descender;
+  const blockH = visualTop + span + visualBottom;
+  const titleBaseline = L.bandTop + (L.bandBottom - L.bandTop - blockH) / 2 + visualTop;
+  return {
+    titleBaseline,
+    descBaseline: titleBaseline + (titleLines - 1) * L.titleLineHeight + L.titleToDesc,
+  };
+}
+
+export interface BlogOgData {
+  /** 文章标题（用户输入，经 escapeXml / stripControlChars）。 */
+  title: string;
+  /** 摘要。空串 = 不画那两行。 */
+  description: string;
+  /** 作者名。空串 = 不画。 */
+  author: string;
+  /** 日期（已格式化，如 '2026-09-19'）。空串 = 不画。 */
+  date: string;
+  /** data:image/png;base64,... 头像。空串 = 画一个占位方块。 */
+  avatarDataUri: string;
+}
+
+/**
+ * 文章分享卡片：品牌行 / 作者行 / 标题 / 摘要 / 页脚。
+ *
+ * **刻意不画任何计数**（点赞、投喂、评论）—— 对外视图本就不给站外读者看这些数字，
+ * 卡片是它的一部分，凭什么从卡片漏出去。**刻意不放二维码**，理由见上面那段。
+ */
+export function buildBlogOgSvg(data: BlogOgData): string {
+  const c = THEMES.profile;
+  const L = OG_LAYOUT;
+  const body: string[] = [];
+  const left = OG_PAD;
+
+  // 品牌行：站点 logo + 站名 + 域名（与主页画报同一行的构成）
+  body.push(siteLogo(left + 18, L.brandLogoCy, L.brandLogoSize));
+  body.push(text(left + 48, L.brandBaseline, '聪明山', 30, c.brand, 600, 'start'));
+  body.push(text(OG_WIDTH - OG_PAD, L.brandBaseline, 'raricy.com', 24, c.faint, 400, 'end'));
+
+  // 作者行：头像 + 作者名 + 日期 +「文章」胶囊
+  if (data.avatarDataUri) {
+    body.push(
+      avatarBlock(data.avatarDataUri, 'og-av', left + L.avatarSize / 2, L.avatarCy, L.avatarSize, c.ring)
+    );
+  } else {
+    // 没头像时画一个同尺寸的圆角占位，**不留空洞** —— 版面高度是按它算的
+    body.push(
+      rect(left, L.avatarCy - L.avatarSize / 2, L.avatarSize, L.avatarSize, c.chipBg, L.avatarSize * 0.08)
+    );
+  }
+  const metaX = left + L.avatarSize + 22;
+  if (data.author) body.push(text(metaX, L.avatarCy - 4, data.author, 30, c.title, 600, 'start'));
+  if (data.date) body.push(text(metaX, L.avatarCy + 32, data.date, 22, c.muted, 400, 'start'));
+  body.push(pill(OG_WIDTH - OG_PAD - 52, L.avatarCy, '文章', 22, c.chipBg, c.chipFg));
+
+  // 标题 / 摘要：先各自折行，再**按实际行数**算纵向位置（整块居中）。
+  // `wrapText` 的 maxEm 与 text() 用的是**同一把尺子**（estimatedEm）。
+  // 标题上限 BLOG_TITLE_MAX = 30（CJK 30em），两行各 17.8em 装得下。
+  const titleLines = wrapText(data.title, 17.8, OG_TITLE_MAX_LINES);
+  const descLines = data.description.trim()
+    ? wrapText(data.description.trim(), 38, OG_DESC_MAX_LINES)
+    : [];
+  const pos = ogTextLayout(titleLines.length, descLines.length);
+
+  titleLines.forEach((line, i) => {
+    body.push(
+      text(left, pos.titleBaseline + i * L.titleLineHeight, line, L.titleSize, c.title, 700, 'start')
+    );
+  });
+  descLines.forEach((line, i) => {
+    body.push(
+      text(left, pos.descBaseline + i * L.descLineHeight, line, L.descSize, c.muted, 400, 'start')
+    );
+  });
+
+  // 页脚细线 + 站名。位置**固定** —— 标题行数与摘要有无都不改变它，
+  // 所以不管内容多少，卡片底部那条线永远在同一个位置。
+  body.push(
+    `<line x1="${left}" y1="${L.footerRule}" x2="${OG_WIDTH - OG_PAD}" y2="${L.footerRule}" ` +
+      `stroke="${c.faint}" stroke-width="1" stroke-opacity="0.4"/>`
+  );
+  body.push(text(left, L.footerBaseline, '聪明山 · raricy.com', 24, c.faint, 400, 'start'));
+
+  return finish(c, body, OG_HEIGHT, OG_WIDTH);
 }

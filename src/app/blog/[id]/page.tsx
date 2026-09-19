@@ -1,6 +1,7 @@
 import { forbidden, notFound } from 'next/navigation';
+import type { Metadata } from 'next';
 import { redirectToLogin } from '@/lib/guard';
-import { getBlogDetail } from '@/lib/blog-service';
+import { EXTERNAL_VISIBILITIES, INDEXABLE_VISIBILITIES, getBlogDetail } from '@/lib/blog-service';
 import { prisma } from '@/lib/db';
 import MarkdownRenderer from '@/app/components/MarkdownRenderer';
 import CommentSection from '@/app/components/CommentSection';
@@ -12,6 +13,58 @@ import { getFeedStatus } from '@/lib/feed-service';
 import { isBlogFavorited } from '@/lib/favorite-service';
 
 export const dynamic = 'force-dynamic';
+
+/**
+ * 标题 / 摘要 / robots / 分享卡片。
+ *
+ * ⚠️ metadata 与页面是**两个独立的渲染步** —— 页面那道可见性判定**管不到这里**。
+ * 见 tests/e2e/access-control.spec.ts 那条钉子（`generateMetadata` 在守卫之前裸取数，
+ * 于是 403 的响应里带走了文章标题）。所以这里**自己判一次**，而且判不过就返回中性
+ * 标题，**绝不回显**。
+ *
+ * 【为什么不上 React.cache() 省掉这次重复查询】viewer 是每次渲染新建的对象字面量，
+ * 而 `cache()` 按**引用**做键 —— 必然 miss，加了只是自欺。两次主键查询而已。
+ * （`blog/[id]/edit/page.tsx` 现在也是各查一次的同款做法。）
+ */
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  const { id } = await params;
+  const user = await getCurrentUser();
+  const blog = await getBlogDetail(id, user ? { id: user.id, isCore: isCoreUser(user) } : null);
+  if (!blog) return { title: '文章 - Raricy.com' };
+
+  const visibility = blog.visibility as string;
+  const external = (EXTERNAL_VISIBILITIES as readonly string[]).includes(visibility);
+  const indexable = (INDEXABLE_VISIBILITIES as readonly string[]).includes(visibility);
+
+  return {
+    title: `${blog.title} - 聪明山`,
+    description: blog.description || undefined,
+    // private（只有 core+ 看得到）也发 noindex：成员视图同样不该被索引。
+    robots: indexable ? { index: true, follow: true } : { index: false, follow: false },
+    // 分享卡片只给**对外可见**的文章挂：private 文章连 OG 图路由都是 404，
+    // 挂上去只会让抓取器白跑一趟。link 与 public 都挂 —— 差别在索引，不在能不能分享。
+    ...(external
+      ? {
+          openGraph: {
+            type: 'article',
+            title: blog.title,
+            description: blog.description || undefined,
+            url: `/blog/${blog.id}`,
+            siteName: '聪明山',
+            // 尺寸必须与 /api/og/blog/:id 的**实际字节**一致：逻辑 1200×630 按
+            // density=144（2×）光栅化 → 2400×1260。声明 1200 却给 2400 的字节
+            // 就是那种静默不一致。
+            images: [{ url: `/api/og/blog/${blog.id}`, width: 2400, height: 1260, alt: blog.title }],
+          },
+          twitter: { card: 'summary_large_image' },
+        }
+      : {}),
+  };
+}
 
 // 文章详情页 —— **两种视图**：
 //
