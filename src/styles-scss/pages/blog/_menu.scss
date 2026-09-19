@@ -533,6 +533,38 @@ a {
     margin-left: 8px;
 }
 
+/* 对外可见性标记（站内列表卡片上，给作者看「哪几篇已经对外了」）。
+ *
+ * 【为什么用分类色而不是语义色】见 docs/frontend-styles.md §2.6：语义色（红=危险、
+ * 绿=成功、蓝=主行动）表达**状态**，而「这篇已经对外」不是状态、是属性 —— 与
+ * .blog-category-tag / 精选标记同一类东西，所以走 --color-accent-*。
+ *
+ * private **不标记**：它是默认档，站内 4906 篇里 4906 篇都是它 —— 给默认值加标记
+ * 等于满屏噪音，反而让 link/public 那两个淹没在里面。
+ *
+ * 几何与 .blog-category-tag 同档（同一个小胶囊），只是底色/字色换成分类色，
+ * 这样两者并排时能一眼分开「这是栏目」与「这是对外状态」。 */
+.blog-visibility-tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    margin-left: 8px;
+    white-space: nowrap;
+
+    /* 凭链接可读：拿到链接就能读，但不进任何列表、不被收录。青色 = 比 public 安静。 */
+    &--link {
+        background: var(--color-accent-cyan-soft);
+        color: var(--color-accent-cyan);
+    }
+
+    /* 对外公开：任何人可读 + 可被收录。琥珀 = 需要作者留意的那一档（不可逆）。 */
+    &--public {
+        background: var(--color-accent-amber-soft);
+        color: var(--color-accent-amber);
+    }
+}
+
 .no-blogs {
     text-align: center;
     padding: 60px 20px;

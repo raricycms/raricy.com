@@ -5,6 +5,8 @@ import { requireCoreUser } from '@/lib/guard';
 import { rateLimit, RULES } from '@/lib/rate-limit';
 import { COOKIE_NAME } from '@/lib/blog-sort-pref';
 import { listBlogs, parseSortParam, ALL_SEARCH_FIELDS } from '@/lib/blog-service';
+// 客户端与服务端共用同一份短标记文案（零依赖模块）—— 不在 JSX 里写死档名。
+import { VISIBILITY_BADGE } from '@/lib/blog-visibility';
 import { prisma } from '@/lib/db';
 import { categoryFullPath } from '@/lib/format';
 import { getCurrentUser, isCoreUser } from '@/lib/auth';
@@ -267,6 +269,28 @@ async function BlogListSection({
                   </Link>
                   {b.category && (
                     <span className="blog-category-tag">{categoryFullPath(b.category)}</span>
+                  )}
+                  {/* 对外可见性标记 —— 给作者看「哪几篇已经对外了」。站内数千篇默认全是
+                      private，作者要挑文章对外时没有这个标记就只能逐篇点进去看。
+
+                      private 刻意**不标**：它是默认档，标记它等于满屏噪音，反而把
+                      link/public 那两个淹没掉。
+
+                      ⚠️ 两个分支刻意写死字面量类名，**不要**改成拼模板串 ——
+                      tests/unit/css-tsx-classes.test.ts 只认字面量（模板串里 `${…}`
+                      整段会被剥掉，剩下的 `blog-visibility-tag--` 会被判成「写了但
+                      没有定义」）。代价是加第四档时这里不会自动长出来，由
+                      tests/unit/blog-visibility-tag.test.ts 钉住三档一个都不能少。
+                      文案取自 VISIBILITY_BADGE（零依赖模块），不在 JSX 里写死。 */}
+                  {b.visibility === 'link' && (
+                    <span className="blog-visibility-tag blog-visibility-tag--link">
+                      {VISIBILITY_BADGE.link}
+                    </span>
+                  )}
+                  {b.visibility === 'public' && (
+                    <span className="blog-visibility-tag blog-visibility-tag--public">
+                      {VISIBILITY_BADGE.public}
+                    </span>
                   )}
                 </div>
               </div>

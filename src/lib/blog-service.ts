@@ -278,6 +278,9 @@ export async function listBlogs(params: ListParams) {
         commentsCount: true,
         fishCount: true,
         isFeatured: true,
+        // 站内列表要把「哪几篇已经对外」标出来给作者看。**加这一列不改变任何过滤
+        // 语义** —— 本函数仍然不看 visibility（见上面的 docblock 与钉现状的用例）。
+        visibility: true,
         authorId: true,
         author: { select: { username: true } },
         category: { select: { name: true, parentId: true, parent: { select: { name: true } } } },

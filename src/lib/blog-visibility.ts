@@ -35,6 +35,19 @@ export const VISIBILITY_LABEL: Record<BlogVisibility, string> = {
 };
 
 /**
+ * 列表卡片上的**短**标记（`VISIBILITY_LABEL` 是短语，塞不进一个小胶囊）。
+ *
+ * 与 `VISIBILITY_LABEL` 放在一起、同样覆盖三档：加第四档时**两张表都会缺键**，
+ * tsc 当场报错（`Record<BlogVisibility, string>` 是穷尽的），而不是界面上少一个标记
+ * 却不报错。这正是把它们放进这个零依赖模块的理由 —— 服务端与客户端读同一份。
+ */
+export const VISIBILITY_BADGE: Record<BlogVisibility, string> = {
+  private: '仅站内',
+  link: '凭链接',
+  public: '已公开',
+};
+
+/**
  * 解析提交上来的可见性。
  *
  * 缺省 → 'private'：旧客户端（不带这个字段的表单 / bot）不得改变任何文章的对外状态。
