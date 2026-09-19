@@ -39,6 +39,13 @@ process.env.E2E_DB = E2E_DB;
 // 只写在 webServer.env 里的话 globalSetup 读不到（它要往这个目录造素材）。
 const E2E_STICKERS_DIR = path.resolve(__dirname, 'tests/.tmp/e2e-stickers');
 process.env.STICKERS_DIR = E2E_STICKERS_DIR;
+
+// 故事素材同理。**不设它故事页会读 repo 根的 instance/stories**（站长的真实数据），
+// 那会让 /story 的用例随机器时通时不通 —— 本地有故事就跑得通，别人机器上就 404。
+// 素材由 global-setup 的 seedStories() 造（一篇 markdown + 一份 cattca），
+// 于是故事两页在 e2e 里是确定的。
+const E2E_STORIES_DIR = path.resolve(__dirname, 'tests/.tmp/e2e-stories');
+process.env.STORIES_DIR = E2E_STORIES_DIR;
 const PORT = 3100; // 避开开发用的 3000
 const ACCOUNT_PORT = 3101; // 账户服务替身，见 tests/e2e/mock-account-service.ts
 const ACCOUNT_INTERNAL_TOKEN = 'e2e-internal-token';
@@ -186,6 +193,7 @@ export default defineConfig({
       // 表情素材同理：不设它就会去扫项目真实的 instance/stickers（本机可能真有素材），
       // 「空素材」这类用例会因此随机通过或失败。
       STICKERS_DIR: E2E_STICKERS_DIR,
+      STORIES_DIR: E2E_STORIES_DIR,
     },
     },
   ],

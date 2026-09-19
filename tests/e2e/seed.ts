@@ -189,3 +189,28 @@ export const E2E_STICKERS = {
   /** info.json 标了 ignore 的合集：列表里不该有，手打 token 也该取不到。 */
   hidden: '私密',
 } as const;
+
+/**
+ * 故事模块 e2e 素材的合集 / 故事 slug。
+ *
+ * 素材由 global-setup.ts 的 seedStories() 写进 tests/.tmp/e2e-stories/
+ * （与真实磁盘结构同构：<合集>/info.json + <合集>/<故事>.md|.cattca）。
+ *
+ * 【为什么必须先隔离 STORIES_DIR】不设它时 story-service 会回落到 repo 根的
+ * instance/stories —— 那是站长自己的运行时数据，用例的 URL 与断言会随机器
+ * 时通时不通（与 STICKERS_DIR 那条注解同一个道理）。设了之后故事页在 e2e 里
+ * 才是确定的：这里写什么，页面上就只有什么。
+ *
+ * slug 用 ASCII：要拼进 URL（/story/e2e-collection/e2e-story）。
+ * 标题用中文：抬头显示的是 frontmatter / info.json 里的 title，不是目录名。
+ */
+export const E2E_STORIES = {
+  collection: 'e2e-collection',
+  collectionTitle: 'E2E 合集',
+  /** 合集内的一篇 markdown 故事 —— `.story-reader` 那一页。 */
+  markdown: 'e2e-story',
+  markdownTitle: 'E2E 故事',
+  /** 合集内的一份 cattca 脚本 —— `.story-cattca` 那一页。 */
+  cattca: 'e2e-cattca',
+  cattcaTitle: 'E2E 互动',
+} as const;
