@@ -24,7 +24,9 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   if (!isCoreUser(user)) return apiErr(403, '需要核心用户权限');
 
   const { id } = await ctx.params;
-  const blog = await getBlogDetail(id);
+  // 上一行已经挡掉非 core，所以这里恒为「core+ 视角」；传真值而不是硬编码
+  // `isCore: true`，是为了让页面层与接口层走同一条口径（`docs/architecture.md` §8）。
+  const blog = await getBlogDetail(id, { id: user.id, isCore: isCoreUser(user) });
   if (!blog) return apiErr(404, '文章不存在');
 
   return Response.json({

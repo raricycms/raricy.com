@@ -3,6 +3,34 @@
 //
 // 纯函数 + 显式参数，方便测试与复用。
 // 软删除：Blog.ignore = true 的一律排除（对齐 CLAUDE.md 的软删除约定）。
+//
+// ── 可见性四条不变量（`Blog.visibility`）─────────────────────────────────────
+//
+// 三档是 'private' / 'link' / 'public'，**只对非 core 的查看者生效** —— core+ 在
+// 博客域是全读的，压根不看这一列。所以这一列对任何 core+ 入口都是零行为变化。
+//
+// 【1】判「对外可见」**永远**用 EXTERNAL_VISIBILITIES / EXTERNAL_VISIBLE_BLOG_WHERE，
+//   绝不写 `visibility !== 'private'`，也别写 `not: 'private'`。那两种写法在加第四档
+//   时会**静默把新档一起放出去** —— 而「放出去」是不可逆的（搜索引擎与第三方存档会
+//   抓走副本）。有静态守卫盯着这条：tests/unit/blog-visibility-guard.test.ts。
+//
+// 【2】不判档位的读口必须过共享出口，别各自手写 where：
+//   · 对外读一篇（游客视角）→ getExternallyVisibleBlog(id)
+//   · 对外列清单（可索引）  → listIndexableBlogs()
+//   · 带查看者读一篇        → getBlogDetail(id, viewer)
+//   前两个的名字本身就说明了「这里做了可见性判定」，静态守卫的台账认得它们。
+//
+// 【3】「对外可读」与「可列举 / 可索引」是**两件事**：link 档读得到，但不进 sitemap、
+//   不许索引。所以判可达用 EXTERNAL_*，sitemap 用 INDEXABLE_*，别混用。
+//
+// 【4】private 的语义是「仅站内 core+ 可见」，**不是「不存在」**：访客拿到的是登录页。
+//   由此推出两件刻意的事：
+//   · **管理员 / 站长不需要豁免** —— 他们本来就在 core+ 里，压根不走可见性判定。
+//     这不是「忘了给管理员开后门」，是结构性豁免。
+//   · **作者不设后门** —— 被降权（core→user）的作者读不到自己当年的 private 文章。
+//     档位回答的是「你现在还配不配用这个区」，归属回答不了这个问题
+//     （见 `docs/architecture.md` §8「档位 vs 归属是两层」）。想加「作者可见自己」
+//     之前，先回去读那张表。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { prisma } from './db';
@@ -26,6 +54,62 @@ export const DEFAULT_SEARCH_FIELDS: readonly SearchField[] = ['title', 'descript
 /** 列表排序参数解析：只认显式 'updated'，其余（缺省/非法）一律回退 'created'（默认按发布时间）。 */
 export function parseSortParam(raw: unknown): BlogSort {
   return raw === 'updated' ? 'updated' : 'created';
+}
+
+// ── 可见性词汇（不变量见文件头）───────────────────────────────────────────────
+
+export const BLOG_VISIBILITIES = ['private', 'link', 'public'] as const;
+export type BlogVisibility = (typeof BLOG_VISIBILITIES)[number];
+
+/** 拿到链接的任何人（含未登录访客）可读。 */
+export const EXTERNAL_VISIBILITIES = ['link', 'public'] as const;
+/** 可列举、可索引 —— 只有 public。link 读得到，但不进 sitemap。 */
+export const INDEXABLE_VISIBILITIES = ['public'] as const;
+
+/**
+ * 对外可见的 where 片段（link + public）。
+ *
+ * ⚠️ **不能用 `as const`**（收藏夹的 `PUBLIC_FAVORITE_WHERE` 能用，是因为它只有布尔）。
+ * `as const` 会把 `in` 冻成 `readonly`，而 Prisma 的 `in:` 要的是可变数组 → TS2322；
+ * 更坑的是：**那条错误会让 `findFirst` 的重载解析失败，于是 `select` 被静默忽略**，
+ * 在调用点炸出一整片「Property 'author' does not exist」的假错误（本文件踩过，
+ * 9 条报错全是同一条根因的级联）。所以这里用类型标注 + `Object.freeze`。
+ *
+ * 展开成新数组（`[...EXTERNAL_VISIBILITIES]`）也是必须的：readonly 元组塞不进 `in:`。
+ */
+export const EXTERNAL_VISIBLE_BLOG_WHERE: Prisma.BlogWhereInput = Object.freeze({
+  visibility: { in: [...EXTERNAL_VISIBILITIES] },
+});
+
+/** 可索引的 where 片段（sitemap 用）。同上，不要写成 `as const`。 */
+export const INDEXABLE_BLOG_WHERE: Prisma.BlogWhereInput = Object.freeze({
+  visibility: { in: [...INDEXABLE_VISIBILITIES] },
+});
+
+/**
+ * 查看者。`null` = 游客（未登录）—— **不是**「不判」，别把它当「跳过可见性」用。
+ *
+ * 与 user-service 的 `ProfileViewer` 同形：两处都是「查看者」，别各长各的。
+ * **必传，没有默认值** —— 默认放行的参数一漏传就是越权。
+ */
+export interface BlogViewer {
+  id: string;
+  isCore: boolean;
+}
+
+/**
+ * 解析提交上来的可见性。
+ *
+ * 缺省 → 'private'：旧客户端（不带这个字段的表单 / bot）不得改变任何文章的对外状态。
+ * 显式传了非白名单值 → null，由调用方报 400。**不静默丢弃** —— 调用方把 `publish`
+ * 拼成 `pulbic` 却拿到一份「看着正常、其实存了 private」的结果，是最难查的那类问题
+ * （与 `/api/blogs` 的 search_fields 白名单同一个口径）。
+ */
+export function parseVisibility(raw: unknown): BlogVisibility | null {
+  if (raw === undefined || raw === null || raw === '') return 'private';
+  return (BLOG_VISIBILITIES as readonly string[]).includes(raw as string)
+    ? (raw as BlogVisibility)
+    : null;
 }
 
 export interface ListParams {
@@ -54,6 +138,18 @@ export interface ListParams {
 
 const DEFAULT_PER_PAGE = 200;
 
+/**
+ * **站内**列表：不看 `visibility`。
+ *
+ * 【对外列表不走这里】本函数的两个调用方（`/blog` 页面、`GET /api/blogs`）都是 core+
+ * 档，而 core+ 在博客域是全读的 —— 所以可见性在这里没有意义，返回全量是对的。
+ *
+ * 将来做对外列表（第 2 期的 `/explore` 之类）时**另起入口**，并在 where 里 AND 上
+ * `EXTERNAL_VISIBLE_BLOG_WHERE`。**别给本函数加一个可选的 viewer 参数** ——
+ * 可选的参数一旦漏传，方向就是「把全站 private 文章喂给访客」，而这里没有任何
+ * 编译期的东西能挡住它。tests/service/blog-service.test.ts 有一条钉现状的用例：
+ * 存在 private 文章时本函数**照旧返回它**；谁哪天顺手加了过滤，那条会立刻变红。
+ */
 export async function listBlogs(params: ListParams) {
   const page = Math.max(1, params.page ?? 1);
   // 每页上限与默认一致（200 篇/页），仍防「?perPage=100000 拖库」
@@ -236,9 +332,21 @@ function makeSnippet(content: string, at: number, qLen: number): string {
   return `${start > 0 ? '…' : ''}${body}${end < content.length ? '…' : ''}`;
 }
 
-export async function getBlogDetail(id: string) {
+/**
+ * 读一篇。`viewer` **必传**（null = 游客）。
+ *
+ * core+ 不加可见性条件（private 对他们就是「照常可读」）；非 core 只能拿到对外可见
+ * 的两档。**不判档位的读口别直接调它** —— 用下面两个具名出口，它们的名字说明了一切。
+ *
+ * 返回 null 的三种原因（**对外同形，不区分**）：不存在、已软删、档位不够。
+ */
+export async function getBlogDetail(id: string, viewer: BlogViewer | null) {
   const blog = await prisma.blog.findFirst({
-    where: { id, ignore: false },
+    where: {
+      id,
+      ignore: false,
+      ...(viewer?.isCore ? {} : EXTERNAL_VISIBLE_BLOG_WHERE),
+    },
     select: {
       id: true,
       title: true,
@@ -249,12 +357,47 @@ export async function getBlogDetail(id: string) {
       fishCount: true,
       isFeatured: true,
       authorId: true,
+      // 页面要拿它决定 robots 元数据与 OG 图，OG 图路由要拿它决定 X-Robots-Tag
+      visibility: true,
       author: { select: { id: true, username: true } },
       category: { select: { name: true, slug: true, parentId: true, parent: { select: { name: true } } } },
       content: { select: { content: true, updatedAt: true } },
     },
   });
   return blog;
+}
+
+/**
+ * **对外读一篇的唯一出口**：viewer 恒为游客。
+ *
+ * 对外页面与 OG 图都走它，别各自去写 `getBlogDetail(id, null)` —— 具名出口是静态
+ * 守卫（tests/unit/anonymous-read-guard.test.ts 的 GUARD_SYMBOLS）能认得的形状，
+ * 也说明「这个调用点确实做了可见性判定」。
+ */
+export async function getExternallyVisibleBlog(id: string) {
+  return getBlogDetail(id, null);
+}
+
+/**
+ * 可索引的文章清单（sitemap 用）。只出 public 档。
+ *
+ * **不判档位**的列表出口：调用方拿不到会话，正是因此它只敢返回 public —— link 档
+ * 拿到链接就能读，但**不该被列举**（决策：link 不进 sitemap、不许索引）。
+ */
+export async function listIndexableBlogs(): Promise<
+  { id: string; updatedAt: Date | null; createdAt: Date | null }[]
+> {
+  const rows = await prisma.blog.findMany({
+    where: { ignore: false, ...INDEXABLE_BLOG_WHERE },
+    select: { id: true, createdAt: true, content: { select: { updatedAt: true } } },
+    orderBy: { createdAt: 'desc' },
+  });
+  // 取正文的 updatedAt 当 lastModified —— 「什么时候改的」对爬虫比「什么时候发的」有用
+  return rows.map((r) => ({
+    id: r.id,
+    updatedAt: r.content?.updatedAt ?? null,
+    createdAt: r.createdAt,
+  }));
 }
 
 export interface LikerRow {

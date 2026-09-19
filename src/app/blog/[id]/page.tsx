@@ -16,7 +16,8 @@ export const dynamic = 'force-dynamic';
 export default async function BlogDetailPage({ params }: { params: Promise<{ id: string }> }) {
   await requireCoreUser();
   const { id } = await params;
-  const [blog, user] = await Promise.all([getBlogDetail(id), getCurrentUser()]);
+  const user = await getCurrentUser();
+  const blog = await getBlogDetail(id, user ? { id: user.id, isCore: isCoreUser(user) } : null);
   if (!blog) notFound();
 
   const [feedStatus, likeRow, favorited] = await Promise.all([
