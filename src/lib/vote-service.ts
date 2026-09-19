@@ -211,6 +211,58 @@ export async function createVote(
   return { id: voteId };
 }
 
+// ── 锁定 / 解锁 / 软删除（仅创建者）─────────────────────────────────────────
+//
+// 【为什么收进 service】这三件事此前只存在于 `/vote/[id]` 页面的 server action 里
+// （`src/app/vote/[id]/page.tsx` 的三个 `'use server'` 函数，全站唯一一处）。
+// server action 走 RSC 协议、action id 每次构建都变，**站外调用方拿不到** ——
+// 于是「建得了投票、锁不了也删不掉」：机器人（以及任何非浏览器客户端）比人少一条路。
+// 现在路由与页面共用这一份实现，页面不再自己摸 prisma。
+//
+// 【归属口径】先 404 后 403，与 `/api/blogs/:id` 的 PUT/DELETE 一致：
+// 「不存在 / 已软删」与「不是你的」分成两种回法。这里不新增泄露面 —— 投票详情
+// 本来就是 core+ 可读的（`GET /api/votes/:id`），存在性早就不是秘密。
+//
+// 【软删除】`ignore = true`，与全站一致（永不物理删除）。已投的 VoteRecord 留在库里：
+// 票数不再对外可见，但账不能抹。
+
+export type VoteMutationResult =
+  | { ok: true; isLocked?: boolean }
+  | { error: string; status: number };
+
+/** 锁定 / 解锁（仅创建者）。幂等：重复锁同一个状态不报错。 */
+export async function setVoteLocked(
+  voteId: string,
+  userId: string,
+  locked: boolean
+): Promise<VoteMutationResult> {
+  const vote = await prisma.vote.findFirst({
+    where: { id: voteId, ignore: false },
+    select: { authorId: true },
+  });
+  if (!vote) return { error: '投票不存在', status: 404 };
+  if (vote.authorId !== userId) return { error: '无权管理该投票', status: 403 };
+
+  await prisma.vote.update({ where: { id: voteId }, data: { isLocked: locked } });
+  return { ok: true, isLocked: locked };
+}
+
+/** 软删除（仅创建者）。删过的再删 → 404（`ignore: false` 的过滤把它当不存在）。 */
+export async function softDeleteVote(
+  voteId: string,
+  userId: string
+): Promise<VoteMutationResult> {
+  const vote = await prisma.vote.findFirst({
+    where: { id: voteId, ignore: false },
+    select: { authorId: true },
+  });
+  if (!vote) return { error: '投票不存在', status: 404 };
+  if (vote.authorId !== userId) return { error: '无权删除该投票', status: 403 };
+
+  await prisma.vote.update({ where: { id: voteId }, data: { ignore: true } });
+  return { ok: true };
+}
+
 // ── 投票 ─────────────────────────────────────────────────────────────────────
 export type CastVoteResult =
   | { ok: true }

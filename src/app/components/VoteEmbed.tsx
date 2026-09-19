@@ -176,7 +176,10 @@ export function VoteIdCopy({ voteId }: { voteId: string }) {
 // VoteDetailControls — 底部操作区
 //   • 所有人：返回上页
 //   • 创建者：锁定/解锁、删除，以及"查看详细投票情况"折叠
-// 管理动作通过传入的 server action 执行（锁定/解锁/删除），成功后刷新或跳转。
+// 管理动作走 `/api/votes/:id`（PATCH 锁 / DELETE 删）—— 与站外机器人**同一条路**。
+// 此前这三件事是页面自己的 server action，于是成了「人有、机器人没有」：RSC 协议
+// （action id 随构建变）站外调不动。**这条接口同时是对外契约**，改文案要同步
+// `docs/bot/vote-bot.md`。
 // ─────────────────────────────────────────────────────────────────────────────
 interface VoterGroup {
   label: string;
@@ -185,43 +188,54 @@ interface VoterGroup {
 }
 
 interface ControlsProps {
+  voteId: string;
   isCreator: boolean;
   isLocked: boolean;
   voterGroups: VoterGroup[];
-  lockAction: () => Promise<void>;
-  unlockAction: () => Promise<void>;
-  deleteAction: () => Promise<string | void>;
 }
 
 export function VoteDetailControls({
+  voteId,
   isCreator,
   isLocked,
   voterGroups,
-  lockAction,
-  unlockAction,
-  deleteAction,
 }: ControlsProps) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [showVoters, setShowVoters] = useState(false);
 
-  async function run(
-    fn: () => Promise<string | void>,
-    confirmMsg: string,
-    errPrefix?: string
-  ) {
+  /** 锁定 / 解锁。成功后 refresh —— 「已锁定」徽标与结果视图都是服务端渲染的。 */
+  async function setLocked(locked: boolean) {
+    const res = await fetch(`/api/votes/${voteId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ locked }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.code !== 200) throw new Error(data.message || '操作失败');
+    router.refresh();
+  }
+
+  /** 软删除。成功后离开详情页 —— 它已经不存在了（再进来是 404）。 */
+  async function remove() {
+    const res = await fetch(`/api/votes/${voteId}`, {
+      method: 'DELETE',
+      credentials: 'same-origin',
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.code !== 200) throw new Error(data.message || '删除失败');
+    router.push('/vote');
+  }
+
+  async function run(fn: () => Promise<void>, confirmMsg: string, errPrefix = '') {
     if (!confirm(confirmMsg)) return;
     setBusy(true);
     try {
-      const err = await fn();
-      // 失败时（server action 返回错误信息）以原生 alert 呈现
-      if (err && errPrefix) {
-        alert(errPrefix + err);
-        return;
-      }
-      router.refresh();
-    } catch {
-      // server action 内的 redirect 会以异常形式向上冒泡完成跳转，这里无需处理
+      await fn();
+    } catch (e) {
+      // 失败原因是接口回的那句 message（403 无权 / 404 不存在），原文呈现
+      alert(errPrefix + (e instanceof Error ? e.message : '未知错误'));
     } finally {
       setBusy(false);
     }
@@ -245,7 +259,7 @@ export function VoteDetailControls({
               type="button"
               className="btn btn--ghost"
               disabled={busy}
-              onClick={() => run(unlockAction, '确定要解锁此投票吗？')}
+              onClick={() => run(() => setLocked(false), '确定要解锁此投票吗？')}
             >
               解锁投票
             </button>
@@ -255,7 +269,7 @@ export function VoteDetailControls({
               className="btn btn--ghost"
               disabled={busy}
               onClick={() =>
-                run(lockAction, '确定要锁定此投票吗？锁定后所有人都不能投票，但可以看到结果。')
+                run(() => setLocked(true), '确定要锁定此投票吗？锁定后所有人都不能投票，但可以看到结果。')
               }
             >
               锁定投票
@@ -267,7 +281,7 @@ export function VoteDetailControls({
             type="button"
             className="btn btn--danger-soft"
             disabled={busy}
-            onClick={() => run(deleteAction, '确定要删除此投票吗？此操作不可恢复。', '删除失败：')}
+            onClick={() => run(remove, '确定要删除此投票吗？此操作不可恢复。', '删除失败：')}
           >
             删除投票
           </button>

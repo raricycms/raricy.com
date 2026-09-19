@@ -1,5 +1,4 @@
-import { notFound, redirect } from 'next/navigation';
-import { revalidatePath } from 'next/cache';
+import { notFound } from 'next/navigation';
 import { requireCoreUser } from '@/lib/guard';
 import { getVoteDetail } from '@/lib/vote-service';
 import { getCurrentUser } from '@/lib/auth';
@@ -38,43 +37,12 @@ export default async function VoteDetailPage({ params }: { params: Promise<{ id:
     }));
   }
 
-  // ── 创建者管理动作（server action：锁定 / 解锁 / 删除）──
-  async function lockVoteAction() {
-    'use server';
-    const me = await requireCoreUser();
-    const v = await prisma.vote.findFirst({
-      where: { id, ignore: false },
-      select: { authorId: true },
-    });
-    if (!v || v.authorId !== me.id) return;
-    await prisma.vote.update({ where: { id }, data: { isLocked: true } });
-    revalidatePath(`/vote/${id}`);
-  }
-
-  async function unlockVoteAction() {
-    'use server';
-    const me = await requireCoreUser();
-    const v = await prisma.vote.findFirst({
-      where: { id, ignore: false },
-      select: { authorId: true },
-    });
-    if (!v || v.authorId !== me.id) return;
-    await prisma.vote.update({ where: { id }, data: { isLocked: false } });
-    revalidatePath(`/vote/${id}`);
-  }
-
-  async function deleteVoteAction(): Promise<string | void> {
-    'use server';
-    const me = await requireCoreUser();
-    const v = await prisma.vote.findFirst({
-      where: { id, ignore: false },
-      select: { authorId: true },
-    });
-    // 失败时返回错误信息，交由客户端以 alert('删除失败：…') 呈现
-    if (!v || v.authorId !== me.id) return '未知错误';
-    await prisma.vote.update({ where: { id }, data: { ignore: true } });
-    redirect('/vote');
-  }
+  // ── 创建者管理动作（锁定 / 解锁 / 删除）──
+  // 这三件事**不在这里实现**：它们走 `/api/votes/:id` 的 PATCH / DELETE，由下面的
+  // VoteDetailControls 直接 fetch。此前它们是本页的三个 server action，而 server action
+  // 站外调不动 —— 结果是机器人建得了投票、却锁不了也删不掉（改由接口承载后这条缺口才平）。
+  // 逻辑在 `src/lib/vote-service.ts` 的 setVoteLocked / softDeleteVote，页面不再自己摸
+  // 写路径。（上面那三个 server action 删掉了，`revalidatePath` / `redirect` 也随之不再需要。）
 
   return (
     <div className="vote-page">
@@ -109,12 +77,10 @@ export default async function VoteDetailPage({ params }: { params: Promise<{ id:
       />
 
       <VoteDetailControls
+        voteId={vote.id}
         isCreator={vote.isCreator}
         isLocked={vote.isLocked}
         voterGroups={voterGroups}
-        lockAction={lockVoteAction}
-        unlockAction={unlockVoteAction}
-        deleteAction={deleteVoteAction}
       />
     </div>
   );
