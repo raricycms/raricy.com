@@ -49,6 +49,7 @@ process.env.STORIES_DIR = E2E_STORIES_DIR;
 const PORT = 3100; // 避开开发用的 3000
 const ACCOUNT_PORT = 3101; // 账户服务替身，见 tests/e2e/mock-account-service.ts
 const ACCOUNT_INTERNAL_TOKEN = 'e2e-internal-token';
+const MARKET_PORT = 3102; // 练手盘行情替身，见 tests/e2e/mock-market-price.ts
 
 /**
  * 真正需要 mobile 布局的 spec —— mobile project 只跑这些（见下方 projects 的注解）。
@@ -144,6 +145,18 @@ export default defineConfig({
 
   webServer: [
     {
+      // 行情源替身。**不是可选项**：练手盘的成交价是下单那一刻现取的，e2e 里不拦住
+      // 就是真去打币安 —— 用例会随「墙内通不通、当时价格多少」随机成败，而
+      // 「涨了 mint / 跌了 burn」这类断言需要一个确定的涨跌。
+      command: `npx tsx tests/e2e/mock-market-price.ts`,
+      port: MARKET_PORT,
+      reuseExistingServer: false,
+      timeout: 30_000,
+      env: {
+        E2E_MARKET_PORT: String(MARKET_PORT),
+      },
+    },
+    {
       // 账户微服务替身。**不是可选项**：next start 下 NODE_ENV=production，
       // 而注册/签到走 fail-closed 鱼干写路径 —— 未配 ACCOUNT_SERVICE_INTERNAL_TOKEN
       // 时 assertRemoteRequiredInProduction() 直接抛 503。不接远端就跑不了这两条主链路。
@@ -188,6 +201,12 @@ export default defineConfig({
       // `NODE_ENV === 'test'` 的保险在这里**盖不住** —— e2e 跑的是 next start，
       // NODE_ENV 是 production。所以这一条是 e2e 侧唯一的闸门。
       FISH_WEBHOOK_DRAIN_MS: '0',
+      // 练手盘的行情轮询同理必须关掉 —— 理由与上一条同款（e2e 跑的是 next start，
+      // NODE_ENV 是 production，market-poll-drainer 里那道 `NODE_ENV === 'test'`
+      // 的保险在这里盖不住）。行情由用例自己按需触发，不靠后台循环。
+      MARKET_POLL_MS: '0',
+      // 行情源指向替身 —— 见上面那个 webServer 条目的说明。
+      MARKET_PRICE_BASE_URL: `http://127.0.0.1:${MARKET_PORT}`,
       AVATARS_DIR: path.resolve(__dirname, 'tests/.tmp/e2e-avatars'),
       IMAGE_UPLOAD_FOLDER: path.resolve(__dirname, 'tests/.tmp/e2e-images'),
       // 表情素材同理：不设它就会去扫项目真实的 instance/stickers（本机可能真有素材），

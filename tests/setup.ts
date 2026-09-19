@@ -48,6 +48,11 @@ process.env.ACCOUNT_SYSTEM_KEY = '';
 // 两道都留着：谁把那条判断删了，这条还兜得住。
 process.env.FISH_WEBHOOK_DRAIN_MS = '0';
 
+// 练手盘的行情轮询同理必须关掉：跑起来的话每个测试文件都会有一个后台循环去打
+// 真实币安。src/lib/market-poll-drainer.ts 里还有一道 `NODE_ENV === 'test'` 的
+// 保险，这里是第二道 —— 两道都留着。
+process.env.MARKET_POLL_MS = '0';
+
 // 进程退出时清掉自己的库文件，避免 .tmp 堆积
 process.on('exit', () => {
   for (const suffix of ['', '-wal', '-shm']) {

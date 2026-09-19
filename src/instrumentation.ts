@@ -2,7 +2,7 @@
 // instrumentation.ts — Next 的进程启动钩子（本站**唯一**的后台任务入口）
 //
 // register() 在服务进程启动时被 Next 调一次，是本站第一个「不在请求里跑的」代码。
-// 目前只做一件事：起回调投递的定时器。
+// 目前做两件事：起回调投递的定时器、起练手盘的行情轮询。
 //
 // ⚠️ 三条纪律
 //   1. **只在这里启动**，不要在某个模块里「被 import 时自动启动」—— vitest 会直接
@@ -33,6 +33,15 @@ export async function register(): Promise<void> {
     } catch (e) {
       // 绝不因为回调的启动失败而拖垮整个站点
       console.error('[instrumentation] 回调投递定时器启动失败（站点继续运行）:', e);
+    }
+
+    try {
+      // 练手盘行情轮询。**只刷展示缓存，不服务成交** —— 成交价在下单那一刻现取，
+      // 见 src/lib/market-price.ts 的文件头。
+      const { startMarketPoller } = await import('./lib/market-poll-drainer');
+      startMarketPoller();
+    } catch (e) {
+      console.error('[instrumentation] 行情轮询启动失败（站点继续运行）:', e);
     }
   }
 }
