@@ -16,6 +16,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { resetDb, makeUser, makeBlog, makeCategory, prisma } from '../helpers/db';
 import {
   validateBlogData,
+  listCategoryOptions,
   countMarkdownWords,
   countBlogsToday,
   createBlog,
@@ -209,6 +210,102 @@ describe('validateBlogData / 栏目校验', () => {
   it('长度校验先于栏目校验（超长标题 + 非法栏目 → 只报标题）', async () => {
     const r = await validateBlogData(baseInput({ title: 'a'.repeat(31), category_id: 'abc' }));
     expect((r as { message: string }).message).toBe('标题不能超过30个字符');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 1b. 未知字段 —— 键集是封闭的
+//
+// 【为什么这么测】这条是机器人反馈逼出来的：POST 收 `category_id`，而列表接口的
+// 筛选参数叫 `category`（值是 slug）。把 `category` 照抄进 POST 会被原样忽略 ——
+// 回 200「上传成功」而文章落进「未分类」。**静默错账**，调用方从响应里看不出任何
+// 异常。现在未知键一律 400，调用方当场知道字段写错了。
+//
+// 栏目近义键要**指路 `category_id`**：只回一句「未知字段」等于让人去猜拼法。
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('validateBlogData / 未知字段（键集封闭）', () => {
+  it.each([
+    ['category（列表接口的筛选参数，值是 slug）', 'category', 'tech'],
+    ['categoryId（camelCase，服务层内部才是这个名字）', 'categoryId', 3],
+    ['category_name', 'category_name', '技术'],
+    ['category_slug', 'category_slug', 'tech'],
+  ])('★ %s → 400 且指路 category_id', async (_l, key, value) => {
+    const r = await validateBlogData(baseInput({ [key]: value }));
+    expect(r.ok).toBe(false);
+    const msg = (r as { message: string }).message;
+    expect(msg).toContain(`未知字段 "${key}"`);
+    expect(msg, '必须是可执行的提示，不能只说「未知字段」').toContain('category_id');
+    expect(msg).toContain('GET /api/categories');
+  });
+
+  it('★ 静默忽略的旧行为已消失：传 category 不再落成「未分类」', async () => {
+    const cat = await makeCategory({ isActive: true });
+    const r = await validateBlogData(baseInput({ category: cat.slug }));
+    expect(r.ok, '此前这里会 ok:true 且 categoryId=null').toBe(false);
+  });
+
+  it('与栏目无关的未知字段 → 列出可接受的键集', async () => {
+    const r = await validateBlogData(baseInput({ tags: ['a'] }));
+    expect((r as { message: string }).message).toBe(
+      '未知字段 "tags"，本接口只接受：title / description / content / category_id'
+    );
+  });
+
+  it('四个合法键全带上照样通过（键集没把谁误伤）', async () => {
+    const cat = await makeCategory({ isActive: true });
+    const r = await validateBlogData({
+      title: '标题',
+      description: '摘要',
+      content: '正文',
+      category_id: cat.id,
+    });
+    expect(r.ok).toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 1c. listCategoryOptions —— 对外清单（GET /api/categories 的数据源）
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('listCategoryOptions', () => {
+  it('摊平成两级：根与子各一条，path 走 `父 > 子` 口径', async () => {
+    const parent = await makeCategory({ name: '甲栏目' });
+    const child = await makeCategory({ name: '乙子栏', parentId: parent.id });
+
+    const all = await listCategoryOptions();
+    const got = all.filter((c) => c.id === parent.id || c.id === child.id);
+    expect(got.map((c) => c.path)).toEqual(['甲栏目', '甲栏目 > 乙子栏']);
+    expect(got.map((c) => c.parent_id)).toEqual([null, parent.id]);
+  });
+
+  it('停用栏目不出现在清单里（与下拉同一口径：只取 is_active）', async () => {
+    const off = await makeCategory({ isActive: false });
+    const all = await listCategoryOptions();
+    expect(all.some((c) => c.id === off.id)).toBe(false);
+  });
+
+  it('★ admin_only_posting 是生效值：父栏目勾了就往下继承', async () => {
+    const parent = await makeCategory({ adminOnlyPosting: true });
+    const child = await makeCategory({ parentId: parent.id, adminOnlyPosting: false });
+
+    const all = await listCategoryOptions();
+    const byId = new Map(all.map((c) => [c.id, c]));
+    expect(byId.get(parent.id)?.admin_only_posting, '父栏目自己当然是 true').toBe(true);
+    expect(
+      byId.get(child.id)?.admin_only_posting,
+      '子栏目自己没勾，但父栏目勾了 —— 发文那道闸门会拒，清单必须如实预告'
+    ).toBe(true);
+  });
+
+  it('父栏目没勾、子栏目自己勾了 → 只子栏目为 true', async () => {
+    const parent = await makeCategory({ adminOnlyPosting: false });
+    const child = await makeCategory({ parentId: parent.id, adminOnlyPosting: true });
+
+    const all = await listCategoryOptions();
+    const byId = new Map(all.map((c) => [c.id, c]));
+    expect(byId.get(parent.id)?.admin_only_posting).toBe(false);
+    expect(byId.get(child.id)?.admin_only_posting).toBe(true);
   });
 });
 

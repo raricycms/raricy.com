@@ -7,7 +7,7 @@
 
 import { prisma } from './db';
 import { nowForDb, dayStart, todayStr, hoursUntil } from './db-time';
-import { ymdhms } from './format';
+import { ymdhms, categoryFullPath } from './format';
 import { rateLimit, RULES } from './rate-limit';
 import { sendNotification } from './notification-service';
 import type { Prisma } from '@prisma/client';
@@ -419,6 +419,26 @@ export const BLOG_DESCRIPTION_MAX = 100;
 export const BLOG_CONTENT_MAX = 250000; // 正文上限（放宽自 200000）
 export const BLOG_DAILY_LIMIT = 20; // 每日发文上限
 
+/** 发文 / 改文**唯一接受**的键。多一个都会被 400 顶回去，理由见 validateBlogData 里那段。 */
+export const BLOG_ACCEPTED_KEYS = ['title', 'description', 'content', 'category_id'] as const;
+
+/**
+ * 栏目字段的常见错写（一律小写比对，`categoryId` / `categoryID` 都能命中）。
+ * 命中时报的错要**指路 `category_id`** —— 只回一句「未知字段」等于让调用方去猜拼法。
+ */
+const CATEGORY_ALIAS_KEYS = [
+  'category',
+  'categoryid',
+  'category_ids',
+  'cat_id',
+  'catid',
+  'category_slug',
+  'category_name',
+  'category_path',
+  'column',
+  'section',
+];
+
 export interface ValidatedBlogData {
   title: string;
   description: string;
@@ -434,10 +454,36 @@ export type ValidateBlogResult =
  * 校验博客提交数据。
  * title/description 去空白；content 不去空白（原样取，缺字段当空串）。
  * 栏目存在性走 DB（is_active=True）。
+ * 未知字段直接拒（见下），所以键集是**封闭**的：BLOG_ACCEPTED_KEYS。
  */
 export async function validateBlogData(raw: unknown): Promise<ValidateBlogResult> {
   if (!raw || typeof raw !== 'object') return { ok: false, message: '缺少必要参数' };
   const data = raw as Record<string, unknown>;
+
+  // 未知字段直接 400，**不静默丢弃** —— 与 GET 那条 `search_fields` 同一口径
+  //（见 src/app/api/blogs/route.ts 顶部）。
+  //
+  // 这条是被机器人踩出来的：POST 收的键叫 `category_id`，而列表接口的筛选参数叫
+  // `category`（值是 slug）。照抄过来会被原样忽略 —— 请求回 200「上传成功」，
+  // 文章却落进「未分类」，响应里没有任何异常。调用方不可能自查出这类错。
+  const unknown = Object.keys(data).filter(
+    (k) => !(BLOG_ACCEPTED_KEYS as readonly string[]).includes(k)
+  );
+  if (unknown.length) {
+    const alias = unknown.find((k) => CATEGORY_ALIAS_KEYS.includes(k.toLowerCase()));
+    if (alias) {
+      return {
+        ok: false,
+        message:
+          `未知字段 "${alias}"：栏目要传 category_id（栏目数字 ID，` +
+          '清单见 GET /api/categories）',
+      };
+    }
+    return {
+      ok: false,
+      message: `未知字段 "${unknown[0]}"，本接口只接受：${BLOG_ACCEPTED_KEYS.join(' / ')}`,
+    };
+  }
 
   const title = (typeof data.title === 'string' ? data.title : '').trim();
   const description = (typeof data.description === 'string' ? data.description : '').trim();
@@ -555,7 +601,14 @@ export function banActionMessage(user: { banUntil?: Date | null; banReason?: str
   return `您已被禁言，无法执行此操作。${remainingText}。原因：${reason}`;
 }
 
-/** 栏目层级（供发布/编辑页下拉：仅 is_active，按 sort_order，与前台树同口径）。 */
+/**
+ * 栏目层级（供发布/编辑页下拉：仅 is_active，按 sort_order，与前台树同口径）。
+ *
+ * 除下拉要的三个字段外还选出了 `slug` 与 `adminOnlyPosting` —— 供下面的
+ * `listCategoryOptions` 摊平用。**两处共用这一份查询**是刻意的：「只取 is_active、
+ * 按 sort_order」这条口径若抄成两份，改了其中一份就是下拉与对外清单不一致。
+ * 表单只取它认识的字段，多出来的不影响它。
+ */
 export async function getCategoryHierarchy() {
   const roots = await prisma.category.findMany({
     where: { parentId: null, isActive: true },
@@ -563,11 +616,19 @@ export async function getCategoryHierarchy() {
     select: {
       id: true,
       name: true,
+      slug: true,
       icon: true,
+      adminOnlyPosting: true,
       children: {
         where: { isActive: true },
         orderBy: { sortOrder: 'asc' },
-        select: { id: true, name: true, icon: true },
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          icon: true,
+          adminOnlyPosting: true,
+        },
       },
     },
   });
@@ -575,6 +636,48 @@ export async function getCategoryHierarchy() {
 }
 
 export type CategoryHierarchy = Awaited<ReturnType<typeof getCategoryHierarchy>>;
+
+/**
+ * 栏目清单（`GET /api/categories` 用）：把两层树**摊平**成一张表。
+ *
+ * 摊平是刻意的 —— 调用方（机器人）要回答的是「我该往 `category_id` 里填哪个数」，
+ * 扁平表直接扫一遍就有答案，嵌套树还得自己递归。
+ *
+ * · `path` 用 `categoryFullPath` 的同一口径（`父 > 子`），与 `GET /api/blogs`
+ *   回的 `category_path` 一致；
+ * · `admin_only_posting` 是**生效值**（子栏目继承父栏目）—— 与发文那道 403
+ *   闸门（`getCategoryPostingMeta`）同一规则。带上它，调用方挑栏目时就能自己
+ *   避开那些一定会被拒的，而不是发出去再收一个 403。
+ */
+export async function listCategoryOptions() {
+  const roots = await getCategoryHierarchy();
+  return roots.flatMap((root) => [
+    {
+      id: root.id,
+      name: root.name,
+      slug: root.slug,
+      icon: root.icon ?? '',
+      parent_id: null,
+      path: categoryFullPath({ name: root.name, parentId: null, parent: null }),
+      admin_only_posting: Boolean(root.adminOnlyPosting),
+    },
+    ...root.children.map((child) => ({
+      id: child.id,
+      name: child.name,
+      slug: child.slug,
+      icon: child.icon ?? '',
+      parent_id: root.id,
+      path: categoryFullPath({
+        name: child.name,
+        parentId: root.id,
+        parent: { name: root.name },
+      }),
+      admin_only_posting: Boolean(child.adminOnlyPosting || root.adminOnlyPosting),
+    })),
+  ]);
+}
+
+export type CategoryOption = Awaited<ReturnType<typeof listCategoryOptions>>[number];
 
 /** 编辑页数据：ignore=true 视为不存在（软删的文章不可编辑）。 */
 export async function getBlogForEdit(blogId: string) {
