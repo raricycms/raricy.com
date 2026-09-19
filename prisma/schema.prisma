@@ -104,6 +104,7 @@ model User {
   fishApiTokens         FishApiToken[]
   fishWebhookEndpoint   FishWebhookEndpoint?
   fishWebhookDeliveries FishWebhookDelivery[]
+  marketPositions       MarketPosition[]
   @@index([id], map: "ix_users_id")
   @@index([role], map: "ix_users_role")
 
@@ -577,6 +578,45 @@ model FishWebhookDelivery {
   @@index([userId], map: "ix_fish_webhook_deliveries_user_id")
   @@index([transferId], map: "ix_fish_webhook_deliveries_transfer_id")
   @@map("fish_webhook_deliveries")
+}
+
+// ── 鱼干练手盘（/fish/trade）─────────────────────────────────────────────────
+//
+// 一个用户投鱼干买入一个**绑定真实加密价格**的仓位，价格涨跌决定他能拿回多少鱼干。
+// 系统账户是无限水池（只在远端存在），赚了从它 mint、亏了 burn 回它 —— 没有撮合、
+// 没有对手盘、没有敞口。设计要点（尤其是「一行 = 一个批次」「为什么价格是 REAL
+// 而鱼干金额是整数」「为什么流水列不建外键」）全在
+// prisma/migrations/18_market_positions 的头部，改动前先读那一份。
+model MarketPosition {
+  id           String    @id
+  userId       String    @map("user_id")
+  /** 白名单见 src/lib/market-price.ts 的 MARKET_SYMBOLS。加币要同步页面文案。 */
+  symbol       String
+  /** 投入的鱼干，**存储单位 = 0.1 鱼干**（同 User.driedFish）。 */
+  stakeUnits   Int       @map("stake_units")
+  /**
+   * 开仓成交价。⚠️ 这是**价格**不是金额，REAL 是刻意的（理由见迁移头部）——
+   * 它从不累加进账本，不参与 fish-units 换算，别「统一」成整数单位。
+   */
+  entryPrice   Float     @map("entry_price")
+  /** 成交价的取价时刻（nowForDb()）—— 审计用：证明成交那一刻系统看到的价。 */
+  entryQuoteAt DateTime  @map("entry_quote_at")
+  openTxId     Int?      @map("open_tx_id")
+  /** 开仓幂等键（每次唯一，带随机后缀）。唯一约束就是幂等的实现。 */
+  openKey      String    @unique(map: "market_positions_open_key_key") @map("open_key")
+  /** open | closed。**绝不物理删除**（远端同步失败的补偿是唯一例外）。 */
+  status       String    @default("open")
+  exitPrice    Float?    @map("exit_price")
+  exitQuoteAt  DateTime? @map("exit_quote_at")
+  /** 结算那一刻算出来的实发单位数，**不是事后重算的** —— 有争议时以它为准。 */
+  payoutUnits  Int?      @map("payout_units")
+  closeTxId    Int?      @map("close_tx_id")
+  closedAt     DateTime? @map("closed_at")
+  createdAt    DateTime? @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+  @@index([userId, status], map: "ix_market_positions_user_status")
+  @@map("market_positions")
 }
 
 // ── 管理审计 ─────────────────────────────────────────────────────────────────

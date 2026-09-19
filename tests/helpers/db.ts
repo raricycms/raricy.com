@@ -87,6 +87,9 @@ export async function resetDb() {
     // 头部），所以两者之间的顺序无所谓；它们相对 users 的顺序才是有意义的。
     'fish_api_tokens',
     'fish_webhook_deliveries', 'fish_webhook_endpoints',
+    // 练手盘持仓引用 users —— 同样必须排在 users 之前。
+    // ⚠️ 漏登记**不报错**（下面那条 DELETE 的 catch 会吞掉），表现为数据在用例间残留。
+    'market_positions',
     'users',
     'account_sync_ledger',
   ];
