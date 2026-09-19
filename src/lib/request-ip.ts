@@ -12,10 +12,14 @@
 // 一个人刷满就把别人全挡在门外。
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** 取客户端 IP。取不到（含头存在但值为空）返回 undefined —— **不是**占位串。 */
 export function clientIp(req: Request): string | undefined {
-  return (
-    req.headers.get('cf-connecting-ip') ??
-    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
-    undefined
-  );
+  // ⚠️ 两级都必须把**空串**当成「取不到」，所以判的是 truthy 而不是 `??`。
+  // `??` 只认 null/undefined，而 `''.split(',')[0].trim()` 是 `''` —— 一个用 `??`
+  // 串起来的实现会让所有「头存在但值为空」的请求落进同一个 '' 桶，那正是文件头警告的
+  // 「一个人刷满就把别人全挡在门外」。（原来就是这么写的，2026-09 被用例逮到。）
+  const cf = req.headers.get('cf-connecting-ip')?.trim();
+  if (cf) return cf;
+  const xff = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
+  return xff || undefined;
 }
