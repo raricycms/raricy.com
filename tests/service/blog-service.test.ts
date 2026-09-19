@@ -1761,6 +1761,17 @@ describe('可见性 / 常量与解析', () => {
       expect(parseVisibility(bad), `${JSON.stringify(bad)} 不该被接受`).toBeNull();
     }
   });
+
+  it('★ parseVisibility：**旧值 `private` 必须被拒**（改名 private → internal 的回归）', () => {
+    // 这条钉的是改名之后最容易出事的一处：一个还在发 'private' 的调用方，若被静默当成
+    // 「缺省」而归一化到 internal，它会以为自己改对了 —— 而真实的意图可能是「设成对外
+    // 公开」或「锁回站内」，猜错哪一边都是静默的对外状态变化。所以必须**当场 400**，
+    // 且错误信息里列着三个合法值（见 PATCH 路由的 `可选：…` 文案）。
+    expect(parseVisibility('private'), '旧值必须落进「非白名单」那一支').toBeNull();
+    // 顺带确认它**没有**被缺省规则吞掉：缺省只认 undefined / null / 空串
+    expect(parseVisibility(undefined)).toBe('internal');
+    expect(parseVisibility('')).toBe('internal');
+  });
 });
 
 /** 造三档各一篇，返回 id 映射。 */
