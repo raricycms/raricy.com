@@ -167,7 +167,9 @@ export function ClipContent({ content }: { content: string }) {
 
   return (
     <div className="clipboard-markdown-content" ref={ref}>
-      <MarkdownRenderer content={content} />
+      {/* 剪贴板详情页是 core+（page.tsx 的 requireCoreUser），所以正文里的 `[@…]`
+          照常展开 —— 与它首页那条 `<MarkdownRenderer>` 的档位一致。 */}
+      <MarkdownRenderer content={content} contentRefs="expand" />
     </div>
   );
 }

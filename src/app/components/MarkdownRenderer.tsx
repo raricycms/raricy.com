@@ -263,7 +263,28 @@ function typesetMath(root: HTMLElement): void {
   }
 }
 
-export default function MarkdownRenderer({ content }: { content: string }) {
+export default function MarkdownRenderer({
+  content,
+  contentRefs,
+}: {
+  content: string;
+  /**
+   * 内容引用（`[@…]`）的处理方式。
+   *
+   *   · 'expand' —— 展开：带 same-origin 凭据去请求三条 core+ 接口（剪贴板正文 /
+   *     投票嵌入 / 收藏夹卡片）+ 拼图床 URL。**只有 core+ 的页面能传这个。**
+   *   · 'plain'  —— 原样保留 `[@…]` 字面量：一次请求都不发，不内联任何站内内容。
+   *
+   * **必传，没有默认值** —— 一个默认展开的组件一旦被用在匿名页面上，就是三条 401
+   * 外加把站内内容渲染给站外读者看。文章详情页的访客视图传 'plain'。
+   *
+   * 【为什么是「原样保留字面量」而不是「换成一句提示」】评论区那条管线
+   * （`src/lib/useResolvedContent.ts`）已经立过这个口径：「取不到时的样子（未登录 /
+   * 非 core 读者）与加载中一致」，就显示 `[@abc12345]`。跟着它走，站内不会出现
+   * 第三种「引用不可用」的观感；也不往不可信字符串里插入任何新文本，没有新的转义面。
+   */
+  contentRefs: 'expand' | 'plain';
+}) {
   /** 渲染结果 + 抽出的公式数量（决定要不要跑 MathJax，见 markdown-math.ts）。 */
   const [doc, setDoc] = useState<{ html: string; mathCount: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -274,7 +295,10 @@ export default function MarkdownRenderer({ content }: { content: string }) {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      let text = await new ContentRefProcessor().preprocess(content ?? '');
+      let text =
+        contentRefs === 'expand'
+          ? await new ContentRefProcessor().preprocess(content ?? '')
+          : (content ?? '');
 
       // 保护数学公式，避免被 Markdown 破坏（还原时的两个坑见 markdown-math.ts）
       const math = protectMath(text);
@@ -308,7 +332,7 @@ export default function MarkdownRenderer({ content }: { content: string }) {
       if (!cancelled) setDoc({ html: clean, mathCount: math.count });
     })();
     return () => { cancelled = true; };
-  }, [content]);
+  }, [content, contentRefs]);
 
   // 渲染后处理：代码高亮、复制按钮、图片放大、外链加固、投票嵌入、MathJax
   useEffect(() => {

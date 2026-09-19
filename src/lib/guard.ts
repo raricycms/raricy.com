@@ -25,16 +25,30 @@ async function getSafeNextPath(): Promise<string> {
   return '/';
 }
 
+/**
+ * 送未登录的人去登录页，并带上回跳目标。四个守卫共用这一个出口。
+ *
+ * 【为什么要能显式传 next】`getSafeNextPath()` 读的是 referer —— 从**站外**直接点进来
+ * 的访客没有同源 referer，会回落到 '/'：登录完掉回首页，而不是他本来要看的那篇文章。
+ * 调用方知道真正的目标时（例如 `/blog/<id>` 的访客分支）就显式传进来。
+ *
+ * ⚠️ 显式传的 next **仍要过**「以 `/` 开头且不以 `//` 开头」那一道 —— 别因为「反正
+ * 调用方是我们自己」就把 open-redirect 的防线绕过去：`//evil.com` 是协议相对 URL，
+ * 浏览器会当跨站处理。校验放在这里而不是各调用点，就是为了让下一个调用方无法忘记。
+ */
+export async function redirectToLogin(next?: string): Promise<never> {
+  const safe =
+    next && next.startsWith('/') && !next.startsWith('//') ? next : await getSafeNextPath();
+  redirect(`/login?next=${encodeURIComponent(safe)}`);
+}
+
 // 需登录 + 核心用户（core 及以上）。
 // 两道门的行为（改动即改全站入口表现）：
 //   - 未登录 → 302 重定向到 /login?next=<原URL>（让用户能登录后再回来）
 //   - 已登录但权限不够 → forbidden() 原地渲染 403 页
 export async function requireCoreUser(): Promise<SafeUser> {
   const user = await getCurrentUser();
-  if (!user) {
-    const next = await getSafeNextPath();
-    redirect(`/login?next=${encodeURIComponent(next)}`);
-  }
+  if (!user) return redirectToLogin();
   if (!isCoreUser(user)) forbidden();
   return user;
 }
@@ -47,10 +61,7 @@ export async function requireCoreUser(): Promise<SafeUser> {
 // 这与 broadcast / categories / appeals 各自的 layout.tsx 是同一个套路。
 export async function requireAdmin(): Promise<SafeUser> {
   const user = await getCurrentUser();
-  if (!user) {
-    const next = await getSafeNextPath();
-    redirect(`/login?next=${encodeURIComponent(next)}`);
-  }
+  if (!user) return redirectToLogin();
   if (!hasAdminRights(user)) forbidden();
   return user;
 }
@@ -59,10 +70,7 @@ export async function requireAdmin(): Promise<SafeUser> {
 // 未登录 → 重定向到登录；已登录但非 owner → 403。
 export async function requireOwner(): Promise<SafeUser> {
   const user = await getCurrentUser();
-  if (!user) {
-    const next = await getSafeNextPath();
-    redirect(`/login?next=${encodeURIComponent(next)}`);
-  }
+  if (!user) return redirectToLogin();
   if (!isOwner(user)) forbidden();
   return user;
 }
@@ -71,9 +79,6 @@ export async function requireOwner(): Promise<SafeUser> {
 // 未登录 → 重定向到登录；登录后权限够不够交给调用方判定。
 export async function requireLogin(): Promise<SafeUser> {
   const user = await getCurrentUser();
-  if (!user) {
-    const next = await getSafeNextPath();
-    redirect(`/login?next=${encodeURIComponent(next)}`);
-  }
+  if (!user) return redirectToLogin();
   return user;
 }
