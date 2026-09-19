@@ -227,7 +227,7 @@ export default async function BlogDetailPage({ params }: { params: Promise<{ id:
         {!member && (
           <div className="mt-3">
             <Link href="/explore" className="read-btn">
-              更多公开文章 →
+              更多文章 →
             </Link>
           </div>
         )}

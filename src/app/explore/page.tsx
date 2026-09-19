@@ -75,8 +75,12 @@ export async function generateMetadata({
   return {
     // 恒定标题：**不**把搜索词拼进来。用户输入反射进 metadata 是没必要的暴露面，
     // 而且搜索结果本来就 noindex，拼了也没用。
-    title: '公开文章 - 聪明山',
-    description: '聪明山上作者选择对外公开的文章，任何人都可以阅读。',
+    //
+    // 【标题与描述：刻意不提「公开」】见 h1 处的注释 —— 这一页对站外读者**就是**本站的
+    // 博客，不是「博客的公开切片」。写「公开文章」等于在标题栏里告诉每个访客
+    // 「你看到的是个子集」。描述也自足，不写「作者选择公开的」那类对比句。
+    title: '博客 - 聪明山',
+    description: '聪明山的原创文章与思考分享。',
     alternates: { canonical: self },
     robots: { index: indexable, follow: true },
   };
@@ -152,8 +156,17 @@ export default async function ExplorePage({
     <>
       <section className="blogs-hero">
         <div className="container">
-          <h1>公开文章</h1>
-          <p>作者选择对外公开的文章，任何人都可以阅读</p>
+          {/* 【为什么这一页自称「博客」，而不是「公开文章」】
+              这一页对站外读者**就是本站的博客** —— h1 与副标题与站内 `/blog` 逐字相同
+              （那边是「博客 / 分享思考与见解」）。写「公开文章」等于在页面最显眼处告诉
+              每个访客「你看到的是个子集，还有一半没给你看」：那既没有信息量，也不是
+              我们想让他关心的事。访客点顶栏「博客」进来看到「博客」，这条链是自洽的。
+
+              ⚠️ 别在这里加「（仅显示公开文章）」之类的补充说明，也别在空态里写
+              「还没有公开的文章」。要区分的是**这一页自己的两种空**（有没有搜索词），
+              不是「公开 / 非公开」——见下面 ExploreListSection 的空态分支。 */}
+          <h1>博客</h1>
+          <p>分享思考与见解</p>
 
           <div className="blog-search">
             {/* featured / sort 恒为假值 —— 对外列表没有精选，也不带排序偏好 */}
@@ -185,7 +198,7 @@ export default async function ExplorePage({
               <SearchRateLimited />
             ) : (
               <Suspense fallback={<ExploreListSkeleton />}>
-                <ExploreListSection result={result} qs={qs} />
+                <ExploreListSection result={result} qs={qs} searching={!!search} />
               </Suspense>
             )}
           </main>
@@ -204,9 +217,12 @@ export default async function ExplorePage({
 async function ExploreListSection({
   result: pending,
   qs,
+  searching,
 }: {
   result: ReturnType<typeof listPublicBlogs>;
   qs: (page: number) => string;
+  /** 是不是「搜出来的空」。空态要分这两种说法 —— 见下面的注释。 */
+  searching: boolean;
 }) {
   const result = await pending;
 
@@ -224,7 +240,13 @@ async function ExploreListSection({
     return (
       <div className="no-blogs">
         <i className="icon icon-journal-text" aria-hidden="true"></i>
-        <p>暂时还没有公开的文章</p>
+        {/* 空态只说「这一页现在没有内容」，**不说**「没有**公开的**文章」—— 后者等于
+            把「本站还有一半没给你看」明说出来（见 h1 处的注释）。
+
+            两种空要分开说：搜索无结果写成「这里还没有文章」，搜的人会以为自己搜错了
+            地方。这与「限频提示不能写成没有结果」是同一条纪律的另一面 —— 文案必须
+            指向真实原因。 */}
+        <p>{searching ? '没有找到匹配的文章' : '这里还没有文章'}</p>
       </div>
     );
   }
@@ -299,7 +321,7 @@ async function ExploreListSection({
 /**
  * 搜索被限频时的提示。
  *
- * 【文案必须与「没有结果」可区分】写成「暂时还没有公开的文章」就是在说谎 —— 访客会
+ * 【文案必须与「没有结果」可区分】写成空态那句「这里还没有文章」就是在说谎 —— 访客会
  * 得出「没有搜到」的结论，而实际是请求压根没发出去。这种静默失效正是本仓库红线紧盯
  * 的那类错，所以宁可多一句解释。
  *

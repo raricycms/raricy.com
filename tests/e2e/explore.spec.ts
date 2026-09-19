@@ -82,7 +82,7 @@ test.describe('对外列表 /explore', () => {
 
     const res = await page.goto(`/explore?search=${encodeURIComponent(prefix)}`);
     expect(res?.status(), '/explore 对匿名必须 200').toBe(200);
-    await expect(page.locator('.blogs-hero h1')).toHaveText('公开文章');
+    await expect(page.locator('.blogs-hero h1')).toHaveText('博客');
 
     const list = page.locator('.blog-list');
     await expect(list).toContainText(pub.title);
@@ -94,7 +94,7 @@ test.describe('对外列表 /explore', () => {
     await becomeAnonymous(page);
     const res = await page.goto('/explore');
     expect(res?.status()).toBe(200);
-    await expect(page.locator('.blogs-hero h1')).toHaveText('公开文章');
+    await expect(page.locator('.blogs-hero h1')).toHaveText('博客');
     // 侧栏与搜索框都该在（这是页面结构，不是「有没有内容」）
     await expect(page.locator('.sidebar-title')).toHaveCount(1);
     await expect(page.locator('.search-form')).toHaveCount(1);
@@ -231,13 +231,13 @@ test.describe('两条导航边（访客的闭环）', () => {
     // 指向 /explore 的链接」这种与意图无关的话。
     const back = page.locator('.blog-detail a[href="/explore"]');
     await expect(back, '访客视图底部要有回公开列表的入口').toHaveCount(1);
-    await expect(back).toContainText('更多公开文章');
+    await expect(back).toContainText('更多文章');
     // 它不属于「读者交互区」—— 那条红线由 blog-visibility.spec.ts 按 id 钉着
     await expect(page.locator('#read-controls')).toHaveCount(0);
 
     await back.click();
     await expect(page).toHaveURL(/\/explore$/);
-    await expect(page.locator('.blogs-hero h1')).toHaveText('公开文章');
+    await expect(page.locator('.blogs-hero h1')).toHaveText('博客');
   });
 
   test('core+ 读同一篇：仍是完整成员视图，**没有**那条对外出口', async ({ page }) => {
