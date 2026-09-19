@@ -107,7 +107,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     return apiErr(400, `可见性取值不合法，可选：${BLOG_VISIBILITIES.join(' / ')}`);
   }
 
-  const result = await setBlogVisibility(id, raw as BlogVisibility);
+  const result = await setBlogVisibility(id, raw as BlogVisibility, user.id);
   if (!result) return apiErr(404, '文章不存在'); // 取详情与更新之间被软删了
 
   return apiOk({ visibility: raw, changed: result.changed }, result.message);
@@ -173,7 +173,7 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
     }
   }
 
-  const { hasChanges, changesDetail } = await updateBlog(id, v.data);
+  const { hasChanges, changesDetail } = await updateBlog(id, v.data, user.id);
 
   // 管理员编辑他人文章时通知作者（因本路由仅作者可入，此分支实际不会触发）。
   if (hasChanges && hasAdminRights(user) && blog.authorId !== user.id) {

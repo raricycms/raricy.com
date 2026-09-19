@@ -105,10 +105,38 @@ model User {
   fishWebhookEndpoint   FishWebhookEndpoint?
   fishWebhookDeliveries FishWebhookDelivery[]
   marketPositions       MarketPosition[]
+  visibilityLogs        BlogVisibilityLog[]  @relation("BlogVisibilityLogActor")
   @@index([id], map: "ix_users_id")
   @@index([role], map: "ix_users_role")
 
   @@map("users")
+}
+
+/// 文章可见性变更记录。
+///
+/// 【为什么值得一张表】`public` 是**不可逆**的（搜索引擎与第三方存档会抓走副本），
+/// 而在此之前「作者把自己的文章放出去」**不留任何痕迹**：那条进通知的 changesDetail
+/// 只在「管理员编辑他人文章」时才发，而 PUT / PATCH 都只认作者本人，所以那条路径对
+/// 可见性根本不可达。不可逆的动作该有账。
+///
+/// 【只记变更，不记创建】新文章落 `internal` 是默认档、不是「变更」—— 记它等于给每次
+/// 发文都写一行噪音。所以这张表回答的是「改过几次、什么时候」，不是「前世今生」。
+/// （存量文章在改名迁移 17 之前也没有行，同理。）
+model BlogVisibilityLog {
+  id        Int      @id @default(autoincrement())
+  blogId    String   @map("blog_id")
+  /// 改的人。**今天恒等于作者**（PUT / PATCH 都只认作者本人），但账不该依赖
+  /// 「将来也不会有人代改」这个假设 —— 假设一旦破，历史补不回来。
+  actorId   String   @map("actor_id")
+  fromValue String   @map("from_value")
+  toValue   String   @map("to_value")
+  createdAt DateTime @map("created_at")
+
+  blog  Blog @relation("BlogVisibilityLogBlog", fields: [blogId], references: [id])
+  actor User @relation("BlogVisibilityLogActor", fields: [actorId], references: [id])
+
+  @@index([blogId, createdAt], map: "ix_blog_visibility_logs_blog")
+  @@map("blog_visibility_logs")
 }
 
 model InviteCode {
@@ -180,6 +208,7 @@ model Blog {
   category Category?     @relation(fields: [categoryId], references: [id])
   content  BlogContent?
   likes    BlogLike[]
+  visibilityLogs BlogVisibilityLog[] @relation("BlogVisibilityLogBlog")
   comments BlogComment[]
   feeds    BlogFeed[]
   favoriteItems FavoriteItem[]

@@ -7,7 +7,10 @@ import {
   INDEXABLE_VISIBILITIES,
   getBlogDetail,
   parseVisibility,
+  listBlogVisibilityLogs,
+  VISIBILITY_LABEL,
 } from '@/lib/blog-service';
+import { ymd } from '@/lib/format';
 import { prisma } from '@/lib/db';
 import MarkdownRenderer from '@/app/components/MarkdownRenderer';
 import CommentSection from '@/app/components/CommentSection';
@@ -132,6 +135,17 @@ export default async function BlogDetailPage({ params }: { params: Promise<{ id:
       ])
     : [{ fed: 0 }, null, false];
 
+  // 「管理文章 → 设置可见性」里那句「上次变更」。只给**能改的人**取（作者 / 管理员）——
+  // 其余人白花一次查询。公开是不可逆的，所以这条信息的价值在「我什么时候放的」，
+  // 而问这个问题的人只可能是要再动它的人。
+  //
+  // 日期在**服务端**格式化（`ymd`，读 UTC+8 墙上时间的切片）：客户端组件里格式化会
+  // 撞上全站禁用的 toLocale* / 本地 getter（见 db-time.ts 与 db-time-guard）。
+  const visLog = isAdmin || isAuthor ? (await listBlogVisibilityLogs(blog.id, 1))[0] : undefined;
+  const lastVisibilityChange = visLog
+    ? `${ymd(visLog.at) ?? ''} 由「${VISIBILITY_LABEL[visLog.from]}」改为「${VISIBILITY_LABEL[visLog.to]}」`
+    : null;
+
   return (
     <>
       {/* 结构化数据（schema.org 的 BlogPosting）—— 让 Google 能出富摘要。
@@ -202,6 +216,7 @@ export default async function BlogDetailPage({ params }: { params: Promise<{ id:
             // 列是 TEXT、没有 CHECK 约束，所以归一化到白名单再下发 —— 脏值不该让弹窗
             // 里三个选项一个都不选中。
             initialVisibility={parseVisibility(blog.visibility) ?? 'internal'}
+            lastVisibilityChange={lastVisibilityChange}
             initialFavorited={favorited}
           />
         )}

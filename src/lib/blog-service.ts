@@ -1063,7 +1063,8 @@ export async function createBlog(authorId: string, data: ValidatedBlogData): Pro
  */
 export async function updateBlog(
   blogId: string,
-  data: ValidatedBlogData
+  data: ValidatedBlogData,
+  actorId: string
 ): Promise<{ hasChanges: boolean; changesDetail: string[] }> {
   const blog = await prisma.blog.findUnique({
     where: { id: blogId },
@@ -1127,7 +1128,7 @@ export async function updateBlog(
   }
 
   const now = nowForDb();
-  await prisma.$transaction([
+  const ops: Prisma.PrismaPromise<unknown>[] = [
     prisma.blog.update({
       where: { id: blogId },
       data: {
@@ -1142,7 +1143,27 @@ export async function updateBlog(
       create: { blogId, content: data.content, updatedAt: now },
       update: { content: data.content, updatedAt: now },
     }),
-  ]);
+  ];
+
+  // 可见性变更**与正文改动同事务**落账（见 migration 19 头部：public 不可逆，而这条
+  // 路径此前不留任何痕迹）。放在同一个 $transaction 里是必须的 —— 分成两次写，
+  // 中间崩一次就会得到「档位改了但没记账」或反过来，而这两种都只能靠人工比对发现。
+  const visibilityChanged = (parseVisibility(blog.visibility) ?? 'internal') !== data.visibility;
+  if (visibilityChanged) {
+    ops.push(
+      prisma.blogVisibilityLog.create({
+        data: {
+          blogId,
+          actorId,
+          fromValue: parseVisibility(blog.visibility) ?? 'internal',
+          toValue: data.visibility,
+          createdAt: now,
+        },
+      })
+    );
+  }
+
+  await prisma.$transaction(ops);
 
   return { hasChanges, changesDetail };
 }
@@ -1160,7 +1181,8 @@ export async function updateBlog(
  */
 export async function setBlogVisibility(
   blogId: string,
-  visibility: BlogVisibility
+  visibility: BlogVisibility,
+  actorId: string
 ): Promise<{ changed: boolean; from: BlogVisibility; message: string } | null> {
   const blog = await prisma.blog.findUnique({
     where: { id: blogId },
@@ -1175,10 +1197,49 @@ export async function setBlogVisibility(
     return { changed: false, from, message: '可见性没有变化' };
   }
 
-  await prisma.blog.update({ where: { id: blogId }, data: { visibility } });
+  const now = nowForDb();
+  // 改档位与记账**同事务** —— 理由同 updateBlog（见 migrations/19_blog_visibility_logs 头部）。
+  await prisma.$transaction([
+    prisma.blog.update({ where: { id: blogId }, data: { visibility } }),
+    prisma.blogVisibilityLog.create({
+      data: { blogId, actorId, fromValue: from, toValue: visibility, createdAt: now },
+    }),
+  ]);
+
   return {
     changed: true,
     from,
     message: `可见性已从「${VISIBILITY_LABEL[from]}」改为「${VISIBILITY_LABEL[visibility]}」`,
   };
+}
+
+/**
+ * 某篇文章的可见性变更记录，**最新在前**。
+ *
+ * 给「管理文章」弹窗显示「上次变更」用（也留给将来站长端的完整轨迹视图）。
+ * ⚠️ 调用方要自己判权限 —— 与其它读口一样，service 层管不了鉴权。
+ */
+export async function listBlogVisibilityLogs(
+  blogId: string,
+  take = 20
+): Promise<{ from: BlogVisibility; to: BlogVisibility; at: Date; actor: string | null }[]> {
+  const rows = await prisma.blogVisibilityLog.findMany({
+    where: { blogId },
+    orderBy: { id: 'desc' },
+    take: Math.min(100, Math.max(1, take)),
+    select: {
+      fromValue: true,
+      toValue: true,
+      createdAt: true,
+      actor: { select: { username: true } },
+    },
+  });
+  return rows.map((r) => ({
+    // 历史行理论上恒为白名单值（写入前都过 parseVisibility），但列没有 CHECK 约束 ——
+    // 脏值回落成 internal 而不是抛，免得一行脏数据把整个弹窗打挂。
+    from: parseVisibility(r.fromValue) ?? 'internal',
+    to: parseVisibility(r.toValue) ?? 'internal',
+    at: r.createdAt,
+    actor: r.actor?.username ?? null,
+  }));
 }

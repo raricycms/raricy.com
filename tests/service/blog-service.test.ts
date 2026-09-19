@@ -42,6 +42,8 @@ import {
   listIndexableBlogs,
   listPublicBlogs,
   listPublicCategoryFacets,
+  setBlogVisibility,
+  listBlogVisibilityLogs,
   parseVisibility,
 } from '@/lib/blog-service';
 import { listAdminBlogs } from '@/lib/admin-blog-service';
@@ -586,7 +588,7 @@ describe('updateBlog / 变更详情文案', () => {
   it('标题变更 → 「标题从《旧》改为《新》」（书名号逐字对齐）', async () => {
     const u = await makeUser();
     const b = await makeBlog({ authorId: u.id, title: '旧标题', description: 'D', content: 'C' });
-    const r = await updateBlog(b.id, { title: '新标题', description: 'D', content: 'C', categoryId: null, visibility: 'internal' });
+    const r = await updateBlog(b.id, { title: '新标题', description: 'D', content: 'C', categoryId: null, visibility: 'internal' }, b.authorId);
     expect(r.hasChanges).toBe(true);
     expect(r.changesDetail).toEqual(['标题从《旧标题》改为《新标题》']);
   });
@@ -594,14 +596,14 @@ describe('updateBlog / 变更详情文案', () => {
   it('摘要变更 → 「摘要已更新」（不回显新旧内容）', async () => {
     const u = await makeUser();
     const b = await makeBlog({ authorId: u.id, title: 'T', description: '旧摘要', content: 'C' });
-    const r = await updateBlog(b.id, { title: 'T', description: '新摘要', content: 'C', categoryId: null, visibility: 'internal' });
+    const r = await updateBlog(b.id, { title: 'T', description: '新摘要', content: 'C', categoryId: null, visibility: 'internal' }, b.authorId);
     expect(r.changesDetail).toEqual(['摘要已更新']);
   });
 
   it('正文变更 → 「文章内容已更新」', async () => {
     const u = await makeUser();
     const b = await makeBlog({ authorId: u.id, title: 'T', description: 'D', content: '旧正文' });
-    const r = await updateBlog(b.id, { title: 'T', description: 'D', content: '新正文', categoryId: null, visibility: 'internal' });
+    const r = await updateBlog(b.id, { title: 'T', description: 'D', content: '新正文', categoryId: null, visibility: 'internal' }, b.authorId);
     expect(r.changesDetail).toEqual(['文章内容已更新']);
   });
 
@@ -609,7 +611,7 @@ describe('updateBlog / 变更详情文案', () => {
     const u = await makeUser();
     const cat = await makeCategory({ name: '技术' });
     const b = await makeBlog({ authorId: u.id, title: 'T', description: 'D', content: 'C', categoryId: null });
-    const r = await updateBlog(b.id, { title: 'T', description: 'D', content: 'C', categoryId: cat.id, visibility: 'internal' });
+    const r = await updateBlog(b.id, { title: 'T', description: 'D', content: 'C', categoryId: cat.id, visibility: 'internal' }, b.authorId);
     expect(r.changesDetail).toEqual(['栏目从《未分类》改为《技术》']);
   });
 
@@ -617,7 +619,7 @@ describe('updateBlog / 变更详情文案', () => {
     const u = await makeUser();
     const cat = await makeCategory({ name: '技术' });
     const b = await makeBlog({ authorId: u.id, title: 'T', description: 'D', content: 'C', categoryId: cat.id });
-    const r = await updateBlog(b.id, { title: 'T', description: 'D', content: 'C', categoryId: null, visibility: 'internal' });
+    const r = await updateBlog(b.id, { title: 'T', description: 'D', content: 'C', categoryId: null, visibility: 'internal' }, b.authorId);
     expect(r.changesDetail, '缺省名必须是「未分类」').toEqual(['栏目从《技术》改为《未分类》']);
   });
 
@@ -626,7 +628,7 @@ describe('updateBlog / 变更详情文案', () => {
     const a = await makeCategory({ name: '生活' });
     const b2 = await makeCategory({ name: '技术' });
     const b = await makeBlog({ authorId: u.id, title: 'T', description: 'D', content: 'C', categoryId: a.id });
-    const r = await updateBlog(b.id, { title: 'T', description: 'D', content: 'C', categoryId: b2.id, visibility: 'internal' });
+    const r = await updateBlog(b.id, { title: 'T', description: 'D', content: 'C', categoryId: b2.id, visibility: 'internal' }, b.authorId);
     expect(r.changesDetail).toEqual(['栏目从《生活》改为《技术》']);
   });
 
@@ -635,7 +637,7 @@ describe('updateBlog / 变更详情文案', () => {
     const u = await makeUser();
     const cat = await makeCategory({ name: '技术' });
     const b = await makeBlog({ authorId: u.id, title: '旧', description: '旧摘要', content: '旧正文', categoryId: null });
-    const r = await updateBlog(b.id, { title: '新', description: '新摘要', content: '新正文', categoryId: cat.id, visibility: 'internal' });
+    const r = await updateBlog(b.id, { title: '新', description: '新摘要', content: '新正文', categoryId: cat.id, visibility: 'internal' }, b.authorId);
     expect(r.changesDetail).toEqual([
       '标题从《旧》改为《新》',
       '摘要已更新',
@@ -651,7 +653,7 @@ describe('updateBlog / hasChanges 语义与落库', () => {
     const u = await makeUser();
     const cat = await makeCategory({ name: '技术' });
     const b = await makeBlog({ authorId: u.id, title: 'T', description: 'D', content: 'C', categoryId: cat.id });
-    const r = await updateBlog(b.id, { title: 'T', description: 'D', content: 'C', categoryId: cat.id, visibility: 'internal' });
+    const r = await updateBlog(b.id, { title: 'T', description: 'D', content: 'C', categoryId: cat.id, visibility: 'internal' }, b.authorId);
     expect(r.hasChanges).toBe(false);
     expect(r.changesDetail).toEqual([]);
   });
@@ -659,14 +661,14 @@ describe('updateBlog / hasChanges 语义与落库', () => {
   it('未分类 → 未分类（都是 null）不算变更', async () => {
     const u = await makeUser();
     const b = await makeBlog({ authorId: u.id, title: 'T', description: 'D', content: 'C', categoryId: null });
-    const r = await updateBlog(b.id, { title: 'T', description: 'D', content: 'C', categoryId: null, visibility: 'internal' });
+    const r = await updateBlog(b.id, { title: 'T', description: 'D', content: 'C', categoryId: null, visibility: 'internal' }, b.authorId);
     expect(r.hasChanges, 'null === null 不应被判成栏目变化').toBe(false);
   });
 
   it('无变更时仍然执行写入（幂等落库，不炸）', async () => {
     const u = await makeUser();
     const b = await makeBlog({ authorId: u.id, title: 'T', description: 'D', content: 'C' });
-    await updateBlog(b.id, { title: 'T', description: 'D', content: 'C', categoryId: null, visibility: 'internal' });
+    await updateBlog(b.id, { title: 'T', description: 'D', content: 'C', categoryId: null, visibility: 'internal' }, b.authorId);
     const after = await prisma.blog.findUnique({ where: { id: b.id } });
     expect(after!.title).toBe('T');
   });
@@ -675,7 +677,7 @@ describe('updateBlog / hasChanges 语义与落库', () => {
     const u = await makeUser();
     const cat = await makeCategory({ name: '技术' });
     const b = await makeBlog({ authorId: u.id, title: '旧', description: '旧摘要', content: '旧正文' });
-    await updateBlog(b.id, { title: '新', description: '新摘要', content: '新正文', categoryId: cat.id, visibility: 'internal' });
+    await updateBlog(b.id, { title: '新', description: '新摘要', content: '新正文', categoryId: cat.id, visibility: 'internal' }, b.authorId);
 
     const blog = await prisma.blog.findUnique({ where: { id: b.id } });
     expect(blog!.title).toBe('新');
@@ -687,7 +689,7 @@ describe('updateBlog / hasChanges 语义与落库', () => {
   });
 
   it('文章不存在 → { hasChanges: false, changesDetail: [] }', async () => {
-    const r = await updateBlog('no-such-blog', { title: 'T', description: 'D', content: 'C', categoryId: null, visibility: 'internal' });
+    const r = await updateBlog('no-such-blog', { title: 'T', description: 'D', content: 'C', categoryId: null, visibility: 'internal' }, 'placeholder-actor');
     expect(r).toEqual({ hasChanges: false, changesDetail: [] });
   });
 
@@ -697,7 +699,10 @@ describe('updateBlog / hasChanges 语义与落库', () => {
     await prisma.blog.create({
       data: { id: 'orphan-blog', title: 'T', description: 'D', authorId: u.id, createdAt: new Date() },
     });
-    const r = await updateBlog('orphan-blog', { title: 'T', description: 'D', content: '新正文', categoryId: null, visibility: 'internal' });
+    // actor 传**真实**的 u.id 而不是占位串：这条用例今天恰好不写可见性日志（档位没变），
+    // 但哪天有人给它换个 visibility，占位串就会撞 blog_visibility_logs 的外键 ——
+    // 报错会指向「插入失败」，而根因是「测试里用了个不存在的 actor」。
+    const r = await updateBlog('orphan-blog', { title: 'T', description: 'D', content: '新正文', categoryId: null, visibility: 'internal' }, u.id);
     expect(r.changesDetail, '旧正文视为空串，与新正文不同 → 记一条变更').toEqual(['文章内容已更新']);
 
     const content = await prisma.blogContent.findUnique({ where: { blogId: 'orphan-blog' } });
@@ -709,7 +714,7 @@ describe('updateBlog / hasChanges 语义与落库', () => {
     // 这里钉住 service 层不设防，权限得由调用方兜。
     const u = await makeUser();
     const b = await makeBlog({ authorId: u.id, title: 'T', description: 'D', content: 'C', ignore: true });
-    const r = await updateBlog(b.id, { title: 'T2', description: 'D', content: 'C', categoryId: null, visibility: 'internal' });
+    const r = await updateBlog(b.id, { title: 'T2', description: 'D', content: 'C', categoryId: null, visibility: 'internal' }, b.authorId);
     expect(r.hasChanges).toBe(true);
   });
 });
@@ -2129,7 +2134,7 @@ describe('可见性 / 写路径落库与变更明细', () => {
       content: 'C',
       categoryId: null,
       visibility: 'public',
-    });
+    }, b.authorId);
     expect(r.hasChanges).toBe(true);
     // 人话短语，不是 'internal' / 'public' 这种机器值
     expect(r.changesDetail).toContain('可见性从《仅站内可见》改为《对外公开》');
@@ -2150,7 +2155,7 @@ describe('可见性 / 写路径落库与变更明细', () => {
       content: 'C',
       categoryId: null,
       visibility: 'internal',
-    });
+    }, b.authorId);
     expect(r.hasChanges).toBe(false);
     expect(r.changesDetail).toEqual([]);
   });
@@ -2165,17 +2170,105 @@ describe('可见性 / 写路径落库与变更明细', () => {
   });
 });
 
+describe('可见性 / 变更记账（blog_visibility_logs）', () => {
+  beforeEach(async () => {
+    await resetDb();
+  });
+
+  it('setBlogVisibility 改档位 → 落一行，from / to / actor 都对', async () => {
+    const u = await makeUser({ role: 'core' });
+    const b = await makeBlog({ authorId: u.id });
+
+    const r = await setBlogVisibility(b.id, 'public', u.id);
+    expect(r?.changed).toBe(true);
+
+    const logs = await prisma.blogVisibilityLog.findMany({ where: { blogId: b.id } });
+    expect(logs, '一次变更一行').toHaveLength(1);
+    expect(logs[0]).toMatchObject({ fromValue: 'internal', toValue: 'public', actorId: u.id });
+    expect(logs[0].createdAt).toBeInstanceOf(Date);
+  });
+
+  it('档位没变 → **不记账**（幂等调用不该留噪音）', async () => {
+    const u = await makeUser({ role: 'core' });
+    const b = await makeBlog({ authorId: u.id });
+    await setBlogVisibility(b.id, 'internal', u.id); // 本来就是 internal
+    expect(await prisma.blogVisibilityLog.count({ where: { blogId: b.id } })).toBe(0);
+  });
+
+  it('updateBlog 改了 visibility → 落一行；只改标题 → 不落', async () => {
+    const u = await makeUser({ role: 'core' });
+    const b = await makeBlog({ authorId: u.id });
+    const data = { title: 'T', description: 'D', content: 'C', categoryId: null };
+
+    await updateBlog(b.id, { ...data, visibility: 'internal' }, u.id); // 没变
+    expect(
+      await prisma.blogVisibilityLog.count({ where: { blogId: b.id } }),
+      '只改标题不该记账'
+    ).toBe(0);
+
+    await updateBlog(b.id, { ...data, visibility: 'link' }, u.id);
+    const logs = await prisma.blogVisibilityLog.findMany({ where: { blogId: b.id } });
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toMatchObject({ fromValue: 'internal', toValue: 'link', actorId: u.id });
+  });
+
+  it('来回改三次 → 三行；listBlogVisibilityLogs **最新在前**', async () => {
+    const u = await makeUser({ role: 'core' });
+    const b = await makeBlog({ authorId: u.id });
+    await setBlogVisibility(b.id, 'link', u.id);
+    await setBlogVisibility(b.id, 'public', u.id);
+    await setBlogVisibility(b.id, 'internal', u.id);
+
+    const logs = await listBlogVisibilityLogs(b.id);
+    expect(logs.map((l) => `${l.from}->${l.to}`)).toEqual([
+      'public->internal',
+      'link->public',
+      'internal->link',
+    ]);
+    expect(logs[0].actor, 'actor 回人话（用户名），不是 uuid').toBe(u.username);
+  });
+
+  it('listBlogVisibilityLogs 只出这一篇的 —— 别的文章的记录不混进来', async () => {
+    const u = await makeUser({ role: 'core' });
+    const a = await makeBlog({ authorId: u.id });
+    const other = await makeBlog({ authorId: u.id });
+    await setBlogVisibility(a.id, 'public', u.id);
+    await setBlogVisibility(other.id, 'link', u.id);
+
+    expect((await listBlogVisibilityLogs(a.id)).map((l) => l.to)).toEqual(['public']);
+  });
+
+  it('★ 改档位与记账**同事务**：actor 不存在被外键挡下时，档位也**不许**变', async () => {
+    // 这条是这张表唯一的硬保证。分开写（先改档位再补记）的话，「档位改了但没账」
+    // 是可能的，而那种状态**只能靠人工比对发现** —— 正是这个功能要消灭的东西。
+    const u = await makeUser({ role: 'core' });
+    const b = await makeBlog({ authorId: u.id });
+
+    await expect(
+      setBlogVisibility(b.id, 'public', 'no-such-user-id'),
+      '外键应当挡下这个 actor'
+    ).rejects.toThrow();
+
+    const after = await prisma.blog.findUnique({
+      where: { id: b.id },
+      select: { visibility: true },
+    });
+    expect(after?.visibility, '记账失败 ⇒ 档位必须原样回滚').toBe('internal');
+    expect(await prisma.blogVisibilityLog.count({ where: { blogId: b.id } })).toBe(0);
+  });
+});
+
 describe('可见性 / 管理端是结构性豁免，不需要 if (isAdmin)', () => {
   it('listAdminBlogs 必须能列出 internal 文章', async () => {
     await resetDb();
     const u = await makeUser({ role: 'core' });
-    const b = await makeBlog({ authorId: u.id, title: '私密文章' });
+    const b = await makeBlog({ authorId: u.id, title: '站内文章' });
     await prisma.blog.update({ where: { id: b.id }, data: { visibility: 'internal' } });
 
     // 管理后台从不调用被可见性过滤的出口，所以「管理员能看见全部」是**结构性**的
     // —— 服务层里没有、也不该有 `if (isAdmin)` 分支。
     // 这条用例防的是「统一一下 listBlogs」式重构顺手把后台改瞎。
     const res = await listAdminBlogs({ page: 1, perPage: 50, status: 'all' });
-    expect(res.blogs.map((x) => x.id), '后台必须看得见私密文章').toContain(b.id);
+    expect(res.blogs.map((x) => x.id), '后台必须看得见站内文章').toContain(b.id);
   });
 });

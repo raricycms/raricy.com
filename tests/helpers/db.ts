@@ -73,6 +73,9 @@ export async function resetDb() {
     'comment_likes', 'blog_comments', 'blog_likes', 'blog_feeds',
     // 收藏夹引用 favorites 与 blogs，favorites 引用 users —— 都必须先于它们删
     'favorite_items', 'favorites',
+    // 可见性变更记录引用 blogs 与 users —— 必须排在两者之前删
+    // （见 migrations/19_blog_visibility_logs 头部：漏登记不报错，只表现为数据残留）
+    'blog_visibility_logs',
     'blog_contents', 'blogs', 'categories',
     'vote_records', 'vote_options', 'votes',
     'clip_text', 'clipboards', 'image_hosting',

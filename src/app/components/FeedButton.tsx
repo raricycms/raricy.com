@@ -67,6 +67,13 @@ interface Props {
    * 对外公开的。这种「默认值是谎话」的参数正是本仓库反复防的那类静默错。
    */
   initialVisibility: BlogVisibility;
+  /**
+   * 上次可见性变更，形如「2026-09-19 由「仅站内可见」改为「对外公开」」。从没改过则 null。
+   *
+   * **由服务端格式化好的整句**（含日期）：客户端组件里做日期格式化会撞上全站禁用的
+   * `toLocale*` / 本地 getter（见 `db-time.ts` 与 `db-time-guard`），所以日期留在服务端切。
+   */
+  lastVisibilityChange?: string | null;
   /** 当前用户的任一收藏夹是否含本文 —— 星标按钮的初始态（未登录传 false）。 */
   initialFavorited?: boolean;
 }
@@ -84,6 +91,7 @@ export default function FeedButton({
   canEdit,
   isAdminDelete,
   initialVisibility,
+  lastVisibilityChange = null,
   initialFavorited = false,
 }: Props) {
   const router = useRouter();
@@ -664,6 +672,11 @@ export default function FeedButton({
               </div>
               <div className="modal-body">
                 <p className="form-hint text-muted">当前：{VISIBILITY_LABEL[visibility]}</p>
+                {/* 「上次变更」—— 公开是不可逆的，所以「我什么时候放出去的」是这一档
+                    唯一值得回看的信息。数据来自 blog_visibility_logs（见迁移 19）。 */}
+                {lastVisibilityChange && (
+                  <p className="form-hint text-muted">上次变更：{lastVisibilityChange}</p>
+                )}
                 {BLOG_VISIBILITIES.map((v) => (
                   <div className="form-check" key={v}>
                     <input
