@@ -40,6 +40,11 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
   同源：`.next` 过期时，tsc 会对**早就删掉的路由**报 `Cannot find module '.../page.js'`。
   实测过 4 条指向已删除的 `photowall` 路由的幻影错误，跑一次 `npm run build` 后自行消失。
   看到「模块不存在」先 `npm run build`，别去翻源码找那个路由。
+  ⚠️ **同一个陈旧状态也会让 `npm run build` 自己挂在类型检查那步**（2026-09 实测：
+  `Failed to compile. Type error: File '.../.next/types/app/admin/appeals/layout.ts' not found`
+  ——报的是个**存在**的路由，所以更迷惑）。这时「跑一次 build」这个解药正好失效：解药就
+  是它本身。**删 `.next/types` 再 build**（别删整个 `.next`：它常被别的进程占着，
+  `rm -rf` 会以 `Directory not empty` 半途失败，而失败信息看着像权限问题）。
   另注：`npm ci` 会连生成的 Prisma client 一起清掉（`postinstall` 不跑 `prisma generate`），
   装完依赖若满屏 `Prisma has no exported member`，补一次 `npx prisma generate`。
 - `npm run cli` —— 运维台。**不带参数在 TTY 下进菜单向导**（引导式，不用背命令）；
