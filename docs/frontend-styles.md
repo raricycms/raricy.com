@@ -517,6 +517,37 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
 拿它当一整段正文的背景，读起来像那段内容被整个标记了。嵌入块靠**形状**（圆角 + 描边 +
 内距）与正文分开，不靠色相。
 
+#### 评论区的两条几何契约
+
+楼中楼的缩进是「DOM 嵌套 + 同一条 `.comment-list` 规则重复生效」叠出来的：React 侧
+**完全不知道深度**（`CommentItem` 不收 depth，服务端也没有层数上限），所以纵向与横向各有一条
+必须成立的契约，由 `tests/e2e/comment-layout.spec.ts` 的**两条**用例分别钉住
+（3 层：什么都不许溢出；20 层：只有顶层列表可以溢出且必须能滚）。
+
+- **纵向 —— 末尾空白不许随层数累加。** 有楼中楼的评论 `padding-bottom: 0`、嵌套列表
+  `margin-bottom: 0`（`.comment-item:has(> .comment-list)` / `.comment-item > .comment-list`）。
+  否则每一层要付两次账：父级内距 18 + 内层列表下距 15 —— 父级的 padding 挡住外边距折叠、
+  子级的下外边距又算进父级的 auto 高度，两者是**相加**而非取大者：每深一层多 33px，
+  3 层实测末尾空出 **66px**（与「根评论 → 根评论」的 0 相比就是用户报的那一大段空）。
+  归零后任何层数都只剩最深那一层自己的 18px。
+  ⚠️ 这是本仓**第一条实际生效的 `:has()`**（§12 里那条 `@supports not (selector(:has(*)))`
+  是没了对手的孤儿）；**刻意不写降级规则** —— 不支持时退回的正是改动前的间距，只是没修好
+  而已，没有比现状更好的「降级样式」可写。
+- **横向 —— 深层评论不许被挤成一个字宽。** `.comment-item { min-width: 240px }` **必须固定
+  px**（写 `min(240px, 100%)` 会随可用宽度一起缩 = 等于没设），缩进每层 15px、窄屏 8px
+  （窄屏压缩见下面的媒体查询）。可用宽度 = 容器宽 − 缩进 × (层数−1)：不设地板的话 390px
+  手机上第 44 层只剩 14px（一行一个字）；设了之后窄屏第 16 层踩到地板，再深就交给滚动。
+  240 的依据：评论里**不能换行**的最宽一行是 `.actions` 的 flex 行（§6.1，没写 `flex-wrap`
+  ⇒ 点赞胶囊 ≈54 + 间距 10 + 回复 ≈46 + 间距 10 + 删除 ≈46 ≈ 166px，计数三位数时 ≈186px），
+  且必须低于最窄的容器（320px 屏 → 288px），否则根评论自己就会顶出横条。
+- **溢出只许由 `.comment-section > .comment-list` 接住**（`overflow-x: auto`）。中间层必须
+  保持 `visible`，否则**每层各画一条横条**；`.blog-detail` 与 `documentElement` 都不许出现
+  横向滚动条。⚠️ 那条 `overflow-x` 必须带 `.comment-section >` 限定 —— 嵌套列表复用的是
+  同一个 `.comment-list` 类名。
+- ⚠️ **横条画在整片评论区的底部**：列表多高它就在多低处，鼠标用户要滚到列表底下才够得着
+  （触屏 / 触控板 / shift 滚轮在列表内任意位置可用）。这是「整片只给一条横条」的固有代价，
+  不是 bug —— 想改成随手可及就得把列表关进固定高度的内滚容器，那是另一套版式。
+
 ### 6.8 胶囊滑块（`components/_segmented.scss`）
 
 一条会滑动的胶囊轨道：容器 `.segmented` + 滑块 `.segmented__thumb` + 按钮
@@ -817,6 +848,10 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
   - `.children` —— 旧规则 `margin-left: 24px + padding-left: 16px` 会与 `.comment-list`
     已承担的缩进叠加，让每层楼向右溢出 15px（§12 上面那条横向滚动条）。
     `.comment-item` 的细线则恢复了（纯纵向，不影响溢出）。
+    ⚠️ 那条 `.comment-item .children .comment-item:first-child` **不能删、也不能顺手
+    「整理」成 `> .comment-list >`**：`children` 这个类名令牌在编译产物里**只**由它提供，
+    而 `tests/unit/css-tsx-classes.test.ts` 要求 tsx 里出现的每个类名都有定义 ——
+    改掉它那道守卫会当场红（`CommentSection.tsx` 的 `<ul className="children comment-list">`）。
   - `.modal-dialog-centered` —— 现在的 `.modal.is-open` 已是 flex 居中、`.modal-dialog`
     还有 `margin: auto`；补上它反而把对话框变成 flex 容器、压过现有居中。
 - **「用了但没有样式」里有一批是正确的**（纯语义包装 / 占位修饰类 / 命名钩子）——
@@ -847,6 +882,9 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
   定义（桌面 20px / 窄屏 0），不会 drift。**别在评论根节点上另写 padding。**
   顺带丢掉原属于 `.blog-detail` 的 50px 上外边距 —— 评论区与操作区的间距回到
   `.read-controls` 自己的 40px（窄屏 30px）。该类名从此**只属于页面正文外层**。
+  评论区自己需要滚动容器时**写 `.comment-section > .comment-list`**（2026-09-19 起，
+  刻意留的那一条，见 §6.7），**别再给 `.blog-content-container-container` 或评论根节点
+  写 `overflow-x`** —— 那正是这一轮拆掉的东西。
 - 其余同名嵌套已登记待办，见下方「同类陷阱」。
 
 **2026-09-18 已修（第二轮：滚动条 / 左侧竖条收尾 / 幽灵引用）**：
@@ -860,6 +898,12 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
   `margin-left: 15px` —— border-box 下 padding 算进 100%、margin 不算，于是每层楼中楼
   向右溢出 15px，冒到最近的滚动容器上画出横向条。**缩进只保留 `padding-left`**。
   另加 `tests/e2e/comment-layout.spec.ts` 钉住（登记在 `RESPONSIVE_SPECS`）。
+  > ⚠️ **2026-09-19 起顶层列表又成了滚动容器 —— 是刻意的，不是上面这条回归。**
+  > 深层楼中楼被 `.comment-item` 的 min-width 撑宽后，溢出**只**允许由
+  > `.comment-section > .comment-list` 接住（那里有 `overflow-x: auto`），于是整片评论区
+  > 只有一条横条，而页面与 `.blog-detail` 仍然不滚。上面「缩进只保留 `padding-left`」的
+  > 判据**不变**：每层再叠一个同值 `margin-left` 会让溢出提前发生、且发生在**每一层**上。
+  > 完整口径（含 240px 的来历与 `:has()` 那条）见 §6.7「评论区的两条几何契约」。
 - **幽灵引用**：`pages/blog/_blog.scss` 的 `.read-hero { background: var(--background-color) }`
   （`--background-color` 从未定义 → 标题带一直是透明的，死声明已删）、
   `src/app/components/AdminCategoryEditor.tsx` 的 `var(--ink-3)` → `--fd-ink-3`。
