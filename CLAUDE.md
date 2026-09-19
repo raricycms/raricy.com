@@ -243,6 +243,13 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
   多一层过滤就会出现「搜索引擎收录了一篇，读者在公开列表上翻不到」，而那条差异
   **不会有任何报错**。同理 `exclude_from_all` / `focus_hidden` **不作用于对外列表** ——
   它们是站内陈列规则与账号级偏好（有静态守卫盯：`tests/unit/explore-visibility-guard.test.ts`）。
+- **改档位必须记账**（`blog_visibility_logs`，迁移 19）：`updateBlog` / `setBlogVisibility`
+  都在**同一个事务**里写日志。分开写会得到「档位改了但没账」，而那只能靠人工比对发现。
+  `updateBlog` 的 `actorId` 是**必传**的 —— 新增加可见性写路径时别忘了。（`public` 不可逆，
+  这是它唯一的账。）
+- ⚠️ **别往 `/api/spider/*` 加可见性过滤**：它是 **core+ 网关下的只读命名空间**，机器人能调
+  是因为机器人手里就是一个 core+ 账号 —— 它没有绕过任何东西，`internal` 本来就该被 core+ 读到。
+  而且 `/api/spider/favorites/:id` 同时是**我们自家前端**的数据源（`[@六位]` 卡片）。
 - **不给 `listBlogs` 加可见性过滤**（它是**站内**列表，调用方都是 core+）。对外列表
   **已经另起了入口**（`listPublicBlogs`）—— 已有一条钉现状的用例，谁加了过滤会当场红。
 - **对外搜索绝不碰正文**，且那件事是**编译期**保证（`PublicSearchField = Exclude<SearchField,
