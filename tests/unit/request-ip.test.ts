@@ -3,6 +3,11 @@
 // 【为什么值得单独测】它是全站唯一按 IP 分桶的限频的输入。取错一个头，或取不到时
 // 返回一个占位串，后果都是静默的：要么把所有人并进同一个桶（一个人刷满就挡住全站），
 // 要么让攻击者换一个头就绕开配额。两者都不会报错。
+//
+// 另有一组专门钉「两种形状都收」—— 那是第 2 期把签名从 `Request` 拓宽成
+// `{ headers: Headers }` 的**全部理由**（页面侧拿不到 Request，只有 `headers()`）。
+// 没有那组断言的话，下一个人把签名改回 `Request` 时不会有人发现 —— 直到
+// `/explore` 的限频在某次重构后静默失效。
 
 import { describe, it, expect } from 'vitest';
 import { clientIp } from '@/lib/request-ip';
@@ -66,5 +71,33 @@ describe('clientIp / 取不到时返回 undefined —— **绝不是**占位串'
     expect(got).not.toBe('unknown');
     expect(got).not.toBe('0.0.0.0');
     expect(got === undefined).toBe(true);
+  });
+});
+
+// 上面所有用例走的都是 `Request` 形状（route handler 那条路）。这一组补另一条：
+// **页面 / 服务端组件**里拿不到 Request 对象，只有 `await headers()`。
+// 签名从 `Request` 拓宽成 `{ headers: Headers }` 的全部理由就在这里。
+describe('clientIp / 两种调用形状都收', () => {
+  it('路线 B：直接喂一个 Headers（页面 / 服务端组件的形状）', () => {
+    expect(clientIp({ headers: new Headers({ 'cf-connecting-ip': '5.6.7.8' }) })).toBe('5.6.7.8');
+    expect(clientIp({ headers: new Headers({ 'x-forwarded-for': '5.6.7.8, 10.0.0.1' }) })).toBe(
+      '5.6.7.8'
+    );
+    expect(clientIp({ headers: new Headers() })).toBeUndefined();
+  });
+
+  it('路线 A（Request）结构上满足 `{ headers }` —— 既有调用点一行都不用改', () => {
+    const req = new Request('https://raricy.com/api/og/blog/x', {
+      headers: { 'cf-connecting-ip': '1.2.3.4' },
+    });
+    // 同一个函数、同一种调用，只是多了一层类型上的兼容
+    expect(clientIp(req)).toBe('1.2.3.4');
+  });
+
+  it('★ 两条路线对**同一组头**给出同一个结果（否则就是在两个桶里限频同一台机器）', () => {
+    const raw = { 'x-forwarded-for': '1.2.3.4, 10.0.0.1' };
+    expect(clientIp(new Request('https://raricy.com/', { headers: raw }))).toBe(
+      clientIp({ headers: new Headers(raw) })
+    );
   });
 });

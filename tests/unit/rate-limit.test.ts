@@ -245,6 +245,12 @@ describe('RULES 全站配额（src/lib/rate-limit.ts 即权威，改动即报警
       windowMs: 60_000,
       desc: '文章分享卡片 120 次/分/IP（匿名入口，每次请求 = 一次 sharp 光栅化 2400×1260 PNG）',
     },
+    {
+      name: 'exploreSearchPerIp',
+      limit: 120,
+      windowMs: 60_000,
+      desc: '对外列表 /explore 的搜索 120 次/分/IP（本站第一个匿名**页面**的限频：没有会话可依，只能按 IP）',
+    },
   ] as const;
 
   for (const e of EXPECTED) {

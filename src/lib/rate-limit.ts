@@ -318,7 +318,27 @@ export const RULES = {
    * 【为什么是 30/分】网页搜索框是表单提交（GET）而非实时搜索，正常人每分钟个位数；
    * 30 留足余量，同时把单用户的最坏开销压在 30 × 136ms ≈ 4 秒 CPU/分（约 7% 单核）以内。
    * 带栏目筛选时 SQLite 走 ix_blogs_category_id 收窄，开销还要低一个量级。
-   * 桶键：blog:search:{用户 id}（页面侧没有 Request 对象，clientIp 那条路走不通）。
+   * 桶键：blog:search:{用户 id} —— 这个页面是 core+ 的，有用户 id 可用，
+   * 按人分桶比按 IP 准（同一间办公室的人不会互相挤额度）。
    */
   blogSearchMinute: { limit: 30, windowMs: 60 * 1000 },
+  /**
+   * 对外列表 `/explore` 的**搜索**。本站**第一个**匿名页面的限频 ——
+   * 它没有会话可依，只能按 IP。
+   *
+   * 【为什么是 120/分】与 ogImagePerIp、spiderFavoritePerIp 同一档：匿名按 IP 的
+   * 读口统一 120/分，不为「我这个更轻」另发明一个数字（多一个数字就多一处要记的口径）。
+   * 而它确实比那两条轻 —— 搜索被 public 子集天然收窄（走 ix_blogs_visibility），
+   * 且**不碰正文**（见 blog-service 的 PUBLIC_SEARCH_FIELDS）。
+   *
+   * 【只对真的带搜索词的请求计数】翻页 / 换栏目不计数 —— 否则限频会变成「限页」，
+   * 正常人翻两页就撞墙，而且不报错、单测也测不出来，只有真实使用才会现形
+   * （`/blog` 那边踩过同一个形状）。
+   *
+   * ⚠️ 这条闸是 `/explore` **唯一**的闸：og 有 sharp 成本兜底、spider 有 core+ 鉴权
+   * 兜底，而它是完全匿名的。好在即使漏了，代价也只是元数据 LIKE，不是正文全表扫描。
+   *
+   * 桶键：explore:search:ip:{IP}（clientIp 取不到时**整条跳过**，不传占位串）。
+   */
+  exploreSearchPerIp: { limit: 120, windowMs: 60 * 1000 },
 } as const;
