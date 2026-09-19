@@ -191,6 +191,18 @@ describe('RULES 全站配额（src/lib/rate-limit.ts 即权威，改动即报警
     { name: 'transferHourly', limit: 30, windowMs: HOUR, desc: '鱼干转账 30 次/时' },
     { name: 'transferDaily', limit: 200, windowMs: DAY, desc: '鱼干转账 200 次/天' },
     {
+      name: 'tradeMinute',
+      limit: 20,
+      windowMs: 60_000,
+      desc: '练手盘开/平仓 20 次/分/用户（每笔都要现取一次行情 + 一次远端转账）',
+    },
+    {
+      name: 'tradeDaily',
+      limit: 300,
+      windowMs: DAY,
+      desc: '练手盘开/平仓 300 次/天/用户（比转账松：它不通知任何人）',
+    },
+    {
       name: 'fishApiPerUser',
       limit: 20,
       windowMs: 60_000,

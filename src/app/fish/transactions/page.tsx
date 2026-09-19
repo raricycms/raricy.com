@@ -28,8 +28,8 @@ const FILTERS: { label: string; type: string | null }[] = [
   { label: '签到', type: 'checkin' },
   { label: '投喂', type: 'feed_all' },
   { label: '转账', type: 'transfer_all' },
+  { label: '练手盘', type: 'market_all' },
   { label: '赠送', type: 'admin_grant' },
-  { label: '消费', type: 'purchase' },
 ];
 
 // 小鱼干流水页 — content-wrapper / page-title / fish-filter-bar 一套类名

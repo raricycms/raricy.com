@@ -46,7 +46,12 @@ export type SyncOperation =
   | 'admin_deduct'
   | 'compensate'
   | 'register'
-  | 'transfer';
+  | 'transfer'
+  // 练手盘：买入（用户 → 系统水池）、卖出（系统水池 → 用户）。
+  // 两个方向都用**系统 Key**（同 admin_grant/admin_deduct），所以 payload 里
+  // 没有密钥、重放不需要解密 —— 比 transfer 那个 case 简单一档。
+  | 'market_buy'
+  | 'market_sell';
 
 /** 账本行状态机：pending → synced | compensated | failed（failed 可重放，见 replayPendingSyncs）。 */
 export type SyncStatus = 'pending' | 'synced' | 'compensated' | 'failed';
@@ -201,6 +206,29 @@ export async function executeSync(entry: {
             `无法回写本地 Key（需管理员在账户服务侧重置）`
         );
       }
+      return;
+    }
+
+    // 练手盘的两个方向。系统账户 `raricy-blog-system` 是**无限水池**：买入把钱推给它、
+    // 卖出从它推出来，它只存在于远端、本地没有 users 行，所以两个方向都走系统 Key
+    // —— 与 admin_deduct（系统 Key 扣任意用户的账）是同一个已证实的用法。
+    //
+    // 刻意不复用 'transfer'：那个 case 要按 fromUserId 去本地解密发送者的 Key，
+    // 而这里的方向之一是「系统账户在发」，本地根本查不到它的行。单列两个 case 也让
+    // fish pending 与远端流水里能一眼看出这是练手盘而不是转账。
+    case 'market_buy':
+    case 'market_sell': {
+      const p = entry.payload as { userId: string; amount: number; description: string };
+      const toSystem = entry.operation === 'market_buy';
+      await accountClient.transfer({
+        fromUserId: toSystem ? p.userId : SYSTEM_USER_ID,
+        toUserId: toSystem ? SYSTEM_USER_ID : p.userId,
+        amount: p.amount,
+        entryType: entry.operation,
+        apiKey: accountConfig().systemKey,
+        description: p.description,
+        idempotencyKey: entry.idempotencyKey,
+      });
       return;
     }
 

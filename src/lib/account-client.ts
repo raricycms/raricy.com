@@ -179,6 +179,35 @@ export function makeClientIdempotencyKey(fromUserId: string, clientKey: string):
 }
 
 /**
+ * 生成练手盘开仓的幂等键（≤64 字符，实测 43）。
+ * 格式：market-{sha256(userId-symbol-units-nonce)[:16]}-{ts}-{nonce}
+ *
+ * 【为什么把 userId 哈希掉】同 makeTransferIdempotencyKey：一个 userId 就是 36 字符，
+ * 原样拼进去会顶到账户服务那条 64 字符上限。
+ *
+ * 【为什么必须带随机 nonce】这条不是洁癖：同一用户对**同一标的同一金额**买两次是
+ * 完全正常的操作（分批建仓）。秒级时间戳下不带 nonce 会让第二笔算出同一个键，
+ * 被账户服务当幂等重放**静默去重** —— 远端只扣一笔、本地记两笔，或反过来。
+ * 见 makeTransferIdempotencyKey 与 fish-admin.makeAdminIdempotencyKey 的同一理由。
+ *
+ * 【平仓为什么不复用这条】平仓天然幂等：仓位一旦是 closed，再平就是重放，
+ * 由 status 条件写挡住，不需要键（见 market-service.closePosition）。
+ */
+export function makeMarketIdempotencyKey(
+  userId: string,
+  symbol: string,
+  units: number,
+  nonce: string
+): string {
+  const short = crypto
+    .createHash('sha256')
+    .update(`${userId}-${symbol}-${units}-${nonce}`)
+    .digest('hex')
+    .slice(0, 16);
+  return `market-${short}-${Math.floor(Date.now() / 1000)}-${nonce}`;
+}
+
+/**
  * 生成投喂操作的幂等键（≤64 字符）。
  * 格式：feed-{sha256(blogId-userId-count)[:16]}-{suffix}
  *
