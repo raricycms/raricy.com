@@ -4,6 +4,7 @@ import {
   getCategoryPostingMeta,
   banActionMessage,
   updateBlog,
+  parseVisibility,
 } from '@/lib/blog-service';
 import { setBlogIgnore } from '@/lib/admin-blog-service';
 import { categoryFullPath, apiOk, apiErr } from '@/lib/format';
@@ -45,6 +46,9 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       category: blog.category?.name ?? null,
       category_path: blog.category ? categoryFullPath(blog.category) : null,
       content: blog.content?.content ?? '',
+      // 对外可见性。**必须下发**：PUT 是整体覆盖，调用方要能「读-改-写」（否则改一次
+      // 标题就可能把档位写错），也要能判断这篇此刻对外可不可达。
+      visibility: blog.visibility,
     },
   });
 }
@@ -65,7 +69,9 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
   // 文章存在且未软删（软删等同不存在 → 404）
   const blog = await prisma.blog.findFirst({
     where: { id, ignore: false },
-    select: { id: true, authorId: true },
+    // visibility 是给下面「缺键时回填现值」取的。与 getBlogForEdit 一样归一化到白名单
+    // （列是 TEXT、没有 CHECK 约束，取值白名单在 TS 侧）。
+    select: { id: true, authorId: true, visibility: true },
   });
   if (!blog) return apiErr(404, '文章不存在');
 
@@ -78,7 +84,25 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
   }
 
   const body = await req.json().catch(() => null);
-  const v = await validateBlogData(body);
+
+  // 缺 `visibility` 键时**用库里现值补齐**。
+  //
+  // 这条路径是**整体覆盖**（没传的字段会被一起写掉），而 validateBlogData 对「键不存在」
+  // 给的是 'private' 这个**默认档**。直接放过去的话，一个只认识旧那 4 个键的调用方
+  // ——恰恰是 parseVisibility 的注释点名要保护的那类「不带这个字段的 bot」—— 改一次标题
+  // 就会把 link/public 的文章**静默改回私密**：对外消失、退出 sitemap，而已被抓走的
+  // 副本收不回来。所以缺键 = 不改动这一列，而不是 = 打回默认档。
+  //
+  // 显式传 `"private"` 仍然照改 —— 那是明确的意图，与「压根没提这件事」不是一回事。
+  const payload =
+    body && typeof body === 'object' && !Array.isArray(body) && !('visibility' in body)
+      ? {
+          ...(body as Record<string, unknown>),
+          visibility: parseVisibility(blog.visibility) ?? 'private',
+        }
+      : body;
+
+  const v = await validateBlogData(payload);
   if (!v.ok) return apiErr(400, v.message);
 
   // 栏目“仅管理员可发”校验（含父栏目）
