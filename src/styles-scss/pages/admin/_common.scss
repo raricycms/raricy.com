@@ -2,7 +2,13 @@
 // Hero, container, stats, filter bar, message container, batch actions
 
 .admin-hero {
-  padding: 40px 0 28px;
+  /* 横向 20px 与 .admin-container 的檐沟同值 —— 抬头与它下面那张内容列左边缘对齐。
+     ⚠️ 此前只有纵向内边距（`40px 0 28px`），而 /admin 的七个页面都是
+     `<section class="admin-hero"><h1>…</h1><p>…</p></section>` 直挂 <main> 上，
+     AdminShell 的 .admin-content 又是 padding: 0 —— 窄屏下标题与副标题左右顶到
+     屏幕边缘，而下面的卡片有 20px。这里只补内边距、不给 hero 加宽度上限：
+     hero 是有底色的整幅色带，收窄它等于把色带掐断（同 .story-hero）。 */
+  padding: 40px 20px 28px;
   text-align: center;
   background: var(--color-background-subtle);
   border-bottom: 1px solid var(--color-border);

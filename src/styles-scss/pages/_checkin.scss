@@ -1,4 +1,5 @@
 @use '../abstracts/variables' as *;
+@use '../abstracts/mixins' as m;
 
 // ============================================================
 // 每日签到页面
@@ -52,10 +53,17 @@
 // ---- 页面容器 ----
 
 .checkin-page {
-  padding: $space-8 0;
+  /* 横向檐沟走 container-padding（16px），与全站 .container 同源 —— 此前是
+     `padding: $space-8 0`，.checkin-card / .checkin-leaderboard 两张卡片左右直接
+     贴着屏幕边缘。
+     ⚠️ 纵横分开写：媒体查询里若再落一次 `padding: $space-6 0` 这种简写，会把横向
+     檐沟一并抹回 0（简写管的是四条边）。
+     本页**没有**列宽上限 —— 桌面端卡片仍按视口铺开，这里只补檐沟，不动排版。 */
+  padding-block: $space-8;
+  @include m.container-padding;
 
   @media (max-width: 768px) {
-    padding: $space-6 0;
+    padding-block: $space-6;
   }
 }
 

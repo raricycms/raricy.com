@@ -51,7 +51,9 @@ export default async function EditBlogPage({ params }: { params: Promise<{ id: s
   const categories = await getCategoryHierarchy();
 
   return (
-    <>
+    /* 整页收进 .container —— 同 blog/upload：页头与表单卡片都靠它拿左右檐沟，
+       否则窄屏下标题与整张 .blog-form-container 都顶着屏幕两条边。 */
+    <div className="container">
       <header className="upload-hero">
         <h1>编辑文章</h1>
         <p>ID: {blog.id}</p>
@@ -68,6 +70,6 @@ export default async function EditBlogPage({ params }: { params: Promise<{ id: s
         }}
         banInfo={banInfo}
       />
-    </>
+    </div>
   );
 }

@@ -25,9 +25,17 @@ export function CollectionView({
 
   return (
     <>
+      {/* 抬头带**整幅铺满**（底色是卡片色，是一条看得见的色带），内容再收进 .container ——
+          与博客列表 / 对外列表的 .blogs-hero 是同一个结构。
+          ⚠️ 少了这层，窄屏下标题与简介会左右顶到屏幕边缘：`.story-hero` 自己只有
+          纵向内边距（`padding: 60px 0 48px`），不像 `.read-hero` 那样把
+          container-padding 吃进自己身上。往 `.story-hero` 加宽度阶梯是错的 ——
+          那会连**色带**一起收窄，页面顶部凭空短一截。 */}
       <section className="story-hero">
-        <h1>{info.title}</h1>
-        {description && <p>{description}</p>}
+        <div className="container">
+          <h1>{info.title}</h1>
+          {description && <p>{description}</p>}
+        </div>
       </section>
 
       <div className="container">

@@ -30,12 +30,15 @@ export default async function UploadBlogPage() {
   const categories = await getCategoryHierarchy();
 
   return (
-    <>
+    /* 整页收进 .container：页头与表单卡片都靠它拿左右檐沟。此前两者直挂 <main> 上，
+       窄屏下标题左右贴屏幕边，.blog-form-container（max-width 900 + margin auto，
+       自己没有横向内边距）也整张卡片顶着屏幕两条边。 */
+    <div className="container">
       <header className="upload-hero">
         <h1>发布新文章</h1>
         <p>使用 Markdown 编辑器撰写并发布你的内容。</p>
       </header>
       <BlogForm categories={categories} banInfo={banInfo} />
-    </>
+    </div>
   );
 }
