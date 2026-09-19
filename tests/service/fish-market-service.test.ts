@@ -13,6 +13,9 @@ import { resetDb, makeUser, prisma } from '../helpers/db';
 import {
   transferFish,
   searchTransferTargets,
+  makeOrderKeyBase,
+  CLIENT_KEY_RE,
+  ORDER_RE,
   TRANSFER_OUT_TYPE,
   TRANSFER_IN_TYPE,
   TRANSFER_NOTE_MAX,
@@ -113,6 +116,85 @@ describe('transferFish —— 成功路径（dev fallback）', () => {
     const [inn] = await txnsOf(recipient.id);
     expect(out.description).toBe(`转给「${recipient.username}」：请你喝鱼汤`);
     expect(inn.description).toBe(`收到「${sender.username}」的转账：请你喝鱼汤`);
+  });
+});
+
+describe('transferFish —— 共享单号 transfer_id', () => {
+  it('两条流水带**同一个**非空单号（这是这一列存在的全部意义）', async () => {
+    const { sender, recipient } = await scene(100, 0);
+    const res = await transferFish(sender.id, recipient.id, 10);
+
+    expect(res.ok).toBe(true);
+    const [out] = await txnsOf(sender.id);
+    const [inn] = await txnsOf(recipient.id);
+
+    expect(out.transferId).toBeTruthy();
+    expect(inn.transferId).toBe(out.transferId);
+    // 返回值里的单号也必须与落库的一致 —— 它是收银台回执与 API 响应的来源
+    expect(res.ok && res.transferId).toBe(out.transferId);
+  });
+
+  it('本笔的单号 = sha256(幂等键) 前 16 位（重放能重现同一个值，靠的就是这个）', async () => {
+    const { sender, recipient } = await scene(100, 0);
+
+    // dev fallback 不去重，所以同键会真的成交两笔 —— 但两笔的键相同 ⇒ 单号必然相同。
+    // 这正是「派生而非随机」的可观测后果：重放同一个键回报的一定是原单的单号。
+    await transferFish(sender.id, recipient.id, 10, null, { clientIdempotencyKey: 'same-key-1' });
+    await transferFish(sender.id, recipient.id, 10, null, { clientIdempotencyKey: 'same-key-1' });
+
+    const rows = await txnsOf(sender.id);
+    expect(rows).toHaveLength(2);
+    expect(rows[0].transferId).toBe(rows[1].transferId);
+  });
+
+  it('两笔不同的转账拿到不同的单号', async () => {
+    const { sender, recipient } = await scene(100, 0);
+    await transferFish(sender.id, recipient.id, 10);
+    await transferFish(sender.id, recipient.id, 20);
+
+    const rows = await txnsOf(sender.id);
+    expect(rows).toHaveLength(2);
+    expect(rows[0].transferId).not.toBe(rows[1].transferId);
+  });
+
+  it('单号是 16 位十六进制（口径写进用例，免得将来换实现时无声改变对外形状）', async () => {
+    const { sender, recipient } = await scene(100, 0);
+    await transferFish(sender.id, recipient.id, 10);
+    const [row] = await txnsOf(sender.id);
+    expect(row.transferId).toMatch(/^[0-9a-f]{16}$/);
+  });
+});
+
+describe('收银台 order 参数的幂等键基', () => {
+  it('同一收款人 + 同一订单号 → 同一个键（刷新页面重付会被认成同一笔）', () => {
+    expect(makeOrderKeyBase('u_a', 'order-1')).toBe(makeOrderKeyBase('u_a', 'order-1'));
+  });
+
+  it('★ 同一个付款人给**两家不同商户**用同一个订单号串 → 键必须不同', () => {
+    // 不把收款人混进键的话，这里两条会相等 → 第二家商户直接 409、用户付不出去。
+    expect(makeOrderKeyBase('u_merchant_a', 'order-1')).not.toBe(
+      makeOrderKeyBase('u_merchant_b', 'order-1')
+    );
+  });
+
+  it('最长订单号产出的键仍在 CLIENT_KEY_RE 的 48 字上限内', () => {
+    const longest = 'a'.repeat(32);
+    expect(ORDER_RE.test(longest)).toBe(true);
+    const key = makeOrderKeyBase('u_merchant', longest);
+    expect(CLIENT_KEY_RE.test(key), `键超长: ${key} (${key.length})`).toBe(true);
+  });
+
+  it('ORDER_RE 收下的任何值都产得出合法键（长度与字符集都不越界）', () => {
+    for (const order of ['a', 'order-20260915-0007', '_._:.-', 'x'.repeat(32), 'ABC123']) {
+      expect(ORDER_RE.test(order)).toBe(true);
+      expect(CLIENT_KEY_RE.test(makeOrderKeyBase('u_m', order))).toBe(true);
+    }
+  });
+
+  it('ORDER_RE 拒绝会破坏键的值：空格、斜杠、超长、非 ASCII', () => {
+    for (const bad of ['has space', 'a/b', 'x'.repeat(33), '订单号', '', 'a\nb', 'a+b']) {
+      expect(ORDER_RE.test(bad), `不该通过: ${JSON.stringify(bad)}`).toBe(false);
+    }
   });
 });
 

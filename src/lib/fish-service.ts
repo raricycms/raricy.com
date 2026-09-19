@@ -91,6 +91,8 @@ export interface FishTxDTO {
   referenceType: string | null;
   referenceId: string | null;
   relatedUserId: string | null;
+  /** 用户间转账的共享单号；其余流水一律 null（见 migrations/14_fish_transfer_id）。 */
+  transferId: string | null;
   createdAt: string | null;
 }
 
@@ -103,6 +105,7 @@ function toFishTxDTO(t: {
   referenceType: string | null;
   referenceId: string | null;
   relatedUserId: string | null;
+  transferId: string | null;
   createdAt: Date | null;
 }): FishTxDTO {
   return {
@@ -113,6 +116,7 @@ function toFishTxDTO(t: {
     referenceType: t.referenceType,
     referenceId: t.referenceId,
     relatedUserId: t.relatedUserId,
+    transferId: t.transferId,
     createdAt: t.createdAt ? t.createdAt.toISOString() : null,
   };
 }
@@ -242,6 +246,12 @@ export interface AddFishInput {
   referenceType?: string | null;
   referenceId?: string | null;
   relatedUserId?: string | null;
+  /**
+   * 用户间转账的共享单号。只有 fish-market-service 的转账会传它 ——
+   * 其余三个调用方（fish-admin / feed-service / checkin-service）没有对手方，
+   * 留空即 NULL，别为了「统一」给它们编一个（见 migrations/14_fish_transfer_id）。
+   */
+  transferId?: string | null;
 }
 
 /**
@@ -272,6 +282,7 @@ export async function addFish(tx: TxClient, input: AddFishInput): Promise<{ txId
       referenceType: input.referenceType ?? null,
       referenceId: input.referenceId ?? null,
       relatedUserId: input.relatedUserId ?? null,
+      transferId: input.transferId ?? null,
       // 必须显式写：schema 里 createdAt 是 DateTime? 且**没有** @default(now())
       //（既有库结构如此），漏写会让整条流水时间为 NULL —— 流水倒序会乱、今日签到判定失效。
       // 用 nowForDb() 而非 new Date()：本库时间戳语义是「UTC+8 墙上时间贴 Z」，

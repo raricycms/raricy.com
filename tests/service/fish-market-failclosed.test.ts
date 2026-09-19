@@ -264,6 +264,11 @@ describe('客户端幂等键', () => {
     if (!second.ok) return;
     expect(second.duplicated, '第二次必须是「重放」而不是新转账').toBe(true);
     expect(second.balance, '余额 = 只扣了一次').toBe(90);
+    // 重放回报的必须是**原单**的单号 —— 它是从同一个幂等键派生的，所以不需要
+    // 额外存一份就能重现。付款方拿着这个号来对账，拿到的得是同一笔。
+    expect(first.ok && second.transferId, '重放的单号必须与原单一致').toBe(
+      first.ok ? first.transferId : ''
+    );
 
     expect(mockTransfer, '远端只该被调用一次').toHaveBeenCalledTimes(1);
     expect(await balanceOf(sender.id)).toBe(90);

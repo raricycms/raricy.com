@@ -26,6 +26,7 @@ export async function GET(req: Request) {
       reference_type: t.referenceType,
       reference_id: t.referenceId,
       related_user_id: t.relatedUserId,
+      transfer_id: t.transferId,
       created_at: t.createdAt,
     })),
     total: data.total,

@@ -64,6 +64,9 @@ export async function POST(req: Request) {
       amount: res.amount,
       balance: res.balance,
       recipient: { id: res.recipient.id, username: res.recipient.username },
+      // 付款人手里的那张「凭据」（收银台成功面板会显示）—— 同一笔在商户流水里
+      // 是同一个值，双方据此对上账。见 migrations/14_fish_transfer_id。
+      transfer_id: res.transferId,
       duplicated: !!res.duplicated,
     });
   } catch (e) {

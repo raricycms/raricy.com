@@ -58,6 +58,9 @@ export async function POST(req: Request) {
       amount: res.amount,
       balance: res.balance,
       recipient: { id: res.recipient.id, username: res.recipient.username },
+      // 共享单号：发送方与接收方的两条流水带同一个值，双方据此对同一笔账。
+      // 重放（duplicated）时回报的是原单的单号，不是一个新值。
+      transfer_id: res.transferId,
       duplicated: !!res.duplicated,
     });
   } catch (e) {

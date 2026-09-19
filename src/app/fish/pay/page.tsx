@@ -5,6 +5,8 @@ import { loginUrlWithNext, safeExternalReturnUrl } from '@/lib/safe-url';
 import { getBalance } from '@/lib/fish-service';
 import {
   findTransferTargetByUsername,
+  makeOrderKeyBase,
+  ORDER_RE,
   TRANSFER_NOTE_MAX,
 } from '@/lib/fish-market-service';
 import PayForm from '../PayForm';
@@ -78,14 +80,27 @@ export default async function FishPayPage({
   const noteRaw = first(params.note).trim();
   const merchantRaw = first(params.from).trim();
   const returnRaw = first(params.return).trim();
+  const orderRaw = first(params.order).trim();
 
   // ── 参数校验（顺序：先格式、后存在性）────────────────────────────────────
   if (!toUsername) return <PayError message="缺少收款人参数（to）。" />;
   if (!AMOUNT_RE.test(amountRaw) || Number(amountRaw) <= 0) {
     return <PayError message="金额参数无效（需为大于 0、最多 1 位小数的数字）。" />;
   }
+  // 金额位数上界：AMOUNT_RE 的 \d+ 没有长度限制，而金额会参与拼幂等键（见下面 orderKeyBase）。
+  // 不设上界时，28 位以上的金额会让幂等键超过 48 字上限，用户拿到的是一句
+  // 「幂等键格式不合法」—— 报的是内部实现，与他的输入看不出任何关系。
+  // 16 位（最多 1 位小数）直到 10^14 条鱼干，远超任何真实余额。
+  if (amountRaw.length > 16) {
+    return <PayError message="金额参数无效（数字过长）。" />;
+  }
   if (noteRaw.length > TRANSFER_NOTE_MAX) {
     return <PayError message={`备注太长（最多 ${TRANSFER_NOTE_MAX} 个字）。`} />;
+  }
+  // 订单号非法 → **明确报错，不静默忽略**。忽略等于悄悄丢掉去重保护：
+  // 用户刷新页面再付一次就是第二笔真付款，而商户不会收到任何信号。
+  if (orderRaw && !ORDER_RE.test(orderRaw)) {
+    return <PayError message="订单号参数无效（最多 32 位，仅字母数字与 _ . : -）。" />;
   }
 
   const recipient = await findTransferTargetByUsername(toUsername);
@@ -94,6 +109,10 @@ export default async function FishPayPage({
   const amount = Number(amountRaw);
   const merchant = merchantRaw.slice(0, MERCHANT_MAX).replace(/[\u0000-\u001f\u007f]/g, '');
   const returnUrl = safeExternalReturnUrl(returnRaw);
+
+  // 商户给了订单号 → 由服务层算出稳定的幂等键基（收款人 + 订单号，**不含金额**）。
+  // 取舍与长度核算都在 makeOrderKeyBase 的注释里，这里不重复。
+  const orderKeyBase = orderRaw ? makeOrderKeyBase(recipient.id, orderRaw) : null;
 
   // ── 未登录：跳本站登录页（把本页完整参数带回 next）──────────────────────
   const user = await getCurrentUser();
@@ -121,6 +140,7 @@ export default async function FishPayPage({
         merchant={merchant}
         returnUrl={returnUrl}
         balance={balance}
+        keyBase={orderKeyBase}
       />
     </div>
   );

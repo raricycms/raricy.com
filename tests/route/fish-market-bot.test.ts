@@ -99,6 +99,29 @@ describe('无状态转账（无 cookie，body 带 username/password）', () => {
     expect(await prisma.fishTransaction.count()).toBe(2);
   });
 
+  it('★ 响应带 transfer_id，且与**两条**流水的单号一致（付款方与收款方对的是同一笔）', async () => {
+    const sender = await makeLoginableUser({ driedFish: 100 });
+    const recipient = await makeUser({ driedFish: 0 });
+
+    const res = await transferReq({
+      username: sender.username,
+      password: PASSWORD,
+      to_username: recipient.username,
+      amount: 5,
+    });
+    const json = await res.json();
+
+    expect(json.transfer_id).toMatch(/^[0-9a-f]{16}$/);
+    const rows = await prisma.fishTransaction.findMany({ orderBy: { id: 'asc' } });
+    expect(rows).toHaveLength(2);
+    expect(rows[0].transferId).toBe(json.transfer_id);
+    expect(rows[1].transferId).toBe(json.transfer_id);
+  });
+
+  // 注：「带幂等键重放 → 回报原单单号」那条断言不在这里 ——
+  // 本文件跑的是 dev fallback（不登记账本、本就不去重），重放根本没发生。
+  // 它归 tests/service/fish-market-failclosed.test.ts（那里有账本）。
+
   it('响应体里绝不回显密码', async () => {
     const sender = await makeLoginableUser();
     const recipient = await makeUser({ driedFish: 0 });

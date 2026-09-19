@@ -237,6 +237,61 @@ test('收银台：商户链接 → 核对 → 输密码支付 → 返回商户�
   await expect(page.locator('.pay-error__message')).toContainText('收款人不存在');
 });
 
+test('收银台：带 order 的链接，付完刷新再付一次**不会**重复扣款', async ({ page, request }) => {
+  const sender = await registerFreshUser(page, { core: true });
+  await fundByCheckin(page); // 得先有鱼干才付得出去
+  const merchant = await registerFreshUser(page);
+  await loginViaApi(page, sender.username);
+
+  // 关键：链接里带上商户订单号。
+  const payUrl = `/fish/pay?to=${merchant.username}&amount=1&order=order-77`;
+  await page.goto(payUrl);
+  await page.locator('#pay-password').fill(SEED_PASSWORD);
+  await page.locator('.market-submit').click();
+
+  await expect(page.locator('.pay-result__title')).toContainText('支付成功');
+  // 付款人拿到的凭据号（共享单号），商户流水里有同一个值
+  const receipt = await page.locator('.pay-result__receipt code').textContent();
+  expect(receipt, '凭据号应当是 16 位十六进制').toMatch(/^[0-9a-f]{16}$/);
+  const balanceAfterFirst = await page.locator('.pay-result__balance').textContent();
+
+  const first = (await remoteTransfers(request)).filter((t) => t.from_user_id === sender.id);
+  expect(first, '第一次支付应当成交').toHaveLength(1);
+
+  // ── 刷新同一个链接再付一次：必须被认成同一笔 ────────────────────────────
+  // 这正是 order 参数存在的理由。没有它时键基每次加载都随机，这一次会真的再扣一笔。
+  await page.goto(payUrl);
+  await page.locator('#pay-password').fill(SEED_PASSWORD);
+  await page.locator('.market-submit').click();
+
+  await expect(page.locator('.pay-result__title')).toContainText('这笔已经付过了');
+  await expect(
+    page.locator('.pay-result__receipt code'),
+    '重放回报的必须是**原来那笔**的凭据号'
+  ).toHaveText(receipt!);
+
+  const after = (await remoteTransfers(request)).filter((t) => t.from_user_id === sender.id);
+  expect(after, '★ 刷新后再付一次不能产生第二笔').toHaveLength(1);
+  // 余额只被扣了一次：重放回报的余额与第一次支付后**一模一样**
+  //（注：不断言 /fish 页的余额 —— 那一页走远端账户服务拿权威值，这里只有 mock）
+  await expect(page.locator('.pay-result__balance')).toHaveText(balanceAfterFirst!);
+});
+
+test('收银台：order 非法时明确报错，不静默丢掉防重保护', async ({ page }) => {
+  const sender = await registerFreshUser(page, { core: true });
+  const merchant = await registerFreshUser(page);
+  await loginViaApi(page, sender.username);
+
+  await page.goto(`/fish/pay?to=${merchant.username}&amount=1&order=${encodeURIComponent('has space')}`);
+  await expect(page.locator('.pay-error__message')).toContainText('订单号参数无效');
+  // 超长（32 位以上）
+  await page.goto(`/fish/pay?to=${merchant.username}&amount=1&order=${'a'.repeat(33)}`);
+  await expect(page.locator('.pay-error__message')).toContainText('订单号参数无效');
+  // 数字过长（会撑爆幂等键的长度上限，必须在页面就被挡住）
+  await page.goto(`/fish/pay?to=${merchant.username}&amount=${'9'.repeat(30)}`);
+  await expect(page.locator('.pay-error__message')).toContainText('金额参数无效');
+});
+
 test('收银台：未登录时跳本站登录页（密码只输在 raricy 域名下），登录后回到收银台', async ({
   browser,
 }) => {

@@ -27,7 +27,7 @@
 //   （投喂要求 core+ 是因为它挂在博客页；转账是鱼干的通用能力）。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { prisma } from './db';
 import { nowForDb } from './db-time';
 import { addFish } from './fish-service';
@@ -70,6 +70,12 @@ export type TransferOutcome =
       amount: number;
       balance: number;
       recipient: TransferTarget;
+      /**
+       * 这笔转账的共享单号 —— 发送方与接收方的两条流水都带同一个值，
+       * 双方据此对同一笔账（见 prisma/migrations/14_fish_transfer_id）。
+       * 重放（duplicated）时回报的是**原单**的单号，不是新的。
+       */
+      transferId: string;
       /** true = 客户端幂等键命中同一笔已成交的转账，本次**没有**再转账。 */
       duplicated?: boolean;
     }
@@ -77,6 +83,40 @@ export type TransferOutcome =
 
 /** 客户端幂等键的字面量口径（路由与文档同款）：1-48 位，禁空格与 URL 特殊字符。 */
 export const CLIENT_KEY_RE = /^[A-Za-z0-9_.:-]{1,48}$/;
+
+/**
+ * 收银台 `order` 参数的字面量口径：≤32 位，字符集是 `CLIENT_KEY_RE` 的**子集**。
+ *
+ * 32 这个上界由键长预算倒推，不是随手取的：见下面 makeOrderKeyBase 的长度核算。
+ * 放宽长度或字符集之前，先回去核 `CLIENT_KEY_RE` 的 48 字上限 —— 超了的表现是
+ * 用户收到一句「幂等键格式不合法」，与他的输入看不出任何关系。
+ */
+export const ORDER_RE = /^[A-Za-z0-9_.:-]{1,32}$/;
+
+/**
+ * 收银台的幂等键基：由「收款人 + 订单号」决定（没给订单号时页面退回随机键基）。
+ *
+ * 于是**同一个订单号永远算出同一个键** —— 付款成功后刷新页面再点一次，服务端认得出
+ * 是同一笔（回报 duplicated、不再扣款）。这正是 `order` 参数存在的全部理由：没有它，
+ * 键基是每次加载随机的，刷新即新键 = 真的再付一笔。
+ *
+ * 【为什么把收款人混进来】不混的话，「同一个付款人给两家不同商户用同一个订单号串」
+ * 会算出同一个键 → 第二家直接 409、付不出去。收款人正是区分两笔生意的那个维度。
+ * 哈希后取前 8 位而非直接拼 id：键的上限是 48 字，要留足订单号的预算。
+ *
+ * 【为什么**不**把金额混进来】金额由收银台链接给定、用户改不了；同订单号换金额应当
+ * **响亮地 409**（服务端「同键换参数」的标准语义），而不是静默变成第二笔扣款。
+ * 这与随机键基那一路（`PayForm.idempotencyKeyFor`）的取舍**正好相反** ——
+ * 扫码收款页的用户能在同一页里改金额，那一路必须换新键，否则一次正常重试会被 409 挡掉。
+ *
+ * 长度核算：`pay-`(4) + 哈希(8) + `-`(1) + 订单号(≤32) = 45 ≤ 48。
+ *
+ * 调用方负责先过 `ORDER_RE`（本函数不校验，与 makeClientIdempotencyKey 同款分工）。
+ */
+export function makeOrderKeyBase(counterpartyUserId: string, order: string): string {
+  const h = createHash('sha256').update(counterpartyUserId).digest('hex').slice(0, 8);
+  return `pay-${h}-${order}`;
+}
 
 /** Prisma 唯一约束冲突（账本键撞车时用它区分「并发同键」与真故障）。 */
 function isUniqueViolation(e: unknown): boolean {
@@ -96,7 +136,15 @@ function isUniqueViolation(e: unknown): boolean {
  */
 async function resolveDuplicate(
   row: { payload: string; status: string },
-  expected: { fromUserId: string; toUserId: string; amount: number; description: string }
+  expected: { fromUserId: string; toUserId: string; amount: number; description: string },
+  /**
+   * 本笔的单号（由幂等键派生，见 transferFish）。重放必须回报**原单**的单号 ——
+   * 它是从同一个键派生出来的，所以这里天然就是原值，不需要额外查库。
+   *
+   * ⚠️ 别把 transferId 加进上面 expected 的**参数比对**：那是防「同键换参数」的闸门，
+   * 而 transferId 由键决定、必然一致，加进去只会让每次重放都 409。
+   */
+  transferId: string
 ): Promise<TransferOutcome> {
   let payload: { toUserId?: string; amount?: number; description?: string } = {};
   try {
@@ -132,6 +180,7 @@ async function resolveDuplicate(
         amount: expected.amount,
         balance: unitsToFish(sender?.driedFish ?? 0),
         recipient,
+        transferId,
         duplicated: true,
       };
     }
@@ -276,12 +325,21 @@ export async function transferFish(
     ? makeClientIdempotencyKey(fromUserId, clientKey)
     : makeTransferIdempotencyKey(fromUserId, recipient.id, units, randomBytes(4).toString('hex'));
 
+  // 共享单号 = sha256(幂等键) 的前 16 位十六进制（64 bit），写进**两条**流水。
+  // 【为什么派生而不是随机 + 存一份】幂等键在本次调用里只算一次、且两条重放路径
+  // （命中已有账本行 / 并发撞唯一约束）手里都有它，派生出来的单号因此**天然可重现**
+  // —— 重放同一个键回报的就是同一个单号，不需要多存一份、也就没有第二份会漂移的副本。
+  // 反过来若存进 entry.payload，迟早有人顺手把它加进 resolveDuplicate 的参数比对，
+  // 那会让**每一次重放都变成 409**。
+  // 不是凭证：它是给双方对账用的句柄，可预测无害（本仓也没有「按单号查」的接口）。
+  const transferId = createHash('sha256').update(idempotencyKey).digest('hex').slice(0, 16);
+
   // 调用方给了键 → 先看账本里有没有同一笔：有就按「重放」处理，绝不重复转账。
   // 放在限频**之前**：重放请求不该消耗额度（调用方遇到超时就该用同键重试）。
   const expected = { fromUserId, toUserId: recipient.id, amount, description };
   if (clientKey) {
     const existing = await prisma.accountSyncLedger.findUnique({ where: { idempotencyKey } });
-    if (existing) return resolveDuplicate(existing, expected);
+    if (existing) return resolveDuplicate(existing, expected, transferId);
   }
 
   // 限频（放在校验之后：刷不存在的用户名不该烧掉自己的额度，对齐点赞/评论）。
@@ -339,6 +397,7 @@ export async function transferFish(
           referenceType: 'user',
           referenceId: recipient.id,
           relatedUserId: recipient.id,
+          transferId,
           createdAt: nowForDb(),
         },
         select: { id: true },
@@ -356,6 +415,9 @@ export async function transferFish(
         referenceType: 'user',
         referenceId: fromUserId,
         relatedUserId: fromUserId,
+        // 1.2 与 1.3 的 transferId 必须是**同一个值** —— 这正是这一列存在的全部意义，
+        // 两边各算一次（或漏传一边）会让「按单号对上同一笔」静默失效。
+        transferId,
       });
 
       // 1.4 账本登记 pending（与业务写入同事务提交；dev fallback 不登记 —— 登记了
@@ -379,7 +441,7 @@ export async function transferFish(
       if (clientKey && isUniqueViolation(e)) {
         const row = await prisma.accountSyncLedger.findUnique({ where: { idempotencyKey } });
         if (row) {
-          throw new TransferDuplicateError(await resolveDuplicate(row, expected));
+          throw new TransferDuplicateError(await resolveDuplicate(row, expected, transferId));
         }
       }
       throw e;
@@ -474,7 +536,7 @@ export async function transferFish(
       );
     }
 
-    return { ok: true, amount, balance: phase1.balance, recipient };
+    return { ok: true, amount, balance: phase1.balance, recipient, transferId };
   } catch (e) {
     if (e instanceof TransferBusinessError) {
       return { ok: false, code: e.code, message: e.message };

@@ -475,6 +475,10 @@ model FishTransaction {
   referenceType String?   @map("reference_type")
   referenceId   String?   @map("reference_id")
   relatedUserId String?   @map("related_user_id")
+  // 同一笔用户间转账的两条流水共享此值（发送方 transfer / 接收方 transfer_receive）。
+  // 只对用户间转账成立 —— 投喂、签到、赠送、补偿都没有对手方，留 NULL。
+  // 存量行为 NULL 且不回填（无法可靠反推配对），见 migrations/14_fish_transfer_id 头部。
+  transferId    String?   @map("transfer_id")
   createdAt     DateTime? @map("created_at")
 
   user        User  @relation("FishTxUser", fields: [userId], references: [id])
@@ -482,6 +486,7 @@ model FishTransaction {
   @@index([type], map: "ix_fish_transactions_type")
   @@index([relatedUserId], map: "ix_fish_transactions_related_user_id")
   @@index([userId], map: "ix_fish_transactions_user_id")
+  @@index([transferId], map: "ix_fish_transactions_transfer_id")
   @@index([createdAt], map: "ix_fish_transactions_created_at")
 
   @@map("fish_transactions")

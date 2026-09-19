@@ -148,6 +148,25 @@ describe('addFish（加钱 + 写流水）', () => {
     expect(t.relatedUserId).toBeNull();
   });
 
+  it('★ transferId 缺省时写 null —— 除用户间转账外的**所有**调用方都该如此', async () => {
+    // 这一列只对「一笔转账的两条流水」有意义（签到 / 投喂 / 赠送 / 补偿都没有对手方）。
+    // 断言它，是为了挡住「顺手给所有流水编一个共享单号」这类统一口径的改动 ——
+    // 那会让「按单号取一笔转账」取到半笔，或者取到一个根本不成对的东西。
+    const u = await makeUser();
+    await prisma.$transaction((tx) => addFish(tx, { userId: u.id, amount: 1, type: 'checkin' }));
+    const t = await prisma.fishTransaction.findFirstOrThrow({ where: { userId: u.id } });
+    expect(t.transferId).toBeNull();
+  });
+
+  it('显式传入 transferId 时原样落库（收账方那条流水就是这么拿到单号的）', async () => {
+    const u = await makeUser();
+    await prisma.$transaction((tx) =>
+      addFish(tx, { userId: u.id, amount: 2, type: 'transfer_receive', transferId: 'abc123def456abcd' })
+    );
+    const t = await prisma.fishTransaction.findFirstOrThrow({ where: { userId: u.id } });
+    expect(t.transferId).toBe('abc123def456abcd');
+  });
+
   it('多次累加线性叠加，每次各写一条流水', async () => {
     const u = await makeUser({ driedFish: 0 });
     for (const n of [1, 2, 3]) {
