@@ -18,6 +18,14 @@
 //
 // 【本文件登记在 RESPONSIVE_SPECS 里】它验的是排版事实，窄屏换行行为不同，两个
 // project 都要跑。
+//
+// 【2026-09-19：顶层列表成了**刻意**的横向滚动容器（第二条用例钉着它）】
+// 上面那条「溢出不许冒泡」只对**浅层**楼中楼成立。深层楼中楼另有两条契约：
+//   · 纵向：有子楼的评论下内距归零、嵌套列表下外边距归零，末尾空白不再随层数累加；
+//   · 横向：`.comment-item` 有 min-width，跌破它时**只由 `.comment-section > .comment-list`
+//     接住**（那里是 overflow-x: auto）—— 中间层必须保持 visible，否则每层各画一条横条。
+// 于是「页面本身不横向滚动」这条老契约照旧，被允许溢出的只有那一个容器。
+// 细节见 pages/blog/_blog.scss 里 .comment-list / .comment-item 两处的整段说明。
 
 import { test, expect } from '@playwright/test';
 import { registerFreshUser, uniqueTag } from './helpers';
@@ -96,6 +104,145 @@ test('楼中楼不横向溢出：评论区底部不该出现横向滚动条', as
   expect(report.missing, '页面上没有 #comment-section，用例的前提就不成立').toBe(false);
   expect(report.scrollers, `这些容器横向溢出了：${report.scrollers.join('、')}`).toEqual([]);
   expect(report.lists, `楼中楼右边界越过了父级：${report.lists.join('、')}`).toEqual([]);
+});
+
+// ── 楼中楼末尾不许随层数累积空白 ────────────────────────────────────────────────
+//
+// 成因：每一层都付两次账 —— `.comment-item` 的 padding-bottom 18 与嵌套
+// `.comment-list` 的 margin-bottom 15。父级的 padding 挡住外边距折叠、子级的下外边距
+// 又算进父级的 auto 高度，两者**相加**（不是取大者）⇒ 每深一层多 33px。
+// 归零后每处都是「18 + 1px 分隔线 + 18」。
+//
+// 表达方式是「深层末尾的盒间距 ≤ 平级之间的盒间距」，而不是写死 37px —— 37 是
+// `.comment-item` 的 padding 凑出来的实现细节，这里要钉的是「不随层数变」这件事。
+test('楼中楼末尾不再逐层累积空白', async ({ page }) => {
+  await registerFreshUser(page, { core: true });
+  const blogId = await createBlog(page, `楼中楼间距 ${uniqueTag()}`);
+
+  const tag = uniqueTag();
+  const top = await postComment(page, blogId, `根一 ${tag}`);
+  const mid = await postComment(page, blogId, `二层 ${tag}`, top);
+  await postComment(page, blogId, `三层 ${tag}`, mid);
+  // 末尾补一条根评论：要量的就是「深层末尾 → 下一条根评论」这段
+  await postComment(page, blogId, `根二 ${tag}`);
+
+  await page.goto(`/blog/${blogId}`);
+  await expect(page.locator('.comment-item', { hasText: `二层 ${tag}` }).last()).toBeVisible();
+
+  const gaps = await page.evaluate(() => {
+    // ⚠️ 根评论只认顶层列表的**直接子元素**。按文本找会踩「父级 textContent 包住整棵
+    //    子树」这个坑：`根一` 会把它自己子树里最深的那条也一起命中（comment-rich.spec.ts
+    //    记着同一个坑）。反过来，最内层**只能**靠「最后一个匹配」拿到（文档序最后即最深）。
+    const roots = [...document.querySelectorAll<HTMLElement>('#comment-list > .comment-item')];
+    const deep = [...document.querySelectorAll<HTMLElement>('.comment-item')]
+      .filter((el) => (el.textContent ?? '').includes('三层'))
+      .pop() as HTMLElement | undefined;
+    if (roots.length !== 2 || !deep) return null;
+    const gap = (a: HTMLElement, b: HTMLElement) =>
+      b.getBoundingClientRect().top - a.getBoundingClientRect().bottom;
+    return { sibling: gap(roots[0], roots[1]), afterDeep: gap(deep, roots[1]) };
+  });
+
+  expect(gaps, '顶层列表里不是两条根评论，或者找不到最内层那条').not.toBeNull();
+  // 前提：平级两条根评论之间本来就没有盒间距（间距全在各自的 padding 里）
+  expect(gaps!.sibling, '平级之间居然有盒间距，下面的比较就失去意义了').toBeLessThanOrEqual(1);
+  // 改前这里是 33×(3−1) = 66px
+  expect(
+    gaps!.afterDeep,
+    `深层回复与下一条根评论之间空了 ${gaps!.afterDeep}px —— 每层的下边距/下内距又叠起来了`
+  ).toBeLessThanOrEqual(1);
+});
+
+// ── 深层楼中楼：最内层不许被挤成一个字宽，整片评论区共用一条横向滚动条 ──────────────
+//
+// 【为什么必须自己钉视口】两个 project 都跑这个文件，而触发深度取决于可用宽度：
+//   1280 桌面 → 可用 868、每层缩进 15px，要 **43 层**才跌破 min-width；
+//   390 窄屏 → 可用 358、每层缩进 8px（≤768px 那档），**16 层**跌破。
+// 不钉视口的话 desktop 那一遍得造 43 条评论，两遍测的还不是同一件事。
+// 固定 390 后两遍量到的几何完全一致，顺带走「窄屏缩进压到 8px」那条分支。
+// setViewportSize 必须在 goto **之前**（同 favorite-layout.spec.ts 的 at()）。
+const DEEP_VW = 390;
+// 390 下可用 358、每层 8px：第 16 层（238px）起被压倒 min-width 以下。取 20 层 ——
+// 最内层左边缘 8×19 = 152、宽 240 ⇒ 右边缘 392，比 358 多出 34px，远大于 ±1px 容差。
+// 20 条评论远在 commentDaily（8000/天，无分钟档）之下。
+const DEEP_LEVELS = 20;
+
+test('深层楼中楼：最内层不被挤窄，整片评论区共用一个横向滚动条', async ({ page }) => {
+  await registerFreshUser(page, { core: true });
+  const blogId = await createBlog(page, `深层楼中楼 ${uniqueTag()}`);
+
+  const tag = uniqueTag();
+  let parent: string | undefined;
+  let deepest = '';
+  for (let i = 0; i < DEEP_LEVELS; i++) {
+    deepest = `第${i + 1}层 ${tag}`;
+    parent = await postComment(page, blogId, deepest, parent);
+  }
+
+  await page.setViewportSize({ width: DEEP_VW, height: 900 });
+  await page.goto(`/blog/${blogId}`);
+
+  // ⚠️ 必须 .last()：父级 li 的 textContent 包住整个子树，20 个祖先**都**命中 hasText。
+  const deepRow = page.locator('.comment-item', { hasText: deepest }).last();
+  await expect(deepRow).toBeVisible();
+
+  const geom = await deepRow.evaluate((el) => {
+    const li = el as HTMLElement;
+    const parentList = li.parentElement as HTMLElement;
+    const topList = document.getElementById('comment-list') as HTMLElement;
+    const cs = getComputedStyle(li);
+    const nested = [...topList.querySelectorAll<HTMLElement>('.comment-list')].filter(
+      (l) => l !== topList
+    );
+    const before = {
+      minW: parseFloat(cs.minWidth),
+      liW: li.getBoundingClientRect().width,
+      // 父级列表的**内容**宽度：它才是这一层的可用宽度
+      parentAvail: parentList.clientWidth - parseFloat(getComputedStyle(parentList).paddingLeft),
+      topOverflowX: getComputedStyle(topList).overflowX,
+      topOverflow: topList.scrollWidth - topList.clientWidth,
+      nestedOverflowX: nested.map((l) => getComputedStyle(l).overflowX),
+      pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      blogOverflow: (() => {
+        const bd = document.querySelector('.blog-detail') as HTMLElement | null;
+        return bd ? bd.scrollWidth - bd.clientWidth : 0;
+      })(),
+    };
+    // 滚到底再看一眼：横条得是真能滚，且滚到底最内层要露得全
+    topList.scrollLeft = 99999; // 浏览器自会夹到最大值
+    return {
+      ...before,
+      scrolled: topList.scrollLeft,
+      unreachable: li.getBoundingClientRect().right - topList.getBoundingClientRect().right,
+    };
+  });
+
+  // ① 前提：这一层的可用宽度确实已跌破最小宽度（否则下面两条是白过的）
+  expect(
+    geom.parentAvail,
+    `可用宽度 ${geom.parentAvail} 还没跌破 ${geom.minW}，用例前提不成立`
+  ).toBeLessThan(geom.minW);
+
+  // ② 用户报的症状：最内层被挤成「一行一个字」。240 不从测试里抄，读计算值 —— 免得
+  //    样式与用例两边各写一个数、日后 drift（helpers.ts 对配额数字留过同样的疤）。
+  expect(geom.liW, `最内层被压到 ${geom.liW}px，正文会退化成一行一个字`).toBeGreaterThanOrEqual(
+    geom.minW - 1
+  );
+
+  // ③ 整片评论区共用一个横向滚动条：顶层是滚动容器，中间层**必须**不是
+  expect(geom.topOverflowX, '顶层列表不是横向滚动容器了').toBe('auto');
+  expect(geom.topOverflow, '顶层列表没有横向溢出 = 最内层根本没被撑住').toBeGreaterThan(1);
+  expect(geom.nestedOverflowX, '中间层也成了滚动容器 ⇒ 会出现多条横条').toEqual(
+    geom.nestedOverflowX.map(() => 'visible')
+  );
+  expect(geom.scrolled, '横条在，但列表其实滚不动').toBeGreaterThan(1);
+  expect(geom.unreachable, '滚到底最内层还是露不全').toBeLessThanOrEqual(1);
+
+  // ④ 老契约不许被破坏：溢出必须被顶层列表接住，页面与 .blog-detail 都不许长出横条
+  expect(geom.pageOverflow, '页面被顶出横向滚动了').toBeLessThanOrEqual(1);
+  expect(geom.blogOverflow, '.blog-detail 长出横条了 —— 溢出没被顶层列表接住').toBeLessThanOrEqual(
+    1
+  );
 });
 
 // 【2026-09-18 已修】CommentSection 的根节点原为 `className="blog-detail"`，与
