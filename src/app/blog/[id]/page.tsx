@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { forbidden, notFound } from 'next/navigation';
 import type { Metadata } from 'next';
 import { redirectToLogin } from '@/lib/guard';
@@ -167,6 +168,23 @@ export default async function BlogDetailPage({ params }: { params: Promise<{ id:
             isAdmin={isAdmin}
             canComment
           />
+        )}
+
+        {/* 访客视图的出口。第 1 期把这页对访客打开了，但读完就是死胡同 —— 而从站外
+            点进来的人**没有经过本站导航**（他多半是从微信/QQ 直接落到这一页的），
+            所以只补顶栏那条边等于没补。
+
+            只给访客：成员视图本来就有顶栏、侧栏与完整的站内列表，多这一条反而碍事。
+            刻意**不**用 .read-controls / #read-controls —— 那两处是「读者交互区」，
+            tests/e2e/blog-visibility.spec.ts 按 id 断言访客视图上它计数为 0。
+            「对外视图没有任何站内 affordance」这条不因这个链接而破 —— 它通向的是
+            **另一个对外页面**，不是点赞/评论/编辑。 */}
+        {!member && (
+          <div className="mt-3">
+            <Link href="/explore" className="read-btn">
+              更多公开文章 →
+            </Link>
+          </div>
         )}
       </article>
 
