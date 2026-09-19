@@ -7,7 +7,7 @@ import { siteBaseUrl } from '@/lib/site-url';
 // ── 本文件里的每一条「放行」，配的都是**按行/按页**的第二道闸 ─────────────────
 //
 // 路径级的 robots.txt 只能表达「这一段能不能抓」，粒度到单页/单条由页面元数据与响应头
-// 收口。本站三处对外开口都是这个形状，改之前先把对应的第二道闸找出来：
+// 收口。本站**四处**对外开口都是这个形状，改之前先把对应的第二道闸找出来：
 //
 //   · `/api/images/`  → 逐张发 `X-Robots-Tag`（公开图 all、私有图 noindex），见
 //                        api/images/[id]/raw/route.ts
@@ -15,6 +15,10 @@ import { siteBaseUrl } from '@/lib/site-url';
 //                        见 api/og/blog/[id]/route.ts
 //   · `/blog/`        → 逐页发 robots 元数据（public 档 index、link/private 档 noindex），
 //                        见 blog/[id]/page.tsx 的 generateMetadata
+//   · `/explore`      → 逐页发 robots 元数据（**结果集为空时**、以及带 `?search=` 时
+//                        noindex，其余 index），见 explore/page.tsx 的 generateMetadata。
+//                        ⚠️ 它**不需要**往下面的 allow 数组里加一项（本来就未被 disallow，
+//                        被 `allow: '/'` 覆盖）—— 这里记的是那道「按页」的闸，不是路径规则。
 //
 // ── 2026-09 新增 `/blog/`，理由与代价 ────────────────────────────────────────
 //

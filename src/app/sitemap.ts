@@ -52,12 +52,25 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // ⚠️ 必须过 isoWithOffset()，不能直接把 Date 交给 Next —— Next 内部用
   // toISOString() 序列化，而库里的数字是「UTC+8 墙上时间贴 Z」（见 db-time.ts 文件头），
   // 裸序列化会让爬虫以为每篇都晚了 8 小时才更新。
-  const blogRoutes: MetadataRoute.Sitemap = (await listIndexableBlogs()).map((b) => ({
+  const indexableBlogs = await listIndexableBlogs();
+  const blogRoutes: MetadataRoute.Sitemap = indexableBlogs.map((b) => ({
     url: `${base}/blog/${b.id}`,
     lastModified: isoWithOffset(b.updatedAt ?? b.createdAt) ?? undefined,
     changeFrequency: 'monthly',
     priority: 0.6,
   }));
+
+  // 对外公开列表页 —— **只在它真有内容时**才列进来。
+  //
+  // `/explore` 在结果集为空时自报 `noindex`（见该页的 generateMetadata），而 sitemap
+  // 是「请来抓」：把一个自报 noindex 的 URL 列进 sitemap 是自相矛盾。这与本文件已有的
+  // 「列进 sitemap 之前先确认它对匿名请求返回 200」是同一条纪律的第二次应用。
+  //
+  // 判据复用上面那次查询，**不再查一次库** —— 两处分别查会让两条路径有机会给出
+  // 不同的答案，而那正是这条规则要避免的。
+  if (indexableBlogs.length > 0) {
+    staticRoutes.push({ url: `${base}/explore`, changeFrequency: 'daily', priority: 0.8 });
+  }
 
   return [...staticRoutes, ...storyRoutes, ...blogRoutes];
 }

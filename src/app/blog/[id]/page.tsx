@@ -12,6 +12,9 @@ import ReadingProgress from '@/app/blog/ReadingProgress';
 import { getCurrentUser, hasAdminRights, isCoreUser } from '@/lib/auth';
 import { getFeedStatus } from '@/lib/feed-service';
 import { isBlogFavorited } from '@/lib/favorite-service';
+import { jsonLdScript } from '@/lib/json-ld';
+import { isoWithOffset } from '@/lib/db-time';
+import { siteBaseUrl } from '@/lib/site-url';
 
 export const dynamic = 'force-dynamic';
 
@@ -101,6 +104,11 @@ export default async function BlogDetailPage({ params }: { params: Promise<{ id:
   const isAdmin = hasAdminRights(user);
   const isAuthor = !!user && user.id === blog.authorId;
 
+  // 结构化数据只给 public 档 —— 与 generateMetadata 的 robots 同一个判据。
+  // link / private 的页面本来就 noindex，挂 JSON-LD 没有意义（搜索引擎不会读它），
+  // 反而多一处要把可见性判对的地方。
+  const indexable = (INDEXABLE_VISIBILITIES as readonly string[]).includes(blog.visibility);
+
   // 成员视图的查看者：与 `isCore` 同真值，但**是非空的 user** ——
   // `isCoreUser(null)` 为 false，所以 core+ 必然是登录用户；只是 TS 推不出这层关系，
   // 而 JSX 里要拿 `user.id`。（不用 `user!`：断言会把这个不变量藏起来。）
@@ -121,6 +129,35 @@ export default async function BlogDetailPage({ params }: { params: Promise<{ id:
 
   return (
     <>
+      {/* 结构化数据（schema.org 的 BlogPosting）—— 让 Google 能出富摘要。
+          ⚠️ 必须过 jsonLdScript()：本站**没有任何 CSP** 兜底，一个含 `</script>` 的
+          标题就能提前闭合这个脚本块（标题是用户输入，库里实打实有 XSS 演示内容）。
+          序列化的转义规则全在 src/lib/json-ld.ts，别在这里手写。
+          ⚠️ 时间戳必须过 isoWithOffset()：裸 toISOString() 会让机器以为它晚了 8 小时
+          发布（datePublished 落在未来还可能让搜索引擎暂缓收录）。 */}
+      {indexable && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: jsonLdScript({
+              '@context': 'https://schema.org',
+              '@type': 'BlogPosting',
+              headline: blog.title,
+              description: blog.description || undefined,
+              datePublished: isoWithOffset(blog.createdAt) ?? undefined,
+              dateModified: isoWithOffset(blog.content?.updatedAt ?? blog.createdAt) ?? undefined,
+              author: blog.author?.username
+                ? { '@type': 'Person', name: blog.author.username }
+                : undefined,
+              publisher: { '@type': 'Organization', name: '聪明山' },
+              mainEntityOfPage: { '@type': 'WebPage', '@id': `${siteBaseUrl()}/blog/${blog.id}` },
+              // 复用已有的分享卡片，不再为结构化数据单独渲染一张图（那是第二条出图管线）
+              image: [`${siteBaseUrl()}/api/og/blog/${blog.id}`],
+            }),
+          }}
+        />
+      )}
+
       {/* 阅读进度条（页面顶部那条 .reading-progress） */}
       <div className="reading-progress" />
       {/* 客户端绑定 scroll → 进度条宽度 */}
