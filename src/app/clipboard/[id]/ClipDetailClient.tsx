@@ -36,22 +36,6 @@ async function copyText(text: string): Promise<boolean> {
   }
 }
 
-// 页脚版权覆写：给本页换一段页脚版权文案。
-// 共享 Footer（layout 里渲染）不可改，故在客户端把 .footer-copy 文本替换掉，
-// 卸载时还原。
-export function FooterCopyright({ text }: { text: string }) {
-  useEffect(() => {
-    const el = document.querySelector('.footer-copy');
-    if (!el) return;
-    const prev = el.textContent;
-    el.textContent = text;
-    return () => {
-      el.textContent = prev;
-    };
-  }, [text]);
-  return null;
-}
-
 // 行内 ID 复制按钮（复制成功后短暂显示"已复制"）
 export function ClipIdCopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);

@@ -52,8 +52,6 @@ interface Props {
   canEdit: boolean;
   /** 管理员删除他人文章（删除需填写原因）。 */
   isAdminDelete: boolean;
-  /** 单篇文章版权声明，注入页脚 .footer-copy。 */
-  footerCopyright?: string;
   /** 当前用户的任一收藏夹是否含本文 —— 星标按钮的初始态（未登录传 false）。 */
   initialFavorited?: boolean;
 }
@@ -70,22 +68,8 @@ export default function FeedButton({
   canManage,
   canEdit,
   isAdminDelete,
-  footerCopyright,
   initialFavorited = false,
 }: Props) {
-  // 单篇文章版权声明注入页脚 .footer-copy，替换默认「© 2026 聪明山」。
-  // 共享 Footer 组件不可改，故挂载时改写、卸载时还原。
-  useEffect(() => {
-    if (!footerCopyright) return;
-    const el = document.querySelector<HTMLElement>('.footer-copy');
-    if (!el) return;
-    const prev = el.textContent;
-    el.textContent = footerCopyright;
-    return () => {
-      el.textContent = prev;
-    };
-  }, [footerCopyright]);
-
   // ── 点赞 ────────────────────────────────────────────────────────────────────
   const [liked, setLiked] = useState(initialLiked);
   const [likes, setLikes] = useState(initialLikes);

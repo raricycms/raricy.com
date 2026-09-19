@@ -2,12 +2,8 @@ import { requireCoreUser } from '@/lib/guard';
 import { forbidden, notFound } from 'next/navigation';
 import { getCurrentUser, isOwner } from '@/lib/auth';
 import { getClip } from '@/lib/clipboard-service';
-import {
-  ClipIdCopyButton,
-  ClipActions,
-  ClipContent,
-  FooterCopyright,
-} from './ClipDetailClient';
+import { ClipIdCopyButton, ClipActions, ClipContent } from './ClipDetailClient';
+import FooterCopyOverride from '@/app/components/FooterCopyOverride';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,7 +47,7 @@ export default async function ClipDetailPage({ params }: { params: Promise<{ id:
         canDelete={canDelete}
       />
 
-      <FooterCopyright
+      <FooterCopyOverride
         text={`原作者：${clip.authorName ?? '未知作者'} | 版权归原作者所有`}
       />
     </div>

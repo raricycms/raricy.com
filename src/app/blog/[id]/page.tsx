@@ -5,6 +5,7 @@ import { prisma } from '@/lib/db';
 import MarkdownRenderer from '@/app/components/MarkdownRenderer';
 import CommentSection from '@/app/components/CommentSection';
 import FeedButton from '@/app/components/FeedButton';
+import FooterCopyOverride from '@/app/components/FooterCopyOverride';
 import ReadingProgress from '@/app/blog/ReadingProgress';
 import { getCurrentUser, hasAdminRights, isCoreUser } from '@/lib/auth';
 import { getFeedStatus } from '@/lib/feed-service';
@@ -71,7 +72,6 @@ export default async function BlogDetailPage({ params }: { params: Promise<{ id:
           canEdit={isAuthor}
           isAdminDelete={isAdminDelete}
           initialFavorited={favorited}
-          footerCopyright={`作者：${blog.author?.username} | 版权归原作者所有`}
         />
 
         <CommentSection
@@ -81,6 +81,8 @@ export default async function BlogDetailPage({ params }: { params: Promise<{ id:
           canComment={isCore}
         />
       </article>
+
+      <FooterCopyOverride text={`作者：${blog.author?.username} | 版权归原作者所有`} />
     </>
   );
 }
