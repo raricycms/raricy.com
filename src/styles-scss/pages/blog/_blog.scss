@@ -753,6 +753,25 @@ a {
     min-width: 240px;
 }
 
+/* ★ 有楼中楼的评论：下内距归零。
+   不归零的话每一层要付两次账：本条的 padding-bottom 18 + 内层列表的 margin-bottom 15。
+   父级的 padding 挡住外边距折叠（CSS 2.1 §8.3.1），子级的下外边距又算进父级的 auto 高度
+   （§10.6.7）—— 两者是**相加**而不是取大者。于是每深一层多留 33px，D 层链的末尾就是
+   33×(D−1) 的空白，层数越深越离谱（3 层实测 103px，正常只有 37px）。
+   归零后整条链只剩**最深那一层自己**的 18px ⇒「深层末尾 → 下一条根评论」回到
+   18 + 1px 分隔线 + 18 = 37px，与「根评论 → 根评论」逐像素一致，任何层数都是 37。
+   判据用 DOM 结构本身（:has），不在 TSX 里挂 has-children 类：那条 <ul> 的渲染条件
+   （CommentSection.tsx 的 node.children.length > 0）就是这个结构，两者同源，不会 drift。
+   这是本仓第一条实际生效的 :has()（_blog.scss:158 那条 @supports not 是没了对手的孤儿）。
+   **刻意不写 @supports 降级**：不支持 :has() 的引擎上这两条不匹配 → 退回的正是改动前的
+   间距（只是没修好，不会坏）—— 没有比现状更好的「降级样式」可写，那个替代规则就是现状本身。 */
+.comment-item:has(> .comment-list) {
+    padding-bottom: 0;
+}
+.comment-item > .comment-list {
+    margin-bottom: 0;
+}
+
 /* 嵌套列表的第一楼紧跟父楼，不要顶出一条线来断掉从属关系 */
 .comment-item .children .comment-item:first-child {
     padding-top: 0;
