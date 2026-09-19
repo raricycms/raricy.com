@@ -84,7 +84,7 @@
 | `/` | page | 导航首页（不列文章） |
 | `/login` · `/register` | page | 认证（登出是 `POST /api/auth/logout`，**没有** GET 路由） |
 | `/blog` · `/blog/[id]` · `/blog/upload` · `/blog/[id]/edit` | page | 博客 |
-| `/api/blogs` · `/api/blogs/[id]` · `/api/spider/*` | API | 博客 API + 爬虫 API。**全部 core+**，与 `/blog` 页面同档（读口含正文搜索那条重活，见 §6.5）|
+| `/api/blogs` · `/api/blogs/[id]` · `/api/categories` · `/api/spider/*` | API | 博客 API + 栏目清单 + 爬虫 API。**全部 core+**，与 `/blog` 页面同档（读口含正文搜索那条重活，见 §6.5）。`/api/categories` 是给发文方查 `category_id` 的读口（此前只有 `/api/admin/categories`，机器人无从枚举）；发文对外契约见 `docs/bot/blog-bot.md` |
 | `/api/auth/authentic` · `/zhh` | API + route | 邀请码升 core · 邀请码生成（站长） |
 | `/fish` · `/fish/transactions` · `/api/fish/*` | page + API | 小鱼干面板 + 流水 |
 | `/fish/market` · `/api/fish/market/*` | page + API | 鱼干市场（第一期只有**用户间转账**，无手续费）：`POST transfer`（支持客户端幂等键）/ `GET users`（收款人搜索）/ `POST balance`、`POST transactions`（站外脚本用的无状态查询，含 `since_id` 对账游标）/ `POST pay`（收银台专用）。写路径见 §6.3；对外契约见 `docs/bot/fish-bot.md` |
