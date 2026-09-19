@@ -797,8 +797,9 @@ a {
         justify-content: space-evenly;
         gap: 6px;
         /* 给圆钮下方那颗数字留位。数字是绝对定位的（不参与布局），
-           不留这一条它会压到下一行「返回上页 / 管理文章」上。 */
-        padding-bottom: 16px;
+           不留这一条它会压到下一行「返回上页 / 管理文章」上。
+           20px = 数字的 4px 下移间隙 + 0.85rem 行高（≈13.6px）+ 一点余量。 */
+        padding-bottom: 20px;
     }
 
     .read-controls__row .like-btn,
@@ -831,17 +832,23 @@ a {
         /* 计数：不再是实底徽标，也不是圆钮里的一行 —— 圆钮只有 44px 见方，
            数字再挤进去圆就不成圆了。用绝对定位把它拉到圆钮**外面**的正下方居中：
            DOM 不动（仍是按钮的孩子，点击它照样触发按钮），也不占布局位置，
-           所以按钮自己的高度还是那个 44px，跨断点不跳。 */
+           所以按钮自己的高度还是那个 44px，跨断点不跳。
+
+           `+ 4px` 是让数字离圆底留一口气：贴着 `top: 100%` 时数字上沿紧挨圆边，
+           看起来像是圆钮溢出来的。字号 0.7rem → 0.85rem（= 桌面端徽标字号），
+           顺带把两档的字号也统一了。
+           ⚠️ 这两条一动，`.read-controls__row` 的 `padding-bottom` 必须跟着复核：
+           它要接住「4px 间隙 + 数字行高」，现在 20px。 */
         .like-count-badge,
         .fish-count-badge {
             position: absolute;
-            top: 100%;
+            top: calc(100% + 4px);
             left: 50%;
             transform: translateX(-50%);
             background: none;
             padding: 0;
             color: inherit;
-            font-size: 0.7rem;
+            font-size: 0.85rem;
             line-height: 1;
             white-space: nowrap;
         }
