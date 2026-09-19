@@ -4,8 +4,11 @@ import {
   getCategoryPostingMeta,
   banActionMessage,
   updateBlog,
+  setBlogVisibility,
   parseVisibility,
+  BLOG_VISIBILITIES,
 } from '@/lib/blog-service';
+import type { BlogVisibility } from '@/lib/blog-service';
 import { setBlogIgnore } from '@/lib/admin-blog-service';
 import { categoryFullPath, apiOk, apiErr } from '@/lib/format';
 import { prisma } from '@/lib/db';
@@ -51,6 +54,63 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       visibility: blog.visibility,
     },
   });
+}
+
+// PATCH /api/blogs/:id — **只改可见性**（详情页「管理文章」弹窗里的那一项）
+//
+// 【为什么单开一条窄接口，不复用 PUT】PUT 是整体覆盖：只为改一列就要把标题、摘要、
+// 正文全回传，既有丢更新的竞态（另一个标签页刚改过标题就会被这次覆盖掉），又把正文
+// 白往返一遍。窄接口只认一个键，从形状上就没有这些问题。
+//
+// 【权限与 PUT 逐条一致】登录 → core+ → 文章存在（未软删）→ **作者本人** →
+// 禁言（管理员除外）。抄的不是形状而是判据：任何一条放宽都等于开一个新口子。
+//
+// ⚠️ 特别是**管理员改不了别人的文章** —— PUT 的 403 早就确立了这条边界
+// （档位管「你有没有资格写文章」，归属管「这篇是不是你的」，见 blog-service 文件头
+// 不变量【4】）。「让管理员能把别人的私密文章推成公开」是个独立的隐私决定，
+// 不该顺手在这里实现。
+export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const { id } = await ctx.params;
+
+  const user = await getCurrentUser();
+  if (!user) return apiErr(401, '请先登录');
+  if (!isCoreUser(user)) return apiErr(403, '需要核心用户权限');
+
+  const blog = await prisma.blog.findFirst({
+    where: { id, ignore: false },
+    select: { authorId: true },
+  });
+  if (!blog) return apiErr(404, '文章不存在');
+  if (blog.authorId !== user.id) return apiErr(403, '无权编辑该文章');
+  if (!hasAdminRights(user) && isCurrentlyBanned(user)) {
+    return apiErr(403, banActionMessage(user));
+  }
+
+  const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return apiErr(400, '请求体格式不正确');
+  }
+
+  // 键集封闭，多传的键**报错而不是忽略** —— 忽略的话调用方会以为「我传了 title，
+  // 它一定改了吧」。这与 `search_fields` 对未知字段的处理是同一种口径。
+  const extra = Object.keys(body).filter((k) => k !== 'visibility');
+  if (extra.length) {
+    return apiErr(400, `本接口只接受 visibility，多传了：${extra.join(' / ')}`);
+  }
+
+  // 取值必须**恰好**是三档之一。刻意不用 parseVisibility()：那把 '' 与缺省都归一化成
+  // 'private'（那是给表单 / 旧客户端设计的「没提这件事」语义）。而这条接口上「显式传了
+  // 一个空串」几乎一定是调用方写错了，静默当成「改成私密」会让他在文章从公网消失之后
+  // 才发现。
+  const raw = body.visibility;
+  if (typeof raw !== 'string' || !(BLOG_VISIBILITIES as readonly string[]).includes(raw)) {
+    return apiErr(400, `可见性取值不合法，可选：${BLOG_VISIBILITIES.join(' / ')}`);
+  }
+
+  const result = await setBlogVisibility(id, raw as BlogVisibility);
+  if (!result) return apiErr(404, '文章不存在'); // 取详情与更新之间被软删了
+
+  return apiOk({ visibility: raw, changed: result.changed }, result.message);
 }
 
 // PUT /api/blogs/:id — 编辑文章

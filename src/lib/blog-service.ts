@@ -1143,3 +1143,39 @@ export async function updateBlog(
 
   return { hasChanges, changesDetail };
 }
+
+/**
+ * 只改可见性。**窄接口** —— 刻意不走 `updateBlog`：那条路是**整体覆盖**，只为改一列
+ * 就要把标题、摘要、正文全回传，既有丢更新的竞态（另一个标签页刚改了标题就会被覆盖），
+ * 又把正文白往返一遍。
+ *
+ * 不动正文，所以**不碰 `BlogContent.updatedAt`** —— 那会让文章在「按更新时间排序」的
+ * 列表里凭空跳位，而作者只是改了个可见性。
+ *
+ * 返回 `null` = 文章不存在或已软删。`changed=false` 表示本来就是这一档（幂等，
+ * 不是错误）。
+ */
+export async function setBlogVisibility(
+  blogId: string,
+  visibility: BlogVisibility
+): Promise<{ changed: boolean; from: BlogVisibility; message: string } | null> {
+  const blog = await prisma.blog.findUnique({
+    where: { id: blogId },
+    select: { visibility: true, ignore: true },
+  });
+  if (!blog || blog.ignore) return null;
+
+  // 列是 TEXT 且没有 CHECK 约束，历史值可能是脏的 —— 归一化到白名单再比较，
+  // 否则一个脏值会让我们每次都判成「变了」并反复写库。
+  const from = parseVisibility(blog.visibility) ?? 'private';
+  if (from === visibility) {
+    return { changed: false, from, message: '可见性没有变化' };
+  }
+
+  await prisma.blog.update({ where: { id: blogId }, data: { visibility } });
+  return {
+    changed: true,
+    from,
+    message: `可见性已从「${VISIBILITY_LABEL[from]}」改为「${VISIBILITY_LABEL[visibility]}」`,
+  };
+}

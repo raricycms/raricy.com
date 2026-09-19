@@ -2,7 +2,12 @@ import Link from 'next/link';
 import { forbidden, notFound } from 'next/navigation';
 import type { Metadata } from 'next';
 import { redirectToLogin } from '@/lib/guard';
-import { EXTERNAL_VISIBILITIES, INDEXABLE_VISIBILITIES, getBlogDetail } from '@/lib/blog-service';
+import {
+  EXTERNAL_VISIBILITIES,
+  INDEXABLE_VISIBILITIES,
+  getBlogDetail,
+  parseVisibility,
+} from '@/lib/blog-service';
 import { prisma } from '@/lib/db';
 import MarkdownRenderer from '@/app/components/MarkdownRenderer';
 import CommentSection from '@/app/components/CommentSection';
@@ -194,6 +199,9 @@ export default async function BlogDetailPage({ params }: { params: Promise<{ id:
             canManage={isAdmin || isAuthor}
             canEdit={isAuthor}
             isAdminDelete={isAdmin && !isAuthor}
+            // 列是 TEXT、没有 CHECK 约束，所以归一化到白名单再下发 —— 脏值不该让弹窗
+            // 里三个选项一个都不选中。
+            initialVisibility={parseVisibility(blog.visibility) ?? 'private'}
             initialFavorited={favorited}
           />
         )}

@@ -4,12 +4,19 @@
 //   • 点赞 / 投喂两行按钮（.read-controls：点赞/投喂，返回上页/管理文章）
 //   • 两步式投喂弹窗（选数量 → 确认），由投喂按钮触发
 //   • 「管理文章」弹窗（管理员 / 作者）：统一收拢
-//     「查看点赞者 / 查看投喂者 / 编辑文章(作者) / 删除文章」，弹窗内按视图切换
+//     「查看点赞者 / 查看投喂者 / 编辑文章(作者) / 设置可见性(作者) / 删除文章」，
+//     弹窗内按视图切换
 //
-// 由 blog/[id]/page.tsx 挂载。点赞 → POST /api/blogs/:id/like；投喂 → POST /api/blogs/:id/feed。
+// 由 blog/[id]/page.tsx 挂载。点赞 → POST /api/blogs/:id/like；投喂 → POST /api/blogs/:id/feed；
+// 可见性 → PATCH /api/blogs/:id。
 
 import { useCallback, useEffect, useState } from 'react';
-import { ArrowLeft, Fish, Heart, Pencil, Settings, Trash2 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { ArrowLeft, Eye, Fish, Heart, Pencil, Settings, Trash2 } from 'lucide-react';
+// 可见性词汇必须从 ./blog-visibility 取（那个模块零依赖）—— **不能**从 blog-service，
+// 它拖着 prisma，进不了客户端包。BlogForm 同款。
+import { BLOG_VISIBILITIES, VISIBILITY_LABEL } from '@/lib/blog-visibility';
+import type { BlogVisibility } from '@/lib/blog-visibility';
 import FavoriteButton from './FavoriteButton';
 
 const FEED_CAP = 5;
@@ -52,6 +59,14 @@ interface Props {
   canEdit: boolean;
   /** 管理员删除他人文章（删除需填写原因）。 */
   isAdminDelete: boolean;
+  /**
+   * 本文当前的可见性档位（作者在「管理文章」里能改它）。
+   *
+   * **必传，没有默认值** —— 给个 `'private'` 的兜底会让「调用方忘了传」表现为
+   * 「弹窗里显示的档位是错的」：作者看到「仅站内可见」就去点确认，而文章其实早就是
+   * 对外公开的。这种「默认值是谎话」的参数正是本仓库反复防的那类静默错。
+   */
+  initialVisibility: BlogVisibility;
   /** 当前用户的任一收藏夹是否含本文 —— 星标按钮的初始态（未登录传 false）。 */
   initialFavorited?: boolean;
 }
@@ -68,8 +83,19 @@ export default function FeedButton({
   canManage,
   canEdit,
   isAdminDelete,
+  initialVisibility,
   initialFavorited = false,
 }: Props) {
+  const router = useRouter();
+
+  // ── 可见性（作者改，见下面的「管理文章」弹窗）────────────────────────────────
+  // visibility = 服务端确认过的档位；visDraft = 弹窗里正在挑的那个。
+  // 分成两个而不是共用一个：取消 / 关闭弹窗要能丢弃草稿，否则「点开看了一眼又关掉」
+  // 会把界面留在未提交的状态上。
+  const [visibility, setVisibility] = useState<BlogVisibility>(initialVisibility);
+  const [visDraft, setVisDraft] = useState<BlogVisibility>(initialVisibility);
+  const [visBusy, setVisBusy] = useState(false);
+
   // ── 点赞 ────────────────────────────────────────────────────────────────────
   const [liked, setLiked] = useState(initialLiked);
   const [likes, setLikes] = useState(initialLikes);
@@ -164,8 +190,8 @@ export default function FeedButton({
     }
   }
 
-  // ── 「管理文章」弹窗（menu 目录 → likers / feeders / delete 子视图）─────────
-  type ModalKind = 'menu' | 'likers' | 'feeders' | 'delete' | null;
+  // ── 「管理文章」弹窗（menu 目录 → likers / feeders / visibility / delete 子视图）──
+  type ModalKind = 'menu' | 'likers' | 'feeders' | 'visibility' | 'delete' | null;
   const [modal, setModal] = useState<ModalKind>(null);
 
   // ESC 关闭
@@ -282,6 +308,42 @@ export default function FeedButton({
       toast('网络错误，请稍后重试', 'error');
     } finally {
       setDeleteBusy(false);
+    }
+  }
+
+  // 可见性：提交草稿。**只走窄接口 PATCH**，不是拿 PUT 把整篇回传一遍
+  // （那样既有丢更新的竞态，又把正文白往返一趟）。
+  async function saveVisibility() {
+    if (visBusy) return;
+    if (visDraft === visibility) {
+      toast('可见性没有变化', 'info');
+      setModal('menu');
+      return;
+    }
+    setVisBusy(true);
+    try {
+      const res = await fetch(`/api/blogs/${blogId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ visibility: visDraft }),
+      });
+      const data = await res.json().catch(() => ({ code: res.status, message: '设置失败' }));
+      if (res.ok) {
+        setVisibility(visDraft);
+        toast(data.message || '已更新可见性', 'success');
+        // ⚠️ 必须让服务端重渲染，不能只改本地 state：robots 元数据、OG 卡片、JSON-LD
+        // 与页脚的「对外公开」状态**全部在服务端算**。只改本地的话，这个标签页会停在
+        // 「界面说私密、响应头说 public」的不一致里，而刷新一下又好了 —— 最难查的那种。
+        router.refresh();
+        setModal(null);
+      } else {
+        toast(data.message || '设置失败', 'error');
+      }
+    } catch {
+      toast('网络错误，请稍后重试', 'error');
+    } finally {
+      setVisBusy(false);
     }
   }
 
@@ -412,6 +474,22 @@ export default function FeedButton({
                     <a href={`/blog/${blogId}/edit`} className="manage-menu__item">
                       <Pencil aria-hidden="true" /> 编辑文章
                     </a>
+                  )}
+                  {/* 可见性入口挂在 canEdit 上，**不是 canManage** —— 管理员改不了别人的
+                      文章（PATCH 与 PUT 都只认作者本人）。别在这里开一个后端不认的入口：
+                      那正是 CLAUDE.md 说的「入口有、门禁却不认」的自相矛盾。 */}
+                  {canEdit && (
+                    <button
+                      type="button"
+                      className="manage-menu__item"
+                      // 每次打开都从**服务端确认过的档位**重取草稿，丢掉上次的残留
+                      onClick={() => {
+                        setVisDraft(visibility);
+                        setModal('visibility');
+                      }}
+                    >
+                      <Eye aria-hidden="true" /> 设置可见性
+                    </button>
                   )}
                   <button
                     type="button"
@@ -560,6 +638,73 @@ export default function FeedButton({
               <div className="modal-footer">
                 <button type="button" className="btn btn-secondary" onClick={() => setModal(null)}>
                   关闭
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 可见性 Modal（作者）。选项从 BLOG_VISIBILITIES 长出来，**不在前端写死档名** ——
+          加第四档时这里会跟着出现，不会静默少一个选项。
+          类名全部复用（modal-* / form-check* / button），零新增 SCSS。 */}
+      {canEdit && (
+        <div
+          className={`modal${modal === 'visibility' ? ' is-open' : ''}`}
+          id="visibilityModal"
+          role="dialog"
+          aria-hidden={modal !== 'visibility'}
+          onClick={(e) => e.target === e.currentTarget && setModal(null)}
+        >
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">设置可见性</h5>
+                <button type="button" className="btn-close" aria-label="Close" onClick={() => setModal(null)} />
+              </div>
+              <div className="modal-body">
+                <p className="form-hint text-muted">当前：{VISIBILITY_LABEL[visibility]}</p>
+                {BLOG_VISIBILITIES.map((v) => (
+                  <div className="form-check" key={v}>
+                    <input
+                      type="radio"
+                      className="form-check-input"
+                      name="visibility"
+                      id={`vis-${v}`}
+                      value={v}
+                      checked={visDraft === v}
+                      onChange={() => setVisDraft(v)}
+                    />
+                    <label className="form-check-label" htmlFor={`vis-${v}`}>
+                      {VISIBILITY_LABEL[v]}
+                    </label>
+                  </div>
+                ))}
+                <span className="form-hint text-muted">
+                  仅站内可见：只有站内核心用户读得到。凭链接可读：拿到链接的任何人可读，
+                  但不进任何列表、不被搜索引擎收录。对外公开：任何人可读，可能被搜索引擎
+                  收录与第三方存档。
+                </span>
+                {/* 这句必须留着：public 是**唯一不可逆**的那一档，而它恰好是作者最容易
+                    顺手点下去的一档（「让朋友看到」）。 */}
+                <span className="form-hint text-muted">
+                  ⚠️ 改为「对外公开」后可能被搜索引擎与第三方存档抓走副本，之后改回
+                  「仅站内可见」不会收回已经抓走的副本。
+                </span>
+              </div>
+              <div className="modal-footer">
+                {/* 取消：回到「管理文章」目录而非直接关闭（与删除弹窗同款） */}
+                <button type="button" className="button button-primary" onClick={() => setModal('menu')}>
+                  取消
+                </button>
+                <button
+                  type="button"
+                  id="confirm-visibility-btn"
+                  className="button button-warning"
+                  onClick={saveVisibility}
+                  disabled={visBusy}
+                >
+                  确认修改
                 </button>
               </div>
             </div>

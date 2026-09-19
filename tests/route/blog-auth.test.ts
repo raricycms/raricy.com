@@ -47,7 +47,12 @@ import { BLOG_VISIBILITIES } from '@/lib/blog-service';
 import { GET as blogOgImage } from '@/app/api/og/blog/[id]/route';
 
 import { GET as listBlogs, POST as createBlog } from '@/app/api/blogs/route';
-import { GET as getBlog, PUT as updateBlog, DELETE as deleteBlog } from '@/app/api/blogs/[id]/route';
+import {
+  GET as getBlog,
+  PUT as updateBlog,
+  PATCH as patchBlogVisibility,
+  DELETE as deleteBlog,
+} from '@/app/api/blogs/[id]/route';
 import {
   GET as listComments,
   POST as postComment,
@@ -101,6 +106,7 @@ const withBody = (method: string) => (p: string, body: unknown = {}) =>
   });
 const post = withBody('POST');
 const put = withBody('PUT');
+const patch = withBody('PATCH');
 const del = (p: string) => new Request(`http://localhost${p}`, { method: 'DELETE' });
 
 /** 该响应是不是「被档位守卫挡住」的那个（而不是业务逻辑自己的 401/403）。 */
@@ -116,7 +122,7 @@ const BLOG_ID = 'no-such-blog';
 const COMMENT_ID = 'no-such-comment';
 
 /**
- * 14 个 core+ handler。刻意匿名的那个（表情字节）**不在这里** —— 它的方向相反，
+ * 15 个 core+ handler。刻意匿名的那个（表情字节）**不在这里** —— 它的方向相反，
  * 单列在下面。
  *
  * 没有 `canProbeAllow: false` 的条目：这一域没有 SSE 那种一放行就挂住的路由，
@@ -127,6 +133,10 @@ const cases: { name: string; call: () => Promise<Response> }[] = [
   { name: 'POST   /api/blogs', call: () => createBlog(post('/api/blogs', {})) },
   { name: 'GET    /api/blogs/:id', call: () => getBlog(url('/x'), ctx(BLOG_ID)) },
   { name: 'PUT    /api/blogs/:id', call: () => updateBlog(put('/x', {}), ctx(BLOG_ID)) },
+  {
+    name: 'PATCH  /api/blogs/:id (可见性)',
+    call: () => patchBlogVisibility(patch('/x', { visibility: 'public' }), ctx(BLOG_ID)),
+  },
   { name: 'DELETE /api/blogs/:id', call: () => deleteBlog(del('/x'), ctx(BLOG_ID)) },
   { name: 'GET    /api/blogs/:id/comments', call: () => listComments(url('/x'), ctx(BLOG_ID)) },
   {
@@ -147,7 +157,7 @@ beforeEach(async () => {
   session.token = undefined;
 });
 
-describe('博客 / 评论 / 表情的档位（14 个 core+ handler）', () => {
+describe('博客 / 评论 / 表情的档位（15 个 core+ handler）', () => {
   it('清单要盖住这一域的**全部** handler（漏一条 = 漏一个免检的口子）', async () => {
     // 真的去扫盘，不是断言我自己写的数组长度 —— 新增一条本域路由而忘了补进 cases 时，
     // 它必须变红。否则那条路由在「有没有测试保护」这件事上是隐形的。
@@ -265,9 +275,122 @@ describe('对外读口：GET /api/og/blog/:id（分享卡片）', () => {
   });
 });
 
+describe('PATCH /api/blogs/:id —— 可见性只能由**作者本人**改', () => {
+  // 上面那张 cases 表钉的是「谁能进这个 handler」（档位）。这一组钉的是**进了之后
+  // 能动谁的文章**（归属）—— 两层不是一回事，见 src/lib/blog-service.ts 的
+  // 「档位 vs 归属是两层」。
+  const patchVis = (id: string, visibility: unknown) =>
+    patchBlogVisibility(patch('/x', { visibility }), ctx(id));
+
+  it('★ 管理员也不是例外：改别人的文章一律 403，且库里**真的没变**', async () => {
+    // 这条钉的是一条边界，不是权限阶梯。让管理员能把**别人的**私密文章推成对外公开，
+    // 是个独立的隐私决定（与「评论者没同意就不公开评论」同类），不该顺手实现 ——
+    // 一旦放开，被公开的人不会收到任何通知，而公开是不可逆的。
+    const author = await makeUser({ role: 'core' });
+    const admin = await makeUser({ role: 'admin' });
+    const b = await makeBlog({ authorId: author.id });
+
+    await login(admin.id);
+    const res = await patchVis(b.id, 'public');
+    expect(res.status).toBe(403);
+    expect(((await res.json()) as { message: string }).message).toBe('无权编辑该文章');
+
+    // 只看状态码不够：万一守卫在写库**之后**才返回 403 呢？
+    const row = await prisma.blog.findUnique({
+      where: { id: b.id },
+      select: { visibility: true },
+    });
+    expect(row?.visibility, '403 之后库里不许有任何变化').toBe('private');
+  });
+
+  it('作者本人可以改，回显新档位与 changed', async () => {
+    const author = await makeUser({ role: 'core' });
+    const b = await makeBlog({ authorId: author.id });
+    await login(author.id);
+
+    const res = await patchVis(b.id, 'public');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { visibility: string; changed: boolean };
+    expect(body.visibility).toBe('public');
+    expect(body.changed).toBe(true);
+  });
+
+  it('本来就那一档 → changed=false（幂等不是错误）', async () => {
+    const author = await makeUser({ role: 'core' });
+    const b = await makeBlog({ authorId: author.id }); // 默认 private
+    await login(author.id);
+    const res = await patchVis(b.id, 'private');
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { changed: boolean }).changed).toBe(false);
+  });
+
+  it('非法档位 → 400，且**库里不变**（尤其不能被静默打回 private）', async () => {
+    // 把 link 先立在那儿，再看这四次非法请求会不会把它冲掉 —— 若实现走了
+    // parseVisibility 的「空串/缺省 → private」那条路，`''` 这一发就会让一篇
+    // 凭链接可读的文章从站外消失。
+    const author = await makeUser({ role: 'core' });
+    const b = await makeBlog({ authorId: author.id });
+    await prisma.blog.update({ where: { id: b.id }, data: { visibility: 'link' } });
+    await login(author.id);
+
+    for (const bad of ['pulbic', '', 'PUBLIC', 3, null]) {
+      const res = await patchVis(b.id, bad);
+      expect(res.status, `${JSON.stringify(bad)} 应 400`).toBe(400);
+    }
+
+    const row = await prisma.blog.findUnique({
+      where: { id: b.id },
+      select: { visibility: true },
+    });
+    expect(row?.visibility, '五次非法请求要全部落空').toBe('link');
+  });
+
+  it('键集封闭：多传别的字段 → 400，且那个字段一个字都不生效', async () => {
+    // 报错而不是忽略：忽略的话调用方会以为「我传了 title，它一定改了吧」。
+    const author = await makeUser({ role: 'core' });
+    const b = await makeBlog({ authorId: author.id, title: '原标题' });
+    await login(author.id);
+
+    const res = await patchBlogVisibility(
+      patch('/x', { visibility: 'public', title: '偷改的标题' }),
+      ctx(b.id)
+    );
+    expect(res.status).toBe(400);
+
+    const row = await prisma.blog.findUnique({
+      where: { id: b.id },
+      select: { title: true, visibility: true },
+    });
+    expect(row?.visibility).toBe('private');
+    expect(row?.title, '多传的键不许生效').toBe('原标题');
+  });
+
+  it('改可见性**不碰**正文的 updatedAt —— 不该在「按更新时间」的列表里凭空跳位', async () => {
+    const author = await makeUser({ role: 'core' });
+    const before = new Date('2026-01-02T03:04:05.000Z');
+    const b = await makeBlog({ authorId: author.id, contentUpdatedAt: before });
+    await login(author.id);
+
+    await patchVis(b.id, 'public');
+
+    const c = await prisma.blogContent.findUnique({
+      where: { blogId: b.id },
+      select: { updatedAt: true },
+    });
+    expect(c?.updatedAt?.toISOString(), '分开了就是分开了').toBe(before.toISOString());
+  });
+
+  it('软删的文章：404（与 PUT 同口径，不确认存在性）', async () => {
+    const author = await makeUser({ role: 'core' });
+    const b = await makeBlog({ authorId: author.id, ignore: true });
+    await login(author.id);
+    expect((await patchVis(b.id, 'public')).status).toBe(404);
+  });
+});
+
 // ── 这一域唯一的刻意例外 ──────────────────────────────────────────────────────
 //
-// 方向与上面 14 条**相反**：它要断言的是「匿名**不该**被挡」。这条断言不是凑数的 ——
+// 方向与上面那批**相反**：它要断言的是「匿名**不该**被挡」。这条断言不是凑数的 ——
 // 它挡的是「顺手给表情字节加个登录校验」这种看起来天经地义的改动。表情素材是站点
 // 素材、不属于任何账号、对所有人的答案都一样，压根没有「档位」可言；真正的访问控制
 // 在别处（隐藏合集由 resolveSticker 拦 404，不是权限）。
