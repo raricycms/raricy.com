@@ -84,7 +84,7 @@
 | `/` | page | 导航首页（不列文章） |
 | `/login` · `/register` | page | 认证（登出是 `POST /api/auth/logout`，**没有** GET 路由） |
 | `/blog` · `/blog/upload` · `/blog/[id]/edit` | page | 博客列表与编辑 —— **一律 core+** |
-| `/blog/[id]` | page | 文章详情。**按身份两种视图**：core+ 看成员视图（正文 + 互动 + 评论），访客看纯阅读视图。文章 `visibility` 为 link / public 时访客可读，private 时访客落到登录页（见 §6.11） |
+| `/blog/[id]` | page | 文章详情。**按身份两种视图**：core+ 看成员视图（正文 + 互动 + 评论），访客看纯阅读视图。文章 `visibility` 为 link / public 时访客可读，internal 时访客落到登录页（见 §6.11） |
 | `/explore` | page | **对外公开列表**（`public` 档，与 sitemap 同一个集合）。全站**唯一**不需要登录的浏览面，访客与非 core 的「博客」入口指向它（见 §6.12） |
 | `/api/blogs` · `/api/blogs/[id]` · `/api/categories` · `/api/spider/*` | API | 博客 API + 栏目清单 + 爬虫 API。**全部 core+**，与 `/blog` 页面同档（读口含正文搜索那条重活，见 §6.5）。`/api/categories` 是给发文方查 `category_id` 的读口（此前只有 `/api/admin/categories`，机器人无从枚举）；发文对外契约见 `docs/bot/blog-bot.md` |
 | `/api/og/blog/[id]` | API | **分享卡片 PNG**（OG 图）。无会话档位，逐篇判可见性：只对外可见的文章返回 200，其余与「不存在」同形 404。缓存与 `X-Robots-Tag` 按档位发（见 §6.11） |
@@ -418,7 +418,7 @@ div 会卸载重挂，`deps=[]` 的监听器永远附不上。
 
 | `visibility` | 页面可达性 | 页面 `robots` | sitemap | OG 图 | OG 图 `X-Robots-Tag` |
 |---|---|---|---|---|---|
-| `private`（默认） | core+ 可读；访客 → 登录页 | `noindex, nofollow` | 不进 | 404 | — |
+| `internal`（默认） | core+ 可读；访客 → 登录页 | `noindex, nofollow` | 不进 | 404 | — |
 | `link` | 任何人可读 | `noindex, nofollow` | 不进 | 200 | `noindex` |
 | `public` | 任何人可读 | `index, follow` | 进 | 200 | `all` |
 
@@ -436,8 +436,8 @@ div 会卸载重挂，`deps=[]` 的监听器永远附不上。
 所以判可达用 `EXTERNAL_VISIBILITIES`，sitemap 用 `INDEXABLE_VISIBILITIES`，别混用。
 
 **五个静态守卫盯着它**（都是「删掉就会静默坏掉」的那类）：
-- `tests/unit/blog-visibility-guard.test.ts` —— 不许写 `{ not: 'private' }` /
-  `visibility !== 'private'`。那两种写法在加第四档时会**静默把新档一起放出去**，
+- `tests/unit/blog-visibility-guard.test.ts` —— 不许写 `{ not: 'internal' }` /
+  `visibility !== 'internal'`。那两种写法在加第四档时会**静默把新档一起放出去**，
   而放出去不可逆。
 - `tests/unit/anonymous-read-guard.test.ts` 的 `getExternallyVisibleBlog` ——
   它是**新的一类**守卫（per-object 可见性，不是会话档位）。对外路由必须过它，
@@ -445,10 +445,10 @@ div 会卸载重挂，`deps=[]` 的监听器永远附不上。
   「一旦开始返回用户内容就必须挪走」，而 OG 图恰恰返回用户内容。
 - `tests/unit/explore-visibility-guard.test.ts` —— 钉「对外列表与 sitemap 必须列同一个
   集合」：两个出口的函数体里都必须出现 `INDEXABLE_BLOG_WHERE` 这个名字（见 §6.12）。
-- `tests/unit/blog-visibility-tag.test.ts` —— 钉站内列表卡片上「除 private 外每一档都有
+- `tests/unit/blog-visibility-tag.test.ts` —— 钉站内列表卡片上「除 internal 外每一档都有
   标记」。那两个分支写死了字面量类名（`css-tsx-classes` 只认字面量），所以加第四档时
   不会自动长出来，而作者会把没标记的文章看成「没对外」。
-- `tests/route/blog-auth.test.ts` 末尾那组 —— OG 图对 private / 已软删 / 不存在
+- `tests/route/blog-auth.test.ts` 末尾那组 —— OG 图对 internal / 已软删 / 不存在
   **三者 404 且响应体逐字相同**（差一个字就是存在性探针）；以及 `PATCH /api/blogs/:id`
   的可见性改动**只有作者本人**能动（管理员也不行）。
 
@@ -467,16 +467,16 @@ div 会卸载重挂，`deps=[]` 的监听器永远附不上。
 
 **爬虫入口**（`robots.ts` / `sitemap.ts` 是这件事的两半，必须同进同退）：
 `/blog/` 从 disallow 里开口（用 RFC 9309 的最长匹配压过 `/blog`）、`/login` 补进
-disallow（断掉「private 文章 → 307 → next 参数里带 UUID」那条链）、`/api/og/` 开口。
+disallow（断掉「internal 文章 → 307 → next 参数里带 UUID」那条链）、`/api/og/` 开口。
 逐页 / 逐张的粒度由页面 `robots` 元数据与 `X-Robots-Tag` 收 ——
 与 `/api/images/[id]/raw` 按张发头是同一个手法。
 
 **风险**（详见 `src/lib/blog-visibility.ts` 与发文表单里的提示）：
-1. **一旦公开就近乎永久** —— 搜索引擎与第三方存档会抓走副本，改回 private 不收回
+1. **一旦公开就近乎永久** —— 搜索引擎与第三方存档会抓走副本，改回 internal 不收回
    已抓走的副本，社交平台的卡片缓存（数周）也不撤回。
 2. 可见性**不扫描正文**。访客视图不展开 `[@…]` 内容引用、私有图床图对匿名仍 404，
    所以不会因「设为公开」把别人的私密资源放出去；但作者自己写下的文字就是他自己公开的。
-3. `spider` 命名空间仍能读到全部 private 文章（档位是 core+ 的一个账号）。这是现状，
+3. `spider` 命名空间仍能读到全部 internal 文章（档位是 core+ 的一个账号）。这是现状，
    本期刻意不动 —— 要收紧的正确做法是给 spider 单独一档或只读账号，
    **不是**在那条路由里加可见性过滤（那会把「站外聚合器能读什么」和「文章是否对外」
    这两件事混在一起）。
@@ -591,7 +591,7 @@ URL 请来抓」。（`robots.ts` 的**路径级**规则不需要动 —— `/ex
   → blog-service.getBlogDetail(id, viewer)   viewer = null（游客）/ { id, isCore }
        非 core 叠 EXTERNAL_VISIBLE_BLOG_WHERE（core+ 不加条件）
   → 查不到（不存在 / 已软删 / 档位不够，三者同形）→
-       未登录  → redirectToLogin('/blog/<id>')   私密不是「不存在」，访客拿登录页
+       未登录  → redirectToLogin('/blog/<id>')   站内文章不是「不存在」，访客拿登录页
        非 core → forbidden()                     已登录但档位不够 → 原地 403
        core+   → notFound()
   → Server Component 渲染 Markdown 占位 + 注入数据

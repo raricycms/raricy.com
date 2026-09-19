@@ -228,8 +228,13 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 是全读的，所以这一列对任何站内入口都是零行为变化，管理员也**不需要豁免**（那是结构性
 豁免，服务层里没有也不该有 `if (isAdmin)`）。
 
+- **第一档叫 `internal`（站内），不叫 `private`** —— 改过名（迁移 17）。`private` 在本仓库
+  已经是「只有本人」的意思（剪贴板的 `publicity`、收藏夹 `public_id` 恒 NULL），而这一档
+  **所有 core+ 成员都能看**。撞名的代价正好落在「什么会对外可见」上，所以改掉了。
+  ⚠️ **旧拼写仍被守卫拦着，而且理由更硬**：改名后没有一行再是 `'private'`，于是
+  `visibility !== 'private'` 对**每一行都成立** —— 从「加第四档会漏」升级成「全部当成对外可见」。
 - **判「对外可见」永远用白名单**（`EXTERNAL_VISIBILITIES` / `EXTERNAL_VISIBLE_BLOG_WHERE`），
-  **绝不写 `{ not: 'private' }` 或 `visibility !== 'private'`** —— 加第四档时那两种写法会
+  **绝不写 `{ not: 'internal' }` 或 `visibility !== 'internal'`** —— 加第四档时那两种写法会
   **静默把新档一起放出去**，而放出去不可逆（有静态守卫盯：`tests/unit/blog-visibility-guard.test.ts`）。
 - **不带查看者的读口必须走具名出口**（`getExternallyVisibleBlog` / `listIndexableBlogs` /
   `listPublicBlogs`），别各自手写 where —— 名字就是静态台账认得它的凭证。
