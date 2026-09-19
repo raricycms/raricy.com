@@ -16,9 +16,9 @@
 //
 // 【2】不判档位的读口必须过共享出口，别各自手写 where：
 //   · 对外读一篇（游客视角）→ getExternallyVisibleBlog(id)
-//   · 对外列清单（可索引）  → listIndexableBlogs()
+//   · 对外列清单（可索引）  → listIndexableBlogs()（sitemap） / listPublicBlogs()（/explore 页面）
 //   · 带查看者读一篇        → getBlogDetail(id, viewer)
-//   前两个的名字本身就说明了「这里做了可见性判定」，静态守卫的台账认得它们。
+//   这几个名字本身就说明了「这里做了可见性判定」，静态守卫的台账认得它们。
 //
 // 【3】「对外可读」与「可列举 / 可索引」是**两件事**：link 档读得到，但不进 sitemap、
 //   不许索引。所以判可达用 EXTERNAL_*，sitemap 用 INDEXABLE_*，别混用。
@@ -31,6 +31,18 @@
 //     档位回答的是「你现在还配不配用这个区」，归属回答不了这个问题
 //     （见 `docs/architecture.md` §8「档位 vs 归属是两层」）。想加「作者可见自己」
 //     之前，先回去读那张表。
+//
+// 【5】（第 2 期）对外列表只有一个出口 `listPublicBlogs`，且它**必须**与 sitemap 的
+//   `listIndexableBlogs` 列同一个集合（都用 `INDEXABLE_BLOG_WHERE`）。这不是洁癖：
+//   「可发现」的整个承诺就是「爬虫抓得到 ⟺ 公开列表上找得到」。若列表多一层过滤，
+//   就会出现「搜索引擎收录了一篇，读者在公开列表上翻不到」——而这两条路径的差异
+//   不会有任何报错。有静态守卫盯：tests/unit/explore-visibility-guard.test.ts。
+//   另一条：对外列表的行**不带任何计数**（点赞/评论/鱼干）—— 对外视图没有评论区，
+//   卡片上写「评论 12」却翻不到评论是自相矛盾的。由 select 保证，不靠渲染层自觉。
+//
+// 【6】（第 2 期）`exclude_from_all` 与 `focus_hidden` **不作用于对外列表**。它们分别是
+//   站内「全部文章」的陈列规则与账号级浏览偏好，而对外列表的资格只有一条：
+//   `visibility = public`。混合它们会直接破坏【5】。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { prisma } from './db';
@@ -144,11 +156,11 @@ const DEFAULT_PER_PAGE = 200;
  * 【对外列表不走这里】本函数的两个调用方（`/blog` 页面、`GET /api/blogs`）都是 core+
  * 档，而 core+ 在博客域是全读的 —— 所以可见性在这里没有意义，返回全量是对的。
  *
- * 将来做对外列表（第 2 期的 `/explore` 之类）时**另起入口**，并在 where 里 AND 上
- * `EXTERNAL_VISIBLE_BLOG_WHERE`。**别给本函数加一个可选的 viewer 参数** ——
- * 可选的参数一旦漏传，方向就是「把全站 private 文章喂给访客」，而这里没有任何
- * 编译期的东西能挡住它。tests/service/blog-service.test.ts 有一条钉现状的用例：
- * 存在 private 文章时本函数**照旧返回它**；谁哪天顺手加了过滤，那条会立刻变红。
+ * 对外列表**另起了入口**（`listPublicBlogs`，见文件头不变量【5】），**本函数仍然不看
+ * visibility**。**别给本函数加一个可选的 viewer 参数** —— 可选的参数一旦漏传，
+ * 方向就是「把全站 private 文章喂给访客」，而这里没有任何编译期的东西能挡住它。
+ * tests/service/blog-service.test.ts 有一条钉现状的用例：存在 private 文章时本函数
+ * **照旧返回它**；谁哪天顺手加了过滤，那条会立刻变红。
  */
 export async function listBlogs(params: ListParams) {
   const page = Math.max(1, params.page ?? 1);
@@ -398,6 +410,154 @@ export async function listIndexableBlogs(): Promise<
     updatedAt: r.content?.updatedAt ?? null,
     createdAt: r.createdAt,
   }));
+}
+
+/**
+ * 对外列表（`/explore`）的一行。**刻意不含任何计数** —— 见文件头不变量【5】。
+ *
+ * 形状特意与 `listBlogs` 的行**不同**（那边带三个计数）：这不是「忘了补」，是
+ * 让「卡片上不许出现计数」变成类型层面的事实，而不是渲染层的一句自觉。
+ */
+export interface PublicBlogRow {
+  id: string;
+  title: string;
+  description: string | null;
+  createdAt: Date | null;
+  authorId: string;
+  author: { username: string | null } | null;
+  category: { name: string; parentId: number | null; parent: { name: string } | null } | null;
+}
+
+export interface PublicListParams {
+  page?: number;
+  perPage?: number;
+  categorySlug?: string | null;
+  search?: string | null;
+}
+
+const PUBLIC_DEFAULT_PER_PAGE = 20;
+const PUBLIC_MAX_PER_PAGE = 50;
+
+/**
+ * 对外搜索允许命中的字段。`Exclude<…, 'content'>` 不是装饰 —— 它让「对外搜索绝不
+ * 碰正文」成为**编译期**的事实：谁想把 `content` 加进这张表，tsc 当场拒绝，
+ * 而不是等到线上匿名用户把 48.6MB 正文扫了一遍才发现。
+ *
+ * **刻意与 `DEFAULT_SEARCH_FIELDS` 分开写**：两者今天恰好相同，但它们回答的是不同
+ * 的问题 —— 站内默认集合可以随站内需要放宽（比如把正文加进去），对外这一份永远
+ * 不许。绑成一个常量的话，站内那次放宽会**静默**传导到匿名页面上。
+ *
+ * 行为侧另有一条用例钉住：拿一段**只在正文里**的哨兵串搜，必须搜不到。
+ */
+type PublicSearchField = Exclude<SearchField, 'content'>;
+
+const PUBLIC_SEARCH_FIELDS: readonly PublicSearchField[] = ['title', 'description', 'author'];
+
+const PUBLIC_SEARCH_WHERE: Record<PublicSearchField, (q: string) => Prisma.BlogWhereInput> = {
+  title: (q) => ({ title: { contains: q } }),
+  description: (q) => ({ description: { contains: q } }),
+  author: (q) => ({ author: { is: { username: { contains: q } } } }),
+};
+
+/**
+ * **对外**列表：只出 public 档，与 sitemap 同一个集合（文件头不变量【5】）。
+ *
+ * 与 `listBlogs` 的四点差异，都是刻意的：
+ *   · where 以 `...INDEXABLE_BLOG_WHERE` 起手（不是 `ignore: false`）—— 与 sitemap 同源；
+ *   · **不做** `excludeFromAll` / `focusHidden` 过滤（不变量【6】）；
+ *   · 搜索字段写死成 `PUBLIC_SEARCH_FIELDS`，**不接受** `searchFields` 参数 ——
+ *     正文只可能经那个参数进来，而没有这个参数就进不来；
+ *   · 不 select 任何计数。
+ *
+ * 排序恒按发布时间倒序：**不读也不写** `blog-sort-pref` 那个 cookie —— 对一个
+ * 面向站外（含爬虫）的页面，设偏好 cookie 没有意义，只会平白多一个真相源。
+ */
+export async function listPublicBlogs(params: PublicListParams = {}): Promise<{
+  blogs: PublicBlogRow[];
+  total: number;
+  page: number;
+  perPage: number;
+  pages: number;
+  hasPrev: boolean;
+  hasNext: boolean;
+}> {
+  const page = Math.max(1, params.page ?? 1);
+  const perPage = Math.min(
+    PUBLIC_MAX_PER_PAGE,
+    Math.max(1, params.perPage ?? PUBLIC_DEFAULT_PER_PAGE)
+  );
+
+  const where: Prisma.BlogWhereInput = { ignore: false, ...INDEXABLE_BLOG_WHERE };
+
+  if (params.categorySlug) {
+    // 与 listBlogs 的 slug 分支同一口径：只认**启用**的栏目，命中它自己 + 它的启用
+    // 子栏目；不存在 / 已停用 → 空结果（**不是**退化成「全部」—— 那会让一个拼错的
+    // slug 静默变成公开列表首页）。
+    const cat = await prisma.category.findFirst({
+      where: { slug: params.categorySlug, isActive: true },
+      select: { id: true, children: { where: { isActive: true }, select: { id: true } } },
+    });
+    if (cat) {
+      where.categoryId = { in: [cat.id, ...cat.children.map((c) => c.id)] };
+    } else {
+      where.categoryId = -1;
+    }
+  }
+
+  const q = params.search?.trim() || null;
+  if (q) {
+    // 用 AND 承载，而不是直接写 where.OR —— 上面栏目分支可能已经用了别的字段，
+    // 写 OR 会与将来的条件互相覆盖（listBlogs 在同一处踩过这个形状）。
+    where.AND = [{ OR: PUBLIC_SEARCH_FIELDS.map((f) => PUBLIC_SEARCH_WHERE[f](q)) }];
+  }
+
+  const [total, blogs] = await Promise.all([
+    prisma.blog.count({ where }),
+    prisma.blog.findMany({
+      where,
+      orderBy: [{ createdAt: 'desc' }],
+      skip: (page - 1) * perPage,
+      take: perPage,
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        createdAt: true,
+        authorId: true,
+        author: { select: { username: true } },
+        // ⚠️ parentId 与 parent.name 必须**一起** select。只给 name 会让
+        // categoryFullPath() 静默退化成「只显示子栏目名，丢掉父级」——
+        // src/app/api/blogs/route.ts:117-119 就是这么错的。
+        category: { select: { name: true, parentId: true, parent: { select: { name: true } } } },
+      },
+    }),
+  ]);
+
+  const pages = Math.max(1, Math.ceil(total / perPage));
+  return { blogs, total, page, perPage, pages, hasPrev: page > 1, hasNext: page < pages };
+}
+
+/**
+ * 公开集合里**真的有文章**的栏目 id 集合（给 `/explore` 的侧栏剪枝用）。
+ *
+ * 侧栏只列这个集合里的栏目：空栏目是死链（点进去什么都没有），而且会给搜索引擎
+ * 一批空页面。这与 sitemap/列表「同一个集合」是同一条纪律的延伸 —— 因此它也必须
+ * 走同一个 `INDEXABLE_BLOG_WHERE`。
+ *
+ * 返回的是**扁平集合**，不含祖先推导：调用方手里有栏目树，判断「父栏目该不该留」
+ * （任一子栏目在集合里）是树上的事，不该塞进这里。
+ */
+export async function listPublicCategoryFacets(): Promise<Set<number>> {
+  const rows = await prisma.blog.findMany({
+    where: { ignore: false, ...INDEXABLE_BLOG_WHERE },
+    select: { categoryId: true },
+    distinct: ['categoryId'],
+  });
+  const ids = new Set<number>();
+  for (const r of rows) {
+    if (r.categoryId != null) ids.add(r.categoryId);
+  }
+  return ids;
 }
 
 export interface LikerRow {

@@ -40,9 +40,12 @@ import {
   getBlogDetail,
   getExternallyVisibleBlog,
   listIndexableBlogs,
+  listPublicBlogs,
+  listPublicCategoryFacets,
   parseVisibility,
 } from '@/lib/blog-service';
 import { listAdminBlogs } from '@/lib/admin-blog-service';
+import { categoryFullPath } from '@/lib/format';
 import { nowForDb } from '@/lib/db-time';
 import { RULES } from '@/lib/rate-limit';
 
@@ -1861,6 +1864,213 @@ describe('可见性 / 对外出口', () => {
   });
 });
 
+/** 造一篇指定档位的文章，返回 id。makeBlog 不带 visibility，走 update 补（与既有用例同款）。 */
+async function mkBlog(v: string, over: Parameters<typeof makeBlog>[0] = {}) {
+  const b = await makeBlog(over);
+  await prisma.blog.update({ where: { id: b.id }, data: { visibility: v } });
+  return b.id;
+}
+
+describe('可见性 / listPublicBlogs —— 对外列表的唯一出口', () => {
+  beforeEach(async () => {
+    await resetDb();
+  });
+
+  it('只出 public：link 与 private 都不出现（link 读得到，但不许被列举）', async () => {
+    const author = await makeUser({ role: 'core' });
+    const priv = await mkBlog('private', { authorId: author.id, title: '甲的私密' });
+    const link = await mkBlog('link', { authorId: author.id, title: '甲的持链' });
+    const pub = await mkBlog('public', { authorId: author.id, title: '甲的公开' });
+
+    const ids = (await listPublicBlogs({ perPage: 50 })).blogs.map((b) => b.id);
+    expect(ids).toContain(pub);
+    expect(ids, 'link 不该出现在对外列表上').not.toContain(link);
+    expect(ids, 'private 不该出现在对外列表上').not.toContain(priv);
+  });
+
+  it('软删的不出现', async () => {
+    const author = await makeUser({ role: 'core' });
+    const gone = await mkBlog('public', { authorId: author.id, ignore: true });
+    expect((await listPublicBlogs({ perPage: 50 })).blogs.map((b) => b.id)).not.toContain(gone);
+  });
+
+  it('★ 与 listIndexableBlogs 列**同一个集合** —— sitemap 与 /explore 不许分叉', async () => {
+    // 这是不变量【5】的核心：两条对外路径必须同真值，否则会出现「搜索引擎收录了
+    // 一篇，读者在公开列表上翻不到」，而这条差异不会有任何报错。
+    // 故意造一批**边角形状**：未分类、软删、三档齐全、以及一个 excludeFromAll 栏目
+    // 下的公开文章（对外列表**不该**把它排除掉 —— 不变量【6】）。
+    const author = await makeUser({ role: 'core' });
+    const plain = await makeCategory();
+    const noisy = await makeCategory({ excludeFromAll: true });
+    const hidden = await makeCategory({ focusHidden: true });
+
+    await mkBlog('private', { authorId: author.id, categoryId: plain.id });
+    await mkBlog('link', { authorId: author.id, categoryId: plain.id });
+    await mkBlog('public', { authorId: author.id, categoryId: plain.id });
+    await mkBlog('public', { authorId: author.id, categoryId: null });
+    await mkBlog('public', { authorId: author.id, categoryId: noisy.id });
+    await mkBlog('public', { authorId: author.id, categoryId: hidden.id });
+    await mkBlog('public', { authorId: author.id, categoryId: plain.id, ignore: true });
+
+    const listed = (await listPublicBlogs({ perPage: 50 })).blogs.map((b) => b.id).sort();
+    const indexable = (await listIndexableBlogs()).map((r) => r.id).sort();
+    expect(listed, 'sitemap 与 /explore 必须列同一个集合').toEqual(indexable);
+    // 7 篇里只有 4 篇算数：private / link 各一篇、以及那篇软删的 public。
+    // 剩下的 4 篇分别落在 plain、无栏目、excludeFromAll 栏目、focusHidden 栏目下 ——
+    // 最后两个尤其要留着，它们钉的是不变量【6】。
+    expect(listed.length).toBe(4);
+  });
+
+  it('★ excludeFromAll / focusHidden 栏目下的公开文章**照样列出**（不变量【6】）', async () => {
+    const author = await makeUser({ role: 'core' });
+    const noisy = await makeCategory({ excludeFromAll: true });
+    const hidden = await makeCategory({ focusHidden: true });
+    const a = await mkBlog('public', { authorId: author.id, categoryId: noisy.id });
+    const b = await mkBlog('public', { authorId: author.id, categoryId: hidden.id });
+
+    const ids = (await listPublicBlogs({ perPage: 50 })).blogs.map((x) => x.id);
+    expect(ids, 'exclude_from_all 是站内「全部文章」的陈列规则，不作用于对外列表').toContain(a);
+    expect(ids, 'focus_hidden 依赖登录者的偏好，游客没有该状态').toContain(b);
+  });
+
+  it('返回行**不带任何计数** —— 对外视图没有评论区，卡片上就不许出现「评论 12」', async () => {
+    const author = await makeUser({ role: 'core' });
+    const id = await mkBlog('public', { authorId: author.id });
+    await prisma.blog.update({
+      where: { id },
+      data: { likesCount: 7, commentsCount: 3, fishCount: 9 },
+    });
+
+    const row = (await listPublicBlogs({ perPage: 50 })).blogs[0];
+    expect(row.id).toBe(id);
+    // 在 select 层就没取 —— 不是「取了不渲染」。渲染层自觉挡不住下一个人顺手加上。
+    expect(row, '行里不该有 likesCount').not.toHaveProperty('likesCount');
+    expect(row, '行里不该有 commentsCount').not.toHaveProperty('commentsCount');
+    expect(row, '行里不该有 fishCount').not.toHaveProperty('fishCount');
+  });
+
+  it('★ 搜索只命中标题 / 简介 / 作者名 —— **正文绝不参与**', async () => {
+    const author = await makeUser({ role: 'core', username: '搜得到的作者' });
+    const id = await mkBlog('public', {
+      authorId: author.id,
+      title: '标题甲',
+      description: '简介乙',
+      content: '正文丙哨兵串',
+    });
+
+    const hit = async (q: string) =>
+      (await listPublicBlogs({ search: q, perPage: 50 })).blogs.map((b) => b.id);
+
+    expect(await hit('正文丙哨兵串'), '正文里的词必须搜不到 —— 对外搜索不碰正文').toEqual([]);
+    expect(await hit('标题甲')).toEqual([id]);
+    expect(await hit('简介乙')).toEqual([id]);
+    expect(await hit('搜得到的作者')).toEqual([id]);
+  });
+
+  it('搜索只在公开集合内进行（private 文章即使标题命中也不出现）', async () => {
+    const author = await makeUser({ role: 'core' });
+    await mkBlog('private', { authorId: author.id, title: '独一无二的标题' });
+    expect((await listPublicBlogs({ search: '独一无二的标题' })).blogs).toEqual([]);
+  });
+
+  it('空搜索词（含纯空白）等价于不搜索，不返回空结果', async () => {
+    const author = await makeUser({ role: 'core' });
+    await mkBlog('public', { authorId: author.id });
+    for (const q of ['', '   ', null, undefined]) {
+      expect((await listPublicBlogs({ search: q, perPage: 50 })).blogs.length, `q=${q}`).toBe(1);
+    }
+  });
+
+  it('栏目筛选：命中栏目自己 + 它的启用子栏目', async () => {
+    const author = await makeUser({ role: 'core' });
+    const parent = await makeCategory({ slug: 'parent-x' });
+    const child = await makeCategory({ parentId: parent.id });
+    const other = await makeCategory();
+    const inParent = await mkBlog('public', { authorId: author.id, categoryId: parent.id });
+    const inChild = await mkBlog('public', { authorId: author.id, categoryId: child.id });
+    await mkBlog('public', { authorId: author.id, categoryId: other.id });
+
+    const ids = (await listPublicBlogs({ categorySlug: 'parent-x', perPage: 50 })).blogs.map(
+      (b) => b.id
+    );
+    expect(ids.sort()).toEqual([inParent, inChild].sort());
+  });
+
+  it('栏目筛选：不存在或已停用 → **空结果**，不退化成一整页', async () => {
+    const author = await makeUser({ role: 'core' });
+    const dead = await makeCategory({ slug: 'dead-x', isActive: false });
+    await mkBlog('public', { authorId: author.id, categoryId: dead.id });
+
+    expect((await listPublicBlogs({ categorySlug: 'dead-x' })).blogs).toEqual([]);
+    expect(
+      (await listPublicBlogs({ categorySlug: 'no-such-slug' })).blogs,
+      '拼错的 slug 不许退化成「全部」—— 那会让 URL 出错时静默变成公开列表首页'
+    ).toEqual([]);
+  });
+
+  it('分页：pages / hasPrev / hasNext，且 page 小于 1 被夹回 1', async () => {
+    const author = await makeUser({ role: 'core' });
+    for (let i = 0; i < 5; i++) await mkBlog('public', { authorId: author.id });
+
+    const p1 = await listPublicBlogs({ page: 1, perPage: 2 });
+    expect(p1).toMatchObject({ total: 5, page: 1, pages: 3, hasPrev: false, hasNext: true });
+    const p3 = await listPublicBlogs({ page: 3, perPage: 2 });
+    expect(p3).toMatchObject({ page: 3, hasPrev: true, hasNext: false, total: 5 });
+    expect(p3.blogs).toHaveLength(1);
+
+    const clamped = await listPublicBlogs({ page: 0, perPage: 2 });
+    expect(clamped.page, 'page=0 夹回第 1 页而不是返回空').toBe(1);
+  });
+
+  it('perPage 上限 50（防 ?perPage=100000 拖库），默认 20', async () => {
+    const author = await makeUser({ role: 'core' });
+    await mkBlog('public', { authorId: author.id });
+    expect((await listPublicBlogs({})).perPage).toBe(20);
+    expect((await listPublicBlogs({ perPage: 100000 })).perPage).toBe(50);
+  });
+
+  it('栏目路径带父级（parentId 与 parent.name 一起 select —— 少给一个会静默退化成子栏目名）', async () => {
+    const author = await makeUser({ role: 'core' });
+    const parent = await makeCategory({ name: '父栏目' });
+    const child = await makeCategory({ name: '子栏目', parentId: parent.id });
+    await mkBlog('public', { authorId: author.id, categoryId: child.id });
+
+    const row = (await listPublicBlogs({ perPage: 50 })).blogs[0];
+    expect(categoryFullPath(row.category!), '父级不许丢').toBe('父栏目 > 子栏目');
+  });
+});
+
+describe('可见性 / listPublicCategoryFacets —— 侧栏剪枝的数据源', () => {
+  beforeEach(async () => {
+    await resetDb();
+  });
+
+  it('只收公开集合里真的出现过的栏目（空栏目不进 —— 那是死链）', async () => {
+    const author = await makeUser({ role: 'core' });
+    const used = await makeCategory();
+    const onlyPrivate = await makeCategory();
+    await mkBlog('public', { authorId: author.id, categoryId: used.id });
+    await mkBlog('private', { authorId: author.id, categoryId: onlyPrivate.id });
+
+    const facets = await listPublicCategoryFacets();
+    expect(facets.has(used.id)).toBe(true);
+    expect(facets.has(onlyPrivate.id), '只有私密文章的栏目不该出现在对外侧栏').toBe(false);
+  });
+
+  it('未分类（categoryId=null）不计入 —— 它是 null，不是一个栏目', async () => {
+    const author = await makeUser({ role: 'core' });
+    await mkBlog('public', { authorId: author.id, categoryId: null });
+    expect((await listPublicCategoryFacets()).size).toBe(0);
+  });
+
+  it('软删的公开文章不贡献栏目', async () => {
+    const author = await makeUser({ role: 'core' });
+    const cat = await makeCategory();
+    await mkBlog('public', { authorId: author.id, categoryId: cat.id, ignore: true });
+    expect((await listPublicCategoryFacets()).has(cat.id)).toBe(false);
+  });
+});
+
 describe('可见性 / listBlogs 是站内列表，**不看** visibility（钉现状）', () => {
   it('存在 private 文章时，listBlogs 照旧返回它', async () => {
     await resetDb();
@@ -1873,7 +2083,8 @@ describe('可见性 / listBlogs 是站内列表，**不看** visibility（钉现
     //
     // 谁哪天顺手给它加了 visibility 过滤，这条会立刻变红。那不是「修好了」，
     // 是把站内列表改瞎了：core+ 从此在自己站里看不到自己的私密文章。
-    // 对外列表要**另起入口**，并 AND 上 EXTERNAL_VISIBLE_BLOG_WHERE。
+    // 对外列表**已经另起了入口**（listPublicBlogs，用 INDEXABLE_BLOG_WHERE），
+    // 本函数不需要、也不许跟着改。
     const { blogs } = await listBlogs({ page: 1, perPage: 50 });
     expect(blogs.map((x) => x.id), 'listBlogs 返回全量，私密文章也在内').toContain(b.id);
   });
