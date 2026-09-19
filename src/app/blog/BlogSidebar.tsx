@@ -25,12 +25,24 @@ export default function BlogSidebar({
   currentSlug,
   featured,
   sort,
+  basePath = '/blog',
+  showFeatured = true,
 }: {
   categories: SidebarCategory[];
   currentSlug: string | null;
   featured: boolean;
   /** URL 里显式合法的 sort（created|updated），非空时回显到侧栏链接，保住已选的排序 */
   sort: string | null;
+  /**
+   * 链接指向哪个列表页。`/explore`（对外公开列表）复用本组件，传它自己的路径。
+   * 默认 `/blog`，站内那个列表的行为一字不变。
+   */
+  basePath?: string;
+  /**
+   * 是否显示「精选」项。`/explore` 传 false —— **精选是站内的编辑口径**，
+   * 它回答的是「站长推荐了哪几篇」，不是「哪几篇最该被站外读到」。
+   */
+  showFeatured?: boolean;
 }) {
   const [mainCollapsed, setMainCollapsed] = useState(false);
   const [collapsedSubs, setCollapsedSubs] = useState<Set<number>>(new Set());
@@ -118,7 +130,7 @@ export default function BlogSidebar({
       >
         <li className="category-item">
           <Link
-            href={withSort('/blog')}
+            href={withSort(basePath)}
             className={`category-link${!currentSlug && !featured ? ' active' : ''}`}
           >
             <div className="category-content">
@@ -129,19 +141,21 @@ export default function BlogSidebar({
             </div>
           </Link>
         </li>
-        <li className="category-item">
-          <Link
-            href={withSort('/blog?featured=1')}
-            className={`category-link${featured ? ' active' : ''}`}
-          >
-            <div className="category-content">
-              <span className="icon" aria-hidden="true">
-                <Star />
-              </span>
-              <span>精选</span>
-            </div>
-          </Link>
-        </li>
+        {showFeatured && (
+          <li className="category-item">
+            <Link
+              href={withSort(`${basePath}?featured=1`)}
+              className={`category-link${featured ? ' active' : ''}`}
+            >
+              <div className="category-content">
+                <span className="icon" aria-hidden="true">
+                  <Star />
+                </span>
+                <span>精选</span>
+              </div>
+            </Link>
+          </li>
+        )}
         {categories.map((category) =>
           category.children.length > 0 ? (
             <li key={category.id} className={`category-item has-children`}>
@@ -165,7 +179,7 @@ export default function BlogSidebar({
               >
                 <li className="category-item">
                   <Link
-                    href={withSort(`/blog?category=${category.slug}`)}
+                    href={withSort(`${basePath}?category=${category.slug}`)}
                     className={`sub-category-link${currentSlug === category.slug ? ' active' : ''}`}
                   >
                     {category.icon && <span className="icon" aria-hidden="true">{category.icon}</span>}
@@ -175,7 +189,7 @@ export default function BlogSidebar({
                 {category.children.map((child) => (
                   <li key={child.id} className="category-item">
                     <Link
-                      href={withSort(`/blog?category=${child.slug}`)}
+                      href={withSort(`${basePath}?category=${child.slug}`)}
                       className={`sub-category-link${currentSlug === child.slug ? ' active' : ''}`}
                     >
                       <span>{child.name}</span>
@@ -187,7 +201,7 @@ export default function BlogSidebar({
           ) : (
             <li key={category.id} className="category-item">
               <Link
-                href={withSort(`/blog?category=${category.slug}`)}
+                href={withSort(`${basePath}?category=${category.slug}`)}
                 className={`category-link${currentSlug === category.slug ? ' active' : ''}`}
               >
                 <div className="category-content">
