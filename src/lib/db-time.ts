@@ -61,3 +61,23 @@ export function hoursUntil(d: Date | null | undefined): number | null {
   if (!d) return null;
   return (d.getTime() - nowForDb().getTime()) / 3600000;
 }
+
+/**
+ * 库内时间戳 → 带**真实偏移**的 ISO 8601，给**机器**读（JSON-LD 的 `datePublished`、
+ * sitemap 的 `lastModified`）。传入 null/undefined（或非法日期）返回 null。
+ *
+ * 【为什么不能直接 toISOString()】库里的数字是 UTC+8 的**墙上时间**，标签却是 Z
+ * （见文件头）。裸 toISOString() 会让机器把它当成 UTC 瞬间 —— 于是「北京时间 18:00
+ * 发布」被读成 UTC 18:00，也就是比真实时刻**晚了 8 小时**（真实是 UTC 10:00）。
+ * 人眼完全看不出（显示的数字还是 18:00），只有机器会按错误的瞬间去排序、去重、
+ * 判断新鲜度 —— 而 datePublished 落在未来还可能让搜索引擎暂缓收录。
+ *
+ * 换标签成 +08:00 之后：数字（= 作者看到的墙上时间）原样保留，而它表达的**瞬间**正了。
+ *
+ * ⚠️ 只给机器读。给人看的日期继续走 `format.ts` 的 `ymd` / `ymdhms` —— 它们按墙上
+ * 时间切片，正确且已全站统一，别拿本函数去替换它们。
+ */
+export function isoWithOffset(d: Date | null | undefined): string | null {
+  if (!d || Number.isNaN(d.getTime())) return null;
+  return d.toISOString().replace(/Z$/, '+08:00');
+}

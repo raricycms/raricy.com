@@ -2,6 +2,7 @@ import type { MetadataRoute } from 'next';
 import { listStories } from '@/lib/story-service';
 import { listIndexableBlogs } from '@/lib/blog-service';
 import { siteBaseUrl } from '@/lib/site-url';
+import { isoWithOffset } from '@/lib/db-time';
 
 export const dynamic = 'force-dynamic'; // 依赖磁盘（故事条目）与库（博客），禁用静态化
 
@@ -47,9 +48,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   // 对外公开的文章（只 public 档）。lastModified 取正文的 updatedAt ——
   // 「什么时候改的」对爬虫比「什么时候发的」有用；没有正文行时回落 createdAt。
+  //
+  // ⚠️ 必须过 isoWithOffset()，不能直接把 Date 交给 Next —— Next 内部用
+  // toISOString() 序列化，而库里的数字是「UTC+8 墙上时间贴 Z」（见 db-time.ts 文件头），
+  // 裸序列化会让爬虫以为每篇都晚了 8 小时才更新。
   const blogRoutes: MetadataRoute.Sitemap = (await listIndexableBlogs()).map((b) => ({
     url: `${base}/blog/${b.id}`,
-    lastModified: b.updatedAt ?? b.createdAt ?? undefined,
+    lastModified: isoWithOffset(b.updatedAt ?? b.createdAt) ?? undefined,
     changeFrequency: 'monthly',
     priority: 0.6,
   }));

@@ -14,7 +14,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { nowForDb, todayStr, dayStart, hoursUntil, SITE_TZ_OFFSET_MS } from '@/lib/db-time';
+import { nowForDb, todayStr, dayStart, hoursUntil, isoWithOffset, SITE_TZ_OFFSET_MS } from '@/lib/db-time';
 import { ymd } from '@/lib/format';
 
 afterEach(() => {
@@ -103,6 +103,45 @@ describe('hoursUntil：与库内时间戳的差（唯一合法的「还剩多久
     const banUntil = new Date(nowForDb().getTime() + 3600_000);
     expect((banUntil.getTime() - Date.now()) / 3600000, '错误算法').toBeCloseTo(9, 6);
     expect(hoursUntil(banUntil), '正确算法').toBeCloseTo(1, 6);
+  });
+});
+
+describe('isoWithOffset：库内时间戳给机器读的唯一出口', () => {
+  it('把假的 Z 标签换成真实的 +08:00，数字原样不动', () => {
+    // 库里存的是「UTC+8 墙上时间贴 Z」：作者当时看到的是 18:00
+    expect(isoWithOffset(new Date('2026-07-16T18:00:00.000Z'))).toBe('2026-07-16T18:00:00.000+08:00');
+  });
+
+  it('表达的瞬间比裸 toISOString() 早 8 小时 —— 即真实时刻', () => {
+    const stored = new Date('2026-07-16T18:00:00.000Z'); // 墙上 18:00 = 真实 UTC 10:00
+    const correct = new Date(isoWithOffset(stored)!).getTime();
+    expect(correct).toBe(stored.getTime() - SITE_TZ_OFFSET_MS);
+    expect(new Date(correct).toISOString()).toBe('2026-07-16T10:00:00.000Z');
+  });
+
+  it('【回归】裸 toISOString() 会让机器以为它晚了 8 小时发布（所以必须走 isoWithOffset）', () => {
+    // 方向别记反：墙上时间被当成 UTC 读，得到的是一个**更晚**的瞬间（未来）。
+    // datePublished 落在未来可能让搜索引擎暂缓收录，而页面上一切正常、看不出任何症状。
+    const stored = new Date('2026-07-16T18:00:00.000Z');
+    const naive = new Date(stored.toISOString()).getTime();
+    expect(naive, '错误算法：晚了 8 小时').toBe(new Date(isoWithOffset(stored)!).getTime() + SITE_TZ_OFFSET_MS);
+    expect(naive > stored.getTime() - SITE_TZ_OFFSET_MS).toBe(true);
+  });
+
+  it('输出始终带 +08:00，绝不是裸 Z', () => {
+    const out = isoWithOffset(new Date('2026-01-01T00:00:00.000Z'))!;
+    expect(out.endsWith('Z')).toBe(false);
+    expect(out.endsWith('+08:00')).toBe(true);
+  });
+
+  it('刻度不丢：毫秒与秒原样保留', () => {
+    expect(isoWithOffset(new Date('2026-07-16T18:00:00.776Z'))).toBe('2026-07-16T18:00:00.776+08:00');
+  });
+
+  it('null / undefined / 非法日期 → null（不抛）', () => {
+    expect(isoWithOffset(null)).toBeNull();
+    expect(isoWithOffset(undefined)).toBeNull();
+    expect(isoWithOffset(new Date('不是日期'))).toBeNull();
   });
 });
 
