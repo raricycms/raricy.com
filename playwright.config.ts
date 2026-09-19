@@ -172,6 +172,11 @@ export default defineConfig({
       // 那边的持久状态（实测攒出 e2e-user-core 的 like 桶），且下一次启动还会
       // 回灌进来。测试不该碰 instance/ 下的任何东西（同 DATABASE_URL 的纪律）。
       RATE_LIMIT_SNAPSHOT_PATH: path.resolve(__dirname, 'tests/.tmp/e2e-rate-limit.json'),
+      // 回调投递的定时器**必须关掉**：e2e 里根本没有接收端，让它跑起来就是一个
+      // 后台循环对着不存在的地址反复重试。src/lib/webhook-drainer.ts 里那道
+      // `NODE_ENV === 'test'` 的保险在这里**盖不住** —— e2e 跑的是 next start，
+      // NODE_ENV 是 production。所以这一条是 e2e 侧唯一的闸门。
+      FISH_WEBHOOK_DRAIN_MS: '0',
       AVATARS_DIR: path.resolve(__dirname, 'tests/.tmp/e2e-avatars'),
       IMAGE_UPLOAD_FOLDER: path.resolve(__dirname, 'tests/.tmp/e2e-images'),
       // 表情素材同理：不设它就会去扫项目真实的 instance/stickers（本机可能真有素材），

@@ -556,4 +556,163 @@ export const fishCommands: CommandSpec[] = [
       };
     },
   },
+
+  {
+    name: 'fish webhooks',
+    summary: '列出回调地址与投递积压',
+    group: 'fish',
+    order: 8,
+    readOnly: true,
+    args: [
+      {
+        name: 'username',
+        flags: [],
+        positional: 0,
+        label: '用户名',
+        help: '只看某一个人的；留空则列全部',
+        prompt: { type: 'input' as const },
+      },
+    ],
+    details: [
+      '回调是「钱到账时主动通知商户」（见 src/lib/fish-webhook-service.ts）。',
+      '投递是 **at-least-once**：商户可能收到重复回调，靠 X-Raricy-Delivery 去重。',
+      '失败会自动重试（指数退避），耗尽后置 dead **且不自动停用地址** —— 悄悄停掉',
+      '全部回调是静默失效，商户会以为还在收通知。要查 dead 的那几条看这里。',
+    ].join('\n'),
+    async run(ctx) {
+      const name = String(ctx.args.username ?? '').trim();
+      let userId: string | undefined;
+      if (name) {
+        const u = await ctx.prisma.user.findUnique({
+          where: { username: name },
+          select: { id: true },
+        });
+        if (!u) throw new CliError(`错误：用户 ${name} 不存在`);
+        userId = u.id;
+      }
+
+      const endpoints = await ctx.prisma.fishWebhookEndpoint.findMany({
+        where: userId ? { userId } : {},
+        orderBy: { createdAt: 'desc' },
+        select: {
+          userId: true,
+          url: true,
+          disabledAt: true,
+          consecutiveFailures: true,
+          lastSuccessAt: true,
+          lastFailureAt: true,
+        },
+      });
+      if (endpoints.length === 0) {
+        return { lines: ['没有任何账号登记回调地址。'], json: { endpoints: [] } };
+      }
+
+      // 按用户分组数投递状态 —— 只查这些用户，避免全表扫
+      const ids = endpoints.map((e) => e.userId);
+      const grouped = await ctx.prisma.fishWebhookDelivery.groupBy({
+        by: ['userId', 'status'],
+        where: { userId: { in: ids } },
+        _count: { _all: true },
+      });
+      const countsOf = (uid: string) => {
+        const rows = grouped.filter((g) => g.userId === uid);
+        const get = (s: string) => rows.find((r) => r.status === s)?._count._all ?? 0;
+        return { pending: get('pending') + get('sending'), delivered: get('delivered'), dead: get('dead') };
+      };
+
+      const lines = renderTable(
+        [
+          { key: 'user', title: '账号', maxWidth: 18 },
+          { key: 'url', title: '回调地址', maxWidth: 40 },
+          { key: 'state', title: '状态', maxWidth: 8 },
+          { key: 'pending', title: '待投', align: 'right' },
+          { key: 'dead', title: '死信', align: 'right' },
+          { key: 'ok', title: '成功', align: 'right' },
+          { key: 'last', title: '最近失败', maxWidth: 19 },
+        ],
+        endpoints.map((e) => {
+          const c = countsOf(e.userId);
+          return {
+            user: e.userId,
+            url: e.url,
+            state: e.disabledAt ? '已停用' : `连续失败 ${e.consecutiveFailures}`,
+            pending: c.pending,
+            dead: c.dead,
+            ok: c.delivered,
+            last: ymdhms(e.lastFailureAt) ?? '—',
+          };
+        }),
+        { maxWidth: ctx.io.width() }
+      );
+
+      const deadTotal = endpoints.reduce((a, e) => a + countsOf(e.userId).dead, 0);
+      const warnings: string[] = [];
+      if (deadTotal > 0) {
+        warnings.push(
+          ctx.io.yellow(
+            `  有 ${deadTotal} 条已判死（dead）。商户那边没收到通知 —— 提醒它拉流水对账。`
+          )
+        );
+      }
+      return {
+        lines,
+        warnings,
+        json: {
+          endpoints: endpoints.map((e) => ({
+            userId: e.userId,
+            url: e.url,
+            disabledAt: ymdhms(e.disabledAt),
+            consecutiveFailures: e.consecutiveFailures,
+            ...countsOf(e.userId),
+          })),
+        },
+      };
+    },
+  },
+
+  {
+    name: 'fish webhook-retry',
+    summary: '立刻重投待发的回调（不等退避）',
+    group: 'fish',
+    order: 9,
+    readOnly: false,
+    danger: 'safe',
+    args: [],
+    details: [
+      '定时器正常情况下会自己重试（默认每 30 秒一扫，可用 FISH_WEBHOOK_DRAIN_MS 调）。',
+      '本命令是**兜底与手动推动**：定时器关掉时、或刚修好商户端点想立刻补投时用。',
+      '**不看退避时间**（ignoreBackoff）—— 运维要的是「现在就再试一遍」。',
+      '投递是幂等的（认领是条件 UPDATE），与定时器同时跑不会重复发。',
+    ].join('\n'),
+    async run(ctx) {
+      const { drainWebhookDeliveries } = await import('../../../src/lib/fish-webhook-service');
+      const r = await drainWebhookDeliveries({
+        ignoreBackoff: true,
+        olderThanMs: 0,
+        limit: 200,
+      });
+
+      if (r.scanned === 0 && r.reclaimed === 0) {
+        return {
+          lines: ['没有待投递的回调。'],
+          json: { ...r },
+        };
+      }
+      const warnings: string[] = [];
+      if (r.dead > 0) {
+        warnings.push(
+          ctx.io.yellow(`  ${r.dead} 条已判死（dead）—— 见 \`fish webhooks\`，商户需自行对账。`)
+        );
+      }
+      return {
+        lines: [
+          `扫描 ${r.scanned}：成功 ${r.delivered}，待重试 ${r.retried}，判死 ${r.dead}` +
+            (r.reclaimed ? `，回收租约 ${r.reclaimed}` : '') +
+            '。',
+        ],
+        warnings,
+        json: { ...r },
+      };
+    },
+  },
 ];

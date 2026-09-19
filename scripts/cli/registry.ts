@@ -63,6 +63,8 @@ export const LEGACY_COMMANDS: string[] = [
   'fish sync-retry',
   'fish credential-list',
   'fish credential-revoke',
+  'fish webhooks',
+  'fish webhook-retry',
   'oauth create-app',
   'oauth list-apps',
   'oauth disable-app',

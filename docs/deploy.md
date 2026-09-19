@@ -112,6 +112,8 @@ vim .env
 | `COOKIE_SECURE` | 可选 | cookie `Secure` 标记 | 配错则登录"成功但不粘" |
 | `ACCOUNT_SERVICE_*` | ⚠️ | 账户微服务连接 | 投喂/签到/注册/CLI → 503 |
 | `FISH_SERVICE_ACCOUNTS` | 可选 | 鱼干服务账号白名单（逗号分隔的 **user id**）：转账配额 30/200 → 500/5000，给站外银行这类自动化账号用（`docs/bot/fish-bot.md` §4） | 留空 = 无人享受高配额，不影响其他功能 |
+| `FISH_WEBHOOK_DRAIN_MS` | 可选 | 收款回调的投递扫描间隔（毫秒，默认 `30000`）。**`0` = 关闭定时投递** | 关掉后回调只会由 `fish webhook-retry` 推动；`/fish/api` 上登记的地址照样收不到通知 |
+| `FISH_WEBHOOK_TIMEOUT_MS` | 可选 | 单次回调投递的超时（毫秒，默认 `5000`） | 商户端点慢于这个值会被判失败并重试 |
 | `AVATARS_DIR` / `IMAGE_UPLOAD_FOLDER` / `STORIES_DIR` / `STICKERS_DIR` | 可选 | 头像 / 图床 / 故事 / 表情包路径（缺省是 `./instance/...`） | 找不到头像/图床 → 404；**找不到表情素材则全站表情静默降级成纯文本 token**（启动时打一行 warn），见 `docs/guide/表情包使用指南.md` |
 
 ### `SECRET_KEY` 的硬要求

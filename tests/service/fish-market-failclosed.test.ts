@@ -30,12 +30,28 @@ vi.mock('@/lib/account-client', async (importOriginal) => {
   };
 });
 
+// 本文件测的是**钱**（补偿、幂等、账本），不测回调投递本身（那是
+// tests/service/fish-webhook.test.ts 的事）。但转账成交后会 `void deliverWebhook(...)`
+// 尽力投递一下 —— 不拦的话，用例会真的去连地址、空等 5 秒超时，而且让投递行
+// 停在 sending 上，断言变得依赖时序。
+// 这里只把**发 HTTP** 那一步打桩成立刻失败：认领、退避、落库那套仍然是真的。
+vi.mock('@/lib/webhook-url', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/webhook-url')>();
+  return {
+    ...actual,
+    postWebhook: vi.fn(async () => {
+      throw new Error('测试里不真的发 HTTP');
+    }),
+  };
+});
+
 import { transferFish } from '@/lib/fish-market-service';
 import { AccountServiceError, makeClientIdempotencyKey } from '@/lib/account-client';
 import { fishToUnits, unitsToFish } from '@/lib/fish-units';
 import { nowForDb } from '@/lib/db-time';
 import { resetDb, makeUser, prisma } from '../helpers/db';
 import { __resetRateLimitStore } from '@/lib/rate-limit';
+import { upsertWebhookEndpoint } from '@/lib/fish-webhook-service';
 
 beforeEach(async () => {
   await resetDb();
@@ -415,6 +431,57 @@ describe('补偿事务', () => {
     expect(await prisma.fishTransaction.count()).toBe(0);
     expect(await prisma.accountSyncLedger.count()).toBe(0);
     expect(await prisma.notification.count(), '补偿路径绝不发通知').toBe(0);
+  });
+
+  it('★ 回调出账与转账**同事务**：成交才留、回滚就删（绝不给商户发一笔没成交的回调）', async () => {
+    enableRemote();
+    const sender = await makeUserWithKey(100);
+    const recipient = await makeUser({ driedFish: 0 });
+    // 用字面量公网 IP 登记（不走 DNS，也就不会在单测里真去解析域名）
+    const reg = await upsertWebhookEndpoint(recipient.id, 'https://8.8.8.8/fish/callback');
+    expect(reg.ok, '登记该成功').toBe(true);
+
+    // ── 成交：投递行留下，且与两条流水同一笔 ────────────────────────────────
+    await transferFish(sender.id, recipient.id, 10, '订单 42');
+    const rows = await prisma.fishWebhookDelivery.findMany();
+    expect(rows, '收款人登记了回调 → 应当写一行投递').toHaveLength(1);
+    expect(rows[0].userId).toBe(recipient.id);
+
+    // 成交后那一下「尽力立即投递」已经试过一次并失败（postWebhook 被打桩）——
+    // 等它落定，断言它被**排队重试**而不是丢掉。
+    await vi.waitFor(async () => {
+      const r = await prisma.fishWebhookDelivery.findUniqueOrThrow({ where: { id: rows[0].id } });
+      expect(r.status).toBe('pending');
+      expect(r.attempts).toBe(1);
+    });
+    // 正文里的单号必须与两条流水上的**同一个** —— 商户靠它把回调对上那一笔
+    const body = JSON.parse(rows[0].payload);
+    const txRows = await prisma.fishTransaction.findMany({ orderBy: { id: 'asc' } });
+    expect(txRows).toHaveLength(2);
+    expect(body.transfer_id).toBe(txRows[0].transferId);
+    expect(body.transfer_id).toBe(txRows[1].transferId);
+
+    // ── 远端失败：补偿必须把投递行一起删掉 ──────────────────────────────────
+    mockTransfer.mockRejectedValue(new AccountServiceError('账户服务不可达', 503));
+    await expect(
+      transferFish(sender.id, recipient.id, 5)
+    ).rejects.toBeInstanceOf(AccountServiceError);
+
+    const after = await prisma.fishWebhookDelivery.findMany();
+    expect(
+      after,
+      '★ 回滚掉的转账绝不能留下投递行 —— 否则商户按回调认了一笔根本没成交的入账'
+    ).toHaveLength(1); // 只剩第一笔那条
+    expect(after[0].transferId).toBe(txRows[0].transferId);
+  });
+
+  it('收款人没登记回调 → 一行都不写（不是写一条 disabled 的）', async () => {
+    enableRemote();
+    const sender = await makeUserWithKey(100);
+    const recipient = await makeUser({ driedFish: 0 });
+
+    await transferFish(sender.id, recipient.id, 10);
+    expect(await prisma.fishWebhookDelivery.count()).toBe(0);
   });
 
   it('接收者已花掉 → 补偿整体回滚（绝不部分撤销）+ 账本 failed + 对账日志', async () => {

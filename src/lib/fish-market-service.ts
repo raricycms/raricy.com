@@ -44,6 +44,11 @@ import {
 } from './account-client';
 import { isServiceAccount, SERVICE_QUOTA } from './service-accounts';
 import {
+  enqueueTransferWebhook,
+  dropTransferWebhook,
+  deliverWebhook,
+} from './fish-webhook-service';
+import {
   recordPendingSync,
   settleSync,
   executeSync,
@@ -429,10 +434,31 @@ export async function transferFish(
         where: { id: fromUserId },
         select: { driedFish: true },
       });
+      const recipientAfter = await tx.user.findUnique({
+        where: { id: recipient.id },
+        select: { driedFish: true },
+      });
+
+      // 1.5 回调出账（outbox）。**与两条流水同事务提交** —— 于是「钱记了、通知忘了」
+      //     在结构上不可能发生。收款人没登记地址 / 已停用时什么都不写。
+      //     这里只有纯 DB 写入，密码学与 HTTP 全在事务外（见 fish-webhook-service 头部）。
+      const deliveryId = await enqueueTransferWebhook({
+        tx,
+        recipientId: recipient.id,
+        recipientUsername: recipient.username,
+        senderId: fromUserId,
+        senderUsername: sender.username,
+        amount,
+        note: cleanNote || null,
+        transferId,
+        balanceAfter: unitsToFish(recipientAfter?.driedFish ?? 0),
+      });
+
       return {
         outTxId: outTx.id,
         inTxId: inTx.txId,
         balance: unitsToFish(after?.driedFish ?? 0),
+        deliveryId,
       };
     }).catch(async (e: unknown) => {
       // 并发同键：另一个请求已经建好了账本行（唯一约束把这一笔挡下）。这不是故障 ——
@@ -488,6 +514,9 @@ export async function transferFish(
             await tx.accountSyncLedger.deleteMany({
               where: { idempotencyKey: entry.idempotencyKey },
             });
+            // 3.5 删掉回调出账（若 1.5 写过）。回调是「钱到了」的断言 ——
+            //     钱被撤销了就必须一起撤销，否则商户按回调认了一笔根本没成交的入账。
+            await dropTransferWebhook(tx, transferId);
           });
         } catch (undoErr) {
           // 补偿也失败：账本行留 pending/failed，sync-retry 可幂等重放收敛。
@@ -513,6 +542,17 @@ export async function transferFish(
           ? syncErr
           : new AccountServiceError(`转账同步失败: ${String(syncErr)}`, 503);
       }
+    }
+
+    // 回调（站外商户）：**提交且远端结算之后**才发，且**不 await** ——
+    // 商户的 HTTP 延迟不该记在付款人的账上。定时 drainer 才是保证（它只捞超过
+    // 宽限期的 pending），这一下只是把正常路径的延迟从「最多 30 秒」压到亚秒级。
+    // 吞异常：投递失败的收敛归 drainer，绝不能让它冒泡回去把一笔**已经成交**的
+    // 转账变成 500（同顶栏推送那条纪律）。补偿路径根本不走到这里。
+    if (phase1.deliveryId) {
+      void deliverWebhook(phase1.deliveryId).catch(() => {
+        /* 交给 drainer 重试 */
+      });
     }
 
     // 通知接收者：**在提交与同步之后**发（钱已结算完，不能因通知失败而退回）；

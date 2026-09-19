@@ -102,6 +102,8 @@ model User {
   chatMembers           ChatMember[]            @relation("ChatMemberUser")
   chatMessages          ChatMessage[]           @relation("ChatMessageAuthor")
   fishApiTokens         FishApiToken[]
+  fishWebhookEndpoint   FishWebhookEndpoint?
+  fishWebhookDeliveries FishWebhookDelivery[]
   @@index([id], map: "ix_users_id")
   @@index([role], map: "ix_users_role")
 
@@ -518,6 +520,56 @@ model FishApiToken {
   @@index([expiresAt], map: "ix_fish_api_tokens_expires_at")
 
   @@map("fish_api_tokens")
+}
+
+// ── 鱼干收款回调（webhook） ───────────────────────────────────────────────────
+//
+// 用户级 1:1 的地址配置 + outbox 形式的投递记录。设计要点（尤其是「为什么
+// payload 存成品」「sending 是租约」「at-least-once 所以接收方必须去重」）
+// 全在 prisma/migrations/16_fish_webhooks 的头部，改动前先读那一份。
+
+model FishWebhookEndpoint {
+  userId              String    @id @map("user_id")
+  url                 String
+  /** Fernet 密文（同 User.fishApiKeyEncrypted）。签名密钥是凭证，不能明文落库。 */
+  secretEncrypted     String    @map("secret_encrypted")
+  disabledAt          DateTime? @map("disabled_at")
+  /** 只用于展示，**不自动停用** —— 悄悄停掉全部回调是静默失效。 */
+  consecutiveFailures Int       @default(0) @map("consecutive_failures")
+  lastSuccessAt       DateTime? @map("last_success_at")
+  lastFailureAt       DateTime? @map("last_failure_at")
+  createdAt           DateTime? @map("created_at")
+  updatedAt           DateTime? @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id])
+  @@map("fish_webhook_endpoints")
+}
+
+model FishWebhookDelivery {
+  id             Int       @id @default(autoincrement())
+  /** 接收方去重句柄；重试之间不变（随机，不是自增 id）。 */
+  deliveryId     String    @unique(map: "fish_webhook_deliveries_delivery_id_key") @map("delivery_id")
+  userId         String    @map("user_id")
+  /** 共享单号：与转账两条流水上的同一个值，商户据此把回调对上那一笔。 */
+  transferId     String    @map("transfer_id")
+  event          String
+  /** 序列化后的正文快照 —— 重试要字节稳定（签名算在它上面），不是重建参数。 */
+  payload        String
+  /** pending | sending | delivered | dead。**绝不物理删除**。 */
+  status         String    @default("pending")
+  attempts       Int       @default(0)
+  nextAttemptAt  DateTime  @map("next_attempt_at")
+  lastError      String?   @map("last_error")
+  lastStatusCode Int?      @map("last_status_code")
+  deliveredAt    DateTime? @map("delivered_at")
+  createdAt      DateTime? @map("created_at")
+  updatedAt      DateTime? @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id])
+  @@index([status, nextAttemptAt], map: "ix_fish_webhook_deliveries_due")
+  @@index([userId], map: "ix_fish_webhook_deliveries_user_id")
+  @@index([transferId], map: "ix_fish_webhook_deliveries_transfer_id")
+  @@map("fish_webhook_deliveries")
 }
 
 // ── 管理审计 ─────────────────────────────────────────────────────────────────

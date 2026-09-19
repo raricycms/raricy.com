@@ -64,6 +64,17 @@
 
 .fish-api-row__actions {
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: $space-2;
+}
+
+// 「最近投递」这类区块内小标题（页面主标题是 .page-title，这是它下面的一级）
+.fish-api-subhead {
+  margin: $space-4 0 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
 }
 
 .fish-api-revoke {

@@ -456,3 +456,123 @@ https://raricy.com/fish/pay
 > ⚠️ **永远不要靠备注文本认人**。备注是任何人都能写的自由文本，
 > 「我是 alice」并不能证明他就是 alice。认人只能用 `relatedUserId`，
 > 或者你能验证的凭据。
+
+## 10. 收款回调：让 raricy 主动通知你
+
+§3.3 的轮询能用，但慢（要留 10 秒滞后）且贵（每几分钟一次请求）。回调把「谁主动」
+反过来：**钱一到账，我们就推一条通知到你的服务器**。
+
+### 10.1 登记地址
+
+在站内 `/fish/api` 页面上填一个 `https` 地址并确认（要再输一次登录密码），
+页面会给出一个**签名密钥** —— 它也**只显示这一次**，请立刻存进你的配置。
+
+地址的要求：
+
+| 要求 | 为什么 |
+|------|--------|
+| 必须 `https` | 通知里有金额与用户名，线路上的明文不可接受 |
+| 必须**直接返回 2xx** | 我们不跟随重定向（跟随会打开一类绕过）。要跳转请自己返回 2xx |
+| 不能指向内网 / 回环 / 保留地址 | 我们的服务器在内网里，这类地址会被当成探测内网。登记时**与每次投递前**都会查 |
+| 不能带用户名密码 | 那是钓鱼惯用手法 |
+
+一个账号**一个**地址。要换就改，改地址**不会换密钥**（免得你已经写好的验签代码失效）；
+要换密钥页面上有单独的「换密钥」按钮。停用只是一个开关，随时可以重新启用。
+
+### 10.2 请求长什么样
+
+一次到账，我们会向你登记的地址发一个 `POST`：
+
+```
+POST /fish/callback HTTP/1.1
+Host: 你的站点
+Content-Type: application/json
+X-Raricy-Event: fish.transfer.received
+X-Raricy-Delivery: 9f2c1e...（32 位十六进制，接收方去重用的）
+X-Raricy-Timestamp: 1758276123（Unix 秒）
+X-Raricy-Signature: v1=3f9a...（见 §10.3）
+```
+
+正文：
+
+```json
+{
+  "event": "fish.transfer.received",
+  "delivery_id": "9f2c1e...",
+  "occurred_at": "2026-09-19T18:22:03.000Z",
+  "transfer_id": "a1b2c3d4e5f60718",
+  "to":   { "user_id": "u_xxx", "username": "mybot" },
+  "from": { "user_id": "u_yyy", "username": "alice" },
+  "amount": 1.5,
+  "note": "order-20260919-0007",
+  "balance_after": 42.5
+}
+```
+
+- `transfer_id` 就是 §3.1 的那个共享单号 —— **拿它把回调与你账本里的那一笔对上**，
+  不必猜金额和时间；
+- `balance_after` 是这次到账**之后**你的余额（鱼干），省掉一次查询；
+- `occurred_at` 是本站时钟（UTC+8 墙上时间贴 Z 标签，同 §3.3 的 `createdAt`），
+  **不是**标准 UTC 瞬间。
+
+回调**只在有人转给你的账号时发**。签到、投喂、管理员赠送、系统补偿都不会触发。
+
+### 10.3 验签（必须做）
+
+密钥在 §10.1 拿。签名算法：把 **`时间戳 + "." + 正文`** 用 HMAC-SHA256 算，
+密钥是你的签名密钥，结果取小写十六进制，前面加 `v1=`。
+
+**把时间戳一起签进去**是刻意的：否则同一段正文可以被无限重发（重放）。
+
+Node.js：
+
+```js
+const crypto = require('node:crypto');
+
+// ⚠️ rawBody 必须是**原始字节**。先 JSON.parse 再 stringify 会改掉空白与键序，
+//    算出来的签名对不上 —— 这是最常见的接入问题。
+function verify(rawBody, headers, secret) {
+  const ts = headers['x-raricy-timestamp'];
+  const got = headers['x-raricy-signature'] ?? '';
+  const expect = 'v1=' + crypto
+    .createHmac('sha256', secret)
+    .update(`${ts}.${rawBody}`)
+    .digest('hex');
+  // 必须用定时安全比较，别用 ===（会泄露前缀匹配长度）
+  const a = Buffer.from(got);
+  const b = Buffer.from(expect);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return false;
+  // 时间戳要新鲜（挡重放）。注意：**重试时时间戳是新的**，所以这一步不能替代去重。
+  return Math.abs(Date.now() / 1000 - Number(ts)) <= 300;
+}
+```
+
+Python：
+
+```python
+import hmac, hashlib, time
+
+def verify(raw_body: bytes, headers, secret: str) -> bool:
+    ts = headers['X-Raricy-Timestamp']
+    got = headers.get('X-Raricy-Signature', '')
+    expect = 'v1=' + hmac.new(
+        secret.encode(), f'{ts}.'.encode() + raw_body, hashlib.sha256
+    ).hexdigest()
+    if not hmac.compare_digest(got, expect):
+        return False
+    return abs(time.time() - int(ts)) <= 300
+```
+
+### 10.4 三条你必须知道的
+
+1. **可能重复，请按 `X-Raricy-Delivery` 去重。** 投递是「至少一次」：我们把请求发出去
+   但没记下结果时（进程重启、网络抖动），这一条会被重投。同一个 `delivery_id`
+   在重试之间**不变** —— 存下它，重复的丢掉即可。这一步不能省。
+2. **失败我们会自己重试**，间隔约 10 秒 / 1 分钟 / 5 分钟 / 30 分钟 / 2 小时 / 6 小时，
+   之后放弃（那条记录标记为「已判死」）。**放弃不会停用你的地址** —— 后续到账照样发。
+   `/fish/api` 页面上能看到最近 20 条投递记录与失败原因。
+3. **回调不是对账本身，只是提醒。** 收到回调后仍然建议按 §3.3.1 的游标拉一次流水
+   落账 —— 回调可能丢（比如我们这边判死了），而流水是权威的。回调的价值是
+   **把「什么时候该拉」从定时轮询变成事件驱动**。
+
+> 回调里**没有**幂等键、也没有对方的邮箱 —— 只给你对账需要的那几个字段。

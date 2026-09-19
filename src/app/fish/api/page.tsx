@@ -3,8 +3,13 @@ import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth';
 import { loginUrlWithNext } from '@/lib/safe-url';
 import { listFishTokens } from '@/lib/fish-token-service';
+import { getWebhookEndpoint, listRecentDeliveries } from '@/lib/fish-webhook-service';
 import { nowForDb } from '@/lib/db-time';
 import FishApiClient, { type TokenRow } from './FishApiClient';
+import FishWebhookPanel, {
+  type WebhookEndpointView,
+  type DeliveryRow,
+} from './FishWebhookPanel';
 
 // 鱼干接口 —— 机器人接入的自助页（只读凭据；回调地址见第 3 批）。
 //
@@ -44,6 +49,34 @@ export default async function FishApiPage() {
     expired: t.expiresAt.getTime() <= now,
   }));
 
+  const [endpointRow, deliveryRows] = await Promise.all([
+    getWebhookEndpoint(user.id),
+    listRecentDeliveries(user.id, 10),
+  ]);
+  const initialEndpoint: WebhookEndpointView | null = endpointRow
+    ? {
+        url: endpointRow.url,
+        disabled: !!endpointRow.disabledAt,
+        disabled_at: endpointRow.disabledAt?.toISOString() ?? null,
+        consecutive_failures: endpointRow.consecutiveFailures,
+        last_success_at: endpointRow.lastSuccessAt?.toISOString() ?? null,
+        last_failure_at: endpointRow.lastFailureAt?.toISOString() ?? null,
+        created_at: endpointRow.createdAt?.toISOString() ?? null,
+      }
+    : null;
+  const initialDeliveries: DeliveryRow[] = deliveryRows.map((d) => ({
+    id: d.id,
+    delivery_id: d.deliveryId,
+    transfer_id: d.transferId,
+    event: d.event,
+    status: d.status,
+    attempts: d.attempts,
+    last_error: d.lastError,
+    last_status_code: d.lastStatusCode,
+    delivered_at: d.deliveredAt?.toISOString() ?? null,
+    created_at: d.createdAt?.toISOString() ?? null,
+  }));
+
   return (
     <div className="content-wrapper">
       <h1 className="page-title">
@@ -64,6 +97,18 @@ export default async function FishApiPage() {
         </p>
 
         <FishApiClient initialTokens={initialTokens} />
+      </section>
+
+      <section className="fish-api-section">
+        <div className="market-card__head">
+          <span className="market-card__balance-label">收款回调</span>
+        </div>
+        <p className="market-field__hint">
+          登记一个地址，有人给你转账时我们主动推一条通知过去 —— 不必再轮询流水。
+          投递会重试，但<strong>可能重复</strong>，请按请求头里的投递编号去重。
+        </p>
+
+        <FishWebhookPanel initialEndpoint={initialEndpoint} initialDeliveries={initialDeliveries} />
       </section>
 
       <p className="market-foot">

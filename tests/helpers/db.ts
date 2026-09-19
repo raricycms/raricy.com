@@ -82,8 +82,11 @@ export async function resetDb() {
     // OAuth 三表引用 users / oauth_applications —— 必须排在它们前面删，
     // 否则 DELETE users 撞外键（被下面的 catch 吞掉，表现为刷屏的 FK 报错）
     'oauth_access_tokens', 'oauth_authorization_codes', 'oauth_applications',
-    // 鱼干只读凭据引用 users —— 同样必须先于 users 删
+    // 鱼干只读凭据 / 回调都引用 users —— 同样必须先于 users 删。
+    // deliveries 与 endpoints 之间**刻意没有外键**（理由见 migrations/16_fish_webhooks
+    // 头部），所以两者之间的顺序无所谓；它们相对 users 的顺序才是有意义的。
     'fish_api_tokens',
+    'fish_webhook_deliveries', 'fish_webhook_endpoints',
     'users',
     'account_sync_ledger',
   ];

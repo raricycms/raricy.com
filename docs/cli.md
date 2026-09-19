@@ -314,11 +314,21 @@ npm run cli -- blog restore 2b7ec270-be9c-4283-b1a2 --reason "作者申诉，误
 | `fish sync-retry` | 重放 pending / failed 的远端同步 |
 | `fish credential-list <username>` | 列出某用户的鱼干只读凭据（不含明文与哈希） |
 | `fish credential-revoke <id>` | 吊销一张只读凭据（立即失效，幂等） |
+| `fish webhooks [username]` | 列出回调地址与投递积压（留空列全部） |
+| `fish webhook-retry` | 立刻重投待发回调（不等退避） |
 
 **关于只读凭据**：站外机器人 / 银行用它查余额与流水（`Authorization: Bearer`），
 **查不了钱也动不了钱**，可单独吊销，改密码不会作废它。凭据由**用户自己在站内签发**
 （`/fish/api`，签发要再输一次密码），CLI 这两条是运维侧的口子 —— 只在用户不配合、
 或凭据泄露但联系不上本人时用。凭据不物理删除，只标记 `revokedAt`。
+
+**关于回调**：钱到账时主动通知商户（`/fish/api` 上自助配置）。投递是
+**at-least-once** —— 商户可能收到重复回调，靠 header 里的 `X-Raricy-Delivery` 去重。
+失败会自动重试（指数退避，约 10s/1m/5m/30m/2h/6h），耗尽后置 `dead`。
+`fish webhooks` 里那一列死信就是「商户没收到通知」的那几笔，要提醒它拉流水对账。
+
+⚠️ **失败到判死不会自动停用地址** —— 悄悄停掉全部回调是典型的静默失效：
+商户以为还在收通知，其实早就没了。要停由商户自己在页面上停。
 
 `amount` 是正整数，单位是**整个小鱼干**。写路径 fail-closed：远端账户服务失败 →
 本地写入被补偿事务精确撤销（对用户等价于回滚）→ **退出码 2**。绝不静默成功。

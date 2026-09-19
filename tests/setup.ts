@@ -42,6 +42,12 @@ process.env.SECRET_KEY = 'test-secret-key-do-not-use-in-prod';
 process.env.ACCOUNT_SERVICE_INTERNAL_TOKEN = '';
 process.env.ACCOUNT_SYSTEM_KEY = '';
 
+// 回调投递的定时器**必须关掉**：跑起来的话，每个测试文件都会有一个后台循环
+// 去发真实 HTTP 请求（而且指向的是用例里造的假地址）。
+// src/lib/webhook-drainer.ts 里还有一道 `NODE_ENV === 'test'` 的保险，这里是第二道 ——
+// 两道都留着：谁把那条判断删了，这条还兜得住。
+process.env.FISH_WEBHOOK_DRAIN_MS = '0';
+
 // 进程退出时清掉自己的库文件，避免 .tmp 堆积
 process.on('exit', () => {
   for (const suffix of ['', '-wal', '-shm']) {
