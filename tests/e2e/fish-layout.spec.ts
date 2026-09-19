@@ -55,8 +55,12 @@ test('余额页：三颗行动在同一行，窄屏只留「流水 / 市场 / �
   // 散着写（前缀 span 与正文各自成为 flex 项）时中间会吃一道 gap，桌面端就渲染成
   // 「查看 流水」—— 视觉上词被劈开，而 innerText 归一化空白后照样是「查看流水」，
   // 上面那条断言看不出来。所以这里按**渲染宽度**再钉一次：整条文案比前缀宽出约两字。
+  // evaluateAll 的回调参数是 (HTMLElement | SVGElement)[]，而 innerText 只在 HTMLElement 上
+  //（SVGElement 没有这个属性）—— 这里断言成 HTMLElement[]，与上面 row.evaluate 里那句
+  // `[...el.children] as HTMLElement[]` 同款：选中的是 <span class="fish-card__link-label">，
+  // 必然是 HTML 元素，不是 SVG。
   const labels = await page.locator('.fish-card__link-label').evaluateAll((els) =>
-    els.map((el) => ({
+    (els as HTMLElement[]).map((el) => ({
       text: el.innerText.replace(/\s+/g, ''),
       full: +el.getBoundingClientRect().width.toFixed(1),
       prefix: +((el.querySelector('.fish-card__link-prefix') as HTMLElement)?.getBoundingClientRect().width ?? 0).toFixed(1),
