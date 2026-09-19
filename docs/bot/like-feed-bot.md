@@ -88,13 +88,19 @@ Cookie: raricy_session=<JWT>
 | `liked` | **切换之后**你的状态：`true` = 你现在赞了它 |
 | `likes_count` | 切换之后的**总赞数** |
 
-> ⚠️ **这不是「设置成赞」，是「反转」。** 想确保「赞上」，你得先知道当前状态 ——
-> 而点赞状态只能从文章详情里读：`GET /api/blogs/:id` 的 `blog.liked`
-> （见 `docs/bot/blog-bot.md` §9）。**盲目重试 = 点了又取消**，
-> 而且每次都消耗配额（§8）。
+> ⚠️ **这不是「设置成赞」，是「反转」。** 盲目重试 = **点了又取消**，
+> 而且每次切换都消耗配额（§8）。
 >
-> 所以标准姿势是：**读详情 → 若 `liked` 已是目标状态就什么都不做 → 否则切一次**。
-> 网络超时后**先重读详情**，别直接重发。
+> ⚠️ **而且「我赞过这篇没有」在接口上读不到。** `GET /api/blogs/:id` 的响应里
+> **没有** `liked` 字段（`docs/bot/blog-bot.md` §9 那张清单就是全部），全站也没有
+> 第二个接口下发「某人对某篇文章的点赞态」—— 网页端能显示点亮状态，是因为它在
+> 服务端渲染时**直查数据库**，那条路站外调用方走不了。
+> （**评论点赞不一样**：评论树里每条都带 `liked`，见 §4。）
+>
+> 所以机器人的正确姿势是**自己记账**：在你自己那边记下「我赞过哪些 blogId」，
+> 只在账上没有时才切一次；响应里的 `liked` 就是这笔之后的真实状态，用它回写你的账。
+> **网络超时后先查自己的账，别直接重发** —— 重发的后果是把赞取消掉，
+> 而不是重复点赞（切换式刷不高赞数，只会自己打自己）。
 
 | 情形 | 返回 |
 |------|------|
@@ -141,9 +147,9 @@ Cookie: raricy_session=<JWT>
 > ✅ **评论点赞不产生任何通知。** 这一条与文章点赞不同（那边会通知作者），
 > 所以「反复点评论赞」打扰不到人 —— 但它照样吃配额。
 >
-> 📌 要知道自己赞没赞过某条评论：`GET /api/blogs/:id/comments` 的
-> `liked` 字段（随查看者而变，见 `docs/bot/comment-bot.md` §10.2）。
-> 与文章点赞同理：**先读，再决定要不要切**。
+> 📌 **评论点赞是可以读到状态的**（文章点赞不行，见 §3）：`GET /api/blogs/:id/comments`
+> 的每条评论都带 `liked`（随查看者而变，见 `docs/bot/comment-bot.md` §10.2）。
+> 所以评论这边能做到「先读，再决定要不要切」，不必自己记账。
 
 ---
 
@@ -366,7 +372,8 @@ Content-Type: application/json
 | 现象 | 多半是 |
 |------|--------|
 | 点了赞，作者没收到通知 | 自赞；或这条点赞记录**以前发过**（一人一篇文章只发一条，§3.1） |
-| 想「确保赞上」，结果取消掉了 | 切换式的固有语义 —— 先读详情的 `liked` 再决定（§3） |
+| 想「确保赞上」，结果取消掉了 | 切换式的固有语义。**没有读口能告诉你赞过没有**，只能自己记账（§3） |
+| 找不到 `blog.liked` | 它不存在（§3）。文章点赞态不下发；评论的 `liked` 才有 |
 | `403 无权查看` | 名单只有**作者本人或管理员**能看，不是公开数据（§6） |
 | `404 评论不存在或已删除` | 评论已被作者/管理员软删；点赞与回复都会撞这个 |
 | `400 投喂数量需为 1~5 的整数` | 传了小数（`0.5`）或超出区间的数 |
@@ -386,12 +393,14 @@ const BASE = 'https://raricy.com';
 const cookie = 'raricy_session=<JWT>';          // 登录见 chat-bot.md §3
 const H = { cookie, 'content-type': 'application/json' };
 
-// ── 点赞：先读状态，再决定要不要切 ────────────────────────────────
-const blog = await (await fetch(`${BASE}/api/blogs/${blogId}`, { headers: { cookie } })).json();
-if (!blog.blog.liked) {                          // 已经赞过就别再切了
+// ── 点赞：接口不告诉你「赞过没有」，所以**自己记账** ──────────────────
+// ⚠️ 别抄「读详情看 liked」—— `GET /api/blogs/:id` 没有那个字段（§3）
+const myLikedBlogIds = new Set();                 // 你自己维护，持久化到磁盘/数据库
+if (!myLikedBlogIds.has(blogId)) {
   const r = await fetch(`${BASE}/api/blogs/${blogId}/like`, { method: 'POST', headers: { cookie } });
   const out = await r.json();
-  console.log(out.liked, out.likes_count);       // true = 现在赞上了
+  if (out.liked) myLikedBlogIds.add(blogId);      // 以响应为准回写自己的账
+  console.log(out.liked, out.likes_count);        // true = 现在赞上了
 }
 
 // ── 投喂：确认金额，一次投完（别拆成 5 次，会刷 5 条通知）──────────

@@ -145,12 +145,16 @@ const server = http.createServer((req, res) => {
 
     db = load(); // 多进程/多次请求下重新读，避免覆盖（生产用数据库事务）
 
-    // ★ 去重必须先做 ★ 投递是「至少一次」，同一个 delivery_id 可能来好几遍。
-    if (db.seenDeliveries.includes(evt.delivery_id)) {
+    // ★ 去重必须先做 ★ 投递是「至少一次」，同一笔可能来好几遍。
+    // 键用**共享单号**（`tx:<transfer_id>`）而不是 `delivery_id` —— 因为下面
+    // `reconcile()` 走的是同一笔钱的另一条路，只有两边共用同一把键，
+    // 「先被回调记过、又被对账扫到」才不会入两次。单号相同时必然是同一笔转账。
+    const dedupeKey = `tx:${evt.transfer_id}`;
+    if (db.seenDeliveries.includes(dedupeKey)) {
       res.writeHead(200).end('duplicate');
       return;
     }
-    db.seenDeliveries.push(evt.delivery_id);
+    db.seenDeliveries.push(dedupeKey);
     if (db.seenDeliveries.length > 5000) db.seenDeliveries.splice(0, 2500); // 别无限涨
 
     // ★ 认人：只能用 from.user_id ★
@@ -206,10 +210,10 @@ async function reconcile() {
 
     if (tx.type === 'transfer_receive') {
       const customerId = db.claimed[tx.relatedUserId]; // 转账方 = 我们的客户
-      if (customerId && !db.seenDeliveries.includes(`cursor:${tx.id}`)) {
-        // 用 `cursor:<流水id>` 当去重键，与回调那边的 delivery_id 并存 ——
-        // 同一条到账可能先被回调记过、又被对账扫到。
-        db.seenDeliveries.push(`cursor:${tx.id}`);
+      if (customerId && !db.seenDeliveries.includes(`tx:${tx.transferId}`)) {
+        // 与回调**共用同一把去重键**（`tx:<共享单号>`）—— 同一笔到账可能先被回调
+        // 记过、又被对账扫到，共用一个命名空间才会在这里跳过，而不是再入一次。
+        db.seenDeliveries.push(`tx:${tx.transferId}`);
         db.balances[customerId] = round2((db.balances[customerId] ?? 0) + tx.amount);
         console.log(`[对账补录] ${customerId} +${tx.amount}（单号 ${tx.transferId}）`);
       }
@@ -318,8 +322,10 @@ db.cursor = tx.id; // 别让这 0.1 又被当成一笔充值
 
 ## 5. 四条最容易亏钱的纪律
 
-1. **回调必须去重**（按 `X-Raricy-Delivery`）。投递是「至少一次」，重复是正常的，
-   不是异常。不去重 = 同一笔钱入两次。
+1. **回调必须去重，而且去重键要与对账共用** —— 按**共享单号**（`transfer_id`）建键，
+   不要只用 `X-Raricy-Delivery`。投递是「至少一次」、重复是正常的，不是异常；
+   更麻烦的是**回调与对账会看到同一笔钱**，两路各用各的键就等于没去重
+   （同一笔先被回调入账、30 秒后又被对账扫到，会再入一次）。
 2. **认人只能用 `from.user_id` / `relatedUserId`**，永远不要用备注或用户名。
 3. **对账必须留 10 秒滞后**，且必须**真的跑**（回调会丢）。只靠回调对账早晚会漏钱。
 4. **提现的幂等键必须跟着提现单号走**。超时重试时原样重发同一条是安全的；
@@ -332,7 +338,7 @@ db.cursor = tx.id; // 别让这 0.1 又被当成一笔充值
 | **对账跑了但一笔都没入** | **时钟没对齐**：`createdAt` 是「UTC+8 墙上时间贴 Z」，直接跟 `Date.now()` 比会让每行都像来自未来（见 §2 代码里的注释） |
 | 回调收不到 | 地址不是 https / 不是 2xx / 指向内网；或页面显示「连续失败 n 次」 |
 | 回调收到了但验签不过 | 用了 `JSON.parse` 之后再 `stringify` 的正文；或密钥用了旧的（换过密钥的话） |
-| 同一笔入账两次 | 没按 `delivery_id` 去重；或回调与对账两路都入账且没共用去重表 |
+| 同一笔入账两次 | 去重键没用**共享单号**（`tx:<transfer_id>`）：只用 `delivery_id` 的话，回调与对账两路各记各的，挡不住对方 |
 | 提现重复付款 | 重试时换了幂等键；或压根没带键 |
 | `401` 且文案说凭据无效 | 只读凭据被吊销 / 过期（一年）；或把令牌写错了 |
 | `403` 且文案提到「只能读取」 | 拿只读凭据去调转账了，转账要用密码 |
