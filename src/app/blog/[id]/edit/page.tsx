@@ -63,6 +63,7 @@ export default async function EditBlogPage({ params }: { params: Promise<{ id: s
           title: blog.title,
           description: blog.description,
           categoryId: blog.categoryId,
+          visibility: blog.visibility,
           contentMarkdown: blog.contentMarkdown,
         }}
         banInfo={banInfo}

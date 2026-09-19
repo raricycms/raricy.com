@@ -9,6 +9,10 @@ import { useEffect, useRef } from 'react';
 import Vditor from 'vditor';
 import 'vditor/dist/index.css';
 import type { CategoryHierarchy } from '@/lib/blog-service';
+// 可见性词汇必须从 ./blog-visibility 取（那个模块零依赖）——**不能**从 blog-service，
+// 它拖着 prisma，值导出会把服务端依赖拉进客户端包。理由见该文件头。
+import { BLOG_VISIBILITIES, VISIBILITY_LABEL } from '@/lib/blog-visibility';
+import type { BlogVisibility } from '@/lib/blog-visibility';
 // 跟随站点 <html data-theme> 的亮/暗切换 —— 三条轨道（外壳 / 正文 / 代码高亮）
 // 的实现见 src/lib/vditor-theme.ts，云剪贴板编辑器共用同一份。
 import {
@@ -34,6 +38,7 @@ export interface BlogFormBlog {
   title: string;
   description: string;
   categoryId: number | null;
+  visibility: BlogVisibility;
   contentMarkdown: string;
 }
 
@@ -136,6 +141,7 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
     const title = (form.elements.namedItem('title') as HTMLInputElement).value;
     const description = (form.elements.namedItem('description') as HTMLTextAreaElement).value;
     const categoryId = (form.elements.namedItem('category') as HTMLSelectElement).value;
+    const visibility = (form.elements.namedItem('visibility') as HTMLSelectElement).value;
     const content = getContent();
 
     if (!title || !description || !content) {
@@ -162,7 +168,7 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
         method,
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({ title, description, content, category_id: categoryId }),
+        body: JSON.stringify({ title, description, content, category_id: categoryId, visibility }),
       });
       const result = await response.json();
       if (result.code === 200) {
@@ -286,6 +292,36 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
               </optgroup>
             ))}
           </select>
+        </div>
+
+        {/* 可见性：与栏目同构的一个 select（不另造单选组 —— 少一套样式与一条类名守卫）。
+            三档的短语来自 ./blog-visibility 的 VISIBILITY_LABEL，一句话说明只在这里；
+            **不在前端写死档名**：加第四档时前端会跟着长出来，不会静默少一个选项。 */}
+        <div className="form-group">
+          <label htmlFor="visibility" className="form-label">
+            可见范围
+          </label>
+          <select
+            className="form-select"
+            id="visibility"
+            name="visibility"
+            defaultValue={blog?.visibility ?? 'private'}
+          >
+            {BLOG_VISIBILITIES.map((v) => (
+              <option key={v} value={v}>
+                {VISIBILITY_LABEL[v]}
+              </option>
+            ))}
+          </select>
+          <span className="form-hint text-muted">
+            仅站内可见：只有站内核心用户读得到（默认）。凭链接可读：拿到链接的任何人
+            都能打开，但不会出现在任何列表里、也不会被搜索引擎收录。对外公开：任何人
+            可读，可能被搜索引擎收录与第三方存档。
+          </span>
+          <span className="form-hint text-muted">
+            公开前请自行确认正文里没有不适合外传的内容。公开后可能被第三方抓取存档，
+            改回「仅站内可见」不会收回已经抓走的副本。
+          </span>
         </div>
 
         <div className="form-group">

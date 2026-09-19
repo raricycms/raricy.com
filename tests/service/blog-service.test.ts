@@ -248,19 +248,21 @@ describe('validateBlogData / 未知字段（键集封闭）', () => {
   it('与栏目无关的未知字段 → 列出可接受的键集', async () => {
     const r = await validateBlogData(baseInput({ tags: ['a'] }));
     expect((r as { message: string }).message).toBe(
-      '未知字段 "tags"，本接口只接受：title / description / content / category_id'
+      '未知字段 "tags"，本接口只接受：title / description / content / category_id / visibility'
     );
   });
 
-  it('四个合法键全带上照样通过（键集没把谁误伤）', async () => {
+  it('五个合法键全带上照样通过（键集没把谁误伤）', async () => {
     const cat = await makeCategory({ isActive: true });
     const r = await validateBlogData({
       title: '标题',
       description: '摘要',
       content: '正文',
       category_id: cat.id,
+      visibility: 'public',
     });
     expect(r.ok).toBe(true);
+    expect((r as { data: { visibility: string } }).data.visibility).toBe('public');
   });
 });
 
@@ -491,6 +493,7 @@ describe('createBlog', () => {
       description: 'D',
       content: 'C',
       categoryId: null,
+      visibility: 'private',
     });
     expect(id).toMatch(UUID_V4);
   });
@@ -503,6 +506,7 @@ describe('createBlog', () => {
       description: '我的摘要',
       content: '# 正文\n\n内容',
       categoryId: cat.id,
+      visibility: 'private',
     });
 
     const blog = await prisma.blog.findUnique({ where: { id } });
@@ -520,7 +524,7 @@ describe('createBlog', () => {
 
   it('新文章的默认值：ignore=false / isFeatured=false / 各计数为 0', async () => {
     const u = await makeUser();
-    const id = await createBlog(u.id, { title: 'T', description: 'D', content: 'C', categoryId: null });
+    const id = await createBlog(u.id, { title: 'T', description: 'D', content: 'C', categoryId: null, visibility: 'private' });
     const blog = await prisma.blog.findUnique({ where: { id } });
     expect(blog!.ignore, '新文章不能是软删除态').toBe(false);
     expect(blog!.isFeatured, '精选只能由管理员后置设置').toBe(false);
@@ -531,22 +535,22 @@ describe('createBlog', () => {
 
   it('categoryId 为 null → 落库为未分类', async () => {
     const u = await makeUser();
-    const id = await createBlog(u.id, { title: 'T', description: 'D', content: 'C', categoryId: null });
+    const id = await createBlog(u.id, { title: 'T', description: 'D', content: 'C', categoryId: null, visibility: 'private' });
     const blog = await prisma.blog.findUnique({ where: { id } });
     expect(blog!.categoryId).toBeNull();
   });
 
   it('每次调用生成不同主键', async () => {
     const u = await makeUser();
-    const a = await createBlog(u.id, { title: 'A', description: 'D', content: 'C', categoryId: null });
-    const b = await createBlog(u.id, { title: 'B', description: 'D', content: 'C', categoryId: null });
+    const a = await createBlog(u.id, { title: 'A', description: 'D', content: 'C', categoryId: null, visibility: 'private' });
+    const b = await createBlog(u.id, { title: 'B', description: 'D', content: 'C', categoryId: null, visibility: 'private' });
     expect(a).not.toBe(b);
   });
 
   it('作者不存在 → 整体失败，不留下孤儿正文（事务原子性）', async () => {
     const before = await prisma.blogContent.count();
     await expect(
-      createBlog('no-such-user', { title: 'T', description: 'D', content: 'C', categoryId: null })
+      createBlog('no-such-user', { title: 'T', description: 'D', content: 'C', categoryId: null, visibility: 'private' })
     ).rejects.toThrow();
     expect(await prisma.blogContent.count(), '写 blogs 失败时 blog_contents 不能有残留').toBe(before);
     expect(await prisma.blog.count()).toBe(0);
@@ -554,7 +558,7 @@ describe('createBlog', () => {
 
   it('刚创建的文章当天即计入日限额', async () => {
     const u = await makeUser();
-    await createBlog(u.id, { title: 'T', description: 'D', content: 'C', categoryId: null });
+    await createBlog(u.id, { title: 'T', description: 'D', content: 'C', categoryId: null, visibility: 'private' });
     expect(await countBlogsToday(u.id)).toBe(1);
   });
 });
@@ -567,7 +571,7 @@ describe('updateBlog / 变更详情文案', () => {
   it('标题变更 → 「标题从《旧》改为《新》」（书名号逐字对齐）', async () => {
     const u = await makeUser();
     const b = await makeBlog({ authorId: u.id, title: '旧标题', description: 'D', content: 'C' });
-    const r = await updateBlog(b.id, { title: '新标题', description: 'D', content: 'C', categoryId: null });
+    const r = await updateBlog(b.id, { title: '新标题', description: 'D', content: 'C', categoryId: null, visibility: 'private' });
     expect(r.hasChanges).toBe(true);
     expect(r.changesDetail).toEqual(['标题从《旧标题》改为《新标题》']);
   });
@@ -575,14 +579,14 @@ describe('updateBlog / 变更详情文案', () => {
   it('摘要变更 → 「摘要已更新」（不回显新旧内容）', async () => {
     const u = await makeUser();
     const b = await makeBlog({ authorId: u.id, title: 'T', description: '旧摘要', content: 'C' });
-    const r = await updateBlog(b.id, { title: 'T', description: '新摘要', content: 'C', categoryId: null });
+    const r = await updateBlog(b.id, { title: 'T', description: '新摘要', content: 'C', categoryId: null, visibility: 'private' });
     expect(r.changesDetail).toEqual(['摘要已更新']);
   });
 
   it('正文变更 → 「文章内容已更新」', async () => {
     const u = await makeUser();
     const b = await makeBlog({ authorId: u.id, title: 'T', description: 'D', content: '旧正文' });
-    const r = await updateBlog(b.id, { title: 'T', description: 'D', content: '新正文', categoryId: null });
+    const r = await updateBlog(b.id, { title: 'T', description: 'D', content: '新正文', categoryId: null, visibility: 'private' });
     expect(r.changesDetail).toEqual(['文章内容已更新']);
   });
 
@@ -590,7 +594,7 @@ describe('updateBlog / 变更详情文案', () => {
     const u = await makeUser();
     const cat = await makeCategory({ name: '技术' });
     const b = await makeBlog({ authorId: u.id, title: 'T', description: 'D', content: 'C', categoryId: null });
-    const r = await updateBlog(b.id, { title: 'T', description: 'D', content: 'C', categoryId: cat.id });
+    const r = await updateBlog(b.id, { title: 'T', description: 'D', content: 'C', categoryId: cat.id, visibility: 'private' });
     expect(r.changesDetail).toEqual(['栏目从《未分类》改为《技术》']);
   });
 
@@ -598,7 +602,7 @@ describe('updateBlog / 变更详情文案', () => {
     const u = await makeUser();
     const cat = await makeCategory({ name: '技术' });
     const b = await makeBlog({ authorId: u.id, title: 'T', description: 'D', content: 'C', categoryId: cat.id });
-    const r = await updateBlog(b.id, { title: 'T', description: 'D', content: 'C', categoryId: null });
+    const r = await updateBlog(b.id, { title: 'T', description: 'D', content: 'C', categoryId: null, visibility: 'private' });
     expect(r.changesDetail, '缺省名必须是「未分类」').toEqual(['栏目从《技术》改为《未分类》']);
   });
 
@@ -607,7 +611,7 @@ describe('updateBlog / 变更详情文案', () => {
     const a = await makeCategory({ name: '生活' });
     const b2 = await makeCategory({ name: '技术' });
     const b = await makeBlog({ authorId: u.id, title: 'T', description: 'D', content: 'C', categoryId: a.id });
-    const r = await updateBlog(b.id, { title: 'T', description: 'D', content: 'C', categoryId: b2.id });
+    const r = await updateBlog(b.id, { title: 'T', description: 'D', content: 'C', categoryId: b2.id, visibility: 'private' });
     expect(r.changesDetail).toEqual(['栏目从《生活》改为《技术》']);
   });
 
@@ -616,7 +620,7 @@ describe('updateBlog / 变更详情文案', () => {
     const u = await makeUser();
     const cat = await makeCategory({ name: '技术' });
     const b = await makeBlog({ authorId: u.id, title: '旧', description: '旧摘要', content: '旧正文', categoryId: null });
-    const r = await updateBlog(b.id, { title: '新', description: '新摘要', content: '新正文', categoryId: cat.id });
+    const r = await updateBlog(b.id, { title: '新', description: '新摘要', content: '新正文', categoryId: cat.id, visibility: 'private' });
     expect(r.changesDetail).toEqual([
       '标题从《旧》改为《新》',
       '摘要已更新',
@@ -632,7 +636,7 @@ describe('updateBlog / hasChanges 语义与落库', () => {
     const u = await makeUser();
     const cat = await makeCategory({ name: '技术' });
     const b = await makeBlog({ authorId: u.id, title: 'T', description: 'D', content: 'C', categoryId: cat.id });
-    const r = await updateBlog(b.id, { title: 'T', description: 'D', content: 'C', categoryId: cat.id });
+    const r = await updateBlog(b.id, { title: 'T', description: 'D', content: 'C', categoryId: cat.id, visibility: 'private' });
     expect(r.hasChanges).toBe(false);
     expect(r.changesDetail).toEqual([]);
   });
@@ -640,14 +644,14 @@ describe('updateBlog / hasChanges 语义与落库', () => {
   it('未分类 → 未分类（都是 null）不算变更', async () => {
     const u = await makeUser();
     const b = await makeBlog({ authorId: u.id, title: 'T', description: 'D', content: 'C', categoryId: null });
-    const r = await updateBlog(b.id, { title: 'T', description: 'D', content: 'C', categoryId: null });
+    const r = await updateBlog(b.id, { title: 'T', description: 'D', content: 'C', categoryId: null, visibility: 'private' });
     expect(r.hasChanges, 'null === null 不应被判成栏目变化').toBe(false);
   });
 
   it('无变更时仍然执行写入（幂等落库，不炸）', async () => {
     const u = await makeUser();
     const b = await makeBlog({ authorId: u.id, title: 'T', description: 'D', content: 'C' });
-    await updateBlog(b.id, { title: 'T', description: 'D', content: 'C', categoryId: null });
+    await updateBlog(b.id, { title: 'T', description: 'D', content: 'C', categoryId: null, visibility: 'private' });
     const after = await prisma.blog.findUnique({ where: { id: b.id } });
     expect(after!.title).toBe('T');
   });
@@ -656,7 +660,7 @@ describe('updateBlog / hasChanges 语义与落库', () => {
     const u = await makeUser();
     const cat = await makeCategory({ name: '技术' });
     const b = await makeBlog({ authorId: u.id, title: '旧', description: '旧摘要', content: '旧正文' });
-    await updateBlog(b.id, { title: '新', description: '新摘要', content: '新正文', categoryId: cat.id });
+    await updateBlog(b.id, { title: '新', description: '新摘要', content: '新正文', categoryId: cat.id, visibility: 'private' });
 
     const blog = await prisma.blog.findUnique({ where: { id: b.id } });
     expect(blog!.title).toBe('新');
@@ -668,7 +672,7 @@ describe('updateBlog / hasChanges 语义与落库', () => {
   });
 
   it('文章不存在 → { hasChanges: false, changesDetail: [] }', async () => {
-    const r = await updateBlog('no-such-blog', { title: 'T', description: 'D', content: 'C', categoryId: null });
+    const r = await updateBlog('no-such-blog', { title: 'T', description: 'D', content: 'C', categoryId: null, visibility: 'private' });
     expect(r).toEqual({ hasChanges: false, changesDetail: [] });
   });
 
@@ -678,7 +682,7 @@ describe('updateBlog / hasChanges 语义与落库', () => {
     await prisma.blog.create({
       data: { id: 'orphan-blog', title: 'T', description: 'D', authorId: u.id, createdAt: new Date() },
     });
-    const r = await updateBlog('orphan-blog', { title: 'T', description: 'D', content: '新正文', categoryId: null });
+    const r = await updateBlog('orphan-blog', { title: 'T', description: 'D', content: '新正文', categoryId: null, visibility: 'private' });
     expect(r.changesDetail, '旧正文视为空串，与新正文不同 → 记一条变更').toEqual(['文章内容已更新']);
 
     const content = await prisma.blogContent.findUnique({ where: { blogId: 'orphan-blog' } });
@@ -690,7 +694,7 @@ describe('updateBlog / hasChanges 语义与落库', () => {
     // 这里钉住 service 层不设防，权限得由调用方兜。
     const u = await makeUser();
     const b = await makeBlog({ authorId: u.id, title: 'T', description: 'D', content: 'C', ignore: true });
-    const r = await updateBlog(b.id, { title: 'T2', description: 'D', content: 'C', categoryId: null });
+    const r = await updateBlog(b.id, { title: 'T2', description: 'D', content: 'C', categoryId: null, visibility: 'private' });
     expect(r.hasChanges).toBe(true);
   });
 });

@@ -38,7 +38,26 @@ import { nowForDb, dayStart, todayStr, hoursUntil } from './db-time';
 import { ymdhms, categoryFullPath } from './format';
 import { rateLimit, RULES } from './rate-limit';
 import { sendNotification } from './notification-service';
+import {
+  BLOG_VISIBILITIES,
+  EXTERNAL_VISIBILITIES,
+  INDEXABLE_VISIBILITIES,
+  VISIBILITY_LABEL,
+  parseVisibility,
+} from './blog-visibility';
+import type { BlogVisibility } from './blog-visibility';
 import type { Prisma } from '@prisma/client';
+
+// 服务端调用方（route / 页面 / 测试）从这里取就行。**客户端组件例外**：它们必须直接
+// import `./blog-visibility` —— 本模块拖着 prisma，值导出进不了客户端包。
+export {
+  BLOG_VISIBILITIES,
+  EXTERNAL_VISIBILITIES,
+  INDEXABLE_VISIBILITIES,
+  VISIBILITY_LABEL,
+  parseVisibility,
+} from './blog-visibility';
+export type { BlogVisibility } from './blog-visibility';
 
 export type BlogSort = 'created' | 'updated';
 
@@ -56,15 +75,11 @@ export function parseSortParam(raw: unknown): BlogSort {
   return raw === 'updated' ? 'updated' : 'created';
 }
 
-// ── 可见性词汇（不变量见文件头）───────────────────────────────────────────────
-
-export const BLOG_VISIBILITIES = ['private', 'link', 'public'] as const;
-export type BlogVisibility = (typeof BLOG_VISIBILITIES)[number];
-
-/** 拿到链接的任何人（含未登录访客）可读。 */
-export const EXTERNAL_VISIBILITIES = ['link', 'public'] as const;
-/** 可列举、可索引 —— 只有 public。link 读得到，但不进 sitemap。 */
-export const INDEXABLE_VISIBILITIES = ['public'] as const;
+// ── 可见性判定（词汇本身在 ./blog-visibility，不变量见文件头）──────────────────
+//
+// 词汇（三档的名字 / 白名单 / parseVisibility / 人话标签）住在 `./blog-visibility` ——
+// 那是个**零依赖**模块，因为发文表单是客户端组件，而本文件拖着 prisma、进不了客户端包。
+// 判定与闸门留在本文件。
 
 /**
  * 对外可见的 where 片段（link + public）。
@@ -95,21 +110,6 @@ export const INDEXABLE_BLOG_WHERE: Prisma.BlogWhereInput = Object.freeze({
 export interface BlogViewer {
   id: string;
   isCore: boolean;
-}
-
-/**
- * 解析提交上来的可见性。
- *
- * 缺省 → 'private'：旧客户端（不带这个字段的表单 / bot）不得改变任何文章的对外状态。
- * 显式传了非白名单值 → null，由调用方报 400。**不静默丢弃** —— 调用方把 `publish`
- * 拼成 `pulbic` 却拿到一份「看着正常、其实存了 private」的结果，是最难查的那类问题
- * （与 `/api/blogs` 的 search_fields 白名单同一个口径）。
- */
-export function parseVisibility(raw: unknown): BlogVisibility | null {
-  if (raw === undefined || raw === null || raw === '') return 'private';
-  return (BLOG_VISIBILITIES as readonly string[]).includes(raw as string)
-    ? (raw as BlogVisibility)
-    : null;
 }
 
 export interface ListParams {
@@ -563,7 +563,13 @@ export const BLOG_CONTENT_MAX = 250000; // 正文上限（放宽自 200000）
 export const BLOG_DAILY_LIMIT = 20; // 每日发文上限
 
 /** 发文 / 改文**唯一接受**的键。多一个都会被 400 顶回去，理由见 validateBlogData 里那段。 */
-export const BLOG_ACCEPTED_KEYS = ['title', 'description', 'content', 'category_id'] as const;
+export const BLOG_ACCEPTED_KEYS = [
+  'title',
+  'description',
+  'content',
+  'category_id',
+  'visibility',
+] as const;
 
 /**
  * 栏目字段的常见错写（一律小写比对，`categoryId` / `categoryID` 都能命中）。
@@ -587,6 +593,8 @@ export interface ValidatedBlogData {
   description: string;
   content: string;
   categoryId: number | null;
+  /** 对外可见性。缺省 'private' —— 旧客户端不带这个字段时**不得改变**任何文章的对外状态。 */
+  visibility: BlogVisibility;
 }
 
 export type ValidateBlogResult =
@@ -632,6 +640,15 @@ export async function validateBlogData(raw: unknown): Promise<ValidateBlogResult
   const description = (typeof data.description === 'string' ? data.description : '').trim();
   const content = typeof data.content === 'string' ? data.content : '';
 
+  // 可见性：缺省 private；非白名单值直接 400，**不静默丢弃**（同下面那批未知字段）
+  const visibility = parseVisibility(data.visibility);
+  if (visibility === null) {
+    return {
+      ok: false,
+      message: `可见性取值不合法，可选：${BLOG_VISIBILITIES.join(' / ')}`,
+    };
+  }
+
   if (!title) return { ok: false, message: '标题不能为空' };
   if (!description) return { ok: false, message: '描述不能为空' };
   if (!content) return { ok: false, message: '内容不能为空' };
@@ -656,7 +673,7 @@ export async function validateBlogData(raw: unknown): Promise<ValidateBlogResult
     categoryId = parsed;
   }
 
-  return { ok: true, data: { title, description, content, categoryId } };
+  return { ok: true, data: { title, description, content, categoryId, visibility } };
 }
 
 /**
@@ -832,6 +849,7 @@ export async function getBlogForEdit(blogId: string) {
       description: true,
       categoryId: true,
       authorId: true,
+      visibility: true,
       content: { select: { content: true } },
     },
   });
@@ -841,6 +859,11 @@ export async function getBlogForEdit(blogId: string) {
     title: blog.title,
     description: blog.description,
     categoryId: blog.categoryId,
+    // 归一化到白名单：列是 TEXT（SQLite 没有 enum），而编辑表单的下拉框必须有一个
+    // 对得上的选项 —— 给个白名单外的值会让 `defaultValue` 落空、浏览器默认选第一项，
+    // 于是「打开编辑页什么都不改、一保存就静默改了可见性」。唯一的写入口
+    // （validateBlogData）已经在白名单上，这里只是兜底。
+    visibility: parseVisibility(blog.visibility) ?? 'private',
     authorId: blog.authorId,
     contentMarkdown: blog.content?.content ?? '',
   };
@@ -862,6 +885,7 @@ export async function createBlog(authorId: string, data: ValidatedBlogData): Pro
         description: data.description,
         authorId,
         categoryId: data.categoryId,
+        visibility: data.visibility,
         createdAt: now,
       },
     }),
@@ -880,7 +904,13 @@ export async function updateBlog(
 ): Promise<{ hasChanges: boolean; changesDetail: string[] }> {
   const blog = await prisma.blog.findUnique({
     where: { id: blogId },
-    select: { title: true, description: true, categoryId: true, category: { select: { name: true } } },
+    select: {
+      title: true,
+      description: true,
+      categoryId: true,
+      visibility: true,
+      category: { select: { name: true } },
+    },
   });
   if (!blog) return { hasChanges: false, changesDetail: [] };
 
@@ -889,6 +919,17 @@ export async function updateBlog(
 
   if (blog.title !== data.title) {
     changesDetail.push(`标题从《${blog.title}》改为《${data.title}》`);
+    hasChanges = true;
+  }
+
+  // 可见性变化要单独记一条：它是**不可逆**的那类改动（一旦 public 被搜索引擎或第三方
+  // 存档抓走，改回 private 也收不回来），所以「文章已编辑」的通知里必须看得见它 ——
+  // 只记「内容已更新」会让作者与管理员都错过这条最要紧的变更。
+  if (blog.visibility !== data.visibility) {
+    changesDetail.push(
+      `可见性从《${VISIBILITY_LABEL[blog.visibility as BlogVisibility] ?? blog.visibility}》` +
+        `改为《${VISIBILITY_LABEL[data.visibility]}》`
+    );
     hasChanges = true;
   }
   if (blog.description !== data.description) {
@@ -926,7 +967,12 @@ export async function updateBlog(
   await prisma.$transaction([
     prisma.blog.update({
       where: { id: blogId },
-      data: { title: data.title, description: data.description, categoryId: data.categoryId },
+      data: {
+        title: data.title,
+        description: data.description,
+        categoryId: data.categoryId,
+        visibility: data.visibility,
+      },
     }),
     prisma.blogContent.upsert({
       where: { blogId },

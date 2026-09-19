@@ -158,9 +158,10 @@ model Blog {
   isFeatured    Boolean?  @default(false) @map("is_featured")
   // 对外可见性三档：'private'（仅站内 core+ —— 也就是本站一直以来的样子）/
   // 'link'（拿到链接的任何人可读，不列举、不索引）/ 'public'（可列举、可索引）。
-  // 取值白名单在 src/lib/blog-service.ts 的 BLOG_VISIBILITIES + parseVisibility：
+  // 取值白名单在 src/lib/blog-visibility.ts（BLOG_VISIBILITIES + parseVisibility）：
   // SQLite 没有 enum，Prisma 在 sqlite provider 上也不支持 enum，所以这里只能存
   // String，校验全在 TS 那一层（写入只有一个入口 validateBlogData）。
+  // 那个模块是零依赖的 —— 发文表单是客户端组件，而 blog-service 拖着 prisma 进不去。
   // ⚠️ 这一列只对**非 core 的查看者**生效：core+ 在博客域是全读的，他们不看这个值。
   visibility    String    @default("private")
 
