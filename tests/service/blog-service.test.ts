@@ -31,6 +31,18 @@ import {
   BLOG_DAILY_LIMIT,
   ALL_SEARCH_FIELDS,
 } from '@/lib/blog-service';
+import {
+  BLOG_VISIBILITIES,
+  EXTERNAL_VISIBILITIES,
+  EXTERNAL_VISIBLE_BLOG_WHERE,
+  INDEXABLE_BLOG_WHERE,
+  INDEXABLE_VISIBILITIES,
+  getBlogDetail,
+  getExternallyVisibleBlog,
+  listIndexableBlogs,
+  parseVisibility,
+} from '@/lib/blog-service';
+import { listAdminBlogs } from '@/lib/admin-blog-service';
 import { nowForDb } from '@/lib/db-time';
 import { RULES } from '@/lib/rate-limit';
 
@@ -1703,5 +1715,245 @@ describe('banActionMessage —— 剩余时间与库内时钟同口径', () => {
     const wrongHours = (banUntil.getTime() - Date.now()) / 3600000;
     expect(wrongHours, '错误算法：真实 UTC 与墙上时间相差 8 小时').toBeGreaterThan(8.99);
     expect(banActionMessage({ banUntil }), '正确算法').toContain('剩余约1.0小时');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 对外可见性（private / link / public）—— 第 1 期的判定收口
+//
+// 四条不变量在 src/lib/blog-service.ts 文件头，这里逐条钉住。最要紧的是
+// 「listBlogs 不看 visibility」那条：它是**钉现状**的用例 —— 站内列表返回全量是对的
+// （调用方都是 core+，而 core+ 在博客域是全读的），但哪天有人顺手给它加个过滤，
+// 它会立刻变红，逼他回去读那段「对外列表另起入口」的注释。
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('可见性 / 常量与解析', () => {
+  it('三个白名单数组钉死（加第四档时这三条会一起红，那正是要的）', () => {
+    expect([...BLOG_VISIBILITIES]).toEqual(['private', 'link', 'public']);
+    expect(
+      [...EXTERNAL_VISIBILITIES],
+      'link 也读得到 —— 它与 public 的差别在列举与索引'
+    ).toEqual(['link', 'public']);
+    expect([...INDEXABLE_VISIBILITIES], '只有 public 进 sitemap').toEqual(['public']);
+  });
+
+  it('对外 where 常量与白名单同源（不是各写一份）', () => {
+    expect(EXTERNAL_VISIBLE_BLOG_WHERE).toEqual({ visibility: { in: ['link', 'public'] } });
+    expect(INDEXABLE_BLOG_WHERE).toEqual({ visibility: { in: ['public'] } });
+  });
+
+  it('parseVisibility：缺省 private —— 旧客户端不带这个字段时不得改变对外状态', () => {
+    expect(parseVisibility(undefined)).toBe('private');
+    expect(parseVisibility(null)).toBe('private');
+    expect(parseVisibility('')).toBe('private');
+  });
+
+  it('parseVisibility：白名单内的原样返回', () => {
+    for (const v of BLOG_VISIBILITIES) expect(parseVisibility(v)).toBe(v);
+  });
+
+  it('parseVisibility：非白名单值返回 null（调用方报 400，**不静默丢弃**）', () => {
+    // 'pulbic' 这种拼错若被静默当成 private，调用方会拿到一份「看着正常」的结果
+    for (const bad of ['pulbic', 'PUBLIC', 'Public', 'unlisted', 3, {}, []]) {
+      expect(parseVisibility(bad), `${JSON.stringify(bad)} 不该被接受`).toBeNull();
+    }
+  });
+});
+
+/** 造三档各一篇，返回 id 映射。 */
+async function seedThreeVisibilities() {
+  const author = await makeUser({ role: 'core' });
+  const ids: Record<string, string> = {};
+  for (const v of BLOG_VISIBILITIES) {
+    const b = await makeBlog({ authorId: author.id, title: `v-${v}` });
+    await prisma.blog.update({ where: { id: b.id }, data: { visibility: v } });
+    ids[v] = b.id;
+  }
+  return { author, ids };
+}
+
+describe('可见性 / getBlogDetail 的查看者矩阵', () => {
+  beforeEach(async () => {
+    await resetDb();
+  });
+
+  it('游客（viewer=null）：只有 link / public 读得到，private 是 null', async () => {
+    const { ids } = await seedThreeVisibilities();
+    expect(await getBlogDetail(ids.private, null)).toBeNull();
+    expect((await getBlogDetail(ids.link, null))?.id).toBe(ids.link);
+    expect((await getBlogDetail(ids.public, null))?.id).toBe(ids.public);
+  });
+
+  it('已登录但非 core：与游客**完全一致**（不该出现「匿名 200、登录的 role=user 403」）', async () => {
+    const { ids } = await seedThreeVisibilities();
+    const plain = { id: 'u-plain', isCore: false };
+    expect(await getBlogDetail(ids.private, plain)).toBeNull();
+    expect((await getBlogDetail(ids.link, plain))?.id).toBe(ids.link);
+    expect((await getBlogDetail(ids.public, plain))?.id).toBe(ids.public);
+  });
+
+  it('core+：三档全读得到 —— 这一列对 core 不生效', async () => {
+    const { ids } = await seedThreeVisibilities();
+    const core = { id: 'u-core', isCore: true };
+    for (const v of BLOG_VISIBILITIES) {
+      expect((await getBlogDetail(ids[v], core))?.id, `${v} 档 core 必须读得到`).toBe(ids[v]);
+    }
+  });
+
+  it('返回行里带着 visibility（页面要靠它决定 robots 与 OG）', async () => {
+    const { ids } = await seedThreeVisibilities();
+    expect((await getBlogDetail(ids.public, null))?.visibility).toBe('public');
+  });
+
+  it('软删（ignore=true）对谁都读不到，与档位无关', async () => {
+    const { ids } = await seedThreeVisibilities();
+    await prisma.blog.update({ where: { id: ids.public }, data: { ignore: true } });
+    expect(await getBlogDetail(ids.public, null)).toBeNull();
+    expect(await getBlogDetail(ids.public, { id: 'u-core', isCore: true })).toBeNull();
+  });
+});
+
+describe('可见性 / 对外出口', () => {
+  beforeEach(async () => {
+    await resetDb();
+  });
+
+  it('getExternallyVisibleBlog：link / public 拿得到；private / 不存在 / 软删都是 null（三者同形）', async () => {
+    const author = await makeUser({ role: 'core' });
+    const mk = async (v: string) => {
+      const b = await makeBlog({ authorId: author.id });
+      await prisma.blog.update({ where: { id: b.id }, data: { visibility: v } });
+      return b.id;
+    };
+    const priv = await mk('private');
+    const link = await mk('link');
+    const pub = await mk('public');
+    const gone = await mk('public');
+    await prisma.blog.update({ where: { id: gone }, data: { ignore: true } });
+
+    expect(await getExternallyVisibleBlog(priv)).toBeNull();
+    expect(await getExternallyVisibleBlog('no-such-id')).toBeNull();
+    expect(await getExternallyVisibleBlog(gone)).toBeNull();
+    expect((await getExternallyVisibleBlog(link))?.id).toBe(link);
+    expect((await getExternallyVisibleBlog(pub))?.id).toBe(pub);
+  });
+
+  it('listIndexableBlogs：**只**出 public —— link 读得到但不许被列举', async () => {
+    const author = await makeUser({ role: 'core' });
+    const mk = async (v: string, ignore = false) => {
+      const b = await makeBlog({ authorId: author.id });
+      await prisma.blog.update({ where: { id: b.id }, data: { visibility: v, ignore } });
+      return b.id;
+    };
+    const priv = await mk('private');
+    const link = await mk('link');
+    const pub = await mk('public');
+    const deleted = await mk('public', true);
+
+    const rows = await listIndexableBlogs();
+    const ids = rows.map((r) => r.id);
+    expect(ids).toContain(pub);
+    expect(ids, 'link 不该被列举').not.toContain(link);
+    expect(ids, 'private 不该被列举').not.toContain(priv);
+    expect(ids, '软删的不该被列举').not.toContain(deleted);
+    // lastModified 取正文的 updatedAt（没有正文行时回落 createdAt）
+    expect(rows.find((r) => r.id === pub)?.updatedAt).toBeInstanceOf(Date);
+  });
+});
+
+describe('可见性 / listBlogs 是站内列表，**不看** visibility（钉现状）', () => {
+  it('存在 private 文章时，listBlogs 照旧返回它', async () => {
+    await resetDb();
+    const author = await makeUser({ role: 'core' });
+    const b = await makeBlog({ authorId: author.id, title: '私密文章' });
+    await prisma.blog.update({ where: { id: b.id }, data: { visibility: 'private' } });
+
+    // 这是**刻意的现状**：listBlogs 的两个调用方（/blog 页面、GET /api/blogs）都是
+    // core+ 档，而 core+ 在博客域是全读的 —— 可见性在这里没有意义。
+    //
+    // 谁哪天顺手给它加了 visibility 过滤，这条会立刻变红。那不是「修好了」，
+    // 是把站内列表改瞎了：core+ 从此在自己站里看不到自己的私密文章。
+    // 对外列表要**另起入口**，并 AND 上 EXTERNAL_VISIBLE_BLOG_WHERE。
+    const { blogs } = await listBlogs({ page: 1, perPage: 50 });
+    expect(blogs.map((x) => x.id), 'listBlogs 返回全量，私密文章也在内').toContain(b.id);
+  });
+});
+
+describe('可见性 / 写路径落库与变更明细', () => {
+  beforeEach(async () => {
+    await resetDb();
+  });
+
+  it('createBlog 落 visibility', async () => {
+    const u = await makeUser({ role: 'core' });
+    const id = await createBlog(u.id, {
+      title: 'T',
+      description: 'D',
+      content: 'C',
+      categoryId: null,
+      visibility: 'public',
+    });
+    const row = await prisma.blog.findUnique({ where: { id }, select: { visibility: true } });
+    expect(row?.visibility).toBe('public');
+  });
+
+  it('updateBlog 改 visibility 时单独记一条变更（它是**不可逆**的那类改动）', async () => {
+    const u = await makeUser({ role: 'core' });
+    const b = await makeBlog({ authorId: u.id, title: 'T', description: 'D', content: 'C' });
+
+    const r = await updateBlog(b.id, {
+      title: 'T',
+      description: 'D',
+      content: 'C',
+      categoryId: null,
+      visibility: 'public',
+    });
+    expect(r.hasChanges).toBe(true);
+    // 人话短语，不是 'private' / 'public' 这种机器值
+    expect(r.changesDetail).toContain('可见性从《仅站内可见》改为《对外公开》');
+
+    const after = await prisma.blog.findUnique({
+      where: { id: b.id },
+      select: { visibility: true },
+    });
+    expect(after?.visibility).toBe('public');
+  });
+
+  it('visibility 没变时不记变更（不产生噪音）', async () => {
+    const u = await makeUser({ role: 'core' });
+    const b = await makeBlog({ authorId: u.id, title: 'T', description: 'D', content: 'C' });
+    const r = await updateBlog(b.id, {
+      title: 'T',
+      description: 'D',
+      content: 'C',
+      categoryId: null,
+      visibility: 'private',
+    });
+    expect(r.hasChanges).toBe(false);
+    expect(r.changesDetail).toEqual([]);
+  });
+
+  it('未显式给 visibility 的文章是 private —— 存量绝不被误公开', async () => {
+    await resetDb();
+    const u = await makeUser({ role: 'core' });
+    // makeBlog 不传 visibility，走 schema 默认 —— 老行迁移后就是这个值
+    const b = await makeBlog({ authorId: u.id });
+    const row = await prisma.blog.findUnique({ where: { id: b.id }, select: { visibility: true } });
+    expect(row?.visibility, 'DEFAULT 就是存量迁移本身').toBe('private');
+  });
+});
+
+describe('可见性 / 管理端是结构性豁免，不需要 if (isAdmin)', () => {
+  it('listAdminBlogs 必须能列出 private 文章', async () => {
+    await resetDb();
+    const u = await makeUser({ role: 'core' });
+    const b = await makeBlog({ authorId: u.id, title: '私密文章' });
+    await prisma.blog.update({ where: { id: b.id }, data: { visibility: 'private' } });
+
+    // 管理后台从不调用被可见性过滤的出口，所以「管理员能看见全部」是**结构性**的
+    // —— 服务层里没有、也不该有 `if (isAdmin)` 分支。
+    // 这条用例防的是「统一一下 listBlogs」式重构顺手把后台改瞎。
+    const res = await listAdminBlogs({ page: 1, perPage: 50, status: 'all' });
+    expect(res.blogs.map((x) => x.id), '后台必须看得见私密文章').toContain(b.id);
   });
 });

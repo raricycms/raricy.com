@@ -41,8 +41,10 @@ vi.mock('next/headers', () => ({
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { resetDb, makeUser } from '../helpers/db';
+import { resetDb, makeUser, makeBlog, prisma } from '../helpers/db';
 import { createSessionToken } from '@/lib/session';
+import { BLOG_VISIBILITIES } from '@/lib/blog-service';
+import { GET as blogOgImage } from '@/app/api/og/blog/[id]/route';
 
 import { GET as listBlogs, POST as createBlog } from '@/app/api/blogs/route';
 import { GET as getBlog, PUT as updateBlog, DELETE as deleteBlog } from '@/app/api/blogs/[id]/route';
@@ -188,6 +190,79 @@ describe('博客 / 评论 / 表情的档位（14 个 core+ handler）', () => {
       expect(await isGuardRejection(res), 'core 不该被档位挡住').toBe(false);
     });
   }
+});
+
+// ── 本域之外、但同属博客的对外读口 ────────────────────────────────────────────
+//
+// 【为什么不放进上面的 DOMAIN_DIRS】「每篇可选对外公开」带来的匿名读口是
+// `GET /api/og/blog/:id`（社交卡片 PNG），它在 `src/app/api/og/` 下。上面那 14 条是
+// **一律 core+**，混进一条方向相反的会让那组三连断言失去意义 —— 所以它单列在这里。
+// 这也正是 OG 路由**刻意不放在** `/api/blogs/[id]/og/` 的原因。
+//
+// 【它的判据与别处不同】没有会话档位，只有 **per-object 可见性**：任何人可请求，
+// 但只对 link / public 的文章返回 200。而「不存在」「已软删」「private」三者
+// **必须完全同形**（404 且响应体逐字相同）—— 差一个字就是个存在性探针：
+// 拿一批 id 挨个试，能筛出哪些是真实文章。
+
+/** 造一篇指定可见性的文章。 */
+async function seedBlogWith(visibility: string | null, ignore = false): Promise<string> {
+  const author = await makeUser({ role: 'core' });
+  const b = await makeBlog({ authorId: author.id, title: 'OG 卡片标题' });
+  await prisma.blog.update({
+    where: { id: b.id },
+    data: { ...(visibility ? { visibility } : {}), ignore },
+  });
+  return b.id;
+}
+
+describe('对外读口：GET /api/og/blog/:id（分享卡片）', () => {
+  it('public：匿名 200，是 PNG，且 X-Robots-Tag 为 all、可缓存', async () => {
+    const id = await seedBlogWith('public');
+    const res = await blogOgImage(url('/x'), ctx(id));
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('image/png');
+    expect(res.headers.get('x-robots-tag'), 'public 档的卡片可索引').toBe('all');
+    expect(res.headers.get('cache-control'), 'OG 图要可缓存（与画报的 no-store 相反）').toContain(
+      'public'
+    );
+    // 真的渲染出了一张图（不是空 body）
+    expect((await res.arrayBuffer()).byteLength).toBeGreaterThan(1000);
+  });
+
+  it('link：匿名 200，但 X-Robots-Tag 为 noindex（读得到 ≠ 该被索引）', async () => {
+    const id = await seedBlogWith('link');
+    const res = await blogOgImage(url('/x'), ctx(id));
+    expect(res.status).toBe(200);
+    expect(res.headers.get('x-robots-tag'), 'link 档的卡片不许被索引').toBe('noindex');
+  });
+
+  it('private / 软删 / 不存在：三者 404 且响应体**逐字相同**（不确认存在性）', async () => {
+    const priv = await seedBlogWith('private');
+    const gone = await seedBlogWith('public', true);
+
+    const res = await Promise.all(
+      [priv, gone, 'no-such-blog-id'].map((id) => blogOgImage(url('/x'), ctx(id)))
+    );
+    for (const r of res) {
+      expect(r.status).toBe(404);
+      expect(r.headers.get('cache-control'), '404 不该被缓存').toBe('no-store');
+    }
+    const bodies = await Promise.all(res.map((r) => r.text()));
+    expect(bodies[1], '「已软删」与「不存在」必须同形').toBe(bodies[2]);
+    expect(bodies[0], '「private」与「不存在」必须同形').toBe(bodies[2]);
+    expect(bodies[0], '不确认存在性：响应里不该带标题').not.toContain('OG 卡片标题');
+  });
+
+  it('三档走同一个出口取数 —— 少一档都不会有人发现，所以三档都要点名', async () => {
+    // 这条不是重复劳动：它把「判定走的是 EXTERNAL_VISIBILITIES 白名单」这件事
+    // 摊在三档上。加第四档时，若有人忘了决定它算不算对外可见，这里会逼他想一次。
+    for (const v of BLOG_VISIBILITIES) {
+      const id = await seedBlogWith(v);
+      const res = await blogOgImage(url('/x'), ctx(id));
+      const shouldRead = v === 'link' || v === 'public';
+      expect(res.status, `${v} 档应${shouldRead ? '' : '不'}可读`).toBe(shouldRead ? 200 : 404);
+    }
+  });
 });
 
 // ── 这一域唯一的刻意例外 ──────────────────────────────────────────────────────
