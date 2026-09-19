@@ -440,6 +440,8 @@ const body = await res.json();
 console.log(body.code, body.message, body.blog_id);
 ```
 
-> 📌 文档集里的三份机器人文档（`chat-bot.md`、`comment-bot.md`、`favorite-bot.md`）
-> 加上本文，覆盖讨论 / 评论 / 收藏夹 / 发文四个方向；账号准备、鉴权、时间戳三件事
-> 四份说的是同一套。
+> 📌 文档集里的机器人文档（`chat-bot.md`、`comment-bot.md`、`vote-bot.md`、
+> `checkin-bot.md`、`like-feed-bot.md`、`image-bot.md`、`clipboard-bot.md`、
+> `account-bot.md`、`favorite-bot.md`）加上本文，覆盖讨论 / 评论 / 投票 / 签到 /
+> 点赞投喂 / 图床 / 剪贴板 / 账号通知 / 收藏夹 / 发文十个方向；
+> 账号准备、鉴权、时间戳三件事各份说的是同一套。
