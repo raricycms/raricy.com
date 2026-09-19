@@ -1,0 +1,151 @@
+@use '../abstracts/variables' as *;
+@use '../abstracts/mixins' as m;
+
+// ═══════════════════════════════════════════════════════
+//  鱼干接口（/fish/api）—— 机器人接入的自助配置
+//
+//  卡片外壳沿用 _fish-market.scss 的 market-card / market-field / market-submit
+//  （同一套视觉语言，不另起一套 —— frontend-styles §11.1）。本文件只补
+//  「一行一张凭据」这类 market-* 没有的形状，类块前缀 fish-api-*。
+//
+//  ⚠️ 变量名全部核对过 base/_root.scss —— 这套令牌**没有** --color-bg-* 一族
+//     （历史上 --color-bg-primary 就是个静默失效的幽灵变量）。底色用
+//     --color-background-{page,card,subtle}，语义色用 --color-{success,warning,info}-{primary,secondary}。
+//     另注：--color-warning-* 在这套令牌里**是红色**（见 _root.scss 的注释），
+//     所以「危险 / 错误」用它是对的，别去找 --color-danger-*（那是 Fluent 别名 --fd-danger）。
+// ═══════════════════════════════════════════════════════
+
+.fish-api-section {
+  margin-top: $space-6;
+}
+
+.fish-api-list {
+  display: flex;
+  flex-direction: column;
+  gap: $space-2;
+  margin-top: $space-3;
+}
+
+.fish-api-row {
+  display: flex;
+  align-items: center;
+  gap: $space-3;
+  padding: $space-3 $space-4;
+  border-radius: 16px;
+  background: var(--color-background-subtle);
+}
+
+.fish-api-row__main {
+  flex: 1;
+  min-width: 0;
+}
+
+.fish-api-row__head {
+  display: flex;
+  align-items: center;
+  gap: $space-2;
+  flex-wrap: wrap;
+}
+
+.fish-api-row__label {
+  font-weight: 600;
+  color: var(--color-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fish-api-row__meta {
+  margin-top: 4px;
+  font-size: 0.8rem;
+  line-height: 1.6;
+  color: var(--color-text-secondary);
+}
+
+.fish-api-row__actions {
+  flex-shrink: 0;
+}
+
+.fish-api-revoke {
+  @include m.btn-secondary;
+  padding: $space-1 $space-3;
+  font-size: 0.8rem;
+}
+
+// 「有效 / 已吊销 / 已过期」—— 表达状态用**淡底 + 同色字**，
+// 不画左侧竖条（frontend-styles §11 第 8 条：容器已是大圆角，边上压竖条会切掉弧线）。
+// 那两对 -secondary 令牌本身就是半透明底，直接当底色用。
+.fish-api-badge {
+  flex-shrink: 0;
+  padding: 2px $space-2;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  background: var(--color-info-secondary);
+  color: var(--color-text-secondary);
+}
+
+.fish-api-badge--ok {
+  background: var(--color-success-secondary);
+  color: var(--color-success-primary);
+}
+
+.fish-api-badge--off {
+  background: var(--color-warning-secondary);
+  color: var(--color-warning-primary);
+}
+
+.fish-api-empty {
+  margin-top: $space-3;
+  padding: $space-4;
+  border-radius: 16px;
+  background: var(--color-background-subtle);
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  text-align: center;
+}
+
+// 签发成功后的**一次性**明文面板。存在感要强：这一段没复制走就再也拿不到了。
+.fish-api-secret {
+  margin-top: $space-3;
+  padding: $space-4;
+  border-radius: 16px;
+  background: var(--color-warning-secondary);
+}
+
+.fish-api-secret__warn {
+  margin: 0 0 $space-2;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-warning-primary);
+}
+
+.fish-api-secret__value {
+  display: block;
+  padding: $space-2 $space-3;
+  border-radius: 8px;
+  background: var(--color-background-card);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8125rem;
+  color: var(--color-text-primary);
+  word-break: break-all;
+  user-select: all;
+}
+
+.fish-api-secret__actions {
+  display: flex;
+  gap: $space-2;
+  margin-top: $space-3;
+}
+
+.fish-api-secret__dismiss {
+  @include m.btn-secondary;
+  padding: $space-2 $space-4;
+  font-size: 0.875rem;
+}
+
+.fish-api-copy {
+  @include m.btn-primary;
+  padding: $space-2 $space-4;
+  font-size: 0.875rem;
+}

@@ -312,6 +312,13 @@ npm run cli -- blog restore 2b7ec270-be9c-4283-b1a2 --reason "作者申诉，误
 | `fish compensate <amount> [--rate 5] [--batch-id ID] [--dry-run]` | **给全部 core+ 群发补偿**（逐人原子） |
 | `fish pending` | 列出账本里未同步的账目 |
 | `fish sync-retry` | 重放 pending / failed 的远端同步 |
+| `fish credential-list <username>` | 列出某用户的鱼干只读凭据（不含明文与哈希） |
+| `fish credential-revoke <id>` | 吊销一张只读凭据（立即失效，幂等） |
+
+**关于只读凭据**：站外机器人 / 银行用它查余额与流水（`Authorization: Bearer`），
+**查不了钱也动不了钱**，可单独吊销，改密码不会作废它。凭据由**用户自己在站内签发**
+（`/fish/api`，签发要再输一次密码），CLI 这两条是运维侧的口子 —— 只在用户不配合、
+或凭据泄露但联系不上本人时用。凭据不物理删除，只标记 `revokedAt`。
 
 `amount` 是正整数，单位是**整个小鱼干**。写路径 fail-closed：远端账户服务失败 →
 本地写入被补偿事务精确撤销（对用户等价于回滚）→ **退出码 2**。绝不静默成功。

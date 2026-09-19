@@ -61,6 +61,8 @@ export const LEGACY_COMMANDS: string[] = [
   'fish deduct',
   'fish balance',
   'fish sync-retry',
+  'fish credential-list',
+  'fish credential-revoke',
   'oauth create-app',
   'oauth list-apps',
   'oauth disable-app',

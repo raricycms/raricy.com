@@ -247,6 +247,17 @@ export const RULES = {
   fishApiPerUser: { limit: 20, windowMs: 60 * 1000 },
   fishApiPerIp: { limit: 120, windowMs: 60 * 1000 },
   /**
+   * 鱼干市场的**只读凭据**（`Authorization: Bearer`）。
+   * **不跑 scrypt**，所以上面那两条 CPU 闸门一概不适用 —— 那两条的判据是
+   * 「这次请求烧了一次密码哈希」，这里没有烧。给 20/分反而是无谓的掣肘：
+   * 对账机器人正常就是几分钟一轮，但补历史时的突发拉取不该被卡死。
+   * 但读也不能无限：这条挡的是持有者自己写了个死循环。
+   * 桶键：fish-token:{用户 id} / fish-token:ip:{IP} —— 前缀自带，**别复用 fish-api:**
+   *（rule 不参与分桶，共用前缀会让两条路互相吃额度）。
+   */
+  fishTokenPerUser: { limit: 120, windowMs: 60 * 1000 },
+  fishTokenPerIp: { limit: 600, windowMs: 60 * 1000 },
+  /**
    * 画报 / 收款码的 PNG 生成。一次请求 = 一次 sharp 光栅化（1500×2480，几十毫秒 CPU），
    * 不封顶就能被拿来烤 CPU。桶键：poster:{用户 id}。
    * 预览与下载各算一次，30/分对正常使用绰绰有余。

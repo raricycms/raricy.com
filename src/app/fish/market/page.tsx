@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { ReceiptText } from 'lucide-react';
+import { Bot, ReceiptText } from 'lucide-react';
 import { getCurrentUser } from '@/lib/auth';
 import { loginUrlWithNext } from '@/lib/safe-url';
 import { getBalance } from '@/lib/fish-service';
@@ -29,6 +29,14 @@ export default async function FishMarketPage() {
       <p className="market-foot">
         <Link className="market-foot__link" href="/fish/transactions?type=transfer_all">
           <ReceiptText aria-hidden="true" /> 查看转账记录
+        </Link>
+      </p>
+
+      {/* 入口放这里而不是 /fish 的行动条：那一行被 fish-layout.spec.ts 钉死为 3 颗，
+          且三颗必须同行 —— 加第四颗会把它挤到第二行（那正是该用例存在的理由）。 */}
+      <p className="market-foot">
+        <Link className="market-foot__link" href="/fish/api">
+          <Bot aria-hidden="true" /> 接口 / 机器人接入
         </Link>
       </p>
     </div>

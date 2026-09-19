@@ -20,7 +20,8 @@ export async function POST(req: Request) {
     return apiErr(400, '请求体格式错误');
   }
 
-  const actor = await requireMarketActor(req, body);
+  // 读接口：放行只读凭据（Bearer）。转账 / 收银台一律不传这个开关。
+  const actor = await requireMarketActor(req, body, { allowReadToken: true });
   if (actor instanceof Response) return actor;
 
   const balance = await getBalance(actor.id);

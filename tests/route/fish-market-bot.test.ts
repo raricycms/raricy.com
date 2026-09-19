@@ -32,6 +32,12 @@ import { POST as transfer } from '@/app/api/fish/market/transfer/route';
 import { POST as balanceApi } from '@/app/api/fish/market/balance/route';
 import { POST as transactionsApi } from '@/app/api/fish/market/transactions/route';
 import { POST as pay } from '@/app/api/fish/market/pay/route';
+import { GET as usersApi } from '@/app/api/fish/market/users/route';
+import {
+  mintFishToken,
+  revokeFishToken,
+} from '@/lib/fish-token-service';
+import { nowForDb } from '@/lib/db-time';
 
 const PASSWORD = 'bot-Password-123';
 
@@ -391,6 +397,134 @@ describe('POST /api/fish/market/balance', () => {
 
     expect(res.status).toBe(200);
     expect((await res.json()).balance).toBe(3);
+  });
+});
+
+describe('只读凭据（Authorization: Bearer）—— 第三道门', () => {
+  /** 造一个持有效只读凭据的用户。 */
+  async function withToken(opts: { driedFish?: number; isBanned?: boolean } = {}) {
+    const user = await makeLoginableUser(opts);
+    const minted = await mintFishToken(user.id, '对账机器人');
+    return { user, token: minted.token, id: minted.id };
+  }
+  const bearer = (t: string) => ({ authorization: `Bearer ${t}` });
+
+  it('★ 只读凭据能查余额（不跑 scrypt、不要密码）', async () => {
+    const { user, token } = await withToken({ driedFish: 12.5 });
+
+    const res = await balanceApi(makeReq('/api/fish/market/balance', {}, bearer(token)));
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      user_id: user.id,
+      username: user.username,
+      balance: 12.5,
+    });
+  });
+
+  it('只读凭据能查流水', async () => {
+    const { token } = await withToken();
+    const res = await transactionsApi(makeReq('/api/fish/market/transactions', {}, bearer(token)));
+    expect(res.status).toBe(200);
+    expect((await res.json()).mode).toBe('page');
+  });
+
+  it('★ 只读凭据**不能转账** → 403，且零写入', async () => {
+    const { user, token } = await withToken({ driedFish: 100 });
+    const recipient = await makeUser({ driedFish: 0 });
+
+    const res = await transferReq(
+      { to_username: recipient.username, amount: 1 },
+      bearer(token)
+    );
+
+    expect(res.status, '不能含糊地 401，要说清是权限不够').toBe(403);
+    expect((await res.json()).message).toContain('只能读取');
+    expect(await balanceOf(user.id), '钱一分不动').toBe(100);
+    expect(await prisma.fishTransaction.count()).toBe(0);
+  });
+
+  it('★ 已吊销的凭据 → 401（吊销必须立即生效）', async () => {
+    const { user, token, id } = await withToken();
+    await revokeFishToken(user.id, id);
+
+    const res = await balanceApi(makeReq('/api/fish/market/balance', {}, bearer(token)));
+    expect(res.status).toBe(401);
+  });
+
+  it('已过期的凭据 → 401', async () => {
+    const { user, token } = await withToken();
+    await prisma.fishApiToken.updateMany({
+      where: { userId: user.id },
+      data: { expiresAt: new Date(nowForDb().getTime() - 1000) },
+    });
+
+    const res = await balanceApi(makeReq('/api/fish/market/balance', {}, bearer(token)));
+    expect(res.status).toBe(401);
+  });
+
+  it('★ 持有者被禁言 → 403（凭据不是会话，不走 sessionVersion，必须实时拦）', async () => {
+    const { user, token } = await withToken();
+    // 禁言：这是站长处理失控机器人的唯一手段，凭据路径绝不能绕过它
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { isBanned: true, banUntil: null },
+    });
+
+    const res = await balanceApi(makeReq('/api/fish/market/balance', {}, bearer(token)));
+    expect(res.status).toBe(403);
+  });
+
+  it('伪造 / 拼错的令牌 → 401', async () => {
+    await makeLoginableUser();
+    for (const bad of ['garbage', 'Bearer', '']) {
+      const res = await balanceApi(
+        makeReq('/api/fish/market/balance', {}, { authorization: bad ? `Bearer ${bad}` : '' })
+      );
+      expect(res.status, `不该放行: ${bad}`).toBe(401);
+    }
+  });
+
+  it('★ 凭据路径**不占用** fish-api 那条 CPU 配额（它没跑 scrypt）', async () => {
+    const { user, token } = await withToken();
+    const key = `fish-api:${user.username.toLowerCase()}`;
+
+    // 打满远超 20 次/分（那条是 scrypt 的 CPU 闸门，与凭据无关）
+    for (let i = 0; i < RULES.fishApiPerUser.limit + 5; i++) {
+      const res = await balanceApi(makeReq('/api/fish/market/balance', {}, bearer(token)));
+      expect(res.status).toBe(200);
+    }
+    expect(isRateLimited(key, RULES.fishApiPerUser), '凭据不该吃 scrypt 的额度').toBe(false);
+  });
+
+  it('凭据自己有配额：超过 fishTokenPerUser → 429', async () => {
+    const { user, token } = await withToken();
+    for (let i = 0; i < RULES.fishTokenPerUser.limit; i++) {
+      expect((await balanceApi(makeReq('/api/fish/market/balance', {}, bearer(token)))).status).toBe(
+        200
+      );
+    }
+    const res = await balanceApi(makeReq('/api/fish/market/balance', {}, bearer(token)));
+    expect(res.status).toBe(429);
+    expect(user.id).toBeTruthy();
+  });
+
+  it('大小写不敏感的 Bearer（RFC 7235：scheme 不敏感）', async () => {
+    const { token } = await withToken();
+    const res = await balanceApi(
+      makeReq('/api/fish/market/balance', {}, { authorization: `bearer ${token}` })
+    );
+    expect(res.status).toBe(200);
+  });
+
+  it('★ 用户搜索名录不认凭据（否则等于给站外机器人开了个用户名枚举口）', async () => {
+    const { token } = await withToken();
+    const res = await usersApi(
+      new Request('http://localhost/api/fish/market/users?q=a', {
+        headers: { authorization: `Bearer ${token}` },
+      })
+    );
+    expect(res.status).toBe(401);
   });
 });
 

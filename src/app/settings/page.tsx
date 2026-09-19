@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import OAuthConnectionsList from './OAuthConnectionsList';
 
@@ -398,6 +399,20 @@ export default function SettingsPage() {
             setTimeout(() => setOauthAlert(null), 3000);
           }}
         />
+      </div>
+
+      {/* ====== Section 5: 鱼干接口（机器人接入） ====== */}
+      <div className="settings-card">
+        <div className="settings-card__header">
+          <span className="icon icon-fish"></span>
+          <h2 className="settings-card__title">鱼干接口</h2>
+        </div>
+        <p className="settings-card__desc">
+          给站外机器人 / 银行签发只读凭据：只能查余额与流水，不能转账，可单独吊销。
+        </p>
+        <Link href="/fish/api" className="settings-btn">
+          管理鱼干接口凭据
+        </Link>
       </div>
     </div>
   );

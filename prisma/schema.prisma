@@ -101,6 +101,7 @@ model User {
   oauthTokens           OAuthAccessToken[]
   chatMembers           ChatMember[]            @relation("ChatMemberUser")
   chatMessages          ChatMessage[]           @relation("ChatMessageAuthor")
+  fishApiTokens         FishApiToken[]
   @@index([id], map: "ix_users_id")
   @@index([role], map: "ix_users_role")
 
@@ -490,6 +491,33 @@ model FishTransaction {
   @@index([createdAt], map: "ix_fish_transactions_created_at")
 
   @@map("fish_transactions")
+}
+
+// ── 鱼干只读凭据（站外机器人 / 银行） ─────────────────────────────────────────
+//
+// 能查余额与流水，**不能转账**（见 prisma/migrations/15_fish_api_tokens 头部）。
+// 与 oauth_access_tokens 形状同源但刻意分表，理由在那个迁移的头部。
+// 明文只在签发那一次返回，库里只存 sha256；到期时间必填（本表不提供永不过期）。
+
+model FishApiToken {
+  id         Int       @id @default(autoincrement())
+  tokenHash  String    @unique(map: "fish_api_tokens_token_hash_key") @map("token_hash")
+  userId     String    @map("user_id")
+  // 给用户自己认哪张凭据用（「对账机器人」「提现脚本」）。纯展示，不参与鉴权。
+  label      String?
+  // 空格分隔，跟 oauth_access_tokens 同款（SQLite 没有 enum 也没有数组）。
+  // 当前只发 'read' —— 别加 write/transfer，理由见迁移头部。
+  scopes     String    @default("read")
+  expiresAt  DateTime  @map("expires_at")
+  revokedAt  DateTime? @map("revoked_at")
+  lastUsedAt DateTime? @map("last_used_at")
+  createdAt  DateTime? @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+  @@index([userId], map: "ix_fish_api_tokens_user_id")
+  @@index([expiresAt], map: "ix_fish_api_tokens_expires_at")
+
+  @@map("fish_api_tokens")
 }
 
 // ── 管理审计 ─────────────────────────────────────────────────────────────────

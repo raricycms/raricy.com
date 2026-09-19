@@ -132,6 +132,13 @@
   padding: 8px 24px;
   font-size: 0.9rem;
   font-weight: 500;
+  // 这个类也用在 <a> 上（卡片里的跳转入口）。锚点默认带下划线，而按钮档的 mixin
+  // 只给外观不给 text-decoration —— 不显式关掉就会得到一个「带下划线的按钮」。
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: none;
+  }
 
   &:disabled {
     opacity: 0.6;

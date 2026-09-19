@@ -82,6 +82,8 @@ export async function resetDb() {
     // OAuth 三表引用 users / oauth_applications —— 必须排在它们前面删，
     // 否则 DELETE users 撞外键（被下面的 catch 吞掉，表现为刷屏的 FK 报错）
     'oauth_access_tokens', 'oauth_authorization_codes', 'oauth_applications',
+    // 鱼干只读凭据引用 users —— 同样必须先于 users 删
+    'fish_api_tokens',
     'users',
     'account_sync_ledger',
   ];

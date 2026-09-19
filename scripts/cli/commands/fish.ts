@@ -424,4 +424,136 @@ export const fishCommands: CommandSpec[] = [
       };
     },
   },
+
+  {
+    name: 'fish credential-list',
+    summary: '列出某用户的鱼干只读凭据',
+    group: 'fish',
+    order: 6,
+    readOnly: true,
+    args: [usernameArg],
+    details: [
+      '鱼干只读凭据只能查余额与流水、不能转账，可单独吊销（见 src/lib/fish-token-service.ts）。',
+      '输出里**不含明文也不含哈希** —— 明文只在用户自助签发的那一次显示过，取不回来。',
+      '要失效某一张用 `fish credential-revoke <id>`，id 就是这里的第一列。',
+    ].join('\n'),
+    async run(ctx) {
+      const user = await ctx.prisma.user.findUnique({
+        where: { username: String(ctx.args.username) },
+        select: { id: true, username: true },
+      });
+      if (!user) throw new CliError(`错误：用户 ${ctx.args.username} 不存在`);
+
+      const rows = await ctx.prisma.fishApiToken.findMany({
+        where: { userId: user.id },
+        orderBy: { id: 'desc' },
+        select: {
+          id: true,
+          label: true,
+          scopes: true,
+          createdAt: true,
+          expiresAt: true,
+          lastUsedAt: true,
+          revokedAt: true,
+        },
+      });
+
+      // 时间一律走 format 的 ymdhms（读 UTC getter）—— 本库时间戳是
+      // 「UTC+8 墙上时间贴 Z」，本地 getter 会按服务器时区平移（cli-guards 静态盯着）。
+      const now = Date.now();
+      const lines = renderTable(
+        [
+          { key: 'id', title: 'ID', align: 'right' },
+          { key: 'label', title: '备注', maxWidth: 16 },
+          { key: 'scopes', title: '权限', maxWidth: 8 },
+          { key: 'createdAt', title: '签发于', maxWidth: 19 },
+          { key: 'expiresAt', title: '到期', maxWidth: 19 },
+          { key: 'lastUsedAt', title: '最后使用', maxWidth: 19 },
+          { key: 'status', title: '状态', maxWidth: 8 },
+        ],
+        rows.map((r) => ({
+          id: r.id,
+          label: r.label ?? '—',
+          scopes: r.scopes,
+          createdAt: ymdhms(r.createdAt) ?? '—',
+          expiresAt: ymdhms(r.expiresAt) ?? '—',
+          lastUsedAt: ymdhms(r.lastUsedAt) ?? '从未',
+          status: r.revokedAt ? '已吊销' : r.expiresAt.getTime() <= now ? '已过期' : '有效',
+        })),
+        { maxWidth: ctx.io.width() }
+      );
+
+      return {
+        lines: rows.length ? lines : [`${user.username} 没有签发过只读凭据。`],
+        json: {
+          username: user.username,
+          tokens: rows.map((r) => ({
+            id: r.id,
+            label: r.label,
+            scopes: r.scopes,
+            createdAt: ymdhms(r.createdAt),
+            expiresAt: ymdhms(r.expiresAt),
+            lastUsedAt: ymdhms(r.lastUsedAt),
+            revokedAt: ymdhms(r.revokedAt),
+          })),
+        },
+      };
+    },
+  },
+
+  {
+    name: 'fish credential-revoke',
+    summary: '吊销一张鱼干只读凭据（立即失效）',
+    group: 'fish',
+    order: 7,
+    needsActor: true,
+    danger: 'destructive',
+    args: [
+      {
+        name: 'id',
+        flags: [],
+        positional: 0,
+        label: '凭据 ID',
+        help: '`fish credential-list <用户名>` 第一列的那个整数',
+        validate: (raw) => {
+          const n = Number(raw);
+          return Number.isInteger(n) && n > 0 ? null : '凭据 ID 必须是正整数';
+        },
+        prompt: { type: 'number' as const, min: 1, integer: true },
+      },
+    ],
+    details: [
+      '站长代吊销：用户不配合、或凭据已泄露但本人联系不上时用。用户自己在站内也能吊销。',
+      '**立即生效** —— 校验每次都查库，没有缓存（见 fish-token-service.validateFishToken）。',
+      '幂等：已吊销的再吊销照样成功。凭据本身不删除，只是标记 revokedAt（全站不物删）。',
+    ].join('\n'),
+    async describe(ctx) {
+      const row = await ctx.prisma.fishApiToken.findUnique({
+        where: { id: Number(ctx.args.id) },
+        select: { id: true, label: true, userId: true, revokedAt: true },
+      });
+      if (!row) return [`凭据 #${ctx.args.id} 不存在。`];
+      const owner = await ctx.prisma.user.findUnique({
+        where: { id: row.userId },
+        select: { username: true },
+      });
+      return [
+        `凭据 #${row.id}（${row.label ?? '无备注'}）`,
+        `持有者：${owner?.username ?? row.userId}`,
+        row.revokedAt ? '当前状态：**已经吊销过**（本次是空操作）' : '当前状态：有效 → 将被吊销',
+      ];
+    },
+    async run(ctx) {
+      const { revokeFishToken } = await import('../../../src/lib/fish-token-service');
+      const id = Number(ctx.args.id);
+      // isOwner：CLI 由站长执行，可以动任何人的凭据（自助接口那边不走这条路）。
+      const r = await revokeFishToken(ctx.actor?.id ?? '', id, { isOwner: true });
+      if (r === 'not_found') throw new CliError(`错误：凭据 #${id} 不存在`);
+
+      return {
+        lines: [`凭据 #${id} 已吊销，立即失效。`],
+        json: { id, result: r },
+      };
+    },
+  },
 ];

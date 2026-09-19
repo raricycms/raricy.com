@@ -198,6 +198,18 @@ describe('RULES 全站配额（src/lib/rate-limit.ts 即权威，改动即报警
     },
     { name: 'fishApiPerIp', limit: 120, windowMs: 60_000, desc: '鱼干市场无状态接口 120 次/分/IP' },
     {
+      name: 'fishTokenPerUser',
+      limit: 120,
+      windowMs: 60_000,
+      desc: '鱼干只读凭据 120 次/分/账号（**不跑 scrypt**，故不受上面那条 CPU 闸门约束；这条只防死循环）',
+    },
+    {
+      name: 'fishTokenPerIp',
+      limit: 600,
+      windowMs: 60_000,
+      desc: '鱼干只读凭据 600 次/分/IP（同上，与 fishApiPerIp 分开计桶）',
+    },
+    {
       name: 'posterMinute',
       limit: 30,
       windowMs: 60_000,
