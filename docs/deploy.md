@@ -84,7 +84,7 @@ node scripts/check-instance.mjs
 或在部署脚本里嵌入：
 
 ```bash
-mkdir -p /srv/raricy.com/instance/{avatars,database,images,stories,stickers,blogs}
+mkdir -p /srv/raricy.com/instance/{avatars,database,frames,images,stories,stickers,blogs}
 chown -R www-data:www-data /srv/raricy.com/instance
 ```
 
@@ -415,7 +415,7 @@ sqlite3 /srv/raricy.com/instance/database/db.db ".backup /backup/db-$(date +%Y%m
 
 ```bash
 tar czf /backup/assets-$(date +%Y%m%d).tar.gz \
-  /srv/raricy.com/instance/{avatars,images,stories,stickers}
+  /srv/raricy.com/instance/{avatars,frames,images,stories,stickers}
 ```
 
 ### 备份验证

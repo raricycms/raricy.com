@@ -31,13 +31,13 @@ Next.js 15 + Prisma + SQLite 单进程部署，自有 `instance/` 数据目录�
 | `scripts/`     | 自检 / 运维 / 数据补偿脚本（详见下方「工具脚本」） |
 | `tests/`       | vitest 单测 + Playwright e2e |
 | `docs/`        | 全部文档 —— `docs/guide/` 给玩家与创作者、`docs/bot/` 给站外机器人开发者，其余给开发运维。见 `docs/README.md` |
-| `instance/`    | 运行时数据（gitignored）：avatars / database / images / stories / stickers / blogs |
+| `instance/`    | 运行时数据（gitignored）：avatars / database / frames / images / stories / stickers / blogs |
 | `public/`      | 静态资源（图标 / CSS / favicon） |
 
 ## 快速开始
 
 ```bash
-node scripts/check-instance.mjs         # 首次创建 instance/{avatars,database,images,stories,stickers,blogs}
+node scripts/check-instance.mjs         # 首次创建 instance/{avatars,database,frames,images,stories,stickers,blogs}
 npm ci                                   # 严格按 lockfile 装（不要 npm install）
 cp .env.example .env                     # 填 SECRET_KEY / FISH_ENCRYPTION_KEY
 npm run prisma:generate                  # 生成 Prisma Client

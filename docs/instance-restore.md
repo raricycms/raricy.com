@@ -19,6 +19,10 @@
 > 但**内容是空的** —— 表情素材是站长手工放进去的、且**刻意不入库**（授权来自第三方的图
 > 不能进公开仓库）。所以从 `instance.zip` 还原的实例，表情是缺的，需要单独取回素材再放进去。
 > 缺素材时全站表情会静默降级成纯文本 token（`[@合集/表情]` 原样显示），不报错。
+>
+> `instance/frames/`（头像框素材）**完全同理**：同样由该脚本建目录、同样刻意不入库。
+> 缺素材时**头像框静默不显示**（头像照常，只是没有那圈装饰）—— 而「框不显示」与
+> 「没发过框」长得一模一样。自查用 `npm run cli -- frame list --keys`（见 `docs/cli.md`）。
 
 归档里的库离「可用」差两件事，也正是下面第 2、3 步要做的：
 
@@ -39,7 +43,7 @@ npm run prisma:generate
 
 ```bash
 unzip -q instance.zip -d .
-node scripts/check-instance.mjs # 幂等：补齐 instance/{avatars,database,images,stories,stickers,blogs}
+node scripts/check-instance.mjs # 幂等：补齐 instance/{avatars,database,frames,images,stories,stickers,blogs}
 ```
 
 ## 2. 规整时间戳（TEXT → INTEGER 毫秒）

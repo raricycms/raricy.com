@@ -221,7 +221,7 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 
 ### 文件落盘
 
-`docs/architecture.md` §6.6（四个存储域 + env 覆盖 + 读取入口）+ `src/lib/image-upload.ts`
+`docs/architecture.md` §6.6（五个存储域 + env 覆盖 + 读取入口）+ `src/lib/image-upload.ts`
 头部（MIME 嗅探、`sanitizeFilename` 的白名单防线、配额常量的来由）。
 
 ### Markdown / 内容渲染
@@ -336,6 +336,34 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 （各是 44px 圆钮，计数用绝对定位落在圆钮下方 —— **不要在圆钮里再塞一行数字**，
 圆就不成圆了）；选择器里**名称独占一行、两颗创建按钮并排**。
 断点值与理由见 `docs/frontend-styles.md` §6.7。
+
+### 头像框
+
+`docs/architecture.md` §6.14 是主副本；`src/lib/frame-service.ts` 头部是五条不变量
+（F1–F5），`src/lib/frame-refs.ts` 头部是词汇与到期判定。玩家向见
+`docs/guide/头像框使用指南.md`，发放命令见 `docs/cli.md`。
+
+三句话：
+
+- **框的定义住代码白名单**（`frame-refs.ts` 的 `FRAME_KEYS`），素材住
+  `instance/frames/<key>.png`。**加一款框不需要迁移** —— `user_frames.frame_key`
+  是文本不是外键。**退役一款框把它标 `retired`，别从 `FRAME_KEYS` 里删** ——
+  删了用户就摘不掉它了。
+- **`users` 上那两个装备列的唯一写入者是 `frame-service`**（F1）。改持有行的
+  `expires_at` 时必须**同一事务**刷新装备列的副本（F2）—— 违反它，用户续期后
+  **框永远不出现**，看起来像浏览器缓存。
+- **到期只有一处判**（`frameUrlFor`），渲染层拿现成的 `frameUrl` 字符串、
+  一次都不比较时间。渲染层直接读 `equipped_frame_key` 会被
+  `tests/unit/frame-guard.test.ts` 静态判红；手写 `/api/avatar/` 模板串会被
+  `tests/unit/avatar-sites-guard.test.ts` 判红（全站头像只有 `<Avatar>` 一条路）。
+
+另外两条容易踩的：
+
+- **头像一律走 `src/app/components/Avatar.tsx`**，落点台账在
+  `tests/unit/avatar-sites-guard.test.ts` —— **新增渲染头像的页面要往那张表里添一行**，
+  否则那一处既不在台账里、也不违反「唯一 URL 口径」，于是静默地永远没有框。
+- **`frame list --keys` 是运维唯一能发现「登记了框但忘了传素材」的地方** ——
+  那时全站静默不显示框，页面没有任何报错。
 
 ## 文档
 

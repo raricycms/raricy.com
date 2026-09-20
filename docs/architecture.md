@@ -68,13 +68,13 @@
 ├── src/lib/                业务逻辑层（详见 §5）
 ├── src/middleware.ts       CSRF 同源校验
 ├── prisma/
-│   ├── schema.prisma       28 表 1:1 映射真实库
+│   ├── schema.prisma       36 表 1:1 映射真实库
 │   └── migrations/         含 0_init 基线（已 apply 到 db.db）
 ├── scripts/                运维/自检/迁移/切换脚本
 ├── tests/                  vitest 单测 + Playwright e2e
 ├── docs/                   本文与运维文档；guide/ 为玩家/创作者文档
 ├── public/                 静态资源（图标 / CSS / favicon）
-└── instance/               gitignored: avatars/ database/ images/ stories/ stickers/ blogs/
+└── instance/               gitignored: avatars/ database/ frames/ images/ stories/ stickers/ blogs/
 ```
 
 ## 4. 路由分布（src/app/）
@@ -109,6 +109,8 @@
 | （无 URL）`forbidden.tsx` | 特殊文件 | 403 页本身；由 `forbidden()` 原地渲染，**不是** `/forbidden` 路由 |
 | `/sitemap.xml` · `/robots.txt` | route | sitemap.ts / robots.ts |
 | `/api/avatar/[id]` · `/api/images/[id]/raw` | API | 头像 / 图床原生分发 |
+| `/api/frames/[key]` | API | **头像框素材字节**（`instance/frames/<key>.png`）。**刻意匿名** —— 与表情字节路由同性质：素材不属于任何账号、不随会话变化。**到期不在这里判、也不该判**：到期的是一条**引用**（谁在戴），不是这些字节（见 §6.14） |
+| `/api/users/me/frame` | API | **我的头像框**：`GET` 回持有列表 + 当前装备（都是**判定后的结果**），`PUT` 装备 / 换框 / 卸下（`{ frame_key: string \| null }`）。用户侧唯一的写口，见 §6.14 |
 | `/u/[id]` | page | 公开用户主页（**段名是用户 id（UUID），不是 username**）。**匿名可达**（主页画报的二维码把站外人引到这里），故内容按查看者分档：身份字段人人可见，role 徽章 / 最近文章 / 最近评论 / 计数 / 最后登录只给本人或 core+ —— 收口在 `user-service.getPublicProfile` 与页面里，两边口径必须一致 |
 
 ## 5. 业务逻辑层（src/lib/）
@@ -117,7 +119,7 @@
 
 | 分组 | 文件 |
 |------|------|
-| 认证 / 会话 | `auth.ts` · `session.ts` · `password.ts` · `invite-code.ts` · `user-service.ts` · `identicon.ts` · `avatar.ts`（头像字节的**唯一**解析处：`/api/avatar/[id]` 与画报共用同一份目录穿越守卫）· `site-url.ts`（`SITE_URL` → `ALLOWED_ORIGINS` 回退链的唯一实现，OAuth 的 userinfo 与画报的二维码前缀共用） |
+| 认证 / 会话 | `auth.ts` · `session.ts` · `password.ts` · `invite-code.ts` · `user-service.ts` · `identicon.ts` · `avatar.ts`（头像字节的**唯一**解析处：`/api/avatar/[id]` 与画报共用同一份目录穿越守卫）· `site-url.ts`（`SITE_URL` → `ALLOWED_ORIGINS` 回退链的唯一实现，OAuth 的 userinfo 与画报的二维码前缀共用）· `avatar-refs.ts`（**零依赖**：`avatarUrl(id)` 是全仓唯一拼 `/api/avatar/` 的地方。单独一个文件是因为 `avatar.ts` 拖着 `node:fs`，客户端组件 import 不了） |
 | 数据层 | `db.ts` · `db-time.ts` · `format.ts` |
 | 博客域 | `blog-service.ts` · `feed-service.ts` · `comment-service.ts` · `comment-shared.ts` · `blog-sort-pref.ts` · `spider-service.ts` |
 | 富文本渲染 | `rich-text.ts`（共享管线）· `chat-markdown.ts` · `comment-markdown.ts` · `blog-markdown.ts` · `content-refs.ts`（评论/讨论那条**同步**管线：只认 8 位与 10 位，9 位投票与 6 位收藏夹刻意不展开）· `favorite-refs.ts`（`[@六位]` 卡片：**只在博客/剪贴板**那条管线生效，见 §6.9）· `markdown-math.ts` · `linkify.ts` · `vditor-theme.ts` |
@@ -129,6 +131,7 @@
 | 投票 / 签到 / 剪贴板 | `vote-service.ts` · `checkin-service.ts` · `clipboard-service.ts` |
 | 收藏夹 | `favorite-service.ts`（六条不变量见文件头）· `favorite-refs.ts`（`[@六位]` 的纯逻辑），见 §6.9 |
 | 图床 | `image-service.ts` · `image-upload.ts`（服务端）· `image-client.ts`（浏览器侧选图上传，讨论与评论共用）· `vditor-upload.ts`（Vditor 编辑器的上传配置，博客与剪贴板共用；与 `/api/images` 的字段名/响应结构两端对齐，见 `tests/unit/vditor-upload.test.ts`） |
+| 头像框 | `frame-refs.ts`（**零依赖**词汇层：白名单 / 解析 / 到期判定）· `frame-service.ts`（素材扫盘 + 持有与装备写路径 + **判定唯一出口**），见 §6.14 |
 | 故事 | `story-service.ts` |
 | 画报 / 收款码 | `poster.ts`（纯 SVG 构造，含二维码与转义）· `poster-render.ts`（取数 + 头像 + sharp 光栅化），见 §6.8 |
 | 小鱼干 | `fish-service.ts`（**记账内核 `postEntry`** + 读路径，见 §6.3）· `fish-idempotency.ts`（哪些操作才登记幂等 —— 判据在文件头）· `fish-admin.ts` · `fish-market-service.ts`（用户间转账，见 §6.3）· `fish-compensate.ts`（`fish compensate` 群发补偿，只发 core+，见 `docs/cli.md` 与文件头）· `fish-units.ts`（单位换算；`Blog.fishCount` 是**例外**，见文件头）· `fish-webhook-service.ts`（收款回调 outbox，见 §6.3） |
@@ -293,6 +296,7 @@ GET/HEAD/OPTIONS 视为安全方法，不校验。
 | 图床 | `instance/images/<id><ext>`（或 `IMAGE_UPLOAD_FOLDER` 覆盖） | `src/lib/image-upload.ts` — sharp 压缩 + MIME 嗅探 + 配额累计 | `src/app/api/images/[id]/raw/route.ts` |
 | 故事 | `instance/stories/<合集>/<故事>.md\|.cattca`（或 `STORIES_DIR` 覆盖） | 服务端直接落盘 | `src/lib/story-service.ts` 服务端 marked |
 | 表情包 | `instance/stickers/<合集>/<表情>.{gif,webp,png,jpg,jpeg}`（或 `STICKERS_DIR` 覆盖） | **无上传入口**：站长直接往目录里拷文件 | `src/app/api/stickers/[collection]/[name]/route.ts`（查扫盘 manifest，见 `src/lib/sticker-service.ts`） |
+| 头像框 | `instance/frames/<key>.png`（或 `FRAMES_DIR` 覆盖，**平铺一层、只认 PNG**） | **无上传入口**：站长直接拷文件 | `src/app/api/frames/[key]/route.ts`（查扫盘 manifest，见 `src/lib/frame-service.ts`） |
 
 磁盘目录必须**真实存在**（生产用 systemd/Data卷/挂载点），`node scripts/check-instance.mjs` 一键建好骨架。
 
@@ -308,6 +312,18 @@ GET/HEAD/OPTIONS 视为安全方法，不校验。
   `info.json` 的 `ignore` 必须在这里也拦一道，不能只在列表接口过滤。
 - **扫盘有缓存**（TTL 5s + 目录时间戳 + 60s 兜底全扫），与 `story-service.ts`
   的无缓存扫盘不同 —— 理由见 `sticker-service.ts` 的文件头。
+
+头像框那一栏与表情包**看着像、关键处相反**，别照抄那边的直觉：
+
+- **key 空间在白名单里，目录只提供字节**。表情是「目录即 key 空间」（往里丢什么就有
+  什么），框不是：权威是 `frame-refs.ts` 的 `FRAME_KEYS`（源码常量）。所以目录里多出来
+  的文件**一律不被收编**，而目录缺席只让框**不显示**，不会让框不存在 —— 授权、展示名
+  照常，缺的只是那张图。
+- **只认 PNG**。框靠**透明通道**工作（中间那块必须透出头像），JPEG 没有 alpha、
+  GIF 的 1 位透明度边缘全是锯齿。收窄到 PNG 顺带把 SVG 那条 XSS 路径关在外面
+  （`ALLOWED_FRAME_MIME` 只有 `image/png`，路由仍按字节复核）。
+- **key 先过白名单，才谈得上拼路径**。与表情的「只当 map 的 key、永不拼路径」是同一
+  条安全来源，只是这里多了一层「白名单本身就是手写常量」的保证。
 
 ### 6.7 Markdown / 内容渲染
 
@@ -681,6 +697,88 @@ URL 请来抓」。（`robots.ts` 的**路径级**规则不需要动 —— `/ex
 - 页面的行情卡在拉不到价时显示「行情暂不可用」并**禁掉买入**；缓存超龄时显示「数据可能
   不是最新的」。**绝不编一个价出来** —— 用户会照着一个假价格按下买入。
 
+### 6.14 头像框
+
+一张**带透明通道的 PNG**，绝对定位叠在头像上（`src/app/components/Avatar.tsx`
+的 `.avatar__frame`）。全站 16 个文件 21 处头像都走那个组件 —— 落点台账与静态守卫
+在 `tests/unit/avatar-sites-guard.test.ts`。
+
+#### 两层：持有 vs 装备
+
+| | 表 / 列 | 谁说了算 |
+|---|---|---|
+| **持有** | `user_frames`（一行 = 一款框） | 站长。`npm run cli -- frame grant/revoke`，见 `docs/cli.md` |
+| **装备** | `users.equipped_frame_key` + `equipped_frame_expires_at` | 用户自己。`/settings` 的装备面板 |
+
+一个用户可以同时持有多款、只戴一款；也可以持有却不戴。**授予 ≠ 装备**。
+
+#### 装备态为什么是 users 上的两个冗余列
+
+15 处渲染点里 **8 处的数据来自一条已经在读 users 行的查询**（博客作者 / 讨论作者 /
+讨论对方 / 签到榜 / 后台用户卡片 / 转账收款人）。加列 = 同一个查询里加两个 select
+字段，**零 join、零额外往返**。写成 1:1 表则每处都要 `include`，而 `chat-service`
+是**按消息批量**取作者的（要么 N+1，要么再加一次批量查询）。
+
+**漏加的后果不是报错，是那一处永远没有框** —— 静默。取舍的完整论证在
+`prisma/migrations/20_user_frames/migration.sql` 头部。
+
+#### ★ 到期只有一处判，客户端一次都不判
+
+```
+frame-refs.resolveFrameKey(key, exp, now)   ← 唯一的比较运算（纯函数，now 由调用方给）
+         ↓
+frame-service.frameUrlFor(row)              ← 唯一出口：白名单 → 未退役 → 未过期 → 盘上有图
+         ↓
+service 层的各 DTO（下发 frame_url / frameUrl 字符串）
+         ↓
+客户端（16 个文件）—— 不做任何时间比较
+```
+
+- `frameUrlFor` 内部固定用 `nowForDb()`，**不接受 now 参数**（少一个传错的机会）。
+- **到期是只读判定**：过期的值留在列里无害（判定恒 null），所以**没有 cron、没有
+  清理任务、没有「读时顺手清一下」** —— 少一条静默失效路径。想让某人下周失效，
+  用 `frame grant --days 7`，别用 revoke。
+- 客户端判零次不只是纪律：`tests/unit/db-time-guard.test.ts` 规则 3–5 扫**整个 `src/`**
+  （含页面组件），在那里写 `new Date(expires_at) > new Date()` 会被静态守卫判红。
+- 渲染层**不许读** `equipped_frame_key` 那两个原始列（它们在 `SafeUser` 上一直存在，
+  直接读是完全合法的代码 —— 但没判到期）。由 `tests/unit/frame-guard.test.ts` 拦着。
+
+#### 五条不变量（`src/lib/frame-service.ts` 文件头）
+
+| | |
+|---|---|
+| **F1 唯一写入者** | users 那两列只由 `grantFrame` / `revokeFrame` / `equipFrame` 写 |
+| **F2 同步契约** | 改持有行的 `expires_at` 时，若他正戴着这个框，**同一事务里**刷新装备列的副本。违反 = 续期后**框永远不出现**（看起来像浏览器缓存）—— 这是本设计最隐蔽的一条 |
+| **F3 装备前置** | 要 alive 持有行 + 未过期 + 白名单 + 未退役；**但素材缺失不阻止装备**（先授权后传素材是合法顺序）。卸下**无条件成功** —— 否则退役的 key 会变成摘不掉的僵尸 |
+| **F4 唯一约束含墓碑** | 收回后再授予必须**复活旧行**，不能新插（会撞唯一约束） |
+| **F5 永不物删** | 到期 ≠ 撤销：过期只让行失效，`deleted` 仍是 false |
+
+#### 素材与安全
+
+- key 的权威是 `src/lib/frame-refs.ts` 的 `FRAME_KEYS`（源码白名单），
+  `instance/frames/` 只提供字节 —— 见 §6.6 那一段与表情包的对照。
+- 字节路由 `/api/frames/[key]` **按字节**复核 MIME 并只放行 `image/png`
+  （`ALLOWED_FRAME_MIME`），拒绝 SVG。**刻意匿名**，已登记进
+  `tests/unit/anonymous-read-guard.test.ts` 的台账。
+- `Cache-Control: public, max-age=86400`，**刻意不 immutable** —— 站长的换图流程是
+  「往目录里拷文件」，immutable 会让浏览器一年不来看一眼。
+- **退役一个框**：把 `FRAMES[k].retired` 置 true，**不要从 `FRAME_KEYS` 里删** ——
+  删了 `parseFrameKey` 就认不出它，面板没法显示那一行，用户**摘不掉**它。
+
+#### 画报暂不画框
+
+`poster.ts` 的 `avatarBlock()` 已有一圈 3px 描边环，框叠上去会双重描边 ——
+而画报是**发出去就收不回的分享物**（不可逆），宁可暂时不加。预留接口：给
+`avatarBlock()` 加一个可选参数，插在头像 `<image>` 与描边环**之间**。
+
+#### 第二版：鱼干购买
+
+**不用改表**：`user_frames.source` 已经能区分 `cli` / `purchase` / `system`，
+而 `grantFrame` 本身幂等且只延长不缩短。钱的幂等由 `fish_transactions` +
+`account_sync_ledger` 负责。
+
+---
+
 ## 7. 数据流（4 个典型路径）
 
 ### 7.1 用户登录
@@ -949,6 +1047,7 @@ URL 请来抓」。（`robots.ts` 的**路径级**规则不需要动 —— `/ex
 | `instance/` 在部署机器 | 需挂载真实目录否则上传 500 | 部署脚本里 `node scripts/check-instance.mjs` 兜底 |
 | 初次部署既有库 | `FISH_ENCRYPTION_KEY` 必须留空，否则解不开存量密文 —— 受影响的是**回调签名密钥**（`fish_webhook_endpoints.secret_encrypted`），商户再也收不到通知且**不可逆** | `npm run diagnose` 段 4 抽查真实密文 |
 | 账目**没有第二个存储可以核对**（账户服务搬进站内后，`users.driedFish` 是唯一真源） | 有人改了余额却漏写流水这类静默损坏，没有外部的复式账本会替你发现 | 记账只走 `postEntry` 一扇门；不变式「每人余额 == 他所有流水之和」由 `tests/helpers/fish-ledger.ts` 的 `expectLedgerConsistent()` 钉着，写路径的用例都调它 |
+| **`instance/frames/` 没随部署同步**（或某一个 key 的 PNG 缺失） | 那个框**全站静默不显示** —— 而「框不显示」与「没发过框」在页面上长得一模一样，页面不报任何错 | 渲染侧由 `frame-service` 的第三道闸降级成「干净的不显示」而不是 15 处破图；运维侧 `npm run cli -- frame list --keys` 是唯一能主动发现的地方（`frame grant` 成功时也会顺手体检并打黄色警告） |
 | 反代改写了 `Host` 且未透传 `X-Forwarded-Host` | 浏览器 `Origin` 与三个来源都对不上 → 全站 POST 403（CSRF 误杀）。nginx 默认就把 `Host` 设成 `$proxy_host`（upstream 地址），所以**两个头都要显式透传** | `ALLOWED_ORIGINS="你的域名"` 兜底或修 nginx |
 
 ---
