@@ -1,6 +1,5 @@
 import { apiOk, apiErr } from '@/lib/format';
 import { transferFish, findTransferTargetByUsername } from '@/lib/fish-market-service';
-import { AccountServiceError } from '@/lib/account-client';
 import { requireMarketActor } from '../_auth';
 
 // fernet / node:crypto 需 Node 运行时（非 Edge）。
@@ -64,8 +63,7 @@ export async function POST(req: Request) {
       duplicated: !!res.duplicated,
     });
   } catch (e) {
-    // 远端同步失败（fail-closed，本地已补偿回滚）→ 503，用户可重试。
-    if (e instanceof AccountServiceError) return apiErr(503, '鱼干服务暂不可用，请稍后再试');
+    // 本地事务要么成要么不成（记账已无远端），能冒到这里的都是真故障。
     console.error('[fish-market] 转账异常:', e);
     return apiErr(500, '服务器开小差了，请稍后再试');
   }

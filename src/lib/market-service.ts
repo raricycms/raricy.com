@@ -40,8 +40,9 @@ import { nowForDb } from './db-time';
 import { addFish } from './fish-service';
 import { fishToUnits, unitsToFish } from './fish-units';
 // 客户端幂等键的格式校验复用转账那一条 —— 同一个「调用方给的键」概念，
-// 没有理由长出第二套规则。依赖方向是单向的（fish-market-service 不 import 本文件）。
-import { CLIENT_KEY_RE } from './fish-market-service';
+// 没有理由长出第二套规则。定义在 fish-idempotency（零业务依赖），
+// 所以这里 import 它不会把 fish-market-service 拖进来。
+import { CLIENT_KEY_RE } from './fish-idempotency';
 import {
   recordPendingSync,
   settleSync,

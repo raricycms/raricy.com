@@ -1,27 +1,20 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // fish-market-service.ts — 鱼干市场：用户间转账（无手续费）
 //
-// ★★★ 写路径 fail-closed（CLAUDE.md「鱼干写路径」）★★★
-//   与另外四条（投喂 / 签到翻牌 / CLI grant|deduct / 注册建号）同构：
-//   Tx A：扣发送者 / 加接收者 / 两条流水 + 账本行 pending ──→ 提交；
-//   随后在**事务外**调用账户微服务（幂等键发往远端）。
-//   远端成功 → 账本标 synced；远端失败 → 补偿事务精确撤销本地写入（对用户等价于
-//   「回滚 + 503」）。HTTP 绝不进 SQLite 事务 —— 写锁会被占满整个超时，
-//   并发写直接 "database is locked"（机制详见 src/lib/fish-sync.ts 头部）。
+// 【写路径】扣发送者 + 加接收者 + 两条流水 +（有客户端幂等键时）一条幂等记录，
+//   **全部在一个 SQLite 事务里提交**。余额与流水要么一起生效、要么一起不生效 ——
+//   不存在中间态，因此也没有补偿事务（见 docs/architecture.md §6.3 的历史注记：
+//   账户微服务曾在站外，那时才有「本地提交了、远端还没」这个窗口）。
 //
-// 【与投喂的结构差异】转账只有**一次**远端调用，没有 feed 那种「Step1 成功、
-//   Step2 失败 → 远端退款」的中间态，因此不要照抄那套退款逻辑：对一笔可能根本
-//   没成交的转账发起退款，等于凭退款凭空造出一笔钱。
-//
-// 【已知限制：超时歧义的二次成交窗口】远端已成交但响应丢失（超时）时，本地补偿会
-//   删除账本行，用户重试拿到**新键**，于是远端可能被扣两次。这与 admin_grant 同性质
-//   （键都带随机后缀，见 fish-admin.makeAdminIdempotencyKey），是「每次操作都是独立
-//   新键」的固有代价；只有远端返回的 4xx 能确定「绝对没成交」，5xx/超时都不行。
-//   失败时按 key 打一条结构化 warn（FISH_TRANSFER_SYNC_FAILED），供运维去账户服务
-//   按 key 查证。
+// 【幂等键】`opts.clientIdempotencyKey` 由调用方提供（站外脚本 / 收银台）时：
+//   同一个键 + **同样的收款人/金额/留言** 重发 = 返回原结果、绝不重复转账；
+//   同一个键配不同的参数 = 409（不静默改单）。
+//   不提供时由服务端生成随机键 —— 此时**重试就是再转一笔**（见 docs/bot/fish-bot.md §6）。
+//   **只有给了键的那一路才登记记录**：随机键每次都不一样，登记了也没有去重价值，
+//   只会把 account_sync_ledger 撑大（判据见 fish-idempotency.ts 头部）。
 //
 // 【金额口径】业务单位「鱼干」，最多 1 位小数（0.1 起）—— fishToUnits 在数据库边界
-//   换成 0.1 鱼干单位的整数，超精度 fail-loud（这里转成 400 文案，别让它冒泡成 503）。
+//   换成 0.1 鱼干单位的整数，超精度 fail-loud（这里转成 400 文案，别让它冒泡成 500）。
 //
 // 【权限档位】登录 + 非禁言，**不要求 core+** —— 与 /fish 面板、签到同一档
 //   （投喂要求 core+ 是因为它挂在博客页；转账是鱼干的通用能力）。
@@ -29,32 +22,21 @@
 
 import { createHash, randomBytes } from 'node:crypto';
 import { prisma } from './db';
-import { nowForDb } from './db-time';
-import { addFish } from './fish-service';
+import { postEntry, InsufficientFishError } from './fish-service';
 import { fishToUnits, unitsToFish } from './fish-units';
+import {
+  claimIdempotency,
+  findIdempotency,
+  makeClientIdempotencyKey,
+  makeTransferId,
+  makeTransferIdempotencyKey,
+  CLIENT_KEY_RE,
+  type IdempotencyEntry,
+} from './fish-idempotency';
 import { sendNotification } from './notification-service';
 import { rateLimit, RULES } from './rate-limit';
-import {
-  accountServiceEnabled,
-  assertRemoteRequiredInProduction,
-  decryptApiKey,
-  makeClientIdempotencyKey,
-  makeTransferIdempotencyKey,
-  AccountServiceError,
-} from './account-client';
 import { isServiceAccount, SERVICE_QUOTA } from './service-accounts';
-import {
-  enqueueTransferWebhook,
-  dropTransferWebhook,
-  deliverWebhook,
-} from './fish-webhook-service';
-import {
-  recordPendingSync,
-  settleSync,
-  executeSync,
-  logReconcileRequired,
-  type PendingSyncEntry,
-} from './fish-sync';
+import { enqueueTransferWebhook, deliverWebhook } from './fish-webhook-service';
 import type { Prisma } from '@prisma/client';
 
 /** 转账留言长度上限（超出直接 400，不静默截断）。 */
@@ -85,9 +67,6 @@ export type TransferOutcome =
       duplicated?: boolean;
     }
   | { ok: false; code: number; message: string };
-
-/** 客户端幂等键的字面量口径（路由与文档同款）：1-48 位，禁空格与 URL 特殊字符。 */
-export const CLIENT_KEY_RE = /^[A-Za-z0-9_.:-]{1,48}$/;
 
 /**
  * 收银台 `order` 参数的字面量口径：≤32 位，字符集是 `CLIENT_KEY_RE` 的**子集**。
@@ -133,11 +112,15 @@ function isUniqueViolation(e: unknown): boolean {
 }
 
 /**
- * 客户端幂等键命中**已有账本行**时的处理。三种局面各有各的对：
- *   · 参数一致且已成交 → 原样回报（`duplicated: true`），一分钱都不再动；
+ * 客户端幂等键命中**已登记的记录**时的处理。三种局面各有各的对：
+ *   · 参数一致且已生效 → 原样回报（`duplicated: true`），一分钱都不再动；
  *   · 参数不一致 → 409（同键换个参数是调用方的 bug，静默改单更糟）；
- *   · 尚未成交（pending / failed）→ 409，让调用方稍后**用同一个键**重试
- *     （远端同步由账本 + sync-retry 收敛，重试同一个键是安全的）。
+ *   · 记录存在但状态不是 synced → 409。
+ *
+ * 【第三种为什么还留着】新写入的记录**一律是 synced**（登记与转账同事务提交，
+ * 提交成功就是已生效）。这个分支只为**迁移前遗留的行**服务 —— 那时记录会停在
+ * pending / failed（本地已提交、远端没同步 / 补偿也失败）。对它们的正确动作是人工
+ * 查证，绝不是当它已成交再回报一次「转账成功」。
  */
 async function resolveDuplicate(
   row: { payload: string; status: string },
@@ -155,7 +138,7 @@ async function resolveDuplicate(
   try {
     payload = JSON.parse(row.payload) as typeof payload;
   } catch {
-    /* 账本 payload 损坏：当作参数不一致处理，宁可 409 也不冒重复转账的险 */
+    /* 记录 payload 损坏：当作参数不一致处理，宁可 409 也不冒重复转账的险 */
   }
   if (
     payload.toUserId !== expected.toUserId ||
@@ -193,7 +176,7 @@ async function resolveDuplicate(
   return {
     ok: false,
     code: 409,
-    message: '该幂等键的上一笔仍在处理中，请稍后用同一个键重试',
+    message: '该幂等键对应的记录状态异常（迁移前的遗留），请人工查证后再换键重试',
   };
 }
 
@@ -244,17 +227,16 @@ export async function findTransferTargetByUsername(
 }
 
 /**
- * 用户间转账：发送者扣 amount、接收者得 amount，零手续费，一次远端调用。
+ * 用户间转账：发送者扣 amount、接收者得 amount，零手续费，**一个事务**。
  *
  * 【幂等键】`opts.clientIdempotencyKey` 由调用方提供（站外脚本 / 收银台）时：
  * 同一个键 + **同样的收款人/金额/留言** 重发 = 返回原结果、绝不重复转账；
- * 同一个键配不同的参数 = 409（不静默改单）；上一笔还在处理中 = 409（可稍后用同键重试）。
+ * 同一个键配不同的参数 = 409（不静默改单）。
  * 不提供时由服务端生成随机键 —— 此时**重试就是再转一笔**（见 docs/bot/fish-bot.md §6）。
  *
- * @param note 可选留言（同一句话进双方流水的描述与远端记账的 description）
+ * @param note 可选留言（同一句话进双方流水的描述）
  * @param opts.clientIdempotencyKey ≤48 位，`[A-Za-z0-9_.:-]`
- * @returns 业务结果；远端同步失败**抛** AccountServiceError（本地已被补偿回滚）
- * @throws AccountServiceError 远端账户服务不可达 / 同步失败 → 路由据此返回 503
+ * @returns 业务结果。**不抛故障类异常** —— 没有远端了，本地事务要么成要么不成。
  */
 export async function transferFish(
   fromUserId: string,
@@ -263,7 +245,7 @@ export async function transferFish(
   note?: string | null,
   opts?: { clientIdempotencyKey?: string | null }
 ): Promise<TransferOutcome> {
-  // ── 入参校验（不写库、不打远端）──────────────────────────────────────────
+  // ── 入参校验（不写库）────────────────────────────────────────────────────
   if (typeof amount !== 'number' || !Number.isFinite(amount) || amount <= 0) {
     return { ok: false, code: 400, message: '转账金额需大于 0' };
   }
@@ -272,8 +254,7 @@ export async function transferFish(
     units = fishToUnits(amount);
   } catch {
     // fishToUnits 对 >1 位小数 fail-loud（抛的是普通 Error）。不在这里接住转成 400，
-    // 它会冒泡到最外层被包成 AccountServiceError(503) —— 用户输入 0.05 收到
-    // 「鱼干服务暂不可用」，且前端不知道该提示什么。
+    // 它会冒泡成 500 —— 用户输入 0.05 看到「服务器开小差了」，前端也不知道该提示什么。
     return { ok: false, code: 400, message: '转账金额最多 1 位小数' };
   }
 
@@ -291,33 +272,15 @@ export async function transferFish(
 
   const sender = await prisma.user.findUnique({
     where: { id: fromUserId },
-    select: { username: true, fishApiKeyEncrypted: true },
+    select: { username: true },
   });
   if (!sender) return { ok: false, code: 404, message: '用户不存在' };
-
-  // 远端同步是否启用（未配置 internal token → dev 本地模式）。
-  const remoteEnabled = accountServiceEnabled();
-  if (!remoteEnabled) {
-    // 生产 fail-closed：不做任何本地写入直接拒绝；dev 仅本地 + 告警。
-    assertRemoteRequiredInProduction('转账');
-    console.warn(
-      `[fish-market] ACCOUNT_SERVICE 未配置，转账仅写本地库（dev fallback）。` +
-        ` from=${fromUserId} to=${recipient.id} amount=${amount}`
-    );
-  } else if (!sender.fishApiKeyEncrypted) {
-    throw new AccountServiceError('发送者没有关联的账户 Key，无法完成远端结算', 503);
-  } else {
-    // fail-fast：先解出 Key，解不开即 503（不做任何本地写入）。明文只用于本次校验；
-    // 密钥绝不进 payload / 账本，重放时由 executeSync 按 userId 重新解密。
-    decryptApiKey(sender.fishApiKeyEncrypted);
-  }
 
   const description = cleanNote
     ? `转给「${recipient.username}」：${cleanNote}`
     : `转给「${recipient.username}」`;
 
-  // 幂等键**只算一次**，Phase 1/2/3 共用 —— 别像 feed 那样在 Phase 2 把表达式重抄
-  // 一遍（那里靠参数相同才碰巧一致，抄错一处就是静默的幂等失效）。
+  // 幂等键**只算一次**：登记（事务内）与单号派生都用它。
   const clientKey = (opts?.clientIdempotencyKey ?? '').trim();
   if (clientKey && !CLIENT_KEY_RE.test(clientKey)) {
     return {
@@ -330,20 +293,14 @@ export async function transferFish(
     ? makeClientIdempotencyKey(fromUserId, clientKey)
     : makeTransferIdempotencyKey(fromUserId, recipient.id, units, randomBytes(4).toString('hex'));
 
-  // 共享单号 = sha256(幂等键) 的前 16 位十六进制（64 bit），写进**两条**流水。
-  // 【为什么派生而不是随机 + 存一份】幂等键在本次调用里只算一次、且两条重放路径
-  // （命中已有账本行 / 并发撞唯一约束）手里都有它，派生出来的单号因此**天然可重现**
-  // —— 重放同一个键回报的就是同一个单号，不需要多存一份、也就没有第二份会漂移的副本。
-  // 反过来若存进 entry.payload，迟早有人顺手把它加进 resolveDuplicate 的参数比对，
-  // 那会让**每一次重放都变成 409**。
-  // 不是凭证：它是给双方对账用的句柄，可预测无害（本仓也没有「按单号查」的接口）。
-  const transferId = createHash('sha256').update(idempotencyKey).digest('hex').slice(0, 16);
+  // 共享单号：写进**两条**流水（派生规则见 fish-idempotency.makeTransferId）。
+  const transferId = makeTransferId(idempotencyKey);
 
-  // 调用方给了键 → 先看账本里有没有同一笔：有就按「重放」处理，绝不重复转账。
+  // 调用方给了键 → 先看有没有同一笔的记录：有就按「重放」处理，绝不重复转账。
   // 放在限频**之前**：重放请求不该消耗额度（调用方遇到超时就该用同键重试）。
   const expected = { fromUserId, toUserId: recipient.id, amount, description };
   if (clientKey) {
-    const existing = await prisma.accountSyncLedger.findUnique({ where: { idempotencyKey } });
+    const existing = await findIdempotency(idempotencyKey);
     if (existing) return resolveDuplicate(existing, expected, transferId);
   }
 
@@ -357,23 +314,14 @@ export async function transferFish(
     return { ok: false, code: 429, message: '转账太频繁了，请稍后再试' };
   }
 
-  const entry: PendingSyncEntry = {
+  // 幂等记录（只在调用方给了键时才登记，判据见 fish-idempotency.ts 头部）。
+  const entry: IdempotencyEntry = {
     idempotencyKey,
     operation: 'transfer',
     payload: { fromUserId, toUserId: recipient.id, amount, description },
   };
 
-  // 业务错误容器：事务回调里抛出后在外层转成 TransferOutcome（不当作 500）。
-  class TransferBusinessError extends Error {
-    constructor(
-      public code: number,
-      message: string
-    ) {
-      super(message);
-    }
-  }
-
-  // 并发撞键的载体：Phase 1 撞上账本唯一约束时，把「重放的结果」原样带回外层。
+  // 并发撞键的载体：事务里撞上幂等记录的唯一约束时，把「重放的结果」原样带回外层。
   class TransferDuplicateError extends Error {
     constructor(public outcome: TransferOutcome) {
       super('duplicate idempotency key');
@@ -381,38 +329,27 @@ export async function transferFish(
   }
 
   try {
-    // ── Phase 1：本地事务（纯 DB，无远端 IO —— 写锁只持有毫秒级）────────────────
-    const phase1 = await prisma.$transaction(async (tx) => {
-      // 1.1 原子条件扣减（单条 UPDATE 里带谓词，防超扣 / 防负数）。
-      const dec = await tx.user.updateMany({
-        where: { id: fromUserId, driedFish: { gte: units } },
-        data: { driedFish: { decrement: units } },
-      });
-      if (dec.count === 0) throw new TransferBusinessError(400, '小鱼干不足');
-
-      // 1.2 发送者支出流水。手写 create（不是 addFish —— 那是「加钱」的口径），
-      //     createdAt 必须显式写：schema 里没有 @default(now())，漏写整条流水时间为
-      //     NULL，流水倒序会乱、按区间的统计会静默失效。
-      const outTx = await tx.fishTransaction.create({
-        data: {
-          userId: fromUserId,
-          amount: -units,
-          type: TRANSFER_OUT_TYPE,
-          description,
-          referenceType: 'user',
-          referenceId: recipient.id,
-          relatedUserId: recipient.id,
-          transferId,
-          createdAt: nowForDb(),
-        },
-        select: { id: true },
+    // ── 一个事务：扣款、两条流水、幂等记录、回调出账 ──────────────────────────
+    const applied = await prisma.$transaction(async (tx) => {
+      // 1.1 发送者支出（内核：条件扣减 + 一条负数流水）。
+      //     余额不足由内核抛 InsufficientFishError，外层转成 400。
+      const outTx = await postEntry(tx, {
+        userId: fromUserId,
+        units: -units,
+        type: TRANSFER_OUT_TYPE,
+        description,
+        referenceType: 'user',
+        referenceId: recipient.id,
+        relatedUserId: recipient.id,
+        transferId,
       });
 
-      // 1.3 接收者入账（addFish：加余额 + transfer_receive 流水 + 显式 createdAt）。
-      //     接收者侧不需要条件写 —— increment 不可能变负。
-      const inTx = await addFish(tx, {
+      // 1.2 接收者入账（内核：加余额 + transfer_receive 流水）。
+      //     1.1 与 1.2 的 transferId 必须是**同一个值** —— 这正是这一列存在的全部意义，
+      //     两边各算一次（或漏传一边）会让「按单号对上同一笔」静默失效。
+      const inTx = await postEntry(tx, {
         userId: recipient.id,
-        amount,
+        units,
         type: TRANSFER_IN_TYPE,
         description: cleanNote
           ? `收到「${sender.username}」的转账：${cleanNote}`
@@ -420,14 +357,12 @@ export async function transferFish(
         referenceType: 'user',
         referenceId: fromUserId,
         relatedUserId: fromUserId,
-        // 1.2 与 1.3 的 transferId 必须是**同一个值** —— 这正是这一列存在的全部意义，
-        // 两边各算一次（或漏传一边）会让「按单号对上同一笔」静默失效。
         transferId,
       });
 
-      // 1.4 账本登记 pending（与业务写入同事务提交；dev fallback 不登记 —— 登记了
-      //     就是一堆永远同步不出去的 pending，把 fish pending / sync-retry 的语义搞浑）。
-      if (remoteEnabled) await recordPendingSync(tx, entry);
+      // 1.3 幂等记录。**与两条流水同事务提交** —— 于是「钱动了但键没记」
+      //     （同键重放变成第二笔转账）在结构上不可能发生。
+      if (clientKey) await claimIdempotency(tx, entry);
 
       // 读回最新余额（仍在事务中，故为本事务可见的最新状态）
       const after = await tx.user.findUnique({
@@ -439,7 +374,7 @@ export async function transferFish(
         select: { driedFish: true },
       });
 
-      // 1.5 回调出账（outbox）。**与两条流水同事务提交** —— 于是「钱记了、通知忘了」
+      // 1.4 回调出账（outbox）。**与两条流水同事务提交** —— 于是「钱记了、通知忘了」
       //     在结构上不可能发生。收款人没登记地址 / 已停用时什么都不写。
       //     这里只有纯 DB 写入，密码学与 HTTP 全在事务外（见 fish-webhook-service 头部）。
       const deliveryId = await enqueueTransferWebhook({
@@ -455,17 +390,17 @@ export async function transferFish(
       });
 
       return {
-        outTxId: outTx.id,
+        outTxId: outTx.txId,
         inTxId: inTx.txId,
         balance: unitsToFish(after?.driedFish ?? 0),
         deliveryId,
       };
     }).catch(async (e: unknown) => {
-      // 并发同键：另一个请求已经建好了账本行（唯一约束把这一笔挡下）。这不是故障 ——
-      // 回读那一行按「重放」处理（已成交就如实回报，未成交就让它稍后重试）。
+      // 并发同键：另一个请求已经登记了同一个键（唯一约束把这一笔挡下）。这不是故障 ——
+      // 回读那条记录按「重放」处理（已生效就如实回报）。
       // 只有调用方给了键才可能走到这里；没给键时键是随机的，撞不上。
       if (clientKey && isUniqueViolation(e)) {
-        const row = await prisma.accountSyncLedger.findUnique({ where: { idempotencyKey } });
+        const row = await findIdempotency(idempotencyKey);
         if (row) {
           throw new TransferDuplicateError(await resolveDuplicate(row, expected, transferId));
         }
@@ -473,90 +408,18 @@ export async function transferFish(
       throw e;
     });
 
-    // ── Phase 2：事务外远端同步（提交后调用；失败走补偿，不再占用写锁）──────────
-    if (remoteEnabled) {
-      try {
-        await executeSync(entry);
-        await settleSync(entry.idempotencyKey, 'synced');
-      } catch (syncErr) {
-        // ── Phase 3：远端失败 → 补偿事务精确撤销本地写入（对用户等价于回滚）──
-        try {
-          await prisma.$transaction(async (tx) => {
-            // 3.1 删除两条流水（按 id 精确撤销，不是按 user/type 模糊删）
-            await tx.fishTransaction.deleteMany({
-              where: { id: { in: [phase1.outTxId, phase1.inTxId] } },
-            });
-            // 3.2 接收者退回 —— 条件写：他可能已经把收到的鱼干花掉了。
-            //     退不动就抛：整个补偿事务回滚（**绝不部分撤销** —— 那会造出
-            //     「发送者拿回钱、接收者没被扣」的凭空多出来的鱼干），交给账本
-            //     failed + sync-retry 正向重放收敛。与 feed-service 的作者分成回退同款。
-            //     【链式追索出界】接收者可能已把鱼干转给第三人，那笔已在远端成交；
-            //     撤销的上界就是本笔的双方账户 + 账本行，超出部分归对账，
-            //     别试图写递归撤销。
-            const dec = await tx.user.updateMany({
-              where: { id: recipient.id, driedFish: { gte: units } },
-              data: { driedFish: { decrement: units } },
-            });
-            if (dec.count === 0) {
-              throw new Error(
-                `接收者余额不足以退回（to=${recipient.id} amount=${amount}）`
-              );
-            }
-            // 3.3 发送者拿回 —— 无条件 increment。Tx A 后他的余额是 B-u，之后最多
-            //     再花掉 B-u，所以退回后 = B-u-s+u = B-s ≥ 0，数学上不可能变负。
-            //     别「为了对称」也加条件：那会在发送者刚好花光时误判补偿失败，
-            //     把一个本可自愈的局面推进 reconcile。
-            await tx.user.update({
-              where: { id: fromUserId },
-              data: { driedFish: { increment: units } },
-            });
-            // 3.4 删除账本行：释放幂等键，用户重试时可以重建（无痕失败）。
-            await tx.accountSyncLedger.deleteMany({
-              where: { idempotencyKey: entry.idempotencyKey },
-            });
-            // 3.5 删掉回调出账（若 1.5 写过）。回调是「钱到了」的断言 ——
-            //     钱被撤销了就必须一起撤销，否则商户按回调认了一笔根本没成交的入账。
-            await dropTransferWebhook(tx, transferId);
-          });
-        } catch (undoErr) {
-          // 补偿也失败：账本行留 pending/failed，sync-retry 可幂等重放收敛。
-          await settleSync(entry.idempotencyKey, 'failed', String(undoErr)).catch(() => {
-            /* 尽力而为 */
-          });
-          await logReconcileRequired(entry, undoErr);
-        }
-        // 超时歧义取证（见文件头「已知限制」）：远端可能已成交但响应丢了，
-        // 用户重试会拿新键 → 远端二次成交。单行结构化 JSON，便于按 key 去远端查证。
-        console.warn(
-          'FISH_TRANSFER_SYNC_FAILED ' +
-            JSON.stringify({
-              fromUserId,
-              toUserId: recipient.id,
-              amount,
-              idempotencyKey: entry.idempotencyKey,
-              error: syncErr instanceof Error ? syncErr.message : String(syncErr),
-              hint: '若远端实际已记账，用户重试会再记一笔；可按 idempotencyKey 去账户服务核对',
-            })
-        );
-        throw syncErr instanceof AccountServiceError
-          ? syncErr
-          : new AccountServiceError(`转账同步失败: ${String(syncErr)}`, 503);
-      }
-    }
-
-    // 回调（站外商户）：**提交且远端结算之后**才发，且**不 await** ——
+    // 回调（站外商户）：**事务提交之后**才发，且**不 await** ——
     // 商户的 HTTP 延迟不该记在付款人的账上。定时 drainer 才是保证（它只捞超过
     // 宽限期的 pending），这一下只是把正常路径的延迟从「最多 30 秒」压到亚秒级。
     // 吞异常：投递失败的收敛归 drainer，绝不能让它冒泡回去把一笔**已经成交**的
-    // 转账变成 500（同顶栏推送那条纪律）。补偿路径根本不走到这里。
-    if (phase1.deliveryId) {
-      void deliverWebhook(phase1.deliveryId).catch(() => {
+    // 转账变成 500（同顶栏推送那条纪律）。
+    if (applied.deliveryId) {
+      void deliverWebhook(applied.deliveryId).catch(() => {
         /* 交给 drainer 重试 */
       });
     }
 
-    // 通知接收者：**在提交与同步之后**发（钱已结算完，不能因通知失败而退回）；
-    // 补偿路径绝不发（否则用户收到「有人给你转了钱」但那笔钱已被回滚）。
+    // 通知接收者：**在事务提交之后**发（钱已经记完，不能因通知失败而退回）。
     // 无对应偏好开关（同「文章投喂」「讨论提及」），显式声明不受偏好拦截。
     try {
       await sendNotification({
@@ -576,28 +439,21 @@ export async function transferFish(
       );
     }
 
-    return { ok: true, amount, balance: phase1.balance, recipient, transferId };
+    return { ok: true, amount, balance: applied.balance, recipient, transferId };
   } catch (e) {
-    if (e instanceof TransferBusinessError) {
-      return { ok: false, code: e.code, message: e.message };
-    }
     if (e instanceof TransferDuplicateError) {
       // 并发撞键：本地写入已被唯一约束挡回（事务整体回滚），返回重放结果。
       return e.outcome;
     }
-    if (e instanceof AccountServiceError) {
-      // 远端失败：本地已被补偿（等价于回滚），向上抛让路由返回 503。
-      console.warn(
-        `[fish-market] 账户服务转账同步失败，本地写入已补偿回滚` +
-          `（from=${fromUserId} to=${recipient.id} amount=${amount}）: ${e.message}`
-      );
-      throw e;
+    if (e instanceof InsufficientFishError) {
+      // 余额不足是**业务结果**，不是故障 —— 内核在事务里抛出时，整笔转账已整体回滚。
+      return { ok: false, code: 400, message: '小鱼干不足' };
     }
-    // 兜底：意外异常按 fail-closed 处理，包装为 503。
+    // 兜底：意外异常按 500 处理（没有远端了，本地事务失败就是真故障）。
     console.error(
       `[fish-market] 转账异常（from=${fromUserId} to=${recipient.id} amount=${amount}）:`,
       e
     );
-    throw new AccountServiceError(`转账失败: ${String(e)}`, 503);
+    throw e;
   }
 }

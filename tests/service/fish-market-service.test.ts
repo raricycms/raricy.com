@@ -14,12 +14,12 @@ import {
   transferFish,
   searchTransferTargets,
   makeOrderKeyBase,
-  CLIENT_KEY_RE,
   ORDER_RE,
   TRANSFER_OUT_TYPE,
   TRANSFER_IN_TYPE,
   TRANSFER_NOTE_MAX,
 } from '@/lib/fish-market-service';
+import { CLIENT_KEY_RE } from '@/lib/fish-idempotency';
 import { makeTransferIdempotencyKey } from '@/lib/account-client';
 import { fishToUnits, unitsToFish } from '@/lib/fish-units';
 import { __resetRateLimitStore, RULES } from '@/lib/rate-limit';
