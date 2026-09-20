@@ -26,7 +26,8 @@ export const FISH_UNIT_SCALE = 10;
 
 /**
  * 鱼干 → 存储单位。**只接受 ≤1 位小数**：静默 round 会把 0.05 级的账目误差
- * 吞进整数里，这里宁可 fail-loud（上层 500 / 503）也不写错账。
+ * 吞进整数里，这里宁可 fail-loud（抛普通 Error，由调用方按场景翻成 400 或 500）
+ * 也不写错账。
  */
 export function fishToUnits(fish: number): number {
   if (!Number.isFinite(fish)) {

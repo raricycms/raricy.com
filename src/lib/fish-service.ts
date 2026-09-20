@@ -162,9 +162,10 @@ function applyTypeFilter(where: Prisma.FishTransactionWhereInput, type?: string 
  * 用 id 而不是 createdAt 作游标：id 是自增主键，严格单调且同毫秒也不会并列
  * （createdAt 是 INTEGER 毫秒，同毫秒多笔时无全序）。
  *
- * 【已知边界（文档同步）】转账被远端故障回滚时，那两条流水会被**删除**。
- * 对账方若「一看见就入账」，可能入了一笔随后消失的钱 —— 所以拉取时请留一个
- * 小滞后（只处理 createdAt 早于 now-10s 的行），见 docs/bot/fish-bot.md §3.3.1。
+ * 【取到即终态】流水与它对应的余额变动在**同一个事务**里提交，因此这里读到的
+ * 每一行都是已经生效且不会再变的 —— 对账方「一看见就入账」是安全的，不需要滞后。
+ * （历史注记：账户服务曾把回滚做成「删掉已写下的流水」，那时对账方必须留 10 秒滞后
+ * 躲开「先可见、后消失」的行；那个窗口随转账改本地事务一起消失了。）
  */
 export async function getTransactionsSince(
   userId: string,

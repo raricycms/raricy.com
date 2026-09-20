@@ -643,7 +643,8 @@ model MarketPosition {
   openTxId     Int?      @map("open_tx_id")
   /** 开仓幂等键（每次唯一，带随机后缀）。唯一约束就是幂等的实现。 */
   openKey      String    @unique(map: "market_positions_open_key_key") @map("open_key")
-  /** open | closed。**绝不物理删除**（远端同步失败的补偿是唯一例外）。 */
+  /** open | closed。**绝不物理删除**，没有例外（曾有一处：远端同步失败的补偿事务会
+   *  删掉从未生效的开仓，那个机制随账户服务搬进站内一起消失了）。 */
   status       String    @default("open")
   exitPrice    Float?    @map("exit_price")
   exitQuoteAt  DateTime? @map("exit_quote_at")
@@ -760,23 +761,31 @@ model OAuthAuthorizationCode {
   @@map("oauth_authorization_codes")
 }
 
-// ── 账户微服务同步账本（fail-closed 的落地机制） ─────────────────────────────
-// 远端 HTTP 调用不在 SQLite 事务内（否则写锁被占用最长 ACCOUNT_SERVICE_TIMEOUT，
-// 并发写直接 "database is locked"）。改用「先提交本地 + 账本登记 + 提交后同步 +
-// 失败补偿」：远端失败时补偿事务精确撤销本地写入（对用户仍等价于回滚 + 503）；
-// 进程在「已提交本地、远端未同步」之间崩溃时，账本行留 pending/failed，
-// 由 npm run cli -- fish sync-retry 幂等重放收敛。
-// payload 只存非敏感重放参数；密钥类字段（系统 Key / 用户 Key）不入库，
-// 重放时按 userId 重新解密。
+// ── 幂等记录（曾经的「账户微服务同步账本」）───────────────────────────────
+// 【表名与列名是历史，不要再按字面理解】这张表当年是 outbox：本地事务先提交
+// （登记一行 pending）→ 事务外调站外的账户微服务 → 成功标 synced / 失败走补偿事务。
+// 那套机制随账户服务搬进站内一起消失了 —— 账目与业务数据现在在同一个 SQLite
+// 事务里，要么都成要么都不成，没有中间态可收敛。
+// 表**刻意保留原名**（见 docs/legacy-constraints.md）：里面有真的历史账，改名的迁移
+// 收益不抵风险。**语义与用法以 src/lib/fish-idempotency.ts 为准**：
+//   · 现在写入的行**一律 status='synced'**（登记与业务写入同事务提交，提交成功即已生效）；
+//   · 只有**键是确定的**操作才登记（转账带客户端幂等键、群发补偿按 batchId 派生）；
+//     随机后缀键的操作不写行 —— 判据与理由在 fish-idempotency.ts 头部。
+// 存量里可能残留 status != 'synced' 的行：那是迁移前的遗留，读的时候要当成
+// 「不确定」处理（见 fish-market-service.resolveDuplicate），别当它不存在。
 model AccountSyncLedger {
   id             Int       @id @default(autoincrement())
-  // 幂等键 = 发往账户服务的 Idempotency-Key（feed 是 consume/income/refund 三键的根）
+  // 幂等键。历史上是发往账户服务的 Idempotency-Key，现在只在本站内唯一。
   idempotencyKey String    @unique @map("idempotency_key")
-  operation      String // feed | checkin | admin_grant | admin_deduct | compensate | register | transfer
-  // JSON 字符串：重建远端调用所需的非敏感参数（SQLite 无数组/Json 标量）
+  // 迁移前的值：feed | checkin | admin_grant | admin_deduct | compensate | register |
+  // transfer | market_buy | market_sell。现在只写入 transfer 与 compensate。
+  operation      String
+  // JSON 字符串：发起这笔操作时的非敏感参数（SQLite 无数组/Json 标量）。
+  // 【纪律不变】密钥类字段（系统 Key / 用户 Key）一律不入库。
   payload        String
-  // pending → synced（远端已同步）/ compensated（远端失败且本地已补偿）/ failed（补偿也失败，待重放）
+  // 新写入一律 'synced'。历史值：pending / synced / compensated / failed。
   status         String    @default("pending")
+  // 仅历史行有意义（迁移前的重放尝试次数）。新写入恒为 0。
   attempts       Int       @default(0)
   lastError      String?   @map("last_error")
   createdAt      DateTime? @map("created_at")

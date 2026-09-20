@@ -140,7 +140,7 @@ export interface CmdOutput {
   warnings?: string[];
 }
 
-/** 命令失败的统一形态。exitCode 是 CI / 脚本契约：1 参数/用户错误，2 账户服务同步失败。 */
+/** 命令失败的统一形态。exitCode 是 CI / 脚本契约：1 参数/用户错误，2 本地事务失败（真故障）。 */
 export class CliError extends Error {
   readonly exitCode: number;
   readonly details: string[];

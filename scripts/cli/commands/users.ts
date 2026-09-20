@@ -458,7 +458,9 @@ export const userCommands: CommandSpec[] = [
         email: ctx.args.email ? String(ctx.args.email) : null,
         reason: ctx.args.reason ? String(ctx.args.reason) : null,
       });
-      // 账户服务同步失败用 exit 2（与 fish grant/deduct 的既有语义一致）
+      // 意外故障用 exit 2（与 fish grant/deduct 的既有语义一致）——
+      // 建号与网页注册共用内核，用户行在一个事务里写入，任何异常整体回滚、不留半截用户。
+      // 503 是这条路径上通用的故障兜底码，与已撤销的账户服务无关。
       if (!r.ok) throw new CliError(`错误：${r.message}`, r.code === 503 ? 2 : 1);
 
       const warnings: string[] = ['⚠️  请通过安全渠道把初始密码转告对方。'];

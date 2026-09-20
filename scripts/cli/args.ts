@@ -262,7 +262,7 @@ export function generateHelp(commands: CommandSpec[]): string {
     '',
     '全局参数：--json（结构化输出）  --yes/-y（跳过危险操作确认）  --as <username>（审计身份）',
     '          --no-color  --help/-h',
-    '退出码：0 成功 / 1 参数或用户错误 / 2 账户服务同步失败（本地已回滚）',
+    '退出码：0 成功 / 1 参数或用户错误 / 2 本地事务失败（真故障，本地无任何变更）',
     '',
   ];
 
