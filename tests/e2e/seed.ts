@@ -96,6 +96,9 @@ export const SEED_USERS: Record<string, SeedUser> = {
 /** 种子库里那款头像框。取白名单第一个 key —— 不写死字符串，加框时不会两边漂。 */
 export const SEED_FRAME_KEY = FRAME_KEYS[0];
 
+/** 全部几款 —— 给 framedIdle（装备面板那个演示账号）持有。 */
+export const SEED_FRAME_KEYS: readonly string[] = FRAME_KEYS;
+
 export const SEED_CATEGORY = { name: 'E2E 栏目', slug: 'e2e-cat' };
 
 /** 正文里的哨兵串：只有客户端 marked 真的跑完才会出现在 DOM 里，

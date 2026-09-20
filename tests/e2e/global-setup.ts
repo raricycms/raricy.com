@@ -20,6 +20,7 @@ import {
   E2E_STICKERS,
   E2E_STORIES,
   SEED_PASSWORD,
+  SEED_FRAME_KEYS,
   SEED_FRAME_KEY,
   SEED_USERS,
   SEED_CATEGORY,
@@ -106,8 +107,12 @@ function seedFrames() {
   }
   fs.rmSync(root, { recursive: true, force: true });
   fs.mkdirSync(root, { recursive: true });
-  // 文件名就是白名单里的 key（frame-service 只认 <key>.png）
-  fs.writeFileSync(path.join(root, `${SEED_FRAME_KEY}.png`), PNG_1X1);
+  // 文件名就是白名单里的 key（frame-service 只认 <key>.png）。
+  // **每一款都要写** —— 只写第一款的话，面板上其余几项会标「素材缺失」，
+  // 而那既不是用例想测的东西，也会让人误以为素材逻辑坏了。
+  for (const key of SEED_FRAME_KEYS) {
+    fs.writeFileSync(path.join(root, `${key}.png`), PNG_1X1);
+  }
 }
 
 /**
@@ -295,16 +300,19 @@ export default async function globalSetup() {
       data: { equippedFrameKey: SEED_FRAME_KEY, equippedFrameExpiresAt: past },
     });
 
-    // framedIdle：**持有但不戴**（装备面板那条用例要从「没戴」开始点）
-    await prisma.userFrame.create({
-      data: {
-        userId: SEED_USERS.framedIdle.id,
-        frameKey: SEED_FRAME_KEY,
-        expiresAt: null,
-        source: 'system',
-        createdAt: nowForDb(),
-      },
-    });
+    // framedIdle：**持有但不戴**，而且持有**全部**几款（装备面板那条用例要从「没戴」
+    // 开始点，同时要能覆盖「网格里有好几项」这个排布）。
+    for (const f of SEED_FRAME_KEYS) {
+      await prisma.userFrame.create({
+        data: {
+          userId: SEED_USERS.framedIdle.id,
+          frameKey: f,
+          expiresAt: null,
+          source: 'system',
+          createdAt: nowForDb(),
+        },
+      });
+    }
 
     const category = await prisma.category.create({
       data: {

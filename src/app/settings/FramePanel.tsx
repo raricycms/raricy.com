@@ -144,17 +144,21 @@ export default function FramePanel({ userId, onAlert }: Props) {
               <Avatar userId={userId} frameUrl={f.url} alt="" size={56} />
               <div className="frame-panel__meta">
                 <span className="frame-panel__name">{f.label}</span>
-                <span className="frame-panel__expiry">
-                  {f.expiresAt ? `${f.expiresAt} 到期` : '永久'}
-                </span>
-                {/* 三种「戴着也看不见」的原因要分开说 —— 用户据此刻判断该找谁 */}
-                {f.expired && <span className="frame-panel__badge">已过期</span>}
-                {f.retired && <span className="frame-panel__badge">已下架</span>}
-                {!f.available && !f.retired && (
-                  <span className="frame-panel__badge" title="素材还没传到服务器">
-                    素材缺失
+                {/* 到期与状态徽标挤在一行 —— 各占一行会把卡片撑得很高，
+                    而它们本来就是同一个问题的两面（「这个框还能不能用」） */}
+                <span className="frame-panel__sub">
+                  <span className="frame-panel__expiry">
+                    {f.expiresAt ? `${f.expiresAt} 到期` : '永久'}
                   </span>
-                )}
+                  {/* 三种「戴着也看不见」的原因要分开说 —— 用户据此刻判断该找谁 */}
+                  {f.expired && <span className="frame-panel__badge">已过期</span>}
+                  {f.retired && <span className="frame-panel__badge">已下架</span>}
+                  {!f.available && !f.retired && (
+                    <span className="frame-panel__badge" title="素材还没传到服务器">
+                      素材缺失
+                    </span>
+                  )}
+                </span>
               </div>
               {f.equipped ? (
                 <span className="frame-panel__on-tag">佩戴中</span>

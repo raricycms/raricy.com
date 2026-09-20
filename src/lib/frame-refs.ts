@@ -54,15 +54,16 @@
  * 都按它排）。与 `blog-visibility.ts` 的 `BLOG_VISIBILITIES` 同款：数组即顺序，
  * 不另设 order 字段（两处维护会漂）。
  *
+ * ⚠️ 每一项都要有对应的 `instance/frames/<key>.png`。缺素材时框**静默不显示**
+ * （页面不报错）—— 自查用 `npm run cli -- frame list --keys`。
+ * 这几款的素材由 `node scripts/make-frame-demos.mjs` 生成（出图规格的活文档）。
+ *
  * ⚠️ **退役一个框时把 `FRAMES[k].retired` 置 true，不要从这里删掉 key。**
  *   删了之后：`parseFrameKey` 认不出它 → 设置面板没法显示那一行 → 用户**卸不掉**
  *   一个已经退役的框（见 `docs/architecture.md` §6.14 的风险节）。
  *   保留 key 的代价只是一行数组元素。
- *
- * ⚠️ 第一版只有一个占位 key，给单测与 e2e 用。站长做好素材后按真实文件名登记
- *   （`instance/frames/<key>.png` 的 `<key>` 就是这里的字符串，一一对应）。
  */
-export const FRAME_KEYS = ['demo'] as const;
+export const FRAME_KEYS = ['ring', 'gradient', 'glow', 'corner', 'dashed'] as const;
 
 export type FrameKey = (typeof FRAME_KEYS)[number];
 
@@ -82,9 +83,25 @@ export interface FrameDef {
  * 穷尽表 —— 加 `FRAME_KEYS` 的条目而不补这里，tsc 当场报错（这是刻意的，见文件头）。
  */
 export const FRAMES: Record<FrameKey, FrameDef> = {
-  demo: {
-    label: '示例框',
-    description: '占位用的示例头像框。站长做好素材后按真实文件名登记，把这条换掉。',
+  ring: {
+    label: '素环',
+    description: '最基础的一款：一圈实心描边。缩到 20px 也认得出，是可以照抄的下限。',
+  },
+  gradient: {
+    label: '流光',
+    description: '青 → 蓝 → 紫的斜向渐变。几何与素环完全一样，只是换了配色。',
+  },
+  glow: {
+    label: '光晕',
+    description: '外侧一圈实线，内侧两层递弱的宽环 —— 柔和的发光感。',
+  },
+  corner: {
+    label: '角框',
+    description: '细环 + 加粗的四角。大尺寸下好看，缩到 20px 就只剩一圈环了。',
+  },
+  dashed: {
+    label: '点线',
+    description: '圆头端点的虚线环，像一圈小扇贝。小尺寸下会糊成一条灰环。',
   },
 };
 

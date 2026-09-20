@@ -24,6 +24,10 @@
 import { expect, test, type Page } from '@playwright/test';
 import { loginViaApi, uniqueTag } from './helpers';
 import { SEED_FRAME_KEY, SEED_USERS, SEED_BLOG } from './seed';
+import { FRAMES } from '../../src/lib/frame-refs';
+
+/** 种子那款框的显示名 —— 取白名单，不写死字符串（换框时用例不会跟着坏）。 */
+const FRAME_LABEL = FRAMES[SEED_FRAME_KEY].label;
 
 const FRAME_SRC = `/api/frames/${SEED_FRAME_KEY}`;
 
@@ -190,7 +194,7 @@ test.describe('★ 装备面板（/settings）：从没用过的人点一下就�
     // 起点：持有但没戴
     await expect(panel.locator('.frame-panel__current-state')).toContainText('还没有戴');
 
-    await panel.locator('.frame-panel__item', { hasText: '示例框' }).getByRole('button', { name: '戴上' }).click();
+    await panel.locator('.frame-panel__item', { hasText: FRAME_LABEL }).getByRole('button', { name: '戴上' }).click();
 
     // 面板自身要更新（戴上那个按钮变成「佩戴中」）
     await expect(panel.locator('.frame-panel__on-tag')).toHaveText('佩戴中');

@@ -307,7 +307,7 @@
   margin: 0;
   padding: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
   gap: $space-3;
 }
 
@@ -315,7 +315,14 @@
   display: flex;
   align-items: center;
   gap: $space-3;
-  padding: $space-3;
+  // 竖向卡片（头像在上、按钮在下）。
+  // 【为什么不横排】横排是「头像 | 名字 | 按钮」三列，在 200px 宽的格子里名字只剩
+  // 一两个字，会缩成「素…」——那是**静默的版式坏掉**（不报错，只是没法看）。
+  // 竖向则任何宽度下都成立，且更像衣柜。
+  flex-direction: column;
+  align-items: center;
+  gap: $space-2;
+  padding: $space-4 $space-3;
   border-radius: 20px;
   background: var(--color-background-subtle);
 
@@ -328,14 +335,25 @@
 .frame-panel__meta {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  gap: 3px;
   min-width: 0;
-  flex: 1;
+  width: 100%;
+}
+
+// 到期文案 + 状态徽标挤在一行（挤不下时换行，不撑高）
+.frame-panel__sub {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 
 .frame-panel__name {
   font-weight: 500;
   color: var(--color-text-primary);
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -349,7 +367,6 @@
 // 「已过期 / 已下架 / 素材缺失」三种状态共用一枚小胶囊。
 // 分开说是有意的：用户据此刻判断该找谁（过期 = 等站长续，素材缺失 = 等站长传图）。
 .frame-panel__badge {
-  align-self: flex-start;
   font-size: 0.75rem;
   padding: 1px 8px;
   border-radius: $radius-max; // 单行标记 → 胶囊（规范 §4）
@@ -358,8 +375,9 @@
 }
 
 .frame-panel__on-tag {
-  flex: none;
   font-size: 0.8rem;
   color: var(--color-brand-primary);
   font-weight: 500;
+  // 与「戴上」按钮占同样的高度，切换时卡片不跳
+  padding: 6px 0;
 }
