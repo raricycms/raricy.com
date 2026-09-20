@@ -61,16 +61,21 @@ const CLI_FILES = [CLI_ENTRY, ...collectFiles(CLI_DIR)];
 /**
  * 顶层可以静态 import 的 src/lib 模块白名单。
  *
- * 目前只有 format.ts —— 它是纯展示辅助（ymd / ymdhms），**运行时零依赖**，
- * 引入它不会把 Prisma 拖进 `--help` 的加载路径。日期展示必须与站内同一口径
- * （库内存的是「UTC+8 墙上时间贴 Z 标签」，用本地时区 API 会再平移 8 小时），
- * 与其在 CLI 里抄一份，不如直接复用。
+ * 这条白名单表达的是**一条通则**：**运行时零依赖**的模块可以进 CLI 顶层 ——
+ * 引入它们不会把 Prisma 拖进 `--help` 的加载路径。
+ *   · format.ts   —— 纯展示辅助（ymd / ymdhms）。日期展示必须与站内同一口径
+ *                    （库内存的是「UTC+8 墙上时间贴 Z 标签」，用本地时区 API 会再
+ *                    平移 8 小时），与其在 CLI 里抄一份，不如直接复用。
+ *   · frame-refs.ts —— 头像框的词汇表（key / 显示名 / 解析）。`frame grant` 需要它
+ *                    做两件**必须静态**的事：向导的候选列表（choices 在模块顶层求值）
+ *                    与 `validate`（同步）。零依赖是那个文件的硬要求 ——
+ *                    客户端设置面板也要 import 它。
  *
- * ⚠️ 这条白名单是**自校验**的：下面有一条用例断言 format.ts 没有任何运行时 import。
- *    谁给 format.ts 加了依赖，那条用例会立刻红 —— 白名单不会悄悄失效。
+ * ⚠️ 这条白名单是**自校验**的：下面有一条用例**遍历它**，逐个断言那些文件没有任何
+ *    运行时 import。谁给其中一个加了依赖，那条用例会立刻红 —— 白名单不会悄悄失效。
+ *    （此前那条只钉 format.ts，加第二个成员时就会漏 —— 所以改成遍历。）
  */
-const LIB_ALLOWLIST = ['src/lib/format'];
-const FORMAT_FILE = path.join(ROOT, 'src', 'lib', 'format.ts');
+const LIB_ALLOWLIST = ['src/lib/format', 'src/lib/frame-refs'];
 
 /** 在文件里跑一个正则，返回 `相对路径:行号` 形式的命中列表。 */
 function hits(re: RegExp): string[] {
@@ -106,14 +111,21 @@ describe('运维 CLI：--help 不加载 Prisma', () => {
     ).toEqual([]);
   });
 
-  it('白名单之所以成立的依据：format.ts 没有任何运行时 import', () => {
-    const src = stripComments(fs.readFileSync(FORMAT_FILE, 'utf8'));
-    const runtimeImports = [...src.matchAll(RE_TOP_IMPORT)]
-      // 相对路径的运行时 import（import type 已被正则的 (?!type\b) 排除）
-      .map((m) => m[2]);
+  it('★ 白名单之所以成立的依据：其中**每一个**模块都没有任何运行时 import', () => {
+    // 遍历白名单而不是只钉 format.ts —— 后者在加第二个成员时会静默失效
+    //（新成员带着 Prisma 进来，而那条旧用例照旧「通过」）。
+    const bad: string[] = [];
+    for (const mod of LIB_ALLOWLIST) {
+      const file = path.join(ROOT, ...`${mod}.ts`.split('/'));
+      expect(fs.existsSync(file), `白名单里的 ${mod} 不存在（改名了？）`).toBe(true);
+      const src = stripComments(fs.readFileSync(file, 'utf8'));
+      for (const m of src.matchAll(RE_TOP_IMPORT)) bad.push(`${mod}: ${m[0].trim()}`);
+    }
     expect(
-      runtimeImports,
-      `src/lib/format.ts 现在有了运行时 import，CLI 的顶层白名单不再安全 —— 要么去掉那个 import，要么把 format 从白名单里移除并改回动态引入：\n  ${runtimeImports.join('\n  ')}`
+      bad,
+      '这些模块现在有了运行时 import，CLI 的顶层白名单不再安全 —— 要么去掉那个\n' +
+        'import，要么把它移出白名单并改回 run() 里的动态引入：\n  ' +
+        (bad.join('\n  ') || '（无）')
     ).toEqual([]);
   });
 });

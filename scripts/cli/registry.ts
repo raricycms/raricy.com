@@ -24,6 +24,7 @@ import { auditCommands } from './commands/audit';
 import { appealCommands } from './commands/appeals';
 import { statsCommands } from './commands/stats';
 import { oauthCommands } from './commands/oauth';
+import { frameCommands } from './commands/frames';
 
 export const COMMANDS: CommandSpec[] = [
   ...userCommands,
@@ -39,6 +40,7 @@ export const COMMANDS: CommandSpec[] = [
   ...appealCommands,
   ...statsCommands,
   ...oauthCommands,
+  ...frameCommands,
 ];
 
 /** 按名字取命令。命令名可能多段（'oauth create-app'）。 */

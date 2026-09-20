@@ -169,6 +169,7 @@ export type GroupId =
   | 'audit'
   | 'appeals'
   | 'oauth'
+  | 'frame'
   | 'stats';
 
 export const GROUP_LABELS: Record<GroupId, string> = {
@@ -184,6 +185,7 @@ export const GROUP_LABELS: Record<GroupId, string> = {
   audit: '审计日志',
   appeals: '申诉',
   oauth: 'OAuth 应用',
+  frame: '头像框',
   stats: '站点概览',
 };
 

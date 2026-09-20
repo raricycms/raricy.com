@@ -449,6 +449,51 @@ npm run cli -- oauth create-app "cattca-game" \
 ⚠️ `client_secret` **仅此一次显示**。命令行若被记录（shell history / CI 日志），
 请同步清理；推荐写到 secrets manager 而不是明文文件。
 
+### 头像框
+
+发放 / 收回 / 盘点用户的头像框。框是**授权**，不是商品：用户侧只能在
+`/settings` 决定「戴哪个」，而「有没有资格戴」由这里决定。
+
+```
+frame grant  <username> <key> [--days N] [-r 说明]
+frame revoke <username> <key> [-r 说明]
+frame list   [username] [--keys]
+```
+
+```bash
+npm run cli -- frame grant alice sakura --days 30 -r "中秋活动"
+#   已发放：alice ← 「樱花」
+#   到期：2026-10-20T12:00:00.000Z
+
+npm run cli -- frame list alice
+#   alice   樱花(sakura)   有效   到期:2026-10-20 12:00:00   来源:cli   佩戴中
+
+npm run cli -- frame list --keys     # ★ 素材体检
+#   sakura   樱花   素材:有   透明通道:有   18244 字节
+```
+
+**语义要点**
+
+- **授予 ≠ 装备**。发下去只是给了资格，戴不戴是用户自己的事（`/settings`）。
+- **幂等且只延长不缩短**：已持有时取「原到期」与「新到期」的较晚者。已经是永久的，
+  再发 30 天仍是永久（空操作）。要缩短或收回，用 `frame revoke`。
+- **收回会顺带摘下**：正戴着这个框时，收回会连同装备状态一起清掉（同一事务）。
+  没持有过、或已经收回过的，照样成功（幂等）。
+- **到期是懒判定**：限时框过期后，库里那两列**留着过期的值、不做任何清理**，
+  判定时恒为「不显示」。所以想让某人下周失效，用 `frame grant --days 7`，别用 revoke。
+- **退役一个框**：把 `src/lib/frame-refs.ts` 里那条的 `retired` 置 true，
+  **不要从 `FRAME_KEYS` 里删** —— 删了用户就摘不掉它了（面板认不出那一行）。
+
+**⚠️ 素材缺失只警告，不算失败**
+
+授权是写库的，素材在 `instance/frames/<key>.png`（gitignored 的运行时数据）。
+授权成功但盘上没有那张图时，本域命令**只打黄色警告、退出码仍是 0** ——
+那时全站都不会显示这个框，而**页面不会有任何报错**。`frame list --keys` 是
+唯一能主动发现这件事的地方。
+
+`frame list --keys` 还会报「没有透明通道」——那种素材会**盖住用户的脸**，
+是全站一起坏的一种。
+
 ---
 
 ## 六、注意事项
