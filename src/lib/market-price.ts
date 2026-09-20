@@ -36,7 +36,7 @@ export type MarketSymbol = (typeof MARKET_SYMBOLS)[number];
 /** 币安公开行情域。可用 MARKET_PRICE_BASE_URL 覆盖（见文件头两条理由）。 */
 const DEFAULT_BASE_URL = 'https://data-api.binance.vision';
 
-/** 单次出站超时。与账户服务同量级（ACCOUNT_SERVICE_TIMEOUT 默认 5s），但行情更该快失败。 */
+/** 单次出站超时。行情是同步等待的（用户点了下单就在等），所以要比 5s 的量级更短。 */
 const FETCH_TIMEOUT_MS = 3000;
 
 /**

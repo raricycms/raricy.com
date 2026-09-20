@@ -32,15 +32,9 @@ process.env.RATE_LIMIT_SNAPSHOT_PATH = path.join(TMP_DIR, 'rate-limit-snapshot.j
 process.env.SECRET_KEY = 'test-secret-key-do-not-use-in-prod';
 // NODE_ENV 由 vitest 自动置为 'test'，无需（也不能，@types/node 标了 readonly）在此赋值。
 
-// 账户服务默认不可达 —— 走 dev fallback 分支，用例里需要时再单独 mock。
-//
-// 【为什么置空串而不是 delete】@prisma/client 运行时首次 import 时会加载 schema
-// 同目录的 .env（schemaEnvPath），dotenv 的语义是「已存在的变量不覆盖」：
-//   • delete → .env 里若有 ACCOUNT_SERVICE_INTERNAL_TOKEN 占位值，会被重新灌回来，
-//     让真实的 accountServiceEnabled() 变 true、签到/投喂用例悄悄打真 HTTP（已实测）。
-//   • 置空串 → 变量已存在（空串 falsy）→ .env 灌不进来，accountServiceEnabled() 恒 false。
-process.env.ACCOUNT_SERVICE_INTERNAL_TOKEN = '';
-process.env.ACCOUNT_SYSTEM_KEY = '';
+// 鱼干记账已全部在站内（同一个 SQLite 事务），没有需要在这里关掉的远端。
+// 这里原先置空 ACCOUNT_SERVICE_INTERNAL_TOKEN / ACCOUNT_SYSTEM_KEY 以强制走
+// dev fallback 分支 —— 那两个变量已不再被任何代码读取，用例也就不用再摆姿态。
 
 // 回调投递的定时器**必须关掉**：跑起来的话，每个测试文件都会有一个后台循环
 // 去发真实 HTTP 请求（而且指向的是用例里造的假地址）。

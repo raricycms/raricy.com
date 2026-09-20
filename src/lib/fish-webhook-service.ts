@@ -1,21 +1,25 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // fish-webhook-service.ts — 鱼干收款回调：地址配置 + outbox + 投递
 //
-// 【形状照搬 fish-sync】（CLAUDE.md 红线：远端 HTTP **绝不能**在 SQLite 事务内）
+// 【形状是 outbox，理由与记账无关】（CLAUDE.md 红线：HTTP **绝不能**在 SQLite 事务内）
 //   ① 转账事务里：写一行 pending 投递（与两条流水同事务提交）
 //      —— 于是「钱记了、通知忘了」在结构上不可能发生；
-//   ② 事务提交、远端结算成功后：`void deliver()` 尽力立即投递（不 await，
+//   ② 事务提交后：`void deliver()` 尽力立即投递（不 await，
 //      商户的 HTTP 延迟不该记在付款人账上）；
-//   ③ 转账补偿（Phase 3）：**删掉**那一行 —— 回滚掉的转账绝不能通知商户「你收到钱了」；
-//   ④ 兜底：定时器与 CLI 只捞**超过宽限期**的 pending，届时 ②③ 必然已决出结果。
+//   ③ 兜底：定时器与 CLI 只捞**超过宽限期**的 pending，覆盖 ② 失败 / 进程崩掉的情况。
+//
+// 【为什么不能顺手把它也改成「事务里直接发」】钱的事务只有毫秒级 ——
+//   把商户的 HTTP（最长 WEBHOOK_TIMEOUT_MS）塞进去，等于让一个第三方站点的延迟
+//   去占 SQLite 的写锁，并发写会直接 "database is locked"。这条与账户服务搬不搬
+//   站内无关：**本站唯一允许的跨进程调用的 outbox 就是这里**。
 //
 // 【at-least-once，接收方必须去重】投递行被领走（status → sending）之后、标记
 // delivered 之前进程崩掉，租约到期后这一行会被重新投递 —— 商户会收到重复回调。
 // 这是刻意的取舍（要么至少一次、要么可能丢失；收款场景下「至少一次」才是对的）。
 // 所以每条都带 X-Raricy-Delivery，**同一个值在重试之间不变**，商户按它去重。
 //
-// 【payload 存成品而不是重建参数】与 account_sync_ledger 相反：那里存参数是为了
-// 重放时重建请求，这里要的是**字节稳定** —— 签名算在正文上，重试时正文必须一模一样。
+// 【payload 存成品而不是重建参数】存参数是为了重放时重建请求，这里要的是
+// **字节稳定** —— 签名算在正文上，重试时正文必须一模一样。
 //
 // 【失败不自动停用】连续失败次数只用于展示。悄悄停掉全部回调是典型的静默失效：
 // 商户以为还在收通知，其实早就没了。要停由商户自己停。
@@ -198,7 +202,7 @@ export async function disableWebhookEndpoint(userId: string): Promise<boolean> {
   return res.count > 0;
 }
 
-/** 密钥来源与 account-client 完全一致（同一套派生，见 secret-box.ts 头部）。 */
+/** 密钥来源取自 secret-box 的同一套派生（FISH_ENCRYPTION_KEY 优先，回退 SECRET_KEY）。 */
 function encryptionKeySource(): string {
   return process.env.FISH_ENCRYPTION_KEY || process.env.SECRET_KEY || '';
 }
@@ -284,10 +288,10 @@ export async function enqueueTransferWebhook(input: EnqueueInput): Promise<numbe
   return row.id;
 }
 
-/** 转账补偿时删掉投递行（见文件头 ③）。按 transferId 删 —— 一笔转账至多一条。 */
-export async function dropTransferWebhook(tx: TxClient, transferId: string): Promise<void> {
-  await tx.fishWebhookDelivery.deleteMany({ where: { transferId } });
-}
+// 这里曾有一个 dropTransferWebhook（转账补偿时删掉投递行）—— 投递行与两条流水
+// 同事务提交，而「转账被回滚」这件事随账户服务搬进站内一起消失了（要么都提交、
+// 要么都没提交），所以它没有了适用场景。需要删投递行时别照旧例重写一个：
+// 先想清楚「钱退回去了但回调还在路上」在新结构下还能不能发生。
 
 // ── 投递 ─────────────────────────────────────────────────────────────────────
 

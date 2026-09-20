@@ -234,31 +234,41 @@ if (dbPath && fs.existsSync(dbPath)) {
     const { PrismaClient } = await import('@prisma/client');
     const prisma = new PrismaClient({ log: [] });
     try {
+      // 抽查**回调签名密钥**的密文（FishWebhookEndpoint.secretEncrypted）。
+      // 【为什么不是 users.fish_api_key_encrypted】那一列是当年发往站外账户微服务的
+      // 用户 Key（列与存量密文还在库里，见 docs/legacy-constraints.md），但已经没有任何
+      // 代码读它 —— 拿它验证「SECRET_KEY 对不对」会得出一个不影响任何功能的结论。
+      // 签名密钥是活的：解不开它，商户就再也收不到回调，所以它才是该被抽查的那批密文。
       const rows = await prisma.$queryRawUnsafe(
-        `SELECT id, fish_api_key_encrypted AS ct FROM users
-         WHERE fish_api_key_encrypted IS NOT NULL AND fish_api_key_encrypted != '' LIMIT 5`
+        `SELECT id, secret_encrypted AS ct FROM fish_webhook_endpoints
+         WHERE secret_encrypted IS NOT NULL AND secret_encrypted != '' LIMIT 5`
       );
       if (!rows?.length) {
         wrn(
-          '库里没有任何已加密的 API Key —— 无法验证密钥对不对',
-          '若这是真实生产库，说明账户服务还没给用户建过号；切换后首次用到鱼干时才会建'
+          '库里没有任何回调签名密钥 —— 无法验证密钥对不对',
+          '没登记过回调地址就是这样的；等第一个商户登记之后再看'
         );
       } else if (!process.env.SECRET_KEY) {
         bad('SECRET_KEY 未设置，无法验证', '把历史生产 .env 里的 SECRET_KEY 原样搬过来');
       } else {
-        const { decryptApiKey } = await import('../src/lib/account-client.ts');
+        const { openSecret } = await import('../src/lib/secret-box.ts');
         let good = 0;
         const errs = [];
         for (const r of rows) {
           try {
-            const k = decryptApiKey(String(r.ct));
+            // 派生方式与 fish-webhook-service 的 encryptionKeySource() 一致。
+            // 直连 secret-box 而不是走某个业务封装：这里要验的就是**密钥派生**本身。
+            const k = openSecret(
+              String(r.ct),
+              process.env.FISH_ENCRYPTION_KEY || process.env.SECRET_KEY || ''
+            );
             if (k) good++;
           } catch (e) {
             errs.push(String(e).split('\n')[0]);
           }
         }
         if (good === rows.length) {
-          ok(`SECRET_KEY 正确：抽查 ${good}/${rows.length} 条存量密文全部解开`);
+          ok(`SECRET_KEY 正确：抽查 ${good}/${rows.length} 条回调密钥密文全部解开`);
         } else {
           bad(
             `SECRET_KEY 不对：抽查 ${rows.length} 条，只解开 ${good} 条（${errs[0] ?? ''}）`,

@@ -1,12 +1,18 @@
 // secret-box.ts —— 落盘密钥的对称加解密。
 //
-// 【这个文件里最重要的是金标准那条】派生方式（sha256 → base64url → Fernet）是**冻结**的：
-// 改了它，库里所有 User.fishApiKeyEncrypted 一次性变成解不开的乱码 —— 表现为
-// 全站鱼干写路径 503，而错误信息只会说「解密失败」。所以这里钉一个**由重构之前的
-// 实现产出的密文**：只要它还能解开，派生方式就没被动过。
+// 【这个文件里最重要的是金标准那条】派生方式（sha256 → base64url → Fernet）是**冻结**的。
+// 它现在服务的是 **FishWebhookEndpoint.secretEncrypted**（回调的签名密钥）：
+// 改了派生，全部存量密文一次性变成解不开的乱码，商户再也收不到回调 ——
+// 而错误信息只会说「解密失败」，**且不可逆**。所以这里钉一个**由重构之前的实现产出的
+// 密文**：只要它还能解开，派生方式就没被动过。
 //
-// ⚠️ 「两份实现互通」那种测法在这里是**不够的**：如果有人把 account-client 与
-// secret-box 一起改（比如一起换掉哈希或编码），互通测试照样绿，而存量密文已经废了。
+// ⚠️ 这个金标准密文原本是 `account-client.encryptApiKey` 产出的（用户发往站外账户
+// 微服务的 API Key）。那个服务与那个函数都已不存在，**但密文照旧有效** ——
+// 两处凭证当年共用同一套派生，所以它验的还是同一件事。别因为「产出它的函数没了」
+// 就把它一起删掉：它是这个文件唯一的跨版本锚点。
+//
+// ⚠️ 「两份实现互通」那种测法在这里是**不够的**：如果有人把两份实现一起改
+// （比如一起换掉哈希或编码），互通测试照样绿，而存量密文已经废了。
 // 只有硬编码的历史密文能挡住这种改法 —— 它没有「另一份实现」可以一起改。
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
@@ -16,7 +22,6 @@ import {
   generateSecret,
   SecretBoxError,
 } from '@/lib/secret-box';
-import { encryptApiKey, decryptApiKey } from '@/lib/account-client';
 
 const KEY = 'golden-key-source';
 
@@ -36,12 +41,13 @@ afterEach(() => {
 });
 
 describe('★ 派生方式冻结（金标准）', () => {
-  it('能解开重构前产出的密文 —— 派生方式没被动过', () => {
+  it('能解开跨版本产出的密文 —— 派生方式没被动过', () => {
     expect(openSecret(GOLDEN_CIPHER, KEY)).toBe(GOLDEN_PLAIN);
   });
 
-  it('account-client 的 decryptApiKey 也能解开它（同一套派生）', () => {
-    expect(decryptApiKey(GOLDEN_CIPHER, { encryptionKeySource: KEY } as never)).toBe(GOLDEN_PLAIN);
+  it('回调签名密钥走的是同一套派生（金标准密文也能当签名密钥用）', () => {
+    // 直接测 fish-webhook-service 用的那两个函数 —— 它与金标准密文之间不能有分叉。
+    expect(openSecret(sealSecret(GOLDEN_PLAIN, KEY), KEY)).toBe(GOLDEN_PLAIN);
   });
 });
 
@@ -84,26 +90,16 @@ describe('往返与错误路径', () => {
   });
 });
 
-describe('account-client 的错误语义没被改掉（fail-closed 契约）', () => {
-  // 这两个 503 是 fish-sync 判定「这笔没成交、要补偿」的依据。
-  // 抽 secret-box 时最容易顺手把它们改成普通 Error —— 那会让补偿逻辑认不出来。
-  it('decryptApiKey 失败抛的是 AccountServiceError(503)，不是 SecretBoxError', () => {
-    expect(() =>
-      decryptApiKey('not-a-token', { encryptionKeySource: KEY } as never)
-    ).toThrowError(
-      expect.objectContaining({ name: 'AccountServiceError', status: 503 })
-    );
-  });
+describe('错误语义面（供排障读）', () => {
+  // 这里原有一组「解密失败必须抛 AccountServiceError(503)」的用例 —— 那个错误类型是
+  // 账户微服务时代的 fail-closed 契约（调用方靠 503 判定「这笔没成交、要补偿」）。
+  // 那台服务搬进站内之后该契约随之消失，**剩下的调用方只有一个**：
+  // fish-webhook-service 在投递前解开签名密钥，解不开就是投递失败（走它自己的重试）。
+  // 所以现在只需要一条：失败**抛异常而不是返回空串**（返回空串 = 用空密钥签名，
+  // 商户会拒绝所有回调，而我们这边看起来一切正常）。
 
-  it('缺少密钥来源时抛 AccountServiceError(503)', () => {
-    expect(() => decryptApiKey(GOLDEN_CIPHER, { encryptionKeySource: '' } as never)).toThrowError(
-      expect.objectContaining({ name: 'AccountServiceError', status: 503 })
-    );
-  });
-
-  it('encryptApiKey / decryptApiKey 往返一致（重构没改行为）', () => {
-    const c = encryptApiKey('user-key-abc', { encryptionKeySource: KEY } as never);
-    expect(decryptApiKey(c, { encryptionKeySource: KEY } as never)).toBe('user-key-abc');
+  it('密钥来源为空时抛 SecretBoxError，绝不返回空串', () => {
+    expect(() => openSecret(GOLDEN_CIPHER, '')).toThrow(SecretBoxError);
   });
 });
 
