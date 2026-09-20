@@ -414,6 +414,11 @@
 
 // ── 确认弹窗 ────────────────────────────────────────────────────────────────
 
+// 弹窗外壳只做宽度约束（同 .market-confirm）—— .modal-dialog 自己不管宽度。
+.trade-confirm {
+  max-width: 380px;
+}
+
 .trade-confirm__rows {
   margin: 0;
   display: flex;

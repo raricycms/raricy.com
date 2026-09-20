@@ -274,6 +274,9 @@ export default function TradePanel({
 
   return (
     <>
+      {/* trade-card--quote 是**给 e2e 的钩子**（fish-trade.spec.ts 用它断言行情卡在不在），
+          不带样式 —— 外观全由 .trade-card 给。登记在 tests/unit/css-tsx-classes.test.ts
+          的 CONSUMED 里，别顺手删。 */}
       <div className="trade-card trade-card--quote">
         {quoteDown ? (
           <p className="trade-quote__down">行情暂不可用，稍后自动重试。此时无法下单。</p>
