@@ -176,7 +176,12 @@ API 端点位于 `src/app/api/<group>/<verb>/route.ts`，**薄**层：参数校�
   - **收款回调（webhook）**：`fish-webhook-service.ts` 是 outbox —— 投递行与两条流水**同事务**写入，投递在事务外（照搬本节的形状），补偿事务里**连带删掉**投递行（回滚掉的转账绝不能通知商户「你收到钱了」）。两个 driver：进程内定时器（`src/instrumentation.ts` → `webhook-drainer.ts`，**本站唯一的后台循环**）与 `fish webhook-retry`，靠条件 UPDATE 认领，不会双投。投递是 **at-least-once**（sending 租约到期会重投），所以接收方必须按 `X-Raricy-Delivery` 去重。SSRF 防线（本站唯一一处「服务器去 fetch 用户给的地址」）见 `src/lib/webhook-url.ts` 头部。端点连续失败**不自动停用** —— 那是静默失效。
 - **分层（`2_account_sync_ledger` 起）**：本地事务先提交（含 `account_sync_ledger` 一行 pending），远端 HTTP 在事务**外**调用 —— 成功标 `synced`，失败走补偿事务。HTTP **绝不能挪进事务**：那会让 SQLite 写锁被占用最长 `ACCOUNT_SERVICE_TIMEOUT`，并发写耗尽 busy_timeout 直接 `database is locked`。
 - **崩溃收敛**：任何「已提交 / 未同步」窗口都留一个 pending 账本行，`npm run cli -- fish sync-retry` 幂等重放收敛；补偿也失败则标 `failed` 并打 `ACCOUNT_RECONCILE_REQUIRED` 日志。详见 `src/lib/fish-sync.ts` 头部。
-- **读路径**：默认走远端账户服务拿权威余额；远端不通则降级到本地 `users.driedFish`，并在响应里给出提示。
+- **读路径：一律读本地 `users.driedFish`**（`fish-service.ts` 的 `getBalance` 等），
+  页面、接口、CLI 无一例外。远端账户服务是**写**目标（复式账本），不是读目标 ——
+  `accountClient.getBalance` / `getBalances` / `getLedger` 这三个读方法**只在
+  `scripts/verify-account-integration.mjs` 里被调用过**，业务代码一处也没有。
+  两边对不上时以远端的复式账本为准（那才是记账的事实），收敛手段是
+  `fish sync-retry` + 对账日志，**不是**让读路径去问远端。
 - **双层鉴权**：`X-Internal-Token`（服务间共享）+ 用户/系统 API Key（`Authorization: Bearer <key>`）。
 - **API Key 加密**：`User.fishApiKeyEncrypted` 是 Fernet 加密。密钥派生：
   ```
