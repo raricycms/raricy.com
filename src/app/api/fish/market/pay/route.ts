@@ -3,7 +3,6 @@ import { apiOk, apiErr } from '@/lib/format';
 import { verifyCredentials } from '@/lib/credential-auth';
 import { clientIp } from '@/lib/request-ip';
 import { transferFish } from '@/lib/fish-market-service';
-import { AccountServiceError } from '@/lib/account-client';
 
 export const runtime = 'nodejs';
 
@@ -70,9 +69,7 @@ export async function POST(req: Request) {
       duplicated: !!res.duplicated,
     });
   } catch (e) {
-    // 远端同步失败（fail-closed，本地已补偿回滚）→ 503，用户可原样重试
-    //（重试带的是同一个幂等键，不会重复扣款）。
-    if (e instanceof AccountServiceError) return apiErr(503, '鱼干服务暂不可用，请稍后再试');
+    // 本地事务要么成要么不成（记账已无远端），能冒到这里的都是真故障。
     console.error('[fish-market] 收银台支付异常:', e);
     return apiErr(500, '服务器开小差了，请稍后再试');
   }

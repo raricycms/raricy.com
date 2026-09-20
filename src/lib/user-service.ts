@@ -15,18 +15,6 @@ import { nowForDb } from './db-time';
 import { hashPassword, verifyPassword } from './password';
 import { kickUser } from './chat-bus';
 import { publishToUser } from './topbar-bus';
-import {
-  accountServiceEnabled,
-  AccountServiceError,
-  InviteCodeRaceError,
-  assertRemoteRequiredInProduction,
-} from './account-client';
-import {
-  recordPendingSync,
-  settleSync,
-  executeSync,
-  logReconcileRequired,
-} from './fish-sync';
 import type { Prisma } from '@prisma/client';
 
 // ── 输入校验（对齐 verify_username / verify_email）──────────────────────────
@@ -73,6 +61,20 @@ export function buildPlaceholderEmail(username: string): string {
 }
 
 // ── 注册 ──────────────────────────────────────────────────────────────────
+
+/**
+ * 并发抢同一个邀请码时**没抢到**的那一方（不是系统错误，是一次正常的落败）。
+ *
+ * 由 `registerUser` 的 `beforeCommit` 在事务内抛出：条件写 `isUsed:false` 没拿到 1 行
+ * ⇒ 另一个事务已经兑走了这个码 ⇒ 抛错让整笔事务回滚（未建号、未占码）。内核把它原样
+ * 以 `{kind:'precondition'}` 交回调用方，`registerUser` 再认出来翻译成「邀请码错误」。
+ */
+export class InviteCodeRaceError extends Error {
+  constructor() {
+    super('邀请码已被占用');
+    this.name = 'InviteCodeRaceError';
+  }
+}
 
 export interface RegisterInput {
   username: string;
@@ -138,14 +140,12 @@ export async function registerUser(input: RegisterInput): Promise<RegisterResult
   // 不能依赖此处的读结果做占用判断 —— 读在事务外，两个并发注册会同时读到 isUsed=false，
   // 若事务内只按 id 无条件 update，一个一次性邀请码就能兑出两个 core（已实测复现）。
   let role = 'user';
-  // 邀请码的原子占用与补偿释放都通过回调交给内核执行 —— 内核里因此没有一行邀请码语义。
+  // 邀请码的原子占用通过回调交给内核执行 —— 内核里因此没有一行邀请码语义。
   // 收成常量是因为闭包里 TS 不保留对 let 的收窄。
-  let hooks:
-    | {
-        beforeCommit: (tx: Prisma.TransactionClient, userId: string) => Promise<void>;
-        onCompensate: (tx: Prisma.TransactionClient, userId: string) => Promise<void>;
-      }
-    | undefined;
+  // 【为什么不需要「撤销」回调】占用与建号在**同一个事务**里：回调抛错（被另一个并发
+  // 注册抢先）或建号失败，整个事务一起回滚，码自己就回到未用状态 —— 不存在「占用了
+  // 但号没建成」的中间态，也就没有要单独撤销的东西。
+  let beforeCommit: ((tx: Prisma.TransactionClient, userId: string) => Promise<void>) | undefined;
   if (inviteCode) {
     if (inviteCode.length !== 12) {
       return { ok: false, code: 400, message: '邀请码错误' };
@@ -156,26 +156,17 @@ export async function registerUser(input: RegisterInput): Promise<RegisterResult
     }
     role = 'core';
     const code = inviteCode;
-    hooks = {
-      // 原子占用邀请码（对齐 mark_invite_code_used，并与 verifyInviteAndUpgrade 同款）：
-      // 条件里必须带 isUsed:false —— 并发时只有一个事务能把 count 拿到 1，
-      // 另一个拿到 0 并在此抛错回滚，从而杜绝「一码兑两号」。
-      beforeCommit: async (tx, userId) => {
-        const claimed = await tx.inviteCode.updateMany({
-          where: { code, isUsed: false },
-          data: { isUsed: true, usedBy: userId },
-        });
-        if (claimed.count === 0) {
-          throw new InviteCodeRaceError();
-        }
-      },
-      // 远端建账户失败时的补偿：把码放回去（在删用户之前执行，与原先的语句顺序一致）
-      onCompensate: async (tx, userId) => {
-        await tx.inviteCode.updateMany({
-          where: { code, usedBy: userId },
-          data: { isUsed: false, usedBy: null },
-        });
-      },
+    // 原子占用邀请码（与 verifyInviteAndUpgrade 同款）：
+    // 条件里必须带 isUsed:false —— 并发时只有一个事务能把 count 拿到 1，
+    // 另一个拿到 0 并在此抛错回滚，从而杜绝「一码兑两号」。
+    beforeCommit = async (tx, userId) => {
+      const claimed = await tx.inviteCode.updateMany({
+        where: { code, isUsed: false },
+        data: { isUsed: true, usedBy: userId },
+      });
+      if (claimed.count === 0) {
+        throw new InviteCodeRaceError();
+      }
     };
   }
 
@@ -185,7 +176,7 @@ export async function registerUser(input: RegisterInput): Promise<RegisterResult
     password,
     role,
     remoteRequiredLabel: '注册',
-    ...hooks,
+    beforeCommit,
   });
 
   if (!r.ok) {
@@ -195,7 +186,7 @@ export async function registerUser(input: RegisterInput): Promise<RegisterResult
       if (r.failure.cause instanceof InviteCodeRaceError) {
         return { ok: false, code: 400, message: '邀请码错误' };
       }
-      // 不认识的预检异常：按 fail-closed 兜底（本地事务已回滚）。
+      // 不认识的预检异常：本地事务已回滚（未建号、未占码），按拒绝兜底。
       console.error('[user-service] 注册预检异常:', r.failure.cause);
       return { ok: false, code: 503, message: '注册失败，请稍后重试' };
     }
@@ -204,7 +195,7 @@ export async function registerUser(input: RegisterInput): Promise<RegisterResult
 
   let message = '注册成功';
   // 尾缀判「本次是否用了邀请码」，不判 role —— 内核的 role 现在也可能来自站长建号入口。
-  if (hooks) message += '，您的账号已通过邀请码验证';
+  if (beforeCommit) message += '，您的账号已通过邀请码验证';
   return { ok: true, code: 200, message, user: { id: r.id, username, role: r.role, sessionVersion: 0 } };
 }
 
@@ -216,7 +207,6 @@ export async function registerUser(input: RegisterInput): Promise<RegisterResult
 /** 内核的失败原因。 */
 export type CreateAccountFailure =
   | { kind: 'unique_violation'; field: 'username' | 'email' | 'unknown' }
-  | { kind: 'account_service_down' }
   /** `beforeCommit` 回调抛出的错误——调用方自己的语义，内核不认识。 */
   | { kind: 'precondition'; cause: unknown }
   | { kind: 'unexpected' };
@@ -225,8 +215,9 @@ export type CreateAccountResult =
   | { ok: true; id: string; username: string; role: string; sessionVersion: number }
   | { ok: false; failure: CreateAccountFailure };
 
-/** `tx.user.create` 唯一约束冲突的哨兵。只在这一句上判——账本行的 idempotencyKey 也是
- *  unique，若在外层 catch 里做全量 P2002 判定，会把它的冲突也误报成「用户名已存在」。 */
+/** `tx.user.create` 唯一约束冲突的哨兵。只在这一句上判——在外层 catch 里做全量 P2002
+ *  判定的话，事务内**其它**写入（调用方 beforeCommit 改的子表）撞上的唯一约束也会被
+ *  误报成「用户名已存在」。 */
 class UserUniqueViolationError extends Error {}
 
 /** `beforeCommit` 回调抛错的包装，用于把它和内核自身的异常区分开。 */
@@ -241,16 +232,10 @@ function isUniqueViolation(e: unknown): boolean {
 }
 
 /**
- * 建号 + 远端鱼干账户同步（fail-closed，对齐 CLAUDE.md「鱼干写路径」）。
+ * 建号内核：**一个本地事务**建 users 行（公开注册 / 站长建号共用）。
  *
- * 远端 HTTP 调用不在 SQLite 事务内（写锁占用问题，见 fish-sync.ts）：
- *   Tx A：建用户 +（调用方的 beforeCommit）+ 账本行 pending → 提交；
- *   Phase 2：ensureAccount（幂等）→ 成功则回写 fishApiKeyEncrypted + 账本标 synced；
- *   失败 → 补偿事务：删用户 + 调用方的回滚由 beforeCommit 的事务语义一并撤销 + 删账本行。
- *
- * ⚠️ 【有意偏离旧版】旧版建号是 fire-and-forget（失败仅记 warning、不阻塞注册，
- *    靠首次鱼干操作时补注册）。这里按 fail-closed 约定改为强一致：
- *    远端故障即建号失败。
+ * 建号就是这一件事，没有第二个参与者：用户行写进 SQLite 即完成，不存在
+ * 「本地已建、别处还没建」的窗口，因此也没有补偿事务。
  *
  * 头像通过 /api/avatar/[id] 按 id 确定性生成，无需落盘文件，故 avatarPath 留空。
  */
@@ -259,40 +244,18 @@ export async function createUserAccount(input: {
   email: string;
   password: string;
   role: string;
-  /** 未配置账户服务时的操作名，进日志：'注册' / '建号'。 */
+  /** 操作名，只用于日志文案：'注册' / '建号'。 */
   remoteRequiredLabel: string;
-  /** `user.create` 之后、事务提交之前执行；抛错即整个事务回滚，错误以
-   *  `{kind:'precondition'}` 的形式回报给调用方。 */
+  /** `user.create` 之后、事务提交之前执行；抛错即整个事务回滚（用户行与回调改过的
+   *  子状态一起撤销），错误以 `{kind:'precondition'}` 的形式回报给调用方。 */
   beforeCommit?: (tx: Prisma.TransactionClient, userId: string) => Promise<void>;
-  /** 远端建账户失败时，在补偿事务里撤销 `beforeCommit` 改过的子状态（如释放邀请码）。
-   *  只在传了 beforeCommit 时才需要；无 beforeCommit 的调用方不用传。 */
-  onCompensate?: (tx: Prisma.TransactionClient, userId: string) => Promise<void>;
 }): Promise<CreateAccountResult> {
-  const { username, email, password, role, remoteRequiredLabel, beforeCommit, onCompensate } =
-    input;
+  const { username, email, password, role, remoteRequiredLabel, beforeCommit } = input;
 
   const id = randomUUID();
   const passwordHash = await hashPassword(password);
 
-  const entry = {
-    idempotencyKey: `register-${id}`,
-    operation: 'register' as const,
-    payload: { userId: id },
-  };
-
   try {
-    // 远端账户创建是否启用（未配置 internal token → dev 本地模式，见下）。
-    //
-    // ⚠️ assertRemoteRequiredInProduction 必须待在这个 try 里：生产环境漏配 token 时它抛
-    // AccountServiceError，落在 try 外会穿透调用方 → Next 返回 500 而不是约定的 503。
-    const remoteEnabled = accountServiceEnabled();
-    if (!remoteEnabled) {
-      assertRemoteRequiredInProduction(remoteRequiredLabel);
-      console.warn(
-        `[user-service] ACCOUNT_SERVICE 未配置，${remoteRequiredLabel}仅建本地用户（dev fallback）。user=${id}`
-      );
-    }
-
     await prisma.$transaction(async (tx) => {
       try {
         await tx.user.create({
@@ -318,44 +281,7 @@ export async function createUserAccount(input: {
           throw new PreconditionError(e);
         }
       }
-
-      // 账本登记 pending（远端启用时）
-      if (remoteEnabled) {
-        await recordPendingSync(tx, entry);
-      }
     });
-
-    // ── Phase 2：事务外远端建账户（create_account 幂等）────────────────────────
-    if (remoteEnabled) {
-      try {
-        await executeSync(entry);
-        await settleSync(entry.idempotencyKey, 'synced');
-      } catch (syncErr) {
-        // Phase 3：补偿 —— 删用户 + 删账本行（调用方在 beforeCommit 里改过的东西，
-        // 由它自己在事务回滚语义下一起撤销：下游的补偿语句保持原样）。
-        try {
-          await prisma.$transaction(async (tx) => {
-            // 顺序与原先一致：先撤销调用方在 beforeCommit 里改的子状态，再删用户、
-            // 最后删账本行。
-            if (onCompensate) await onCompensate(tx, id);
-            await tx.user.delete({ where: { id } });
-            await tx.accountSyncLedger.deleteMany({
-              where: { idempotencyKey: entry.idempotencyKey },
-            });
-          });
-        } catch (undoErr) {
-          await settleSync(entry.idempotencyKey, 'failed', String(undoErr)).catch(() => {
-            /* 尽力而为 */
-          });
-          await logReconcileRequired(entry, undoErr);
-        }
-        console.warn(
-          `[user-service] 账户服务建号失败，${remoteRequiredLabel}本地写入已补偿回滚（user=${id}）: ` +
-            (syncErr instanceof Error ? syncErr.message : String(syncErr))
-        );
-        return { ok: false, failure: { kind: 'account_service_down' } };
-      }
-    }
   } catch (e) {
     if (e instanceof UserUniqueViolationError) {
       // 事务已回滚。回读定位到底是哪个字段冲突——不依赖 e.meta.target，那在 SQLite 下
@@ -372,12 +298,7 @@ export async function createUserAccount(input: {
     if (e instanceof PreconditionError) {
       return { ok: false, failure: { kind: 'precondition', cause: e.cause } };
     }
-    if (e instanceof AccountServiceError) {
-      // assertRemoteRequiredInProduction 抛的（生产漏配 internal token）——按约定报 503。
-      console.error(`[user-service] ${remoteRequiredLabel}被拒（账户服务未就绪）:`, e.message);
-      return { ok: false, failure: { kind: 'account_service_down' } };
-    }
-    // 兜底：意外异常按 fail-closed 处理（本地事务已回滚）。
+    // 兜底：意外异常按拒绝处理（本地事务已回滚，没建号）。
     console.error(`[user-service] ${remoteRequiredLabel}异常（user=${id}）:`, e);
     return { ok: false, failure: { kind: 'unexpected' } };
   }
@@ -404,8 +325,6 @@ export function mapCreateFailure(
               ? '用户名已存在'
               : '用户名或邮箱已存在',
       };
-    case 'account_service_down':
-      return { code: 503, message: `账户服务暂时不可用，${what}失败，请稍后重试` };
     case 'unexpected':
       return { code: 503, message: `${what}失败，请稍后重试` };
   }
