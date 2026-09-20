@@ -12,6 +12,7 @@ import {
 import { flushSync } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import Avatar from '@/app/components/Avatar';
 import { ArrowDown, ArrowRight, Menu } from 'lucide-react';
 import type { ChatChannelDTO, ChatMessageDTO, ChatStreamEvent } from '@/lib/chat-shared';
 import {
@@ -1493,9 +1494,12 @@ export default function ChatApp({
                 )}
               </button>
               {activeChannel.kind === 'direct' && activeChannel.peer && (
-                <Link className="chat-main__peer-avatar" href={`/u/${activeChannel.peer.id}`}>
-                  <img src={`/api/avatar/${activeChannel.peer.id}`} alt="" />
-                </Link>
+                <Avatar
+                  userId={activeChannel.peer.id}
+                  frameUrl={activeChannel.peer.frame_url}
+                  alt=""
+                  className="chat-main__peer-avatar"
+                />
               )}
               <h1 className="chat-main__title">
                 {activeChannel.kind === 'direct'

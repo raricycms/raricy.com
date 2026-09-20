@@ -13,6 +13,7 @@
 
 import { memo, useState } from 'react';
 import Link from 'next/link';
+import Avatar from '@/app/components/Avatar';
 import { ArrowRight, BookOpenText } from 'lucide-react';
 import { CHAT_DELETED_TEXT, type ChatMessageDTO } from '@/lib/chat-shared';
 import { nowForDb } from '@/lib/db-time';
@@ -223,15 +224,18 @@ function ChatMessageItemInner({
       data-message-id={msg.id}
     >
       {/* 头像不再是直链：点开选项框（拍一拍 / 访问个人主页 / @ta / 取消） */}
-      <button
-        type="button"
+      <Avatar
+        as="button"
+        userId={msg.author.id}
+        src={msg.author.avatar_url}
+        frameUrl={msg.author.frame_url}
+        alt={msg.author.username}
+        loading="lazy"
         className="chat-msg__avatar"
         onClick={(e) => onAvatarClick(msg, e.currentTarget)}
         title="拍一拍 / 主页 / @ta"
-        aria-label={`${msg.author.username} 的操作菜单`}
-      >
-        <img src={msg.author.avatar_url} alt={msg.author.username} loading="lazy" />
-      </button>
+        ariaLabel={`${msg.author.username} 的操作菜单`}
+      />
       <div className="chat-msg__body">
         <div className="chat-msg__meta">
           <Link className="chat-msg__name" href={`/u/${msg.author.id}`}>

@@ -27,6 +27,7 @@ import ImageLightbox from './ImageLightbox';
 import CommentMarkdown from './CommentMarkdown';
 import { usePendingImage } from './usePendingImage';
 import { insertAtCaret } from './textarea-insert';
+import Avatar from '@/app/components/Avatar';
 import { COMMENT_TEXT_MAX, COMMENT_CAPTION_MAX } from '@/lib/comment-shared';
 
 declare global {
@@ -57,7 +58,14 @@ interface CommentAttachmentBlog {
 interface CommentNode {
   id: string;
   blog_id: string;
-  author: { id: string | null; username: string | null; is_admin: boolean; avatar_url: string | null };
+  // 手抄服务端 CommentBaseDTO.author 的形状（见 FeedButton 里那段说明）
+  author: {
+    id: string | null;
+    username: string | null;
+    is_admin: boolean;
+    avatar_url: string | null;
+    frame_url?: string | null;
+  };
   parent_id: string | null;
   root_id: string | null;
   /** Markdown 原文 —— 必须经 renderCommentMarkdown 净化后才能注入 DOM */
@@ -484,9 +492,17 @@ function CommentItem({
   const canDelete = isAdmin || (!!currentUserId && currentUserId === node.author.id);
   // 管理员删他人评论需填写原因
   const requiresReason = isAdmin && (!node.author.id || node.author.id !== currentUserId);
-  const authorAvatar = node.author.avatar_url ? (
-    <img className="comment-author-avatar" src={node.author.avatar_url} alt={authorName} />
-  ) : null;
+  // 匿名评论者（作者已注销）→ 没有 id 也没有 avatar_url，<Avatar> 自己返回 null，
+  // 保持「不渲染头像」的现状（这里不再各判一次）
+  const authorAvatar = (
+    <Avatar
+      src={node.author.avatar_url}
+      userId={node.author.id}
+      frameUrl={node.author.frame_url}
+      alt={authorName}
+      imgClassName="comment-author-avatar"
+    />
+  );
 
   return (
     <li className="comment-item">

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChatChannelDTO, ChatUserLite } from '@/lib/chat-shared';
+import Avatar from '@/app/components/Avatar';
 
 declare global {
   interface Window {
@@ -120,7 +121,13 @@ export default function NewChatModal({
                       disabled={isSelf || busyId === u.id}
                       onClick={() => void start(u)}
                     >
-                      <img className="chat-new-item__avatar" src={`/api/avatar/${u.id}`} alt="" loading="lazy" />
+                      <Avatar
+                        userId={u.id}
+                        frameUrl={u.frame_url}
+                        alt=""
+                        loading="lazy"
+                        imgClassName="chat-new-item__avatar"
+                      />
                       <span className="chat-new-item__name">{u.username}</span>
                       {isSelf && <span className="chat-new-item__tag">（自己）</span>}
                     </button>

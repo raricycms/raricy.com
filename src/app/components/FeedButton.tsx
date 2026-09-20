@@ -10,6 +10,7 @@
 // 由 blog/[id]/page.tsx 挂载。点赞 → POST /api/blogs/:id/like；投喂 → POST /api/blogs/:id/feed；
 // 可见性 → PATCH /api/blogs/:id。
 
+import Avatar from '@/app/components/Avatar';
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Eye, Fish, Heart, Pencil, Settings, Trash2 } from 'lucide-react';
@@ -26,16 +27,21 @@ function toast(msg: string, type: string) {
   if (w.showToast) w.showToast(msg, type);
 }
 
+// ⚠️ 这两个是**手抄**的服务端 DTO 形状（客户端组件 import 不了拖着 prisma 的
+// blog-service / feed-service）。加了字段却忘了这里 → 那一处静默地没有框，
+// 所以字段名要与服务端逐字对齐，别自己改名。
 interface LikerRow {
   id: string;
   username: string;
   avatar_url?: string | null;
+  frame_url?: string | null;
 }
 interface FeederRow {
   user_id: string;
   username: string;
   amount: number;
   avatar_path?: string | null;
+  frame_url?: string | null;
 }
 
 interface Props {
@@ -536,10 +542,13 @@ export default function FeedButton({
                     likers.map((u) => (
                       <div className="list-group-item" key={u.id}>
                         <div className="d-flex align-items-center">
-                          <img
-                            src={u.avatar_url || `/api/avatar/${u.id}`}
+                          <Avatar
+                            userId={u.id}
+                            src={u.avatar_url}
+                            frameUrl={u.frame_url}
                             alt={u.username}
-                            style={{ width: 32, height: 32, borderRadius: '8%', marginRight: 10 }}
+                            size={32}
+                            style={{ marginRight: 10 }}
                           />
                           <strong>{u.username || '匿名用户'}</strong>
                         </div>
@@ -601,10 +610,15 @@ export default function FeedButton({
                       <div className="list-group-item" key={f.user_id}>
                         <div className="d-flex align-items-center justify-content-between">
                           <div className="d-flex align-items-center">
-                            <img
-                              src={f.avatar_path ? `/api/avatar/${f.user_id}` : `/api/avatar/${f.user_id}`}
+                            {/* 此前这里是 `f.avatar_path ? A : A` 的死三元（两支逐字相同）。
+                                avatar_path 那一列恒为 null，判据本身也是错的 —— 磁盘上的
+                                遗留头像文件跟它无关。<Avatar> 走同一条永不 404 的读口。 */}
+                            <Avatar
+                              userId={f.user_id}
+                              frameUrl={f.frame_url}
                               alt={f.username}
-                              style={{ width: 32, height: 32, borderRadius: '8%', marginRight: 10 }}
+                              size={32}
+                              style={{ marginRight: 10 }}
                             />
                             <strong>{f.username || '未知用户'}</strong>
                           </div>

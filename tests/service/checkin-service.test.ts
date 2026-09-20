@@ -929,7 +929,7 @@ describe('getCountLeaderboard（签到天数榜）', () => {
     expect(lb.map((e) => e.value)).toEqual([4, 3]);
   });
 
-  it('返回字段收敛（rank/userId/username/avatarPath/value），不泄漏 email', async () => {
+  it('返回字段收敛（rank/userId/username/frameUrl/value），不泄漏 email', async () => {
     const u = await makeUser({ username: 'solo' });
     await makeLegacyCheckin(u.id, '2026-07-01', 3, '3,1,5,2,4');
     const lb = await getCountLeaderboard();
@@ -937,7 +937,6 @@ describe('getCountLeaderboard（签到天数榜）', () => {
       rank: 1,
       userId: u.id,
       username: 'solo',
-      avatarPath: null,
       frameUrl: null, // 没戴框
       value: 1,
     });

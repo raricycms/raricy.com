@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { Megaphone } from 'lucide-react';
 import { getCurrentUser, hasAdminRights, isOwner } from '@/lib/auth';
 import { listUsers } from '@/lib/admin-user-service';
+import Avatar from '@/app/components/Avatar';
 import AdminUserActions from '@/app/components/AdminUserActions';
 import AdminUserCreate from '@/app/components/AdminUserCreate';
 
@@ -24,6 +25,8 @@ type UserRow = {
   username: string;
   role: string;
   currentlyBanned: boolean;
+  /** 头像框贴图地址（AdminUserRow.frameUrl）。 */
+  frameUrl: string | null;
 };
 
 function pageWindow(page: number, pages: number, window = 3): (number | null)[] {
@@ -112,11 +115,11 @@ export default async function AdminUsersPage({
               return (
                 <div key={u.id} className="user-card">
                   <div className="user-card__top">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={`/api/avatar/${u.id}`}
+                    <Avatar
+                      userId={u.id}
+                      frameUrl={u.frameUrl}
                       alt={u.username}
-                      className="user-card__avatar"
+                      imgClassName="user-card__avatar"
                     />
                     <span className="user-card__username">{u.username}</span>
                     <span className={`user-card__role ${displayRole.cls}`}>

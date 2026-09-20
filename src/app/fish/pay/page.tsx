@@ -135,6 +135,7 @@ export default async function FishPayPage({
         variant="cashier"
         toId={recipient.id}
         toUsername={recipient.username}
+        toFrameUrl={recipient.frame_url}
         amount={amount}
         note={noteRaw}
         merchant={merchant}

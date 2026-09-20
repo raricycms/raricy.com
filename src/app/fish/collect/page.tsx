@@ -83,6 +83,7 @@ export default async function FishCollectPage({
         variant="collect"
         toId={recipient.id}
         toUsername={recipient.username}
+        toFrameUrl={recipient.frame_url}
         // collect 变体不用这两个（金额由付款人填、没有商户）
         amount={0}
         note=""

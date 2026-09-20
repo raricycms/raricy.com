@@ -448,7 +448,7 @@ export interface PublicBlogRow {
   description: string | null;
   createdAt: Date | null;
   authorId: string;
-  author: { username: string | null } | null;
+  author: { username: string | null; frameUrl: string | null } | null;
   category: { name: string; parentId: number | null; parent: { name: string } | null } | null;
 }
 

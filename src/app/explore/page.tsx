@@ -6,6 +6,7 @@ import { prisma } from '@/lib/db';
 import { rateLimit, RULES } from '@/lib/rate-limit';
 import { clientIp } from '@/lib/request-ip';
 import { listPublicBlogs, listPublicCategoryFacets } from '@/lib/blog-service';
+import Avatar from '@/app/components/Avatar';
 import { categoryFullPath, ymd } from '@/lib/format';
 // 侧栏与搜索框与站内 `/blog` 共用同一份实现（两条列表的差别是数据与去处，不是交互）。
 // 它们住在 app/blog/ 下，是因为先有的站内列表；跨路由 import 没问题 ——
@@ -271,7 +272,11 @@ async function ExploreListSection({
               <div className="blog-author">
                 {/* 头像 + 昵称，但**不是链接** —— 第 2 期刻意不做作者页对外。
                     与详情页一致（那里作者名也是纯文本）。 */}
-                <img src={`/api/avatar/${b.authorId}`} alt={b.author?.username ?? ''} />
+                <Avatar
+                  userId={b.authorId}
+                  frameUrl={b.author?.frameUrl}
+                  alt={b.author?.username ?? ''}
+                />
                 <span>{b.author?.username}</span>
                 {b.category && (
                   <span className="blog-category-tag">{categoryFullPath(b.category)}</span>

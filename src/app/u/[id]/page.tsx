@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { getCurrentUser, isCoreUser } from '@/lib/auth';
 import { getPublicProfile } from '@/lib/user-service';
 import { prisma } from '@/lib/db';
+import Avatar from '@/app/components/Avatar';
 import { ymd } from '@/lib/format';
 import ProfileTabs from './ProfileTabs';
 import PosterModal from '@/app/components/PosterModal';
@@ -144,10 +145,13 @@ export default async function PublicProfilePage({
       <div className="container">
         <section className="profile-hero">
           <div className="profile-hero__top">
-            <div className="profile-hero__avatar">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={`/api/avatar/${profile.id}`} alt={profile.username} />
-            </div>
+            {/* 全站最大的头像（120px）—— 也是唯一「框的细节看得清」的地方 */}
+            <Avatar
+              userId={profile.id}
+              frameUrl={profile.frameUrl}
+              alt={profile.username}
+              className="profile-hero__avatar"
+            />
             <div className="profile-hero__info">
               <div className="profile-hero__name-row">
                 <span className="profile-hero__username">{profile.username}</span>

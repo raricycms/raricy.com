@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Avatar from '@/app/components/Avatar';
 import RecipientPicker, { type TransferTarget } from './RecipientPicker';
 
 // 转账表单 + 二次确认弹窗。
@@ -105,10 +106,11 @@ export default function TransferPanel({ balance: initialBalance }: { balance: nu
           <span className="market-field__label">收款人</span>
           {recipient ? (
             <div className="market-recipient">
-              <img
-                className="market-recipient__avatar"
-                src={`/api/avatar/${recipient.id}`}
+              <Avatar
+                userId={recipient.id}
+                frameUrl={recipient.frame_url}
                 alt=""
+                imgClassName="market-recipient__avatar"
               />
               <span className="market-recipient__name">{recipient.username}</span>
               <button
@@ -229,10 +231,11 @@ export default function TransferPanel({ balance: initialBalance }: { balance: nu
               </div>
               <div className="modal-body">
                 <div className="market-confirm__to">
-                  <img
-                    className="market-confirm__avatar"
-                    src={`/api/avatar/${recipient.id}`}
+                  <Avatar
+                    userId={recipient.id}
+                    frameUrl={recipient.frame_url}
                     alt=""
+                    imgClassName="market-confirm__avatar"
                   />
                   <span className="market-confirm__name">{recipient.username}</span>
                 </div>

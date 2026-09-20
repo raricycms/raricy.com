@@ -11,6 +11,7 @@ import FooterGate from './components/FooterGate';
 import NotificationHeartbeat from './components/NotificationHeartbeat';
 import FrameBuster from './components/FrameBuster';
 import { getCurrentUser, isCoreUser } from '@/lib/auth';
+import { frameUrlFor } from '@/lib/frame-service';
 import { siteBaseUrl } from '@/lib/site-url';
 
 export const metadata: Metadata = {
@@ -55,7 +56,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <script dangerouslySetInnerHTML={{ __html: noFlashScript }} />
       </head>
       <body>
-        <Navbar user={user} />
+        <Navbar user={user} frameUrl={frameUrlFor(user)} />
         {/* 切页/bfcache 恢复时即时刷新顶栏未读数（实时值走 SSE，两档兜底轮询在 base.js） */}
         <NotificationHeartbeat />
         <main>{children}</main>

@@ -13,6 +13,7 @@ import {
 import { ymd } from '@/lib/format';
 import { prisma } from '@/lib/db';
 import MarkdownRenderer from '@/app/components/MarkdownRenderer';
+import Avatar from '@/app/components/Avatar';
 import CommentSection from '@/app/components/CommentSection';
 import FeedButton from '@/app/components/FeedButton';
 import FooterCopyOverride from '@/app/components/FooterCopyOverride';
@@ -186,7 +187,11 @@ export default async function BlogDetailPage({ params }: { params: Promise<{ id:
         <h1>{blog.title}</h1>
         <div className="blog-meta" id="blog-meta">
           <span className="blog-author">
-            <img src={`/api/avatar/${blog.authorId}`} alt={blog.author?.username ?? ''} />
+            <Avatar
+              userId={blog.authorId}
+              frameUrl={blog.author?.frameUrl}
+              alt={blog.author?.username ?? ''}
+            />
             {blog.author?.username}
           </span>
         </div>

@@ -42,6 +42,11 @@ export const PUBLIC_USER_SELECT = {
   showRecentBlogs: true,
   showRecentComments: true,
   focusMode: true,
+  // 头像框的装备态（见迁移 20 头部的取舍）。**只为了让调用方能算出 frameUrl** ——
+  // 拿到 SafeUser 的地方请一律走 frame-service.frameUrlFor(user)，
+  // 别直接读这两列：绕过判定 = 到期的框永远戴着，而那不报错。
+  equippedFrameKey: true,
+  equippedFrameExpiresAt: true,
 } as const;
 
 /** 读取并校验当前登录用户；未登录 / 会话失效返回 null。 */

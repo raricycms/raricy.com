@@ -3,11 +3,20 @@ import type { SafeUser } from '@/lib/auth';
 import { hasAdminRights, isCoreUser } from '@/lib/auth';
 import LogoutLink from './LogoutLink';
 import NavLink from './NavLink';
+import Avatar from './Avatar';
 
 // 顶栏 — 站点顶部导航（site-* BEM 类 + 图标 mask 着色）
 // base.js 通过 id (#userDropdownToggle, #userDropdownMenu, #themeToggle, #notificationBadge,
 // #checkinBadge, #chatUnreadDot) 与 .open class 操纵此顶栏，故这些 id / class 改不得。
-export default function Navbar({ user }: { user: SafeUser | null }) {
+export default function Navbar({
+  user,
+  frameUrl,
+}: {
+  user: SafeUser | null;
+  /** 当前用户的头像框贴图地址。**由 layout 用 frameUrlFor() 算好传进来** ——
+   *  本组件不碰那两列原始值（判定只有一处，见 frame-service.ts 的「判定唯一出口」）。 */
+  frameUrl: string | null;
+}) {
   /**
    * 「博客」指向哪 —— **按档位分流**：core+ 去站内全量 `/blog`，其余去对外公开列表
    * `/explore`。
@@ -106,9 +115,12 @@ export default function Navbar({ user }: { user: SafeUser | null }) {
                     aria-controls="userDropdownMenu"
                   >
                     <span>{user.username}</span>
-                    <span className="site-user-avatar">
-                      <img src={`/api/avatar/${user.id}`} alt="avatar" />
-                    </span>
+                    <Avatar
+                      userId={user.id}
+                      frameUrl={frameUrl}
+                      alt="avatar"
+                      className="site-user-avatar"
+                    />
                   </button>
                   <ul className="site-user-dropdown-menu" role="menu" id="userDropdownMenu" aria-labelledby="userDropdownToggle">
                     <li role="presentation" className="site-dropdown-header">用户信息</li>

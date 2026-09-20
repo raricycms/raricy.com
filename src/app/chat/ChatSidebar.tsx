@@ -16,6 +16,7 @@
 import { memo, useState } from 'react';
 import { MessageCircle, MoreHorizontal, VolumeX } from 'lucide-react';
 import { CHAT_FOCUS_BLOCKED_TITLE, type ChatChannelDTO } from '@/lib/chat-shared';
+import Avatar from '@/app/components/Avatar';
 import ChatChannelMenu, { type ChannelMenuAnchor } from './ChatChannelMenu';
 
 const SidebarRow = memo(function SidebarRow({
@@ -58,9 +59,18 @@ const SidebarRow = memo(function SidebarRow({
               <MessageCircle />
             </span>
           ) : (
-            <span className="chat-chan__avatar">
-              <img src={`/api/avatar/${ch.peer?.id ?? ''}`} alt="" loading="lazy" />
-            </span>
+            /* 此前这里拼的是「头像路由 + peer?.id ?? 空串」——peer 为 null 时会去请求
+             * 一个空 id，拿回一张不属于任何人的 identicon。这里显式分支：
+             * 没有 peer（对方已注销）就整块不渲染。 */
+            ch.peer ? (
+              <Avatar
+                userId={ch.peer.id}
+                frameUrl={ch.peer.frame_url}
+                alt=""
+                loading="lazy"
+                className="chat-chan__avatar"
+              />
+            ) : null
           )}
           {showMark && (
             <span

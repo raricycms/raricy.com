@@ -91,7 +91,7 @@ describe('博客侧', () => {
     await makeBlog({ authorId: a.id, title: 'T' });
 
     const { blogs } = await listBlogs({});
-    expect(blogs[0].author.frameUrl).toBe(EXPECTED);
+    expect(blogs[0].author.frameUrl).toBe(EXPECTED); // listBlogs 的 author 是必选关系，非空
     // 原始列不跟着出门（渲染层不该有机会绕过判定）
     expect(blogs[0].author).not.toHaveProperty('equippedFrameKey');
     expect(blogs[0].author).not.toHaveProperty('equippedFrameExpiresAt');
@@ -113,7 +113,7 @@ describe('博客侧', () => {
 
     const { blogs } = await listPublicBlogs({});
     expect(blogs).toHaveLength(1);
-    expect(blogs[0].author.frameUrl).toBe(EXPECTED);
+    expect(blogs[0].author?.frameUrl).toBe(EXPECTED);
   });
 
   it('getLikers → frame_url', async () => {

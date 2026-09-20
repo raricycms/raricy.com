@@ -3,6 +3,7 @@ import { Suspense } from 'react';
 import { cookies } from 'next/headers';
 import { requireCoreUser } from '@/lib/guard';
 import { rateLimit, RULES } from '@/lib/rate-limit';
+import Avatar from '@/app/components/Avatar';
 import { COOKIE_NAME } from '@/lib/blog-sort-pref';
 import { listBlogs, parseSortParam, ALL_SEARCH_FIELDS } from '@/lib/blog-service';
 // 客户端与服务端共用同一份短标记文案（零依赖模块）—— 不在 JSX 里写死档名。
@@ -264,7 +265,11 @@ async function BlogListSection({
                     className="blog-author-link"
                     title={b.author?.username ?? ''}
                   >
-                    <img src={`/api/avatar/${b.authorId}`} alt={b.author?.username ?? ''} />
+                    <Avatar
+                      userId={b.authorId}
+                      frameUrl={b.author?.frameUrl}
+                      alt={b.author?.username ?? ''}
+                    />
                     <span>{b.author?.username}</span>
                   </Link>
                   {b.category && (

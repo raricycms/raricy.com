@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { LoaderCircle, Sparkles } from 'lucide-react';
 import { MedalIcon } from '@/app/components/MedalIcon';
+import Avatar from '@/app/components/Avatar';
 import type { LeaderboardEntry } from '@/lib/checkin-service';
 
 // ── 全局 toast（base.js 注入 window.showToast） ──────────────────────────────
@@ -476,12 +477,16 @@ function LeaderboardList({
             )}
           </span>
           <Link className="checkin-leaderboard__user" href={`/u/${e.userId}`}>
-            {e.avatarPath ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img className="checkin-leaderboard__avatar" src={`/api/avatar/${e.userId}`} alt="" />
-            ) : (
-              <span className="checkin-leaderboard__avatar-placeholder" />
-            )}
+            {/* 此前这里按 `e.avatarPath` 分支 —— 而那一列**永远是 null**（本站没有
+              * 头像上传入口），所以排行榜一直显示灰方块占位。那个判据本身也是错的：
+              * 磁盘上的遗留头像文件跟这一列毫无关系（读口会自己找到它们）。
+              * <Avatar> 走同一条永不 404 的读口，不需要任何分支。 */}
+            <Avatar
+              userId={e.userId}
+              frameUrl={e.frameUrl}
+              alt=""
+              imgClassName="checkin-leaderboard__avatar"
+            />
             <span className="checkin-leaderboard__name">{e.username}</span>
           </Link>
           <span className="checkin-leaderboard__count">

@@ -20,6 +20,7 @@ import {
   E2E_STICKERS,
   E2E_STORIES,
   SEED_PASSWORD,
+  SEED_FRAME_KEY,
   SEED_USERS,
   SEED_CATEGORY,
   SEED_BLOG,
@@ -87,6 +88,26 @@ function seedStickers() {
   fs.mkdirSync(hiddenDir, { recursive: true });
   fs.writeFileSync(path.join(hiddenDir, 'info.json'), JSON.stringify({ ignore: true }));
   fs.writeFileSync(path.join(hiddenDir, '秘密.png'), PNG_1X1);
+}
+
+/**
+ * 造头像框素材（instance/frames 的等价物，指向 tests/.tmp/e2e-frames）。
+ *
+ * 【为什么必须隔离】FRAMES_DIR 不设时 frame-service 回落到 repo 根的
+ * instance/frames —— 那是站长的真实素材，断言会随机器时通时不通（同 seedStickers）。
+ * 空目录也不够：没有素材时 frameUrlFor 的第三道闸会把框判成「暂不显示」，
+ * 正向用例就永远看不到框。
+ */
+function seedFrames() {
+  const root = process.env.FRAMES_DIR;
+  if (!root) throw new Error('缺少 FRAMES_DIR —— 见 playwright.config.ts 的 webServer.env');
+  if (!root.includes(`${path.sep}tests${path.sep}.tmp${path.sep}`)) {
+    throw new Error(`拒绝在非测试目录上造头像框素材：${root}`);
+  }
+  fs.rmSync(root, { recursive: true, force: true });
+  fs.mkdirSync(root, { recursive: true });
+  // 文件名就是白名单里的 key（frame-service 只认 <key>.png）
+  fs.writeFileSync(path.join(root, `${SEED_FRAME_KEY}.png`), PNG_1X1);
 }
 
 /**
@@ -187,6 +208,7 @@ export default async function globalSetup() {
   acquireLock();
   seedStickers();
   seedStories();
+  seedFrames();
   // 每轮从零开始：上轮残留的用户会让「注册重名」「今天已签到」这类用例莫名其妙地挂
   for (const suffix of ['', '-wal', '-shm']) {
     fs.rmSync(E2E_DB + suffix, { force: true });
@@ -235,6 +257,43 @@ export default async function globalSetup() {
         },
       });
     }
+
+    // ── 头像框：两个账号各戴一个 ──────────────────────────────────────────
+    //
+    // ⚠️ **直接写库，不走 frame-service** —— 本进程显式构造了自己的 prisma client
+    //（见上面「显式传 url」那段：这里的 .env 指向别的库），而 frame-service 用的是
+    // **默认** client，调它会打到错的库上。种子数据本来也是构造状态、不走业务链路。
+    //
+    // framed = 永久；framedExpired = 已过期。后者正是「限时框到期后」的真实状态：
+    // 列上留着过期的值、**没有任何清理**（判定是只读的，见迁移 20 头部），
+    // 所以 frameUrlFor 会判成 null。
+    const past = new Date(nowForDb().getTime() - 60_000);
+    await prisma.userFrame.create({
+      data: {
+        userId: SEED_USERS.framed.id,
+        frameKey: SEED_FRAME_KEY,
+        expiresAt: null,
+        source: 'system',
+        createdAt: nowForDb(),
+      },
+    });
+    await prisma.user.update({
+      where: { id: SEED_USERS.framed.id },
+      data: { equippedFrameKey: SEED_FRAME_KEY, equippedFrameExpiresAt: null },
+    });
+    await prisma.userFrame.create({
+      data: {
+        userId: SEED_USERS.framedExpired.id,
+        frameKey: SEED_FRAME_KEY,
+        expiresAt: past,
+        source: 'system',
+        createdAt: nowForDb(),
+      },
+    });
+    await prisma.user.update({
+      where: { id: SEED_USERS.framedExpired.id },
+      data: { equippedFrameKey: SEED_FRAME_KEY, equippedFrameExpiresAt: past },
+    });
 
     const category = await prisma.category.create({
       data: {

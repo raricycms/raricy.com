@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import Avatar from '@/app/components/Avatar';
 
 // 收款人选择弹窗 —— 搜索任意用户（服务端已排除自己）。
 //
@@ -15,9 +16,12 @@ declare global {
   }
 }
 
+// ⚠️ 手抄服务端 fish-market-service.TransferTarget 的形状（客户端组件 import 不了
+// 拖着 prisma 的那个模块）。加字段忘了这里 → 那一处静默地没有框。
 export interface TransferTarget {
   id: string;
   username: string;
+  frame_url: string | null;
 }
 
 const PER_PAGE = 20;
@@ -108,11 +112,12 @@ export default function RecipientPicker({
                     className="market-picker__item"
                     onClick={() => onPick(u)}
                   >
-                    <img
-                      className="market-picker__avatar"
-                      src={`/api/avatar/${u.id}`}
+                    <Avatar
+                      userId={u.id}
+                      frameUrl={u.frame_url}
                       alt=""
                       loading="lazy"
+                      imgClassName="market-picker__avatar"
                     />
                     <span className="market-picker__name">{u.username}</span>
                   </button>

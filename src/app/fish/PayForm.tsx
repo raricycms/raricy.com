@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Avatar from '@/app/components/Avatar';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PayForm.tsx — 付款表单（收银台 /fish/pay 与扫码收款页 /fish/collect **共用**）
@@ -77,6 +78,7 @@ export default function PayForm({
   variant,
   toId,
   toUsername,
+  toFrameUrl,
   amount,
   note,
   merchant,
@@ -87,6 +89,12 @@ export default function PayForm({
   variant: PayFormVariant;
   toId: string;
   toUsername: string;
+  /**
+   * 收款人的头像框贴图地址。**由服务端页面算好传进来** —— 本组件手里只有 `toId`
+   *（来自 query），而判定到期要用 nowForDb()、还要查盘上素材，那些只能在服务端做。
+   * 别在这里 fetch：那会多一次往返，而且客户端做时间比较会被 db-time-guard 判红。
+   */
+  toFrameUrl: string | null;
   /** cashier：商户定好的金额（只展示）；collect：忽略（金额由付款人自己填）。 */
   amount: number;
   /** cashier：商户写死的备注；collect：忽略（付款人可自己写）。 */
@@ -234,7 +242,12 @@ export default function PayForm({
       <div className="market-field">
         <span className="market-field__label">收款人</span>
         <div className="market-recipient">
-          <img className="market-recipient__avatar" src={`/api/avatar/${toId}`} alt="" />
+          <Avatar
+            userId={toId}
+            frameUrl={toFrameUrl}
+            alt=""
+            imgClassName="market-recipient__avatar"
+          />
           <span className="market-recipient__name">{toUsername}</span>
         </div>
       </div>

@@ -47,8 +47,10 @@ test('博客列表页渲染文章卡片与栏目侧栏', async ({ page }) => {
   await expect(card).toBeVisible();
   await expect(card.locator('.blog-title')).toHaveText(SEED_BLOG.title);
   await expect(card.locator('.blog-description')).toHaveText(SEED_BLOG.description);
-  // 作者名来自 listBlogs 的关联查询 —— 关联断了这里会空，而卡片本身照常显示
-  await expect(card.locator('.blog-author span').first()).toHaveText(SEED_USERS.core.username);
+  // 作者名来自 listBlogs 的关联查询 —— 关联断了这里会空，而卡片本身照常显示。
+  // ⚠️ 断言容器而不是「第一个 span」：头像现在走共用 <Avatar>，它会渲染一个
+  // <span class="avatar"> 包装层，按 span 顺序取会取到那个空 span。
+  await expect(card.locator('.blog-author-link')).toContainText(SEED_USERS.core.username);
 
   // 侧栏分类（seed 的栏目 excludeFromAll=false，应当出现）
   await expect(page.locator('.blog-layout')).toContainText(SEED_CATEGORY.name);

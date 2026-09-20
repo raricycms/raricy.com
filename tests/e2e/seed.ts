@@ -1,3 +1,5 @@
+import { FRAME_KEYS } from '../../src/lib/frame-refs';
+
 // E2E 种子数据的**唯一**事实来源：global-setup 按此建库，各 spec 按此断言。
 // 常量集中在这里，避免用例里散落魔法字符串（改个用户名要翻六个文件）。
 
@@ -50,7 +52,36 @@ export const SEED_USERS: Record<string, SeedUser> = {
     email: 'notif@e2e.local',
     role: 'core',
   },
+  /**
+   * core + **戴着一个永久头像框**：avatar-frame.spec 的正向账号。
+   *
+   * 【为什么单开一个号】框会出现在**每一页的顶栏**上，随便挑一个既有账号做这件事
+   * 会污染所有数头像/数元素的用例。专用账号 + 谁都不碰，是唯一不会互相绊到的做法
+   *（与 notif 那条同一个理由）。
+   */
+  framed: {
+    id: 'e2e-user-framed',
+    username: 'e2e_framed',
+    email: 'framed@e2e.local',
+    role: 'core',
+  },
+  /**
+   * core + **装备着一个已过期的框**：负向账号。
+   *
+   * 【为什么必须有它】「到期后框要消失」是这条链路上唯一**静默**的失效模式 ——
+   * 漏判的话页面照常渲染、没有日志，只有人眼盯着一个人到期的那一天才看得出来。
+   * 这条用例是那个错误唯一的自动化防线。
+   */
+  framedExpired: {
+    id: 'e2e-user-framed-expired',
+    username: 'e2e_framed_expired',
+    email: 'framed-expired@e2e.local',
+    role: 'core',
+  },
 };
+
+/** 种子库里那款头像框。取白名单第一个 key —— 不写死字符串，加框时不会两边漂。 */
+export const SEED_FRAME_KEY = FRAME_KEYS[0];
 
 export const SEED_CATEGORY = { name: 'E2E 栏目', slug: 'e2e-cat' };
 

@@ -305,7 +305,6 @@ export interface LeaderboardEntry {
   rank: number;
   userId: string;
   username: string;
-  avatarPath: string | null;
   /** 头像框贴图地址；null = 没戴 / 已过期 / 素材缺失。**判定已在服务层做完**。 */
   frameUrl: string | null;
   value: number; // 累计签到天数
@@ -330,7 +329,6 @@ export async function getCountLeaderboard(limit = 50): Promise<LeaderboardEntry[
     select: {
       id: true,
       username: true,
-      avatarPath: true,
       equippedFrameKey: true,
       equippedFrameExpiresAt: true,
     },
@@ -347,7 +345,6 @@ export async function getCountLeaderboard(limit = 50): Promise<LeaderboardEntry[
       rank,
       userId: u.id,
       username: u.username,
-      avatarPath: u.avatarPath,
       frameUrl: frameUrlFor(u),
       value: g._count.id,
     });

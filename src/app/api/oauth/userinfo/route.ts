@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { rateLimit } from '@/lib/rate-limit';
 import { hasScope, oauthErr, validateAccessToken } from '@/lib/oauth';
 import { siteOrigin } from '@/lib/site-url';
+import { avatarUrl } from '@/lib/avatar-refs';
 
 // GET /api/oauth/userinfo
 // Authorization: Bearer <token> → { sub, username, avatar_url }
@@ -39,13 +40,15 @@ export async function GET(req: Request) {
   void import('@/lib/oauth').then((m) => m.touchAccessTokenUsage(raw));
 
   const origin = siteOrigin();
-  const avatarUrl = origin ? `${origin}/api/avatar/${user.id}` : `/api/avatar/${user.id}`;
+  // 走唯一的 URL 口径（src/lib/avatar-refs.ts）。输出与手拼完全一致 ——
+  // 改这里只是为了让「全仓只有一处拼 /api/avatar/」这条静态守卫成立。
+  const absoluteAvatarUrl = origin ? `${origin}${avatarUrl(user.id)}` : avatarUrl(user.id);
 
   return Response.json(
     {
       sub: user.id,
       username: user.username,
-      avatar_url: user.avatarPath ? avatarUrl : null,
+      avatar_url: user.avatarPath ? absoluteAvatarUrl : null,
     },
     {
       headers: {
