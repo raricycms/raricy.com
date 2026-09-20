@@ -243,6 +243,22 @@ npm ci
 #   添加 PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 可省 Playwright 浏览器下载（生产不需要）
 ```
 
+`npm ci` 会跑 `postinstall`，把三个静态素材目录从 npm 包里**生成**出来
+（它们都是包的派生产物、不入库，见 `.gitignore`）：
+
+| 目录 | 来源包 | 少了会怎样 |
+|---|---|---|
+| `public/static/vditor/` | `vditor` | 编辑器图标 / 代码高亮 / 导出全 404 |
+| `public/static/mathjax/` | `mathjax-full` | 公式仍显示，但用回退字体，字形与间距都不对 |
+| `public/static/emoji/` | `@twemoji/svg` | 正文里的 `[@黄脸/…]` **静默降级成字面量**（不是裂图） |
+
+⚠️ `npm ci --ignore-scripts`、或从缓存拷 `node_modules` 的构建会跳过它 —— 那种环境要
+手工补一次：
+
+```bash
+npm run prepare:vditor && npm run prepare:mathjax && npm run prepare:emoji
+```
+
 ### 构建
 
 ```bash
