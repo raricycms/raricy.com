@@ -13,8 +13,9 @@ import TradePanel, { type QuoteView, type PositionProp } from './TradePanel';
 
 // 鱼干练手盘 —— 投入鱼干买入一个绑定真实加密价格的仓位。
 //
-// 【档位 core+】与签到、投喂同档。它是**签到之外第二条 core+ 赚取渠道**：赚了从
-// 系统水池 mint、亏了 burn 回它（系统账户只在远端存在、可以无限变负）。
+// 【档位 core+】与签到、投喂同档。它是**签到之外第二条 core+ 赚取渠道**：赚了凭空
+// 加进用户余额、亏了少发给他 —— **没有「系统水池」那一行**，它表现为全站鱼干总量的
+// 增减（见 docs/architecture.md §6.3）。
 // 没有突破「非核心账号没有鱼干赚取渠道」这条口径 —— 只是把 core+ 的路多开了一条。
 //
 // 【为什么不用 guard.ts 的 requireCoreUser】那个门的 next 取自 referer，而练手盘是

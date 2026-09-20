@@ -3,10 +3,19 @@
 //
 // 【这是什么】用户投鱼干买入一个**绑定真实加密价格**的仓位，价格涨跌直接决定他能
 // 拿回多少鱼干。**不是交易所，也不是庄家对赌**：没有撮合、没有对手盘、没有敞口。
-// 系统账户 `raricy-blog-system` 是**无限水池** —— 赚了从它 mint，亏了就 burn 回它。
 //
-//   开仓：条件扣减 N 单位鱼干（用户 → 系统），建一行 position
-//   平仓：payoutUnits = floor(N × 平仓价 / 开仓价 × (1 - 手续费))，加回用户（系统 → 用户）
+//   开仓：条件扣减 N 单位鱼干 + 一条 market_buy 流水（负），建一行 position
+//   平仓：payoutUnits = floor(N × 平仓价 / 开仓价 × (1 - 手续费))，加回用户 + 一条
+//         market_sell 流水（正）
+//
+// 【「系统水池」是账外的，不是一行账户】迁移前开仓是「用户 → 系统账户
+// `raricy-blog-system`」、平仓是反向 —— 那两笔是远端复式账本的另一条腿。搬进站内后
+// **只有用户这一侧**：开仓就是扣用户、平仓就是加用户，各自留一条自己的流水。
+// 于是「无限水池」不再表现为任何一行余额，而是**全站鱼干总量的增减**：赚了凭空 mint
+// 进用户余额（总量增加），亏了少发给他（总量减少）。它因此不受「预算有界」约束 ——
+// 有界性来自档位（core+），不来自额度。
+// ⚠️ **别为了「复式配平」在 users 里虚构一个系统账户行**：`FishTransaction.userId`
+// 是必填外键，那行会长进用户列表与搜索里，成为一个谁都没打算给它的「用户」。
 //
 // ── ★ 唯一的安全边界：成交价必须现取 ★ ──────────────────────────────────────
 // 开仓与平仓都用 fetchQuote()（**下单那一刻**向交易所拉的价），**绝不读展示缓存**。
@@ -14,18 +23,20 @@
 // 无上限的套利，不需要任何交易水平。市场价源挂了就拒单（503），不降级。
 // 见 src/lib/market-price.ts 的文件头。
 //
-// ── 写路径照抄 fish-market-service 的三段式（不是新发明）────────────────────
-//   Phase 1  本地事务：扣款/入账 + 流水 + position + 账本 pending（纯 DB，毫秒级）
-//   Phase 2  事务外 executeSync 调远端账户服务
-//   Phase 3  远端失败 → 补偿事务精确撤销本地写入（对用户等价于回滚 → 503）
-// **远端 HTTP 绝不在 SQLite 事务内**：写锁被占满 ACCOUNT_SERVICE_TIMEOUT，并发写
-// 直接 "database is locked"。这是全站红线。
+// ── 写路径：一个事务，没有补偿 ───────────────────────────────────────────────
+// 扣款/入账（走记账内核 postEntry）、流水、position 行**全部在一个 SQLite 事务里
+// 提交** —— 要么全成、要么全不成。因此这里既没有「本地已提交、账目还没记」的窗口，
+// 也没有补偿事务；能冒到调用方的异常都是真故障，不是「稍后重试就好」。账户服务曾在
+// 站外，那时才有那个窗口（历史注记见 docs/architecture.md §6.3，账本表的来龙去脉
+// 见 fish-idempotency.ts 头部）。
 //
 // ── 平仓的幂等是「免费」的，开仓的不是 ──────────────────────────────────────
 //   平仓：仓位一旦 closed，再平就是重放 —— 由 status 的条件写挡住（count === 0
 //         即已被人平掉），回读既有结果不动钱。不需要幂等键。
-//   开仓：同一用户同一标的同一金额买两次是完全正常的（分批建仓），必须靠
-//         openKey（带随机 nonce）区分，否则远端静默去重、本地记两笔 = 无声分叉。
+//   开仓：同一用户同一标的同一金额买两次是完全正常的（分批建仓），不能靠参数去重，
+//         必须靠 openKey 区分：调用方给了客户端键就按它派生，否则服务端现生成一个
+//         （见 makeMarketIdempotencyKey）。**open_key 的唯一约束就是幂等的实现** ——
+//         重放按它回读既有仓位，并发重复由它挡下。
 //
 // ── 手续费 ──────────────────────────────────────────────────────────────────
 // MARKET_FEE_RATE 只在**平仓侧收一次**：开仓免费、持有免费、兑现时才收。
@@ -37,25 +48,12 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { prisma } from './db';
 import { nowForDb } from './db-time';
-import { addFish } from './fish-service';
+import { postEntry, InsufficientFishError } from './fish-service';
 import { fishToUnits, unitsToFish } from './fish-units';
 // 客户端幂等键的格式校验复用转账那一条 —— 同一个「调用方给的键」概念，
 // 没有理由长出第二套规则。定义在 fish-idempotency（零业务依赖），
 // 所以这里 import 它不会把 fish-market-service 拖进来。
 import { CLIENT_KEY_RE } from './fish-idempotency';
-import {
-  recordPendingSync,
-  settleSync,
-  executeSync,
-  logReconcileRequired,
-  type PendingSyncEntry,
-} from './fish-sync';
-import {
-  AccountServiceError,
-  accountServiceEnabled,
-  assertRemoteRequiredInProduction,
-  makeMarketIdempotencyKey,
-} from './account-client';
 import { rateLimit, RULES } from './rate-limit';
 import {
   fetchQuote,
@@ -64,9 +62,14 @@ import {
   type MarketSymbol,
 } from './market-price';
 
-/** 开仓流水（负数）。与远端 entry_type 同名，便于对着两边流水排查。 */
+/**
+ * 开仓 / 平仓流水类型。
+ *
+ * ⚠️ 这两个字符串是**既成事实**，改不得：存量 `account_sync_ledger` 行的 operation
+ * 就是它们（迁移前写下的），而流水筛选里「练手盘」那个合称
+ *（fish-service.applyTypeFilter 的 `market_all`）也照着这两个值认。
+ */
 export const MARKET_BUY_TYPE = 'market_buy';
-/** 平仓流水（正数）。 */
 export const MARKET_SELL_TYPE = 'market_sell';
 
 /**
@@ -92,6 +95,35 @@ export const MIN_STAKE_FISH = 1;
 /** 页面与文案用的短名：BTCUSDT → BTC。 */
 export function displaySymbol(symbol: string): string {
   return symbol.replace(/USDT$/, '');
+}
+
+/**
+ * 生成**服务端自动**的开仓幂等键（调用方没给客户端键时）。
+ * 格式：`market-{sha256(userId-symbol-units-nonce)[:16]}-{ts}-{nonce}`（43 字符）。
+ *
+ * 【它现在的去处只有一处：`market_positions.open_key`】这个键不再是「发往远端的
+ * 幂等键」，而是那一行的唯一键 —— 重放按它回读、并发重复由唯一约束挡下。
+ *
+ * 【为什么必须带随机 nonce】同一用户对**同一标的同一金额**买两次是完全正常的操作
+ * （分批建仓）。秒级时间戳下不带 nonce 会让第二笔算出同一个键 —— 撞上 open_key 的
+ * 唯一约束，第二笔整笔回滚（用户收到 500），而他以为买成了两笔。
+ *
+ * 【为什么把 userId 哈希掉、为什么键长这样】键的形状是**冻结的**：迁移前它要发往
+ * 账户服务，而一个 userId 就有 36 字符，原样拼进去会顶到那边 64 字符的上限；库里
+ * 也已经有一批这个形状的 open_key。客户端键那一路（`mop-…`）**必须逐字节重现**
+ * （重放靠它认人），两条路保持同一代形状，别只改一条。
+ */
+export function makeMarketIdempotencyKey(
+  userId: string,
+  symbol: string,
+  units: number,
+  nonce: string
+): string {
+  const short = createHash('sha256')
+    .update(`${userId}-${symbol}-${units}-${nonce}`)
+    .digest('hex')
+    .slice(0, 16);
+  return `market-${short}-${Math.floor(Date.now() / 1000)}-${nonce}`;
 }
 
 /** 一笔持仓的对外形状（页面渲染用；未实现盈亏由页面拿现价自己算）。 */
@@ -123,16 +155,6 @@ export type CloseResult =
       replayed?: true;
     }
   | { ok: false; code: number; message: string };
-
-/** 业务拒绝（400/404）。刻意不导出：路由只认判别联合，不该 catch 它。 */
-class MarketBusinessError extends Error {
-  constructor(
-    public code: number,
-    message: string
-  ) {
-    super(message);
-  }
-}
 
 /** 平仓时发现仓位已被并发请求平掉：不是故障，回读既有结果按重放处理。 */
 class MarketAlreadyClosedError extends Error {
@@ -181,7 +203,7 @@ export async function openPosition(input: {
   amount: unknown;
   clientKey?: string | null;
 }): Promise<OpenResult> {
-  // ── 入参校验（不写库、不打远端、不打行情源）────────────────────────────────
+  // ── 入参校验（不写库、不打行情源）──────────────────────────────────────────
   const symbol = parseSymbol(input.symbolRaw);
   if (!symbol) return { ok: false, code: 400, message: '不支持的标的' };
 
@@ -194,18 +216,12 @@ export async function openPosition(input: {
     units = fishToUnits(amount);
   } catch {
     // fishToUnits 对 >1 位小数 fail-loud（抛的是普通 Error）。不在这里接住转成 400，
-    // 它会冒泡到最外层被包成 AccountServiceError(503) —— 用户输入 0.05 收到
-    // 「鱼干服务暂不可用」，且前端不知道该提示什么。与 transferFish 同一处判断。
+    // 它会冒泡成 500 —— 用户输入 0.05 看到「服务器开小差了」，前端也不知道该提示什么。
+    // 与 transferFish 同一处判断。
     return { ok: false, code: 400, message: '投入金额最多 1 位小数' };
   }
   if (amount < MIN_STAKE_FISH) {
     return { ok: false, code: 400, message: `单笔最少投入 ${MIN_STAKE_FISH} 条小鱼干` };
-  }
-
-  const remoteEnabled = accountServiceEnabled();
-  if (!remoteEnabled) {
-    // 生产 fail-closed：不做任何本地写入直接拒绝；dev 仅本地 + 告警。
-    assertRemoteRequiredInProduction('练手盘开仓');
   }
 
   // 幂等键。调用方给了就用（同一笔重试要拿同一个键，服务端才认得出这是重放），
@@ -215,8 +231,9 @@ export async function openPosition(input: {
     return { ok: false, code: 400, message: '幂等键格式不合法（1-48 位，仅字母数字与 _ . : -）' };
   }
   // 客户端键只在调用方自己的命名空间里唯一（`mrk-0007` 这种），两个用户完全可能撞上
-  // 同一个字符串 —— 而账本的 idempotencyKey 是**全局唯一**的，不混进身份就会互相挡住。
-  // 同 makeClientIdempotencyKey 的理由。
+  // 同一个字符串 —— 而 `market_positions.open_key` 是**全局唯一**的，不混进身份就会
+  // 互相挡住：甲买了，乙用同一个键买会被当成「重放」，拿到甲那笔的结果。
+  // 同 makeClientIdempotencyKey 的理由（幂等键是全局唯一的）。
   const idempotencyKey = clientKey
     ? `mop-${createHash('sha256').update(input.userId).digest('hex').slice(0, 8)}-${clientKey}`
     : makeMarketIdempotencyKey(input.userId, symbol, units, randomBytes(4).toString('hex'));
@@ -254,47 +271,28 @@ export async function openPosition(input: {
   const entryPrice = quote.price;
   const positionId = randomUUID();
   const now = nowForDb();
-  const entry: PendingSyncEntry = {
-    idempotencyKey,
-    operation: 'market_buy',
-    payload: {
-      userId: input.userId,
-      amount,
-      description: `练手盘 买入 ${displaySymbol(symbol)}（成交价 ${entryPrice}）`,
-    },
-  };
-  const description = entry.payload.description as string;
+  const description = `练手盘 买入 ${displaySymbol(symbol)}（成交价 ${entryPrice}）`;
 
   try {
-    // ── Phase 1：本地事务（纯 DB，无远端 IO / 无出站 HTTP）────────────────────
-    const phase1 = await prisma.$transaction(async (tx) => {
-      // 1.1 原子条件扣减（单条 UPDATE 带谓词，防超扣 / 防负数）
-      const dec = await tx.user.updateMany({
-        where: { id: input.userId, driedFish: { gte: units } },
-        data: { driedFish: { decrement: units } },
-      });
-      if (dec.count === 0) throw new MarketBusinessError(400, '小鱼干不足');
-
-      // 1.2 支出流水。手写 create（不是 addFish —— 那是「加钱」的口径）。
-      //     createdAt 必须显式写：schema 没有 @default(now())，漏写整条流水时间为
-      //     NULL，流水倒序会乱、按区间的统计会静默失效。
-      const txRow = await tx.fishTransaction.create({
-        data: {
-          userId: input.userId,
-          amount: -units,
-          type: MARKET_BUY_TYPE,
-          description,
-          referenceType: 'market_position',
-          referenceId: positionId,
-          // relatedUserId 留空：对手方是系统账户 `raricy-blog-system`，它只在远端
-          // 存在、本地没有 users 行（填了会撞外键）。与签到同款 —— 那里也没填。
-          createdAt: now,
-        },
-        select: { id: true },
+    // ── 一个事务：扣款、流水、持仓行 ──────────────────────────────────────────
+    const applied = await prisma.$transaction(async (tx) => {
+      // 1.1 扣款 + 支出流水（走记账内核）。余额不足由内核抛 InsufficientFishError，
+      //     整笔回滚，外层转成 400 业务结果 —— 别在这里自己 updateMany 再判 count
+      //     （那正是内核收起来的那段）。
+      const txRow = await postEntry(tx, {
+        userId: input.userId,
+        units: -units,
+        type: MARKET_BUY_TYPE,
+        description,
+        referenceType: 'market_position',
+        referenceId: positionId,
+        // relatedUserId 留空：这里没有对手方 —— 「系统水池」是账外概念，不是一行用户
+        //（同签到，那里也没有对手方）。
       });
 
-      // 1.3 持仓行。openKey 的唯一约束就是幂等的实现：并发同键会撞在这里，
-      //     事务整体回滚，外层按重放处理。
+      // 1.2 持仓行。openKey 的唯一约束就是幂等的实现：并发同键会撞在这里，事务整体
+      //     回滚，那一个请求收到 500（不是「已成交」）—— 它用同一个键重试就会落到
+      //     上面的重放分支，这是这套机制自愈的方式。
       await tx.marketPosition.create({
         data: {
           id: positionId,
@@ -303,61 +301,19 @@ export async function openPosition(input: {
           stakeUnits: units,
           entryPrice,
           entryQuoteAt: quote.quotedAt,
-          openTxId: txRow.id,
+          openTxId: txRow.txId,
           openKey: idempotencyKey,
           status: 'open',
           createdAt: now,
         },
       });
 
-      // 1.4 账本登记 pending（与业务写入同事务提交；dev fallback 不登记 —— 登记了
-      //     就是一堆永远同步不出去的 pending，把 fish pending / sync-retry 的语义搞浑）
-      if (remoteEnabled) await recordPendingSync(tx, entry);
-
       const after = await tx.user.findUnique({
         where: { id: input.userId },
         select: { driedFish: true },
       });
-      return { balance: unitsToFish(after?.driedFish ?? 0), txId: txRow.id };
+      return { balance: unitsToFish(after?.driedFish ?? 0) };
     });
-
-    // ── Phase 2：事务外远端同步 ──────────────────────────────────────────────
-    if (remoteEnabled) {
-      try {
-        await executeSync(entry);
-        await settleSync(entry.idempotencyKey, 'synced');
-      } catch (syncErr) {
-        // ── Phase 3：补偿事务精确撤销本地写入（对用户等价于回滚）──────────────
-        try {
-          await prisma.$transaction(async (tx) => {
-            await tx.fishTransaction.deleteMany({ where: { id: phase1.txId } });
-            // 退回 —— **无条件** increment：Tx A 后余额是 B-u，之后最多再花掉 B-u，
-            // 退回后 = B-s ≥ 0，数学上不可能变负。别「为了对称」加条件：那会在用户
-            // 刚好花光时误判补偿失败，把一个本可自愈的局面推进 reconcile。
-            await tx.user.update({
-              where: { id: input.userId },
-              data: { driedFish: { increment: units } },
-            });
-            // 删持仓行 —— 这是全站「永不物理删除」的**唯一例外**（同签到翻牌失败的
-            // 补偿删流水）：这笔开仓从未生效，等价于它没发生过。
-            await tx.marketPosition.deleteMany({ where: { id: positionId } });
-            await tx.accountSyncLedger.deleteMany({
-              where: { idempotencyKey: entry.idempotencyKey },
-            });
-          });
-        } catch (undoErr) {
-          await settleSync(entry.idempotencyKey, 'failed', String(undoErr)).catch(() => {});
-          await logReconcileRequired(entry, undoErr);
-        }
-        console.warn(
-          `[market] 开仓远端同步失败，本地写入已补偿回滚` +
-            `（user=${input.userId} symbol=${symbol} amount=${amount}）: ${String(syncErr)}`
-        );
-        throw syncErr instanceof AccountServiceError
-          ? syncErr
-          : new AccountServiceError(`开仓同步失败: ${String(syncErr)}`, 503);
-      }
-    }
 
     return {
       ok: true,
@@ -368,16 +324,16 @@ export async function openPosition(input: {
         entryPrice,
         openedAt: quote.quotedAt,
       },
-      balance: phase1.balance,
+      balance: applied.balance,
     };
   } catch (e) {
-    if (e instanceof MarketBusinessError) {
-      return { ok: false, code: e.code, message: e.message };
+    if (e instanceof InsufficientFishError) {
+      // 余额不足是**业务结果**，不是故障（内核抛出时整笔开仓已回滚）。
+      return { ok: false, code: 400, message: '小鱼干不足' };
     }
-    if (e instanceof AccountServiceError) throw e; // 远端失败：已补偿，路由转 503
-    // 兜底：意外异常按 fail-closed 处理
+    // 兜底：本地事务要么成要么不成（记账已无远端），能冒到这里的是真故障 → 路由 500。
     console.error(`[market] 开仓异常（user=${input.userId} symbol=${symbol}）:`, e);
-    throw new AccountServiceError(`开仓失败: ${String(e)}`, 503);
+    throw e;
   }
 }
 
@@ -440,28 +396,19 @@ export async function closePosition(input: {
   const exitPrice = quote.price;
 
   // 结算。Math.floor（不是 round）：**舍入永远朝系统一侧**，宁可少发一个单位也不
-  // 凭空多铸。落库前必须落成整数 —— 这是唯一进账本的数字。
+  // 凭空多铸。落库前必须落成整数 —— 它是写进 payout_units 与那条流水的那一个数。
   const gross = (pos.stakeUnits * exitPrice) / pos.entryPrice;
   const payoutUnits = Math.floor(gross * (1 - MARKET_FEE_RATE));
 
-  const remoteEnabled = accountServiceEnabled();
-  if (!remoteEnabled) {
-    assertRemoteRequiredInProduction('练手盘平仓');
-  }
-
   // ⚠️ payoutUnits 可能为 0（近乎归零的仓位，或投入小到 1 个单位）—— 那时
-  // **没有钱动过**：不写流水、不登记账本、不发通知，只把仓位置 closed。
-  // 漏了这一档会让 addFish 抛「amount 必须为正数」，用户看到一个 500。
-  const idempotencyKey = `market-close-${pos.id}`;
+  // **没有钱动过**：不写流水、不发通知，只把仓位置 closed。
+  // 漏了这一档就会让记账内核抛出来（postEntry 对 units === 0 也是抛的，它只收
+  // 非零整数），用户看到一个 500 —— 而实发 0 是合法结果，仓位照样要平掉。
   const description = `练手盘 卖出 ${displaySymbol(symbol)}（成交价 ${exitPrice}）`;
-  const entry: PendingSyncEntry = {
-    idempotencyKey,
-    operation: 'market_sell',
-    payload: { userId: input.userId, amount: unitsToFish(payoutUnits), description },
-  };
 
   try {
-    const phase1 = await prisma.$transaction(async (tx) => {
+    // ── 一个事务：翻状态、结算入账、流水 ──────────────────────────────────────
+    const applied = await prisma.$transaction(async (tx) => {
       const now = nowForDb();
       // 先把状态翻掉（条件写）。并发平仓只有一个能拿到 count === 1。
       const flipped = await tx.marketPosition.updateMany({
@@ -478,83 +425,29 @@ export async function closePosition(input: {
 
       let txId: number | null = null;
       if (payoutUnits > 0) {
-        // addFish：加余额 + 正数流水 + 显式 createdAt。不带 relatedUserId（同上）。
-        const added = await addFish(tx, {
+        // 入账 + 正数流水（走记账内核）。units 直接就是 payoutUnits（存储单位），
+        // 不必过一遍业务鱼干的换算。不带 relatedUserId：这里没有对手方（见文件头）。
+        const posted = await postEntry(tx, {
           userId: input.userId,
-          amount: unitsToFish(payoutUnits),
+          units: payoutUnits,
           type: MARKET_SELL_TYPE,
           description,
           referenceType: 'market_position',
           referenceId: pos.id,
         });
-        txId = added.txId;
+        txId = posted.txId;
         await tx.marketPosition.update({
           where: { id: pos.id },
           data: { closeTxId: txId },
         });
-        if (remoteEnabled) await recordPendingSync(tx, entry);
       }
 
       const after = await tx.user.findUnique({
         where: { id: input.userId },
         select: { driedFish: true },
       });
-      return { balance: unitsToFish(after?.driedFish ?? 0), txId };
+      return { balance: unitsToFish(after?.driedFish ?? 0) };
     });
-
-    // ── Phase 2 / 3：只有真的动了钱才需要同步与补偿 ──────────────────────────
-    if (remoteEnabled && payoutUnits > 0) {
-      try {
-        await executeSync(entry);
-        await settleSync(entry.idempotencyKey, 'synced');
-      } catch (syncErr) {
-        try {
-          await prisma.$transaction(async (tx) => {
-            // 3.1 撤流水
-            if (phase1.txId !== null) {
-              await tx.fishTransaction.deleteMany({ where: { id: phase1.txId } });
-            }
-            // 3.2 扣回已发的鱼干 —— **条件写**：用户可能已经把刚拿到的鱼干花掉了。
-            //     扣不动就抛，整个补偿事务回滚（**绝不部分撤销** —— 那会造出
-            //     「仓位还是 closed、钱却没扣回来」的凭空多出来的鱼干）。
-            //     与 checkin-service 的补偿段同款。
-            const dec = await tx.user.updateMany({
-              where: { id: input.userId, driedFish: { gte: payoutUnits } },
-              data: { driedFish: { decrement: payoutUnits } },
-            });
-            if (dec.count === 0) {
-              throw new Error(`用户余额不足以回退平仓款（user=${input.userId} units=${payoutUnits}）`);
-            }
-            // 3.3 把仓位翻回 open —— 这一笔从未成交，用户的持仓原样还在。
-            //     closedAt / exitPrice / payoutUnits / closeTxId 一并清掉，别留下
-            //     「状态是 open 但带着平仓价」的半截行。
-            await tx.marketPosition.update({
-              where: { id: pos.id },
-              data: {
-                status: 'open',
-                exitPrice: null,
-                exitQuoteAt: null,
-                payoutUnits: null,
-                closeTxId: null,
-                closedAt: null,
-              },
-            });
-            await tx.accountSyncLedger.deleteMany({
-              where: { idempotencyKey: entry.idempotencyKey },
-            });
-          });
-        } catch (undoErr) {
-          await settleSync(entry.idempotencyKey, 'failed', String(undoErr)).catch(() => {});
-          await logReconcileRequired(entry, undoErr);
-        }
-        console.warn(
-          `[market] 平仓远端同步失败，本地写入已补偿回滚（user=${input.userId} pos=${pos.id}）: ${String(syncErr)}`
-        );
-        throw syncErr instanceof AccountServiceError
-          ? syncErr
-          : new AccountServiceError(`平仓同步失败: ${String(syncErr)}`, 503);
-      }
-    }
 
     return {
       ok: true,
@@ -563,12 +456,9 @@ export async function closePosition(input: {
       payout: unitsToFish(payoutUnits),
       profit: unitsToFish(payoutUnits - pos.stakeUnits),
       exitPrice,
-      balance: phase1.balance,
+      balance: applied.balance,
     };
   } catch (e) {
-    if (e instanceof MarketBusinessError) {
-      return { ok: false, code: e.code, message: e.message };
-    }
     if (e instanceof MarketAlreadyClosedError) {
       // 并发平仓的输家：回读赢家写下的结果，如实回报（不动钱）。
       const fresh = await prisma.marketPosition.findUnique({
@@ -586,13 +476,13 @@ export async function closePosition(input: {
         replayed: true,
       };
     }
-    if (e instanceof AccountServiceError) throw e;
+    // 兜底：本地事务要么成要么不成（记账已无远端），能冒到这里的是真故障 → 路由 500。
     console.error(`[market] 平仓异常（user=${input.userId} pos=${pos.id}）:`, e);
-    throw new AccountServiceError(`平仓异常: ${String(e)}`, 503);
+    throw e;
   }
 }
 
-/** 读余额（鱼干）。给返回值用，不走远端 —— 本地 users.driedFish 才是运营真源。 */
+/** 读余额（鱼干），给返回值用。余额的真源就是本地 `users.driedFish`。 */
 async function getBalanceFish(userId: string): Promise<number> {
   const row = await prisma.user.findUnique({
     where: { id: userId },

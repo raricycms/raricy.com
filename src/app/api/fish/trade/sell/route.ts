@@ -1,9 +1,8 @@
 import { apiOk, apiErr } from '@/lib/format';
 import { getCurrentUser, isCoreUser, isCurrentlyBanned } from '@/lib/auth';
-import { AccountServiceError } from '@/lib/account-client';
 import { closePosition } from '@/lib/market-service';
 
-// fernet / node:crypto 需 Node 运行时（非 Edge）。
+// Prisma 与 node:crypto 需 Node 运行时（非 Edge）。
 export const runtime = 'nodejs';
 
 // POST /api/fish/trade/sell — 练手盘平仓（整仓）。
@@ -53,7 +52,7 @@ export async function POST(req: Request) {
       replayed: !!res.replayed,
     });
   } catch (e) {
-    if (e instanceof AccountServiceError) return apiErr(503, '鱼干服务暂不可用，请稍后再试');
+    // 本地事务要么成要么不成（记账已无远端），能冒到这里的都是真故障。
     console.error('[market] 平仓异常:', e);
     return apiErr(500, '服务器开小差了，请稍后再试');
   }
