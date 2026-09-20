@@ -25,6 +25,10 @@
 // 【两把钟不要混】缓存龄用「真实 UTC 毫秒」（fetchedAtMs，两边都是 Date.now()）；
 //   写进 position 行的 quotedAt 用 nowForDb()（库内墙上时间）。两者各管各的，
 //   绝不互相相减 —— 见 src/lib/db-time.ts 的来龙去脉。
+//
+// 【★ 缓存住在 globalThis 上，不是模块级变量 ★】轮询器（ instrumentation 图）与
+//   请求处理（应用图）是**两份编译产物**，模块级变量等于两份缓存 —— 症状是页面上的
+//   价永远冻住且不报错。展开见下方 GLOBAL_KEY 处。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { nowForDb } from './db-time';
@@ -180,12 +184,56 @@ interface CacheState {
   fetchedAtMs: number;
 }
 
-let cache: CacheState | null = null;
+interface CandleCacheEntry {
+  closes: number[];
+  fetchedAtMs: number;
+}
 
-/** 供轮询器与测试重置。 */
+/**
+ * ★ 行情缓存的唯一真身住在 `globalThis` 上，**不要改回模块级变量** ★
+ *
+ * 【为什么】Next 把 `src/instrumentation.ts` 编进**独立的 webpack compilation**，
+ * 于是本文件在同一份构建产物里存在**两份模块实例** —— 实测（`next build` 产物）：
+ *   · `chunks/7345.js` 的 module 7345 —— 轮询器那一份，含 `[market-poller]` 日志
+ *   · `chunks/5856.js` 的 module 25198 —— 页面与三个接口那一份
+ *
+ * 模块级的 `let cache` 会跟着变成**两个互不相干的变量**：轮询器每 15 秒勤快地刷
+ * 自己那一份，而请求处理读的是另一份；`getCachedQuotes()` 又只在缓存为空时才去拉一次
+ * —— 于是页面上那个价从第一次渲染起**永远不再变**，而且**不报任何错**。
+ * 2026-09 实测症状：BTC 半小时振幅 $375，页面上纹丝不动。
+ *
+ * 挂到 `globalThis` 上，两份实例就共用同一个对象。webhook-drainer 把定时器挂在
+ * globalThis 上是同一个理由（那边的状态本来就在库表里，所以只有定时器需要）。
+ *
+ * 【单进程前提】见 docs/architecture.md §2 —— 多实例部署时每个进程各有一份缓存，
+ * 只是各自多刷几次，不影响正确性（轮询是幂等的只读 GET）。
+ * 回归测试见 tests/unit/market-price.test.ts 的「缓存跨模块实例共享」。
+ */
+const GLOBAL_KEY = '__raricyMarketPriceState';
+
+interface MarketPriceState {
+  /** 展示缓存。null = 还没成功拉过。 */
+  cache: CacheState | null;
+  /** K 线缓存，键 `${symbol}:${limit}`。 */
+  candles: Map<string, CandleCacheEntry>;
+}
+
+/** 取（必要时建）那份共享状态。两份模块实例拿到的是同一个对象。 */
+function priceState(): MarketPriceState {
+  const g = globalThis as unknown as Record<string, unknown>;
+  let s = g[GLOBAL_KEY] as MarketPriceState | undefined;
+  if (!s) {
+    s = { cache: null, candles: new Map() };
+    g[GLOBAL_KEY] = s;
+  }
+  return s;
+}
+
+/** 供轮询器与测试重置。**跨实例生效** —— 清的正是共享的那一份。 */
 export function __resetPriceCache(): void {
-  cache = null;
-  candleCache.clear();
+  const s = priceState();
+  s.cache = null;
+  s.candles.clear();
 }
 
 /**
@@ -219,7 +267,7 @@ export async function refreshQuotes(): Promise<boolean> {
     }
     if (rows.size === 0) return false;
 
-    cache = {
+    priceState().cache = {
       quotes: MARKET_SYMBOLS.filter((s) => rows.has(s)).map((symbol) => ({
         symbol,
         price: rows.get(symbol)!.price,
@@ -241,25 +289,21 @@ export async function refreshQuotes(): Promise<boolean> {
  * 由页面显示「行情暂不可用」—— **绝不编一个价出来**。
  */
 export async function getCachedQuotes(): Promise<{ quotes: CachedQuote[]; ok: boolean }> {
-  if (!cache) await refreshQuotes();
-  if (!cache) return { quotes: [], ok: false };
+  const s = priceState();
+  if (!s.cache) await refreshQuotes();
+  // 必须在 await 之后再取一次：刷新正是往这份共享状态里写的
+  const hit = s.cache;
+  if (!hit) return { quotes: [], ok: false };
 
   // 两边都是真实 UTC 毫秒 —— 不涉及库内时间戳，见文件头
-  const ageMs = Math.max(0, Date.now() - cache.fetchedAtMs);
+  const ageMs = Math.max(0, Date.now() - hit.fetchedAtMs);
   return {
-    quotes: cache.quotes.map((q) => ({ ...q, ageMs, stale: ageMs > QUOTE_STALE_MS })),
+    quotes: hit.quotes.map((q) => ({ ...q, ageMs, stale: ageMs > QUOTE_STALE_MS })),
     ok: true,
   };
 }
 
-// ── K 线（图表用，短缓存） ───────────────────────────────────────────────────
-
-interface CandleCacheEntry {
-  closes: number[];
-  fetchedAtMs: number;
-}
-
-const candleCache = new Map<string, CandleCacheEntry>();
+// ── K 线（图表用，短缓存。与展示缓存同住一份 globalThis 状态） ────────────────
 
 /**
  * 取收盘价序列画曲线。失败返回空数组 —— 图是装饰，缺了不该让整页 500。
@@ -267,7 +311,7 @@ const candleCache = new Map<string, CandleCacheEntry>();
  */
 export async function getCandles(symbol: MarketSymbol, limit = 72): Promise<number[]> {
   const key = `${symbol}:${limit}`;
-  const hit = candleCache.get(key);
+  const hit = priceState().candles.get(key);
   if (hit && Date.now() - hit.fetchedAtMs < CANDLE_CACHE_MS) return hit.closes;
 
   try {
@@ -279,7 +323,7 @@ export async function getCandles(symbol: MarketSymbol, limit = 72): Promise<numb
       .map((k) => (Array.isArray(k) ? Number(k[4]) : NaN))
       .filter((n) => Number.isFinite(n) && n > 0);
     if (closes.length === 0) return hit?.closes ?? [];
-    candleCache.set(key, { closes, fetchedAtMs: Date.now() });
+    priceState().candles.set(key, { closes, fetchedAtMs: Date.now() });
     return closes;
   } catch {
     return hit?.closes ?? [];

@@ -209,6 +209,54 @@ describe('展示缓存：getCachedQuotes', () => {
   });
 });
 
+describe('缓存跨模块实例共享', () => {
+  // ★★★ 这条拦的是「页面上的价永远冻住」，别删 ★★★
+  //
+  // Next 把 `src/instrumentation.ts` 编进**独立的 webpack compilation**，于是
+  // `src/lib/market-price.ts` 在同一份构建产物里存在**两份模块实例**（实测：
+  // `.next/server/chunks/7345.js` 的 module 7345 = 轮询器那一份，
+  // `chunks/5856.js` 的 module 25198 = 页面与三个接口那一份）。
+  //
+  // 展示缓存若挂在**模块作用域**，它就会跟着变成两个互不相干的变量：轮询器每 15 秒
+  // 勤快地刷自己那一份，请求处理读的是另一份，而 getCachedQuotes() 只在缓存为空时
+  // 才去拉一次 —— 页面上那个价从第一次渲染起**永远不再变，且不报任何错**。
+  // 2026-09 线上症状：BTC 半小时振幅 $375，页面纹丝不动。
+  //
+  // vi.resetModules() 之后重新 import，得到的正是「第二个 compilation 手里那份实例」。
+  it('★ 第二份实例读得到第一份写进去的价，而不是自己去拉一次', async () => {
+    vi.resetModules();
+    const a = await import('@/lib/market-price');
+    a.__resetPriceCache();
+    const first = stubFetch([{ symbol: 'BTCUSDT', lastPrice: '11111', priceChangePercent: '0' }]);
+    expect(await a.refreshQuotes()).toBe(true);
+    expect(first).toHaveBeenCalledTimes(1);
+
+    // 第二份实例登场。缓存若没共享，它会因为「自己是空的」再去拉一次，拿到 22222
+    vi.resetModules();
+    const b = await import('@/lib/market-price');
+    const second = stubFetch([{ symbol: 'BTCUSDT', lastPrice: '22222', priceChangePercent: '0' }]);
+    const r = await b.getCachedQuotes();
+
+    expect(r.ok).toBe(true);
+    expect(r.quotes[0].price, '读到的必须是第一份实例写进去的那个价').toBe(11111);
+    expect(second, '第二份实例自己去拉 = 它那份缓存再也不会被刷新 = 页面上的价又冻住了').not.toHaveBeenCalled();
+  });
+
+  it('重置也跨实例生效（beforeEach 拿的是第一份，清理的必须是共享的那一份）', async () => {
+    vi.resetModules();
+    const other = await import('@/lib/market-price');
+    stubFetch([{ symbol: 'BTCUSDT', lastPrice: '11111', priceChangePercent: '0' }]);
+    await other.refreshQuotes();
+
+    __resetPriceCache(); // 本文件静态 import 的那一份
+    const after = await import('@/lib/market-price');
+    const fn = stubFetch([{ symbol: 'BTCUSDT', lastPrice: '33333', priceChangePercent: '0' }]);
+    const r = await after.getCachedQuotes();
+    expect(r.quotes[0].price).toBe(33333);
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('K 线：getCandles', () => {
   it('取索引 4（close），丢掉其余字段', async () => {
     stubFetch([

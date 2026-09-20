@@ -11,7 +11,8 @@
 
 import path from 'node:path';
 import fs from 'node:fs';
-
+import { beforeEach } from 'vitest';
+import { __resetPriceCache } from '@/lib/market-price';
 const TMP_DIR = path.resolve(import.meta.dirname, '.tmp');
 fs.mkdirSync(TMP_DIR, { recursive: true });
 
@@ -46,6 +47,14 @@ process.env.FISH_WEBHOOK_DRAIN_MS = '0';
 // 真实币安。src/lib/market-poll-drainer.ts 里还有一道 `NODE_ENV === 'test'` 的
 // 保险，这里是第二道 —— 两道都留着。
 process.env.MARKET_POLL_MS = '0';
+
+// 行情的**展示缓存**（不是成交价）挂在 globalThis 上，见 src/lib/market-price.ts 的
+// 文件头 —— 这么挂是为了让 instrumentation 图与请求图共用同一份。代价是它**跨测试
+// 文件也不再天然隔离**：前一个文件留下的热身缓存会让后一个文件里「只打了一次行情源」
+// 这类断言静默失真（用例照旧绿，只是不再验真的东西）。所以每个用例前清一次。
+beforeEach(() => {
+  __resetPriceCache();
+});
 
 // 进程退出时清掉自己的库文件，避免 .tmp 堆积
 process.on('exit', () => {
