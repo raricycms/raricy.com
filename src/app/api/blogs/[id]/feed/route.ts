@@ -1,7 +1,6 @@
 import { getCurrentUser, isCurrentlyBanned, isCoreUser } from '@/lib/auth';
 import { apiOk, apiErr } from '@/lib/format';
 import { feedBlog } from '@/lib/feed-service';
-import { AccountServiceError } from '@/lib/account-client';
 
 // fernet / node:crypto 需 Node 运行时（非 Edge）。
 export const runtime = 'nodejs';
@@ -38,10 +37,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       author_income: res.authorIncome,
     });
   } catch (e) {
-    if (e instanceof AccountServiceError) {
-      // fail-closed：远端账户服务不可用 → 503，本地已回滚，未扣鱼干。
-      return apiErr(503, '账户服务暂不可用，投喂失败，请稍后再试');
-    }
+    // 本地事务要么成要么不成（记账已无远端）：能冒到这里的是真故障，
+    // 如实 500 —— 余额不足 / 累计超限在 service 里已转成 400，不会走到这里。
     console.error('[api/blogs/:id/feed] 未预期错误:', e);
     return apiErr(500, '服务器错误');
   }
