@@ -189,6 +189,10 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 - 行情轮询是本站**第二个**后台循环（第一个是回调投递），也要在 `tests/setup.ts` 与
   playwright 的 webServer env 里置 0 —— e2e 跑的是 `next start`，那道
   `NODE_ENV === 'test'` 的保险在那儿盖不住。
+- **展示缓存（含 K 线）挂在 `globalThis` 上，别改回模块级变量** —— Next 把
+  `instrumentation.ts` 编进**独立的 compilation**，`market-price.ts` 于是在同一份
+  产物里有两份模块实例（轮询器一份、页面与三个接口一份）。模块级变量 = 「轮询器刷
+  自己那份、页面上冻住另一份」，**不报任何错**。展开见 `src/lib/market-price.ts` 头部。
 
 ### 软删除
 

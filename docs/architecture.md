@@ -676,6 +676,15 @@ URL 请来抓」。（`robots.ts` 的**路径级**规则不需要动 —— `/ex
 - **展示缓存与轮询**：`market-poll-drainer.ts` 每 15 秒刷一次（`MARKET_POLL_MS=0` 可关），
   由 `src/instrumentation.ts` 启动 —— 它是本站**第二个**后台循环。它**只服务展示**，
   与成交无关。页面自己也有 15 秒轮询（隐藏标签页不轮、回前台先补一次）。
+  ⚠️ **那份缓存（含 K 线）住在 `globalThis` 上，别改回模块级变量。** Next 把
+  `instrumentation.ts` 编进**独立的 webpack compilation**，`market-price.ts` 因此
+  在同一份产物里存在**两份模块实例**（实测：`chunks/7345.js` 的 module 7345 是轮询器
+  那份、`chunks/5856.js` 的 module 25198 是页面与三个接口那份；模块 id 不同，共享
+  runtime 的模块缓存于是不会去重）。模块级变量会让「轮询器每 15 秒刷自己那一份、
+  请求处理读另一份」，而 `getCachedQuotes()` 只在缓存为空时才去拉一次 —— 页面上那个价
+  **从第一次渲染起永远不再变，且不报任何错**（2026-09 实际发生过：站长盯着一个冻住的
+  页面半小时，同期 BTC 振幅 0.47%）。见 `src/lib/market-price.ts` 头部，
+  回归测试见 `tests/unit/market-price.test.ts` 的「缓存跨模块实例共享」。
 - **结算**：`payoutUnits = floor(stakeUnits × 平仓价 / 开仓价 × (1 − MARKET_FEE_RATE))`。
   `floor` 是刻意的 —— 舍入永远朝系统一侧，宁可少发一个单位也不凭空多铸。手续费
   **只在平仓侧收一次**（开仓免费、持有免费）。最小投入 1 条鱼干：存储层最小单位是
