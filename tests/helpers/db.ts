@@ -93,6 +93,9 @@ export async function resetDb() {
     // 练手盘持仓引用 users —— 同样必须排在 users 之前。
     // ⚠️ 漏登记**不报错**（下面那条 DELETE 的 catch 会吞掉），表现为数据在用例间残留。
     'market_positions',
+    // 头像框持有账引用 users —— 同样必须排在 users 之前（见 migrations/20_user_frames
+    // 头部）。⚠️ 同上：漏登记不报错，只表现为数据残留。
+    'user_frames',
     'users',
     'account_sync_ledger',
   ];

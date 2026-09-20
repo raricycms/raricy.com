@@ -73,6 +73,15 @@ model User {
 
   fishApiKeyEncrypted String? @map("fish_api_key_encrypted")
 
+  /// 当前装备的头像框 key。**冗余列** —— 权威持有关系在 user_frames。
+  /// 唯一写入者是 src/lib/frame-service.ts 的 grantFrame / revokeFrame / equipFrame
+  /// （见该文件头部的不变量 F1/F2）。**别在渲染点直接读它** —— 渲染一律走
+  /// frameUrlFor()，那里才有到期判定（tests/unit/frame-guard.test.ts 静态拦着）。
+  equippedFrameKey       String?   @map("equipped_frame_key")
+  /// 装备那一刻该框的到期时刻（NULL = 永久）。同样是冗余列。
+  /// 到期是**只读判定**：过期的值留在列里无害（判定恒 null），故无定时清理。
+  equippedFrameExpiresAt DateTime? @map("equipped_frame_expires_at")
+
   blogs                 Blog[]              @relation("BlogAuthor")
   blogLikes             BlogLike[]
   favorites             Favorite[]
@@ -105,6 +114,7 @@ model User {
   fishWebhookEndpoint   FishWebhookEndpoint?
   fishWebhookDeliveries FishWebhookDelivery[]
   marketPositions       MarketPosition[]
+  frames                UserFrame[]
   visibilityLogs        BlogVisibilityLog[]  @relation("BlogVisibilityLogActor")
   @@index([id], map: "ix_users_id")
   @@index([role], map: "ix_users_role")
@@ -920,4 +930,52 @@ model FavoriteItem {
   @@index([favoriteId], map: "ix_favorite_items_favorite_id")
   @@index([blogId], map: "ix_favorite_items_blog_id")
   @@map("favorite_items")
+}
+
+// ── 头像框 ───────────────────────────────────────────────────────────────────
+
+/// 用户持有的头像框（**所有权账**）。
+///
+/// 【两层，别混】持有（本表）与装备（users 上那两个冗余列）是两层：
+///   · 持有 = 「我有没有资格戴」—— 发放是站长的事（`npm run cli -- frame grant`），
+///     第二版会加上鱼干购买
+///   · 装备 = 「我现在戴哪个」—— 用户自己的事（/settings 的面板）
+/// 一个用户可以同时持有多个框、只戴一个；也可以持有一个却不戴。
+///
+/// 【框的**定义**不在这里】key / 显示名 / 排序住在代码白名单
+///   src/lib/frame-refs.ts 的 FRAME_KEYS（照 src/lib/market-price.ts 的 MARKET_SYMBOLS
+///   先例：不建定义表、不做后台 CRUD）。素材字节在 instance/frames/<key>.png。
+///   所以本表的 frame_key 是**文本而非外键**，且**加了新框不需要迁移**。
+///
+/// 【expires_at 是「到期」不是「撤销」】过期后行照旧 alive（deleted 仍为 false）——
+///   全站不物删。判定在 src/lib/frame-service.ts 的 frameUrlFor()，那是唯一出口。
+///
+/// 【形态对齐 FavoriteItem】自增 id（join 行口径）+ 非可选 deleted + 配对 deletedAt +
+///   命名唯一约束 + createdAt 无 @default（写路径必须显式 nowForDb()）。
+///   ⚠️ 唯一约束是**物理**的、包含墓碑行，因此「收回后再授予」必须**复活旧行**
+///   （翻转 deleted），不能新插 —— 会撞唯一约束。见 frame-service 的不变量 F4。
+model UserFrame {
+  id        Int       @id @default(autoincrement())
+  userId    String    @map("user_id")
+  /// 白名单 key，见 src/lib/frame-refs.ts 的 FRAME_KEYS。**刻意不是外键**（见上）。
+  frameKey  String    @map("frame_key")
+  /// NULL = 永久。
+  expiresAt DateTime? @map("expires_at")
+  /// 发放来源：'cli'（站长用运维台发）/ 'purchase'（第二版鱼干购买）/ 'system'。
+  /// 【为什么留这一列】不留的话「站长发的」与「买的」永远分不出来，而那段历史
+  /// 补不回来（同 blog_visibility_logs.actor_id 的理由）。一列 TEXT 换这个，划算。
+  source    String    @default("cli")
+  createdAt DateTime? @map("created_at")
+  deleted   Boolean   @default(false)
+  deletedAt DateTime? @map("deleted_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  // ⚠️ 这里的 name 只影响 Prisma Client 的 API 名（upsert 时用它当 where 的键）。
+  // SQLite 上 Prisma **忽略**它来建物理索引，一律用派生名
+  // "user_frames_user_id_frame_key_key" —— 所以 migrations/20_user_frames 里写的是
+  // 派生名，两者**不是**不一致。别照着这个名字去改迁移（改了就与 db push 漂移）。
+  @@unique([userId, frameKey], name: "uq_user_frame")
+  @@index([userId], map: "ix_user_frames_user_id")
+  @@map("user_frames")
 }

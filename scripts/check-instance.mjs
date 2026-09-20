@@ -2,9 +2,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // check-instance.mjs —— 初始化运行时数据目录骨架
 //
-// 【为什么需要】`instance/` 是 gitignored 的运行数据底盘，里面分六类：
+// 【为什么需要】`instance/` 是 gitignored 的运行数据底盘，里面分七类：
 //   · avatars/        用户头像 PNG（src/app/api/avatar/[id] 读取）
 //   · database/       SQLite 主库（Prisma 直连；DATABASE_URL 指向这里）
+//   · frames/         头像框素材目录（frame-service.ts 读取；<key>.png，key 见
+//                     src/lib/frame-refs.ts 的 FRAME_KEYS。**只认 PNG**）
 //   · images/         图床落盘目录（image-upload.ts 写入）
 //   · stories/        故事磁盘目录（story-service.ts 读取）
 //   · stickers/       表情包素材目录（sticker-service.ts 读取；
@@ -30,7 +32,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 // 也避免「在哪跑就建到哪」的坑。
 const instanceRoot = path.join(ROOT, 'instance');
 
-const SUBDIRS = ['avatars', 'database', 'images', 'stories', 'stickers', 'blogs'];
+const SUBDIRS = ['avatars', 'database', 'frames', 'images', 'stories', 'stickers', 'blogs'];
 
 let created = 0;
 for (const sub of SUBDIRS) {
