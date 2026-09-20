@@ -215,6 +215,16 @@ export default async function PublicProfilePage({
                 <span className="icon icon-gear" aria-hidden="true" />
                 账号设置
               </Link>
+              {/* 深链到设置页那块面板（与 /settings#focus-mode 同款）。
+                  框只显示在这个人的主页头像上，所以「在这儿换」是最自然的入口 ——
+                  而**写**的入口仍然只在 /settings（那页是账号偏好的归属地）。 */}
+              <Link
+                href="/settings#avatar-frame"
+                className="profile-actions__btn profile-actions__btn--frame"
+              >
+                <span className="icon icon-person" aria-hidden="true" />
+                换个头像框
+              </Link>
               {/* 画报只有本人能生成（路由同样只放行本人），所以入口只挂在自己的主页上 */}
               <PosterModal
                 triggerClassName="profile-actions__btn profile-actions__btn--poster poster-trigger"

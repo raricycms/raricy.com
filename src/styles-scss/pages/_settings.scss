@@ -257,3 +257,109 @@
     transform: translateX(22px);
   }
 }
+
+// --- 头像框装备面板（src/app/settings/FramePanel.tsx）---
+//
+// 复用页面既有的卡片与按钮体系（.settings-card / .settings-btn，见
+// docs/frontend-styles.md §2/§3），这里只加网格与徽标。框的**预览**不在这里画 ——
+// 那是共用组件 <Avatar> 的活（.avatar / .avatar__frame），面板只负责排位置。
+
+.frame-panel {
+  display: flex;
+  flex-direction: column;
+  gap: $space-6;
+}
+
+.frame-panel__hint {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}
+
+.frame-panel__current {
+  display: flex;
+  align-items: center;
+  gap: $space-4;
+  padding: $space-4;
+  border-radius: 20px; // 多行内容块 → 20px（规范 §4）
+  background: var(--color-background-subtle);
+}
+
+.frame-panel__current-meta {
+  display: flex;
+  flex-direction: column;
+  gap: $space-1;
+  min-width: 0;
+}
+
+.frame-panel__current-name {
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.frame-panel__current-state {
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+}
+
+.frame-panel__grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: $space-3;
+}
+
+.frame-panel__item {
+  display: flex;
+  align-items: center;
+  gap: $space-3;
+  padding: $space-3;
+  border-radius: 20px;
+  background: var(--color-background-subtle);
+
+  // 佩戴中：给一圈品牌色描边。**只换底/边，不做垂直位移**（按钮铁律见规范 §2）
+  &--on {
+    box-shadow: inset 0 0 0 2px var(--color-brand-primary);
+  }
+}
+
+.frame-panel__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.frame-panel__name {
+  font-weight: 500;
+  color: var(--color-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.frame-panel__expiry {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+}
+
+// 「已过期 / 已下架 / 素材缺失」三种状态共用一枚小胶囊。
+// 分开说是有意的：用户据此刻判断该找谁（过期 = 等站长续，素材缺失 = 等站长传图）。
+.frame-panel__badge {
+  align-self: flex-start;
+  font-size: 0.75rem;
+  padding: 1px 8px;
+  border-radius: $radius-max; // 单行标记 → 胶囊（规范 §4）
+  background: var(--color-background-highlight);
+  color: var(--color-text-secondary);
+}
+
+.frame-panel__on-tag {
+  flex: none;
+  font-size: 0.8rem;
+  color: var(--color-brand-primary);
+  font-weight: 500;
+}

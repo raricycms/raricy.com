@@ -175,3 +175,40 @@ test.describe('没有框的账号：一个框元素都不该渲染', () => {
     await expect(page.locator('.blog-meta .blog-author .avatar__frame')).toHaveCount(0);
   });
 });
+
+test.describe('★ 装备面板（/settings）：从没用过的人点一下就戴上', () => {
+  // 【为什么必须 E2E】装配是 PUT + router.refresh() 两步的组合，而框画在**服务端渲染**
+  // 的顶栏上 —— 少了 refresh 的话 PUT 成功、按钮文字变了、顶栏却还是旧的。
+  // 那个缺口单测与路由测试都碰不到（它们只看到 200）。
+  test('未戴 → 点「戴上」→ 顶栏出现框 → 点「摘下」→ 消失', async ({ page }) => {
+    await loginViaApi(page, SEED_USERS.framedIdle.username);
+    await page.goto('/settings#avatar-frame');
+
+    const panel = page.locator('.frame-panel');
+    await expect(panel).toBeVisible();
+
+    // 起点：持有但没戴
+    await expect(panel.locator('.frame-panel__current-state')).toContainText('还没有戴');
+
+    await panel.locator('.frame-panel__item', { hasText: '示例框' }).getByRole('button', { name: '戴上' }).click();
+
+    // 面板自身要更新（戴上那个按钮变成「佩戴中」）
+    await expect(panel.locator('.frame-panel__on-tag')).toHaveText('佩戴中');
+    // ★ 而且**顶栏也要跟着变** —— 这才是 router.refresh() 那条断言
+    await expect(frameIn(page, '.site-user-avatar')).toHaveAttribute('src', FRAME_SRC);
+
+    // 再摘下来，两边都要回到原样
+    await panel.getByRole('button', { name: '摘下' }).click();
+    await expect(panel.locator('.frame-panel__on-tag')).toHaveCount(0);
+    await expect(frameIn(page, '.site-user-avatar')).toHaveCount(0);
+  });
+
+  test('没持有任何框 → 面板给一句人话，而不是一张空网格', async ({ page }) => {
+    await loginViaApi(page, SEED_USERS.notif.username);
+    await page.goto('/settings#avatar-frame');
+
+    const panel = page.locator('.frame-panel');
+    await expect(panel.locator('.frame-panel__hint')).toContainText('站长还没有给你发过');
+    await expect(panel.locator('.frame-panel__item')).toHaveCount(0);
+  });
+});

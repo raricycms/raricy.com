@@ -4,8 +4,11 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import OAuthConnectionsList from './OAuthConnectionsList';
+import FramePanel from './FramePanel';
 
 interface ProfileState {
+  /** 自己的 id：装备面板要拿它把框预览叠在**本人头像**上。 */
+  id: string;
   bio: string;
   notifyLike: boolean;
   notifyEdit: boolean;
@@ -17,6 +20,7 @@ interface ProfileState {
 }
 
 const EMPTY: ProfileState = {
+  id: '',
   bio: '',
   notifyLike: true,
   notifyEdit: true,
@@ -38,6 +42,7 @@ export default function SettingsPage() {
   const [savingBio, setSavingBio] = useState(false);
   const [bioAlert, setBioAlert] = useState<Alert | null>(null);
   const [privacyAlert, setPrivacyAlert] = useState<Alert | null>(null);
+  const [frameAlert, setFrameAlert] = useState<Alert | null>(null);
   const [focusAlert, setFocusAlert] = useState<Alert | null>(null);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -59,6 +64,7 @@ export default function SettingsPage() {
         }
         if (data.code === 200 && data.profile) {
           setState({
+            id: data.profile.id ?? '',
             bio: data.profile.bio ?? '',
             notifyLike: !!data.profile.notifyLike,
             notifyEdit: !!data.profile.notifyEdit,
@@ -379,6 +385,35 @@ export default function SettingsPage() {
             <span className="settings-toggle__slider"></span>
           </label>
         </div>
+      </div>
+
+      {/* ====== Section 3b: 头像框 ====== */}
+      {/* id 给深链用（/u/[id] 的「换个头像框」按钮指过来），与 #focus-mode 同款 */}
+      <div className="settings-card" id="avatar-frame">
+        <div className="settings-card__header">
+          <span className="icon icon-person"></span>
+          <h2 className="settings-card__title">头像框</h2>
+        </div>
+        <p className="settings-card__desc">
+          戴上站长发给你的头像框，它会显示在顶栏、评论区、讨论区与你的个人主页。
+          限时的头像框到期后会自动消失，不需要手动摘。
+        </p>
+        {frameAlert && (
+          <div className={`settings-alert settings-alert--${frameAlert.type}`}>
+            {frameAlert.msg}
+          </div>
+        )}
+        {/* 等 profile 到了再渲染 —— 面板要用 id 画预览，空 id 会画出一张不属于任何人的
+            identicon（而它看起来「也像个头像」，没人会发现是错的） */}
+        {state.id && (
+          <FramePanel
+            userId={state.id}
+            onAlert={(kind, msg) => {
+              setFrameAlert({ msg, type: kind });
+              setTimeout(() => setFrameAlert(null), 3000);
+            }}
+          />
+        )}
       </div>
 
       {/* ====== Section 4: OAuth applications ====== */}

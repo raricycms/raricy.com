@@ -295,6 +295,17 @@ export default async function globalSetup() {
       data: { equippedFrameKey: SEED_FRAME_KEY, equippedFrameExpiresAt: past },
     });
 
+    // framedIdle：**持有但不戴**（装备面板那条用例要从「没戴」开始点）
+    await prisma.userFrame.create({
+      data: {
+        userId: SEED_USERS.framedIdle.id,
+        frameKey: SEED_FRAME_KEY,
+        expiresAt: null,
+        source: 'system',
+        createdAt: nowForDb(),
+      },
+    });
+
     const category = await prisma.category.create({
       data: {
         name: SEED_CATEGORY.name,

@@ -78,6 +78,19 @@ export const SEED_USERS: Record<string, SeedUser> = {
     email: 'framed-expired@e2e.local',
     role: 'core',
   },
+  /**
+   * core + **持有但没戴**：装备面板那条用例的账号。
+   *
+   * 【为什么不能借用 framed】那条用例要「从没戴 → 点戴上 → 顶栏出现框」，
+   * 而 framed 一开始就戴着 —— 用它的话断言会恒真，测不出装配那一步有没有生效。
+   * 也不能用 framedExpired：它持有的是过期的那条，装备会被 403 挡下（那是另一条用例）。
+   */
+  framedIdle: {
+    id: 'e2e-user-framed-idle',
+    username: 'e2e_framed_idle',
+    email: 'framed-idle@e2e.local',
+    role: 'core',
+  },
 };
 
 /** 种子库里那款头像框。取白名单第一个 key —— 不写死字符串，加框时不会两边漂。 */
