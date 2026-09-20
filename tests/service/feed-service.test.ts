@@ -1,68 +1,53 @@
 // feed-service.ts —— 文章投喂小鱼干。
 //
-// 【为什么值得重点测】这条路径同时动三样东西：投喂者余额、作者余额、以及远端账户
-// 微服务的复式账本。任何一处失配都是真实资产损失。最危险的失败模式不是「投喂失败」，
-// 而是「远端失败但本地已扣钱」—— CLAUDE.md「鱼干写路径」 的 fail-closed 就是为了它。
+// 【为什么值得重点测】这条路径一次动五处：投喂者余额、作者分成、BlogFeed 累计、
+// Blog.fishCount，外加两条流水。任何一处漏写都是**静默**的账目损坏 —— 页面上看不出
+// 异常，只在某次对账时才暴露。
+//
+// 【写路径的形状】这五处写入**全在同一个 SQLite 事务里**（账户微服务搬进站内之后
+// 账目与业务数据同库，见 docs/architecture.md §6.3.1 的历史注记）。于是最危险的失败
+// 模式从「远端没记账、本地已扣钱」变成了「事务中途炸掉、本地留下半笔」——
+// 本文件最后那组用例专门盯它：注入一次真实的事务中途故障，断言本地零痕迹、异常如实
+// 上抛（不被吞成「投喂失败」这种业务结果）。
 //
 // 【与 fish-service.test.ts 的分工】那边已经覆盖：
 //   · 余额不足拒绝（余额 + 流水维度）
-//   · ★ 并发超扣防护（原子 updateMany）
+//   · ★ 并发超扣防护（带谓词的条件写）
 //   · 扣款流水为负数 / 作者分成 80% 的基本形态
 // 本文件不重复这些，专注它没覆盖的部分：
 //   · 单篇每人上限 5（含多次累加、超限回滚、并发）
 //   · Blog.fishCount 冗余计数
 //   · 金额守恒与流水一一对应
 //   · 文章/用户不存在、软删除、入参校验
-//   · ★★ fail-closed：远端失败时本地事务必须整体回滚
+//   · ★★ 事务中途故障：整笔回滚 + 异常上抛
 //
-// 【DB】真实 SQLite（tests/.tmp/test.db），不 mock。只 mock 远端账户服务。
+// 【账目自洽】凡改过余额的用例末尾都调 expectLedgerConsistent()：**每个人的余额 ==
+// 他自己的流水之和**（账户搬进站内后没有第二个存储可供核对了，内部一致性就是唯一的
+// 证明）。注意它是**绝对口径**，且是「每人各自」而不是「全站之和」—— 平台回收的那
+// 20% 本来就不落在任何人的账上（见下方「作者分成」一节）。
+// 夹具里带余额的用户一律用 `makeFishUser()` 造（余额经由记账内核进入，与线上同构）。
+//
+// 【DB】真实 SQLite（tests/.tmp/test-<pid>-<rand>.db），不 mock 记账与数据库 ——
+// 唯一的例外是「事务中途故障」那组，它用一条临时触发器制造真实的写失败。
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 import { resetDb, makeUser, makeBlog, prisma } from '../helpers/db';
-
-// ── 远端账户服务 mock ────────────────────────────────────────────────────────
-//
-// 只替换三个出口，其余（AccountServiceError 类等）保留真身 —— feed-service 里
-// `e instanceof AccountServiceError` 依赖类身份，spread actual 才不会被破坏。
-const { mockEnabled, mockDecrypt, mockFeedTransfer } = vi.hoisted(() => ({
-  mockEnabled: vi.fn<() => boolean>(),
-  mockDecrypt: vi.fn<() => string>(),
-  mockFeedTransfer: vi.fn<(input: unknown) => Promise<void>>(),
-}));
-
-vi.mock('@/lib/account-client', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/lib/account-client')>();
-  return {
-    ...actual,
-    accountServiceEnabled: mockEnabled,
-    decryptApiKey: mockDecrypt,
-    accountClient: { ...actual.accountClient, feedTransfer: mockFeedTransfer },
-  };
-});
-
-import { feedBlog, getFeedStatus } from '@/lib/feed-service';
-import { AccountServiceError } from '@/lib/account-client';
+import { expectLedgerConsistent, makeFishUser } from '../helpers/fish-ledger';
 import { fishToUnits, unitsToFish } from '@/lib/fish-units';
+import { feedBlog, getFeedStatus } from '@/lib/feed-service';
 
-/** 让远端「已配置且一切正常」。默认（不调用）是 dev fallback。 */
-function enableRemote() {
-  mockEnabled.mockReturnValue(true);
-  mockDecrypt.mockReturnValue('decrypted-api-key');
-  mockFeedTransfer.mockResolvedValue(undefined);
-}
+/** 投喂自己写出来的两种流水 type（夹具那笔 admin_grant 不算）。 */
+const FEED_TYPES = ['feed', 'feed_receive'];
 
-let warnSpy: ReturnType<typeof vi.spyOn>;
+let errorSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(async () => {
   await resetDb();
-  vi.clearAllMocks();
-  // 默认：账户服务未配置 → dev fallback（与 tests/setup.ts 的真实环境一致）
-  mockEnabled.mockReturnValue(false);
-  mockDecrypt.mockReturnValue('decrypted-api-key');
-  mockFeedTransfer.mockResolvedValue(undefined);
-  warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-  vi.spyOn(console, 'error').mockImplementation(() => {});
+  // 用例会故意触发故障路径（feed-service 在那条路径上打 console.error），
+  // 别把它刷到屏幕上；要断言它的地方自己看 spy。
+  vi.spyOn(console, 'warn').mockImplementation(() => {});
+  errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 
 afterEach(() => {
@@ -71,23 +56,11 @@ afterEach(() => {
 
 // ── 夹具 ────────────────────────────────────────────────────────────────────
 
-/** 造一个「远端可用」的投喂者：带 fishApiKeyEncrypted。 */
-async function makeFeederWithKey(driedFish: number) {
-  const u = await makeUser({ driedFish });
-  await prisma.user.update({
-    where: { id: u.id },
-    data: { fishApiKeyEncrypted: 'fernet-blob-placeholder' },
-  });
-  return u;
-}
-
 /** 一篇文章 + 作者 + 投喂者的标准场景。 */
-async function scene(opts: { feederFish?: number; authorFish?: number; withKey?: boolean } = {}) {
-  const author = await makeUser({ driedFish: opts.authorFish ?? 0 });
+async function scene(opts: { feederFish?: number; authorFish?: number } = {}) {
+  const author = await makeFishUser(opts.authorFish ?? 0);
   const blog = await makeBlog({ authorId: author.id, title: '测试文章' });
-  const feeder = opts.withKey
-    ? await makeFeederWithKey(opts.feederFish ?? 100)
-    : await makeUser({ driedFish: opts.feederFish ?? 100 });
+  const feeder = await makeFishUser(opts.feederFish ?? 100);
   return { author, blog, feeder };
 }
 
@@ -101,7 +74,9 @@ async function snapshot(feederId: string, authorId: string, blogId: string) {
       where: { uq_blog_feed_user: { blogId, userId: feederId } },
       select: { amount: true },
     }),
-    prisma.fishTransaction.count(),
+    // 投喂流水的**全库**条数（任何一篇文章的）。按 type 过滤掉夹具开户那笔，
+    // 于是「库里一条投喂流水都没有」这个原意得以保留。
+    prisma.fishTransaction.count({ where: { type: { in: FEED_TYPES } } }),
   ]);
   return {
     // driedFish / blogFeed.amount 是 0.1 鱼干存储单位（fish-units.ts）→ 换回鱼干再比对
@@ -132,16 +107,19 @@ describe('feedBlog 入参校验', () => {
     expect(r.ok).toBe(false);
     expect(r).toMatchObject({ code: 400 });
     expect(await snapshot(feeder.id, author.id, blog.id), '校验失败必须零副作用').toEqual(before);
+    await expectLedgerConsistent('入参校验被拒之后');
   });
 
   it('amount = 5（上限边界）被接受', async () => {
-    const { blog, feeder } = await scene({ feederFish: 5 });
+    const { author, blog, feeder } = await scene({ feederFish: 5 });
     const r = await feedBlog(blog.id, feeder.id, 5);
     expect(r.ok, '5 是合法上限，不是越界').toBe(true);
+    expect((await snapshot(feeder.id, author.id, blog.id)).feederBalance).toBe(0);
+    await expectLedgerConsistent('投满上限之后');
   });
 
   it('入参校验发生在最前面：文章不存在时也先报 400 而非 404', async () => {
-    const u = await makeUser({ driedFish: 10 });
+    const u = await makeFishUser(10);
     const r = await feedBlog('ghost-blog', u.id, 99);
     expect(r).toMatchObject({ code: 400 });
   });
@@ -151,16 +129,16 @@ describe('feedBlog 入参校验', () => {
 
 describe('feedBlog 目标存在性', () => {
   it('文章不存在 → 404', async () => {
-    const u = await makeUser({ driedFish: 10 });
+    const u = await makeFishUser(10);
     const r = await feedBlog('no-such-blog', u.id, 1);
     expect(r).toMatchObject({ code: 404, message: '文章不存在' });
-    expect(await prisma.fishTransaction.count()).toBe(0);
+    expect(await prisma.fishTransaction.count({ where: { type: { in: FEED_TYPES } } })).toBe(0);
   });
 
   it('软删除的文章（ignore=true）→ 404，且不扣款', async () => {
-    const author = await makeUser({ driedFish: 0 });
+    const author = await makeUser();
     const blog = await makeBlog({ authorId: author.id, ignore: true });
-    const feeder = await makeUser({ driedFish: 10 });
+    const feeder = await makeFishUser(10);
 
     const r = await feedBlog(blog.id, feeder.id, 2);
 
@@ -172,6 +150,7 @@ describe('feedBlog 目标存在性', () => {
       fedAmount: null,
       txCount: 0,
     });
+    await expectLedgerConsistent('软删除文章被拒之后');
   });
 
   it('投喂者不存在 → 404（不会误报「小鱼干不足」）', async () => {
@@ -179,7 +158,7 @@ describe('feedBlog 目标存在性', () => {
     const blog = await makeBlog({ authorId: author.id });
     const r = await feedBlog(blog.id, 'ghost-user', 1);
     expect(r).toMatchObject({ code: 404, message: '用户不存在' });
-    expect(await prisma.fishTransaction.count()).toBe(0);
+    expect(await prisma.fishTransaction.count({ where: { type: { in: FEED_TYPES } } })).toBe(0);
   });
 });
 
@@ -203,6 +182,7 @@ describe('★ 单用户单篇累计上限 5', () => {
       await snapshot(feeder.id, author.id, blog.id),
       '超限被拒后，先扣的款必须随事务回滚 —— 状态与投满 5 之后完全一致'
     ).toEqual(after5);
+    await expectLedgerConsistent('投满之后又越界一次');
   });
 
   it('分多次投（1+2+2）正确累计到 5，第 6 条被拒', async () => {
@@ -227,6 +207,7 @@ describe('★ 单用户单篇累计上限 5', () => {
       authorBalance: 4, // 5 * 0.8
       fishCount: 5,
     });
+    await expectLedgerConsistent('分多次投满之后');
   });
 
   it('已投 3，再投 3（合计 6）越界被拒；余额/BlogFeed/fishCount/流水全部不变', async () => {
@@ -242,6 +223,7 @@ describe('★ 单用户单篇累计上限 5', () => {
       '越界拒绝必须整体回滚：扣款、作者入账、两条流水、fishCount 一个都不能留'
     ).toEqual(before);
     expect(before).toMatchObject({ feederBalance: 17, authorBalance: 2.4, fishCount: 3, fedAmount: 3 });
+    await expectLedgerConsistent('越界被拒之后');
   });
 
   it('已投 3 时，投 2（补满）成功而投 3 失败 —— 边界正好在 5', async () => {
@@ -253,32 +235,34 @@ describe('★ 单用户单篇累计上限 5', () => {
   });
 
   it('上限是「每人每篇」而非「每人」：换一篇文章可以重新投满 5', async () => {
-    const author = await makeUser({ driedFish: 0 });
+    const author = await makeUser();
     const [b1, b2] = await Promise.all([
       makeBlog({ authorId: author.id }),
       makeBlog({ authorId: author.id }),
     ]);
-    const feeder = await makeUser({ driedFish: 20 });
+    const feeder = await makeFishUser(20);
 
     expect((await feedBlog(b1.id, feeder.id, 5)).ok).toBe(true);
     expect((await feedBlog(b2.id, feeder.id, 5)).ok, '另一篇文章额度独立').toBe(true);
     expect((await feedBlog(b1.id, feeder.id, 1)).ok, '第一篇仍是满的').toBe(false);
+    await expectLedgerConsistent('同一人在两篇文章上各投满');
   });
 
   it('上限是「每人每篇」而非「每篇」：另一个用户可以对同一篇再投满 5', async () => {
     const { blog } = await scene();
-    const a = await makeUser({ driedFish: 10 });
-    const b = await makeUser({ driedFish: 10 });
+    const a = await makeFishUser(10);
+    const b = await makeFishUser(10);
 
     expect((await feedBlog(blog.id, a.id, 5)).ok).toBe(true);
     expect((await feedBlog(blog.id, b.id, 5)).ok, '别人的额度不受影响').toBe(true);
 
     const blogRow = await prisma.blog.findUniqueOrThrow({ where: { id: blog.id } });
     expect(blogRow.fishCount, '文章总量 = 5 + 5，文章本身没有上限').toBe(10);
+    await expectLedgerConsistent('两人对同一篇各投满');
   });
 
-  it('并发对同一篇投喂：累计绝不能突破 5（必须靠原子 UPDATE ... WHERE amount+n<=5）', async () => {
-    const { blog, feeder } = await scene({ feederFish: 100 });
+  it('并发对同一篇投喂：累计绝不能突破 5（靠事务串行 + 事务内的累计判定）', async () => {
+    const { author, blog, feeder } = await scene({ feederFish: 100 });
 
     const results = await Promise.all(
       Array.from({ length: 3 }, () => feedBlog(blog.id, feeder.id, 5).catch(() => null))
@@ -299,6 +283,7 @@ describe('★ 单用户单篇累计上限 5', () => {
         (await prisma.user.findUniqueOrThrow({ where: { id: feeder.id } })).driedFish
       )
     ).toBe(95);
+    await expectLedgerConsistent('并发投喂之后');
   });
 });
 
@@ -318,6 +303,7 @@ describe('余额不足', () => {
       fedAmount: null,
       txCount: 0,
     });
+    await expectLedgerConsistent('余额不足被拒之后');
   });
 
   it('余额不足时不新增 BlogFeed，也不污染已有的 BlogFeed 累计', async () => {
@@ -330,6 +316,7 @@ describe('余额不足', () => {
     expect(r).toMatchObject({ ok: false, message: '小鱼干不足' });
     expect(await snapshot(feeder.id, author.id, blog.id)).toEqual(before);
     expect(before.fedAmount, '已投的 2 保持不变').toBe(2);
+    await expectLedgerConsistent('花光之后再投被拒');
   });
 });
 
@@ -338,8 +325,8 @@ describe('余额不足', () => {
 describe('Blog.fishCount 冗余计数', () => {
   it('等于所有 BlogFeed.amount 之和（多用户多次投喂后仍然对得上）', async () => {
     const { blog } = await scene();
-    const a = await makeUser({ driedFish: 50 });
-    const b = await makeUser({ driedFish: 50 });
+    const a = await makeFishUser(50);
+    const b = await makeFishUser(50);
 
     await feedBlog(blog.id, a.id, 2);
     await feedBlog(blog.id, b.id, 5);
@@ -352,12 +339,13 @@ describe('Blog.fishCount 冗余计数', () => {
 
     expect(sum, 'a 投 5 + b 投 5').toBe(10);
     expect(blogRow.fishCount, 'fishCount 与 BlogFeed 之和必须一致，否则前台数字是假的').toBe(sum);
+    await expectLedgerConsistent('多人多次投喂之后');
   });
 
   it('返回值 fishCount 反映的是文章总量（含他人投喂），不是本人的 fedTotal', async () => {
     const { blog } = await scene();
-    const a = await makeUser({ driedFish: 50 });
-    const b = await makeUser({ driedFish: 50 });
+    const a = await makeFishUser(50);
+    const b = await makeFishUser(50);
 
     await feedBlog(blog.id, a.id, 4);
     const r = await feedBlog(blog.id, b.id, 3);
@@ -371,11 +359,12 @@ describe('Blog.fishCount 冗余计数', () => {
       makeBlog({ authorId: author.id }),
       makeBlog({ authorId: author.id }),
     ]);
-    const feeder = await makeUser({ driedFish: 20 });
+    const feeder = await makeFishUser(20);
 
     await feedBlog(b1.id, feeder.id, 3);
 
     expect((await prisma.blog.findUniqueOrThrow({ where: { id: b2.id } })).fishCount).toBe(0);
+    await expectLedgerConsistent('只投了其中一篇');
   });
 });
 
@@ -398,6 +387,7 @@ describe('作者分成 80% 与金额守恒', () => {
       feederBalance: 10 - amount,
       authorBalance: expected,
     });
+    await expectLedgerConsistent(`投喂 ${amount} 之后`);
   });
 
   it('两侧流水一一对应：一次投喂产生且仅产生 2 条流水，金额互为 -amount / +80%', async () => {
@@ -405,7 +395,10 @@ describe('作者分成 80% 与金额守恒', () => {
 
     await feedBlog(blog.id, feeder.id, 3);
 
-    const all = await prisma.fishTransaction.findMany({ orderBy: { id: 'asc' } });
+    const all = await prisma.fishTransaction.findMany({
+      where: { type: { in: FEED_TYPES } },
+      orderBy: { id: 'asc' },
+    });
     expect(all, '恰好两条：投喂者支出 + 作者收入').toHaveLength(2);
 
     const [spend, income] = all;
@@ -429,9 +422,14 @@ describe('作者分成 80% 与金额守恒', () => {
     });
     expect(spend.relatedUserId, '对手方必须互指，否则无法对账').toBe(author.id);
     expect(income.relatedUserId).toBe(feeder.id);
+    expect(
+      await prisma.accountSyncLedger.count(),
+      '投喂不登记幂等记录：一次投喂就是一笔新交易，键带随机后缀，登记没有去重价值' +
+        '（判据见 src/lib/fish-idempotency.ts 头部）。挡住重复投喂的是「单篇每人 ≤ 5」这条额度'
+    ).toBe(0);
   });
 
-  it('余额变动与流水金额严格守恒（余额 = 流水之和）', async () => {
+  it('余额变动与流水金额严格守恒（每个人的余额 = 他自己的流水之和）', async () => {
     const { author, blog, feeder } = await scene({ feederFish: 10, authorFish: 0 });
 
     await feedBlog(blog.id, feeder.id, 2);
@@ -444,25 +442,30 @@ describe('作者分成 80% 与金额守恒', () => {
       rows.reduce((s, r) => s + unitsToFish(r.amount), 0);
 
     const snap = await snapshot(feeder.id, author.id, blog.id);
-    expect(snap.feederBalance, '10 + (-2) + (-3)').toBeCloseTo(10 + sum(feederTxs), 6);
-    expect(snap.authorBalance, '0 + 1.6 + 2.4').toBeCloseTo(sum(authorTxs), 6);
-    expect(snap.feederBalance).toBe(5);
-    expect(snap.authorBalance).toBe(4);
+    expect(snap.feederBalance, '10 − 2 − 3').toBe(5);
+    expect(snap.authorBalance, '0 + 1.6 + 2.4').toBe(4);
+    // 两侧都要对上（夹具那笔开户流水也算 —— 它同样是真实的一笔）
+    expect(snap.feederBalance).toBeCloseTo(sum(feederTxs), 6);
+    expect(snap.authorBalance).toBeCloseTo(sum(authorTxs), 6);
+    await expectLedgerConsistent('两次投喂之后');
   });
 
-  it('平台留成 20%：投喂者支出 5，作者只得 4 —— 差额 1 不在任何本地账户上', async () => {
+  it('平台留成 20%：投喂者支出 5，作者只得 4 —— 差额 1 不落任何人的账', async () => {
     const { author, blog, feeder } = await scene({ feederFish: 5, authorFish: 0 });
     await feedBlog(blog.id, feeder.id, 5);
 
     const snap = await snapshot(feeder.id, author.id, blog.id);
     expect(snap.feederBalance).toBe(0);
     expect(snap.authorBalance).toBe(4);
-    // 本地库里没有系统账户，20% 的去向只体现在远端（SYSTEM_USER_ID 账户）。
-    // 记录现状：本地两侧之和不守恒是**设计如此**，对账要看账户服务。
+    // 那 1 条是**平台回收**：本地没有系统账户这一侧，也没有第二处存储需要配平。
+    // 这是刻意的（见 feed-service.ts 文件头），别为了「全站之和守恒」给谁补一笔。
+    // 账目自洽的口径是**每人各自**：余额 == 他自己的流水之和 —— 上面那条守恒用例
+    // 与 expectLedgerConsistent() 都是这个口径。
+    await expectLedgerConsistent('平台回收 20% 之后');
   });
 
-  it('自己投喂自己的文章：允许（刻意不做拦截），净损失 20%', async () => {
-    const self = await makeUser({ driedFish: 10 });
+  it('自己投喂自己的文章：允许（刻意不做拦截），净损失 20%，且不发通知给自己', async () => {
+    const self = await makeFishUser(10);
     const blog = await makeBlog({ authorId: self.id, title: '自投' });
 
     const r = await feedBlog(blog.id, self.id, 5);
@@ -472,7 +475,28 @@ describe('作者分成 80% 与金额守恒', () => {
       (await prisma.user.findUniqueOrThrow({ where: { id: self.id } })).driedFish
     );
     expect(bal, '10 - 5 + 4 = 9（自投净亏 20%）').toBe(9);
-    expect(await prisma.fishTransaction.count(), '仍然是两条流水（支出 + 收入）').toBe(2);
+    expect(
+      await prisma.fishTransaction.count({ where: { userId: self.id, type: { in: FEED_TYPES } } }),
+      '仍然是两条流水（支出 + 收入）'
+    ).toBe(2);
+    expect(
+      await prisma.notification.count({ where: { recipientId: self.id, actorId: self.id } }),
+      '给自己投喂不该给自己发通知'
+    ).toBe(0);
+    await expectLedgerConsistent('自投之后');
+  });
+
+  it('投喂成功给作者发一条通知（钱记完之后才发，失败也不回退投喂）', async () => {
+    const { author, blog, feeder } = await scene({ feederFish: 10 });
+
+    await feedBlog(blog.id, feeder.id, 2);
+
+    const notes = await prisma.notification.findMany({
+      where: { recipientId: author.id, action: '文章投喂' },
+    });
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toMatchObject({ actorId: feeder.id, objectType: 'blog', objectId: blog.id });
+    await expectLedgerConsistent('发过通知之后');
   });
 });
 
@@ -498,7 +522,7 @@ describe('getFeedStatus', () => {
 
   it('不串用户 / 不串文章', async () => {
     const { blog, feeder } = await scene({ feederFish: 10 });
-    const other = await makeUser({ driedFish: 10 });
+    const other = await makeFishUser(10);
     const otherBlog = await makeBlog({});
     await feedBlog(blog.id, feeder.id, 3);
 
@@ -513,197 +537,97 @@ describe('getFeedStatus', () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// ★★★ fail-closed（CLAUDE.md「鱼干写路径」）★★★
+// ★★ 事务中途故障：整笔回滚 + 异常如实上抛
 //
-// 最危险的失败模式：远端没记账，本地却已经扣了钱（或反过来）。
-// 约定：远端失败 → 本地事务整体回滚 + 向上抛 AccountServiceError（路由转 503），
-//       绝不静默成功。
+// 这一组的前身叫「fail-closed：远端账户服务失败」，盯的是「远端没记账、本地却已扣钱」。
+// 账户搬进站内之后那条边界消失了，但**同一类事故仍然存在**：事务已经写了一部分
+// （投喂者已扣、作者已入账），提交前炸掉。断言因此照旧 ——
+// 余额 / 流水 / BlogFeed / fishCount 一个都不能留，异常也不许被吞成「投喂失败」
+// 那种业务结果（路由要把它当 500 真故障，而不是让用户以为「钱没扣、待会儿再试」）。
 // ═══════════════════════════════════════════════════════════════════════════
 
-describe('dev fallback（ACCOUNT_SERVICE_INTERNAL_TOKEN 未配置）', () => {
-  it('前置事实：internal token 为空时，真实 accountServiceEnabled() 为 false', async () => {
-    const actual = await vi.importActual<typeof import('@/lib/account-client')>(
-      '@/lib/account-client'
-    );
-    // tests/setup.ts 把 token 置为空串（不能 delete：@prisma/client import 时会加载
-    // schema 同目录的 .env，dotenv 只跳过「已存在」的变量 —— delete 反而会被占位值灌回）。
-    expect(
-      ['', undefined].includes(process.env.ACCOUNT_SERVICE_INTERNAL_TOKEN as string),
-      'setup 必须把 token 置空，否则 .env 的占位值会悄悄启用远端'
-    ).toBe(true);
-    expect(actual.accountServiceEnabled(), '未配置 token → 走 dev fallback 分支').toBe(false);
-  });
+describe('★★ 事务中途故障：本地零痕迹、异常如实上抛', () => {
+  /**
+   * 注入一次「写 blog_feeds 失败」的基础设施故障：临时触发器，随用随撤。
+   *
+   * 【为什么用触发器而不是 mock】故障必须发生在**真实事务的中途**（两次 postEntry
+   * 之后）才谈得上验证回滚。触发器拦的是 Prisma 真正发下去的那条语句，与磁盘写满、
+   * 约束冲突这类真故障同一性质；把服务层的函数 mock 掉，验的就只是 mock 自己。
+   *
+   * INSERT 与 UPDATE 两条都拦：第二次投喂走的是 update 分支。
+   */
+  async function withFeedWriteFailure<T>(fn: () => Promise<T>): Promise<T> {
+    for (const [name, event] of [
+      ['test_inject_fault_ins', 'INSERT'],
+      ['test_inject_fault_upd', 'UPDATE'],
+    ]) {
+      await prisma.$executeRawUnsafe(
+        `CREATE TRIGGER ${name} BEFORE ${event} ON blog_feeds
+         BEGIN SELECT RAISE(ABORT, 'injected fault'); END`
+      );
+    }
+    try {
+      return await fn();
+    } finally {
+      await prisma.$executeRawUnsafe('DROP TRIGGER IF EXISTS test_inject_fault_ins');
+      await prisma.$executeRawUnsafe('DROP TRIGGER IF EXISTS test_inject_fault_upd');
+    }
+  }
 
-  it('走 dev fallback：不打远端、不解密 Key，仅写本地并 console.warn 告警', async () => {
-    mockEnabled.mockReturnValue(false);
+  it('事务中途抛错 → 余额/流水/BlogFeed/fishCount 全无痕迹，且异常上抛', async () => {
     const { author, blog, feeder } = await scene({ feederFish: 10 });
-
-    const r = await feedBlog(blog.id, feeder.id, 2);
-
-    expect(r.ok).toBe(true);
-    expect(mockFeedTransfer, 'fallback 分支绝不能打远端').not.toHaveBeenCalled();
-    expect(mockDecrypt, 'fallback 分支不需要解密 Key').not.toHaveBeenCalled();
-    expect(warnSpy, 'fallback 必须留下告警，避免在生产被误当成正常路径').toHaveBeenCalledWith(
-      expect.stringContaining('ACCOUNT_SERVICE 未配置')
-    );
-    expect(await snapshot(feeder.id, author.id, blog.id)).toMatchObject({
-      feederBalance: 8,
-      authorBalance: 1.6,
-      fishCount: 2,
-      fedAmount: 2,
-      txCount: 2,
-    });
-  });
-
-  it('fallback 下投喂者即使没有 fishApiKeyEncrypted 也能投（Key 只在远端模式下要求）', async () => {
-    mockEnabled.mockReturnValue(false);
-    const { blog, feeder } = await scene({ feederFish: 10, withKey: false });
-    expect(
-      (await prisma.user.findUniqueOrThrow({ where: { id: feeder.id } })).fishApiKeyEncrypted
-    ).toBeNull();
-    expect((await feedBlog(blog.id, feeder.id, 1)).ok).toBe(true);
-  });
-});
-
-describe('★★ fail-closed：远端账户服务失败', () => {
-  it('远端抛 AccountServiceError → 本地整体回滚（余额/流水/BlogFeed/fishCount 全无痕迹）', async () => {
-    enableRemote();
-    mockFeedTransfer.mockRejectedValue(new AccountServiceError('账户服务不可达: timeout', 503));
-    const { author, blog, feeder } = await scene({ feederFish: 10, withKey: true });
     const before = await snapshot(feeder.id, author.id, blog.id);
 
-    await expect(
-      feedBlog(blog.id, feeder.id, 3),
-      '远端失败必须抛出（而非返回 ok:true）'
-    ).rejects.toBeInstanceOf(AccountServiceError);
+    const err = await withFeedWriteFailure(() => feedBlog(blog.id, feeder.id, 3)).catch((e) => e);
 
-    const after = await snapshot(feeder.id, author.id, blog.id);
-    expect(after, '★ 远端没记账、本地却扣了钱 = 最危险的失败模式，必须为零').toEqual(before);
-    expect(after).toEqual({
+    // ⚠️ 断言只钉「抛了」，不匹配文案：Prisma 会把触发器的 RAISE(ABORT) 报成
+    // 「Foreign key constraint violated on the foreign key」—— 那是它的错误映射，
+    // 不是真的外键问题（实测：同样的写入在触发器撤掉之后一切正常）。
+    expect(err, '事务炸了就是真故障 —— 不许被吞成 ok:false 的业务结果').toBeInstanceOf(Error);
+    expect(await snapshot(feeder.id, author.id, blog.id), '★ 半笔账 = 真实损失，必须为零').toEqual(
+      before
+    );
+    expect(before).toEqual({
       feederBalance: 10,
       authorBalance: 0,
       fishCount: 0,
       fedAmount: null,
       txCount: 0,
     });
+    await expectLedgerConsistent('事务中途故障之后');
   });
 
-  it('远端抛出的 AccountServiceError 原样上抛（status 保留，路由据此返回 503）', async () => {
-    enableRemote();
-    const err = new AccountServiceError('余额不足（远端）', 400);
-    mockFeedTransfer.mockRejectedValue(err);
-    const { blog, feeder } = await scene({ feederFish: 10, withKey: true });
+  it('失败后额度原样保留 —— BlogFeed 不该留下行，否则用户额度被白白吃掉', async () => {
+    const { blog, feeder } = await scene({ feederFish: 10 });
 
-    await expect(feedBlog(blog.id, feeder.id, 1)).rejects.toBe(err);
-  });
-
-  it('远端抛普通 Error（网络异常/TypeError）→ 包装为 AccountServiceError(503)，本地照样回滚', async () => {
-    enableRemote();
-    mockFeedTransfer.mockRejectedValue(new TypeError('fetch failed'));
-    const { author, blog, feeder } = await scene({ feederFish: 10, withKey: true });
-
-    const err = await feedBlog(blog.id, feeder.id, 2).catch((e) => e);
-
-    expect(err, '未预期异常也必须 fail-closed，不能漏成 ok').toBeInstanceOf(AccountServiceError);
-    expect((err as AccountServiceError).status, '兜底一律 503').toBe(503);
-    expect(await snapshot(feeder.id, author.id, blog.id)).toEqual({
-      feederBalance: 10,
-      authorBalance: 0,
-      fishCount: 0,
-      fedAmount: null,
-      txCount: 0,
-    });
-  });
-
-  it('远端超时（AbortError 形态）同样回滚且不静默成功', async () => {
-    enableRemote();
-    mockFeedTransfer.mockImplementation(async () => {
-      const e = new Error('The operation was aborted');
-      e.name = 'AbortError';
-      throw e;
-    });
-    const { author, blog, feeder } = await scene({ feederFish: 10, withKey: true });
-
-    await expect(feedBlog(blog.id, feeder.id, 5)).rejects.toBeInstanceOf(AccountServiceError);
-    expect(await snapshot(feeder.id, author.id, blog.id)).toMatchObject({
-      feederBalance: 10,
-      txCount: 0,
-      fedAmount: null,
-    });
-  });
-
-  it('远端启用但投喂者没有账户 Key → 抛 503，且在进入事务前就拒绝（零脏写）', async () => {
-    enableRemote();
-    const { author, blog, feeder } = await scene({ feederFish: 10, withKey: false });
-
-    const err = await feedBlog(blog.id, feeder.id, 2).catch((e) => e);
-
-    expect(err).toBeInstanceOf(AccountServiceError);
-    expect((err as AccountServiceError).status).toBe(503);
-    expect((err as Error).message).toContain('账户 Key');
-    expect(mockFeedTransfer, '没 Key 就不该发起远端调用').not.toHaveBeenCalled();
-    expect(await snapshot(feeder.id, author.id, blog.id)).toEqual({
-      feederBalance: 10,
-      authorBalance: 0,
-      fishCount: 0,
-      fedAmount: null,
-      txCount: 0,
-    });
-  });
-
-  it('Key 解密失败（密钥轮换/密文损坏）→ 抛 503，本地零变化', async () => {
-    mockEnabled.mockReturnValue(true);
-    mockDecrypt.mockImplementation(() => {
-      throw new AccountServiceError('用户账户 Key 解密失败: bad token', 503);
-    });
-    const { author, blog, feeder } = await scene({ feederFish: 10, withKey: true });
-
-    await expect(feedBlog(blog.id, feeder.id, 2)).rejects.toBeInstanceOf(AccountServiceError);
-    expect(mockFeedTransfer).not.toHaveBeenCalled();
-    expect(await snapshot(feeder.id, author.id, blog.id)).toEqual({
-      feederBalance: 10,
-      authorBalance: 0,
-      fishCount: 0,
-      fedAmount: null,
-      txCount: 0,
-    });
-  });
-
-  it('远端失败后 BlogFeed 记录压根不该存在 —— 否则用户额度被白白吃掉', async () => {
-    enableRemote();
-    mockFeedTransfer.mockRejectedValue(new AccountServiceError('down', 503));
-    const { blog, feeder } = await scene({ feederFish: 10, withKey: true });
-
-    await feedBlog(blog.id, feeder.id, 5).catch(() => null);
+    await withFeedWriteFailure(() => feedBlog(blog.id, feeder.id, 5)).catch(() => null);
 
     expect(await getFeedStatus(blog.id, feeder.id), '额度必须原样保留 5').toEqual({
       fed: 0,
       remaining: 5,
       isFull: false,
     });
+    await expectLedgerConsistent('故障吃掉额度之后');
   });
 
-  it('已有成功投喂后远端再失败：状态停在上一次成功处，不多不少', async () => {
-    enableRemote();
-    const { author, blog, feeder } = await scene({ feederFish: 10, withKey: true });
+  it('已有成功投喂后再故障：状态停在上一次成功处，不多不少', async () => {
+    const { author, blog, feeder } = await scene({ feederFish: 10 });
 
     expect((await feedBlog(blog.id, feeder.id, 2)).ok).toBe(true);
     const before = await snapshot(feeder.id, author.id, blog.id);
 
-    mockFeedTransfer.mockRejectedValue(new AccountServiceError('down', 503));
-    await feedBlog(blog.id, feeder.id, 3).catch(() => null);
+    await withFeedWriteFailure(() => feedBlog(blog.id, feeder.id, 3)).catch(() => null);
 
     expect(await snapshot(feeder.id, author.id, blog.id), '第二笔必须完全消失').toEqual(before);
     expect(before).toMatchObject({ feederBalance: 8, authorBalance: 1.6, fedAmount: 2, txCount: 2 });
+    await expectLedgerConsistent('成功一笔、失败一笔之后');
   });
 
-  it('远端失败 → 重试成功：只记一次账（回滚干净，不会双扣）', async () => {
-    enableRemote();
-    mockFeedTransfer.mockRejectedValueOnce(new AccountServiceError('transient', 503));
-    const { author, blog, feeder } = await scene({ feederFish: 10, withKey: true });
+  it('故障 → 重试成功：只记一次账（回滚干净，不会双扣）', async () => {
+    const { author, blog, feeder } = await scene({ feederFish: 10 });
 
-    await feedBlog(blog.id, feeder.id, 3).catch(() => null); // 第一次：远端挂
-    const retry = await feedBlog(blog.id, feeder.id, 3); // 第二次：远端恢复
+    await withFeedWriteFailure(() => feedBlog(blog.id, feeder.id, 3)).catch(() => null); // 第一次：写库炸
+    const retry = await feedBlog(blog.id, feeder.id, 3); // 第二次：恢复
 
     expect(retry).toMatchObject({ ok: true, fedTotal: 3, remaining: 2 });
     expect(await snapshot(feeder.id, author.id, blog.id), '只能扣一次 3').toEqual({
@@ -713,116 +637,42 @@ describe('★★ fail-closed：远端账户服务失败', () => {
       fedAmount: 3,
       txCount: 2,
     });
+    await expectLedgerConsistent('故障后重试成功');
   });
 
-  it('远端失败时留下可诊断的告警日志（含 user/blog/amount）', async () => {
-    enableRemote();
-    mockFeedTransfer.mockRejectedValue(new AccountServiceError('down', 503));
-    const { blog, feeder } = await scene({ feederFish: 10, withKey: true });
+  it('故障留下可诊断的日志（含 user / blog / amount）', async () => {
+    const { blog, feeder } = await scene({ feederFish: 10 });
 
-    await feedBlog(blog.id, feeder.id, 2).catch(() => null);
+    await withFeedWriteFailure(() => feedBlog(blog.id, feeder.id, 2)).catch(() => null);
 
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('本地写入已补偿回滚'));
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining(feeder.id));
+    // 路由靠它把真故障与业务结果分开：这里没有「稍后重试即可」的 503 可包装，
+    // 只有一条能定位到人的日志。
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining(feeder.id), expect.anything());
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining(blog.id), expect.anything());
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('amount=2'), expect.anything());
   });
 });
 
-describe('★★ fail-closed：远端成功路径（本地先提交+账本登记，再同步）', () => {
-  it('远端成功 → 本地提交，且传给 feedTransfer 的参数与本地账目一致', async () => {
-    enableRemote();
-    const { author, blog, feeder } = await scene({ feederFish: 10, withKey: true });
+// ── 与账户 Key 无关 ─────────────────────────────────────────────────────────
 
-    const r = await feedBlog(blog.id, feeder.id, 3);
-
-    expect(r.ok).toBe(true);
-    expect(mockFeedTransfer, '远端必须被调用且仅一次').toHaveBeenCalledTimes(1);
-    expect(mockFeedTransfer).toHaveBeenCalledWith({
-      feederId: feeder.id,
-      feederApiKey: 'decrypted-api-key',
-      authorId: author.id,
-      amount: 3,
-      authorIncome: 2.4, // 与本地作者入账同源，两侧金额必须一致
-      blogId: blog.id,
-      blogTitle: '测试文章',
-      feederName: feeder.username,
-      feedSeq: 3,
-    });
-    expect(await snapshot(feeder.id, author.id, blog.id)).toMatchObject({
-      feederBalance: 7,
-      authorBalance: 2.4,
-      txCount: 2,
-    });
-  });
-
-  it('feedSeq 传的是「投喂后累计量」而非本次量（幂等键靠它区分第 N 次投喂）', async () => {
-    enableRemote();
-    const { blog, feeder } = await scene({ feederFish: 10, withKey: true });
-
-    await feedBlog(blog.id, feeder.id, 2);
-    await feedBlog(blog.id, feeder.id, 3);
-
-    const seqs = mockFeedTransfer.mock.calls.map((c) => (c[0] as { feedSeq: number }).feedSeq);
-    expect(seqs, '2 → 累计 2；再投 3 → 累计 5。若两次都传本次量，幂等键会撞车').toEqual([2, 5]);
-  });
-
-  it('★ 远端调用发生在本地提交之后：账本先落 pending，远端失败可补偿（不占 SQLite 写锁）', async () => {
-    enableRemote();
-    const { blog, feeder } = await scene({ feederFish: 10, withKey: true });
-
-    // 在远端回调里用**独立连接**读库：此时本地事务必须【已提交】（先落账本后同步），
-    // 且 account_sync_ledger 里存在本笔的 pending 行 —— 它是「已提交但未同步」的
-    // 恢复锚点：进程此时崩溃，sync-retry 仍可按幂等键重放收敛。
-    let balanceSeenByRemote: number | null = null;
-    let pendingRows: number | null = null;
-    mockFeedTransfer.mockImplementation(async () => {
-      const [u, rows] = await Promise.all([
-        prisma.user.findUnique({ where: { id: feeder.id }, select: { driedFish: true } }),
-        prisma.accountSyncLedger.findMany({
-          where: { operation: 'feed', status: 'pending' },
-          select: { idempotencyKey: true },
-        }),
-      ]);
-      balanceSeenByRemote = u ? unitsToFish(u.driedFish) : null;
-      pendingRows = rows.length;
+describe('与账户 Key 无关', () => {
+  it('投喂不看 users.fishApiKeyEncrypted：留一坨坏密文也照样投成', async () => {
+    // 那一列（连同 ACCOUNT_SERVICE_* 环境变量）当年是发往站外账户微服务的**用户凭据**，
+    // 现在没有任何代码读它。这条用例的价值不是「解密失败也能投」，而是钉住
+    // 「投喂路径完全不碰它」—— 谁哪天把凭据校验加回来，这里会红。
+    //
+    // （这里原有两条「ACCOUNT_SERVICE_INTERNAL_TOKEN 未配置 → dev fallback」的用例，
+    //   测的是「远端启用 / 未启用」两套模式：未启用时不打远端、不解密 Key、
+    //   没有 Key 也能投。模式本身没有了 —— 那个 token 已无人读取，
+    //   留下的就是这个更强的事实：**任何模式下都不需要 Key**。）
+    const { blog, feeder } = await scene({ feederFish: 10 });
+    await prisma.user.update({
+      where: { id: feeder.id },
+      data: { fishApiKeyEncrypted: 'fernet-blob-that-would-never-decrypt' },
     });
 
-    await feedBlog(blog.id, feeder.id, 4);
-
-    expect(
-      balanceSeenByRemote,
-      '远端同步时本地事务必须已提交（看到扣款后的余额 6）—— HTTP 不再占写锁'
-    ).toBe(6);
-    expect(pendingRows, '远端调用时账本里必须有本笔 pending 行（崩溃可恢复的锚点）').toBe(1);
-    expect(
-      unitsToFish(
-        (await prisma.user.findUniqueOrThrow({ where: { id: feeder.id } })).driedFish
-      )
-    ).toBe(6);
-    // 成功后账本行应结算为 synced（审计可查）
-    const ledger = await prisma.accountSyncLedger.findFirst({ where: { operation: 'feed' } });
-    expect(ledger?.status).toBe('synced');
-  });
-
-  it('业务失败（余额不足/超限）不打远端 —— 不浪费远端幂等键，也不产生远端脏账', async () => {
-    enableRemote();
-    const { blog, feeder } = await scene({ feederFish: 1, withKey: true });
-
-    const r = await feedBlog(blog.id, feeder.id, 5);
-
-    expect(r).toMatchObject({ ok: false, message: '小鱼干不足' });
-    expect(mockFeedTransfer, '本地就能判定失败时，不该打远端').not.toHaveBeenCalled();
-  });
-
-  it('超限被拒时也不打远端', async () => {
-    enableRemote();
-    const { blog, feeder } = await scene({ feederFish: 20, withKey: true });
-    await feedBlog(blog.id, feeder.id, 5);
-    mockFeedTransfer.mockClear();
-
-    const r = await feedBlog(blog.id, feeder.id, 1);
-
-    expect(r).toMatchObject({ ok: false, code: 400 });
-    expect(mockFeedTransfer).not.toHaveBeenCalled();
+    expect((await feedBlog(blog.id, feeder.id, 1)).ok).toBe(true);
+    await expectLedgerConsistent('投喂者带着坏密文时');
   });
 });
 
@@ -830,10 +680,9 @@ describe('★★ fail-closed：远端成功路径（本地先提交+账本登记
 
 describe('禁言用户', () => {
   it('禁言校验在 route 层（isCurrentlyBanned → 403），feed-service 本身不校验', async () => {
-    const author = await makeUser({ driedFish: 0 });
+    const author = await makeUser();
     const blog = await makeBlog({ authorId: author.id });
-    const banned = await makeUser({
-      driedFish: 10,
+    const banned = await makeFishUser(10, {
       isBanned: true,
       banUntil: new Date(Date.now() + 86400_000),
       banReason: '测试禁言',
@@ -844,5 +693,23 @@ describe('禁言用户', () => {
     // 记录现状：服务层放行。拦截点在 src/app/api/blogs/[id]/feed/route.ts:13
     // （getCurrentUser + isCurrentlyBanned → apiErr(403)）。
     expect(r.ok, 'feed-service 不做禁言校验 —— 该职责在路由层').toBe(true);
+    await expectLedgerConsistent('被禁言者投喂之后');
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 这里原有两组用例，测的是账户微服务**站在站外**时的契约，随那条边界一起消失：
+//
+//   · 「远端账户服务失败」的各种形态（AccountServiceError / 普通 Error / AbortError /
+//     超时 / Key 解密失败 / 没有 Key）—— 现在没有远端可失败，故障注入点换成了
+//     真实的写库失败（上面「事务中途故障」一组）。其中五条**性质改写**后保留：
+//     失败 → 零痕迹、失败不吃额度、失败后状态停在上一次成功处、故障后重试只记一次、
+//     故障留下可诊断日志；另外几条（错误类型与 503 的保留、AbortError 语义）是
+//     远端契约本身，没有对应物。
+//   · 「远端成功路径：本地先提交 + 账本登记，再同步」—— 包括传给远端的参数一致性、
+//     feedSeq 是累计量、账本里的 pending 行（崩溃恢复的锚点）等：这些断言的**对象**
+//     （远端调用参数、outbox 行）都不存在了。
+//     它的现行残余 —— **投喂不登记幂等键**（键带随机后缀 → 登记没有去重价值，
+//     判据见 src/lib/fish-idempotency.ts 头部）—— 已在「两侧流水一一对应」一例里直接钉住，
+//     另见 fish-admin.test.ts 的同名断言。
+// ─────────────────────────────────────────────────────────────────────────────

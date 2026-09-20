@@ -1,15 +1,20 @@
-// fish-market-service.ts —— 鱼干市场转账的**本地语义**（dev fallback 分支）。
+// fish-market-service.ts —— 鱼干市场转账的**本地语义**。
 //
-// 【与 fish-market-failclosed.test.ts 的分工】那边 mock 掉 account-client，专测
-// fail-closed（远端失败零痕迹 / 补偿 / 账本）；本文件跑**真实模块 + dev fallback**：
-// 余额、两条流水的形态、入参校验、并发防超扣、限频、收款人搜索 —— 这些与远端无关。
-// 混在一个文件里会互相干扰（mock 是全模块级的）。
+// 【这里没有替身可打】账目与业务数据现在在**同一个 SQLite 文件**里：扣款、两条流水、
+// 幂等记录在**一个事务**里一起提交，因此不存在「本地已提交、账目还没记」的中间态，
+// 也就不需要补偿事务（那套 outbox 随站外的账户微服务一起删掉了）。
+// 本文件跑真实模块 + 真实库，覆盖：余额与流水的形态、入参校验、并发防超扣、限频、
+// 收款人搜索，以及**客户端幂等键的对外契约**（同键重放 / 同键换参数 / 无键不登记）。
 //
-// 【DB】真实 SQLite（tests/.tmp/test-*），不 mock。远端账户服务未配置
-// （tests/setup.ts 把 ACCOUNT_SERVICE_INTERNAL_TOKEN 置空）→ accountServiceEnabled() 恒 false。
+// 【钱对不对由不变式收口】每个跑过写路径的用例末尾都调 expectLedgerConsistent()。
+// 账户搬进站内之后没有第二个存储可以核对了 ——「余额 == 流水之和、且没有负数余额」
+// 这条内部一致性就是唯一的证明（见 tests/helpers/fish-ledger.ts）。
+//
+// 【DB】真实 SQLite（tests/.tmp/test-*），不 mock。
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { resetDb, makeUser, prisma } from '../helpers/db';
+import { makeFishUser, expectLedgerConsistent } from '../helpers/fish-ledger';
 import {
   transferFish,
   searchTransferTargets,
@@ -19,9 +24,14 @@ import {
   TRANSFER_IN_TYPE,
   TRANSFER_NOTE_MAX,
 } from '@/lib/fish-market-service';
-import { CLIENT_KEY_RE } from '@/lib/fish-idempotency';
-import { makeTransferIdempotencyKey } from '@/lib/account-client';
+import {
+  CLIENT_KEY_RE,
+  makeClientIdempotencyKey,
+  makeTransferId,
+  makeTransferIdempotencyKey,
+} from '@/lib/fish-idempotency';
 import { fishToUnits, unitsToFish } from '@/lib/fish-units';
+import { nowForDb } from '@/lib/db-time';
 import { __resetRateLimitStore, RULES } from '@/lib/rate-limit';
 
 beforeEach(async () => {
@@ -29,35 +39,54 @@ beforeEach(async () => {
   // 限频桶是**进程内** Map（不随 DB 清空）：不清的话，用例之间会互相吃额度，
   // 表现为「明明只转了几笔却 429」。
   __resetRateLimitStore();
-  // dev fallback 每次转账都会 warn 一行，别刷测试输出
+  // 转账成功后会给收款人发一条通知，通知失败只 warn（不影响转账结果）——
+  // 打桩免得偶发失败把测试输出刷满。
   vi.spyOn(console, 'warn').mockImplementation(() => {});
+  vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
 });
 
-/** 发送者 + 接收者的标准场景。 */
+/**
+ * 发送者 + 接收者的标准场景。
+ *
+ * 余额一律用 makeFishUser 造：它让余额**经由记账内核**进入（一条 admin_grant 流水），
+ * 与线上同构 —— 而 expectLedgerConsistent 断的是「余额 == 该用户所有流水之和」，
+ * 直接 `makeUser({ driedFish: N })` 塞出来的无来源余额在它眼里就是一条撕裂的账。
+ */
 async function scene(senderFish = 100, recipientFish = 0) {
-  const sender = await makeUser({ driedFish: senderFish });
-  const recipient = await makeUser({ driedFish: recipientFish });
+  const sender = await makeFishUser(senderFish);
+  const recipient = await makeFishUser(recipientFish);
   return { sender, recipient };
 }
 
-/** 某用户的鱼干流水（正序）。 */
+/**
+ * 某用户的**转账**流水（正序）。
+ *
+ * 按 type 过滤而不是数该用户的全部流水：夹具给的初始余额也是一条流水
+ *（makeFishUser 的 admin_grant），它不属于任何一次转账动作。
+ */
 async function txnsOf(userId: string) {
   return prisma.fishTransaction.findMany({
-    where: { userId },
+    where: { userId, type: { in: [TRANSFER_OUT_TYPE, TRANSFER_IN_TYPE] } },
     orderBy: { id: 'asc' },
   });
 }
+
+/** 全库**转账**流水的条数（一出一进算两条）—— 夹具的初始余额那条不算。 */
+const transferTxCount = () =>
+  prisma.fishTransaction.count({
+    where: { type: { in: [TRANSFER_OUT_TYPE, TRANSFER_IN_TYPE] } },
+  });
 
 const balanceOf = async (id: string) =>
   unitsToFish(
     (await prisma.user.findUnique({ where: { id }, select: { driedFish: true } }))?.driedFish ?? 0
   );
 
-describe('transferFish —— 成功路径（dev fallback）', () => {
+describe('transferFish —— 成功路径', () => {
   it('余额一增一减、两条流水成对、返回值带转账后余额', async () => {
     const { sender, recipient } = await scene(100, 5);
 
@@ -94,6 +123,8 @@ describe('transferFish —— 成功路径（dev fallback）', () => {
     // 流水倒序会乱、按区间的统计会静默失效（静态守卫抓不到「忘了写」）。
     expect(out[0].createdAt).not.toBeNull();
     expect(inn[0].createdAt).not.toBeNull();
+
+    await expectLedgerConsistent('转账 12.5 成功后');
   });
 
   it('最小额 0.1 可转（1 位小数是允许的，别把下限写成 1）', async () => {
@@ -104,6 +135,8 @@ describe('transferFish —— 成功路径（dev fallback）', () => {
     expect(res.ok).toBe(true);
     expect(await balanceOf(sender.id)).toBe(0.9);
     expect(await balanceOf(recipient.id)).toBe(0.1);
+
+    await expectLedgerConsistent('转账 0.1（最小额）成功后');
   });
 
   it('留言同时进双方流水的描述', async () => {
@@ -116,6 +149,8 @@ describe('transferFish —— 成功路径（dev fallback）', () => {
     const [inn] = await txnsOf(recipient.id);
     expect(out.description).toBe(`转给「${recipient.username}」：请你喝鱼汤`);
     expect(inn.description).toBe(`收到「${sender.username}」的转账：请你喝鱼汤`);
+
+    await expectLedgerConsistent('带留言的转账成功后');
   });
 });
 
@@ -132,19 +167,36 @@ describe('transferFish —— 共享单号 transfer_id', () => {
     expect(inn.transferId).toBe(out.transferId);
     // 返回值里的单号也必须与落库的一致 —— 它是收银台回执与 API 响应的来源
     expect(res.ok && res.transferId).toBe(out.transferId);
+
+    await expectLedgerConsistent('转账后（校验共享单号）');
   });
 
-  it('本笔的单号 = sha256(幂等键) 前 16 位（重放能重现同一个值，靠的就是这个）', async () => {
+  it('同键重放只成交一笔，且回报的是**原单**的单号', async () => {
     const { sender, recipient } = await scene(100, 0);
 
-    // dev fallback 不去重，所以同键会真的成交两笔 —— 但两笔的键相同 ⇒ 单号必然相同。
-    // 这正是「派生而非随机」的可观测后果：重放同一个键回报的一定是原单的单号。
-    await transferFish(sender.id, recipient.id, 10, null, { clientIdempotencyKey: 'same-key-1' });
-    await transferFish(sender.id, recipient.id, 10, null, { clientIdempotencyKey: 'same-key-1' });
+    // 单号由幂等键派生（不是随机 + 存一份），所以「重放同一个键回报同一个单号」
+    // 是结构性成立的 —— 这里同时钉住派生值与重放回报值。
+    const first = await transferFish(sender.id, recipient.id, 10, null, {
+      clientIdempotencyKey: 'same-key-1',
+    });
+    const replay = await transferFish(sender.id, recipient.id, 10, null, {
+      clientIdempotencyKey: 'same-key-1',
+    });
 
-    const rows = await txnsOf(sender.id);
-    expect(rows).toHaveLength(2);
-    expect(rows[0].transferId).toBe(rows[1].transferId);
+    expect(first.ok && replay.ok).toBe(true);
+    if (!first.ok || !replay.ok) return;
+    expect(replay.duplicated, '第二次没有转账').toBe(true);
+
+    const expectedId = makeTransferId(makeClientIdempotencyKey(sender.id, 'same-key-1'));
+    expect(first.transferId).toBe(expectedId);
+    expect(replay.transferId, '重放回报原单的单号，不是一个新值').toBe(expectedId);
+
+    // 钱只动了一次：两条流水（一出一进），不是四条
+    expect(await txnsOf(sender.id)).toHaveLength(1);
+    expect(await txnsOf(recipient.id)).toHaveLength(1);
+    expect(await balanceOf(sender.id)).toBe(90);
+
+    await expectLedgerConsistent('同键重放后（只成交一笔）');
   });
 
   it('两笔不同的转账拿到不同的单号', async () => {
@@ -155,6 +207,8 @@ describe('transferFish —— 共享单号 transfer_id', () => {
     const rows = await txnsOf(sender.id);
     expect(rows).toHaveLength(2);
     expect(rows[0].transferId).not.toBe(rows[1].transferId);
+
+    await expectLedgerConsistent('两笔不同转账后');
   });
 
   it('单号是 16 位十六进制（口径写进用例，免得将来换实现时无声改变对外形状）', async () => {
@@ -217,14 +271,14 @@ describe('transferFish —— 入参校验（一律零副作用）', () => {
     expect(await txnsOf(sender.id)).toHaveLength(0);
   });
 
-  it('超过 1 位小数（0.05）→ 400，而**不是** 503（fishToUnits fail-loud 的边界转换）', async () => {
+  it('超过 1 位小数（0.05）→ 400，而**不是** 500（fishToUnits fail-loud 的边界转换）', async () => {
     const { sender, recipient } = await scene(100, 0);
 
     const res = await transferFish(sender.id, recipient.id, 0.05);
 
     expect(res.ok).toBe(false);
     if (res.ok) return;
-    expect(res.code, '必须在 service 内转成 400 文案，否则冒泡成 503').toBe(400);
+    expect(res.code, '必须在 service 内转成 400 文案，否则冒泡成 500').toBe(400);
     expect(res.message).toContain('1 位小数');
     expect(await balanceOf(sender.id)).toBe(100);
   });
@@ -251,7 +305,7 @@ describe('transferFish —— 入参校验（一律零副作用）', () => {
     if (res.ok) return;
     expect(res.code).toBe(404);
     expect(await balanceOf(sender.id)).toBe(100);
-    expect(await prisma.fishTransaction.count()).toBe(0);
+    expect(await txnsOf(sender.id)).toHaveLength(0);
   });
 
   it('发送者不存在 → 404', async () => {
@@ -284,6 +338,10 @@ describe('transferFish —— 入参校验（一律零副作用）', () => {
     expect(res.message).toContain('不足');
     expect(await balanceOf(sender.id)).toBe(1);
     expect(await balanceOf(recipient.id)).toBe(0);
+
+    // 出账走的条件写（`driedFish >= need`）：没扣成就不该留下任何流水 ——
+    // 负数余额与「流水有、余额没动」都在这一条里。
+    await expectLedgerConsistent('余额不足被拒后');
   });
 });
 
@@ -300,6 +358,8 @@ describe('transferFish —— 并发', () => {
     expect(okCount, 'SQLite 写锁 + 条件扣减：同一笔余额只能被花一次').toBe(1);
     expect(await balanceOf(sender.id)).toBe(0);
     expect(await balanceOf(recipient.id), '不能凭空多出鱼干').toBe(50);
+
+    await expectLedgerConsistent('并发两笔转出全部后');
   });
 
   it('并发多笔小额：成功笔数 × 金额 ≤ 初始余额', async () => {
@@ -313,6 +373,8 @@ describe('transferFish —— 并发', () => {
     expect(okCount).toBe(3); // 3 × 3 = 9 ≤ 10，第 4 笔起余额不足
     expect(await balanceOf(sender.id)).toBe(1);
     expect(await balanceOf(recipient.id)).toBe(9);
+
+    await expectLedgerConsistent('并发多笔小额后');
   });
 });
 
@@ -326,7 +388,7 @@ describe('transferFish —— 限频（唯一有配额的鱼干写路径）', ()
       expect(r.ok, `第 ${i + 1} 笔应当成功`).toBe(true);
     }
     const balanceAfterQuota = await balanceOf(sender.id);
-    const txCountAfterQuota = await prisma.fishTransaction.count();
+    const txCountAfterQuota = await transferTxCount();
 
     const res = await transferFish(sender.id, recipient.id, 0.1);
 
@@ -334,30 +396,180 @@ describe('transferFish —— 限频（唯一有配额的鱼干写路径）', ()
     if (res.ok) return;
     expect(res.code).toBe(429);
     expect(await balanceOf(sender.id)).toBe(balanceAfterQuota);
-    expect(await prisma.fishTransaction.count()).toBe(txCountAfterQuota);
+    expect(await transferTxCount()).toBe(txCountAfterQuota);
+
+    await expectLedgerConsistent('打满小时配额后');
   });
 });
 
-describe('客户端幂等键（dev fallback 下的已知边界）', () => {
-  it('dev fallback **不去重**：没有账本行可查，同键两笔都会成交', async () => {
-    // 【为什么断言这个「坏」行为】幂等去重靠账本行（唯一键 + payload 比对），
-    // 而账本只在远端同步启用时登记（dev fallback 刻意不登记，免得积一堆永远
-    // 同步不出去的 pending）。所以这条限制必须**写在用例里**，而不是让人
-    // 在本地测试时踩到「幂等键不生效」却查不出原因。
-    // 生产不会出现这个状态：未配账户服务时 assertRemoteRequiredInProduction
-    // 直接 503，fail-closed（见 fish-market-failclosed.test.ts 的 prod 守卫用例）。
+// ── 客户端幂等键：**对外契约**（站外脚本超时后唯一的自救手段）────────────────
+//
+// 记录写在**业务写入的同一个事务**里，所以「钱动了但键没记」（同键重放变成第二笔
+// 转账）与「键占了但钱没动」在结构上都不可能。新写入的行 status 恒为 'synced' ——
+// 登记与转账同事务提交，提交成功就是已生效。
+
+describe('客户端幂等键 —— 对外契约', () => {
+  it('★ 同键 + 同参数重发 → 原结果 + duplicated，钱只动一次、账本一行', async () => {
     const { sender, recipient } = await scene(100, 0);
 
-    const a = await transferFish(sender.id, recipient.id, 10, null, {
-      clientIdempotencyKey: 'wd-dev-1',
+    const first = await transferFish(sender.id, recipient.id, 7, '货款', {
+      clientIdempotencyKey: 'wd-0001',
     });
-    const b = await transferFish(sender.id, recipient.id, 10, null, {
-      clientIdempotencyKey: 'wd-dev-1',
+    const again = await transferFish(sender.id, recipient.id, 7, '货款', {
+      clientIdempotencyKey: 'wd-0001',
     });
 
+    expect(first.ok && again.ok).toBe(true);
+    if (!first.ok || !again.ok) return;
+    expect(again.duplicated, '第二次必须如实回报「已成交」而不是再转一笔').toBe(true);
+    expect(again.amount).toBe(7);
+    expect(again.transferId).toBe(first.transferId);
+    expect(await balanceOf(sender.id)).toBe(93);
+    expect(await balanceOf(recipient.id)).toBe(7);
+
+    // 账本：有且只有一行，键是派生的那个
+    const rows = await prisma.accountSyncLedger.findMany();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].idempotencyKey).toBe(makeClientIdempotencyKey(sender.id, 'wd-0001'));
+    expect(rows[0].operation).toBe('transfer');
+    expect(rows[0].status, '与业务写入同事务提交 ⇒ 提交成功即已生效').toBe('synced');
+    // payload 是「同键换参数」判定的依据，形状不能漂
+    expect(JSON.parse(rows[0].payload)).toEqual({
+      fromUserId: sender.id,
+      toUserId: recipient.id,
+      amount: 7,
+      description: `转给「${recipient.username}」：货款`,
+    });
+
+    await expectLedgerConsistent('同键重放后（钱只动一次）');
+  });
+
+  it('★ 同键换参数（金额不同）→ 409，不静默改单、不产生第二笔', async () => {
+    const { sender, recipient } = await scene(100, 0);
+
+    const first = await transferFish(sender.id, recipient.id, 7, null, {
+      clientIdempotencyKey: 'wd-0002',
+    });
+    expect(first.ok).toBe(true);
+
+    const res = await transferFish(sender.id, recipient.id, 8, null, {
+      clientIdempotencyKey: 'wd-0002',
+    });
+
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.code).toBe(409);
+    expect(await balanceOf(sender.id), '只有第一笔成交').toBe(93);
+    expect(await txnsOf(sender.id)).toHaveLength(1);
+    expect(await txnsOf(recipient.id)).toHaveLength(1);
+    expect(await prisma.accountSyncLedger.count()).toBe(1);
+
+    await expectLedgerConsistent('同键换参数被 409 拒后');
+  });
+
+  it('★ 同键换收款人 → 409（键跟着「这笔业务」走，不跟着「这次请求」走）', async () => {
+    const { sender, recipient } = await scene(100, 0);
+    const other = await makeUser({ driedFish: 0 });
+
+    await transferFish(sender.id, recipient.id, 7, null, { clientIdempotencyKey: 'wd-0003' });
+    const res = await transferFish(sender.id, other.id, 7, null, {
+      clientIdempotencyKey: 'wd-0003',
+    });
+
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.code).toBe(409);
+    expect(await balanceOf(other.id)).toBe(0);
+
+    await expectLedgerConsistent('同键换收款人被 409 拒后');
+  });
+
+  it('不带客户端键 → 随机键、**一行账本都不写**（判据：键是确定的才登记）', async () => {
+    // 随机键每次都不一样，登记行没有任何去重价值，只会把表撑大、把「表里有什么」
+    // 这件事搅浑。判据与理由见 src/lib/fish-idempotency.ts 头部。
+    const { sender, recipient } = await scene(100, 0);
+
+    const a = await transferFish(sender.id, recipient.id, 5);
+    const b = await transferFish(sender.id, recipient.id, 5);
+
     expect(a.ok && b.ok).toBe(true);
-    expect(await balanceOf(sender.id)).toBe(80);
-    expect(await prisma.accountSyncLedger.count(), 'dev fallback 不登记账本').toBe(0);
+    // 「不带键 ⇒ 重试就是再转一笔」：两笔都真的成交了
+    expect(await balanceOf(sender.id)).toBe(90);
+    expect(await txnsOf(sender.id)).toHaveLength(2);
+    expect(await txnsOf(recipient.id)).toHaveLength(2);
+    expect(await prisma.accountSyncLedger.count(), '随机键不登记').toBe(0);
+
+    await expectLedgerConsistent('两笔无键转账后');
+  });
+
+  it('★ 遗留 status=pending 的行 → 409（绝不把「不确定」当已成交回报）', async () => {
+    // 新写入的行一律是 synced，所以这个分支只为**迁移前的遗留行**服务（当年记录会停在
+    // pending：本地已提交、远端没同步）。对它们的正确动作是人工查证，
+    // 绝不是回一句「转账成功」—— 那会让调用方以为自己那笔已经落地。
+    const { sender, recipient } = await scene(100, 0);
+    const clientKey = 'wd-legacy-1';
+    const description = `转给「${recipient.username}」`;
+    const now = nowForDb();
+    await prisma.accountSyncLedger.create({
+      data: {
+        idempotencyKey: makeClientIdempotencyKey(sender.id, clientKey),
+        operation: 'transfer',
+        // payload 与本笔请求**完全一致** —— 只有状态是遗留的，这样才测得到那条分支
+        payload: JSON.stringify({
+          fromUserId: sender.id,
+          toUserId: recipient.id,
+          amount: 5,
+          description,
+        }),
+        status: 'pending',
+        attempts: 1,
+        createdAt: now,
+        updatedAt: now,
+      },
+    });
+
+    const res = await transferFish(sender.id, recipient.id, 5, null, {
+      clientIdempotencyKey: clientKey,
+    });
+
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.code).toBe(409);
+    // 走的是「状态不是 synced」那条分支（payload 与本笔完全一致 ⇒ 不是参数不一致那条，
+    // 否则这条用例会因为错误的原因通过）
+    expect(res.message).toContain('状态异常');
+    expect(await balanceOf(sender.id), '钱一分不动').toBe(100);
+    expect(await txnsOf(sender.id)).toHaveLength(0);
+    expect(await prisma.accountSyncLedger.count(), '不新增行、也不改动遗留行').toBe(1);
+
+    await expectLedgerConsistent('遗留 pending 行被 409 拒后');
+  });
+
+  it('重放不消耗限频额度（否则超时重试会被自己的配额挡在门外）', async () => {
+    const { sender, recipient } = await scene(100, 0);
+    const first = await transferFish(sender.id, recipient.id, 0.1, null, {
+      clientIdempotencyKey: 'wd-0004',
+    });
+    expect(first.ok).toBe(true);
+
+    // 打满小时配额（上面那笔已经占了 1 次）
+    for (let i = 0; i < RULES.transferHourly.limit - 1; i++) {
+      const r = await transferFish(sender.id, recipient.id, 0.1);
+      expect(r.ok, `第 ${i + 2} 笔应当成功`).toBe(true);
+    }
+    // 新的一笔已经被挡住……
+    const blocked = await transferFish(sender.id, recipient.id, 0.1);
+    expect(blocked.ok).toBe(false);
+    if (!blocked.ok) expect(blocked.code).toBe(429);
+
+    // ……但**同一笔的重放**照样能拿到原结果：幂等判定在限频之前。
+    const replay = await transferFish(sender.id, recipient.id, 0.1, null, {
+      clientIdempotencyKey: 'wd-0004',
+    });
+    expect(replay.ok, '调用方遇到超时就该能用同键重试').toBe(true);
+    if (replay.ok) expect(replay.duplicated).toBe(true);
+
+    await expectLedgerConsistent('打满配额后重放');
   });
 });
 
@@ -372,6 +584,8 @@ describe('服务账号配额白名单', () => {
       expect(r.ok, `第 ${i + 1} 笔：白名单账号不该撞普通配额`).toBe(true);
     }
     expect(await balanceOf(recipient.id)).toBe(3.5);
+
+    await expectLedgerConsistent('服务账号转 35 笔后');
   });
 
   it('白名单之外的账号不受影响（同一进程内仍按 30 笔/时 限）', async () => {
@@ -439,6 +653,8 @@ describe('searchTransferTargets', () => {
 
 describe('makeTransferIdempotencyKey', () => {
   it('长度 ≤ 64（用最长的合法输入：两个 36 字符 UUID）', () => {
+    // 键的形状是**冻结**的：存量 account_sync_ledger 行与对外文档都照着它，
+    // 换一代形状等于让老键与新键混进同一个命名空间。
     const key = makeTransferIdempotencyKey(
       '123e4567-e89b-12d3-a456-426614174000',
       '123e4567-e89b-12d3-a456-426614174001',
@@ -448,14 +664,18 @@ describe('makeTransferIdempotencyKey', () => {
     expect(key.length).toBeLessThanOrEqual(64);
   });
 
-  it('同参数 + 同 nonce 是确定性的（重放要用同一个键）', () => {
+  it('同参数 + 同 nonce 是确定性的', () => {
     const args = ['u-1', 'u-2', 100, 'aaaa1111'] as const;
     expect(makeTransferIdempotencyKey(...args)).toBe(makeTransferIdempotencyKey(...args));
   });
 
-  it('nonce 不同 → 键不同（两笔同额转账不能被远端当重放静默吞掉）', () => {
+  it('nonce 不同 → 键不同 ⇒ 两笔同额转账各有自己的单号', () => {
+    // 秒级时间戳下不带 nonce，同一用户对同额的两次转账会算出同一个键 ⇒ 同一个单号，
+    // 而单号是对账时认「同一笔」的唯一依据 —— 两笔真成交的转账共用一个句柄，
+    // 收付双方就再也分不开它们了。
     const a = makeTransferIdempotencyKey('u-1', 'u-2', 100, 'aaaa1111');
     const b = makeTransferIdempotencyKey('u-1', 'u-2', 100, 'bbbb2222');
     expect(a).not.toBe(b);
+    expect(makeTransferId(a)).not.toBe(makeTransferId(b));
   });
 });
