@@ -197,8 +197,8 @@ async function reconcile() {
   // 所以不会出现「先看见一行、几秒后它又没了」的行。
   // （这条纪律来自更早的版本：那时账号与流水不在一个事务里，失败会连流水一起回滚掉。）
   //
-  // ⚠️ 反过来，**别自己按 `createdAt` 过滤**（比如「只处理 10 秒之前的行」）：
-  //    `createdAt` 是「UTC+8 墙上时间贴 Z 标签」，**不是**标准 UTC 瞬间。拿它直接
+  // ⚠️ 反过来，**别自己按 `created_at` 过滤**（比如「只处理 10 秒之前的行」）：
+  //    `created_at` 是「UTC+8 墙上时间贴 Z 标签」，**不是**标准 UTC 瞬间。拿它直接
   //    跟本机的 Date.now() 比，每一行都会显得「来自未来 8 小时」—— 那个过滤器会在
   //    第一行就把**所有**行挡掉：对账看起来在跑、日志一行不报，而钱一笔都没入账。
   //    真要按时间过滤，先把「现在」换算到同一把钟上再比：
@@ -208,13 +208,13 @@ async function reconcile() {
   let lastId = db.cursor;
   for (const tx of data.transactions) {
     if (tx.type === 'transfer_receive') {
-      const customerId = db.claimed[tx.relatedUserId]; // 转账方 = 我们的客户
-      if (customerId && !db.seenDeliveries.includes(`tx:${tx.transferId}`)) {
+      const customerId = db.claimed[tx.related_user_id]; // 转账方 = 我们的客户
+      if (customerId && !db.seenDeliveries.includes(`tx:${tx.transfer_id}`)) {
         // 与回调**共用同一把去重键**（`tx:<共享单号>`）—— 同一笔到账可能先被回调
         // 记过、又被对账扫到，共用一个命名空间才会在这里跳过，而不是再入一次。
-        db.seenDeliveries.push(`tx:${tx.transferId}`);
+        db.seenDeliveries.push(`tx:${tx.transfer_id}`);
         db.balances[customerId] = round2((db.balances[customerId] ?? 0) + tx.amount);
-        console.log(`[对账补录] ${customerId} +${tx.amount}（单号 ${tx.transferId}）`);
+        console.log(`[对账补录] ${customerId} +${tx.amount}（单号 ${tx.transfer_id}）`);
       }
     }
     lastId = tx.id;
@@ -294,15 +294,15 @@ https://raricy.com/fish/pay
 
 1. 你在自己站内给他一串一次性验证码；
 2. 让他在 raricy 里**转 0.1 给你**，备注里带上那串码；
-3. 你从流水里按**备注**找到那笔 0.1，把 `relatedUserId` 记成他的 raricy id：
+3. 你从流水里按**备注**找到那笔 0.1，把 `related_user_id` 记成他的 raricy id：
 
 ```js
-db.claimed[tx.relatedUserId] = '你自己站内的客户 id';
+db.claimed[tx.related_user_id] = '你自己站内的客户 id';
 db.cursor = tx.id; // 别让这 0.1 又被当成一笔充值
 ```
 
 > 为什么绕这一圈：**备注是谁都能写的自由文本**。「我是 alice」证明不了他是 alice。
-> 唯一能信的只有流水里由系统填的 `relatedUserId`。
+> 唯一能信的只有流水里由系统填的 `related_user_id`。
 > （若嫌麻烦，也可以走 OAuth —— 用户授权后你直接拿到他的 raricy user id，
 > 但那需要站长登记应用，见 `docs/oauth.md`。）
 
@@ -325,7 +325,7 @@ db.cursor = tx.id; // 别让这 0.1 又被当成一笔充值
    不要只用 `X-Raricy-Delivery`。投递是「至少一次」、重复是正常的，不是异常；
    更麻烦的是**回调与对账会看到同一笔钱**，两路各用各的键就等于没去重
    （同一笔先被回调入账、30 秒后又被对账扫到，会再入一次）。
-2. **认人只能用 `from.user_id` / `relatedUserId`**，永远不要用备注或用户名。
+2. **认人只能用 `from.user_id` / `related_user_id`**，永远不要用备注或用户名。
 3. **对账必须真的跑**（回调会丢），但**入账不需要滞后**：转账的流水写入即终态
    （扣款、入账、流水是同一个本地事务），取到就能入账。只靠回调对账早晚会漏钱。
 4. **提现的幂等键必须跟着提现单号走**。超时重试时原样重发同一条是安全的；
@@ -335,7 +335,7 @@ db.cursor = tx.id; // 别让这 0.1 又被当成一笔充值
 
 | 症状 | 多半是 |
 |------|--------|
-| **对账跑了但一笔都没入** | ① 那些人还没**认领**（`db.claimed` 里没有那笔的 `relatedUserId`）：对账这条路对未认领的到账是**跳过**的，只有回调那条路会记进 `__unclaimed`（见 §2）；② 你若**自己**按时间过滤过：**时钟没对齐** —— `createdAt` 是「UTC+8 墙上时间贴 Z」，直接跟 `Date.now()` 比会让每行都像来自未来（见 §2 代码里的注释） |
+| **对账跑了但一笔都没入** | ① 那些人还没**认领**（`db.claimed` 里没有那笔的 `related_user_id`）：对账这条路对未认领的到账是**跳过**的，只有回调那条路会记进 `__unclaimed`（见 §2）；② 你若**自己**按时间过滤过：**时钟没对齐** —— `created_at` 是「UTC+8 墙上时间贴 Z」，直接跟 `Date.now()` 比会让每行都像来自未来（见 §2 代码里的注释） |
 | 回调收不到 | 地址不是 https / 不是 2xx / 指向内网；或页面显示「连续失败 n 次」 |
 | 回调收到了但验签不过 | 用了 `JSON.parse` 之后再 `stringify` 的正文；或密钥用了旧的（换过密钥的话） |
 | 同一笔入账两次 | 去重键没用**共享单号**（`tx:<transfer_id>`）：只用 `delivery_id` 的话，回调与对账两路各记各的，挡不住对方 |

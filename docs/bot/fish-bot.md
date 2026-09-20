@@ -231,7 +231,7 @@ POST /api/fish/market/transactions
   「先看见一行、几秒后它又没了」的行 —— 那种事来自更早的版本，现在不可能发生，
   你也不必靠「只处理若干秒之前的行」去躲它。
   ⚠️ 但如果你**另有按时间过滤的理由**（例如「只处理今天某时刻之前的行」），那个
-  「某时刻」必须是**本站时钟**，不是你的本机时钟 —— `createdAt` 是「UTC+8 墙上
+  「某时刻」必须是**本站时钟**，不是你的本机时钟 —— `created_at` 是「UTC+8 墙上
   时间贴 Z」（见 §3.3 的说明），比标准 UTC 快 8 小时。直接拿 `Date.now()` 跟它比，
   每一行都会显得「来自未来」，于是过滤器会把**所有**行都挡掉：对账看起来在跑、
   日志一行不报，而一笔都没入账。
@@ -270,11 +270,11 @@ POST /api/fish/market/transactions
       "amount": -1,
       "type": "transfer",
       "description": "转给「alice」：机器人转账",
-      "referenceType": "user",
-      "referenceId": "u_alice",
-      "relatedUserId": "u_alice",
-      "transferId": "a1b2c3d4e5f60718",
-      "createdAt": "2026-09-14T11:52:03.000Z"
+      "reference_type": "user",
+      "reference_id": "u_alice",
+      "related_user_id": "u_alice",
+      "transfer_id": "a1b2c3d4e5f60718",
+      "created_at": "2026-09-14T11:52:03.000Z"
     }
   ],
   "total": 1,
@@ -286,10 +286,10 @@ POST /api/fish/market/transactions
 }
 ```
 
-> `amount` 正数为入账、负数为支出；单位是**鱼干**。`createdAt` 是本站时钟
+> `amount` 正数为入账、负数为支出；单位是**鱼干**。`created_at` 是本站时钟
 > （UTC+8 墙上时间**贴 `Z` 标签**的假 Z，见 §3.3.1 的说明），**不是**标准 UTC 瞬间。
 
-**`transferId`** 是这笔转账的共享单号（见 §3.1）—— 收付双方同值，**对账请以它为准**：
+**`transfer_id`** 是这笔转账的共享单号（见 §3.1）—— 收付双方同值，**对账请以它为准**：
 
 - 只有用户间转账（`type` 为 `transfer` / `transfer_receive`）才有；签到、投喂、
   管理员赠送、系统补偿等一律是 `null`；
@@ -470,7 +470,7 @@ https://raricy.com/fish/pay
 两边各自独立、互不影响（单号里混了收款人，不会撞车）。
 
 用户付完之后，页面上会显示一个**凭据号**，那就是这笔转账的 `transfer_id`（§3.1）——
-你可以让用户把它报给你，也可以直接从自己流水的 `transferId` 对上。
+你可以让用户把它报给你，也可以直接从自己流水的 `transfer_id` 对上。
 
 用户侧的实际流程：
 
@@ -498,12 +498,12 @@ https://raricy.com/fish/pay
 
 | 做法 | 说明 |
 |------|------|
-| **挑战存款**（推荐，无需任何人批准） | 让用户先转 0.1，备注里带一串一次性验证码；你从流水的 `relatedUserId` 认人 —— 那是站点流水的权威字段，伪造不了。验证通过后再把 0.1 退给他，或直接计入余额 |
+| **挑战存款**（推荐，无需任何人批准） | 让用户先转 0.1，备注里带一串一次性验证码；你从流水的 `related_user_id` 认人 —— 那是站点流水的权威字段，伪造不了。验证通过后再把 0.1 退给他，或直接计入余额 |
 | 订单号 + 人工核对 | 金额与时间都吻合才认，量大就不可行 |
 | OAuth（需要站长登记应用） | `docs/oauth.md`：用户授权后你拿到他的 raricy user id。最省事，但要站长建应用 —— 铁了心「互不打扰」的话就走上面那条 |
 
 > ⚠️ **永远不要靠备注文本认人**。备注是任何人都能写的自由文本，
-> 「我是 alice」并不能证明他就是 alice。认人只能用 `relatedUserId`，
+> 「我是 alice」并不能证明他就是 alice。认人只能用 `related_user_id`，
 > 或者你能验证的凭据。
 
 ## 10. 收款回调：让 raricy 主动通知你
@@ -561,7 +561,7 @@ X-Raricy-Signature: v1=3f9a...（见 §10.3）
 - `transfer_id` 就是 §3.1 的那个共享单号 —— **拿它把回调与你账本里的那一笔对上**，
   不必猜金额和时间；
 - `balance_after` 是这次到账**之后**你的余额（鱼干），省掉一次查询；
-- `occurred_at` 是本站时钟（UTC+8 墙上时间贴 Z 标签，同 §3.3 的 `createdAt`），
+- `occurred_at` 是本站时钟（UTC+8 墙上时间贴 Z 标签，同 §3.3 的 `created_at`），
   **不是**标准 UTC 瞬间。
 
 回调**只在有人转给你的账号时发**。签到、投喂、管理员赠送、系统补偿都不会触发。
