@@ -111,15 +111,21 @@ const server = http.createServer((req, res) => {
     );
   }
 
-  // GET /api/v3/klines —— 收盘价序列，画曲线用。造一条从当前价出发的确定性曲线。
+  // GET /api/v3/klines —— 收盘价序列，画曲线用。造一条确定性曲线。
+  //
+  // 【方向必须跟着 priceChangePercent 走】否则截图里会出现「涨跌幅 -0.75% 而曲线
+  // 朝上」这种自相矛盾的画面 —— 那是替身造的假象，不是产品的 bug，但会让人
+  // 以为走势线画反了。真身那边两者本来就是同一段行情的两种呈现。
   if (path === '/api/v3/klines') {
     const symbol = url.searchParams.get('symbol') || 'BTCUSDT';
     const limit = Math.min(200, Math.max(1, Number(url.searchParams.get('limit')) || 72));
     const last = prices.get(symbol) ?? 1;
+    const pct = changes.get(symbol) ?? 0;
+    // 整条曲线累计走完 change%，于是末点 - 首点的方向与涨跌幅一致
+    const first = last / (1 + pct / 100);
     const out = [];
     for (let i = 0; i < limit; i++) {
-      // 从 last 往回推一条平缓的曲线（形状固定，便于断言）
-      const close = last * (1 - (limit - 1 - i) * 0.0005);
+      const close = first + ((last - first) * i) / (limit - 1 || 1);
       out.push([
         0, // openTime 占位 —— 客户端只读索引 4（close）
         String(close),
