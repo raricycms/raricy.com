@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { Bot, ReceiptText } from 'lucide-react';
+import { Bot, ReceiptText, TrendingUp } from 'lucide-react';
 import { getCurrentUser } from '@/lib/auth';
 import { loginUrlWithNext } from '@/lib/safe-url';
 import { getBalance } from '@/lib/fish-service';
@@ -29,6 +29,12 @@ export default async function FishMarketPage() {
       <p className="market-foot">
         <Link className="market-foot__link" href="/fish/transactions?type=transfer_all">
           <ReceiptText aria-hidden="true" /> 查看转账记录
+        </Link>
+      </p>
+
+      <p className="market-foot">
+        <Link className="market-foot__link" href="/fish/trade">
+          <TrendingUp aria-hidden="true" /> 鱼干练手盘（买入 BTC / ETH）
         </Link>
       </p>
 

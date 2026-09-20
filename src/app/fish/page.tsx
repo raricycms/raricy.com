@@ -64,7 +64,16 @@ export default async function FishPage() {
             />
           </div>
           <div className="fish-card__info">
-            <p>每日签到可获得小鱼干，更多获取方式即将开放…</p>
+            {/* 练手盘的入口**只能**放这里：上面那条 .fish-card__actions 被
+                tests/e2e/fish-layout.spec.ts 钉死为「恰好 3 颗」，加进去当场红。
+                ⚠️ 新链接别用 .fish-card__link-label 这个类名 —— 同一个用例钉死了
+                它的数量是 2（那两条带前缀的文案的壳）。 */}
+            <p>每日签到可获得小鱼干。也可以去练手盘碰碰运气 ——</p>
+            <p>
+              <Link href="/fish/trade" className="fish-card__info-link">
+                鱼干练手盘：买入 BTC / ETH，价格涨跌换鱼干
+              </Link>
+            </p>
           </div>
         </div>
       </div>
