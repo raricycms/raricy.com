@@ -138,6 +138,37 @@ export interface TransactionsPage {
 }
 
 /**
+ * 流水 → **线上形状**（snake_case）。
+ *
+ * 【为什么需要它】`FishTxDTO` 是服务层内部形状，按 TS 惯例用 camelCase；
+ * 而对外 JSON 一律 snake_case（仓库既定的 API 契约，见 CLAUDE.md「关键约定」）。
+ * 两者之间必须有一道**显式的、共用的**映射 —— 少了它，路由最自然的写法
+ * （`transactions: page.transactions` 直接透传）就会把 camelCase 泄进响应里。
+ *
+ * ⚠️ **别在路由里手写这份映射，也别只改其中一条路由。** 这正是它当初出问题的方式：
+ * 三个路由（`/api/fish/transactions`、`/api/fish/balance`、
+ * `/api/fish/market/transactions`）共用同一个 DTO，其中一条手写了映射、另两条直接透传，
+ * 于是**同一个字段在三个接口里两种拼法**，而对外的 `docs/bot/` 只好照实把那个混合形状
+ * 抄下来（示例里 `relatedUserId` 和 `next_cursor` 并排）。**改这里就是改对外契约**。
+ *
+ * 不带 `user_id`：整个响应只属于一个用户，信封已经给了身份，逐条重复一遍是噪音
+ * （三条路由因此形状完全一致）。
+ */
+export function toFishTxJson(t: FishTxDTO) {
+  return {
+    id: t.id,
+    amount: t.amount,
+    type: t.type,
+    description: t.description,
+    reference_type: t.referenceType,
+    reference_id: t.referenceId,
+    related_user_id: t.relatedUserId,
+    transfer_id: t.transferId,
+    created_at: t.createdAt,
+  };
+}
+
+/**
  * 筛选条口径 → Prisma where。
  *
  * feed_all / transfer_all / market_all 是「合称」特例：一侧是支出、另一侧是收入，

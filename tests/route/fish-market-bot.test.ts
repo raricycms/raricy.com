@@ -692,7 +692,10 @@ describe('POST /api/fish/market/transactions', () => {
     expect(json.total).toBe(1);
     expect(json.transactions).toHaveLength(1);
     expect(json.transactions[0]).toMatchObject({ amount: -2, type: 'transfer' });
-    expect(json.transactions[0].relatedUserId).toBe(recipient.id);
+    // snake_case：与站内两条读口逐字段同形（那份映射的三个消费方见
+    // fish-service.toFishTxJson；本文件只钉这一条读口，三方一致性在
+    // tests/route/fish-tx-shape.test.ts）。
+    expect(json.transactions[0].related_user_id).toBe(recipient.id);
     expect(json.has_prev).toBe(false);
     expect(json.has_next).toBe(false);
 

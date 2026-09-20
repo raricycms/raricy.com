@@ -1,8 +1,9 @@
 import { getCurrentUser } from '@/lib/auth';
 import { apiOk, apiErr } from '@/lib/format';
-import { getBalance, getTransactions } from '@/lib/fish-service';
+import { getBalance, getTransactions, toFishTxJson } from '@/lib/fish-service';
 
 // GET /api/fish/balance — 当前用户余额 + 分页流水（需登录）
+// 流水形状与另外两条读口一致（toFishTxJson），见它的注释。
 // query: ?page=1&per_page=20&type=checkin|feed|feed_all|...
 export async function GET(req: Request) {
   const user = await getCurrentUser();
@@ -20,7 +21,7 @@ export async function GET(req: Request) {
 
   return apiOk({
     balance,
-    transactions: txPage.transactions,
+    transactions: txPage.transactions.map(toFishTxJson),
     total: txPage.total,
     page: txPage.page,
     per_page: txPage.perPage,

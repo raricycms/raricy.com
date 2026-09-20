@@ -61,10 +61,10 @@ async function myLedger(page: Page, type?: string): Promise<LedgerRow[]> {
  * ⚠️ 必须用**独立**的 context。带当前会话的 cookie 去打这两条接口时，
  * `_auth.ts` 明文规定**以会话为准** —— 读回来的会是自己的账，而不是凭据那个人的。
  *
- * ⚠️ 两条读口的**形状不一样**：网页侧 GET /api/fish/transactions 是 snake_case，
- * 而这条无状态口直接回服务层的 DTO（camelCase，见 docs/bot/fish-bot.md §3.3）。
- * 两者都是既成事实，所以这里只做一次归一 —— 断言里两种写法混着写，写错了不报错、
- * 只是静静地断不到东西（`undefined !== 'a1b2…'` 那种失败看着像账没记）。
+ * 两条读口（会话侧 GET / 无状态侧 POST）现在**逐字段同形**（都是 snake_case，
+ * 由 `fish-service.toFishTxJson` 一份映射产出，见它的注释），所以这里直接断言，
+ * 不需要任何归一化。**曾经需要过** —— 那时这条口透传服务层 DTO，同一响应里
+ * 信封是 snake、数组项是 camel，测试只好两边都认一遍。
  */
 async function ledgerOf(
   api: APIRequestContext,
@@ -81,28 +81,9 @@ async function ledgerOf(
   });
   expect(txs.status(), await txs.text()).toBe(200);
 
-  const rows = ((await txs.json()).transactions ?? []) as Array<{
-    amount: number;
-    type: string;
-    description: string | null;
-    relatedUserId: string | null;
-    transferId: string | null;
-    referenceType: string | null;
-    referenceId: string | null;
-  }>;
+  const rows = ((await txs.json()).transactions ?? []) as LedgerRow[];
 
-  return {
-    balance: (await bal.json()).balance as number,
-    transactions: rows.map((r) => ({
-      amount: r.amount,
-      type: r.type,
-      description: r.description,
-      related_user_id: r.relatedUserId,
-      transfer_id: r.transferId,
-      reference_type: r.referenceType,
-      reference_id: r.referenceId,
-    })),
-  };
+  return { balance: (await bal.json()).balance as number, transactions: rows };
 }
 
 /** 新号 + 签到翻牌拿鱼，返回到账后的余额（鱼干，1-5）。 */

@@ -1,5 +1,5 @@
 import { apiOk, apiErr } from '@/lib/format';
-import { getTransactions, getTransactionsSince } from '@/lib/fish-service';
+import { getTransactions, getTransactionsSince, toFishTxJson } from '@/lib/fish-service';
 import { requireMarketActor } from '../_auth';
 
 // POST /api/fish/market/transactions — 查流水（站外脚本用；网页走 GET /api/fish/balance）。
@@ -12,6 +12,11 @@ import { requireMarketActor } from '../_auth';
 //   type 与网页筛选条同口径：checkin | feed_all | transfer_all | admin_grant | …
 //
 // 【为什么是 POST】同 ../balance/route.ts：凭据不能进 URL（会落到 access log）。
+//
+// 【流水形状】两条模式都走 `toFishTxJson`（snake_case），与另外两个流水读口
+//   逐字段相同。这里**曾经直接透传服务层 DTO**，于是同一个响应里信封是 snake、
+//   数组项是 camel（`relatedUserId` 和 `next_cursor` 并排），还把这个混合形状
+//   抄进了对外文档。别退回那种写法。
 export const runtime = 'nodejs';
 
 const DEFAULT_PER_PAGE = 20;
@@ -55,7 +60,7 @@ export async function POST(req: Request) {
       user_id: actor.id,
       username: actor.username,
       mode: 'cursor',
-      transactions: rows,
+      transactions: rows.map(toFishTxJson),
       next_cursor: last,
       has_more: rows.length >= Math.min(100, limit),
     });
@@ -74,7 +79,7 @@ export async function POST(req: Request) {
     user_id: actor.id,
     username: actor.username,
     mode: 'page',
-    transactions: data.transactions,
+    transactions: data.transactions.map(toFishTxJson),
     total: data.total,
     page: data.page,
     per_page: data.perPage,

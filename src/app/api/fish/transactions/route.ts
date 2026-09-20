@@ -1,10 +1,13 @@
 import { getCurrentUser } from '@/lib/auth';
 import { apiOk, apiErr } from '@/lib/format';
-import { getTransactions } from '@/lib/fish-service';
+import { getTransactions, toFishTxJson } from '@/lib/fish-service';
 
 // GET /api/fish/transactions — 当前用户流水分页（需登录）。
 // query: ?page=1&per_page=20&type=checkin|feed_all|admin_grant|purchase|...
-// 返回字段固定 snake_case —— 外部项目按这个形状消费，属对外契约，别顺手改成 camelCase。
+//
+// 返回字段固定 snake_case，且**与另外两条流水读口逐字段相同**（`toFishTxJson`）。
+// 这三条路由共用同一个映射是刻意的：它们曾经各自为政，结果同一个字段在三个接口里
+// 两种拼法，见 `fish-service.toFishTxJson` 的注释。
 export async function GET(req: Request) {
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '请先登录');
@@ -17,18 +20,7 @@ export async function GET(req: Request) {
   const data = await getTransactions(user.id, page, perPage, type);
 
   return apiOk({
-    transactions: data.transactions.map((t) => ({
-      id: t.id,
-      user_id: user.id,
-      amount: t.amount,
-      type: t.type,
-      description: t.description,
-      reference_type: t.referenceType,
-      reference_id: t.referenceId,
-      related_user_id: t.relatedUserId,
-      transfer_id: t.transferId,
-      created_at: t.createdAt,
-    })),
+    transactions: data.transactions.map(toFishTxJson),
     total: data.total,
     page: data.page,
     per_page: data.perPage,
