@@ -1,7 +1,6 @@
 import { getCurrentUser, isCoreUser } from '@/lib/auth';
 import { apiOk, apiErr } from '@/lib/format';
 import { getTodayStatus, checkIn, fortuneLabel } from '@/lib/checkin-service';
-import { AccountServiceError } from '@/lib/account-client';
 
 // 签到档位：core+（与投喂、点赞同档）。页面挡了 core，接口也必须自检 ——
 // 否则未认证账号 curl 得动签到，等于绕过 core 拿鱼干（见 checkin/page.tsx 的说明）。
@@ -55,9 +54,10 @@ export async function POST() {
       show_fortune: true,
     });
   } catch (e) {
-    // 生产漏配置守卫会抛 AccountServiceError(503) —— 兜成结构化 JSON，
-    // 否则 Next 会回裸 500 HTML，前端 res.json() 直接崩。
-    if (e instanceof AccountServiceError) return apiErr(503, '账户服务暂不可用，请稍后再试');
+    // 本地写入失败就是真故障 → 500。签到只建一行记录（唯一约束冲突已在 service
+    // 里转成「今天已签到」的正常返回），能走到这里的事务已整体回滚，没有什么
+    // 「稍后再试就好」的暂态可言 —— 别把它伪装成可重试的 503 去骗前端。
+    // 兜成结构化 JSON，否则 Next 会回裸 500 HTML，前端 res.json() 直接崩。
     console.error('[checkin] 签到异常:', e);
     return apiErr(500, '服务器开小差了，请稍后再试');
   }

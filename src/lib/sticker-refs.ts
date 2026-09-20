@@ -1,10 +1,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // sticker-refs.ts — 表情包引用语法 `[@合集/表情]` 的纯逻辑
 //
-// 【素材在哪】instance/stickers/<合集>/<表情>.{gif,webp,png}，**不入库**
-// （/instance/ 已在 .gitignore）。扫盘与 manifest 在 src/lib/sticker-service.ts
-// （server-only），本文件只负责**浏览器侧**的识别与替换 —— 与 content-refs.ts
-// 的分工完全一样。
+// 【素材在哪】两个来源，**语法完全一样**，只有 URL 前缀与尺寸不同：
+//   · 站长放的图片表情：instance/stickers/<合集>/<表情>.{gif,webp,png}，**不入库**
+//     （/instance/ 已在 .gitignore）。扫盘与 manifest 在 src/lib/sticker-service.ts
+//     （server-only）。
+//   · 内置的「黄脸表情」合集：public/static/emoji/*.svg，来源与许可见
+//     src/lib/emoji-faces.ts 的文件头。那份清单是编译期常量，所以**浏览器侧
+//     就能解析**，不用问服务器。
+// 本文件只负责**浏览器侧**的识别与替换 —— 与 content-refs.ts 的分工完全一样。
 //
 // 【为什么分隔符是斜杠】文件名在文件系统层面不可能含 `/`，所以切分天然唯一；
 // 若用 `-` 就与文件名里的连字符撞车（`[@猫猫-开心-难过]` 无法判断从哪切）。
@@ -15,8 +19,11 @@
 // ContentRefProcessor），那边不支持表情，`[@猫猫/开心]` 原样显示字面量 ——
 // 与「9 位投票在评论/讨论里不展开」是同一类有意的口径差异。
 //
-// 本文件零依赖、不碰 React，故可直接单测（tests/unit/sticker-refs.test.ts）。
+// 本文件不依赖任何 Node 侧东西（会被打进客户端包）、不碰 React，
+// 故可直接单测（tests/unit/sticker-refs.test.ts）。
 // ─────────────────────────────────────────────────────────────────────────────
+
+import { EMOJI_COLLECTION, emojiFileFor, emojiUrl } from './emoji-faces';
 
 /**
  * 单段（合集名 / 表情名）允许的字符：Unicode 字母、数字、`+`、`·`、`-`。
@@ -68,6 +75,21 @@ export const STICKER_REF_PROBE = new RegExp(`\\[@(${SEG})/(${SEG})\\]`, 'u');
  * 也要靠这个类名盖掉 —— 表情是行内的，不能把整行断开。
  */
 export const STICKER_REF_CLASS = 'rich-sticker-ref';
+
+/**
+ * 内置黄脸表情的**尺寸修饰类** —— 叠在 `rich-sticker-ref` 之上，不是替换它。
+ *
+ * 【为什么必须叠、而不是换一个类名】降级链是按 `STICKER_REF_CLASS` 过滤的：
+ * RichContentBody 的捕获期 error 委托里写着
+ * `if (!target.classList.contains(STICKER_REF_CLASS)) return;`。
+ * 换掉它，黄脸缺图时就会显示**裂图**而不是退回原文 token —— 那正好破坏了
+ * 「写错了显示原文」这条既有契约（`docs/guide/表情包使用指南.md` 第五节）。
+ *
+ * 所以分工是：
+ *   · `rich-sticker-ref` = 「这是跟随正文的行内表情图」→ 管降级、管不弹灯箱；
+ *   · `rich-emoji-ref`   = 「但它是文字大小的那种」     → 只管尺寸，见 _markdown-body.scss。
+ */
+export const EMOJI_REF_CLASS = 'rich-emoji-ref';
 
 /**
  * 一条消息里最多展开几张表情（超出部分保留字面量）。
@@ -137,6 +159,9 @@ export function stripStickerTokens(text: string, to = '[表情]'): string {
  *   · `alt` 与 `data-token` 都设成**原始 token**。这两个是降级链的两层：
  *     `data-token` 供 RichContentBody 在图片 404 时换回文本；`alt` 是最后一层
  *     —— JS 没跑到 / 被挡掉时浏览器把 alt 画出来，用户看到的正好是字面量。
+ *   · 内置黄脸合集（`[@黄脸/…]`）与站长放的表情走**同一条**流程，只有两处不同：
+ *     src 取自 `emoji-faces.ts` 的编译期清单、并多叠一个 `EMOJI_REF_CLASS` 改尺寸。
+ *     两条**共用一个 30 的预算**（见 MAX_STICKER_REFS），不另立额度。
  *
  * 加载失败**不在这里处理**：本函数的产物会被序列化成字符串（render() 是
  * 字符串进字符串出），挂在这批节点上的任何监听器都会在那一刻丢失。
@@ -172,9 +197,13 @@ export function embedStickerRefs(root: HTMLElement): void {
       if (budget <= 0) break;
       const at = m.index ?? 0;
       if (at > last) frag.appendChild(doc.createTextNode(node.data.slice(last, at)));
+      // 内置黄脸合集在编译期就知道地址，走 /static/emoji/；站长放的表情走字节路由。
+      // 名字在清单里查不到（手打错、或站长自己也建了个「黄脸」目录）时**退回字节路由**
+      // —— 那条会 404 → 触发降级链显示原文 token，而不是留一张永远加载不出来的裂图。
+      const emojiFile = m[1] === EMOJI_COLLECTION ? emojiFileFor(m[2]) : undefined;
       const img = doc.createElement('img');
-      img.className = STICKER_REF_CLASS;
-      img.setAttribute('src', stickerUrl(m[1], m[2]));
+      img.className = emojiFile ? `${STICKER_REF_CLASS} ${EMOJI_REF_CLASS}` : STICKER_REF_CLASS;
+      img.setAttribute('src', emojiFile ? emojiUrl(emojiFile) : stickerUrl(m[1], m[2]));
       img.setAttribute('alt', m[0]);
       img.setAttribute('data-token', m[0]);
       img.setAttribute('loading', 'lazy');

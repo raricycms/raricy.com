@@ -14,6 +14,8 @@
 //   · 正文渲染：token → 内联 <img class="rich-sticker-ref">，且不带图床那个类名
 //   · **404 降级**：不存在的表情退回纯文本 token（onerror 事件委托）
 //   · 代码块里的 token 不展开
+//   · **内置黄脸**（单独一节）：排最前且默认激活、点一下**插进输入框而不发送**、
+//     正文里是**文字大小**（对照组是 4em 的图片表情）、素材真的加载得出来
 //
 // 【造数纪律】大区是全站共用频道，定位一律用本轮 uniqueTag 的哨兵串锚定，
 // 绝不断言「列表里有几条」。素材由 tests/e2e/global-setup.ts 的 seedStickers() 造好。
@@ -186,12 +188,16 @@ test.describe('表情包：输入区', () => {
     await composer.getByRole('button', { name: '表情' }).click();
     const panel = composer.locator('.sticker-picker');
     await expect(panel).toBeVisible();
-    // 面板显示的是 info.json 里的显示名，不是目录名
-    await expect(panel.locator('.sticker-picker__tab').first()).toHaveText(
-      E2E_STICKERS.collectionTitle
-    );
 
-    await panel.locator('.sticker-picker__item').first().click();
+    // 面板默认停在**黄脸**栏（内置合集永远排最前），要测站长的素材得先切过去。
+    // 用文案点名而不是 .first() —— 面板显示的是 info.json 里的显示名，不是目录名。
+    const catTab = panel.locator('.sticker-picker__tab', { hasText: E2E_STICKERS.collectionTitle });
+    await expect(catTab).toBeVisible();
+    await catTab.click();
+
+    const firstItem = panel.locator('.sticker-picker__item').first();
+    await expect(firstItem).toHaveAttribute('title', TOKEN);
+    await firstItem.click();
 
     // 发出去的是一条**纯 token** 的消息（正文里没有那段草稿）。
     // 走接口核对而不是数 DOM 行：大区是全站共用频道，别的用例也往里发过消息。
@@ -222,6 +228,9 @@ test.describe('表情包：输入区', () => {
     await composer.getByRole('button', { name: '表情' }).click();
     const panel = composer.locator('.sticker-picker');
     await expect(panel).toBeVisible();
+    // 同讨论那条：默认停在黄脸栏，先切到站长的合集
+    await panel.locator('.sticker-picker__tab', { hasText: E2E_STICKERS.collectionTitle }).click();
+    await expect(panel.locator('.sticker-picker__item').first()).toHaveAttribute('title', TOKEN);
     await panel.locator('.sticker-picker__item').first().click();
 
     // 插进了输入框
@@ -252,6 +261,139 @@ test.describe('表情包：输入区', () => {
     await page.keyboard.press('Escape');
     await expect(composer.locator('.sticker-picker')).toHaveCount(0);
     await expect(composer.locator('.comment-composer__input')).toHaveValue(draft);
+  });
+});
+
+// ── 内置黄脸表情 ────────────────────────────────────────────────────────────
+//
+// 它与图片表情走**同一条**渲染管线（同一个 token 语法、同一条降级链），但有两处
+// **刻意不同** —— 这个块就是钉那两处的：
+//   · 尺寸是文字大小，不是表情包的 4em；
+//   · 点一下进输入框，**不发送**（讨论区也不例外）。
+//
+// 「进输入框」这条断言**自己就证明了没发出去**：若走了旧的「点一下直接发」那条路，
+// 输入框里只会剩原来那段草稿，token 根本不会出现在里面。所以不需要再去接口上
+// 轮询「有没有发出去」—— 那种否定断言只能靠等，反而更容易假绿。
+
+/** 挑「微笑」是因为它的码位好记（1f60a），能从断言里一眼看出对应关系。 */
+const EMOJI_TOKEN = '[@黄脸/微笑]';
+const EMOJI_SRC = '/static/emoji/1f60a.svg';
+
+test.describe('内置黄脸表情', () => {
+  test('面板里排在最前、默认激活，且图是真出得来的', async ({ page }) => {
+    await registerFreshUser(page, { core: true });
+    await page.goto(BLOG_URL);
+
+    const composer = page.locator('.comment-composer').first();
+    await composer.getByRole('button', { name: '表情' }).click();
+    const panel = composer.locator('.sticker-picker');
+    await expect(panel).toBeVisible();
+
+    // 站长的合集排在它后面
+    const firstTab = panel.locator('.sticker-picker__tab').first();
+    await expect(firstTab).toHaveText('黄脸表情');
+    await expect(firstTab).toHaveAttribute('aria-selected', 'true');
+
+    // ★ 图要**真的加载出来**。这条同时盯着「postinstall 有没有把素材拷进来」——
+    // 少了素材的话正文里那些 token 会降级成字面量（不是裂图），
+    // 光断言「有没有 img」是发现不了的。
+    const img = panel.locator('.sticker-picker__item img').first();
+    await expect(img).toBeVisible();
+    await expect
+      .poll(() => img.evaluate((el) => (el as HTMLImageElement).naturalWidth))
+      .toBeGreaterThan(0);
+  });
+
+  test('讨论：点黄脸 → 进输入框、**不发消息**、草稿留着、面板不关', async ({ page }) => {
+    const user = await registerFreshUser(page, { core: true });
+    await page.goto(`/chat?channel=${LOBBY}`);
+
+    const composer = page.locator('.chat-composer').first();
+    await expect(composer).toBeVisible();
+    const draft = `draft-${user.username}`;
+    const input = composer.locator('.chat-composer__input');
+    await input.fill(draft);
+
+    await composer.getByRole('button', { name: '表情' }).click();
+    const panel = composer.locator('.sticker-picker');
+    await expect(panel).toBeVisible();
+    await panel.locator('.sticker-picker__item').first().click();
+
+    // 草稿原样在，token 也进去了 —— 两者同时成立就等于「插进去而不是发出去」
+    const value = await input.inputValue();
+    expect(value).toContain(draft);
+    expect(value).toContain(EMOJI_TOKEN);
+
+    // 面板不关：黄脸通常是连着挑好几个（图片表情那边是发完就关）
+    await expect(panel).toBeVisible();
+
+    // 再挑一个 → 追加，不是覆盖
+    await panel.locator('.sticker-picker__item').nth(1).click();
+    const after = await input.inputValue();
+    expect(after.length).toBeGreaterThan(value.length);
+    expect(after).toContain(draft);
+  });
+
+  test('评论：点黄脸 → 插到光标处，**不发送**', async ({ page }) => {
+    await registerFreshUser(page, { core: true });
+    await page.goto(BLOG_URL);
+
+    const composer = page.locator('.comment-composer').first();
+    const before = await page.locator('.comment-item').count();
+
+    await composer.getByRole('button', { name: '表情' }).click();
+    const panel = composer.locator('.sticker-picker');
+    await expect(panel).toBeVisible();
+    await panel.locator('.sticker-picker__item').first().click();
+
+    await expect(composer.locator('.comment-composer__input')).toHaveValue(EMOJI_TOKEN);
+    expect(await page.locator('.comment-item').count()).toBe(before);
+  });
+
+  test('★ 正文里黄脸是**文字大小**，图片表情仍是 4em（两者刻意不同）', async ({ page }) => {
+    await registerFreshUser(page, { core: true });
+    const marker = uniqueTag('emoji-size');
+    // 一条消息里同时放两种，才能拿同一处的字号当尺子直接对比
+    await postMessage(page, `${marker} 黄脸 ${EMOJI_TOKEN} 图片 ${TOKEN}`);
+    await page.goto(`/chat?channel=${LOBBY}`);
+
+    const row = msgRow(page, marker);
+    await expect(row).toBeVisible();
+
+    const emoji = row.locator('img.rich-emoji-ref').first();
+    const sticker = row.locator('img.rich-sticker-ref:not(.rich-emoji-ref)').first();
+    await expect(emoji).toBeVisible();
+    await expect(sticker).toBeVisible();
+    // 黄脸的 src 走静态素材，不是那条字节路由
+    await expect(emoji).toHaveAttribute('src', EMOJI_SRC);
+
+    // 以所在段落的字号为尺子：「和文字一样大」= 1~2 倍之间。
+    // 尺寸由 CSS 定死，所以不依赖图片加载完成。
+    const ratio = await emoji.evaluate((el) => {
+      const fs = parseFloat(getComputedStyle(el.parentElement!).fontSize);
+      return el.getBoundingClientRect().height / fs;
+    });
+    expect(ratio).toBeGreaterThan(1);
+    expect(ratio).toBeLessThan(2);
+
+    // 对照组：图片表情还是那个大得多的 4em（1.2em vs 4em ≈ 3.3 倍）
+    const eb = await emoji.boundingBox();
+    const sb = await sticker.boundingBox();
+    expect(sb!.height).toBeGreaterThan(eb!.height * 3);
+  });
+
+  test('清单里没有的黄脸名字：退回字节路由 → 404 → 显示原文 token', async ({ page }) => {
+    await registerFreshUser(page, { core: true });
+    const marker = uniqueTag('emoji-miss');
+    const bad = '[@黄脸/并不存在]';
+    await postMessage(page, `${marker} ${bad}`);
+    await page.goto(`/chat?channel=${LOBBY}`);
+
+    const row = msgRow(page, marker);
+    await expect(row).toBeVisible();
+    // 与站长表情那条降级链同款：图取不到就换回纯文本，而不是留一张裂图
+    await expect(row.locator('.chat-msg__md')).toContainText(bad);
+    await expect(row.locator('img.rich-emoji-ref')).toHaveCount(0);
   });
 });
 

@@ -320,6 +320,8 @@ export default function CommentSection({ blogId, currentUserId = null, isAdmin =
         onSend={() => void submit()}
         // 评论：插到光标处，**不直接发** —— 这是一篇正在写的评论，不能被一个表情吞掉。
         // 面板也不关：挑表情通常是连着挑好几个。
+        // 图片表情与黄脸在这里走**同一条**路（都进正文），与讨论区的分流不同 ——
+        // 所以这个回调不需要第二个参数。
         onStickerPick={(token) => setText(insertAtCaret(textareaRef.current, text, token))}
         stickerPickClosesPanel={false}
         onPickImage={(f) => void pickImage(f)}

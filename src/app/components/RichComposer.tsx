@@ -25,7 +25,7 @@ import { BookOpenText, Image as ImageIcon, Images, Smile } from 'lucide-react';
 import { IMAGE_ACCEPT } from '@/lib/image-client';
 import type { PendingImage } from './usePendingImage';
 import ImagePickerModal from './ImagePickerModal';
-import StickerPicker from './StickerPicker';
+import StickerPicker, { type StickerPickKind } from './StickerPicker';
 
 // 触屏设备（手机/平板）的虚拟键盘没有 Shift 键，Enter 只能承担换行，
 // 发送交给右下角按钮。按指针/悬停能力判断，比 UA 嗅探稳，混合设备
@@ -109,17 +109,18 @@ export default function RichComposer({
   onClearBlogQuote: () => void;
   onClearImage: () => void;
   /**
-   * 点了表情面板里的一个表情，参数是 token `[@合集/表情]`。
+   * 点了表情面板里的一格，参数是 token `[@合集/表情]` 与它是哪一类。
    *
    * 【为什么交回 token，而不是本组件自己插进 textarea 再让调用方发送】
    * 讨论要「点一下立刻发出去」，而发送读的是调用方的 text state；React 的 setState
    * 是批处理的 —— 本组件 setText 之后，父组件在**同一批次里**读到的 text 还是旧值。
    * 直接发的结果是弹「消息内容不能为空」，或者更糟：**把上一次的草稿当表情消息
    * 发出去**。所以「插不插、发不发」必须由调用方定：
-   *   · 评论 → setText(v => insertAtCaret(ta, v, token))   留在草稿里
-   *   · 讨论 → sendWith(token)                             绕开 textarea 直接发
+   *   · 评论 → setText(v => insertAtCaret(ta, v, token))   两种都留在草稿里
+   *   · 讨论 → 图片表情 sendWith(token)（绕开 textarea 直接发）
+   *            黄脸     insertAtCaret（进输入框，**不发**）
    */
-  onStickerPick: (token: string) => void;
+  onStickerPick: (token: string, kind: StickerPickKind) => void;
   /**
    * 选完一个表情要不要关面板。
    * 讨论 true（发完就走）；评论 false（通常是连着挑好几个再落笔）。
@@ -307,9 +308,12 @@ export default function RichComposer({
       {stickerOpen && (
         <StickerPicker
           onClose={() => setStickerOpen(false)}
-          onPick={(token) => {
-            onStickerPick(token);
-            if (stickerPickClosesPanel) setStickerOpen(false);
+          onPick={(token, kind) => {
+            onStickerPick(token, kind);
+            // 只有「图片表情 + 调用方说要关」才关。黄脸是**插进输入框**的，
+            // 插完通常还要接着挑好几个 —— 关掉面板等于每插一个都要重开一次。
+            // （评论端 stickerPickClosesPanel 恒为 false，所以那边永不关。）
+            if (kind === 'sticker' && stickerPickClosesPanel) setStickerOpen(false);
           }}
         />
       )}

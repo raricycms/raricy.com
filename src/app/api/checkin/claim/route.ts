@@ -1,11 +1,10 @@
 import { getCurrentUser, isCoreUser } from '@/lib/auth';
 import { apiOk, apiErr } from '@/lib/format';
 import { claimFortune } from '@/lib/checkin-service';
-import { AccountServiceError } from '@/lib/account-client';
 
 // POST /api/checkin/claim — 第二步：翻牌定命。
 // body: { chosenIndex: 0-4 } —— 用户点选的位置；服务端从签到落库的牌池里
-// 取 pool[chosenIndex] 赋值，此刻才发鱼干 + 累加 totalFortune + 远端同步。
+// 取 pool[chosenIndex] 赋值，此刻才发鱼干 + 累加 totalFortune（一个事务）。
 //
 // 档位与签到本体一致：core+。**这一步才是真正发鱼干的地方** —— 只挡 POST /api/checkin
 // 而漏掉这里，等于「签到进不来、翻牌照样领」。
@@ -49,8 +48,10 @@ export async function POST(req: Request) {
       already_claimed: result.alreadyClaimed,
     });
   } catch (e) {
-    // 远端同步失败（fail-closed，本地已复原为待翻牌态）→ 503，用户可重选牌。
-    if (e instanceof AccountServiceError) return apiErr(503, '鱼干服务暂不可用，请稍后再试');
+    // 本地事务失败 = 真故障 → 500。事务已整体回滚，签到行原样停在「已签到、待翻牌」，
+    // 用户重选一张牌即可（这一步本来就发钱，静默吞成「翻牌成功」比回错误更糟）。
+    // 不回 503：这条路径没有远端可等 —— 本地写不进去就是写不进去，
+    // 没有「稍后重试就好」的暂态可言。
     console.error('[checkin] 翻牌异常:', e);
     return apiErr(500, '服务器开小差了，请稍后再试');
   }

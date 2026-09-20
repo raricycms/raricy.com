@@ -3,8 +3,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // StickerPicker.tsx — 表情面板（评论与讨论共用，由 RichComposer 承载）
 //
-// 【数据源】GET /api/stickers（要登录）。返回「合集 → 表情」，站长往
-// instance/stickers/ 里拷文件即生效，前端不需要任何构建步骤。
+// 【数据源】两个，都一样渲染：
+//   · GET /api/stickers（要登录）—— 站长往 instance/stickers/ 里拷文件即生效，
+//     前端不需要任何构建步骤；
+//   · **内置「黄脸表情」栏** —— 编译期清单，客户端直接合成，不问服务器（见
+//     EMOJI_COLLECTION_VIEW）。所以素材目录为空的站也照样有内容。
 //
 // 【为什么是贴边面板，而不是 ImagePickerModal 那种居中弹窗】两个理由：
 //   · ImagePickerModal 打开时会把焦点抢到搜索框（`inputRef.current?.focus()`）。
@@ -19,13 +22,49 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useRef, useState } from 'react';
-import { Smile } from 'lucide-react';
+import {
+  EMOJI_COLLECTION,
+  EMOJI_COLLECTION_TITLE,
+  listEmojiFaces,
+} from '@/lib/emoji-faces';
 
 interface StickerCollectionDTO {
   key: string;
   title: string;
   stickers: { name: string; url: string }[];
 }
+
+/**
+ * 点了一格之后交给调用方的东西是哪一类。
+ *
+ * 面板自己**不决定**发不发 —— 它只把这个 kind 交出去（见 onPick）：
+ *   · `sticker` —— 站长放的图片表情。讨论区点一下**直接发一条消息**。
+ *   · `emoji`   —— 内置黄脸。**插到输入框光标处**，讨论区也不直接发。
+ */
+export type StickerPickKind = 'sticker' | 'emoji';
+
+/**
+ * 面板里的一栏。站长的图片合集与内置黄脸**在渲染上完全同构**（都是 name + url 的
+ * 图片格子），差别只有 kind —— 所以不需要为黄脸另写一套网格。
+ */
+interface CollectionView extends StickerCollectionDTO {
+  kind: StickerPickKind;
+}
+
+/**
+ * 内置「黄脸表情」栏 —— **客户端合成**，不走 /api/stickers。
+ *
+ * 【为什么不走接口】它是编译期就固定的清单（见 src/lib/emoji-faces.ts 的文件头），
+ * 没有扫盘、没有权限、也不受站长素材目录影响。顺带两个好处：
+ *   · **素材为空的站照样能用这一栏** —— 这正是当前仓库的状态；
+ *   · 接口挂了（`failed`）时它其实还能用，只是面板整体进了失败态（刻意没扩，见组件体）。
+ */
+const EMOJI_COLLECTION_VIEW: CollectionView = {
+  key: EMOJI_COLLECTION,
+  title: EMOJI_COLLECTION_TITLE,
+  kind: 'emoji',
+  stickers: listEmojiFaces(),
+};
 
 interface StickerData {
   collections: StickerCollectionDTO[];
@@ -93,8 +132,14 @@ export default function StickerPicker({
   onPick,
 }: {
   onClose: () => void;
-  /** 选中一个表情 → 交回 token `[@合集/表情]`，由调用方决定插入还是直接发送。 */
-  onPick: (token: string) => void;
+  /**
+   * 选中一格 → 交回 token `[@合集/表情]` **与它是哪一类**，由调用方决定插入还是直接发送。
+   *
+   * 【为什么要把 kind 一起交出去】图片表情与黄脸的处置不一样（前者讨论区点一下直接发，
+   * 后者一律插进输入框）。面板是唯一知道「点的是哪一栏」的地方，所以由它带上 ——
+   * 让调用方按 token 前缀去猜，等于把「哪一栏是黄脸」这条知识散到两个文件里。
+   */
+  onPick: (token: string, kind: StickerPickKind) => void;
 }) {
   const [data, setData] = useState<StickerData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -139,7 +184,13 @@ export default function StickerPicker({
     };
   }, [onClose]);
 
-  const collections = data?.collections ?? [];
+  // 黄脸**永远排在最前且默认激活**（active 初值 0）—— 对齐微信：打开面板先看到
+  // 标准表情，站长的自制合集往后排。注意 active 是**下标**，所以插一栏到最前会
+  // 让下标语义整体后移，改这里时别忘了。
+  const collections: CollectionView[] = [
+    EMOJI_COLLECTION_VIEW,
+    ...(data?.collections ?? []).map((c) => ({ ...c, kind: 'sticker' as const })),
+  ];
   const current = collections[active] ?? collections[0];
 
   return (
@@ -148,16 +199,6 @@ export default function StickerPicker({
         <div className="sticker-picker__state">加载中…</div>
       ) : failed ? (
         <div className="sticker-picker__state">表情加载失败，请稍后重试</div>
-      ) : collections.length === 0 ? (
-        <div className="sticker-picker__state">
-          <Smile aria-hidden="true" />
-          <p>还没有可用的表情</p>
-          {data?.empty && (
-            <p className="sticker-picker__hint">
-              把表情图片放进服务器的 instance/stickers/&lt;合集&gt;/ 目录即可。
-            </p>
-          )}
-        </div>
       ) : (
         <>
           <div className="sticker-picker__body">
@@ -173,7 +214,7 @@ export default function StickerPicker({
                     aria-label={token}
                     // ★ 不让按钮抢焦点 ★ 见文件头：光标必须留在 textarea 里
                     onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => onPick(token)}
+                    onClick={() => onPick(token, current.kind)}
                   >
                     <img src={s.url} alt={s.name} loading="lazy" draggable={false} />
                   </button>
@@ -197,6 +238,14 @@ export default function StickerPicker({
               </button>
             ))}
           </div>
+          {/* 站长指引：只在素材目录为空时出现。
+              以前它是一条**整块空态**（连 tab 条都不渲染）—— 现在黄脸永远是内容，
+              所以降级成一行小字，别让整站没素材时站长再也看不到这句话。 */}
+          {data?.empty && (
+            <p className="sticker-picker__hint">
+              把表情图片放进服务器的 instance/stickers/&lt;合集&gt;/ 目录即可增加合集。
+            </p>
+          )}
         </>
       )}
     </div>

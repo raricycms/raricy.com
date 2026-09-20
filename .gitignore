@@ -41,6 +41,11 @@ coverage/
 # 由 `npm run prepare:mathjax` 重建（MarkdownRenderer 的 fontURL 指向这里）
 /public/static/mathjax/
 
+# 内置「黄脸表情」的 SVG —— 同上，从 @twemoji/svg 按 src/lib/emoji-faces.json
+# 挑着拷贝，由 `npm run prepare:emoji` 重建。素材是 Twemoji（CC BY 4.0，需署名），
+# 复制脚本会连 LICENSE.txt 一起生成。
+/public/static/emoji/
+
 # SCSS 的编译产物 —— 全站样式由 src/app/layout.tsx 直接 import 入口
 # src/styles-scss/main.scss，交给 Next 自己编译（dev 走 HMR，build 走 sass-loader），
 # 产物既没人生成也没人读，自然不该入库。

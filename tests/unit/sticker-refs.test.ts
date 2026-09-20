@@ -22,6 +22,7 @@
 
 import { describe, it, expect } from 'vitest';
 import {
+  EMOJI_REF_CLASS,
   MAX_STICKER_REFS,
   STICKER_REF_CLASS,
   STICKER_REF_RE,
@@ -236,6 +237,48 @@ describe.each(RENDERERS)('$name 正文的 [@合集/表情]', ({ render }) => {
     expect(imgs[0].classList.contains(IMAGE_REF_CLASS)).toBe(true);
     expect(imgs[1].getAttribute('src')).toBe(stickerUrl('猫猫', '开心'));
     expect(imgs[1].classList.contains(STICKER_REF_CLASS)).toBe(true);
+  });
+
+  it('★ 内置黄脸：src 指向 /static/emoji/，且**叠上** rich-emoji-ref 而不是换掉', () => {
+    const img = mount(render, '[@黄脸/微笑]').querySelector('img')!;
+    expect(img.getAttribute('src')).toBe('/static/emoji/1f60a.svg');
+    // 两个类都必须在。少哪个都有具体的坏后果：
+    //   少 rich-sticker-ref → 缺图时显示**裂图**（降级链按那个类名过滤）；
+    //   少 rich-emoji-ref   → 尺寸继承 4em，黄脸变成一张大表情。
+    expect(img.classList.contains(STICKER_REF_CLASS)).toBe(true);
+    expect(img.classList.contains(EMOJI_REF_CLASS)).toBe(true);
+    expect(img.classList.contains(IMAGE_REF_CLASS)).toBe(false);
+    // 降级链的两层照旧是原始 token（黄脸走的是同一条链）
+    expect(img.getAttribute('alt')).toBe('[@黄脸/微笑]');
+    expect(img.getAttribute('data-token')).toBe('[@黄脸/微笑]');
+  });
+
+  it('普通表情**不带**黄脸那个尺寸类（回归：别把两种表情弄成一样大）', () => {
+    const img = mount(render, '[@猫猫/开心]').querySelector('img')!;
+    expect(img.classList.contains(EMOJI_REF_CLASS)).toBe(false);
+    expect(img.getAttribute('src')).toBe(stickerUrl('猫猫', '开心'));
+  });
+
+  it('黄脸合集里查不到的名字落回字节路由（→404→显示原文，而不是留一张裂图）', () => {
+    const img = mount(render, '[@黄脸/并不存在]').querySelector('img')!;
+    expect(img.getAttribute('src')).toBe(stickerUrl('黄脸', '并不存在'));
+    expect(img.classList.contains(EMOJI_REF_CLASS)).toBe(false);
+  });
+
+  it('★ 三种图共存：图床图 / 图片表情 / 黄脸各渲染各的，互不吃掉', () => {
+    const root = mount(render, `图 [@${IMG_ID}] 表情 [@猫猫/开心] 黄脸 [@黄脸/大哭]`);
+    const imgs = root.querySelectorAll('img');
+    expect(imgs).toHaveLength(3);
+    expect(imgs[0].getAttribute('src')).toBe(`/api/images/${IMG_ID}/raw`);
+    expect(imgs[1].getAttribute('src')).toBe(stickerUrl('猫猫', '开心'));
+    expect(imgs[2].getAttribute('src')).toBe('/static/emoji/1f62d.svg');
+  });
+
+  it('黄脸与图片表情**共用一个 30 的预算**（不另立额度）', () => {
+    const many = Array.from({ length: MAX_STICKER_REFS + 5 }, (_, i) =>
+      i % 2 === 1 ? '[@黄脸/微笑]' : '[@猫猫/开心]'
+    ).join(' ');
+    expect(mount(render, many).querySelectorAll('img')).toHaveLength(MAX_STICKER_REFS);
   });
 
   it('★ 防线 1 / 4 未被削弱：手写 <img onerror> 仍被当文本，外链图仍降级成链接', () => {

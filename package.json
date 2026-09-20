@@ -36,10 +36,13 @@
     "vditor:check": "node scripts/copy-vditor-assets.mjs --check",
     "prepare:mathjax": "node scripts/copy-mathjax-fonts.mjs",
     "mathjax:check": "node scripts/copy-mathjax-fonts.mjs --check",
-    "postinstall": "node scripts/copy-vditor-assets.mjs && node scripts/copy-mathjax-fonts.mjs"
+    "prepare:emoji": "node scripts/copy-emoji-assets.mjs",
+    "emoji:check": "node scripts/copy-emoji-assets.mjs --check",
+    "postinstall": "node scripts/copy-vditor-assets.mjs && node scripts/copy-mathjax-fonts.mjs && node scripts/copy-emoji-assets.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.2.1",
+    "@twemoji/svg": "^15.0.0",
     "dompurify": "^3.4.12",
     "fernet": "^0.3.3",
     "highlight.js": "^11.11.1",

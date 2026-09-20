@@ -3,24 +3,29 @@
 //
 // 【两步式：签到 → 翻牌定命】（两步是刻意的，别合并成一步）
 //   1. checkIn()：只建当日记录 —— fortune_value 留 NULL、fortune_pool 洗好落库。
-//      不发鱼、不累加 totalFortune、不碰账户服务。成功即「已签到、待翻牌」。
+//      不发鱼、不累加 totalFortune。成功即「已签到、待翻牌」。
 //   2. claimFortune()：用户点选一张牌（chosenIndex 0-4）—— 服务端从**签到当时
 //      落库的那副牌**里取 pool[chosenIndex] 赋值。此刻才：发鱼干 + 累加
-//      totalFortune + 远端账户同步（fail-closed）。翻哪张、拿哪个值，在翻牌
-//      这一瞬间由用户的选择决定 —— 而非签到瞬间抽定后由前端「演」出来。
+//      totalFortune。翻哪张、拿哪个值，在翻牌这一瞬间由用户的选择决定 ——
+//      而非签到瞬间抽定后由前端「演」出来。
 //
 // 【为什么恢复两步】概率上两种设计等价（池均匀、每值 1/5），但语义不同：
 //   合并版在签到瞬间抽定值，翻牌只是把既定值交换到被点的牌上做动画；
 //   两步式里「灵性/直觉选牌」真正决定了结果。
 //
-// 【发鱼干的 fail-closed 机制】详见 src/lib/fish-sync.ts：本地事务先提交 + 账本
-//   登记 pending → 提交后调远端 → 失败走补偿事务。**补偿把 fortune_value 复原为
-//   NULL（行保留）**，用户保持「已签到未翻牌」可重选牌 —— 补偿后必须回到待翻牌态
-//   （用户看不出刚才失败过，与从没翻过牌一样）。绝不可删行：删行会释放唯一
-//   约束，让用户误以为要重新签到，且当天会重复占天数。
+// 【发鱼干：一个事务，没有补偿】置 fortune_value + 累加 totalFortune + 发鱼干 +
+//   写流水在**同一个 SQLite 事务**里提交（纯 DB 写入，写锁只持有毫秒级）。
+//   账目与业务数据在同一个库里，原子性由事务本身给出 —— 要么全生效、要么全不
+//   生效，不存在「本地记了、别处没记」的中间态，因此也没有任何回退/复原代码。
+//   ⚠️ 失败时事务整体回滚，签到行原样留在「已签到、fortune_value IS NULL」，
+//   用户重选一张牌即可 —— 这个状态是回滚**自然给出**的，别为了「回到待翻牌态」
+//   再写一遍复原语句（那只会与事务的回滚打架）。
 //
-// 【幂等键】checkin-{userId}-{date}：claim 是唯一发钱点，键沿用旧的拼接格式，
-//   重复提交/重放不会重复发放。
+// 【幂等靠库内状态，不靠幂等键】claim 是唯一发钱点，而它天然幂等：
+//   · 并发翻牌 → 「UPDATE … WHERE fortune_value IS NULL」的 rowcount 只有一个人赢；
+//   · 已翻过 → 事务前读到 fortune_value != null，幂等回报现值（一分钱不再发）。
+//   故本路径**不登记幂等记录**（`account_sync_ledger`）—— 那类记录是给「键由调用方
+//   给定、重放必须回报原结果」的操作用的，判据见 fish-idempotency.ts 头部。
 //
 // 【已知语义副作用，非 bug】跨 UTC+8 午夜窗口：用户在 23:59 签到、
 //   00:00 后才点牌 → claim 按「今天」查不到记录 → 400「今天还没有签到」，
@@ -33,19 +38,7 @@
 import { prisma } from './db';
 import { nowForDb, todayStr } from './db-time';
 import { addFish } from './fish-service';
-import { fishToUnits, unitsToFish } from './fish-units';
-import {
-  accountServiceEnabled,
-  assertRemoteRequiredInProduction,
-  AccountServiceError,
-} from './account-client';
-import {
-  recordPendingSync,
-  settleSync,
-  executeSync,
-  logReconcileRequired,
-  type PendingSyncEntry,
-} from './fish-sync';
+import { unitsToFish } from './fish-units';
 import type { Prisma } from '@prisma/client';
 
 const FORTUNE_LABELS: Record<number, string> = {
@@ -141,20 +134,12 @@ export type CheckinResult =
 /**
  * 第一步：签到。只建当日记录（fortune_value=NULL、fortune_pool 洗好落库），
  * 唯一约束 (userId, checkinDate) 保证一天一次；命中冲突 → 返回「今天已签到」。
- * 不发鱼、不累加运势、不碰账户服务 —— 发钱在 claimFortune()。
+ * 不发鱼、不累加运势 —— 发钱在 claimFortune()。
  */
 export async function checkIn(userId: string): Promise<CheckinResult> {
   const today = todayUtc8();
   const checkinDate = dateAtDay(today);
   const pool = shuffledPool();
-
-  // 生产漏配置守卫（fail-closed 运营防线）：
-  // 本步虽无远端调用，但若 prod 漏配 ACCOUNT_SERVICE，签到行会堆积成永远无法
-  // claim 的死记录 —— 直接拒绝比放行更安全。dev 下静默放行（无 warn：
-  // 本步没有跳过任何远端操作，真正的发钱点 claimFortune 才会告警）。
-  if (!accountServiceEnabled()) {
-    assertRemoteRequiredInProduction('签到');
-  }
 
   try {
     // createdAt 必须显式写：schema 里是 DateTime? 且无 @default(now())，
@@ -215,7 +200,7 @@ async function idempotentResult(userId: string, record: { fortuneValue: number |
 /**
  * 第二步：翻牌。用户在签到落库的那副牌（fortune_pool）里点选一张（0-4），
  * 服务端从池中取 pool[chosenIndex] 赋值给 fortune_value，并发鱼干 + 累加
- * totalFortune + 远端账户同步。翻牌才是命运揭晓的一刻 —— 用户的选择决定结果。
+ * totalFortune（一个事务，见文件头）。翻牌才是命运揭晓的一刻 —— 用户的选择决定结果。
  *
  * 判序（顺序不能乱，每一步都在拦一类具体错误）：
  *   ① 无当天记录 → 「今天还没有签到」；
@@ -226,6 +211,9 @@ async function idempotentResult(userId: string, record: { fortuneValue: number |
  *      却拿到随机牌，且翻牌只能一次、无法重来）；
  *   ⑤ 原子 UPDATE … WHERE fortune_value IS NULL —— 并发翻牌只赢一个，
  *      rowcount==0 的输家幂等返回（原子认领，防 TOCTOU 双发鱼）。
+ *
+ * 失败一律如实上抛（事务已整体回滚，签到行仍是待翻牌态）—— 不包装、不吞掉：
+ * 本地事务失败就是真故障，让路由回 500，别假装成「稍后重试即可」的暂态。
  *
  * @param chosenIndex 必填，0-4。
  */
@@ -254,141 +242,44 @@ export async function claimFortune(userId: string, chosenIndex: number): Promise
     return { ok: false, message: '无效的选择' };
   }
   const fortuneValue = pool[chosenIndex];
+  const description = `每日签到（运势值 ${fortuneValue}）`;
 
-  // 远端同步是否启用（未配置 internal token → 开发模式）。
-  // 未配置：生产 fail-closed（不做任何本地写入直接拒绝）；dev 仅本地 + 告警。
-  const remoteEnabled = accountServiceEnabled();
-  if (!remoteEnabled) {
-    assertRemoteRequiredInProduction('签到翻牌');
-    console.warn(
-      `[checkin-service] ACCOUNT_SERVICE 未配置，翻牌发鱼仅写本地库（dev fallback）。` +
-        `user=${userId} date=${today} value=${fortuneValue}`
-    );
-  }
+  // ── 一个事务：认领牌 + 运势 + 鱼干 + 流水 ─────────────────────────────────
+  // 纯 DB 写入，无外部 IO —— 写锁只持有毫秒级。任一步抛错即整体回滚，
+  // 签到行回到「已签到、fortune_value IS NULL」，用户重选一张牌即可。
+  const won = await prisma.$transaction(async (tx) => {
+    // 原子认领：并发翻牌只有一个能拿到 count>0
+    // （UPDATE … WHERE fortune_value IS NULL + rowcount 判断）
+    const claim = await tx.dailyCheckIn.updateMany({
+      where: { userId, checkinDate, fortuneValue: null },
+      data: { fortuneValue },
+    });
+    if (claim.count === 0) return false;
 
-  // 远端幂等键（拼接格式沿用旧版 —— 跨版本重放照样被远端去重，不会重复发放）。
-  const entry: PendingSyncEntry = {
-    idempotencyKey: `checkin-${userId}-${today}`,
-    operation: 'checkin',
-    payload: {
-      toUserId: userId,
-      amount: fortuneValue,
-      description: `每日签到（运势值 ${fortuneValue}）`,
-      date: today,
-      fortuneValue,
-    },
-  };
-
-  try {
-    // ── Phase 1：赢家事务（纯 DB，无远端 IO —— 写锁只持有毫秒级）────────────────
-    //   fortune_value 原子置值（NULL → value）+ totalFortune + 鱼干 + 流水 +
-    //   账本行 pending 全部原子提交；远端同步在事务外进行（详见 fish-sync.ts）。
-    const phase1 = await prisma.$transaction(async (tx) => {
-      // 原子认领：并发翻牌只有一个能拿到 count>0
-      // （UPDATE … WHERE fortune_value IS NULL + rowcount 判断）
-      const claim = await tx.dailyCheckIn.updateMany({
-        where: { userId, checkinDate, fortuneValue: null },
-        data: { fortuneValue },
-      });
-      if (claim.count === 0) return { won: false as const };
-
-      // 累加 totalFortune
-      await tx.user.update({
-        where: { id: userId },
-        data: { totalFortune: { increment: fortuneValue } },
-      });
-
-      // 发鱼干 + 写流水（本地）
-      const fish = await addFish(tx, {
-        userId,
-        amount: fortuneValue,
-        type: 'checkin',
-        description: entry.payload.description as string,
-      });
-
-      // 账本登记 pending（远端启用时）
-      if (remoteEnabled) {
-        await recordPendingSync(tx, entry);
-      }
-
-      return { won: true as const, fishTxId: fish.txId };
+    // 累加 totalFortune
+    await tx.user.update({
+      where: { id: userId },
+      data: { totalFortune: { increment: fortuneValue } },
     });
 
-    if (!phase1.won) {
-      // 并发输家：别人已翻 —— 事务外重读现值后幂等返回（别在事务里嵌套查询）
-      const cur = await prisma.dailyCheckIn.findUniqueOrThrow({
-        where: { uq_user_checkin_date: { userId, checkinDate } },
-        select: { fortuneValue: true, fortunePool: true },
-      });
-      return idempotentResult(userId, cur);
-    }
+    // 发鱼干 + 写流水（addFish 是「只加不减」的语义壳，内核是 postEntry）
+    await addFish(tx, {
+      userId,
+      amount: fortuneValue,
+      type: 'checkin',
+      description,
+    });
 
-    // ── Phase 2：事务外远端同步（系统账户 → 用户；提交后调用，失败走补偿）────────
-    if (remoteEnabled) {
-      try {
-        await executeSync(entry);
-        await settleSync(entry.idempotencyKey, 'synced');
-      } catch (syncErr) {
-        // ── Phase 3：远端失败 → 补偿事务把 fortune_value 复原为 NULL ──────────
-        //   【不变式】复原而非删行：用户保持「已签到未翻牌」，可重选牌再 claim；
-        //   删行会释放唯一约束 → 用户误以为要重新签到（背离补偿后应有的状态）。
-        //   复原守卫用本笔的 value —— 若值已被并发改写（count==0），说明
-        //   局面已被别笔 claim 接管，绝不能回退余额（会扣错钱），交给 reconcile。
-        try {
-          await prisma.$transaction(async (tx) => {
-            const reset = await tx.dailyCheckIn.updateMany({
-              where: { userId, checkinDate, fortuneValue },
-              data: { fortuneValue: null },
-            });
-            if (reset.count === 0) {
-              throw new Error(
-                `fortune_value 已被并发改写，跳过余额回退（user=${userId} date=${today} value=${fortuneValue}）`
-              );
-            }
-            const decFortune = await tx.user.updateMany({
-              where: { id: userId, totalFortune: { gte: fortuneValue } },
-              data: { totalFortune: { decrement: fortuneValue } },
-            });
-            if (decFortune.count === 0) {
-              throw new Error(`totalFortune 不足以回退（user=${userId} value=${fortuneValue}）`);
-            }
-            const decFish = await tx.user.updateMany({
-              where: { id: userId, driedFish: { gte: fishToUnits(fortuneValue) } },
-              data: { driedFish: { decrement: fishToUnits(fortuneValue) } },
-            });
-            if (decFish.count === 0) {
-              throw new Error(`driedFish 不足以回退（user=${userId} value=${fortuneValue}）`);
-            }
-            await tx.fishTransaction.deleteMany({ where: { id: phase1.fishTxId } });
-            // 删除账本行：释放幂等键，用户重选牌重试时可以重建（无痕失败）
-            await tx.accountSyncLedger.deleteMany({ where: { idempotencyKey: entry.idempotencyKey } });
-          });
-        } catch (undoErr) {
-          // 补偿也失败：账本行留 pending/failed，sync-retry 可幂等重放收敛。
-          await settleSync(entry.idempotencyKey, 'failed', String(undoErr)).catch(() => {
-            /* 尽力而为 */
-          });
-          await logReconcileRequired(entry, undoErr);
-        }
-        throw syncErr instanceof AccountServiceError
-          ? syncErr
-          : new AccountServiceError(`账户服务暂不可用，签到失败: ${String(syncErr)}`, 503);
-      }
-    }
-  } catch (e) {
-    // 远端失败：本地已被补偿（复原为待翻牌态），向上抛让路由返回 503 ——
-    // 「补偿 + 抛错」必须成对，绝不能吞成翻牌成功。
-    if (e instanceof AccountServiceError) {
-      console.warn(
-        `[checkin-service] 账户服务翻牌同步失败，fortune_value 已复原为 NULL，` +
-          `用户可重选牌（user=${userId} date=${today}）: ${e.message}`
-      );
-      throw e;
-    }
-    // 兜底：意外异常也按 fail-closed 处理，包装成 503。
-    // 注意别把它吞成「翻牌成功」——本地已复原，静默成功会让用户以为拿到运势了。
-    console.error(`[checkin-service] 翻牌异常（user=${userId} date=${today}）:`, e);
-    throw new AccountServiceError(`账户服务暂不可用，签到失败: ${String(e)}`, 503);
+    return true;
+  });
+
+  if (!won) {
+    // 并发输家：别人已翻 —— 事务外重读现值后幂等返回（别在事务里嵌套查询）
+    const cur = await prisma.dailyCheckIn.findUniqueOrThrow({
+      where: { uq_user_checkin_date: { userId, checkinDate } },
+      select: { fortuneValue: true, fortunePool: true },
+    });
+    return idempotentResult(userId, cur);
   }
 
   const balances = await readBalances(userId);
@@ -459,6 +350,6 @@ export async function getCountLeaderboard(limit = 50): Promise<LeaderboardEntry[
 // 的形式出现（翻牌弹窗与签到卡，见 CheckinCard 的 fortune-color--N）—— 那个是这一把
 // 翻出来的值，不是累计。
 //
-// totalFortune 这一列**仍在存、仍在维护**：claimFortune 里照旧累加，远端同步失败时
-// 照旧回退，compensate-unclaimed-fortunes.mjs 也照旧补记（见各文件头）。只是不再有
+// totalFortune 这一列**仍在存、仍在维护**：claimFortune 里照旧累加，
+// compensate-unclaimed-fortunes.mjs 也照旧补记（见各文件头）。只是不再有
 // 排行榜读它 —— 别顺手把 getFortuneLeaderboard 加回来。

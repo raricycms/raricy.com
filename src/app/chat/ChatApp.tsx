@@ -1640,9 +1640,19 @@ export default function ChatApp({
                 if (v) notifyTyping();
               }}
               onSend={() => void send()}
-              // 讨论：点一下立刻发出去（微信手感）。keepDraft 让待发的图片 / 引用 /
-              // 写了一半的正文原样留着 —— 表情是个轻量动作，不该顺手把草稿一起发掉。
-              onStickerPick={(token) => void sendWith(token, { keepDraft: true })}
+              // 讨论：**图片表情**点一下立刻发出去（微信手感）。keepDraft 让待发的图片 /
+              // 引用 / 写了一半的正文原样留着 —— 表情是个轻量动作，不该顺手把草稿一起发掉。
+              // **黄脸不一样**：它插进输入框、不发送，所以也不进 sendWith 那条路。
+              onStickerPick={(token, kind) => {
+                if (kind === 'emoji') {
+                  // 与上面的 @ 提及走同一条通道（插入的三个坑在 textarea-insert.ts）。
+                  // ⚠️ 刻意**不走** onTextChange：那条会顺带 notifyTyping()，
+                  // 挑个表情就报「对方正在输入」是错的 —— insertMention 也没通知。
+                  setText(insertAtCaret(textareaRef.current, text, token));
+                } else {
+                  void sendWith(token, { keepDraft: true });
+                }
+              }}
               onPickImage={(f) => void pickImage(f)}
               onPickFromLibrary={pickFromLibrary}
               onOpenQuote={() => setQuoteOpen(true)}
