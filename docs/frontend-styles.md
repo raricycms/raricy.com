@@ -218,6 +218,12 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
 
 - **不用圆形头像**（历史上曾有 `border-radius: 50%` 的写法，按「方形小圆角」取向移除——残留注释见 `pages/blog/_menu.scss`）。
 - 内联样式同样写 `border-radius: '8%'`，不要写死 px（例：FeedButton 弹窗名单）。
+- **全站头像走共用组件 `<Avatar>`**（`src/app/components/Avatar.tsx` + `components/_avatar.scss`，
+  2026-09 收敛）。`8%` 这条现在由组件持有，各站点类里残留的 8% 是**冗余，别顺手删**
+  ——组件一旦被绕过，那些点会静默退回方角。尺寸仍由各站点原来的类决定，`.avatar`
+  盒子**不设 width/height**（设了会把 `imgClassName` 那几处撑变形）。
+  头像框贴图是盒子里的绝对定位 `<img class="avatar__frame">`，随盒子尺寸自适应，
+  所以 20px 与 120px 是同一个写法。
 - 现有落点清单（改样式或加新头像时对照，勿再漂移）：
 
 | 位置 | 选择器 / 出处 | 尺寸 |

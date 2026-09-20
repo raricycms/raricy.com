@@ -33,6 +33,9 @@
 @use 'components/sticker-picker';
 @use 'components/poster';
 @use 'components/progress';
+// 共用头像组件。放在 components/ 里（早于 pages/）—— 但它的框贴图规则刻意用了
+// (0,2,1) 的选择器，不靠这个顺序决胜，见 _avatar.scss 的注释。
+@use 'components/avatar';
 
 @use 'utilities/spacing';
 @use 'utilities/display';

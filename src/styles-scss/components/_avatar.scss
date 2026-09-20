@@ -1,0 +1,72 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// 共用头像组件（src/app/components/Avatar.tsx）
+//
+// 全站头像一律 `border-radius: 8%`（规范见 docs/frontend-styles.md §4.1）。
+// 这条以前散在 11 个类名里，每次加头像都要人肉记得写 —— 现在由组件持有，
+// 漂移在结构上不可能再发生。
+// ⚠️ 各站点类里残留的 8% 是**冗余，不要顺手删**：组件一旦被绕过（有人直接写
+//    <img>），那些点会静默退回方角，而没有任何测试会红。
+//
+// 【盒子不设尺寸】尺寸由各站点原来的类给（.site-user-avatar 32px / .profile-hero__avatar
+// 120px / .blog-author img 20px …）。这里只提供「定位上下文 + 圆角裁剪 + 不变形」，
+// 一旦这里写死 width/height，博客列表的 20px 作者头像就会被撑成别的尺寸。
+// ─────────────────────────────────────────────────────────────────────────────
+
+.avatar {
+  position: relative; // 框贴图的定位上下文
+  display: inline-flex;
+  flex: none;
+  border-radius: 8%;
+  // 框越界部分裁掉 —— 出图规格就是「画布 = 头像框」，越界的部分不该画
+  //（在 20px/24px 上，伸出来的翅膀本来也会压到旁边文字上）。
+  overflow: hidden;
+  vertical-align: middle; // 行内链里（.blog-author）不撑高行盒
+}
+
+// 头像位图本身。尺寸与 object-fit 交给各站点的类 —— 这里**不重复设置**。
+//
+// ⚠️ 为什么必须让位：`.blog-author img` 给的是 20px 写死值，若这里写
+//    `.avatar > img { width: 100% }`（同为 (0,2,1)，靠源码顺序决胜），
+//    博客列表的作者头像就会被撑成父盒宽度 —— 而那是**静默**的版式错乱。
+//    同理不要把 object-fit 搬过来：`.blog-author img` 是 cover，框要的是 contain。
+.avatar > img.avatar__img {
+  display: block;
+}
+
+// 头像框贴图：绝对定位铺满盒子，随尺寸自动缩放（20px 到 120px 一个写法）。
+//
+// 【为什么是 <img> 而不是 ::after + background-image: var(--frame-url)】
+// 后者一旦变量名拼错 / 没被消费，整条声明**静默失效** —— 框不出现，没有报错、
+// 没有日志（CLAUDE.md「前端样式」一节已经记过六次同类坑）。<img> 是文档里真实
+// 存在的请求：DevTools 里查得到，e2e 能断言它的 src。
+//
+// 【为什么选择器是 `.avatar > img.avatar__frame`（(0,2,1)）而不是光一个类名】
+// 各站点有六条 `.xxx img { width:100%; height:100%; object-fit: cover }` 的
+// 后代规则（.site-user-avatar / .profile-hero__avatar / .chat-chan__avatar /
+// .chat-main__peer-avatar / .chat-msg__avatar / .blog-author），全是 (0,1,1)。
+// 光写 `.avatar__frame`（(0,1,0)）会被它们**压过去**，框会被 cover 裁掉。
+// 加上 `img` 与子选择器到 (0,2,1) 就能确定性胜出，**不依赖 main.scss 的导入顺序**
+//（本文件在 components/ 下，导入在 pages/ 之前 —— 靠顺序决胜太脆）。
+// 实测全仓没有比 (0,2,1) 更高的头像 img 规则，所以这个选择器是充分的。
+.avatar > img.avatar__frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  // contain 而不是 cover：出图规格是正方形，两者在方形盒里等价；素材尺寸不对时
+  // contain 只留白，cover 会把人脸/边框拉变形。留白看得见，变形看不出来。
+  object-fit: contain;
+  // 框是纯装饰：别抢 hover / 点击 / 拖拽。.chat-msg__avatar 是个 <button>，
+  // 点的是头像本身，不该被上面这层挡住。
+  pointer-events: none;
+  user-select: none;
+}
+
+// 讨论消息作者的头像是个 <button>，hover 时有一圈品牌色外环：
+//   .chat-msg__avatar:hover { box-shadow: 0 0 0 2px var(--color-brand-primary) }
+// 它与框**不冲突，一行都不用改**：`0 0 0 2px` 是 spread-only 的**外环**，画在
+// border-box **之外**；而框贴图在 border-box **之内**（被 overflow:hidden 裁）。
+// 两者在空间上不重叠，hover 的观感正好是「框内是贴图，框外一圈品牌色」。
+//
+// ⚠️ 真正的冲突只会在「把框做成外环」时出现（border / outline / box-shadow）
+//    —— 那恰好是本设计排除掉的做法。别为了「更简单的实现」把它改回去。
