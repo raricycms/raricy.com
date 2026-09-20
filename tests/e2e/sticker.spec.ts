@@ -275,7 +275,14 @@ test.describe('表情包：输入区', () => {
 // 输入框里只会剩原来那段草稿，token 根本不会出现在里面。所以不需要再去接口上
 // 轮询「有没有发出去」—— 那种否定断言只能靠等，反而更容易假绿。
 
-/** 挑「微笑」是因为它的码位好记（1f60a），能从断言里一眼看出对应关系。 */
+/**
+ * 尺寸那条用例专用的一个字面量黄脸：挑「微笑」是因为它的码位好记（1f60a），
+ * 能从断言里一眼看出对应关系。
+ *
+ * ⚠️ 别拿它当「面板第一格」用 —— 清单里排第一的是「大笑」（1f600）。
+ * 「点一下插进输入框」那两条用例因此是从点中的格子上读 `title`，
+ * 不硬编码任何一格。
+ */
 const EMOJI_TOKEN = '[@黄脸/微笑]';
 const EMOJI_SRC = '/static/emoji/1f60a.svg';
 
@@ -317,12 +324,17 @@ test.describe('内置黄脸表情', () => {
     await composer.getByRole('button', { name: '表情' }).click();
     const panel = composer.locator('.sticker-picker');
     await expect(panel).toBeVisible();
-    await panel.locator('.sticker-picker__item').first().click();
+    const item = panel.locator('.sticker-picker__item').first();
+    // 从**点中的那一格**读它的 token，而不是硬编码某一格 —— 清单顺序会调，
+    // 而且这样断言的是「点谁插谁」，比「插了某个固定值」更准。
+    const token = (await item.getAttribute('title'))!;
+    expect(token).toMatch(/^\[@黄脸\/.+\]$/);
+    await item.click();
 
     // 草稿原样在，token 也进去了 —— 两者同时成立就等于「插进去而不是发出去」
     const value = await input.inputValue();
     expect(value).toContain(draft);
-    expect(value).toContain(EMOJI_TOKEN);
+    expect(value).toContain(token);
 
     // 面板不关：黄脸通常是连着挑好几个（图片表情那边是发完就关）
     await expect(panel).toBeVisible();
@@ -344,9 +356,11 @@ test.describe('内置黄脸表情', () => {
     await composer.getByRole('button', { name: '表情' }).click();
     const panel = composer.locator('.sticker-picker');
     await expect(panel).toBeVisible();
-    await panel.locator('.sticker-picker__item').first().click();
+    const item = panel.locator('.sticker-picker__item').first();
+    const token = (await item.getAttribute('title'))!;
+    await item.click();
 
-    await expect(composer.locator('.comment-composer__input')).toHaveValue(EMOJI_TOKEN);
+    await expect(composer.locator('.comment-composer__input')).toHaveValue(token);
     expect(await page.locator('.comment-item').count()).toBe(before);
   });
 
