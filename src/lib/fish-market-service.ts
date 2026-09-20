@@ -36,6 +36,7 @@ import {
 import { sendNotification } from './notification-service';
 import { rateLimit, RULES } from './rate-limit';
 import { isServiceAccount, SERVICE_QUOTA } from './service-accounts';
+import { frameUrlFor } from './frame-service';
 import { enqueueTransferWebhook, deliverWebhook } from './fish-webhook-service';
 import type { Prisma } from '@prisma/client';
 
@@ -49,6 +50,8 @@ export const TRANSFER_IN_TYPE = 'transfer_receive';
 export interface TransferTarget {
   id: string;
   username: string;
+  /** 头像框贴图地址；null = 没戴 / 已过期 / 素材缺失。**判定已在服务层做完**。 */
+  frame_url: string | null;
 }
 
 export type TransferOutcome =
@@ -159,7 +162,7 @@ async function resolveDuplicate(
       }),
       prisma.user.findUnique({
         where: { id: expected.toUserId },
-        select: { id: true, username: true },
+        select: { id: true, username: true, equippedFrameKey: true, equippedFrameExpiresAt: true },
       }),
     ]);
     if (recipient) {
@@ -167,7 +170,11 @@ async function resolveDuplicate(
         ok: true,
         amount: expected.amount,
         balance: unitsToFish(sender?.driedFish ?? 0),
-        recipient,
+        recipient: {
+          id: recipient.id,
+          username: recipient.username,
+          frame_url: frameUrlFor(recipient),
+        },
         transferId,
         duplicated: true,
       };
@@ -204,11 +211,14 @@ export async function searchTransferTargets(
       orderBy: { createdAt: 'desc' },
       skip: Math.max(0, offset),
       take: Math.min(100, Math.max(1, limit)),
-      select: { id: true, username: true },
+      select: { id: true, username: true, equippedFrameKey: true, equippedFrameExpiresAt: true },
     }),
     prisma.user.count({ where }),
   ]);
-  return { users, total };
+  return {
+    users: users.map((u) => ({ id: u.id, username: u.username, frame_url: frameUrlFor(u) })),
+    total,
+  };
 }
 
 /**
@@ -221,9 +231,10 @@ export async function findTransferTargetByUsername(
 ): Promise<TransferTarget | null> {
   const u = await prisma.user.findUnique({
     where: { username },
-    select: { id: true, username: true },
+    select: { id: true, username: true, equippedFrameKey: true, equippedFrameExpiresAt: true },
   });
-  return u;
+  if (!u) return null;
+  return { id: u.id, username: u.username, frame_url: frameUrlFor(u) };
 }
 
 /**
@@ -263,11 +274,18 @@ export async function transferFish(
     return { ok: false, code: 400, message: `留言最多 ${TRANSFER_NOTE_MAX} 个字` };
   }
 
-  const recipient = await prisma.user.findUnique({
+  const recipientRow = await prisma.user.findUnique({
     where: { id: toUserId },
-    select: { id: true, username: true },
+    select: { id: true, username: true, equippedFrameKey: true, equippedFrameExpiresAt: true },
   });
-  if (!recipient) return { ok: false, code: 404, message: '接收者不存在' };
+  if (!recipientRow) return { ok: false, code: 404, message: '接收者不存在' };
+  // 装备两列在这里就换成 frame_url —— TransferTarget 是**下发形状**，
+  // 不该带着原始列跑（下面 recipient 被塞进多个返回值）
+  const recipient: TransferTarget = {
+    id: recipientRow.id,
+    username: recipientRow.username,
+    frame_url: frameUrlFor(recipientRow),
+  };
   if (recipient.id === fromUserId) return { ok: false, code: 400, message: '不能给自己转账' };
 
   const sender = await prisma.user.findUnique({

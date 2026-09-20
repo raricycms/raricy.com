@@ -38,6 +38,8 @@ export interface ChatAuthorDTO {
   id: string;
   username: string;
   avatar_url: string;
+  /** 头像框贴图地址；null = 没戴 / 已过期 / 素材缺失。**判定已在服务层做完**。 */
+  frame_url: string | null;
   is_admin: boolean;
 }
 
@@ -99,7 +101,7 @@ export interface ChatChannelDTO {
   id: string;
   kind: 'lobby' | 'direct';
   title: string;
-  peer: { id: string; username: string } | null;
+  peer: { id: string; username: string; frame_url: string | null } | null;
   unread_count: number;
   /**
    * 大区专属：未读消息里 @ 到我的条数（私聊恒为 undefined —— 私聊只有两人，
@@ -125,6 +127,8 @@ export interface ChatChannelDTO {
 export interface ChatUserLite {
   id: string;
   username: string;
+  /** 头像框贴图地址；null = 没戴 / 已过期 / 素材缺失。**判定已在服务层做完**。 */
+  frame_url: string | null;
 }
 
 // ── SSE 实时流（/api/chat/stream）────────────────────────────────────────────

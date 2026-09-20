@@ -11,6 +11,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { prisma } from './db';
+import { frameUrlFor } from './frame-service';
 import { nowForDb } from './db-time';
 import { hashPassword, verifyPassword } from './password';
 import { kickUser } from './chat-bus';
@@ -342,6 +343,14 @@ export interface PublicProfile {
   id: string;
   username: string;
   avatarPath: string | null;
+  /**
+   * 头像框贴图地址；null = 没戴 / 已过期 / 素材缺失。**判定已在服务层做完**
+   *（到期判定只在 frame-service.frameUrlFor 一处，见那里的文件头）。
+   *
+   * 【对外可读性】框是**站点素材**，不是用户的站内信息 —— 与 `role` 不同，
+   * 它不需要按查看者档位收敛（档位不足时 `role` 为 null，而框照样给）。
+   */
+  frameUrl: string | null;
   bio: string | null;
   createdAt: string | null;
   /** 档位不足时**为 null** —— 别拿它当「一定有」。渲染前必须挡空。 */
@@ -390,6 +399,8 @@ export async function getPublicProfile(
       role: true,
       showRecentBlogs: true,
       showRecentComments: true,
+      equippedFrameKey: true,
+      equippedFrameExpiresAt: true,
     },
   });
   if (!user) return null;
@@ -427,6 +438,8 @@ export async function getPublicProfile(
     id: user.id,
     username: user.username,
     avatarPath: user.avatarPath,
+    // 框不跟着 canSeeContent 收敛：它是站点素材，不是这个人的站内信息（见类型上的注释）
+    frameUrl: frameUrlFor(user),
     bio: user.bio,
     createdAt: user.createdAt ? user.createdAt.toISOString() : null,
     role: canSeeContent ? user.role : null,

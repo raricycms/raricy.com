@@ -25,6 +25,8 @@ import { hasAdminRights } from './auth';
 import { rateLimit, RULES } from './rate-limit';
 import { sendNotification } from './notification-service';
 import { logAdminAction } from './admin-user-service';
+import { avatarUrl } from './avatar-refs';
+import { frameUrlFor } from './frame-service';
 import type { Prisma } from '@prisma/client';
 
 // ── 序列化输出（snake_case —— 前端直接消费这个形状，别改成 camelCase）────────
@@ -62,6 +64,8 @@ export interface CommentBaseDTO {
     username: string | null;
     is_admin: boolean;
     avatar_url: string | null;
+    /** 头像框贴图地址；null = 没戴 / 已过期 / 素材缺失 / 匿名。**判定已在服务层做完**。 */
+    frame_url: string | null;
   };
   parent_id: string | null;
   root_id: string | null;
@@ -86,7 +90,20 @@ export interface CommentBaseRow {
   likesCount: number | null;
   createdAt: Date | null;
   updatedAt: Date | null;
-  author: { id: string; username: string; role: string } | null;
+  author: {
+    id: string;
+    username: string;
+    role: string;
+    /**
+     * 装备两列 —— 只为下面算 `frame_url`。
+     *
+     * ⚠️ **刻意是必填**（不是可选的）：漏 select 的调用方会当场 tsc 报错，
+     * 而不是静默地永远不显示框 —— 后者是这条链路上最难发现的一种坏法
+     *（页面照常渲染，只是那个人没有框，没有日志、没有 500）。
+     */
+    equippedFrameKey: string | null;
+    equippedFrameExpiresAt: Date | null;
+  } | null;
 }
 
 export interface CommentNode extends CommentBaseDTO {
@@ -154,7 +171,15 @@ const commentSelect = {
   likesCount: true,
   createdAt: true,
   updatedAt: true,
-  author: { select: { id: true, username: true, role: true } },
+  author: {
+    select: {
+      id: true,
+      username: true,
+      role: true,
+      equippedFrameKey: true,
+      equippedFrameExpiresAt: true,
+    },
+  },
 } satisfies Prisma.BlogCommentSelect;
 
 type CommentRow = Prisma.BlogCommentGetPayload<{ select: typeof commentSelect }>;
@@ -174,7 +199,9 @@ export function serializeCommentBase(c: CommentBaseRow): CommentBaseDTO {
       id: c.author?.id ?? null,
       username: c.author?.username ?? null,
       is_admin: c.author ? hasAdminRights(c.author) : false,
-      avatar_url: c.author ? `/api/avatar/${c.author.id}` : null,
+      avatar_url: c.author ? avatarUrl(c.author.id) : null,
+      // 匿名评论者（作者已注销）→ frameUrlFor(null) → null，组件据此不渲染框
+      frame_url: frameUrlFor(c.author),
     },
     parent_id: c.parentId,
     root_id: c.rootId,

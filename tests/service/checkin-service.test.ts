@@ -938,6 +938,7 @@ describe('getCountLeaderboard（签到天数榜）', () => {
       userId: u.id,
       username: 'solo',
       avatarPath: null,
+      frameUrl: null, // 没戴框
       value: 1,
     });
   });

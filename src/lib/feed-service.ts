@@ -24,6 +24,7 @@ import { nowForDb } from './db-time';
 import { postEntry, InsufficientFishError } from './fish-service';
 import { fishToUnits, unitsToFish } from './fish-units';
 import { sendNotification } from './notification-service';
+import { frameUrlFor } from './frame-service';
 
 const FEED_CAP = 5; // 单用户对单篇文章累计投喂上限
 
@@ -59,6 +60,8 @@ export interface FeederRow {
   user_id: string;
   username: string;
   avatar_path: string | null;
+  /** 头像框贴图地址；null = 没戴 / 已过期 / 素材缺失。**判定已在服务层做完**。 */
+  frame_url: string | null;
   amount: number;
 }
 
@@ -90,7 +93,13 @@ export async function getFeeders(
   const users = feeds.length
     ? await prisma.user.findMany({
         where: { id: { in: feeds.map((f) => f.userId) } },
-        select: { id: true, username: true, avatarPath: true },
+        select: {
+          id: true,
+          username: true,
+          avatarPath: true,
+          equippedFrameKey: true,
+          equippedFrameExpiresAt: true,
+        },
       })
     : [];
   const map = new Map(users.map((u) => [u.id, u]));
@@ -102,6 +111,7 @@ export async function getFeeders(
         user_id: f.userId,
         username: u?.username ?? '未知',
         avatar_path: u?.avatarPath ?? null,
+        frame_url: frameUrlFor(u),
         amount: unitsToFish(f.amount),
       };
     }),

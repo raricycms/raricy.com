@@ -1427,7 +1427,9 @@ describe('用户搜索结果不再暴露角色', () => {
     await makeUser({ role: 'admin', username: 'role_probe' });
     const { users } = await searchCoreUsers('role_probe', me.id);
     expect(users).toHaveLength(1);
-    expect(Object.keys(users[0]).sort()).toEqual(['id', 'username']);
+    // frame_url 不是「角色」那类信息 —— 框是站点素材，本来就对所有人显示，
+    // 所以它跟着 id/username 一起下发是刻意的（见 chat-shared.ts 的 ChatUserLite）
+    expect(Object.keys(users[0]).sort()).toEqual(['frame_url', 'id', 'username']);
   });
 });
 

@@ -96,7 +96,7 @@ describe('transferFish —— 成功路径', () => {
     if (!res.ok) return;
     expect(res.amount).toBe(12.5);
     expect(res.balance, '发送者转账后余额').toBe(87.5);
-    expect(res.recipient).toEqual({ id: recipient.id, username: recipient.username });
+    expect(res.recipient).toEqual({ id: recipient.id, username: recipient.username, frame_url: null });
 
     expect(await balanceOf(sender.id)).toBe(87.5);
     expect(await balanceOf(recipient.id)).toBe(17.5);

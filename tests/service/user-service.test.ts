@@ -963,6 +963,9 @@ describe('getPublicProfile', () => {
         'avatarPath',
         'bio',
         'createdAt',
+        // 头像框贴图地址。它**不是**身份信息 —— 框是站点素材，本来就对所有人显示，
+        // 所以不跟 role 一样按查看者档位收敛（见 PublicProfile.frameUrl 的注释）
+        'frameUrl',
         'id',
         'recentBlogs',
         'recentComments',

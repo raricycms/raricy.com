@@ -50,6 +50,10 @@ import { nowForDb, dayStart, todayStr, hoursUntil } from './db-time';
 import { ymdhms, categoryFullPath } from './format';
 import { rateLimit, RULES } from './rate-limit';
 import { sendNotification } from './notification-service';
+import { avatarUrl } from './avatar-refs';
+// ⚠️ 依赖方向：frame-service 是最底层（它不 import 任何 *-service）。
+// 这里只需要它的「判定唯一出口」，绝不在这里自己看装备那两列。
+import { frameUrlFor } from './frame-service';
 import {
   BLOG_VISIBILITIES,
   EXTERNAL_VISIBILITIES,
@@ -282,7 +286,11 @@ export async function listBlogs(params: ListParams) {
         // 语义** —— 本函数仍然不看 visibility（见上面的 docblock 与钉现状的用例）。
         visibility: true,
         authorId: true,
-        author: { select: { username: true } },
+        // 装备两列只为算头像框，出门前会被换成 frameUrl（见下面的映射）——
+        // 原始列**不**下发到页面（tests/unit/frame-guard.test.ts 盯着）
+        author: {
+          select: { username: true, equippedFrameKey: true, equippedFrameExpiresAt: true },
+        },
         category: { select: { name: true, parentId: true, parent: { select: { name: true } } } },
         // 排序按 content.updatedAt，行数据也要带上（列表 API 出 updated_at 字段用）
         content: { select: { updatedAt: true } },
@@ -292,10 +300,18 @@ export async function listBlogs(params: ListParams) {
 
   // 补正文片段。映射无条件做一遍，让返回类型统一（blogs 始终带 snippet 字段，
   // 非正文搜索时为 null），调用方就不必区分两种形状。
-  const rows =
+  const withSnippet =
     withContent && q
       ? await attachSnippets(blogs, q)
       : blogs.map((b) => ({ ...b, snippet: null as string | null }));
+
+  // 头像框：把装备两列换成**判定后的** frameUrl（到期判定只在服务层做一次，
+  // 见 frame-service.ts 的「判定唯一出口」）。换掉而不是并存 —— 原始列不该
+  // 流到渲染层，那样谁都能绕过判定。
+  const rows = withSnippet.map((b) => ({
+    ...b,
+    author: { username: b.author.username, frameUrl: frameUrlFor(b.author) },
+  }));
 
   const pages = Math.max(1, Math.ceil(total / perPage));
   return { blogs: rows, total, page, perPage, pages, hasPrev: page > 1, hasNext: page < pages };
@@ -374,12 +390,17 @@ export async function getBlogDetail(id: string, viewer: BlogViewer | null) {
       authorId: true,
       // 页面要拿它决定 robots 元数据与 OG 图，OG 图路由要拿它决定 X-Robots-Tag
       visibility: true,
-      author: { select: { id: true, username: true } },
+      author: { select: { id: true, username: true, equippedFrameKey: true, equippedFrameExpiresAt: true } },
       category: { select: { name: true, slug: true, parentId: true, parent: { select: { name: true } } } },
       content: { select: { content: true, updatedAt: true } },
     },
   });
-  return blog;
+  if (!blog) return blog;
+  // 与 listBlogs 同一手法：装备两列换成判定后的 frameUrl，原始列不下发
+  return {
+    ...blog,
+    author: { id: blog.author.id, username: blog.author.username, frameUrl: frameUrlFor(blog.author) },
+  };
 }
 
 /**
@@ -527,7 +548,7 @@ export async function listPublicBlogs(params: PublicListParams = {}): Promise<{
         description: true,
         createdAt: true,
         authorId: true,
-        author: { select: { username: true } },
+        author: { select: { username: true, equippedFrameKey: true, equippedFrameExpiresAt: true } },
         // ⚠️ parentId 与 parent.name 必须**一起** select。只给 name 会让
         // categoryFullPath() 静默退化成「只显示子栏目名，丢掉父级」——
         // src/app/api/blogs/route.ts:117-119 就是这么错的。
@@ -536,8 +557,15 @@ export async function listPublicBlogs(params: PublicListParams = {}): Promise<{
     }),
   ]);
 
+  // 对外页也显示头像框：框是**站点素材**，不是站内信息，对外没有多泄露任何东西
+  //（`internal` 文章本来就不在这个集合里，见 §6.11）。
+  const rows = blogs.map((b) => ({
+    ...b,
+    author: { username: b.author.username, frameUrl: frameUrlFor(b.author) },
+  }));
+
   const pages = Math.max(1, Math.ceil(total / perPage));
-  return { blogs, total, page, perPage, pages, hasPrev: page > 1, hasNext: page < pages };
+  return { blogs: rows, total, page, perPage, pages, hasPrev: page > 1, hasNext: page < pages };
 }
 
 /**
@@ -567,6 +595,8 @@ export interface LikerRow {
   id: string;
   username: string | null;
   avatar_url: string;
+  /** 头像框贴图地址；null = 没戴 / 已过期 / 素材缺失。**判定已在服务层做完**。 */
+  frame_url: string | null;
   liked_at: string | null;
 }
 
@@ -600,7 +630,9 @@ export async function getLikers(
       select: {
         userId: true,
         createdAt: true,
-        user: { select: { id: true, username: true } },
+        user: {
+          select: { id: true, username: true, equippedFrameKey: true, equippedFrameExpiresAt: true },
+        },
       },
     }),
   ]);
@@ -610,7 +642,8 @@ export async function getLikers(
       id: l.user?.id ?? l.userId,
       username: l.user?.username ?? null,
       // 头像由本站 /api/avatar 提供（永不 404，见 avatar.ts）
-      avatar_url: `/api/avatar/${l.user?.id ?? l.userId}`,
+      avatar_url: avatarUrl(l.user?.id ?? l.userId),
+      frame_url: frameUrlFor(l.user),
       liked_at: ymdhms(l.createdAt),
     })),
     total,

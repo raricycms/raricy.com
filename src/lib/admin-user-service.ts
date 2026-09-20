@@ -13,6 +13,7 @@
 
 import { randomBytes } from 'node:crypto';
 import { prisma } from './db';
+import { frameUrlFor } from './frame-service';
 import { nowForDb } from './db-time';
 import { hashPassword } from './password';
 import { PUBLIC_USER_SELECT, hasAdminRights, isCurrentlyBanned, isOwner, type SafeUser } from './auth';
@@ -94,6 +95,9 @@ const USER_SELECT = {
   banUntil: true,
   banReason: true,
   avatarPath: true,
+  // 头像框：装备两列只为算 toRow 里的 frameUrl
+  equippedFrameKey: true,
+  equippedFrameExpiresAt: true,
 } as const;
 
 export type AdminUserRow = {
@@ -108,6 +112,8 @@ export type AdminUserRow = {
   banReason: string | null;
   currentlyBanned: boolean;
   avatarPath: string | null;
+  /** 头像框贴图地址；null = 没戴 / 已过期 / 素材缺失。**判定已在服务层做完**。 */
+  frameUrl: string | null;
 };
 
 function toRow(u: {
@@ -121,6 +127,9 @@ function toRow(u: {
   banUntil: Date | null;
   banReason: string | null;
   avatarPath: string | null;
+  // 必填：这个类型只喂 toRow，漏 select 会让后台用户卡片永远没有框（tsc 当场拦）
+  equippedFrameKey: string | null;
+  equippedFrameExpiresAt: Date | null;
 }): AdminUserRow {
   return {
     id: u.id,
@@ -134,6 +143,7 @@ function toRow(u: {
     banReason: u.banReason,
     currentlyBanned: isCurrentlyBanned({ isBanned: u.isBanned, banUntil: u.banUntil }),
     avatarPath: u.avatarPath,
+    frameUrl: frameUrlFor(u),
   };
 }
 

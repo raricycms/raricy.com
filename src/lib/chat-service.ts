@@ -43,6 +43,8 @@ import { publishToAll, publishToUsers } from './chat-bus';
 import { isViewingChannel } from './chat-presence';
 import { hasSubscriber, publishToUser } from './topbar-bus';
 import { stripStickerTokens } from './sticker-refs';
+import { avatarUrl } from './avatar-refs';
+import { frameUrlFor } from './frame-service';
 import {
   CHAT_LOBBY_ID,
   CHAT_LOBBY_TITLE,
@@ -101,16 +103,36 @@ const MESSAGE_SELECT = {
   patTargetId: true,
   isDeleted: true,
   createdAt: true,
-  author: { select: { id: true, username: true, role: true } },
+  author: {
+    select: {
+      id: true,
+      username: true,
+      role: true,
+      equippedFrameKey: true,
+      equippedFrameExpiresAt: true,
+    },
+  },
 } satisfies Prisma.ChatMessageSelect;
 
 type MessageRow = Prisma.ChatMessageGetPayload<{ select: typeof MESSAGE_SELECT }>;
 
-function authorOf(a: { id: string; username: string; role: string }): ChatAuthorDTO {
+function authorOf(a: {
+  id: string;
+  username: string;
+  role: string;
+  /**
+   * 装备两列 —— 只为算 `frame_url`。**刻意必填**：唯一的调用方（消息行）走
+   * `MESSAGE_SELECT`，漏加那两列的后果是「讨论区所有人永远没有框」——
+   * 页面照常渲染、没有日志，只有人眼能发现。让它 tsc 报错。
+   */
+  equippedFrameKey: string | null;
+  equippedFrameExpiresAt: Date | null;
+}): ChatAuthorDTO {
   return {
     id: a.id,
     username: a.username,
-    avatar_url: `/api/avatar/${a.id}`,
+    avatar_url: avatarUrl(a.id),
+    frame_url: frameUrlFor(a),
     is_admin: hasAdminRights(a),
   };
 }
@@ -355,10 +377,12 @@ export async function listChannelsForUser(
   const users = needUserIds.length
     ? await prisma.user.findMany({
         where: { id: { in: needUserIds } },
-        select: { id: true, username: true },
+        select: { id: true, username: true, equippedFrameKey: true, equippedFrameExpiresAt: true },
       })
     : [];
-  const nameById = new Map(users.map((u) => [u.id, u.username]));
+  // key → 整行。此前只存 username，加头像框时改成存行 —— 再开第二个并行 map
+  // 就等于把「同一个用户的资料」拆到两处，漏更新一处是静默的。
+  const userById = new Map(users.map((u) => [u.id, u]));
 
   // ── 5) 组装 DTO ──
   const out = channels.map((ch) => {
@@ -378,13 +402,18 @@ export async function listChannelsForUser(
       };
     }
 
-    let peer: { id: string; username: string } | null = null;
+    // 类型从 DTO 里取，不重抄一份 —— 加了字段（比如 frame_url）忘同步这里，
+    // 就会变成「赋值处报错但看不明白为什么」的那种错
+    let peer: ChatChannelDTO['peer'] = null;
     let peerLastRead: number | null = null;
     let title = CHAT_LOBBY_TITLE;
     if (!isLobby) {
       const other = ch.members.find((m) => m.userId !== userId);
-      const otherName = other ? nameById.get(other.userId) : undefined;
-      peer = other && otherName ? { id: other.userId, username: otherName } : null;
+      const otherUser = other ? userById.get(other.userId) : undefined;
+      const otherName = otherUser?.username;
+      peer = other && otherUser
+        ? { id: other.userId, username: otherUser.username, frame_url: frameUrlFor(otherUser) }
+        : null;
       peerLastRead = other?.lastReadMessageId ?? null;
       title = otherName ?? '私聊';
     }
@@ -403,7 +432,7 @@ export async function listChannelsForUser(
 
     // 拍一拍没有正文：预览要读时解析目标名（侧栏不能显示空串）
     const patName = last?.patTargetId
-      ? nameById.get(last.patTargetId) ?? PAT_TARGET_FALLBACK
+      ? userById.get(last.patTargetId)?.username ?? PAT_TARGET_FALLBACK
       : null;
 
     const lm = last
@@ -1518,10 +1547,14 @@ export async function searchCoreUsers(
       orderBy: { createdAt: 'desc' },
       skip: Math.max(0, offset),
       take: Math.min(100, Math.max(1, limit)),
-      // 不返回 role：弹窗只需要 id + 用户名，角色属多余暴露
-      select: { id: true, username: true },
+      // 不返回 role：弹窗只需要 id + 用户名，角色属多余暴露。
+      // 头像框不是「角色」那类信息 —— 它是站点素材，本来就对所有人显示。
+      select: { id: true, username: true, equippedFrameKey: true, equippedFrameExpiresAt: true },
     }),
     prisma.user.count({ where }),
   ]);
-  return { users, total };
+  return {
+    users: users.map((u) => ({ id: u.id, username: u.username, frame_url: frameUrlFor(u) })),
+    total,
+  };
 }

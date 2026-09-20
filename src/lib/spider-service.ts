@@ -61,7 +61,17 @@ const commentSelect = {
   likesCount: true,
   createdAt: true,
   updatedAt: true,
-  author: { select: { id: true, username: true, role: true } },
+  // 装备两列只为算头像框（serializeCommentBase 的 CommentBaseRow 把这两列**定为必填**，
+  // 漏 select 会直接 tsc 报错 —— 那是刻意的，见那边的注释）
+  author: {
+    select: {
+      id: true,
+      username: true,
+      role: true,
+      equippedFrameKey: true,
+      equippedFrameExpiresAt: true,
+    },
+  },
 } satisfies Prisma.BlogCommentSelect;
 
 type CommentRow = Prisma.BlogCommentGetPayload<{ select: typeof commentSelect }>;

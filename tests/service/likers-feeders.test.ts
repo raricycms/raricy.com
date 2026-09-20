@@ -51,6 +51,7 @@ describe('getLikers', () => {
         id: u.id,
         username: 'liker1',
         avatar_url: `/api/avatar/${u.id}`,
+        frame_url: null, // 这个用户没戴框（戴了的形状见 frame-dto.test.ts）
         liked_at: '2026-07-16 22:30:15',
       },
     ]);
@@ -137,7 +138,7 @@ describe('getFeeders', () => {
 
     const r = await getFeeders(blog.id);
     expect(r.feeders).toEqual([
-      { user_id: u.id, username: 'feeder1', avatar_path: null, amount: 2 },
+      { user_id: u.id, username: 'feeder1', avatar_path: null, frame_url: null, amount: 2 },
     ]);
   });
 

@@ -39,6 +39,7 @@ import { prisma } from './db';
 import { nowForDb, todayStr } from './db-time';
 import { addFish } from './fish-service';
 import { unitsToFish } from './fish-units';
+import { frameUrlFor } from './frame-service';
 import type { Prisma } from '@prisma/client';
 
 const FORTUNE_LABELS: Record<number, string> = {
@@ -305,6 +306,8 @@ export interface LeaderboardEntry {
   userId: string;
   username: string;
   avatarPath: string | null;
+  /** 头像框贴图地址；null = 没戴 / 已过期 / 素材缺失。**判定已在服务层做完**。 */
+  frameUrl: string | null;
   value: number; // 累计签到天数
 }
 
@@ -324,7 +327,13 @@ export async function getCountLeaderboard(limit = 50): Promise<LeaderboardEntry[
 
   const users = await prisma.user.findMany({
     where: { id: { in: grouped.map((g) => g.userId) } },
-    select: { id: true, username: true, avatarPath: true },
+    select: {
+      id: true,
+      username: true,
+      avatarPath: true,
+      equippedFrameKey: true,
+      equippedFrameExpiresAt: true,
+    },
   });
   const map = new Map(users.map((u) => [u.id, u]));
 
@@ -339,6 +348,7 @@ export async function getCountLeaderboard(limit = 50): Promise<LeaderboardEntry[
       userId: u.id,
       username: u.username,
       avatarPath: u.avatarPath,
+      frameUrl: frameUrlFor(u),
       value: g._count.id,
     });
   }
