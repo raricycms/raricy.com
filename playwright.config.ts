@@ -20,7 +20,7 @@ import path from 'node:path';
 
 // ★ 库名每轮唯一 ★
 //
-// Playwright **先起 webServer、再跑 globalSetup**（实测：globalSetup 里探到 3100/3101
+// Playwright **先起 webServer、再跑 globalSetup**（实测：globalSetup 里探到 3100/3102
 // 都已占用）。库名若是固定的 e2e.db，那么服务器一启动就可能把上一轮留下的同名文件
 // 打开，紧接着 globalSetup 把它 rmSync 掉重建 —— 服务器手里攥着已删除的 inode，
 // 之后所有写入都报「attempt to write a readonly database」，用例成片地挂。
