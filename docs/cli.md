@@ -34,7 +34,7 @@ npm run cli -- stats overview  # 命令式：看一眼站点状态
   投票  4 条命令
   图床  3 条命令
   邀请码  3 条命令
-  小鱼干  6 条命令
+  小鱼干  8 条命令
   审计日志  1 条命令
   申诉  2 条命令
   站点概览  1 条命令
@@ -115,15 +115,20 @@ npm run cli -- stats overview  # 命令式：看一眼站点状态
 | 退出码 | 含义 |
 |--------|------|
 | `0` | 成功（**包括用户主动取消** —— 取消不是错误） |
-| `1` | 参数或用户错误（用户名不存在、amount 不合法、业务规则拒绝） |
-| `2` | **账户服务同步失败**（本地事务已补偿回滚，余额未变） |
+| `1` | 参数或用户错误（用户名不存在、amount 不合法、业务规则拒绝——余额不足也走这一档） |
+| `2` | **本地事务失败**（真故障：不是你的输入问题。本地没有任何变更，可稍后重试） |
 
 ```bash
 npm run cli -- fish grant alice 100
-if [ $? -eq 2 ]; then
-  echo "远端账户服务故障 — 已自动回滚，请排查账户服务后重试"
-fi
+case $? in
+  1) echo "被拒绝（参数非法 / 余额不足）—— 重试没用，先修正输入" ;;
+  2) echo "本地事务失败 — 未做任何变更，稍后重试；上面那行「原因」是要查的东西" ;;
+esac
 ```
+
+> `2` 这个号当年是留给「站外账户微服务同步失败」的。账户搬进站内后那个场景不存在了，
+> 号码**保留**、含义改成「本地事务失败」—— `0/1/2` 是脚本契约，别因为「没有 503 了」
+> 就把它删掉（服务层那三档的对应关系见 `docs/architecture.md` §6.3）。
 
 ---
 
@@ -139,13 +144,15 @@ fi
 
 确认屏会列出**具体将发生什么**（目标、字段级变更、后果、是否通知对方），而不是笼统的「确定吗」。
 
-> **鱼干为什么基本不在危险集里**：写路径已经是 fail-closed（远端失败即补偿回滚），
-> 且每一笔都留在 `fish_transactions` 与 `account_sync_ledger` 里可查可重放 ——
+> **鱼干为什么基本不在危险集里**：写路径就是**一次本地事务**（余额与流水同事务提交），
+> 要么整体生效、要么整体回滚，没有「钱动了一半」的中间态；每一笔都留在 `fish_transactions`
+> 流水里可查可核。失败的两种结局都是干净的（业务拒绝 = 没写，真故障 = 整体滚回）——
 > 再加一道确认只会让 `docs/` 里的示例不能直接粘贴执行。
 >
-> **`fish compensate` 是唯一的例外**，而且它要确认的理由不是「怕账目分叉」，
-> 是**规模**：一条命令改的是全部 core+ 用户的余额，敲错一个数量级就得再发一轮反向补偿
-> 才能拉平（`fish deduct` 一次只能扣一个人）。所以它标 `irreversible`。
+> **`fish compensate` 是唯一的例外**，而且它要确认的理由不是「怕写坏账」（写路径本身就是
+> 要么全成、要么整体回滚），是**规模**：一条命令改的是全部 core+ 用户的余额，敲错一个
+> 数量级就得再发一轮反向补偿才能拉平（`fish deduct` 一次只能扣一个人）。所以它标
+> `irreversible`。
 
 ### 审计身份
 
@@ -174,10 +181,13 @@ CLI 写下的每一条审计日志都落 `visibility='internal'`：**不进** `/
 > - CLI 更适合「我自己知道后果」的操作：建号、重置密码、修数据、批量补偿。
 
 > ⚠️ **例外 —— 这些写操作根本不写审计日志，`audit log` 里也找不到**：
-> `fish grant` / `fish deduct` / `fish compensate` / `fish sync-retry`（理由见上方鱼干那一段：
-> 它的写路径是「本地事务 + 远端 HTTP + 补偿事务」三段结构，`logAdminAction` 挤进去会占满
-> SQLite 写锁；鱼干自己的账本是 `fish_transactions` + `account_sync_ledger`）、
-> `oauth create-app` / `oauth disable-app` / `oauth enable-app`、`invite generate`。
+> `fish grant` / `fish deduct` / `fish compensate` / `oauth create-app` /
+> `oauth disable-app` / `oauth enable-app` / `invite generate`。
+>
+> 鱼干那三条是**现状，不是结构约束**：当年不写是因为写路径是三段结构（本地事务 +
+> 远端 HTTP + 补偿事务），`logAdminAction` 挤进去会占满 SQLite 写锁；现在只剩一次本地
+> 事务，那条理由**已经不成立**。要不要补上是一次独立的决定 —— 在那之前，它们留下的凭据
+> 是 `fish_transactions` 流水（`fish compensate` 另有按批次派生的幂等登记行，一条 / 人）。
 
 ### 两个由此而来的限制
 
@@ -246,8 +256,9 @@ npm run cli -- user create bob --password 'Hunter2Hunter2' --email bob@example.c
 - **不消耗邀请码** —— 角色直接给 `core`，不走「邀请码升级」那条路。
 - 密码与邮箱都**不会**进审计日志：`/audit` 是公开页，那里只记 `create_user` 这个动作。
 - 邮箱留空的账号**收不到任何邮件**（当前站内也没有邮件功能，但别指望它能用来找回）。
-- 账户服务不可用时这条命令**退出码 2**（和 `fish grant` 一样），且本地不会留下半截用户 ——
-  建号走的是与网页注册同一条 fail-closed 链路。
+- 建号遇到**意外故障**时这条命令**退出码 2**（和 `fish grant` 一样：那是「本地事务失败」
+  那一档，不是你的输入问题），且本地不会留下半截用户 —— 建号走的是与网页注册同一个
+  内核：用户行在一个事务里写入，任何异常都整体回滚。
 
 ### 内容检索与恢复
 
@@ -306,12 +317,10 @@ npm run cli -- blog restore 2b7ec270-be9c-4283-b1a2 --reason "作者申诉，误
 
 | 命令 | 作用 |
 |------|------|
-| `fish grant <username> <amount> [-d 说明]` | 赠送（fail-closed） |
-| `fish deduct <username> <amount> [-d 说明]` | 扣减（fail-closed） |
+| `fish grant <username> <amount> [-d 说明]` | 赠送（一次本地事务） |
+| `fish deduct <username> <amount> [-d 说明]` | 扣减（一次本地事务） |
 | `fish balance <username>` | 查余额 |
-| `fish compensate <amount> [--rate 5] [--batch-id ID] [--dry-run]` | **给全部 core+ 群发补偿**（逐人原子） |
-| `fish pending` | 列出账本里未同步的账目 |
-| `fish sync-retry` | 重放 pending / failed 的远端同步 |
+| `fish compensate <amount> [--batch-id ID] [--dry-run]` | **给全部 core+ 群发补偿**（逐人原子） |
 | `fish credential-list <username>` | 列出某用户的鱼干只读凭据（不含明文与哈希） |
 | `fish credential-revoke <id>` | 吊销一张只读凭据（立即失效，幂等） |
 | `fish webhooks [username]` | 列出回调地址与投递积压（留空列全部） |
@@ -330,17 +339,16 @@ npm run cli -- blog restore 2b7ec270-be9c-4283-b1a2 --reason "作者申诉，误
 ⚠️ **失败到判死不会自动停用地址** —— 悄悄停掉全部回调是典型的静默失效：
 商户以为还在收通知，其实早就没了。要停由商户自己在页面上停。
 
-`amount` 是正整数，单位是**整个小鱼干**。写路径 fail-closed：远端账户服务失败 →
-本地写入被补偿事务精确撤销（对用户等价于回滚）→ **退出码 2**。绝不静默成功。
+`amount` 是正整数，单位是**整个小鱼干**。写路径就是**一次本地事务**（余额与流水同事务
+提交）：要么整体生效、要么整体回滚，没有中间态，也绝不静默成功。两种失败各自对应一个
+退出码：**业务拒绝**（余额不足、amount 非法）→ `1`；**本地事务失败**（真故障）→ `2`，
+此时本地没有任何变更，稍后重试即可。（`ACCOUNT_SERVICE_INTERNAL_TOKEN` 等四个
+`ACCOUNT_SERVICE_*` 变量已废除，CLI 不会再读它们 —— 见 `docs/deploy.md` §12。）
 
-未配置 `ACCOUNT_SERVICE_INTERNAL_TOKEN` 时远端同步被跳过，CLI 会显式警告（不会假装已同步）：
-
-```
-⚠️ 账户服务未配置，仅写入本地库（远端账目未同步）
-```
-
-**崩在「本地已提交、远端未同步」之间怎么办**：`fish pending` 看残留，`fish sync-retry` 按
-幂等键重放收敛。`stats overview` 也会把这两个数字报出来。
+**崩在写入中间怎么办**：不需要怎么办 —— 崩在事务提交前等于整体回滚，崩在提交后等于整体
+生效（SQLite 自己保证），不存在「余额动了、流水没写」这种要人工收敛的状态，也没有对应的
+重放命令。**唯一要人工查证的是迁移前遗留的账目**：`fish compensate` 命中的 `blocked` 那
+几位，见下。
 
 #### 群发补偿 `fish compensate`
 
@@ -357,14 +365,18 @@ npm run cli -- fish compensate 10 -d "故障补偿"      # 交互式会弹确认
 npm run cli -- fish compensate 10 -d "故障补偿" --yes # 脚本 / 非交互
 ```
 
-**失败语义是「逐人原子」，不是「全有或全无」。** 每人独立走一次
-「本地事务提交 → 事务外远端同步 → 失败补偿」，所以中途失败**不回滚**已经发出去的部分：
-前 300 人拿到了，后面的没有。这是**与历史实现有意不同**的：
+**失败语义是「逐人原子」，不是「全有或全无」。** 每人独立走一次本地事务（余额 + 流水 +
+幂等登记一起提交），所以中途失败**不回滚**已经发出去的部分：前 300 人拿到了，后面的
+没有。没发成的那几位，他们那笔事务整体回滚，对他们等价于没发生 —— 用同一个批次 ID
+续跑接着发。
 
-> 旧版实现是「一个大事务里给所有人加余额 → 逐个远端同步 → 全成功才 commit，任一失败
-> 整体 rollback」。那个结构要求远端 HTTP 留在事务内部，写锁会被占满整轮
-> （1000 人 @5 req/s ≈ 200 秒），期间全站写路径全部 `database is locked`。
-> 详见 `src/lib/fish-compensate.ts` 头部。
+逐人而不是「一个大事务发给所有人」是**刻意的**：一锤子的大事务要么全成要么全败，拿不到
+「发到哪了」，也就没有续跑可言；而且它会把 SQLite 写锁一次性占满整批（上千人的写入，
+期间全站写路径排队等锁）。详见 `src/lib/fish-compensate.ts` 头部。
+
+> 历史注记：迁移前的实现是「一个大事务发给所有人」，逐人是**刻意**换掉的形状。当年它还有
+> 第二条理由 ——「远端 HTTP 不能放进 SQLite 事务」；账户搬进站内后那条约束消失了（现在
+> 只有一次本地事务，也没有第二个存储要对账），形状仍然保留，理由如上。
 
 **续跑**——用同一个批次 ID 重跑，已发放的会自动跳过：
 
@@ -374,14 +386,15 @@ npm run cli -- fish compensate 10 --batch-id 3f9a2c81d0b4 --yes
 ```
 
 去重靠的是由批次派生的**确定性幂等键**（`comp-{sha256('compensate-{batchId}-{userId}-{amount}')[:16]}`，
-与历史实现逐字节同构）。这不是锦上添花，是必须的：若只是「重跑一遍」，本地会给已成功的
-人再加一次余额，而远端按同键幂等去重不会加 —— 两边记账当场分叉。
+派生算法与迁移前的实现**逐字节相同** —— 当年用某个批次 ID 只跑了一半的批次，现在传同一个
+ID 就能接着跑）。这不是锦上添花，是必须的：若只是「重跑一遍」，同一批人会**实打实再拿
+一次**（这笔钱是真的发出去了，不是账面误差）。
 
-**中止条件**：连续 5 位失败（判定远端整体不可用），或远端返回 429。中止不等于失败收场 ——
-已发放的照样算数，续跑即可。
-
-**账本里有 pending / failed 行的用户会被跳过并警告**，不会重新发放。正确顺序是
-先 `fish sync-retry` 收敛那些账目，再用同一个批次 ID 续跑。
+**迁移前遗留的非 synced 行会被跳过并警告，不会重新发放。** 新写入的登记行一律是
+`synced`（登记与发放同事务提交），所以命中的只可能是当年「本地已提交、远端那半笔状态
+不明」的欠账。这些用户**必须人工查证** —— 重发会在本地实打实叠加一笔；收敛它们的那条
+重放命令已随账户服务一起撤销，代码里没有、也不该有自动重放。传 `--batch-id` 续跑时，
+确认屏会把这批人的数量列出来。
 
 ### 审计日志与申诉
 
@@ -409,7 +422,7 @@ npm run cli -- fish compensate 10 --batch-id 3f9a2c81d0b4 --yes
 
 | 命令 | 作用 |
 |------|------|
-| `stats overview` | 人数 / 内容量 / **已删内容** / 待审申诉 / 鱼干账目状态 |
+| `stats overview` | 人数 / 内容量 / **已删内容** / 待审申诉 |
 
 交互式向导打开后，这一屏是了解「现在站点什么状态」最快的入口。
 
@@ -456,7 +469,7 @@ npm run cli -- stats overview                  # 概览能出数
 npm run cli -- blog search <正文里的词> --status deleted
 npm run cli -- blog restore <id> --yes         # 再 search 确认已恢复
 npm run cli -- audit log --action restore_blog # 审计里有，且主体是真实站长
-npm run cli -- fish pending                    # 未配账户服务时应有 pending 行
+npm run cli -- fish compensate 1 --dry-run --yes  # 只列计划、不动账（鱼干那一组还能用）
 ```
 
 在向导里按一次 `Ctrl-C`，确认它回到菜单而不是退出、也没留下半完成的写入。
@@ -470,7 +483,6 @@ npm run cli -- fish pending                    # 未配账户服务时应有 pen
 | `scripts/check-secrets.mjs` | 检测密钥与生产数据有没有进版本库 |
 | `scripts/diagnose-deploy.mjs` | 部署前自检（运行时版本 / `.env` / 数据库 / 密钥） |
 | `scripts/compensate-unclaimed-fortunes.mjs` | 一次性补偿「已签到未翻牌」的鱼干记录 |
-| `scripts/verify-account-integration.mjs` | 端到端对账账户微服务（需独立空库） |
 | `scripts/cli.ts` | CLI 入口；命令声明在 `scripts/cli/registry.ts` |
 
 ## 八、给维护者：加一条命令

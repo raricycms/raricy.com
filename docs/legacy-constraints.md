@@ -17,7 +17,9 @@
 | 项 | 位置 | 为什么 |
 |---|---|---|
 | werkzeug 密码哈希格式 | `src/lib/password.ts` | 库里 `password_hash` 躺的是 werkzeug 生成的 `scrypt:N:r:p$salt$hex`。**生态库的默认选择**，不是我们的设计。新哈希也保持 werkzeug 可读（双向过渡），改动即等于让存量用户重置密码 |
-| Fernet 密钥派生自 `SECRET_KEY` | `src/lib/account-client.ts` | 派生方式 `base64url(sha256(keySource))` 来自旧实现，且**密钥源是旧站的 `SECRET_KEY` 体系**。改了就解不开存量 `fish_api_key_encrypted` —— 全站鱼干 503 |
+| Fernet 密钥派生自 `SECRET_KEY` | `src/lib/secret-box.ts` | 派生方式 `base64url(sha256(keySource))` 来自旧实现，且**密钥源是旧站的 `SECRET_KEY` 体系**。它当年服务两处凭证：用户发往账户微服务的 API Key、回调签名密钥。**前者随账户服务搬进站内一起消失，后者还是活的** —— 改了派生，`fish_webhook_endpoints.secret_encrypted` 全解不开，商户再也收不到回调、且**不可逆** |
+| `users.fish_api_key_encrypted` 列 | `prisma/schema.prisma` | 站外账户微服务签发的用户 API Key 的 Fernet 密文。**该服务已搬进站内，这一列没有任何代码再读它**，但列与存量密文留着不删（删列要迁移，而迁移的风险大于它占的空间）。看到它别以为还有远端 |
+| `account_sync_ledger` 表名 | `prisma/schema.prisma`、`src/lib/fish-idempotency.ts` | 名字说的是「账户服务同步账本」（outbox），而那个机制已经不存在 —— 现在它只是一张**幂等记录**表，新行一律 `status='synced'`。表**刻意不改名**：里面有真的历史账（那些行的 payload/status 是当年对账的唯一凭据）。语义以 `fish-idempotency.ts` 头部为准 |
 | 时间戳的 TEXT 存储形态 | `src/lib/fish-service.ts`、`src/lib/db-time.ts` | SQLAlchemy 把 `datetime.now()` 按 `"YYYY-MM-DD HH:MM:SS.ffffff"` 写成 **TEXT**；新行是 INTEGER，**混存**。SQLite 跨存储类型比较按类型序不按数值，裸 SQL 日期函数一律不可靠 |
 | 物理库由 Alembic 建出 | `prisma/migrations/0_init/migration.sql` | 530 行基线是从 Alembic 管出来的真库反向生成的。接手已有库必须先 `mark` 不能 `up` |
 | `instance/` 目录名 | 项目根 | 旧框架的 instance 目录约定，Next 直接沿用。**存量文件全在里面** |
@@ -37,7 +39,7 @@
 | 字数统计正则 | `src/lib/blog-service.ts` 的 `countMarkdownWords` | 5 条正则（**只有代码块那条跨行**）。改则存量文章字数集体变化 |
 | 两步式签到 | `src/lib/checkin-service.ts` | `checkIn()` 建记录时 `fortune_value` 留 `NULL`，翻牌才填。**是我们刻意这么设计的**，库里真实存在这类行 |
 | 短 ID / 邀请码字符集 | `src/lib/short-id.ts`、`src/lib/invite-code.ts` | 要能继续校验**存量已发出的**码（12 位 base62，注册侧按 `length===12` 校验） |
-| 幂等键格式 | `src/lib/fish-compensate.ts`、`fish-admin.ts`、`checkin-service.ts`、`account-client.ts` | 远端账户微服务按键去重；批次 ID 逐字节稳定是**刻意的**，为了让迁移前跑了一半的批次能续跑 |
+| 幂等键格式 | `src/lib/fish-idempotency.ts`、`fish-compensate.ts` | 客户端幂等键「1–48 位、`[A-Za-z0-9_.:-]`」是**对外契约**（`docs/bot/fish-bot.md` §6 按它写）。群发补偿的批次 ID 逐字节稳定是**刻意的**，为了让迁移前跑了一半的批次能续跑。**注意**：键之所以长这样（含 `xfer-{8位哈希}` 前缀、48 字上限）是因为当年要发往账户微服务、对方限 64 字符 —— 那边界没了，但格式不能改：存量 `account_sync_ledger` 里的键与新键共用一个命名空间 |
 | API JSON snake_case 形状 | `src/lib/blog-service.ts` 等 | **对外契约**：站外机器人按这个形状写死了。对外文档见 `docs/bot/` |
 | 权限档位语义 | `src/lib/guard.ts`、`src/lib/admin-user-service.ts` | 角色阶梯（user → core → admin → owner）是**产品设计**，见 `docs/architecture.md` §8 |
 | `session_version` 失效机制 | `src/lib/session.ts`、`src/lib/auth.ts` | 改密 / 禁言 / 强制下线要让旧会话立即失效 —— **安全需求** |
@@ -114,7 +116,7 @@ git ls-tree -r 7d7be1c^ --name-only app/ # 列出旧 app/ 全树
 | `aliases:["jinja"]` | `public/static/vditor/dist/` 下的 highlight.js / markmap | vendored 第三方库里的**语法高亮语言定义** |
 | `makeLegacyCheckin` / `legacyRoleCommands` | `tests/`、`scripts/cli/commands/roles.ts` | 「旧」指**本应用自己的旧实现** |
 | 「旧实现 / 原实现」 | `src/lib/chat-service.ts`、`tests/global-setup.ts` 等 | 同上 —— 绝大多数是 Next-vs-Next 的历史，**是解释回归的正当线索，别扫** |
-| `ACCOUNT_SERVICE_URL` / `ACCOUNT_SYSTEM_KEY` | `.env*`、`src/lib/account-client.ts` | 指向 **FastAPI 账户微服务**（独立仓库）。它是 Python，但**不是 Flask，也不是本仓的代码** |
+| `account_sync_ledger` ~ `fish_api_key_encrypted` ~ `ACCOUNT_SERVICE_*` | `prisma/`、`src/lib/fish-idempotency.ts`、`.env*` 的注释 | 站外 **FastAPI 账户微服务**（独立仓库）的遗物 —— 它是 Python，但**不是 Flask，也不是本仓的代码**。那个服务已于 2026-09 搬进站内，见 §1.1 的三行 |
 | `{{` / `{%` | 各处 `.tsx` | JSX 的 `style={{…}}` 双花括号，不是 Jinja |
 | `Bootstrap 风格 / Bootstrap-like / no Bootstrap` | 十几处 `src/styles-scss/**` 注释 | **本站完全不用 Bootstrap**，这些是**类比**：类名（`.card` / `.table` / `.m*-*`）沿用了 Bootstrap 的命名与外观习惯，实现全是我们自己的。删了这些注释不会少一行样式 |
 | `Bootstrap 的 show / 不是 Bootstrap 那套` | `CommentSection.tsx`、`ImagePickerModal.tsx`、两个 e2e 用例 | **防混淆警告**，价值高：站内 modal 的展开类是 `is-open` / `show`，与 Bootstrap 的不是一回事，写错就点不开 |

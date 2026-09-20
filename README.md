@@ -14,7 +14,8 @@ Next.js 15 + Prisma + SQLite 单进程部署，自有 `instance/` 数据目录�
   生产库 `db.db`（见 `.env.production.example`）。**两者是不同的文件**，别按文档去改错那个
 - **会话**：JWT（`jose`）+ `session_version` 失效机制
 - **认证**：密码哈希与历史 werkzeug **互通**，用户**无需重置密码**
-- **服务边界**：站点单进程；账户微服务（FastAPI）独立仓库部署
+- **服务边界**：单进程自洽。鱼干账户曾在站外一个 FastAPI 微服务里，已于 2026-09
+  搬进站内（见 `docs/architecture.md` §6.3.1）—— 现在没有第二个部署单元
 - **前端**：服务端 / 客户端组件混用，marked + DOMPurify + highlight.js 渲染 Markdown
 
 组件与子系统的关系见 `docs/architecture.md`。
@@ -60,7 +61,6 @@ npm run dev                              # http://localhost:3000
 | `npm run db:normalize` | 源库复制 + 规整时间戳为 INTEGER 毫秒 |
 | `npm run db:compensate-fortunes` | 补偿"已签到未翻牌"的鱼干记录 |
 | `npm run cli` | 运维台。**不带参数进菜单向导**（引导式，不用背命令）；`npm run cli -- <命令>` 是命令式。覆盖角色 / 用户 / 内容检索与恢复 / 鱼干 / 邀请码 / 审计 / 申诉 / 概览 |
-| `npm run verify:account` | 端到端对账账户微服务 |
 | `npm run prepare:cutover` | 切换期一次性：备份 → 规整 → 补偿 → diagnose |
 | `npm run instance:check` | 创建 instance/ 子目录 |
 

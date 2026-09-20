@@ -121,7 +121,7 @@
 | 数据层 | `db.ts` · `db-time.ts` · `format.ts` |
 | 博客域 | `blog-service.ts` · `feed-service.ts` · `comment-service.ts` · `comment-shared.ts` · `blog-sort-pref.ts` · `spider-service.ts` |
 | 富文本渲染 | `rich-text.ts`（共享管线）· `chat-markdown.ts` · `comment-markdown.ts` · `blog-markdown.ts` · `content-refs.ts`（评论/讨论那条**同步**管线：只认 8 位与 10 位，9 位投票与 6 位收藏夹刻意不展开）· `favorite-refs.ts`（`[@六位]` 卡片：**只在博客/剪贴板**那条管线生效，见 §6.9）· `markdown-math.ts` · `linkify.ts` · `vditor-theme.ts` |
-| 表情包 | `sticker-refs.ts`（`[@合集/表情]` → 内联 `<img>`，跑在`rich-text.ts` 的净化**之后**）· `sticker-service.ts`（素材扫盘与三层缓存）。安全边界与正则纪律见两者头部；玩家向说明见 `docs/guide/表情包使用指南.md` |
+| 表情包 | `sticker-refs.ts`（`[@合集/表情]` → 内联 `<img>`，跑在`rich-text.ts` 的净化**之后**）· `sticker-service.ts`（素材扫盘与三层缓存）· `emoji-faces.ts`（内置黄脸合集的编译期清单，素材从 npm 包拷进 `public/static/emoji/`）。安全边界与正则纪律见几者头部；玩家向说明见 `docs/guide/表情包使用指南.md` |
 | 讨论 | `chat-service.ts` · `chat-bus.ts`（SSE 订阅）/ `chat-shared.ts`（DTO）· `chat-presence.ts`（「谁正在看哪个会话」—— 进程内，决定被 @ 时发不发通知）· `chat-sidebar-pref.ts` · `focus-mode.ts` |
 | 实时传输 | `sse.ts` —— SSE 响应头 / 帧格式 / 重连与背压 / 心跳常量的**唯一出处**，两条流共用（讨论 `chat-bus.ts`、顶栏 `topbar-bus.ts`）。新增 SSE 路由一律 import 它，不要手抄响应头（`no-transform` 少一个字的后果见该文件头注释） |
 | 顶栏指示器 | `topbar-bus.ts` —— 铃铛未读数 + 讨论红点的 SSE 订阅表（推**增量补丁**，首帧全量快照由路由拼）。推送点纪律（`hasSubscriber` 同步早退、算值必须在吞异常的 try 内）与依赖方向约束**见该文件头部** |
@@ -131,7 +131,7 @@
 | 图床 | `image-service.ts` · `image-upload.ts`（服务端）· `image-client.ts`（浏览器侧选图上传，讨论与评论共用）· `vditor-upload.ts`（Vditor 编辑器的上传配置，博客与剪贴板共用；与 `/api/images` 的字段名/响应结构两端对齐，见 `tests/unit/vditor-upload.test.ts`） |
 | 故事 | `story-service.ts` |
 | 画报 / 收款码 | `poster.ts`（纯 SVG 构造，含二维码与转义）· `poster-render.ts`（取数 + 头像 + sharp 光栅化），见 §6.8 |
-| 小鱼干 | `fish-service.ts` · `fish-admin.ts` · `fish-market-service.ts`（用户间转账，见 §6.3）· `fish-sync.ts`（账本 + 补偿，见 §6.3）· `fish-compensate.ts`（`fish compensate` 群发补偿，只发 core+，见 `docs/cli.md` 与文件头）· `fish-units.ts`（单位换算；`Blog.fishCount` 是**例外**，见文件头）· `account-client.ts` |
+| 小鱼干 | `fish-service.ts`（**记账内核 `postEntry`** + 读路径，见 §6.3）· `fish-idempotency.ts`（哪些操作才登记幂等 —— 判据在文件头）· `fish-admin.ts` · `fish-market-service.ts`（用户间转账，见 §6.3）· `fish-compensate.ts`（`fish compensate` 群发补偿，只发 core+，见 `docs/cli.md` 与文件头）· `fish-units.ts`（单位换算；`Blog.fishCount` 是**例外**，见文件头）· `fish-webhook-service.ts`（收款回调 outbox，见 §6.3） |
 | OAuth 2.0 | `oauth.ts`（见 `docs/oauth.md`） |
 | 管理域 | `admin-user-service.ts` · `admin-blog-service.ts` · `admin-category-service.ts` · `admin-comment-service.ts` · `admin-clipboard-service.ts` · `admin-vote-service.ts` · `admin-image-service.ts` · `admin-stats-service.ts` |
 | 工具 / 安全 | `short-id.ts` · `safe-url.ts` · `guard.ts` · `rate-limit.ts` · `turnstile.ts` |
@@ -165,29 +165,96 @@ API 端点位于 `src/app/api/<group>/<verb>/route.ts`，**薄**层：参数校�
 - **时间戳语义**：存的是「**UTC+8 墙上时间贴 Z 标签**」，**不是真实 UTC 瞬间**（上一版实现 `datetime.now()` 留下的，normalize 只补 `T`/`Z` 不平移）。因此：取当前时刻一律用 `src/lib/db-time.ts` 的 `nowForDb()`（= `Date.now() + 8h`，与全库历史数据同钟）；「还剩多久」用 `hoursUntil()`；展示用 `ymd`/`ymdhms` 或 `getUTC*`。**禁止**无参 `new Date()`、`toLocale*`、本地 getter（`getHours` 等）。混用两把钟的后果**全是静默的**：禁言到期后多显示 8 小时、当日发文计数跨日错位。由 `tests/unit/db-time-guard.test.ts` 五条静态守卫强制。
 - **Prisma 客户端**：单例在 `src/lib/db.ts`，开发模式 HMR 安全。
 
-### 6.3 鱼干账户（跨进程）
+### 6.3 鱼干账户（站内自洽）
 
-- **失败语义 — 写路径 fail-closed**：投喂 / 签到 / 注册建账户 / CLI grant|deduct / 用户间转账（鱼干市场）/ 练手盘开平仓**全部**遵循：远端账户服务失败 → 本地写入被**补偿事务精确撤销**（对用户等价于回滚）→ 503 / 退出码 2。绝不静默成功。
-  - 转账（`fish-market-service.ts`）是其中唯一**单次远端调用**的路径：没有 feed 的「Step1 成功 → Step2 失败 → 远端退款」中间态，别照抄那套退款；也是唯一带限频配额的鱼干写路径。补偿退接收者时若他已把钱花掉 → 补偿整体回滚，交由账本 `failed` + `sync-retry` 正向重放收敛（**绝不部分撤销**，那会凭空造出鱼干）。
-  - 转账支持**客户端幂等键**（`opts.clientIdempotencyKey`）：键进账本，重发同键同参数 → 直接返回原结果（`duplicated: true`）、同键不同参数 → 409、上一笔在途 → 409。**去重依赖账本行**，所以 dev fallback（不登记账本）下不去重 —— 生产不会出现该状态（未配账户服务时直接 503）。
-  - **共享单号 `fish_transactions.transfer_id`**：一笔转账的两条流水（发送方 `transfer` 负 / 接收方 `transfer_receive` 正）写**同一个**值，让收付双方能对上同一笔。值 = `sha256(幂等键)[:16]`（**派生**，不是随机）—— 于是同键重放无需额外状态就能回报原单的单号，也没有第二份会漂移的副本。**只覆盖用户间转账**：签到 / 投喂 / 赠送 / 补偿都没有对手方，一律 NULL；存量行不回填（无法可靠反推配对，猜错等于把两笔钱认成一笔）。它是对账句柄，不是凭证 —— 本仓**没有**「按单号查一笔转账」的接口，所以知道它并不能读到别人的账。见 `prisma/migrations/14_fish_transfer_id` 头部。
-  - **练手盘（`market-service.ts`）**：开仓是「用户 → 系统账户」，平仓是反向，两个方向都用**系统 Key**（同 `admin_grant`/`admin_deduct`）—— 系统账户 `raricy-blog-system` 只在远端存在、本地没有 `users` 行，所以走不了转账那个 case（它要按 `fromUserId` 解密发送者的 Key）。**成交价必须在下单那一刻现取**（`fetchQuote`），绝不读展示缓存 —— 这条是它唯一的安全边界，展开见 §6.13。平仓**不需要幂等键**：整仓标记为 closed 之后，再平就是重放。开仓需要（同额分批建仓是正常操作）。
-  - **收银台的 `order` 参数**（`/fish/pay`）：商户给的订单号参与拼幂等键（`makeOrderKeyBase` = 收款人哈希 + 订单号，**不含金额**），于是同一订单号永远算出同一个键 → 用户付完刷新页面再点不会重复扣款。键里混收款人是为了让「同一付款人给两家商户用同一个订单号」不撞车；不含金额是为了让「同单号换金额」响亮地 409，而不是静默变成第二笔。**不给 `order` 时退回随机键基**（扫码收款页恒如此，那里用户要能在同一页里改金额）。
-  - **收款回调（webhook）**：`fish-webhook-service.ts` 是 outbox —— 投递行与两条流水**同事务**写入，投递在事务外（照搬本节的形状），补偿事务里**连带删掉**投递行（回滚掉的转账绝不能通知商户「你收到钱了」）。两个 driver：进程内定时器（`src/instrumentation.ts` → `webhook-drainer.ts`，**本站唯一的后台循环**）与 `fish webhook-retry`，靠条件 UPDATE 认领，不会双投。投递是 **at-least-once**（sending 租约到期会重投），所以接收方必须按 `X-Raricy-Delivery` 去重。SSRF 防线（本站唯一一处「服务器去 fetch 用户给的地址」）见 `src/lib/webhook-url.ts` 头部。端点连续失败**不自动停用** —— 那是静默失效。
-- **分层（`2_account_sync_ledger` 起）**：本地事务先提交（含 `account_sync_ledger` 一行 pending），远端 HTTP 在事务**外**调用 —— 成功标 `synced`，失败走补偿事务。HTTP **绝不能挪进事务**：那会让 SQLite 写锁被占用最长 `ACCOUNT_SERVICE_TIMEOUT`，并发写耗尽 busy_timeout 直接 `database is locked`。
-- **崩溃收敛**：任何「已提交 / 未同步」窗口都留一个 pending 账本行，`npm run cli -- fish sync-retry` 幂等重放收敛；补偿也失败则标 `failed` 并打 `ACCOUNT_RECONCILE_REQUIRED` 日志。详见 `src/lib/fish-sync.ts` 头部。
-- **读路径：一律读本地 `users.driedFish`**（`fish-service.ts` 的 `getBalance` 等），
-  页面、接口、CLI 无一例外。远端账户服务是**写**目标（复式账本），不是读目标 ——
-  `accountClient.getBalance` / `getBalances` / `getLedger` 这三个读方法**只在
-  `scripts/verify-account-integration.mjs` 里被调用过**，业务代码一处也没有。
-  两边对不上时以远端的复式账本为准（那才是记账的事实），收敛手段是
-  `fish sync-retry` + 对账日志，**不是**让读路径去问远端。
-- **双层鉴权**：`X-Internal-Token`（服务间共享）+ 用户/系统 API Key（`Authorization: Bearer <key>`）。
-- **API Key 加密**：`User.fishApiKeyEncrypted` 是 Fernet 加密。密钥派生：
-  ```
-  key = base64url( SHA-256( FISH_ENCRYPTION_KEY || SECRET_KEY ) )
-  ```
-  **首次部署既有库必须把 `FISH_ENCRYPTION_KEY` 留空**，否则解不开存量密文。
+**账目与业务数据在同一个 SQLite 文件里，每笔鱼干操作就是一次普通事务。**
+没有补偿事务、没有 outbox、没有跨进程同步 —— 要么全成，要么全不成。
+
+- **唯一的记账内核 `postEntry`**（`src/lib/fish-service.ts`）：全站**唯一**改
+  `users.driedFish` 的地方，收调用方的 `tx`，在同一个事务里改余额 + 写一行
+  `fish_transactions`。入参是**有符号的存储单位**（0.1 鱼干，见 `fish-units.ts`）：
+  出账走单条带谓词的 UPDATE（`driedFish >= need`）并在未命中时抛
+  `InsufficientFishError`，入账走 `increment`。`addFish` 是它的「只加不减」语义壳。
+  ⚠️ **新增鱼干写路径时不要绕过它自己写 `update` + `create`** —— 那正是
+  「余额改了、流水没写」这类静默账目损坏的入口。
+- **五条写路径，全部一个事务**：签到翻牌（`checkin-service.ts`）/ 投喂
+  （`feed-service.ts`）/ 管理员发扣与群发补偿（`fish-admin.ts`、`fish-compensate.ts`）/
+  用户间转账（`fish-market-service.ts`）/ 练手盘开平仓（`market-service.ts`）。
+  **注册建号不再属于这里** —— 它当年要走一环「在远端建账户」，现在只是建一行
+  `users`（初始余额就是列默认值 0），一行鱼干都不写。
+- **故障语义**：余额不足、参数非法、超出上限是**业务结果**（400 / 退出码 1）；
+  本地事务本身失败是**真故障**（500 / 退出码 2）。**没有 503 了** ——
+  那一档原本全部来自「远端账户服务不可达」，而它已经不存在。
+- **幂等**（`src/lib/fish-idempotency.ts`）：**只有键是确定的操作才登记** ——
+  同一次操作重跑必须等价于没跑时才登记。
+  - 用户间转账带**客户端幂等键**：同键同参数重发 → 返回原结果（`duplicated: true`）、
+    同键不同参数 → 409。记录写在业务写入的**同一个事务**里，所以「钱动了但键没记」
+    在结构上不可能发生；并发同键由唯一约束挡下。
+  - 群发补偿按 `batchId` 派生键，批次中断后续跑跳过已发放的人。
+  - **签到翻牌 / 投喂 / 管理员单次发扣 / 练手盘开仓 / 注册建号一律不登记** ——
+    它们的键带随机后缀，登记了也没有去重价值，只会把表撑大。
+- **共享单号 `fish_transactions.transfer_id`**：一笔转账的两条流水（发送方 `transfer`
+  负 / 接收方 `transfer_receive` 正）写**同一个**值，让收付双方能对上同一笔。
+  值 = `sha256(幂等键)[:16]`（**派生**，不是随机）—— 于是同键重放无需额外状态就能
+  回报原单的单号，也没有第二份会漂移的副本。**只覆盖用户间转账**：签到 / 投喂 /
+  赠送 / 补偿都没有对手方，一律 NULL；存量行不回填（无法可靠反推配对，猜错等于把
+  两笔钱认成一笔）。它是对账句柄，不是凭证 —— 本仓**没有**「按单号查一笔转账」的
+  接口，所以知道它并不能读到别人的账。见 `prisma/migrations/14_fish_transfer_id` 头部。
+- **收银台的 `order` 参数**（`/fish/pay`）：商户给的订单号参与拼幂等键
+  （`makeOrderKeyBase` = 收款人哈希 + 订单号，**不含金额**），于是同一订单号永远算出
+  同一个键 → 用户付完刷新页面再点不会重复扣款。键里混收款人是为了让「同一付款人给
+  两家商户用同一个订单号」不撞车；不含金额是为了让「同单号换金额」响亮地 409，
+  而不是静默变成第二笔。**不给 `order` 时退回随机键基**（扫码收款页恒如此，
+  那里用户要能在同一页里改金额）。
+- **收款回调（webhook）**：`fish-webhook-service.ts` 是 outbox —— 投递行与两条流水
+  **同事务**写入，投递在事务外。⚠️ **别因为它与记账无关就把它改简单**：这是本站
+  **唯一**允许的跨进程调用，把钱的事务当成 HTTP 的宿主会让商户的延迟占住 SQLite
+  写锁。两个 driver：进程内定时器（`src/instrumentation.ts` → `webhook-drainer.ts`）
+  与 `fish webhook-retry`，靠条件 UPDATE 认领，不会双投。投递是 **at-least-once**
+  （sending 租约到期会重投），所以接收方必须按 `X-Raricy-Delivery` 去重。SSRF 防线
+  （本站唯一一处「服务器去 fetch 用户给的地址」）见 `src/lib/webhook-url.ts` 头部。
+  端点连续失败**不自动停用** —— 那是静默失效。
+- **读路径**：一律读本地 `users.driedFish`（`fish-service.ts` 的 `getBalance` 等），
+  页面、接口、CLI 无一例外。**没有第二个存储可以问** —— 账目对不对只能靠内部一致性
+  证明，那条不变式是「每人余额 == 他所有流水之和」，测试侧由
+  `tests/helpers/fish-ledger.ts` 的 `expectLedgerConsistent()` 钉住，
+  任何跑过写路径的用例都应该在末尾调一次。
+- **练手盘的「系统水池」是账外的**：开仓是扣用户、平仓是加用户，各自留一条自己的
+  流水 —— 没有系统账户这一行。于是「无限水池」表现为**全站鱼干总量的增减**。
+  ⚠️ 别为了「复式配平」在 `users` 里虚构一个系统账户行：`FishTransaction.userId`
+  是必填外键，那行会长进用户列表与搜索里。**成交价必须在下单那一刻现取**
+  （`fetchQuote`），绝不读展示缓存 —— 这条是它唯一的安全边界，展开见 §6.13。
+
+#### 6.3.1 历史注记：这里曾经跨进程（2026-07 ~ 2026-09）
+
+账户逻辑原在一个**站外的 FastAPI 微服务**（独立仓库）里，每条写路径都是三段结构：
+`本地事务提交（含 account_sync_ledger 一行 pending）→ 事务外 HTTP 调远端 → 失败则补偿
+事务精确撤销本地写入`。读路径当时就已经全在本地，那三个远端读方法只在联调脚本里被
+调用过 —— 也就是说它是**只写副本**。撤销它的理由（按力度排序）：
+
+1. **它换来的失败模式结构上修不掉**：远端已成交但响应丢失 → 本地补偿删账 → 用户重试
+   拿新键 → 远端扣两次，唯一的发现手段是一条 `FISH_TRANSFER_SYNC_FAILED` 日志；
+   投喂的 Step1/Step2/退款三态失败会留下 `ACCOUNT_RECONCILE_REQUIRED`，且**本地被干净
+   回滚、账面上看不出异常**。这些不是「少见的 bug」，是「两个存储」的必然产物 ——
+   搬进同一个事务不是缓解它们，是让它们不存在。
+2. **代价是常驻的**：每次鱼干写都是一次 5s 超时的网络依赖，远端抖动 → 全站鱼干功能
+   集体 503；两套部署、两套密钥、两套备份。
+3. **「远端才是记账事实」这句话没有兑现成任何工具** —— 唯一收敛手段 `fish sync-retry`
+   与对账日志靠人盯，`npm run diagnose` 连 `ACCOUNT_SERVICE_*` 都不检查。
+
+代价是失去一份独立账目副本（≈ 灾备）。它不值钱：鱼干经济与 users / blogs 在**同一个
+SQLite 文件**里，只从远端恢复鱼干余额也拼不出站 —— 真正的灾备是那个文件的备份。
+
+**留下的物理痕迹**（都不影响行为，别照字面理解）：
+
+| 痕迹 | 现状 |
+|------|------|
+| `account_sync_ledger` 表名 | 现在只是**幂等记录**表，新行一律 `status='synced'`。语义以 `fish-idempotency.ts` 头部为准 |
+| `users.fish_api_key_encrypted` 列 | 远端签发的用户 API Key 密文。**没有任何代码读它**，列与存量数据留着不删 |
+| `FISH_ENCRYPTION_KEY` / `SECRET_KEY` | **仍然必须正确** —— 它们是回调签名密钥的派生源（`secret-box.ts`） |
+| `docs/bot/fish-bank-example.md` | 站外第三方基于**本站对外接口**开银行的参考实现，与那个被撤销的微服务无关，照旧有效 |
+
+清单与判据见 `docs/legacy-constraints.md` §1.1。
 
 ### 6.4 CSRF 中间件
 
@@ -250,7 +317,7 @@ GET/HEAD/OPTIONS 视为安全方法，不校验。
 | 博客正文 | **客户端**渲染 | `src/app/components/MarkdownRenderer.tsx`（marked + DOMPurify + highlight.js + MathJax + `[@…]` 内容引用） |
 | 故事正文 | **服务端**渲染 | `src/lib/story-service.ts` 的 `marked` + `stripScripts`。内容由站长直接写在 `instance/stories/`，按可信输入处理，**不走 DOMPurify / highlight.js** |
 | 内容引用 `[@…]` | 浏览器渲染时正则替换为剪贴板/投票/图床/收藏夹组件 | `src/app/components/MarkdownRenderer.tsx` 的 `ContentRefProcessor`（按 id 长度分流：6 位收藏夹 / 8 位剪贴板 / 9 位投票 / 10 位图床）。**表情包不在这条管道上**。收藏夹卡片是在主循环**之后**单独一趟、按区间切片替换的，理由见 §6.10 |
-| 表情包 `[@合集/表情]` | 浏览器渲染时替换为内联 `<img>`（**仅评论 / 讨论**） | `src/lib/sticker-refs.ts` 的 `embedStickerRefs`，在 `rich-text.ts` 里紧跟 `embedImageRefs` 之后调用 |
+| 表情包 `[@合集/表情]` | 浏览器渲染时替换为内联 `<img>`（**仅评论 / 讨论**）。两个来源共用这条管道：站长放的图片（`/api/stickers/` 字节路由）与**内置黄脸**（`/static/emoji/` 静态素材）—— 后者多叠一个 `rich-emoji-ref` 类把自己压成文字大小 | `src/lib/sticker-refs.ts` 的 `embedStickerRefs`，在 `rich-text.ts` 里紧跟 `embedImageRefs` 之后调用；黄脸清单在 `src/lib/emoji-faces.ts` |
 | 工具页 cattca-guide | **服务端**渲染 | marked（仅一次，可信文档） |
 
 **讨论与评论共用一条管线**（`rich-text.ts`）。两者的威胁模型与防线逐条相同，差别只在
@@ -572,10 +639,13 @@ URL 请来抓」。（`robots.ts` 的**路径级**规则不需要动 —— `/ex
 （与签到、投喂同档）—— 它是**签到之外第二条 core+ 赚取渠道**，没有突破「非核心账号没有
 鱼干赚取渠道」那条口径。
 
-**这不是交易所，也不是庄家对赌**：没有撮合、没有对手盘、没有敞口。系统账户
-`raricy-blog-system` 是**无限水池** —— 用户赚了从它 mint、亏了 burn 回它。它只存在于远端
-账户服务，本地没有 `users` 行（所以持仓流水 `related_user_id` 留空，信息进 `description`，
-与签到同款）。
+**这不是交易所，也不是庄家对赌**：没有撮合、没有对手盘、没有敞口。所谓「无限水池」
+**是账外的、不是一行账户** —— 用户赚了就是凭空加进他的余额、亏了就是少发给他，
+「水池」只表现为**全站鱼干总量的增减**。因此持仓流水 `related_user_id` 留空、
+信息进 `description`（与签到同款）。
+⚠️ **别为了「复式配平」在 `users` 里虚构一个系统账户行**：`FishTransaction.userId`
+是必填外键，那行会长进用户列表与搜索里，成为一个谁都没打算给它的「用户」。
+（历史上确实有过一行 `raricy-blog-system`，它在站外的账户微服务里，随 §6.3.1 一起消失。）
 
 - **★ 成交价必须是下单那一刻现取的 ★** 这是整个功能唯一的安全边界，其余都是体验问题。
   `openPosition` / `closePosition` 都调 `fetchQuote()`（向交易所现拉，3 秒超时），**绝不
@@ -597,14 +667,17 @@ URL 请来抓」。（`robots.ts` 的**路径级**规则不需要动 —— `/ex
   那不是高风险而是几乎必赔的陷阱。
 - **一行 = 一个批次（lot）**，不是聚合持仓。每次开仓插一行，平仓就地改成 `closed` ——
   部分平仓会把幂等做成一件难事（同一请求重放时要认出「这是同一笔」而不是「又一次部分
-  平仓」）。**绝不物理删除**，唯一例外是远端同步失败的补偿事务（那笔开仓从未生效）。
-- **账本**：`SyncOperation` 新增 `market_buy` / `market_sell`；远端 `entry_type` 同名。
-  开仓幂等键 `open_key`（每次唯一、带随机后缀，混进 `userId` 哈希避免两个用户撞键）；
-  平仓靠 `status` 的条件写天然幂等。实发为 0 时**不写流水、不登记账本、不打远端**
-  （没有钱动过）。
+  平仓」）。**绝不物理删除**，没有例外（唯一一处例外曾是「远端同步失败的补偿事务」，
+  随 §6.3.1 一起消失）。
+- **幂等**：开仓靠 `market_positions.open_key` 的**唯一约束**（每次唯一；调用方给了客户端键
+  就按它派生、否则服务端现生成；混进 `userId` 哈希避免两个用户撞键）。重放时按 `open_key`
+  回读既有仓位 —— **这一列就是幂等的实现**，所以开仓不另写 `account_sync_ledger` 行
+  （判据见 `src/lib/fish-idempotency.ts` 头部）。
+  平仓靠 `status` 的条件写天然幂等，不需要键。实发为 0 时**不写流水**（没有钱动过）——
+  ⚠️ 这一档必须显式守着：内核 `postEntry` 对 `units === 0` 是抛错的，漏了会让合法的
+  「近乎归零」变成 500。
 - **限频**：`RULES.tradeMinute` / `tradeDaily`（20/分、300/天）。它防的不是刷屏，是
-  **出站流量 + 远端写入**：每笔成交都要现取一次行情外加一次远端转账。桶键 `trade:` 前缀，
-  不复用 `transfer:`。
+  **出站流量**（每笔成交都要现取一次行情）+ 写压力。桶键 `trade:` 前缀，不复用 `transfer:`。
 - 页面的行情卡在拉不到价时显示「行情暂不可用」并**禁掉买入**；缓存超龄时显示「数据可能
   不是最新的」。**绝不编一个价出来** —— 用户会照着一个假价格按下买入。
 
@@ -626,16 +699,28 @@ URL 请来抓」。（`robots.ts` 的**路径级**规则不需要动 —— `/ex
 ```
 浏览器 POST /api/blogs/<id>/feed
   → middleware.ts  ✓ 同源 + core+ (装饰器)
-  → feed-service.ts 本地事务：业务写入 + account_sync_ledger 登记一行 pending
-  → COMMIT                                  (快、无 IO —— 写锁不在此持有)
-  ── 以下在事务外 ──
-  → account-client.ts transfer()            (远端同步，幂等键)
-       ├ 成功  → settleSync('synced')
-       └ 失败  → 补偿事务：撤销本地写入 + 删账本行
-                   ├ 补偿成功 → 对用户仍等价于「回滚 + 503」
-                   └ 补偿失败 → settleSync('failed') + 对账日志
-  → 响应 200 (成功) 或 503 (fail-closed)
+  → feed-service.ts 一个事务：
+        投喂者扣款（postEntry，条件谓词防超扣）
+        作者分成 +80%（postEntry）
+        BlogFeed 累计 + Blog.fishCount
+  → COMMIT
+  → 通知作者（提交之后才发，失败只 warn，不影响已成交的钱）
+  → 响应 200
+       ├ 余额不足 / 超上限 → 400（业务结果）
+       └ 事务失败          → 500（真故障）
 ```
+
+⚠️ **这里没有 503 这一档**。它曾经是「远端账户服务不可达」的专用码，随账户服务搬进
+站内一起消失（历史注记见 §6.3.1）。**别的鱼干路径也都一样**：转账 / 签到翻牌 /
+练手盘 / CLI 发扣全是「一个事务 + 400 或 500」。对外文档里凡教调用方
+「看到 503 就重试一次」的地方都已改写 —— 那些重试建议的前提（本地已被补偿回滚）
+不存在了。
+
+> 例外只有注册（`user-service.ts`）：它的两处**通用故障兜底**仍返回 503
+> （`registerUser` 的未知 precondition、`mapCreateFailure` 的 `unexpected`）。
+> 那是错误码选择问题，与账户服务无关，改它会连带动 CLI `user create` 的
+> 退出码映射（`docs/cli.md` 有口径）—— **本轮的契约变更不覆盖它**，
+> 别看到「没有 503 了」就顺手改掉。
 
 ### 7.3 浏览一篇文章（读路径）
 
@@ -851,7 +936,7 @@ URL 请来抓」。（`robots.ts` 的**路径级**规则不需要动 —— `/ex
 |------|------|
 | Flask 单体（blog+story+clipboard+vote+fish+...） | 已被本分支 `git rm` 删除，git 历史可回看 |
 | Flask → Next 分阶段迁移（每模块独立 commit） | 已合并；本分支 commit 全是 Next |
-| 鱼干账户微服务拆分（Phase 1/1.5/2） | 已完成；账户服务在**独立仓库** |
+| 鱼干账户微服务拆分（Phase 1/1.5/2） | 已**撤销**（2026-09）：账户服务搬回站内，见 §6.3.1 |
 | schema 演进路径 | Alembic 31 版删除；Prisma 0_init 基线接管 |
 
 ## 10. 风险与已知限制
@@ -862,7 +947,8 @@ URL 请来抓」。（`robots.ts` 的**路径级**规则不需要动 —— `/ex
 | 进程内限频 | 多实例下各自计数，总限翻倍 | 多实例前先换 Redis |
 | 进程内「在看」状态（`chat-presence.ts`） | 多实例下「谁在看哪个会话」的报到与发消息可能落在不同实例 → 判不出在看 | 退化成照常发 @ 通知（多打扰一次，**不静默丢**），与进程内限频同一类已知限制 |
 | `instance/` 在部署机器 | 需挂载真实目录否则上传 500 | 部署脚本里 `node scripts/check-instance.mjs` 兜底 |
-| 初次部署既有库 | `FISH_ENCRYPTION_KEY` 必须留空，否则解不开存量密文 | `npm run diagnose` 会校验 |
+| 初次部署既有库 | `FISH_ENCRYPTION_KEY` 必须留空，否则解不开存量密文 —— 受影响的是**回调签名密钥**（`fish_webhook_endpoints.secret_encrypted`），商户再也收不到通知且**不可逆** | `npm run diagnose` 段 4 抽查真实密文 |
+| 账目**没有第二个存储可以核对**（账户服务搬进站内后，`users.driedFish` 是唯一真源） | 有人改了余额却漏写流水这类静默损坏，没有外部的复式账本会替你发现 | 记账只走 `postEntry` 一扇门；不变式「每人余额 == 他所有流水之和」由 `tests/helpers/fish-ledger.ts` 的 `expectLedgerConsistent()` 钉着，写路径的用例都调它 |
 | 反代改写了 `Host` 且未透传 `X-Forwarded-Host` | 浏览器 `Origin` 与三个来源都对不上 → 全站 POST 403（CSRF 误杀）。nginx 默认就把 `Host` 设成 `$proxy_host`（upstream 地址），所以**两个头都要显式透传** | `ALLOWED_ORIGINS="你的域名"` 兜底或修 nginx |
 
 ---

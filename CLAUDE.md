@@ -10,7 +10,9 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 - **Prisma 6** 直连 SQLite —— 开发库 `instance/database/dev.db`（`.env`），生产库 `db.db`
   （`.env.production.example`）。**两个不同的文件**，文档里笼统说「db.db」是旧笔误
 - **JWT** 会话 + `session_version` 失效机制（改密 / 强制下线时递增，旧会话立即失效）
-- **FastAPI 账户微服务** 独立仓库部署，本仓通过 HTTP 调用
+- **单进程自洽** —— 唯一的部署单元就是这个 Next 应用。鱼干账户曾在站外一个 FastAPI
+  微服务里，已于 2026-09 搬进站内（历史注记见 `docs/architecture.md` §6.3.1）；
+  库表里还剩两处物理痕迹，见 `docs/legacy-constraints.md` §1.1
 - **迁移走手写 SQL**（**不要用 `prisma migrate`**）—— 详见下面「数据库迁移」
 
 上一版是 Flask 单体（2026-07 被替换），源码已在 git 历史中删除（要考古从 `7d7be1c^` 检出），
@@ -87,7 +89,8 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 - **非核心账号没有鱼干赚取渠道**（「鱼干 = core+ 体系的报酬」这条口径的地基）。
   **新增任何发鱼路径前，先确认这一条仍然成立** —— 给全站空投等于「注册就有鱼干」。
   练手盘（`/fish/trade`）**仍然成立**：它是签到之外的**第二条 core+ 渠道**，档位与
-  签到、投喂同档，没有把口子开到非核心账号上。它的 mint 是从系统账户（无限水池）出的，
+  签到、投喂同档，没有把口子开到非核心账号上。它的 mint 是**账外的**（赚了凭空加进
+  用户余额、亏了少发给他，没有「系统账户」那一行 —— 见 `docs/architecture.md` §6.3），
   所以**不受「预算有界」约束** —— 有界性来自档位，不来自额度。
 - **练手盘的成交价必须在下单那一刻现取**（`fetchQuote`），**绝不读展示缓存**。
   缓存价 = 看盘的人可以在价格跳动后、缓存刷新前下单，那是无风险、可重复、无上限的套利。
@@ -115,8 +118,11 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
   放开方向推 `{refresh:true}`。
 - **兜底快照 `GET /api/notifications/count` 不能删** —— SSE 有「连着但收不到」的半死状态，
   只有轮询能纠正，且它在本地开发时完全看不出来。
-- **远端 HTTP 绝不能在 SQLite 事务内** —— 写锁会被占满整个超时，并发写直接 `database is locked`。
-  任何「写库 + 调外部 HTTP」的新功能都照此办理。
+- **HTTP 绝不能在 SQLite 事务内** —— 写锁会被占满整个超时，并发写直接 `database is locked`。
+  任何「写库 + 调外部 HTTP」的新功能都照此办理。**现行唯一样板是鱼干收款回调的 outbox**
+  （`fish-webhook-service.ts`：投递行与流水同事务写入、投递在事务外）——
+  账户微服务当年那条最大的 HTTP 路径已搬进站内，**别以为这条红线随之作废**：
+  商户回调仍然是跨进程的，市场行情源（`market-price.ts`）也仍然是。
 - **权限变更分两类**：禁言 / 重置密码 / 强制下线递增 `sessionVersion`（会话已废）→
   `kickUser` + `kickTopbarUser` **成对**出现；改角色 / 专注模式**只推不踢**。
 - **改 `RULES` 的数值要同步对外文档** —— `docs/bot/` 三份与 `docs/guide/` 的投票 / 图床指南
@@ -156,15 +162,24 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 
 ### 鱼干写路径
 
-`docs/architecture.md` §6.3 是主副本；各文件头分别讲自己那一段：`src/lib/fish-sync.ts`
-（账本 + 崩溃窗口）、`fish-market-service.ts`（转账为何没有退款中间态）、`fish-compensate.ts`
-（群发补偿）、`fish-units.ts`（单位换算与 `Blog.fishCount` 例外）、`service-accounts.ts`
-（配额白名单）。注册建号两个入口共用 `user-service.ts` 的 `createUserAccount` 内核。
+`docs/architecture.md` §6.3 是主副本（**§6.3.1 是「这里曾经跨进程」的历史注记** ——
+账户微服务已于 2026-09 搬进站内，别再照「远端 / 补偿 / 账本」的旧形状写新代码）。
+各文件头分别讲自己那一段：**`fish-service.ts` 的 `postEntry`（唯一记账内核）**、
+`fish-idempotency.ts`（**哪些操作才登记幂等**的判据）、`fish-market-service.ts`
+（转账的客户端幂等键与共享单号）、`fish-compensate.ts`（群发补偿为何要登记）、
+`fish-units.ts`（单位换算与 `Blog.fishCount` 例外）、`service-accounts.ts`（配额白名单）。
+注册建号两个入口共用 `user-service.ts` 的 `createUserAccount` 内核。
+
+**记账不变式**：每人 `users.driedFish` == 他所有 `fish_transactions.amount` 之和。
+测试侧由 `tests/helpers/fish-ledger.ts` 的 `expectLedgerConsistent()` 钉住 ——
+**新增任何鱼干写路径时，在它的用例末尾调一次**。别自己写 `update` + `create` 绕过
+`postEntry`。
 
 ### 鱼干练手盘
 
 `docs/architecture.md` §6.13 是主副本；各文件头讲自己那一段：`src/lib/market-service.ts`
-（开平仓的三段式、平仓为何不需要幂等键、`payoutUnits` 的 floor 舍入、最小投入为何是 1 条）、
+（**一个事务、没有补偿**、开仓的幂等靠 `open_key` 唯一约束而非独立幂等记录、
+平仓为何不需要幂等键、`payoutUnits` 的 floor 舍入、最小投入为何是 1 条）、
 `src/lib/market-price.ts`（**成交价现取 vs 展示缓存**这条安全边界、为什么用币安 `.vision`
 域、基址可配的两个理由）。
 
@@ -219,9 +234,27 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 
 `src/lib/sticker-refs.ts` 头部（正则纪律与分隔符选择）+ `sticker-service.ts` 头部
 （扫盘缓存三层）+ `docs/architecture.md` §6.6（raw 路由按字节复核、拒绝 SVG）。
-「讨论点表情是直接发送、评论是插入光标处」的行为口径见 `docs/guide/表情包使用指南.md`，
 其机制（`sendWith(token, { keepDraft: true })`，以及为什么正文必须从参数来而不是读 state）
 在 `src/app/chat/ChatApp.tsx` 的 `sendWith` 上方。
+
+**两个来源共用一条管道**，行为口径见 `docs/guide/表情包使用指南.md`：
+
+- 站长放的图片表情（`instance/stickers/`）—— 讨论点一下**直接发送**；
+- **内置黄脸**（`emoji-faces.ts` 的编译期清单 → `public/static/emoji/`，
+  `scripts/copy-emoji-assets.mjs` 从 npm 包拷）—— **和文字一样大**（叠一个
+  `rich-emoji-ref` 类压到 1.2em，见 `_markdown-body.scss`），且点一下**插进输入框**，
+  讨论区也不例外。评论端两类都插。
+
+三条容易踩的：
+
+- **黄脸 img 必须保留 `rich-sticker-ref` 类**（只叠不加换）——降级链是按那个类名过滤的
+  （`RichContentBody.tsx`），换掉它缺图时会显示裂图而不是原文 token。
+- **别照拷 npm 包里那份 LICENSE**：`@twemoji/svg` 只写了打包者自己的 MIT，
+  素材实际是 **CC BY 4.0**（出处 `jdecked/twemoji` 的 `LICENSE-GRAPHICS`）。复制脚本
+  自己生成正确的 `LICENSE.txt`，署名落在源码注释里（Twemoji 官方接受这种形式）。
+- **这里的 SVG 不违反那条「拒绝 SVG」的闸门**：那条防的是 `instance/stickers/` 这个
+  无上游校验的运行时目录；黄脸是构建期从锁版本 npm 包生成、且只以 `<img src>` 引用。
+  复制脚本里有安全哨兵（脚本 / 事件属性 / 外链 → 构建失败）盯着，理由写在它文件头。
 
 ### 画报与鱼干收款码
 

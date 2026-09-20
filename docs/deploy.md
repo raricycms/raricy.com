@@ -13,7 +13,6 @@
 | SQLite | 库本身系统自带 | 应用走 Prisma 自带的 sqlite 引擎；运维脚本走 Node 内置 `node:sqlite` —— **不依赖 `better-sqlite3`**。但 `npm run prepare:cutover`（§4）与备份验证（§10）都调用系统 `sqlite3` **命令行**，用这两条路径就得装它（`apt install sqlite3`） |
 | nginx | 可选（直连 `:3000` 也行） | 推荐，反代配 cookie/CSRF 关键头 |
 | systemd | 可选 | 推荐，开机自启 + 自动重启 |
-| 账户服务 | 独立仓库部署；与本站 **HTTP 可达** | 否则鱼干写路径 fail-closed 503 |
 | **中文字体** | **必须有**（任意含 CJK 的字体，见下） | 画报 / 收款码 / **文章分享卡片**都是服务端用 sharp（librsvg + fontconfig）光栅化的，**没有中文字体时图上的字全是豆腐块**。二维码不受影响（矢量矩形），所以图能生成、也能扫 —— 只有字是方框，属于「半坏」状态，最容易漏掉。见 `npm run diagnose` 段 5「画报中文字体」 |
 | **行情源出口** | **墙内服务器要实测一次** | 练手盘（`/fish/trade`）的成交价是下单那一刻向 `data-api.binance.vision` **现取**的，拉不到就拒单 —— 出口不通时那个页面一直显示「行情暂不可用」、买卖按钮点不动，而**站点其余部分完全正常**。墙对这类域名的策略会变，开发机上通不代表这台通。`npm run diagnose` 段 6 会探；不通就换 `MARKET_PRICE_BASE_URL`（`api.gateio.ws` 实测墙内可达），不用改代码 |
 
@@ -107,11 +106,11 @@ vim .env
 | 变量 | 必须 | 含义 | 配错代价 |
 |------|------|------|---------|
 | `DATABASE_URL` | ✅ | Prisma 库的 URL | 起不来 |
-| `SECRET_KEY` | ✅ | JWT 签名 + 鱼干密钥派生源 | 详见下文 |
-| `FISH_ENCRYPTION_KEY` | ⚠️ | 鱼干密钥派生（优先生效） | 详见下文 |
+| `SECRET_KEY` | ✅ | JWT 签名 + 回调签名密钥的派生源 | 详见下文 |
+| `FISH_ENCRYPTION_KEY` | ⚠️ | 同上：回调签名密钥派生（优先生效） | 详见下文 |
 | `ALLOWED_ORIGINS` | ⚠️ | CSRF 白名单 | 必填或反代必透传 `X-Forwarded-Host` |
 | `COOKIE_SECURE` | 可选 | cookie `Secure` 标记 | 配错则登录"成功但不粘" |
-| `ACCOUNT_SERVICE_*` | ⚠️ | 账户微服务连接 | 投喂/签到/注册/CLI → 503 |
+| `ACCOUNT_SERVICE_*` | **已废除** | 账户微服务的连接四件套。账户逻辑已搬进站内，这四个变量**不再被任何代码读取** | 留着没有任何效果，删掉即可（见 §12「下线账户微服务」） |
 | `FISH_SERVICE_ACCOUNTS` | 可选 | 鱼干服务账号白名单（逗号分隔的 **user id**）：转账配额 30/200 → 500/5000，给站外银行这类自动化账号用（`docs/bot/fish-bot.md` §4） | 留空 = 无人享受高配额，不影响其他功能 |
 | `FISH_WEBHOOK_DRAIN_MS` | 可选 | 收款回调的投递扫描间隔（毫秒，默认 `30000`）。**`0` = 关闭定时投递** | 关掉后回调只会由 `fish webhook-retry` 推动；`/fish/api` 上登记的地址照样收不到通知 |
 | `FISH_WEBHOOK_TIMEOUT_MS` | 可选 | 单次回调投递的超时（毫秒，默认 `5000`） | 商户端点慢于这个值会被判失败并重试 |
@@ -120,14 +119,14 @@ vim .env
 ### `SECRET_KEY` 的硬要求
 
 - **跨环境保持一致**：从生产环境**原样搬过来**，不要重新生成。
-- 它是 JWT 签名密钥，也是鱼干用户 API Key 字段的加密密钥派生源。
-- 切换期若改了，全库已加密的 API Key 全解不开 → 鱼干功能集体失效、**不可逆**。
+- 它是 JWT 签名密钥，也是**回调签名密钥**（`FishWebhookEndpoint.secretEncrypted`）的加密密钥派生源。
+- **一旦改了**：已下发的会话全部失效（所有人被登出，重新登录即可 —— 这一步可恢复）；但库里已加密的回调签名密钥**全解不开** → **商户再也收不到回调**（密文没坏，只是没了钥匙），**不可逆**。
 - 验证方式：`npm run diagnose` 段 4 会抽 5 条库内真实密文试解报对错。
 
 ### `FISH_ENCRYPTION_KEY` 必须留空
 
-- **首次部署既有库**：留空。否则派生密钥变了，存量密文全解不开。
-- 全新部署 / 空库：可独立设值，与 SECRET_KEY 解耦。
+- **首次部署既有库**：留空。否则派生密钥变了，库里的回调签名密钥密文全解不开 —— 症状同上一条。
+- 全新部署 / 空库：可独立设值，与 SECRET_KEY 解耦（那时库里还没有任何密文）。
 
 ### 反向代理下的关键头
 
@@ -197,7 +196,7 @@ npm run prepare:cutover -- \
 ```bash
 DATABASE_URL="file:/绝对路径/instance/database/db.db" npm run migrate -- up
 # 走 0_init 把所有表建好
-# 之后按 .env.production.example 填 SECRET_KEY / ACCOUNT_* 等即可
+# 之后按 .env.production.example 填 SECRET_KEY 等即可
 ```
 
 > ⚠️ 不要用 `prisma migrate deploy` —— 本项目自己维护 `_raricy_migrations`
@@ -315,9 +314,6 @@ ssl_certificate_key /etc/letsencrypt/live/raricy.com/privkey.pem;
 [Unit]
 Description=raricy.com (Next.js)
 After=network.target
-# 如果 account-service 在同机,加上让它先起来
-# After=account-service.service
-# Wants=account-service.service
 
 [Service]
 Type=simple
@@ -388,7 +384,7 @@ npm run diagnose -- --url https://raricy.com
 #   段 1:环境变量
 #   段 2:数据库文件
 #   段 3:时间戳格式(登录 500 头号元凶)
-#   段 4:小鱼干密钥(切换前必查,错了不可逆)
+#   段 4:回调签名密钥(上线前必查,错了不可逆)
 #   段 5:画报中文字体 —— 服务器缺字体时画报上的字全是豆腐块,而二维码仍能扫
 #         (接口 200、图能生成、也能扫,是最容易漏掉的"半坏"状态)
 #   段 6:练手盘行情源 —— 出口不通时 /fish/trade 一直"行情暂不可用",站点其余部分正常
@@ -435,7 +431,7 @@ sqlite3 /backup/db-20260718.db "select count(*) from users"
 |----|------------|
 | 实时日志 | `journalctl -u raricy-next -f` |
 | 错误过滤 | `journalctl -u raricy-next -p err` |
-| 鱼干对账窗口日志 | grep `ACCOUNT_RECONCILE_REQUIRED` —— 出现要人工核账 |
+| 鱼干账目 | 已无对账日志可盯 —— 余额与流水在同一个事务里提交，没有「本地已提交、别处没落地」的窗口。要核就查库：每人 `users.driedFish` 应等于他 `fish_transactions.amount` 之和（存储单位是 0.1 鱼干，见 `docs/architecture.md` §6.3） |
 | 进程状态 | `systemctl status raricy-next` |
 | 数据库大小 | `du -sh /srv/raricy.com/instance/database/db.db` |
 | 404 异常 IP | 从 nginx access log 里筛 404 高频来源（按需要） |
@@ -463,9 +459,21 @@ journalctl -u raricy-next -f    # 观察启动日志
 - 升级后：`hash -r npm && which node && node -v`
 - 然后 `npm ci && npm run build` 重新构建 native binding
 
-### 升级 account-service（独立仓库）
+### 下线账户微服务（一次性收尾）
 
-不在本仓——拉独立仓库的发布说明。与本站通常**独立发布**，但写路径会因账户服务停而 fail-closed 503，请错峰升级。
+账户逻辑已搬进本仓：账目与业务数据在**同一个 SQLite 文件、同一个事务**里，每笔鱼干操作
+就是一次普通事务。站外那台 FastAPI 服务（独立仓库）**不再被本站调用，可以下线了**：
+
+- 停掉并禁用它的 systemd 单元，关掉它占的端口；
+- 从监控 / 备份里把它摘掉（它若另有域名与证书，一并撤掉）。**不必错峰** —— 本站与它已无
+  任何耦合，它停机不影响鱼干写入（当年要错峰，是因为写路径会因它不通而 fail-closed 503；
+  那条依赖已经不存在了）；
+- 存量 `.env` 里的 `ACCOUNT_SERVICE_*` 四个变量不再被任何代码读取 —— 留着没有任何效果，
+  删掉即可（`../.env.production.example` 里也写了同一句）。
+
+⚠️ 库里有几处**物理痕迹，别删**：`account_sync_ledger` 表现在只是幂等登记表（新行一律
+`synced`）、`users.fish_api_key_encrypted` 列没有任何代码读它。清单与判据见
+`docs/legacy-constraints.md` §1.1。
 
 ## 13. 故障排查速查
 
@@ -474,7 +482,7 @@ journalctl -u raricy-next -f    # 观察启动日志
 | 登录接口返 200 但刷新没登录 | cookie 没 `Secure` 但走 HTTP;或反代未透传 `X-Forwarded-Proto` |
 | 全站 POST 403 | `X-Forwarded-Host` 未透传;设 `ALLOWED_ORIGINS` 兜底 |
 | 图床 413 | nginx `client_max_body_size` ≤ 1MB;改成 12m |
-| 小鱼干 503 | 账户服务不通或不配 `ACCOUNT_SERVICE_INTERNAL_TOKEN`(fail-closed) |
+| 小鱼干相关接口报错 | 已无跨进程依赖可查（账户服务那档 503 不存在了）。业务拒绝（余额不足 / 参数非法）是 400、退出码 1；本地事务失败是真故障，500、退出码 2，此时未做任何变更、可重试。见 `docs/architecture.md` §6.3 |
 | 登录 500 Conversion failed | 只在接手历史库时遇到:时间戳是 SQLAlchemy 文本格式;跑 `npm run prepare:cutover --` |
 | `prisma migrate dev` 提议 reset | 生产**永远不要**跑 `prisma migrate dev` / `db push`；改用 `npm run migrate -- up` |
 | 本地写后 E2E 跑 readonly database | Playwright e2e 测试库名必须唯一(见 `playwright.config.ts` 注释) |
