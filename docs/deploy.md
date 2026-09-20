@@ -15,6 +15,7 @@
 | systemd | 可选 | 推荐，开机自启 + 自动重启 |
 | 账户服务 | 独立仓库部署；与本站 **HTTP 可达** | 否则鱼干写路径 fail-closed 503 |
 | **中文字体** | **必须有**（任意含 CJK 的字体，见下） | 画报 / 收款码 / **文章分享卡片**都是服务端用 sharp（librsvg + fontconfig）光栅化的，**没有中文字体时图上的字全是豆腐块**。二维码不受影响（矢量矩形），所以图能生成、也能扫 —— 只有字是方框，属于「半坏」状态，最容易漏掉。见 `npm run diagnose` 段 5「画报中文字体」 |
+| **行情源出口** | **墙内服务器要实测一次** | 练手盘（`/fish/trade`）的成交价是下单那一刻向 `data-api.binance.vision` **现取**的，拉不到就拒单 —— 出口不通时那个页面一直显示「行情暂不可用」、买卖按钮点不动，而**站点其余部分完全正常**。墙对这类域名的策略会变，开发机上通不代表这台通。`npm run diagnose` 段 6 会探；不通就换 `MARKET_PRICE_BASE_URL`（`api.gateio.ws` 实测墙内可达），不用改代码 |
 
 ### 装中文字体（画报要用）
 
@@ -46,7 +47,7 @@ apk add --no-cache font-wqy-microhei && fc-cache -fv
 
 ```bash
 systemctl restart <你的服务名>
-npm run diagnose                 # 第 5 节「画报中文字体」应当是 ✓
+npm run diagnose                 # 第 5 节「画报中文字体」、第 6 节「行情源」都应当是 ✓
 ```
 
 > **为什么要重启**：fontconfig 的字体集是**进程内缓存**，`next start` 早已初始化过它 ——
@@ -366,7 +367,7 @@ journalctl -u raricy-next -f       # 实时日志
 # 必跑
 cd /srv/raricy.com
 npm run diagnose -- --url https://raricy.com
-# 期望:6 段全绿(带了 --url 会多跑第 6 段)
+# 期望:7 段全绿(带了 --url 会多跑最后一段)
 #   段 0:Node/Next 版本
 #   段 1:环境变量
 #   段 2:数据库文件
@@ -374,7 +375,9 @@ npm run diagnose -- --url https://raricy.com
 #   段 4:小鱼干密钥(切换前必查,错了不可逆)
 #   段 5:画报中文字体 —— 服务器缺字体时画报上的字全是豆腐块,而二维码仍能扫
 #         (接口 200、图能生成、也能扫,是最容易漏掉的"半坏"状态)
-#   段 6:线上活体检查(仅当带 --url)
+#   段 6:练手盘行情源 —— 出口不通时 /fish/trade 一直"行情暂不可用",站点其余部分正常
+#         (同上,另一个"半坏"状态;换 MARKET_PRICE_BASE_URL 即可,不用改代码)
+#   段 7:线上活体检查(仅当带 --url)
 
 # 11 条只读冒烟(需真实账号)
 npm run smoke -- --url https://raricy.com --user <核心用户> --pass <密码>

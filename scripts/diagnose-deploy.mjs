@@ -322,9 +322,60 @@ try {
   wrn(`中文字体探针跳过：${String(e).split('\n')[0]}`, 'sharp 不可用？先在项目目录跑 npm ci');
 }
 
-// ── 6. 线上活体检查 ─────────────────────────────────────────────────────────
+// ── 6. 练手盘的行情源可达性 ──────────────────────────────────────────────────
+//
+// /fish/trade（鱼干练手盘）的成交价是**下单那一刻**向行情源现取的，拉不到就拒单。
+// 所以这条出口不通时，那个页面会一直显示「行情暂不可用」、买卖按钮点不动 ——
+// 站点其余部分完全正常，属于和「缺中文字体」同一类的「半坏」状态。
+//
+// 【为什么值得单独探一次】生产服务器是**阿里云大陆**，而墙对这类域名的策略是
+// 会变的：今天通的域名明天可能被投毒（实测 api.binance.com 解析到 Facebook 的段、
+// www.okx.com 解析到北大 IP）。开发机上通不代表这台通，而它挂掉时**不会报错**，
+// 只会静默地没人能下单。
+//
+// 【不通怎么办】不用改代码 —— 换 MARKET_PRICE_BASE_URL 即可（api.gateio.ws 实测
+// 在墙内也可达），换完重启服务。
+head('6. 练手盘的行情源（/fish/trade 的成交价从这里现取）');
+try {
+  const base = (process.env.MARKET_PRICE_BASE_URL || 'https://data-api.binance.vision')
+    .trim()
+    .replace(/\/+$/, '');
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 8000);
+  let res;
+  try {
+    res = await fetch(`${base}/api/v3/time`, { signal: ctrl.signal, cache: 'no-store' });
+  } finally {
+    clearTimeout(timer);
+  }
+  if (res.ok) {
+    const body = await res.json().catch(() => null);
+    if (body && typeof body.serverTime === 'number') {
+      ok(`行情源可达（${base}）`);
+    } else {
+      wrn(
+        `行情源返回了 200 但不是预期的形状（${base}）`,
+        '可能被中间人/劫持页接管了。换 MARKET_PRICE_BASE_URL 指向别的源再重启服务。'
+      );
+    }
+  } else {
+    wrn(
+      `行情源返回 ${res.status}（${base}）`,
+      '练手盘会一直显示「行情暂不可用」、无法下单（站点其余部分不受影响）。' +
+        '换 MARKET_PRICE_BASE_URL（可试 https://api.gateio.ws）再重启服务。'
+    );
+  }
+} catch (e) {
+  wrn(
+    `行情源不可达（${String(e).split('\n')[0]}）`,
+    '练手盘会一直显示「行情暂不可用」、无法下单（站点其余部分不受影响）。' +
+      '这是墙内服务器的常见状态 —— 换 MARKET_PRICE_BASE_URL（可试 https://api.gateio.ws）再重启服务。'
+  );
+}
+
+// ── 7. 线上活体检查 ─────────────────────────────────────────────────────────
 if (urlArg) {
-  head(`6. 线上活体检查（${urlArg}）`);
+  head(`7. 线上活体检查（${urlArg}）`);
   const base = urlArg.replace(/\/$/, '');
   const isHttps = base.startsWith('https://');
   if (!isHttps) {
