@@ -1,17 +1,23 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // fish-service.ts — 小鱼干服务
 //
-// 本切片实现读路径（余额 / 流水 / 排行榜）+ 一个供签到复用的本地写入 addFish()。
+// 读路径（余额 / 流水 / 排行榜）+ 写路径的**唯一记账内核** postEntry()。
 //
-// ⚠️ 写路径 fail-closed：本函数**只在本地事务内加钱**，刻意不碰远端 ——
-//   它收的是调用方的 tx，而远端 HTTP 绝不能放进事务（写锁会被占满整个超时，
-//   并发写直接 database is locked，见 docs/architecture.md §6.3）。
+// 【记账内核】`postEntry(tx, { userId, units, ... })` 收调用方的 tx，
+//   在**同一个事务里**改余额 + 写一行 `fish_transactions`。这是全站唯一改
+//   `users.driedFish` 的入口 —— 钱的路径只有一扇门，才谈得上「余额与流水对得上」。
 //
-//   远端同步与失败补偿是**调用方**的责任，统一走 src/lib/fish-sync.ts 的账本机制：
-//   本地事务提交时顺带记一行 pending，事务外调远端，失败则用补偿事务精确撤销
-//   （对用户等价于「回滚 + 503」）。四个调用方：
-//   checkin-service（翻牌发鱼）、feed-service（作者分成）、
-//   fish-admin（CLI grant / deduct）、fish-market-service（转账收款方）。
+//   ⚠️ **必须在调用方的事务里调用**。单条 UPDATE + 一条 INSERT 之间若没有事务包着，
+//   「余额改了、流水没写」就是一次静默的账目损坏。
+//
+// 【为什么没有「远端账户服务」这一层】本站的鱼干账户曾经在站外一个独立的 FastAPI
+//   微服务里，每次写都要 fail-closed 地调它，失败再由补偿事务撤销本地写入。那个边界
+//   已经撤销（见 docs/architecture.md §6.3）：账目与业务数据在同一个 SQLite 文件里，
+//   一个事务就能保证原子性，不需要补偿，也不可能出现「两个存储对不上」。
+//   历史注记与当年那套 outbox 的失败模式见 §6.3。
+//
+// 【单位】入参 units 是**存储单位**（0.1 鱼干）的有符号整数，由调用方用
+//   `fishToUnits()` 从业务鱼干换算而来。见 fish-units.ts。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { prisma } from './db';
@@ -238,42 +244,76 @@ export async function getBalanceLeaderboard(limit = 50): Promise<FishLeaderboard
   }));
 }
 
-// ── 写入（供签到等复用，仅本地）─────────────────────────────────────────────
+// ── 写入：记账内核 ──────────────────────────────────────────────────────────
 
-export interface AddFishInput {
+/**
+ * 余额不足（扣减时条件写的谓词没命中）。
+ *
+ * 与「用户不存在」在实现上都会让条件写的 count 为 0，本内核**不区分**它们：
+ * 两者的正确处理都是让事务失败，而调用方要区分的只是「这是业务错误还是故障」。
+ * 需要业务文案的调用方接住它转成自己的错误类型。
+ */
+export class InsufficientFishError extends Error {
+  constructor(
+    public readonly userId: string,
+    public readonly neededUnits: number
+  ) {
+    super(`小鱼干不足（user=${userId} 需要 ${neededUnits} 单位）`);
+    this.name = 'InsufficientFishError';
+  }
+}
+
+export interface PostEntryInput {
   userId: string;
-  amount: number;
+  /**
+   * **存储单位**（0.1 鱼干）的有符号整数。正 = 入账，负 = 出账。
+   * 0 / 非整数 / 非有限数一律抛 —— 静默吞掉一笔 0 会让流水与实际余额对不上。
+   */
+  units: number;
   type: string;
   description?: string | null;
   referenceType?: string | null;
   referenceId?: string | null;
   relatedUserId?: string | null;
   /**
-   * 用户间转账的共享单号。只有 fish-market-service 的转账会传它 ——
-   * 其余三个调用方（fish-admin / feed-service / checkin-service）没有对手方，
-   * 留空即 NULL，别为了「统一」给它们编一个（见 migrations/14_fish_transfer_id）。
+   * 用户间转账的共享单号。**只有 fish-market-service 的转账会传它** ——
+   * 其余调用方（fish-admin / feed-service / checkin-service / market-service）
+   * 没有对手方，留空即 NULL，别为了「统一」给它们编一个
+   * （见 prisma/migrations/14_fish_transfer_id）。
    */
   transferId?: string | null;
 }
 
 /**
- * 增加小鱼干 + 写流水（仅本地写）。必须在一个事务里调用，
- * tx 由调用方从 prisma.$transaction 传入，以便与其它写入原子提交。
+ * 记账内核：改余额 + 写一行流水。**全站唯一改 `users.driedFish` 的地方。**
  *
- * @returns 创建的流水行 id —— 供写路径的远端同步失败补偿（fish-sync）精确删除。
- *
- * ⚠️ 生产上线：调用链要在远端账户服务 transfer 成功后才提交该事务（fail-closed）。
+ * @param tx 调用方的事务客户端。必须由 `prisma.$transaction` 传入 ——
+ *           与其它写入（订单、持仓、回调出账…）原子提交。
+ * @returns 创建的流水行 id
+ * @throws InsufficientFishError 出账时余额不足
  */
-export async function addFish(tx: TxClient, input: AddFishInput): Promise<{ txId: number }> {
-  if (input.amount <= 0) throw new Error('amount 必须为正数');
+export async function postEntry(tx: TxClient, input: PostEntryInput): Promise<{ txId: number }> {
+  const { units } = input;
+  if (!Number.isInteger(units) || units === 0) {
+    throw new Error(`units 必须是「非零整数」（存储单位 0.1 鱼干）: ${units}`);
+  }
 
-  // 存储 = 0.1 鱼干为单位（fish-units.ts）；input.amount 是业务单位的鱼干。
-  const units = fishToUnits(input.amount);
-
-  await tx.user.update({
-    where: { id: input.userId },
-    data: { driedFish: { increment: units } },
-  });
+  if (units < 0) {
+    // 出账：谓词写进 UPDATE（`driedFish >= need`），单条语句完成判定 + 扣减 ——
+    // 读出来再判断再写回去会与并发扣款互相覆盖，扣出负余额。
+    const need = -units;
+    const dec = await tx.user.updateMany({
+      where: { id: input.userId, driedFish: { gte: need } },
+      data: { driedFish: { decrement: need } },
+    });
+    if (dec.count === 0) throw new InsufficientFishError(input.userId, need);
+  } else {
+    // 入账：increment 不可能变负，不需要条件写（DB 侧原子加，不是读-改-写）。
+    await tx.user.update({
+      where: { id: input.userId },
+      data: { driedFish: { increment: units } },
+    });
+  }
 
   const row = await tx.fishTransaction.create({
     data: {
@@ -294,4 +334,30 @@ export async function addFish(tx: TxClient, input: AddFishInput): Promise<{ txId
     select: { id: true },
   });
   return { txId: row.id };
+}
+
+export interface AddFishInput {
+  userId: string;
+  /** 业务单位的鱼干，**必须为正**。 */
+  amount: number;
+  type: string;
+  description?: string | null;
+  referenceType?: string | null;
+  referenceId?: string | null;
+  relatedUserId?: string | null;
+  transferId?: string | null;
+}
+
+/**
+ * 入账（只加不减）。`addFish` 与 `postEntry` 的关系是**语义收窄**：
+ * 前者说「这是一笔收入」（投喂分成、签到发鱼、转账收款），后者说「这是一笔账」。
+ * 收窄是有用的 —— 读到 `addFish` 就不必去确认 amount 的符号。
+ *
+ * @throws Error amount 非正数（负数请直接用 postEntry：那是一次出账）
+ */
+export async function addFish(tx: TxClient, input: AddFishInput): Promise<{ txId: number }> {
+  if (!Number.isFinite(input.amount) || input.amount <= 0) {
+    throw new Error('amount 必须为正数');
+  }
+  return postEntry(tx, { ...input, units: fishToUnits(input.amount) });
 }
