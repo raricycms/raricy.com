@@ -98,7 +98,11 @@ const load = () =>
 const save = (db) => fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2));
 let db = load();
 
-const round2 = (n) => Math.round(n * 100) / 100;
+// 入账一律收敛到**站点发过来的那个精度**再累加。
+// ⚠️ 2026-09 之前站点只发 1 位小数，很多示例写的是 round2（两位）—— 那现在会**静默少记**：
+// 站点发的金额可以带 4 位小数，每笔四舍五入到 2 位，几百笔之后你的余额和站内流水就对不上，
+// 而且不报任何错。这里的位数必须 ≥ 站点精度（当前 4 位）。
+const round4 = (n) => Math.round(n * 10000) / 10000;
 
 // ── ① 验签 ──────────────────────────────────────────────────────────────────
 // 校验用的是**原始请求体**。先 JSON.parse 再 stringify 会改掉空白与键序，
@@ -163,9 +167,9 @@ const server = http.createServer((req, res) => {
     if (!customerId) {
       // 这个人还没在我们这里认领过账号 —— 钱记到「待认领」池子里，
       // 等他走 §3 的认领流程。**绝不能凭 note 猜他是谁。**
-      db.balances.__unclaimed = round2((db.balances.__unclaimed ?? 0) + evt.amount);
+      db.balances.__unclaimed = round4((db.balances.__unclaimed ?? 0) + evt.amount);
     } else {
-      db.balances[customerId] = round2((db.balances[customerId] ?? 0) + evt.amount);
+      db.balances[customerId] = round4((db.balances[customerId] ?? 0) + evt.amount);
       console.log(`[入账] ${customerId} +${evt.amount}（单号 ${evt.transfer_id}）`);
     }
     save(db);
@@ -213,7 +217,7 @@ async function reconcile() {
         // 与回调**共用同一把去重键**（`tx:<共享单号>`）—— 同一笔到账可能先被回调
         // 记过、又被对账扫到，共用一个命名空间才会在这里跳过，而不是再入一次。
         db.seenDeliveries.push(`tx:${tx.transfer_id}`);
-        db.balances[customerId] = round2((db.balances[customerId] ?? 0) + tx.amount);
+        db.balances[customerId] = round4((db.balances[customerId] ?? 0) + tx.amount);
         console.log(`[对账补录] ${customerId} +${tx.amount}（单号 ${tx.transfer_id}）`);
       }
     }

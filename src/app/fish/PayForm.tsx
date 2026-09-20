@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Avatar from '@/app/components/Avatar';
+import { AMOUNT_ERROR, fmtFish, parseFishAmount, roundFish } from '@/lib/fish-amount';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PayForm.tsx — 付款表单（收银台 /fish/pay 与扫码收款页 /fish/collect **共用**）
@@ -38,24 +39,19 @@ declare global {
 
 export type PayFormVariant = 'cashier' | 'collect';
 
-/** 最多 1 位小数的正数 —— 与 fish-units 的口径一致（前端先挡一道，服务端仍会复核）。 */
-const AMOUNT_RE = /^\d+(\.\d)?$/;
 /** 快捷金额（与鱼干市场转账页同一组）。 */
 const QUICK = [1, 5, 10];
 /** 备注长度上限 —— 与 fish-market-service 的 TRANSFER_NOTE_MAX 同值。
  *  （那边是服务端模块，客户端组件不能 import，故此处另立一份常量。） */
 const NOTE_MAX = 30;
 
-/** 鱼干展示：最多 1 位小数，去掉无意义的尾零。 */
-function fmtFish(n: number): string {
-  return String(Math.round(n * 10) / 10);
-}
-
 /** 金额校验：返回错误文案，空串表示通过。 */
 function validateAmount(text: string, balance: number): string {
-  if (!AMOUNT_RE.test(text)) return '金额最多 1 位小数';
+  if (parseFishAmount(text) === null) return AMOUNT_ERROR;
   // 位数上界：新键那一路要把金额拼进幂等键，而键有 48 字上限（见 idempotencyKeyFor）。
   // 不挡的话，一个 28 位以上的金额会让服务端回「幂等键格式不合法」—— 报的是内部实现。
+  // 16 这个数留有余量：金额的整数部分最多 16 位，小数部分 4 位（FISH_DECIMALS）后
+  // 仍是 21 字，离 48 字上限还远。
   if (text.length > 16) return '金额数字过长';
   const n = Number(text);
   if (!(n > 0)) return '金额需大于 0';
@@ -143,7 +139,7 @@ export default function PayForm({
       ? Number(amountText)
       : 0
     : amount;
-  const afterBalance = Math.round((balance - effectiveAmount) * 10) / 10;
+  const afterBalance = roundFish(balance - effectiveAmount);
   const merchantHost = returnUrl ? new URL(returnUrl).host : '';
   const canSubmit = !busy && !!password && (!isCollect || (!!amountText && !amountError));
 

@@ -230,6 +230,61 @@ DATABASE_URL="file:/绝对路径/instance/database/db.db" npm run migrate -- up
 
 `npm run migrate -- verify` 比对已应用迁移的 checksum 与当前文件，发现漂移会报错。
 
+#### 含数据变换的迁移（必须停服，别滚动）
+
+上面那套流程对**纯 DDL** 迁移够用（加个表、加个列，新旧代码都能跑）。但**含数据变换**的
+迁移不同：它把库里的值按比例改写，而**应用进程里有一个编译期常量（`FISH_UNIT_SCALE`）
+必须与库里的标度同一时刻切换**。跑反了、或者两边并行了一会儿，都是**静默的错账**，
+没有任何断言会当场报错：
+
+| 顺序 | 后果 |
+|------|------|
+| 先迁移、后换代码 | 旧代码除以旧标度 → 余额显示成 1000 倍；写库只写 1/1000 |
+| 先换代码、后迁移 | 新代码除以新标度 → 余额显示成 1/1000 |
+| 两边并行（滚动重启 / 先 `npm run build` 再择机重启） | **最坏**：两个进程各按自己的标度写，流水与余额在同一个库里混着两个标度，各自内部还自洽，只有对账时才发现 |
+
+所以含数据变换的迁移一律：
+
+```bash
+# 1) 停应用（systemd 单元 / pm2 / 你用什么停什么）—— 确认端口真的没人听了
+# 2) 备份。⚠️ 必须用 SQLite 自己的机制，不能 cp：
+#    库是 WAL 模式（src/lib/db.ts），cp 只拿主文件会漏掉 db.db-wal 里尚未检查点的写入，
+#    得到的是一份**陈旧**快照 —— 它会「成功」，但少了最近的交易。
+sqlite3 /path/to/instance/database/db.db ".backup '/path/to/backup-$(date +%F-%H%M).db'"
+#    没有 sqlite3 CLI 时可用 node（VACUUM INTO 同样是一致性快照）：
+#    node -e "new (require('node:sqlite').DatabaseSync)('/path/to/db.db',{readOnly:true})"
+#      .exec(\"VACUUM INTO '/path/to/backup.db'\")
+# 3) 迁移
+DATABASE_URL="file:/绝对路径/instance/database/db.db" npm run migrate -- status   # 确认 pending
+DATABASE_URL="file:/绝对路径/instance/database/db.db" npm run migrate -- up
+DATABASE_URL="file:/绝对路径/instance/database/db.db" npm run migrate -- verify
+# 4) 只读核对（见下）—— **通过之后**才部署代码、启动
+```
+
+⚠️ **不要**先 `npm run build` 再择机重启：构建产物里已经带上新常量，落盘即处于危险态。
+
+迁移后的只读核对（以 `21_fish_units_1e4` 为例，把 `1000` 换成该次的比例）：
+
+```sql
+SELECT COUNT(*) FROM users WHERE dried_fish <> ROUND(dried_fish);            -- 迁移**前**必须是 0
+SELECT MAX(dried_fish), SUM(dried_fish) FROM users;                          -- 应精确 = 迁移前 ×1000
+SELECT typeof(dried_fish), COUNT(*) FROM users GROUP BY 1;                   -- REAL 亲和下为 real，正常
+-- 记账不变式：每人余额 == 他所有流水之和（这条不过就不要启动）
+SELECT COUNT(*) FROM users u WHERE u.dried_fish <>
+  (SELECT COALESCE(SUM(t.amount), 0) FROM fish_transactions t WHERE t.user_id = u.id);
+SELECT name, checksum FROM _raricy_migrations WHERE name LIKE '21_%';        -- 有且仅一行
+```
+
+`21_fish_units_1e4` 会在自己的事务里写这行跟踪记录（哨兵），所以**重复执行不会二次翻倍** ——
+但**千万不要手工重跑任何相对乘法的迁移**。若 `verify` 报这条迁移 checksum 漂移且值是
+`pending`，说明上次「SQL 已提交、跟踪表没来得及刷新」，数据是对的，跑
+`npm run migrate -- mark 21_fish_units_1e4` 刷新即可。
+
+另注：**迁移 SQL 本身没有任何自动化测试会跑**（测试库由 `prisma db push` 建，走不到
+`prisma/migrations/`）。`tests/unit/fish-migration-21.test.ts` 是为补这个洞加的：
+它在临时库上照着**生产形态**（REAL 亲和列）重建这几列、灌已知值、原样执行迁移文件、
+逐行断言。新增数据变换迁移时照抄那个文件的形态。
+
 > 永远不要在生产跑 `prisma migrate dev` / `prisma db push` / `prisma migrate reset`——它们会无视 `_raricy_migrations` 直接动 schema。
 
 ## 5. 依赖安装 + 构建 + 启动
@@ -431,7 +486,7 @@ sqlite3 /backup/db-20260718.db "select count(*) from users"
 |----|------------|
 | 实时日志 | `journalctl -u raricy-next -f` |
 | 错误过滤 | `journalctl -u raricy-next -p err` |
-| 鱼干账目 | 已无对账日志可盯 —— 余额与流水在同一个事务里提交，没有「本地已提交、别处没落地」的窗口。要核就查库：每人 `users.driedFish` 应等于他 `fish_transactions.amount` 之和（存储单位是 0.1 鱼干，见 `docs/architecture.md` §6.3） |
+| 鱼干账目 | 已无对账日志可盯 —— 余额与流水在同一个事务里提交，没有「本地已提交、别处没落地」的窗口。要核就查库：每人 `users.driedFish` 应等于他 `fish_transactions.amount` 之和（存储单位是 0.0001 鱼干，见 `docs/architecture.md` §6.3） |
 | 进程状态 | `systemctl status raricy-next` |
 | 数据库大小 | `du -sh /srv/raricy.com/instance/database/db.db` |
 | 404 异常 IP | 从 nginx access log 里筛 404 高频来源（按需要） |

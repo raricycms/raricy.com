@@ -66,8 +66,9 @@ model User {
   role String @default("user")
 
   totalFortune Int @default(0) @map("total_fortune")
-  // ⚠️ 存储单位 = 0.1 鱼干（整数）。原为 Float，已整数化防 IEEE754 账目漂移，
-  // 数据 ×10 见 prisma/migrations/3_fish_integer_units；换算见 src/lib/fish-units.ts。
+  // ⚠️ 存储单位 = 0.0001 鱼干（整数）。原为 Float，已整数化防 IEEE754 账目漂移；
+  // 粒度由 3_fish_integer_units（×10，0.1 鱼干）经 21_fish_units_1e4（×1000）抬到现在。
+  // 换算见 src/lib/fish-units.ts（那是活的权威）。
   // SQLite 列仍是 REAL 亲和（动态类型，整数值无损存取；db pull 会显示 Float，以此注释为准）。
   driedFish Int @default(0) @map("dried_fish")
 
@@ -191,8 +192,9 @@ model Blog {
   createdAt     DateTime? @map("created_at")
   ignore        Boolean?  @default(false)
   likesCount    Int?      @default(0) @map("likes_count")
-  // ⚠️ 与下面那些「存储单位 = 0.1 鱼干」的列**不同**：这列是**鱼干**口径的整数（投喂累加），
-  // 未经 Float 时代、未被 3_fish_integer_units 触碰，**不参与 fish-units 换算**。别顺手统一。
+  // ⚠️ 与上面那些「存储单位 = 0.0001 鱼干」的列**不同**：这列是**鱼干**口径的整数（投喂累加），
+  // 未经 Float 时代，也未被 3_fish_integer_units / 21_fish_units_1e4 触碰，
+  // **不参与 fish-units 换算**。feedBlog 只收 1~5 的整数，所以喂进来的恒是整数。别顺手统一。
   fishCount     Int       @default(0) @map("fish_count")
   commentsCount Int?      @default(0) @map("comments_count")
   lastCommentAt DateTime? @map("last_comment_at")
@@ -267,8 +269,8 @@ model BlogFeed {
   id        Int       @id @default(autoincrement())
   blogId    String    @map("blog_id")
   userId    String    @map("user_id")
-  // ⚠️ 存储单位 = 0.1 鱼干（整数），原 Float 已整数化，见 User.driedFish 注释与
-  // prisma/migrations/3_fish_integer_units；换算见 src/lib/fish-units.ts。
+  // ⚠️ 存储单位 = 0.0001 鱼干（整数），原 Float 已整数化，见 User.driedFish 注释；
+  // 换算见 src/lib/fish-units.ts。
   // 业务上限 5 鱼干 = 50 单位。
   amount    Int       @default(0)
   createdAt DateTime? @map("created_at")
@@ -517,8 +519,8 @@ model DailyCheckIn {
 model FishTransaction {
   id            Int       @id @default(autoincrement())
   userId        String    @map("user_id")
-  // ⚠️ 存储单位 = 0.1 鱼干（整数），原 Float 已整数化，见 User.driedFish 注释与
-  // prisma/migrations/3_fish_integer_units；换算见 src/lib/fish-units.ts。
+  // ⚠️ 存储单位 = 0.0001 鱼干（整数），原 Float 已整数化，见 User.driedFish 注释；
+  // 换算见 src/lib/fish-units.ts。
   amount        Int
   type          String
   description   String?
@@ -631,7 +633,7 @@ model MarketPosition {
   userId       String    @map("user_id")
   /** 白名单见 src/lib/market-price.ts 的 MARKET_SYMBOLS。加币要同步页面文案。 */
   symbol       String
-  /** 投入的鱼干，**存储单位 = 0.1 鱼干**（同 User.driedFish）。 */
+  /** 投入的鱼干，**存储单位 = 0.0001 鱼干**（同 User.driedFish）。 */
   stakeUnits   Int       @map("stake_units")
   /**
    * 开仓成交价。⚠️ 这是**价格**不是金额，REAL 是刻意的（理由见迁移头部）——

@@ -127,16 +127,21 @@ describe('transferFish —— 成功路径', () => {
     await expectLedgerConsistent('转账 12.5 成功后');
   });
 
-  it('最小额 0.1 可转（1 位小数是允许的，别把下限写成 1）', async () => {
+  it('最小额 0.0001 可转，且 0.1 这样的中间值也没问题（转账没有下限）', async () => {
+    // 转账**没有** MIN_STAKE 那类下限（那是练手盘特有的），所以存储层的最小刻度
+    // 就是能转的最小额。别把下限写成 1 —— 也别写成 0.1，那会跟着存储精度一起过期。
     const { sender, recipient } = await scene(1, 0);
 
-    const res = await transferFish(sender.id, recipient.id, 0.1);
-
+    const res = await transferFish(sender.id, recipient.id, 0.0001);
     expect(res.ok).toBe(true);
-    expect(await balanceOf(sender.id)).toBe(0.9);
-    expect(await balanceOf(recipient.id)).toBe(0.1);
+    expect(await balanceOf(sender.id)).toBe(0.9999);
+    expect(await balanceOf(recipient.id)).toBe(0.0001);
 
-    await expectLedgerConsistent('转账 0.1（最小额）成功后');
+    const res2 = await transferFish(sender.id, recipient.id, 0.1);
+    expect(res2.ok).toBe(true);
+    expect(await balanceOf(recipient.id)).toBe(0.1001);
+
+    await expectLedgerConsistent('转账最小额成功后');
   });
 
   it('留言同时进双方流水的描述', async () => {
@@ -271,16 +276,29 @@ describe('transferFish —— 入参校验（一律零副作用）', () => {
     expect(await txnsOf(sender.id)).toHaveLength(0);
   });
 
-  it('超过 1 位小数（0.05）→ 400，而**不是** 500（fishToUnits fail-loud 的边界转换）', async () => {
+  it('超过 4 位小数（0.00005）→ 400，而**不是** 500（fishToUnits fail-loud 的边界转换）', async () => {
     const { sender, recipient } = await scene(100, 0);
 
-    const res = await transferFish(sender.id, recipient.id, 0.05);
+    const res = await transferFish(sender.id, recipient.id, 0.00005);
 
     expect(res.ok).toBe(false);
     if (res.ok) return;
     expect(res.code, '必须在 service 内转成 400 文案，否则冒泡成 500').toBe(400);
-    expect(res.message).toContain('1 位小数');
+    expect(res.message).toContain('4 位小数');
     expect(await balanceOf(sender.id)).toBe(100);
+  });
+
+  it('0.05 现在**转得出去**了（旧粒度下它是 400 的那一档）', async () => {
+    // 精度从 0.1 抬到 0.0001 的直接后果：原先被 fishToUnits 拒掉的 2 位小数成了合法输入。
+    // 这是**有意的行为变更**，不是回归 —— 钉住它，免得下次有人按「0.05 该报 400」改回去。
+    const { sender, recipient } = await scene(100, 0);
+
+    const res = await transferFish(sender.id, recipient.id, 0.05);
+
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(await balanceOf(sender.id)).toBe(99.95);
+    expect(await balanceOf(recipient.id)).toBe(0.05);
   });
 
   it('不能给自己转账 → 400', async () => {

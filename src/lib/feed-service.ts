@@ -22,7 +22,7 @@
 import { prisma } from './db';
 import { nowForDb } from './db-time';
 import { postEntry, InsufficientFishError } from './fish-service';
-import { fishToUnits, unitsToFish } from './fish-units';
+import { FISH_UNIT_SCALE, fishToUnits, unitsToFish } from './fish-units';
 import { sendNotification } from './notification-service';
 import { frameUrlFor } from './frame-service';
 
@@ -159,7 +159,10 @@ export async function feedBlog(
     return { ok: false, code: 404, message: '用户不存在' };
   }
 
-  const authorIncome = Math.round(amount * 0.8 * 10) / 10; // 保留 1 位小数
+  // 作者分成 80%，收敛到业务精度。amount 恒为 1~5 的整数（上面刚校验过），所以 0.8×n
+  // 本来就精确（0.8 / 1.6 / 2.4 / 3.2 / 4.0）；这里乘 FISH_UNIT_SCALE 而不是写死 10，
+  // 是为了不再留一处「手写的标度」—— 那种东西改精度时不会报错，只会静默少几位。
+  const authorIncome = Math.round(amount * 0.8 * FISH_UNIT_SCALE) / FISH_UNIT_SCALE;
 
   // 业务错误容器：事务回调里抛出后在外层转成 FeedError（不当作 500）。
   class FeedBusinessError extends Error {
@@ -174,7 +177,7 @@ export async function feedBlog(
   try {
     // ── 一个事务：扣投喂者、加作者分成、BlogFeed 累计、Blog.fishCount 累加 ────────
     const applied = await prisma.$transaction(async (tx) => {
-      // 金额换算：业务单位（鱼干）→ 存储单位（0.1 鱼干，见 fish-units.ts）。
+      // 金额换算：业务单位（鱼干）→ 存储单位（0.0001 鱼干，见 fish-units.ts）。
       const units = fishToUnits(amount);
 
       // 1.1 投喂者出账（走内核：单条带谓词的 UPDATE 扣减 + 一条负数流水）。
@@ -234,7 +237,7 @@ export async function feedBlog(
 
       // 1.4 累计文章投喂总量。
       //     ⚠️ fishCount 是**鱼干口径**的整数列，不参与 fish-units 的换算
-      //     （见 fish-units.ts 头部那条唯一的例外）—— 别为了「统一」把它也 ×10。
+      //     （见 fish-units.ts 头部那条唯一的例外）—— 别为了「统一」把它也 ×10000。
       await tx.blog.update({
         where: { id: blogId },
         data: { fishCount: { increment: amount } },

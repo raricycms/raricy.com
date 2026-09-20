@@ -125,7 +125,7 @@ test('扫码收款页：金额由付款人自己填，密码确认后到账', as
 
   await expect(page.locator('.pay-result__title')).toContainText('付款成功');
   await expect(page.locator('.pay-result__to')).toContainText(SEED_USERS.core.username);
-  await expect(page.locator('.pay-result__balance')).toContainText(String(balance - 1));
+  await expect(page.locator('.pay-result__balance')).toContainText((balance - 1).toFixed(4));
 
   expect(payer.username).toContain('e2e_'); // 用了新号，别把这条静默换成种子号
 });

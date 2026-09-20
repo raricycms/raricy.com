@@ -13,8 +13,8 @@
 //   **只有给了键的那一路才登记记录**：随机键每次都不一样，登记了也没有去重价值，
 //   只会把 account_sync_ledger 撑大（判据见 fish-idempotency.ts 头部）。
 //
-// 【金额口径】业务单位「鱼干」，最多 1 位小数（0.1 起）—— fishToUnits 在数据库边界
-//   换成 0.1 鱼干单位的整数，超精度 fail-loud（这里转成 400 文案，别让它冒泡成 500）。
+// 【金额口径】业务单位「鱼干」，最多 4 位小数（0.0001 起）—— fishToUnits 在数据库边界
+//   换成 0.0001 鱼干单位的整数，超精度 fail-loud（这里转成 400 文案，别让它冒泡成 500）。
 //
 // 【权限档位】登录 + 非禁言，**不要求 core+** —— 与 /fish 面板、签到同一档
 //   （投喂要求 core+ 是因为它挂在博客页；转账是鱼干的通用能力）。
@@ -23,7 +23,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { prisma } from './db';
 import { postEntry, InsufficientFishError } from './fish-service';
-import { fishToUnits, unitsToFish } from './fish-units';
+import { FISH_DECIMALS, fishToUnits, unitsToFish } from './fish-units';
 import {
   claimIdempotency,
   findIdempotency,
@@ -264,9 +264,9 @@ export async function transferFish(
   try {
     units = fishToUnits(amount);
   } catch {
-    // fishToUnits 对 >1 位小数 fail-loud（抛的是普通 Error）。不在这里接住转成 400，
-    // 它会冒泡成 500 —— 用户输入 0.05 看到「服务器开小差了」，前端也不知道该提示什么。
-    return { ok: false, code: 400, message: '转账金额最多 1 位小数' };
+    // fishToUnits 对超精度 fail-loud（抛的是普通 Error）。不在这里接住转成 400，
+    // 它会冒泡成 500 —— 用户输入 0.00005 看到「服务器开小差了」，前端也不知道该提示什么。
+    return { ok: false, code: 400, message: `转账金额最多 ${FISH_DECIMALS} 位小数` };
   }
 
   const cleanNote = (note ?? '').trim().replace(/\s+/g, ' ');

@@ -4,6 +4,7 @@ import { ReceiptText } from 'lucide-react';
 import { getCurrentUser } from '@/lib/auth';
 import { loginUrlWithNext } from '@/lib/safe-url';
 import { getBalance, getTodayCheckinFish } from '@/lib/fish-service';
+import { fmtFish } from '@/lib/fish-amount';
 import PosterModal from '@/app/components/PosterModal';
 
 // 小鱼干余额页 — fish-card 一套类名
@@ -26,7 +27,7 @@ export default async function FishPage() {
         </div>
         <div className="fish-card__body">
           <div className="fish-card__balance">
-            <span className="fish-card__balance-number">{driedFish.toFixed(4)}</span>
+            <span className="fish-card__balance-number">{fmtFish(driedFish)}</span>
             <span className="fish-card__balance-label">小鱼干</span>
           </div>
           {todayFish > 0 && (

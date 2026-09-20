@@ -257,9 +257,9 @@ describe('成功路径', () => {
     expect(res.status).toBe(200);
 
     const data = await res.json();
-    expect(data.payout).toBe(109.8);
-    expect(data.profit).toBeCloseTo(9.8, 10);
-    expect(data.balance).toBe(109.8);
+    expect(data.payout).toBe(109.89);
+    expect(data.profit).toBeCloseTo(9.89, 10);
+    expect(data.balance).toBe(109.89);
 
     await expectLedgerConsistent('平仓结算后');
   });
@@ -274,7 +274,7 @@ describe('成功路径', () => {
     const again = await sell(makeReq('/api/fish/trade/sell', { position_id: position.id }));
     expect(again.status).toBe(200);
     expect((await again.json()).replayed).toBe(true);
-    expect(await balanceOf(u.id), '第二次结算没有再加一次钱').toBe(109.8);
+    expect(await balanceOf(u.id), '第二次结算没有再加一次钱').toBe(109.89);
 
     await expectLedgerConsistent('重复平仓后（钱不多发）');
   });

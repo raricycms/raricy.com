@@ -3,6 +3,8 @@ import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth';
 import { loginUrlWithNext, safeExternalReturnUrl } from '@/lib/safe-url';
 import { getBalance } from '@/lib/fish-service';
+import { parseFishAmount } from '@/lib/fish-amount';
+import { FISH_DECIMALS } from '@/lib/fish-units';
 import {
   findTransferTargetByUsername,
   makeOrderKeyBase,
@@ -28,8 +30,6 @@ export const metadata = {
   robots: { index: false, follow: false },
 };
 
-/** 最多 1 位小数的正数 —— 与 fish-units 的口径一致（前端先挡一道，服务端仍会复核）。 */
-const AMOUNT_RE = /^\d+(\.\d)?$/;
 /** 商户名只用于展示：长度设上限、去掉控制字符（React 会转义，这里只防刷屏）。 */
 const MERCHANT_MAX = 40;
 
@@ -84,13 +84,16 @@ export default async function FishPayPage({
 
   // ── 参数校验（顺序：先格式、后存在性）────────────────────────────────────
   if (!toUsername) return <PayError message="缺少收款人参数（to）。" />;
-  if (!AMOUNT_RE.test(amountRaw) || Number(amountRaw) <= 0) {
-    return <PayError message="金额参数无效（需为大于 0、最多 1 位小数的数字）。" />;
+  if (parseFishAmount(amountRaw) === null || Number(amountRaw) <= 0) {
+    return (
+      <PayError message={`金额参数无效（需为大于 0、最多 ${FISH_DECIMALS} 位小数的数字）。`} />
+    );
   }
-  // 金额位数上界：AMOUNT_RE 的 \d+ 没有长度限制，而金额会参与拼幂等键（见下面 orderKeyBase）。
+  // 金额位数上界：金额白名单的 \d+ 没有长度限制，而金额会参与拼幂等键（见下面 orderKeyBase）。
   // 不设上界时，28 位以上的金额会让幂等键超过 48 字上限，用户拿到的是一句
   // 「幂等键格式不合法」—— 报的是内部实现，与他的输入看不出任何关系。
-  // 16 位（最多 1 位小数）直到 10^14 条鱼干，远超任何真实余额。
+  // 16 位整数部分直到 10^15 条鱼干，远超任何真实余额；小数部分 4 位也还在预算内
+  // （16 + 1 + 4 = 21 字，离 48 字上限还远）。
   if (amountRaw.length > 16) {
     return <PayError message="金额参数无效（数字过长）。" />;
   }

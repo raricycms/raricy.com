@@ -18,6 +18,7 @@
 
 import type { PrismaClient } from '@prisma/client';
 import { ymdhms } from '../../../src/lib/format';
+import { unitsToFish } from '../../../src/lib/fish-units';
 import { renderTable } from '../output';
 import { CliError, type CommandSpec } from '../types';
 
@@ -129,8 +130,9 @@ export const fishCommands: CommandSpec[] = [
           }
           throw new CliError('失败：本地事务失败，未做任何变更', 2, [
             `  原因: ${errorMessage(e)}`,
-            // driedFish 存的是 0.1 鱼干为单位（fish-units.ts），展示除以 10
-            `  本地余额未变更（${(user.driedFish ?? 0) / 10}），可稍后重试。`,
+            // driedFish 存的是 0.0001 鱼干为单位，展示走 fish-units 的出口
+            // （**别写死除数** —— 手写的 /10 在精度提升后不会报错，只会静默显示错值）
+            `  本地余额未变更（${unitsToFish(user.driedFish ?? 0)}），可稍后重试。`,
           ]);
         }
       },

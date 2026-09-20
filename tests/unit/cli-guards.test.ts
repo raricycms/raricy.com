@@ -70,12 +70,16 @@ const CLI_FILES = [CLI_ENTRY, ...collectFiles(CLI_DIR)];
  *                    做两件**必须静态**的事：向导的候选列表（choices 在模块顶层求值）
  *                    与 `validate`（同步）。零依赖是那个文件的硬要求 ——
  *                    客户端设置面板也要 import 它。
+ *   · fish-units.ts —— 鱼干存储单位 ↔ 鱼干的换算（`unitsToFish` / `fishToUnits`）。
+ *                    `fish` 命令的失败路径要把库里的存储单位报成鱼干。**必须复用** ——
+ *                    在这里手写 `/ 10` 正是标度改动时的静默错值来源（真发生过），
+ *                    tests/unit/fish-scale-guard.test.ts 也盯着这条。它零依赖。
  *
  * ⚠️ 这条白名单是**自校验**的：下面有一条用例**遍历它**，逐个断言那些文件没有任何
  *    运行时 import。谁给其中一个加了依赖，那条用例会立刻红 —— 白名单不会悄悄失效。
  *    （此前那条只钉 format.ts，加第二个成员时就会漏 —— 所以改成遍历。）
  */
-const LIB_ALLOWLIST = ['src/lib/format', 'src/lib/frame-refs'];
+const LIB_ALLOWLIST = ['src/lib/format', 'src/lib/frame-refs', 'src/lib/fish-units'];
 
 /** 在文件里跑一个正则，返回 `相对路径:行号` 形式的命中列表。 */
 function hits(re: RegExp): string[] {

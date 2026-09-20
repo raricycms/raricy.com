@@ -95,13 +95,13 @@ describe('开仓', () => {
     const txns = await txnsOf(user.id);
     expect(txns).toHaveLength(1);
     expect(txns[0].type).toBe(MARKET_BUY_TYPE);
-    expect(txns[0].amount).toBe(-300); // 存储单位 = 0.1 鱼干
+    expect(txns[0].amount).toBe(-300000); // 存储单位 = 0.0001 鱼干
     expect(txns[0].createdAt).not.toBeNull(); // 漏写 createdAt 会让流水倒序静默错乱
     expect(txns[0].referenceId).toBe(r.position.id);
 
     const pos = await prisma.marketPosition.findUnique({ where: { id: r.position.id } });
     expect(pos?.status).toBe('open');
-    expect(pos?.stakeUnits).toBe(300);
+    expect(pos?.stakeUnits).toBe(300000);
     expect(pos?.openTxId).toBe(txns[0].id);
     expect(pos?.closedAt).toBeNull();
 
@@ -145,8 +145,8 @@ describe('开仓', () => {
       ['BTCUSDT', 0, '大于 0'],
       ['BTCUSDT', -5, '大于 0'],
       ['BTCUSDT', Number.NaN, '大于 0'],
-      ['BTCUSDT', 0.05, '1 位小数'], // 2 位小数：fishToUnits fail-loud
-      ['BTCUSDT', 0.5, '最少投入'], // 1 位小数但低于下限
+      ['BTCUSDT', 0.00005, '4 位小数'], // 5 位小数：fishToUnits fail-loud
+      ['BTCUSDT', 0.5, '最少投入'], // 精度合法，但低于下限
       [null, 10, '不支持的标的'],
       ['BTCUSDT', '10' as unknown as number, '大于 0'],
     ] as const) {
@@ -245,20 +245,21 @@ describe('平仓', () => {
     expect(r.ok).toBe(true);
     if (!r.ok) return;
 
-    // 100 鱼干 = 1000 单位 → gross = 1100 → ×0.999 = 1098.9 → floor 1098 = 109.8 鱼干
-    expect(r.payout).toBe(109.8);
-    expect(r.profit).toBeCloseTo(9.8, 10);
+    // 100 鱼干 = 1e6 单位 → gross = 1.1e6 → ×0.999 = 1,098,900 → floor = 1,098,900 = 109.89 鱼干
+    // （精度还是 0.1 鱼干时这里是 109.8 —— 差的那 0.09 正是 floor 少丢的零头）
+    expect(r.payout).toBe(109.89);
+    expect(r.profit).toBeCloseTo(9.89, 10);
     expect(r.exitPrice).toBe(88000);
-    expect(r.balance).toBe(109.8);
+    expect(r.balance).toBe(109.89);
 
     const txns = await txnsOf(userId);
     expect(txns).toHaveLength(2);
     expect(txns[1].type).toBe(MARKET_SELL_TYPE);
-    expect(txns[1].amount).toBe(1098);
+    expect(txns[1].amount).toBe(1098900);
 
     const pos = await prisma.marketPosition.findUnique({ where: { id: positionId } });
     expect(pos?.status).toBe('closed');
-    expect(pos?.payoutUnits).toBe(1098);
+    expect(pos?.payoutUnits).toBe(1098900);
     expect(pos?.exitPrice).toBe(88000);
     expect(pos?.closeTxId).toBe(txns[1].id);
     expect(pos?.closedAt).not.toBeNull();
@@ -274,21 +275,25 @@ describe('平仓', () => {
     expect(r.ok).toBe(true);
     if (!r.ok) return;
 
-    // gross = 1000×0.9 = 900 → ×0.999 = 899.1 → floor 899 = 89.9
-    expect(r.payout).toBe(89.9);
-    expect(r.profit).toBeCloseTo(-10.1, 10);
-    expect(r.balance).toBe(89.9);
+    // gross = 1e6×0.9 = 9e5 → ×0.999 = 899,100 → floor = 89.91
+    expect(r.payout).toBe(89.91);
+    expect(r.profit).toBeCloseTo(-10.09, 10);
+    expect(r.balance).toBe(89.91);
   });
 
   it('★ 实发为 0 的边界：平仓成功、**不写流水**、不抛 500', async () => {
-    // 投 1 条鱼干（10 个单位），跌 90% → floor(10 × 0.1 × 0.999) = floor(0.999) = 0
+    // 投 1 条鱼干（10000 个单位），跌 99.99% → floor(1e4 × 0.0001 × 0.999) = floor(0.999) = 0
+    //
+    // ⚠️ 精度提到 0.0001 之后，这条边界**要跌 99.99% 才够得着**（旧粒度下跌 90% 就归零了：
+    // floor(10 × 0.1 × 0.999) = 0）。留着它仍是对的 —— 实发 0 在数学上依然可能，
+    // 而服务端必须正确处理那一档（不写流水、不发通知、仓位照样平掉）。
     const user = await makeUser({ driedFish: 10 });
     priceIs(80000);
     const o = await openPosition({ userId: user.id, symbolRaw: 'BTCUSDT', amount: 1 });
     expect(o.ok).toBe(true);
     if (!o.ok) return;
 
-    priceIs(8000);
+    priceIs(8);
     const r = await closePosition({ userId: user.id, positionId: o.position.id });
     expect(r.ok, '归零不该是 500').toBe(true);
     if (!r.ok) return;
@@ -307,7 +312,11 @@ describe('平仓', () => {
     expect(pos?.payoutUnits).toBe(0);
   });
 
-  it('★ 低于最小投入的仓位开不出来（0.1 条几乎必然结算成 0，是个陷阱）', async () => {
+  it('★ 低于最小投入的仓位开不出来（下限现在只剩产品理由，不再是防舍入陷阱）', async () => {
+    // 这个下限**原来是防舍入陷阱的**：粒度 0.1 条时投 0.1 条、价格不涨过 0.1% 就必然
+    // 结算成 0。精度提到 0.0001 之后那条理由失效了（每次结算的零头上界降到 0.0001 条），
+    // 下限改由「尘埃仓位只是库里一行 + 页面上一条的噪音」支撑。
+    // 断言本身不变 —— 变的是它为什么在这里。
     const user = await makeUser({ driedFish: 100 });
     priceIs(80000);
     const r = await openPosition({ userId: user.id, symbolRaw: 'BTCUSDT', amount: 0.1 });
@@ -372,7 +381,7 @@ describe('平仓', () => {
     expect(a.ok && b.ok).toBe(true);
 
     // 关键断言：钱只发了一次
-    expect(await balanceOf(userId)).toBe(109.8);
+    expect(await balanceOf(userId)).toBe(109.89);
     const sellTxns = (await txnsOf(userId)).filter((t) => t.type === MARKET_SELL_TYPE);
     expect(sellTxns, '并发平仓只该产生一条卖出流水').toHaveLength(1);
     if (a.ok && b.ok) expect(a.payout).toBe(b.payout);

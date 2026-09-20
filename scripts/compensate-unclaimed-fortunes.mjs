@@ -122,10 +122,15 @@ console.log(`找到 ${rows.length} 条待补偿记录：\n`);
 
 // ── 2. 逐条计算将要发生的变更 ────────────────────────────────────────────────
 // ── 单位约定（fish-units.ts）────────────────────────────────────────────────
-// dried_fish / fish_transactions.amount 的存储单位 = 0.1 鱼干（整数，×10）；
-// 运势值 / total_fortune 仍以「1=1」计。发鱼干与流水金额一律 ×10 入库，展示 ÷10。
-// ⚠️ 本脚本假定目标库已应用 prisma/migrations/3_fish_integer_units（先 migrate up）。
-const UNIT = 10;
+// dried_fish / fish_transactions.amount 的存储单位 = 0.0001 鱼干（整数，×10000）；
+// 运势值 / total_fortune 仍以「1=1」计。发鱼干与流水金额一律 ×UNIT 入库，展示 ÷UNIT。
+//
+// ⚠️ 本脚本假定目标库**已应用 prisma/migrations/21_fish_units_1e4**（先 migrate up）。
+//    那个迁移把这三列从 0.1 鱼干抬到 0.0001 鱼干 —— 库还在旧标度时跑本脚本，
+//    每笔会**多发 1000 倍**；库在新标度而这里还写 10 时，每笔**少发 1000 倍**，
+//    而下面第 148 行的展示与第 207 行的流水是同比例错的，**dry-run 输出看起来完全合理**。
+//    tests/unit/fish-scale-guard.test.ts 把这个常量钉死，改 fish-units.ts 会当场报错。
+const UNIT = 10000;
 
 const plan = [];
 for (const r of rows) {

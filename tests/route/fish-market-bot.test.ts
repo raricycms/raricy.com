@@ -155,12 +155,12 @@ describe('无状态转账（无 cookie，body 带 username/password）', () => {
     expect(rows).toHaveLength(2);
     expect(rows[0].transferId).toBe(json.transfer_id);
     expect(rows[1].transferId).toBe(json.transfer_id);
-    // 一出一进，且落库的金额是存储单位（0.1 鱼干）—— 站外对账方按流水认账，
-    // 这两条对不上就等于两边的账对不上。
+    // 一出一进，且落库的金额是存储单位（0.0001 鱼干）—— 站外对账方按流水认账，
+    // 这两条对不上就等于两边的账对不上。（5 鱼干 = 50000 单位）
     expect(rows[0].type).toBe(TRANSFER_OUT_TYPE);
-    expect(rows[0].amount).toBe(-50);
+    expect(rows[0].amount).toBe(-50000);
     expect(rows[1].type).toBe(TRANSFER_IN_TYPE);
-    expect(rows[1].amount).toBe(50);
+    expect(rows[1].amount).toBe(50000);
 
     await expectLedgerConsistent('转账后（校验共享单号）');
   });

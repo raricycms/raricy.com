@@ -216,13 +216,29 @@ describe('addFish（加钱 + 写流水）', () => {
     expect(await getBalance(u.id)).toBe(0.3);
   });
 
-  it('极大金额（1e8 鱼干 = 1e9 存储单位，Prisma Int 4 字节上限内）能写入且读回一致', async () => {
+  it('极大金额：贴着 i32 上限（214748.3647 条 = 2147483647 单位）能写入且读回一致', async () => {
+    // ⚠️ 上界是**存储单位**的 i32 上限，不是余额的。精度从 0.1 抬到 0.0001 之后，
+    // 单笔可写上限从 2.1e8 条降到 214748.3647 条（同一根 i32 线，缩小了 10000 倍）。
+    // 实测水位差着两个数量级，但这个边界要有人钉着 —— 否则第一个撞上的人看到的
+    // 只是一句 Prisma 的 32 位溢出错误，完全联想不到与鱼干精度有关。
+    // 口径详见 src/lib/fish-units.ts 头部「存储上限」段。
     const u = await makeUser({ driedFish: 0 });
-    const big = 1e8;
+    const big = 214748.3647;
     await prisma.$transaction((tx) =>
       addFish(tx, { userId: u.id, amount: big, type: 'admin_grant' })
     );
     expect(await getBalance(u.id)).toBe(big);
+  });
+
+  it('超过 i32 上限的金额**响亮地失败**，且整笔回滚（不静默写坏账）', async () => {
+    // 1e8 条 = 1e12 单位，远超 i32。要点是它**抛错并回滚**，而不是悄悄截断 ——
+    // 静默截断会让余额与流水对不上，而那正是记账不变式要防的事。
+    const u = await makeUser({ driedFish: 0 });
+    await expect(
+      prisma.$transaction((tx) => addFish(tx, { userId: u.id, amount: 1e8, type: 'admin_grant' }))
+    ).rejects.toThrow();
+    expect(await getBalance(u.id)).toBe(0);
+    expect(await prisma.fishTransaction.count({ where: { userId: u.id } })).toBe(0);
   });
 
   it('amount = Infinity 的行为（记录现状：能通过 > 0 校验）', async () => {

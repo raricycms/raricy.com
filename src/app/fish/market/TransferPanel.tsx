@@ -2,6 +2,13 @@
 
 import { useState } from 'react';
 import Avatar from '@/app/components/Avatar';
+import {
+  AMOUNT_ERROR,
+  fmtFish,
+  fmtFishInput,
+  parseFishAmount,
+  roundFish,
+} from '@/lib/fish-amount';
 import RecipientPicker, { type TransferTarget } from './RecipientPicker';
 
 // 转账表单 + 二次确认弹窗。
@@ -19,16 +26,9 @@ declare global {
   }
 }
 
-/** 金额白名单：正整数或 1 位小数（与 fishToUnits 的口径一致，前端先挡一道）。 */
-const AMOUNT_RE = /^\d+(\.\d)?$/;
 const NOTE_MAX = 30;
 /** 快捷加额 chips（**没有「全部」**：金额由用户自己决定）。 */
 const QUICK = [1, 5, 10];
-
-/** 鱼干展示：最多 1 位小数，去掉无意义的尾零（12 而不是 12.0）。 */
-function fmtFish(n: number): string {
-  return String(Math.round(n * 10) / 10);
-}
 
 export default function TransferPanel({ balance: initialBalance }: { balance: number }) {
   const [balance, setBalance] = useState(initialBalance);
@@ -40,12 +40,12 @@ export default function TransferPanel({ balance: initialBalance }: { balance: nu
   const [busy, setBusy] = useState(false);
 
   const trimmed = amount.trim();
-  const parsed = AMOUNT_RE.test(trimmed) ? Number(trimmed) : NaN;
+  const parsed = parseFishAmount(trimmed) ?? NaN;
   const amountError =
     trimmed === ''
       ? ''
-      : !AMOUNT_RE.test(trimmed)
-        ? '金额最多 1 位小数'
+      : !Number.isFinite(parsed)
+        ? AMOUNT_ERROR
         : parsed <= 0
           ? '金额需大于 0'
           : parsed > balance
@@ -53,11 +53,11 @@ export default function TransferPanel({ balance: initialBalance }: { balance: nu
             : '';
   const amountOk = Number.isFinite(parsed) && parsed > 0 && parsed <= balance;
   const canSubmit = recipient !== null && amountOk;
-  const afterBalance = amountOk ? Math.round((balance - parsed) * 10) / 10 : balance;
+  const afterBalance = amountOk ? roundFish(balance - parsed) : balance;
 
   function addAmount(delta: number) {
-    const cur = AMOUNT_RE.test(trimmed) ? Number(trimmed) : 0;
-    setAmount(fmtFish(Math.round((cur + delta) * 10) / 10));
+    const cur = parseFishAmount(trimmed) ?? 0;
+    setAmount(fmtFishInput(cur + delta));
   }
 
   async function submit() {

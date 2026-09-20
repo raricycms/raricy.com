@@ -143,12 +143,12 @@ test('转账全链路：入口 → 选收款人 → 二次确认 → 到账 + �
 
   await expect(page).toHaveURL(/\/fish\/market$/);
   await expect(page.locator('.page-title')).toContainText('鱼干市场');
-  await expect(page.locator('.market-card__balance-number')).toHaveText(String(balance));
+  await expect(page.locator('.market-card__balance-number')).toHaveText(balance.toFixed(4));
 
   // ── 转账（金额 1：必然 ≤ 余额，因为签到至少给 1）────────────────────────
   await transferViaUI(page, recipient.username, '1');
 
-  await expect(page.locator('.market-card__balance-number')).toHaveText(String(balance - 1));
+  await expect(page.locator('.market-card__balance-number')).toHaveText((balance - 1).toFixed(4));
   // 成功后表单复位（收款人与金额都清空），避免误点第二笔
   await expect(page.locator('.market-recipient-pick')).toBeVisible();
   await expect(page.locator('#market-amount')).toHaveValue('');
@@ -213,7 +213,7 @@ test('连续两笔同额：两笔各自落账（各有一个单号，不被静�
 
   // 余额确实被扣了两次（0.2），不是一次
   await expect(page.locator('.market-card__balance-number')).toHaveText(
-    String(Math.round((start - 0.2) * 10) / 10)
+    (start - 0.2).toFixed(4)
   );
 
   const api = await playwright.request.newContext({ baseURL: BASE_URL });
@@ -277,7 +277,7 @@ test('余额不足与转给自己：前端拦住 + 服务端 400，账目一分�
 
   // 余额一分未动
   await page.reload();
-  await expect(page.locator('.market-card__balance-number')).toHaveText(String(balance));
+  await expect(page.locator('.market-card__balance-number')).toHaveText(balance.toFixed(4));
 });
 
 test('收银台：商户链接 → 核对 → 输密码支付 → 返回商户；参数非法时给出明确错误', async ({
@@ -302,7 +302,8 @@ test('收银台：商户链接 → 核对 → 输密码支付 → 返回商户�
     await expect(page.locator('.pay-merchant__name')).toContainText('鱼干银行');
     await expect(page.locator('.pay-merchant__badge')).toContainText('不验证商户身份');
     await expect(page.locator('.market-recipient__name')).toHaveText(merchant.username);
-    await expect(page.locator('.pay-amount__value')).toHaveText('1');
+    // 展示走 fmtFish（固定 4 位小数），所以 1 渲染成 '1.0000'
+    await expect(page.locator('.pay-amount__value')).toHaveText('1.0000');
     await expect(page.locator('.pay-note')).toContainText('order-1');
 
     // ── 没输密码：按钮禁用（step-up 不可跳过）─────────────────────────────
@@ -325,7 +326,7 @@ test('收银台：商户链接 → 核对 → 输密码支付 → 返回商户�
 
     await expect(page.locator('.pay-result__title')).toContainText('支付成功');
     await expect(page.locator('.pay-result__to')).toContainText(merchant.username);
-    await expect(page.locator('.pay-result__balance')).toContainText(String(balance - 1));
+    await expect(page.locator('.pay-result__balance')).toContainText((balance - 1).toFixed(4));
     const backLink = page.locator('.pay-result__return');
     await expect(backLink).toHaveAttribute('href', RETURN);
     await expect(backLink, '返回按钮要显示目标主机名，让人看清去哪').toContainText('bank.example');
@@ -344,7 +345,9 @@ test('收银台：商户链接 → 核对 → 输密码支付 → 返回商户�
     ).toBe(out[0].transfer_id);
 
     // ── 参数非法：友好错误页（不是 500，也不是渲染出半个支付页）──────────
-    await page.goto('/fish/pay?to=' + merchant.username + '&amount=1.23');
+    // ⚠️ 用 5 位小数，别用 1.23 —— 后者在精度提到 0.0001 之后**已经是合法金额**了，
+    // 这一页会正常渲染支付表单，于是断言「元素找不到」而不是「文案不对」，很容易误判成页面挂了。
+    await page.goto('/fish/pay?to=' + merchant.username + '&amount=1.23456');
     await expect(page.locator('.pay-error__message')).toContainText('金额参数无效');
     await page.goto('/fish/pay?to=no_such_user_at_all&amount=1');
     await expect(page.locator('.pay-error__message')).toContainText('收款人不存在');

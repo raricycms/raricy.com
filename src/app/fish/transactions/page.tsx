@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth';
 import { loginUrlWithNext } from '@/lib/safe-url';
 import { getTransactions } from '@/lib/fish-service';
+import { fmtFish } from '@/lib/fish-amount';
 import FishPageJump from '../FishPageJump';
 
 export const dynamic = 'force-dynamic';
@@ -102,7 +103,7 @@ export default async function FishTransactionsPage({
                   className={`fish-transaction__amount ${tx.amount > 0 ? 'fish-transaction__amount--in' : 'fish-transaction__amount--out'}`}
                 >
                   {tx.amount > 0 ? '+' : ''}
-                  {tx.amount}
+                  {fmtFish(tx.amount)}
                 </div>
               </div>
             ))}

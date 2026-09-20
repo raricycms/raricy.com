@@ -49,7 +49,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { prisma } from './db';
 import { nowForDb } from './db-time';
 import { postEntry, InsufficientFishError } from './fish-service';
-import { fishToUnits, unitsToFish } from './fish-units';
+import { FISH_DECIMALS, fishToUnits, unitsToFish } from './fish-units';
 // 客户端幂等键的格式校验复用转账那一条 —— 同一个「调用方给的键」概念，
 // 没有理由长出第二套规则。定义在 fish-idempotency（零业务依赖），
 // 所以这里 import 它不会把 fish-market-service 拖进来。
@@ -81,14 +81,19 @@ export const MARKET_FEE_RATE = 0.001;
 /**
  * 单笔最小投入（鱼干）。
  *
- * 【为什么不是 0.1】存储层的最小单位是 0.1 鱼干（1 个单位），而结算是
- * `floor(units × ratio × (1-手续费))`。投 0.1 鱼干 = 1 个单位时，**价格不涨过 0.1%
- * 就必然结算成 0** —— 那不是一个「高风险」的仓位，是一个几乎必赔的陷阱，而用户
- * 只会以为自己运气差。1 条鱼干（10 个单位）时舍入损失上界 0.1 条，最坏 10%；
- * 投到 10 条以上时舍入损失就降到 1% 以内。
+ * 【这个下限原来是防舍入陷阱的，现在不是了】结算是
+ * `floor(units × ratio × (1-手续费))`，floor 朝系统一侧丢零头。存储粒度还是 0.1 鱼干时，
+ * 那一「点」零头最大就是 0.1 条 —— 投 0.1 条（1 个单位）时**价格不涨过 0.1% 就必然
+ * 结算成 0**，是个几乎必赔的陷阱，而用户只会以为自己运气差。2026-09 把存储粒度提到
+ * 0.0001 条（迁移 21_fish_units_1e4）之后，每次结算的零头上界变成 0.0001 条 ——
+ * 对 1 条的仓位是 0.01%，投 0.1 条也不再有「必赔」性质。
  *
- * 顺带说明：这个下限也是**唯一**能拦住小数位数的位置 —— fishToUnits 只接受 ≤1 位
- * 小数，所以小于 1 的合法输入只有 0.1~0.9，正好全被这一条挡下。
+ * 下限因此改由**产品理由**支撑：一个仓位就是库里一行 + 页面上一条，尘埃仓位只是噪音。
+ * 想调它的话，别再用「防舍入」当论据 —— 那条论据已经随精度提升失效了。
+ *
+ * ⚠️ **调用方的判定顺序不能动**：openPosition 先 fishToUnits 换算、后判这个下限。
+ * 颠倒的话，0.05 会落到「最多 4 位小数」那一档而不是「最少投入 1 条」——
+ * 报错文案指向一个用户根本没犯的错。
  */
 export const MIN_STAKE_FISH = 1;
 
@@ -112,6 +117,14 @@ export function displaySymbol(symbol: string): string {
  * 账户服务，而一个 userId 就有 36 字符，原样拼进去会顶到那边 64 字符的上限；库里
  * 也已经有一批这个形状的 open_key。客户端键那一路（`mop-…`）**必须逐字节重现**
  * （重放靠它认人），两条路保持同一代形状，别只改一条。
+ *
+ * 【键里嵌了 units，而 units 的标度改过一次（迁移 21_fish_units_1e4）—— 这是安全的】
+ * 因为服务端自动键**只在这里生成一次、当场就用于查 + 插，从不事后重算**；调用方给键
+ * 那一路压根不含 units。所以标度变只让**新**键的哈希输入不同，不存在「同一个逻辑仓位
+ * 算出两个键」或跨标度碰撞。
+ * ⚠️ **别把这条当 bug 去「修」**。真正要防的是反过来的改动：以后若有人加一条
+ * 「按请求参数重算键去查有没有已存在的行」的服务端去重，迁移前落库的那些行就认不出来了
+ * —— 那才会把重放变成第二笔。
  */
 export function makeMarketIdempotencyKey(
   userId: string,
@@ -130,7 +143,7 @@ export function makeMarketIdempotencyKey(
 export interface PositionView {
   id: string;
   symbol: MarketSymbol;
-  /** 投入鱼干（业务单位，≤1 位小数）。 */
+  /** 投入鱼干（业务单位，≤4 位小数 —— 见 fish-units.ts）。 */
   stake: number;
   entryPrice: number;
   openedAt: Date;
@@ -215,10 +228,10 @@ export async function openPosition(input: {
   try {
     units = fishToUnits(amount);
   } catch {
-    // fishToUnits 对 >1 位小数 fail-loud（抛的是普通 Error）。不在这里接住转成 400，
-    // 它会冒泡成 500 —— 用户输入 0.05 看到「服务器开小差了」，前端也不知道该提示什么。
+    // fishToUnits 对超精度 fail-loud（抛的是普通 Error）。不在这里接住转成 400，
+    // 它会冒泡成 500 —— 用户输入 0.00005 看到「服务器开小差了」，前端也不知道该提示什么。
     // 与 transferFish 同一处判断。
-    return { ok: false, code: 400, message: '投入金额最多 1 位小数' };
+    return { ok: false, code: 400, message: `投入金额最多 ${FISH_DECIMALS} 位小数` };
   }
   if (amount < MIN_STAKE_FISH) {
     return { ok: false, code: 400, message: `单笔最少投入 ${MIN_STAKE_FISH} 条小鱼干` };
@@ -400,10 +413,13 @@ export async function closePosition(input: {
   const gross = (pos.stakeUnits * exitPrice) / pos.entryPrice;
   const payoutUnits = Math.floor(gross * (1 - MARKET_FEE_RATE));
 
-  // ⚠️ payoutUnits 可能为 0（近乎归零的仓位，或投入小到 1 个单位）—— 那时
-  // **没有钱动过**：不写流水、不发通知，只把仓位置 closed。
+  // ⚠️ payoutUnits 可能为 0 —— 那时**没有钱动过**：不写流水、不发通知，只把仓位置 closed。
   // 漏了这一档就会让记账内核抛出来（postEntry 对 units === 0 也是抛的，它只收
   // 非零整数），用户看到一个 500 —— 而实发 0 是合法结果，仓位照样要平掉。
+  //
+  // 这条分支在 2026-09 精度提到 0.0001 条之后**几乎打不到了**：实发 0 要求价格跌掉
+  // 99.99% 以上（精度还是 0.1 条时，投 1 个单位的仓位随便一动就归零，那才是常态）。
+  // 留着它是因为「跌到 0」在数学上仍可能，而不是因为常见。
   const description = `练手盘 卖出 ${displaySymbol(symbol)}（成交价 ${exitPrice}）`;
 
   try {

@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { AMOUNT_ERROR, fmtFish, parseFishAmount, roundFish } from '@/lib/fish-amount';
+import { FISH_UNIT_SCALE } from '@/lib/fish-units';
 
 // 练手盘面板：行情 + 买入 + 持仓 + 平仓。
 //
@@ -29,8 +31,6 @@ declare global {
   }
 }
 
-/** 金额白名单：正整数或 1 位小数（与 fishToUnits 的口径一致，前端先挡一道）。 */
-const AMOUNT_RE = /^\d+(\.\d)?$/;
 /** 行情轮询间隔。展示用，与 src/lib/market-poll-drainer.ts 的 15 秒同档。 */
 const POLL_MS = 15_000;
 
@@ -50,11 +50,6 @@ export interface PositionProp {
   stake: number;
   entryPrice: number;
   openedAt: string;
-}
-
-/** 鱼干展示：最多 1 位小数，去掉无意义的尾零（12 而不是 12.0）。 */
-function fmtFish(n: number): string {
-  return String(Math.round(n * 10) / 10);
 }
 
 /** 价格展示：保留 2 位小数并加千分位。**不用 toLocale***（见 db-time-guard 规则 4）。 */
@@ -176,12 +171,12 @@ export default function TradePanel({
   const displayOf = (sym: string) => quotes.find((q) => q.symbol === sym)?.display ?? sym;
 
   const trimmed = amount.trim();
-  const parsed = AMOUNT_RE.test(trimmed) ? Number(trimmed) : NaN;
+  const parsed = parseFishAmount(trimmed) ?? NaN;
   const amountError =
     trimmed === ''
       ? ''
-      : !AMOUNT_RE.test(trimmed)
-        ? '金额最多 1 位小数'
+      : !Number.isFinite(parsed)
+        ? AMOUNT_ERROR
         : parsed <= 0
           ? '金额需大于 0'
           : parsed < minStake
@@ -191,15 +186,23 @@ export default function TradePanel({
               : '';
   const amountOk = Number.isFinite(parsed) && parsed >= minStake && parsed <= balance;
   const canBuy = amountOk && current != null;
-  const afterBalance = amountOk ? Math.round((balance - parsed) * 10) / 10 : balance;
+  const afterBalance = amountOk ? roundFish(balance - parsed) : balance;
 
   // 某一笔持仓按**展示价**估的盈亏。真实结算价以下单那一刻为准（见文件头 ①）。
+  //
+  // ⚠️ 单位换算必须走 FISH_UNIT_SCALE，**别写死 10**：精度提到 0.0001 之后写死的 10
+  // 会**静默错 1000 倍**（投 1 条的仓位估算「可卖」显示约 1.0 而不是约 999），而用户
+  // 正是按这个数决定要不要平仓。服务端对应的结算是 market-service 的 settle。
   function estimate(p: PositionProp) {
     const px = priceOf(p.symbol);
     if (px == null) return null;
-    const stakeUnits = Math.round(p.stake * 10);
+    const stakeUnits = Math.round(p.stake * FISH_UNIT_SCALE);
     const payout = Math.floor((stakeUnits * px) / p.entryPrice * (1 - feeRate));
-    return { px, payout: payout / 10, profit: (payout - stakeUnits) / 10 };
+    return {
+      px,
+      payout: payout / FISH_UNIT_SCALE,
+      profit: (payout - stakeUnits) / FISH_UNIT_SCALE,
+    };
   }
 
   function openBuy() {
