@@ -1,0 +1,501 @@
+@use '../abstracts/variables' as *;
+@use '../abstracts/mixins' as m;
+
+// ═══════════════════════════════════════════════════════
+//  鱼干练手盘（/fish/trade）
+//
+//  视觉语言与 /fish 同源：卡片 30px 圆角 + 全部走 --color-* 令牌（随
+//  <html data-theme> 自动明暗）。类块前缀 **trade-** —— 与 fish-card__*、market-*
+//  分开：三页各有各的布局，共用类名会让改一边静默改到另一边（frontend-styles §11.1）。
+//  弹窗外壳（.modal-overlay/.modal-dialog/.modal-content/.modal-header）是通用组件，
+//  直接用，不重写。
+//
+//  【涨跌配色】涨 = --color-success-primary（绿），跌 = --color-warning-primary（红）。
+//  站内没有 --color-danger-*，--fd-danger 就是 warning 的别名，别去新造一个。
+//
+//  【图标】走势线是内联 SVG（`.trade-spark`），站内没有图表库也不该为一张曲线引进来。
+// ═══════════════════════════════════════════════════════
+
+.trade-subtitle {
+  text-align: center;
+  color: var(--color-text-secondary);
+  font-size: 0.95rem;
+  margin: -$space-2 0 $space-6;
+}
+
+// ── 卡片（三张：行情 / 买入 / 持仓）──────────────────────────────────────────
+
+.trade-card {
+  max-width: 560px;
+  margin: 0 auto $space-4;
+  padding: $space-6;
+  background: var(--color-background-card);
+  border-radius: 30px;
+  box-shadow: var(--shadow-card);
+
+  @media (max-width: 768px) {
+    padding: $space-4;
+    border-radius: 20px;
+  }
+}
+
+.trade-card__title {
+  margin: 0 0 $space-4;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.trade-card__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: $space-2;
+  padding: $space-4;
+  margin-bottom: $space-6;
+  background: var(--color-background-subtle);
+  border-radius: $radius-large;
+}
+
+.trade-card__balance-label,
+.trade-card__balance-unit {
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+}
+
+.trade-card__balance-number {
+  font-size: 2rem;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--color-brand-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+// ── 行情 ────────────────────────────────────────────────────────────────────
+
+.trade-quote {
+  & + & {
+    margin-top: $space-4;
+    padding-top: $space-4;
+    border-top: 1px solid var(--color-border);
+  }
+}
+
+.trade-quote__head {
+  display: flex;
+  align-items: baseline;
+  gap: $space-3;
+}
+
+.trade-quote__name {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.trade-quote__price {
+  margin-left: auto;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.trade-quote__unit {
+  margin-left: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.trade-quote__change {
+  min-width: 4.5rem;
+  text-align: right;
+  font-size: 0.875rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+
+  &--up {
+    color: var(--color-success-primary);
+  }
+
+  &--down {
+    color: var(--color-warning-primary);
+  }
+}
+
+// 走势线。preserveAspectRatio="none" 让它拉满卡片宽度，描边靠
+// vector-effect="non-scaling-stroke" 保持 1px（否则横向会被拉粗）。
+.trade-spark {
+  display: block;
+  width: 100%;
+  height: 40px;
+  margin-top: $space-2;
+}
+
+.trade-spark__line {
+  fill: none;
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+
+  &--up {
+    stroke: var(--color-success-primary);
+  }
+
+  &--down {
+    stroke: var(--color-warning-primary);
+  }
+}
+
+.trade-quote__stale {
+  margin: $space-3 0 0;
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  text-align: center;
+}
+
+.trade-quote__down {
+  margin: 0;
+  padding: $space-4;
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+  background: var(--color-background-subtle);
+  border-radius: $radius-large;
+}
+
+// ── 表单字段（与 market-field 同形，前缀分开）────────────────────────────────
+
+.trade-field {
+  margin-bottom: $space-4;
+}
+
+.trade-field__label {
+  display: block;
+  margin-bottom: $space-2;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.trade-field__hint {
+  margin: $space-1 0 0;
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+}
+
+.trade-field__hint--error {
+  color: var(--color-warning-primary);
+  font-weight: 500;
+}
+
+/* 标的切换用「切页档」（btn-tab），**不是 .segmented 胶囊滑块** ——
+   docs/frontend-styles.md §6.8 的判据是「滑块只给 2 选 1 的互斥**视图**切换」，
+   而这里选项可能变多（加币）、点下去也决定了买什么，两条都在「不要用」那边。
+   与鱼干流水的筛选条同档。 */
+.trade-symbol {
+  display: flex;
+  gap: $space-2;
+  flex-wrap: wrap;
+}
+
+.trade-symbol__btn {
+  @include m.btn-tab;
+  padding: $space-2 $space-4;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+// 金额输入：外壳是胶囊（一行文字 → 胶囊，见 frontend-styles §4.2），
+// 聚焦一律用 --shadow-focus-brand，**绝不改 border**（那会让字段随焦点变高）。
+.trade-amount {
+  display: flex;
+  align-items: center;
+  gap: $space-2;
+  padding: $space-3 $space-4;
+  background: var(--color-background-page);
+  border: none;
+  border-radius: $radius-max;
+  transition: box-shadow 0.2s ease;
+
+  &:focus-within {
+    box-shadow: var(--shadow-focus-brand);
+  }
+
+  /* 内层归零。用 .trade-amount input（0-1-1）而不是 .trade-amount__input（0-1-0）：
+     后者会被 input.form-control（0-1-1）压掉背景与聚焦环。 */
+  input {
+    flex: 1;
+    min-width: 0;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+
+    &:focus {
+      box-shadow: none;
+    }
+  }
+}
+
+.trade-amount__input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-size: 1.5rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+
+  &::placeholder {
+    color: var(--color-text-secondary);
+    opacity: 0.5;
+    font-weight: 500;
+  }
+}
+
+.trade-amount__unit {
+  flex: none;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+// 摘要条：最小投入 + 手续费
+.trade-summary {
+  display: flex;
+  justify-content: space-between;
+  gap: $space-3;
+  margin: $space-6 0 $space-4;
+  padding: $space-3 $space-4;
+  background: var(--color-background-highlight);
+  border-radius: $radius-large;
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+
+  strong {
+    color: var(--color-text-primary);
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.trade-summary__note {
+  margin-left: 2px;
+  color: var(--color-text-secondary);
+}
+
+.trade-submit {
+  @include m.btn-primary;
+  display: block;
+  width: 100%;
+  padding: $space-3 $space-4;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+}
+
+// ── 持仓列表 ────────────────────────────────────────────────────────────────
+
+.trade-empty {
+  margin: 0;
+  padding: $space-6 $space-4;
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+  background: var(--color-background-subtle);
+  border-radius: $radius-large;
+}
+
+.trade-positions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: $space-2;
+}
+
+/* 一行一笔。窄屏折成两行：上面是身份与价格，下面盈亏 + 卖出按钮。
+   用 grid 而不是 flex-wrap —— 折行位置要可控（名称与盈亏不能被拆开）。 */
+.trade-position {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: $space-3;
+  padding: $space-3 $space-4;
+  background: var(--color-background-subtle);
+  border-radius: $radius-large;
+
+  @media (max-width: 560px) {
+    grid-template-columns: 1fr auto;
+    gap: $space-2 $space-3;
+  }
+}
+
+.trade-position__main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: $space-2;
+  min-width: 0;
+}
+
+.trade-position__name {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.trade-position__stake {
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.trade-position__entry {
+  width: 100%;
+  font-size: 0.75rem;
+  color: var(--color-text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.trade-position__time {
+  color: var(--color-text-tertiary);
+}
+
+.trade-position__pnl {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.trade-position__profit {
+  font-size: 0.95rem;
+  font-weight: 700;
+
+  &--up {
+    color: var(--color-success-primary);
+  }
+
+  &--down {
+    color: var(--color-warning-primary);
+  }
+}
+
+.trade-position__payout {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+}
+
+.trade-position__sell {
+  @include m.btn-secondary;
+  padding: $space-2 $space-4;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+
+  @media (max-width: 560px) {
+    grid-column: 2;
+    grid-row: 2;
+  }
+}
+
+// ── 确认弹窗 ────────────────────────────────────────────────────────────────
+
+.trade-confirm__rows {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: $space-2;
+}
+
+.trade-confirm__row {
+  display: flex;
+  justify-content: space-between;
+  gap: $space-4;
+  font-size: 0.9rem;
+
+  dt {
+    color: var(--color-text-secondary);
+  }
+
+  dd {
+    margin: 0;
+    color: var(--color-text-primary);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+}
+
+.trade-confirm__row--total {
+  padding-top: $space-2;
+  border-top: 1px solid var(--color-border);
+
+  dd {
+    font-size: 1.05rem;
+    font-weight: 700;
+  }
+}
+
+/* 免责说明：实际成交价以下单那一刻为准。
+   这不是免责套话 —— 界面上那个价是 15 秒一轮的**展示缓存**，而成交价是服务端
+   现取的（见 src/lib/market-price.ts）。两者必然有差异，把它说清楚是设计的一部分。 */
+.trade-confirm__disclaimer {
+  margin: $space-4 0 0;
+  padding: $space-3 $space-4;
+  background: var(--color-background-subtle);
+  border-radius: $radius-large;
+  font-size: 0.8rem;
+  line-height: 1.6;
+  color: var(--color-text-secondary);
+}
+
+.trade-confirm__actions {
+  display: flex;
+  gap: $space-3;
+  margin-top: $space-6;
+}
+
+.trade-confirm__cancel {
+  @include m.btn-secondary;
+  flex: 1;
+  padding: $space-3 $space-4;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.trade-confirm__ok {
+  flex: 1;
+  padding: $space-3 $space-4;
+  border: none;
+  border-radius: $radius-max;
+  background: var(--color-brand-primary);
+  color: #fff;
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: filter 0.2s ease;
+
+  &:hover:not(:disabled) {
+    filter: brightness(0.92);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}

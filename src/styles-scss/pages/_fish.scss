@@ -152,6 +152,26 @@
   background: var(--color-background-highlight);
   border-radius: $radius-large;
   line-height: 1.6;
+
+  p {
+    margin: 0;
+
+    & + p {
+      margin-top: $space-2;
+    }
+  }
+}
+
+/* 练手盘入口。放在 __info 里面而不是上面的 __actions —— 那一行被
+   tests/e2e/fish-layout.spec.ts 钉死为「恰好 3 颗」，加第四颗当场红。 */
+.fish-card__info-link {
+  color: var(--color-brand-primary);
+  font-weight: 600;
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
 }
 
 // ═══════════════════════════════════════════════════════
