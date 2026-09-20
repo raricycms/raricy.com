@@ -17,6 +17,7 @@
 
 import type { CommandSpec, Ctx } from '../types';
 import { CliError } from '../types';
+import { userSource } from '../sources';
 import {
   FRAMES,
   FRAME_KEYS,
@@ -39,7 +40,9 @@ const usernameArg = {
   required: true,
   label: '用户名',
   help: '目标用户的用户名',
-  prompt: { type: 'input' as const },
+  // 向导里**先搜后选** —— 本站有几百个用户，让人背下用户名等于把向导退化成命令行。
+  // value 就是用户名（与命令式那条路径收的完全一样），收集完直接喂给 run()。
+  prompt: { type: 'search' as const, source: userSource() },
 };
 
 const keyArg = {
