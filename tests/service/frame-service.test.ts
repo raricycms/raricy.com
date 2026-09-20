@@ -28,11 +28,20 @@ import {
   MAX_FRAME_BYTES,
   __resetFrameAssetCacheForTests,
   auditFrameAssets,
+  equipFrame,
   frameAssetAvailable,
+  frameUrlFor,
+  frameUrlOfUser,
+  grantFrame,
+  listMyFrames,
   pngHasAlpha,
   resolveFrameAsset,
+  revokeFrame,
 } from '@/lib/frame-service';
 import { FRAME_KEYS } from '@/lib/frame-refs';
+import { prisma } from '@/lib/db';
+import { nowForDb } from '@/lib/db-time';
+import { makeUser, resetDb } from '../helpers/db';
 
 /** 硬校验：素材目录必须在 tests/.tmp/ 下，否则直接抛（防止误动真实素材）。 */
 function assertTempDir() {
@@ -344,5 +353,457 @@ describe('下发白名单与上限', () => {
 
   it('字节上限是个正数天花板', () => {
     expect(MAX_FRAME_BYTES).toBeGreaterThan(0);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 写路径与判定（需要真实 SQLite）
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** 把 `nowForDb()` 之后 n 毫秒的绝对时刻算出来（与 admin-user-service 的 banUntil 同款写法）。 */
+const inMs = (ms: number) => new Date(nowForDb().getTime() + ms);
+const DAY = 24 * 60 * 60 * 1000;
+
+/** 读回某个用户的装备两列 —— 断言「有没有被写」一律看库，不看返回值。 */
+const equipCols = (id: string) =>
+  prisma.user.findUnique({
+    where: { id },
+    select: { equippedFrameKey: true, equippedFrameExpiresAt: true },
+  });
+
+/** 读回某人对某框的持有行（含墓碑）—— 「行数恒为 1」那类断言靠它。 */
+const holdingRows = (userId: string, frameKey: string) =>
+  prisma.userFrame.findMany({ where: { userId, frameKey } });
+
+describe('grantFrame', () => {
+  let u: { id: string };
+  beforeEach(async () => {
+    await resetDb();
+    u = await makeUser();
+  });
+
+  it('授予新框 → created，行落库且到期时刻与请求一致', async () => {
+    const exp = inMs(30 * DAY);
+    const res = await grantFrame({ userId: u.id, key: KEY, expiresAt: exp });
+    expect(res).toMatchObject({ ok: true, action: 'created', expiresAt: exp });
+
+    const rows = await holdingRows(u.id, KEY);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].deleted).toBe(false);
+    expect(rows[0].expiresAt?.getTime()).toBe(exp.getTime());
+    expect(rows[0].source).toBe('cli');
+    // 授予 ≠ 装备
+    expect((await equipCols(u.id))?.equippedFrameKey).toBeNull();
+  });
+
+  it('永久授予 → expiresAt 落 null', async () => {
+    await grantFrame({ userId: u.id, key: KEY, expiresAt: null });
+    expect((await holdingRows(u.id, KEY))[0].expiresAt).toBeNull();
+  });
+
+  it('source 落库（第二版鱼干购买要靠它区分「买的」与「站长发的」）', async () => {
+    await grantFrame({ userId: u.id, key: KEY, expiresAt: null, source: 'purchase' });
+    expect((await holdingRows(u.id, KEY))[0].source).toBe('purchase');
+  });
+
+  it('再授更长的 → extended，取较晚', async () => {
+    const near = inMs(1 * DAY);
+    const far = inMs(60 * DAY);
+    await grantFrame({ userId: u.id, key: KEY, expiresAt: near });
+    const res = await grantFrame({ userId: u.id, key: KEY, expiresAt: far });
+    expect(res).toMatchObject({ ok: true, action: 'extended' });
+    expect((await holdingRows(u.id, KEY))[0].expiresAt?.getTime()).toBe(far.getTime());
+  });
+
+  it('★ 只延长不缩短：再授更短的 → noop，库里一点没动', async () => {
+    const far = inMs(60 * DAY);
+    await grantFrame({ userId: u.id, key: KEY, expiresAt: far });
+    const res = await grantFrame({ userId: u.id, key: KEY, expiresAt: inMs(1 * DAY) });
+    expect(res).toMatchObject({ ok: true, action: 'noop' });
+    expect((await holdingRows(u.id, KEY))[0].expiresAt?.getTime()).toBe(far.getTime());
+    // 想缩短只有 revoke 一条路 —— 这条口径要能在下一条用例里被推翻
+    expect(res.ok && res.expiresAt?.getTime()).toBe(far.getTime());
+  });
+
+  it('★ 已经是永久的，再授 30 天仍是永久（noop）', async () => {
+    await grantFrame({ userId: u.id, key: KEY, expiresAt: null });
+    const res = await grantFrame({ userId: u.id, key: KEY, expiresAt: inMs(30 * DAY) });
+    expect(res).toMatchObject({ ok: true, action: 'noop' });
+    expect((await holdingRows(u.id, KEY))[0].expiresAt).toBeNull();
+  });
+
+  it('有期的升成永久 → extended，变 null', async () => {
+    await grantFrame({ userId: u.id, key: KEY, expiresAt: inMs(1 * DAY) });
+    const res = await grantFrame({ userId: u.id, key: KEY, expiresAt: null });
+    expect(res).toMatchObject({ ok: true, action: 'extended' });
+    expect((await holdingRows(u.id, KEY))[0].expiresAt).toBeNull();
+  });
+
+  it('未登记的 key → 400（不静默丢弃）', async () => {
+    const res = await grantFrame({ userId: u.id, key: 'no-such-frame', expiresAt: null });
+    expect(res).toMatchObject({ ok: false, code: 400 });
+    expect(await prisma.userFrame.count()).toBe(0);
+  });
+
+  it('用户不存在 → 404', async () => {
+    const res = await grantFrame({ userId: 'nobody', key: KEY, expiresAt: null });
+    expect(res).toMatchObject({ ok: false, code: 404 });
+  });
+
+  it('★ 收回后再授予必须复活墓碑行，行数恒为 1（唯一约束是物理的）', async () => {
+    await grantFrame({ userId: u.id, key: KEY, expiresAt: null });
+    await revokeFrame({ userId: u.id, key: KEY });
+    expect((await holdingRows(u.id, KEY))[0].deleted).toBe(true);
+
+    const res = await grantFrame({ userId: u.id, key: KEY, expiresAt: inMs(7 * DAY) });
+    expect(res).toMatchObject({ ok: true, action: 'revived' });
+
+    const rows = await holdingRows(u.id, KEY);
+    expect(rows).toHaveLength(1); // ← 新插一行会撞唯一约束 / 或留下两行
+    expect(rows[0].deleted).toBe(false);
+    expect(rows[0].deletedAt).toBeNull();
+  });
+
+  it('★ 墓碑上的旧永久值不参与「取较晚」—— 否则收回过的永久授权会诈尸', async () => {
+    await grantFrame({ userId: u.id, key: KEY, expiresAt: null }); // 永久
+    await revokeFrame({ userId: u.id, key: KEY }); // 收回
+    const exp = inMs(30 * DAY);
+    await grantFrame({ userId: u.id, key: KEY, expiresAt: exp });
+    // 若与墓碑上的 null 取较晚，结果会是 null（永久）—— 那荒唐：上一次授权已被收回
+    expect((await holdingRows(u.id, KEY))[0].expiresAt?.getTime()).toBe(exp.getTime());
+  });
+});
+
+describe('revokeFrame', () => {
+  let u: { id: string };
+  beforeEach(async () => {
+    await resetDb();
+    u = await makeUser();
+  });
+
+  it('翻墓碑而不是物删（全站口径 F5）', async () => {
+    await grantFrame({ userId: u.id, key: KEY, expiresAt: null });
+    const res = await revokeFrame({ userId: u.id, key: KEY });
+    expect(res).toEqual({ revoked: true, unequipped: false });
+
+    const rows = await holdingRows(u.id, KEY);
+    expect(rows).toHaveLength(1); // 行还在
+    expect(rows[0].deleted).toBe(true);
+    expect(rows[0].deletedAt).not.toBeNull();
+  });
+
+  it('幂等：再收回一次 → revoked false，不报错', async () => {
+    await grantFrame({ userId: u.id, key: KEY, expiresAt: null });
+    await revokeFrame({ userId: u.id, key: KEY });
+    expect(await revokeFrame({ userId: u.id, key: KEY })).toEqual({
+      revoked: false,
+      unequipped: false,
+    });
+  });
+
+  it('本来就没持有过 → 同样是干净的 revoked false', async () => {
+    expect(await revokeFrame({ userId: u.id, key: KEY })).toEqual({
+      revoked: false,
+      unequipped: false,
+    });
+  });
+
+  it('未登记的 key → 不抛，按「没什么可收回的」处理', async () => {
+    expect(await revokeFrame({ userId: u.id, key: 'no-such-frame' })).toEqual({
+      revoked: false,
+      unequipped: false,
+    });
+  });
+
+  it('★ 正戴着这个框时，收回会顺带卸下（F2）', async () => {
+    await grantFrame({ userId: u.id, key: KEY, expiresAt: null });
+    await equipFrame(u.id, KEY);
+    expect((await equipCols(u.id))?.equippedFrameKey).toBe(KEY);
+
+    expect(await revokeFrame({ userId: u.id, key: KEY })).toEqual({
+      revoked: true,
+      unequipped: true,
+    });
+    const cols = await equipCols(u.id);
+    expect(cols?.equippedFrameKey).toBeNull();
+    expect(cols?.equippedFrameExpiresAt).toBeNull();
+  });
+
+  it('戴的是**别的**框时，收回这个框不动装备指针', async () => {
+    // 只有一个 key，所以构造「别的框」用一次未登记 key 的装备是不可能的 ——
+    // 这里验证的是另一半：没装备任何东西时收回，装备列当然不该被碰。
+    await grantFrame({ userId: u.id, key: KEY, expiresAt: null });
+    const res = await revokeFrame({ userId: u.id, key: KEY });
+    expect(res.unequipped).toBe(false);
+    expect((await equipCols(u.id))?.equippedFrameKey).toBeNull();
+  });
+});
+
+describe('equipFrame', () => {
+  let u: { id: string };
+  beforeEach(async () => {
+    await resetDb();
+    u = await makeUser();
+  });
+
+  it('未持有 → 403，且**库里一点没写**', async () => {
+    const res = await equipFrame(u.id, KEY);
+    expect(res).toMatchObject({ ok: false, code: 403 });
+    const cols = await equipCols(u.id);
+    expect(cols?.equippedFrameKey).toBeNull();
+    expect(cols?.equippedFrameExpiresAt).toBeNull();
+  });
+
+  it('★ 持有但已过期 → 403，且库里一点没写', async () => {
+    await grantFrame({ userId: u.id, key: KEY, expiresAt: inMs(-1000) }); // 一毫秒前就过期了
+    const res = await equipFrame(u.id, KEY);
+    expect(res).toMatchObject({ ok: false, code: 403 });
+    expect((await equipCols(u.id))?.equippedFrameKey).toBeNull();
+  });
+
+  it('成功 → users 两列的到期时刻 = 持有行的到期时刻', async () => {
+    const exp = inMs(30 * DAY);
+    await grantFrame({ userId: u.id, key: KEY, expiresAt: exp });
+    const res = await equipFrame(u.id, KEY);
+    expect(res).toMatchObject({ ok: true, key: KEY });
+
+    const cols = await equipCols(u.id);
+    expect(cols?.equippedFrameKey).toBe(KEY);
+    expect(cols?.equippedFrameExpiresAt?.getTime()).toBe(exp.getTime());
+  });
+
+  it('永久框 → 装备列的到期时刻是 null', async () => {
+    await grantFrame({ userId: u.id, key: KEY, expiresAt: null });
+    await equipFrame(u.id, KEY);
+    expect((await equipCols(u.id))?.equippedFrameExpiresAt).toBeNull();
+  });
+
+  it('收回后就装不上了（持有行已失效）', async () => {
+    await grantFrame({ userId: u.id, key: KEY, expiresAt: null });
+    await revokeFrame({ userId: u.id, key: KEY });
+    expect(await equipFrame(u.id, KEY)).toMatchObject({ ok: false, code: 403 });
+  });
+
+  it('未知 key → 400', async () => {
+    expect(await equipFrame(u.id, 'no-such-frame')).toMatchObject({ ok: false, code: 400 });
+  });
+
+  it('重复装备同一个框是幂等的', async () => {
+    await grantFrame({ userId: u.id, key: KEY, expiresAt: null });
+    await equipFrame(u.id, KEY);
+    expect(await equipFrame(u.id, KEY)).toMatchObject({ ok: true, key: KEY });
+  });
+
+  it('卸下 → 两列清空', async () => {
+    await grantFrame({ userId: u.id, key: KEY, expiresAt: null });
+    await equipFrame(u.id, KEY);
+    expect(await equipFrame(u.id, null)).toEqual({ ok: true, key: null, expiresAt: null });
+    const cols = await equipCols(u.id);
+    expect(cols?.equippedFrameKey).toBeNull();
+    expect(cols?.equippedFrameExpiresAt).toBeNull();
+  });
+
+  it('★ 卸下无条件成功 —— 即使当前装备的是一个白名单外的（已删/已退役）key', async () => {
+    // 这是「退役 key 变成卸不掉的僵尸装备」那条风险的唯一出路。
+    // 直接写库来构造这个状态（写路径本身不允许它出现）。
+    await prisma.user.update({
+      where: { id: u.id },
+      data: { equippedFrameKey: 'a-key-that-no-longer-exists', equippedFrameExpiresAt: null },
+    });
+    expect(await equipFrame(u.id, null)).toMatchObject({ ok: true });
+    expect((await equipCols(u.id))?.equippedFrameKey).toBeNull();
+  });
+
+  it('没有任何装备时卸下也是成功的', async () => {
+    expect(await equipFrame(u.id, null)).toMatchObject({ ok: true });
+  });
+});
+
+describe('★ F2：持有行的到期时刻变了，装备列的冗余副本必须跟着走', () => {
+  let u: { id: string };
+  beforeEach(async () => {
+    await resetDb();
+    u = await makeUser();
+  });
+
+  it('★ 装备中 → grant 续期 → equipped_frame_expires_at 跟着变新', async () => {
+    // 【这条为什么是本设计最隐蔽的坑】渲染侧读的是 users 上那两个**冗余列**，
+    // 它不会回头去看持有行。续期时忘了刷这一列，症状是「用户续期了，
+    // 但框到期后永远不出现」—— 看起来像浏览器缓存。
+    const first = inMs(1 * DAY);
+    await grantFrame({ userId: u.id, key: KEY, expiresAt: first });
+    await equipFrame(u.id, KEY);
+    expect((await equipCols(u.id))?.equippedFrameExpiresAt?.getTime()).toBe(first.getTime());
+
+    const second = inMs(90 * DAY);
+    const res = await grantFrame({ userId: u.id, key: KEY, expiresAt: second });
+    expect(res).toMatchObject({ ok: true, action: 'extended', refreshedEquip: true });
+
+    expect((await equipCols(u.id))?.equippedFrameExpiresAt?.getTime()).toBe(second.getTime());
+  });
+
+  it('★ 装备中 → 续成永久 → 装备列也变 null', async () => {
+    await grantFrame({ userId: u.id, key: KEY, expiresAt: inMs(1 * DAY) });
+    await equipFrame(u.id, KEY);
+    await grantFrame({ userId: u.id, key: KEY, expiresAt: null });
+    expect((await equipCols(u.id))?.equippedFrameExpiresAt).toBeNull();
+  });
+
+  it('没装备这个框时，grant 不动装备列（refreshedEquip false）', async () => {
+    await grantFrame({ userId: u.id, key: KEY, expiresAt: inMs(1 * DAY) });
+    const res = await grantFrame({ userId: u.id, key: KEY, expiresAt: inMs(9 * DAY) });
+    expect(res.ok && res.refreshedEquip).toBe(false);
+    expect((await equipCols(u.id))?.equippedFrameKey).toBeNull();
+  });
+
+  it('★ 续期之后框仍然是显示着的（F2 的行为级断言，不只看库）', async () => {
+    writeAsset(`${KEY}.png`, png(6));
+    __resetFrameAssetCacheForTests();
+
+    await grantFrame({ userId: u.id, key: KEY, expiresAt: inMs(1 * DAY) });
+    await equipFrame(u.id, KEY);
+    expect(await frameUrlOfUser(u.id)).not.toBeNull();
+
+    await grantFrame({ userId: u.id, key: KEY, expiresAt: null });
+    expect(await frameUrlOfUser(u.id)).not.toBeNull();
+  });
+});
+
+describe('frameUrlFor —— 唯一的判定出口', () => {
+  let u: { id: string };
+  beforeEach(async () => {
+    await resetDb();
+    u = await makeUser();
+  });
+
+  it('没装备 → null', () => {
+    expect(frameUrlFor(null)).toBeNull();
+    expect(frameUrlFor(undefined)).toBeNull();
+    expect(frameUrlFor({})).toBeNull();
+    expect(frameUrlFor({ equippedFrameKey: null, equippedFrameExpiresAt: null })).toBeNull();
+  });
+
+  it('装备了 + 未过期 + 盘上有图 → 贴图地址', () => {
+    writeAsset(`${KEY}.png`, png(6));
+    __resetFrameAssetCacheForTests();
+    expect(frameUrlFor({ equippedFrameKey: KEY, equippedFrameExpiresAt: null })).toBe(
+      `/api/frames/${KEY}`
+    );
+  });
+
+  it('★ 已过期 → null（这就是「到期后不消失」那条风险的闸门）', () => {
+    writeAsset(`${KEY}.png`, png(6));
+    __resetFrameAssetCacheForTests();
+    expect(
+      frameUrlFor({ equippedFrameKey: KEY, equippedFrameExpiresAt: new Date(nowForDb().getTime() - 1) })
+    ).toBeNull();
+  });
+
+  it('★ 盘上没有素材 → null（授权有效，但暂时显示不出来）', () => {
+    // 目录是空的（beforeEach 清过）
+    expect(frameUrlFor({ equippedFrameKey: KEY, equippedFrameExpiresAt: null })).toBeNull();
+  });
+
+  it('不在白名单的 key → null', () => {
+    writeAsset(`${KEY}.png`, png(6));
+    __resetFrameAssetCacheForTests();
+    expect(frameUrlFor({ equippedFrameKey: 'no-such-frame', equippedFrameExpiresAt: null })).toBeNull();
+  });
+
+  it('★ 素材补上之后立刻能显示，不需要重新装备（第三道闸是运维事实，不是状态）', () => {
+    const fields = { equippedFrameKey: KEY, equippedFrameExpiresAt: null };
+    expect(frameUrlFor(fields)).toBeNull(); // 还没传素材
+    writeAsset(`${KEY}.png`, png(6));
+    __resetFrameAssetCacheForTests();
+    expect(frameUrlFor(fields)).toBe(`/api/frames/${KEY}`);
+  });
+
+  it('frameUrlOfUser：只有 id 时多查一次主键，结果与 frameUrlFor 一致', async () => {
+    writeAsset(`${KEY}.png`, png(6));
+    __resetFrameAssetCacheForTests();
+    await grantFrame({ userId: u.id, key: KEY, expiresAt: null });
+    await equipFrame(u.id, KEY);
+
+    expect(await frameUrlOfUser(u.id)).toBe(`/api/frames/${KEY}`);
+    expect(await frameUrlOfUser('nobody')).toBeNull();
+  });
+});
+
+describe('listMyFrames —— 面板数据源（下发判定后的结果）', () => {
+  let u: { id: string };
+  beforeEach(async () => {
+    await resetDb();
+    u = await makeUser();
+  });
+
+  it('空持有 → 空列表、equipped null', async () => {
+    expect(await listMyFrames(u.id)).toEqual({ frames: [], equipped: null });
+  });
+
+  it('只列 alive 的持有行 —— 收回过的不出现', async () => {
+    await grantFrame({ userId: u.id, key: KEY, expiresAt: null });
+    await revokeFrame({ userId: u.id, key: KEY });
+    const view = await listMyFrames(u.id);
+    expect(view.frames).toHaveLength(0);
+  });
+
+  it('★ 下发的是判定后的结果：url / expired / equipped 都由服务端算好', async () => {
+    writeAsset(`${KEY}.png`, png(6));
+    __resetFrameAssetCacheForTests();
+    await grantFrame({ userId: u.id, key: KEY, expiresAt: null });
+    await equipFrame(u.id, KEY);
+
+    const view = await listMyFrames(u.id);
+    expect(view.frames).toHaveLength(1);
+    expect(view.frames[0]).toMatchObject({
+      key: KEY,
+      available: true,
+      retired: false,
+      expired: false,
+      equipped: true,
+      url: `/api/frames/${KEY}`,
+      expiresAt: null, // 永久
+    });
+    expect(view.equipped).toEqual({ key: KEY, label: expect.any(String), active: true, expiresAt: null });
+  });
+
+  it('★ 已过期的框：expired true、url null、但 equipped 仍是 true（装备状态还在）', async () => {
+    writeAsset(`${KEY}.png`, png(6));
+    __resetFrameAssetCacheForTests();
+    await grantFrame({ userId: u.id, key: KEY, expiresAt: inMs(-1) });
+    // 过期后装不上，所以直接写库构造「戴着但已过期」这个状态
+    await prisma.user.update({
+      where: { id: u.id },
+      data: { equippedFrameKey: KEY, equippedFrameExpiresAt: inMs(-1) },
+    });
+
+    const view = await listMyFrames(u.id);
+    expect(view.frames[0]).toMatchObject({ expired: true, url: null, equipped: true });
+    // active false = 面板据此显示「已过期」并给出「卸下」
+    expect(view.equipped).toMatchObject({ key: KEY, active: false });
+  });
+
+  it('★ 素材缺失：available false、url null，但 expired 仍是 false（两件事别混）', async () => {
+    await grantFrame({ userId: u.id, key: KEY, expiresAt: null });
+    const view = await listMyFrames(u.id);
+    expect(view.frames[0]).toMatchObject({ available: false, url: null, expired: false });
+  });
+
+  it('展示用的到期时刻走 ymdhms（UTC 口径的字符串，不是 ISO）', async () => {
+    const exp = inMs(30 * DAY);
+    await grantFrame({ userId: u.id, key: KEY, expiresAt: exp });
+    const view = await listMyFrames(u.id);
+    expect(view.frames[0].expiresAt).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+  });
+
+  it('白名单外的 key（数据脏）也列出来，标 retired，让用户能卸下', async () => {
+    await prisma.userFrame.create({
+      data: { userId: u.id, frameKey: 'ghost-frame', expiresAt: null, createdAt: nowForDb() },
+    });
+    const view = await listMyFrames(u.id);
+    expect(view.frames).toHaveLength(1);
+    expect(view.frames[0]).toMatchObject({ key: 'ghost-frame', retired: true, url: null });
+    // 显示名退回 key 本身，不编一个名字
+    expect(view.frames[0].label).toBe('ghost-frame');
   });
 });

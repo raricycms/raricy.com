@@ -1,5 +1,55 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// frame-service.ts — 头像框的**素材域**（扫盘 / 缓存 / 查表）· server-only
+// frame-service.ts — 头像框的素材域（扫盘 / 缓存 / 查表）+ 持有与装备 + **判定唯一出口**
+// · server-only
+//
+// ═══════════════════════════════════════════════════════════════════════════════
+// 五条不变量 —— 本文件的正确性核心，改动前先读完
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// 【F1】唯一写入者。`users.equipped_frame_key` / `users.equipped_frame_expires_at`
+//   这两列**只由本文件的 grantFrame / revokeFrame / equipFrame 写**。
+//   任何别的地方写它们 = 绕过到期判定（渲染侧直接读原始列会被
+//   tests/unit/frame-guard.test.ts 静态判红）。
+//
+// 【F2】★ 同步契约 ★ 凡改动某用户对 key K 的持有行 `expires_at`（grant 续期 /
+//   revoke 失效），若该用户此刻 `equipped_frame_key === K`，**必须在同一个事务里**
+//   刷新（或清空）`equipped_frame_expires_at`。
+//   违反它 = 用户续期后**框永远不出现**，看起来像浏览器缓存。
+//   为什么：渲染侧读的是 users 上那两个**冗余列**（见迁移 20 头部的取舍），
+//   它不会回头去看持有行。这是本设计里最隐蔽的一条。
+//
+// 【F3】装备前置。`equipFrame(K)` 要求「alive 持有行 && 未过期 && K 在白名单 &&
+//   未退役」。**但素材缺失不阻止装备** —— 站长先授权、后传素材是合法顺序，
+//   那时 `frameUrlFor` 会是 null（框暂时不显示），而装备状态本身是有效的。
+//   反过来「卸下」**无条件成功**：不看当前 key 合不合法、不看有没有持有行。
+//   否则一个退役的 key 会变成卸不掉的僵尸装备。
+//
+// 【F4】唯一约束是**物理**的、包含墓碑行 → 「收回后再授予」必须**复活旧行**
+//   （翻转 deleted），不能新插 —— 会撞唯一约束。写法照 favorite-service 的 attachItems
+//   （那里记着 createMany({skipDuplicates}) 会静默变成 no-op 的教训）。
+//
+// 【F5】永不物删（全站口径）。到期 ≠ 撤销：`expires_at` 过期只让行失效，
+//   `deleted` 仍是 false；只有 revokeFrame 才翻墓碑。
+//
+// ═══════════════════════════════════════════════════════════════════════════════
+// 判定唯一出口
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+//   frame-refs.resolveFrameKey(key, exp, now)   ← 唯一的比较运算（纯函数）
+//            ↓ 只被一处调用
+//   frameUrlFor(row) / frameUrlOfUser(id)       ← 唯一出口：白名单 → 未退役 →
+//            ↓                                    未过期 → 盘上有图，四道合一
+//   ~10 个 DTO 生产者 / 两个 API / CLI          下发「判定后的结果」
+//            ↓
+//   客户端（15 处头像 + 设置面板）—— **一次都不判**
+//
+// ⚠️ `frameUrlFor` 内部固定用 `nowForDb()`，**不接受 now 参数** —— 少一个传错的机会。
+//    `resolveFrameKey` 收 now 是为了可单测（它自己不读时钟）。
+// ⚠️ 客户端判零次不只是纪律：db-time-guard 规则 3–5 扫**整个 src/**（含页面组件），
+//    在客户端写 `new Date(expires_at) > new Date()` 会被静态守卫直接判红。
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// 素材域（扫盘 / 缓存 / 查表）
 //
 // 【目录结构】instance/frames/<key>.png —— **是平铺的一层，没有子目录**，
 // 且**只认 PNG**。与 instance/stickers/<合集>/<表情>.{gif,webp,png,jpg,jpeg} 不同：
@@ -38,13 +88,25 @@
 // 立刻生效（剩下的只是浏览器 HTTP 缓存，见 raw 路由的 Cache-Control）。
 // 时间戳只需要捕捉「增 / 删 / 改名」这三种。
 //
-// ⚠️ 本文件**不做**到期判定、不碰 prisma（那是 frame-service 的后半部分）。
-//    它只回答「某个 key 在盘上有没有图」，而这个问题与「谁在戴」无关。
+// ⚠️ 素材域只回答「某个 key 在盘上有没有图」，而这个问题与「谁在戴」无关 ——
+//    所以它**不碰 prisma**。判定出口与写路径在文件后半段。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { FRAME_KEYS, frameLabel } from './frame-refs';
+import { prisma } from './db';
+import { nowForDb } from './db-time';
+import { ymdhms } from './format';
+import {
+  FRAME_KEYS,
+  FRAMES,
+  frameLabel,
+  frameUrl,
+  parseFrameKey,
+  resolveFrameKey,
+  type FrameDef,
+  type FrameKey,
+} from './frame-refs';
 
 /**
  * 素材目录：优先环境变量，否则回落到 ./instance/frames（对齐 STICKERS_DIR 的约定）。
@@ -279,4 +341,364 @@ export function auditFrameAssets(): FrameAssetAudit[] {
 export function __resetFrameAssetCacheForTests(): void {
   cache = null;
   warnedEmpty = true; // 测试里不要刷日志
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 判定唯一出口
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * DTO 生产者手里的形状 —— 任何含这两列的 users 行（或其子集）都行。
+ *
+ * 两列都可选：调用方的 select 未必都取了它们，而「没取」与「是 null」在这里
+ * 应当同解（都判成「没戴框」）。**刻意不给默认放行的语义** —— 缺字段就是没有。
+ */
+export interface FrameFields {
+  equippedFrameKey?: string | null;
+  equippedFrameExpiresAt?: Date | null;
+}
+
+/**
+ * ★ 唯一的「这个用户现在该显示哪张框图」出口（同步）★
+ *
+ * 四道闸合一：白名单 → 未退役 → 未过期 → **盘上有素材**。返回 null = 不显示框。
+ *
+ * ⚠️ 时钟固定用 `nowForDb()`，**不接受 now 参数** —— 少一个传错的机会。
+ *    拿真实 UTC 的 new Date() 去比会凭空多 8 小时（见 frame-refs.ts 文件头）。
+ *
+ * ⚠️ 第四道闸（盘上素材）在这里而不在 resolveFrameKey：素材在不在盘上是运维事实，
+ *    只有本文件握着 fs。它判 null 的效果是「暂不显示」，而**授权与到期状态不受影响** ——
+ *    站长补上素材后框立刻出现，不需要用户重新装备。
+ */
+export function frameUrlFor(u: FrameFields | null | undefined): string | null {
+  if (!u) return null;
+  const key = resolveFrameKey(u.equippedFrameKey, u.equippedFrameExpiresAt, nowForDb());
+  if (!key) return null;
+  if (!frameAssetAvailable(key)) return null;
+  return frameUrl(key);
+}
+
+/**
+ * 同上，但手上只有用户 id 时用。**多一次主键查询** —— 只在拿不到 users 行的
+ * 那几个调用点用（例：收银台只有 `?to=<id>`），别当成通用取法。
+ */
+export async function frameUrlOfUser(userId: string): Promise<string | null> {
+  const u = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { equippedFrameKey: true, equippedFrameExpiresAt: true },
+  });
+  return frameUrlFor(u);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 写路径（F1：users 那两列的唯一写入者）
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * 两个到期时刻取较晚者。`null` = 永久，而**永久是最大的** —— 所以任一端为 null
+ * 结果就是 null（「只延长不缩短」的极端情形）。
+ */
+function laterExpiry(a: Date | null, b: Date | null): Date | null {
+  if (a === null || b === null) return null;
+  return a.getTime() >= b.getTime() ? a : b;
+}
+
+export type FrameGrantAction = 'created' | 'revived' | 'extended' | 'noop';
+
+export type FrameGrantResult =
+  | { ok: true; action: FrameGrantAction; expiresAt: Date | null; refreshedEquip: boolean }
+  | { ok: false; code: 400 | 404; message: string };
+
+/**
+ * 授予 / 续期一个头像框。
+ *
+ * 【授予 ≠ 装备】这里只写持有关系，用户自己去 /settings 选择戴不戴。
+ *
+ * 【幂等，且只延长不缩短】同一 (用户, 框) 已存在时取「原到期」与「新到期」的较晚者。
+ * 想缩短或收回，用 revokeFrame。
+ *
+ * ⚠️ **墓碑行上的旧 expires_at 不参与取较晚**（见下面 `existing.deleted` 那一支）：
+ *    那个值属于一次**已被收回**的授权。若参与，就会出现「曾经永久授权过 → 收回 →
+ *    再授 30 天 → 仍是永久」这种荒唐结果。
+ *
+ * 【F2】若该用户此刻正戴着这个框，**同一事务里**刷新装备列的到期时刻。
+ */
+export async function grantFrame(input: {
+  userId: string;
+  key: string;
+  /** 绝对时刻；null = 永久。调用方按 nowForDb() 口径算好（`new Date(now.getTime() + n)`）。 */
+  expiresAt: Date | null;
+  source?: 'cli' | 'purchase' | 'system';
+}): Promise<FrameGrantResult> {
+  const { userId, expiresAt } = input;
+  const source = input.source ?? 'cli';
+
+  const key = parseFrameKey(input.key);
+  if (!key) {
+    return { ok: false, code: 400, message: `未知的头像框：${input.key}（合法值见 src/lib/frame-refs.ts 的 FRAME_KEYS）` };
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
+  if (!user) return { ok: false, code: 404, message: '用户不存在' };
+
+  const now = nowForDb();
+
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const existing = await tx.userFrame.findUnique({
+        where: { uq_user_frame: { userId, frameKey: key } },
+        select: { expiresAt: true, deleted: true },
+      });
+
+      let action: FrameGrantAction;
+      let next: Date | null;
+
+      if (!existing) {
+        action = 'created';
+        next = expiresAt;
+      } else if (existing.deleted) {
+        // 复活墓碑行（F4）。**不与旧值取较晚** —— 那是上一次已被收回的授权。
+        action = 'revived';
+        next = expiresAt;
+      } else if (existing.expiresAt === null) {
+        // 已经是永久 —— 任何请求都改不了它（永久是最大的）
+        next = null;
+        action = 'noop';
+      } else {
+        // 「只延长不缩短」就落在这一句上：请求更短时 next 仍是原值 → noop
+        next = laterExpiry(existing.expiresAt, expiresAt);
+        action = (next === null || next.getTime() > existing.expiresAt.getTime())
+          ? 'extended'
+          : 'noop';
+      }
+
+      // upsert 而不是 create：唯一约束是物理的、含墓碑行，新插会撞约束。
+      // 写法照 favorite-service 的 attachItems（那里记着 createMany({skipDuplicates})
+      // 会静默变成 no-op 的教训 —— 这里是「点了没反应」的同一类问题）。
+      await tx.userFrame.upsert({
+        where: { uq_user_frame: { userId, frameKey: key } },
+        create: { userId, frameKey: key, expiresAt: next, source, createdAt: now },
+        update: { deleted: false, deletedAt: null, expiresAt: next, source },
+      });
+
+      // ── F2：正戴着这个框的话，装备列的到期时刻必须跟着走 ──────────────────
+      const cur = await tx.user.findUnique({
+        where: { id: userId },
+        select: { equippedFrameKey: true },
+      });
+      let refreshedEquip = false;
+      if (cur?.equippedFrameKey === key) {
+        await tx.user.update({
+          where: { id: userId },
+          data: { equippedFrameExpiresAt: next },
+        });
+        refreshedEquip = true;
+      }
+
+      return { ok: true as const, action, expiresAt: next, refreshedEquip };
+    });
+  } catch {
+    // 事务里只有本地写，没有远端 HTTP —— 失败就是失败，不吞细节地编一个成功
+    return { ok: false, code: 400, message: '授予失败，请重试' };
+  }
+}
+
+export interface FrameRevokeResult {
+  /** 是否真的翻了一个墓碑（false = 本来就没持有 / 已经收回过）。 */
+  revoked: boolean;
+  /** 是否顺带卸下了当前装备（他正戴着这个框）。 */
+  unequipped: boolean;
+}
+
+/**
+ * 收回一个头像框（翻墓碑 + 顺带卸下）。
+ *
+ * 【幂等】没持有过、或已经收回过的，照样返回 ok —— 反复执行没有副作用。
+ * 【F5】翻 `deleted` 而不是物理删（全站口径）。
+ * 【F2】若他正戴着这个框，**同一事务里**把两列装备指针清空。
+ */
+export async function revokeFrame(input: { userId: string; key: string }): Promise<FrameRevokeResult> {
+  const key = parseFrameKey(input.key);
+  if (!key) return { revoked: false, unequipped: false };
+
+  const now = nowForDb();
+
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.userFrame.findUnique({
+      where: { uq_user_frame: { userId: input.userId, frameKey: key } },
+      select: { deleted: true },
+    });
+    if (!existing || existing.deleted) return { revoked: false, unequipped: false };
+
+    await tx.userFrame.update({
+      where: { uq_user_frame: { userId: input.userId, frameKey: key } },
+      data: { deleted: true, deletedAt: now },
+    });
+
+    const cur = await tx.user.findUnique({
+      where: { id: input.userId },
+      select: { equippedFrameKey: true },
+    });
+    let unequipped = false;
+    if (cur?.equippedFrameKey === key) {
+      await tx.user.update({
+        where: { id: input.userId },
+        data: { equippedFrameKey: null, equippedFrameExpiresAt: null },
+      });
+      unequipped = true;
+    }
+
+    return { revoked: true, unequipped };
+  });
+}
+
+export type FrameEquipResult =
+  | { ok: true; key: FrameKey | null; expiresAt: Date | null }
+  | { ok: false; code: 400 | 403; message: string };
+
+/**
+ * 装备 / 换框 / 卸下（`key === null`）。
+ *
+ * 【F3】装备前置：alive 持有行 && 未过期 && 白名单 && 未退役。
+ *      **素材缺失不阻止装备** —— 先授权后传素材是合法顺序。
+ * 【F3】卸下**无条件成功** —— 不看当前 key 合不合法、不看有没有持有行。
+ *      否则一个退役的（或白名单里已删掉的）key 会变成卸不掉的僵尸装备。
+ *
+ * 幂等：重复装备同一个框是安全的（设置语义，不是累加）。
+ */
+export async function equipFrame(userId: string, rawKey: string | null): Promise<FrameEquipResult> {
+  if (rawKey === null) {
+    await prisma.user.update({
+      where: { id: userId },
+      data: { equippedFrameKey: null, equippedFrameExpiresAt: null },
+    });
+    return { ok: true, key: null, expiresAt: null };
+  }
+
+  const key = parseFrameKey(rawKey);
+  if (!key) return { ok: false, code: 400, message: `未知的头像框：${rawKey}` };
+  if (FRAMES[key].retired) {
+    return { ok: false, code: 400, message: `「${frameLabel(key) ?? key}」已下架，不能装备` };
+  }
+
+  const row = await prisma.userFrame.findUnique({
+    where: { uq_user_frame: { userId, frameKey: key } },
+    select: { expiresAt: true, deleted: true },
+  });
+  if (!row || row.deleted) return { ok: false, code: 403, message: '你还没有这个头像框' };
+
+  // 复用唯一的比较（白名单与退役上面已判过，所以走到这里失败只可能是过期）
+  if (!resolveFrameKey(key, row.expiresAt, nowForDb())) {
+    return { ok: false, code: 403, message: '这个头像框已过期' };
+  }
+
+  await prisma.user.update({
+    where: { id: userId },
+    // 装备列的到期时刻 = 那一刻持有行的到期时刻。此后两者由 F2 保持一致。
+    data: { equippedFrameKey: key, equippedFrameExpiresAt: row.expiresAt },
+  });
+  return { ok: true, key, expiresAt: row.expiresAt };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 设置面板的数据源
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export interface MyFrameRow {
+  key: string;
+  /** 显示名。key 若已不在白名单里（数据脏），退回 key 本身，**不编一个名字**。 */
+  label: string;
+  description: string;
+  /** 站长把 `FRAMES[k].retired` 置了 true，或这个 key 已不在白名单里。 */
+  retired: boolean;
+  /** 盘上有没有素材。false = 白名单里有、网站上却缺图（运维自查用）。 */
+  available: boolean;
+  /** 判定后的贴图地址；null = 素材缺失 / 已过期 / 已下架。 */
+  url: string | null;
+  /** 展示用（`YYYY-MM-DD HH:MM:SS`，UTC+8 口径）；null = 永久。 */
+  expiresAt: string | null;
+  /** 已过期。**由服务端算好** —— 客户端不做任何时间比较（见文件头）。 */
+  expired: boolean;
+  equipped: boolean;
+}
+
+export interface MyFramesView {
+  frames: MyFrameRow[];
+  /**
+   * 当前装备。`key` 是**原始值**（可能指向一个已过期 / 已下架 / 已不在白名单的框
+   * —— 那些情况下 `active` 为 false，面板据此显示状态并提供「卸下」）。
+   */
+  equipped: {
+    key: string;
+    label: string;
+    active: boolean;
+    expiresAt: string | null;
+  } | null;
+}
+
+/**
+ * 「我持有的框」+ 当前装备 —— /settings 的装备面板与 `GET /api/users/me/frame` 的数据源。
+ *
+ * ★ 下发的是**判定后的结果**（`url` / `expired` / `active` 都由服务端算好），
+ *   客户端一次都不做时间比较。见文件头的判定唯一出口。
+ *
+ * 只列 **alive** 的持有行 —— 收回过的不出现（与收藏夹列表同口径）。
+ */
+export async function listMyFrames(userId: string): Promise<MyFramesView> {
+  const now = nowForDb();
+
+  const [rows, user] = await Promise.all([
+    prisma.userFrame.findMany({
+      where: { userId, deleted: false },
+      select: { frameKey: true, expiresAt: true },
+      orderBy: { createdAt: 'asc' },
+    }),
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: { equippedFrameKey: true, equippedFrameExpiresAt: true },
+    }),
+  ]);
+
+  const equippedKey = user?.equippedFrameKey ?? null;
+
+  // 白名单顺序（FRAME_KEYS 即展示顺序），白名单外的 key 排在最后 —— 它们只会出现在
+  // 「数据脏」的情形里，不该插在正常框中间。
+  const rank = (k: string) => {
+    const i = (FRAME_KEYS as readonly string[]).indexOf(k);
+    return i === -1 ? FRAME_KEYS.length : i;
+  };
+  const sorted = [...rows].sort((a, b) => rank(a.frameKey) - rank(b.frameKey));
+
+  const frames: MyFrameRow[] = sorted.map((r) => {
+    // 白名单外的 key（数据脏）查不到定义 → 当作已下架处理，面板仍能显示它并让用户卸下
+    const def = (FRAMES as Record<string, FrameDef | undefined>)[r.frameKey];
+    const retired = !def || def.retired === true;
+    const effective = resolveFrameKey(r.frameKey, r.expiresAt, now);
+    return {
+      key: r.frameKey,
+      label: frameLabel(r.frameKey) ?? r.frameKey,
+      description: def?.description ?? '',
+      retired,
+      available: frameAssetAvailable(r.frameKey),
+      // 复用唯一出口：四道闸与渲染侧完全一致，面板上的预览不可能与真实显示不一致
+      url: effective ? frameUrlFor({ equippedFrameKey: r.frameKey, equippedFrameExpiresAt: r.expiresAt }) : null,
+      expiresAt: ymdhms(r.expiresAt),
+      // retired 为假时 resolveFrameKey 失败只可能是过期（白名单过了，退役也过了）
+      expired: !retired && effective === null,
+      equipped: equippedKey === r.frameKey,
+    };
+  });
+
+  const equipped = equippedKey
+    ? {
+        key: equippedKey,
+        label: frameLabel(equippedKey) ?? equippedKey,
+        // 「真的显示着吗」—— 同 frameUrlFor 的判定，只是不看素材那一道闸
+        //（素材缺失时框显示不出来，但装备状态本身是有效的，面板该照实说）。
+        active: resolveFrameKey(equippedKey, user?.equippedFrameExpiresAt ?? null, now) !== null,
+        expiresAt: ymdhms(user?.equippedFrameExpiresAt ?? null),
+      }
+    : null;
+
+  return { frames, equipped };
 }
