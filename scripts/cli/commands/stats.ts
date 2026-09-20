@@ -2,8 +2,7 @@
 // stats.ts —— 站点概览
 //
 // 交互式向导打开时先看到的那个屏。回答「现在站点是什么状态」：
-// 多少人、多少内容、**多少被删的东西**（那些是可以找回的）、多少待处理申诉、
-// 多少鱼干账目没对上（那些是 fail-closed 留下的、要跑 fish sync-retry 收敛的）。
+// 多少人、多少内容、**多少被删的东西**（那些是可以找回的）、多少待处理申诉。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { renderKv } from '../output';
@@ -50,20 +49,10 @@ export const statsCommands: CommandSpec[] = [
         ]),
         '',
         ctx.io.dim('── 待处理 ────────────────────────────'),
-        ...renderKv([
-          ['待审申诉', s.appeals.pending],
-          ['鱼干待同步', s.fish.ledgerPending],
-          ['鱼干同步失败', s.fish.ledgerFailed],
-          ['鱼干已补偿', s.fish.ledgerCompensated],
-        ]),
+        ...renderKv([['待审申诉', s.appeals.pending]]),
       ];
 
       const warnings: string[] = [];
-      if (s.fish.ledgerPending > 0 || s.fish.ledgerFailed > 0) {
-        warnings.push(
-          `⚠️  有 ${s.fish.ledgerPending + s.fish.ledgerFailed} 条鱼干账目未同步 —— 跑 \`fish sync-retry\` 收敛。`
-        );
-      }
       if (s.appeals.pending > 0) {
         warnings.push(`⚠️  有 ${s.appeals.pending} 条待审申诉 —— 申诉积压会让被处罚的用户一直等。`);
       }

@@ -1,13 +1,19 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // fish.ts —— 小鱼干（命令名与退出码对齐历史 CLI 的 fish 子命令）
 //
-// 写路径 fail-closed：远端账户服务失败 → 本地写入被补偿事务精确撤销（对用户等价于
-// 回滚）→ **退出码 2**。绝不静默成功。详见 src/lib/fish-admin.ts 与 CLAUDE.md。
+// 【写路径与退出码】一次本地事务（余额 + 流水 +（有幂等键时）登记行同事务提交，
+// 见 src/lib/fish-admin.ts）：要么整体生效、要么整体回滚，没有中间态。于是
+//   0 = 成功；1 = 业务结果（参数非法 / 余额不足）；2 = 真故障（本地事务失败）。
+// 退出码 2 这个号当年是给站外账户微服务的「同步失败」留的，账户搬进站内后它没有被
+// 删掉，而是接过了「本地事务失败」这一档（与 API 侧的 500 同档，见
+// docs/architecture.md §6.3）—— 脚本契约不变，别看见「没有 503 了」就顺手把它删掉。
 //
-// ⚠️ 这里不写审计日志（grant / deduct / compensate 三条写路径都不写）：它们的底层是
-//    本地事务 + 远端 HTTP + 补偿事务三段结构，logAdminAction 绝不能挤进那个事务里
-//    （会占满 SQLite 写锁）。fish 有自己的账本（fish_transactions +
-//    account_sync_ledger）可查。
+// ⚠️ 这里不写审计日志（grant / deduct / compensate 三条写路径都不写）—— 这是**现状**，
+//    不是结构约束。旧版的理由是「写路径是本地事务 + 远端 HTTP + 补偿事务三段结构，
+//    logAdminAction 挤进去会占满 SQLite 写锁」，那条理由已随远端撤销而**不成立**：
+//    现在只有一次本地事务，追加一条审计日志在技术上没有障碍。要不要补上是一次独立的
+//    决定，别在这次重构里顺手改。现状下这三条路径的凭据是 fish_transactions 流水
+//    （compensate 另有 account_sync_ledger 的幂等登记行，一条 / 人）。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { PrismaClient } from '@prisma/client';
@@ -66,7 +72,7 @@ export const fishCommands: CommandSpec[] = [
   ...(['grant', 'deduct'] as const).map(
     (kind, i): CommandSpec => ({
       name: `fish ${kind}`,
-      summary: kind === 'grant' ? '赠送小鱼干（fail-closed）' : '扣减小鱼干（fail-closed）',
+      summary: kind === 'grant' ? '赠送小鱼干' : '扣减小鱼干',
       group: 'fish',
       order: i + 1,
       args: [
@@ -98,8 +104,6 @@ export const fishCommands: CommandSpec[] = [
         const user = await requireUser(ctx.prisma, username);
 
         const { adminGrantFish, adminDeductFish } = await import('../../../src/lib/fish-admin');
-        const { accountServiceEnabled } = await import('../../../src/lib/account-client');
-        const remote = accountServiceEnabled();
 
         try {
           const balance =
@@ -109,26 +113,24 @@ export const fishCommands: CommandSpec[] = [
 
           const verb = kind === 'grant' ? '赠送' : '扣减';
           const prep = kind === 'grant' ? '给' : '从';
-          const lines = [
-            ctx.io.green(`成功：已${verb} ${amount} 小鱼干${prep} ${username}`),
-            `  当前余额：${balance}`,
-          ];
-          // 别无条件打印「已同步」—— dev fallback 下压根没打远端，那样会误导运维
-          // 以为账目已经平了。
-          const warnings: string[] = [];
-          if (remote) lines.push('  已同步至账户服务');
-          else warnings.push('  ⚠️ 账户服务未配置，仅写入本地库（远端账目未同步）');
-
-          return { lines, warnings, json: { username, amount, balance, remoteSynced: remote } };
+          return {
+            lines: [
+              ctx.io.green(`成功：已${verb} ${amount} 小鱼干${prep} ${username}`),
+              `  当前余额：${balance}`,
+            ],
+            json: { username, amount, balance },
+          };
         } catch (e) {
-          // fail-closed：本地写入已被补偿回滚，余额未变，返回退出码 2（脚本契约）
+          // 业务结果（amount 非法 / 余额不足）给一条干净的提示；其余异常是**真故障**
+          // （本地事务失败 → 退出码 2）。两种情形本地都没有留下任何变更：前者压根没写，
+          // 后者整体回滚。
           if (errorName(e) === 'FishBusinessError') {
             throw new CliError(`错误：${errorMessage(e)}`, 1);
           }
-          throw new CliError('失败：账户服务同步失败，本地写入已补偿回滚', 2, [
+          throw new CliError('失败：本地事务失败，未做任何变更', 2, [
             `  原因: ${errorMessage(e)}`,
             // driedFish 存的是 0.1 鱼干为单位（fish-units.ts），展示除以 10
-            `  本地余额未变更（${(user.driedFish ?? 0) / 10}），请稍后重试。`,
+            `  本地余额未变更（${(user.driedFish ?? 0) / 10}），可稍后重试。`,
           ]);
         }
       },
@@ -136,7 +138,7 @@ export const fishCommands: CommandSpec[] = [
   ),
   {
     name: 'fish compensate',
-    summary: '给全部 core+ 用户群发补偿（逐人原子，fail-closed）',
+    summary: '给全部 core+ 用户群发补偿（逐人一笔事务）',
     group: 'fish',
     order: 3,
     danger: 'irreversible',
@@ -168,19 +170,6 @@ export const fishCommands: CommandSpec[] = [
         prompt: { type: 'input' as const },
       },
       {
-        name: 'rate',
-        flags: ['--rate'],
-        kind: 'number',
-        label: '同步速率',
-        help: '远端同步每秒请求数（默认 5；遇到 429 限频可调小，如 1）',
-        defaultValue: 5,
-        prompt: { type: 'number' as const },
-        validate: (raw) => {
-          const n = Number(raw);
-          return Number.isFinite(n) && n >= 0.1 && n <= 100 ? null : 'rate 需在 0.1 ~ 100 之间';
-        },
-      },
-      {
         name: 'dryRun',
         flags: ['--dry-run'],
         kind: 'boolean',
@@ -196,31 +185,30 @@ export const fishCommands: CommandSpec[] = [
       '之后，给它们空投等于「注册就有鱼干」，与这套口径冲突。被禁言者**照发** ——',
       '补偿是系统行为，与个人当前状态无关。',
       '',
-      '**逐人原子**：每人走一次「本地事务提交 → 事务外远端同步 → 失败补偿」，',
+      '**逐人原子**：每人一笔独立事务（余额 + 流水 + 幂等登记一起提交），',
       '中途失败**不回滚**已经发出去的部分。',
       '',
       '续跑：失败或中断后，用同一个 --batch-id 重跑，已发放的会自动跳过 —— 靠的是由',
       '批次派生的确定性幂等键（**必须逐字节稳定**：历史批次可能跑了一半，换算法就续',
       '不上）。批次 ID 在开跑前就打印出来，进程被杀也找得回。',
       '',
-      '有意偏离「一个大事务发给所有人」的做法：远端 HTTP 若放进事务里，任一失败就整体',
-      '回滚 —— 那会占满 SQLite 写锁整轮（1000 人 @5req/s ≈ 200 秒），',
-      '期间全站写路径 database is locked。详见 src/lib/fish-compensate.ts 头部。',
+      '有意偏离「一个大事务发给所有人」的做法：那个形状要么全成要么全败，拿不到',
+      '「发到哪了」，也就没有续跑可言；而且它会把 SQLite 写锁一次性占满整批，',
+      '期间全站写路径排队等锁。详见 src/lib/fish-compensate.ts 头部。',
       '',
-      '不写审计日志：理由同 fish grant / deduct —— 写路径是「本地事务 + 远端 HTTP +',
-      '补偿事务」三段结构，logAdminAction 挤进去会占满 SQLite 写锁。每一笔都留在',
-      'fish_transactions 与 account_sync_ledger 里可查。',
+      '不写审计日志：理由同 fish grant / deduct（那边的注释里说明了为什么这条理由',
+      '现在已经不成立，以及为什么仍然维持现状）。每一笔都留在 fish_transactions 里',
+      '可查（另有 account_sync_ledger 的幂等登记行，一条 / 人）。',
     ].join('\n'),
     async describe(ctx) {
       const amount = Number(ctx.args.amount);
       if (!Number.isInteger(amount) || amount <= 0) {
         throw new CliError('错误：amount 必须为正整数');
       }
-      const rate = Number(ctx.args.rate);
       const batchId = ctx.args.batchId ? String(ctx.args.batchId) : undefined;
 
       const { planCompensation } = await import('../../../src/lib/fish-compensate');
-      const p = await planCompensation({ amount, batchId, rate });
+      const p = await planCompensation({ amount, batchId });
       // 库里一个用户都没有 = 本次没有实际变更 → 返回空数组，跳过确认闸。
       if (p.total === 0) return [];
 
@@ -228,13 +216,12 @@ export const fishCommands: CommandSpec[] = [
         `  目标用户数：${p.total}（全部 core+，含被禁言用户 —— 补偿是系统行为，与个人状态无关）`,
         `  每人发放：${amount} 小鱼干`,
         `  合计发放：${p.totalFish} 小鱼干`,
-        `  远端限频：${rate} req/s（预计耗时约 ${(p.estimatedMs / 1000).toFixed(1)}s）`,
       ];
       if (batchId) {
         lines.push(
           `  批次 ID：${batchId}（续跑）`,
           `    ├─ 已发放、本次跳过：${p.alreadyDone} 位`,
-          `    └─ 卡在账本里、须先 \`fish sync-retry\`：${p.blocked} 位`
+          `    └─ 迁移前遗留（非 synced）、须人工查证：${p.blocked} 位`
         );
       } else {
         lines.push('  批次 ID：开跑时生成并立即打印（续跑时用 --batch-id 传回来）');
@@ -245,14 +232,13 @@ export const fishCommands: CommandSpec[] = [
     async run(ctx) {
       const amount = Number(ctx.args.amount);
       const description = String(ctx.args.description);
-      const rate = Number(ctx.args.rate);
       const dryRun = ctx.args.dryRun === true;
       const provided = ctx.args.batchId ? String(ctx.args.batchId) : undefined;
 
       const { compensateAllUsers, makeBatchId } = await import('../../../src/lib/fish-compensate');
       const batchId = provided ?? makeBatchId();
 
-      // 批次 ID 必须在**任何远端调用之前**落到屏幕上：进程被 Ctrl-C / OOM 杀掉时，
+      // 批次 ID 必须在**第一位用户被发放之前**落到屏幕上：进程被 Ctrl-C / OOM 杀掉时，
       // 屏幕上这一行就是运维唯一的续跑凭据。
       if (!dryRun) ctx.io.line(`批次 ID：${batchId}${provided ? '（续跑）' : ''}`);
 
@@ -260,7 +246,6 @@ export const fishCommands: CommandSpec[] = [
         amount,
         description,
         batchId,
-        rate,
         dryRun,
         onProgress: (done, total, username) => {
           if (done % 25 === 0 || done === total) {
@@ -279,21 +264,19 @@ export const fishCommands: CommandSpec[] = [
       }
 
       const warnings: string[] = [];
-      if (!r.remoteSynced) {
-        warnings.push('  ⚠️ 账户服务未配置，仅写入本地库（远端账目未同步，续跑去重也不生效）');
-      }
       if (r.skipped > 0) {
         warnings.push(`  本批次此前已发放、本次跳过 ${r.skipped} 位。`);
       }
       if (r.blocked.length > 0) {
         warnings.push(
-          `  ⚠️ ${r.blocked.length} 位卡在账本里（本地已提交、远端未落地），本次未动：` +
+          `  ⚠️ ${r.blocked.length} 位卡在迁移前的遗留账目里（本地已提交、当年远端那半笔状态不明），本次未动：` +
             r.blocked
               .slice(0, 5)
               .map((b) => `${b.username}(${b.status})`)
               .join('、') +
             (r.blocked.length > 5 ? ' 等' : ''),
-          '     先跑 `fish sync-retry` 收敛这些账目，再用同一个批次 ID 续跑。'
+          '     这些行不会自动收敛（重放它们的那条命令已随账户服务一起撤销），须人工查证；',
+          '     在查清之前他们会一直被跳过 —— 重发会在本地实打实叠加一笔。'
         );
       }
 
@@ -304,20 +287,21 @@ export const fishCommands: CommandSpec[] = [
         ),
         `  批次 ID：${batchId}`,
       ];
-      if (r.remoteSynced) lines.push('  已同步至账户服务');
 
-      // 有人没发成 / 整批中止 / 有卡住的账目 → 退出码 2（脚本契约里的「同步失败」），
-      // 并把续跑命令原样交到运维手里，别让他自己拼批次 ID。
-      if (r.failed.length > 0 || r.aborted || r.blocked.length > 0) {
+      // 有人没发成 / 有卡住的账目 → 退出码 2（真故障档：每位没发成的都是一次本地事务
+      // 失败），并把续跑命令原样交到运维手里，别让他自己拼批次 ID。
+      if (r.failed.length > 0 || r.blocked.length > 0) {
         throw new CliError(
-          `失败：${r.failed.length} 位未发放${r.aborted ? '（整批已中止）' : ''}`,
+          `失败：${r.failed.length} 位未发放` +
+            (r.blocked.length > 0
+              ? `，另有 ${r.blocked.length} 位卡在迁移前的遗留账目里`
+              : ''),
           2,
           [
-            ...(r.aborted ? [`  已中止：${r.abortReason}`] : []),
             ...r.failed.slice(0, 10).map((f) => `  ✗ ${f.username}：${f.reason}`),
             ...(r.failed.length > 10 ? [`  …另有 ${r.failed.length - 10} 位失败`] : []),
             '',
-            '  失败者各自的本地写入已被补偿事务精确撤销（对他们等价于没发生），余额未变。',
+            '  失败者那笔事务整体回滚（余额与流水一起没写入），对他们等价于没发生。',
             '  续跑（已发放的会自动跳过）：',
             `    npm run cli -- fish compensate ${amount} --batch-id ${batchId} --yes`,
           ]
@@ -327,104 +311,6 @@ export const fishCommands: CommandSpec[] = [
       return { lines, warnings, json: { ...r } };
     },
   },
-  {
-    name: 'fish pending',
-    summary: '列出账本里未同步的鱼干账目',
-    group: 'fish',
-    order: 4,
-    readOnly: true,
-    args: [],
-    details: [
-      '看的是 account_sync_ledger：pending = 本地已提交、远端还没同步；',
-      'failed = 远端失败且补偿也失败，需要 fish sync-retry 重放。',
-      '两者都会由 sync-retry 收敛。',
-    ].join('\n'),
-    async run(ctx) {
-      const rows = await ctx.prisma.accountSyncLedger.findMany({
-        where: { status: { in: ['pending', 'failed'] } },
-        orderBy: { id: 'asc' },
-        select: {
-          id: true,
-          idempotencyKey: true,
-          operation: true,
-          status: true,
-          attempts: true,
-          lastError: true,
-          createdAt: true,
-        },
-      });
-
-      // payload 是 JSON 文本，里面是重建远端调用所需的非敏感参数。
-      // 按约定不含密钥（要重放时按 userId 重新解密），但也没必要原样打给操作者看。
-      if (rows.length === 0) {
-        return {
-          lines: [ctx.io.green('账本干净：没有 pending / failed 的鱼干账目。')],
-          json: { entries: [] },
-        };
-      }
-
-      const lines = renderTable(
-        [
-          { key: 'id', title: 'ID', align: 'right' },
-          { key: 'operation', title: '操作', maxWidth: 14 },
-          { key: 'status', title: '状态', maxWidth: 12 },
-          { key: 'attempts', title: '重试', align: 'right' },
-          { key: 'createdAt', title: '创建时间', maxWidth: 19 },
-          { key: 'lastError', title: '最后错误', maxWidth: 30 },
-        ],
-        rows.map((r) => ({
-          id: r.id,
-          operation: r.operation,
-          status: r.status,
-          attempts: r.attempts,
-          createdAt: ymdhms(r.createdAt) ?? '—',
-          lastError: r.lastError ?? '—',
-        })),
-        { maxWidth: ctx.io.width() }
-      );
-
-      return {
-        lines,
-        warnings: ['跑 `fish sync-retry` 可以重放这些账目。'],
-        json: { entries: rows },
-      };
-    },
-  },
-  {
-    name: 'fish sync-retry',
-    summary: '重放账本里 pending/failed 的远端同步',
-    group: 'fish',
-    order: 5,
-    readOnly: false,
-    args: [],
-    details: [
-      '用于「本地已提交、远端未同步」之间崩溃，或补偿失败留下的 failed 行。',
-      '远端按幂等键重放，收敛后标 synced。详见 src/lib/fish-sync.ts。',
-    ].join('\n'),
-    async run(ctx) {
-      const { replayPendingSyncs } = await import('../../../src/lib/fish-sync');
-      const r = await replayPendingSyncs({ olderThanMs: 0, limit: 200 });
-
-      if (r.total === 0) {
-        return {
-          lines: ['没有待重放的同步账目（account_sync_ledger 无 pending/failed 行）。'],
-          json: { total: 0, synced: 0, stillFailing: 0 },
-        };
-      }
-      const warnings: string[] = [];
-      if (r.stillFailing > 0) {
-        warnings.push(
-          ctx.io.yellow('  仍失败的行保留在账本里（attempts 已 +1），可稍后再次执行本命令。')
-        );
-      }
-      return {
-        lines: [`扫描 ${r.total} 行：同步成功 ${r.synced}，仍失败 ${r.stillFailing}。`],
-        warnings,
-        json: { total: r.total, synced: r.synced, stillFailing: r.stillFailing },
-      };
-    },
-  },
-
   {
     name: 'fish credential-list',
     summary: '列出某用户的鱼干只读凭据',

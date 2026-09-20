@@ -2,7 +2,12 @@
 // admin-stats-service.ts — 站点概览
 //
 // 运维台打开时先看到的那个屏。回答的是「现在站点是什么状态」：
-// 有多少人、多少内容、**多少被删的东西**、多少待处理的申诉、多少鱼干账目没对上。
+// 有多少人、多少内容、**多少被删的东西**、多少待处理的申诉。
+//
+// 【为什么没有鱼干那一组】这里原本报 account_sync_ledger 的 pending / failed /
+// compensated（当年的远端同步 outbox）。账户服务搬进站内后，新写的登记行一律是
+// synced、本地写入也不再产生补偿，那三个数恒为 0 —— 一个永远显示 0 的卡片比没有更糟
+// （运维会以为「对账过了」，实际是没人再往里写）。
 //
 // 【「今天」必须走 dayStart(todayStr())】不能用 `new Date().setHours(0,0,0,0)` ——
 // 本库时间戳是「UTC+8 墙上时间贴 Z 标签」（见 db-time.ts），拿真实 UTC 去算零点，
@@ -31,7 +36,6 @@ export interface SiteStats {
   clips: { total: number; deleted: number; private: number };
   images: { total: number; deleted: number; storageBytes: number };
   votes: { total: number; deleted: number; records: number };
-  fish: { ledgerPending: number; ledgerFailed: number; ledgerCompensated: number };
   appeals: { pending: number };
 }
 
@@ -60,9 +64,6 @@ export async function getSiteStats(): Promise<SiteStats> {
     votesTotal,
     votesDeleted,
     voteRecords,
-    ledgerPending,
-    ledgerFailed,
-    ledgerCompensated,
     appealsPending,
   ] = await Promise.all([
     prisma.user.groupBy({ by: ['role'], _count: { _all: true } }),
@@ -91,9 +92,6 @@ export async function getSiteStats(): Promise<SiteStats> {
     prisma.vote.count(),
     prisma.vote.count({ where: { ignore: true } }),
     prisma.voteRecord.count(),
-    prisma.accountSyncLedger.count({ where: { status: 'pending' } }),
-    prisma.accountSyncLedger.count({ where: { status: 'failed' } }),
-    prisma.accountSyncLedger.count({ where: { status: 'compensated' } }),
     prisma.adminActionAppeal.count({ where: { status: 'pending' } }),
   ]);
 
@@ -116,11 +114,6 @@ export async function getSiteStats(): Promise<SiteStats> {
     clips: { total: clipsTotal, deleted: clipsDeleted, private: clipsPrivate },
     images: { total: imagesTotal, deleted: imagesDeleted, storageBytes: storageAgg._sum.fileSize ?? 0 },
     votes: { total: votesTotal, deleted: votesDeleted, records: voteRecords },
-    fish: {
-      ledgerPending,
-      ledgerFailed,
-      ledgerCompensated,
-    },
     appeals: { pending: appealsPending },
   };
 }
