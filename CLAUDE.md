@@ -86,6 +86,13 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
   `chatUnread` 走小红点。**别「统一未读语义」把它并回 `count`** —— 那会让铃铛写 5、点进去只有 2 条。
 - **非核心账号没有鱼干赚取渠道**（「鱼干 = core+ 体系的报酬」这条口径的地基）。
   **新增任何发鱼路径前，先确认这一条仍然成立** —— 给全站空投等于「注册就有鱼干」。
+  练手盘（`/fish/trade`）**仍然成立**：它是签到之外的**第二条 core+ 渠道**，档位与
+  签到、投喂同档，没有把口子开到非核心账号上。它的 mint 是从系统账户（无限水池）出的，
+  所以**不受「预算有界」约束** —— 有界性来自档位，不来自额度。
+- **练手盘的成交价必须在下单那一刻现取**（`fetchQuote`），**绝不读展示缓存**。
+  缓存价 = 看盘的人可以在价格跳动后、缓存刷新前下单，那是无风险、可重复、无上限的套利。
+  行情源挂了就拒单（503），不降级。展示缓存（15 秒轮询那份）**只用于渲染**。
+  展开见 `docs/architecture.md` §6.13。
 - **表情包语法的正则里一个 `\s*` 都不能有**，字符集必须是白名单 —— 宽一点就是
   **向任意同名用户凭空发通知**（`extractMentions` 跑在原始正文上）。
 - **OAuth 三条限频不在 `RULES` 里**（内联在 `oauth/*/route.ts`）—— 做全站限频审计时最容易漏。
@@ -153,6 +160,20 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 （账本 + 崩溃窗口）、`fish-market-service.ts`（转账为何没有退款中间态）、`fish-compensate.ts`
 （群发补偿）、`fish-units.ts`（单位换算与 `Blog.fishCount` 例外）、`service-accounts.ts`
 （配额白名单）。注册建号两个入口共用 `user-service.ts` 的 `createUserAccount` 内核。
+
+### 鱼干练手盘
+
+`docs/architecture.md` §6.13 是主副本；各文件头讲自己那一段：`src/lib/market-service.ts`
+（开平仓的三段式、平仓为何不需要幂等键、`payoutUnits` 的 floor 舍入、最小投入为何是 1 条）、
+`src/lib/market-price.ts`（**成交价现取 vs 展示缓存**这条安全边界、为什么用币安 `.vision`
+域、基址可配的两个理由）。
+
+- **入口只能进 `/fish` 卡片的 `.fish-card__info`** —— 上面那条行动条被
+  `tests/e2e/fish-layout.spec.ts` 钉死为「恰好 3 颗」，`.fish-card__link-label` 钉死为 2 个。
+- **改 `MARKET_FEE_RATE` / `MIN_STAKE_FISH` 要同步页面文案**（与 `RULES` 的纪律同源）。
+- 行情轮询是本站**第二个**后台循环（第一个是回调投递），也要在 `tests/setup.ts` 与
+  playwright 的 webServer env 里置 0 —— e2e 跑的是 `next start`，那道
+  `NODE_ENV === 'test'` 的保险在那儿盖不住。
 
 ### 软删除
 
