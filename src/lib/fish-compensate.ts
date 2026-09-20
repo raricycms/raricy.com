@@ -4,7 +4,7 @@
 // 发放对象是**全部 core+ 用户**（不是全站注册用户）——理由见 eligibleUsers 的注释。
 //
 // 【逐人一笔事务，不是一个大批次】
-//   每位用户独立走一次 grantFishWithKey：一个本地事务里加余额 + 写流水 +（有键时）登记。
+//   每位用户独立走一次 grantFish：一个本地事务里加余额 + 写流水 +（有键时）登记。
 //   于是**不再是全有或全无**：中途失败 =「前 N 位已发放、后面的没发」，续跑接着发。
 //   这个形状是刻意的，与当年的远端无关：一锤子的大事务要么全成要么全败，拿不到
 //   「发到哪了」，也就没有续跑可言；而且它会把 SQLite 写锁一次性占满整批
@@ -32,7 +32,7 @@
 import { randomBytes, createHash } from 'node:crypto';
 import { prisma } from './db';
 import { findIdempotency } from './fish-idempotency';
-import { FishBusinessError, grantFishWithKey } from './fish-admin';
+import { FishBusinessError, grantFish } from './fish-admin';
 
 /** 单条幂等登记行在本批次里的处境。非 synced 的状态只可能来自迁移前的遗留行。 */
 type LedgerStatus = 'new' | 'done' | 'pending' | 'failed';
@@ -210,7 +210,7 @@ export async function compensateAllUsers(opts: CompensateOptions): Promise<Compe
     } else {
       try {
         // 传键 → 登记与发放同事务提交，于是「续跑跳过已发放的人」由事务本身保证。
-        await grantFishWithKey({
+        await grantFish({
           userId: u.id,
           amount,
           description,

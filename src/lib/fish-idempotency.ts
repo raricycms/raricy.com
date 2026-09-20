@@ -17,7 +17,7 @@
 //   这张表原先是「本地已提交、远端账户服务尚未同步」的 outbox（pending → synced |
 //   compensated | failed），配合补偿事务实现 fail-closed。账户服务搬进站内之后
 //   **本地写入与记账在同一个事务里**，outbox 整个机制随之消失（见
-//   docs/architecture.md §6.3 的历史注记）。
+//   docs/architecture.md §6.3.1 的历史注记）。
 //   表**刻意不删、也不改名**：① 里面有真的历史账（那些行的 payload/status 是当年
 //   对账的唯一凭据）；② 改名要一条迁移，而这张表的物理形态已经是既成事实。
 //   现在写入的行**一律是 status='synced'**（登记与业务写入同事务提交 —— 提交成功

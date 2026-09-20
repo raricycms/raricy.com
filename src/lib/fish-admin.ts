@@ -5,7 +5,7 @@
 //   不存在中间态，因此这里既没有远端同步、也没有补偿事务。账目与业务数据同库，
 //   没有第二个存储需要对账（历史：迁移前是 fail-closed 三段结构，本地事务提交后要
 //   在事务外调站外的账户微服务，失败再由补偿事务精确撤销本地写入。见
-//   docs/architecture.md §6.3 的历史注记）。
+//   docs/architecture.md §6.3.1 的历史注记）。
 //
 // 【幂等登记：两条路径只有一条需要】
 //   · `fish grant` / `fish deduct` —— 每次执行都是**一笔新的发放/扣减**，键带随机后缀，
@@ -62,7 +62,7 @@ const FISH_TX_TYPE: Record<'admin_grant' | 'compensate', string> = {
  *
  * @returns 变更后的余额
  */
-export async function grantFishWithKey(opts: {
+export async function grantFish(opts: {
   userId: string;
   amount: number;
   description: string;
@@ -99,7 +99,7 @@ export async function adminGrantFish(
 ): Promise<number> {
   assertValidAmount(amount);
   // 不传幂等键：键带随机后缀、每次执行都是新的一笔（判据见 fish-idempotency.ts 头部）。
-  return grantFishWithKey({ userId, amount, description, operation: 'admin_grant' });
+  return grantFish({ userId, amount, description, operation: 'admin_grant' });
 }
 
 /**
