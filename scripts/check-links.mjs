@@ -179,11 +179,16 @@ for (const f of srcFiles.filter((f) => f.endsWith('.tsx'))) {
 }
 
 // ── 2. /api/... → route ─────────────────────────────────────────────────────
-// account-client 打的是**账户微服务**的 /api/v1/*，不是本应用的路由，跳过。
-// middleware 的 '/api/:path*' 是 matcher 模式；robots 里的 '/api' 是 disallow 规则。
-const API_SKIP = [/^\/api\/v1\//, /^\/api\/:/, /^\/api$/, /^\/api\/__/];
+// 只跳过**不是本应用路由**的字符串：
+//   · '/api/:path*' —— middleware 的 matcher 模式，不是真实路径；
+//   · '/api'        —— robots 里的 disallow 规则。
+// 【为什么没有账户微服务的例外了】那台服务当年在站外，它自己的 /api/v1/* 会被
+// 这个扫描误判成断链，所以跳过；服务搬进站内后本仓再也没有 /api/v1/ 字面量，
+// 那条例外连同它的 skip 一起删掉了。**别为了「以后可能会用」加回来** ——
+// 一条不命中任何东西的豁免规则，只会让下一个人以为它挡着什么。
+const API_SKIP = [/^\/api\/:/, /^\/api$/];
 for (const f of srcFiles) {
-  if (f.endsWith('account-client.ts') || f.endsWith('middleware.ts') || f.endsWith('robots.ts')) continue;
+  if (f.endsWith('middleware.ts') || f.endsWith('robots.ts')) continue;
   const txt = stripComments(fs.readFileSync(f, 'utf8'));
   for (const lit of stringLiterals(txt)) {
     if (!lit.startsWith('/api/')) continue;
