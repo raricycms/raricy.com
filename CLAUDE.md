@@ -179,7 +179,9 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 
 `docs/architecture.md` §6.13 是主副本；各文件头讲自己那一段：`src/lib/market-service.ts`
 （**一个事务、没有补偿**、开仓的幂等靠 `open_key` 唯一约束而非独立幂等记录、
-平仓为何不需要幂等键、`payoutUnits` 的 floor 舍入、最小投入为何是 1 条）、
+平仓为何不需要幂等键、最小投入为何是 1 条）、
+`src/lib/market-math.ts`（**结算公式的唯一实现** —— 服务端真结算与页面「预计到手 / 涨跌 /
+手续费」是同一个 `settleClose`，零依赖所以两边都能 import）、
 `src/lib/market-price.ts`（**成交价现取 vs 展示缓存**这条安全边界、为什么用币安 `.vision`
 域、基址可配的两个理由）。
 
