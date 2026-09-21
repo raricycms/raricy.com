@@ -366,7 +366,7 @@ test.describe('内置黄脸表情', () => {
 
   test('★ 正文里黄脸是**文字大小**，图片表情仍是 4em（两者刻意不同）', async ({ page }) => {
     await registerFreshUser(page, { core: true });
-    const marker = uniqueTag('emoji-size');
+    const marker = `emoji-size-${uniqueTag()}`;
     // 一条消息里同时放两种，才能拿同一处的字号当尺子直接对比
     await postMessage(page, `${marker} 黄脸 ${EMOJI_TOKEN} 图片 ${TOKEN}`);
     await page.goto(`/chat?channel=${LOBBY}`);
@@ -398,7 +398,7 @@ test.describe('内置黄脸表情', () => {
 
   test('清单里没有的黄脸名字：退回字节路由 → 404 → 显示原文 token', async ({ page }) => {
     await registerFreshUser(page, { core: true });
-    const marker = uniqueTag('emoji-miss');
+    const marker = `emoji-miss-${uniqueTag()}`;
     const bad = '[@黄脸/并不存在]';
     await postMessage(page, `${marker} ${bad}`);
     await page.goto(`/chat?channel=${LOBBY}`);
