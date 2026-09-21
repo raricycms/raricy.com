@@ -24,6 +24,8 @@
 //
 // ⚠️ 这几个数字**跟着存储精度走**：精度从 0.1 抬到 0.0001 之后，floor 少丢的零头
 // 让实发从 1.9 变成 1.998 —— 差的这 0.098 正是那次改动的全部收益。再改精度时这几处必红。
+// 「平价卖出」那条（1.0000 − 0.0010 = 0.9990）同理：粒度 0.1 时那一笔会 floor 成 0.9，
+// 手续费看起来就像 10%。
 
 import { test, expect, type APIRequestContext, type Page } from '@playwright/test';
 import { registerFreshUser } from './helpers';
@@ -110,6 +112,9 @@ test('买入全链路：定价 → 下单 → 扣款 + 建仓 + 记 market_buy �
   const pos = page.locator('.trade-position').first();
   await expect(pos).toContainText('BTC');
   await expect(pos).toContainText('80,000.00');
+  // 持仓行也带现价与「较开仓」涨跌 —— 价没动过，所以是 0.00%（0 不带正号）
+  await expect(pos).toContainText('现价 80,000.00');
+  await expect(pos).toContainText('较开仓 0.00%');
 
   // ── 账目：一条 market_buy，扣 1，且**没有对手方** ──────────────────────
   const rows = await myLedger(page, 'market_buy');
@@ -124,6 +129,45 @@ test('买入全链路：定价 → 下单 → 扣款 + 建仓 + 记 market_buy �
   // 读回来的余额与页面上那个数同源（余额的真源就是本地 users.dried_fish）
   const bal = await page.request.get('/api/fish/balance');
   expect((await bal.json()).balance).toBe(start - 1);
+});
+
+test('卖出细则：弹窗摊开涨跌 / 毛额 / 手续费 / 盈亏 / 到手，且「预计到手」= 真到账', async ({
+  page,
+  request,
+}) => {
+  // 价**全程不动**：这一屏里的每个数因此都是确定的，断言写精确值。
+  // 这条用例钉的是「页面上那几个数不是另算一遍的」—— 弹窗的 0.9990 与真到账的 0.9990
+  // 走的是同一个 settleClose（src/lib/market-math.ts）。谁把公式抄回页面一份，
+  // 这里迟早红。
+  await registerFreshUser(page, { core: true });
+  const start = await fundByCheckin(page);
+  await setPrice(request, 'BTCUSDT', 80000);
+
+  await page.goto('/fish/trade');
+  await buyViaUI(page, '1');
+  await expect.poll(() => uiBalance(page)).toBe(start - 1);
+
+  await page.locator('.trade-position').first().locator('.trade-position__sell').click();
+  const confirm = page.locator('.trade-confirm');
+  await expect(confirm).toBeVisible();
+
+  await expect(confirm, '弹窗要有卖出细则这一屏').toContainText('开仓价');
+  await expect(confirm).toContainText('80,000.00');
+  // 价没动 → 0.00%（fmtPct 只在**大于** 0 时给正号：0 既不是涨也不是跌）
+  await expect(confirm, '价没动 → 较开仓价为 0').toContainText('0.00%');
+  await expect(confirm).toContainText('手续费 0.1%');
+  // 投 1 条、价没动：毛额 1.0000，手续费 1.0000 × 0.1% = 0.0010，到手 0.9990。
+  // ★ 平价卖出**也要亏**，亏的正好是手续费 —— 这是「频繁进出被磨」的全部实现。
+  await expect(confirm).toContainText('1.0000 小鱼干');
+  await expect(confirm).toContainText('-0.0010 小鱼干');
+  await expect(confirm).toContainText('-0.0010 小鱼干（-0.10%）');
+  await expect(confirm).toContainText('0.9990 小鱼干');
+
+  await confirm.locator('.trade-confirm__ok').click();
+  await expect(confirm).toHaveCount(0);
+  await expect
+    .poll(() => uiBalance(page), { message: '到手应正好是弹窗上显示的那个数' })
+    .toBe(start - 1 + 0.999);
 });
 
 test('★ 涨价卖出 → 按真实涨跌幅 mint（成交价是下单那一刻现取的）', async ({

@@ -16,6 +16,18 @@
 //  【图标】走势线是内联 SVG（`.trade-spark`），站内没有图表库也不该为一张曲线引进来。
 // ═══════════════════════════════════════════════════════
 
+// 涨跌配色：涨绿、跌红。四处共用（行情卡 / 持仓行 / 确认弹窗）—— 一处改不动的散装
+// 复制就是下次「同一个涨在三个地方三个色」的来源。生成的是 `&--up` / `&--down`。
+@mixin trade-up-down {
+  &--up {
+    color: var(--color-success-primary);
+  }
+
+  &--down {
+    color: var(--color-warning-primary);
+  }
+}
+
 .trade-subtitle {
   text-align: center;
   color: var(--color-text-secondary);
@@ -115,13 +127,7 @@
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 
-  &--up {
-    color: var(--color-success-primary);
-  }
-
-  &--down {
-    color: var(--color-warning-primary);
-  }
+  @include trade-up-down;
 }
 
 // 走势线。preserveAspectRatio="none" 让它拉满卡片宽度，描边靠
@@ -373,6 +379,25 @@
   color: var(--color-text-tertiary);
 }
 
+/* 「现价 x · 较开仓 y%」—— 与 __entry 同样是整行（width: 100%）。
+   跟着价格走、不跟身份走，所以不能挤进 __main 那一行的 wrap 里（会被拆散）。 */
+.trade-position__now {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: $space-2;
+  width: 100%;
+  font-size: 0.75rem;
+  color: var(--color-text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.trade-position__change {
+  font-weight: 600;
+
+  @include trade-up-down;
+}
+
 .trade-position__pnl {
   display: flex;
   flex-direction: column;
@@ -385,13 +410,7 @@
   font-size: 0.95rem;
   font-weight: 700;
 
-  &--up {
-    color: var(--color-success-primary);
-  }
-
-  &--down {
-    color: var(--color-warning-primary);
-  }
+  @include trade-up-down;
 }
 
 .trade-position__payout {
@@ -443,6 +462,26 @@
     font-variant-numeric: tabular-nums;
     text-align: right;
   }
+}
+
+/* 现价那一行末尾的涨跌幅。挂在 dd 里（dd 自己是 --color-text-primary），
+   所以要自己给色 —— 它是这一屏里唯一的彩色数，扫一眼就知道这一笔是赚是亏。 */
+.trade-confirm__delta {
+  margin-left: $space-2;
+  font-weight: 700;
+
+  @include trade-up-down;
+}
+
+/* 预计盈亏。与弹窗里其余数字同字号（--total 那一行才是主角），只靠颜色分涨跌。
+   ⚠️ 它必须挂在 dd **里层的 span** 上：`.trade-confirm__row dd` 是 0-1-1，
+   压得住任何挂在 dd 身上的单类选择器（0-1-0）—— 挂错地方就是静默不变色。 */
+.trade-confirm__pnl {
+  /* 这条 font-weight 不是装饰 —— 光靠 @include 的话本块**一条声明都没有**，
+     Sass 不会为 .trade-confirm__pnl 产出规则，类名静默失效（css-tsx-classes 守卫会红） */
+  font-weight: 700;
+
+  @include trade-up-down;
 }
 
 .trade-confirm__row--total {

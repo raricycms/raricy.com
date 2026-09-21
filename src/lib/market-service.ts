@@ -5,8 +5,9 @@
 // 拿回多少鱼干。**不是交易所，也不是庄家对赌**：没有撮合、没有对手盘、没有敞口。
 //
 //   开仓：条件扣减 N 单位鱼干 + 一条 market_buy 流水（负），建一行 position
-//   平仓：payoutUnits = floor(N × 平仓价 / 开仓价 × (1 - 手续费))，加回用户 + 一条
-//         market_sell 流水（正）
+//   平仓：payoutUnits = floor(N × 平仓价 / 开仓价 × (1 - 手续费))（算术住在
+//         market-math.ts —— 页面上的「预计到手」用的就是这个函数），
+//         加回用户 + 一条 market_sell 流水（正）
 //
 // 【「系统水池」是账外的，不是一行账户】迁移前开仓是「用户 → 系统账户
 // `raricy-blog-system`」、平仓是反向 —— 那两笔是远端复式账本的另一条腿。搬进站内后
@@ -50,6 +51,8 @@ import { prisma } from './db';
 import { nowForDb } from './db-time';
 import { postEntry, InsufficientFishError } from './fish-service';
 import { FISH_DECIMALS, fishToUnits, unitsToFish } from './fish-units';
+// 结算公式（零依赖模块 —— 页面也 import 它，见那里的文件头）
+import { settleClose } from './market-math';
 // 客户端幂等键的格式校验复用转账那一条 —— 同一个「调用方给的键」概念，
 // 没有理由长出第二套规则。定义在 fish-idempotency（零业务依赖），
 // 所以这里 import 它不会把 fish-market-service 拖进来。
@@ -408,10 +411,14 @@ export async function closePosition(input: {
   }
   const exitPrice = quote.price;
 
-  // 结算。Math.floor（不是 round）：**舍入永远朝系统一侧**，宁可少发一个单位也不
-  // 凭空多铸。落库前必须落成整数 —— 它是写进 payout_units 与那条流水的那一个数。
-  const gross = (pos.stakeUnits * exitPrice) / pos.entryPrice;
-  const payoutUnits = Math.floor(gross * (1 - MARKET_FEE_RATE));
+  // 结算。公式住在 market-math.ts —— **页面上的「预计到手」用的是同一个函数**，
+  // 别把这条算术抄一份回这里（两份必然 drift，而用户是看着那个数按下确认的）。
+  const { payoutUnits } = settleClose({
+    stakeUnits: pos.stakeUnits,
+    entryPrice: pos.entryPrice,
+    exitPrice,
+    feeRate: MARKET_FEE_RATE,
+  });
 
   // ⚠️ payoutUnits 可能为 0 —— 那时**没有钱动过**：不写流水、不发通知，只把仓位置 closed。
   // 漏了这一档就会让记账内核抛出来（postEntry 对 units === 0 也是抛的，它只收

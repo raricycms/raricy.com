@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AMOUNT_ERROR, fmtFish, parseFishAmount, roundFish } from '@/lib/fish-amount';
-import { FISH_UNIT_SCALE } from '@/lib/fish-units';
+import { FISH_UNIT_SCALE, unitsToFish } from '@/lib/fish-units';
+import { settleClose } from '@/lib/market-math';
 
 // 练手盘面板：行情 + 买入 + 持仓 + 平仓。
 //
@@ -188,20 +189,34 @@ export default function TradePanel({
   const canBuy = amountOk && current != null;
   const afterBalance = amountOk ? roundFish(balance - parsed) : balance;
 
-  // 某一笔持仓按**展示价**估的盈亏。真实结算价以下单那一刻为准（见文件头 ①）。
+  // 某一笔持仓按**展示价**估的卖出细则。真实结算价以下单那一刻为准（见文件头 ①）。
+  //
+  // 算术全部来自 settleClose（market-math.ts）—— **服务端真结算用的是同一个函数**，
+  // 所以「预计到手」与真到账必然一致。别把公式抄进这里：两份就会 drift，而用户正是
+  // 看着这个数决定要不要平仓。
   //
   // ⚠️ 单位换算必须走 FISH_UNIT_SCALE，**别写死 10**：精度提到 0.0001 之后写死的 10
-  // 会**静默错 1000 倍**（投 1 条的仓位估算「可卖」显示约 1.0 而不是约 999），而用户
-  // 正是按这个数决定要不要平仓。服务端对应的结算是 market-service 的 settle。
+  // 会**静默错 1000 倍**（投 1 条的仓位估算「可卖」显示约 1.0 而不是约 999）。
+  // 走 Math.round 而不是 fishToUnits 也是刻意的：后者对超精度**抛错**，而这里是渲染
+  // 路径 —— 一个脏数据不该把整页打崩，四舍五入到最近的单位即可。
   function estimate(p: PositionProp) {
     const px = priceOf(p.symbol);
     if (px == null) return null;
     const stakeUnits = Math.round(p.stake * FISH_UNIT_SCALE);
-    const payout = Math.floor((stakeUnits * px) / p.entryPrice * (1 - feeRate));
+    const s = settleClose({ stakeUnits, entryPrice: p.entryPrice, exitPrice: px, feeRate });
     return {
       px,
-      payout: payout / FISH_UNIT_SCALE,
-      profit: (payout - stakeUnits) / FISH_UNIT_SCALE,
+      /** 实发（到手） */
+      payout: unitsToFish(s.payoutUnits),
+      /** 毛额（未扣手续费的卖出金额） */
+      gross: unitsToFish(s.grossUnits),
+      profit: unitsToFish(s.payoutUnits - stakeUnits),
+      /** 手续费 + floor 零头 —— 弹窗里「毛额 − 手续费 = 到手」要对得上（见 market-math.ts） */
+      fee: unitsToFish(s.feeUnits),
+      /** 较开仓价的涨跌幅（不含手续费）。行情卡上那个是 24 小时涨跌，两者不是一回事 */
+      changePercent: s.changePercent,
+      /** 盈亏率（含手续费与 floor） */
+      profitPercent: s.profitPercent,
     };
   }
 
@@ -274,6 +289,9 @@ export default function TradePanel({
 
   const anyStale = quotes.some((q) => q.stale);
   const quoteDown = quotes.length === 0 || quotes.every((q) => q.price == null);
+  // 弹窗里的那一整套估算算一次就好（下面要用到六七个数，逐个 estimate() 是六七次重算，
+  // 且两处调用之间行情刷新会让同一个数在弹窗里显示成两个值）
+  const sellEst = sellTarget ? estimate(sellTarget) : null;
 
   return (
     <>
@@ -407,6 +425,20 @@ export default function TradePanel({
                       开仓 {fmtPrice(p.entryPrice)}
                       <span className="trade-position__time"> · {fmtOpenedAt(p.openedAt)}</span>
                     </span>
+                    {/* 「较开仓」而不是光写一个百分数：行情卡上那个百分数是**24 小时**涨跌，
+                        两个数会在同一屏里各说各话。取不到价就整行不渲染（不是显示 0.00%）。 */}
+                    {est && (
+                      <span className="trade-position__now">
+                        现价 {fmtPrice(est.px)}
+                        <span
+                          className={`trade-position__change trade-position__change--${
+                            est.changePercent >= 0 ? 'up' : 'down'
+                          }`}
+                        >
+                          较开仓 {fmtPct(est.changePercent)}
+                        </span>
+                      </span>
+                    )}
                   </div>
                   <div className="trade-position__pnl">
                     {est ? (
@@ -514,6 +546,11 @@ export default function TradePanel({
                 <h3 className="modal-title">确认卖出</h3>
               </div>
               <div className="modal-body">
+                {/* 这一屏是「卖出细则」。三件事按用户的实际问题排：
+                    价（涨了多少）→ 账（毛额 / 手续费 / 盈亏，加起来必须等于到手）→ 到手。
+                    ⚠️ 末三行是**加得起来**的：毛额 − 手续费 = 到手、到手 − 投入 = 盈亏。
+                    改动其中任何一行前先确认这条还成立 —— 屏幕上对不上的账比不显示更糟。
+                    取不到行情价时整组显示「—」（估不出来就说估不出来，不编一个 0）。 */}
                 <dl className="trade-confirm__rows">
                   <div className="trade-confirm__row">
                     <dt>标的</dt>
@@ -527,13 +564,63 @@ export default function TradePanel({
                     <dt>开仓价</dt>
                     <dd>{fmtPrice(sellTarget.entryPrice)} USDT</dd>
                   </div>
+                  <div className="trade-confirm__row">
+                    <dt>现价</dt>
+                    <dd>
+                      {sellEst ? (
+                        <>
+                          {fmtPrice(sellEst.px)} USDT
+                          <span
+                            className={`trade-confirm__delta trade-confirm__delta--${
+                              sellEst.changePercent >= 0 ? 'up' : 'down'
+                            }`}
+                          >
+                            {fmtPct(sellEst.changePercent)}
+                          </span>
+                        </>
+                      ) : (
+                        '—'
+                      )}
+                    </dd>
+                  </div>
+                  <div className="trade-confirm__row">
+                    <dt>卖出金额</dt>
+                    <dd>{sellEst ? `${fmtFish(sellEst.gross)} 小鱼干` : '—'}</dd>
+                  </div>
+                  {/* 费率从 feeRate 插值，**别写死 0.1%** —— 改 MARKET_FEE_RATE 时
+                      这一行要跟着走（同 RULES 那条纪律：数值只有一处权威） */}
+                  <div className="trade-confirm__row">
+                    <dt>手续费 {(feeRate * 100).toFixed(1)}%</dt>
+                    <dd>{sellEst ? `-${fmtFish(sellEst.fee)} 小鱼干` : '—'}</dd>
+                  </div>
+                  <div className="trade-confirm__row">
+                    <dt>预计盈亏</dt>
+                    {/* 颜色挂在**里层的 span** 上，不是 dd 自己：`.trade-confirm__row dd`
+                        是 0-1-1，压得住任何挂在 dd 上的单类选择器（0-1-0）——
+                        直接写 dd 上就是静默不变色。 */}
+                    <dd>
+                      {sellEst ? (
+                        <span
+                          className={`trade-confirm__pnl trade-confirm__pnl--${
+                            sellEst.profit >= 0 ? 'up' : 'down'
+                          }`}
+                        >
+                          {sellEst.profit > 0 ? '+' : ''}
+                          {fmtFish(sellEst.profit)} 小鱼干（{fmtPct(sellEst.profitPercent)}）
+                        </span>
+                      ) : (
+                        '—'
+                      )}
+                    </dd>
+                  </div>
                   <div className="trade-confirm__row trade-confirm__row--total">
                     <dt>预计到手</dt>
-                    <dd>{estimate(sellTarget) ? `${fmtFish(estimate(sellTarget)!.payout)} 小鱼干` : '—'}</dd>
+                    <dd>{sellEst ? `${fmtFish(sellEst.payout)} 小鱼干` : '—'}</dd>
                   </div>
                 </dl>
                 <p className="trade-confirm__disclaimer">
-                  实际到手以下单那一刻的行情为准。卖出后这一笔仓位就结清了，不能再恢复。
+                  上面的价与金额都按<strong>展示价</strong>估算，实际到手以下单那一刻的成交价为准。
+                  卖出后这一笔仓位就结清了，不能再恢复。
                 </p>
                 <div className="trade-confirm__actions">
                   <button
