@@ -30,6 +30,7 @@ import {
   verifyInviteAndUpgrade,
   updateOwnProfile,
   getPublicProfile,
+  resolveProfileHandle,
 } from '@/lib/user-service';
 import { hashPassword, verifyPassword } from '@/lib/password';
 import { resetDb, makeUser, makeBlog, prisma } from '../helpers/db';
@@ -981,6 +982,7 @@ describe('getPublicProfile', () => {
     expect(await getPublicProfile('ghost', null)).toBeNull();
   });
 
+
   it('createdAt 序列化为 ISO 字符串', async () => {
     const u = await makeUser();
     const p = await getPublicProfile(u.id, null);
@@ -1117,6 +1119,49 @@ describe('getPublicProfile', () => {
     const p = await getPublicProfile(u.id, await coreViewer());
     expect(p!.recentComments[0].content).toHaveLength(120);
     expect(p!.recentComments[0].blogTitle, '应带上所属文章标题').toBe('某篇文章');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// resolveProfileHandle —— `/api/users/<句柄>` 的两条路（用户名片要按名字查）
+//
+// 【为什么值得单测】「按 id 命中的免档、按名字命中的要 core+」这条分叉完全落在这个
+// 返回值上，而 route 层只看得见 `viaName` 这一个布尔。判错的后果是单向的：把名字误判成
+// id = 匿名可以枚举用户名；把 id 误判成名字 = 公开主页被 core+ 以外的所有人打不开。
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('resolveProfileHandle', () => {
+  it('按 id 命中 → viaName: false', async () => {
+    const u = await makeUser({ username: 'alice' });
+    expect(await resolveProfileHandle(u.id)).toEqual({ id: u.id, viaName: false });
+  });
+
+  it('按用户名命中 → viaName: true', async () => {
+    const u = await makeUser({ username: 'alice' });
+    expect(await resolveProfileHandle('alice')).toEqual({ id: u.id, viaName: true });
+  });
+
+  it('中文用户名同样命中', async () => {
+    const u = await makeUser({ username: '张三丰' });
+    expect(await resolveProfileHandle('张三丰')).toEqual({ id: u.id, viaName: true });
+  });
+
+  it('两边都没有 → null', async () => {
+    expect(await resolveProfileHandle('ghost')).toBeNull();
+    expect(await resolveProfileHandle('00000000-0000-0000-0000-000000000000')).toBeNull();
+  });
+
+  it('★ 大小写敏感：不归一化（折叠会把两个不同的号变成一个）', async () => {
+    const u = await makeUser({ username: 'ZhangSan' });
+    expect(await resolveProfileHandle('zhangsan')).toBeNull();
+    expect(await resolveProfileHandle('ZhangSan')).toEqual({ id: u.id, viaName: true });
+  });
+
+  it('★ 不假设 id 是 UUID：形态奇特的 id 照样按 id 命中', async () => {
+    // 存量数据与夹具里的 id 不保证是 UUID（bot 文档里那个 `u_xxx` 的例子就是这么来的）。
+    // 靠 UUID 正则分流的写法会把这一个判成「按名字查」，于是公开主页被档位挡在外面。
+    const u = await makeUser({ id: 'u_xxx', username: 'alice' });
+    expect(await resolveProfileHandle('u_xxx')).toEqual({ id: 'u_xxx', viaName: false });
   });
 });
 

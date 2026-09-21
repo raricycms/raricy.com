@@ -333,6 +333,37 @@ export function mapCreateFailure(
 
 // ── 公开资料 ────────────────────────────────────────────────────────────────
 
+/**
+ * 把 `/api/users/<句柄>` 的句柄解析成用户 id，并说明是**按 id 还是按用户名**命中的。
+ * 两边都没有返回 null。
+ *
+ * 【为什么要「按名字」这条路】用户名片 `[@用户/张三]` 只带用户名（可读、能手打，且
+ * 用户名在本站不可改），而 `getPublicProfile` 只认 id。
+ *
+ * 【为什么不是「拿 UUID 正则去认形态」】那等于假设 id 一定是 UUID —— 而这是个**没写在
+ * 任何地方的不变量**，存量数据、测试夹具、将来的迁移都可能给出别的形态（bot 文档里
+ * 那个 `u_xxx` 的例子就是这么来的）。以「实际命中了哪一列」为准就没有这个假设。
+ * 代价是名字那条路多一次索引查询，而它背后本来就跟着一次 5 分钟缓存（见
+ * src/app/components/useUserCards.ts）。
+ *
+ * 【id 优先】两列都命中时（理论上只有形态奇特的存量 id 才可能）id 赢，结果是确定的。
+ * 换过来写会得到一个「同一串字符时而按人、时而按名字解析」的接口。
+ *
+ * ⚠️ 用户名**唯一但大小写敏感**（`ZhangSan` 与 `zhangsan` 是两个不同的号），所以这里
+ * 不做任何归一化 —— 归一化会把两个不同的用户折叠成同一个，而那是**静默**的。
+ */
+export async function resolveProfileHandle(
+  handle: string
+): Promise<{ id: string; viaName: boolean } | null> {
+  const byId = await prisma.user.findUnique({ where: { id: handle }, select: { id: true } });
+  if (byId) return { id: byId.id, viaName: false };
+  const byName = await prisma.user.findUnique({
+    where: { username: handle },
+    select: { id: true },
+  });
+  return byName ? { id: byName.id, viaName: true } : null;
+}
+
 /** 查看者。`null` = 游客（未登录），**不是**「不判」。 */
 export interface ProfileViewer {
   id: string;

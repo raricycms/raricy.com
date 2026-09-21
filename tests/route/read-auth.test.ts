@@ -142,6 +142,71 @@ describe('GET /api/users/:id — 匿名可达，但内容按查看者收敛', ()
   });
 
   it('用户不存在 → 404', async () => {
+    // ⚠️ 句柄是 id 还是用户名由**实际命中了哪一列**决定（见 resolveProfileHandle），
+    // 所以 `ghost` 这种串走的是「按用户名查」那条路 —— 查不到仍然是 404（对外契约，
+    // 见 docs/bot/account-bot.md §6），与按 id 查不到同形。
+    expect((await getUser('ghost')).status).toBe(404);
+    expect((await getUser('00000000-0000-0000-0000-000000000000')).status).toBe(404);
+  });
+});
+
+describe('GET /api/users/<用户名> — 同上，但按名字查要 core+', () => {
+  it('★ 按 id 查照旧匿名可达（别把公开主页那条路一起关掉）', async () => {
+    const u = await makeUser({ role: 'core', username: 'boss' });
+    const res = await getUser(u.id);
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { user: { username: string } }).user.username).toBe('boss');
+  });
+
+  it('★ 匿名按名字查 → 403（id 是 UUID，只能从链接里捡；名字到处都是、可以枚举）', async () => {
+    await makeUser({ role: 'core', username: 'boss' });
+    expect((await getUser('boss')).status).toBe(403);
+  });
+
+  it('非 core 登录用户按名字查 → 403（有账号不等于有权限，与其它档位同口径）', async () => {
+    await makeUser({ role: 'core', username: 'boss' });
+    const plain = await makeUser({ role: 'user' });
+    await login(plain.id);
+    expect((await getUser('boss')).status).toBe(403);
+  });
+
+  it('★ core 按名字查：拿到的载荷与按 id 查**逐字一致**（名片就靠它渲染）', async () => {
+    const target = await makeUser({ role: 'core', username: 'boss' });
+    await makeBlog({ authorId: target.id, title: '一篇文章' });
+    const viewer = await makeUser({ role: 'core' });
+    await login(viewer.id);
+
+    const byId = await (await getUser(target.id)).json();
+    const byName = await (await getUser('boss')).json();
+    expect(byName).toEqual(byId);
+    expect((byName as { user: { id: string } }).user.id).toBe(target.id);
+  });
+
+  it('★ 中文用户名同样认（名片 token 里的名字可以有中文）', async () => {
+    const target = await makeUser({ role: 'core', username: '张三丰' });
+    await login(target.id);
+    const body = (await (await getUser('张三丰')).json()) as { user: { id: string } };
+    expect(body.user.id).toBe(target.id);
+  });
+
+  it('★ 用户名大小写敏感（不做归一化：折叠会把两个不同的号变成一个）', async () => {
+    await makeUser({ role: 'core', username: 'ZhangSan' });
+    const viewer = await makeUser({ role: 'core' });
+    await login(viewer.id);
+
+    expect((await getUser('ZhangSan')).status).toBe(200);
+    expect((await getUser('zhangsan')).status).toBe(404);
+  });
+
+  it('core 按不存在的名字查 → 404（与「不存在 → 404」那条对外口诀同形）', async () => {
+    const viewer = await makeUser({ role: 'core' });
+    await login(viewer.id);
+    expect((await getUser('ghost')).status).toBe(404);
+  });
+
+  it('非 core 按不存在的名字查 → 也是 404（档位不改变「不存在」的答案）', async () => {
+    const plain = await makeUser({ role: 'user' });
+    await login(plain.id);
     expect((await getUser('ghost')).status).toBe(404);
   });
 });
