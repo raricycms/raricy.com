@@ -1349,6 +1349,24 @@ describe('侧栏预览占位', () => {
     const row = list.find((c) => c.id === ch.channel.id);
     expect(row?.last_message?.content).toBe('[博客]');
   });
+
+  it('★ 内联 token 在预览里换成短标记：表情 → [表情]，名片 → @张三', async () => {
+    // 预览与服务端、客户端各一份（listChannelsForUser 与 ChatApp.previewOfMessage），
+    // 两处都走 chat-shared 的 stripPreviewTokens。这里钉的是「名片不会被当成表情那个
+    // 合集」—— 让开之前，`[@用户/张三]` 在这条路径上会变成 `[表情]`。
+    const a = await makeUser({ role: 'core' });
+    const b = await makeUser({ role: 'core' });
+    const ch = (await startDirectChannel(a.id, b.id)) as { channel: { id: string } };
+    await sendMessage({
+      channelId: ch.channel.id,
+      authorId: a.id,
+      content: '看 [@用户/张三丰] 和 [@猫猫/开心]',
+    });
+
+    const list = await listChannelsForUser(a.id);
+    const row = list.find((c) => c.id === ch.channel.id);
+    expect(row?.last_message?.content).toBe('看 @张三丰 和 [表情]');
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

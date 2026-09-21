@@ -22,6 +22,7 @@ import {
   CHAT_PREVIEW_MAX,
   CHAT_TEXT_MAX,
   CHAT_CAPTION_MAX,
+  stripPreviewTokens,
 } from '@/lib/chat-shared';
 import { LS_KEY, COOKIE_NAME, COOKIE_MAX_AGE } from '@/lib/chat-sidebar-pref';
 import NewChatModal from './NewChatModal';
@@ -33,7 +34,6 @@ import ChatSidebar from './ChatSidebar';
 import RichComposer, { type ComposerBlogQuote } from '../components/RichComposer';
 import { usePendingImage } from '../components/usePendingImage';
 import { insertAtCaret } from '../components/textarea-insert';
-import { stripStickerTokens } from '@/lib/sticker-refs';
 import ChatSearchModal, { SearchButton } from './ChatSearchModal';
 
 declare global {
@@ -155,9 +155,10 @@ function withPendingDirects(
  */
 function previewOfMessage(m: ChatMessageDTO): string {
   if (m.pat) return `拍了拍 ${m.pat.target_name}`;
-  // 表情 token 换成 [表情]，与既有的 [图片]/[博客] 同口径。
-  // ⚠️ 服务端 listChannelsForUser 里那份必须同步改（见本函数上方的说明）。
-  const collapsed = stripStickerTokens(m.content).replace(/\s+/g, ' ').trim();
+  // 内联 token 换成短标记（表情 → [表情]、名片 → @张三），与既有的 [图片]/[博客] 同口径。
+  // 以前这里与服务端那份是**两份约定**（注释互相指着对方），现在两处都走 chat-shared 的
+  // stripPreviewTokens —— 漂不动了。
+  const collapsed = stripPreviewTokens(m.content).replace(/\s+/g, ' ').trim();
   const display = collapsed || (m.image ? '[图片]' : m.blog ? '[博客]' : '');
   return display.length > CHAT_PREVIEW_MAX ? `${display.slice(0, CHAT_PREVIEW_MAX)}…` : display;
 }

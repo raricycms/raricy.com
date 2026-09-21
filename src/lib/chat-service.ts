@@ -42,7 +42,6 @@ import { markChannelNotificationsRead, sendNotification } from './notification-s
 import { publishToAll, publishToUsers } from './chat-bus';
 import { isViewingChannel } from './chat-presence';
 import { hasSubscriber, publishToUser } from './topbar-bus';
-import { stripStickerTokens } from './sticker-refs';
 import { avatarUrl } from './avatar-refs';
 import { frameUrlFor } from './frame-service';
 import {
@@ -55,6 +54,7 @@ import {
   CHAT_CAPTION_MAX,
   CHAT_NOTIFY_OBJECT_TYPE,
   PAT_TARGET_FALLBACK,
+  stripPreviewTokens,
   type ChatAuthorDTO,
   type ChatMessageDTO,
   type ChatChannelDTO,
@@ -440,8 +440,9 @@ export async function listChannelsForUser(
           id: last.id,
           content: (() => {
             if (patName) return `拍了拍 ${patName}`;
-            // 表情 token → [表情]（与客户端 previewOfMessage 逐字一致，见那边的注释）
-            const collapsed = stripStickerTokens(last.content).replace(/\s+/g, ' ').trim();
+            // 内联 token → 短标记（与客户端 previewOfMessage 逐字一致：两处都走
+            // chat-shared 的 stripPreviewTokens，不再是「两份约定」）
+            const collapsed = stripPreviewTokens(last.content).replace(/\s+/g, ' ').trim();
             // 正文为空的附件消息给个可读预览，避免侧栏显示「用户名：」这种空串
             // （口径与通知预览一致，见本文件 sendMessage 里的 preview）
             const display = collapsed
@@ -852,8 +853,8 @@ async function attachImagesAndReplies(rows: MessageRow[]): Promise<ChatMessageDT
       ? ''
       : (reply.isDeleted ?? false)
         ? CHAT_DELETED_TEXT
-        : // 引用块是一行摘要，表情 token 换成 [表情]（与侧栏预览、通知预览同口径）
-          stripStickerTokens(reply.content) ||
+        : // 引用块是一行摘要，内联 token 一律换成短标记（与侧栏预览、通知预览同口径）
+          stripPreviewTokens(reply.content) ||
           (reply.imageId && !replyImage ? '[图片已删除]' : '');
     return {
       id: m.id,
@@ -1151,7 +1152,7 @@ async function notifyChannelMentions(params: {
   const memberByUser = new Map(members.map((m) => [m.userId, m]));
 
   // 正文折叠成一行再截断：通知列表是一行摘要，不展示换行与缩进
-  const collapsed = stripStickerTokens(content).replace(/\s+/g, ' ').trim();
+  const collapsed = stripPreviewTokens(content).replace(/\s+/g, ' ').trim();
   const preview =
     collapsed.length > CHAT_PREVIEW_MAX ? `${collapsed.slice(0, CHAT_PREVIEW_MAX)}…` : collapsed;
   const detail = isLobby ? `在讨论大区提到了你：${preview}` : `在私聊中提到了你：${preview}`;
@@ -1525,20 +1526,25 @@ export async function softDeleteMessage(
 // ── 用户搜索（发起私聊弹窗）──────────────────────────────────────────────────
 
 /**
- * 搜索可私聊对象：仅 core+（只有 core+ 能用讨论），排除自己。
+ * 搜索可私聊对象：仅 core+（只有 core+ 能用讨论），默认排除自己。
  * query 为空时返回最近注册的一批 core+ 用户。按 username 匹配。
  * 返回分页结果 + 总数（弹窗要算总页数）。
+ *
+ * 【为什么有 includeSelf】用户名片的选择器（src/app/components/UserPicker.tsx）要能
+ * 发自己的名片 —— 那是名片最常见的用法之一。私聊弹窗那边照旧排除自己（跟自己私聊没有
+ * 意义），所以做成**调用方显式指定**的开关而不是默认值。
  */
 export async function searchCoreUsers(
   query: string,
   selfId: string,
   limit = 30,
-  offset = 0
+  offset = 0,
+  opts: { includeSelf?: boolean } = {}
 ): Promise<{ users: ChatUserLite[]; total: number }> {
   const q = query.trim();
   const where: Prisma.UserWhereInput = {
     role: { in: CORE_ROLES },
-    NOT: { id: selfId },
+    ...(opts.includeSelf ? {} : { NOT: { id: selfId } }),
     ...(q ? { username: { contains: q } } : {}),
   };
   const [users, total] = await Promise.all([

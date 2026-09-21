@@ -47,10 +47,12 @@ const URL_OWNER = 'src/lib/avatar-refs.ts';
 const AVATAR_URL_RE = /\/api\/avatar\//;
 
 /**
- * 头像落点台账 —— 每个渲染头像的文件。
+ * 头像落点台账（**组件**档）—— 每个用 `<Avatar>` 渲染头像的文件。
  *
  * ⚠️ **手工维护**。新增渲染头像的页面/组件时在这里添一行，否则那一处永远不会被
  * 这条守卫覆盖到（见文件头）。顺序按「服务端组件 / 客户端组件 / 非 DOM」分组。
+ *
+ * 另有一档 `AVATAR_DOM_SITES`（见下）—— 那张表里的文件用不了这个组件。
  */
 const AVATAR_SITES = [
   // ── 服务端组件 ──
@@ -72,6 +74,25 @@ const AVATAR_SITES = [
   'src/app/fish/market/RecipientPicker.tsx', // 转账选人（32px）
   'src/app/fish/market/TransferPanel.tsx', // 转账面板 + 二次确认（36 / 44px）
   'src/app/fish/PayForm.tsx', // 收银台 / 收款页的收款人（36px）
+  'src/app/components/UserPicker.tsx', // 发用户名片的选人列表（32px）
+];
+
+/**
+ * 头像落点台账（**DOM 构造**档）—— 用不了 `<Avatar>` 组件的那些落点。
+ *
+ * 【为什么会有这一档】`<Avatar>` 是 React 组件，而用户正文那两条管线（讨论 / 评论）
+ * 的产物是**字符串**（`render()` 最后 `return holder.innerHTML`），里面塞不进组件 ——
+ * 用户名片只能像 `[@10位图床图]` / 表情那样，在净化之后用 `createElement` 亲手搭出
+ * 与 `<Avatar>` **逐字同构**的 DOM（见 src/lib/user-refs.ts 的 buildUserCardElement）。
+ *
+ * 【判据为什么不一样】这一档的判据是「文件里出现 `avatar__frame`」，而不是「用了
+ * `<Avatar>`」—— 台账真正要保的不变量是**这一处会不会有头像框**，不是「用了哪个 API」。
+ * 只写 `<img src={avatarUrl(id)}>` 而忘了框，本来正是这张表要拦的东西。
+ *
+ * ⚠️ 同样**手工维护**。新增一处 DOM 构造的头像落点时在这里添一行。
+ */
+const AVATAR_DOM_SITES = [
+  'src/lib/user-refs.ts', // 用户名片 `[@用户/<用户名>]`（行内胶囊，1.4em）
 ];
 
 /**
@@ -237,8 +258,10 @@ describe('★ 判据 1：拼头像 URL 只有一处口径', () => {
 });
 
 describe('★ 判据 2：落点台账里的每一处都真的在用 <Avatar>', () => {
-  it('台账里的文件都存在', () => {
-    const missing = AVATAR_SITES.filter((f) => !fs.existsSync(path.join(ROOT, f)));
+  it('台账里的文件都存在（两档一起查）', () => {
+    const missing = [...AVATAR_SITES, ...AVATAR_DOM_SITES].filter(
+      (f) => !fs.existsSync(path.join(ROOT, f))
+    );
     expect(
       missing,
       '台账里列的文件不存在了 —— 要么是文件被挪走/改名（请更新台账），' +
@@ -260,12 +283,51 @@ describe('★ 判据 2：落点台账里的每一处都真的在用 <Avatar>', (
   });
 
   it('台账没有重复项（重复会让「新落点没登记」这件事被掩盖）', () => {
-    expect(new Set(AVATAR_SITES).size).toBe(AVATAR_SITES.length);
+    const all = [...AVATAR_SITES, ...AVATAR_DOM_SITES];
+    expect(new Set(all).size).toBe(all.length);
+  });
+
+  it('★ 两张台账不重叠（同一个文件同时出现在两档，说明它既用了组件又在手搭 DOM）', () => {
+    const overlap = AVATAR_SITES.filter((f) => AVATAR_DOM_SITES.includes(f));
+    expect(overlap, '同一处头像有两套实现 —— 迟早只有一套会被改').toEqual([]);
   });
 
   it('自检：正则认得出 <Avatar 但认不出 <AvatarMenu', () => {
     expect(/<Avatar(?!Menu)/.test('<Avatar userId={x} />')).toBe(true);
     expect(/<Avatar(?!Menu)/.test('<Avatar\n  userId={x}\n/>')).toBe(true);
     expect(/<Avatar(?!Menu)/.test('<AvatarMenu open={x} />')).toBe(false);
+  });
+});
+
+describe('★ 判据 2（DOM 档）：手搭头像的那几处必须真的有框', () => {
+  it('每个文件都出现 avatar__frame（这才是台账要保的东西）', () => {
+    // 「用了 <Avatar>」在 DOM 档是做不到的，所以判据换成「框在不在」。
+    // 少写那个 img：这一处**永远没有头像框**，不报错、没有日志。
+    const missing = AVATAR_DOM_SITES.filter((f) => {
+      const src = stripComments(fs.readFileSync(path.join(ROOT, f), 'utf8'));
+      return !/avatar__frame/.test(src);
+    });
+    expect(missing, `这些文件在 DOM 档里，却没有渲染头像框：\n  ${missing.join('\n  ')}`).toEqual(
+      []
+    );
+  });
+
+  it('每个文件都走 avatarUrl()（判据 1 的反向保险：这里没写模板串）', () => {
+    // 判据 1 已经全仓拦着 `/api/avatar/` 字面量了，这条是**正向**的：确认它是靠
+    // 那个唯一出口拼出来的，而不是干脆没拼（比如从 DTO 里直接拿了一个完整 URL）。
+    const missing = AVATAR_DOM_SITES.filter((f) => {
+      const src = stripComments(fs.readFileSync(path.join(ROOT, f), 'utf8'));
+      return !/avatarUrl\(/.test(src);
+    });
+    expect(missing, `这些文件在 DOM 档里，却没有用 avatarUrl()：\n  ${missing.join('\n  ')}`).toEqual(
+      []
+    );
+  });
+
+  it('★ 两档的判据互不通用（组件档的文件不该被 DOM 档的断言误判）', () => {
+    // 自检：拿一个组件档的文件过 DOM 档的判据，应当判红 —— 否则说明这个循环是空的
+    const jsx = stripComments(fs.readFileSync(path.join(ROOT, 'src/app/chat/ChatMessageItem.tsx'), 'utf8'));
+    expect(/avatar__frame/.test(jsx)).toBe(false);
+    expect(/<Avatar(?!Menu)/.test(jsx)).toBe(true);
   });
 });

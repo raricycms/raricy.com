@@ -21,11 +21,13 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useRef, useState } from 'react';
-import { BookOpenText, Image as ImageIcon, Images, Smile } from 'lucide-react';
+import { BookOpenText, IdCard, Image as ImageIcon, Images, Smile } from 'lucide-react';
 import { IMAGE_ACCEPT } from '@/lib/image-client';
 import type { PendingImage } from './usePendingImage';
 import ImagePickerModal from './ImagePickerModal';
 import StickerPicker, { type StickerPickKind } from './StickerPicker';
+import UserPicker from './UserPicker';
+import { captureCaret, insertAtRange, type CaretRange } from './textarea-insert';
 
 // 触屏设备（手机/平板）的虚拟键盘没有 Shift 键，Enter 只能承担换行，
 // 发送交给右下角按钮。按指针/悬停能力判断，比 UA 嗅探稳，混合设备
@@ -142,6 +144,10 @@ export default function RichComposer({
   const [pickerOpen, setPickerOpen] = useState(false);
   // 表情面板同理 —— 开合是纯 UI 状态，调用方只关心「选中了哪个」。
   const [stickerOpen, setStickerOpen] = useState(false);
+  // 名片选择弹窗与**插入位置**：位置必须在点按钮那一刻先捕获（弹窗要抢焦点），
+  // 见 textarea-insert.ts 的 captureCaret。
+  const [cardOpen, setCardOpen] = useState(false);
+  const cardCaretRef = useRef<CaretRange | null>(null);
 
   return (
     <div
@@ -227,6 +233,19 @@ export default function RichComposer({
             aria-label="从图床选择"
           >
             <Images aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className={`${className}__icon-btn`}
+            // 选区必须在 mousedown 里捕获：等到 click 时焦点已经移到这个按钮上了
+            onMouseDown={() => {
+              cardCaretRef.current = captureCaret(textareaRef.current);
+            }}
+            onClick={() => setCardOpen(true)}
+            title="发送用户名片"
+            aria-label="发送用户名片"
+          >
+            <IdCard aria-hidden="true" />
           </button>
           <button
             type="button"
@@ -324,6 +343,21 @@ export default function RichComposer({
           onPick={(image) => {
             onPickFromLibrary(image);
             setPickerOpen(false);
+          }}
+        />
+      )}
+
+      {cardOpen && (
+        <UserPicker
+          onClose={() => setCardOpen(false)}
+          onPick={(user) => {
+            // 插入由本组件直接做（讨论与评论对名片的语义完全一样：插进输入框、不发送），
+            // 所以不像表情那样把决定权交回调用方。
+            // ⚠️ 不追加尾随空格：token 自带 `]` 边界，而多一个空格在气泡里就是多一个空隙。
+            onTextChange(
+              insertAtRange(textareaRef.current, text, `[@用户/${user.username}]`, cardCaretRef.current)
+            );
+            setCardOpen(false);
           }}
         />
       )}

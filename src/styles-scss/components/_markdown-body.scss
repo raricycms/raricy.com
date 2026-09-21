@@ -12,6 +12,8 @@
 //    用固定 rem 会让同一段 Markdown 在两边缩放比例不一致。
 // ─────────────────────────────────────────────────────────────────────────────
 
+@use '../abstracts/variables' as v;
+
 @mixin rich-markdown($cls) {
   .#{$cls} {
     // 父级可能是 white-space: pre-wrap（讨论气泡的纯文本回退态要用）：不清掉的话，
@@ -179,5 +181,50 @@
     // 表情包那条要给「只有一张表情」的气泡留余地，所以 0.2em；这里左右几乎贴住即可。
     margin: 0 0.05em;
     border-radius: 0;
+  }
+
+  // 用户名片（正文里的 `[@用户/<用户名>]`，见 src/lib/user-refs.ts）。
+  //
+  // 【形态】一枚**行内胶囊**：带头像框的小头像 + 用户名，整体是指向 /u/<id> 的链接。
+  // 刻意不做成块级卡片 —— 收藏夹卡片当年就是因为「塞进讨论气泡里会占掉半屏」而没进
+  // 讨论区（见 docs/guide/内容引用语法指南.md 第一节），名片没有理由反过来。
+  //
+  // 【为什么尺寸用 em】与上面两条同一条纪律（文件头的「字号一律用 em」）：讨论气泡与
+  // 评论正文的基准字号不同，写死 px 会让同一张名片在两边大小不一。
+  // 【为什么给 img 而不是给 .avatar 盒子】与 Avatar 组件的各落点一致（尺寸给图片），
+  // 而框贴图那条 `.avatar > img.avatar__frame` 是 (0,2,1)，会盖过这里的 object-fit。
+  .#{$cls} a.rich-user-ref {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3em;
+    // 上下的负外边距：1.4em 的方头像比一行文字高，不压一点会把行高顶开
+    margin: 0 0.15em;
+    padding: 0.05em 0.4em 0.05em 0.2em;
+    border: 1px solid var(--color-border);
+    border-radius: v.$radius-max;
+    background: var(--color-background-subtle);
+    // 链接加固会给所有 <a> 补上 .chat-msg__link / .comment-link —— 那套是给正文里的
+    // 文字链接用的（下划线 + 品牌色）。名片是枚胶囊，把这三点按回自己的口径。
+    color: var(--color-text-primary);
+    text-decoration: none;
+    font-weight: 600;
+    // 用户名太长时别把整行挤爆（气泡宽度有限）
+    max-width: 100%;
+  }
+  .#{$cls} a.rich-user-ref:hover {
+    background: var(--color-background-card);
+  }
+  .#{$cls} .rich-user-ref__avatar > img.avatar__img {
+    width: 1.4em;
+    height: 1.4em;
+    object-fit: cover;
+  }
+  .#{$cls} .rich-user-ref__name {
+    // min-width: 0 是必须的：flex 子项默认 min-width:auto，不加的话长用户名会把整条
+    // 胶囊撑出容器宽度，ellipsis 一次都不会生效（而看的人只会觉得「气泡被撑破了」）。
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }

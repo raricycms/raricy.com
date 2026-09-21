@@ -1,0 +1,79 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// 用户名片选择器（UserPicker）—— 讨论与评论的输入区共用
+//
+// 与 _image-picker.scss 同理：它由 RichComposer 持有，**评论区同样在用**，所以住在
+// components/ 而不是 pages/_chat.scss（挂到讨论页的 partial 下会变成「评论区用着一个
+// 叫 chat-* 的东西」）。结果列表刻意**不**复用 .chat-new-item：那是发起私聊弹窗的
+// 类名，两处迟早要往不同方向改。
+//
+// 弹窗外壳（.modal-overlay / .modal-dialog / .modal-content / .modal-header）沿用站内
+// 既有那套，见 components/_modal.scss 与 _image-picker.scss 的说明；这里只写搜索框
+// 下面那一列结果。
+// ─────────────────────────────────────────────────────────────────────────────
+
+.user-picker {
+  max-width: 420px;
+  width: calc(100vw - 40px);
+}
+
+.user-picker__list {
+  max-height: 46vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: var(--fd-space-3, 12px);
+}
+
+.user-picker__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  text-align: left;
+}
+
+.user-picker__item:hover {
+  background: var(--color-background-subtle);
+}
+
+// 尺寸给**图片**而不是外层盒子 —— 与既有各站点（.chat-new-item__avatar /
+// .comment-author-avatar）一致。框贴图那条规则的选择器是 (0,2,1)
+//（`.avatar > img.avatar__frame`），比这里高，所以不会被 object-fit: cover 压掉。
+.user-picker__avatar {
+  width: 32px;
+  height: 32px;
+  object-fit: cover;
+  flex: none;
+}
+
+.user-picker__name {
+  flex: 1;
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-picker__hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: var(--fd-space-3, 12px) 0 0;
+  font-size: 0.8rem;
+  // 次要色：这是说明，不是操作
+  color: var(--color-text-secondary);
+}
+
+.user-picker__hint svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
