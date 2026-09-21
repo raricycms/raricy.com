@@ -137,6 +137,27 @@ describe('sticker-refs 语法', () => {
     expect(matches('[@猫猫/]')).toEqual([]);
   });
 
+  it('★ `用户` 是保留合集名 —— 名片 token 归名片那条管线，表情一律不看它', () => {
+    // 让开之后连带两件事：预览里的 `[@用户/张三]` 不会被压成 `[表情]`；渲染时也不会
+    // 白去请求一次 /api/stickers/用户/张三。反过来若这条挂了，名片会在有表情素材的站上
+    // 被当成表情（404 → 降级显示原文），表现成「有时好有时坏」。
+    for (const card of ['[@用户/张三丰]', '[@用户/alice]', '[@用户/黄脸]']) {
+      expect(matches(card), card).toEqual([]);
+    }
+    // 只是**这个**名字被让开：别的合集名照旧，含以「用户」开头的（SEG 会整段吃掉）
+    expect(matches('[@用户群/开心]')).toEqual(['[@用户群/开心]']);
+    expect(matches('[@猫猫/开心]')).toEqual(['[@猫猫/开心]']);
+  });
+
+  it('★ 让开之后分段捕获仍是 m[1] / m[2]（先行断言必须是非捕获的）', () => {
+    // 面板拼 token、用例取段名都依赖这两个下标 —— 有一天有人把 `(?!…)` 写成 `(?=(…))`，
+    // 段名会整体错位一格，而那不会报错。
+    const m = STICKER_REF_PROBE.exec('[@猫猫/开心]');
+    expect(m?.[1]).toBe('猫猫');
+    expect(m?.[2]).toBe('开心');
+    expect(m?.length).toBe(3);
+  });
+
   it('★ 用户手写 <img onerror> 不会被这条旁路带进来', () => {
     expect(matches('[@猫猫/开心" onerror="alert(1)]')).toEqual([]);
     expect(matches('[@猫猫/../../etc/passwd]')).toEqual([]);

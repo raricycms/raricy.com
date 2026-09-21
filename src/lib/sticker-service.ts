@@ -33,6 +33,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { detectImageMime } from './image-upload';
 import { stickerKey, stickerUrl } from './sticker-refs';
+import { USER_CARD_COLLECTION } from './user-refs';
 
 /** 素材目录：优先环境变量，否则回落到 ./instance/stickers（对齐 STORIES_DIR 的约定）。 */
 function stickersRoot(): string {
@@ -178,6 +179,13 @@ function fullScan(root: string): Manifest {
     dirNames = fs
       .readdirSync(root, { withFileTypes: true })
       .filter((e) => e.isDirectory() && !isSkippedName(e.name))
+      // 名片语法占用的合集名（`[@用户/张三]` 与 `[@合集/表情]` 形状同构）。
+      // 这里排掉 = 面板里不出现、resolveSticker 也查不到，与 sticker-refs 那条
+      // 负向先行断言同一件事的两端 —— 只做一端的话，面板会给出一个**挑得出但
+      // 渲染成名片**的合集。
+      // ⚠️ 不能并进 isSkippedName：那个函数同时用于合集名与**集合内文件名**，
+      //    并进去会把「用户.png」这种素材也一起吞掉。
+      .filter((e) => e.name !== USER_CARD_COLLECTION)
       .map((e) => e.name);
   } catch {
     dirNames = []; // 根目录不存在 = 没有素材，不是错误

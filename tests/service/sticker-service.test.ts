@@ -115,6 +115,19 @@ describe('sticker-service 扫盘', () => {
     expect(resolveSticker('公开', '图')).not.toBeNull();
   });
 
+  it('★ `用户` 是保留合集名：列表里没有，查表也取不到（名片语法占着它）', () => {
+    // `[@用户/张三]` 与 `[@合集/表情]` 形状同构，所以这一格归用户名片（见 user-refs.ts）。
+    // 不在这里排掉的话，面板会给出一个「挑得出、但一渲染就变成别人的名片」的合集 ——
+    // 而 sticker-refs 那条负向先行断言又会让它永远出不来，两端必须一致。
+    write('猫猫/开心.png', PNG);
+    write('用户/张三.png', PNG);
+    write('用户群/开心.png', PNG); // 只是**这个**名字被让开：前缀相同的不受影响
+
+    expect(listStickerCollections().map((c) => c.key).sort()).toEqual(['猫猫', '用户群']);
+    expect(resolveSticker('用户', '张三')).toBeNull();
+    expect(resolveSticker('用户群', '开心')).not.toBeNull();
+  });
+
   it('跳过点 / 下划线开头的文件与目录，以及 Thumbs.db', () => {
     write('猫猫/开心.png', PNG);
     write('猫猫/.DS_Store', 'x');

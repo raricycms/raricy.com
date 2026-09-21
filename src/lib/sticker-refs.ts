@@ -15,6 +15,10 @@
 // 顺带一个好处：token 里含 `/` 就**天然免疫** content-refs.ts 那两条精确长度
 // 正则（`{8}` / `{10}` 只认 [A-Za-z0-9]），永远不会被误当成剪贴板或图床引用。
 //
+// 【`用户` 是保留合集名】用户名片 `[@用户/张三]`（见 user-refs.ts）与本语法形状
+// 完全同构，所以下面的正则带一条负向先行断言把它让开 —— 站长不能用这个合集名，
+// 理由与代价见 RESERVED_CARD_COLLECTION 的注释。
+//
 // 【只在评论与讨论生效】博客正文走另一条异步管线（MarkdownRenderer.tsx 的
 // ContentRefProcessor），那边不支持表情，`[@猫猫/开心]` 原样显示字面量 ——
 // 与「9 位投票在评论/讨论里不展开」是同一类有意的口径差异。
@@ -24,6 +28,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { EMOJI_COLLECTION, emojiFileFor, emojiUrl } from './emoji-faces';
+import { USER_CARD_COLLECTION } from './user-refs';
 
 /**
  * 单段（合集名 / 表情名）允许的字符：Unicode 字母、数字、`+`、`·`、`-`。
@@ -46,7 +51,26 @@ const SEG_LEN = 32;
 const SEG = `[${SEG_CHAR}]{1,${SEG_LEN}}`;
 
 /**
+ * 名片语法占用的合集名（`[@用户/张三]`）—— 表情这条正则**必须让开**。
+ *
+ * 【为什么让开的是表情，而不是名片】两者的形状完全同构（两段名字用斜杠分隔），
+ * 但名片那趟有自己的识别与 DOM 构造，是**更专用**的一方；表情的合集名是站长随手
+ * 建的目录，撞名的代价小得多。让开后连带两件事：
+ *   · 预览/摘要里的 `[@用户/张三]` 不会被压成 `[表情]`；
+ *   · 渲染时不会白去请求一次 `/api/stickers/用户/张三`。
+ * 站长侧的表现是「给合集起名『用户』会失效」（sticker-service 扫盘时也不会列出它），
+ * 这条写在 docs/guide/表情包使用指南.md 里。
+ *
+ * ⚠️ 该常量必须保持为**纯字面量**（不能含正则元字符）—— 它是直接插进下面的
+ * 先行断言里的。哪天要改，记得同时改 tests/unit/sticker-refs.test.ts 里那条断言。
+ */
+const RESERVED_CARD_COLLECTION = `(?!${USER_CARD_COLLECTION}/)`;
+
+/**
  * 匹配 `[@合集/表情]`（全局版，一次替换全部）。
+ *
+ * 【分段捕获仍是 m[1] / m[2]】上面那条负向先行断言是**非捕获**的，组号不变 ——
+ * 面板拼 token、用例取段名都依赖这两个下标，改成正则会静默错位。
  *
  * 【刻意不加 `\s*`】与 IMAGE_REF_RE 的宽容口径（`\[@\s*(...)\s*\]`）不同。
  * 理由是讨论侧的 @ 提及判定：extractMentions 的正则是
@@ -61,10 +85,16 @@ const SEG = `[${SEG_CHAR}]{1,${SEG_LEN}}`;
  * 【不含 `[` 和 `]`】`]` 不在 SEG 里，才让 `[@a/b] 和 [@c/d]` 不可能被一个
  * 匹配吞掉（否则第一段的字符集会一路吃到 `] 和 [@c`）。
  */
-export const STICKER_REF_RE = new RegExp(`\\[@(${SEG})/(${SEG})\\]`, 'gu');
+export const STICKER_REF_RE = new RegExp(
+  `\\[@${RESERVED_CARD_COLLECTION}(${SEG})/(${SEG})\\]`,
+  'gu'
+);
 
 /** 同上，非全局 —— 只问「这个文本节点里有没有」，避免 `lastIndex` 残留。 */
-export const STICKER_REF_PROBE = new RegExp(`\\[@(${SEG})/(${SEG})\\]`, 'u');
+export const STICKER_REF_PROBE = new RegExp(
+  `\\[@${RESERVED_CARD_COLLECTION}(${SEG})/(${SEG})\\]`,
+  'u'
+);
 
 /**
  * 内联表情的类名。
