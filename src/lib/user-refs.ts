@@ -179,6 +179,11 @@ export function stripUserCardTokens(text: string): string {
  * 写的规则（权重 (0,2,1)，专门压过各站点的 `img { object-fit: cover }`）不生效 ——
  * 症状是这张名片里的框被裁掉，而且不报错。
  *
+ * ⚠️ **刻意只有「头像 + 用户名」两样**：不加角色 / 身份徽章，也不带简介。
+ * 名片是「这个人是谁、点进去看看」的入口，不是一张资料页 —— 而角色徽章挂上去会
+ * 变成一种可被当众展示的身份标签（主页上显示它是信息公开，被人塞进对话里是另一回事）。
+ * 这不是「还没做完」，别顺手补上。
+ *
  * 链接目标只有一种形态 `/u/<uuid>`，id 来自接口（不是正文里的字符串），不参与拼接。
  */
 export function buildUserCardElement(doc: Document, data: UserCardData): HTMLAnchorElement {
