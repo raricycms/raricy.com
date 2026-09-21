@@ -122,7 +122,7 @@
 | 认证 / 会话 | `auth.ts` · `session.ts` · `password.ts` · `invite-code.ts` · `user-service.ts` · `identicon.ts` · `avatar.ts`（头像字节的**唯一**解析处：`/api/avatar/[id]` 与画报共用同一份目录穿越守卫）· `site-url.ts`（`SITE_URL` → `ALLOWED_ORIGINS` 回退链的唯一实现，OAuth 的 userinfo 与画报的二维码前缀共用）· `avatar-refs.ts`（**零依赖**：`avatarUrl(id)` 是全仓唯一拼 `/api/avatar/` 的地方。单独一个文件是因为 `avatar.ts` 拖着 `node:fs`，客户端组件 import 不了） |
 | 数据层 | `db.ts` · `db-time.ts` · `format.ts` |
 | 博客域 | `blog-service.ts` · `feed-service.ts` · `comment-service.ts` · `comment-shared.ts` · `blog-sort-pref.ts` · `spider-service.ts` |
-| 富文本渲染 | `rich-text.ts`（共享管线）· `chat-markdown.ts` · `comment-markdown.ts` · `blog-markdown.ts` · `content-refs.ts`（评论/讨论那条**同步**管线：只认 8 位与 10 位，9 位投票与 6 位收藏夹刻意不展开）· `favorite-refs.ts`（`[@六位]` 卡片：**只在博客/剪贴板**那条管线生效，见 §6.9）· `markdown-math.ts` · `linkify.ts` · `vditor-theme.ts` |
+| 富文本渲染 | `rich-text.ts`（共享管线）· `chat-markdown.ts` · `comment-markdown.ts` · `blog-markdown.ts` · `content-refs.ts`（评论/讨论那条**同步**管线：只认 8 位与 10 位，9 位投票与 6 位收藏夹刻意不展开）· `favorite-refs.ts`（`[@六位]` 卡片：**只在博客/剪贴板**那条管线生效，见 §6.9）· `user-refs.ts`（`[@用户/用户名]` 名片：同样只在评论/讨论生效，见 §6.7）· `markdown-math.ts` · `linkify.ts` · `vditor-theme.ts` |
 | 表情包 | `sticker-refs.ts`（`[@合集/表情]` → 内联 `<img>`，跑在`rich-text.ts` 的净化**之后**）· `sticker-service.ts`（素材扫盘与三层缓存）· `emoji-faces.ts`（内置黄脸合集的编译期清单，素材从 npm 包拷进 `public/static/emoji/`）。安全边界与正则纪律见几者头部；玩家向说明见 `docs/guide/表情包使用指南.md` |
 | 讨论 | `chat-service.ts` · `chat-bus.ts`（SSE 订阅）/ `chat-shared.ts`（DTO）· `chat-presence.ts`（「谁正在看哪个会话」—— 进程内，决定被 @ 时发不发通知）· `chat-sidebar-pref.ts` · `focus-mode.ts` |
 | 实时传输 | `sse.ts` —— SSE 响应头 / 帧格式 / 重连与背压 / 心跳常量的**唯一出处**，两条流共用（讨论 `chat-bus.ts`、顶栏 `topbar-bus.ts`）。新增 SSE 路由一律 import 它，不要手抄响应头（`no-transform` 少一个字的后果见该文件头注释） |
@@ -333,7 +333,8 @@ GET/HEAD/OPTIONS 视为安全方法，不校验。
 | 博客正文 | **客户端**渲染 | `src/app/components/MarkdownRenderer.tsx`（marked + DOMPurify + highlight.js + MathJax + `[@…]` 内容引用） |
 | 故事正文 | **服务端**渲染 | `src/lib/story-service.ts` 的 `marked` + `stripScripts`。内容由站长直接写在 `instance/stories/`，按可信输入处理，**不走 DOMPurify / highlight.js** |
 | 内容引用 `[@…]` | 浏览器渲染时正则替换为剪贴板/投票/图床/收藏夹组件 | `src/app/components/MarkdownRenderer.tsx` 的 `ContentRefProcessor`（按 id 长度分流：6 位收藏夹 / 8 位剪贴板 / 9 位投票 / 10 位图床）。**表情包不在这条管道上**。收藏夹卡片是在主循环**之后**单独一趟、按区间切片替换的，理由见 §6.10 |
-| 表情包 `[@合集/表情]` | 浏览器渲染时替换为内联 `<img>`（**仅评论 / 讨论**）。两个来源共用这条管道：站长放的图片（`/api/stickers/` 字节路由）与**内置黄脸**（`/static/emoji/` 静态素材）—— 后者多叠一个 `rich-emoji-ref` 类把自己压成文字大小 | `src/lib/sticker-refs.ts` 的 `embedStickerRefs`，在 `rich-text.ts` 里紧跟 `embedImageRefs` 之后调用；黄脸清单在 `src/lib/emoji-faces.ts` |
+| 表情包 `[@合集/表情]` | 浏览器渲染时替换为内联 `<img>`（**仅评论 / 讨论**）。两个来源共用这条管道：站长放的图片（`/api/stickers/` 字节路由）与**内置黄脸**（`/static/emoji/` 静态素材）—— 后者多叠一个 `rich-emoji-ref` 类把自己压成文字大小 | `src/lib/sticker-refs.ts` 的 `embedStickerRefs`，在 `rich-text.ts` 里紧跟 `embedUserRefs` 之后调用；黄脸清单在 `src/lib/emoji-faces.ts` |
+| 用户名片 `[@用户/<用户名>]` | 浏览器渲染时替换为一枚**行内名片**（`<a>` 包住「带头像框的头像 + 用户名」，指向 `/u/<id>`）（**仅评论 / 讨论**）。认的是**用户名**而不是 ID，所以多一条异步取数；**不算 @ 提及**，不发通知 | `src/lib/user-refs.ts` 的 `embedUserRefs`（纯逻辑 + DOM 构造），数据由 `src/app/components/useUserCards.ts` 经 `RichTextContext` 注入，取数口是 `GET /api/users/<用户名>`（要 core+）。`用户` 因此是**保留合集名**（表情那条正则带 `(?!用户/)` 让开） |
 | 工具页 cattca-guide | **服务端**渲染 | marked（仅一次，可信文档） |
 
 **讨论与评论共用一条管线**（`rich-text.ts`）。两者的威胁模型与防线逐条相同，差别只在
@@ -352,6 +353,14 @@ GET/HEAD/OPTIONS 视为安全方法，不校验。
 
 评论的 `content_html`（服务端转义 + `<br>`）**站内已不再用于渲染** —— 保留给 spider API
 （外部只读接口，不能因为站内换了渲染方式就被打碎）与无 JS 降级。
+
+**名片那一趟要外挂数据，所以管线多了一个「上下文」参数**（`RichTextContext`）。
+异步取数留在 React 层（理由与剪贴板那条相同，见 `useResolvedContent.ts` 的文件头），
+`RichContentBody` 用 `useUserCards` 取到之后递进 `render(content, ctx)`。
+⚠️ 由此带来一条**必须记住的缓存旁路**：正文里含名片 token 时**不进渲染缓存** ——
+缓存以正文为键，而名片数据会变（换头像框、框到期），同一条正文在数据到达前后是两份
+不同的 HTML，走缓存会把第二份吃掉，症状是「名片永远不出现」且不报错。
+判据是 `USER_REF_PROBE.test(content)`，见 `rich-text.ts`。
 
 **表情图的 404 降级不在渲染管线里**，而在 `RichContentBody` 的容器上（捕获阶段的事件
 委托，监听 `error` 换回纯文本 token）。原因是那条管线**字符串进、字符串出**
