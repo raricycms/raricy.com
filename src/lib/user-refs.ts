@@ -240,8 +240,8 @@ export function buildUserCardElement(doc: Document, data: UserCardData): HTMLAnc
  *     这是安全的：表情那条正则带 `(?!用户/)`，不会替我们把 token 吃掉，字面量就留在
  *     原地。等数据到了，RichContentBody 会带着新的 cards 重渲染一次。
  *   · **超预算 / 查不到的名字原样留字面量**（fail-closed，与其他引用同口径）。
- *   · 数据会变（改简介 / 换框 / 框到期），所以带名片 token 的正文**不进渲染缓存** ——
- *     见 rich-text.ts 里那条 cacheable 判断。
+ *   · 数据会变（换头像框 / 框到期 —— 就是 `frameUrl` 那一项），所以带名片 token 的正文
+ *     **不进渲染缓存**，见 rich-text.ts 里那条 cacheable 判断。
  */
 export function embedUserRefs(root: HTMLElement, cards: Map<string, UserCardData> | undefined): void {
   if (!cards || cards.size === 0) return;
