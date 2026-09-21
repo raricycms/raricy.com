@@ -5,7 +5,11 @@
 //
 // 真正干活的两件事都不在这里：
 //   · marked → DOMPurify → 后处理：src/lib/rich-text.ts（由调用方以 render 传入）
-//   · `[@<8位剪贴板ID>]` 的异步展开：./useResolvedContent
+//   · 两种**异步**引用的取数：`[@<8位剪贴板ID>]` → ./useResolvedContent、
+//     `[@用户/<用户名>]` → ./useUserCards
+//
+// ⚠️ 两个 hook 扫的都是**原始 content**（同一个入参），不是前后串联 —— 剪贴板展开
+// 进来的正文是**别人写的**，里面的 `[@用户/…]` 不该在本条消息里被二次展开。
 //
 // 本组件只负责把两者接起来，外加一件渲染期才有意义的事：**给正文里的内联图片
 // 挂点击放大**。正文是 dangerouslySetInnerHTML 塞进去的，挂不上 React onClick，
@@ -20,8 +24,10 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import ImageLightbox from './ImageLightbox';
 import { useResolvedContent } from './useResolvedContent';
+import { useUserCards } from './useUserCards';
 import { IMAGE_REF_CLASS } from '@/lib/content-refs';
 import { STICKER_REF_CLASS } from '@/lib/sticker-refs';
+import type { RichTextContext } from '@/lib/rich-text';
 
 function RichContentBody({
   content,
@@ -32,10 +38,15 @@ function RichContentBody({
   /** 正文容器的类名（chat-msg__md / comment-content__md）。 */
   className: string;
   /** 净化管线的入口（renderChatMarkdown / renderCommentMarkdown）。 */
-  render: (content: string) => string;
+  render: (content: string, ctx?: RichTextContext) => string;
 }) {
   const resolved = useResolvedContent(content);
-  const html = useMemo(() => render(resolved), [render, resolved]);
+  const userCards = useUserCards(content);
+  // ctx 必须**引用稳定**：直接用 `{ userCards }` 字面量会让它每次渲染都是新对象，
+  // 下面那个 useMemo 就永远命中不了 —— 症状是「没坏，只是每条消息每次重渲染都重算
+  // 一遍 marked + DOMPurify」，不会有人报上来。
+  const ctx = useMemo(() => ({ userCards }), [userCards]);
+  const html = useMemo(() => render(resolved, ctx), [render, resolved, ctx]);
   /** 被点开的内联图片地址（null = 没开）。 */
   const [lightbox, setLightbox] = useState<string | null>(null);
   const boxRef = useRef<HTMLDivElement | null>(null);
