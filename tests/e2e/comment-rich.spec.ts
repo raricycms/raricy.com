@@ -180,15 +180,16 @@ test.describe('评论输入区（与讨论同源的 RichComposer）', () => {
     await page.goto(BLOG_URL);
     const composer = page.locator('.comment-composer').first();
     await expect(composer).toBeVisible();
-    // 与讨论同一套结构（只是 BEM 前缀不同）：工具条四个按钮 + 文本域 + 提交
+    // 与讨论同一套结构（只是 BEM 前缀不同）：工具条五个按钮 + 文本域 + 提交
     await expect(composer.locator('.comment-composer__input')).toBeVisible();
     await expect(composer.locator('.comment-composer__send')).toBeVisible();
     // 按 aria-label 逐个点名，而不是只数个数 —— 数量断言说不出「少了哪一个」
     await expect(composer.getByRole('button', { name: '引用博客' })).toBeVisible();
     await expect(composer.getByRole('button', { name: '上传图片' })).toBeVisible();
     await expect(composer.getByRole('button', { name: '从图床选择' })).toBeVisible();
+    await expect(composer.getByRole('button', { name: '发送用户名片' })).toBeVisible();
     await expect(composer.getByRole('button', { name: '表情' })).toBeVisible();
-    await expect(composer.locator('.comment-composer__icon-btn')).toHaveCount(4);
+    await expect(composer.locator('.comment-composer__icon-btn')).toHaveCount(5);
 
     // 空内容点提交 → 只弹提示，不发请求（评论区条数不变）
     const before = await page.locator('.comment-item').count();
