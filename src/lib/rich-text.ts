@@ -52,6 +52,7 @@ import DOMPurify from 'dompurify';
 import { linkify } from './linkify';
 import { embedImageRefs } from './content-refs';
 import { embedStickerRefs } from './sticker-refs';
+import { USER_REF_PROBE, embedUserRefs, type UserCardData } from './user-refs';
 
 /**
  * 只放行 http(s) / mailto / 站内相对路径。
@@ -77,9 +78,28 @@ export interface RichTextOptions {
   cacheMax: number;
 }
 
+/**
+ * 渲染正文时**随正文一起**交进来的外挂数据。
+ *
+ * 【为什么要有这个东西】管线是「字符串进、字符串出」的纯函数，而用户名片 `[@用户/张三]`
+ * 需要一次异步查询才能拿到头像框与 id（见 src/app/components/useUserCards.ts）。
+ * 异步留在 React 层（理由与剪贴板那条一致，见 useResolvedContent.ts 的文件头），
+ * 取到之后由调用方把它递到这里。
+ */
+export interface RichTextContext {
+  /**
+   * 用户名 → 名片数据。缺省 / 查无此人 = token 原样显示字面量（与剪贴板的
+   * 「加载中显示字面量」同口径，见 user-refs.ts）。
+   */
+  userCards?: Map<string, UserCardData>;
+}
+
 export interface RichTextRenderer {
-  /** 正文 → 安全 HTML。无 DOM（SSR）/ 净化不可用时退回转义纯文本。 */
-  render(content: string): string;
+  /**
+   * 正文 → 安全 HTML。无 DOM（SSR）/ 净化不可用时退回转义纯文本。
+   * `ctx` 只影响名片那一趟，缺省即「没有名片数据」。
+   */
+  render(content: string, ctx?: RichTextContext): string;
 }
 
 function escapeHtml(s: string): string {
@@ -219,7 +239,7 @@ export function createRichTextRenderer(options: RichTextOptions): RichTextRender
   const cache = new Map<string, string>();
 
   /** 纯函数：内容 → 安全 HTML。仅在 DOM 与净化器都可用时调用。 */
-  function render(content: string): string {
+  function render(content: string, ctx?: RichTextContext): string {
     const parsed = marked.parse(content, { async: false }) as string;
     const clean = DOMPurify.sanitize(parsed, {
       ALLOWED_TAGS: allowedTags,
@@ -235,6 +255,11 @@ export function createRichTextRenderer(options: RichTextOptions): RichTextRender
     restrictInputs(holder);
     // ★ 内联图床图（`[@<10位ID>]`）—— 必须是净化之后，见 content-refs.ts 的说明
     embedImageRefs(holder);
+    // ★ 内联用户名片（`[@用户/<用户名>]`）★
+    // 同样必须在净化之后（评论/讨论的白名单里没有 img、没有 class，拼 HTML 字符串
+    // 会被剥成白板），同样用 createElement 建节点，见 user-refs.ts 的文件头。
+    // ctx 里没有数据时它整趟不跑 —— 那正是「数据还没取到」，token 留在原处当字面量。
+    embedUserRefs(holder, ctx?.userCards);
     // ★ 内联表情（`[@合集/表情]`）★
     //
     // ① 同样必须在净化之后（理由同上）。
@@ -251,7 +276,7 @@ export function createRichTextRenderer(options: RichTextOptions): RichTextRender
   }
 
   return {
-    render(content: string): string {
+    render(content: string, ctx?: RichTextContext): string {
       if (!content) return '';
 
       // 防线 5：净化不可用（SSR / 无 DOM）时绝不能透传 HTML
@@ -259,15 +284,32 @@ export function createRichTextRenderer(options: RichTextOptions): RichTextRender
         return escapeHtml(content).replace(/\n/g, '<br>');
       }
 
-      const cached = cache.get(content);
-      if (cached !== undefined) return cached;
+      // ★ 带名片 token 的正文不进缓存 ★
+      //
+      // 缓存以**正文**为键，而名片数据是随时间变的（改头像框 / 换头像 / 框到期）。
+      // 同一条正文在数据到达前后会得到两份**不同**的 HTML：先字面量、后卡片。缓存会把
+      // 第二份吃掉，表现成「名片永远不出现」—— 不报错、不写日志，只有那一个人看得见
+      // 自己发的名片是死的。所以含名片 token 的正文一律直算。
+      //
+      // 代价可以忽略：这层缓存的价值在于「同一段文字出现在很多条消息里」（『哈哈哈』
+      // 满屏），而带名片的正文各不相同、且在一次挂载里本来也只渲染一次（调用方的
+      // useMemo 钉着）。别把它改成「按 ctx 的样子做键」—— 那就得让缓存认识名片数据的
+      // 内容，等于把「什么算变了」这条判断搬到安全管线的核心文件里。
+      const cacheable = !USER_REF_PROBE.test(content);
 
-      const html = render(content);
-      if (cache.size >= cacheMax) {
-        const oldest = cache.keys().next().value;
-        if (oldest !== undefined) cache.delete(oldest);
+      if (cacheable) {
+        const cached = cache.get(content);
+        if (cached !== undefined) return cached;
       }
-      cache.set(content, html);
+
+      const html = render(content, ctx);
+      if (cacheable) {
+        if (cache.size >= cacheMax) {
+          const oldest = cache.keys().next().value;
+          if (oldest !== undefined) cache.delete(oldest);
+        }
+        cache.set(content, html);
+      }
       return html;
     },
   };

@@ -32,10 +32,28 @@ import {
   stripUserCardTokens,
   type UserCardData,
 } from '@/lib/user-refs';
+import type { RichTextContext } from '@/lib/rich-text';
 import { validateUsername } from '@/lib/user-service';
 import { extractMentions } from '@/lib/chat-service';
+import { isMentioned } from '@/app/chat/ChatMessageItem';
 import { IMAGE_REF_CLASS } from '@/lib/content-refs';
-import { STICKER_REF_CLASS } from '@/lib/sticker-refs';
+import { STICKER_REF_CLASS, stickerUrl } from '@/lib/sticker-refs';
+import { renderChatMarkdown } from '@/lib/chat-markdown';
+import { renderCommentMarkdown } from '@/lib/comment-markdown';
+
+/** 两个渲染器都要跑 —— 评论与讨论白名单逐字相同，只差链接类名，一处漏打补丁
+ *  另一处不会知道（与 sticker-refs.test.ts 的 parity 写法同源）。 */
+const RENDERERS = [
+  { name: '讨论', render: renderChatMarkdown },
+  { name: '评论', render: renderCommentMarkdown },
+] as const;
+
+/** 渲染 + 解析成 DOM，便于按结构断言（字符串比对会被转义形式骗过去）。 */
+function mount(render: (s: string, ctx?: RichTextContext) => string, content: string, ctx?: RichTextContext): HTMLElement {
+  const root = document.createElement('div');
+  root.innerHTML = render(content, ctx);
+  return root;
+}
 
 /** querySelector 用的类名选择器（类名本身是常量，这里只是拼一个 `.x`）。 */
 const USER_REF_CLASS_SEL = `.${USER_REF_CLASS}`;
@@ -363,5 +381,100 @@ describe('embedUserRefs', () => {
     const root = holder('[@用户/张三丰] [@猫猫/开心]');
     embedUserRefs(root, cards);
     expect(root.textContent).toContain('[@猫猫/开心]');
+  });
+});
+
+// ── 管线层：两个渲染器的 parity ─────────────────────────────────────────────
+
+describe.each(RENDERERS)('$name 正文的 [@用户/…]', ({ render }) => {
+  const cards = new Map<string, UserCardData>([
+    ['张三丰', card({ frameUrl: '/api/frames/cat.png' })],
+    ['李四光', card({ id: '11111111-2222-3333-4444-555555555555', username: '李四光' })],
+  ]);
+  const ctx: RichTextContext = { userCards: cards };
+  /** 一份合法的 10 位图床 ID（大小写字母 + 数字）。 */
+  const IMG_ID = 'AbCdEf1234';
+
+  it('渲染成行内名片：一个带框头像 + 名字，整体是一个链接', () => {
+    const root = mount(render, '来认识一下 [@用户/张三丰] 吧', ctx);
+    const link = root.querySelector(USER_REF_CLASS_SEL)!;
+    expect(link.tagName).toBe('A');
+    expect(link.getAttribute('href')).toBe('/u/550e8400-e29b-41d4-a716-446655440000');
+    expect(link.querySelector('img.avatar__img')?.getAttribute('src')).toBe(
+      '/api/avatar/550e8400-e29b-41d4-a716-446655440000'
+    );
+    expect(link.querySelector('img.avatar__frame')?.getAttribute('src')).toBe('/api/frames/cat.png');
+    expect(link.textContent).toBe('张三丰');
+    // 前后的文字仍在同一个段落里，没被拆成块
+    expect(root.querySelectorAll('p')).toHaveLength(1);
+    expect(root.textContent).not.toContain('[@用户/');
+  });
+
+  it('★ 数据还没到时是字面量（与剪贴板那条「加载中显示字面量」同口径）', () => {
+    const root = mount(render, '[@用户/张三丰]');
+    expect(root.querySelectorAll(USER_REF_CLASS_SEL)).toHaveLength(0);
+    expect(root.textContent?.trim()).toBe('[@用户/张三丰]');
+  });
+
+  it('★ 带名片的正文**不进渲染缓存**：数据前后各渲染一次，两次结果不同', () => {
+    // 这条是本节最要紧的一条。缓存以正文为键，若名片也吃缓存，第一次（数据没到 →
+    // 字面量）那份会被存下来，第二次带着数据来也只会拿回字面量 —— 症状是
+    // 「名片永远不出现」，不报错、不写日志，只有发的那个人看得见。
+    const content = '看 [@用户/张三丰]';
+    expect(render(content)).toContain('[@用户/张三丰]');
+    const withData = render(content, ctx);
+    expect(withData).toContain(USER_REF_CLASS);
+    // 反向也要成立：那一份「有卡片」的结果没有被留下来毒害下次渲染
+    expect(render(content)).toContain('[@用户/张三丰]');
+  });
+
+  it('★ 不带名片 token 的正文照旧吃缓存（别把旁路开成大水漫灌）', () => {
+    const content = `普通正文 [@${IMG_ID}]`;
+    expect(render(content)).toBe(render(content));
+  });
+
+  it('★ 与图床图 / 表情共存：三种行内元素各渲染各的，互不吃掉', () => {
+    const root = mount(render, `图 [@${IMG_ID}] 表情 [@猫猫/开心] 名片 [@用户/张三丰]`, ctx);
+    // 图床图 + 表情 + 名片的头像与框
+    expect(root.querySelectorAll('img')).toHaveLength(4);
+    expect(root.querySelectorAll(USER_REF_CLASS_SEL)).toHaveLength(1);
+    // 按类名认，不按下标 —— 下标会随任何一趟改动的插入顺序漂
+    expect(root.querySelector(`img.${IMAGE_REF_CLASS}`)?.getAttribute('src')).toBe(
+      `/api/images/${IMG_ID}/raw`
+    );
+    expect(root.querySelector(`img.${STICKER_REF_CLASS}`)?.getAttribute('src')).toBe(
+      stickerUrl('猫猫', '开心')
+    );
+  });
+
+  it('★ 代码块 / 行内代码里的 token 不展开（用户要能展示这个语法本身）', () => {
+    const fenced = mount(render, '```\n[@用户/张三丰]\n```', ctx);
+    expect(fenced.querySelectorAll(USER_REF_CLASS_SEL)).toHaveLength(0);
+    expect(fenced.textContent).toContain('[@用户/张三丰]');
+
+    const inline = mount(render, '`[@用户/张三丰]`', ctx);
+    expect(inline.querySelectorAll(USER_REF_CLASS_SEL)).toHaveLength(0);
+    expect(inline.textContent).toContain('[@用户/张三丰]');
+  });
+
+  it('★ @提及 与名片互不干扰：整条消息既不被标成提及，也不产生通知', () => {
+    // 高亮与通知两条判定都跑在**原始正文**上，所以这里问的是原始字符串
+    const content = '看 [@用户/张三丰] 和 @李四光';
+    expect(isMentioned(content, '张三丰')).toBe(false);
+    expect(isMentioned(content, '用户')).toBe(false);
+    expect(extractMentions(content)).toEqual(['李四光']);
+  });
+
+  it('一条消息里的名片有上限，超出的保留字面量', () => {
+    const many = Array.from({ length: MAX_USER_REFS + 3 }, () => '[@用户/张三丰]').join(' ');
+    const root = mount(render, many, ctx);
+    expect(root.querySelectorAll(USER_REF_CLASS_SEL)).toHaveLength(MAX_USER_REFS);
+    expect(root.textContent).toContain('[@用户/张三丰]');
+  });
+
+  it('查不到的名字保留字面量', () => {
+    const root = mount(render, '[@用户/并不存在]', ctx);
+    expect(root.querySelectorAll(USER_REF_CLASS_SEL)).toHaveLength(0);
+    expect(root.textContent).toContain('[@用户/并不存在]');
   });
 });

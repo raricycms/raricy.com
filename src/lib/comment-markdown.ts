@@ -13,7 +13,7 @@
 //    （用例与 chat-markdown.test.ts 逐条对齐，仅类名断言不同）。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { createRichTextRenderer } from './rich-text';
+import { createRichTextRenderer, type RichTextContext } from './rich-text';
 
 /** 与 chat-markdown.ts 的 ALLOWED_TAGS 逐字相同（见文件头「同白名单」的说明）。 */
 const ALLOWED_TAGS = [
@@ -43,7 +43,10 @@ const renderer = createRichTextRenderer({
  * 【为什么缓存】评论内容落库后不再变，但评论区会因「回复 / 删除 / 点赞」整树重渲染，
  * 而 renderCommentMarkdown 是在 render 期间同步调用的（每棵子树每个节点一次）。
  * 以内容为键 FIFO 缓存，把 marked + DOMPurify 的开销压到「每条评论只算一次」。
+ * ⚠️ 例外：正文里含用户名片 token 的不进缓存（名片数据会变），见 rich-text.ts。
+ *
+ * @param ctx 外挂数据（目前只有用户名片）。缺省 = 还没取到，token 显示字面量。
  */
-export function renderCommentMarkdown(content: string): string {
-  return renderer.render(content);
+export function renderCommentMarkdown(content: string, ctx?: RichTextContext): string {
+  return renderer.render(content, ctx);
 }

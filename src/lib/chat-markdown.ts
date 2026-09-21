@@ -9,7 +9,7 @@
 // 这里只负责回答一个问题：**讨论气泡里允许出现什么**。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { createRichTextRenderer } from './rich-text';
+import { createRichTextRenderer, type RichTextContext } from './rich-text';
 
 /** 白名单标签：只保留讨论气泡里讲得通的语义标签（无 img / iframe / svg / style / form）。 */
 const ALLOWED_TAGS = [
@@ -43,7 +43,10 @@ const renderer = createRichTextRenderer({
  * 【为什么缓存】消息一旦落库内容就不再变，而讨论列表会因输入、SSE、对账频繁重渲染。
  * 以 content 为键做 FIFO 缓存（上限 300，与 DOM_CAP 同量级），把 marked + DOMPurify
  * 的开销压到「每条消息只算一次」。
+ * ⚠️ 例外：正文里含用户名片 token 的不进缓存（名片数据会变），见 rich-text.ts。
+ *
+ * @param ctx 外挂数据（目前只有用户名片）。缺省 = 还没取到，token 显示字面量。
  */
-export function renderChatMarkdown(content: string): string {
-  return renderer.render(content);
+export function renderChatMarkdown(content: string, ctx?: RichTextContext): string {
+  return renderer.render(content, ctx);
 }
