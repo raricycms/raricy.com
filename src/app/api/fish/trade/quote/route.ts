@@ -1,5 +1,5 @@
 import { apiOk, apiErr } from '@/lib/format';
-import { getCurrentUser, isCoreUser, isCurrentlyBanned } from '@/lib/auth';
+import { getCurrentUser, isCoreUser } from '@/lib/auth';
 import { getCachedQuotes } from '@/lib/market-price';
 import { MARKET_FEE_RATE, MIN_STAKE_FISH, displaySymbol } from '@/lib/market-service';
 
@@ -15,11 +15,14 @@ export const runtime = 'nodejs';
 //
 // 【拉不到就如实说】缓存空且当次刷新也失败时返回 ok:false + 空数组，
 // 页面显示「行情暂不可用」。**绝不编一个价出来** —— 用户会照着一个假价格按下买入。
+//
+// 【不判禁言】只读展示。挡了它，禁言用户虽然卖得掉仓位，但页面上的价会冻在进页面
+// 那一刻（轮询被 403、面板静默丢弃），卖出弹窗里的「预计到手」就是拿一个旧价算的
+// —— 那正是这个功能最不能有的东西。三处判定不对称的理由见 sell 路由头部。
 export async function GET() {
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '请先登录');
   if (!isCoreUser(user)) return apiErr(403, '需要核心用户权限');
-  if (isCurrentlyBanned(user)) return apiErr(403, '你已被禁言，暂时无法使用练手盘');
 
   const { quotes, ok } = await getCachedQuotes();
 

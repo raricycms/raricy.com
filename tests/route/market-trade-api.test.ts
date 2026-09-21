@@ -5,6 +5,10 @@
 // 都是一扇绕开档位的门 —— 而功能照常工作、测试照常绿。service 层的钱怎么走由
 // tests/service/market-*.test.ts 负责，这个文件不重复测那些。
 //
+// 【禁言判定是**不对称**的，别「统一」】档位那一列是四处的**并集**，禁言不是：
+// 只有 buy 判禁言（禁言不开新仓），sell / quote 只判档位 —— 已开的仓位必须能出，
+// 否则禁言顺带变成锁仓。理由见 src/app/api/fish/trade/sell/route.ts 头部。
+//
 // 【行情源打桩，是刻意的】成交价必须**现取**（那是练手盘唯一的安全边界：拿展示缓存
 // 成交 = 看盘的人可以在价格跳动后、缓存刷新前下单，无风险、可重复、无上限的套利）。
 // 但真实价格是外部世界的变量，断言「涨 10% 该 mint 多少」写不出来 —— 所以在**测试**
@@ -142,12 +146,41 @@ describe('档位：三处各判一次', () => {
     await expectLedgerConsistent('普通用户被 403 拒后');
   });
 
-  it('禁言用户 → 403', async () => {
+  it('★ 禁言用户：买不了新仓，但**卖得掉**手上的仓位（禁言不是锁仓）', async () => {
     const u = await makeCoreUser(100);
+    // 先正常开一仓 —— 模拟「持仓期间被封」。禁言会递增 sessionVersion 废掉旧会话，
+    // 而登录路径不判禁言（他登得回来），所以判定只能落在路由上。
+    const opened = await buy(makeReq('/api/fish/trade/buy', { symbol: 'BTCUSDT', amount: 40 }));
+    const { position } = await opened.json();
     await prisma.user.update({ where: { id: u.id }, data: { isBanned: true, banUntil: null } });
-    const res = await buy(makeReq('/api/fish/trade/buy', { symbol: 'BTCUSDT', amount: 10 }));
-    expect(res.status).toBe(403);
-    expect(mockQuote, '被禁言的请求不该去打行情源').not.toHaveBeenCalled();
+
+    // 行情：只读，放行 —— 挡了它，卖出弹窗的「预计到手」就是拿一个冻住的价算的
+    vi.mocked(getCachedQuotes).mockResolvedValue({
+      ok: true,
+      quotes: [
+        { symbol: 'BTCUSDT', price: 80000, changePercent: 0, quotedAt: nowForDb(), ageMs: 0, stale: false },
+      ],
+    });
+    expect((await quote()).status, '只读展示不该被禁言挡住').toBe(200);
+
+    // 开新仓：403，不打行情源、不动钱
+    const callsBefore = mockQuote.mock.calls.length;
+    const blocked = await buy(makeReq('/api/fish/trade/buy', { symbol: 'BTCUSDT', amount: 10 }));
+    expect(blocked.status, '禁言不能开新仓').toBe(403);
+    expect(mockQuote.mock.calls.length, '被拒的开仓不该去打行情源').toBe(callsBefore);
+    expect(await balanceOf(u.id), '被拒的开仓一分没动').toBe(60);
+
+    // 平仓：必须放行 —— 否则已开的仓位就烂在里面了，他只能看着浮亏扩大
+    priceIs(88000);
+    const sold = await sell(makeReq('/api/fish/trade/sell', { position_id: position.id }));
+    expect(sold.status, '禁言用户必须能出仓').toBe(200);
+    const data = await sold.json();
+    // 40 条 = 400000 单位 → floor(400000 × 88000/80000 × 0.999) = 439560 单位 = 43.956 条
+    expect(data.payout).toBe(43.956);
+    expect(data.profit).toBe(3.956);
+    expect(await balanceOf(u.id)).toBe(103.956);
+
+    await expectLedgerConsistent('禁言用户平仓后');
   });
 
   it('core / admin / owner 都放行', async () => {
