@@ -225,16 +225,23 @@ describe('扫盘缓存', () => {
     // 「还原 mtime」这一步会悄悄差 0.x 毫秒，缓存当场就认得出变化，隧道效应模拟不出来。
     const m0 = Math.floor(fs.statSync(TEST_FRAMES_DIR).mtimeMs);
     fs.utimesSync(TEST_FRAMES_DIR, new Date(m0), new Date(m0));
-    expect(fs.statSync(TEST_FRAMES_DIR).mtimeMs).toBe(m0); // 归整确实生效了
+    // ⚠️ 「归整生效了」的判据是**幂等**，不是「值恰好等于 m0」。
+    // 文件系统存的精度比毫秒细：utimesSync 写进去的整毫秒，读回来可能是 m0 - 0.001
+    //（本机实测 ext4/overlay 上稳定给出 .999）。这条用例真正依赖的性质是
+    //「同一个 m0 写两次 → 读出来同一个值」，所以就拿第一次读到的值当基准。
+    // 拿整数去比会假红 —— 而且是**只在本机复现**的那种红（另一台机器上可能正好相等）。
+    const settle = fs.statSync(TEST_FRAMES_DIR).mtimeMs;
+    fs.utimesSync(TEST_FRAMES_DIR, new Date(m0), new Date(m0));
+    expect(fs.statSync(TEST_FRAMES_DIR).mtimeMs, '同一个 m0 写两次必须稳定').toBe(settle);
 
     __resetFrameAssetCacheForTests();
-    expect(frameAssetAvailable(KEY)).toBe(false); // 空目录，缓存记下 m0
+    expect(frameAssetAvailable(KEY)).toBe(false); // 空目录，缓存记下这个时间戳
 
     writeAsset(`${KEY}.png`, png(6));
     // 强行把 mtime 按回 m0 —— 模拟 Windows 8.3 短名缓存的「隧道」效应：
     // 目录内容确实变了，但时间戳没跟着动。
     fs.utimesSync(TEST_FRAMES_DIR, new Date(m0), new Date(m0));
-    expect(fs.statSync(TEST_FRAMES_DIR).mtimeMs).toBe(m0);
+    expect(fs.statSync(TEST_FRAMES_DIR).mtimeMs).toBe(settle);
 
     // 只靠 mtime 的那一层被彻底骗过 —— 这正是「新加的框永远看不见、且毫无原因」
     // 那个故障的症状。

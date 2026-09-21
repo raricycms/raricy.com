@@ -241,11 +241,30 @@ test('cookie 稳态：无参 /blog 首屏直出 updated 序、不 replace；点�
   expect(new URL(page.url()).searchParams.has('sort')).toBe(false);
   expect(await cardOrder(page, SEED_BLOG.id, SEED_BLOG2.id)).toBe('ba');
 
-  // 稳态无参页上点「发布时间」：cookie 已删、URL 仍无参 → 走 router.refresh 由服务端重出 created 序
-  await page.getByRole('button', { name: '发布时间' }).click();
-  await expect
-    .poll(async () => cardOrder(page, SEED_BLOG.id, SEED_BLOG2.id))
-    .toBe('ab');
+  // 等 JS 接管再点：水合之前 React 还没挂上 onClick，点了等于没点（判据沿用下面那条
+  // 用例的 `.sidebar--ready`，BlogSidebar 挂载时补上）。
+  await expect(page.locator('.sidebar')).toHaveClass(/sidebar--ready/);
+
+  // 稳态无参页上点「发布时间」：cookie 已删、URL 仍无参 → 走 router.refresh 由服务端重出 created 序。
+  //
+  // ★ 为什么要重试点击 ★
+  //
+  // 这一下**偶尔会被丢掉**：实测单跑 8~10 次能复现 2~3 次。抓到的现场是 onClick 确实跑到了
+  // （cookie 删掉、localStorage 写成 created），但那次 router.refresh() 没把新帧应用上去 ——
+  // 两种形态都出现过：RSC 请求 `net::ERR_ABORTED`，以及响应 200 到了、DOM 却没变。
+  // 是 Next 客户端路由的一处竞态，不是这页的逻辑错（服务端那边 cookie 已删、payload 也是
+  // created 序）。用例不能替它判死刑，也不该把「功能坏了」和「刷新被丢了」混成一个红。
+  //
+  // 重试是**安全**的：choose() 对「已经是 created」的态幂等（`next === selected` 提前返回，
+  // 且 cookie/LS 重复写同一个值），再点一下就是再发一次 refresh —— 实测每次都能翻过来。
+  // 这也正是用户会做的事：没反应就再点一下。
+  await expect(async () => {
+    await page.getByRole('button', { name: '发布时间' }).click();
+    await expect
+      .poll(async () => cardOrder(page, SEED_BLOG.id, SEED_BLOG2.id), { timeout: 2000 })
+      .toBe('ab');
+  }).toPass({ timeout: 15_000 });
+
   expect(new URL(page.url()).searchParams.has('sort')).toBe(false);
   expect(
     (await page.context().cookies()).some((c) => c.name === 'blog_sort' && c.value === 'updated')
