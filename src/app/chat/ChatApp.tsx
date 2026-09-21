@@ -478,6 +478,39 @@ export default function ChatApp({
    */
   const pendingJumpRef = useRef<{ channelId: string; messageId: number } | null>(null);
 
+  /** 跳转落位兜底的定时器（见 ensureJumpLands）。 */
+  const jumpSettleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /**
+   * 跳转的**落位保证**：平滑滚动是一段可以被打断的动画，这里补一次瞬移。
+   *
+   * 【为什么需要】`scrollIntoView({behavior:'smooth'})` 在跳转这一刻特别脆：列表刚
+   * 整段换成新窗口，行里的异步内容（图床图、用户名片）紧接着才落地，而这段距离动辄
+   * 几千像素、动画要跑几百毫秒 —— 期间**任何一次重渲染都可能让浏览器放弃它**。
+   * 结果是列表停在窗口顶部、目标行在屏幕外：用户搜到一条消息、点进去，却没被带过去。
+   * 实测（e2e 全量跑，只有整轮跑才复现）：`toBeInViewport` 报 viewport ratio 0，
+   * 翻帧看列表停在窗口开头，目标在几十条之外。
+   *
+   * 平滑滚动是**观感**，落到目标才是**功能**。所以动画过后核一次：目标行没有完整落在
+   * 列表可视区里就立即对齐（不带 behavior = 瞬移），把功能兜住。
+   *
+   * 【取舍】这段时间里用户自己滚开了也会被拽回目标 —— 但那是「刚点了搜索结果」的
+   * 几百毫秒内，把他带回刚点的目标是对的。定时器只在跳转时挂一次，且用 isConnected
+   * 与频道切换兜底（切走了就什么都不做）。
+   */
+  const ensureJumpLands = useCallback((el: HTMLElement) => {
+    if (jumpSettleTimerRef.current) clearTimeout(jumpSettleTimerRef.current);
+    jumpSettleTimerRef.current = setTimeout(() => {
+      jumpSettleTimerRef.current = null;
+      const list = listRef.current;
+      if (!list || !el.isConnected) return; // 已被换掉（切频道 / 又跳了一次）
+      const row = el.getBoundingClientRect();
+      const box = list.getBoundingClientRect();
+      if (row.top >= box.top && row.bottom <= box.bottom) return; // 落位了
+      el.scrollIntoView({ block: 'center' });
+    }, 400);
+  }, []);
+
   useLayoutEffect(() => {
     const jump = pendingJumpRef.current;
     // 频道对不上 = 拉取期间切了频道，这条待办已经作废：既不能滚，也不能吃掉
@@ -491,6 +524,7 @@ export default function ChatApp({
       if (el) {
         el.scrollIntoView({ block: 'center', behavior: 'smooth' });
         flashHighlight(jump.messageId);
+        ensureJumpLands(el);
       }
       return;
     }
@@ -498,7 +532,7 @@ export default function ChatApp({
     if (behavior === null) return;
     scrollAfterCommitRef.current = null;
     scrollToBottom(behavior);
-  }, [messages, scrollToBottom, flashHighlight]);
+  }, [messages, scrollToBottom, flashHighlight, ensureJumpLands]);
 
   const isNearBottom = useCallback(() => {
     const el = listRef.current;
@@ -1301,10 +1335,12 @@ export default function ChatApp({
     [flashHighlight]
   );
 
-  // 跳转高亮的定时器在卸载时清掉，避免对已卸载组件 setState
+  // 跳转相关的两个定时器（高亮、落位兜底）在卸载时清掉 —— 前者避免对已卸载组件
+  // setState，后者避免挂着一个够不着的 DOM 引用。
   useEffect(
     () => () => {
       if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+      if (jumpSettleTimerRef.current) clearTimeout(jumpSettleTimerRef.current);
     },
     []
   );
