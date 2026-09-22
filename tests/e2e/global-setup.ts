@@ -92,10 +92,11 @@ function seedStickers() {
 }
 
 /**
- * 造头像框素材（instance/frames 的等价物，指向 tests/.tmp/e2e-frames）。
+ * 造头像框素材（public/static/frames 的等价物，指向 tests/.tmp/e2e-frames）。
  *
  * 【为什么必须隔离】FRAMES_DIR 不设时 frame-service 回落到 repo 根的
- * instance/frames —— 那是站长的真实素材，断言会随机器时通时不通（同 seedStickers）。
+ * public/static/frames —— 那是真实素材（**入库的那份**），断言会随仓库内容而变；
+ * 而 e2e 要的是「一个确定的、自己能控制的素材集」（同 seedStickers）。
  * 空目录也不够：没有素材时 frameUrlFor 的第三道闸会把框判成「暂不显示」，
  * 正向用例就永远看不到框。
  */

@@ -2,16 +2,20 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // check-instance.mjs —— 初始化运行时数据目录骨架
 //
-// 【为什么需要】`instance/` 是 gitignored 的运行数据底盘，里面分七类：
+// 【为什么需要】`instance/` 是 gitignored 的运行数据底盘，里面分六类：
 //   · avatars/        用户头像 PNG（src/app/api/avatar/[id] 读取）
 //   · database/       SQLite 主库（Prisma 直连；DATABASE_URL 指向这里）
-//   · frames/         头像框素材目录（frame-service.ts 读取；<key>.png，key 见
-//                     src/lib/frame-refs.ts 的 FRAME_KEYS。**只认 PNG**）
 //   · images/         图床落盘目录（image-upload.ts 写入）
 //   · stories/        故事磁盘目录（story-service.ts 读取）
 //   · stickers/       表情包素材目录（sticker-service.ts 读取；
 //                     <合集>/<表情>.gif|webp|png|jpg|jpeg —— 五种，见该文件 EXT_PRIORITY）
 //   · blogs/          历史遗留目录；当前已无写入，但保留以兼容老路径
+//
+// ⚠️ **头像框素材曾经在这里，已经搬走** —— 它是我们自己画的（源码 =
+//    scripts/make-frame-demos.mjs），所以与代码一起入库、住 public/static/frames/。
+//    理由是「部署时把 instance/frames/ 拷到服务器」曾是一个**没有报错**的步骤，
+//    漏拷 = 全站静默不显示头像框。搬走之后 instance/ 只剩真正的运行时数据。
+//    老机器上那个 instance/frames/ 目录已经没人读了，可以删。
 //
 // 部署侧一般由挂载点保证存在；本地开发或新机器无 instance/ 时，本脚本一键建好。
 //
@@ -32,7 +36,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 // 也避免「在哪跑就建到哪」的坑。
 const instanceRoot = path.join(ROOT, 'instance');
 
-const SUBDIRS = ['avatars', 'database', 'frames', 'images', 'stories', 'stickers', 'blogs'];
+const SUBDIRS = ['avatars', 'database', 'images', 'stories', 'stickers', 'blogs'];
 
 let created = 0;
 for (const sub of SUBDIRS) {

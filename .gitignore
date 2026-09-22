@@ -28,6 +28,9 @@ coverage/
 /playwright/.cache/
 
 # 运行时数据目录（头像 / 图床 / 故事 / 数据库）—— 绝不入库
+#
+# 头像框素材**不在**这里：它是我们自己画的（源码 = scripts/make-frame-demos.mjs），
+# 与第三方素材那条红线无关，所以住 public/static/frames/ 并随代码入库。
 /instance/
 
 # instance 的本地打包归档（app.db + stories 等真实数据，备份用）—— 不入库

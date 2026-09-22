@@ -54,9 +54,23 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // 素材域（扫盘 / 缓存 / 查表）
 //
-// 【目录结构】instance/frames/<key>.png —— **是平铺的一层，没有子目录**，
+// 【目录结构】public/static/frames/<key>.png —— **是平铺的一层，没有子目录**，
 // 且**只认 PNG**。与 instance/stickers/<合集>/<表情>.{gif,webp,png,jpg,jpeg} 不同：
 // 框只有十几二十个、没有「合集」这一层，多一层目录只是多一份要维护的约定。
+//
+// 【为什么在 public/ 而不是 instance/】这些图是**我们自己画的**（源码 =
+// scripts/make-frame-demos.mjs），与用户上传、第三方表情那些**运行时数据**不是一类东西：
+//   · 它随代码入库 → 一次 clone / 一次 git pull 就有框可发。原先「部署时把
+//     instance/frames/ 拷到服务器」是一个**没有报错**的步骤，漏拷 = 全站静默不显示框，
+//     而「框不显示」与「没发过框」长得一模一样（见 docs/architecture.md 的风险表）。
+//   · instance/ 因此回到「只装运行时数据」这个干净的口径，不需要任何 gitignore 例外。
+//   · 与 public/static/img/icons/ 同源：自己的静态素材住 public/static/。
+//
+// ⚠️ 【入库带出来的新失效：改了脚本忘了重跑】原先素材不在库里，你非跑脚本不可，
+//    所以这件事**不可能发生**。现在 PNG 是仓库里的独立副本，改了 FRAMES 里的 SVG
+//    而不重跑，站点会继续显示旧图 —— 且不报任何错。所以脚本会把「生成这一刻」记进
+//    public/static/frames/manifest.json（脚本自身 + 每张产物的 sha256），
+//    tests/unit/frame-assets.test.ts 逐条核对。**改了出图脚本就必须重跑并一起提交。**
 //
 // 【只认 PNG 是硬要求，不是偷懒】头像框靠**透明通道**工作 —— 中间那块必须透出下面的
 // 头像。JPEG 没有 alpha，GIF 的 1 位透明度边缘全是锯齿。收窄到 PNG 顺带把
@@ -116,13 +130,17 @@ import {
 } from './frame-refs';
 
 /**
- * 素材目录：优先环境变量，否则回落到 ./instance/frames（对齐 STICKERS_DIR 的约定）。
+ * 素材目录：优先环境变量，否则回落到 ./public/static/frames（对齐 STICKERS_DIR 的约定）。
  *
  * ⚠️ 必须写成**函数**而不是顶层常量：测试会先设 process.env.FRAMES_DIR 再 import，
- * 顶层常量会把它烘死在模块加载那一刻，于是用例会去读真实的 instance/frames。
+ * 顶层常量会把它烘死在模块加载那一刻，于是用例会去读真实的 public/static/frames。
+ *
+ * ⚠️ 素材**入库**，所以这个回落路径在任何环境里都该有东西。它空了只有两种可能：
+ *    部署时 FRAMES_DIR 指到了别处，或 git 里那张图被删了 —— 两种都会让全站
+ *    静默不显示框，而页面不报错（见文件头的「入库带出来的新失效」）。
  */
 function framesRoot(): string {
-  return process.env.FRAMES_DIR || path.resolve(process.cwd(), 'instance', 'frames');
+  return process.env.FRAMES_DIR || path.resolve(process.cwd(), 'public', 'static', 'frames');
 }
 
 /** 单张框的字节上限 —— 只是防御性的天花板，正常框远小于此（几百 KB 顶天了）。 */
@@ -139,6 +157,11 @@ const PNG_SIG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
  * `demo.png`、内容却是 `<svg onload=...>`，若实现按扩展名下发的会以 image/svg+xml
  * 内联返回 = **同源存储型 XSS**。所以路由侧必须**按字节**复核 detectImageMime
  * 的结果再下发，而不是信文件名。
+ *
+ * ⚠️ **素材搬进 public/ 之后这道闸门更要紧，不是更松**：public/ 下的文件 Next 会
+ *    自己静态托管一份（`/static/frames/<key>.png`），那条路**按扩展名给
+ *    Content-Type**。所以「文件内容不是 PNG」这件事，应用侧只剩 `/api/frames/[key]`
+ *    这一处能拦。别因为「素材入库了、有人 review」就把按字节复核改成信扩展名。
  *
  * 与 ALLOWED_STICKER_MIME 是同一道闸门，只是这里收得更紧（表情还允许 gif/webp/jpeg）。
  */
@@ -226,12 +249,15 @@ function getAssets(): FrameAssets {
 
   if (!warnedEmpty && cache.available.size === 0) {
     warnedEmpty = true;
-    // 部署最隐蔽的失败模式：素材没传到服务器 → 全站头像框**静默不显示**，
-    // 而「框不显示」与「没发过框」长得一模一样，没有任何报错。这里留一行，
-    // 至少让日志里看得见。运维侧的权威检查是 `npm run cli -- frame list --keys`。
+    // 部署最隐蔽的失败模式：全站头像框**静默不显示**，而「框不显示」与「没发过框」
+    // 长得一模一样，没有任何报错。这里留一行，至少让日志里看得见。
+    // ⚠️ 素材**入库**，所以「这个目录是空的」不再是正常状态 —— 多半是 FRAMES_DIR
+    //    指到了别处，或者部署时漏了 public/static/frames/。运维侧的权威检查是
+    //    `npm run cli -- frame list --keys`。
     console.warn(
       `[frame] 未发现任何头像框素材（${root}）。` +
-        '素材目录是 gitignored 的运行时数据，部署时需要手动同步。'
+        '素材随代码入库（public/static/frames/），这个目录为空说明部署时漏了它，' +
+        '或者 FRAMES_DIR 指到了别处。'
     );
   }
 

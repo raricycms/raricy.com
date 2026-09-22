@@ -1,0 +1,30 @@
+{
+  "generator": "scripts/make-frame-demos.mjs",
+  "generatorSha256": "5ea770e096d170b8f4595968021078067e1e98fbe414bf7f999ec42ccf4716bd",
+  "frames": {
+    "ring": {
+      "png": "fb60a99373e78f7d9d0ad039ab5036b8db21b5a8198f10431e40b50a430913a1",
+      "preview": "2921ef468f30713c5b046db90cbb282484480b39a2b9108ee1e97397fa8c5888"
+    },
+    "gradient": {
+      "png": "ae581e92f65faaf5e7a3d749a420772c05abf4393263b80989ab9b558000bdd1",
+      "preview": "df9282e99f03fa733ec5b26b5ec1ba3eee7280a44ff53ffec919db044be7122d"
+    },
+    "dashed": {
+      "png": "d0843a4a68cea53fff01d24ac1b5ac67ad4a31764fd979f110650e092099b3ba",
+      "preview": "06b0c40488c7ec0d13d8827270fe28868fa36d6170213a426e907b25d03a2aaf"
+    },
+    "corner": {
+      "png": "2fa1f00600fef662effd4351be7157a2ce1eb5492ab831d7c9e89cb24b6b7d11",
+      "preview": "5d8645376a7bc7380f8fbd2dea95dc46278201e735ffb041156637ed8066303b"
+    },
+    "glow": {
+      "png": "d62fd409de178ab4e854c1a6db4f95d5c58f63409c8231bca77a10254f3fa2ef",
+      "preview": "2bf1f78e7220df6f73cdce03f2c54e1d26faf07a6814b4621cb351c927650a0f"
+    },
+    "fishblue": {
+      "png": "79a10608ce1e931fb64dec79f1f69da2ab767349030de25d4b1929a930f1a7da",
+      "preview": "bc3c7b5da3aded6854e1d5d6c672fdf456ec8c78f85edd25c2e63872900d7195"
+    }
+  }
+}

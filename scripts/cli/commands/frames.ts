@@ -97,10 +97,10 @@ async function assetWarning(key: FrameKey): Promise<string | null> {
   const row = auditFrameAssets().find((r) => r.key === key);
   if (!row) return null;
   if (!row.available) {
-    return `instance/frames/${key}.png 不存在 —— 授权已经写库成功，但**全站都不会显示这个框**。把素材拷上去即可（不需要重新发放）。`;
+    return `public/static/frames/${key}.png 不存在 —— 授权已经写库成功，但**全站都不会显示这个框**。把素材补进去（跑一次 node scripts/make-frame-demos.mjs，或直接拷一张图到那个目录）并提交即可，不需要重新发放。`;
   }
   if (row.hasAlpha === false) {
-    return `instance/frames/${key}.png **没有透明通道** —— 它会盖住用户的脸。请重新导出一张中间透明的 PNG。`;
+    return `public/static/frames/${key}.png **没有透明通道** —— 它会盖住用户的脸。请重新导出一张中间透明的 PNG。`;
   }
   return null;
 }
@@ -140,7 +140,7 @@ export const frameCommands: CommandSpec[] = [
       '幂等且**只延长不缩短**：该用户已持有该框时，取「原到期时刻」与「新的到期时刻」的',
       '较晚者。要缩短或收回，用 `frame revoke`。',
       '',
-      '⚠️ 发了但盘上没有素材（instance/frames/<key>.png）时**只打黄色警告，不算失败** ——',
+      '⚠️ 发了但盘上没有素材（public/static/frames/<key>.png）时**只打黄色警告，不算失败** ——',
       '   授权本身已经写库成功，素材是运维自己的事，补上即可（不需要重新发放）。',
     ].join('\n'),
     async describe(ctx) {

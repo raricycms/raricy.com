@@ -11,7 +11,7 @@
 //  4. **缓存三层**：层与层之间的边界（TTL / mtime / 60s 兜底）写错了症状都是
 //     「新加的框永远看不见」，而那看起来毫无原因。
 //
-// 【磁盘安全】只碰 tests/.tmp/frames-test/，绝不碰 ./instance/frames 里的真实素材
+// 【磁盘安全】只碰 tests/.tmp/frames-test/，绝不碰 ./public/static/frames 里的真实素材
 // —— 见下方 TEST_FRAMES_DIR 与 assertTempDir()。
 
 import fs from 'node:fs';

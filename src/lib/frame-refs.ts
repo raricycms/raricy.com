@@ -2,7 +2,8 @@
 // frame-refs.ts — 头像框的**词汇表**（白名单、解析、人话标签、到期判定）
 //
 // 头像框 = 一张带透明通道的 PNG，绝对定位叠在头像上（`src/app/components/Avatar.tsx`
-// 的 `.avatar__frame`）。素材字节在 `instance/frames/<key>.png`（gitignored，站长手工拷），
+// 的 `.avatar__frame`）。素材字节在 `public/static/frames/<key>.png`（**随代码入库** ——
+// 它是我们自己画的，与用户上传 / 第三方表情那些运行时数据不是一类东西），
 // 扫盘与字节路由在 `src/lib/frame-service.ts`（server-only）。
 //
 // ── 【为什么单独一个文件】────────────────────────────────────────────────────
@@ -20,7 +21,8 @@
 // 缺的只是那张图（`frame-service` 的第三道闸会把它判成「暂时没图」）。
 //
 // ── 【改这里的代价】────────────────────────────────────────────────────────────
-// 加一个框 = 拷一张 PNG 到 `instance/frames/` + 在 `FRAMES` 里加一条。
+// 加一个框 = 加一条 `FRAMES` 条目 + 一张 `public/static/frames/<key>.png`（正常是改
+// `scripts/make-frame-demos.mjs` 的 SVG 再重跑，见那个文件头）。
 // `FRAMES` 是 `Record<FrameKey, FrameDef>`（穷尽的），加了 key 不补条目 **tsc 当场报错** ——
 // 这正是要的形状：漏补的后果（面板上少一张卡片、CLI 的选项里没有它）都是静默的。
 // **不需要迁移**：`user_frames.frame_key` 是文本、不是外键，框的定义不住库。
@@ -54,9 +56,11 @@
  * 都按它排）。与 `blog-visibility.ts` 的 `BLOG_VISIBILITIES` 同款：数组即顺序，
  * 不另设 order 字段（两处维护会漂）。
  *
- * ⚠️ 每一项都要有对应的 `instance/frames/<key>.png`。缺素材时框**静默不显示**
+ * ⚠️ 每一项都要有对应的 `public/static/frames/<key>.png`。缺素材时框**静默不显示**
  * （页面不报错）—— 自查用 `npm run cli -- frame list --keys`。
- * 这几款的素材由 `node scripts/make-frame-demos.mjs` 生成（出图规格的活文档）。
+ * 这几款的素材由 `node scripts/make-frame-demos.mjs` 生成（出图规格的活文档），
+ * 并**随代码入库**：改了那个脚本就得重跑并把 public/static/frames/ 一起提交，
+ * 否则站点继续显示旧图 —— tests/unit/frame-assets.test.ts 盯着这件事。
  *
  * ⚠️ **退役一个框时把 `FRAMES[k].retired` 置 true，不要从这里删掉 key。**
  *   删了之后：`parseFrameKey` 认不出它 → 设置面板没法显示那一行 → 用户**卸不掉**

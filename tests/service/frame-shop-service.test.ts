@@ -10,7 +10,7 @@
 //  3. 各种「扣钱不办事」的边界：永久持有、素材缺失、天数越界。
 //  4. 记账不变式（余额 == 流水之和），附着在上面这些真实业务用例上。
 //
-// 【磁盘安全】只碰 tests/.tmp/frames-shop-test/，绝不碰 ./instance/frames 的真实素材。
+// 【磁盘安全】只碰 tests/.tmp/frames-shop-test/，绝不碰 ./public/static/frames 的真实素材。
 
 import fs from 'node:fs';
 import path from 'node:path';

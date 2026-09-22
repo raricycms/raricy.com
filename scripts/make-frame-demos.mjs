@@ -3,7 +3,13 @@
 // make-frame-demos.mjs —— 生成几款**示例头像框** PNG，同时也是出图规格的活文档
 //
 // 用法：node scripts/make-frame-demos.mjs [输出目录]
-//       默认写到 instance/frames/（gitignored 的运行时数据 —— 素材**不入库**）
+//       默认写到 public/static/frames/（**素材随代码入库** —— 它是我们自己画的，
+//       源码就是本文件，所以住 public/static/ 而不是运行时数据目录 instance/）
+//
+// ⚠️ 【改了本文件就必须重跑并提交素材】入库之后 PNG 成了仓库里的独立副本：
+//    只改这里的 SVG 而不重跑，站点会继续显示旧图，**且不报任何错**。
+//    所以每次出图都会把「生成这一刻」写进 manifest.json（本文件自身 + 每张产物的
+//    sha256），tests/unit/frame-assets.test.ts 逐条核对 —— 改了不重跑那条用例当场红。
 //
 // ── 【头像框 PNG 长什么样】──────────────────────────────────────────────────
 //
@@ -33,11 +39,14 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const OUT_DIR = process.argv[2] ? path.resolve(process.argv[2]) : path.join(ROOT, 'instance', 'frames');
+const OUT_DIR = process.argv[2]
+  ? path.resolve(process.argv[2])
+  : path.join(ROOT, 'public', 'static', 'frames');
 
 const SIZE = 256;
 /** 与全站头像一致的圆角比例（docs/frontend-styles.md §4.1）。**别改这个数**。 */
@@ -218,6 +227,35 @@ function svgFor(body) {
 
 fs.mkdirSync(OUT_DIR, { recursive: true });
 
+/** 文件内容的 sha256（十六进制）。 */
+function sha256(file) {
+  return createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 台账 manifest.json —— **素材入库之后才需要它**
+//
+// 【它防的是什么】素材原先不入库，所以「改了脚本却忘了重跑」这件事**不可能发生**：
+//   站点读的就是脚本刚写出来的那些字节。入库之后 PNG 成了仓库里的独立副本，
+//   于是多了一条静默失效 —— 改了 FRAMES 里的 SVG、忘了重跑，站点继续显示旧图，
+//   而**没有任何东西会红**（脚本只在人主动跑的时候才说话）。
+//
+// 【怎么防】把「生成这一刻的真相」记下来：本脚本自己的 sha256 + 每张产物的 sha256。
+//   tests/unit/frame-assets.test.ts 逐条核对。于是：
+//     · 改了脚本没重跑        → 脚本哈希对不上 → 红，报错里给出该跑哪条命令；
+//     · 手改了 PNG / 文件损坏 → 图哈希对不上 → 红；
+//     · 换了机器 / 换了平台   → **不受影响**（核对的是脚本文件与已落盘的字节，
+//       不重新光栅化 —— 不同平台的 librsvg 可能给出不完全一样的像素，
+//       那样一条守卫会变成「只在作者的机器上绿」）。
+//
+// ⚠️ 这份文件由本脚本写，**别手改**。它是产物，不是配置。
+// ─────────────────────────────────────────────────────────────────────────────
+const manifest = {
+  generator: 'scripts/make-frame-demos.mjs',
+  generatorSha256: sha256(fileURLToPath(import.meta.url)),
+  frames: {},
+};
+
 for (const [key, body] of Object.entries(FRAMES)) {
   const svg = Buffer.from(svgFor(body), 'utf8');
 
@@ -228,15 +266,25 @@ for (const [key, body] of Object.entries(FRAMES)) {
   // 缩到 20px 的预览，给人眼看「小尺寸下还剩什么」。
   // ⚠️ `_` 前缀 = frame-service 的扫盘会跳过它（见 isSkippedName 那条规则），
   //    所以它不会被当成一款可用的框。
+  const preview = path.join(OUT_DIR, `_preview-20px-${key}.png`);
   await sharp(svg)
     .resize(20, 20, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
     .png()
-    .toFile(path.join(OUT_DIR, `_preview-20px-${key}.png`));
+    .toFile(preview);
+
+  manifest.frames[key] = { png: sha256(out), preview: sha256(preview) };
 
   const { size } = fs.statSync(out);
   console.log(`  ✓ ${key}.png  (${SIZE}×${SIZE}, ${size} 字节)  + _preview-20px-${key}.png`);
 }
 
+fs.writeFileSync(
+  path.join(OUT_DIR, 'manifest.json'),
+  `${JSON.stringify(manifest, null, 2)}\n`,
+  'utf8'
+);
+
 console.log(`\n已写入 ${OUT_DIR}`);
 console.log('下一步：在 src/lib/frame-refs.ts 的 FRAME_KEYS / FRAMES 里登记这些 key。');
 console.log('自查：npm run cli -- frame list --keys');
+console.log('⚠️ 素材随代码入库 —— 出图之后把 public/static/frames/ 的改动一起提交。');

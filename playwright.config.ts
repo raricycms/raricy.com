@@ -41,7 +41,7 @@ const E2E_STICKERS_DIR = path.resolve(__dirname, 'tests/.tmp/e2e-stickers');
 process.env.STICKERS_DIR = E2E_STICKERS_DIR;
 
 // 头像框素材同理（同样是两个进程都要知道）。不设它 frame-service 会去扫 repo 根的
-// instance/frames（站长的真实素材），断言会随机器时通时不通。
+// public/static/frames（入库的真实素材），断言会随仓库内容而变。
 const E2E_FRAMES_DIR = path.resolve(__dirname, 'tests/.tmp/e2e-frames');
 process.env.FRAMES_DIR = E2E_FRAMES_DIR;
 
