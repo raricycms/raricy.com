@@ -666,23 +666,29 @@ export async function equipFrame(userId: string, rawKey: string | null): Promise
     return { ok: false, code: 400, message: `「${frameLabel(key) ?? key}」已下架，不能装备` };
   }
 
-  const row = await prisma.userFrame.findUnique({
-    where: { uq_user_frame: { userId, frameKey: key } },
-    select: { expiresAt: true, deleted: true },
-  });
-  if (!row || row.deleted) return { ok: false, code: 403, message: '你还没有这个头像框' };
+  // 【一个事务】读持有行与写装备列副本必须原子（F2 的狭窄竞态）：两条独立语句之间
+  // 若有人延长了同一款框（商城续租 / CLI 续期，都只延长不缩短），这里会把**旧的**
+  // 到期时刻写进 `users.equipped_frame_expires_at` —— 框提前消失，而钱没丢
+  //（持有行是延长后的）。收进事务后这个窗口不存在。
+  return prisma.$transaction(async (tx) => {
+    const row = await tx.userFrame.findUnique({
+      where: { uq_user_frame: { userId, frameKey: key } },
+      select: { expiresAt: true, deleted: true },
+    });
+    if (!row || row.deleted) return { ok: false, code: 403, message: '你还没有这个头像框' };
 
-  // 复用唯一的比较（白名单与退役上面已判过，所以走到这里失败只可能是过期）
-  if (!resolveFrameKey(key, row.expiresAt, nowForDb())) {
-    return { ok: false, code: 403, message: '这个头像框已过期' };
-  }
+    // 复用唯一的比较（白名单与退役上面已判过，所以走到这里失败只可能是过期）
+    if (!resolveFrameKey(key, row.expiresAt, nowForDb())) {
+      return { ok: false, code: 403, message: '这个头像框已过期' };
+    }
 
-  await prisma.user.update({
-    where: { id: userId },
-    // 装备列的到期时刻 = 那一刻持有行的到期时刻。此后两者由 F2 保持一致。
-    data: { equippedFrameKey: key, equippedFrameExpiresAt: row.expiresAt },
+    await tx.user.update({
+      where: { id: userId },
+      // 装备列的到期时刻 = 那一刻持有行的到期时刻。此后两者由 F2 保持一致。
+      data: { equippedFrameKey: key, equippedFrameExpiresAt: row.expiresAt },
+    });
+    return { ok: true as const, key, expiresAt: row.expiresAt };
   });
-  return { ok: true, key, expiresAt: row.expiresAt };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
