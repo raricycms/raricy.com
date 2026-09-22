@@ -7,10 +7,11 @@ import { siteBaseUrl } from '@/lib/site-url';
 // ── 本文件里的每一条「放行」，配的都是**按行/按页**的第二道闸 ─────────────────
 //
 // 路径级的 robots.txt 只能表达「这一段能不能抓」，粒度到单页/单条由页面元数据与响应头
-// 收口。本站**四处**对外开口都是这个形状，改之前先把对应的第二道闸找出来：
+// 收口。本站**五处**对外开口都是这个形状，改之前先把对应的第二道闸找出来：
 //
 //   · `/api/images/`  → 逐张发 `X-Robots-Tag`（公开图 all、私有图 noindex），见
 //                        api/images/[id]/raw/route.ts
+//   · `/api/audio/`   → 同上，见 api/audio/[id]/raw/route.ts
 //   · `/api/og/`      → 逐张发 `X-Robots-Tag`（public 档 all、link 档 noindex），
 //                        见 api/og/blog/[id]/route.ts
 //   · `/blog/`        → 逐页发 robots 元数据（public 档 index、link/private 档 noindex），
@@ -44,8 +45,11 @@ export default function robots(): MetadataRoute.Robots {
     rules: [
       {
         userAgent: '*',
-        // 注：同一对象里不能写两个 allow —— 后者会覆盖前者，所以四个元素合进一个数组。
-        allow: ['/', '/api/images/', '/api/og/', '/blog/'],
+        // 注：同一对象里不能写两个 allow —— 后者会覆盖前者，所以五个元素合进一个数组。
+        // /api/audio/ 与 /api/images/ 同性质：是给站外读者消费的直链（音频贴在公开
+        // 博客里时要能被抓取）。**开了这条路就要在 raw 路由里逐条发 X-Robots-Tag**
+        // ——这里是按路径放行，粒度不到单个文件，私有档得自己挡。
+        allow: ['/', '/api/images/', '/api/audio/', '/api/og/', '/blog/'],
         // /auth/ 是鉴权回跳路径，/admin 与 /chat 是登录后的内部工作台，一律不索引。
         disallow: ['/api/', '/auth/', '/admin/', '/chat', '/login', '/blog'],
       },

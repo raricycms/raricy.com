@@ -209,6 +209,10 @@ export const RULES = {
   voteCreateHourly: { limit: 10, windowMs: 60 * 60 * 1000 },
   voteHourly: { limit: 30, windowMs: 60 * 60 * 1000 },
   imageUploadHourly: { limit: 200, windowMs: 60 * 60 * 1000 },
+  /** 音频床地上传。数值与图床同档，但是**独立的一条规则**：
+   *  调用方必须用自己的键前缀（`audio-upload:`）—— `rule` 不参与桶键，
+   *  共用前缀会让音频蹭掉图片的额度（见 docs/architecture.md §6.5）。 */
+  audioUploadHourly: { limit: 200, windowMs: 60 * 60 * 1000 },
   /** 讨论发言（滑动窗口）。**拍一拍 / 表情 / 带图消息各算一条** —— 连拍或连点表情
    *  时消耗得比打字快得多，这是它当初 30/分 被正常人摸到的主因。 */
   chatMinute: { limit: 120, windowMs: 60 * 1000 },
