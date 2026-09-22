@@ -8,11 +8,33 @@
 //   1. 菜单里不得再出现指向外部站的工具链接
 //   2. 五个页面都能打开
 //   3. 抽查算得对（用标准值断言，不是「有输出就算过」）
+//   4. 站务工具区的「音频床」入口在、且点得进去 —— 同一种「功能做完却进不去」的
+//      毛病（/audio 一度不在任何导航里，三份文档却都写着「进入 /audio」）
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { test, expect } from '@playwright/test';
+import { registerFreshUser } from './helpers';
 
 const TOOLS = ['url', 'html', 'qp', 'hash', 'aes'] as const;
+
+test('站务工具区里有「音频床」入口，点进去就是音频床（与图床并列）', async ({ page }) => {
+  // 与 favorite.spec.ts 那条入口用例同源：`/audio` 是「上传 → 拿 ID → 贴进正文」的
+  // 唯一页面，而它一度**不在任何导航、任何菜单里** —— 三份文档都写着「进入 /audio」，
+  // 站内却没有任何链接指过去，只能手敲 URL。入口本身要有用例，而不只是页面能打开。
+  //
+  // 它**不设 `coreOnly`**（页面对 core 以下的人就地 403，入口照常渲染）——「入口不跟着
+  // 藏」与「我的收藏夹」那条同口径，所以这里用 core 号即可，测的是入口不是门槛。
+  await registerFreshUser(page, { core: true });
+  await page.goto('/tool');
+
+  // 站务工具区默认就展开（编码 / 加密两组才收在「更多开发者工具」里）
+  const entry = page.locator('a.tool-new-card[href="/audio"]');
+  await expect(entry).toBeVisible();
+  await entry.click();
+
+  await page.waitForURL(/\/audio$/, { timeout: 15_000 });
+  await expect(page.locator('h1')).toContainText('音频床');
+});
 
 test('工具菜单不含指向外部站的工具链接（绝对 URL 会 404）', async ({ page }) => {
   await page.goto('/tool');

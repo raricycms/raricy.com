@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import {
   ArrowRight,
+  AudioLines,
   Binary,
   Braces,
   Clipboard,
@@ -51,6 +52,17 @@ const SITE: Tool[] = [
     title: '图床',
     desc: '图片上传与托管分享',
     tags: ['图片', '上传', '分享'],
+  },
+  {
+    cat: 'site',
+    kw: '音频床 audio 音频 声音 音乐 mp3 m4a ogg 上传 托管 分享',
+    href: '/audio',
+    icon: AudioLines,
+    title: '音频床',
+    desc: '音频上传与托管分享',
+    tags: ['音频', '上传', '分享'],
+    // 与图床并列，同样**不设 `coreOnly`**：页面自身就是 `requireCoreUser`，
+    // 档位不够的人点进来是就地 403 —— 「入口不跟着藏」，与「我的收藏夹」那条同口径。
   },
   {
     cat: 'site',
