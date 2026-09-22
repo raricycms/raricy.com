@@ -197,7 +197,8 @@
     display: inline-flex;
     align-items: center;
     gap: 0.3em;
-    // 上下的负外边距：1.4em 的方头像比一行文字高，不压一点会把行高顶开
+    // 只有左右外边距，**上下为 0**：内联块的上下外边距会撑开行盒（行高 1.55em 只有
+    // 22.8px，而名片算上内边距与描边已略高于它），加了只会把行距顶开。
     margin: 0 0.15em;
     padding: 0.05em 0.4em 0.05em 0.2em;
     border: 1px solid var(--color-border);
@@ -218,6 +219,39 @@
     width: 1.4em;
     height: 1.4em;
     object-fit: cover;
+  }
+  // ★ 名片里的两层图必须**逐条清掉**上面那条通用 img 规则 ★
+  //
+  // `.类 img`（(0,1,1)）是给「正文流里的图床图」写的 —— 整行独占、一圈描边、圆角
+  // 8px、点了放大。它是一条**后代**规则，名片里的头像与框贴图都在它的射程里，而上面
+  // 那条尺寸规则只声明了 width/height/object-fit，**其余几条会原样漏进来**。
+  // 漏进来的每一条都会静默炸掉一处（2026-09 实测，真浏览器量到的值）：
+  //
+  //   · background：框贴图的画布中心**是透明的**（素材规格就是「画布 = 头像框」，
+  //     public/static/frames/*.png 中心像素 alpha = 0），那层不透明底色把**头像
+  //     整个盖住** —— 戴框的人在这张名片上只剩一个灰方块，谁都看不出那是头像。
+  //   · margin: 0.4em 0：头像盒被从 1.4em 撑成 2.2em 高，而框贴图按 height: 100%
+  //     跟着长到 2.2em 并下移 0.4em，再被盒子的 overflow: hidden 裁掉一截。
+  //   · border: 1px solid（文字主色，浅色主题近黑）：头像与框各多一圈黑描边。
+  //   · border-radius: 8px：20px 的头像上 8px 已经是个**圆**了（全站规范是 8%，
+  //     见 docs/frontend-styles.md §4.1），框贴图的四角也被削掉。
+  //   · cursor: zoom-in：这一张**点不开**（RichContentBody 的点击委托只认
+  //     rich-image-ref），点它是跳主页，光标不该那么写。
+  //
+  // 【为什么圆角写 0 而不是 8%】圆角归 .avatar 盒子（组件持有那条 8%，并
+  // overflow: hidden 裁出来），这里的图只负责铺满盒子。写 0 不是「去掉圆角」——
+  // 是让 8% 那一处生效。
+  //
+  // ⚠️ 本条与 `.avatar > img.avatar__frame`（components/_avatar.scss，(0,2,1)）
+  //    权重**相同**，所以刻意**只声明它们不管的属性**（留白 / 描边 / 圆角 / 底色 /
+  //    光标），定位那几条（position / inset / width / height / object-fit /
+  //    pointer-events）继续由那条说了算 —— 两条没有交集，不靠源码顺序决胜。
+  .#{$cls} .rich-user-ref__avatar > img {
+    margin: 0;
+    border: none;
+    border-radius: 0;
+    background: none;
+    cursor: pointer;
   }
   .#{$cls} .rich-user-ref__name {
     // min-width: 0 是必须的：flex 子项默认 min-width:auto，不加的话长用户名会把整条
