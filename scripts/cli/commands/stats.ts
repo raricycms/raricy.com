@@ -45,6 +45,10 @@ export const statsCommands: CommandSpec[] = [
           ['剪贴板', `${s.clips.total} 条（已删 ${s.clips.deleted}，私有 ${s.clips.private}）`],
           ['图床', `${s.images.total} 张（已删 ${s.images.deleted}）`],
           ['图床占用', humanBytes(s.images.storageBytes)],
+          // ⚠️ 音频与图床是**两块独立的占用**（各有各的 50MB 配额），
+          //    运维看总量的把这两行相加。只印图床会把整个音频池漏掉。
+          ['音频床', `${s.audio.total} 条（已删 ${s.audio.deleted}）`],
+          ['音频床占用', humanBytes(s.audio.storageBytes)],
           ['投票', `${s.votes.total} 个（已删 ${s.votes.deleted}），共 ${s.votes.records} 票`],
         ]),
         '',
@@ -57,7 +61,8 @@ export const statsCommands: CommandSpec[] = [
         warnings.push(`⚠️  有 ${s.appeals.pending} 条待审申诉 —— 申诉积压会让被处罚的用户一直等。`);
       }
 
-      const deletedTotal = s.blogs.deleted + s.comments.deleted + s.clips.deleted + s.images.deleted;
+      const deletedTotal =
+        s.blogs.deleted + s.comments.deleted + s.clips.deleted + s.images.deleted + s.audio.deleted;
       const notes =
         deletedTotal > 0
           ? [`已删内容共 ${deletedTotal} 项，都可以用对应的 search + restore 找回来。`]

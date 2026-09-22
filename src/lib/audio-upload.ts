@@ -48,6 +48,28 @@ export const ALLOWED_AUDIO_MIMETYPES = new Set<string>([
 /** 单文件上限 10MB（与图床同值 —— 部署侧两道 12MB 闸门因此不用改）。 */
 export const MAX_AUDIO_SIZE = 10 * 1024 * 1024;
 
+/**
+ * 规范 MIME → **面向用户**的格式名（错误文案与文档用）。
+ *
+ * 【为什么不用 `mime.split('/')[1].toUpperCase()`】那会把 `audio/mpeg` 说成
+ * 「MPEG」、`audio/mp4` 说成「MP4」—— 用户认的是 **MP3** 与 **M4A**，
+ * 而这两个词恰恰是容器/编码名里看不出来的。错误文案是给人看的，
+ * 得用他们找得到文件的那个名字。
+ *
+ * 键就是白名单本身，所以加了新格式而忘了配名字时，文案里会直接出现
+ * `undefined`（而不是安静地漏掉一项）。
+ */
+const FORMAT_LABEL: Record<string, string> = {
+  'audio/mpeg': 'MP3',
+  'audio/mp4': 'M4A',
+  'audio/ogg': 'OGG',
+};
+
+/** 白名单的展示文案，如 `MP3、M4A、OGG`。错误文案与文档同源，避免两处漂。 */
+export function allowedAudioFormatLabel(): string {
+  return [...ALLOWED_AUDIO_MIMETYPES].map((m) => FORMAT_LABEL[m]).join('、');
+}
+
 /** MIME → 扩展名（磁盘文件名后缀）。 */
 const EXT_MAP: Record<string, string> = {
   'audio/mpeg': '.mp3',

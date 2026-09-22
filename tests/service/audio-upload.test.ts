@@ -14,6 +14,7 @@ import {
   normalizeAudioMime,
   verifyAudioMime,
   audioExtForMime,
+  allowedAudioFormatLabel,
 } from '@/lib/audio-upload';
 
 // ── 夹具：造各格式的最小可用字节 ─────────────────────────────────────────────
@@ -201,6 +202,15 @@ describe('常量', () => {
 
   it('单文件上限 10MB（与图床同值 —— 部署侧两道 12MB 闸门因此不用改）', () => {
     expect(MAX_AUDIO_SIZE).toBe(10 * 1024 * 1024);
+  });
+
+  it('错误文案用的是用户认得的格式名（MP3/M4A/OGG，不是 MPEG/MP4）', () => {
+    // 用 `mime.split('/')[1].toUpperCase()` 会得到「MPEG、MP4、OGG」——
+    // 而用户找文件时看到的是 .mp3 与 .m4a。文案是给人看的。
+    const label = allowedAudioFormatLabel();
+    expect(label).toBe('MP3、M4A、OGG');
+    // 白名单里每一项都要有名字，漏配会变成 undefined 而不是安静少一项
+    expect(label).not.toContain('undefined');
   });
 
   it('规范 MIME 都能推出磁盘扩展名', () => {

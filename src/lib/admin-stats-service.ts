@@ -35,6 +35,10 @@ export interface SiteStats {
   comments: { total: number; deleted: number; newToday: number };
   clips: { total: number; deleted: number; private: number };
   images: { total: number; deleted: number; storageBytes: number };
+  // ⚠️ 与 images 是**两份不同的磁盘占用**，运维算总量要相加 —— 音频不吃图床的配额，
+  //    它是独立的一块盘。漏了这一块，站长看到的占用数字会少掉整个音频池
+  //    却「看着是对的」。
+  audio: { total: number; deleted: number; storageBytes: number };
   votes: { total: number; deleted: number; records: number };
   appeals: { pending: number };
 }
@@ -61,6 +65,9 @@ export async function getSiteStats(): Promise<SiteStats> {
     imagesTotal,
     imagesDeleted,
     storageAgg,
+    audioTotal,
+    audioDeleted,
+    audioStorageAgg,
     votesTotal,
     votesDeleted,
     voteRecords,
@@ -89,6 +96,10 @@ export async function getSiteStats(): Promise<SiteStats> {
     //   注意这与 image-service.getTotalStorageBytes()（只算未软删，图床管理页在用）
     //   是两个不同的口径，别互相替换。
     prisma.imageHosting.aggregate({ _sum: { fileSize: true } }),
+    prisma.audioHosting.count(),
+    prisma.audioHosting.count({ where: { ignore: true } }),
+    // 音频床与图床同一口径：统计**全部**行含已软删（文件还在 instance/audio/）。
+    prisma.audioHosting.aggregate({ _sum: { fileSize: true } }),
     prisma.vote.count(),
     prisma.vote.count({ where: { ignore: true } }),
     prisma.voteRecord.count(),
@@ -113,6 +124,11 @@ export async function getSiteStats(): Promise<SiteStats> {
     comments: { total: commentsTotal, deleted: commentsDeleted, newToday: commentsNewToday },
     clips: { total: clipsTotal, deleted: clipsDeleted, private: clipsPrivate },
     images: { total: imagesTotal, deleted: imagesDeleted, storageBytes: storageAgg._sum.fileSize ?? 0 },
+    audio: {
+      total: audioTotal,
+      deleted: audioDeleted,
+      storageBytes: audioStorageAgg._sum.fileSize ?? 0,
+    },
     votes: { total: votesTotal, deleted: votesDeleted, records: voteRecords },
     appeals: { pending: appealsPending },
   };

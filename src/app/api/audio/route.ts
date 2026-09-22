@@ -1,7 +1,7 @@
 import { listUserAudio, getUserUsedAudioBytes } from '@/lib/audio-service';
 import {
-  ALLOWED_AUDIO_MIMETYPES,
   MAX_AUDIO_SIZE,
+  allowedAudioFormatLabel,
   saveAudioUpload,
   verifyAudioMime,
 } from '@/lib/audio-upload';
@@ -92,9 +92,7 @@ export async function POST(req: Request) {
   if (!mimeType) {
     return apiErr(
       400,
-      `不支持的文件格式或内容与声明不符，仅允许 ${[...ALLOWED_AUDIO_MIMETYPES]
-        .map((m) => m.replace('audio/', '').toUpperCase())
-        .join('、')}`
+      `不支持的文件格式或内容与声明不符，仅允许 ${allowedAudioFormatLabel()}`
     );
   }
 

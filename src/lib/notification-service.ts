@@ -45,6 +45,12 @@ const ACTION_PREF_MAP: Readonly<Record<string, NotifyPrefKey>> = {
   // 图片删除严格说不是「文章」被删，但四个开关里没有更贴的；站长违规删图的调用点
   // （api/images/admin/[id]）本就传 force:true，落在哪个键上实际不影响送达。
   图片删除: 'notifyDelete',
+  // 音频删除同上（api/audio/admin/[id]）。
+  // ⚠️ 这一行是**刻意登记**的，不是照抄：本文件的纪律是「精确表，不做子串嗅探」，
+  // 而漏登记的后果是 prefForAction 返回 null ＝ 「不受偏好拦截、照常发送」——
+  // 一条本该受开关管的新通知会静默地绕过用户的设置。删音频那条本就 force:true，
+  // 所以实际送达不受影响，但靠遗漏拿到这个结果就错了。
+  音频删除: 'notifyDelete',
   // ── notify_admin ──「管理员通知」，含管理动作与站务播报
   禁言通知: 'notifyAdmin',
   解除禁言: 'notifyAdmin',
