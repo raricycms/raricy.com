@@ -75,6 +75,7 @@ const AVATAR_SITES = [
   'src/app/fish/market/TransferPanel.tsx', // 转账面板 + 二次确认（36 / 44px）
   'src/app/fish/market/ShopPanel.tsx', // 商城预览：把商品框叠在访问者自己的头像上（52px）
   'src/app/fish/PayForm.tsx', // 收银台 / 收款页的收款人（36px）
+  'src/app/settings/FramePanel.tsx', // 装备中的框预览（72px）+ 可选框清单（56px）
   'src/app/components/UserPicker.tsx', // 发用户名片的选人列表（32px）
 ];
 
