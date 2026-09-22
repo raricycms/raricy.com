@@ -188,12 +188,14 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 - **入口只能进 `/fish` 卡片的 `.fish-card__info`** —— 上面那条行动条被
   `tests/e2e/fish-layout.spec.ts` 钉死为「恰好 3 颗」，`.fish-card__link-label` 钉死为 2 个。
 - **改 `MARKET_FEE_RATE` / `MIN_STAKE_FISH` 要同步页面文案**（与 `RULES` 的纪律同源）。
-- 行情轮询是本站**第二个**后台循环（第一个是回调投递），也要在 `tests/setup.ts` 与
-  playwright 的 webServer env 里置 0 —— e2e 跑的是 `next start`，那道
-  `NODE_ENV === 'test'` 的保险在那儿盖不住。
-- **展示缓存（含 K 线）挂在 `globalThis` 上，别改回模块级变量** —— Next 把
-  `instrumentation.ts` 编进**独立的 compilation**，`market-price.ts` 于是在同一份
-  产物里有两份模块实例（轮询器一份、页面与三个接口一份）。模块级变量 = 「轮询器刷
+- 行情有两个后台循环：**轮询**（`market-poll-drainer.ts`，15 秒一次，本站第二个）与
+  **行情流**（`market-stream.ts`，常驻 WebSocket，第三个；`MARKET_STREAM_SILENCE_MS=0`
+  可关）。**两个都要**在 `tests/setup.ts` 与 playwright 的 webServer env 里置 0 ——
+  e2e 跑的是 `next start`，那道 `NODE_ENV === 'test'` 的保险在那儿盖不住。
+  行情流即使开着也**只喂展示**：成交仍然 `fetchQuote()` 现取。
+- **展示缓存（含 K 线、以及行情流那一份）挂在 `globalThis` 上，别改回模块级变量** ——
+  Next 把 `instrumentation.ts` 编进**独立的 compilation**，`market-price.ts` 于是在
+  同一份产物里有两份模块实例（轮询器一份、页面与三个接口一份）。模块级变量 = 「轮询器刷
   自己那份、页面上冻住另一份」，**不报任何错**。展开见 `src/lib/market-price.ts` 头部。
 
 ### 软删除

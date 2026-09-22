@@ -684,7 +684,7 @@ URL 请来抓」。（`robots.ts` 的**路径级**规则不需要动 —— `/ex
   万一出口不通的换源开关，不用发版。见 `src/lib/market-price.ts` 头部。
 - **展示缓存与轮询**：`market-poll-drainer.ts` 每 15 秒刷一次（`MARKET_POLL_MS=0` 可关），
   由 `src/instrumentation.ts` 启动 —— 它是本站**第二个**后台循环。它**只服务展示**，
-  与成交无关。页面自己也有 15 秒轮询（隐藏标签页不轮、回前台先补一次）。
+  与成交无关。页面自己也有轮询（1 秒；隐藏标签页不轮、回前台先补一次）。
   ⚠️ **那份缓存（含 K 线）住在 `globalThis` 上，别改回模块级变量。** Next 把
   `instrumentation.ts` 编进**独立的 webpack compilation**，`market-price.ts` 因此
   在同一份产物里存在**两份模块实例**（实测：`chunks/7345.js` 的 module 7345 是轮询器
@@ -694,6 +694,21 @@ URL 请来抓」。（`robots.ts` 的**路径级**规则不需要动 —— `/ex
   **从第一次渲染起永远不再变，且不报任何错**（2026-09 实际发生过：站长盯着一个冻住的
   页面半小时，同期 BTC 振幅 0.47%）。见 `src/lib/market-price.ts` 头部，
   回归测试见 `tests/unit/market-price.test.ts` 的「缓存跨模块实例共享」。
+- **实时行情流**：`market-stream.ts` 是一条**常驻 WebSocket**（本站**第三个**后台循环），
+  订币安的 `@trade`（与成交同口径：都是最新成交价），把价写进上面那份共享缓存里的
+  `stream` 字段 —— 与 REST 那份**平级**，因为 `refreshQuotes()` 是整份覆盖写。
+  读侧 `getCachedQuotes()` 逐标的挑：帧还在 `STREAM_TRUST_MS`（10 秒）之内就用它，
+  否则回落到轮询那份。实测依据（2026-09-22 生产机 10 分钟）：0 重连、53828 tick、
+  **合计**最长静默 0.9s、事件时间差 30~54ms（对照 REST 一次往返 402ms）。
+  - ⚠️ **半死判据盯「合计」静默，不是单标的** —— 同一次实测里 BTC 自己冷清过 3.5 秒，
+    按单标的判会白重连。
+  - ⚠️ **握手失败时 node 内置 WebSocket 只报 error 不发 close**（域被黑洞时连 error
+    都不来）→ 所有下线路径走 `onDown()`，另有 1 秒看门狗兜底。别只挂 `onclose`。
+  - **三道闸门**：`NODE_ENV === 'test'` / `MARKET_STREAM_SILENCE_MS=0`（运维开关）/
+    本进程没有全局 WebSocket（Node 20）时打一行日志后优雅退化。e2e 与 vitest 都要关
+    （理由与另两个循环同款，e2e 那份在 `playwright.config.ts` 的 webServer env 里）。
+  - **它只喂展示**：成交仍然 `fetchQuote()` 现取。`tests/unit/market-price.test.ts`
+    有一条专门钉「流里有价也不许拿来成交」。
 - **结算**：`payoutUnits = floor(stakeUnits × 平仓价 / 开仓价 × (1 − MARKET_FEE_RATE))`。
   `floor` 是刻意的 —— 舍入永远朝系统一侧，宁可少发一个单位也不凭空多铸。手续费
   **只在平仓侧收一次**（开仓免费、持有免费）。最小投入 1 条鱼干。
