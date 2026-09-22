@@ -575,7 +575,7 @@
   flex-direction: row-reverse;
 }
 
-// 同人连续消息：省略头像与名字，并收紧与上一条的间距（视觉上并成一簇）。
+// 同人连续消息：省略时间 / 名字 / 头像，并收紧与上一条的间距（视觉上并成一簇）。
 // 头像位置留出等宽空位，保证气泡左右对齐不跳。
 .chat-msg--grouped {
   margin-top: -8px;
@@ -591,8 +591,13 @@
 .chat-msg--grouped .chat-msg__avatar:focus-visible {
   opacity: 1;
 }
-.chat-msg--grouped .chat-msg__name {
-  display: none;
+// 时间与名字同样用 visibility 而不是 display: none —— 行高原地保留，
+// 悬停时浮出来的「回复 / 删除」（.chat-msg__actions）不会把整条消息连同下方
+// 内容顶下去。它们在 a11y 树里随之消失，不会被读屏念成「有内容但看不见」。
+// 私聊的「已读 / 未读」回执与它们同一行，照常显示。
+.chat-msg--grouped .chat-msg__name,
+.chat-msg--grouped .chat-msg__time {
+  visibility: hidden;
 }
 // 触屏没有 hover：分组消息的头像常显，否则没法打开头像菜单
 @media (hover: none) {

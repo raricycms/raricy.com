@@ -61,6 +61,67 @@ export function fmtDay(ts: string | null): string {
     : `${d.getUTCFullYear()}年${d.getUTCMonth() + 1}月${d.getUTCDate()}日`;
 }
 
+// ── 连续消息合并 ─────────────────────────────────────────────────────────────
+// 同一个人连着发言时，只有**这一串的第一条**画表头（时间 / 用户名 / 头像），
+// 后续几条省略 —— 屏幕上因此是一簇气泡配一个时间戳，而不是每条都顶一行。
+
+/**
+ * 合并时间窗，**从这一串的第一条起算**（不是与上一条逐条比较）。
+ *
+ * 逐条比较在「每 4 分钟发一条」时会无限并下去，一串能横跨几个小时；锚在串首则
+ * 一串总长不超过这个窗口，超了就断开重开一串（表头在断开的那条上重新出现）。
+ */
+export const CHAT_GROUP_WINDOW_MS = 5 * 60_000;
+
+/** 时间戳 → 毫秒；缺失 / 不可解析返回 NaN（读不出间隔就不合并）。 */
+function timeOf(ts: string | null): number {
+  if (!ts) return Number.NaN;
+  const t = new Date(ts).getTime();
+  return Number.isNaN(t) ? Number.NaN : t;
+}
+
+/**
+ * 标出哪些消息要省略表头 —— 返回与入参**等长**的布尔数组，按索引对齐。
+ * `true` = 这条是同一人连续发言的后继，不显示时间、用户名与头像；
+ * `false` = 串首（或打断了上一串的那条），表头照常显示。
+ *
+ * 【判据】作者与当前这一串相同，且距**这一串的第一条**不超过 CHAT_GROUP_WINDOW_MS
+ * （含端点）。跨自然日也算断开 —— 日期分隔线本来就插在两者之间，表头必须跟着出现。
+ *
+ * 【拍一拍两侧都不并进来】它是居中的系统行，视觉上打断了气泡簇：它自己不做后继，
+ * 也**不做串首** —— 它后面那条照常显示表头，再从那条起算新的一串。
+ *
+ * 【为什么不在渲染时只看相邻两条】窗口锚在串首而非上一条，判据必须沿列表顺序累积
+ * 状态，单看相邻两条算不出来（理由见 CHAT_GROUP_WINDOW_MS 上方）。
+ */
+export function markGroupedMessages(messages: ChatMessageDTO[]): boolean[] {
+  const grouped: boolean[] = [];
+  /** 当前这一串是谁、从哪一刻起算；null / NaN = 没有可承接的串（换人、拍一拍打断） */
+  let runAuthor: string | null = null;
+  let runStart = Number.NaN;
+
+  for (let i = 0; i < messages.length; i++) {
+    const m = messages[i];
+    const prev = i > 0 ? messages[i - 1] : null;
+    const ts = timeOf(m.created_at);
+    const gap = ts - runStart; // NaN 落进下面的比较里自然为 false
+
+    const merged =
+      !m.pat &&
+      (!prev || dayKey(prev.created_at) === dayKey(m.created_at)) &&
+      runAuthor === m.author.id &&
+      gap >= 0 &&
+      gap <= CHAT_GROUP_WINDOW_MS;
+
+    grouped.push(merged);
+    if (!merged) {
+      runAuthor = m.pat ? null : m.author.id;
+      runStart = m.pat ? Number.NaN : ts;
+    }
+  }
+  return grouped;
+}
+
 /**
  * 消息是否 @ 了某人：出现 `@username` 且其后紧跟空白或行尾。
  * 收尾的空白既是「@ta」插入时的固定格式（自动补一个空格），也是边界 ——
@@ -85,7 +146,10 @@ export interface ChatMessageItemProps {
   currentUsername: string;
   /** 被锚点/搜索跳转命中 → 短暂高亮（见 ChatApp 的 jumpToMessage） */
   highlighted?: boolean;
-  /** 与上一条同一作者、中间没人插话 → 省略头像与名字（连续消息合并） */
+  /**
+   * 同一人连续发言的后继（距这一串的第一条 ≤ CHAT_GROUP_WINDOW_MS）
+   * → 省略时间 / 用户名 / 头像。判据见 markGroupedMessages，别在调用点另算一套。
+   */
   grouped?: boolean;
   /** 私聊里「我发出的最后一条」的送达状态（对方读游标决定）；其他消息不传 */
   receipt?: 'read' | 'unread' | null;

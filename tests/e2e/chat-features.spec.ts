@@ -208,6 +208,63 @@ test.describe('讨论功能：链接 / 跳转 / 搜索 / 日期分隔', () => {
   });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 连续消息合并：同一个人连着发言时，只有**这一串的第一条**画表头（时间 / 用户名 /
+// 头像），后面几条省略。
+//
+// 【判据本身在单测里】测试是 tests/unit/chat-grouping.test.ts（5 分钟窗口锚在串首、
+// 拍一拍与跨日打断 —— 那些都要真等 5 分钟或造历史数据，e2e 里造不出来）。
+// 这条只钉**接线**：算出来的标志真的作用到了 DOM 上（少一处，屏幕上就是每条都顶着
+// 一行时间，而任何后端用例都不会红）。
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('连续消息合并', () => {
+  test('同人连着发两条 → 第二条省略时间与头像，第一条照常', async ({ page, isMobile }) => {
+    const tag = uniqueTag();
+    const first = `e2e-group-1-${tag}`;
+    const second = `e2e-group-2-${tag}`;
+
+    // 发言者用一次性新用户（种子号的发言桶是两个 project 共用的，见 helpers）
+    await registerFreshUser(page, { core: true });
+    // 造在私聊里：大区是全站共用频道，别的用例随时可能插进两条之间把这一串打断
+    const created = await page.request.post('/api/chat/channels', {
+      data: { user_id: SEED_USERS.admin.id },
+    });
+    expect(created.status(), `建私聊失败: ${await created.text()}`).toBe(200);
+    const channelId = ((await created.json()) as { channel: { id: string } }).channel.id;
+    for (const content of [first, second]) {
+      const res = await page.request.post(`/api/chat/channels/${channelId}/messages`, {
+        data: { content },
+      });
+      expect(res.status(), `发消息失败: ${await res.text()}`).toBe(200);
+    }
+
+    await page.goto(`/chat?channel=${channelId}`);
+    const firstRow = msgRow(page, first);
+    const secondRow = msgRow(page, second);
+    await expect(firstRow).toBeVisible();
+    await expect(secondRow).toBeVisible();
+
+    // 串首：表头照常（时间与名字都在）。这两条也是下面「后继看不到」的**对照**——
+    // 少了它，选择器写错时 toBeHidden() 会因为「压根没有这个元素」而空过。
+    await expect(firstRow).not.toHaveClass(/chat-msg--grouped/);
+    await expect(firstRow.locator('.chat-msg__time')).toBeVisible();
+    await expect(firstRow.locator('.chat-msg__name')).toBeVisible();
+
+    // 后继：时间与名字都不显示。时间用 visibility: hidden（占位留着，悬停时
+    // 「回复 / 删除」浮出来不会把整条消息顶下去），Playwright 的 toBeVisible 认它。
+    await expect(secondRow).toHaveClass(/chat-msg--grouped/);
+    await expect(secondRow.locator('.chat-msg__time')).toBeHidden();
+    await expect(secondRow.locator('.chat-msg__name')).toBeHidden();
+
+    // 头像靠 opacity 隐去（**仍可点** —— 它是拍一拍 / @ta / 主页的入口），所以断言
+    // 只能落在 opacity 上，不能用 toBeHidden。触屏没有 hover，样式表会把分组消息的
+    // 头像常显（否则打不开头像菜单），移动端不适用这条断言。
+    if (!isMobile) {
+      await expect(secondRow.locator('.chat-msg__avatar')).toHaveCSS('opacity', '0');
+    }
+  });
+});
+
 test.describe('Markdown 渲染', () => {
   test('正文按 Markdown 渲染（粗体 / 行内代码 / 列表 / 引用）', async ({ page }) => {
     const marker = `e2e-md-${uniqueTag()}`;

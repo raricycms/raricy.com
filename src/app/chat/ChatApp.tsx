@@ -29,7 +29,12 @@ import NewChatModal from './NewChatModal';
 import QuoteBlogModal from '../components/QuoteBlogModal';
 import AvatarMenu, { type AvatarMenuAnchor } from './AvatarMenu';
 import ImageLightbox from '../components/ImageLightbox';
-import ChatMessageItem, { dayKey, fmtDay, isMentioned } from './ChatMessageItem';
+import ChatMessageItem, {
+  dayKey,
+  fmtDay,
+  isMentioned,
+  markGroupedMessages,
+} from './ChatMessageItem';
 import ChatSidebar from './ChatSidebar';
 import RichComposer, { type ComposerBlogQuote } from '../components/RichComposer';
 import { usePendingImage } from '../components/usePendingImage';
@@ -315,7 +320,20 @@ export default function ChatApp({
 
   const maxFold = Math.max(0, messages.length - DOM_CAP);
   const folded = Math.min(foldedCount, maxFold);
-  const visibleMessages = folded > 0 ? messages.slice(folded) : messages;
+  const visibleMessages = useMemo(
+    () => (folded > 0 ? messages.slice(folded) : messages),
+    [messages, folded]
+  );
+
+  /**
+   * 连续消息合并：同一个人连着发言时，只有这一串的第一条画表头（时间 / 用户名 /
+   * 头像），后面几条省略。判据（5 分钟窗口锚在串首、拍一拍与跨日打断）在
+   * markGroupedMessages 里 —— 渲染这一层只管按下标取。
+   *
+   * 与 visibleMessages 一样 memo 掉：列表是本页最重的渲染子树，而输入框每敲一个字
+   * 都会让 ChatApp 重渲染（ChatMessageItem 靠 props 是原始值才跳得过重渲染）。
+   */
+  const groupedFlags = useMemo(() => markGroupedMessages(visibleMessages), [visibleMessages]);
 
   /**
    * 自动折叠：列表**尾部**长了多少条，就把折叠量往上推多少条。
@@ -1579,15 +1597,9 @@ export default function ChatApp({
               {visibleMessages.map((m, i, arr) => {
                 const prev = i > 0 ? arr[i - 1] : null;
                 const showDate = !prev || dayKey(prev.created_at) !== dayKey(m.created_at);
-                // 同人连续消息：上一条还是同一个人（中间没人插话）→ 省略头像与名字。
-                // 不看时间间隔、也不看有没有引用 —— 头像只在「这一串的第一条」上出现。
-                // 拍一拍是居中系统行，视觉上打断了气泡簇，两侧都不并进来。
-                const grouped =
-                  !showDate &&
-                  !!prev &&
-                  prev.author.id === m.author.id &&
-                  !m.pat &&
-                  !prev.pat;
+                // 同人连续消息：省略时间 / 用户名 / 头像，只在「这一串的第一条」上画。
+                // 判据（5 分钟窗口锚在串首、拍一拍与跨日打断）见 markGroupedMessages。
+                const grouped = groupedFlags[i];
                 // 「以下是新消息」分隔线：进频道时的已读位置之后的第一条
                 const showNewSep =
                   newCount > 0 &&
