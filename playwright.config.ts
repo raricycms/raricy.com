@@ -170,6 +170,10 @@ export default defineConfig({
       NODE_ENV: 'production',
       DATABASE_URL: `file:${E2E_DB}`,
       SECRET_KEY: 'e2e-test-secret-key',
+      // 回调签名密钥的专用加密钥匙。**故意给一个与 SECRET_KEY 不同的值**：
+      // 两条写路径（登记回调 / 换密钥）在缺它时是**响亮失败**（503），漏设的话
+      // 以后写回调的用例会以一个看不出根因的 503 收场。
+      FISH_ENCRYPTION_KEY: 'e2e-test-fish-encryption-key',
       // 站点走 http://127.0.0.1 —— 若下发 Secure cookie，浏览器会丢弃它，
       // 登录会「成功但不粘」。这正是线上踩过的坑；此处显式关掉，
       // 另有专门用例验证该判定逻辑本身。

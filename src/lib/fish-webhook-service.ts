@@ -28,7 +28,7 @@
 import { createHmac, randomBytes } from 'node:crypto';
 import { prisma } from './db';
 import { nowForDb } from './db-time';
-import { sealSecret, openSecret, generateSecret } from './secret-box';
+import { sealSecret, openSecret, generateSecret, SecretBoxError } from './secret-box';
 import {
   resolveWebhookTarget,
   postWebhook,
@@ -160,7 +160,7 @@ export async function upsertWebhookEndpoint(
     data: {
       userId,
       url,
-      secretEncrypted: sealSecret(secret, encryptionKeySource()),
+      secretEncrypted: sealWebhookSecret(secret),
       consecutiveFailures: 0,
       createdAt: now,
       updatedAt: now,
@@ -188,7 +188,7 @@ export async function rotateWebhookSecret(
   const secret = generateSecret();
   await prisma.fishWebhookEndpoint.update({
     where: { userId },
-    data: { secretEncrypted: sealSecret(secret, encryptionKeySource()), updatedAt: nowForDb() },
+    data: { secretEncrypted: sealWebhookSecret(secret), updatedAt: nowForDb() },
   });
   return { ok: true, secret };
 }
@@ -202,9 +202,172 @@ export async function disableWebhookEndpoint(userId: string): Promise<boolean> {
   return res.count > 0;
 }
 
-/** 密钥来源取自 secret-box 的同一套派生（FISH_ENCRYPTION_KEY 优先，回退 SECRET_KEY）。 */
-function encryptionKeySource(): string {
-  return process.env.FISH_ENCRYPTION_KEY || process.env.SECRET_KEY || '';
+// ── 回调签名密钥的钥匙（写用专用钥匙；读带一段过渡回退）──────────────────────
+//
+// 【两把钥匙的分工】**写**一律用 `FISH_ENCRYPTION_KEY`；**读**先试它，解不开再
+// 回退 `SECRET_KEY`。回退这条不是设计，是**过渡**：存量密文是仓库早期用会话密钥
+// 封的（那时两处凭证共用一套派生，见 secret-box.ts 文件头；另一处
+// `users.fish_api_key_encrypted` 已经死了，只剩这一处还活着）。
+//
+// 为什么读要留回退：否则「先迁移再上线」成了一条**没有报错的部署顺序约束** ——
+// 顺序反了就是全部回调投递失败。有回退就没有时序问题：设上 `FISH_ENCRYPTION_KEY`、
+// 跑 `fish webhook-rekey` 把存量搬过去，中间怎么穿插都对。
+//
+// 为什么写**不留**回退：只要还允许用 `SECRET_KEY` 封新密文，这个耦合就会自己长
+// 回来（新部署少设一个变量 = 悄悄回到旧形状，而那时没有任何症状）。所以缺
+// `FISH_ENCRYPTION_KEY` 时直接抛 —— 这是一次响亮、可当场修好的失败。
+//
+// ★ 边界 ★ 回退是过渡态：**只要库里还有 legacy 行，换 `SECRET_KEY` 仍会让回调
+// 解不开**（响亮：投递失败，`fish webhooks` 与 `npm run diagnose` 段 4 都看得到）。
+// 跑完 rekey 之后 `SECRET_KEY` 就是纯粹的会话密钥了，随便换。
+
+/** 专用钥匙。缺失直接抛 —— 理由见上面「为什么写不留回退」。 */
+function requiredKeySource(): string {
+  const key = process.env.FISH_ENCRYPTION_KEY;
+  if (!key) {
+    throw new SecretBoxError(
+      'FISH_ENCRYPTION_KEY 未设置：回调签名密钥一律用它加密' +
+        '（SECRET_KEY 只在迁移期用于解开存量密文，不再用于加密）'
+    );
+  }
+  return key;
+}
+
+/** 存回调签名密钥（**写路径的唯一出口**）。 */
+export function sealWebhookSecret(plain: string): string {
+  return sealSecret(plain, requiredKeySource());
+}
+
+export type WebhookSecretState = 'current' | 'legacy' | 'unreadable';
+
+/** 这条密文是拿哪把钥匙封的？**只判定，不改任何东西、不泄露明文**。 */
+export function inspectWebhookSecret(ciphertext: string): WebhookSecretState {
+  const current = process.env.FISH_ENCRYPTION_KEY;
+  const legacy = process.env.SECRET_KEY;
+  if (current) {
+    try {
+      openSecret(ciphertext, current);
+      return 'current';
+    } catch {
+      /* 换下一把试 */
+    }
+  }
+  if (legacy && legacy !== current) {
+    try {
+      openSecret(ciphertext, legacy);
+      return 'legacy';
+    } catch {
+      /* 都不行 */
+    }
+  }
+  return 'unreadable';
+}
+
+/** 读回调签名密钥（**投递路径的唯一出口**）。两把钥匙都解不开即抛。 */
+export function openWebhookSecret(ciphertext: string): string {
+  const current = process.env.FISH_ENCRYPTION_KEY;
+  if (current) {
+    try {
+      return openSecret(ciphertext, current);
+    } catch {
+      /* 过渡期：可能还是 SECRET_KEY 封的 */
+    }
+  }
+  const legacy = process.env.SECRET_KEY;
+  if (legacy && legacy !== current) {
+    try {
+      return openSecret(ciphertext, legacy);
+    } catch {
+      /* 落下去报错 */
+    }
+  }
+  throw new SecretBoxError(
+    '回调签名密钥解不开：FISH_ENCRYPTION_KEY 与 SECRET_KEY 都不是它的钥匙。' +
+      '跑 `npm run diagnose` 段 4 看是哪一种情形（缺钥匙 / 换了密钥 / 待 rekey）'
+  );
+}
+
+/** 重加密的结果。`unreadable` 里是 user id（**绝不含密文或明文**）。 */
+export interface RekeyResult {
+  total: number;
+  /** 已经能用专用钥匙解开的（天然幂等：这部分原样跳过）。 */
+  alreadyCurrent: number;
+  /** 本次真搬过来的。dry-run 时恒为 0。 */
+  migrated: number;
+  /** 两把钥匙都解不开的 —— 只能人工查证。 */
+  unreadable: string[];
+  /** 写入失败的行（真故障，重跑即可）。 */
+  failed: string[];
+  dryRun: boolean;
+}
+
+/**
+ * 把存量回调签名密钥从 `SECRET_KEY` 搬到 `FISH_ENCRYPTION_KEY`（迁移期一次性动作）。
+ *
+ * 【为什么可以重复跑】逐行判定状态：已能用新钥匙解开的**原样跳过**，只有 legacy 行
+ * 才重封。于是中断、部分完成、或者「当时解不开、后来补上了钥匙」都能靠再跑一次收敛，
+ * 不需要跟踪表 —— 与「含数据变换的迁移只允许执行一次」不冲突：那条约束针对的是
+ * ×10 整数化那种**跑两次就错两次**的变换（见 docs/deploy.md「修改 schema 后」）。
+ * 本命令是幂等的：跑第三次与跑第一次的结果相同。
+ *
+ * 【逐行原子】每行一条 UPDATE，失败只影响那一行（`failed` 里报出来），已搬过去的
+ * 不会回滚 —— 与 `fish compensate` 同一取舍，换来的是「中途失败仍可续跑」。
+ *
+ * 【不做的事】不生成新密钥（那把钥匙变了，商户的验签代码就全废了）；不动
+ * `updatedAt` 以外的任何列。
+ */
+export async function rekeyWebhookSecrets(
+  opts?: { dryRun?: boolean }
+): Promise<RekeyResult> {
+  const dryRun = opts?.dryRun === true;
+  const current = process.env.FISH_ENCRYPTION_KEY;
+  if (!current) {
+    throw new SecretBoxError(
+      'FISH_ENCRYPTION_KEY 未设置：没有目标钥匙可搬。先在 .env 里设上它，再跑本命令'
+    );
+  }
+
+  const rows = await prisma.fishWebhookEndpoint.findMany({
+    select: { userId: true, secretEncrypted: true },
+  });
+
+  const result: RekeyResult = {
+    total: rows.length,
+    alreadyCurrent: 0,
+    migrated: 0,
+    unreadable: [],
+    failed: [],
+    dryRun,
+  };
+
+  for (const row of rows) {
+    const state = inspectWebhookSecret(row.secretEncrypted);
+    if (state === 'current') {
+      result.alreadyCurrent++;
+      continue;
+    }
+    if (state === 'unreadable') {
+      result.unreadable.push(row.userId);
+      continue;
+    }
+    if (dryRun) {
+      result.migrated++; // 预演：只报「待搬几条」，不写库
+      continue;
+    }
+    try {
+      // legacy 行：用旧钥匙解出明文，当场用新钥匙重封。明文只活在这一次调用里。
+      const plain = openSecret(row.secretEncrypted, process.env.SECRET_KEY ?? '');
+      await prisma.fishWebhookEndpoint.update({
+        where: { userId: row.userId },
+        data: { secretEncrypted: sealWebhookSecret(plain), updatedAt: nowForDb() },
+      });
+      result.migrated++;
+    } catch {
+      // 不把密文/明文写进日志
+      result.failed.push(row.userId);
+    }
+  }
+  return result;
 }
 
 /**
@@ -336,7 +499,7 @@ export async function deliverWebhook(
   let error: string | null = null;
   let statusCode: number | null = null;
   try {
-    const secret = openSecret(endpoint.secretEncrypted, encryptionKeySource());
+    const secret = openWebhookSecret(endpoint.secretEncrypted);
     const timestamp = Math.floor(Date.now() / 1000);
     // **重试时时间戳是新算的**（签名因而也是新的）—— 商户那边要按
     // X-Raricy-Delivery 去重、按时间戳判新鲜度，两者分工不同。

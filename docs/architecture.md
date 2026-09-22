@@ -260,7 +260,7 @@ SQLite 文件**里，只从远端恢复鱼干余额也拼不出站 —— 真正
 |------|------|
 | `account_sync_ledger` 表名 | 现在只是**幂等记录**表，新行一律 `status='synced'`。语义以 `fish-idempotency.ts` 头部为准 |
 | `users.fish_api_key_encrypted` 列 | 远端签发的用户 API Key 密文。**没有任何代码读它**，列与存量数据留着不删 |
-| `FISH_ENCRYPTION_KEY` / `SECRET_KEY` | **仍然必须正确** —— 它们是回调签名密钥的派生源（`secret-box.ts`） |
+| `FISH_ENCRYPTION_KEY` / `SECRET_KEY` | **仍然必须正确** —— 回调签名密钥的钥匙：写用前者、读带一段回退到后者的过渡期（见 `fish-webhook-service.ts` 的「回调签名密钥的钥匙」）。跑完 `fish webhook-rekey` 之后只剩前者 |
 | `docs/bot/fish-bank-example.md` | 站外第三方基于**本站对外接口**开银行的参考实现，与那个被撤销的微服务无关，照旧有效 |
 
 清单与判据见 `docs/legacy-constraints.md` §1.1。
@@ -1223,7 +1223,7 @@ MP3 的帧同步要核版本 / 层 / 位速率字段（只判 `0xFF` 打头太�
 | 进程内限频 | 多实例下各自计数，总限翻倍 | 多实例前先换 Redis |
 | 进程内「在看」状态（`chat-presence.ts`） | 多实例下「谁在看哪个会话」的报到与发消息可能落在不同实例 → 判不出在看 | 退化成照常发 @ 通知（多打扰一次，**不静默丢**），与进程内限频同一类已知限制 |
 | `instance/` 在部署机器 | 需挂载真实目录否则上传 500 | 部署脚本里 `node scripts/check-instance.mjs` 兜底 |
-| 初次部署既有库 | `FISH_ENCRYPTION_KEY` 必须留空，否则解不开存量密文 —— 受影响的是**回调签名密钥**（`fish_webhook_endpoints.secret_encrypted`），商户再也收不到通知且**不可逆** | `npm run diagnose` 段 4 抽查真实密文 |
+| 初次部署既有库 | 存量回调签名密钥（`fish_webhook_endpoints.secret_encrypted`）是 `SECRET_KEY` 封的：**跳过 `fish webhook-rekey` 就轮换 `SECRET_KEY`** → 商户再也收不到通知，且**不可逆**（密文没坏、只是没了钥匙） | `npm run diagnose` 段 4 逐条报「钥匙对不对 / 还剩几条没搬」；迁移命令 `fish webhook-rekey` 逐行判状态、可重复跑 |
 | 账目**没有第二个存储可以核对**（账户服务搬进站内后，`users.driedFish` 是唯一真源） | 有人改了余额却漏写流水这类静默损坏，没有外部的复式账本会替你发现 | 记账只走 `postEntry` 一扇门；不变式「每人余额 == 他所有流水之和」由 `tests/helpers/fish-ledger.ts` 的 `expectLedgerConsistent()` 钉着，写路径的用例都调它 |
 | **某一个 key 的 PNG 缺失**（git 里被删了、`FRAMES_DIR` 指到了别处、或某次部署漏了 `public/static/frames/`） | 那个框**全站静默不显示** —— 而「框不显示」与「没发过框」在页面上长得一模一样，页面不报任何错 | 渲染侧由 `frame-service` 的第三道闸降级成「干净的不显示」而不是 15 处破图；运维侧 `npm run cli -- frame list --keys` 是唯一能主动发现的地方（`frame grant` 成功时也会顺手体检并打黄色警告）。**素材 2026-09 起随代码入库**（原先要手工拷到服务器，那是个没有报错的部署步骤），所以这条风险现在只剩「git 里少了」与「指错了目录」两种 |
 | **改了出图脚本却忘了重跑**（素材入库**新引入**的失效：原先素材不在库里，非跑脚本不可，这件事不可能发生） | 站点继续显示**旧图**，不报错、不 500、日志里什么都没有 —— 只有人眼盯着那个框才看得出来 | 出图脚本把「生成这一刻」写进 `public/static/frames/manifest.json`（脚本自身 + 每张产物的 sha256），`tests/unit/frame-assets.test.ts` 逐条核对，报错里给出该跑哪条命令 |

@@ -17,7 +17,7 @@
 | 项 | 位置 | 为什么 |
 |---|---|---|
 | werkzeug 密码哈希格式 | `src/lib/password.ts` | 库里 `password_hash` 躺的是 werkzeug 生成的 `scrypt:N:r:p$salt$hex`。**生态库的默认选择**，不是我们的设计。新哈希也保持 werkzeug 可读（双向过渡），改动即等于让存量用户重置密码 |
-| Fernet 密钥派生自 `SECRET_KEY` | `src/lib/secret-box.ts` | 派生方式 `base64url(sha256(keySource))` 来自旧实现，且**密钥源是旧站的 `SECRET_KEY` 体系**。它当年服务两处凭证：用户发往账户微服务的 API Key、回调签名密钥。**前者随账户服务搬进站内一起消失，后者还是活的** —— 改了派生，`fish_webhook_endpoints.secret_encrypted` 全解不开，商户再也收不到回调、且**不可逆** |
+| Fernet 密钥派生自 `SECRET_KEY` | `src/lib/secret-box.ts` | 派生方式 `base64url(sha256(keySource))` 来自旧实现，且**当年的密钥源是旧站的 `SECRET_KEY`**。它当年服务两处凭证：用户发往账户微服务的 API Key、回调签名密钥。**前者随账户服务搬进站内一起消失，后者还是活的** —— 改了派生，`fish_webhook_endpoints.secret_encrypted` 全解不开，商户再也收不到回调、且**不可逆**。⚠️ **密钥源这一半已经可以摘掉**：写成 `FISH_ENCRYPTION_KEY`、跑 `fish webhook-rekey` 把存量重封过去即可（新行已经不碰 `SECRET_KEY` 了，见 `fish-webhook-service.ts` 的「回调签名密钥的钥匙」）—— 冻的只是**派生公式**，不是「必须挂在会话密钥上」 |
 | `users.fish_api_key_encrypted` 列 | `prisma/schema.prisma` | 站外账户微服务签发的用户 API Key 的 Fernet 密文。**该服务已搬进站内，这一列没有任何代码再读它**，但列与存量密文留着不删（删列要迁移，而迁移的风险大于它占的空间）。看到它别以为还有远端 |
 | `account_sync_ledger` 表名 | `prisma/schema.prisma`、`src/lib/fish-idempotency.ts` | 名字说的是「账户服务同步账本」（outbox），而那个机制已经不存在 —— 现在它只是一张**幂等记录**表，新行一律 `status='synced'`。表**刻意不改名**：里面有真的历史账（那些行的 payload/status 是当年对账的唯一凭据）。语义以 `fish-idempotency.ts` 头部为准 |
 | 时间戳的 TEXT 存储形态 | `src/lib/fish-service.ts`、`src/lib/db-time.ts` | SQLAlchemy 把 `datetime.now()` 按 `"YYYY-MM-DD HH:MM:SS.ffffff"` 写成 **TEXT**；新行是 INTEGER，**混存**。SQLite 跨存储类型比较按类型序不按数值，裸 SQL 日期函数一律不可靠 |

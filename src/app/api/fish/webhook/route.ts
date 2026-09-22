@@ -18,6 +18,7 @@ import {
   disableWebhookEndpoint,
   listRecentDeliveries,
 } from '@/lib/fish-webhook-service';
+import { SecretBoxError } from '@/lib/secret-box';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -98,7 +99,19 @@ export async function PUT(req: Request) {
   const url = typeof body.url === 'string' ? body.url : '';
   // SSRF 校验发生在 upsertWebhookEndpoint 里（**而且每次投递还会再查一遍** ——
   // 商户可以把已登记的域名改指向内网，只在登记时查是拦不住的）。
-  const res = await upsertWebhookEndpoint(user.id, url);
+  let res;
+  try {
+    res = await upsertWebhookEndpoint(user.id, url);
+  } catch (e) {
+    // 服务端加密钥匙不可用（缺 FISH_ENCRYPTION_KEY）：这是**运维要修的环境问题**，
+    // 不是这次请求本身的问题 —— 给 503 而不是让它冒泡成 500「服务器开小差了」，
+    // 真正的错因写进服务端日志（密钥材料绝不回给客户端）。
+    if (e instanceof SecretBoxError) {
+      console.warn(`[webhook] 加密钥匙不可用，登记被拒（user=${user.id}）: ${e.message}`);
+      return apiErr(503, '服务端密钥未配置，请联系站长');
+    }
+    throw e;
+  }
   if (!res.ok) return apiErr(400, res.message);
 
   return apiOk({

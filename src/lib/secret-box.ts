@@ -6,17 +6,19 @@
 //
 // 历史上还有第二处：`User.fishApiKeyEncrypted`（用户发往**站外账户微服务**的 API Key）。
 // 那个服务已经搬进站内、Key 不再存在，**但列与存量密文还在库里**（见 docs/legacy-constraints.md）。
-// 这让本文件多了一层不能省的意义：**派生方式仍然是冻结的** —— 库里那批密文没人再读，
-// 可回调签名密钥的密文是活的，改派生就当场把自己锁在门外。
+// 那批密文已经没有任何代码读它；回调签名密钥的密文是活的 —— 而**旧行是用当年那把钥匙
+// 封的**，所以派生方式不能改：改了它们一律解不开。
 //
-// 实现集中在这里是刻意的：当年两处凭证共用一套派生，抄两份的代价不是重复代码，
-// 是「改了一处、另一处静默解不开」—— 而它直到某次回调投递失败才会暴露。
+// 【本文件只管算法，不管「用哪把钥匙」】后者是业务策略，住在 fish-webhook-service 的
+// 「回调签名密钥的钥匙」那一段：**写一律用专用钥匙 `FISH_ENCRYPTION_KEY`，读先试它、
+// 解不开再回退 `SECRET_KEY`**（过渡期用，把存量搬过去就与 SECRET_KEY 无关了，
+// 命令是 `fish webhook-rekey`）。这里只提供 seal / open：给定 keySource，
+// 做 SHA-256 派生 + Fernet。
 //
-// ★ 派生方式是冻结的，改了旧密文一律解不开 ★
-//   key = base64url( SHA-256( FISH_ENCRYPTION_KEY || SECRET_KEY ) )   → Fernet
+// ★ 派生方式是冻结的 ★
+//   key = base64url( SHA-256( keySource ) )   → Fernet（keySource 由调用方给）
 //   Python 侧 cryptography.Fernet 可直接解开（标准 Fernet 令牌格式、随机 IV）。
-//   这条链上有两个已知的部署陷阱，见 docs/deploy.md 的 env 说明：
-//   SECRET_KEY 必须跨环境原样沿用；FISH_ENCRYPTION_KEY 在**已有库**上必须留空。
+//   部署侧怎么摆这两把钥匙，见 docs/deploy.md 的 env 说明。
 //   tests/unit/secret-box.test.ts 里钉了一个**金标准密文**（由重构前的实现产出），
 //   专门用来堵「两份实现一起被改」—— 那种情况下互通测试证明不了任何事。
 //

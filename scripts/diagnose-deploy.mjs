@@ -208,83 +208,81 @@ if (dbPath && fs.existsSync(dbPath)) {
   }
 }
 
-// ── 4. 回调签名密钥能否解开存量密文 ─────────────────────────────────────────
+// ── 4. 回调签名密钥：钥匙对不对 / 解耦进度 ───────────────────────────────────
 //
-// 【为什么必须查】这是整个部署里**唯一不可逆**的一项。商户的**回调签名密钥**
-// 用 Fernet 加密存在 fish_webhook_endpoints.secret_encrypted，密钥由 SECRET_KEY
-// 派生（base64url(sha256(FISH_ENCRYPTION_KEY || SECRET_KEY))）。
-// SECRET_KEY 换了，或者给 FISH_ENCRYPTION_KEY 填了值（历史实现里没有这个变量，
-// 填了就走它派生），全库密文立刻解不开 —— 商户再也收不到回调，而我们这边
-// 只在投递日志里看到失败。**密文本身没坏、只是没了钥匙。**
+// 【为什么必须查】商户的**回调签名密钥**用 Fernet 加密存在
+// fish_webhook_endpoints.secret_encrypted（`src/lib/secret-box.ts`）。这批密文解不开 =
+// 商户再也收不到回调，而站点这边只在投递日志里看到失败 —— **密文本身没坏、只是没了
+// 钥匙**，且这是我们唯一无法自己恢复的一类数据（找不回密钥就只能让商户换密钥）。
 //
-// 而这件事**完全可以在上线前机械验证**：拿几条真实密文试解一下就知道。
-// 否则只能等商户来问「为什么收不到通知」才发现，那时已经晚了。
+// 这节查两件事：
+//   ① **钥匙对不对** —— 两把都解不开就是致命项（换了密钥 / 设错了值）；
+//   ② **解耦进度** —— 还有几条是 `SECRET_KEY` 封的。有 legacy **不算错**（照样能
+//      解开），但「换会话密钥 = 商户回调全废」这条风险还在，`fish webhook-rekey` 可解。
 //
-// ⚠️ 抽查的是**回调密钥**，不是 users.fish_api_key_encrypted —— 后者是当年发往
+// ⚠️ 查的是**回调密钥**，不是 users.fish_api_key_encrypted —— 后者是当年发往
 // 站外账户微服务的用户 Key，已经没有任何代码读它（见 docs/legacy-constraints.md §1.1）。
-head('4. 回调签名密钥（上线前必查，错了不可逆）');
+head('4. 回调签名密钥（钥匙对不对 / 解耦进度）');
 if (dbPath && fs.existsSync(dbPath)) {
   if (process.env.FISH_ENCRYPTION_KEY) {
-    bad(
-      'FISH_ENCRYPTION_KEY 有值 —— 存量密文是用 SECRET_KEY 加密的，它一填就全解不开',
-      '留空即可（回退 SECRET_KEY，与历史生产一致）。仅全新部署、库里没有任何存量密文时才谈得上设它'
-    );
+    ok('FISH_ENCRYPTION_KEY 已设置（新密文一律用它封）');
   } else {
-    ok('FISH_ENCRYPTION_KEY 留空（回退 SECRET_KEY，与历史生产一致）');
+    wrn(
+      'FISH_ENCRYPTION_KEY 未设置：登记 / 换密钥这两条写路径会直接报错，且存量密文仍与 SECRET_KEY 绑着',
+      '设一个长随机串即可。设完跑 `npm run cli -- fish webhook-rekey` 把存量搬过去，' +
+        '此后 SECRET_KEY 就只是会话密钥了'
+    );
   }
 
   try {
     const { PrismaClient } = await import('@prisma/client');
     const prisma = new PrismaClient({ log: [] });
     try {
-      // 抽查**回调签名密钥**的密文（FishWebhookEndpoint.secretEncrypted）。
-      // 【为什么不是 users.fish_api_key_encrypted】那一列是当年发往站外账户微服务的
-      // 用户 Key（列与存量密文还在库里，见 docs/legacy-constraints.md），但已经没有任何
-      // 代码读它 —— 拿它验证「SECRET_KEY 对不对」会得出一个不影响任何功能的结论。
-      // 签名密钥是活的：解不开它，商户就再也收不到回调，所以它才是该被抽查的那批密文。
+      // 全表逐条判 —— 「登记过回调地址」的账号量级是个位数，抽样反而漏掉坏的那条。
+      // 列名以迁移 16 为准：这张表的主键是 user_id，**没有 id 列**
+      //（曾经这里写的是 `SELECT id, …`，于是每次都抛错、被下面的 catch 吞成一句警告，
+      //  这条「上线前必查」的闸门实际从未执行过）。
       const rows = await prisma.$queryRawUnsafe(
-        `SELECT id, secret_encrypted AS ct FROM fish_webhook_endpoints
-         WHERE secret_encrypted IS NOT NULL AND secret_encrypted != '' LIMIT 5`
+        `SELECT user_id AS uid, secret_encrypted AS ct FROM fish_webhook_endpoints
+         WHERE secret_encrypted IS NOT NULL AND secret_encrypted != ''`
       );
       if (!rows?.length) {
         wrn(
-          '库里没有任何回调签名密钥 —— 无法验证密钥对不对',
+          '库里没有任何回调签名密钥 —— 无法验证钥匙对不对',
           '没登记过回调地址就是这样的；等第一个商户登记之后再看'
         );
-      } else if (!process.env.SECRET_KEY) {
-        bad('SECRET_KEY 未设置，无法验证', '把历史生产 .env 里的 SECRET_KEY 原样搬过来');
       } else {
-        const { openSecret } = await import('../src/lib/secret-box.ts');
-        let good = 0;
-        const errs = [];
-        for (const r of rows) {
-          try {
-            // 派生方式与 fish-webhook-service 的 encryptionKeySource() 一致。
-            // 直连 secret-box 而不是走某个业务封装：这里要验的就是**密钥派生**本身。
-            const k = openSecret(
-              String(r.ct),
-              process.env.FISH_ENCRYPTION_KEY || process.env.SECRET_KEY || ''
-            );
-            if (k) good++;
-          } catch (e) {
-            errs.push(String(e).split('\n')[0]);
-          }
-        }
-        if (good === rows.length) {
-          ok(`SECRET_KEY 正确：抽查 ${good}/${rows.length} 条回调密钥密文全部解开`);
-        } else {
+        // 判定逻辑走服务层那一份（fish-webhook-service 的 inspectWebhookSecret）——
+        // 在这里另抄一遍「先试哪把钥匙」等于给漂移留门。
+        const { inspectWebhookSecret } = await import('../src/lib/fish-webhook-service.ts');
+        const count = { current: 0, legacy: 0, unreadable: 0 };
+        for (const r of rows) count[inspectWebhookSecret(String(r.ct))]++;
+
+        if (count.unreadable > 0) {
           bad(
-            `SECRET_KEY 不对：抽查 ${rows.length} 条，只解开 ${good} 条（${errs[0] ?? ''}）`,
-            'SECRET_KEY 必须与历史生产环境用的完全一致 —— 它在服务器的 .env 里，不在仓库。' +
-              '仓库里的是开发用的，解不开任何生产密文'
+            `${count.unreadable}/${rows.length} 条密文两把钥匙都解不开 —— 那几家商户的回调一直在失败`,
+            '钥匙不对（换过 SECRET_KEY，或 FISH_ENCRYPTION_KEY 设成了别的值）。' +
+              '密文没坏：找回当年加密用的那把密钥设回 SECRET_KEY 即可；找不回就只能让商户换密钥'
           );
+        }
+        if (count.legacy > 0) {
+          wrn(
+            `${count.legacy}/${rows.length} 条还是 SECRET_KEY 封的（解得开，但 SECRET_KEY 换不得）`,
+            '它们就是「轮换会话密钥 = 商户收不到回调」这条不可逆风险的来源。' +
+              '设好 FISH_ENCRYPTION_KEY 后跑一次 `npm run cli -- fish webhook-rekey` 解耦（可重复跑）'
+          );
+        }
+        if (count.current === rows.length) {
+          ok(`全部 ${rows.length} 条都是 FISH_ENCRYPTION_KEY 封的 —— 与 SECRET_KEY 已无关`);
         }
       }
     } finally {
       await prisma.$disconnect();
     }
   } catch (e) {
-    wrn(`无法验证密钥：${String(e).split('\n')[0]}`);
+    // 打**全**：Prisma 的错误正文在第二行，只取第一行会剩下一个光秃秃的类名
+    //（这正是这条闸门坏了很久却没人看出来的原因）。
+    wrn(`无法验证密钥：${String(e).replace(/\s+/g, ' ').slice(0, 200)}`);
   }
 } else {
   wrn('没有可读的数据库，跳过密钥验证');

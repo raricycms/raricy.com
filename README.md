@@ -39,7 +39,7 @@ Next.js 15 + Prisma + SQLite 单进程部署，自有 `instance/` 数据目录�
 ```bash
 node scripts/check-instance.mjs         # 首次创建 instance/{avatars,database,frames,images,stories,stickers,blogs}
 npm ci                                   # 严格按 lockfile 装（不要 npm install）
-cp .env.example .env                     # 填 SECRET_KEY / FISH_ENCRYPTION_KEY
+cp .env.example .env                     # 填 SECRET_KEY / FISH_ENCRYPTION_KEY（接管既有库的额外一步见 docs/deploy.md）
 npm run prisma:generate                  # 生成 Prisma Client
 npm run dev                              # http://localhost:3000
 ```

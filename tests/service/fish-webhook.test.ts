@@ -25,8 +25,12 @@ import {
   listRecentDeliveries,
   WEBHOOK_EVENT_TRANSFER_RECEIVED,
   WEBHOOK_MAX_ATTEMPTS,
+  inspectWebhookSecret,
+  openWebhookSecret,
+  sealWebhookSecret,
+  rekeyWebhookSecrets,
 } from '@/lib/fish-webhook-service';
-import { openSecret } from '@/lib/secret-box';
+import { openSecret, sealSecret } from '@/lib/secret-box';
 import { nowForDb } from '@/lib/db-time';
 import { createHmac } from 'node:crypto';
 
@@ -438,5 +442,111 @@ describe('投递记录查询', () => {
     expect(rows).toHaveLength(1);
     expect(Object.keys(rows[0])).not.toContain('payload');
     expect(await listRecentDeliveries(b.id)).toHaveLength(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 迁移期：把存量密文从 SECRET_KEY 搬到 FISH_ENCRYPTION_KEY
+//
+// 这一组钉的是「解耦」本身，判据见 fish-webhook-service 的「回调签名密钥的钥匙」：
+// 旧密文解得开（回退）、搬得动、搬完幂等、缺目标钥匙时**写路径响亮失败**
+//（而不是悄悄退回旧钥匙 —— 那会让这个耦合自己长回来）。
+// ─────────────────────────────────────────────────────────────────────────────
+describe('迁移期：两把钥匙', () => {
+  const LEGACY_KEY = process.env.SECRET_KEY as string;
+
+  /** 直接写一行「旧钥匙封的」密文 —— 等价于这次迁移之前的存量行。 */
+  async function seedLegacyRow(secret: string): Promise<string> {
+    const u = await makeUser();
+    await prisma.fishWebhookEndpoint.create({
+      data: {
+        userId: u.id,
+        url: 'http://127.0.0.1:9/hook',
+        secretEncrypted: sealSecret(secret, LEGACY_KEY),
+        createdAt: nowForDb(),
+        updatedAt: nowForDb(),
+      },
+    });
+    return u.id;
+  }
+
+  async function ciphertextOf(userId: string): Promise<string> {
+    const row = await prisma.fishWebhookEndpoint.findUniqueOrThrow({ where: { userId } });
+    return row.secretEncrypted;
+  }
+
+  it('旧钥匙封的密文照样解得开（回退），并如实报成 legacy', async () => {
+    const uid = await seedLegacyRow('legacy-secret');
+    const ct = await ciphertextOf(uid);
+    expect(inspectWebhookSecret(ct)).toBe('legacy');
+    expect(openWebhookSecret(ct)).toBe('legacy-secret');
+  });
+
+  it('rekey 只换封装、不换密钥本身，且重复跑是空操作', async () => {
+    const uid = await seedLegacyRow('merchant-must-not-rotate');
+
+    const first = await rekeyWebhookSecrets();
+    expect(first).toMatchObject({ total: 1, migrated: 1, alreadyCurrent: 0, failed: [] });
+
+    const ct = await ciphertextOf(uid);
+    expect(inspectWebhookSecret(ct)).toBe('current');
+    // ★ 解出来的仍是原来那把 —— 商户的验签代码不该因为这次迁移失效
+    expect(openSecret(ct, process.env.FISH_ENCRYPTION_KEY as string)).toBe(
+      'merchant-must-not-rotate'
+    );
+    // 旧钥匙已经打不开新密文了（这就叫搬过去了）
+    expect(inspectWebhookSecret(ct)).not.toBe('legacy');
+
+    const second = await rekeyWebhookSecrets();
+    expect(second).toMatchObject({ total: 1, migrated: 0, alreadyCurrent: 1 });
+  });
+
+  it('--dry-run 只报数不写库', async () => {
+    const uid = await seedLegacyRow('untouched');
+    const before = await ciphertextOf(uid);
+
+    const r = await rekeyWebhookSecrets({ dryRun: true });
+    expect(r).toMatchObject({ migrated: 1, dryRun: true });
+
+    expect(await ciphertextOf(uid)).toBe(before);
+  });
+
+  it('两把钥匙都解不开的行：判成 unreadable，rekey 不碰它', async () => {
+    const uid = await seedLegacyRow('x');
+    // 换成「第三把钥匙」封的密文 —— 模拟密钥丢失 / 被人改过
+    await prisma.fishWebhookEndpoint.update({
+      where: { userId: uid },
+      data: { secretEncrypted: sealSecret('x', 'some-key-we-no-longer-have') },
+    });
+    const ct = await ciphertextOf(uid);
+    expect(inspectWebhookSecret(ct)).toBe('unreadable');
+    expect(() => openWebhookSecret(ct)).toThrow();
+
+    const r = await rekeyWebhookSecrets();
+    expect(r).toMatchObject({ migrated: 0, alreadyCurrent: 0 });
+    expect(r.unreadable).toEqual([uid]);
+    expect(await ciphertextOf(uid)).toBe(ct); // 原样没动
+  });
+
+  it('缺 FISH_ENCRYPTION_KEY：读回退照旧，**写路径响亮失败**', async () => {
+    const uid = await seedLegacyRow('still-readable');
+    const saved = process.env.FISH_ENCRYPTION_KEY;
+    delete process.env.FISH_ENCRYPTION_KEY;
+    try {
+      // 读：回退到 SECRET_KEY，存量行照样能投递
+      expect(openWebhookSecret(await ciphertextOf(uid))).toBe('still-readable');
+      // 写：不静默退回旧钥匙（那会让耦合自己长回来），也不悄悄生成一把新密钥
+      expect(() => sealWebhookSecret('new-one')).toThrow(/FISH_ENCRYPTION_KEY/);
+      const fresh = await makeUser();
+      await expect(
+        upsertWebhookEndpoint(fresh.id, 'http://127.0.0.1:9/hook', { allowPrivate: true })
+      ).rejects.toThrow(/FISH_ENCRYPTION_KEY/);
+      // 没写进去
+      expect(await prisma.fishWebhookEndpoint.count({ where: { userId: fresh.id } })).toBe(0);
+      // rekey 也拒绝跑（没有目标钥匙）
+      await expect(rekeyWebhookSecrets()).rejects.toThrow(/FISH_ENCRYPTION_KEY/);
+    } finally {
+      process.env.FISH_ENCRYPTION_KEY = saved;
+    }
   });
 });

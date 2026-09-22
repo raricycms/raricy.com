@@ -10,6 +10,7 @@ import { apiOk, apiErr } from '@/lib/format';
 import { verifyCredentials } from '@/lib/credential-auth';
 import { clientIp } from '@/lib/request-ip';
 import { rotateWebhookSecret } from '@/lib/fish-webhook-service';
+import { SecretBoxError } from '@/lib/secret-box';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -37,7 +38,18 @@ export async function POST(req: Request) {
   if (!step.ok) return apiErr(step.status, step.message);
   if (step.user.id !== user.id) return apiErr(401, '凭据与当前登录账号不一致');
 
-  const res = await rotateWebhookSecret(user.id);
+  let res;
+  try {
+    res = await rotateWebhookSecret(user.id);
+  } catch (e) {
+    // 与 PUT /api/fish/webhook 同款：缺加密钥匙是环境问题（503），不是用户请求的问题。
+    // **旧密钥立即失效**这条语义在换密钥失败时照旧成立 —— 库里那行一个字节都没动。
+    if (e instanceof SecretBoxError) {
+      console.warn(`[webhook] 加密钥匙不可用，换密钥被拒（user=${user.id}）: ${e.message}`);
+      return apiErr(503, '服务端密钥未配置，请联系站长');
+    }
+    throw e;
+  }
   if (!res.ok) return apiErr(400, res.message);
 
   return apiOk({
