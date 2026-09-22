@@ -231,8 +231,16 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 
 ### 文件落盘
 
-`docs/architecture.md` §6.6（五个存储域 + env 覆盖 + 读取入口）+ `src/lib/image-upload.ts`
+`docs/architecture.md` §6.6（六个存储域 + env 覆盖 + 读取入口）+ `src/lib/image-upload.ts`
 头部（MIME 嗅探、`sanitizeFilename` 的白名单防线、配额常量的来由）。
+
+音频床那一路另有一层坑，见 `src/lib/audio-upload.ts` 头部：**MIME 别名归一化**
+（`.m4a` 的声明值三种平台三个样，还可能是空串；归一化只用来补浏览器没给的那格，
+权威始终是字节，且落库的必须是**认过的规范形**），以及**为什么刻意不转码**。
+`src/lib/audio-refs.ts` 头部是 `[@音频/<ID>]` 的全部口径。
+⚠️ `/api/audio/[id]/raw` 的 **Range 是硬需求不是优化**：Safari 会先发
+`Range: bytes=0-1` 探测，拿不到 `206` 直接不播；而仓库里那两处流是无界 SSE、
+刻意没有 `Content-Length`，形状正好相反，**不可复用**。见 §6.15。
 
 ### Markdown / 内容渲染
 
@@ -288,6 +296,26 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 取数口是 `GET /api/users/<id 或用户名>`：**按 id 匿名可达，按名字要 core+**
 （名字可枚举，id 不可）。句柄是 id 还是名字由**实际命中了哪一列**决定，
 别改成拿 UUID 正则去认 —— id 不保证是 UUID。
+
+### 音频床
+
+`docs/architecture.md` §6.15 是主副本；各文件头讲自己那一段：`audio-upload.ts`
+（嗅探与别名归一化）、`audio-service.ts`（**独立配额聚合**）、`audio-refs.ts`
+（`[@音频/<ID>]`，**零 import** —— 要被 chat-shared 拉进客户端包）。
+
+**`音频` 是保留合集名，与 `用户` 完全同构的问题** —— 表情那条正则的形状也是
+`[@A/B]`。**两端必须一起改**：`sticker-refs.ts` 的 `RESERVED_CARD_COLLECTIONS`
+让开它，`sticker-service.ts` 的扫盘跳过同名目录。只改一端 = 「面板里挑得出、
+一渲染却变成播放器」。加第三个保留名时照这个走。
+
+**两条管线的接入方式不同，别互相照抄**：评论 / 讨论在**净化后**建 DOM（那边白名单里
+没有 audio，与没有 img 同理）；博客在**源文**上拼标签串（那边白名单本来就允许 audio），
+但**必须配 `maskMarkdownCode`** —— 源文阶段没有 DOM、跳过不了 `CODE`/`PRE`，
+漏了就会在代码块里嵌出一个真播放器。这是博客侧最可能的静默错误。
+
+**展开发开上限是 3，不是图片的 50**：单文件 10MB × 配额 50MB ⇒ 一个 core 用户最多
+5 个满额文件；图片每个引用是一次小文件读，音频是 MB 级传输。上限仍是正文长度的
+确定性函数，所以不破坏渲染缓存。
 
 ### 画报与鱼干收款码
 

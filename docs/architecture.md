@@ -100,6 +100,7 @@
 | `/checkin` · `/api/checkin` · `/api/checkin/claim` | page + API | 每日签到（**core+**：鱼干的赚取渠道，与投喂/点赞同档）。**三处都要判** —— 发鱼的其实是 `claim`，见 §8 |
 | `/clipboard` · `/clipboard/[id]` · `/api/clipboard/*` | page + API | 云剪贴板 |
 | `/image` · `/image/admin` · `/api/images/*` | page + API | 图床 + 管理 |
+| `/audio` · `/audio/admin` · `/audio/guide` · `/api/audio/*` | page + API | 音频床 + 管理。**独立配额**（不吃图床那份 50MB），见 §6.6/§6.15 |
 | `/image/i/<id>` · `/auth/avatar/<id>` | rewrite | **不是路由**：历史版本的旧直链，由 `next.config.mjs` 的 `rewrites()` 映射到 `/api/images/<id>/raw`、`/api/avatar/<id>`。存量正文里写死的就是它们（见 `tests/e2e/legacy-urls.spec.ts`） |
 | `/story` · `/story/[...path]` | page | 故事合集/阅读 |
 | `/tool` · `/tool/<sub>` | page | 工具集（aes / base / hash / hex / html / qp / translate / url / cattca） |
@@ -108,7 +109,8 @@
 | `/contact` · `/privacy` · `/terms` | page | 联系 / 隐私 / 条款 |
 | （无 URL）`forbidden.tsx` | 特殊文件 | 403 页本身；由 `forbidden()` 原地渲染，**不是** `/forbidden` 路由 |
 | `/sitemap.xml` · `/robots.txt` | route | sitemap.ts / robots.ts |
-| `/api/avatar/[id]` · `/api/images/[id]/raw` | API | 头像 / 图床原生分发 |
+| `/api/avatar/[id]` · `/api/images/[id]/raw` · `/api/audio/[id]/raw` | API | 头像 / 图床 / 音频床原生分发。**音频那条支持 Range**（`206`）—— 播放器拖进度条与 Safari 的播放探测都靠它，图床这条没有 |
+| `/api/audio/admin/[id]` | API | 音频床**站长硬删**（物理删文件 + 删行）。用户侧那条 `DELETE /api/audio/:id` 一律软删 |
 | `/api/frames/[key]` | API | **头像框素材字节**（`public/static/frames/<key>.png`）。**刻意匿名** —— 与表情字节路由同性质：素材不属于任何账号、不随会话变化。**到期不在这里判、也不该判**：到期的是一条**引用**（谁在戴），不是这些字节（见 §6.14） |
 | `/api/users/me/frame` | API | **我的头像框**：`GET` 回持有列表 + 当前装备（都是**判定后的结果**），`PUT` 装备 / 换框 / 卸下（`{ frame_key: string \| null }`）。用户侧唯一的写口，见 §6.14 |
 | `/u/[id]` | page | 公开用户主页（**段名是用户 id（UUID），不是 username**）。**匿名可达**（主页画报的二维码把站外人引到这里），故内容按查看者分档：身份字段人人可见，role 徽章 / 最近文章 / 最近评论 / 计数 / 最后登录只给本人或 core+ —— 收口在 `user-service.getPublicProfile` 与页面里，两边口径必须一致 |
@@ -131,6 +133,7 @@
 | 投票 / 签到 / 剪贴板 | `vote-service.ts` · `checkin-service.ts` · `clipboard-service.ts` |
 | 收藏夹 | `favorite-service.ts`（六条不变量见文件头）· `favorite-refs.ts`（`[@六位]` 的纯逻辑），见 §6.9 |
 | 图床 | `image-service.ts` · `image-upload.ts`（服务端）· `image-client.ts`（浏览器侧选图上传，讨论与评论共用）· `vditor-upload.ts`（Vditor 编辑器的上传配置，博客与剪贴板共用；与 `/api/images` 的字段名/响应结构两端对齐，见 `tests/unit/vditor-upload.test.ts`） |
+| 音频床 | `audio-upload.ts`（magic bytes 嗅探 + **MIME 别名归一化**，**无压缩**）· `audio-service.ts`（含**独立配额聚合**）· `audio-refs.ts`（`[@音频/<ID>]`，**零 import** —— 要被拉进客户端包）· `audio-client.ts`，见 §6.15 |
 | 头像框 | `frame-refs.ts`（**零依赖**词汇层：白名单 / 解析 / 到期判定 / **租金与在架清单**）· `frame-service.ts`（素材扫盘 + 持有与装备写路径 + **判定唯一出口**；授予内核 `grantFrameTx` 收调用方的事务，供商城拼原子性）· `frame-shop-service.ts`（鱼干商城：租框。**它不直接写那两列**，一律经 `grantFrameTx` —— F1），见 §6.14 |
 | 故事 | `story-service.ts` |
 | 画报 / 收款码 | `poster.ts`（纯 SVG 构造，含二维码与转义）· `poster-render.ts`（取数 + 头像 + sharp 光栅化），见 §6.8 |
@@ -297,6 +300,7 @@ GET/HEAD/OPTIONS 视为安全方法，不校验。
 |----|------|---------|---------|
 | 头像 | `instance/avatars/<uuid>.png`（或 `AVATARS_DIR` 覆盖） | **无上传入口**：注册时 `avatarPath` 留空，头像由读取入口按 id 确定性生成；磁盘上的 `.png` 只有历史存量文件 | `src/app/api/avatar/[id]/route.ts`（有文件则回放，否则 `generateIdenticonSvg` 兜底，永不 404） |
 | 图床 | `instance/images/<id><ext>`（或 `IMAGE_UPLOAD_FOLDER` 覆盖） | `src/lib/image-upload.ts` — sharp 压缩 + MIME 嗅探 + 配额累计 | `src/app/api/images/[id]/raw/route.ts` |
+| 音频床 | `instance/audio/<id><ext>`（或 `AUDIO_UPLOAD_FOLDER` 覆盖） | `src/lib/audio-upload.ts` — MIME 嗅探 + **无压缩** + 独立配额累计 | `src/app/api/audio/[id]/raw/route.ts`（**带 Range**） |
 | 故事 | `instance/stories/<合集>/<故事>.md\|.cattca`（或 `STORIES_DIR` 覆盖） | 服务端直接落盘 | `src/lib/story-service.ts` 服务端 marked |
 | 表情包 | `instance/stickers/<合集>/<表情>.{gif,webp,png,jpg,jpeg}`（或 `STICKERS_DIR` 覆盖） | **无上传入口**：站长直接往目录里拷文件 | `src/app/api/stickers/[collection]/[name]/route.ts`（查扫盘 manifest，见 `src/lib/sticker-service.ts`） |
 | 头像框 | `public/static/frames/<key>.png`（或 `FRAMES_DIR` 覆盖，**平铺一层、只认 PNG**） | **随代码入库**：它是我们自己画的（源码 = `scripts/make-frame-demos.mjs`），所以**不在**上面那个 `instance/` 底盘里 —— 见本节末与 §6.14 | `src/app/api/frames/[key]/route.ts`（查扫盘 manifest，见 `src/lib/frame-service.ts`） |
@@ -337,6 +341,7 @@ GET/HEAD/OPTIONS 视为安全方法，不校验。
 | 故事正文 | **服务端**渲染 | `src/lib/story-service.ts` 的 `marked` + `stripScripts`。内容由站长直接写在 `instance/stories/`，按可信输入处理，**不走 DOMPurify / highlight.js** |
 | 内容引用 `[@…]` | 浏览器渲染时正则替换为剪贴板/投票/图床/收藏夹组件 | `src/app/components/MarkdownRenderer.tsx` 的 `ContentRefProcessor`（按 id 长度分流：6 位收藏夹 / 8 位剪贴板 / 9 位投票 / 10 位图床）。**表情包不在这条管道上**。收藏夹卡片是在主循环**之后**单独一趟、按区间切片替换的，理由见 §6.10 |
 | 表情包 `[@合集/表情]` | 浏览器渲染时替换为内联 `<img>`（**仅评论 / 讨论**）。两个来源共用这条管道：站长放的图片（`/api/stickers/` 字节路由）与**内置黄脸**（`/static/emoji/` 静态素材）—— 后者多叠一个 `rich-emoji-ref` 类把自己压成文字大小 | `src/lib/sticker-refs.ts` 的 `embedStickerRefs`，在 `rich-text.ts` 里紧跟 `embedUserRefs` 之后调用；黄脸清单在 `src/lib/emoji-faces.ts` |
+| 音频 `[@音频/<ID>]` | 浏览器渲染时替换为内联 `<audio controls>`。**两条管线走法不同**：评论 / 讨论在**净化后**建 DOM（那边白名单里没有 audio）；博客在**源文**上直接拼标签串（那边白名单本来就允许 audio），但必须配 `maskMarkdownCode` —— 否则代码块里会嵌出真播放器。一条正文最多展开 3 个 | `src/lib/audio-refs.ts` 的 `embedAudioRefs`（DOM）/ `collectAudioRefs` + `replaceAudioRefs`（源文）。`音频` 是**保留合集名**（表情那条正则带 `(?!用户/)(?!音频/)` 让开），见 §6.15 |
 | 用户名片 `[@用户/<用户名>]` | 浏览器渲染时替换为一枚**行内名片**（`<a>` 包住「带头像框的头像 + 用户名」，指向 `/u/<id>`）（**仅评论 / 讨论**）。认的是**用户名**而不是 ID，所以多一条异步取数；**不算 @ 提及**，不发通知 | `src/lib/user-refs.ts` 的 `embedUserRefs`（纯逻辑 + DOM 构造），数据由 `src/app/components/useUserCards.ts` 经 `RichTextContext` 注入，取数口是 `GET /api/users/<用户名>`（要 core+）。`用户` 因此是**保留合集名**（表情那条正则带 `(?!用户/)` 让开） |
 | 工具页 cattca-guide | **服务端**渲染 | marked（仅一次，可信文档） |
 
@@ -865,6 +870,76 @@ service 层的各 DTO（下发 frame_url / frameUrl 字符串）
 - 流水 `type` 是 `frame_rent`（**不是** `purchase` —— 后者在鱼干语境里已经是
   「收银台付款」）。`reference_type='frame'` + `reference_id=<key>`。
 
+### 6.15 音频床（`/audio`）
+
+图床的平行物：同样一份「上传 → 拿 ID → 用 ID」的骨架，`AudioHosting` 与
+`ImageHosting` 逐字段同构。**四处刻意不同**，改之前先看：
+
+- **独立配额**。额度值仍取自**同一张** `QUOTA_LIMITS_MB`（core 50 / admin 50 /
+  owner 100，不另立第二份数字表），但用量聚合打在 `audio_hosting` 上
+  （`audio-service.ts` 的 `getUserUsedAudioBytes`）。传满 50MB 音频不影响图片，反之亦然。
+  ⚠️ 因此**运维的磁盘占用要两边相加** —— `admin-stats-service.getSiteStats` 与
+  `cli stats` 都分别报「图床占用」与「音频床占用」两行。
+- **不转码、不压缩**。图床便宜全靠 sharp；音频要压得动就得引 ffmpeg（本站第一个
+  非 npm 的二进制依赖），刻意不引。后果见下面那个配额算术。
+- **有 Range**（图床那条没有），见下。
+- **不开附件链路**。讨论 / 评论的图片附件走 `ChatMessage.imageId` 那种外键列，
+  与托管域是两回事；音频只经 `[@音频/<ID>]` 进正文。将来要做「语音条」那种一等公民
+  附件，那是**另一个决定**，别顺手照抄 `image_id`。
+
+**那个配额算术**：单文件 10MB × 总额 50MB ⇒ **一个 core 用户最多存 5 个满额文件**。
+这是所选数字的机械后果，不是 bug —— 但它直接决定了正文里的展开预算：
+`MAX_AUDIO_REFS = 3`，远小于图片的 50。图片每个引用背后是一次小文件读，音频是
+MB 级传输；正文上限 5000 字能塞下几百个引用，按 50 放开就是一条消息放大出几百 MB。
+
+**Range 是硬需求，不是优化**。`/api/audio/[id]/raw` 必须回 `206`：
+播放器拖动进度靠它，而 **Safari 会先发 `Range: bytes=0-1` 探测，拿不到 206 直接不播**。
+四条实现纪律：
+
+- **不用 `ReadableStream`** —— 仓库里那两处流（`chat/stream`、`notifications/stream`）
+  是无界 SSE、**刻意没有 `Content-Length`**，形状正好相反。本路由的直接读那一段字节
+  （`fs.open` + `read`）并显式给 `Content-Length`。
+- **畸形头一律当「没给」**，回 200 全量。`parseInt` 的 `NaN` 参与的所有比较都是 false，
+  会静默落进一个没人定义过的分支（0 字节或全量）—— 所以先过 `^\d+$` 再转换。
+- **多段 Range 不做 `multipart/byteranges`**，当全量处理。播放器不用它。
+- **`immutable` 只发在 200 上**。发在 206 上会诱使中间缓存拿残段去满足后续的全量请求，
+  症状是播放器莫名失败、完全看不出跟缓存有关。
+
+**MIME 别名归一化**（图床没有这一层）：`.m4a` 在三种平台上被报成 `audio/mp4` /
+`audio/x-m4a` / `audio/m4a`，Windows 上还可能是空串。`normalizeAudioMime` 把别名折到
+规范形，空则按扩展名兜底。⚠️ **归一化只用来补浏览器没给的那格**：之后仍要与
+`detectAudioMime` 严格相等，且 `verifyAudioMime` 返回的是**规范形** —— 落库与下发的
+`Content-Type` 必须是认过的那个值。**别认 `.mp4` 扩展名**：那是视频容器的通用扩展名，
+认了就等于给「传视频」开一条明路。
+
+**格式白名单只有三种**：MP3 / M4A / OGG。不收 WAV 与 FLAC —— WAV 一分钟约 10MB，
+正好等于单文件上限，收进来只会给用户一个「传什么都失败」的入口。嗅探有两处比图床严：
+MP3 的帧同步要核版本 / 层 / 位速率字段（只判 `0xFF` 打头太松），
+**Ogg 首个页里必须出现音频编解码器**（`vorbis` / `OpusHead` / `fLaC`）—— Ogg 是容器，
+只认 `OggS` 会把 Theora 视频当音频收进来。
+
+**`[@音频/<ID>]` 与保留合集名**：ID 也是 10 位 base62（与图床同长），走**具名命名空间**
+而不是长度分流（见 §8「ID 风格」）。代价是 `音频` 成为**保留合集名** ——
+与 `用户` 完全同构的问题：表情那条正则的形状也是 `[@A/B]`。
+**两端必须一起改**：`sticker-refs.ts` 的 `RESERVED_CARD_COLLECTIONS` 让开它，
+`sticker-service.ts` 的扫盘跳过同名目录。只改一端 = 「面板里挑得出、一渲染却变成播放器」。
+
+**两条管线的接入方式不同，别互相照抄**：
+
+| 管线 | 走法 | 为什么 |
+|------|------|--------|
+| 评论 / 讨论（`rich-text.ts`） | 净化**后**建 DOM（`createElement` + `setAttribute`） | 白名单里**没有 audio**（与没有 img 同理）——放开白名单等于给任意外链播放器开口子 |
+| 博客（`MarkdownRenderer.tsx`） | **源文**上直接拼标签串，单独一趟放最末、按区间切片 | `BLOG_SANITIZE_OPTIONS` 本来就允许 `audio`/`controls`/`preload`（一行代码都没用过） |
+
+⚠️ 博客那一趟**必须配 `maskMarkdownCode`**：源文阶段没有 DOM、跳过不了 `CODE`/`PRE`，
+不盖码块就会在 `<code>` 里嵌出一个**真播放器**（而 audio 在白名单里，DOMPurify 不会拦）。
+这是博客侧最可能的静默错误。src 由我们用校验过的 ID 拼成，**永不接受用户提供的 URL**。
+
+> ⚠️ 顺带一个**既有**事实（不是本次引入的）：`BLOG_SANITIZE_OPTIONS` 早就允许
+> `audio`/`source`/`track`/`controls`/`autoplay`。也就是说 core+ 作者今天就能在博客里
+> 手写 `<audio src="外链">`。**别顺手删那几个白名单项** —— 博客正文存在库里不在仓库里，
+> grep 仓库证明不了没有存量文章在用。
+
 ---
 
 ## 7. 数据流（4 个典型路径）
@@ -1090,6 +1165,8 @@ service 层的各 DTO（下发 frame_url / frameUrl 字符串）
 | `PUT` / `DELETE /api/blogs/:id` | core+ | 作者本人 |
 | `DELETE /api/comments/:id` | core+ | 评论作者本人或管理员 |
 | `GET /api/blogs/:id/likers`・`feeders` | core+ | 作者本人或管理员 |
+| `DELETE /api/images/:id` · `/api/audio/:id` | core+ | 作者本人或管理员（**一律软删**，站长也走这条） |
+| `DELETE /api/images/admin/:id` · `/api/audio/admin/:id` | owner | ——（硬删只有这一条路径） |
 
 只判归属的后果是实的：评论删除漏了档位这一层时，一个被降权（core→user）的账号仍能删掉
 自己当年写下的评论 —— 那些评论产自他还是 core 的时候。归属判定管的是「这条归谁」，
@@ -1107,7 +1184,7 @@ service 层的各 DTO（下发 frame_url / frameUrl 字符串）
 |------|----|
 | User · Blog · BlogContent · Comment · Notification | UUID4 |
 | ClipBoard | 短 ID：**base36**（小写字母 + 数字，8 位，`short-id.ts`） |
-| Vote · ImageHosting | 短 ID：**base62**（9 位 / 10 位） |
+| Vote · ImageHosting · AudioHosting | 短 ID：**base62**（9 位 / 10 位 / 10 位） |
 | Favorite | UUID4（所有者管理页的路由参数；不可枚举，见 §6.10）＋ 可选 `publicId`：**6 位纯数字**，**仅公开收藏夹有值** |
 | FavoriteItem | 自增整数（join 行） |
 | Category · AdminActionLog · AdminActionAppeal · UserBan | 自增整数 |
@@ -1115,6 +1192,13 @@ service 层的各 DTO（下发 frame_url / frameUrl 字符串）
 > 各 ID 的**长度**互不重叠是**有意的**：`[@…]` 引用语法只按长度分流，6 位是收藏夹、
 > 8 位剪贴板、9 位投票、10 位图床。新增任何「会出现在正文引用里的 ID」都要先确认
 > 长度没被占用（博客是 UUID、含连字符，根本进不了那条正则）。
+>
+> ⚠️ **音频床是那条不变式的第一个例外，且是刻意例外**：它的 ID 也是 10 位 base62，
+> 与图床**同长**。它不走长度分流，而是取了**具名命名空间** `[@音频/<ID>]` ——
+> 长度早被占满（6/8/9/10/12 加 UUID），再去挤一个既没空位、也不如名字可读。
+> 代价是 `音频` 成了**保留合集名**（与 `用户` 同构的问题，见 §6.7 与
+> `sticker-refs.ts` 的 RESERVED_CARD_COLLECTION）。**下一个新增引用语法照这个走**：
+> 能起名字就别抢长度。
 
 ## 9. 迁移史速查
 
@@ -1124,6 +1208,7 @@ service 层的各 DTO（下发 frame_url / frameUrl 字符串）
 | Flask → Next 分阶段迁移（每模块独立 commit） | 已合并；本分支 commit 全是 Next |
 | 鱼干账户微服务拆分（Phase 1/1.5/2） | 已**撤销**（2026-09）：账户服务搬回站内，见 §6.3.1 |
 | 鱼干存储精度 0.1 → 0.0001 条（迁移 `21_fish_units_1e4`，五列 ×1000） | 已应用（2026-09）：练手盘 `floor` 的损耗降 1000 倍，见 §6.13 |
+| 音频床落库表（迁移 `22_audio_hosting`，新表一张） | 已应用（2026-09）：**不含数据变换**，见 §6.15 |
 | schema 演进路径 | Alembic 31 版删除；Prisma 0_init 基线接管 |
 
 ## 10. 风险与已知限制
