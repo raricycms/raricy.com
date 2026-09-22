@@ -92,6 +92,7 @@ model User {
   notificationsSent     Notification[]      @relation("NotificationActor")
   clipboards            ClipBoard[]
   images                ImageHosting[]
+  audio                 AudioHosting[]
   votes                 Vote[]
   voteRecords           VoteRecord[]
   checkins              DailyCheckIn[]
@@ -447,6 +448,32 @@ model ImageHosting {
   @@index([ignore], map: "ix_image_hosting_ignore")
 
   @@map("image_hosting")
+}
+
+// ── 音频床 ───────────────────────────────────────────────────────────────────
+//
+// 与 ImageHosting 逐字段同构（见 src/lib/audio-upload.ts 头部）。两处**刻意**的差别：
+//   · 没有 `chatMessages` 反向关系 —— 音频不开「附件」那条链路（附件是 image_id 列，
+//     不是托管域；见 src/lib/audio-service.ts 头部）。
+//   · 配额**独立计量**（50MB 归音频自己），但**限额复用同一张表**
+//     （image-upload.ts 的 QUOTA_LIMITS_MB）—— 避免出现第二份配额权威。
+model AudioHosting {
+  id        String    @id
+  filename  String
+  fileSize  Int       @map("file_size")
+  mimeType  String    @map("mime_type")
+  authorId  String    @map("author_id")
+  createdAt DateTime? @map("created_at")
+  isPublic  Boolean?  @default(true) @map("is_public")
+  ignore    Boolean?  @default(false)
+
+  author    User            @relation(fields: [authorId], references: [id])
+  @@index([authorId], map: "ix_audio_hosting_author_id")
+  @@index([createdAt], map: "ix_audio_hosting_created_at")
+  @@index([id], map: "ix_audio_hosting_id")
+  @@index([ignore], map: "ix_audio_hosting_ignore")
+
+  @@map("audio_hosting")
 }
 
 // ── 投票 ─────────────────────────────────────────────────────────────────────

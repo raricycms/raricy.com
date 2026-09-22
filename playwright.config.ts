@@ -201,6 +201,10 @@ export default defineConfig({
       MARKET_PRICE_BASE_URL: `http://127.0.0.1:${MARKET_PORT}`,
       AVATARS_DIR: path.resolve(__dirname, 'tests/.tmp/e2e-avatars'),
       IMAGE_UPLOAD_FOLDER: path.resolve(__dirname, 'tests/.tmp/e2e-images'),
+      // ⚠️ 音频这个**尤其不能漏**：没设它的话，e2e 的每次音频上传都会静默写进
+      // 开发者本机的真实 instance/audio/ —— 没有报错、没有警告，只是测试数据混进了
+      // 生产数据目录。图床漏了同理，但音频文件大得多、也更难事后分辨。
+      AUDIO_UPLOAD_FOLDER: path.resolve(__dirname, 'tests/.tmp/e2e-audio'),
       // 表情素材同理：不设它就会去扫项目真实的 instance/stickers（本机可能真有素材），
       // 「空素材」这类用例会因此随机通过或失败。
       STICKERS_DIR: E2E_STICKERS_DIR,

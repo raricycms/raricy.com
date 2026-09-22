@@ -79,6 +79,9 @@ export async function resetDb() {
     'blog_contents', 'blogs', 'categories',
     'vote_records', 'vote_options', 'votes',
     'clip_text', 'clipboards', 'image_hosting',
+    // 音频床与图床同形，同样只引用 users —— 必须排在 users 之前。
+    // ⚠️ 漏登记不报错（下面的 catch 会吞掉），表现为数据在用例间残留。
+    'audio_hosting',
     'daily_checkins', 'fish_transactions', 'notifications',
     'admin_action_appeals', 'admin_action_logs',
     'user_bans', 'invite_codes',
