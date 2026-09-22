@@ -8,6 +8,9 @@
 //
 // 覆盖面：
 //   · 讨论：token → 行内名片（头像 + **头像框** + 用户名），整体是指向 /u/<id> 的链接
+//   · 「框在不在」之外还要量**几何**：头像 / 框贴图 / 头像盒三者重合，且正文那条
+//     通用 img 规则没漏进来 —— 见下面那条用例，2026-09 修的就是这个（框贴图带了
+//     不透明底色，把头像整个盖住）
 //   · 评论：同一条管线（两个薄壳共用 RichContentBody）
 //   · **不算 @ 提及**：不产生通知，也不给气泡加提及高亮（正对照：真的 @ 会产生通知）
 //   · 工具栏入口：搜人 → token 插进输入框、**不发送**（草稿保住）
@@ -77,6 +80,75 @@ test.describe('用户名片：渲染', () => {
     await expect(msgRow(page, marker).locator('.chat-msg__md p')).toHaveCount(1);
     // 原始 token 不该留在页面上
     await expect(msgRow(page, marker)).not.toContainText('[@用户/');
+  });
+
+  test('★ 头像 / 头像框 / 头像盒三者重合，且正文那条通用 img 规则没漏进来', async ({ page }) => {
+    await loginViaApi(page, FRAMED.username);
+    const marker = uniqueTag();
+    await postMessage(page, `${marker} ${CARD_TOKEN}`);
+    await page.goto(`/chat?channel=${LOBBY}`);
+
+    // 【为什么量渲染后的几何与计算样式，而不是断言类名 / 属性】上一个用例已经证明框
+    // 「在」（img 存在、src 对）—— 可它就那样带着一身错的样式在，页面上是坏的。原因
+    // 在正文那条 `.chat-msg__md img`（(0,1,1) 的后代规则）：它给正文流里的图床图写的
+    // 那几条（margin 0.4em / 1px 描边 / 圆角 8px / **不透明底色**）会原样漏进名片，
+    // 而名片里两张图各自的规则只声明了尺寸，压不住。其中底色最凶：框贴图的画布中心
+    // 是透明的，那层底色**把头像一个不漏地盖住**，只留一个灰方块。
+    // 三样东西都只有真浏览器 + 真样式表算得出来（同 favorite-layout.spec.ts 的口径）。
+    const geo = await msgRow(page, marker)
+      .locator('.rich-user-ref__avatar')
+      .evaluate((box) => {
+        const rect = (el: Element) => {
+          const b = el.getBoundingClientRect();
+          return {
+            x: +b.x.toFixed(1),
+            y: +b.y.toFixed(1),
+            w: +b.width.toFixed(1),
+            h: +b.height.toFixed(1),
+          };
+        };
+        const img = box.querySelector('img.avatar__img') as HTMLElement;
+        const frame = box.querySelector('img.avatar__frame') as HTMLElement;
+        return {
+          box: rect(box),
+          img: rect(img),
+          frame: rect(frame),
+          boxRadius: getComputedStyle(box).borderRadius,
+          imgRadius: getComputedStyle(img).borderRadius,
+          imgMarginTop: getComputedStyle(img).marginTop,
+          imgBg: getComputedStyle(img).backgroundColor,
+          frameBg: getComputedStyle(frame).backgroundColor,
+        };
+      });
+    const dump = JSON.stringify(geo);
+
+    // ① 头像盒必须是正方形。被通用规则的上下外边距撑开时，高会是宽的 2.2/1.4 倍。
+    expect(geo.box.w, `头像盒不是正方形（被撑高 / 被压扁了）：${dump}`).toBeCloseTo(geo.box.h, 1);
+
+    // ② 两张图都要与头像盒**重合**。差一点就是框被拉长 / 下移（height: 100% 跟着被撑高
+    //    的盒子长），再被盒子的 overflow: hidden 裁掉一截 —— 页面上只是「框怪怪的」。
+    for (const [name, r] of [
+      ['头像', geo.img],
+      ['框贴图', geo.frame],
+    ] as const) {
+      const deltas = [r.x - geo.box.x, r.y - geo.box.y, r.w - geo.box.w, r.h - geo.box.h].map(
+        Math.abs
+      );
+      expect(
+        deltas.every((d) => d < 0.5),
+        `${name}与头像盒不重合：${dump}`
+      ).toBe(true);
+    }
+
+    // ③ 谁都不许带底色：框贴图的画布中心是透明的，给它底色等于把头像盖掉。
+    expect(geo.frameBg, `框贴图带了底色（会盖住头像）：${dump}`).toBe('rgba(0, 0, 0, 0)');
+    expect(geo.imgBg, `头像带了底色：${dump}`).toBe('rgba(0, 0, 0, 0)');
+    expect(geo.imgMarginTop, `头像被加了外边距（会撑高头像盒）：${dump}`).toBe('0px');
+
+    // ④ 圆角：规范是**全站头像一律 8%**（docs/frontend-styles.md §4.1），而它由 .avatar
+    //    盒子持有、overflow: hidden 裁出来。漏进来的 8px 在 20px 的头像上已经是个圆。
+    expect(geo.boxRadius, `头像盒丢了 8% 圆角：${dump}`).toBe('8%');
+    expect(geo.imgRadius, `头像图自带圆角（会盖过规范的 8%）：${dump}`).toBe('0px');
   });
 
   test('★ 名片**不算 @ 提及**：气泡不加提及高亮', async ({ page }) => {
