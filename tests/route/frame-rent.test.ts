@@ -31,7 +31,7 @@ vi.mock('next/headers', () => ({
 
 import { POST } from '@/app/api/fish/market/rent/route';
 import { resetDb } from '../helpers/db';
-import { makeFishUser } from '../helpers/fish-ledger';
+import { expectLedgerConsistent, makeFishUser } from '../helpers/fish-ledger';
 import { createSessionToken } from '@/lib/session';
 import { hashPassword } from '@/lib/password';
 import { prisma } from '@/lib/db';
@@ -127,6 +127,7 @@ describe('鉴权：只认会话', () => {
 
     const res = await rent({ frame_key: KEY, days: 1 });
     expect(res.status).toBe(403);
+    await expectLedgerConsistent('禁言用户下单被拒');
   });
 });
 
@@ -186,6 +187,9 @@ describe('成功与业务失败', () => {
     // 机器读 ISO、人读展示串 —— 两者都指向同一刻
     expect(String(body.expires_at)).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(String(body.expires_at_text)).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+    // 这条路由是**真动钱**的（扣鱼干 + 建持有行同一事务）——
+    // 「余额 == 他所有流水之和」这条不变式在本层也要核一遍
+    await expectLedgerConsistent('租框成功');
   });
 
   it('小鱼干不足 → 400，且**没有留下半张框**', async () => {
@@ -203,6 +207,8 @@ describe('成功与业务失败', () => {
         select: { id: true },
       })
     ).toBeNull();
+    // 事务回滚之后账目也得是自洽的（余额、流水、持有行三样一起没写入）
+    await expectLedgerConsistent('余额不足被拒');
   });
 
   it('素材缺失 → 409', async () => {
@@ -212,6 +218,7 @@ describe('成功与业务失败', () => {
 
     const res = await rent({ frame_key: KEY, days: 1 });
     expect(res.status).toBe(409);
+    await expectLedgerConsistent('素材缺失被拒');
   });
 });
 

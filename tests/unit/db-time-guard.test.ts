@@ -39,8 +39,21 @@ import path from 'node:path';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
 
-/** 规则 1–3 的服务端扫描范围。 */
-const SERVER_DIRS = ['src/lib', 'src/app/api', 'tests/helpers'];
+/**
+ * 规则 1–3 的服务端扫描范围。
+ *
+ * `scripts` 是 2026-09 补进来的：运维 CLI **会写库**（`fish grant`、`frame grant`、
+ * 群发补偿……），按本文件开头那条判据（「会不会写库 / 取库内当前时刻」）它本来就该在
+ * 范围内 —— 之前的遗漏不是决定，只是没人想起来。CLI 里展示库内时间戳要过 `ymdhms`，
+ * 取「现在」要过 `nowForDb()`，与 src 侧同一条纪律。
+ *
+ * ⚠️ 只收 `.ts`（见 collectFiles）—— `scripts/*.mjs` 那几个（migrate / diagnose /
+ *    normalize-datetimes / 各种 copy-* 构建脚本）**不在范围内**：它们要么处理迁移台账
+ *    这类元数据时间戳，要么同时要理解两把钟（规整脚本），在这条规则下会有大量
+ *    正当的 `new Date()`。它们的正确性靠各自的用例与人工复核，别把这条静默守卫
+ *    当成已经管到它们了。
+ */
+const SERVER_DIRS = ['src/lib', 'src/app/api', 'tests/helpers', 'scripts'];
 const SERVER_FILES = ['src/middleware.ts'];
 /** 唯一的合法「当前时刻」来源 —— 它自己用 Date.now() 构造，不含 new Date()。 */
 const WHITELIST = [path.join('src', 'lib', 'db-time.ts')];
