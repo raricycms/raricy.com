@@ -63,7 +63,7 @@
  *   一个已经退役的框（见 `docs/architecture.md` §6.14 的风险节）。
  *   保留 key 的代价只是一行数组元素。
  */
-export const FRAME_KEYS = ['ring', 'gradient', 'glow', 'corner', 'dashed'] as const;
+export const FRAME_KEYS = ['ring', 'gradient', 'glow', 'corner', 'dashed', 'fishblue'] as const;
 
 export type FrameKey = (typeof FRAME_KEYS)[number];
 
@@ -102,6 +102,10 @@ export const FRAMES: Record<FrameKey, FrameDef> = {
   dashed: {
     label: '点线',
     description: '圆头端点的虚线环，像一圈小扇贝。小尺寸下会糊成一条灰环。',
+  },
+  fishblue: {
+    label: '鱼干蓝',
+    description: '深蓝 → 天蓝的渐变环，四角各压一条小鱼干。缩到 20px 时鱼只剩四个浅色小点。',
   },
 };
 

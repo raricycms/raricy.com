@@ -61,6 +61,11 @@ const VIOLET = '#8b5cf6';
 const AMBER = '#f59e0b';
 const CYAN = '#06b6d4';
 
+/** 「鱼干蓝」专用：环的渐变两端 + 压在上面的浅蓝鱼身。 */
+const DEEP_BLUE = '#1d4ed8';
+const SKY = '#38bdf8';
+const FISH_PALE = '#e0f2fe';
+
 /**
  * 一个圆角方环（描边形式）。
  *
@@ -102,6 +107,56 @@ function cornerOrnaments(color) {
     .join('\n  ');
 }
 
+/**
+ * 一条小鱼干：椭圆身 + 三角尾 + 一只眼睛。画在原点、**朝 +x**，由 `angle` 转过去。
+ *
+ * 尺寸是刻意的：总长 20（-8..+12，含尾鳍）、身高 11（ry 5.5）；`scale` 由调用方
+ * 按摆放处剩下的余量给（圆角方环的四个角上必须缩，见 fishOrnaments）。
+ */
+function fishOrnament(cx, cy, angle, scale, fill, eye) {
+  return `<g transform="translate(${cx} ${cy}) rotate(${angle}) scale(${scale})">
+    <ellipse cx="0" cy="0" rx="8" ry="5.5" fill="${fill}"/>
+    <path d="M 6.5 0 L 12 -5 L 12 5 Z" fill="${fill}"/>
+    <circle cx="-4" cy="-1.5" r="1.5" fill="${eye}"/>
+  </g>`;
+}
+
+/**
+ * 四角各摆一条鱼，**压在中线上、朝向沿对角线**。
+ *
+ * ── 【坐标是算出来的，不是手填的】────────────────────────────────────────────
+ * 一个关键性质：环的中线圆角矩形，其四个角的**圆弧圆心恒在 (OUTER_R, OUTER_R)**
+ * ——与环多粗无关（外缘永远贴画布 8% 圆角，内缘跟着内缩，圆心不动）。
+ * 于是「圆弧中点」= 圆心 ± 半径/√2，「该点的切线方向」就是 45° 整数：
+ *
+ *     中线半径 r = OUTER_R − 环宽/2      中点离画布角 = OUTER_R − r/√2
+ *
+ * 手填坐标的话，改一次环宽四条鱼就全错位 —— 而且**看不出是错的**（鱼还压在环上，
+ * 只是歪了一点点），只有拿尺子量才发现。
+ *
+ * ⚠️ **鱼必须缩着放（scale < 1）**，这不是审美选择：角上的环是**弧**，而鱼是**直线**
+ *    的，两者的切线在弧的两端就对不上了 —— 鱼越长，尾巴越会甩到环外。
+ *    最远的那点是尾鳍的外角（局部 (12, −5) 那一侧），它离画布圆角的外缘本来就只有
+ *    几个像素。按环宽 16、scale 1 算，它会落到 y = −0.36 —— **画布之外，直接被裁掉**
+ *    （表现为尾巴被齐齐切平，而且只在四个角上，很容易看漏）。
+ *    缩到 0.8 时同一点回到距圆角圆心 19.07（外缘 20.48），余量 1.4px。
+ */
+function fishOrnaments(width, fill, eye, scale) {
+  const r = OUTER_R - width / 2; // 中线圆角半径
+  const d = r / Math.SQRT2; // 在 45° 方向上的投影
+  const lo = OUTER_R - d; // 左上 / 左下（两轴同值）
+  const hi = SIZE - OUTER_R + d; // 右下 / 右上
+  // 角度按「顺时针游」排：左上是 ↗、右上是 ↘、右下是 ↙、左下是 ↖
+  return [
+    [lo, lo, -45],
+    [hi, lo, 45],
+    [hi, hi, 135],
+    [lo, hi, 225],
+  ]
+    .map(([x, y, angle]) => fishOrnament(x, y, angle, scale, fill, eye))
+    .join('\n  ');
+}
+
 /** 一款框 = 一个 SVG 字符串。改这里就是改框。 */
 const FRAMES = {
   // ① 最基础的一款：单色实心环。20px 下也认得出，是「能用的下限」的参照。
@@ -135,6 +190,24 @@ const FRAMES = {
   ${ringPath(5, `stroke="${CYAN}"`)}
   ${ringPath(13, `stroke="${CYAN}" opacity="0.34"`)}
   ${ringPath(20, `stroke="${CYAN}" opacity="0.13"`)}`,
+
+  // ⑥ 鱼干蓝：深→浅的蓝色环 + 一圈内侧高光 + 四角四条小鱼干。
+  //    这是第一款**带装饰的实心环**：几何比 `corner` 厚一倍（16 vs 13），
+  //    所以缩到 20px 时环还在、鱼糊成四小团浅色 —— 颜色（蓝）仍是主要识别手段。
+  //    内侧高光用的是「贴着环内缘的一圈细描边」：hugInner 那条矩形以 16 为外缘、
+  //    半径与环内缘同算法，于是它与环**共边**，不会露出一条缝。
+  fishblue: `
+  <defs>
+    <linearGradient id="fb" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="${DEEP_BLUE}"/>
+      <stop offset="55%" stop-color="${BLUE}"/>
+      <stop offset="100%" stop-color="${SKY}"/>
+    </linearGradient>
+  </defs>
+  ${ringPath(16, `stroke="url(#fb)"`)}
+  <rect x="16" y="16" width="${SIZE - 32}" height="${SIZE - 32}"
+        rx="${(OUTER_R - 16).toFixed(2)}" fill="none" stroke="${SKY}" stroke-width="3" opacity="0.45"/>
+  ${fishOrnaments(16, FISH_PALE, DEEP_BLUE, 0.8)}`,
 };
 
 function svgFor(body) {
