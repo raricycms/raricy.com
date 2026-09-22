@@ -84,7 +84,12 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** 商城列表里的一件商品（**判定后的结果**，客户端不做任何判断）。 */
 export interface ShopItem {
-  key: string;
+  /**
+   * 恒是一个**白名单内的** FrameKey —— 列表来自 `rentableFrameKeys()`，
+   * 所以不像 `MyFrameRow.key`（那里要容忍库里存着已退役 / 未知的 key）。
+   * 钉成 `FrameKey` 是为了让客户端能直接 `frameUrl(key)` 拼预览地址。
+   */
+  key: FrameKey;
   label: string;
   description: string;
   /** 鱼干 / 天。 */

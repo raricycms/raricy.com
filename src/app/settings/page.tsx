@@ -395,8 +395,12 @@ export default function SettingsPage() {
           <h2 className="settings-card__title">头像框</h2>
         </div>
         <p className="settings-card__desc">
-          戴上站长发给你的头像框，它会显示在顶栏、评论区、讨论区与你的个人主页。
-          限时的头像框到期后会自动消失，不需要手动摘。
+          戴上你拥有的头像框，它会显示在顶栏、评论区、讨论区与你的个人主页。
+          除了站长发放的，也可以去{' '}
+          <a className="frame-panel__hint-link" href="/fish/market">
+            鱼干商城
+          </a>
+          用小鱼干租一款。限时的头像框到期后会自动消失，不需要手动摘。
         </p>
         {frameAlert && (
           <div className={`settings-alert settings-alert--${frameAlert.type}`}>

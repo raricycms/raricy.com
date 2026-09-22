@@ -73,6 +73,7 @@ const AVATAR_SITES = [
   'src/app/chat/NewChatModal.tsx', // 发起私聊搜索结果（32px）
   'src/app/fish/market/RecipientPicker.tsx', // 转账选人（32px）
   'src/app/fish/market/TransferPanel.tsx', // 转账面板 + 二次确认（36 / 44px）
+  'src/app/fish/market/ShopPanel.tsx', // 商城预览：把商品框叠在访问者自己的头像上（52px）
   'src/app/fish/PayForm.tsx', // 收银台 / 收款页的收款人（36px）
   'src/app/components/UserPicker.tsx', // 发用户名片的选人列表（32px）
 ];

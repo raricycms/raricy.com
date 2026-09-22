@@ -276,6 +276,18 @@
   font-size: 0.9rem;
 }
 
+// 「去鱼干商城租一款」那个内联链接。两处用到：装备面板的空态提示，与设置页
+// 那一节的说明文字（#avatar-frame 的 settings-card__desc）—— 所以类名前缀是
+// frame-panel__ 而不是 settings-card__。
+.frame-panel__hint-link {
+  color: var(--color-brand-primary);
+  font-weight: 600;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
 .frame-panel__current {
   display: flex;
   align-items: center;

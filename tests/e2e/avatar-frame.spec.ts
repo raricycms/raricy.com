@@ -207,12 +207,19 @@ test.describe('★ 装备面板（/settings）：从没用过的人点一下就�
     await expect(frameIn(page, '.site-user-avatar')).toHaveCount(0);
   });
 
-  test('没持有任何框 → 面板给一句人话，而不是一张空网格', async ({ page }) => {
+  test('没持有任何框 → 面板给一句人话 + 商城的去处，而不是一张空网格', async ({ page }) => {
     await loginViaApi(page, SEED_USERS.notif.username);
     await page.goto('/settings#avatar-frame');
 
     const panel = page.locator('.frame-panel');
-    await expect(panel.locator('.frame-panel__hint')).toContainText('站长还没有给你发过');
+    await expect(panel.locator('.frame-panel__hint')).toContainText('你还没有任何头像框');
     await expect(panel.locator('.frame-panel__item')).toHaveCount(0);
+    // ★ 空态必须指出「自己也能搞到一款」的**去处** —— 这句话曾经是
+    //   「头像框由站长发放，不需要你申请」，鱼干商城上线后它就不对了：
+    //   有一款框是用户自己租的，而空态是唯一会告诉一个从没拥有过框的人「去哪拿」的地方。
+    await expect(panel.locator('.frame-panel__hint-link')).toHaveAttribute(
+      'href',
+      '/fish/market'
+    );
   });
 });

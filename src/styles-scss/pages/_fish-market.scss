@@ -264,8 +264,12 @@
   width: 100%;
 }
 
-// 摘要条：手续费 0 + 转账后余额
-.market-summary {
+/* 摘要条：转账那条是「手续费 0 + 转账后余额」，商城那条是「合计 + 租用后余额」。
+   视觉是同一个东西，所以共用一份声明 —— 但**类名必须分开**：
+   同一页上出现两个 `.market-summary`，谁写 `page.locator('.market-summary')` 都会
+   撞上 Playwright 的 strict 模式（本次就是这么发现的）。 */
+.market-summary,
+.market-shop__summary {
   display: flex;
   justify-content: space-between;
   gap: $space-3;
@@ -280,12 +284,12 @@
     color: var(--color-text-primary);
     font-variant-numeric: tabular-nums;
   }
+}
 
-  // 权重：.market-summary strong 是 0-1-1，光写 .market-summary__free（0-1-0）
-  // 会被上面那条盖掉（改样式时最容易踩的坑，见 frontend-styles §11.1）。
-  strong.market-summary__free {
-    color: var(--color-success-primary);
-  }
+// 权重：`.market-summary strong` 是 0-1-1，光写 `.market-summary__free`（0-1-0）
+// 会被上面那条盖掉（改样式时最容易踩的坑，见 frontend-styles §11.1）。
+.market-summary strong.market-summary__free {
+  color: var(--color-success-primary);
 }
 
 /* 归「最高级」档：空闲品牌浅底、hover 反转成实底。
@@ -549,4 +553,118 @@
   &:hover:not(:disabled) {
     filter: brightness(1.1);
   }
+}
+
+// ═══════════════════════════════════════════════════════
+//  鱼干商城（同一页的第二块）—— 租头像框
+//
+//  复用同页的 .market-card / .market-field / .market-amount / .market-quick /
+//  .market-summary / .market-confirm，只定义真正新出现的几件（先例：_fish-pay.scss
+//  与 _fish-api.scss 也是这么复用 market-* 的）。
+//
+//  ── 【哪些类名必须另起，哪些可以继续共用】────────────────────────────────
+//  判据是**测试会不会裸选择它**，不是「是不是同一页出现了第二个」：
+//
+//    · 另起名（.market-shop__submit / __summary / __title / __error）——
+//      按钮、数值条、标题、错误提示。tests/e2e/fish-market.spec.ts 里
+//      `page.locator('.market-submit')` 是**裸选择器**，同一页再出现一个就撞上
+//      Playwright 的 strict 模式（`resolved to 2 elements` → 当场红）。
+//      `.market-summary` 不在那份 spec 里，但它是数值条，同样另起了名 ——
+//      本次就是先在商城的 e2e 里被它咬了一口才分开的。
+//    · 继续共用（.market-card / .market-field / .market-amount / .market-quick）——
+//      纯布局容器。它们没有「哪一个」的歧义（两张卡都是卡），分开写只会让
+//      改一次样式要改两处（_fish-pay.scss / _fish-api.scss 也是这么复用的）。
+//      要选具体那一个时用 id（#market-amount / #market-shop-days）。
+// ═══════════════════════════════════════════════════════
+
+.market-shop__item {
+  display: flex;
+  align-items: center;
+  gap: $space-3;
+  padding: $space-3 $space-4;
+  border: 1px solid var(--color-border);
+  border-radius: $radius-large;
+  background: var(--color-background-subtle);
+}
+
+// 预览：把商品图叠在**访问者自己的头像**上。尺寸比转账那处（36px）大一号 ——
+// 这是商品图，要看得清四条鱼。
+//
+// ⚠️ 两条都要写：`.avatar` 盒子**刻意不带尺寸**（见 _avatar.scss 头部），
+//    `.avatar__img` 也只负责 `display:block`。少写一条的后果是那一处按素材原始
+//    尺寸渲染（一张 256px 的图把卡片撑开），而**不会有任何测试变红**。
+.market-shop__preview {
+  width: 52px;
+  height: 52px;
+  flex: none;
+}
+
+.market-shop__preview .avatar__img {
+  width: 52px;
+  height: 52px;
+  border-radius: 8%;
+  object-fit: cover;
+}
+
+.market-shop__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.market-shop__name {
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.market-shop__desc {
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--color-text-secondary);
+}
+
+.market-shop__price {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-brand-primary);
+}
+
+// 「当前持有到 …」—— 基类是 .market-field__hint（右对齐），这一行贴左边更好读
+.market-shop__owned {
+  text-align: left;
+}
+
+// 表单底下那行提示（天数非法 / 小鱼干不足）。左对齐 —— 摘要条上面那一行是
+// 两端对齐的，这一行再右对齐会显得散。
+.market-shop__error {
+  margin: 0 0 $space-3;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--color-warning-primary);
+  font-weight: 500;
+}
+
+.market-shop__submit {
+  @include m.btn-primary;
+  display: block;
+  width: 100%;
+  padding: $space-3 $space-4;
+  font-size: 1rem;
+  font-weight: 700;
+
+  &:disabled {
+    opacity: 0.4;
+  }
+}
+
+// 商城小标题。刻意**不是** .page-title（与页面 h1 同类名会让 e2e 的裸选择器歧义）。
+.market-shop__title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: $space-8 0 $space-4;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
 }

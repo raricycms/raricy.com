@@ -75,6 +75,12 @@ export default async function FishPage() {
                 鱼干练手盘：买入 BTC / ETH，价格涨跌换鱼干
               </Link>
             </p>
+            <p>攒下来的鱼干也有花出去的地方 ——</p>
+            <p>
+              <Link href="/fish/market#shop" className="fish-card__info-link">
+                鱼干商城：用鱼干租一款头像框
+              </Link>
+            </p>
           </div>
         </div>
       </div>
