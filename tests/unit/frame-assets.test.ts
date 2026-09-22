@@ -119,8 +119,13 @@ describe('入库的头像框素材', () => {
     // 反向自检：脚本里出现每一个 key 的字面量定义。哈希那两条只证明「文件没变」，
     // 证明不了「文件里还真有这些框」—— 比如有人把 FRAMES 清空后重跑，台账会跟着
     // 变成空对象，第一条与第三条就都绿了（第四条会拦住）。这里是第二道。
+    //
+    // ⚠️ 判据是**台账里的 key**，不是 FRAME_KEYS —— 两者刻意允许不等：手画的框
+    //（没进脚本、直接拷一张 PNG 进来的那种）是合法的（指南 §4 明说了），它不在
+    // 台账里、也不该被这条拦下。写成 FRAME_KEYS 就等于**偷偷禁掉了手画那条路**，
+    // 而报错信息还指着「跑一次出图脚本」—— 对手画的框来说那是一句不可能执行的建议。
     const src = fs.readFileSync(GENERATOR, 'utf8');
-    for (const key of FRAME_KEYS) {
+    for (const key of Object.keys(manifest.frames)) {
       expect(src, `出图脚本里找不到 ${key} 的定义`).toMatch(new RegExp(`\\n\\s*${key}:\\s*\``));
     }
   });
