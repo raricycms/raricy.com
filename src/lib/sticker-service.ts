@@ -31,6 +31,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { AUDIO_REF_COLLECTION } from './audio-refs';
 import { detectImageMime } from './image-upload';
 import { stickerKey, stickerUrl } from './sticker-refs';
 import { USER_CARD_COLLECTION } from './user-refs';
@@ -179,13 +180,14 @@ function fullScan(root: string): Manifest {
     dirNames = fs
       .readdirSync(root, { withFileTypes: true })
       .filter((e) => e.isDirectory() && !isSkippedName(e.name))
-      // 名片语法占用的合集名（`[@用户/张三]` 与 `[@合集/表情]` 形状同构）。
-      // 这里排掉 = 面板里不出现、resolveSticker 也查不到，与 sticker-refs 那条
-      // 负向先行断言同一件事的两端 —— 只做一端的话，面板会给出一个**挑得出但
-      // 渲染成名片**的合集。
+      // 别的引用语法占用的合集名（`[@用户/张三]` / `[@音频/<ID>]`，都与
+      // `[@合集/表情]` 形状同构）。这里排掉 = 面板里不出现、resolveSticker 也查不到，
+      // 与 sticker-refs 那条负向先行断言是**同一件事的两端** —— 只做一端的话，
+      // 面板会给出一个**挑得出但渲染成名片 / 播放器**的合集。
       // ⚠️ 不能并进 isSkippedName：那个函数同时用于合集名与**集合内文件名**，
       //    并进去会把「用户.png」这种素材也一起吞掉。
-      .filter((e) => e.name !== USER_CARD_COLLECTION)
+      // ⚠️ 加第三个保留名时要与 sticker-refs.ts 的 RESERVED_CARD_COLLECTIONS 一起改。
+      .filter((e) => e.name !== USER_CARD_COLLECTION && e.name !== AUDIO_REF_COLLECTION)
       .map((e) => e.name);
   } catch {
     dirNames = []; // 根目录不存在 = 没有素材，不是错误

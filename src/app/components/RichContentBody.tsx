@@ -25,6 +25,7 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import ImageLightbox from './ImageLightbox';
 import { useResolvedContent } from './useResolvedContent';
 import { useUserCards } from './useUserCards';
+import { AUDIO_REF_CLASS } from '@/lib/audio-refs';
 import { IMAGE_REF_CLASS } from '@/lib/content-refs';
 import { STICKER_REF_CLASS } from '@/lib/sticker-refs';
 import type { RichTextContext } from '@/lib/rich-text';
@@ -85,12 +86,26 @@ function RichContentBody({
     if (!box) return;
     const onError = (e: Event) => {
       const target = e.target as HTMLElement | null;
-      if (!(target instanceof HTMLImageElement)) return;
-      // 只管表情：容器里还有图床引用图，别误伤
-      if (!target.classList.contains(STICKER_REF_CLASS)) return;
-      const token = target.getAttribute('data-token');
+      if (!target) return;
+      // 两个降级分支：表情图（<img>）与音频（<audio>）。
+      // 都是「加载不出来就把 data-token 换回字面量」——同一条既有契约
+      // （「写错了显示原文」，见 docs/guide/表情包使用指南.md 第五节）。
+      //
+      // 音频那条走的是**捕获期**才有意义：媒体元素的 error 事件不冒泡，
+      // 但捕获阶段照样会从容器一路传到目标（本监听器第三个参数就是 true）。
+      let token: string | null = null;
+      if (target instanceof HTMLImageElement) {
+        // 只管表情：容器里还有图床引用图，别误伤
+        if (!target.classList.contains(STICKER_REF_CLASS)) return;
+        token = target.getAttribute('data-token');
+      } else if (target instanceof HTMLAudioElement) {
+        if (!target.classList.contains(AUDIO_REF_CLASS)) return;
+        token = target.getAttribute('data-token');
+      } else {
+        return;
+      }
       // isConnected 守一道：事件排队期间 React 可能已经换掉整棵 innerHTML，
-      // 此时 img 已脱离文档，replaceWith 会**静默什么都不做**。
+      // 此时节点已脱离文档，replaceWith 会**静默什么都不做**。
       if (!token || !target.isConnected) return;
       target.replaceWith(target.ownerDocument.createTextNode(token));
     };

@@ -50,6 +50,7 @@
 import { Marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { linkify } from './linkify';
+import { embedAudioRefs } from './audio-refs';
 import { embedImageRefs } from './content-refs';
 import { embedStickerRefs } from './sticker-refs';
 import { USER_REF_PROBE, embedUserRefs, type UserCardData } from './user-refs';
@@ -260,6 +261,13 @@ export function createRichTextRenderer(options: RichTextOptions): RichTextRender
     // 会被剥成白板），同样用 createElement 建节点，见 user-refs.ts 的文件头。
     // ctx 里没有数据时它整趟不跑 —— 那正是「数据还没取到」，token 留在原处当字面量。
     embedUserRefs(holder, ctx?.userCards);
+    // ★ 内联音频（`[@音频/<10位ID>]`）★
+    // 同样必须在净化之后：评论 / 讨论的白名单里**没有 audio**（与没有 img 同理），
+    // 走白名单这条路等于给任意外链播放器开口子 —— 只能由我们 createElement 建出来。
+    // 它与表情那条正则互不重叠（sticker-refs 的 RESERVED_CARD_COLLECTION 让开了
+    // `音频/`），所以与 embedStickerRefs 的先后无所谓；放在这组 embed* 里是因为
+    // 音频也认 id、不需要等任何异步数据（URL 是 id 的纯函数）。
+    embedAudioRefs(holder);
     // ★ 内联表情（`[@合集/表情]`）★
     //
     // ① 同样必须在净化之后（理由同上）。

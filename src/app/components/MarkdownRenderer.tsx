@@ -5,6 +5,8 @@
 //   • 内容引用预处理（[@id]）：8位→剪贴板正文内联 / 9位→投票嵌入 / 10位→图床图片 /
 //     6位→收藏夹卡片（**只在这条管线上**：评论与讨论走 rich-text.ts，那边刻意不认 6 位，
 //     与 9 位投票「只识别不展开」同向）。
+//   • 音频引用 `[@音频/<ID>]`：**名字形**，不参与上面那条按长度分流（`\w` 匹配不到
+//     中文），单独一趟放在最后，见 ContentRefProcessor.preprocess。
 //   • MathJax：行内 $..$ / \(..\)、块级 $$..$$ / \[..\]、mhchem（mathjax-full 模块化 API）。
 //   • 代码高亮亮/暗双主题随 data-theme 切换（github / monokai，media 切换）。
 //   • 代码块「复制」按钮、图片点击放大、外链 target=_blank 加固、任务列表 checkbox。
@@ -25,8 +27,10 @@ import {
   collectFavoriteRefs,
   favoriteFailureText,
   isFavoriteId,
+  maskMarkdownCode,
   replaceFavoriteRefs,
 } from '@/lib/favorite-refs';
+import { collectAudioRefs, replaceAudioRefs } from '@/lib/audio-refs';
 
 // ── 内容引用预处理器（端点走 Next API）────────────────────────────────────────
 class ContentRefProcessor {
@@ -157,6 +161,24 @@ class ContentRefProcessor {
         }
       }
       processed = replaceFavoriteRefs(processed, slots, htmlById);
+    }
+
+    // ── 音频（`[@音频/<ID>]`）：**最后再一趟**，同样按区间切片 ──────────────────
+    //
+    // 三条与上面收藏夹那趟同源的理由，外加一条自己的：
+    //   · 为什么在最后：它前面那趟会插进**收藏夹卡片 HTML**，而卡片里含博客标题
+    //     （不可信输入）。音频排在它之后、且此后不再有任何扫描，插进去的东西就
+    //     不可能被二次解释。
+    //   · 为什么重新扫：`processed` 已被改写，早先那批下标不再成立。
+    //   · 为什么按区间切片：见 replaceAudioRefs 的说明。
+    //   · **为什么自己调 maskMarkdownCode**：收藏夹那趟是在 collectFavoriteRefs
+    //     内部盖的码；音频这个模块必须保持**零 import**（chat-shared 要把它拉进
+    //     客户端包，见 audio-refs.ts 文件头），所以盖码这一步留在调用方做。
+    //     漏了它 = 在代码块里写语法本身会嵌出一个**真播放器**
+    //     （audio 在博客白名单里是放行的，DOMPurify 不会拦）。
+    const audioSlots = collectAudioRefs(processed, maskMarkdownCode(processed));
+    if (audioSlots.length > 0) {
+      processed = replaceAudioRefs(processed, audioSlots);
     }
 
     return processed;

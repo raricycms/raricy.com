@@ -15,9 +15,13 @@
 // 顺带一个好处：token 里含 `/` 就**天然免疫** content-refs.ts 那两条精确长度
 // 正则（`{8}` / `{10}` 只认 [A-Za-z0-9]），永远不会被误当成剪贴板或图床引用。
 //
-// 【`用户` 是保留合集名】用户名片 `[@用户/张三]`（见 user-refs.ts）与本语法形状
-// 完全同构，所以下面的正则带一条负向先行断言把它让开 —— 站长不能用这个合集名，
-// 理由与代价见 RESERVED_CARD_COLLECTION 的注释。
+// 【`用户` 与 `音频` 是保留合集名】用户名片 `[@用户/张三]`（见 user-refs.ts）与
+// 音频引用 `[@音频/<ID>]`（见 audio-refs.ts）都与本语法形状完全同构，所以下面的
+// 正则带负向先行断言把它们让开 —— 站长不能用这两个合集名，理由与代价见
+// RESERVED_CARD_COLLECTION 的注释。
+//
+// ⚠️ 加第三个保留名时要**两端一起改**：这里 + sticker-service.ts 的扫盘跳过。
+// 只改一端 = 「面板里挑得出、一渲染却变成别的东西」。
 //
 // 【只在评论与讨论生效】博客正文走另一条异步管线（MarkdownRenderer.tsx 的
 // ContentRefProcessor），那边不支持表情，`[@猫猫/开心]` 原样显示字面量 ——
@@ -27,6 +31,7 @@
 // 故可直接单测（tests/unit/sticker-refs.test.ts）。
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { AUDIO_REF_COLLECTION } from './audio-refs';
 import { EMOJI_COLLECTION, emojiFileFor, emojiUrl } from './emoji-faces';
 import { USER_CARD_COLLECTION } from './user-refs';
 
@@ -51,20 +56,26 @@ const SEG_LEN = 32;
 const SEG = `[${SEG_CHAR}]{1,${SEG_LEN}}`;
 
 /**
- * 名片语法占用的合集名（`[@用户/张三]`）—— 表情这条正则**必须让开**。
+ * 被**别的引用语法**占用的合集名 —— 表情这条正则**必须全部让开**。
  *
- * 【为什么让开的是表情，而不是名片】两者的形状完全同构（两段名字用斜杠分隔），
- * 但名片那趟有自己的识别与 DOM 构造，是**更专用**的一方；表情的合集名是站长随手
- * 建的目录，撞名的代价小得多。让开后连带两件事：
+ * 目前两个：`用户`（名片 `[@用户/张三]`，user-refs.ts）与
+ * `音频`（音频床 `[@音频/<ID>]`，audio-refs.ts）。两者与本语法的形状都完全同构
+ * （一段名字 + 斜杠 + 一段），不加断言就会被吃成「合集=用户」「合集=音频」。
+ *
+ * 【为什么让开的是表情，而不是它们】形状虽同构，但那两趟各自有自己的识别与 DOM
+ * 构造，是**更专用**的一方；表情的合集名是站长随手建的目录，撞名的代价小得多。
+ * 让开后连带两件事：
  *   · 预览/摘要里的 `[@用户/张三]` 不会被压成 `[表情]`；
  *   · 渲染时不会白去请求一次 `/api/stickers/用户/张三`。
- * 站长侧的表现是「给合集起名『用户』会失效」（sticker-service 扫盘时也不会列出它），
- * 这条写在 docs/guide/表情包使用指南.md 里。
+ * 站长侧的表现是「给合集起名『用户』/『音频』会失效」（sticker-service 扫盘时也
+ * 不会列出它们），这条写在 docs/guide/表情包使用指南.md 里。
  *
- * ⚠️ 该常量必须保持为**纯字面量**（不能含正则元字符）—— 它是直接插进下面的
- * 先行断言里的。哪天要改，记得同时改 tests/unit/sticker-refs.test.ts 里那条断言。
+ * ⚠️ 上面那两个来源常量都必须保持为**纯字面量**（不能含正则元字符）—— 它们是直接
+ * 插进下面的先行断言里的。哪天要改，记得同时改 tests/unit/sticker-refs.test.ts
+ * 里那两条断言（`用户` 那条是既有的，`音频` 那条是后补的）。
  */
-const RESERVED_CARD_COLLECTION = `(?!${USER_CARD_COLLECTION}/)`;
+const RESERVED_CARD_COLLECTIONS = [USER_CARD_COLLECTION, AUDIO_REF_COLLECTION];
+const RESERVED_CARD_COLLECTION = `(?!(?:${RESERVED_CARD_COLLECTIONS.join('|')})/)`;
 
 /**
  * 匹配 `[@合集/表情]`（全局版，一次替换全部）。

@@ -7,6 +7,7 @@
 // 常量与类型是纯数据，无运行时副作用，放进这里让两端共享，避免重复定义。
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { stripAudioTokens } from './audio-refs';
 import { stripStickerTokens } from './sticker-refs';
 import { stripUserCardTokens } from './user-refs';
 
@@ -40,20 +41,21 @@ export { FOCUS_MODE_BLOCKED_TITLE as CHAT_FOCUS_BLOCKED_TITLE } from './focus-mo
 /**
  * 把正文里的**内联 token** 换成可读的短标记 —— 侧栏预览 / 引用块 / 通知摘要共用。
  *
- * 表情 → `[表情]`（与既有的 `[图片]` / `[博客]` 同口径）；用户名片 → `@张三`
- * （摘要里看得懂谁被提到了才有意义，换成一个固定词等于没说）。
+ * 表情 → `[表情]`、音频 → `[音频]`（与既有的 `[图片]` / `[博客]` 同口径）；
+ * 用户名片 → `@张三`（摘要里看得懂谁被提到了才有意义，换成一个固定词等于没说）。
  *
  * 【为什么住在这里】服务端（chat-service 的三处）与客户端（ChatApp 的
  * previewOfMessage）必须**逐字一致** —— 那两处的注释一直互相指着对方，而这正是
  * 最容易漂的一类。chat-shared 本来就是「给两端共用」而拆出来的模块（它 import 的
- * 两个 refs 模块都是零依赖、两端都能进），放这儿之后这句话成了结构上的事实。
+ * 三个 refs 模块都是零依赖、两端都能进），放这儿之后这句话成了结构上的事实。
  *
- * ⚠️ 顺序：先名片后表情。表情那条正则虽然已经让开了 `用户` 这个合集名
+ * ⚠️ 顺序：先名片后表情。表情那条正则虽然已经让开了 `用户` / `音频` 这两个合集名
  * （见 sticker-refs.ts 的 RESERVED_CARD_COLLECTION），但顺序写死，读的人不用去推
- * 那层保证。
+ * 那层保证。音频排最后：它认的是 `[@音频/<ID>]`，与另两条的正则都不重叠，
+ * 放哪儿都对，写在末尾只是让「新加的排最后」这条习惯保持可见。
  */
 export function stripPreviewTokens(text: string): string {
-  return stripStickerTokens(stripUserCardTokens(text));
+  return stripAudioTokens(stripStickerTokens(stripUserCardTokens(text)));
 }
 
 export interface ChatAuthorDTO {
