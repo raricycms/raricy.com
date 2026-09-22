@@ -443,15 +443,15 @@ a {
     align-items: center;
     gap: 6px;
     border-radius: 999px;
-    color: var(--color-brand-primary);
-    background: var(--color-brand-secondary);
+    color: var(--color-success-primary);
+    background: var(--color-success-secondary);
     font-size: 15px;
     font-weight: bold;
     padding: 4px 12px;
     .icon {
         width: 1rem;
         height: 1rem;
-        color: var(--color-brand-primary);
+        color: var(--color-success-primary);
     }
 }
 
@@ -460,8 +460,8 @@ a {
     align-items: center;
     gap: 4px;
     border-radius: 999px;
-    color: var(--color-success-primary);
-    background: var(--color-success-secondary);
+    color: var(--color-brand-primary);
+    background: var(--color-brand-secondary);
     font-size: 15px;
     font-weight: bold;
     padding: 4px 12px;
@@ -469,7 +469,7 @@ a {
     .icon {
         width: 1rem;
         height: 1rem;
-        color: var(--color-success-primary);
+        color: var(--color-brand-primary);
     }
 }
 
