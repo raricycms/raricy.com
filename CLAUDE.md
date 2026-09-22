@@ -307,6 +307,11 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 - **写 `var(--x)` 前确认它存在**。变量不存在时不报错，整条声明静默失效 ——
   已经踩过 `--color-brand-primary-rgb`、`--color-bg-primary`、`--r-pill`、
   拼错的 `--color-background-card-unrend` 等六处。
+- **正文里的通用 `.类 img` 会漏进每一个内联元素**（`.chat-msg__md img` /
+  `.comment-content__md img`，见 `components/_markdown-body.scss`）。新增内联引用
+  （表情 / 黄脸 / 名片）时**逐条清零** `margin` / `border` / `border-radius` /
+  `background` / `cursor` —— 漏一条就静默坏一处：2026-09 名片的框贴图带上不透明底色，
+  **连头像一起盖住**。
 
 ### 文章对外可见性
 
