@@ -1,9 +1,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // guide-docs.test.ts —— 静态检查：指南页引用的 Markdown 必须真实存在
 //
-// 【为什么要有】站内有 4 个页面（/clipboard/guide、/image/guide、/vote/guide、
-// /tool/cattca-guide）通过 MarkdownGuide.loadGuideHtml() 在**请求时**读盘渲染
-// docs/ 下的 Markdown。这些文件不是普通文档，是**运行时资产** —— 文件名是接口。
+// 【为什么要有】站内若干指南页（/clipboard/guide、/image/guide、/audio/guide、
+// /vote/guide、/favorite/guide、/tool/cattca-guide 等）通过
+// MarkdownGuide.loadGuideHtml() 在**请求时**读盘渲染 docs/ 下的 Markdown。
+// 这些文件不是普通文档，是**运行时资产** —— 文件名是接口。
+//（这条守卫**不数页面**：调用点靠扫描发现，新增指南页自动纳入。）
 //
 // 危险在于失效是**全静默**的：loadGuideHtml 的 catch 兜底返回一句
 // 「指南文档暂时无法加载。」配 HTTP 200。于是重命名一个 .md、或者把

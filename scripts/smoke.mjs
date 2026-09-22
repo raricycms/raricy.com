@@ -117,13 +117,15 @@ for (const [p, name] of [['/', '首页'], ['/tool', '工具'], ['/blog', '博客
 // ★ 这几条必须查正文，不能只查 HTTP 200 ★
 // 指南页把 docs/guide/*.md 读出来渲染，而读取失败时 MarkdownGuide 会 catch 住、
 // 返回一句「指南文档暂时无法加载。」并且**仍是 HTTP 200 + 正常页面壳**。
-// 只看状态码的话，四篇指南全挂了也一路绿。所以断言文档 H1 出现在正文里。
+// 只看状态码的话，指南页**全挂了**也一路绿。所以断言文档 H1 出现在正文里。
 // （静态守卫 tests/unit/guide-docs.test.ts 管「文件在不在」，这里管「线上真读到了」。）
 console.log(bold('\n2b. 指南页'));
 for (const [p, name, h1] of [
   ['/clipboard/guide', '云剪贴板指南', '云剪贴板使用指南'],
   ['/image/guide', '图床指南', '图床使用指南'],
+  ['/audio/guide', '音频床指南', '音频床使用指南'],
   ['/vote/guide', '投票箱指南', '投票箱使用指南'],
+  ['/favorite/guide', '收藏夹指南', '收藏夹使用指南'],
   ['/tool/cattca-guide', 'Cattca 指南', 'Cattca 入门指南'],
 ]) {
   try {
