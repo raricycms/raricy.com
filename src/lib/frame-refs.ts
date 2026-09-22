@@ -181,15 +181,31 @@ export function isRentDaysInRange(days: number): boolean {
 }
 
 /**
- * 在售的框 —— 商城的**唯一**在架清单，按 `FRAME_KEYS` 顺序陈列。
+ * 一款框**能卖的价**（鱼干 / 天）；null = 不卖。
  *
- * 判据两条，缺一不可：有 `rentPerDay`，**且未退役**。
- * ⚠️ 别在调用方另写一份「有没有价格」的判断：漏掉 `retired` 那一半的后果是
- *    「已下架的框还能买到」—— 鱼干照扣、持有行照建，但戴上不显示
- *    （`resolveFrameKey` 到期之前先判退役），看起来像素材丢了。
+ * 判据两条，缺一不可：配了一个**正数**价，且未退役。商城在架清单与算钱都走这一个
+ * 出口 —— 别在调用方另写一份「有没有价格」的判断，两份判断迟早会对不上。
+ *
+ * ⚠️ 为什么非正数也算「不卖」而不是「免费」：`rentPerDay: 0` 是最容易写出来的
+ *    「免费框」，而免费租借这条路根本不存在 —— 记账内核拒收 0 单位（`postEntry`
+ *    抛普通 Error），于是**用户点一下就是 500**，而页面上还写着「合计 0 鱼干、
+ *    按钮可点」。判成「不卖」之后：商城不列它、接口回 400 点名去问站长，
+ *    运维在 `frame list --keys` 与 `npm run diagnose` 里看得到那条警告。
+ *    真要免费送，走 `npm run cli -- frame grant`（那里不经过鱼干）。
+ *
+ * ⚠️ 别漏 `retired` 那一半：漏了就是「已下架的框还能买到」—— 鱼干照扣、持有行
+ *    照建，但戴上不显示（`resolveFrameKey` 到期之前先判退役），看起来像素材丢了。
  */
+function salePriceOf(key: FrameKey): number | null {
+  const def = FRAMES[key];
+  if (def.retired) return null;
+  const price = def.rentPerDay;
+  return typeof price === 'number' && price > 0 ? price : null;
+}
+
+/** 在售的框 —— 商城的**唯一**在架清单，按 `FRAME_KEYS` 顺序陈列。 */
 export function rentableFrameKeys(): FrameKey[] {
-  return FRAME_KEYS.filter((k) => FRAMES[k].rentPerDay !== undefined && !FRAMES[k].retired);
+  return FRAME_KEYS.filter((k) => salePriceOf(k) !== null);
 }
 
 /**
@@ -201,10 +217,9 @@ export function rentableFrameKeys(): FrameKey[] {
 export function frameRentCost(key: string, days: number): number | null {
   const k = parseFrameKey(key);
   if (!k) return null;
-  const def = FRAMES[k];
-  if (def.rentPerDay === undefined || def.retired) return null;
-  if (!isRentDaysInRange(days)) return null;
-  return def.rentPerDay * days;
+  const price = salePriceOf(k);
+  if (price === null || !isRentDaysInRange(days)) return null;
+  return price * days;
 }
 
 /**

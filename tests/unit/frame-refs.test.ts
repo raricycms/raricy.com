@@ -20,9 +20,11 @@ import {
   FRAMES,
   FRAME_URL_PREFIX,
   frameLabel,
+  frameRentCost,
   frameUrl,
   isFrameExpired,
   parseFrameKey,
+  rentableFrameKeys,
   resolveFrameKey,
 } from '@/lib/frame-refs';
 
@@ -172,6 +174,51 @@ describe('resolveFrameKey', () => {
 
   it('未过期但将要过期 —— 到最后那一毫秒仍返回 key', () => {
     expect(resolveFrameKey(DEMO, T0, T0)).toBe(DEMO);
+  });
+});
+
+// ── 商城在架清单与定价 ─────────────────────────────────────────────────────
+
+describe('rentableFrameKeys / frameRentCost', () => {
+  /** 造一款「在售」的框：DEMO 本来没价，给它配一个。 */
+  const withPrice = (price: unknown) => {
+    FRAMES[DEMO] = { ...PRISTINE[DEMO], rentPerDay: price as number };
+  };
+  const priced = FRAME_KEYS.find((k) => (FRAMES[k].rentPerDay ?? 0) > 0);
+
+  it('配了正数价才在架 —— 出厂那款在，DEMO 不在', () => {
+    expect(priced, '白名单里一款在售的都没有，这条用例失去意义').toBeDefined();
+    expect(rentableFrameKeys()).toContain(priced);
+    expect(rentableFrameKeys()).not.toContain(DEMO);
+  });
+
+  it('★ 退役 = 同时下架（两件事同一个开关，不会出现「已下架却还能买」）', () => {
+    withPrice(3);
+    expect(rentableFrameKeys()).toContain(DEMO);
+
+    FRAMES[DEMO] = { ...FRAMES[DEMO], retired: true };
+    expect(rentableFrameKeys()).not.toContain(DEMO);
+    // 算钱那条也必须一起拒 —— 两条判据分开写就会在这里露出不一致
+    expect(frameRentCost(DEMO, 1)).toBeNull();
+  });
+
+  it('★ 价配成 0 / 负数 = 不卖（不是「免费」也不是 500）', () => {
+    // 记账内核拒收 0 单位：若判成「可租」，用户点一下就是 500，
+    // 而页面上还写着「合计 0 鱼干、按钮可点」。判成不卖之后接口回 400。
+    for (const bad of [0, -1]) {
+      withPrice(bad);
+      expect(rentableFrameKeys(), `价 ${bad} 不该在架`).not.toContain(DEMO);
+      expect(frameRentCost(DEMO, 1), `价 ${bad} 不该算出钱来`).toBeNull();
+    }
+  });
+
+  it('价 × 天数；天数越界 / 未知 key 一律 null', () => {
+    withPrice(2.5);
+    expect(frameRentCost(DEMO, 4)).toBeCloseTo(10, 10);
+    expect(frameRentCost(DEMO, 0)).toBeNull(); // 0 天
+    expect(frameRentCost(DEMO, 31)).toBeNull(); // 超上限（常量 FRAME_RENT_MAX_DAYS）
+    expect(frameRentCost(DEMO, 1.5)).toBeNull(); // 非整数
+    expect(frameRentCost('no-such-frame', 1)).toBeNull();
   });
 });
 

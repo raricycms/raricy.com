@@ -380,6 +380,28 @@ describe('拒绝的几种情形（一律不扣钱）', () => {
     if (!res.ok) expect(res.code).toBe(400);
   });
 
+  it('★ 价配成 0（「免费框」的写法）→ 400，不是 500', async () => {
+    // 免费租借这条路根本不存在 —— 记账内核拒收 0 单位（postEntry 抛）。判成
+    // 「不可租」之后，这里必须是一条正常的业务拒绝；不判的话用户看到的是
+    // 「服务器开小差了」，而页面上还显示「合计 0 鱼干、按钮可点」。
+    withAsset(KEY);
+    const user = await makeFishUser(10);
+    const saved = FRAMES[KEY].rentPerDay;
+    FRAMES[KEY] = { ...FRAMES[KEY], rentPerDay: 0 };
+    try {
+      const res = await rentFrame({ userId: user.id, key: KEY, days: 1 });
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.code).toBe(400);
+        expect(res.message).toContain('配置有误');
+      }
+    } finally {
+      FRAMES[KEY] = { ...FRAMES[KEY], rentPerDay: saved };
+    }
+    expect(await balanceOf(user.id)).toBeCloseTo(10, 4); // 一分没扣
+    await expectLedgerConsistent('价配错时被拒');
+  });
+
   it('天数越界（0 / 31 / 1.5 / 空 / 非数 / 科学计数法）→ 400，且不扣钱', async () => {
     withAsset(KEY);
     const user = await makeFishUser(1000);

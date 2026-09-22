@@ -339,8 +339,16 @@ export interface FrameAssetAudit {
   hasAlpha: boolean | null;
   /** 文件大小（字节）；没文件时 null。 */
   bytes: number | null;
-  /** 鱼干商城的租金（鱼干/天）；null = 不零售（只能由站长发放）或已退役。 */
+  /** 鱼干商城的租金（鱼干/天）；null = 不零售（只能由站长发放）/ 已退役 / 价配错了。 */
   rentPerDay: number | null;
+  /**
+   * 价配成了非正数（`rentPerDay: 0` 这种「免费框」写法）。
+   *
+   * 商城把它当**不卖**（判据见 `frame-refs.ts` 的 salePriceOf）—— 因为免费租借这条
+   * 路根本不存在：记账内核拒收 0 单位，不判的话用户点一下就是 500。
+   * 于是「配错了」与「故意不卖」在页面上长得一样，只有这里点名能区别开。
+   */
+  rentMisconfigured: boolean;
 }
 
 /**
@@ -361,10 +369,14 @@ export function auditFrameAssets(): FrameAssetAudit[] {
     // 租金与素材无关（那两件事的诊断价值不同：没图 = 全站静默不显示，
     // 没价 = 商城里不出现），所以先算好，三条 return 都带上。
     const def = FRAMES[key];
-    const rentPerDay = def.retired ? null : (def.rentPerDay ?? null);
+    const rawRent = def.retired ? null : (def.rentPerDay ?? null);
+    // 非正数 = 配置有误：商城按「不卖」处理（见 salePriceOf 的理由），这里也照实报成
+    // 不零售，并把「配错了」单独标出来 —— 否则它与「故意不卖」在输出里长得一样。
+    const rentMisconfigured = rawRent !== null && rawRent <= 0;
+    const rentPerDay = rentMisconfigured ? null : rawRent;
     const abs = path.join(dir, `${key}.png`);
     if (!frameAssetAvailable(key)) {
-      return { key, label, available: false, hasAlpha: null, bytes: null, rentPerDay };
+      return { key, label, available: false, hasAlpha: null, bytes: null, rentPerDay, rentMisconfigured };
     }
     try {
       const buf = fs.readFileSync(abs);
@@ -375,10 +387,11 @@ export function auditFrameAssets(): FrameAssetAudit[] {
         hasAlpha: pngHasAlpha(buf),
         bytes: buf.byteLength,
         rentPerDay,
+        rentMisconfigured,
       };
     } catch {
       // 扫盘说有、读的时候没了（站长正在换文件）—— 当成没有，不抛
-      return { key, label, available: false, hasAlpha: null, bytes: null, rentPerDay };
+      return { key, label, available: false, hasAlpha: null, bytes: null, rentPerDay, rentMisconfigured };
     }
   });
 }

@@ -353,6 +353,7 @@ export const frameCommands: CommandSpec[] = [
           bytes: r.bytes === null ? '—' : String(r.bytes),
           // 鱼干商城的租金（鱼干/天）。`—` = 不零售，只能由站长发放。
           rent: r.rentPerDay === null ? '—' : `${r.rentPerDay} 鱼干/天`,
+          rentMisconfigured: r.rentMisconfigured,
         }));
         const bad = rows.filter((r) => r.asset === '缺失' || r.alpha === '无');
         return {
@@ -361,11 +362,20 @@ export const frameCommands: CommandSpec[] = [
               `${r.key}\t${r.label}\t素材:${r.asset}\t透明通道:${r.alpha}\t${r.bytes} 字节\t租金:${r.rent}`
           ),
           json: { frames: rows },
-          warnings: bad.map((r) =>
-            r.asset === '缺失'
-              ? `${r.key}：白名单里有、盘上没图 —— 全站都不会显示它`
-              : `${r.key}：素材没有透明通道 —— 会盖住用户的脸`
-          ),
+          warnings: [
+            ...bad.map((r) =>
+              r.asset === '缺失'
+                ? `${r.key}：白名单里有、盘上没图 —— 全站都不会显示它`
+                : `${r.key}：素材没有透明通道 —— 会盖住用户的脸`
+            ),
+            ...rows
+              .filter((r) => r.rentMisconfigured)
+              .map(
+                (r) =>
+                  `${r.key}：租金配成了非正数 —— 商城按「不卖」处理（免费租借这条路不存在：` +
+                  `记账内核拒收 0 单位）。真要免费送用 frame grant；要上架就填一个正数`
+              ),
+          ],
         };
       }
 
