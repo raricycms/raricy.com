@@ -182,6 +182,7 @@ describe('RULES 全站配额（src/lib/rate-limit.ts 即权威，改动即报警
     { name: 'voteCreateHourly', limit: 10, windowMs: HOUR, desc: '投票创建 10 次/时' },
     { name: 'voteHourly', limit: 30, windowMs: HOUR, desc: '投票 30 次/时' },
     { name: 'imageUploadHourly', limit: 200, windowMs: HOUR, desc: '图床上传 200 次/时' },
+    { name: 'audioUploadHourly', limit: 200, windowMs: HOUR, desc: '音频床地上传 200 次/时' },
     { name: 'chatMinute', limit: 120, windowMs: 60_000, desc: '讨论发言 120 次/分' },
     { name: 'chatDaily', limit: 8000, windowMs: DAY, desc: '讨论发言 8000 次/天' },
     { name: 'chatPoll', limit: 120, windowMs: 60_000, desc: '讨论对账轮询 120 次/分' },
