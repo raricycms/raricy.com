@@ -3,7 +3,9 @@ import { apiOk, apiErr } from '@/lib/format';
 import { getTransactions, toFishTxJson } from '@/lib/fish-service';
 
 // GET /api/fish/transactions — 当前用户流水分页（需登录）。
-// query: ?page=1&per_page=20&type=checkin|feed_all|admin_grant|purchase|...
+// query: ?page=1&per_page=20&type=checkin|feed_all|transfer_all|market_all|frame_rent|admin_grant
+//        （筛选条那套值 = 页面 FILTERS 数组；合称映射见 fish-service.applyTypeFilter。
+//          这里**曾经**列过 `purchase` —— 那个 type 从来不存在，付款流水是 transfer）
 //
 // 返回字段固定 snake_case，且**与另外两条流水读口逐字段相同**（`toFishTxJson`）。
 // 这三条路由共用同一个映射是刻意的：它们曾经各自为政，结果同一个字段在三个接口里

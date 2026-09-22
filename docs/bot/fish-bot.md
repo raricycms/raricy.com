@@ -239,24 +239,30 @@ POST /api/fish/market/transactions
   一份完整实现见 `docs/bot/fish-bank-example.md`。
 
 `type` 是**筛选项**，原样透传给查询；三个「合称」是特例：`feed_all` = 投喂（含收与支）、
-`transfer_all` = 转账（含转出与转入）。网页筛选条用的那套取值是：
+`transfer_all` = 转账（含转出与转入）、`market_all` = 练手盘（买入与卖出）。
+**网页筛选条用的那套取值**（这张表就是全部，不多不少）：
 
 | 传什么 | 筛出 |
 |--------|------|
 | `checkin` | 签到 |
 | `feed_all` | 投喂（收 + 支） |
 | `transfer_all` | 转账（转出 + 转入） |
+| `market_all` | 练手盘（买入 + 卖出） |
 | `admin_grant` | 管理员赠送 |
-| `purchase` | **消费**（收银台 / 收款码付款） |
 
 不传则返回全部。
 
-> ⚠️ **流水行里还会出现文档没列过的 `type`**，别看到陌生值就以为接口坏了：
-> `feed` / `feed_receive` / `transfer` / `transfer_receive`（合称背后的原始值）、
-> `admin_deduct`（站长从你账上扣减）、`system_compensate`（系统补偿）。
-> 前两组用合称筛得到，后两个不是筛选条上的选项、但**会出现在你的流水里**。
+> ⚠️ **流水行里还会出现这张表没列过的 `type`**，别看到陌生值就以为接口坏了。
+> 它们全是**历史值**，只出现在老流水里，筛选条上没有对应项：
+> `feed` / `feed_receive` / `transfer` / `transfer_receive` / `market_buy` /
+> `market_sell`（合称背后的原始值，用上面的合称筛得到）、
+> `admin_deduct`（站长从你账上扣减）、`system_compensate`（系统补偿）、
+> `feed_backpay`（投喂分成补发）、`compensate_reverse`（补偿冲正）、
+> `sync_adjust`（早年与站外账户服务对账时的调整）。
 >
-> 📌 「与网页筛选条同口径」只对**筛选条上列出的那五个**成立 —— 这张表就是那五个。
+> ⚠️ **收银台 / 收款码的付款没有专属 `type`** —— 那笔钱在流水里就是一条
+> `transfer`（负数）。别去筛一个叫 `purchase` 的值：它**从来不存在**，
+> 传了只会得到空列表。
 
 ```json
 {
