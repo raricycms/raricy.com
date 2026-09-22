@@ -204,7 +204,7 @@ for (const f of srcFiles) {
 // 写死主机名的绝对 URL 会绕开站内路由，指向的老路径又已经不存在 —— 点了就是 404。
 // 工具菜单曾经就是这么把 5 个工具指出去的（而它们在本站早就实现好了）。
 // 只拦「回源本站老路径」，外站链接（GitHub、智慧河 zhh.raricy.com 等）是正常的。
-const BACKLINK = /(?:^|\/\/)(?:www\.)?raricy\.com\/(tool|blog|auth|image|vote|clipboard|checkin)\b/;
+const BACKLINK = /(?:^|\/\/)(?:www\.)?raricy\.com\/(tool|blog|auth|image|audio|vote|clipboard|checkin)\b/;
 for (const f of srcFiles) {
   const txt = stripComments(fs.readFileSync(f, 'utf8'));
   if (/FLASK_ORIGIN/.test(txt)) {
