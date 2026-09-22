@@ -351,11 +351,14 @@ export const frameCommands: CommandSpec[] = [
           asset: r.available ? '有' : '缺失',
           alpha: r.available ? (r.hasAlpha === true ? '有' : r.hasAlpha === false ? '无' : '?') : '—',
           bytes: r.bytes === null ? '—' : String(r.bytes),
+          // 鱼干商城的租金（鱼干/天）。`—` = 不零售，只能由站长发放。
+          rent: r.rentPerDay === null ? '—' : `${r.rentPerDay} 鱼干/天`,
         }));
         const bad = rows.filter((r) => r.asset === '缺失' || r.alpha === '无');
         return {
           lines: rows.map(
-            (r) => `${r.key}\t${r.label}\t素材:${r.asset}\t透明通道:${r.alpha}\t${r.bytes} 字节`
+            (r) =>
+              `${r.key}\t${r.label}\t素材:${r.asset}\t透明通道:${r.alpha}\t${r.bytes} 字节\t租金:${r.rent}`
           ),
           json: { frames: rows },
           warnings: bad.map((r) =>
