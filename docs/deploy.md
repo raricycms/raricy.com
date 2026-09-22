@@ -492,6 +492,20 @@ tar czf /backup/assets-$(date +%Y%m%d).tar.gz \
 > 只会在某次恢复之后表现为「那类文件全没了」。**`frames` 已经不在这里**：
 > 头像框素材是我们自己画的，2026-09 起随代码入库（`public/static/frames/`）。
 
+### `.env`（改了值就存一份）
+
+`SECRET_KEY` 与 `FISH_ENCRYPTION_KEY` 住在里面，而**库备份里那批回调签名密钥是它们封的**
+（`fish_webhook_endpoints.secret_encrypted`）：只有库、没有这两把钥匙，密文一条都解不开
+（密文没坏），商户只能各自换密钥。所以 `.env` 与库**同级别**：
+
+```bash
+install -m 600 /srv/raricy.com/.env /backup/env-$(date +%Y%m%d)   # 600：里面是密钥材料
+```
+
+> ⚠️ **别把它塞进库/资产那份 tar 里** —— 密文与钥匙躺在一起等于没加密。
+> 分开存、分开管权限。另：`.env` 里的 `FISH_ENCRYPTION_KEY` 一旦丢失或改错，
+> 与丢失 `SECRET_KEY` 是同一类后果（`npm run diagnose` 段 4 会报出来）。
+
 ### 备份验证
 
 ```bash
