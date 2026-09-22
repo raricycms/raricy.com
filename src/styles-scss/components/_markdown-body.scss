@@ -182,6 +182,20 @@
     margin: 0 0.05em;
     border-radius: 0;
   }
+  // 内联音频（正文里的 `[@音频/<ID>]`，见 src/lib/audio-refs.ts）。
+  // 与图床图同为**整行独占**的一块（播放器有自己的控件宽度，跟文字挤在一行会很难看），
+  // 所以也走 display: block。区别是不描边、不设 zoom-in —— 它自己就带控件。
+  // ⚠️ 上面那条通用 `img` 规则碰不到 audio（选择器是 img），但**这条必须写**：
+  //    `<audio>` 的浏览器默认宽度约 300px 且是行内的，在一段文字里会把整行拆开。
+  .#{$cls} audio.rich-audio-ref {
+    display: block;
+    width: 100%;
+    // 讨论气泡与楼中楼都窄，480px 是「够放控件、又不至于在宽正文里拉成一条」的折中
+    max-width: 480px;
+    margin: 0.4em 0;
+    // 与图床图一致的圆角语言（8px 是正文内嵌块那一档）
+    border-radius: 8px;
+  }
 
   // 用户名片（正文里的 `[@用户/<用户名>]`，见 src/lib/user-refs.ts）。
   //
