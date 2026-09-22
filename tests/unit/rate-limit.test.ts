@@ -203,6 +203,18 @@ describe('RULES 全站配额（src/lib/rate-limit.ts 即权威，改动即报警
       desc: '练手盘开/平仓 300 次/天/用户（比转账松：它不通知任何人）',
     },
     {
+      name: 'frameRentHourly',
+      limit: 30,
+      windowMs: HOUR,
+      desc: '鱼干商城租头像框 30 次/时/用户（余额是花销的墙，这两条是写次数的墙）',
+    },
+    {
+      name: 'frameRentDaily',
+      limit: 200,
+      windowMs: DAY,
+      desc: '鱼干商城租头像框 200 次/天/用户',
+    },
+    {
       name: 'fishApiPerUser',
       limit: 20,
       windowMs: 60_000,

@@ -77,6 +77,20 @@ export interface FrameDef {
    * 省略 = 在架。
    */
   retired?: boolean;
+  /**
+   * 鱼干商城的租金（**鱼干 / 天**）。省略 = 不零售，只能由站长发放。
+   *
+   * 【为什么价格住这里而不是库】与 `label` 同一个理由（见文件头）：商城面板是
+   * 客户端组件，而 `frame-service` 拖着 prisma 进不了客户端包 —— 价格若住在那边，
+   * 前端就只能手抄一份，而手抄的那份会在改价时静默对不上（页面显示 1 鱼干、
+   * 服务端扣 2 条）。放这里，**展示与校验读的是同一个数**。
+   *
+   * ⚠️ 改这个数 = 改全站定价。`docs/guide/头像框使用指南.md` 与 `docs/cli.md`
+   *    （`frame list --keys` 的输出样例）复述了它，要同步。
+   * ⚠️ 退役一款框（`retired: true`）会**同时下架**它在商城的在售行 ——
+   *    `rentableFrameKeys()` 两件事一起判，不会出现「已下架却还能买」。
+   */
+  rentPerDay?: number;
 }
 
 /**
@@ -106,6 +120,7 @@ export const FRAMES: Record<FrameKey, FrameDef> = {
   fishblue: {
     label: '鱼干蓝',
     description: '深蓝 → 天蓝的渐变环，四角各压一条小鱼干。缩到 20px 时鱼只剩四个浅色小点。',
+    rentPerDay: 1,
   },
 };
 
@@ -142,6 +157,70 @@ export function frameLabel(key: string): string | null {
 /** 头像框贴图地址。key 已由白名单约束（标识符形状），无需编码。 */
 export function frameUrl(key: FrameKey): string {
   return `${FRAME_URL_PREFIX}${key}`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 鱼干商城的**租赁词汇**（价格、天数、在架清单）
+//
+// 这一节是纯函数，服务端与客户端读的是**同一份**：服务端拿它校验与算钱，
+// 商城面板拿它渲染价格与置灰按钮。两边各写一份的后果不是报错，是
+// 「页面显示 1 鱼干、服务端扣 2 条」—— 而用户只会觉得账不对。
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 单次可租的最少 / 最多天数。**两端都是硬边界**，两边读同一对常量。 */
+export const FRAME_RENT_MIN_DAYS = 1;
+export const FRAME_RENT_MAX_DAYS = 30;
+
+/** 天数在合法区间内吗（整数、含两端）。 */
+export function isRentDaysInRange(days: number): boolean {
+  return Number.isInteger(days) && days >= FRAME_RENT_MIN_DAYS && days <= FRAME_RENT_MAX_DAYS;
+}
+
+/**
+ * 在售的框 —— 商城的**唯一**在架清单，按 `FRAME_KEYS` 顺序陈列。
+ *
+ * 判据两条，缺一不可：有 `rentPerDay`，**且未退役**。
+ * ⚠️ 别在调用方另写一份「有没有价格」的判断：漏掉 `retired` 那一半的后果是
+ *    「已下架的框还能买到」—— 鱼干照扣、持有行照建，但戴上不显示
+ *    （`resolveFrameKey` 到期之前先判退役），看起来像素材丢了。
+ */
+export function rentableFrameKeys(): FrameKey[] {
+  return FRAME_KEYS.filter((k) => FRAMES[k].rentPerDay !== undefined && !FRAMES[k].retired);
+}
+
+/**
+ * 一款框租 `days` 天的总价（鱼干）。**不可租 / 天数越界一律 null**。
+ *
+ * 与 `parseRentDays` 的分工照 `parseFrameKey` / `frameLabel` 那一对：
+ * 这个回答「要收多少钱」，那个回答「这个天数字本身合法吗」。
+ */
+export function frameRentCost(key: string, days: number): number | null {
+  const k = parseFrameKey(key);
+  if (!k) return null;
+  const def = FRAMES[k];
+  if (def.rentPerDay === undefined || def.retired) return null;
+  if (!isRentDaysInRange(days)) return null;
+  return def.rentPerDay * days;
+}
+
+/**
+ * 解析提交上来的天数。**非法一律 null**，由调用方报 400 —— 不兜默认值。
+ *
+ * 与 `parseFrameKey` 同款纪律：兜成 1 天或 30 天都等于**替用户做了一个他没做的
+ * 决定**，而这次那个决定还带着一次扣款。
+ *
+ * 形状判得比 `Number()` 严：`Number('1e2')` 是 100、`Number(' 1 ')` 是 1、
+ * `Number('')` 是 0、`Number([])` 是 0 —— 放行前两个就是静默卖出一个用户没打算
+ * 买的天数。所以字符串先过一道「十进制整数」的形状，数字则必须本身就是整数。
+ */
+export function parseRentDays(raw: unknown): number | null {
+  const n =
+    typeof raw === 'number'
+      ? raw
+      : typeof raw === 'string' && /^\s*\d+\s*$/.test(raw)
+        ? Number(raw)
+        : NaN;
+  return isRentDaysInRange(n) ? n : null;
 }
 
 /**

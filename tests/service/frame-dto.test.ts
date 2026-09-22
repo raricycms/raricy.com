@@ -32,6 +32,7 @@ import { nowForDb } from '@/lib/db-time';
 import { FRAME_KEYS, frameUrl } from '@/lib/frame-refs';
 import { equipFrame, grantFrame, __resetFrameAssetCacheForTests } from '@/lib/frame-service';
 import { makeBlog, makeUser, resetDb } from '../helpers/db';
+import { makeFishUser } from '../helpers/fish-ledger';
 import { listBlogs, getBlogDetail, listPublicBlogs, getLikers } from '@/lib/blog-service';
 import { getFeeders } from '@/lib/feed-service';
 import { listCommentsForBlog, createComment } from '@/lib/comment-service';
@@ -40,6 +41,8 @@ import { getCountLeaderboard } from '@/lib/checkin-service';
 import { getPublicProfile } from '@/lib/user-service';
 import { listUsers } from '@/lib/admin-user-service';
 import { searchTransferTargets, findTransferTargetByUsername } from '@/lib/fish-market-service';
+import { listShopItems } from '@/lib/frame-shop-service';
+import { rentableFrameKeys } from '@/lib/frame-refs';
 
 const KEY = FRAME_KEYS[0];
 const EXPECTED = frameUrl(KEY);
@@ -249,5 +252,41 @@ describe('鱼干转账', () => {
     const u = await makeFramedUser('exactname');
     expect((await findTransferTargetByUsername('exactname'))?.frame_url).toBe(EXPECTED);
     expect(await findTransferTargetByUsername('nobody')).toBeNull();
+  });
+});
+
+// ── 鱼干商城的预览 ──────────────────────────────────────────────────────────
+
+describe('鱼干商城', () => {
+  it('listShopItems → 面板拿得到渲染预览所需的一切（key + assetMissing）', async () => {
+    // ⚠️ 这一条与上面那些**形状不同**：商城的预览画的是**商品**的框，不是
+    // 「这个用户的框」—— 面板把商品图直接叠在访问者自己的头像上，所以这一面
+    // 不带 `frame_url`，带的是 `key`（由 `frameUrl(key)` 拼出预览地址）。
+    // 台账真正要保的不变量还是那一件事：**那一处的框显示得出来**。
+    // 在售的那款框 —— 与上面那些用例用的 KEY（FRAME_KEYS[0]）不是同一个，
+    // 所以素材要单独铺一份
+    const shopKey = rentableFrameKeys()[0];
+    const shopAsset = path.join(TEST_FRAMES_DIR, `${shopKey}.png`);
+    fs.writeFileSync(shopAsset, PNG_HEAD);
+    __resetFrameAssetCacheForTests();
+
+    const buyer = await makeFishUser(10);
+
+    const [item] = await listShopItems(buyer.id);
+    expect(item.key).toBe(shopKey);
+    // 素材在盘上 → 面板显示预览而不是「素材缺失」；拼出来的地址要是真能取图的那个路由
+    expect(item.assetMissing).toBe(false);
+    expect(frameUrl(shopKey)).toBe(`/api/frames/${shopKey}`);
+
+    // 同一条路的另一半：素材缺失时面板退回**不显示预览**（而不是画一张裂图，
+    // 更不是照卖 —— 服务层那侧会直接 409 拒卖）
+    fs.rmSync(shopAsset);
+    __resetFrameAssetCacheForTests();
+    const [missing] = await listShopItems(buyer.id);
+    expect(missing.assetMissing).toBe(true);
+
+    // 还原，免得污染后面可能新增的用例
+    fs.writeFileSync(shopAsset, PNG_HEAD);
+    __resetFrameAssetCacheForTests();
   });
 });

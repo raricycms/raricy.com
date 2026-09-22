@@ -7,9 +7,12 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 //
 // 【F1】唯一写入者。`users.equipped_frame_key` / `users.equipped_frame_expires_at`
-//   这两列**只由本文件的 grantFrame / revokeFrame / equipFrame 写**。
+//   这两列**只由本文件的 grantFrameTx / grantFrame / revokeFrame / equipFrame 写**。
 //   任何别的地方写它们 = 绕过到期判定（渲染侧直接读原始列会被
 //   tests/unit/frame-guard.test.ts 静态判红）。
+//   ⚠️ 权限变更（禁言 / 重置密码 / 踢下线）那条纪律在这里的同款是：**别的文件要改
+//   持有行或装备列时，加一个 `…Tx(tx, …)` 内核到本文件里，而不是自己在外面写** ——
+//   商城的购买路径（frame-shop-service）就是这么接进来的。
 //
 // 【F2】★ 同步契约 ★ 凡改动某用户对 key K 的持有行 `expires_at`（grant 续期 /
 //   revoke 失效），若该用户此刻 `equipped_frame_key === K`，**必须在同一个事务里**
@@ -97,6 +100,10 @@ import path from 'node:path';
 import { prisma } from './db';
 import { nowForDb } from './db-time';
 import { ymdhms } from './format';
+import type { Prisma } from '@prisma/client';
+
+/** 事务客户端 —— 只给 grantFrameTx 用（记账内核 postEntry 收的是同一个类型）。 */
+type TxClient = Prisma.TransactionClient;
 import {
   FRAME_KEYS,
   FRAMES,
@@ -306,6 +313,8 @@ export interface FrameAssetAudit {
   hasAlpha: boolean | null;
   /** 文件大小（字节）；没文件时 null。 */
   bytes: number | null;
+  /** 鱼干商城的租金（鱼干/天）；null = 不零售（只能由站长发放）或已退役。 */
+  rentPerDay: number | null;
 }
 
 /**
@@ -323,16 +332,27 @@ export function auditFrameAssets(): FrameAssetAudit[] {
   return FRAME_KEYS.map((key) => {
     // frameLabel 对已知 key 恒有值（key 来自 FRAME_KEYS，是 FRAMES 的键集）
     const label = frameLabel(key) ?? key;
+    // 租金与素材无关（那两件事的诊断价值不同：没图 = 全站静默不显示，
+    // 没价 = 商城里不出现），所以先算好，三条 return 都带上。
+    const def = FRAMES[key];
+    const rentPerDay = def.retired ? null : (def.rentPerDay ?? null);
     const abs = path.join(dir, `${key}.png`);
     if (!frameAssetAvailable(key)) {
-      return { key, label, available: false, hasAlpha: null, bytes: null };
+      return { key, label, available: false, hasAlpha: null, bytes: null, rentPerDay };
     }
     try {
       const buf = fs.readFileSync(abs);
-      return { key, label, available: true, hasAlpha: pngHasAlpha(buf), bytes: buf.byteLength };
+      return {
+        key,
+        label,
+        available: true,
+        hasAlpha: pngHasAlpha(buf),
+        bytes: buf.byteLength,
+        rentPerDay,
+      };
     } catch {
       // 扫盘说有、读的时候没了（站长正在换文件）—— 当成没有，不抛
-      return { key, label, available: false, hasAlpha: null, bytes: null };
+      return { key, label, available: false, hasAlpha: null, bytes: null, rentPerDay };
     }
   });
 }
@@ -409,27 +429,46 @@ export type FrameGrantResult =
   | { ok: true; action: FrameGrantAction; expiresAt: Date | null; refreshedEquip: boolean }
   | { ok: false; code: 400 | 404; message: string };
 
+export interface GrantFrameInput {
+  userId: string;
+  key: string;
+  /** 绝对时刻；null = 永久。调用方按 nowForDb() 口径算好（`new Date(now.getTime() + n)`）。 */
+  expiresAt: Date | null;
+  /** 'purchase' 由鱼干商城那条路传（见 frame-shop-service）。 */
+  source?: 'cli' | 'purchase' | 'system';
+}
+
 /**
- * 授予 / 续期一个头像框。
+ * ★ 授予内核：在**调用方给的事务**里授予 / 续期 ★
+ *
+ * `grantFrame` 是它的「自己开一个事务」薄壳；鱼干商城的购买路径直接用它 ——
+ * 那里必须让「扣鱼干」与「发框」落在**同一个事务**里，而记账内核 `postEntry`
+ * 要求调用方传 tx（见 fish-service.ts）。拆出这一层就是为了这个，
+ * 而不是为了给外部多一个入口。
  *
  * 【授予 ≠ 装备】这里只写持有关系，用户自己去 /settings 选择戴不戴。
  *
  * 【幂等，且只延长不缩短】同一 (用户, 框) 已存在时取「原到期」与「新到期」的较晚者。
  * 想缩短或收回，用 revokeFrame。
+ * ⚠️ **这条口径对「购买」是个陷阱**：买 3 天的正确语义是「在现有到期上加 3 天」，
+ *    而不是「从现在起 3 天」。调用方算 `expiresAt` 时必须从**当前到期**起算，
+ *    否则一个还剩 20 天的人买 3 天会走到 noop —— **扣了钱、什么都没拿到、不报错**。
+ *    商城那条路的算法与其用例见 frame-shop-service.rentFrame。
  *
  * ⚠️ **墓碑行上的旧 expires_at 不参与取较晚**（见下面 `existing.deleted` 那一支）：
  *    那个值属于一次**已被收回**的授权。若参与，就会出现「曾经永久授权过 → 收回 →
  *    再授 30 天 → 仍是永久」这种荒唐结果。
  *
  * 【F2】若该用户此刻正戴着这个框，**同一事务里**刷新装备列的到期时刻。
+ *
+ * ⚠️ 调用方若在本函数**之前**已经写过东西（商城那一路先扣了鱼干），拿到
+ *    `ok: false` 时**必须抛出去**让事务回滚 —— 返回错误对象在这里只意味着
+ *    「本函数没写库」，不代表整个事务没写。
  */
-export async function grantFrame(input: {
-  userId: string;
-  key: string;
-  /** 绝对时刻；null = 永久。调用方按 nowForDb() 口径算好（`new Date(now.getTime() + n)`）。 */
-  expiresAt: Date | null;
-  source?: 'cli' | 'purchase' | 'system';
-}): Promise<FrameGrantResult> {
+export async function grantFrameTx(
+  tx: TxClient,
+  input: GrantFrameInput
+): Promise<FrameGrantResult> {
   const { userId, expiresAt } = input;
   const source = input.source ?? 'cli';
 
@@ -438,65 +477,72 @@ export async function grantFrame(input: {
     return { ok: false, code: 400, message: `未知的头像框：${input.key}（合法值见 src/lib/frame-refs.ts 的 FRAME_KEYS）` };
   }
 
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
+  const user = await tx.user.findUnique({ where: { id: userId }, select: { id: true } });
   if (!user) return { ok: false, code: 404, message: '用户不存在' };
 
   const now = nowForDb();
 
-  try {
-    return await prisma.$transaction(async (tx) => {
-      const existing = await tx.userFrame.findUnique({
-        where: { uq_user_frame: { userId, frameKey: key } },
-        select: { expiresAt: true, deleted: true },
-      });
+  const existing = await tx.userFrame.findUnique({
+    where: { uq_user_frame: { userId, frameKey: key } },
+    select: { expiresAt: true, deleted: true },
+  });
 
-      let action: FrameGrantAction;
-      let next: Date | null;
+  let action: FrameGrantAction;
+  let next: Date | null;
 
-      if (!existing) {
-        action = 'created';
-        next = expiresAt;
-      } else if (existing.deleted) {
-        // 复活墓碑行（F4）。**不与旧值取较晚** —— 那是上一次已被收回的授权。
-        action = 'revived';
-        next = expiresAt;
-      } else if (existing.expiresAt === null) {
-        // 已经是永久 —— 任何请求都改不了它（永久是最大的）
-        next = null;
-        action = 'noop';
-      } else {
-        // 「只延长不缩短」就落在这一句上：请求更短时 next 仍是原值 → noop
-        next = laterExpiry(existing.expiresAt, expiresAt);
-        action = (next === null || next.getTime() > existing.expiresAt.getTime())
-          ? 'extended'
-          : 'noop';
-      }
+  if (!existing) {
+    action = 'created';
+    next = expiresAt;
+  } else if (existing.deleted) {
+    // 复活墓碑行（F4）。**不与旧值取较晚** —— 那是上一次已被收回的授权。
+    action = 'revived';
+    next = expiresAt;
+  } else if (existing.expiresAt === null) {
+    // 已经是永久 —— 任何请求都改不了它（永久是最大的）
+    next = null;
+    action = 'noop';
+  } else {
+    // 「只延长不缩短」就落在这一句上：请求更短时 next 仍是原值 → noop
+    next = laterExpiry(existing.expiresAt, expiresAt);
+    action = (next === null || next.getTime() > existing.expiresAt.getTime())
+      ? 'extended'
+      : 'noop';
+  }
 
-      // upsert 而不是 create：唯一约束是物理的、含墓碑行，新插会撞约束。
-      // 写法照 favorite-service 的 attachItems（那里记着 createMany({skipDuplicates})
-      // 会静默变成 no-op 的教训 —— 这里是「点了没反应」的同一类问题）。
-      await tx.userFrame.upsert({
-        where: { uq_user_frame: { userId, frameKey: key } },
-        create: { userId, frameKey: key, expiresAt: next, source, createdAt: now },
-        update: { deleted: false, deletedAt: null, expiresAt: next, source },
-      });
+  // upsert 而不是 create：唯一约束是物理的、含墓碑行，新插会撞约束。
+  // 写法照 favorite-service 的 attachItems（那里记着 createMany({skipDuplicates})
+  // 会静默变成 no-op 的教训 —— 这里是「点了没反应」的同一类问题）。
+  await tx.userFrame.upsert({
+    where: { uq_user_frame: { userId, frameKey: key } },
+    create: { userId, frameKey: key, expiresAt: next, source, createdAt: now },
+    update: { deleted: false, deletedAt: null, expiresAt: next, source },
+  });
 
-      // ── F2：正戴着这个框的话，装备列的到期时刻必须跟着走 ──────────────────
-      const cur = await tx.user.findUnique({
-        where: { id: userId },
-        select: { equippedFrameKey: true },
-      });
-      let refreshedEquip = false;
-      if (cur?.equippedFrameKey === key) {
-        await tx.user.update({
-          where: { id: userId },
-          data: { equippedFrameExpiresAt: next },
-        });
-        refreshedEquip = true;
-      }
-
-      return { ok: true as const, action, expiresAt: next, refreshedEquip };
+  // ── F2：正戴着这个框的话，装备列的到期时刻必须跟着走 ──────────────────
+  const cur = await tx.user.findUnique({
+    where: { id: userId },
+    select: { equippedFrameKey: true },
+  });
+  let refreshedEquip = false;
+  if (cur?.equippedFrameKey === key) {
+    await tx.user.update({
+      where: { id: userId },
+      data: { equippedFrameExpiresAt: next },
     });
+    refreshedEquip = true;
+  }
+
+  return { ok: true as const, action, expiresAt: next, refreshedEquip };
+}
+
+/**
+ * 授予 / 续期一个头像框（自己开事务的薄壳）。CLI 与站长发放走这条。
+ *
+ * 事务体在 `grantFrameTx` 里 —— 那里同时是商城的原子性边界，见它的注释。
+ */
+export async function grantFrame(input: GrantFrameInput): Promise<FrameGrantResult> {
+  try {
+    return await prisma.$transaction((tx) => grantFrameTx(tx, input));
   } catch {
     // 事务里只有本地写，没有远端 HTTP —— 失败就是失败，不吞细节地编一个成功
     return { ok: false, code: 400, message: '授予失败，请重试' };
