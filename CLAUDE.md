@@ -382,19 +382,27 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
   删了用户就摘不掉它了。
 - **`users` 上那两个装备列的唯一写入者是 `frame-service`**（F1）。改持有行的
   `expires_at` 时必须**同一事务**刷新装备列的副本（F2）—— 违反它，用户续期后
-  **框永远不出现**，看起来像浏览器缓存。
+  **框永远不出现**，看起来像浏览器缓存。别的文件要动这两列时**往 `frame-service`
+  里加一个 `…Tx(tx, …)` 内核**（商城走的正是 `grantFrameTx`），别在外面自己写。
 - **到期只有一处判**（`frameUrlFor`），渲染层拿现成的 `frameUrl` 字符串、
   一次都不比较时间。渲染层直接读 `equipped_frame_key` 会被
   `tests/unit/frame-guard.test.ts` 静态判红；手写 `/api/avatar/` 模板串会被
   `tests/unit/avatar-sites-guard.test.ts` 判红（全站头像只有 `<Avatar>` 一条路）。
 
-另外两条容易踩的：
+另外三条容易踩的：
 
 - **头像一律走 `src/app/components/Avatar.tsx`**，落点台账在
   `tests/unit/avatar-sites-guard.test.ts` —— **新增渲染头像的页面要往那张表里添一行**，
   否则那一处既不在台账里、也不违反「唯一 URL 口径」，于是静默地永远没有框。
+- **鱼干商城（`/fish/market#shop`）的租框路径：续期必须从「当前到期」起算**
+  （`frame-shop-service.rentFrame`）。`grantFrameTx` 的口径是「只延长不缩短」，
+  传 `now + N 天` 的话，一个还剩 20 天的人买 3 天会走进 noop —— **鱼干照扣、
+  到期一动没动、不报任何错**。定价与在架清单只住 `frame-refs.ts` 的 `rentPerDay`
+  （展示与校验读同一个数），**别在服务层另写一份价格**。
+  另：那条接口**只认会话**，别顺手给它开 `requireMarketActor` 的凭据门
+  —— 一开，租金就成了对外契约。
 - **`frame list --keys` 是运维唯一能发现「登记了框但忘了传素材」的地方** ——
-  那时全站静默不显示框，页面没有任何报错。
+  那时全站静默不显示框，页面没有任何报错。它同时报租金（`—` = 不零售）。
 
 ## 文档
 

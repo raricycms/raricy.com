@@ -90,7 +90,7 @@
 | `/api/og/blog/[id]` | API | **分享卡片 PNG**（OG 图）。无会话档位，逐篇判可见性：只对外可见的文章返回 200，其余与「不存在」同形 404。缓存与 `X-Robots-Tag` 按档位发（见 §6.11） |
 | `/api/auth/authentic` · `/zhh` | API + route | 邀请码升 core · 邀请码生成（站长） |
 | `/fish` · `/fish/transactions` · `/api/fish/*` | page + API | 小鱼干面板 + 流水 |
-| `/fish/market` · `/api/fish/market/*` | page + API | 鱼干市场（第一期只有**用户间转账**，无手续费）：`POST transfer`（支持客户端幂等键）/ `GET users`（收款人搜索）/ `POST balance`、`POST transactions`（站外脚本用的无状态查询，含 `since_id` 对账游标）/ `POST pay`（收银台专用）。写路径见 §6.3；对外契约见 `docs/bot/fish-bot.md` |
+| `/fish/market` · `/api/fish/market/*` | page + API | 鱼干市场：**用户间转账**（第一期，无手续费）+ **鱼干商城**（租头像框，见 §6.14）。`POST transfer`（支持客户端幂等键）/ `GET users`（收款人搜索）/ `POST balance`、`POST transactions`（站外脚本用的无状态查询，含 `since_id` 对账游标）/ `POST pay`（收银台专用）/ `POST rent`（租头像框 —— **只认会话**，是本命名空间唯一的例外，理由见 §6.14）。写路径见 §6.3；对外契约见 `docs/bot/fish-bot.md`（`rent` 不在其中，它没有对外契约） |
 | `/fish/pay` | page | **收银台**：站外商户把用户送来付款（`?to= &amount= &note= &from= &return=`）。参数一律不可信，只做展示；付款必须**已登录 + 再输一次密码**（step-up），密码只输在本站域名下。不入索引 |
 | `/fish/collect` | page | **扫码收款页**：`?to=<用户名>`，扫「鱼干收款码」落到这里。与收银台的区别是**金额由付款人自己填**（静态码不可能带金额）。前端是 `/fish/pay` 的**同一个组件**（`src/app/fish/PayForm.tsx`）的另一个变体，step-up 与幂等键完全共用 |
 | `/fish/api` · `/api/fish/tokens/*` | page + API | **机器人接入自助页**：签发 / 吊销只读凭据（`GET`/`POST /api/fish/tokens`、`DELETE /api/fish/tokens/[id]`）。**只认会话**、签发要 step-up、只能动自己的。只读凭据的鉴权门在 `src/app/api/fish/market/_auth.ts`（第三道门，`allowReadToken` 默认关）；签发/校验/吊销在 `src/lib/fish-token-service.ts` |
@@ -131,7 +131,7 @@
 | 投票 / 签到 / 剪贴板 | `vote-service.ts` · `checkin-service.ts` · `clipboard-service.ts` |
 | 收藏夹 | `favorite-service.ts`（六条不变量见文件头）· `favorite-refs.ts`（`[@六位]` 的纯逻辑），见 §6.9 |
 | 图床 | `image-service.ts` · `image-upload.ts`（服务端）· `image-client.ts`（浏览器侧选图上传，讨论与评论共用）· `vditor-upload.ts`（Vditor 编辑器的上传配置，博客与剪贴板共用；与 `/api/images` 的字段名/响应结构两端对齐，见 `tests/unit/vditor-upload.test.ts`） |
-| 头像框 | `frame-refs.ts`（**零依赖**词汇层：白名单 / 解析 / 到期判定）· `frame-service.ts`（素材扫盘 + 持有与装备写路径 + **判定唯一出口**），见 §6.14 |
+| 头像框 | `frame-refs.ts`（**零依赖**词汇层：白名单 / 解析 / 到期判定 / **租金与在架清单**）· `frame-service.ts`（素材扫盘 + 持有与装备写路径 + **判定唯一出口**；授予内核 `grantFrameTx` 收调用方的事务，供商城拼原子性）· `frame-shop-service.ts`（鱼干商城：租框。**它不直接写那两列**，一律经 `grantFrameTx` —— F1），见 §6.14 |
 | 故事 | `story-service.ts` |
 | 画报 / 收款码 | `poster.ts`（纯 SVG 构造，含二维码与转义）· `poster-render.ts`（取数 + 头像 + sharp 光栅化），见 §6.8 |
 | 小鱼干 | `fish-service.ts`（**记账内核 `postEntry`** + 读路径，见 §6.3）· `fish-idempotency.ts`（哪些操作才登记幂等 —— 判据在文件头）· `fish-admin.ts` · `fish-market-service.ts`（用户间转账，见 §6.3）· `fish-compensate.ts`（`fish compensate` 群发补偿，只发 core+，见 `docs/cli.md` 与文件头）· `fish-units.ts`（单位换算；`Blog.fishCount` 是**例外**，见文件头）· `fish-webhook-service.ts`（收款回调 outbox，见 §6.3） |
@@ -180,11 +180,14 @@ API 端点位于 `src/app/api/<group>/<verb>/route.ts`，**薄**层：参数校�
   `InsufficientFishError`，入账走 `increment`。`addFish` 是它的「只加不减」语义壳。
   ⚠️ **新增鱼干写路径时不要绕过它自己写 `update` + `create`** —— 那正是
   「余额改了、流水没写」这类静默账目损坏的入口。
-- **五条写路径，全部一个事务**：签到翻牌（`checkin-service.ts`）/ 投喂
+- **六条写路径，全部一个事务**：签到翻牌（`checkin-service.ts`）/ 投喂
   （`feed-service.ts`）/ 管理员发扣与群发补偿（`fish-admin.ts`、`fish-compensate.ts`）/
-  用户间转账（`fish-market-service.ts`）/ 练手盘开平仓（`market-service.ts`）。
+  用户间转账（`fish-market-service.ts`）/ 练手盘开平仓（`market-service.ts`）/
+  **租头像框**（`frame-shop-service.ts`，见 §6.14）。
   **注册建号不再属于这里** —— 它当年要走一环「在远端建账户」，现在只是建一行
   `users`（初始余额就是列默认值 0），一行鱼干都不写。
+  ⚠️ 新增写路径时两条硬要求：一是别绕过 `postEntry`（见上），二是**用例末尾调一次
+  `expectLedgerConsistent()`**（`tests/helpers/fish-ledger.ts`）。
 - **故障语义**：余额不足、参数非法、超出上限是**业务结果**（400 / 退出码 1）；
   本地事务本身失败是**真故障**（500 / 退出码 2）。**没有 503 了** ——
   那一档原本全部来自「远端账户服务不可达」，而它已经不存在。
@@ -760,7 +763,7 @@ URL 请来抓」。（`robots.ts` 的**路径级**规则不需要动 —— `/ex
 
 | | 表 / 列 | 谁说了算 |
 |---|---|---|
-| **持有** | `user_frames`（一行 = 一款框） | 站长。`npm run cli -- frame grant/revoke`，见 `docs/cli.md` |
+| **持有** | `user_frames`（一行 = 一款框） | 站长发放（`npm run cli -- frame grant/revoke`，见 `docs/cli.md`）**或用户自己租**（鱼干商城，见本节末） |
 | **装备** | `users.equipped_frame_key` + `equipped_frame_expires_at` | 用户自己。`/settings` 的装备面板 |
 
 一个用户可以同时持有多款、只戴一款；也可以持有却不戴。**授予 ≠ 装备**。
@@ -800,7 +803,7 @@ service 层的各 DTO（下发 frame_url / frameUrl 字符串）
 
 | | |
 |---|---|
-| **F1 唯一写入者** | users 那两列只由 `grantFrame` / `revokeFrame` / `equipFrame` 写 |
+| **F1 唯一写入者** | users 那两列只由 `grantFrameTx` / `grantFrame` / `revokeFrame` / `equipFrame` 写（**都在 `frame-service.ts`**）。别的文件要动这两列时，往那个文件里加一个 `…Tx(tx, …)` 内核，别在外面自己写 —— 商城走的正是 `grantFrameTx` |
 | **F2 同步契约** | 改持有行的 `expires_at` 时，若他正戴着这个框，**同一事务里**刷新装备列的副本。违反 = 续期后**框永远不出现**（看起来像浏览器缓存）—— 这是本设计最隐蔽的一条 |
 | **F3 装备前置** | 要 alive 持有行 + 未过期 + 白名单 + 未退役；**但素材缺失不阻止装备**（先授权后传素材是合法顺序）。卸下**无条件成功** —— 否则退役的 key 会变成摘不掉的僵尸 |
 | **F4 唯一约束含墓碑** | 收回后再授予必须**复活旧行**，不能新插（会撞唯一约束） |
@@ -824,11 +827,38 @@ service 层的各 DTO（下发 frame_url / frameUrl 字符串）
 而画报是**发出去就收不回的分享物**（不可逆），宁可暂时不加。预留接口：给
 `avatarBlock()` 加一个可选参数，插在头像 `<image>` 与描边环**之间**。
 
-#### 第二版：鱼干购买
+#### 鱼干商城：用鱼干租头像框
 
-**不用改表**：`user_frames.source` 已经能区分 `cli` / `purchase` / `system`，
-而 `grantFrame` 本身幂等且只延长不缩短。钱的幂等由 `fish_transactions` +
-`account_sync_ledger` 负责。
+`/fish/market` 的第二块（页面上的「鱼干商城」）。`fishblue` 按 **1 鱼干 / 天**
+出租，用户自选 1–30 天。**没有动表** —— `user_frames.source` 早有 `'purchase'`
+这个值，框的定义与定价都住 `frame-refs.ts`（零依赖，客户端要读）。
+
+- **价格与在架清单住 `frame-refs.ts`**（`FrameDef.rentPerDay` / `rentableFrameKeys()`）——
+  商城面板是客户端组件，而 `frame-service` 拖着 prisma 进不了客户端包。
+  放一处，展示与校验**读同一个数**；两边各算一次的话症状是「页面显示 1 鱼干、
+  服务端扣 2 条」，而用户只会觉得账不对。
+- ★ **原子性**：扣鱼干（`postEntry`）与发框（`grantFrameTx`）在**同一个事务**里。
+  为此把授予的事务体抽成 `grantFrameTx(tx, input)`，`grantFrame` 退化成自开事务的
+  薄壳。分开写的后果是「钱扣了、框没到」，两边各自的日志都正常。
+- ★ **续期从「当前到期」起算**，不是从「现在」。`grantFrameTx` 的口径是
+  「只延长不缩短」，传 `now + N 天` 会让一个还剩 20 天的人买 3 天走进 noop 分支
+  —— **鱼干照扣、到期一动没动、不报任何错**。这是本功能最容易写错的一处，
+  用例里有两条专门钉它。
+- **两条拒卖**：素材缺失 → 409（与 F3「素材缺失不阻止装备」不矛盾：F3 管的是站长
+  「先授权后传图」，那时用户没花钱；商城是先收钱）；已经永久持有 → 400（永久是
+  最大的到期，再买必然算得更短 = 又一次「扣钱不办事」）。
+- **不登记幂等**：判据在 `fish-idempotency.ts` —— 键是确定的才登记，而每次点击都是
+  一笔新交易（同练手盘开仓）。防重复提交是客户端的事（二次确认 + busy 锁），
+  服务端由 `RULES.frameRentHourly/Daily` 兜底。
+- **`POST /api/fish/market/rent` 只认会话** —— 它是那个命名空间里唯一不走
+  `requireMarketActor` 的路由。第三道门（请求体里的 username + password）是给站外
+  脚本的，一旦放行，租金与在架清单就从内部实现变成**对外契约**（改价 = 破坏兼容），
+  而机器人租头像框没有真实需求。**默认关门**，将来真需要再加。
+  禁言那一道照旧，文案与转账共用一条。
+- **到期仍然是懒判定**：租期到了只是 `resolveFrameKey` 判 null，**没有 cron、
+  没有清理任务**（同本节上文）。想续，用户自己再租一次 —— 天数叠加在现有到期之后。
+- 流水 `type` 是 `frame_rent`（**不是** `purchase` —— 后者在鱼干语境里已经是
+  「收银台付款」）。`reference_type='frame'` + `reference_id=<key>`。
 
 ---
 

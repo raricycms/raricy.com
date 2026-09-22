@@ -453,8 +453,10 @@ npm run cli -- oauth create-app "cattca-game" \
 
 ### 头像框
 
-发放 / 收回 / 盘点用户的头像框。框是**授权**，不是商品：用户侧只能在
-`/settings` 决定「戴哪个」，而「有没有资格戴」由这里决定。
+发放 / 收回 / 盘点用户的头像框。用户侧只能在 `/settings` 决定「戴哪个」，
+而「有没有资格戴」由这里决定 —— 另一条授予路径是**鱼干商城**（用户花鱼干租，
+1 鱼干 / 天，见 `docs/architecture.md` §6.14），本域命令不受它影响：
+`frame grant` 照旧能发任何一款框，包括在售的那款。
 
 ```
 frame grant  <username> <key> [--days N] [-r 说明]
@@ -471,8 +473,13 @@ npm run cli -- frame list alice
 #   alice   樱花(sakura)   有效   到期:2026-10-20 12:00:00   来源:cli   佩戴中
 
 npm run cli -- frame list --keys     # ★ 素材体检
-#   sakura   樱花   素材:有   透明通道:有   18244 字节
+#   sakura    樱花    素材:有   透明通道:有   18244 字节   租金:—
+#   fishblue  鱼干蓝  素材:有   透明通道:有   6953 字节    租金:1 鱼干/天
 ```
+
+> `租金:` 是**鱼干商城**的在售价（鱼干 / 天）；`—` = 不零售，只能由这里发放。
+> 它同时是「哪些框在卖」的清单 —— 定价改在 `src/lib/frame-refs.ts` 的
+> `FrameDef.rentPerDay`，改了这里立刻跟着变。
 
 **语义要点**
 

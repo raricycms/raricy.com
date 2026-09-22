@@ -248,6 +248,7 @@ POST /api/fish/market/transactions
 | `feed_all` | 投喂（收 + 支） |
 | `transfer_all` | 转账（转出 + 转入） |
 | `market_all` | 练手盘（买入 + 卖出） |
+| `frame_rent` | 鱼干商城（租头像框的支出） |
 | `admin_grant` | 管理员赠送 |
 
 不传则返回全部。
