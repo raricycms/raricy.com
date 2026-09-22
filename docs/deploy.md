@@ -309,6 +309,11 @@ npm ci
 | `public/static/mathjax/` | `mathjax-full` | 公式仍显示，但用回退字体，字形与间距都不对 |
 | `public/static/emoji/` | `@twemoji/svg` | 正文里的 `[@黄脸/…]` **静默降级成字面量**（不是裂图） |
 
+> **`public/static/frames/`（头像框素材）不在上表里** —— 它是我们自己画的、
+> **随代码入库**的，`git pull` 就有，不需要任何生成步骤。少了它会**静默不显示
+> 头像框**（与「没发过框」长得一模一样），自查用 `npm run cli -- frame list --keys`。
+> 详见 `docs/architecture.md` §6.6 与 §6.14。
+
 ⚠️ `npm ci --ignore-scripts`、或从缓存拷 `node_modules` 的构建会跳过它 —— 那种环境要
 手工补一次：
 

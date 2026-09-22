@@ -495,7 +495,7 @@ npm run cli -- frame list --keys     # ★ 素材体检
 
 **⚠️ 素材缺失只警告，不算失败**
 
-授权是写库的，素材在 `instance/frames/<key>.png`（gitignored 的运行时数据）。
+授权是写库的，素材在 `public/static/frames/<key>.png`（**随代码入库**，不是运行时数据）。
 授权成功但盘上没有那张图时，本域命令**只打黄色警告、退出码仍是 0** ——
 那时全站都不会显示这个框，而**页面不会有任何报错**。`frame list --keys` 是
 唯一能主动发现这件事的地方。

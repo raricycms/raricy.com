@@ -109,7 +109,7 @@
 | （无 URL）`forbidden.tsx` | 特殊文件 | 403 页本身；由 `forbidden()` 原地渲染，**不是** `/forbidden` 路由 |
 | `/sitemap.xml` · `/robots.txt` | route | sitemap.ts / robots.ts |
 | `/api/avatar/[id]` · `/api/images/[id]/raw` | API | 头像 / 图床原生分发 |
-| `/api/frames/[key]` | API | **头像框素材字节**（`instance/frames/<key>.png`）。**刻意匿名** —— 与表情字节路由同性质：素材不属于任何账号、不随会话变化。**到期不在这里判、也不该判**：到期的是一条**引用**（谁在戴），不是这些字节（见 §6.14） |
+| `/api/frames/[key]` | API | **头像框素材字节**（`public/static/frames/<key>.png`）。**刻意匿名** —— 与表情字节路由同性质：素材不属于任何账号、不随会话变化。**到期不在这里判、也不该判**：到期的是一条**引用**（谁在戴），不是这些字节（见 §6.14） |
 | `/api/users/me/frame` | API | **我的头像框**：`GET` 回持有列表 + 当前装备（都是**判定后的结果**），`PUT` 装备 / 换框 / 卸下（`{ frame_key: string \| null }`）。用户侧唯一的写口，见 §6.14 |
 | `/u/[id]` | page | 公开用户主页（**段名是用户 id（UUID），不是 username**）。**匿名可达**（主页画报的二维码把站外人引到这里），故内容按查看者分档：身份字段人人可见，role 徽章 / 最近文章 / 最近评论 / 计数 / 最后登录只给本人或 core+ —— 收口在 `user-service.getPublicProfile` 与页面里，两边口径必须一致 |
 
@@ -299,7 +299,7 @@ GET/HEAD/OPTIONS 视为安全方法，不校验。
 | 图床 | `instance/images/<id><ext>`（或 `IMAGE_UPLOAD_FOLDER` 覆盖） | `src/lib/image-upload.ts` — sharp 压缩 + MIME 嗅探 + 配额累计 | `src/app/api/images/[id]/raw/route.ts` |
 | 故事 | `instance/stories/<合集>/<故事>.md\|.cattca`（或 `STORIES_DIR` 覆盖） | 服务端直接落盘 | `src/lib/story-service.ts` 服务端 marked |
 | 表情包 | `instance/stickers/<合集>/<表情>.{gif,webp,png,jpg,jpeg}`（或 `STICKERS_DIR` 覆盖） | **无上传入口**：站长直接往目录里拷文件 | `src/app/api/stickers/[collection]/[name]/route.ts`（查扫盘 manifest，见 `src/lib/sticker-service.ts`） |
-| 头像框 | `instance/frames/<key>.png`（或 `FRAMES_DIR` 覆盖，**平铺一层、只认 PNG**） | **无上传入口**：站长直接拷文件 | `src/app/api/frames/[key]/route.ts`（查扫盘 manifest，见 `src/lib/frame-service.ts`） |
+| 头像框 | `public/static/frames/<key>.png`（或 `FRAMES_DIR` 覆盖，**平铺一层、只认 PNG**） | **随代码入库**：它是我们自己画的（源码 = `scripts/make-frame-demos.mjs`），所以**不在**上面那个 `instance/` 底盘里 —— 见本节末与 §6.14 | `src/app/api/frames/[key]/route.ts`（查扫盘 manifest，见 `src/lib/frame-service.ts`） |
 
 磁盘目录必须**真实存在**（生产用 systemd/Data卷/挂载点），`node scripts/check-instance.mjs` 一键建好骨架。
 
@@ -812,12 +812,17 @@ service 层的各 DTO（下发 frame_url / frameUrl 字符串）
 #### 素材与安全
 
 - key 的权威是 `src/lib/frame-refs.ts` 的 `FRAME_KEYS`（源码白名单），
-  `instance/frames/` 只提供字节 —— 见 §6.6 那一段与表情包的对照。
+  `public/static/frames/` 只提供字节 —— 见 §6.6 那一段与表情包的对照。
+- **素材随代码入库**（2026-09 起）：它是我们自己画的，源码就是
+  `scripts/make-frame-demos.mjs`，所以住 `public/static/` 而不是运行时数据目录
+  `instance/`。搬家的理由见 §6.6 那张表；代价（改了脚本忘了重跑）与它的守卫
+  （`manifest.json` + `tests/unit/frame-assets.test.ts`）见 §10 的风险表。
 - 字节路由 `/api/frames/[key]` **按字节**复核 MIME 并只放行 `image/png`
   （`ALLOWED_FRAME_MIME`），拒绝 SVG。**刻意匿名**，已登记进
   `tests/unit/anonymous-read-guard.test.ts` 的台账。
-- `Cache-Control: public, max-age=86400`，**刻意不 immutable** —— 站长的换图流程是
-  「往目录里拷文件」，immutable 会让浏览器一年不来看一眼。
+- `Cache-Control: public, max-age=86400`，**刻意不 immutable** —— 换图流程是
+  「重跑脚本（或往 `public/static/frames/` 拷一张图）再提交」，
+  immutable 会让浏览器一年不来看一眼。
 - **退役一个框**：把 `FRAMES[k].retired` 置 true，**不要从 `FRAME_KEYS` 里删** ——
   删了 `parseFrameKey` 就认不出它，面板没法显示那一行，用户**摘不掉**它。
 
@@ -1131,7 +1136,8 @@ service 层的各 DTO（下发 frame_url / frameUrl 字符串）
 | `instance/` 在部署机器 | 需挂载真实目录否则上传 500 | 部署脚本里 `node scripts/check-instance.mjs` 兜底 |
 | 初次部署既有库 | `FISH_ENCRYPTION_KEY` 必须留空，否则解不开存量密文 —— 受影响的是**回调签名密钥**（`fish_webhook_endpoints.secret_encrypted`），商户再也收不到通知且**不可逆** | `npm run diagnose` 段 4 抽查真实密文 |
 | 账目**没有第二个存储可以核对**（账户服务搬进站内后，`users.driedFish` 是唯一真源） | 有人改了余额却漏写流水这类静默损坏，没有外部的复式账本会替你发现 | 记账只走 `postEntry` 一扇门；不变式「每人余额 == 他所有流水之和」由 `tests/helpers/fish-ledger.ts` 的 `expectLedgerConsistent()` 钉着，写路径的用例都调它 |
-| **`instance/frames/` 没随部署同步**（或某一个 key 的 PNG 缺失） | 那个框**全站静默不显示** —— 而「框不显示」与「没发过框」在页面上长得一模一样，页面不报任何错 | 渲染侧由 `frame-service` 的第三道闸降级成「干净的不显示」而不是 15 处破图；运维侧 `npm run cli -- frame list --keys` 是唯一能主动发现的地方（`frame grant` 成功时也会顺手体检并打黄色警告） |
+| **某一个 key 的 PNG 缺失**（git 里被删了、`FRAMES_DIR` 指到了别处、或某次部署漏了 `public/static/frames/`） | 那个框**全站静默不显示** —— 而「框不显示」与「没发过框」在页面上长得一模一样，页面不报任何错 | 渲染侧由 `frame-service` 的第三道闸降级成「干净的不显示」而不是 15 处破图；运维侧 `npm run cli -- frame list --keys` 是唯一能主动发现的地方（`frame grant` 成功时也会顺手体检并打黄色警告）。**素材 2026-09 起随代码入库**（原先要手工拷到服务器，那是个没有报错的部署步骤），所以这条风险现在只剩「git 里少了」与「指错了目录」两种 |
+| **改了出图脚本却忘了重跑**（素材入库**新引入**的失效：原先素材不在库里，非跑脚本不可，这件事不可能发生） | 站点继续显示**旧图**，不报错、不 500、日志里什么都没有 —— 只有人眼盯着那个框才看得出来 | 出图脚本把「生成这一刻」写进 `public/static/frames/manifest.json`（脚本自身 + 每张产物的 sha256），`tests/unit/frame-assets.test.ts` 逐条核对，报错里给出该跑哪条命令 |
 | 反代改写了 `Host` 且未透传 `X-Forwarded-Host` | 浏览器 `Origin` 与三个来源都对不上 → 全站 POST 403（CSRF 误杀）。nginx 默认就把 `Host` 设成 `$proxy_host`（upstream 地址），所以**两个头都要显式透传** | `ALLOWED_ORIGINS="你的域名"` 兜底或修 nginx |
 
 ---

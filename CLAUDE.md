@@ -104,6 +104,8 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 - **`/fish/pay` 的 DOM 类名被两个 e2e 用例钉死** —— 改样式 / 改类名 / 重做收银台之前先看用例。
 - **第三方素材不入库**（表情包留在 `instance/stickers/`，git 历史删不干净）—— 只有当授权
   **明确允许再分发**时才可入库（判例：`chess/` 那套棋子因 BSD-3 明文授予才进来过，已随玩具区下线）。
+  这条**只管第三方**：我们自己画的素材该入库（头像框就住在 `public/static/frames/`，
+  见「关键约定」的「头像框」一节）—— 判据是「授权与来源」，不是「是不是图片」。
 
 **改代码时**
 
@@ -377,7 +379,11 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 三句话：
 
 - **框的定义住代码白名单**（`frame-refs.ts` 的 `FRAME_KEYS`），素材住
-  `instance/frames/<key>.png`。**加一款框不需要迁移** —— `user_frames.frame_key`
+  `public/static/frames/<key>.png` —— **随代码入库**（它是我们自己画的，源码就是
+  `scripts/make-frame-demos.mjs`；不是 `instance/` 那种运行时数据）。
+  **改了那个脚本就必须重跑并把素材一起提交**，否则站点继续显示旧图、**不报错** ——
+  `tests/unit/frame-assets.test.ts` 与脚本写的 `manifest.json` 就是为这件事设的。
+  **加一款框不需要迁移** —— `user_frames.frame_key`
   是文本不是外键。**退役一款框把它标 `retired`，别从 `FRAME_KEYS` 里删** ——
   删了用户就摘不掉它了。
 - **`users` 上那两个装备列的唯一写入者是 `frame-service`**（F1）。改持有行的
