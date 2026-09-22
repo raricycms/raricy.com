@@ -5,6 +5,9 @@ import { useRouter } from 'next/navigation';
 import { AMOUNT_ERROR, fmtFish, parseFishAmount, roundFish } from '@/lib/fish-amount';
 import { FISH_UNIT_SCALE, unitsToFish } from '@/lib/fish-units';
 import { settleClose } from '@/lib/market-math';
+// 只取类型：`import type` 在编译期被擦掉，不会把 market-price（它 import 了 db-time）
+// 拖进客户端包。**别改成值导入**，也别在本地重抄一份同样的联合类型（两份必然 drift）。
+import type { QuoteSource } from '@/lib/market-price';
 
 // 练手盘面板：行情 + 买入 + 持仓 + 平仓。
 //
@@ -32,8 +35,16 @@ declare global {
   }
 }
 
-/** 行情轮询间隔。展示用，与 src/lib/market-poll-drainer.ts 的 15 秒同档。 */
-const POLL_MS = 15_000;
+/**
+ * 行情轮询间隔。
+ *
+ * 【为什么从 15 秒降到 1 秒】服务端那份展示缓存现在由一条常驻 WebSocket 喂
+ *（market-stream.ts，实测 ~50ms 一帧），前端这一跳于是成了唯一的瓶颈 —— 还按 15 秒
+ * 读的话，屏幕上的价照样是 15 秒旧的。降到 1 秒后页面上的价每秒跳一次。
+ * 代价是每标签页 1 请求/秒，而那个接口读的是进程内存里的缓存（只多一次用户行读），
+ * 且隐藏标签页不轮（见下面的 tick）。
+ */
+const POLL_MS = 1_000;
 
 export interface QuoteView {
   symbol: string;
@@ -42,6 +53,8 @@ export interface QuoteView {
   price: number | null;
   changePercent: number | null;
   stale: boolean;
+  /** 这个价是 WS 实时流给的还是 15 秒轮询给的。**不渲染** —— 只让首屏与轮询同形 */
+  source: QuoteSource;
 }
 
 export interface PositionProp {
@@ -149,6 +162,8 @@ export default function TradePanel({
               price: typeof q.price === 'number' ? q.price : null,
               changePercent: typeof q.change_percent === 'number' ? q.change_percent : null,
               stale: !!q.stale,
+              // 只认白名单里的两个值：接口多回什么都不会漏进类型
+              source: q.source === 'stream' ? ('stream' as const) : ('poll' as const),
             }))
           );
         }

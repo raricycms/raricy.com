@@ -158,7 +158,7 @@ describe('档位：三处各判一次', () => {
     vi.mocked(getCachedQuotes).mockResolvedValue({
       ok: true,
       quotes: [
-        { symbol: 'BTCUSDT', price: 80000, changePercent: 0, quotedAt: nowForDb(), ageMs: 0, stale: false },
+        { symbol: 'BTCUSDT', price: 80000, changePercent: 0, quotedAt: nowForDb(), ageMs: 0, stale: false, source: 'poll' },
       ],
     });
     expect((await quote()).status, '只读展示不该被禁言挡住').toBe(200);
@@ -321,7 +321,7 @@ describe('GET /quote', () => {
     vi.mocked(getCachedQuotes).mockResolvedValue({
       ok: true,
       quotes: [
-        { symbol: 'BTCUSDT', price: 81236.25, changePercent: 1.8, quotedAt: nowForDb(), ageMs: 500, stale: false },
+        { symbol: 'BTCUSDT', price: 81236.25, changePercent: 1.8, quotedAt: nowForDb(), ageMs: 500, stale: false, source: 'stream' },
       ],
     });
 
@@ -330,6 +330,9 @@ describe('GET /quote', () => {
     const data = await res.json();
     expect(data.quotes[0].display).toBe('BTC');
     expect(data.quotes[0].stale).toBe(false);
+    // 来源要如实透出去 —— 它是排障时唯一能看出「流这一刻活没活着」的地方（页面不渲染）
+    expect(data.quotes[0].source).toBe('stream');
+    expect(data.quotes[0].age_ms).toBe(500);
     expect(data.fee_rate).toBe(0.001);
     expect(data.min_stake).toBe(1);
   });

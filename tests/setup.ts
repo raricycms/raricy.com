@@ -48,6 +48,11 @@ process.env.FISH_WEBHOOK_DRAIN_MS = '0';
 // 保险，这里是第二道 —— 两道都留着。
 process.env.MARKET_POLL_MS = '0';
 
+// 练手盘的**行情流**（常驻 WebSocket）同理，而且更硬：它连的是外部地址、挂的是长连接，
+// 跑起来每个测试文件都会去连一次真实币安。src/lib/market-stream.ts 里还有一道
+// `NODE_ENV === 'test'` 的保险，这里是第二道 —— 两道都留着。
+process.env.MARKET_STREAM_SILENCE_MS = '0';
+
 // 行情的**展示缓存**（不是成交价）挂在 globalThis 上，见 src/lib/market-price.ts 的
 // 文件头 —— 这么挂是为了让 instrumentation 图与请求图共用同一份。代价是它**跨测试
 // 文件也不再天然隔离**：前一个文件留下的热身缓存会让后一个文件里「只打了一次行情源」

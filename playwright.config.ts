@@ -192,6 +192,11 @@ export default defineConfig({
       // NODE_ENV 是 production，market-poll-drainer 里那道 `NODE_ENV === 'test'`
       // 的保险在这里盖不住）。行情由用例自己按需触发，不靠后台循环。
       MARKET_POLL_MS: '0',
+      // 行情流（常驻 WebSocket）更要关：e2e 的行情替身**只有 HTTP、没有 WS 端点**，
+      // 不关它就会去连真实币安（违反「e2e 不能打真实外网」），而且展示价会开始跟真价走，
+      // fish-trade.spec.ts 那几条「展示价 == 80000」的断言跟着变脆。
+      // 理由同上面两条：next start 是 production，模块内那道 NODE_ENV 保险盖不住。
+      MARKET_STREAM_SILENCE_MS: '0',
       // 行情源指向替身 —— 见上面那个 webServer 条目的说明。
       MARKET_PRICE_BASE_URL: `http://127.0.0.1:${MARKET_PORT}`,
       AVATARS_DIR: path.resolve(__dirname, 'tests/.tmp/e2e-avatars'),

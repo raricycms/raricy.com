@@ -2,7 +2,7 @@
 // instrumentation.ts — Next 的进程启动钩子（本站**唯一**的后台任务入口）
 //
 // register() 在服务进程启动时被 Next 调一次，是本站第一个「不在请求里跑的」代码。
-// 目前做两件事：起回调投递的定时器、起练手盘的行情轮询。
+// 目前做三件事：起回调投递的定时器、起练手盘的行情轮询、起练手盘的行情流。
 //
 // ⚠️ 三条纪律
 //   1. **只在这里启动**，不要在某个模块里「被 import 时自动启动」—— vitest 会直接
@@ -42,6 +42,16 @@ export async function register(): Promise<void> {
       startMarketPoller();
     } catch (e) {
       console.error('[instrumentation] 行情轮询启动失败（站点继续运行）:', e);
+    }
+
+    try {
+      // 练手盘行情流（常驻 WS，把展示价从 15 秒压到 ~50ms）。与上面那条**是两回事**：
+      // 轮询留着当兜底价源，行情流挂了由读侧自动回落。同样**只喂展示**。
+      // Node 20 没有全局 WebSocket，那里它会自己退化（打一行日志、不抛）。
+      const { startMarketStream } = await import('./lib/market-stream');
+      startMarketStream();
+    } catch (e) {
+      console.error('[instrumentation] 行情流启动失败（站点继续运行）:', e);
     }
   }
 }

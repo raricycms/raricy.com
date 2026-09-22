@@ -9,7 +9,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   MARKET_SYMBOLS,
   MarketPriceError,
+  STREAM_TRUST_MS,
   __resetPriceCache,
+  applyStreamTick,
   fetchQuote,
   fetchQuotesLive,
   getCachedQuotes,
@@ -209,6 +211,81 @@ describe('展示缓存：getCachedQuotes', () => {
   });
 });
 
+// ── WS 实时价（market-stream 写的那一份）与 REST 轮询的合并 ──────────────────
+
+describe('两个价源怎么合', () => {
+  const seedPoll = async (price = '80000') => {
+    stubFetch([{ symbol: 'BTCUSDT', lastPrice: price, priceChangePercent: '0' }]);
+    await getCachedQuotes(); // 惰性刷出 REST 那份
+  };
+
+  it('流里的帧够新就用它，并标出来源是 stream', async () => {
+    await seedPoll();
+    applyStreamTick('BTCUSDT', 81234.5, Date.now());
+
+    const r = await getCachedQuotes();
+    expect(r.quotes[0].price).toBe(81234.5);
+    expect(r.quotes[0].source).toBe('stream');
+    // 涨跌幅仍然来自 REST 那份（@trade 帧不带 24h 涨跌幅），不是被这一帧带成 null
+    expect(r.quotes[0].changePercent).toBe(0);
+  });
+
+  it('★ 超过信任窗就回落到轮询那份 —— 流挂了屏幕不能冻住', async () => {
+    await seedPoll();
+    applyStreamTick('BTCUSDT', 81234.5, Date.now());
+    expect((await getCachedQuotes()).quotes[0].source).toBe('stream');
+
+    // 推进到信任窗之外，且**没有新帧**（模拟流挂了/半死）
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.now() + STREAM_TRUST_MS + 1);
+    const fallen = await getCachedQuotes();
+    expect(fallen.quotes[0].price, '回落到 REST 那份，而不是继续显示最后一帧').toBe(80000);
+    expect(fallen.quotes[0].source).toBe('poll');
+  });
+
+  it('只对收到帧的标的发生效（另一个仍是轮询价）', async () => {
+    stubFetch([
+      { symbol: 'BTCUSDT', lastPrice: '80000', priceChangePercent: '0' },
+      { symbol: 'ETHUSDT', lastPrice: '3000', priceChangePercent: '0' },
+    ]);
+    await getCachedQuotes();
+    applyStreamTick('BTCUSDT', 81234.5, Date.now());
+
+    const r = await getCachedQuotes();
+    expect(r.quotes.find((q) => q.symbol === 'BTCUSDT')).toMatchObject({ source: 'stream' });
+    expect(r.quotes.find((q) => q.symbol === 'ETHUSDT')).toMatchObject({
+      price: 3000,
+      source: 'poll',
+    });
+  });
+
+  it('白名单之外 / 非法价一律不进缓存', async () => {
+    await seedPoll();
+
+    expect(() => {
+      applyStreamTick('DOGEUSDT', 1, Date.now()); // 不在白名单
+      applyStreamTick('BTCUSDT', 0, Date.now()); // 非正
+      applyStreamTick('BTCUSDT', Number.NaN, Date.now()); // 非有限
+      applyStreamTick('BTCUSDT', 1, Number.NaN); // 时刻非法
+    }).not.toThrow();
+
+    const r = await getCachedQuotes();
+    expect(r.quotes[0], '四次都不该写进去，仍然是轮询那份').toMatchObject({
+      price: 80000,
+      source: 'poll',
+    });
+  });
+
+  it('★ 流里有价也不许拿来成交：fetchQuote 照样向交易所现取', async () => {
+    const fn = stubFetch({ symbol: 'BTCUSDT', price: '80000' });
+    applyStreamTick('BTCUSDT', 81234.5, Date.now());
+
+    const q = await fetchQuote('BTCUSDT');
+    expect(q.price, '成交价必须来自刚才那次现取，不是流里那一帧').toBe(80000);
+    expect(String(fn.mock.calls[0][0])).toContain('/api/v3/ticker/price?symbol=BTCUSDT');
+  });
+});
+
 describe('缓存跨模块实例共享', () => {
   // ★★★ 这条拦的是「页面上的价永远冻住」，别删 ★★★
   //
@@ -254,6 +331,24 @@ describe('缓存跨模块实例共享', () => {
     const r = await after.getCachedQuotes();
     expect(r.quotes[0].price).toBe(33333);
     expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it('★ WS 那份也一样：写进共享状态才读得到，模块级就是「页面冻住」重演', async () => {
+    vi.resetModules();
+    const a = await import('@/lib/market-price');
+    a.__resetPriceCache();
+    stubFetch([{ symbol: 'BTCUSDT', lastPrice: '11111', priceChangePercent: '0' }]);
+    await a.refreshQuotes();
+
+    // 第二份实例（＝ instrumentation 图那份）收到一帧
+    vi.resetModules();
+    const b = await import('@/lib/market-price');
+    b.applyStreamTick('BTCUSDT', 22222, Date.now());
+
+    // 本文件静态 import 的那一份（＝ 请求处理那份）必须读得到它
+    const r = await getCachedQuotes();
+    expect(r.quotes[0].price, 'WS 那份若是模块级变量，这里读到的会是轮询价 11111').toBe(22222);
+    expect(r.quotes[0].source).toBe('stream');
   });
 });
 

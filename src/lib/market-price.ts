@@ -22,6 +22,21 @@
 //   写成「成交时缓存兜底」= 看盘的人可以在价格跳动后、缓存刷新前下单 —— 那是无风险、
 //   可重复、无上限的套利，不需要任何交易水平。整个功能的安全性就压在这一条上。
 //
+// 【两层价：WS 实时 + REST 兜底】展示缓存有**两个写入者**，合并发生在**读**的时候：
+//   · market-stream.ts 的常驻 WebSocket（订 @trade）→ applyStreamTick() 写进 `stream` 字段
+//   · market-poll-drainer.ts 每 15 秒的 REST 刷新 → refreshQuotes() 整份覆盖 `cache`
+// 读侧 getCachedQuotes() **逐标的**挑：那一帧还在 STREAM_TRUST_MS 之内就用 WS 的，
+// 否则回落到 REST 那份。于是 WS 挂掉时屏幕在 10 秒内自动降级、**不会冻住**；REST 那条
+// 15 秒的循环一个字符都没动，它现在同时是兜底价源。24h 涨跌幅仍由 REST 给（WS 不带，
+// 而一个 24 小时口径的百分数 15 秒旧完全无所谓）。
+// ⚠️ WS 那份**不能写进 `cache`** —— refreshQuotes() 是整份覆盖写，每 15 秒会把它抹掉。
+// ⚠️ 这条流**只喂展示**：成交仍然 fetchQuote() 现取，上面那条安全边界不因它松动。
+//
+// 阈值都有实测依据（2026-09-22 生产机，10 分钟）：0 重连、53828 tick、合计最长静默
+// 0.9s、事件时间差 30~54ms（对照 REST 一次往返 402ms）。**单标的**可以冷清到 3.5 秒
+// （BTC 那次），所以信任窗按单标的算、取 10 秒（3× 余量）；而「半死」判据必须盯
+// **合计**静默（见 market-stream.ts）——按单标的判会把一次正常冷清误判成断流。
+//
 // 【两把钟不要混】缓存龄用「真实 UTC 毫秒」（fetchedAtMs，两边都是 Date.now()）；
 //   写进 position 行的 quotedAt 用 nowForDb()（库内墙上时间）。两者各管各的，
 //   绝不互相相减 —— 见 src/lib/db-time.ts 的来龙去脉。
@@ -49,6 +64,16 @@ const FETCH_TIMEOUT_MS = 3000;
  */
 export const QUOTE_STALE_MS = 40_000;
 
+/**
+ * WS 那一帧的**信任窗**：超过这么久没有新帧，就不再用它、回落到 REST 那条。
+ *
+ * 10 秒 = 实测最大**单标的**间隔（3501ms）的 3 倍。它决定的是「流挂了以后屏幕多久
+ * 自动降级」—— 10 秒内回落到 REST（≤15 秒旧），不会出现「看着新鲜其实是冻住的」。
+ * 与 market-stream.ts 的 `MARKET_STREAM_SILENCE_MS`（30 秒，合计静默 → 强制重连）
+ * 是两个不同的判据：**显示可以先降级，组件后放弃重连**。
+ */
+export const STREAM_TRUST_MS = 10_000;
+
 /** K 线缓存期。图表不需要秒级新鲜，60s 一档既省请求又看不出延迟。 */
 const CANDLE_CACHE_MS = 60_000;
 
@@ -68,7 +93,14 @@ export interface CachedQuote extends Quote {
   ageMs: number;
   /** 超过 QUOTE_STALE_MS —— 页面要明说「行情可能不是最新的」。 */
   stale: boolean;
+  /**
+   * 这个价是从哪来的：`stream` = 常驻 WebSocket 那一帧，`poll` = 15 秒的 REST 轮询。
+   * **只进接口响应供排障**（页面不渲染它）—— 判断「流是不是活着」以前只能靠日志。
+   */
+  source: QuoteSource;
 }
+
+export type QuoteSource = 'stream' | 'poll';
 
 /** 取价失败。调用方（market-service）把它翻成 503，**绝不降级到缓存价成交**。 */
 export class MarketPriceError extends Error {
@@ -212,10 +244,17 @@ interface CandleCacheEntry {
 const GLOBAL_KEY = '__raricyMarketPriceState';
 
 interface MarketPriceState {
-  /** 展示缓存。null = 还没成功拉过。 */
+  /** 展示缓存（REST 轮询写的那一份）。null = 还没成功拉过。 */
   cache: CacheState | null;
   /** K 线缓存，键 `${symbol}:${limit}`。 */
   candles: Map<string, CandleCacheEntry>;
+  /**
+   * WS 实时价（market-stream.ts 写的那一份）。null = 还没收到过任何帧。
+   *
+   * ⚠️ **与 `cache` 平级，不是它的一部分** —— `refreshQuotes()` 整份覆盖 `cache`，
+   * 写进去的东西每 15 秒会被抹一次。合并只在 `getCachedQuotes()` 里做。
+   */
+  stream: { prices: Map<string, { price: number; atMs: number }> } | null;
 }
 
 /** 取（必要时建）那份共享状态。两份模块实例拿到的是同一个对象。 */
@@ -223,17 +262,20 @@ function priceState(): MarketPriceState {
   const g = globalThis as unknown as Record<string, unknown>;
   let s = g[GLOBAL_KEY] as MarketPriceState | undefined;
   if (!s) {
-    s = { cache: null, candles: new Map() };
+    s = { cache: null, candles: new Map(), stream: null };
     g[GLOBAL_KEY] = s;
   }
   return s;
 }
 
-/** 供轮询器与测试重置。**跨实例生效** —— 清的正是共享的那一份。 */
+/** 供轮询器、行情流与测试重置。**跨实例生效** —— 清的正是共享的那一份。 */
 export function __resetPriceCache(): void {
   const s = priceState();
   s.cache = null;
   s.candles.clear();
+  // WS 那份也要清：它是跨测试文件共享的同一份状态，留着会让「这个价来自哪」的断言
+  // 静默失真（前一个文件留下的帧被后一个文件读走）。
+  s.stream = null;
 }
 
 /**
@@ -283,10 +325,35 @@ export async function refreshQuotes(): Promise<boolean> {
 }
 
 /**
+ * WS 那一帧的写入口。**唯一** —— market-stream.ts 收到每个 @trade 都调它一次。
+ *
+ * 白名单与「有限正数」两道校验都在这儿做：交易所回什么我们不照单全收（同 fetchQuotesLive）。
+ * 键固定走 `parseSymbol`，所以库里/缓存里不会有白名单外的标的。
+ */
+export function applyStreamTick(rawSymbol: unknown, price: unknown, atMs: number): void {
+  const symbol = parseSymbol(rawSymbol);
+  if (!symbol) return;
+  const p = typeof price === 'number' ? price : NaN;
+  if (!Number.isFinite(p) || p <= 0) return;
+  if (!Number.isFinite(atMs)) return;
+  const s = priceState();
+  if (!s.stream) s.stream = { prices: new Map() };
+  s.stream.prices.set(symbol, { price: p, atMs });
+}
+
+/**
  * 读展示报价。带「多旧」。
  *
  * 缓存为空时会尝试现拉一次（页面首次渲染的路径）；拉不到就返回空数组 + `ok: false`，
  * 由页面显示「行情暂不可用」—— **绝不编一个价出来**。
+ *
+ * 【两个源怎么合】逐标的挑：WS 那一帧还在 STREAM_TRUST_MS 之内就用它，否则用 REST 那份。
+ * `ageMs` 取自被选中的那一个源，所以「流挂了但轮询还活着」时页面上的数据龄会自动变大，
+ * 40 秒那道 `stale` 提示照旧说真话。
+ *
+ * ⚠️ **不拿 WS 单独撑起一份报价**：`cache` 为空时仍然返回 `ok: false`，哪怕流里有价。
+ * 展示的可用性跟着**成交**走 —— 成交那条路用的是同一个行情源（`fetchQuote`），它挂了
+ * 的时候给一个你买不进的价只会误导（路由会 503 拒单）。
  */
 export async function getCachedQuotes(): Promise<{ quotes: CachedQuote[]; ok: boolean }> {
   const s = priceState();
@@ -296,9 +363,26 @@ export async function getCachedQuotes(): Promise<{ quotes: CachedQuote[]; ok: bo
   if (!hit) return { quotes: [], ok: false };
 
   // 两边都是真实 UTC 毫秒 —— 不涉及库内时间戳，见文件头
-  const ageMs = Math.max(0, Date.now() - hit.fetchedAtMs);
+  const now = Date.now();
+  const pollAgeMs = Math.max(0, now - hit.fetchedAtMs);
+  const stream = s.stream;
+
   return {
-    quotes: hit.quotes.map((q) => ({ ...q, ageMs, stale: ageMs > QUOTE_STALE_MS })),
+    quotes: hit.quotes.map((q) => {
+      const tick = stream?.prices.get(q.symbol);
+      const streamAgeMs = tick ? Math.max(0, now - tick.atMs) : Infinity;
+      if (tick && streamAgeMs <= STREAM_TRUST_MS) {
+        // 价用流里的；changePercent 仍来自 REST 那份（WS 的 @trade 帧不带 24h 涨跌幅）
+        return {
+          ...q,
+          price: tick.price,
+          ageMs: streamAgeMs,
+          stale: streamAgeMs > QUOTE_STALE_MS,
+          source: 'stream' as const,
+        };
+      }
+      return { ...q, ageMs: pollAgeMs, stale: pollAgeMs > QUOTE_STALE_MS, source: 'poll' as const };
+    }),
     ok: true,
   };
 }

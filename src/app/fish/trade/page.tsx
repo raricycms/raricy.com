@@ -48,6 +48,8 @@ export default async function FishTradePage() {
       price: q?.price ?? null,
       changePercent: q?.changePercent ?? null,
       stale: q?.stale ?? false,
+      // 首屏这一份与轮询拿到的那份要同形（见 TradePanel 的 QuoteView）。同样不渲染。
+      source: q?.source ?? 'poll',
     };
   });
 

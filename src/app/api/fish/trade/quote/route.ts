@@ -36,6 +36,9 @@ export async function GET() {
       // 页面据此显示「数据可能不是最新的」—— 陈旧时不要假装它是实时价
       stale: q.stale,
       age_ms: q.ageMs,
+      // stream = 常驻 WS 那一帧（~50ms），poll = 15 秒的 REST 轮询。
+      // **只给排障用，页面不渲染它** —— 想知道「流现在活没活着」，以前只能翻日志。
+      source: q.source,
     })),
     fee_rate: MARKET_FEE_RATE,
     min_stake: MIN_STAKE_FISH,
