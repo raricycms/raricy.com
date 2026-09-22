@@ -84,7 +84,7 @@ node scripts/check-instance.mjs
 或在部署脚本里嵌入：
 
 ```bash
-mkdir -p /srv/raricy.com/instance/{avatars,database,frames,images,stories,stickers,blogs}
+mkdir -p /srv/raricy.com/instance/{avatars,database,images,audio,stories,stickers,blogs}
 chown -R www-data:www-data /srv/raricy.com/instance
 ```
 
@@ -479,13 +479,18 @@ sqlite3 /srv/raricy.com/instance/database/db.db ".backup /backup/db-$(date +%Y%m
 
 ### 文件资产
 
-头像 / 图床 / 故事 / 表情包都是不可重建数据（表情包素材由站长手工放进 `instance/stickers/`，
-**不入 git 仓库**，丢了就只能找原出处重下）：
+头像 / 图床 / **音频床** / 故事 / 表情包都是不可重建数据（表情包素材由站长手工放进
+`instance/stickers/`，**不入 git 仓库**，丢了就只能找原出处重下）：
 
 ```bash
 tar czf /backup/assets-$(date +%Y%m%d).tar.gz \
-  /srv/raricy.com/instance/{avatars,frames,images,stories,stickers}
+  /srv/raricy.com/instance/{avatars,images,audio,stories,stickers}
 ```
+
+> ⚠️ 这份清单要与 `scripts/check-instance.mjs` 的 `SUBDIRS` 和
+> `src/lib/audio-service.ts` 那条存储域**逐项对齐** —— 漏一个目录不会报错，
+> 只会在某次恢复之后表现为「那类文件全没了」。**`frames` 已经不在这里**：
+> 头像框素材是我们自己画的，2026-09 起随代码入库（`public/static/frames/`）。
 
 ### 备份验证
 

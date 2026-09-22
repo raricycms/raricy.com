@@ -47,7 +47,7 @@ npm run prisma:generate
 
 ```bash
 unzip -q instance.zip -d .
-node scripts/check-instance.mjs # 幂等：补齐 instance/{avatars,database,frames,images,stories,stickers,blogs}
+node scripts/check-instance.mjs # 幂等：补齐 instance/{avatars,database,images,audio,stories,stickers,blogs}
 ```
 
 ## 2. 规整时间戳（TEXT → INTEGER 毫秒）
