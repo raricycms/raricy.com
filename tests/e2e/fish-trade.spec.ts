@@ -20,11 +20,12 @@
 //
 // 【为什么投 1 条鱼干】签到翻牌给 1-5 条，投 1 条保证任何初始余额都够。注意存储层
 // 最小单位是 0.0001 条（1 个单位），所以 1 条 = 10000 个单位：涨 100% 的实发是
-// floor(10000 × 2 × 0.999) = 19980 个单位 = 1.998 条。断言写精确值，不写「变多了」。
+// floor(10000 × 2 × 0.9998) = 19996 个单位 = 1.9996 条。断言写精确值，不写「变多了」。
 //
-// ⚠️ 这几个数字**跟着存储精度走**：精度从 0.1 抬到 0.0001 之后，floor 少丢的零头
-// 让实发从 1.9 变成 1.998 —— 差的这 0.098 正是那次改动的全部收益。再改精度时这几处必红。
-// 「平价卖出」那条（1.0000 − 0.0010 = 0.9990）同理：粒度 0.1 时那一笔会 floor 成 0.9，
+// ⚠️ 这几个数字**跟着存储精度与费率走**：精度从 0.1 抬到 0.0001 之后，floor 少丢的零头
+// 让实发从 1.9 变成 1.998 —— 差的这 0.098 正是那次改动的全部收益；费率从 0.1% 降到
+// 0.02% 之后它又变成 1.9996。再动这两个数时这几处必红。
+// 「平价卖出」那条（1.0000 − 0.0002 = 0.9998）同理：粒度 0.1 时那一笔会 floor 成 0.9，
 // 手续费看起来就像 10%。
 
 import { test, expect, type APIRequestContext, type Page } from '@playwright/test';
@@ -103,6 +104,9 @@ test('买入全链路：定价 → 下单 → 扣款 + 建仓 + 记 market_buy �
   await page.goto('/fish/trade');
   await expect(page.locator('.trade-card--quote')).toBeVisible();
   await expect(page.locator('.trade-quote__name').first()).toHaveText('BTC');
+  // 买入面板上那一行费率（与卖出弹窗里的是同一个 formatFeeRate，见 market-math）。
+  // 钉住文本而不只是数字：0.02% 被渲染成「0.0%」时**页面上一切照常**，只有这里会红。
+  await expect(page.locator('.trade-summary')).toContainText('手续费 0.02%');
 
   await buyViaUI(page, '1');
 
@@ -136,7 +140,7 @@ test('卖出细则：弹窗摊开涨跌 / 毛额 / 手续费 / 盈亏 / 到手�
   request,
 }) => {
   // 价**全程不动**：这一屏里的每个数因此都是确定的，断言写精确值。
-  // 这条用例钉的是「页面上那几个数不是另算一遍的」—— 弹窗的 0.9990 与真到账的 0.9990
+  // 这条用例钉的是「页面上那几个数不是另算一遍的」—— 弹窗的 0.9998 与真到账的 0.9998
   // 走的是同一个 settleClose（src/lib/market-math.ts）。谁把公式抄回页面一份，
   // 这里迟早红。
   await registerFreshUser(page, { core: true });
@@ -155,19 +159,22 @@ test('卖出细则：弹窗摊开涨跌 / 毛额 / 手续费 / 盈亏 / 到手�
   await expect(confirm).toContainText('80,000.00');
   // 价没动 → 0.00%（fmtPct 只在**大于** 0 时给正号：0 既不是涨也不是跌）
   await expect(confirm, '价没动 → 较开仓价为 0').toContainText('0.00%');
-  await expect(confirm).toContainText('手续费 0.1%');
-  // 投 1 条、价没动：毛额 1.0000，手续费 1.0000 × 0.1% = 0.0010，到手 0.9990。
+  await expect(confirm).toContainText('手续费 0.02%');
+  // 投 1 条、价没动：毛额 1.0000，手续费 1.0000 × 0.02% = 0.0002，到手 0.9998。
   // ★ 平价卖出**也要亏**，亏的正好是手续费 —— 这是「频繁进出被磨」的全部实现。
   await expect(confirm).toContainText('1.0000 小鱼干');
-  await expect(confirm).toContainText('-0.0010 小鱼干');
-  await expect(confirm).toContainText('-0.0010 小鱼干（-0.10%）');
-  await expect(confirm).toContainText('0.9990 小鱼干');
+  await expect(confirm).toContainText('-0.0002 小鱼干');
+  await expect(confirm).toContainText('-0.0002 小鱼干（-0.02%）');
+  await expect(confirm).toContainText('0.9998 小鱼干');
 
   await confirm.locator('.trade-confirm__ok').click();
   await expect(confirm).toHaveCount(0);
+  // ⚠️ 比的是钱，用 toBeCloseTo 而不是 toBe（同 frame-shop.spec.ts）：`start - 1 + 0.9998`
+  // 是 double 加法，某些 start 下会算出 3.9998000000000002，而余额那边是 unitsToFish
+  // 除出来的精确 3.9998 —— 差一个 ULP，`.toBe` 就会红成「到账金额不对」。
   await expect
     .poll(() => uiBalance(page), { message: '到手应正好是弹窗上显示的那个数' })
-    .toBe(start - 1 + 0.999);
+    .toBeCloseTo(start - 1 + 0.9998, 4);
 });
 
 test('★ 涨价卖出 → 按真实涨跌幅 mint（成交价是下单那一刻现取的）', async ({
@@ -182,23 +189,23 @@ test('★ 涨价卖出 → 按真实涨跌幅 mint（成交价是下单那一刻
   await buyViaUI(page, '1');
   await expect.poll(() => uiBalance(page)).toBe(start - 1);
 
-  // 翻倍。1 条 = 10000 个单位 → floor(10000 × 2 × 0.999) = 19980 个单位 = 1.998 条
+  // 翻倍。1 条 = 10000 个单位 → floor(10000 × 2 × 0.9998) = 19996 个单位 = 1.9996 条
   await setPrice(request, 'BTCUSDT', 160000);
   // 页面上的展示价 15 秒才轮询一次，但这里**不依赖它** —— 成交价由服务端现取，
   // 所以定价之后立刻卖就够。这本身就是那条安全边界在端到端的体现。
   await sellViaUI(page);
 
   await expect
-    .poll(() => uiBalance(page), { message: '涨一倍后到账应为 1.998 条' })
-    .toBe(start - 1 + 1.998);
+    .poll(() => uiBalance(page), { message: '涨一倍后到账应为 1.9996 条' })
+    .toBeCloseTo(start - 1 + 1.9996, 4);
   await expect(page.locator('.trade-position'), '卖完之后持仓应清空').toHaveCount(0);
 
-  // ── 账目：买入那条与卖出那条都在，卖出是 +1.998（mint 凭空进余额）──────
+  // ── 账目：买入那条与卖出那条都在，卖出是 +1.9996（mint 凭空进余额）──────
   const all = await myLedger(page, 'market_all');
   expect(all).toHaveLength(2);
   const sell = all.find((t) => t.type === 'market_sell');
   expect(sell, '卖出必须留下一条 market_sell 流水').toBeTruthy();
-  expect(sell!.amount).toBe(1.998);
+  expect(sell!.amount).toBe(1.9996);
   expect(sell!.description).toContain('BTC');
   expect(sell!.related_user_id, '结算没有对手方（见文件头）').toBeNull();
   expect(all.find((t) => t.type === 'market_buy')!.amount).toBe(-1);
@@ -216,18 +223,18 @@ test('★ 跌价卖出 → 拿回的比投入少（少发的那部分就是 burn
   await buyViaUI(page, '1');
   await expect.poll(() => uiBalance(page)).toBe(start - 1);
 
-  // 腰斩。floor(10000 × 0.5 × 0.999) = floor(4995) = 4995 个单位 = 0.4995 条
+  // 腰斩。floor(10000 × 0.5 × 0.9998) = floor(4999) = 4999 个单位 = 0.4999 条
   await setPrice(request, 'BTCUSDT', 40000);
   await sellViaUI(page);
 
   await expect
-    .poll(() => uiBalance(page), { message: '腰斩后只该拿回 0.4995 条' })
-    .toBe(start - 1 + 0.4995);
+    .poll(() => uiBalance(page), { message: '腰斩后只该拿回 0.4999 条' })
+    .toBeCloseTo(start - 1 + 0.4999, 4);
 
   const all = await myLedger(page, 'market_all');
   expect(all).toHaveLength(2);
   const sell = all.find((t) => t.type === 'market_sell');
-  expect(sell!.amount, '亏的那部分不发给他 —— 这就是 burn 的全部实现').toBe(0.4995);
+  expect(sell!.amount, '亏的那部分不发给他 —— 这就是 burn 的全部实现').toBe(0.4999);
 });
 
 test('★ 重复卖同一笔 → 200 且标记重放，钱不多发也不多记', async ({ page, request }) => {
@@ -258,7 +265,7 @@ test('★ 重复卖同一笔 → 200 且标记重放，钱不多发也不多记'
   expect(first.status()).toBe(200);
   const firstBody = await first.json();
   expect(firstBody.replayed).toBe(false);
-  expect(firstBody.payout).toBe(1.998);
+  expect(firstBody.payout).toBe(1.9996);
 
   const balanceAfterFirst = Number(
     (await (await page.request.get('/api/fish/balance')).json()).balance

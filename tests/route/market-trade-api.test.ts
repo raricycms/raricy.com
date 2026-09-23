@@ -175,10 +175,10 @@ describe('档位：三处各判一次', () => {
     const sold = await sell(makeReq('/api/fish/trade/sell', { position_id: position.id }));
     expect(sold.status, '禁言用户必须能出仓').toBe(200);
     const data = await sold.json();
-    // 40 条 = 400000 单位 → floor(400000 × 88000/80000 × 0.999) = 439560 单位 = 43.956 条
-    expect(data.payout).toBe(43.956);
-    expect(data.profit).toBe(3.956);
-    expect(await balanceOf(u.id)).toBe(103.956);
+    // 40 条 = 400000 单位 → floor(400000 × 88000/80000 × 0.9998) = 439912 单位 = 43.9912 条
+    expect(data.payout).toBe(43.9912);
+    expect(data.profit).toBe(3.9912);
+    expect(await balanceOf(u.id)).toBe(103.9912);
 
     await expectLedgerConsistent('禁言用户平仓后');
   });
@@ -290,9 +290,9 @@ describe('成功路径', () => {
     expect(res.status).toBe(200);
 
     const data = await res.json();
-    expect(data.payout).toBe(109.89);
-    expect(data.profit).toBeCloseTo(9.89, 10);
-    expect(data.balance).toBe(109.89);
+    expect(data.payout).toBe(109.978);
+    expect(data.profit).toBeCloseTo(9.978, 10);
+    expect(data.balance).toBe(109.978);
 
     await expectLedgerConsistent('平仓结算后');
   });
@@ -307,7 +307,7 @@ describe('成功路径', () => {
     const again = await sell(makeReq('/api/fish/trade/sell', { position_id: position.id }));
     expect(again.status).toBe(200);
     expect((await again.json()).replayed).toBe(true);
-    expect(await balanceOf(u.id), '第二次结算没有再加一次钱').toBe(109.89);
+    expect(await balanceOf(u.id), '第二次结算没有再加一次钱').toBe(109.978);
 
     await expectLedgerConsistent('重复平仓后（钱不多发）');
   });
@@ -333,7 +333,7 @@ describe('GET /quote', () => {
     // 来源要如实透出去 —— 它是排障时唯一能看出「流这一刻活没活着」的地方（页面不渲染）
     expect(data.quotes[0].source).toBe('stream');
     expect(data.quotes[0].age_ms).toBe(500);
-    expect(data.fee_rate).toBe(0.001);
+    expect(data.fee_rate).toBe(0.0002);
     expect(data.min_stake).toBe(1);
   });
 

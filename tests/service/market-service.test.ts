@@ -237,7 +237,7 @@ describe('开仓', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('平仓', () => {
-  it('涨价 → 按比例 mint，扣 0.1% 手续费（floor 舍入朝系统一侧）', async () => {
+  it('涨价 → 按比例 mint，扣 0.02% 手续费（floor 舍入朝系统一侧）', async () => {
     const { userId, positionId } = await opened(100, 80000);
 
     priceIs(88000); // +10%
@@ -245,21 +245,22 @@ describe('平仓', () => {
     expect(r.ok).toBe(true);
     if (!r.ok) return;
 
-    // 100 鱼干 = 1e6 单位 → gross = 1.1e6 → ×0.999 = 1,098,900 → floor = 1,098,900 = 109.89 鱼干
-    // （精度还是 0.1 鱼干时这里是 109.8 —— 差的那 0.09 正是 floor 少丢的零头）
-    expect(r.payout).toBe(109.89);
-    expect(r.profit).toBeCloseTo(9.89, 10);
+    // 100 鱼干 = 1e6 单位 → gross = 1.1e6 → ×0.9998 = 1,099,780 → floor = 1,099,780 = 109.978 鱼干
+    // （精度还是 0.1 鱼干时这里是 109.8 —— 差的那 0.178 里 0.1 是 floor 少丢的零头、
+    //   0.078 是费率从 0.1% 降到 0.02% 省的）
+    expect(r.payout).toBe(109.978);
+    expect(r.profit).toBeCloseTo(9.978, 10);
     expect(r.exitPrice).toBe(88000);
-    expect(r.balance).toBe(109.89);
+    expect(r.balance).toBe(109.978);
 
     const txns = await txnsOf(userId);
     expect(txns).toHaveLength(2);
     expect(txns[1].type).toBe(MARKET_SELL_TYPE);
-    expect(txns[1].amount).toBe(1098900);
+    expect(txns[1].amount).toBe(1099780);
 
     const pos = await prisma.marketPosition.findUnique({ where: { id: positionId } });
     expect(pos?.status).toBe('closed');
-    expect(pos?.payoutUnits).toBe(1098900);
+    expect(pos?.payoutUnits).toBe(1099780);
     expect(pos?.exitPrice).toBe(88000);
     expect(pos?.closeTxId).toBe(txns[1].id);
     expect(pos?.closedAt).not.toBeNull();
@@ -275,17 +276,17 @@ describe('平仓', () => {
     expect(r.ok).toBe(true);
     if (!r.ok) return;
 
-    // gross = 1e6×0.9 = 9e5 → ×0.999 = 899,100 → floor = 89.91
-    expect(r.payout).toBe(89.91);
-    expect(r.profit).toBeCloseTo(-10.09, 10);
-    expect(r.balance).toBe(89.91);
+    // gross = 1e6×0.9 = 9e5 → ×0.9998 = 899,820 → floor = 89.982
+    expect(r.payout).toBe(89.982);
+    expect(r.profit).toBeCloseTo(-10.018, 10);
+    expect(r.balance).toBe(89.982);
   });
 
   it('★ 实发为 0 的边界：平仓成功、**不写流水**、不抛 500', async () => {
-    // 投 1 条鱼干（10000 个单位），跌 99.99% → floor(1e4 × 0.0001 × 0.999) = floor(0.999) = 0
+    // 投 1 条鱼干（10000 个单位），跌 99.99% → floor(1e4 × 0.0001 × 0.9998) = floor(0.9998) = 0
     //
     // ⚠️ 精度提到 0.0001 之后，这条边界**要跌 99.99% 才够得着**（旧粒度下跌 90% 就归零了：
-    // floor(10 × 0.1 × 0.999) = 0）。留着它仍是对的 —— 实发 0 在数学上依然可能，
+    // floor(10 × 0.1 × 0.9998) = 0）。留着它仍是对的 —— 实发 0 在数学上依然可能，
     // 而服务端必须正确处理那一档（不写流水、不发通知、仓位照样平掉）。
     const user = await makeUser({ driedFish: 10 });
     priceIs(80000);
@@ -313,8 +314,8 @@ describe('平仓', () => {
   });
 
   it('★ 低于最小投入的仓位开不出来（下限现在只剩产品理由，不再是防舍入陷阱）', async () => {
-    // 这个下限**原来是防舍入陷阱的**：粒度 0.1 条时投 0.1 条、价格不涨过 0.1% 就必然
-    // 结算成 0。精度提到 0.0001 之后那条理由失效了（每次结算的零头上界降到 0.0001 条），
+    // 这个下限**原来是防舍入陷阱的**：粒度 0.1 条时投 0.1 条、价格不涨过 0.1%（当时的
+    // 费率）就必然结算成 0。精度提到 0.0001 之后那条理由失效了（零头上界降到 0.0001 条），
     // 下限改由「尘埃仓位只是库里一行 + 页面上一条的噪音」支撑。
     // 断言本身不变 —— 变的是它为什么在这里。
     const user = await makeUser({ driedFish: 100 });
@@ -381,7 +382,7 @@ describe('平仓', () => {
     expect(a.ok && b.ok).toBe(true);
 
     // 关键断言：钱只发了一次
-    expect(await balanceOf(userId)).toBe(109.89);
+    expect(await balanceOf(userId)).toBe(109.978);
     const sellTxns = (await txnsOf(userId)).filter((t) => t.type === MARKET_SELL_TYPE);
     expect(sellTxns, '并发平仓只该产生一条卖出流水').toHaveLength(1);
     if (a.ok && b.ok) expect(a.payout).toBe(b.payout);
@@ -402,8 +403,8 @@ describe('平仓', () => {
     expect(await listOpenPositions(userId)).toHaveLength(1);
   });
 
-  it('手续费率是 0.1%（改它要同步对外文档）', () => {
-    expect(MARKET_FEE_RATE).toBe(0.001);
+  it('手续费率是 0.02%（改它要同步页面文案与钉住这个数的用例）', () => {
+    expect(MARKET_FEE_RATE).toBe(0.0002);
   });
 });
 

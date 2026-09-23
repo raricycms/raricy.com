@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AMOUNT_ERROR, fmtFish, parseFishAmount, roundFish } from '@/lib/fish-amount';
 import { FISH_UNIT_SCALE, unitsToFish } from '@/lib/fish-units';
-import { settleClose } from '@/lib/market-math';
+import { settleClose, formatFeeRate } from '@/lib/market-math';
 // 只取类型：`import type` 在编译期被擦掉，不会把 market-price（它 import 了 db-time）
 // 拖进客户端包。**别改成值导入**，也别在本地重抄一份同样的联合类型（两份必然 drift）。
 import type { QuoteSource } from '@/lib/market-price';
@@ -408,7 +408,7 @@ export default function TradePanel({
             单笔最少 <strong>{minStake}</strong> 条鱼干
           </span>
           <span>
-            手续费 <strong>{(feeRate * 100).toFixed(1)}%</strong>
+            手续费 <strong>{formatFeeRate(feeRate)}</strong>
             <span className="trade-summary__note">（卖出时收）</span>
           </span>
         </div>
@@ -602,10 +602,11 @@ export default function TradePanel({
                     <dt>卖出金额</dt>
                     <dd>{sellEst ? `${fmtFish(sellEst.gross)} 小鱼干` : '—'}</dd>
                   </div>
-                  {/* 费率从 feeRate 插值，**别写死 0.1%** —— 改 MARKET_FEE_RATE 时
-                      这一行要跟着走（同 RULES 那条纪律：数值只有一处权威） */}
+                  {/* 费率从 feeRate 插值，**别写死数值**（同 RULES 那条纪律：数值只有
+                      一处权威）。文本走 formatFeeRate —— 位数由它定，这里别自己
+                      toFixed（费率变小会被 toFixed 抹成「0.0%」，见那个函数的注释） */}
                   <div className="trade-confirm__row">
-                    <dt>手续费 {(feeRate * 100).toFixed(1)}%</dt>
+                    <dt>手续费 {formatFeeRate(feeRate)}</dt>
                     <dd>{sellEst ? `-${fmtFish(sellEst.fee)} 小鱼干` : '—'}</dd>
                   </div>
                   <div className="trade-confirm__row">

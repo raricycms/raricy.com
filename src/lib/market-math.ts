@@ -31,7 +31,7 @@ export interface CloseSettleInput {
   entryPrice: number;
   /** 平仓价（USDT）。服务端那边是下单**那一刻现取**的价 —— 不是展示缓存价 */
   exitPrice: number;
-  /** 费率，0.001 = 0.1%。来源是 market-service 的 MARKET_FEE_RATE（平仓侧只收这一次） */
+  /** 费率，0.0002 = 0.02%。来源是 market-service 的 MARKET_FEE_RATE（平仓侧只收这一次） */
   feeRate: number;
 }
 
@@ -46,6 +46,23 @@ export interface CloseSettle {
   changePercent: number;
   /** 盈亏率（%）：(实发 − 投入) / 投入 */
   profitPercent: number;
+}
+
+/**
+ * 费率 → 页面上的百分比文本（`0.0002` → `"0.02%"`）。
+ *
+ * 【为什么它是一个函数】页面上那两处「手续费 X%」原先各自写着
+ * `(feeRate * 100).toFixed(1)` —— 而「保留几位小数」是**跟着费率走的量**：费率是
+ * 0.1% 时它对，换成 0.02% 就渲染出「手续费 0.0%」，屏幕上那句话读起来仍然通顺，
+ * **不报任何错**。所以位数在这里定死（至少两位小数），页面只负责插值。
+ * 放这个模块是因为它零依赖 —— 页面（客户端组件）与任何服务端调用方都能 import
+ * 同一个（同 `settleClose` 的理由，见文件头）。
+ */
+export function formatFeeRate(feeRate: number): string {
+  // 先给足位数再去尾零：0.0002 → '0.0200' → 0.02；0.001 → '0.1000' → 0.1
+  const pct = Number((feeRate * 100).toFixed(4));
+  const decimals = Math.max(2, `${pct}`.split('.')[1]?.length ?? 0);
+  return `${pct.toFixed(decimals)}%`;
 }
 
 export function settleClose(input: CloseSettleInput): CloseSettle {
