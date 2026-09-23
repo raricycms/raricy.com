@@ -282,6 +282,54 @@ function ChatMessageItemInner({
     <div className="chat-msg__blog-missing">[博客已删除]</div>
   ) : null;
 
+  // 表头行：作者名 / 时间 / 已读回执 / 回复·删除。
+  // grouped（同人连续发言的后继）上，整行由 _chat.scss 接管成绝对定位的浮层。
+  const metaRow = (
+    <div className="chat-msg__meta">
+      <Link className="chat-msg__name" href={`/u/${msg.author.id}`}>
+        {msg.author.username}
+      </Link>
+      <span className="chat-msg__time">{fmtTime(msg.created_at)}</span>
+      {isMine && receipt && (
+        <span className={`chat-msg__receipt${receipt === 'read' ? ' is-read' : ''}`}>
+          {receipt === 'read' ? '已读' : '未读'}
+        </span>
+      )}
+      <span className="chat-msg__actions">
+        {!msg.is_deleted && (
+          <button type="button" className="chat-msg__btn" onClick={() => onReply(msg)}>
+            回复
+          </button>
+        )}
+        {canDelete && (
+          <button type="button" className="chat-msg__btn chat-msg__btn--danger" onClick={() => onDelete(msg)}>
+            删除
+          </button>
+        )}
+      </span>
+    </div>
+  );
+
+  // 「自己的块」= 气泡 / 图 / 博客卡，**引用块不在其中**（引用是别人的话）。
+  //
+  // 【为什么要单独包一层】grouped 的表头行是绝对定位的浮层，贴的是**定位祖先**的边。
+  // 不包这一层的话，那个祖先是 .chat-msg__body，而 body 的宽度 = max(引用块, 自己的块)
+  // —— 引用比正文长时，回执与「回复 / 删除」就跟着引用甩到外面去，看着像对齐了
+  // 「引用内容和原信息里更长的那一个」（2026-09 站长报的）。包一层之后浮层永远贴
+  // 自己的块。**别把这层去掉、也别让浮层挪回 body 上**（CSS 那边有对应的注释）。
+  //
+  // grouped 时表头行住进这一层 —— 浮层必须真的在它的定位祖先里面，才能贴着它。
+  // 非 grouped 时表头行不进（要在 body 开头占一行，而在别人的消息里这一层排在引用块
+  // **之后**，进去就跑到引用下面去了）。
+  const ownBlocks = (
+    <div className="chat-msg__own-blocks">
+      {grouped && metaRow}
+      {contentBlock}
+      {imageBlock}
+      {blogBlock}
+    </div>
+  );
+
   return (
     <div
       className={`chat-msg${isMine ? ' chat-msg--mine' : ''}${grouped ? ' chat-msg--grouped' : ''}${highlighted ? ' chat-msg--highlight' : ''}`}
@@ -301,45 +349,20 @@ function ChatMessageItemInner({
         ariaLabel={`${msg.author.username} 的操作菜单`}
       />
       <div className="chat-msg__body">
-        <div className="chat-msg__meta">
-          <Link className="chat-msg__name" href={`/u/${msg.author.id}`}>
-            {msg.author.username}
-          </Link>
-          <span className="chat-msg__time">{fmtTime(msg.created_at)}</span>
-          {isMine && receipt && (
-            <span className={`chat-msg__receipt${receipt === 'read' ? ' is-read' : ''}`}>
-              {receipt === 'read' ? '已读' : '未读'}
-            </span>
-          )}
-          <span className="chat-msg__actions">
-            {!msg.is_deleted && (
-              <button type="button" className="chat-msg__btn" onClick={() => onReply(msg)}>
-                回复
-              </button>
-            )}
-            {canDelete && (
-              <button type="button" className="chat-msg__btn chat-msg__btn--danger" onClick={() => onDelete(msg)}>
-                删除
-              </button>
-            )}
-          </span>
-        </div>
+        {/* 表头行只在这一处与 ownBlocks 里的那一处之间二选一（grouped 决定去哪边） */}
+        {!grouped && metaRow}
 
         {/* 自己的消息：正文（含图）置顶，回复摘要 / 博客引用卡随后；
             他人消息：保持回复摘要在上、正文在下，博客卡在图片后 */}
         {isMine ? (
           <>
-            {contentBlock}
-            {imageBlock}
+            {ownBlocks}
             {replyBlock}
-            {blogBlock}
           </>
         ) : (
           <>
             {replyBlock}
-            {contentBlock}
-            {imageBlock}
-            {blogBlock}
+            {ownBlocks}
           </>
         )}
       </div>

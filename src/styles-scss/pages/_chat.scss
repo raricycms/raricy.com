@@ -619,9 +619,12 @@
 // :hover 当场中断 —— 按钮在你够到它之前就消失了。padding 在 box 内部，边缘不变。
 //
 // 挂哪一侧跟着气泡走：别人的在右、自己的在左（那一条是 row-reverse），都对齐顶边。
-.chat-msg--grouped .chat-msg__body {
-  position: relative;
-}
+//
+// ★ 它的定位祖先是 .chat-msg__own-blocks（自己的块那一层），**不是 .chat-msg__body**：
+//   body 的宽度是 max(引用块, 自己的块)，挂 body 上时「贴气泡边缘」只在气泡恰好是最宽的
+//   那一块时成立 —— 引用比正文长，工具条就跟过去贴引用的边了（2026-09 站长报的现象：
+//   它对齐的是「引用内容和原信息里更长的那一个」）。所以 grouped 的表头行住在
+//   own-blocks 里面，见 ChatMessageItem 的 ownBlocks 那段。别把它挪回 body 上。
 .chat-msg--grouped .chat-msg__meta {
   position: absolute;
   top: 0;
@@ -680,6 +683,23 @@
 // 自己发的消息整簇靠右（气泡、引用块、博客卡随之一并右对齐）
 .chat-msg--mine .chat-msg__body {
   align-items: flex-end;
+}
+
+// 「自己的块」：气泡 / 图 / 博客卡 —— **引用块不在里面**（引用是别人的话）。
+// 除了把这几块按原顺序摞好，它的唯一职责是当 grouped 表头行浮层的**定位祖先**
+//（那个浮层贴「自己这一坨」的边，不贴「引用 / 正文里更长的那个」的边，见上面 __meta 那段）。
+// ⚠️ 这一层不能省、也不能让浮层挪回 .chat-msg__body 上：body 的宽度把引用块也算进去了。
+.chat-msg__own-blocks {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px; // 与 .chat-msg__body 同一个数（两处是一对）
+  // 跟着 body 的 flex-start / flex-end 走：自己发的整簇靠右，别人的靠左。
+  // 写死任一侧都会让「自己的块」与引用块错位（引用的对齐由 body 那一层给）。
+  align-items: inherit;
+  // 与气泡那条 `max-width: 100%` 同源：代码块的 min-content 撑的是它的每个祖先，
+  // 少了这条长代码行会先撑破这一层（上面的气泡注释里有完整来路）。
+  max-width: 100%;
 }
 
 .chat-msg__meta {
