@@ -280,13 +280,19 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 - 站长放的图片表情（`instance/stickers/`）—— 讨论点一下**直接发送**；
 - **内置黄脸**（`emoji-faces.ts` 的编译期清单 → `public/static/emoji/`，
   `scripts/copy-emoji-assets.mjs` 从 npm 包拷）—— **和文字一样大**（叠一个
-  `rich-emoji-ref` 类压到 1.2em，见 `_markdown-body.scss`），且点一下**插进输入框**，
-  讨论区也不例外。评论端两类都插。
+  `rich-emoji-ref` 类压到 1.2em，见 `_markdown-body.scss`）；**整条正文只有它一张**时
+  是例外，叠 `rich-emoji-solo` 退回表情包那一档（4em，判据在 `sticker-refs.ts` 的
+  `markSoloEmojiFaces`）。且点一下**插进输入框**，讨论区也不例外。评论端两类都插。
 
 三条容易踩的：
 
 - **黄脸 img 必须保留 `rich-sticker-ref` 类**（只叠不加换）——降级链是按那个类名过滤的
   （`RichContentBody.tsx`），换掉它缺图时会显示裂图而不是原文 token。
+- **`markSoloEmojiFaces` 必须跑在所有 `embed*` 之后**（`rich-text.ts` 的 `render()` 末行）
+  —— 它判的是「**最终** DOM 里是不是只有这一张」，往后加新 `embed*` 时插到它下面，
+  新元素就漏出判断：表现只是尺寸偶尔不对，不报错、不写日志。
+  「一样大」本身只在 `_markdown-body.scss` 定义一处（靠 `:not(.rich-emoji-solo)` 让落回
+  表情包那条规则），所以**别把 4em 抄进黄脸那一档** —— 抄一遍就会静默漂成两档。
 - **别照拷 npm 包里那份 LICENSE**：`@twemoji/svg` 只写了打包者自己的 MIT，
   素材实际是 **CC BY 4.0**（出处 `jdecked/twemoji` 的 `LICENSE-GRAPHICS`）。复制脚本
   自己生成正确的 `LICENSE.txt`，署名落在源码注释里（Twemoji 官方接受这种形式）。
