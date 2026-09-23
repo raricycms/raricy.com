@@ -1,13 +1,14 @@
-// 练手盘三个接口的**鉴权分叉与档位**。
+// 练手盘四个接口的**鉴权分叉与档位**。
 //
 // 【为什么单独一个文件】这里打的是真实 route handler，重点在「页面与接口必须同档」：
-// core+ 这一档在页面（/fish/trade）、buy、sell、quote 四处各判一次，任何一处漏判
-// 都是一扇绕开档位的门 —— 而功能照常工作、测试照常绿。service 层的钱怎么走由
-// tests/service/market-*.test.ts 负责，这个文件不重复测那些。
+// core+ 这一档在页面（/fish/trade）、buy、sell、quote、candles 五处各判一次，
+// 任何一处漏判都是一扇绕开档位的门 —— 而功能照常工作、测试照常绿。service 层的钱
+// 怎么走由 tests/service/market-*.test.ts 负责，这个文件不重复测那些。
 //
-// 【禁言判定是**不对称**的，别「统一」】档位那一列是四处的**并集**，禁言不是：
-// 只有 buy 判禁言（禁言不开新仓），sell / quote 只判档位 —— 已开的仓位必须能出，
-// 否则禁言顺带变成锁仓。理由见 src/app/api/fish/trade/sell/route.ts 头部。
+// 【禁言判定是**不对称**的，别「统一」】档位那一列是五处的**并集**，禁言不是：
+// 只有 buy 判禁言（禁言不开新仓），sell / quote / candles 只判档位 —— 已开的仓位
+// 必须能出、盘必须看得见，否则禁言顺带变成锁仓。理由见
+// src/app/api/fish/trade/sell/route.ts 头部。
 //
 // 【行情源打桩，是刻意的】成交价必须**现取**（那是练手盘唯一的安全边界：拿展示缓存
 // 成交 = 看盘的人可以在价格跳动后、缓存刷新前下单，无风险、可重复、无上限的套利）。
@@ -48,13 +49,20 @@ vi.mock('@/lib/fish-service', async (importOriginal) => {
   };
 });
 
-const { mockQuote } = vi.hoisted(() => ({
+const { mockQuote, mockCandles } = vi.hoisted(() => ({
   mockQuote: vi.fn<(symbol: string) => Promise<unknown>>(),
+  mockCandles: vi.fn<(symbol: string, interval?: string) => Promise<unknown>>(),
 }));
 
 vi.mock('@/lib/market-price', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/market-price')>();
-  return { ...actual, fetchQuote: mockQuote, getCachedQuotes: vi.fn() };
+  // getCandles 也要打桩：它是**唯一会出站**的只读读口，真跑会去连币安
+  return {
+    ...actual,
+    fetchQuote: mockQuote,
+    getCachedQuotes: vi.fn(),
+    getCandles: mockCandles,
+  };
 });
 
 import { resetDb, makeUser, prisma } from '../helpers/db';
@@ -68,6 +76,7 @@ import { MARKET_BUY_TYPE } from '@/lib/market-service';
 import { POST as buy } from '@/app/api/fish/trade/buy/route';
 import { POST as sell } from '@/app/api/fish/trade/sell/route';
 import { GET as quote } from '@/app/api/fish/trade/quote/route';
+import { GET as candles } from '@/app/api/fish/trade/candles/route';
 
 function makeReq(path: string, body?: unknown) {
   return new Request(`http://localhost${path}`, {
@@ -108,6 +117,8 @@ beforeEach(async () => {
   failAfterPostEntry.on = false;
   vi.clearAllMocks();
   priceIs(80000); // 基准价：80000
+  // K 线桩：一根 1 小时的六元组 [openTime, o, h, l, c, v]
+  mockCandles.mockResolvedValue([[1_700_000_000_000, 80000, 80100, 79900, 80050, 12]]);
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
@@ -118,18 +129,19 @@ afterEach(() => {
 
 // ── 档位（页面与接口必须同档）────────────────────────────────────────────────
 
-describe('档位：三处各判一次', () => {
-  it('未登录 → 401（三个接口都一样）', async () => {
+describe('档位：五处各判一次', () => {
+  it('未登录 → 401（四个接口都一样）', async () => {
     for (const [name, res] of [
       ['buy', await buy(makeReq('/api/fish/trade/buy', { symbol: 'BTCUSDT', amount: 10 }))],
       ['sell', await sell(makeReq('/api/fish/trade/sell', { position_id: 'x' }))],
       ['quote', await quote()],
+      ['candles', await candles(makeReq('/api/fish/trade/candles?symbol=BTCUSDT&interval=1h'))],
     ] as const) {
       expect(res.status, `${name} 应 401`).toBe(401);
     }
   });
 
-  it('★ 普通用户（role=user）→ 403，三个接口都一样', async () => {
+  it('★ 普通用户（role=user）→ 403，四个接口都一样', async () => {
     const u = await makeFishUser(100, { role: 'user' });
     session.token = await createSessionToken({ uid: u.id, sv: 0 });
 
@@ -137,6 +149,7 @@ describe('档位：三处各判一次', () => {
       ['buy', await buy(makeReq('/api/fish/trade/buy', { symbol: 'BTCUSDT', amount: 10 }))],
       ['sell', await sell(makeReq('/api/fish/trade/sell', { position_id: 'x' }))],
       ['quote', await quote()],
+      ['candles', await candles(makeReq('/api/fish/trade/candles?symbol=BTCUSDT&interval=1h'))],
     ] as const) {
       expect(res.status, `${name} 应 403 —— 漏判就是绕开档位的门`).toBe(403);
     }
@@ -162,6 +175,9 @@ describe('档位：三处各判一次', () => {
       ],
     });
     expect((await quote()).status, '只读展示不该被禁言挡住').toBe(200);
+    // K 线同理：他正需要看着图决定要不要止损
+    const chart = await candles(makeReq('/api/fish/trade/candles?symbol=BTCUSDT&interval=1h'));
+    expect(chart.status, '看盘不该被禁言挡住').toBe(200);
 
     // 开新仓：403，不打行情源、不动钱
     const callsBefore = mockQuote.mock.calls.length;
@@ -344,6 +360,63 @@ describe('GET /quote', () => {
     const data = await (await quote()).json();
     expect(data.ok).toBe(false);
     expect(data.quotes).toEqual([]);
+  });
+});
+
+describe('GET /candles', () => {
+  it('透传六元组，并回报标的短名与周期', async () => {
+    await makeCoreUser(100);
+    mockCandles.mockResolvedValue([
+      [1_700_000_000_000, 80000, 80100, 79900, 80050, 12],
+      [1_700_003_600_000, 80050, 80200, 80000, 80150, 9],
+    ]);
+
+    const res = await candles(makeReq('/api/fish/trade/candles?symbol=BTCUSDT&interval=4h'));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+    expect(data.display).toBe('BTC');
+    expect(data.interval).toBe('4h');
+    // 六元组原样过去（页面按索引读：0=时间 1=开 2=高 3=低 4=收 5=量）
+    expect(data.candles[0]).toEqual([1_700_000_000_000, 80000, 80100, 79900, 80050, 12]);
+    // 周期真的要传给行情层 —— 传丢了就是「点 4h 画出 1h」，且不报错
+    expect(mockCandles.mock.calls[0][1]).toBe('4h');
+  });
+
+  it('不带 interval → 用默认档', async () => {
+    await makeCoreUser(100);
+    await candles(makeReq('/api/fish/trade/candles?symbol=BTCUSDT'));
+    expect(mockCandles.mock.calls[0][1]).toBe('1h');
+  });
+
+  it('★ 非法周期 → 400，**不静默退回默认档**', async () => {
+    await makeCoreUser(100);
+    for (const bad of ['1w', '1M', 'nope']) {
+      const res = await candles(makeReq(`/api/fish/trade/candles?symbol=BTCUSDT&interval=${bad}`));
+      expect(res.status, `${bad} 应 400`).toBe(400);
+    }
+    // 退回默认档会让「我点的是 4h、画出来是 1h」活下来 —— 一次都不许打行情层
+    expect(mockCandles, '被拒的请求不该去打行情源').not.toHaveBeenCalled();
+  });
+
+  it('非法标的 / 缺标的 → 400', async () => {
+    await makeCoreUser(100);
+    expect((await candles(makeReq('/api/fish/trade/candles?interval=1h'))).status).toBe(400);
+    expect(
+      (await candles(makeReq('/api/fish/trade/candles?symbol=DOGEUSDT&interval=1h'))).status
+    ).toBe(400);
+    expect(mockCandles).not.toHaveBeenCalled();
+  });
+
+  it('一根 K 线都没有时 ok:false（页面据此显示「K 线暂不可用」+ 重试），而不是 500', async () => {
+    await makeCoreUser(100);
+    mockCandles.mockResolvedValue([]);
+
+    const res = await candles(makeReq('/api/fish/trade/candles?symbol=BTCUSDT&interval=1h'));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.ok).toBe(false);
+    expect(data.candles).toEqual([]);
   });
 });
 
