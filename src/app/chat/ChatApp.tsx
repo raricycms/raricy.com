@@ -1,7 +1,6 @@
 'use client';
 
 import {
-  Fragment,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -29,12 +28,8 @@ import NewChatModal from './NewChatModal';
 import QuoteBlogModal from '../components/QuoteBlogModal';
 import AvatarMenu, { type AvatarMenuAnchor } from './AvatarMenu';
 import ImageLightbox from '../components/ImageLightbox';
-import ChatMessageItem, {
-  dayKey,
-  fmtDay,
-  isMentioned,
-  markGroupedMessages,
-} from './ChatMessageItem';
+import { isMentioned, markGroupedMessages } from './ChatMessageItem';
+import ChatMessageList from './ChatMessageList';
 import ChatSidebar from './ChatSidebar';
 import RichComposer, { type ComposerBlogQuote } from '../components/RichComposer';
 import { usePendingImage } from '../components/usePendingImage';
@@ -334,6 +329,17 @@ export default function ChatApp({
    * 都会让 ChatApp 重渲染（ChatMessageItem 靠 props 是原始值才跳得过重渲染）。
    */
   const groupedFlags = useMemo(() => markGroupedMessages(visibleMessages), [visibleMessages]);
+
+  /**
+   * 「已折叠 N 条 · 展开更早」：放回一页。
+   *
+   * 【为什么是 useCallback】它作为 prop 传给 ChatMessageList，而那个 memo 是**按引用**
+   * 比的 —— 每次渲染新建一个箭头函数会让它永远不命中（于是静默退回「输入框一响、
+   * 整棵列表跟着重建」）。REVEAL_STEP 的语义留在这里：折叠量是 ChatApp 的 state。
+   */
+  const revealOlder = useCallback(() => {
+    setFoldedCount((c) => Math.max(0, c - REVEAL_STEP));
+  }, []);
 
   /**
    * 自动折叠：列表**尾部**长了多少条，就把折叠量往上推多少条。
@@ -1571,73 +1577,34 @@ export default function ChatApp({
             </header>
 
             <div className="chat-list" ref={listRef} onScroll={handleListScroll}>
-              {/* DOM 上限：超过 CAP 条时从顶部折叠（消息仍在内存里），
-                  顶部按钮点一下往下放一页 —— 避免长会话把上万个节点堆在 DOM 里 */}
-              {folded > 0 ? (
-                <button
-                  type="button"
-                  className="chat-list__older"
-                  onClick={() => setFoldedCount((c) => Math.max(0, c - REVEAL_STEP))}
-                >
-                  已折叠 {folded} 条 · 展开更早
-                </button>
-              ) : (
-                hasMore &&
-                messages.length > 0 && (
-                  <button type="button" className="chat-list__older" onClick={loadOlder} disabled={loadingOlder}>
-                    {loadingOlder ? '加载中…' : '加载更早的消息'}
-                  </button>
-                )
-              )}
-              {messages.length === 0 && (
-                <div className="chat-list__empty">
-                  {activeChannel.kind === 'lobby' ? '讨论大区空荡荡，说点什么吧' : '还没有消息，打个招呼吧'}
-                </div>
-              )}
-              {visibleMessages.map((m, i, arr) => {
-                const prev = i > 0 ? arr[i - 1] : null;
-                const showDate = !prev || dayKey(prev.created_at) !== dayKey(m.created_at);
-                // 同人连续消息：省略时间 / 用户名 / 头像，只在「这一串的第一条」上画。
-                // 判据（5 分钟窗口锚在串首、拍一拍与跨日打断）见 markGroupedMessages。
-                const grouped = groupedFlags[i];
-                // 「以下是新消息」分隔线：进频道时的已读位置之后的第一条
-                const showNewSep =
-                  newCount > 0 &&
-                  unreadAnchorRef.current > 0 &&
-                  m.id > unreadAnchorRef.current &&
-                  (!prev || prev.id <= unreadAnchorRef.current);
-                return (
-                  <Fragment key={m.id}>
-                    {showDate && (
-                      <div className="chat-date-sep">
-                        <span>{fmtDay(m.created_at)}</span>
-                      </div>
-                    )}
-                    {showNewSep && <div className="chat-list__new-sep">以下是新消息</div>}
-                    <ChatMessageItem
-                      msg={m}
-                      isMine={m.author.id === currentUserId}
-                      canDelete={m.author.id === currentUserId || isAdmin}
-                      currentUserId={currentUserId}
-                      currentUsername={currentUsername}
-                      highlighted={highlightId === m.id}
-                      grouped={grouped}
-                      receipt={
-                        m.id === lastMineId && activeChannel.kind === 'direct'
-                          ? peerLastRead >= m.id
-                            ? 'read'
-                            : 'unread'
-                          : null
-                      }
-                      onReply={handleReply}
-                      onDelete={handleDelete}
-                      onAvatarClick={openAvatarMenu}
-                      onJumpToReply={jumpToMessage}
-                      onImageClick={openLightbox}
-                    />
-                  </Fragment>
-                );
-              })}
+              {/* 列表内容是 memo 的独立组件 —— 让输入框的状态变化（每敲一个字、
+                  每插一个表情）不再重建整棵列表。纪律见 ChatMessageList 文件头。 */}
+              <ChatMessageList
+                messages={visibleMessages}
+                groupedFlags={groupedFlags}
+                folded={folded}
+                hasMore={hasMore}
+                loadingOlder={loadingOlder}
+                unreadAnchor={unreadAnchorRef.current}
+                newCount={newCount}
+                highlightId={highlightId}
+                lastMineId={lastMineId}
+                peerLastRead={peerLastRead}
+                currentUserId={currentUserId}
+                currentUsername={currentUsername}
+                isAdmin={isAdmin}
+                isDirect={activeChannel.kind === 'direct'}
+                emptyText={
+                  activeChannel.kind === 'lobby' ? '讨论大区空荡荡，说点什么吧' : '还没有消息，打个招呼吧'
+                }
+                onRevealOlder={revealOlder}
+                onLoadOlder={loadOlder}
+                onReply={handleReply}
+                onDelete={handleDelete}
+                onAvatarClick={openAvatarMenu}
+                onJumpToReply={jumpToMessage}
+                onImageClick={openLightbox}
+              />
             </div>
 
             {typingNames.length > 0 && (
