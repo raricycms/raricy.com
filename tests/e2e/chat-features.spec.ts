@@ -16,18 +16,40 @@ import { SEED_USERS } from './seed';
 
 const LOBBY = 'lobby';
 
-/** 以当前身份在大区发一条消息，返回其 id。 */
-async function postLobby(
+/** 以当前身份在指定会话里发一条消息，返回其 id。 */
+async function postTo(
   page: import('@playwright/test').Page,
+  channelId: string,
   content: string,
   replyTo?: number
 ): Promise<number> {
-  const res = await page.request.post(`/api/chat/channels/${LOBBY}/messages`, {
+  const res = await page.request.post(`/api/chat/channels/${channelId}/messages`, {
     data: replyTo ? { content, reply_to: replyTo } : { content },
   });
   expect(res.status(), `发消息失败: ${await res.text()}`).toBe(200);
   const body = (await res.json()) as { message: { id: number } };
   return body.message.id;
+}
+
+/** 以当前身份在大区发一条消息，返回其 id。 */
+const postLobby = (page: import('@playwright/test').Page, content: string, replyTo?: number) =>
+  postTo(page, LOBBY, content, replyTo);
+
+/** 一条消息上三个盒子的视口矩形：工具条（回执 / 回复 / 删除）、气泡、引用块。 */
+async function measureRow(row: import('@playwright/test').Locator) {
+  return row.evaluate((el) => {
+    const box = (sel: string) => {
+      const n = el.querySelector(sel);
+      if (!n) return null;
+      const b = n.getBoundingClientRect();
+      return { left: b.left, right: b.right, width: b.width };
+    };
+    return {
+      actions: box('.chat-msg__actions'),
+      bubble: box('.chat-msg__content'),
+      quote: box('.chat-msg__reply'),
+    };
+  });
 }
 
 /**
@@ -262,6 +284,70 @@ test.describe('连续消息合并', () => {
     if (!isMobile) {
       await expect(secondRow.locator('.chat-msg__avatar')).toHaveCSS('opacity', '0');
     }
+  });
+
+  /**
+   * ★ 浮层贴的是**气泡**的边，不是「引用块和正文里更长的那一个」的边。
+   *
+   * 【回归背景】站长 2026-09 报：回复里引用比正文长时，「已读 / 回复 / 删除」跟着
+   * 引用块跑到外面去了。根因是表头行的定位祖先是 .chat-msg__body，而它的宽度 =
+   * max(引用块, 自己的块) —— 修法是让浮层住进只装自己那几块的 .chat-msg__own-blocks。
+   * 结构那半边在 tests/unit/chat-message-dom.test.ts；这里量真渲染出来的几何。
+   *
+   * 【为什么要真浏览器】jsdom 不排版，getBoundingClientRect 恒为 0：把定位父节点改回
+   * body，单测照过（结构没变），只有这里会红。断言全部写成**相对关系**（浮层到气泡的距离），
+   * 不写死绝对像素 —— 两个 project 的栏宽不同。
+   */
+  test('★ 分组消息的工具条贴气泡的边，不贴更长的引用块', async ({ page }) => {
+    const tag = uniqueTag();
+    const long = `e2e-anchor-long-${tag} ${'引用的一段很长很长的话，'.repeat(6)}`;
+    const reply = `短 ${tag}`;
+    const after = `e2e-anchor-after-${tag}`;
+
+    const me = await registerFreshUser(page, { core: true });
+    const created = await page.request.post('/api/chat/channels', {
+      data: { user_id: SEED_USERS.admin.id },
+    });
+    expect(created.status(), `建私聊失败: ${await created.text()}`).toBe(200);
+    const channelId = ((await created.json()) as { channel: { id: string } }).channel.id;
+
+    const longId = await postTo(page, channelId, long);
+    await postTo(page, channelId, reply, longId); // ← 要量的那条：短正文 + 长引用
+    await postTo(page, channelId, after); // 同人再发一条 → 上面那条成为后继（grouped）
+
+    await page.goto(`/chat?channel=${channelId}`);
+    const row = msgRow(page, reply);
+    await expect(row).toHaveClass(/chat-msg--grouped/);
+    await row.hover();
+
+    const mine = await measureRow(row);
+    expect(mine.actions, '没量到工具条 —— 指针没停上去？').not.toBeNull();
+    expect(mine.quote, '这条消息没有引用块').not.toBeNull();
+    // 自己发的：浮层在气泡**左侧**，box 边缘贴着气泡左沿（那 8px 让位是浮层自己的
+    // padding，所以按钮与气泡之间正好差 8px）
+    expect(mine.actions!.right).toBeCloseTo(mine.bubble!.left - 8, 0);
+    // 牙在这里：挂错层时它贴的是引用块的左沿。先确认两者确实差得开（引用够长），
+    // 否则这条断言会退化成「两个数都差不多」而恒绿。
+    expect(mine.bubble!.left - mine.quote!.left, '引用块没比正文宽出可辨的距离').toBeGreaterThan(40);
+    expect(Math.abs(mine.actions!.right - (mine.quote!.left - 8))).toBeGreaterThan(40);
+
+    // 换到对方视角：同一条消息变成「别人的」，浮层挂到气泡**右侧**（另一条 CSS 分支）
+    await loginViaApi(page, SEED_USERS.admin.username);
+    await page.goto(`/chat?channel=${channelId}`);
+    const seenByPeer = msgRow(page, reply);
+    await expect(seenByPeer).toHaveClass(/chat-msg--grouped/);
+    await seenByPeer.hover();
+
+    const theirs = await measureRow(seenByPeer);
+    expect(theirs.actions).not.toBeNull();
+    expect(theirs.actions!.left).toBeCloseTo(theirs.bubble!.right + 8, 0);
+    expect(theirs.bubble!.right - theirs.quote!.right).toBeLessThan(-40);
+    expect(Math.abs(theirs.actions!.left - (theirs.quote!.right + 8))).toBeGreaterThan(40);
+
+    // 换了个位置也得**够得着**：指针从气泡走到按钮的途中不能落进空隙（那 8px 让位
+    // 用 padding 而不是 margin 的全部理由，见 _chat.scss）。点下去能进回复态才算数。
+    await seenByPeer.locator('.chat-msg__btn', { hasText: '回复' }).click();
+    await expect(page.locator('.chat-composer__reply')).toContainText(`回复 ${me.username}`);
   });
 });
 
