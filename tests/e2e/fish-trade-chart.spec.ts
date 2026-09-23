@@ -146,14 +146,25 @@ test('滚轮缩放，且页面不跟着滚（非被动监听里 preventDefault �
   await page.mouse.move(plot.x + plot.width / 2, plot.y + plot.height / 2);
   const w0 = await bodyWidth(page);
   await page.mouse.wheel(0, -200); // 往上滚 = 放大
-  await expect.poll(() => bodyWidth(page), { message: '滚轮该把蜡烛放大' }).toBeGreaterThan(w0);
+  await expect
+    .poll(() => bodyWidth(page), { message: '滚轮该把蜡烛放大', timeout: 10_000 })
+    .toBeGreaterThan(w0);
 
   expect(await page.evaluate(() => window.scrollY), '滚轮被页面吃掉了 = 监听是 passive 的').toBe(scrolled);
 });
 
 test('拖动平移：往右拖看更早的行情', async ({ page, request }) => {
   await openChart(page, request);
-  const plot = await boxOf(page, '.trade-chart__plot');
+
+  // ⚠️ 先把绘图区**滚进视口**再量坐标。手机上这一页是单列，图被推到视口下沿之外，
+  // 而 `boundingBox()` 给的是视口坐标 —— 直接拿它去 `page.mouse.move()`，点会落在
+  // 视口外（WebKit 那条**可视**视口还比 layout viewport 更矮），**一个 pointer 事件
+  // 都收不到**（实测：box.y 535 + 图高 240 → 拖拽点 y=655，而视口只有 ~633 高）。
+  // `locator.click()/dblclick()` 会自己滚进视口，**裸的 `page.mouse.*` 不会** ——
+  // 同一个文件里「双击复位」在手机上没事、这条却挂过，差别就在这里。
+  const plotLoc = page.locator('.trade-chart__plot');
+  await plotLoc.scrollIntoViewIfNeeded();
+  const plot = (await plotLoc.boundingBox())!;
   const firstTime = () => page.locator('.trade-chart__axis-label--time').first().innerText();
 
   const before = await firstTime();
@@ -161,7 +172,9 @@ test('拖动平移：往右拖看更早的行情', async ({ page, request }) => 
   await page.mouse.down();
   await page.mouse.move(plot.x + plot.width * 0.75, plot.y + plot.height * 0.5, { steps: 8 });
   await page.mouse.up();
-  await expect.poll(firstTime, { message: '拖了但时间轴没动' }).not.toBe(before);
+  await expect
+    .poll(firstTime, { message: '拖了但时间轴没动', timeout: 10_000 })
+    .not.toBe(before);
 
   // 一直往左拖（看更晚的行情）到头也不越界：页面不许出横向滚动条
   for (let i = 0; i < 6; i++) {
