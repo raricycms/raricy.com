@@ -40,7 +40,18 @@ class ContentRefProcessor {
   async preprocess(markdownContent: string): Promise<string> {
     const pattern = /\[@\s*(\w+)\s*\]/g;
     const matches = [...markdownContent.matchAll(pattern)];
-    if (matches.length === 0) return markdownContent;
+
+    // ★ 音频那趟**必须早于**下面这条空集早退 ★
+    // 音频引用是 `[@音频/<ID>]`，合集名是中文，而上面那条分流用的 `\w` 匹配不到
+    // 中文 —— 于是「正文里只有音频引用」时 matches 是**空的**，早退会把播放器一起
+    // 吞掉：写一篇只贴了一段录音的文章 = 什么也不展开，**且不报错**。
+    // 此刻字符串还没有被改写过，下标成立，直接替换掉返回即可。
+    if (matches.length === 0) {
+      const audioSlots = collectAudioRefs(markdownContent, maskMarkdownCode(markdownContent));
+      return audioSlots.length > 0
+        ? replaceAudioRefs(markdownContent, audioSlots)
+        : markdownContent;
+    }
 
     const clipboardIds = new Set<string>();
     const voteIds = new Set<string>();
