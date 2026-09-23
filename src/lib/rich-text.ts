@@ -52,7 +52,7 @@ import DOMPurify from 'dompurify';
 import { linkify } from './linkify';
 import { embedAudioRefs } from './audio-refs';
 import { embedImageRefs } from './content-refs';
-import { embedStickerRefs } from './sticker-refs';
+import { embedStickerRefs, markSoloEmojiFaces } from './sticker-refs';
 import { USER_REF_PROBE, embedUserRefs, type UserCardData } from './user-refs';
 
 /**
@@ -280,6 +280,14 @@ export function createRichTextRenderer(options: RichTextOptions): RichTextRender
     embedStickerRefs(holder);
     linkifyTextNodes(holder);
     hardenLinks(holder, linkClass);
+    // ★ 整条正文只有一张黄脸时退回图片表情那一档（尺寸落回图片表情的盒子）★
+    //
+    // **必须是最后一趟**：这一趟问的是「**最终** DOM 里是不是只有这一张」，所以任何
+    // 会建元素的 embed* 都必须排在它上面 —— 加到下面等于让新元素漏出判断，而那种
+    // 错误的全部表现只是「尺寸偶尔不对」，不报错、不写日志。判据见
+    // sticker-refs.ts 的 markSoloEmojiFaces（它同时也是这份顺序的唯一理由）。
+    // linkify / hardenLinks 只动文本节点与既有 <a>，放在它们之后是安全的。
+    markSoloEmojiFaces(holder);
     return holder.innerHTML;
   }
 

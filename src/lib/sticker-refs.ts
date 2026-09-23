@@ -129,6 +129,7 @@ export const STICKER_REF_CLASS = 'rich-sticker-ref';
  * 所以分工是：
  *   · `rich-sticker-ref` = 「这是跟随正文的行内表情图」→ 管降级、管不弹灯箱；
  *   · `rich-emoji-ref`   = 「但它是文字大小的那种」     → 只管尺寸，见 _markdown-body.scss。
+ *     （**整条正文只有它一张时**是例外：那时不生效，见 EMOJI_SOLO_CLASS。）
  */
 export const EMOJI_REF_CLASS = 'rich-emoji-ref';
 
@@ -258,4 +259,58 @@ export function embedStickerRefs(root: HTMLElement): void {
     if (last < node.data.length) frag.appendChild(doc.createTextNode(node.data.slice(last)));
     node.replaceWith(frag);
   }
+}
+
+/**
+ * 「整条正文只有这一张黄脸」的修饰类 —— 叠在 `rich-sticker-ref` + `rich-emoji-ref` 之上。
+ *
+ * 【为什么它是「取消压缩」而不是「另写一套尺寸」】黄脸平时压到文字大小（1.2em，
+ * 见 _markdown-body.scss），而**单发一张**时用户要的是「发了个表情」的观感 —— 与站长
+ * 放的图片表情同一档（4em）。实现上这个类**不重新声明 4em**：它只是让那条 1.2em 的
+ * 规则不再匹配，尺寸于是落回图片表情那条盒子 —— 「一样大」这句话全站只有**一处**定义，
+ * 以后改表情包尺寸时这一档会自己跟上，不会静默漂成两档。
+ *
+ * 【三个类一个都不能换】`rich-sticker-ref` 管降级链（换掉 → 缺图显示裂图）、
+ * `rich-emoji-ref` 管「平时是文字大小」、这个管「独处时不是」。理由同 EMOJI_REF_CLASS。
+ */
+export const EMOJI_SOLO_CLASS = 'rich-emoji-solo';
+
+/**
+ * 整条正文恰好只有一张黄脸 → 给它叠 EMOJI_SOLO_CLASS（尺寸落回图片表情那一档）。
+ *
+ * ★ 调用点必须在**所有会建元素的 embed\* 都跑完之后**（rich-text.ts 的 render() 末行）：
+ *   它问的是「**最终** DOM 里是不是只有这一张」。往后加新的 embed\* 时忘了这条，
+ *   新元素就会漏出判断 —— 表现只是尺寸偶尔不对，不报错、不写日志。
+ *
+ * 三条判据，缺一不可：
+ *
+ *  · **文本全空**（`trim()`）—— 这是 `你好 [@黄脸/微笑]` 唯一的出局处：元素计数挡不住它，
+ *    因为文本节点不算元素。空白容忍是**刻意的**（`'  [@黄脸/微笑]  '` 也算单发），
+ *    否则用户发之前按了个空格，表情就缩回去了。零宽字符（U+200B 之类）不算空白 →
+ *    退回 1.2em：看不见的差别，不为它加归一化。
+ *  · **恰好一张**带 `rich-emoji-ref` 的图 —— 多颗黄脸、黄脸 + 图床图 / 音频 / 图片表情
+ *    都在这一步出局；黄脸合集里查不到的名字走字节路由、本来就没有 `rich-emoji-ref`
+ *    （它已经是 4em 了，不需要这个类）。
+ *  · **除它以外整棵 DOM 只有它的一层层 `<p>` 祖先** —— `<br>`（marked 开着 `breaks: true`，
+ *    换行就是它）、标题 / 列表 / 引用里的那一颗、以及同一段里混进来的第二个元素全部出局。
+ *    显式判 `parentElement` 是必需的：`img` 直接挂在容器上时「零个 P 祖先」会让后面的
+ *    计数条件**恒真**，于是把一个不是段落的 DOM 判成「一段里只有一张表情」。
+ *
+ * 失败时**什么都不做**（保持 1.2em），不报错也不降级 —— 缩回去的那张仍然是完全正常的
+ * 一张黄脸，只是不放大而已。
+ */
+export function markSoloEmojiFaces(root: HTMLElement): void {
+  if ((root.textContent ?? '').trim() !== '') return;
+  const imgs = root.querySelectorAll(`img.${STICKER_REF_CLASS}.${EMOJI_REF_CLASS}`);
+  if (imgs.length !== 1) return;
+  const img = imgs[0];
+  if (img.parentElement?.tagName !== 'P') return;
+  // 数一遍元素：img 自己 + 它往上到 root 的每一层 <p>，必须正好是整棵 DOM 的元素数
+  let accounted = 1;
+  for (let el: Element | null = img.parentElement; el && el !== root; el = el.parentElement) {
+    if (el.tagName !== 'P') return;
+    accounted += 1;
+  }
+  if (root.querySelectorAll('*').length !== accounted) return;
+  img.classList.add(EMOJI_SOLO_CLASS);
 }

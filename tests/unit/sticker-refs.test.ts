@@ -23,10 +23,12 @@
 import { describe, it, expect } from 'vitest';
 import {
   EMOJI_REF_CLASS,
+  EMOJI_SOLO_CLASS,
   MAX_STICKER_REFS,
   STICKER_REF_CLASS,
   STICKER_REF_RE,
   STICKER_REF_PROBE,
+  markSoloEmojiFaces,
   stickerKey,
   stickerUrl,
   stripStickerTokens,
@@ -55,6 +57,11 @@ const CLIP_ID = 'a1b2c3d4';
 /** 取一个字符串里所有表情匹配的原始文本（全局正则每次新建，避免 lastIndex 残留）。 */
 function matches(text: string): string[] {
   return [...text.matchAll(new RegExp(STICKER_REF_RE.source, 'gu'))].map((m) => m[0]);
+}
+
+/** 正文里有没有任何一颗黄脸被标成「单发档」（尺寸落回图片表情那一档）。 */
+function hasSolo(root: HTMLElement): boolean {
+  return [...root.querySelectorAll('img')].some((i) => i.classList.contains(EMOJI_SOLO_CLASS));
 }
 
 /** 收集带 on* 事件属性的元素（转义成文本的「属性」不算 —— 那只是字符）。 */
@@ -278,13 +285,75 @@ describe.each(RENDERERS)('$name 正文的 [@合集/表情]', ({ render }) => {
     expect(img.getAttribute('src')).toBe('/static/emoji/1f60a.svg');
     // 两个类都必须在。少哪个都有具体的坏后果：
     //   少 rich-sticker-ref → 缺图时显示**裂图**（降级链按那个类名过滤）；
-    //   少 rich-emoji-ref   → 尺寸继承 4em，黄脸变成一张大表情。
+    //   少 rich-emoji-ref   → 尺寸继承 4em，**行内**的黄脸变成一张大表情
+    //                        （单发那一档要的正是 4em，见下面几条用例）。
     expect(img.classList.contains(STICKER_REF_CLASS)).toBe(true);
     expect(img.classList.contains(EMOJI_REF_CLASS)).toBe(true);
     expect(img.classList.contains(IMAGE_REF_CLASS)).toBe(false);
     // 降级链的两层照旧是原始 token（黄脸走的是同一条链）
     expect(img.getAttribute('alt')).toBe('[@黄脸/微笑]');
     expect(img.getAttribute('data-token')).toBe('[@黄脸/微笑]');
+  });
+
+  it('★ 整条正文只有一张黄脸 → 叠上单发档（尺寸落回图片表情那一档）', () => {
+    const img = mount(render, '[@黄脸/微笑]').querySelector('img')!;
+    expect(img.classList.contains(EMOJI_SOLO_CLASS)).toBe(true);
+    // 三个类齐全。单发档**只**改尺寸，另两个一动就出别的事：
+    //   rich-sticker-ref → 降级链；rich-emoji-ref → 「平时是文字大小」那条规则。
+    expect(img.classList.contains(STICKER_REF_CLASS)).toBe(true);
+    expect(img.classList.contains(EMOJI_REF_CLASS)).toBe(true);
+    // 降级链那两层照旧是原始 token（单发那张也走同一条链）
+    expect(img.getAttribute('alt')).toBe('[@黄脸/微笑]');
+    expect(img.getAttribute('data-token')).toBe('[@黄脸/微笑]');
+  });
+
+  it('首尾空白不算内容：`  [@黄脸/微笑]  ` 也算单发（判据用 trim 是刻意的）', () => {
+    // 否则用户发之前按了个空格，表情就缩回去了 —— 那是没人解释得清的差别。
+    expect(hasSolo(mount(render, '  [@黄脸/微笑]  '))).toBe(true);
+  });
+
+  it('★ 前后有文字就不算单发 —— 那时它必须仍是文字大小', () => {
+    for (const body of ['你好 [@黄脸/微笑]', '[@黄脸/微笑] 再见', '你好 [@黄脸/微笑] 再见']) {
+      const img = mount(render, body).querySelector('img')!;
+      expect(img.classList.contains(EMOJI_SOLO_CLASS), body).toBe(false);
+      // 单发档只是不叠，逐字大小那档照旧生效
+      expect(img.classList.contains(EMOJI_REF_CLASS), body).toBe(true);
+    }
+  });
+
+  it('一颗以上就不算：并排 / 空格隔开 / 换行隔开的两颗黄脸都不带单发档', () => {
+    for (const body of [
+      '[@黄脸/微笑][@黄脸/大哭]',
+      '[@黄脸/微笑] [@黄脸/大哭]',
+      '[@黄脸/微笑]\n[@黄脸/大哭]', // breaks:true ⇒ 中间是 <br>
+    ]) {
+      expect(hasSolo(mount(render, body)), body).toBe(false);
+    }
+  });
+
+  it('★ 黄脸旁边还有图床图就不算 —— 顺带钉住「单发判据那趟必须晚于 embedImageRefs」', () => {
+    // 若那一趟提前跑，图床图那一刻还没被建出来 ⇒ 这里会被误判成单发。
+    expect(hasSolo(mount(render, `[@黄脸/微笑] [@${IMG_ID}]`))).toBe(false);
+  });
+
+  it('标题 / 列表 / 引用里的黄脸都不算单发（那不是「一段里只有一张表情」）', () => {
+    for (const body of ['# [@黄脸/微笑]', '- [@黄脸/微笑]', '> [@黄脸/微笑]']) {
+      expect(hasSolo(mount(render, body)), body).toBe(false);
+    }
+  });
+
+  it('图片表情单发**不带**这个档（它本来就是 4em，不需要）', () => {
+    expect(hasSolo(mount(render, '[@猫猫/开心]'))).toBe(false);
+  });
+
+  it('黄脸里查不到的名字（走字节路由）不算单发 —— 它连 rich-emoji-ref 都没有', () => {
+    expect(hasSolo(mount(render, '[@黄脸/并不存在]'))).toBe(false);
+  });
+
+  it('代码块里的 token 不展开，自然也就没有单发档', () => {
+    const root = mount(render, '```\n[@黄脸/微笑]\n```');
+    expect(root.querySelectorAll('img')).toHaveLength(0);
+    expect(hasSolo(root)).toBe(false);
   });
 
   it('普通表情**不带**黄脸那个尺寸类（回归：别把两种表情弄成一样大）', () => {
@@ -321,5 +390,52 @@ describe.each(RENDERERS)('$name 正文的 [@合集/表情]', ({ render }) => {
     expect(root.textContent).toContain('<img src=x onerror=');
     // 只可能有一个 img —— 而且是外链那个降级后的 <a>，不是 img
     expect(root.querySelectorAll('img')).toHaveLength(0);
+  });
+});
+
+// ── 单发判据对 DOM 形态的要求（markSoloEmojiFaces 直调）────────────────────────
+//
+// 上面那组用例走的是真实渲染器，而判据里有两条**渲染器到不了**的形态：
+// img 直接挂在容器上（零个 <p> 祖先会让计数条件恒真）、以及段落里多一个 <br>。
+// 这两条只能手搭 DOM 才测得到，而它们正是判据里最容易被后人「顺手简化」掉的部分。
+
+describe('单发判据对 DOM 形态的要求', () => {
+  const IMG = `<img class="${STICKER_REF_CLASS} ${EMOJI_REF_CLASS}">`;
+  function dom(html: string): HTMLElement {
+    const root = document.createElement('div');
+    root.innerHTML = html;
+    return root;
+  }
+
+  it('对照：<p> 里只有它自己 → 算单发', () => {
+    const root = dom(`<p>${IMG}</p>`);
+    markSoloEmojiFaces(root);
+    expect(hasSolo(root)).toBe(true);
+  });
+
+  it('img 直接挂在容器上（一个 <p> 都没有）**不算** —— 否则计数条件恒真', () => {
+    const root = dom(IMG);
+    markSoloEmojiFaces(root);
+    expect(hasSolo(root)).toBe(false);
+  });
+
+  it('段落里多一个 <br> 不算（breaks:true 下换行就是它，那是第二行）', () => {
+    const root = dom(`<p>${IMG}<br></p>`);
+    markSoloEmojiFaces(root);
+    expect(hasSolo(root)).toBe(false);
+  });
+
+  it('外层不是 <p>（标题 / 引用 / 列表项）也不算', () => {
+    for (const html of [`<h1>${IMG}</h1>`, `<blockquote>${IMG}</blockquote>`, `<ul><li>${IMG}</li></ul>`]) {
+      const root = dom(html);
+      markSoloEmojiFaces(root);
+      expect(hasSolo(root), html).toBe(false);
+    }
+  });
+
+  it('多一个空元素（比如第二个 <p>）也不算', () => {
+    const root = dom(`<p>${IMG}</p><p></p>`);
+    markSoloEmojiFaces(root);
+    expect(hasSolo(root)).toBe(false);
   });
 });

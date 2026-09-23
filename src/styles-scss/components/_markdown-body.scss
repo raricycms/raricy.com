@@ -168,10 +168,23 @@
   // 注意上面那段注释里被否掉的「1.6em 像带图表的字」：那是对**表情包**的取舍，
   // 而黄脸要的正是那一档的观感。
   //
+  // 【整条正文只有它一张时是例外】那时它退回上一条的**表情包盒子**（4em）——
+  // 单发一张黄脸要的是「发了个表情」的观感，不是「句子里的一个字」。判据由
+  // sticker-refs.ts 的 markSoloEmojiFaces 叠上 `rich-emoji-solo` 给。
+  //
+  // 【为什么用 :not() 而不是把 4em 再抄一遍】抄一遍就等于「一样大」在文件里有
+  // 两处定义：以后改表情包尺寸时，独处那张会**静默**留在旧尺寸上（两档漂开，
+  // 没有任何报错）。用 :not() 则独处那张只是不匹配本规则、直接落回上一条，
+  // 尺寸 / 对齐 / 外边距 / 圆角连带 display / object-fit / border / background /
+  // cursor 全部与图片表情逐项相同，且只有一处定义。
+  // ⚠️ 读的时候要连着上一条看：这条不匹配时，上面那些属性都是它给的。
+  // 权重：`:not(.类)` 算参数的权重，所以这条仍是 (0,4,1)，照旧压过
+  // `.类 img`(0,1,1) 与 `.类 img.rich-sticker-ref`(0,2,1)，不需要 !important。
+  //
   // 【为什么叠两个类】上一条是 `.类 img.rich-sticker-ref`，这一条多一个类，
   // 权重稳赢，不需要 !important。而**不能换掉 rich-sticker-ref** 的理由见
   // sticker-refs.ts 里 EMOJI_REF_CLASS 的说明（降级链按那个类名过滤）。
-  .#{$cls} img.rich-sticker-ref.rich-emoji-ref {
+  .#{$cls} img.rich-sticker-ref.rich-emoji-ref:not(.rich-emoji-solo) {
     // 逐条覆盖上一条，别只写差异：SCSS 是叠加不是替换，漏掉哪条就继承哪条。
     // 尺寸用 em 的理由与文件头那条一致（两个容器基准字号不同）。
     width: 1.2em;

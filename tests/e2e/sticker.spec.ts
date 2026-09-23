@@ -15,7 +15,8 @@
 //   · **404 降级**：不存在的表情退回纯文本 token（onerror 事件委托）
 //   · 代码块里的 token 不展开
 //   · **内置黄脸**（单独一节）：排最前且默认激活、点一下**插进输入框而不发送**、
-//     正文里是**文字大小**（对照组是 4em 的图片表情）、素材真的加载得出来
+//     正文里是**文字大小**（对照组是 4em 的图片表情）、**整条正文只有它一张时又回到
+//     图片表情那一档**（断真视口几何：两者 boundingBox 逐项相等）、素材真的加载得出来
 //   · **面板布局与合集记忆**（单独一节）：合集条排在网格**上面**（断真视口几何）、
 //     退出面板乃至刷新页面后仍停在上次那一栏
 //
@@ -396,6 +397,42 @@ test.describe('内置黄脸表情', () => {
     const eb = await emoji.boundingBox();
     const sb = await sticker.boundingBox();
     expect(sb!.height).toBeGreaterThan(eb!.height * 3);
+  });
+
+  test('★ 整条正文只有一颗黄脸时，和图片表情一样大', async ({ page }) => {
+    // 【怎么定位独处那一张】单发消息的正文**就是那一个 token**，塞不进哨兵串，
+    // msgRow() 用不上。所以换一条锚：新注册的账号在这一轮里只发过这一条消息，
+    // 于是「作者名 = 新账号」的行就是它。
+    // ⚠️ 不能同账号再发第二条 —— 同人连续消息会被 grouped 掉（作者名只是被 CSS
+    //    藏起来，元素还在 DOM 里，Playwright 的 has: 过滤不看可见性，会命中两条）。
+    // 对照组（要哨兵串）因此由 core 账号发，走既有的 msgRow()。
+    await loginViaApi(page, SEED_USERS.core.username);
+    const marker = `emoji-solo-${uniqueTag()}`;
+    await postMessage(page, `${marker} ${TOKEN}`);
+
+    const user = await registerFreshUser(page, { core: true });
+    await postMessage(page, EMOJI_TOKEN);
+
+    await page.goto(`/chat?channel=${LOBBY}`);
+
+    const soloRow = page.locator('.chat-msg', {
+      has: page.locator('.chat-msg__name', { hasText: user.username }),
+    });
+    const solo = soloRow.locator('img.rich-emoji-solo');
+    // 恰好一颗：>1 说明同账号发过第二条，0 说明判据没命中（或素材缺失、
+    // 被降级链换回了字面量 —— 那时这个 img 已经不在 DOM 里了）
+    await expect(solo).toHaveCount(1);
+    await expect(solo).toHaveAttribute('src', EMOJI_SRC);
+
+    const sticker = msgRow(page, marker).locator('img.rich-sticker-ref:not(.rich-emoji-ref)').first();
+    await expect(sticker).toBeVisible();
+
+    // ★「一样大」就断这一条：同一个容器、同一套 em，尺寸由 CSS 定死，
+    //   所以不依赖图片有没有加载完（上面那条 toHaveCount 已经保证降级链没动过它）。
+    const a = (await solo.boundingBox())!;
+    const b = (await sticker.boundingBox())!;
+    expect(Math.abs(a.height - b.height)).toBeLessThanOrEqual(0.5);
+    expect(Math.abs(a.width - b.width)).toBeLessThanOrEqual(0.5);
   });
 
   test('清单里没有的黄脸名字：退回字节路由 → 404 → 显示原文 token', async ({ page }) => {
