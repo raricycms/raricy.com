@@ -464,15 +464,24 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
     不再是竖条（它原先左右各有一条镜像竖条，方向跟着气泡走 —— 一起删掉了，只删一边会不对称）。
 - 消息主区 `.chat-main`：头部标题 + 操作；消息气泡 `.chat-msg`（自己发的加 `.chat-msg--mine`），含作者名 / 时间 / 操作 / 图片 / 引用回复 / 已删占位 `.chat-msg__deleted`。
   - 同人连续发言：**只有这一串的第一条**画时间 / 作者名 / 头像，后续几条加
-    `.chat-msg--grouped` 省略它们，并把与上一条的间距收到 -8px（视觉上并成一簇）。
+    `.chat-msg--grouped` 省略它们，两条气泡**挨在一起**（间距 3px，视觉上并成一簇）。
     判据（距这一串的第一条 ≤5 分钟，即 `CHAT_GROUP_WINDOW_MS`；换人 / 跨自然日 /
     拍一拍都断开）在 `src/app/chat/ChatMessageItem.tsx` 的 `markGroupedMessages` ——
     **别在渲染层另算一套**。
+  - **能挨在一起的前提：后继消息的表头行整行退出了文档流**（`.chat-msg--grouped
+    .chat-msg__meta { position: absolute }`），挂到气泡**外侧**（别人的在右、自己的
+    在左，都对齐顶边）。它在流里时要占 17px 行高 + 4px 间距，光靠负外边距最多把两条
+    气泡的距离从 27px 收到 21px，怎么调都贴不上；而浮在气泡**上**会盖住正文
+    （气泡是 fit-content 宽度，「回复 删除」能占掉短气泡的一半）。同理，那 8px 让位
+    用的是 `padding` 而不是 `margin` —— 浮层的 box 边缘必须贴着气泡边缘，否则指针
+    从气泡移向按钮的途中会落进一段空隙，`:hover` 中断、按钮够不着。
   - 三处隐藏方式**刻意不同**，改动前先看清各自为什么：头像 `opacity: 0`（它是
     「拍一拍 / @ta / 主页」的入口，藏了也**要能点**，悬停淡入；触屏没有 hover，故
-    `@media (hover: none)` 下常显）；作者名与时间 `visibility: hidden`（不可交互，
-    更要紧的是**行高原地保留** —— 悬停时浮出的「回复 / 删除」就不会把整条消息连同
-    下方内容顶下去；同一行里的私聊已读回执照常显示）。
+    `@media (hover: none)` 下常显）；作者名与时间 `display: none`（不可交互；
+    整行已不在文档流里，「保住行高免得顶下去」这层顾虑随之消失，而**留着它们反而
+    会占宽** —— `visibility: hidden` 的元素仍参与排版，会把浮层凭空撑宽六七十 px，
+    把 `overflow-y: auto` 的列表撑出横向滚动条。私聊的已读回执与它们在**同一行**，
+    所以跟着一起挂到气泡外侧，照常显示）。
 - 输入条 `.chat-composer`：附件条（回复 / 引用博客 / 待发图片）+ 面板（工具条 `.chat-composer__icon-btn` → 输入框 `.chat-composer__input` → 底条：提示 `.chat-composer__hint` + 发送 `.chat-composer__send`）。样式与评论区**共用** `components/_composer.scss` 的 `rich-composer($p)` mixin，组件也是同一个 `RichComposer`（`className` 注入 BEM 前缀，见 §11.1）。
 - 发起私聊弹窗 `.chat-new-modal`：搜索框 `.chat-new-search` + 结果项 `.chat-new-item`（头像 / 昵称 / 角色 / 自己标记）。
 - 响应式：`≤900px` 时侧栏变抽屉，`.chat-page--drawer-open` 展开。
