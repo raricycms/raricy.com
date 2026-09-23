@@ -99,9 +99,33 @@ export function xFraction(i: number, w: ChartWindow): number {
   return (i + 0.5 - w.from) / w.count;
 }
 
+/** 一根蜡烛的实体宽度（占视口宽度的比例）—— 剩下的 30% 是蜡烛之间的间隙。 */
+export function bodyWidthFraction(i0: number, i1: number, w: ChartWindow): number {
+  return ((i1 - i0 + 1) / w.count) * BODY_RATIO;
+}
+
 /** 视口位置 → 最近的那一根原始下标。命中测试与缩放锚点都用它。 */
 export function indexAtFraction(f: number, w: ChartWindow): number {
   return Math.round(w.from + f * w.count - 0.5);
+}
+
+/**
+ * 视口位置 → 命中的**图元**下标（`items` 的下标；没有命中返回 -1）。
+ *
+ * 十字光标与图例要的是「指着哪一根画出来的蜡烛」，而聚合之后图元不等于原始下标 ——
+ * 两者之间要过一次 `i0 <= i <= i1`。图元最多 MAX_DRAWN_CANDLES 个，线性扫足够。
+ */
+export function itemIndexAtFraction(
+  items: readonly DrawnCandle[],
+  w: ChartWindow,
+  f: number
+): number {
+  if (items.length === 0 || !Number.isFinite(f)) return -1;
+  const ci = indexAtFraction(f, w);
+  for (let i = 0; i < items.length; i++) {
+    if (ci >= items[i].i0 && ci <= items[i].i1) return i;
+  }
+  return -1;
 }
 
 // ── 聚合（缩到很远时把相邻几根并成一根）──────────────────────────────────────
@@ -320,26 +344,28 @@ export function timeTicks(
     }
     if (best === prevIndex) continue; // 同一个桶被两个整点吸附上了，只标一个
     prevIndex = best;
-    out.push({ index: best, label: formatCandleTime(wallMs, span) });
+    out.push({ index: best, label: formatCandleTime(wallMs, step) });
   }
   return out;
 }
 
 /**
- * 时间标签（按本站钟面 UTC+8）：
- * 跨度 ≥ 30 天 → `YYYY-MM`；≥ 2 天 → `MM-DD`；更短 → `HH:MM`，但**零点换成日期**
+ * 时间标签（按本站钟面 UTC+8）。第二参是**刻度步长**（不是跨度）—— 粒度跟着步长走：
+ * 相邻两颗刻度差一天以上就没必要再显示「几点几分」。
+ *
+ * 步长 ≥ 30 天 → `YYYY-MM`；≥ 1 天 → `MM-DD`；更短 → `HH:MM`，但**零点换成日期**
  * —— 否则跨日的那张图上一整天只有一串时间，看不出是哪天。
  *
- * 阈值取 2 天而不是 1 天：正好 24 小时的那一档（1h × 24 根）在「≥1 天」的判据下
- * 会整排变成日期，把最容易读的时刻信息扔掉。
+ * ⚠️ 按**步长**而不是按跨度分档：41 天的一张图上步长是 7 天，按跨度判会整排都成
+ * 「2026-09」（一个月的名字重复五遍，什么也读不出来）；按步长判就是 09-01 / 09-08 …
  */
-export function formatCandleTime(ms: number, spanMs: number): string {
+export function formatCandleTime(ms: number, stepMs: number): string {
   const d = new Date(ms + SITE_TZ_OFFSET_MS);
   const p = (n: number) => String(n).padStart(2, '0');
   const mo = p(d.getUTCMonth() + 1);
   const da = p(d.getUTCDate());
-  if (spanMs >= 30 * 86_400_000) return `${d.getUTCFullYear()}-${mo}`;
-  if (spanMs >= 2 * 86_400_000) return `${mo}-${da}`;
+  if (stepMs >= 30 * 86_400_000) return `${d.getUTCFullYear()}-${mo}`;
+  if (stepMs >= 86_400_000) return `${mo}-${da}`;
   const hh = p(d.getUTCHours());
   const mm = p(d.getUTCMinutes());
   return hh === '00' && mm === '00' ? `${mo}-${da}` : `${hh}:${mm}`;

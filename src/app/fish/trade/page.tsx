@@ -9,7 +9,12 @@ import {
   MIN_STAKE_FISH,
 } from '@/lib/market-service';
 import { getCachedQuotes, getCandles, MARKET_SYMBOLS } from '@/lib/market-price';
-import { sparkCloses } from '@/lib/market-candles';
+import {
+  DEFAULT_INTERVAL,
+  candleKey,
+  sparkCloses,
+  type CandleTuple,
+} from '@/lib/market-candles';
 import TradePanel, { type QuoteView, type PositionProp } from './TradePanel';
 
 // 鱼干练手盘 —— 投入鱼干买入一个绑定真实加密价格的仓位。
@@ -35,13 +40,20 @@ export default async function FishTradePage() {
     listOpenPositions(user.id),
     getCachedQuotes(),
     // 标的列表是 MARKET_SYMBOLS 的单一真相源，这里不硬编码币名。
-    // 每个标的都拉一次（默认周期）顺带把服务端那份 K 线缓存**预热**，切标的一次往返就够。
-    // 走势线只取末尾 72 根的收盘价（sparkCloses）—— 首屏不把 1000 根原始 K 线塞进 payload。
-    Promise.all(
-      MARKET_SYMBOLS.map(async (s) => [s as string, sparkCloses(await getCandles(s))] as const)
-    ),
+    // 每个标的都拉一次（默认周期）顺带把服务端那份 K 线缓存**预热** —— 切标的那一次
+    // 于是只走本站一跳，不再打出站请求。
+    Promise.all(MARKET_SYMBOLS.map(async (s) => [s, await getCandles(s, DEFAULT_INTERVAL)] as const)),
   ]);
-  const candles: Record<string, number[]> = Object.fromEntries(candleEntries);
+
+  // 只有**首个标的**的整批 K 线进 payload（1000 根 × 6 项 ≈ 50KB，两个标的就是两倍）。
+  // 另一个标的的走势线走 sparks（每人 72 个数），切过去时由客户端按需取。
+  const first = MARKET_SYMBOLS[0];
+  const candleSets: Record<string, CandleTuple[]> = {
+    [candleKey(first, DEFAULT_INTERVAL)]: candleEntries.find(([s]) => s === first)?.[1] ?? [],
+  };
+  const sparks: Record<string, number[]> = Object.fromEntries(
+    candleEntries.map(([s, list]) => [s, sparkCloses(list)])
+  );
 
   // 展示用报价。**缺价就是 null** —— 页面显示「—」与「行情暂不可用」，
   // 绝不编一个价出来让人照着按下买入（同 /api/fish/trade/quote 的口径）。
@@ -82,7 +94,8 @@ export default async function FishTradePage() {
         balance={balance}
         positions={positionProps}
         initialQuotes={quotes}
-        candles={candles}
+        sparks={sparks}
+        candleSets={candleSets}
         feeRate={MARKET_FEE_RATE}
         minStake={MIN_STAKE_FISH}
       />

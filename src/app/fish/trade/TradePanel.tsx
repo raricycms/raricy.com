@@ -5,7 +5,13 @@ import { useRouter } from 'next/navigation';
 import { AMOUNT_ERROR, fmtFish, parseFishAmount, roundFish } from '@/lib/fish-amount';
 import { FISH_UNIT_SCALE, unitsToFish } from '@/lib/fish-units';
 import { settleClose, formatFeeRate } from '@/lib/market-math';
-// 只取类型：`import type` 在编译期被擦掉，不会把 market-price（它 import 了 db-time）
+import { DEFAULT_INTERVAL, type CandleTuple, type MarketInterval } from '@/lib/market-candles';
+// 价格与涨跌幅的格式化只有一份（market-chart.ts），持仓行、确认弹窗、图例共用它 ——
+// 这里沿用文件里原来的短名，免得改十几处调用点
+import { formatPrice as fmtPrice, formatPct as fmtPct } from '@/lib/market-chart';
+import TradeChartPanel from './TradeChartPanel';
+import { useCandles } from './useCandles';
+// 只取类型：`import type` 在编译期被擦掉，不会把 market-price（它带着服务端代码）
 // 拖进客户端包。**别改成值导入**，也别在本地重抄一份同样的联合类型（两份必然 drift）。
 import type { QuoteSource } from '@/lib/market-price';
 
@@ -66,17 +72,6 @@ export interface PositionProp {
   openedAt: string;
 }
 
-/** 价格展示：保留 2 位小数并加千分位。**不用 toLocale***（见 db-time-guard 规则 4）。 */
-function fmtPrice(n: number): string {
-  const [int, frac] = n.toFixed(2).split('.');
-  return `${int.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}.${frac}`;
-}
-
-/** 涨跌幅：带符号，2 位小数。 */
-function fmtPct(n: number): string {
-  return `${n > 0 ? '+' : ''}${n.toFixed(2)}%`;
-}
-
 /** 开仓时刻。库内是 UTC+8 墙上时间，读它必须用 getUTC*（db-time-guard 规则 5）。 */
 function fmtOpenedAt(iso: string): string {
   const d = new Date(iso);
@@ -123,14 +118,18 @@ export default function TradePanel({
   balance: initialBalance,
   positions,
   initialQuotes,
-  candles,
+  sparks,
+  candleSets,
   feeRate,
   minStake,
 }: {
   balance: number;
   positions: PositionProp[];
   initialQuotes: QuoteView[];
-  candles: Record<string, number[]>;
+  /** 标的 → 最近 72 根收盘价（自选列表那根小走势线）。服务端从同一批 K 线里切出来 */
+  sparks: Record<string, number[]>;
+  /** 服务端首屏给的 K 线，键是 `${symbol}:${interval}`（market-candles.ts 的 candleKey） */
+  candleSets: Record<string, CandleTuple[]>;
   feeRate: number;
   minStake: number;
 }) {
@@ -138,6 +137,9 @@ export default function TradePanel({
   const [balance, setBalance] = useState(initialBalance);
   const [quotes, setQuotes] = useState<QuoteView[]>(initialQuotes);
   const [symbol, setSymbol] = useState<string>(initialQuotes[0]?.symbol ?? 'BTCUSDT');
+  // ⚠️ setter **不许叫 setInterval** —— 那会把全局的 setInterval 遮掉，下面那条
+  // 1 秒轮询会当场报「Expected 1 arguments, but got 2」，而错的是名字不是轮询。
+  const [interval, applyInterval] = useState<MarketInterval>(DEFAULT_INTERVAL);
   const [amount, setAmount] = useState('');
   const [buyOpen, setBuyOpen] = useState(false);
   const [sellTarget, setSellTarget] = useState<PositionProp | null>(null);
@@ -185,6 +187,17 @@ export default function TradePanel({
   const current = quotes.find((q) => q.symbol === symbol) ?? quotes[0];
   const priceOf = (sym: string) => quotes.find((q) => q.symbol === sym)?.price ?? null;
   const displayOf = (sym: string) => quotes.find((q) => q.symbol === sym)?.display ?? sym;
+
+  // ── K 线（图表用）────────────────────────────────────────────────────────
+  // 首屏那批由服务端直接给（SSR 出来的图就是完整的，不闪）；切标的/切周期按需取。
+  // 取数时机只有三条，见 useCandles 的文件头 —— **这里没有定时器**。
+  const { get: getCandleSet, ensure: ensureCandles, refresh: refreshCandles } = useCandles(candleSets);
+  useEffect(() => {
+    ensureCandles(symbol, interval);
+  }, [ensureCandles, symbol, interval]);
+  const candleEntry = getCandleSet(symbol, interval);
+  // 当前标的的展示价。并进图里最后一根用（**只是展示**：成交价永远由服务端现取）
+  const livePrice = current?.price ?? null;
 
   const trimmed = amount.trim();
   const parsed = parseFishAmount(trimmed) ?? NaN;
@@ -310,6 +323,20 @@ export default function TradePanel({
 
   return (
     <>
+      <div className="trade-card trade-card--chart">
+        <TradeChartPanel
+          symbol={symbol}
+          display={current?.display ?? symbol}
+          interval={interval}
+          candles={candleEntry?.candles ?? []}
+          status={candleEntry?.status ?? 'loading'}
+          livePrice={livePrice}
+          onIntervalChange={applyInterval}
+          onRetry={() => refreshCandles(symbol, interval)}
+          onRolledOver={() => refreshCandles(symbol, interval)}
+        />
+      </div>
+
       {/* trade-card--quote 是**给 e2e 的钩子**（fish-trade.spec.ts 用它断言行情卡在不在），
           不带样式 —— 外观全由 .trade-card 给。登记在 tests/unit/css-tsx-classes.test.ts
           的 CONSUMED 里，别顺手删。 */}
@@ -337,7 +364,7 @@ export default function TradePanel({
                   )}
                 </div>
                 <Sparkline
-                  closes={candles[q.symbol] ?? []}
+                  closes={sparks[q.symbol] ?? []}
                   label={`${q.display} 近 72 小时价格走势`}
                 />
               </div>

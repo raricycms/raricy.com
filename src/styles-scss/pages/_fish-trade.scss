@@ -51,6 +51,12 @@
   }
 }
 
+/* 图表卡。图要的地方比别的卡宽（行情 / 买入 / 持仓仍是 560）——
+   三栏版式里宽度交给外层网格，这一条只服务单列时的那一档。 */
+.trade-card--chart {
+  max-width: 900px;
+}
+
 .trade-card__title {
   margin: 0 0 $space-4;
   font-size: 1.05rem;
@@ -169,6 +175,373 @@
   color: var(--color-text-secondary);
   background: var(--color-background-subtle);
   border-radius: $radius-large;
+}
+
+// ── 图表（K 线 / 折线）────────────────────────────────────────────────────────
+//
+// 【★ 图里一个字都没有，标签全是 HTML ★】绘图区是 `viewBox="0 0 100 100"` +
+// `preserveAspectRatio="none"` 的 SVG —— 它把横向与纵向各自拉伸到容器尺寸，但**文字
+// 会跟着一起拉伸**。所以轴标签 / 十字光标 / 徽标都做成 HTML，用百分比定位叠在
+// **同一格网格**上（.trade-chart 是 grid，四个孩子各占一格）：与 SVG 共用同一个分数，
+// 天然对齐，字号却由 CSS 说了算。线宽靠 SVG 那侧的 `vector-effect="non-scaling-stroke"`。
+//
+// 【四格布局】plot / price / volume / time —— 成交量带只占绘图区那一列（右边那格留空），
+// 否则它比画布宽出 56px，量柱与蜡烛就对不上了。
+
+.trade-chart-panel {
+  display: flex;
+  flex-direction: column;
+  gap: $space-3;
+}
+
+.trade-chart {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 56px;
+  grid-template-rows: 320px 56px 20px;
+  grid-template-areas:
+    'plot price'
+    'volume .'
+    'time .';
+
+  @media (max-width: 1199px) {
+    grid-template-rows: 300px 52px 20px;
+  }
+
+  @media (max-width: 991px) {
+    grid-template-rows: 280px 48px 20px;
+  }
+
+  @media (max-width: 767px) {
+    grid-template-columns: minmax(0, 1fr) 46px;
+    grid-template-rows: 240px 40px 20px;
+  }
+}
+
+/* touch-action: pan-y —— 手机上左右拖 = 平移（指针事件），上下拖 = 滚页面。
+   不做双指捏合（见计划里「明确不做」那节），触屏靠拖动 + 缩放钮。 */
+.trade-chart__plot {
+  grid-area: plot;
+  position: relative;
+  overflow: hidden;
+  cursor: crosshair;
+  touch-action: pan-y;
+  user-select: none;
+}
+
+.trade-chart__volume {
+  grid-area: volume;
+  position: relative;
+}
+
+.trade-chart__price-axis,
+.trade-chart__time-axis {
+  position: relative;
+}
+
+.trade-chart__price-axis {
+  grid-area: price;
+}
+
+.trade-chart__time-axis {
+  grid-area: time;
+}
+
+/* 显式给高度：网格里的 `height: 100%` 会塌成 0（父格的高度由内容决定） */
+.trade-chart__svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.trade-chart__grid line {
+  stroke: var(--color-border);
+  stroke-width: 1;
+  opacity: 0.7;
+}
+
+/* 蜡烛与影线：涨绿跌红，与行情卡 / 持仓行同一对语义色（trade-up-down 那一对）。
+   这里要的是 fill / stroke，所以另写一支同源的规则，别把色值再抄第三遍。 */
+.trade-chart__candle {
+  /* 这条声明不是装饰：下面 --up/--down 两支是 `fill`，基类一条声明都没有时 Sass
+     不会为它产出规则，类名静默失效（css-tsx-classes 守卫会红）。同 .trade-confirm__pnl。 */
+  stroke: none;
+}
+
+.trade-chart__candle--up {
+  fill: var(--color-success-primary);
+}
+
+.trade-chart__candle--down {
+  fill: var(--color-warning-primary);
+}
+
+.trade-chart__wick {
+  stroke-width: 1;
+}
+
+.trade-chart__wick--up {
+  stroke: var(--color-success-primary);
+}
+
+.trade-chart__wick--down {
+  stroke: var(--color-warning-primary);
+}
+
+/* 成交量柱：同一对色，压淡一档 —— 它是背景信息，不该与蜡烛争视线 */
+.trade-chart__vol-bar {
+  opacity: 0.35;
+}
+
+.trade-chart__vol-bar--up {
+  fill: var(--color-success-primary);
+}
+
+.trade-chart__vol-bar--down {
+  fill: var(--color-warning-primary);
+}
+
+.trade-chart__line {
+  fill: none;
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.trade-chart__line--up {
+  stroke: var(--color-success-primary);
+}
+
+.trade-chart__line--down {
+  stroke: var(--color-warning-primary);
+}
+
+.trade-chart__area {
+  fill: var(--color-brand-secondary);
+}
+
+/* 十字光标：HTML 的 1px 线。做成 SVG 线的话会被 preserveAspectRatio 拉成非 1px。 */
+.trade-chart__cursor {
+  position: absolute;
+  background: var(--color-text-secondary);
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.trade-chart__cursor--x {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+}
+
+.trade-chart__cursor--y {
+  left: 0;
+  right: 0;
+  height: 1px;
+}
+
+.trade-chart__axis-label {
+  position: absolute;
+  font-size: 0.7rem;
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.trade-chart__axis-label--price {
+  left: 4px;
+  transform: translateY(-50%);
+}
+
+.trade-chart__axis-label--time {
+  top: 2px;
+  transform: translateX(-50%);
+}
+
+/* 两端那两颗改成贴边对齐，否则 translateX(-50%) 会把它们推出卡片 */
+.trade-chart__axis-label--first {
+  transform: translateX(0);
+}
+
+.trade-chart__axis-label--last {
+  transform: translateX(-100%);
+}
+
+/* 光标停在轴上的那一枚读数：实底反白（两套主题下都成立，同「实底按钮 + 白字」的配方） */
+.trade-chart__badge {
+  position: absolute;
+  padding: 1px 6px;
+  border-radius: $radius-small;
+  background: var(--color-text-primary);
+  color: var(--color-background-card);
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.trade-chart__badge--price {
+  left: 0;
+  transform: translateY(-50%);
+}
+
+.trade-chart__badge--time {
+  top: -2px;
+  transform: translateX(-50%);
+}
+
+// ── 图表的工具条 ────────────────────────────────────────────────────────────
+
+.trade-chart__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $space-2 $space-3;
+}
+
+.trade-chart__symbol {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.trade-chart__interval-tag {
+  padding: 1px 8px;
+  border-radius: $radius-max;
+  background: var(--color-background-subtle);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+/* 图例**独占一行**（order 把它排到控件后面）。
+   理由是它最宽又最不重要：三栏版式里绘图区那一列只有 ~550px，[标的][图例][周期][形态]
+   [缩放] 一行放不下，而 flex 换行是「放不下就整体挪到下一行」—— 结果是最后那两颗缩放钮
+   被单独挤到第二行，看着像掉出来的。让图例走第二行，控件就永远是一整排。 */
+.trade-chart__legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: $space-2 $space-3;
+  flex: 1 1 100%;
+  order: 2;
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.trade-chart__legend-item b {
+  margin-left: 2px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.trade-chart__legend-change {
+  font-weight: 700;
+
+  @include trade-up-down;
+}
+
+.trade-chart__legend-note {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+}
+
+/* 周期档走「切页档」而不是胶囊滑块 —— docs/frontend-styles.md §6.8 的判据是
+   「滑块只给 2 选 1 的互斥视图切换」，这里是 6 选 1、选项还可能变多（加周期）。
+   与鱼干流水、原来的标的切换同档。 */
+.trade-chart__interval {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.trade-chart__interval-btn {
+  @include m.btn-tab;
+  padding: 2px 10px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* K线 / 折线：同一个视图的两种呈现 —— §6.8 的**正例**，所以走胶囊滑块。
+   几何与配色全部来自 .segmented，这里只给尺寸。 */
+.trade-chart__mode {
+  .segmented__btn {
+    padding: 2px 12px;
+    font-size: 0.8rem;
+    font-weight: 600;
+  }
+}
+
+.trade-chart__zoom {
+  display: flex;
+  gap: 4px;
+}
+
+/* 图标钮走「无底色 + 悬停才亮」—— 与讨论 / 评论输入条那颗 .__icon-btn 同款
+   （components/_composer.scss）：30px 见方、圆角 8px、hover 才上淡底与品牌色。
+   不套 .btn-secondary 是因为它把「次级按钮」的文案色与内距一起带过来，
+   而这里要的是**图标**钮（尺寸、圆角、hover 都不是一回事）。 */
+.trade-chart__zoom-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease;
+
+  &:hover {
+    background: var(--color-background-subtle);
+    color: var(--color-brand-primary);
+  }
+}
+
+// ── 图表的装载 / 错误 / 提示 ────────────────────────────────────────────────
+
+.trade-chart__state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: $space-3;
+  margin: 0;
+  padding: $space-8 $space-4;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+  background: var(--color-background-subtle);
+  border-radius: $radius-large;
+
+  p {
+    margin: 0;
+  }
+}
+
+.trade-chart__retry {
+  @include m.btn-secondary;
+  padding: $space-2 $space-4;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* 「已加载 N 根」那一行同时也是诚实说明：拖到最左边就是数据的起点，不是坏了 */
+.trade-chart__hint {
+  margin: 0;
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
 }
 
 // ── 表单字段（与 market-field 同形，前缀分开）────────────────────────────────

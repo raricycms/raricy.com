@@ -13,6 +13,7 @@ import {
   DEFAULT_VISIBLE_CANDLES,
   MAX_DRAWN_CANDLES,
   MIN_VISIBLE_CANDLES,
+  bodyWidthFraction,
   bucketSizeFor,
   clampWindow,
   drawCandles,
@@ -21,6 +22,7 @@ import {
   formatPct,
   formatPrice,
   indexAtFraction,
+  itemIndexAtFraction,
   mergeLivePrice,
   niceTicks,
   panWindow,
@@ -45,12 +47,29 @@ const mk = (
   v = 1
 ): CandleTuple => [t, o, h, l, c, v];
 
-/** 造一串 openTime 递增的 K 线（默认按 1 小时）。 */
-const series = (n: number, stepMs = 3_600_000, f: (i: number) => Partial<CandleTuple> = () => ({})) => {
+/** 造一串 openTime 递增的 K 线（默认按 1 小时）。第二参步长、第三参按根覆写某几项。 */
+interface Override {
+  t?: number;
+  o?: number;
+  h?: number;
+  l?: number;
+  c?: number;
+  v?: number;
+}
+const series = (n: number, stepMs = 3_600_000, f: (i: number) => Override = () => ({})) => {
   const out: CandleTuple[] = [];
   for (let i = 0; i < n; i++) {
-    const o = f(i);
-    out.push(mk(1_700_000_000_000 + i * stepMs, o[1] ?? 100, o[2] ?? 105, o[3] ?? 95, o[4] ?? 102, o[5] ?? 1));
+    const x = f(i);
+    out.push(
+      mk(
+        x.t ?? 1_700_000_000_000 + i * stepMs,
+        x.o ?? 100,
+        x.h ?? 105,
+        x.l ?? 95,
+        x.c ?? 102,
+        x.v ?? 1
+      )
+    );
   }
   return out;
 };
@@ -196,8 +215,32 @@ describe('聚合：drawCandles / bucketSizeFor', () => {
   });
 });
 
+describe('命中测试与实体宽度', () => {
+  const w = { from: 0, count: 12 } as ChartWindow;
+  const { items } = drawCandles(series(12), w, 4); // size 3
+
+  it('指针落的那一列 → 对应的图元（聚合的按 i0..i1 归属）', () => {
+    expect(itemIndexAtFraction(items, w, xFraction(0, w))).toBe(0);
+    expect(itemIndexAtFraction(items, w, xFraction(5, w)), '第 5 根属于 3..5 那个桶').toBe(1);
+    expect(itemIndexAtFraction(items, w, xFraction(11, w))).toBe(3);
+  });
+
+  it('指到空处 / 空数据 / NaN 一律 -1（不返回一个假的命中）', () => {
+    expect(itemIndexAtFraction([], w, 0.5)).toBe(-1);
+    const left = { from: 100, count: 12 } as ChartWindow; // 窗口挪到了数据外面
+    expect(itemIndexAtFraction(items, left, 0.5)).toBe(-1);
+    expect(itemIndexAtFraction(items, w, NaN)).toBe(-1);
+  });
+
+  it('实体宽度：一格对一根时是格宽的 70%，聚合的按覆盖根数变宽', () => {
+    const wide = { from: 0, count: 100 } as ChartWindow;
+    expect(bodyWidthFraction(0, 0, wide)).toBeCloseTo(0.007, 6);
+    expect(bodyWidthFraction(0, 9, wide), '十根并一根').toBeCloseTo(0.07, 6);
+  });
+});
+
 describe('纵轴：priceDomain / yFraction / priceAtFraction', () => {
-  const items = drawCandles(series(5, 3_600_000, () => ({ 2: 110, 3: 90 })), { from: 0, count: 5 }, 180).items;
+  const items = drawCandles(series(5, 3_600_000, () => ({ h: 110, l: 90 })), { from: 0, count: 5 }, 180).items;
 
   it('范围包住所有高低点，并留出上下白边', () => {
     const d = priceDomain(items);
@@ -218,7 +261,7 @@ describe('纵轴：priceDomain / yFraction / priceAtFraction', () => {
   });
 
   it('整段横盘（max === min）时不炸成 NaN —— 那会让整张图空白且不报错', () => {
-    const flat = drawCandles(series(5, 3_600_000, () => ({ 1: 100, 2: 100, 3: 100, 4: 100 })), { from: 0, count: 5 }, 180).items;
+    const flat = drawCandles(series(5, 3_600_000, () => ({ o: 100, h: 100, l: 100, c: 100 })), { from: 0, count: 5 }, 180).items;
     const d = priceDomain(flat);
     expect(d.max).toBeGreaterThan(d.min);
     expect(Number.isFinite(yFraction(100, d))).toBe(true);
@@ -287,8 +330,9 @@ describe('时间轴：本站钟面（UTC+8）', () => {
     expect(formatCandleTime(BEIJING_MIDNIGHT, 3_600_000)).toBe('09-23');
   });
 
-  it('跨度大了退到日期、再大退到年月', () => {
-    expect(formatCandleTime(BEIJING_8AM, 5 * 86_400_000)).toBe('09-23');
+  it('★ 粒度跟着**步长**走（不是跨度）：41 天那张图步长是 7 天，该显示 MM-DD', () => {
+    // 按跨度判的话这一档会整排都成「2026-09」—— 一个月的名字重复五遍，读不出东西
+    expect(formatCandleTime(BEIJING_8AM, 7 * 86_400_000)).toBe('09-23');
     expect(formatCandleTime(BEIJING_8AM, 120 * 86_400_000)).toBe('2026-09');
   });
 
