@@ -20,6 +20,7 @@ import FooterCopyOverride from '@/app/components/FooterCopyOverride';
 import ReadingProgress from '@/app/blog/ReadingProgress';
 import { getCurrentUser, hasAdminRights, isCoreUser } from '@/lib/auth';
 import { getFeedStatus } from '@/lib/feed-service';
+import { resolvePublicClipRefs } from '@/lib/clipboard-service';
 import { isBlogFavorited } from '@/lib/favorite-service';
 import { jsonLdScript } from '@/lib/json-ld';
 import { isoWithOffset } from '@/lib/db-time';
@@ -136,6 +137,12 @@ export default async function BlogDetailPage({ params }: { params: Promise<{ id:
       ])
     : [{ fed: 0 }, null, false];
 
+  // 对外视图的剪贴板引用：正文里的 `[@8位]` 由**服务端**解析成内容随 payload 下发
+  // （访客没有会话，客户端去拉只会吃 401）。只出公开档 —— 私有 / 已软删 / 不存在
+  // 一律不进表，正文里保持字面量。见 clipboard-service.resolvePublicClipRefs。
+  // 成员视图不需要：那边客户端自己带凭据拉，连私有剪贴板（作者 / 站长）也能展开。
+  const externalClips = member ? undefined : await resolvePublicClipRefs(blog.content?.content ?? '');
+
   // 「管理文章 → 设置可见性」里那句「上次变更」。只给**能改的人**取（作者 / 管理员）——
   // 其余人白花一次查询。公开是不可逆的，所以这条信息的价值在「我什么时候放的」，
   // 而问这个问题的人只可能是要再动它的人。
@@ -198,11 +205,14 @@ export default async function BlogDetailPage({ params }: { params: Promise<{ id:
       </header>
 
       <article className="blog-detail" data-blog-id={blog.id}>
-        {/* contentRefs 由**服务端**决定，不是客户端开关。'plain' 下正文里的 `[@…]`
-            原样保留字面量、一次请求都不发 —— 这是匿名视图唯一的内容泄露面。 */}
+        {/* contentRefs 与 externalClips 都由**服务端**决定，不是客户端开关。
+            成员视图 'expand'（带凭据请求三条 core+ 接口）；对外视图 'external'
+            —— 图床 / 音频照渲染，剪贴板只出服务端判过的那几条公开档，
+            投票与收藏保留字面量。判据与理由见 MarkdownRenderer 的 prop 说明。 */}
         <MarkdownRenderer
           content={blog.content?.content ?? ''}
-          contentRefs={member ? 'expand' : 'plain'}
+          contentRefs={member ? 'expand' : 'external'}
+          externalClips={externalClips}
         />
 
         {member && (

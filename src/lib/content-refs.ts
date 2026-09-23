@@ -16,6 +16,10 @@
 // 并写成 DOM 属性，形态收紧到「只可能是图床 id」就注入不进任何东西。
 // 不匹配的一律保留字面量（fail-closed）。
 //
+// 【两样东西是**跨管线**的，别在别处再写一份】id 长度词汇（上面三个常量）与
+// `MAX_BLOG_REF_ITEMS`（博客渲染器与对外视图的服务端解析共用同一个数）。
+// 本文件零依赖，两边都 import 得起。
+//
 // 本文件零依赖、不碰 DOM 也不碰 React，故可直接单测
 // （tests/unit/content-refs.test.ts）。
 // ─────────────────────────────────────────────────────────────────────────────
@@ -44,6 +48,38 @@ export const IMAGE_REF_PROBE = new RegExp(`\\[@\\s*(${ALNUM}{${IMAGE_ID_LEN}})\\
 export const CLIPBOARD_REF_PROBE = new RegExp(
   `\\[@\\s*(${ALNUM}{${CLIPBOARD_ID_LEN}})\\s*\\]`
 );
+
+/**
+ * 一篇正文里最多处理几条 `[@…]` 引用（**按引用条数**，不是按种类）。
+ *
+ * 【两个调用方共用这一个数，别各写一份】博客渲染器（`MarkdownRenderer.tsx` 的
+ * `ContentRefProcessor`）用它封顶替换次数；对外视图那条**服务端**解析
+ * （`clipboard-service.ts` 的 `resolvePublicClipRefs`）用它封顶一次请求里的查库次数。
+ * 两边的判据必须是同一个数：不一致时，访客会看到「成员视图展开到第 50 条为止、
+ * 对外视图是另一个条数」这种**没有任何报错**的分叉。
+ */
+export const MAX_BLOG_REF_ITEMS = 50;
+
+/**
+ * 扫出正文里所有云剪贴板引用的 id（**去重、保持出现顺序**）。
+ *
+ * 与 `CLIPBOARD_REF_PROBE` 同一个形态：`[A-Za-z0-9]{8}`，**不含下划线**。
+ * 理由见文件头那段 —— 伪 id（`[@________]`）一个都不该被拿去查库 / 拼 URL。
+ * `\w` 那种宽松形态是博客渲染器按 id 长度分流时的事，不在这里。
+ *
+ * ★ 每次调用新建正则 ★ 全局正则的 `lastIndex` 会在调用之间残留。
+ */
+export function collectClipboardRefIds(text: string): string[] {
+  const re = new RegExp(CLIPBOARD_REF_PROBE.source, 'g');
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const m of text.matchAll(re)) {
+    if (seen.has(m[1])) continue;
+    seen.add(m[1]);
+    out.push(m[1]);
+  }
+  return out;
+}
 
 /**
  * 一条消息里最多展开几条云剪贴板。

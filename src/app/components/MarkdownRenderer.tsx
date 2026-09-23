@@ -7,6 +7,12 @@
 //     与 9 位投票「只识别不展开」同向）。
 //   • 音频引用 `[@音频/<ID>]`：**名字形**，不参与上面那条按长度分流（`\w` 匹配不到
 //     中文），单独一趟放在最后，见 ContentRefProcessor.preprocess。
+//
+// 【两种模式，不是「展开 / 不展开」】`contentRefs='expand'` 是站内成员视图，
+// `'external'` 是对外视图。对外视图**也展开**，只是展开的范围小一圈：
+// 图床图片 / 音频 / **服务端随 payload 下发的公开剪贴板**（externalClips）出得来，
+// 投票与收藏夹保留字面量。判据是「这条引用的读口是不是匿名本来就取得到」——
+// 见 prop 上的说明与 docs/architecture.md §7.3。
 //   • MathJax：行内 $..$ / \(..\)、块级 $$..$$ / \[..\]、mhchem（mathjax-full 模块化 API）。
 //   • 代码高亮亮/暗双主题随 data-theme 切换（github / monokai，media 切换）。
 //   • 代码块「复制」按钮、图片点击放大、外链 target=_blank 加固、任务列表 checkbox。
@@ -31,23 +37,53 @@ import {
   replaceFavoriteRefs,
 } from '@/lib/favorite-refs';
 import { collectAudioRefs, replaceAudioRefs } from '@/lib/audio-refs';
+import { MAX_BLOG_REF_ITEMS } from '@/lib/content-refs';
+
+/** `contentRefs` 的两个取值，见下面 prop 的说明。 */
+type RefMode = 'expand' | 'external';
 
 // ── 内容引用预处理器（端点走 Next API）────────────────────────────────────────
 class ContentRefProcessor {
   private cache = new Map<string, { type: string; content?: string; error?: boolean; id?: string; url?: string }>();
-  private MAX_ITEMS = 50;
+  private MAX_ITEMS = MAX_BLOG_REF_ITEMS;
+
+  /**
+   * @param mode        'expand' 会去请求三条 core+ 接口；'external' 一个请求都不发。
+   * @param externalClips 'external' 下**服务端预先解析好**的公开剪贴板（id → 正文）。
+   *   私有 / 已软删的不在表里，于是它们在正文里原样保留字面量（fail-closed）。
+   */
+  constructor(
+    private mode: RefMode = 'expand',
+    private externalClips: Record<string, string> = {}
+  ) {}
 
   async preprocess(markdownContent: string): Promise<string> {
+    // 分流扫的是**盖过码**的副本（`maskMarkdownCode`，与音频 / 收藏夹那两趟同口径）：
+    // 代码块与行内代码里的引用一律不展开 —— 那是《内容引用语法指南》对读者的承诺
+    // （「代码里的引用一律不展开」），也是「想展示语法本身」的唯一写法。
+    // ⚠️ 不盖码的后果不是「渲染错了」，而是**静默改掉用户写下的代码**：
+    // 围栏里的 `[@10位]` 会被改写成 `![id](…/raw)`，复制按钮复制走的也是改过的那份。
+    // 盖码副本与原文**等长**，故同一下标两处通用（`match` 一律取自原文）。
+    const maskedContent = maskMarkdownCode(markdownContent);
     const pattern = /\[@\s*(\w+)\s*\]/g;
-    const matches = [...markdownContent.matchAll(pattern)];
+    const refSlots: { id: string; match: string; start: number }[] = [];
+    for (const m of maskedContent.matchAll(pattern)) {
+      const start = m.index ?? 0;
+      refSlots.push({
+        id: m[1],
+        match: markdownContent.slice(start, start + m[0].length),
+        start,
+      });
+    }
 
     // ★ 音频那趟**必须早于**下面这条空集早退 ★
-    // 音频引用是 `[@音频/<ID>]`，合集名是中文，而上面那条分流用的 `\w` 匹配不到
-    // 中文 —— 于是「正文里只有音频引用」时 matches 是**空的**，早退会把播放器一起
-    // 吞掉：写一篇只贴了一段录音的文章 = 什么也不展开，**且不报错**。
-    // 此刻字符串还没有被改写过，下标成立，直接替换掉返回即可。
-    if (matches.length === 0) {
-      const audioSlots = collectAudioRefs(markdownContent, maskMarkdownCode(markdownContent));
+    // 音频引用是 `[@音频/<ID>]`，合集名是中文，而上面那条分流用的 `\w` 匹配不到中文
+    // —— 于是「正文里只有音频引用」时 refSlots 是**空的**，早退会把播放器一起吞掉
+    // （写一篇只贴了一段录音的文章 = 什么也不展开，且不报错）。
+    // 此刻还没有任何替换发生过，下标成立，直接替换掉返回即可。
+    // 有条目时下面照旧**重新扫一次**（那时字符串已被改写，这批下标不再成立）。
+    if (refSlots.length === 0) {
+      const audioSlots = collectAudioRefs(markdownContent, maskedContent);
       return audioSlots.length > 0
         ? replaceAudioRefs(markdownContent, audioSlots)
         : markdownContent;
@@ -57,8 +93,8 @@ class ContentRefProcessor {
     const voteIds = new Set<string>();
     const imageIds = new Set<string>();
     const favoriteIds = new Set<string>();
-    for (const m of matches) {
-      const id = m[1];
+    for (const slot of refSlots) {
+      const id = slot.id;
       if (id.length === 8) clipboardIds.add(id);
       else if (id.length === 9) voteIds.add(id);
       else if (id.length === 10) imageIds.add(id);
@@ -67,99 +103,131 @@ class ContentRefProcessor {
       else if (isFavoriteId(id)) favoriteIds.add(id);
     }
 
-    const clipboardFetches = [...clipboardIds]
-      .filter((id) => !this.cache.has(id))
-      .map(async (id) => {
-        try {
-          const res = await fetch(`/api/clipboard/${id}`, { credentials: 'same-origin' });
-          if (!res.ok) throw new Error('failed');
-          const data = await res.json();
-          this.cache.set(id, { type: 'clipboard', content: data.clip?.content ?? data.content ?? '' });
-        } catch {
-          this.cache.set(id, { type: 'clipboard', content: `[剪贴板 ${id} 加载失败]` });
+    // ── 对外视图：一切数据都已随 payload 下发，**一个请求都不发** ────────────────
+    //
+    // 三条 core+ 接口在匿名页面上只会换来 401，所以 'external' 下干脆不构建这些
+    // 请求。三类的处置各不相同，别「统一」：
+    //   · 剪贴板 —— 服务端已经替我们判过公开档（clipboard-service.resolvePublicClipRefs），
+    //     **在表里的**直接当内容用；不在表里的保持字面量（私有 / 已软删 / 不存在同形）。
+    //   · 投票 —— 一律不展开，保留字面量。这是站长定的口径：投票箱不进对外视图。
+    //   · 收藏夹 —— 一律不展开，保留字面量（读口同样是 core+）。
+    let clipboardFetches: Promise<void>[] = [];
+    if (this.mode === 'expand') {
+      clipboardFetches = [...clipboardIds]
+        .filter((id) => !this.cache.has(id))
+        .map(async (id) => {
+          try {
+            const res = await fetch(`/api/clipboard/${id}`, { credentials: 'same-origin' });
+            if (!res.ok) throw new Error('failed');
+            const data = await res.json();
+            this.cache.set(id, { type: 'clipboard', content: data.clip?.content ?? data.content ?? '' });
+          } catch {
+            this.cache.set(id, { type: 'clipboard', content: `[剪贴板 ${id} 加载失败]` });
+          }
+        });
+    } else {
+      for (const id of clipboardIds) {
+        const content = this.externalClips[id];
+        if (content !== undefined && !this.cache.has(id)) {
+          this.cache.set(id, { type: 'clipboard', content });
         }
-      });
+      }
+    }
 
-    const voteFetches = [...voteIds]
-      .filter((id) => !this.cache.has(id))
-      .map(async (id) => {
-        try {
-          const res = await fetch(`/api/votes/${id}`, { credentials: 'same-origin' });
-          if (!res.ok) throw new Error('failed');
-          await res.json();
-          this.cache.set(id, { type: 'vote' });
-        } catch {
-          this.cache.set(id, { type: 'vote', error: true, id });
-        }
-      });
+    let voteFetches: Promise<void>[] = [];
+    if (this.mode === 'expand') {
+      voteFetches = [...voteIds]
+        .filter((id) => !this.cache.has(id))
+        .map(async (id) => {
+          try {
+            const res = await fetch(`/api/votes/${id}`, { credentials: 'same-origin' });
+            if (!res.ok) throw new Error('failed');
+            await res.json();
+            this.cache.set(id, { type: 'vote' });
+          } catch {
+            this.cache.set(id, { type: 'vote', error: true, id });
+          }
+        });
+    }
 
     for (const id of imageIds) {
       if (!this.cache.has(id)) this.cache.set(id, { type: 'image', url: `/api/images/${id}/raw` });
     }
 
-    // 收藏夹：拉 spider 那条公开读路径（**需 core+**）。本组件目前的两个调用点
-    // （博客详情、剪贴板详情）都在 requireCoreUser() 之后，而这次 fetch 带
-    // same-origin 凭据，所以会话一定在 —— 若将来把它用在匿名页面上，这里会 401。
+    // 收藏夹：拉 spider 那条公开读路径（**需 core+**）。'expand' 的两个调用点
+    // （博客详情的成员视图、剪贴板详情）都在 requireCoreUser() 之后，而这次 fetch 带
+    // same-origin 凭据，所以会话一定在。'external' 下不请求（会 401），保字面量。
     // 拿到就直接拼成卡片 HTML 存进 cache。取不到（不存在 / 私密 / 已软删 / 网络错误）
     // 一律降级成失败文案，静默不抛 —— 调用方是 `void`。
-    const favoriteFetches = [...favoriteIds]
-      .filter((id) => !this.cache.has(id))
-      .map(async (id) => {
-        try {
-          const res = await fetch(`/api/spider/favorites/${id}`, { credentials: 'same-origin' });
-          if (!res.ok) throw new Error('failed');
-          const data = await res.json();
-          this.cache.set(id, {
-            type: 'favorite',
-            content: buildFavoriteCardHtml({
-              id,
-              title: typeof data.title === 'string' ? data.title : '',
-              count: typeof data.count === 'number' ? data.count : 0,
-              author: typeof data.author === 'string' ? data.author : undefined,
-              blogs: Array.isArray(data.blogs)
-                ? data.blogs
-                    .filter((b: unknown): b is { id: string; title: string } => {
-                      const o = b as { id?: unknown; title?: unknown };
-                      return typeof o?.id === 'string' && typeof o?.title === 'string';
-                    })
-                    .slice(0, MAX_CARD_ITEMS)
-                : [],
-            }),
-          });
-        } catch {
-          this.cache.set(id, { type: 'favorite', content: favoriteFailureText(id) });
-        }
-      });
+    const favoriteFetches =
+      this.mode === 'expand'
+        ? [...favoriteIds]
+            .filter((id) => !this.cache.has(id))
+            .map(async (id) => {
+              try {
+                const res = await fetch(`/api/spider/favorites/${id}`, { credentials: 'same-origin' });
+                if (!res.ok) throw new Error('failed');
+                const data = await res.json();
+                this.cache.set(id, {
+                  type: 'favorite',
+                  content: buildFavoriteCardHtml({
+                    id,
+                    title: typeof data.title === 'string' ? data.title : '',
+                    count: typeof data.count === 'number' ? data.count : 0,
+                    author: typeof data.author === 'string' ? data.author : undefined,
+                    blogs: Array.isArray(data.blogs)
+                      ? data.blogs
+                          .filter((b: unknown): b is { id: string; title: string } => {
+                            const o = b as { id?: unknown; title?: unknown };
+                            return typeof o?.id === 'string' && typeof o?.title === 'string';
+                          })
+                          .slice(0, MAX_CARD_ITEMS)
+                      : [],
+                  }),
+                });
+              } catch {
+                this.cache.set(id, { type: 'favorite', content: favoriteFailureText(id) });
+              }
+            })
+        : [];
 
     await Promise.all([...clipboardFetches, ...voteFetches, ...favoriteFetches]);
 
-    let processed = markdownContent;
+    // 替换**按区间切片**（不是 `replace(token, …)`），单向往回走一遍。
+    // 两条各自的理由：
+    //   · 为什么切片：同一个 token 在正文里可能出现多次，而 `replace` 命中的是
+    //     **第一处**。盖过码之后这一点会真出事 —— 只写了一处引用的正文里，若同一个
+    //      token 还在前面的代码块里出现过（那处已经被盖掉、不在 refSlots 里），
+    //     `replace` 会去改**代码块里那一处**，正文里那处反而留在原地。
+    //   · 为什么不 break 而是 continue：没有内容的（超出上限、取不到）保持字面量，
+    //     不该吃掉后面那些**取得到**的引用的名额 —— 与收藏夹那趟的 `used` 计数同义。
+    let processed = '';
+    let cursor = 0;
     let count = 0;
-    for (const [fullMatch, id] of matches) {
-      if (count >= this.MAX_ITEMS) break;
-      const cached = this.cache.get(id);
-      if (!cached) continue;
+    for (const slot of refSlots) {
+      const cached = this.cache.get(slot.id);
+      if (!cached || count >= this.MAX_ITEMS) continue;
       let replacement: string;
       if (cached.type === 'clipboard') replacement = cached.content ?? '';
       else if (cached.type === 'vote') {
         replacement = cached.error
           ? `<a href="/vote/${cached.id}">[投票 ${cached.id} 加载失败，点击查看]</a>`
-          : `<div class="vote-embed" data-vote-id="${id}"></div>`;
-      } else if (cached.type === 'image') replacement = `![${id}](${cached.url})`;
+          : `<div class="vote-embed" data-vote-id="${slot.id}"></div>`;
+      } else if (cached.type === 'image') replacement = `![${slot.id}](${cached.url})`;
       else continue;
-      processed = processed.replace(fullMatch, () => replacement);
+      processed += markdownContent.slice(cursor, slot.start) + replacement;
+      cursor = slot.start + slot.match.length;
       count++;
     }
+    processed += markdownContent.slice(cursor);
 
     // ── 收藏夹卡片：**最后单独一趟**，且**按区间切片**而不是 replace ─────────────
     //
     // 两个「为什么」：
-    //   · 为什么放在最后：上面那个循环用的是 `processed.replace(fullMatch, …)`
-    //     （按内容搜索，不是按位置）。卡片 HTML 里含博客标题（不可信输入），标题里
-    //     若正好有 `[@8位]` 字样，那个循环会命中**插入内容里的那处** —— 也正是
-    //     content-refs.ts 里 replaceClipboardRef 改写成区间切片的原因。放在它后面做，
-    //     并且此后不再有任何扫描，插入的卡片就不可能被二次解释。
-    //   · 为什么重新扫一遍而不是复用上面的 matches：上面的循环已经改写过
+    //   · 为什么放在最后：卡片 HTML 里含博客标题（不可信输入），标题里若正好有
+    //     `[@8位]` 字样，**先**插卡片就意味着后面每一趟都得躲开它。放在最后做，
+    //     此后不再有任何扫描，插进去的卡片就不可能被二次解释。
+    //   · 为什么重新扫一遍而不是复用上面的 refSlots：上面的循环已经改写过
     //     `processed`，那批下标对应的是**原始**字符串，长度变了就不成立了。
     //     这里对着当前字符串重新取一次位置，切片才是准的。
     const slots = collectFavoriteRefs(processed);
@@ -299,24 +367,45 @@ function typesetMath(root: HTMLElement): void {
 export default function MarkdownRenderer({
   content,
   contentRefs,
+  externalClips,
 }: {
   content: string;
   /**
-   * 内容引用（`[@…]`）的处理方式。
+   * 内容引用（`[@…]`）的处理方式。**由服务端决定，不是客户端开关。**
    *
-   *   · 'expand' —— 展开：带 same-origin 凭据去请求三条 core+ 接口（剪贴板正文 /
-   *     投票嵌入 / 收藏夹卡片）+ 拼图床 URL。**只有 core+ 的页面能传这个。**
-   *   · 'plain'  —— 原样保留 `[@…]` 字面量：一次请求都不发，不内联任何站内内容。
+   *   · 'expand'   —— 站内成员视图：带 same-origin 凭据去请求三条 core+ 接口
+   *     （剪贴板正文 / 投票嵌入 / 收藏夹卡片）+ 拼图床 URL + 音频播放器。
+   *     **只有 core+ 的页面能传这个。**
+   *   · 'external' —— 对外视图：只展开**匿名读口本来就取得到**的那几类 ——
+   *     图床图片、音频播放器，以及随 payload 下发的公开剪贴板（见 `externalClips`）。
+   *     投票与收藏夹**保留字面量**（两者的读口都是 core+，而且那是站长定的口径：
+   *     投票箱不进对外视图）。本模式**一个请求都不发**。
    *
    * **必传，没有默认值** —— 一个默认展开的组件一旦被用在匿名页面上，就是三条 401
-   * 外加把站内内容渲染给站外读者看。文章详情页的访客视图传 'plain'。
+   * 外加把站内内容渲染给站外读者看。文章详情页按 `isCore` 传（`blog/[id]/page.tsx`）。
    *
-   * 【为什么是「原样保留字面量」而不是「换成一句提示」】评论区那条管线
+   * 【判据是「读口」，不是「是不是站内内容」】图片 / 音频的字节由 `/api/images|audio
+   * /<id>/raw` 供，那两条路由**匿名可达、逐条判该不该给你**（私有档对无权者 404）；
+   * 剪贴板 / 投票 / 收藏夹的三条接口一律要 core+ 会话，匿名去问只有 401。
+   * 所以对外视图展开前一类、不展开后一类。⚠️ **别把这条边界往回缩成「一律不展开」**
+   * ——「作者把文章设为对外可见，读到的人却看不到正文里的图和录音」正是这一版要修的。
+   *
+   * 【展不开时为什么是「原样保留字面量」而不是「换成一句提示」】评论区那条管线
    * （`src/lib/useResolvedContent.ts`）已经立过这个口径：「取不到时的样子（未登录 /
    * 非 core 读者）与加载中一致」，就显示 `[@abc12345]`。跟着它走，站内不会出现
    * 第三种「引用不可用」的观感；也不往不可信字符串里插入任何新文本，没有新的转义面。
    */
-  contentRefs: 'expand' | 'plain';
+  contentRefs: 'expand' | 'external';
+  /**
+   * **服务端预先解析好**的公开剪贴板（id → 正文），只给 'external' 用。
+   *
+   * 为什么由服务端给而不是客户端去拉：`GET /api/clipboard/:id` 要 core+ 会话，
+   * 匿名读者拿不到 —— 而剪贴板的 `publicity=false` 是比 core+ **更窄**的一档，
+   * 不能因为「被引用进了一篇公开文章」而放宽。所以判档在服务端做，判完只把能给的
+   * 那几条随 payload 发下来（`clipboard-service.ts` 的 `resolvePublicClipRefs`）。
+   * 不带会话的页面**必须**传它，否则正文里的剪贴板引用一律是字面量。
+   */
+  externalClips?: Record<string, string>;
 }) {
   /** 渲染结果 + 抽出的公式数量（决定要不要跑 MathJax，见 markdown-math.ts）。 */
   const [doc, setDoc] = useState<{ html: string; mathCount: number } | null>(null);
@@ -328,10 +417,9 @@ export default function MarkdownRenderer({
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      let text =
-        contentRefs === 'expand'
-          ? await new ContentRefProcessor().preprocess(content ?? '')
-          : (content ?? '');
+      // 两种模式都要过预处理器 —— 差别在处理器**展开到哪一档**，不在「过不过它」。
+      // 别在这里写 `contentRefs === 'expand' && …`：那样对外视图连音频都不会展开。
+      let text = await new ContentRefProcessor(contentRefs, externalClips).preprocess(content ?? '');
 
       // 保护数学公式，避免被 Markdown 破坏（还原时的两个坑见 markdown-math.ts）
       const math = protectMath(text);
@@ -365,7 +453,7 @@ export default function MarkdownRenderer({
       if (!cancelled) setDoc({ html: clean, mathCount: math.count });
     })();
     return () => { cancelled = true; };
-  }, [content, contentRefs]);
+  }, [content, contentRefs, externalClips]);
 
   // 渲染后处理：代码高亮、复制按钮、图片放大、外链加固、投票嵌入、MathJax
   useEffect(() => {

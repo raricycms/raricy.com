@@ -8,6 +8,8 @@
 import { prisma } from './db';
 import { nowForDb } from './db-time';
 import { generateShortId } from './short-id';
+import { collectClipboardRefIds, MAX_BLOG_REF_ITEMS } from './content-refs';
+import { maskMarkdownCode } from './favorite-refs';
 
 // 校验上限
 export const CLIP_TITLE_MAX = 40;
@@ -227,6 +229,47 @@ export async function getClip(
       createdAt: clip.createdAt ?? null,
     },
   };
+}
+
+/**
+ * 解析正文里所有 `[@8位]` 剪贴板引用，返回**只有公开档**的 id → 正文映射。
+ *
+ * 【谁在用】文章详情页的**对外视图**（`blog/[id]/page.tsx` 的访客分支）：把结果当
+ * `externalClips` 交给 `MarkdownRenderer`。
+ *
+ * 【为什么非得在服务端做】访客没有会话，而 `GET /api/clipboard/:id` 要 core+ ——
+ * 客户端去拉只会吃 401。所以判档在服务端做完，只把能给的那几条随 RSC payload 下发
+ * （同 docs/architecture.md §7.3「闸门必须在服务端」）。**别为此把那条接口放开**：
+ * 放开的是「所有公开剪贴板对匿名可读」，而这里要的只是「这篇文章引用了的那几条」。
+ *
+ * 【为什么只给公开档】剪贴板的 `publicity=false` 是「只有作者本人（和站长）」——
+ * 比 core+ 更窄的一档，绝不能因为「有人把它引用进了一篇公开文章」而放宽。
+ * 私有 / 已软删 / 不存在三种情况**同形**：都不出现在结果里，调用方一律保留字面量，
+ * 不区分（区分等于确认存在性）。
+ *
+ * 【条数上限与客户端同源】取正文里出现的前 `MAX_BLOG_REF_ITEMS` 条（按出现顺序，
+ * 去重）。这个数必须与渲染器那边的替换上限是同一个 —— 见 content-refs.ts 的说明。
+ * 没有它，一篇塞满引用的文章会让**每一次**访客请求打出成千上万条查询。
+ *
+ * 【盖码：代码块里的引用一个都不解析】与渲染器那条分流同口径
+ * （`maskMarkdownCode`）——《内容引用语法指南》对读者的承诺是「代码里的引用一律
+ * 不展开」，两边必须一致：不一致的形态是同一篇正文在成员视图与对外视图里显示
+ * 不同的东西，**而且都不报错**。
+ */
+export async function resolvePublicClipRefs(markdown: string): Promise<Record<string, string>> {
+  const ids = collectClipboardRefIds(maskMarkdownCode(markdown)).slice(0, MAX_BLOG_REF_ITEMS);
+  if (ids.length === 0) return {};
+
+  const out: Record<string, string> = {};
+  await Promise.all(
+    ids.map(async (id) => {
+      // 不传 viewerId / viewerIsOwner：拿不到「本人」或「站长」这两个例外，
+      // 于是结果只可能是公开档（下面那句是第二道确认，别删）。
+      const result = await getClip(id);
+      if (result.ok && result.clip.publicity) out[id] = result.clip.content;
+    })
+  );
+  return out;
 }
 
 export interface ClipListItem {
