@@ -95,7 +95,14 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 - **练手盘的成交价必须在下单那一刻现取**（`fetchQuote`），**绝不读展示缓存**。
   缓存价 = 看盘的人可以在价格跳动后、缓存刷新前下单，那是无风险、可重复、无上限的套利。
   行情源挂了就拒单（503），不降级。展示缓存（15 秒轮询那份）**只用于渲染**。
+  **K 线同样是展示**：`GET /api/fish/trade/candles`、图上的蜡烛、以及页面自己把
+  展示价「并进最后一根」的那点算术，一律不得作为成交价 —— 它们只是另一份渲染数据。
+  （e2e 里有一条把两者刻意拆开再下一单。）
   展开见 `docs/architecture.md` §6.13。
+- **K 线的 `openTime` 是第三把钟**：交易所给的真实 UTC 毫秒，与 `Date.now()` 同一把尺子，
+  但**不是**库内那套「UTC+8 墙上时间贴 Z」——两者绝不能相减。按本站钟面显示走
+  「加 `SITE_TZ_OFFSET_MS` 再 `getUTC*`」。db-time-guard 抓不到这条（它只匹配
+  `.getTime()` 相减），所以只靠注释与单测守。
 - **表情包语法的正则里一个 `\s*` 都不能有**，字符集必须是白名单 —— 宽一点就是
   **向任意同名用户凭空发通知**（`extractMentions` 跑在原始正文上）。
 - **OAuth 三条限频不在 `RULES` 里**（内联在 `oauth/*/route.ts`）—— 做全站限频审计时最容易漏。
@@ -185,11 +192,23 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 `src/lib/market-math.ts`（**结算公式的唯一实现** —— 服务端真结算与页面「预计到手 / 涨跌 /
 手续费」是同一个 `settleClose`，零依赖所以两边都能 import）、
 `src/lib/market-price.ts`（**成交价现取 vs 展示缓存**这条安全边界、为什么用币安 `.vision`
-域、基址可配的两个理由）。
+域、基址可配的两个理由）、
+`src/lib/market-candles.ts`（K 线词汇表：周期白名单 / 根数上限 / 线上形状 / 缓存键 ——
+**零依赖**，服务端与客户端共用一份）、
+`src/lib/market-chart.ts`（K 线图的纯计算：窗口 / 聚合 / 刻度 / 映射 / 实时并线）。
 
 - **入口只能进 `/fish` 卡片的 `.fish-card__info`** —— 上面那条行动条被
   `tests/e2e/fish-layout.spec.ts` 钉死为「恰好 3 颗」，`.fish-card__link-label` 钉死为 2 个。
+- **加一个标的要改四处**：`MARKET_SYMBOLS`（`market-price.ts`，单一真相源）+
+  `prisma/schema.prisma` 的 `symbol` 注释 + 页面文案（`fish/page.tsx`、`fish/market/page.tsx`、
+  `fish/trade/page.tsx` 的副标题）+ **`tests/e2e/mock-market-price.ts` 的 `prices` / `changes`
+  两张表**（漏了它 ticker 直接 400，而症状看着像产品坏了）。行情流、轮询、报价与
+  自选列表都跟着 `MARKET_SYMBOLS` 走，不用动。
 - **改 `MARKET_FEE_RATE` / `MIN_STAKE_FISH` 要同步页面文案**（与 `RULES` 的纪律同源）。
+- **K 线的缓存键必须带 interval**：`${symbol}:${interval}:${limit}`。漏了它，切到 4h 会
+  原样读回 1h 那一格，**不报任何错**（改版前正是如此，因为那时周期硬编码在 URL 里）。
+  周期一律过 `parseInterval` 白名单，**非法周期返回 400 而不是退回默认档** ——
+  退回会让「点的是 4h、画出来是 1h」活下来。
 - 行情有两个后台循环：**轮询**（`market-poll-drainer.ts`，15 秒一次，本站第二个）与
   **行情流**（`market-stream.ts`，常驻 WebSocket，第三个；`MARKET_STREAM_SILENCE_MS=0`
   可关）。**两个都要**在 `tests/setup.ts` 与 playwright 的 webServer env 里置 0 ——
@@ -197,8 +216,9 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
   行情流即使开着也**只喂展示**：成交仍然 `fetchQuote()` 现取。
 - **展示缓存（含 K 线、以及行情流那一份）挂在 `globalThis` 上，别改回模块级变量** ——
   Next 把 `instrumentation.ts` 编进**独立的 compilation**，`market-price.ts` 于是在
-  同一份产物里有两份模块实例（轮询器一份、页面与三个接口一份）。模块级变量 = 「轮询器刷
+  同一份产物里有两份模块实例（轮询器一份、页面与四个接口一份）。模块级变量 = 「轮询器刷
   自己那份、页面上冻住另一份」，**不报任何错**。展开见 `src/lib/market-price.ts` 头部。
+  K 线那一格的键是 `${symbol}:${interval}:${limit}`（见上面那条）。
 
 ### 软删除
 
@@ -359,6 +379,11 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 - **不带查看者的读口必须走具名出口**（`getExternallyVisibleBlog` / `listIndexableBlogs` /
   `listPublicBlogs`），别各自手写 where —— 名字就是静态台账认得它的凭证。
 - **「对外可读」与「可列举 / 可索引」是两件事**：`link` 读得到，但不进 sitemap、不许索引。
+- **对外视图也展开 `[@…]` 引用**（`contentRefs='external'`），判据是**这条引用的读口
+  匿名取不取得到**：图床 / 音频 / **公开档剪贴板**出得来，投票与收藏夹保留字面量。
+  别缩回「一律不展开」（那版让访客看不到正文里的图和录音）；也别放宽私有档 ——
+  剪贴板的私有部分由**服务端**筛（`resolvePublicClipRefs`），私有图 / 私有音频靠
+  raw 路由 404。⚠️ **音频属于「出得来」那一类**，别归进要 core+ 的那三种引用。
 - **sitemap 与 `/explore` 必须列同一个集合**（都用 `INDEXABLE_BLOG_WHERE`）。这不是洁癖：
   多一层过滤就会出现「搜索引擎收录了一篇，读者在公开列表上翻不到」，而那条差异
   **不会有任何报错**。同理 `exclude_from_all` / `focus_hidden` **不作用于对外列表** ——

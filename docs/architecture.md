@@ -94,6 +94,7 @@
 | `/fish/pay` | page | **收银台**：站外商户把用户送来付款（`?to= &amount= &note= &from= &return=`）。参数一律不可信，只做展示；付款必须**已登录 + 再输一次密码**（step-up），密码只输在本站域名下。不入索引 |
 | `/fish/collect` | page | **扫码收款页**：`?to=<用户名>`，扫「鱼干收款码」落到这里。与收银台的区别是**金额由付款人自己填**（静态码不可能带金额）。前端是 `/fish/pay` 的**同一个组件**（`src/app/fish/PayForm.tsx`）的另一个变体，step-up 与幂等键完全共用 |
 | `/fish/api` · `/api/fish/tokens/*` | page + API | **机器人接入自助页**：签发 / 吊销只读凭据（`GET`/`POST /api/fish/tokens`、`DELETE /api/fish/tokens/[id]`）。**只认会话**、签发要 step-up、只能动自己的。只读凭据的鉴权门在 `src/app/api/fish/market/_auth.ts`（第三道门，`allowReadToken` 默认关）；签发/校验/吊销在 `src/lib/fish-token-service.ts` |
+| `/fish/trade` · `/api/fish/trade/*` | page + API | **鱼干练手盘**：投入鱼干买入一个绑定真实加密价格的仓位（**core+**，签到之外第二条赚取渠道）。`POST buy`（客户端幂等键）/ `POST sell` / `GET quote`（展示行情）/ `GET candles`（图上那段 K 线，**只喂展示**）。档位在页面与四个接口**五处各判一次**，禁言只有 `buy` 判。见 §6.13 |
 | `/api/poster/profile/[id]` · `/api/poster/collect` | API | **画报 / 收款码出图**（PNG，仅本人）。渲染管线与四条约束见 §6.8 |
 | `/notifications` · `/api/notifications/*` | page + API | 通知中心。其中 `GET count` 是顶栏指示器的**兜底快照**（**不能删**：SSE 有「连着但收不到」的半死状态），`GET stream` 是**实时流**（SSE，未登录 401；首帧全量快照 + 之后增量补丁）。推送点纪律与依赖方向见 `src/lib/topbar-bus.ts` 头部 |
 | `/vote` · `/vote/[id]` | page | 投票 |
@@ -138,6 +139,7 @@
 | 故事 | `story-service.ts` |
 | 画报 / 收款码 | `poster.ts`（纯 SVG 构造，含二维码与转义）· `poster-render.ts`（取数 + 头像 + sharp 光栅化），见 §6.8 |
 | 小鱼干 | `fish-service.ts`（**记账内核 `postEntry`** + 读路径，见 §6.3）· `fish-idempotency.ts`（哪些操作才登记幂等 —— 判据在文件头）· `fish-admin.ts` · `fish-market-service.ts`（用户间转账，见 §6.3）· `fish-compensate.ts`（`fish compensate` 群发补偿，只发 core+，见 `docs/cli.md` 与文件头）· `fish-units.ts`（单位换算；`Blog.fishCount` 是**例外**，见文件头）· `fish-webhook-service.ts`（收款回调 outbox，见 §6.3） |
+| 练手盘 | `market-service.ts`（开平仓：**一个事务、没有补偿**；开仓的幂等靠 `open_key` 唯一约束而非独立幂等记录）· `market-math.ts`（**结算公式的唯一实现**，零依赖 —— 服务端真结算与页面「预计到手」是同一个 `settleClose`）· `market-candles.ts`（K 线词汇表：周期白名单 / 根数上限 / 线上形状 / 缓存键，**零依赖**，服务端与客户端共用）· `market-chart.ts`（K 线图的纯计算：窗口 / 聚合 / 刻度 / 映射 / 实时并线 —— 零依赖外加 `db-time` 的一个常量）· `market-price.ts`（行情源与展示缓存，见 §6.13）· `market-stream.ts` + `market-poll-drainer.ts`（喂展示的两个后台循环） |
 | OAuth 2.0 | `oauth.ts`（见 `docs/oauth.md`） |
 | 管理域 | `admin-user-service.ts` · `admin-blog-service.ts` · `admin-category-service.ts` · `admin-comment-service.ts` · `admin-clipboard-service.ts` · `admin-vote-service.ts` · `admin-image-service.ts` · `admin-stats-service.ts` |
 | 工具 / 安全 | `short-id.ts` · `safe-url.ts` · `guard.ts` · `rate-limit.ts` · `turnstile.ts` |
@@ -740,6 +742,39 @@ URL 请来抓」。（`robots.ts` 的**路径级**规则不需要动 —— `/ex
     （理由与另两个循环同款，e2e 那份在 `playwright.config.ts` 的 webServer env 里）。
   - **它只喂展示**：成交仍然 `fetchQuote()` 现取。`tests/unit/market-price.test.ts`
     有一条专门钉「流里有价也不许拿来成交」。
+- **K 线图**（页面中间那张）：每个 (标的, 周期) **一次拉满 1000 根**（币安单次上限），
+  缩放/平移全在本地这一批里做，**不做懒加载更早的数据** —— 向左手感到头即止，
+  页面上写明了（「已加载 N 根」）。缩到最远时一根蜡烛是几根的**聚合**
+  （页面上标出「每根 = N 根聚合」）—— 那不是造假，就是币安原生大周期 K 线在做的事。
+  - 周期白名单 `1m/5m/15m/1h/4h/1d` 与线上形状（六元组 `[openTime,o,h,l,c,v]`）
+    住在 `src/lib/market-candles.ts`（**零依赖** —— 服务端拿去拼 URL 与缓存键，
+    客户端拿去渲染周期档与取数，两边必须说同一套话）。
+    ⚠️ **周期是白名单，且 `parseInterval` 只 trim 不折叠大小写**：币安的 `1M`（月线）
+    与 `1m`（分钟）是两个周期，折叠就是把月线画成分钟线；非法周期一律 400，
+    **不静默退回默认档**（那会让「点的是 4h、画出来是 1h」活下来）。
+  - ⚠️ **缓存键必须带 interval**：`${symbol}:${interval}:${limit}`。改版前周期硬编码在
+    URL 里、键里只有 `${symbol}:${limit}` —— 参数化之后 1h 与 4h 会落进同一格，
+    切过去原样读回上一档，**不报任何错**（回归测试在 `tests/unit/market-price.test.ts`
+    的「周期进缓存键」）。
+  - **它也是展示**：`GET /api/fish/trade/candles` 读的就是那份 60 秒保鲜的 K 线缓存，
+    与 `quote` 同性质。页面上「展示价并进最后一根」（末根随 1 秒轮询长高长低、
+    跨桶时追加新的一根）同样只是渲染。
+    ★ **成交价永远只有 `fetchQuote()` 一条路** —— 这条图上的一根线碰不到它。
+    e2e 里有一条把两者**刻意拆开**（K 线末根 70000、展示价 80000）再下一单。
+  - **不限频**，理由写在路由头部：上游键空间被钉死在 2 标的 × 6 周期 = 12、
+    配 60 秒缓存 → 进程级上游请求量有界**且与访客数无关**；而被每标签页 1 次/秒地
+    打的 `/quote` 从来不限频，给「切一次周期才拉一次」的接口上闸是不自洽的。
+  - 图表的算术全在 `src/lib/market-chart.ts`（纯函数，脱离 DOM 单测）：缩放的锚点
+    （指针下那一根必须不动）、聚合的桶对齐（锚在**绝对下标**上，拖动时整张图不重排）、
+    价格刻度、时间轴刻度、以及 `mergeLivePrice`。
+    ⚠️ 时间轴的跨度必须按**原始周期**算，别从画出来的图元上推 —— 聚合之后相邻两根
+    差的是一个桶，跨度会被算大好几倍、刻度跳档，整条轴上只剩一个标签。
+    同理标签粒度跟着**步长**走而不是跨度（41 天那张图步长 7 天，按跨度判会整排都是
+    「2026-09」）。
+  - ⚠️ **K 线的 `openTime` 是第三把钟**：交易所给的真实 UTC 毫秒（与 `Date.now()`
+    同一把尺子，可以相减），既不是库内那套「UTC+8 墙上时间贴 Z」，**也不能与它相减**。
+    图上按本站钟面显示时走「加 `SITE_TZ_OFFSET_MS` 再 `getUTC*`」（同 `nowForDb` 的手法）。
+  - 版式（三栏阶梯、为什么 SVG 里一个字都没有）见 `docs/frontend-styles.md` §6.9。
 - **结算**：`payoutUnits = floor(stakeUnits × 平仓价 / 开仓价 × (1 − MARKET_FEE_RATE))`。
   `floor` 是刻意的 —— 舍入永远朝系统一侧，宁可少发一个单位也不凭空多铸。手续费
   **只在平仓侧收一次**（开仓免费、持有免费）。最小投入 1 条鱼干。
@@ -773,14 +808,16 @@ URL 请来抓」。（`robots.ts` 的**路径级**规则不需要动 —— `/ex
   「近乎归零」变成 500。
 - **限频**：`RULES.tradeMinute` / `tradeDaily`（20/分、300/天）。它防的不是刷屏，是
   **出站流量**（每笔成交都要现取一次行情）+ 写压力。桶键 `trade:` 前缀，不复用 `transfer:`。
-- **禁言判定是「不对称」的，别统一**：档位（core+）在页面 / `buy` / `sell` / `quote` 四处
-  各判一次，**禁言只有 `buy` 判** —— `sell` 与 `quote` 不判。禁言是「不能说话」，若在 sell
-  上也判，用户手上**已经开着的**仓位就一股也卖不掉，只能看着浮亏扩大（而且禁言会递增
-  `sessionVersion` 废掉旧会话、重新登录也一样）——那等于把禁言变成锁仓。代价是禁言用户
+- **禁言判定是「不对称」的，别统一**：档位（core+）在页面 / `buy` / `sell` / `quote` /
+  `candles` **五处**各判一次，**禁言只有 `buy` 判** —— 后三个只读口都不判。禁言是
+  「不能说话」，若在 sell 上也判，用户手上**已经开着的**仓位就一股也卖不掉，只能看着
+  浮亏扩大（而且禁言会递增 `sessionVersion` 废掉旧会话、重新登录也一样）——那等于把禁言
+  变成锁仓；`quote` / `candles` 同理：他恰恰要靠那张图决定要不要止损。代价是禁言用户
   仍能兑现已有仓位的浮盈，那是「能出仓」的另一面，不是漏洞。理由写在
   `src/app/api/fish/trade/sell/route.ts` 头部。
-- 页面的行情卡在拉不到价时显示「行情暂不可用」并**禁掉买入**；缓存超龄时显示「数据可能
+- 自选列表在拉不到价时显示「行情暂不可用」并**禁掉买入**；缓存超龄时显示「数据可能
   不是最新的」。**绝不编一个价出来** —— 用户会照着一个假价格按下买入。
+  K 线拉不到同样如实说（「K 线暂不可用」+ 重试钮），有上一次成功那份就继续画它。
 
 ### 6.14 头像框
 
