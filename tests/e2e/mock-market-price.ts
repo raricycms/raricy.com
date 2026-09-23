@@ -171,8 +171,15 @@ const server = http.createServer((req, res) => {
 
     const out = [];
     let prevClose = first;
+    const step = (last - first) / (limit - 1 || 1);
     for (let i = 0; i < limit; i++) {
-      const close = first + ((last - first) * i) / (limit - 1 || 1);
+      const base = first + step * i;
+      // 逐根交替的小摆动：真实的 K 线是一阴一阳的，一条笔直上升的梯子不像行情，
+      // 而且**一根阴线都造不出来**（`--down` 那支样式在 e2e 里就永远验不到）。
+      // 两端不摆：首末两根的收盘价必须精确落在整条线的两端，方向才与
+      // priceChangePercent 严格一致（同上面那条理由）。
+      const wobble = i === 0 || i === limit - 1 ? 0 : step * 0.75 * (i % 2 === 0 ? 1 : -1);
+      const close = base + wobble;
       const open = i === 0 ? first : prevClose;
       const hi = Math.max(open, close) * (1 + W);
       const lo = Math.min(open, close) * (1 - W);

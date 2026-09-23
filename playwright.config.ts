@@ -98,6 +98,10 @@ const RESPONSIVE_SPECS: RegExp[] = [
   // 的合成结果（元素自身内边距 + 祖先容器的檐沟），读样式表看不出来。视口在文件内
   // 显式钉死 390px，所以两遍跑的是同一件事，但 desktop 那一遍同样保留 —— 见文件头。
   /page-gutter\.spec\.ts$/,
+  // 练手盘三栏工作台：四段阶梯里有两段只在窄视口走得到（自选变横向条、落成单列），
+  // 而三栏那一档（desktop）同样要量 —— 列被内容撑破、网格里的 SVG 塌成 0，
+  // 两件事在源码里都完全正常，只有真视口量得出来。
+  /fish-trade-chart\.spec\.ts$/,
 ];
 
 export default defineConfig({

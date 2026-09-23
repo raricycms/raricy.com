@@ -83,6 +83,9 @@ export default function TradeChart({
       const r = el.getBoundingClientRect();
       zoomRef.current(e.deltaY < 0 ? 1.15 : 1 / 1.15, r.width > 0 ? (e.clientX - r.left) / r.width : 0.5);
     };
+    // `{ passive: false }` 是必需的：React 把 wheel 挂在根容器上且是**被动的**，
+    // 而被动监听里 preventDefault 是空操作 —— 不自己挂一个的话，图上缩放的同时
+    // 页面会跟着一起滚。
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
   }, []);

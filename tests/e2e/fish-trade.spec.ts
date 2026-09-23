@@ -311,3 +311,126 @@ test('未登录访问行情接口 → 401', async ({ request }) => {
   const res = await request.get('http://127.0.0.1:3100/api/fish/trade/quote');
   expect(res.status()).toBe(401);
 });
+
+// ── 图表（K 线）──────────────────────────────────────────────────────────────
+
+test('K 线接口：未登录 401、非 core 403、坏参数 400（非法周期不静默退回默认档）', async ({
+  page,
+  request,
+}) => {
+  // 未登录：cookie 罐里什么都没有的 request 上下文
+  const anon = await request.get(
+    'http://127.0.0.1:3100/api/fish/trade/candles?symbol=BTCUSDT&interval=1h'
+  );
+  expect(anon.status()).toBe(401);
+
+  // 档位不够：与页面 / buy / sell / quote 同档（五处各判一次）
+  await registerFreshUser(page);
+  expect((await page.request.get('/api/fish/trade/candles?symbol=BTCUSDT&interval=1h')).status()).toBe(403);
+
+  // core 之后才是参数校验
+  await registerFreshUser(page, { core: true });
+  expect((await page.request.get('/api/fish/trade/candles?symbol=BTCUSDT&interval=1h')).status()).toBe(200);
+  expect(
+    (await page.request.get('/api/fish/trade/candles?symbol=DOGEUSDT&interval=1h')).status(),
+    '白名单外的标的'
+  ).toBe(400);
+  expect(
+    (await page.request.get('/api/fish/trade/candles?symbol=BTCUSDT&interval=1M')).status(),
+    '★ 非法周期必须 400 —— 静默退回默认档会让「点的是 4h、画出来是 1h」活下来'
+  ).toBe(400);
+});
+
+test('图表：蜡烛画得出来、周期与形态都能切、切标的会去取那一份', async ({ page, request }) => {
+  await registerFreshUser(page, { core: true });
+  await setPrice(request, 'BTCUSDT', 80000);
+  await setPrice(request, 'ETHUSDT', 3000);
+  await page.goto('/fish/trade');
+
+  // 蜡烛数量受上限约束（缩到最远时是聚合过的，不是 1000 根全画）
+  const candles = page.locator('.trade-chart__candle');
+  await expect(candles.first()).toBeVisible();
+  const drawn = await candles.count();
+  expect(drawn).toBeGreaterThan(0);
+  expect(drawn).toBeLessThanOrEqual(180);
+
+  // 两条轴都要有读数 —— 没有轴就等于还是改版前那根走势线
+  expect(await page.locator('.trade-chart__axis-label--price').count()).toBeGreaterThanOrEqual(3);
+  expect(await page.locator('.trade-chart__axis-label--time').count()).toBeGreaterThanOrEqual(3);
+
+  // 一阴一阳都要画出来（替身按涨跌幅造的是交替的蜡烛）
+  await expect(page.locator('.trade-chart__candle--up').first()).toBeVisible();
+  await expect(page.locator('.trade-chart__candle--down').first()).toBeVisible();
+
+  // 切周期 → 真的去取了 4h 那一份，而不是把 1h 重画一遍
+  const req4h = page.waitForRequest(
+    (r) => r.url().includes('/api/fish/trade/candles') && r.url().includes('interval=4h')
+  );
+  await page.getByRole('button', { name: '4h', exact: true }).click();
+  await req4h;
+  await expect(page.locator('.trade-chart__interval-tag')).toHaveText('4h');
+
+  // 切标的（自选列表那一行）→ 取 ETH 的那一份
+  const reqEth = page.waitForRequest(
+    (r) => r.url().includes('/api/fish/trade/candles') && r.url().includes('symbol=ETHUSDT')
+  );
+  await page.locator('.trade-watch__row', { hasText: 'ETH' }).click();
+  await reqEth;
+  await expect(page.locator('.trade-chart__symbol')).toContainText('ETH');
+
+  // 折线档：蜡烛没了、线出来了；切回来复原
+  await page.getByRole('button', { name: '折线' }).click();
+  await expect(page.locator('.trade-chart__line')).toHaveCount(1);
+  await expect(candles).toHaveCount(0);
+  await page.getByRole('button', { name: 'K 线' }).click();
+  await expect(candles.first()).toBeVisible();
+});
+
+test('图表：十字光标跟着指针走，图例读的是**指着的那一根**', async ({ page, request }) => {
+  await registerFreshUser(page, { core: true });
+  await setPrice(request, 'BTCUSDT', 80000);
+  await page.goto('/fish/trade');
+
+  const plot = page.locator('.trade-chart__plot');
+  const box = (await plot.boundingBox())!;
+
+  const legendAt = async (f: number) => {
+    await page.mouse.move(box.x + box.width * f, box.y + box.height * 0.5);
+    await page.waitForTimeout(50);
+    return page.locator('.trade-chart__legend').innerText();
+  };
+
+  const left = await legendAt(0.2);
+  await expect(page.locator('.trade-chart__cursor--x')).toBeVisible();
+  await expect(page.locator('.trade-chart__cursor--y')).toBeVisible();
+  await expect(page.locator('.trade-chart__badge--price')).toBeVisible();
+
+  // 指着左边与指着右边必须是两个数 —— 图例要是永远显示最后一根，这条就红
+  expect(left).not.toBe(await legendAt(0.8));
+
+  // 移出绘图区：光标收起来
+  await page.mouse.move(box.x + box.width / 2, box.y - 60);
+  await expect(page.locator('.trade-chart__cursor--x')).toHaveCount(0);
+});
+
+test('★ 展示价并进最后一根，但**成交价仍然是服务端现取的**', async ({ page, request }) => {
+  await registerFreshUser(page, { core: true });
+  const start = await fundByCheckin(page);
+  // K 线的末根收在 70000、而展示价是 80000 —— 刻意拆开。默认两者取的是同一个数，
+  // 那段并线代码在 e2e 里就等于没测（见 mock-market-price.ts 的 set-candle-close）
+  await request.post(`${MARKET_MOCK}/__e2e__/set-candle-close?symbol=BTCUSDT&price=70000`);
+  await setPrice(request, 'BTCUSDT', 80000);
+
+  await page.goto('/fish/trade');
+  const legend = page.locator('.trade-chart__legend');
+  await expect(legend).toContainText('收');
+  await expect(legend, '图上的收必须跟着展示价走（70000 那份被并掉了）').toContainText('80,000.00');
+
+  // 而这条图上的线**碰不到成交价**：下单仍然是服务端现取的那一个（同一条安全边界）
+  await buyViaUI(page, '1');
+  await expect.poll(() => uiBalance(page)).toBe(start - 1);
+  await expect(
+    page.locator('.trade-position').first(),
+    '成交价来自 fetchQuote，与图上并出来的那个数没有关系'
+  ).toContainText('80,000.00');
+});
