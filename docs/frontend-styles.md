@@ -475,6 +475,15 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
     （气泡是 fit-content 宽度，「回复 删除」能占掉短气泡的一半）。同理，那 8px 让位
     用的是 `padding` 而不是 `margin` —— 浮层的 box 边缘必须贴着气泡边缘，否则指针
     从气泡移向按钮的途中会落进一段空隙，`:hover` 中断、按钮够不着。
+  - 浮层的**定位祖先是 `.chat-msg__own-blocks`**（气泡 / 图 / 博客卡那一层，
+    **不含引用块**），不是 `.chat-msg__body`：body 的宽度是 `max(引用块, 自己的块)`，
+    挂它上面时「贴气泡边缘」只在气泡恰好最宽时成立 —— 引用比正文长，回执与
+    「回复 / 删除」就跟过去贴引用的边了（2026-09 站长报的：对齐的是两者里更长的那一个）。
+    所以 grouped 的表头行住在 own-blocks 里面（组件里按 `grouped` 换父节点），
+    那一层也带了 `max-width: 100%` —— 理由与气泡上那条完全同源（代码块的 min-content
+    会把**每一层**祖先都撑破），由 `tests/e2e/chat-codeblock.spec.ts` 盯着。
+    结构契约由 `tests/unit/chat-message-dom.test.ts` 钉住，几何由
+    `tests/e2e/chat-features.spec.ts` 的「工具条贴气泡」那条钉住。
   - 三处隐藏方式**刻意不同**，改动前先看清各自为什么：头像 `opacity: 0`（它是
     「拍一拍 / @ta / 主页」的入口，藏了也**要能点**，悬停淡入；触屏没有 hover，故
     `@media (hover: none)` 下常显）；作者名与时间 `display: none`（不可交互；
