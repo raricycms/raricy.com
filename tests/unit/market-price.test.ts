@@ -353,12 +353,95 @@ describe('缓存跨模块实例共享', () => {
 });
 
 describe('K 线：getCandles', () => {
-  it('取索引 4（close），丢掉其余字段', async () => {
-    stubFetch([
-      [0, '1', '2', '3', '100.5', '0', 0, '0', 0, '0', '0', '0'],
-      [0, '1', '2', '3', '101.5', '0', 0, '0', 0, '0', '0', '0'],
+  /** 一行币安 kline。前六项是真身与替身都给的：开时间 / 开 / 高 / 低 / 收 / 量。 */
+  const kline = (t: number, o: number, h: number, l: number, c: number, v = 1) => [
+    t,
+    String(o),
+    String(h),
+    String(l),
+    String(c),
+    String(v),
+    0,
+    '0',
+    0,
+    '0',
+    '0',
+    '0',
+  ];
+
+  it('取完整六元组（开高低收 + 量），不是只取 close —— 蜡烛与成交量柱都要它', async () => {
+    stubFetch([kline(1000, 1, 2, 0.5, 1.5, 7), kline(2000, 1.5, 3, 1.4, 2.5, 9)]);
+    expect(await getCandles('BTCUSDT', '1h', 2)).toEqual([
+      [1000, 1, 2, 0.5, 1.5, 7],
+      [2000, 1.5, 3, 1.4, 2.5, 9],
     ]);
-    expect(await getCandles('BTCUSDT', 2)).toEqual([100.5, 101.5]);
+  });
+
+  it('URL 带上周期与根数', async () => {
+    const fn = stubFetch([kline(1000, 1, 2, 0.5, 1.5)]);
+    await getCandles('ETHUSDT', '4h', 300);
+    expect(String(fn.mock.calls[0][0])).toBe(
+      'https://data-api.binance.vision/api/v3/klines?symbol=ETHUSDT&interval=4h&limit=300'
+    );
+  });
+
+  it('★ 周期进缓存键：1h 与 4h 各打一次、各拿各的（键漏了 interval 就是静默串档）', async () => {
+    const fn = vi.fn(
+      async (url: string) =>
+        ({
+          ok: true,
+          status: 200,
+          json: async () => {
+            const close = new URL(String(url)).searchParams.get('interval') === '4h' ? 400 : 100;
+            return [kline(1000, close, close, close, close)];
+          },
+        }) as unknown as Response
+    );
+    vi.stubGlobal('fetch', fn);
+
+    const h1 = await getCandles('BTCUSDT', '1h', 2);
+    const h4 = await getCandles('BTCUSDT', '4h', 2);
+    // 再各来一次：两份都该命中各自的缓存，不该再打上游
+    await getCandles('BTCUSDT', '1h', 2);
+    await getCandles('BTCUSDT', '4h', 2);
+
+    expect(fn, '两个周期各一次，重读走缓存').toHaveBeenCalledTimes(2);
+    expect(h1[0][4]).toBe(100);
+    expect(h4[0][4], '4h 若读回 1h 那一格缓存，这里会是 100').toBe(400);
+  });
+
+  it('limit 超过币安上限时夹到 1000（超了它直接报错，别指望调用方）', async () => {
+    const fn = stubFetch([kline(1000, 1, 2, 0.5, 1.5)]);
+    await getCandles('BTCUSDT', '1h', 99999);
+    expect(String(fn.mock.calls[0][0])).toContain('limit=1000');
+  });
+
+  it('坏行只丢那一行 —— 一行脏数据不该让整张图消失', async () => {
+    stubFetch([
+      kline(1000, 1, 2, 0.5, 1.5),
+      kline(2000, 0, 2, 0.5, 1.5), // 开盘价 ≤ 0
+      [3000, '1'], // 字段不够
+      kline(4000, 1, 2, 0.5, 1.5),
+      'not-a-row',
+    ]);
+    const out = await getCandles('BTCUSDT', '1h', 5);
+    expect(out.map((c) => c[0])).toEqual([1000, 4000]);
+  });
+
+  it('量的 0 是合法的（那一根没人成交），不该被当成坏行丢掉', async () => {
+    stubFetch([kline(1000, 1, 2, 0.5, 1.5, 0)]);
+    expect(await getCandles('BTCUSDT', '1h', 1)).toHaveLength(1);
+  });
+
+  it('乱序与重复 openTime 出门前被理平（图表数学假定严格递增）', async () => {
+    stubFetch([
+      kline(2000, 1, 2, 0.5, 20),
+      kline(1000, 1, 2, 0.5, 10),
+      kline(2000, 1, 2, 0.5, 22), // 同一时刻重发的那根更新，留它
+    ]);
+    const out = await getCandles('BTCUSDT', '1h', 3);
+    expect(out.map((c) => c[0])).toEqual([1000, 2000]);
+    expect(out[1][4]).toBe(22);
   });
 
   it('失败返回空数组 —— 图是装饰，不该让整页 500', async () => {
@@ -366,10 +449,21 @@ describe('K 线：getCandles', () => {
     expect(await getCandles('BTCUSDT')).toEqual([]);
   });
 
+  it('缓存过期后上游挂了 → 退回上次成功那份，而不是空白', async () => {
+    stubFetch([kline(1000, 1, 2, 0.5, 1.5)]);
+    await getCandles('BTCUSDT', '1h', 1);
+
+    vi.useFakeTimers();
+    vi.advanceTimersByTime(61_000); // 越过 CANDLE_CACHE_MS
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('挂了'); }));
+    expect(await getCandles('BTCUSDT', '1h', 1)).toEqual([[1000, 1, 2, 0.5, 1.5, 1]]);
+    vi.useRealTimers();
+  });
+
   it('缓存期内不重复打行情源', async () => {
-    const fn = stubFetch([[0, '1', '2', '3', '100', '0', 0, '0', 0, '0', '0', '0']]);
-    await getCandles('BTCUSDT', 1);
-    await getCandles('BTCUSDT', 1);
+    const fn = stubFetch([kline(1000, 1, 2, 0.5, 1.5)]);
+    await getCandles('BTCUSDT', '1h', 1);
+    await getCandles('BTCUSDT', '1h', 1);
     expect(fn).toHaveBeenCalledTimes(1);
   });
 });

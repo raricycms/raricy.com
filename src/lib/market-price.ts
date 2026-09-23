@@ -40,6 +40,9 @@
 // 【两把钟不要混】缓存龄用「真实 UTC 毫秒」（fetchedAtMs，两边都是 Date.now()）；
 //   写进 position 行的 quotedAt 用 nowForDb()（库内墙上时间）。两者各管各的，
 //   绝不互相相减 —— 见 src/lib/db-time.ts 的来龙去脉。
+//   K 线的 openTime 是**第三样东西**：交易所给的真实 UTC 毫秒（与 Date.now() 同一把尺子，
+//   可以相减），但它**不是**库内那套「UTC+8 墙上时间贴 Z」。图表要按本站钟面显示时，
+//   得先加 SITE_TZ_OFFSET_MS 再用 getUTC* 读 —— 而绝不可拿它去和库内时间戳比大小。
 //
 // 【★ 缓存住在 globalThis 上，不是模块级变量 ★】轮询器（ instrumentation 图）与
 //   请求处理（应用图）是**两份编译产物**，模块级变量等于两份缓存 —— 症状是页面上的
@@ -47,6 +50,13 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { nowForDb } from './db-time';
+import {
+  CANDLE_LIMIT,
+  DEFAULT_INTERVAL,
+  candleKey,
+  type CandleTuple,
+  type MarketInterval,
+} from './market-candles';
 
 /** 练手盘支持的标的。加币要同步 prisma/schema.prisma 的注释与页面文案。 */
 export const MARKET_SYMBOLS = ['BTCUSDT', 'ETHUSDT'] as const;
@@ -217,7 +227,7 @@ interface CacheState {
 }
 
 interface CandleCacheEntry {
-  closes: number[];
+  candles: CandleTuple[];
   fetchedAtMs: number;
 }
 
@@ -246,7 +256,11 @@ const GLOBAL_KEY = '__raricyMarketPriceState';
 interface MarketPriceState {
   /** 展示缓存（REST 轮询写的那一份）。null = 还没成功拉过。 */
   cache: CacheState | null;
-  /** K 线缓存，键 `${symbol}:${limit}`。 */
+  /**
+   * K 线缓存，键 `${symbol}:${interval}:${limit}`（见 market-candles.ts 的 candleKey）。
+   * ⚠️ **周期必须在键里**：少写它，切到 4h 会原样读回 1h 那一份，且不报任何错
+   * （2026-09 改版前就是这样 —— 那时 interval 还硬编码在 URL 里，所以没暴露）。
+   */
   candles: Map<string, CandleCacheEntry>;
   /**
    * WS 实时价（market-stream.ts 写的那一份）。null = 还没收到过任何帧。
@@ -389,27 +403,77 @@ export async function getCachedQuotes(): Promise<{ quotes: CachedQuote[]; ok: bo
 
 // ── K 线（图表用，短缓存。与展示缓存同住一份 globalThis 状态） ────────────────
 
+/** limit 夹到 [1, CANDLE_LIMIT] —— 币安对超限直接报错，别指望调用方守规矩。 */
+function clampLimit(limit: number): number {
+  if (!Number.isFinite(limit)) return CANDLE_LIMIT;
+  return Math.min(CANDLE_LIMIT, Math.max(1, Math.floor(limit)));
+}
+
 /**
- * 取收盘价序列画曲线。失败返回空数组 —— 图是装饰，缺了不该让整页 500。
- * 只取 close（索引 4），其余字段（量、笔数）没有任何用处，别顺手带上。
+ * 币安 kline 行 → 六元组。形状见 market-candles.ts 的 CandleTuple。
+ *
+ * 【坏行只丢那一行】一行脏数据不该让整张图消失 —— 与 `refreshQuotes` 里
+ * 「单个标的的数据有问题就跳过它」同款。六项里前五项必须有限且为正（价格不可能 ≤ 0），
+ * 量可以正好是 0（那一根没人成交），所以只要求 ≥ 0。
+ *
+ * 【出门前排一次序、去掉重复时刻】图表数学（窗口 / 聚合 / 命中测试）假定这条序列
+ * **严格递增**，而交易所偶尔会给乱序或同一 openTime 的行。重复时刻留**后到的那根**。
  */
-export async function getCandles(symbol: MarketSymbol, limit = 72): Promise<number[]> {
-  const key = `${symbol}:${limit}`;
+function parseKlines(raw: unknown[]): CandleTuple[] {
+  const rows: CandleTuple[] = [];
+  for (const row of raw) {
+    if (!Array.isArray(row) || row.length < 6) continue;
+    const t = Number(row[0]);
+    const o = Number(row[1]);
+    const h = Number(row[2]);
+    const l = Number(row[3]);
+    const c = Number(row[4]);
+    const v = Number(row[5]);
+    if (![t, o, h, l, c].every((n) => Number.isFinite(n) && n > 0)) continue;
+    if (!Number.isFinite(v) || v < 0) continue;
+    rows.push([t, o, h, l, c, v]);
+  }
+  rows.sort((a, b) => a[0] - b[0]);
+  const out: CandleTuple[] = [];
+  for (const r of rows) {
+    if (out.length > 0 && out[out.length - 1][0] === r[0]) out[out.length - 1] = r;
+    else out.push(r);
+  }
+  return out;
+}
+
+/**
+ * 取一段 K 线（图表用）。失败返回空数组 —— 图是装饰，缺了不该让整页 500。
+ *
+ * 【★ 与 fetchQuote 的区别：这份也是展示 ★】它落在 globalThis 的 K 线缓存里、有 60 秒
+ * 保鲜期，**绝不可拿来成交**（同 getCachedQuotes）。成交只有 `fetchQuote()` 一条路。
+ *
+ * 【格式与周期】完整六元组（开高低收 + 量）都留着 —— 蜡烛图与成交量柱都要用，
+ * 不是只画一条收盘价曲线。周期走白名单类型，拼进 URL 的不可能是白名单外的东西。
+ *
+ * 缓存键带上 interval 与 limit；`limit` 由本函数夹逼后再进键，所以 `limit=99999`
+ * 与 `limit=1000` 是同一格缓存，不会各存一份。
+ */
+export async function getCandles(
+  symbol: MarketSymbol,
+  interval: MarketInterval = DEFAULT_INTERVAL,
+  limit: number = CANDLE_LIMIT
+): Promise<CandleTuple[]> {
+  const n = clampLimit(limit);
+  const key = `${candleKey(symbol, interval)}:${n}`;
   const hit = priceState().candles.get(key);
-  if (hit && Date.now() - hit.fetchedAtMs < CANDLE_CACHE_MS) return hit.closes;
+  if (hit && Date.now() - hit.fetchedAtMs < CANDLE_CACHE_MS) return hit.candles;
 
   try {
     const raw = await fetchJson(
-      `${priceBaseUrl()}/api/v3/klines?symbol=${symbol}&interval=1h&limit=${limit}`
+      `${priceBaseUrl()}/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${n}`
     );
-    if (!Array.isArray(raw)) return hit?.closes ?? [];
-    const closes = raw
-      .map((k) => (Array.isArray(k) ? Number(k[4]) : NaN))
-      .filter((n) => Number.isFinite(n) && n > 0);
-    if (closes.length === 0) return hit?.closes ?? [];
-    priceState().candles.set(key, { closes, fetchedAtMs: Date.now() });
-    return closes;
+    if (!Array.isArray(raw)) return hit?.candles ?? [];
+    const candles = parseKlines(raw);
+    if (candles.length === 0) return hit?.candles ?? [];
+    priceState().candles.set(key, { candles, fetchedAtMs: Date.now() });
+    return candles;
   } catch {
-    return hit?.closes ?? [];
+    return hit?.candles ?? [];
   }
 }
