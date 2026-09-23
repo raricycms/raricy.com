@@ -70,8 +70,9 @@ export default function PrivacyPage() {
         2.2 部分界面偏好（博客列表排序方式、讨论侧栏折叠）以 localStorage 存储，并用同名
         偏好 Cookie（blog_sort、chat_sidebar_collapsed，均为一年期、非 httpOnly、Path=/）
         同步给服务端，仅用于让相应页面在您下次访问时按您的偏好直接呈现首屏，避免加载后跳变。
-        浅色/深色主题偏好仅存于 localStorage，不上送服务端。这些 Cookie 不用于任何追踪或
-        跨站用途，您随时可在浏览器设置中清除；清除后相关页面将回退到默认显示。
+        浅色/深色主题偏好、表情面板上次停留的合集仅存于 localStorage，不上送服务端。
+        这些 Cookie 不用于任何追踪或跨站用途，您随时可在浏览器设置中清除；清除后相关
+        页面将回退到默认显示。
       </p>
       <p>
         2.3 本网站<strong>不使用</strong>任何第三方 Cookie、追踪 Cookie、广告 Cookie
