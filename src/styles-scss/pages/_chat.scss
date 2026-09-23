@@ -575,10 +575,16 @@
   flex-direction: row-reverse;
 }
 
-// 同人连续消息：省略时间 / 名字 / 头像，并收紧与上一条的间距（视觉上并成一簇）。
+// 同人连续消息：省略时间 / 名字 / 头像，两条气泡**贴在一起**（视觉上并成一簇）。
 // 头像位置留出等宽空位，保证气泡左右对齐不跳。
+//
+// 【-11px 的来路】列表的 gap 是 14px（.chat-list），这里吃掉 11px，只剩 3px。
+// 之所以能吃掉这么多，是因为这一串后继的**表头行整行退出了文档流**（见下面
+// __meta 那段）—— 它留在流里时要占 17px 行高 + 4px 间距，光靠负外边距最多把
+// 两条气泡的距离从 27px 收到 21px，怎么调都贴不上。
+// ⚠️ 改 .chat-list 的 gap 要跟这里一起改（两个数是一对）。
 .chat-msg--grouped {
-  margin-top: -8px;
+  margin-top: -11px;
 }
 // 头像用 opacity 隐藏而不是 visibility: hidden —— 后者会让头像彻底不可点，
 // 而头像是「拍一拍 / @ta / 访问主页」的入口。opacity: 0 保留占位与点击区域，
@@ -591,13 +597,44 @@
 .chat-msg--grouped .chat-msg__avatar:focus-visible {
   opacity: 1;
 }
-// 时间与名字同样用 visibility 而不是 display: none —— 行高原地保留，
-// 悬停时浮出来的「回复 / 删除」（.chat-msg__actions）不会把整条消息连同下方
-// 内容顶下去。它们在 a11y 树里随之消失，不会被读屏念成「有内容但看不见」。
-// 私聊的「已读 / 未读」回执与它们同一行，照常显示。
+// 时间与名字在这一串的后继上**不渲染**。
+// 它们所在的整行已经退出文档流（见下），「保住行高、免得悬停时把内容顶下去」
+// 那个理由随之消失；而留着它们倒是有实打实的害处 —— `visibility: hidden` 的元素
+// **仍然占宽**：浮层的宽度会把这两格算进去，凭空宽出六七十 px，挂到气泡外侧就把
+// `overflow-y: auto` 的列表撑出横向滚动条。
 .chat-msg--grouped .chat-msg__name,
 .chat-msg--grouped .chat-msg__time {
-  visibility: hidden;
+  display: none;
+}
+
+// 表头行（名字 / 时间 / 回执 / 回复·删除）在后继消息上整行**退出文档流**，
+// 挂到气泡外侧的空位上 —— 这是「两条气泡贴得住」的前提（见上面 -11px 的来路）。
+// 私聊的「已读 / 未读」回执也在这一行里，跟着一起挂到气泡外侧，照常显示。
+//
+// 【为什么挂外侧而不是压在气泡上】气泡是 fit-content 宽度，浮层压上去正好盖住
+// 正文，短消息上尤其明显（「回复 删除」能占掉半个气泡）。
+//
+// ⚠️ 那 8px 让位必须用 padding 而不是 margin：浮层的 box 边缘要**贴着气泡边缘**，
+// 否则指针从气泡移向按钮的途中会落进一段既不属于气泡、也不属于浮层的空隙，
+// :hover 当场中断 —— 按钮在你够到它之前就消失了。padding 在 box 内部，边缘不变。
+//
+// 挂哪一侧跟着气泡走：别人的在右、自己的在左（那一条是 row-reverse），都对齐顶边。
+.chat-msg--grouped .chat-msg__body {
+  position: relative;
+}
+.chat-msg--grouped .chat-msg__meta {
+  position: absolute;
+  top: 0;
+  left: 100%;
+  padding-left: 8px;
+  // 浮层已经不在行里了，「回复 / 删除」再被挤成两行就只是难看
+  white-space: nowrap;
+}
+.chat-msg--mine.chat-msg--grouped .chat-msg__meta {
+  left: auto;
+  right: 100%;
+  padding-left: 0;
+  padding-right: 8px;
 }
 // 触屏没有 hover：分组消息的头像常显，否则没法打开头像菜单
 @media (hover: none) {
