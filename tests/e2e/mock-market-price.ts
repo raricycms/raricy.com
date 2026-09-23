@@ -13,6 +13,9 @@
 // 按用例设定的价应答，以及让用例能改那个价。
 
 import http from 'node:http';
+// 周期白名单与真身共用同一份（零依赖模块，tsx 直接能跑）—— 各抄一份的话，
+// 哪天给练手盘加了周期，这里会把那个周期判成 400，而症状看着像产品坏了。
+import { INTERVAL_MS, MARKET_INTERVALS } from '../../src/lib/market-candles';
 
 const PORT = Number(process.env.E2E_MARKET_PORT || 3102);
 
@@ -27,6 +30,16 @@ const changes = new Map<string, number>([
   ['BTCUSDT', 1.5],
   ['ETHUSDT', -0.75],
 ]);
+
+/**
+ * 标的 → **K 线最后一根的收盘价**（只影响 /api/v3/klines，不影响 ticker）。
+ *
+ * 【为什么需要它】真身上，页面上那个展示价会被并进最后一根 K 线（见 market-chart.ts
+ * 的 mergeLivePrice）。而默认情况下这里 ticker 与 K 线末根**取的是同一个数**，
+ * 那段并线代码在 e2e 里等于没测。用例用 /__e2e__/set-candle-close 把两者拆开，
+ * 「图例上的收 == 展示价」才成为可观察的事实。
+ */
+const candleCloses = new Map<string, number>();
 
 function send(res: http.ServerResponse, status: number, payload: unknown) {
   const body = JSON.stringify(payload);
@@ -50,8 +63,21 @@ const server = http.createServer((req, res) => {
     return send(res, 200, { ok: true, symbol, price });
   }
 
+  if (path === '/__e2e__/set-candle-close') {
+    const symbol = url.searchParams.get('symbol') || 'BTCUSDT';
+    const price = Number(url.searchParams.get('price'));
+    if (!Number.isFinite(price) || price <= 0) {
+      return send(res, 400, { ok: false, message: 'price 必须是正数' });
+    }
+    candleCloses.set(symbol, price);
+    return send(res, 200, { ok: true, symbol, price });
+  }
+
   if (path === '/__e2e__/prices') {
-    return send(res, 200, { prices: Object.fromEntries(prices) });
+    return send(res, 200, {
+      prices: Object.fromEntries(prices),
+      candle_closes: Object.fromEntries(candleCloses),
+    });
   }
 
   if (path === '/__e2e__/reset') {
@@ -59,6 +85,7 @@ const server = http.createServer((req, res) => {
     prices.set('ETHUSDT', 3000);
     changes.set('BTCUSDT', 1.5);
     changes.set('ETHUSDT', -0.75);
+    candleCloses.clear();
     return send(res, 200, { ok: true });
   }
 
@@ -111,29 +138,54 @@ const server = http.createServer((req, res) => {
     );
   }
 
-  // GET /api/v3/klines —— 收盘价序列，画曲线用。造一条确定性曲线。
+  // GET /api/v3/klines —— 画蜡烛图用。造一条**确定**的曲线。
   //
   // 【方向必须跟着 priceChangePercent 走】否则截图里会出现「涨跌幅 -0.75% 而曲线
   // 朝上」这种自相矛盾的画面 —— 那是替身造的假象，不是产品的 bug，但会让人
   // 以为走势线画反了。真身那边两者本来就是同一段行情的两种呈现。
+  //
+  // 【openTime 必须是真的】改版前这里是恒 0（客户端只读 close，用不着时间）。
+  // 图表要画时间轴、要判断「展示价跨没跨过这一根的桶」，恒 0 会让这些路径
+  // 在 e2e 里**全部走不了**：所有 K 线挤在同一个时刻上。
   if (path === '/api/v3/klines') {
     const symbol = url.searchParams.get('symbol') || 'BTCUSDT';
-    const limit = Math.min(200, Math.max(1, Number(url.searchParams.get('limit')) || 72));
-    const last = prices.get(symbol) ?? 1;
+    // interval 与 limit 都按真身的规矩来：缺参数、白名单外、超上限一律拒 ——
+    // 这样「我们的调用方忘了传周期」会当场红，而不是画出一张安静的错图。
+    const interval = url.searchParams.get('interval');
+    if (!interval || !(MARKET_INTERVALS as readonly string[]).includes(interval)) {
+      return send(res, 400, { code: -1120, msg: `Invalid interval: ${interval}` });
+    }
+    const limit = Math.max(1, Number(url.searchParams.get('limit')) || 1000);
+    if (limit > 1000) {
+      return send(res, 400, { code: -1130, msg: `Limit ${limit} is too large` });
+    }
+
+    const ivMs = INTERVAL_MS[interval as keyof typeof INTERVAL_MS];
+    const last = candleCloses.get(symbol) ?? prices.get(symbol) ?? 1;
     const pct = changes.get(symbol) ?? 0;
     // 整条曲线累计走完 change%，于是末点 - 首点的方向与涨跌幅一致
     const first = last / (1 + pct / 100);
+    // 最后一根的开桶时刻是「现在所在的这一桶」（与真身对齐：末根是还在走的那一根）
+    const lastOpen = Math.floor(Date.now() / ivMs) * ivMs;
+    const W = 0.0015; // 影线宽度：写死才有确定性
+
     const out = [];
+    let prevClose = first;
     for (let i = 0; i < limit; i++) {
       const close = first + ((last - first) * i) / (limit - 1 || 1);
+      const open = i === 0 ? first : prevClose;
+      const hi = Math.max(open, close) * (1 + W);
+      const lo = Math.min(open, close) * (1 - W);
+      const vol = 500 + ((i * 37) % 400); // 有变化但确定，成交量柱据此有高有低
+      prevClose = close;
       out.push([
-        0, // openTime 占位 —— 客户端只读索引 4（close）
+        lastOpen - (limit - 1 - i) * ivMs, // openTime：真实 UTC 毫秒，逐根递增
+        String(open),
+        String(hi),
+        String(lo),
         String(close),
-        String(close),
-        String(close),
-        String(close),
-        0,
-        0,
+        String(vol),
+        lastOpen - (limit - i) * ivMs, // closeTime（真身会给，我们不用）
         '0',
         0,
         '0',
