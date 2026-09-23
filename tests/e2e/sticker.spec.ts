@@ -16,6 +16,8 @@
 //   · 代码块里的 token 不展开
 //   · **内置黄脸**（单独一节）：排最前且默认激活、点一下**插进输入框而不发送**、
 //     正文里是**文字大小**（对照组是 4em 的图片表情）、素材真的加载得出来
+//   · **面板布局与合集记忆**（单独一节）：合集条排在网格**上面**（断真视口几何）、
+//     退出面板乃至刷新页面后仍停在上次那一栏
 //
 // 【造数纪律】大区是全站共用频道，定位一律用本轮 uniqueTag 的哨兵串锚定，
 // 绝不断言「列表里有几条」。素材由 tests/e2e/global-setup.ts 的 seedStickers() 造好。
@@ -408,6 +410,66 @@ test.describe('内置黄脸表情', () => {
     // 与站长表情那条降级链同款：图取不到就换回纯文本，而不是留一张裂图
     await expect(row.locator('.chat-msg__md')).toContainText(bad);
     await expect(row.locator('img.rich-emoji-ref')).toHaveCount(0);
+  });
+});
+
+// ── 面板布局与合集记忆 ──────────────────────────────────────────────────────
+//
+// 这两条都是**改坏了不报错**的那类：合集条挪回网格下面照样能切、记忆丢了照样能用 ——
+// 只是每打开一次面板都退回黄脸，得重新点一遍。所以钉在这里。
+
+test.describe('表情面板：合集条的位置与合集记忆', () => {
+  test('合集条排在网格**上面**', async ({ page }) => {
+    await registerFreshUser(page, { core: true });
+    await page.goto(`/chat?channel=${LOBBY}`);
+
+    const composer = page.locator('.chat-composer').first();
+    await composer.getByRole('button', { name: '表情' }).click();
+    const panel = composer.locator('.sticker-picker');
+    await expect(panel.locator('.sticker-picker__grid')).toBeVisible();
+
+    // ★ 断几何而不是断 DOM 次序：次序对了而 CSS 把某一条挪走（绝对定位、order、
+    //   flex-direction），用户看到的还是错的那版。+1 是给子像素留的余量。
+    const tabs = (await panel.locator('.sticker-picker__tabs').boundingBox())!;
+    const grid = (await panel.locator('.sticker-picker__grid').boundingBox())!;
+    expect(tabs.y + tabs.height).toBeLessThanOrEqual(grid.y + 1);
+  });
+
+  test('★ 记住上次退出的合集：关掉再开、乃至刷新整页，都还停在同一栏', async ({ page }) => {
+    const user = await registerFreshUser(page, { core: true });
+    await page.goto(`/chat?channel=${LOBBY}`);
+
+    const composer = page.locator('.chat-composer').first();
+    const panel = composer.locator('.sticker-picker');
+    const catTab = composer.locator('.sticker-picker__tab', { hasText: E2E_STICKERS.collectionTitle });
+    const toggle = composer.getByRole('button', { name: '表情' });
+
+    // 刚打开时停在黄脸栏（没有记忆）
+    await toggle.click();
+    await expect(panel.locator('.sticker-picker__tab').first()).toHaveText('黄脸表情');
+    await expect(panel.locator('.sticker-picker__tab').first()).toHaveAttribute('aria-selected', 'true');
+
+    await catTab.click();
+    await expect(catTab).toHaveAttribute('aria-selected', 'true');
+
+    // 退出面板（Esc）再进来：面板在 RichComposer 里是 `{stickerOpen && …}`，
+    // 挂载/卸载的 —— 组件自己的 state 留不下来，能记住就说明写进了 localStorage。
+    await page.keyboard.press('Escape');
+    await expect(panel).toHaveCount(0);
+    await toggle.click();
+    await expect(catTab).toHaveAttribute('aria-selected', 'true');
+    // 网格也得真跟着换，不能只是标签亮着
+    await expect(panel.locator('.sticker-picker__item').first()).toHaveAttribute('title', TOKEN);
+
+    // ★ 整页刷新：记忆不是「本次组件活着的期间」那种临时状态
+    await page.reload();
+    await composer.getByRole('button', { name: '表情' }).click();
+    await expect(panel.locator('.sticker-picker__tab', { hasText: E2E_STICKERS.collectionTitle })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
+    await expect(panel.locator('.sticker-picker__item').first()).toHaveAttribute('title', TOKEN);
+    expect(user.username).toBeTruthy();
   });
 });
 
