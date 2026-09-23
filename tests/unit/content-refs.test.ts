@@ -21,6 +21,7 @@ import {
   CLIP_EXPAND_MAX,
   MAX_IMAGE_REFS,
   clipboardFailureText,
+  collectClipboardRefIds,
   firstClipboardRef,
   replaceClipboardRef,
   truncateClipboardContent,
@@ -107,6 +108,40 @@ describe('content-refs 纯逻辑', () => {
 
   it('失败文案与博客侧逐字一致', () => {
     expect(clipboardFailureText(CLIP_ID)).toBe(`[剪贴板 ${CLIP_ID} 加载失败]`);
+  });
+});
+
+// ── 纯逻辑：收集剪贴板 id（对外视图的服务端解析用它）─────────────────────────
+//
+// 判据只有两条，但两条都会静默地把事情做错：**去重**（同一条剪贴板被引用 N 次
+// 就成了 N 次查库）与**形态严于渲染器**（伪 id 不被拿去查库）。
+
+describe('collectClipboardRefIds', () => {
+  it('去重且保持出现顺序', () => {
+    const b = 'BBBBBBBB';
+    expect(collectClipboardRefIds(`[@${CLIP_ID}] 和 [@${b}] 再来 [@${CLIP_ID}]`)).toEqual([
+      CLIP_ID,
+      b,
+    ]);
+  });
+
+  it('容忍内部空白（与渲染器那条同口径）', () => {
+    expect(collectClipboardRefIds(`[@ ${CLIP_ID} ]`)).toEqual([CLIP_ID]);
+  });
+
+  it('★ 只认 [A-Za-z0-9]{8}：下划线的伪 id 不收 ★', () => {
+    // 渲染器那条分流用的是 `\w`（含下划线），本函数**比它严** ——
+    // 它会把这个结果直接拿去查库，形态必须收紧到「只可能是剪贴板 id」。
+    expect(collectClipboardRefIds('[@________]')).toEqual([]);
+    expect(collectClipboardRefIds(`[@${CLIP_ID}_]`)).toEqual([]);
+  });
+
+  it('9 位 / 10 位 / 6 位的引用一个都不收（各回各的分流）', () => {
+    expect(collectClipboardRefIds('[@AbCdEf123] [@AbCdEf1234] [@123456]')).toEqual([]);
+  });
+
+  it('中文合集名的 token（音频 / 用户 / 表情）不收', () => {
+    expect(collectClipboardRefIds('[@音频/AbCdEf1234] [@用户/某人]')).toEqual([]);
   });
 });
 

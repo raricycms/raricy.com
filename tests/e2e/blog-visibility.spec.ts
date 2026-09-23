@@ -24,13 +24,15 @@ const BODY_MARKER = 'VISIBILITY-BODY-MARKER-9c41';
 /**
  * 以 core+ 身份发一篇指定可见性的文章，返回它的 id。
  * 断言了写路径的响应形状（blog_id），所以可见性字段真落库这件事也在这一条里被覆盖。
+ *
+ * `extra` 用来往正文里追加内容（引用用例）；正文开头那个哨兵串始终保留。
  */
-async function createBlogWith(page: Page, visibility: string): Promise<string> {
+async function createBlogWith(page: Page, visibility: string, extra = ''): Promise<string> {
   const res = await page.request.post('/api/blogs', {
     data: {
       title: `可见性-${visibility}-${uniqueTag()}`,
       description: 'e2e 可见性用例',
-      content: `正文开头\n\n${BODY_MARKER}`,
+      content: `正文开头\n\n${BODY_MARKER}${extra ? `\n\n${extra}` : ''}`,
       visibility,
     },
   });
@@ -38,6 +40,44 @@ async function createBlogWith(page: Page, visibility: string): Promise<string> {
   const body = (await res.json()) as { blog_id?: string };
   expect(body.blog_id, 'POST /api/blogs 必须回 blog_id').toBeTruthy();
   return body.blog_id!;
+}
+
+/** 1×1 合法 PNG（服务端按 magic bytes 嗅探，且要过 sharp 压缩，必须得是真图）。 */
+const PNG_1X1 = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64'
+);
+
+/** 合法的 MP3 帧头 + 填充（服务端要嗅出 MPEG1 Layer III，光有 0xFF 打头不算）。 */
+const MP3_FRAME = Buffer.concat([Buffer.from([0xff, 0xfb, 0x90, 0x00]), Buffer.alloc(64)]);
+
+/** 走接口传一张图 / 一段音频，返回各自的 id。 */
+async function uploadImageViaApi(page: Page): Promise<string> {
+  const res = await page.request.post('/api/images', {
+    multipart: { file: { name: 'e2e.png', mimeType: 'image/png', buffer: PNG_1X1 } },
+  });
+  expect(res.status(), `传图失败：${await res.text()}`).toBe(200);
+  return ((await res.json()) as { id: string }).id;
+}
+
+async function uploadAudioViaApi(page: Page): Promise<string> {
+  const res = await page.request.post('/api/audio', {
+    multipart: { file: { name: 'e2e.mp3', mimeType: 'audio/mpeg', buffer: MP3_FRAME } },
+  });
+  expect(res.status(), `传音频失败：${await res.text()}`).toBe(200);
+  return ((await res.json()) as { id: string }).id;
+}
+
+/** 走接口建一条剪贴板（公开 / 私有由 publicity 决定），返回其 8 位 id。 */
+async function createClipViaApi(page: Page, content: string, publicity: boolean): Promise<string> {
+  const res = await page.request.post('/api/clipboard', {
+    data: { title: `可见性用例-${uniqueTag()}`, content, publicity },
+  });
+  expect(res.status(), `建剪贴板失败：${await res.text()}`).toBe(200);
+  const json = (await res.json()) as { id?: string; clip?: { id: string } };
+  const id = json.id ?? json.clip?.id;
+  expect(typeof id, '剪贴板接口没给出 id').toBe('string');
+  return id!;
 }
 
 /** 丢掉会话，变回匿名访客。 */
@@ -73,6 +113,61 @@ test.describe('文章对外可见性', () => {
     expect(res?.status()).toBe(200);
     await expect(page.getByText(BODY_MARKER)).toBeVisible({ timeout: 10_000 });
     await expect(page.locator('#read-controls')).toHaveCount(0);
+  });
+
+  // 对外视图的 `[@…]` 引用展开**到哪一档**：图 / 音频 / 公开剪贴板出得来，投票与
+  // 私有剪贴板保留字面量。判据是「这条引用的读口匿名本来就取得到吗」——
+  // 图与音频的字节路由是匿名可达、逐条判档的；剪贴板的公开档由**服务端**判完随
+  // payload 下发（匿名去请求 core+ 接口只会吃 401）；投票与收藏夹的读口一律 core+。
+  //
+  // 【为什么非 E2E 不可】这条链路上有三段是单测够不到的：页面真把 externalClips
+  // 传下去了吗、真浏览器里 `<audio>` / `<img>` 有没有被渲染出来、以及**私有的那条
+  // 确实没跟着进来**（后者判错的形态是「公开文章里多出别人的私有正文」，页面不会
+  // 报任何错）。单测那边（tests/unit/blog-ref-render.test.ts）钉的是同一套判据的
+  // 客户端一半，服务端那一半在 tests/service/clipboard-refs.test.ts。
+  test('public：访客读得到正文里的图 / 音频 / 公开剪贴板，读不到投票与私有剪贴板', async ({ page }) => {
+    await loginViaApi(page, SEED_USERS.core.username);
+
+    const imageId = await uploadImageViaApi(page);
+    const audioId = await uploadAudioViaApi(page);
+    const publicClipId = await createClipViaApi(page, '公开剪贴板正文-OPEN-7f21', true);
+    const privateClipId = await createClipViaApi(page, '私有剪贴板正文-SECRET-7f21', false);
+    const voteRes = await page.request.post('/api/votes', {
+      data: { title: `可见性投票-${uniqueTag()}`, options: ['甲', '乙'] },
+    });
+    expect(voteRes.status(), await voteRes.text()).toBe(200);
+    const voteId = ((await voteRes.json()) as { data: { id: string } }).data.id;
+
+    const id = await createBlogWith(
+      page,
+      'public',
+      [
+        `图：[@${imageId}]`,
+        `音：[@音频/${audioId}]`,
+        `公开剪贴板：[@${publicClipId}]`,
+        `私有剪贴板：[@${privateClipId}]`,
+        `投票：[@${voteId}]`,
+      ].join('\n\n')
+    );
+
+    await becomeAnonymous(page);
+    const res = await page.goto(`/blog/${id}`);
+    expect(res?.status(), 'public 文章对匿名必须 200').toBe(200);
+
+    const body = page.locator('#userContentContainer');
+    // 先等正文真的渲染出来（客户端 marked 跑完的标志）
+    await expect(body.getByText(BODY_MARKER)).toBeVisible({ timeout: 10_000 });
+
+    // ── 该出来的 ──
+    await expect(body.locator(`img[src="/api/images/${imageId}/raw"]`)).toHaveCount(1);
+    await expect(body.locator(`audio[src="/api/audio/${audioId}/raw"]`)).toHaveCount(1);
+    await expect(body, '公开剪贴板的正文要内联进来').toContainText('公开剪贴板正文-OPEN-7f21');
+
+    // ── 不该出来的 ──
+    await expect(body, '私有剪贴板保持字面量').toContainText(`[@${privateClipId}]`);
+    await expect(body, '私有剪贴板正文一个字都不该出现').not.toContainText('私有剪贴板正文-SECRET-7f21');
+    await expect(body, '投票在对外视图里保留字面量').toContainText(`[@${voteId}]`);
+    await expect(body.locator('.vote-embed'), '对外视图不建投票嵌入位').toHaveCount(0);
   });
 
   test('internal：匿名落到登录页，且标题不出现在 <title>', async ({ page }) => {
