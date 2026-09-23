@@ -17,6 +17,13 @@
 // 配套的一条细节：面板里每个表情按钮都 `onMouseDown={preventDefault}` —— 让按钮
 // **永远不抢焦点**，光标全程留在 textarea 里，插入位置天然正确。
 //
+// 【合集条在网格**上面**，且记得上次停留的那一栏】两件事：
+//   · 次序 —— 先选合集、再挑表情，所以合集条在上、网格在下（微信也是这个次序）；
+//   · 记忆 —— 上次停在哪个合集记在 localStorage（键 `sticker_collection`）。面板在
+//     RichComposer 里是 `{stickerOpen && …}`，**挂载/卸载**的，组件状态留不下；
+//     而「上次在挑猫猫」跨页也该记住。记的是**key**（token 里那一段）而不是下标，
+//     理由见下面的 activeKey 注释。
+//
 // 【manifest 缓存】模块级的 5 分钟 TTL + 并发去重，照抄 useResolvedContent 的范式。
 // 服务端那边还有一层扫盘缓存（见 sticker-service.ts），两边互不冲突。
 // ─────────────────────────────────────────────────────────────────────────────
@@ -102,6 +109,30 @@ function parseCollections(raw: unknown): StickerCollectionDTO[] {
   return out;
 }
 
+/**
+ * 「上次停留的合集」的 localStorage 键 —— 与 theme / blog_sort / chat_sidebar_collapsed
+ * 同款：纯本机偏好，不上送服务端（隐私页 2.2 有对外口径）。
+ */
+const LS_KEY = 'sticker_collection';
+
+/** 读上次停留的合集。读不到（首次 / 被清）或存不了（隐私模式）都返回 null。 */
+function readSavedCollection(): string | null {
+  try {
+    return localStorage.getItem(LS_KEY);
+  } catch {
+    return null; // 隐私模式/被禁 → 不记忆，落回黄脸那一栏
+  }
+}
+
+/** 记住这次停在哪一栏。写失败也只是不记忆 —— 本次会话内照常切换。 */
+function rememberCollection(key: string) {
+  try {
+    localStorage.setItem(LS_KEY, key);
+  } catch {
+    // 同上
+  }
+}
+
 function loadStickers(): Promise<StickerData> {
   if (cache && Date.now() - cache.at < CACHE_TTL_MS) {
     return Promise.resolve({ collections: cache.collections, empty: cache.empty });
@@ -144,7 +175,9 @@ export default function StickerPicker({
   const [data, setData] = useState<StickerData | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
-  const [active, setActive] = useState(0);
+  // 面板只在你点开之后才挂载，所以初值直接读 localStorage 也不会与 SSR 打架。
+  // null = 没有记忆，下面落回第一栏（黄脸）。
+  const [activeKey, setActiveKey] = useState<string | null>(readSavedCollection);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -184,14 +217,25 @@ export default function StickerPicker({
     };
   }, [onClose]);
 
-  // 黄脸**永远排在最前且默认激活**（active 初值 0）—— 对齐微信：打开面板先看到
-  // 标准表情，站长的自制合集往后排。注意 active 是**下标**，所以插一栏到最前会
-  // 让下标语义整体后移，改这里时别忘了。
+  // 黄脸**永远排在最前**，也是没有记忆 / 记忆失效时的落点 —— 对齐微信：打开面板
+  // 先看到标准表情，站长的自制合集往后排。
+  //
+  // 站长若在素材目录里也建了个「黄脸」，**面板里只留内置那一栏**：两种来源共用同一个
+  // 名字空间（token 都是 `[@黄脸/…]`，渲染时内置清单优先、清单里没有的才落到字节路由
+  // —— 见 sticker-refs 的降级链与指南第七节），列成两栏就等于同一个名字有两个身份。
+  // 下面这套「靠 key 认合集」（React key、aria-selected 的比对）也经不起撞名。
   const collections: CollectionView[] = [
     EMOJI_COLLECTION_VIEW,
-    ...(data?.collections ?? []).map((c) => ({ ...c, kind: 'sticker' as const })),
+    ...(data?.collections ?? [])
+      .filter((c) => c.key !== EMOJI_COLLECTION)
+      .map((c) => ({ ...c, kind: 'sticker' as const })),
   ];
-  const current = collections[active] ?? collections[0];
+  // ★ 记的是 key（token 里那一段），**不是下标** ★
+  // 合集列表是异步来的、站长还会增删目录，下标会在两次打开之间悄悄换人（删掉排在前面的
+  // 一栏，后面的整体前移 —— 记忆还「有效」，只是指到了另一个合集上）。key 与目录一一
+  // 对应，只有它值得记。
+  // 记的那一栏没了（站长删了目录）→ 落回第一栏；下次点任意一栏就把它覆盖掉。
+  const current = collections.find((c) => c.key === activeKey) ?? collections[0];
 
   return (
     <div className="sticker-picker" ref={rootRef}>
@@ -201,6 +245,31 @@ export default function StickerPicker({
         <div className="sticker-picker__state">表情加载失败，请稍后重试</div>
       ) : (
         <>
+          {/* 合集条在上、网格在下（见文件头「合集条在网格上面」） */}
+          <div className="sticker-picker__tabs" role="tablist">
+            {collections.map((c) => {
+              // 高亮跟着**解析后的** current 走，不跟 activeKey：记忆指向一个已经不在的
+              // 合集时 activeKey 谁都对不上，那样会一条 tab 都不亮。
+              const isActive = c.key === current.key;
+              return (
+                <button
+                  key={c.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  className={`sticker-picker__tab${isActive ? ' is-active' : ''}`}
+                  title={c.title}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    setActiveKey(c.key);
+                    rememberCollection(c.key);
+                  }}
+                >
+                  {c.title}
+                </button>
+              );
+            })}
+          </div>
           <div className="sticker-picker__body">
             <div className="sticker-picker__grid">
               {current?.stickers.map((s) => {
@@ -221,22 +290,6 @@ export default function StickerPicker({
                 );
               })}
             </div>
-          </div>
-          <div className="sticker-picker__tabs" role="tablist">
-            {collections.map((c, i) => (
-              <button
-                key={c.key}
-                type="button"
-                role="tab"
-                aria-selected={i === active}
-                className={`sticker-picker__tab${i === active ? ' is-active' : ''}`}
-                title={c.title}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => setActive(i)}
-              >
-                {c.title}
-              </button>
-            ))}
           </div>
           {/* 站长指引：只在素材目录为空时出现。
               以前它是一条**整块空态**（连 tab 条都不渲染）—— 现在黄脸永远是内容，
