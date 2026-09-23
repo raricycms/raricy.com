@@ -359,7 +359,7 @@ GET/HEAD/OPTIONS 视为安全方法，不校验。
 | 讨论正文 / 评论正文 | **客户端**渲染，同一套管线 | `rich-text.ts`（marked → DOMPurify → 后处理），白名单与链接类名见 `chat-markdown.ts` / `comment-markdown.ts` |
 | 博客正文 | **客户端**渲染 | `src/app/components/MarkdownRenderer.tsx`（marked + DOMPurify + highlight.js + MathJax + `[@…]` 内容引用） |
 | 故事正文 | **服务端**渲染 | `src/lib/story-service.ts` 的 `marked` + `stripScripts`。内容由站长直接写在 `instance/stories/`，按可信输入处理，**不走 DOMPurify / highlight.js** |
-| 内容引用 `[@…]` | 浏览器渲染时正则替换为剪贴板/投票/图床/收藏夹组件 | `src/app/components/MarkdownRenderer.tsx` 的 `ContentRefProcessor`（按 id 长度分流：6 位收藏夹 / 8 位剪贴板 / 9 位投票 / 10 位图床）。**表情包不在这条管道上**。收藏夹卡片是在主循环**之后**单独一趟、按区间切片替换的，理由见 §6.10 |
+| 内容引用 `[@…]` | 浏览器渲染时正则替换为剪贴板/投票/图床/收藏夹组件 | `src/app/components/MarkdownRenderer.tsx` 的 `ContentRefProcessor`（按 id 长度分流：6 位收藏夹 / 8 位剪贴板 / 9 位投票 / 10 位图床）。**表情包不在这条管道上**。**展开到哪一档看 `contentRefs`**（成员 `'expand'` / 对外 `'external'`，见 §7.3）。两次替换都**按区间切片**、不按内容 `replace`；分流扫的是**盖过码**的副本，所以代码块里的引用一律不展开（指南对读者的承诺）。收藏夹卡片是在主循环**之后**单独一趟，理由见 §6.10 |
 | 表情包 `[@合集/表情]` | 浏览器渲染时替换为内联 `<img>`（**仅评论 / 讨论**）。两个来源共用这条管道：站长放的图片（`/api/stickers/` 字节路由）与**内置黄脸**（`/static/emoji/` 静态素材）—— 后者多叠一个 `rich-emoji-ref` 类把自己压成文字大小 | `src/lib/sticker-refs.ts` 的 `embedStickerRefs`，在 `rich-text.ts` 里紧跟 `embedUserRefs` 之后调用；黄脸清单在 `src/lib/emoji-faces.ts` |
 | 音频 `[@音频/<ID>]` | 浏览器渲染时替换为内联 `<audio controls>`。**两条管线走法不同**：评论 / 讨论在**净化后**建 DOM（那边白名单里没有 audio）；博客在**源文**上直接拼标签串（那边白名单本来就允许 audio），但必须配 `maskMarkdownCode` —— 否则代码块里会嵌出真播放器。一条正文最多展开 3 个 | `src/lib/audio-refs.ts` 的 `embedAudioRefs`（DOM）/ `collectAudioRefs` + `replaceAudioRefs`（源文）。`音频` 是**保留合集名**（表情那条正则带 `(?!用户/)(?!音频/)` 让开），见 §6.15 |
 | 用户名片 `[@用户/<用户名>]` | 浏览器渲染时替换为一枚**行内名片**（`<a>` 包住「带头像框的头像 + 用户名」，指向 `/u/<id>`）（**仅评论 / 讨论**）。认的是**用户名**而不是 ID，所以多一条异步取数；**不算 @ 提及**，不发通知 | `src/lib/user-refs.ts` 的 `embedUserRefs`（纯逻辑 + DOM 构造），数据由 `src/app/components/useUserCards.ts` 经 `RichTextContext` 注入，取数口是 `GET /api/users/<用户名>`（要 core+）。`用户` 因此是**保留合集名**（表情那条正则带 `(?!用户/)` 让开） |
@@ -609,8 +609,11 @@ disallow（断掉「internal 文章 → 307 → next 参数里带 UUID」那条�
 **风险**（详见 `src/lib/blog-visibility.ts` 与发文表单里的提示）：
 1. **一旦公开就近乎永久** —— 搜索引擎与第三方存档会抓走副本，改回 internal 不收回
    已抓走的副本，社交平台的卡片缓存（数周）也不撤回。
-2. 可见性**不扫描正文**。访客视图不展开 `[@…]` 内容引用、私有图床图对匿名仍 404，
-   所以不会因「设为公开」把别人的私密资源放出去；但作者自己写下的文字就是他自己公开的。
+2. 可见性**不扫描正文**。作者自己写下的文字就是他自己公开的；正文里的 `[@…]` 引用
+   展开**到哪一档**由「该引用的读口匿名取不取得到」决定（见 §7.3 的 `contentRefs`）：
+   图床图片 / 音频 / **公开档剪贴板**会出得来，投票与收藏夹保留字面量。
+   ⚠️ 私有资源仍然出不去 —— 图床与音频的 raw 路由对匿名逐条判档（私有档 404），
+   剪贴板的私有档在服务端就被筛掉（`resolvePublicClipRefs`）。
 3. `spider` 命名空间仍能读到全部 internal 文章（档位是 core+ 的一个账号）。这是现状，
    本期刻意不动 —— 要收紧的正确做法是给 spider 单独一档或只读账号，
    **不是**在那条路由里加可见性过滤（那会把「站外聚合器能读什么」和「文章是否对外」
@@ -955,6 +958,14 @@ MP3 的帧同步要核版本 / 层 / 位速率字段（只判 `0xFF` 打头太�
 不盖码块就会在 `<code>` 里嵌出一个**真播放器**（而 audio 在白名单里，DOMPurify 不会拦）。
 这是博客侧最可能的静默错误。src 由我们用校验过的 ID 拼成，**永不接受用户提供的 URL**。
 
+⚠️ **博客正文的两种视图都展开音频**（成员 `'expand'` / 对外 `'external'`，见 §7.3）——
+音频字节路由匿名可取，与图床同性质，所以《音频床使用指南》的 FAQ 里那句「设为对外可见，
+读到那篇的人就都能听到」才成立。**别把音频归进「要 core+ 的那三种引用」**。
+
+⚠️ 那个「空集早退」曾经把音频整趟吞掉：分流正则 `\[@\s*(\w+)\s*\]` 的 `\w` **匹配不到
+中文**，所以「正文里只有音频引用」的正文一个 match 都没有 → `preprocess` 直接返回原文
+→ 只贴了一段录音的文章什么都不展开，**且不报错**。现在音频那趟在早退**之前**先跑。
+
 > ⚠️ 顺带一个**既有**事实（不是本次引入的）：`BLOG_SANITIZE_OPTIONS` 早就允许
 > `audio`/`source`/`track`/`controls`/`autoplay`。也就是说 core+ 作者今天就能在博客里
 > 手写 `<audio src="外链">`。**别顺手删那几个白名单项** —— 博客正文存在库里不在仓库里，
@@ -1023,16 +1034,28 @@ MP3 的帧同步要核版本 / 层 / 位速率字段（只判 `0xFF` 打头太�
        core+   → notFound()
   → Server Component 渲染 Markdown 占位 + 注入数据
        core+ → 正文 + FeedButton + CommentSection（contentRefs='expand'）
-       访客 → **只有**标题 / 作者 / 正文（contentRefs='plain'），零站内 affordance
+       访客 → **只有**标题 / 作者 / 正文（contentRefs='external'），零站内 affordance
+              + resolvePublicClipRefs(正文) 的结果当 externalClips 一起下发
   → 客户端 marked + DOMPurify + highlight.js 完成正文
 ```
 
 ⚠️ **原始 markdown 是作为 RSC prop 随首屏 payload 下发的** —— 「正文交给客户端渲染」
 不构成任何保护，闸门必须在服务端把串传出去之前（`docs/architecture.md` §6.7 那条管线）。
+对外视图那句 `resolvePublicClipRefs` 同理：**判档在服务端做完**，下发的只有判过的内容。
 
-⚠️ `MarkdownRenderer` 的 `contentRefs` 是**必传** prop：`'expand'` 会带 same-origin
-凭据去请求三条 core+ 接口（剪贴板 / 投票 / 收藏夹），`'plain'` 一次请求都不发、
-`[@…]` 原样保留字面量。访客视图那条是匿名页面上**唯一的内容泄露面**。
+⚠️ `MarkdownRenderer` 的 `contentRefs` 是**必传** prop，两个取值都展开引用，差别在
+**展开到哪一档**：
+
+| 取值 | 用在哪 | 剪贴板 | 投票 | 图床 | 收藏夹 | 音频 |
+|------|--------|--------|------|------|--------|------|
+| `'expand'` | core+ 的页面（成员视图 / 剪贴板详情） | ✅ 客户端带凭据拉 | ✅ | ✅ | ✅ | ✅ |
+| `'external'` | 对外视图（访客 / 非 core） | 只出**服务端下发**的公开档 | ❌ 字面量 | ✅ | ❌ 字面量 | ✅ |
+
+判据不是「是不是站内内容」，而是**这条引用的读口匿名取不取得到**：图床与音频的字节
+路由匿名可达、逐条判档（私有档对无权者 404）；剪贴板 / 投票 / 收藏夹的三条接口一律
+要 core+ 会话。`'external'` **一个请求都不发**（所以它不需要凭据，也拿不到 401）。
+⚠️ 别把它缩回「一律不展开」——「作者把文章设为对外可见，读到的人却看不到正文里的
+图和录音」正是被修掉的那版行为；也别忘了**私有资源仍然出不去**（见 §6.11 风险 2）。
 
 ⚠️ `generateMetadata()` 与页面是**两个独立的渲染步**，页面那道可见性判定管不到它 ——
 它必须自己判一次，判不过就返回中性标题、绝不回显（`tests/e2e/access-control.spec.ts`
