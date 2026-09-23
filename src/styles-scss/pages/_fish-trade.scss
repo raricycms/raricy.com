@@ -35,15 +35,64 @@
   margin: -$space-2 0 $space-6;
 }
 
-// ── 卡片（三张：行情 / 买入 / 持仓）──────────────────────────────────────────
+// ── 三栏工作台（自选 | 图表 | 下单 + 持仓）──────────────────────────────────
+//
+// 【四段阶梯，每段的判据都在这】宽度的天花板是容器阶梯（docs/frontend-styles.md §5）：
+// ≥1200px 时 `.content-wrapper` 是 1140px、992–1199px 是 960px —— 所以中间那列在
+// 1140 那一档拿到 ~608px，960 那一档只有 ~496px。阶梯跟着它走，不是随手挑的数字。
+//
+//   ≥1200 三栏     200 | 1fr | 300   容器 1140
+//   ≤1199 三栏收窄 168 | 1fr | 264   容器 960（观察列表这一档隐藏走势线，省 40px）
+//   ≤991  两栏     自选变**横向条**横跨整行，下面「图 | 右栏」两列
+//   ≤767  单列     自选条 → 图 → 右栏两卡（下单在前、持仓在后）
+//
+// 【minmax(0, 1fr) 不是可选的】不写它，列宽就是 min-content —— 图里的 SVG 与那列
+// 轴标签会把列撑开，窄屏直接出横向滚动条（e2e 有一条专治这个）。
+.trade-layout {
+  display: grid;
+  gap: $space-4;
+  align-items: start;
+  grid-template-columns: 200px minmax(0, 1fr) 300px;
+  grid-template-areas: 'watch chart side';
+
+  @media (max-width: 1199px) {
+    grid-template-columns: 168px minmax(0, 1fr) 264px;
+  }
+
+  @media (max-width: 991px) {
+    grid-template-columns: minmax(0, 1fr) 280px;
+    grid-template-areas:
+      'watch watch'
+      'chart side';
+  }
+
+  @media (max-width: 767px) {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      'watch'
+      'chart'
+      'side';
+  }
+}
+
+/* 右栏：下单在上、持仓在下。两卡之间用 gap，卡片自己的下外边距归零。 */
+.trade-side {
+  grid-area: side;
+  display: flex;
+  flex-direction: column;
+  gap: $space-4;
+  min-width: 0;
+}
+
+// ── 卡片 ────────────────────────────────────────────────────────────────────
 
 .trade-card {
-  max-width: 560px;
-  margin: 0 auto $space-4;
+  margin: 0;
   padding: $space-6;
   background: var(--color-background-card);
   border-radius: 30px;
   box-shadow: var(--shadow-card);
+  min-width: 0;
 
   @media (max-width: 768px) {
     padding: $space-4;
@@ -51,10 +100,9 @@
   }
 }
 
-/* 图表卡。图要的地方比别的卡宽（行情 / 买入 / 持仓仍是 560）——
-   三栏版式里宽度交给外层网格，这一条只服务单列时的那一档。 */
+/* 图表卡。宽度交给 .trade-layout 的列宽 —— 这里只认领自己那一格。 */
 .trade-card--chart {
-  max-width: 900px;
+  grid-area: chart;
 }
 
 .trade-card__title {
@@ -89,60 +137,130 @@
   font-variant-numeric: tabular-nums;
 }
 
-// ── 行情 ────────────────────────────────────────────────────────────────────
+/* ≤991px：右栏只有 280px，「我的余额 + 2rem 的数 + 小鱼干」三件挤不下 ——
+   实测「我的余 / 额」「小鱼 / 干」都会从词中间断开。把数降一档、内距收一点，
+   一行就装得下了（它是这一屏的主数字，宁可小一号也不要断成两行）。 */
+@media (max-width: 991px) {
+  .trade-card__head {
+    padding: $space-3;
+    gap: $space-2;
+  }
 
-.trade-quote {
-  & + & {
-    margin-top: $space-4;
-    padding-top: $space-4;
-    border-top: 1px solid var(--color-border);
+  .trade-card__balance-number {
+    font-size: 1.5rem;
   }
 }
 
-.trade-quote__head {
+// ── 自选列表（侧栏；窄屏是横向条，同一份 DOM）────────────────────────────────
+//
+// 【选中态只有「整行品牌淡底」这一种表达】不加左侧竖条 —— 容器已经是 30px 的大圆角，
+// 边上再压一条 3px 竖条会把弧线切掉一截（docs/frontend-styles.md §11.8）。
+// 与讨论区侧栏同一套口径。
+
+.trade-watch {
+  grid-area: watch;
+  padding: $space-4;
+}
+
+.trade-watch__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: $space-2;
+}
+
+/* 一行一个标的 —— 用 button 而不是 div：点下去会换掉图表与下单的标的，
+   那**是一个动作**，语义上就该是按钮（键盘与读屏也才够得着）。 */
+.trade-watch__row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: $space-2 $space-3;
+  border: none;
+  border-radius: $radius-large;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+
+  &:hover:not(:disabled) {
+    background: var(--color-background-subtle);
+  }
+
+  &.is-active {
+    background: var(--color-brand-secondary);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.trade-watch__head {
   display: flex;
   align-items: baseline;
-  gap: $space-3;
+  justify-content: space-between;
+  gap: $space-2;
 }
 
-.trade-quote__name {
-  font-size: 1rem;
+.trade-watch__name {
+  font-size: 0.95rem;
   font-weight: 700;
   color: var(--color-text-primary);
 }
 
-.trade-quote__price {
-  margin-left: auto;
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: var(--color-text-primary);
-  font-variant-numeric: tabular-nums;
-}
-
-.trade-quote__unit {
-  margin-left: 4px;
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: var(--color-text-secondary);
-}
-
-.trade-quote__change {
-  min-width: 4.5rem;
-  text-align: right;
-  font-size: 0.875rem;
+.trade-watch__change {
+  font-size: 0.8rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 
   @include trade-up-down;
 }
 
-// 走势线。preserveAspectRatio="none" 让它拉满卡片宽度，描边靠
+.trade-watch__price {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.trade-watch__unit {
+  margin-left: 4px;
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.trade-watch__stale {
+  margin: $space-3 0 0;
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  text-align: center;
+}
+
+.trade-watch__down {
+  margin: 0;
+  padding: $space-3;
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  background: var(--color-background-subtle);
+  border-radius: $radius-large;
+}
+
+// 走势线。preserveAspectRatio="none" 让它拉满行宽，描边靠
 // vector-effect="non-scaling-stroke" 保持 1px（否则横向会被拉粗）。
 .trade-spark {
   display: block;
   width: 100%;
-  height: 40px;
-  margin-top: $space-2;
+  height: 34px;
+  margin-top: $space-1;
 }
 
 .trade-spark__line {
@@ -160,21 +278,35 @@
   }
 }
 
-.trade-quote__stale {
-  margin: $space-3 0 0;
-  font-size: 0.8rem;
-  color: var(--color-text-secondary);
-  text-align: center;
-}
+/* ≤991px：自选变横向条（一行放不下就横向滚）。走势线在这一档隐藏 ——
+   条里的每一格只有 ~150px 宽，40px 高的曲线会把「价」挤到看不见。 */
+@media (max-width: 991px) {
+  .trade-watch {
+    padding: $space-3 $space-4;
+  }
 
-.trade-quote__down {
-  margin: 0;
-  padding: $space-4;
-  text-align: center;
-  font-size: 0.9rem;
-  color: var(--color-text-secondary);
-  background: var(--color-background-subtle);
-  border-radius: $radius-large;
+  .trade-watch__list {
+    flex-direction: row;
+    gap: $space-2;
+    overflow-x: auto;
+  }
+
+  .trade-watch__list > li {
+    flex: 0 0 152px;
+  }
+
+  .trade-watch__row {
+    height: 100%;
+    background: var(--color-background-subtle);
+
+    &.is-active {
+      background: var(--color-brand-secondary);
+    }
+  }
+
+  .trade-watch__row .trade-spark {
+    display: none;
+  }
 }
 
 // ── 图表（K 线 / 折线）────────────────────────────────────────────────────────
@@ -569,24 +701,6 @@
   font-weight: 500;
 }
 
-/* 标的切换用「切页档」（btn-tab），**不是 .segmented 胶囊滑块** ——
-   docs/frontend-styles.md §6.8 的判据是「滑块只给 2 选 1 的互斥**视图**切换」，
-   而这里选项可能变多（加币）、点下去也决定了买什么，两条都在「不要用」那边。
-   与鱼干流水的筛选条同档。 */
-.trade-symbol {
-  display: flex;
-  gap: $space-2;
-  flex-wrap: wrap;
-}
-
-.trade-symbol__btn {
-  @include m.btn-tab;
-  padding: $space-2 $space-4;
-  font-size: 0.9rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-
 // 金额输入：外壳是胶囊（一行文字 → 胶囊，见 frontend-styles §4.2），
 // 聚焦一律用 --shadow-focus-brand，**绝不改 border**（那会让字段随焦点变高）。
 .trade-amount {
@@ -645,11 +759,15 @@
   color: var(--color-text-secondary);
 }
 
-// 摘要条：最小投入 + 手续费
+/* 摘要条：最小投入 + 手续费。
+   `flex-wrap` 不是装饰：三栏版式里这张卡只有 300px（窄屏那两档 280px），
+   不让它换行的话两个 span 各被压到 ~110px ——「单笔最少 1 / 条鱼干」会在短语中间断开。
+   换行之后每一句各自完整，掉到第二行而已。 */
 .trade-summary {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
-  gap: $space-3;
+  gap: $space-1 $space-3;
   margin: $space-6 0 $space-4;
   padding: $space-3 $space-4;
   background: var(--color-background-highlight);

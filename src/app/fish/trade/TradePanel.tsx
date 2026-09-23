@@ -10,12 +10,14 @@ import { DEFAULT_INTERVAL, type CandleTuple, type MarketInterval } from '@/lib/m
 // 这里沿用文件里原来的短名，免得改十几处调用点
 import { formatPrice as fmtPrice, formatPct as fmtPct } from '@/lib/market-chart';
 import TradeChartPanel from './TradeChartPanel';
+import TradeWatchlist, { type WatchRow } from './TradeWatchlist';
 import { useCandles } from './useCandles';
 // 只取类型：`import type` 在编译期被擦掉，不会把 market-price（它带着服务端代码）
 // 拖进客户端包。**别改成值导入**，也别在本地重抄一份同样的联合类型（两份必然 drift）。
 import type { QuoteSource } from '@/lib/market-price';
 
-// 练手盘面板：行情 + 买入 + 持仓 + 平仓。
+// 练手盘面板：自选（标的选择）+ 图表 + 买入 + 持仓 + 平仓。**它是这一页状态的唯一主人**
+//（当前标的 / 周期 / 金额 / 两个弹窗 / 幂等键），三个子组件都是受控的。
 //
 // 【三个不显然的地方】
 //
@@ -78,40 +80,6 @@ function fmtOpenedAt(iso: string): string {
   if (Number.isNaN(d.getTime())) return '';
   const p = (n: number) => String(n).padStart(2, '0');
   return `${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;
-}
-
-/** 价格走势线。手写 SVG：站内没有图表库，也不该为一张曲线引一个进来。 */
-function Sparkline({ closes, label }: { closes: number[]; label: string }) {
-  if (closes.length < 2) return null;
-  const W = 160;
-  const H = 40;
-  const min = Math.min(...closes);
-  const max = Math.max(...closes);
-  const span = max - min || 1;
-  const points = closes
-    .map((c, i) => {
-      const x = (i / (closes.length - 1)) * W;
-      const y = H - ((c - min) / span) * H;
-      return `${x.toFixed(2)},${y.toFixed(2)}`;
-    })
-    .join(' ');
-  const up = closes[closes.length - 1] >= closes[0];
-  return (
-    <svg
-      className="trade-spark"
-      viewBox={`0 0 ${W} ${H}`}
-      preserveAspectRatio="none"
-      role="img"
-      aria-label={label}
-    >
-      <polyline
-        className={`trade-spark__line trade-spark__line--${up ? 'up' : 'down'}`}
-        points={points}
-        // 没有它，preserveAspectRatio="none" 会把描边横向拉粗
-        vectorEffect="non-scaling-stroke"
-      />
-    </svg>
-  );
 }
 
 export default function TradePanel({
@@ -186,7 +154,6 @@ export default function TradePanel({
 
   const current = quotes.find((q) => q.symbol === symbol) ?? quotes[0];
   const priceOf = (sym: string) => quotes.find((q) => q.symbol === sym)?.price ?? null;
-  const displayOf = (sym: string) => quotes.find((q) => q.symbol === sym)?.display ?? sym;
 
   // ── K 线（图表用）────────────────────────────────────────────────────────
   // 首屏那批由服务端直接给（SSR 出来的图就是完整的，不闪）；切标的/切周期按需取。
@@ -315,205 +282,168 @@ export default function TradePanel({
     }
   }
 
-  const anyStale = quotes.some((q) => q.stale);
   const quoteDown = quotes.length === 0 || quotes.every((q) => q.price == null);
   // 弹窗里的那一整套估算算一次就好（下面要用到六七个数，逐个 estimate() 是六七次重算，
   // 且两处调用之间行情刷新会让同一个数在弹窗里显示成两个值）
   const sellEst = sellTarget ? estimate(sellTarget) : null;
 
+  // 自选列表的行 = 展示报价 + 走势线（走势线由服务端随首屏给，切标的不另取）。
+  const watchRows: WatchRow[] = quotes.map((q) => ({
+    symbol: q.symbol,
+    display: q.display,
+    price: q.price,
+    changePercent: q.changePercent,
+    stale: q.stale,
+    closes: sparks[q.symbol] ?? [],
+  }));
+
   return (
     <>
-      <div className="trade-card trade-card--chart">
-        <TradeChartPanel
+      {/* 三栏：自选 | 图表 | 下单 + 持仓。窄屏的折叠全部由 CSS 管（见 _fish-trade.scss），
+          这里只有一份 DOM —— 两套布局的代价是两份状态与两处会 drift 的类名。 */}
+      <div className="trade-layout">
+        <TradeWatchlist
+          rows={watchRows}
           symbol={symbol}
-          display={current?.display ?? symbol}
-          interval={interval}
-          candles={candleEntry?.candles ?? []}
-          status={candleEntry?.status ?? 'loading'}
-          livePrice={livePrice}
-          onIntervalChange={applyInterval}
-          onRetry={() => refreshCandles(symbol, interval)}
-          onRolledOver={() => refreshCandles(symbol, interval)}
+          // 确认弹窗开着时不让切标的：那两屏的文案是按当前标的算好的
+          disabled={busy || buyOpen || sellTarget != null}
+          onSelect={setSymbol}
         />
-      </div>
 
-      {/* trade-card--quote 是**给 e2e 的钩子**（fish-trade.spec.ts 用它断言行情卡在不在），
-          不带样式 —— 外观全由 .trade-card 给。登记在 tests/unit/css-tsx-classes.test.ts
-          的 CONSUMED 里，别顺手删。 */}
-      <div className="trade-card trade-card--quote">
-        {quoteDown ? (
-          <p className="trade-quote__down">行情暂不可用，稍后自动重试。此时无法下单。</p>
-        ) : (
-          <>
-            {quotes.map((q) => (
-              <div className="trade-quote" key={q.symbol}>
-                <div className="trade-quote__head">
-                  <span className="trade-quote__name">{q.display}</span>
-                  <span className="trade-quote__price">
-                    {q.price == null ? '—' : fmtPrice(q.price)}
-                    <span className="trade-quote__unit">USDT</span>
-                  </span>
-                  {q.changePercent != null && (
-                    <span
-                      className={`trade-quote__change trade-quote__change--${
-                        q.changePercent >= 0 ? 'up' : 'down'
-                      }`}
-                    >
-                      {fmtPct(q.changePercent)}
-                    </span>
-                  )}
-                </div>
-                <Sparkline
-                  closes={sparks[q.symbol] ?? []}
-                  label={`${q.display} 近 72 小时价格走势`}
+        <div className="trade-card trade-card--chart">
+          <TradeChartPanel
+            symbol={symbol}
+            display={current?.display ?? symbol}
+            interval={interval}
+            candles={candleEntry?.candles ?? []}
+            status={candleEntry?.status ?? 'loading'}
+            livePrice={livePrice}
+            onIntervalChange={applyInterval}
+            onRetry={() => refreshCandles(symbol, interval)}
+            onRolledOver={() => refreshCandles(symbol, interval)}
+          />
+        </div>
+
+        <div className="trade-side">
+          <div className="trade-card">
+            <div className="trade-card__head">
+              <span className="trade-card__balance-label">我的余额</span>
+              <span className="trade-card__balance-number">{fmtFish(balance)}</span>
+              <span className="trade-card__balance-unit">小鱼干</span>
+            </div>
+
+            <div className="trade-field">
+              <label className="trade-field__label" htmlFor="trade-amount">
+                投入
+              </label>
+              <div className="trade-amount">
+                <input
+                  id="trade-amount"
+                  className="trade-amount__input"
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="0.0"
+                  autoComplete="off"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  disabled={busy}
                 />
+                <span className="trade-amount__unit">小鱼干</span>
               </div>
-            ))}
-            {anyStale && (
-              <p className="trade-quote__stale">行情更新有延迟，数据可能不是最新的。</p>
+              {current?.price != null && (
+                <p className="trade-field__hint">
+                  当前 {current.display} ≈ {fmtPrice(current.price)} USDT
+                </p>
+              )}
+              {amountError && <p className="trade-field__hint trade-field__hint--error">{amountError}</p>}
+            </div>
+
+            <div className="trade-summary">
+              <span>
+                单笔最少 <strong>{minStake}</strong> 条鱼干
+              </span>
+              <span>
+                手续费 <strong>{formatFeeRate(feeRate)}</strong>
+                <span className="trade-summary__note">（卖出时收）</span>
+              </span>
+            </div>
+
+            <button
+              type="button"
+              className="trade-submit"
+              disabled={!canBuy || busy || quoteDown}
+              onClick={openBuy}
+            >
+              买入
+            </button>
+          </div>
+
+          <div className="trade-card">
+            <h2 className="trade-card__title">我的持仓</h2>
+            {positions.length === 0 ? (
+              <p className="trade-empty">还没有持仓。买入后会出现在这里，价格涨跌随时可卖。</p>
+            ) : (
+              <ul className="trade-positions">
+                {positions.map((p) => {
+                  const est = estimate(p);
+                  return (
+                    <li className="trade-position" key={p.id}>
+                      <div className="trade-position__main">
+                        <span className="trade-position__name">{p.display}</span>
+                        <span className="trade-position__stake">{fmtFish(p.stake)} 鱼干</span>
+                        <span className="trade-position__entry">
+                          开仓 {fmtPrice(p.entryPrice)}
+                          <span className="trade-position__time"> · {fmtOpenedAt(p.openedAt)}</span>
+                        </span>
+                        {/* 「较开仓」而不是光写一个百分数：行情卡上那个百分数是**24 小时**涨跌，
+                            两个数会在同一屏里各说各话。取不到价就整行不渲染（不是显示 0.00%）。 */}
+                        {est && (
+                          <span className="trade-position__now">
+                            现价 {fmtPrice(est.px)}
+                            <span
+                              className={`trade-position__change trade-position__change--${
+                                est.changePercent >= 0 ? 'up' : 'down'
+                              }`}
+                            >
+                              较开仓 {fmtPct(est.changePercent)}
+                            </span>
+                          </span>
+                        )}
+                      </div>
+                      <div className="trade-position__pnl">
+                        {est ? (
+                          <>
+                            <span
+                              className={`trade-position__profit trade-position__profit--${
+                                est.profit >= 0 ? 'up' : 'down'
+                              }`}
+                            >
+                              {est.profit > 0 ? '+' : ''}
+                              {fmtFish(est.profit)}
+                            </span>
+                            <span className="trade-position__payout">
+                              可卖 {fmtFish(est.payout)} 鱼干
+                            </span>
+                          </>
+                        ) : (
+                          <span className="trade-position__payout">—</span>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        className="trade-position__sell"
+                        onClick={() => setSellTarget(p)}
+                        disabled={busy}
+                      >
+                        卖出
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
             )}
-          </>
-        )}
-      </div>
-
-      <div className="trade-card">
-        <div className="trade-card__head">
-          <span className="trade-card__balance-label">我的余额</span>
-          <span className="trade-card__balance-number">{fmtFish(balance)}</span>
-          <span className="trade-card__balance-unit">小鱼干</span>
-        </div>
-
-        <div className="trade-field">
-          <span className="trade-field__label">标的</span>
-          {/* 用「切页档」按钮而不是 .segmented 胶囊滑块 —— 见 docs/frontend-styles.md §6.8：
-              滑块只给「2 选 1 的互斥**视图**切换」，而这里选项可能变多（加币），
-              且点下去决定了买什么。两条都踩在「不要用」的判据上。 */}
-          <div className="trade-symbol" role="group" aria-label="选择标的">
-            {quotes.map((q) => (
-              <button
-                key={q.symbol}
-                type="button"
-                className={`trade-symbol__btn${q.symbol === symbol ? ' is-active' : ''}`}
-                onClick={() => setSymbol(q.symbol)}
-                disabled={busy}
-                aria-pressed={q.symbol === symbol}
-              >
-                {q.display}
-              </button>
-            ))}
           </div>
         </div>
-
-        <div className="trade-field">
-          <label className="trade-field__label" htmlFor="trade-amount">
-            投入
-          </label>
-          <div className="trade-amount">
-            <input
-              id="trade-amount"
-              className="trade-amount__input"
-              type="text"
-              inputMode="decimal"
-              placeholder="0.0"
-              autoComplete="off"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              disabled={busy}
-            />
-            <span className="trade-amount__unit">小鱼干</span>
-          </div>
-          {current?.price != null && (
-            <p className="trade-field__hint">
-              当前 {current.display} ≈ {fmtPrice(current.price)} USDT
-            </p>
-          )}
-          {amountError && <p className="trade-field__hint trade-field__hint--error">{amountError}</p>}
-        </div>
-
-        <div className="trade-summary">
-          <span>
-            单笔最少 <strong>{minStake}</strong> 条鱼干
-          </span>
-          <span>
-            手续费 <strong>{formatFeeRate(feeRate)}</strong>
-            <span className="trade-summary__note">（卖出时收）</span>
-          </span>
-        </div>
-
-        <button
-          type="button"
-          className="trade-submit"
-          disabled={!canBuy || busy || quoteDown}
-          onClick={openBuy}
-        >
-          买入
-        </button>
-      </div>
-
-      <div className="trade-card">
-        <h2 className="trade-card__title">我的持仓</h2>
-        {positions.length === 0 ? (
-          <p className="trade-empty">还没有持仓。买入后会出现在这里，价格涨跌随时可卖。</p>
-        ) : (
-          <ul className="trade-positions">
-            {positions.map((p) => {
-              const est = estimate(p);
-              return (
-                <li className="trade-position" key={p.id}>
-                  <div className="trade-position__main">
-                    <span className="trade-position__name">{p.display}</span>
-                    <span className="trade-position__stake">{fmtFish(p.stake)} 鱼干</span>
-                    <span className="trade-position__entry">
-                      开仓 {fmtPrice(p.entryPrice)}
-                      <span className="trade-position__time"> · {fmtOpenedAt(p.openedAt)}</span>
-                    </span>
-                    {/* 「较开仓」而不是光写一个百分数：行情卡上那个百分数是**24 小时**涨跌，
-                        两个数会在同一屏里各说各话。取不到价就整行不渲染（不是显示 0.00%）。 */}
-                    {est && (
-                      <span className="trade-position__now">
-                        现价 {fmtPrice(est.px)}
-                        <span
-                          className={`trade-position__change trade-position__change--${
-                            est.changePercent >= 0 ? 'up' : 'down'
-                          }`}
-                        >
-                          较开仓 {fmtPct(est.changePercent)}
-                        </span>
-                      </span>
-                    )}
-                  </div>
-                  <div className="trade-position__pnl">
-                    {est ? (
-                      <>
-                        <span
-                          className={`trade-position__profit trade-position__profit--${
-                            est.profit >= 0 ? 'up' : 'down'
-                          }`}
-                        >
-                          {est.profit > 0 ? '+' : ''}
-                          {fmtFish(est.profit)}
-                        </span>
-                        <span className="trade-position__payout">
-                          可卖 {fmtFish(est.payout)} 鱼干
-                        </span>
-                      </>
-                    ) : (
-                      <span className="trade-position__payout">—</span>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    className="trade-position__sell"
-                    onClick={() => setSellTarget(p)}
-                    disabled={busy}
-                  >
-                    卖出
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
       </div>
 
       {buyOpen && current && (

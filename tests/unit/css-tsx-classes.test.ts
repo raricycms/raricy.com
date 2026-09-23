@@ -216,7 +216,7 @@ const CONSUMED: [string, string][] = [
   ['.pay-quick__btn', 'tests/e2e/poster.spec.ts 用它点快捷金额'],
   ['.pay-amount__error', 'tests/e2e/poster.spec.ts 断言余额不足文案'],
   ['.vote-embed', 'MarkdownRenderer 扫到就把这个占位换成 <VoteEmbed>，不参与样式'],
-  ['.trade-card--quote', '练手盘的行情卡钩子：tests/e2e/fish-trade.spec.ts 用它定位/断言「行情卡在不在」，外观全由 .trade-card 给'],
+  ['.trade-card--quote', '练手盘的自选列表卡钩子：tests/e2e/fish-trade.spec.ts 用它定位/断言「行情卡在不在」，外观全由 .trade-card 与 .trade-watch 给'],
 ];
 
 // 名单里写作 `.foo`（读起来像选择器），比对时一律去点 —— used/defined 存的是裸类名。

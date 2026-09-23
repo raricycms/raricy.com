@@ -103,7 +103,9 @@ test('买入全链路：定价 → 下单 → 扣款 + 建仓 + 记 market_buy �
 
   await page.goto('/fish/trade');
   await expect(page.locator('.trade-card--quote')).toBeVisible();
-  await expect(page.locator('.trade-quote__name').first()).toHaveText('BTC');
+  // 自选列表的第一行必须是 BTC —— 钉的是 MARKET_SYMBOLS 的顺序与短名映射
+  //（displaySymbol），不是某个 DOM 位置
+  await expect(page.locator('.trade-watch__name').first()).toHaveText('BTC');
   // 买入面板上那一行费率（与卖出弹窗里的是同一个 formatFeeRate，见 market-math）。
   // 钉住文本而不只是数字：0.02% 被渲染成「0.0%」时**页面上一切照常**，只有这里会红。
   await expect(page.locator('.trade-summary')).toContainText('手续费 0.02%');
