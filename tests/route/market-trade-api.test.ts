@@ -116,6 +116,10 @@ beforeEach(async () => {
   __resetRateLimitStore();
   session.token = undefined;
   failAfterPostEntry.on = false;
+  // 强平闸门复位。它在 globalThis 上（跨用例活着），而下面有一条用例会把它摆成
+  // false —— 不在这里复位的话，那条用例一旦失败，**同一个文件后面所有开杠杆仓的
+  // 用例都会跟着 503**，失败点还与被测的东西无关。
+  __setLiquidationRunning(true);
   vi.clearAllMocks();
   priceIs(80000); // 基准价：80000
   // K 线桩：一根 1 小时的六元组 [openTime, o, h, l, c, v]
@@ -539,8 +543,8 @@ describe('杠杆：接口形状', () => {
     // 1 倍不受影响 —— 它永远碰不到爆仓价，不需要引擎
     const plain = await buy(makeReq('/api/fish/trade/buy', { symbol: 'BTCUSDT', amount: 100 }));
     expect(plain.status).toBe(200);
-
-    __setLiquidationRunning(true);
+    // 闸门由 beforeEach 复位，不在这里手动摆回 —— 摆在这里的话，这个用例自己一旦
+    // 失败就漏掉了复位，而失败点会跑到后面某个无关的用例上。
   });
 
   it('★ 爆仓之后卖出 → 200 但是 **liquidated: true**，文案不是「已卖出」', async () => {
