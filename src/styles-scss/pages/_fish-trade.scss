@@ -854,10 +854,31 @@
   display: flex;
   flex-direction: column;
   gap: $space-2;
+  /* ★ 折行判据的量具挂在这儿（见下面 .trade-position 那一节）★ */
+  container-type: inline-size;
 }
 
-/* 一行一笔。窄屏折成两行：上面是身份与价格，下面盈亏 + 卖出按钮。
-   用 grid 而不是 flex-wrap —— 折行位置要可控（名称与盈亏不能被拆开）。 */
+/* 一行一笔。**卡窄了折成两行**：上面身份与价格，下面盈亏 + 卖出按钮。
+   用 grid 而不是 flex-wrap —— 折行位置要可控（名称与盈亏不能被拆开）。
+
+   ── ★ 为什么是 @container 而不是 @media ★ ────────────────────────────────
+   这把尺以前量错了轴。持仓卡所在那一栏的宽度**不是视口的单调函数**：
+
+     ≥1200 → 右栏 300px ｜ 992~1199 → 264px ｜ 768~991 → 280px ｜ ≤767 → 单列，整幅容器宽
+
+   三栏档把这张卡挤到 264~300px，单列档反而给它 ~730px；而单列档内部从 767 缩到 375，
+   卡又缩回 ~343px。想用 @media 表达「卡窄了就折行」，得拼出一串**不相连的区间**，
+   还得跟着 .trade-layout 的列宽改动一起维护 —— 2026-09 加上三栏时正是因为没人同步它，
+   桌面端出现了「一个词一行」：首列被压到 **47px**（实测 1280px 视口下
+   grid-template-columns 是 47px / 90px / 59px），而窗口越宽越糟。
+   容器查询量的就是「这张卡现在有多宽」——不用维护，也不会随列宽改动失效。
+   ⚠️ 阈值 380px 是**量出来的**，不是拍的：行内三样加两条间隙需要 ~331px
+   （main 150 + pnl 90 + 卖出 59 + 2×16），再留出这一行自己的左右内距 32px。
+   改列宽或改行内内容（比如再加一栏）时，回来重量一次。
+   ⚠️ 老浏览器不支持容器查询时会整块丢掉这条规则，于是落回上面那个单行版式 ——
+   即**与今天完全一样**（不会更糟）。这也是它不需要 @supports 降级的原因。
+   ⚠️ **折行版式那个 @container 块住在本节最末尾**（`.trade-position__sell` 之后）——
+   同特异性下靠源码顺序取胜，写在中间会被后面的基础规则盖掉。 */
 .trade-position {
   display: grid;
   grid-template-columns: 1fr auto auto;
@@ -866,11 +887,6 @@
   padding: $space-3 $space-4;
   background: var(--color-background-subtle);
   border-radius: $radius-large;
-
-  @media (max-width: 560px) {
-    grid-template-columns: 1fr auto;
-    gap: $space-2 $space-3;
-  }
 }
 
 .trade-position__main {
@@ -967,8 +983,41 @@
   font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
+  /* 折行时的落位（第二行右）住在**下面那个 @container 块**里 —— 别在这里再写一个
+     @media：折行判据只有一处，两处必然有一天不同源。 */
+}
 
-  @media (max-width: 560px) {
+/* ★ 折行版式：@container（判据与理由见上面 .trade-position 那一节的注释）★
+   ⚠️ **这个块必须待在本节所有 .trade-position__* 基础规则之后** —— 它与它们是**同特异性**
+   （都是 0-1-0），同特异性下**源码顺序靠后的赢**。第一版把它写在 .trade-position 正下方
+   （即基础规则之前），于是 `align-items: flex-start` 被后面的基础规则
+   `align-items: flex-end` 盖掉：折行后盈亏照样贴右，与上面的身份块错开一截 ——
+   而这条**不报任何错**，只有截图才看得出来（同 docs/frontend-styles.md §6.1 末尾那条
+   「先看一眼有没有更具体的选择器会盖掉它」，这里是同一个坑的源码顺序版本）。 */
+@container (max-width: 380px) {
+  .trade-position {
+    grid-template-columns: 1fr auto;
+    gap: $space-2 $space-3;
+  }
+
+  /* 身份与价格**独占第一行**（`1 / -1` 跨满两列）。这是这次修复的另一半：光折行、
+     让 main 与盈亏挤在第一行的话 main 只剩 ~114px，「开仓 / 爆仓 / 时间」那一行会
+     碎成三行，看着仍然是坏的。 */
+  .trade-position__main {
+    grid-column: 1 / -1;
+  }
+
+  /* 第二行：盈亏在左、卖出在右。`grid-row` 两条都是必须的 —— 不写的话 pnl 会跟着
+     main 的自动放置落到第二行第一列（碰巧对），而按钮会掉到**第三行**去。 */
+  .trade-position__pnl {
+    grid-column: 1;
+    grid-row: 2;
+    /* pnl 默认右对齐（单行版式里它靠着卖出按钮）。折到左边来之后要改左对齐，
+       否则它会在自己那格里贴右，与上面的身份块错开一截。 */
+    align-items: flex-start;
+  }
+
+  .trade-position__sell {
     grid-column: 2;
     grid-row: 2;
   }
