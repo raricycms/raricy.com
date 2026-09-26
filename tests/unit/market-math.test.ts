@@ -13,7 +13,7 @@
 // 1.9996。再动这两个数时这几处必红（同 e2e 文件头那条提醒）。
 
 import { describe, it, expect } from 'vitest';
-import { settleClose, formatFeeRate } from '@/lib/market-math';
+import { settleClose, liquidationPrice, formatFeeRate } from '@/lib/market-math';
 import { FISH_UNIT_SCALE } from '@/lib/fish-units';
 
 /** 投 1 条 = 10000 个存储单位 —— 结果可以直接读成鱼干。 */
@@ -26,8 +26,8 @@ const ONE = FISH_UNIT_SCALE;
 const FEE = 0.0002;
 const ENTRY = 80000;
 
-const settle = (exitPrice: number, stakeUnits = ONE, entryPrice = ENTRY) =>
-  settleClose({ stakeUnits, entryPrice, exitPrice, feeRate: FEE });
+const settle = (exitPrice: number, stakeUnits = ONE, entryPrice = ENTRY, leverage = 1) =>
+  settleClose({ stakeUnits, entryPrice, exitPrice, feeRate: FEE, leverage });
 
 describe('settleClose（平仓结算）', () => {
   it('平价卖出：实发只少一个手续费；涨跌幅 0%，盈亏率 −0.02%', () => {
@@ -87,6 +87,103 @@ describe('settleClose（平仓结算）', () => {
     // 仓位行不可能有 0 投入（market-service 的 MIN_STAKE_FISH）。钉在这里是为了让
     // 「我给它传个 0 会怎样」有个明确答案：NaN / Infinity，而不是某个看起来合理的数。
     expect(Number.isNaN(settle(ENTRY, 0).profitPercent)).toBe(true);
+  });
+});
+
+describe('settleClose（杠杆）', () => {
+  it('杠杆=1 时逐位退回**加杠杆之前**的算式', () => {
+    // 上面那组用例断的是几个具体的数；这一条断的是**性质**：广义公式在 1 倍下必须
+    // 与旧算式逐位相同（floor(stake × 价/开仓价 × (1-费率))）。
+    // 为什么值钱：存量仓位、上面那几条钉死的数、e2e 里「涨一倍 = 1.9996 条」，
+    // 全都建立在旧算式上。哪天有人「化简」掉这个恒等，这组用例会当场红 ——
+    // 而不是等到用户发现到手的鱼干少了一个存储单位。
+    for (const px of [40000, 80000, 8015.2, 160000, 200000, 1]) {
+      const legacy = Math.floor(((ONE * px) / ENTRY) * (1 - FEE));
+      expect(settle(px).payoutUnits, `价=${px}`).toBe(legacy);
+    }
+  });
+
+  it('10 倍仓涨 1%：盈亏约 +9.79%（10 倍收益 − 10 倍手续费）', () => {
+    const s = settle(ENTRY * 1.01, ONE, ENTRY, 10);
+    // 名义本金 100000，权益 = 10000 + 100000×0.01 = 11000
+    // 手续费按**平仓时的名义本金**收：100000 × 1.01 × 0.0002 = 20.2
+    // 实发 = floor(11000 − 20.2) = 10979 个单位 = 1.0979 条
+    expect(s.payoutUnits).toBe(10979);
+    expect(s.grossUnits).toBe(11000);
+    // 涨跌幅仍是**行情**的 1% —— 别让它跟着杠杆变成 10%（弹窗里是两个数）
+    expect(s.changePercent).toBeCloseTo(1, 6);
+    expect(s.profitPercent).toBeCloseTo(9.79, 6);
+    // 屏幕上「毛额 − 手续费 = 到手」要成立（这是弹窗的排版前提）
+    expect(s.grossUnits - s.feeUnits).toBeCloseTo(s.payoutUnits, 6);
+  });
+
+  it('★ 以爆仓价结算，实发恒为 0 ★（强平引擎引用这条，别让它漂）', () => {
+    // src/lib/market-liquidator.ts 的 liquidateOne 把 exitPrice 传成那行上存着的
+    // 爆仓价，并据此**不写鱼干流水**（没有钱动过）。那条判断的全部依据就是这一条：
+    // 爆仓价处权益恰好归零。
+    // ⚠️ 谁把 liquidationPrice() 改成含维持保证金（爆仓时还剩一点权益），
+    //    这里就会红 —— 那一刻必须回头改强平引擎：它得给用户记一条流水。
+    for (const lv of [2, 3, 5, 10]) {
+      const liq = liquidationPrice(ENTRY, lv);
+      const s = settle(liq, ONE, ENTRY, lv);
+      expect(s.payoutUnits, `${lv}× 爆仓价 ${liq}`).toBe(0);
+      // ⚠️ 不断言 grossUnits === 0：浮点下权益会留 ~1.8e-12 的尘埃（实测 3×/5×/10×
+      // 都有，2× 恰好干净）。它过不了 floor，所以 payout 严格是 0 —— 而强平引擎问的
+      // 正是 payout（见那里的注释）。钉 gross 会得到一个随档位时红时绿的用例。
+      expect(s.grossUnits, `${lv}× 权益应当已经归零（至多一个存储单位的尘埃）`)
+        .toBeLessThan(1);
+    }
+  });
+
+  it('跌穿爆仓价之后，手动平仓与强平给出**同一个数**（都是 0）', () => {
+    // 这是刻意的（见 market-math.ts 头部）：两条路走同一个 max(0,…)。
+    // 若手动平能亏穿（负数），账本当场撕裂（余额不许为负）；
+    // 若强平能多留一点给用户，理性策略就变成「别平，等它爆我」。
+    const liq = liquidationPrice(ENTRY, 10);
+    const atLiq = settle(liq, ONE, ENTRY, 10);
+    for (const px of [liq * 0.99, liq * 0.5, 1]) {
+      expect(settle(px, ONE, ENTRY, 10).payoutUnits, `价=${px}`).toBe(atLiq.payoutUnits);
+      expect(settle(px, ONE, ENTRY, 10).payoutUnits).toBe(0);
+    }
+  });
+
+  it('实发永远 ≥ 0 且不随价格下降而上升（截断只朝下、只在一处）', () => {
+    let prev = -1;
+    for (let px = 1; px <= 200000; px += 613) {
+      const s = settle(px, ONE, ENTRY, 10);
+      expect(s.payoutUnits).toBeGreaterThanOrEqual(0);
+      expect(Number.isInteger(s.payoutUnits)).toBe(true);
+      expect(s.payoutUnits).toBeGreaterThanOrEqual(prev);
+      prev = s.payoutUnits;
+    }
+  });
+
+  it('1 倍永远碰不到爆仓价（它是 0，而价格到不了 0 以下）', () => {
+    expect(liquidationPrice(ENTRY, 1)).toBe(0);
+    // 脏输入也别返回 NaN —— 引擎的判据是 `现价 <= 爆仓价`，NaN 会让它恒 false
+    //（= 永不强平），那比返回 0 危险得多。
+    expect(liquidationPrice(ENTRY, 0)).toBe(0);
+    expect(liquidationPrice(ENTRY, Number.NaN)).toBe(0);
+  });
+
+  it('爆仓价就是权益归零的那一条线（定义式，不是巧合）', () => {
+    for (const lv of [2, 3, 5, 10]) {
+      const liq = liquidationPrice(ENTRY, lv);
+      // 线**之上**还有权益（拿 0.1% 而不是 0.001% 去探：后者的权益只剩个位数单位，
+      // 会被浮点误差盖掉 —— 那是一种「用例自己不稳」而不是「定义错了」的红）。
+      expect(settle(liq * 1.001, ONE, ENTRY, lv).grossUnits, `${lv}× 线之上`).toBeGreaterThan(0);
+      // 线上至多剩一个存储单位的尘埃（小于最小可表示金额 = 事实上归零）
+      expect(settle(liq, ONE, ENTRY, lv).grossUnits, `${lv}× 线上`).toBeLessThan(1);
+    }
+  });
+
+  it('费率按**名义本金**收 —— 10 倍的手续费是 1 倍的 10 倍', () => {
+    // 平价进出：权益 = 投入，手续费 = 名义本金 × 费率。这条就是「杠杆越高摩擦越大」。
+    const one = settle(ENTRY, ONE, ENTRY, 1);
+    const ten = settle(ENTRY, ONE, ENTRY, 10);
+    expect(one.feeUnits).toBeCloseTo(ONE * FEE, 6); // 10000 × 0.0002 = 2
+    expect(ten.feeUnits).toBeCloseTo(ONE * 10 * FEE, 6); // 20
+    expect(ten.payoutUnits).toBe(ONE - 20);
   });
 });
 

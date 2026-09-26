@@ -53,6 +53,15 @@ process.env.MARKET_POLL_MS = '0';
 // `NODE_ENV === 'test'` 的保险，这里是第二道 —— 两道都留着。
 process.env.MARKET_STREAM_SILENCE_MS = '0';
 
+// 练手盘的**强平引擎**（每 15 秒扫一遍杠杆仓）同理。src/lib/market-liquidator.ts 里
+// 还有一道 `NODE_ENV === 'test'` 的保险，这里是第二道 —— 两道都留着。
+//
+// ⚠️ 这个变量**不是**「杠杆闸门」：openPosition 问的是 isLiquidationRunning()，
+// 而那个函数在测试进程里的默认口径是**放行**（循环本来就不加载，用例要能直接调
+// sweepLiquidations 与开杠杆仓）。所以这里置 0 只关掉那个循环，不会让杠杆仓开不了
+// —— 想验「引擎没跑 → 拒单」，用 `__setLiquidationRunning(false)` 显式摆布。
+process.env.MARKET_LIQUIDATE_MS = '0';
+
 // 行情的**展示缓存**（不是成交价）挂在 globalThis 上，见 src/lib/market-price.ts 的
 // 文件头 —— 这么挂是为了让 instrumentation 图与请求图共用同一份。代价是它**跨测试
 // 文件也不再天然隔离**：前一个文件留下的热身缓存会让后一个文件里「只打了一次行情源」

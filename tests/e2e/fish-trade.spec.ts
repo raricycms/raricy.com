@@ -434,3 +434,111 @@ test('★ 展示价并进最后一根，但**成交价仍然是服务端现取�
     '成交价来自 fetchQuote，与图上并出来的那个数没有关系'
   ).toContainText('80,000.00');
 });
+
+// ── 杠杆 ─────────────────────────────────────────────────────────────────────
+//
+// 【e2e 里能验到哪一层】杠杆的三件事分层：
+//   · **算术**（10 倍涨 1% 到手多少、爆仓价怎么算）在 tests/unit/market-math.test.ts
+//   · **强平引擎**（谁在什么时候被结清、不写流水）在 tests/service/market-liquidator.test.ts
+//     —— **e2e 里验不到**：`MARKET_LIQUIDATE_MS` 在 playwright 里刻意设成 1 小时
+//     （见那里的注释：设 0 会把杠杆开仓一起关掉），等一条 15 秒的定时器是不可靠的测法
+//   · 这里验的是**用户真能用、且屏幕上那几个数出自同一份事实**：档位选得动、确认弹窗
+//     把倍数与爆仓价摊开、持仓行自己带倍数、跌穿之后的文案与实得一致
+//
+// 【展示价在 e2e 里是**冻住的**】e2e 关掉了行情轮询（MARKET_POLL_MS=0），而
+// getCachedQuotes() 只在缓存为空时去拉一次 —— 所以整个 e2e 跑下来页面上那个价就是
+// 第一次拉到的那个（各用例都在 goto 之前 setPrice(80000)，于是它是 80000）。
+// 下面第二条用例**正是靠这一点**造出「展示价比爆仓价还低」那个状态 —— 那不是取巧，
+// 那正是这个功能在真实世界里的样子：盘上的价与成交价本来就差着十几秒。
+
+test('★ 杠杆买入：档位选得动，弹窗与持仓行都摊开倍数与爆仓价', async ({ page, request }) => {
+  await registerFreshUser(page, { core: true });
+  const start = await fundByCheckin(page);
+  await setPrice(request, 'BTCUSDT', 80000);
+
+  await page.goto('/fish/trade');
+
+  // 档位是**切页档**（docs/frontend-styles.md §6.9）：点得动、且当前项挂在 aria-pressed 上
+  const tenX = page.getByRole('button', { name: '10×', exact: true });
+  await expect(tenX).toBeEnabled();
+  await tenX.click();
+  await expect(tenX).toHaveAttribute('aria-pressed', 'true');
+
+  // 输入框下面那行提示：名义本金 = 投入 × 10，参考爆仓价 = 展示价 × (1 − 1/10)
+  await page.locator('#trade-amount').fill('1');
+  // 按「这一格里有没有那排档位」定位 —— 页面上有两个 .trade-field（投入 / 杠杆），
+  // 直接写 .trade-field 会撞上 strict mode（不是产品坏了，是选择器太宽）
+  const levField = page.locator('.trade-field', { has: page.locator('.trade-leverage') });
+  await expect(levField).toContainText('名义本金');
+  await expect(levField).toContainText('72,000.00');
+
+  await page.locator('.trade-submit').click();
+  const confirm = page.locator('.trade-confirm');
+  await expect(confirm, '买入必须先过二次确认弹窗').toBeVisible();
+  await expect(confirm, '确认屏必须把倍数摊开').toContainText('10×');
+  await expect(confirm, '确认屏必须把爆仓价摊开').toContainText('72,000.00');
+  await expect(confirm, '风险说明要说清「亏光这一笔」这件反直觉的事').toContainText('保证金归零');
+  await confirm.locator('.trade-confirm__ok').click();
+  await expect(confirm).toHaveCount(0);
+
+  // 持仓行：倍数角标 + 爆仓价（1 倍仓这两样都不渲染，见 TradePanel 的注释）
+  const pos = page.locator('.trade-position').first();
+  await expect(pos).toBeVisible();
+  await expect(pos.locator('.trade-position__lev')).toHaveText('10×');
+  await expect(pos).toContainText('爆仓 72,000.00');
+
+  // 账目：投入仍是 1 条（名义本金是算出来的，不扣余额），描述里带倍数
+  await expect.poll(() => uiBalance(page)).toBe(start - 1);
+  const all = await myLedger(page, 'market_all');
+  expect(all).toHaveLength(1);
+  expect(all[0].amount, '扣的是投入，不是名义本金').toBe(-1);
+  expect(all[0].description).toContain('10倍杠杆');
+});
+
+test('★ 跌穿爆仓价：行上如实标出、卖出实得 0、且**不写第二条流水**', async ({
+  page,
+  request,
+}) => {
+  await registerFreshUser(page, { core: true });
+  const start = await fundByCheckin(page);
+  // ① 先把展示价冻在 80000（e2e 里它此后不再变，见上面那段说明）
+  await setPrice(request, 'BTCUSDT', 80000);
+  await page.goto('/fish/trade');
+
+  // ② 再按 160000 成交 —— 于是这一笔的开仓价是 160000、爆仓价是 144000，
+  //    而屏幕上那个（冻住的）展示价是 80000：**一开出来就已经跌穿了**。
+  await setPrice(request, 'BTCUSDT', 160000);
+  await page.getByRole('button', { name: '10×', exact: true }).click();
+  await page.locator('#trade-amount').fill('1');
+  await page.locator('.trade-submit').click();
+  const confirm = page.locator('.trade-confirm');
+  await confirm.locator('.trade-confirm__ok').click();
+  await expect(confirm).toHaveCount(0);
+
+  // 持仓行如实标出「已跌破爆仓价」—— 不说这句，那一行的「可卖 0」看起来像个 bug
+  const pos = page.locator('.trade-position').first();
+  await expect(pos.locator('.trade-position__liq')).toHaveText('已跌破爆仓价');
+  await expect(pos).toContainText('爆仓 144,000.00');
+
+  // ③ 把成交价也放回 80000（与展示价一致），这一笔的结算于是确定地归零
+  await setPrice(request, 'BTCUSDT', 80000);
+  await pos.locator('.trade-position__sell').click();
+  const sellConfirm = page.locator('.trade-confirm');
+  await expect(sellConfirm, '跌穿之后那一屏必须换一套话，别让用户以为是自己操作弄丢的').toContainText(
+    '已跌破爆仓价'
+  );
+  // 「预计到手」那一行必须是 0（fmtFish 固定 4 位小数）—— 用 --total 那一行而不是整屏
+  // 去断言，否则「0.0000」在手续费那一栏里也能匹配上，这条就什么都没验
+  await expect(sellConfirm.locator('.trade-confirm__row--total')).toContainText('0.0000');
+  await sellConfirm.locator('.trade-confirm__ok').click();
+  await expect(sellConfirm).toHaveCount(0);
+
+  // 实得 0：余额停在「投入全亏」，持仓清空
+  await expect.poll(() => uiBalance(page)).toBe(start - 1);
+  await expect(page.locator('.trade-position')).toHaveCount(0);
+
+  // ★ 关键：只有开仓那一条流水。实发 0 = 没有钱动过，所以不写 market_sell ★
+  const all = await myLedger(page, 'market_all');
+  expect(all).toHaveLength(1);
+  expect(all.find((t) => t.type === 'market_sell')).toBeUndefined();
+});

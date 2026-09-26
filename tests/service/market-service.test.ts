@@ -12,6 +12,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { resetDb, makeUser, prisma } from '../helpers/db';
+import { expectLedgerConsistent, makeFishUser } from '../helpers/fish-ledger';
 import { nowForDb } from '@/lib/db-time';
 import { __resetRateLimitStore, RULES } from '@/lib/rate-limit';
 import { unitsToFish } from '@/lib/fish-units';
@@ -24,6 +25,7 @@ vi.mock('@/lib/market-price', async (importOriginal) => {
 });
 
 import { fetchQuote, MarketPriceError } from '@/lib/market-price';
+import { sweepLiquidations } from '@/lib/market-liquidator';
 import {
   openPosition,
   closePosition,
@@ -405,6 +407,165 @@ describe('平仓', () => {
 
   it('手续费率是 0.02%（改它要同步页面文案与钉住这个数的用例）', () => {
     expect(MARKET_FEE_RATE).toBe(0.0002);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 10 倍仓在 80000 开的爆仓价：80000 × (1 − 1/10)。 */
+const LIQ_10X = 72000;
+
+/** 开一仓杠杆仓（余额经由记账内核进入，于是能跑记账不变式）。 */
+async function openedLeveraged(leverage = 10, fish = 100) {
+  const user = await makeFishUser(fish);
+  priceIs(80000);
+  const r = await openPosition({
+    userId: user.id,
+    symbolRaw: 'BTCUSDT',
+    amount: 100,
+    leverageRaw: leverage,
+  });
+  if (!r.ok) throw new Error(`开仓失败: ${r.message}`);
+  return { userId: user.id, positionId: r.position.id, result: r };
+}
+
+describe('杠杆（开仓）', () => {
+  it('倍数与爆仓价**在开仓那一刻写死**进那一行，并回给调用方', async () => {
+    const { positionId, result } = await openedLeveraged(10);
+
+    expect(result.position.leverage).toBe(10);
+    expect(result.position.liquidationPrice).toBe(LIQ_10X);
+
+    const pos = await prisma.marketPosition.findUnique({ where: { id: positionId } });
+    expect(pos?.leverage).toBe(10);
+    expect(pos?.liquidationPrice).toBe(LIQ_10X);
+    // 投入仍是 100 条（名义本金是算出来的，不落库 —— 落库就会有两个真相）
+    expect(pos?.stakeUnits).toBe(1_000_000);
+  });
+
+  it('流水描述里带上倍数（那是用户核对「为什么亏光了」的唯一上下文）', async () => {
+    const { userId } = await openedLeveraged(10);
+    const txns = await txnsOf(userId);
+    const buy = txns.find((t) => t.type === MARKET_BUY_TYPE);
+    expect(buy?.description).toContain('10倍杠杆');
+  });
+
+  it('**不传杠杆 = 1 倍**（存量客户端与 bot 一个字都不用改）', async () => {
+    const user = await makeFishUser(100);
+    priceIs(80000);
+    const r = await openPosition({ userId: user.id, symbolRaw: 'BTCUSDT', amount: 100 });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.position.leverage).toBe(1);
+    // 1 倍仓永远碰不到爆仓价（价格到不了 0 以下）—— 0 是它的字面值，不是占位
+    expect(r.position.liquidationPrice).toBe(0);
+  });
+
+  it('不在白名单里的倍数 → 400，且**零痕迹**（不扣款、不建仓）', async () => {
+    const user = await makeFishUser(100);
+    priceIs(80000);
+    // 4 / 11 是「合法整数但没这一档」，0 / -1 与 'abc' 是脏输入 —— 两类都必须是 400
+    for (const bad of [4, 11, 0, -1, 'abc', Number.NaN]) {
+      const r = await openPosition({
+        userId: user.id, symbolRaw: 'BTCUSDT', amount: 10, leverageRaw: bad,
+      });
+      expect(r.ok, `leverageRaw=${String(bad)}`).toBe(false);
+      if (!r.ok) {
+        expect(r.code).toBe(400);
+        // 报错要把可选档位念出来，别让用户猜白名单
+        expect(r.message).toContain('1 / 2 / 3 / 5 / 10');
+      }
+    }
+    expect(await prisma.marketPosition.count()).toBe(0);
+    expect(await txnsOf(user.id)).toHaveLength(1); // 只有夹具那条 admin_grant
+    expect(await balanceOf(user.id)).toBe(100);
+    await expectLedgerConsistent('非法杠杆被拒之后');
+  });
+
+  it('同一个幂等键带**不同**杠杆重试 → 重放既有那一笔，不改成新倍数', async () => {
+    const user = await makeUser({ driedFish: 100 });
+    priceIs(80000);
+    const key = 'lev-retry-1';
+    const first = await openPosition({
+      userId: user.id, symbolRaw: 'BTCUSDT', amount: 100, leverageRaw: 10, clientKey: key,
+    });
+    const second = await openPosition({
+      userId: user.id, symbolRaw: 'BTCUSDT', amount: 100, leverageRaw: 2, clientKey: key,
+    });
+    expect(first.ok && second.ok).toBe(true);
+    if (!first.ok || !second.ok) return;
+
+    expect(second.replayed).toBe(true);
+    // 如实回报**当初那一笔**的倍数 —— 这是「杠杆不进幂等键」这条决定的前提
+    expect(second.position.leverage).toBe(10);
+    expect(second.position.liquidationPrice).toBe(LIQ_10X);
+    expect(await prisma.marketPosition.count({ where: { userId: user.id } })).toBe(1);
+    expect(await balanceOf(user.id)).toBe(0); // 只扣了一次
+  });
+});
+
+describe('杠杆（平仓）', () => {
+  it('★ 按**这一行**的倍数结算，不是按 1 倍', async () => {
+    const { userId, positionId } = await openedLeveraged(10);
+
+    // 涨 1%：10 倍仓到手约 +9.8%（10 倍收益 − 10 倍手续费）
+    priceIs(80800);
+    const r = await closePosition({ userId, positionId });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+
+    // 权益 = 1,000,000 + 10,000,000×0.01 = 1,100,000 单位
+    // 手续费 = 10,000,000 × 1.01 × 0.0002 = 2020 单位 → 实发 1,097,980 = 109.798 条
+    expect(r.payout).toBeCloseTo(109.798, 6);
+    expect(r.profit).toBeCloseTo(9.798, 6);
+    expect(await balanceOf(userId)).toBeCloseTo(109.798, 6);
+    await expectLedgerConsistent('杠杆平仓之后');
+  });
+
+  it('★ 跌穿爆仓价后手动平仓：实发 0（与强平**同一个数**，不是负数）', async () => {
+    const { userId, positionId } = await openedLeveraged(10);
+
+    priceIs(LIQ_10X - 1);
+    const r = await closePosition({ userId, positionId });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+
+    expect(r.payout).toBe(0);
+    expect(r.profit).toBeCloseTo(-100, 6); // 亏光投入
+    expect(await balanceOf(userId)).toBe(0);
+    // 手动平仓写的是 closed（是本人按的），不是 liquidated（那是引擎写的）
+    const pos = await prisma.marketPosition.findUnique({ where: { id: positionId } });
+    expect(pos?.status).toBe('closed');
+    expect(pos?.payoutUnits).toBe(0);
+    expect(pos?.closeTxId, '实发 0 = 没有钱动过 → 不写流水（同既有的那一档）').toBeNull();
+    expect(await txnsOf(userId)).toHaveLength(2); // 夹具 + 开仓，没有第三条
+    await expectLedgerConsistent('跌穿后手动平仓');
+  });
+
+  it('★ 对**已爆仓**的仓位调平仓 → 重放，并如实说是爆仓而不是「已卖出」', async () => {
+    const { userId, positionId } = await openedLeveraged(10);
+    priceIs(LIQ_10X - 1);
+    expect(await sweepLiquidations()).toBe(1);
+
+    const r = await closePosition({ userId, positionId });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.replayed).toBe(true);
+    expect(r.liquidated).toBe(true);
+    expect(r.payout).toBe(0);
+    expect(r.exitPrice).toBe(LIQ_10X);
+    expect(await balanceOf(userId)).toBe(0);
+  });
+
+  it('1 倍仓**不该**带 liquidated 标记（那个字段只属于真爆仓）', async () => {
+    const { userId, positionId } = await opened(100, 80000);
+    priceIs(88000);
+    await closePosition({ userId, positionId });
+    const again = await closePosition({ userId, positionId });
+    expect(again.ok).toBe(true);
+    if (!again.ok) return;
+    expect(again.replayed).toBe(true);
+    expect(again.liquidated).toBeUndefined();
   });
 });
 

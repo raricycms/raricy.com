@@ -205,6 +205,17 @@ export default defineConfig({
       // fish-trade.spec.ts 那几条「展示价 == 80000」的断言跟着变脆。
       // 理由同上面两条：next start 是 production，模块内那道 NODE_ENV 保险盖不住。
       MARKET_STREAM_SILENCE_MS: '0',
+      // 强平引擎：**刻意不置 0，而是置成 1 小时** —— 与上面那三条的理由不一样，
+      // 别顺手「统一」成 0。
+      //   · 置 0 = 关掉强平 = **杠杆开仓也一起关掉**（openPosition 的闸门问的是
+      //     isLiquidationRunning）。于是 leverage 那几条用例根本买不进杠杆仓，
+      //     整个功能在 e2e 里测不到。
+      //   · 置一个很大的数 = 循环**起来了**（闸门打开、杠杆能买），但这一跑里
+      //     一次也不会 tick（setInterval 不会立刻执行第一次）—— 「e2e 不打真实外网」
+      //     与「e2e 不靠后台时序」两条纪律都还在。
+      // 强平本身的用例在 tests/service 与 tests/unit（直接调 sweepLiquidations），
+      // 不靠 e2e 里那条 15 秒的循环 —— 等定时器是不可靠的测法。
+      MARKET_LIQUIDATE_MS: '3600000',
       // 行情源指向替身 —— 见上面那个 webServer 条目的说明。
       MARKET_PRICE_BASE_URL: `http://127.0.0.1:${MARKET_PORT}`,
       AVATARS_DIR: path.resolve(__dirname, 'tests/.tmp/e2e-avatars'),
