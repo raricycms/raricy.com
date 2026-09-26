@@ -1,0 +1,68 @@
+-- 23_market_leverage —— 练手盘加杠杆：倍数 + 爆仓价 + 第三个终态
+--
+-- 【背景】练手盘原来只有 1 倍多头（投 N 条、按价格比例结算）。这一版加上杠杆：
+--   投 N 条可以开 N×L 条的名义仓位，涨跌按 L 倍放大，亏损封顶在投入的那 N 条
+--  （见 src/lib/market-math.ts 的 settleClose —— 唯一公式）。
+--
+-- 【为什么「借钱」不需要任何一行账】本站的练手盘**没有对手盘**，那个「无限水池」
+--   是账外概念（见 docs/architecture.md §6.13）：赚了凭空加进用户余额、亏了少发给他，
+--   只表现为全站鱼干总量的增减。所以杠杆要「借」的那 9 倍**不需要从任何地方出**，
+--   也就没有可借的账户、没有利息、没有还款路径 —— 它们都不存在，也不需要存在。
+--
+-- ── leverage ────────────────────────────────────────────────────────────────
+--   存**倍数本身**而不是「名义本金」，因为结算是从投入额推的（stake × L），
+--   存倍数就少一次除法、也少一处能算出不同数的地方。
+--   白名单（1/2/3/5/10）住代码 src/lib/market-service.ts 的 LEVERAGE_OPTIONS ——
+--   照 MARKET_SYMBOLS / FRAME_KEYS 的先例：不建定义表、不做后台 CRUD。
+--   ⚠️ 加档位是**纯代码改动，不需要迁移**（这一列是整数，不是枚举也不是外键）。
+--
+-- ── liquidation_price ───────────────────────────────────────────────────────
+--   「保证金归零的价」，多头 = 开仓价 × (1 − 1/L)，唯一实现在 market-math.ts 的
+--   liquidationPrice()。1 倍时恒为 0 —— 价格到不了 0 以下，所以 1 倍的仓位
+--   **永不被强平**，这正是「0 = 不会爆仓」的字面意思（页面据此显示「—」）。
+--
+--   ★ 为什么**存**而不是每次重算 ★ 两条，与 payout_units / entry_price 同源：
+--     1. 有争议时以库里那一行为准。开仓那一刻认定的爆仓价，不该事后被一个改了公式的
+--        新版本重新解释 —— 那会让「当时到底为什么爆的」变成一道无解的题。
+--     2. 强平引擎要按它筛候选（`price <= liquidation_price`），而这个式子必须与
+--        用户屏幕上那一行**是同一个数**。两层各算一遍 = 有一天会不一致，而不一致的
+--        症状是「按用户看到的价不该爆、系统却爆了」。
+--   开销是一列冗余；漂移风险是零（entry_price 与 leverage 落库后都不再变）。
+--
+-- ── status 的第三个值 'liquidated' ──────────────────────────────────────────
+--   刻意**不**新建一张表、也不加第二组终态列：爆仓与平仓在账上是同一件事
+--  （仓位结清、钱不再动），差别只在**谁按的按钮**。共用一个 status 列，读取方只需
+--   要问「还是 open 吗」——`status !== 'open'` 即已结清，两种终态都走回读。
+--   ⚠️ 反过来，谁要是写出 `status === 'closed'` 来判「已结清」，爆仓的仓位就会被
+--      当成仍开着 —— 那正是本次改动最容易留下的静默错误。
+--
+-- ── 为什么不加 liq_tx_id ────────────────────────────────────────────────────
+--   强平**永远不写鱼干流水**：结算价就是保证金归零价，实发恒为 0，没有钱动过
+--  （同「实发为 0 的平仓也不写流水」那一档，理由见 market-service.closePosition）。
+--   留一个恒为 NULL 的列会诱使后来的人去「补上」那笔流水。
+--   这条不变式由 tests/unit/market-math.test.ts 的用例钉着（改 liquidationPrice()
+--   会让它当场变红），所以它不是一句口头承诺。
+--
+-- 【本迁移不含数据变换】两条 ADD COLUMN 都带常量默认值，SQLite 会用它填满存量行
+--   （存量仓位全是 1 倍无杠杆 → leverage=1、liquidation_price=0，语义正确）。
+--   **没有一条 UPDATE**，因此也不存在「只可执行一次」的顾虑 —— 幂等仍由
+--   _raricy_migrations 跟踪表保证：SQLite 的 ALTER TABLE ADD COLUMN 没有
+--   IF NOT EXISTS（重复执行会报 duplicate column），一次性的保证来自那张表
+--   （同 11_comment_attachments / 14_fish_transfer_id / 22_audio_hosting 头部所记）。
+--
+-- 【形态必须与 prisma db push 生成的一致】测试库由 schema.prisma 经 db push 生成。
+--   类型映射：Int → INTEGER、Float → REAL。默认值写在列上，两边必须一字不差。
+--   （本次没有新索引：强平引擎按 `status='open' AND leverage>1` 全扫一遍，
+--    表的大小就是「全站还开着的仓位」——core+ 的练手盘，不值得为它加一列索引。
+--    真要加，记得索引名要用 db push 的派生名，见 20_user_frames 头部那条警告。）
+--
+--   ★ 本次实测过一遍 ★ 拿两个探测库对比（干净库 `prisma db push` vs 本库副本套这条
+--   迁移）：17 列，**列集合、类型、NOT NULL、默认值、三个索引全部一致**。
+--   唯一差异是**列序** —— ALTER TABLE ADD COLUMN 把新列追加在末尾，而 db push 按
+--   schema.prisma 里的书写顺序插在 entry_quote_at 之后。这是任何 ADD COLUMN 迁移的
+--   固有性质，不是 drift：SQLite 里列序只影响 `SELECT *`（本仓一律显式列名，
+--   Prisma 也是），不影响查询、索引与约束。**别为了「对齐列序」去重建这张表** ——
+--   那是拿一次真实的表重建风险去换一个没人看得见的顺序。
+
+ALTER TABLE "market_positions" ADD COLUMN "leverage" INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE "market_positions" ADD COLUMN "liquidation_price" REAL NOT NULL DEFAULT 0;

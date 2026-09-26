@@ -669,11 +669,28 @@ model MarketPosition {
   entryPrice   Float     @map("entry_price")
   /** 成交价的取价时刻（nowForDb()）—— 审计用：证明成交那一刻系统看到的价。 */
   entryQuoteAt DateTime  @map("entry_quote_at")
+  /**
+   * 杠杆倍数。1 = 无杠杆。白名单见 src/lib/market-service.ts 的 LEVERAGE_OPTIONS。
+   * 存量行全是 1（这一列随迁移 23_market_leverage 加入）。
+   */
+  leverage     Int       @default(1)
+  /**
+   * 保证金归零的价 —— 归零即爆仓。**多头**公式：开仓价 × (1 − 1/杠杆)，
+   * 唯一实现在 src/lib/market-math.ts 的 liquidationPrice()。
+   * 1 倍时恒为 0，那正是「1 倍永不被强平」的字面意思（价格到不了 0 以下）。
+   *
+   * ⚠️ 与 entryPrice 同款：REAL 是刻意的，它不累加进账本、不参与 fish-units 换算。
+   * ⚠️ **开仓那一刻算一次就写死**，之后没有任何人重算它。读它，别自己乘一遍
+   *   （同 payout_units 的道理：有争议时以库里那一行写的数为准）。
+   */
+  liquidationPrice Float  @default(0) @map("liquidation_price")
   openTxId     Int?      @map("open_tx_id")
   /** 开仓幂等键（每次唯一，带随机后缀）。唯一约束就是幂等的实现。 */
   openKey      String    @unique(map: "market_positions_open_key_key") @map("open_key")
-  /** open | closed。**绝不物理删除**，没有例外（曾有一处：远端同步失败的补偿事务会
-   *  删掉从未生效的开仓，那个机制随账户服务搬进站内一起消失了）。 */
+  /** open | closed | liquidated（爆仓，由强平引擎写，见 src/lib/market-liquidator.ts）。
+   *  后两者都是终态：`status !== 'open'` 即「已结清」。
+   *  **绝不物理删除**，没有例外（曾有一处：远端同步失败的补偿事务会删掉从未生效的
+   *  开仓，那个机制随账户服务搬进站内一起消失了）。 */
   status       String    @default("open")
   exitPrice    Float?    @map("exit_price")
   exitQuoteAt  DateTime? @map("exit_quote_at")

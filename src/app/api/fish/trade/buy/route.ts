@@ -7,12 +7,13 @@ export const runtime = 'nodejs';
 
 // POST /api/fish/trade/buy — 练手盘开仓。
 //
-// body: { symbol, amount, idempotency_key? }
+// body: { symbol, amount, leverage?, idempotency_key? }
 //
 // 【档位 = core+】与签到、投喂同档。练手盘是**签到之外第二条 core+ 赚取渠道** ——
 // 它没有突破「非核心账号没有鱼干赚取渠道」这条口径，只是把 core+ 的路多开了一条。
 // 所以页面（/fish/trade）与这里、以及 sell / quote / candles **五处**各判一次
-//（页面与接口必须同档）。
+//（页面与接口必须同档）。**加杠杆没有新增第六处** —— 它是 buy 的一个参数，
+// 档位与禁言的判定一个字都没变。
 //
 // 【不需要 core+ 的页面入口照样渲染】顶栏与 /fish 面板不对任何人藏入口，档不够的
 // 用户点进来是 403（与签到、讨论一致，见 CLAUDE.md「入口不跟着藏」）。
@@ -21,10 +22,15 @@ export const runtime = 'nodejs';
 // sell / quote / candles 与页面都只判档位（已开的仓必须能出、盘必须看得见）。
 // 理由见 sell/route.ts 头部 —— 别为了「五处一样」把禁言判定补到那边去，
 // 那等于让禁言变成锁仓。
+// ⚠️ 强平（market-liquidator）同样**不判禁言** —— 禁言的人手上还开着的杠杆仓
+// 照旧会被爆掉。别在那边补一个 `!isMuted`。
 //
 // 【幂等键由调用方给】开仓与转账不同：同一用户同一标的同一金额买两次是**正常操作**
 // （分批建仓），服务端不能靠参数去重，必须由调用方在同一笔重试时复用同一个键。
 // 前端在打开二次确认弹窗那一刻生成，失败时保留 → 重试拿到同一笔。
+// ⚠️ **杠杆不进幂等键的派生**（`makeMarketIdempotencyKey` 只吃 user/symbol/units）：
+// 同一个键重放时回报的是当初那一笔的真实倍数（从库里读），所以带着不同 leverage
+// 重试同一个键不会买成两笔、也不会改掉已成交那笔的倍数 —— 这正确，别去「补」它。
 export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '请先登录');
@@ -45,6 +51,9 @@ export async function POST(req: Request) {
   // 金额只做 Number()：NaN / 非数字 / 小数位交给 service 判 400（与 transfer 路由同款）。
   // ⚠️ 别在这里把参数校验做一半 —— service 里那些拒绝带着具体的用户可读文案。
   const amount = Number(body.amount);
+  // 杠杆：**原样透传给 service**，不在这里解析 —— 白名单与报错文案都归它
+  //（同 amount 的理由：service 里那些拒绝带着具体的用户可读文案）。
+  const leverageRaw = body.leverage;
   const clientKey = typeof body.idempotency_key === 'string' ? body.idempotency_key : null;
 
   try {
@@ -52,6 +61,7 @@ export async function POST(req: Request) {
       userId: user.id,
       symbolRaw: body.symbol,
       amount,
+      leverageRaw,
       clientKey,
     });
     if (!res.ok) return apiErr(res.code, res.message);
@@ -65,6 +75,9 @@ export async function POST(req: Request) {
         symbol: res.position.symbol,
         stake: res.position.stake,
         entry_price: res.position.entryPrice,
+        // 倍数与爆仓价都回给调用方：bot 与外部集成要能如实复述这一笔是什么
+        leverage: res.position.leverage,
+        liquidation_price: res.position.liquidationPrice,
         opened_at: res.position.openedAt.toISOString(),
       },
       balance: res.balance,

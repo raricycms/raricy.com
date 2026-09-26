@@ -720,4 +720,79 @@ export const fishCommands: CommandSpec[] = [
       return { lines, warnings, json: { ...r } };
     },
   },
+
+  {
+    name: 'fish liquidate',
+    summary: '立刻扫一轮杠杆仓的强平（不等定时器）',
+    group: 'fish',
+    order: 10,
+    readOnly: false,
+    danger: 'destructive',
+    args: [],
+    details: [
+      '强平引擎正常情况下每 15 秒自己扫一轮（间隔可用 `MARKET_LIQUIDATE_MS` 调）。',
+      '本命令是**兜底与手动推动**：引擎被关掉过一段时间、或刚重启完想立刻补一轮时用。',
+      '与 `fish webhook-retry` 同一个位置 —— 定时器之外的那只手。',
+      '',
+      '它走的是与引擎**同一个判断**（现价 ≤ 那一行上存着的爆仓价），所以：',
+      '  · 结算价是**爆仓价**而不是现价 —— 用户亏光投入、不会亏穿（见架构 §6.13）。',
+      '  · **不写鱼干流水**（实发恒为 0，没有钱动过），只把仓位置成 liquidated。',
+      '  · 多条仓位各自一条条件 UPDATE，与定时器同时跑也不会重复结清。',
+      '',
+      '⚠️ **结果不可撤销**：置成 liquidated 就回不去了（全站口径：永不物理删除，',
+      '   也没有「撤销强平」这条路径）。',
+      '⚠️ 引擎当初被关掉**往往正是因为**行情源不可信（见 deploy.md 的环境变量表）——',
+      '   这时手工跑一遍等于拿一份可能有问题的价去结清别人的仓位。先确认行情正常。',
+    ].join('\n'),
+    // 确认屏：**只读**地扫一轮，把「即将被强平的是谁」逐个列出来。
+    // ⚠️ 这份名单只是给你看的 —— `run` 会**重新扫一遍**再动手（人读这几秒里价格早就
+    //    走了，见 scanLiquidations 的注释）。所以下面写明它不是执行依据。
+    async describe() {
+      const [{ scanLiquidations }, { unitsToFish }] = await Promise.all([
+        import('../../../src/lib/market-liquidator'),
+        import('../../../src/lib/fish-units'),
+      ]);
+      const { due, skipped } = await scanLiquidations();
+
+      if (due.length === 0) {
+        const lines = ['没有仓位穿过爆仓价 —— 跑这条命令不会动任何仓位。'];
+        for (const s of skipped) lines.push(`  （${s.symbol} 本轮没扫成：${s.reason}）`);
+        return lines;
+      }
+
+      const lines = [
+        `将强平 ${due.length} 个仓位（每个都会亏光投入）：`,
+        ...due.map(
+          (d) =>
+            `  ${d.symbol} ${d.leverage}× · ${unitsToFish(d.stakeUnits)} 条 · user=${d.userId} · ` +
+            `现价 ${d.currentPrice} ≤ 爆仓价 ${d.liquidationPrice}`
+        ),
+        '',
+        '**不写鱼干流水**（实发恒为 0），但**不可撤销**。',
+      ];
+      for (const s of skipped) lines.push(`  （${s.symbol} 本轮没扫成：${s.reason}）`);
+      lines.push('', '真正动手时会**重新取一次价**，所以那一刻的名单可能与上面不同。');
+      return lines;
+    },
+    async run(ctx) {
+      const { sweepLiquidations, liquidationIntervalMs } = await import(
+        '../../../src/lib/market-liquidator'
+      );
+      // ⚠️ 这里调的是 sweep（自己重新扫），**不是**复用 describe 那份名单 ——
+      // 确认屏到这一行之间隔着人读它的几秒钟，价格早就走了。
+      const n = await sweepLiquidations();
+      const ms = liquidationIntervalMs();
+
+      const lines = [
+        n === 0
+          ? '没有仓位穿过爆仓价 —— 未动任何仓位。'
+          : ctx.io.green(`已强平 ${n} 个仓位。`),
+        ms > 0
+          ? `  定时器每 ${ms}ms 自己扫一轮，本命令不影响它。`
+          : '  ⚠️ MARKET_LIQUIDATE_MS=0：定时器是关的，**杠杆开仓此刻也被拒**' +
+            '（这是刻意的 —— 卖一个兑现不了的产品比不卖更糟，见架构 §6.13）。',
+      ];
+      return { lines, json: { liquidated: n, interval_ms: ms } };
+    },
+  },
 ];

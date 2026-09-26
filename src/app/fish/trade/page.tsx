@@ -7,7 +7,10 @@ import {
   displaySymbol,
   MARKET_FEE_RATE,
   MIN_STAKE_FISH,
+  LEVERAGE_OPTIONS,
 } from '@/lib/market-service';
+// 杠杆档位能不能选，取决于**强平引擎此刻在不在跑**（服务端也会据此拒单，见那里的注释）
+import { isLiquidationRunning } from '@/lib/market-liquidator';
 import { getCachedQuotes, getCandles, MARKET_SYMBOLS } from '@/lib/market-price';
 import {
   DEFAULT_INTERVAL,
@@ -76,6 +79,8 @@ export default async function FishTradePage() {
     display: displaySymbol(p.symbol),
     stake: p.stake,
     entryPrice: p.entryPrice,
+    leverage: p.leverage,
+    liquidationPrice: p.liquidationPrice,
     openedAt: p.openedAt.toISOString(),
   }));
 
@@ -98,6 +103,8 @@ export default async function FishTradePage() {
         candleSets={candleSets}
         feeRate={MARKET_FEE_RATE}
         minStake={MIN_STAKE_FISH}
+        leverageOptions={[...LEVERAGE_OPTIONS]}
+        leverageEnabled={isLiquidationRunning()}
       />
     </div>
   );

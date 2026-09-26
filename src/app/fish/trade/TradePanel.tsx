@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AMOUNT_ERROR, fmtFish, parseFishAmount, roundFish } from '@/lib/fish-amount';
 import { FISH_UNIT_SCALE, unitsToFish } from '@/lib/fish-units';
-import { settleClose, formatFeeRate } from '@/lib/market-math';
+import { settleClose, formatFeeRate, liquidationPrice } from '@/lib/market-math';
 import { DEFAULT_INTERVAL, type CandleTuple, type MarketInterval } from '@/lib/market-candles';
 // 价格与涨跌幅的格式化只有一份（market-chart.ts），持仓行、确认弹窗、图例共用它 ——
 // 这里沿用文件里原来的短名，免得改十几处调用点
@@ -71,6 +71,14 @@ export interface PositionProp {
   display: string;
   stake: number;
   entryPrice: number;
+  /** 杠杆倍数（1 = 无杠杆）。渲染成「10×」那一枚角标。 */
+  leverage: number;
+  /**
+   * 爆仓价。**直接用它，别拿 entryPrice × (1 − 1/杠杆) 自己算一遍** ——
+   * 这是开仓那一刻写进库的数，与强平引擎的判据是同一个（见 market-math 的注释）。
+   * 1 倍仓恒为 0，显示成「—」。
+   */
+  liquidationPrice: number;
   openedAt: string;
 }
 
@@ -90,6 +98,8 @@ export default function TradePanel({
   candleSets,
   feeRate,
   minStake,
+  leverageOptions,
+  leverageEnabled,
 }: {
   balance: number;
   positions: PositionProp[];
@@ -100,6 +110,16 @@ export default function TradePanel({
   candleSets: Record<string, CandleTuple[]>;
   feeRate: number;
   minStake: number;
+  /** 杠杆档位白名单（market-service 的 LEVERAGE_OPTIONS）。**从服务端传进来**，
+      就像 feeRate / minStake —— 客户端包 import 不到 market-service（它拖着 prisma）。 */
+  leverageOptions: number[];
+  /**
+   * 强平引擎是否在跑。false 时**只留 1 倍**并给一句说明 —— 与「行情拉不到就禁掉
+   * 买入」同一档：服务暂时不在，就把按钮关掉，而不是让用户填完一整屏再吃 503。
+   * ⚠️ 这不是「入口跟着藏」（那条红线针对的是**档位不够**）：1 倍照旧能买，
+   * 入口一个都没少，少的是一个此刻兑现不了的商品。
+   */
+  leverageEnabled: boolean;
 }) {
   const router = useRouter();
   const [balance, setBalance] = useState(initialBalance);
@@ -109,6 +129,9 @@ export default function TradePanel({
   // 1 秒轮询会当场报「Expected 1 arguments, but got 2」，而错的是名字不是轮询。
   const [interval, applyInterval] = useState<MarketInterval>(DEFAULT_INTERVAL);
   const [amount, setAmount] = useState('');
+  // 档位**不进幂等键**：同一笔重试换一个倍数不会买成两笔，服务端按 openKey 回读既有
+  // 那一笔的真实倍数（见 buy/route.ts 头部）。所以这里改它不需要换键。
+  const [leverage, setLeverage] = useState(1);
   const [buyOpen, setBuyOpen] = useState(false);
   const [sellTarget, setSellTarget] = useState<PositionProp | null>(null);
   const [busy, setBusy] = useState(false);
@@ -198,20 +221,32 @@ export default function TradePanel({
     const px = priceOf(p.symbol);
     if (px == null) return null;
     const stakeUnits = Math.round(p.stake * FISH_UNIT_SCALE);
-    const s = settleClose({ stakeUnits, entryPrice: p.entryPrice, exitPrice: px, feeRate });
+    // ⚠️ `leverage` 从**这笔持仓**来，不是从上面那个选择器来 —— 选择器只管下一笔。
+    // 拿它去估已有持仓 = 把 1 倍的仓位按 10 倍显示，而且屏幕上那个数看起来完全合理。
+    const s = settleClose({
+      stakeUnits,
+      entryPrice: p.entryPrice,
+      exitPrice: px,
+      feeRate,
+      leverage: p.leverage,
+    });
     return {
       px,
-      /** 实发（到手） */
+      /** 实发（到手）。杠杆仓跌穿爆仓价后它是 0（同一个 max(0,…)，见 market-math.ts） */
       payout: unitsToFish(s.payoutUnits),
-      /** 毛额（未扣手续费的卖出金额） */
+      /** 毛额 = 权益（**不是**持仓市值也不是名义本金）。「毛额 − 手续费 = 到手」靠它 */
       gross: unitsToFish(s.grossUnits),
       profit: unitsToFish(s.payoutUnits - stakeUnits),
       /** 手续费 + floor 零头 —— 弹窗里「毛额 − 手续费 = 到手」要对得上（见 market-math.ts） */
       fee: unitsToFish(s.feeUnits),
       /** 较开仓价的涨跌幅（不含手续费）。行情卡上那个是 24 小时涨跌，两者不是一回事 */
       changePercent: s.changePercent,
-      /** 盈亏率（含手续费与 floor） */
+      /** 盈亏率（含手续费与 floor）。10 倍仓它约等于涨跌幅 × 10 */
       profitPercent: s.profitPercent,
+      /** 名义本金（投入 × 杠杆）—— 只在杠杆仓的弹窗里显示，1 倍时与投入同值 */
+      notional: roundFish(p.stake * p.leverage),
+      /** 现价已经跌穿这笔的爆仓价 —— 平仓实得 0，且随时会被强平。1 倍仓恒 false */
+      liquidated: p.leverage > 1 && px <= p.liquidationPrice,
     };
   }
 
@@ -234,6 +269,9 @@ export default function TradePanel({
         body: JSON.stringify({
           symbol,
           amount: parsed,
+          // 杠杆原样提交。**前端不传价**这条没变（见文件头 ①）—— 倍数不是价，
+          // 它是这一笔的形状，而白名单与判定全在服务端。
+          leverage,
           idempotency_key: idemRef.current,
         }),
       });
@@ -283,9 +321,20 @@ export default function TradePanel({
   }
 
   const quoteDown = quotes.length === 0 || quotes.every((q) => q.price == null);
+  // 弹窗开着 / 提交中时冻住一切会改变「这一笔是什么」的输入（标的、金额、杠杆）。
+  // 三个地方共用同一个判据 —— 分成三份写法必然有一天漏掉一处，而漏掉的那一处
+  // 会让弹窗上的数字与实际提交的东西不一致。
+  const locked = busy || buyOpen || sellTarget != null;
   // 弹窗里的那一整套估算算一次就好（下面要用到六七个数，逐个 estimate() 是六七次重算，
   // 且两处调用之间行情刷新会让同一个数在弹窗里显示成两个值）
   const sellEst = sellTarget ? estimate(sellTarget) : null;
+  // 买入弹窗里的**参考**爆仓价：用**展示价**当开仓价估的（真实爆仓价要等成交价出来
+  // 才算得出，见文件头 ①）。所以它必须标成「参考」，不能当成承诺。
+  const refLiqPrice =
+    current?.price != null ? liquidationPrice(current.price, leverage) : null;
+  // 1 倍时永远不爆（爆仓价是 0），弹窗里那一行与强平提示都按这个判据收起来 ——
+  // 对 1 倍反复说「注意爆仓风险」只会让那句话失效。
+  const leverageActive = leverage > 1 && leverageEnabled;
 
   // 自选列表的行 = 展示报价 + 走势线（走势线由服务端随首屏给，切标的不另取）。
   const watchRows: WatchRow[] = quotes.map((q) => ({
@@ -305,8 +354,8 @@ export default function TradePanel({
         <TradeWatchlist
           rows={watchRows}
           symbol={symbol}
-          // 确认弹窗开着时不让切标的：那两屏的文案是按当前标的算好的
-          disabled={busy || buyOpen || sellTarget != null}
+          // 确认弹窗开着时不让切标的：那两屏的文案是按当前标的算好的（同 locked）
+          disabled={locked}
           onSelect={setSymbol}
         />
 
@@ -358,6 +407,58 @@ export default function TradePanel({
               {amountError && <p className="trade-field__hint trade-field__hint--error">{amountError}</p>}
             </div>
 
+            {/* 杠杆档位。**N 选 1 且选项可能变多 → 切页档**（docs/frontend-styles.md §6.8
+                的判据：胶囊滑块只给「同一个视图的两种呈现」）。与周期档同一档。
+                ⚠️ 它是「下一笔」的参数，与已有持仓的倍数无关 —— 所以列表里每一行
+                自己带一枚倍数角标，而不是靠这个选择器解释。 */}
+            <div className="trade-field">
+              <span className="trade-field__label" id="trade-leverage-label">
+                杠杆
+              </span>
+              <div
+                className="trade-leverage"
+                role="group"
+                aria-labelledby="trade-leverage-label"
+              >
+                {leverageOptions.map((lv) => {
+                  // 引擎没在跑时只留 1 倍：其余档位是此刻兑现不了的商品（服务端也会拒）。
+                  const unavailable = lv > 1 && !leverageEnabled;
+                  return (
+                    <button
+                      key={lv}
+                      type="button"
+                      className={`trade-leverage__btn${lv === leverage ? ' is-active' : ''}`}
+                      aria-pressed={lv === leverage}
+                      disabled={locked || unavailable}
+                      title={unavailable ? '杠杆暂不可用' : undefined}
+                      onClick={() => setLeverage(lv)}
+                    >
+                      {lv}×
+                    </button>
+                  );
+                })}
+              </div>
+              {leverageActive && amountOk && (
+                <p className="trade-field__hint">
+                  名义本金 <strong>{fmtFish(roundFish(parsed * leverage))}</strong> 小鱼干
+                  {refLiqPrice != null && (
+                    <>
+                      ，参考爆仓价{' '}
+                      <strong className="trade-field__hint--danger">
+                        {fmtPrice(refLiqPrice)}
+                      </strong>{' '}
+                      USDT
+                    </>
+                  )}
+                </p>
+              )}
+              {!leverageEnabled && (
+                <p className="trade-field__hint">
+                  杠杆暂不可用（强平服务未运行），当前只能 1 倍买入。
+                </p>
+              )}
+            </div>
+
             <div className="trade-summary">
               <span>
                 单笔最少 <strong>{minStake}</strong> 条鱼干
@@ -390,9 +491,18 @@ export default function TradePanel({
                     <li className="trade-position" key={p.id}>
                       <div className="trade-position__main">
                         <span className="trade-position__name">{p.display}</span>
+                        {/* 倍数**逐行显示**：上面那个选择器只管下一笔，拿它解释已有持仓
+                            会把 1 倍的仓位读成 10 倍。1 倍不显示（默认档，加个「1×」
+                            只是噪音，与流水描述同款处理）。 */}
+                        {p.leverage > 1 && (
+                          <span className="trade-position__lev">{p.leverage}×</span>
+                        )}
                         <span className="trade-position__stake">{fmtFish(p.stake)} 鱼干</span>
                         <span className="trade-position__entry">
                           开仓 {fmtPrice(p.entryPrice)}
+                          {/* 爆仓价只在杠杆仓显示：1 倍时它是 0（= 永远不会爆），
+                              写「爆仓 0 USDT」是在说一件不可能发生的事。 */}
+                          {p.leverage > 1 && <> · 爆仓 {fmtPrice(p.liquidationPrice)}</>}
                           <span className="trade-position__time"> · {fmtOpenedAt(p.openedAt)}</span>
                         </span>
                         {/* 「较开仓」而不是光写一个百分数：行情卡上那个百分数是**24 小时**涨跌，
@@ -407,6 +517,11 @@ export default function TradePanel({
                             >
                               较开仓 {fmtPct(est.changePercent)}
                             </span>
+                            {/* 已经跌穿爆仓价：平仓实得 0，且下一轮扫描就会被强平。
+                                不说这句的话，这一行的「可卖 0 鱼干」看起来像个 bug。 */}
+                            {est.liquidated && (
+                              <span className="trade-position__liq">已跌破爆仓价</span>
+                            )}
                           </span>
                         )}
                       </div>
@@ -468,6 +583,34 @@ export default function TradePanel({
                     <dt>投入</dt>
                     <dd>{fmtFish(parsed)} 小鱼干</dd>
                   </div>
+                  {/* 杠杆那三行只在 leverage > 1 时出现：1 倍仓说「杠杆 1×」是废话，
+                      而「名义本金 = 投入」这种恒等式摆两遍会让真正要紧的那几行变淡。 */}
+                  {leverageActive && (
+                    <>
+                      <div className="trade-confirm__row">
+                        <dt>杠杆</dt>
+                        <dd>
+                          <span className="trade-confirm__lev">{leverage}×</span>
+                        </dd>
+                      </div>
+                      <div className="trade-confirm__row">
+                        <dt>名义本金</dt>
+                        <dd>{fmtFish(roundFish(parsed * leverage))} 小鱼干</dd>
+                      </div>
+                      <div className="trade-confirm__row">
+                        <dt>参考爆仓价</dt>
+                        <dd>
+                          {refLiqPrice == null ? (
+                            '—'
+                          ) : (
+                            <span className="trade-confirm__liq">
+                              {fmtPrice(refLiqPrice)} USDT
+                            </span>
+                          )}
+                        </dd>
+                      </div>
+                    </>
+                  )}
                   <div className="trade-confirm__row">
                     <dt>参考价</dt>
                     <dd>{current.price == null ? '—' : fmtPrice(current.price)} USDT</dd>
@@ -477,10 +620,25 @@ export default function TradePanel({
                     <dd>{fmtFish(afterBalance)} 小鱼干</dd>
                   </div>
                 </dl>
-                <p className="trade-confirm__disclaimer">
-                  实际成交价以下单那一刻的行情为准，可能与上面的参考价有细微差异。
-                  价格下跌时卖出会亏掉一部分本金，最坏输光这一笔投入。
-                </p>
+                {/* 免责声明按档位分岔：**杠杆那一档必须把两件反直觉的事说清楚** ——
+                    ① 亏损也是放大的，价格反向动 1/L 就归零（不是「亏一部分」）；
+                    ② 爆仓价是按**参考价**估的，真实的那条线要等成交价出来才定
+                       （与「成交价以下单那一刻为准」同源，见文件头 ①）。
+                    不说 ② 的话，用户会拿着一个差了几分钱的数来对账。 */}
+                {leverageActive ? (
+                  <p className="trade-confirm__disclaimer trade-confirm__disclaimer--danger">
+                    实际成交价以下单那一刻的行情为准，<strong>真实的爆仓价跟着成交价走</strong>，
+                    与上面的参考值会有差异。{leverage}× 杠杆下亏损同样放大：
+                    价格反向波动约 {(100 / leverage).toFixed(0)}% 时保证金归零，
+                    <strong>系统会自动强平，这一笔投入全部亏掉</strong>。
+                    名义本金是借来的，亏损以投入的 {fmtFish(parsed)} 条为上限，不会变成欠账。
+                  </p>
+                ) : (
+                  <p className="trade-confirm__disclaimer">
+                    实际成交价以下单那一刻的行情为准，可能与上面的参考价有细微差异。
+                    价格下跌时卖出会亏掉一部分本金，最坏输光这一笔投入。
+                  </p>
+                )}
                 <div className="trade-confirm__actions">
                   <button
                     type="button"
@@ -532,10 +690,35 @@ export default function TradePanel({
                     <dt>投入</dt>
                     <dd>{fmtFish(sellTarget.stake)} 小鱼干</dd>
                   </div>
+                  {/* 同样的两条只在杠杆仓出现（理由见买入弹窗那一段）。 */}
+                  {sellTarget.leverage > 1 && (
+                    <>
+                      <div className="trade-confirm__row">
+                        <dt>杠杆</dt>
+                        <dd>
+                          <span className="trade-confirm__lev">{sellTarget.leverage}×</span>
+                        </dd>
+                      </div>
+                      <div className="trade-confirm__row">
+                        <dt>名义本金</dt>
+                        <dd>{fmtFish(roundFish(sellTarget.stake * sellTarget.leverage))} 小鱼干</dd>
+                      </div>
+                    </>
+                  )}
                   <div className="trade-confirm__row">
                     <dt>开仓价</dt>
                     <dd>{fmtPrice(sellTarget.entryPrice)} USDT</dd>
                   </div>
+                  {sellTarget.leverage > 1 && (
+                    <div className="trade-confirm__row">
+                      <dt>爆仓价</dt>
+                      <dd>
+                        <span className="trade-confirm__liq">
+                          {fmtPrice(sellTarget.liquidationPrice)} USDT
+                        </span>
+                      </dd>
+                    </div>
+                  )}
                   <div className="trade-confirm__row">
                     <dt>现价</dt>
                     <dd>
@@ -591,10 +774,22 @@ export default function TradePanel({
                     <dd>{sellEst ? `${fmtFish(sellEst.payout)} 小鱼干` : '—'}</dd>
                   </div>
                 </dl>
-                <p className="trade-confirm__disclaimer">
-                  上面的价与金额都按<strong>展示价</strong>估算，实际到手以下单那一刻的成交价为准。
-                  卖出后这一笔仓位就结清了，不能再恢复。
-                </p>
+                {/* 已经跌穿爆仓价时**必须换一套话**：这一屏上面会显示「预计到手 0」，
+                    而用户是带着「赶紧止损」的念头点进来的 —— 不说清就会以为是自己操作
+                    弄丢的。而真实情况是：这一笔已经归零了，等系统扫到也会被强平，
+                    两者的到手金额**完全一样**（同一个 max(0,…)，见 market-math.ts）。 */}
+                {sellEst?.liquidated ? (
+                  <p className="trade-confirm__disclaimer trade-confirm__disclaimer--danger">
+                    现价<strong>已跌破爆仓价</strong>，这笔仓位的保证金已经归零 ——
+                    现在卖出与等系统强平，到手都是 <strong>0 条</strong>，没有区别。
+                    唯一的不同是：继续持有的话，价格若反弹回爆仓价之上，这笔仓位就还在。
+                  </p>
+                ) : (
+                  <p className="trade-confirm__disclaimer">
+                    上面的价与金额都按<strong>展示价</strong>估算，实际到手以下单那一刻的成交价为准。
+                    卖出后这一笔仓位就结清了，不能再恢复。
+                  </p>
+                )}
                 <div className="trade-confirm__actions">
                   <button
                     type="button"

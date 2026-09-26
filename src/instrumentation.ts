@@ -2,7 +2,8 @@
 // instrumentation.ts — Next 的进程启动钩子（本站**唯一**的后台任务入口）
 //
 // register() 在服务进程启动时被 Next 调一次，是本站第一个「不在请求里跑的」代码。
-// 目前做三件事：起回调投递的定时器、起练手盘的行情轮询、起练手盘的行情流。
+// 目前做四件事：起回调投递的定时器、起练手盘的行情轮询、起练手盘的行情流、
+// 起练手盘的**强平引擎**（唯一会自己动手动钱的那一个）。
 //
 // ⚠️ 三条纪律
 //   1. **只在这里启动**，不要在某个模块里「被 import 时自动启动」—— vitest 会直接
@@ -52,6 +53,18 @@ export async function register(): Promise<void> {
       startMarketStream();
     } catch (e) {
       console.error('[instrumentation] 行情流启动失败（站点继续运行）:', e);
+    }
+
+    try {
+      // 练手盘强平引擎。**与前三个循环不是一类东西**：它会自己动手结清仓位
+      //（前三个只投递 / 只写展示缓存）。见 src/lib/market-liquidator.ts 的文件头。
+      // ⚠️ **起不来不是「少一个附加功能」**：它同时是杠杆开仓的闸门 ——
+      // openPosition 会因此拒卖杠杆仓（1 倍仓不受影响）。所以这一段的失败日志
+      // 说的是「杠杆暂停」，与上面几条不一样。
+      const { startMarketLiquidator } = await import('./lib/market-liquidator');
+      startMarketLiquidator();
+    } catch (e) {
+      console.error('[instrumentation] 强平引擎启动失败（杠杆开仓将一并暂停）:', e);
     }
   }
 }

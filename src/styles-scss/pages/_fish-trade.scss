@@ -701,6 +701,40 @@
   font-weight: 500;
 }
 
+/* 提示行里那个「会让你亏光的数」（参考爆仓价）。
+   ⚠️ 与上面那条 --error **刻意是两个类名**，虽然此刻颜色一样：--error 的语义是
+   「你填错了」，这条是「这个数会吃掉你的本金」—— 合并之后改其中一个的样式就会
+   顺手改掉另一个的语义。 */
+.trade-field__hint--danger {
+  color: var(--color-warning-primary);
+  font-weight: 700;
+}
+
+/* 杠杆档位：**N 选 1，且选项还可能变多**（加档位只改 LEVERAGE_OPTIONS）——
+   走切页档，与周期档（.trade-chart__interval-btn）同档。
+   docs/frontend-styles.md §6.8 的判据：胶囊滑块只给「同一个视图的两种呈现」，
+   杠杆不是视图切换，是「这一笔用几倍」，所以**不能用 .segmented**。 */
+.trade-leverage {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+
+.trade-leverage__btn {
+  @include m.btn-tab;
+  padding: 2px 12px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+
+  /* 「引擎没在跑」时那几档是灰的（不是隐藏）—— 用户看得到有这个功能，
+     也看得到它此刻不可用，比整排消失更好解释。 */
+  &:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+}
+
 // 金额输入：外壳是胶囊（一行文字 → 胶囊，见 frontend-styles §4.2），
 // 聚焦一律用 --shadow-focus-brand，**绝不改 border**（那会让字段随焦点变高）。
 .trade-amount {
@@ -859,6 +893,17 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* 倍数角标。**它是这一行的属性，不是控件** —— 所以用淡底徽标，不套 btn-tab
+   （套了就会被读成「点它能改倍数」，而上方那个选择器只作用于**下一笔**）。 */
+.trade-position__lev {
+  padding: 1px 6px;
+  border-radius: $radius-small;
+  background: var(--color-warning-secondary);
+  color: var(--color-warning-primary);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
 .trade-position__entry {
   width: 100%;
   font-size: 0.75rem;
@@ -887,6 +932,13 @@
   font-weight: 600;
 
   @include trade-up-down;
+}
+
+/* 「已跌破爆仓价」。这一行的「可卖 0 鱼干」不解释的话看起来像个 bug，
+   而这枚字就是那句解释 —— 所以它跟涨跌那两个色**分开**：涨跌是行情，这是判决。 */
+.trade-position__liq {
+  font-weight: 700;
+  color: var(--color-warning-primary);
 }
 
 .trade-position__pnl {
@@ -975,6 +1027,24 @@
   @include trade-up-down;
 }
 
+/* 弹窗里的倍数角标。与持仓行那枚（.trade-position__lev）同款 —— 同一件事在两屏
+   里长得一样，用户不必学第二遍。字号大一点是因为弹窗的基准字号本来就大。 */
+.trade-confirm__lev {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: $radius-small;
+  background: var(--color-warning-secondary);
+  color: var(--color-warning-primary);
+  font-weight: 700;
+}
+
+/* 爆仓价。**固定用红**，不跟涨跌走：它是这一屏里唯一一个「到了这条线就归零」的数，
+   而涨跌幅那边红绿两色是行情方向。两者混用会让「绿=安全」这层直觉误伤这里。 */
+.trade-confirm__liq {
+  color: var(--color-warning-primary);
+  font-weight: 700;
+}
+
 .trade-confirm__row--total {
   padding-top: $space-2;
   border-top: 1px solid var(--color-border);
@@ -996,6 +1066,21 @@
   font-size: 0.8rem;
   line-height: 1.6;
   color: var(--color-text-secondary);
+}
+
+/* 危险档：换底色与文字色，让它在弹窗里跳出来。用在两处 ——
+   杠杆买入的风险说明，以及「已跌破爆仓价，卖与不卖都是 0」。
+   两处都是**必须读完才知道自己会亏多少**的话，所以它不能长得像一句套话
+   （浅灰底 + 次级文字色 = 用户跳过不读，而那正是这两段存在的唯一理由）。 */
+.trade-confirm__disclaimer--danger {
+  background: var(--color-warning-secondary);
+  color: var(--color-warning-primary);
+
+  /* 段内的 <strong> 跟着走：它在浅红底上再深一点才读得出来，
+     而继承来的 --color-text-primary 在两种主题下都偏暗/偏亮。 */
+  strong {
+    color: inherit;
+  }
 }
 
 .trade-confirm__actions {
