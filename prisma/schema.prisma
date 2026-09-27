@@ -65,7 +65,6 @@ model User {
 
   role String @default("user")
 
-  totalFortune Int @default(0) @map("total_fortune")
   // ⚠️ 存储单位 = 0.0001 鱼干（整数）。原为 Float，已整数化防 IEEE754 账目漂移；
   // 粒度由 3_fish_integer_units（×10，0.1 鱼干）经 21_fish_units_1e4（×1000）抬到现在。
   // 换算见 src/lib/fish-units.ts（那是活的权威）。
@@ -527,12 +526,10 @@ model VoteRecord {
 // ── 签到 ─────────────────────────────────────────────────────────────────────
 
 model DailyCheckIn {
-  id           Int       @id @default(autoincrement())
-  userId       String    @map("user_id")
-  checkinDate  DateTime  @map("checkin_date")
-  createdAt    DateTime? @map("created_at")
-  fortuneValue Int?      @map("fortune_value")
-  fortunePool  String?   @map("fortune_pool")
+  id          Int       @id @default(autoincrement())
+  userId      String    @map("user_id")
+  checkinDate DateTime  @map("checkin_date")
+  createdAt   DateTime? @map("created_at")
 
   user User @relation(fields: [userId], references: [id])
 
