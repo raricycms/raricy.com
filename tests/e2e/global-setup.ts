@@ -257,7 +257,6 @@ export default async function globalSetup() {
           sessionVersion: 0,
           isBanned: false,
           driedFish: 0,
-          totalFortune: 0,
           focusMode: u.focusMode ?? false, // @ 提及通知的排除用例（见 seed.ts）
           createdAt: nowForDb(), // 全库时间戳语义 = UTC+8 墙上时间，见 src/lib/db-time.ts
         },

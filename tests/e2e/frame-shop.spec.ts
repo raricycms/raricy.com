@@ -7,8 +7,8 @@
 // 见 tests/e2e/global-setup.ts 的 FRAMES_DIR 隔离），只有真跑一遍才看得见。
 //
 // 【为什么用签到给新号发鱼】与 fish-market.spec.ts 同一条理由：新号余额为 0，
-// 而签到翻牌是 e2e 里唯一不绕开业务的造鱼方式。运势 1–5 随机，所以断言只用相对变化，
-// 不写死数值。
+// 而签到是 e2e 里唯一不绕开业务的造鱼方式。签到发的是固定 3 条，租金按天算，
+// 所以断言只用相对变化。
 //
 // 【别名对照表在哪里】这一条**不进** playwright.config.ts 的 RESPONSIVE_SPECS ——
 // 它全是 DOM 断言，没有视口分支（与 fish-market.spec.ts 同款）。
@@ -20,13 +20,12 @@ import { registerFreshUser } from './helpers';
 const KEY = 'fishblue';
 const LABEL = '鱼干蓝';
 
-/** 新号 + 签到翻牌拿鱼，返回到账后的余额（鱼干，1–5）。 */
+/** 新号 + 签到拿鱼，返回到账后的余额（鱼干，固定 3）。 */
 async function fundByCheckin(page: import('@playwright/test').Page): Promise<number> {
-  expect((await page.request.post('/api/checkin', { data: {} })).status()).toBe(200);
-  const claim = await page.request.post('/api/checkin/claim', { data: { chosenIndex: 0 } });
-  expect(claim.status()).toBe(200);
-  const balance = Number((await claim.json()).dried_fish);
-  expect(balance).toBeGreaterThanOrEqual(1);
+  const res = await page.request.post('/api/checkin', { data: {} });
+  expect(res.status(), await res.text()).toBe(200);
+  const balance = Number((await res.json()).dried_fish);
+  expect(balance).toBe(3);
   return balance;
 }
 

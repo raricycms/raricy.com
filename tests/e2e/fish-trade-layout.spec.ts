@@ -35,7 +35,6 @@ const MAX_ENTRY_LINES = 2;
 async function openOneLeveragedPosition(page: Page) {
   await registerFreshUser(page, { core: true });
   await page.request.post('/api/checkin', { data: {} });
-  await page.request.post('/api/checkin/claim', { data: { chosenIndex: 0 } });
   await page.request.post(`${MARKET_MOCK}/__e2e__/set-price?symbol=BTCUSDT&price=80000`);
   await page.goto('/fish/trade');
 

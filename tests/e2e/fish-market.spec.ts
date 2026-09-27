@@ -16,9 +16,9 @@
 // 「这笔与那笔是两个东西」的凭证是 **transfer_id** —— 它由幂等键派生、写进收付双方
 // 两条流水；两笔同额若被静默吞掉一笔，第二个单号根本不会存在。
 //
-// 【为什么用签到给新号发鱼】新注册用户余额为 0，而转账要真金白银。签到翻牌是 e2e 里
+// 【为什么用签到给新号发鱼】新注册用户余额为 0，而转账要真金白银。签到是 e2e 里
 // 唯一不绕开业务的造鱼方式（CLI grant 要拉子进程；直接改库等于绕开被测路径）。
-// 运势值 1-5 随机，所以断言只用「≥1」与相对变化，不写死数值。
+// 签到发的是**固定 3 条**，所以余额类断言写相对变化即可（起点是个已知常数）。
 //
 // 【为什么**发款方**必须 core+ 而收款方不用】签到是 core+ 档（鱼干的赚取渠道全在 core
 // 门槛之后），所以凡是走 fundByCheckin 造鱼的账号都得先提权。收款方**刻意保持
@@ -86,14 +86,12 @@ async function ledgerOf(
   return { balance: (await bal.json()).balance as number, transactions: rows };
 }
 
-/** 新号 + 签到翻牌拿鱼，返回到账后的余额（鱼干，1-5）。 */
+/** 新号 + 签到拿鱼，返回到账后的余额（鱼干，固定 3）。 */
 async function fundByCheckin(page: Page): Promise<number> {
-  expect((await page.request.post('/api/checkin', { data: {} })).status()).toBe(200);
-  const claim = await page.request.post('/api/checkin/claim', { data: { chosenIndex: 0 } });
-  expect(claim.status()).toBe(200);
-  const body = await claim.json();
-  const balance = Number(body.dried_fish);
-  expect(balance).toBeGreaterThanOrEqual(1);
+  const res = await page.request.post('/api/checkin', { data: {} });
+  expect(res.status(), await res.text()).toBe(200);
+  const balance = Number((await res.json()).dried_fish);
+  expect(balance).toBe(3);
   return balance;
 }
 
@@ -145,7 +143,7 @@ test('转账全链路：入口 → 选收款人 → 二次确认 → 到账 + �
   await expect(page.locator('.page-title')).toContainText('鱼干市场');
   await expect(page.locator('.market-card__balance-number')).toHaveText(balance.toFixed(4));
 
-  // ── 转账（金额 1：必然 ≤ 余额，因为签到至少给 1）────────────────────────
+  // ── 转账（金额 1：签到给 3 条，转 1 条必然够）──────────────────────────
   await transferViaUI(page, recipient.username, '1');
 
   await expect(page.locator('.market-card__balance-number')).toHaveText((balance - 1).toFixed(4));
@@ -199,7 +197,7 @@ test('连续两笔同额：两笔各自落账（各有一个单号，不被静�
   await loginViaApi(page, sender.username);
 
   await page.goto('/fish/market');
-  // 0.1：签到底线是 1，两笔 0.1 必然够
+  // 0.1：签到给 3 条，两笔 0.1 必然够
   await transferViaUI(page, recipient.username, '0.1');
   await transferViaUI(page, recipient.username, '0.1');
 

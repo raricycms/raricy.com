@@ -192,9 +192,9 @@ test.describe('角色门控', () => {
 test.describe('核心用户门槛（接口层）', () => {
   // 这些接口一律 core+ 档
   //
-  // ⚠️ 只放**两个方向都无副作用**的调用。签到的写接口（POST /api/checkin 与
-  //    /claim）刻意不在此列：core 那一轮会真的给 e2e_core 建一条签到记录并翻牌发鱼，
-  //    改掉种子账号的余额，把别的用例绊倒。它们的方向断言在 checkin.spec 里
+  // ⚠️ 只放**两个方向都无副作用**的调用。签到的写接口（POST /api/checkin）
+  //    刻意不在此列：core 那一轮会真的给 e2e_core 建一条签到记录并发鱼，
+  //    改掉种子账号的余额，把别的用例绊倒。它的方向断言在 checkin.spec 里
   //    （用临时注册的账号，不碰种子）。这里放状态 GET 就够证明门槛在了。
   const CASES: Array<{ name: string; method: 'GET' | 'POST'; path: string; body?: object }> = [
     { name: '点赞', method: 'POST', path: `/api/blogs/${SEED_BLOG.id}/like` },

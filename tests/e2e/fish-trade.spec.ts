@@ -18,7 +18,7 @@
 // 的 MARKET_PRICE_BASE_URL），用例自己用 __e2e__/set-price 定价。打真币安的话
 // 「涨一倍该 mint 多少」根本写不出来 —— 真实行情每毫秒都在动。
 //
-// 【为什么投 1 条鱼干】签到翻牌给 1-5 条，投 1 条保证任何初始余额都够。注意存储层
+// 【为什么投 1 条鱼干】签到固定给 3 条，投 1 条稳稳够（而且买得起 10× 杠杆仓）。注意存储层
 // 最小单位是 0.0001 条（1 个单位），所以 1 条 = 10000 个单位：涨 100% 的实发是
 // floor(10000 × 2 × 0.9998) = 19996 个单位 = 1.9996 条。断言写精确值，不写「变多了」。
 //
@@ -59,13 +59,12 @@ async function myLedger(page: Page, type?: string): Promise<LedgerRow[]> {
   return ((await res.json()).transactions ?? []) as LedgerRow[];
 }
 
-/** 新号 + 签到翻牌拿鱼（e2e 里唯一不绕开业务的造鱼方式）。 */
+/** 新号 + 签到拿鱼（e2e 里唯一不绕开业务的造鱼方式）。签到是固定 3 条。 */
 async function fundByCheckin(page: Page): Promise<number> {
-  expect((await page.request.post('/api/checkin', { data: {} })).status()).toBe(200);
-  const claim = await page.request.post('/api/checkin/claim', { data: { chosenIndex: 0 } });
-  expect(claim.status()).toBe(200);
-  const balance = Number((await claim.json()).dried_fish);
-  expect(balance).toBeGreaterThanOrEqual(1);
+  const res = await page.request.post('/api/checkin', { data: {} });
+  expect(res.status(), await res.text()).toBe(200);
+  const balance = Number((await res.json()).dried_fish);
+  expect(balance).toBe(3);
   return balance;
 }
 

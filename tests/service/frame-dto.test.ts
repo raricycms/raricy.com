@@ -185,8 +185,6 @@ describe('个人页 / 排行榜 / 后台', () => {
       data: {
         userId: u.id,
         checkinDate: new Date('2026-09-01T00:00:00.000Z'),
-        fortuneValue: 3,
-        fortunePool: '3,1,5,2,4',
         createdAt: nowForDb(),
       },
     });

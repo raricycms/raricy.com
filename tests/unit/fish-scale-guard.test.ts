@@ -40,16 +40,6 @@ function sourceFiles(dir: string, exts: string[]): string[] {
 }
 
 describe('手写标度的旁路（改 FISH_UNIT_SCALE 时不会报错的地方）', () => {
-  it('compensate-unclaimed-fortunes.mjs 的 UNIT 与 FISH_UNIT_SCALE 一致', () => {
-    // 这个脚本不 import TS（它是裸 .mjs，靠 node 直接跑），所以标度只能手写 ——
-    // 于是必须由本用例替编译器盯着。它写库时用 `p.value * UNIT`，写错就是**少发/多发鱼干**，
-    // 且 dry-run 的展示用的是同一个 UNIT，两边同比例错，人眼看不出异常。
-    const src = read('scripts/compensate-unclaimed-fortunes.mjs');
-    const m = /^const UNIT = (\d+);/m.exec(src);
-    expect(m, 'compensate 脚本里找不到 `const UNIT = <数字>;`').not.toBeNull();
-    expect(Number(m![1])).toBe(FISH_UNIT_SCALE);
-  });
-
   it('src/ 里没有第二份 fmtFish 定义（展示口径只有 src/lib/fish-amount.ts 一处）', () => {
     // 曾经有 3 份逐字相同的 fmtFish 散在三个面板里，各自靠注释声明「与 fish-units 口径一致」。
     // 改精度时要改 3 个地方，漏一个就是「同一个余额在 /fish 和 /fish/market 显示得不一样」。
