@@ -16,7 +16,7 @@ import { TEMPLATE_DB } from './db-template';
 // readonly database，看起来像被测代码不稳，实为测试基建自伤）。故此处按**前缀**校验。
 const TEST_DB_PREFIX = 'tests/.tmp/test-';
 
-/** 硬校验：连的必须是测试库，否则直接抛错（防止误伤真实数据）。 */
+/** 硬校验（第一道，查**配置**）：连的必须是测试库，否则直接抛错（防止误伤真实数据）。 */
 function assertTestDb() {
   const url = process.env.DATABASE_URL || '';
   // Windows 上 setup.ts 的 path.join 产出反斜杠（file:C:\...\tests\.tmp\...），
@@ -24,6 +24,37 @@ function assertTestDb() {
   if (!url.replace(/\\/g, '/').includes(TEST_DB_PREFIX)) {
     throw new Error(
       `拒绝在非测试库上运行：DATABASE_URL=${url}（期望包含 ${TEST_DB_PREFIX}）`
+    );
+  }
+}
+
+/**
+ * 硬校验（第二道，查**实际连接**）：这个 PrismaClient 真正打开的文件必须是测试库。
+ *
+ * ★ 为什么上面那道不够 —— 2026-09 出过一次真事故 ★
+ * 有人在 `tests/setup.ts` **顶部 import** 了一个会拖进 `@/lib/db` 的模块。而
+ * **setup 文件的 import 早于它自己的模块体执行** —— 于是 PrismaClient 在
+ * `process.env.DATABASE_URL = …` 那一行**之前**就用 `.env` 里的真库建好了实例。
+ * 此后环境变量是对的（所以上面那道闸一路放行），而每一次 `resetDb()` 的 deleteMany
+ * 都打在**开发库**上：**465 个用户被清空**（靠前一天的备份才救回来）。
+ * 那道闸查的是「配置」，这里查的是「连接」—— 配置对了而连接错了，只有后者看得见。
+ *
+ * `PRAGMA database_list` 返回该连接真正打开的文件路径。
+ * 每次 `resetDb()` 前跑一次（一条 PRAGMA，开销可忽略）。
+ */
+async function assertConnectedTestDb() {
+  const rows = await prisma.$queryRawUnsafe<{ file?: unknown }[]>('PRAGMA database_list');
+  const files = rows
+    .map((r) => String(r.file ?? ''))
+    .join(' ')
+    .replace(/\\/g, '/');
+  if (!files.includes(TEST_DB_PREFIX)) {
+    throw new Error(
+      `拒绝在非测试库上运行：这个 PrismaClient 实际连的是 ` +
+        `「${files || '(内存库)'}」，而期望包含 ${TEST_DB_PREFIX}。\n` +
+        `  ⚠️ 多半是某个 setup / 辅助模块在 tests/setup.ts 执行 DATABASE_URL 赋值**之前**\n` +
+        `     就 import 了 @/lib/db —— import 先于模块体执行，客户端于是用 .env 连上了真库。\n` +
+        `     逐个检查 setupFiles 的顶层 import 链里有没有 @/lib/db（含间接的）。`
     );
   }
 }
@@ -67,6 +98,9 @@ export function ensureSchema() {
 export async function resetDb() {
   assertTestDb();
   ensureSchema();
+  // 查**实际连接**（不是环境变量）—— 见 assertConnectedTestDb 的注释：
+  // 配置对而连接错，是清空真实库的那条路径。放在任何 deleteMany 之前。
+  await assertConnectedTestDb();
   // 顺序：先删子表再删父表，避免外键约束
   const tables = [
     'chat_messages', 'chat_members', 'chat_channels',
@@ -131,7 +165,6 @@ export async function makeUser(opts: Partial<{
   banUntil: Date | null;
   banReason: string | null;
   driedFish: number;
-  totalFortune: number;
   focusMode: boolean;
 }> = {}) {
   const id = opts.id ?? uid();
@@ -147,7 +180,6 @@ export async function makeUser(opts: Partial<{
       banUntil: opts.banUntil ?? null,
       banReason: opts.banReason ?? null,
       driedFish: fishToUnits(opts.driedFish ?? 0), // 存储单位 = 0.1 鱼干（fish-units.ts）
-      totalFortune: opts.totalFortune ?? 0,
       focusMode: opts.focusMode ?? false,
       // 与生产写路径同钟：本库时间戳语义是「UTC+8 墙上时间贴 Z」（db-time.ts），
       // 种子数据也必须走 nowForDb()，否则冻结时钟的用例里两把钟不一致。
