@@ -70,6 +70,26 @@ beforeEach(() => {
   __resetPriceCache();
 });
 
+// ⚠️ 【这里**不能**替测试打开强平闸门】—— 2026-09 实测踩过一次，别再试第二次。
+//
+// 强平闸门（market-liquidator 的 isLiquidationRunning）在生产是 **fail-closed** 的：
+// 只有引擎真起来了才放行。于是测试进程里默认是「没在跑」，开杠杆仓的用例得自己
+// 显式打开。看起来在 setup.ts 里放一行 `__setLiquidationRunning(true)` 最省事 ——
+// 但那要 `import { __setLiquidationRunning } from '@/lib/market-liquidator'`，
+// 而 **setup 文件在任何测试文件的 `vi.mock` 注册之前就被求值**：
+//   setup.ts → market-liquidator → market-price（**真身**，被缓存下来）
+// 之后测试文件里 `vi.mock('@/lib/market-price')` 只换掉了「后来者」（测试文件自己与
+// market-service 拿到的都是 mock），**market-liquidator 手里那个 fetchQuote 还是真身**
+// —— 于是它的取价直接打真实币安。症状极具迷惑性：探针自己调 fetchQuote 拿到 mock 的
+// 71999，而引擎内部那次拿到真实价（> 72000）→ 判定「没到线」→ 用例红成
+// 「expected 0 to be 1」，看着像强平逻辑坏了。
+//   （这与本文件开头那条「vitest 会直接 import src/lib/*，每个测试文件都会起一个后台
+//    循环去发真实 HTTP」是同一枚硬币的两面。）
+//
+// 所以：**开杠杆闸门这件事由每个用到的测试文件在自己的 beforeEach 里显式声明**
+// （market-service / market-liquidator / market-trade-api 三处各一行）。显式也正好
+// 说明了那个前提是「这个文件在测杠杆」，而不是一个全进程的隐式放行。
+
 // 进程退出时清掉自己的库文件，避免 .tmp 堆积
 process.on('exit', () => {
   for (const suffix of ['', '-wal', '-shm']) {

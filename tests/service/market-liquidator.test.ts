@@ -49,9 +49,11 @@ beforeEach(async () => {
   await resetDb();
   __resetRateLimitStore();
   mockQuote.mockReset();
-  // stop 会把运行标志**删掉**（不是写 false）→ 回到测试进程的默认口径（放行）。
+  // stop 会把运行标志**删掉**，而闸门是 fail-closed 的 —— 所以删完必须自己开回来，
+  // 否则这个文件里所有开杠杆仓的用例都会 503（而失败点看着与被测的东西无关）。
   // 它同时也是每个用例之间的清场：别让上一个用例摆过的状态漏给下一个。
   stopMarketLiquidator();
+  __setLiquidationRunning(true);
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -228,7 +230,25 @@ describe('行情源不可用时', () => {
 });
 
 describe('闸门：引擎没在跑就不卖杠杆', () => {
-  it('isLiquidationRunning 在测试进程里默认为真（循环本就不加载）', () => {
+  it('★ 默认是 **fail-closed**：标志没被写过（= 引擎没起来）就是「没在跑」★', async () => {
+    // 这条钉的是闸门的**默认方向**。它曾经写成「NODE_ENV === 'test' 就放行」——
+    // 那是 fail-open：服务进程一旦带着 NODE_ENV=test 起来，循环没起（函数开头就
+    // return false）而闸门却放行，站点会在没有任何清算者的情况下卖 10 倍仓，
+    // 用户手里拿着一份永久免费的看涨期权且毫无症状。
+    stopMarketLiquidator(); // 删掉标志 = 「没人写过它」
+    expect(isLiquidationRunning(), '标志没写过时必须是 false').toBe(false);
+
+    // 而「没在跑」的后果是拒单，不是照卖
+    const user = await makeFishUser(100);
+    priceIs(ENTRY);
+    const r = await openPosition({
+      userId: user.id, symbolRaw: 'BTCUSDT', amount: 100, leverageRaw: 10,
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe(503);
+
+    // 显式打开之后才放行（测试要的就是这一条：开门看得见）
+    __setLiquidationRunning(true);
     expect(isLiquidationRunning()).toBe(true);
   });
 
@@ -258,10 +278,16 @@ describe('闸门：引擎没在跑就不卖杠杆', () => {
     await expectLedgerConsistent('杠杆被拒之后');
   });
 
-  it('★ stopMarketLiquidator 不能把闸门永久关死 ★（写 false 就会波及同文件后面的用例）', async () => {
-    __setLiquidationRunning(false);
+  it('stop 之后闸门读 false（停掉强平 = 停止卖杠杆），且不依赖任何「测试环境默认」', async () => {
+    __setLiquidationRunning(true);
+    expect(isLiquidationRunning()).toBe(true);
+
     stopMarketLiquidator();
-    // 删标志 = 回到默认口径，而不是把进程钉在「引擎没跑」上
+    // fail-closed 口径下这是**正确**的方向：没有清算者就不该卖杠杆仓。
+    // 文件后面那些用例靠的是 beforeEach 里显式开回来，不是靠这里留个后门。
+    expect(isLiquidationRunning(), '停掉之后必须读成「没在跑」').toBe(false);
+
+    __setLiquidationRunning(true); // 还原，免得影响本文件后面的用例
     expect(isLiquidationRunning()).toBe(true);
   });
 

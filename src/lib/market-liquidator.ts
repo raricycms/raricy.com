@@ -46,6 +46,8 @@
 //   · **关掉它不只是关掉一个循环**：isLiquidationRunning() 会跟着变成 false，
 //     于是 openPosition 拒绝开杠杆仓（503）。这是刻意的 —— 卖一个兑现不了的产品
 //     比不卖更糟。1 倍仓不受影响（它永远碰不到爆仓价）。
+//   · 那个判据是 **fail-closed** 的（没起来就是没起来，不看 NODE_ENV）——
+//     理由见 isLiquidationRunning 的注释，别给它加 test 环境的默认放行。
 //   · 单进程前提：多实例部署时每个实例各扫一遍。**无害** —— 结算是条件 UPDATE
 //     （`where status='open'`），只有一个能改到，另一个 count 为 0。
 // ─────────────────────────────────────────────────────────────────────────────
@@ -94,22 +96,21 @@ export function liquidationIntervalMs(): number {
 /**
  * 强平引擎此刻是否在跑。**openPosition 拿它决定要不要卖杠杆仓**。
  *
- * 【生产口径】只有 startMarketLiquidator() 真的起来了才返回 true。env 配了但启动
- * 失败（比如 NODE_ENV 不对、instrumentation 里那一段抛了），同样是 false ——
+ * 【★ fail-closed：只有 startMarketLiquidator() 真的写进 true 才放行 ★】
+ * env 配了但启动失败（instrumentation 那一段抛了、进程根本没走到那）同样是 false ——
  * 「配置说有」和「真的在跑」是两件事，而这个闸门要的是后者。
  *
- * 【测试口径】vitest 里 instrumentation 根本不加载，循环从来就不跑，而用例要能直接
- * 调引擎函数、也要能开杠杆仓 —— 所以这个进程里默认放行（与那三个循环用
- * `NODE_ENV === 'test'` 提前 return 是同一枚硬币的两面）。
- * ⚠️ 这个默认**只影响测试进程**。别把它当成「生产也宽容一点」的理由。
- *
- * g[RUNNING_KEY] 一旦被显式设成布尔值就优先 —— 测试用 __setLiquidationRunning
- * 覆盖它，正是为了能验「引擎没跑时开杠杆仓会被拒」这条闸门（否则它永远测不到）。
+ * ⚠️ **别给它加一个 `NODE_ENV === 'test'` 的默认放行** —— 那是 fail-**open**：
+ * 服务进程只要带着 `NODE_ENV=test` 起来（环境变量抄错、把测试 env 带进容器），
+ * `startMarketLiquidator()` 会在开头直接 return false（**循环根本没起来**），
+ * 而这个函数却返回 true：页面上的杠杆档照常可点、`buy` 也照常成交 —— 于是站点在
+ * **没有任何清算者**的情况下卖 10 倍仓，用户手里拿着一份跌了亏损封顶、涨了全归他的
+ * 永久免费看涨期权，而且没有任何症状。这正是本文件与 market-service 都在防的那条。
+ * 测试要放行就**显式**打开（tests/setup.ts 里有那一行，route/service 用例的
+ * beforeEach 各有一处）—— 显式打开是可见的，env 巧合不是。
  */
 export function isLiquidationRunning(): boolean {
-  const flag = g()[RUNNING_KEY];
-  if (typeof flag === 'boolean') return flag;
-  return process.env.NODE_ENV === 'test';
+  return g()[RUNNING_KEY] === true;
 }
 
 /**
@@ -168,9 +169,11 @@ export function startMarketLiquidator(): boolean {
 /**
  * 停掉（优雅退出用；测试里想验闸门请用 __setLiquidationRunning）。
  *
- * ⚠️ 这里**删掉**运行标志而不是写 false：删掉 = 回到「默认口径」（生产是没跑、
- * 测试进程是放行），写 false 会把这个进程永久钉在「引擎没跑」上 —— 而测试进程里
- * 那意味着**同一个文件后面的用例全都开不了杠杆仓**，失败点还与被测的东西无关。
+ * ⚠️ 这里**删掉**运行标志而不是留着 true：删掉 = 「引擎没在跑」，而闸门是
+ * fail-closed 的，于是它立刻读成 false（停止强平 = 停止卖杠杆，这是刻意的）。
+ * ⚠️ **测试进程里调它的用例要自己把闸门开回来**（`__setLiquidationRunning(true)`），
+ * 否则同一个文件后面的用例全都开不了杠杆仓，而失败点与被测的东西无关 ——
+ * tests/setup.ts 那一行只在文件加载时执行一次，早于本函数。
  */
 export function stopMarketLiquidator(): void {
   const store = g();

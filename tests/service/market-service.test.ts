@@ -25,7 +25,7 @@ vi.mock('@/lib/market-price', async (importOriginal) => {
 });
 
 import { fetchQuote, MarketPriceError } from '@/lib/market-price';
-import { sweepLiquidations } from '@/lib/market-liquidator';
+import { sweepLiquidations, __setLiquidationRunning } from '@/lib/market-liquidator';
 import {
   openPosition,
   closePosition,
@@ -52,6 +52,10 @@ beforeEach(async () => {
   // 限频桶是进程内 Map（不随 DB 清空）：不清的话用例之间互相吃额度，
   // 表现为「明明只下了几单却 429」。
   __resetRateLimitStore();
+  // 强平闸门在生产是 fail-closed 的（只有引擎真起来了才放行），所以**这个文件要自己
+  // 开门**才能测杠杆仓 —— 别把它放进 tests/setup.ts：那里 import market-liquidator 会
+  // 让它的 fetchQuote 拿到真身、绕过本文件的 vi.mock，详见 tests/setup.ts 的注释。
+  __setLiquidationRunning(true);
   mockQuote.mockReset();
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   vi.spyOn(console, 'error').mockImplementation(() => {});
