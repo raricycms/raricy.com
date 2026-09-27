@@ -22,7 +22,6 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "db:compensate-fortunes": "node scripts/compensate-unclaimed-fortunes.mjs",
     "cli": "tsx scripts/cli.ts",
     "e2e": "playwright test",
     "e2e:ci": "npm run build && playwright test",

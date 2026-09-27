@@ -7,7 +7,6 @@
 //   · 备份没验就规整 → 出事时才发现备份是坏的，等于没备份
 //   · 没停掉写源库的进程就规整 → 丢掉规整开始之后写入的行，而且**事后完全看不出来**
 //   · 规整后没验墙上时间 → 全站时间静默漂 8 小时
-//   · 补偿没先 dry-run → 直接改 465 个用户的余额
 //   · 密钥没验就起服务 → 上线后被用户投诉才发现鱼干全废，而这一步不可逆
 // 凌晨的维护窗口里，靠人记住这些顺序不现实。这个脚本把顺序和验证钉死。
 //
@@ -15,19 +14,18 @@
 //   1. 备份源库（.backup，不是 cp）并验证备份能打开、行数对得上
 //   2. 规整时间戳（源库只读）
 //   3. 全量核对：33 个时间列逐条比对墙上时间，一处漂移都不许有
-//   4. 补偿未翻牌的签到（默认只预演）
-//   5. 跑 diagnose（含 SECRET_KEY 能否解开存量密文 —— 唯一不可逆的那步）
+//   4. 跑 diagnose（含 SECRET_KEY 能否解开存量密文 —— 唯一不可逆的那步）
 //
 // 【它不做什么】停旧服务、起服务、切 nginx、TLS —— 那些依赖具体机器，
 // docs/deploy.md 的「依赖安装 + 构建 + 启动」/「nginx 反代」/「TLS 与会话 cookie」三节讲得清楚，
 // 也该由人看着做。
 //
-// 用法：
-//   # 预演（默认）—— 只读源库，产出规整后的新库，补偿只打印不写
-//   npx tsx scripts/prepare-cutover.mjs --source /path/to/db.db --dest /path/to/prod.db
+// 【历史的第 4 步：补偿未翻牌的签到】签到当年是两步式，库里会攒下「已签到但没领奖」
+// 的行，故这里曾有一条补偿步骤（--apply 只作用于它）。签到已改成一步式固定发鱼，
+// 那种行不再产生，这一步连同它的补偿脚本一并下线 —— 别按旧手册再找 --apply。
 //
-//   # 真的执行补偿
-//   npx tsx scripts/prepare-cutover.mjs --source ... --dest ... --apply
+// 用法：
+//   npx tsx scripts/prepare-cutover.mjs --source /path/to/db.db --dest /path/to/prod.db
 //
 //   验密钥那步需要 SECRET_KEY，照生产的传：
 //   SECRET_KEY=xxx npx tsx scripts/prepare-cutover.mjs --source ... --dest ...
@@ -50,7 +48,6 @@ const arg = (n) => {
 
 const source = arg('--source');
 const dest = arg('--dest');
-const apply = argv.includes('--apply');
 const backupDir = arg('--backup-dir') ?? path.join(path.dirname(dest ?? '.'), 'backup');
 
 const red = (s) => `\x1b[31m${s}\x1b[0m`;
@@ -59,7 +56,18 @@ const yellow = (s) => `\x1b[33m${s}\x1b[0m`;
 const bold = (s) => `\x1b[1m${s}\x1b[0m`;
 
 if (!source || !dest) {
-  console.error('用法：npx tsx scripts/prepare-cutover.mjs --source <源库> --dest <目标库> [--apply]');
+  console.error('用法：npx tsx scripts/prepare-cutover.mjs --source <源库> --dest <目标库>');
+  process.exit(2);
+}
+// --apply 曾经只管「补偿未翻牌的签到」。签到改成一步式固定发鱼之后那一步没了，
+// 于是本脚本不再写任何东西 —— 旧手册 / 旧部署记录里的 `--apply` 必须**响亮地**
+// 报错，而不是静默空跑（维护窗口里没人会去核对它到底有没有生效）。
+if (argv.includes('--apply')) {
+  console.error(
+    red('不再接受 --apply：') +
+      '补偿「已签到未领奖」那一步已随两步式签到一起下线（现在是固定发鱼，不再产生那种行）。\n' +
+      '  本脚本现在全程只读源库、只产出规整后的新库 —— 去掉 --apply 重跑即可。'
+  );
   process.exit(2);
 }
 if (!fs.existsSync(source)) {
@@ -86,8 +94,8 @@ const bad = (m) => {
 };
 
 console.log(bold('\n═══ 切换准备（数据库部分）═══'));
-console.log(`模式：${apply ? red('执行（会写补偿）') : green('预演（补偿只打印）')}`);
 console.log(`源库：${source}\n目标：${dest}`);
+console.log(green('全程不写源库：只读它，产出的是规整后的新库。'));
 
 // ── 0. 源库还在被写吗 ───────────────────────────────────────────────────────
 step(0, '源库是否已停止写入');
@@ -129,7 +137,7 @@ step(2, '规整时间戳（TEXT → INTEGER 毫秒）');
 // ★ 目标库会被推平重建 ★
 //
 // 切换前重复跑本脚本是安全的：dest 每次都从源库重新生成，结果完全一致
-// （补偿是确定性的，同一条记录每次翻出同一张牌）。
+// （规整是纯函数，源库只读）。
 //
 // 但**切换之后**网站就跑在 dest 上了。这时谁再手滑跑一次 —— 比如想「再确认一遍
 // 准备工作」—— dest 会被推平重建，上线后新增的一切（新用户、新文章、新签到）
@@ -195,31 +203,8 @@ for (const t of tables) {
 }
 if (!drift) ok(`${cols} 个时间列全部零漂移`);
 
-// ── 4. 补偿未翻牌的签到 ─────────────────────────────────────────────────────
-step(4, `补偿未翻牌的签到${apply ? '（执行）' : '（预演）'}`);
-const pending = Number(sqlite(dest, 'select count(*) from daily_checkins where fortune_value is null'));
-if (!pending) {
-  ok('没有「已签到但未翻牌」的记录，无需补偿');
-} else {
-  console.log(`  待补偿 ${pending} 条`);
-  const out = execFileSync(
-    'node',
-    [
-      path.join(HERE, 'compensate-unclaimed-fortunes.mjs'),
-      '--db', dest,
-      ...(apply ? ['--apply'] : []),
-    ],
-    { encoding: 'utf8' }
-  );
-  console.log(out.split('\n').filter((l) => l.trim()).map((l) => '    ' + l).join('\n'));
-  const left = Number(sqlite(dest, 'select count(*) from daily_checkins where fortune_value is null'));
-  if (apply && left) bad(`执行后仍剩 ${left} 条未补偿`);
-  else if (apply) ok('补偿完成，无残留');
-  else console.log(`  ${yellow('!')} 这是预演。确认无误后加 --apply 再跑一次`);
-}
-
-// ── 5. 自检（含唯一不可逆的密钥验证）──────────────────────────────────────
-step(5, '自检（含 SECRET_KEY 能否解开存量密文）');
+// ── 4. 自检（含唯一不可逆的密钥验证）──────────────────────────────────────
+step(4, '自检（含 SECRET_KEY 能否解开存量密文）');
 if (!process.env.SECRET_KEY) {
   console.log(`  ${yellow('!')} 未传 SECRET_KEY，跳过密钥验证`);
   console.log(`     ${yellow('→ 这是整个切换里唯一不可逆的一步，务必单独验：')}`);
@@ -255,10 +240,6 @@ console.log(bold('\n═══ 结论 ═══'));
 if (failed) {
   console.log(red(`  ❌ ${failed} 项未通过 —— 别往下走（起服务之前必须全绿）\n`));
   process.exit(1);
-}
-if (!apply && pending) {
-  console.log(yellow('  ⚠️ 预演通过。补偿尚未执行 —— 确认上面的逐条变更无误后，加 --apply 再跑一次。\n'));
-  process.exit(0);
 }
 console.log(green('  ✅ 数据库这半段准备就绪。'));
 console.log('     接下来见 docs/deploy.md：§3 配 .env、§5 npm ci + build 与起服务、§6 切 nginx。\n');
