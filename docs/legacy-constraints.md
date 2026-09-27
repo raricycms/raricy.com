@@ -30,14 +30,13 @@
 
 ### 1.2 我们自己的设计与对外契约 —— **不是框架痕迹**
 
-这八项经常被误列进「框架兼容层」。**当年就算用 Django / Rails / 纯 WSGI 写，值也一模一样**。
+这七项经常被误列进「框架兼容层」。**当年就算用 Django / Rails / 纯 WSGI 写，值也一模一样**。
 它们不能改，是因为**存量数据与对外契约按这个口径存在**，不是因为框架。
 
 | 项 | 位置 | 真正的理由（与框架无关） |
 |---|---|---|
 | identicon 算法 | `src/lib/identicon.ts` | md5 前 6 位取色、8×8 镜像网格、底色 (240,240,240)。**改则老用户头像图案全变** |
 | 字数统计正则 | `src/lib/blog-service.ts` 的 `countMarkdownWords` | 5 条正则（**只有代码块那条跨行**）。改则存量文章字数集体变化 |
-| 两步式签到 | `src/lib/checkin-service.ts` | `checkIn()` 建记录时 `fortune_value` 留 `NULL`，翻牌才填。**是我们刻意这么设计的**，库里真实存在这类行 |
 | 短 ID / 邀请码字符集 | `src/lib/short-id.ts`、`src/lib/invite-code.ts` | 要能继续校验**存量已发出的**码（12 位 base62，注册侧按 `length===12` 校验） |
 | 幂等键格式 | `src/lib/fish-idempotency.ts`、`fish-compensate.ts` | 客户端幂等键「1–48 位、`[A-Za-z0-9_.:-]`」是**对外契约**（`docs/bot/fish-bot.md` §6 按它写）。群发补偿的批次 ID 逐字节稳定是**刻意的**，为了让迁移前跑了一半的批次能续跑。**注意**：键之所以长这样（含 `xfer-{8位哈希}` 前缀、48 字上限）是因为当年要发往账户微服务、对方限 64 字符 —— 那边界没了，但格式不能改：存量 `account_sync_ledger` 里的键与新键共用一个命名空间 |
 | API JSON snake_case 形状 | `src/lib/blog-service.ts` 等 | **对外契约**：站外机器人按这个形状写死了。对外文档见 `docs/bot/` |
@@ -92,9 +91,10 @@ git ls-tree -r 7d7be1c^ --name-only app/ # 列出旧 app/ 全树
 三个提交 —— 细节不在这里留副本。
 
 再遇到这类注释时的**铁律：绝不整行删**（整行纯溯源除外）—— 「悬空引用」与「契约」常写在
-同一条里，整行删会把契约一起删掉。判例：`src/lib/checkin-service.ts` 那条「跨 UTC+8 午夜
-会显示『今天还没有签到』，**这不是 bug**」，删了下一个开发者真会当 bug 修。做法是
-**去出处、留契约**（`// 对齐 Flask @authenticated_required：需核心用户` → `// 需核心用户（core+）`）。
+同一条里，整行删会把契约一起删掉。判例：`src/lib/fish-idempotency.ts` 里「键长这样是因为
+当年要发往账户微服务、对方限 64 字符」—— 出处（那条远端路径）已随账户服务搬进站内一起
+消失，但**格式本身仍是对外契约**（存量账目与站外机器人按它写），所以留契约、注历史。
+做法是**去出处、留契约**（`// 对齐 Flask @authenticated_required：需核心用户` → `// 需核心用户（core+）`）。
 
 **刻意保留的**：`docs/architecture.md` 开篇边界声明与 §9「迁移史速查」、`docs/cli.md` 里
 `~~flask fish compensate~~` 那种对旧命令名的删除线标注 —— 那是**历史记录**，不是参照系，
@@ -129,8 +129,5 @@ git ls-tree -r 7d7be1c^ --name-only app/ # 列出旧 app/ 全树
    留待你定 —— 同类的 `tool/redirect`、`new_redirect` 已作为孤儿页删掉（`a157b08`），
    它成了最后一个。写死的「IP + 端口」是**刻意的**（存在无法做 DNS 解析、只能用 IP
    访问的用户），不是待清理的旧站地址 —— 同 §1.2 的两条旧直链 rewrite。
-2. **`src/app/components/CheckinCard.tsx:22` 的 `FORTUNE_LABELS[5]` 多一个尾随空格**
-   （`'运势爆棚 '`），服务端 `src/lib/checkin-service.ts:55` 那份没有。服务端有单测钉着，
-   客户端那份没有，于是漂了 —— 翻牌弹窗渲染的是客户端这份。**疑似真 bug，未改**。
-3. **`tests/e2e/fish-layout.spec.ts:60` 有一条既有的 tsc 报错**
+2. **`tests/e2e/fish-layout.spec.ts:60` 有一条既有的 tsc 报错**
    （`el.innerText` 不存在于 `SVGElement | HTMLElement`），与 2026-09 清理无关，当时未动。

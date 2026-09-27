@@ -12,7 +12,7 @@ npm run cli -- stats overview  # 命令式：看一眼站点状态
 ```
 
 > **未迁移**：旧版 CLI 的 `import-blogs`（历史博客导入；正文早已存
-> `BlogContent` 表）。需要时另写专用脚本（参考 `scripts/compensate-unclaimed-fortunes.mjs`）。
+> `BlogContent` 表）。需要时另写专用脚本（参考 `scripts/normalize-datetimes.mjs`）。
 >
 > ~~`flask fish compensate`~~ 已迁移为 `fish compensate`（见「小鱼干」一节）——
 > 语义有一处**与历史实现有意不同**，那里写明了原因。
@@ -375,7 +375,7 @@ npm run cli -- blog restore 2b7ec270-be9c-4283-b1a2 --reason "作者申诉，误
 
 给**全部 core+ 用户**（core / admin / owner）发放同样数量。
 
-**非核心账号一分不发。** 鱼干在站内的赚取渠道（签到翻牌、投喂分成）全在 core 门槛之后，
+**非核心账号一分不发。** 鱼干在站内的赚取渠道（签到、投喂分成）全在 core 门槛之后，
 给 `user` 角色空投等于「注册就有鱼干」，与这套口径直接冲突；何况这条命令一次改的是全站
 余额，多发的人越多、回滚成本越高。**被禁言者照发** —— 补偿是系统行为，与个人当前状态无关，
 禁言只停发言权、不没收财产。取的是**当前**角色，所以曾降权的账号会被跳过。
@@ -555,7 +555,7 @@ npm run cli -- fish compensate 1 --dry-run --yes  # 只列计划、不动账（�
 |------|---------------|
 | `scripts/check-secrets.mjs` | 检测密钥与生产数据有没有进版本库 |
 | `scripts/diagnose-deploy.mjs` | 部署前自检（运行时版本 / `.env` / 数据库 / 密钥） |
-| `scripts/compensate-unclaimed-fortunes.mjs` | 一次性补偿「已签到未翻牌」的鱼干记录 |
+| `scripts/normalize-datetimes.mjs` | 存量库的时间戳规整（TEXT → INTEGER 毫秒，只读源库） |
 | `scripts/cli.ts` | CLI 入口；命令声明在 `scripts/cli/registry.ts` |
 
 ## 八、给维护者：加一条命令

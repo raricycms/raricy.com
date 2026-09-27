@@ -98,7 +98,7 @@
 | `/api/poster/profile/[id]` · `/api/poster/collect` | API | **画报 / 收款码出图**（PNG，仅本人）。渲染管线与四条约束见 §6.8 |
 | `/notifications` · `/api/notifications/*` | page + API | 通知中心。其中 `GET count` 是顶栏指示器的**兜底快照**（**不能删**：SSE 有「连着但收不到」的半死状态），`GET stream` 是**实时流**（SSE，未登录 401；首帧全量快照 + 之后增量补丁）。推送点纪律与依赖方向见 `src/lib/topbar-bus.ts` 头部 |
 | `/vote` · `/vote/[id]` | page | 投票 |
-| `/checkin` · `/api/checkin` · `/api/checkin/claim` | page + API | 每日签到（**core+**：鱼干的赚取渠道，与投喂/点赞同档）。**三处都要判** —— 发鱼的其实是 `claim`，见 §8 |
+| `/checkin` · `/api/checkin` | page + API | 每日签到（**core+**：鱼干的赚取渠道，与投喂/点赞同档）。**一个请求签一次到**，固定发 `CHECKIN_REWARD_FISH` 条鱼干。页面与两个方法（GET/POST）**各自都要判档位**，见 §8 |
 | `/clipboard` · `/clipboard/[id]` · `/api/clipboard/*` | page + API | 云剪贴板 |
 | `/image` · `/image/admin` · `/api/images/*` | page + API | 图床 + 管理 |
 | `/audio` · `/audio/admin` · `/audio/guide` · `/api/audio/*` | page + API | 音频床 + 管理。**独立配额**（不吃图床那份 50MB），见 §6.6/§6.15 |
@@ -185,7 +185,8 @@ API 端点位于 `src/app/api/<group>/<verb>/route.ts`，**薄**层：参数校�
   `InsufficientFishError`，入账走 `increment`。`addFish` 是它的「只加不减」语义壳。
   ⚠️ **新增鱼干写路径时不要绕过它自己写 `update` + `create`** —— 那正是
   「余额改了、流水没写」这类静默账目损坏的入口。
-- **六条写路径，全部一个事务**：签到翻牌（`checkin-service.ts`）/ 投喂
+- **六条写路径，全部一个事务**：签到（`checkin-service.ts`：建记录 + 发鱼干 + 写流水
+  同事务，见 `docs/bot/checkin-bot.md`）/ 投喂
   （`feed-service.ts`）/ 管理员发扣与群发补偿（`fish-admin.ts`、`fish-compensate.ts`）/
   用户间转账（`fish-market-service.ts`）/ 练手盘开平仓（`market-service.ts`）/
   **租头像框**（`frame-shop-service.ts`，见 §6.14）。
@@ -202,7 +203,7 @@ API 端点位于 `src/app/api/<group>/<verb>/route.ts`，**薄**层：参数校�
     同键不同参数 → 409。记录写在业务写入的**同一个事务**里，所以「钱动了但键没记」
     在结构上不可能发生；并发同键由唯一约束挡下。
   - 群发补偿按 `batchId` 派生键，批次中断后续跑跳过已发放的人。
-  - **签到翻牌 / 投喂 / 管理员单次发扣 / 练手盘开仓 / 注册建号一律不登记** ——
+  - **签到 / 投喂 / 管理员单次发扣 / 练手盘开仓 / 注册建号一律不登记** ——
     它们的键带随机后缀，登记了也没有去重价值，只会把表撑大。
 - **共享单号 `fish_transactions.transfer_id`**：一笔转账的两条流水（发送方 `transfer`
   负 / 接收方 `transfer_receive` 正）写**同一个**值，让收付双方能对上同一笔。
@@ -1128,7 +1129,7 @@ MP3 的帧同步要核版本 / 层 / 位速率字段（只判 `0xFF` 打头太�
 ```
 
 ⚠️ **这里没有 503 这一档**。它曾经是「远端账户服务不可达」的专用码，随账户服务搬进
-站内一起消失（历史注记见 §6.3.1）。**别的鱼干路径也都一样**：转账 / 签到翻牌 /
+站内一起消失（历史注记见 §6.3.1）。**别的鱼干路径也都一样**：转账 / 签到 /
 练手盘 / CLI 发扣全是「一个事务 + 400 或 500」。对外文档里凡教调用方
 「看到 503 就重试一次」的地方都已改写 —— 那些重试建议的前提（本地已被补偿回滚）
 不存在了。
@@ -1307,11 +1308,12 @@ MP3 的帧同步要核版本 / 层 / 位速率字段（只判 `0xFF` 打头太�
 | 层 | 判定 |
 |----|------|
 | `/checkin` 页面 | `isCoreUser(user)` → 渲染 403 页（不用 `requireCoreUser`，理由见该文件头）|
+| `GET /api/checkin` | `isCoreUser` → `apiErr(403, CORE_ONLY)` |
 | `POST /api/checkin` | `isCoreUser` → `apiErr(403, CORE_ONLY)` |
-| `POST /api/checkin/claim` | `isCoreUser` → `apiErr(403, '需要核心用户权限')` |
 
-> ⚠️ **发鱼的其实是 `claim`**（签到只是翻牌的入场券）。只挡 `/api/checkin` 而不挡 claim，
-> 等于没挡 —— 直接 POST claim 就能拿鱼干。新增「页面 + 多接口」的档位功能时照此三处对照。
+> ⚠️ **`POST /api/checkin` 本身就是发鱼的那一步**（2026-09 起签到是一步式，建记录与
+> 发鱼干在同一个事务里，没有第二步）。页面那道 guard 只挡浏览器 —— 只挡页面而不挡这个
+> POST，匿名 curl 一次就能把鱼干领走。新增「页面 + 多接口」的档位功能时照此逐层对照。
 
 **读口也一样，而且漏了不报错。** 页面那道 guard 只挡浏览器：`/blog` 一直有
 `requireCoreUser()`，而同名的 `GET /api/blogs` 与 `GET /api/blogs/[id]` 长期免认证 ——

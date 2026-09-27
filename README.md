@@ -59,9 +59,8 @@ npm run dev                              # http://localhost:3000
 | `npm run check:links` | 站内断链静态扫描 |
 | `npm run prisma:pull` | 把库反向同步到 schema.prisma（手改 SQL 后用） |
 | `npm run db:normalize` | 源库复制 + 规整时间戳为 INTEGER 毫秒 |
-| `npm run db:compensate-fortunes` | 补偿"已签到未翻牌"的鱼干记录 |
 | `npm run cli` | 运维台。**不带参数进菜单向导**（引导式，不用背命令）；`npm run cli -- <命令>` 是命令式。覆盖角色 / 用户 / 内容检索与恢复 / 鱼干 / 邀请码 / 审计 / 申诉 / 概览 |
-| `npm run prepare:cutover` | 切换期一次性：备份 → 规整 → 补偿 → diagnose |
+| `npm run prepare:cutover` | 切换期一次性：备份 → 规整 → diagnose |
 | `npm run instance:check` | 创建 instance/ 子目录 |
 
 > ⚠️ `npm run e2e` 跑的是 `.next` 里的**现有构建产物**（`next start`）。改了 `src/`

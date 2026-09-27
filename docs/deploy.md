@@ -198,7 +198,7 @@ DATABASE_URL="file:/绝对路径/instance/database/db.db" npm run diagnose
 npm run prepare:cutover -- \
   --source /path/to/instance/database/db.db \
   --dest   /path/to/prod-normalized.db
-# 看完逐项输出,加 --apply 才执行
+# 全程只读源库;看完逐项输出(源库校验和不变才算通过)再换库
 ```
 
 ### 全新部署（空目录起步）
@@ -247,6 +247,12 @@ DATABASE_URL="file:/绝对路径/instance/database/db.db" npm run migrate -- up
 必须与库里的标度同一时刻切换**。跑反了、或者两边并行了一会儿，都是**静默的错账**，
 没有任何断言会当场报错：
 
+> ⚠️ **「删列」（`ALTER TABLE … DROP COLUMN`）也属于这一类，而且更急**：列一没，
+> 旧进程的每一次 `users` 查询都会 `no such column` —— 全站 500，且是**立刻**。
+> 顺序必须是 **停服 → `migrate up` → 换代码 → 起服务**。
+>（判例：`prisma/migrations/24_drop_fortune_columns`。它的 `DROP COLUMN` 会重解析
+> 整个 schema，所以跑之前先按那份文件头的自检看一眼有没有遗留的 view / trigger。）
+
 | 顺序 | 后果 |
 |------|------|
 | 先迁移、后换代码 | 旧代码除以旧标度 → 余额显示成 1000 倍；写库只写 1/1000 |
@@ -290,10 +296,12 @@ SELECT name, checksum FROM _raricy_migrations WHERE name LIKE '21_%';        -- 
 `pending`，说明上次「SQL 已提交、跟踪表没来得及刷新」，数据是对的，跑
 `npm run migrate -- mark 21_fish_units_1e4` 刷新即可。
 
-另注：**迁移 SQL 本身没有任何自动化测试会跑**（测试库由 `prisma db push` 建，走不到
-`prisma/migrations/`）。`tests/unit/fish-migration-21.test.ts` 是为补这个洞加的：
-它在临时库上照着**生产形态**（REAL 亲和列）重建这几列、灌已知值、原样执行迁移文件、
-逐行断言。新增数据变换迁移时照抄那个文件的形态。
+另注：**迁移 SQL 在 CI 里默认没有任何东西会跑**（测试库由 `prisma db push` 建，走不到
+`prisma/migrations/`）。两个补这个洞的用例，新增迁移时照抄它们的形态：
+- `tests/unit/fish-migration-21.test.ts` —— 数据变换型：在临时库上照着**生产形态**
+  （REAL 亲和列）重建那几列、灌已知值、原样执行迁移文件、逐行断言；
+- `tests/unit/checkin-migrations.test.ts` —— **删列**型（24，含外键父表 + 索引）与
+  **改写文本**型（25，含「没命中的行不许动」与幂等重跑）各一个。
 
 > 永远不要在生产跑 `prisma migrate dev` / `prisma db push` / `prisma migrate reset`——它们会无视 `_raricy_migrations` 直接动 schema。
 

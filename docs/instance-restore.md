@@ -115,8 +115,7 @@ npm run dev     # 打开 /u/<用户 uuid>
 ## 6. 生产路径的差异
 
 - 生产库是 `instance/database/db.db`（不是 `dev.db`），`DATABASE_URL` 用**绝对路径**
-- 一键版：`npm run prepare:cutover -- --source <db.db> --dest <新库>` —— 备份 → 规整 → 33 个时间列全量墙上时间核对 → 补偿未翻牌签到 → diagnose；源库只读并在结束时比对 SHA-256。**需要系统 `sqlite3` CLI**
-- 未翻牌签到补偿：`npm run db:compensate-fortunes -- --apply`
+- 一键版：`npm run prepare:cutover -- --source <db.db> --dest <新库>` —— 备份 → 规整 → 33 个时间列全量墙上时间核对 → diagnose；源库只读并在结束时比对 SHA-256。**需要系统 `sqlite3` CLI**
 - 头像 / 图床 / 故事不需要任何处理，按目录结构放好即可
 
 ## 7. 回滚
