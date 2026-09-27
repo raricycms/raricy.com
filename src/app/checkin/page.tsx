@@ -29,8 +29,8 @@ export default async function CheckinPage() {
       <CheckinCard
         checkedIn={status.checkedIn}
         totalCount={status.totalCount}
-        fortuneValue={status.fortuneValue}
-        fortunePending={status.fortunePending}
+        todayFish={status.todayFish}
+        rewardFish={status.rewardFish}
         today={status.today}
         username={user.username}
       />

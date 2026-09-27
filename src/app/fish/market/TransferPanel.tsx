@@ -18,7 +18,7 @@ import RecipientPicker, { type TransferTarget } from './RecipientPicker';
 //
 // 【重复提交 = 双倍转账】服务端每次提交都是独立的一笔新交易（幂等键带随机后缀），
 // 所以 busy 期间按钮必须 disable 并锁死 —— 这是防重复提交的第一道闸
-// （同 checkin 的翻牌按钮）。
+// （同 checkin 的签到按钮）。
 
 declare global {
   interface Window {

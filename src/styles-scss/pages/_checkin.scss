@@ -383,25 +383,12 @@
   flex-shrink: 0;
 }
 
-// ---- 运势颜色体系 ----
-//
-// 五档由「灰 → 绿 → 蓝 → 琥珀 → 红」递进。原为写死的 #6B7280 / #10B981 /
-// #3B82F6 / #F59E0B / #EF4444 —— 暗色下不跟着变。第 1 档是「无」所以取弱文字色，
-// 第 2/5 档是语义（好 / 差），第 3/4 档只是换个色相，故走分类强调色。
+// ---- 今日签到到手的小鱼干 ----
 
-.fortune-color--1 { color: var(--color-text-secondary); }
-.fortune-color--2 { color: var(--color-success-primary); }
-.fortune-color--3 { color: var(--color-accent-blue); }
-.fortune-color--4 { color: var(--color-accent-amber); }
-.fortune-color--5 { color: var(--color-warning-primary); }
-
-// ---- 今日运势小标签 ----
-
-.checkin-today-fortune {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: $space-2;
+.checkin-today-reward {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
   margin-top: $space-2;
   padding: $space-2 $space-4;
   background: var(--color-background-subtle);
@@ -409,13 +396,21 @@
   font-size: 0.9rem;
 }
 
-.checkin-today-fortune__label {
+.checkin-today-reward__label {
   color: var(--color-text-secondary);
 }
 
-.checkin-today-fortune__value {
+.checkin-today-reward__value {
   font-weight: 700;
   font-size: 1.2rem;
+  color: var(--color-brand-primary);
+}
+
+// 未签到时的一句提示：每天能领多少
+.checkin-reward-hint {
+  margin-top: $space-2;
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
 }
 
 // ---- 空状态 ----
@@ -426,306 +421,6 @@
   color: var(--color-text-secondary);
   font-size: 0.95rem;
 }
-
-// ============================================================
-// 运势弹窗
-// ============================================================
-
-// ---- 关键帧 ----
-
-@keyframes fortuneCardFlip {
-  0%   { transform: rotateY(0deg); }
-  100% { transform: rotateY(180deg); }
-}
-
-@keyframes fortuneResultPop {
-  0%   { transform: scale(0.3); opacity: 0; }
-  50%  { transform: scale(1.25); }
-  100% { transform: scale(1); opacity: 1; }
-}
-
-@keyframes fortuneFloatIn {
-  0%   { opacity: 0; transform: translateY(20px) scale(0.95); }
-  100% { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-@keyframes fortuneGlow {
-  0%   { opacity: 1; transform: scale(1); }
-  100% { opacity: 0; transform: scale(1.15); }
-}
-
-@keyframes fortuneCardEnter {
-  0%   { opacity: 0; transform: translateY(16px); }
-  100% { opacity: 1; transform: translateY(0); }
-}
-
-// ---- 弹窗容器 ----
-
-.fortune-modal {
-  position: fixed;
-  inset: 0;
-  display: none;
-  align-items: center;
-  justify-content: center;
-  z-index: 1100;
-
-  &--open {
-    display: flex;
-  }
-}
-
-.fortune-modal__backdrop {
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.65);
-
-  @supports (backdrop-filter: blur(4px)) {
-    background: rgba(0, 0, 0, 0.55);
-    backdrop-filter: blur(4px);
-  }
-}
-
-.fortune-modal__content {
-  position: relative;
-  background: var(--color-background-card);
-  border-radius: 30px;
-  padding: $space-8;
-  max-width: 500px;
-  width: calc(100% - 2rem);
-  text-align: center;
-  box-shadow: var(--shadow-card-brand);
-  animation: fortuneFloatIn 0.4s ease-out;
-  z-index: 1;
-
-  @media (max-width: 480px) {
-    padding: 20px 16px;
-    border-radius: 20px;
-    max-width: calc(100% - 1rem);
-  }
-}
-
-.fortune-modal__header {
-  margin-bottom: $space-6;
-
-  h3 {
-    font-size: 1.35rem;
-    font-weight: 700;
-    margin: 0 0 $space-2;
-    color: var(--color-text-primary);
-  }
-
-  p {
-    font-size: 0.9rem;
-    color: var(--color-text-secondary);
-    margin: 0;
-  }
-}
-
-// ---- 运势卡牌 ----
-
-.fortune-cards {
-  display: flex;
-  justify-content: center;
-  gap: 8px;
-  margin-bottom: $space-6;
-  perspective: 800px;
-  // Safety: allow wrapping on ultra-small screens
-  flex-wrap: wrap;
-
-  @media (max-width: 480px) {
-    gap: 8px;
-  }
-
-  @media (max-width: 380px) {
-    gap: 6px;
-  }
-}
-
-.fortune-card {
-  width: 80px;
-  height: 108px;
-  cursor: pointer;
-  perspective: 800px;
-  animation: fortuneCardEnter 0.45s ease-out backwards;
-  animation-delay: calc(var(--card-index, 0) * 0.08s + 0.1s);
-  transition: transform 0.2s ease;
-  pointer-events: auto;
-
-  @media (hover: hover) {
-    &:hover:not(.fortune-card--flipped) {
-      transform: translateY(-6px);
-    }
-  }
-
-  // Dim non-selected cards after reveal
-  &--revealed:not(.fortune-card--selected) {
-    opacity: 0.5;
-  }
-
-  @media (max-width: 480px) {
-    width: 60px;
-    height: 84px;
-  }
-
-  @media (max-width: 380px) {
-    width: 50px;
-    height: 70px;
-  }
-}
-
-.fortune-card__inner {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  transition: transform 0.6s cubic-bezier(0.4, 0.0, 0.2, 1);
-  transform-style: preserve-3d;
-  will-change: transform;
-}
-
-.fortune-card--flipped .fortune-card__inner {
-  transform: rotateY(180deg);
-}
-
-.fortune-card__front,
-.fortune-card__back {
-  position: absolute;
-  inset: 0;
-  border-radius: 12px;
-  backface-visibility: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 2rem;
-  font-weight: 700;
-
-  @media (max-width: 480px) {
-    font-size: 1.5rem;
-    border-radius: 10px;
-  }
-
-  @media (max-width: 380px) {
-    font-size: 1.25rem;
-    border-radius: 8px;
-  }
-}
-
-.fortune-card__front {
-  background: linear-gradient(145deg, #4F46E5, #3730A3);
-  color: rgba(255, 255, 255, 0.9);
-  border: 2px solid rgba(255, 255, 255, 0.15);
-  letter-spacing: 2px;
-}
-
-.fortune-card__back {
-  background: linear-gradient(145deg, var(--color-background-card), var(--color-background-subtle));
-  border: 2px solid var(--color-brand-primary);
-  transform: rotateY(180deg);
-  color: var(--color-text-primary);
-}
-
-// Glow on selected card (uses ::after for GPU-friendly opacity animation)
-.fortune-card--selected {
-  position: relative;
-
-  &::after {
-    content: '';
-    position: absolute;
-    inset: -6px;
-    border-radius: 14px;
-    border: 2px solid rgba(245, 158, 11, 0.6);
-    pointer-events: none;
-    animation: fortuneGlow 1.2s ease-out both;
-  }
-}
-
-// ---- 运势结果区域 ----
-
-.fortune-modal__result {
-  animation: fortuneFloatIn 0.4s ease-out;
-}
-
-.fortune-modal__result-value {
-  font-size: 4.5rem;
-  font-weight: 800;
-  line-height: 1;
-  margin-bottom: $space-2;
-  display: inline-block;
-
-  &--pop {
-    animation: fortuneResultPop 0.55s cubic-bezier(0.4, 0.0, 0.2, 1);
-  }
-
-  @media (max-width: 480px) {
-    font-size: 3.5rem;
-  }
-}
-
-.fortune-modal__result-desc {
-  font-size: 1rem;
-  color: var(--color-text-secondary);
-  margin-bottom: $space-4;
-}
-
-// ---- 迷你全部卡牌展示 ----
-
-.fortune-modal__pool-reveal {
-  margin-bottom: $space-6;
-}
-
-.fortune-mini-cards {
-  display: flex;
-  justify-content: center;
-  gap: $space-2;
-}
-
-.fortune-mini-card {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: $radius-small;
-  background: var(--color-background-subtle);
-  color: var(--color-text-secondary);
-  font-weight: 600;
-  font-size: 0.9rem;
-  border: 1.5px solid transparent;
-  transition: all 0.25s ease;
-
-  &--chosen {
-    border-color: var(--color-brand-primary);
-    background: var(--color-brand-secondary);
-    transform: scale(1.15);
-  }
-}
-
-// ---- 关闭按钮 ----
-
-.fortune-modal__close-btn {
-  display: inline-block;
-  padding: 10px 36px;
-  border: none;
-  border-radius: $radius-max;
-  background: var(--color-brand-primary);
-  color: #fff;
-  font-size: 1rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.2s, transform 0.15s;
-
-  &:hover {
-    filter: brightness(1.1);
-    transform: scale(1.03);
-  }
-
-  &:active {
-    transform: scale(0.97);
-  }
-}
-
-// （原先这里有一套 .checkin-leaderboard__tabs / __tab / __panel 的标签页样式，
-//   随「运势榜」一起下线：榜单只剩签到天数榜，不再需要切换。见
-//   src/lib/checkin-service.ts 末尾的说明。）
 
 // 签到按钮 loading 态的旋转图标
 @keyframes rc-spin {

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { LoaderCircle, Sparkles } from 'lucide-react';
+import { LoaderCircle } from 'lucide-react';
 import { MedalIcon } from '@/app/components/MedalIcon';
 import Avatar from '@/app/components/Avatar';
 import type { LeaderboardEntry } from '@/lib/checkin-service';
@@ -15,23 +15,15 @@ function toast(msg: string, type: string) {
   if (w.showToast) w.showToast(msg, type);
 }
 
-// ── 运势文案映射（须与 checkin-service.ts 的 fortuneLabel 同值） ─────────────
-const FORTUNE_LABELS: Record<number, string> = {
-  1: '平平淡淡也是真',
-  2: '小有运气',
-  3: '运势不错',
-  4: '好运连连',
-  5: '运势爆棚 ',
-};
-
-const CARD_COUNT = 5;
 type BtnPhase = 'idle' | 'loading' | 'success' | 'done';
 
 interface Props {
   checkedIn: boolean;
   totalCount: number;
-  fortuneValue: number | null;
-  fortunePending: boolean;
+  /** 今天已经到手的签到鱼干（服务端读流水给的真值）。 */
+  todayFish: number;
+  /** 签一次给多少（服务端常量，别在这儿另写一个数）。 */
+  rewardFish: number;
   today: string;
   username: string;
 }
@@ -39,32 +31,18 @@ interface Props {
 export default function CheckinCard({
   checkedIn,
   totalCount,
-  fortuneValue,
-  fortunePending,
+  todayFish,
+  rewardFish,
   today,
   username,
 }: Props) {
   const router = useRouter();
 
   const [count, setCount] = useState(totalCount);
-  const [todayFortune, setTodayFortune] = useState<number | null>(fortuneValue);
+  const [fishToday, setFishToday] = useState(todayFish);
   const [countBounce, setCountBounce] = useState(false);
 
   const [btnPhase, setBtnPhase] = useState<BtnPhase>(checkedIn ? 'done' : 'idle');
-
-  // 运势弹窗状态
-  const [modalOpen, setModalOpen] = useState(false);
-  const [modalPending, setModalPending] = useState(false); // true = 恢复态「继续完成签到」
-  const [isRevealed, setIsRevealed] = useState(false); // 已选牌，锁定后续点击
-  const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
-  const [flipped, setFlipped] = useState<boolean[]>(() => Array(CARD_COUNT).fill(false));
-  const [revealed, setRevealed] = useState(false);
-  const [backs, setBacks] = useState<string[]>(() => Array(CARD_COUNT).fill(''));
-  const [showResult, setShowResult] = useState(false);
-  const [resultValue, setResultValue] = useState<number | null>(null);
-  const [resultPop, setResultPop] = useState(false);
-  const [pool, setPool] = useState<number[]>([]);
-  const [chosenIndex, setChosenIndex] = useState<number | null>(null);
 
   const doneRef = useRef(checkedIn); // 本次会话是否已完成签到
   const busyRef = useRef(false);
@@ -84,62 +62,15 @@ export default function CheckinCard({
     timers.current.push(t);
   };
 
-  // 已签到但未翻牌（恢复态）→ 进页短暂延时后自动弹出运势卡
-  useEffect(() => {
-    if (!fortunePending) return;
-    const t = setTimeout(() => {
-      if (!mounted.current) return;
-      resetCards();
-      setModalPending(true);
-      setModalOpen(true);
-    }, 400);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fortunePending]);
-
-  // 弹窗打开时锁定滚动（对齐 document.body.style.overflow）
-  useEffect(() => {
-    if (typeof document === 'undefined') return;
-    document.body.style.overflow = modalOpen ? 'hidden' : '';
-    return () => {
-      document.body.style.overflow = '';
-    };
-  }, [modalOpen]);
-
-  // Esc 关闭弹窗（document 级 keydown 监听）
-  useEffect(() => {
-    if (!modalOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeModal();
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modalOpen]);
-
-  function resetCards() {
-    setIsRevealed(false);
-    setSelectedIdx(null);
-    setFlipped(Array(CARD_COUNT).fill(false));
-    setRevealed(false);
-    setBacks(Array(CARD_COUNT).fill(''));
-    setShowResult(false);
-    setResultValue(null);
-    setResultPop(false);
-    setPool([]);
-    setChosenIndex(null);
-  }
-
   function bounceCount() {
     setCountBounce(false);
     requestAnimationFrame(() => setCountBounce(true));
   }
 
-  // 点击「每日签到」→ 第一步签到（API 请求中按钮显示「⏳ 签到中...」）→ 成功
-  // toast + 按钮转「今日已签到」→ 约 1.3s 后弹出运势卡等用户翻牌（先签到
-  // 后翻牌的时序；运势此刻未定，翻牌走 claim 才定）。
+  // 点击「每日签到」→ 签到 + 到账是一个请求、一个事务（服务端把建记录与发鱼干
+  // 一起提交）。成功或「今天已签到」都直接进已签到态 —— 没有第二步要等。
   async function doCheckinFlow() {
-    if (doneRef.current || busyRef.current || modalOpen) return;
+    if (doneRef.current || busyRef.current) return;
     busyRef.current = true;
     setBtnPhase('loading');
 
@@ -152,17 +83,19 @@ export default function CheckinCard({
       const data = await res.json();
 
       if (data.code === 200) {
-        // 签到成功（仅建记录）—— 运势在翻牌那刻才由所选位置决定
         doneRef.current = true;
         toast(data.message || '签到成功！', 'success');
         setBtnPhase('success');
         later(() => setBtnPhase('done'), 1050);
-        // 约 1.3s 后弹出运势卡（全新签到态）
-        later(() => {
-          resetCards();
-          setModalPending(false);
-          setModalOpen(true);
-        }, 1300);
+        if (data.total_count != null) {
+          setCount(data.total_count);
+          bounceCount();
+        }
+        if (data.today_fish != null) setFishToday(data.today_fish);
+        // 排行榜（服务端组件）与顶栏签到绿点跟着更新
+        router.refresh();
+        const w = window as unknown as { updateCheckinIndicator?: () => void };
+        if (w.updateCheckinIndicator) w.updateCheckinIndicator();
       } else if (data.code === 401) {
         setBtnPhase('idle');
         toast('登录已过期，请重新登录', 'error');
@@ -170,20 +103,12 @@ export default function CheckinCard({
           window.location.href = '/login';
         }, 1500);
       } else if (data.already_checked) {
-        // 今天已签到 —— 直接进已签到态
+        // 今天已签到（另一个标签页签的 / 本页 state 落后）—— 直接进已签到态
         doneRef.current = true;
         setBtnPhase('done');
         if (data.total_count != null) setCount(data.total_count);
+        if (data.today_fish != null) setFishToday(data.today_fish);
         toast(data.message || '今天已签到', 'info');
-        // 已签到但还没翻牌（另一标签页签的 / 上次关了弹窗没选牌）→ 弹恢复态卡。
-        // 堵住「签到未翻牌 → 再来点签到按钮 → 卡死在无弹窗」的死角。
-        if (data.fortune_pending) {
-          later(() => {
-            resetCards();
-            setModalPending(true);
-            setModalOpen(true);
-          }, 600);
-        }
       } else {
         setBtnPhase('idle');
         toast(data.message || '操作失败，请稍后重试', 'error');
@@ -193,103 +118,6 @@ export default function CheckinCard({
       toast('网络异常，请稍后重试', 'error');
     } finally {
       busyRef.current = false;
-    }
-  }
-
-  // 翻牌动画：被点的牌翻开即服务端从牌池取的 pool[i]（claim 响应保证
-  // fv === pool[i]，无需再交换 —— 选择的位置此刻才真正决定命运）。
-  // 700ms 后揭示其余牌，1500ms 后展示结果区。
-  function runRevealAnimation(i: number, fv: number, drawnPool: number[]) {
-    if (!Array.isArray(drawnPool) || drawnPool.length !== CARD_COUNT) return; // 腐坏数据防线
-    const display = [...drawnPool];
-
-    // Step 1：翻开所选牌
-    setBacks((prev) => {
-      const b = [...prev];
-      b[i] = String(fv);
-      return b;
-    });
-    setFlipped((prev) => {
-      const f = [...prev];
-      f[i] = true;
-      return f;
-    });
-    setSelectedIdx(null);
-
-    // Step 2：700ms 后揭示其余牌
-    later(() => {
-      setRevealed(true);
-      setBacks(display.map(String));
-      setFlipped(Array(CARD_COUNT).fill(true));
-    }, 700);
-
-    // Step 3：1500ms 后展示结果区
-    later(() => {
-      setPool(display);
-      setChosenIndex(i);
-      setResultValue(fv);
-      setTodayFortune(fv);
-      setShowResult(true);
-      requestAnimationFrame(() => setResultPop(true));
-      // 累计天数 +1（仅全新签到，恢复态不加）
-      if (!modalPending) {
-        setCount((c) => c + 1);
-        bounceCount();
-      }
-    }, 1500);
-  }
-
-  // 选牌 → POST /api/checkin/claim：此刻服务端才从**签到落库的牌池**取
-  // pool[i] 赋值并发鱼 —— 翻哪张、拿哪个值由这一步的选择决定（恢复态同路）。
-  // 失败（400/503）→ 复原可点，用户可换牌重试（服务端 fortune 仍是 NULL）。
-  async function selectCard(i: number) {
-    if (isRevealed) return;
-    setIsRevealed(true);
-    setSelectedIdx(i);
-
-    try {
-      const res = await fetch('/api/checkin/claim', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({ chosenIndex: i }),
-      });
-      const data = await res.json();
-
-      if (data.code !== 200) {
-        if (data.code === 401) {
-          toast('登录已过期，请重新登录', 'error');
-          later(() => {
-            window.location.href = '/login';
-          }, 1500);
-          return;
-        }
-        setIsRevealed(false);
-        setSelectedIdx(null);
-        toast(data.message || '出错了，请重试', 'error');
-        return;
-      }
-
-      doneRef.current = true;
-      runRevealAnimation(i, data.fortune_value, data.pool ?? []);
-    } catch {
-      setIsRevealed(false);
-      setSelectedIdx(null);
-      toast('网络异常，请稍后重试', 'error');
-    }
-  }
-
-  function closeModal() {
-    setModalOpen(false);
-    setModalPending(false);
-    if (doneRef.current) {
-      // 刷新排行榜/统计（服务端组件重取）+ 顶栏签到绿点
-      router.refresh();
-      const w = window as unknown as { updateCheckinIndicator?: () => void };
-      if (w.updateCheckinIndicator) w.updateCheckinIndicator();
-    } else {
-      // 未完成签到 —— 恢复按钮可点
-      setBtnPhase('idle');
     }
   }
 
@@ -322,7 +150,7 @@ export default function CheckinCard({
       <button
         className={btnClass}
         onClick={doCheckinFlow}
-        disabled={done || btnPhase === 'loading' || btnPhase === 'success' || modalOpen}
+        disabled={done || btnPhase === 'loading' || btnPhase === 'success'}
       >
         <span
           className={
@@ -333,8 +161,7 @@ export default function CheckinCard({
         {btnText}
       </button>
 
-      {/* 统计只留签到天数 —— 「总运势值」不再展示（站内不出现运势值总和，
-          为什么见 checkin-service.ts 末尾的说明；下方「今日运势」是当天翻出的值，保留） */}
+      {/* 统计只有签到天数一格 */}
       <div className="checkin-stats">
         <div className="checkin-stats__item">
           <div className={'checkin-stats__value' + (countBounce ? ' checkin-stats__value--bounce' : '')}>
@@ -344,96 +171,18 @@ export default function CheckinCard({
         </div>
       </div>
 
-      {todayFortune != null && (
-        <div className="checkin-today-fortune">
-          <span className="checkin-today-fortune__label">今日运势</span>
-          <span className={`checkin-today-fortune__value fortune-color--${todayFortune}`}>
-            {todayFortune}
-          </span>
+      {/* 今天到手多少 —— **读服务端真值**（流水），不按常量推算：奖励将来若改，
+          今天已签的人也不会看到「按新数字算出来」的假账。
+          没签到、或签过但没到账（本行是历史遗留）时不渲染，别写一个骗人的 0。 */}
+      {fishToday > 0 ? (
+        <div className="checkin-today-reward">
+          <span className="checkin-today-reward__label">今日签到获得</span>
+          <span className="checkin-today-reward__value">+{fishToday}</span>
+          <span className="checkin-today-reward__label">小鱼干</span>
         </div>
+      ) : (
+        <div className="checkin-reward-hint">每天签到领 {rewardFish} 条小鱼干</div>
       )}
-
-      {/* 运势弹窗 */}
-      <div className={'fortune-modal' + (modalOpen ? ' fortune-modal--open' : '')}>
-        <div className="fortune-modal__backdrop" onClick={closeModal} />
-        <div className="fortune-modal__content">
-          <div className="fortune-modal__header">
-            <h3>
-              {modalPending ? (
-                <>
-                  <Sparkles aria-hidden="true" /> 继续完成签到
-                </>
-              ) : (
-                '签到成功！'
-              )}
-            </h3>
-            <p>{modalPending ? '上次签到还未选牌，选择一张运势卡吧' : '选择一张运势卡，看看今天的运气如何'}</p>
-          </div>
-
-          {!showResult && (
-            <div className="fortune-cards">
-              {Array.from({ length: CARD_COUNT }).map((_, i) => (
-                <div
-                  key={i}
-                  className={
-                    'fortune-card' +
-                    (flipped[i] ? ' fortune-card--flipped' : '') +
-                    (revealed ? ' fortune-card--revealed' : '') +
-                    (selectedIdx === i ? ' fortune-card--selected' : '')
-                  }
-                  style={
-                    {
-                      '--card-index': i,
-                      pointerEvents: isRevealed ? 'none' : undefined,
-                    } as React.CSSProperties
-                  }
-                  onClick={() => selectCard(i)}
-                >
-                  <div className="fortune-card__inner">
-                    <div className="fortune-card__front">?</div>
-                    <div className="fortune-card__back">{backs[i]}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {showResult && (
-            <div className="fortune-modal__result">
-              <div
-                className={
-                  'fortune-modal__result-value fortune-color--' +
-                  resultValue +
-                  (resultPop ? ' fortune-modal__result-value--pop' : '')
-                }
-              >
-                {resultValue}
-              </div>
-              <div className="fortune-modal__result-desc">
-                {resultValue != null ? FORTUNE_LABELS[resultValue] ?? '' : ''}
-              </div>
-              <div className="fortune-modal__pool-reveal">
-                <div className="fortune-mini-cards">
-                  {pool.map((val, i) => (
-                    <span
-                      key={i}
-                      className={
-                        'fortune-mini-card' +
-                        (i === chosenIndex ? ` fortune-mini-card--chosen fortune-color--${val}` : '')
-                      }
-                    >
-                      {val}
-                    </span>
-                  ))}
-                </div>
-              </div>
-              <button className="fortune-modal__close-btn" onClick={closeModal}>
-                知道了
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
     </div>
   );
 }
@@ -498,8 +247,7 @@ function LeaderboardList({
   );
 }
 
-// 只剩签到天数榜 —— 原先「签到天数榜 / 运势榜」的双 tab 随运势榜一起下线：
-// 站内不展示任何人的运势值总和（见 checkin-service.ts 末尾的说明）。
+// 只剩签到天数榜 —— 早先「签到天数榜 / 累计值榜」的双 tab 已随后者一起下线。
 export function CheckinLeaderboards({
   countEntries,
   currentUserId,

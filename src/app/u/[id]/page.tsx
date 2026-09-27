@@ -190,7 +190,6 @@ export default async function PublicProfilePage({
             </div>
           </div>
 
-          {/* 没有「运势值」格：站内不展示运势值总和（见 lib/checkin-service.ts 末尾） */}
           {/* 计数也是内容：档位不够时整块不渲染 —— 只留头像 / 用户名 / 简介 / 注册时间 */}
           {canSeeContent && (
             <div className="profile-stats">

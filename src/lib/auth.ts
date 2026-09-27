@@ -33,7 +33,6 @@ export const PUBLIC_USER_SELECT = {
   isBanned: true,
   banUntil: true,
   banReason: true,
-  totalFortune: true,
   driedFish: true,
   notifyLike: true,
   notifyEdit: true,

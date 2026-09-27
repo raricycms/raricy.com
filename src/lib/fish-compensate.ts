@@ -106,7 +106,7 @@ async function ledgerStatus(idempotencyKey: string): Promise<LedgerStatus> {
 /**
  * 补偿的发放对象：**只发 core+**（core / admin / owner）。
  *
- * 【为什么不是全站】鱼干是 core+ 体系的报酬 —— 站内全部赚取渠道（签到翻牌、投喂
+ * 【为什么不是全站】鱼干是 core+ 体系的报酬 —— 站内全部赚取渠道（签到、投喂
  * 分成）都在 core 门槛之后，非认证账号拿到鱼干也没有出口（发文章、投喂、投票都要
  * core+）。给全站空投等于把它变成「注册就有鱼干」，与这套口径直接冲突；而且它
  * 一次改的是全站余额，多发的人越多，回滚成本越高。
