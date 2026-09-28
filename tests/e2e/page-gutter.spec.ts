@@ -24,6 +24,7 @@
 import { test, expect } from '@playwright/test';
 import { loginViaApi } from './helpers';
 import { E2E_STORIES, SEED_USERS } from './seed';
+import { docHref } from '../../src/lib/docs-catalog';
 
 /** 全站檐沟 = `.container` 的 container-padding。 */
 const SITE_GUTTER = 16;
@@ -54,6 +55,13 @@ const PAGES: { url: string; targets: string[]; gutter?: number }[] = [
   },
   { url: '/explore', targets: ['main h1'] },
   { url: '/tool', targets: ['main h1'] },
+  // 文档页：索引页的抬头与正文页的整张卡都直接坐在容器里。
+  // ⚠️ 正文页**不能量 `main h1`** —— 那个 h1 是文档自己的一级标题，住在
+  // `.docs-content` 卡片内部，左边还要多出卡片自己的 2.5rem 内距（量它必然红）。
+  // ⚠️ 也**不能量 `.docs-back`**：它是个内容宽的 inline-flex 链接，右边缘不在容器边上
+  //（这条用例量的是左右两条边，只有撑满容器的块级元素才同时成立）。
+  { url: '/docs', targets: ['main h1', '.docs-hero__lede'] },
+  { url: docHref('guide/图床使用指南'), targets: ['.docs-content'] },
   // 以下要 core+ / 管理员（登录用种子账号 e2e_admin）
   { url: '/admin', targets: ['main h1', '.admin-hero p'], gutter: 20 },
   { url: '/blog/upload', targets: ['main h1', '.blog-form-container'] },
