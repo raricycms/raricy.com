@@ -25,6 +25,19 @@
   margin: -$space-2 0 $space-6;
 }
 
+/* 副标题里那条「看看我的战绩」（通往 /fish/trade/stats）。**不改副标题自身的排版** ——
+   它是居中一句话，所以链接只带品牌色，不另起一块。 */
+.trade-stats-link {
+  color: var(--color-brand-primary);
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
 // ── 三栏工作台（自选 | 图表 | 下单 + 持仓）──────────────────────────────────
 //
 // 【四段阶梯，每段的判据都在这】宽度的天花板是容器阶梯（docs/frontend-styles.md §5）：
@@ -723,6 +736,34 @@
     opacity: 0.35;
     cursor: not-allowed;
   }
+}
+
+/* 彩票档：与上面那排阶梯**刻意分开**（另起一行 + 一条分隔线 + 自己的标签）。
+   分开的理由见 market-service 的 LOTTERY_LEVERAGE —— 它不是「下一档」，是另一个
+   产品；而按钮仍走 .trade-leverage__btn（btn-tab），**三档之外不自造第四档**
+   （docs/frontend-styles.md）。分隔线用 --color-border（令牌清单里没有 border-primary）。 */
+.trade-lottery {
+  display: flex;
+  align-items: center;
+  gap: $space-2;
+  margin-top: $space-2;
+  padding-top: $space-2;
+  border-top: 1px dashed var(--color-border);
+}
+
+.trade-lottery__tag {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+}
+
+/* 选中彩票档时那段警告。**刻意不复用 .trade-field__hint--danger**：那个类现在的用法
+   是「给提示行里的某一个数上色」（一个 <strong>），而这是一整段要说给用户听的话 ——
+   共用一个类，改一处就会顺手改掉另一处（同 --error 与 --danger 刻意分家的理由）。 */
+.trade-lottery__warn {
+  margin: $space-2 0 0;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--color-warning-primary);
 }
 
 // 金额输入：外壳是胶囊（一行文字 → 胶囊，见 frontend-styles §4.2），

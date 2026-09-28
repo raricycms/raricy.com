@@ -519,13 +519,16 @@ describe('杠杆：接口形状', () => {
 
   it('不在白名单的杠杆 → 400，文案把可选档位念出来', async () => {
     await makeCoreUser(100);
-    for (const bad of [4, 100, 'xxx']) {
+    // ⚠️ 别拿 100 当非法值 —— 它是彩票档，在白名单里（见 market-service 的
+    // LOTTERY_LEVERAGE）。捅出来的那一档是 50：合法整数、但两串里都没有。
+    for (const bad of [4, 50, 'xxx']) {
       const res = await buy(
         makeReq('/api/fish/trade/buy', { symbol: 'BTCUSDT', amount: 10, leverage: bad })
       );
       expect(res.status, `leverage=${String(bad)}`).toBe(400);
       const data = await res.json();
-      expect(data.message).toContain('1 / 2 / 3 / 5 / 10');
+      expect(data.message).toContain('1 / 2 / 3 / 5 / 10 / 20');
+      expect(data.message).toContain('彩票档');
     }
     expect(await prisma.marketPosition.count()).toBe(0);
   });

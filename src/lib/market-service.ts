@@ -46,14 +46,17 @@
 // 别把它当成能弥补方向性亏损的东西（2026-09 从 0.1% 降到 0.02%，磨的手感还在，
 // 但它已经小到不该被当成成本来算）。
 // ⚠️ 它乘在**平仓时的名义本金**上，所以杠杆越高、摩擦越大（10 倍仓位平价进出付
-// 10 倍的钱）。这是刻意的，见 market-math.ts 头部第 2 条。
+// 10 倍的钱；100× 那一档平仓一次就是投入的 2%）。这是刻意的，见 market-math.ts
+// 头部第 2 条 —— 也是彩票档与 10× 之间**唯一真实的价格差**。
 //
 // ── 杠杆 ────────────────────────────────────────────────────────────────────
 // 投入 N 条可以开 N×杠杆 条的名义仓位，涨跌按杠杆放大，**亏损封顶在投入的那 N 条**。
 //   · 「借来的钱」**没有对应的账户、没有利息、没有还款路径** —— 它就是那个账外水池
 //     的另一种用法（见上面那段）。别去建一张借贷表。
-//   · 倍数白名单住本文件的 LEVERAGE_OPTIONS，不建定义表、不做后台 CRUD
-//     （同 MARKET_SYMBOLS / FRAME_KEYS 的先例）。**加档位不需要迁移**。
+//   · 倍数白名单住本文件 —— **分两组**：LEVERAGE_OPTIONS 是阶梯（页面渲染成一排），
+//     LOTTERY_LEVERAGE 是彩票档（页面单独摆并警告），服务端认的并集是 ALL_LEVERAGES。
+//     不建定义表、不做后台 CRUD（同 MARKET_SYMBOLS / FRAME_KEYS 的先例）。
+//     **加档位不需要迁移**。
 //   · 结算与爆仓的算术**全在 market-math.ts**（settleClose + liquidationPrice）。
 //     这里一个数都不算 —— 页面上「预计到手 / 爆仓价」与真结算是同一份公式。
 //
@@ -167,7 +170,28 @@ export const MIN_STAKE_FISH = 1;
  * 唯一会走的那一档。
  */
 export const LEVERAGE_OPTIONS = [1, 2, 3, 5, 10, 20] as const;
-export type Leverage = (typeof LEVERAGE_OPTIONS)[number];
+
+/**
+ * **彩票档**。它与上面那串**不是一类东西**，所以刻意不住在同一个数组里。
+ *
+ * 【为什么单列】100× 的爆仓距离是 1% —— 一根普通的日内波动就能碰到（BTC 近一年
+ * 58.4% 的交易日会走到这里，见上面那张表）。它买到的不是「更猛的一档杠杆」，是
+ * 一枚**几小时见分晓的硬币**：方向判断与盈亏几乎独立。既然这样，它就不该混在阶梯里
+ * 当「下一位」（上面那句「所有人挑最大的那个」正是这个判断的另一面），而该在旁边
+ * 单独站着，且**选中它必须给出代价的实数**：手续费按名义本金收，100× 平仓一次约合
+ * 投入的 2%（10× 是 0.2%），整整十倍。
+ *
+ * 【谁要认它】`parseLeverage` 用 `ALL_LEVERAGES`（**服务端白名单仍然只有一份**，
+ * 只是分了两组）；`market-stats-service` 传进统计的也必须是并集 —— 漏了它，彩票档的
+ * 仓位会**只进总数、不进拆解表**，且不报任何错（同「改过 MARKET_SYMBOLS 之后残留的
+ * 旧仓」那个陷阱）。页面把它**单独渲染**（`.trade-lottery`），不是第 7 枚 chip。
+ */
+export const LOTTERY_LEVERAGE = 100 as const;
+
+/** 服务端认的全部倍数 = 阶梯 ∪ 彩票档。**别在别处手写这个并集。** */
+export const ALL_LEVERAGES = [...LEVERAGE_OPTIONS, LOTTERY_LEVERAGE] as const;
+
+export type Leverage = (typeof LEVERAGE_OPTIONS)[number] | typeof LOTTERY_LEVERAGE;
 
 /**
  * 解析调用方给的杠杆。**没给 = 1**（存量客户端与 bot 不传这个字段，行为不变）。
@@ -181,7 +205,8 @@ export function parseLeverage(raw: unknown): Leverage | null {
   if (raw === undefined || raw === null || raw === '') return 1;
   if (typeof raw !== 'number' && typeof raw !== 'string') return null;
   const n = typeof raw === 'number' ? raw : Number(raw);
-  return (LEVERAGE_OPTIONS as readonly number[]).includes(n) ? (n as Leverage) : null;
+  // 认的是**并集**（阶梯 ∪ 彩票档）—— 两组分家的只是页面怎么摆它，服务端一视同仁。
+  return (ALL_LEVERAGES as readonly number[]).includes(n) ? (n as Leverage) : null;
 }
 
 /** 页面与文案用的短名：BTCUSDT → BTC。 */
@@ -357,7 +382,7 @@ export async function openPosition(input: {
     return {
       ok: false,
       code: 400,
-      message: `不支持的杠杆倍数（可选 ${LEVERAGE_OPTIONS.join(' / ')} 倍）`,
+      message: `不支持的杠杆倍数（可选 ${LEVERAGE_OPTIONS.join(' / ')} 倍，另有 ${LOTTERY_LEVERAGE} 倍彩票档）`,
     };
   }
 

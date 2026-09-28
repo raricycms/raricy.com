@@ -514,6 +514,48 @@ test('★ 杠杆买入：档位选得动，弹窗与持仓行都摊开倍数与�
   expect(all[0].description).toContain('10倍杠杆');
 });
 
+test('★ 彩票档：单独一行、选中即警告，确认屏把「硬币」与抽水摊开', async ({ page, request }) => {
+  await registerFreshUser(page, { core: true });
+  await fundByCheckin(page);
+  await setPrice(request, 'BTCUSDT', 80000);
+  await page.goto('/fish/trade');
+
+  // **它是单独一行**：阶梯那个容器里数不到它。这正是「不是第 7 枚 chip」的判据 ——
+  // 混进阶梯就会被读成「下一档」，而它买到的是一枚几小时见分晓的硬币。
+  await expect(page.locator('.trade-leverage .trade-leverage__btn')).toHaveCount(6);
+  const lottery = page.locator('.trade-lottery .trade-leverage__btn');
+  await expect(lottery).toHaveText('100×');
+  await expect(page.locator('.trade-lottery__warn'), '没选中就不该有警告').toHaveCount(0);
+
+  await lottery.click();
+  await expect(lottery).toHaveAttribute('aria-pressed', 'true');
+
+  // 距离与抽水都摊开：爆仓线在 1% 外，平仓手续费是投入的 2.00%（1 倍仓 0.02%）
+  const levField = page.locator('.trade-field', { has: page.locator('.trade-leverage') });
+  await expect(levField, '100× 的爆仓距离是 1%').toContainText('距现价 -1.0%');
+  const warn = page.locator('.trade-lottery__warn');
+  await expect(warn, '必须说清它不是「更猛的一档」').toContainText('不是「更猛的一档」');
+  await expect(warn, '抽水这个数只能从费率推出来，不许手写').toContainText('2.00%');
+  await expect(warn).toContainText('1 倍仓是 0.02%');
+
+  // 确认屏再说一遍 —— 真正按下确认的那一屏
+  await page.locator('#trade-amount').fill('1');
+  await page.locator('.trade-submit').click();
+  const confirm = page.locator('.trade-confirm');
+  await expect(confirm).toContainText('这是彩票档');
+  await expect(confirm, '确认屏上的杠杆是 100×').toContainText('100×');
+  await confirm.locator('.trade-confirm__ok').click();
+  await expect(confirm).toHaveCount(0);
+
+  // 服务端一视同仁：它就在 ALL_LEVERAGES 里，走的还是那条白名单路（不是特例分支）
+  const pos = page.locator('.trade-position').first();
+  await expect(pos.locator('.trade-position__lev')).toHaveText('100×');
+  await expect(pos, '爆仓价 = 成交价 × (1 − 1/100)').toContainText('爆仓 79,200.00');
+  const all = await myLedger(page, 'market_all');
+  expect(all[0].description).toContain('100倍杠杆');
+  expect(all[0].amount, '扣的是投入，名义本金是算出来的').toBe(-1);
+});
+
 test('★ 跌穿爆仓价：行上如实标出、卖出实得 0、且**不写第二条流水**', async ({
   page,
   request,
