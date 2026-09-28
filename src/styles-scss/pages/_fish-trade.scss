@@ -12,21 +12,11 @@
 //
 //  【涨跌配色】涨 = --color-success-primary（绿），跌 = --color-warning-primary（红）。
 //  站内没有 --color-danger-*，--fd-danger 就是 warning 的别名，别去新造一个。
+//  mixin `trade-up-down` 住在 abstracts/_mixins.scss —— 统计页（_fish-trade-stats.scss）
+//  也要用它，BEM 前缀却不同，所以它是共享 mixin（frontend-styles §11.1）。
 //
 //  【图标】走势线是内联 SVG（`.trade-spark`），站内没有图表库也不该为一张曲线引进来。
 // ═══════════════════════════════════════════════════════
-
-// 涨跌配色：涨绿、跌红。四处共用（行情卡 / 持仓行 / 确认弹窗）—— 一处改不动的散装
-// 复制就是下次「同一个涨在三个地方三个色」的来源。生成的是 `&--up` / `&--down`。
-@mixin trade-up-down {
-  &--up {
-    color: var(--color-success-primary);
-  }
-
-  &--down {
-    color: var(--color-warning-primary);
-  }
-}
 
 .trade-subtitle {
   text-align: center;
@@ -220,7 +210,7 @@
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 
-  @include trade-up-down;
+  @include m.trade-up-down;
 }
 
 .trade-watch__price {
@@ -575,7 +565,7 @@
 .trade-chart__legend-change {
   font-weight: 700;
 
-  @include trade-up-down;
+  @include m.trade-up-down;
 }
 
 .trade-chart__legend-note {
@@ -947,7 +937,7 @@
 .trade-position__change {
   font-weight: 600;
 
-  @include trade-up-down;
+  @include m.trade-up-down;
 }
 
 /* 「已跌破爆仓价」。这一行的「可卖 0 鱼干」不解释的话看起来像个 bug，
@@ -969,7 +959,7 @@
   font-size: 0.95rem;
   font-weight: 700;
 
-  @include trade-up-down;
+  @include m.trade-up-down;
 }
 
 .trade-position__payout {
@@ -1062,7 +1052,7 @@
   margin-left: $space-2;
   font-weight: 700;
 
-  @include trade-up-down;
+  @include m.trade-up-down;
 }
 
 /* 预计盈亏。与弹窗里其余数字同字号（--total 那一行才是主角），只靠颜色分涨跌。
@@ -1073,7 +1063,7 @@
      Sass 不会为 .trade-confirm__pnl 产出规则，类名静默失效（css-tsx-classes 守卫会红） */
   font-weight: 700;
 
-  @include trade-up-down;
+  @include m.trade-up-down;
 }
 
 /* 弹窗里的倍数角标。与持仓行那枚（.trade-position__lev）同款 —— 同一件事在两屏
