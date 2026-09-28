@@ -458,15 +458,21 @@ test('★ 杠杆买入：档位选得动，弹窗与持仓行都摊开倍数与�
 
   await page.goto('/fish/trade');
 
+  // 按「这一格里有没有那排档位」定位 —— 页面上有两个 .trade-field（投入 / 杠杆），
+  // 直接写 .trade-field 会撞上 strict mode（不是产品坏了，是选择器太宽）
+  const levField = page.locator('.trade-field', { has: page.locator('.trade-leverage') });
+
+  // 最高档 20× 也在这排里（加档位只改 LEVERAGE_OPTIONS）：距离 5%
+  const twentyX = page.getByRole('button', { name: '20×', exact: true });
+  await expect(twentyX).toBeEnabled();
+  await twentyX.click();
+  await expect(levField, '20× 的爆仓距离是 5%').toContainText('距现价 -5.0%');
+
   // 档位是**切页档**（docs/frontend-styles.md §6.9）：点得动、且当前项挂在 aria-pressed 上
   const tenX = page.getByRole('button', { name: '10×', exact: true });
   await expect(tenX).toBeEnabled();
   await tenX.click();
   await expect(tenX).toHaveAttribute('aria-pressed', 'true');
-
-  // 按「这一格里有没有那排档位」定位 —— 页面上有两个 .trade-field（投入 / 杠杆），
-  // 直接写 .trade-field 会撞上 strict mode（不是产品坏了，是选择器太宽）
-  const levField = page.locator('.trade-field', { has: page.locator('.trade-leverage') });
   // 距离在**填金额之前**就要看得见：它是这一档本身的属性（只由倍数与现价决定，
   // 与投多少无关），而这正是用户决定要不要按买入时唯一该看的那个数。
   await expect(levField, '选中档位就该报出爆仓价离现价有多远').toContainText('距现价 -10.0%');

@@ -28,7 +28,7 @@ import { FISH_UNIT_SCALE } from '@/lib/fish-units';
 const ONE = FISH_UNIT_SCALE;
 
 /** 页面传进来的白名单（**生产上来自 MARKET_SYMBOLS / LEVERAGE_OPTIONS**）。 */
-const UNIVERSE = { symbols: ['BTCUSDT', 'ETHUSDT'], leverages: [1, 2, 3, 5, 10] };
+const UNIVERSE = { symbols: ['BTCUSDT', 'ETHUSDT'], leverages: [1, 2, 3, 5, 10, 20] };
 
 const row = (over: Partial<SettledRow> = {}): SettledRow => ({
   symbol: 'BTCUSDT',
@@ -128,8 +128,8 @@ describe('拆解表', () => {
     expect(eth.count).toBe(0);
     expect(eth.winRatePct).toBeNull();
     expect(eth.realizedUnits).toBe(0);
-    expect(s.byLeverage.map((b) => b.key)).toEqual(['1', '2', '3', '5', '10']);
-    expect(bucketOf(s.byLeverage, '10').winRatePct).toBeNull();
+    expect(s.byLeverage.map((b) => b.key)).toEqual(['1', '2', '3', '5', '10', '20']);
+    expect(bucketOf(s.byLeverage, '20').winRatePct).toBeNull();
   });
 
   it('★ Σ 拆解表 === 总数（整数相等 —— 加上「拆解表里看不见的那些行」也得成立）', () => {
@@ -152,7 +152,7 @@ describe('拆解表', () => {
       row({ symbol: 'DOGEUSDT', leverage: 3, stakeUnits: 2000, payoutUnits: 1000 }),
     ]);
     expect(s.bySymbol.map((b) => b.key)).toEqual(['BTCUSDT', 'ETHUSDT', 'DOGEUSDT']);
-    expect(s.byLeverage.map((b) => b.key)).toEqual(['1', '2', '3', '5', '10']);
+    expect(s.byLeverage.map((b) => b.key)).toEqual(['1', '2', '3', '5', '10', '20']);
     expect(bucketOf(s.bySymbol, 'DOGEUSDT').realizedUnits).toBe(-1000);
     expect(s.bySymbol.reduce((a, b) => a + b.realizedUnits, 0)).toBe(s.realizedUnits);
   });
