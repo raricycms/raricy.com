@@ -50,7 +50,8 @@ export default async function FishTradePage() {
     Promise.all(MARKET_SYMBOLS.map(async (s) => [s, await getCandles(s, DEFAULT_INTERVAL)] as const)),
   ]);
 
-  // 只有**首个标的**的整批 K 线进 payload（1000 根 × 6 项 ≈ 50KB，两个标的就是两倍）。
+  // 只有**首个标的**的整批 K 线进 payload（1000 根 × 6 项，实测 57,668 字节 ≈ 56KB，
+  // 两个标的就是两倍）。
   // 另一个标的的走势线走 sparks（每人 72 个数），切过去时由客户端按需取。
   const first = MARKET_SYMBOLS[0];
   const candleSets: Record<string, CandleTuple[]> = {
