@@ -464,11 +464,15 @@ test('★ 杠杆买入：档位选得动，弹窗与持仓行都摊开倍数与�
   await tenX.click();
   await expect(tenX).toHaveAttribute('aria-pressed', 'true');
 
-  // 输入框下面那行提示：名义本金 = 投入 × 10，参考爆仓价 = 展示价 × (1 − 1/10)
-  await page.locator('#trade-amount').fill('1');
   // 按「这一格里有没有那排档位」定位 —— 页面上有两个 .trade-field（投入 / 杠杆），
   // 直接写 .trade-field 会撞上 strict mode（不是产品坏了，是选择器太宽）
   const levField = page.locator('.trade-field', { has: page.locator('.trade-leverage') });
+  // 距离在**填金额之前**就要看得见：它是这一档本身的属性（只由倍数与现价决定，
+  // 与投多少无关），而这正是用户决定要不要按买入时唯一该看的那个数。
+  await expect(levField, '选中档位就该报出爆仓价离现价有多远').toContainText('距现价 -10.0%');
+
+  // 输入框下面那行提示：名义本金 = 投入 × 10，参考爆仓价 = 展示价 × (1 − 1/10)
+  await page.locator('#trade-amount').fill('1');
   await expect(levField).toContainText('名义本金');
   await expect(levField).toContainText('72,000.00');
 
@@ -480,6 +484,15 @@ test('★ 杠杆买入：档位选得动，弹窗与持仓行都摊开倍数与�
   await expect(confirm, '风险说明要说清「亏光这一笔」这件反直觉的事').toContainText('保证金归零');
   await confirm.locator('.trade-confirm__ok').click();
   await expect(confirm).toHaveCount(0);
+
+  // 成交回报如实报出**真实成交价与真实爆仓价**（服务端现取的那一对），而不是确认屏上
+  // 那个按展示价估的「参考爆仓价」—— 高倍下两者的差能占掉整段爆仓距离的一大截。
+  // 用 hasText 过滤：toast 是叠加的，直接断言容器会同时命中别的提示（同 comment-rich）。
+  await expect(
+    page.locator('#toast-container .toast__body', {
+      hasText: '成交价 80,000.00 USDT，爆仓价 72,000.00',
+    })
+  ).toBeVisible();
 
   // 持仓行：倍数角标 + 爆仓价（1 倍仓这两样都不渲染，见 TradePanel 的注释）
   const pos = page.locator('.trade-position').first();

@@ -277,7 +277,28 @@ export default function TradePanel({
       });
       const data = await res.json().catch(() => null);
       if (res.ok && data?.code === 200) {
-        window.showToast?.(data.message ?? '买入成功', 'success');
+        // 成交回报在接口文案后面**追加真实成交价与真实爆仓价**（服务端下单那一刻现取
+        // 的那一对）。确认弹窗里那个「参考爆仓价」是按展示价估的 —— 高倍下两者的差
+        // 能占掉整段爆仓距离的一大截（1% 的距离下，展示价差 0.25% 就是 1/4 条命）。
+        // 这一句是用户唯一能**当场**看到「实际拿到的是什么」的地方：下面持仓行上
+        // 也写着同一对数，但那一行要等 router.refresh() 回来才出现。
+        // ⚠️ **追加，不是替换** —— 接口那条 message 是权威说法（bot 也收到它），
+        // 而且 tests/e2e 的 buyViaUI 正拿它开头的「已买入」当「这一笔真的回来了」的
+        // 信号。改掉那几个字要同步改那个 helper，否则五条用例会红在等待超时上。
+        const filled = data.position as
+          | { entry_price?: unknown; liquidation_price?: unknown }
+          | undefined;
+        const fillMsg =
+          filled && typeof filled.entry_price === 'number'
+            ? `成交价 ${fmtPrice(filled.entry_price)} USDT` +
+              (typeof filled.liquidation_price === 'number' && filled.liquidation_price > 0
+                ? `，爆仓价 ${fmtPrice(filled.liquidation_price)}`
+                : '')
+            : null;
+        window.showToast?.(
+          fillMsg ? `${data.message ?? '买入成功'}，${fillMsg}` : (data.message ?? '买入成功'),
+          'success'
+        );
         setBalance(typeof data.balance === 'number' ? data.balance : balance);
         setAmount('');
         setBuyOpen(false);
@@ -332,6 +353,14 @@ export default function TradePanel({
   // 才算得出，见文件头 ①）。所以它必须标成「参考」，不能当成承诺。
   const refLiqPrice =
     current?.price != null ? liquidationPrice(current.price, leverage) : null;
+  // 爆仓价**离现价有多远**（%）。「距现价 −10.0%」读得出来，「72,000.00 USDT」读不出来
+  // —— 后者要用户自己心算 (80000−72000)/80000，而那正是他决定要不要按买入时唯一该看的数。
+  // ⚠️ 必须由**上面那两个数**推，别写成 100 / leverage：公式等价，但展示价一跳动
+  // 屏幕上那两个数就会对不上（写了公式的那份不会跟着动）——**静默地**。
+  const refLiqDistancePct =
+    refLiqPrice != null && current?.price != null && current.price > 0
+      ? (1 - refLiqPrice / current.price) * 100
+      : null;
   // 1 倍时永远不爆（爆仓价是 0），弹窗里那一行与强平提示都按这个判据收起来 ——
   // 对 1 倍反复说「注意爆仓风险」只会让那句话失效。
   const leverageActive = leverage > 1 && leverageEnabled;
@@ -438,16 +467,27 @@ export default function TradePanel({
                   );
                 })}
               </div>
-              {leverageActive && amountOk && (
+              {/* 档位提示**不要求已填金额**：距离是这一档本身的属性（只由倍数与现价
+                  决定，与投多少无关），所以选中它的那一刻就该看见 —— 等用户填完金额
+                  才告诉他那条线只有 1% 远，等于把最要紧的一句放在了决定之后。 */}
+              {leverageActive && (
                 <p className="trade-field__hint">
-                  名义本金 <strong>{fmtFish(roundFish(parsed * leverage))}</strong> 小鱼干
+                  {amountOk && (
+                    <>
+                      名义本金 <strong>{fmtFish(roundFish(parsed * leverage))}</strong> 小鱼干
+                      {refLiqPrice != null && '，'}
+                    </>
+                  )}
                   {refLiqPrice != null && (
                     <>
-                      ，参考爆仓价{' '}
+                      参考爆仓价{' '}
                       <strong className="trade-field__hint--danger">
                         {fmtPrice(refLiqPrice)}
                       </strong>{' '}
                       USDT
+                      {refLiqDistancePct != null && (
+                        <>（距现价 -{refLiqDistancePct.toFixed(1)}%）</>
+                      )}
                     </>
                   )}
                 </p>
