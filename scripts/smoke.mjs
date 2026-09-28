@@ -101,6 +101,49 @@ if (base.startsWith('https://')) {
   );
 }
 
+// ── 1b. 练手盘协议闸 ────────────────────────────────────────────────────────
+//
+// 【它防的是哪一种错】闸（src/middleware.ts §A）的判据是 X-Forwarded-Proto。
+// nginx **漏配**它时，Next 会按「nginx→本站」那段**明文**连接把头填成 http ——
+// 于是**连绕 nginx 走 https 的正常用户也被判成明文**、整个练手盘变 403。
+// 那不是安全问题而是可用性事故，而且从浏览器上只表现为一页 403，看不出根因。
+// 所以这一条断的是「https 这一路**不许**被闸拦」。
+console.log(bold('\n1b. 练手盘协议闸'));
+try {
+  const r = await get('/fish/trade');
+  if (r.status === 403) {
+    bad(
+      `https 访问 /fish/trade 被判成明文（HTTP ${r.status}）`,
+      'nginx 漏了 proxy_set_header X-Forwarded-Proto $scheme —— Next 会把「nginx→本站」' +
+        '那段明文当成对外协议。见 docs/deploy.md §6，判据见 src/lib/https-guard.ts 文件头'
+    );
+  } else {
+    ok(`https 一路未被误拦（HTTP ${r.status}${r.status === 307 ? ' —— 未登录跳登录页，正确' : ''}）`);
+  }
+} catch (e) {
+  bad(`/fish/trade 打不开：${String(e).split('\n')[0]}`);
+}
+
+// http 一路：站点若同时监听 80，应当被 308 送回 https。多数部署只监听 443 —— 那更好。
+const httpBase = base.replace(/^https:/, 'http:');
+if (httpBase !== base) {
+  try {
+    const r = await fetch(`${httpBase}/fish/trade`, { redirect: 'manual' });
+    const loc = r.headers.get('location') ?? '';
+    if (r.status === 200) {
+      bad(
+        'http 一路直接 200 —— 练手盘在明文下可用',
+        '检查 nginx 是否把 80 也代理到了本站；或闸的回环/明文判据被改了'
+      );
+    } else {
+      ok(`http 一路没有放行（HTTP ${r.status}${loc.startsWith('https://') ? ` → ${loc}` : ''}）`);
+    }
+  } catch {
+    // 连不上 = 站点根本不在 80 上提供服务，那是最好的情况
+    ok('站点没监听 http（这一路无需生效）');
+  }
+}
+
 // ── 2. 公开页面 ─────────────────────────────────────────────────────────────
 console.log(bold('\n2. 公开页面'));
 for (const [p, name] of [['/', '首页'], ['/tool', '工具'], ['/blog', '博客'], ['/login', '登录页']]) {
