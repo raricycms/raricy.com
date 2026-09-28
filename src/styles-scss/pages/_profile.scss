@@ -14,11 +14,11 @@
 
 // --- Hero card ---
 
+// 无常态阴影：卡片靠主题卡色的深浅与页面底色分层。
 .profile-hero {
   background: var(--color-background-card);
   border-radius: 30px;
   padding: $space-8;
-  box-shadow: var(--shadow-card);
   margin-bottom: $space-6;
 
   @media (max-width: 768px) {
@@ -310,9 +310,9 @@
   gap: $space-3;
 }
 
+// 整卡是 <Link>（可点击）：去边框后 hover 仍给品牌蓝光晕，由 hover 那一刻承担可点性。
 .profile-content-item {
   background: var(--color-background-card);
-  border: 1px solid var(--color-border);
   border-radius: $radius-large;
   padding: $space-4 $space-6;
   transition: all 0.2s ease;
@@ -322,7 +322,6 @@
 
   &:hover {
     box-shadow: var(--shadow-card-brand);
-    border-color: var(--color-brand-primary);
   }
 
   @media (max-width: 768px) {
@@ -376,12 +375,12 @@
 
 // --- Empty state ---
 
+// 空态卡：无常态阴影，仅靠卡片色与圆角成形。
 .profile-empty {
   text-align: center;
   padding: $space-8;
   background: var(--color-background-card);
   border-radius: $radius-large;
-  box-shadow: var(--shadow-card);
   color: var(--color-text-secondary);
   font-size: 0.95rem;
 
@@ -396,12 +395,12 @@
 
 // --- Privacy notice (hidden content) ---
 
+// 隐私提示卡：同 .profile-empty，无常态阴影。
 .profile-privacy-notice {
   text-align: center;
   padding: $space-8;
   background: var(--color-background-card);
   border-radius: $radius-large;
-  box-shadow: var(--shadow-card);
   color: var(--color-text-secondary);
   font-size: 0.95rem;
 

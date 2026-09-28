@@ -51,15 +51,15 @@
   /* 这里曾先后用「左侧金色竖条」与「星色淡底（--color-star-secondary）」当身份提示，
      前者违反全站「无左侧边框」，后者则让**正文里整块发黄** —— 星色是「已收藏」的
      状态色（--color-star-* 的用途边界见 base/_root.scss），拿它当一块正文的背景，
-     读起来像整段内容都被标记了。现在与正文里的另一张嵌入卡（投票的 .vote-embed-widget）
-     同一副面孔：卡片底 + 1px 常规描边。嵌入块靠**形状**（圆角 + 描边 + 内距）与正文分开，
-     不靠色相。
+     读起来像整段内容都被标记了。现在按全站「无边框 + 底色分层」的口径：嵌入块靠
+     **底色深浅**（比正文卡深一档的 content 色）+ 圆角与内距，与所在的正文分开，
+     不靠色相，也不靠描边。
      卡片 HTML 由 src/lib/favorite-refs.ts 的 buildFavoriteCardHtml 直接产出，
      但那是**成品 HTML 里的类名**，样式在这里，所以只改 SCSS 即可。 */
   margin: 1.25rem 0;
   padding: 1rem 1.25rem;
-  background: var(--color-background-card);
-  border: 1px solid var(--color-border);
+  /* 嵌在博客正文卡里，同色就看不见了 —— 取深一档的 content 色。 */
+  background: var(--color-background-content);
   border-radius: 16px;
 
   &__head {
@@ -137,8 +137,8 @@
   gap: 1rem;
   flex-wrap: wrap;
   padding: 1rem 1.25rem;
+  /* 无边框总则：容器轮廓不用描边（本容器不可点，故无 hover 光晕）。 */
   background: var(--color-background-card);
-  border: 1px solid var(--color-border);
   border-radius: 0.5rem;
 
   &__main {
@@ -242,8 +242,8 @@
   justify-content: space-between;
   gap: 1rem;
   padding: 0.75rem 1rem;
+  /* 无边框总则：容器轮廓不用描边（本容器不可点，故无 hover 光晕）。 */
   background: var(--color-background-card);
-  border: 1px solid var(--color-border);
   border-radius: 0.375rem;
 
   a {

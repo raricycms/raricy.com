@@ -73,7 +73,7 @@
   background: var(--color-background-card);
   border-radius: 30px;
   padding: $space-8;
-  box-shadow: var(--shadow-card);
+  // 卡片去常态阴影（黑阴影退役）：层级由卡片色深浅承担，不靠投影。
   margin-bottom: $space-6;
   text-align: center;
 
@@ -279,7 +279,6 @@
   background: var(--color-background-card);
   border-radius: 30px;
   padding: $space-8;
-  box-shadow: var(--shadow-card);
 
   @media (max-width: 768px) {
     padding: $space-6;
@@ -313,8 +312,8 @@
   }
 
   &--self {
+    // 「我」这一行靠品牌淡底标识；原先还叠了一圈 outline 描边，已随「卡片去描边」去掉。
     background: var(--color-brand-secondary);
-    outline: 1px solid var(--color-brand-primary);
 
     &:hover {
       background: var(--color-brand-secondary);

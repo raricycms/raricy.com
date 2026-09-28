@@ -5,14 +5,11 @@
   border-radius: 8px;
   padding: 20px;
   margin-bottom: 15px;
-  box-shadow: var(--shadow-xs);
   border: none;
+  /* transition 留给下面 .is-selected 的底色切换。整卡**不可点**：选中态由 JS 挂
+     .is-selected 类表达，不是 hover —— 所以这里没有「整卡可点 hover 亮光晕」那一档。
+     原先的常态 --shadow-xs 与 hover --shadow-sm 都是黑色阴影，已按全站口径退役。 */
   transition: all 0.3s ease;
-
-  /* 卡片 hover：只提阴影，不位移 —— 与博客首页 .blog-item 一致 */
-  &:hover {
-    box-shadow: var(--shadow-sm);
-  }
 
   /* 选中态原先靠左侧竖条变蓝表示；竖条已按全站规范去掉，改由整卡淡底承担
      （与侧栏、分类栏的选中态同一套语言）。 */

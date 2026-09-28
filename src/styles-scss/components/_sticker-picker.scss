@@ -12,10 +12,12 @@
 
 .sticker-picker {
   margin-top: 6px;
-  border: 1px solid var(--color-border);
   border-radius: 10px;
   background: var(--color-background-content);
   overflow: hidden;
+  // 贴边浮层：去掉描边后它与下方的输入区就没有任何边界了，会糊成一片，
+  // 故补一层品牌蓝光晕把它从底上「抬起来」——这是全站浮层的统一手法。
+  box-shadow: var(--shadow-card-brand);
 }
 
 .sticker-picker__body {

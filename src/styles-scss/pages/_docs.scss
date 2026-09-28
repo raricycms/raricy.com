@@ -104,16 +104,16 @@
   flex-direction: column;
   gap: 0.25rem;
   width: 100%;
+  /* 无边框总则：轮廓交给卡片色与页面底的明度差。 */
   background: var(--color-background-card);
-  border: 1px solid var(--color-border);
   border-radius: 10px;
   padding: 0.85rem 1rem;
   text-decoration: none;
   transition: all 0.2s ease;
 
-  /* 卡片 hover：只提阴影、把边框换成品牌色，不位移 —— 与 .blog-item / .vote-item 一致 */
+  /* 整卡是可点链接：hover 只加品牌蓝光晕，不位移、不换描边
+     —— 与 .blog-item / .vote-item 一致。 */
   &:hover {
-    border-color: var(--color-brand-primary);
     box-shadow: var(--shadow-card-brand);
   }
 

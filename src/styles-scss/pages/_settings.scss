@@ -17,13 +17,13 @@
 
 // --- Card sections ---
 
+// 无常态阴影：卡片与页面底色靠主题卡色这档深浅分层。
 .settings-card {
   // 锚点深链（/settings#focus-mode）落到顶栏之下不被遮住
   scroll-margin-top: 96px;
   background: var(--color-background-card);
   border-radius: 30px;
   padding: $space-8;
-  box-shadow: var(--shadow-card);
   margin-bottom: $space-6;
 
   @media (max-width: 768px) {
@@ -241,11 +241,14 @@
       top: 3px;
       /* 圆钮**刻意写死白色**：它在两个主题下都必须是白的（开关就长这样），
          换 --color-background-card 会让暗色主题的钮跟着变深、压在 --color-border
-         的轨道上反而消失。可读性由下面那圈 0 1px 3px 的阴影兜住。 */
+         的轨道上反而消失。
+         这里原先有一圈 0 1px 3px 的黑阴影给它压出深度，已按「不留任何黑色阴影」去掉；
+         **也没有换成品牌蓝光晕** —— 品牌光晕的两个语义是「整块可点的卡片 hover」与
+         「浮层」，一颗常态下的开关圆钮两者都不是，套上去会读成「这个开关是浮起来的」。
+         钮与轨道靠白/灰的明度差与圆形本身分辨，不需要阴影。 */
       background: #fff;
       border-radius: 50%;
       transition: transform 0.25s ease;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
     }
   }
 
@@ -338,9 +341,10 @@
   border-radius: 20px;
   background: var(--color-background-subtle);
 
-  // 佩戴中：给一圈品牌色描边。**只换底/边，不做垂直位移**（按钮铁律见规范 §2）
+  // 佩戴中：状态由淡品牌底承担 —— 全站「无边框」总则的落点
+  // （.checkin-leaderboard__item--self 同款）。**只换底，不做垂直位移**（按钮铁律见规范 §2）
   &--on {
-    box-shadow: inset 0 0 0 2px var(--color-brand-primary);
+    background: var(--color-brand-secondary);
   }
 }
 

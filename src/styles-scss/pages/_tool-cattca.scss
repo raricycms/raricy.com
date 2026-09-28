@@ -70,9 +70,8 @@
   min-width: 0;
   padding: $space-6;
   background: var(--color-background-card);
-  border: 1px solid var(--color-border);
   border-radius: 20px; // 对齐 .story-cattca__game 的圆角语言
-  box-shadow: var(--shadow-card);
+  // 无边框、无常态阴影：卡片层级只靠卡片底色与页面底色的深浅差表达。
 
   @include bp.down(bp.$bp-md) {
     padding: $space-4;

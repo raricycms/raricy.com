@@ -9,7 +9,8 @@
   background: var(--color-background-card);
   border-radius: 30px;
   padding: $space-8;
-  box-shadow: var(--shadow-card);
+  /* 常态不投影 —— 全站卡片一律改用「卡片色深浅」划分层级。本卡不是整卡可点的
+     （卡内只有几颗 Link），所以只去阴影，不在 hover 上加品牌蓝光晕。 */
   margin-bottom: $space-6;
   max-width: 480px;
   margin-left: auto;
@@ -224,12 +225,8 @@
   padding: $space-4 $space-6;
   background: var(--color-background-card);
   border-radius: $radius-large;
-  box-shadow: var(--shadow-xs);
-  transition: box-shadow 0.2s;
-
-  &:hover {
-    box-shadow: var(--shadow-card);
-  }
+  /* 流水行不可点：常态不投影。原先那条 hover 提阴影是错的（不可点的元素不该有
+     hover 反馈），连 transition 一起删掉 —— 留着它已无任何阴影可过渡。 */
 
   @media (max-width: 576px) {
     padding: $space-3 $space-4;

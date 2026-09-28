@@ -22,11 +22,10 @@
 }
 
 // ---------- 授权页卡片 ----------
+// 无边框、无常态阴影：卡片只在主题卡色上分层（圆角是形状语言，保留）。
 .fd-card {
   background: var(--color-background-card);
-  border: 1px solid var(--color-border);
   border-radius: 30px;
-  box-shadow: var(--shadow-card);
 
   &--padded-lg {
     padding: $space-8;
@@ -59,11 +58,10 @@
 }
 
 // ---------- 授权主卡片 ----------
+// 同 .fd-card：去边框、去常态阴影，层级交给主题卡色。
 .fd-settings-card {
   background: var(--color-background-card);
-  border: 1px solid var(--color-border);
   border-radius: 30px;
-  box-shadow: var(--shadow-card);
   padding: $space-8;
 
   @media (max-width: 768px) {
@@ -265,15 +263,16 @@
   gap: $space-3;
 }
 
+// 无边框清单行：底色从 page 提到 content —— page 压在白卡上只差 2%，
+// 去掉边框后就看不出来了，靠 content 这档深浅拉开层级。
 .oauth-conn-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: $space-3;
   padding: $space-4;
-  border: 1px solid var(--color-border);
   border-radius: 14px;
-  background: var(--color-background-page);
+  background: var(--color-background-content);
 
   &__main {
     flex: 1;

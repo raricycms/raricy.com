@@ -18,9 +18,12 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 @mixin doc-prose($cls) {
+  // 卡片容器：不描边（全站口径），靠 --color-background-card 的浅底与页面色拉开层级 ——
+  // 底色是必须的：去掉边框后若没有它，正文就直接摊在页面底上、分不出卡片边界。
+  // ⚠️ 本 mixin 被 `.guide__content`（指南页）与 `.docs-content`（/docs 正文页）**两处
+  // @include**，改这一条两处同时生效（这正是当初抽成 mixin 的理由）。
   .#{$cls} {
     background: var(--color-background-card);
-    border: 1px solid var(--color-border);
     border-radius: 0.5rem;
     padding: 2.5rem;
     color: var(--color-text-primary);

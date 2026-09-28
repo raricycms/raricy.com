@@ -93,12 +93,12 @@
   padding: 40px 20px;
 }
 
+// 无常态阴影：小卡片靠主题卡色分层。
 .maintenance-card {
   text-align: center;
   background: var(--color-background-card);
   border-radius: 20px;
   padding: 48px 56px;
-  box-shadow: var(--shadow-card);
   max-width: 480px;
 }
 
@@ -124,18 +124,17 @@
   margin-bottom: 48px;
 }
 
+// 整卡是 <Link>（可点击）：无常态阴影，hover 给品牌蓝光晕（只提光晕，不位移）。
 .story-card {
   background: var(--color-background-card);
   border-radius: 24px;
   padding: 32px 34px;
-  box-shadow: var(--shadow-card);
   transition: all 0.3s ease;
   display: flex;
   flex-direction: column;
 
-  /* 卡片 hover：只提阴影，不位移 —— 与博客首页 .blog-item 一致 */
   &:hover {
-    box-shadow: var(--shadow-card-hover);
+    box-shadow: var(--shadow-card-brand);
   }
 
   // Collection card variant
@@ -297,11 +296,11 @@
   transition: width 0.1s ease;
 }
 
+// 正文卡：无边框、无常态阴影，阅读层级由卡片色与圆角给出。
 .story-reader__content {
   background: var(--color-background-card);
   border-radius: 20px;
   padding: 48px 56px;
-  box-shadow: var(--shadow-card);
   font-size: 1.2rem;
   line-height: 2.1;
   color: var(--color-text-primary);
@@ -536,11 +535,11 @@
   font-weight: 500;
 }
 
+// 游戏卡：无常态阴影。
 .story-cattca__game {
   background: var(--color-background-card);
   border-radius: 20px;
   padding: 28px;
-  box-shadow: var(--shadow-card);
 }
 
 .story-cattca__output {
@@ -590,11 +589,13 @@
 }
 
 // ---- Cattca output segments ----
+// 无边框：底色提到 content —— 它躺在 card 色的游戏卡里，需要一档深浅分层
+// （header 的 border-bottom 是行级分隔线，保留）。
 .story-cattca__segment {
   margin-bottom: 10px;
-  border: 1px solid var(--color-border);
   border-radius: 10px;
   overflow: hidden;
+  background: var(--color-background-content);
 }
 
 .story-cattca__segment-header {
@@ -665,12 +666,12 @@
 }
 
 // ---- Cattca text input ----
+// 无边框：字段本就该无边框，聚焦走品牌蓝光晕（见下方 input:focus）。
 .story-cattca__input-area {
   margin: 12px 0;
   padding: 14px;
   background: var(--color-background-subtle);
   border-radius: 10px;
-  border: 1px solid var(--color-border);
 
   label {
     display: block;

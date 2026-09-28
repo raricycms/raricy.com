@@ -94,7 +94,7 @@
   padding: $space-6;
   background: var(--color-background-card);
   border-radius: 30px;
-  box-shadow: var(--shadow-card);
+  /* 常态不投影 —— 全站卡片改用卡片色深浅划分层级；本卡不可点，不加 hover 光晕。 */
   min-width: 0;
 
   @media (max-width: 768px) {

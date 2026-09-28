@@ -1042,20 +1042,22 @@
   align-items: center;
   gap: 10px;
   padding: 8px 10px;
-  border: 1px solid var(--color-border);
   border-radius: 10px;
   background: var(--color-background-content);
   color: var(--color-text-primary);
   text-decoration: none;
   align-self: flex-start;
   max-width: 320px;
+  /* transition 必须写：同族的可点卡（.blog-item / .vote-item / .comment-blog）都有，
+     少了它这张卡 hover 的光晕是**瞬间弹出**的，跟别处不一致。 */
+  transition: box-shadow 0.2s ease;
 }
+// 整卡可点（整块是 <a>→/blog/{id}）：常态不描边、不投影，hover 才出品牌蓝光晕。
 .chat-msg__blog:hover {
-  border-color: var(--color-brand-primary);
+  box-shadow: var(--shadow-card-brand);
 }
 .chat-msg--mine .chat-msg__blog {
   background: var(--color-brand-secondary);
-  border-color: transparent;
   align-self: flex-end;
 }
 .chat-msg__blog-icon {
@@ -1146,10 +1148,10 @@
   flex-direction: column;
   gap: 2px;
   padding: 4px;
-  border: 1px solid var(--color-border);
   border-radius: 12px;
   background: var(--color-background-card);
-  box-shadow: var(--shadow-card-hover);
+  // 浮层：去边框、去黑阴影，改用品牌蓝光晕与卡面拉层级。
+  box-shadow: var(--shadow-card-brand);
 }
 .chat-avatar-menu__item {
   display: block;
@@ -1205,7 +1207,8 @@
   padding: 7px 16px;
   font-size: 0.82rem;
   cursor: pointer;
-  box-shadow: var(--shadow-card);
+  // 浮动胶囊按钮：黑阴影退役，改品牌蓝光晕。
+  box-shadow: var(--shadow-card-brand);
 }
 
 // ── 输入区（QQ 式：附件条在上、整块圆角面板，幽灵工具条嵌在面板顶部内侧）─────
@@ -1473,7 +1476,9 @@
     flex-basis: 300px;
     transform: translateX(-100%);
     transition: transform 0.2s ease;
-    box-shadow: var(--shadow-card-hover);
+    // 移动端抽屉浮起时用品牌蓝光晕（黑阴影退役）。
+    // 桌面端 .chat-sidebar 的 border-right 是布局分栏线，不在此列、不动。
+    box-shadow: var(--shadow-card-brand);
   }
   .chat-page--drawer-open .chat-sidebar {
     transform: translateX(0);

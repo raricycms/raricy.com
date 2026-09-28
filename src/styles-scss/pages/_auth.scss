@@ -10,7 +10,6 @@
   max-width: 600px;
   margin: 50px auto;
   padding: 30px;
-  // box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
   border-radius: 30px;
   background-color: var(--color-background-card);
 }
@@ -19,9 +18,7 @@
 .btn-register { width: 100%; padding: 12px; font-size: 16px; font-weight: 500; }
 .login-link { text-align: center; margin-top: 20px; }
 
-// Dark mode adjustments
-// body.dark-mode {
-//   .register-container { background-color: #1e1e1e; box-shadow: 0 0 20px rgba(0,0,0,0.4); }
-//   .register-header { color: #ecf0f1; }
-// }
+/* 此处原有注释掉的 `body.dark-mode` 一套暗色覆盖（含一条写死的黑色外阴影）。
+   全站主题只认 `<html data-theme="dark">`（见 base/_root.scss），没有任何代码会给
+   body 加 `.dark-mode` —— 这是一套永不生效的第二配色，已删。 */
 

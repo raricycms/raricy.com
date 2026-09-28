@@ -50,10 +50,15 @@
     --color-accent-cyan-soft: rgba(6, 182, 212, 0.12);
     --color-accent-violet: #8b5cf6;
     --color-accent-violet-soft: rgba(139, 92, 246, 0.12);
-    --shadow-xs: 0 2px 10px rgba(0, 0, 0, 0.05);
-    --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.1);
-    --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.08);
-    --shadow-card-hover: 0 8px 30px rgba(0, 0, 0, 0.12);
+    /* 全站只有两种阴影，都是品牌色（蓝）：
+       · --shadow-card-brand —— 「抬起」：整块可点的卡片 hover、以及浮层（弹窗 / toast /
+         下拉 / 贴边面板）。偏移 2px，读作「浮起来」。
+       · --shadow-focus-brand —— 「聚焦」：字段与输入面板，偏移 0（四周均匀），
+         不透明度高一档，见下面那条说明。
+       原先还有 --shadow-xs / -sm / -card / -card-hover 四条中性阴影（展开值是
+       rgba(0,0,0,…)）。卡片改为「常态不投影、层级靠卡片色深浅」之后它们已无消费者，
+       且「不留黑色阴影」是全站口径，故整体退役 —— 别再拿中性阴影去「托住」什么，
+       需要分层就用背景色阶。 */
     --shadow-card-brand: 0 2px 25px rgba(37, 99, 235, 0.15);
     // 聚焦光晕：与 --shadow-card-brand 同色同模糊半径，但**偏移为 0**（四周均匀）。
     // 不透明度比它高一档 —— 常驻阴影是「托住」元素，聚焦要自己站得出来。
@@ -115,10 +120,7 @@
     --color-accent-cyan-soft: rgba(34, 211, 238, 0.16);
     --color-accent-violet: #a78bfa;
     --color-accent-violet-soft: rgba(167, 139, 250, 0.16);
-    --shadow-xs: 0 2px 10px rgba(0, 0, 0, 0.2);
-    --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.25);
-    --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.3);
-    --shadow-card-hover: 0 8px 30px rgba(0, 0, 0, 0.4);
+    /* 同浅色那份：中性阴影四条已退役，深色只覆写品牌色的两条。 */
     --shadow-card-brand: 0 2px 20px rgba(35, 165, 255, 0.1);
     // 深色品牌蓝更亮，同样模糊半径下给到 0.32 就够醒目了（见浅色那份的说明）
     --shadow-focus-brand: 0 0 20px rgba(35, 165, 255, 0.32);

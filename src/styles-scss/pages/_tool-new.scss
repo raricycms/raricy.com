@@ -101,19 +101,17 @@
   // Tool card
   &-card {
     background: var(--color-background-card);
-    border: 1px solid var(--color-border);
     border-radius: $radius-large;
     padding: $space-4;
     transition: all 0.3s ease;
     height: 100%;
     display: flex;
     flex-direction: column;
-    
-    /* 卡片 hover：只提阴影，不位移 —— 与博客首页 .blog-item 一致。
-       阴影原先也是写死的 rgba(0,0,0,.1)，改用令牌。 */
+
+    /* 整卡是 <Link> → 可点卡：常态无边框、无阴影，层级只靠卡片底色与页面底色的
+       深浅差；hover 只提品牌蓝光晕，不位移 —— 与博客首页 .blog-item 一致。 */
     &:hover {
-      box-shadow: var(--shadow-card-hover);
-      border-color: var(--color-brand-primary);
+      box-shadow: var(--shadow-card-brand);
     }
     
     &__header {
@@ -226,12 +224,13 @@
   flex-direction: column;
   padding: 14px $space-4;
   background: var(--color-background-card);
-  border: 1px solid var(--color-border);
   border-radius: $radius-field;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  // 字段外壳本就该无边框：常态无边框、无阴影，聚焦才亮品牌蓝光晕（光晕不参与
+  // 布局，字段不会随焦点撑高）。边框去掉后 border-color 已无对象，transition 里
+  // 也只留会变的 box-shadow 一项。
+  transition: box-shadow 0.2s ease;
 
   &:focus-within {
-    border-color: var(--color-brand-primary);
     box-shadow: var(--shadow-focus-brand);
   }
 
@@ -272,8 +271,8 @@
 // 只读结果的容器（/tool/hex 的 hex 面板外层）
 .viewer-panel {
   background: var(--color-background-card);
-  border: 1px solid var(--color-border);
   border-radius: $radius-field;
+  // 去边框：只保留卡片底色与圆角，层级靠底色深浅差。
 }
 
 // 算法 / 模式选择：一排小胶囊，`.active` 表示当前选中。
