@@ -1,0 +1,176 @@
+@use '../abstracts/variables' as *;
+@use '../abstracts/mixins' as m;
+
+// ═══════════════════════════════════════════════════════
+//  练手盘统计（/fish/trade/stats）
+//
+//  类块前缀 **tstats-**：与 trade-* / fish-card__* / market-* 分开 —— 四页各有各的
+//  版式，共用类名会让改一边静默改到另一边（frontend-styles §11.1）。
+//
+//  卡片复用**通用** `.card`（components/_card.scss），不复用页面专属的 `.trade-card`：
+//  后者是练手盘工作台的，改它一处会静默改到这一页（同 §11.1 那条理由）。
+//  拆解表复用通用 `.table`（+ `.table-responsive`），只补数字列那一条。
+//
+//  ⚠️ **权重陷阱**（踩过一次才知道，同一个坑 TradePanel 的弹窗也踩过）：
+//  `components/_table.scss` 里是 `.table th` / `.table td` = **(0,1,1)**，压得住任何
+//  挂在 td 上的单类选择器 (0,1,0)。所以：
+//    · 数字列右对齐必须写成 `th.tstats-table__num, td.tstats-table__num`；
+//    · **涨跌色必须挂在里层的 `<span class="tstats-pnl">` 上** —— 挂 `<td>` 上会被
+//      `.table td { color: … }` 静默盖掉，整列数字全变成正文色而没有任何报错。
+//
+//  涨跌那一对色走 abstracts/_mixins.scss 的 `trade-up-down`（与工作台同一份定义）。
+// ═══════════════════════════════════════════════════════
+
+.tstats-subtitle {
+  text-align: center;
+  color: var(--color-text-secondary);
+  font-size: 0.95rem;
+  margin: -$space-2 0 $space-6;
+}
+
+// ── KPI 行（6 格）──────────────────────────────────────────────────────────
+// 配方与 /u/<id> 的 .profile-stats 同源（淡底 + 圆角 + 大号数字 + 小号标签），
+// 但**不共用类名**：那一份是主页的，改它会静默改到这一页。
+.tstats-kpis {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: $space-2;
+  margin-bottom: $space-6;
+
+  // 6 → 3 → 2。数字最长（"+123.4567"）在 2 列档也放得下，不必再往下一档。
+  @media (max-width: 991px) {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  @media (max-width: 575px) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.tstats-kpi {
+  text-align: center;
+  padding: $space-3 $space-2;
+  background: var(--color-background-subtle);
+  border-radius: $radius-large;
+}
+
+.tstats-kpi__label {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+}
+
+.tstats-kpi__value {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--color-brand-primary);
+  line-height: 1.3;
+  margin-top: $space-1;
+  // 等宽数字：6 格里每格宽度不同、数字长度也不同，不等宽的话同一行几个数
+  // 看着会左右跳（同 .trade-card__balance-number 那条）。
+  font-variant-numeric: tabular-nums;
+  // 长数字（-1234.5678）宁可缩一点也不要撑破格子
+  overflow-wrap: anywhere;
+
+  @media (max-width: 575px) {
+    font-size: 1.2rem;
+  }
+}
+
+.tstats-kpi__unit {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  margin-top: $space-1;
+}
+
+// 涨跌色。`--up` / `--down` 由 trade-up-down mixin 产出（涨绿跌红，0 不上色）。
+// ⚠️ `.tstats-pnl` 只是**载体**：它自己不带颜色，颜色全在 `--up` / `--down` 里 ——
+// 所以 0（未实现盈亏刚好为 0、或拆解表里 0.0000 那一格）落回正文色。
+.tstats-pnl {
+  @include m.trade-up-down;
+  font-variant-numeric: tabular-nums;
+}
+
+// ── 拆解表 / 持仓表 ────────────────────────────────────────────────────────
+.tstats-table {
+  // 只在窄屏给表一个最小宽度，让 .table-responsive 真的横向滚动而不是把列挤扁
+  @media (max-width: 575px) {
+    min-width: 480px;
+  }
+}
+
+// 数字列右对齐 + 等宽。**双类**（`.table td` 是 0-1-1，单类压不住），见文件头那条。
+th.tstats-table__num,
+td.tstats-table__num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+// ── 卡片 ───────────────────────────────────────────────────────────────────
+.tstats-card {
+  padding: $space-4 $space-6 $space-6;
+  margin-bottom: $space-4;
+}
+
+.tstats-card__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: $space-2;
+}
+
+.tstats-card__title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0 0 $space-2;
+}
+
+// 「行情刷新于 …」/「数据可能不是最新的」/「有 N 行数据不完整」。**只做说明用的
+// 小字**，不喊不叫（那三句都是「你不该照着它做决定」而不是「出故障了」）。
+.tstats-note {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  margin: 0 0 $space-2;
+}
+
+.tstats-empty {
+  color: var(--color-text-secondary);
+  margin: $space-2 0 0;
+}
+
+.tstats-total {
+  margin: $space-3 0 0;
+  text-align: right;
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+
+  strong {
+    font-size: 1.1rem;
+  }
+}
+
+// 「已跌破爆仓价」那个小标记。与 /fish/trade 持仓行上那一枚同款（不是按钮）。
+.tstats-liq {
+  font-weight: 700;
+  color: var(--color-warning-primary);
+  margin-left: $space-2;
+  font-size: 0.85rem;
+}
+
+// 回练手盘的链接（空态里那一个与页脚那一个是同一个类）。
+.tstats-back {
+  color: var(--color-brand-primary);
+  font-weight: 600;
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.tstats-back-line {
+  margin: $space-6 0 0;
+  text-align: center;
+}
