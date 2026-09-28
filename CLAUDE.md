@@ -464,7 +464,9 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 
 `docs/architecture.md` §6.14 是主副本；`src/lib/frame-service.ts` 头部是五条不变量
 （F1–F5），`src/lib/frame-refs.ts` 头部是词汇与到期判定。玩家向见
-`docs/guide/头像框使用指南.md`，发放命令见 `docs/cli.md`。
+`docs/guide/头像框使用指南.md`，**画师向**（站外受托画素材的人）见
+`docs/guide/头像框出图规范.md` —— 那份是**自包含**的，可以整份转发，改几何 / 尺寸口径时
+两处要一起改；发放命令见 `docs/cli.md`。
 
 三句话：
 
