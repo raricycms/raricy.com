@@ -376,7 +376,12 @@ export function formatCandleTime(ms: number, stepMs: number): string {
 export interface MergeResult {
   /** 并过之后的序列。**没有变化时返回原引用** —— 调用方据此跳过重渲染。 */
   candles: CandleTuple[];
-  /** 展示价跨过了最后一根的桶边界：中间缺的那几根本模块不补，调用方据此重取一次。 */
+  /**
+   * 展示价跨过了最后一根的桶边界：中间缺的那几根本模块不补，调用方据此去补真数据。
+   * ⚠️ 调用方要的是「**追上**当前桶」而不是「补过一次」—— 跨桶那一刻补回来的那批
+   * 往往还缺当前桶（交易所自己慢半拍），所以那边是补到它变回 false 为止
+   * （见 `TradeChartPanel` 的 `ROLLOVER_RETRY_MS`）。
+   */
   rolledOver: boolean;
 }
 
@@ -387,9 +392,10 @@ export interface MergeResult {
  * 一条路（见 market-price.ts 的文件头）。它落进的是客户端那份用于绘制的副本。
  *
  * 【跨桶了怎么办】把末根换成「当前这一桶」的新 K 线（open=high=low=close=该价），
- * **中间缺的那几根不补** —— 补出来就是编数据。调用方拿到 rolledOver 后去重取一次，
- * 真数据由那一趟带回来。不这么做（比如按「距上一根几个桶」补齐）会得到一串
- * 价格一模一样的平线，看起来像真的、其实是假的。
+ * **中间缺的那几根不补** —— 补出来就是编数据。调用方拿到 rolledOver 后去补真数据，
+ * 真数据由那一趟带回来（补不到就接着补，见 `MergeResult.rolledOver`）。
+ * 不这么做（比如按「距上一根几个桶」补齐）会得到一串价格一模一样的平线，
+ * 看起来像真的、其实是假的。
  *
  * `atMs` 必须是**真实 UTC 毫秒**（与 openTime 同一把尺子，可以相减）——
  * 库内那套墙上时间戳传进来会直接算错 8 小时，且不报任何错。

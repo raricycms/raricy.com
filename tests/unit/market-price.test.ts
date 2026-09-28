@@ -369,6 +369,15 @@ describe('K 线：getCandles', () => {
     '0',
   ];
 
+  /**
+   * 当前这一桶的起点（真实 UTC 毫秒，按周期对齐）。
+   *
+   * **缓存能不能用要看它**（`behindCurrentBucket`）：末根停在过去的桶里时，
+   * 那份缓存无论多新都不能用。所以凡是要断言「重读走缓存」的用例，造的数必须
+   * 落在当前桶里 —— 写成 `1000` 这种玩具时间戳的话，每一次调用都会去打上游。
+   */
+  const bucketStart = (ivMs: number) => Math.floor(Date.now() / ivMs) * ivMs;
+
   it('取完整六元组（开高低收 + 量），不是只取 close —— 蜡烛与成交量柱都要它', async () => {
     stubFetch([kline(1000, 1, 2, 0.5, 1.5, 7), kline(2000, 1.5, 3, 1.4, 2.5, 9)]);
     expect(await getCandles('BTCUSDT', '1h', 2)).toEqual([
@@ -392,8 +401,10 @@ describe('K 线：getCandles', () => {
           ok: true,
           status: 200,
           json: async () => {
-            const close = new URL(String(url)).searchParams.get('interval') === '4h' ? 400 : 100;
-            return [kline(1000, close, close, close, close)];
+            const iv = new URL(String(url)).searchParams.get('interval');
+            const close = iv === '4h' ? 400 : 100;
+            // 各自落在**自己那一桶**里，否则下一次调用会因为「末根还在上一桶」再打一次上游
+            return [kline(bucketStart(iv === '4h' ? 4 * 3_600_000 : 3_600_000), close, close, close, close)];
           },
         }) as unknown as Response
     );
@@ -461,9 +472,35 @@ describe('K 线：getCandles', () => {
   });
 
   it('缓存期内不重复打行情源', async () => {
-    const fn = stubFetch([kline(1000, 1, 2, 0.5, 1.5)]);
+    const fn = stubFetch([kline(bucketStart(3_600_000), 1, 2, 0.5, 1.5)]);
     await getCandles('BTCUSDT', '1h', 1);
     await getCandles('BTCUSDT', '1h', 1);
     expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it('★ 末根停在上一桶的缓存不能用 —— 跨桶那一刻只补得到这一份，补不到就再也不补了', async () => {
+    // 时钟冻住：桶边界是按 Date.now() 算的，真时间跑这条有「正好跨在边界上」的概率
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-28T12:34:56Z'));
+    const IV = 3_600_000;
+    const nowBucket = bucketStart(IV);
+
+    // 第一次取：上游给的末根是**上一桶**那一根（跨桶那一刻服务端手里就是这份缓存）
+    const first = stubFetch([kline(nowBucket - IV, 1, 2, 0.5, 1.5)]);
+    await getCandles('BTCUSDT', '1h', 1);
+    expect(first, '空缓存，第一下当然要打上游').toHaveBeenCalledTimes(1);
+
+    // 同一桶内、也远没过 60 秒保鲜期，但末根还在上一桶 → **必须再打一次上游**。
+    // 只看 TTL 的那版在这里原样回上一桶那一份 → 调用方认定「还是没追上」→ 从此不再补，
+    // 图就停在进页面那一刻（线上症状：K 线不自动更新，要手动刷新）。
+    const second = stubFetch([kline(nowBucket, 2, 3, 1.5, 2.5)]);
+    const out = await getCandles('BTCUSDT', '1h', 1);
+    expect(second).toHaveBeenCalledTimes(1);
+    expect(out[0][0], '这一次拿到的必须是当前这一桶').toBe(nowBucket);
+
+    // 追上之后同一桶内照旧命中缓存 —— 每个桶每个键只多打这一下
+    const third = stubFetch([kline(nowBucket, 9, 9, 9, 9)]);
+    await getCandles('BTCUSDT', '1h', 1);
+    expect(third, '追上之后不该再打上游').not.toHaveBeenCalled();
   });
 });
