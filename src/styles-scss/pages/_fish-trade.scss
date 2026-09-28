@@ -12,27 +12,30 @@
 //
 //  【涨跌配色】涨 = --color-success-primary（绿），跌 = --color-warning-primary（红）。
 //  站内没有 --color-danger-*，--fd-danger 就是 warning 的别名，别去新造一个。
+//  mixin `trade-up-down` 住在 abstracts/_mixins.scss —— 统计页（_fish-trade-stats.scss）
+//  也要用它，BEM 前缀却不同，所以它是共享 mixin（frontend-styles §11.1）。
 //
 //  【图标】走势线是内联 SVG（`.trade-spark`），站内没有图表库也不该为一张曲线引进来。
 // ═══════════════════════════════════════════════════════
-
-// 涨跌配色：涨绿、跌红。四处共用（行情卡 / 持仓行 / 确认弹窗）—— 一处改不动的散装
-// 复制就是下次「同一个涨在三个地方三个色」的来源。生成的是 `&--up` / `&--down`。
-@mixin trade-up-down {
-  &--up {
-    color: var(--color-success-primary);
-  }
-
-  &--down {
-    color: var(--color-warning-primary);
-  }
-}
 
 .trade-subtitle {
   text-align: center;
   color: var(--color-text-secondary);
   font-size: 0.95rem;
   margin: -$space-2 0 $space-6;
+}
+
+/* 副标题里那条「看看我的战绩」（通往 /fish/trade/stats）。**不改副标题自身的排版** ——
+   它是居中一句话，所以链接只带品牌色，不另起一块。 */
+.trade-stats-link {
+  color: var(--color-brand-primary);
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+
+  &:hover {
+    text-decoration: underline;
+  }
 }
 
 // ── 三栏工作台（自选 | 图表 | 下单 + 持仓）──────────────────────────────────
@@ -91,7 +94,7 @@
   padding: $space-6;
   background: var(--color-background-card);
   border-radius: 30px;
-  box-shadow: var(--shadow-card);
+  /* 常态不投影 —— 全站卡片改用卡片色深浅划分层级；本卡不可点，不加 hover 光晕。 */
   min-width: 0;
 
   @media (max-width: 768px) {
@@ -220,7 +223,7 @@
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 
-  @include trade-up-down;
+  @include m.trade-up-down;
 }
 
 .trade-watch__price {
@@ -575,7 +578,7 @@
 .trade-chart__legend-change {
   font-weight: 700;
 
-  @include trade-up-down;
+  @include m.trade-up-down;
 }
 
 .trade-chart__legend-note {
@@ -733,6 +736,34 @@
     opacity: 0.35;
     cursor: not-allowed;
   }
+}
+
+/* 彩票档：与上面那排阶梯**刻意分开**（另起一行 + 一条分隔线 + 自己的标签）。
+   分开的理由见 market-service 的 LOTTERY_LEVERAGE —— 它不是「下一档」，是另一个
+   产品；而按钮仍走 .trade-leverage__btn（btn-tab），**三档之外不自造第四档**
+   （docs/frontend-styles.md）。分隔线用 --color-border（令牌清单里没有 border-primary）。 */
+.trade-lottery {
+  display: flex;
+  align-items: center;
+  gap: $space-2;
+  margin-top: $space-2;
+  padding-top: $space-2;
+  border-top: 1px dashed var(--color-border);
+}
+
+.trade-lottery__tag {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+}
+
+/* 选中彩票档时那段警告。**刻意不复用 .trade-field__hint--danger**：那个类现在的用法
+   是「给提示行里的某一个数上色」（一个 <strong>），而这是一整段要说给用户听的话 ——
+   共用一个类，改一处就会顺手改掉另一处（同 --error 与 --danger 刻意分家的理由）。 */
+.trade-lottery__warn {
+  margin: $space-2 0 0;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--color-warning-primary);
 }
 
 // 金额输入：外壳是胶囊（一行文字 → 胶囊，见 frontend-styles §4.2），
@@ -947,7 +978,7 @@
 .trade-position__change {
   font-weight: 600;
 
-  @include trade-up-down;
+  @include m.trade-up-down;
 }
 
 /* 「已跌破爆仓价」。这一行的「可卖 0 鱼干」不解释的话看起来像个 bug，
@@ -969,7 +1000,7 @@
   font-size: 0.95rem;
   font-weight: 700;
 
-  @include trade-up-down;
+  @include m.trade-up-down;
 }
 
 .trade-position__payout {
@@ -1062,7 +1093,7 @@
   margin-left: $space-2;
   font-weight: 700;
 
-  @include trade-up-down;
+  @include m.trade-up-down;
 }
 
 /* 预计盈亏。与弹窗里其余数字同字号（--total 那一行才是主角），只靠颜色分涨跌。
@@ -1073,7 +1104,7 @@
      Sass 不会为 .trade-confirm__pnl 产出规则，类名静默失效（css-tsx-classes 守卫会红） */
   font-weight: 700;
 
-  @include trade-up-down;
+  @include m.trade-up-down;
 }
 
 /* 弹窗里的倍数角标。与持仓行那枚（.trade-position__lev）同款 —— 同一件事在两屏

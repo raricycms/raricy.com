@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { redirect, forbidden } from 'next/navigation';
 import { getCurrentUser, isCoreUser } from '@/lib/auth';
 import { loginUrlWithNext } from '@/lib/safe-url';
@@ -8,6 +9,7 @@ import {
   MARKET_FEE_RATE,
   MIN_STAKE_FISH,
   LEVERAGE_OPTIONS,
+  LOTTERY_LEVERAGE,
 } from '@/lib/market-service';
 // 杠杆档位能不能选，取决于**强平引擎此刻在不在跑**（服务端也会据此拒单，见那里的注释）
 import { isLiquidationRunning } from '@/lib/market-liquidator';
@@ -48,7 +50,8 @@ export default async function FishTradePage() {
     Promise.all(MARKET_SYMBOLS.map(async (s) => [s, await getCandles(s, DEFAULT_INTERVAL)] as const)),
   ]);
 
-  // 只有**首个标的**的整批 K 线进 payload（1000 根 × 6 项 ≈ 50KB，两个标的就是两倍）。
+  // 只有**首个标的**的整批 K 线进 payload（1000 根 × 6 项，实测 57,668 字节 ≈ 56KB，
+  // 两个标的就是两倍）。
   // 另一个标的的走势线走 sparks（每人 72 个数），切过去时由客户端按需取。
   const first = MARKET_SYMBOLS[0];
   const candleSets: Record<string, CandleTuple[]> = {
@@ -93,6 +96,10 @@ export default async function FishTradePage() {
       <p className="trade-subtitle">
         投入小鱼干买入 BTC / ETH，价格按真实行情走 —— 涨了赚鱼干，跌了亏鱼干。
         这是练习盘，练的是手感，亏掉的是鱼干不是钱。
+        <br />
+        <Link href="/fish/trade/stats" className="trade-stats-link">
+          看看我的战绩
+        </Link>
       </p>
 
       <TradePanel
@@ -104,6 +111,7 @@ export default async function FishTradePage() {
         feeRate={MARKET_FEE_RATE}
         minStake={MIN_STAKE_FISH}
         leverageOptions={[...LEVERAGE_OPTIONS]}
+        lotteryLeverage={LOTTERY_LEVERAGE}
         leverageEnabled={isLiquidationRunning()}
       />
     </div>

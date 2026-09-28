@@ -99,6 +99,7 @@ export default function TradePanel({
   feeRate,
   minStake,
   leverageOptions,
+  lotteryLeverage,
   leverageEnabled,
 }: {
   balance: number;
@@ -113,6 +114,13 @@ export default function TradePanel({
   /** 杠杆档位白名单（market-service 的 LEVERAGE_OPTIONS）。**从服务端传进来**，
       就像 feeRate / minStake —— 客户端包 import 不到 market-service（它拖着 prisma）。 */
   leverageOptions: number[];
+  /**
+   * 彩票档（market-service 的 LOTTERY_LEVERAGE）。**刻意与上面那排分开传** ——
+   * 它不是阶梯的下一档，页面上也单独摆（`.trade-lottery` + 选中即警告），
+   * 理由见那个常量的注释。它仍在服务端的白名单里（ALL_LEVERAGES），所以提交路径
+   * 与别的档**一个字都不差**（别在这里给它开小灶）。
+   */
+  lotteryLeverage: number;
   /**
    * 强平引擎是否在跑。false 时**只留 1 倍**并给一句说明 —— 与「行情拉不到就禁掉
    * 买入」同一档：服务暂时不在，就把按钮关掉，而不是让用户填完一整屏再吃 503。
@@ -277,7 +285,28 @@ export default function TradePanel({
       });
       const data = await res.json().catch(() => null);
       if (res.ok && data?.code === 200) {
-        window.showToast?.(data.message ?? '买入成功', 'success');
+        // 成交回报在接口文案后面**追加真实成交价与真实爆仓价**（服务端下单那一刻现取
+        // 的那一对）。确认弹窗里那个「参考爆仓价」是按展示价估的 —— 高倍下两者的差
+        // 能占掉整段爆仓距离的一大截（1% 的距离下，展示价差 0.25% 就是 1/4 条命）。
+        // 这一句是用户唯一能**当场**看到「实际拿到的是什么」的地方：下面持仓行上
+        // 也写着同一对数，但那一行要等 router.refresh() 回来才出现。
+        // ⚠️ **追加，不是替换** —— 接口那条 message 是权威说法（bot 也收到它），
+        // 而且 tests/e2e 的 buyViaUI 正拿它开头的「已买入」当「这一笔真的回来了」的
+        // 信号。改掉那几个字要同步改那个 helper，否则五条用例会红在等待超时上。
+        const filled = data.position as
+          | { entry_price?: unknown; liquidation_price?: unknown }
+          | undefined;
+        const fillMsg =
+          filled && typeof filled.entry_price === 'number'
+            ? `成交价 ${fmtPrice(filled.entry_price)} USDT` +
+              (typeof filled.liquidation_price === 'number' && filled.liquidation_price > 0
+                ? `，爆仓价 ${fmtPrice(filled.liquidation_price)}`
+                : '')
+            : null;
+        window.showToast?.(
+          fillMsg ? `${data.message ?? '买入成功'}，${fillMsg}` : (data.message ?? '买入成功'),
+          'success'
+        );
         setBalance(typeof data.balance === 'number' ? data.balance : balance);
         setAmount('');
         setBuyOpen(false);
@@ -332,9 +361,20 @@ export default function TradePanel({
   // 才算得出，见文件头 ①）。所以它必须标成「参考」，不能当成承诺。
   const refLiqPrice =
     current?.price != null ? liquidationPrice(current.price, leverage) : null;
+  // 爆仓价**离现价有多远**（%）。「距现价 −10.0%」读得出来，「72,000.00 USDT」读不出来
+  // —— 后者要用户自己心算 (80000−72000)/80000，而那正是他决定要不要按买入时唯一该看的数。
+  // ⚠️ 必须由**上面那两个数**推，别写成 100 / leverage：公式等价，但展示价一跳动
+  // 屏幕上那两个数就会对不上（写了公式的那份不会跟着动）——**静默地**。
+  const refLiqDistancePct =
+    refLiqPrice != null && current?.price != null && current.price > 0
+      ? (1 - refLiqPrice / current.price) * 100
+      : null;
   // 1 倍时永远不爆（爆仓价是 0），弹窗里那一行与强平提示都按这个判据收起来 ——
   // 对 1 倍反复说「注意爆仓风险」只会让那句话失效。
   const leverageActive = leverage > 1 && leverageEnabled;
+  // 彩票档被选中。**与 leverageActive 是两个判据**：后者管「要不要说杠杆那几行」
+  // （所有 > 1 的档都成立），这个只管「要不要说那段硬币的话」。
+  const lotteryActive = leverage === lotteryLeverage && leverageEnabled;
 
   // 自选列表的行 = 展示报价 + 走势线（走势线由服务端随首屏给，切标的不另取）。
   const watchRows: WatchRow[] = quotes.map((q) => ({
@@ -438,16 +478,57 @@ export default function TradePanel({
                   );
                 })}
               </div>
-              {leverageActive && amountOk && (
+
+              {/* 彩票档：**刻意与上面那排阶梯分开**（另起一行 + 分隔线 + 自己的说明）。
+                  它不是「下一档」—— 选中它买到的是一枚几小时见分晓的硬币（见
+                  market-service 的 LOTTERY_LEVERAGE 注释）。分开靠的是**位置与文案**，
+                  按钮本身仍是 btn-tab：三档之外不自造第四档（docs/frontend-styles.md）。
+                  引擎没在跑时它和上面那几档一样是灰的（不是隐藏）—— 同一个判据。 */}
+              <div className="trade-lottery">
+                <button
+                  type="button"
+                  className={`trade-leverage__btn${leverage === lotteryLeverage ? ' is-active' : ''}`}
+                  aria-pressed={leverage === lotteryLeverage}
+                  disabled={locked || !leverageEnabled}
+                  title={!leverageEnabled ? '杠杆暂不可用' : undefined}
+                  onClick={() => setLeverage(lotteryLeverage)}
+                >
+                  {lotteryLeverage}×
+                </button>
+                <span className="trade-lottery__tag">彩票档</span>
+              </div>
+              {/* 警告**常驻在选择器下方**，不是弹一次就完的 modal：每次都要点掉的东西
+                  会立刻脱敏（同「对 1 倍反复说爆仓风险」那条）。这里说的是这一档独有的
+                  两件事 —— 它是硬币、以及它贵在哪（抽水按名义本金收，是 10× 的十倍）。 */}
+              {lotteryActive && (
+                <p className="trade-lottery__warn">
+                  ⚠️ 它不是「更猛的一档」：爆仓线近到一根普通的日内波动就能碰到，几小时就
+                  可能见分晓。手续费按名义本金收 —— 这一档平仓一次约合投入的{' '}
+                  <strong>{formatFeeRate(feeRate * lotteryLeverage)}</strong>（1 倍仓是{' '}
+                  {formatFeeRate(feeRate)}）。
+                </p>
+              )}
+              {/* 档位提示**不要求已填金额**：距离是这一档本身的属性（只由倍数与现价
+                  决定，与投多少无关），所以选中它的那一刻就该看见 —— 等用户填完金额
+                  才告诉他那条线只有 1% 远，等于把最要紧的一句放在了决定之后。 */}
+              {leverageActive && (
                 <p className="trade-field__hint">
-                  名义本金 <strong>{fmtFish(roundFish(parsed * leverage))}</strong> 小鱼干
+                  {amountOk && (
+                    <>
+                      名义本金 <strong>{fmtFish(roundFish(parsed * leverage))}</strong> 小鱼干
+                      {refLiqPrice != null && '，'}
+                    </>
+                  )}
                   {refLiqPrice != null && (
                     <>
-                      ，参考爆仓价{' '}
+                      参考爆仓价{' '}
                       <strong className="trade-field__hint--danger">
                         {fmtPrice(refLiqPrice)}
                       </strong>{' '}
                       USDT
+                      {refLiqDistancePct != null && (
+                        <>（距现价 -{refLiqDistancePct.toFixed(1)}%）</>
+                      )}
                     </>
                   )}
                 </p>
@@ -625,6 +706,17 @@ export default function TradePanel({
                     ② 爆仓价是按**参考价**估的，真实的那条线要等成交价出来才定
                        （与「成交价以下单那一刻为准」同源，见文件头 ①）。
                     不说 ② 的话，用户会拿着一个差了几分钱的数来对账。 */}
+                {/* 彩票档在**按下确认这一屏**再说一遍：选择器下面那段是常驻的，而真正
+                    决定的那一下在这里。两处说同一件事、措辞不重复 —— 距离那个数由上面
+                    那行「参考爆仓价」旁边的百分数给，这里只讲它是什么和它贵在哪。 */}
+                {lotteryActive && (
+                  <p className="trade-confirm__disclaimer trade-confirm__disclaimer--danger">
+                    <strong>这是彩票档：</strong>它不是「更猛的一档」—— 爆仓线就落在一根
+                    普通日内波动的范围内，几小时就可能见分晓，方向看对了也照样会被收走。
+                    手续费按名义本金收，这一档平仓一次约合投入的{' '}
+                    {formatFeeRate(feeRate * lotteryLeverage)}（1 倍仓是 {formatFeeRate(feeRate)}）。
+                  </p>
+                )}
                 {leverageActive ? (
                   <p className="trade-confirm__disclaimer trade-confirm__disclaimer--danger">
                     实际成交价以下单那一刻的行情为准，<strong>真实的爆仓价跟着成交价走</strong>，

@@ -22,9 +22,10 @@
   max-height: 420px;
   overflow: auto;
   overscroll-behavior: contain;
-  border: 1px solid var(--color-border);
   border-radius: v.$radius-large;
-  background: var(--color-background-card);
+  /* 去边框后补层级：它嵌在结果卡（.viewer-panel）里、与父卡同为卡片色，改用略深的
+     内容底色把这一块从父卡上分出来 —— 同色相贴、没有描边就分不出边界。 */
+  background: var(--color-background-content);
 
   @media (max-width: 767.98px) {
     max-height: 320px;

@@ -1,12 +1,13 @@
 // Admin notification center
-
+//
+// 这里是 /admin/broadcast 的**整块面板**（与 pages/_notifications.scss 里同名的
+// 「通知中心条目」是两回事：那份 30px 圆角、无边框）。去描边 + 去常态阴影 —— 全站
+// 卡片口径：层级靠卡片色深浅，不靠外框与阴影。
 .notification-card {
   margin-top: 30px;
-  box-shadow: var(--shadow-xs);
   padding: 32px;
   border-radius: 10px;
   background: var(--color-background-card);
-  border: 1px solid var(--color-border);
 }
 
 // User selection list

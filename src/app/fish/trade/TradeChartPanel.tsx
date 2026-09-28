@@ -58,6 +58,20 @@ const MODE_OPTIONS = [
   { value: 'line', label: '折线' },
 ] as const;
 
+/**
+ * 「手上的末根还停在过去的桶里」时，隔多久再补一次真数据（毫秒）。
+ *
+ * 【为什么跨桶那一下补不回来】不是服务端缓存的问题（那边已经按「末根必须落在当前桶」
+ * 判了，见 market-price 的 `behindCurrentBucket`），而是**交易所自己慢半拍**：
+ * 2026-09-28 实测币安的 1m klines，跨桶后头 2.5 秒里给回来的末根还是上一桶那一根
+ * （11:33:00 边界，11:33:02.5 才换成新桶）。所以跨桶那一刻那一发**注定**拿不到，
+ * 要靠这个循环隔一会儿再问一次。
+ *
+ * 5 秒刚过那道实测滞后，又不会在真拉不到行情时把上游打疼（一直没追上时每 5 秒一发，
+ * 追上了这个 effect 就被清理掉了 —— 它不是一个常驻轮询）。
+ */
+export const ROLLOVER_RETRY_MS = 5_000;
+
 export default function TradeChartPanel({
   symbol,
   display,
@@ -94,14 +108,21 @@ export default function TradeChartPanel({
     CANDLE_LIMIT
   );
 
-  // 跨桶 → 静默补一次真数据。依赖只有那个布尔量，所以一次跨越只触一次；
-  // 补回来的数据落地后它自己变回 false，下一根再跨时重新触发。
+  // 跨桶 → 静默补真数据。**补一次不够**：这里要的是「追上当前桶」这个状态，而跨桶
+  // 那一刻那一发**注定**拿不到（交易所自己要慢半拍才换出新桶那一根，见
+  // ROLLOVER_RETRY_MS 的注释）。所以它是一个**只在没追上时转**的短循环 —— 追上了
+  // rolledOver 变回 false，下面这个 effect 的 cleanup 就把定时器清掉；一直没追上
+  // 就一直补。早先那版是「只在 false→true 那一下补一次」，而 true 一旦卡住就再也
+  // 不动了：症状正是「K 线不自动更新，要手动刷新」。
   const rolledRef = useRef(onRolledOver);
   useEffect(() => {
     rolledRef.current = onRolledOver;
   });
   useEffect(() => {
-    if (merged.rolledOver) rolledRef.current();
+    if (!merged.rolledOver) return;
+    rolledRef.current();
+    const timer = setInterval(() => rolledRef.current(), ROLLOVER_RETRY_MS);
+    return () => clearInterval(timer);
   }, [merged.rolledOver]);
 
   const len = merged.candles.length;

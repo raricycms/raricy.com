@@ -123,4 +123,20 @@
   @include bp.up(bp.$bp-xl) { max-width: v.$container-max; }
 }
 
+// 涨跌配色：涨绿、跌红。练手盘三处版式共用（工作台 / 统计页），BEM 前缀各不相同
+// （`trade-position__profit--up` / `trade-spark__line--up` / `tstats-pnl--up`）——
+// 所以它是参数化的共享 mixin，不是某页的私有物（frontend-styles §11.1）。
+// 生成的是 `&--up` / `&--down`，挂在哪个基类上由调用方决定。
+//
+// ⚠️ 站内**没有** `--color-danger-*`（`--fd-danger` 就是 warning 的别名），别去新造一个。
+@mixin trade-up-down {
+  &--up {
+    color: var(--color-success-primary);
+  }
+
+  &--down {
+    color: var(--color-warning-primary);
+  }
+}
+
 

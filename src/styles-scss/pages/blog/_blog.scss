@@ -167,7 +167,8 @@ a {
     height: auto;
     border-radius: 6px;
     margin: 1.5em 0;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    /* 原先这里有一条写死的黑阴影（0 2px 8px rgba(0,0,0,.1)）给图片压出「浮起感」——
+       全站已无任何黑色阴影，去掉。图片靠圆角与上下外边距与正文分开。 */
 }
 
 /* 表格样式 */
@@ -424,7 +425,11 @@ a {
     color: #fff;
 }
 
-/* 投喂按钮样式（参照点赞按钮） */
+/* 投喂按钮样式（参照点赞按钮）
+   ⚠️ 亮起来的颜色是**品牌蓝**，不是绿色。小鱼干的主题色全站就是 `--color-brand-*`
+   —— /blog 列表卡上的 .blog-fish 胶囊（_menu.scss）与投喂弹窗（_fish.scss 的
+   .feed-modal__*）都走这一支。曾经这里是绿的（在「小鱼干改蓝」那次只改了列表页），
+   于是同一篇小鱼干在列表页是蓝、点进详情页变成绿。改回绿色之前先看一眼那两处。 */
 .fish-btn {
     display: inline-flex;
     align-items: center;
@@ -440,10 +445,10 @@ a {
     cursor: pointer;
 
     &:hover {
-        background: var(--color-success-secondary);
-        color: var(--color-success-primary);
+        background: var(--color-brand-secondary);
+        color: var(--color-brand-primary);
         .fish-count-badge {
-            background: var(--color-success-primary);
+            background: var(--color-brand-primary);
             color: #fff;
         }
     }
@@ -464,12 +469,14 @@ a {
     line-height: 1.2;
 }
 
+/* 「我投喂过」那一档：同上面两处一样走品牌蓝（见 .fish-btn 上方那条注释）。
+   停手状态（未投喂）保持与点赞 / 收藏同款的灰，三颗按钮在这一档仍是一套观感。 */
 .fish-btn--fed {
-    background: var(--color-success-secondary);
-    color: var(--color-success-primary);
+    background: var(--color-brand-secondary);
+    color: var(--color-brand-primary);
 
     .fish-count-badge {
-        background: var(--color-success-primary);
+        background: var(--color-brand-primary);
         color: #fff;
     }
 }
@@ -648,14 +655,16 @@ a {
     max-width: 100%;
     margin: 6px 0;
     padding: 8px 10px;
-    border: 1px solid var(--color-border);
+    /* 无描边（全站卡片口径）；整卡是 <a>、可点击，故 hover 改亮品牌蓝光晕提示可点。 */
     border-radius: v.$radius-large;
     background: var(--color-background-content);
     color: inherit;
     text-decoration: none;
+    /* 与 .chat-msg__blog / .blog-item 等同族可点卡一致：光晕要走过渡，别瞬间弹出。 */
+    transition: box-shadow 0.2s ease;
 }
 .comment-blog:hover {
-    border-color: var(--color-brand-primary);
+    box-shadow: var(--shadow-card-brand);
 }
 /* 图标方框：与 .chat-msg__blog-icon 同尺寸同圆角（卡片底色 + 品牌字色） */
 .comment-blog__icon {

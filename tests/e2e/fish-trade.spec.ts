@@ -457,17 +457,27 @@ test('★ 杠杆买入：档位选得动，弹窗与持仓行都摊开倍数与�
 
   await page.goto('/fish/trade');
 
+  // 按「这一格里有没有那排档位」定位 —— 页面上有两个 .trade-field（投入 / 杠杆），
+  // 直接写 .trade-field 会撞上 strict mode（不是产品坏了，是选择器太宽）
+  const levField = page.locator('.trade-field', { has: page.locator('.trade-leverage') });
+
+  // 最高档 20× 也在这排里（加档位只改 LEVERAGE_OPTIONS）：距离 5%
+  const twentyX = page.getByRole('button', { name: '20×', exact: true });
+  await expect(twentyX).toBeEnabled();
+  await twentyX.click();
+  await expect(levField, '20× 的爆仓距离是 5%').toContainText('距现价 -5.0%');
+
   // 档位是**切页档**（docs/frontend-styles.md §6.9）：点得动、且当前项挂在 aria-pressed 上
   const tenX = page.getByRole('button', { name: '10×', exact: true });
   await expect(tenX).toBeEnabled();
   await tenX.click();
   await expect(tenX).toHaveAttribute('aria-pressed', 'true');
+  // 距离在**填金额之前**就要看得见：它是这一档本身的属性（只由倍数与现价决定，
+  // 与投多少无关），而这正是用户决定要不要按买入时唯一该看的那个数。
+  await expect(levField, '选中档位就该报出爆仓价离现价有多远').toContainText('距现价 -10.0%');
 
   // 输入框下面那行提示：名义本金 = 投入 × 10，参考爆仓价 = 展示价 × (1 − 1/10)
   await page.locator('#trade-amount').fill('1');
-  // 按「这一格里有没有那排档位」定位 —— 页面上有两个 .trade-field（投入 / 杠杆），
-  // 直接写 .trade-field 会撞上 strict mode（不是产品坏了，是选择器太宽）
-  const levField = page.locator('.trade-field', { has: page.locator('.trade-leverage') });
   await expect(levField).toContainText('名义本金');
   await expect(levField).toContainText('72,000.00');
 
@@ -479,6 +489,15 @@ test('★ 杠杆买入：档位选得动，弹窗与持仓行都摊开倍数与�
   await expect(confirm, '风险说明要说清「亏光这一笔」这件反直觉的事').toContainText('保证金归零');
   await confirm.locator('.trade-confirm__ok').click();
   await expect(confirm).toHaveCount(0);
+
+  // 成交回报如实报出**真实成交价与真实爆仓价**（服务端现取的那一对），而不是确认屏上
+  // 那个按展示价估的「参考爆仓价」—— 高倍下两者的差能占掉整段爆仓距离的一大截。
+  // 用 hasText 过滤：toast 是叠加的，直接断言容器会同时命中别的提示（同 comment-rich）。
+  await expect(
+    page.locator('#toast-container .toast__body', {
+      hasText: '成交价 80,000.00 USDT，爆仓价 72,000.00',
+    })
+  ).toBeVisible();
 
   // 持仓行：倍数角标 + 爆仓价（1 倍仓这两样都不渲染，见 TradePanel 的注释）
   const pos = page.locator('.trade-position').first();
@@ -492,6 +511,48 @@ test('★ 杠杆买入：档位选得动，弹窗与持仓行都摊开倍数与�
   expect(all).toHaveLength(1);
   expect(all[0].amount, '扣的是投入，不是名义本金').toBe(-1);
   expect(all[0].description).toContain('10倍杠杆');
+});
+
+test('★ 彩票档：单独一行、选中即警告，确认屏把「硬币」与抽水摊开', async ({ page, request }) => {
+  await registerFreshUser(page, { core: true });
+  await fundByCheckin(page);
+  await setPrice(request, 'BTCUSDT', 80000);
+  await page.goto('/fish/trade');
+
+  // **它是单独一行**：阶梯那个容器里数不到它。这正是「不是第 7 枚 chip」的判据 ——
+  // 混进阶梯就会被读成「下一档」，而它买到的是一枚几小时见分晓的硬币。
+  await expect(page.locator('.trade-leverage .trade-leverage__btn')).toHaveCount(6);
+  const lottery = page.locator('.trade-lottery .trade-leverage__btn');
+  await expect(lottery).toHaveText('100×');
+  await expect(page.locator('.trade-lottery__warn'), '没选中就不该有警告').toHaveCount(0);
+
+  await lottery.click();
+  await expect(lottery).toHaveAttribute('aria-pressed', 'true');
+
+  // 距离与抽水都摊开：爆仓线在 1% 外，平仓手续费是投入的 2.00%（1 倍仓 0.02%）
+  const levField = page.locator('.trade-field', { has: page.locator('.trade-leverage') });
+  await expect(levField, '100× 的爆仓距离是 1%').toContainText('距现价 -1.0%');
+  const warn = page.locator('.trade-lottery__warn');
+  await expect(warn, '必须说清它不是「更猛的一档」').toContainText('不是「更猛的一档」');
+  await expect(warn, '抽水这个数只能从费率推出来，不许手写').toContainText('2.00%');
+  await expect(warn).toContainText('1 倍仓是 0.02%');
+
+  // 确认屏再说一遍 —— 真正按下确认的那一屏
+  await page.locator('#trade-amount').fill('1');
+  await page.locator('.trade-submit').click();
+  const confirm = page.locator('.trade-confirm');
+  await expect(confirm).toContainText('这是彩票档');
+  await expect(confirm, '确认屏上的杠杆是 100×').toContainText('100×');
+  await confirm.locator('.trade-confirm__ok').click();
+  await expect(confirm).toHaveCount(0);
+
+  // 服务端一视同仁：它就在 ALL_LEVERAGES 里，走的还是那条白名单路（不是特例分支）
+  const pos = page.locator('.trade-position').first();
+  await expect(pos.locator('.trade-position__lev')).toHaveText('100×');
+  await expect(pos, '爆仓价 = 成交价 × (1 − 1/100)').toContainText('爆仓 79,200.00');
+  const all = await myLedger(page, 'market_all');
+  expect(all[0].description).toContain('100倍杠杆');
+  expect(all[0].amount, '扣的是投入，名义本金是算出来的').toBe(-1);
 });
 
 test('★ 跌穿爆仓价：行上如实标出、卖出实得 0、且**不写第二条流水**', async ({

@@ -30,7 +30,6 @@
 
 .image-picker-card {
   padding: 0;
-  border: 1px solid var(--color-border);
   border-radius: 8px;
   background: var(--color-background-subtle);
   cursor: pointer;
@@ -46,8 +45,9 @@
     display: block;
   }
 
+  // 整卡是 <button>，可点；去掉描边后 hover 改亮品牌蓝光晕来提示可点。
   &:hover {
-    border-color: var(--color-brand-primary);
+    box-shadow: var(--shadow-card-brand);
   }
 }
 

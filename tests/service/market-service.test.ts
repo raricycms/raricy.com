@@ -476,8 +476,10 @@ describe('杠杆（开仓）', () => {
       expect(r.ok, `leverageRaw=${String(bad)}`).toBe(false);
       if (!r.ok) {
         expect(r.code).toBe(400);
-        // 报错要把可选档位念出来，别让用户猜白名单
-        expect(r.message).toContain('1 / 2 / 3 / 5 / 10');
+        // 报错要把可选档位念出来，别让用户猜白名单 —— 阶梯念完还要念彩票档
+        //（它也在白名单里，只是页面单独摆）
+        expect(r.message).toContain('1 / 2 / 3 / 5 / 10 / 20');
+        expect(r.message).toContain('彩票档');
       }
     }
     expect(await prisma.marketPosition.count()).toBe(0);

@@ -32,11 +32,10 @@
 
 .image-hosting-quota {
   background: var(--color-background-card);
-  border: 1px solid var(--color-border);
+  /* 去边框 + 去常态阴影：全站卡片改用卡片色深浅划分层级（本块不可点，不加 hover 光晕） */
   border-radius: $radius-large;
   padding: $space-4 $space-6;
   margin-bottom: $space-6;
-  box-shadow: var(--shadow-xs);
 
   &__info {
     display: flex;
@@ -164,15 +163,12 @@
 
 .image-hosting-card {
   background: var(--color-background-card);
-  border: 1px solid var(--color-border);
   border-radius: $radius-large;
   overflow: hidden;
-  transition: transform .2s, box-shadow .2s;
-
-  /* 卡片 hover：只提阴影，不位移 —— 与博客首页 .blog-item 一致 */
-  &:hover {
-    box-shadow: var(--shadow-card-hover);
-  }
+  /* 去边框 + 去常态阴影。整卡本体是 <div>（不可点 —— 可点的只是里面的 __preview
+     预览区），所以整条 hover 提阴影也删掉：不可点的容器不该有 hover 反馈。
+     随之把整条 transition 收掉 —— 它原先只剩 transform 一项，而这个元素任何地方
+     都没有 transform 变化，留着只会让人以为「hover 有位移」。 */
 
   &__preview {
     aspect-ratio: 16 / 10;
@@ -341,8 +337,8 @@
 // ---- Admin table ----
 
 .image-hosting-admin-table-wrap {
-  background: var(--color-background-card);
-  border: 1px solid var(--color-border);
+  /* 去边框：改用内容底色与背景分层（原先靠 1px 描边勾轮廓） */
+  background: var(--color-background-content);
   border-radius: $radius-large;
   overflow-x: auto;
 }

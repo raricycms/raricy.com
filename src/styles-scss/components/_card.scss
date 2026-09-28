@@ -2,18 +2,19 @@
 
 // ── 通用卡片（Bootstrap 风格的 .card）────────────────────────────────────────
 //
-// 站内的卡片大多有自己具名的族，且各有性格：首页 `.feature-card`（空闲不托阴影也不
-// 描边，hover 才亮光晕）、后台 `.management-card`（8px 圆角 + xs 阴影）、
-// 列表项 `.notification-card` / `.clipboard-item` / `.favorite-item`。**别往这里合并** ——
-// 那几种「什么时候浮起来」的规则是刻意不同的。
+// 站内的卡片大多有自己具名的族，且各有性格：首页 `.feature-card`（整块可点）、
+// 后台 `.management-card`、列表项 `.notification-card` / `.clipboard-item`
+// / `.favorite-item`。**别往这里合并** —— 那几种「什么时候浮起来」的规则是刻意不同的。
+//
+// 口径（全站卡片通用，不只首页那四张）：**常态不托阴影、不描边**，层级靠卡片色深浅
+// 区分；只有「整块可点」的卡片在 hover 时亮品牌蓝光晕（--shadow-card-brand）。所以这里
+// 既不描边也不托阴影 —— 描边圈出的轮廓、黑阴影压出的「浮起感」都已退役。
 //
 // 这一份只补模板带过来的 `.card`：/audit 与后台广播页的几块信息面板。
 // 随 SCSS 拆分（02f6ab5）丢失后，它们是直接摊在页面底色上的一段文字。
 .card {
   background: var(--color-background-card);
-  border: 1px solid var(--color-border);
   border-radius: v.$radius-large;
-  box-shadow: var(--shadow-xs);
 }
 
 // 此处原有 `.card-custom { }`：一条空规则，没有任何 TSX 用它（旧文件里就是个占位）。

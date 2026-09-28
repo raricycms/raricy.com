@@ -53,6 +53,7 @@ import { nowForDb } from './db-time';
 import {
   CANDLE_LIMIT,
   DEFAULT_INTERVAL,
+  INTERVAL_MS,
   candleKey,
   type CandleTuple,
   type MarketInterval,
@@ -84,7 +85,12 @@ export const QUOTE_STALE_MS = 40_000;
  */
 export const STREAM_TRUST_MS = 10_000;
 
-/** K 线缓存期。图表不需要秒级新鲜，60s 一档既省请求又看不出延迟。 */
+/**
+ * K 线缓存期。图表不需要秒级新鲜，60s 一档既省请求又看不出延迟。
+ *
+ * ⚠️ 它**不是**这份缓存可用的唯一条件 —— 还要看「末根在不在当前这一桶里」，
+ * 见 `behindCurrentBucket`。
+ */
 const CANDLE_CACHE_MS = 60_000;
 
 export interface Quote {
@@ -410,6 +416,33 @@ function clampLimit(limit: number): number {
 }
 
 /**
+ * 这份 K 线**还差当前这一桶**吗（末根停在过去的桶里）。
+ *
+ * 【为什么 60 秒保鲜期不够 —— 这条判据欠着的是一个静默的「图冻住了」】
+ * 末根永远是**还在走的那一根**，所以「已经追上当前桶」是这份缓存新鲜的另一个必要条件，
+ * 而它与 TTL **不同时失效**：页面的取数节奏是「跨桶那一刻补一次」，于是上一份恰好是在
+ * 上一次跨桶时取的 —— 下一次跨桶那一刻它正好 60 秒，TTL 判不出来。实测（2026-09-28，
+ * 1m）：19:16:00 起的 20 多秒里，`/candles` 给的一直是末根 = 19:15 的那份。
+ * 而调用方**只在那一刻**来补数据（`mergeLivePrice` 跨桶 / `useCandles` 取数时机 ③），
+ * 补回来还是上一桶 → 客户端认为「还是没追上」→ 再往后就没有任何机制会去补了：
+ * 图停在进页面那一刻的右端，任它放多久都不动，**只有手动刷新**。
+ *
+ * 代价只有一处，而且正是要的：跨桶后的第一次请求会真去打一次上游。此后同一桶内照旧命中
+ * 缓存 —— 每个桶每个键最多一次上游请求，比 60 秒 TTL 那条还省（4h / 1d 尤其），
+ * 路由头部那条「上游请求量有界、与访客数无关」的结论**不变**（还是 12 个键 × 每桶一次）。
+ *
+ * ⚠️ 拿 `Date.now()` 与 openTime 比是允许的：K 线的 openTime 是交易所给的**真实 UTC
+ * 毫秒**，与它同一把尺子（见 market-candles.ts 的 CandleTuple）。库内那套「UTC+8 墙上
+ * 时间贴 Z」与这里无关。桶的对齐方式与币安一致（按 epoch 取整；1d 因此正好是 UTC 零点）。
+ */
+function behindCurrentBucket(candles: readonly CandleTuple[], interval: MarketInterval): boolean {
+  // 空序列不在这里判：调用方拿到空数组时走的是「上游挂没挂」那条路，与桶无关
+  if (candles.length === 0) return false;
+  const bucket = Math.floor(Date.now() / INTERVAL_MS[interval]) * INTERVAL_MS[interval];
+  return candles[candles.length - 1][0] < bucket;
+}
+
+/**
  * 币安 kline 行 → 六元组。形状见 market-candles.ts 的 CandleTuple。
  *
  * 【坏行只丢那一行】一行脏数据不该让整张图消失 —— 与 `refreshQuotes` 里
@@ -453,6 +486,9 @@ function parseKlines(raw: unknown[]): CandleTuple[] {
  *
  * 缓存键带上 interval 与 limit；`limit` 由本函数夹逼后再进键，所以 `limit=99999`
  * 与 `limit=1000` 是同一格缓存，不会各存一份。
+ *
+ * 【缓存能不能用有两个条件】没过保鲜期，**且**末根已经落在当前这一桶里 ——
+ * 后者见 `behindCurrentBucket`，它欠着的是「页面跨桶那一刻来补数据必须补得到」。
  */
 export async function getCandles(
   symbol: MarketSymbol,
@@ -462,7 +498,13 @@ export async function getCandles(
   const n = clampLimit(limit);
   const key = `${candleKey(symbol, interval)}:${n}`;
   const hit = priceState().candles.get(key);
-  if (hit && Date.now() - hit.fetchedAtMs < CANDLE_CACHE_MS) return hit.candles;
+  if (
+    hit &&
+    Date.now() - hit.fetchedAtMs < CANDLE_CACHE_MS &&
+    !behindCurrentBucket(hit.candles, interval)
+  ) {
+    return hit.candles;
+  }
 
   try {
     const raw = await fetchJson(

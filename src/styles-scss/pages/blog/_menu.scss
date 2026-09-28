@@ -375,10 +375,13 @@ a {
     padding: 20px 23px 23px 28px;
     margin-bottom: 16px;
     cursor: pointer;
+    /* 常态不描边、不托阴影（全站卡片口径），只有 hover 才亮光晕，故保留这条过渡。 */
     transition: box-shadow 0.2s ease;
 
+    /* 整卡可点（.blog-item-cover 拉伸链接铺满整卡）：hover 亮品牌蓝光晕提示可点。
+       原先的 --shadow-card-hover 是黑色阴影，已按全站口径退役。 */
     &:hover {
-        box-shadow: var(--shadow-card-hover);
+        box-shadow: var(--shadow-card-brand);
     }
 }
 

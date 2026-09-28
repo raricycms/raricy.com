@@ -17,7 +17,8 @@
   background: #2b3035;
   color: #fff;
   border-radius: v.$radius-small;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+  // 浮层用品牌蓝光晕（全站唯一许可的阴影）；原先的黑阴影已退役。
+  box-shadow: var(--shadow-card-brand);
   margin: 8px 0;
   opacity: 0;
   transform: translateY(-6px);

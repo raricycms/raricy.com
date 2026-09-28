@@ -26,7 +26,8 @@
   padding: $space-6;
   background: var(--color-background-card);
   border-radius: 30px;
-  box-shadow: var(--shadow-card);
+  /* 常态不投影（全站卡片改用卡片色深浅分层的统一规则）。
+     ⚠️ 本卡被 /fish/market、/fish/pay、/fish/api 三页复用 —— 改这一处三页一起变。 */
 
   @media (max-width: 768px) {
     padding: $space-4;
@@ -124,7 +125,7 @@
   align-items: center;
   gap: $space-3;
   padding: $space-3 $space-4;
-  border: 1px solid var(--color-border);
+  /* 去边框：层级由卡内这块「subtle 底」划分，不再靠 1px 描边 */
   border-radius: $radius-large;
   background: var(--color-background-subtle);
 }
@@ -582,7 +583,7 @@
   align-items: center;
   gap: $space-3;
   padding: $space-3 $space-4;
-  border: 1px solid var(--color-border);
+  /* 去边框：它本就有 subtle 底，足够与父卡分开 —— 保留底色、只删描边 */
   border-radius: $radius-large;
   background: var(--color-background-subtle);
 }

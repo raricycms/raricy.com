@@ -66,8 +66,14 @@
 // **主题体系里并不存在**的变量，fallback 永远是浅色值 —— 暗色下「暂无申诉」
 // 这类条目是一块白底黑字。旧写法靠 body.dark-mode 兜底，但那个类从来没人加过
 // （主题走的是 <html data-theme>），所以兜底也没生效。
+// 去掉外框：卡片一律不描边（层级由卡片色深浅区分）。里面的条目仍有 border-bottom
+// 作为**行分隔线**，那是列表语义，不随外框一起删；圆角与 overflow 保留，让首尾条目
+// 跟着圆角裁切。
+// ⚠️ 底色不能省：条目是卡片色，而它两个落点的父层分别也是卡片色（FeedButton 的
+// .modal-content）与页面色（/audit/<id>）。不给这一层底色，去掉描边后整个盒子
+// 连上下沿都没有了 —— 只剩中间几根行分隔线。压深一档就有了「一个列表盒子」。
 .list-group {
-  border: 1px solid var(--color-border);
+  background: var(--color-background-content);
   border-radius: 0.5rem;
   overflow: hidden;
 }

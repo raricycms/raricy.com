@@ -1,13 +1,25 @@
 // Admin user management page
 // Extracted from inline <style> in auth/management.html
 
+/* 后台面板卡（用户管理 / OAuth 应用页共用）。去描边 + 去常态阴影，层级靠卡片色深浅。 */
 .management-card {
   margin-top: 20px;
-  box-shadow: var(--shadow-xs);
   padding: 30px;
   border-radius: 8px;
   background: var(--color-background-card);
-  border: 1px solid var(--color-border);
+
+  /* ⚠️ 卡中卡：admin/oauth/page.tsx 的 <section class="management-card">（「已注册的
+     应用」那一块）里，渲染的是 ApplicationRow 的根节点 —— 它**自己也挂着
+     management-card**。两层同为卡片色，去掉描边后内层边界会彻底消失（同色叠同色，
+     明度差 0）。这里把内层压深一档，让它能读作「面板里的一张条目卡」。
+     根因是组件根复用了页面级容器类（同类问题见 docs/frontend-styles.md §12），
+     正解是把类名从 ApplicationRow 的根节点摘掉、由页面统一提供外壳 —— 那要动 .tsx，
+     不在本次样式改造范围内；这条规则是那一笔债的兜底，别当成冗余删掉。
+     注：page.tsx 里 `<ApplicationCreateForm />` 是**兄弟节点**不是子节点，
+     不受这条影响（它那层仍是卡片色）。 */
+  .management-card {
+    background: var(--color-background-content);
+  }
 }
 
 // User grid
@@ -22,13 +34,10 @@
   flex-direction: column;
   padding: 20px;
   border-radius: 8px;
-  border: 1px solid var(--color-border);
-  background: var(--color-background-page);
-  transition: box-shadow 0.2s ease;
-
-  &:hover {
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-  }
+  /* 子卡嵌在卡片色的 .management-card 里：去描边后若仍用 --color-background-page，
+     它与父卡只差 2% 明度、边界就看不见了 —— 改用 --color-background-content 拉开层级。
+     整卡**不可点**，故连带删掉 hover 的黑阴影（全站已无任何黑色阴影）。 */
+  background: var(--color-background-content);
 }
 
 .user-card__top {
