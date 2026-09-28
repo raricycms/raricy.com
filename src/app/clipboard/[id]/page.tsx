@@ -24,32 +24,39 @@ export default async function ClipDetailPage({ params }: { params: Promise<{ id:
   const canDelete = isAuthor || isOwner(user);
 
   return (
-    <div className="clipboard-detail">
-      <div className="clipboard-detail__header">
-        <h1 className="clipboard-detail__header-title">{clip.title}</h1>
-        <div className="clipboard-detail__header-meta">
-          <span>作者：{clip.authorName ?? '未知作者'}</span>
-          <span className="clipboard-detail__header-meta-id">
-            ID：<code>{clip.id}</code>
-            <ClipIdCopyButton text={clip.id} />
-          </span>
+    // ⚠️ 外面这层 .clipboard-page **不是可省的包装**：页边距 / 宽度阶梯 / 上下留白
+    // 全住在它身上（_clipboard.scss 的 &-page）。.clipboard-detail 只是一张卡片，
+    // 自己只有内距没有外边距 —— 直接把它挂在 <main> 下（本页此前的写法），
+    // 卡片会顶满整个视口宽、贴着屏幕两条边。剪贴板的另外几页（列表 / 上传 / 编辑）
+    // 都有这层。
+    <div className="clipboard-page">
+      <div className="clipboard-detail">
+        <div className="clipboard-detail__header">
+          <h1 className="clipboard-detail__header-title">{clip.title}</h1>
+          <div className="clipboard-detail__header-meta">
+            <span>作者：{clip.authorName ?? '未知作者'}</span>
+            <span className="clipboard-detail__header-meta-id">
+              ID：<code>{clip.id}</code>
+              <ClipIdCopyButton text={clip.id} />
+            </span>
+          </div>
         </div>
+
+        <div className="clipboard-detail__content">
+          <ClipContent content={clip.content ?? ''} />
+        </div>
+
+        <ClipActions
+          clipId={clip.id}
+          content={clip.content ?? ''}
+          isAuthor={isAuthor}
+          canDelete={canDelete}
+        />
+
+        <FooterCopyOverride
+          text={`原作者：${clip.authorName ?? '未知作者'} | 版权归原作者所有`}
+        />
       </div>
-
-      <div className="clipboard-detail__content">
-        <ClipContent content={clip.content ?? ''} />
-      </div>
-
-      <ClipActions
-        clipId={clip.id}
-        content={clip.content ?? ''}
-        isAuthor={isAuthor}
-        canDelete={canDelete}
-      />
-
-      <FooterCopyOverride
-        text={`原作者：${clip.authorName ?? '未知作者'} | 版权归原作者所有`}
-      />
     </div>
   );
 }
