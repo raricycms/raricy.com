@@ -1,0 +1,152 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// 站内文档正文的排版 —— 指南页（`/image/guide` 等 6 个）与文档页（`/docs/...`）共用
+//
+// 【为什么是 mixin】两处渲染的是**同一批 Markdown**（`docs/` 下的 .md），元素集合
+// 完全一致。写两份的话，改了一处另一边不会跟着变 —— 读者会看到「同一份指南在指南页
+// 里长这样、在文档页里长那样」，而这类不一致没有人会当成 bug 报上来。
+// 参数是**完整类名**（两边的命名空间不同：`guide__content` / `docs-content`），
+// 与本仓既有的 `rich-markdown($cls)`（components/_markdown-body.scss）同一手法。
+//
+// 【为什么它不在 main.scss 里】这个文件只定义 mixin、自己不产出规则 —— 与
+// `_markdown-body.scss` / `_composer.scss` 一样，由用它的页面文件 `@use` 进来。
+//
+// 【渲染前提】内容一律来自仓库里的 Markdown（可信内容，**不是用户输入**）：
+// 这里出现的元素集合由 `marked` 决定，没有净化那一层。别拿它去渲染用户提交的文本。
+//
+// ⚠️ 新增一种正文元素（比如任务列表、脚注）时**改这一处**，两个页面一起生效；
+//    只在某个页面里补一条规则，另一个页面就会缺一块，而且不会有任何报错。
+// ─────────────────────────────────────────────────────────────────────────────
+
+@mixin doc-prose($cls) {
+  .#{$cls} {
+    background: var(--color-background-card);
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    padding: 2.5rem;
+    color: var(--color-text-primary);
+    line-height: 1.8;
+    font-size: 0.95rem;
+  }
+
+  .#{$cls} h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 2px solid var(--color-brand-primary);
+  }
+
+  .#{$cls} h2 {
+    font-size: 1.4rem;
+    font-weight: 600;
+    margin: 2.5rem 0 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .#{$cls} h3 {
+    font-size: 1.15rem;
+    font-weight: 600;
+    margin: 1.75rem 0 0.75rem;
+  }
+
+  .#{$cls} p {
+    margin: 0.75rem 0;
+  }
+
+  .#{$cls} code {
+    background: var(--color-background-content);
+    padding: 0.15rem 0.35rem;
+    border-radius: 6px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.875em;
+    /* 行内代码的琥珀色改走星色令牌（站内唯一的黄系令牌），明暗自动跟随 */
+    color: var(--color-star-primary);
+  }
+
+  .#{$cls} pre {
+    background: var(--color-background-content);
+    padding: 1rem 1.25rem;
+    border-radius: 12px;
+    overflow-x: auto;
+    margin: 1rem 0;
+    font-size: 0.875rem;
+    line-height: 1.6;
+  }
+
+  .#{$cls} pre code {
+    background: none;
+    padding: 0;
+    color: var(--color-text-primary);
+    font-size: inherit;
+  }
+
+  /* 正文里的引用块 —— `border-left` 是全站「不留装饰性左侧竖条」的**内容语义例外**
+     （Markdown 通行约定），见 docs/frontend-styles.md §11 第 8 条。 */
+  .#{$cls} blockquote {
+    border-left: 3px solid var(--color-brand-primary);
+    margin: 1rem 0;
+    padding: 0.5rem 1rem;
+    background: var(--color-background-content);
+    color: var(--color-text-secondary);
+    border-radius: 0 0.25rem 0.25rem 0;
+  }
+
+  .#{$cls} ul,
+  .#{$cls} ol {
+    margin: 0.75rem 0;
+    padding-left: 1.75rem;
+  }
+
+  .#{$cls} li {
+    margin: 0.35rem 0;
+  }
+
+  .#{$cls} table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 1rem 0;
+    font-size: 0.9rem;
+  }
+
+  .#{$cls} th,
+  .#{$cls} td {
+    border: 1px solid var(--color-border);
+    padding: 0.5rem 0.75rem;
+    text-align: left;
+  }
+
+  .#{$cls} th {
+    background: var(--color-background-content);
+    font-weight: 600;
+  }
+
+  .#{$cls} strong {
+    color: var(--color-text-primary);
+  }
+
+  .#{$cls} a {
+    color: var(--color-brand-primary);
+  }
+
+  .#{$cls} hr {
+    border: none;
+    border-top: 1px solid var(--color-border);
+    margin: 2rem 0;
+  }
+
+  /* pre 里的代码仍是正文色（行内代码那支琥珀色不进代码块） */
+  [data-theme='dark'] .#{$cls} pre code {
+    color: var(--color-text-primary);
+  }
+
+  @media (max-width: 768px) {
+    .#{$cls} {
+      padding: 1.5rem;
+    }
+
+    .#{$cls} h1 {
+      font-size: 1.6rem;
+    }
+  }
+}
