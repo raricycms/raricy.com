@@ -62,9 +62,9 @@ CSS 由 [scripts/compiled-css.mjs](../scripts/compiled-css.mjs) **现编**入口
 | `--color-background-card-unread` | `#fffdf0` | 通知未读卡片底 |
 | `--color-background-subtle` | `#f3f4f6` | 弱背景（hover、徽章） |
 | `--color-background-highlight` | `#eef2ff` | 高亮背景 |
-| `--color-border` | `#E2E8F0` | 常规边框 |
+| `--color-border` | `#E2E8F0` | 常规边框（只剩分隔线、chip、按钮与共存边框在用它；容器轮廓见 §6.2） |
 | `--color-border-unread` | `#f1c40f` | 未读高亮边框 |
-| `--color-border-highlight` | `#007bff` | 聚焦 / hover 边框 |
+| `--color-border-highlight` | `#007bff` | **当前无消费者**：它原先是「卡片 hover 边框」，而卡片已不许描边（§6.2）、hover 一律走 `--shadow-card-brand`。留着是为了不擅动色板，**别再拿它给卡片画 hover 边框** |
 | `--color-text-primary` | `#0f172a` | 主文本 |
 | `--color-text-secondary` | `#64748B` | 次要文本、meta |
 | `--color-text-tertiary` | `#dde4ee` | 禁用态底 / 分割线 |
@@ -114,20 +114,30 @@ CSS 由 [scripts/compiled-css.mjs](../scripts/compiled-css.mjs) **现编**入口
 
 ### 2.3 阴影
 
-| 变量 | 浅色 | 深色 |
-|------|------|------|
-| `--shadow-xs` | `0 2px 10px rgba(0,0,0,.05)` | `rgba(0,0,0,.2)` |
-| `--shadow-sm` | `0 2px 10px rgba(0,0,0,.1)` | `rgba(0,0,0,.25)` |
-| `--shadow-card` | `0 4px 20px rgba(0,0,0,.08)` | `rgba(0,0,0,.3)` |
-| `--shadow-card-hover` | `0 8px 30px rgba(0,0,0,.12)` | `rgba(0,0,0,.4)` |
-| `--shadow-card-brand` | `0 2px 25px rgba(37,99,235,.15)` | `0 2px 20px rgba(35,165,255,.1)` |
-| `--shadow-focus-brand` | `0 0 25px rgba(37,99,235,.28)` | `0 0 20px rgba(35,165,255,.32)` |
+> 2026-09 收敛：此前有六条阴影令牌，其中四条（`--shadow-xs` / `-sm` / `-card` /
+> `-card-hover`）的展开值全是 `rgba(0,0,0,…)`，被用在卡片常态与 hover 上。现全站
+> **只留两条，都是品牌色**；四条中性阴影**整体退役**（`base/_root.scss` 里已删除定义，
+> 别再引入 —— 需要分层就用 2.1 的背景色阶）。
 
-卡片 hover 统一升到 `--shadow-card-brand`（品牌色光晕），同时边框切 `--color-border-highlight`。
+| 变量 | 浅色 | 深色 | 用途 |
+|------|------|------|------|
+| `--shadow-card-brand` | `0 2px 25px rgba(37,99,235,.15)` | `0 2px 20px rgba(35,165,255,.1)` | **「抬起」**：整块可点的卡片 hover、浮层（弹窗 / toast / 下拉 / 贴边面板） |
+| `--shadow-focus-brand` | `0 0 25px rgba(37,99,235,.28)` | `0 0 20px rgba(35,165,255,.32)` | **「聚焦」**：字段与输入面板 |
+
+三条硬规则：
+
+1. **卡片常态不托阴影、也不描边**（§6.2）。空闲就给阴影会让一整页卡片各自「浮」起来
+   把版面切碎 —— 改成「指到哪儿哪儿才浮起来」，让位给背景色阶。
+2. **只有「整块可点」的卡片 hover 才亮 `--shadow-card-brand`**。判据是那个元素本身是
+   `<a>` / `<Link>` / `<button>`（含 `.blog-item-cover` 那种铺满整卡的拉伸链接）——
+   **卡里只有某颗按钮可点的，整卡不许有 hover 阴影**。不可点的卡若带着 hover 阴影，
+   那多半是照抄邻居抄错的，删掉而不是换成蓝的。
+3. **不留任何黑色阴影**。写死的 `rgba(0,0,0,…)` 只允许作 `background`（遮罩 scrim），
+   作 `box-shadow` 一律不允许 —— 浮层需要「抬起来」就用 `--shadow-card-brand`。
 
 `--shadow-focus-brand` 是**聚焦态**专用的光晕：与 `--shadow-card-brand` 同色同模糊半径，
-但偏移为 `0`（四周均匀），不透明度高一档 —— 常驻阴影是「托住」元素，聚焦态得自己站得出来。
-**不要拿它当常驻阴影用。**
+但偏移为 `0`（四周均匀），不透明度高一档 —— 「抬起」是托住元素，聚焦态得自己站得出来。
+**不要拿它当常驻阴影或 hover 用。**`--shadow-card-brand` 反之也别拿去当聚焦环。
 
 它是**全站字段唯一的聚焦反馈**（见 §4.2）：单行输入框、textarea、`<select>`、
 金额外壳（`focus-within`）、评论/讨论输入面板（`focus-within`）都用它。
@@ -352,7 +362,7 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
   **新代码用 `.is-active`**）。落点：顶栏 `.site-link`、博客分类栏 `.category-link` /
   `.sub-category-link`、页码 `.page-link`、管理页的选中/未选中成对按钮、
   工具箱 `.filter-pill`、鱼干流水 `.filter-btn`。
-- **任何一档都不做垂直位移**。hover/按下只改颜色；卡片 hover 也只提阴影
+- **任何一档都不做垂直位移**。hover/按下只改颜色；卡片 hover 也只亮品牌色光晕
   （对齐 `.blog-item`），不 `translateY`。入场动画（`fadeInUp` / toast / 汉堡变形）
   与居中用的 transform 不受此限。
 - Bootstrap 风格 fallback 族（`.btn` / `.btn-secondary` / `.btn-outline-*` /
@@ -373,10 +383,28 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
 
 ### 6.2 卡片
 
-- 首页 `.feature-card`（「探索」区四张功能卡）：**空闲不托阴影也不描边**，只有
-  卡片色背景 + 30px 圆角；**hover 才亮起光晕**。四张卡是页面主体内容、不是浮层，
-  空闲就给阴影会让四块各自「浮」起来把首页切碎 —— 改成「指到哪儿哪儿才浮起来」。
-  禁用态（专注模式）连 hover 也不给反馈。
+**全站卡片的总则**（2026-09 统一，原先只有首页四卡这么做）：
+
+1. **不描边**。容器轮廓不用 `border` —— 圆角本身就够说明形状，边上再压一圈线是两套
+   形状语言的混搭（同 §11.8 的「不留左侧竖条」）。`border-radius` 保留。
+2. **常态不托阴影**（§2.3）。空闲就给阴影会让一整页卡片各自「浮」起来、把版面切碎，
+   改成「指到哪儿哪儿才浮起来」。层级改由**底色深浅**承担：
+   页面底 `--color-background-page` → 卡片 `--color-background-card` →
+   **卡内子块** `--color-background-content`（再弱一档 `--color-background-subtle`）。
+   卡内子块这一档是必须的：它原先靠 1px 描边与父卡分开，描边一去、同色相贴就没了边界。
+3. **只有整块可点的卡片** hover 才亮 `--shadow-card-brand`。判据是承载卡片的那一层
+   自己就是 `<a>` / `<Link>` / `<button>`（`.blog-item` 走 `.blog-item-cover` 那种
+   铺满整卡的拉伸链接也算）。**卡里只有某颗按钮可点的，整卡不许有 hover 反馈。**
+   配上 `transition: box-shadow 0.2s ease`，别让光晕瞬间弹出。
+4. **浮层是另一档**：弹窗 / toast / 下拉菜单 / 贴边面板 / 移动端抽屉用
+   `--shadow-card-brand` **常驻**（它们本来就要「浮」在页面之上），不是 hover 才有。
+
+⚠️ 别用 `box-shadow: inset …` 或 `outline` 去模拟描边 —— 那是**伪边框**，同样是边框
+（判据与搜法见 §11.8）。状态（选中 / 佩戴中 / 「我」）一律用**淡底 + 同色字**表达。
+
+- 首页 `.feature-card`（「探索」区四张功能卡）：上面的总则原样适用，**唯一的例外是
+  hover 光晕的颜色** —— 它是**卡片自己的颜色**，不是品牌蓝（四张卡是页面主体内容，
+  四个色相是首页的视觉语言）。禁用态（专注模式）连 hover 也不给反馈。
 
   光晕是**卡片自己的颜色**，不是品牌蓝。每张卡只在 `.card-*` 上定义一次
   `--card-accent`（色相）与 `--card-glow`（同色系的 `-soft` 淡色），
@@ -556,11 +584,12 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
 
 正文里的收藏夹卡片（`.favorite-embed`，HTML 由 `src/lib/favorite-refs.ts` 的
 `buildFavoriteCardHtml` 直接产出）**与投票嵌入卡 `.vote-embed-widget` 同一副面孔**：
-`--color-background-card` 底 + 1px `--color-border` 描边。它先后用过「左侧金色竖条」与
-「`--color-star-secondary` 星色淡底」两种身份提示：前者违反 §11 第 8 条（无左侧边框），
-后者让**正文里整块发黄** —— 星色是「已收藏」的状态色（§2.1 写明它只在该处与 hover 时用），
-拿它当一整段正文的背景，读起来像那段内容被整个标记了。嵌入块靠**形状**（圆角 + 描边 +
-内距）与正文分开，不靠色相。
+`--color-background-content` 底 + 圆角 + 内距（无描边，见 §6.2）。它先后用过「左侧金色
+竖条」、「`--color-star-secondary` 星色淡底」与「卡片色 + 1px 描边」三种身份提示：第一种
+违反 §11 第 8 条（无左侧边框）；第二种让**正文里整块发黄** —— 星色是「已收藏」的状态色
+（§2.1 写明它只在该处与 hover 时用），拿它当一整段正文的背景，读起来像那段内容被整个
+标记了；第三种随「卡片不描边」总则退役。嵌入块现在靠**底色深浅**（比正文卡深一档的
+content 色）+ 形状（圆角 + 内距）与正文分开，不靠色相，也不靠描边。
 
 #### 评论区的两条几何契约
 
@@ -860,7 +889,11 @@ plot / price / volume / time 各占一格）：与 SVG 共用同一个分数，�
 8. **不留「左侧边框」做装饰**：容器已经是大圆角，边上再压一条 3–4px 竖条，弧线会被
    切掉一截 —— 那是两套形状语言的混搭。表达「这是哪一类/已选中」用**淡底 + 同色字**。
    两个例外：正文渲染出的 `blockquote`（内容语义，Markdown 通行约定）、
-   CSS 画的箭头三角形。同理，卡片 hover 只提阴影，不做垂直位移。
+   CSS 画的箭头三角形。同理，卡片 hover 只亮品牌色光晕，不做垂直位移。
+   > 这条与 §6.2 的「不描边」是同一族规矩的两端：**整圈轮廓**归 §6.2（`border`
+   > 与伪边框一起禁），**局部/状态描边**归本条。状态画成环的（头像框面板「佩戴中」
+   > 的 `inset 0 0 0 2px`、签到排行榜「我」那一行的 `outline`）已统一改成
+   > `--color-brand-secondary` 淡底 —— 那两处是同一次收敛，别再改回描边环。
    ⚠️ **这类竖条不一定写成 `border-left`** —— 讨论区侧栏的选中项与 `@` 我到的消息
    那两处都是 `box-shadow: inset 3px 0 0 品牌色`（伪装的左边框）。清的时候要按
    「`box-shadow` 里带 `inset` 且 x 偏移为正」搜，只搜 `border-left` 一定漏。
@@ -920,7 +953,9 @@ plot / price / volume / time 各占一格）：与 SVG 共用同一个分数，�
 - 设置页开关的圆钮 `background: #fff`（`pages/_settings.scss` 的
   `.settings-toggle__slider::before`）—— 它**在两个主题下都必须是白的**（开关就长这样），
   换 `--color-background-card` 会让暗色主题的钮跟着变深、压在 `--color-border` 的轨道上
-  反而消失。可读性由那圈 `0 1px 3px` 阴影兜住。
+  反而消失。原先还有一圈 `0 1px 3px rgba(0,0,0,.15)` 给它压出深度，已按「不留任何黑色
+  阴影」去掉，**也没有换成品牌蓝光晕**（那是「可点卡片 hover」与「浮层」两个语义，
+  一颗常态下的开关圆钮两者都不是）。钮与轨道靠白/灰的明度差 + 圆形本身分辨。
 - 画报（`src/lib/poster.ts`）与 identicon（`src/lib/identicon.ts`）里的配色 —— 输出的是
   **图片**，不参与 `data-theme`。代价是它们各有一份色板副本，改品牌色时不会跟着变。
 - 各处**实底按钮/角标上的 `color: #fff`** —— 那是「实底 + 白字」配方的一部分，
@@ -940,9 +975,14 @@ plot / price / volume / time 各占一格）：与 SVG 共用同一个分数，�
   修法：组件根去掉这两个类，由两个页面各自提供外壳。
 - `src/app/admin/oauth/ApplicationRow.tsx` 的根节点 = `management-card`，而
   `admin/oauth/page.tsx` 把它渲染在 `<section className="management-card">` **里面** →
-  卡中卡：双 30px padding、双描边、双底色。`pages/_oauth.scss` 的
+  卡中卡：双 30px padding、双底色。`pages/_oauth.scss` 的
   `.management-card + .management-card { margin-top: 0 }` 只是把兄弟行之间的
   `margin-top: 20px` 压掉，压不住卡壳本身。
+  ⚠️ 2026-09 起这条**已经会肉眼可见**：卡片一律不描边之后，两层同为卡片色 = 明度差 0，
+  内层边界彻底消失。`pages/admin/_users.scss` 里加了一条
+  `.management-card .management-card { background: var(--color-background-content) }`
+  作兜底（内层压深一档）。**那是治标的**：正解仍是把类名从组件根节点摘掉、由页面
+  统一提供外壳 —— 动它时要连这条兜底一起删。
 - `src/app/components/AdminArticlesManager.tsx` 的根节点 = `admin-container`（页面级容器：
   `max-width: 1400px; margin: 32px auto; padding: 0 20px`）。**当前没爆**，纯属
   `admin/blogs/page.tsx` 自己没写容器、由组件提供。一旦它被放进任何一个已有
