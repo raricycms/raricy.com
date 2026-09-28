@@ -94,7 +94,7 @@
 | `/fish/pay` | page | **收银台**：站外商户把用户送来付款（`?to= &amount= &note= &from= &return=`）。参数一律不可信，只做展示；付款必须**已登录 + 再输一次密码**（step-up），密码只输在本站域名下。不入索引 |
 | `/fish/collect` | page | **扫码收款页**：`?to=<用户名>`，扫「鱼干收款码」落到这里。与收银台的区别是**金额由付款人自己填**（静态码不可能带金额）。前端是 `/fish/pay` 的**同一个组件**（`src/app/fish/PayForm.tsx`）的另一个变体，step-up 与幂等键完全共用 |
 | `/fish/api` · `/api/fish/tokens/*` | page + API | **机器人接入自助页**：签发 / 吊销只读凭据（`GET`/`POST /api/fish/tokens`、`DELETE /api/fish/tokens/[id]`）。**只认会话**、签发要 step-up、只能动自己的。只读凭据的鉴权门在 `src/app/api/fish/market/_auth.ts`（第三道门，`allowReadToken` 默认关）；签发/校验/吊销在 `src/lib/fish-token-service.ts` |
-| `/fish/trade` · `/fish/trade/stats` · `/api/fish/trade/*` | page + API | **鱼干练手盘**：投入鱼干买入一个绑定真实加密价格的仓位（**core+**，签到之外第二条赚取渠道）。`POST buy`（客户端幂等键）/ `POST sell` / `GET quote`（展示行情）/ `GET candles`（图上那段 K 线，**只喂展示**）。档位在两个页面与四个接口**六处各判一次**，禁言只有 `buy` 判。`/fish/trade/stats` 是**只读的个人统计页**（总览 + 按标的 / 杠杆拆解 + 持仓快照），**没有接口**：server component 直连服务层，全部数据来自 `market_positions` 既有列，不需要迁移。见 §6.13 |
+| `/fish/trade` · `/fish/trade/stats` · `/api/fish/trade/*` | page + API | **鱼干练手盘**：投入鱼干买入一个绑定真实加密价格的仓位（**core+**，签到之外第二条赚取渠道）。`POST buy`（客户端幂等键）/ `POST sell` / `GET quote`（展示行情）/ `GET candles`（图上那段 K 线，**只喂展示**）。档位**与专注模式**在两个页面与四个接口**六处各判一次**，禁言只有 `buy` 判。**只走 https**：这六条路径还压在 `src/middleware.ts` 的协议闸下（回环地址豁免，见 §6.4）。`/fish/trade/stats` 是**只读的个人统计页**（总览 + 按标的 / 杠杆拆解 + 持仓快照），**没有接口**：server component 直连服务层，全部数据来自 `market_positions` 既有列，不需要迁移。见 §6.13 |
 | `/api/poster/profile/[id]` · `/api/poster/collect` | API | **画报 / 收款码出图**（PNG，仅本人）。渲染管线与四条约束见 §6.8 |
 | `/notifications` · `/api/notifications/*` | page + API | 通知中心。其中 `GET count` 是顶栏指示器的**兜底快照**（**不能删**：SSE 有「连着但收不到」的半死状态），`GET stream` 是**实时流**（SSE，未登录 401；首帧全量快照 + 之后增量补丁）。推送点纪律与依赖方向见 `src/lib/topbar-bus.ts` 头部 |
 | `/vote` · `/vote/[id]` | page | 投票 |
@@ -142,7 +142,7 @@
 | 练手盘 | `market-service.ts`（开平仓：**一个事务、没有补偿**；开仓的幂等靠 `open_key` 唯一约束而非独立幂等记录）· `market-math.ts`（**结算公式的唯一实现**，零依赖 —— 服务端真结算与页面「预计到手」是同一个 `settleClose`）· `market-candles.ts`（K 线词汇表：周期白名单 / 根数上限 / 线上形状 / 缓存键，**零依赖**，服务端与客户端共用）· `market-chart.ts`（K 线图的纯计算：窗口 / 聚合 / 刻度 / 映射 / 实时并线 —— 零依赖外加 `db-time` 的一个常量）· `market-price.ts`（行情源与展示缓存，见 §6.13）· `market-stream.ts` + `market-poll-drainer.ts`（喂展示的两个后台循环）· `market-stats.ts`（统计的**纯聚合**：终态白名单 / 拆解表分桶 / 持仓浮动盈亏 —— 白名单由调用方传进来，这样单元用例不必拉 Prisma）· `market-stats-service.ts`（统计的读路径：**盈亏只能来自 `market_positions`，别改成从账本求和**，理由见文件头） |
 | OAuth 2.0 | `oauth.ts`（见 `docs/oauth.md`） |
 | 管理域 | `admin-user-service.ts` · `admin-blog-service.ts` · `admin-category-service.ts` · `admin-comment-service.ts` · `admin-clipboard-service.ts` · `admin-vote-service.ts` · `admin-image-service.ts` · `admin-stats-service.ts` |
-| 工具 / 安全 | `short-id.ts` · `safe-url.ts` · `guard.ts` · `rate-limit.ts` · `turnstile.ts` |
+| 工具 / 安全 | `short-id.ts` · `safe-url.ts` · `guard.ts` · `rate-limit.ts` · `turnstile.ts` · `https-guard.ts`（练手盘协议闸的判据：路径清单 / 明文判定 / 跳转目标 —— **零依赖**，Edge 中间件直接吃，见 §6.4） |
 | 鉴权基建 | `credential-auth.ts`（「用户名+密码」校验，`/api/auth/login` 与鱼干市场无状态接口**共用**，限频桶也共用）· `request-ip.ts`（反代后取真实 IP） |
 | 配额白名单 | `service-accounts.ts`（`FISH_SERVICE_ACCOUNTS` 里的账号走 `SERVICE_QUOTA`：转账 500/时、5000/天。给「站外银行」这类自动化账号用，撤销即删配置） |
 
@@ -268,9 +268,29 @@ SQLite 文件**里，只从远端恢复鱼干余额也拼不出站 —— 真正
 
 清单与判据见 `docs/legacy-constraints.md` §1.1。
 
-### 6.4 CSRF 中间件
+### 6.4 中间件（CSRF + 练手盘协议闸）
 
-`src/middleware.ts` 对状态变更方法（POST/PUT/PATCH/DELETE）校验 `Origin` / `Referer` 与对外 Host 同源。
+`src/middleware.ts` 干两件事，**判据与说明各在别处（以那两处为准）**：
+
+**一、练手盘协议闸** —— `/fish/trade` 与它下面的页面、以及四个 `/api/fish/trade/*` 接口
+**只走 https**：确证是明文 http 时页面 **308** 跳到 https、接口回 **403 JSON**。
+判据是 `X-Forwarded-Proto`，**回环地址（`localhost` / `127.x` / `::1`）豁免** ——
+判据的全部理由、以及「为什么缺了它 `npm run dev` 与整个 e2e 会打不开」写在
+`src/lib/https-guard.ts` 文件头。
+
+两处容易踩的：
+
+- **它排在 GET 早退前面**。下面那两条 CSRF 规则只看写方法，而练手盘的两页都是 GET ——
+  把它排到早退之后等于这道闸永远走不到。
+- **它不是「反代才设的头」**。没有反代时 **Next 自己会按 socket 填**这个头（直连明文时
+  读到的就是 `http`），所以「头缺失就放行」那条分支在真实服务器上几乎走不到；
+  真正让本地能跑的是**回环豁免**，不是「没有信号」。
+  ⚠️ 推论：nginx 漏配 `proxy_set_header X-Forwarded-Proto $scheme` 时，Next 会把
+  「nginx→Next」那段明文连接当成对外协议 ⇒ **连 https 的正常用户也被判成明文**、
+  整个练手盘变 403。那不是安全问题而是可用性事故，`npm run smoke` §1b 专门盯它。
+
+**二、CSRF 防护** —— 对状态变更方法（POST/PUT/PATCH/DELETE）校验 `Origin` / `Referer`
+与对外 Host 同源。
 
 对外 Host 是**三源并集**，不是优先级回退链：`ALLOWED_ORIGINS`（显式配置，逗号分隔）、
 `X-Forwarded-Host`（nginx 透传，多值取第一个）、`Host`（直连）三者全部并入同一个集合，
@@ -279,7 +299,7 @@ SQLite 文件**里，只从远端恢复鱼干余额也拼不出站 —— 真正
 所以配了 `ALLOWED_ORIGINS` 并不会让另外两个来源失效；反过来，三者只要有一个与浏览器发来的
 Origin 对得上即可，不必配全。
 
-GET/HEAD/OPTIONS 视为安全方法，不校验。
+GET/HEAD/OPTIONS 视为安全方法，不校验（协议闸不受这条影响，见上）。
 
 ### 6.5 限频
 
@@ -924,6 +944,15 @@ URL 请来抓」。（`robots.ts` 的**路径级**规则不需要动 —— `/ex
   它是 `buy` 的一个参数，当时那五处的档位与禁言判定一个字都没变（统计页是后来才加的
   第六处，见下一条）；被禁言的用户买不了杠杆仓（同 1 倍那扇门），但手上开着的杠杆仓
   照旧会被爆、也照旧能自己卖。
+- **专注模式也在这六处判，但它与禁言**刚好相反**是「全面封锁」**：开启者两页 403
+  （`forbidden()`）、四个接口一律 403，**含只读的 `quote` / `candles` 与统计页**。
+  ⚠️ **别把上面那张禁言表当模板** ——「只读口要放行」那条推论的前提是「禁言只能等，
+  所以必须留出出仓的路」，而专注是**本人一键可关**的偏好，挡掉只读口不会把人困住。
+  **入口置灰但不隐藏**（`src/app/fish/TradeEntry.tsx`；与讨论大区那颗禁用行同款），
+  这不违反「入口不跟着藏」—— 那条反对的是「因档位不够就把入口藏掉」。
+- **协议闸（只走 https）**：这六条路径还压在 `src/middleware.ts` 的协议闸下，见 §6.4。
+  它与上面两条判定**不是一类**：档位 / 专注 / 禁言判的是「谁够不够格」，
+  协议判的是「这次请求是怎么来的」—— 所以它在中间件一处判，不在这六处各写一遍。
 - **统计页（`/fish/trade/stats`）与上面这些**：
 
   - **不需要新表、不需要迁移、也没有接口**。`market_positions` **一行 = 一个批次**、

@@ -433,6 +433,22 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
   purple/red）。原先靠左侧 4px 彩色竖条，已按「无左侧边框」总则去掉；色值也从写死的
   hex 换成了令牌（站内没有紫色语义令牌，purple 与 blue 合并到品牌色系）。
 
+**禁用入口（专注模式）—— 一套配方，两个活着的用户**：讨论侧栏的大区行
+（`.chat-chan.is-disabled`）与练手盘的三处外链（`.fish-card__info-link.is-disabled`、
+`.market-foot__link.is-disabled`）。四条：
+
+1. **保留元素、置灰，别隐藏**。入口照常渲染是「入口不跟着藏」的口径；藏掉会让人以为
+   功能下线了（判据见 `CLAUDE.md` 的档位阶梯那条）。
+2. **元素换成不导航的那一个**（`<span>` / `<div>`），别给 `<Link>` 挂类名了事 ——
+   挂着类名而 `href` 还在，链接照样跳走，「灰了却点得动」比不灰更糟，而且
+   `aria-disabled="true"` 是对读屏软件的谎话。已用 `<button>` 的地方（如讨论侧栏）
+   另加 `tabIndex={-1}` 与 `onClick` 置空 —— 那两条是补按钮天生可点可聚焦的。
+   ⚠️ 用 `<span>` 不用 `<div>`：这些入口多住在 `<p>` 里，块级元素会被解析器提前闭合。
+3. `title` 一律取 `src/lib/focus-mode.ts` 的 `FOCUS_MODE_BLOCKED_TITLE`，别手抄文案。
+4. 样式只有 `opacity` + `cursor: default`，并且**显式压掉那一档自己的 `:hover`**
+   （0-3-0 压 0-2-0）。不压的话划过照样出下划线 / 变品牌色 —— 看起来还是一颗能点的
+   链接，而点下去什么都不会发生。
+
 ### 6.3 表单控件（`components/_form-controls.scss`）
 
 - `.form-control`：**无边框** + `--color-background-page` 底 + 聚焦 `--shadow-focus-brand`；

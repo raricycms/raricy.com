@@ -370,7 +370,7 @@ location / {
     proxy_http_version 1.1;
     proxy_set_header Host              $http_host;     # ← 含端口,$host 不含。缺它:CSRF 全站 403(nginx 默认把它改成 upstream 地址)
     proxy_set_header X-Forwarded-Host  $http_host;     # ← 备用来源:与 Host / ALLOWED_ORIGINS 命中任一即可
-    proxy_set_header X-Forwarded-Proto $scheme;        # ← 缺它:登录成功但状态不粘
+    proxy_set_header X-Forwarded-Proto $scheme;        # ← 缺它:登录成功但状态不粘,且练手盘协议闸会**误伤 https 用户**(见 §13)
     proxy_set_header X-Real-IP         $remote_addr;
     proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
 }
@@ -578,6 +578,8 @@ journalctl -u raricy-next -f    # 观察启动日志
 | 症状 | 原因 / 兜底 |
 |------|------------|
 | 登录接口返 200 但刷新没登录 | cookie 没 `Secure` 但走 HTTP;或反代未透传 `X-Forwarded-Proto` |
+| **练手盘在 https 下也 403**（文案「练手盘仅支持 HTTPS 访问」） | 反代未透传 `X-Forwarded-Proto`:此时 Next 会把「nginx→本站」那段**明文**连接当成对外协议,于是连 https 用户也被判成明文。补上 `proxy_set_header X-Forwarded-Proto $scheme`,见 §6。⚠️ 别拿旧文档里「缺失即放行」的说法去推断——没有那回事,详见 `src/lib/https-guard.ts` 文件头 |
+| **练手盘跳到 `https://127.0.0.1:3000`** | 反代未透传 `Host` / `X-Forwarded-Host`,于是 308 拿了上游地址。⚠️ 308 是**永久**重定向、已被浏览器缓存,改完 nginx 还要清缓存(或换浏览器验证) |
 | 全站 POST 403 | `X-Forwarded-Host` 未透传;设 `ALLOWED_ORIGINS` 兜底 |
 | 图床 413 | nginx `client_max_body_size` ≤ 1MB;改成 12m |
 | 小鱼干相关接口报错 | 已无跨进程依赖可查（账户服务那档 503 不存在了）。业务拒绝（余额不足 / 参数非法）是 400、退出码 1；本地事务失败是真故障，500、退出码 2，此时未做任何变更、可重试。见 `docs/architecture.md` §6.3 |
