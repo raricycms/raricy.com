@@ -17,6 +17,13 @@ export default function Footer({ children }: { children?: ReactNode }) {
               <Link href="/privacy" style={{ color: 'var(--color-text-secondary)', textDecoration: 'none' }}>
                 隐私政策
               </Link>
+              <span style={{ margin: '0 0.5rem', color: 'var(--color-text-tertiary)' }}>|</span>
+              {/* 文档索引 /docs —— 站内所有文档（使用指南 / 机器人接口 / 开发运维）
+                  的唯一入口。挂在页脚而不是顶栏：顶栏那 5 条是站内功能区，
+                  文档是给站外读者的（机器人开发者、自部署的人）。 */}
+              <Link href="/docs" style={{ color: 'var(--color-text-secondary)', textDecoration: 'none' }}>
+                文档
+              </Link>
             </div>
             {children && <div>{children}</div>}
           </div>

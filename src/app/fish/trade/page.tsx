@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { redirect, forbidden } from 'next/navigation';
 import { getCurrentUser, isCoreUser } from '@/lib/auth';
 import { loginUrlWithNext } from '@/lib/safe-url';
@@ -94,10 +93,6 @@ export default async function FishTradePage() {
       <p className="trade-subtitle">
         投入小鱼干买入 BTC / ETH，价格按真实行情走 —— 涨了赚鱼干，跌了亏鱼干。
         这是练习盘，练的是手感，亏掉的是鱼干不是钱。
-        <br />
-        <Link href="/fish/trade/stats" className="trade-stats-link">
-          看看我的战绩
-        </Link>
       </p>
 
       <TradePanel

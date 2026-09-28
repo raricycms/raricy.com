@@ -62,6 +62,10 @@
 @use 'pages/profile';
 @use 'pages/settings';
 @use 'pages/oauth';
+// 指南页外壳与站内文档页（/docs）。正文那一段排版两者共用 ——
+// 规则在 components/_doc-prose.scss，由这两个文件 @use 进来。
+@use 'pages/guide';
+@use 'pages/docs';
 
 // Admin pages
 @use 'pages/admin/common';
@@ -75,7 +79,6 @@
 @use 'pages/fish-pay';
 @use 'pages/fish-api';
 @use 'pages/fish-trade';
-@use 'pages/fish-trade-stats';
 @use 'pages/checkin';
 @use 'pages/chat';
 @use 'pages/error';

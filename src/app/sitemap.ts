@@ -3,6 +3,7 @@ import { listStories } from '@/lib/story-service';
 import { listIndexableBlogs } from '@/lib/blog-service';
 import { siteBaseUrl } from '@/lib/site-url';
 import { isoWithOffset } from '@/lib/db-time';
+import { DOC_ENTRIES, docHref } from '@/lib/docs-catalog';
 
 export const dynamic = 'force-dynamic'; // 依赖磁盘（故事条目）与库（博客），禁用静态化
 
@@ -32,7 +33,19 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const staticRoutes: MetadataRoute.Sitemap = [
     { url: `${base}/`, changeFrequency: 'daily', priority: 1 },
     { url: `${base}/story`, changeFrequency: 'weekly', priority: 0.6 },
+    { url: `${base}/docs`, changeFrequency: 'weekly', priority: 0.5 },
   ];
+
+  // 站内文档（`/docs/<slug>`）—— **全部**都列，因为登记表里每一份都是给站外读者写的：
+  // 使用指南给玩家、接口说明给机器人开发者、架构与部署给自部署的人（仓库本来就是
+  // 公开的，这些内容在 GitHub 上人人可读）。这条「先确认它对匿名请求返回 200」
+  // 由构造保证 —— 文档页不做任何档位判定，也没有第二个可见性来源。
+  // 新增文档时不用动这里：登记表加一条，它自己就进表。
+  const docRoutes: MetadataRoute.Sitemap = DOC_ENTRIES.map((entry) => ({
+    url: `${base}${docHref(entry.slug)}`,
+    changeFrequency: 'monthly',
+    priority: 0.4,
+  }));
 
   // 故事条目（防御式读盘，缺失则为空）
   let storyRoutes: MetadataRoute.Sitemap = [];
@@ -72,5 +85,5 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     staticRoutes.push({ url: `${base}/explore`, changeFrequency: 'daily', priority: 0.8 });
   }
 
-  return [...staticRoutes, ...storyRoutes, ...blogRoutes];
+  return [...staticRoutes, ...docRoutes, ...storyRoutes, ...blogRoutes];
 }
