@@ -6,6 +6,7 @@ import { loginUrlWithNext } from '@/lib/safe-url';
 import { getBalance, getTodayCheckinFish } from '@/lib/fish-service';
 import { fmtFish } from '@/lib/fish-amount';
 import PosterModal from '@/app/components/PosterModal';
+import TradeEntry from './TradeEntry';
 
 // 小鱼干余额页 — fish-card 一套类名
 export const dynamic = 'force-dynamic';
@@ -71,15 +72,26 @@ export default async function FishPage() {
                 它的数量是 2（那两条带前缀的文案的壳）。 */}
             <p>每日签到可获得小鱼干。也可以去练手盘碰碰运气 ——</p>
             <p>
-              <Link href="/fish/trade" className="fish-card__info-link">
+              {/* 专注模式下这两条（以及 /fish/market 页脚那条）会渲染成禁用的
+                  <span>：专注模式把整个练手盘关掉，入口置灰但**不隐藏**。
+                  配方住在 TradeEntry.tsx，别在这里手写分支。 */}
+              <TradeEntry
+                href="/fish/trade"
+                className="fish-card__info-link"
+                disabled={!!user.focusMode}
+              >
                 鱼干练手盘：买入 BTC / ETH，价格涨跌换鱼干
-              </Link>
+              </TradeEntry>
             </p>
             <p>打过的仗都记着 ——</p>
             <p>
-              <Link href="/fish/trade/stats" className="fish-card__info-link">
+              <TradeEntry
+                href="/fish/trade/stats"
+                className="fish-card__info-link"
+                disabled={!!user.focusMode}
+              >
                 练手盘统计：胜率、盈亏与按标的 / 杠杆的拆解
-              </Link>
+              </TradeEntry>
             </p>
             <p>攒下来的鱼干也有花出去的地方 ——</p>
             <p>

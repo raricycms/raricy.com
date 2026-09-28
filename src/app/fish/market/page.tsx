@@ -7,6 +7,7 @@ import { getBalance } from '@/lib/fish-service';
 import { listShopItems } from '@/lib/frame-shop-service';
 import TransferPanel from './TransferPanel';
 import ShopPanel from './ShopPanel';
+import TradeEntry from '../TradeEntry';
 
 // 鱼干市场 —— 两块：用户间转账（无手续费）+ 鱼干商城（租头像框）。
 // 需登录，不要求 core+（与 /fish 面板、签到同档）。
@@ -52,9 +53,14 @@ export default async function FishMarketPage() {
       </p>
 
       <p className="market-foot">
-        <Link className="market-foot__link" href="/fish/trade">
+        {/* 专注模式下渲染成禁用的 <span>（置灰不隐藏）—— 配方在 TradeEntry.tsx */}
+        <TradeEntry
+          href="/fish/trade"
+          className="market-foot__link"
+          disabled={!!user.focusMode}
+        >
           <TrendingUp aria-hidden="true" /> 鱼干练手盘（买入 BTC / ETH）
-        </Link>
+        </TradeEntry>
       </p>
 
       {/* 入口放这里而不是 /fish 的行动条：那一行被 fish-layout.spec.ts 钉死为 3 颗，

@@ -1,5 +1,6 @@
 import { apiOk, apiErr } from '@/lib/format';
 import { getCurrentUser, isCoreUser } from '@/lib/auth';
+import { FOCUS_MODE_BLOCKED_TITLE } from '@/lib/focus-mode';
 import { closePosition } from '@/lib/market-service';
 
 // Prisma 与 node:crypto 需 Node 运行时（非 Edge）。
@@ -13,21 +14,25 @@ export const runtime = 'nodejs';
 // 回读当初结算的 payoutUnits 原样回报，不动钱）。重复提交不会多发钱，
 // 所以这里比 buy 少一个参数 —— 别顺手加一个「为了对称」。
 //
-// 【档位同上】core+，与 buy / quote / candles / 页面各判一次（页面与接口必须同档）。
+// 【档位同上】core+，与 buy / quote / candles / 两个页面各判一次（页面与接口必须同档）。
 //
 // ── ★ 禁言不挡平仓（与 buy 刻意不同）★ ──────────────────────────────────────
 // 禁言是「不能说话」，不该顺带变成「不能止损」。被禁言期间行情照走，若这里也判
 // isCurrentlyBanned，用户手上**已经开着的**仓位就一股也卖不掉 —— 他只能看着浮亏
 // 扩大，且没有自救手段（禁言还会递增 sessionVersion 把旧会话全废，重新登录也一样）。
-// 所以五处判定**不对称**，别顺手「统一」：
+// 所以六处的**禁言**判定不对称，别顺手「统一」：
 //   buy     —— core+ **且**未禁言（禁言不开新仓，也就没有新的赚取）
 //   sell    —— 只判 core+（已开的仓必须能出）
 //   quote   —— 只判 core+（只读展示，且下面这个弹窗的「预计到手」要用它）
 //   candles —— 只判 core+（只读展示；禁言用户更得看得见图才好决定止损）
-//   页面    —— 只判 core+（入口不跟着藏，点了买入才拿 403）
+//   两个页面 —— 只判 core+（入口不跟着藏，点了买入才拿 403）
 // 代价是禁言用户仍能兑现**已有**仓位的浮盈 —— 那是「能出仓」的另一面，不是漏洞。
 // 真要断掉一个人的鱼干路，用的是封号，不是把人锁在仓位里。
 // 页面 /fish/trade 照旧不藏入口（点了买入才拿 403），与签到、讨论同款。
+//
+// ⚠️ 上面这张表**只讲禁言**。专注模式不做这种不对称：开启者在六处一律拿不到东西
+// （含只读的 quote / candles 与统计页）—— 理由是专注本人一键可关，不会把人困住。
+// 别把这张表当成「新判定该长什么样」的模板。见 buy 路由头部。
 //
 // 【杠杆加进来之后这条依然成立，而且更要紧】强平引擎（market-liquidator）同样
 // **不判禁言** —— 一个被禁言的人手上还开着的杠杆仓照旧会被爆掉，他也能自己平掉。
@@ -37,6 +42,9 @@ export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '请先登录');
   if (!isCoreUser(user)) return apiErr(403, '需要核心用户权限');
+  // 专注模式挡平仓，这与上面「禁言不挡平仓」不矛盾 —— 别顺着那条推论给这里开个口子：
+  // 禁言的活路来自「他只能等，所以必须留出出仓的路」；专注是他自己一键可关的偏好。
+  if (user.focusMode) return apiErr(403, FOCUS_MODE_BLOCKED_TITLE);
 
   let body: Record<string, unknown>;
   try {

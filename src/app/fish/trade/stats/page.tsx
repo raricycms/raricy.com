@@ -55,6 +55,9 @@ export default async function FishTradeStatsPage() {
   const user = await getCurrentUser();
   if (!user) redirect(loginUrlWithNext('/fish/trade/stats'));
   if (!isCoreUser(user)) forbidden();
+  // 专注模式：统计页也在闸内（它是练手盘的一部分，不是另一件事）。文案同上：
+  // forbidden() 收不了参数，解释在入口那颗置灰的链接上。
+  if (user.focusMode) forbidden();
 
   const [stats, positions, quoteData] = await Promise.all([
     getMarketStats(user.id),

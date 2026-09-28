@@ -1,5 +1,6 @@
 import { apiOk, apiErr } from '@/lib/format';
 import { getCurrentUser, isCoreUser, isCurrentlyBanned } from '@/lib/auth';
+import { FOCUS_MODE_BLOCKED_TITLE } from '@/lib/focus-mode';
 import { openPosition } from '@/lib/market-service';
 
 // Prisma 与 node:crypto（幂等键派生）需 Node 运行时（非 Edge）。
@@ -11,9 +12,15 @@ export const runtime = 'nodejs';
 //
 // 【档位 = core+】与签到、投喂同档。练手盘是**签到之外第二条 core+ 赚取渠道** ——
 // 它没有突破「非核心账号没有鱼干赚取渠道」这条口径，只是把 core+ 的路多开了一条。
-// 所以页面（/fish/trade）与这里、以及 sell / quote / candles **五处**各判一次
-//（页面与接口必须同档）。**加杠杆没有新增第六处** —— 它是 buy 的一个参数，
-// 档位与禁言的判定一个字都没变。
+// 所以两个页面（/fish/trade 与 /fish/trade/stats）与这里、以及 sell / quote / candles
+// **六处**各判一次（页面与接口必须同档）。**加杠杆没有新增第七处** —— 它是 buy 的
+// 一个参数，档位与禁言的判定一个字都没变。
+//
+// 【专注模式也在这六处判，但它是**全面封锁**，别照抄下面禁言的不对称】
+// 开启专注模式的用户在看盘、下单、统计六处一律拿不到东西（含只读的 quote / candles
+// 与统计页）。判据：专注是**本人一键可关**的偏好，不是被施加的状态 —— 挡掉只读口
+// 不会把人困在仓位里（去设置里关掉即可，见 src/lib/focus-mode.ts），
+// 而禁言只能等，所以禁言才必须留出「出仓」这条活路。
 //
 // 【不需要 core+ 的页面入口照样渲染】顶栏与 /fish 面板不对任何人藏入口，档不够的
 // 用户点进来是 403（与签到、讨论一致，见 CLAUDE.md「入口不跟着藏」）。
@@ -35,6 +42,9 @@ export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '请先登录');
   if (!isCoreUser(user)) return apiErr(403, '需要核心用户权限');
+  // 专注模式：紧跟在档位之后。这条与下面那条禁言**都是「这个账号现在能不能用」**，
+  // 顺序只决定「又禁言又开专注」时显示哪一句，两种顺序都不放行 —— 别把它读成判定的一部分。
+  if (user.focusMode) return apiErr(403, FOCUS_MODE_BLOCKED_TITLE);
   if (isCurrentlyBanned(user)) return apiErr(403, '你已被禁言，暂时无法使用练手盘');
 
   let body: Record<string, unknown>;

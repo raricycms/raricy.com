@@ -1,11 +1,16 @@
 // 练手盘四个接口的**鉴权分叉与档位**。
 //
 // 【为什么单独一个文件】这里打的是真实 route handler，重点在「页面与接口必须同档」：
-// core+ 这一档在页面（/fish/trade）、buy、sell、quote、candles 五处各判一次，
-// 任何一处漏判都是一扇绕开档位的门 —— 而功能照常工作、测试照常绿。service 层的钱
-// 怎么走由 tests/service/market-*.test.ts 负责，这个文件不重复测那些。
+// core+ 这一档在**两个**页面（/fish/trade 与 /fish/trade/stats）、buy、sell、quote、
+// candles **六处**各判一次，任何一处漏判都是一扇绕开档位的门 —— 而功能照常工作、
+// 测试照常绿。service 层的钱怎么走由 tests/service/market-*.test.ts 负责，
+// 这个文件不重复测那些。
 //
-// 【禁言判定是**不对称**的，别「统一」】档位那一列是五处的**并集**，禁言不是：
+// 【专注模式也在这六处判，但它的**对称性与禁言相反**】专注模式下**四个接口一律 403**
+// （含只读的 quote / candles）—— 别照着下面那张禁言表把它也「对号入座」地放过。
+// 判据：专注是本人一键可关的偏好，挡掉只读口不会把人困在仓位里；禁言只能等。
+//
+// 【禁言判定是**不对称**的，别「统一」】档位那一列是六处的**并集**，禁言不是：
 // 只有 buy 判禁言（禁言不开新仓），sell / quote / candles 只判档位 —— 已开的仓位
 // 必须能出、盘必须看得见，否则禁言顺带变成锁仓。理由见
 // src/app/api/fish/trade/sell/route.ts 头部。
@@ -73,6 +78,7 @@ import { unitsToFish } from '@/lib/fish-units';
 import { __resetRateLimitStore } from '@/lib/rate-limit';
 import { MarketPriceError, getCachedQuotes } from '@/lib/market-price';
 import { MARKET_BUY_TYPE } from '@/lib/market-service';
+import { FOCUS_MODE_BLOCKED_TITLE } from '@/lib/focus-mode';
 import { sweepLiquidations, __setLiquidationRunning } from '@/lib/market-liquidator';
 import { POST as buy } from '@/app/api/fish/trade/buy/route';
 import { POST as sell } from '@/app/api/fish/trade/sell/route';
@@ -134,7 +140,7 @@ afterEach(() => {
 
 // ── 档位（页面与接口必须同档）────────────────────────────────────────────────
 
-describe('档位：五处各判一次', () => {
+describe('档位：六处各判一次', () => {
   it('未登录 → 401（四个接口都一样）', async () => {
     for (const [name, res] of [
       ['buy', await buy(makeReq('/api/fish/trade/buy', { symbol: 'BTCUSDT', amount: 10 }))],
@@ -162,6 +168,30 @@ describe('档位：五处各判一次', () => {
     expect(await balanceOf(u.id)).toBe(100);
 
     await expectLedgerConsistent('普通用户被 403 拒后');
+  });
+
+  it('★ 专注模式用户：四个接口一律 403，文案是专注那句（不是「需要核心用户权限」）', async () => {
+    // 造一个**档位够、只是开了专注**的用户：两者都用 403，所以必须连文案一起断，
+    // 否则「专注模式那几行根本没生效、只是被档位判定顺手挡住」也会全绿。
+    const u = await makeFishUser(100, { role: 'core', focusMode: true });
+    session.token = await createSessionToken({ uid: u.id, sv: 0 });
+
+    for (const [name, res] of [
+      ['buy', await buy(makeReq('/api/fish/trade/buy', { symbol: 'BTCUSDT', amount: 10 }))],
+      ['sell', await sell(makeReq('/api/fish/trade/sell', { position_id: 'x' }))],
+      // ⚠️ 只读的那两个**也要**挡（专注模式与禁言相反，不做「只读放行」的不对称）
+      ['quote', await quote()],
+      ['candles', await candles(makeReq('/api/fish/trade/candles?symbol=BTCUSDT&interval=1h'))],
+    ] as const) {
+      expect(res.status, `${name} 应 403 —— 漏一处就是专注模式没闸`).toBe(403);
+      expect(((await res.json()) as { message: string }).message, name).toBe(
+        FOCUS_MODE_BLOCKED_TITLE
+      );
+    }
+    // 一分钱没动：这四条全部落在任何写路径之前
+    expect(await balanceOf(u.id)).toBe(100);
+
+    await expectLedgerConsistent('专注模式被 403 拒后');
   });
 
   it('★ 禁言用户：买不了新仓，但**卖得掉**手上的仓位（禁言不是锁仓）', async () => {

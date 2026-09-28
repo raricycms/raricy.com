@@ -1,5 +1,6 @@
 import { apiOk, apiErr } from '@/lib/format';
 import { getCurrentUser, isCoreUser } from '@/lib/auth';
+import { FOCUS_MODE_BLOCKED_TITLE } from '@/lib/focus-mode';
 import { getCandles, parseSymbol } from '@/lib/market-price';
 import { displaySymbol } from '@/lib/market-service';
 import { DEFAULT_INTERVAL, parseInterval } from '@/lib/market-candles';
@@ -25,7 +26,11 @@ export const runtime = 'nodejs';
 // 页面显示「K 线暂不可用」+ 重试钮。
 //
 // 【不判禁言】与 quote / sell 同侧：禁言是「不能说话」，不该顺带变成「不能看盘」
-// —— 他恰恰要靠这张图决定要不要止损。五处判定不对称的完整理由见 sell 路由头部。
+// —— 他恰恰要靠这张图决定要不要止损。六处判定不对称的完整理由见 sell 路由头部。
+//
+// 【但**判专注模式**】专注是本人一键可关的偏好，不是「被施加、只能等」的状态 ——
+// 挡掉看盘口不会把人困在仓位里（关掉专注就都回来了）。所以上面那条不对称的铁律
+// 不适用于它，别照着「别挡只读口」把它也放过。见 buy 路由头部。
 //
 // 【为什么不限频】上游键空间被钉死在 2 标的 × 6 周期 = 12（缓存键里没有别的维度），
 // 缓存又有两道闸（60 秒保鲜期 + 「末根必须落在当前这一桶里」）→ 每个键**每桶最多一次**
@@ -37,6 +42,7 @@ export async function GET(req: Request) {
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '请先登录');
   if (!isCoreUser(user)) return apiErr(403, '需要核心用户权限');
+  if (user.focusMode) return apiErr(403, FOCUS_MODE_BLOCKED_TITLE);
 
   const params = new URL(req.url).searchParams;
   const symbol = parseSymbol(params.get('symbol'));

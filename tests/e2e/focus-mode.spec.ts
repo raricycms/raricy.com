@@ -16,8 +16,9 @@
 import { test, expect } from '@playwright/test';
 import { SEED_USERS, BLOG_BODY_MARKER } from './seed';
 import { loginViaApi, uniqueTag } from './helpers';
-
-const FOCUS_TITLE = '已开启专注模式，无法使用该功能';
+// 文案从单一来源取，不在这里手抄一遍 —— 手抄的那份会在改文案时静默落后，
+// 而症状是「用例红了，红在等待超时上」，指向的是用例自己而不是文案。（seed.ts 同款）
+import { FOCUS_MODE_BLOCKED_TITLE as FOCUS_TITLE } from '../../src/lib/focus-mode';
 
 /** 开/关当前登录用户的专注模式（走真实 PATCH /api/users/me）。 */
 async function setFocus(page: import('@playwright/test').Page, on: boolean) {
@@ -183,6 +184,59 @@ test.describe('专注模式（设置 → 各处生效）', () => {
       data: { content: '私聊可用' },
     });
     expect(msg.status()).toBe(200);
+  });
+
+  test('练手盘：入口置灰但**不隐藏**，点了不导航；两页 403；四个接口 403', async ({ page }) => {
+    await loginViaApi(page, SEED_USERS.core.username);
+    await setFocus(page, true);
+
+    // 入口：还在、还看得见，但已不是链接 —— 这一条是「置灰不隐藏」的全部意思。
+    // 隐藏掉入口会让开着专注模式的人以为练手盘被下线了（CLAUDE.md「入口不跟着藏」）。
+    await page.goto('/fish');
+    const tradeEntry = page.locator('.fish-card__info-link', { hasText: '鱼干练手盘' });
+    const statsEntry = page.locator('.fish-card__info-link', { hasText: '练手盘统计' });
+    for (const [name, entry] of [
+      ['练手盘', tradeEntry],
+      ['练手盘统计', statsEntry],
+    ] as const) {
+      await expect(entry, name).toBeVisible();
+      await expect(entry, name).toHaveAttribute('aria-disabled', 'true');
+      await expect(entry, name).toHaveAttribute('title', FOCUS_TITLE);
+      // ★ 禁用态必须是「不导航的元素」而不是挂了类名的 <Link>：后者照样会跳走，
+      //   灰了却点得动比不灰更糟（见 src/app/fish/TradeEntry.tsx）。
+      expect(await entry.getAttribute('href'), `${name} 不该还带着 href`).toBeNull();
+    }
+    await tradeEntry.click();
+    await expect(page).toHaveURL(/\/fish$/, { timeout: 3000 });
+    // 上面那条行动条（.fish-card__actions）没被碰过：fish-layout.spec 钉死它恰好 3 颗
+    await expect(page.locator('.fish-card__actions > *')).toHaveCount(3);
+
+    // /fish/market 页脚那条入口同理（它是练手盘在 /fish 之外的唯一入口）
+    await page.goto('/fish/market');
+    const marketEntry = page.locator('.market-foot__link', { hasText: '鱼干练手盘' });
+    await expect(marketEntry).toBeVisible();
+    await expect(marketEntry).toHaveAttribute('aria-disabled', 'true');
+    await expect(marketEntry).toHaveAttribute('title', FOCUS_TITLE);
+
+    // 直连 URL：两页都原地 403（不是跳登录页 —— 他是登录着的）
+    for (const p of ['/fish/trade', '/fish/trade/stats']) {
+      const res = await page.goto(p);
+      expect(res?.status(), p).toBe(403);
+    }
+
+    // 接口直打：四个都 403，且文案是专注那句（只看状态码的话，被档位顺手挡住也会绿）
+    for (const [name, res] of [
+      ['buy', await page.request.post('/api/fish/trade/buy', { data: { symbol: 'BTCUSDT', amount: 10 } })],
+      ['sell', await page.request.post('/api/fish/trade/sell', { data: { position_id: 'x' } })],
+      ['quote', await page.request.get('/api/fish/trade/quote')],
+      [
+        'candles',
+        await page.request.get('/api/fish/trade/candles?symbol=BTCUSDT&interval=1h'),
+      ],
+    ] as const) {
+      expect(res.status(), `${name} 应 403 —— 漏一处就是专注模式没闸`).toBe(403);
+      expect(((await res.json()) as { message: string }).message, name).toBe(FOCUS_TITLE);
+    }
   });
 
   test('关闭后全部恢复', async ({ page }) => {
