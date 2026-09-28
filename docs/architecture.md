@@ -94,7 +94,7 @@
 | `/fish/pay` | page | **收银台**：站外商户把用户送来付款（`?to= &amount= &note= &from= &return=`）。参数一律不可信，只做展示；付款必须**已登录 + 再输一次密码**（step-up），密码只输在本站域名下。不入索引 |
 | `/fish/collect` | page | **扫码收款页**：`?to=<用户名>`，扫「鱼干收款码」落到这里。与收银台的区别是**金额由付款人自己填**（静态码不可能带金额）。前端是 `/fish/pay` 的**同一个组件**（`src/app/fish/PayForm.tsx`）的另一个变体，step-up 与幂等键完全共用 |
 | `/fish/api` · `/api/fish/tokens/*` | page + API | **机器人接入自助页**：签发 / 吊销只读凭据（`GET`/`POST /api/fish/tokens`、`DELETE /api/fish/tokens/[id]`）。**只认会话**、签发要 step-up、只能动自己的。只读凭据的鉴权门在 `src/app/api/fish/market/_auth.ts`（第三道门，`allowReadToken` 默认关）；签发/校验/吊销在 `src/lib/fish-token-service.ts` |
-| `/fish/trade` · `/api/fish/trade/*` | page + API | **鱼干练手盘**：投入鱼干买入一个绑定真实加密价格的仓位（**core+**，签到之外第二条赚取渠道）。`POST buy`（客户端幂等键）/ `POST sell` / `GET quote`（展示行情）/ `GET candles`（图上那段 K 线，**只喂展示**）。档位在页面与四个接口**五处各判一次**，禁言只有 `buy` 判。见 §6.13 |
+| `/fish/trade` · `/fish/trade/stats` · `/api/fish/trade/*` | page + API | **鱼干练手盘**：投入鱼干买入一个绑定真实加密价格的仓位（**core+**，签到之外第二条赚取渠道）。`POST buy`（客户端幂等键）/ `POST sell` / `GET quote`（展示行情）/ `GET candles`（图上那段 K 线，**只喂展示**）。档位在两个页面与四个接口**六处各判一次**，禁言只有 `buy` 判。`/fish/trade/stats` 是**只读的个人统计页**（总览 + 按标的 / 杠杆拆解 + 持仓快照），**没有接口**：server component 直连服务层，全部数据来自 `market_positions` 既有列，不需要迁移。见 §6.13 |
 | `/api/poster/profile/[id]` · `/api/poster/collect` | API | **画报 / 收款码出图**（PNG，仅本人）。渲染管线与四条约束见 §6.8 |
 | `/notifications` · `/api/notifications/*` | page + API | 通知中心。其中 `GET count` 是顶栏指示器的**兜底快照**（**不能删**：SSE 有「连着但收不到」的半死状态），`GET stream` 是**实时流**（SSE，未登录 401；首帧全量快照 + 之后增量补丁）。推送点纪律与依赖方向见 `src/lib/topbar-bus.ts` 头部 |
 | `/vote` · `/vote/[id]` | page | 投票 |
@@ -139,7 +139,7 @@
 | 故事 | `story-service.ts` |
 | 画报 / 收款码 | `poster.ts`（纯 SVG 构造，含二维码与转义）· `poster-render.ts`（取数 + 头像 + sharp 光栅化），见 §6.8 |
 | 小鱼干 | `fish-service.ts`（**记账内核 `postEntry`** + 读路径，见 §6.3）· `fish-idempotency.ts`（哪些操作才登记幂等 —— 判据在文件头）· `fish-admin.ts` · `fish-market-service.ts`（用户间转账，见 §6.3）· `fish-compensate.ts`（`fish compensate` 群发补偿，只发 core+，见 `docs/cli.md` 与文件头）· `fish-units.ts`（单位换算；`Blog.fishCount` 是**例外**，见文件头）· `fish-webhook-service.ts`（收款回调 outbox，见 §6.3） |
-| 练手盘 | `market-service.ts`（开平仓：**一个事务、没有补偿**；开仓的幂等靠 `open_key` 唯一约束而非独立幂等记录）· `market-math.ts`（**结算公式的唯一实现**，零依赖 —— 服务端真结算与页面「预计到手」是同一个 `settleClose`）· `market-candles.ts`（K 线词汇表：周期白名单 / 根数上限 / 线上形状 / 缓存键，**零依赖**，服务端与客户端共用）· `market-chart.ts`（K 线图的纯计算：窗口 / 聚合 / 刻度 / 映射 / 实时并线 —— 零依赖外加 `db-time` 的一个常量）· `market-price.ts`（行情源与展示缓存，见 §6.13）· `market-stream.ts` + `market-poll-drainer.ts`（喂展示的两个后台循环） |
+| 练手盘 | `market-service.ts`（开平仓：**一个事务、没有补偿**；开仓的幂等靠 `open_key` 唯一约束而非独立幂等记录）· `market-math.ts`（**结算公式的唯一实现**，零依赖 —— 服务端真结算与页面「预计到手」是同一个 `settleClose`）· `market-candles.ts`（K 线词汇表：周期白名单 / 根数上限 / 线上形状 / 缓存键，**零依赖**，服务端与客户端共用）· `market-chart.ts`（K 线图的纯计算：窗口 / 聚合 / 刻度 / 映射 / 实时并线 —— 零依赖外加 `db-time` 的一个常量）· `market-price.ts`（行情源与展示缓存，见 §6.13）· `market-stream.ts` + `market-poll-drainer.ts`（喂展示的两个后台循环）· `market-stats.ts`（统计的**纯聚合**：终态白名单 / 拆解表分桶 / 持仓浮动盈亏 —— 白名单由调用方传进来，这样单元用例不必拉 Prisma）· `market-stats-service.ts`（统计的读路径：**盈亏只能来自 `market_positions`，别改成从账本求和**，理由见文件头） |
 | OAuth 2.0 | `oauth.ts`（见 `docs/oauth.md`） |
 | 管理域 | `admin-user-service.ts` · `admin-blog-service.ts` · `admin-category-service.ts` · `admin-comment-service.ts` · `admin-clipboard-service.ts` · `admin-vote-service.ts` · `admin-image-service.ts` · `admin-stats-service.ts` |
 | 工具 / 安全 | `short-id.ts` · `safe-url.ts` · `guard.ts` · `rate-limit.ts` · `turnstile.ts` |
@@ -805,10 +805,22 @@ URL 请来抓」。（`robots.ts` 的**路径级**规则不需要动 —— `/ex
 #### 杠杆与爆仓（2026-09，迁移 `23_market_leverage`）
 
 投入 N 条可以开 N×杠杆 条的名义仓位，涨跌按杠杆放大，**亏损封顶在投入的那 N 条**。
-档位白名单 `1 / 2 / 3 / 5 / 10` 住在 `market-service.ts` 的 `LEVERAGE_OPTIONS`
+档位白名单 `1 / 2 / 3 / 5 / 10 / 20` 住在 `market-service.ts` 的 `LEVERAGE_OPTIONS`
 （照 `MARKET_SYMBOLS` / `FRAME_KEYS` 的先例：不建定义表、不做后台 CRUD，
-**加一个档位是纯代码改动、不需要迁移**）。这条路径上**只有做多**：做空要另一套语义
-（反向爆仓价、方向切换 UI），不在这一版里。
+**加一个档位是纯代码改动、不需要迁移**）。**上限不是拍脑袋定的**：判据是「以昨收开仓的
+多头，当天就被打穿的交易日要落在 10% 以下」—— 20× 的距离是 5%，实算 16/365（4.4%）；
+25× 起就出带（9.6%），50× 是 34.8%、100× 是 58.4%，那时方向判断与盈亏几乎独立。
+完整实测表、以及「这条上界随波动率走、本质上属于**标的**而不是站点」的推论，都在那个
+常量的注释里。
+
+**例外：彩票档 `LOTTERY_LEVERAGE = 100` 单列**（`ALL_LEVERAGES` 是阶梯与它的并集，
+服务端认的就是并集）。它不是「下一档」：1% 的爆仓距离落在一根普通日内波动之内，买到的
+是一枚几小时见分晓的硬币（方向看对了也照样会被收走），所以页面把它**单独摆一行并常驻
+警告**（`.trade-lottery`，选中即报出距离与抽水 —— 100× 的手续费是投入的 2%，是 1 倍的
+100 倍），阶梯本身止于 20×。两条静默陷阱：**传进统计的白名单必须是并集**（只传阶梯那
+一组，彩票档的仓位会只进总数、不进拆解表）；**100 现在是合法值**，别再拿它当「非法
+杠杆」的用例样本。这条路径上**只有做多**：做空要另一套语义（反向爆仓价、方向切换 UI），
+不在这一版里。
 
 - **★ 「借来的钱」是账外的，因此没有任何借贷表 ★** 它就是上面那个「无限水池」的另一种
   用法：没有可借的账户、没有利息、没有还款路径 —— 它们都不需要存在。别为了「配平」
@@ -888,16 +900,44 @@ URL 请来抓」。（`robots.ts` 的**路径级**规则不需要动 —— `/ex
   而且它连事务都不需要 —— 一条 `where status='open'` 的条件 UPDATE 就是全部写操作。
 - **限频**：`RULES.tradeMinute` / `tradeDaily`（20/分、300/天）。它防的不是刷屏，是
   **出站流量**（每笔成交都要现取一次行情）+ 写压力。桶键 `trade:` 前缀，不复用 `transfer:`。
-- **禁言判定是「不对称」的，别统一**：档位（core+）在页面 / `buy` / `sell` / `quote` /
-  `candles` **五处**各判一次，**禁言只有 `buy` 判** —— 后三个只读口都不判。禁言是
+- **禁言判定是「不对称」的，别统一**：档位（core+）在两个页面（`/fish/trade`、
+  `/fish/trade/stats`）与 `buy` / `sell` / `quote` / `candles` **六处**各判一次，
+  **禁言只有 `buy` 判** —— 后三个只读口与统计页都不判。禁言是
   「不能说话」，若在 sell 上也判，用户手上**已经开着的**仓位就一股也卖不掉，只能看着
   浮亏扩大（而且禁言会递增 `sessionVersion` 废掉旧会话、重新登录也一样）——那等于把禁言
   变成锁仓；`quote` / `candles` 同理：他恰恰要靠那张图决定要不要止损。代价是禁言用户
   仍能兑现已有仓位的浮盈，那是「能出仓」的另一面，不是漏洞。理由写在
   `src/app/api/fish/trade/sell/route.ts` 头部。
-  ⚠️ **强平引擎同样不判禁言**（它连用户请求都不是）。加杠杆**没有开出第六处** ——
-  它是 `buy` 的一个参数，这五处的档位与禁言判定一个字都没变；被禁言的用户买不了
-  杠杆仓（同 1 倍那扇门），但手上开着的杠杆仓照旧会被爆、也照旧能自己卖。
+  ⚠️ **统计页也不判禁言**：它是只读页，「不能说话」不该顺带变成「不能看自己的账」。
+  ⚠️ **强平引擎同样不判禁言**（它连用户请求都不是）。加杠杆**没有多开一处** ——
+  它是 `buy` 的一个参数，当时那五处的档位与禁言判定一个字都没变（统计页是后来才加的
+  第六处，见下一条）；被禁言的用户买不了杠杆仓（同 1 倍那扇门），但手上开着的杠杆仓
+  照旧会被爆、也照旧能自己卖。
+- **统计页（`/fish/trade/stats`）与上面这些**：
+
+  - **不需要新表、不需要迁移、也没有接口**。`market_positions` **一行 = 一个批次**、
+    结清时就地改 `status` 且**绝不物理删除**，所以整套统计全部可由既有列推出来。
+    页面是 server component 直连 `market-stats-service.ts`（与 `/fish/trade` 同款）。
+  - ★ **盈亏的唯一来源是 `payout_units − stake_units`** ★。⚠️ **别改成从
+    `fish_transactions` 求和**（那不是「另一种口径」，是错的）：强平**不写流水**、
+    实发为 0 的正常平仓**也不写流水**（都没有钱动过），而迁移前的平仓流水在远端、
+    本地根本没有 —— 按账本求和会让盈亏偏乐观、笔数与胜率偏小，屏幕上却一切正常。
+  - **判「已结清」用白名单 `{closed, liquidated}`，不是 `status !== 'open'`**。
+    两者今天等价，失败方向却不同：加第四个终态时后者会**静默把它算进胜率与盈亏**，
+    而万一那一行 `payout_units` 是 null，它会长得跟一次真爆仓一模一样。白名单的失败
+    方向是「少算」，而那被 `Σ 拆解表 === 总数` 这条不变式当场抓住。
+  - **拆解表的桶 = 白名单顺序在前、数据里多出来的 key 追加在后**：改过 `MARKET_SYMBOLS`
+    之后残留的旧仓（`market-liquidator.ts` 头部明写存在这种行）只按白名单遍历的话会
+    **只进总数、不进拆解表** —— 两个数并排放在一屏里，谁也不会去加它。
+  - **不做「手续费合计」这一栏**：库里没有这一列，而**爆仓行的手续费推不回来**
+    （强平调 `settleClose` 时传 `feeRate: 0`，`exit_price` 写的是爆仓价）。只出
+    投入 / 实发，两者之差就是盈亏 —— 给用户看的账要能加得起来。
+  - **持仓浮动盈亏走 `settleClose`**（与卖出弹窗「预计到手」同一个口径，含平仓手续费），
+    缺价显示「—」且**只要有一行缺价，合计也显示「—」**。「行情刷新于 …」是**轮询那
+    一次**的时刻，不是那个价的时刻（行情流活着时价来自 WS 帧而 `quotedAt` 不跟着动）。
+  - 「胜率」0 笔时是「—」而不是 0%（`0/0` 是 NaN，会在页面上印出「NaN%」）；
+    **爆仓按 `status` 判**、不按「实发为 0」判（手动平一个跌穿爆仓价的仓实发同样是 0，
+    走的是同一个 `max(0, …)`，只有 `status` 分得开）。
 - 自选列表在拉不到价时显示「行情暂不可用」并**禁掉买入**；缓存超龄时显示「数据可能
   不是最新的」。**绝不编一个价出来** —— 用户会照着一个假价格按下买入。
   K 线拉不到同样如实说（「K 线暂不可用」+ 重试钮），有上一次成功那份就继续画它。

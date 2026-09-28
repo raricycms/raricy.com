@@ -677,11 +677,18 @@ plot / price / volume / time 各占一格）：与 SVG 共用同一个分数，�
 | 控件 | 档位 | 为什么 |
 |------|------|--------|
 | 周期档（1m…1d） | 切页档 `btn-tab` | 6 选 1，且选项还可能变多 —— §6.8 的「不要用胶囊滑块」 |
-| 杠杆档（1×…10×） | 切页档 `btn-tab` | 同上：5 选 1、加档位只改 `LEVERAGE_OPTIONS`。**它不是「换一种看法」**，是「这一笔用几倍」，所以明确不走 `.segmented` |
+| 杠杆档（1×…20×） | 切页档 `btn-tab` | 同上：6 选 1、加档位只改 `LEVERAGE_OPTIONS`。**它不是「换一种看法」**，是「这一笔用几倍」，所以明确不走 `.segmented` |
 | K 线 / 折线 | `.segmented` 胶囊滑块 | **同一个视图的两种呈现** —— §6.8 的正例 |
 | 自选列表选中行 | 整行 `--color-brand-secondary` 淡底 | 不加左侧竖条（§11.8） |
 
-杠杆那一排还有两处判据值得记：
+杠杆那一排还有三处判据值得记：
+
+- **彩票档（100×）单独一行，不在那排里**（`.trade-lottery`：虚线上边距 + 「彩票档」
+  标签 + 选中时那段 `.trade-lottery__warn`）。混进阶梯就会被读成「下一档」，而它是
+  另一个产品（见 `market-service` 的 `LOTTERY_LEVERAGE`）。**按钮仍走 `btn-tab`** ——
+  三档之外不自造第四档，分开靠的是位置与文案。那段警告**刻意不复用
+  `.trade-field__hint--danger`**：后者现在的用法是「给提示行里的某一个数上色」
+  （一个 `<strong>`），共用一个类就会改一处顺手改掉另一处。
 
 - **「强平引擎没在跑」时那几档是灰的（`disabled` + `opacity: .35`），不是隐藏的** ——
   用户看得到有这个功能、也看得到它此刻不可用，比整排消失更好解释（服务端那边也会拒单，
@@ -728,6 +735,54 @@ plot / price / volume / time 各占一格）：与 SVG 共用同一个分数，�
 图标钮（缩放 +/−）走「无底色 + hover 才亮」那一款（30px 见方、圆角 8px，
 见 `components/_composer.scss` 的 `.__icon-btn`），**不套 `.btn-secondary`** ——
 后者是文案按钮的档位，会把字号与内距一起带过来。
+
+### 6.10 文档页（`/docs`，`pages/_docs.scss`）
+
+站内文档的索引页与正文页。**正文排版不在这个文件里** —— 它渲染的是仓库里的 Markdown，
+与 6 个指南页是同一批内容，两边共用 `components/_doc-prose.scss` 的 `doc-prose($cls)`
+（见 §11.1）。本文件只管索引页的目录版式与正文页的外壳（返回条 / 来源行 / 同组文档）。
+
+- **索引页**是两列卡片网格（≤768px 落成单列），每张卡是「标题 + 一句话」。分组标题
+  右边的份数徽标走淡底 + 次要字色。
+- **正文页在容器之内再收一道行宽**（`.docs-page--doc` 的 820px，与指南页同档）：
+  页边距归 `.container`、行宽归这层上限，两者不是一回事（§5）。
+- ⚠️ `.docs-page` **只写纵向内距**。它与 `.container` 同挂一个元素，写 `padding` 简写会
+  把 `container-padding` 的两侧檐沟一并覆盖成 0 —— 窄屏下整页贴着屏幕两条边，不报错。
+- ⚠️ `.docs-list` 必须显式 `padding: 0`：`list-style: none` 只去掉项目符号，浏览器给
+  `<ul>` 的 `padding-inline-start: 40px` 还在，整列卡片会相对组标题右移 40px
+  （2026-09 实测：窄屏第一张卡左边距 56 而不是 16）。
+- 宽表在 ≤768px 上变成可横向滚动的块（`.docs-content table` 的 `display: block`）。
+  **只给文档页写，不放进共用 mixin**：指南页那几份文档表格列数少、用不上，
+  而这个改动会顺带改掉它们的表现。
+- 檐沟由 `tests/e2e/page-gutter.spec.ts` 盯着（索引页的 `main h1` 与抬头简介、
+  正文页的 `.docs-content`）。⚠️ 正文页**不能量 `main h1`**（那个 h1 住在卡片内部，
+  还要多出卡片自己的内距），也**不能量 `.docs-back`**（内容宽的链接，右边缘不在容器边上）
+  —— 这两条各会当场判红。
+
+### 6.11 练手盘统计页（`/fish/trade/stats`，`pages/_fish-trade-stats.scss`）
+
+与 §6.9 那个三栏工作台**同属练手盘、版式却是另一套**：这是一份报表（KPI 行 + 两张
+拆解表 + 持仓快照），所以类名前缀单开 `tstats-`（§11.1 那条「四页各有各的版式」）。
+页面外壳沿用 `.content-wrapper` + `.page-title`（与 `/fish/trade` 同款，没有整幅
+底色抬头带，因此**不必**登记进 `tests/e2e/page-gutter.spec.ts`）。
+
+- **KPI 行是 6 格网格**（`repeat(6, minmax(0, 1fr))` → ≤991px 三列 → ≤575px 两列）。
+  配方抄 `/u/<id>` 的 `.profile-stats`（淡底 + `$radius-large` + 大号数字 + 小号标签），
+  但**不共用类名** —— 那一份是主页的，改它会静默改到这一页。
+- 数字一律 `font-variant-numeric: tabular-nums`：6 格宽度不同、数字长度也不同，
+  不等宽的话同一行几个数看着会左右跳（同 `.trade-card__balance-number`）。
+- **卡片复用通用 `.card`、表格复用通用 `.table`（+ `.table-responsive`）** ——
+  不复用页面专属的 `.trade-card`，理由同上一条。
+- ⚠️ **权重陷阱（这一页最容易踩的一处）**：`components/_table.scss` 里是
+  `.table th` / `.table td` = **0-1-1**，压得住任何挂在单元格上的单类选择器（0-1-0）。
+  所以数字列的右对齐必须写成 `th.tstats-table__num, td.tstats-table__num` 双类；而
+  **涨跌色必须挂在里层的 `<span class="tstats-pnl">` 上** —— 挂在 `<td>` 上会被
+  `.table td { color: … }` 静默盖掉，整列数字全变成正文色，不报任何错。
+  （同一个坑弹窗那边也踩过，见 `_fish-trade.scss` 里 `.trade-confirm__row dd` 的注释。）
+- 涨跌那一对色走 `abstracts/_mixins.scss` 的 `trade-up-down`（与工作台同一份定义）。
+  **0 不上色**（既不是涨也不是跌，同 `formatPct` 的判据）。
+- 窄屏由 `.table-responsive` 横向滚动（两张表都一样），不撑破页面；
+  `.tstats-table` 在 ≤575px 给一个 `min-width`，否则列会被挤扁而不是滚动。
 
 ## 7. 图标方案
 
@@ -826,6 +881,7 @@ plot / price / volume / time 各占一格）：与 SVG 共用同一个分数，�
 |------|-------|------|
 | 富文本输入区 | `components/_composer.scss` → `rich-composer($p)` | 讨论 `chat-composer` / 评论 `comment-composer` |
 | Markdown 正文块级元素 | `components/_markdown-body.scss` → `rich-markdown($cls)` | 讨论 `chat-msg__md` / 评论 `comment-content__md` |
+| 文档正文（仓库里的 Markdown） | `components/_doc-prose.scss` → `doc-prose($cls)` | 指南页 `guide__content` / 文档页 `docs-content` |
 
 复制一份的代价不是重复代码，是**必然 drift** —— 用户会看到「列表在讨论里长这样、在评论里
 长那样」，而这类不一致没有人会当成 bug 报上来。React 侧同理：`RichComposer` 的 BEM 前缀
