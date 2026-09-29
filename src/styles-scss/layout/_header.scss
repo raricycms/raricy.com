@@ -135,18 +135,6 @@ a {
     border-radius: 50%;
     animation: pulse 2s infinite;
   }
-
-  // 专注模式禁用态（span 渲染，无导航）：淡化 + 不给 hover 反馈
-  &.is-disabled {
-    color: var(--color-text-tertiary);
-    cursor: default;
-    opacity: 0.7;
-
-    &:hover {
-      color: var(--color-text-tertiary);
-      background: transparent;
-    }
-  }
 }
 
 .site-actions { 

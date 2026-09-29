@@ -24,6 +24,8 @@ import {
   stripPreviewTokens,
 } from '@/lib/chat-shared';
 import { LS_KEY, COOKIE_NAME, COOKIE_MAX_AGE } from '@/lib/chat-sidebar-pref';
+// 专注模式空态的「前往设置」锚点：与 /blog 横幅同源（零依赖模块，客户端可用）
+import { FOCUS_MODE_SETTINGS_HREF } from '@/lib/focus-mode';
 import NewChatModal from './NewChatModal';
 import QuoteBlogModal from '../components/QuoteBlogModal';
 import AvatarMenu, { type AvatarMenuAnchor } from './AvatarMenu';
@@ -1708,7 +1710,7 @@ export default function ChatApp({
             {channelsLoaded && focusMode ? (
               <>
                 已开启专注模式，讨论大区暂不可用。可发起私聊，或{' '}
-                <Link className="chat-main__focus-link" href="/settings#focus-mode">
+                <Link className="chat-main__focus-link" href={FOCUS_MODE_SETTINGS_HREF}>
                   前往设置
                 </Link>{' '}
                 关闭专注模式。
