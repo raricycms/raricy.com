@@ -186,8 +186,9 @@ test.describe('专注模式（设置 → 各处生效）', () => {
   });
 
   test('讨论：专注模式 + 零私聊时侧栏说「暂无会话」（不是永远「加载中…」）', async ({ page }) => {
-    // ⚠️ 必须用**新注册**的号：上面那条用例给 core 用户留了一条永久私聊，desktop 轮次
-    // 跑完 mobile 复跑时它还在（同那条用例 152-155 行的注释）。拿 core 断言空态会 flaky。
+    // ⚠️ 必须用**新注册**的号：上面那条用例刚给 core 用户开了一条私聊，而那条会一直
+    // 留在库里（对方再发消息才重现、从不清除）—— 拿 core 断言「一个会话都没有」必红。
+    // 顺带也不必依赖任何既有状态。
     await registerFreshUser(page, { core: true });
     await setFocus(page, true);
     await page.goto('/chat');
