@@ -39,9 +39,10 @@ export default async function FishTradePage() {
   const user = await getCurrentUser();
   if (!user) redirect(loginUrlWithNext('/fish/trade'));
   if (!isCoreUser(user)) forbidden();
-  // 专注模式：与上面那条同款（原地 403，不跳登录）。forbidden() 收不了文案，所以
-  // 这里给不出「因为专注模式」这句话 —— 解释发生在入口那颗置灰的链接上（title），
-  // 直连 URL 进来的才看得到 403 页的通用话术。
+  // 专注模式：与上面那条同款（原地 403，不跳登录）。forbidden() 是 Next 内建的、
+  // 收不了文案，所以这里给不出「因为专注模式」这句话 —— 而入口（/fish 卡片与
+  // /fish/market 页脚那三处）在专注模式下**整段不渲染**，所以解释只剩一处：
+  // /settings 的专注模式说明。直连 URL 进来的看到的是 403 页那句通用「权限不足」。
   if (user.focusMode) forbidden();
 
   const [balance, positions, quoteData, candleEntries] = await Promise.all([
