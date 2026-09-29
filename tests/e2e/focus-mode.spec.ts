@@ -186,37 +186,29 @@ test.describe('专注模式（设置 → 各处生效）', () => {
     expect(msg.status()).toBe(200);
   });
 
-  test('练手盘：入口置灰但**不隐藏**，点了不导航；两页 403；四个接口 403', async ({ page }) => {
+  test('练手盘：入口整段不渲染；两页 403；四个接口 403', async ({ page }) => {
     await loginViaApi(page, SEED_USERS.core.username);
     await setFocus(page, true);
 
-    // 入口：还在、还看得见，但已不是链接 —— 这一条是「置灰不隐藏」的全部意思。
-    // 隐藏掉入口会让开着专注模式的人以为练手盘被下线了（CLAUDE.md「入口不跟着藏」）。
+    // 入口：**连同它那句引导语一起消失**（不是置灰保留 —— 判据见 CLAUDE.md「档位阶梯」）。
     await page.goto('/fish');
-    const tradeEntry = page.locator('.fish-card__info-link', { hasText: '鱼干练手盘' });
-    const statsEntry = page.locator('.fish-card__info-link', { hasText: '练手盘统计' });
-    for (const [name, entry] of [
-      ['练手盘', tradeEntry],
-      ['练手盘统计', statsEntry],
-    ] as const) {
-      await expect(entry, name).toBeVisible();
-      await expect(entry, name).toHaveAttribute('aria-disabled', 'true');
-      await expect(entry, name).toHaveAttribute('title', FOCUS_TITLE);
-      // ★ 禁用态必须是「不导航的元素」而不是挂了类名的 <Link>：后者照样会跳走，
-      //   灰了却点得动比不灰更糟（见 src/app/fish/TradeEntry.tsx）。
-      expect(await entry.getAttribute('href'), `${name} 不该还带着 href`).toBeNull();
-    }
-    await tradeEntry.click();
-    await expect(page).toHaveURL(/\/fish$/, { timeout: 3000 });
-    // 上面那条行动条（.fish-card__actions）没被碰过：fish-layout.spec 钉死它恰好 3 颗
+    await expect(page.locator('.fish-card__info-link', { hasText: '鱼干练手盘' })).toHaveCount(0);
+    await expect(page.locator('.fish-card__info-link', { hasText: '练手盘统计' })).toHaveCount(0);
+    // ★ 引导语也得走：只藏链接会在卡片里留下两句悬空的引子（而 `p + p` 的行距照旧生效
+    //   —— 所以条件必须包住整段 <p>，不能只让链接自己不渲染）。
+    const info = page.locator('.fish-card__info');
+    await expect(info).not.toContainText('碰碰运气');
+    await expect(info).not.toContainText('打过的仗');
+    // 没被误伤：商城入口照旧（专注模式不禁商城），行动条仍是 3 颗（fish-layout.spec 钉的）
+    await expect(page.locator('.fish-card__info-link', { hasText: '鱼干商城' })).toBeVisible();
     await expect(page.locator('.fish-card__actions > *')).toHaveCount(3);
 
-    // /fish/market 页脚那条入口同理（它是练手盘在 /fish 之外的唯一入口）
+    // /fish/market 页脚那条入口同理（它是练手盘在 /fish 之外的唯一入口）——
+    // 藏的是那一个 <p>，同页另两条页脚入口不受影响
     await page.goto('/fish/market');
-    const marketEntry = page.locator('.market-foot__link', { hasText: '鱼干练手盘' });
-    await expect(marketEntry).toBeVisible();
-    await expect(marketEntry).toHaveAttribute('aria-disabled', 'true');
-    await expect(marketEntry).toHaveAttribute('title', FOCUS_TITLE);
+    await expect(page.locator('.market-foot__link', { hasText: '鱼干练手盘' })).toHaveCount(0);
+    await expect(page.locator('.market-foot__link', { hasText: '查看转账记录' })).toBeVisible();
+    await expect(page.locator('.market-foot__link', { hasText: '接口 / 机器人接入' })).toBeVisible();
 
     // 直连 URL：两页都原地 403（不是跳登录页 —— 他是登录着的）
     for (const p of ['/fish/trade', '/fish/trade/stats']) {
