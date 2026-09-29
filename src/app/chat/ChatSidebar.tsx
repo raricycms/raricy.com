@@ -6,6 +6,12 @@
 // 纯展示 + 回调：数据与状态都在 ChatApp。侧栏行包了 memo —— 对账每 60 秒整表
 // 替换一次 channels 数组，未变化的行不该重渲染。
 //
+// 【不可用的行不渲染】专注模式下大区对你不可用，`listChannelsForUser` 仍会把它
+// 发过来、带 `disabled: true`（那是「这行不可用」的单一真相源，ChatApp 的选频道 /
+// 防御 / 删会话三处导航逻辑都靠它，别去服务端把行删掉）—— 侧栏这边**只渲染可用的行**。
+// 判据与理由见 CLAUDE.md「档位阶梯」那条：档位不够才留入口，专注模式是本人一键可关的
+// 账号偏好，留一条点不动的灰行只是噪音。
+//
 // 未读角标挂在**图标右上角**（微信式）：私聊显示未读条数，大区只显示红点
 // （大区是公共频道，只有被 @ 才提示 —— 口径见 chat-service.listChannelsForUser）。
 //
@@ -15,7 +21,7 @@
 
 import { memo, useState } from 'react';
 import { MessageCircle, MoreHorizontal, VolumeX } from 'lucide-react';
-import { CHAT_FOCUS_BLOCKED_TITLE, type ChatChannelDTO } from '@/lib/chat-shared';
+import { type ChatChannelDTO } from '@/lib/chat-shared';
 import Avatar from '@/app/components/Avatar';
 import ChatChannelMenu, { type ChannelMenuAnchor } from './ChatChannelMenu';
 
@@ -31,24 +37,19 @@ const SidebarRow = memo(function SidebarRow({
   onMenu: (ch: ChatChannelDTO, el: HTMLButtonElement) => void;
 }) {
   const isLobby = ch.kind === 'lobby';
-  const disabled = !!ch.disabled;
   // 未读提示口径：私聊认未读条数；大区只认「未读里 @ 到我」——大区是公共频道，
   // 普通新消息不打扰（见 chat-service.listChannelsForUser 的 mention_count）。
   // 大区只亮红点不显数字（条数在公共频道里没有意义）。
   const mentionCount = ch.mention_count ?? 0;
-  const showMark = !disabled && (isLobby ? mentionCount > 0 : ch.unread_count > 0);
+  const showMark = isLobby ? mentionCount > 0 : ch.unread_count > 0;
   const markCount = isLobby ? 0 : ch.unread_count;
   return (
     <div className="chat-chan-wrap">
       <button
         type="button"
-        className={`chat-chan${active ? ' is-active' : ''}${showMark ? ' has-unread' : ''}${disabled ? ' is-disabled' : ''}`}
-        // 专注模式禁用行：不用 disabled attribute（Chrome 对 disabled 元素不弹原生 title），
-        // 用 aria-disabled + tabIndex=-1 + onClick 置空；行保留（title/预览由服务端置空）。
-        onClick={disabled ? undefined : onClick}
-        title={disabled ? CHAT_FOCUS_BLOCKED_TITLE : ch.title}
-        aria-disabled={disabled || undefined}
-        tabIndex={disabled ? -1 : undefined}
+        className={`chat-chan${active ? ' is-active' : ''}${showMark ? ' has-unread' : ''}`}
+        onClick={onClick}
+        title={ch.title}
       >
         {/* 图标 + 未读角标：角标要压在图标右上角**外侧**，而 .chat-chan__icon /
             __avatar 有 overflow: hidden（头像圆角靠它裁切）—— 角标放进去会被裁掉，
@@ -94,27 +95,23 @@ const SidebarRow = memo(function SidebarRow({
             {ch.title}
           </span>
           <span className="chat-chan__preview">
-            {disabled
-              ? CHAT_FOCUS_BLOCKED_TITLE
-              : ch.last_message
-                ? `${ch.last_message.author_name ? ch.last_message.author_name + '：' : ''}${ch.last_message.content}`
-                : isLobby
-                  ? '来聊聊吧'
-                  : '开始对话'}
+            {ch.last_message
+              ? `${ch.last_message.author_name ? ch.last_message.author_name + '：' : ''}${ch.last_message.content}`
+              : isLobby
+                ? '来聊聊吧'
+                : '开始对话'}
           </span>
         </span>
       </button>
-      {!disabled && (
-        <button
-          type="button"
-          className="chat-chan__more"
-          onClick={(e) => onMenu(ch, e.currentTarget)}
-          aria-label={`${ch.title} 的更多操作`}
-          title="更多操作"
-        >
-          <MoreHorizontal aria-hidden="true" />
-        </button>
-      )}
+      <button
+        type="button"
+        className="chat-chan__more"
+        onClick={(e) => onMenu(ch, e.currentTarget)}
+        aria-label={`${ch.title} 的更多操作`}
+        title="更多操作"
+      >
+        <MoreHorizontal aria-hidden="true" />
+      </button>
     </div>
   );
 });
@@ -123,6 +120,7 @@ export default function ChatSidebar({
   channels,
   activeId,
   collapsed,
+  loaded,
   onToggleCollapse,
   onSelect,
   onNewChat,
@@ -132,6 +130,12 @@ export default function ChatSidebar({
   channels: ChatChannelDTO[];
   activeId: string | null;
   collapsed: boolean;
+  /**
+   * 频道列表是否已回来（ChatApp 的 channelsLoaded）。只有它能把「还没有数据」与
+   * 「真的一个会话都没有」分开 —— 专注模式 + 零私聊时列表里只剩被过滤掉的大区行，
+   * 少了这个 prop 就分不清该说「加载中…」还是「暂无会话」，只能永远转圈。
+   */
+  loaded: boolean;
   onToggleCollapse: () => void;
   onSelect: (id: string) => void;
   onNewChat: () => void;
@@ -139,6 +143,10 @@ export default function ChatSidebar({
   onHide: (ch: ChatChannelDTO) => void;
 }) {
   const [menu, setMenu] = useState<{ ch: ChatChannelDTO; anchor: ChannelMenuAnchor } | null>(null);
+  // 不可用的行（专注模式下的大区）不渲染，见文件头。⚠️ 只算一次、**列表与空态共用** ——
+  // 若只在 SidebarRow 里 return null，下面那句 `channels.length === 0` 仍会把隐藏行数进去，
+  // 于是两个空态一个都不出。
+  const visible = channels.filter((c) => !c.disabled);
 
   return (
     <aside className="chat-sidebar" aria-label="会话列表">
@@ -155,7 +163,7 @@ export default function ChatSidebar({
       </div>
 
       <div className="chat-sidebar__list">
-        {channels.map((c) => (
+        {visible.map((c) => (
           <SidebarRow
             key={c.id}
             ch={c}
@@ -164,7 +172,9 @@ export default function ChatSidebar({
             onMenu={(ch, el) => setMenu({ ch, anchor: { rect: el.getBoundingClientRect() } })}
           />
         ))}
-        {channels.length === 0 && <div className="chat-sidebar__empty">加载中…</div>}
+        {visible.length === 0 && (
+          <div className="chat-sidebar__empty">{loaded ? '暂无会话' : '加载中…'}</div>
+        )}
       </div>
 
       <div className="chat-sidebar__foot">

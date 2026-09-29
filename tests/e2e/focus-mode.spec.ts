@@ -15,7 +15,7 @@
 
 import { test, expect } from '@playwright/test';
 import { SEED_USERS, BLOG_BODY_MARKER } from './seed';
-import { loginViaApi, uniqueTag } from './helpers';
+import { loginViaApi, registerFreshUser, uniqueTag } from './helpers';
 // 文案从单一来源取，不在这里手抄一遍 —— 手抄的那份会在改文案时静默落后，
 // 而症状是「用例红了，红在等待超时上」，指向的是用例自己而不是文案。（seed.ts 同款）
 import { FOCUS_MODE_BLOCKED_TITLE as FOCUS_TITLE } from '../../src/lib/focus-mode';
@@ -128,10 +128,10 @@ test.describe('专注模式（设置 → 各处生效）', () => {
     await expect(page.locator('body')).toContainText(BLOG_BODY_MARKER, { timeout: 15_000 });
   });
 
-  test('讨论：大区行禁用且无最近一条预览；API 直打大区 403；私聊不拦', async ({ page }) => {
+  test('讨论：侧栏不再渲染大区行；API 直打大区 403；私聊不拦', async ({ page }) => {
     await loginViaApi(page, SEED_USERS.core.username);
 
-    // 先在专注前于大区留一条消息（focus 后它不该出现在预览里）
+    // 先在专注前于大区留一条消息（focus 后它一个地方都不该出现）
     const pre = await page.request.post('/api/chat/channels/lobby/messages', {
       data: { content: '大区历史消息-预览哨兵' },
     });
@@ -139,16 +139,15 @@ test.describe('专注模式（设置 → 各处生效）', () => {
 
     await setFocus(page, true);
 
-    // 侧栏大区行：存在但禁用、title/预览为专注文案、无最近一条预览内容
-    // （移动端侧栏是抽屉，DOM 存在但可能不可见 → 用 toBeAttached 而非 toBeVisible）
+    // 侧栏：大区那一行**整个不渲染**（判据见 CLAUDE.md「档位阶梯」）。
+    // ⚠️ 服务端仍然把这一行发过来（`disabled: true`）—— 它是 ChatApp 选频道 / 切换 /
+    // 删会话三处导航逻辑的判据，网页侧栏只是不画。想改成「服务端别发」的话，
+    // 注意下面「URL 不落大区」那条会静默失效（行没了，防御 effect 认不出「当前这行
+    // 不可用」），以及 tests/service/chat-service.test.ts 那条断言。
+    // （移动端侧栏是抽屉，DOM 存在但可能不可见 → 断言计数而不是可见性）
     await page.goto('/chat');
-    const lobbyRow = page.locator('.chat-chan', { hasText: '讨论大区' });
-    await expect(lobbyRow).toBeAttached();
-    await expect(lobbyRow).toHaveAttribute('aria-disabled', 'true');
-    await expect(lobbyRow).toHaveAttribute('title', FOCUS_TITLE);
-    await expect(lobbyRow).not.toContainText('大区历史消息-预览哨兵');
-    await expect(lobbyRow).toContainText(FOCUS_TITLE);
-    await expect(lobbyRow.locator('.chat-chan__mark')).toHaveCount(0);
+    await expect(page.locator('.chat-chan', { hasText: '讨论大区' })).toHaveCount(0);
+    await expect(page.locator('.chat-chan', { hasText: '大区历史消息-预览哨兵' })).toHaveCount(0);
 
     // 主区：不得再落在大区 —— ?channel=lobby 必须被改写。落点取决于当时有没有可用
     // 私聊（本套件 desktop 轮次先跑，会在库里留下一条私聊，mobile 复跑时它仍在）：
@@ -184,6 +183,20 @@ test.describe('专注模式（设置 → 各处生效）', () => {
       data: { content: '私聊可用' },
     });
     expect(msg.status()).toBe(200);
+  });
+
+  test('讨论：专注模式 + 零私聊时侧栏说「暂无会话」（不是永远「加载中…」）', async ({ page }) => {
+    // ⚠️ 必须用**新注册**的号：上面那条用例给 core 用户留了一条永久私聊，desktop 轮次
+    // 跑完 mobile 复跑时它还在（同那条用例 152-155 行的注释）。拿 core 断言空态会 flaky。
+    await registerFreshUser(page, { core: true });
+    await setFocus(page, true);
+    await page.goto('/chat');
+    // 侧栏：大区行被过滤掉后列表是真的空 —— 判据若是 `channels.length === 0`，
+    // 这里会永远显示「加载中…」（那句 `loaded` 就是为此传进来的）
+    await expect(page.locator('.chat-sidebar__empty')).toHaveText('暂无会话');
+    // 主区同源：也得是专注空态而不是「加载中…」（它认的是**现在**是不是专注模式，
+    // 不是 SSR 冻住的那个值）
+    await expect(page.locator('.chat-main__empty')).toContainText('已开启专注模式');
   });
 
   test('练手盘：入口整段不渲染；两页 403；四个接口 403', async ({ page }) => {

@@ -275,7 +275,12 @@ async function countLobbyMentionsSince(userId: string, cursor: number): Promise<
  */
 export async function listChannelsForUser(
   userId: string,
-  /** 专注模式：大区行保留（侧栏要展示禁用行）但不带预览/未读、不懒建成员基线 */
+  /**
+   * 专注模式：大区行**保留在返回值里**（`disabled: true`），只是不带预览/未读、
+   * 不懒建成员基线。⚠️ 别改成「干脆不发这一行」—— `disabled` 是「这行不可用」的
+   * 单一真相源，ChatApp 的选频道 / 防御 / 删会话三处导航逻辑都靠它（行没了那三处会
+   * 静默走偏）。网页侧栏不渲染它，见 src/app/chat/ChatSidebar.tsx 文件头。
+   */
   focusMode = false,
   /** 显式发起私聊时带上这个频道 id：空会话本不该进侧栏，但发起方要立刻看到它 */
   opts: { includeEmptyChannelId?: string } = {}
@@ -304,7 +309,7 @@ export async function listChannelsForUser(
   );
 
   // 大区成员行懒建：基线 = 当时最大消息 id（历史不算未读）。专注模式下**不建**
-  // ——该行只是禁用占位，建了反而会把基线写进库。
+  // ——那一行对他不可用（发过去也是 disabled），建了反而会把基线写进库。
   if (!focusMode && !cursorByChannel.has(CHAT_LOBBY_ID)) {
     const { lastReadMessageId } = await ensureLobbyMembership(userId);
     cursorByChannel.set(CHAT_LOBBY_ID, lastReadMessageId);
@@ -388,7 +393,9 @@ export async function listChannelsForUser(
   const out = channels.map((ch) => {
     const isLobby = ch.kind === CHAT_KIND_LOBBY;
     if (isLobby && focusMode) {
-      // 禁用行：无最近一条（看不到大区最新消息）、无未读、保持置顶
+      // 不可用的行：无最近一条（看不到大区最新消息）、无未读、保持置顶。
+      // 仍然返回它是一个**契约**（导航逻辑要它），不是「侧栏要画出来」——网页侧栏
+      // 把它过滤掉了，见 src/app/chat/ChatSidebar.tsx 文件头。
       return {
         id: ch.id,
         kind: ch.kind as 'lobby' | 'direct',

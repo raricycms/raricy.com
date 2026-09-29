@@ -18,7 +18,8 @@ export async function GET(req: Request) {
   const channelId = url.searchParams.get('channel') ?? '';
   const after = parsePosInt(url.searchParams.get('after'));
 
-  // 专注模式：大区在侧栏里以禁用行存在（无预览无未读），活动频道若是大区则拉不到消息
+  // 专注模式：大区以「不可用的行」返回（无预览无未读，客户端拿它判导航、侧栏不渲染），
+  // 活动频道若正停在大区则拉不到消息（listMessages 那边 403）
   const channels = await listChannelsForUser(user.id, user.focusMode);
 
   let messages: ChatMessageDTO[] = [];
