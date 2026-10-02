@@ -7,7 +7,6 @@ import { getBalance } from '@/lib/fish-service';
 import { listShopItems } from '@/lib/frame-shop-service';
 import TransferPanel from './TransferPanel';
 import ShopPanel from './ShopPanel';
-import TradeEntry from '../TradeEntry';
 
 // 鱼干市场 —— 两块：用户间转账（无手续费）+ 鱼干商城（租头像框）。
 // 需登录，不要求 core+（与 /fish 面板、签到同档）。
@@ -52,16 +51,16 @@ export default async function FishMarketPage() {
         </Link>
       </p>
 
-      <p className="market-foot">
-        {/* 专注模式下渲染成禁用的 <span>（置灰不隐藏）—— 配方在 TradeEntry.tsx */}
-        <TradeEntry
-          href="/fish/trade"
-          className="market-foot__link"
-          disabled={!!user.focusMode}
-        >
-          <TrendingUp aria-hidden="true" /> 鱼干练手盘（买入 BTC / ETH）
-        </TradeEntry>
-      </p>
+      {/* 专注模式下整段不渲染（含它那个 <p>）—— 理由与判据见 CLAUDE.md「档位阶梯」那条，
+          以及 /fish 卡片里同一处的注释。⚠️ 连 `<p>` 一起条件渲染：`.market-foot` 自己带
+          `margin-top: $space-4`，留个空 `<p>` 会凭空多出一段行距。 */}
+      {!user.focusMode && (
+        <p className="market-foot">
+          <Link className="market-foot__link" href="/fish/trade">
+            <TrendingUp aria-hidden="true" /> 鱼干练手盘（买入 BTC / ETH）
+          </Link>
+        </p>
+      )}
 
       {/* 入口放这里而不是 /fish 的行动条：那一行被 fish-layout.spec.ts 钉死为 3 颗，
           且三颗必须同行 —— 加第四颗会把它挤到第二行（那正是该用例存在的理由）。 */}

@@ -332,18 +332,6 @@
   }
 }
 
-/* 专注模式禁用入口（元素不导航 —— 渲染成 <span>，见 src/app/fish/TradeEntry.tsx）。
-   ⚠️ 同样要显式压掉上面那条 :hover（0-3-0 压 0-2-0），否则划过仍会变品牌色 ——
-      那就成了一条「看着能点、点了没反应」的链接。 */
-.market-foot__link.is-disabled {
-  opacity: 0.6;
-  cursor: default;
-
-  &:hover {
-    color: var(--color-text-secondary);
-  }
-}
-
 // ── 收款人选择弹窗 ──────────────────────────────────────────────────────────
 
 .market-picker {

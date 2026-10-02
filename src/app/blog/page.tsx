@@ -11,6 +11,8 @@ import { VISIBILITY_BADGE } from '@/lib/blog-visibility';
 import { prisma } from '@/lib/db';
 import { categoryFullPath } from '@/lib/format';
 import { getCurrentUser, isCoreUser } from '@/lib/auth';
+// 锚点常量（零依赖模块）—— 设置页那块卡片的 id 就是它，别在 JSX 里再抄一遍字符串
+import { FOCUS_MODE_SETTINGS_HREF } from '@/lib/focus-mode';
 import BlogSidebar from './BlogSidebar';
 import SearchForm from './SearchForm';
 import BlogSort from './BlogSort';
@@ -165,7 +167,7 @@ export default async function BlogListPage({
 
       {focusOn && (
         <div className="focus-banner" role="status">
-          您已开启专注模式，点击 <Link href="/settings#focus-mode">此处</Link> 关闭
+          您已开启专注模式，点击 <Link href={FOCUS_MODE_SETTINGS_HREF}>此处</Link> 关闭
         </div>
       )}
 

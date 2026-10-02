@@ -143,7 +143,11 @@ export interface ChatChannelDTO {
     author_name: string | null;
     created_at: string | null;
   } | null;
-  /** 专注模式下该频道不可进入（当前仅大区）：行保留但禁用、无预览、无未读。 */
+  /**
+   * 专注模式下该频道不可进入（当前仅大区）：无预览、无未读。
+   * 客户端拿它做两件事：导航逻辑（选频道 / 切走 / 删会话后找下一个）**与**侧栏过滤
+   * ——不可用的行不渲染。契约本身不变（服务端照发），见 chat-service.listChannelsForUser。
+   */
   disabled?: boolean;
 }
 

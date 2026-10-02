@@ -24,6 +24,8 @@ import {
   stripPreviewTokens,
 } from '@/lib/chat-shared';
 import { LS_KEY, COOKIE_NAME, COOKIE_MAX_AGE } from '@/lib/chat-sidebar-pref';
+// 专注模式空态的「前往设置」锚点：与 /blog 横幅同源（零依赖模块，客户端可用）
+import { FOCUS_MODE_SETTINGS_HREF } from '@/lib/focus-mode';
 import NewChatModal from './NewChatModal';
 import QuoteBlogModal from '../components/QuoteBlogModal';
 import AvatarMenu, { type AvatarMenuAnchor } from './AvatarMenu';
@@ -196,7 +198,11 @@ export default function ChatApp({
   initialChannel: string | null;
   /** SSR 首屏折叠态：/chat 服务端页读 chat_sidebar_collapsed cookie 传入（见 chat-sidebar-pref.ts） */
   initialSidebarCollapsed?: boolean;
-  /** 专注模式（服务端按 user.focusMode 传入）：大区行禁用、默认不落大区 */
+  /**
+   * 专注模式的首屏值（服务端按 user.focusMode 传入）：默认不落大区、大区行不可用。
+   * ⚠️ 它是**SSR 冻住的**，另一标签页改了这个开关它不会变 —— 所以只当初始值用，
+   * 要判「现在是不是专注模式」看下面的 `focusMode`。
+   */
   initialFocusMode?: boolean;
 }) {
   const router = useRouter();
@@ -295,6 +301,14 @@ export default function ChatApp({
     () => channels.find((c) => c.id === activeId) ?? null,
     [channels, activeId]
   );
+
+  /**
+   * 当前是不是专注模式：SSR 的首屏值 **或** 频道列表里出现了不可用的行。
+   * 后者才是「现在」的真相 —— poll 每 60 秒整表替换一次，另一标签页打开专注模式时
+   * 这边会随之看到一行 `disabled`。只用 initialFocusMode 的话，主区空态会永远停在
+   * 「加载中…」（与侧栏那句「暂无会话」互相打架），因为它认的是冻住的首屏值。
+   */
+  const focusMode = initialFocusMode || channels.some((c) => c.disabled);
 
   /**
    * 任何一个会话有未读提示 → 移动端汉堡按钮上标红点。抽屉拉开时红点隐藏
@@ -944,8 +958,9 @@ export default function ChatApp({
       setChannels(list);
       setChannelsLoaded(true);
       // 选中策略：请求的频道可用（存在且未禁用）优先；否则退回第一个可用行；
-      // 专注模式下大区行 disabled —— 想进 lobby / 没有私聊时落到 null（空态，
-      // 主区展示专注提示；顺带清掉 URL 里残留的 ?channel=lobby 防止刷新死循环）。
+      // 专注模式下大区行带 disabled（服务端仍发这一行，侧栏只是不渲染它）—— 想进 lobby /
+      // 没有私聊时落到 null（空态，主区展示专注提示；顺带清掉 URL 里残留的 ?channel=lobby
+      // 防止刷新死循环）。
       const want = initialChannel ?? CHAT_LOBBY_ID;
       const usable = list.filter((c) => !c.disabled);
       let target: string | null = null;
@@ -1046,6 +1061,9 @@ export default function ChatApp({
 
   // ── 防御：poll 拉回的频道行若带 disabled（例如另一标签页把专注模式打开了，
   // 而当前正停在大区）→ 自动切到第一个可用行，无可用则落空态。────────────
+  // ⚠️ 这一条正是「服务端必须继续把带 disabled 的大区行发给客户端」的原因：行若不被
+  // 返回，`cur` 会变成 undefined，这里就静默早退 —— 人卡在大区、每条消息回 403。
+  // 侧栏只是**不渲染**它（见 ChatSidebar.tsx 文件头）。
   useEffect(() => {
     const cur = channels.find((c) => c.id === activeId);
     if (!cur?.disabled) return;
@@ -1520,6 +1538,7 @@ export default function ChatApp({
         channels={channels}
         activeId={activeId}
         collapsed={sidebarCollapsed}
+        loaded={channelsLoaded}
         onToggleCollapse={() => {
           // 移动端侧栏是抽屉：折叠态在那里被 CSS 还原（_chat.scss 统一 300px），
           // 点按钮没有任何视觉反馈 —— 改为关闭抽屉，且**不写偏好**：手机上关一次
@@ -1688,10 +1707,10 @@ export default function ChatApp({
           </>
         ) : (
           <div className="chat-main__empty">
-            {channelsLoaded && initialFocusMode ? (
+            {channelsLoaded && focusMode ? (
               <>
                 已开启专注模式，讨论大区暂不可用。可发起私聊，或{' '}
-                <Link className="chat-main__focus-link" href="/settings#focus-mode">
+                <Link className="chat-main__focus-link" href={FOCUS_MODE_SETTINGS_HREF}>
                   前往设置
                 </Link>{' '}
                 关闭专注模式。

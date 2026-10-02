@@ -79,17 +79,6 @@
    即「指到哪儿哪儿才浮起来」。 */
 .feature-card { display: block; transition: box-shadow 0.3s ease; cursor: pointer;  border-radius: 30px; overflow: hidden; position: relative; height: 100%; background-color: var(--color-background-card); box-shadow: none; border: none;  }
 .feature-card:hover { box-shadow: 0 2px 25px var(--card-glow); }
-/* 专注模式禁用态（div 渲染，不导航）：淡化 + hover 不给卡片反馈 */
-.feature-card.is-disabled {
-  cursor: default;
-  opacity: 0.7;
-  &:hover {
-    box-shadow: none;
-  }
-  .home-btn {
-    opacity: 0.6;
-  }
-}
 
 .feature-card .card-body { padding: 2rem; position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center; height: 100%; ; border: none;}
 

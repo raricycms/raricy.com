@@ -366,14 +366,15 @@ export default function SettingsPage() {
         </div>
         <p className="settings-card__desc">
           屏蔽干扰源，专心阅读。开启后：博客列表与侧栏将隐藏站长标记为「专注隐藏」的栏目及其文章；
-          讨论大区（讨论室）不可进入。随时可在此关闭。
+          讨论大区（讨论室）与鱼干练手盘（含统计）不可使用 —— 它们的入口会一并隐藏，
+          私聊与鱼干商城不受影响。随时可在此关闭。
         </p>
         <div className={focusAlertClass} id="focusAlert">{focusAlert?.msg ?? ''}</div>
 
         <div className="settings-toggle-row">
           <div className="settings-toggle-row__label">
             <span className="settings-toggle-row__title">专注模式</span>
-            <span className="settings-toggle-row__desc">隐藏「专注隐藏」栏目，禁用讨论大区</span>
+            <span className="settings-toggle-row__desc">隐藏「专注隐藏」栏目，禁用讨论大区与练手盘</span>
           </div>
           <label className="settings-toggle">
             <input

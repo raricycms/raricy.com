@@ -15,7 +15,7 @@
 
 import { test, expect } from '@playwright/test';
 import { SEED_USERS, BLOG_BODY_MARKER } from './seed';
-import { loginViaApi, uniqueTag } from './helpers';
+import { loginViaApi, registerFreshUser, uniqueTag } from './helpers';
 // 文案从单一来源取，不在这里手抄一遍 —— 手抄的那份会在改文案时静默落后，
 // 而症状是「用例红了，红在等待超时上」，指向的是用例自己而不是文案。（seed.ts 同款）
 import { FOCUS_MODE_BLOCKED_TITLE as FOCUS_TITLE } from '../../src/lib/focus-mode';
@@ -128,10 +128,10 @@ test.describe('专注模式（设置 → 各处生效）', () => {
     await expect(page.locator('body')).toContainText(BLOG_BODY_MARKER, { timeout: 15_000 });
   });
 
-  test('讨论：大区行禁用且无最近一条预览；API 直打大区 403；私聊不拦', async ({ page }) => {
+  test('讨论：侧栏不再渲染大区行；API 直打大区 403；私聊不拦', async ({ page }) => {
     await loginViaApi(page, SEED_USERS.core.username);
 
-    // 先在专注前于大区留一条消息（focus 后它不该出现在预览里）
+    // 先在专注前于大区留一条消息（focus 后它一个地方都不该出现）
     const pre = await page.request.post('/api/chat/channels/lobby/messages', {
       data: { content: '大区历史消息-预览哨兵' },
     });
@@ -139,16 +139,15 @@ test.describe('专注模式（设置 → 各处生效）', () => {
 
     await setFocus(page, true);
 
-    // 侧栏大区行：存在但禁用、title/预览为专注文案、无最近一条预览内容
-    // （移动端侧栏是抽屉，DOM 存在但可能不可见 → 用 toBeAttached 而非 toBeVisible）
+    // 侧栏：大区那一行**整个不渲染**（判据见 CLAUDE.md「档位阶梯」）。
+    // ⚠️ 服务端仍然把这一行发过来（`disabled: true`）—— 它是 ChatApp 选频道 / 切换 /
+    // 删会话三处导航逻辑的判据，网页侧栏只是不画。想改成「服务端别发」的话，
+    // 注意下面「URL 不落大区」那条会静默失效（行没了，防御 effect 认不出「当前这行
+    // 不可用」），以及 tests/service/chat-service.test.ts 那条断言。
+    // （移动端侧栏是抽屉，DOM 存在但可能不可见 → 断言计数而不是可见性）
     await page.goto('/chat');
-    const lobbyRow = page.locator('.chat-chan', { hasText: '讨论大区' });
-    await expect(lobbyRow).toBeAttached();
-    await expect(lobbyRow).toHaveAttribute('aria-disabled', 'true');
-    await expect(lobbyRow).toHaveAttribute('title', FOCUS_TITLE);
-    await expect(lobbyRow).not.toContainText('大区历史消息-预览哨兵');
-    await expect(lobbyRow).toContainText(FOCUS_TITLE);
-    await expect(lobbyRow.locator('.chat-chan__mark')).toHaveCount(0);
+    await expect(page.locator('.chat-chan', { hasText: '讨论大区' })).toHaveCount(0);
+    await expect(page.locator('.chat-chan', { hasText: '大区历史消息-预览哨兵' })).toHaveCount(0);
 
     // 主区：不得再落在大区 —— ?channel=lobby 必须被改写。落点取决于当时有没有可用
     // 私聊（本套件 desktop 轮次先跑，会在库里留下一条私聊，mobile 复跑时它仍在）：
@@ -186,37 +185,44 @@ test.describe('专注模式（设置 → 各处生效）', () => {
     expect(msg.status()).toBe(200);
   });
 
-  test('练手盘：入口置灰但**不隐藏**，点了不导航；两页 403；四个接口 403', async ({ page }) => {
+  test('讨论：专注模式 + 零私聊时侧栏说「暂无会话」（不是永远「加载中…」）', async ({ page }) => {
+    // ⚠️ 必须用**新注册**的号：上面那条用例刚给 core 用户开了一条私聊，而那条会一直
+    // 留在库里（对方再发消息才重现、从不清除）—— 拿 core 断言「一个会话都没有」必红。
+    // 顺带也不必依赖任何既有状态。
+    await registerFreshUser(page, { core: true });
+    await setFocus(page, true);
+    await page.goto('/chat');
+    // 侧栏：大区行被过滤掉后列表是真的空 —— 判据若是 `channels.length === 0`，
+    // 这里会永远显示「加载中…」（那句 `loaded` 就是为此传进来的）
+    await expect(page.locator('.chat-sidebar__empty')).toHaveText('暂无会话');
+    // 主区同源：也得是专注空态而不是「加载中…」（它认的是**现在**是不是专注模式，
+    // 不是 SSR 冻住的那个值）
+    await expect(page.locator('.chat-main__empty')).toContainText('已开启专注模式');
+  });
+
+  test('练手盘：入口整段不渲染；两页 403；四个接口 403', async ({ page }) => {
     await loginViaApi(page, SEED_USERS.core.username);
     await setFocus(page, true);
 
-    // 入口：还在、还看得见，但已不是链接 —— 这一条是「置灰不隐藏」的全部意思。
-    // 隐藏掉入口会让开着专注模式的人以为练手盘被下线了（CLAUDE.md「入口不跟着藏」）。
+    // 入口：**连同它那句引导语一起消失**（不是置灰保留 —— 判据见 CLAUDE.md「档位阶梯」）。
     await page.goto('/fish');
-    const tradeEntry = page.locator('.fish-card__info-link', { hasText: '鱼干练手盘' });
-    const statsEntry = page.locator('.fish-card__info-link', { hasText: '练手盘统计' });
-    for (const [name, entry] of [
-      ['练手盘', tradeEntry],
-      ['练手盘统计', statsEntry],
-    ] as const) {
-      await expect(entry, name).toBeVisible();
-      await expect(entry, name).toHaveAttribute('aria-disabled', 'true');
-      await expect(entry, name).toHaveAttribute('title', FOCUS_TITLE);
-      // ★ 禁用态必须是「不导航的元素」而不是挂了类名的 <Link>：后者照样会跳走，
-      //   灰了却点得动比不灰更糟（见 src/app/fish/TradeEntry.tsx）。
-      expect(await entry.getAttribute('href'), `${name} 不该还带着 href`).toBeNull();
-    }
-    await tradeEntry.click();
-    await expect(page).toHaveURL(/\/fish$/, { timeout: 3000 });
-    // 上面那条行动条（.fish-card__actions）没被碰过：fish-layout.spec 钉死它恰好 3 颗
+    await expect(page.locator('.fish-card__info-link', { hasText: '鱼干练手盘' })).toHaveCount(0);
+    await expect(page.locator('.fish-card__info-link', { hasText: '练手盘统计' })).toHaveCount(0);
+    // ★ 引导语也得走：只藏链接会在卡片里留下两句悬空的引子（而 `p + p` 的行距照旧生效
+    //   —— 所以条件必须包住整段 <p>，不能只让链接自己不渲染）。
+    const info = page.locator('.fish-card__info');
+    await expect(info).not.toContainText('碰碰运气');
+    await expect(info).not.toContainText('打过的仗');
+    // 没被误伤：商城入口照旧（专注模式不禁商城），行动条仍是 3 颗（fish-layout.spec 钉的）
+    await expect(page.locator('.fish-card__info-link', { hasText: '鱼干商城' })).toBeVisible();
     await expect(page.locator('.fish-card__actions > *')).toHaveCount(3);
 
-    // /fish/market 页脚那条入口同理（它是练手盘在 /fish 之外的唯一入口）
+    // /fish/market 页脚那条入口同理（它是练手盘在 /fish 之外的唯一入口）——
+    // 藏的是那一个 <p>，同页另两条页脚入口不受影响
     await page.goto('/fish/market');
-    const marketEntry = page.locator('.market-foot__link', { hasText: '鱼干练手盘' });
-    await expect(marketEntry).toBeVisible();
-    await expect(marketEntry).toHaveAttribute('aria-disabled', 'true');
-    await expect(marketEntry).toHaveAttribute('title', FOCUS_TITLE);
+    await expect(page.locator('.market-foot__link', { hasText: '鱼干练手盘' })).toHaveCount(0);
+    await expect(page.locator('.market-foot__link', { hasText: '查看转账记录' })).toBeVisible();
+    await expect(page.locator('.market-foot__link', { hasText: '接口 / 机器人接入' })).toBeVisible();
 
     // 直连 URL：两页都原地 403（不是跳登录页 —— 他是登录着的）
     for (const p of ['/fish/trade', '/fish/trade/stats']) {

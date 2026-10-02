@@ -137,17 +137,6 @@
 .chat-chan.has-unread .chat-chan__title {
   color: var(--color-brand-primary);
 }
-// 专注模式禁用行：保留位置但不可点、无 hover 反馈、预览淡化、徽标不渲染
-.chat-chan.is-disabled {
-  cursor: default;
-  opacity: 0.6;
-  &:hover {
-    background: transparent;
-  }
-  .chat-chan__preview {
-    color: var(--color-text-tertiary);
-  }
-}
 
 // 行 + 「⋯」菜单按钮：按钮放兄弟节点（button 里套 button 是非法 HTML）
 .chat-chan-wrap {
