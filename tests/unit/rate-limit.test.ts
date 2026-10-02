@@ -189,8 +189,8 @@ describe('RULES 全站配额（src/lib/rate-limit.ts 即权威，改动即报警
     { name: 'chatNewChannel', limit: 20, windowMs: 60_000, desc: '发起私聊 20 次/分' },
     { name: 'loginPerIp', limit: 300, windowMs: MIN15, desc: '登录失败 300 次/15 分/IP' },
     { name: 'loginPerUser', limit: 100, windowMs: MIN15, desc: '登录失败 100 次/15 分/账号' },
-    { name: 'transferHourly', limit: 30, windowMs: HOUR, desc: '鱼干转账 30 次/时' },
-    { name: 'transferDaily', limit: 200, windowMs: DAY, desc: '鱼干转账 200 次/天' },
+    { name: 'transferHourly', limit: 100, windowMs: HOUR, desc: '鱼干转账 100 次/时' },
+    { name: 'transferDaily', limit: 500, windowMs: DAY, desc: '鱼干转账 500 次/天' },
     {
       name: 'tradeMinute',
       limit: 20,

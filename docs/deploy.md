@@ -111,7 +111,7 @@ vim .env
 | `ALLOWED_ORIGINS` | ⚠️ | CSRF 白名单 | 必填或反代必透传 `X-Forwarded-Host` |
 | `COOKIE_SECURE` | 可选 | cookie `Secure` 标记 | 配错则登录"成功但不粘" |
 | `ACCOUNT_SERVICE_*` | **已废除** | 账户微服务的连接四件套。账户逻辑已搬进站内，这四个变量**不再被任何代码读取** | 留着没有任何效果，删掉即可（见 §12「下线账户微服务」） |
-| `FISH_SERVICE_ACCOUNTS` | 可选 | 鱼干服务账号白名单（逗号分隔的 **user id**）：转账配额 30/200 → 500/5000，给站外银行这类自动化账号用（`docs/bot/fish-bot.md` §4） | 留空 = 无人享受高配额，不影响其他功能 |
+| `FISH_SERVICE_ACCOUNTS` | 可选 | 鱼干服务账号白名单（逗号分隔的 **user id**）：转账配额 100/500 → 500/5000，给站外银行这类自动化账号用（`docs/bot/fish-bot.md` §4） | 留空 = 无人享受高配额，不影响其他功能 |
 | `FISH_WEBHOOK_DRAIN_MS` | 可选 | 收款回调的投递扫描间隔（毫秒，默认 `30000`）。**`0` = 关闭定时投递** | 关掉后回调只会由 `fish webhook-retry` 推动；`/fish/api` 上登记的地址照样收不到通知 |
 | `FISH_WEBHOOK_TIMEOUT_MS` | 可选 | 单次回调投递的超时（毫秒，默认 `5000`） | 商户端点慢于这个值会被判失败并重试 |
 | `MARKET_PRICE_BASE_URL` | 可选 | 练手盘的行情源基址（默认 `https://data-api.binance.vision`）。**上线前必须在这台服务器上实测可达**（见 §1 系统要求表），不通就换源，不用发版 | 不通则**成交**与展示一起挂：下单/平仓 503「行情暂不可用」（这是刻意的，不降级到旧价） |

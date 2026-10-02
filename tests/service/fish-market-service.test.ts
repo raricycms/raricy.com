@@ -592,21 +592,21 @@ describe('客户端幂等键 —— 对外契约', () => {
 });
 
 describe('服务账号配额白名单', () => {
-  it('白名单账号可以超过普通账号的小时上限（30 → 500）', async () => {
+  it('白名单账号可以超过普通账号的小时上限（100 → 500）', async () => {
     const { sender, recipient } = await scene(100, 0);
     vi.stubEnv('FISH_SERVICE_ACCOUNTS', sender.id);
 
-    // 普通账号在 30 笔后会 429（上面那条用例钉着），白名单账号这里转 35 笔应当全过
-    for (let i = 0; i < 35; i++) {
+    // 普通账号在 100 笔后会 429（上面那条用例钉着），白名单账号这里转 105 笔应当全过
+    for (let i = 0; i < 105; i++) {
       const r = await transferFish(sender.id, recipient.id, 0.1);
       expect(r.ok, `第 ${i + 1} 笔：白名单账号不该撞普通配额`).toBe(true);
     }
-    expect(await balanceOf(recipient.id)).toBe(3.5);
+    expect(await balanceOf(recipient.id)).toBe(10.5);
 
-    await expectLedgerConsistent('服务账号转 35 笔后');
+    await expectLedgerConsistent('服务账号转 105 笔后');
   });
 
-  it('白名单之外的账号不受影响（同一进程内仍按 30 笔/时 限）', async () => {
+  it('白名单之外的账号不受影响（同一进程内仍按 100 笔/时 限）', async () => {
     const { sender, recipient } = await scene(100, 0);
     const other = await makeUser({ driedFish: 100 });
     vi.stubEnv('FISH_SERVICE_ACCOUNTS', other.id);
