@@ -37,7 +37,7 @@ describe('鱼干商城：在售清单与面板形状', () => {
       keys.length,
       `在售有 ${keys.length} 款（${keys.join('、')}），而 ShopPanel 只画第一款（items[0]）——\n` +
         '  多出来的那些在页面上是**不存在**的（不报错、服务端也照样卖）。\n' +
-        '  出路：① 把面板改成逐款一块表单（items.map）；② 或者撤回新增那款的 rentPerDay。\n' +
+        '  出路：① 把面板改成逐款一块表单（items.map）；② 或者撤回新增那款的 rent。\n' +
         '  背景见 docs/guide/头像框使用指南.md §7 与 ShopPanel.tsx 的注释。'
     ).toBeLessThanOrEqual(1);
   });

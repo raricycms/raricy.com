@@ -5,15 +5,24 @@ import { useRouter } from 'next/navigation';
 import Avatar from '@/app/components/Avatar';
 import { fmtFish } from '@/lib/fish-amount';
 import {
-  FRAME_RENT_MAX_DAYS,
-  FRAME_RENT_MIN_DAYS,
+  RENT_UNITS,
   frameUrl,
-  parseRentDays,
+  parseRentCount,
   type FrameKey,
+  type RentUnit,
 } from '@/lib/frame-refs';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ShopPanel —— 鱼干商城的租赁面板（/fish/market 的第二块，转账面板下面）
+//
+// 【逐款一块表单】面板按 `items.map` 渲染，每款一张 `.market-card`（`data-frame=<key>`
+// 是 e2e 的稳定钩子 —— 两款之后 `.market-shop__name` 这类裸选择器会解析到两个元素，
+// Playwright 的 strict 模式当场红）。**别改回 `items[0]`**：那会让其余在售款
+// 从页面上消失，而服务端照样卖（过去有一条绊线用例专门盯这个，见
+// tests/unit/frame-shop-guard.test.ts）。
+//
+// 【两款两种单位】鱼干蓝按天、星落月畔按月。单位、上下限、量词全从 `RENT_UNITS`
+// 现读（零依赖的同一份表，服务端校验读的也是它）—— 面板**不自己判**哪款是按天的。
 //
 // 【它只画商品，判什么都在服务端】列表是 `/fish/market` 的服务端组件调
 // `listShopItems()` 算好传进来的：哪款在卖、素材在不在、我当前持有到什么时候、
@@ -33,6 +42,7 @@ import {
 // 在这边买完框，上面的转账面板那个数还是旧的（它不重渲染）—— 那边真要转超了，
 // 服务端会以「小鱼干不足」挡下，所以是**响亮**的失败、刷新即正，不是静默错账。
 // 要根治得把余额提到共同的客户端状态里，那会动到转账面板，不在本次范围内。
+// 商城**内部**的余额是共享的：买完一款，另一款的可负担性立刻跟着变（见 onBalance）。
 // ─────────────────────────────────────────────────────────────────────────────
 
 declare global {
@@ -53,16 +63,27 @@ export interface ShopItemView {
   key: FrameKey;
   label: string;
   description: string;
-  rentPerDay: number;
+  /** 计价单位 + 单价。上下限与量词在 `RENT_UNITS[unit]` 里，不随 DTO 来。 */
+  rent: { unit: RentUnit; price: number };
   assetMissing: boolean;
   /** null = 从没持有过（或被收回）。 */
   holding: { expiresAt: string | null; expired: boolean } | null;
   equipped: boolean;
 }
 
-/** 快捷天数。**没有「全部」** —— 天数是用户自己决定的，不是余额决定的。 */
-const QUICK_DAYS = [1, 7, 30];
+/** 各单位的快捷租期。**没有「全部」** —— 租期是用户自己决定的，不是余额决定的。 */
+const QUICK_COUNTS: Record<RentUnit, readonly number[]> = {
+  day: [1, 7, 30],
+  month: [1, 3, 6, 12],
+};
 
+/**
+ * 商城整体：持有**一份共享的余额**，逐款渲染一张卡。
+ *
+ * 余额之所以提在父层：买完任一框，另一张卡上的「租用后余额」与可负担性要立刻跟着变。
+ * 各卡自己持一份的话，买完 A 再去点 B 会拿着一个过期的余额算账（服务端仍会挡住，
+ * 但用户看到的数不对）。
+ */
 export default function ShopPanel({
   userId,
   balance: initialBalance,
@@ -72,43 +93,74 @@ export default function ShopPanel({
   balance: number;
   items: ShopItemView[];
 }) {
-  const router = useRouter();
   const [balance, setBalance] = useState(initialBalance);
-  const [days, setDays] = useState('1');
+
+  if (items.length === 0) return null;
+
+  return (
+    <>
+      {items.map((item) => (
+        <ShopItemCard
+          key={item.key}
+          userId={userId}
+          balance={balance}
+          item={item}
+          onBalance={setBalance}
+        />
+      ))}
+    </>
+  );
+}
+
+/** 一款框一张卡：商品行 + 租期表单 + 二次确认弹窗。状态全是这一款自己的。 */
+function ShopItemCard({
+  userId,
+  balance,
+  item,
+  onBalance,
+}: {
+  userId: string;
+  balance: number;
+  item: ShopItemView;
+  onBalance: (balance: number) => void;
+}) {
+  const router = useRouter();
+  const [count, setCount] = useState('1');
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  // 在售的只有一款（鱼干蓝）。**多款时要改成逐款一块表单** —— 这里先按
-  // 「一次只租一款」写，别在没需求时为将来的样子预留结构。
-  const item = items[0];
-  if (!item) return null;
-
-  const parsedDays = parseRentDays(days);
-  const daysOk = parsedDays !== null;
-  const cost = daysOk ? item.rentPerDay * parsedDays : 0;
-  const affordable = cost <= balance;
-  const canSubmit = daysOk && affordable && !item.assetMissing;
-  const afterBalance = affordable ? balance - cost : balance;
+  const unit = RENT_UNITS[item.rent.unit];
+  const parsedCount = parseRentCount(item.rent.unit, count);
+  const countOk = parsedCount !== null;
+  const total = countOk ? item.rent.price * parsedCount : 0;
+  const affordable = total <= balance;
+  const canSubmit = countOk && affordable && !item.assetMissing;
+  const afterBalance = affordable ? balance - total : balance;
   const previewUrl = item.assetMissing ? null : frameUrl(item.key);
 
-  // 表单底下那一行提示。**只有一条** —— 天数写错与钱不够不会同时说，
+  // id 逐款化：两款之后 `#market-shop-days` 这种单一 id 就不够用了（同一条理由
+  // 让 `.market-shop__summary` 与 `.market-summary` 分了家，见 _fish-market.scss 尾部）。
+  const inputId = `market-shop-count-${item.key}`;
+  const confirmId = `market-shop-confirm-${item.key}`;
+
+  // 表单底下那一行提示。**只有一条** —— 租期写错与钱不够不会同时说，
   // 两个 <p> 各挂一次同名类会让选择器有歧义（转账那条 `.market-summary` 就是这么翻的车）。
-  // 边界从常量来，别写死数字。
-  const formError = !daysOk
-    ? `天数填 ${FRAME_RENT_MIN_DAYS}~${FRAME_RENT_MAX_DAYS} 之间的整数`
+  // 区间与量词都从单位表来，别写死数字。
+  const formError = !countOk
+    ? `租期填 ${unit.min}~${unit.max} ${unit.noun}之间的整数`
     : !affordable
       ? '小鱼干不足'
       : '';
 
   async function submit() {
-    if (!daysOk || busy) return;
+    if (!countOk || busy) return;
     setBusy(true);
     try {
       const res = await fetch('/api/fish/market/rent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({ frame_key: item.key, days: parsedDays }),
+        body: JSON.stringify({ frame_key: item.key, count: parsedCount }),
       });
       const data = await res.json().catch(() => null);
       if (res.ok && data?.code === 200) {
@@ -120,13 +172,13 @@ export default function ShopPanel({
           data.expires_at_text ? `${msg}（到期 ${data.expires_at_text}）` : msg,
           'success'
         );
-        if (typeof data.balance === 'number') setBalance(data.balance);
+        if (typeof data.balance === 'number') onBalance(data.balance);
         setConfirmOpen(false);
-        setDays('1');
+        setCount('1');
         // 服务端渲染的「当前持有到 …」那一行要跟着变，否则买完看不出来生效了
         router.refresh();
       } else {
-        // 失败保留弹窗与已填天数：429 这类瞬时故障原样再点一次就好
+        // 失败保留弹窗与已填租期：429 这类瞬时故障原样再点一次就好
         window.showToast?.(data?.message ?? '租用失败，请稍后再试', 'error');
       }
     } catch {
@@ -138,7 +190,7 @@ export default function ShopPanel({
 
   return (
     <>
-      <div className="market-card">
+      <div className="market-card" data-frame={item.key}>
         <div className="market-field">
           <span className="market-field__label">在售</span>
           <div className="market-shop__item">
@@ -152,7 +204,9 @@ export default function ShopPanel({
             <div className="market-shop__meta">
               <span className="market-shop__name">{item.label}</span>
               <span className="market-shop__desc">{item.description}</span>
-              <span className="market-shop__price">{fmtFish(item.rentPerDay)} 鱼干 / 天</span>
+              <span className="market-shop__price">
+                {fmtFish(item.rent.price)} {unit.priceNoun}
+              </span>
             </div>
           </div>
           {item.holding && (
@@ -171,35 +225,35 @@ export default function ShopPanel({
         ) : (
           <>
             <div className="market-field">
-              <label className="market-field__label" htmlFor="market-shop-days">
-                租多少天
+              <label className="market-field__label" htmlFor={inputId}>
+                租多少{unit.noun}
               </label>
               <div className="market-amount">
                 <input
-                  id="market-shop-days"
+                  id={inputId}
                   className="market-amount__input"
                   type="number"
                   inputMode="numeric"
-                  min={FRAME_RENT_MIN_DAYS}
-                  max={FRAME_RENT_MAX_DAYS}
+                  min={unit.min}
+                  max={unit.max}
                   step={1}
                   autoComplete="off"
-                  value={days}
-                  onChange={(e) => setDays(e.target.value)}
+                  value={count}
+                  onChange={(e) => setCount(e.target.value)}
                   disabled={busy}
                 />
-                <span className="market-amount__unit">天</span>
+                <span className="market-amount__unit">{unit.noun}</span>
               </div>
               <div className="market-quick">
-                {QUICK_DAYS.map((d) => (
+                {QUICK_COUNTS[item.rent.unit].map((d) => (
                   <button
                     key={d}
                     type="button"
                     className="market-quick__btn"
-                    onClick={() => setDays(String(d))}
+                    onClick={() => setCount(String(d))}
                     disabled={busy}
                   >
-                    {d} 天
+                    {d} {unit.noun}
                   </button>
                 ))}
               </div>
@@ -207,7 +261,7 @@ export default function ShopPanel({
 
             <div className="market-shop__summary">
               <span>
-                合计 <strong>{fmtFish(cost)}</strong> 鱼干
+                合计 <strong>{fmtFish(total)}</strong> 鱼干
               </span>
               <span>
                 租用后余额 <strong>{fmtFish(afterBalance)}</strong> 鱼干
@@ -231,7 +285,7 @@ export default function ShopPanel({
       {confirmOpen && (
         <div className="modal-overlay show" onClick={() => !busy && setConfirmOpen(false)}>
           <div
-            id="market-shop-confirm"
+            id={confirmId}
             className="modal-dialog market-confirm"
             role="dialog"
             aria-label="确认租用"
@@ -254,15 +308,19 @@ export default function ShopPanel({
                 <dl className="market-confirm__rows">
                   <div className="market-confirm__row">
                     <dt>租期</dt>
-                    <dd>{parsedDays} 天</dd>
+                    <dd>
+                      {parsedCount} {unit.noun}
+                    </dd>
                   </div>
                   <div className="market-confirm__row">
                     <dt>单价</dt>
-                    <dd>{fmtFish(item.rentPerDay)} 鱼干 / 天</dd>
+                    <dd>
+                      {fmtFish(item.rent.price)} {unit.priceNoun}
+                    </dd>
                   </div>
                   <div className="market-confirm__row market-confirm__row--total">
                     <dt>合计</dt>
-                    <dd>{fmtFish(cost)} 小鱼干</dd>
+                    <dd>{fmtFish(total)} 小鱼干</dd>
                   </div>
                   {/* ⚠️ 这一行**有意只写「接在现有到期之后」而不写日期**：到期时刻要么
                       从现有到期叠加、要么从现在起算，两者都得读库内那口钟，而客户端算出来

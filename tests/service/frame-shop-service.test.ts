@@ -33,14 +33,17 @@ import {
   revokeFrame,
 } from '@/lib/frame-service';
 import { rentFrame, listShopItems, FRAME_RENT_TYPE } from '@/lib/frame-shop-service';
-import { FRAME_KEYS, FRAME_RENT_MAX_DAYS, FRAMES, frameUrl } from '@/lib/frame-refs';
+import { FRAME_KEYS, FRAMES, RENT_UNITS, frameUrl, rentableFrameKeys } from '@/lib/frame-refs';
 
-/** 唯一在售的那款（key 与价格都从源码取，别在这里写死 —— 改价时用例不该跟着改）。 */
+/** 按天卖的那款（key 与价格都从源码取，别在这里写死 —— 改价时用例不该跟着改）。 */
 const KEY = 'fishblue';
+/** 按月卖的那款 —— 「单位」那几条用例用它。 */
+const MONTHLY_KEY = 'starmoon';
 /** 一款**不零售**的框（站长发放的那种），用来验「不在出售中」。 */
-const NOT_FOR_SALE = FRAME_KEYS.find((k) => FRAMES[k].rentPerDay === undefined)!;
+const NOT_FOR_SALE = FRAME_KEYS.find((k) => FRAMES[k].rent === undefined)!;
 
-const PRICE = FRAMES[KEY].rentPerDay!;
+const PRICE = FRAMES[KEY].rent!.price;
+const MONTHLY_PRICE = FRAMES[MONTHLY_KEY].rent!.price;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** 硬校验：素材目录必须在 tests/.tmp/ 下，否则直接抛（防误动真实素材）。 */
@@ -109,26 +112,41 @@ describe('listShopItems —— 商城只陈列在售的框', () => {
     const user = await makeFishUser(0);
     const items = await listShopItems(user.id);
 
-    expect(items.map((i) => i.key)).toEqual([KEY]);
-    expect(items[0].rentPerDay).toBe(PRICE);
+    // 在售清单是 `rentableFrameKeys()` 现算的 —— 别写死条数，加一款在售的框时
+    // 这条断言不该跟着改（写了 1 的那一版在星落月畔上架时会当场红）
+    expect(items.map((i) => i.key)).toEqual(rentableFrameKeys());
+    expect(items.length).toBeGreaterThan(0);
+    const [fish] = items;
+    expect(fish.key).toBe(KEY);
+    expect(fish.rent).toEqual({ unit: 'day', price: PRICE });
     // 没买过 → 没有持有状态
-    expect(items[0].holding).toBeNull();
-    expect(items[0].equipped).toBe(false);
-    expect(items[0].assetMissing).toBe(false);
+    expect(fish.holding).toBeNull();
+    expect(fish.equipped).toBe(false);
+    expect(fish.assetMissing).toBe(false);
+  });
+
+  it('两款在售的框各自带着自己的计价单位（天 / 月）', async () => {
+    const user = await makeFishUser(0);
+    const items = await listShopItems(user.id);
+
+    const byKey = new Map(items.map((i) => [i.key, i]));
+    expect(byKey.get(KEY)!.rent).toEqual({ unit: 'day', price: PRICE });
+    expect(byKey.get(MONTHLY_KEY)!.rent).toEqual({ unit: 'month', price: MONTHLY_PRICE });
   });
 
   it('素材缺失时照常陈列，但标着 assetMissing（页面据此禁掉购买）', async () => {
     const user = await makeFishUser(0);
     const items = await listShopItems(user.id);
 
-    expect(items).toHaveLength(1);
-    expect(items[0].assetMissing).toBe(true);
+    // 盘上一张图都没有 → 每一款都标着素材缺失（条数由 rentableFrameKeys 决定）
+    expect(items.length).toBeGreaterThan(0);
+    expect(items.every((i) => i.assetMissing)).toBe(true);
   });
 
   it('持有与装备状态都如实带出来', async () => {
     withAsset(KEY);
     const user = await makeFishUser(10);
-    await rentFrame({ userId: user.id, key: KEY, days: 3 });
+    await rentFrame({ userId: user.id, key: KEY, count: 3 });
     await equipFrame(user.id, KEY);
 
     const [item] = await listShopItems(user.id);
@@ -162,11 +180,11 @@ describe('rentFrame —— 正常租用', () => {
     const user = await makeFishUser(10);
     const before = nowForDb();
 
-    const res = await rentFrame({ userId: user.id, key: KEY, days: 3 });
+    const res = await rentFrame({ userId: user.id, key: KEY, count: 3 });
     expect(res.ok).toBe(true);
     if (!res.ok) return;
 
-    expect(res.days).toBe(3);
+    expect(res.count).toBe(3);
     expect(res.cost).toBe(3 * PRICE);
     expect(res.balance).toBeCloseTo(10 - 3 * PRICE, 4);
 
@@ -186,10 +204,10 @@ describe('rentFrame —— 正常租用', () => {
     await expectLedgerConsistent();
   });
 
-  it('写一行 frame_rent 流水，带着框的 key 与天数', async () => {
+  it('写一行 frame_rent 流水，带着框的 key 与租期', async () => {
     withAsset(KEY);
     const user = await makeFishUser(10);
-    await rentFrame({ userId: user.id, key: KEY, days: 2 });
+    await rentFrame({ userId: user.id, key: KEY, count: 2 });
 
     const txs = await prisma.fishTransaction.findMany({
       where: { userId: user.id, type: FRAME_RENT_TYPE },
@@ -201,21 +219,49 @@ describe('rentFrame —— 正常租用', () => {
     expect(txs[0].description).toContain('2 天');
   });
 
-  it('上限天数（30）买得动', async () => {
+  it('★ 按月卖的那款：2 个月 = 100 鱼干，到期 = 现在 + 60 天', async () => {
+    withAsset(MONTHLY_KEY);
+    const user = await makeFishUser(MONTHLY_PRICE * 3);
+    const before = nowForDb();
+
+    const res = await rentFrame({ userId: user.id, key: MONTHLY_KEY, count: 2 });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+
+    expect(res.unit).toBe('month');
+    expect(res.count).toBe(2);
+    expect(res.cost).toBe(2 * MONTHLY_PRICE);
+
+    // 一个月 = 30 天，**不是**自然月：2 个月恒是 60 天，与今天几号无关
+    const row = await holdingOf(user.id, MONTHLY_KEY);
+    const expectedLo = before.getTime() + 2 * RENT_UNITS.month.days * DAY_MS;
+    const expectedHi = nowForDb().getTime() + 2 * RENT_UNITS.month.days * DAY_MS;
+    expect(row!.expiresAt!.getTime()).toBeGreaterThanOrEqual(expectedLo);
+    expect(row!.expiresAt!.getTime()).toBeLessThanOrEqual(expectedHi);
+
+    // 流水描述用的是量词而不是「天」
+    const txs = await prisma.fishTransaction.findMany({
+      where: { userId: user.id, type: FRAME_RENT_TYPE },
+    });
+    expect(txs[0].description).toContain('2 个月');
+    await expectLedgerConsistent();
+  });
+
+  it('上限数量（按天那款是 30）买得动', async () => {
     withAsset(KEY);
     const user = await makeFishUser(100);
-    const res = await rentFrame({ userId: user.id, key: KEY, days: FRAME_RENT_MAX_DAYS });
+    const res = await rentFrame({ userId: user.id, key: KEY, count: RENT_UNITS.day.max });
     expect(res.ok).toBe(true);
-    if (res.ok) expect(res.cost).toBe(FRAME_RENT_MAX_DAYS * PRICE);
+    if (res.ok) expect(res.cost).toBe(RENT_UNITS.day.max * PRICE);
     await expectLedgerConsistent();
   });
 
   it('天数接受数字字符串（表单交上来就是字符串）', async () => {
     withAsset(KEY);
     const user = await makeFishUser(10);
-    const res = await rentFrame({ userId: user.id, key: KEY, days: '2' });
+    const res = await rentFrame({ userId: user.id, key: KEY, count: '2' });
     expect(res.ok).toBe(true);
-    if (res.ok) expect(res.days).toBe(2);
+    if (res.ok) expect(res.count).toBe(2);
   });
 });
 
@@ -226,7 +272,7 @@ describe('★ 原子性：钱与框要么一起动、要么都不动', () => {
     withAsset(KEY);
     const user = await makeFishUser(1); // 只够 1 天
 
-    const res = await rentFrame({ userId: user.id, key: KEY, days: 5 });
+    const res = await rentFrame({ userId: user.id, key: KEY, count: 5 });
     expect(res.ok).toBe(false);
     if (!res.ok) {
       expect(res.code).toBe(400);
@@ -242,7 +288,7 @@ describe('★ 原子性：钱与框要么一起动、要么都不动', () => {
   it('余额刚好够 → 买完是 0，不是负数', async () => {
     withAsset(KEY);
     const user = await makeFishUser(2);
-    const res = await rentFrame({ userId: user.id, key: KEY, days: 2 });
+    const res = await rentFrame({ userId: user.id, key: KEY, count: 2 });
     expect(res.ok).toBe(true);
     expect(await balanceOf(user.id)).toBe(0);
     await expectLedgerConsistent();
@@ -255,7 +301,7 @@ describe('★ 原子性：钱与框要么一起动、要么都不动', () => {
     const past = new Date(nowForDb().getTime() - DAY_MS);
     await grantFrame({ userId: user.id, key: KEY, expiresAt: past });
 
-    const res = await rentFrame({ userId: user.id, key: KEY, days: 1 });
+    const res = await rentFrame({ userId: user.id, key: KEY, count: 1 });
     expect(res.ok).toBe(false);
 
     const row = await holdingOf(user.id);
@@ -274,7 +320,7 @@ describe('★ 续期从「当前到期」起算，不是从「现在」', () => 
     const initial = new Date(nowForDb().getTime() + 20 * DAY_MS);
     await grantFrame({ userId: user.id, key: KEY, expiresAt: initial });
 
-    const res = await rentFrame({ userId: user.id, key: KEY, days: 1 });
+    const res = await rentFrame({ userId: user.id, key: KEY, count: 1 });
     expect(res.ok).toBe(true);
 
     const row = await holdingOf(user.id);
@@ -286,9 +332,9 @@ describe('★ 续期从「当前到期」起算，不是从「现在」', () => 
   it('连着买两次，天数累加', async () => {
     withAsset(KEY);
     const user = await makeFishUser(10);
-    await rentFrame({ userId: user.id, key: KEY, days: 2 });
+    await rentFrame({ userId: user.id, key: KEY, count: 2 });
     const after1 = (await holdingOf(user.id))!.expiresAt!;
-    await rentFrame({ userId: user.id, key: KEY, days: 3 });
+    await rentFrame({ userId: user.id, key: KEY, count: 3 });
     const after2 = (await holdingOf(user.id))!.expiresAt!;
 
     expect(after2.getTime()).toBe(after1.getTime() + 3 * DAY_MS);
@@ -302,7 +348,7 @@ describe('★ 续期从「当前到期」起算，不是从「现在」', () => 
     await grantFrame({ userId: user.id, key: KEY, expiresAt: past });
 
     const before = nowForDb();
-    const res = await rentFrame({ userId: user.id, key: KEY, days: 2 });
+    const res = await rentFrame({ userId: user.id, key: KEY, count: 2 });
     expect(res.ok).toBe(true);
 
     const row = await holdingOf(user.id);
@@ -314,10 +360,10 @@ describe('★ 续期从「当前到期」起算，不是从「现在」', () => 
   it('正戴着这个框时续租，装备列的到期时刻跟着刷新（F2 走商城这条路的用例）', async () => {
     withAsset(KEY);
     const user = await makeFishUser(10);
-    await rentFrame({ userId: user.id, key: KEY, days: 1 });
+    await rentFrame({ userId: user.id, key: KEY, count: 1 });
     await equipFrame(user.id, KEY);
 
-    const res = await rentFrame({ userId: user.id, key: KEY, days: 5 });
+    const res = await rentFrame({ userId: user.id, key: KEY, count: 5 });
     expect(res.ok).toBe(true);
 
     const u = await prisma.user.findUnique({
@@ -341,7 +387,7 @@ describe('拒绝的几种情形（一律不扣钱）', () => {
     const user = await makeFishUser(10);
     await grantFrame({ userId: user.id, key: KEY, expiresAt: null });
 
-    const res = await rentFrame({ userId: user.id, key: KEY, days: 3 });
+    const res = await rentFrame({ userId: user.id, key: KEY, count: 3 });
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.code).toBe(400);
 
@@ -354,7 +400,7 @@ describe('拒绝的几种情形（一律不扣钱）', () => {
   it('素材缺失 → 409，不扣钱也不建持有行', async () => {
     // 注意：这里**故意不调 withAsset**
     const user = await makeFishUser(10);
-    const res = await rentFrame({ userId: user.id, key: KEY, days: 1 });
+    const res = await rentFrame({ userId: user.id, key: KEY, count: 1 });
 
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.code).toBe(409);
@@ -366,7 +412,7 @@ describe('拒绝的几种情形（一律不扣钱）', () => {
   it('不零售的框 → 400（它是站长发放的，不是商品）', async () => {
     withAsset(NOT_FOR_SALE);
     const user = await makeFishUser(10);
-    const res = await rentFrame({ userId: user.id, key: NOT_FOR_SALE, days: 1 });
+    const res = await rentFrame({ userId: user.id, key: NOT_FOR_SALE, count: 1 });
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.code).toBe(400);
     expect(await balanceOf(user.id)).toBeCloseTo(10, 4);
@@ -375,7 +421,7 @@ describe('拒绝的几种情形（一律不扣钱）', () => {
   it('未登记的 key → 400', async () => {
     withAsset(KEY);
     const user = await makeFishUser(10);
-    const res = await rentFrame({ userId: user.id, key: 'not-a-frame', days: 1 });
+    const res = await rentFrame({ userId: user.id, key: 'not-a-frame', count: 1 });
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.code).toBe(400);
   });
@@ -386,32 +432,51 @@ describe('拒绝的几种情形（一律不扣钱）', () => {
     // 「服务器开小差了」，而页面上还显示「合计 0 鱼干、按钮可点」。
     withAsset(KEY);
     const user = await makeFishUser(10);
-    const saved = FRAMES[KEY].rentPerDay;
-    FRAMES[KEY] = { ...FRAMES[KEY], rentPerDay: 0 };
+    const saved = FRAMES[KEY].rent;
+    FRAMES[KEY] = { ...FRAMES[KEY], rent: { unit: 'day', price: 0 } };
     try {
-      const res = await rentFrame({ userId: user.id, key: KEY, days: 1 });
+      const res = await rentFrame({ userId: user.id, key: KEY, count: 1 });
       expect(res.ok).toBe(false);
       if (!res.ok) {
         expect(res.code).toBe(400);
+        // 「配成了 0」与「压根没配」刻意报不同的两句：前者是站长的配置错误，
+        // 后者是「这款不卖」。并成一句的话，运维在日志里分不出该不该去改配置。
         expect(res.message).toContain('配置有误');
       }
     } finally {
-      FRAMES[KEY] = { ...FRAMES[KEY], rentPerDay: saved };
+      FRAMES[KEY] = { ...FRAMES[KEY], rent: saved };
     }
     expect(await balanceOf(user.id)).toBeCloseTo(10, 4); // 一分没扣
     await expectLedgerConsistent('价配错时被拒');
   });
 
-  it('天数越界（0 / 31 / 1.5 / 空 / 非数 / 科学计数法）→ 400，且不扣钱', async () => {
+  it('数量越界（0 / 31 / 1.5 / 空 / 非数 / 科学计数法）→ 400，且不扣钱', async () => {
     withAsset(KEY);
     const user = await makeFishUser(1000);
-    for (const days of [0, -1, FRAME_RENT_MAX_DAYS + 1, 1.5, '', 'abc', null, undefined, {}, '1e2', []]) {
-      const res = await rentFrame({ userId: user.id, key: KEY, days });
-      expect(res.ok, `days=${JSON.stringify(days)} 应当被拒`).toBe(false);
+    for (const count of [0, -1, RENT_UNITS.day.max + 1, 1.5, '', 'abc', null, undefined, {}, '1e2', []]) {
+      const res = await rentFrame({ userId: user.id, key: KEY, count });
+      expect(res.ok, `count=${JSON.stringify(count)} 应当被拒`).toBe(false);
       if (!res.ok) expect(res.code).toBe(400);
     }
     expect(await balanceOf(user.id)).toBeCloseTo(1000, 4);
     expect(await holdingOf(user.id)).toBeNull();
+  });
+
+  it('★ 越界是按**框自己的单位**判的：13 对按天的合法、对按月的非法', async () => {
+    withAsset(KEY);
+    withAsset(MONTHLY_KEY);
+    const user = await makeFishUser(10000);
+
+    // 同一个 13，两款框给出相反的结果 —— 单位若由调用方传（或两处各判一次），
+    // 这里就会出现「按月的框被按天的区间放行」
+    const day = await rentFrame({ userId: user.id, key: KEY, count: 13 });
+    expect(day.ok).toBe(true);
+
+    const night = await rentFrame({ userId: user.id, key: MONTHLY_KEY, count: 13 });
+    expect(night.ok).toBe(false);
+    if (!night.ok) expect(night.code).toBe(400);
+
+    await expectLedgerConsistent('月框越界被拒');
   });
 
   it('墓碑行（被站长收回过）不参与续期 —— 从**现在**起算重新复活', async () => {
@@ -423,7 +488,7 @@ describe('拒绝的几种情形（一律不扣钱）', () => {
     await revokeFrame({ userId: user.id, key: KEY });
 
     const before = nowForDb();
-    const res = await rentFrame({ userId: user.id, key: KEY, days: 2 });
+    const res = await rentFrame({ userId: user.id, key: KEY, count: 2 });
     expect(res.ok).toBe(true);
 
     const row = await holdingOf(user.id);

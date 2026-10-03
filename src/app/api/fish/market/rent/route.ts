@@ -1,6 +1,7 @@
 import { getCurrentUser, isCurrentlyBanned } from '@/lib/auth';
 import { apiOk, apiErr, ymdhms } from '@/lib/format';
 import { rentFrame } from '@/lib/frame-shop-service';
+import { RENT_UNITS } from '@/lib/frame-refs';
 import { BANNED_MESSAGE } from '../_auth';
 
 // node:crypto / prisma 需 Node 运行时（非 Edge）。
@@ -8,7 +9,10 @@ export const runtime = 'nodejs';
 
 // POST /api/fish/market/rent — 用鱼干租一款头像框。
 //
-// body: { frame_key: string, days: number }
+// body: { frame_key: string, count: number }
+//   `count` 是「几个计价单位」—— 单位由**框自己**决定（鱼干蓝按天、星落月畔按月），
+//   调用方不传也不该传（传了就有「传了月、框是按天的」这种错配）。见 frame-refs
+//   的 RENT_UNITS 与 frame-shop-service.rentFrame。
 //
 // 【它为什么**不**走 requireMarketActor】本命名空间里其余每一条都走那道三道门
 //（会话 / 只读凭据 / 请求体里的 username+password）。这一条只认会话，是刻意的：
@@ -45,15 +49,16 @@ export async function POST(req: Request) {
     const res = await rentFrame({
       userId: user.id,
       key: body.frame_key,
-      days: body.days,
+      count: body.count,
     });
     if (!res.ok) return apiErr(res.code, res.message);
 
     return apiOk({
-      message: `已租用「${res.label}」${res.days} 天，花费 ${res.cost} 条小鱼干`,
+      message: `已租用「${res.label}」${res.count} ${RENT_UNITS[res.unit].noun}，花费 ${res.cost} 条小鱼干`,
       frame_key: res.key,
       label: res.label,
-      days: res.days,
+      count: res.count,
+      unit: res.unit,
       cost: res.cost,
       balance: res.balance,
       // 到期时刻给两种形状：机器读 ISO，人读 UTC+8 口径的展示串。

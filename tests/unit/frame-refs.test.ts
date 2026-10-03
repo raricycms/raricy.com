@@ -9,8 +9,8 @@
 //     这里再钉一遍是为了让「加了 key 却把 FRAMES 写成别的形状」也能红。
 //  3. **retired 的语义**（下架≠删除）是「用户还能卸下它」这条能力的唯一保障。
 //
-// 【为什么可以改 FRAMES】本文件测的是**真实代码路径**，而白名单里目前只有一个
-// 在架的 key —— 不临时改一条出来，retired 分支就测不到（未测的分支等于没有）。
+// 【为什么可以改 FRAMES】本文件测的是**真实代码路径**，而白名单里没价的那几款
+// 不临时改一条出来，retired 与「按天 / 按月」两个分支就测不到（未测的分支等于没有）。
 // FRAMES 是可变的普通对象，afterEach 会还原。用例串行执行（同文件内），不并行泄漏。
 
 import { describe, it, expect, afterEach } from 'vitest';
@@ -24,6 +24,7 @@ import {
   frameUrl,
   isFrameExpired,
   parseFrameKey,
+  parseRentCount,
   rentableFrameKeys,
   resolveFrameKey,
 } from '@/lib/frame-refs';
@@ -179,17 +180,22 @@ describe('resolveFrameKey', () => {
 
 // ── 商城在架清单与定价 ─────────────────────────────────────────────────────
 
-describe('rentableFrameKeys / frameRentCost', () => {
-  /** 造一款「在售」的框：DEMO 本来没价，给它配一个。 */
+describe('rentableFrameKeys / frameRentCost / parseRentCount', () => {
+  /** 造一款「在售」的框：DEMO 本来没价，给它配一个（默认按天）。 */
   const withPrice = (price: unknown) => {
-    FRAMES[DEMO] = { ...PRISTINE[DEMO], rentPerDay: price as number };
+    FRAMES[DEMO] = { ...PRISTINE[DEMO], rent: { unit: 'day', price: price as number } };
   };
-  const priced = FRAME_KEYS.find((k) => (FRAMES[k].rentPerDay ?? 0) > 0);
+  const priced = FRAME_KEYS.find((k) => (FRAMES[k].rent?.price ?? 0) > 0);
 
-  it('配了正数价才在架 —— 出厂那款在，DEMO 不在', () => {
+  it('配了正数价才在架 —— 出厂那两款在，DEMO 不在', () => {
     expect(priced, '白名单里一款在售的都没有，这条用例失去意义').toBeDefined();
     expect(rentableFrameKeys()).toContain(priced);
     expect(rentableFrameKeys()).not.toContain(DEMO);
+  });
+
+  it('★ 两种计价单位并存（鱼干蓝按天、星落月畔按月）', () => {
+    const units = rentableFrameKeys().map((k) => FRAMES[k].rent!.unit);
+    expect(new Set(units)).toEqual(new Set(['day', 'month']));
   });
 
   it('★ 退役 = 同时下架（两件事同一个开关，不会出现「已下架却还能买」）', () => {
@@ -212,13 +218,33 @@ describe('rentableFrameKeys / frameRentCost', () => {
     }
   });
 
-  it('价 × 天数；天数越界 / 未知 key 一律 null', () => {
+  it('价 × 单位数；越界 / 未知 key 一律 null', () => {
     withPrice(2.5);
     expect(frameRentCost(DEMO, 4)).toBeCloseTo(10, 10);
-    expect(frameRentCost(DEMO, 0)).toBeNull(); // 0 天
-    expect(frameRentCost(DEMO, 31)).toBeNull(); // 超上限（常量 FRAME_RENT_MAX_DAYS）
+    expect(frameRentCost(DEMO, 0)).toBeNull(); // 下限以下（RENT_UNITS.day.min）
+    expect(frameRentCost(DEMO, 31)).toBeNull(); // 超上限（RENT_UNITS.day.max）
     expect(frameRentCost(DEMO, 1.5)).toBeNull(); // 非整数
     expect(frameRentCost('no-such-frame', 1)).toBeNull();
+  });
+
+  it('★ 上下限按**单位**分：按月的框走 1–12，不是天的 1–30', () => {
+    FRAMES[DEMO] = { ...PRISTINE[DEMO], rent: { unit: 'month', price: 50 } };
+    expect(frameRentCost(DEMO, 1)).toBe(50);
+    expect(frameRentCost(DEMO, 12)).toBe(600);
+    expect(frameRentCost(DEMO, 13)).toBeNull(); // 月的上限是 12
+    expect(frameRentCost(DEMO, 30)).toBeNull(); // 30 是天档的上限，对月档非法
+    expect(frameRentCost(DEMO, 0)).toBeNull();
+  });
+
+  it('parseRentCount：按单位判区间，形状纪律与旧的 parseRentDays 相同', () => {
+    // 同一个 13：按天放行（上限 30）、按月拒绝（上限 12）—— 这正是「单位不能由
+    // 调用方传」的那条纪律在词汇层的投影
+    expect(parseRentCount('day', 13)).toBe(13);
+    expect(parseRentCount('month', 13)).toBeNull();
+    expect(parseRentCount('day', '2')).toBe(2); // 表单交上来就是字符串
+    for (const raw of ['1e2', '', 'abc', null, undefined, {}, [], 1.5, -1, 0]) {
+      expect(parseRentCount('day', raw), `day ${JSON.stringify(raw)}`).toBeNull();
+    }
   });
 });
 

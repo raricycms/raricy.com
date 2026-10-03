@@ -3,9 +3,11 @@
 // · server-only
 //
 // 第一版头像框只有「站长发放」一条路（`npm run cli -- frame grant`）。
-// 这里是第二条：用户自己花鱼干租，`1 鱼干 / 天`，自选 1–30 天。
-// 价格与「哪些框在售」住 `frame-refs.ts`（**零依赖**，客户端也要读），
-// 本文件只管**钱的这一侧**：校验、限频、算到期、扣鱼干、发框。
+// 这里是第二条：用户自己花鱼干租。**两款两种计价单位** —— 鱼干蓝 1 鱼干 / 天
+// （1–30 天）、星落月畔 50 鱼干 / 月（1–12 个月）；单位与上下限住 `frame-refs.ts`
+// 的 `RENT_UNITS`（一个月固定 30 天）。价格与「哪些框在售」也住那边
+//（**零依赖**，客户端也要读），本文件只管**钱的这一侧**：校验、限频、算到期、
+// 扣鱼干、发框。
 //
 // ═══════════════════════════════════════════════════════════════════════════════
 // 三条必须记住的
@@ -61,15 +63,16 @@ import { rateLimit, RULES } from './rate-limit';
 import { frameAssetAvailable, grantFrameTx } from './frame-service';
 import {
   FRAMES,
-  FRAME_RENT_MAX_DAYS,
-  FRAME_RENT_MIN_DAYS,
+  RENT_UNITS,
   frameLabel,
   frameRentCost,
+  frameSaleOf,
   parseFrameKey,
-  parseRentDays,
+  parseRentCount,
   rentableFrameKeys,
   resolveFrameKey,
   type FrameKey,
+  type RentUnit,
 } from './frame-refs';
 
 /**
@@ -92,8 +95,13 @@ export interface ShopItem {
   key: FrameKey;
   label: string;
   description: string;
-  /** 鱼干 / 天。 */
-  rentPerDay: number;
+  /**
+   * 计价单位 + 单价（`价格 鱼干 / unit`）。
+   *
+   * ⚠️ 上下限与量词**不在这里** —— 面板拿 `RENT_UNITS[unit]` 现读（那是零依赖的
+   * 同一份表，服务端校验读的也是它）。DTO 里再抄一份，改上限时两边就会分叉。
+   */
+  rent: { unit: RentUnit; price: number };
   /**
    * 盘上没有素材 —— 商城照常陈列，但**买不了**（见文件头「素材缺失 → 拒卖」）。
    * 站长补上图之后这个值自己变 false，什么都不用重启。
@@ -140,12 +148,15 @@ export async function listShopItems(userId: string): Promise<ShopItem[]> {
   return keys.map((key) => {
     const def = FRAMES[key];
     const row = byKey.get(key);
+    // `frameSaleOf` 是「能不能卖」的唯一出口，而列表本来就来自 `rentableFrameKeys()`
+    // —— 所以这里恒有值。走同一个出口而不是直接读 `def.rent`：将来在售判据多加一条
+    // （比如限时上架）时，这里跟着变，不会出现「列出来了却算不出价」。
+    const sale = frameSaleOf(key)!;
     return {
       key,
       label: def.label,
       description: def.description,
-      // 有价才进得了这个列表（rentableFrameKeys 的判据），所以这里恒有值
-      rentPerDay: def.rentPerDay ?? 0,
+      rent: sale,
       assetMissing: !frameAssetAvailable(key),
       holding: row
         ? {
@@ -170,8 +181,10 @@ export type RentOutcome =
       ok: true;
       key: FrameKey;
       label: string;
-      days: number;
-      /** 花了多少鱼干（= 天数 × 单价，整数）。 */
+      /** 租了几个单位（天 / 月）—— 与下面的 `unit` 合起来才是「租了多久」。 */
+      count: number;
+      unit: RentUnit;
+      /** 花了多少鱼干（= 单位数 × 单价，整数）。 */
       cost: number;
       /** 租完之后的余额（鱼干）。 */
       balance: number;
@@ -181,16 +194,19 @@ export type RentOutcome =
   | { ok: false; code: 400 | 409 | 429; message: string };
 
 /**
- * 租一款框 `days` 天。
+ * 租一款框 `count` 个「该款的计价单位」（天 / 月）。
  *
- * 顺序：解析 key → 解析天数 → 素材在不在 → 限频 → **一个事务**（算到期 + 扣鱼干 + 发框）。
+ * 顺序：解析 key → 解析数量 → 素材在不在 → 限频 → **一个事务**（算到期 + 扣鱼干 + 发框）。
  * 前四步都不写库，所以任何一条没过都不会动余额（「刷不存在的框不该烧掉自己的额度」
  * 与转账同款）。
+ *
+ * ⚠️ **单位由框自己决定，不由调用方传** —— `count` 一律按 `FRAMES[key].rent.unit`
+ *    去判区间。让调用方传单位的话，「传了月、框是按天的」会静默按月的区间放行。
  */
 export async function rentFrame(input: {
   userId: string;
   key: unknown;
-  days: unknown;
+  count: unknown;
 }): Promise<RentOutcome> {
   const { userId } = input;
 
@@ -199,18 +215,24 @@ export async function rentFrame(input: {
     return { ok: false, code: 400, message: `未知的头像框：${String(input.key)}` };
   }
   const def = FRAMES[key];
-  // 有 key 但没价 / 已退役 —— 这两件事对用户是同一句话：这款不在卖
-  if (def.rentPerDay === undefined || def.retired) {
+  // 没配价 / 已退役 —— 对用户是同一句话：这款不在卖。
+  // ⚠️ 这里**刻意不平移到 `frameSaleOf`**：那个出口（商城在架清单用的）把「非正数」
+  //    也并进「不卖」，而接口对「站长把价配成 0」要说得更具体 —— 走到下面的
+  //    `cost === null` 那条，回「租金配置有误」。两种写法在页面上看不出差别，
+  //    但运维排查时「不在卖」与「配错了」是两句不同的话。
+  if (def.rent === undefined || def.retired) {
     return { ok: false, code: 400, message: `「${frameLabel(key) ?? key}」不在出售中` };
   }
+  const { unit } = def.rent;
 
-  const days = parseRentDays(input.days);
-  if (days === null) {
-    // 文案里的区间直接从常量来 —— 写死数字的话，改上限时这句话会漂
+  const count = parseRentCount(unit, input.count);
+  if (count === null) {
+    // 文案里的区间与量词都从单位表现取 —— 写死数字的话，改上限时这句话会漂
+    const { min, max, noun } = RENT_UNITS[unit];
     return {
       ok: false,
       code: 400,
-      message: `天数必须是 ${FRAME_RENT_MIN_DAYS}~${FRAME_RENT_MAX_DAYS} 之间的整数`,
+      message: `租期必须是 ${min}~${max} ${noun}之间的整数`,
     };
   }
 
@@ -224,11 +246,11 @@ export async function rentFrame(input: {
     return { ok: false, code: 429, message: '租得太频繁了，请稍后再试' };
   }
 
-  // 单价 × 天数。frameRentCost 与商城面板读的是**同一个函数**，所以不存在
+  // 单价 × 单位数。frameRentCost 与商城面板读的是**同一个函数**，所以不存在
   // 「页面显示 1 鱼干、服务端扣 2 条」这种两边各算一次才会有的偏差。
-  const cost = frameRentCost(key, days);
+  const cost = frameRentCost(key, count);
   if (cost === null) {
-    // 上面两条已经判过 key 与 days，走到这里只可能是数据脏（价格非法）
+    // 上面两条已经判过 key 与 count，走到这里只可能是数据脏（价格非法）
     return { ok: false, code: 400, message: '这款头像框的租金配置有误，请联系站长' };
   }
 
@@ -263,14 +285,16 @@ export async function rentFrame(input: {
       //（否则买来的天数全花在已经过去的日子上，等于白买）。
       const base = alive && row ? row.expiresAt : null;
       const start = base && base.getTime() > now.getTime() ? base : now;
-      const next = new Date(start.getTime() + days * DAY_MS);
+      // 一个单位几天由单位表给（月 = 30 天）—— **别在这里写死 30**：那样改口径时
+      // 页面上的「2 个月」与实际的 60 天会分叉，而两边各自的代码看着都对。
+      const next = new Date(start.getTime() + count * RENT_UNITS[unit].days * DAY_MS);
 
       // ── 2. 扣鱼干（余额不足在这里抛，整个事务回滚）────────────────────────
       await postEntry(tx, {
         userId,
         units: -units,
         type: FRAME_RENT_TYPE,
-        description: `租用「${label}」${days} 天`,
+        description: `租用「${label}」${count} ${RENT_UNITS[unit].noun}`,
         referenceType: 'frame',
         referenceId: key,
       });
@@ -299,7 +323,8 @@ export async function rentFrame(input: {
         ok: true as const,
         key,
         label,
-        days,
+        count,
+        unit,
         cost,
         balance: unitsToFish(after?.driedFish ?? 0),
         // 用 grantFrameTx **回读的**到期时刻，而不是我们算的那个局部变量 ——

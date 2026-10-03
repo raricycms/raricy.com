@@ -21,6 +21,7 @@ import { userSource } from '../sources';
 import {
   FRAMES,
   FRAME_KEYS,
+  RENT_UNITS,
   parseFrameKey,
   frameLabel,
   type FrameKey,
@@ -351,8 +352,9 @@ export const frameCommands: CommandSpec[] = [
           asset: r.available ? '有' : '缺失',
           alpha: r.available ? (r.hasAlpha === true ? '有' : r.hasAlpha === false ? '无' : '?') : '—',
           bytes: r.bytes === null ? '—' : String(r.bytes),
-          // 鱼干商城的租金（鱼干/天）。`—` = 不零售，只能由站长发放。
-          rent: r.rentPerDay === null ? '—' : `${r.rentPerDay} 鱼干/天`,
+          // 鱼干商城的租金（单位 + 单价，口径文案来自 RENT_UNITS —— 与商城面板同一份）。
+          // `—` = 不零售，只能由站长发放。
+          rent: r.rent === null ? '—' : `${r.rent.price} ${RENT_UNITS[r.rent.unit].priceNoun}`,
           rentMisconfigured: r.rentMisconfigured,
         }));
         const bad = rows.filter((r) => r.asset === '缺失' || r.alpha === '无');

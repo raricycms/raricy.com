@@ -41,7 +41,7 @@ import { __resetFrameAssetCacheForTests } from '@/lib/frame-service';
 /** 唯一在售的框（价格与在架清单都从源码取）。 */
 const KEY = 'fishblue';
 /** 一款不零售的框 —— 站长发放的那种。 */
-const NOT_FOR_SALE = FRAME_KEYS.find((k) => FRAMES[k].rentPerDay === undefined)!;
+const NOT_FOR_SALE = FRAME_KEYS.find((k) => FRAMES[k].rent === undefined)!;
 /** 无状态凭据那条路要用的真密码（见「拿正确的凭据来也不行」那条用例）。 */
 const PASSWORD = 'correct-horse-battery';
 
@@ -96,7 +96,7 @@ beforeEach(async () => {
 
 describe('鉴权：只认会话', () => {
   it('没登录 → 401', async () => {
-    const res = await rent({ frame_key: KEY, days: 1 });
+    const res = await rent({ frame_key: KEY, count: 1 });
     expect(res.status).toBe(401);
   });
 
@@ -108,7 +108,7 @@ describe('鉴权：只认会话', () => {
       username: 'rich',
       passwordHash: await hashPassword(PASSWORD),
     });
-    const res = await rent({ username: 'rich', password: PASSWORD, frame_key: KEY, days: 1 });
+    const res = await rent({ username: 'rich', password: PASSWORD, frame_key: KEY, count: 1 });
     expect(res.status).toBe(401);
     // 顺带确认它真的什么都没干（余额没动、框没建）
     expect(await balanceOf(user.id)).toBeCloseTo(10, 4);
@@ -125,7 +125,7 @@ describe('鉴权：只认会话', () => {
     await prisma.user.update({ where: { id: user.id }, data: { isBanned: true, banUntil: null } });
     await login(user.id);
 
-    const res = await rent({ frame_key: KEY, days: 1 });
+    const res = await rent({ frame_key: KEY, count: 1 });
     expect(res.status).toBe(403);
     await expectLedgerConsistent('禁言用户下单被拒');
   });
@@ -137,9 +137,9 @@ describe('入参校验', () => {
     const user = await makeFishUser(10);
     await login(user.id);
 
-    for (const days of [0, 31, 1.5, 'abc', null]) {
-      const res = await rent({ frame_key: KEY, days });
-      expect(res.status, `days=${JSON.stringify(days)}`).toBe(400);
+    for (const count of [0, 31, 1.5, 'abc', null]) {
+      const res = await rent({ frame_key: KEY, count });
+      expect(res.status, `count=${JSON.stringify(count)}`).toBe(400);
     }
   });
 
@@ -149,8 +149,8 @@ describe('入参校验', () => {
     const user = await makeFishUser(10);
     await login(user.id);
 
-    expect((await rent({ frame_key: 'nope', days: 1 })).status).toBe(400);
-    expect((await rent({ frame_key: NOT_FOR_SALE, days: 1 })).status).toBe(400);
+    expect((await rent({ frame_key: 'nope', count: 1 })).status).toBe(400);
+    expect((await rent({ frame_key: NOT_FOR_SALE, count: 1 })).status).toBe(400);
   });
 
   it('请求体不是对象 → 400', async () => {
@@ -175,14 +175,16 @@ describe('成功与业务失败', () => {
     const user = await makeFishUser(10);
     await login(user.id);
 
-    const res = await rent({ frame_key: KEY, days: 2 });
+    const res = await rent({ frame_key: KEY, count: 2 });
     expect(res.status).toBe(200);
     const body = await json(res);
 
     expect(body.code).toBe(200);
     expect(body.frame_key).toBe(KEY);
-    expect(body.days).toBe(2);
-    expect(body.cost).toBe(2 * FRAMES[KEY].rentPerDay!);
+    expect(body.count).toBe(2);
+    expect(body.cost).toBe(2 * FRAMES[KEY].rent!.price);
+    // 单位跟着框走，不由请求方指定（星落月畔按月、鱼干蓝按天）
+    expect(body.unit).toBe(FRAMES[KEY].rent!.unit);
     expect(body.balance).toBeCloseTo(8, 4);
     // 机器读 ISO、人读展示串 —— 两者都指向同一刻
     expect(String(body.expires_at)).toMatch(/^\d{4}-\d{2}-\d{2}T/);
@@ -197,7 +199,7 @@ describe('成功与业务失败', () => {
     const user = await makeFishUser(1);
     await login(user.id);
 
-    const res = await rent({ frame_key: KEY, days: 5 });
+    const res = await rent({ frame_key: KEY, count: 5 });
     expect(res.status).toBe(400);
     expect(String((await json(res)).message)).toContain('小鱼干不足');
 
@@ -216,7 +218,7 @@ describe('成功与业务失败', () => {
     const user = await makeFishUser(10);
     await login(user.id);
 
-    const res = await rent({ frame_key: KEY, days: 1 });
+    const res = await rent({ frame_key: KEY, count: 1 });
     expect(res.status).toBe(409);
     await expectLedgerConsistent('素材缺失被拒');
   });
