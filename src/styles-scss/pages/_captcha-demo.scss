@@ -1,0 +1,298 @@
+@use '../abstracts/variables' as *;
+@use '../abstracts/mixins' as m;
+
+// ============================================================
+// 滑块人机验证演示页（/captcha-demo）
+//
+// ⚠️ 变量名一律取自 base/_root.scss 的既有清单 —— 本仓库踩过 6 次
+//    「变量不存在 ⇒ 整条声明静默失效」（见 CLAUDE.md「前端样式」）。
+//    写新的 var(--x) 之前先去那份清单里确认它存在。
+// ============================================================
+
+.captcha-demo-page {
+  @include m.container-padding;
+  display: flex;
+  justify-content: center;
+  padding-top: var(--fd-space-8);
+  padding-bottom: var(--fd-space-8);
+}
+
+.cdm {
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--fd-space-4);
+}
+
+.cdm__head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fd-space-2);
+}
+
+.cdm__title {
+  margin: 0;
+  font-size: var(--fd-text-base);
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.cdm__sub {
+  margin: 0;
+  font-size: var(--fd-text-sm);
+  line-height: 1.6;
+  color: var(--color-text-secondary);
+}
+
+// ---- 画布 ----
+
+.cdm__stage {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--color-background-subtle);
+  // 高度由背景图撑开；给个下限免得出题前塌成一条线
+  min-height: 180px;
+  box-shadow: var(--shadow-card-brand);
+}
+
+.cdm__bg {
+  display: block;
+  width: 100%;
+  height: auto;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.cdm__piece {
+  position: absolute;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+  // 拖动时要跟手，不能有过渡 —— 加了 transition 会让人看到「延迟」
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.45));
+}
+
+.cdm__placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 180px;
+  font-size: var(--fd-text-sm);
+  color: var(--color-text-tertiary);
+}
+
+// ---- 滑轨 ----
+//
+// 宽度由内联样式给（= maxOffset），这样手柄左边缘与拼图块左边缘是同一个坐标 ——
+// 「手柄拖到哪、块就在哪」，不需要再换算一次。
+
+.cdm__rail {
+  position: relative;
+  height: 44px;
+  margin-top: var(--fd-space-1);
+  border-radius: 999px;
+  background: var(--color-background-subtle);
+  border: 1px solid var(--color-border);
+}
+
+.cdm__rail-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 999px;
+  background: var(--color-accent-blue-soft);
+}
+
+.cdm__handle {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--color-brand-primary);
+  color: #fff;
+  cursor: grab;
+  touch-action: none; // 触屏上必须：否则横向拖动会被当成页面滚动
+  box-shadow: var(--shadow-card-brand);
+
+  &:active {
+    cursor: grabbing;
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: var(--shadow-focus-brand);
+  }
+}
+
+.cdm__handle--locked {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.cdm__handle-arrow {
+  font-size: 18px;
+  line-height: 1;
+}
+
+// ---- 按钮 ----
+
+.cdm__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--fd-space-2);
+}
+
+.cdm__btn {
+  @include m.btn-secondary;
+  font-size: var(--fd-text-sm);
+}
+
+.cdm__btn--ghost {
+  background: transparent;
+}
+
+// ---- 结果面板 ----
+
+.cdm__result {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fd-space-2);
+  padding: var(--fd-space-4);
+  border-radius: 12px;
+  background: var(--color-background-card);
+  border: 1px solid var(--color-border);
+  border-left-width: 4px;
+}
+
+.cdm__result--human {
+  border-left-color: var(--color-success-primary);
+}
+
+.cdm__result--suspect {
+  border-left-color: var(--color-accent-amber);
+}
+
+.cdm__result--bot {
+  border-left-color: var(--fd-danger);
+}
+
+.cdm__verdict {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--fd-space-2);
+}
+
+.cdm__verdict-pass {
+  font-size: var(--fd-text-base);
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.cdm__band {
+  font-size: var(--fd-text-sm);
+  font-weight: 600;
+}
+
+.cdm__band--human {
+  color: var(--color-success-primary);
+}
+
+.cdm__band--suspect {
+  color: var(--color-accent-amber);
+}
+
+.cdm__band--bot {
+  color: var(--fd-danger);
+}
+
+.cdm__line {
+  margin: 0;
+  font-size: var(--fd-text-sm);
+  line-height: 1.6;
+  color: var(--color-text-secondary);
+}
+
+.cdm__line--ok {
+  color: var(--color-success-primary);
+}
+
+.cdm__flags {
+  list-style: none;
+  margin: var(--fd-space-1) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--fd-space-1);
+}
+
+.cdm__flag {
+  display: flex;
+  align-items: baseline;
+  gap: var(--fd-space-2);
+  font-size: var(--fd-text-xs);
+  color: var(--color-text-secondary);
+}
+
+.cdm__flag-w {
+  flex: none;
+  min-width: 30px;
+  font-weight: 700;
+  color: var(--fd-danger);
+}
+
+.cdm__flag-label {
+  flex: none;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.cdm__flag-detail {
+  color: var(--color-text-tertiary);
+}
+
+.cdm__signals {
+  margin-top: var(--fd-space-1);
+  font-size: var(--fd-text-xs);
+
+  summary {
+    cursor: pointer;
+    color: var(--color-text-secondary);
+  }
+
+  dl {
+    margin: var(--fd-space-2) 0 0;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 4px var(--fd-space-3);
+  }
+}
+
+.cdm__signal {
+  display: contents;
+
+  dt {
+    color: var(--color-text-tertiary);
+  }
+
+  dd {
+    margin: 0;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text-secondary);
+  }
+}
+
+.cdm__error {
+  margin: 0;
+  font-size: var(--fd-text-sm);
+  color: var(--fd-danger);
+}
