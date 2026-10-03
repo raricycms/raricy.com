@@ -68,7 +68,7 @@ export async function POST(req: Request) {
   if (typeof x !== 'number' || !Number.isFinite(x)) return apiErr(400, 'x 必须是有限数');
 
   // 取走即作废。用户不匹配 / 不存在 / 过期一律同一句话 —— 区分等于告诉他猜的 id 在不在
-  const challenge = takeChallenge(id, user.id);
+  const challenge = takeChallenge(id, user.id, 'slider');
   if (!challenge) return apiErr(400, '挑战不存在或已过期');
 
   const dx = Math.abs(x - challenge.answerX);

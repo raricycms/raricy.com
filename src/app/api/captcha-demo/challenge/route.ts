@@ -2,7 +2,7 @@ import { getCurrentUser } from '@/lib/auth';
 import { apiOk, apiErr } from '@/lib/format';
 import { randomUUID } from 'node:crypto';
 import { buildPuzzle, CANVAS_W, CANVAS_H, PIECE_SIZE } from '@/lib/captcha-demo/puzzle-image';
-import { putChallenge } from '@/lib/captcha-demo/store';
+import { putChallenge, type SliderChallenge } from '@/lib/captcha-demo/store';
 
 // POST /api/captcha-demo/challenge — 出一题（背景 + 拼图块 + 一个挑战 id）。
 //
@@ -23,7 +23,8 @@ export async function POST() {
   const puzzle = await buildPuzzle();
 
   const id = randomUUID();
-  putChallenge({
+  putChallenge<SliderChallenge>({
+    kind: 'slider',
     id,
     // 绑用户：否则 A 解出来的答案可以喂给 B 的挑战
     userId: user.id,

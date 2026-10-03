@@ -306,3 +306,108 @@
   font-size: var(--fd-text-sm);
   color: var(--fd-danger);
 }
+
+// ---- 两个题型之间的切换 ----
+
+.cdm__nav {
+  display: flex;
+  gap: var(--fd-space-3);
+  font-size: var(--fd-text-sm);
+
+  a {
+    color: var(--color-brand-primary);
+    text-decoration: none;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+}
+
+.cdm__nav-current {
+  color: var(--color-text-tertiary);
+  font-weight: 600;
+}
+
+// ---- 点选：题目行 ----
+
+.cdm__prompt {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--fd-space-2);
+  font-size: var(--fd-text-sm);
+  color: var(--color-text-secondary);
+}
+
+.cdm__prompt-label {
+  color: var(--color-text-tertiary);
+}
+
+.cdm__prompt-char {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--color-background-subtle);
+  border: 1px solid var(--color-border);
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.cdm__prompt-progress {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-tertiary);
+}
+
+// ---- 点选：画布 ----
+//
+// 高度由内联的 aspect-ratio 定，所以要把 .cdm__stage 的 min-height 顶掉 ——
+// 否则窄屏上图片被拉长，点击坐标换算（按 rect 比例）虽然仍正确，观感却很怪。
+
+.cdm__stage--click {
+  min-height: 0;
+  cursor: crosshair;
+  // 触屏上按住拖动会触发滚动/缩放，点不准
+  touch-action: none;
+
+  .cdm__bg {
+    width: 100%;
+    height: 100%;
+    object-fit: fill;
+  }
+}
+
+.cdm__mark {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--color-brand-primary);
+  color: #fff;
+  font-size: var(--fd-text-xs);
+  font-weight: 700;
+  pointer-events: none;
+  box-shadow: var(--shadow-card-brand);
+}
+
+// 公布答案时的容差圈：默认红（点错），命中变绿
+.cdm__target {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border: 2px solid var(--fd-danger);
+  pointer-events: none;
+}
+
+.cdm__target--ok {
+  border-color: var(--color-success-primary);
+}

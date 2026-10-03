@@ -196,6 +196,10 @@ export default function SliderDemo() {
   return (
     <div className="cdm">
       <header className="cdm__head">
+        <nav className="cdm__nav">
+          <span className="cdm__nav-current">滑块</span>
+          <a href="/captcha-demo/click">点选</a>
+        </nav>
         <h1 className="cdm__title">滑块人机验证 · 演示</h1>
         <p className="cdm__sub">
           拖动拼图块补上缺口。<strong>位置</strong>与<strong>行为</strong>是两道独立的门 ——

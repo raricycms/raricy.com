@@ -129,9 +129,10 @@ export const SCORE_SUSPECT = 40;
 /** 采样点数上限：再多也拒（附带 DoS 防护，见 sanitizeTrace）。 */
 export const MAX_SAMPLES = 5000;
 
-// ── 统计小工具 ──────────────────────────────────────────────────────────────
+// ── 统计小工具（导出给 click-trace.ts 复用 —— 两个题型的统计口径必须一致，
+//    否则「滑块更难还是点选更难」的对比会因为实现差异而失真） ────────────────────
 
-function mean(xs: number[]): number {
+export function mean(xs: number[]): number {
   if (xs.length === 0) return 0;
   let s = 0;
   for (const x of xs) s += x;
@@ -139,7 +140,7 @@ function mean(xs: number[]): number {
 }
 
 /** 总体标准差。 */
-function stdDev(xs: number[]): number {
+export function stdDev(xs: number[]): number {
   if (xs.length === 0) return 0;
   const m = mean(xs);
   let s = 0;
@@ -147,7 +148,7 @@ function stdDev(xs: number[]): number {
   return Math.sqrt(s / xs.length);
 }
 
-function median(xs: number[]): number {
+export function median(xs: number[]): number {
   if (xs.length === 0) return 0;
   const s = [...xs].sort((a, b) => a - b);
   const mid = s.length >> 1;
