@@ -213,6 +213,12 @@ export const DOC_ENTRIES: readonly DocEntry[] = [
   },
   {
     group: 'bot',
+    slug: 'bot/trade-bot',
+    title: '练手盘机器人接入说明',
+    summary: '行情 / 开仓 / 平仓；成交价现取、结算公式、下单限频与两个静默陷阱。',
+  },
+  {
+    group: 'bot',
     slug: 'bot/favorite-bot',
     title: '收藏夹接口（读公开收藏夹 · 站内写入）',
     summary: '按 6 位 ID 读公开收藏夹；站内写入的接口与所有者限定。',
