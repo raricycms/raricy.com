@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import fs from 'node:fs';
 import path from 'node:path';
-import { marked } from 'marked';
+import { renderDocMarkdown } from '@/lib/docs-service';
 import { ArrowLeft } from 'lucide-react';
 
 // Markdown 指南页面的共享外壳：从 docs/guide/ 读取仓库内可信文档，服务端渲染为
@@ -27,7 +27,9 @@ export function loadGuideHtml(docFileName: string): string {
   try {
     const guidePath = path.join(process.cwd(), 'docs', 'guide', docFileName);
     const content = fs.readFileSync(guidePath, 'utf-8');
-    return marked.parse(content, { async: false }) as string;
+    // 与 `/docs/<slug>` 走**同一条**渲染管线 —— 反引号文档路径同样变成链接、
+    // 段号同样能跳。两边渲染的是同一批 Markdown，行为分叉就是漂（见本文件头）。
+    return renderDocMarkdown(content, `guide/${docFileName.replace(/\.md$/, '')}`);
   } catch {
     return '<p>指南文档暂时无法加载。</p>';
   }

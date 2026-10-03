@@ -90,3 +90,39 @@ test('页脚的「文档」入口通向索引页', async ({ page }) => {
   await page.waitForURL('**/docs');
   await expect(page.locator('.docs-hero__title')).toHaveText('文档');
 });
+
+test('反引号文档路径渲染成站内链接，且段号锚点点得进去', async ({ page }) => {
+  // 本仓文档互指写的是反引号路径（`` `docs/architecture.md` §6.3 ``，见 docs/README.md
+  // 「互指怎么写」），渲染层负责把它们变成链接 —— 作者一个字不用改。
+  await page.goto(docHref('deploy'));
+
+  const link = page.locator('.docs-content a[href^="/docs/architecture#sec-"]').first();
+  await expect(link).toBeVisible();
+  await expect(link.locator('code')).toHaveText('docs/architecture.md');
+
+  await link.click();
+  await page.waitForURL(/\/docs\/architecture#sec-/);
+  await expect(page.locator('.docs-content h1')).toHaveText('项目架构');
+
+  // 锚点的**闭环**：href 里的 `#sec-…` 与目标页标题上的 `id="sec-…"` 是两处算出来的，
+  // 漂开的表现是点了落在文档顶部 —— 不报错，也没人会当 bug 报。
+  const hash = new URL(page.url()).hash;
+  expect(hash).toMatch(/^#sec-/);
+  // ⚠️ 用属性选择器而不是 `#sec-6.6`：段号里的 `.` 在 CSS 里是**类分隔符**，
+  // `#sec-6.6` 会被读成「id=sec-6 且 class=6」。浏览器按字面匹配 fragment 没这个问题，
+  // 只有选择器要绕开。
+  const id = decodeURIComponent(hash.slice(1));
+  await expect(page.locator(`[id="${id}"]`)).toHaveCount(1);
+});
+
+test('★ 指南页与 /docs 共用一条渲染管线：正文在，引用同样成链', async ({ page }) => {
+  // /audio/guide 由 `MarkdownGuide.loadGuideHtml` 渲染 —— 与 `/docs/<slug>` 共用
+  // `renderDocMarkdown`。它的兜底是「指南文档暂时无法加载。」且**照样返回 200**，
+  // 所以这里必须断言正文真的在，光看状态码是看不出来的。
+  await page.goto('/audio/guide');
+  await expect(page.locator('.guide__content h1')).toHaveText('音频床使用指南');
+  await expect(page.locator('.guide__content')).not.toContainText('指南文档暂时无法加载');
+
+  // docs/guide/音频床使用指南.md 里写着 `docs/bot/audio-bot.md`
+  await expect(page.locator('.guide__content a[href="/docs/bot/audio-bot"]')).toHaveCount(1);
+});

@@ -23,10 +23,13 @@ import path from 'node:path';
 import {
   DOC_ENTRIES,
   DOC_GROUPS,
+  docAnchor,
   docHref,
   findDocEntry,
   repoFileUrl,
+  resolveDocRef,
   rewriteDocHref,
+  sectionKeyOf,
 } from '@/lib/docs-catalog';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
@@ -182,5 +185,67 @@ describe('URL 与取件口', () => {
     }
     // 越出仓库根：不猜，原样返回
     expect(rewriteDocHref('architecture', '../../../etc/passwd')).toBe('../../../etc/passwd');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// resolveDocRef —— 反引号路径 → 站内条目
+//
+// 判据与守卫 `docs-xref.test.ts` 的 `candidates()` **同一优先级**：兄弟优先，
+// 再回退仓库根。两者必须一致 —— 守卫管「这个引用指得到」，它管「点下去去哪」。
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('resolveDocRef：反引号路径的解析', () => {
+  const slugOf = (from: string, raw: string) => resolveDocRef(from, raw)?.slug ?? null;
+
+  it('根相对写法（最多的一种）', () => {
+    expect(slugOf('bot/trade-bot', 'docs/architecture.md')).toBe('architecture');
+    expect(slugOf('deploy', 'docs/bot/fish-bot.md')).toBe('bot/fish-bot');
+  });
+
+  it('兄弟裸名 —— 按引用所在目录解析', () => {
+    expect(slugOf('cli', 'deploy.md')).toBe('deploy');
+    expect(slugOf('bot/trade-bot', 'fish-bot.md')).toBe('bot/fish-bot');
+    expect(slugOf('guide/图床使用指南', '表情包使用指南.md')).toBe('guide/表情包使用指南');
+  });
+
+  it('`docs/README.md` 的索引表里那种 `guide/xxx.md`', () => {
+    expect(slugOf('README', 'guide/图床使用指南.md')).toBe('guide/图床使用指南');
+    expect(slugOf('README', 'bot/chat-bot.md')).toBe('bot/chat-bot');
+  });
+
+  it('解析到仓库根、而非 docs/ 下的那个同名文件时，不链', () => {
+    // `../README.md` 从 docs/ 下出发 = 仓库根的 README，它**没有**站内页
+    // （登记表里的 `README` 是 `docs/README.md`，是另一份文件）。
+    expect(slugOf('deploy', '../README.md')).toBe(null);
+    expect(slugOf('bot/trade-bot', '../CLAUDE.md')).toBe(null);
+  });
+
+  it('非文档、未登记、越界的一律 null', () => {
+    expect(slugOf('architecture', 'src/lib/rate-limit.ts')).toBe(null); // 源码，不是文档引用
+    expect(slugOf('architecture', 'docs/不存在的文档.md')).toBe(null);
+    expect(slugOf('architecture', '/etc/passwd.md')).toBe(null);
+    expect(slugOf('architecture', 'https://example.com/a.md')).toBe(null);
+    expect(slugOf('architecture', '随便什么字')).toBe(null);
+  });
+
+  it('同目录与根下同名时按兄弟解析（那种歧义由 docs-xref 守卫全仓禁止）', () => {
+    // 从 `docs/README.md` 出发的裸 `README.md` 落在同目录 —— 与守卫的兄弟优先一致。
+    // 语料里不该出现这种写法（守卫会报「歧义」），这里钉的是**优先级**本身。
+    expect(slugOf('README', 'README.md')).toBe('README');
+  });
+});
+
+describe('段号词汇：sectionKeyOf 与 docAnchor', () => {
+  it('认数字段与中文段，中文段只取到顿号', () => {
+    expect(sectionKeyOf('6.3 CSRF 中间件')).toBe('6.3');
+    expect(sectionKeyOf('五、命令清单')).toBe('五、');
+    expect(sectionKeyOf('6.40 干扰项')).toBe('6.40'); // 不该被读成 6.4
+    expect(sectionKeyOf('没有编号的标题')).toBe(null);
+  });
+
+  it('锚点从段号派生，标题改名不会漂', () => {
+    expect(docAnchor('6.3')).toBe('sec-6.3');
+    expect(docAnchor('五、')).toBe('sec-五、');
   });
 });

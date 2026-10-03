@@ -38,7 +38,7 @@ export const DOC_GROUPS = [
   {
     key: 'bot',
     title: '给机器人开发者',
-    description: '站外机器人接入的接口契约。十三份都自包含 —— 不读本站源码也能对接。',
+    description: '站外机器人接入的接口契约。十四份都自包含 —— 不读本站源码也能对接。',
   },
   {
     key: 'dev',
@@ -291,6 +291,40 @@ export function docHref(slug: string): string {
   return '/docs/' + slug.split('/').map(encodeURIComponent).join('/');
 }
 
+/**
+ * 标题或引用里的**段号** —— `6.4` / `五、命令清单`，认不出返回 null。
+ *
+ * 编号必须紧贴标题（`6.4 CSRF 中间件`），所以 `6.4` 不会误配 `6.40`：`\d+` 贪婪吃到
+ * `6.40` 后要求紧跟 `[.\s、]`，命中的是空格而非行尾。
+ *
+ * **本函数是段号词汇的唯一实现**：渲染层（`docs-service.ts` 给标题加 id）与守卫
+ *（`tests/unit/docs-xref.test.ts` 校验引用指向的节真的存在）都 import 它。
+ * 曾经两边各写一份等价正则 —— 那种「两份会漂的真相源」一旦漂开，
+ * 症状是**链接点了落在文档顶部**，一声不响。
+ */
+export function sectionKeyOf(text: string): string | null {
+  return (
+    /^(\d+(?:\.\d+)*)[.\s、]/.exec(text)?.[1] ??
+    /^([一-龥]+、)/.exec(text)?.[1] ??
+    null
+  );
+}
+
+/**
+ * 段号 → 标题的 `id`。
+ *
+ * 刻意用 `sec-` 前缀而不是 GitHub 那套 slug：段号是**已经存在**的键
+ *（`sectionKeyOf` 认得它、守卫校验它），base 从它派生就不必再实现一套 slugify。
+ * 也因此**别**指望 `docs/x.md#6.3` 这种 GitHub 风格锚点在站内也成立。
+ *
+ * ⚠️ 数字段带点（`sec-6.3`），**写 CSS / querySelector 时要转义**：
+ * `#sec-6.3` 会被读成「id=sec-6 且 class=3」。浏览器按字面匹配 URL fragment，
+ * 不受影响 —— 踩的只会是选择器（`[id="sec-6.3"]` 最省事）。
+ */
+export function docAnchor(sectionKey: string): string {
+  return `sec-${sectionKey}`;
+}
+
 /** 仓库内文件的 GitHub 地址（`docs/bot/chat-bot.md` → 仓库里那一份）。 */
 export function repoFileUrl(repoPath: string): string {
   return `${REPO_BLOB}/${repoPath}`;
@@ -376,6 +410,43 @@ export function rewriteDocHref(fromSlug: string, href: string): string {
     if (BY_SLUG.has(slug)) return docHref(slug) + tail;
   }
   return `${REPO_BLOB}/${repoPath}${tail}`;
+}
+
+/**
+ * 文档正文里写的一个**反引号路径**（`` `docs/architecture.md` ``）→ 站内条目 + 地址。
+ * 认不出来（不是文档、越出 `docs/`、没登记）返回 null。
+ *
+ * 【为什么需要它】本仓规范要求文档互指**写成反引号路径**（见 `docs/README.md`
+ * 「互指怎么写」），于是它们在页面上是 `<code>` 死文本，点不动。渲染层
+ *（`docs-service.ts`）拿本函数把它们变成链接 —— 写法因此不用改。
+ *
+ * 【解析规则】与守卫 `tests/unit/docs-xref.test.ts` 的 `candidates()` **同一优先级**：
+ * 先按引用所在目录解析（兄弟优先），再回退到仓库根。
+ * 两者必须一致 —— 守卫校验「这个引用指得到」，本函数决定「点下去去哪」，
+ * 不一致就是「校验通过但点错地方」。
+ *
+ * 【两处刻意的不对称】
+ *   · 本函数**不读 fs**，判据是登记表成员资格。守卫用 fs 存在性。二者在 `docs/` 下
+ *     等价 —— `docs-catalog.test.ts` 强制「磁盘上每份 .md 都已登记」，两边不会分叉。
+ *   · 只认 `.md`：`src/lib/rate-limit.ts` 这类源码路径**不是**文档引用，
+ *     别顺手把它们也链了（真 Markdown 链接里的源码路径另有 `rewriteDocHref` 管）。
+ */
+export function resolveDocRef(
+  fromSlug: string,
+  rawPath: string
+): { slug: string; href: string } | null {
+  const raw = rawPath.trim();
+  if (!raw || raw.startsWith('/') || raw.includes('://') || !raw.endsWith('.md')) return null;
+
+  // 引用所在目录 —— 与 fromSlug 同一坐标系（`bot/trade-bot` → `docs/bot/`）
+  const dir = fromSlug.includes('/') ? fromSlug.slice(0, fromSlug.lastIndexOf('/')) : '';
+  for (const candidate of [`docs/${dir}/${raw}`, raw]) {
+    const repoPath = normalizeRepoPath(candidate);
+    if (!repoPath || !repoPath.startsWith('docs/')) continue;
+    const slug = repoPath.slice('docs/'.length).replace(/\.md$/, '');
+    if (BY_SLUG.has(slug)) return { slug, href: docHref(slug) };
+  }
+  return null;
 }
 
 /** 解析 `a/b/../c` 这类相对路径（相对仓库根）。越出根返回 null。 */

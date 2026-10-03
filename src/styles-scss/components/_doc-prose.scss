@@ -132,6 +132,23 @@
     color: var(--color-brand-primary);
   }
 
+  /* 反引号文档路径被渲染层链上之后是 `<a><code>`（见 `docs-service.ts` 的
+     `linkifyDocRefs`）。⚠️ 这条规则**必须**有：上面那条 `.#{$cls} code` 同样命中
+     链接里的 `<code>`，块级 `code` 那支会照吃琥珀色 `--color-star-primary`，
+     于是链接与旁边的普通代码**长得一模一样** —— 功能做完了，读者看不出它能点。
+     （`a > code` 特异度 0-1-2，压得过 `code` 那支的 0-1-1，与书写顺序无关。）
+     加下划线是这一处的例外：全站链接只靠颜色区分，而代码块自带底色，
+     单改颜色会被读成「另一种代码」而不是「能点」。 */
+  .#{$cls} a > code {
+    color: var(--color-brand-primary);
+    text-decoration: underline;
+    text-underline-offset: 0.15em;
+  }
+
+  .#{$cls} a:hover > code {
+    text-decoration-thickness: 2px;
+  }
+
   .#{$cls} hr {
     border: none;
     border-top: 1px solid var(--color-border);

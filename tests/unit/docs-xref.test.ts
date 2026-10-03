@@ -42,6 +42,7 @@ import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { sectionKeyOf } from '@/lib/docs-catalog';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const DOCS_DIR = path.join(ROOT, 'docs');
@@ -132,9 +133,9 @@ function indexOf(file: string): Heading[] {
       const m = /^#{1,6}\s+(.+?)\s*$/.exec(line);
       if (!m) continue;
       const text = m[1];
-      // 编号紧贴标题（`6.4 CSRF 中间件` / `五、命令清单`），所以 `6.4` 不会误配 `6.40`
-      const key = /^(\d+(?:\.\d+)*)[.\s、]/.exec(text)?.[1] ?? /^([一-龥]+、)/.exec(text)?.[1] ?? null;
-      idx.push({ key, text });
+      // 段号认出多少，**渲染层就给哪些标题加 id** —— 两处必须是同一个 `sectionKeyOf`，
+      // 各写一份等价正则的话，漂开的表现是「引用校验通过、链接却落不到那一节」。
+      idx.push({ key: sectionKeyOf(text), text });
     }
   }
   FILE_INDEX.set(file, idx);
