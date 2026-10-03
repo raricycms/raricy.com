@@ -1,8 +1,14 @@
-// GET  /api/admin/users?page=&search=&perPage= — 用户列表（管理员）
-// POST /api/admin/users                        — 站长建号（仅站长）
-import { getCurrentUser, hasAdminRights, isOwner } from '@/lib/auth';
-import { listUsers, adminCreateUser } from '@/lib/admin-user-service';
-import { apiOk, apiErr } from '@/lib/format';
+// GET /api/admin/users?page=&search=&perPage= — 用户列表（管理员）
+//
+// 【只有列表了：网页建号入口已删除】这里曾有一条 `POST /api/admin/users`（站长凭空
+// 建一个 core 号）。它是**全站唯一一条绕过公开注册两道门**（人机验证 + 邀请码）的
+// 路径，而且**只要网页 owner 权限就用得动** —— 一个 owner 拿它批量造小号，等于绕开
+// 了「注册必须过 Turnstile」这道闸（也绕开了邀请码这道 core 的入口闸）。
+// 需要手动开号时走运维 CLI 的 `user create`：那要 shell 权限，是另一个信任边界，
+// 网页侧的 owner 够不着。**别再把它加回来。**
+import { getCurrentUser, hasAdminRights } from '@/lib/auth';
+import { listUsers } from '@/lib/admin-user-service';
+import { apiErr } from '@/lib/format';
 
 export async function GET(req: Request) {
   const user = await getCurrentUser();
@@ -28,35 +34,4 @@ export async function GET(req: Request) {
       has_next: result.hasNext,
     },
   });
-}
-
-// POST /api/admin/users — 站长建号 { username, email?, password, reason? }
-//
-// 跳过人机验证与邀请码，直接建成 core（见 adminCreateUser 的注释：生产机到 Cloudflare
-// 的出口不通，Turnstile 服务端校验不可用，于是改成站长手动开号）。
-//
-// 这里只做**粗筛**：权限的真边界在 service（adminCreateUser 内部会再判一次 isOwner），
-// 因为网页与运维 CLI 共用那个函数。角色不接受入参 —— 硬编码 core。
-export async function POST(req: Request) {
-  const user = await getCurrentUser();
-  if (!isOwner(user)) return apiErr(403, '没有站长权限');
-
-  const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-  if (!body) return apiErr(400, '请求体格式错误');
-
-  const str = (v: unknown) => (typeof v === 'string' ? v : null);
-
-  const res = await adminCreateUser({
-    actor: user!,
-    username: str(body.username) ?? '',
-    email: str(body.email),
-    password: str(body.password) ?? '',
-    reason: str(body.reason),
-  });
-
-  if (!res.ok) return apiErr(res.code, res.message);
-  return apiOk(
-    { user: res.user, email: res.email, emailSynthesized: res.emailSynthesized },
-    res.message
-  );
 }

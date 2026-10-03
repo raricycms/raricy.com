@@ -4,7 +4,6 @@ import { getCurrentUser, hasAdminRights, isOwner } from '@/lib/auth';
 import { listUsers } from '@/lib/admin-user-service';
 import Avatar from '@/app/components/Avatar';
 import AdminUserActions from '@/app/components/AdminUserActions';
-import AdminUserCreate from '@/app/components/AdminUserCreate';
 
 export const dynamic = 'force-dynamic';
 
@@ -77,9 +76,6 @@ export default async function AdminUsersPage({
       </section>
 
       <div className="admin-container">
-        {/* 建号入口仅站长可见：核心用户进得来这一页（只读版），但点了必然是 403 */}
-        {owner && <AdminUserCreate />}
-
         <div className="management-card">
           <div className="d-flex justify-content-between align-items-center mb-4">
             <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 600 }}>用户列表</h2>
