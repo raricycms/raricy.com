@@ -94,7 +94,7 @@
 | `/fish/pay` | page | **收银台**：站外商户把用户送来付款（`?to= &amount= &note= &from= &return=`）。参数一律不可信，只做展示；付款必须**已登录 + 再输一次密码**（step-up），密码只输在本站域名下。不入索引 |
 | `/fish/collect` | page | **扫码收款页**：`?to=<用户名>`，扫「鱼干收款码」落到这里。与收银台的区别是**金额由付款人自己填**（静态码不可能带金额）。前端是 `/fish/pay` 的**同一个组件**（`src/app/fish/PayForm.tsx`）的另一个变体，step-up 与幂等键完全共用 |
 | `/fish/api` · `/api/fish/tokens/*` | page + API | **机器人接入自助页**：签发 / 吊销只读凭据（`GET`/`POST /api/fish/tokens`、`DELETE /api/fish/tokens/[id]`）。**只认会话**、签发要 step-up、只能动自己的。只读凭据的鉴权门在 `src/app/api/fish/market/_auth.ts`（第三道门，`allowReadToken` 默认关）；签发/校验/吊销在 `src/lib/fish-token-service.ts` |
-| `/fish/trade` · `/fish/trade/stats` · `/api/fish/trade/*` | page + API | **鱼干练手盘**：投入鱼干买入一个绑定真实加密价格的仓位（**core+**，签到之外第二条赚取渠道）。`POST buy`（客户端幂等键）/ `POST sell` / `GET quote`（展示行情）/ `GET candles`（图上那段 K 线，**只喂展示**）。档位**与专注模式**在两个页面与四个接口**六处各判一次**，禁言只有 `buy` 判。**只走 https**：这六条路径还压在 `src/middleware.ts` 的协议闸下（回环地址豁免，见 §6.4）。`/fish/trade/stats` 是**只读的个人统计页**（总览 + 按标的 / 杠杆拆解 + 持仓快照），**没有接口**：server component 直连服务层，全部数据来自 `market_positions` 既有列，不需要迁移。见 §6.13 |
+| `/fish/trade` · `/fish/trade/stats` · `/api/fish/trade/*` | page + API | **鱼干练手盘**：投入鱼干买入一个绑定真实加密价格的仓位（**core+**，签到之外第二条赚取渠道）。`POST buy`（客户端幂等键）/ `POST sell` / `GET quote`（展示行情）/ `GET candles`（图上那段 K 线，**只喂展示**）。档位**与专注模式**在两个页面与四个接口**六处各判一次**，禁言只有 `buy` 判。**只走 https**：这六条路径还压在 `src/middleware.ts` 的协议闸下（回环地址豁免，见 §6.4）。`/fish/trade/stats` 是**只读的个人统计页**（总览 + 按标的 / 杠杆拆解 + 持仓快照），**没有接口**：server component 直连服务层，全部数据来自 `market_positions` 既有列，不需要迁移。`/fish/trade` 下方另有一块**最近结清**（`listSettledPositions`，逐笔列出平仓 / 爆仓 —— 补上「实发为 0 不写流水」留下的缺口，同样只读仓位表）。见 §6.13 |
 | `/api/poster/profile/[id]` · `/api/poster/collect` | API | **画报 / 收款码出图**（PNG，仅本人）。渲染管线与四条约束见 §6.8 |
 | `/notifications` · `/api/notifications/*` | page + API | 通知中心。其中 `GET count` 是顶栏指示器的**兜底快照**（**不能删**：SSE 有「连着但收不到」的半死状态），`GET stream` 是**实时流**（SSE，未登录 401；首帧全量快照 + 之后增量补丁）。推送点纪律与依赖方向见 `src/lib/topbar-bus.ts` 头部 |
 | `/vote` · `/vote/[id]` | page | 投票 |
@@ -139,7 +139,7 @@
 | 故事 | `story-service.ts` |
 | 画报 / 收款码 | `poster.ts`（纯 SVG 构造，含二维码与转义）· `poster-render.ts`（取数 + 头像 + sharp 光栅化），见 §6.8 |
 | 小鱼干 | `fish-service.ts`（**记账内核 `postEntry`** + 读路径，见 §6.3）· `fish-idempotency.ts`（哪些操作才登记幂等 —— 判据在文件头）· `fish-admin.ts` · `fish-market-service.ts`（用户间转账，见 §6.3）· `fish-compensate.ts`（`fish compensate` 群发补偿，只发 core+，见 `docs/cli.md` 与文件头）· `fish-units.ts`（单位换算；`Blog.fishCount` 是**例外**，见文件头）· `fish-webhook-service.ts`（收款回调 outbox，见 §6.3） |
-| 练手盘 | `market-service.ts`（开平仓：**一个事务、没有补偿**；开仓的幂等靠 `open_key` 唯一约束而非独立幂等记录）· `market-math.ts`（**结算公式的唯一实现**，零依赖 —— 服务端真结算与页面「预计到手」是同一个 `settleClose`）· `market-candles.ts`（K 线词汇表：周期白名单 / 根数上限 / 线上形状 / 缓存键，**零依赖**，服务端与客户端共用）· `market-chart.ts`（K 线图的纯计算：窗口 / 聚合 / 刻度 / 映射 / 实时并线 —— 零依赖外加 `db-time` 的一个常量）· `market-price.ts`（行情源与展示缓存，见 §6.13）· `market-stream.ts` + `market-poll-drainer.ts`（喂展示的两个后台循环）· `market-stats.ts`（统计的**纯聚合**：终态白名单 / 拆解表分桶 / 持仓浮动盈亏 —— 白名单由调用方传进来，这样单元用例不必拉 Prisma）· `market-stats-service.ts`（统计的读路径：**盈亏只能来自 `market_positions`，别改成从账本求和**，理由见文件头） |
+| 练手盘 | `market-service.ts`（开平仓：**一个事务、没有补偿**；开仓的幂等靠 `open_key` 唯一约束而非独立幂等记录；读口 `listOpenPositions` / `listSettledPositions`（最近结清，只读仓位表的终态行））· `market-math.ts`（**结算公式的唯一实现**，零依赖 —— 服务端真结算与页面「预计到手」是同一个 `settleClose`）· `market-candles.ts`（K 线词汇表：周期白名单 / 根数上限 / 线上形状 / 缓存键，**零依赖**，服务端与客户端共用）· `market-chart.ts`（K 线图的纯计算：窗口 / 聚合 / 刻度 / 映射 / 实时并线 —— 零依赖外加 `db-time` 的一个常量）· `market-price.ts`（行情源与展示缓存，见 §6.13）· `market-stream.ts` + `market-poll-drainer.ts`（喂展示的两个后台循环）· `market-stats.ts`（统计的**纯聚合**：终态白名单 / 拆解表分桶 / 持仓浮动盈亏 —— 白名单由调用方传进来，这样单元用例不必拉 Prisma）· `market-stats-service.ts`（统计的读路径：**盈亏只能来自 `market_positions`，别改成从账本求和**，理由见文件头） |
 | OAuth 2.0 | `oauth.ts`（见 `docs/oauth.md`） |
 | 管理域 | `admin-user-service.ts` · `admin-blog-service.ts` · `admin-category-service.ts` · `admin-comment-service.ts` · `admin-clipboard-service.ts` · `admin-vote-service.ts` · `admin-image-service.ts` · `admin-stats-service.ts` |
 | 工具 / 安全 | `short-id.ts` · `safe-url.ts` · `guard.ts` · `rate-limit.ts` · `turnstile.ts` · `https-guard.ts`（练手盘协议闸的判据：路径清单 / 明文判定 / 跳转目标 —— **零依赖**，Edge 中间件直接吃，见 §6.4） |
@@ -979,6 +979,13 @@ URL 请来抓」。（`robots.ts` 的**路径级**规则不需要动 —— `/ex
   - 「胜率」0 笔时是「—」而不是 0%（`0/0` 是 NaN，会在页面上印出「NaN%」）；
     **爆仓按 `status` 判**、不按「实发为 0」判（手动平一个跌穿爆仓价的仓实发同样是 0，
     走的是同一个 `max(0, …)`，只有 `status` 分得开）。
+- **「最近结清」（`/fish/trade` 下方那块）与统计页同源**：`listSettledPositions`
+  逐笔列出 `closed` / `liquidated` 的仓位（白名单 `SETTLED_STATUSES`、`closed_at` 倒序，
+  默认取 10 笔且**多取一条判「还有更多」**，被截断时页面如实说明）。它补的是一个具体的
+  缺口：结清之后那笔仓位从「我的持仓」里消失，而**流水页没有它的条目**（实发为 0 不写
+  流水，见上）—— 用户于是只能看到「仓位没了、账上什么都没留下」。
+  ⚠️ 同样是**只读 `market_positions`、绝不从账本求和**；`payout_units` 为 null 的异常行
+  照 null 展示（页面显示「—」），**别 `?? 0`** —— 那会让「缺一块」与「真的亏光」长得一样。
 - 自选列表在拉不到价时显示「行情暂不可用」并**禁掉买入**；缓存超龄时显示「数据可能
   不是最新的」。**绝不编一个价出来** —— 用户会照着一个假价格按下买入。
   K 线拉不到同样如实说（「K 线暂不可用」+ 重试钮），有上一次成功那份就继续画它。

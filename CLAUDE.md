@@ -235,6 +235,11 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 - **持仓浮动盈亏必须走 `settleClose`**（与卖出弹窗同口径，含平仓手续费），缺价显示
   「—」，且**只要有一行缺价，合计也显示「—」**。
 
+**「最近结清」（`/fish/trade` 下方那块）**：`listSettledPositions` 逐笔列 `closed` /
+`liquidated` 的仓位（白名单 `SETTLED_STATUSES`），补的是「结清后仓位无声消失、流水页
+又没有条目」那个缺口。同样是**只读 `market_positions`、绝不从账本求和**；
+`payout_units` 为 null 的异常行照 null 显示（页面「—」），**别 `?? 0`**。
+
 - **入口只能进 `/fish` 卡片的 `.fish-card__info`** —— 上面那条行动条被
   `tests/e2e/fish-layout.spec.ts` 钉死为「恰好 3 颗」，`.fish-card__link-label` 钉死为 2 个。
 - **加一个标的要改四处**：`MARKET_SYMBOLS`（`market-price.ts`，单一真相源）+
