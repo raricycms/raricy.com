@@ -225,6 +225,16 @@
   color: var(--color-success-primary);
 }
 
+.cdm__line--bad {
+  color: var(--fd-danger);
+  font-weight: 600;
+}
+
+.cdm__line--warn {
+  color: var(--color-accent-amber);
+  font-weight: 600;
+}
+
 .cdm__flags {
   list-style: none;
   margin: var(--fd-space-1) 0 0;

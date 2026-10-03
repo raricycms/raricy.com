@@ -60,7 +60,11 @@ export interface TraceSignals {
   reversals: number;
   maxVelocity: number;
   meanVelocity: number;
-  /** 最大单步位移 / 中位单步位移。远大于 1 = 瞬移。 */
+  /**
+   * 最大单步位移 / 中位单步位移。**仅供观察，不参与判定。**
+   * 它度量的是**采样节奏**而不是人手：真人快推、或浏览器把几帧合成一次事件，同样会大。
+   * 见本文件「关于『瞬移步』为什么不在下面」那一段。
+   */
   stepSpikeRatio: number;
   /** y 的标准差。趋 0 = 指针锁死在一条水平线上。 */
   yStdDev: number;
@@ -84,15 +88,35 @@ export interface TraceVerdict {
 
 // ── 阈值与权重（全是待调的估计值，见文件头） ────────────────────────────────
 
-const MIN_SAMPLES = 8;
-const FAST_MS = 200;
-const SLOW_MS = 30_000;
-const TIMER_CV = 0.15;
+// ── 关于「瞬移步」为什么不在下面 ────────────────────────────────────────────
+//
+// 这里曾有一条 `teleport`：最大单步位移 / 中位单步位移 > 8 就扣 20 分。
+// **已删除，别再按直觉加回来。**
+//
+// 删它的依据是实测：朴素脚本 spike=1.0、老练脚本 spike=3.8，**两个都没到 8** ——
+// 它对机器人的检出率是零。而真人拖动时，浏览器按固定频率（约 60–125Hz）采样
+// pointermove，一次快速推送就会让 max 远大于 median，所以它**专门抓真人**。
+// 站长的原话是「我自己试经常会出现瞬移步」—— 这就是典型的误杀。
+//
+// 教训不止于此：这个比值**度量的是采样节奏，不是人手**。「一次大步」既可能是脚本
+// set 到位，也可能是浏览器把几帧合成了一次事件 —— 两者在这里长得一模一样。
+// 想抓「一步到位」应该走**速度**（dx/dt）而不是位移比值，而且必须用真实录制的
+// 正样本校准过阈值再上。现在没有正样本，所以不设这条。
+
+const MIN_SAMPLES = 5;
+const FAST_MS = 120;
+const SLOW_MS = 60_000;
+/**
+ * dt 变异系数阈值。**别调高**：浏览器是按固定频率轮询指针的，真人的 dt 本来就相当
+ * 规整（60Hz ≈ 16.7ms）。帧率抖动大时人也能到 0.1 上下 —— 阈值 0.15 会误杀。
+ * 0.05 才是「几乎完全等距」那种定时器特征，且额外要求采样点够多（见 TIMER_MIN_SAMPLES）。
+ */
+const TIMER_CV = 0.05;
+const TIMER_MIN_SAMPLES = 20;
 const PERFECT_R2 = 0.9995;
-const TELEPORT_RATIO = 8;
 const FLAT_Y = 0.01;
-const INSTANT_RELEASE_MS = 5;
-const INSTANT_START_MS = 120;
+const INSTANT_RELEASE_MS = 2;
+const INSTANT_START_MS = 60;
 const PAUSE_DT_MS = 100;
 const LOW_PAUSE_RATIO = 0.02;
 
@@ -257,13 +281,12 @@ export function analyzeTrace(input: TraceInput): TraceVerdict {
     if (s.durationMs > SLOW_MS) {
       flag('tooSlow', '全程过慢', 10, `${(s.durationMs / 1000).toFixed(1)}s —— 可能是在慢慢试`);
     }
-    if (s.dtCv < TIMER_CV) {
-      flag('regularTimer', '采样间隔过于均匀', 20, `dt 变异系数 ${s.dtCv.toFixed(3)} —— 定时器式采样`);
-    }
-    if (s.stepSpikeRatio > TELEPORT_RATIO) {
-      flag('teleport', '存在瞬移步', 20, `最大步 / 中位步 = ${s.stepSpikeRatio.toFixed(1)}`);
+    if (s.dtCv < TIMER_CV && s.sampleCount >= TIMER_MIN_SAMPLES) {
+      flag('regularTimer', '采样间隔近乎等距', 25, `dt 变异系数 ${s.dtCv.toFixed(3)}（低于 ${TIMER_CV}）`);
     }
     if (s.yStdDev < FLAT_Y) {
+      // 桌面端用鼠标横向直拖，y 就是逐像素恒定的 —— 这条对真人不友好。现在不拦截
+      // （见 verify 路由的 BEHAVIOR_BLOCKS），但真要开拦截必须先把这条压下去或删掉。
       flag('flatY', '指针纵坐标零抖动', 8, `y 标准差 ${s.yStdDev.toFixed(4)}`);
     }
     if (s.startDelayMs < INSTANT_START_MS) {
@@ -278,7 +301,7 @@ export function analyzeTrace(input: TraceInput): TraceVerdict {
   }
 
   if (s.linearR2 > PERFECT_R2 && s.reversals === 0) {
-    flag('perfectLine', '轨迹是完美直线', 15, `R²=${s.linearR2.toFixed(5)} 且零反转`);
+    flag('perfectLine', '轨迹是完美直线', 20, `R²=${s.linearR2.toFixed(5)} 且零反转`);
   } else if (s.reversals === 0 && s.sampleCount >= MIN_SAMPLES) {
     // 单独看很弱（慢速的谨慎操作也常常零反转），所以权重低 —— 别上调
     flag('noReversal', '零方向反转', 6, '人类拖动通常有微小回抽');

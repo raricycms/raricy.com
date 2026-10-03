@@ -33,6 +33,12 @@ interface VerifyDto {
   dx: number;
   tolerance: number;
   verdict: TraceVerdict | null;
+  /** 轨迹终点与提交的 x 是否自洽。false = 这份轨迹是从别处录来重放的。 */
+  trajectoryConsistent?: boolean;
+  /** 行为判定当前是否参与拦截（服务端常量，默认 false）。 */
+  behaviorBlocks?: boolean;
+  /** 这一次是否会被行为判定拦下 —— 拦截关着时它只是观察值。 */
+  blockedByBehavior?: boolean;
   clusterSize: number;
   answerX?: number;
   traceError?: string;
@@ -60,7 +66,9 @@ const SIGNAL_ROWS: { key: keyof TraceVerdict['signals']; label: string; fmt: (v:
   { key: 'linearR2', label: '轨迹线性度 R²', fmt: (v) => v.toFixed(5) },
   { key: 'reversals', label: '方向反转次数', fmt: (v) => String(v) },
   { key: 'maxVelocity', label: '最大速度', fmt: (v) => `${v.toFixed(2)} px/ms` },
-  { key: 'stepSpikeRatio', label: '瞬移比（最大步/中位步）', fmt: (v) => v.toFixed(1) },
+  // 只展示不判定：真人快推时它同样会很大（度量的是采样节奏，不是人手）——
+  // 见 trace.ts「关于『瞬移步』为什么不在下面」
+  { key: 'stepSpikeRatio', label: '瞬移比（仅观察，不参与判定）', fmt: (v) => v.toFixed(1) },
   { key: 'yStdDev', label: '纵坐标抖动 σ', fmt: (v) => v.toFixed(4) },
   { key: 'pauseRatio', label: '停顿占比', fmt: (v) => v.toFixed(3) },
 ];
@@ -262,6 +270,17 @@ export default function SliderDemo() {
             位置：{result.positionOk ? '命中' : '未命中'}（偏差 {result.dx}px，容差 {result.tolerance}px
             {result.answerX !== undefined ? `，答案 x=${result.answerX}` : ''}）
           </p>
+          {result.trajectoryConsistent === false && (
+            <p className="cdm__line cdm__line--bad">
+              轨迹终点与落点对不上 —— 这份轨迹是从别的挑战录来重放的
+            </p>
+          )}
+          {result.blockedByBehavior && result.behaviorBlocks === false && (
+            <p className="cdm__line cdm__line--warn">
+              行为判为 bot —— 但按现行策略<strong>不拦截</strong>（只记录）。理由与翻牌开关见
+              verify/route.ts 的 BEHAVIOR_BLOCKS。
+            </p>
+          )}
           <p className="cdm__line">
             行为：{result.clusterSize > 1
               ? `这条轨迹的指纹已经出现过 ${result.clusterSize} 次 —— 有别的会话拖着一条几乎一样的轨迹`
