@@ -250,22 +250,30 @@ export function makeInstruction(
     return null;
   }
 
-  // drag：src 与 dst 各自必须「按属性唯一命中」，而且**两者颜色必须不同** ——
-  // 「把中等紫色球拖到最大紫色球上」这种题真人都容易搞混，属于自找误杀。
+  // drag：src 与 dst **各自都必须「按属性唯一命中」**。
+  //
+  // ⚠️ 这里曾经只校验了 dst —— 注释写着「两者都要唯一」，代码只做了一半。
+  //   后果不是「少考一道题」，是**误杀真人**：出成「把中等蓝色球拖到黄色圆柱上」
+  //   而场上有两个中等蓝色球时，`resolveDrag` 直接返回 null（无唯一解），
+  //   真人只能瞎猜，判卷却只认约定那一解。攻击模拟实测这类歧义题占 drag 的 5%，
+  //   而且**drag 的全部失败无一例外都落在它们上面**。
+  //   判卷严格 + 出题随意 = 制造冤案，这条对三个形态都成立。
   let tries = 0;
-  while (tries++ < 40) {
+  while (tries++ < 60) {
+    const src = pick(objects, rng);
+    if (objects.filter((o) => matches(o, src.size, src.color, src.kind)).length !== 1) continue;
     const dst = pick(objects, rng);
-    if (dst.id === answer.id) continue;
-    if (dst.color === answer.color && dst.kind === answer.kind) continue;
-    const dstHits = objects.filter((o) => matches(o, dst.size, dst.color, dst.kind));
-    if (dstHits.length !== 1) continue;
+    if (dst.id === src.id) continue;
+    // 两端同色同形时真人极易搞混（「把中等紫色球拖到最大紫色球上」），直接排除
+    if (dst.color === src.color && dst.kind === src.kind) continue;
+    if (objects.filter((o) => matches(o, dst.size, dst.color, dst.kind)).length !== 1) continue;
     return {
       instruction: {
         form: 'drag',
-        src: minimalDesc(objects, answer),
+        src: minimalDesc(objects, src),
         dst: minimalDesc(objects, dst),
       },
-      answer,
+      answer: src,
       drop: dst,
     };
   }
