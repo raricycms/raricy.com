@@ -30,10 +30,18 @@ async function setPrice(request: APIRequestContext, symbol: string, price: numbe
   expect(res.status(), `定价 ${symbol}=${price} 失败`).toBe(200);
 }
 
-/** 新号 + 签到翻牌拿鱼（e2e 里唯一不绕开业务的造鱼方式）。 */
+/**
+ * 新号 + 签到拿鱼（e2e 里唯一不绕开业务的造鱼方式）。
+ *
+ * 【为什么只有一次 POST】签到现在是**一步式**：`POST /api/checkin` 建当日记录 +
+ * 发 `CHECKIN_REWARD_FISH`（3）条鱼干 + 写流水，全在一个事务里（抽卡那套已在 2026-09
+ * 下线，`/api/checkin/claim` 这个端点不存在了）。钉住那个发鱼数，与
+ * `fish-trade.spec.ts` 的 `fundByCheckin` 同一口径 —— 它变了这两处一起红。
+ */
 async function fundByCheckin(page: Page) {
-  expect((await page.request.post('/api/checkin', { data: {} })).status()).toBe(200);
-  expect((await page.request.post('/api/checkin/claim', { data: { chosenIndex: 0 } })).status()).toBe(200);
+  const res = await page.request.post('/api/checkin', { data: {} });
+  expect(res.status(), await res.text()).toBe(200);
+  expect(Number((await res.json()).dried_fish), '签到固定发 3 条鱼干').toBe(3);
 }
 
 /** 走 UI 买一笔（投 1 条）：填金额 → 二次确认 → 等它真的回来。 */
