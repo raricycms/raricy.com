@@ -1199,3 +1199,130 @@
     cursor: not-allowed;
   }
 }
+
+// ── 最近结清 ────────────────────────────────────────────────────────────────
+//
+// 【它补的是哪个缺口】结清之后那笔仓位从上面的「我的持仓」里消失，而流水页**没有它的
+// 条目**（实发为 0 时不写流水，见 market-stats.ts 文件头）。这一块把 `market_positions`
+// 里的终态行**逐笔**列出来 —— 读的是仓位表，不是账本（同统计页那条口径）。
+//
+// 【为什么整幅宽（在三栏下面，不在右栏里）】一行要放标的 / 倍数 / 状态 / 投入 / 结清价 /
+// 时间 / 盈亏，塞进右栏那 300px 会折成一团。行内用 flex + wrap，窄屏自然折行。
+// 外观复用 .trade-card（30px 圆角 + 卡片色 + 窄屏降档），这里只补 margin 与行内排版。
+
+.trade-settled {
+  margin-top: $space-4;
+}
+
+.trade-settled__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: $space-3;
+  margin-bottom: $space-4;
+}
+
+.trade-settled__title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+/* 通往统计页（完整战绩）。概览块末尾给一条去处的链接，与副标题里那条同款。 */
+.trade-settled__more {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-brand-primary);
+  text-decoration: none;
+  white-space: nowrap;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.trade-settled__empty {
+  margin: 0;
+  padding: $space-6 $space-4;
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+  background: var(--color-background-subtle);
+  border-radius: $radius-large;
+}
+
+.trade-settled__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: $space-2;
+}
+
+.trade-settled__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: $space-1 $space-2;
+  padding: $space-3 $space-4;
+  background: var(--color-background-subtle);
+  border-radius: $radius-large;
+}
+
+.trade-settled__name {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+/* 倍数角标与持仓行那枚（.trade-position__lev）同款 —— 同一件事在两处长得一样。 */
+.trade-settled__lev {
+  padding: 1px 6px;
+  border-radius: $radius-small;
+  background: var(--color-warning-secondary);
+  color: var(--color-warning-primary);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+/* 状态徽标：卖出 = 中性，爆仓 = 红。**这是判决不是行情**，所以不用涨跌那一对色
+   （同持仓行的「已跌破爆仓价」）。 */
+.trade-settled__tag {
+  padding: 1px 8px;
+  border-radius: $radius-max;
+  background: var(--color-background-highlight);
+  color: var(--color-text-secondary);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.trade-settled__tag--liquidated {
+  background: var(--color-warning-secondary);
+  color: var(--color-warning-primary);
+}
+
+.trade-settled__meta {
+  font-size: 0.75rem;
+  color: var(--color-text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 盈亏靠颜色分涨跌（与持仓行同一对语义色），margin-left: auto 把它推到行尾。
+   基类至少要有一条声明 —— 光靠 @include trade-up-down 的话本块一条都没有，
+   Sass 不会为 .trade-settled__pnl 产出规则（css-tsx-classes 守卫会红）。 */
+.trade-settled__pnl {
+  margin-left: auto;
+  font-size: 0.95rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+
+  @include m.trade-up-down;
+}
+
+.trade-settled__note {
+  margin: $space-3 0 0;
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+}

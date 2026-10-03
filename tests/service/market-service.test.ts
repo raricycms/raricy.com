@@ -10,6 +10,7 @@
 //
 // 【DB】真实 SQLite（tests/.tmp/test-*），不 mock。
 
+import { randomUUID } from 'node:crypto';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { resetDb, makeUser, prisma } from '../helpers/db';
 import { expectLedgerConsistent, makeFishUser } from '../helpers/fish-ledger';
@@ -30,6 +31,7 @@ import {
   openPosition,
   closePosition,
   listOpenPositions,
+  listSettledPositions,
   MARKET_BUY_TYPE,
   MARKET_SELL_TYPE,
   MARKET_FEE_RATE,
@@ -595,5 +597,130 @@ describe('listOpenPositions', () => {
     const after = await listOpenPositions(user.id);
     expect(after).toHaveLength(1);
     expect(after[0].symbol).toBe('BTCUSDT');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('listSettledPositions（最近结清）', () => {
+  it('平掉的一笔进得来，盈亏与 closePosition 报的是同一个数', async () => {
+    const { userId, positionId } = await opened(100, 80000);
+    priceIs(88000);
+    const closed = await closePosition({ userId, positionId });
+    if (!closed.ok) throw new Error(`平仓失败: ${closed.message}`);
+
+    const list = await listSettledPositions(userId);
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({ id: positionId, symbol: 'BTCUSDT', status: 'closed', stake: 100 });
+    // 同源：两边都是 payout_units − stake_units
+    expect(list[0].payout).toBe(closed.payout);
+    expect(list[0].profit).toBeCloseTo(closed.profit, 10);
+    expect(list[0].exitPrice).toBe(88000);
+    expect(list[0].closedAt, '结清时刻要落下来（异常行才会是 null）').not.toBeNull();
+  });
+
+  it('还开着的仓位不进「最近结清」（那是「我的持仓」那一块的事）', async () => {
+    const { userId } = await opened(100, 80000);
+    expect(await listSettledPositions(userId)).toHaveLength(0);
+  });
+
+  it('★ 爆仓的仓位也在里面：按 status 判、亏光投入、结算价是那行存着的爆仓价', async () => {
+    const { userId, positionId } = await openedLeveraged(10);
+    // 现价跌破爆仓价 → 引擎结清（写 status=liquidated，结算价 = 爆仓价）
+    priceIs(LIQ_10X - 1);
+    expect(await sweepLiquidations()).toBe(1);
+
+    const list = await listSettledPositions(userId);
+    expect(list).toHaveLength(1);
+    expect(list[0].id).toBe(positionId);
+    expect(list[0].status).toBe('liquidated');
+    expect(list[0].payout).toBe(0);
+    expect(list[0].profit).toBeCloseTo(-100, 6); // 亏光投入
+    expect(list[0].exitPrice, '结算价是爆仓价，不是触发那一刻的现价').toBe(LIQ_10X);
+    await expectLedgerConsistent('强平之后跑一遍「最近结清」');
+  });
+
+  it('★ 实发为 0 的正常平仓也进得来（它同样不写流水 —— 所以不能从账本求和）', async () => {
+    const user = await makeUser({ driedFish: 10 });
+    priceIs(80000);
+    const o = await openPosition({ userId: user.id, symbolRaw: 'BTCUSDT', amount: 1 });
+    if (!o.ok) throw new Error(`开仓失败: ${o.message}`);
+    priceIs(8); // 跌 99.99% → floor 归零
+    const closed = await closePosition({ userId: user.id, positionId: o.position.id });
+    if (!closed.ok) throw new Error(`平仓失败: ${closed.message}`);
+    expect(closed.payout).toBe(0);
+
+    const list = await listSettledPositions(user.id);
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({ status: 'closed', payout: 0 });
+    expect(list[0].profit).toBeCloseTo(-1, 10);
+    // 账本里没有平仓那条（实发 0 = 没有钱动过）—— 这一行照样在列表里
+    expect(await txnsOf(user.id)).toHaveLength(1); // 只有开仓那条
+  });
+
+  it('最近的在前', async () => {
+    const user = await makeUser({ driedFish: 100 });
+    priceIs(80000);
+    const a = await openPosition({ userId: user.id, symbolRaw: 'BTCUSDT', amount: 10 });
+    if (!a.ok) throw new Error('开仓失败');
+    priceIs(80000);
+    await closePosition({ userId: user.id, positionId: a.position.id });
+
+    await new Promise((r) => setTimeout(r, 5));
+    priceIs(3000);
+    const b = await openPosition({ userId: user.id, symbolRaw: 'ETHUSDT', amount: 10 });
+    if (!b.ok) throw new Error('开仓失败');
+    priceIs(3000);
+    await closePosition({ userId: user.id, positionId: b.position.id });
+
+    const list = await listSettledPositions(user.id);
+    expect(list.map((r) => r.symbol)).toEqual(['ETHUSDT', 'BTCUSDT']); // 后结清的在前
+  });
+
+  it('只算自己的', async () => {
+    const { userId, positionId } = await opened(100, 80000);
+    priceIs(88000);
+    await closePosition({ userId, positionId });
+
+    const other = await makeUser({ driedFish: 100 });
+    priceIs(80000);
+    const o = await openPosition({ userId: other.id, symbolRaw: 'ETHUSDT', amount: 10 });
+    if (!o.ok) throw new Error('开仓失败');
+    priceIs(80000);
+    await closePosition({ userId: other.id, positionId: o.position.id });
+
+    const list = await listSettledPositions(userId);
+    expect(list).toHaveLength(1);
+    expect(list[0].symbol).toBe('BTCUSDT');
+  });
+
+  it('★ payout 缺失的异常行：payout / profit 都是 null，**不伪装成全亏**', async () => {
+    // `?? 0` 会让「数据缺一块」与「真的亏光」长得一模一样（同 market-stats 那条纪律）。
+    const user = await makeUser();
+    const id = randomUUID();
+    await prisma.marketPosition.create({
+      data: {
+        id,
+        userId: user.id,
+        symbol: 'BTCUSDT',
+        stakeUnits: 10000,
+        entryPrice: 80000,
+        entryQuoteAt: nowForDb(),
+        leverage: 1,
+        liquidationPrice: 0,
+        openKey: `test-${id}`,
+        status: 'closed',
+        exitPrice: 80000,
+        exitQuoteAt: nowForDb(),
+        payoutUnits: null,
+        closedAt: nowForDb(),
+        createdAt: nowForDb(),
+      },
+    });
+
+    const list = await listSettledPositions(user.id);
+    expect(list).toHaveLength(1);
+    expect(list[0].payout).toBeNull();
+    expect(list[0].profit).toBeNull();
   });
 });

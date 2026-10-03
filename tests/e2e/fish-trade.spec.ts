@@ -555,6 +555,36 @@ test('★ 彩票档：单独一行、选中即警告，确认屏把「硬币」�
   expect(all[0].amount, '扣的是投入，名义本金是算出来的').toBe(-1);
 });
 
+test('★ 结清之后留下一笔「最近结清」记录（否则那一笔只是无声消失）', async ({
+  page,
+  request,
+}) => {
+  // 结清之后仓位从「我的持仓」里消失，而流水页**没有它的条目**（实发为 0 时不写流水）。
+  // 这一条钉的是那一块补上了这个缺口，且**从仓位表推出来的数**与真到账一致。
+  await registerFreshUser(page, { core: true });
+  await fundByCheckin(page);
+  await setPrice(request, 'BTCUSDT', 80000);
+
+  await page.goto('/fish/trade');
+  // 还没交易过 → 空态（不是「零条记录」那种什么都不显示的沉默）
+  await expect(page.locator('.trade-settled__empty')).toBeVisible();
+  await expect(page.locator('.trade-settled__row')).toHaveCount(0);
+
+  await buyViaUI(page, '1');
+  // 平价卖出：到手 0.9998，亏的正好是手续费 0.0002
+  await sellViaUI(page);
+
+  const row = page.locator('.trade-settled__row').first();
+  await expect(row, '结清的那一笔要逐条列出来').toBeVisible();
+  await expect(row.locator('.trade-settled__tag')).toHaveText('卖出');
+  await expect(row).toContainText('BTC');
+  await expect(row).toContainText('投入 1.0000');
+  await expect(row).toContainText('结清价 80,000.00');
+  await expect(row, '盈亏 = 实发 − 投入（与真到账同一个数）').toContainText('-0.0002');
+  // 它已经从持仓里消失了 —— 这一块就是它留下的痕迹
+  await expect(page.locator('.trade-position')).toHaveCount(0);
+});
+
 test('★ 跌穿爆仓价：行上如实标出、卖出实得 0、且**不写第二条流水**', async ({
   page,
   request,

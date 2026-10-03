@@ -80,6 +80,9 @@ import { postEntry, InsufficientFishError } from './fish-service';
 import { FISH_DECIMALS, fishToUnits, unitsToFish } from './fish-units';
 // 结算公式与爆仓价（零依赖模块 —— 页面也 import 它，见那里的文件头）
 import { settleClose, liquidationPrice as liqPriceOf } from './market-math';
+// 「已结清」的**白名单**（closed | liquidated）住在 market-stats —— 那一列的名字只有
+// 一处权威，读口照它认。market-stats 只 import market-math，不成环。
+import { SETTLED_STATUSES, type SettledStatus } from './market-stats';
 // ⚠️ 这个 import 是**单向**的：market-liquidator 不 import 本文件（成环会当场炸在
 // 模块求值上）。它只提供「引擎是否活着」这一个判据，以及那个后台循环本身。
 import { isLiquidationRunning } from './market-liquidator';
@@ -333,6 +336,81 @@ export async function listOpenPositions(userId: string): Promise<PositionView[]>
     orderBy: { entryQuoteAt: 'desc' },
   });
   return rows.map(toPositionView);
+}
+
+/** 一笔**已结清**的仓位（用户向）—— 「最近结清」那一块的形状。金额是**业务鱼干**。 */
+export interface SettledPositionView {
+  id: string;
+  symbol: MarketSymbol;
+  /** 投入（业务鱼干）。 */
+  stake: number;
+  /**
+   * 结清时的成交价。**强平写的是那行上存着的爆仓价**，不是触发那一刻的现价
+   *（见 market-liquidator.ts 文件头）。`exit_price` 为空的老行退回开仓价（同平仓重放那条）。
+   */
+  exitPrice: number;
+  leverage: number;
+  /** 实发（业务鱼干）。**数据异常时为 null —— 别 `?? 0`**：那会让「缺一块」与「真的全亏」
+   *  长得一模一样（同 market-stats.ts 文件头那条纪律）。 */
+  payout: number | null;
+  /** 盈亏 = 实发 − 投入（业务鱼干，可能为负）。`payout` 为 null 时它也是 null。 */
+  profit: number | null;
+  /** `closed`（本人平）｜`liquidated`（被强平）。 */
+  status: SettledStatus;
+  /** 结清时刻。异常行为 null，页面显示「—」。 */
+  closedAt: Date | null;
+}
+
+/**
+ * 某用户**最近结清**的仓位（平仓 + 爆仓，最近的在前）—— /fish/trade 那一块的数据源。
+ *
+ * 【为什么另起一个读口，不复用 getMarketStats】统计那边把它们**折成几组数**；这里要的是
+ * **逐笔明细** —— 用户能看到「我那一笔怎么了」。爆仓 / 实发为 0 的平仓会从上方的「我的
+ * 持仓」里消失，而流水页**没有它们的条目**（没有钱动过就不写流水，见 market-stats.ts
+ * 文件头）。这一块补的就是那个缺口。
+ *
+ * 【来源是 `market_positions`，不是账本】盈亏 = `payout_units − stake_units`，与平仓那一刻、
+ * 与统计页是**同一个口径**。⚠️ **别改成从 `fish_transactions` 求和**（那是错的，不是
+ * 「另一种口径」）：强平不写流水、实发为 0 的正常平仓也不写流水 —— 按账本求和会让这两类
+ * 凭空消失，且**不报任何错**。理由的完整版在 market-stats.ts 与 market-stats-service.ts 头部。
+ *
+ * 【判「已结清」用白名单 SETTLED_STATUSES，不是 `status !== 'open'`】加第四个终态时，
+ * 后者会静默把它连同它 `payout_units` 可能为 null 的行一起算进来。
+ *
+ * 【take 是刻意的，且必须可见】这一块是**最近若干笔**的概览（要看总数去统计页）。
+ * 被截断时调用方据返回长度判断「还有更多」，页面上如实说明 —— 绝不静默截断成
+ * 「就这些」。
+ */
+export async function listSettledPositions(
+  userId: string,
+  limit = 10
+): Promise<SettledPositionView[]> {
+  const rows = await prisma.marketPosition.findMany({
+    where: { userId, status: { in: [...SETTLED_STATUSES] } },
+    select: {
+      id: true, symbol: true, stakeUnits: true,
+      entryPrice: true, exitPrice: true, leverage: true,
+      payoutUnits: true, status: true, closedAt: true,
+    },
+    // closedAt 为空的老行排最后（SQLite 的 NULL 在 DESC 下最后）—— 不让异常行顶掉真实记录
+    orderBy: { closedAt: 'desc' },
+    take: Math.max(1, limit),
+  });
+  return rows.map((p) => {
+    const payoutUnits = p.payoutUnits;
+    // 全程在存储单位上算，最后各换算一次（同 market-stats.ts：逐行先换再算会掉浮点渣）
+    return {
+      id: p.id,
+      symbol: p.symbol as MarketSymbol,
+      stake: unitsToFish(p.stakeUnits),
+      exitPrice: p.exitPrice ?? p.entryPrice,
+      leverage: p.leverage,
+      payout: payoutUnits == null ? null : unitsToFish(payoutUnits),
+      profit: payoutUnits == null ? null : unitsToFish(payoutUnits - p.stakeUnits),
+      status: p.status as SettledStatus,
+      closedAt: p.closedAt,
+    };
+  });
 }
 
 /**
