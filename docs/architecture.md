@@ -1071,14 +1071,20 @@ service 层的各 DTO（下发 frame_url / frameUrl 字符串）
 
 #### 鱼干商城：用鱼干租头像框
 
-`/fish/market` 的第二块（页面上的「鱼干商城」）。`fishblue` 按 **1 鱼干 / 天**
-出租，用户自选 1–30 天。**没有动表** —— `user_frames.source` 早有 `'purchase'`
-这个值，框的定义与定价都住 `frame-refs.ts`（零依赖，客户端要读）。
+`/fish/market` 的第二块（页面上的「鱼干商城」）。在售的框**各自带自己的计价
+单位**：`fishblue` 按 **1 鱼干 / 天**（自选 1–30 天）、`starmoon` 按
+**50 鱼干 / 月**（自选 1–12 个月，一个月固定 30 天）。**没有动表** ——
+`user_frames.source` 早有 `'purchase'` 这个值，框的定义、单位与定价都住
+`frame-refs.ts`（零依赖，客户端要读）。
 
-- **价格与在架清单住 `frame-refs.ts`**（`FrameDef.rentPerDay` / `rentableFrameKeys()`）——
-  商城面板是客户端组件，而 `frame-service` 拖着 prisma 进不了客户端包。
-  放一处，展示与校验**读同一个数**；两边各算一次的话症状是「页面显示 1 鱼干、
-  服务端扣 2 条」，而用户只会觉得账不对。
+- **价格、单位与在架清单住 `frame-refs.ts`**（`FrameDef.rent` / `RENT_UNITS` /
+  `rentableFrameKeys()`）—— 商城面板是客户端组件，而 `frame-service` 拖着 prisma
+  进不了客户端包。放一处，展示与校验**读同一个数**；两边各算一次的话症状是
+  「页面显示 1 鱼干、服务端扣 2 条」，而用户只会觉得账不对。
+  **单位不能由调用方传**（`POST rent` 的 body 只有 `frame_key` + `count`）：让调用方
+  传的话，「传了月、框是按天的」会静默按月的区间放行。
+  ⚠️ 月租**不摊成按天单价**：50 ÷ 30 除不尽，摊出来的价乘上多数天数都过不了
+  `fishToUnits` 的 4 位小数闸 —— 按月计价是**绕开那个闸**，不是审美选择。
 - ★ **原子性**：扣鱼干（`postEntry`）与发框（`grantFrameTx`）在**同一个事务**里。
   为此把授予的事务体抽成 `grantFrameTx(tx, input)`，`grantFrame` 退化成自开事务的
   薄壳。分开写的后果是「钱扣了、框没到」，两边各自的日志都正常。
@@ -1098,7 +1104,7 @@ service 层的各 DTO（下发 frame_url / frameUrl 字符串）
   而机器人租头像框没有真实需求。**默认关门**，将来真需要再加。
   禁言那一道照旧，文案与转账共用一条。
 - **到期仍然是懒判定**：租期到了只是 `resolveFrameKey` 判 null，**没有 cron、
-  没有清理任务**（同本节上文）。想续，用户自己再租一次 —— 天数叠加在现有到期之后。
+  没有清理任务**（同本节上文）。想续，用户自己再租一次 —— 租期叠加在现有到期之后。
 - 流水 `type` 是 `frame_rent`（**不是** `purchase` —— 后者在鱼干语境里已经是
   「收银台付款」）。`reference_type='frame'` + `reference_id=<key>`。
 
