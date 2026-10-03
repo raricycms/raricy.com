@@ -199,6 +199,7 @@ export default function SliderDemo() {
         <nav className="cdm__nav">
           <span className="cdm__nav-current">滑块</span>
           <a href="/captcha-demo/click">点选</a>
+          <a href="/captcha-demo/vision">视觉任务</a>
         </nav>
         <h1 className="cdm__title">滑块人机验证 · 演示</h1>
         <p className="cdm__sub">

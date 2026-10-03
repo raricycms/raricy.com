@@ -411,3 +411,230 @@
 .cdm__target--ok {
   border-color: var(--color-success-primary);
 }
+
+// ============================================================
+// 视觉空间任务（/captcha-demo/vision）
+//
+// 这一页要「像个小游戏」：进度点、答对弹勾、答错抖一下、通关放个奖杯。
+// 但动画只许用 transform / opacity —— 这两个属性才不会被 60fps 之外的布局重算拖垮
+// （见本仓库既有的 btnPop / shimmer 那批关键帧的同一纪律）。
+// ============================================================
+
+@keyframes vdmPop {
+  0%   { transform: translate(-50%, -50%) scale(0.3); opacity: 0; }
+  60%  { transform: translate(-50%, -50%) scale(1.18); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+}
+
+@keyframes vdmShake {
+  0%, 100% { transform: translateX(0); }
+  20%      { transform: translateX(-7px); }
+  40%      { transform: translateX(6px); }
+  60%      { transform: translateX(-4px); }
+  80%      { transform: translateX(3px); }
+}
+
+@keyframes vdmRise {
+  0%   { transform: translateY(8px) scale(0.94); opacity: 0; }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+.vdm__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--fd-space-3);
+  font-size: var(--fd-text-sm);
+}
+
+.vdm__dots {
+  display: flex;
+  gap: var(--fd-space-2);
+}
+
+.vdm__dot {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: var(--fd-text-xs);
+  font-weight: 700;
+  background: var(--color-background-subtle);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-tertiary);
+}
+
+.vdm__dot--now {
+  border-color: var(--color-brand-primary);
+  color: var(--color-brand-primary);
+}
+
+.vdm__dot--done {
+  background: var(--color-success-primary);
+  border-color: var(--color-success-primary);
+  color: #fff;
+}
+
+.vdm__stage-label {
+  color: var(--color-text-secondary);
+}
+
+// ---- 画布 ----
+
+.vdm__scene-wrap {
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.vdm__scene-wrap--shake {
+  animation: vdmShake 0.36s ease-in-out;
+}
+
+.vdm__scene {
+  position: relative;
+  cursor: crosshair;
+  touch-action: none;
+  // 画布自身给个白底：场景图是浅灰桌面，外面再套一圈卡片色会脏
+  background: #f4f4f6;
+
+  .cdm__bg {
+    width: 100%;
+    height: 100%;
+    object-fit: fill;
+    user-select: none;
+    -webkit-user-drag: none;
+  }
+}
+
+.vdm__scene--drag {
+  cursor: grab;
+
+  &:active {
+    cursor: grabbing;
+  }
+}
+
+.vdm__trail {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+
+  line {
+    stroke: var(--color-brand-primary);
+    stroke-width: 2;
+    stroke-dasharray: 6 5;
+  }
+
+  circle {
+    fill: var(--color-brand-primary);
+    fill-opacity: 0.8;
+  }
+}
+
+.vdm__mark {
+  position: absolute;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 22px;
+  font-weight: 700;
+  color: #fff;
+  pointer-events: none;
+  animation: vdmPop 0.32s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+
+.vdm__mark--ok {
+  background: var(--color-success-primary);
+}
+
+.vdm__mark--bad {
+  background: var(--fd-danger);
+}
+
+// ---- 指令条 ----
+
+.vdm__prompt {
+  display: flex;
+  align-items: center;
+  gap: var(--fd-space-3);
+  padding: var(--fd-space-3) var(--fd-space-4);
+  border-radius: 12px;
+  background: var(--color-background-subtle);
+  border: 1px solid var(--color-border);
+}
+
+.vdm__prompt-icon {
+  flex: none;
+  font-size: 20px;
+}
+
+.vdm__prompt-text {
+  font-size: var(--fd-text-base);
+  font-weight: 700;
+  line-height: 1.5;
+  color: var(--color-text-primary);
+}
+
+.vdm__hint {
+  margin: 0;
+  font-size: var(--fd-text-sm);
+  color: var(--color-text-tertiary);
+}
+
+.vdm__hint--ok {
+  color: var(--color-success-primary);
+  font-weight: 600;
+}
+
+// ---- 结果 ----
+
+.vdm__result {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fd-space-2);
+  padding: var(--fd-space-4);
+  border-radius: 12px;
+  background: var(--color-background-card);
+  border: 1px solid var(--color-border);
+  border-left-width: 4px;
+  animation: vdmRise 0.3s ease-out both;
+}
+
+.vdm__result--good {
+  border-left-color: var(--color-success-primary);
+  align-items: center;
+  text-align: center;
+}
+
+.vdm__result--bad {
+  border-left-color: var(--fd-danger);
+}
+
+.vdm__trophy {
+  font-size: 40px;
+  line-height: 1;
+}
+
+.vdm__result-title {
+  margin: 0;
+  font-size: var(--fd-text-base);
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.vdm__result-line {
+  margin: 0;
+  font-size: var(--fd-text-sm);
+  line-height: 1.6;
+  color: var(--color-text-secondary);
+}
+
+.vdm__result-line--dim {
+  color: var(--color-text-tertiary);
+}

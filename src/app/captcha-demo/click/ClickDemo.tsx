@@ -172,6 +172,7 @@ export default function ClickDemo() {
         <nav className="cdm__nav">
           <a href="/captcha-demo">滑块</a>
           <span className="cdm__nav-current">点选</span>
+          <a href="/captcha-demo/vision">视觉任务</a>
         </nav>
         <h1 className="cdm__title">点选人机验证 · 演示</h1>
         <p className="cdm__sub">
