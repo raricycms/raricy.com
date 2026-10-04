@@ -98,7 +98,7 @@
 | `/api/poster/profile/[id]` · `/api/poster/collect` | API | **画报 / 收款码出图**（PNG，仅本人）。渲染管线与四条约束见 §6.8 |
 | `/notifications` · `/api/notifications/*` | page + API | 通知中心。其中 `GET count` 是顶栏指示器的**兜底快照**（**不能删**：SSE 有「连着但收不到」的半死状态），`GET stream` 是**实时流**（SSE，未登录 401；首帧全量快照 + 之后增量补丁）。推送点纪律与依赖方向见 `src/lib/topbar-bus.ts` 头部 |
 | `/vote` · `/vote/[id]` | page | 投票 |
-| `/checkin` · `/api/checkin` | page + API | 每日签到（**core+**：鱼干的赚取渠道，与投喂/点赞同档）。**一个请求签一次到**，固定发 `CHECKIN_REWARD_FISH` 条鱼干。页面与两个方法（GET/POST）**各自都要判档位**，见 §8 |
+| `/checkin` · `/api/checkin` | page + API | 每日签到（**core+**：鱼干的赚取渠道，与投喂/点赞同档）。**一个请求签一次到**，固定发 `CHECKIN_REWARD_FISH` 条鱼干。页面与两个方法（GET/POST）**各自都要判档位**，见 §8。另有一条**内容前置条件**：名下至少一篇未软删的文章（`Blog.ignore = false`，删光 = 没发过）—— 与档位是**两道独立的门**，GET 回 `can_check_in: false` 不拒、POST 403，见 `checkin-service.ts` 头部 |
 | `/clipboard` · `/clipboard/[id]` · `/api/clipboard/*` | page + API | 云剪贴板 |
 | `/image` · `/image/admin` · `/api/images/*` | page + API | 图床 + 管理 |
 | `/audio` · `/audio/admin` · `/audio/guide` · `/api/audio/*` | page + API | 音频床 + 管理。**独立配额**（不吃图床那份 50MB），见 §6.6/§6.15 |
@@ -1405,6 +1405,13 @@ MP3 的帧同步要核版本 / 层 / 位速率字段（只判 `0xFF` 打头太�
 | `/checkin` 页面 | `isCoreUser(user)` → 渲染 403 页（不用 `requireCoreUser`，理由见该文件头）|
 | `GET /api/checkin` | `isCoreUser` → `apiErr(403, CORE_ONLY)` |
 | `POST /api/checkin` | `isCoreUser` → `apiErr(403, CORE_ONLY)` |
+
+**签到还多一道「内容前置条件」**（2026-10 起）：名下至少一篇未软删的文章
+（`hasPublishedBlog`）。它与档位是**两道独立的门**，判法却不同 —— 因为 GET 是状态读、
+POST 才是发鱼：GET 不拒，回 `200` + `can_check_in: false`（回 403 会让 `base.js` 把
+「拿不到 `checked_in`」当成可签到、点亮顶栏假徽标）；POST 拒，`403 发布过文章后才能签到`。
+页面同理，渲染「去发布文章」的引导态而不是按钮。理由（为何要这道门、为何它是门槛不是墙）
+见 `checkin-service.ts` 头部。
 
 > ⚠️ **`POST /api/checkin` 本身就是发鱼的那一步**（2026-09 起签到是一步式，建记录与
 > 发鱼干在同一个事务里，没有第二步）。页面那道 guard 只挡浏览器 —— 只挡页面而不挡这个
