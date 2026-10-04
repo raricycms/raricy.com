@@ -265,11 +265,11 @@ describe('validateBlogData / 未知字段（键集封闭）', () => {
   it('与栏目无关的未知字段 → 列出可接受的键集', async () => {
     const r = await validateBlogData(baseInput({ tags: ['a'] }));
     expect((r as { message: string }).message).toBe(
-      '未知字段 "tags"，本接口只接受：title / description / content / category_id / visibility'
+      '未知字段 "tags"，本接口只接受：title / description / content / category_id / visibility / allow_anonymous_comments'
     );
   });
 
-  it('五个合法键全带上照样通过（键集没把谁误伤）', async () => {
+  it('六个合法键全带上照样通过（键集没把谁误伤）', async () => {
     const cat = await makeCategory({ isActive: true });
     const r = await validateBlogData({
       title: '标题',
@@ -277,6 +277,7 @@ describe('validateBlogData / 未知字段（键集封闭）', () => {
       content: '正文',
       category_id: cat.id,
       visibility: 'public',
+      allow_anonymous_comments: false,
     });
     expect(r.ok).toBe(true);
     expect((r as { data: { visibility: string } }).data.visibility).toBe('public');
@@ -2270,5 +2271,98 @@ describe('可见性 / 管理端是结构性豁免，不需要 if (isAdmin)', () 
     // 这条用例防的是「统一一下 listBlogs」式重构顺手把后台改瞎。
     const res = await listAdminBlogs({ page: 1, perPage: 50, status: 'all' });
     expect(res.blogs.map((x) => x.id), '后台必须看得见站内文章').toContain(b.id);
+  });
+});
+
+// ── 匿名评论开关（allow_anonymous_comments）────────────────────────────────
+//
+// 【为什么单测】这条的关键不在「能存能读」，而在**没提这件事时怎么办**：
+//   · 缺省 → 允许（新文章、以及不认识这个字段的旧调用方）；
+//   · 但「一次没提这个字段的整体保存」**绝不能**把作者关掉的开关重新打开 ——
+//     那是回 200、通知里也看不出来的静默改设置。
+// 另外布尔解析必须严格：写成 Boolean(x) / x ?? true 的话，字符串 "false"
+// 会静默变成 true（想关的人得到的是开着）。
+
+describe('匿名评论开关：解析与落库', () => {
+  it('缺省 → 允许（缺字段不等于要关）', async () => {
+    const r = await validateBlogData({
+      title: 'T', description: 'D', content: 'C',
+    });
+    expect(r.ok).toBe(true);
+    expect((r as { data: { allowAnonymousComments: boolean } }).data.allowAnonymousComments).toBe(true);
+  });
+
+  it('显式 false → 落 false', async () => {
+    const r = await validateBlogData({
+      title: 'T', description: 'D', content: 'C', allow_anonymous_comments: false,
+    });
+    expect(r.ok).toBe(true);
+    expect((r as { data: { allowAnonymousComments: boolean } }).data.allowAnonymousComments).toBe(false);
+  });
+
+  it('非布尔值 → 400，绝不静默当成 true（"false" 也是字符串）', async () => {
+    for (const bad of ['false', 0, 1, null]) {
+      const r = await validateBlogData({
+        title: 'T', description: 'D', content: 'C', allow_anonymous_comments: bad,
+      });
+      expect(r.ok, `allow_anonymous_comments=${JSON.stringify(bad)} 应被拒`).toBe(false);
+    }
+  });
+
+  it('新建文章带上 false → 库里就是 false', async () => {
+    const u = await makeUser({ role: 'core' });
+    const id = await createBlog(u.id, {
+      title: 'T', description: 'D', content: 'C',
+      categoryId: null, visibility: 'internal', allowAnonymousComments: false,
+    });
+    const row = await prisma.blog.findUnique({
+      where: { id }, select: { allowAnonymousComments: true },
+    });
+    expect(row?.allowAnonymousComments).toBe(false);
+  });
+
+  it('新建时不提 → 默认允许', async () => {
+    const u = await makeUser({ role: 'core' });
+    const id = await createBlog(u.id, {
+      title: 'T', description: 'D', content: 'C',
+      categoryId: null, visibility: 'internal',
+    });
+    const row = await prisma.blog.findUnique({
+      where: { id }, select: { allowAnonymousComments: true },
+    });
+    expect(row?.allowAnonymousComments).toBe(true);
+  });
+
+  it('★ 整体保存时没带这个字段 → 这一列原样不动（关掉的不会被悄悄打开）', async () => {
+    const u = await makeUser({ role: 'core' });
+    const blog = await makeBlog({ authorId: u.id, allowAnonymousComments: false });
+
+    const res = await updateBlog(blog.id, {
+      title: '改过的标题', description: 'D', content: 'C',
+      categoryId: null, visibility: 'internal',
+    }, u.id);
+    expect(res.hasChanges).toBe(true);
+
+    const row = await prisma.blog.findUnique({
+      where: { id: blog.id }, select: { allowAnonymousComments: true, title: true },
+    });
+    expect(row?.title).toBe('改过的标题');
+    expect(row?.allowAnonymousComments, '旧调用方一次普通保存不该重开匿名评论').toBe(false);
+  });
+
+  it('显式传 false → 落库并在「文章已编辑」的 changesDetail 里说明', async () => {
+    const u = await makeUser({ role: 'core' });
+    const blog = await makeBlog({ authorId: u.id }); // 默认允许
+
+    const res = await updateBlog(blog.id, {
+      title: blog.title, description: blog.description, content: '# hello',
+      categoryId: null, visibility: 'internal', allowAnonymousComments: false,
+    }, u.id);
+
+    expect(res.changesDetail.join(' ')).toContain('匿名评论');
+    const row = await prisma.blog.findUnique({
+      where: { id: blog.id }, select: { allowAnonymousComments: true },
+    });
+    expect(row?.allowAnonymousComments).toBe(false);
   });
 });

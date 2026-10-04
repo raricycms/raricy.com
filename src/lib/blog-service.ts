@@ -390,6 +390,8 @@ export async function getBlogDetail(id: string, viewer: BlogViewer | null) {
       authorId: true,
       // 页面要拿它决定 robots 元数据与 OG 图，OG 图路由要拿它决定 X-Robots-Tag
       visibility: true,
+      // 评论区要拿它决定「匿名」勾选项给不给（服务端闸门在 comment-service.createComment）
+      allowAnonymousComments: true,
       author: { select: { id: true, username: true, equippedFrameKey: true, equippedFrameExpiresAt: true } },
       category: { select: { name: true, slug: true, parentId: true, parent: { select: { name: true } } } },
       content: { select: { content: true, updatedAt: true } },
@@ -765,6 +767,7 @@ export const BLOG_ACCEPTED_KEYS = [
   'content',
   'category_id',
   'visibility',
+  'allow_anonymous_comments',
 ] as const;
 
 /**
@@ -791,6 +794,19 @@ export interface ValidatedBlogData {
   categoryId: number | null;
   /** 对外可见性。缺省 'internal' —— 旧客户端不带这个字段时**不得改变**任何文章的对外状态。 */
   visibility: BlogVisibility;
+  /**
+   * 这篇文章允不允许匿名评论（作者可关），见 prisma schema 的
+   * allowAnonymousComments。validateBlogData **总是**给出一个确定值（缺省 true）。
+   *
+   * ⚠️ 类型上可选，语义是「**没提这件事**」：
+   *   · createBlog → 新文章默认允许（`?? true`）；
+   *   · updateBlog → **这一列原样不动**（不写、也不算进 changesDetail）。
+   * 这条「没提 = 不改」是必须的 —— 否则一个不认识这个字段的旧客户端（或本站还没改的
+   * 调用点）改一次标题，就会把作者**刻意关掉**的匿名开关悄悄打开，回 200、通知里也看不出来。
+   *（PUT 路由另有一道回填，见 api/blogs/[id]/route.ts：它把缺键补成库里现值，
+   *  所以走 HTTP 的路径连 validate 的默认档都不会误用。）
+   */
+  allowAnonymousComments?: boolean;
 }
 
 export type ValidateBlogResult =
@@ -845,6 +861,19 @@ export async function validateBlogData(raw: unknown): Promise<ValidateBlogResult
     };
   }
 
+  // 匿名评论开关：缺省 true（本站的口径是「默认允许，作者可关」）。
+  // ⚠️ **严格布尔**：只有 JSON 的 true/false 两个字面量认，其余一律 400。
+  // 写成 `Boolean(x)` 或 `x ?? true` 的话，字符串 "false" 会变成 true ——
+  // 一个想关掉匿名评论的调用方会得到「开着」，而且返回 200，看不出任何异常。
+  const rawAllowAnon = data.allow_anonymous_comments;
+  let allowAnonymousComments = true;
+  if (rawAllowAnon !== undefined) {
+    if (typeof rawAllowAnon !== 'boolean') {
+      return { ok: false, message: 'allow_anonymous_comments 必须是布尔值（true / false）' };
+    }
+    allowAnonymousComments = rawAllowAnon;
+  }
+
   if (!title) return { ok: false, message: '标题不能为空' };
   if (!description) return { ok: false, message: '描述不能为空' };
   if (!content) return { ok: false, message: '内容不能为空' };
@@ -869,7 +898,10 @@ export async function validateBlogData(raw: unknown): Promise<ValidateBlogResult
     categoryId = parsed;
   }
 
-  return { ok: true, data: { title, description, content, categoryId, visibility } };
+  return {
+    ok: true,
+    data: { title, description, content, categoryId, visibility, allowAnonymousComments },
+  };
 }
 
 /**
@@ -1046,6 +1078,7 @@ export async function getBlogForEdit(blogId: string) {
       categoryId: true,
       authorId: true,
       visibility: true,
+      allowAnonymousComments: true,
       content: { select: { content: true } },
     },
   });
@@ -1060,6 +1093,7 @@ export async function getBlogForEdit(blogId: string) {
     // 于是「打开编辑页什么都不改、一保存就静默改了可见性」。唯一的写入口
     // （validateBlogData）已经在白名单上，这里只是兜底。
     visibility: parseVisibility(blog.visibility) ?? 'internal',
+    allowAnonymousComments: blog.allowAnonymousComments,
     authorId: blog.authorId,
     contentMarkdown: blog.content?.content ?? '',
   };
@@ -1082,6 +1116,8 @@ export async function createBlog(authorId: string, data: ValidatedBlogData): Pro
         authorId,
         categoryId: data.categoryId,
         visibility: data.visibility,
+        // 新文章默认允许匿名评论（列默认值也是 true，这里显式写出来是为了不依赖它）
+        allowAnonymousComments: data.allowAnonymousComments ?? true,
         createdAt: now,
       },
     }),
@@ -1106,6 +1142,7 @@ export async function updateBlog(
       description: true,
       categoryId: true,
       visibility: true,
+      allowAnonymousComments: true,
       category: { select: { name: true } },
     },
   });
@@ -1131,6 +1168,20 @@ export async function updateBlog(
   }
   if (blog.description !== data.description) {
     changesDetail.push('摘要已更新');
+    hasChanges = true;
+  }
+
+  // 匿名评论开关的变化也要能在「文章已编辑」的通知里看见 —— 它是**读者互动规则**的
+  // 改动，作者关了之后会有人来问「怎么不能匿名了」，而通知里只写「内容已更新」答不上来。
+  // `!== undefined` 是必须的：没提这件事 ≠ 要改成 true（见 ValidatedBlogData 那段）。
+  if (
+    data.allowAnonymousComments !== undefined &&
+    blog.allowAnonymousComments !== data.allowAnonymousComments
+  ) {
+    changesDetail.push(
+      `匿名评论从《${blog.allowAnonymousComments ? '允许' : '不允许'}》` +
+        `改为《${data.allowAnonymousComments ? '允许' : '不允许'}》`
+    );
     hasChanges = true;
   }
 
@@ -1169,6 +1220,10 @@ export async function updateBlog(
         description: data.description,
         categoryId: data.categoryId,
         visibility: data.visibility,
+        // 只有明确提了才写这一列 —— 没提 = 原样不动（见 ValidatedBlogData 那段）
+        ...(data.allowAnonymousComments !== undefined
+          ? { allowAnonymousComments: data.allowAnonymousComments }
+          : {}),
       },
     }),
     prisma.blogContent.upsert({

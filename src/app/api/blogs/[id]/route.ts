@@ -52,6 +52,9 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       // 对外可见性。**必须下发**：PUT 是整体覆盖，调用方要能「读-改-写」（否则改一次
       // 标题就可能把档位写错），也要能判断这篇此刻对外可不可达。
       visibility: blog.visibility,
+      // 本文允不允许匿名评论（作者可关，默认 true）。下发是为了**读-改-写**：
+      // 评论接口带 anonymous:true 会被 403 拒，调用方得先知道这里是不是允许。
+      allow_anonymous_comments: blog.allowAnonymousComments,
     },
   });
 }
@@ -129,9 +132,9 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
   // 文章存在且未软删（软删等同不存在 → 404）
   const blog = await prisma.blog.findFirst({
     where: { id, ignore: false },
-    // visibility 是给下面「缺键时回填现值」取的。与 getBlogForEdit 一样归一化到白名单
-    // （列是 TEXT、没有 CHECK 约束，取值白名单在 TS 侧）。
-    select: { id: true, authorId: true, visibility: true },
+    // visibility / allowAnonymousComments 是给下面「缺键时回填现值」取的。visibility 与
+    // getBlogForEdit 一样归一化到白名单（列是 TEXT、没有 CHECK 约束，取值白名单在 TS 侧）。
+    select: { id: true, authorId: true, visibility: true, allowAnonymousComments: true },
   });
   if (!blog) return apiErr(404, '文章不存在');
 
@@ -154,11 +157,23 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
   // 副本收不回来。所以缺键 = 不改动这一列，而不是 = 打回默认档。
   //
   // 显式传 `"internal"` 仍然照改 —— 那是明确的意图，与「压根没提这件事」不是一回事。
+  //
+  // allow_anonymous_comments 同理，而且后果更隐蔽：validateBlogData 对「键不存在」给的是
+  // 默认档 true，直接放过去的话，一个不带这个键的旧客户端（或本站还没更新的表单）改一次
+  // 标题，就会把作者**刻意关掉**的匿名开关**重新打开** —— 回 200、通知里也看不出来。
+  const missingKeys = ['visibility', 'allow_anonymous_comments'].filter(
+    (k) => !(body && typeof body === 'object' && !Array.isArray(body) && k in body)
+  );
   const payload =
-    body && typeof body === 'object' && !Array.isArray(body) && !('visibility' in body)
+    body && typeof body === 'object' && !Array.isArray(body) && missingKeys.length
       ? {
           ...(body as Record<string, unknown>),
-          visibility: parseVisibility(blog.visibility) ?? 'internal',
+          ...(missingKeys.includes('visibility')
+            ? { visibility: parseVisibility(blog.visibility) ?? 'internal' }
+            : {}),
+          ...(missingKeys.includes('allow_anonymous_comments')
+            ? { allow_anonymous_comments: blog.allowAnonymousComments }
+            : {}),
         }
       : body;
 

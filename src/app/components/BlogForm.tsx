@@ -39,6 +39,8 @@ export interface BlogFormBlog {
   description: string;
   categoryId: number | null;
   visibility: BlogVisibility;
+  /** 是否允许匿名评论（作者可关，默认允许）。 */
+  allowAnonymousComments: boolean;
   contentMarkdown: string;
 }
 
@@ -142,6 +144,8 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
     const description = (form.elements.namedItem('description') as HTMLTextAreaElement).value;
     const categoryId = (form.elements.namedItem('category') as HTMLSelectElement).value;
     const visibility = (form.elements.namedItem('visibility') as HTMLSelectElement).value;
+    const allowAnonymousComments = (form.elements.namedItem('allowAnonymous') as HTMLInputElement)
+      .checked;
     const content = getContent();
 
     if (!title || !description || !content) {
@@ -168,7 +172,14 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
         method,
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({ title, description, content, category_id: categoryId, visibility }),
+        body: JSON.stringify({
+          title,
+          description,
+          content,
+          category_id: categoryId,
+          visibility,
+          allow_anonymous_comments: allowAnonymousComments,
+        }),
       });
       const result = await response.json();
       if (result.code === 200) {
@@ -321,6 +332,33 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
           <span className="form-hint text-muted">
             公开前请自行确认正文里没有不适合外传的内容。公开后可能被第三方抓取存档，
             改回「仅站内可见」不会收回已经抓走的副本。
+          </span>
+        </div>
+
+        {/* 匿名评论开关：作者对**自己的文章**的互动规则设置。
+            默认勾上（本站口径：默认允许）。关掉只影响「以后能不能再匿名发」——
+            已经发出的匿名评论不受影响（它们的化名序号冻在评论行上）。
+            服务端闸门在 comment-service.createComment，这里只是让作者改得到。 */}
+        <div className="form-group">
+          <label className="form-label" htmlFor="allowAnonymous">
+            匿名评论
+          </label>
+          <div className="form-check">
+            <input
+              type="checkbox"
+              className="form-check-input"
+              id="allowAnonymous"
+              name="allowAnonymous"
+              defaultChecked={blog?.allowAnonymousComments ?? true}
+            />
+            <label className="form-check-label" htmlFor="allowAnonymous">
+              允许读者以化名匿名评论
+            </label>
+          </div>
+          <span className="form-hint text-muted">
+            匿名评论者在本文下始终显示同一个化名（第一位是 Alice，第二位是 Bob，以此类推），
+            头像按化名生成。<strong>管理员</strong>仍能在管理日志里查到真实作者
+            （你和读者都看不到）。
           </span>
         </div>
 
