@@ -116,6 +116,7 @@ model User {
   fishWebhookDeliveries FishWebhookDelivery[]
   marketPositions       MarketPosition[]
   frames                UserFrame[]
+  anonIdentities        BlogAnonIdentity[]
   visibilityLogs        BlogVisibilityLog[]  @relation("BlogVisibilityLogActor")
   @@index([id], map: "ix_users_id")
   @@index([role], map: "ix_users_role")
@@ -216,12 +217,23 @@ model Blog {
   // 见迁移 17 的头部注释。
   visibility    String    @default("internal")
 
+  /// 这篇文章允不允许匿名评论（作者可关，默认允许）。
+  /// 只在**服务端** createComment 里判 —— 前端据此隐藏那个勾选项只是体验，
+  /// 漏了这里就是「curl 一条 anonymous:true 照样匿名发出去」的静默放行。
+  allowAnonymousComments Boolean @default(true) @map("allow_anonymous_comments")
+  /// 本博已分配出去的匿名化名个数（= 最后一个化名的序号，1-based）。
+  /// 分配新化名时靠 `increment` 原子自增取号 —— 用 `COUNT(*)` 或 `MAX(seq)+1`
+  /// 都会在两个不同的人同时首次匿名评论时撞进同一个号（两个人同名）。
+  /// 序号本身存在 blog_anon_identities，这里只是发号器。
+  anonIdentityCount      Int     @default(0) @map("anon_identity_count")
+
   author   User          @relation("BlogAuthor", fields: [authorId], references: [id])
   category Category?     @relation(fields: [categoryId], references: [id])
   content  BlogContent?
   likes    BlogLike[]
   visibilityLogs BlogVisibilityLog[] @relation("BlogVisibilityLogBlog")
   comments BlogComment[]
+  anonIdentities BlogAnonIdentity[]
   feeds    BlogFeed[]
   favoriteItems FavoriteItem[]
   @@index([id], map: "ix_blogs_id")
@@ -339,6 +351,15 @@ model BlogComment {
   status      String?   @default("approved")
   isDeleted   Boolean?  @default(false) @map("is_deleted")
   likesCount  Int?      @default(0) @map("likes_count")
+  /// 匿名评论的**化名序号**（1-based，同一篇文章内每人一个号；非空 ⇔ 这条是匿名评论）。
+  /// 化名（Alice / Angry Alice / You Win #677 …）由序号纯函数推出，见
+  /// src/lib/anon-identity.ts —— 序号冻在这一列，所以化名表将来怎么改都不会
+  /// 让历史评论改名。序号来自 blog_anon_identities（同一个作者在同一篇文章里始终同号）。
+  ///
+  /// ⚠️ 只用一个可空列当标志位（同 Favorite.publicId「NULL = 私有」的写法）：
+  /// 再加一个 is_anonymous 布尔列就多了一种「两列互相矛盾」的坏状态。
+  /// author_id 仍是**真实**用户 —— 删除日志、申诉、限频、作者自删全靠它。
+  anonSeq     Int?      @map("anon_seq")
   createdAt   DateTime? @map("created_at")
   updatedAt   DateTime? @map("updated_at")
 
@@ -358,6 +379,42 @@ model BlogComment {
   @@index([status], map: "ix_blog_comments_status")
 
   @@map("blog_comments")
+}
+
+/// 「谁在哪篇文章下的化名是几号」—— 匿名评论的**身份分配表**。
+///
+/// 规则（站长的口径）：同一个人在同一篇文章下始终同一个化名；不同的人在同一篇文章下
+/// 必然不同号。所以键是 (blog_id, user_id)，值是一个**按首次匿名评论先后**递增的序号，
+/// 化名由序号纯函数推出（见 src/lib/anon-identity.ts）。
+///
+/// 【为什么必须落库】「第几个」是这篇文章的历史事实 —— 现算（按评论时间排序取第 k 个）
+/// 会在有人删评论、或某人先评论后注销时漂移，于是同一个人的化名会**无声改名**。
+/// 表里那一行才是权威，BlogComment.anon_seq 是它下发给渲染层的副本。
+///
+/// 【为什么还要 Blog.anon_identity_count】发号要原子：两个人同时首次匿名评论时，
+/// 各自先 `SELECT COUNT(*)` 再插入会撞进同一个号（两个人同名）。自增列做发号器，
+/// (blog_id, seq) 唯一索引兜底。
+model BlogAnonIdentity {
+  id        Int      @id @default(autoincrement())
+  blogId    String   @map("blog_id")
+  userId    String   @map("user_id")
+  /// 1-based 化名序号：1 = 第一个匿名评论的人。
+  seq       Int
+  createdAt DateTime @map("created_at")
+
+  blog Blog @relation(fields: [blogId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+
+  // ⚠️ 刻意**不写** name: —— Prisma 在 SQLite 上会忽略它，物理索引名一律是派生名
+  // `<表>_<列...>_key`（正是下面这两条要的名字）。写了反而让 where 的唯一键名变成
+  // 一长串 `blog_anon_identities_blog_id_user_id_key: {...}`，而派生写法是干净的
+  // `blogId_userId`。迁移文件里手写的索引名与派生名一致，两边不会漂。
+  @@unique([blogId, userId])
+  @@unique([blogId, seq])
+  @@index([blogId], map: "ix_blog_anon_identities_blog_id")
+  @@index([userId], map: "ix_blog_anon_identities_user_id")
+
+  @@map("blog_anon_identities")
 }
 
 model CommentLike {
@@ -716,6 +773,12 @@ model AdminActionLog {
   // SQLite 上 Prisma 无 Json 标量：以 String 存原始 JSON 文本，应用层自行解析
   extra        String?
   visibility   String    @default("public")
+  /// 这条日志的**当事人身份在公示面上不公开**（匿名评论被删的那条路径）。
+  /// 与 visibility 是两件事：日志照旧公示（管理员确实做了这个动作、当事人仍可申诉），
+  /// 但 /audit 列表与详情、以及 GET /api/audit 都不下发 target_user ——
+  /// 否则「管理员删了一条匿名评论」会把那个人的**真实用户名**贴到公示页上。
+  /// 运维 CLI（npm run cli -- audit）不看这个标志，照样显示当事人。见 src/lib/audit-service.ts。
+  hideTarget   Boolean   @default(false) @map("hide_target")
 
   admin      User                @relation("LogAdmin", fields: [adminId], references: [id])
   targetUser User?               @relation("LogTarget", fields: [targetUserId], references: [id])

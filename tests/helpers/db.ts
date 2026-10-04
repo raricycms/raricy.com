@@ -105,6 +105,9 @@ export async function resetDb() {
   const tables = [
     'chat_messages', 'chat_members', 'chat_channels',
     'comment_likes', 'blog_comments', 'blog_likes', 'blog_feeds',
+    // 匿名化名分配表引用 blogs 与 users —— 必须排在两者之前删。
+    // ⚠️ 漏登记**不报错**（下面那条 DELETE 的 catch 会吞掉），表现为化名序号在用例间残留。
+    'blog_anon_identities',
     // 收藏夹引用 favorites 与 blogs，favorites 引用 users —— 都必须先于它们删
     'favorite_items', 'favorites',
     // 可见性变更记录引用 blogs 与 users —— 必须排在两者之前删
@@ -226,6 +229,7 @@ export async function makeBlog(opts: Partial<{
   ignore: boolean;
   createdAt: Date;
   contentUpdatedAt: Date;
+  allowAnonymousComments: boolean;
 }> = {}) {
   const id = opts.id ?? uid();
   const author = opts.authorId ?? (await makeUser()).id;
@@ -237,6 +241,10 @@ export async function makeBlog(opts: Partial<{
       description: opts.description ?? 'desc',
       categoryId: opts.categoryId ?? null,
       ignore: opts.ignore ?? false,
+      // 不传就交给列默认值（true = 允许匿名评论），与真实建文路径一致
+      ...(opts.allowAnonymousComments !== undefined
+        ? { allowAnonymousComments: opts.allowAnonymousComments }
+        : {}),
       createdAt: opts.createdAt ?? nowForDb(),
     },
   });
