@@ -20,7 +20,7 @@
 //    tests/service/market-stats-service.test.ts 用强平引擎那套夹具造。
 
 import { test, expect, type APIRequestContext, type Page } from '@playwright/test';
-import { registerFreshUser } from './helpers';
+import { registerFreshUser, publishBlog } from './helpers';
 
 const MARKET_MOCK = 'http://127.0.0.1:3102';
 
@@ -39,6 +39,7 @@ async function setPrice(request: APIRequestContext, symbol: string, price: numbe
  * `fish-trade.spec.ts` 的 `fundByCheckin` 同一口径 —— 它变了这两处一起红。
  */
 async function fundByCheckin(page: Page) {
+  await publishBlog(page); // 签到的前置条件：名下至少一篇未软删的文章（2026-10 起）
   const res = await page.request.post('/api/checkin', { data: {} });
   expect(res.status(), await res.text()).toBe(200);
   expect(Number((await res.json()).dried_fish), '签到固定发 3 条鱼干').toBe(3);

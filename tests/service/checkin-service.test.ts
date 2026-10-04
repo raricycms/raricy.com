@@ -23,11 +23,12 @@ import {
   checkIn,
   getTodayStatus,
   getCountLeaderboard,
+  hasPublishedBlog,
   CHECKIN_REWARD_FISH,
 } from '@/lib/checkin-service';
 import { getTodayCheckinFish } from '@/lib/fish-service';
 import { fishToUnits, unitsToFish } from '@/lib/fish-units';
-import { resetDb, makeUser, prisma } from '../helpers/db';
+import { resetDb, makeUser, makeBlog, prisma } from '../helpers/db';
 import { expectLedgerConsistent } from '../helpers/fish-ledger';
 
 beforeEach(async () => {
@@ -399,6 +400,7 @@ describe('getTodayStatus', () => {
 
     expect(await getTodayStatus(u.id)).toEqual({
       checkedIn: false,
+      canCheckIn: false, // 这个号没发过文章（见下方 hasPublishedBlog 一组）
       totalCount: 0,
       today: '2026-07-16',
       rewardFish: CHECKIN_REWARD_FISH,
@@ -474,6 +476,44 @@ describe('getTodayStatus', () => {
     if (!r2.alreadyChecked) return;
     expect(r2.status.totalCount).toBe(st.totalCount);
     expect(st.totalCount).toBe(1);
+  });
+});
+
+// ── 签到的内容前置条件（发布过文章） ─────────────────────────────────────────
+//
+// 【为什么在服务层测】这道门**不在 checkIn() 里**（与档位同款：页面与两个方法各自判，
+// checkIn 是纯发鱼内核）。服务层能测的是判据 hasPublishedBlog 与 getTodayStatus 回传的
+// canCheckIn —— 路由那一层的 403 由 e2e 钉（tests/e2e/checkin.spec.ts）。
+describe('hasPublishedBlog（签到的内容前置条件）', () => {
+  it('没发过 → false；发了一篇未软删的 → true', async () => {
+    const u = await makeUser();
+    expect(await hasPublishedBlog(u.id)).toBe(false);
+    await makeBlog({ authorId: u.id });
+    expect(await hasPublishedBlog(u.id)).toBe(true);
+  });
+
+  it('★ 软删（ignore=true）不算 —— 全删光等于没发过', async () => {
+    const u = await makeUser();
+    await makeBlog({ authorId: u.id });
+    await prisma.blog.updateMany({ where: { authorId: u.id }, data: { ignore: true } });
+    expect(await hasPublishedBlog(u.id), '发过又全删 = 没发过').toBe(false);
+  });
+
+  it('只数自己的：别人的文章不算我的产出', async () => {
+    const a = await makeUser();
+    const b = await makeUser();
+    await makeBlog({ authorId: b.id });
+    expect(await hasPublishedBlog(a.id)).toBe(false);
+  });
+
+  it('getTodayStatus.canCheckIn 跟着文章走（发 / 删都反映出来）', async () => {
+    freezeUtc('2026-07-15T04:00:00.000Z');
+    const u = await makeUser();
+    expect((await getTodayStatus(u.id)).canCheckIn).toBe(false);
+    await makeBlog({ authorId: u.id });
+    expect((await getTodayStatus(u.id)).canCheckIn).toBe(true);
+    await prisma.blog.updateMany({ where: { authorId: u.id }, data: { ignore: true } });
+    expect((await getTodayStatus(u.id)).canCheckIn, '删光后又不能签了').toBe(false);
   });
 });
 

@@ -25,6 +25,18 @@
 //
 // checkinDate 存储：UTC+8 当天的“零点 UTC”ISO 值（如 2026-07-15T00:00:00.000Z），
 //   与规整后 dev.db 中既有行的存储格式一致，保证唯一约束 (userId, checkinDate) 生效。
+//
+// 【前置条件：发布过至少一篇未软删的文章】2026-10 起，core+ 之外再加一道 ——
+//   本人名下要有 `Blog.ignore = false` 的行。软删就是 `ignore = true`（见 blog-service
+//   头部），所以**把文章全删光 = 没发过**：判据只看此刻有没有活着的文章，不看历史。
+//   · 【为什么加】把批量小号的成本抬起来：一个只签到、从不产出的号连门都进不去。
+//     它与「非核心账号没有鱼干赚取渠道」是同一条地基的延伸 —— 鱼干是 core+ 体系的
+//     报酬，报酬该对应产出。
+//   · 【它是门槛，不是墙】发一篇就能过，拦的是「注册完立刻签到」的脚本，不是决心要刷
+//     的人。别指望这一条兜底 —— 能不能凭空造 core 号是另一处的事，见
+//     api/admin/users/route.ts 头部。
+//   · 【在哪判】与档位同款：**页面与两个方法各自判**（见 docs/architecture.md §8）。
+//     checkIn() 是纯发鱼内核，不重复判 —— 与 core 档位一样，那道门不在服务层里。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { prisma } from './db';
@@ -59,6 +71,12 @@ function dateAtDay(ymd: string): Date {
 
 export interface CheckinStatus {
   checkedIn: boolean;
+  /**
+   * 前置条件是否满足：本人名下有没有**未软删**的文章（见文件头）。
+   * false 时签到会被拒（POST 403 / 页面渲染引导态）—— 它与 checkedIn 是两件事：
+   * checkedIn 说「今天签过没」，canCheckIn 说「够不够格签」。
+   */
+  canCheckIn: boolean;
   totalCount: number;
   today: string;
   /** 签一次给多少（常量，随接口下发，前端与机器人都不用猜）。 */
@@ -68,11 +86,23 @@ export interface CheckinStatus {
   driedFish: number;
 }
 
+/**
+ * 签到的前置条件：本人名下有没有**至少一篇未软删的文章**。
+ * 软删 = `Blog.ignore = true`（schema 里叫 ignore，是文章域的软删标志，见 blog-service
+ * 头部）—— 删掉的不算，所以「全删光」等于「没发过」。
+ *
+ * 与档位判定一样，这是**给页面与路由用的**：checkIn() 不调用它（理由见文件头）。
+ */
+export async function hasPublishedBlog(userId: string): Promise<boolean> {
+  const n = await prisma.blog.count({ where: { authorId: userId, ignore: false } });
+  return n > 0;
+}
+
 /** 今日签到状态 + 累计天数 + 余额。 */
 export async function getTodayStatus(userId: string): Promise<CheckinStatus> {
   const today = todayUtc8();
 
-  const [record, totalCount, user, todayFish] = await Promise.all([
+  const [record, totalCount, user, todayFish, canCheckIn] = await Promise.all([
     prisma.dailyCheckIn.findUnique({
       where: { uq_user_checkin_date: { userId, checkinDate: dateAtDay(today) } },
       select: { id: true },
@@ -81,10 +111,12 @@ export async function getTodayStatus(userId: string): Promise<CheckinStatus> {
     prisma.user.findUnique({ where: { id: userId }, select: { driedFish: true } }),
     // 今日到手多少**读流水**，不按常量推算：奖励将来若改，今天已签的人仍显示真实数目。
     getTodayCheckinFish(userId),
+    hasPublishedBlog(userId),
   ]);
 
   return {
     checkedIn: record !== null,
+    canCheckIn,
     totalCount,
     today,
     rewardFish: CHECKIN_REWARD_FISH,

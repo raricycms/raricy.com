@@ -17,7 +17,7 @@
 // 比 1× 多一枚角标和一段「爆仓 …」，是这一行**最宽**的形态，所以拿它量最坏情况。
 
 import { test, expect, type Page } from '@playwright/test';
-import { registerFreshUser } from './helpers';
+import { registerFreshUser, publishBlog } from './helpers';
 
 const MARKET_MOCK = 'http://127.0.0.1:3102';
 
@@ -34,6 +34,7 @@ const MAX_ENTRY_LINES = 2;
 /** 开一笔 10× 的仓（这一行最宽的形态），返回时可开始量。 */
 async function openOneLeveragedPosition(page: Page) {
   await registerFreshUser(page, { core: true });
+  await publishBlog(page); // 签到的前置条件：名下至少一篇未软删的文章（2026-10 起）
   await page.request.post('/api/checkin', { data: {} });
   await page.request.post(`${MARKET_MOCK}/__e2e__/set-price?symbol=BTCUSDT&price=80000`);
   await page.goto('/fish/trade');

@@ -27,7 +27,7 @@
 //（无状态读口不筛 role：账是自己的，没有理由不给看）。
 
 import { test, expect, type APIRequestContext, type Page } from '@playwright/test';
-import { registerFreshUser, loginViaApi } from './helpers';
+import { registerFreshUser, loginViaApi, publishBlog } from './helpers';
 import { SEED_PASSWORD, SEED_USERS } from './seed';
 
 /** 站点自身。显式给 baseURL 是因为 `playwright.request` 新建的 context 不继承
@@ -88,6 +88,7 @@ async function ledgerOf(
 
 /** 新号 + 签到拿鱼，返回到账后的余额（鱼干，固定 3）。 */
 async function fundByCheckin(page: Page): Promise<number> {
+  await publishBlog(page); // 签到的前置条件：名下至少一篇未软删的文章（2026-10 起）
   const res = await page.request.post('/api/checkin', { data: {} });
   expect(res.status(), await res.text()).toBe(200);
   const balance = Number((await res.json()).dried_fish);

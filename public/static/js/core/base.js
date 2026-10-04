@@ -260,7 +260,11 @@ function updateCheckinIndicator() {
         .then(data => {
             const badge = document.getElementById('checkinBadge');
             if (!badge) return;
-            if (!data.checked_in) {
+            // 亮徽标 = 「今天还没签 **且** 够格签」。can_check_in 为 false（名下没有未删
+            // 文章）时不亮 —— 否则会点亮一个点进去必然 403 的假徽标，正是 §8 那条
+            // 「门禁收紧、入口照给，但别给『你能用』的假信号」要防的。字段缺失（旧响应）
+            // 同样按不亮处理，宁可少提示也别骗人。
+            if (data.can_check_in === true && !data.checked_in) {
                 badge.style.display = 'flex';
             } else {
                 badge.style.display = 'none';

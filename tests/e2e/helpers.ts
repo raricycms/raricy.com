@@ -112,3 +112,27 @@ export async function registerFreshUser(
   }
   return { id: body.user.id, username };
 }
+
+/**
+ * 以**当前会话身份**发布一篇最小文章，返回 blog_id。
+ *
+ * 【为什么需要】2026-10 起签到多了一道内容前置条件：名下至少一篇未软删的文章
+ * （见 src/lib/checkin-service.ts 头部）。要签到的用例得先跨过它。
+ *
+ * ⚠️ **只给需要签到的用例调**：它会往库里多写一行博客 + 一行正文，
+ * 给不关心签到的用例平添副作用（数文章数、数总条数的用例会被带偏）。
+ */
+export async function publishBlog(page: Page, visibility = 'internal'): Promise<string> {
+  const res = await page.request.post('/api/blogs', {
+    data: {
+      title: `签到前置-${uniqueTag()}`,
+      description: 'e2e：签到前置条件用的最小文章',
+      content: '# e2e\n\n发布过文章才能签到。',
+      visibility,
+    },
+  });
+  const body = (await res.json()) as { code?: number; blog_id?: string; message?: string };
+  expect(body.code, `发文失败：${JSON.stringify(body)}`).toBe(200);
+  expect(body.blog_id, 'POST /api/blogs 必须回 blog_id').toBeTruthy();
+  return body.blog_id!;
+}

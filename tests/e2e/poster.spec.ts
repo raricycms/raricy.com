@@ -10,13 +10,14 @@
 // 用一次性新号 —— 理由见 helpers.registerFreshUser 的注释。
 
 import { test, expect, type Page } from '@playwright/test';
-import { loginViaApi, registerFreshUser } from './helpers';
+import { loginViaApi, registerFreshUser, publishBlog } from './helpers';
 import { SEED_PASSWORD, SEED_USERS } from './seed';
 
 const BASE_URL = 'http://127.0.0.1:3100';
 
 /** 新号 + 签到拿鱼（与 fish-market.spec 同一手法：e2e 里唯一不绕开业务的造鱼方式）。 */
 async function fundByCheckin(page: Page): Promise<number> {
+  await publishBlog(page); // 签到的前置条件：名下至少一篇未软删的文章（2026-10 起）
   const res = await page.request.post('/api/checkin', { data: {} });
   expect(res.status(), await res.text()).toBe(200);
   const balance = Number((await res.json()).dried_fish);

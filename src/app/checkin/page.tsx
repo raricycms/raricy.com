@@ -1,4 +1,5 @@
 import { redirect, forbidden } from 'next/navigation';
+import Link from 'next/link';
 import { getCurrentUser, isCoreUser } from '@/lib/auth';
 import { loginUrlWithNext } from '@/lib/safe-url';
 import { getTodayStatus, getCountLeaderboard } from '@/lib/checkin-service';
@@ -26,14 +27,33 @@ export default async function CheckinPage() {
 
   return (
     <div className="checkin-page">
-      <CheckinCard
-        checkedIn={status.checkedIn}
-        totalCount={status.totalCount}
-        todayFish={status.todayFish}
-        rewardFish={status.rewardFish}
-        today={status.today}
-        username={user.username}
-      />
+      {status.canCheckIn ? (
+        <CheckinCard
+          checkedIn={status.checkedIn}
+          totalCount={status.totalCount}
+          todayFish={status.todayFish}
+          rewardFish={status.rewardFish}
+          today={status.today}
+          username={user.username}
+        />
+      ) : (
+        // 前置条件未满足（没发过未软删的文章）：渲染引导而不是签到按钮 ——
+        // 留一个点了 403 的按钮比不给更糟（判据与档位入口相反：这里不是「档位不够、
+        // 入口照给」，而是「这一步现在做不了、先去做另一件他能做的事」）。
+        <div className="checkin-card">
+          <div className="checkin-card__header">
+            <span className="checkin-card__greeting">你好，{user.username}</span>
+            <span className="checkin-card__date">{status.today}</span>
+          </div>
+          <div className="checkin-reward-hint" style={{ marginBottom: 16 }}>
+            签到只对<b>发布过文章</b>的用户开放。你名下还没有未删除的文章（发过又全部删除
+            也算没有），发一篇之后就能来签到，每天领 {status.rewardFish} 条小鱼干。
+          </div>
+          <Link href="/blog/upload" className="btn btn-primary">
+            去发布文章
+          </Link>
+        </div>
+      )}
 
       <CheckinLeaderboards countEntries={countLb} currentUserId={user.id} />
     </div>

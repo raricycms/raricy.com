@@ -29,7 +29,7 @@
 // 手续费看起来就像 10%。
 
 import { test, expect, type APIRequestContext, type Page } from '@playwright/test';
-import { registerFreshUser } from './helpers';
+import { registerFreshUser, publishBlog } from './helpers';
 
 const MARKET_MOCK = 'http://127.0.0.1:3102';
 
@@ -61,6 +61,7 @@ async function myLedger(page: Page, type?: string): Promise<LedgerRow[]> {
 
 /** 新号 + 签到拿鱼（e2e 里唯一不绕开业务的造鱼方式）。签到是固定 3 条。 */
 async function fundByCheckin(page: Page): Promise<number> {
+  await publishBlog(page); // 签到的前置条件：名下至少一篇未软删的文章（2026-10 起）
   const res = await page.request.post('/api/checkin', { data: {} });
   expect(res.status(), await res.text()).toBe(200);
   const balance = Number((await res.json()).dried_fish);

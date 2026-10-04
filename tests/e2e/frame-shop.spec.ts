@@ -22,7 +22,7 @@
 // 它全是 DOM 断言，没有视口分支（与 fish-market.spec.ts 同款）。
 
 import { test, expect, type Page } from '@playwright/test';
-import { registerFreshUser } from './helpers';
+import { registerFreshUser, publishBlog } from './helpers';
 
 /** 在售的两款框。改 `frame-refs.ts` 的定价/在架清单时这里跟着改。 */
 const KEY = 'fishblue';
@@ -35,6 +35,7 @@ const card = (page: Page, key: string) => page.locator(`.market-card[data-frame=
 
 /** 新号 + 签到拿鱼，返回到账后的余额（鱼干，固定 3）。 */
 async function fundByCheckin(page: Page): Promise<number> {
+  await publishBlog(page); // 签到的前置条件：名下至少一篇未软删的文章（2026-10 起）
   const res = await page.request.post('/api/checkin', { data: {} });
   expect(res.status(), await res.text()).toBe(200);
   const balance = Number((await res.json()).dried_fish);
