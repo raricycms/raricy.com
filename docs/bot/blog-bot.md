@@ -237,7 +237,7 @@ Content-Type: application/json
 
 ### 7.1 请求字段
 
-**只有这 5 个键。多一个都会被 `400` 顶回来。**
+**只有这 6 个键。多一个都会被 `400` 顶回来。**
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|:----:|------|
@@ -246,6 +246,7 @@ Content-Type: application/json
 | `content` | string | 是 | 正文，**Markdown 源文**，**不 trim**（原样入库） |
 | `category_id` | number \| string | 否 | 栏目数字 ID（§6）；不传 = 未分类 |
 | `visibility` | string | 否 | 对外可见性三档（见下）；**不传 = `internal`（仅站内）** |
+| `allow_anonymous_comments` | boolean | 否 | 本文允不允许匿名评论（默认 `true`）。**必须是 JSON 布尔值**，传 `"false"` 会被 400 拒 |
 
 | 长度上限 | 值 | 计数口径 |
 |----------|-----|----------|
@@ -326,7 +327,8 @@ Content-Type: application/json
 | 跨站调用 | `403 跨源请求被拒绝 (CSRF)` |
 | 标题 / 摘要 / 正文为空 | `400 标题不能为空` / `描述不能为空` / `内容不能为空` |
 | 超过长度上限 | `400 标题不能超过30个字符` / `描述不能超过100个字符` / `内容不能超过250000个字符` |
-| **传了不认识的键** | `400 未知字段 "…"，本接口只接受：title / description / content / category_id / visibility` |
+| **传了不认识的键** | `400 未知字段 "…"，本接口只接受：title / description / content / category_id / visibility / allow_anonymous_comments` |
+| `allow_anonymous_comments` 不是布尔 | `400 allow_anonymous_comments 必须是布尔值（true / false）` |
 | `category_id` 不是整数 | `400 栏目ID格式错误` |
 | `category_id` 不存在或**已停用** | `400 选择的栏目不存在` |
 | `visibility` 不在三档里 | `400 可见性取值不合法，可选：internal / link / public` |
@@ -348,7 +350,7 @@ Content-Type: application/json
 { "title": "新标题", "description": "新摘要", "content": "新正文", "category_id": null, "visibility": "link" }
 ```
 
-- **请求字段与 §7.1 完全一致**（同样只认那 5 个键，同样那几档长度上限）
+- **请求字段与 §7.1 完全一致**（同样只认那 6 个键，同样那几档长度上限）
 - 是**整体覆盖**，不是局部更新 —— 想把文章改成未分类，就显式传 `category_id: null`
 - 成功：`{ "code": 200, "message": "更新成功", "blog_id": "…", "redirect": "/blog/…" }`
 
@@ -356,6 +358,9 @@ Content-Type: application/json
 > 也就是说，一个只会传旧那 4 个键的调用方改一次标题，**不会**把文章打回
 > `internal`（否则就是一次静默下架：对外消失、退出 sitemap）。
 > 想改档位就**显式传**（传 `"internal"` 就是真的要改回仅站内）。
+>
+> ⚠️ 同一豁免也适用于 `allow_anonymous_comments`：**不传 = 不改动**。否则一个不认识
+> 这个键的旧调用方改一次标题，就会把作者刻意关掉的匿名评论**重新打开**。
 >
 > 📌 这条豁免**只对 PUT 有效**。`POST`（创建）没有「原值」可保持，不传就是
 > 默认档 `internal`（§7.1）—— 两条路径的缺省语义**相反**，别一起记。
@@ -441,7 +446,9 @@ GET /api/blogs?page=1       # 列表
     "category": "前端",              // 栏目名，未分类为 null
     "category_path": "技术 > 前端",   // 完整路径
     "content": "# 正文…",            // Markdown 源文
-    "visibility": "internal"          // 对外可见性三档（§7.1）
+    "visibility": "internal",         // 对外可见性三档（§7.1）
+    "allow_anonymous_comments": true  // 本文允不允许匿名评论（§7.1）
+
   }
 }
 ```

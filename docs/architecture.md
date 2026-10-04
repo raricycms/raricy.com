@@ -1194,6 +1194,76 @@ MP3 的帧同步要核版本 / 层 / 位速率字段（只判 `0xFF` 打头太�
 
 ---
 
+### 6.16 匿名评论（评论区，2026-10，迁移 `26_blog_anonymous_comments`）
+
+**只做评论区**，讨论区不做。读者在评论输入框勾「匿名」，这条评论就带化名发表。
+
+#### 名字怎么来（`src/lib/anon-identity.ts`）
+
+序号 → 化名的**纯函数**。序号是「在这篇文章里第几个开始匿名评论的人」，1-based：
+
+| 序号 | 化名 |
+|------|------|
+| 1 – 26 | `Alice`, `Bob`, … `Zach`（26 个裸名，A→Z） |
+| 27 – 52 | `Angry Alice`, `Angry Bob`, …（前缀「Angry」= A） |
+| … | 前缀依次 A–Y，共 25 个 |
+| 651 – 676 | `Yawning Alice` … `Yawning Zach` |
+| ≥ 677 | `You Win #677`, `You Win #678`, … |
+
+26 个前缀（第 0 个是**空串** = 首轮裸名）× 26 个名字 = **676**，所以第 677 个正好是
+`You Win #677`。这不是巧合也不是约数 —— 站长给的边界就是这个数，而 676 = 26×26 是同时
+满足「首轮裸名」「次轮加前缀」「到 677 换彩蛋」的**唯一**排法。**别为了凑字面的「ZZ」
+加第 26 个前缀词**：总数会顶到 702，那个 677 的边界随之失效。
+
+#### 数据形状
+
+- `blog_anon_identities`：`(blog_id, user_id) → seq`。**这张表才是权威** ——
+  「第几个」是这篇文章的历史事实，读时现算（按评论时间取第 k 个）会在删评论或作者注销时
+  漂移，同一个人的化名会**无声改名**。
+- `blog_comments.anon_seq`：非空 ⇔ 匿名评论，值是该化名序号。**判据冻在行上**，
+  于是名字表将来怎么改都不会让历史评论改名。
+- `blogs.anon_identity_count`：发号器。分配靠 `increment` 原子自增 ——
+  `COUNT(*)` / `MAX(seq)+1` 会在两个人同时首次匿名评论时发出同一个号（两个人同名）。
+  唯一索引 `(blog_id, seq)` 兜底。
+- `blogs.allow_anonymous_comments`：**作者可关，默认开**。闸门在
+  `comment-service.createComment`（服务端），前端只是不渲染那个勾选项。
+
+#### ★ 匿名 = 四件事同时成立，缺一条就是破诺 ★
+
+1. **DTO 层**（`serializeCommentBase`，站内评论树与 spider 对外接口的**共同出口**）：
+   `author.id → null`（真 UUID 一落地，读者点开 `/u/<id>` 就认出人了）、
+   `username → 化名`、`is_admin → false`（否则等于宣告「这条是管理员发的」）、
+   `avatar_url → 按化名哈希的 identicon`、`frame_url → null`（头像框也是身份指纹）。
+2. **通知**（`createComment` 的两条分支）：匿名评论的 `actorId` 传 **null**，身份改由
+   `detail` 文案里的化名交代。传真身 → 收件人在 `/notifications` 看到真名 + `/u/<id>` 链接，
+   评论树那边抹得再干净也白搭。**不能把化名塞进 `actorId`**：那是外键。
+3. **审计公示**（`AdminActionLog.hide_target`）：删/恢复匿名评论照旧写日志、照旧公示
+   （当事人仍可申诉），但 `listPublicLogs` / `getLogDetail` 把 `target_user` 抹掉 ——
+   `/audit` 是 core+ 都能看的，不抹就等于「删一条匿名评论 = 公开一次身份」。
+   运维 CLI（`npm run cli -- audit`）**不看**这个标志，真身照样查得到。
+   ★ 需求「管理员删除时能从日志里查到原作者」靠的就是 `targetUserId` 仍是真身。
+4. **个人主页**（`getPublicProfile` / `/u/[id]`）：匿名评论**不进** `recentComments`
+   与评论计数。主页是 core+ 都能看的，列在那里读者拿正文一比对就对上号了。
+
+还有一条正交的：**归属判定**。`CommentNode.is_mine` 由服务端按真实 `authorId` 算 ——
+匿名评论的 `author.id` 是 null，前端不能再拿 `currentUserId === author.id` 比。
+漏了它，匿名作者**删不掉自己的评论**，且静默（按钮不出现）。
+
+#### 头像
+
+种子是**化名**，不是真实用户 id（用真 id = 跨文章可关联的指纹）。种子形如
+`anon~<md5>`：那枚 `~` 落在 `resolveAvatar` 的 `[a-zA-Z0-9_-]` 之外，于是这张图
+**必然**是现算的 identicon，绝不会去读 `instance/avatars/<种子>.png`
+（否则站长放个同名文件就能盖掉它）。URL 仍由 `avatarUrl()` 这唯一出口拼。
+
+#### 规模与限频
+
+序号只增不减（`blog_anon_identities` 不删除）。按现在的用户规模，676 那一档到不了。
+匿名评论与实名评论**共用** `RULES.commentDaily` 这一个桶（按真实用户 id 计），
+没有另开额度 —— 匿名不是绕开限频的通道。
+
+---
+
 ## 7. 数据流（4 个典型路径）
 
 ### 7.1 用户登录

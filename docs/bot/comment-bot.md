@@ -174,7 +174,7 @@ GET /api/auth/me
 |--------|------|--------------|
 | `400` | 参数错误 | `评论内容不能为空` / `评论内容不能超过5000字` / `父评论不存在或已删除` |
 | `401` | 未登录 / 会话失效 | `请先登录` / `用户名或密码错误` |
-| `403` | 被禁言 / 角色不足 / 跨源 | `您已被禁言，无法发表评论` / `需要核心用户权限` / `跨源请求被拒绝 (CSRF)` |
+| `403` | 被禁言 / 角色不足 / 跨源 / 匿名已关闭 | `您已被禁言，无法发表评论` / `需要核心用户权限` / `跨源请求被拒绝 (CSRF)` / `本文作者已关闭匿名评论` |
 | `404` | 文章不存在 | `文章不存在` |
 | `429` | 触发限频 | `今日评论已达上限（8000条），请明日再试` |
 
@@ -315,8 +315,12 @@ Content-Type: application/json
 | `parent_id` | string | 否 | 回复某条评论，用被回复评论的 **UUID**。须**同一篇文章且未被删除** |
 | `image_id` | string | 否 | 引用图床图片，**必须是你自己上传的** |
 | `quote_blog_id` | string | 否 | 引用一篇文章的 UUID |
+| `anonymous` | boolean | 否 | `true` = 以**化名**发表（见 §10.4）。缺省 `false`。必须是 JSON 布尔值；传字符串 `"false"` 会被 400 拒（不是静默当 false） |
 
 \* 至少要有一个有效载荷（正文或附件），否则报 `评论内容不能为空`。
+
+> `anonymous: true` 时若该文作者关闭了匿名评论，返回 `403`（`本文作者已关闭匿名评论`）。
+> **先读 `GET` 的 `allow_anonymous_comments` 再决定要不要传**（§10.4）。
 
 | 长度上限 | 值 |
 |----------|-----|
@@ -487,10 +491,11 @@ Cookie: raricy_session=<JWT>
   "id": "9f1c…",                  // UUID，⚠️ 不是自增数字，不能当游标
   "blog_id": "3a7e…",
   "author": {
-    "id": "u_xxx",                // 可能为 null（作者已被删除）
-    "username": "alice",          // 可能为 null
+    "id": "u_xxx",                // 可能为 null：作者已注销，或这是一条**匿名评论**（§10.4）
+    "username": "alice",          // 可能为 null；匿名评论时是**化名**（如 "Alice"）
     "is_admin": false,
-    "avatar_url": "/api/avatar/u_xxx"  // 可能为 null
+    "avatar_url": "/api/avatar/u_xxx",  // 可能为 null；匿名评论时是按化名哈希的头像
+    "frame_url": null             // 头像框；匿名评论恒为 null
   },
   "parent_id": null,              // 顶层评论为 null
   "root_id": null,                // 所属楼中楼的根评论 id
@@ -523,9 +528,26 @@ Cookie: raricy_session=<JWT>
   },
   "blog_missing": false,
   "liked": false,                   // 随「查看者」而变；未登录恒为 false
+  "is_mine": false,                 // 随「查看者」而变：是不是你自己发的
+  "anonymous": false,               // 是否匿名评论（§10.4）
   "children": [ /* CommentNode[]，回复 */ ]
 }
 ```
+
+> ⚠️ `is_mine` 存在的理由：匿名评论的 `author.id` 恒为 `null`，客户端没法再拿
+> 「我的 id == author.id」判归属。**判「这条是我的」一律用 `is_mine`**。
+
+### 10.4 匿名评论（化名）
+
+发评论时带 `anonymous: true` 即以化名发表。规则：
+
+- **同一篇文章内，同一个人始终同一个化名**（第一名是 `Alice`，第二名 `Bob`，依次到 `Zach`；
+  之后是 `Angry Alice`…，再往后是 `You Win #677`）。跨文章互不相干。
+- 化名**不是账号**：`author.id` 为 `null`，`is_admin` 恒为 `false`，`frame_url` 恒为 `null`，
+  `avatar_url` 是按化名哈希出来的确定性头像。**机器人拿不到、也不该去猜真实作者**。
+- 是否允许由**文章作者**决定：`GET /api/blogs/:id` 的 `allow_anonymous_comments`
+  （缺省 `true`）。关掉后带 `anonymous: true` 会被 `403` 拒。
+- 被管理员删除时，**日志里记的是真实作者**（供站内运营与申诉），但公示面不公开其身份。
 
 > ⚠️ **`is_deleted: true` 的评论，`content` 与 `content_html` 都已被替换为
 > `[该评论已删除]`** —— 原文不会下发。请不要把占位符当正文去回复。

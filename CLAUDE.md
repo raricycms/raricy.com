@@ -485,6 +485,35 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 - 分享卡片走 sharp 复用 `poster.ts`，**别改用 `next/og` 的 Satori**（它不读系统字体栈，
   中文要自带字体二进制 = 第二条字体管线）。改版式几何前先跑 `tests/unit/og-card.test.ts`。
 
+### 匿名评论（只做评论区，讨论区不做）
+
+`docs/architecture.md` §6.16 是主副本；`src/lib/anon-identity.ts` 头部是名字表与发号
+（26×26=676，第 677 个是 `You Win #677` —— **别为了凑「ZZ」加第 26 个前缀词**）。
+
+**四条「破了就破诺」的纪律**（每条都是静默的 —— 页面照常渲染，只是匿名不再是匿名）：
+
+- **真身份只许从 `serializeCommentBase` 一处抹**（站内树与 spider 对外接口的共同出口）：
+  `author.id → null`、`username → 化名`、`is_admin → false`、`frame_url → null`、
+  头像按**化名**哈希（`anon~<md5>`；种子里的 `~` 落在 `resolveAvatar` 的文件名字符集之外，
+  所以那张图必然是现算的 identicon，站长放个同名 png 也盖不掉）。
+- **通知的 `actorId` 必须传 null**（匿名时），身份改由 `detail` 里的化名交代 ——
+  传了真身，收件人在 `/notifications` 看到真名 + `/u/<id>` 链接，评论树那边白抹。
+- **`AdminActionLog.hide_target`**：删/恢复匿名评论照旧公示、照旧可申诉，但
+  `listPublicLogs` / `getLogDetail` 抹掉 `target_user`（`/audit` 是 core+ 都能看的）。
+  运维 CLI 不看这个标志 —— 「管理员能从日志里查到原作者」靠 `targetUserId` 仍是真身。
+- **匿名评论不进个人主页**（`getPublicProfile` / `/u/[id]` 的 `recentComments` 与计数）：
+  主页 core+ 都能看，列在那里一比对就对上号了。
+
+另外三条：
+
+- **归属一律用服务端算的 `CommentNode.is_mine`**，别拿 `currentUserId === author.id` ——
+  匿名评论的 `author.id` 是 null，那样比会让作者**删不掉自己的评论**（按钮不出现，不报错）。
+- **判据冻在 `blog_comments.anon_seq` 上**，权威是 `blog_anon_identities` 那一行。
+  别改成读时现算（删评论或作者注销都会让化名**无声改名**）。
+- **开关 `Blog.allowAnonymousComments` 的闸门在 `createComment`**（前端只是不渲染勾选项）；
+  `PUT /api/blogs/:id` 对**缺键**是「这一列不动」—— 否则旧客户端一次普通保存就会把
+  作者关掉的匿名**悄悄打开**。同理 `ValidatedBlogData.allowAnonymousComments` 可选 ≠ 必填。
+
 ### 收藏夹
 
 `docs/architecture.md` §6.10 + `src/lib/favorite-service.ts` 头部（**六条不变量**，
