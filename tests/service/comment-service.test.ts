@@ -855,9 +855,9 @@ describe('序列化：snake_case 字段与作者信息', () => {
     const r = await createComment({ blogId: blog.id, authorId: author.id, content: 'x' });
     if (!r.ok) throw new Error('前置失败');
     expect(Object.keys(r.comment).sort()).toEqual([
-      'author', 'blog', 'blog_id', 'blog_missing', 'children', 'content', 'content_html',
-      'created_at', 'id', 'image', 'image_missing', 'is_deleted', 'liked', 'likes_count',
-      'parent_id', 'root_id', 'status', 'updated_at',
+      'anonymous', 'author', 'blog', 'blog_id', 'blog_missing', 'children', 'content',
+      'content_html', 'created_at', 'id', 'image', 'image_missing', 'is_deleted', 'is_mine',
+      'liked', 'likes_count', 'parent_id', 'root_id', 'status', 'updated_at',
     ]);
   });
 

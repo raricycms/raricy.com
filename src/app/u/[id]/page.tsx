@@ -65,9 +65,11 @@ export default async function PublicProfilePage({
   // 「这篇有 40 条讨论」在熟人社区里可能就够了）。四项一律用 canSeeContent 收口。
   const [blogsCount, commentsCount, likesAgg, extra] = await Promise.all([
     canSeeContent ? prisma.blog.count({ where: { authorId: profile.id, ignore: false } }) : 0,
+    // anonSeq: null 与下面的列表同口径（匿名评论不进主页，理由见 user-service.getPublicProfile）。
+    // ⚠️ 计数与列表**必须同一个 where** —— 计数多算会让「共 N 条」和翻出来的条数对不上。
     canSeeContent
       ? prisma.blogComment.count({
-          where: { authorId: profile.id, isDeleted: false, blog: { ignore: false } },
+          where: { authorId: profile.id, isDeleted: false, anonSeq: null, blog: { ignore: false } },
         })
       : 0,
     canSeeContent
@@ -109,7 +111,8 @@ export default async function PublicProfilePage({
 
   const commentRows = showComments
     ? await prisma.blogComment.findMany({
-        where: { authorId: profile.id, isDeleted: false, blog: { ignore: false } },
+        // anonSeq: null —— 匿名评论不进个人主页，见 user-service.getPublicProfile 那段。
+        where: { authorId: profile.id, isDeleted: false, anonSeq: null, blog: { ignore: false } },
         orderBy: { createdAt: 'desc' },
         skip: (commentPage - 1) * PAGE_SIZE,
         take: PAGE_SIZE,

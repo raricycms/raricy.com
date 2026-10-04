@@ -45,6 +45,12 @@ export interface LogDetail {
   objectId: string | null;
   targetUserId: string | null;
   targetUserName: string | null;
+  /**
+   * 当事人身份被刻意隐去（匿名评论的处置日志）。
+   * 与上面两个字段为 null 是同一件事，但页面要靠它把「不公开」和「本来就没有当事人」
+   * 分开显示 —— 否则 /audit 详情页上两者都长成 '—'。
+   */
+  targetHidden: boolean;
   reason: string | null;
   appeals: {
     id: number;
@@ -83,6 +89,7 @@ export async function getLogDetail(logId: number): Promise<LogDetail | null> {
       objectType: true,
       objectId: true,
       targetUserId: true,
+      hideTarget: true,
       reason: true,
       admin: { select: { username: true } },
       targetUser: { select: { username: true } },
@@ -110,8 +117,12 @@ export async function getLogDetail(logId: number): Promise<LogDetail | null> {
     adminName: log.admin?.username ?? null,
     objectType: log.objectType,
     objectId: log.objectId,
-    targetUserId: log.targetUserId,
-    targetUserName: log.targetUser?.username ?? null,
+    // 匿名评论的处置日志：当事人不公开（连同 id —— /u/<id> 是可达的，只抹名字不够）。
+    // 页面上的申诉入口不依赖这两个字段（服务端按真实 targetUserId 核验），
+    // 所以当事人**仍然申诉得了**，只是看不到自己名字被印在公示页上。
+    targetUserId: log.hideTarget ? null : log.targetUserId,
+    targetUserName: log.hideTarget ? null : log.targetUser?.username ?? null,
+    targetHidden: log.hideTarget,
     reason: log.reason,
     appeals: log.appeals.map((a) => ({
       id: a.id,
@@ -151,6 +162,7 @@ export async function listPublicLogs(params: ListLogsParams) {
         action: true,
         adminId: true,
         targetUserId: true,
+        hideTarget: true,
         objectType: true,
         objectId: true,
         reason: true,
@@ -189,9 +201,12 @@ export async function listPublicLogs(params: ListLogsParams) {
     createdAt: r.createdAt,
     action: r.action,
     admin: { id: r.adminId, username: r.admin?.username ?? null },
-    targetUser: r.targetUserId
-      ? { id: r.targetUserId, username: r.targetUser?.username ?? null }
-      : null,
+    // hideTarget：匿名评论的处置日志 —— 照公示，但不公开当事人（连 id 一起抹，
+    // 见 getLogDetail 里那段）。CLI 的 listAdminLogs 不走这里，真身照样看得到。
+    targetUser:
+      r.targetUserId && !r.hideTarget
+        ? { id: r.targetUserId, username: r.targetUser?.username ?? null }
+        : null,
     object: r.objectType || r.objectId ? { type: r.objectType, id: r.objectId } : null,
     reason: r.reason,
     extra: parseExtra(extraMap.get(r.id)),

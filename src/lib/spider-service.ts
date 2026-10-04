@@ -59,6 +59,10 @@ const commentSelect = {
   status: true,
   isDeleted: true,
   likesCount: true,
+  // 化名序号：匿名评论的署名由它推出（CommentBaseRow 把它**定为必填**，漏 select 会
+  // 直接 tsc 报错 —— 那是刻意的，见那边的注释）。对外接口同样只出化名：
+  // 机器人手里是一个 core+ 账号，也就是会去评论区的普通成员，不该比站内多知道什么。
+  anonSeq: true,
   createdAt: true,
   updatedAt: true,
   // 装备两列只为算头像框（serializeCommentBase 的 CommentBaseRow 把这两列**定为必填**，

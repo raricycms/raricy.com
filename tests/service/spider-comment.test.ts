@@ -157,3 +157,32 @@ describe('spider 评论语义', () => {
     expect(out!.created_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 });
+
+// ── 匿名评论走同一个投影 ────────────────────────────────────────────────────
+// 机器人手里是一个 core+ 账号，也就是会去评论区的普通成员：站内匿成化名、对外接口
+// 却出真名的话，匿名承诺对它就是白纸。所以匿名化发生在 comment-service.serializeCommentBase
+// 里（两条路的共同出口），而**键集合一个都不许变** —— 只换 author 里的值。
+describe('匿名评论：对外契约形状不变，只把真身换成化名', () => {
+  it('author 里没有 id、没有真名；顶层键集合与契约逐字相同', async () => {
+    const author = await makeUser({ role: 'core' });
+    const blog = await makeBlog({ authorId: author.id });
+    const anon = await makeUser({ role: 'core', username: 'realname_here' });
+
+    const created = await createComment({
+      blogId: blog.id,
+      authorId: anon.id,
+      content: '匿名话',
+      anonymous: true,
+    });
+    if (!created.ok) throw new Error('前置失败');
+
+    const got = await getSpiderComment(created.comment.id);
+    expect(got).toBeTruthy();
+    expect(Object.keys(got!).sort()).toEqual([...CONTRACT_KEYS].sort());
+    expect(got!.author.username).toBe('Alice');
+    expect(got!.author.id).toBeNull();
+    expect(got!.author.avatar_url).toContain('/api/avatar/anon~');
+    // 真实用户名绝不能出现在整条 JSON 里
+    expect(JSON.stringify(got)).not.toContain('realname_here');
+  });
+});

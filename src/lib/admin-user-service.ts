@@ -48,6 +48,12 @@ export interface LogAdminActionInput {
   reason?: string | null;
   metadata?: Record<string, unknown> | null;
   visibility?: string;
+  /**
+   * 当事人身份在**公示面**上不公开（匿名评论被处置的那条路径）。
+   * 日志本身照旧公示、照旧可申诉，只是 /audit 与 GET /api/audit 不下发 target_user。
+   * 见 schema 里该列的注释与 src/lib/audit-service.ts。
+   */
+  hideTarget?: boolean;
 }
 
 /** 写一条管理操作日志，返回日志 id。extra 走参数化 raw UPDATE，避免驱动层 JSON 读写坑。 */
@@ -63,6 +69,7 @@ export async function logAdminAction(input: LogAdminActionInput): Promise<number
       // 缺省值看「谁在写」：网页端 'public'（进 /audit 公示），
       // 后台运维 'internal'（只进 CLI 的 audit log）—— 见 audit-context.ts
       visibility: input.visibility ?? defaultLogVisibility(),
+      hideTarget: input.hideTarget ?? false,
       createdAt: nowForDb(),
     },
     select: { id: true }, // 不回读 extra（JSON 列）

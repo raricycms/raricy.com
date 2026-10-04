@@ -21,7 +21,12 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 }
 
 // POST /api/blogs/:id/comments — 创建评论（需 core+，禁言禁止，每日限额）
-// body: { content?: string, parent_id?: string, image_id?: string, quote_blog_id?: string }
+// body: { content?: string, parent_id?: string, image_id?: string, quote_blog_id?: string,
+//         anonymous?: boolean }
+//
+// anonymous=true → 以化名发表（同一篇文章内每人一个固定的化名，见 src/lib/anon-identity.ts）。
+// 是否允许由**文章作者**决定（Blog.allowAnonymousComments，默认允许）：不允许时 403。
+// 对外口径见 docs/bot/comment-bot.md §6。
 //
 // content 是 Markdown 源；渲染在客户端（src/lib/comment-markdown.ts），服务端只存原文
 // 并另存一份转义纯文本（contentHtml，给 spider API 与无 JS 降级）。
@@ -42,12 +47,17 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     parent_id?: unknown;
     image_id?: unknown;
     quote_blog_id?: unknown;
+    anonymous?: unknown;
   };
   const content = typeof body.content === 'string' ? body.content : '';
   const parentId = typeof body.parent_id === 'string' ? body.parent_id : null;
   const imageId = typeof body.image_id === 'string' && body.image_id ? body.image_id : null;
   const quoteBlogId =
     typeof body.quote_blog_id === 'string' && body.quote_blog_id ? body.quote_blog_id : null;
+  // 严格布尔：只有**真的** true 才算要匿名。字符串 "false" / 0 / 缺省一律按不匿名 ——
+  // 这里若写成 `!!body.anonymous`，`"false"` 会变成 true，于是「想实名的人被迫匿名」
+  // （或反过来，取决于写法）；不报错，只是署名悄悄变了。
+  const anonymous = body.anonymous === true;
 
   const res = await createComment({
     blogId: id,
@@ -56,10 +66,17 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     parentId,
     imageId,
     quoteBlogId,
+    anonymous,
   });
   if (res.ok) return apiOk({ comment: res.comment }, '评论成功');
 
   const code =
-    res.error === 'rateLimited' ? 429 : res.error === 'notFound' ? 404 : 400;
+    res.error === 'rateLimited'
+      ? 429
+      : res.error === 'notFound'
+        ? 404
+        : res.error === 'anonymousDisabled'
+          ? 403
+          : 400;
   return apiErr(code, res.message);
 }

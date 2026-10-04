@@ -60,7 +60,12 @@ export default async function AuditLogDetailPage({
           对象：{log.objectType ?? '—'}{' '}
           {log.objectId ? <code>{log.objectId}</code> : null}
         </div>
-        <div>目标用户：{log.targetUserName ?? log.targetUserId ?? '—'}</div>
+        <div>
+          目标用户：
+          {log.targetHidden
+            ? '（匿名评论，作者不公开）'
+            : log.targetUserName ?? log.targetUserId ?? '—'}
+        </div>
         <div>原因：{log.reason || '—'}</div>
       </div>
 

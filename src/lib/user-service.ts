@@ -450,9 +450,14 @@ export async function getPublicProfile(
       })
     : [];
 
+  // ⚠️ anonSeq: null —— **匿名评论不进个人主页**。
+  // 主页是 core+ 都能看的，而 core+ 正是会去评论区的那群人：把条目列在这里，
+  // 读者拿正文一比对就把他和评论区里的化名对上号了 —— 匿名承诺当场作废。
+  // 代价是他自己也看不到（同一份查询同时服务本人与访客），这是**刻意**的：
+  // 一份按查看者分叉的查询比「少几条」更容易在某次改动里把口径弄反。
   const recentComments = canSeeContent && user.showRecentComments
     ? await prisma.blogComment.findMany({
-        where: { authorId: user.id, isDeleted: false, blog: { ignore: false } },
+        where: { authorId: user.id, isDeleted: false, anonSeq: null, blog: { ignore: false } },
         orderBy: { createdAt: 'desc' },
         take: 10,
         select: {

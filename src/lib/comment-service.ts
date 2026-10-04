@@ -27,6 +27,7 @@ import { sendNotification } from './notification-service';
 import { logAdminAction } from './admin-user-service';
 import { avatarUrl } from './avatar-refs';
 import { frameUrlFor } from './frame-service';
+import { pseudonymAvatarUrl, pseudonymForSeq, resolvePseudonymSeqTx } from './anon-identity';
 import type { Prisma } from '@prisma/client';
 
 // ── 序列化输出（snake_case —— 前端直接消费这个形状，别改成 camelCase）────────
@@ -64,7 +65,10 @@ export interface CommentBaseDTO {
     username: string | null;
     is_admin: boolean;
     avatar_url: string | null;
-    /** 头像框贴图地址；null = 没戴 / 已过期 / 素材缺失 / 匿名。**判定已在服务层做完**。 */
+    /**
+     * 头像框贴图地址；null = 没戴 / 已过期 / 素材缺失 / **匿名评论**（化名头像不戴框）。
+     * **判定已在服务层做完**。
+     */
     frame_url: string | null;
   };
   parent_id: string | null;
@@ -90,6 +94,14 @@ export interface CommentBaseRow {
   likesCount: number | null;
   createdAt: Date | null;
   updatedAt: Date | null;
+  /**
+   * 化名序号（非空 ⇔ 匿名评论），见 prisma schema 的 anonSeq。
+   *
+   * ⚠️ **刻意是必填**（同下面 author 里那两列装备列的理由）：漏 select 的调用方
+   * 会当场 tsc 报错，而不是静默地把一条匿名评论**按真名下发** —— 那是最坏的一种坏法
+   *（页面照常渲染、用户名对得上、没有任何报错，但匿名承诺已经破了）。
+   */
+  anonSeq: number | null;
   author: {
     id: string;
     username: string;
@@ -129,6 +141,17 @@ export interface CommentNode extends CommentBaseDTO {
    * 已删除的评论一律 false（不可点赞）。
    */
   liked: boolean;
+  /**
+   * 这条评论是不是**自己**发的。⚠️ 与 `liked` 一样是**随查看者而变**的字段，
+   * 所以不住在 CommentBaseDTO（那是与调用者无关的对外契约）。
+   *
+   * 【为什么不能拿 author.id 去比】匿名评论的 author.id 恒为 null（真 id 一旦下发，
+   * 读者点开 /u/<id> 就把他认出来了）。于是「这条是我的吗」只能由服务端算好告诉前端 ——
+   * 少了它，匿名评论的作者**删不掉自己的评论**（按钮不出现），而且静默。
+   */
+  is_mine: boolean;
+  /** 是否匿名评论（化名由 author.username 给出）。前端据此决定要不要标「匿名」。 */
+  anonymous: boolean;
   children: CommentNode[];
 }
 
@@ -169,6 +192,7 @@ const commentSelect = {
   status: true,
   isDeleted: true,
   likesCount: true,
+  anonSeq: true,
   createdAt: true,
   updatedAt: true,
   author: {
@@ -192,6 +216,39 @@ type CommentRow = Prisma.BlogCommentGetPayload<{ select: typeof commentSelect }>
  */
 export function serializeCommentBase(c: CommentBaseRow): CommentBaseDTO {
   const deleted = c.isDeleted ?? false;
+
+  // ── 匿名评论：**只在这里**把真实身份换成化名 ──────────────────────────────
+  // 站内评论树与 spider 对外接口都走这一个函数，所以这一处换掉，两条路一起生效。
+  // 三件必须一起做的事（少一件就是破诺）：
+  //   id → null      真 UUID 一落地，读者点开 /u/<id> 就认出人了；而且它还会被前端
+  //                  拿去拼头像与资料链接。置 null 之后前端自然走「无账号」那条渲染支路。
+  //   username → 化名 由冻在行上的序号纯函数推出（见 anon-identity.ts）。
+  //   is_admin → false  真值会把「这条匿名评论是管理员发的」告诉所有人。
+  //   avatar_url → 按化名哈希的 identicon；frame_url → null（框也是一种身份指纹）。
+  // 注意 deleted 与否不影响这几个分支：软删只抹正文，不换署名。
+  if (c.anonSeq !== null && c.anonSeq !== undefined) {
+    const pseudonym = pseudonymForSeq(c.anonSeq);
+    return {
+      id: c.id,
+      blog_id: c.blogId,
+      author: {
+        id: null,
+        username: pseudonym,
+        is_admin: false,
+        avatar_url: pseudonymAvatarUrl(pseudonym),
+        frame_url: null,
+      },
+      parent_id: c.parentId,
+      root_id: c.rootId,
+      content_html: deleted ? DELETED_PLACEHOLDER : c.contentHtml ?? '',
+      status: c.status,
+      is_deleted: deleted,
+      likes_count: c.likesCount ?? 0,
+      created_at: c.createdAt ? c.createdAt.toISOString() : null,
+      updated_at: c.updatedAt ? c.updatedAt.toISOString() : null,
+    };
+  }
+
   return {
     id: c.id,
     blog_id: c.blogId,
@@ -200,7 +257,7 @@ export function serializeCommentBase(c: CommentBaseRow): CommentBaseDTO {
       username: c.author?.username ?? null,
       is_admin: c.author ? hasAdminRights(c.author) : false,
       avatar_url: c.author ? avatarUrl(c.author.id) : null,
-      // 匿名评论者（作者已注销）→ frameUrlFor(null) → null，组件据此不渲染框
+      // 作者已注销 → frameUrlFor(null) → null，组件据此不渲染框
       frame_url: frameUrlFor(c.author),
     },
     parent_id: c.parentId,
@@ -227,8 +284,11 @@ function serializeRow(c: CommentRow): CommentNode {
     image_missing: false,
     blog: null,
     blog_missing: false,
-    // 随人而变，由 attachLikes 按查看者批量填；未登录 / 软删恒为 false
+    // liked / is_mine 都随人而变，由 attachViewerState 按查看者批量填；
+    // 未登录时两者恒为 false，软删节点也不参与（没有可点的按钮）
     liked: false,
+    is_mine: false,
+    anonymous: c.anonSeq !== null && c.anonSeq !== undefined,
     children: [],
   };
 }
@@ -344,16 +404,27 @@ function filterDeletedLeaves(nodes: CommentNode[]): CommentNode[] {
 }
 
 /**
- * 按查看者批量填 `liked`（未登录传 null → 全部保持 false）。
+ * 按查看者批量填 `liked` 与 `is_mine`（未登录传 null → 全部保持 false）。
  *
  * 与 attachAttachments 同样是「一次查完整棵树」的批量做法 —— 评论树可能上百条，
  * 逐条查 CommentLike 就是 N+1。已删除的评论**不查也不标**：它们不可点赞
- * （toggleCommentLike 对软删一律 notFound），前端也不给按钮。
+ * （toggleCommentLike 对软删一律 notFound），也没有删除按钮，前端不给按钮。
+ *
+ * 【为什么 is_mine 必须服务端算】匿名评论的 author.id 是 null（真 id 不下发），
+ * 前端没法拿它跟 currentUserId 比 —— 见 CommentNode.is_mine 的说明。
  */
-async function attachLikes(nodes: CommentNode[], viewerId: string | null): Promise<void> {
+async function attachViewerState(
+  nodes: CommentNode[],
+  rows: CommentRow[],
+  viewerId: string | null
+): Promise<void> {
   if (!viewerId) return;
   const targets = flatten(nodes).filter((n) => !n.is_deleted);
   if (!targets.length) return;
+
+  // is_mine 走真实 authorId（匿名与否都一样 —— author_id 一直是真身）。
+  const authorById = new Map(rows.map((r) => [r.id, r.authorId]));
+  for (const n of targets) n.is_mine = authorById.get(n.id) === viewerId;
 
   const likes = await prisma.commentLike.findMany({
     where: { userId: viewerId, commentId: { in: targets.map((n) => n.id) } },
@@ -393,7 +464,7 @@ export async function listCommentsForBlog(
   }
 
   await attachAttachments(roots, rows);
-  await attachLikes(roots, viewerId);
+  await attachViewerState(roots, rows, viewerId);
   return filterDeletedLeaves(roots);
 }
 
@@ -408,6 +479,12 @@ export interface CreateCommentInput {
   imageId?: string | null;
   /** 引用的博客 id（须存在且未软删）。 */
   quoteBlogId?: string | null;
+  /**
+   * 以化名发表（评论区输入框里的「匿名」勾选项）。
+   * 是否允许由**文章作者**决定（Blog.allowAnonymousComments，默认允许）—— 这里只传意图，
+   * 校验在下面的事务里做（要读文章那一行）。
+   */
+  anonymous?: boolean;
 }
 
 export type CreateCommentResult =
@@ -422,13 +499,16 @@ export type CreateCommentResult =
         | 'captionTooLong'
         | 'imageInvalid'
         | 'blogInvalid'
-        | 'parentInvalid';
+        | 'parentInvalid'
+        /** 作者关掉了这篇文章的匿名评论。 */
+        | 'anonymousDisabled';
       message: string;
     };
 
 /**
  * 创建评论。
- * 调用方负责登录 / 禁言校验；此处负责频率限制、内容与附件校验、建 root_id、维护冗余计数。
+ * 调用方负责登录 / 禁言校验；此处负责频率限制、内容与附件校验、建 root_id、维护冗余计数，
+ * 以及匿名评论的**服务端闸门**与化名分配（见 CreateCommentInput.anonymous）。
  */
 export async function createComment(input: CreateCommentInput): Promise<CreateCommentResult> {
   const { blogId, authorId, parentId } = input;
@@ -491,14 +571,22 @@ export async function createComment(input: CreateCommentInput): Promise<CreateCo
   const now = nowForDb();
   const id = crypto.randomUUID();
 
+  const anonymous = input.anonymous === true;
+
   try {
     const node = await prisma.$transaction(async (tx) => {
-      // 带出 title/authorId 供事务提交后发通知
+      // 带出 title/authorId 供事务提交后发通知；匿名评论还要这一行判「这篇让不让匿名」
       const blog = await tx.blog.findFirst({
         where: { id: blogId, ignore: false },
-        select: { id: true, title: true, authorId: true },
+        select: { id: true, title: true, authorId: true, allowAnonymousComments: true },
       });
       if (!blog) return { notFound: true as const };
+
+      // 匿名闸门在**服务端**：前端把勾选项藏起来只是体验，接口才是边界
+      //（档位/开关类判定的老规矩 —— 页面与接口同档，见 docs/architecture.md §8）。
+      if (anonymous && !blog.allowAnonymousComments) {
+        return { anonymousDisabled: true as const };
+      }
 
       let resolvedParentId: string | null = null;
       let rootId: string | null = null;
@@ -516,6 +604,10 @@ export async function createComment(input: CreateCommentInput): Promise<CreateCo
         parentAuthorId = parent.authorId;
       }
 
+      // 化名序号：首次匿名评论时分配，之后恒定复用（同一篇文章内每人一个号）。
+      // 与评论插入**同一个事务** —— 评论写失败时，刚发的号跟着回滚，不留空洞。
+      const anonSeq = anonymous ? await resolvePseudonymSeqTx(tx, blogId, authorId) : null;
+
       const created = await tx.blogComment.create({
         data: {
           id,
@@ -530,6 +622,7 @@ export async function createComment(input: CreateCommentInput): Promise<CreateCo
           status: 'approved',
           isDeleted: false,
           likesCount: 0,
+          anonSeq,
           createdAt: now,
           updatedAt: now,
         },
@@ -550,30 +643,50 @@ export async function createComment(input: CreateCommentInput): Promise<CreateCo
     });
 
     if ('notFound' in node) return { ok: false, error: 'notFound', message: '文章不存在' };
+    if ('anonymousDisabled' in node) {
+      return { ok: false, error: 'anonymousDisabled', message: '本文作者已关闭匿名评论' };
+    }
     if ('parentInvalid' in node) return { ok: false, error: 'parentInvalid', message: '父评论不存在或已删除' };
 
     // 发送通知：
     //   回复 → 通知被回复者；顶层 → 通知文章作者；两者都排除「自己评自己」。
     // 通知失败不影响主流程（评论已提交成功），故整体 try/catch 吞掉。
+    //
+    // 【匿名评论绝不把 actorId 传真身】通知行里的 actorId 会被 /notifications 渲染成
+    // 「用户名 + /u/<id> 链接」，收件人（文章作者或被回复的人）点一下就认出人来了 ——
+    // 评论树那边把 id 抹掉、这边不抹，等于没匿。所以匿名时 actorId 传 null
+    // （渲染成「系统」），身份改由 detail 文案里的**化名**交代（化名本来就在评论区公开）。
+    // 别改成「把化名塞进 actorId」：那是个外键，指向 users(id)，会直接违例；
+    // 也别改成「干脆不发」：那会让文章作者错过自己文章下的互动。
     try {
       const { blogTitle, blogAuthorId, parentAuthorId: pAuthor } = node.notify;
+      const pseudonym =
+        node.row.anonSeq !== null && node.row.anonSeq !== undefined
+          ? pseudonymForSeq(node.row.anonSeq)
+          : null;
+      const actorId = pseudonym ? null : authorId;
+      const who = pseudonym ? `匿名读者「${pseudonym}」` : '';
       if (pAuthor && pAuthor !== authorId) {
         await sendNotification({
           recipientId: pAuthor,
           action: '评论回复',
-          actorId: authorId,
+          actorId,
           objectType: 'blog',
           objectId: blogId,
-          detail: `你的评论在《${blogTitle}》下收到了回复`,
+          detail: pseudonym
+            ? `${who}在《${blogTitle}》下回复了你的评论`
+            : `你的评论在《${blogTitle}》下收到了回复`,
         });
       } else if (!pAuthor && blogAuthorId && blogAuthorId !== authorId) {
         await sendNotification({
           recipientId: blogAuthorId,
           action: '文章评论',
-          actorId: authorId,
+          actorId,
           objectType: 'blog',
           objectId: blogId,
-          detail: `你的文章《${blogTitle}》收到了新评论`,
+          detail: pseudonym
+            ? `${who}评论了你的文章《${blogTitle}》`
+            : `你的文章《${blogTitle}》收到了新评论`,
         });
       }
     } catch {
@@ -584,6 +697,9 @@ export async function createComment(input: CreateCommentInput): Promise<CreateCo
     // 否则前端要等到下次整树刷新才看得见自己刚发的图。
     const comment = serializeRow(node.row);
     await attachAttachments([comment], [node.row]);
+    // 刚发的这条一定是自己的（列表接口才会按查看者算 is_mine，这里只有一条、
+    // 而且作者就是调用者本人）—— 不补这一下，POST 的返回值会说自己删不掉自己刚发的评论。
+    comment.is_mine = true;
     return { ok: true, comment };
   } catch (e) {
     // 【不要把所有异常都洗成「文章不存在」】
@@ -638,7 +754,7 @@ export async function softDeleteComment(
   const outcome = await prisma.$transaction(async (tx) => {
     const comment = await tx.blogComment.findUnique({
       where: { id: commentId },
-      select: { id: true, blogId: true, authorId: true, isDeleted: true },
+      select: { id: true, blogId: true, authorId: true, isDeleted: true, anonSeq: true },
     });
     if (!comment || comment.isDeleted) {
       return { ok: false as const, error: 'notFound' as const, message: '评论不存在或已删除' };
@@ -677,7 +793,16 @@ export async function softDeleteComment(
     return {
       ok: true as const,
       audit: adminDeletingOthers
-        ? { targetUserId: comment.authorId, blogId: comment.blogId, reason: trimmedReason }
+        ? {
+            targetUserId: comment.authorId,
+            blogId: comment.blogId,
+            reason: trimmedReason,
+            // 匿名评论：日志照公示（管理员确实做了这个动作、当事人仍可申诉），
+            // 但**当事人身份不公开** —— 否则 /audit 详情页与 GET /api/audit 会把
+            // 被删者的真实用户名贴出来，等于删一条匿名的就公开一次身份。
+            // 运维 CLI（npm run cli -- audit）不看这个标志，照样显示真身。
+            hideTarget: comment.anonSeq !== null && comment.anonSeq !== undefined,
+          }
         : null,
     };
   });
@@ -697,6 +822,7 @@ export async function softDeleteComment(
         objectId: commentId,
         reason: outcome.audit.reason || '违反规则',
         metadata: { blog_id: outcome.audit.blogId },
+        hideTarget: outcome.audit.hideTarget,
       });
     } catch {
       /* 审计写入失败不影响删除结果（删除已落库，不回滚） */
@@ -735,15 +861,15 @@ export type RestoreCommentResult =
  * 恢复软删评论的**内核**：isDeleted=false + 在同一事务内按「未删除评论数」重算
  * Blog.commentsCount 并刷新 lastCommentAt（与 softDeleteComment 的计数口径完全一致）。
  *
- * @returns 成功返回 { blogId, authorId }；评论不存在或本来就没被删 → null（幂等，不报错）
+ * @returns 成功返回 { blogId, authorId, anonSeq }；评论不存在或本来就没被删 → null（幂等，不报错）
  */
 export async function restoreCommentRow(
   commentId: string
-): Promise<{ blogId: string; authorId: string } | null> {
+): Promise<{ blogId: string; authorId: string; anonSeq: number | null } | null> {
   return prisma.$transaction(async (tx) => {
     const comment = await tx.blogComment.findUnique({
       where: { id: commentId },
-      select: { id: true, blogId: true, authorId: true, isDeleted: true },
+      select: { id: true, blogId: true, authorId: true, isDeleted: true, anonSeq: true },
     });
     if (!comment || !comment.isDeleted) return null;
 
@@ -762,7 +888,7 @@ export async function restoreCommentRow(
       data: { commentsCount, lastCommentAt: latest?.createdAt ?? null },
     });
 
-    return { blogId: comment.blogId, authorId: comment.authorId };
+    return { blogId: comment.blogId, authorId: comment.authorId, anonSeq: comment.anonSeq };
   });
 }
 
@@ -806,6 +932,8 @@ export async function restoreComment(
         objectId: commentId,
         reason: trimmedReason,
         metadata: { blog_id: row.blogId },
+        // 与删除同口径：匿名评论的恢复日志也照公示、但不公开当事人。
+        hideTarget: row.anonSeq !== null,
       });
     } catch {
       /* 审计写入失败不影响恢复结果 */
