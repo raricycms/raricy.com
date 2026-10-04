@@ -258,3 +258,50 @@ test('深层楼中楼：最内层不被挤窄，整片评论区共用一个横�
 // ⚠️ 顺带丢掉的还有那个 50px 上外边距（原先与 `.read-controls` 的 40px 折叠成 50px）——
 // 现在评论区与操作区的间距就是 `.read-controls` 自己的 40px（窄屏 30px）。
 // 若日后觉得太挤，改 `.read-controls` 的下外边距，**不要**给评论根节点加 margin。
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 底条从两颗孩子变成三颗（提示 / 匿名勾选项 / 提交）之后的排版
+//
+// 【为什么值得一条】输入区底条是 `display:flex; justify-content:space-between`，
+// 原来的两颗孩子靠 space-between 天然贴两端；插进第三颗（匿名勾选项）之后，
+// 布局是否正确不再能从「贴两端」推出来 —— 窄屏下挤掉提交按钮、或把整条顶出行外，
+// 都是**只在某个宽度才出现**的坏法。这条文件登记在 RESPONSIVE_SPECS 里，
+// 于是桌面与窄屏都会量。
+// ─────────────────────────────────────────────────────────────────────────────
+test('匿名勾选项挤进底条后：三样都在行内，且底条没有被顶宽', async ({ page }) => {
+  await registerFreshUser(page, { core: true });
+  const blogId = await createBlog(page, `匿名底条 ${uniqueTag()}`);
+  await page.goto(`/blog/${blogId}`);
+
+  const composer = page.locator('.comment-composer').first();
+  await expect(composer).toBeVisible();
+
+  const anon = composer.locator('.comment-composer__anon input[type="checkbox"]');
+  await expect(anon, '勾选项没渲染出来 —— 匿名就无从发起').toBeVisible();
+  const send = composer.locator('.comment-composer__send');
+  await expect(send).toBeVisible();
+
+  const geom = await page.evaluate(() => {
+    const box = document.querySelector('.comment-composer__foot') as HTMLElement | null;
+    const a = document.querySelector('.comment-composer__anon') as HTMLElement | null;
+    const s = document.querySelector('.comment-composer__send') as HTMLElement | null;
+    if (!box || !a || !s) return null;
+    const b = box.getBoundingClientRect();
+    const ar = a.getBoundingClientRect();
+    const sr = s.getBoundingClientRect();
+    return {
+      overflow: box.scrollWidth - box.clientWidth,
+      // 三样都必须落在底条自己的矩形里（允许 1px 的亚像素误差）
+      anonInside: ar.left >= b.left - 1 && ar.right <= b.right + 1,
+      sendInside: sr.left >= b.left - 1 && sr.right <= b.right + 1,
+      // 提交按钮不许被勾选项挤到下一行（两者纵向有交集才算同一行）
+      sameRow: ar.bottom > sr.top && sr.bottom > ar.top,
+    };
+  });
+
+  expect(geom, '底条没找到').not.toBeNull();
+  expect(geom!.overflow, '底条被顶宽了 —— 会溢出到面板外').toBeLessThanOrEqual(1);
+  expect(geom!.anonInside, '勾选项跑到行外了').toBe(true);
+  expect(geom!.sendInside, '提交按钮跑到行外了').toBe(true);
+  expect(geom!.sameRow, '提交按钮被挤到下一行了').toBe(true);
+});
