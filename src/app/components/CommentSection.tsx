@@ -80,6 +80,13 @@ interface CommentNode {
   likes_count: number;
   /** 当前查看者赞没赞过（未登录恒 false）。服务端按 viewer 批量算，见 comment-service。 */
   liked: boolean;
+  /**
+   * 这条是不是当前查看者自己发的。同样随人而变、由服务端算 ——
+   * **不能再拿 `currentUserId === node.author.id` 去比**：匿名评论的 author.id 是 null。
+   */
+  is_mine: boolean;
+  /** 是否匿名评论（author.username 是化名）。 */
+  anonymous: boolean;
   created_at: string | null;
   updated_at: string | null;
   children: CommentNode[];
@@ -109,6 +116,12 @@ interface Props {
   isAdmin?: boolean;
   /** 是否可发表评论（已登录 且 核心用户）。未传则回退到「已登录」。 */
   canComment?: boolean;
+  /**
+   * 这篇文章允不允许匿名评论（作者可关，默认允许）。
+   * 不传 = 允许。关掉时**整段不渲染那个勾选项** —— 它是作者设的规则，读者改不了，
+   * 留一个点了会 403 的灰控件只是噪音（同专注模式那条判据，见 CLAUDE.md）。
+   */
+  allowAnonymousComments?: boolean;
 }
 
 /** 正在回复的目标（就地表单挂到它下面，并作为 parent_id 提交）。 */
@@ -141,10 +154,22 @@ async function api(url: string, init?: RequestInit): Promise<{ code: number; mes
   };
 }
 
-export default function CommentSection({ blogId, currentUserId = null, isAdmin = false, canComment: canCommentProp }: Props) {
+export default function CommentSection({
+  blogId,
+  currentUserId = null,
+  isAdmin = false,
+  canComment: canCommentProp,
+  allowAnonymousComments = true,
+}: Props) {
   const [comments, setComments] = useState<CommentNode[]>([]);
   const [loading, setLoading] = useState(true);
   const [text, setText] = useState('');
+  /**
+   * 「匿名」勾选项。**提交后保持勾着**（不重置）—— 两种忘法的代价不对称：
+   * 忘了取消 → 下一条也匿名（只是署名换了，回头还能再发）；忘了重新勾 → 下一条
+   * **带着真名发出去**，那是收不回来的（评论删了，别人也看见了）。所以默认偏向匿名。
+   */
+  const [anonymous, setAnonymous] = useState(false);
   const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
   const [blogQuote, setBlogQuote] = useState<ComposerBlogQuote | null>(null);
   const [quoteOpen, setQuoteOpen] = useState(false);
@@ -202,6 +227,8 @@ export default function CommentSection({ blogId, currentUserId = null, isAdmin =
         parent_id: replyTo?.id ?? null,
         ...(pendingImage ? { image_id: pendingImage.id } : {}),
         ...(blogQuote ? { quote_blog_id: blogQuote.id } : {}),
+        // 作者关掉开关时连这个键都不发（省得服务端为一件读者本来就做不到的事回 403）
+        ...(allowAnonymousComments ? { anonymous } : {}),
       }),
     });
     if (data.code === 200) {
@@ -216,7 +243,18 @@ export default function CommentSection({ blogId, currentUserId = null, isAdmin =
       toast(data.message || '发表失败', 'error');
     }
     setSubmitting(false);
-  }, [text, replyTo, submitting, blogId, load, pendingImage, blogQuote, clearImage]);
+  }, [
+    text,
+    replyTo,
+    submitting,
+    blogId,
+    load,
+    pendingImage,
+    blogQuote,
+    clearImage,
+    anonymous,
+    allowAnonymousComments,
+  ]);
 
   /**
    * 点赞 / 取消点赞。
@@ -338,6 +376,11 @@ export default function CommentSection({ blogId, currentUserId = null, isAdmin =
         onClearReply={() => setReplyTo(null)}
         onClearBlogQuote={() => setBlogQuote(null)}
         onClearImage={clearImage}
+        anonToggle={
+          allowAnonymousComments
+            ? { checked: anonymous, onChange: setAnonymous }
+            : null
+        }
         hintExtra={
           text.length > (pendingImage || blogQuote ? COMMENT_CAPTION_MAX : COMMENT_TEXT_MAX)
             ? `已超出${pendingImage || blogQuote ? COMMENT_CAPTION_MAX : COMMENT_TEXT_MAX}字上限`
@@ -489,9 +532,12 @@ function CommentItem({
   replyForm: React.ReactNode;
 }) {
   const authorName = node.author.username ?? '匿名用户';
-  const canDelete = isAdmin || (!!currentUserId && currentUserId === node.author.id);
+  // ⚠️ 归属一律用服务端算好的 `is_mine`，**不要**再拿 currentUserId 去比 author.id ——
+  // 匿名评论的 author.id 恒为 null（真 id 不下发），那样比会让作者删不掉自己的评论，
+  // 而且是静默的：按钮不出现，没有报错。
+  const canDelete = isAdmin || node.is_mine;
   // 管理员删他人评论需填写原因
-  const requiresReason = isAdmin && (!node.author.id || node.author.id !== currentUserId);
+  const requiresReason = isAdmin && !node.is_mine;
   // 匿名评论者（作者已注销）→ 没有 id 也没有 avatar_url，<Avatar> 自己返回 null，
   // 保持「不渲染头像」的现状（这里不再各判一次）
   const authorAvatar = (
@@ -514,10 +560,17 @@ function CommentItem({
             <span>{authorName}</span>
           </Link>
         ) : (
+          // 匿名评论（有化名、无 id）与作者已注销（两者都空）都落这条支路 ——
+          // 匿名那条会带出 avatar_url，所以头像照常显示，只是不可点。
           <>
             {authorAvatar}
             <span>{authorName}</span>
           </>
+        )}
+        {node.anonymous && (
+          <span className="comment-author-anon" title="以化名发表的匿名评论">
+            匿名
+          </span>
         )}
       </div>
 

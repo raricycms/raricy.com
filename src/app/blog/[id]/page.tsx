@@ -242,6 +242,9 @@ export default async function BlogDetailPage({ params }: { params: Promise<{ id:
             currentUserId={member.id}
             isAdmin={isAdmin}
             canComment
+            // 作者可关匿名评论（默认开）。这里只用来决定勾选项给不给 —— 真正的闸门在
+            // comment-service.createComment（接口才是边界，前端藏一下只是体验）。
+            allowAnonymousComments={blog.allowAnonymousComments}
           />
         )}
 

@@ -83,6 +83,7 @@ export default function RichComposer({
   onStickerPick,
   stickerPickClosesPanel = true,
   hintExtra,
+  anonToggle = null,
 }: {
   /** BEM 前缀，见文件头「类名由调用方注入」。 */
   className: string;
@@ -136,6 +137,17 @@ export default function RichComposer({
    * 字数提示时同样会丢掉按键说明。前置就只是「多一句」，两边都完整。
    */
   hintExtra?: React.ReactNode;
+  /**
+   * 「匿名」勾选项。**不传 = 整段不渲染**（讨论区就是这样，一个字都不会变）。
+   *
+   * 只给评论区用（站长明确要求讨论区不做），所以它是可选 prop 而不是写死在这儿的控件：
+   * 本组件是讨论与评论共用的，把匿名选项做成常驻会让讨论区也长出一个不该有的开关。
+   * 状态由调用方持有（同 text / pendingImage 的规矩，见文件头「状态仍在调用方」）。
+   *
+   * ⚠️ 它不是 icon-btn —— tests/e2e/comment-rich.spec.ts 把工具条上的
+   * `.comment-composer__icon-btn` 数量钉死为 5，把勾选项塞进工具条会当场红。
+   */
+  anonToggle?: { checked: boolean; onChange: (checked: boolean) => void } | null;
 }) {
   const isTouch = useCoarsePointer();
   // 文件 input 归自己持有：选完立即清 value，否则连续选同一个文件不会再触发 change。
@@ -312,6 +324,19 @@ export default function RichComposer({
               ? `Enter 换行 · 点${submitVerb}提交 · 支持 Markdown`
               : `Enter ${submitVerb} · Shift+Enter 换行 · 支持 Markdown`}
           </span>
+          {anonToggle && (
+            <label
+              className={`${className}__anon`}
+              title="勾选后以化名发表；同一篇文章里你的化名固定不变"
+            >
+              <input
+                type="checkbox"
+                checked={anonToggle.checked}
+                onChange={(e) => anonToggle.onChange(e.target.checked)}
+              />
+              匿名
+            </label>
+          )}
           <button
             type="button"
             className={`${className}__send`}

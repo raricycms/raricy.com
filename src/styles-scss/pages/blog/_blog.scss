@@ -556,6 +556,40 @@ a {
 // 输入框重新涂成卡片底色，从外面看就是一个突兀的色块。
 @include composer.rich-composer('comment-composer');
 
+/* 「匿名」勾选项 —— 只有评论区有（讨论区不传 anonToggle，那一整段根本不渲染，
+   所以这条样式不会漏到讨论输入区）。底条仍是「提示在左、操作在右」：
+   margin-left:auto 把这个勾选项连同提交按钮一起推到右边。 */
+.comment-composer__anon {
+    margin-left: auto;
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.72rem;
+    color: var(--color-text-secondary);
+    user-select: none;
+    cursor: pointer;
+
+    input[type='checkbox'] {
+        width: 0.95rem;
+        height: 0.95rem;
+        margin: 0;
+        accent-color: var(--color-brand-primary);
+        cursor: pointer;
+    }
+}
+
+/* 化名评论的「匿名」小标 —— 光看到一个「Alice」，读者不知道那是化名而不是某人的用户名。 */
+.comment-author-anon {
+    flex: none;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: var(--color-background-subtle);
+    color: var(--color-text-secondary);
+    font-size: 0.68rem;
+    line-height: 1.5;
+}
+
 // 评论正文的 Markdown 块级样式，与讨论气泡共用（components/_markdown-body.scss）
 @include markdown-body.rich-markdown('comment-content__md');
 
