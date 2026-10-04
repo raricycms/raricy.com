@@ -158,15 +158,25 @@ export const commentCommands: CommandSpec[] = [
           createdAt: true,
           updatedAt: true,
           authorId: true,
+          anonSeq: true,
           author: { select: { username: true } },
           blog: { select: { title: true, ignore: true } },
         },
       });
       if (!c) throw new CliError(`错误：评论 ${id} 不存在`);
 
+      // 动态 import：CLI 顶层不许静态 import src/lib 的运行时值（--help 要零 Prisma 加载，
+      // 见 tests/unit/cli-guards.test.ts）。而且只有匿名评论才需要它 —— 常态一次都不加载。
+      const pseudonym = c.anonSeq
+        ? (await import('../../../src/lib/anon-identity')).pseudonymForSeq(c.anonSeq)
+        : null;
+
       const lines = renderKv([
         ['评论 ID', c.id],
         ['作者', c.author?.username ?? '—'],
+        // 匿名评论在站上显示的是化名（「作者」这一行给的是真身 —— 运维要的正是真身）。
+        // 不标出来，运维会以为页面上那个「Alice」是某个真账号。
+        ['匿名化名', pseudonym ? `${pseudonym}（站上显示的是这个）` : '—'],
         ['所属文章', `${c.blog?.title ?? '—'}${c.blog?.ignore ? '（已删除）' : ''}`],
         ['文章 ID', c.blogId],
         ['楼层关系', c.parentId ? `回复 ${c.parentId}` : '顶层'],
