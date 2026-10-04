@@ -181,19 +181,50 @@ describe('generateIdenticonSvg：输出是合法 SVG', () => {
     expect(svg, '缺少 rgb(240,240,240) 背景').toContain('fill="rgb(240,240,240)"');
     expect(svg, '一个 <rect> 都没有，图是空的').toMatch(/<rect /);
     // 前景色必须是合法 rgb()，且 r/g/b 在 0-255
-    const m = svg.match(/<g fill="rgb\((\d+),(\d+),(\d+)\)">/);
-    expect(m, `找不到前景色 <g fill="rgb(r,g,b)">：${svg.slice(0, 120)}`).not.toBeNull();
+    const m = svg.match(/<path fill="rgb\((\d+),(\d+),(\d+)\)"/);
+    expect(m, `找不到前景色 <path fill="rgb(r,g,b)">：${svg.slice(0, 120)}`).not.toBeNull();
     for (const v of m!.slice(1, 4)) {
       expect(Number(v)).toBeGreaterThanOrEqual(0);
       expect(Number(v)).toBeLessThanOrEqual(255);
     }
   });
 
-  it('标签成对：<rect> 数量与 <g> 闭合正常，无残缺标签', () => {
-    expect((svg.match(/<g /g) || []).length).toBe(1);
-    expect((svg.match(/<\/g>/g) || []).length).toBe(1);
+  it('标签成对：<path> 与 <svg> 闭合正常，无残缺标签', () => {
+    expect((svg.match(/<path /g) || []).length).toBe(1);
     expect((svg.match(/<svg /g) || []).length).toBe(1);
     expect((svg.match(/<\/svg>/g) || []).length).toBe(1);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ★ 白色接缝的回归守卫 ★
+//
+// 这块头像总被缩放到非 200px 的显示尺寸（博客列表 20、讨论 36、名片 1.4em …），
+// 而格子边长是 25 SVG 单位 —— 25 × 缩放比几乎永远不是整数。此时若「一格一枚 <rect>」，
+// 相邻两格各自的半覆盖边缘像素会**独立合成**（0.5 + 0.5×0.5 = 75%），接缝处就是一条
+// 接近背景色的白缝（实测 40 个常见尺寸里 28 个有缝）。
+// 合成一条 <path> 后覆盖按并集算，两个光栅化器都是 0。这条守卫盯的是「别改回去」——
+// 改回去不会让任何别的用例变红，只会让人在页面上看到白缝。
+// ─────────────────────────────────────────────────────────────────────────────
+describe('generateIdenticonSvg：前景必须是单条 <path>（防白色接缝回归）', () => {
+  it('前景没有逐格的 <rect>，只有背景那一枚', () => {
+    for (const seed of ['seam-guard', 'a', '', '聪明山用户']) {
+      const svg = generateIdenticonSvg(seed);
+      expect(
+        (svg.match(/<rect /g) || []).length,
+        `seed=${JSON.stringify(seed)} 的 SVG 里除了背景还有别的 <rect>：` +
+          `逐格画矩形会让相邻格之间出现白色接缝。输出：${svg.slice(0, 160)}`
+      ).toBe(1);
+      expect((svg.match(/<path /g) || []).length, '前景不是一条 <path>').toBe(1);
+    }
+  });
+
+  it('填色格子全在 path 的 d 里（一条子路径一格，个数随时间不变）', () => {
+    const svg = generateIdenticonSvg('seam-guard');
+    const d = svg.match(/<path [^>]*d="([^"]*)"/)?.[1] ?? '';
+    // 每个填色格一个 "M…h…v…h-…z"，所以子路径数 = 填色格数；空图也算合法
+    expect((d.match(/M/g) || []).length).toBe((d.match(/z/g) || []).length);
+    expect(d.length).toBeGreaterThan(0);
   });
 });
 
@@ -258,12 +289,12 @@ describe('安全：identicon 输出不得回显原始 seed（SVG XSS）', () => 
   }
 
   it('结构不变式：无论 seed 多脏，输出只由固定标签构成（seed 只经 md5，不进正文）', () => {
-    // 允许出现的标签白名单：svg / rect / g。出现别的标签就说明 seed 漏进了输出。
+    // 允许出现的标签白名单：svg / rect / path。出现别的标签就说明 seed 漏进了输出。
     for (const seed of [...PAYLOADS, '正常用户', '']) {
       const tags = [...generateIdenticonSvg(seed).matchAll(/<\/?([a-zA-Z][\w-]*)/g)].map(
         (m) => m[1].toLowerCase()
       );
-      const unexpected = [...new Set(tags)].filter((t) => !['svg', 'rect', 'g'].includes(t));
+      const unexpected = [...new Set(tags)].filter((t) => !['svg', 'rect', 'path'].includes(t));
       expect(
         unexpected,
         `seed=${JSON.stringify(seed).slice(0, 30)} 引入了预期外的标签：${unexpected}`
