@@ -111,24 +111,39 @@ function showToast(message, type = 'info') {
         toast.classList.add('show');
     });
 
-    // 自动移除
+    // 自动移除。悬停时「暂停」= 清掉定时器**并且**在移开时重新起计 ——
+    // 只清不重启的话，被鼠标划过一次的 toast 会永远留在右上角（右上角正是鼠标常驻处），
+    // 看起来就像「有些提示不会自己消失」。
     const autoHideMs = 3500;
-    const autoHideTimer = setTimeout(() => hideAndRemoveToast(toast), autoHideMs);
-
-    // 鼠标悬停时暂停自动关闭
+    let autoHideTimer = null;
+    const scheduleHide = () => {
+        clearTimeout(autoHideTimer);
+        autoHideTimer = setTimeout(() => hideAndRemoveToast(toast), autoHideMs);
+    };
+    scheduleHide();
     toast.addEventListener('mouseenter', () => clearTimeout(autoHideTimer));
+    toast.addEventListener('mouseleave', () => {
+        // 已在消失动画里就别再排一次（否则移除后又排一个指向已脱离 DOM 元素的定时器）
+        if (toast.dataset.hiding !== '1') scheduleHide();
+    });
 }
 
 window.showToast = showToast;
 
 function hideAndRemoveToast(toastEl) {
-    if (!toastEl) return;
+    if (!toastEl || toastEl.dataset.hiding === '1') return;
+    toastEl.dataset.hiding = '1';
     toastEl.classList.remove('show');
-    toastEl.addEventListener('transitionend', () => {
+    const remove = () => {
         if (toastEl && toastEl.parentNode) {
             toastEl.parentNode.removeChild(toastEl);
         }
-    }, { once: true });
+    };
+    // 首选等过渡结束再摘（保留淡出动画）。但 transitionend 不保证会来：
+    // 元素已在移除中、标签页被节流、或过渡时长被改成 0 时都不派发，
+    // 那时元素会以 opacity:0 的透明空壳永远留在容器里，兜底计时器负责摘掉它。
+    toastEl.addEventListener('transitionend', remove, { once: true });
+    setTimeout(remove, 400);
 }
 
 // 创建toast容器
