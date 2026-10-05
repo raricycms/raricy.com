@@ -87,6 +87,16 @@ export default function ClipboardMenu() {
     <div className="clipboard-page">
       <h1 className="clipboard-title">云剪贴板</h1>
 
+      {/* 这一句是**破名字的误读**，不是修饰。名字里的「剪贴板」会把功能读成
+          「站点在记录你复制的东西」——那是劝退用户的主因（用户反馈过「不愿意尝试」），
+          而本站从没有任何读取系统剪贴板的代码（全站 navigator.clipboard 只有 writeText）。
+          第二句补上真正的用途：它是唯一无法被博客本身替代的那点能力。 */}
+      <p className="clipboard-subtitle">
+        这里存的是你自己写下来的内容 —— 跟系统剪贴板没有关系，站点不会读取你复制的任何东西。
+        <br />
+        建一篇，就能在任意博客里用它的 8 位 ID 引用；改一次，所有引用到它的地方一起更新。
+      </p>
+
       <div className="clipboard-navigation">
         <div className="clipboard-navigation__search">
           <input

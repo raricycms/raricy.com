@@ -37,12 +37,14 @@ type Tool = {
 const SITE: Tool[] = [
   {
     cat: 'site',
-    kw: '云剪贴板 clipboard 云端 文本 分享',
+    kw: '云剪贴板 clipboard 云端 文本 分享 片段 markdown 引用',
     href: '/clipboard',
     icon: Clipboard,
     title: '云剪贴板',
-    desc: '云端文本存储与分享',
-    tags: ['云端', '分享', '文本'],
+    // 原为「云端文本存储与分享」—— 那句任何网盘都成立，说不出它跟博客的区别。
+    // 这句讲的是它唯一无法被博客替代的能力（一个 ID 引用多处，改一次全更新）。
+    desc: 'Markdown 片段库：写一次，在博客里随处引用',
+    tags: ['片段', 'Markdown', '引用'],
   },
   {
     cat: 'site',

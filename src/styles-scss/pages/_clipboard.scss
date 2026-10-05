@@ -29,7 +29,17 @@
       margin-bottom: $space-3;
     }
   }
-  
+
+  /* 页面副标题：破名字的误读（「云剪贴板」听着像站点在记录你复制的东西），再讲用途。
+     左对齐 —— 与上面那个左对齐的标题同轴。**别照抄 _fish-trade.scss 里那条
+     text-align: center**，那几页的标题本身是居中的。 */
+  &-subtitle {
+    color: var(--color-text-secondary);
+    font-size: 0.95rem;
+    line-height: 1.6;
+    margin: 0 0 $space-6;
+  }
+
   // 搜索和导航区域
   &-navigation {
     /* 无边框总则：容器轮廓不用描边，层级由卡片色与页面底的明度差承担。 */
