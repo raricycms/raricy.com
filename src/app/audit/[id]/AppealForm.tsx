@@ -61,7 +61,12 @@ export default function AppealForm({ logId }: { logId: number }) {
         disabled={busy}
       />
       <div className="d-flex justify-content-between align-items-center">
-        <small className="text-muted">
+        <small className="text-muted" style={{ flex: 1, marginRight: 12 }}>
+          {/* 申诉正文与处理说明都会出现在上面那块**公示**列表里（站内成员可见）——
+              先讲清楚再让人填。对匿名评论的当事人尤其要紧：身份字段已隐去，
+              但正文是他自己写的，别在这里把不该说的说出来。 */}
+          申诉内容与处理结果会在本页向站内成员公示，请勿写入不想公开的信息。
+          <br />
           {content.length} / {MAX_LEN}
         </small>
         <button className="btn btn-primary" onClick={submit} disabled={busy || !content.trim()}>
