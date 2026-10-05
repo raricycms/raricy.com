@@ -106,7 +106,8 @@
 | `/story` · `/story/[...path]` | page | 故事合集/阅读 |
 | `/tool` · `/tool/<sub>` | page | 工具集（aes / base / hash / hex / html / qp / translate / url / cattca） |
 | `/admin/*` · `/api/admin/*` | page + API | 管理后台（档位分页而异，见 §8） |
-| `/audit` · `/audit/[id]` | page | 审计日志公示 + 申诉。页面（母版 `src/app/audit/layout.tsx`）、`GET /api/audit` 与提交申诉**同为 core+** —— 「公示」的口径是**公示给站内成员**，不是对外透明 |
+| `/audit` · `/audit/[id]` | page | 审计日志公示 + 申诉。页面（母版 `src/app/audit/layout.tsx`）、`GET /api/audit` 与提交申诉**同为 core+** —— 「公示」的口径是**公示给站内成员**，不是对外透明。只列近 30 天、visibility='public' 的日志 |
+| `/admin/logs` | page | 审计日志**运维检索**（admin+，页面里 `requireAdmin()`）。与 `/audit` 是两个东西：看得到内部日志（`visibility='internal'`），且不设时间窗。**刻意不抹** `hideTarget`（匿名评论的当事人照常显示）—— 这正是它要 admin 档的原因（见 §6.16） |
 | `/contact` · `/privacy` · `/terms` | page | 联系 / 隐私 / 条款 |
 | （无 URL）`forbidden.tsx` | 特殊文件 | 403 页本身；由 `forbidden()` 原地渲染，**不是** `/forbidden` 路由 |
 | `/sitemap.xml` · `/robots.txt` | route | sitemap.ts / robots.ts |
@@ -1460,7 +1461,7 @@ MP3 的帧同步要核版本 / 层 / 位速率字段（只判 `0xFF` 打头太�
 **`/admin/*` 不是单一档位**：段级 layout（`admin/layout.tsx`）只判 core+ —— 因为段内的
 「用户管理」核心用户本来就能进（只读版：标题
 「用户列表」，无禁言 / 发通知 / 角色按钮）。段内需要更高权限的页面**各自把门**
-（URL 猜得到，侧栏藏起入口不等于挡住）：`/admin`、`/admin/blogs` 用 `requireAdmin()`；
+（URL 猜得到，侧栏藏起入口不等于挡住）：`/admin`、`/admin/blogs`、`/admin/logs` 用 `requireAdmin()`；
 `/admin/oauth` 用 `isOwner()`；`broadcast` / `categories` / `appeals` 各自的
 `layout.tsx` 用 `requireOwner()`。新增段内路由请照抄其中一档，别默认继承。
 
