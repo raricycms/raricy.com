@@ -1132,6 +1132,20 @@ plot / price / volume / time 各占一格）：与 SVG 共用同一个分数，�
   评论区自己需要滚动容器时**写 `.comment-section > .comment-list`**（2026-09-19 起，
   刻意留的那一条，见 §6.7），**别再给 `.blog-content-container-container` 或评论根节点
   写 `overflow-x`** —— 那正是这一轮拆掉的东西。
+- **剪贴板详情页的「白卡 → 灰框 → 白卡」（2026-10 已修）—— 同一形状的**非同名**版本，
+  这条扫描抓不到**：`clipboard/[id]/ClipDetailClient.tsx` 复用 `MarkdownRenderer` 渲染正文，
+  而它的根节点 `.blog-content-container` **就是博客详情页的文章卡本体**（白底 / 30px 圆角 /
+  40px 内距 / `max-width: 900px` / `margin: 40px auto 60px`）。剪贴板详情页自己已经有一张
+  白卡（`.clipboard-detail`），中间还垫了一块灰底（`.clipboard-detail__content`）→ 于是
+  内卡被 900px 掐窄，宽屏下两侧各露 64px 灰边、上下各多出 56 / 76px 灰（那 40 与 60 是
+  博客页留给自己的外边距，与这里无关）。**类名不同，所以「同名嵌套」那套判据看不见它**
+  —— 判据要换成「我复用的这个组件，根节点自带什么页面级外观」。
+  现由 `_clipboard.scss` 的 `&__content` 就地抵消那张卡的外观（`max-width` / `margin` /
+  `padding` / `background` / `border-radius` 清零），本页回到与博客详情页同构的
+  「一页一张白卡」；`.blog-content-container` 那套正文排版（代码块 / 引用 / 行内代码的
+  灰底——本来就是为白卡设计的）一条不动。`_blog.scss` **不改**，那是博客那条管线的版式。
+  ⚠️ 覆写锚在 `.blog-content-container` 这个类名上：哪天 `MarkdownRenderer` 换了根节点
+  类名，它会**静默失效**，表现就是本页又长回那张内卡。
 - 其余同名嵌套已登记待办，见下方「同类陷阱」。
 
 **2026-09-18 已修（第二轮：滚动条 / 左侧竖条收尾 / 幽灵引用）**：
