@@ -1,5 +1,90 @@
 // Audit log pages
 
+// 动作 chip：淡底 + 同色字（全站状态表达口径，不用左边框 / 不用描边环）。
+// 四档配色对应 src/lib/audit-actions.ts 的 AuditActionKind —— 惩罚=红 / 恢复=绿 /
+// 账号=品牌蓝 / 系统=中性灰。
+.audit-chip {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+
+  &--punish {
+    background: var(--color-warning-secondary);
+    color: var(--color-warning-primary);
+  }
+
+  &--restore {
+    background: var(--color-success-secondary);
+    color: var(--color-success-primary);
+  }
+
+  &--account {
+    background: var(--color-brand-secondary);
+    color: var(--color-brand-primary);
+  }
+
+  &--system {
+    background: var(--color-background-subtle);
+    color: var(--color-text-secondary);
+  }
+}
+
+// 类型列的第二行（metadata 的说法，如「禁言 24 小时」）。
+.audit-cell__detail {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  margin-top: 2px;
+}
+
+.audit-cell__time {
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+/* 空态。⚠️ `.table td` 是 (0,1,1)，单类修饰符 (0,1,0) 打不过它 ——
+   必须写成 `.table td.audit-table__empty` 才压得住那条 padding/border。 */
+.table td.audit-table__empty {
+  text-align: center;
+  padding: 24px;
+  color: var(--color-text-secondary);
+}
+
+// 筛选条：排列只在这里，卡底/内边距来自 .admin-filter-bar。
+.audit-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+
+  .form-select {
+    max-width: 220px;
+  }
+
+  .form-control {
+    max-width: 240px;
+  }
+}
+
+.audit-filter-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.audit-total {
+  margin-left: auto;
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+}
+
 .status-badge {
   display: inline-block;
   font-size: 0.85rem;
