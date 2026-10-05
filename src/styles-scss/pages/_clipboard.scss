@@ -271,14 +271,39 @@
       }
     }
     
+    /* 正文区：**一层，不是三层**。
+       ⚠️ 这里过去画过一块灰底（--color-background-content）+ 圆角 + 内距，本意是
+       「在白卡里托出正文块」。可里面装的是 MarkdownRenderer，而它的根节点自带一张
+       **完整的博客正文卡**（.blog-content-container，版式在 pages/blog/_blog.scss）：
+       白底 / 30px 圆角 / 40px 内距 / max-width 900px 居中 / margin 40px auto 60px。
+       于是实际渲染成「白卡 → 灰框 → 白卡」：那张内卡被 900px 掐窄，宽屏下两侧各露
+       64px 灰边，上下还各多出 56 / 76px 灰（40 与 60 是博客页留给自己的外边距）。
+       现在把灰框与内卡的卡片外观一起去掉，本页回到与博客详情页同构的「一页一张白卡」：
+       外面 .clipboard-detail 就是那张卡，正文直接住在卡里。代码块 / 引用 / 行内代码
+       照旧是灰的 —— .blog-content-container 那套本来就是为白卡设计的，压在白卡上正好。 */
     &__content {
-      /* 正文块是白卡里的子块：page 色压在白卡上只差 2%，去掉边框后看不见，
-         改用深一档的 content 色托层级。 */
-      background: var(--color-background-content);
-      border-radius: $radius-large;
-      padding: $space-4;
       margin-bottom: $space-4;
-      
+
+      /* 抵消内卡**及其宽度包装**的卡片外观，只保留正文排版（标题 / 列表 / 图片 /
+         代码块 / 引用 / MathJax 一概不动）。
+         写在这里而不是改 _blog.scss：那是博客那条管线的版式，剪贴板只是复用它的渲染器。
+         逐条：max-width + margin 是那张卡给自己留的阅读行宽与外边距，padding 是它的内距，
+         background + border-radius 是它的皮；容器那层的 padding: 0 20px 是给博客页
+         对齐评论区的檐沟，这里没有第二个东西要对齐。
+         ⚠️ 选择器锚在 .blog-content-container 这个**类名**上。哪天 MarkdownRenderer
+         换了根节点类名，这两条会**静默失效** —— 不报错，只是本页又长回那张内卡。 */
+      .blog-content-container-container,
+      .blog-content-container {
+        max-width: none;
+        margin: 0;
+        padding: 0;
+        background: transparent;
+        border-radius: 0;
+      }
+
+      /* 长行折回来而不是横向滚动（剪贴板里的正文常是粘来的一整行）。
+         实际生效的主要就是 white-space：marked 的 code 渲染器会给每个代码块套上
+         .highlight，那边（0-2-1）已经定死了字体 / 外边距 / 底色，压过这条（0-1-1）。 */
       pre {
         font-family: inherit;
         white-space: pre-wrap;
@@ -501,10 +526,7 @@
     
     &-detail {
       padding: $space-3;
-      
-      &__content {
-        padding: $space-3;
-      }
+      /* &__content 不再有内距（见上面那条：它是纯间距包装），窄屏无需再压。 */
     }
     
     &-form {
