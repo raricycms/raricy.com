@@ -269,6 +269,12 @@ export const DOC_ENTRIES: readonly DocEntry[] = [
   },
   {
     group: 'dev',
+    slug: 'editor-plan',
+    title: '编辑器换代方案（Vditor → 自研）',
+    summary: '为什么换掉 Vditor、换成什么、分期与迁移清单（方案，未实施）。',
+  },
+  {
+    group: 'dev',
     slug: 'README',
     title: '文档索引',
     summary: '本目录的索引与互指规范（给改文档的人）。',
