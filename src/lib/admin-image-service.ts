@@ -128,6 +128,15 @@ export async function restoreImage(
   await prisma.imageHosting.update({ where: { id }, data: { ignore: false } });
 
   try {
+    // ⚠️【动这条日志之前先读这里】本页**不脱敏**（未传 hideTarget）是安全的，只因为
+    // 有一条更靠下的兜底：`restoreImage` 的唯一调用者是运维 CLI，而 CLI 包在
+    // `runAsBackendOps()` 里 → 这条日志落 `visibility='internal'` → 它**永远不出现在
+    // 公开的 /audit 上**（getLogDetail 强制 visibility='public'）。
+    // 这条为什么重要：一张图被匿名评论内嵌过时，图片 id 是公开的（评论 DTO 直接下发
+    // /api/images/<id>/raw），而这里把 targetUserId 写成了图片作者的真身。**一旦将来给
+    // 图片恢复开一条网页端（public）写路径，公开详情页就会同屏印出「图片 id + 作者真名」，
+    // 把那条匿名评论对回作者。** 那天必须给这条日志补 hideTarget（或给 /audit 的渲染
+    // 加 image 类的匿名判据）。见 docs/architecture.md §6.16。
     await logAdminAction({
       action: 'restore_image',
       adminId: actor.id,

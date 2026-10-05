@@ -501,6 +501,9 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 - **`AdminActionLog.hide_target`**：删/恢复匿名评论照旧公示、照旧可申诉，但
   `listPublicLogs` / `getLogDetail` 抹掉 `target_user`（`/audit` 是 core+ 都能看的）。
   运维 CLI 不看这个标志 —— 「管理员能从日志里查到原作者」靠 `targetUserId` 仍是真身。
+  ⚠️ **它连申诉人一起管**：`createAppeal` 只许当事人本人申诉，所以隐藏日志的申诉人
+  就是那个匿名作者 —— `getLogDetail` 必须把 `appellant` 一并抹掉。只抹 `target` 而
+  放着申诉人，等于匿名作者一申诉就把自己交出去（真名会印在 core+ 都能开的 `/audit/<id>` 上）。
 - **匿名评论不进个人主页**（`getPublicProfile` / `/u/[id]` 的 `recentComments` 与计数）：
   主页 core+ 都能看，列在那里一比对就对上号了。
 
