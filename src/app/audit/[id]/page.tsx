@@ -80,7 +80,13 @@ export default async function AuditLogDetailPage({
           log.appeals.map((a) => (
             <li className="list-group-item" key={a.id}>
               <div className="d-flex justify-content-between align-items-center">
-                <strong>{a.appellantName ?? a.appellantId}</strong>
+                {/* 隐藏日志（匿名评论）上申诉人就是当事人 —— 服务端已把 id 与名字抹成 null
+                    （见 audit-service.getLogDetail 的 ★），这里顺势不点真名。
+                    判据用 log.targetHidden：申诉只能由当事人本人提起（createAppeal 强制），
+                    所以「有隐藏日志 ⇒ 申诉人 === 当事人」。 */}
+                <strong>
+                  {log.targetHidden ? '当事人（匿名评论，身份不公开）' : (a.appellantName ?? a.appellantId)}
+                </strong>
                 <span
                   className={
                     a.status === 'pending'

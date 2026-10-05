@@ -51,7 +51,8 @@ export interface LogAdminActionInput {
   /**
    * 当事人身份在**公示面**上不公开（匿名评论被处置的那条路径）。
    * 日志本身照旧公示、照旧可申诉，只是 /audit 与 GET /api/audit 不下发 target_user。
-   * 见 schema 里该列的注释与 src/lib/audit-service.ts。
+   * ⚠️ 这条真实性**连申诉人一起管**：申诉只能由当事人本人提起，所以隐藏日志的申诉人
+   * 也是他 —— `getLogDetail` 把 appellant 一并抹掉。见 schema 该列注释与 audit-service.ts。
    */
   hideTarget?: boolean;
 }

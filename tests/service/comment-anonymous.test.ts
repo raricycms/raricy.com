@@ -402,6 +402,69 @@ describe('匿名评论：公示面（/audit 与 GET /api/audit 的共同读口�
     const mine = await listPublicLogs({ mine: victim.id });
     expect(mine.total).toBe(2);
   });
+
+  it('★ getLogDetail：隐藏日志的申诉人身份一并抹掉（否则匿名作者一申诉就自曝）', async () => {
+    const { getLogDetail, createAppeal } = await import('@/lib/audit-service');
+    const { blog } = await seedBlog();
+    const anon = await makeUser({ role: 'core' });
+    const admin = await makeUser({ role: 'admin' });
+
+    const r = await createComment({
+      blogId: blog.id,
+      authorId: anon.id,
+      content: 'x',
+      anonymous: true,
+    });
+    if (!r.ok) throw new Error('前置失败');
+    await softDeleteComment(r.comment.id, { id: admin.id, role: 'admin' }, '违规');
+
+    const logRow = await prisma.adminActionLog.findFirst({
+      where: { objectId: r.comment.id },
+      select: { id: true },
+    });
+
+    // 申诉只能由当事人本人提起 —— 所以隐藏日志的申诉人就是那个匿名作者。
+    const appeal = await createAppeal({
+      logId: logRow!.id,
+      appellantId: anon.id,
+      content: '我不是故意的',
+    });
+    expect(appeal.ok, '当事人本人必须申诉得了').toBe(true);
+
+    const detail = await getLogDetail(logRow!.id);
+    expect(detail!.appeals).toHaveLength(1);
+    expect(
+      detail!.appeals[0].appellantName,
+      '申诉人就是当事人：只抹 target 而放着申诉人，等于匿名作者一申诉就把自己交出去'
+    ).toBeNull();
+    expect(detail!.appeals[0].appellantId, 'id 一起抹（/u/<id> 可达）').toBeNull();
+    expect(detail!.appeals[0].content, '申诉内容照旧公示（透明性不能被匿名吃掉）').toBe(
+      '我不是故意的'
+    );
+  });
+
+  it('getLogDetail：实名日志的申诉人照旧公开（回归：别一刀切）', async () => {
+    const { getLogDetail, createAppeal } = await import('@/lib/audit-service');
+    const { logAdminAction } = await import('@/lib/admin-user-service');
+    const { blog } = await seedBlog();
+    const author = await makeUser({ role: 'core' });
+    const admin = await makeUser({ role: 'admin' });
+
+    const logId = await logAdminAction({
+      action: 'delete_blog',
+      adminId: admin.id,
+      targetUserId: author.id,
+      objectType: 'blog',
+      objectId: blog.id,
+      reason: '测试',
+    });
+    const appeal = await createAppeal({ logId, appellantId: author.id, content: '申诉' });
+    expect(appeal.ok).toBe(true);
+
+    const detail = await getLogDetail(logId);
+    expect(detail!.targetHidden).toBe(false);
+    expect(detail!.appeals[0].appellantName, '非匿名的申诉人姓名照旧公开').toBe(author.username);
+  });
 });
 
 describe('匿名评论：不进个人主页（否则拿正文一比就认出人了）', () => {

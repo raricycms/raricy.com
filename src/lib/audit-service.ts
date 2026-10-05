@@ -87,7 +87,8 @@ export interface LogDetail {
     status: string;
     decision: string | null;
     createdAt: Date | null;
-    appellantId: string;
+    /** 隐藏日志（匿名评论）上为 null —— 申诉人就是当事人，身份一并隐去。 */
+    appellantId: string | null;
     appellantName: string | null;
   }[];
 }
@@ -159,8 +160,14 @@ export async function getLogDetail(logId: number): Promise<LogDetail | null> {
       status: a.status,
       decision: a.decision,
       createdAt: a.createdAt,
-      appellantId: a.appellantId,
-      appellantName: a.appellant?.username ?? null,
+      // ★ 与 targetUserId 同口径：隐藏日志的**申诉人就是当事人** —— `createAppeal`
+      //   强制 `log.targetUserId === appellantId`，而隐藏日志的 targetUserId 本就是那个
+      //   匿名作者。所以只抹上面两行、放着申诉人不管，等于「匿名作者一申诉就把自己交出去」：
+      //   真名会印在 core+ 都能打开的 /audit/<id> 上。连 id 一起抹，理由同上（/u/<id> 可达）。
+      //   ⚠️ 站长审批走的是**另一条**读路径（`admin-appeal-service.listAppeals`），
+      //   不受这里影响 —— 改这一段别去动那个函数。
+      appellantId: log.hideTarget ? null : a.appellantId,
+      appellantName: log.hideTarget ? null : a.appellant?.username ?? null,
     })),
   };
 }
