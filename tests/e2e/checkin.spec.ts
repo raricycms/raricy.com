@@ -148,10 +148,11 @@ test('没发过文章：状态接口回 can_check_in=false（不 403），写接
   expect(await myLedger(page, 'checkin')).toHaveLength(0);
   expect(await myBalance(page)).toBe(0);
 
-  // 页面给的是引导态（没有签到按钮），并链到发文页
+  // 页面给的是引导态（没有签到按钮），引导链落在博客目录、且搜索框预填「自我介绍」
   await page.goto('/checkin');
   await expect(page.locator('.checkin-button')).toHaveCount(0);
-  await expect(page.locator('a[href="/blog/upload"]')).toBeVisible();
+  await page.locator('a[href*="/blog?search="]').click();
+  await expect(page.locator('.search-input')).toHaveValue('自我介绍');
 });
 
 test('★ 发过又全部删除 = 没发过：文章软删后回到不能签', async ({ page }) => {

@@ -18,6 +18,11 @@ import CheckinCard, { CheckinLeaderboards } from '@/app/components/CheckinCard';
 // 直接写死进 next。access-control.spec 把这条钉死了（`next=%2Fcheckin`）。
 export const dynamic = 'force-dynamic';
 
+// 引导态那条链的落点：博客目录 + 预填「自我介绍」的搜索。
+// 不是 /blog/upload —— 新人还不知道该写什么，先让他看见别人怎么写；目录页右侧
+// 就有「创建文章」入口。搜索词的编码必须与 SearchForm 的 GET 表单一致（`search`）。
+const INTRO_SEARCH_HREF = `/blog?search=${encodeURIComponent('自我介绍')}`;
+
 export default async function CheckinPage() {
   const user = await getCurrentUser();
   if (!user) redirect(loginUrlWithNext('/checkin'));
@@ -47,10 +52,11 @@ export default async function CheckinPage() {
           </div>
           <div className="checkin-reward-hint" style={{ marginBottom: 16 }}>
             签到只对<b>发布过文章</b>的用户开放。你名下还没有未删除的文章（发过又全部删除
-            也算没有），发一篇之后就能来签到，每天领 {status.rewardFish} 条小鱼干。
+            也算没有）。不妨先发一篇<b>自我介绍</b> —— 让大家认识你，发完就能来签到，
+            每天领 {status.rewardFish} 条小鱼干。
           </div>
-          <Link href="/blog/upload" className="btn btn-primary">
-            去发布文章
+          <Link href={INTRO_SEARCH_HREF} className="btn btn-primary">
+            看看大家的「自我介绍」
           </Link>
         </div>
       )}
