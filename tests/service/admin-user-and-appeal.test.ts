@@ -271,6 +271,49 @@ describe('logAdminAction（审计日志写入）', () => {
       'win_edge_old'
     );
   });
+
+  it('筛选：对象类型 / 关键词只搜 reason 与 objectId / 时间窗白名单（非法值回落 30 天上限）', async () => {
+    const admin = await makeUser({ role: 'admin' });
+    const now = nowForDb();
+    const mk = (
+      action: string,
+      opts: { type?: string; reason?: string; objectId?: string; ageHours?: number } = {}
+    ) =>
+      prisma.adminActionLog.create({
+        data: {
+          action,
+          adminId: admin.id,
+          visibility: 'public',
+          objectType: opts.type ?? null,
+          objectId: opts.objectId ?? null,
+          reason: opts.reason ?? null,
+          createdAt: new Date(now.getTime() - (opts.ageHours ?? 0) * 3600_000),
+        },
+      });
+
+    await mk('f_type_blog', { type: 'blog' });
+    await mk('f_type_vote', { type: 'vote' });
+    await mk('f_kw_reason', { reason: 'f_kw 广告' });
+    await mk('f_kw_object', { objectId: 'f_kw-1234' });
+    await mk('f_old', { ageHours: 10 * 24 }); // 10 天前：出 7 天窗，仍在 30 天内
+
+    const byType = await listPublicLogs({ objectType: 'blog' });
+    expect(byType.items).toHaveLength(1);
+    expect(byType.items[0].action).toBe('f_type_blog');
+
+    // 关键词同时命中 reason 与 objectId 两条 —— 但**不**搜用户名（另有匿名回归在 comment-anonymous）。
+    const byQ = await listPublicLogs({ q: 'f_kw' });
+    expect(new Set(byQ.items.map((i) => i.action))).toEqual(
+      new Set(['f_kw_reason', 'f_kw_object'])
+    );
+
+    const week = await listPublicLogs({ rangeDays: 7 });
+    expect(week.items.map((i) => i.action)).not.toContain('f_old');
+
+    // 非法窗值既不能被撑开（9999 天），也不能塌成 0 天 —— 一律回落 30 天上限。
+    const bogus = await listPublicLogs({ rangeDays: 9999 });
+    expect(bogus.items.map((i) => i.action)).toContain('f_old');
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════

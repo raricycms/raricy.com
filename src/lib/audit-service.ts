@@ -2,8 +2,10 @@
 // audit-service.ts — 管理审计公示 + 申诉
 //
 // 纯函数 + 显式参数，与其它 service 风格一致。
-//   • listPublicLogs：仅 visibility='public'、近 30 天、最新在前、分页；带管理员/目标
-//     用户名与“是否有待处理申诉”标记。extra 是 String? 列存原始 JSON 文本，需 guarded 解析。
+//   • listPublicLogs：仅 visibility='public'、时间窗内（默认近 30 天，可选 7/30）、最新在前、
+//     分页；可按动作/对象类型/关键词/当事人用户名/“只看我相关的”筛；带管理员/目标用户名与
+//     “是否有待处理申诉”标记。extra 是 String? 列存原始 JSON 文本，需 guarded 解析。
+//     ⚠️ 【安全】按当事人用户名筛时必须与 hideTarget:false 一起用 —— 见函数内 ★ 注释。
 //   • createAppeal：校验/频控（accepted 拦截、20/日、同日志同人 pending 唯一）。
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -14,6 +16,11 @@ import type { Prisma } from '@prisma/client';
 
 const PER_PAGE = 20;
 const WINDOW_DAYS = 30; // 仅公示近 30 天（更早的日志仍在库，只是不进公示页）
+/**
+ * 公示页可选的更短时间窗。**30 天是硬上限** —— 公示「只列近期」是有意的展示策略，
+ * 想翻更早的走 `/admin/logs`（那边不设窗）。所以这里只有「更近」两档。
+ */
+export const PUBLIC_RANGE_DAYS = [7, WINDOW_DAYS] as const;
 const APPEAL_MAX_LEN = 2000;
 const APPEAL_DAILY_LIMIT = 20;
 
@@ -33,6 +40,28 @@ export function parseExtra(raw: string | null | undefined): Record<string, unkno
 export interface ListLogsParams {
   page?: number;
   action?: string | null;
+  /** 关键词：只搜 reason 与 objectId（**绝不**搜用户名 —— 见函数内 ★）。 */
+  q?: string | null;
+  objectType?: string | null;
+  /**
+   * ★ 按当事人用户名模糊筛。
+   *
+   * ⚠️ 这个筛选项**必须**与 `hideTarget:false` 一起用。`admin_action_logs` 在
+   * `hideTarget=true`（匿名评论的处置日志）时**仍然存着真实 targetUserId 与 targetUser 关系**，
+   * 只有读投影把它抹成 null。若这里只按用户名匹配而不排除隐藏行，那么任何 core 用户
+   * 输入一个用户名、只要结果里出现一行 delete_comment，就证明了此人写过一条**匿名**评论
+   * —— 泄露发生在「匹配」上，不在单元格里。修复见下方分支的 ★ 注释。
+   */
+  targetUsername?: string | null;
+  /**
+   * 只看与该用户相关的（`targetUserId = mine`）。
+   *
+   * 这一支**不需要** hideTarget 守卫：它比的是「这行是不是关于我自己」，只能验证
+   * 查看者自己的事，不揭示任何第三方。反而加了守卫会让匿名作者看不到自己的记录。
+   */
+  mine?: string | null;
+  /** 时间窗天数；只认 `PUBLIC_RANGE_DAYS`（7/30），其余一律回落 30。 */
+  rangeDays?: number | null;
 }
 
 export interface LogDetail {
@@ -136,18 +165,42 @@ export async function getLogDetail(logId: number): Promise<LogDetail | null> {
   };
 }
 
-/** 公示日志分页列表（public + 近 30 天 + 最新在前）。 */
+/** 公示日志分页列表（public + 时间窗内 + 最新在前）。 */
 export async function listPublicLogs(params: ListLogsParams) {
   const page = Math.max(1, params.page ?? 1);
+  // 时间窗：只认 PUBLIC_RANGE_DAYS 里的档，其余（含非法值）一律回落 30 天上限 ——
+  // 公示「只列近期」是硬策略，别让一个 query 参数把它撑开。
+  const days = (PUBLIC_RANGE_DAYS as readonly number[]).includes(params.rangeDays ?? WINDOW_DAYS)
+    ? (params.rangeDays ?? WINDOW_DAYS)
+    : WINDOW_DAYS;
   // 窗口起点与写入 createdAt 同口径（nowForDb，UTC+8 墙上时间贴 Z）——
   // 用真实 Date.now() 会把窗口拉成「30 天 + 8 小时」。同文件当日频控见下方注释。
-  const cutoff = new Date(nowForDb().getTime() - WINDOW_DAYS * 24 * 60 * 60 * 1000);
+  const cutoff = new Date(nowForDb().getTime() - days * 24 * 60 * 60 * 1000);
 
   const where: Prisma.AdminActionLogWhereInput = {
     visibility: 'public',
     createdAt: { gte: cutoff },
   };
   if (params.action) where.action = params.action;
+  if (params.objectType) where.objectType = params.objectType;
+  // 「只看我相关的」：只比 targetUserId = 查看者，不揭示第三方 —— 见接口注释。
+  if (params.mine) where.targetUserId = params.mine;
+  // 关键词**只**搜 reason 与 objectId，绝不 OR 到 targetUser.username：
+  // 那会把「按名字能查到谁被处置过」变成一条绕过匿名的路径（见 targetUsername 的 ★）。
+  if (params.q) {
+    where.OR = [{ reason: { contains: params.q } }, { objectId: { contains: params.q } }];
+  }
+  if (params.targetUsername) {
+    // ★★ 安全：必须 AND 上 hideTarget:false。
+    // 隐藏行（匿名评论的处置）照常出现在**默认列表**里，只是把当事人抹成 null；
+    // 但「按用户名匹配」若也算上它们，就等于用一次搜索把匿名作者认出来。
+    // 所以守卫只加在**这一支**，绝不能提到顶层 where.hideTarget=false —— 那会让
+    // 隐藏行从默认列表里整个消失（透明性被匿名吃掉，方向反了）。
+    where.AND = [
+      { targetUser: { is: { username: { contains: params.targetUsername } } } },
+      { hideTarget: false },
+    ];
+  }
 
   const [total, rows] = await Promise.all([
     prisma.adminActionLog.count({ where }),
@@ -211,6 +264,8 @@ export async function listPublicLogs(params: ListLogsParams) {
     reason: r.reason,
     extra: parseExtra(extraMap.get(r.id)),
     visibility: r.visibility,
+    // 让页面把「当事人被刻意隐去」与「本来就没有当事人」分开显示 —— 两者都是 targetUser=null。
+    targetHidden: r.hideTarget,
     hasPendingAppeal: hasPending.has(r.id),
   }));
 

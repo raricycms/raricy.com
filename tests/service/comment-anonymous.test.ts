@@ -354,6 +354,54 @@ describe('匿名评论：公示面（/audit 与 GET /api/audit 的共同读口�
     const row = items.find((i) => i.object?.id === r.comment.id);
     expect(row!.targetUser?.id).toBe(u.id);
   });
+
+  it('★ 按当事人用户名搜**不会**命中匿名处置日志（否则一次搜索就把匿名作者认出来）', async () => {
+    const { listPublicLogs } = await import('@/lib/audit-service');
+    const { logAdminAction } = await import('@/lib/admin-user-service');
+    const { blog } = await seedBlog();
+    const victim = await makeUser({ role: 'core', username: 'victim_under_test' });
+    const admin = await makeUser({ role: 'admin' });
+    const owner = await makeUser({ role: 'owner' });
+
+    // 一条**公开**日志，当事人是 victim（hideTarget 缺省 false）。
+    await logAdminAction({
+      action: 'delete_blog',
+      adminId: owner.id,
+      targetUserId: victim.id,
+      objectType: 'blog',
+      objectId: blog.id,
+      reason: '测试',
+    });
+    // 一条**隐藏**日志，当事人同样是 victim（匿名评论被删）。
+    const r = await createComment({
+      blogId: blog.id,
+      authorId: victim.id,
+      content: 'x',
+      anonymous: true,
+    });
+    if (!r.ok) throw new Error('前置失败');
+    await softDeleteComment(r.comment.id, { id: admin.id, role: 'admin' }, '违规');
+
+    // 按用户名搜：只能拿到那条公开的 —— 命中隐藏行等于公开「victim 写过被处置的匿名评论」。
+    const byName = await listPublicLogs({ targetUsername: 'victim_under_test' });
+    expect(byName.total).toBe(1);
+    expect(byName.items[0].action).toBe('delete_blog');
+
+    // 默认列表两条都在：隐藏行只是抹掉当事人，**不从公示里消失**（透明性不能被匿名吃掉）。
+    const all = await listPublicLogs({});
+    expect(all.total).toBe(2);
+    const hidden = all.items.find((i) => i.action === 'delete_comment');
+    expect(hidden!.targetUser, '默认列表里当事人照旧为 null').toBeNull();
+    expect(hidden!.targetHidden, '页面靠它区分「被隐去」与「本来没有当事人」').toBe(true);
+
+    // 关键词 q **绝不**按用户名命中（只搜 reason / objectId）。
+    const byQ = await listPublicLogs({ q: 'victim_under_test' });
+    expect(byQ.total).toBe(0);
+
+    // 「只看我相关的」：victim 自己看得到两条（含自己那条匿名的）—— 这是他自己的数据，不是泄露。
+    const mine = await listPublicLogs({ mine: victim.id });
+    expect(mine.total).toBe(2);
+  });
 });
 
 describe('匿名评论：不进个人主页（否则拿正文一比就认出人了）', () => {
