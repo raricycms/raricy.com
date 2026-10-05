@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requireCoreUser } from '@/lib/guard';
 import { getLogDetail } from '@/lib/audit-service';
+import { actionLabel } from '@/lib/audit-actions';
 import { isOwner } from '@/lib/auth';
 import { ymdhms } from '@/lib/format';
 import AppealForm from './AppealForm';
@@ -52,7 +53,9 @@ export default async function AuditLogDetailPage({
 
       <div className="card p-3 mb-3">
         <div>
-          类型：<span className="log-row__type">{log.action}</span>
+          类型：<span className="log-row__type">{actionLabel(log.action) ?? log.action}</span>{' '}
+          {/* 原始机器码一起显示：e2e 靠它断言（audit-detail.spec），读日志的人也要按码搜。 */}
+          <code>{log.action}</code>
         </div>
         <div>时间：{ymdhms(log.createdAt) ?? '—'}</div>
         <div>管理员：{log.adminName ?? log.adminId ?? '—'}</div>

@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { listAppeals } from '@/lib/admin-appeal-service';
+import { actionLabel } from '@/lib/audit-actions';
 import AdminAppealActions from '@/app/components/AdminAppealActions';
 
 export const dynamic = 'force-dynamic';
@@ -19,14 +20,6 @@ const STATUS_BADGE: Record<string, string> = {
   pending: 'status-badge status-badge--pending',
   accepted: 'status-badge status-badge--reverted',
   rejected: 'status-badge',
-};
-
-const ACTION_LABELS: Record<string, string> = {
-  ban_user: '禁言用户',
-  unban_user: '解除禁言',
-  delete_blog: '删除文章',
-  delete_comment: '删除评论',
-  change_role: '角色变更',
 };
 
 function fmt(iso: string | null): string {
@@ -95,7 +88,7 @@ export default async function AdminAppealsPage({
                 <span className="text-muted" style={{ fontSize: '0.9rem' }}>
                   针对：
                   {a.log
-                    ? `${ACTION_LABELS[a.log.action] ?? a.log.action}` +
+                    ? `${actionLabel(a.log.action) ?? a.log.action}` +
                       (a.log.targetUser
                         ? ` → ${a.log.targetUser.username ?? a.log.targetUser.id}`
                         : '')
