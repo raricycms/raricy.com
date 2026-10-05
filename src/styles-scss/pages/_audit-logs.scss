@@ -33,6 +33,11 @@
   }
 }
 
+// 类型列里 chip 与「内部」徽标并排时留一点缝。
+.audit-chip + .status-badge {
+  margin-left: 6px;
+}
+
 // 类型列的第二行（metadata 的说法，如「禁言 24 小时」）。
 .audit-cell__detail {
   display: block;
@@ -102,6 +107,14 @@
   }
 
   &--pending {
+    color: var(--color-accent-amber);
+    border-color: transparent;
+    background: var(--color-accent-amber-soft);
+  }
+
+  /* 内部日志（CLI 写下的那批，visibility≠public）。只有 /admin/logs 用得上 ——
+     公示页只列 public，永远不会出现这一档。 */
+  &--internal {
     color: var(--color-accent-amber);
     border-color: transparent;
     background: var(--color-accent-amber-soft);
