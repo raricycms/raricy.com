@@ -406,6 +406,13 @@ function enhanceFileInputs() {
         if (input.dataset.filepick) return;
         // 跳过由自定义 UI 驱动、本就隐藏的（图床拖拽区）
         if (input.hasAttribute('hidden') || input.style.display === 'none') return;
+        // 跳过 vditor 工具栏里那颗上传用的 input。它靠 CSS 隐形
+        // （.vditor-toolbar__item input 的 opacity），既没有 hidden 属性也没有
+        // display:none，所以上面那条早退抓不到它 —— 而它的驱动者本来就是工具栏上
+        // 那颗上传图标。包一层的结果是那条工具栏里凭空多出「选择文件 / 未选择文件 / ×」
+        // 三件套（2026-10 线上实际如此），且 vditor 的 input 被挪进 .filepick 后
+        // 点击图标唤出文件框也要绕过 label 转发。
+        if (input.closest('.vditor')) return;
         input.dataset.filepick = '1';
 
         if (!input.id) input.id = 'fp-' + Math.random().toString(36).slice(2, 9);

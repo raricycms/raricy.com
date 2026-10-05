@@ -82,6 +82,34 @@ describe('文件选择器：init 时就存在的 input', () => {
     runBaseJs();
     expect(document.querySelector('.filepick')).toBeNull();
   });
+
+  it('vditor 工具栏里的上传 input 不接管 —— 否则工具栏多出一颗「选择文件」蓝钮', () => {
+    // vditor 把 <input type=file> 塞进上传图标的 <button> 里，靠
+    // `.vditor-toolbar__item input` 的 opacity 隐形：既没有 hidden 属性、也没有
+    // display:none，只有 .vditor 这个祖先能认出它。
+    document.body.innerHTML =
+      '<div id="editor" class="vditor"><div class="vditor-toolbar">' +
+      '<div class="vditor-toolbar__item"><button class="vditor-tooltipped">' +
+      '<svg></svg><input type="file" multiple="multiple"></button></div>' +
+      '</div></div>';
+    runBaseJs();
+
+    expect(
+      document.querySelector('.filepick'),
+      'vditor 的上传 input 被包了一层 —— 工具栏里会多出「选择文件 / 未选择文件 / ×」'
+    ).toBeNull();
+    // 没被挪走：vditor 自己的 click → input.click() 还得找得到它
+    expect(document.querySelector('button.vditor-tooltipped input[type="file"]')).toBeTruthy();
+  });
+
+  it('📌 早退只管 .vditor 里的 —— vditor 之外的同款 input 仍然被包装', () => {
+    document.body.innerHTML =
+      '<div id="editor" class="vditor"><input type="file"></div><input id="other" type="file">';
+    runBaseJs();
+
+    expect(document.querySelectorAll('.filepick').length).toBe(1);
+    expect(document.querySelector('#other')!.closest('.filepick')).toBeTruthy();
+  });
 });
 
 describe('文件选择器：客户端路由跳转后才挂上的 input', () => {

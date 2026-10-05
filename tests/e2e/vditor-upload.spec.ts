@@ -35,6 +35,29 @@ const EDITORS = [
 ];
 
 for (const { name, url, editor } of EDITORS) {
+  test(`${name}：工具栏里没有多出来的「选择文件」控件`, async ({ page }) => {
+    await loginViaApi(page, SEED_USERS.core.username);
+    await page.goto(url);
+    await expect(page.locator(`${editor}.vditor`)).toBeVisible();
+
+    // .filepick 是 base.js 给**可见的**原生 input[type=file] 注入的 UI。vditor 那颗
+    // 上传 input 靠 CSS 隐形（没有 hidden 属性、没有 display:none），早退抓不到它 ——
+    // 一旦被接管，工具栏里就凭空多出一颗「选择文件」蓝钮 + 「未选择文件」+ ×
+    // （2026-10 线上实际如此）。这条守的是「编辑器里一个 .filepick 都不该有」。
+    const input = page.locator('.vditor-toolbar input[type="file"]');
+    await expect(input).toHaveCount(1); // 工具栏建出来了，这颗 input 已经在 DOM 里
+
+    // 【为什么要手动跑一次，而不是干等 MutationObserver】两个编辑器的时序不一样，
+    // 干等着会得到一个**假绿灯**：实测把守卫去掉后，博客那一条照样通过（那颗 input
+    // 是 base.js 三轮 init 之后才插进来的，观察器没轮到它），只有云剪贴板那条变红。
+    // 手动调公开入口对两个页面都稳定 —— 而且这正是「编辑器里再跑一次增强」那条真实路径
+    // （客户端路由跳转就是靠它兜的）。
+    await page.evaluate(() => (window as { enhanceFileInputs?: () => void }).enhanceFileInputs?.());
+    await expect(page.locator(`${editor} .filepick`)).toHaveCount(0);
+    // 上传的入口仍只有工具栏那颗图标
+    await expect(input).toHaveCount(1);
+  });
+
   test(`${name}：上传图片后 Markdown 里出现 /api/images 地址`, async ({ page }) => {
     await loginViaApi(page, SEED_USERS.core.username);
     await page.goto(url);
