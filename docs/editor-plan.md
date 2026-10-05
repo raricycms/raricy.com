@@ -58,9 +58,20 @@ Vditor 只给了开关，没给「换掉这套启发式」的口子。
 在 Vditor 的预览里**没有地方挂**。所以
 `docs/guide/内容引用语法指南.md` 的「八、注意事项」里白纸黑字写着「编辑器中不可预览」。
 
-Vditor 没有提供「接管 preview 渲染器」的接口 —— 我们把 `docs/` 与
-`node_modules/vditor/dist/ts/` 的类型定义都翻过了，只有工具栏、主题、hint 这几类扩展点。
-**因此 ③ 在保留 Vditor 的前提下无解。**
+**Vditor 有一个渲染口子，但它够不到要害 —— 这是「高摩擦的非零解」，不是干净替换。**
+查过 vditor 4.0.0 的类型定义（见 §2.2 的来源说明）：
+
+- **够得到的**：`IPreviewOptions.renderers?: ILuteRender` 有约 80 个按节点覆盖 HTML 输出的
+  回调（`renderHeading` / `renderTable*` / `renderCodeBlock*` / `renderMath*` / `renderLink`…），
+  挂在 `Vditor.md2html()` / `Vditor.preview()` 这两个**静态**方法上。另外实例上还有
+  `preview.transform?(html)` 与 `preview.parse?(element)` 两个后钩子。
+- **够不到的**：`renderers` **只在 `IPreviewOptions` 上，不在 `IOptions` 上** ——
+  `new Vditor(...)` 的实时编辑器够不着它。而**编辑器内联那块 IR 编辑面本身由 Vditor
+  内部产出，没有任何「换皮」的口子**，只有上面那两个后钩子。
+
+也就是说：想让预览等价于站点渲染，得用约 80 个回调**在 Lute 的节点模型上重实现一遍**我们的
+渲染器，**而且换掉的只是另开一个预览面板**——用户盯着的那个就地渲染的编辑区，还是它自己那套。
+**投入产出比明确为负，结论不变：换掉 Vditor。**
 
 ### 1.3 现状盘点
 
@@ -105,20 +116,57 @@ Vditor 没有提供「接管 preview 渲染器」的接口 —— 我们把 `doc
 
 ### 2.2 候选
 
-| 候选 | 内核 | 自带渲染器 | 能复用自己的渲染 | 行内装饰 | 中文输入法 | 判断 |
-|------|------|-----------|----------------|---------|-----------|------|
-| Vditor | 自研 contenteditable（ir/sv/wysiwyg 三态） | **是**（lute） | 否 | 否（无扩展口） | 一般 | 正是要换掉的 |
-| **CodeMirror 6** | 纯文本 + 装饰 API | 否 | **是** | **是**（`Decoration` / widget） | 好 | **选定** |
-| Milkdown | ProseMirror + markdown schema | **是** | 否（文档模型是它自己的，不是我们的管线） | 是 | 尚可 | 否 |
-| ByteMD | 编辑器内核是 CodeMirror，但外层自带 preview 与插件体系 | **是** | 只能部分 | 否 | — | 否 |
-| ProseMirror 自建 schema | ProseMirror | 否 | 要自己写（正文管线是字符串进字符串出，接不进 PM 的文档模型） | 是 | 尚可 | 代价高于 CM6 |
-| Lexical | Meta | 否 | 同上，且 markdown 侧不成熟 | 是 | 尚可 | 否 |
-| contenteditable 从零自研 | 无 | 否 | 是 | 自己造 | **差** | §2.3 |
+版本 / 日期 / 许可来自 npm registry 与 GitHub API，**查证日期 2026-10-06**。
 
-> Milkdown / ByteMD / Lexical 的维护状态与版本号**未在本次调查中核实**，
-> 但上表的取舍不依赖它们 —— 判据 1（不能自带渲染器）与判据 3（正文管线是字符串进
-> 字符串出、接不进 ProseMirror 文档模型）已经足够把它们排除掉。真要给站长一份
-> 「为什么不选 X」的完整交代，实施前补一次版本与维护状态核查即可。
+| 候选 | 最新版（日期） | 内核 | 自带渲染器 | 能复用自己的渲染 | 行内装饰 | 判断 |
+|------|---------------|------|-----------|----------------|---------|------|
+| Vditor | 4.0.0（2026-08-30） | 自研 contenteditable（ir/sv/wysiwyg 三态），引擎是 Lute（Go→WASM） | **是** | 只能逐节点覆盖，够不到内联编辑面（§1.2） | 否 | 正是要换掉的 |
+| **CodeMirror 6** | state 6.7.6 / view 6.43.13（2026-09-22） | **纯文本 + 装饰 API** | 否 | **是** | **是**（`Decoration` / `WidgetType`） | **选定** |
+| Milkdown | @milkdown/core 7.22.2（2026-09-23） | ProseMirror + remark | **是** | 否，且 markdown 是 PM 文档的派生（往返有损） | 是 | 否 |
+| ByteMD | 1.22.0（**2025-02-12**，此后无新版） | **CodeMirror 5** + remark 渲染 | **是** | 只能部分 | 否 | 否（已基本停更） |
+| ProseMirror 自建 | prosemirror-markdown 1.13.8（2026-09-21） | ProseMirror | 否 | 要自己写（正文管线是字符串进字符串出，接不进 PM 文档模型） | 是 | 代价高于 CM6 |
+| Lexical | 0.52.0（2026-09-28） | Meta，富文本框架 | 否 | 同上；markdown 只是导入导出层，不是内核 | 是 | 否（仍 0.x，IME issue 多） |
+| HyperMD | 0.3.11（**2018-10-07**） | CodeMirror 5 | 否 | — | 是 | 已死，勿选 |
+| contenteditable 从零自研 | — | 无 | 否 | 是 | 自己造 | §2.3 |
+
+**两条关于「看起来该排除、其实不能靠翻 GitHub 排除」的事实，写下来免得下次误判：**
+
+1. ⚠️ **CodeMirror 与 ProseMirror 的 GitHub 主仓是 `archived` 状态，但项目没死。**
+   作者 Marijn Haverbeke 把开发搬到了自有 forge `code.haverbeke.berlin`，
+   npm 上的 `@codemirror/*` 一直在发版（`state` / `view` 在 2026-09-22 同日发版）。
+   **只看 GitHub 的最后提交日期会得出「CM6 已停更」的错误结论。**
+2. **Vditor 已经出到 4.0.0**，而本站装的是 `^3.10.7`。也就是说「升级 Vditor 大版本」
+   在纸面上也是一条备选 —— 但它**一条痛点都打不掉**（§1.2 的三条分别来自
+   内核行为、我们的基建缺口、两套渲染器），所以不单列。
+
+**CodeMirror 6 的两个支撑事实：**
+
+- **GFM 开箱即用。** `@codemirror/lang-markdown` 的 `markdownLanguage` =
+  CommonMark + **GFM（表格 / 任务列表 / 删除线）** + 上下标 + emoji
+  （由 `@lezer/markdown` 的扩展集提供）。中文用户常用的语法没有缺口。
+- **有直接可抄的参考实现。** `@atomic-editor/editor`（MIT，React，0.6.2）做的就是
+  这件事：非光标行收起标记、图片/表格/任务列表行内渲染、虚拟化只渲染视口、
+  `- [ ]` 变可点复选框。**形态与本方案 §3.3 / §3.4 几乎一致**，装饰与原子区间的写法
+  可以直接读它的源码。另可参考 `@retronav/ixora`（同思路，但 2023 后停更）
+  与 Yandex 的 `@gravity-ui/markdown-editor`（PM + CM6 混用，证明路线可行）。
+
+**体积**（bundlephobia，gzip）：`@codemirror/lang-markdown` 约 175KB（含 lezer 语言依赖）、
+`view` 约 79KB、`state` 约 16KB；CM6 可 tree-shake，实际载荷更小。
+对照：Vditor 主 JS 约 70KB，但 npm 包 unpackedSize 约 **23.6MB**（全量资源，
+现在靠 `scripts/copy-vditor-assets.mjs` 往 `public/static/vditor/` 拷）。
+
+### 2.2.1 「只给 Vditor 补面板、不换内核」能补到什么程度
+
+这是本次**没有选**的一条路，但它不是「什么都做不了」，记下边界免得日后翻案时靠猜：
+
+- ✅ **能补**：`IHintExtend` 可以注册一个触发前缀（`@` / `/`），返回候选列表
+  （`html` 展示 + `value` 文本），且 `hint` **可以返回 Promise**（异步取数）。
+  也就是说「手打 `[@…]`」这条**用 Vditor 也解得掉** —— 面板 + hint 下拉即可。
+- ✅ **能补一半**：另开一个预览面板，用 `Vditor.md2html(md, { renderers })` 逐节点接管输出。
+- ❌ **补不掉**：编辑器**就地渲染那块**换不了皮（③ 对用户最直观的那一半），
+  粘贴时自作主张的行为改不掉（①′），装饰层也没有（① 的「源码隐去」做不细）。
+
+**所以判据不是「Vditor 能不能补」，而是「补完还剩几条痛点」。答案是三条里还剩两条半。**
 
 ### 2.3 明确不做的：从零写文本引擎
 
@@ -197,6 +245,10 @@ ViewPlugin → DecorationSet
 照 Typora 的口径：**光标所在的行显示源码，其余行隐去标记。**
 所以装饰规则必须知道光标位置 —— 这是 `ViewPlugin` 里读 `selection` 的事，
 不是「整篇一律隐藏」。
+
+`@atomic-editor/editor`（§2.2）做的正是这个行为，它的 README 原话是
+「raw syntax appears only on the line your cursor is on」。**先读它的实现，
+再写我们的** —— 这一段不必从零想。
 
 落到本站的语法，要隐的是：`#` 标题符、`**` / `*` / `~~`、`[]()` 的括号与 URL、
 `![]()`、`>`、列表符、` ``` ` 围栏（但**围栏里的内容是代码，不隐**）。
@@ -341,9 +393,11 @@ ViewPlugin → DecorationSet
    —— 否则用户正在拼的字会被 redraw 打断。这是已知的、必须专门处理的一类 bug，
    不是「但愿不要碰到」。
 2. **表格。** 唯一的真难点，见 §6。
-3. **依赖体积。** CM6 是一串包，而本仓的纪律是 `npm ci`（严格按 lockfile）。
-   加依赖必须显式装、把 `package-lock.json` 一起提交，并留意
-   `postinstall` 那三条 `copy-*-assets` 的连带影响。
+3. **依赖体积。** CM6 是一串包（gzip 量级：`lang-markdown` 约 175KB 含 lezer 语言依赖、
+   `view` 约 79KB、`state` 约 16KB；可 tree-shake）。
+   而本仓的纪律是 `npm ci`（严格按 lockfile），加依赖必须显式装、
+   把 `package-lock.json` 一起提交，并留意 `postinstall` 那三条 `copy-*-assets`
+   的连带影响。**净账是正的**：Vditor 那条线要拷 23.6MB 资源进 `public/`。
 4. **两处编辑器同时换。** 缓解：先换博客（反馈的源头），剪贴板紧随；
    两者共用 `MarkdownEditor` 与 `EditorShell`。
 5. **旧测试全废。** 四个文件都要改写或删除，见 §7.2。
