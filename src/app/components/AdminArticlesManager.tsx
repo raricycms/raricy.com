@@ -13,6 +13,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import AdminBlogActions, { type CategoryGroup } from './AdminBlogActions';
+import { pageWindow } from '@/lib/page-window';
 
 export interface ArticleRow {
   id: string;
@@ -46,20 +47,6 @@ const toast = (msg: string, type: 'success' | 'error' | 'info' | 'warning' = 'in
   const w = window as unknown as { showToast?: (m: string, t: string) => void };
   if (w.showToast) w.showToast(msg, type);
 };
-
-// 分页页码窗口（window-of-3）：
-// 始终显示首尾页，当前页 ±3 的范围显示页码，其余折叠为 …（null 表示省略号）。
-function pageWindow(page: number, pages: number, window = 3): (number | null)[] {
-  const out: (number | null)[] = [];
-  for (let p = 1; p <= pages; p += 1) {
-    if (p === 1 || p === pages || (p >= page - window && p <= page + window)) {
-      out.push(p);
-    } else if (p === page - window - 1 || p === page + window + 1) {
-      out.push(null);
-    }
-  }
-  return out;
-}
 
 export default function AdminArticlesManager({
   articles,

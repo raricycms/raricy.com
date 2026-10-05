@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { Megaphone } from 'lucide-react';
 import { getCurrentUser, hasAdminRights, isOwner } from '@/lib/auth';
 import { listUsers } from '@/lib/admin-user-service';
+import { pageWindow } from '@/lib/page-window';
 import Avatar from '@/app/components/Avatar';
 import AdminUserActions from '@/app/components/AdminUserActions';
 
@@ -27,18 +28,6 @@ type UserRow = {
   /** 头像框贴图地址（AdminUserRow.frameUrl）。 */
   frameUrl: string | null;
 };
-
-function pageWindow(page: number, pages: number, window = 3): (number | null)[] {
-  const out: (number | null)[] = [];
-  for (let p = 1; p <= pages; p += 1) {
-    if (p === 1 || p === pages || (p >= page - window && p <= page + window)) {
-      out.push(p);
-    } else if (p === page - window - 1 || p === page + window + 1) {
-      out.push(null);
-    }
-  }
-  return out;
-}
 
 // 用户管理 — Fluent Design
 //
