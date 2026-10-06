@@ -942,6 +942,11 @@ plot / price / volume / time 各占一格）：与 SVG 共用同一个分数，�
 长那样」，而这类不一致没有人会当成 bug 报上来。React 侧同理：`RichComposer` 的 BEM 前缀
 由 `className` 注入（见组件文件头）。
 
+两处的 @ 选人提示共用 `MentionInput`，样式在 `components/_composer.scss`：
+`.mention-input` 定位，`.mention-picker` 浮在输入框上方，宽度不超过输入区，长列表内滚；
+用品牌浮层阴影，选项沿用 `btn-tab`，当前项为 `.is-active`。鼠标 / 触屏点选保留输入框
+焦点；键盘确认只插入用户名与尾随空格，不提交正文。
+
 ⚠️ 改这类共享样式后，两处**都要**在页面上看一眼 —— 单测与构建都拦不住「另一边被改花了」。
 
 ⚠️ 选择器权重陷阱：删掉旧样式时要确认新规则不会被更具体的老选择器盖掉。真实踩过：

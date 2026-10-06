@@ -68,6 +68,7 @@ const ACTION_PREF_MAP: Readonly<Record<string, NotifyPrefKey>> = {
  *
  * 返回 null = 不受偏好拦截、照常发送，这是**有意为之**而非兜底遗漏：
  *   • 评论回复 / 文章评论 —— 从来没有 notify_comment 开关，评论通知一律发；
+ *   • 评论 @ 提及（comment-service.createComment）—— 显式传 prefKey: null，同上；
  *   • 讨论 @ 提及（chat-service.notifyChannelMentions）—— 同样无对应开关，调用方
  *     显式传 prefKey: null 声明「不受管辖」，不落到这里查表；
  *   • 文章投喂 —— 同样无对应开关；

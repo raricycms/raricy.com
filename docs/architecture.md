@@ -126,6 +126,7 @@
 | 认证 / 会话 | `auth.ts` · `session.ts` · `password.ts` · `invite-code.ts` · `user-service.ts` · `identicon.ts` · `avatar.ts`（头像字节的**唯一**解析处：`/api/avatar/[id]` 与画报共用同一份目录穿越守卫）· `site-url.ts`（`SITE_URL` → `ALLOWED_ORIGINS` 回退链的唯一实现，OAuth 的 userinfo 与画报的二维码前缀共用）· `avatar-refs.ts`（**零依赖**：`avatarUrl(id)` 是全仓唯一拼 `/api/avatar/` 的地方。单独一个文件是因为 `avatar.ts` 拖着 `node:fs`，客户端组件 import 不了） |
 | 数据层 | `db.ts` · `db-time.ts` · `format.ts` |
 | 博客域 | `blog-service.ts` · `feed-service.ts` · `comment-service.ts` · `comment-shared.ts` · `blog-sort-pref.ts` · `spider-service.ts` |
+| @ 提及 | `mention-shared.ts`（评论 / 讨论共用的提取规则与光标搜索边界，零依赖）· `mention-service.ts`（按文章 / 会话范围搜索可提及用户） |
 | 富文本渲染 | `rich-text.ts`（共享管线）· `chat-markdown.ts` · `comment-markdown.ts` · `blog-markdown.ts` · `content-refs.ts`（评论/讨论那条**同步**管线：只认 8 位与 10 位，9 位投票与 6 位收藏夹刻意不展开）· `favorite-refs.ts`（`[@六位]` 卡片：**只在博客/剪贴板**那条管线生效，见 §6.9）· `user-refs.ts`（`[@用户/用户名]` 名片：同样只在评论/讨论生效，见 §6.7）· `markdown-math.ts` · `linkify.ts` · `vditor-theme.ts` |
 | 表情包 | `sticker-refs.ts`（`[@合集/表情]` → 内联 `<img>`，跑在`rich-text.ts` 的净化**之后**）· `sticker-service.ts`（素材扫盘与三层缓存）· `emoji-faces.ts`（内置黄脸合集的编译期清单，素材从 npm 包拷进 `public/static/emoji/`）。安全边界与正则纪律见几者头部；玩家向说明见 `docs/guide/表情包使用指南.md` |
 | 讨论 | `chat-service.ts` · `chat-bus.ts`（SSE 订阅）/ `chat-shared.ts`（DTO）· `chat-presence.ts`（「谁正在看哪个会话」—— 进程内，决定被 @ 时发不发通知）· `chat-sidebar-pref.ts` · `focus-mode.ts` |
@@ -405,6 +406,20 @@ GET/HEAD/OPTIONS 视为安全方法，不校验（协议闸不受这条影响，
 
 评论的 `content_html`（服务端转义 + `<br>`）**站内已不再用于渲染** —— 保留给 spider API
 （外部只读接口，不能因为站内换了渲染方式就被打碎）与无 JS 降级。
+
+**评论与讨论的 @ 选人提示共用 `MentionInput`**（嵌在 `RichComposer` 中）：输入 `@`
+或用户名前缀后，经 `GET /api/mentions/users?kind=comment|chat&id=<文章或会话>&q=<前缀>`
+搜索，最多 8 人；接口需 core+ 且未禁言，再检查文章未软删 / 会话可访问。评论提示列出
+core+；讨论大区过滤专注、禁言与静音者，私聊只列未静音的会话成员（正在看会话的人仍可选）。
+支持点选、上下键、Enter / Tab 确认与 Escape 关闭；输入法组合输入期间不选人、不提交。
+取消旧请求，避免旧前缀或旧会话的响应覆盖当前结果。名片与表情 token 不触发选人提示。
+
+**评论 @ 通知**在 `createComment` 成功落库后发送，action 为 `评论提及`，object 为
+`blog` + 文章 id。提取规则与讨论一致：`@用户名` 后必须是空白或行尾，精确匹配，
+同一条评论同一人只发一次，排除自己；已有「文章评论 / 评论回复」通知的收件人不重复发。
+仅通知 core+（评论区始终只向 core+ 开放，文章对外公开也不改变这道门）；禁言与专注
+不妨碍读评论，所以这两项不排除。匿名时 actorId=null，detail 只写化名。通知失败不回滚
+评论、不阻止其他收件人。评论提及通知不受四个 notify_* 开关管辖；名片仍不算提及。
 
 **名片那一趟要外挂数据，所以管线多了一个「上下文」参数**（`RichTextContext`）。
 异步取数留在 React 层（理由与剪贴板那条相同，见 `useResolvedContent.ts` 的文件头），
