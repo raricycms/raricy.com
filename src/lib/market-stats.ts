@@ -6,9 +6,11 @@
 // market-chart 同一个分工：纯逻辑住零依赖模块，I/O 住外面。
 //
 // 【词表由调用方传进来，这里刻意不 import】`MARKET_SYMBOLS` 住在 market-price.ts、
-// `LEVERAGE_OPTIONS` 住在 market-service.ts（**拖着 prisma**）。这个模块一旦 import
-// 它们，单元用例就会跟着把 Prisma client 拉起来。所以口径是：这里只管「怎么折」，
-// 白名单由 `summarizeMarket` 的第二个参数给。
+// 杠杆的展示档住在 market-leverage.ts。这个模块一旦 import 它们，单元用例就会跟着把
+// 别的依赖（`MARKET_SYMBOLS` 那条会拖进 prisma）拉起来。所以口径是：这里只管「怎么折」，
+// 展示档由 `summarizeMarket` 的第二个参数给。
+// ⚠️ 杠杆自 2026-10 起是 **1–100 自由输入**，所以那个参数**不再是「合法集」**，
+// 只是「哪几个值恒定占一行」的展示分组（见下面拆解表那一段）。
 //
 // ── 四个数从哪来（每条都防一个静默错）────────────────────────────────────────
 //
@@ -24,10 +26,14 @@
 //   `payout_units` 是 null，它会长得跟一次真爆仓一模一样。白名单的失败方向是「少算」，
 //   而那会被下面这条不变式当场抓住。
 //
-// ★ 拆解表的桶 = 白名单顺序在前，数据里多出来的 key 追加在后。★
-//   只按白名单遍历的话，**改过 `MARKET_SYMBOLS` 之后残留的旧仓**（`market-liquidator.ts`
-//   头部明写存在这种行）会只进总数、不进拆解表 —— 「拆解表之和 ≠ 累计盈亏」两个数并排
-//   放在一屏里，谁也不会去加它。用例钉着 `Σ bySymbol.realizedUnits === realizedUnits`。
+// ★ 拆解表的桶 = 展示档顺序在前，数据里多出来的 key 追加在后。★
+//   只按展示档遍历的话，**展示档之外的 key** 会只进总数、不进拆解表 —— 「拆解表之和 ≠
+//   累计盈亏」两个数并排放在一屏里，谁也不会去加它。用例钉着
+//   `Σ bySymbol.realizedUnits === realizedUnits`。
+//   ⚠️ 这条规则在做空 + 自由杠杆之后**更要紧了**：杠杆是 1–100 的任意整数，7×、37×
+//   都是**正常值**（不再是「白名单外 / 旧仓」那种异常），它们全靠这个 append 分支才
+//   进得了表。**别把它「优化」成只 map(展示档)** —— 那会让用过的非展示档倍数静默消失
+//   在拆解表里，而总数不变、Σ 对不上也没人加。
 //
 // ★ 全程在**存储单位**（整数）上累加，一次都不换算。★
 //   逐行先换成「鱼干」再相加会掉浮点渣，而 `(-0.00004).toFixed(4)` 是 **'-0.0000'** ——
@@ -47,6 +53,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { settleClose } from './market-math';
+// 只取类型（方向词表零依赖，但这里不需要它的值 —— 本模块要保持脱库可测）。
+import type { Direction } from './market-leverage';
 
 /**
  * 「已结清」的**白名单**。加终态时先改这里，再改 `market-stats-service.ts` 的 where
@@ -101,9 +109,14 @@ export interface MarketStats extends Tally {
 /** 一条已结清持仓的浮动盈亏估算（页面用现价算出来的那份）。全部是**存储单位**。 */
 export interface OpenEstimate {
   payoutUnits: number;
-  /** 实发 − 投入，可能为负。跌穿爆仓价时恰好是 `-stakeUnits`（亏光投入） */
+  /** 实发 − 投入，可能为负。穿过爆仓价时恰好是 `-stakeUnits`（亏光投入） */
   profitUnits: number;
-  /** 现价已经跌到爆仓价之下了 —— 下一轮扫描就会被强平。1 倍仓恒为 false */
+  /**
+   * 现价已经**穿过**这条仓位的爆仓价 —— 下一轮扫描就会被强平。
+   * ⚠️ 方向词要跟着方向：多头是「**跌**到爆仓价之下」，空头是「**涨**到之上」。
+   * **1 倍多头**恒为 false（它的爆仓价是 0，价格到不了 0 以下）；**1 倍空头不恒为 false**
+   * —— 它在价格翻倍时归零，是个可达的价。
+   */
   belowLiquidation: boolean;
 }
 
@@ -162,8 +175,9 @@ function bucketKeys(whitelist: readonly (string | number)[], extras: Iterable<st
 /**
  * 把已结清的仓位行折成总览 + 两张拆解表。
  *
- * @param universes 白名单（`MARKET_SYMBOLS` / `LEVERAGE_OPTIONS`）—— 由调用方给，
- *   这样「加一个标的/杠杆」照旧只改那一处单一真相源，这里不用动。
+ * @param universes **展示档**（`MARKET_SYMBOLS` / `LEVERAGE_PRESETS`）—— 由调用方给，
+ *   这样「加一个标的/快捷档」照旧只改那一处单一真相源，这里不用动。
+ *   ⚠️ 杠杆那边它**不是合法集**（合法集是 1–100 的整数）：它只决定哪几个值恒定占一行。
  */
 export function summarizeMarket(
   rows: readonly SettledRow[],
@@ -215,6 +229,8 @@ export function estimateOpenPosition(input: {
   /** 投入，存储单位 */
   stakeUnits: number;
   entryPrice: number;
+  /** **这一笔**的方向（不是下单选择器那个 —— 选择器只管下一笔）。**必填** */
+  direction: Direction;
   /** **这一笔**的杠杆（不是下单选择器那个 —— 选择器只管下一笔） */
   leverage: number;
   /** 读仓位行上存着的那一列，**别自己拿开仓价乘一遍** */
@@ -229,13 +245,21 @@ export function estimateOpenPosition(input: {
     exitPrice: input.exitPrice,
     feeRate: input.feeRate,
     leverage: input.leverage,
+    direction: input.direction,
   });
+  // 穿线方向随方向走（多头 ≤、空头 ≥），与强平引擎的判据**必须同款**：
+  // 两处对同一笔仓位的陈述分了家的话，页面会显示一个「看起来正常」的浮亏，而引擎
+  // 下一秒就把它清掉。`> 0` 那道守卫挡的是 **1 倍多头**（爆仓价 0 = 那条线不存在）；
+  // 空头的爆仓价恒 > 0，这道守卫对它天然为真。
+  const belowLiquidation =
+    input.liquidationPrice > 0 &&
+    (input.direction === 'short'
+      ? input.exitPrice >= input.liquidationPrice
+      : input.exitPrice <= input.liquidationPrice);
   return {
     payoutUnits: settled.payoutUnits,
     profitUnits: settled.payoutUnits - input.stakeUnits,
-    // 1 倍仓的爆仓价恒为 0（价格到不了 0 以下），`<= 0` 在这个判据下天然为假 ——
-    // 与强平引擎的判据（`现价 <= 爆仓价`）同款，只是多一道 `> 0` 挡掉 0 那种「不适用」。
-    belowLiquidation: input.liquidationPrice > 0 && input.exitPrice <= input.liquidationPrice,
+    belowLiquidation,
   };
 }
 

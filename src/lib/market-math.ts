@@ -13,12 +13,14 @@
 //
 // ── 结算（杠杆版）────────────────────────────────────────────────────────────
 //   notionalUnits  = stakeUnits × leverage                    ← 名义本金
-//   rawEquityUnits = stakeUnits + notionalUnits × (平仓价/开仓价 − 1)
+//   move           = 多头 (平仓价/开仓价 − 1) ｜ 空头 (1 − 平仓价/开仓价)
+//   rawEquityUnits = stakeUnits + notionalUnits × move
 //   grossUnits     = max(0, rawEquityUnits)                   ← 「毛额」
 //   payoutUnits    = max(0, floor(rawEquityUnits − notionalUnits × 平仓价/开仓价 × 费率))
 //
 //   ★ 那个 max(0, …) 就是爆仓 ★
-//     权益在「开仓价 × (1 − 1/杠杆)」处归零，再跌下去公式给出负数 —— 而负数在这个
+//     权益在**多头**「开仓价 × (1 − 1/杠杆)」、**空头**「开仓价 × (1 + 1/杠杆)」处归零，
+//     再沿各自的方向走下去公式就给出负数 —— 而负数在这个
 //     账本里**没有表示法**（postEntry 只收非零整数、users.driedFish 不许为负、余额必须
 //     等于流水之和）。于是 0 截断。用户亏光投入、一分不多欠 —— 这就是爆仓的定义。
 //     换句话说：**爆仓不是加在借贷之上的一道安全措施，它是账本形态逼出来的唯一形态。**
@@ -30,11 +32,15 @@
 //     原本就存在的量（那个「无限水池」是账外概念，见 market-service 文件头）。
 //     所以没有利息、没有还款路径、没有可借的账户 —— 它们都不需要存在。
 //
-//   · **费率乘在「平仓时的名义本金」上**（notionalUnits × 平仓价/开仓价），三个理由：
+//   · **费率乘在「平仓时的名义本金」上**（notionalUnits × 平仓价/开仓价），四个理由：
 //       1. 现实中手续费按成交金额收，而平仓这一笔的成交金额正是它；
 //       2. 杠杆越高摩擦越大 —— 10 倍的仓位平价进出也要付 10 倍的钱。这是杠杆最自然的
 //          一道刹车（手续费是速度刹不是护城河，见 market-service 头部）；
-//       3. **杠杆=1 时逐位退回改动前的算式** floor(stake × 平仓价/开仓价 × (1 − 费率))。
+//       3. **这一项不随方向翻转**（做空加进来之后新增的一条）：空头平仓是「买回」，
+//          成交金额 = 数量 × 平仓价 = notional × 平仓价/开仓价 —— 与多头平仓的「卖出」
+//          是**同一个表达式**。别「对称地」把它改成 开仓价/平仓价：那会让价格下跌
+//         （空头盈利）时反而按更小的基数收费，而数值有限、仍过 floor，**不报错**。
+//       4. **杠杆=1 时逐位退回改动前的算式** floor(stake × 平仓价/开仓价 × (1 − 费率))。
 //          这一条不是洁癖：存量仓位、钉死结算数的用例、e2e 里那个「涨一倍 = 1.9996 条」
 //          都建立在旧算式上，而它们钉的是「用户到手多少」。
 //          （实测：两者在 1 倍下数学等价，20 万组随机样本里只有 1 组差 1 个存储单位
@@ -44,15 +50,26 @@
 //   · 仍然**最后只 floor 一次**，仍然**朝系统一侧**（宁可少发一个存储单位也不凭空多铸）。
 //     零头上界 = 存储精度 0.0001 条，见 fish-units.ts 文件头。
 //
-// 【leverage 是必填项，刻意没有默认值】不给 `leverage?: number = 1` 那种默认 —— 一个
-// 忘了传杠杆的调用点会**静默地按 1 倍结算**（10 倍的仓位结算成 1 倍），而屏幕上那个数
-// 看起来完全合理。必填让 tsc 在每个调用点问一次「这里的杠杆从哪来」。
+//   · **空头收益封顶在 `+stake × 杠杆`**：价格最多跌到 0（`ratio → 0` 时 move → 1），
+//     而多头不封顶（价格可以翻很多倍）。这是两个方向**唯一**的结构性不对称 —— 它让空头
+//     比多头温和，不会加宽账外 mint 的那条尾（见 market-service 文件头）。别「为了对称」
+//     给多头也加个上限，那是凭空发明一条产品规则。
+//
+// 【leverage 与 direction 都是必填项，刻意没有默认值】不给 `leverage?: number = 1` /
+// `direction?: Direction = 'long'` 那种默认 —— 一个忘了传杠杆的调用点会**静默地按 1 倍
+// 结算**（10 倍的仓位结算成 1 倍），忘了传方向的会把**空头按多头结算**（盈亏整体反向）。
+// 两者的症状完全一样：屏幕上那个数看起来完全合理。必填让 tsc 在每个调用点各问一次
+// 「这里的杠杆/方向从哪来」。
 //
 // 【屏幕上那个「手续费」包含什么】feeUnits = 毛额 − 实发，于是
 // 「毛额 − 手续费 = 到手」在弹窗里**逐字对得上**。它比真实费率多出的那一丁点是 floor
 // 的零头（上界一个存储单位 = 0.0001 条），刻意不单列一行：那是给用户看的账，
 // 不是给对账看的账。
 // ─────────────────────────────────────────────────────────────────────────────
+
+// 方向词表（零依赖）。本模块是结算公式的**唯一**实现，页面与服务端都 import 它 ——
+// 方向的取值 / 默认值 / 人话表住 market-leverage.ts，这里只消费那个类型。
+import type { Direction } from './market-leverage';
 
 export interface CloseSettleInput {
   /** 投入的**存储单位**数（> 0）。业务鱼干 × FISH_UNIT_SCALE，见 fish-units.ts */
@@ -66,8 +83,14 @@ export interface CloseSettleInput {
   exitPrice: number;
   /** 费率，0.0002 = 0.02%。来源是 market-service 的 MARKET_FEE_RATE（平仓侧只收这一次） */
   feeRate: number;
-  /** 杠杆倍数，1 = 无杠杆。**必填**（理由见文件头最后一节） */
+  /** 杠杆倍数，1 = 无杠杆。**必填**（理由见文件头那一节） */
   leverage: number;
+  /**
+   * 方向。**必填**（同上）—— 忘了传的调用点会把空头按多头结算，盈亏整体反向，
+   * 而屏幕上那个数看起来完全合理。服务端一律从**仓位行**读，别从调用方传进来
+   *（方向是仓位的属性，不是这次请求的属性，同 leverage）。
+   */
+  direction: Direction;
 }
 
 export interface CloseSettle {
@@ -80,25 +103,49 @@ export interface CloseSettle {
   payoutUnits: number;
   /** 手续费 + floor 扔掉的零头（见文件头最后一节） */
   feeUnits: number;
-  /** 行情涨跌幅（%）。**不含**手续费 —— 与 profitPercent 差一个费率×杠杆，别互相替代 */
+  /**
+   * 行情涨跌幅（%）。**不含**手续费 —— 与 profitPercent 差一个费率×杠杆，别互相替代。
+   * ⚠️ 它是**行情**的涨跌，**不含方向**：空头持仓的盈亏与它**反号**（价格跌 → 这里是负、
+   * 用户却在赚）。渲染层判「这一行该红还是该绿」时必须乘方向（`dirSign`），
+   * 直接拿 `changePercent >= 0` 判色 = 空头持仓红绿全反，**不报错**。
+   */
   changePercent: number;
   /** 盈亏率（%）：(实发 − 投入) / 投入。10 倍仓涨 1% 时它约等于 +10%，而 changePercent 是 1 */
   profitPercent: number;
 }
 
 /**
- * 保证金归零的价 —— 归零即爆仓。**多头**：开仓价 × (1 − 1/杠杆)。
+ * 保证金归零的价 —— 归零即爆仓。
+ *   多头：开仓价 × (1 − 1/杠杆)，恒在开仓价**下方**
+ *   空头：开仓价 × (1 + 1/杠杆)，恒在开仓价**上方**
  *
  * 【为什么与 settleClose 拆成两个函数】它是**开仓那一刻**就要写进仓位行的数（用户
  * 按买入之前也要看到它），而 settleClose 要等到平仓。两者钉在同一个零点上：把这个
  * 返回值当 exitPrice 喂给 settleClose，实发恒为 0（用例钉着这条，别让它漂）。
  *
- * 【1 倍返回 0】不是「还没算」也不是哨兵值 —— 价格到不了 0 以下，所以 1 倍仓位永远
- * 碰不到它，字面意思就是「不会爆仓」。页面对 1 倍显示「—」而不是显示「0 USDT」。
- * ⚠️ 别把 0 改成 null / NaN 去表达「不适用」：库里那一列是 NOT NULL DEFAULT 0 的实数，
- *   而强平引擎的判据是 `现价 <= 爆仓价` —— 0 在这个判据下天然正确。
+ * 【0 的含义收窄成「1× 多头」】多头 1 倍返回 0 —— 价格到不了 0 以下，所以那条线不存在，
+ * 字面意思就是「不会爆仓」。**空头任何杠杆下都返回一个真实的正数**（1× 空头 = 2 × 开仓价），
+ * 所以「0 = 不会爆仓」这句话**只对多头成立**。
+ * 👉 判「这一笔会不会爆」（比如开仓闸门）请用 `needsLiquidator(leverage, direction)`
+ *   （market-leverage.ts）—— 别用 `leverage > 1`，它会把 1× 空头漏掉。
+ *
+ * ⚠️ 别把多头的 0 改成 null / NaN 去表达「不适用」：库里那一列是 NOT NULL DEFAULT 0 的
+ *   实数，而扫描/判据在 0 上天然正确（价格到不了 0 以下 ⇒ 永不触发）。
+ *
+ * ⚠️ direction **必填**，同 leverage 的理由：给个 `= 'long'` 的默认值，漏传的调用点会
+ *   把空头的爆仓价算到开仓价**下方**（一条永远碰不到的线），而屏幕上的数看着完全合理。
  */
-export function liquidationPrice(entryPrice: number, leverage: number): number {
+export function liquidationPrice(
+  entryPrice: number,
+  leverage: number,
+  direction: Direction
+): number {
+  if (direction === 'short') {
+    // 空头：价格涨到 开仓价 × (1 + 1/杠杆) 时权益归零；1× 时就是 2 × 开仓价（可达）。
+    // 写成 !(leverage > 0) 而不是 leverage <= 0：NaN 也落到这一档，返回 0 比返回 NaN 安全
+    if (!(leverage > 0)) return 0;
+    return entryPrice * (1 + 1 / leverage);
+  }
   // 写成 !(leverage > 1) 而不是 leverage <= 1：NaN 也落到这一档，返回 0 比返回 NaN 安全
   if (!(leverage > 1)) return 0;
   return entryPrice * (1 - 1 / leverage);
@@ -122,12 +169,20 @@ export function formatFeeRate(feeRate: number): string {
 }
 
 export function settleClose(input: CloseSettleInput): CloseSettle {
-  const { stakeUnits, entryPrice, exitPrice, feeRate, leverage } = input;
+  const { stakeUnits, entryPrice, exitPrice, feeRate, leverage, direction } = input;
   const ratio = exitPrice / entryPrice;
   const notionalUnits = stakeUnits * leverage;
-  // 未截断的权益：跌破爆仓价之后它是**负数**，而负数在这里是有意义的中间量 ——
+  // 方向只决定「价格往哪边走对我有利」。
+  // ⚠️ 多头那一支**必须逐位是 `ratio - 1`** —— 存量仓位、钉死结算数的用例、e2e 里那个
+  // 「涨一倍 = 1.9996 条」全押在旧算式上。写成 `dirSign(direction) * (ratio - 1)` 等价
+  //（乘 ±1 在 IEEE754 下精确），但**别**绕成 `1 + (ratio - 1) - 1` 之类 —— 那不保证逐位相等。
+  const move = direction === 'short' ? 1 - ratio : ratio - 1;
+  // 未截断的权益：穿过爆仓价之后它是**负数**，而负数在这里是有意义的中间量 ——
   // 下面两处 max(0, …) 才做截断。别提前截，那样就分不清「亏光」与「亏穿」。
-  const rawEquityUnits = stakeUnits + notionalUnits * (ratio - 1);
+  const rawEquityUnits = stakeUnits + notionalUnits * move;
+  // 费率乘在**平仓时的名义本金**上。⚠️ 这一项**不随方向翻转**（见文件头第 3 条）：
+  // 空头平仓是「买回」，成交金额 = 数量 × 平仓价 = notional × 平仓价/开仓价，与多头
+  // 平仓的「卖出」是同一个表达式。别「对称地」把它改成 开仓价/平仓价。
   const feeUnitsRaw = notionalUnits * ratio * feeRate;
   const payoutUnits = Math.max(0, Math.floor(rawEquityUnits - feeUnitsRaw));
   // 毛额也截断到 0，否则弹窗里会出现「毛额 −123 → 手续费 −123 → 到手 0」这种账，

@@ -9,12 +9,12 @@ import {
   displaySymbol,
   MARKET_FEE_RATE,
   MIN_STAKE_FISH,
-  LEVERAGE_OPTIONS,
-  LOTTERY_LEVERAGE,
   type SettledPositionView,
 } from '@/lib/market-service';
 // 杠杆档位能不能选，取决于**强平引擎此刻在不在跑**（服务端也会据此拒单，见那里的注释）
 import { isLiquidationRunning } from '@/lib/market-liquidator';
+// 方向徽标（零依赖模块 —— 页面与服务端共用同一份词表）
+import { DIRECTION_BADGES } from '@/lib/market-leverage';
 import { getCachedQuotes, getCandles, MARKET_SYMBOLS } from '@/lib/market-price';
 import { fmtFish } from '@/lib/fish-amount';
 import { formatPrice } from '@/lib/market-chart';
@@ -91,6 +91,7 @@ export default async function FishTradePage() {
     id: p.id,
     symbol: p.symbol,
     display: displaySymbol(p.symbol),
+    direction: p.direction,
     stake: p.stake,
     entryPrice: p.entryPrice,
     leverage: p.leverage,
@@ -105,7 +106,8 @@ export default async function FishTradePage() {
         鱼干练手盘
       </h1>
       <p className="trade-subtitle">
-        投入小鱼干买入 BTC / ETH，价格按真实行情走 —— 涨了赚鱼干，跌了亏鱼干。
+        投入小鱼干做多 / 做空 BTC、ETH，价格按真实行情走 —— 看对方向赚鱼干，看错亏鱼干。
+        可自选 1–100 倍杠杆，亏损封顶在投入的那几根鱼干，不会变成欠账。
         这是练习盘，练的是手感，亏掉的是鱼干不是钱。
         <br />
         <Link href="/fish/trade/stats" className="trade-stats-link">
@@ -121,8 +123,6 @@ export default async function FishTradePage() {
         candleSets={candleSets}
         feeRate={MARKET_FEE_RATE}
         minStake={MIN_STAKE_FISH}
-        leverageOptions={[...LEVERAGE_OPTIONS]}
-        lotteryLeverage={LOTTERY_LEVERAGE}
         leverageEnabled={isLiquidationRunning()}
       />
 
@@ -172,6 +172,11 @@ function SettledList({ rows, hasMore }: { rows: SettledPositionView[]; hasMore: 
             {rows.map((r) => (
               <li className="trade-settled__row" key={r.id} data-position-id={r.id}>
                 <span className="trade-settled__name">{displaySymbol(r.symbol)}</span>
+                {/* 方向角标**恒显示**（同持仓行）：1× 空头既没有倍数角标、又没有方向
+                    的话，它与一笔无关紧要的 1× 多单长得一模一样。 */}
+                <span className={`trade-settled__dir trade-settled__dir--${r.direction}`}>
+                  {DIRECTION_BADGES[r.direction]}
+                </span>
                 {/* 倍数角标只在杠杆仓出现（1 倍是默认档，加个「1×」只是噪音 —— 同持仓行） */}
                 {r.leverage > 1 && <span className="trade-settled__lev">{r.leverage}×</span>}
                 <span
@@ -179,7 +184,7 @@ function SettledList({ rows, hasMore }: { rows: SettledPositionView[]; hasMore: 
                     r.status === 'liquidated' ? ' trade-settled__tag--liquidated' : ''
                   }`}
                 >
-                  {r.status === 'liquidated' ? '爆仓' : '卖出'}
+                  {r.status === 'liquidated' ? '爆仓' : r.direction === 'short' ? '平空' : '卖出'}
                 </span>
                 <span className="trade-settled__meta">
                   投入 {fmtFish(r.stake)} · 结清价 {formatPrice(r.exitPrice)} · {fmtSettledAt(r.closedAt)}

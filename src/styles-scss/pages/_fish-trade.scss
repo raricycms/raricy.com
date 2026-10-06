@@ -713,10 +713,35 @@
   font-weight: 700;
 }
 
-/* 杠杆档位：**N 选 1，且选项还可能变多**（加档位只改 LEVERAGE_OPTIONS）——
-   走切页档，与周期档（.trade-chart__interval-btn）同档。
-   docs/frontend-styles.md §6.8 的判据：胶囊滑块只给「同一个视图的两种呈现」，
-   杠杆不是视图切换，是「这一笔用几倍」，所以**不能用 .segmented**。 */
+/* 方向：**两个固定值**（做多 / 做空）—— 走切页档，与杠杆那排同一个判据
+   （docs/frontend-styles.md §6.8：胶囊滑块只给「同一个视图的两种呈现」）。
+   做空那一枚开着时代表「这一笔会反向爆仓」，靠下方那几行危险提示说清楚；
+   按钮本身仍是 btn-tab —— **三档之外不自造第四档**。 */
+.trade-direction {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+
+.trade-direction__btn {
+  @include m.btn-tab;
+  padding: 2px 16px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+
+  /* 「引擎没在跑」时「做空」是灰的（不是隐藏）—— 它此刻兑现不了，
+     而 1 倍做多照旧可用。同 .trade-leverage__btn 的那条判据。 */
+  &:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+}
+
+/* 杠杆快捷档：**N 选 1，但选项可自由填** —— 所以是「一排切页档 + 一个输入框」。
+   与周期档（.trade-chart__interval-btn）同档；输入框是一行数字 → 胶囊
+   （frontend-styles §4.2），聚焦一律用 --shadow-focus-brand，**绝不改 border**
+   （改 border 会让字段随焦点变高、下方内容位移）。 */
 .trade-leverage {
   display: flex;
   flex-wrap: wrap;
@@ -738,28 +763,43 @@
   }
 }
 
-/* 彩票档：与上面那排阶梯**刻意分开**（另起一行 + 一条分隔线 + 自己的标签）。
-   分开的理由见 market-service 的 LOTTERY_LEVERAGE —— 它不是「下一档」，是另一个
-   产品；而按钮仍走 .trade-leverage__btn（btn-tab），**三档之外不自造第四档**
-   （docs/frontend-styles.md）。分隔线用 --color-border（令牌清单里没有 border-primary）。 */
-.trade-lottery {
+/* 自由输入那一格。`1–100` 的边界写在后面的 `.trade-leverage__unit` 里 ——
+   别把它塞进 placeholder（一填字就没了，而边界正是填的时候才要看的）。 */
+.trade-leverage__custom {
   display: flex;
   align-items: center;
   gap: $space-2;
   margin-top: $space-2;
-  padding-top: $space-2;
-  border-top: 1px dashed var(--color-border);
 }
 
-.trade-lottery__tag {
+.trade-leverage__input {
+  width: 4.5rem;
+  padding: 4px 10px;
+  background: var(--color-background-page);
+  border: none;
+  border-radius: $radius-max;
+  color: var(--color-text-primary);
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  transition: box-shadow 0.2s ease;
+
+  &:focus {
+    outline: none;
+    box-shadow: var(--shadow-focus-brand);
+  }
+}
+
+.trade-leverage__unit {
   font-size: 0.75rem;
   color: var(--color-text-secondary);
 }
 
-/* 选中彩票档时那段警告。**刻意不复用 .trade-field__hint--danger**：那个类现在的用法
-   是「给提示行里的某一个数上色」（一个 <strong>），而这是一整段要说给用户听的话 ——
-   共用一个类，改一处就会顺手改掉另一处（同 --error 与 --danger 刻意分家的理由）。 */
-.trade-lottery__warn {
+/* 高倍（≥ HIGH_RISK_LEVERAGE）时那段警告。**刻意不复用 .trade-field__hint--danger**：
+   那个类现在的用法是「给提示行里的某一个数上色」（一个 <strong>），而这是一整段要说给
+   用户听的话 —— 共用一个类，改一处就会顺手改掉另一处（同 --error 与 --danger 刻意分家的理由）。 */
+.trade-leverage__warn {
   margin: $space-2 0 0;
   font-size: 0.8rem;
   line-height: 1.5;
@@ -940,6 +980,23 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* 方向角标（多 / 空）。**与倍数角标是两枚独立的徽标**：1× 空头没有倍数可显示，
+   方向是它唯一的风险标注（拿掉它，一行「1× 空头刚被腰斩」与一笔无关紧要的 1× 多单
+   长得一模一样）。做多用中性底、做空借 warning 那一对色 —— 做空是「会反向爆仓」的那一侧。 */
+.trade-position__dir {
+  padding: 1px 6px;
+  border-radius: $radius-small;
+  background: var(--color-background-highlight);
+  color: var(--color-text-secondary);
+  font-size: 0.7rem;
+  font-weight: 700;
+
+  &--short {
+    background: var(--color-warning-secondary);
+    color: var(--color-warning-primary);
+  }
+}
+
 /* 倍数角标。**它是这一行的属性，不是控件** —— 所以用淡底徽标，不套 btn-tab
    （套了就会被读成「点它能改倍数」，而上方那个选择器只作用于**下一笔**）。 */
 .trade-position__lev {
@@ -1105,6 +1162,22 @@
   font-weight: 700;
 
   @include m.trade-up-down;
+}
+
+/* 弹窗里的方向角标（多 / 空）。与持仓行那枚（.trade-position__dir）同款 ——
+   同一件事在两屏长得一样，用户不必学第二遍。这一屏是**最后一次看清下哪一边**。 */
+.trade-confirm__dir {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: $radius-small;
+  background: var(--color-background-highlight);
+  color: var(--color-text-secondary);
+  font-weight: 700;
+
+  &--short {
+    background: var(--color-warning-secondary);
+    color: var(--color-warning-primary);
+  }
 }
 
 /* 弹窗里的倍数角标。与持仓行那枚（.trade-position__lev）同款 —— 同一件事在两屏
@@ -1275,6 +1348,22 @@
   font-size: 0.95rem;
   font-weight: 700;
   color: var(--color-text-primary);
+}
+
+/* 方向角标（多 / 空）。与持仓行那枚（.trade-position__dir）同款，且**恒显示** ——
+   1× 空头没有倍数角标可依，结清记录上少了方向就与一笔 1× 多单分不出来。 */
+.trade-settled__dir {
+  padding: 1px 6px;
+  border-radius: $radius-small;
+  background: var(--color-background-highlight);
+  color: var(--color-text-secondary);
+  font-size: 0.7rem;
+  font-weight: 700;
+
+  &--short {
+    background: var(--color-warning-secondary);
+    color: var(--color-warning-primary);
+  }
 }
 
 /* 倍数角标与持仓行那枚（.trade-position__lev）同款 —— 同一件事在两处长得一样。 */

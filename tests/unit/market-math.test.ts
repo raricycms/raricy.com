@@ -14,6 +14,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { settleClose, liquidationPrice, formatFeeRate } from '@/lib/market-math';
+import type { Direction } from '@/lib/market-leverage';
 import { FISH_UNIT_SCALE } from '@/lib/fish-units';
 
 /** 投 1 条 = 10000 个存储单位 —— 结果可以直接读成鱼干。 */
@@ -26,8 +27,13 @@ const ONE = FISH_UNIT_SCALE;
 const FEE = 0.0002;
 const ENTRY = 80000;
 
-const settle = (exitPrice: number, stakeUnits = ONE, entryPrice = ENTRY, leverage = 1) =>
-  settleClose({ stakeUnits, entryPrice, exitPrice, feeRate: FEE, leverage });
+const settle = (
+  exitPrice: number,
+  stakeUnits = ONE,
+  entryPrice = ENTRY,
+  leverage = 1,
+  direction: Direction = 'long'
+) => settleClose({ stakeUnits, entryPrice, exitPrice, feeRate: FEE, leverage, direction });
 
 describe('settleClose（平仓结算）', () => {
   it('平价卖出：实发只少一个手续费；涨跌幅 0%，盈亏率 −0.02%', () => {
@@ -124,7 +130,7 @@ describe('settleClose（杠杆）', () => {
     // ⚠️ 谁把 liquidationPrice() 改成含维持保证金（爆仓时还剩一点权益），
     //    这里就会红 —— 那一刻必须回头改强平引擎：它得给用户记一条流水。
     for (const lv of [2, 3, 5, 10]) {
-      const liq = liquidationPrice(ENTRY, lv);
+      const liq = liquidationPrice(ENTRY, lv, 'long');
       const s = settle(liq, ONE, ENTRY, lv);
       expect(s.payoutUnits, `${lv}× 爆仓价 ${liq}`).toBe(0);
       // ⚠️ 不断言 grossUnits === 0：浮点下权益会留 ~1.8e-12 的尘埃（实测 3×/5×/10×
@@ -139,7 +145,7 @@ describe('settleClose（杠杆）', () => {
     // 这是刻意的（见 market-math.ts 头部）：两条路走同一个 max(0,…)。
     // 若手动平能亏穿（负数），账本当场撕裂（余额不许为负）；
     // 若强平能多留一点给用户，理性策略就变成「别平，等它爆我」。
-    const liq = liquidationPrice(ENTRY, 10);
+    const liq = liquidationPrice(ENTRY, 10, 'long');
     const atLiq = settle(liq, ONE, ENTRY, 10);
     for (const px of [liq * 0.99, liq * 0.5, 1]) {
       expect(settle(px, ONE, ENTRY, 10).payoutUnits, `价=${px}`).toBe(atLiq.payoutUnits);
@@ -159,16 +165,16 @@ describe('settleClose（杠杆）', () => {
   });
 
   it('1 倍永远碰不到爆仓价（它是 0，而价格到不了 0 以下）', () => {
-    expect(liquidationPrice(ENTRY, 1)).toBe(0);
+    expect(liquidationPrice(ENTRY, 1, 'long')).toBe(0);
     // 脏输入也别返回 NaN —— 引擎的判据是 `现价 <= 爆仓价`，NaN 会让它恒 false
     //（= 永不强平），那比返回 0 危险得多。
-    expect(liquidationPrice(ENTRY, 0)).toBe(0);
-    expect(liquidationPrice(ENTRY, Number.NaN)).toBe(0);
+    expect(liquidationPrice(ENTRY, 0, 'long')).toBe(0);
+    expect(liquidationPrice(ENTRY, Number.NaN, 'long')).toBe(0);
   });
 
   it('爆仓价就是权益归零的那一条线（定义式，不是巧合）', () => {
     for (const lv of [2, 3, 5, 10]) {
-      const liq = liquidationPrice(ENTRY, lv);
+      const liq = liquidationPrice(ENTRY, lv, 'long');
       // 线**之上**还有权益（拿 0.1% 而不是 0.001% 去探：后者的权益只剩个位数单位，
       // 会被浮点误差盖掉 —— 那是一种「用例自己不稳」而不是「定义错了」的红）。
       expect(settle(liq * 1.001, ONE, ENTRY, lv).grossUnits, `${lv}× 线之上`).toBeGreaterThan(0);
@@ -184,6 +190,75 @@ describe('settleClose（杠杆）', () => {
     expect(one.feeUnits).toBeCloseTo(ONE * FEE, 6); // 10000 × 0.0002 = 2
     expect(ten.feeUnits).toBeCloseTo(ONE * 10 * FEE, 6); // 20
     expect(ten.payoutUnits).toBe(ONE - 20);
+  });
+});
+
+describe('settleClose / liquidationPrice（做空）', () => {
+  // 【这一组钉的是「方向真的进了公式」】上面那两组全是多头：方向写错（漏传、给默认值、
+  // 只在结算里翻而没在爆仓价里翻）时它们**照样全绿**，而空头用户到手的数整体反向。
+  // 所以空头必须有自己的一组，尤其是「以爆仓价结算实发为 0」那条 —— 强平引擎不写流水
+  // 的全部依据就是它。
+
+  it('1 倍做空：价格腰斩赚 50%（1 − 平仓价/开仓价）', () => {
+    const s = settle(ENTRY / 2, ONE, ENTRY, 1, 'short');
+    // 权益 = 10000 + 10000 × (1 − 0.5) = 15000；手续费 = 10000 × 0.5 × 0.0002 = 1
+    expect(s.grossUnits).toBe(15000);
+    expect(s.payoutUnits).toBe(14999);
+    // 涨跌幅仍然是**行情**的 −50%，而用户赚了
+    expect(s.changePercent).toBeCloseTo(-50, 6);
+    expect(s.profitPercent).toBeCloseTo(49.99, 6);
+  });
+
+  it('10 倍做空跌 1%：约 +9.8%（与多头镜像）', () => {
+    const s = settle(ENTRY * 0.99, ONE, ENTRY, 10, 'short');
+    // 名义本金 100000，权益 = 10000 + 100000 × (1 − 0.99) = 11000
+    // 手续费按**平仓时的名义本金**收（与多头同一个表达式，不随方向翻转）：100000 × 0.99 × 0.0002 = 19.8
+    expect(s.grossUnits).toBe(11000);
+    expect(s.payoutUnits).toBe(10980);
+    expect(s.changePercent).toBeCloseTo(-1, 6);
+    expect(s.profitPercent).toBeCloseTo(9.8, 6);
+    expect(s.grossUnits - s.feeUnits).toBeCloseTo(s.payoutUnits, 6);
+  });
+
+  it('★ 以爆仓价结算，实发恒为 0 ★（空头镜像；含 1 倍 —— 它真的会爆）', () => {
+    // 与多头那条同款，但杠杆集合**含 1**：1× 空头的爆仓价是 2 × 开仓价，是一个可达的价
+    //（这正是「1 倍永不爆仓」被证伪的地方）。谁把空头的爆仓价也算到开仓价下方，
+    // 这里会当场红 —— 而那个错误在引擎那侧的表现是「空头永不被强平」。
+    for (const lv of [1, 2, 3, 5, 10, 100]) {
+      const liq = liquidationPrice(ENTRY, lv, 'short');
+      expect(liq, `${lv}× 空头爆仓价必须在开仓价上方`).toBeGreaterThan(ENTRY);
+      const s = settle(liq, ONE, ENTRY, lv, 'short');
+      expect(s.payoutUnits, `${lv}× 空头爆仓价 ${liq}`).toBe(0);
+      // 与多头同款：权益会留浮点尘埃，别断言 gross 严格 === 0
+      expect(s.grossUnits, `${lv}× 空头权益应当已经归零`).toBeLessThan(1);
+    }
+  });
+
+  it('1 倍做空在价格翻倍时归零 —— 爆仓价 = 2 × 开仓价，**不是 0**', () => {
+    expect(liquidationPrice(ENTRY, 1, 'short')).toBe(ENTRY * 2);
+    // 1 倍**多头**才是 0（那条线不存在）。两个方向必须给出不同的数 ——
+    // 若某处给 direction 加了 'long' 默认值，这两行会相等，而屏幕上一切正常。
+    expect(liquidationPrice(ENTRY, 1, 'long')).toBe(0);
+  });
+
+  it('空头实发永远 ≥ 0，且**不随价格上涨而上升**（多头是随价格下降不上升）', () => {
+    let prev = Number.POSITIVE_INFINITY;
+    for (let px = 1; px <= 200000; px += 613) {
+      const s = settle(px, ONE, ENTRY, 10, 'short');
+      expect(s.payoutUnits).toBeGreaterThanOrEqual(0);
+      expect(Number.isInteger(s.payoutUnits)).toBe(true);
+      // 价格越高越亏 —— 单调方向与多头相反，这是最容易写反的一条
+      expect(s.payoutUnits).toBeLessThanOrEqual(prev);
+      prev = s.payoutUnits;
+    }
+  });
+
+  it('空头收益封顶在 投入 × (1 + 杠杆)：价格跌到 0 是一笔的最大收益', () => {
+    // 与多头唯一的结构性不对称（多头不封顶）。取一个极小的价逼近上界：
+    // 权益 = 10000 + 10000×10 × (1 − 1e-9) ≈ 10000 + 100000 = 110000
+    const s = settle(ENTRY * 1e-9, ONE, ENTRY, 10, 'short');
+    expect(s.grossUnits).toBeLessThanOrEqual(ONE * (1 + 10) + 1);
+    expect(s.grossUnits).toBeGreaterThan(ONE * (1 + 10) - 10);
   });
 });
 

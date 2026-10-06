@@ -734,7 +734,7 @@ export const fishCommands: CommandSpec[] = [
       '本命令是**兜底与手动推动**：引擎被关掉过一段时间、或刚重启完想立刻补一轮时用。',
       '与 `fish webhook-retry` 同一个位置 —— 定时器之外的那只手。',
       '',
-      '它走的是与引擎**同一个判断**（现价 ≤ 那一行上存着的爆仓价），所以：',
+      '它走的是与引擎**同一个判断**（现价穿过了那一行上存着的爆仓价 —— 多头 ≤、空头 ≥），所以：',
       '  · 结算价是**爆仓价**而不是现价 —— 用户亏光投入、不会亏穿（见架构 §6.13）。',
       '  · **不写鱼干流水**（实发恒为 0，没有钱动过），只把仓位置成 liquidated。',
       '  · 多条仓位各自一条条件 UPDATE，与定时器同时跑也不会重复结清。',
@@ -764,8 +764,11 @@ export const fishCommands: CommandSpec[] = [
         `将强平 ${due.length} 个仓位（每个都会亏光投入）：`,
         ...due.map(
           (d) =>
-            `  ${d.symbol} ${d.leverage}× · ${unitsToFish(d.stakeUnits)} 条 · user=${d.userId} · ` +
-            `现价 ${d.currentPrice} ≤ 爆仓价 ${d.liquidationPrice}`
+            // ⚠️ 不等式随方向走（多头 ≤、空头 ≥）。写死一个 `≤` 的话，空头那几行会打出
+            // **假不等式** —— 而运维是盯着这份名单做「不可撤销」的决定的。
+            `  ${d.symbol} ${d.leverage}× ${d.direction === 'short' ? '做空' : '做多'} · ` +
+            `${unitsToFish(d.stakeUnits)} 条 · user=${d.userId} · ` +
+            `现价 ${d.currentPrice} ${d.direction === 'short' ? '≥' : '≤'} 爆仓价 ${d.liquidationPrice}`
         ),
         '',
         '**不写鱼干流水**（实发恒为 0），但**不可撤销**。',

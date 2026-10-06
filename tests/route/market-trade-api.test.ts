@@ -547,23 +547,60 @@ describe('杠杆：接口形状', () => {
     expect(data.position.liquidation_price).toBe(0);
   });
 
-  it('不在白名单的杠杆 → 400，文案把可选档位念出来', async () => {
-    await makeCoreUser(100);
-    // ⚠️ 别拿 100 当非法值 —— 它是彩票档，在白名单里（见 market-service 的
-    // LOTTERY_LEVERAGE）。捅出来的那一档是 50：合法整数、但两串里都没有。
-    for (const bad of [4, 50, 'xxx']) {
+  it('杠杆是 1–100 的整数：区间内任意整数都收（自由输入），越界/非整数/脏输入 → 400', async () => {
+    await makeCoreUser(1000);
+    // 4 / 50 / 100 在固定白名单时代是 400，现在全是正常值 —— 这条钉的是**区间**，不是白名单。
+    for (const ok of [1, 4, 50, 100]) {
+      const res = await buy(
+        makeReq('/api/fish/trade/buy', { symbol: 'BTCUSDT', amount: 1, leverage: ok })
+      );
+      expect(res.status, `leverage=${ok}`).toBe(200);
+      expect((await res.json()).position.leverage).toBe(ok);
+    }
+    // ⚠️ 报错文案念的是**区间**（自由输入之后没有可枚举的白名单了）；'1e2' 这类
+    //    字符串也必须拒 —— 收下它就等于「打错一个字符开了 100 倍」。
+    for (const bad of [0, -1, 101, 1.5, 'xxx', '1e2']) {
       const res = await buy(
         makeReq('/api/fish/trade/buy', { symbol: 'BTCUSDT', amount: 10, leverage: bad })
       );
       expect(res.status, `leverage=${String(bad)}`).toBe(400);
       const data = await res.json();
-      expect(data.message).toContain('1 / 2 / 3 / 5 / 10 / 20');
-      expect(data.message).toContain('彩票档');
+      expect(data.message).toContain('整数');
+      expect(data.message).toContain('100');
     }
-    expect(await prisma.marketPosition.count()).toBe(0);
+    await expectLedgerConsistent('自由杠杆的接口边界之后');
   });
 
-  it('★ 强平引擎没在跑 → 杠杆买入 503，而 1 倍照旧 200', async () => {
+  it('方向：不传 = long（响应里回 direction）；short 的爆仓价在开仓价上方', async () => {
+    await makeCoreUser(100);
+    const def = await buy(makeReq('/api/fish/trade/buy', { symbol: 'BTCUSDT', amount: 10 }));
+    expect(def.status).toBe(200);
+    const defBody = await def.json();
+    expect(defBody.position.direction).toBe('long');
+    expect(defBody.message).toContain('已买入'); // 多头文案冻结（e2e 的 buyViaUI 拿它当信号）
+
+    const s = await buy(
+      makeReq('/api/fish/trade/buy', {
+        symbol: 'BTCUSDT', amount: 10, leverage: 2, direction: 'short',
+      })
+    );
+    expect(s.status).toBe(200);
+    const sBody = await s.json();
+    expect(sBody.position.direction).toBe('short');
+    // 2× 空头：爆仓价 = 开仓价 × 1.5，在上面
+    expect(sBody.position.liquidation_price).toBeGreaterThan(sBody.position.entry_price);
+    // 空头不能也叫「已买入」
+    expect(sBody.message).toContain('已开空');
+
+    // 不认识的方向一律 400
+    const bad = await buy(
+      makeReq('/api/fish/trade/buy', { symbol: 'BTCUSDT', amount: 10, direction: 'both' })
+    );
+    expect(bad.status).toBe(400);
+    await expectLedgerConsistent('多空各开一仓之后');
+  });
+
+  it('★ 强平引擎没在跑 → 杠杆买入与**空头买入（含 1×）** 503，而 1 倍做多照旧 200', async () => {
     await makeCoreUser(100);
     __setLiquidationRunning(false);
 
@@ -573,7 +610,16 @@ describe('杠杆：接口形状', () => {
     expect(lev.status).toBe(503);
     expect((await lev.json()).message).toContain('杠杆');
 
-    // 1 倍不受影响 —— 它永远碰不到爆仓价，不需要引擎
+    // ⚠️ 1× 空头也吃这条闸门 —— 它在 2 × 开仓价归零，同样需要一个清算者。
+    //    漏掉这一支的话，引擎关着也能卖出空头仓，而扫描（按爆仓价 > 0 筛）也捞不到它。
+    const short = await buy(
+      makeReq('/api/fish/trade/buy', {
+        symbol: 'BTCUSDT', amount: 100, direction: 'short',
+      })
+    );
+    expect(short.status).toBe(503);
+
+    // 1 倍做多不受影响 —— 它永远碰不到爆仓价，不需要引擎
     const plain = await buy(makeReq('/api/fish/trade/buy', { symbol: 'BTCUSDT', amount: 100 }));
     expect(plain.status).toBe(200);
     // 闸门由 beforeEach 复位，不在这里手动摆回 —— 摆在这里的话，这个用例自己一旦

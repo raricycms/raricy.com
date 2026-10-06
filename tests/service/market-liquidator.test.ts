@@ -116,7 +116,7 @@ describe('触发判据', () => {
     expect((await posRow(positionId))?.status).toBe('open');
   });
 
-  it('1 倍仓**结构上不可能**被强平 —— 价格跌到 1 也不动', async () => {
+  it('1 倍**多头**结构上不可能被强平 —— 价格跌到 1 也不动', async () => {
     const user = await makeFishUser(100);
     priceIs(ENTRY);
     const r = await openPosition({ userId: user.id, symbolRaw: 'BTCUSDT', amount: 100 });
@@ -126,8 +126,56 @@ describe('触发判据', () => {
     expect(await sweepLiquidations()).toBe(0);
     const pos = await posRow(r.position.id);
     expect(pos?.status).toBe('open');
-    // 1 倍仓的爆仓价就是 0（价格到不了 0 以下）—— 它不是「还没算」的占位值
+    // 1 倍多头的爆仓价就是 0（价格到不了 0 以下）—— 它不是「还没算」的占位值
     expect(pos?.liquidationPrice).toBe(0);
+  });
+
+  it('★ 1 倍**空头**会被强平 —— 价格涨到 2 × 开仓价（上面那句只对多头成立）★', async () => {
+    const user = await makeFishUser(100);
+    priceIs(ENTRY);
+    const r = await openPosition({
+      userId: user.id, symbolRaw: 'BTCUSDT', amount: 100, directionRaw: 'short',
+    });
+    if (!r.ok) throw new Error(r.message);
+    // 1× 空头的爆仓价 = 开仓价 × 2，是一个**可达**的价（不是 0）
+    expect(r.position.liquidationPrice).toBe(ENTRY * 2);
+
+    priceIs(ENTRY * 2 - 1);
+    expect(await sweepLiquidations(), '还差一点，不该爆').toBe(0);
+
+    priceIs(ENTRY * 2);
+    expect(await sweepLiquidations()).toBe(1);
+    const pos = await posRow(r.position.id);
+    expect(pos?.status).toBe('liquidated');
+    expect(pos?.exitPrice, '结算价是那条线，不是触发价').toBe(ENTRY * 2);
+  });
+
+  it('★ 刚开的健康空头不会被误爆（判据写反就必然发生）', async () => {
+    const user = await makeFishUser(100);
+    priceIs(ENTRY);
+    const r = await openPosition({
+      userId: user.id, symbolRaw: 'BTCUSDT', amount: 100, leverageRaw: 10, directionRaw: 'short',
+    });
+    if (!r.ok) throw new Error(r.message);
+    // 10× 空头爆仓价 88000，而现价 80000。若判据沿用多头的 `现价 ≤ 爆仓价`，
+    // 80000 ≤ 88000 恒真 → 这一笔会在**下一轮立刻被结清**，而日志只有一行正常强平。
+    priceIs(ENTRY);
+    expect(await sweepLiquidations()).toBe(0);
+    expect((await posRow(r.position.id))?.status).toBe('open');
+  });
+
+  it('空头看的是**涨**：价格跌穿多头那条线也不动它', async () => {
+    // 与上一条配对的另一半：同一个价位（72000）对多头是爆仓、对空头是盈利。
+    const user = await makeFishUser(100);
+    priceIs(ENTRY);
+    const r = await openPosition({
+      userId: user.id, symbolRaw: 'BTCUSDT', amount: 100, leverageRaw: 10, directionRaw: 'short',
+    });
+    if (!r.ok) throw new Error(r.message);
+
+    priceIs(LIQ_10X - 1);
+    expect(await sweepLiquidations()).toBe(0);
+    expect((await posRow(r.position.id))?.status).toBe('open');
   });
 
   it('不同标的各按各的价判（同一轮里两个仓位，只有一个该爆）', async () => {

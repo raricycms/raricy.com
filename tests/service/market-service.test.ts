@@ -467,27 +467,115 @@ describe('杠杆（开仓）', () => {
     expect(r.position.liquidationPrice).toBe(0);
   });
 
-  it('不在白名单里的倍数 → 400，且**零痕迹**（不扣款、不建仓）', async () => {
+  it('杠杆是 1–100 的整数：区间内任意整数都收（含曾经的「白名单外」值）', async () => {
+    const user = await makeFishUser(1000);
+    priceIs(80000);
+    // 4 / 7 / 11 / 37 / 50 —— 它们在固定白名单时代都是 400，现在全是正常值。
+    // 这条是「自由输入」这个需求的本体，别把它当成白名单用例改松。
+    for (const lv of [1, 2, 3, 4, 7, 11, 25, 37, 50, 99, 100]) {
+      const r = await openPosition({
+        userId: user.id, symbolRaw: 'BTCUSDT', amount: 1, leverageRaw: lv,
+      });
+      expect(r.ok, `leverageRaw=${lv}`).toBe(true);
+      if (r.ok) expect(r.position.leverage).toBe(lv);
+    }
+    await expectLedgerConsistent('自由杠杆开仓之后');
+  });
+
+  it('区间外 / 非整数 / 脏输入 → 400，且**零痕迹**（不扣款、不建仓）', async () => {
     const user = await makeFishUser(100);
     priceIs(80000);
-    // 4 / 11 是「合法整数但没这一档」，0 / -1 与 'abc' 是脏输入 —— 两类都必须是 400
-    for (const bad of [4, 11, 0, -1, 'abc', Number.NaN]) {
+    // 0 / -1 / 101 / 1000 越界；1.5 不是整数；'abc' / NaN / {} / true 是脏输入。
+    // ⚠️ '1e2'（=100）与 '0x10'（=16）也必须拒：裸 `Number()` 会把它们收下，而失误的
+    //    方向正好是**放大** —— 用户打错一个字符却开了 100 倍，且一切看起来正常。
+    for (const bad of [0, -1, 101, 1000, 1.5, 'abc', Number.NaN, '1e2', '0x10', '  ', {}, true]) {
       const r = await openPosition({
         userId: user.id, symbolRaw: 'BTCUSDT', amount: 10, leverageRaw: bad,
       });
       expect(r.ok, `leverageRaw=${String(bad)}`).toBe(false);
       if (!r.ok) {
         expect(r.code).toBe(400);
-        // 报错要把可选档位念出来，别让用户猜白名单 —— 阶梯念完还要念彩票档
-        //（它也在白名单里，只是页面单独摆）
-        expect(r.message).toContain('1 / 2 / 3 / 5 / 10 / 20');
-        expect(r.message).toContain('彩票档');
+        // 报错念的是**区间**（自由输入之后没有可枚举的白名单了），别让用户猜
+        expect(r.message).toContain('整数');
+        expect(r.message).toContain('100');
       }
     }
     expect(await prisma.marketPosition.count()).toBe(0);
     expect(await txnsOf(user.id)).toHaveLength(1); // 只有夹具那条 admin_grant
     expect(await balanceOf(user.id)).toBe(100);
     await expectLedgerConsistent('非法杠杆被拒之后');
+  });
+
+  it('方向：不传 = long（向后兼容）；short 建仓后爆仓价落在开仓价**上方**', async () => {
+    const user = await makeFishUser(100);
+    priceIs(80000);
+    const def = await openPosition({ userId: user.id, symbolRaw: 'BTCUSDT', amount: 10 });
+    expect(def.ok).toBe(true);
+    if (def.ok) {
+      expect(def.position.direction).toBe('long');
+      // 1× **多头**那条线不存在（0 是字面值，不是占位）
+      expect(def.position.liquidationPrice).toBe(0);
+    }
+    const s = await openPosition({
+      userId: user.id, symbolRaw: 'BTCUSDT', amount: 10, leverageRaw: 2, directionRaw: 'short',
+    });
+    expect(s.ok).toBe(true);
+    if (s.ok) {
+      expect(s.position.direction).toBe('short');
+      // 2× 空头爆仓价 = 开仓价 × (1 + 1/2) = 120000，在**上方**
+      expect(s.position.liquidationPrice).toBeCloseTo(120000, 6);
+      expect(s.position.liquidationPrice).toBeGreaterThan(s.position.entryPrice);
+    }
+    await expectLedgerConsistent('多空各开一仓之后');
+  });
+
+  it('1 倍做空也有爆仓价（2 × 开仓价）—— 「1 倍永不爆仓」只对多头成立', async () => {
+    const user = await makeFishUser(100);
+    priceIs(80000);
+    const s = await openPosition({
+      userId: user.id, symbolRaw: 'BTCUSDT', amount: 10, directionRaw: 'short',
+    });
+    expect(s.ok).toBe(true);
+    if (s.ok) {
+      expect(s.position.leverage).toBe(1);
+      expect(s.position.liquidationPrice).toBe(160000);
+    }
+    await expectLedgerConsistent('1× 空头开仓之后');
+  });
+
+  it('不认识的方向 → 400，且零痕迹', async () => {
+    const user = await makeFishUser(100);
+    priceIs(80000);
+    for (const bad of ['both', 'LONG', 'Short', 1, {}, true]) {
+      const r = await openPosition({
+        userId: user.id, symbolRaw: 'BTCUSDT', amount: 10, directionRaw: bad,
+      });
+      expect(r.ok, `directionRaw=${String(bad)}`).toBe(false);
+      if (!r.ok) expect(r.code).toBe(400);
+    }
+    expect(await prisma.marketPosition.count()).toBe(0);
+    expect(await balanceOf(user.id)).toBe(100);
+    await expectLedgerConsistent('非法方向被拒之后');
+  });
+
+  it('★ 1 倍做空也吃强平闸门（判据是 needsLiquidator，不是 leverage > 1）★', async () => {
+    const user = await makeFishUser(100);
+    priceIs(80000);
+    __setLiquidationRunning(false);
+    try {
+      // 1× 空头在 2 × 开仓价归零 —— 引擎不跑就没有清算者，与杠杆仓同一条判据
+      const short = await openPosition({
+        userId: user.id, symbolRaw: 'BTCUSDT', amount: 10, directionRaw: 'short',
+      });
+      expect(short.ok).toBe(false);
+      if (!short.ok) expect(short.code).toBe(503);
+      // 而 1 倍做多照旧放行 —— 「关掉强平不许连累无风险的那一档」
+      const long = await openPosition({ userId: user.id, symbolRaw: 'BTCUSDT', amount: 10 });
+      expect(long.ok).toBe(true);
+    } finally {
+      __setLiquidationRunning(true);
+    }
+    await expectLedgerConsistent('1× 空头被闸门拒绝之后');
   });
 
   it('同一个幂等键带**不同**杠杆重试 → 重放既有那一笔，不改成新倍数', async () => {

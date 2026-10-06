@@ -5,6 +5,22 @@ import { useRouter } from 'next/navigation';
 import { AMOUNT_ERROR, fmtFish, parseFishAmount, roundFish } from '@/lib/fish-amount';
 import { FISH_UNIT_SCALE, unitsToFish } from '@/lib/fish-units';
 import { settleClose, formatFeeRate, liquidationPrice } from '@/lib/market-math';
+// 杠杆与方向的词表（零依赖 —— 就是从 market-service 搬出来给客户端用的，见那个文件头）。
+// ⚠️ `parseLeverage` 必须从**这里** import，别从 market-service —— 那边拖着 prisma 进不了
+// 客户端包（它只是把它重导出了一份，方便服务端调用方）。
+import {
+  DIRECTIONS,
+  DIRECTION_LABELS,
+  DIRECTION_BADGES,
+  dirSign,
+  parseLeverage,
+  needsLiquidator,
+  LEVERAGE_PRESETS,
+  MIN_LEVERAGE,
+  MAX_LEVERAGE,
+  HIGH_RISK_LEVERAGE,
+  type Direction,
+} from '@/lib/market-leverage';
 import { DEFAULT_INTERVAL, type CandleTuple, type MarketInterval } from '@/lib/market-candles';
 // 价格与涨跌幅的格式化只有一份（market-chart.ts），持仓行、确认弹窗、图例共用它 ——
 // 这里沿用文件里原来的短名，免得改十几处调用点
@@ -69,14 +85,17 @@ export interface PositionProp {
   id: string;
   symbol: string;
   display: string;
+  /** `long`｜`short` —— 渲染成「多 / 空」那枚角标，并决定盈亏着色与爆仓提示的方向词。 */
+  direction: Direction;
   stake: number;
   entryPrice: number;
   /** 杠杆倍数（1 = 无杠杆）。渲染成「10×」那一枚角标。 */
   leverage: number;
   /**
-   * 爆仓价。**直接用它，别拿 entryPrice × (1 − 1/杠杆) 自己算一遍** ——
+   * 爆仓价。**直接用它，别拿 entryPrice × (1 ∓ 1/杠杆) 自己算一遍** ——
    * 这是开仓那一刻写进库的数，与强平引擎的判据是同一个（见 market-math 的注释）。
-   * 1 倍仓恒为 0，显示成「—」。
+   * ⚠️ **只有 1 倍多头**才是 0（那条线不存在、显示成「—」）；1× 空头是 2 × 开仓价。
+   * 所以「要不要显示爆仓价」的判据是 `liquidationPrice > 0`，**不是** `leverage > 1`。
    */
   liquidationPrice: number;
   openedAt: string;
@@ -98,8 +117,6 @@ export default function TradePanel({
   candleSets,
   feeRate,
   minStake,
-  leverageOptions,
-  lotteryLeverage,
   leverageEnabled,
 }: {
   balance: number;
@@ -111,20 +128,12 @@ export default function TradePanel({
   candleSets: Record<string, CandleTuple[]>;
   feeRate: number;
   minStake: number;
-  /** 杠杆档位白名单（market-service 的 LEVERAGE_OPTIONS）。**从服务端传进来**，
-      就像 feeRate / minStake —— 客户端包 import 不到 market-service（它拖着 prisma）。 */
-  leverageOptions: number[];
   /**
-   * 彩票档（market-service 的 LOTTERY_LEVERAGE）。**刻意与上面那排分开传** ——
-   * 它不是阶梯的下一档，页面上也单独摆（`.trade-lottery` + 选中即警告），
-   * 理由见那个常量的注释。它仍在服务端的白名单里（ALL_LEVERAGES），所以提交路径
-   * 与别的档**一个字都不差**（别在这里给它开小灶）。
-   */
-  lotteryLeverage: number;
-  /**
-   * 强平引擎是否在跑。false 时**只留 1 倍**并给一句说明 —— 与「行情拉不到就禁掉
+   * 强平引擎是否在跑。false 时**只留「1 倍做多」**并给一句说明 —— 与「行情拉不到就禁掉
    * 买入」同一档：服务暂时不在，就把按钮关掉，而不是让用户填完一整屏再吃 503。
-   * ⚠️ 这不是「入口跟着藏」（那条红线针对的是**档位不够**）：1 倍照旧能买，
+   * ⚠️ 关掉的是**会爆仓的那一整类**（杠杆仓 + **全部空头仓，含 1×**），不是「杠杆」这一个
+   * 维度 —— 1× 空头同样要引擎（它在 2 × 开仓价归零）。判据是 needsLiquidator。
+   * ⚠️ 这不是「入口跟着藏」（那条红线针对的是**档位不够**）：1 倍多头照旧能买，
    * 入口一个都没少，少的是一个此刻兑现不了的商品。
    */
   leverageEnabled: boolean;
@@ -137,9 +146,13 @@ export default function TradePanel({
   // 1 秒轮询会当场报「Expected 1 arguments, but got 2」，而错的是名字不是轮询。
   const [interval, applyInterval] = useState<MarketInterval>(DEFAULT_INTERVAL);
   const [amount, setAmount] = useState('');
-  // 档位**不进幂等键**：同一笔重试换一个倍数不会买成两笔，服务端按 openKey 回读既有
-  // 那一笔的真实倍数（见 buy/route.ts 头部）。所以这里改它不需要换键。
+  // 方向**不进幂等键**：同一笔重试换一个方向不会买成两笔，服务端按 openKey 回读既有
+  // 那一笔的真实方向（见 buy/route.ts 头部）。所以这里改它不需要换键。
+  const [direction, setDirection] = useState<Direction>('long');
+  // 杠杆**不进幂等键**，同上。`leverage` 是**最后一个合法值**（渲染与提交都用它稳定，
+  // 输入框的中间态不该把页面抖成 NaN）；`leverageInput` 是输入框里的原始文本。
   const [leverage, setLeverage] = useState(1);
+  const [leverageInput, setLeverageInput] = useState('1');
   const [buyOpen, setBuyOpen] = useState(false);
   const [sellTarget, setSellTarget] = useState<PositionProp | null>(null);
   const [busy, setBusy] = useState(false);
@@ -212,7 +225,19 @@ export default function TradePanel({
               ? '小鱼干不足'
               : '';
   const amountOk = Number.isFinite(parsed) && parsed >= minStake && parsed <= balance;
-  const canBuy = amountOk && current != null;
+  // 杠杆输入框是文本框，所以「空着」是一个真实中间态。⚠️ parseLeverage('') 返回 1
+  //（那是给「调用方根本没传这个字段」的向后兼容），但**空输入框 ≠ 1 倍** ——
+  // 不特判的话，用户删掉数字、页面显示「1×」并真的按 1 倍下单，而他以为还没填完。
+  const leverageTrimmed = leverageInput.trim();
+  const leverageOk = leverageTrimmed !== '' && parseLeverage(leverageTrimmed) !== null;
+  const leverageError = leverageOk ? '' : `杠杆需是 ${MIN_LEVERAGE}–${MAX_LEVERAGE} 之间的整数`;
+  // 这一笔要不要强平引擎（**会爆仓 ⟺ 杠杆仓 ‖ 空头仓**，含 1× 空头）。引擎没在跑时
+  // 它就是一个「此刻兑现不了的商品」—— 与「行情拉不到就禁掉买入」同一档，不放进下单。
+  const engineBlocked = needsLiquidator(leverage, direction) && !leverageEnabled;
+  const canBuy = amountOk && leverageOk && current != null && !engineBlocked;
+  // 选中/输入到警告带以上（≥ HIGH_RISK_LEVERAGE）时常驻一条危险说明。它**只是文案**：
+  // 服务端照收 1–100 的每个整数，不因跨过 25 就变档。
+  const highRisk = leverageOk && leverage >= HIGH_RISK_LEVERAGE;
   const afterBalance = amountOk ? roundFish(balance - parsed) : balance;
 
   // 某一笔持仓按**展示价**估的卖出细则。真实结算价以下单那一刻为准（见文件头 ①）。
@@ -229,33 +254,67 @@ export default function TradePanel({
     const px = priceOf(p.symbol);
     if (px == null) return null;
     const stakeUnits = Math.round(p.stake * FISH_UNIT_SCALE);
-    // ⚠️ `leverage` 从**这笔持仓**来，不是从上面那个选择器来 —— 选择器只管下一笔。
-    // 拿它去估已有持仓 = 把 1 倍的仓位按 10 倍显示，而且屏幕上那个数看起来完全合理。
+    // ⚠️ `leverage` 与 `direction` 都从**这笔持仓**来，不是从上面那两个选择器来 ——
+    // 选择器只管下一笔。拿它们去估已有持仓 = 把 1 倍的多头按 10 倍的空头显示，
+    // 而且屏幕上那个数看起来完全合理。
     const s = settleClose({
       stakeUnits,
       entryPrice: p.entryPrice,
       exitPrice: px,
       feeRate,
       leverage: p.leverage,
+      direction: p.direction,
     });
     return {
       px,
-      /** 实发（到手）。杠杆仓跌穿爆仓价后它是 0（同一个 max(0,…)，见 market-math.ts） */
+      /** 实发（到手）。穿过爆仓价后它是 0（同一个 max(0,…)，见 market-math.ts） */
       payout: unitsToFish(s.payoutUnits),
       /** 毛额 = 权益（**不是**持仓市值也不是名义本金）。「毛额 − 手续费 = 到手」靠它 */
       gross: unitsToFish(s.grossUnits),
       profit: unitsToFish(s.payoutUnits - stakeUnits),
       /** 手续费 + floor 零头 —— 弹窗里「毛额 − 手续费 = 到手」要对得上（见 market-math.ts） */
       fee: unitsToFish(s.feeUnits),
-      /** 较开仓价的涨跌幅（不含手续费）。行情卡上那个是 24 小时涨跌，两者不是一回事 */
+      /**
+       * 较开仓价的涨跌幅（不含手续费）。行情卡上那个是 24 小时涨跌，两者不是一回事。
+       * ⚠️ 它是**行情**的数，**不含方向** —— 空头这一栏是负的恰恰在赚钱。
+       */
       changePercent: s.changePercent,
-      /** 盈亏率（含手续费与 floor）。10 倍仓它约等于涨跌幅 × 10 */
+      /** 盈亏率（含手续费与 floor）。10 倍仓它约等于涨跌幅 × 10（空头取反） */
       profitPercent: s.profitPercent,
       /** 名义本金（投入 × 杠杆）—— 只在杠杆仓的弹窗里显示，1 倍时与投入同值 */
       notional: roundFish(p.stake * p.leverage),
-      /** 现价已经跌穿这笔的爆仓价 —— 平仓实得 0，且随时会被强平。1 倍仓恒 false */
-      liquidated: p.leverage > 1 && px <= p.liquidationPrice,
+      /**
+       * 这一行的涨跌**该按赚钱还是亏钱着色** —— 行情涨跌幅乘上方向。
+       * 独立的字段而不是让调用点自己乘：漏乘的地方不会报错，只会红绿反。
+       */
+      favorable: s.changePercent * dirSign(p.direction) >= 0,
+      /**
+       * 现价已经穿过这笔的爆仓价 —— 平仓实得 0，且下一轮扫描就会被强平。
+       * ⚠️ 判据是 `liquidationPrice > 0`（**这条线存在**），不是 `leverage > 1`：
+       * 1× 空头有一条真实爆仓价（2 × 开仓价），而 1× 多头没有。写错的话 1× 空头
+       * 永远不显示「已涨破爆仓价」，用户看着一个浮亏以为还能等。
+       */
+      liquidated:
+        p.liquidationPrice > 0 &&
+        (p.direction === 'short' ? px >= p.liquidationPrice : px <= p.liquidationPrice),
     };
+  }
+
+  /** 选一个档（chip 或输入框都走它）：数值与输入框文本必须一起动，否则两者会分家。 */
+  function chooseLeverage(lv: number) {
+    setLeverage(lv);
+    setLeverageInput(String(lv));
+  }
+
+  /**
+   * 输入框的手输路径。**非法值只记文本、不动 `leverage`** —— 于是渲染与提交用的
+   * 仍是最后一个合法值，而 `leverageOk` 会把买入按钮关掉、并把错因写在下面。
+   * 别在这里「就近取整」（同 parseLeverage 头部那条纪律）。
+   */
+  function onLeverageInput(text: string) {
+    setLeverageInput(text);
+    const v = parseLeverage(text.trim());
+    if (v !== null && text.trim() !== '') setLeverage(v);
   }
 
   function openBuy() {
@@ -267,7 +326,7 @@ export default function TradePanel({
   }
 
   async function submitBuy() {
-    if (!amountOk || busy) return;
+    if (!canBuy || busy) return;
     setBusy(true);
     try {
       const res = await fetch('/api/fish/trade/buy', {
@@ -277,9 +336,10 @@ export default function TradePanel({
         body: JSON.stringify({
           symbol,
           amount: parsed,
-          // 杠杆原样提交。**前端不传价**这条没变（见文件头 ①）—— 倍数不是价，
-          // 它是这一笔的形状，而白名单与判定全在服务端。
+          // 杠杆与方向原样提交。**前端不传价**这条没变（见文件头 ①）—— 它们不是价，
+          // 是这一笔的形状，而区间/取值与判定全在服务端。
           leverage,
+          direction,
           idempotency_key: idemRef.current,
         }),
       });
@@ -360,21 +420,24 @@ export default function TradePanel({
   // 买入弹窗里的**参考**爆仓价：用**展示价**当开仓价估的（真实爆仓价要等成交价出来
   // 才算得出，见文件头 ①）。所以它必须标成「参考」，不能当成承诺。
   const refLiqPrice =
-    current?.price != null ? liquidationPrice(current.price, leverage) : null;
+    current?.price != null ? liquidationPrice(current.price, leverage, direction) : null;
   // 爆仓价**离现价有多远**（%）。「距现价 −10.0%」读得出来，「72,000.00 USDT」读不出来
   // —— 后者要用户自己心算 (80000−72000)/80000，而那正是他决定要不要按买入时唯一该看的数。
+  // ⚠️ **带符号**：多头是负（价要跌到那儿才爆）、空头是正（价要涨到那儿才爆）。
+  // 别写死一个负号 —— 那会让空头的爆仓提示说成「跌 10% 就爆」，方向正好反了。
   // ⚠️ 必须由**上面那两个数**推，别写成 100 / leverage：公式等价，但展示价一跳动
   // 屏幕上那两个数就会对不上（写了公式的那份不会跟着动）——**静默地**。
   const refLiqDistancePct =
     refLiqPrice != null && current?.price != null && current.price > 0
-      ? (1 - refLiqPrice / current.price) * 100
+      ? ((refLiqPrice - current.price) / current.price) * 100
       : null;
-  // 1 倍时永远不爆（爆仓价是 0），弹窗里那一行与强平提示都按这个判据收起来 ——
-  // 对 1 倍反复说「注意爆仓风险」只会让那句话失效。
-  const leverageActive = leverage > 1 && leverageEnabled;
-  // 彩票档被选中。**与 leverageActive 是两个判据**：后者管「要不要说杠杆那几行」
-  // （所有 > 1 的档都成立），这个只管「要不要说那段硬币的话」。
-  const lotteryActive = leverage === lotteryLeverage && leverageEnabled;
+  // 杠杆仓才显示「杠杆 / 名义本金」那两行 —— 1 倍说「杠杆 1×」是废话，
+  // 而「名义本金 = 投入」这种恒等式摆两遍会让真正要紧的那几行变淡。
+  const leveraged = leverage > 1;
+  // 「这一笔有没有一条真的爆仓线」：**1 倍多头没有**（爆仓价是 0），其余都有（含 1× 空头）。
+  // ⚠️ 判据是 `refLiqPrice > 0`，**不是** `leverage > 1` —— 后者会把 1× 空头那条真实的
+  // 线藏起来，用户看不到自己会怎么爆。
+  const hasLiqLine = refLiqPrice != null && refLiqPrice > 0;
 
   // 自选列表的行 = 展示报价 + 走势线（走势线由服务端随首屏给，切标的不另取）。
   const watchRows: WatchRow[] = quotes.map((q) => ({
@@ -447,8 +510,42 @@ export default function TradePanel({
               {amountError && <p className="trade-field__hint trade-field__hint--error">{amountError}</p>}
             </div>
 
-            {/* 杠杆档位。**N 选 1 且选项可能变多 → 切页档**（docs/frontend-styles.md §6.8
-                的判据：胶囊滑块只给「同一个视图的两种呈现」）。与周期档同一档。
+            {/* 方向。**两个值、固定两枚 → 切页档**（同杠杆那排的判据，
+                docs/frontend-styles.md §6.8）。它是「下一笔」的形状，与已有持仓无关 ——
+                所以持仓行自己带方向角标，不靠这个开关解释。 */}
+            <div className="trade-field">
+              <span className="trade-field__label" id="trade-direction-label">
+                方向
+              </span>
+              <div
+                className="trade-direction"
+                role="group"
+                aria-labelledby="trade-direction-label"
+              >
+                {DIRECTIONS.map((d) => {
+                  // **空头任何档都要强平引擎（含 1×）** —— 引擎没在跑时它是一个兑现不了
+                  // 的商品，与上面那些 >1 的档同一条判据（needsLiquidator）。
+                  const unavailable = d === 'short' && !leverageEnabled;
+                  return (
+                    <button
+                      key={d}
+                      type="button"
+                      className={`trade-direction__btn${d === direction ? ' is-active' : ''}`}
+                      aria-pressed={d === direction}
+                      disabled={locked || unavailable}
+                      title={unavailable ? '做空暂不可用' : undefined}
+                      onClick={() => setDirection(d)}
+                    >
+                      {DIRECTION_LABELS[d]}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 杠杆。**快捷档一排 + 一个自由输入框**（2026-10 从固定白名单改成 1–100
+                的整数）。快捷档走 .trade-leverage__btn（btn-tab），**三档之外不自造第四档**
+                （docs/frontend-styles.md）；输入框是一行数字 → 胶囊。
                 ⚠️ 它是「下一笔」的参数，与已有持仓的倍数无关 —— 所以列表里每一行
                 自己带一枚倍数角标，而不是靠这个选择器解释。 */}
             <div className="trade-field">
@@ -460,7 +557,7 @@ export default function TradePanel({
                 role="group"
                 aria-labelledby="trade-leverage-label"
               >
-                {leverageOptions.map((lv) => {
+                {LEVERAGE_PRESETS.map((lv) => {
                   // 引擎没在跑时只留 1 倍：其余档位是此刻兑现不了的商品（服务端也会拒）。
                   const unavailable = lv > 1 && !leverageEnabled;
                   return (
@@ -471,55 +568,56 @@ export default function TradePanel({
                       aria-pressed={lv === leverage}
                       disabled={locked || unavailable}
                       title={unavailable ? '杠杆暂不可用' : undefined}
-                      onClick={() => setLeverage(lv)}
+                      onClick={() => chooseLeverage(lv)}
                     >
                       {lv}×
                     </button>
                   );
                 })}
               </div>
-
-              {/* 彩票档：**刻意与上面那排阶梯分开**（另起一行 + 分隔线 + 自己的说明）。
-                  它不是「下一档」—— 选中它买到的是一枚几小时见分晓的硬币（见
-                  market-service 的 LOTTERY_LEVERAGE 注释）。分开靠的是**位置与文案**，
-                  按钮本身仍是 btn-tab：三档之外不自造第四档（docs/frontend-styles.md）。
-                  引擎没在跑时它和上面那几档一样是灰的（不是隐藏）—— 同一个判据。 */}
-              <div className="trade-lottery">
-                <button
-                  type="button"
-                  className={`trade-leverage__btn${leverage === lotteryLeverage ? ' is-active' : ''}`}
-                  aria-pressed={leverage === lotteryLeverage}
-                  disabled={locked || !leverageEnabled}
-                  title={!leverageEnabled ? '杠杆暂不可用' : undefined}
-                  onClick={() => setLeverage(lotteryLeverage)}
-                >
-                  {lotteryLeverage}×
-                </button>
-                <span className="trade-lottery__tag">彩票档</span>
+              <div className="trade-leverage__custom">
+                <input
+                  className="trade-leverage__input"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  aria-label={`自定义杠杆倍数（${MIN_LEVERAGE}–${MAX_LEVERAGE} 的整数）`}
+                  value={leverageInput}
+                  onChange={(e) => onLeverageInput(e.target.value)}
+                  disabled={locked}
+                />
+                <span className="trade-leverage__unit">
+                  倍（{MIN_LEVERAGE}–{MAX_LEVERAGE} 的整数）
+                </span>
               </div>
-              {/* 警告**常驻在选择器下方**，不是弹一次就完的 modal：每次都要点掉的东西
-                  会立刻脱敏（同「对 1 倍反复说爆仓风险」那条）。这里说的是这一档独有的
-                  两件事 —— 它是硬币、以及它贵在哪（抽水按名义本金收，是 10× 的十倍）。 */}
-              {lotteryActive && (
-                <p className="trade-lottery__warn">
-                  ⚠️ 它不是「更猛的一档」：爆仓线近到一根普通的日内波动就能碰到，几小时就
-                  可能见分晓。手续费按名义本金收 —— 这一档平仓一次约合投入的{' '}
-                  <strong>{formatFeeRate(feeRate * lotteryLeverage)}</strong>（1 倍仓是{' '}
+              {leverageError && (
+                <p className="trade-field__hint trade-field__hint--error">{leverageError}</p>
+              )}
+              {/* 危险带警告**常驻在选择器下方**，不是弹一次就完的 modal：每次都要点掉的东西
+                  会立刻脱敏（同「对 1 倍反复说爆仓风险」那条）。阈值与实测曲线见
+                  market-leverage 的 HIGH_RISK_LEVERAGE —— 它**只是文案**，服务端照收
+                  1–100 的每一个整数，不因跨过它变档。 */}
+              {highRisk && (
+                <p className="trade-leverage__warn">
+                  ⚠️ {leverage}× 的爆仓线离现价只有约 {(100 / leverage).toFixed(1)}% —— 一根
+                  普通的日内波动就能碰到，几小时就可能见分晓。手续费按名义本金收，这一档
+                  平仓一次约合投入的{' '}
+                  <strong>{formatFeeRate(feeRate * leverage)}</strong>（1 倍仓是{' '}
                   {formatFeeRate(feeRate)}）。
                 </p>
               )}
-              {/* 档位提示**不要求已填金额**：距离是这一档本身的属性（只由倍数与现价
-                  决定，与投多少无关），所以选中它的那一刻就该看见 —— 等用户填完金额
-                  才告诉他那条线只有 1% 远，等于把最要紧的一句放在了决定之后。 */}
-              {leverageActive && (
+              {/* 提示**不要求已填金额**：距离是这一笔的属性（只由倍数、方向与现价决定，
+                  与投多少无关），所以选中它的那一刻就该看见 —— 等用户填完金额才告诉他
+                  那条线只有 1% 远，等于把最要紧的一句放在了决定之后。 */}
+              {(leveraged || hasLiqLine) && (
                 <p className="trade-field__hint">
-                  {amountOk && (
+                  {leveraged && amountOk && (
                     <>
                       名义本金 <strong>{fmtFish(roundFish(parsed * leverage))}</strong> 小鱼干
-                      {refLiqPrice != null && '，'}
+                      {hasLiqLine && '，'}
                     </>
                   )}
-                  {refLiqPrice != null && (
+                  {hasLiqLine && refLiqPrice != null && (
                     <>
                       参考爆仓价{' '}
                       <strong className="trade-field__hint--danger">
@@ -527,7 +625,10 @@ export default function TradePanel({
                       </strong>{' '}
                       USDT
                       {refLiqDistancePct != null && (
-                        <>（距现价 -{refLiqDistancePct.toFixed(1)}%）</>
+                        <>
+                          （距现价 {refLiqDistancePct >= 0 ? '+' : ''}
+                          {refLiqDistancePct.toFixed(1)}%）
+                        </>
                       )}
                     </>
                   )}
@@ -535,7 +636,7 @@ export default function TradePanel({
               )}
               {!leverageEnabled && (
                 <p className="trade-field__hint">
-                  杠杆暂不可用（强平服务未运行），当前只能 1 倍买入。
+                  强平服务未运行 —— 此刻只能用「1 倍做多」。
                 </p>
               )}
             </div>
@@ -556,7 +657,7 @@ export default function TradePanel({
               disabled={!canBuy || busy || quoteDown}
               onClick={openBuy}
             >
-              买入
+              {direction === 'short' ? '做空' : '买入'}
             </button>
           </div>
 
@@ -575,33 +676,47 @@ export default function TradePanel({
                         {/* 倍数**逐行显示**：上面那个选择器只管下一笔，拿它解释已有持仓
                             会把 1 倍的仓位读成 10 倍。1 倍不显示（默认档，加个「1×」
                             只是噪音，与流水描述同款处理）。 */}
+                        {/* 方向角标：**恒显示**。1× 空头既没有倍数角标（倍数是 1），
+                            要是再省掉方向，它的风险就被完全藏起来了 —— 一行看着像
+                            一笔无关紧要的 1 倍多单，实则刚被腰斩。 */}
+                        <span className={`trade-position__dir trade-position__dir--${p.direction}`}>
+                          {DIRECTION_BADGES[p.direction]}
+                        </span>
                         {p.leverage > 1 && (
                           <span className="trade-position__lev">{p.leverage}×</span>
                         )}
                         <span className="trade-position__stake">{fmtFish(p.stake)} 鱼干</span>
                         <span className="trade-position__entry">
                           开仓 {fmtPrice(p.entryPrice)}
-                          {/* 爆仓价只在杠杆仓显示：1 倍时它是 0（= 永远不会爆），
-                              写「爆仓 0 USDT」是在说一件不可能发生的事。 */}
-                          {p.leverage > 1 && <> · 爆仓 {fmtPrice(p.liquidationPrice)}</>}
+                          {/* 爆仓价只要**那条线存在**就显示 —— 判据是 `> 0`，不是 `杠杆 > 1`：
+                              1× 多头是 0（写「爆仓 0 USDT」是在说一件不可能发生的事），
+                              而 1× 空头有一条真实爆仓价（2 × 开仓价），漏显示它等于
+                              把「这笔会爆」这件事藏起来。 */}
+                          {p.liquidationPrice > 0 && <> · 爆仓 {fmtPrice(p.liquidationPrice)}</>}
                           <span className="trade-position__time"> · {fmtOpenedAt(p.openedAt)}</span>
                         </span>
                         {/* 「较开仓」而不是光写一个百分数：行情卡上那个百分数是**24 小时**涨跌，
-                            两个数会在同一屏里各说各话。取不到价就整行不渲染（不是显示 0.00%）。 */}
+                            两个数会在同一屏里各说各话。取不到价就整行不渲染（不是显示 0.00%）。
+                            ⚠️ 着色用 `est.favorable`（行情涨跌 × 方向），**不是**拿
+                            `changePercent >= 0` —— 空头这一栏是负的恰恰在赚钱，直接判色
+                            会让空头的红绿全反（不报错）。数值本身照旧是**行情**涨跌幅。 */}
                         {est && (
                           <span className="trade-position__now">
                             现价 {fmtPrice(est.px)}
                             <span
                               className={`trade-position__change trade-position__change--${
-                                est.changePercent >= 0 ? 'up' : 'down'
+                                est.favorable ? 'up' : 'down'
                               }`}
                             >
                               较开仓 {fmtPct(est.changePercent)}
                             </span>
-                            {/* 已经跌穿爆仓价：平仓实得 0，且下一轮扫描就会被强平。
-                                不说这句的话，这一行的「可卖 0 鱼干」看起来像个 bug。 */}
+                            {/* 已经穿过爆仓价：平仓实得 0，且下一轮扫描就会被强平。
+                                不说这句的话，这一行的「可卖 0 鱼干」看起来像个 bug。
+                                方向词要跟着方向：多头「跌破」、空头「涨破」。 */}
                             {est.liquidated && (
-                              <span className="trade-position__liq">已跌破爆仓价</span>
+                              <span className="trade-position__liq">
+                                {p.direction === 'short' ? '已涨破爆仓价' : '已跌破爆仓价'}
+                              </span>
                             )}
                           </span>
                         )}
@@ -631,7 +746,7 @@ export default function TradePanel({
                         onClick={() => setSellTarget(p)}
                         disabled={busy}
                       >
-                        卖出
+                        {p.direction === 'short' ? '平空' : '卖出'}
                       </button>
                     </li>
                   );
@@ -652,7 +767,7 @@ export default function TradePanel({
           >
             <div className="modal-content">
               <div className="modal-header">
-                <h3 className="modal-title">确认买入</h3>
+                <h3 className="modal-title">{direction === 'short' ? '确认做空' : '确认买入'}</h3>
               </div>
               <div className="modal-body">
                 <dl className="trade-confirm__rows">
@@ -660,13 +775,23 @@ export default function TradePanel({
                     <dt>标的</dt>
                     <dd>{current.display}</dd>
                   </div>
+                  {/* 方向**恒显示**（哪怕 1× 做多）—— 这一屏是用户最后一次看清
+                      「我到底在下哪一边」，而下完单它就只体现在持仓行那枚角标上了。 */}
+                  <div className="trade-confirm__row">
+                    <dt>方向</dt>
+                    <dd>
+                      <span className={`trade-confirm__dir trade-confirm__dir--${direction}`}>
+                        {DIRECTION_LABELS[direction]}
+                      </span>
+                    </dd>
+                  </div>
                   <div className="trade-confirm__row">
                     <dt>投入</dt>
                     <dd>{fmtFish(parsed)} 小鱼干</dd>
                   </div>
-                  {/* 杠杆那三行只在 leverage > 1 时出现：1 倍仓说「杠杆 1×」是废话，
-                      而「名义本金 = 投入」这种恒等式摆两遍会让真正要紧的那几行变淡。 */}
-                  {leverageActive && (
+                  {/* 「杠杆 / 名义本金」两行只在 leverage > 1 时出现：1 倍仓说「杠杆 1×」
+                      是废话，而「名义本金 = 投入」这种恒等式摆两遍会让真正要紧的那几行变淡。 */}
+                  {leveraged && (
                     <>
                       <div className="trade-confirm__row">
                         <dt>杠杆</dt>
@@ -678,19 +803,28 @@ export default function TradePanel({
                         <dt>名义本金</dt>
                         <dd>{fmtFish(roundFish(parsed * leverage))} 小鱼干</dd>
                       </div>
-                      <div className="trade-confirm__row">
-                        <dt>参考爆仓价</dt>
-                        <dd>
-                          {refLiqPrice == null ? (
-                            '—'
-                          ) : (
-                            <span className="trade-confirm__liq">
-                              {fmtPrice(refLiqPrice)} USDT
-                            </span>
-                          )}
-                        </dd>
-                      </div>
                     </>
+                  )}
+                  {/* 参考爆仓价只要**那条线存在**就显示（判据 `> 0`）—— 1× 空头也有一条
+                      （2 × 开仓价），漏显示它等于把「这笔会爆」藏起来。 */}
+                  {hasLiqLine && refLiqPrice != null && (
+                    <div className="trade-confirm__row">
+                      <dt>参考爆仓价</dt>
+                      <dd>
+                        <span className="trade-confirm__liq">
+                          {fmtPrice(refLiqPrice)} USDT
+                        </span>
+                        {refLiqDistancePct != null && (
+                          <>
+                            {' '}
+                            <span className="trade-confirm__delta">
+                              {refLiqDistancePct >= 0 ? '+' : ''}
+                              {refLiqDistancePct.toFixed(1)}%
+                            </span>
+                          </>
+                        )}
+                      </dd>
+                    </div>
                   )}
                   <div className="trade-confirm__row">
                     <dt>参考价</dt>
@@ -701,27 +835,19 @@ export default function TradePanel({
                     <dd>{fmtFish(afterBalance)} 小鱼干</dd>
                   </div>
                 </dl>
-                {/* 免责声明按档位分岔：**杠杆那一档必须把两件反直觉的事说清楚** ——
-                    ① 亏损也是放大的，价格反向动 1/L 就归零（不是「亏一部分」）；
+                {/* 免责声明**按「这一笔有没有爆仓线」分岔**（= hasLiqLine），不是按
+                    「杠杆 > 1」：1× 做空同样会爆（价格翻倍），它必须拿到下面那段危险声明。
+                    **有爆仓线的那一档要把两件反直觉的事说清楚** ——
+                    ① 亏损也是放大的，价格**反向**动 1/L 就归零（不是「亏一部分」）；
                     ② 爆仓价是按**参考价**估的，真实的那条线要等成交价出来才定
                        （与「成交价以下单那一刻为准」同源，见文件头 ①）。
-                    不说 ② 的话，用户会拿着一个差了几分钱的数来对账。 */}
-                {/* 彩票档在**按下确认这一屏**再说一遍：选择器下面那段是常驻的，而真正
-                    决定的那一下在这里。两处说同一件事、措辞不重复 —— 距离那个数由上面
-                    那行「参考爆仓价」旁边的百分数给，这里只讲它是什么和它贵在哪。 */}
-                {lotteryActive && (
-                  <p className="trade-confirm__disclaimer trade-confirm__disclaimer--danger">
-                    <strong>这是彩票档：</strong>它不是「更猛的一档」—— 爆仓线就落在一根
-                    普通日内波动的范围内，几小时就可能见分晓，方向看对了也照样会被收走。
-                    手续费按名义本金收，这一档平仓一次约合投入的{' '}
-                    {formatFeeRate(feeRate * lotteryLeverage)}（1 倍仓是 {formatFeeRate(feeRate)}）。
-                  </p>
-                )}
-                {leverageActive ? (
+                    不说 ② 的话，用户会拿着一个差了几分钱的数来对账。
+                    「反向」的方向词随多空走 —— 空头是**涨**。 */}
+                {hasLiqLine ? (
                   <p className="trade-confirm__disclaimer trade-confirm__disclaimer--danger">
                     实际成交价以下单那一刻的行情为准，<strong>真实的爆仓价跟着成交价走</strong>，
-                    与上面的参考值会有差异。{leverage}× 杠杆下亏损同样放大：
-                    价格反向波动约 {(100 / leverage).toFixed(0)}% 时保证金归零，
+                    与上面的参考值会有差异。价格{direction === 'short' ? '反向上涨' : '反向下跌'}
+                    约 {(100 / leverage).toFixed(0)}% 时保证金归零，
                     <strong>系统会自动强平，这一笔投入全部亏掉</strong>。
                     名义本金是借来的，亏损以投入的 {fmtFish(parsed)} 条为上限，不会变成欠账。
                   </p>
@@ -729,6 +855,17 @@ export default function TradePanel({
                   <p className="trade-confirm__disclaimer">
                     实际成交价以下单那一刻的行情为准，可能与上面的参考价有细微差异。
                     价格下跌时卖出会亏掉一部分本金，最坏输光这一笔投入。
+                  </p>
+                )}
+                {/* 危险带在**按下确认这一屏**再说一遍：选择器下面那段是常驻的，而真正
+                    决定的那一下在这里。措辞不与上面重复 —— 距离那个数由上面那行
+                    「参考爆仓价」旁边的百分数给，这里只讲它是什么和它贵在哪。 */}
+                {highRisk && (
+                  <p className="trade-confirm__disclaimer trade-confirm__disclaimer--danger">
+                    <strong>这是高倍档：</strong>
+                    {leverage}× 的爆仓线离现价只有约 {(100 / leverage).toFixed(1)}% —— 一根
+                    普通的日内波动就能碰到，方向看对了也照样会被收走。手续费按名义本金收，
+                    这一笔平仓一次约合投入的 {formatFeeRate(feeRate * leverage)}。
                   </p>
                 )}
                 <div className="trade-confirm__actions">
@@ -746,7 +883,13 @@ export default function TradePanel({
                     onClick={() => void submitBuy()}
                     disabled={busy}
                   >
-                    {busy ? '买入中…' : '确认买入'}
+                    {busy
+                      ? direction === 'short'
+                        ? '做空中…'
+                        : '买入中…'
+                      : direction === 'short'
+                        ? '确认做空'
+                        : '确认买入'}
                   </button>
                 </div>
               </div>
@@ -779,6 +922,16 @@ export default function TradePanel({
                     <dd>{sellTarget.display}</dd>
                   </div>
                   <div className="trade-confirm__row">
+                    <dt>方向</dt>
+                    <dd>
+                      <span
+                        className={`trade-confirm__dir trade-confirm__dir--${sellTarget.direction}`}
+                      >
+                        {DIRECTION_LABELS[sellTarget.direction]}
+                      </span>
+                    </dd>
+                  </div>
+                  <div className="trade-confirm__row">
                     <dt>投入</dt>
                     <dd>{fmtFish(sellTarget.stake)} 小鱼干</dd>
                   </div>
@@ -801,7 +954,8 @@ export default function TradePanel({
                     <dt>开仓价</dt>
                     <dd>{fmtPrice(sellTarget.entryPrice)} USDT</dd>
                   </div>
-                  {sellTarget.leverage > 1 && (
+                  {/* 判据是 `> 0`（那条线存在），不是 `杠杆 > 1` —— 1× 空头有一条真爆仓价。 */}
+                  {sellTarget.liquidationPrice > 0 && (
                     <div className="trade-confirm__row">
                       <dt>爆仓价</dt>
                       <dd>
@@ -817,9 +971,12 @@ export default function TradePanel({
                       {sellEst ? (
                         <>
                           {fmtPrice(sellEst.px)} USDT
+                          {/* ⚠️ 着色用 `favorable`（行情涨跌 × 方向），不是直接拿
+                              changePercent 判 —— 空头「跌了」是在赚，直接判色红绿会反。
+                              数值仍是**行情**涨跌幅。 */}
                           <span
                             className={`trade-confirm__delta trade-confirm__delta--${
-                              sellEst.changePercent >= 0 ? 'up' : 'down'
+                              sellEst.favorable ? 'up' : 'down'
                             }`}
                           >
                             {fmtPct(sellEst.changePercent)}
@@ -866,20 +1023,24 @@ export default function TradePanel({
                     <dd>{sellEst ? `${fmtFish(sellEst.payout)} 小鱼干` : '—'}</dd>
                   </div>
                 </dl>
-                {/* 已经跌穿爆仓价时**必须换一套话**：这一屏上面会显示「预计到手 0」，
+                {/* 已经穿过爆仓价时**必须换一套话**：这一屏上面会显示「预计到手 0」，
                     而用户是带着「赶紧止损」的念头点进来的 —— 不说清就会以为是自己操作
                     弄丢的。而真实情况是：这一笔已经归零了，等系统扫到也会被强平，
-                    两者的到手金额**完全一样**（同一个 max(0,…)，见 market-math.ts）。 */}
+                    两者的到手金额**完全一样**（同一个 max(0,…)，见 market-math.ts）。
+                    方向词与「价格要回到哪一侧」都随多空走：空头是**涨破**、要**跌回**。 */}
                 {sellEst?.liquidated ? (
                   <p className="trade-confirm__disclaimer trade-confirm__disclaimer--danger">
-                    现价<strong>已跌破爆仓价</strong>，这笔仓位的保证金已经归零 ——
-                    现在卖出与等系统强平，到手都是 <strong>0 条</strong>，没有区别。
-                    唯一的不同是：继续持有的话，价格若反弹回爆仓价之上，这笔仓位就还在。
+                    现价
+                    <strong>{sellTarget.direction === 'short' ? '已涨破爆仓价' : '已跌破爆仓价'}</strong>
+                    ，这笔仓位的保证金已经归零 —— 现在平仓与等系统强平，到手都是{' '}
+                    <strong>0 条</strong>，没有区别。唯一的不同是：继续持有的话，价格若
+                    {sellTarget.direction === 'short' ? '回落到' : '反弹回'}爆仓价
+                    {sellTarget.direction === 'short' ? '之下' : '之上'}，这笔仓位就还在。
                   </p>
                 ) : (
                   <p className="trade-confirm__disclaimer">
                     上面的价与金额都按<strong>展示价</strong>估算，实际到手以下单那一刻的成交价为准。
-                    卖出后这一笔仓位就结清了，不能再恢复。
+                    平仓后这一笔仓位就结清了，不能再恢复。
                   </p>
                 )}
                 <div className="trade-confirm__actions">
@@ -897,7 +1058,13 @@ export default function TradePanel({
                     onClick={() => void submitSell()}
                     disabled={busy}
                   >
-                    {busy ? '卖出中…' : '确认卖出'}
+                    {busy
+                      ? sellTarget.direction === 'short'
+                        ? '平空中…'
+                        : '卖出中…'
+                      : sellTarget.direction === 'short'
+                        ? '确认平空'
+                        : '确认卖出'}
                   </button>
                 </div>
               </div>

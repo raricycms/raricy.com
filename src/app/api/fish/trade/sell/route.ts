@@ -34,10 +34,14 @@ export const runtime = 'nodejs';
 // （含只读的 quote / candles 与统计页）—— 理由是专注本人一键可关，不会把人困住。
 // 别把这张表当成「新判定该长什么样」的模板。见 buy 路由头部。
 //
-// 【杠杆加进来之后这条依然成立，而且更要紧】强平引擎（market-liquidator）同样
-// **不判禁言** —— 一个被禁言的人手上还开着的杠杆仓照旧会被爆掉，他也能自己平掉。
-// 反过来才是灾难：禁言 + 不能出仓 = 眼睁睁看着浮亏扩大还不能止损（而且禁言会递增
-// sessionVersion 废掉旧会话，重新登录也一样）。这条判据在 buy/sell/强平三处一致。
+// 【杠杆与方向加进来之后这条依然成立，而且更要紧】强平引擎（market-liquidator）同样
+// **不判禁言** —— 一个被禁言的人手上还开着的仓位照旧会被爆掉（**空头仓位（含 1×）也一样**，
+// 它的爆仓价在开仓价上方），他也能自己平掉。反过来才是灾难：禁言 + 不能出仓 = 眼睁睁
+// 看着浮亏扩大还不能止损（而且禁言会递增 sessionVersion 废掉旧会话，重新登录也一样）。
+// 这条判据在 buy/sell/强平三处一致。
+//
+// ⚠️ **sell 不接受 direction**（body 只有 position_id）：平仓的方向由**仓位行**决定，
+// 调用方报一个方向过来只会多一处能与真相不一致的输入。别为了「对称」给这里加字段。
 export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '请先登录');
@@ -66,20 +70,25 @@ export async function POST(req: Request) {
 
     const sign = res.profit > 0 ? '+' : '';
     // ⚠️ **爆仓的仓位走到这里也是「成功」**，而且 payout 是 0。三种文案要分开：
-    //   liquidated → 如实说爆了（用户可能是「看到跌穿了、点卖出」才发现早就爆了，
+    //   liquidated → 如实说爆了（用户可能是「看到价格穿线、点平仓」才发现早就爆了，
     //                这时回一句「已卖出，-100 条小鱼干」会让他以为是自己卖掉的）
     //   replayed   → 「已经卖过了」
     //   其余        → 正常成交
     // 别把 liquidated 并进 replayed 那一档里 —— 它是「你没卖成，是系统平的」。
+    // 动词随方向走：多头是「卖出」，空头是「平空」（买回）—— 别让空头也回「已卖出」。
+    const closeWord = res.direction === 'short' ? '平空' : '卖出';
     const message = res.liquidated
       ? '该仓位已爆仓（保证金归零，强平已结清）'
       : res.replayed
         ? '该仓位已经卖过了（重复请求，未重复结算）'
-        : `已卖出 ${res.symbol}，${sign}${res.profit} 条小鱼干`;
+        : `已${closeWord} ${res.symbol}，${sign}${res.profit} 条小鱼干`;
     return apiOk({
       message,
       position_id: res.positionId,
       symbol: res.symbol,
+      // 平仓响应**回带方向**：调用方（bot）要能如实归档这笔是平多还是平空 ——
+      // 两者的响应形状与 profit 符号都一样，只靠它们区分不出来。从**仓位行**读。
+      direction: res.direction,
       payout: res.payout,
       profit: res.profit,
       exit_price: res.exitPrice,

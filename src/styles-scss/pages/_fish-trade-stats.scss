@@ -151,6 +151,23 @@ td.tstats-table__num {
   }
 }
 
+// 方向那一格（做多 / 做空）。与 /fish/trade 那几枚方向角标同款 —— 同一件事在两页
+// 长得一样。1× 空头没有倍数可依，这一格是它唯一的风险标注。
+.tstats-dir {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: $radius-small;
+  background: var(--color-background-highlight);
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+  font-weight: 700;
+
+  &--short {
+    background: var(--color-warning-secondary);
+    color: var(--color-warning-primary);
+  }
+}
+
 // 「已跌破爆仓价」那个小标记。与 /fish/trade 持仓行上那一枚同款（不是按钮）。
 .tstats-liq {
   font-weight: 700;

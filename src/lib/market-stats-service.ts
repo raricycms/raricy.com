@@ -24,19 +24,21 @@
 
 import { prisma } from './db';
 import { SETTLED_STATUSES, summarizeMarket, type MarketStats } from './market-stats';
-import { ALL_LEVERAGES } from './market-service';
+import { LEVERAGE_PRESETS } from './market-leverage';
 import { MARKET_SYMBOLS } from './market-price';
 
 /**
  * 某用户**已结清**（平仓 + 爆仓）的仓位统计。
  *
- * 白名单（标的 / 杠杆）取生产的单一真相源 —— 「加一个标的」照旧只改那四处，这里自动
- * 跟上；没交易过的标的与杠杆也会各占一行 0（那是「还没碰过」，有信息量）。
+ * 展示档（标的 / 杠杆）取生产的单一真相源 —— 「加一个标的」照旧只改那四处，这里自动
+ * 跟上；没交易过的标的与快捷档也会各占一行 0（那是「还没碰过」，有信息量）。
  *
- * ⚠️ **杠杆传的是 ALL_LEVERAGES（并集），不是 LEVERAGE_OPTIONS。** 白名单分了两组
- * （阶梯 + 彩票档），只传阶梯那一组的话，彩票档的仓位会**只进总数、不进拆解表** ——
- * 拆解表之和于是与总数对不上，而页面上不会有任何东西提示这一点（与「改过
- * MARKET_SYMBOLS 之后残留的旧仓」是同一个陷阱，见 market-stats.ts 的分桶规则）。
+ * ⚠️ **杠杆传的是 `LEVERAGE_PRESETS`（快捷档），而它自 2026-10 起不再是「合法集」**
+ * —— 合法集是 1–100 的每一个整数。它在这里的作用只是「哪几个值恒定占一行」。
+ * 用过的非快捷档倍数（7×、37×…）由 `summarizeMarket` 的 append 规则追加在表尾，
+ * 所以 Σ 拆解表 === 总数**仍然成立**（见 market-stats.ts 的分桶规则）。
+ * ⚠️ **别把它改成硬编码的 1..100** —— 那会让统计页渲染 100 行 0。
+ * ⚠️ 也别改成空数组：那会丢掉「没碰过的快捷档也占一行」这个产品语义。
  */
 export async function getMarketStats(userId: string): Promise<MarketStats> {
   const rows = await prisma.marketPosition.findMany({
@@ -51,5 +53,5 @@ export async function getMarketStats(userId: string): Promise<MarketStats> {
       payoutUnits: true,
     },
   });
-  return summarizeMarket(rows, { symbols: MARKET_SYMBOLS, leverages: ALL_LEVERAGES });
+  return summarizeMarket(rows, { symbols: MARKET_SYMBOLS, leverages: LEVERAGE_PRESETS });
 }

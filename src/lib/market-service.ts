@@ -4,9 +4,12 @@
 // 【这是什么】用户投鱼干买入一个**绑定真实加密价格**的仓位，价格涨跌直接决定他能
 // 拿回多少鱼干。**不是交易所，也不是庄家对赌**：没有撮合、没有对手盘、没有敞口。
 //
-//   开仓：条件扣减 N 单位鱼干 + 一条 market_buy 流水（负），建一行 position
-//   平仓：payoutUnits = floor(N × 平仓价 / 开仓价 × (1 - 手续费))（算术住在
-//         market-math.ts —— 页面上的「预计到手」用的就是这个函数），
+//   开仓：条件扣减 N 单位鱼干 + 一条 market_buy 流水（负），建一行 position。
+//         **做多**（`long`，默认）｜**做空**（`short`）—— 方向决定爆仓价在开仓价的哪一侧。
+//   平仓：payoutUnits 由 market-math.ts 的 settleClose 算（页面上的「预计到手」用的是
+//         同一个函数）。**做多** 等价于 floor(N × 平仓价/开仓价 × (1 − 手续费))；
+//         **做空** 是 floor(N × (1 + 杠杆 × (1 − 平仓价/开仓价)) − 手续费)
+//         —— 价格跌才赚，亏损同样封顶在投入。
 //         加回用户 + 一条 market_sell 流水（正）
 //
 // 【「系统水池」是账外的，不是一行账户】迁移前开仓是「用户 → 系统账户
@@ -53,20 +56,32 @@
 // 投入 N 条可以开 N×杠杆 条的名义仓位，涨跌按杠杆放大，**亏损封顶在投入的那 N 条**。
 //   · 「借来的钱」**没有对应的账户、没有利息、没有还款路径** —— 它就是那个账外水池
 //     的另一种用法（见上面那段）。别去建一张借贷表。
-//   · 倍数白名单住本文件 —— **分两组**：LEVERAGE_OPTIONS 是阶梯（页面渲染成一排），
-//     LOTTERY_LEVERAGE 是彩票档（页面单独摆并警告），服务端认的并集是 ALL_LEVERAGES。
-//     不建定义表、不做后台 CRUD（同 MARKET_SYMBOLS / FRAME_KEYS 的先例）。
-//     **加档位不需要迁移**。
+//   · **杠杆是 1–100 的整数**（2026-10 从固定白名单改成自由输入）。上下界、快捷档、
+//     警告带阈值住 `market-leverage.ts`（零依赖 —— 页面要 import 它渲染选择器，
+//     而本文件拖着 prisma）。**服务端一视同仁**：1 到 100 之间每个整数都收，
+//     `LEVERAGE_PRESETS` 只是页面摆几个按钮、统计页恒定占几行，**不是合法集**。
+//     改上下界不需要迁移（那一列是整数，不是枚举也不是外键）。
 //   · 结算与爆仓的算术**全在 market-math.ts**（settleClose + liquidationPrice）。
 //     这里一个数都不算 —— 页面上「预计到手 / 爆仓价」与真结算是同一份公式。
 //
+// ── 方向 ────────────────────────────────────────────────────────────────────
+// `long`（默认）｜`short`。词表住 market-leverage.ts，**开仓那一刻写死**（同爆仓价）。
+//   · 结算：空头是 `stake + notional × (1 − 平仓价/开仓价)` —— 价格跌才赚。
+//     费率那一项**不随方向翻转**（见 market-math.ts 文件头第 3 条）。
+//   · 爆仓价：两侧之别见 market-math.liquidationPrice()。
+//   · **方向不进幂等键**（与杠杆同一条纪律，见 buy/route.ts 头部）：同一个键带不同
+//     方向重试时，回报的是当初那一笔（从库里读），不会开出第二笔、不会重复扣款。
+//     与「分批建仓是正常操作」那条并存 —— 客户端每次开弹窗都换一个随机键。
+//
 //   ★ 强平引擎：本站第一个「自己动手动钱」的后台循环 ★
-//     1 倍的仓位永远碰不到爆仓价（价格到不了 0 以下），所以强平只对杠杆仓存在。
+//     **1 倍多头**永远碰不到爆仓价（价格到不了 0 以下）—— 但这句话**只对多头成立**：
+//     1× 空头在 2 × 开仓价归零，是一个完全可达的价。所以判据是
+//     `needsLiquidator(leverage, direction)`（= 方向是空 ‖ 杠杆 > 1），**不是** `leverage > 1`。
 //     引擎在 src/lib/market-liquidator.ts —— 它**不写鱼干流水**（实发恒为 0，
 //     没有钱动过），只把仓位行从 open 改成 liquidated。
-//     ⚠️ **开杠杆仓要求引擎活着**（见下面的 isLiquidationRunning 判据）：卖一个你
+//     ⚠️ **开这类仓要求引擎活着**（见下面的 isLiquidationRunning 判据）：卖一个你
 //     兑现不了的产品比不卖更糟。所以关掉强平（MARKET_LIQUIDATE_MS=0）会连着把
-//     杠杆开仓一起关掉，而不是留下一批没人清算的仓位。
+//     **杠杆仓与空头仓（含 1×）**一起关掉，而不是留下一批没人清算的仓位。
 //
 //   ★ 爆仓判定**不判禁言** ★ 与 sell 同理（见 sell/route.ts 头部）：禁言是「不能
 //     说话」，不该顺带变成「不能止损」。被禁言的用户手上还开着的杠杆仓照旧会被强平。
@@ -80,6 +95,16 @@ import { postEntry, InsufficientFishError } from './fish-service';
 import { FISH_DECIMALS, fishToUnits, unitsToFish } from './fish-units';
 // 结算公式与爆仓价（零依赖模块 —— 页面也 import 它，见那里的文件头）
 import { settleClose, liquidationPrice as liqPriceOf } from './market-math';
+// 杠杆与方向的词表（零依赖 —— 页面同样 import 它渲染选择器，见那里的文件头）。
+// 上下界 / 快捷档 / 警告带阈值全住那边，**本文件不再自己定义任何一个数**。
+import {
+  parseLeverage,
+  parseDirection,
+  needsLiquidator,
+  MIN_LEVERAGE,
+  MAX_LEVERAGE,
+  type Direction,
+} from './market-leverage';
 // 「已结清」的**白名单**（closed | liquidated）住在 market-stats —— 那一列的名字只有
 // 一处权威，读口照它认。market-stats 只 import market-math，不成环。
 import { SETTLED_STATUSES, type SettledStatus } from './market-stats';
@@ -140,77 +165,15 @@ export const MARKET_FEE_RATE = 0.0002;
  */
 export const MIN_STAKE_FISH = 1;
 
-/**
- * 杠杆档位白名单。1 = 无杠杆，与加杠杆之前**逐位一样**（见 market-math.ts 头部）。
- *
- * 【为什么是这几个数】相邻档位的风险差距要能感觉到：20 倍仓价格反向动 5% 就归零，
- * 2 倍要动 50%。做成连续滑块只会让所有人挑最大的那个。
- *
- * 【★ 上限判据：爆仓距离要留在「真行情」那一侧 ★】
- * 爆仓价在开仓价的 (1 − 1/杠杆) 处，所以每一档的风险有一个**能实测**的读法：
- * 以昨收开仓的多头，**当天就被打穿**的交易日占多少。BTC 近 365 天实算
- *（2026-09-28，日 σ=2.36%、年化 45%；同时期平均日内振幅 3.4%）：
- *
- *     10×（距离 10%）   3/365 = 0.8%
- *     20×（距离  5%）  16/365 = 4.4%     ← 本站最高档
- *     25×（距离  4%）  35/365 = 9.6%
- *     50×（距离  2%） 127/365 = 34.8%
- *    100×（距离  1%） 213/365 = 58.4%
- *
- * 判据是**单日被打穿要落在 10% 以下** —— 死掉得是「一年里的一小撮日子」，而不是
- * 「多数日子」。20× 把 10× 的「几乎不可能死」变成「偶尔会死」（仍然是真趋势才能碰到），
- * 而 100× 是「今天多半要死」：那时**方向判断与盈亏几乎独立**（看对了也会被一根与判断
- * 无关的针收走），练手盘练的手感就退化成了掷硬币；同时它放大铸币斜率十倍 —— 这个市场
- * 没有预算约束（赚了凭空 mint，有界性来自 core+ 而不是额度，见文件头），10× 时一个
- * 1% 的行情就是 ±10% 的余额。
- * ⚠️ **这条上界是波动率的函数，不是常数**：σ 翻倍则上界折半。它本质上属于**标的**
- * 而不是属于站点 —— 哪天加一个日 σ 明显更高的标的，20× 在那个标的上就等于今天的 40×
- *（要么给标的分档、要么那个标的单独降档，**别现在建表**）。
- *
- * 【加档位要动什么】改这个数组 + 页面文案（页面从 LEVERAGE_OPTIONS 渲染，所以实际
- * 只有文档要改）。**不需要迁移** —— 库里那一列是整数不是枚举也不是外键（见
- * migrations/23_market_leverage 头部）。**但别删 1**：它是默认档，也是不碰杠杆的人
- * 唯一会走的那一档。
- */
-export const LEVERAGE_OPTIONS = [1, 2, 3, 5, 10, 20] as const;
-
-/**
- * **彩票档**。它与上面那串**不是一类东西**，所以刻意不住在同一个数组里。
- *
- * 【为什么单列】100× 的爆仓距离是 1% —— 一根普通的日内波动就能碰到（BTC 近一年
- * 58.4% 的交易日会走到这里，见上面那张表）。它买到的不是「更猛的一档杠杆」，是
- * 一枚**几小时见分晓的硬币**：方向判断与盈亏几乎独立。既然这样，它就不该混在阶梯里
- * 当「下一位」（上面那句「所有人挑最大的那个」正是这个判断的另一面），而该在旁边
- * 单独站着，且**选中它必须给出代价的实数**：手续费按名义本金收，100× 平仓一次约合
- * 投入的 2%（10× 是 0.2%），整整十倍。
- *
- * 【谁要认它】`parseLeverage` 用 `ALL_LEVERAGES`（**服务端白名单仍然只有一份**，
- * 只是分了两组）；`market-stats-service` 传进统计的也必须是并集 —— 漏了它，彩票档的
- * 仓位会**只进总数、不进拆解表**，且不报任何错（同「改过 MARKET_SYMBOLS 之后残留的
- * 旧仓」那个陷阱）。页面把它**单独渲染**（`.trade-lottery`），不是第 7 枚 chip。
- */
-export const LOTTERY_LEVERAGE = 100 as const;
-
-/** 服务端认的全部倍数 = 阶梯 ∪ 彩票档。**别在别处手写这个并集。** */
-export const ALL_LEVERAGES = [...LEVERAGE_OPTIONS, LOTTERY_LEVERAGE] as const;
-
-export type Leverage = (typeof LEVERAGE_OPTIONS)[number] | typeof LOTTERY_LEVERAGE;
-
-/**
- * 解析调用方给的杠杆。**没给 = 1**（存量客户端与 bot 不传这个字段，行为不变）。
- * 给了但不在白名单里 → null，调用方转 400。
- *
- * ⚠️ **别在这里「就近取整」或夹到上限**：用户要 20 倍却静默拿到 10 倍，而页面文案
- * （如果它按 20 倍渲染）与实际仓位就分了家。不在白名单里是一个**用户看得懂的错**，
- * 夹一下会把它变成一个看不见的对。
- */
-export function parseLeverage(raw: unknown): Leverage | null {
-  if (raw === undefined || raw === null || raw === '') return 1;
-  if (typeof raw !== 'number' && typeof raw !== 'string') return null;
-  const n = typeof raw === 'number' ? raw : Number(raw);
-  // 认的是**并集**（阶梯 ∪ 彩票档）—— 两组分家的只是页面怎么摆它，服务端一视同仁。
-  return (ALL_LEVERAGES as readonly number[]).includes(n) ? (n as Leverage) : null;
-}
+// ── 杠杆与方向的词表**已经搬去 `market-leverage.ts`（零依赖）** ────────────────
+// 为什么搬：页面（客户端组件）要 import 上下界与快捷档去渲染选择器，而本文件拖着
+// prisma 进不了客户端包（同 market-math.ts / blog-visibility.ts 的做法）。
+// 上下界（MIN_LEVERAGE / MAX_LEVERAGE）、快捷档（LEVERAGE_PRESETS）、警告带
+//（HIGH_RISK_LEVERAGE）、方向词表与两个解析函数，连同各自的判据与实测表，全在那边。
+//
+// 下面这行**重导出** `parseLeverage`：它的既有 import 路径（buy 路由、若干用例）
+// 不必跟着搬 —— 搬家不该变成一次全仓的改名。
+export { parseLeverage };
 
 /** 页面与文案用的短名：BTCUSDT → BTC。 */
 export function displaySymbol(symbol: string): string {
@@ -258,6 +221,8 @@ export function makeMarketIdempotencyKey(
 export interface PositionView {
   id: string;
   symbol: MarketSymbol;
+  /** `long`｜`short`。**开仓那一刻写死**，页面据此渲染那枚方向角标与结算口径。 */
+  direction: Direction;
   /** 投入鱼干（业务单位，≤4 位小数 —— 见 fish-units.ts）。 */
   stake: number;
   entryPrice: number;
@@ -266,7 +231,8 @@ export interface PositionView {
   /**
    * 保证金归零的价。**直接读它、别自己拿开仓价乘一遍** —— 这是开仓那一刻算出来
    * 写死的数，与强平引擎用的是同一个（见 market-math.liquidationPrice 的注释）。
-   * 1 倍仓恒为 0，页面显示「—」而不是「0 USDT」。
+   * ⚠️ **只有 1 倍多头**才是 0（那条线不存在）；1× 空头是 2 × 开仓价，是一个真数。
+   * 所以页面「要不要显示爆仓价」的判据是 `liquidationPrice > 0`，**不是** `leverage > 1`。
    */
   liquidationPrice: number;
   openedAt: Date;
@@ -281,6 +247,8 @@ export type CloseResult =
       ok: true;
       positionId: string;
       symbol: MarketSymbol;
+      /** 这一笔的方向（从**仓位行**读）—— 路由据此给方向感知的文案与响应字段。 */
+      direction: Direction;
       /** 实发鱼干（可能为 0 —— 近乎归零的仓位）。 */
       payout: number;
       /** 盈亏 = 实发 − 投入，可能为负。 */
@@ -308,6 +276,7 @@ class MarketAlreadyClosedError extends Error {
 function toPositionView(p: {
   id: string;
   symbol: string;
+  direction: string;
   stakeUnits: number;
   entryPrice: number;
   leverage: number;
@@ -317,6 +286,7 @@ function toPositionView(p: {
   return {
     id: p.id,
     symbol: p.symbol as MarketSymbol,
+    direction: p.direction as Direction,
     stake: unitsToFish(p.stakeUnits),
     entryPrice: p.entryPrice,
     leverage: p.leverage,
@@ -330,7 +300,7 @@ export async function listOpenPositions(userId: string): Promise<PositionView[]>
   const rows = await prisma.marketPosition.findMany({
     where: { userId, status: 'open' },
     select: {
-      id: true, symbol: true, stakeUnits: true, entryPrice: true,
+      id: true, symbol: true, direction: true, stakeUnits: true, entryPrice: true,
       leverage: true, liquidationPrice: true, entryQuoteAt: true,
     },
     orderBy: { entryQuoteAt: 'desc' },
@@ -342,6 +312,8 @@ export async function listOpenPositions(userId: string): Promise<PositionView[]>
 export interface SettledPositionView {
   id: string;
   symbol: MarketSymbol;
+  /** `long`｜`short` —— 供「最近结清」打那枚方向角标（金额口径与方向无关，见下）。 */
+  direction: Direction;
   /** 投入（业务鱼干）。 */
   stake: number;
   /**
@@ -388,7 +360,7 @@ export async function listSettledPositions(
   const rows = await prisma.marketPosition.findMany({
     where: { userId, status: { in: [...SETTLED_STATUSES] } },
     select: {
-      id: true, symbol: true, stakeUnits: true,
+      id: true, symbol: true, direction: true, stakeUnits: true,
       entryPrice: true, exitPrice: true, leverage: true,
       payoutUnits: true, status: true, closedAt: true,
     },
@@ -402,6 +374,7 @@ export async function listSettledPositions(
     return {
       id: p.id,
       symbol: p.symbol as MarketSymbol,
+      direction: p.direction as Direction,
       stake: unitsToFish(p.stakeUnits),
       exitPrice: p.exitPrice ?? p.entryPrice,
       leverage: p.leverage,
@@ -430,6 +403,8 @@ export async function openPosition(input: {
   amount: unknown;
   /** 杠杆倍数（原样，未解析）。**不传 = 1**，见 parseLeverage */
   leverageRaw?: unknown;
+  /** 方向（原样，未解析）。**不传 = 'long'**，见 parseDirection */
+  directionRaw?: unknown;
   clientKey?: string | null;
 }): Promise<OpenResult> {
   // ── 入参校验（不写库、不打行情源）──────────────────────────────────────────
@@ -453,15 +428,25 @@ export async function openPosition(input: {
     return { ok: false, code: 400, message: `单笔最少投入 ${MIN_STAKE_FISH} 条小鱼干` };
   }
 
-  // 杠杆（不传 = 1）。**必须在最前面判**，而且报错文案要把可选的档位念出来 ——
-  // 写「不支持的杠杆」等于让用户猜白名单是什么。
+  // 杠杆（不传 = 1）。**必须在最前面判**，而且报错文案要把**区间**念出来 ——
+  // 写「不支持的杠杆」等于让用户猜。自由输入之后没有可枚举的白名单了，所以念的是
+  // 「1 到 100 的整数」这个边界本身（边界只有一处权威：market-leverage 的 MAX_LEVERAGE）。
   const leverage = parseLeverage(input.leverageRaw);
   if (leverage === null) {
     return {
       ok: false,
       code: 400,
-      message: `不支持的杠杆倍数（可选 ${LEVERAGE_OPTIONS.join(' / ')} 倍，另有 ${LOTTERY_LEVERAGE} 倍彩票档）`,
+      message: `杠杆需是 ${MIN_LEVERAGE}–${MAX_LEVERAGE} 之间的整数`,
     };
+  }
+
+  // 方向（不传 = long）。**与杠杆同一条纪律**：缺省向后兼容（存量客户端与 bot 不传
+  // 这个字段），给了不认识的值就 400，**不猜也不夹**。
+  // ⚠️ 它**不进幂等键**（见文件头与 buy/route.ts 头部）：同一个键带不同方向重试时，
+  // 回报的是当初那一笔 —— 把方向拼进键会让「同一笔重试」变成**第二笔**、重复扣款。
+  const direction = parseDirection(input.directionRaw);
+  if (direction === null) {
+    return { ok: false, code: 400, message: '方向只能是 long 或 short' };
   }
 
   // 幂等键。调用方给了就用（同一笔重试要拿同一个键，服务端才认得出这是重放），
@@ -482,7 +467,7 @@ export async function openPosition(input: {
   const existing = await prisma.marketPosition.findUnique({
     where: { openKey: idempotencyKey },
     select: {
-      id: true, symbol: true, stakeUnits: true, entryPrice: true,
+      id: true, symbol: true, direction: true, stakeUnits: true, entryPrice: true,
       leverage: true, liquidationPrice: true, entryQuoteAt: true,
     },
   });
@@ -491,15 +476,20 @@ export async function openPosition(input: {
     return { ok: true, position: toPositionView(existing), balance, replayed: true };
   }
 
-  // ── ★ 杠杆仓要求强平引擎活着 ★ ─────────────────────────────────────────────
+  // ── ★ 会爆仓的仓位要求强平引擎活着 ★ ───────────────────────────────────────
   // 卖一个兑现不了的产品比不卖更糟：引擎不跑的话，穿过爆仓价的仓位没人清算，
   // 用户手上的仓位会「该没还没没」，而系统既不报错也不提示。
-  // 所以关掉强平（MARKET_LIQUIDATE_MS=0，运维开关）会连着把**杠杆开仓**一起关掉
-  // —— 1 倍的仓位不受影响（它永远碰不到爆仓价，不需要引擎）。
+  // 所以关掉强平（MARKET_LIQUIDATE_MS=0，运维开关）会连着把**这类开仓**一起关掉
+  // —— **1 倍多头不受影响**（它永远碰不到爆仓价，不需要引擎）。
+  // ⚠️ 判据是 `needsLiquidator`，**不是 `leverage > 1`**：1× 空头在 2 × 开仓价归零，
+  // 同样需要引擎。写成 `leverage > 1` 会让引擎关着的时候照卖 1× 空头，而强平扫描
+  //（按 `liquidation_price > 0` 筛）也捞不到它 —— 行永远停在 open，全程静默。
   // 判据是「引擎在本进程里起来了」，不是「env 非 0」：env 配了但启动失败（比如端口
-  // 之类）同样不该卖杠杆。见 market-liquidator.ts 的 isLiquidationRunning。
-  if (leverage > 1 && !isLiquidationRunning()) {
-    console.warn(`[market] 强平引擎未运行，拒绝杠杆开仓（user=${input.userId} ${leverage}x）`);
+  // 之类）同样不该卖。见 market-liquidator.ts 的 isLiquidationRunning。
+  if (needsLiquidator(leverage, direction) && !isLiquidationRunning()) {
+    console.warn(
+      `[market] 强平引擎未运行，拒绝开仓（user=${input.userId} ${leverage}x ${direction}）`
+    );
     return { ok: false, code: 503, message: '杠杆暂不可用，请稍后再试' };
   }
 
@@ -526,14 +516,14 @@ export async function openPosition(input: {
   const now = nowForDb();
   // 爆仓价：**开仓这一刻算一次就写死**（见 schema.prisma 那一列的注释）。
   // 算法住 market-math（与页面上显示的那个数、与强平引擎的判据是同一个函数）。
-  const entryLiqPrice = liqPriceOf(entryPrice, leverage);
-  // 杠杆写进流水描述里：这一行是用户在流水页能看到的唯一上下文，而「10 倍」正是
-  // 解释「为什么我只投了 100 条却亏了 100 条」的那句话。1 倍时不加前缀
-  //（它是默认档，加个「1倍杠杆」只是噪音）。
-  const description =
-    leverage > 1
-      ? `练手盘 ${leverage}倍杠杆买入 ${displaySymbol(symbol)}（成交价 ${entryPrice}）`
-      : `练手盘 买入 ${displaySymbol(symbol)}（成交价 ${entryPrice}）`;
+  const entryLiqPrice = liqPriceOf(entryPrice, leverage, direction);
+  // 方向与杠杆都写进流水描述里：这一行是用户在流水页能看到的**唯一**上下文，
+  // 而「10 倍」正是解释「为什么我只投了 100 条却亏了 100 条」的那句话。
+  // ⚠️ **方向必须写，哪怕 1 倍**：1× 多头与 1× 空头在流水页长得一模一样，而它们
+  // 是方向相反的两笔 —— 少了那两个字，流水就还原不出用户当时干了什么。
+  // 杠杆 1 倍时不加前缀（默认档，加个「1倍杠杆」只是噪音）。
+  const dirWord = direction === 'short' ? '做空' : '买入';
+  const description = `练手盘 ${leverage > 1 ? `${leverage}倍杠杆` : ''}${dirWord} ${displaySymbol(symbol)}（成交价 ${entryPrice}）`;
 
   try {
     // ── 一个事务：扣款、流水、持仓行 ──────────────────────────────────────────
@@ -560,6 +550,7 @@ export async function openPosition(input: {
           id: positionId,
           userId: input.userId,
           symbol,
+          direction,
           stakeUnits: units,
           entryPrice,
           entryQuoteAt: quote.quotedAt,
@@ -584,6 +575,7 @@ export async function openPosition(input: {
       position: {
         id: positionId,
         symbol,
+        direction,
         stake: amount,
         entryPrice,
         leverage,
@@ -623,7 +615,7 @@ export async function closePosition(input: {
   const pos = await prisma.marketPosition.findUnique({
     where: { id: input.positionId },
     select: {
-      id: true, userId: true, symbol: true, stakeUnits: true,
+      id: true, userId: true, symbol: true, direction: true, stakeUnits: true,
       entryPrice: true, status: true, payoutUnits: true, exitPrice: true,
       leverage: true,
     },
@@ -640,6 +632,7 @@ export async function closePosition(input: {
       ok: true,
       positionId: pos.id,
       symbol: pos.symbol as MarketSymbol,
+      direction: pos.direction as Direction,
       payout: unitsToFish(pos.payoutUnits ?? 0),
       profit: unitsToFish((pos.payoutUnits ?? 0) - pos.stakeUnits),
       exitPrice: pos.exitPrice ?? pos.entryPrice,
@@ -674,14 +667,16 @@ export async function closePosition(input: {
   // 结算。公式住在 market-math.ts —— **页面上的「预计到手」用的是同一个函数**，
   // 别把这条算术抄一份回这里（两份必然 drift，而用户是看着那个数按下确认的）。
   //
-  // ⚠️ `leverage` 必须从**这一行**读，别从调用方传进来：杠杆是仓位的属性，不是这次
-  // 请求的属性。少传它 = 10 倍的仓位按 1 倍结算，而屏幕上那个数看起来完全合理。
+  // ⚠️ `leverage` 与 `direction` 都必须从**这一行**读，别从调用方传进来：它们是仓位的
+  // 属性，不是这次请求的属性。少传杠杆 = 10 倍的仓位按 1 倍结算；少传方向 = **空头按
+  // 多头结算（盈亏整体反向）** —— 两种症状一样：屏幕上那个数看起来完全合理。
   const { payoutUnits } = settleClose({
     stakeUnits: pos.stakeUnits,
     entryPrice: pos.entryPrice,
     exitPrice,
     feeRate: MARKET_FEE_RATE,
     leverage: pos.leverage,
+    direction: pos.direction as Direction,
   });
 
   // ⚠️ payoutUnits 可能为 0 —— 那时**没有钱动过**：不写流水、不发通知，只把仓位置 closed。
@@ -696,10 +691,10 @@ export async function closePosition(input: {
   // 被 max(0,…) 截成 0），以及权益还没归零但被手续费吃光。两者都走这一档。
   // **手动平一个已跌穿爆仓价的杠杆仓，实发与爆仓一样是 0**（同一个公式、同一个
   // max(0,…)）—— 这是刻意的，见 market-math.ts 头部「那个 max(0, …) 就是爆仓」。
-  const description =
-    pos.leverage > 1
-      ? `练手盘 ${pos.leverage}倍杠杆卖出 ${displaySymbol(symbol)}（成交价 ${exitPrice}）`
-      : `练手盘 卖出 ${displaySymbol(symbol)}（成交价 ${exitPrice}）`;
+  // 文案随方向走：多头是「卖出」，空头是「平空」（买回）—— 1× 空头也带那个词，
+  // 否则它与 1× 多头在流水页逐字相同，而它们是方向相反的两笔。
+  const dirWord = pos.direction === 'short' ? '平空' : '卖出';
+  const description = `练手盘 ${pos.leverage > 1 ? `${pos.leverage}倍杠杆` : ''}${dirWord} ${displaySymbol(symbol)}（成交价 ${exitPrice}）`;
 
   try {
     // ── 一个事务：翻状态、结算入账、流水 ──────────────────────────────────────
@@ -748,6 +743,7 @@ export async function closePosition(input: {
       ok: true,
       positionId: pos.id,
       symbol,
+      direction: pos.direction as Direction,
       payout: unitsToFish(payoutUnits),
       profit: unitsToFish(payoutUnits - pos.stakeUnits),
       exitPrice,
@@ -758,7 +754,7 @@ export async function closePosition(input: {
       // 并发平仓的输家：回读赢家写下的结果，如实回报（不动钱）。
       //
       // ⚠️ 赢家**可能是强平引擎**（用户手动平仓与爆仓撞在同一瞬间，这是真实可能的：
-      // 用户看到价格跌穿爆仓价、按下卖出，同一刻引擎那一轮也扫到了这个仓位）。
+      // 用户看到价格穿过爆仓价、按下平仓，同一刻引擎那一轮也扫到了这个仓位）。
       // 所以要把 status 一起读回来 —— 是引擎赢的话如实说「爆仓」，别报「已卖出」。
       const fresh = await prisma.marketPosition.findUnique({
         where: { id: pos.id },
@@ -768,6 +764,7 @@ export async function closePosition(input: {
         ok: true,
         positionId: pos.id,
         symbol,
+        direction: pos.direction as Direction,
         payout: unitsToFish(fresh?.payoutUnits ?? 0),
         profit: unitsToFish((fresh?.payoutUnits ?? 0) - pos.stakeUnits),
         exitPrice: fresh?.exitPrice ?? exitPrice,

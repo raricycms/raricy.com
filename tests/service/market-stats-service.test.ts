@@ -29,7 +29,11 @@ vi.mock('@/lib/market-price', async (importOriginal) => {
 import { fetchQuote } from '@/lib/market-price';
 import { openPosition, closePosition, MARKET_SELL_TYPE } from '@/lib/market-service';
 import { getMarketStats } from '@/lib/market-stats-service';
-import { sweepLiquidations, stopMarketLiquidator } from '@/lib/market-liquidator';
+import {
+  sweepLiquidations,
+  stopMarketLiquidator,
+  __setLiquidationRunning,
+} from '@/lib/market-liquidator';
 
 const mockQuote = vi.mocked(fetchQuote);
 
@@ -46,6 +50,10 @@ beforeEach(async () => {
   __resetRateLimitStore();
   mockQuote.mockReset();
   stopMarketLiquidator();
+  // ⚠️ stopMarketLiquidator() **删掉**运行标志，而开仓闸门是 fail-closed 的 —— 少了
+  // 这一行，本文件里每一个开杠杆仓/空头仓的用例都会吃 503（`杠杆暂不可用`），
+  // 而失败点看着像「统计读路径坏了」。照 market-service.test.ts 的 beforeEach 摆回来。
+  __setLiquidationRunning(true);
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -62,7 +70,12 @@ afterEach(() => {
  * 默认投 1 条，因为这一层要算的数是「1 条涨 10% 该到手多少」，投 100 条那些断言
  * 全都得乘 100 才成立（而乘出来的数看起来一样合理）。
  */
-async function opened(stakeFish = 1, leverage?: number, balanceFish = 100) {
+async function opened(
+  stakeFish = 1,
+  leverage?: number,
+  balanceFish = 100,
+  direction?: 'long' | 'short'
+) {
   const user = await makeFishUser(balanceFish);
   priceIs(ENTRY);
   const r = await openPosition({
@@ -70,6 +83,7 @@ async function opened(stakeFish = 1, leverage?: number, balanceFish = 100) {
     symbolRaw: 'BTCUSDT',
     amount: stakeFish,
     ...(leverage == null ? {} : { leverageRaw: leverage }),
+    ...(direction == null ? {} : { directionRaw: direction }),
   });
   if (!r.ok) throw new Error(`开仓失败: ${r.message}`);
   return { userId: user.id, positionId: r.position.id };
@@ -226,5 +240,44 @@ describe('已结清的战绩', () => {
     expect(stats.liquidated, '它是手动平的，不是爆仓').toBe(0);
     expect(stats.realizedUnits).toBe(-10000);
     expectLedgerConsistent();
+  });
+});
+
+describe('已结清的战绩（做空）', () => {
+  // 【为什么单独一组】统计读路径本身对方向是**无感**的（盈亏来自平仓那一刻写死的
+  // payout_units）—— 但这条无感必须被钉住：有人「为了支持做空」在这里按开仓价/结清价
+  // 重算盈亏的话，会把已经正确的数算错。同时钉住空头全链路（开仓 → 结算 → 统计）。
+
+  it('★ 10 倍空头、价格跌 10%：计盈利（方向真的进了结算）', async () => {
+    const { userId, positionId } = await opened(1, 10, 100, 'short');
+    // 10× 空头：开仓 80000、爆仓 88000。跌到 72000 → 权益 = 1 + 10×0.1 = 2 条（再扣手续费）
+    priceIs(72000);
+    const closed = await closePosition({ userId, positionId });
+    if (!closed.ok) throw new Error(`平仓失败: ${closed.message}`);
+    expect(closed.direction).toBe('short');
+    expect(closed.profit).toBeGreaterThan(0);
+    expect(closed.payout).toBeCloseTo(1.9982, 4);
+
+    const stats = await getMarketStats(userId);
+    expect(stats.wins).toBe(1);
+    expect(stats.losses).toBe(0);
+    expect(stats.realizedUnits).toBe(9982);
+    await expectLedgerConsistent('空头盈利平仓之后');
+  });
+
+  it('★ 10 倍空头被强平：与多头同一条路径（实发 0、不写流水、计入爆仓数）', async () => {
+    const { userId } = await opened(1, 10, 100, 'short');
+    // 涨穿 88000（开仓价 × 1.5）→ 引擎扫到并强平
+    priceIs(88001);
+    expect(await sweepLiquidations()).toBe(1);
+
+    const stats = await getMarketStats(userId);
+    expect(stats.liquidated).toBe(1);
+    expect(stats.realizedUnits).toBe(-10000); // 亏光投入
+    const flows = await prisma.fishTransaction.count({
+      where: { userId, type: MARKET_SELL_TYPE },
+    });
+    expect(flows, '强平不写流水').toBe(0);
+    await expectLedgerConsistent('空头被强平之后');
   });
 });

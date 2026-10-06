@@ -1,0 +1,46 @@
+-- 27_market_direction —— 练手盘加「做空」：方向列 + 方向感知的结算与爆仓
+--
+-- 【背景】练手盘原来只有做多（投 N 条、按价格比例结算；加杠杆那版见 23_market_leverage）。
+--   这一版加上做空：方向决定爆仓价落在开仓价的哪一侧、结算公式取哪一支。
+--
+-- ── direction ───────────────────────────────────────────────────────────────
+--   取值 `long` | `short`（词表与默认值住代码 src/lib/market-leverage.ts ——
+--   照 MARKET_SYMBOLS / FRAME_KEYS / 原 LEVERAGE_OPTIONS 的先例：不建定义表、
+--   不做后台 CRUD）。存**方向本身**而不是 ±1：这一列会被页面、流水文案、
+--   统计读口直接消费，可读的字符串比让每个读者自己解释的符号便宜。
+--
+--   ★ 为什么方向必须落库、不能从别的列推 ★
+--     结算是「价格往哪边走对我有利」，这个信息**不在任何既有列里**：
+--     entry_price / exit_price / leverage / payout_units 四个数凑不出一条方向。
+--     不落库的后果不是报错，是**平仓时按某个兜底默认（多半是 long）结算** ——
+--     空头的盈亏整体反向，而 floor + max(0,·) 仍产出非负整数、postEntry 不抛、
+--     账本照样配平。所以它必须与 leverage 一样在开仓那一刻写死。
+--
+--   ★ 1× 空头会爆仓 —— 这句话证伪了「1 倍永不爆仓」★
+--     多头 1 倍的爆仓价是 0（价格到不了 0 以下 ⇒ 那条线不存在），这条判据原来
+--     被写成 `leverage > 1`（见 23 与 market-service 的引擎闸门）。**空头把它推翻了**：
+--     空头任何杠杆下爆仓价都 > 0，1× 空头 = 2 × 开仓价，价格翻倍即归零。
+--     所以「要不要强平引擎」的判据改成 market-leverage.ts 的 needsLiquidator()
+--     （`方向是空 || leverage > 1`），强平引擎的扫描筛选也从 `leverage > 1` 改成
+--     `liquidation_price > 0` —— 后者天然包含 1× 空头、天然排除 1× 多头。
+--     ⚠️ 两处必须同真同假：闸门放行而扫描捞不到的仓位 = 一份没人清算的免费期权。
+--
+--   【本迁移不含数据变换】ADD COLUMN 带常量默认值 `long`，SQLite 会用它填满存量行
+--   （存量仓位全是做多，语义正确）。**没有一条 UPDATE**，因此也不存在「只可执行一次」
+--   的顾虑 —— 幂等仍由 _raricy_migrations 跟踪表保证：SQLite 的 ALTER TABLE ADD COLUMN
+--   没有 IF NOT EXISTS（重复执行会报 duplicate column），一次性的保证来自那张表
+--  （同 11_comment_attachments / 14_fish_transfer_id / 22_audio_hosting / 23_market_leverage
+--   头部所记）。
+--
+--   【形态必须与 prisma db push 生成的一致】测试库由 schema.prisma 经 db push 生成。
+--   类型映射：String → TEXT（NOT NULL + 默认值写在列上，两边必须一字不差）。
+--   ⚠️ **没有新索引**：强平引擎的筛选从 `leverage > 1` 变成 `liquidation_price > 0`，
+--   仍然是「全站还开着的仓位」这一张表上的全扫（core+ 的练手盘，同 23 的判断）。
+--   真要加，索引名要用 db push 的派生名，见 20_user_frames 头部那条警告。
+--
+--   ⚠️ 列序：ADD COLUMN 把新列追加在**末尾**，而 db push 按 schema.prisma 的书写顺序
+--   插在 entry_quote_at 之后。这是任何 ADD COLUMN 迁移的固有性质，不是 drift
+--  （SQLite 里列序只影响 `SELECT *`；本仓一律显式列名，Prisma 也是）——
+--   **别为了「对齐列序」去重建这张表**（同 23 末尾那条）。
+
+ALTER TABLE "market_positions" ADD COLUMN "direction" TEXT NOT NULL DEFAULT 'long';

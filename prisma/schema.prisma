@@ -724,14 +724,27 @@ model MarketPosition {
   /** 成交价的取价时刻（nowForDb()）—— 审计用：证明成交那一刻系统看到的价。 */
   entryQuoteAt DateTime  @map("entry_quote_at")
   /**
-   * 杠杆倍数。1 = 无杠杆。白名单见 src/lib/market-service.ts 的 LEVERAGE_OPTIONS。
+   * 方向：`long`（做多，价涨赚）｜`short`（做空，价跌赚）。词表与默认值见
+   * src/lib/market-leverage.ts，结算是 src/lib/market-math.ts 的 settleClose。
+   * **开仓那一刻写死**，之后没有任何人改它 —— 它与 leverage 一起决定爆仓价在哪一侧。
+   * 存量行全是 `long`（这一列随迁移 27_market_direction 加入）。
+   */
+  direction    String    @default("long")
+  /**
+   * 杠杆倍数。1 = 无杠杆。**1–100 的整数自由输入**，上下界是 market-leverage.ts 的
+   * MIN_LEVERAGE / MAX_LEVERAGE（这一列**不是**枚举也不是外键，改上下界不需要迁移，
+   * 同 23_market_leverage 头部那条）。
    * 存量行全是 1（这一列随迁移 23_market_leverage 加入）。
    */
   leverage     Int       @default(1)
   /**
-   * 保证金归零的价 —— 归零即爆仓。**多头**公式：开仓价 × (1 − 1/杠杆)，
-   * 唯一实现在 src/lib/market-math.ts 的 liquidationPrice()。
-   * 1 倍时恒为 0，那正是「1 倍永不被强平」的字面意思（价格到不了 0 以下）。
+   * 保证金归零的价 —— 归零即爆仓。公式随方向走（唯一实现是 src/lib/market-math.ts 的
+   * liquidationPrice()）：**多头** 开仓价 × (1 − 1/杠杆)（在开仓价**下方**）；
+   * **空头** 开仓价 × (1 + 1/杠杆)（在开仓价**上方**）。
+   * **只有 1 倍多头**才是 0（价格到不了 0 以下 ⇒ 那条线不存在）；1× 空头是 2 × 开仓价，
+   * 是一个可达的价。所以「0 = 不会爆仓」这句**只对多头成立**，判「会不会爆」用
+   * market-leverage.ts 的 needsLiquidator()。
+   * ⚠️ **强平引擎就是按这一列筛候选的**（`liquidation_price > 0`）—— 0 的行它捞不到。
    *
    * ⚠️ 与 entryPrice 同款：REAL 是刻意的，它不累加进账本、不参与 fish-units 换算。
    * ⚠️ **开仓那一刻算一次就写死**，之后没有任何人重算它。读它，别自己乘一遍

@@ -514,27 +514,34 @@ test('★ 杠杆买入：档位选得动，弹窗与持仓行都摊开倍数与�
   expect(all[0].description).toContain('10倍杠杆');
 });
 
-test('★ 彩票档：单独一行、选中即警告，确认屏把「硬币」与抽水摊开', async ({ page, request }) => {
+test('★ 自由杠杆：快捷档之外可以手输，高倍档常驻警告', async ({ page, request }) => {
   await registerFreshUser(page, { core: true });
   await fundByCheckin(page);
   await setPrice(request, 'BTCUSDT', 80000);
   await page.goto('/fish/trade');
 
-  // **它是单独一行**：阶梯那个容器里数不到它。这正是「不是第 7 枚 chip」的判据 ——
-  // 混进阶梯就会被读成「下一档」，而它买到的是一枚几小时见分晓的硬币。
-  await expect(page.locator('.trade-leverage .trade-leverage__btn')).toHaveCount(6);
-  const lottery = page.locator('.trade-lottery .trade-leverage__btn');
-  await expect(lottery).toHaveText('100×');
-  await expect(page.locator('.trade-lottery__warn'), '没选中就不该有警告').toHaveCount(0);
-
-  await lottery.click();
-  await expect(lottery).toHaveAttribute('aria-pressed', 'true');
-
-  // 距离与抽水都摊开：爆仓线在 1% 外，平仓手续费是投入的 2.00%（1 倍仓 0.02%）
   const levField = page.locator('.trade-field', { has: page.locator('.trade-leverage') });
+  // 快捷档 8 枚（1/2/3/5/10/20/50/100）—— 它们**只是按钮**，不再是「合法集」：
+  // 服务端认的是 1–100 的每一个整数。
+  await expect(page.locator('.trade-leverage .trade-leverage__btn')).toHaveCount(8);
+  await expect(page.locator('.trade-leverage__warn'), '不在警告带里就不该有警告').toHaveCount(0);
+
+  // ① 手输一个**快捷档之外**的值（37×）—— 这就是「自由输入」本体。
+  //    它必须真的按 37 算（距离 = 1/37 ≈ 2.7%），而不是被就近取整到 50 或 20。
+  const input = page.locator('.trade-leverage__input');
+  await input.fill('37');
+  await expect(levField, '37× 的爆仓距离按 1/37 算').toContainText('距现价 -2.7%');
+  await expect(page.locator('.trade-leverage__warn'), '≥25× 起进警告带').toContainText('37×');
+
+  // ② 越界值：按钮关掉、错因写在下面（**绝不就近取整**）。
+  await input.fill('101');
+  await expect(page.locator('.trade-submit')).toBeDisabled();
+  await expect(levField).toContainText('整数');
+
+  // ③ 回到 100×（快捷档那一枚）：距离 1%、抽水 2.00%（1 倍仓 0.02%）
+  await page.getByRole('button', { name: '100×', exact: true }).click();
   await expect(levField, '100× 的爆仓距离是 1%').toContainText('距现价 -1.0%');
-  const warn = page.locator('.trade-lottery__warn');
-  await expect(warn, '必须说清它不是「更猛的一档」').toContainText('不是「更猛的一档」');
+  const warn = page.locator('.trade-leverage__warn');
   await expect(warn, '抽水这个数只能从费率推出来，不许手写').toContainText('2.00%');
   await expect(warn).toContainText('1 倍仓是 0.02%');
 
@@ -542,18 +549,58 @@ test('★ 彩票档：单独一行、选中即警告，确认屏把「硬币」�
   await page.locator('#trade-amount').fill('1');
   await page.locator('.trade-submit').click();
   const confirm = page.locator('.trade-confirm');
-  await expect(confirm).toContainText('这是彩票档');
+  await expect(confirm).toContainText('这是高倍档');
   await expect(confirm, '确认屏上的杠杆是 100×').toContainText('100×');
   await confirm.locator('.trade-confirm__ok').click();
   await expect(confirm).toHaveCount(0);
 
-  // 服务端一视同仁：它就在 ALL_LEVERAGES 里，走的还是那条白名单路（不是特例分支）
   const pos = page.locator('.trade-position').first();
   await expect(pos.locator('.trade-position__lev')).toHaveText('100×');
   await expect(pos, '爆仓价 = 成交价 × (1 − 1/100)').toContainText('爆仓 79,200.00');
   const all = await myLedger(page, 'market_all');
   expect(all[0].description).toContain('100倍杠杆');
   expect(all[0].amount, '扣的是投入，名义本金是算出来的').toBe(-1);
+});
+
+test('★ 做空：切到做空后下单，持仓行带方向角标、爆仓价在开仓价**上方**', async ({ page, request }) => {
+  await registerFreshUser(page, { core: true });
+  const start = await fundByCheckin(page);
+  await setPrice(request, 'BTCUSDT', 80000);
+  await page.goto('/fish/trade');
+
+  // 方向是两枚切页档（同杠杆那排的判据，docs/frontend-styles.md §6.8）。
+  // ⚠️ 必须限定在 .trade-direction 里查 —— 选中做空之后**提交按钮也写着「做空」**，
+  //    直接按名字查会撞上 strict mode（那不是产品坏了，是选择器太宽）。
+  const short = page
+    .locator('.trade-direction')
+    .getByRole('button', { name: '做空', exact: true });
+  await expect(short).toBeEnabled();
+  await short.click();
+  await expect(short).toHaveAttribute('aria-pressed', 'true');
+
+  await page.locator('#trade-amount').fill('1');
+  await page.locator('.trade-submit').click();
+  const confirm = page.locator('.trade-confirm');
+  await expect(confirm, '确认屏必须摊开方向').toContainText('做空');
+  // ⚠️ 1× 空头的爆仓价是 2 × 成交价 —— 它**不是 0**（那是 1× 多头的值）。
+  //    这条同时钉住了「显示判据是爆仓价 > 0，不是杠杆 > 1」。
+  await expect(confirm, '1× 空头爆仓价 = 成交价 × 2').toContainText('160,000.00');
+  await expect(confirm, '危险声明要说清反向是哪一边').toContainText('反向上涨');
+  await confirm.locator('.trade-confirm__ok').click();
+  await expect(confirm).toHaveCount(0);
+
+  await expect(page.locator('#toast-container .toast__body').last()).toContainText('已开空');
+
+  const pos = page.locator('.trade-position').first();
+  await expect(pos.locator('.trade-position__dir')).toHaveText('空');
+  // 1× 空头**没有**倍数角标（倍数是 1），却有一条真实的爆仓线 —— 这两件事各自成立
+  await expect(pos.locator('.trade-position__lev')).toHaveCount(0);
+  await expect(pos, '爆仓价 = 开仓价 × 2，在现价**上方**').toContainText('爆仓 160,000.00');
+
+  await expect.poll(() => uiBalance(page)).toBe(start - 1);
+  const all = await myLedger(page, 'market_all');
+  expect(all[0].description, '流水页要能看出这是做空').toContain('做空');
+  expect(all[0].amount, '扣的是投入').toBe(-1);
 });
 
 test('★ 结清之后留下一笔「最近结清」记录（否则那一笔只是无声消失）', async ({

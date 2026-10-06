@@ -123,8 +123,11 @@ test('买卖一轮：笔数 / 胜率 / 盈亏 / 拆解表与那一笔的结算�
   await expect(eth.locator('td').nth(3)).toHaveText('0.0000');
 
   const byLeverage = breakdown(page, '按杠杆');
-  // 白名单有几档就有几行（没碰过的也占一行 0）：阶梯 1/2/3/5/10/20 + 彩票档 100
-  await expect(byLeverage.locator('tbody tr')).toHaveCount(7);
+  // 展示档有几档就有几行（没碰过的也占一行 0）：LEVERAGE_PRESETS = 1/2/3/5/10/20/50/100。
+  // ⚠️ 它**不是合法集**（合法集是 1–100 的每一个整数）—— 这一屏只交易过 1×，
+  //    所以恰好是 8 行；哪天用例里用了 37×，表尾会**多出**一行（append 规则，见
+  //    market-stats.ts）。那时这里的数要跟着变，而不是把 37 也塞进预设。
+  await expect(byLeverage.locator('tbody tr')).toHaveCount(8);
   const one = byLeverage.locator('tbody tr').filter({ hasText: '1×' });
   await expect(one.locator('td').nth(1)).toHaveText('1');
   await expect(one.locator('td').nth(3)).toHaveText('+0.0997');

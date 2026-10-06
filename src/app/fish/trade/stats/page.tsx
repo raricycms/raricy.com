@@ -10,6 +10,8 @@ import {
   type StatBucket,
 } from '@/lib/market-stats';
 import { listOpenPositions, displaySymbol, MARKET_FEE_RATE, type PositionView } from '@/lib/market-service';
+// 方向词表（零依赖）—— 持仓表那一格用它渲染「做多 / 做空」。
+import { DIRECTION_LABELS } from '@/lib/market-leverage';
 import { getCachedQuotes } from '@/lib/market-price';
 import { FISH_UNIT_SCALE, unitsToFish } from '@/lib/fish-units';
 import { fmtFish } from '@/lib/fish-amount';
@@ -78,6 +80,10 @@ export default async function FishTradeStatsPage() {
             //    （同 TradePanel 的 estimate()）。杠杆取**这一笔**的，不是页面上某个选择器。
             stakeUnits: Math.round(p.stake * FISH_UNIT_SCALE),
             entryPrice: p.entryPrice,
+            // ⚠️ 方向与杠杆都取**这一笔**的（不是页面上某个选择器）：漏传方向会让
+            //    虚头按多头算 —— 价格跌显示巨亏、价格涨显示盈利，正好反过来，而屏幕上
+            //    那个数看着完全合理（有正负号、有四位小数）。
+            direction: p.direction,
             leverage: p.leverage,
             liquidationPrice: p.liquidationPrice,
             exitPrice: price,
@@ -87,6 +93,7 @@ export default async function FishTradeStatsPage() {
       id: p.id,
       symbol: p.symbol,
       display: displaySymbol(p.symbol),
+      direction: p.direction,
       stake: p.stake,
       entryPrice: p.entryPrice,
       leverage: p.leverage,
@@ -195,6 +202,7 @@ export default async function FishTradeStatsPage() {
                 <thead>
                   <tr>
                     <th>标的</th>
+                    <th>方向</th>
                     <th className="tstats-table__num">杠杆</th>
                     <th className="tstats-table__num">投入</th>
                     <th className="tstats-table__num">开仓价</th>
@@ -206,6 +214,13 @@ export default async function FishTradeStatsPage() {
                   {openRows.map((r) => (
                     <tr key={r.id} data-position-id={r.id}>
                       <td>{r.display}</td>
+                      {/* 方向**恒显示**：1× 空头没有倍数角标可依，少了这一格它的
+                          风险就完全看不出来了（同 /fish/trade 持仓行那条）。 */}
+                      <td>
+                        <span className={`tstats-dir tstats-dir--${r.direction}`}>
+                          {DIRECTION_LABELS[r.direction]}
+                        </span>
+                      </td>
                       <td className="tstats-table__num">{r.leverage}×</td>
                       <td className="tstats-table__num">{fmtFish(r.stake)}</td>
                       <td className="tstats-table__num">{formatPrice(r.entryPrice)}</td>
@@ -218,10 +233,13 @@ export default async function FishTradeStatsPage() {
                         <span className={`tstats-pnl${r.estimate ? tone(r.estimate.profitUnits) : ''}`}>
                           {profitText(r.estimate)}
                         </span>
-                        {/* 跌穿爆仓价：平仓实得 0，下一轮扫描就会被强平。不说这句的话，
-                            「0.0000」看起来像个 bug（同 /fish/trade 持仓行那条） */}
+                        {/* 穿过爆仓价：平仓实得 0，下一轮扫描就会被强平。不说这句的话，
+                            「0.0000」看起来像个 bug（同 /fish/trade 持仓行那条）。
+                            方向词随多空：多头「跌破」、空头「涨破」。 */}
                         {r.estimate?.belowLiquidation && (
-                          <span className="tstats-liq">已跌破爆仓价</span>
+                          <span className="tstats-liq">
+                            {r.direction === 'short' ? '已涨破爆仓价' : '已跌破爆仓价'}
+                          </span>
                         )}
                       </td>
                     </tr>

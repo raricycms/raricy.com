@@ -186,6 +186,7 @@ describe('summary 的合计（持仓浮动盈亏）', () => {
     const est = estimateOpenPosition({
       stakeUnits: ONE,
       entryPrice: 80000,
+      direction: 'long',
       leverage: 1,
       liquidationPrice: 0,
       exitPrice: 88000,
@@ -202,6 +203,7 @@ describe('单笔持仓的浮动盈亏', () => {
   const base = {
     stakeUnits: ONE,
     entryPrice: 80000,
+    direction: 'long' as const,
     leverage: 1,
     liquidationPrice: 0,
     exitPrice: 88000,
@@ -238,5 +240,47 @@ describe('单笔持仓的浮动盈亏', () => {
   it('1 倍仓（爆仓价恒为 0）永远不标记 belowLiquidation —— 0 是「不适用」不是「已跌破」', () => {
     const est = estimateOpenPosition({ ...base, exitPrice: 1 });
     expect(est.belowLiquidation).toBe(false);
+  });
+});
+
+describe('单笔持仓的浮动盈亏（做空）', () => {
+  // 【为什么单独一组】`belowLiquidation` 的 `现价 <= 爆仓价` 是**多头专属**：空头要
+  // `现价 >= 爆仓价`。写错的话价格越涨、浮盈越负，而标记恒 false —— 持仓行显示一个
+  // 「看起来正常」的浮亏，用户不知道它已经到/过了爆仓线，而下面引擎却会把它清掉。
+  const shortBase = {
+    stakeUnits: ONE,
+    entryPrice: 80000,
+    direction: 'short' as const,
+    leverage: 10,
+    // 10× 空头：开仓价 × (1 + 1/10) = 88000
+    liquidationPrice: 88000,
+  };
+
+  it('价格跌 10% 的 10 倍空头：赚约 9.8%（与多头镜像）', () => {
+    const est = estimateOpenPosition({ ...shortBase, exitPrice: 72000, feeRate: 0.0002 });
+    expect(est.profitUnits).toBeGreaterThan(0);
+    expect(est.belowLiquidation).toBe(false);
+  });
+
+  it('★ 价格**涨**穿爆仓价：实发 0、盈亏 = −投入、belowLiquidation = true', () => {
+    const est = estimateOpenPosition({ ...shortBase, exitPrice: 90000, feeRate: 0.0002 });
+    expect(est.payoutUnits).toBe(0);
+    expect(est.profitUnits).toBe(-ONE);
+    expect(est.belowLiquidation).toBe(true);
+  });
+
+  it('★ 1 倍空头在价格翻倍时**会被标记** —— 「1 倍永不爆仓」只对多头成立', () => {
+    // 1× 空头爆仓价 = 2 × 开仓价 = 160000，是一个可达的价。
+    const est = estimateOpenPosition({
+      stakeUnits: ONE,
+      entryPrice: 80000,
+      direction: 'short',
+      leverage: 1,
+      liquidationPrice: 160000,
+      exitPrice: 160000,
+      feeRate: 0.0002,
+    });
+    expect(est.payoutUnits).toBe(0);
+    expect(est.belowLiquidation).toBe(true);
   });
 });

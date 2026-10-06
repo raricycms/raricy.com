@@ -1,12 +1,25 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // market-liquidator.ts — 练手盘的**强平引擎**（本站第一个「自己动手动钱」的后台循环）
 //
-// 【它做什么】每隔一段时间扫一遍还开着的杠杆仓，谁的价格穿过了自己那行上写死的
+// 【它做什么】每隔一段时间扫一遍**会爆仓的**仓位，谁的价格穿过了自己那行上写死的
 // **爆仓价**，就把谁强制结清（status: open → liquidated）。
 //
-// 【为什么必须有它】杠杆仓的亏损在爆仓价处归零（见 market-math.ts 头部）。归零之后
-// 用户没有任何理由自己动手 —— 他按「卖出」拿到的也是 0。所以系统必须自己来收这一笔；
+// 【为什么必须有它】这类仓位的亏损在爆仓价处归零（见 market-math.ts 头部）。归零之后
+// 用户没有任何理由自己动手 —— 他按「平仓」拿到的也是 0。所以系统必须自己来收这一笔；
 // 没有它，「亏光」这个状态就永远只存在于公式里，而库里那行一直是 open。
+//
+//   ★ 哪些仓位「会爆仓」：判据是**存着的爆仓价 > 0**，不是 `leverage > 1` ★
+//     多头 1 倍的爆仓价是 0（价格到不了 0 以下 ⇒ 那条线不存在），所以加杠杆那一版
+//     写的是 `leverage > 1`。**做空把它推翻了**：空头任何杠杆下爆仓价都 > 0，
+//     1× 空头在 2 × 开仓价归零。于是扫描的筛选改成 `liquidation_price > 0` ——
+//     它天然包含 1× 空头、天然排除 1× 多头，而且不依赖方向这个维度（少一处能写反的判据）。
+//     ⚠️ 它与 `market-service.openPosition` 的开仓闸门（`needsLiquidator`）**必须同真同假**：
+//     闸门放行而这里捞不到的仓位 = 一份没人清算的免费期权，全程不报错。
+//
+//   ★ 穿线的方向也分多空 ★
+//     多头是「现价**跌到**爆仓价或以下」，空头是「现价**涨到**爆仓价或以上」。
+//     两种都靠每行自己的 direction 分派 —— 判据写反的话，一个刚开的健康空头会被
+//     下一轮立刻结清（它的爆仓价在开仓价上方，而多头的 `现价 ≤ 爆仓价` 对它恒真）。
 //
 // ── ★ 它是本站第一个会自己动手动钱的后台循环 ★ ─────────────────────────────
 // 另外三个循环（webhook 投递 / 行情轮询 / 行情流）要么只投递、要么只写展示缓存。
@@ -21,17 +34,17 @@
 //     还开着的杠杆仓照旧会被强平（与 sell 不判禁言同源，见 sell/route.ts 头部）。
 //
 // ── ★ 结算价是**爆仓价**，不是现价 ★ ────────────────────────────────────────
-// 触发判据是「现价 ≤ 爆仓价」，但写进 exit_price 的是**那行上存着的爆仓价**。两条，
-// 都不是洁癖：
+// 触发判据是「现价穿过了爆仓价」（多头 ≤、空头 ≥），但写进 exit_price 的是**那行上
+// 存着的爆仓价**。两条，都不是洁癖：
 //   1. **封顶**。若按现价结算，一次插针到爆仓价以下的行情会让权益变成负数 ——
 //      而负数只能被 max(0,…) 截成 0，结果一样。按爆仓价结算则让「亏光投入」这件事
 //      是**算出来的**而不是**截出来的**，谁读这行都能验算。
 //   2. **时间无关**。爆仓价是个常量，所以「什么时候发现」不影响「结算成多少」——
 //      引擎晚了一轮、挂了十分钟再起来，用户拿到的数完全一样。这条把一整类
 //      「引擎越慢用户越亏/越赚」的问题消掉了。
-//   ⚠️ 推论：**两次 tick 之间的插针不触发爆仓**（价格跌下去又弹回来，那一轮扫不到
-//      就不爆）。这不是漏洞：用户无法影响 tick 时机，最坏是被白送一次「幸免」；
-//      而按上面的第 2 条，它也绝不会让任何人多亏。
+//   ⚠️ 推论：**两次 tick 之间的插针不触发爆仓**（多头是价格跌下去又弹回来、空头是涨上去
+//      又跌回来，那一轮扫不到就不爆）。这不是漏洞：用户无法影响 tick 时机，最坏是被白送
+//      一次「幸免」；而按上面的第 2 条，它也绝不会让任何人多亏。
 //
 // ── 成交价现取，不是缓存价 ──────────────────────────────────────────────────
 // 每个 tick 对**有杠杆仓的标的**各调一次 fetchQuote()（与开平仓同一条边界）。
@@ -44,8 +57,9 @@
 // 别改成「被 import 时自动启动」—— vitest 会直接 import src/lib/*。
 //   · `MARKET_LIQUIDATE_MS` 默认 15000，`0` = 关闭（运维手段）。
 //   · **关掉它不只是关掉一个循环**：isLiquidationRunning() 会跟着变成 false，
-//     于是 openPosition 拒绝开杠杆仓（503）。这是刻意的 —— 卖一个兑现不了的产品
-//     比不卖更糟。1 倍仓不受影响（它永远碰不到爆仓价）。
+//     于是 openPosition 拒绝开**会爆仓的**仓位（503）。这是刻意的 —— 卖一个兑现不了的
+//     产品比不卖更糟。**1 倍多头**不受影响（它永远碰不到爆仓价）；**空头与杠杆仓
+//     （含 1× 空头）一并关掉** —— 判据是 needsLiquidator，见文件头。
 //   · 那个判据是 **fail-closed** 的（没起来就是没起来，不看 NODE_ENV）——
 //     理由见 isLiquidationRunning 的注释，别给它加 test 环境的默认放行。
 //   · 单进程前提：多实例部署时每个实例各扫一遍。**无害** —— 结算是条件 UPDATE
@@ -56,6 +70,8 @@ import { prisma } from './db';
 import { nowForDb } from './db-time';
 import { fetchQuote, parseSymbol, MarketPriceError } from './market-price';
 import { settleClose } from './market-math';
+// 只取类型（方向词表零依赖，但这里不需要它的任何值）。
+import type { Direction } from './market-leverage';
 
 /** 挂在 globalThis 上：防 dev HMR 重复启动，也让「引擎是否活着」能被别的模块读到。 */
 const TIMER_KEY = '__raricyMarketLiqTimer';
@@ -83,7 +99,7 @@ function g(): G {
 /**
  * 读扫描间隔。`0`（或负数、非数字、非有限值）= **关闭**。
  * 关掉是运维手段（同 MARKET_POLL_MS）：行情源长期不通时先停掉，免得日志被刷屏。
- * ⚠️ 它同时关掉**杠杆开仓** —— 见文件头。
+ * ⚠️ 它同时关掉**会爆仓的仓位开仓**（杠杆仓与空头仓，含 1× 空头）—— 见文件头。
  */
 export function liquidationIntervalMs(): number {
   const raw = process.env.MARKET_LIQUIDATE_MS;
@@ -191,6 +207,8 @@ interface Candidate {
   id: string;
   userId: string;
   symbol: string;
+  /** `long`｜`short` —— 决定穿线方向（多头 ≤、空头 ≥）。 */
+  direction: Direction;
   stakeUnits: number;
   entryPrice: number;
   leverage: number;
@@ -208,6 +226,8 @@ export interface DueLiquidation {
   id: string;
   userId: string;
   symbol: string;
+  /** `long`｜`short`。CLI 确认屏据此渲染正确的不等式（多头 ≤、空头 ≥）。 */
+  direction: Direction;
   leverage: number;
   stakeUnits: number;
   entryPrice: number;
@@ -238,13 +258,15 @@ export interface LiquidationScan {
  * **不抛异常**（行情源抖动只记进 skipped）—— 调用方是定时器与 CLI。
  */
 export async function scanLiquidations(): Promise<LiquidationScan> {
-  // 只捞杠杆 > 1 的：1 倍仓的爆仓价恒为 0，价格到不了 0 以下，它们**结构上**不可能
-  // 被强平。把筛选放在查询里而不是循环里 —— 这个条件不会随时间变，也就没有「查询与
-  // 判据不一致」的风险，而它把这张表的扫描面缩到「还开着的杠杆仓」。
+  // 只捞**会爆仓的**：判据是「存着的爆仓价 > 0」。1 倍多头的爆仓价恒为 0（价格到不了
+  // 0 以下），它们**结构上**不可能被强平；而 1× 空头是 2 × 开仓价，必须捞进来。
+  // 把筛选放在查询里而不是循环里 —— 这个条件不会随时间变（liquidation_price 开仓写死），
+  // 也就没有「查询与判据不一致」的风险，而它把这张表的扫描面缩到「还开着且会爆的仓位」。
+  // ⚠️ 别写回 `leverage: { gt: 1 }` —— 那会把 1× 空头静默漏在扫描之外（见文件头）。
   const rows = await prisma.marketPosition.findMany({
-    where: { status: 'open', leverage: { gt: 1 } },
+    where: { status: 'open', liquidationPrice: { gt: 0 } },
     select: {
-      id: true, userId: true, symbol: true, stakeUnits: true,
+      id: true, userId: true, symbol: true, direction: true, stakeUnits: true,
       entryPrice: true, leverage: true, liquidationPrice: true,
     },
   });
@@ -256,9 +278,12 @@ export async function scanLiquidations(): Promise<LiquidationScan> {
   // 同一标的的多个仓位共用一次出站请求。
   const bySymbol = new Map<string, Candidate[]>();
   for (const r of rows) {
+    // 库里那一列是文本（Prisma 给 string）；词表只有 long/short（迁移的默认值是 long），
+    // 这里按词表收窄一次。收窄放在**这一个**入口，别让 `as Direction` 散到判据那几行。
+    const c: Candidate = { ...r, direction: r.direction as Direction };
     const list = bySymbol.get(r.symbol);
-    if (list) list.push(r);
-    else bySymbol.set(r.symbol, [r]);
+    if (list) list.push(c);
+    else bySymbol.set(r.symbol, [c]);
   }
 
   for (const [symbolRaw, candidates] of bySymbol) {
@@ -289,12 +314,19 @@ export async function scanLiquidations(): Promise<LiquidationScan> {
     }
 
     for (const c of candidates) {
-      // 多头：价格跌到爆仓价或以下就爆。判据用**现取价**。
-      if (quote.price > c.liquidationPrice) continue;
+      // 穿线方向随方向走：**多头**价格跌到爆仓价或以下就爆；**空头**是涨到或以上。
+      // 判据用**现取价**。⚠️ 写反的后果不对称：用多头判据扫空头，一个刚开的健康空头
+      //（爆仓价在开仓价上方）会**下一轮立刻被结清** —— 不报错、日志也只有一行正常的强平。
+      const hit =
+        c.direction === 'short'
+          ? quote.price >= c.liquidationPrice
+          : quote.price <= c.liquidationPrice;
+      if (!hit) continue;
       due.push({
         id: c.id,
         userId: c.userId,
         symbol: c.symbol,
+        direction: c.direction,
         leverage: c.leverage,
         stakeUnits: c.stakeUnits,
         entryPrice: c.entryPrice,
@@ -321,7 +353,7 @@ export async function sweepLiquidations(): Promise<number> {
     if (ok) {
       liquidated++;
       console.log(
-        `[market-liquidator] 强平 ${d.symbol} ${d.leverage}x ` +
+        `[market-liquidator] 强平 ${d.symbol} ${d.leverage}x ${d.direction} ` +
           `(user=${d.userId} 爆仓价=${d.liquidationPrice} 现价=${d.currentPrice})`
       );
     }
@@ -357,6 +389,9 @@ async function liquidateOne(c: DueLiquidation): Promise<boolean> {
     exitPrice: c.liquidationPrice,
     feeRate: 0,
     leverage: c.leverage,
+    // ⚠️ 方向必须传：漏了（或给默认值）会让空头按多头公式算，爆仓价处实发**不为 0**，
+    // 于是下面那条告警对每一笔空头强平都响（而它是「绝不该响」的那条）。
+    direction: c.direction,
   });
 
   const flipped = await prisma.marketPosition.updateMany({
