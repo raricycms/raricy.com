@@ -1,12 +1,11 @@
-// market-service.ts —— 练手盘开仓 / 平仓的**本地语义**（dev fallback 分支）。
+// market-service.ts —— 练手盘开仓 / 平仓的事务与资金语义。
 //
 // 【行情源被 mock 掉，是刻意的】这个文件测的是「钱怎么走」：扣款、流水、position 行、
 // 结算公式、边界、幂等、并发。价格必须是**确定的**，否则断言「涨 10% 该 mint 多少」
 // 根本写不出来。真实行情源的解析由 tests/unit/market-price.test.ts 负责。
 //
-// 【与 fail-closed 的分工】本文件跑真实模块 + dev fallback（tests/setup.ts 把
-// ACCOUNT_SERVICE_INTERNAL_TOKEN 置空 → accountServiceEnabled() 恒 false →
-// 只写本地、不登记账本）。远端失败零痕迹 / 补偿 / 账本那套在 market-failclosed 里测。
+// 【记账与持仓同一个事务】跑真实 postEntry 与持仓写入，任何一步失败都整笔回滚；
+// 行情取价在事务外。新增资金路径用有来源的余额夹具，并核对余额与流水之和。
 //
 // 【DB】真实 SQLite（tests/.tmp/test-*），不 mock。
 
@@ -579,7 +578,7 @@ describe('杠杆（开仓）', () => {
   });
 
   it('同一个幂等键带**不同**杠杆重试 → 重放既有那一笔，不改成新倍数', async () => {
-    const user = await makeUser({ driedFish: 100 });
+    const user = await makeFishUser(100);
     priceIs(80000);
     const key = 'lev-retry-1';
     const first = await openPosition({
@@ -597,10 +596,67 @@ describe('杠杆（开仓）', () => {
     expect(second.position.liquidationPrice).toBe(LIQ_10X);
     expect(await prisma.marketPosition.count({ where: { userId: user.id } })).toBe(1);
     expect(await balanceOf(user.id)).toBe(0); // 只扣了一次
+    await expectLedgerConsistent('改变杠杆的开仓重试之后');
+  });
+
+  it.each(['long', 'short'] as const)('%s 仓同键改方向与倍数重试：回原仓，只扣一次，不再取价', async (direction) => {
+    const user = await makeFishUser(100);
+    priceIs(80000);
+    const input = {
+      userId: user.id, symbolRaw: 'BTCUSDT', amount: 10,
+      leverageRaw: 37, directionRaw: direction, clientKey: 'direction-retry',
+    };
+    const first = await openPosition(input);
+    expect(first.ok).toBe(true);
+    if (!first.ok) throw new Error(first.message);
+
+    mockQuote.mockRejectedValue(new MarketPriceError('重试时行情源已不可用'));
+    const retry = await openPosition({
+      ...input, directionRaw: direction === 'long' ? 'short' : 'long', leverageRaw: 99,
+    });
+    expect(retry).toMatchObject({
+      ok: true, replayed: true, balance: 90,
+      position: { id: first.position.id, direction, leverage: 37 },
+    });
+    expect(mockQuote).toHaveBeenCalledTimes(1);
+    expect(await prisma.marketPosition.count({ where: { userId: user.id } })).toBe(1);
+    expect(await txnsOf(user.id)).toHaveLength(2); // 夹具入账 + 开仓扣款
+    await expectLedgerConsistent('同键改变方向与倍数的重试之后');
   });
 });
 
 describe('杠杆（平仓）', () => {
+  it.each([
+    [79200, 136.2674], // 价格下跌：空头盈利
+    [80800, 62.2525], // 价格上涨：空头亏损；浮点结果再 floor，边界处向下少一个存储单位
+    [83000, 0], // 越过爆仓价：损失封顶为投入
+  ])('37× 空头在 %i 平仓：实发 %f，最近结清与重放沿用原仓方向', async (exitPrice, payout) => {
+    const user = await makeFishUser(100);
+    priceIs(80000);
+    const open = await openPosition({
+      userId: user.id, symbolRaw: 'BTCUSDT', amount: 100,
+      leverageRaw: 37, directionRaw: 'short',
+    });
+    if (!open.ok) throw new Error(open.message);
+    priceIs(exitPrice);
+    const close = await closePosition({ userId: user.id, positionId: open.position.id });
+    expect(close).toMatchObject({ ok: true, direction: 'short', payout, balance: payout });
+    if (!close.ok) throw new Error(close.message);
+    expect(close.profit).toBeCloseTo(payout - 100, 6);
+    expect(await listSettledPositions(user.id)).toEqual([
+      expect.objectContaining({ direction: 'short', leverage: 37, payout, status: 'closed' }),
+    ]);
+
+    mockQuote.mockRejectedValue(new MarketPriceError('平仓后行情源已不可用'));
+    const retry = await closePosition({ userId: user.id, positionId: open.position.id });
+    expect(retry).toMatchObject({ ok: true, replayed: true, direction: 'short', payout, balance: payout });
+    expect(mockQuote).toHaveBeenCalledTimes(2); // 只在开仓与第一次平仓取价
+    expect(await balanceOf(user.id)).toBe(payout);
+    const txns = await txnsOf(user.id);
+    expect(txns.filter((t) => t.type === MARKET_SELL_TYPE)).toHaveLength(payout > 0 ? 1 : 0);
+    await expectLedgerConsistent('37× 空头平仓与重放之后');
+  });
+
   it('★ 按**这一行**的倍数结算，不是按 1 倍', async () => {
     const { userId, positionId } = await openedLeveraged(10);
 

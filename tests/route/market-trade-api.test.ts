@@ -516,6 +516,31 @@ describe('写路径失败 → 零痕迹', () => {
 //（它是 buy 的一个参数），以及响应里那几个字段如实回给了调用方。
 
 describe('杠杆：接口形状', () => {
+  it('37× 空头正常平仓与重复请求：方向、到手与文案一致，重放不再取价或发钱', async () => {
+    const user = await makeCoreUser(100);
+    const opened = await buy(makeReq('/api/fish/trade/buy', {
+      symbol: 'BTCUSDT', amount: 100, leverage: 37, direction: 'short',
+    }));
+    expect(opened.status).toBe(200);
+    const { position } = await opened.json();
+    priceIs(79200);
+    const closed = await sell(makeReq('/api/fish/trade/sell', { position_id: position.id }));
+    expect(closed.status).toBe(200);
+    const body = await closed.json();
+    expect(body).toMatchObject({ direction: 'short', payout: 136.2674, balance: 136.2674, replayed: false });
+    expect(body.message).toContain('已平空');
+
+    mockQuote.mockRejectedValue(new MarketPriceError('重放时行情源已不可用'));
+    const retry = await sell(makeReq('/api/fish/trade/sell', { position_id: position.id }));
+    expect(retry.status).toBe(200);
+    const retryBody = await retry.json();
+    expect(retryBody).toMatchObject({ direction: 'short', payout: 136.2674, balance: 136.2674, replayed: true });
+    expect(retryBody.message).toContain('已经平仓');
+    expect(mockQuote).toHaveBeenCalledTimes(2);
+    expect(await balanceOf(user.id)).toBe(136.2674);
+    await expectLedgerConsistent('接口的 37× 平空与重放之后');
+  });
+
   it('买入带 leverage → 响应回倍数与爆仓价，仓位按倍数落库', async () => {
     const u = await makeCoreUser(100);
     const res = await buy(

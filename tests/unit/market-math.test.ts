@@ -97,6 +97,23 @@ describe('settleClose（平仓结算）', () => {
 });
 
 describe('settleClose（杠杆）', () => {
+  it('1–100 每个整数倍数：多空在爆仓价实发均为 0（按强平引擎传入零费率）', () => {
+    // 非快捷档与低价标的也必须成立；零费率避免手续费掩盖错误的正权益。
+    // 大额投入用于放大浮点误差，实发仍须低于一个最小存储单位。
+    for (let leverage = 1; leverage <= 100; leverage++) {
+      for (const direction of ['long', 'short'] as const) {
+        for (const entryPrice of [0.01, 1937.82, ENTRY, 102837.91]) {
+          const exitPrice = liquidationPrice(entryPrice, leverage, direction);
+          if (exitPrice === 0) continue; // 只有 1× 多头没有可达的爆仓价
+          for (const stakeUnits of [ONE, 1_000_000, 2_147_483_647]) {
+            const result = settleClose({ stakeUnits, entryPrice, exitPrice, feeRate: 0, leverage, direction });
+            expect(result.payoutUnits, `${direction} ${leverage}× 价=${entryPrice} 投入=${stakeUnits}`).toBe(0);
+          }
+        }
+      }
+    }
+  });
+
   it('杠杆=1 时逐位退回**加杠杆之前**的算式', () => {
     // 上面那组用例断的是几个具体的数；这一条断的是**性质**：广义公式在 1 倍下必须
     // 与旧算式逐位相同（floor(stake × 价/开仓价 × (1-费率))）。

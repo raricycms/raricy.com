@@ -2,10 +2,10 @@
 //
 // 【这个文件钉的是什么】引擎是**本站第一个会自己动手结清仓位的后台循环**，所以这里
 // 断的不是「算术对不对」（那是 market-math.test.ts 的事），而是四件事：
-//   1. 触发判据（现价 ≤ 爆仓价）与**结算价 = 爆仓价**（不是现价 —— 见那里的文件头）；
+//   1. 方向感知的触发判据（多头 ≤ / 空头 ≥）与**结算价 = 爆仓价**；
 //   2. 强平**不写鱼干流水**（爆仓价处实发为 0，没有钱动过）；
 //   3. 幂等与并发：用户自己先平了的仓位不会被它「复活」；
-//   4. 闸门：引擎没在跑时**杠杆开仓被拒**，而 1 倍照旧。
+//   4. 闸门：引擎没在跑时**杠杆与空头开仓被拒**，只有 1 倍多头照旧。
 //
 // 【行情源被 mock 掉，是刻意的】同 market-service.test.ts：这里要确定的价格。
 // 【DB】真实 SQLite（tests/.tmp/test-*），不 mock。
@@ -228,6 +228,30 @@ describe('强平不碰账本', () => {
 });
 
 describe('幂等与并发', () => {
+  it('37× 空头同时手动平仓与强平：只结清一次，实发 0，不写额外流水', async () => {
+    const user = await makeFishUser(100);
+    priceIs(ENTRY);
+    const open = await openPosition({
+      userId: user.id, symbolRaw: 'BTCUSDT', amount: 100,
+      leverageRaw: 37, directionRaw: 'short',
+    });
+    if (!open.ok) throw new Error(open.message);
+    priceIs(83000);
+    const [, close] = await Promise.all([
+      sweepLiquidations(), closePosition({ userId: user.id, positionId: open.position.id }),
+    ]);
+    expect(close).toMatchObject({ ok: true, direction: 'short', payout: 0, balance: 0 });
+    const row = await posRow(open.position.id);
+    expect(['closed', 'liquidated']).toContain(row?.status);
+    expect(row?.payoutUnits).toBe(0);
+    expect(row?.closeTxId).toBeNull();
+    expect(await txnsOf(user.id)).toHaveLength(2); // 夹具 + 开仓，结清没有钱动过
+    expect(await sweepLiquidations()).toBe(0);
+    const retry = await closePosition({ userId: user.id, positionId: open.position.id });
+    expect(retry).toMatchObject({ ok: true, replayed: true, direction: 'short', payout: 0 });
+    await expectLedgerConsistent('37× 空头手动平仓与强平并发之后');
+  });
+
   it('用户先自己平了 → 引擎不改它（不会「复活」成 liquidated）', async () => {
     const { positionId } = await openedLeveraged(10);
 
