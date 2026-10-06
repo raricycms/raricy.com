@@ -172,12 +172,12 @@ export function toFishTxJson(t: FishTxDTO) {
  * 筛选条口径 → Prisma where。
  *
  * feed_all / transfer_all / market_all 是「合称」特例：一侧是支出、另一侧是收入，
- * 两个 type 都要。分页查询与增量查询共用这一份 —— 两边各写一份必然 drift，
+ * 投喂还含历史补发与手续费返还。分页查询与增量查询共用这一份 —— 两边各写一份必然 drift，
  * 而漏掉半边账是静默的。
  */
 function applyTypeFilter(where: Prisma.FishTransactionWhereInput, type?: string | null): void {
   if (!type) return;
-  if (type === 'feed_all') where.type = { in: ['feed', 'feed_receive'] };
+  if (type === 'feed_all') where.type = { in: ['feed', 'feed_receive', 'feed_backpay', 'feed_fee_refund'] };
   else if (type === 'transfer_all') where.type = { in: ['transfer', 'transfer_receive'] };
   else if (type === 'market_all') where.type = { in: ['market_buy', 'market_sell'] };
   else where.type = type;

@@ -1,12 +1,13 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // fish-idempotency.ts — 鱼干写路径的幂等登记
 //
-// 【为什么需要它】鱼干写路径里有两处**键是确定的**：同一次操作重跑必须等价于没跑。
+// 【为什么需要它】鱼干写路径里有三处**键是确定的**：同一次操作重跑必须等价于没跑。
 //   · 用户间转账（`opts.clientIdempotencyKey` 由站外脚本 / 收银台提供）——
 //     调用方遇到超时后唯一的自救手段就是「用同一个键重发」；
 //   · 群发补偿（`compensateIdempotencyKey` 由 batchId 派生）—— 批次跑一半被
 //     中断，续跑必须跳过已发放的人。
-// 这两处的键落库、唯一约束挡并发、重放时回报原结果。
+//   · 历史投喂手续费返还（作者 / 文章 / 累计实付派生键）—— 重跑不能重复退款。
+// 这些键落库、唯一约束挡并发。
 //
 // 【反过来：键带随机后缀的操作一律不登记】
 //   签到 / 投喂 / 管理员单次发扣 / 练手盘开仓 / 注册建号 **每跑一次就是一笔新的**，
@@ -46,7 +47,7 @@ export interface IdempotencyEntry {
   /** 幂等键（`account_sync_ledger.idempotency_key`，全局唯一）。 */
   idempotencyKey: string;
   /**
-   * 这笔是什么操作。历史值：transfer / compensate（当前仅这两种会写行）；
+   * 这笔是什么操作。当前：transfer / compensate / feed_fee_refund；
    * 迁移前还有 feed / checkin / admin_grant / admin_deduct / register /
    * market_buy / market_sell —— 那些行的 operation 是它们当年的出处，别改。
    */

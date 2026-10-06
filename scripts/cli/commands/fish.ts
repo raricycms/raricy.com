@@ -314,6 +314,56 @@ export const fishCommands: CommandSpec[] = [
     },
   },
   {
+    name: 'fish refund-feed-fees',
+    summary: '按实际欠款返还全部历史投喂手续费给原文章作者',
+    group: 'fish',
+    order: 3.5,
+    danger: 'irreversible',
+    args: [{
+      name: 'dryRun', flags: ['--dry-run'], kind: 'boolean',
+      label: '只看计划', help: '列出作者、文章与应返还金额，不写库', defaultValue: false,
+      prompt: { type: 'confirm' },
+    }],
+    async describe(ctx) {
+      if (ctx.args.dryRun === true) return [];
+      const { planFeedFeeRefund } = await import('../../../src/lib/feed-fee-refund');
+      const plan = await planFeedFeeRefund();
+      if (plan.authors === 0) return [];
+      return [
+        `  原文章作者：${plan.authors} 位，文章：${plan.articles} 篇`,
+        `  合计返还：${plan.totalFish} 小鱼干（已扣除历史补发和已返还金额）`,
+        '  每位作者独立事务，重复执行不会重复发放；失败后用同一命令续跑。',
+        '  请先上线免手续费代码，再执行补偿。',
+      ];
+    },
+    async run(ctx) {
+      const { refundFeedFees } = await import('../../../src/lib/feed-fee-refund');
+      const result = await refundFeedFees({ dryRun: ctx.args.dryRun === true });
+      if (result.dryRun) {
+        return {
+          lines: [
+            `--dry-run：${result.authors} 位作者、${result.articles} 篇文章，合计 ${result.totalFish} 小鱼干；未写库。`,
+            ...result.items.map((item) =>
+              `  ${item.username} / ${item.blogId}：${unitsToFish(item.refundUnits)} 小鱼干`
+            ),
+          ],
+          json: result,
+        };
+      }
+      if (result.failed.length) {
+        throw new CliError(`失败：${result.failed.length} 位作者未返还`, 2, [
+          `  已成功 ${result.succeeded} 位，返还 ${result.refundedFish} 小鱼干。`,
+          ...result.failed.map((item) => `  ${item.username}：${item.reason}`),
+          '  失败作者整笔回滚；续跑：npm run cli -- fish refund-feed-fees --yes',
+        ]);
+      }
+      return {
+        lines: [`成功：${result.succeeded} 位作者，返还 ${result.refundedFish} 小鱼干。`],
+        json: result,
+      };
+    },
+  },
+  {
     name: 'fish credential-list',
     summary: '列出某用户的鱼干只读凭据',
     group: 'fish',

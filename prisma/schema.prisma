@@ -897,7 +897,7 @@ model AccountSyncLedger {
   // 幂等键。历史上是发往账户服务的 Idempotency-Key，现在只在本站内唯一。
   idempotencyKey String    @unique @map("idempotency_key")
   // 迁移前的值：feed | checkin | admin_grant | admin_deduct | compensate | register |
-  // transfer | market_buy | market_sell。现在只写入 transfer 与 compensate。
+  // transfer | market_buy | market_sell。现在写入 transfer / compensate / feed_fee_refund。
   operation      String
   // JSON 字符串：发起这笔操作时的非敏感参数（SQLite 无数组/Json 标量）。
   // 【纪律不变】密钥类字段（系统 Key / 用户 Key）一律不入库。

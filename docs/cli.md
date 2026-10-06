@@ -139,7 +139,7 @@ esac
 | 危险级别 | 命令 | 行为 |
 |----------|------|------|
 | 破坏性 | 角色变更 · 用户禁言 · 强制下线 · 重置密码 · **站长建号** · 文章/评论/剪贴板/投票的删除与恢复 · **图床恢复** · 申诉裁决 | 终端里弹「即将执行」确认屏；非交互必须加 `--yes` |
-| 不可逆 | `invite revoke`（物理删除邀请码行） · **`fish compensate`（群发 core+）** | 同上，且确认屏会额外标注「不可恢复」 |
+| 不可逆 | `invite revoke`（物理删除邀请码行） · **`fish compensate`（群发 core+）** · **`fish refund-feed-fees`（历史投喂手续费返还）** | 同上，且确认屏会额外标注「不可恢复」 |
 | 安全 | 各类检索 / 查看 / `stats overview` / `fish grant`、`fish deduct` / OAuth 应用管理 | 不确认 |
 
 确认屏会列出**具体将发生什么**（目标、字段级变更、后果、是否通知对方），而不是笼统的「确定吗」。
@@ -149,7 +149,8 @@ esac
 > 流水里可查可核。失败的两种结局都是干净的（业务拒绝 = 没写，真故障 = 整体滚回）——
 > 再加一道确认只会让 `docs/` 里的示例不能直接粘贴执行。
 >
-> **`fish compensate` 是唯一的例外**，而且它要确认的理由不是「怕写坏账」（写路径本身就是
+> **`fish compensate` 与 `fish refund-feed-fees` 是批量操作的例外**，确认的理由是
+> **规模**。前者要确认的理由不是「怕写坏账」（写路径本身就是
 > 要么全成、要么整体回滚），是**规模**：一条命令改的是全部 core+ 用户的余额，敲错一个
 > 数量级就得再发一轮反向补偿才能拉平（`fish deduct` 一次只能扣一个人）。所以它标
 > `irreversible`。
@@ -181,13 +182,14 @@ CLI 写下的每一条审计日志都落 `visibility='internal'`：**不进** `/
 > - CLI 更适合「我自己知道后果」的操作：建号、重置密码、修数据、批量补偿。
 
 > ⚠️ **例外 —— 这些写操作根本不写审计日志，`audit log` 里也找不到**：
-> `fish grant` / `fish deduct` / `fish compensate` / `oauth create-app` /
+> `fish grant` / `fish deduct` / `fish compensate` / `fish refund-feed-fees` / `oauth create-app` /
 > `oauth disable-app` / `oauth enable-app` / `invite generate`。
 >
 > 鱼干那三条是**现状，不是结构约束**：当年不写是因为写路径是三段结构（本地事务 +
 > 远端 HTTP + 补偿事务），`logAdminAction` 挤进去会占满 SQLite 写锁；现在只剩一次本地
 > 事务，那条理由**已经不成立**。要不要补上是一次独立的决定 —— 在那之前，它们留下的凭据
 > 是 `fish_transactions` 流水（`fish compensate` 另有按批次派生的幂等登记行，一条 / 人）。
+> `fish refund-feed-fees` 同样留下退款流水和同事务的幂等登记行，每位作者的每篇欠款文章一条。
 
 ### 两个由此而来的限制
 
@@ -325,6 +327,7 @@ npm run cli -- blog restore 2b7ec270-be9c-4283-b1a2 --reason "作者申诉，误
 | `fish deduct <username> <amount> [-d 说明]` | 扣减（一次本地事务） |
 | `fish balance <username>` | 查余额 |
 | `fish compensate <amount> [--batch-id ID] [--dry-run]` | **给全部 core+ 群发补偿**（逐人原子） |
+| `fish refund-feed-fees [--dry-run]` | **按实际欠款归还全部历史投喂手续费给原文章作者**（逐作者原子，可重复执行） |
 | `fish credential-list <username>` | 列出某用户的鱼干只读凭据（不含明文与哈希） |
 | `fish credential-revoke <id>` | 吊销一张只读凭据（立即失效，幂等） |
 | `fish webhooks [username]` | 列出回调地址与投递积压（留空列全部） |
@@ -420,6 +423,32 @@ ID 就能接着跑）。这不是锦上添花，是必须的：若只是「重�
 不明」的欠账。这些用户**必须人工查证** —— 重发会在本地实打实叠加一笔；收敛它们的那条
 重放命令已随账户服务一起撤销，代码里没有、也不该有自动重放。传 `--batch-id` 续跑时，
 确认屏会把这批人的数量列出来。
+
+#### 历史投喂手续费返还 `fish refund-feed-fees`
+
+投喂已改为作者全额到账。上线时先重启应用、确认运行免手续费的新代码，再用**同一份生产
+数据库配置**执行：
+
+```bash
+npm run cli -- fish refund-feed-fees --dry-run       # 列出作者、文章和应返还金额，不写库
+npm run cli -- fish refund-feed-fees --yes           # 实际返还
+npm run cli -- fish refund-feed-fees --dry-run       # 应为 0 位、0 篇、0 鱼干
+```
+
+无需迁移或批次 ID；使用已有的流水与幂等登记表。**计算全部使用当前存储单位**，尚未完成
+鱼干整数化 / 精度迁移的历史库会被拒绝，不要指向旧备份或开发库代替生产执行。
+
+每篇按流水上的**原收款作者**计算：投喂者实付 − 作者收到的 `feed_receive` − 历史
+`feed_backpay` − 已返还的 `feed_fee_refund`。更早的分成比例和已补发金额都在这个公式里，
+不能简单把旧收入乘以 25%。自投、软删除文章、作者被禁言或后来降档都包含在内；这是返还
+原来扣掉的收入，不是给非核心账号开放新的赚取渠道。投喂者余额、投喂累计与文章鱼干数不变。
+
+返还逐作者一笔事务：该作者所有退款的余额、流水与幂等记录一起提交。某位失败不影响已成功
+的作者，退出码为 2，输出列出失败者；**用同一命令重跑即可续上，已到账的不会再发**。
+缺失原作者 / 文章信息、已收超过实付、或将超过余额存储上限时拒绝执行，保留原账等待核查。
+
+每篇退款留一条 `feed_fee_refund` 正数流水，说明与文章 ID 可供核对；流水页的「投喂」筛选
+及接口 `type=feed_all` 同时包含原投喂、原收入、历史补发与此次返还。
 
 ### 审计日志与申诉
 
