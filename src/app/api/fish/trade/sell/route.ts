@@ -72,7 +72,7 @@ export async function POST(req: Request) {
     // ⚠️ **爆仓的仓位走到这里也是「成功」**，而且 payout 是 0。三种文案要分开：
     //   liquidated → 如实说爆了（用户可能是「看到价格穿线、点平仓」才发现早就爆了，
     //                这时回一句「已卖出，-100 条小鱼干」会让他以为是自己卖掉的）
-    //   replayed   → 「已经卖过了」
+    //   replayed   → 「已经平仓」
     //   其余        → 正常成交
     // 别把 liquidated 并进 replayed 那一档里 —— 它是「你没卖成，是系统平的」。
     // 动词随方向走：多头是「卖出」，空头是「平空」（买回）—— 别让空头也回「已卖出」。
@@ -80,7 +80,7 @@ export async function POST(req: Request) {
     const message = res.liquidated
       ? '该仓位已爆仓（保证金归零，强平已结清）'
       : res.replayed
-        ? '该仓位已经卖过了（重复请求，未重复结算）'
+        ? '该仓位已经平仓（重复请求，未重复结算）'
         : `已${closeWord} ${res.symbol}，${sign}${res.profit} 条小鱼干`;
     return apiOk({
       message,

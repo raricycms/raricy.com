@@ -164,7 +164,7 @@ function SettledList({ rows, hasMore }: { rows: SettledPositionView[]; hasMore: 
       </div>
       {rows.length === 0 ? (
         <p className="trade-settled__empty">
-          还没有结清的仓位。卖出或爆仓之后，这里会留下每一笔的记录。
+          还没有结清的仓位。平仓或爆仓之后，这里会留下每一笔的记录。
         </p>
       ) : (
         <>

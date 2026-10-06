@@ -239,6 +239,8 @@ export default function TradePanel({
   // 服务端照收 1–100 的每个整数，不因跨过 25 就变档。
   const highRisk = leverageOk && leverage >= HIGH_RISK_LEVERAGE;
   const afterBalance = amountOk ? roundFish(balance - parsed) : balance;
+  const openWord = direction === 'short' ? '做空' : '买入';
+  const closeWord = sellTarget?.direction === 'short' ? '平空' : '卖出';
 
   // 某一笔持仓按**展示价**估的卖出细则。真实结算价以下单那一刻为准（见文件头 ①）。
   //
@@ -364,7 +366,7 @@ export default function TradePanel({
                 : '')
             : null;
         window.showToast?.(
-          fillMsg ? `${data.message ?? '买入成功'}，${fillMsg}` : (data.message ?? '买入成功'),
+          fillMsg ? `${data.message ?? `${openWord}成功`}，${fillMsg}` : (data.message ?? `${openWord}成功`),
           'success'
         );
         setBalance(typeof data.balance === 'number' ? data.balance : balance);
@@ -374,7 +376,7 @@ export default function TradePanel({
         router.refresh();
       } else {
         // 失败保留弹窗与已填内容、**保留幂等键** —— 503 这类瞬时故障原样重试一次就好
-        window.showToast?.(data?.message ?? '买入失败，请稍后再试', 'error');
+        window.showToast?.(data?.message ?? `${openWord}失败，请稍后再试`, 'error');
       }
     } catch {
       window.showToast?.('网络错误，请稍后重试', 'error');
@@ -395,12 +397,12 @@ export default function TradePanel({
       });
       const data = await res.json().catch(() => null);
       if (res.ok && data?.code === 200) {
-        window.showToast?.(data.message ?? '已卖出', 'success');
+        window.showToast?.(data.message ?? `已${closeWord}`, 'success');
         setBalance(typeof data.balance === 'number' ? data.balance : balance);
         setSellTarget(null);
         router.refresh();
       } else {
-        window.showToast?.(data?.message ?? '卖出失败，请稍后再试', 'error');
+        window.showToast?.(data?.message ?? `${closeWord}失败，请稍后再试`, 'error');
       }
     } catch {
       window.showToast?.('网络错误，请稍后重试', 'error');
@@ -647,7 +649,7 @@ export default function TradePanel({
               </span>
               <span>
                 手续费 <strong>{formatFeeRate(feeRate)}</strong>
-                <span className="trade-summary__note">（卖出时收）</span>
+                <span className="trade-summary__note">（平仓时收）</span>
               </span>
             </div>
 
@@ -657,14 +659,14 @@ export default function TradePanel({
               disabled={!canBuy || busy || quoteDown}
               onClick={openBuy}
             >
-              {direction === 'short' ? '做空' : '买入'}
+              {openWord}
             </button>
           </div>
 
           <div className="trade-card">
             <h2 className="trade-card__title">我的持仓</h2>
             {positions.length === 0 ? (
-              <p className="trade-empty">还没有持仓。买入后会出现在这里，价格涨跌随时可卖。</p>
+              <p className="trade-empty">还没有持仓。开仓后会出现在这里，可随时平仓。</p>
             ) : (
               <ul className="trade-positions">
                 {positions.map((p) => {
@@ -733,7 +735,7 @@ export default function TradePanel({
                               {fmtFish(est.profit)}
                             </span>
                             <span className="trade-position__payout">
-                              可卖 {fmtFish(est.payout)} 鱼干
+                              平仓可得 {fmtFish(est.payout)} 鱼干
                             </span>
                           </>
                         ) : (
@@ -762,12 +764,12 @@ export default function TradePanel({
           <div
             className="modal-dialog trade-confirm"
             role="dialog"
-            aria-label="确认买入"
+            aria-label={`确认${openWord}`}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="modal-content">
               <div className="modal-header">
-                <h3 className="modal-title">{direction === 'short' ? '确认做空' : '确认买入'}</h3>
+                <h3 className="modal-title">确认{openWord}</h3>
               </div>
               <div className="modal-body">
                 <dl className="trade-confirm__rows">
@@ -883,13 +885,7 @@ export default function TradePanel({
                     onClick={() => void submitBuy()}
                     disabled={busy}
                   >
-                    {busy
-                      ? direction === 'short'
-                        ? '做空中…'
-                        : '买入中…'
-                      : direction === 'short'
-                        ? '确认做空'
-                        : '确认买入'}
+                    {busy ? `${openWord}中…` : `确认${openWord}`}
                   </button>
                 </div>
               </div>
@@ -903,15 +899,15 @@ export default function TradePanel({
           <div
             className="modal-dialog trade-confirm"
             role="dialog"
-            aria-label="确认卖出"
+            aria-label={`确认${closeWord}`}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="modal-content">
               <div className="modal-header">
-                <h3 className="modal-title">确认卖出</h3>
+                <h3 className="modal-title">确认{closeWord}</h3>
               </div>
               <div className="modal-body">
-                {/* 这一屏是「卖出细则」。三件事按用户的实际问题排：
+                {/* 这一屏是「平仓细则」。三件事按用户的实际问题排：
                     价（涨了多少）→ 账（毛额 / 手续费 / 盈亏，加起来必须等于到手）→ 到手。
                     ⚠️ 末三行是**加得起来**的：毛额 − 手续费 = 到手、到手 − 投入 = 盈亏。
                     改动其中任何一行前先确认这条还成立 —— 屏幕上对不上的账比不显示更糟。
@@ -988,7 +984,7 @@ export default function TradePanel({
                     </dd>
                   </div>
                   <div className="trade-confirm__row">
-                    <dt>卖出金额</dt>
+                    <dt>平仓毛额</dt>
                     <dd>{sellEst ? `${fmtFish(sellEst.gross)} 小鱼干` : '—'}</dd>
                   </div>
                   {/* 费率从 feeRate 插值，**别写死数值**（同 RULES 那条纪律：数值只有
@@ -1058,13 +1054,7 @@ export default function TradePanel({
                     onClick={() => void submitSell()}
                     disabled={busy}
                   >
-                    {busy
-                      ? sellTarget.direction === 'short'
-                        ? '平空中…'
-                        : '卖出中…'
-                      : sellTarget.direction === 'short'
-                        ? '确认平空'
-                        : '确认卖出'}
+                    {busy ? `${closeWord}中…` : `确认${closeWord}`}
                   </button>
                 </div>
               </div>
