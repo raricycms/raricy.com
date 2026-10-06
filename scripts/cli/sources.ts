@@ -30,7 +30,7 @@ export function userSource(): SearchSource {
     }));
 
   return {
-    emptyHint: '用户名或邮箱片段',
+    emptyHint: '用户名片段',
     async initial() {
       const { listUsers } = await import('../../src/lib/admin-user-service');
       return toChoices((await listUsers({ page: 1, perPage: 20 })).users);

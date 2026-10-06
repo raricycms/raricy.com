@@ -186,7 +186,7 @@ export async function loadDefaultOwner(): Promise<SafeUser | null> {
   return (u as SafeUser | null) ?? null;
 }
 
-// ── 列表（分页 + 用户名/邮箱搜索）────────────────────────────────────────────
+// ── 列表（分页 + 用户名搜索）────────────────────────────────────────────
 export interface ListUsersParams {
   page?: number;
   perPage?: number;
@@ -198,14 +198,7 @@ export async function listUsers(params: ListUsersParams) {
   const perPage = Math.min(MAX_PER_PAGE, Math.max(1, params.perPage ?? DEFAULT_PER_PAGE));
   const search = (params.search ?? '').trim();
 
-  const where = search
-    ? {
-        OR: [
-          { username: { contains: search } },
-          { email: { contains: search } },
-        ],
-      }
-    : {};
+  const where = search ? { username: { contains: search } } : {};
 
   const [total, rows] = await Promise.all([
     prisma.user.count({ where }),

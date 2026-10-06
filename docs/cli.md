@@ -223,7 +223,7 @@ CLI 写下的每一条审计日志都落 `visibility='internal'`：**不进** `/
 
 | 命令 | 作用 |
 |------|------|
-| `user search [关键词]` | 按用户名 / 邮箱搜 |
+| `user search [关键词]` | 按用户名搜 |
 | `user show <username>` | 详情：角色 / 禁言 / 鱼干余额 / 文章数 / 评论数 |
 | `user reset-password <username> [generate\|manual] [--password <新密码>] --reason <原因>` | 重置密码（旧会话全部失效）。`manual` 模式**必须**给 `--password`（≥8 位）；`generate` 模式不给，**给了会报错**（不是静默忽略） |
 | `user ban <username> --hours N --reason <原因>` | 禁言 |

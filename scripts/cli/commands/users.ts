@@ -54,7 +54,7 @@ const reasonArg = {
 export const userCommands: CommandSpec[] = [
   {
     name: 'user search',
-    summary: '按用户名 / 邮箱搜索用户',
+    summary: '按用户名搜索用户',
     group: 'users',
     order: 0,
     readOnly: true,
@@ -64,7 +64,7 @@ export const userCommands: CommandSpec[] = [
         flags: ['--keyword', '-q'],
         positional: 0,
         label: '关键词',
-        help: '用户名或邮箱片段；留空 = 最近 50 个',
+        help: '用户名片段；留空 = 最近 50 个',
         prompt: { type: 'input' as const },
       },
       { name: 'page', flags: ['--page'], kind: 'int', label: '页码', help: '默认 1' },
