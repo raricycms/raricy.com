@@ -40,7 +40,7 @@ function collectDocFiles(dir: string, out: string[] = []): string[] {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     const p = path.join(dir, e.name);
     if (e.isDirectory()) collectDocFiles(p, out);
-    else if (e.name.endsWith('.md')) out.push(path.relative(ROOT, p));
+    else if (e.name.endsWith('.md')) out.push(path.relative(ROOT, p).split(path.sep).join('/'));
   }
   return out;
 }
