@@ -59,7 +59,8 @@ export async function register(): Promise<void> {
       // 练手盘强平引擎。**与前三个循环不是一类东西**：它会自己动手结清仓位
       //（前三个只投递 / 只写展示缓存）。见 src/lib/market-liquidator.ts 的文件头。
       // ⚠️ **起不来不是「少一个附加功能」**：它同时是杠杆开仓的闸门 ——
-      // openPosition 会因此拒卖杠杆仓（1 倍仓不受影响）。所以这一段的失败日志
+      // openPosition 会因此拒卖所有会爆仓的仓位（杠杆仓与空头，含 1× 空头；
+      // 只有 1× 多头不受影响）。所以这一段的失败日志
       // 说的是「杠杆暂停」，与上面几条不一样。
       const { startMarketLiquidator } = await import('./lib/market-liquidator');
       startMarketLiquidator();
