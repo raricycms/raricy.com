@@ -57,7 +57,7 @@ export default async function FishMarketPage() {
       {!user.focusMode && (
         <p className="market-foot">
           <Link className="market-foot__link" href="/fish/trade">
-            <TrendingUp aria-hidden="true" /> 鱼干练手盘（买入 BTC / ETH）
+            <TrendingUp aria-hidden="true" /> 鱼干练手盘（做多 / 做空 BTC 与 ETH）
           </Link>
         </p>
       )}

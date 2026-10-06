@@ -27,7 +27,7 @@ import { FISH_UNIT_SCALE } from '@/lib/fish-units';
 /** 投 1 条 = 10000 个存储单位。 */
 const ONE = FISH_UNIT_SCALE;
 
-/** 页面传进来的白名单（**生产上来自 MARKET_SYMBOLS / LEVERAGE_OPTIONS**）。 */
+/** 页面传进来的展示档（**生产上来自 MARKET_SYMBOLS / LEVERAGE_PRESETS**）。 */
 const UNIVERSE = { symbols: ['BTCUSDT', 'ETHUSDT'], leverages: [1, 2, 3, 5, 10, 20] };
 
 const row = (over: Partial<SettledRow> = {}): SettledRow => ({

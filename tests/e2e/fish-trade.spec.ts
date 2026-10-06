@@ -462,7 +462,7 @@ test('★ 杠杆买入：档位选得动，弹窗与持仓行都摊开倍数与�
   // 直接写 .trade-field 会撞上 strict mode（不是产品坏了，是选择器太宽）
   const levField = page.locator('.trade-field', { has: page.locator('.trade-leverage') });
 
-  // 最高档 20× 也在这排里（加档位只改 LEVERAGE_OPTIONS）：距离 5%
+  // 快捷档 20× 也在这排里（改快捷档只动 LEVERAGE_PRESETS）：距离 5%
   const twentyX = page.getByRole('button', { name: '20×', exact: true });
   await expect(twentyX).toBeEnabled();
   await twentyX.click();

@@ -81,7 +81,7 @@ export default async function FishPage() {
                 <p>每日签到可获得小鱼干。也可以去练手盘碰碰运气 ——</p>
                 <p>
                   <Link href="/fish/trade" className="fish-card__info-link">
-                    鱼干练手盘：买入 BTC / ETH，价格涨跌换鱼干
+                    鱼干练手盘：做多 / 做空 BTC 与 ETH，价格涨跌换鱼干
                   </Link>
                 </p>
                 <p>打过的仗都记着 ——</p>
