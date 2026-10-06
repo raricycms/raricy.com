@@ -1,9 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // feed-service.ts — 文章投喂小鱼干
 //
-// 【模型】投喂者付全额，作者获 80% 分成；单用户对单篇累计上限 5。
-//   另外那 20% **由系统回收、不落任何人的账** —— 本地没有系统账户行，别为了
-//   「配平」给谁补一笔。这是刻意的，不是漏写。
+// 【模型】投喂者付全额，作者收到全额，不收手续费；单用户对单篇累计上限 5。
 //
 // 【写路径】扣投喂者 + 加作者分成 + BlogFeed 累计 + Blog.fishCount 累加 + 两条流水，
 //   **全部在一个 SQLite 事务里提交**：要么都成、要么都不成，没有中间态，
@@ -22,7 +20,7 @@
 import { prisma } from './db';
 import { nowForDb } from './db-time';
 import { postEntry, InsufficientFishError } from './fish-service';
-import { FISH_UNIT_SCALE, fishToUnits, unitsToFish } from './fish-units';
+import { fishToUnits, unitsToFish } from './fish-units';
 import { sendNotification } from './notification-service';
 import { frameUrlFor } from './frame-service';
 
@@ -122,7 +120,7 @@ export async function getFeeders(
 }
 
 /**
- * 用户投喂小鱼干给文章。作者收到 80%（另外 20% 由系统回收，不落任何人的账）。
+ * 用户投喂小鱼干给文章。作者收到全额，不收手续费。
  *
  * 余额、两条流水、BlogFeed、Blog.fishCount 全在**一个事务**里 —— 任一步失败
  * （余额不足 / 累计超限 / 写库报错）都整笔回滚，不存在「扣了投喂者、作者没收到」
@@ -159,10 +157,7 @@ export async function feedBlog(
     return { ok: false, code: 404, message: '用户不存在' };
   }
 
-  // 作者分成 80%，收敛到业务精度。amount 恒为 1~5 的整数（上面刚校验过），所以 0.8×n
-  // 本来就精确（0.8 / 1.6 / 2.4 / 3.2 / 4.0）；这里乘 FISH_UNIT_SCALE 而不是写死 10，
-  // 是为了不再留一处「手写的标度」—— 那种东西改精度时不会报错，只会静默少几位。
-  const authorIncome = Math.round(amount * 0.8 * FISH_UNIT_SCALE) / FISH_UNIT_SCALE;
+  const authorIncome = amount;
 
   // 业务错误容器：事务回调里抛出后在外层转成 FeedError（不当作 500）。
   class FeedBusinessError extends Error {
@@ -192,12 +187,10 @@ export async function feedBlog(
         relatedUserId: blog.authorId,
       });
 
-      // 1.2 作者收入 80%（走内核：加余额 + 一条 feed_receive 流水）。
-      //     另外 20% **不落任何人的账** —— 系统回收不由一行流水表达，
-      //     别为了「配平」给谁补一笔。
+      // 1.2 作者全额收入（与投喂者出账使用同一份存储金额）。
       await postEntry(tx, {
         userId: blog.authorId,
-        units: fishToUnits(authorIncome),
+        units,
         type: 'feed_receive',
         description: `文章「${blog.title}」被投喂`,
         referenceType: 'blog',

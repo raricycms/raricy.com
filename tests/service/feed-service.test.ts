@@ -13,7 +13,7 @@
 // 【与 fish-service.test.ts 的分工】那边已经覆盖：
 //   · 余额不足拒绝（余额 + 流水维度）
 //   · ★ 并发超扣防护（带谓词的条件写）
-//   · 扣款流水为负数 / 作者分成 80% 的基本形态
+//   · 扣款流水为负数 / 作者全额收入的基本形态
 // 本文件不重复这些，专注它没覆盖的部分：
 //   · 单篇每人上限 5（含多次累加、超限回滚、并发）
 //   · Blog.fishCount 冗余计数
@@ -23,8 +23,7 @@
 //
 // 【账目自洽】凡改过余额的用例末尾都调 expectLedgerConsistent()：**每个人的余额 ==
 // 他自己的流水之和**（账户搬进站内后没有第二个存储可供核对了，内部一致性就是唯一的
-// 证明）。注意它是**绝对口径**，且是「每人各自」而不是「全站之和」—— 平台回收的那
-// 20% 本来就不落在任何人的账上（见下方「作者分成」一节）。
+// 证明）。注意它是**绝对口径**，且是「每人各自」而不是只检查「全站之和」。
 // 夹具里带余额的用户一律用 `makeFishUser()` 造（余额经由记账内核进入，与线上同构）。
 //
 // 【DB】真实 SQLite（tests/.tmp/test-<pid>-<rand>.db），不 mock 记账与数据库 ——
@@ -204,7 +203,7 @@ describe('★ 单用户单篇累计上限 5', () => {
     expect(unitsToFish(feed.amount), 'BlogFeed 累计必须正好 5（存储单位换回鱼干）').toBe(5);
     expect(await snapshot(feeder.id, author.id, blog.id)).toMatchObject({
       feederBalance: 15, // 20 - 5
-      authorBalance: 4, // 5 * 0.8
+      authorBalance: 5, // 全额到账
       fishCount: 5,
     });
     await expectLedgerConsistent('分多次投满之后');
@@ -222,7 +221,7 @@ describe('★ 单用户单篇累计上限 5', () => {
       await snapshot(feeder.id, author.id, blog.id),
       '越界拒绝必须整体回滚：扣款、作者入账、两条流水、fishCount 一个都不能留'
     ).toEqual(before);
-    expect(before).toMatchObject({ feederBalance: 17, authorBalance: 2.4, fishCount: 3, fedAmount: 3 });
+    expect(before).toMatchObject({ feederBalance: 17, authorBalance: 3, fishCount: 3, fedAmount: 3 });
     await expectLedgerConsistent('越界被拒之后');
   });
 
@@ -370,14 +369,14 @@ describe('Blog.fishCount 冗余计数', () => {
 
 // ── 作者分成：金额守恒 + 流水一一对应 ───────────────────────────────────────
 
-describe('作者分成 80% 与金额守恒', () => {
+describe('作者全额收入与金额守恒', () => {
   it.each([
-    [1, 0.8],
-    [2, 1.6],
-    [3, 2.4],
-    [4, 3.2],
-    [5, 4],
-  ])('投喂 %i → 作者入账 %f（round(amount*0.8, 1)）', async (amount, expected) => {
+    [1, 1],
+    [2, 2],
+    [3, 3],
+    [4, 4],
+    [5, 5],
+  ])('投喂 %i → 作者入账 %f（全额，无手续费）', async (amount, expected) => {
     const { author, blog, feeder } = await scene({ feederFish: 10 });
 
     const r = await feedBlog(blog.id, feeder.id, amount);
@@ -390,7 +389,7 @@ describe('作者分成 80% 与金额守恒', () => {
     await expectLedgerConsistent(`投喂 ${amount} 之后`);
   });
 
-  it('两侧流水一一对应：一次投喂产生且仅产生 2 条流水，金额互为 -amount / +80%', async () => {
+  it('两侧流水一一对应：一次投喂产生且仅产生 2 条流水，金额互为 -amount / +amount', async () => {
     const { author, blog, feeder } = await scene({ feederFish: 10 });
 
     await feedBlog(blog.id, feeder.id, 3);
@@ -413,7 +412,7 @@ describe('作者分成 80% 与金额守恒', () => {
     });
     expect(income).toMatchObject({
       userId: author.id,
-      amount: fishToUnits(2.4),
+      amount: fishToUnits(3),
       type: 'feed_receive',
       referenceType: 'blog',
       referenceId: blog.id,
@@ -443,28 +442,25 @@ describe('作者分成 80% 与金额守恒', () => {
 
     const snap = await snapshot(feeder.id, author.id, blog.id);
     expect(snap.feederBalance, '10 − 2 − 3').toBe(5);
-    expect(snap.authorBalance, '0 + 1.6 + 2.4').toBe(4);
+    expect(snap.authorBalance, '0 + 2 + 3').toBe(5);
     // 两侧都要对上（夹具那笔开户流水也算 —— 它同样是真实的一笔）
     expect(snap.feederBalance).toBeCloseTo(sum(feederTxs), 6);
     expect(snap.authorBalance).toBeCloseTo(sum(authorTxs), 6);
     await expectLedgerConsistent('两次投喂之后');
   });
 
-  it('平台留成 20%：投喂者支出 5，作者只得 4 —— 差额 1 不落任何人的账', async () => {
+  it('零手续费：投喂者支出 5，作者收到 5，全站总余额守恒', async () => {
     const { author, blog, feeder } = await scene({ feederFish: 5, authorFish: 0 });
     await feedBlog(blog.id, feeder.id, 5);
 
     const snap = await snapshot(feeder.id, author.id, blog.id);
     expect(snap.feederBalance).toBe(0);
-    expect(snap.authorBalance).toBe(4);
-    // 那 1 条是**平台回收**：本地没有系统账户这一侧，也没有第二处存储需要配平。
-    // 这是刻意的（见 feed-service.ts 文件头），别为了「全站之和守恒」给谁补一笔。
-    // 账目自洽的口径是**每人各自**：余额 == 他自己的流水之和 —— 上面那条守恒用例
-    // 与 expectLedgerConsistent() 都是这个口径。
-    await expectLedgerConsistent('平台回收 20% 之后');
+    expect(snap.authorBalance).toBe(5);
+    expect(snap.feederBalance! + snap.authorBalance!).toBe(5);
+    await expectLedgerConsistent('零手续费投喂之后');
   });
 
-  it('自己投喂自己的文章：允许（刻意不做拦截），净损失 20%，且不发通知给自己', async () => {
+  it('自己投喂自己的文章：允许（刻意不做拦截），余额不变，且不发通知给自己', async () => {
     const self = await makeFishUser(10);
     const blog = await makeBlog({ authorId: self.id, title: '自投' });
 
@@ -474,7 +470,7 @@ describe('作者分成 80% 与金额守恒', () => {
     const bal = unitsToFish(
       (await prisma.user.findUniqueOrThrow({ where: { id: self.id } })).driedFish
     );
-    expect(bal, '10 - 5 + 4 = 9（自投净亏 20%）').toBe(9);
+    expect(bal, '10 - 5 + 5 = 10（自投余额不变）').toBe(10);
     expect(
       await prisma.fishTransaction.count({ where: { userId: self.id, type: { in: FEED_TYPES } } }),
       '仍然是两条流水（支出 + 收入）'
@@ -619,7 +615,7 @@ describe('★★ 事务中途故障：本地零痕迹、异常如实上抛', () 
     await withFeedWriteFailure(() => feedBlog(blog.id, feeder.id, 3)).catch(() => null);
 
     expect(await snapshot(feeder.id, author.id, blog.id), '第二笔必须完全消失').toEqual(before);
-    expect(before).toMatchObject({ feederBalance: 8, authorBalance: 1.6, fedAmount: 2, txCount: 2 });
+    expect(before).toMatchObject({ feederBalance: 8, authorBalance: 2, fedAmount: 2, txCount: 2 });
     await expectLedgerConsistent('成功一笔、失败一笔之后');
   });
 
@@ -632,7 +628,7 @@ describe('★★ 事务中途故障：本地零痕迹、异常如实上抛', () 
     expect(retry).toMatchObject({ ok: true, fedTotal: 3, remaining: 2 });
     expect(await snapshot(feeder.id, author.id, blog.id), '只能扣一次 3').toEqual({
       feederBalance: 7,
-      authorBalance: 2.4,
+      authorBalance: 3,
       fishCount: 3,
       fedAmount: 3,
       txCount: 2,

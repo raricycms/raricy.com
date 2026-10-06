@@ -68,7 +68,7 @@ describe('getBalance', () => {
     ).toBe(0);
   });
 
-  it('余额是 Float，小数精度如实返回（作者投喂分成 80% 会产生小数）', async () => {
+  it('小数余额如实返回（历史投喂分成会留下小数）', async () => {
     const u = await makeUser({ driedFish: 0.8 });
     expect(await getBalance(u.id)).toBe(0.8);
   });
@@ -196,7 +196,7 @@ describe('addFish（加钱 + 写流水）', () => {
     expect(await prisma.fishTransaction.count()).toBe(0);
   });
 
-  it('小数金额被接受（存储是 0.1 鱼干整数单位；投喂分成 0.8/篇 依赖这一点）', async () => {
+  it('小数金额被接受（存储是 0.1 鱼干整数单位；历史投喂分成的小数仍需保留）', async () => {
     const u = await makeUser({ driedFish: 0 });
     await prisma.$transaction((tx) =>
       addFish(tx, { userId: u.id, amount: 0.8, type: 'feed_receive' })
@@ -349,8 +349,8 @@ describe('扣款：余额不足', () => {
     const income = await prisma.fishTransaction.findFirstOrThrow({
       where: { userId: author.id, type: 'feed_receive' },
     });
-    expect(unitsToFish(income.amount), '作者分成 80%').toBe(1.6);
-    expect(await getBalance(author.id)).toBe(1.6);
+    expect(unitsToFish(income.amount), '作者全额收入').toBe(2);
+    expect(await getBalance(author.id)).toBe(2);
   });
 });
 
