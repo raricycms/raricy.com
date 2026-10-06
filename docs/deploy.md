@@ -240,6 +240,21 @@ DATABASE_URL="file:/绝对路径/instance/database/db.db" npm run migrate -- up
 
 `npm run migrate -- verify` 比对已应用迁移的 checksum 与当前文件，发现漂移会报错。
 
+#### 取消投喂手续费后的历史返还
+
+此功能无需新迁移。先部署并重启**作者全额到账**的新代码，再在生产环境中指向正在使用的
+同一份 `db.db` 执行（不要误用 `.env` 的开发库）：
+
+```bash
+DATABASE_URL="file:/绝对路径/instance/database/db.db" npm run cli -- fish refund-feed-fees --dry-run
+DATABASE_URL="file:/绝对路径/instance/database/db.db" npm run cli -- fish refund-feed-fees --yes
+DATABASE_URL="file:/绝对路径/instance/database/db.db" npm run cli -- fish refund-feed-fees --dry-run
+```
+
+最后一次预览应为零欠款。按实际投喂流水减去作者已收、历史补发和已退款核算；每位作者的
+余额、退款流水与幂等登记同事务提交。中断或部分失败后重跑同一命令，已到账不会重发。
+对象及异常处理详见 `docs/cli.md`「小鱼干」一节。
+
 #### 含数据变换的迁移（必须停服，别滚动）
 
 上面那套流程对**纯 DDL** 迁移够用（加个表、加个列，新旧代码都能跑）。但**含数据变换**的

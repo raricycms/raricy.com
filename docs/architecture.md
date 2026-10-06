@@ -189,7 +189,8 @@ API 端点位于 `src/app/api/<group>/<verb>/route.ts`，**薄**层：参数校�
   「余额改了、流水没写」这类静默账目损坏的入口。
 - **六条写路径，全部一个事务**：签到（`checkin-service.ts`：建记录 + 发鱼干 + 写流水
   同事务，见 `docs/bot/checkin-bot.md`）/ 投喂
-  （`feed-service.ts`）/ 管理员发扣与群发补偿（`fish-admin.ts`、`fish-compensate.ts`）/
+  （`feed-service.ts`，作者全额到账、无手续费）/ 管理员发扣与补偿
+  （`fish-admin.ts`、`fish-compensate.ts`、历史投喂手续费返还 `feed-fee-refund.ts`）/
   用户间转账（`fish-market-service.ts`）/ 练手盘开平仓（`market-service.ts`）/
   **租头像框**（`frame-shop-service.ts`，见 §6.14）。
   **注册建号不再属于这里** —— 它当年要走一环「在远端建账户」，现在只是建一行
@@ -205,6 +206,11 @@ API 端点位于 `src/app/api/<group>/<verb>/route.ts`，**薄**层：参数校�
     同键不同参数 → 409。记录写在业务写入的**同一个事务**里，所以「钱动了但键没记」
     在结构上不可能发生；并发同键由唯一约束挡下。
   - 群发补偿按 `batchId` 派生键，批次中断后续跑跳过已发放的人。
+  - 历史投喂手续费返还按原作者 / 文章 / 累计实付派生键。逐作者事务内核算
+    **投喂实付 − 作者已收 − 历史补发 − 已返还**，写 `feed_fee_refund` 流水，
+    已返还计入收入所以重跑欠款归零。包含软删文章及后来降档的作者（归还原收入，
+    不是新增赚取渠道）。上线先切换免手续费代码，再执行 `fish refund-feed-fees`，
+    见 `docs/cli.md`「小鱼干」一节。
   - **签到 / 投喂 / 管理员单次发扣 / 练手盘开仓 / 注册建号一律不登记** ——
     它们的键带随机后缀，登记了也没有去重价值，只会把表撑大。
 - **共享单号 `fish_transactions.transfer_id`**：一笔转账的两条流水（发送方 `transfer`
@@ -1348,7 +1354,7 @@ MP3 的帧同步要核版本 / 层 / 位速率字段（只判 `0xFF` 打头太�
   → middleware.ts  ✓ 同源 + core+ (装饰器)
   → feed-service.ts 一个事务：
         投喂者扣款（postEntry，条件谓词防超扣）
-        作者分成 +80%（postEntry）
+        作者全额收入（postEntry，与出账金额相等，无手续费）
         BlogFeed 累计 + Blog.fishCount
   → COMMIT
   → 通知作者（提交之后才发，失败只 warn，不影响已成交的钱）
