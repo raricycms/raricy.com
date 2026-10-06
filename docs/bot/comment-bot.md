@@ -542,7 +542,7 @@ Cookie: raricy_session=<JWT>
 发评论时带 `anonymous: true` 即以化名发表。规则：
 
 - **同一篇文章内，同一个人始终同一个化名**（第一名是 `Alice`，第二名 `Bob`，依次到 `Zach`；
-  之后是 `Angry Alice`…，再往后是 `You Win #677`）。跨文章互不相干。
+  之后是 `Angry Alice`…，再往后是 `You Win #703`）。跨文章互不相干。
 - 化名**不是账号**：`author.id` 为 `null`，`is_admin` 恒为 `false`，`frame_url` 恒为 `null`，
   `avatar_url` 是按化名哈希出来的确定性头像。**机器人拿不到、也不该去猜真实作者**。
 - 是否允许由**文章作者**决定：`GET /api/blogs/:id` 的 `allow_anonymous_comments`
