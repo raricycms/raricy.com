@@ -352,7 +352,7 @@ model BlogComment {
   isDeleted   Boolean?  @default(false) @map("is_deleted")
   likesCount  Int?      @default(0) @map("likes_count")
   /// 匿名评论的**化名序号**（1-based，同一篇文章内每人一个号；非空 ⇔ 这条是匿名评论）。
-  /// 化名（Alice / Angry Alice / You Win #677 …）由序号纯函数推出，见
+  /// 化名（Alice / Angry Alice / You Win #703 …）由序号纯函数推出，见
   /// src/lib/anon-identity.ts —— 序号冻在这一列，所以化名表将来怎么改都不会
   /// 让历史评论改名。序号来自 blog_anon_identities（同一个作者在同一篇文章里始终同号）。
   ///

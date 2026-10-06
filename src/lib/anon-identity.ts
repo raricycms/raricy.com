@@ -14,17 +14,17 @@
 //   seq 1..26      →  Alice, Bob, Carol, … Zach            （26 个名字，A→Z 打头）
 //   seq 27..52     →  Angry Alice, Angry Bob, …            （前缀 1：「Angry」，A 打头）
 //   …
-//   seq 651..676   →  Yawning Alice … Yawning Zach         （前缀 25：「Yawning」，Y 打头）
-//   seq 677 起      →  You Win #677, You Win #678, …        （游戏通关那种彩蛋）
+//   seq 677..702   →  Zealous Alice … Zealous Zach         （前缀 26：「Zealous」，Z 打头）
+//   seq 703 起      →  You Win #703, You Win #704, …        （游戏通关那种彩蛋）
 //
-// 26 个前缀 × 26 个名字 = 676 —— 于是第 677 个正好是 `You Win #677`。这不是巧合：
-// 站长给的边界就是这个数，而 676 = 26×26 是**唯一**能同时满足
-// 「首轮 26 个裸名」「次轮起加前缀」「到 677 换彩蛋」的排法。
+// 27 个前缀 × 26 个名字 = 702。规则是「排到 **ZZ**」—— 按这个排法字面成立：空串那一行
+// 排完裸名 `Alice`…`Zach`，再依次用 A–Z 各开一行，最后一行正是 `Zealous Zach`
+// （前缀 Z × 名字 Z）。第 703 个起才是 `You Win #703`。
 //
-// ⚠️ 所以前缀表里有且只有 25 个词（A–Y），第 0 个是**空串**（首轮裸名用它）。
-//   「到 ZZ」在上面的排法里对应的是 `Yawning Zach`（最后一个常规化名）—— 站长那句
-//   「ZZ」是「排到最后一格」的通俗说法，不是字面两个 Z。**别为了凑字面的 ZZ 去加第 26 个
-//   前缀词**：那会把总数顶到 702，`You Win #677` 的边界随之失效（而它是对外承诺过的）。
+// ⚠️ 前缀表里有且只有 27 个词：第 0 个是**空串**（首轮裸名用它），其余 26 个依次以
+//   A–Z 打头。**别删掉 Z 那一项**（或任何别的）：总数会从 702 掉到 676，末位变成
+//   `Yawning Zach`（YZ），「排到 ZZ」不再字面成立，彩蛋边界也跟着提前 —— 而那个边界
+//   是对外承诺过的（`docs/bot/comment-bot.md` §10.4）。
 //
 // 名字取经典的「密码学协议人物」表（Alice/Bob/Carol/Mallory…），前缀尽量带站内元素
 // （F = Fish 鱼干、H = Hungry 投喂、T = Turbo 练手盘、P = Pixel 头像框、L = Lucky 彩票档…）。
@@ -62,9 +62,9 @@ export const PSEUDONYM_NAMES = [
 ] as const;
 
 /**
- * 26 个前缀，与名字**同长**（两者相乘 = 676，见文件头那段算术）。
+ * 27 个前缀 = 空串 + A–Z，比名字表**多一个**（见文件头那段算术）。
  * 第 0 项是空串 —— 首轮就是裸名字（「第一个是 Alice」）。
- * 其余 25 个依次以 A–Y 打头；站内元素尽量塞在这里。
+ * 其余 26 个依次以 A–Z 打头；站内元素尽量塞在这里。
  */
 export const PSEUDONYM_PREFIXES = [
   '',
@@ -93,25 +93,27 @@ export const PSEUDONYM_PREFIXES = [
   'Wobbly',
   'Xenial',     // 待客友善 —— 对匿名访客正合适
   'Yawning',
+  'Zealous',    // Z 那一行 —— 它的存在让末位正好是 `Zealous Zach`（字面的 ZZ）
 ] as const;
 
 /**
- * 常规化名的总数 = 26 × 26 = 676。
- * 超过它就走 `You Win #<序号>`（序号即 1-based 的 seq，所以第一个彩蛋正好是 #677）。
+ * 常规化名的总数 = 27 × 26 = 702。
+ * 超过它就走 `You Win #<序号>`（序号即 1-based 的 seq，所以第一个彩蛋正好是 #703）。
  */
 export const PSEUDONYM_VARIANTS = PSEUDONYM_NAMES.length * PSEUDONYM_PREFIXES.length;
 
-// 上面两张表必须**同长**：不同长的话 floor(i/26) 会翻出 undefined，拼出
-// 「undefined Alice」这种化名 —— 不报错、只是名字难看，最难发现。启动即断言。
-if (PSEUDONYM_PREFIXES.length !== PSEUDONYM_NAMES.length) {
-  throw new Error('PSEUDONYM_PREFIXES 与 PSEUDONYM_NAMES 必须同长（见 anon-identity.ts 头部）');
+// 前缀表必须**正好比名字表多一个**（多出来的那个是首行的空串）。长度不对的话
+// floor(i/26) 会翻出 undefined，拼出「undefined Alice」这种化名 ——
+// 不报错、只是名字难看，最难发现。启动即断言。
+if (PSEUDONYM_PREFIXES.length !== PSEUDONYM_NAMES.length + 1) {
+  throw new Error('PSEUDONYM_PREFIXES 必须比 PSEUDONYM_NAMES 多一个（空串那一项，见 anon-identity.ts 头部）');
 }
 
 /**
  * 序号（1-based）→ 化名。纯函数，无 IO。
  *
  * 越界不抛：化名是渲染层的东西，为一条脏数据把整棵评论树炸掉不划算。
- * seq < 1 折到第 1 号，seq > 676 就是彩蛋档（那个分支天然容得下任意大的序号）。
+ * seq < 1 折到第 1 号，seq > 702 就是彩蛋档（那个分支天然容得下任意大的序号）。
  */
 export function pseudonymForSeq(seq: number): string {
   if (seq > PSEUDONYM_VARIANTS) return `You Win #${seq}`;

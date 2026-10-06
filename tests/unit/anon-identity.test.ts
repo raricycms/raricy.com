@@ -1,9 +1,9 @@
 // anon-identity.ts —— 化名表与发号
 //
 // 【为什么值得单独钉】化名是纯函数推出来的，而它的**边界**是站长许过的承诺
-// （「第一个是 Alice… 到 677 就叫 You Win #677」）。表长、前缀与名字的对应、
-// 676/677 那一格，任何一处偏一格都不会报错 —— 只会让第 677 个人叫成别的，
-// 而且平时看不见（要真有 676 个人在同一篇文章下匿名评论才会露出来）。
+// （「第一个是 Alice… 排到 ZZ，之后就叫 You Win #703」）。表长、前缀与名字的对应、
+// 702/703 那一格，任何一处偏一格都不会报错 —— 只会让第 703 个人叫成别的，
+// 而且平时看不见（要真有 702 个人在同一篇文章下匿名评论才会露出来）。
 
 import { describe, it, expect } from 'vitest';
 import {
@@ -15,12 +15,12 @@ import {
 } from '@/lib/anon-identity';
 
 describe('化名表', () => {
-  it('两张表同长（不同长会拼出「undefined Alice」而不报错）', () => {
+  it('前缀表比名字表多一个（长度不对会拼出「undefined Alice」而不报错）', () => {
     expect(PSEUDONYM_NAMES.length).toBe(26);
-    expect(PSEUDONYM_PREFIXES.length).toBe(26);
+    expect(PSEUDONYM_PREFIXES.length).toBe(27);
   });
 
-  it('首轮不带前缀（第 0 个前缀是空串），其余 25 个以 A–Y 打头', () => {
+  it('首轮不带前缀（第 0 个前缀是空串），其余 26 个以 A–Z 打头', () => {
     expect(PSEUDONYM_PREFIXES[0]).toBe('');
     for (let i = 1; i < PSEUDONYM_PREFIXES.length; i++) {
       expect(PSEUDONYM_PREFIXES[i][0]).toBe(String.fromCharCode('A'.charCodeAt(0) + i - 1));
@@ -36,8 +36,8 @@ describe('化名表', () => {
     }
   });
 
-  it('常规档总数 = 26×26 = 676（`You Win #677` 那个 677 的来处）', () => {
-    expect(PSEUDONYM_VARIANTS).toBe(676);
+  it('常规档总数 = 27×26 = 702（`You Win #703` 那个 703 的来处）', () => {
+    expect(PSEUDONYM_VARIANTS).toBe(702);
   });
 });
 
@@ -62,17 +62,18 @@ describe('pseudonymForSeq：序号 → 化名', () => {
     expect(pseudonymForSeq(53)).toBe('Bashful Alice');
   });
 
-  it('676 是最后一个常规化名', () => {
-    expect(pseudonymForSeq(676)).toBe('Yawning Zach');
+  it('最后一轮是 Z 前缀，702 是最后一个常规化名（末位正好凑成字面的 ZZ）', () => {
+    expect(pseudonymForSeq(677)).toBe('Zealous Alice');
+    expect(pseudonymForSeq(702)).toBe('Zealous Zach');
   });
 
-  it('677 起走彩蛋档，序号即编号（#677 是第一个）', () => {
-    expect(pseudonymForSeq(677)).toBe('You Win #677');
-    expect(pseudonymForSeq(678)).toBe('You Win #678');
+  it('703 起走彩蛋档，序号即编号（#703 是第一个）', () => {
+    expect(pseudonymForSeq(703)).toBe('You Win #703');
+    expect(pseudonymForSeq(704)).toBe('You Win #704');
     expect(pseudonymForSeq(9999)).toBe('You Win #9999');
   });
 
-  it('1..676 全不重复（重号 = 两个人同名）', () => {
+  it('1..702 全不重复（重号 = 两个人同名）', () => {
     const seen = new Set<string>();
     for (let seq = 1; seq <= PSEUDONYM_VARIANTS; seq++) seen.add(pseudonymForSeq(seq));
     expect(seen.size).toBe(PSEUDONYM_VARIANTS);
@@ -105,7 +106,7 @@ describe('pseudonymAvatarUrl：按化名哈希出头像', () => {
   });
 
   it('地址里没有空格与中文（带空格的化名也要能直接进 href）', () => {
-    for (const name of ['Alice', 'Angry Alice', 'You Win #677']) {
+    for (const name of ['Alice', 'Angry Alice', 'You Win #703']) {
       expect(pseudonymAvatarUrl(name)).toMatch(/^\/api\/avatar\/[A-Za-z0-9~-]+$/);
     }
   });

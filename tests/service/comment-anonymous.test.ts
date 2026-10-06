@@ -6,7 +6,7 @@
 //   3. 通知与审计日志**不能**把真身漏出去；
 //   4. 作者本人仍然删得掉自己的评论。
 // 任何一条破了都不报错 —— 页面照常渲染，只是匿名不再是匿名。
-// 名字表本身的边界（Alice / Angry Alice / You Win #677）在
+// 名字表本身的边界（Alice / Angry Alice / You Win #703）在
 // tests/unit/anon-identity.test.ts。
 
 import { describe, it, expect, beforeEach } from 'vitest';
