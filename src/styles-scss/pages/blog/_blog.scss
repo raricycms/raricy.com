@@ -127,8 +127,11 @@ a {
 
 
 .blog-content-container blockquote p {
-    margin-block-start: 0px !important;
-    margin-block-end: 0px !important;
+    margin: 0;
+    // 空行生成的新段落需要额外留白，才能与段内自动折行区分。
+    & + p {
+        margin-block-start: 1em;
+    }
 }
 
 /* 列表样式 */
