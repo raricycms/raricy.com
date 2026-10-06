@@ -80,6 +80,7 @@ export function ensureSchema() {
   if (fs.existsSync(TEMPLATE_DB)) {
     fs.copyFileSync(TEMPLATE_DB, dbPath);
   } else {
+    fs.writeFileSync(dbPath, ''); // 同 global-setup：Windows 引擎需要已存在的空 SQLite 文件。
     // 兜底：globalSetup 没跑成（比如模板被手工删掉、或有人在跳过 config 的场景下
     // 单独 import 本模块）时退回自建，保证用例仍能跑。
     // Windows 下 npm 可执行名是 npx.cmd（批处理），execFileSync 无法直接拉起

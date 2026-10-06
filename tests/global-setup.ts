@@ -93,6 +93,9 @@ export default function globalSetup() {
   for (const suffix of ['', ...SQLITE_SIDECARS]) {
     fs.rmSync(TEMPLATE_DB + suffix, { force: true });
   }
+  // Windows 的 Prisma 引擎对尚不存在的 SQLite 文件可能只报空的 Schema engine error。
+  // 先建空文件，再由 db push 建表；这条路径始终是上面定义的临时模板库。
+  fs.writeFileSync(TEMPLATE_DB, '');
 
   // execSync 默认走 shell（POSIX /bin/sh、Windows cmd.exe），跨平台都能解析 npx。
   // 命令参数全是固定字面量，无注入面。（同 helpers/db.ts 的既有注解）

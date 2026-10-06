@@ -220,6 +220,8 @@ export default async function globalSetup() {
     fs.rmSync(E2E_DB + suffix, { force: true });
   }
 
+  // 同 vitest global-setup：Windows 引擎需要已存在的空 SQLite 文件。
+  fs.writeFileSync(E2E_DB, '');
   const url = `file:${E2E_DB}`;
   // 用 db push 而非 migrate：本库的 schema 是从历史实现建好的库 introspect 出来的，
   // 没有 migration 历史，migrate 会要求先 baseline。
