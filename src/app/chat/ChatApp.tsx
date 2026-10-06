@@ -1647,6 +1647,7 @@ export default function ChatApp({
 
             <RichComposer
               className="chat-composer"
+              mentionScope={activeChannel ? { kind: 'chat', id: activeChannel.id } : null}
               text={text}
               sending={sending}
               sendDisabled={!activeId}

@@ -23,6 +23,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { BookOpenText, IdCard, Image as ImageIcon, Images, Smile } from 'lucide-react';
 import { IMAGE_ACCEPT } from '@/lib/image-client';
+import type { MentionScope } from '@/lib/mention-shared';
+import MentionInput from './MentionInput';
 import type { PendingImage } from './usePendingImage';
 import ImagePickerModal from './ImagePickerModal';
 import StickerPicker, { type StickerPickKind } from './StickerPicker';
@@ -84,9 +86,12 @@ export default function RichComposer({
   stickerPickClosesPanel = true,
   hintExtra,
   anonToggle = null,
+  mentionScope,
 }: {
   /** BEM 前缀，见文件头「类名由调用方注入」。 */
   className: string;
+  /** 当前文章或会话；选人提示由服务端按这个范围过滤。 */
+  mentionScope: MentionScope | null;
   text: string;
   sending: boolean;
   /** 除「正在发送」之外的禁用原因（讨论：没有选中频道）。 */
@@ -283,8 +288,10 @@ export default function RichComposer({
             }}
           />
         </div>
-        <textarea
-          ref={textareaRef}
+        <MentionInput
+          scope={mentionScope}
+          textareaRef={textareaRef}
+          onTextChange={onTextChange}
           className={`${className}__input`}
           rows={1}
           placeholder={

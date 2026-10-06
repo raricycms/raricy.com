@@ -14,6 +14,44 @@
 // （幽灵工具条 → 自动加高文本框 → 底条：左侧提示 + 右下角提交）。
 // ─────────────────────────────────────────────────────────────────────────────
 
+@use '../abstracts/mixins' as m;
+
+.mention-input {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.mention-picker {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0;
+  z-index: 20;
+  width: min(100%, 360px);
+  padding: 8px;
+  border-radius: 20px;
+  background: var(--color-background-card);
+  color: var(--color-text-primary);
+  box-shadow: var(--shadow-card-brand);
+  max-height: 260px;
+  overflow-y: auto;
+}
+.mention-picker__hint,
+.mention-picker__empty {
+  padding: 6px 10px;
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+}
+.mention-picker__option {
+  @include m.btn-tab;
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  text-align: left;
+  overflow-wrap: anywhere;
+  font: inherit;
+}
+
 @mixin rich-composer($p) {
   .#{$p} {
     display: flex;

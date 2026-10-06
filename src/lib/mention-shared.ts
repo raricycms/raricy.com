@@ -7,3 +7,18 @@ export function extractMentions(content: string): string[] {
   while ((match = re.exec(content)) !== null) names.add(match[1]);
   return [...names];
 }
+
+export type MentionScope = { kind: 'comment' | 'chat'; id: string };
+export interface MentionUser { id: string; username: string }
+
+/** 光标所在的未完成 @；不在邮件、名片 / 表情 token 或选区内弹提示。 */
+export function activeMention(text: string, start: number, end = start) {
+  if (start !== end || start < 0 || start > text.length) return null;
+  const match = /(?:^|\s)@([\p{L}\p{N}_-]{0,20})$/u.exec(text.slice(0, start));
+  if (!match) return null;
+  const suffix = /^[\p{L}\p{N}_-]*/u.exec(text.slice(start))![0];
+  if (match[1].length + suffix.length > 20) return null;
+  const tokenEnd = start + suffix.length;
+  if (tokenEnd < text.length && !/\s/.test(text[tokenEnd])) return null;
+  return { query: match[1], start: start - match[1].length - 1, end: tokenEnd };
+}

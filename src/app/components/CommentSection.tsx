@@ -346,6 +346,7 @@ export default function CommentSection({
     <div className="comment-form" id="comment-form">
       <RichComposer
         className="comment-composer"
+        mentionScope={{ kind: 'comment', id: blogId }}
         text={text}
         sending={submitting}
         sendLabel="发表评论"
