@@ -159,8 +159,13 @@ function isForeignKeyViolation(e: unknown): boolean {
 export async function ensureLobbyChannel(): Promise<{ id: string; kind: string }> {
   const existing = await prisma.chatChannel.findUnique({ where: { id: CHAT_LOBBY_ID } });
   if (existing) return existing;
-  return prisma.chatChannel.create({
-    data: { id: CHAT_LOBBY_ID, kind: CHAT_KIND_LOBBY, createdAt: nowForDb() },
+  // 首次进讨论时 poll / viewing / @ 搜索会并发兜底建行，交给 SQLite 的原子 upsert。
+  // 保留上面的只读早退，避免每次搜索都对已有的大区行做一次写入。
+  return prisma.chatChannel.upsert({
+    where: { id: CHAT_LOBBY_ID },
+    create: { id: CHAT_LOBBY_ID, kind: CHAT_KIND_LOBBY, createdAt: nowForDb() },
+    update: { kind: CHAT_KIND_LOBBY },
+    select: { id: true, kind: true },
   });
 }
 
