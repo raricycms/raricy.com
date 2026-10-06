@@ -34,6 +34,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { prisma } from './db';
+import { extractMentions } from './mention-shared';
 import { nowForDb } from './db-time';
 import { hasAdminRights, isCoreUser, isCurrentlyBanned } from './auth';
 import { rateLimit, RULES } from './rate-limit';
@@ -142,13 +143,7 @@ function authorOf(a: {
  * `@名字` 之后必须是空白或行尾（否则 @bob 会把 @bobby 也算上）。
  * 用户名规则见 user-service.validateUsername（字母/数字/下划线/连字符，3-20 位）。
  */
-export function extractMentions(content: string): string[] {
-  const names = new Set<string>();
-  const re = /@([\p{L}\p{N}_-]{1,20})(?=\s|$)/gu;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(content)) !== null) names.add(m[1]);
-  return [...names];
-}
+export { extractMentions } from './mention-shared';
 
 function isForeignKeyViolation(e: unknown): boolean {
   return (

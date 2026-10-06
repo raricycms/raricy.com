@@ -21,9 +21,10 @@
 import { prisma } from './db';
 import { COMMENT_TEXT_MAX, COMMENT_CAPTION_MAX } from './comment-shared';
 import { nowForDb } from './db-time';
-import { hasAdminRights } from './auth';
+import { hasAdminRights, isCoreUser } from './auth';
 import { rateLimit, RULES } from './rate-limit';
 import { sendNotification } from './notification-service';
+import { extractMentions } from './mention-shared';
 import { logAdminAction } from './admin-user-service';
 import { avatarUrl } from './avatar-refs';
 import { frameUrlFor } from './frame-service';
@@ -161,6 +162,8 @@ const DELETED_PLACEHOLDER = '[该评论已删除]';
 // 会把 prisma / next/headers 打进浏览器包 —— 那个文件头解释了为什么）。这里 re-export
 // 只是为了让服务端调用方少一个 import。
 export { COMMENT_TEXT_MAX, COMMENT_CAPTION_MAX } from './comment-shared';
+
+export const COMMENT_MENTION_ACTION = '评论提及';
 
 // HTML 转义：& < > " ' → 实体。引号用数字实体（&#34; / &#39;）—— 库里存量的
 // contentHtml 就是这个形式，换写法会让新旧两批数据的转义口径不一致。
@@ -658,14 +661,15 @@ export async function createComment(input: CreateCommentInput): Promise<CreateCo
     // （渲染成「系统」），身份改由 detail 文案里的**化名**交代（化名本来就在评论区公开）。
     // 别改成「把化名塞进 actorId」：那是个外键，指向 users(id)，会直接违例；
     // 也别改成「干脆不发」：那会让文章作者错过自己文章下的互动。
+    const { blogTitle, blogAuthorId, parentAuthorId: pAuthor } = node.notify;
+    const pseudonym =
+      node.row.anonSeq !== null && node.row.anonSeq !== undefined
+        ? pseudonymForSeq(node.row.anonSeq)
+        : null;
+    const actorId = pseudonym ? null : authorId;
+    const who = pseudonym ? `匿名读者「${pseudonym}」` : '';
+    const notified = new Set<string>([authorId]);
     try {
-      const { blogTitle, blogAuthorId, parentAuthorId: pAuthor } = node.notify;
-      const pseudonym =
-        node.row.anonSeq !== null && node.row.anonSeq !== undefined
-          ? pseudonymForSeq(node.row.anonSeq)
-          : null;
-      const actorId = pseudonym ? null : authorId;
-      const who = pseudonym ? `匿名读者「${pseudonym}」` : '';
       if (pAuthor && pAuthor !== authorId) {
         await sendNotification({
           recipientId: pAuthor,
@@ -677,6 +681,7 @@ export async function createComment(input: CreateCommentInput): Promise<CreateCo
             ? `${who}在《${blogTitle}》下回复了你的评论`
             : `你的评论在《${blogTitle}》下收到了回复`,
         });
+        notified.add(pAuthor);
       } else if (!pAuthor && blogAuthorId && blogAuthorId !== authorId) {
         await sendNotification({
           recipientId: blogAuthorId,
@@ -688,9 +693,43 @@ export async function createComment(input: CreateCommentInput): Promise<CreateCo
             ? `${who}评论了你的文章《${blogTitle}》`
             : `你的文章《${blogTitle}》收到了新评论`,
         });
+        notified.add(blogAuthorId);
       }
     } catch {
       // 通知失败不影响评论本身（评论已落库，不回滚）
+    }
+
+    // @ 只在新评论创建时触发；同一人只发一次，并让已有的评论 / 回复通知优先。
+    // 评论区本身仅 core+ 可读（即使文章对外公开也一样），所以只通知 core+。
+    // 专注模式与禁言不影响阅读博客评论，不能照抄讨论大区的这两道闸门。
+    try {
+      const names = extractMentions(content);
+      if (names.length) {
+        const candidates = await prisma.user.findMany({
+          where: { username: { in: names } },
+          select: { id: true, role: true },
+        });
+        for (const recipient of candidates) {
+          if (notified.has(recipient.id) || !isCoreUser(recipient)) continue;
+          try {
+            await sendNotification({
+              recipientId: recipient.id,
+              action: COMMENT_MENTION_ACTION,
+              actorId,
+              objectType: 'blog',
+              objectId: blogId,
+              detail: pseudonym
+                ? `${who}在《${blogTitle}》的评论中提到了你`
+                : `在《${blogTitle}》的评论中提到了你`,
+              prefKey: null,
+            });
+          } catch (error) {
+            console.error('[comment-service] @ 通知发送失败:', error);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('[comment-service] @ 通知取数失败:', error);
     }
 
     // 刚创建的这一条自带附件（若用户是「引用图 / 引用博客」提交的）—— 解析一次再返回，
