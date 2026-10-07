@@ -36,11 +36,7 @@ coverage/
 # instance 的本地打包归档（app.db + stories 等真实数据，备份用）—— 不入库
 /instance.zip
 
-# vditor 的 icon sprite + KaTeX 静态资源 —— 从 npm 包拷贝，
-# 不要直接入库（保持 /public/static/vditor/ 由 `npm run prepare:vditor` 重建）
-/public/static/vditor/
-
-# MathJax CHTML 的 woff 字体 —— 同上，从 mathjax-full 拷贝，
+# MathJax CHTML 的 woff 字体 —— 从 mathjax-full 拷贝，
 # 由 `npm run prepare:mathjax` 重建（MarkdownRenderer 的 fontURL 指向这里）
 /public/static/mathjax/
 

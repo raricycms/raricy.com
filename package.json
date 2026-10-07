@@ -31,13 +31,11 @@
     "check:secrets": "node scripts/check-secrets.mjs",
     "instance:check": "node scripts/check-instance.mjs",
     "css:probe": "sass src/styles-scss/main.scss:src/styles-scss/compiled/probe.css --style=expanded --load-path=src/styles-scss --no-source-map",
-    "prepare:vditor": "node scripts/copy-vditor-assets.mjs",
-    "vditor:check": "node scripts/copy-vditor-assets.mjs --check",
     "prepare:mathjax": "node scripts/copy-mathjax-fonts.mjs",
     "mathjax:check": "node scripts/copy-mathjax-fonts.mjs --check",
     "prepare:emoji": "node scripts/copy-emoji-assets.mjs",
     "emoji:check": "node scripts/copy-emoji-assets.mjs --check",
-    "postinstall": "node scripts/copy-vditor-assets.mjs && node scripts/copy-mathjax-fonts.mjs && node scripts/copy-emoji-assets.mjs"
+    "postinstall": "node scripts/copy-mathjax-fonts.mjs && node scripts/copy-emoji-assets.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "6.11.1",
@@ -59,8 +57,7 @@
     "qrcode-generator": "^2.0.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "sharp": "^0.35.3",
-    "vditor": "^3.10.7"
+    "sharp": "^0.35.3"
   },
   "devDependencies": {
     "@inquirer/prompts": "^7.10.1",
