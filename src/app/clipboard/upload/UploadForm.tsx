@@ -2,35 +2,27 @@
 
 // 云剪贴板 上传/编辑表单
 //
-// - 编辑器：vditor（与 BlogForm 对齐，vditor@3.10.7），icon sprite + KaTeX 从
-//   /static/vditor 本地加载，避免运行时依赖 unpkg。
-// - Math（LaTeX）：开启 preview.math（KaTeX 引擎），IR 模式下输入 $$..$$ 即可见渲染。
+// - 编辑器：MarkdownEditor（CodeMirror 6，与博客共用），工具条带公式按钮。
+// - Math（LaTeX）：预览走共享的整篇渲染管线（MathJax），`$inline$` / `$$block$$` 都能渲染。
 // - 提交：新建 → POST /api/clipboard；编辑 → PUT /api/clipboard/:id。
-// - 交互约定：Ctrl/⌘+S 手动保存（编辑态）、autoSave 每分钟自动保存、
-//   publicity 是否公开。
+// - 交互约定：Ctrl/⌘+S 手动保存、autoSave 每分钟自动保存、publicity 是否公开。
+//
+// 【保存逻辑留在本文件】草稿只负责「没保存成的那份正文」；Ctrl+S、每分钟自动保存、
+// 提交后的跳转都在这里，因为它们的触发点（键盘、定时器、表单）本来就在表单这一层。
+// ⚠️ **Ctrl+S 刻意不绑进 CM6 的 keymap**：那边绑一次、这里再监听一次，同一次按键
+// 会发两遍保存请求（新建态就是两篇剪贴板）。
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Vditor from 'vditor';
-import 'vditor/dist/index.css';
-// 跟随站点 <html data-theme> 的亮/暗切换 —— 与 BlogForm 共用同一份实现
-// （本地 CDN 常量也在这里），避免两边漂移。
-import {
-  VDITOR_LOCAL_CDN,
-  applyVditorTheme,
-  isDarkTheme,
-  removeHljsTheme,
-  syncHljsTheme,
-  vditorThemeOptions,
-  watchVditorTheme,
-} from '@/lib/vditor-theme';
-// 上传配置（fieldName / 响应结构两端对齐）—— 与博客编辑器共用，见该文件头注释
-import { vditorUploadOptions } from '@/lib/vditor-upload';
+import MarkdownEditor, { type MarkdownEditorHandle } from '@/app/components/MarkdownEditor';
 
 function toast(msg: string, type: string) {
   if (typeof window === 'undefined') return;
   const w = window as unknown as { showToast?: (m: string, t: string) => void };
   if (w.showToast) w.showToast(msg, type);
 }
+
+/** 新建页的本地草稿键 —— 沿用 Vditor 时代的老键，见 lib/md-editor/draft.ts 文件头。 */
+const DRAFT_KEY = 'clipboard-upload-editor';
 
 export interface EditClip {
   id: string;
@@ -48,12 +40,11 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
   const [publicity, setPublicity] = useState(clip ? clip.publicity : true);
   const [autoSave, setAutoSave] = useState(false);
 
-  // vditor 句柄 + 加载状态；fallback 文本框给 vditor 加载失败时用。
-  const vditorRef = useRef<Vditor | null>(null);
-  const vditorLoadedRef = useRef(false);
-  const editorDivRef = useRef<HTMLDivElement>(null);
-  const fallbackMsgRef = useRef<HTMLParagraphElement>(null);
+  // 编辑器句柄；fallback 文本框给编辑器初始化失败时用。
+  const editorRef = useRef<MarkdownEditorHandle>(null);
   const fallbackRef = useRef<HTMLTextAreaElement>(null);
+  const [initFailed, setInitFailed] = useState(false);
+  const [fallbackValue, setFallbackValue] = useState(clip?.content ?? '');
 
   const titleRef = useRef(title);
   const contentRef = useRef(content);
@@ -62,11 +53,12 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
   contentRef.current = content;
   publicityRef.current = publicity;
 
-  // 取最新内容：优先 vditor，回退 fallback 文本框。
+  // 取最新内容：编辑器具就绪就从它读，否则读兜底文本框。
+  // 判据是 isReady() 而不是「ref 在不在」—— 初始化失败时 MarkdownEditor 渲染 null，
+  // 但句柄仍挂在 ref 上，只看 ref 会提交一份**初始化那一刻**的旧正文。
   function getContent(): string {
-    if (vditorLoadedRef.current && vditorRef.current) {
-      return vditorRef.current.getValue();
-    }
+    const editor = editorRef.current;
+    if (editor?.isReady()) return editor.getDoc();
     return fallbackRef.current?.value ?? contentRef.current ?? '';
   }
 
@@ -106,9 +98,13 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
       });
       const result = await response.json();
       if (response.ok && result.code === 200) {
+        // 新建成功后清掉本地草稿：这份正文已经在服务端了，再留着它，下次进新建页
+        // 会把一篇**已经发出去**的文章当成「没写完的草稿」恢复出来。
+        // 清完之后接着写仍会攒新草稿（见 draft.ts 的 clear()）。
+        // 编辑态没有草稿键，什么都不清。
+        if (!isEdit) editorRef.current?.clearDraft();
         if (stayOnPage) {
           toast('保存成功！', 'success');
-          // 编辑态保存后清空 vditor 之外的文案 cache 不必要；保留即可。
         } else {
           router.push(`/clipboard/${result.id}`);
         }
@@ -162,76 +158,6 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
     return () => clearInterval(timer);
   }, [isEdit, autoSave]);
 
-  // 初始化 vditor —— 与 BlogForm 用同一份本地 CDN，开启 math（KaTeX）支持。
-  useEffect(() => {
-    let cancelled = false;
-    let unwatchTheme: (() => void) | null = null;
-
-    function showFallback() {
-      if (editorDivRef.current) editorDivRef.current.style.display = 'none';
-      if (fallbackMsgRef.current) fallbackMsgRef.current.style.display = 'block';
-      const fb = fallbackRef.current;
-      if (fb) {
-        fb.style.display = 'block';
-        if (!fb.value && contentRef.current) fb.value = contentRef.current;
-      }
-      vditorLoadedRef.current = false;
-    }
-
-    try {
-      if (cancelled) return;
-      const dark = isDarkTheme();
-      const { theme, contentTheme } = vditorThemeOptions(dark);
-      // 必须在 new Vditor 之前 —— 靠 addStyle 的 id 去重接管代码高亮那条轨道
-      syncHljsTheme(dark);
-      vditorRef.current = new Vditor('clipboard-editor', {
-        minHeight: 400,
-        mode: 'ir',
-        cdn: VDITOR_LOCAL_CDN,
-        theme,
-        // 启用 LaTeX：IR 模式下输入 $$..$$ 立即用本地 KaTeX 渲染。
-        preview: { math: { engine: 'KaTeX' }, theme: { current: contentTheme } },
-        // vditor 的 init 是异步的（先拉 i18n 脚本），这段窗口里改主题会被
-        // applyVditorTheme 跳过（实例还没建好，见该函数注释）。渲染完成时补一次，
-        // 免得编辑器停在旧主题上。
-        after: () => applyVditorTheme(vditorRef.current, isDarkTheme()),
-        toolbar: [
-          'emoji', 'headings', 'bold', 'italic', 'strike', 'link', '|',
-          'list', 'ordered-list', 'check', 'outdent', 'indent', '|',
-          'quote', 'line', 'code', 'inline-code', 'math', 'upload', 'table', '|',
-          'undo', 'redo', 'preview', 'export',
-        ],
-        counter: { enable: true, type: 'text' },
-        upload: vditorUploadOptions((msg) => toast(msg, 'error')),
-        cache: isEdit ? { enable: false } : { enable: true, id: 'clipboard-upload-editor' },
-        value: contentRef.current ?? '',
-      });
-      vditorLoadedRef.current = true;
-    } catch {
-      showFallback();
-    }
-
-    if (vditorLoadedRef.current) {
-      unwatchTheme = watchVditorTheme((dark) => applyVditorTheme(vditorRef.current, dark));
-    }
-
-    return () => {
-      cancelled = true;
-      unwatchTheme?.();
-      // 该 <link> 挂在 head 上是全局的，留着会盖掉文章页 MarkdownRenderer 的 hljs 主题
-      removeHljsTheme();
-      // 销毁 vditor 实例，避免 React 严格模式 / 路由切换后节点还在内存里。
-      try {
-        vditorRef.current?.destroy?.();
-      } catch {
-        /* noop */
-      }
-      vditorRef.current = null;
-      vditorLoadedRef.current = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     // 提交前停止自动保存。
@@ -282,31 +208,44 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
 
           <div className="clipboard-form__group">
             <label htmlFor="clipboard-editor">正文（支持 Markdown 与 LaTeX）</label>
-            {/* 外观走 .clipboard-form__editor（见 styles-scss/pages/_clipboard.scss）——
-                此前是行内 style，带 1px 描边与 8px 圆角，改主题/改规范都得来这里翻。 */}
-            <div
+            {/* 外观全在 .md-editor（styles-scss/components/_markdown-editor.scss）；
+                `#clipboard-editor` 这个 id 只是表单与 e2e 的元素钩子。
+                只有新建页给草稿键：编辑态的正文是服务端那一份，本地草稿在编辑态
+                既不读也不写 —— 否则「上次新建到一半的半成品」会盖掉正在编辑的正文。 */}
+            <MarkdownEditor
               id="clipboard-editor"
-              ref={editorDivRef}
-              className="clipboard-form__editor"
-              style={{ height: '50vh' }}
+              ref={editorRef}
+              initialValue={clip?.content ?? ''}
+              draftKey={isEdit ? undefined : DRAFT_KEY}
+              title={title}
+              withMath
+              height="50vh"
+              onNotify={toast}
+              onInitError={(value) => {
+                setFallbackValue(value);
+                setInitFailed(true);
+              }}
             />
-            <p
-              id="clipboard-editor-fallback-message"
-              ref={fallbackMsgRef}
-              className="clipboard-form__reminder"
-              style={{ display: 'none', marginTop: '8px' }}
-            >
-              Markdown 编辑器加载失败，已切换到基础文本输入框。
-            </p>
-            <textarea
-              id="clipboard-editor-fallback"
-              ref={fallbackRef}
-              rows={15}
-              placeholder="请输入正文内容"
-              className="clipboard-form__fallback"
-              // display 由脚本切换（编辑器加载失败时显示），故留在行内
-              style={{ display: 'none' }}
-            />
+            {initFailed && (
+              <>
+                <p
+                  id="clipboard-editor-fallback-message"
+                  className="clipboard-form__reminder"
+                  style={{ marginTop: '8px' }}
+                >
+                  Markdown 编辑器加载失败，已切换到基础文本输入框。
+                </p>
+                <textarea
+                  id="clipboard-editor-fallback"
+                  ref={fallbackRef}
+                  rows={15}
+                  placeholder="请输入正文内容"
+                  className="clipboard-form__fallback"
+                  value={fallbackValue}
+                  onChange={(e) => setFallbackValue(e.target.value)}
+                />
+              </>
+            )}
           </div>
 
           <div className="clipboard-form__group clipboard-form__group--checkbox">
