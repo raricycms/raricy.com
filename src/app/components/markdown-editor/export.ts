@@ -1,24 +1,58 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // markdown-editor/export.ts —— HTML 导出与浏览器打印（PDF）
 //
-// 【导出的是什么】预览面板**已经渲染好的那棵 DOM**，不是再跑一遍 Markdown。
-// 于是导出件与屏幕上看到的是同一份东西（含公式、代码高亮、引用展开），不存在
-// 「预览对了、导出不对」这种要两头对账的情况。
+// 【导出的是什么】导出件里装的是**文本与已经展开好的内容**：正文 Markdown 渲染出的
+// HTML、代码高亮、以及引用展开后的东西（图床 `<img>`、音频 `<audio>`、投票小组件、
+// 收藏夹卡片、剪贴板内联正文）。这些东西在**生成那一刻**就写死在文件里了 ——
+// 离线打开也一个字不少。
+//
+// 【导出的一步：正文从哪来】不在这里。调用方（MarkdownEditor）拿**此刻编辑器里的
+// 原文**跑一遍与预览**同一套**管线，把结果挂到离屏容器上跑完 DOM 后处理，再把
+// innerHTML 交给本模块。历史教训：这里原先直接读预览面板那棵 DOM，而预览是防抖
+// 400ms + 一条异步取数的 —— 敲完最后一个字立刻点导出，出来的正是**敲之前**那一版，
+// 页面上没有任何提示。所以本模块只负责「拼文件 + 打印」，不负责取正文。
 //
 // 【样式怎么带过去】把当前文档 head 里的样式表**原样抄一份绝对地址**进去：
 //   · `<link rel=stylesheet>` → 用 `.href`（浏览器已经解析成绝对地址）；
-//   · `<style>`（Next 注入的、hljs 双主题、MathJax 的 CHTML 字体表）→ outerHTML。
+//   · `<style>`（Next 注入的、hljs 双主题、MathJax 的 CHTML 字体表）→ outerHTML，
+//     并且把里面**站内相对**的 `url(/…)` 补成绝对地址（见 absolutizeCssUrls）。
 // 比在客户端重新内联一遍 CSS 可靠：那份 CSS 里带 hashed 文件名与 `@font-face`
 // 相对路径，自己拼必然漏。代价是导出的文件**需要联网**才能取到样式 ——
 // 这是**刻意的**取舍（内联一份完整 CSS 要自己维护字体与图片的相对路径），
-// 不是没做完；导出件在离线打开时是「有内容、没版式」，正文一个字都不少。
+// 不是没做完：**离线打开时是「有内容、没版式」**，正文一个字都不少。
+//
+// 【正文里的地址为什么也要补】`/api/images/<id>/raw` 这类站内相对地址在文件里
+// 是相对于**文件自己的位置**解析的，双击打开就变成 `file:///api/images/…` ——
+// 图片全裂、链接全废。所以正文与样式里的站内相对地址一律补成站点绝对地址
+// （absolutizeSiteUrls）。**但绝不加 `<base>`**：那会把 `#锚点` 也一起带回原站，
+// 而锚点恰恰是导出件内部该在自己身上跳的那一类。同理，**媒体与链接仍然需要
+// 联网**（而且私有图 / 私有音频在站外本来就取不到）—— 这一点如实写进导出说明。
 //
 // 【公式】MathJax 已经渲染成 CHTML（内联样式 + head 里的字体表），所以把 `<style>`
 // 抄过去就够了，导出件里**不需要**再加载 MathJax。
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** 站点源（`https://站点`），用来把站内相对地址补成绝对地址。 */
+function siteOrigin(explicit?: string): string {
+  if (explicit) return explicit.replace(/\/+$/, '');
+  return typeof window === 'undefined' ? '' : window.location.origin;
+}
+
+/**
+ * `<style>` 里**站内相对**的 `url(/…)` 补成绝对地址。
+ *
+ * MathJax 的 CHTML 字体表就是这种形态：`src: url("/static/mathjax/woff-v2/…")`。
+ * `<style>` 里的相对地址是**相对于文档基址**解析的 —— 导出件从 `file://` 打开时
+ * 它指向 `file:///C:/…/static/…`，一律 404，公式只能用回退字体（字形与间距都不对）。
+ * 只补「单个 `/` 开头」的；`data:` / `https:` / `//cdn…` 一概不碰。
+ */
+function absolutizeCssUrls(css: string, origin: string): string {
+  if (!origin) return css;
+  return css.replace(/url\(\s*(['"]?)\/(?!\/)/g, (_all, quote: string) => `url(${quote}${origin}/`);
+}
+
 /** 把 head 里的样式抄成一段可以直接放进导出件的标记。 */
-function collectStyleMarkup(): string {
+function collectStyleMarkup(origin: string): string {
   const parts: string[] = [];
   for (const node of Array.from(
     document.head.querySelectorAll('link[rel="stylesheet"], style')
@@ -27,10 +61,41 @@ function collectStyleMarkup(): string {
       const href = (node as HTMLLinkElement).href;
       if (href) parts.push(`<link rel="stylesheet" href="${href}">`);
     } else {
-      parts.push(node.outerHTML);
+      parts.push(absolutizeCssUrls(node.outerHTML, origin));
     }
   }
   return parts.join('\n');
+}
+
+/**
+ * 把正文里的**站内相对地址**补成站点绝对地址，让导出件从 `file://` 打开时
+ * 图片、音频、站内链接照样出得来。
+ *
+ * 只动以**单个 `/`** 开头的值：
+ *   · `#锚点` —— 导出件**内部**的跳转，必须继续指自己（改它就是在修一个不存在的问题）；
+ *   · `mailto:` / `tel:` / `https:` / `data:` / `//cdn…` —— 已经是别的体系，别碰。
+ */
+export function absolutizeSiteUrls(root: HTMLElement, origin?: string): void {
+  const base = siteOrigin(origin);
+  if (!base) return;
+  for (const attr of ['src', 'href', 'poster'] as const) {
+    root.querySelectorAll<HTMLElement>(`[${attr}]`).forEach((el) => {
+      const value = el.getAttribute(attr);
+      if (!value || !value.startsWith('/') || value.startsWith('//')) return;
+      el.setAttribute(attr, base + value);
+    });
+  }
+}
+
+/**
+ * 剥掉**只在站内页面上才成立的空壳**。
+ *
+ * 目前只有代码块的「复制」按钮：它是 `blog-renderer.ts` 直接写在 HTML 里的
+ * `<button class="copy-btn" data-code="…">`，行为由 blog-content-dom.ts 挂 JS。
+ * 导出件是一份**死**的静态文件，留着它就是一颗按不动的按钮 —— 占版面、还误导人。
+ */
+export function stripInteractiveShells(root: HTMLElement): void {
+  root.querySelectorAll('.copy-btn').forEach((el) => el.remove());
 }
 
 /** HTML 文本转义 —— 只用于标题（正文 HTML 是我们自己的渲染产物，不再转义）。 */
@@ -45,8 +110,10 @@ function escapeHtml(text: string): string {
 export interface ExportOptions {
   /** 文档标题（进 `<title>` 与导出文件名）。 */
   title: string;
-  /** 预览面板的 innerHTML。 */
+  /** 正文容器的 innerHTML（调用方跑完整管线后取出来）。 */
   bodyHtml: string;
+  /** 站点源；不传就取当前页面的 `location.origin`（单测可显式传）。 */
+  origin?: string;
 }
 
 /**
@@ -55,7 +122,7 @@ export interface ExportOptions {
  * `body` 的形状沿用文章页（`.blog-content-container` 提供阅读版式），
  * 于是导出件在浏览器里打开的观感与站内文章页一致。
  */
-export function buildExportHtml({ title, bodyHtml }: ExportOptions): string {
+export function buildExportHtml({ title, bodyHtml, origin }: ExportOptions): string {
   const theme = document.documentElement.getAttribute('data-theme') ?? 'light';
   return `<!DOCTYPE html>
 <html lang="zh-CN" data-theme="${theme}">
@@ -63,7 +130,7 @@ export function buildExportHtml({ title, bodyHtml }: ExportOptions): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(title)}</title>
-${collectStyleMarkup()}
+${collectStyleMarkup(siteOrigin(origin))}
 </head>
 <body>
 <main class="blog-content-container-container">
@@ -106,11 +173,78 @@ export function downloadHtml(filename: string, html: string): void {
 }
 
 /**
+ * 打印前等资源的上限。**超了照打** —— 宁可少一张没加载完的图，
+ * 也不能让「点了打印没反应」。
+ */
+export const PRINT_READY_MAX_MS = 3000;
+
+/**
+ * 等「这一份文档真的画得出来」：样式表 + 图片 + 字体。
+ *
+ * 三样都必须等，各有各的后果（而且都只在真按下打印时才看得见）：
+ *   · 样式表没到 → 打出来**没有版式**；
+ *   · 图片没到   → PDF 里是空白框（尤其刚插进去的那张图）；
+ *   · 字体没就绪 → MathJax 的 CHTML 公式字形与间距都不对。
+ * 外加**封顶**：任何一条卡住都不该把打印一起卡住，超时就按现状打。
+ */
+function waitForPrintReady(doc: Document, maxMs: number): Promise<void> {
+  const waits: Promise<unknown>[] = [];
+
+  const fonts = (doc as Document & { fonts?: FontFaceSet }).fonts;
+  if (fonts?.ready) waits.push(fonts.ready.catch(() => undefined));
+
+  doc.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]').forEach((link) => {
+    // 已经解析出 sheet 的说明早就加载好了（同源 CSS 读得到 sheet）——
+    // 这等于是给「监听器挂晚了」补一条会立刻通过的路径，别让它白等满 3 秒。
+    if (link.sheet) return;
+    waits.push(
+      new Promise<void>((resolve) => {
+        const done = () => {
+          link.removeEventListener('load', done);
+          link.removeEventListener('error', done);
+          resolve();
+        };
+        link.addEventListener('load', done);
+        link.addEventListener('error', done);
+      })
+    );
+  });
+
+  doc.querySelectorAll<HTMLImageElement>('img').forEach((img) => {
+    // complete 在「已加载」和「已失败」两种情况下都是 true —— 两种都不必等，
+    // 失败的那张本来就是裂图，再等也不会变好。
+    if (img.complete) return;
+    waits.push(
+      new Promise<void>((resolve) => {
+        const done = () => {
+          img.removeEventListener('load', done);
+          img.removeEventListener('error', done);
+          resolve();
+        };
+        img.addEventListener('load', done);
+        img.addEventListener('error', done);
+      })
+    );
+  });
+
+  const settled = waits.length ? Promise.all(waits).then(() => undefined) : Promise.resolve();
+  return Promise.race([
+    settled,
+    new Promise<void>((resolve) => setTimeout(resolve, maxMs)),
+  ]).then(() => undefined);
+}
+
+/**
  * 用隐藏 iframe 打印 —— 不 `window.open`，因此**不会被弹窗拦截**。
  *
  * iframe 的 onload 在 `document.write` 这条路径上并不可靠（内容同步写完时事件早已
- * 错过），所以固定等一小段时间让样式表落地再调 print；打印完把 iframe 摘掉，
- * 否则每点一次就留一个空文档挂在页面上。
+ * 错过），**但「同步写完」不代表「画得出来」**：样式表、图片、字体都还在路上。
+ * 所以这里等 `waitForPrintReady`（封顶 PRINT_READY_MAX_MS），过了再等两帧让
+ * 浏览器真的做完布局，然后才调 print；打印完把 iframe 摘掉，否则每点一次就留一个
+ * 空文档挂在页面上。
+ *
+ * 传入的 html 应当已经过 `buildExportHtml`：那里的样式与正文地址都是绝对的，
+ * 与本页无关 —— iframe 里是 `about:blank`，相对地址在那儿的解析结果不可指望。
  */
 export function printHtml(html: string): void {
   const frame = document.createElement('iframe');
@@ -125,13 +259,21 @@ export function printHtml(html: string): void {
   doc.open();
   doc.write(html);
   doc.close();
-  setTimeout(() => {
-    try {
-      frame.contentWindow?.focus();
-      frame.contentWindow?.print();
-    } finally {
-      // 给打印对话框一点时间取走文档再摘
-      setTimeout(() => frame.remove(), 1000);
-    }
-  }, 150);
+
+  const afterPaint = () =>
+    new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    });
+
+  void waitForPrintReady(doc, PRINT_READY_MAX_MS)
+    .then(afterPaint)
+    .then(() => {
+      try {
+        frame.contentWindow?.focus();
+        frame.contentWindow?.print();
+      } finally {
+        // 给打印对话框一点时间取走文档再摘
+        setTimeout(() => frame.remove(), 1000);
+      }
+    });
 }

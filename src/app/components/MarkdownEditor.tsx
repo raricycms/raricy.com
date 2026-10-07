@@ -23,6 +23,7 @@ import {
   forwardRef,
   useCallback,
   useEffect,
+  useId,
   useImperativeHandle,
   useReducer,
   useRef,
@@ -40,9 +41,19 @@ import { RefreshCw } from 'lucide-react';
 import Toolbar, { VIEW_MODES } from './markdown-editor/Toolbar';
 import ResourcePanel from './markdown-editor/ResourcePanel';
 import { editorBaseTheme } from './markdown-editor/cm-theme';
-import { buildExportHtml, downloadHtml, printHtml, safeFilename } from './markdown-editor/export';
+import {
+  absolutizeSiteUrls,
+  buildExportHtml,
+  downloadHtml,
+  printHtml,
+  safeFilename,
+  stripInteractiveShells,
+} from './markdown-editor/export';
 import MarkdownRenderer from './MarkdownRenderer';
+import { ContentRefProcessor } from '@/lib/content-ref-processor';
 import { ContentRefResolver } from '@/lib/content-ref-resolver';
+import { renderBlogMarkdown } from '@/lib/blog-renderer';
+import { enhanceBlogContent } from '@/lib/blog-content-dom';
 import { IMAGE_ACCEPT, uploadImageFile } from '@/lib/image-client';
 import * as cmd from '@/lib/md-editor/commands';
 import { createDraftStore, type DraftStore } from '@/lib/md-editor/draft';
@@ -128,6 +139,8 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
   ) {
     const hostRef = useRef<HTMLDivElement>(null);
     const previewBodyRef = useRef<HTMLDivElement>(null);
+    /** 键盘提示的 id（编辑区用 aria-describedby 指过来）。 */
+    const kbHintId = useId();
     const fileInputRef = useRef<HTMLInputElement>(null);
     const viewRef = useRef<EditorView | null>(null);
     const [view, setView] = useState<EditorView | null>(null);
@@ -338,6 +351,17 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
         // 于是 Alt+点出来的第二个光标、以及列选择，会在下一次状态重建时消失，
         // 而工具条里的命令本来是按「逐区间」写的（见 commands.ts）。
         EditorState.allowMultipleSelections.of(true),
+        /**
+         * 键盘用户走出编辑区的唯一出口。
+         *
+         * CodeMirror 自己实现了一条：**先按 Escape，再按 Tab**（两秒内）焦点就交给
+         * 下一个可聚焦元素 —— 按下 Escape 时它把 `tabFocusMode` 置成 now+2000，
+         * 这期间放行 Tab 的默认行为（见 @codemirror/view 的 input.ts）。
+         * ⚠️ **我们一条 Escape 键处理都不写**：再绑一次就会把这条原生路径盖掉，
+         * 而编辑器默认吃掉 Tab（indentWithTab 拿它缩进），盖掉的后果是键盘用户
+         * 被关在正文里出不来。所以要做的只是**把它说出来**（下面那句提示）。
+         */
+        EditorView.contentAttributes.of({ 'aria-describedby': kbHintId }),
         EditorView.lineWrapping,
         markdown(),
         ...editorBaseTheme,
@@ -459,19 +483,94 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
       return () => mq.removeEventListener('change', apply);
     }, []);
 
+    /**
+     * 预览里的投票数据口：**复用** ContentRefResolver 为存在性探测取过的那一份
+     * （见 content-ref-resolver.ts 的 vote 分支）。少了它，预览每停一下就把整块
+     * DOM 换一次，而 renderVoteEmbed 每换一次就重打一条 `/api/votes/<id>` ——
+     * 一条与本次渲染内容无关的请求，还会让投票位闪一次「加载投票…」。
+     * 返回 undefined（缓存里没这一格）= 让渲染层自己去拉，静默降级。
+     */
+    const previewVoteData = useCallback((id: string) => {
+      const hit = resolverRef.current?.peek('vote', id);
+      return hit ? (hit.data ?? null) : undefined;
+    }, []);
+
     // ── 导出 / 打印 ────────────────────────────────────────────────────────
-    const currentHtml = useCallback(() => {
-      const body = previewBodyRef.current;
-      return buildExportHtml({ title, bodyHtml: body ? body.innerHTML : '' });
-    }, [title]);
+    /** 同一时刻只允许一份快照在渲染 —— 连点两下导出会渲染两遍、下载两份。 */
+    const snapshotBusyRef = useRef(false);
+
+    /**
+     * 取**导出 / 打印用的正文快照**：拿此刻编辑器里的原文，跑一遍与预览**同一套**
+     * 管线（引用预处理 → blog-renderer → blog-content-dom），在离屏容器里跑完后处理
+     * 再取出正文 HTML。
+     *
+     * 【为什么不直接读预览面板那棵 DOM】预览是**防抖 400ms** 的，背后还挂着一条异步
+     * 取数 —— 敲完最后一个字**立刻**点导出，读到的正是**敲之前**那一版。这个错误
+     * 不报错、不提示，导出件只是安静地少一段。所以导出必须自己按**当时**的原文算一份。
+     *
+     * 【为什么挂进 document 而不是在内存里拼】MathJax 排公式要量字号，脱离文档的
+     * 元素量出来是 0，公式会退化成原文。离屏放置（left:-100000px）不可见、不影响版面。
+     *
+     * 失败（取数或渲染抛异常）时给一句 toast 并返回 null —— 宁可什么都不下载，
+     * 也不要静默给一份缺内容的文件。
+     */
+    const buildSnapshot = useCallback(async (): Promise<{
+      title: string;
+      bodyHtml: string;
+    } | null> => {
+      if (snapshotBusyRef.current) return null;
+      snapshotBusyRef.current = true;
+      let holder: HTMLDivElement | null = null;
+      try {
+        const source = viewRef.current?.state.doc.toString() ?? docRef.current;
+        const resolver = resolverRef.current;
+        if (!resolver) return null;
+        const text = await new ContentRefProcessor(resolver).preprocess(source);
+        const rendered = renderBlogMarkdown(text);
+
+        holder = document.createElement('div');
+        holder.className = 'blog-content-container';
+        holder.style.cssText = 'position:absolute;left:-100000px;top:0;width:760px;';
+        holder.innerHTML = rendered.html;
+        document.body.appendChild(holder);
+
+        // 不传 voteGeneration：这个 holder 每次都是**新建的元素**，不存在
+        // 「元素还在、数据换了」那种要不掉 `data-rendered` 缓存的情况。
+        enhanceBlogContent(holder, {
+          interactive: false,
+          mathCount: rendered.mathCount,
+          voteData: previewVoteData,
+        });
+        // 剥掉只在站内页面上才成立的空壳（代码块的「复制」按钮），并把站内相对
+        // 地址补成绝对地址 —— 否则导出件从 file:// 打开时图片全裂、链接全废。
+        stripInteractiveShells(holder);
+        absolutizeSiteUrls(holder);
+
+        return { title, bodyHtml: holder.innerHTML };
+      } catch {
+        notify('导出失败：正文没能渲染出来，请稍后再试', 'error');
+        return null;
+      } finally {
+        holder?.remove();
+        snapshotBusyRef.current = false;
+      }
+    }, [notify, previewVoteData, refreshToken, title]);
 
     const onExportHtml = useCallback(() => {
-      downloadHtml(`${safeFilename(title || '未命名')}.html`, currentHtml());
-    }, [currentHtml, title]);
+      void (async () => {
+        const snap = await buildSnapshot();
+        if (!snap) return;
+        downloadHtml(`${safeFilename(snap.title || '未命名')}.html`, buildExportHtml(snap));
+      })();
+    }, [buildSnapshot]);
 
     const onPrint = useCallback(() => {
-      printHtml(currentHtml());
-    }, [currentHtml]);
+      void (async () => {
+        const snap = await buildSnapshot();
+        if (!snap) return;
+        printHtml(buildExportHtml(snap));
+      })();
+    }, [buildSnapshot]);
 
     // ── 对外接口 ────────────────────────────────────────────────────────────
     useImperativeHandle(
@@ -580,6 +679,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
                 interactive={false}
                 resolver={resolverRef.current}
                 refreshToken={refreshToken}
+                voteData={previewVoteData}
               />
             </div>
           </div>
@@ -588,6 +688,12 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
         <div className="md-editor__foot">
           <span className="md-editor__count" aria-live="polite">
             {charCount} 字
+          </span>
+          {/* 「先 Esc 再 Tab」是 CodeMirror **自带**的行为（见上面 contentAttributes
+              那段），不是我们写的键处理 —— 这里只负责把它说出来：编辑器默认吃掉
+              Tab（缩进），不说的话键盘用户只能靠试出来。窄屏由样式表转成 sr-only。 */}
+          <span className="md-editor__kbd" id={kbHintId}>
+            按 Esc 再 Tab 可到工具条
           </span>
           {/* 视图切换用 btn-tab 那档（「当前所在页常驻最高级空闲态」），
               **不是 .segmented 胶囊滑块**：那个控件的适用范围被 frontend-styles.md
