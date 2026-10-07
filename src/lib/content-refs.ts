@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // content-refs.ts — `[@<内容ID>]` 引用语法的**纯逻辑**（识别 / 替换 / 截断）
 //
-// 【与博客的关系】博客正文那套在 src/app/components/MarkdownRenderer.tsx 的
+// 【与博客的关系】博客正文那套在 src/lib/content-ref-processor.ts 的
 // ContentRefProcessor 里，是**博客专用**的异步预处理器（它还会内联投票小组件）。
 // 评论与讨论走的是另一条同步管线（src/lib/rich-text.ts），本文件是那条管线的
 // 引用支持 —— 三种引用里只认两种：
@@ -52,7 +52,7 @@ export const CLIPBOARD_REF_PROBE = new RegExp(
 /**
  * 一篇正文里最多处理几条 `[@…]` 引用（**按引用条数**，不是按种类）。
  *
- * 【两个调用方共用这一个数，别各写一份】博客渲染器（`MarkdownRenderer.tsx` 的
+ * 【两个调用方共用这一个数，别各写一份】博客渲染器（`content-ref-processor.ts` 的
  * `ContentRefProcessor`）用它封顶替换次数；对外视图那条**服务端**解析
  * （`clipboard-service.ts` 的 `resolvePublicClipRefs`）用它封顶一次请求里的查库次数。
  * 两边的判据必须是同一个数：不一致时，访客会看到「成员视图展开到第 50 条为止、
@@ -108,7 +108,7 @@ export const MAX_IMAGE_REFS = 50;
  */
 export const CLIP_EXPAND_MAX = 2000;
 
-/** 剪贴板取不到时的占位文案，与博客侧逐字一致。 */
+/** 剪贴板取不到时的占位文案。博客侧的取数层（content-ref-resolver.ts）用的就是本函数。 */
 export function clipboardFailureText(id: string): string {
   return `[剪贴板 ${id} 加载失败]`;
 }

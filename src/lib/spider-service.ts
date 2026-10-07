@@ -16,7 +16,7 @@
 //   「站内 core+ 可见」，而 core+ 账号读到它正是这条语义的定义）。
 //
 // 而且**它不只有站外的消费者**：`/api/spider/favorites/:id` 同时是我们自己前端的
-// 数据源（`src/app/components/MarkdownRenderer.tsx` 渲染 `[@六位]` 收藏夹卡片时，
+// 数据源（`src/lib/content-ref-resolver.ts` 渲染 `[@六位]` 收藏夹卡片时，
 // 带读者自己的会话去取）。所以更准确的理解是：**一个 core+ 网关下的只读命名空间**，
 // 消费者里既有机器人也有本站前端。名字只说了其中一半。
 //

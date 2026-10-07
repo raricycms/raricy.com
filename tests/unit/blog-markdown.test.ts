@@ -205,6 +205,19 @@ describe('投票小组件结构', () => {
     expect(el.querySelector('.vote-embed-title')!.textContent).toBe('<img src=x onerror=window.__pwn=1>');
     expect(el.querySelector('.vote-embed-option-label')!.textContent).toBe('<svg onload=alert(1)>');
   });
+
+  it('只读预览（interactive=false）：结构相同，但选项按钮全部禁用', () => {
+    const el = document.createElement('div');
+    buildVoteWidget(el, 'abc12345', VOTE_DATA, false);
+
+    // 与默认形态同一份结构（标题 / 选项 / 提交 / 详情链接都在）
+    expect(el.querySelector('.vote-embed-title')!.textContent).toBe('午饭吃什么');
+    const options = el.querySelectorAll<HTMLButtonElement>('.vote-embed-option');
+    expect(options).toHaveLength(2);
+    options.forEach((o) => expect(o.disabled).toBe(true));
+    expect(el.querySelector<HTMLButtonElement>('.vote-embed-submit')!.disabled).toBe(true);
+    expect(el.querySelector('.vote-embed-link')).not.toBeNull();
+  });
 });
 
 describe('renderVoteEmbed（拉数据 + 投票交互）', () => {

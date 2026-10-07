@@ -352,9 +352,14 @@
     /* 无边框。它是 N 选 1 的选项行、不是卡片 —— hover 换一层更深的底色表示可点，
        而不是像卡片那样加阴影。带专属底色的状态（已选 --selected、结果 --result）
        用 :not 排除在外，免得 hover 把状态色冲掉。
-       `--voted` 不必再列进来：VoteEmbed.tsx 里它永远与 `--result` 同时挂，已被挡下。 */
-    &:not(.vote-embed-option--selected):not(.vote-embed-option--result):hover {
+       `--voted` 不必再列进来：VoteEmbed.tsx 里它永远与 `--result` 同时挂，已被挡下。
+       :disabled 是只读预览（编辑器）那一档 —— 看得见、点不动，hover 不该再亮。 */
+    &:not(.vote-embed-option--selected):not(.vote-embed-option--result):not(:disabled):hover {
       background: var(--color-background-subtle);
+    }
+
+    &:disabled {
+      cursor: default;
     }
 
     // 选中态：边框已去，状态只由底色表达。

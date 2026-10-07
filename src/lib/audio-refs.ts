@@ -23,7 +23,7 @@
 //   · 评论 / 讨论（rich-text.ts）：跑在**净化后的 DOM** 上，走 embedAudioRefs ——
 //     createElement + setAttribute，绝不拼 innerHTML。这三个格式的白名单里**没有**
 //     audio，所以音频只能从这条路出来（与 content-refs.ts 的图片同一条秘密）。
-//   · 博客（MarkdownRenderer.tsx）：跑在 **Markdown 源文**上、marked 之前，
+//   · 博客（content-ref-processor.ts）：跑在 **Markdown 源文**上、marked 之前，
 //     走 collectAudioRefs + replaceAudioRefs。那边 `audio` 本来就在白名单里
 //     （blog-markdown.ts 的 BLOG_SANITIZE_OPTIONS），所以直接拼标签串即可。
 //     ⚠️ 但**必须配 maskMarkdownCode** —— 源文阶段没有 DOM，跳过不了 CODE/PRE，
