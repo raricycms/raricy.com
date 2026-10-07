@@ -6,8 +6,8 @@
 // 【拷哪些】由 src/lib/emoji-faces.json 决定（那是**我们自己的**清单：中文名 ↔ 码位，
 // 入库）。包里有 3720 个 SVG，我们只用其中约 100 个，没必要整包铺出去。
 //
-// 【为什么不入库】与 public/static/vditor/ 、public/static/mathjax/ 同款：npm 包的
-// 派生产物，package-lock.json 已经钉住版本，由 postinstall 自动重建（见 .gitignore）。
+// 【为什么不入库】与 public/static/mathjax/ 同款：npm 包的派生产物，
+// package-lock.json 已经钉住版本，由 postinstall 自动重建（见 .gitignore）。
 //
 // 【许可 —— 这一节别跳过】
 // Twemoji 的**代码是 MIT、素材（图形）是 CC BY 4.0**：

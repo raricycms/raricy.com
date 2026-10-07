@@ -9,8 +9,8 @@
 // 下就变成 /clipboard/js/…，一律 404，公式只能用回退字体渲染（字形与间距都不对）。
 // 组件里已把 fontURL 显式指到 /static/mathjax/woff-v2，这个脚本负责把文件放过去。
 //
-// 【为什么不入库】与 public/static/vditor/ 同款：npm 包的派生产物，
-// package-lock.json 已经钉住版本，由 postinstall 自动重建（见 .gitignore）。
+// 【为什么不入库】npm 包的派生产物，package-lock.json 已经钉住版本，
+// 由 postinstall 自动重建（见 .gitignore）。
 //
 // 【注意】`npm ci --ignore-scripts`、或只从缓存拷 node_modules 的构建会跳过
 // postinstall —— 那种环境要手工跑一次 `npm run prepare:mathjax`。少了字体公式

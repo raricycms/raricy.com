@@ -43,7 +43,7 @@ export const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
  * 只剩兜底文案），Next 的中间件则是**静默截断** body → multipart 解析失败 →
  * 一句「无效的上传请求」。路由用它把这两种情况都变成能行动的错。
  *
- * 浏览器侧另有一道更保守的 11MB 闸门（src/lib/vditor-upload.ts 的 validate，
+ * 浏览器侧另有一道更保守的 11MB 闸门（image-client.ts 的 MAX_UPLOAD_REQUEST_BYTES，
  * 12MB 下留 1MB 给 multipart 每部分的头），两边数值**故意不同**，不是 drift。
  */
 export const MAX_REQUEST_BYTES = 12 * 1024 * 1024;

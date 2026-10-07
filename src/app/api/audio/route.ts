@@ -47,8 +47,8 @@ export async function GET() {
 // 流程：MIME 白名单 → 内容嗅探（**返回规范 MIME**）→ 大小上限 →
 // 角色配额（**音频自己的用量聚合**）→ 内存限频（RULES.audioUploadHourly）→ 写盘 → 落库。
 //
-// 【一次只收一个文件】与图床刻意不同。图床支持多文件是因为 vditor 多选要那样发；
-// 音频这边 10MB 单文件的量级下，「一次传多个」既用不上（一个满额文件就吃掉 1/5 配额），
+// 【一次只收一个文件】与图床刻意不同（图床收的是同名重复字段，为的是多选）。音频这边
+// 10MB 单文件的量级下，「一次传多个」既用不上（一个满额文件就吃掉 1/5 配额），
 // 也会更容易撞上 12MB 的请求体闸门。单文件让响应契约也简单：永远给 id/url。
 export async function POST(req: Request) {
   const user = await getCurrentUser();

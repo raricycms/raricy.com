@@ -1872,9 +1872,9 @@ describe('POST /api/images（上传内容校验接线）', () => {
     expect(body.message).toBe('文件内容与声明的格式不匹配');
   });
 
-  // ── 一次多个文件（vditor 多选 / 拖入多张）────────────────────────────────
+  // ── 一次多个文件（拖入多张 / 批量入口）────────────────────────────────────
   //
-  // 字段名 `file` 重复出现即是多文件 —— vditor 的 multiple 就是这么发的。
+  // 字段名 `file` 重复出现即是多文件 —— 用同名重复字段表达多选，不另造 `files[]`。
   // （另一种约定是走 `file[]` 分支 + getlist，语义相同。）
 
   async function uploadMany(files: { bytes: Buffer; mime: string; name: string }[]) {
@@ -2002,7 +2002,7 @@ describe('POST /api/images（上传内容校验接线）', () => {
     ]);
   });
 
-  it('回显的文件名保证带扩展名（vditor 靠扩展名判「插图片还是插链接」）', async () => {
+  it('回显的文件名保证带扩展名（图床卡片 / 下载名都靠它）', async () => {
     const u = await makeUser({ role: 'core' });
     authState.user = { id: u.id, role: 'core' };
 

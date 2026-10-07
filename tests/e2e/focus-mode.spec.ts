@@ -6,7 +6,7 @@
 //
 // 【造数纪律 —— 与全库 spec 共存】
 //   • 动态幂等：被标记栏目用 uniqueTag 的 slug 现场建（owner API），文章走
-//     POST /api/blogs（core，无 vditor 依赖）。绝不 PATCH e2e-cat、不挪 SEED_BLOG。
+//     POST /api/blogs（core，纯接口、不经过编辑器 UI）。绝不 PATCH e2e-cat、不挪 SEED_BLOG。
 //   • 每个用例 afterEach 把 focusMode 复位 false（两个 project 共用一个库，
 //     残留 focus 会让后续 blog.spec 带着过滤跑）。
 //   • 该 spec 文件名序（f）在 admin-categories（a）/ blog（b）之后，

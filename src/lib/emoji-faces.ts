@@ -8,9 +8,9 @@
 //
 // 【素材从哪来、为什么不入库】`@twemoji/svg` 这个 npm 包，由
 // scripts/copy-emoji-assets.mjs 按本目录的 emoji-faces.json 拷出用到的那些到
-// public/static/emoji/，postinstall 触发。与 public/static/vditor/ 、
-// public/static/mathjax/ 完全同款：**npm 包的派生产物，不入库**（package-lock.json
-// 已经钉住版本）。清单里没有任何第三方美术，所以那份 json 是入库的。
+// public/static/emoji/，postinstall 触发。与 public/static/mathjax/ 完全同款：
+// **npm 包的派生产物，不入库**（package-lock.json 已经钉住版本）。
+// 清单里没有任何第三方美术，所以那份 json 是入库的。
 //
 // 【许可 —— 别被包里那份 LICENSE 骗了】
 // Twemoji 的**代码是 MIT、素材（图形）是 CC BY 4.0**，出处：

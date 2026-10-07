@@ -41,11 +41,11 @@ export async function GET() {
 }
 
 /**
- * 回显给调用方的文件名 —— **保证带扩展名**。
+ * 落库 / 回显给调用方的文件名 —— **保证带扩展名**。
  *
- * vditor 靠 succMap 键的扩展名决定插 `<img>` 还是普通链接（见
- * src/lib/vditor-upload.ts），而浏览器偶尔给出没有扩展名的名字（粘贴的截图、
- * 无名的 Blob）。那种名字到了 vditor 手里会被判成「非图片」→ 插图变成插链接。
+ * 这个名字是用户唯一看得到的图片名字（图床卡片、被删时的通知、SVG 的下载名），
+ * 而浏览器偶尔给不出名字（粘贴的截图、匿名 Blob）。名字按 MIME 补一个扩展名，
+ * 比让卡片显示一个「无标题」的空名或让下载落成无后缀的文件可靠。
  */
 function displayFilename(name: string, mimeType: string): string {
   const base = name || 'image';
@@ -59,9 +59,10 @@ function displayFilename(name: string, mimeType: string): string {
 // 角色配额累计 → 内存限频（RULES.imageUploadHourly，**按张计**）→ sharp 压缩 →
 // 10 位安全 ID 写盘 → 落库（file_size 记压缩后字节）。
 //
-// 【一次可以传多个】表单字段 `file` 可以重复出现 —— vditor 多选时就是这么发的
-// （本站统一用 `file`；vditor 那套 succMap/errFiles 的翻译留在客户端）。逐个文件跑
-// 同一条校验链：任一张不合格只让它自己进 failed，不影响同批的其它张。
+// 【一次可以传多个】表单字段 `file` 可以重复出现 —— **用同名重复字段表达多选**，
+// 不另造 `files[]` 那种形状。逐个文件跑同一条校验链：任一张不合格只让它自己进
+// failed，不影响同批的其它张。（现行调用方多是一张一个请求，见 md-editor/upload.ts
+// 「为什么是逐个请求而不是一个请求带 N 个文件」；这条多文件通道仍然有效。）
 export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '请先登录');
@@ -92,8 +93,9 @@ export async function POST(req: Request) {
   const files = form.getAll('file').filter((f): f is File => f instanceof File);
   if (files.length === 0) return apiErr(400, '请选择文件');
 
-  // compress 表单字段：**缺省按压缩处理**（Vditor/BlogForm 上传不带该字段）；
-  // 图床页复选框勾选发 '1'、取消发 '0'。
+  // compress 表单字段：**缺省按压缩处理** —— 编辑器上传（md-editor/upload.ts）与
+  // 讨论 / 评论选图都不带这个字段，它们要的就是压缩后的图；只有图床页有那个复选框，
+  // 勾选发 '1'、取消发 '0'。
   // 【曾经的 bug】该字段被忽略，复选框取消勾选也不影响结果 —— 与「缺省即压缩」不符。
   // 注意它是**批级**的（一个请求一个值），不是逐文件。
   const compress = form.get('compress') !== '0';
@@ -177,9 +179,9 @@ export async function POST(req: Request) {
   // **不能**返 200：调用方里 ImageUploader 只看 code === 200 就显示「上传成功」。
   if (items.length === 0) return apiErr(400, failed[0]?.message || '图片上传失败');
 
-  // ⚠️ 200 / code 200 **不再等于「全部成功」** —— 看 failed 数组。所有现有调用方要么
-  // 只发一个文件（图床页 / 讨论与评论选图），要么自己解析 items（vditor 编辑器），
-  // 所以无害；但新调用方不许拿 code === 200 当「都传上去了」。
+  // ⚠️ 200 / code 200 **不再等于「全部成功」** —— 看 failed 数组。现有调用方要么
+  // 只发一个文件（图床页 / 讨论与评论选图 / 编辑器上传），要么自己解析 items
+  // （ImageUploader 的批量入口），所以无害；但新调用方不许拿 code === 200 当「都传上去了」。
   // id / url 只在「恰好一个文件且零失败」时给出 —— 三个单文件调用方的契约因此逐字不变。
   return apiOk(
     {
