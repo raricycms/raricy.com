@@ -32,6 +32,9 @@
 @use 'components/image-picker';
 @use 'components/user-picker';
 @use 'components/sticker-picker';
+// Markdown 编辑器外壳（博客 / 云剪贴板共用）。放在 components/ 里 —— 两个页面段
+// 都用它，且它的配色全在 cm-theme.ts，这里只有版面。
+@use 'components/markdown-editor';
 @use 'components/poster';
 @use 'components/progress';
 // 共用头像组件。放在 components/ 里（早于 pages/）—— 但它的框贴图规则刻意用了

@@ -1,0 +1,362 @@
+@use '../abstracts/mixins' as m;
+@use '../abstracts/variables' as v;
+
+// ── Markdown 编辑器外壳（博客 / 云剪贴板共用）────────────────────────────────
+//
+// 【只写「版面」，不写「配色」】编辑区里的颜色（光标、选区、语法高亮）全在
+// src/app/components/markdown-editor/cm-theme.ts 里，且一律用站点 CSS 变量 ——
+// CM6 的主题是脚本注入的样式表，跟在本文件后面加载，同权重下会赢。两处都写颜色
+// 就会出现「改了这儿不生效」，所以分工定死：**本文件管盒子，cm-theme.ts 管字**。
+//
+// 【类名台账】css-tsx-classes 守卫扫 .ts/.tsx 里的类名字面量：
+//   md-editor*      ← MarkdownEditor.tsx（含 __modes 那组）
+//   md-toolbar*     ← markdown-editor/Toolbar.tsx
+//   md-upload-chip* ← lib/md-editor/upload-anchors.ts 里拼出来的 widget DOM
+// 三处都要在本文件里有对应规则（widget 是 document.createElement 拼的，守卫照样扫）。
+
+// ── 外壳 ────────────────────────────────────────────────────────────────────
+.md-editor {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--color-border);
+  border-radius: 20px;
+  background: var(--color-background-page);
+  // 圆角要真的裁掉里面那三层（工具条 / 编辑区 / 页脚）的直角
+  overflow: hidden;
+}
+
+// 显示 img / 拖拽徽标 etc 都不该溢出这个盒子
+.md-editor__body {
+  position: relative;
+  display: flex;
+  // 下限而不是定高：外壳的 height 由调用方按页面给（博客 60vh / 剪贴板 50vh）
+  min-height: 240px;
+}
+
+// ── 工具条 ──────────────────────────────────────────────────────────────────
+.md-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 8px;
+  background: var(--color-background-subtle);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.md-toolbar__group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.md-toolbar__sep {
+  width: 1px;
+  height: 18px;
+  margin: 0 6px;
+  background: var(--color-border);
+}
+
+/// 把右侧（导出）推到最右边
+.md-toolbar__grow {
+  flex: 1 1 auto;
+}
+
+.md-toolbar__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: color .2s ease, background-color .2s ease;
+
+  &:hover:not(:disabled) {
+    background: var(--color-background-content);
+    color: var(--color-brand-primary);
+  }
+
+  &:disabled {
+    opacity: .4;
+    cursor: not-allowed;
+  }
+}
+
+// 浮层的定位上下文。按钮与菜单必须在同一个相对定位盒子里 —— 挂到工具条上
+// 会让菜单相对整条工具条定位，滚动换行后跑到别处去。
+.md-toolbar__popover-host {
+  position: relative;
+  display: flex;
+}
+
+.md-toolbar__menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 30;
+  min-width: 112px;
+  padding: 4px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-background-page);
+  // 浮层一律用这条「抬起」阴影（base/_root.scss 的口径：浮层与卡片 hover 共用）
+  box-shadow: var(--shadow-card-brand);
+}
+
+/// 靠右的那一个（导出）：从按钮**右缘**往左展开，否则会顶出编辑区右边界
+.md-toolbar__menu--right {
+  left: auto;
+  right: 0;
+}
+
+.md-toolbar__menu-item {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-primary);
+  font: inherit;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--color-background-content);
+    color: var(--color-brand-primary);
+  }
+}
+
+/// 表情面板：网格铺开，比一列菜单好扫
+.md-toolbar__menu--emoji {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 2px;
+  width: 264px;
+}
+
+.md-toolbar__emoji {
+  padding: 4px 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  font-size: 18px;
+  line-height: 1.2;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--color-background-content);
+  }
+}
+
+// ── 两个面板 ────────────────────────────────────────────────────────────────
+.md-editor__pane {
+  // min-width: 0 是必须的：flex 子项默认 min-width:auto，CM6 的长行会把
+  // 左栏撑到比容器还宽，右栏被挤成一条线（而且两栏都不出现滚动条）
+  min-width: 0;
+  overflow: hidden;
+}
+
+.md-editor__pane--source {
+  flex: 1 1 50%;
+}
+
+.md-editor__pane--preview {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 50%;
+}
+
+// 三档视图：编辑只留源码，预览只留预览，并排两栏对分。
+// 用属性选择器而不是给每档挂类名 —— 状态只有 data-mode 一处，不会出现
+// 「类名换了、属性没换」这种两边不同步。
+.md-editor[data-mode='edit'] .md-editor__pane--preview {
+  display: none;
+}
+
+.md-editor[data-mode='preview'] .md-editor__pane--source {
+  display: none;
+}
+
+.md-editor[data-mode='split'] .md-editor__pane--preview {
+  border-left: 1px solid var(--color-border);
+}
+
+// CM6 自己会把 .cm-editor 设成内容高度，这里必须撑满面板，否则点面板下部的
+// 空白处不会把光标放过去（看着像「编辑器没响应」）
+.md-editor__pane--source .cm-editor {
+  height: 100%;
+}
+
+.md-editor__preview-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 8px;
+  background: var(--color-background-subtle);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.md-editor__preview-label {
+  font-size: .78rem;
+  color: var(--color-text-secondary);
+}
+
+.md-editor__refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border: none;
+  border-radius: v.$radius-max;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: .78rem;
+  cursor: pointer;
+  transition: color .2s ease, background-color .2s ease;
+
+  &:hover {
+    background: var(--color-background-content);
+    color: var(--color-brand-primary);
+  }
+}
+
+.md-editor__preview-body {
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: 12px 16px;
+}
+
+// ── 页脚（字数 + 视图切换）──────────────────────────────────────────────────
+.md-editor__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--color-background-subtle);
+  border-top: 1px solid var(--color-border);
+}
+
+.md-editor__count {
+  font-size: .78rem;
+  color: var(--color-text-secondary);
+}
+
+.md-editor__modes {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.md-editor__mode {
+  @include m.btn-tab;
+
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  font: inherit;
+  font-size: .78rem;
+}
+
+// 窄屏没有「并排」这一档：390px 上两栏各不到 190px，两边都不成样子。
+// 按钮**整个藏掉**（而不是点了没反应、也不是点了得到一张塌掉的版面）。
+// 断点与 MarkdownEditor.tsx 的 SPLIT_MIN_WIDTH 同值：那边管「视口变窄时把已经
+// 选中的并排退回编辑」，这边管「窄屏根本不给这一档」，两处必须同时改。
+//
+// ⚠️ **这一段必须排在上面 `.md-editor__mode` 那条之后**：两者权重相同（都是
+// 一个类），后写的赢。放到前面去的话 `display: inline-flex` 会把它盖掉，
+// 而症状就是「按钮在手机上照旧显示」，看不出是顺序问题。
+@media (max-width: 767px) {
+  .md-editor__mode--split {
+    display: none;
+  }
+}
+
+// 窄屏只留图标：三档按钮带文字时会把页脚挤成两行，而这一行的高度变化
+// 会让编辑区在视口里矮一截。title 属性保住可读性。
+@media (max-width: 480px) {
+  .md-editor__mode-label {
+    display: none;
+  }
+
+  .md-editor__mode {
+    padding: 3px 8px;
+  }
+}
+
+// ── 上传中的徽标 ────────────────────────────────────────────────────────────
+// 零宽 widget：它是正文里的一个装饰，不占任何字符。行内小胶囊，跟随文字基线。
+.md-upload-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0 4px;
+  padding: 1px 6px;
+  border: 1px solid var(--color-border);
+  border-radius: v.$radius-max;
+  background: var(--color-background-content);
+  color: var(--color-text-secondary);
+  font-size: .75rem;
+  line-height: 1.6;
+  vertical-align: baseline;
+  user-select: none;
+}
+
+.md-upload-chip__label {
+  white-space: nowrap;
+}
+
+.md-upload-chip__cancel {
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: .9rem;
+  line-height: 1;
+  padding: 0 2px;
+  cursor: pointer;
+
+  // 站内没有 --color-danger；红色语义令牌就是 --color-warning-primary
+  // （base/_root.scss 里那几条 --fd-danger 也都指向它）
+  &:hover {
+    color: var(--color-warning-primary);
+  }
+}
+
+// ── 草稿恢复横幅 ────────────────────────────────────────────────────────────
+.md-editor__draft-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--color-brand-secondary);
+  color: var(--color-text-primary);
+  font-size: .85rem;
+}
+
+.md-editor__draft-btn {
+  @include m.btn-primary;
+
+  padding: 3px 12px;
+  font: inherit;
+  font-size: .8rem;
+}
+
+/// 「用当前内容」：不抢视线的那个 —— 默认动作是恢复草稿
+.md-editor__draft-btn--ghost {
+  @include m.btn-secondary;
+
+  padding: 3px 12px;
+  font: inherit;
+  font-size: .8rem;
+}
