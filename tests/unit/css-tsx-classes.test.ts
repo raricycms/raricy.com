@@ -44,7 +44,9 @@ const SKIP_DIRS = new Set(['node_modules', '.next', '.git', 'compiled', 'test-re
 /** 编译后的类名 + 组件内联 `<style>`（`const X_CSS = …` / `const X_STYLES = …`）里的类名。 */
 function definedClasses(): Set<string> {
   const out = new Set(Array.from(compiledCss().matchAll(/\.([\w-]+)/g), (m) => m[1]));
-  for (const f of walk(path.join(ROOT, 'src'), ['.tsx'])) {
+  // .ts 也扫：内联 <style> 的载体不一定是组件文件（如 useHljsThemeStyles.ts 的
+  // hljs 双主题常量 —— 定义就是定义，跟在哪个扩展名里无关）。
+  for (const f of walk(path.join(ROOT, 'src'), ['.tsx', '.ts'])) {
     const txt = fs.readFileSync(f, 'utf8');
     for (const m of txt.matchAll(/const\s+\w*(?:_CSS|_STYLES)\w*\s*=\s*([\s\S]*?);\s*\n/g)) {
       for (const c of m[1].matchAll(/\.([\w-]+)/g)) out.add(c[1]);
