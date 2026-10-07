@@ -121,6 +121,44 @@ describe('离页兜底', () => {
   });
 });
 
+describe('组件卸载（站内换页根本不发 pagehide）', () => {
+  // ★ 这一条不是 pagehide 的重复：站内换页是**客户端跳转**，整条路径上一次
+  // pagehide 都不会发，只有 React 卸载。而卸载时挂起的恰好是最后 500ms 内敲的字
+  // —— 只清定时器就等于把它丢掉，用户视角是「刚打完一句就点了别处，回来少一句」，
+  // 页面上没有任何提示。
+  it('dispose 把待写的一份落下（不是只清定时器）', () => {
+    vi.useFakeTimers();
+    const store = createDraftStore(KEY, { debounceMs: 60000 });
+    store.schedule('刚打完就点了别处');
+    store.dispose();
+    expect(window.localStorage.getItem(KEY)).toBe('刚打完就点了别处');
+  });
+
+  it('flush 之后再 dispose 不会写第二遍（落盘的是最后一份）', () => {
+    vi.useFakeTimers();
+    const store = createDraftStore(KEY, { debounceMs: 60000 });
+    store.schedule('第一版');
+    store.flush();
+    store.schedule('第二版');
+    store.flush();
+    store.dispose();
+    expect(window.localStorage.getItem(KEY)).toBe('第二版');
+  });
+
+  // ★ 发布成功的顺序是 clear() → 组件卸载。clear() 已经把 pending 置空，所以
+  // dispose 里的 flush 必须什么都不写 —— 否则「发布成功 → 跳走 → 卸载」这条最普通的
+  // 路径会把刚发出去的正文重新写回 localStorage，用户下次进新建页看到一篇已发布的旧文。
+  it('clear 之后 dispose 不会把刚发布的那一份写回来', () => {
+    vi.useFakeTimers();
+    const store = createDraftStore(KEY, { debounceMs: 60000 });
+    store.schedule('刚发布出去的正文');
+    store.clear();
+    store.dispose();
+    vi.advanceTimersByTime(60000);
+    expect(window.localStorage.getItem(KEY)).toBeNull();
+  });
+});
+
 describe('localStorage 不可用', () => {
   it('写失败时不抛出去，只回调一次', () => {
     vi.useFakeTimers();

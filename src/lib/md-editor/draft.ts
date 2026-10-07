@@ -30,7 +30,7 @@ export interface DraftStore {
   stop(): void;
   /** 取消待写并删键。之后接着写仍会攒新草稿（发布成功那一下用）。 */
   clear(): void;
-  /** 摘掉离页监听（组件卸载）。 */
+  /** 把待写的一份落盘，再摘掉离页监听（组件卸载）。 */
   dispose(): void;
 }
 
@@ -129,10 +129,16 @@ export function createDraftStore(key: string, options: DraftStoreOptions = {}): 
       }
     },
     dispose() {
-      if (timer !== null) {
-        clearTimeout(timer);
-        timer = null;
-      }
+      // ★ 先 flush 再摘监听，顺序不能反 ★
+      // 卸载（换页 / 关标签）**不一定**触发 pagehide —— 站内换页是客户端跳转，
+      // 整个过程里 pagehide 一次都不发，只有 React 卸载。而卸载时挂起的恰好是
+      // 最后那 500ms 内敲的字：只清定时器就等于把它丢掉，用户视角是
+      // 「刚打完一句就点了别处，回来少了最后一句」，而页面上什么提示都没有。
+      //
+      // ⚠️ 与 clear() 的配合：发布成功后是 clear() 再 unmount。clear() 已经把
+      // `pending` 置空，所以这里的 write() 什么也不写（`pending === null` 早退），
+      // 不会把刚发布的正文重新写回 localStorage。
+      flush();
       target?.removeEventListener('pagehide', onPageHide);
     },
   };
