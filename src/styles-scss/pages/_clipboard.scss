@@ -463,7 +463,7 @@
     }
 
     /* 编辑器挂载点（原 &__editor / #clipboard-editor）**整块已删**：
-       Vditor 下线后外观由 .md-editor（components/_markdown-editor.scss）承担。
+       编辑器外观由 .md-editor（components/_markdown-editor.scss）承担。
        ⚠️ 别再把那条规则加回来：`#clipboard-editor` 这个 id 现在挂在 .md-editor
        自己身上，而 id 选择器（1-0-0）会盖掉 .md-editor（0-1-0）的
        `border: 1px solid` —— 编辑区会静默少一圈描边。 */
