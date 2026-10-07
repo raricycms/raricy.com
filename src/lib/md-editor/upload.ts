@@ -70,16 +70,19 @@ export type BatchGate = { ok: true; files: File[] } | { ok: false; message: stri
 /**
  * 上传前的闸门：先按单文件口径筛，再看总体积。
  *
- * 只把**确实会发出去的那些**算进体积：远超单文件上限的、非图片的，本来就会在
- * 下一步被逐条拒掉，把它们算进来会让一整批本来合法的图被误伤。
- * 但它们**不是被悄悄丢掉** —— 调用方要为每个被筛掉的文件留一个失败槽位，
- * 这样用户看到的是「第 3 张太大了」，而不是「选了 3 张只进来 2 张」。
+ * ★ 「算进体积的」必须逐条等于「会被发出去的」★ —— 判据直接复用 precheckFile
+ * （同一份 IMAGE_ACCEPT 白名单、同一个单文件上限），而不是自己写一句
+ * `type.split('/')[0] === 'image'`。写成后者会多算两种**根本发不出去**的文件：
+ *   · `image/svg+xml`、`image/bmp`、`image/avif` 这类不在白名单里的 image/*；
+ *   · 超过单文件上限的大图（precheckFile 会拒，但那时体积已经不必要地爆了）。
+ * 多算的后果不是「报错」，而是**一整批本来合法的图被整体拒掉**，用户看到的是一句
+ * 「请分批上传」—— 可他批的正是本来该过的那些。
+ * 它们**不是被悄悄丢掉**：调用方要为每个被筛掉的文件留一个失败槽位，
+ * 这样用户看到的是「第 3 张只支持 PNG / JPEG / GIF / WebP」，而不是「选了 3 张只进来 2 张」。
  */
 export function gateUploadBatch(candidates: File[]): BatchGate {
   if (candidates.length === 0) return { ok: true, files: [] };
-  const sendable = candidates.filter(
-    (f) => f.size <= MAX_IMAGE_BYTES && f.type.split('/')[0] === 'image'
-  );
+  const sendable = candidates.filter((f) => precheckFile(f) === null);
   const total = sendable.reduce((sum, f) => sum + f.size, 0);
   if (total > MAX_UPLOAD_REQUEST_BYTES) return { ok: false, message: batchTooLargeMessage(total) };
   return { ok: true, files: candidates };
@@ -127,6 +130,39 @@ export function runLimited<T>(
 }
 
 /**
+ * alt 文本的转义。**文件名是不可信输入**（服务端只是回显上传者给的名字），
+ * 而 `![alt](url)` 里的 `]` 正是 alt 的终止符：名字里带一个 `]` 就会把整条语法
+ * 截断成 `![a]` + 剩下的乱码 —— 图**整个不显示**，页面上只留一段方括号原文，
+ * 而服务端、上传、插入全都没有报错（用户视角是「传上去了但插进来是乱的」）。
+ *
+ * 转义的是标准 Markdown 的那几个字符：`\` 先转（否则会把后面补的 `\` 再转一遍）、
+ * 然后 `]`（`[` 刻意不转，理由见函数里那段）。换行折成空格 —— alt 是行内文本，
+ * 留着换行会让这条语法跨行。
+ * 转义**不是**改写：marked 会把 `\]` / `\\` 还原回 `]` / `\`（实测，见
+ * tests/unit/md-editor-upload.test.ts），所以 alt 读起来仍是原来那个文件名。
+ */
+function escapeAltText(text: string): string {
+  return text
+    // 先把 `\` 翻倍 —— 否则下面补的 `\` 会被下一轮再转一遍
+    .replace(/\\/g, '\\\\')
+    // ★ 方括号用 **HTML 实体**，不用反斜杠 ★ 两种写法都能让 marked 认下来，
+    // 但反斜杠那一种会和**公式保护**撞车，而且是静默的：
+    //   `图[1].png` → `![图\[1\].png](…)`，而 `\[…\]` 正是 LaTeX **块级公式**的
+    //   定界符（markdown-math.ts 的 MATH_RULES）。protectMath 在上游就把这一段
+    //   换成了公式占位符，还原之后：alt 里留下**看得见的反斜杠**（用户看到的是
+    //   `图\[1\].png`）、mathCount 平白 +1（整篇多跑一遍 MathJax），两个带方括号的
+    //   文件名相邻时 `\[…\]` 还会把中间那段正文整块当成公式吞掉。
+    //   实体写法不产生任何 `[` / `]` 字符，语法与公式两边都看不见它。
+    //   ⚠️ 它必须**在真管线上也读得回来**（渲染层会把这几个实体还原成方括号），
+    //   所以判据只认 tests/unit/md-editor-upload.test.ts 里过真管线的用例，不认
+    //   「字符串长得像转义过的」。
+    .replace(/\[/g, '&#91;')
+    .replace(/\]/g, '&#93;')
+    // 换行折成空格：alt 是行内文本，留着换行会让这条语法跨行
+    .replace(/[\r\n]+/g, ' ');
+}
+
+/**
  * 插入用的标准 Markdown：`![文件名](url)` 后跟一个换行 —— **换行在每一张后面都有**，
  * 单张也一样，且不因张数分支。这条形状是**刻意的**：正文里同一张图在「上传插入」与
  * 「资源面板挑选」两条路上必须逐字一致（面板那次读的就是这个函数），少一个换行就会
@@ -136,5 +172,5 @@ export function runLimited<T>(
  * 匿名 Blob），服务端会按 MIME 补一个，比我们自己猜可靠。
  */
 export function imageMarkdown(filename: string, url: string): string {
-  return `![${filename}](${url})\n`;
+  return `![${escapeAltText(filename)}](${url})\n`;
 }
