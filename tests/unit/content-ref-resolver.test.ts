@@ -109,6 +109,76 @@ describe('失败与刷新', () => {
     expect(calls).toHaveLength(2);
   });
 
+  it('★ 刷新时在飞的旧请求被作废：新代真重取，旧响应不回填缓存 ★', async () => {
+    // 场景：用户点了「刷新预览」，但刷新前那条请求还没落地。服务端状态在这中间
+    // 变了（比如引用方把剪贴板从私有改成公开）—— 旧响应若写回缓存，刷新就白点了。
+    const calls: string[] = [];
+    // 两条都悬在半空，由用例控制落地顺序 —— 只有这样才能在「旧落地、新未落地」
+    // 那个瞬间观察缓存，否则新代结果已经盖过旧代，断言看不出区别。
+    const land: (() => void)[] = [];
+    const respond = (content: string) => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ clip: { content } }),
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) => {
+        calls.push(String(input));
+        return new Promise((resolve) => {
+          land.push(() => resolve(respond(calls.length === 1 ? '旧正文' : '新正文')));
+        });
+      })
+    );
+
+    const r = new ContentRefResolver('expand');
+    const first = r.resolve('clipboard', CLIP_ID); // 代 0，在飞
+
+    r.invalidate(); // 刷新预览
+
+    const second = r.resolve('clipboard', CLIP_ID);
+    expect(calls, '刷新必须真去重取，不能复用刷新前那条在飞请求').toHaveLength(2);
+
+    // 旧请求先落地 —— 不得写回缓存（否则把稍后取到的新结果又盖回旧的）
+    land[0]();
+    await first;
+    expect(r.peek('clipboard', CLIP_ID), '旧代响应不得落进缓存').toBeUndefined();
+
+    // 新请求落地后才落账
+    land[1]();
+    expect((await second)?.content).toBe('新正文');
+    expect(r.peek('clipboard', CLIP_ID)?.content).toBe('新正文');
+
+    // 新代落账后照常命中缓存
+    await r.resolve('clipboard', CLIP_ID);
+    expect(calls).toHaveLength(2);
+  });
+
+  it('刷新后同键的并发读取仍只发一次（旧的在飞请求不得摘掉新请求）', async () => {
+    const calls: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) => {
+        calls.push(String(input));
+        if (calls.length === 1) return new Promise(() => {}); // 永不落地
+        return Promise.resolve({ ok: true, status: 200, json: async () => ({ clip: { content: 'x' } }) });
+      })
+    );
+
+    const r = new ContentRefResolver('expand');
+    void r.resolve('clipboard', CLIP_ID);
+    r.invalidate();
+
+    const [a, b] = await Promise.all([
+      r.resolve('clipboard', CLIP_ID),
+      r.resolve('clipboard', CLIP_ID),
+    ]);
+
+    // 一条旧的 + 一条新的；若新代两条没共用 in-flight 就是三条
+    expect(calls).toHaveLength(2);
+    expect(a).toBe(b);
+  });
+
   it('投票探测失败带 error 标记（渲染层据此换兜底链接）', async () => {
     stubFetch(() => 'NOT_OK');
     const r = new ContentRefResolver('expand');

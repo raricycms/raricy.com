@@ -21,9 +21,14 @@
 //   · 失败也缓存（降级文案 / 错误标记）：不在每次按键时重试。手动「刷新预览」
 //     调 invalidate() 清空后才会重新请求 —— 401 / 403 不会被上一份成功缓存
 //     掩盖，因为刷新先清缓存再渲染。
-//   · invalidate() 只清已落账的条目：仍在飞的请求落地后照常写回（旧响应可以
-//     充实合法缓存；「不得覆盖较新的预览」那一半由渲染层的 cancelled/generation
-//     守卫负责，不在这里）。
+//   · invalidate() 是**代际切换**（见下面 generation）：已落账条目与在飞请求
+//     一起作废。旧代请求仍会落地，但**既不写回缓存、也不动新代的 in-flight 表**。
+//     ⚠️ 这里曾经只清 entries、保留在飞请求，注释还写着「旧响应可以充实合法缓存」
+//     —— 接上编辑器「刷新预览」后那是错的：刷新前发出的那条请求拿的是**刷新前的
+//     服务端状态**（比如引用方刚把剪贴板从私有改成公开），它落地时会把刚刚重取的
+//     新结果覆盖回旧的，于是「刷新」看起来按了没用，且只在竞态窗口里复现。
+//     「旧响应不得覆盖较新的预览」那一半仍由渲染层的 cancelled/generation 守卫
+//     负责 —— 本层只保证**缓存里存的一定是本代取到的数**。
 //   · 容量有上限（逐出最旧）。一篇正文的替换名额由 MAX_BLOG_REF_ITEMS 封顶，
 //     但**去重后的 id 集合**可以超过它；编辑器会话级缓存还会跨多份草稿累积。
 //     逐出只是多一次重取，不影响正确性。
@@ -70,6 +75,11 @@ export const RESOLVER_CACHE_CAP = 200;
 export class ContentRefResolver {
   private entries = new Map<string, ResolvedRef>();
   private inflight = new Map<string, Promise<ResolvedRef | undefined>>();
+  /**
+   * 代际计数器 —— 每次 invalidate() 自增。请求落地时对不上这一格就丢弃结果。
+   * 没有它，「刷新预览」期间的在飞请求会把刷新前的旧数据写回刚清干净的缓存。
+   */
+  private generation = 0;
 
   /**
    * @param mode          见文件头「两种模式」。实例级固定，不随调用变。
@@ -91,11 +101,15 @@ export class ContentRefResolver {
     if (hit) return Promise.resolve(hit);
     const pending = this.inflight.get(key);
     if (pending) return pending;
+    const gen = this.generation;
     const p = this.load(type, id)
       .catch((): ResolvedRef | undefined => undefined)
       .then((entry) => {
-        this.inflight.delete(key);
-        if (entry) this.store(key, entry);
+        // 只清理「还是自己」的那一格：刷新后同键可能已经换成新代的请求，
+        // 无条件 delete 会把新请求从表里摘掉，并发去重随即失效（同一资源发两次）。
+        if (this.inflight.get(key) === p) this.inflight.delete(key);
+        // 刷新之后落地的旧代结果直接丢弃 —— 它是刷新前那一刻的服务端状态。
+        if (gen === this.generation && entry) this.store(key, entry);
         return entry;
       });
     this.inflight.set(key, p);
@@ -108,11 +122,18 @@ export class ContentRefResolver {
   }
 
   /**
-   * 「刷新预览」：清掉已落账条目，下一次 resolve 重新取数。
-   * 不动在飞的请求 —— 它们落地后照常写回（见文件头缓存语义）。
+   * 「刷新预览」：作废本代全部结果，下一次 resolve 重新取数。
+   *
+   * 三件事一起做，缺一不可：
+   *   · 代际 +1     —— 在飞的旧请求落地时被判为过期，不写回缓存；
+   *   · 清 entries  —— 已落账的（含 403 降级文案）不再命中，真正重取；
+   *   · 清 inflight —— 否则下一次 resolve 会拿到**刷新前**发出去的那条 Promise，
+   *     压根不重取，等于刷新石沉大海。
    */
   invalidate(): void {
+    this.generation += 1;
     this.entries.clear();
+    this.inflight.clear();
   }
 
   private store(key: string, entry: ResolvedRef): void {
