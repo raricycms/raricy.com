@@ -119,14 +119,25 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
       });
       const result = await response.json();
       if (result.code === 200) {
+        // ★ 请求在飞的时候用户还能接着打字 ★ —— 那一段**没被发出去**。
+        // 判据是「现在的正文还是不是提交时那一份」，不是时间先后：成功回调只说明
+        // 「这一份发出去了」，不说明「编辑器里现在这一份发出去了」。
+        const changedSinceSubmit = !isEdit && getContent() !== content;
         toast(
           isEdit ? '保存成功，正在返回...' : '上传成功！即将跳转到文章页面...',
           'success'
         );
-        // 新建成功才清草稿 —— 编辑态用的是**服务端**那份正文，本来就没有本地草稿。
-        // clearDraft 内部是「先停待写、再删键」，顺序写反会让延迟回调把刚发布的
-        // 正文写回 localStorage（下次进新建页看到一篇已经发出去的旧文）。
-        if (!isEdit) editorRef.current?.clearDraft();
+        if (changedSinceSubmit) {
+          // 这一页马上要跳走，那一段新改动只在编辑器里、不落盘就没了 ——
+          // 先把它写进本地草稿，再如实告诉用户发出去的是哪一版。
+          editorRef.current?.flushDraft();
+          toast('发布的是提交那一刻的正文；提交之后你又改了一些，已留在本地草稿里', 'warning');
+        } else if (!isEdit) {
+          // 新建成功才清草稿 —— 编辑态用的是**服务端**那份正文，本来就没有本地草稿。
+          // clearDraft 内部是「先停待写、再删键」，顺序写反会让延迟回调把刚发布的
+          // 正文写回 localStorage（下次进新建页看到一篇已经发出去的旧文）。
+          editorRef.current?.clearDraft();
+        }
         setTimeout(
           () => {
             window.location.href = result.redirect || '/blog/' + result.blog_id;

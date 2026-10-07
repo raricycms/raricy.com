@@ -65,7 +65,8 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
   async function saveClipboard(stayOnPage: boolean) {
     const data = {
       title: titleRef.current.trim(),
-      // vditor 在编辑模式会保留标题外的 markdown 文本；fallback 时直接读 textarea。
+      // 正文一律走 getContent()：它会自己判编辑器是否真的起来了，起不来就回落到
+      // 兜底 textarea（判据见上面那段注释）。**不要**在这里改读其它来源。
       content: getContent(),
       publicity: publicityRef.current,
     };
@@ -98,13 +99,28 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
       });
       const result = await response.json();
       if (response.ok && result.code === 200) {
-        // 新建成功后清掉本地草稿：这份正文已经在服务端了，再留着它，下次进新建页
-        // 会把一篇**已经发出去**的文章当成「没写完的草稿」恢复出来。
+        // ★ 请求在飞的时候用户还能接着打字 ★ —— 那一段**没被发出去**。
+        // 成功回调只说明「提交那一刻那一份存下来了」，不说明「编辑器里现在这一份」。
+        // 判据因此是**内容比对**，不是「刚保存过」这个事件：
+        //   · 没变 → 草稿已完成使命，清掉（否则下次进新建页会把一篇**已经发出去**的
+        //     文章当成「没写完的草稿」恢复出来）；
+        //   · 变了 → 草稿正是那一段还没保存的新改动，**留着**（顺手 flush 一次，
+        //     把防抖窗口里那 500ms 也落下）。清掉它 = 把用户刚打的字丢掉，
+        //     而同一时刻还会弹一句「保存成功」，看着像已经存好了。
         // 清完之后接着写仍会攒新草稿（见 draft.ts 的 clear()）。
         // 编辑态没有草稿键，什么都不清。
-        if (!isEdit) editorRef.current?.clearDraft();
+        const changedSinceSave = !isEdit && getContent() !== data.content;
+        if (!isEdit) {
+          if (changedSinceSave) editorRef.current?.flushDraft();
+          else editorRef.current?.clearDraft();
+        }
         if (stayOnPage) {
           toast('保存成功！', 'success');
+          // 保存后**不离开页面**是剪贴板新建页的主路径，所以这里必须说清楚：
+          // 绿字说的只是「刚才那一份存下来了」，之后敲的字还在本地。
+          if (changedSinceSave) {
+            toast('保存的是按下保存那一刻的正文；之后的改动还在本地草稿里', 'warning');
+          }
         } else {
           router.push(`/clipboard/${result.id}`);
         }
