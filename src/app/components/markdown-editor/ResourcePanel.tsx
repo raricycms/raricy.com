@@ -157,6 +157,11 @@ export default function ResourcePanel({ onClose, onInsert }: ResourcePanelProps)
                   aria-controls="md-res-panel"
                   className={`md-res-tab${s.key === kind ? ' is-active' : ''}`}
                   onClick={() => {
+                    // 点当前这一颗标签是**空操作**。少了这个早退会很安静地坏掉：
+                    // kind 没变 → 取数的 effect 不会重跑 → 而下面那行已经把状态
+                    // 打回 `loading`，于是面板停在「加载中…」，直到用户切走再切回来。
+                    // （用户视角就是「点了一下自己所在的标签，列表没了」。）
+                    if (s.key === kind) return;
                     setKind(s.key);
                     setQuery('');
                     setReveal(REVEAL_STEP);
