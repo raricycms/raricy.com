@@ -71,7 +71,10 @@ const MARKET_PORT = 3102; // 练手盘行情替身，见 tests/e2e/mock-market-p
 const RESPONSIVE_SPECS: RegExp[] = [
   /chat-features\.spec\.ts$/,
   /chat-sidebar\.spec\.ts$/,
-  /vditor-theme\.spec\.ts$/,
+  // Markdown 编辑器：视图三档在窄屏要少给「并排」那一档，且窄屏的栏宽是被
+  // 真视口挤出来的 —— 只有 mobile 那一遍才量得到。文件里还有主题与工具条用例，
+  // 桌面同样要跑（反过来就成了「桌面分支无人验证」）。
+  /\/editor\.spec\.ts$/,
   /chat-avatar-menu\.spec\.ts$/,
   /chat-sse\.spec\.ts$/,
   // 只有「移动端汉堡红点」那 2 条是移动端专属，另外 3 条是通用的未读角标语义。
