@@ -21,6 +21,7 @@ import { ContentRefProcessor } from '@/lib/content-ref-processor';
 import { ContentRefResolver, type ContentRefMode } from '@/lib/content-ref-resolver';
 import { renderBlogMarkdown } from '@/lib/blog-renderer';
 import { enhanceBlogContent } from '@/lib/blog-content-dom';
+import type { VoteEmbedData } from '@/lib/blog-markdown';
 import { useHljsThemeStyles } from '@/app/components/useHljsThemeStyles';
 
 export default function MarkdownRenderer({
@@ -30,6 +31,7 @@ export default function MarkdownRenderer({
   interactive = true,
   resolver: sharedResolver,
   refreshToken,
+  voteData,
 }: {
   content: string;
   /**
@@ -87,9 +89,26 @@ export default function MarkdownRenderer({
    * 只在传了 `resolver` 时有意义；不传 resolver 时每次渲染本来就是全新缓存。
    */
   refreshToken?: number;
+  /**
+   * 只读预览专用的投票数据口（见 blog-content-dom.ts 的 `voteData`）：
+   * 数据复用会话缓存里那一份，避免每次防抖重渲染都重打一条 `/api/votes/<id>`。
+   * 不传 = 每次自己拉（正文页现状）。
+   */
+  voteData?: (id: string) => VoteEmbedData | null | undefined;
 }) {
   /** 渲染结果 + 抽出的公式数量（决定要不要跑 MathJax，见 markdown-math.ts）。 */
   const [doc, setDoc] = useState<{ html: string; mathCount: number } | null>(null);
+  /**
+   * 渲染序号 —— 投票位的**重画代际**（见下面后处理 effect）。
+   *
+   * 【为什么不直接用调用方的 refreshToken】refreshToken 一变、而这一份新的 render
+   * 还没落地时，后处理会**对着上一份 DOM** 再跑一次（旧元素 + 新代际 → 去重戳
+   * `data-rendered` 对不上 → 重画）。那一瞬间会话缓存刚被 `invalidate()` 清干净、
+   * 新的取数还在飞，于是 `voteData` 返回 undefined，小组件只能自己去拉一条 ——
+   * 每次点「刷新引用」多打一条请求，投票位还闪一次「加载投票…」，屏幕上却一切正常。
+   * 用**渲染序号**（与 doc 同一次 commit 落地）就没有这个中间态。
+   */
+  const [renderSeq, setRenderSeq] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const lastRefreshRef = useRef<number | undefined>(undefined);
 
@@ -108,7 +127,12 @@ export default function MarkdownRenderer({
       }
       lastRefreshRef.current = refreshToken;
       const text = await new ContentRefProcessor(resolver).preprocess(content ?? '');
-      if (!cancelled) setDoc(renderBlogMarkdown(text));
+      if (!cancelled) {
+        setDoc(renderBlogMarkdown(text));
+        // 与 doc 同一批 —— React 会把两次 setState 合成一次 commit，
+        // 于是后处理永远看不到「新代际 + 旧 DOM」这个中间态。
+        setRenderSeq((n) => n + 1);
+      }
     })();
     return () => { cancelled = true; };
   }, [content, contentRefs, externalClips, sharedResolver, refreshToken]);
@@ -117,8 +141,13 @@ export default function MarkdownRenderer({
   useEffect(() => {
     const root = containerRef.current;
     if (!root || !doc) return;
-    enhanceBlogContent(root, { interactive, mathCount: doc.mathCount });
-  }, [doc, interactive]);
+    enhanceBlogContent(root, {
+      interactive,
+      mathCount: doc.mathCount,
+      voteData,
+      voteGeneration: renderSeq,
+    });
+  }, [doc, interactive, voteData, renderSeq]);
 
   return (
     <div className="blog-content-container-container">

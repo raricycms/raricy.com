@@ -275,7 +275,17 @@ function attachVoteHandlers(el: HTMLElement, voteId: string, data: VoteEmbedData
 export async function renderVoteEmbed(
   el: HTMLElement,
   voteId: string | null | undefined,
-  options?: { interactive?: boolean }
+  options?: {
+    interactive?: boolean;
+    /**
+     * 现成的小组件数据。**`undefined` = 没给**（自己去拉），`null` = **给了但没取到**
+     * （直接落兜底链接）。两者不是一回事，别用 `??` 合并。
+     * 编辑器只读预览走这条路：数据来自 ContentRefResolver 已经为存在性探测取过的
+     * 那一份 `GET /api/votes/<id>`，于是每次防抖重渲染不再多发一条请求、
+     * 也不再闪一次「加载投票…」。正文页不传，行为与以前逐字一致。
+     */
+    data?: VoteEmbedData | null;
+  }
 ): Promise<void> {
   const interactive = options?.interactive ?? true;
   if (!isValidVoteId(voteId)) {
@@ -283,15 +293,21 @@ export async function renderVoteEmbed(
     return;
   }
 
-  el.textContent = '加载投票…';
-
-  let data: VoteEmbedData | null = null;
-  try {
-    const res = await fetch(`/api/votes/${voteId}`, { credentials: 'same-origin' });
-    const json = (await res.json()) as { code?: number; data?: VoteEmbedData };
-    if (json.code === 200 && json.data) data = json.data;
-  } catch {
-    // 网络/解析失败都走兜底链接
+  let data: VoteEmbedData | null;
+  if (options?.data !== undefined) {
+    // 有现成数据就**不写「加载投票…」**：那段文字是给异步等待看的，
+    // 而这条路一步都不用等（数据在手上），写了反而在每次重渲染时闪一下。
+    data = options.data;
+  } else {
+    el.textContent = '加载投票…';
+    data = null;
+    try {
+      const res = await fetch(`/api/votes/${voteId}`, { credentials: 'same-origin' });
+      const json = (await res.json()) as { code?: number; data?: VoteEmbedData };
+      if (json.code === 200 && json.data) data = json.data;
+    } catch {
+      // 网络/解析失败都走兜底链接
+    }
   }
 
   if (!data) {

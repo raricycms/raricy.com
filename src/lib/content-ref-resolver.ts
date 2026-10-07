@@ -34,6 +34,7 @@
 //     逐出只是多一次重取，不影响正确性。
 // ─────────────────────────────────────────────────────────────────────────────
 
+import type { VoteEmbedData } from '@/lib/blog-markdown';
 import { clipboardFailureText } from '@/lib/content-refs';
 import {
   MAX_CARD_ITEMS,
@@ -52,7 +53,10 @@ export type ContentRefType = 'clipboard' | 'vote' | 'image' | 'favorite';
  *   · clipboard / favorite —— `content` 是要替换进 Markdown 源文的串
  *     （剪贴板正文或收藏夹卡片 HTML；失败时是降级文案）。
  *   · vote —— 只做存在性探测：成功 `{ type:'vote' }`，失败 `error:true`。
- *     小组件的数据由渲染后处理里的 renderVoteEmbed 自己再拉（票数以当时为准）。
+ *     **顺带把小组件要的那份数据留下**（`data`）—— 探测与小组件取的是**同一个**
+ *     `GET /api/votes/<id>`，丢掉再拉一次等于编辑器预览每停一下就多发一轮请求。
+ *     正文页不用它（那条路自己拉，票数取当时的值），只有只读预览会读。
+ *     注意 `data` 的**有无不影响成败语义**：只要响应 ok 就仍然不算 error。
  *   · image —— 不请求，`url` 直接拼 raw 路由（那边逐条判权，私有档 404）。
  */
 export interface ResolvedRef {
@@ -61,6 +65,8 @@ export interface ResolvedRef {
   error?: boolean;
   id?: string;
   url?: string;
+  /** 仅 vote：小组件数据（探测那一条报文里的 `data`）。 */
+  data?: VoteEmbedData;
 }
 
 /**
@@ -176,8 +182,12 @@ export class ContentRefResolver {
       try {
         const res = await fetch(`/api/votes/${id}`, { credentials: 'same-origin' });
         if (!res.ok) throw new Error('failed');
-        await res.json();
-        return { type: 'vote' };
+        const json = (await res.json()) as { code?: number; data?: VoteEmbedData };
+        // 成败判据与以前**一模一样**（响应 ok 就不算失败）；这里只是**不再把报文丢掉**
+        // —— 小组件读的就是同一份数据，编辑器预览因此不必再拉第二条。
+        // 报文里没有可用数据（code 不是 200 / 缺 data）时照旧返回「成功但无数据」，
+        // 由小组件自己走到兜底链接，与改动前逐字一致。
+        return json?.code === 200 && json.data ? { type: 'vote', data: json.data } : { type: 'vote' };
       } catch {
         return { type: 'vote', error: true, id };
       }
