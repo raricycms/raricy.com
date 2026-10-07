@@ -846,8 +846,8 @@ plot / price / volume / time 各占一格）：与 SVG 共用同一个分数，�
   `currentColor`），所以**填充色与描边色必须分开**的图标套不进这条约定 —— 例如「白填充 +
   深描边」才立得住的主体，mask 会把这一层信息抹平。这类素材直接放
   `public/static/img/` 下，用 `<img>` 引用，配色烤在 SVG 里。
-  第三方素材还要在同目录留一份 `LICENSE.txt`（先例：
-  `public/static/vditor/dist/js/mathjax/LICENSE`）。
+  第三方素材还要在同目录留一份 `LICENSE.txt`（先例：`public/static/emoji/LICENSE.txt`
+  —— 它由复制脚本自己生成，**不要**照拷 npm 包里那份，理由见 CLAUDE.md「表情包」节）。
 
 ## 8. 主题切换机制
 
@@ -1073,11 +1073,14 @@ plot / price / volume / time 各占一格）：与 SVG 共用同一个分数，�
 - **剪贴板编辑器：`.clipboard-form__editor` / `__fallback` 的嵌套层级写错**
   （`_clipboard.scss` 里落进了 `&__group` 内部）→ 编译成 `.clipboard-form__group__editor`
   这个 **DOM 里不存在的选择器**。规则一直在，只是没人能命中它：`#clipboard-editor`
-  于是吃 Vditor 自带的 `1px 描边 + 3px 圆角`，既没有页面底色也没有聚焦光晕
-  （违反 §4.2 的三条）。b81a201 把外观从行内 style 挪进 SCSS 时就是这么错的。
-  ⚠️ 修的时候带上 `#clipboard-editor`：`.vditor` 与它同为 0-1-0，而
-  `vditor/dist/index.css` 是**页面段的独立 chunk**（主 SCSS 挂在 layout 段、先加载），
-  等权重下后到的赢 —— 不带 id 会被盖掉。
+  于是吃编辑器自带的 `1px 描边 + 3px 圆角`（当时是 Vditor 给的默认外观），既没有
+  页面底色也没有聚焦光晕（违反 §4.2 的三条）。b81a201 把外观从行内 style 挪进 SCSS
+  时就是这么错的。
+  ⚠️ **今天的反向禁令**：那一段规则**整块删掉了**，编辑器外观由 `.md-editor`
+  （`components/_markdown-editor.scss`）承担。别为 `#clipboard-editor` 再写选择器 ——
+  这个 id 现在挂在 `.md-editor` 自己身上，而 id（1-0-0）会盖掉 `.md-editor`（0-1-0）
+  的 `border: 1px solid`，编辑区**静默**少一圈描边。禁令写在 `_clipboard.scss` 里
+  那段空位注释上（那里原来是那条规则的位置）。
 
 - **`.chat-search-item__time` 漏了 `white-space: nowrap`**：`fmtTime` 输出
   「09-18 19:00」中间那个空格是折行点，作者名一长，flex 就把它压到 min-content

@@ -113,7 +113,6 @@ git ls-tree -r 7d7be1c^ --name-only app/ # 列出旧 app/ 全树
 |---|---|---|
 | `.py-4` / `.py-5` | `src/styles-scss/utilities/_spacing.scss` | **padding-block 工具类**，Bootstrap 命名 |
 | `dragStartRef.current.py` | `src/app/components/ImageLightbox.tsx` | 鼠标事件的 `pageY` 简写字段 |
-| `aliases:["jinja"]` | `public/static/vditor/dist/` 下的 highlight.js / markmap | vendored 第三方库里的**语法高亮语言定义** |
 | `makeLegacyCheckin` / `legacyRoleCommands` | `tests/`、`scripts/cli/commands/roles.ts` | 「旧」指**本应用自己的旧实现** |
 | 「旧实现 / 原实现」 | `src/lib/chat-service.ts`、`tests/global-setup.ts` 等 | 同上 —— 绝大多数是 Next-vs-Next 的历史，**是解释回归的正当线索，别扫** |
 | `account_sync_ledger` ~ `fish_api_key_encrypted` ~ `ACCOUNT_SERVICE_*` | `prisma/`、`src/lib/fish-idempotency.ts`、`.env*` 的注释 | 站外 **FastAPI 账户微服务**（独立仓库）的遗物 —— 它是 Python，但**不是 Flask，也不是本仓的代码**。那个服务已于 2026-09 搬进站内，见 §1.1 的三行 |

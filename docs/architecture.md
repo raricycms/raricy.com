@@ -127,7 +127,8 @@
 | 数据层 | `db.ts` · `db-time.ts` · `format.ts` |
 | 博客域 | `blog-service.ts` · `feed-service.ts` · `comment-service.ts` · `comment-shared.ts` · `blog-sort-pref.ts` · `spider-service.ts` |
 | @ 提及 | `mention-shared.ts`（评论 / 讨论共用的提取规则与光标搜索边界，零依赖）· `mention-service.ts`（按文章 / 会话范围搜索可提及用户） |
-| 富文本渲染 | `rich-text.ts`（共享管线）· `chat-markdown.ts` · `comment-markdown.ts` · `blog-markdown.ts` · `content-refs.ts`（评论/讨论那条**同步**管线：只认 8 位与 10 位，9 位投票与 6 位收藏夹刻意不展开）· `favorite-refs.ts`（`[@六位]` 卡片：**只在博客/剪贴板**那条管线生效，见 §6.9）· `user-refs.ts`（`[@用户/用户名]` 名片：同样只在评论/讨论生效，见 §6.7）· `markdown-math.ts` · `linkify.ts` · `vditor-theme.ts` |
+| 富文本渲染 | `rich-text.ts`（共享管线）· `chat-markdown.ts` · `comment-markdown.ts` · `blog-markdown.ts` · `content-refs.ts`（评论/讨论那条**同步**管线：只认 8 位与 10 位，9 位投票与 6 位收藏夹刻意不展开）· `favorite-refs.ts`（`[@六位]` 卡片：**只在博客/剪贴板**那条管线生效，见 §6.9）· `user-refs.ts`（`[@用户/用户名]` 名片：同样只在评论/讨论生效，见 §6.7）· `markdown-math.ts` · `linkify.ts` |
+| Markdown 编辑器 | `md-editor/commands.ts`（工具条的**事务命令**，零依赖：一切改动都走 `view.dispatch`，于是每步都进撤销历史）· `md-editor/draft.ts`（本地草稿键与防抖落盘）· `md-editor/upload.ts`（多文件调度：筛选 / 排队 / 超限拒收；**单文件怎么发**仍归 `image-client.ts`）· `md-editor/upload-anchors.ts`（上传锚点：零宽 widget，位置随事务映射、按选择顺序落位）· `md-editor/insert-anchor.ts`（「插入引用」面板的落点，同样靠 `ChangeDesc.mapPos`）· `md-editor/resources.ts`（资源面板的词汇与插入语法，**零 React** —— 拼串与解析同源，见 §6.7）。组件在 `src/app/components/markdown-editor/`（`Toolbar.tsx` / `ResourcePanel.tsx` / `cm-theme.ts` / `export.ts`） |
 | 表情包 | `sticker-refs.ts`（`[@合集/表情]` → 内联 `<img>`，跑在`rich-text.ts` 的净化**之后**）· `sticker-service.ts`（素材扫盘与三层缓存）· `emoji-faces.ts`（内置黄脸合集的编译期清单，素材从 npm 包拷进 `public/static/emoji/`）。安全边界与正则纪律见几者头部；玩家向说明见 `docs/guide/表情包使用指南.md` |
 | 讨论 | `chat-service.ts` · `chat-bus.ts`（SSE 订阅）/ `chat-shared.ts`（DTO）· `chat-presence.ts`（「谁正在看哪个会话」—— 进程内，决定被 @ 时发不发通知）· `chat-sidebar-pref.ts` · `focus-mode.ts` |
 | 实时传输 | `sse.ts` —— SSE 响应头 / 帧格式 / 重连与背压 / 心跳常量的**唯一出处**，两条流共用（讨论 `chat-bus.ts`、顶栏 `topbar-bus.ts`）。新增 SSE 路由一律 import 它，不要手抄响应头（`no-transform` 少一个字的后果见该文件头注释） |
@@ -135,7 +136,7 @@
 | 通知 / 审计 | `notification-service.ts` · `broadcast-service.ts` · `audit-service.ts` · `admin-appeal-service.ts` |
 | 投票 / 签到 / 剪贴板 | `vote-service.ts` · `checkin-service.ts` · `clipboard-service.ts` |
 | 收藏夹 | `favorite-service.ts`（六条不变量见文件头）· `favorite-refs.ts`（`[@六位]` 的纯逻辑），见 §6.9 |
-| 图床 | `image-service.ts` · `image-upload.ts`（服务端）· `image-client.ts`（浏览器侧选图上传，讨论与评论共用）· `vditor-upload.ts`（Vditor 编辑器的上传配置，博客与剪贴板共用；与 `/api/images` 的字段名/响应结构两端对齐，见 `tests/unit/vditor-upload.test.ts`） |
+| 图床 | `image-service.ts` · `image-upload.ts`（服务端）· `image-client.ts`（浏览器侧**单文件**上传：校验 / XHR / 弱网重试。讨论、评论、博客与剪贴板编辑器共用这一条；编辑器侧的**多文件**调度另住 `md-editor/upload.ts`） |
 | 音频床 | `audio-upload.ts`（magic bytes 嗅探 + **MIME 别名归一化**，**无压缩**）· `audio-service.ts`（含**独立配额聚合**）· `audio-refs.ts`（`[@音频/<ID>]`，**零 import** —— 要被拉进客户端包），见 §6.15 |
 | 头像框 | `frame-refs.ts`（**零依赖**词汇层：白名单 / 解析 / 到期判定 / **租金与在架清单**）· `frame-service.ts`（素材扫盘 + 持有与装备写路径 + **判定唯一出口**；授予内核 `grantFrameTx` 收调用方的事务，供商城拼原子性）· `frame-shop-service.ts`（鱼干商城：租框。**它不直接写那两列**，一律经 `grantFrameTx` —— F1），见 §6.14 |
 | 故事 | `story-service.ts` |
@@ -442,6 +443,43 @@ core+；讨论大区过滤专注、禁言与静音者，私聊只列未静音的
 资源类 `error` 事件**不冒泡但走捕获**，所以容器上一个监听器就够，且跟着容器的生命周期走。
 ⚠️ 那个 `useEffect` 的依赖必须是 `[html]` —— 组件在 `html` 为空时 `return null`，
 div 会卸载重挂，`deps=[]` 的监听器永远附不上。
+
+**编辑器（博客 / 剪贴板）的预览走的就是上表那台渲染器**，不是另写一份近似实现 ——
+「预览长什么样」和「发布后长什么样」因此不需要人去对齐，它们本来就是同一个
+`MarkdownRenderer`。两处刻意的差别：
+
+- `contentRefs="expand"`：五类引用（图床 / 音频 / 剪贴板 / 投票 / 收藏夹）在预览里
+  就展开成成品。这条档位会真去打三条 core+ 读口（剪贴板正文 / 投票 / 收藏夹卡片；
+  图床与音频只是拼 raw 地址，不发请求），缓存与失效见 `content-ref-resolver.ts` ——
+  所以它只给登录后的编辑器用，对外页面走 `'external'`（一个请求都不发）。
+- `interactive={false}`：投票小组件**结构照画**（用户要看得出这里有个投票），但选项
+  `disabled`、且**不挂投票处理器**。预览里点任何一个投票都不会发出业务写请求。
+  ⚠️ 新增任何「渲染时顺便做点什么」的引用类型，都要在这条只读档上一起断掉。
+
+预览**不展开**表情包与用户名片：那两者只挂在评论 / 讨论那条管线上（见上表），
+博客正文里它们就是普通文字。这是刻意的，不要为了「统一」把它们接进来 ——
+一旦接进来，发一篇日记就顺带获得了两项评论区的功能。
+
+**「插入引用」面板**（`markdown-editor/ResourcePanel.tsx`）
+
+工具条一颗「插入引用」按钮打开一个弹窗，里面五颗标签（图床 / 音频 / 剪贴板 / 投票 /
+收藏夹）。**一个面板而不是五颗工具条按钮**：五类用法完全一样（挑一条 → 插回正文），
+拆成五个弹窗只是把同一套加载 / 搜索 / 空 / 失败状态抄五遍。
+
+**插入语法与解析同源**（`md-editor/resources.ts`，零 React、可单测）：插入串一律由
+**持有那条正则的模块**产出 —— 图片是 `md-editor/upload.ts` 的 `imageMarkdown`（与拖拽
+上传走同一个函数，两处插出来的 Markdown 逐字节相同），其余是 `audioRefToken` /
+`contentRefToken` / `favoriteRefToken`。面板自己一个字面量 token 都不拼：拼错一个字符
+（`[@id]` 的长度分流、`[@音频/<id>]` 的合集名）的表现是**正文里留一段方括号原文**，
+页面照常渲染、谁也不报错。单测因此拿生产正则回验每一个插入串。
+
+权限边界照接口自己的判权，面板不额外放宽也不额外收紧：列表一律是**自己的**资源；
+私有收藏夹**列得出来但插不进去**（`public_id` 恒 NULL = 没有对外句柄），行内写清理由
+—— 藏掉它会让用户以为自己的收藏夹丢了。401 / 403 是「这一档你用不了」，只显示接口
+那句原因、**不给重试**；网络失败才给「重试」，且失败**不进面板自己的结果缓存**
+（一次抖动不该被钉成永久失败）。⚠️ 这与 `content-ref-resolver.ts` 的取舍**正好相反**
+（那边失败也缓存）—— 两处都对：那边是每次按键都重渲染的预览，不能每敲一个字就重试；
+这边是用户主动打开、只会手动刷新的列表。点当前已选中那颗标签是空操作。
 
 ### 6.8 画报与鱼干收款码（服务端出图）
 
