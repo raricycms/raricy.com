@@ -2,36 +2,30 @@
 
 // BlogForm — 发布/编辑文章表单
 //
-// - 编辑器：vditor npm 包（vditor@3.10.7），icon sprite + KaTeX 从 /static/vditor 本地加载
+// - 编辑器：MarkdownEditor（CodeMirror 6，与云剪贴板共用），见其文件头
 // - 提交：新建 → POST /api/blogs；编辑 → PUT /api/blogs/:id
 // - 禁言时展示横幅并禁用表单
-import { useEffect, useRef } from 'react';
-import Vditor from 'vditor';
-import 'vditor/dist/index.css';
+//
+// 【本文件不管编辑器内部的事】工具条、预览、上传、导出、草稿都由 MarkdownEditor
+// 负责；这里只管**表单语义**：字段校验、长度上限、档位与匿名开关、提交与跳转，
+// 以及「发布成功后清草稿」这一下。
+import { useRef, useState } from 'react';
+import MarkdownEditor, { type MarkdownEditorHandle } from './MarkdownEditor';
 import type { CategoryHierarchy } from '@/lib/blog-service';
 // 可见性词汇必须从 ./blog-visibility 取（那个模块零依赖）——**不能**从 blog-service，
 // 它拖着 prisma，值导出会把服务端依赖拉进客户端包。理由见该文件头。
 import { BLOG_VISIBILITIES, VISIBILITY_LABEL } from '@/lib/blog-visibility';
 import type { BlogVisibility } from '@/lib/blog-visibility';
-// 跟随站点 <html data-theme> 的亮/暗切换 —— 三条轨道（外壳 / 正文 / 代码高亮）
-// 的实现见 src/lib/vditor-theme.ts，云剪贴板编辑器共用同一份。
-import {
-  VDITOR_LOCAL_CDN,
-  applyVditorTheme,
-  isDarkTheme,
-  removeHljsTheme,
-  syncHljsTheme,
-  vditorThemeOptions,
-  watchVditorTheme,
-} from '@/lib/vditor-theme';
-// 上传配置（fieldName / 响应结构两端对齐）—— 与剪贴板编辑器共用，见该文件头注释
-import { vditorUploadOptions } from '@/lib/vditor-upload';
 
 function toast(msg: string, type: string) {
   if (typeof window === 'undefined') return;
   const w = window as unknown as { showToast?: (m: string, t: string) => void };
   if (w.showToast) w.showToast(msg, type);
 }
+
+/** 新建页的本地草稿键。**沿用 Vditor 时代的键名，且存的也是 Markdown 原文** ——
+ *  换键名 = 用户上一版留下的草稿静默消失（见 lib/md-editor/draft.ts 文件头）。 */
+const DRAFT_KEY = 'blog-upload-editor';
 
 export interface BlogFormBlog {
   id: string;
@@ -60,81 +54,23 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
   const isEdit = !!blog;
   const initialMarkdown = blog?.contentMarkdown ?? '';
 
-  const vditorRef = useRef<Vditor | null>(null);
-  const vditorLoadedRef = useRef(false);
-  const editorDivRef = useRef<HTMLDivElement>(null);
-  const fallbackMsgRef = useRef<HTMLParagraphElement>(null);
+  const editorRef = useRef<MarkdownEditorHandle>(null);
   const fallbackRef = useRef<HTMLTextAreaElement>(null);
 
-  useEffect(() => {
-    if (banInfo) return;
-    let cancelled = false;
-    let unwatchTheme: (() => void) | null = null;
+  // 编辑器起不来时的兜底：一块普通 textarea（旧的 `#fallback-editor` 原样保留）。
+  // 初始化失败时 MarkdownEditor 会把**当时该有的正文**（含刚恢复的草稿）回调出来，
+  // 这里填进 textarea —— 否则用户看到的是空白，会以为正文丢了。
+  const [initFailed, setInitFailed] = useState(false);
+  const [fallbackValue, setFallbackValue] = useState(initialMarkdown);
 
-    function showFallback() {
-      if (editorDivRef.current) editorDivRef.current.style.display = 'none';
-      if (fallbackMsgRef.current) fallbackMsgRef.current.style.display = 'block';
-      const fb = fallbackRef.current;
-      if (fb) {
-        fb.style.display = 'block';
-        if (!fb.value && initialMarkdown) fb.value = initialMarkdown;
-      }
-      vditorLoadedRef.current = false;
-    }
-
-    try {
-      if (cancelled) return;
-      const dark = isDarkTheme();
-      const { theme, contentTheme } = vditorThemeOptions(dark);
-      // 必须在 new Vditor 之前 —— 靠 addStyle 的 id 去重接管代码高亮那条轨道
-      syncHljsTheme(dark);
-      vditorRef.current = new Vditor('editor', {
-        minHeight: 500,
-        mode: 'ir',
-        cdn: VDITOR_LOCAL_CDN,
-        theme,
-        // path 不用写：Options.merge() 会从 cdn 推导出
-        // /static/vditor/dist/css/content-theme（light.css / dark.css 均已落盘）。
-        // merge 是深合并，只写 current 不会冲掉 preview.hljs 等默认值。
-        preview: { theme: { current: contentTheme } },
-        // vditor 的 init 是异步的（先拉 i18n 脚本），这段窗口里改主题会被
-        // applyVditorTheme 跳过（实例还没建好，见该函数注释）。渲染完成时补一次，
-        // 免得编辑器停在旧主题上。
-        after: () => applyVditorTheme(vditorRef.current, isDarkTheme()),
-        toolbar: [
-          'emoji', 'headings', 'bold', 'italic', 'strike', 'link', '|',
-          'list', 'ordered-list', 'check', 'outdent', 'indent', '|',
-          'quote', 'line', 'code', 'inline-code', 'upload', 'table', '|',
-          'undo', 'redo', 'preview', 'export',
-        ],
-        counter: { enable: true, type: 'text' },
-        upload: vditorUploadOptions((msg) => toast(msg, 'error')),
-        cache: isEdit ? { enable: false } : { enable: true, id: 'blog-upload-editor' },
-        value: initialMarkdown,
-      });
-      vditorLoadedRef.current = true;
-    } catch {
-      showFallback();
-    }
-
-    if (vditorLoadedRef.current) {
-      unwatchTheme = watchVditorTheme((dark) => applyVditorTheme(vditorRef.current, dark));
-    }
-
-    return () => {
-      cancelled = true;
-      unwatchTheme?.();
-      // 该 <link> 挂在 head 上是全局的，留着会盖掉文章页 MarkdownRenderer 的 hljs 主题
-      removeHljsTheme();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
+  // 判据是 isReady() 而不是「ref 在不在」：初始化失败时 MarkdownEditor 渲染 null，
+  // 但 useImperativeHandle 仍会在提交阶段把句柄挂上去 —— 只看 ref 就会读到编辑器里
+  // 那份**初始化那一刻**的旧正文，用户在兜底 textarea 里改的字一个字都不会提交，
+  // 而且页面上看不出任何异常。
   function getContent(): string {
-    if (vditorLoadedRef.current && vditorRef.current) {
-      return vditorRef.current.getValue();
-    }
-    return fallbackRef.current?.value ?? '';
+    const editor = editorRef.current;
+    if (editor?.isReady()) return editor.getDoc();
+    return fallbackRef.current?.value ?? fallbackValue;
   }
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -187,9 +123,10 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
           isEdit ? '保存成功，正在返回...' : '上传成功！即将跳转到文章页面...',
           'success'
         );
-        if (!isEdit && vditorLoadedRef.current && vditorRef.current) {
-          vditorRef.current.clearCache();
-        }
+        // 新建成功才清草稿 —— 编辑态用的是**服务端**那份正文，本来就没有本地草稿。
+        // clearDraft 内部是「先停待写、再删键」，顺序写反会让延迟回调把刚发布的
+        // 正文写回 localStorage（下次进新建页看到一篇已经发出去的旧文）。
+        if (!isEdit) editorRef.current?.clearDraft();
         setTimeout(
           () => {
             window.location.href = result.redirect || '/blog/' + result.blog_id;
@@ -366,33 +303,39 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
           <label className="form-label">
             内容（Markdown 格式）
           </label>
-          <div
-            id="editor"
-            ref={editorDivRef}
-            style={{
-              height: '60vh',
-              background: 'var(--color-background-content)',
-              border: '2px solid var(--color-border)',
-            }}
-          ></div>
-          <p
-            id="fallback-message"
-            ref={fallbackMsgRef}
-            className="form-text"
-            style={{ display: 'none' }}
-          >
-            Markdown 编辑器加载失败，已切换到基础文本输入框。
-          </p>
-          <textarea
-            id="fallback-editor"
-            ref={fallbackRef}
-            className="form-control"
-            rows={20}
-            style={{
-              display: 'none',
-              fontFamily: 'ui-monospace, monospace',
-            }}
-          ></textarea>
+          {/* 只有新建页给草稿键：编辑态的正文是服务端那一份，本地草稿在编辑态既不读
+              也不写 —— 否则「上个月新建到一半的半成品」会覆盖掉正在编辑的已发布文章。 */}
+          {!banInfo && (
+            <MarkdownEditor
+              id="editor"
+              ref={editorRef}
+              initialValue={initialMarkdown}
+              draftKey={isEdit ? undefined : DRAFT_KEY}
+              title={blog?.title ?? ''}
+              height="60vh"
+              onNotify={toast}
+              onInitError={(value) => {
+                setFallbackValue(value);
+                setInitFailed(true);
+              }}
+            />
+          )}
+          {initFailed && !banInfo && (
+            <>
+              <p id="fallback-message" className="form-text">
+                Markdown 编辑器加载失败，已切换到基础文本输入框。
+              </p>
+              <textarea
+                id="fallback-editor"
+                ref={fallbackRef}
+                className="form-control"
+                rows={20}
+                value={fallbackValue}
+                onChange={(e) => setFallbackValue(e.target.value)}
+                style={{ fontFamily: 'ui-monospace, monospace' }}
+              />
+            </>
+          )}
         </div>
 
         <div className="actions">
