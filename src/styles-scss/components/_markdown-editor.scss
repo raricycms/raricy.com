@@ -360,3 +360,193 @@
   font: inherit;
   font-size: .8rem;
 }
+
+// ── 资源面板（图床 / 音频 / 剪贴板 / 投票 / 收藏夹）──────────────────────────
+// 弹窗外壳沿用站内既有那套（.modal-overlay / .modal-dialog / .modal-content /
+// .modal-header / .modal-title / .modal-body，见 components/_modal.scss），
+// 这里只写面板自己的：宽度、标签排、列表与四种状态。
+.md-res-modal {
+  // 与图床选择器同宽：同样是「一列条目 + 一个搜索框」
+  max-width: 560px;
+  width: calc(100vw - 40px);
+}
+
+.md-res-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.md-res-tab {
+  @include m.btn-tab;
+
+  padding: 3px 10px;
+  font: inherit;
+  font-size: .8rem;
+}
+
+.md-res-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: var(--fd-space-3, 12px);
+
+  // 搜索框本身走 .form-control（站内唯一的输入框口径），这里只让它吃掉剩余宽度
+  .form-control {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+}
+
+.md-res-refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--color-background-content);
+    color: var(--color-brand-primary);
+  }
+}
+
+// 列表可滚，弹窗整体仍可滚（与 image-picker-scroll 同口径）
+.md-res-body {
+  max-height: 46vh;
+  overflow-y: auto;
+  margin-top: var(--fd-space-3, 12px);
+}
+
+.md-res-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.md-res-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: var(--color-background-subtle);
+  color: var(--color-text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    border-color: var(--color-brand-primary);
+    background: var(--color-background-content);
+  }
+
+  // 不可插入的那几条（私有收藏夹）：**留在列表里但点不动** —— 藏掉的话用户会
+  // 以为自己的收藏夹丢了。灰掉 + 行内写清原因。
+  &:disabled {
+    opacity: .55;
+    cursor: not-allowed;
+  }
+}
+
+.md-res-item__thumb {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 6px;
+  object-fit: contain;
+  background: var(--color-background-page);
+}
+
+.md-res-item__main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  // ⚠️ min-width: 0：flex 子项默认 min-width:auto，长标题会把这一行撑破、
+  // 把右侧角标顶出弹窗（而列表本身不出现横向滚动条）
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.md-res-item__title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.md-res-item__sub {
+  color: var(--color-text-secondary);
+  font-size: .78rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.md-res-item__badge {
+  flex: none;
+  padding: 1px 8px;
+  border-radius: v.$radius-max;
+  background: var(--color-background-page);
+  color: var(--color-text-secondary);
+  font-size: .72rem;
+}
+
+.md-res-item__go {
+  flex: none;
+  color: var(--color-text-secondary);
+}
+
+/// 加载 / 空 / 失败 / 不可用 —— 四种状态共用的一块占位区
+.md-res-state {
+  padding: 28px 0;
+  text-align: center;
+  color: var(--color-text-secondary);
+  font-size: .9rem;
+
+  svg {
+    width: 28px;
+    height: 28px;
+    opacity: .5;
+  }
+
+  p {
+    margin: 8px 0 0;
+  }
+}
+
+// 不可用（未登录 / 不是核心用户）与「加载失败」不是一回事：前者重试多少次都一样，
+// 所以这里**不给重试按钮**，只把接口那句原因照实显示。
+.md-res-state--locked {
+  color: var(--color-warning-primary);
+
+  svg {
+    opacity: .8;
+  }
+}
+
+.md-res-retry {
+  @include m.btn-secondary;
+
+  margin-top: 10px;
+  padding: 3px 12px;
+  font: inherit;
+  font-size: .8rem;
+}
+
+.md-res-hint {
+  margin: var(--fd-space-3, 12px) 0 0;
+  color: var(--color-text-secondary);
+  font-size: .78rem;
+}

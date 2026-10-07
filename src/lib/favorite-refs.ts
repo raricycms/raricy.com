@@ -45,6 +45,18 @@ export function isFavoriteId(value: unknown): value is string {
 }
 
 /**
+ * 插入用的 token（`[@123456]`）。
+ *
+ * ⚠️ **只对有 `public_id` 的公开收藏夹有意义**：私有收藏夹的 `public_id` 恒为
+ * NULL（没有句柄，而不是藏起来），所以它压根没有可插入的 id —— 资源面板那边
+ * 因此把它列成「不可插入」而不是插一个假的。这里不替调用方兜底：传进来什么就
+ * 拼什么，传一个空串会得到 `[@]`，而那个 token 谁都不认、原样留在正文里。
+ */
+export function favoriteRefToken(publicId: string): string {
+  return `[@${publicId}]`;
+}
+
+/**
  * 一篇正文里最多展开几张收藏夹卡片（超出部分保留 `[@id]` 字面量）。
  *
  * 【为什么是 3】卡片是**块级**的、比一段文字高得多，一篇正文里插十几张会把文章

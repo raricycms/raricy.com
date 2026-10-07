@@ -76,6 +76,15 @@ export const AUDIO_REF_PROBE = new RegExp(
 );
 
 /**
+ * 插入用的 token —— 与上面两条正则共用 `AUDIO_REF_COLLECTION`，这里**不再写一遍
+ * 字面量**。拼在别处的话，改合集名（或改分隔符）时正则跟着改、拼字符串的地方
+ * 忘掉，得到的是「插进去不展开」的引用：正文里只是一段方括号原文，不报任何错。
+ */
+export function audioRefToken(id: string): string {
+  return `[@${AUDIO_REF_COLLECTION}/${id}]`;
+}
+
+/**
  * 音频字节的直链。**只接受 id，不接受整条 URL** —— 与本模块「URL 由我们拼」的
  * 全部意义所在：用户能写的只有 token，写不出任意外链播放器
  * （外链 `<audio>` = 访客 IP 泄露的跟踪信标，与评论里禁止外链图同源）。

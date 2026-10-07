@@ -7,12 +7,12 @@
 // 工具条自己**不改文档**。这样「点按钮」和「按快捷键」走的是同一条路径，
 // 撤销历史里也是同一类记录，不会出现「用按钮加的粗体撤不掉」。
 //
-// 【与旧工具条的对应】逐项对齐 Vditor 那套，少的是资源面板（M2）：
-//   emoji→表情面板  headings→标题菜单  bold/italic/strike  link
+// 【按钮清单】emoji→表情面板  headings→标题菜单  bold/italic/strike  link
 //   list/ordered-list/check/outdent/indent   quote/line/code/inline-code
 //   math（仅剪贴板）  upload  table  undo/redo  export→导出菜单
-//   「preview」不再是按钮，而是右侧的视图切换（编辑 / 并排 / 预览）——
-//   旧版那个按钮就是把编辑器切成预览态，语义已被视图切换完整覆盖。
+//   library→「插入引用」资源面板（图床 / 音频 / 剪贴板 / 投票 / 收藏夹）
+// 「preview」不是按钮，而是右侧的视图切换（编辑 / 并排 / 预览）—— 预览态本身
+// 就覆盖了「把编辑器切成预览看」这件事，不必再占一颗按钮。
 //
 // 【表情为什么是 Unicode 而不是站内表情包】站内的表情包 / 黄脸是 `[@合集/名字]`
 // token，那套 token **不被博客与剪贴板的终稿展开**（§1.3 明写不在这两处接入）。
@@ -31,6 +31,7 @@ import {
   ImagePlus,
   Indent,
   Italic,
+  Library,
   Link as LinkIcon,
   List,
   ListChecks,
@@ -77,6 +78,8 @@ export interface ToolbarProps {
   view: EditorView | null;
   /** 上传按钮：去点那个隐藏的 file input。 */
   onPickFiles: () => void;
+  /** 「插入引用」面板（图床 / 音频 / 剪贴板 / 投票 / 收藏夹）。 */
+  onOpenResources: () => void;
   /** 导出 HTML。 */
   onExportHtml: () => void;
   /** 打印 / PDF。 */
@@ -109,6 +112,7 @@ function useDismiss(open: boolean, close: () => void) {
 export default function Toolbar({
   view,
   onPickFiles,
+  onOpenResources,
   onExportHtml,
   onPrint,
   withMath,
@@ -233,6 +237,9 @@ export default function Toolbar({
         {btn('行内代码', Code, () => run(cmd.toggleWrap('`', 'code')))}
         {withMath && btn('公式', Sigma, () => run(cmd.insertMathBlock()))}
         {btn('上传图片', ImagePlus, onPickFiles)}
+        {/* 五类资源一个入口（图床 / 音频 / 剪贴板 / 投票 / 收藏夹）——
+            「上传图片」是**新传一张**，这里是**挑已有的**，两者不重叠。 */}
+        {btn('插入引用', Library, onOpenResources)}
         {btn('表格', Table, () => run(cmd.insertTable()))}
       </div>
 

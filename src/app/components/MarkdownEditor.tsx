@@ -38,6 +38,7 @@ import { markdown } from '@codemirror/lang-markdown';
 import { RefreshCw } from 'lucide-react';
 
 import Toolbar, { VIEW_MODES } from './markdown-editor/Toolbar';
+import ResourcePanel from './markdown-editor/ResourcePanel';
 import { editorBaseTheme } from './markdown-editor/cm-theme';
 import { buildExportHtml, downloadHtml, printHtml, safeFilename } from './markdown-editor/export';
 import MarkdownRenderer from './MarkdownRenderer';
@@ -45,6 +46,7 @@ import { ContentRefResolver } from '@/lib/content-ref-resolver';
 import { IMAGE_ACCEPT, uploadImageFile } from '@/lib/image-client';
 import * as cmd from '@/lib/md-editor/commands';
 import { createDraftStore, type DraftStore } from '@/lib/md-editor/draft';
+import { createInsertAnchor, type InsertAnchor } from '@/lib/md-editor/insert-anchor';
 import {
   addUploadBatch,
   batchInsertPos,
@@ -146,6 +148,12 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
 
     /** 已取消 / 已销毁的批次 —— 迟到的上传结果据此丢弃，绝不插回正文。 */
     const abortedRef = useRef(new Set<number>());
+    /**
+     * 「插入引用」面板的落点。面板打开期间正文仍会变（上传完成、撤销），
+     * 所以它必须按 change desc 映射（见 lib/md-editor/insert-anchor.ts）。
+     */
+    const insertAnchorRef = useRef<InsertAnchor | null>(null);
+    const [resourcesOpen, setResourcesOpen] = useState(false);
     const destroyedRef = useRef(false);
     const batchSeqRef = useRef(0);
     const previewTimerRef = useRef<number | null>(null);
@@ -282,6 +290,42 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
       v?.dispatch({ effects: cancelUploadBatch.of(batchId) });
     }, []);
 
+    // ── 资源面板（图床 / 音频 / 剪贴板 / 投票 / 收藏夹）────────────────────────
+    const openResources = useCallback(() => {
+      const v = viewRef.current;
+      if (!v) return;
+      const anchor = insertAnchorRef.current ?? (insertAnchorRef.current = createInsertAnchor());
+      // 落点 = 打开面板那一刻的主选区表头。面板是模态的、用户点不动编辑区，
+      // 但**上传会插进正文**，所以之后每次改动都要把落点映射过去。
+      anchor.capture(v.state.selection.main.head);
+      setResourcesOpen(true);
+    }, []);
+
+    const closeResources = useCallback(() => {
+      insertAnchorRef.current?.clear();
+      setResourcesOpen(false);
+      // 焦点还给编辑区：Esc 关掉面板之后接着打字，不该还要再点一下正文
+      viewRef.current?.focus();
+    }, []);
+
+    const insertResource = useCallback((text: string) => {
+      const v = viewRef.current;
+      const anchor = insertAnchorRef.current;
+      if (!v || !anchor) return;
+      const raw = anchor.get() ?? v.state.selection.main.head;
+      const at = Math.max(0, Math.min(raw, v.state.doc.length));
+      v.dispatch({
+        changes: { from: at, insert: text },
+        selection: { anchor: at + text.length },
+        scrollIntoView: true,
+      });
+      // 落点重设到插入内容之后（**显式赋绝对值**，不依赖 mapPos 的 assoc 语义：
+      // 「连续插两条会不会反序」不该由一行注释之外的东西决定）
+      anchor.capture(at + text.length);
+      setResourcesOpen(false);
+      v.focus();
+    }, []);
+
     // ── CM6 生命周期 ────────────────────────────────────────────────────────
     useEffect(() => {
       const host = hostRef.current;
@@ -314,6 +358,9 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
         ]),
         EditorView.updateListener.of((update) => {
           if (!update.docChanged) return;
+          // 面板开着的时候正文也会变（在飞的上传落进正文、用户按了撤销）：
+          // 落点跟着改动走，否则面板里挑的那条会插到别处去。
+          insertAnchorRef.current?.map(update.changes);
           const text = update.state.doc.toString();
           docRef.current = text;
           bump();
@@ -477,9 +524,12 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
           view={view}
           withMath={withMath}
           onPickFiles={() => fileInputRef.current?.click()}
+          onOpenResources={openResources}
           onExportHtml={onExportHtml}
           onPrint={onPrint}
         />
+
+        {resourcesOpen && <ResourcePanel onClose={closeResources} onInsert={insertResource} />}
 
         {/*
           隐藏的文件输入。**必须同时带 hidden 属性与行内 display:none**：
