@@ -251,6 +251,27 @@
   color: var(--color-text-secondary);
 }
 
+// 键盘提示：「先 Esc 再 Tab 能走到工具条」（CodeMirror 自带的行为，见
+// MarkdownEditor.tsx 的 contentAttributes 那段）。它同时是编辑区的 `aria-describedby`
+// 目标 —— 所以窄屏下**不能 display:none**（那样屏幕阅读器也读不到），转成 sr-only
+// 那一套属性即可（与 utilities/_display.scss 的 .visually-hidden 同形）。
+.md-editor__kbd {
+  font-size: .72rem;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+  .md-editor__kbd {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+
 .md-editor__modes {
   display: flex;
   align-items: center;
@@ -448,7 +469,10 @@
   text-align: left;
   cursor: pointer;
 
-  &:hover:not(:disabled) {
+  // 键盘高亮（↑ / ↓）与鼠标划过给**同一套外观**：「高亮 = 按 Enter 插那条」，
+  // 两种指法结果一致，别让它们看起来像两回事。`.is-active` 由面板维护。
+  &:hover:not(:disabled),
+  &.is-active:not(:disabled) {
     border-color: var(--color-brand-primary);
     background: var(--color-background-content);
   }
