@@ -9,7 +9,7 @@
 // 【本文件不管编辑器内部的事】工具条、预览、上传、导出、草稿都由 MarkdownEditor
 // 负责；这里只管**表单语义**：字段校验、长度上限、档位与匿名开关、提交与跳转，
 // 以及「发布成功后清草稿」这一下。
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import MarkdownEditor, { type MarkdownEditorHandle } from './MarkdownEditor';
 import type { CategoryHierarchy } from '@/lib/blog-service';
 // 可见性词汇必须从 ./blog-visibility 取（那个模块零依赖）——**不能**从 blog-service，
@@ -50,12 +50,46 @@ export interface BlogFormProps {
   banInfo?: BlogFormBanInfo | null;
 }
 
+/**
+ * 表单里**所有会进请求的字段**。拍快照与「提交之后又改了没」都只认这一处 ——
+ * 漏一个字段的后果是那一格被静默丢掉（用户改了标题、页面说「保存成功」，
+ * 标题却没存上去，而正文那一格看起来一切正常）。
+ */
+interface FormFields {
+  title: string;
+  description: string;
+  categoryId: string;
+  visibility: string;
+  allowAnonymousComments: boolean;
+  content: string;
+}
+
+/** 字段 → 说给用户听的名字（提示里要能点名：改了**哪一格**没发出去）。 */
+const FIELD_LABELS: ReadonlyArray<readonly [keyof FormFields, string]> = [
+  ['title', '标题'],
+  ['description', '摘要'],
+  ['categoryId', '栏目'],
+  ['visibility', '可见范围'],
+  ['allowAnonymousComments', '匿名评论开关'],
+  ['content', '正文'],
+];
+
 export default function BlogForm({ categories, blog = null, banInfo = null }: BlogFormProps) {
   const isEdit = !!blog;
   const initialMarkdown = blog?.contentMarkdown ?? '';
 
   const editorRef = useRef<MarkdownEditorHandle>(null);
   const fallbackRef = useRef<HTMLTextAreaElement>(null);
+  // 标题是**受控**的：它既要进提交快照，又是导出件的文件名与 `<title>`
+  // （见 MarkdownEditor 的 title 参数）—— 用 defaultValue 的话导出拿到的永远是
+  // 进页面那一刻的旧标题（新建页则是空）。
+  const [title, setTitle] = useState(blog?.title ?? '');
+  /** 同一时刻只允许一笔提交在飞：新建态两笔 POST = 两篇文章。 */
+  const savingRef = useRef(false);
+  /** 延迟跳转的定时器。卸载时要清掉 —— 否则「已经离开这一页了还被它拽走」。 */
+  const jumpTimerRef = useRef<number | null>(null);
+  /** 组件是否还挂着（异步回调据此判断「这一页还在不在」）。 */
+  const aliveRef = useRef(true);
 
   // 编辑器起不来时的兜底：一块普通 textarea（旧的 `#fallback-editor` 原样保留）。
   // 初始化失败时 MarkdownEditor 会把**当时该有的正文**（含刚恢复的草稿）回调出来，
@@ -73,16 +107,52 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
     return fallbackRef.current?.value ?? fallbackValue;
   }
 
+  /** 取此刻表单里所有会进请求的字段。 */
+  function readFields(form: HTMLFormElement): FormFields {
+    return {
+      title: (form.elements.namedItem('title') as HTMLInputElement).value,
+      description: (form.elements.namedItem('description') as HTMLTextAreaElement).value,
+      categoryId: (form.elements.namedItem('category') as HTMLSelectElement).value,
+      visibility: (form.elements.namedItem('visibility') as HTMLSelectElement).value,
+      allowAnonymousComments: (form.elements.namedItem('allowAnonymous') as HTMLInputElement)
+        .checked,
+      content: getContent(),
+    };
+  }
+
+  /** 相对快照改了哪几格（说人话的名字；没改就是空数组）。 */
+  function changedLabels(snapshot: FormFields, current: FormFields): string[] {
+    return FIELD_LABELS.filter(([key]) => snapshot[key] !== current[key]).map(([, label]) => label);
+  }
+
+  // 卸载 = 这一页已经不在了。此时既不该再弹提示，也不该再跳转 ——
+  // 尤其是那个 800 / 1500ms 的延迟跳转：用户已经点了别处，它还会把人拽走。
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => {
+      aliveRef.current = false;
+      if (jumpTimerRef.current !== null) {
+        window.clearTimeout(jumpTimerRef.current);
+        jumpTimerRef.current = null;
+      }
+    };
+  }, []);
+
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = e.currentTarget;
-    const title = (form.elements.namedItem('title') as HTMLInputElement).value;
-    const description = (form.elements.namedItem('description') as HTMLTextAreaElement).value;
-    const categoryId = (form.elements.namedItem('category') as HTMLSelectElement).value;
-    const visibility = (form.elements.namedItem('visibility') as HTMLSelectElement).value;
-    const allowAnonymousComments = (form.elements.namedItem('allowAnonymous') as HTMLInputElement)
-      .checked;
-    const content = getContent();
+
+    // ★ 提交不能叠着发 ★ 上一次还在飞的时候再点一次，新建态就是**两篇文章**
+    // （页面只跳去其中一篇，另一篇留在列表里，而用户根本没意识到自己发了两篇）。
+    if (savingRef.current) {
+      toast('正在提交，请稍候', 'warning');
+      return;
+    }
+
+    // 提交的是**这一刻**的表单：之后不管用户怎么改，成功回调都用这一份做判断。
+    const snapshot = readFields(form);
+    const { title, description, categoryId, visibility, allowAnonymousComments, content } =
+      snapshot;
 
     if (!title || !description || !content) {
       toast('请填写完整信息', 'warning');
@@ -101,6 +171,7 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
       return;
     }
 
+    savingRef.current = true;
     try {
       const url = isEdit ? `/api/blogs/${blog!.id}` : '/api/blogs';
       const method = isEdit ? 'PUT' : 'POST';
@@ -118,37 +189,72 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
         }),
       });
       const result = await response.json();
-      if (result.code === 200) {
-        // ★ 请求在飞的时候用户还能接着打字 ★ —— 那一段**没被发出去**。
-        // 判据是「现在的正文还是不是提交时那一份」，不是时间先后：成功回调只说明
-        // 「这一份发出去了」，不说明「编辑器里现在这一份发出去了」。
-        const changedSinceSubmit = !isEdit && getContent() !== content;
-        toast(
-          isEdit ? '保存成功，正在返回...' : '上传成功！即将跳转到文章页面...',
-          'success'
-        );
-        if (changedSinceSubmit) {
-          // 这一页马上要跳走，那一段新改动只在编辑器里、不落盘就没了 ——
-          // 先把它写进本地草稿，再如实告诉用户发出去的是哪一版。
-          editorRef.current?.flushDraft();
-          toast('发布的是提交那一刻的正文；提交之后你又改了一些，已留在本地草稿里', 'warning');
-        } else if (!isEdit) {
-          // 新建成功才清草稿 —— 编辑态用的是**服务端**那份正文，本来就没有本地草稿。
-          // clearDraft 内部是「先停待写、再删键」，顺序写反会让延迟回调把刚发布的
-          // 正文写回 localStorage（下次进新建页看到一篇已经发出去的旧文）。
-          editorRef.current?.clearDraft();
-        }
-        setTimeout(
-          () => {
-            window.location.href = result.redirect || '/blog/' + result.blog_id;
-          },
-          isEdit ? 800 : 1500
-        );
-      } else {
+      // 这一页可能已经不在了（用户点了别处）——那就什么也别做：不再弹提示，
+      // 更不跳转。跳转会把人从**他现在这一页**上拽走。
+      if (!aliveRef.current) return;
+      if (result.code !== 200) {
         toast('操作失败: ' + result.message, 'error');
+        return;
       }
+
+      // ★ 请求在飞的时候用户还能接着改 ★ —— 判据是**整份表单快照**，不是时间先后：
+      // 成功回调只说明「这一份发出去了」，不说明「页面上现在这一份发出去了」。
+      // 也**不是只比正文**：改了标题 / 摘要 / 可见范围而正文没动，同样没发出去。
+      const changed = changedLabels(snapshot, readFields(form));
+      const bodyChanged = changed.includes('正文');
+      toast(isEdit ? '保存成功，正在返回...' : '上传成功！即将跳转到文章页面...', 'success');
+
+      if (!isEdit && bodyChanged) {
+        // 新建页有本地草稿，正文那一版接得住：先把它落盘再如实说明。
+        editorRef.current?.flushDraft();
+      } else if (!isEdit) {
+        // 新建成功、又没有后续改动才清草稿 —— 编辑态用的是**服务端**那份正文，
+        // 本来就没有本地草稿。clearDraft 内部是「先停待写、再删键」，顺序写反会让
+        // 延迟回调把刚发布的正文写回 localStorage（下次进新建页看到一篇已发出去的旧文）。
+        editorRef.current?.clearDraft();
+      }
+      if (changed.length > 0) {
+        // ⚠️ 这一句必须**点名改了哪几格**：标题（草稿接不住的那类）与正文
+        // （草稿接得住的）对用户来说是完全不同的两件事，混成一句「有些改动没保存」
+        // 等于让他自己猜。草稿只存正文，所以只有正文那一版能说「留着了」。
+        toast(
+          `发出去的是提交那一刻的${changed.join('、')}；之后的改动没有跟着发出去` +
+            (!isEdit && bodyChanged ? '，正文那一版已留在本地草稿里' : ''),
+          'warning'
+        );
+      }
+
+      if (isEdit && changed.length > 0) {
+        // 编辑态**不跳**：跳走等于把刚改的那些一起丢掉，而编辑态没有草稿接住它们。
+        // 留在这儿再点一次「保存修改」是安全的（PUT 幂等，不会多出一篇）。
+        return;
+      }
+
+      // 延迟跳转：给用户一点时间看到提示。**这一段时间里还能继续改**，所以跳之前
+      // 再核对一次 —— 否则「看着提示、顺手改了一个字」的那一段会随跳转一起消失。
+      jumpTimerRef.current = window.setTimeout(
+        () => {
+          jumpTimerRef.current = null;
+          if (!aliveRef.current) return;
+          const late = changedLabels(snapshot, readFields(form));
+          if (late.length > 0) {
+            const lateBody = late.includes('正文');
+            if (!isEdit && lateBody) editorRef.current?.flushDraft();
+            toast(
+              `你又改了${late.join('、')} —— 这一版没有保存` +
+                (!isEdit && lateBody ? '，正文已留在本地草稿里' : ''),
+              'warning'
+            );
+          }
+          // 地址取自**这一次响应**（不是页面上后来的任何状态）
+          window.location.href = result.redirect || '/blog/' + result.blog_id;
+        },
+        isEdit ? 800 : 1500
+      );
     } catch {
-      toast('出现错误，请稍后重试', 'error');
+      if (aliveRef.current) toast('出现错误，请稍后重试', 'error');
+    } finally {
+      savingRef.current = false;
     }
   }
 
@@ -208,7 +314,8 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
             className="form-control"
             id="title"
             name="title"
-            defaultValue={blog?.title ?? ''}
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
             required
           />
         </div>
@@ -322,7 +429,8 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
               ref={editorRef}
               initialValue={initialMarkdown}
               draftKey={isEdit ? undefined : DRAFT_KEY}
-              title={blog?.title ?? ''}
+              // 导出件的文件名与 `<title>` 读的是**此刻**的标题（不是进页面那一刻的）
+              title={title}
               height="60vh"
               onNotify={toast}
               onInitError={(value) => {

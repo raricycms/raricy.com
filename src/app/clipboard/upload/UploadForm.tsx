@@ -31,6 +31,22 @@ export interface EditClip {
   publicity: boolean;
 }
 
+/**
+ * 会进请求的全部字段 —— 拍快照与「保存之后又改了没」都只认这一处。
+ * 判据**不能只看正文**：改了标题 / 公开状态而正文没动，同样没存上去。
+ */
+interface ClipFields {
+  title: string;
+  content: string;
+  publicity: boolean;
+}
+
+const CLIP_LABELS: ReadonlyArray<readonly [keyof ClipFields, string]> = [
+  ['title', '标题'],
+  ['content', '正文'],
+  ['publicity', '公开设置'],
+];
+
 export default function UploadForm({ clip }: { clip?: EditClip }) {
   const router = useRouter();
   const isEdit = !!clip;
@@ -45,6 +61,11 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
   const fallbackRef = useRef<HTMLTextAreaElement>(null);
   const [initFailed, setInitFailed] = useState(false);
   const [fallbackValue, setFallbackValue] = useState(clip?.content ?? '');
+
+  /** 在飞的那一笔保存（并发守卫：同一时刻只允许一笔）。 */
+  const savingRef = useRef<Promise<void> | null>(null);
+  /** 组件是否还挂着（异步回调据此判断「这一页还在不在」）。 */
+  const aliveRef = useRef(true);
 
   const titleRef = useRef(title);
   const contentRef = useRef(content);
@@ -62,14 +83,60 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
     return fallbackRef.current?.value ?? contentRef.current ?? '';
   }
 
-  async function saveClipboard(stayOnPage: boolean) {
-    const data = {
+  /** 取此刻表单里所有会进请求的字段（就是「这一刻会存上去的那一份」）。 */
+  function readFields(): ClipFields {
+    return {
       title: titleRef.current.trim(),
       // 正文一律走 getContent()：它会自己判编辑器是否真的起来了，起不来就回落到
       // 兜底 textarea（判据见上面那段注释）。**不要**在这里改读其它来源。
       content: getContent(),
       publicity: publicityRef.current,
     };
+  }
+
+  /** 相对快照改了哪几格（说人话的名字；没改就是空数组）。 */
+  function changedLabels(snapshot: ClipFields, current: ClipFields): string[] {
+    return CLIP_LABELS.filter(([key]) => snapshot[key] !== current[key]).map(([, label]) => label);
+  }
+
+  // 卸载 = 这一页已经不在了：异步回调据此不再弹提示、也不再 router.push
+  // （那会把人从他**现在**这一页拽走）。
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => {
+      aliveRef.current = false;
+    };
+  }, []);
+
+  /**
+   * 保存的入口（Ctrl+S / 每分钟自动保存 / 提交都走它）。
+   *
+   * ★ 一笔在飞时不再发第二笔 ★ 新建态两次 POST 就是**两篇剪贴板**（页面只跳去其中
+   * 一篇，另一篇留在列表里，而用户根本没意识到自己存了两篇）。连按两下 Ctrl+S、
+   * 自动保存与手动保存撞在一起都能触发这条。
+   */
+  async function saveClipboard(stayOnPage: boolean): Promise<void> {
+    const inflight = savingRef.current;
+    if (inflight) {
+      if (stayOnPage) {
+        toast('正在保存，请稍候', 'warning');
+        return;
+      }
+      // 提交：等这一笔落地再接着走 —— 直接丢掉这次点击会让「更新」看着没反应
+      await inflight;
+    }
+    const run = doSave(stayOnPage);
+    savingRef.current = run;
+    try {
+      await run;
+    } finally {
+      if (savingRef.current === run) savingRef.current = null;
+    }
+  }
+
+  async function doSave(stayOnPage: boolean) {
+    // 存的是**这一刻**的表单：之后不管用户怎么改，成功回调都用这一份做判断。
+    const data = readFields();
 
     if (!data.title || !data.content) {
       toast('标题和正文不能为空', 'warning');
@@ -98,29 +165,47 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
         body: JSON.stringify(data),
       });
       const result = await response.json();
+      // 这一页可能已经不在了（用户点了别处）—— 那就什么也别做：不再弹提示，
+      // 更不 router.push（那会把人从**他现在**这一页上拽走）。
+      if (!aliveRef.current) return;
       if (response.ok && result.code === 200) {
-        // ★ 请求在飞的时候用户还能接着打字 ★ —— 那一段**没被发出去**。
-        // 成功回调只说明「提交那一刻那一份存下来了」，不说明「编辑器里现在这一份」。
-        // 判据因此是**内容比对**，不是「刚保存过」这个事件：
+        // ★ 请求在飞的时候用户还能接着改 ★ —— 那一段**没被存上去**。
+        // 成功回调只说明「保存那一刻那一份存下来了」，不说明「页面上现在这一份」。
+        // 判据是**整份表单快照**（标题 / 正文 / 公开状态），不是「刚保存过」这个事件，
+        // 也不是只比正文：
         //   · 没变 → 草稿已完成使命，清掉（否则下次进新建页会把一篇**已经发出去**的
-        //     文章当成「没写完的草稿」恢复出来）；
-        //   · 变了 → 草稿正是那一段还没保存的新改动，**留着**（顺手 flush 一次，
-        //     把防抖窗口里那 500ms 也落下）。清掉它 = 把用户刚打的字丢掉，
-        //     而同一时刻还会弹一句「保存成功」，看着像已经存好了。
+        //     剪贴板当成「没写完的草稿」恢复出来）；
+        //   · 变了 → 草稿正是那一段还没保存的新改动，**留着**（顺手 flush 一次，把防抖
+        //     窗口里那 500ms 也落下）。清掉它 = 把用户刚打的字丢掉，而同一时刻还会
+        //     弹一句「保存成功」，看着像已经存好了。
         // 清完之后接着写仍会攒新草稿（见 draft.ts 的 clear()）。
         // 编辑态没有草稿键，什么都不清。
-        const changedSinceSave = !isEdit && getContent() !== data.content;
+        const changed = changedLabels(data, readFields());
+        const bodyChanged = changed.includes('正文');
         if (!isEdit) {
-          if (changedSinceSave) editorRef.current?.flushDraft();
+          if (bodyChanged) editorRef.current?.flushDraft();
           else editorRef.current?.clearDraft();
         }
         if (stayOnPage) {
           toast('保存成功！', 'success');
           // 保存后**不离开页面**是剪贴板新建页的主路径，所以这里必须说清楚：
           // 绿字说的只是「刚才那一份存下来了」，之后敲的字还在本地。
-          if (changedSinceSave) {
-            toast('保存的是按下保存那一刻的正文；之后的改动还在本地草稿里', 'warning');
+          // ⚠️ 点名改了哪几格 —— 草稿只存正文，标题 / 公开状态改了是接不住的，
+          // 混成一句「有些改动还在本地」会让人以为它们也留下来了。
+          if (changed.length > 0) {
+            toast(
+              `保存的是按下保存那一刻的${changed.join('、')}；之后的改动` +
+                (!isEdit && bodyChanged ? '还在本地草稿里' : '还在编辑器里，记得再存一次'),
+              'warning'
+            );
           }
+        } else if (isEdit && changed.length > 0) {
+          // 编辑态**不跳**：跳走等于把刚改的那些一起丢掉，而编辑页没有草稿接住它们。
+          // 留在这儿再点一次「更新」是安全的（PUT 幂等，不会多出一条）。
+          toast(
+            `保存的是按下保存那一刻的${changed.join('、')}；之后你又改了 —— 这次不跳转，请再保存一次`,
+            'warning'
+          );
         } else {
           router.push(`/clipboard/${result.id}`);
         }
