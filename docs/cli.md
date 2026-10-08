@@ -168,7 +168,7 @@ esac
 
 ### 后台写下的日志是「内部日志」
 
-CLI 写下的每一条审计日志都落 `visibility='internal'`：**不进** `/audit`（顶栏「日志」
+CLI 写下的每一条审计日志都落 `visibility='internal'`：**不进** `/audit`（页脚「管理公示」
 那张公示页），但**照常进库** —— 用 `audit log --visibility internal`（或 `all`）查得到。
 
 **为什么不干脆不记**：那样等于把审计链自己剪断 —— 哪天要查「这个人的角色是谁改的、
