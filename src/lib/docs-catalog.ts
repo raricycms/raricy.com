@@ -287,6 +287,12 @@ export const DOC_ENTRIES: readonly DocEntry[] = [
   },
   {
     group: 'dev',
+    slug: 'format-converter-roadmap',
+    title: '格式转换器长期规划（能力版图与转换路线）',
+    summary: '八类文件的长期能力、转换方向与引擎、保真边界和建设阶段（尚未实施）。',
+  },
+  {
+    group: 'dev',
     slug: 'README',
     title: '文档索引',
     summary: '本目录的索引与互指规范（给改文档的人）。',
