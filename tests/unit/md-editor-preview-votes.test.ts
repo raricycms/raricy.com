@@ -11,6 +11,10 @@
 // 判据只能是**数请求条数**（外加「刷新之后真的换了新数据」），
 // 因为「结果看起来是对的」在缓存失效时同样成立。
 //
+// 还有一条只有把时序摆出来才看得见的：**取数响应落地之前缓存被作废**。那时再回头
+// 问缓存就什么也问不到，正文里的引用会静默退成字面量。数据必须与正文来自**同一轮**
+// 快照（ContentRefProcessor.preprocessRound 交出来的 entries）。
+//
 // 【环境】与 blog-ref-render.test.ts 同款：createRoot + React 19 的 act。
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -54,6 +58,34 @@ function stubVoteFetch(total: () => number): string[] {
   return calls;
 }
 
+/**
+ * 同上的桩，但**每一条响应都由用例手动兑现** —— 用来把竞态卡在指定的位置
+ * （「响应还没落地时缓存被作废」这种时序，快接口上是复现不出来的）。
+ */
+function stubDeferredVoteFetch(): { calls: string[]; fulfill: () => void } {
+  const calls: string[] = [];
+  const pending: Array<() => void> = [];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      calls.push(url);
+      return new Promise((resolve) => {
+        pending.push(() =>
+          resolve({ ok: true, status: 200, json: async () => votePayload(7) } as Response)
+        );
+      });
+    })
+  );
+  return {
+    calls,
+    fulfill: () => {
+      const next = pending.shift();
+      next?.();
+    },
+  };
+}
+
 async function settle(): Promise<void> {
   for (let i = 0; i < 5; i += 1) {
     await act(async () => {
@@ -73,11 +105,6 @@ describe('预览里的投票位', () => {
     const calls = stubVoteFetch(() => total);
 
     const resolver = new ContentRefResolver('expand');
-    // 与 MarkdownEditor 的 previewVoteData 同一段逻辑：复用探测那一条报文
-    const voteData = (id: string) => {
-      const hit = resolver.peek('vote', id);
-      return hit ? (hit.data ?? null) : undefined;
-    };
 
     const container = document.createElement('div');
     document.body.appendChild(container);
@@ -92,7 +119,6 @@ describe('预览里的投票位', () => {
             interactive: false,
             resolver,
             refreshToken,
-            voteData,
           })
         );
       });
@@ -123,28 +149,41 @@ describe('预览里的投票位', () => {
     expect(widget()?.textContent, '刷新之后投票位没换成新数据').toContain('共 9 票');
   });
 
-  it('缓存里没有这一格时静默降级：自己拉一条，仍然渲染得出', async () => {
-    const calls = stubVoteFetch(() => 3);
+  it('★ 响应落地前缓存被作废：这一轮仍然用它自己取到的那份，不退成字面量、不补第二条 ★', async () => {
+    // 【这条盯的是什么】处理器是两段式的：先 `await` 所有 resolve，再拿结果去替换。
+    // 如果第二段回头去问 resolver 的缓存，中间只要有人 `invalidate()`（用户点了
+    // 「刷新引用」、另一次预览渲染起来了），缓存就是空的 —— 正文里的引用**静默退成
+    // 字面量** `[@AbCdEf123]`，投票位连画都不画；而取数越慢越容易撞上。
+    // 修法是让第一段 `await` 的返回值成为这一轮的唯一真值（preprocessRound），
+    // 投票小组件的数据也从同一份快照里取（不是更新的一代、也不是第二条请求）。
+    const stub = stubDeferredVoteFetch();
 
     const container = document.createElement('div');
     document.body.appendChild(container);
     const root = createRoot(container);
+    const resolver = new ContentRefResolver('expand');
     await act(async () => {
       root.render(
         createElement(MarkdownRenderer, {
           content: `投票：[@${VOTE_ID}]`,
           contentRefs: 'expand',
           interactive: false,
-          // 缓存是空的（peek 恒 undefined = 「没给数据，你自己去拉」）
-          voteData: () => undefined,
+          resolver,
         })
       );
     });
+
+    // 请求已经发出去、还悬着
+    expect(stub.calls).toEqual([`/api/votes/${VOTE_ID}`]);
+    // ★ 就在这一刻把缓存整代作废（等价于用户点了一下「刷新引用」）
+    resolver.invalidate();
+    stub.fulfill();
     await settle();
 
-    // 两条：一条是引用的存在性探测（走 resolver），一条是组件自己补的 —— 这正是
-    // 缓存没命中时要付的代价，别让「降级」变成「什么都不显示」。
-    expect(calls).toEqual([`/api/votes/${VOTE_ID}`, `/api/votes/${VOTE_ID}`]);
-    expect(container.querySelector('.vote-embed-widget')?.textContent).toContain('共 3 票');
+    // ① 不退成字面量：正文里那枚 token 被换成了真的投票位
+    expect(container.textContent, '引用退成了字面量').not.toContain(`[@${VOTE_ID}]`);
+    expect(container.querySelector('.vote-embed-widget')?.textContent).toContain('共 7 票');
+    // ② 也不补第二条请求 —— 数据来自这一轮自己取到的那一份
+    expect(stub.calls, '作废之后小组件又自己去拉了一条').toEqual([`/api/votes/${VOTE_ID}`]);
   });
 });

@@ -483,18 +483,6 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
       return () => mq.removeEventListener('change', apply);
     }, []);
 
-    /**
-     * 预览里的投票数据口：**复用** ContentRefResolver 为存在性探测取过的那一份
-     * （见 content-ref-resolver.ts 的 vote 分支）。少了它，预览每停一下就把整块
-     * DOM 换一次，而 renderVoteEmbed 每换一次就重打一条 `/api/votes/<id>` ——
-     * 一条与本次渲染内容无关的请求，还会让投票位闪一次「加载投票…」。
-     * 返回 undefined（缓存里没这一格）= 让渲染层自己去拉，静默降级。
-     */
-    const previewVoteData = useCallback((id: string) => {
-      const hit = resolverRef.current?.peek('vote', id);
-      return hit ? (hit.data ?? null) : undefined;
-    }, []);
-
     // ── 导出 / 打印 ────────────────────────────────────────────────────────
     /** 同一时刻只允许一份快照在渲染 —— 连点两下导出会渲染两遍、下载两份。 */
     const snapshotBusyRef = useRef(false);
@@ -525,7 +513,8 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
         const source = viewRef.current?.state.doc.toString() ?? docRef.current;
         const resolver = resolverRef.current;
         if (!resolver) return null;
-        const text = await new ContentRefProcessor(resolver).preprocess(source);
+        // 本轮的真值（含投票小组件要用的那格）随 text 一起出来 —— 见 preprocessRound。
+        const { text, entries } = await new ContentRefProcessor(resolver).preprocessRound(source);
         const rendered = renderBlogMarkdown(text);
 
         holder = document.createElement('div');
@@ -536,10 +525,15 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
 
         // 不传 voteGeneration：这个 holder 每次都是**新建的元素**，不存在
         // 「元素还在、数据换了」那种要不掉 `data-rendered` 缓存的情况。
+        // 小组件的数据取自**这一轮**的 entries（与正文同一次取数）：不回头问会话缓存，
+        // 免得缓存在这两段之间被作废成另一代。
         enhanceBlogContent(holder, {
           interactive: false,
           mathCount: rendered.mathCount,
-          voteData: previewVoteData,
+          voteData: (id) => {
+            const hit = entries.get(`vote:${id}`);
+            return hit ? (hit.data ?? null) : undefined;
+          },
         });
         // 剥掉只在站内页面上才成立的空壳（代码块的「复制」按钮），并把站内相对
         // 地址补成绝对地址 —— 否则导出件从 file:// 打开时图片全裂、链接全废。
@@ -554,7 +548,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
         holder?.remove();
         snapshotBusyRef.current = false;
       }
-    }, [notify, previewVoteData, refreshToken, title]);
+    }, [notify, refreshToken, title]);
 
     const onExportHtml = useCallback(() => {
       void (async () => {
@@ -679,7 +673,6 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
                 interactive={false}
                 resolver={resolverRef.current}
                 refreshToken={refreshToken}
-                voteData={previewVoteData}
               />
             </div>
           </div>

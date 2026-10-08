@@ -31,7 +31,21 @@ import {
   replaceFavoriteRefs,
 } from '@/lib/favorite-refs';
 import { collectAudioRefs, replaceAudioRefs } from '@/lib/audio-refs';
-import type { ContentRefResolver } from '@/lib/content-ref-resolver';
+import type {
+  ContentRefResolver,
+  ContentRefType,
+  ResolvedRef,
+} from '@/lib/content-ref-resolver';
+
+/** 一轮预处理取到的结果，键是 `${type}:${id}`（见 preprocessRound）。 */
+export type RefRoundEntries = ReadonlyMap<string, ResolvedRef | undefined>;
+
+export interface RefRoundResult {
+  /** 展开后的 Markdown 源文 —— 与 `preprocess` 的返回值逐字相同。 */
+  text: string;
+  /** 本轮**这一趟真的取到的**那些（`undefined` = 这一类取不到，保留字面量）。 */
+  entries: RefRoundEntries;
+}
 
 export class ContentRefProcessor {
   constructor(private resolver: ContentRefResolver) {}
@@ -41,6 +55,25 @@ export class ContentRefProcessor {
    * 返回的仍是 Markdown 源文（展开内容已内联），交给 marked 继续走。
    */
   async preprocess(markdownContent: string): Promise<string> {
+    return (await this.preprocessRound(markdownContent)).text;
+  }
+
+  /**
+   * 与 `preprocess` 同一条管线，另外把**本轮**取到的结果一起交出来。
+   *
+   * ★ 为什么必须由本轮自己交出来，而不是让调用方回头去问 resolver ★
+   * resolver 的缓存是**全局的、可被任何人作废的**：同一时刻另一处（「刷新引用」、
+   * 另一次预览渲染）调一次 `invalidate()`，缓存就被清空/换成了新的一代。
+   * 而处理器是「先 `await` 所有 resolve，再回头读缓存」两段式的 —— 中间这一小段
+   * 里被作废的话，第二段读到的就是**空的**：正文里那些引用会**静默退成字面量**
+   * `[@8位]`（成功取到的内容被丢掉），而且越慢的接口越容易撞上，页面上没有任何提示。
+   * 所以第一段 `await` 的**返回值**才是这一轮的真值，替换只认它。
+   *
+   * 【调用方拿到 entries 干什么】预览 / 导出里那些**同一批引用派生出来的**东西
+   * （首当其冲是投票小组件的数据）必须来自这同一份快照，否则就会出现「正文用本轮
+   * 取到的，小组件用后来那一代、或者干脆自己再拉一条」—— 同一屏上两个不一致的来源。
+   */
+  async preprocessRound(markdownContent: string): Promise<RefRoundResult> {
     // 分流扫的是**盖过码**的副本（`maskMarkdownCode`，与音频 / 收藏夹那两趟同口径）：
     // 代码块与行内代码里的引用一律不展开 —— 那是《内容引用语法指南》对读者的承诺
     // （「代码里的引用一律不展开」），也是「想展示语法本身」的唯一写法。
@@ -67,9 +100,13 @@ export class ContentRefProcessor {
     // 有条目时下面照旧**重新扫一次**（那时字符串已被改写，这批下标不再成立）。
     if (refSlots.length === 0) {
       const audioSlots = collectAudioRefs(markdownContent, maskedContent);
-      return audioSlots.length > 0
-        ? replaceAudioRefs(markdownContent, audioSlots)
-        : markdownContent;
+      return {
+        text:
+          audioSlots.length > 0
+            ? replaceAudioRefs(markdownContent, audioSlots)
+            : markdownContent,
+        entries: new Map(),
+      };
     }
 
     const clipboardIds = new Set<string>();
@@ -88,12 +125,18 @@ export class ContentRefProcessor {
 
     // 取数全部经 resolver：模式（expand / external）、并发去重、失败降级都封在里面。
     // 这里对**去重后的 id 集合**统一发 resolve —— 已缓存的同步返回，不会重复请求。
-    const pending: Promise<unknown>[] = [];
-    for (const id of clipboardIds) pending.push(this.resolver.resolve('clipboard', id));
-    for (const id of voteIds) pending.push(this.resolver.resolve('vote', id));
-    for (const id of imageIds) pending.push(this.resolver.resolve('image', id));
-    for (const id of favoriteIds) pending.push(this.resolver.resolve('favorite', id));
-    await Promise.all(pending);
+    // ⚠️ 顺序（剪贴板 → 投票 → 图床 → 收藏夹）只影响并发请求的发起次序，
+    // 替换仍严格按正文里出现的先后走 refSlots —— 别把两者混起来。
+    const wanted: Array<[ContentRefType, string]> = [];
+    for (const id of clipboardIds) wanted.push(['clipboard', id]);
+    for (const id of voteIds) wanted.push(['vote', id]);
+    for (const id of imageIds) wanted.push(['image', id]);
+    for (const id of favoriteIds) wanted.push(['favorite', id]);
+    const fetched = await Promise.all(wanted.map(([type, id]) => this.resolver.resolve(type, id)));
+    // ★ 这一轮的真值就落在这里 ★ 替换阶段只认它，**再也不回头问 resolver**
+    //（理由见 preprocessRound 的说明：缓存可能已经被人作废成另一代）。
+    const entries = new Map<string, ResolvedRef | undefined>();
+    wanted.forEach(([type, id], index) => entries.set(`${type}:${id}`, fetched[index]));
 
     // 替换**按区间切片**（不是 `replace(token, …)`），单向往回走一遍。
     // 两条各自的理由：
@@ -111,17 +154,17 @@ export class ContentRefProcessor {
       const id = slot.id;
       let replacement: string | undefined;
       if (id.length === CLIPBOARD_ID_LEN) {
-        const hit = this.resolver.peek('clipboard', id);
+        const hit = entries.get(`clipboard:${id}`);
         if (hit) replacement = hit.content ?? '';
       } else if (id.length === VOTE_ID_LEN) {
-        const hit = this.resolver.peek('vote', id);
+        const hit = entries.get(`vote:${id}`);
         if (hit) {
           replacement = hit.error
             ? `<a href="/vote/${hit.id}">[投票 ${hit.id} 加载失败，点击查看]</a>`
             : `<div class="vote-embed" data-vote-id="${id}"></div>`;
         }
       } else if (id.length === IMAGE_ID_LEN) {
-        const hit = this.resolver.peek('image', id);
+        const hit = entries.get(`image:${id}`);
         if (hit) replacement = `![${id}](${hit.url})`;
       }
       // 收藏夹在主循环里**刻意跳过**：它最后单独走一趟，理由见下方那段的注释。
@@ -145,7 +188,8 @@ export class ContentRefProcessor {
     if (slots.length > 0) {
       const htmlById = new Map<string, string>();
       for (const slot of slots) {
-        const hit = this.resolver.peek('favorite', slot.id);
+        // 与上面那趟同一个来源：本轮 entries，不回头问 resolver
+        const hit = entries.get(`favorite:${slot.id}`);
         if (hit?.content !== undefined) {
           htmlById.set(slot.id, hit.content);
         }
@@ -171,6 +215,6 @@ export class ContentRefProcessor {
       processed = replaceAudioRefs(processed, audioSlots);
     }
 
-    return processed;
+    return { text: processed, entries };
   }
 }

@@ -16,8 +16,8 @@
 // 图床图片 / 音频 / **服务端随 payload 下发的公开剪贴板**（externalClips）出得来，
 // 投票与收藏夹保留字面量。判据是「这条引用的读口是不是匿名本来就取得到」——
 // 见 prop 上的说明与 docs/architecture.md §7.3。
-import { useEffect, useRef, useState } from 'react';
-import { ContentRefProcessor } from '@/lib/content-ref-processor';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ContentRefProcessor, type RefRoundEntries } from '@/lib/content-ref-processor';
 import { ContentRefResolver, type ContentRefMode } from '@/lib/content-ref-resolver';
 import { renderBlogMarkdown } from '@/lib/blog-renderer';
 import { enhanceBlogContent } from '@/lib/blog-content-dom';
@@ -31,7 +31,6 @@ export default function MarkdownRenderer({
   interactive = true,
   resolver: sharedResolver,
   refreshToken,
-  voteData,
 }: {
   content: string;
   /**
@@ -89,12 +88,6 @@ export default function MarkdownRenderer({
    * 只在传了 `resolver` 时有意义；不传 resolver 时每次渲染本来就是全新缓存。
    */
   refreshToken?: number;
-  /**
-   * 只读预览专用的投票数据口（见 blog-content-dom.ts 的 `voteData`）：
-   * 数据复用会话缓存里那一份，避免每次防抖重渲染都重打一条 `/api/votes/<id>`。
-   * 不传 = 每次自己拉（正文页现状）。
-   */
-  voteData?: (id: string) => VoteEmbedData | null | undefined;
 }) {
   /** 渲染结果 + 抽出的公式数量（决定要不要跑 MathJax，见 markdown-math.ts）。 */
   const [doc, setDoc] = useState<{ html: string; mathCount: number } | null>(null);
@@ -109,6 +102,16 @@ export default function MarkdownRenderer({
    * 用**渲染序号**（与 doc 同一次 commit 落地）就没有这个中间态。
    */
   const [renderSeq, setRenderSeq] = useState(0);
+  /**
+   * **这一轮**的引用结果（与 doc 同一次 commit 落地）—— 投票小组件的数据就从这里取。
+   *
+   * 【为什么不用会话缓存里的那一份】`ContentRefResolver` 的缓存是全局的、随时可能被
+   * 别人作废（「刷新引用」、另一次渲染）。后处理跑起来时它可能已经被清成另一代：
+   * 那时再问缓存就会得到 undefined，小组件只能自己去拉一条 —— 于是同一屏上「正文里的
+   * 引用是本轮取到的、投票位是另一条请求」。处理器把本轮的真值交出来（preprocessRound），
+   * 这里接着，两边就一定是同一份快照。
+   */
+  const [roundEntries, setRoundEntries] = useState<RefRoundEntries | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const lastRefreshRef = useRef<number | undefined>(undefined);
 
@@ -126,16 +129,42 @@ export default function MarkdownRenderer({
         sharedResolver.invalidate();
       }
       lastRefreshRef.current = refreshToken;
-      const text = await new ContentRefProcessor(resolver).preprocess(content ?? '');
+      const { text, entries } = await new ContentRefProcessor(resolver).preprocessRound(
+        content ?? ''
+      );
       if (!cancelled) {
         setDoc(renderBlogMarkdown(text));
-        // 与 doc 同一批 —— React 会把两次 setState 合成一次 commit，
+        setRoundEntries(entries);
+        // 与 doc 同一批 —— React 会把几次 setState 合成一次 commit，
         // 于是后处理永远看不到「新代际 + 旧 DOM」这个中间态。
         setRenderSeq((n) => n + 1);
       }
     })();
     return () => { cancelled = true; };
   }, [content, contentRefs, externalClips, sharedResolver, refreshToken]);
+
+  /**
+   * 投票小组件的数据口：**本轮** entries 里那一格（见 roundEntries 的说明）。
+   * 返回 undefined 仍是「这一格本轮没取到，组件自己拉」——那是保底，不是常态。
+   *
+   * ★ 只给**带会话级 resolver 的调用方**（编辑器只读预览）★ 这是一条**边界**，
+   * 不是优化开关：正文页（`blog/[id]`、剪贴板的详情页）不传 resolver，那一路的
+   * 行为**保持逐字不变** —— 小组件自己去拉一次，票数取渲染那一刻的值
+   * （口径见 content-ref-resolver.ts 里 vote 那一段）。
+   * 而编辑器预览每停一下手就整块重渲染一次，若小组件每次都自己拉：
+   * 每停一下多一条请求、每次都先闪「加载投票…」，还可能在「刷新引用」的中间态上
+   * 与正文里的引用**不是同一份快照**（见 roundEntries 的说明）。
+   */
+  const roundVoteData = useMemo(
+    () =>
+      sharedResolver
+        ? (id: string) => {
+            const hit = roundEntries?.get(`vote:${id}`);
+            return hit ? ((hit.data as VoteEmbedData | undefined) ?? null) : undefined;
+          }
+        : undefined,
+    [sharedResolver, roundEntries]
+  );
 
   // 渲染后处理：代码复制按钮、图片放大、外链加固、投票嵌入、MathJax
   useEffect(() => {
@@ -144,10 +173,10 @@ export default function MarkdownRenderer({
     enhanceBlogContent(root, {
       interactive,
       mathCount: doc.mathCount,
-      voteData,
+      voteData: roundVoteData,
       voteGeneration: renderSeq,
     });
-  }, [doc, interactive, voteData, renderSeq]);
+  }, [doc, interactive, roundVoteData, renderSeq]);
 
   return (
     <div className="blog-content-container-container">

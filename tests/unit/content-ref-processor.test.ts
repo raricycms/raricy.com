@@ -107,6 +107,67 @@ describe('降级', () => {
   });
 });
 
+describe('本轮快照（取数落地之前缓存被作废）', () => {
+  /**
+   * 响应**悬着**，由用例决定何时兑现 —— 只有这样才卡得住「取数还在飞、
+   * 缓存已经被作废」那一小段；用真接口的话响应几百毫秒就回来了，用例恒绿。
+   */
+  function stubDeferredFetch(body: unknown): { calls: string[]; fulfill: () => void } {
+    const calls: string[] = [];
+    let release: (() => void) | null = null;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) => {
+        calls.push(String(input));
+        return new Promise((resolve) => {
+          release = () => resolve({ ok: true, status: 200, json: async () => body } as Response);
+        });
+      })
+    );
+    return {
+      calls,
+      fulfill: () => {
+        release?.();
+        release = null;
+      },
+    };
+  }
+
+  it('★ await 期间 invalidate()：这一轮照样用取回来的内容替换，不退成字面量 ★', async () => {
+    // 处理器是两段式的：先 await 所有 resolve，再拿结果替换。中间这一小段里
+    // 只要有人作废缓存（用户点了「刷新引用」、另一次预览渲染起来了），
+    // 第二段若回头问缓存就会**什么都问不到** —— 正文里的引用静默退成字面量，
+    // 越慢的接口越容易撞上，页面上没有任何提示。
+    const stub = stubDeferredFetch({ clip: { content: '剪贴板正文' } });
+    const r = new ContentRefResolver('expand');
+    const p = new ContentRefProcessor(r);
+
+    const running = p.preprocess(`见 [@${CLIP_ID}]`);
+    expect(stub.calls, '请求应该已经发出去了').toHaveLength(1);
+    r.invalidate(); // ← 就在响应落地之前
+    stub.fulfill();
+    const out = await running;
+
+    expect(out, '本轮取到的内容被丢掉了').toContain('剪贴板正文');
+    expect(out).not.toContain(`[@${CLIP_ID}]`);
+    // 旧代的结果仍然**不入缓存**（它是刷新前那一刻的服务端状态）——
+    // 「这一轮用它」与「缓存里留不留它」是两件事
+    expect(r.peek('clipboard', CLIP_ID)).toBeUndefined();
+  });
+
+  it('preprocessRound 交出来的 entries 就是这一轮的真值（预览的投票数据同源）', async () => {
+    stubFetch(() => ({ code: 200, data: { title: '晚饭吃什么', total_votes: 3, options: [] } }));
+    const r = new ContentRefResolver('expand');
+
+    const { text, entries } = await new ContentRefProcessor(r).preprocessRound(`投 [@${VOTE_ID}]`);
+
+    expect(text).toContain('vote-embed');
+    // 小组件要的那份数据（存在性探测那条报文里的）就在本轮 entries 里 ——
+    // 调用方据此喂给 renderVoteEmbed，不必回头问缓存、更不必再拉一条
+    expect(entries.get(`vote:${VOTE_ID}`)?.data?.total_votes).toBe(3);
+  });
+});
+
 describe('会话级 resolver（编辑器预览形态）', () => {
   it('★ 同一个 resolver 跨两次 preprocess：第二条相同内容零请求 ★', async () => {
     const calls = stubFetch(() => ({ clip: { content: '剪贴板正文' } }));
