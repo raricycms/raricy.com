@@ -337,11 +337,11 @@ export function insertText(text: string, selectInserted = false): EditorCommand 
  * 这条命令提供的是**绕开它们**的那条出口，绑在 Shift+Enter 上（见 MarkdownEditor.tsx
  * 的键位表，必须排在 defaultKeymap 之前）。
  *
- * 【渲染侧不需要任何标记】整篇渲染器（`renderBlogMarkdown`，gfm + breaks）把单个
- * `\n` 渲染成一个 `<br>`，两个 `\n` 才是两段。所以这里只插 `\n`：
- * **不插 `<br>`**（那是把渲染语义写进源文，改渲染口径时它就成了字面量），
- * **也不插行尾两个空格**（会被编辑器与补丁工具悄悄吃掉，且末行会被 Markdown 参数
- * 里的 `trim` 吃掉 —— 静默少一个换行）。
+ * 【渲染侧不需要任何标记】渲染口径是 gfm + `breaks: true`，**普通段落里**单个
+ * `\n` 就换行（`a\nb` → `<p>a<br>b</p>`）、空行才分段（`a\n\nb` → 两个 `<p>`）。
+ * 所以这里只插 `\n` —— **不插 `<br>`**：那是把某一种渲染语义写进源文，改渲染
+ * 口径时它就成了字面量。这条只说普通段落（列表项、引用块里的软换行同理），
+ * **别推广成「每个 `\n` 都会被渲染成 `<br>`」** —— 代码块里就不成立。
  */
 export function insertLineBreak(): EditorCommand {
   return (view) => {
