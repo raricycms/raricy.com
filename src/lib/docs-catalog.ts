@@ -271,7 +271,7 @@ export const DOC_ENTRIES: readonly DocEntry[] = [
     group: 'dev',
     slug: 'editor-plan',
     title: '编辑器换代方案（Vditor → CodeMirror 6）',
-    summary: 'CM6 原文编辑、同源完整预览、资源集成与分期验收（方案，未实施）。',
+    summary: 'CM6 原文编辑、同源完整预览、资源集成与分期验收（M0–M2 已实施；M3 未实施，M4 只交付了导出）。',
   },
   {
     group: 'dev',
