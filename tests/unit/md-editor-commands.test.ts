@@ -27,12 +27,24 @@ interface Harness {
   ranges(): Range[];
   /** 主选区。 */
   main(): Range;
+  /** 主选区在 `selection.ranges` 里的序号 —— 多光标时「哪个是主」本身就是一条断言。 */
+  mainIndex(): number;
 }
 
-function harness(doc: string, ranges: Range[] = [[0, 0]], extra: Extension[] = []): Harness {
+function harness(
+  doc: string,
+  ranges: Range[] = [[0, 0]],
+  extra: Extension[] = [],
+  // 主选区的序号。默认 0（绝大多数用例只有一个区间）；多光标用例要显式给它非 0 的
+  // 值才验得出「命令有没有把主选区打回第一个」—— 见 insertLineBreak 那条。
+  mainIndex = 0
+): Harness {
   let state = EditorState.create({
     doc,
-    selection: EditorSelection.create(ranges.map(([a, b]) => EditorSelection.range(a, b)), 0),
+    selection: EditorSelection.create(
+      ranges.map(([a, b]) => EditorSelection.range(a, b)),
+      mainIndex
+    ),
     // 必须显式开：不开的话 EditorState.create 会把多选区压成一个（asSingle()），
     // 多光标用例会「只剩第一个区间」而看不出原因。真编辑器里也开了同一条。
     extensions: [EditorState.allowMultipleSelections.of(true), ...extra],
@@ -53,6 +65,7 @@ function harness(doc: string, ranges: Range[] = [[0, 0]], extra: Extension[] = [
       const r = view.state.selection.main;
       return [r.from, r.to];
     },
+    mainIndex: () => view.state.selection.mainIndex,
   };
 }
 
@@ -365,10 +378,17 @@ describe('单行换行（Shift+Enter）', () => {
   });
 
   it('多光标：每个区间各插一个，后面的区间不会因为前面的插入而错位', () => {
-    const h = harness('ab', [
-      [0, 0],
-      [2, 2],
-    ]);
+    // 主选区给**非 0** 的一档 —— 这条同时钉住「后面的区间不错位」与「主选区没被打回
+    // 第一个」。写死 mainIndex 0 的话后者永远不会红（见 insertLineBreak 的落点注释）。
+    const h = harness(
+      'ab',
+      [
+        [0, 0],
+        [2, 2],
+      ],
+      [],
+      1
+    );
     cmd.insertLineBreak()(h.view);
     expect(h.text()).toBe('\nab\n');
     // 第二条落点是**这个换行之后**（= 新那行的行首，末尾是空行时就是文末）
@@ -376,19 +396,36 @@ describe('单行换行（Shift+Enter）', () => {
       [1, 1],
       [4, 4],
     ]);
+    // ★ 主选区仍是第二个区间（`insertNewlineAndIndent` 从前也是这么保持的）★
+    expect(h.mainIndex()).toBe(1);
+    expect(h.main()).toEqual([4, 4]);
   });
 
   it('多光标 + 其中一个区间有选区', () => {
-    const h = harness('abcd', [
-      [0, 2],
-      [3, 4],
-    ]);
+    const h = harness(
+      'abcd',
+      [
+        [0, 2],
+        [3, 4],
+      ],
+      [],
+      1
+    );
     cmd.insertLineBreak()(h.view);
     expect(h.text()).toBe('\nc\n');
     expect(h.ranges()).toEqual([
       [1, 1],
       [3, 3],
     ]);
+    expect(h.mainIndex()).toBe(1);
+    expect(h.main()).toEqual([3, 3]);
+  });
+
+  it('只读：不改文档、返回 false（与它替换掉的原生命令同口径）', () => {
+    const h = harness('ab', [[1, 1]], [EditorState.readOnly.of(true)]);
+    expect(cmd.insertLineBreak()(h.view)).toBe(false);
+    expect(h.text()).toBe('ab');
+    expect(h.main()).toEqual([1, 1]);
   });
 
   it('进撤销历史：一步退回（不是整块跳回，也不是撤不掉）', () => {

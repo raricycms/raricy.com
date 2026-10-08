@@ -346,18 +346,17 @@ export function insertText(text: string, selectInserted = false): EditorCommand 
 export function insertLineBreak(): EditorCommand {
   return (view) => {
     const { state } = view;
-    const edits: RangeEdit[] = [];
-    for (const { from, to } of state.selection.ranges) {
-      // 有选区就整体替换掉（与 insertText 同口径）；多选区各插各的一份，
-      // 落点按「本区间自己的净变化」报给 applyEdits，由它把前面的改动累加上去。
-      edits.push({
-        changes: [{ from, to, insert: '\n' }],
-        shift: 1 - (to - from),
-        from: from + 1,
-        to: from + 1,
-      });
-    }
-    return applyEdits(view, edits);
+    // 与它替换掉的那条原生命令同口径：只读下一律不动文档、返回 false。
+    // `dispatch` 本身**不拦**只读（readOnly 是给编辑 DOM 与键位表看的），得自己判。
+    if (state.readOnly) return false;
+    // ★ 用 `state.replaceSelection`（内部就是 `changeByRange`），不用 applyEdits ★
+    // applyEdits 收尾写死 `EditorSelection.create(ranges, 0)` —— 多光标时会把**主
+    // 选区**打回第一个区间。Shift+Enter 换掉的原生命令（`insertNewlineAndIndent`）
+    // 保持主选区，下游读 `selection.main`（资源面板以 `main.head` 作锚点）拿到的
+    // 就是它；`changeByRange` 用 `sel.mainIndex` 收口，这里因此与替换前一致。
+    // 有选区时整体替换成一个 `\n`，与 `insertText` 同口径。
+    view.dispatch(state.replaceSelection('\n'));
+    return true;
   };
 }
 
