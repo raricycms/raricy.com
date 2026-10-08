@@ -391,11 +391,32 @@ GET/HEAD/OPTIONS 视为安全方法，不校验（协议闸不受这条影响，
 | 讨论正文 / 评论正文 | **客户端**渲染，同一套管线 | `rich-text.ts`（marked → DOMPurify → 后处理），白名单与链接类名见 `chat-markdown.ts` / `comment-markdown.ts` |
 | 博客正文 | **客户端**渲染 | `src/app/components/MarkdownRenderer.tsx`（marked + DOMPurify + highlight.js + MathJax + `[@…]` 内容引用） |
 | 故事正文 | **服务端**渲染 | `src/lib/story-service.ts` 的 `marked` + `stripScripts`。内容由站长直接写在 `instance/stories/`，按可信输入处理，**不走 DOMPurify / highlight.js** |
-| 内容引用 `[@…]` | 浏览器渲染时正则替换为剪贴板/投票/图床/收藏夹组件 | `src/app/components/MarkdownRenderer.tsx` 的 `ContentRefProcessor`（按 id 长度分流：6 位收藏夹 / 8 位剪贴板 / 9 位投票 / 10 位图床）。**表情包不在这条管道上**。**展开到哪一档看 `contentRefs`**（成员 `'expand'` / 对外 `'external'`，见 §7.3）。两次替换都**按区间切片**、不按内容 `replace`；分流扫的是**盖过码**的副本，所以代码块里的引用一律不展开（指南对读者的承诺）。收藏夹卡片是在主循环**之后**单独一趟，理由见 §6.10。**三条硬上限**（常量集中在零依赖的 `content-refs.ts`，客户端解析器与服务端对外映射共用同一份）：取数候选**按源文出现顺序**去重后最多 `MAX_REF_FETCHES`（50）个 —— 图床与音频只拼 URL、**不占**这个名额（缓存命中也计入，保确定性；同一 id 只取一次），超出的引用**连取数请求都不发**；同一个 `ContentRefResolver` 实例的真实异步读取并发封顶 `MAX_REF_CONCURRENCY`（4，含共享预览 resolver 的多轮渲染，「刷新」后排队未发的陈旧请求不再发出但仍正常 settle）；整篇展开后的 Markdown 总长度封顶 `MAX_REF_EXPAND_CHARS`（500000）—— 装不下的那条保留原 token，不截断正文也不切 HTML。替换是单趟切片、插进去的内容不再被扫，所以自引用 / 双向引用**只展开一层**。对外视图的服务端映射（`resolvePublicClipRefs`，§7.3）另有一档：查库并发同样走 `MAX_REF_CONCURRENCY`，入映射的正文合计同样封顶 `MAX_REF_EXPAND_CHARS` |
+| 内容引用 `[@…]` | 浏览器渲染时正则替换为剪贴板/投票/图床/收藏夹组件 | `src/app/components/MarkdownRenderer.tsx` 的 `ContentRefProcessor`（按 id 长度分流：6 位收藏夹 / 8 位剪贴板 / 9 位投票 / 10 位图床）。**表情包不在这条管道上**。**展开到哪一档看 `contentRefs`**（成员 `'expand'` / 对外 `'external'`，见 §7.3）。两次替换都**按区间切片**、不按内容 `replace`；分流扫的是**盖过码**的副本，所以代码块里的引用一律不展开（指南对读者的承诺）。收藏夹卡片是在主循环**之后**单独一趟，理由见 §6.10 |
 | 表情包 `[@合集/表情]` | 浏览器渲染时替换为内联 `<img>`（**仅评论 / 讨论**）。两个来源共用这条管道：站长放的图片（`/api/stickers/` 字节路由）与**内置黄脸**（`/static/emoji/` 静态素材）—— 后者多叠一个 `rich-emoji-ref` 类把自己压成文字大小；**整条正文只有这一张黄脸时**再叠 `rich-emoji-solo`，尺寸退回表情包那一档（判据是「最终 DOM 里只有这一张」） | `src/lib/sticker-refs.ts` 的 `embedStickerRefs`，在 `rich-text.ts` 里紧跟 `embedUserRefs` 之后调用；单发那一档是 `markSoloEmojiFaces`（同一文件），在 `render()` 里**最后**跑（任何新的 `embed*` 都必须排在它上面）；黄脸清单在 `src/lib/emoji-faces.ts` |
 | 音频 `[@音频/<ID>]` | 浏览器渲染时替换为内联 `<audio controls>`。**两条管线走法不同**：评论 / 讨论在**净化后**建 DOM（那边白名单里没有 audio）；博客在**源文**上直接拼标签串（那边白名单本来就允许 audio），但必须配 `maskMarkdownCode` —— 否则代码块里会嵌出真播放器。一条正文最多展开 3 个 | `src/lib/audio-refs.ts` 的 `embedAudioRefs`（DOM）/ `collectAudioRefs` + `replaceAudioRefs`（源文）。`音频` 是**保留合集名**（表情那条正则带 `(?!用户/)(?!音频/)` 让开），见 §6.15 |
 | 用户名片 `[@用户/<用户名>]` | 浏览器渲染时替换为一枚**行内名片**（`<a>` 包住「带头像框的头像 + 用户名」，指向 `/u/<id>`）（**仅评论 / 讨论**）。认的是**用户名**而不是 ID，所以多一条异步取数；**不算 @ 提及**，不发通知 | `src/lib/user-refs.ts` 的 `embedUserRefs`（纯逻辑 + DOM 构造），数据由 `src/app/components/useUserCards.ts` 经 `RichTextContext` 注入，取数口是 `GET /api/users/<用户名>`（要 core+）。`用户` 因此是**保留合集名**（表情那条正则带 `(?!用户/)` 让开） |
 | 工具页 cattca-guide | **服务端**渲染 | marked（仅一次，可信文档） |
+
+**内容引用的三道上限**（常量集中在零依赖的 `content-refs.ts`，客户端解析器与服务端
+对外映射共用同一份，别在别处再写一遍数字）：
+
+- **取数** `MAX_REF_FETCHES`（50）：候选**按源文出现顺序**去重后取前 50 个
+  `${type}:${id}`（剪贴板 / 投票 / 收藏夹）。图床与音频只拼 URL、**不占**这个名额
+  （否则图多的文章会把取数名额饿死）；缓存命中也计入（保确定性）。**没进候选的引用
+  连取数请求都不发**；已经进候选、只是展开时排不上号的，请求**可能已经发出去了** ——
+  这两件事不要混为一谈。
+- **并发** `MAX_REF_CONCURRENCY`（4）：`ContentRefResolver` 的**实例级**闸门（含共享
+  预览 resolver 的多轮渲染）。只有真会发 HTTP 的才排队 —— 图床与对外视图不发请求、
+  不占名额。「刷新」后排队未发的陈旧请求不再发出，但仍正常 settle（不挂死）。
+- **总量** `MAX_REF_EXPAND_CHARS`（500000）：整篇展开后的 Markdown 总长度。按出现
+  顺序**整块**接受，装不下的那条保留原 token —— 不截断正文、不切 HTML。
+
+替换是单趟切片，所以**剪贴板引用不会递归**：剪贴板正文里再写的 `[@8位]` 保持字面量，
+自引用 / 双向引用都只展开一层。⚠️ **音频与收藏夹各是合并后单独一趟、跑在已改写的
+正文上**，不在这条之列 —— 从剪贴板带进来的音频引用会照常变成播放器，收藏夹 token
+在原文里也有同一个 ID 时会变成卡片。对外视图的服务端映射（`resolvePublicClipRefs`，
+§7.3）另有一档：条数按 `MAX_REF_FETCHES`、查库并发同样走 `MAX_REF_CONCURRENCY`、
+入映射的正文合计同样封顶 `MAX_REF_EXPAND_CHARS`。
 
 **讨论与评论共用一条管线**（`rich-text.ts`）。两者的威胁模型与防线逐条相同，差别只在
 白名单与链接类名（`chat-msg__link` / `comment-link`），所以管线唯一、参数由调用方注入。
