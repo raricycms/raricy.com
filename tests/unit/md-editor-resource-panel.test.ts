@@ -338,3 +338,63 @@ describe('输入法组字期间的按键', () => {
     expect(activeDescendant(container), '组完字之后 ↓ 不管用了').not.toBe(before);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 组字期间的 Escape
+//
+// 【为什么单测】搜索框的 onKeyDown 早就在组字期间让开了，但 Escape 不是它接的 ——
+// 它冒泡到**面板挂在 document 上的那个监听**，而那个监听原来无条件 onClose()。
+// 于是中文用户打了一半拼音、按 Esc 想把候选条收回去，**整个面板跟着关了**：
+// 不报错、不写日志，只是「面板怎么自己没了」。两处判据必须同源（原生 isComposing
+// + 本地 composingRef），否则正好漏掉另一半到达顺序。
+//
+// 【同样不是真 IME 验证】见上一节的说明：这里合成的是事件。
+// ─────────────────────────────────────────────────────────────────────────────
+describe('输入法组字期间的 Escape', () => {
+  it('★ 组字中按 Esc：不关面板；组完字之后 Esc 照常关 ★', async () => {
+    const calls = stubDeferredFetch();
+    const { container, onClose } = await mount();
+    calls[0].fulfill(imagePayload('甲图.png'));
+    await settle();
+    const input = searchInput(container);
+
+    // 本地标志这一档（Safari：compositionend 之前那一下 keydown 的 isComposing 为 false）
+    await act(async () => {
+      composition(input, 'compositionstart');
+    });
+    await act(async () => keydown(input, 'Escape'));
+    expect(onClose, '组字期间的 Esc 把面板关了（用户只是想撤掉候选）').not.toHaveBeenCalled();
+
+    // 守卫不能粘住：组字结束后 Esc 立刻回到面板手里
+    await act(async () => {
+      composition(input, 'compositionend');
+    });
+    await act(async () => keydown(input, 'Escape'));
+    expect(onClose, '组完字之后 Esc 不再关面板了').toHaveBeenCalledTimes(1);
+  });
+
+  it('★ 只给原生 isComposing 的 Esc（没有 compositionstart）同样得让开 ★', async () => {
+    const calls = stubDeferredFetch();
+    const { container, onClose } = await mount();
+    calls[0].fulfill(imagePayload('甲图.png'));
+    await settle();
+    const input = searchInput(container);
+
+    await act(async () => keydown(input, 'Escape', true));
+    expect(onClose, 'isComposing=true 的 Esc 把面板关了').not.toHaveBeenCalled();
+
+    // 判据是「按这一次事件」判的，不残留
+    await act(async () => keydown(input, 'Escape'));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('组字结束后、且不在输入框里按的 Esc 也照常关（不是把 Escape 整个关掉）', async () => {
+    const calls = stubDeferredFetch();
+    const { container, onClose } = await mount();
+    calls[0].fulfill(imagePayload('甲图.png'));
+    await settle();
+
+    await act(async () => keydown(container.querySelector('.md-res-modal') ?? document.body, 'Escape'));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});

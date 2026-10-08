@@ -137,6 +137,13 @@ export default function ResourcePanel({ onClose, onInsert }: ResourcePanelProps)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        // ★ 组字期间的 Escape 是**输入法的**（撤掉候选条 / 取消这次组字）★
+        // 搜索框自己那段 onKeyDown 已经放行了，但事件**还会冒泡到这里** —— 这里
+        // 是 document 级监听，收的是**原生**事件，所以两个判据与搜索框同源：
+        // 原生的 `isComposing`，以及 compositionstart / end 翻的本地标志。
+        // 少了这一段，中文用户在搜索框里打了一半、按 Esc 取消候选，整个面板跟着关掉
+        //（用户只是想把候选收回去），而这不是报错、只是「面板莫名其妙自己没了」。
+        if (e.isComposing || composingRef.current) return;
         e.stopPropagation();
         onClose();
         return;
