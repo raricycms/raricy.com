@@ -308,6 +308,36 @@ describe('打印：等资源画得出来，但绝不等到死', () => {
     expect(spy, '资源卡住时打印跟着卡住了').toHaveBeenCalledTimes(1);
   });
 
+  it('★ rAF 不回调（后台标签页）也必须有界：预算到点照样打印 ★', async () => {
+    // 真机上「点了打印没反应」最像的一种：页面在**后台标签页**（或被切走、被藏起来），
+    // 而 `requestAnimationFrame` 在后台根本不回调。那几帧若不在总预算里，`print()`
+    // 就永远不执行 —— 屏幕上什么都不会说，用户只会再点一次。
+    // 这里让 rAF 彻底不回，把「有界」这件事单独钉住。
+    vi.useFakeTimers();
+    const raf = vi.spyOn(window, 'requestAnimationFrame').mockImplementation(() => 0);
+    try {
+      printHtml(
+        buildExportHtml({
+          title: 't',
+          bodyHtml: '<img src="https://example.test/never.png">',
+          base: ORIGIN,
+        })
+      );
+      const { spy } = capturePrint();
+
+      await vi.advanceTimersByTimeAsync(PRINT_READY_MAX_MS - 100);
+      expect(spy, '预算还没用完就打印了').not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(PRINT_READY_MAX_MS);
+      expect(
+        spy,
+        'rAF 不回调时打印被吊死了 —— 后台标签页里点打印就是「没反应」'
+      ).toHaveBeenCalledTimes(1);
+    } finally {
+      raf.mockRestore();
+    }
+  });
+
   it('打印完把 iframe 摘掉（否则每点一次留一个空文档挂在页面上）', async () => {
     vi.useFakeTimers();
     printHtml(

@@ -238,22 +238,33 @@ export function downloadHtml(filename: string, html: string): void {
 }
 
 /**
- * 打印前等资源的上限。**超了照打** —— 宁可少一张没加载完的图，
+ * 打印前等待的上限。**超了照打** —— 宁可少一张没加载完的图，
  * 也不能让「点了打印没反应」。
  *
- * ⚠️ 它是**整段等待共用**的一个总上限（样式 / 图片 + 字体两段加起来），
- * 不是每段各给这么久 —— 否则最坏情况会拖到 2×。
+ * ⚠️ 它是**整段等待共用的一个总上限**，从写完 iframe 一直到 `print()` 之前的**每一次**
+ * 等待都算在里面：样式 / 图片 → 那几帧 → 字体 → 收尾的两帧。不是每段各给这么久
+ * （那会让最坏情况成倍地拖），也不是只给「等资源」那一段 —— 见 `withinDeadline`。
  */
 export const PRINT_READY_MAX_MS = 3000;
 
-/** 等一帧（让浏览器把刚到手的东西布局一遍）。 */
-function nextFrame(): Promise<void> {
+/** 等两帧：第一帧做布局，第二帧才看得到它触发出来的加载与绘制。 */
+function afterPaint(): Promise<void> {
   return new Promise((resolve) => {
-    requestAnimationFrame(() => resolve());
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
   });
 }
 
-/** 在总预算内等 p；预算已经用完就立刻放行。 */
+/**
+ * 在总预算内等 p；预算已经用完就立刻放行。
+ *
+ * ⚠️ **连「等几帧」也一律走这里** ★ 这是有界性的关键一半：
+ * `requestAnimationFrame` 在**后台标签页里不回调** —— 用户切去别的标签页干别的、
+ * 或者从一个刚被藏起来的页面上点了打印（真机上「点了打印没反应」最像的一种）。
+ * 直接等它的回调就是一个**没有上界的等待**：那一头永远不回来，后面的
+ * `print()` 也就永远不执行，而屏幕上什么都不会说。
+ * 与总预算竞速之后，到点就走 —— 宁可少一帧布局，也不能把打印吊死。
+ * （`setTimeout` 在后台标签页里会被节流到 ≥1s，但**一定会 fire**：这正是这里要的兜底。）
+ */
 function withinDeadline(p: Promise<void>, deadline: number): Promise<void> {
   if (deadline - Date.now() <= 0) return Promise.resolve();
   return Promise.race([
@@ -280,9 +291,11 @@ function withinDeadline(p: Promise<void>, deadline: number): Promise<void> {
  * 打出来」，页面上没有任何提示。
  * 两帧：rAF 回调跑在这一帧的样式/布局**之前**，所以第一帧才做布局、第二帧才看得到它
  * 触发出来的加载。
+ *
+ * `deadline` 是**绝对时刻**（由 printHtml 一处算出，整段等待共用）—— 这里每一段
+ * 等待（含那两帧）都要跟它竞速，理由见 `withinDeadline`。
  */
-function waitForPrintReady(doc: Document, maxMs: number): Promise<void> {
-  const deadline = Date.now() + maxMs;
+function waitForPrintReady(doc: Document, deadline: number): Promise<void> {
   const waits: Promise<unknown>[] = [];
 
   doc.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]').forEach((link) => {
@@ -321,8 +334,9 @@ function waitForPrintReady(doc: Document, maxMs: number): Promise<void> {
 
   const settled = waits.length ? Promise.all(waits).then(() => undefined) : Promise.resolve();
   return withinDeadline(settled, deadline)
-    .then(() => nextFrame())
-    .then(() => nextFrame())
+    // 让布局发生（两帧）—— **也走总预算**：rAF 在后台标签页里不回调，
+    // 裸等它就成了没有上界的等待（见 withinDeadline）。
+    .then(() => withinDeadline(afterPaint(), deadline))
     .then(() => {
       // ★ 到这里才读 fonts.ready（见上面那段）★
       const fonts = (doc as Document & { fonts?: FontFaceSet }).fonts;
@@ -357,13 +371,12 @@ export function printHtml(html: string): void {
   doc.write(html);
   doc.close();
 
-  const afterPaint = () =>
-    new Promise<void>((resolve) => {
-      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-    });
+  // ★ 一个总预算，一处算 ★ 从这里到 print 之前的每一次等待都算在里面 ——
+  // 包含收尾那两帧（rAF 在后台标签页里不回调，裸等它就没有上界）。
+  const deadline = Date.now() + PRINT_READY_MAX_MS;
 
-  void waitForPrintReady(doc, PRINT_READY_MAX_MS)
-    .then(afterPaint)
+  void waitForPrintReady(doc, deadline)
+    .then(() => withinDeadline(afterPaint(), deadline))
     .then(() => {
       try {
         frame.contentWindow?.focus();
