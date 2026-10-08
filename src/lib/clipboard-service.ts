@@ -8,7 +8,13 @@
 import { prisma } from './db';
 import { nowForDb } from './db-time';
 import { generateShortId } from './short-id';
-import { collectClipboardRefIds, MAX_BLOG_REF_ITEMS } from './content-refs';
+import {
+  collectClipboardRefIds,
+  createConcurrencyLimiter,
+  MAX_BLOG_REF_ITEMS,
+  MAX_REF_CONCURRENCY,
+  MAX_REF_EXPAND_CHARS,
+} from './content-refs';
 import { maskMarkdownCode } from './favorite-refs';
 
 // 校验上限
@@ -251,6 +257,13 @@ export async function getClip(
  * 去重）。这个数必须与渲染器那边的替换上限是同一个 —— 见 content-refs.ts 的说明。
  * 没有它，一篇塞满引用的文章会让**每一次**访客请求打出成千上万条查询。
  *
+ * 【并发与总量也有上限】查库走 `MAX_REF_CONCURRENCY` 的闸门（同一时刻最多 4 条），
+ * 入映射的正文合计封顶 `MAX_REF_EXPAND_CHARS`（500000）—— 防的是**匿名 RSC payload
+ * 被放大**：50 条各 5 万字的公开剪贴板加起来是 250 万字符，随每一次访客请求下发。
+ * 入映射**按源文出现顺序**（`ids` 就是按出现顺序去重来的）：累计超预算的那条跳过、
+ * 不占后续名额（后面的小剪贴板照样能进来）—— 与客户端那条「装不下就保留 token」同义。
+ * 重复的 id 只计一次（`ids` 已去重）。
+ *
  * 【盖码：代码块里的引用一个都不解析】与渲染器那条分流同口径
  * （`maskMarkdownCode`）——《内容引用语法指南》对读者的承诺是「代码里的引用一律
  * 不展开」，两边必须一致：不一致的形态是同一篇正文在成员视图与对外视图里显示
@@ -260,15 +273,29 @@ export async function resolvePublicClipRefs(markdown: string): Promise<Record<st
   const ids = collectClipboardRefIds(maskMarkdownCode(markdown)).slice(0, MAX_BLOG_REF_ITEMS);
   if (ids.length === 0) return {};
 
-  const out: Record<string, string> = {};
+  // 按**下标**收集结果 —— 并发完成顺序不定，映射要按源文顺序重建。
+  const contents: Array<string | undefined> = new Array(ids.length);
+  const gate = createConcurrencyLimiter(MAX_REF_CONCURRENCY);
   await Promise.all(
-    ids.map(async (id) => {
-      // 不传 viewerId / viewerIsOwner：拿不到「本人」或「站长」这两个例外，
-      // 于是结果只可能是公开档（下面那句是第二道确认，别删）。
-      const result = await getClip(id);
-      if (result.ok && result.clip.publicity) out[id] = result.clip.content;
-    })
+    ids.map((id, i) =>
+      gate(async () => {
+        // 不传 viewerId / viewerIsOwner：拿不到「本人」或「站长」这两个例外，
+        // 于是结果只可能是公开档（下面那句是第二道确认，别删）。
+        const result = await getClip(id);
+        contents[i] = result.ok && result.clip.publicity ? result.clip.content : undefined;
+      })
+    )
   );
+
+  const out: Record<string, string> = {};
+  let total = 0;
+  for (let i = 0; i < ids.length; i += 1) {
+    const content = contents[i];
+    if (content === undefined) continue;
+    if (total + content.length > MAX_REF_EXPAND_CHARS) continue;
+    out[ids[i]] = content;
+    total += content.length;
+  }
   return out;
 }
 

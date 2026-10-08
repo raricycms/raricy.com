@@ -198,15 +198,30 @@ export function collectAudioRefs(source: string, masked: string): AudioRefSlot[]
  * 按内容搜索会命中**插入内容里的那处**。这里插进去的是标签串本身，不含 token，
  * 但保持同一种写法，将来改标签内容时不会突然长出这条 bug。
  *
- * 倒序替换，前面的下标才不会被后面的改动位移。
+ * 按出现顺序单向走一遍（游标 + 累计净增），所以下标不会互相位移。
+ *
+ * `charBudget` 是**整篇展开后的总长度上限**（`MAX_REF_EXPAND_CHARS`）：接受后
+ * `source.length` 加上累计净增不超过它就换，超了就保留 token —— **不截断标签串**。
+ * 单独的音频引用（正文里没有别的 `[@…]`）走的就是这条，同样受这条预算约束。
  */
-export function replaceAudioRefs(source: string, slots: AudioRefSlot[]): string {
-  let out = source;
-  for (let i = slots.length - 1; i >= 0; i -= 1) {
-    const s = slots[i];
-    out = out.slice(0, s.start) + audioRefHtml(s.id) + out.slice(s.start + s.match.length);
+export function replaceAudioRefs(
+  source: string,
+  slots: AudioRefSlot[],
+  charBudget: number = Infinity
+): string {
+  const ordered = [...slots].sort((a, b) => a.start - b.start);
+  let out = '';
+  let cursor = 0;
+  let extra = 0;
+  for (const s of ordered) {
+    const html = audioRefHtml(s.id);
+    const delta = html.length - s.match.length;
+    if (source.length + extra + delta > charBudget) continue;
+    extra += delta;
+    out += source.slice(cursor, s.start) + html;
+    cursor = s.start + s.match.length;
   }
-  return out;
+  return out + source.slice(cursor);
 }
 
 /**

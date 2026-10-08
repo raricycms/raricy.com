@@ -32,10 +32,20 @@
 //   · 容量有上限（逐出最旧）。一篇正文的替换名额由 MAX_BLOG_REF_ITEMS 封顶，
 //     但**去重后的 id 集合**可以超过它；编辑器会话级缓存还会跨多份草稿累积。
 //     逐出只是多一次重取，不影响正确性。
+//   · **真实并发有上限**（MAX_REF_CONCURRENCY，实例级闸门）：同一时刻在飞的
+//     HTTP 最多 4 条。整篇的引用是一次性 `Promise.all` 交下来的，没有闸门就是
+//     「一篇塞满引用的正文同时打出几十条请求」。**图床（只拼 URL）与对外视图
+//     （查字典、不发请求）不排队** —— 见 needsSlot。排队期间被 invalidate() 的
+//     请求**不再发出**（它拿的是过期状态），但**排队等着的那个 await 一定会 settle**
+//     （按「这一格取不到」兑现），不会挂死。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { VoteEmbedData } from '@/lib/blog-markdown';
-import { clipboardFailureText } from '@/lib/content-refs';
+import {
+  MAX_REF_CONCURRENCY,
+  clipboardFailureText,
+  createConcurrencyLimiter,
+} from '@/lib/content-refs';
 import {
   MAX_CARD_ITEMS,
   buildFavoriteCardHtml,
@@ -86,6 +96,12 @@ export class ContentRefResolver {
    * 没有它，「刷新预览」期间的在飞请求会把刷新前的旧数据写回刚清干净的缓存。
    */
   private generation = 0;
+  /**
+   * 真实 HTTP 的并发闸门（**实例级**，上限 MAX_REF_CONCURRENCY）。
+   * 挂在实例上而不是模块上：编辑器预览那个共享 resolver 会跨多轮渲染复用它，
+   * 多轮同时在飞时并发仍封在 4 以内；不同 resolver 互不影响。
+   */
+  private schedule = createConcurrencyLimiter(MAX_REF_CONCURRENCY);
 
   /**
    * @param mode          见文件头「两种模式」。实例级固定，不随调用变。
@@ -108,7 +124,17 @@ export class ContentRefResolver {
     const pending = this.inflight.get(key);
     if (pending) return pending;
     const gen = this.generation;
-    const p = this.load(type, id)
+    const task = (): Promise<ResolvedRef | undefined> => {
+      // ★ 排队期间被刷新了就不发了 ★ 这条请求拿的是刷新**之前**那一刻的服务端状态，
+      // 发出去也只是白发（结果一样会被判过期）。直接按「这一格取不到」兑现 ——
+      // 调用方是旧代那一轮，本来就要丢它；关键是**排队等着的 await 一定 settle**，
+      // 绝不挂死。还没开工的请求就这么消失，已经在飞的那条走正常流程。
+      if (gen !== this.generation) return Promise.resolve(undefined);
+      return this.load(type, id);
+    };
+    // 拼 URL（图床）与查字典（对外视图）的**不占并发名额** —— 它们不发请求。
+    const started = this.needsSlot(type) ? this.schedule(task) : task();
+    const p = started
       .catch((): ResolvedRef | undefined => undefined)
       .then((entry) => {
         // 只清理「还是自己」的那一格：刷新后同键可能已经换成新代的请求，
@@ -120,6 +146,16 @@ export class ContentRefResolver {
       });
     this.inflight.set(key, p);
     return p;
+  }
+
+  /**
+   * 这一格要不要占并发名额：**只有真正会发 HTTP 的**才占。
+   *   · 图床 —— 两种模式都只是拼 `/api/images/<id>/raw`，不发请求；
+   *   · 对外视图 —— 剪贴板查下发表、投票 / 收藏夹直接 undefined，一个请求都不发。
+   * 判错（把不发请求的也塞进闸门）不会报错，只是白占名额、让真取数变慢。
+   */
+  private needsSlot(type: ContentRefType): boolean {
+    return type !== 'image' && this.mode === 'expand';
   }
 
   /**

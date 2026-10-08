@@ -22,9 +22,12 @@ import {
   CLIPBOARD_ID_LEN,
   IMAGE_ID_LEN,
   MAX_BLOG_REF_ITEMS,
+  MAX_REF_EXPAND_CHARS,
+  MAX_REF_FETCHES,
   VOTE_ID_LEN,
 } from '@/lib/content-refs';
 import {
+  MAX_FAVORITE_REFS,
   collectFavoriteRefs,
   isFavoriteId,
   maskMarkdownCode,
@@ -98,40 +101,58 @@ export class ContentRefProcessor {
     // （写一篇只贴了一段录音的文章 = 什么也不展开，且不报错）。
     // 此刻还没有任何替换发生过，下标成立，直接替换掉返回即可。
     // 有条目时下面照旧**重新扫一次**（那时字符串已被改写，这批下标不再成立）。
+    // ⚠️ **展开预算同样管这条早退**：只贴录音、而正文本身已超预算时，播放器也不能加。
     if (refSlots.length === 0) {
       const audioSlots = collectAudioRefs(markdownContent, maskedContent);
       return {
         text:
           audioSlots.length > 0
-            ? replaceAudioRefs(markdownContent, audioSlots)
+            ? replaceAudioRefs(markdownContent, audioSlots, MAX_REF_EXPAND_CHARS)
             : markdownContent,
         entries: new Map(),
       };
     }
 
-    const clipboardIds = new Set<string>();
-    const voteIds = new Set<string>();
+    // 分流 + 挑取数候选。
+    //   · 图床（10 位）只拼 URL、不取数 —— 不进候选，也不占 MAX_REF_FETCHES（否则
+    //     图多的文章会把剪贴板 / 投票的取数名额饿死）。
+    //   · 剪贴板 / 投票 / 收藏夹**要取数** —— 按**原文出现顺序**取前 MAX_REF_FETCHES
+    //     个不同的 `${type}:${id}`（去重；缓存命中也算，见常量的说明）。
+    //     ⚠️ 不能先按类型分组、各自截断：那样正文后面的一条剪贴板会抢掉前面投票的
+    //     名额，于是「按顺序数」与「按类型数」给出两篇不同的展开结果，且不报错。
+    //   · 超出预算的引用**既不取数也不替换**，原样留在正文里。
     const imageIds = new Set<string>();
-    const favoriteIds = new Set<string>();
+    const wanted: Array<[ContentRefType, string]> = [];
+    const fetchedKeys = new Set<string>();
     for (const slot of refSlots) {
       const id = slot.id;
-      if (id.length === CLIPBOARD_ID_LEN) clipboardIds.add(id);
-      else if (id.length === VOTE_ID_LEN) voteIds.add(id);
-      else if (id.length === IMAGE_ID_LEN) imageIds.add(id);
-      // 6 位是收藏夹。用白名单判定（`^[0-9]{6}$`）而不是「长度 === 6」——
-      // 6 位字母/下划线的 token 必须落回字面量，不要去请求一次不存在的资源。
-      else if (isFavoriteId(id)) favoriteIds.add(id);
+      if (id.length === IMAGE_ID_LEN) {
+        imageIds.add(id);
+        continue;
+      }
+      const type: ContentRefType | null =
+        id.length === CLIPBOARD_ID_LEN
+          ? 'clipboard'
+          : id.length === VOTE_ID_LEN
+            ? 'vote'
+            : // 6 位是收藏夹。用白名单判定（`^[0-9]{6}$`）而不是「长度 === 6」——
+              // 6 位字母/下划线的 token 必须落回字面量，不去请求一次不存在的资源。
+              isFavoriteId(id)
+              ? 'favorite'
+              : null;
+      if (!type) continue;
+      if (wanted.length >= MAX_REF_FETCHES) continue;
+      const key = `${type}:${id}`;
+      if (fetchedKeys.has(key)) continue;
+      fetchedKeys.add(key);
+      wanted.push([type, id]);
     }
-
-    // 取数全部经 resolver：模式（expand / external）、并发去重、失败降级都封在里面。
-    // 这里对**去重后的 id 集合**统一发 resolve —— 已缓存的同步返回，不会重复请求。
-    // ⚠️ 顺序（剪贴板 → 投票 → 图床 → 收藏夹）只影响并发请求的发起次序，
-    // 替换仍严格按正文里出现的先后走 refSlots —— 别把两者混起来。
-    const wanted: Array<[ContentRefType, string]> = [];
-    for (const id of clipboardIds) wanted.push(['clipboard', id]);
-    for (const id of voteIds) wanted.push(['vote', id]);
+    // 图床追加在后面：它不发请求（不占并发闸门），顺序只影响 entries 的写入。
     for (const id of imageIds) wanted.push(['image', id]);
-    for (const id of favoriteIds) wanted.push(['favorite', id]);
+
+    // 取数全部经 resolver：模式（expand / external）、并发去重（上限 MAX_REF_CONCURRENCY）、
+    // 失败降级都封在里面。这里对**去重后的候选**统一发 resolve —— 已缓存的同步返回，
+    // 不会重复请求。
     const fetched = await Promise.all(wanted.map(([type, id]) => this.resolver.resolve(type, id)));
     // ★ 这一轮的真值就落在这里 ★ 替换阶段只认它，**再也不回头问 resolver**
     //（理由见 preprocessRound 的说明：缓存可能已经被人作废成另一代）。
@@ -139,18 +160,24 @@ export class ContentRefProcessor {
     wanted.forEach(([type, id], index) => entries.set(`${type}:${id}`, fetched[index]));
 
     // 替换**按区间切片**（不是 `replace(token, …)`），单向往回走一遍。
-    // 两条各自的理由：
+    // 三条各自的理由：
     //   · 为什么切片：同一个 token 在正文里可能出现多次，而 `replace` 命中的是
     //     **第一处**。盖过码之后这一点会真出事 —— 只写了一处引用的正文里，若同一个
     //     token 还在前面的代码块里出现过（那处已经被盖掉、不在 refSlots 里），
     //     `replace` 会去改**代码块里那一处**，正文里那处反而留在原地。
-    //   · 为什么不 break 而是 continue：没有内容的（超出上限、取不到）保持字面量，
-    //     不该吃掉后面那些**取得到**的引用的名额 —— 与收藏夹那趟的 `used` 计数同义。
+    //   · 为什么不 break 而是 continue：没有内容的（超出上限、取不到、装不下）保持
+    //     字面量，不该吃掉后面那些**取得到**的引用的名额 —— 与收藏夹那趟的 `used` 同义。
+    //   · 展开预算（MAX_REF_EXPAND_CHARS）：`used` 从**原文长度**起算（保留的原文字数
+    //     也算进去），每接受一条加它的净增。装不下就保留 token，**绝不截断内容**。
+    //     原文本身已超预算时 `sourceFits` 为假 —— 保留原文、不再增长。
+    const sourceFits = markdownContent.length <= MAX_REF_EXPAND_CHARS;
     let processed = '';
     let cursor = 0;
     let count = 0;
+    let used = markdownContent.length;
     for (const slot of refSlots) {
       if (count >= MAX_BLOG_REF_ITEMS) continue;
+      if (!sourceFits) continue;
       const id = slot.id;
       let replacement: string | undefined;
       if (id.length === CLIPBOARD_ID_LEN) {
@@ -169,6 +196,9 @@ export class ContentRefProcessor {
       }
       // 收藏夹在主循环里**刻意跳过**：它最后单独走一趟，理由见下方那段的注释。
       if (replacement === undefined) continue;
+      const delta = replacement.length - slot.match.length;
+      if (used + delta > MAX_REF_EXPAND_CHARS) continue; // 装不下这条，保留 token
+      used += delta;
       processed += markdownContent.slice(cursor, slot.start) + replacement;
       cursor = slot.start + slot.match.length;
       count++;
@@ -194,7 +224,14 @@ export class ContentRefProcessor {
           htmlById.set(slot.id, hit.content);
         }
       }
-      processed = replaceFavoriteRefs(processed, slots, htmlById);
+      // 展开预算跨趟共享：卡片 HTML 比 token 长得多，装不下就保留 token（不截断卡片）。
+      processed = replaceFavoriteRefs(
+        processed,
+        slots,
+        htmlById,
+        MAX_FAVORITE_REFS,
+        MAX_REF_EXPAND_CHARS
+      );
     }
 
     // ── 音频（`[@音频/<ID>]`）：**最后再一趟**，同样按区间切片 ──────────────────
@@ -212,7 +249,8 @@ export class ContentRefProcessor {
     //     （audio 在博客白名单里是放行的，DOMPurify 不会拦）。
     const audioSlots = collectAudioRefs(processed, maskMarkdownCode(processed));
     if (audioSlots.length > 0) {
-      processed = replaceAudioRefs(processed, audioSlots);
+      // 同一条总预算：播放器标签串也占字数，装不下就保留 token。
+      processed = replaceAudioRefs(processed, audioSlots, MAX_REF_EXPAND_CHARS);
     }
 
     return { text: processed, entries };

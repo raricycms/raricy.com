@@ -204,26 +204,35 @@ export function collectFavoriteRefs(text: string): FavoriteRefSlot[] {
  * 的那处**（而不是原正文里的），于是卡片内容会被再展开一次 —— 标题是不可信输入，
  * 这是一条能被用户触发的路径。切片按原始区间走，插入什么都不会被重扫。
  *
- * 三处行为与既有的引用类型对齐：
+ * 四处行为与既有的引用类型对齐：
  *   · 超出 max 的引用既不请求也不替换，原样留在正文里（静默保留字面量，不报错）；
  *   · `htmlById` 里查不到的 id 保留字面量（fail-closed）；
- *   · 同一个 id 出现多次时每处都替换，且每一处都占一个名额（确定性，与正文一一对应）。
+ *   · 同一个 id 出现多次时每处都替换，且每一处都占一个名额（确定性，与正文一一对应）；
+ *   · `charBudget` 是**整篇展开后的总长度上限**（`MAX_REF_EXPAND_CHARS`，由调用方
+ *     从那趟替换一路带下来）：接受后 `text.length` 加上累计净增不超过它就换，超了就
+ *     保留 token —— **不截断卡片**。卡片 HTML 比 8 字符的 token 长得多，这条预算才是
+ *     把「同一篇正文展开后有多大」钉死的那个数（max 只管张数）。
  */
 export function replaceFavoriteRefs(
   text: string,
   slots: FavoriteRefSlot[],
   htmlById: Map<string, string>,
-  max: number = MAX_FAVORITE_REFS
+  max: number = MAX_FAVORITE_REFS,
+  charBudget: number = Infinity
 ): string {
   // 按起点排序后单向走一遍 —— 替换长度与原文长度不同，边改边走会让后续下标失效
   const ordered = [...slots].sort((a, b) => a.start - b.start);
   let out = '';
   let cursor = 0;
   let used = 0;
+  let extra = 0;
   for (const slot of ordered) {
     if (used >= max) break;
     const html = htmlById.get(slot.id);
     if (html === undefined) continue;
+    const delta = html.length - slot.match.length;
+    if (text.length + extra + delta > charBudget) continue;
+    extra += delta;
     out += text.slice(cursor, slot.start) + html;
     cursor = slot.start + slot.match.length;
     used += 1;
