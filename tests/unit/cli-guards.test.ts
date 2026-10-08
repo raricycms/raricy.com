@@ -154,7 +154,7 @@ describe('运维 CLI：时间戳只用一把钟', () => {
 
 describe('运维 CLI：后台操作不进前端公示页', () => {
   // 【这条守什么】后台运维写下的审计日志必须落 visibility='internal' —— 否则站长的
-  // 批量操作会出现在顶栏「日志」（/audit）那张**公示页**上。机制是 scripts/cli.ts 把
+  // 批量操作会出现在页脚「管理公示」（/audit）那张**公示页**上。机制是 scripts/cli.ts 把
   // 整轮执行圈进 runAsBackendOps（见 src/lib/audit-context.ts），所以这里守的是
   // 「入口还圈着」。
   //

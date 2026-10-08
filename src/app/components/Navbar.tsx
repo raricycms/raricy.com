@@ -52,7 +52,7 @@ export default function Navbar({
         </button>
 
         <div className="site-navbar-collapse" id="siteNavbar">
-          {/* 条目顺序对齐首页的三张卡（故事 → 博客 → 工具）。 */}
+          {/* 主导航对齐首页四个内容区（故事 → 博客 → 工具 → 讨论）。 */}
           <ul className="site-nav">
             <li>
               <NavLink className="site-link" href="/story">
@@ -67,11 +67,6 @@ export default function Navbar({
             <li>
               <NavLink className="site-link" href="/tool">
                 工具
-              </NavLink>
-            </li>
-            <li>
-              <NavLink className="site-link" href="/audit">
-                日志
               </NavLink>
             </li>
             {/* 讨论：**入口对所有人保留**，哪怕点进去是 403（匿名 → 跳登录）。
