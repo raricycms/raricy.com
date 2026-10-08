@@ -16,7 +16,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { makeUser, prisma, resetDb } from '../helpers/db';
 import { resolvePublicClipRefs } from '@/lib/clipboard-service';
-import { MAX_BLOG_REF_ITEMS } from '@/lib/content-refs';
+import { MAX_BLOG_REF_ITEMS, MAX_REF_EXPAND_CHARS } from '@/lib/content-refs';
 import { nowForDb } from '@/lib/db-time';
 
 /** 造一条剪贴板（正文与可见性都可指定），返回它的 8 位 id。 */
@@ -118,5 +118,36 @@ describe('resolvePublicClipRefs', () => {
     expect(Object.keys(out)).toHaveLength(MAX_BLOG_REF_ITEMS);
     expect(out[ids[0]]).toBe('第 0 条');
     expect(out, '第 51 条不该被解析').not.toHaveProperty(ids[MAX_BLOG_REF_ITEMS]);
+  });
+
+  it(`★ 下发总量封顶 ${MAX_REF_EXPAND_CHARS}：大条塞满后，后面的大条跳过、小条仍进 ★`, async () => {
+    // 这篇正文的公开剪贴板合计远超 500000 字 —— 没有预算的话，每一次访客请求
+    // 都会把这几条正文随 RSC payload 一起下发（改版前就是这样，无上限）。
+    const author = await makeUser({ username: 'clip-author-g', role: 'core' });
+    const bigIds: string[] = [];
+    // 5 × 99000 = 495000，离预算只剩 5000
+    for (let i = 0; i < 5; i += 1) {
+      bigIds.push(await makeClip(author.id, { content: 'A'.repeat(99000) }));
+    }
+    const tooBig = await makeClip(author.id, { content: 'B'.repeat(20000) });
+    const small = await makeClip(author.id, { content: 'C'.repeat(100) });
+
+    const out = await resolvePublicClipRefs([...bigIds, tooBig, small].map(ref).join(' '));
+
+    expect(Object.keys(out), '超预算的大条跳过后，后面的小条该照样进').toHaveLength(6);
+    expect(out, '装不下的那条不该进来').not.toHaveProperty(tooBig);
+    expect(out[small]).toBe('C'.repeat(100));
+  });
+
+  it('预算只按**公开**正文计：私有 / 已软删不占额度、也不出现', async () => {
+    const author = await makeUser({ username: 'clip-author-h', role: 'core' });
+    // 一条巨大的私有剪贴板排在最前 —— 它一个字符都不该进映射，也不该挤掉后面公开的
+    const priv = await makeClip(author.id, { content: 'X'.repeat(495000), publicity: false });
+    const deleted = await makeClip(author.id, { content: 'Y'.repeat(495000), ignore: true });
+    const pub = await makeClip(author.id, { content: 'Z'.repeat(100) });
+
+    const out = await resolvePublicClipRefs([priv, deleted, pub].map(ref).join(' '));
+
+    expect(out).toEqual({ [pub]: 'Z'.repeat(100) });
   });
 });
