@@ -232,6 +232,60 @@ test.describe('编辑器行为', () => {
 
     expect(writes, `预览期间出现了写请求：${writes.join(' / ')}`).toEqual([]);
   });
+
+  // 音频控件撑破正文：`<audio controls>` 的浏览器默认宽度约 300px 且不随容器收缩，
+  // 而窄屏 390px 下预览盒子的**可用内容宽度只有 244px** —— 控件比容器还宽，于是正文
+  // 出现横向滚动，控件右半截被滚动盒子裁掉。判据必须是**几何**：`doc.scrollWidth`
+  // 量不出来（外层页面确实没有溢出，被滚动盒子吃掉了），只有预览容器自己的
+  // scrollWidth/clientWidth 与控件右边缘才说得清。
+  // 单测钉不到：这纯粹是浏览器排版事实（盒子宽度 + 替换元素的默认尺寸），
+  // jsdom 里没有排版。移动端才是主场景，桌面那一遍同时验「宽屏没有被顺手改窄」。
+  test('★ 预览里的音频控件不撑破正文容器（窄视口下也不被裁）★', async ({ page }) => {
+    // 只用 ID3v2 头的最小 MP3 —— 服务端只嗅头几个字节（audio-upload.ts）。
+    // 布局取决于元素的盒子，与能不能解码无关，但真上传一条才走的是真链路。
+    const MP3_MIN = Buffer.concat([Buffer.from('ID3'), Buffer.alloc(64)]);
+    const up = await page.request.post('/api/audio', {
+      multipart: { file: { name: 'e2e-audio.mp3', mimeType: 'audio/mpeg', buffer: MP3_MIN } },
+    });
+    const upBody = await up.json();
+    expect(upBody.code, `上传音频失败：${JSON.stringify(upBody)}`).toBe(200);
+
+    await page.goto('/blog/upload');
+    await typeInEditor(page, BLOG_EDITOR, `[@音频/${upBody.id}]`);
+    await setViewMode(page, BLOG_EDITOR, '预览');
+
+    const preview = page.locator(`${BLOG_EDITOR} .md-editor__preview-body`);
+    const audio = preview.locator('audio');
+    await expect(audio).toHaveCount(1);
+
+    const geo = await preview.evaluate((el) => {
+      const a = el.querySelector('audio') as HTMLElement;
+      const cs = getComputedStyle(el);
+      return {
+        scrollWidth: el.scrollWidth,
+        clientWidth: el.clientWidth,
+        audioRight: a.getBoundingClientRect().right,
+        contentRight: el.getBoundingClientRect().right - parseFloat(cs.paddingRight),
+        audioWidth: a.getBoundingClientRect().width,
+      };
+    });
+
+    // 1px 容差：亚像素布局的取整
+    expect(
+      geo.scrollWidth,
+      `预览容器被撑出横向滚动：scrollWidth=${geo.scrollWidth} > clientWidth=${geo.clientWidth}`
+    ).toBeLessThanOrEqual(geo.clientWidth + 1);
+    expect(
+      geo.audioRight,
+      `音频控件越过了正文可用宽度（控件 ${geo.audioWidth}px，右边缘 ${geo.audioRight} > ${geo.contentRight}）`
+    ).toBeLessThanOrEqual(geo.contentRight + 1);
+    // 反向：宽屏上**不许被顺手拉长**。用 `width: 100%` 去「修」溢出的话，桌面端会
+    // 从 300px 变成整列宽 —— 那是另一种坏法，别让它悄悄换一种错法。
+    expect(
+      geo.audioWidth,
+      `音频控件被拉长了（${geo.audioWidth}px > 控件本来的 300px）`
+    ).toBeLessThanOrEqual(300);
+  });
 });
 
 test.describe('编辑器跟随站点主题', () => {
