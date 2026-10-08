@@ -321,6 +321,46 @@ export function insertText(text: string, selectInserted = false): EditorCommand 
   };
 }
 
+/**
+ * 单行换行（Shift+Enter）：在光标 / 选区处**只插一个换行符**，别的一概不做。
+ *
+ * 【为什么不能直接用 Enter 那两条默认命令】它们各自都还要多做一件事，都不是
+ * 「只换一行」：
+ *   · `insertNewlineContinueMarkup`（Markdown 语言自带，优先级高于默认键位表）
+ *     在列表 / 引用块里会**续写标记** —— 回车是「新建下一项」，敲一下多一行 `- `；
+ *   · `insertNewlineAndIndent` 在光标夹于 `()` / `[]` / `{}` 之间时会**再补一个
+ *     换行**（@codemirror/commands 的 isBetweenBrackets）。正文里写
+ *     `[文字](地址)` 这类再常见不过，于是按一次回车，成品里凭空多出一个空行
+ *     —— 渲染出来就是「一次换行看着像两行」。
+ *
+ * 两条都**保留不动**（它们是 Markdown 惯用的输入方式，改掉等于「回车坏了」）；
+ * 这条命令提供的是**绕开它们**的那条出口，绑在 Shift+Enter 上（见 MarkdownEditor.tsx
+ * 的键位表，必须排在 defaultKeymap 之前）。
+ *
+ * 【渲染侧不需要任何标记】整篇渲染器（`renderBlogMarkdown`，gfm + breaks）把单个
+ * `\n` 渲染成一个 `<br>`，两个 `\n` 才是两段。所以这里只插 `\n`：
+ * **不插 `<br>`**（那是把渲染语义写进源文，改渲染口径时它就成了字面量），
+ * **也不插行尾两个空格**（会被编辑器与补丁工具悄悄吃掉，且末行会被 Markdown 参数
+ * 里的 `trim` 吃掉 —— 静默少一个换行）。
+ */
+export function insertLineBreak(): EditorCommand {
+  return (view) => {
+    const { state } = view;
+    const edits: RangeEdit[] = [];
+    for (const { from, to } of state.selection.ranges) {
+      // 有选区就整体替换掉（与 insertText 同口径）；多选区各插各的一份，
+      // 落点按「本区间自己的净变化」报给 applyEdits，由它把前面的改动累加上去。
+      edits.push({
+        changes: [{ from, to, insert: '\n' }],
+        shift: 1 - (to - from),
+        from: from + 1,
+        to: from + 1,
+      });
+    }
+    return applyEdits(view, edits);
+  };
+}
+
 /** 块级公式（`$$…$$`，独占若干行）。行内公式用 toggleWrap('$') 即可。 */
 export function insertMathBlock(placeholder = 'x^2'): EditorCommand {
   return (view) => {
