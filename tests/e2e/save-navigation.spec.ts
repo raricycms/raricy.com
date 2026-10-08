@@ -194,7 +194,13 @@ test.describe('云剪贴板：提交的并发', () => {
 
     release();
     // 等待者落地后不许各自补发：新建态补发一笔就是**多一篇剪贴板**
-    await page.waitForURL(/\/clipboard\/[A-Za-z0-9]+$/, { timeout: 15_000 });
+    // ⚠️ 这条判据原先是 `/\/clipboard\/[A-Za-z0-9]+$/` —— 当前页 `/clipboard/upload`
+    // 里的「upload」就是一串字母，**当场就匹配**，所以那行其实一个都没等（下面把
+    // 「还是 upload」排除掉，它才真的等到跳转）。
+    await page.waitForURL(
+      (u) => u.pathname !== '/clipboard/upload' && /^\/clipboard\/[A-Za-z0-9]+$/.test(u.pathname),
+      { timeout: 15_000 }
+    );
     await page.waitForTimeout(500);
     expect(posts, '第一笔落地后排队的那两下各自补发了一笔').toHaveLength(1);
   });
@@ -256,6 +262,67 @@ test.describe('云剪贴板：提交的并发', () => {
     await page.waitForURL(new RegExp(`/clipboard/${id}$`), { timeout: 15_000 });
     expect(posts, '第二次提交又发了一笔 POST —— 新建态就是两篇').toHaveLength(1);
     expect(puts, `第二次提交没有更新刚建出来的那一篇：${puts.join(',')}`).toHaveLength(1);
+    expect(puts[0].endsWith(`/api/clipboard/${id}`), `PUT 去了别的地方：${puts[0]}`).toBe(true);
+  });
+
+  test('★ 首笔悬着→再提交排队→排队期间改标题与公开状态：补发的是 PUT 到首篇、不是第二篇 ★', async ({
+    page,
+  }) => {
+    await registerFreshUser(page, { core: true });
+    const tag = uniqueTag();
+
+    let release!: () => void;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    const posts: string[] = [];
+    const puts: string[] = [];
+    page.on('request', (r) => {
+      if (r.method() === 'POST' && r.url().endsWith('/api/clipboard')) posts.push(r.url());
+      if (r.method() === 'PUT' && r.url().includes('/api/clipboard/')) puts.push(r.url());
+    });
+    await page.route('**/api/clipboard', async (route) => {
+      if (route.request().method() !== 'POST') return route.continue();
+      await gate;
+      await route.continue();
+    });
+
+    await page.goto('/clipboard/upload');
+    await page.fill('#title', `首笔-${tag}`);
+    await appendToEditor(page, '#clipboard-editor', `排队正文-${tag}`);
+
+    const created = page.waitForResponse(
+      (r) => r.request().method() === 'POST' && r.url().endsWith('/api/clipboard')
+    );
+    await page.click('#uploadForm button[type=submit]'); // 第 1 笔，按住不放
+    await expect.poll(() => posts.length, { timeout: 5000 }).toBe(1);
+
+    // 第 1 笔还在飞 —— 再点一次提交：它**排队等**第 1 笔（不是丢掉，也不是并发再发）
+    await page.click('#uploadForm button[type=submit]');
+    await page.waitForTimeout(300);
+    expect(posts, '第一笔还悬着就叠了第二笔 POST').toHaveLength(1);
+
+    // ★ 排队**之后**、第 1 笔落地**之前**改字段 ★ 排队的那个提交攥着的是**发起排队
+    // 那次渲染**里的闭包 —— 它若读 `pinnedId` 那个 state，此刻看到的还是 null，
+    // 于是第 1 笔一落地它就从「有未保存改动」那条分支补发一笔 **POST**：
+    // 同一份内容**建出第二篇**（页面只跳去其中一篇，另一篇无声地留在列表里）。
+    await page.fill('#title', `排队后-${tag}`);
+    await page.uncheck('#publicity');
+
+    release();
+    const res = await created;
+    expect(res.ok(), `建剪贴板失败：${res.status()} ${await res.text()}`).toBeTruthy();
+    const { id } = (await res.json()) as { id: string };
+
+    // 补发的那一笔落在**首篇**上（PUT），存完没有未保存的改动了 → 跳到它。
+    // ⚠️ 判据必须**带上这个 id**：形如 `/\/clipboard\/[A-Za-z0-9]+$/` 的写法会被当前页
+    // `/clipboard/upload` **当场满足**（「upload」本身就是一串字母），那行于是立刻返回、
+    // 什么都没等 —— 看起来在等跳转，其实断言跑在跳转之前。
+    await page.waitForURL(new RegExp(`/clipboard/${id}$`), { timeout: 15_000 });
+    expect(page.url(), `跳去的不是首篇：${page.url()}`).toContain(`/clipboard/${id}`);
+    await page.waitForTimeout(500);
+    expect(posts, '排队那一下补发的还是 POST —— 新建态多出了第二篇').toHaveLength(1);
+    expect(puts, `补发的不是一笔 PUT 到首篇：${puts.join(',')}`).toHaveLength(1);
     expect(puts[0].endsWith(`/api/clipboard/${id}`), `PUT 去了别的地方：${puts[0]}`).toBe(true);
   });
 

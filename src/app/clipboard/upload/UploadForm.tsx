@@ -67,6 +67,8 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
    * 这是刻意接受的（与 BlogForm 同一条取舍）。
    * ⚠️ **只在「提交」这条路上钉**：Ctrl+S 是「另存一篇」的语义（见 doSave 里那段），
    * 钉了它就会把「连按 Ctrl+S = 几篇剪贴板」变成「第二下起是更新」。
+   * ⚠️ 这是个**显示状态**（按钮文案用）。**判「这一笔写哪一篇」一律读 `pinnedIdRef`**
+   * —— 在飞的闭包里这个 state 是旧的，见 `pinnedIdRef` 的注释。
    */
   const [pinnedId, setPinnedId] = useState<string | null>(null);
 
@@ -99,6 +101,23 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
   titleRef.current = title;
   contentRef.current = content;
   publicityRef.current = publicity;
+
+  /**
+   * `pinnedId` 的**同步**副本 —— `doSave` 一律读它，不读那个 state。
+   *
+   * 【为什么 state 不够】在飞那一笔落地时**排队等它**的那个提交，手里攥着的是
+   * **发起排队那次渲染**里的 `doSave` 闭包，而闭包里的 `pinnedId` 是那一次渲染看到的
+   * 值（新建态 = null）。第一笔成功后 `setPinnedId(savedId)` 确实会触发 rerender，
+   * 但**已经排上队、正 await 的那个闭包不会因此刷新** —— 它在 `readFields()` 上立刻
+   * 看到最新字段（等待期间用户改过标题），于是走进「有未保存改动」那条分支、调用
+   * 自己那份 `doSave`，`pinnedId` 却是 null：补发的这一笔又走 POST，**同一份内容
+   * 建出第二篇**（页面只跳去其中一篇，另一篇无声地留在列表里）。
+   * ref 是**调用时刻**取的，才读得到「第一笔刚钉下的那个 id」。
+   *
+   * 显示状态照旧走 `pinnedId`（「提交 / 更新」按钮文案要跟着 rerender）。
+   * ⚠️ 两处必须**一起**写：只写 state，上面那条竞态就回来了；只写 ref，按钮文案不动。
+   */
+  const pinnedIdRef = useRef<string | null>(null);
 
   // 取最新内容：编辑器具就绪就从它读，否则读兜底文本框。
   // 判据是 isReady() 而不是「ref 在不在」—— 初始化失败时 MarkdownEditor 渲染 null，
@@ -235,10 +254,13 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
       // 这一笔写的是**哪一篇**：编辑态是服务端给的那一篇；新建态若已经钉住了一篇
       // （**提交**成功过、因有改动而留在页面上），就是它 —— 那种情况走 PUT，
       // 否则再发一笔 POST 就是同一份内容建出第二篇（见 pinnedId 的说明）。
-      // ⚠️ 新建态的 Ctrl+S / 自动保存**不钉 id**（pinnedId 只在上面那条提交分支里
-      // 设）：它们每次都是一篇新的 —— 「连按 Ctrl+S = 几篇剪贴板」是既有语义，
-      // 与「提交过一次之后改成更新」是两回事，别合并成一条规则。
-      const pinned = isEdit ? clip!.id : pinnedId;
+      // ⚠️ 读的是 **ref** 不是那个 state：这一份 `doSave` 可能是**上一次渲染**留下的
+      // （排队等前一笔的那个提交攥着的就是它），state 在它的闭包里是发起排队那一刻的
+      // 旧值（新建态 = null）→ 补发一笔 POST → 第二篇。理由见 pinnedIdRef 的注释。
+      // ⚠️ 新建态的 Ctrl+S / 自动保存**不钉 id**（只在那条提交分支里设）：它们每次都
+      // 是一篇新的 —— 「连按 Ctrl+S = 几篇剪贴板」是既有语义，与「提交过一次之后
+      // 改成更新」是两回事，别合并成一条规则。
+      const pinned = isEdit ? clip!.id : pinnedIdRef.current;
       const url = pinned ? `/api/clipboard/${pinned}` : '/api/clipboard';
       const method = pinned ? 'PUT' : 'POST';
       const response = await fetch(url, {
@@ -303,7 +325,15 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
           //
           // 新建态还要**钉住刚建出来的那一篇**（见 pinnedId）：留在这页接着改、
           // 再点一次提交时走 PUT 更新它，而不是又发一篇。
-          if (!isEdit && savedId) setPinnedId(savedId);
+          // ★ ref 与 state 在这同一个同步块里一起写、也只在这两行里写 ★
+          // 要保证的是「排在后面的等待者醒来时读得到」：它醒来是**另一个微任务**，
+          // 所以关键在「这两步之间不让出控制权」（此处没有 await），ref 写在前面只是
+          // 让先后没有歧义。⚠️ 光靠这个 state 是不行的 —— 它要到**下一次渲染**才生效，
+          // 而排队者手里攥的是**上一次渲染**的闭包，读 state 永远是 null（见 pinnedIdRef）。
+          if (!isEdit && savedId) {
+            pinnedIdRef.current = savedId;
+            setPinnedId(savedId);
+          }
           toast(
             `保存的是按下保存那一刻的${changed.join('、')}；之后你又改了 —— 这次不跳转，请再保存一次` +
               (isEdit || savedId ? '（再点一次是更新这一篇，不会多出一篇）' : '') +

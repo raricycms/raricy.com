@@ -215,9 +215,14 @@ describe('一笔在飞时的提交', () => {
 
     expect(calls, '等待期间改的内容被合并逻辑吞掉了 —— 用户看着有提示，改动没存上').toHaveLength(2);
     expect(JSON.parse(calls[1].body).content).toBe('第一版正文 补记');
+    // ★ 补发的那一笔是 **PUT 刚建出来的那一篇**，不是又一篇 POST ★
+    // 第 1 笔落地时这一页已经钉在 clip0001 上了（提交成功、因有改动而留在页面）。
+    // 排队那一下是从**发起排队那次渲染**的闭包里走出来的，它必须看到这个钉住的身份
+    // —— 读 `pinnedId` 那个 state 的话这里仍是 null，补发的就是 `POST /api/clipboard`：
+    // 新建态**多出一篇**（页面只跳去其中一篇）。下面这条断言钉的就是这件事。
     expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([
       'POST /api/clipboard',
-      'POST /api/clipboard',
+      'PUT /api/clipboard/clip0001',
     ]);
   });
 
@@ -227,6 +232,9 @@ describe('一笔在飞时的提交', () => {
     // 可一旦等待期间改了内容，合并逻辑就不成立：两个排队者会**同时**从同一个
     // 已落地的 Promise 上醒来，若醒来后不看锁，就各自 doSave —— 从头到尾两笔
     // 写请求叠着跑（新建态 = 两篇内容一样的剪贴板）。
+    // 【同时盯「补发的是哪一篇」】醒来那个闭包是**发起排队那次渲染**留下的，它读
+    // `pinnedId` 那个 state 只会读到 null（setState 要到下一次渲染才生效）；只有
+    // 读 ref 才看得见第 1 笔刚钉下的 id —— 见下面那两条 method / url 断言。
     const calls = stubGatedFetch();
     const { title, form } = await mount();
     await setTitle(title, '并发标题');
@@ -245,6 +253,12 @@ describe('一笔在飞时的提交', () => {
 
     expect(calls, '两个排队者同时醒来、各自补发了一笔').toHaveLength(2);
     expect(JSON.parse(calls[1].body).content).toBe('第一版 补记');
+    // 补发的那一笔写的是**哪一篇**：第 1 笔已经把这一页钉在 clip0001 上了，
+    // 醒来的是**发起排队那次渲染**的闭包（它的 `pinnedId` state 还是 null）——
+    // 只断言「补了一笔」是不够的：那一笔若还是 POST，新建态就是**第二篇**，
+    // 而条数、正文都一模一样，看不出任何异常。
+    expect(calls[1].method).toBe('PUT');
+    expect(calls[1].url).toBe('/api/clipboard/clip0001');
 
     // 补发的那一笔落地 → 第二个排队者这时才醒，看到「刚存下的正是这一份」→ 不再写
     await act(async () => {
