@@ -64,6 +64,12 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
 
   /** 在飞的那一笔保存（并发守卫：同一时刻只允许一笔）。 */
   const savingRef = useRef<Promise<void> | null>(null);
+  /**
+   * 上一笔**成功**保存时发出去的那份字段（null = 还没成功过一笔）。
+   * 只在「提交撞上在飞的那一笔」这条路上用：等它落地之后，若表单还是那一份，
+   * 这一次点击的意图已经达成，就不必再发第二笔（见 saveClipboard）。
+   */
+  const lastSavedRef = useRef<ClipFields | null>(null);
   /** 组件是否还挂着（异步回调据此判断「这一页还在不在」）。 */
   const aliveRef = useRef(true);
 
@@ -114,16 +120,40 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
    * ★ 一笔在飞时不再发第二笔 ★ 新建态两次 POST 就是**两篇剪贴板**（页面只跳去其中
    * 一篇，另一篇留在列表里，而用户根本没意识到自己存了两篇）。连按两下 Ctrl+S、
    * 自动保存与手动保存撞在一起都能触发这条。
+   *
+   * 两条路对「在飞的那一笔」的处理**刻意不同**：
+   *   · 手动 / 自动保存（stayOnPage）—— 直接回一句「正在保存」，**不排队**。
+   *   · 提交（!stayOnPage）—— 排队等它落地；等完**重新判锁**（可能又有人拿走了），
+   *     并在「它已经存下了同一份字段」时把自己这次也省掉。见下面那段。
    */
   async function saveClipboard(stayOnPage: boolean): Promise<void> {
     const inflight = savingRef.current;
     if (inflight) {
       if (stayOnPage) {
+        // 手动保存（Ctrl+S / 自动保存）与在飞的那一笔**互斥**：立刻回一句就不管了。
+        // 排队会让「连点 Ctrl+S」变成连发好几笔 POST。
         toast('正在保存，请稍候', 'warning');
         return;
       }
-      // 提交：等这一笔落地再接着走 —— 直接丢掉这次点击会让「更新」看着没反应
-      await inflight;
+      // 提交：等这一笔落地再接着走 —— 直接丢掉这次点击会让「更新」看着没反应。
+      //
+      // ★ 等完必须**再看一眼锁**，而且是循环地看 ★ 只 `await inflight` 一次是不够的：
+      // 两个提交（连点两下按钮 / 提交撞上自动保存）会在**同一条**在飞的 Promise 上
+      // 各挂一次，它一落地两边同时往下走，于是各自 doSave —— 从头到尾两笔写请求叠着跑，
+      // 新建态就是**两篇剪贴板**（页面只跳去其中一篇）。
+      // 循环的第 2 圈一定会看到「刚才那一笔已经把锁拿走了」（JS 单线程：拿锁那一段
+      // 是同步的，不会被这两个等待者插进来），于是老实排队。
+      while (savingRef.current) {
+        await savingRef.current;
+      }
+      // 等待期间这一页可能已经被上一笔送走了（新建 / 更新成功后 router.push）
+      // —— 从一个已经离开的页面里再写一笔，用户根本看不到结果。
+      if (!aliveRef.current) return;
+      // ★ 合并提交意图 ★ 刚落地的那一笔**成功**且存的就是现在这一份 → 这次点击
+      // 要做的事已经做完了，不必再发一笔。少了这一条，连点两下「提交」在新建态
+      // 仍然会留下两篇内容完全一样的剪贴板（一笔是等待后补发的）。
+      const last = lastSavedRef.current;
+      if (last && changedLabels(last, readFields()).length === 0) return;
     }
     const run = doSave(stayOnPage);
     savingRef.current = run;
@@ -169,6 +199,10 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
       // 更不 router.push（那会把人从**他现在**这一页上拽走）。
       if (!aliveRef.current) return;
       if (response.ok && result.code === 200) {
+        // 记下「服务端现在持有的就是这一份」—— 撞上在飞那一笔的提交据此判断
+        // 自己的意图是不是已经达成（见 saveClipboard）。只有成功才记：失败那一笔
+        // 什么都没存下，不能拿来吞掉下一次点击。
+        lastSavedRef.current = data;
         // ★ 请求在飞的时候用户还能接着改 ★ —— 那一段**没被存上去**。
         // 成功回调只说明「保存那一刻那一份存下来了」，不说明「页面上现在这一份」。
         // 判据是**整份表单快照**（标题 / 正文 / 公开状态），不是「刚保存过」这个事件，

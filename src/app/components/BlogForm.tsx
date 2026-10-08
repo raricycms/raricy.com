@@ -86,6 +86,18 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
   const [title, setTitle] = useState(blog?.title ?? '');
   /** 同一时刻只允许一笔提交在飞：新建态两笔 POST = 两篇文章。 */
   const savingRef = useRef(false);
+  /**
+   * 新建成功后**留在页面上**时会钉住的那篇文章（null = 这一页还没建出过文章）。
+   *
+   * 【为什么需要它】「有未保存的改动就不跳转」这条规则一旦对新建态成立，用户就会
+   * 停在这一页接着改、再点一次提交 —— 而这一页在服务端已经有了自己的文章。若第二笔
+   * 还是 POST，那就是**同一份内容发出第二篇**（列表里多一篇，页面只跳去其中一篇）。
+   * 钉住 id 之后第二笔走 PUT：既把改动存进刚建出来的那一篇，又不会多发。
+   * ⚠️ 钉的是**内存里**这一页的身份：刷新页面它会丢，用户再提交仍会新建一篇
+   * ——这是刻意接受的（草稿横幅恢复的是「上次没发出去的正文」，服务端那一篇还在，
+   * 用户从文章页看得见）。要根治得把「本页已建出的 id」也落进草稿，那是另一件事。
+   */
+  const [pinnedId, setPinnedId] = useState<string | null>(null);
   /** 延迟跳转的定时器。卸载时要清掉 —— 否则「已经离开这一页了还被它拽走」。 */
   const jumpTimerRef = useRef<number | null>(null);
   /** 组件是否还挂着（异步回调据此判断「这一页还在不在」）。 */
@@ -149,6 +161,16 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
       return;
     }
 
+    // ★ 先把上一笔留下的待跳转定时器撤掉 ★
+    // 上一笔成功之后排了一个 800 / 1500ms 的跳转；现在又开始新的一笔，那枚旧定时器
+    // 只认「上一次的快照」，会在这一笔还在飞的时候把页面抢走 —— 用户看到的是
+    // 「刚点提交，页面自己跳走了」，而这一笔的结果再也看不到（它回来后 aliveRef
+    // 已经是 false，连提示都不会有）。
+    if (jumpTimerRef.current !== null) {
+      window.clearTimeout(jumpTimerRef.current);
+      jumpTimerRef.current = null;
+    }
+
     // 提交的是**这一刻**的表单：之后不管用户怎么改，成功回调都用这一份做判断。
     const snapshot = readFields(form);
     const { title, description, categoryId, visibility, allowAnonymousComments, content } =
@@ -173,8 +195,11 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
 
     savingRef.current = true;
     try {
-      const url = isEdit ? `/api/blogs/${blog!.id}` : '/api/blogs';
-      const method = isEdit ? 'PUT' : 'POST';
+      // 这一笔要写的是**哪一篇**：编辑态是服务端给的那篇；新建态若是「提交过一次、
+      // 有改动因而留在页面上」的那一篇，就是它（见 pinnedId 的说明）。
+      const targetId = blog?.id ?? pinnedId;
+      const url = targetId ? `/api/blogs/${targetId}` : '/api/blogs';
+      const method = targetId ? 'PUT' : 'POST';
       const response = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
@@ -197,12 +222,17 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
         return;
       }
 
+      // 新建的第一笔成功之后，把这一页钉在这篇文章上（见 pinnedId 的说明）：
+      // 之后再点提交是 PUT 它，而不是又发一篇。编辑态本来就钉着服务端那篇。
+      const targetBlogId: string | null =
+        targetId ?? (typeof result.blog_id === 'string' ? result.blog_id : null);
+      if (!targetId && targetBlogId) setPinnedId(targetBlogId);
+
       // ★ 请求在飞的时候用户还能接着改 ★ —— 判据是**整份表单快照**，不是时间先后：
       // 成功回调只说明「这一份发出去了」，不说明「页面上现在这一份发出去了」。
       // 也**不是只比正文**：改了标题 / 摘要 / 可见范围而正文没动，同样没发出去。
       const changed = changedLabels(snapshot, readFields(form));
       const bodyChanged = changed.includes('正文');
-      toast(isEdit ? '保存成功，正在返回...' : '上传成功！即将跳转到文章页面...', 'success');
 
       if (!isEdit && bodyChanged) {
         // 新建页有本地草稿，正文那一版接得住：先把它落盘再如实说明。
@@ -213,22 +243,25 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
         // 延迟回调把刚发布的正文写回 localStorage（下次进新建页看到一篇已发出去的旧文）。
         editorRef.current?.clearDraft();
       }
+
       if (changed.length > 0) {
-        // ⚠️ 这一句必须**点名改了哪几格**：标题（草稿接不住的那类）与正文
-        // （草稿接得住的）对用户来说是完全不同的两件事，混成一句「有些改动没保存」
-        // 等于让他自己猜。草稿只存正文，所以只有正文那一版能说「留着了」。
+        // ★ 有未保存的改动就**不跳** ★ 判据是整份快照，与编辑态同一条规则：
+        // 跳走等于把这一段一起丢掉，而标题 / 摘要 / 栏目 / 可见范围 / 匿名开关
+        // **没有草稿接得住**（草稿只存正文）。留在这儿，用户接着改、再点一次提交
+        // 就能存上 —— 新建态此时已经钉在刚建出来的那一篇上（见 pinnedId），
+        // 所以「再点一次」是更新，不会多出一篇。
+        // ⚠️ 这一句必须**点名改了哪几格**：混成一句「有些改动没保存」等于让他自己猜；
+        // 也只有正文那一版能说「草稿里有」。
         toast(
-          `发出去的是提交那一刻的${changed.join('、')}；之后的改动没有跟着发出去` +
-            (!isEdit && bodyChanged ? '，正文那一版已留在本地草稿里' : ''),
+          `已保存的是提交那一刻的${changed.join('、')}；之后的改动还没保存 —— ` +
+            `已留在页面上，请再保存一次` +
+            (!isEdit && bodyChanged ? '（正文那一版也已留在本地草稿里）' : ''),
           'warning'
         );
-      }
-
-      if (isEdit && changed.length > 0) {
-        // 编辑态**不跳**：跳走等于把刚改的那些一起丢掉，而编辑态没有草稿接住它们。
-        // 留在这儿再点一次「保存修改」是安全的（PUT 幂等，不会多出一篇）。
         return;
       }
+
+      toast(isEdit ? '保存成功，正在返回...' : '上传成功！即将跳转到文章页面...', 'success');
 
       // 延迟跳转：给用户一点时间看到提示。**这一段时间里还能继续改**，所以跳之前
       // 再核对一次 —— 否则「看着提示、顺手改了一个字」的那一段会随跳转一起消失。
@@ -238,16 +271,20 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
           if (!aliveRef.current) return;
           const late = changedLabels(snapshot, readFields(form));
           if (late.length > 0) {
+            // ★ 同样不跳 ★ 这是上一版漏掉的那一半：这里只弹一句提示、然后照样
+            // `window.location.href`，用户看着提示的同时页面就跳走了 —— 改动与提示
+            // 一起消失，只留下一个「好像闪过什么」的印象。
             const lateBody = late.includes('正文');
             if (!isEdit && lateBody) editorRef.current?.flushDraft();
             toast(
-              `你又改了${late.join('、')} —— 这一版没有保存` +
-                (!isEdit && lateBody ? '，正文已留在本地草稿里' : ''),
+              `你又改了${late.join('、')} —— 这一版还没保存，已留在页面上，请再保存一次` +
+                (!isEdit && lateBody ? '（正文那一版也已留在本地草稿里）' : ''),
               'warning'
             );
+            return;
           }
           // 地址取自**这一次响应**（不是页面上后来的任何状态）
-          window.location.href = result.redirect || '/blog/' + result.blog_id;
+          if (targetBlogId) window.location.href = result.redirect || `/blog/${targetBlogId}`;
         },
         isEdit ? 800 : 1500
       );
@@ -458,8 +495,11 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
         </div>
 
         <div className="actions">
+          {/* 「已经建出过一篇、现在是留在页面上改它」时按钮改口叫保存修改：
+              这时再点提交走的是 PUT（见 pinnedId），文案说「提交」会让人以为
+              又要发一篇新的，于是不敢点。 */}
           <button type="submit" className="button button-primary">
-            {isEdit ? '保存修改' : '提交'}
+            {isEdit || pinnedId ? '保存修改' : '提交'}
           </button>
           {isEdit && (
             <a href={`/blog/${blog!.id}`} className="button button-secondary">
