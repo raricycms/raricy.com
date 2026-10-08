@@ -328,6 +328,80 @@ describe('插入类', () => {
   });
 });
 
+describe('单行换行（Shift+Enter）', () => {
+  // 这一组钉的是「只插一个 \n」：渲染侧靠 gfm + breaks 把单个 \n 渲成一个 <br>，
+  // 所以命令里**多插一个字符都是错的**（多一个 \n = 成品里多一个空行），
+  // 而这也是它存在的唯一理由 —— 默认的 Enter 在列表里会续写标记、在 () [] {}
+  // 之间会补第二个换行（见 commands.ts 的 insertLineBreak）。
+  it('光标处只插一个换行，光标落到下一行行首', () => {
+    const h = harness('ab', [[1, 1]]);
+    cmd.insertLineBreak()(h.view);
+    expect(h.text()).toBe('a\nb');
+    expect(h.main()).toEqual([2, 2]);
+  });
+
+  it('行尾插入：不多带行尾空格、也不带任何标记', () => {
+    const h = harness('- 列表项', [[4, 4]]);
+    cmd.insertLineBreak()(h.view);
+    // `- 列表项` 里插一个 \n 就是「列表项里换行」，不是「新建下一项」（那是 Enter 的事）
+    expect(h.text()).toBe('- 列表\n项');
+    expect(h.text()).not.toContain('<br>');
+    expect(/[ \t]\n/.test(h.text())).toBe(false);
+  });
+
+  it('夹在 () [] {} 之间时也只插一个 —— 默认的 Enter 这里会插两个', () => {
+    for (const pair of ['()', '[]', '{}']) {
+      const h = harness(`a${pair[0]}${pair[1]}b`, [[2, 2]]);
+      cmd.insertLineBreak()(h.view);
+      expect(h.text()).toBe(`a${pair[0]}\n${pair[1]}b`);
+    }
+  });
+
+  it('有选区时整体替换成一个换行', () => {
+    const h = harness('abc', [[0, 3]]);
+    cmd.insertLineBreak()(h.view);
+    expect(h.text()).toBe('\n');
+    expect(h.main()).toEqual([1, 1]);
+  });
+
+  it('多光标：每个区间各插一个，后面的区间不会因为前面的插入而错位', () => {
+    const h = harness('ab', [
+      [0, 0],
+      [2, 2],
+    ]);
+    cmd.insertLineBreak()(h.view);
+    expect(h.text()).toBe('\nab\n');
+    // 第二条落点是**这个换行之后**（= 新那行的行首，末尾是空行时就是文末）
+    expect(h.ranges()).toEqual([
+      [1, 1],
+      [4, 4],
+    ]);
+  });
+
+  it('多光标 + 其中一个区间有选区', () => {
+    const h = harness('abcd', [
+      [0, 2],
+      [3, 4],
+    ]);
+    cmd.insertLineBreak()(h.view);
+    expect(h.text()).toBe('\nc\n');
+    expect(h.ranges()).toEqual([
+      [1, 1],
+      [3, 3],
+    ]);
+  });
+
+  it('进撤销历史：一步退回（不是整块跳回，也不是撤不掉）', () => {
+    const h = harness('ab', [[1, 1]], [history()]);
+    cmd.insertLineBreak()(h.view);
+    expect(h.text()).toBe('a\nb');
+    expect(cmd.undoCommand(h.view)).toBe(true);
+    expect(h.text()).toBe('ab');
+    expect(cmd.redoCommand(h.view)).toBe(true);
+    expect(h.text()).toBe('a\nb');
+  });
+});
+
 describe('撤销 / 重做', () => {
   it('命令进撤销历史，且能逐步退回', () => {
     const h = harness('hello', [[0, 5]], [history()]);
