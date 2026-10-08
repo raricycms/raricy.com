@@ -11,7 +11,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { describe, expect, it } from 'vitest';
-import { EditorState } from '@codemirror/state';
+import { EditorSelection, EditorState, type TransactionSpec } from '@codemirror/state';
+import type { EditorView } from '@codemirror/view';
+import { history, isolateHistory, redo, undo } from '@codemirror/commands';
 import {
   addUploadBatch,
   batchInsertPos,
@@ -350,5 +352,150 @@ describe('边界', () => {
     expect(batchInsertPos(state, 1, 0)).toBe(0);
     state = insertResult(state, 1, 0, '<a>');
     expect(state.doc.toString()).toBe('<a>x');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 已完成槽位被**整段删除**后再恢复：真 undo / redo / 粘贴
+//
+// 【为什么这一组必须存在】整张图删掉后，槽位区间塌成一点 —— 与「还没完成的
+// pending 点」在数值上完全一样。若两种点按同一方向映射，撤销把正文插回这一点时
+// 这个点原地不动，后到的第二张就插到了**恢复回来的第一张前面**：版面顺序与选择
+// 顺序相反，且不报任何错、不留日志。判据必须是 `status`（见 upload-anchors.ts 的
+// mapSlot），光看 `from === to` 分不出来。
+//
+// 【为什么必须用真 undo，不许手写两条改动复刻】「删掉几个字符 + 把它们原样插回」
+// 确实就是撤销在正文上的形状，但**手写它只证明我们喂对了改动**；真 `undo` 走的是
+// history 自己的映射，才能证明区间是**随事务映射**出来的而不是被喂出来的。
+// 顺手配 `isolateHistory`：不隔离时 undo 会把「插 A + 删 A」并成一组，一按
+// Ctrl+Z 连插入 A 也一起撤掉，测的就成了「回到上传前」。
+// ─────────────────────────────────────────────────────────────────────────────
+describe('已完成槽位被整段删除后再恢复', () => {
+  const A = '![A](/a)\n';
+  const B = '![B](/b)\n';
+
+  /**
+   * 真 view 桩：命令（undo / redo）只用 `state` 与 `dispatch`，而 CM6 的状态层
+   * 与 DOM 无关 —— 同 md-editor-commands.test.ts 的 harness（那边有更长的理由）。
+   * 与文件顶部那个纯 `EditorState` 辅助函数并列：这一组要跑**命令**，改动必须落进
+   * history，所以得有 view。
+   */
+  function viewHarness(doc: string, cursor: number) {
+    let state = EditorState.create({
+      doc,
+      selection: EditorSelection.cursor(cursor),
+      extensions: [history(), uploadBatchField],
+    });
+    const view = {
+      get state() {
+        return state;
+      },
+      dispatch(...input: TransactionSpec[]) {
+        for (const spec of input) state = state.update(spec).state;
+      },
+    } as unknown as EditorView;
+    /** 组件里的那一步（取插入点 → 插入正文 → 结算），但落在真 view 上。 */
+    function insert(index: number, text: string): number | null {
+      const at = batchInsertPos(view.state, 1, index);
+      if (at === null) return null;
+      view.dispatch({
+        changes: { from: at, insert: text },
+        effects: settleUploadSlot.of({ batchId: 1, key: `1:${index}` }),
+      });
+      return at;
+    }
+    return { view, insert, text: () => view.state.doc.toString() };
+  }
+
+  /** 建批次 `[A, B]` → 完成 A → **隔离地**整段删掉 A（好让 undo 只撤这一组）。 */
+  function deletedA() {
+    const h = viewHarness('HEAD\nTAIL', 5);
+    h.view.dispatch({ effects: addUploadBatch.of({ id: 1, pos: 5, names: ['A', 'B'] }) });
+    h.insert(0, A);
+    expect(h.text()).toBe(`HEAD\n${A}TAIL`);
+    h.view.dispatch({ annotations: isolateHistory.of('before') });
+    h.view.dispatch({
+      changes: { from: 5, to: 5 + A.length, insert: '' },
+      annotations: isolateHistory.of('after'),
+    });
+    expect(h.text()).toBe('HEAD\nTAIL');
+    return h;
+  }
+
+  it('★ 真 undo 恢复整张图：第二张仍落在它**后面**，不许插到前面 ★', () => {
+    const h = deletedA();
+    expect(undo(h.view)).toBe(true);
+    expect(h.text()).toBe(`HEAD\n${A}TAIL`);
+    // 区间重新张开：这一槽的插入点被推到恢复回来的那段**之后**
+    expect(batchInsertPos(h.view.state, 1, 1)).toBe(5 + A.length);
+    h.insert(1, B);
+    expect(h.text(), '恢复回来的 A 与被插到它前面的 B 换了顺序').toBe(`HEAD\n${A}${B}TAIL`);
+  });
+
+  it('★ 真 redo 再删一次：A 没了，第二张落在它原来的位置（不空占）★', () => {
+    const h = deletedA();
+    undo(h.view);
+    expect(redo(h.view)).toBe(true);
+    expect(h.text()).toBe('HEAD\nTAIL');
+    h.insert(1, B);
+    expect(h.text()).toBe(`HEAD\n${B}TAIL`);
+  });
+
+  it('★ 反复撤销 / 重做之后，第二张的落位仍然正确 ★', () => {
+    const h = deletedA();
+    undo(h.view);
+    redo(h.view);
+    undo(h.view);
+    h.insert(1, B);
+    expect(h.text()).toBe(`HEAD\n${A}${B}TAIL`);
+  });
+
+  it('★ 剪切（删）再粘贴（原样插回）恢复：形状同撤销，落位也一样 ★', () => {
+    const h = viewHarness('HEAD\nTAIL', 5);
+    h.view.dispatch({ effects: addUploadBatch.of({ id: 1, pos: 5, names: ['A', 'B'] }) });
+    h.insert(0, A);
+    h.view.dispatch({ changes: { from: 5, to: 5 + A.length, insert: '' } });
+    h.view.dispatch({ changes: { from: 5, insert: A } });
+    h.insert(1, B);
+    expect(h.text()).toBe(`HEAD\n${A}${B}TAIL`);
+  });
+
+  it('★ 完整删除且**不恢复**：第二张落在原位置（既有行为不能丢）★', () => {
+    const h = viewHarness('HEAD\nTAIL', 5);
+    h.view.dispatch({ effects: addUploadBatch.of({ id: 1, pos: 5, names: ['A', 'B'] }) });
+    h.insert(0, A);
+    h.view.dispatch({ changes: { from: 5, to: 5 + A.length, insert: '' } });
+    h.insert(1, B);
+    expect(h.text()).toBe(`HEAD\n${B}TAIL`);
+  });
+
+  it('★ 乱序完成 + 已删又恢复：版面仍是选择顺序 ★', () => {
+    const h = viewHarness('HEAD\nTAIL', 5);
+    h.view.dispatch({ effects: addUploadBatch.of({ id: 1, pos: 5, names: ['A', 'B', 'C'] }) });
+    h.insert(0, A);
+    h.view.dispatch({ annotations: isolateHistory.of('before') });
+    h.view.dispatch({
+      changes: { from: 5, to: 5 + A.length, insert: '' },
+      annotations: isolateHistory.of('after'),
+    });
+    undo(h.view);
+    h.insert(2, '![C](/c)\n'); // 2 先到
+    h.insert(1, B); // 1 后到
+    expect(h.text()).toBe(`HEAD\n${A}${B}![C](/c)\nTAIL`);
+  });
+
+  it('另一个批次各按各的锚点走（谁被删、谁恢复互不影响）', () => {
+    const h = viewHarness('HEAD\nTAIL', 5);
+    h.view.dispatch({ effects: addUploadBatch.of({ id: 1, pos: 5, names: ['A'] }) });
+    h.view.dispatch({ effects: addUploadBatch.of({ id: 2, pos: 5, names: ['B'] }) });
+    h.insert(0, A); // 1 号先落
+    h.view.dispatch({ changes: { from: 5, to: 5 + A.length, insert: '' } }); // 1 号的图被删
+    const at = batchInsertPos(h.view.state, 2, 0);
+    expect(at).toBe(5);
+    h.view.dispatch({
+      changes: { from: at!, insert: B },
+      effects: settleUploadSlot.of({ batchId: 2, key: '2:0' }),
+    });
+    expect(h.text()).toBe(`HEAD\n${B}TAIL`);
   });
 });
