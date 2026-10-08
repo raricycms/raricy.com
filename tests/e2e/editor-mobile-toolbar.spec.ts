@@ -175,6 +175,53 @@ async function visualLines(node: Locator): Promise<number> {
   return node.evaluate((el) => (el as HTMLElement).innerText.split('\n').length);
 }
 
+/** 工具条上那个字数（正文长度）。 */
+async function charCount(page: Page): Promise<number> {
+  const text = await page.locator(`${BLOG_EDITOR} .md-editor__count`).innerText();
+  return Number.parseInt(text, 10);
+}
+
+/**
+ * 光标此刻在不在编辑区的可见范围内，以及视图滚到了哪。
+ *
+ * 【为什么用浏览器的选区量】这个编辑器**没有**装 `drawSelection()`，光标就是浏览器
+ * 自己那根 —— `window.getSelection()` 是「光标在哪」的权威回答，而且随滚动一起动。
+ * 这里既不碰 CM6 的内部对象，也不去断言「这次 dispatch 带了哪个标记」：那是把实现
+ * 抄一遍（改个写法就会红），而用户看得见的只有「按完键光标还在不在眼前」。
+ *
+ * 折叠选区的 rect 在个别情况下高度为 0，那就退回到「光标所在的那一行」。
+ */
+async function caretView(page: Page, editor: string) {
+  return page.evaluate((sel) => {
+    const scroller = document.querySelector(sel + ' .cm-scroller') as HTMLElement;
+    const box = scroller.getBoundingClientRect();
+    const selection = window.getSelection();
+    const range = selection && selection.rangeCount ? selection.getRangeAt(0) : null;
+    const rect = range?.getBoundingClientRect();
+    let top = rect?.top ?? 0;
+    let bottom = rect?.bottom ?? 0;
+    if (!rect || (!rect.height && !rect.width)) {
+      const node = range?.startContainer ?? null;
+      const el =
+        node && node.nodeType === Node.TEXT_NODE
+          ? node.parentElement
+          : (node as HTMLElement | null);
+      const line = el?.closest('.cm-line')?.getBoundingClientRect();
+      if (line) {
+        top = line.top;
+        bottom = line.bottom;
+      }
+    }
+    return {
+      scrollTop: scroller.scrollTop,
+      caretBottom: bottom,
+      boxBottom: box.bottom,
+      /** 光标整个落在可见区里（上下都要在 —— 新插入的行只会往下跑，但两边都判更诚实）。 */
+      visible: bottom > box.top && top < box.bottom,
+    };
+  }, editor);
+}
+
 function toolbarOf(page: Page, editor: string) {
   return page.locator(`${editor} .md-toolbar`);
 }
@@ -540,5 +587,58 @@ test.describe('Shift+Enter：单行换行', () => {
     await page.keyboard.press(`${mod}+z`);
     preview = await showPreview(page, BLOG_EDITOR);
     await expect(preview.locator('br'), '撤销之后那个换行应当没了').toHaveCount(0);
+  });
+
+  /**
+   * 光标在**可见区底部**时按 Shift+Enter，视图要跟着往下滚。
+   *
+   * 【为什么单独一条】这件事只有真排版才成立：新插入的那一行落到可见区之外，视觉上
+   * 就是「按了没反应」—— 文档其实改了、不报错、不写日志。单测（jsdom 无布局）与
+   * 成品断言都看不见它。
+   *
+   * 【为什么断言的是这两件事】① 新光标仍在可见区内（用户看得见的那件事）；② 视图
+   * 确实往下滚了。只断 ① 会有一条缝：光标要是本来就落在可见区中间，不加滚动标记也
+   * 照样过；② 把「回退滚动标记」直接判红（那时 scrollTop 一动不动）。
+   *
+   * 【信号在 desktop 那一遍】两遍都跑，但**只有桌面能判红**：实测把滚动标记去掉，
+   * 桌面 scrollTop 2681 → 2681、新光标落到编辑区下方 26px（量到的就是这条退化）；
+   * 触屏那一遍浏览器的原生选区滚动会自己补上（scrollTop 2712 → 2777），照样过。
+   * 所以 mobile 那一遍是回归护栏，不是判据 —— 去掉本命令的 `scrollIntoView` 时，
+   * 别因为 mobile 绿了就以为没事。
+   */
+  test('Shift+Enter 在可见区底部：新光标仍在编辑区内，视图跟着滚', async ({ page }) => {
+    await page.goto('/blog/upload');
+    await page.locator(`${BLOG_EDITOR} .cm-content`).click();
+    // 一次插进上百行 —— 逐键敲没有必要，文档高度才是这条用例要的前提
+    await page.keyboard.insertText(
+      Array.from({ length: 120 }, (_, i) => `第 ${i + 1} 行的内容`).join('\n')
+    );
+
+    const scroller = page.locator(`${BLOG_EDITOR} .cm-scroller`);
+    const metrics = await scroller.evaluate((el) => ({
+      scrollHeight: el.scrollHeight,
+      clientHeight: el.clientHeight,
+    }));
+    expect(
+      metrics.scrollHeight,
+      '文档没有高过编辑区，这条用例就验不到滚动'
+    ).toBeGreaterThan(metrics.clientHeight + 300);
+
+    // 光标放到文末 —— 这一下会把视图滚到「光标刚好落在可见区里」
+    await page.keyboard.press(`${await modKey(page)}+End`);
+    const before = await caretView(page, BLOG_EDITOR);
+    expect(before.scrollTop, '光标在文末，视图却还停在顶端').toBeGreaterThan(0);
+    expect(before.visible, '前置条件不成立：光标本该已经被滚进可见区').toBe(true);
+
+    const countBefore = await charCount(page);
+
+    await page.keyboard.press('Shift+Enter');
+
+    // 换了视图但没改文档的话，这条就不是「滚动没跟上」而是别的坏了 —— 一起钉住
+    expect(await charCount(page), '这次 Shift+Enter 没有插进一个换行').toBe(countBefore + 1);
+
+    const after = await caretView(page, BLOG_EDITOR);
+    expect(after.visible, '按完 Shift+Enter，新光标掉到了编辑区可见范围之外').toBe(true);
+    expect(after.scrollTop, '视图没有跟着光标往下滚').toBeGreaterThan(before.scrollTop);
   });
 });
