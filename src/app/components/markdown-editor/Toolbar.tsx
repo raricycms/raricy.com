@@ -31,6 +31,12 @@
 // 展开后**不自动收起**：连点几颗格式按钮是常态，收起留给用户自己按同一个按钮
 //（图标此时翻成向上箭头）。
 //
+// ⚠️ **收起的粒度是分组，所以「哪几颗归哪一组」有实际后果**：窄屏留在首行的
+// 分组必须整组都是核心动作。反例是「表格」—— 它语义上属于 media，但窄屏是次要的；
+// 留在 media 里的话，它跟着那一档展开时会把排在后面的「更多」开关挤着往右挪，
+// 用户按完第一下得重新瞄准才按得到第二下。所以它自成一档（`--table`），
+// 宽屏上仍紧挨着「插入引用」、与拆分前逐像素一致。
+//
 // 【表情为什么是 Unicode 而不是站内表情包】站内的表情包 / 黄脸是 `[@合集/名字]`
 // token，那套 token **不被博客与剪贴板的终稿展开**（§1.3 明写不在这两处接入）。
 // 插进去只会得到一串原文。所以这里给的是普通 Unicode 字符：它就是文本，
@@ -162,20 +168,10 @@ export default function Toolbar({
     run(cmd.insertText(text));
   }
 
-  const btn = (
-    label: string,
-    Icon: typeof Bold,
-    action: () => void,
-    enabled = true,
-    /**
-     * 额外的类名。目前只有「表格」用到 —— 它在窄屏属于**次要**按钮（收在「更多」里），
-     * 而它所在的 `--media` 分组本身要留在首行（上传图片 / 插入引用在那儿）。
-     */
-    extraClass = ''
-  ) => (
+  const btn = (label: string, Icon: typeof Bold, action: () => void, enabled = true) => (
     <button
       type="button"
-      className={`md-toolbar__btn${extraClass ? ` ${extraClass}` : ''}`}
+      className="md-toolbar__btn"
       title={label}
       aria-label={label}
       disabled={disabled || !enabled}
@@ -306,8 +302,16 @@ export default function Toolbar({
         {/* 五类资源一个入口（图床 / 音频 / 剪贴板 / 投票 / 收藏夹）——
             「上传图片」是**新传一张**，这里是**挑已有的**，两者不重叠。 */}
         {btn('插入引用', Library, onOpenResources)}
-        {/* 表格是次要的：窄屏收进「更多」，所以它是这一组里唯一带修饰类的 */}
-        {btn('表格', Table, () => run(cmd.insertTable()), true, 'md-toolbar__btn--table')}
+      </div>
+
+      {/* 表格：宽屏上它紧挨着「插入引用」（这一组的 DOM 位置就在 media 之后，
+          两处间距都是 2px，与拆分前逐像素一致），窄屏则收进「更多」。
+          ⚠️ **它必须自成一档，不能留在 `--media` 里**：那一档窄屏留在首行，而
+          「更多」那颗开关排在它后面 —— 表格若跟着那一档展开，就会把开关**挤着
+          往右挪**（实测 42px = 一颗按钮），用户按完第一下要重新瞄准才按得到第二下。
+          自成一组后开关的位置与「更多里有什么」完全无关。 */}
+      <div className="md-toolbar__group md-toolbar__group--table">
+        {btn('表格', Table, () => run(cmd.insertTable()))}
       </div>
 
       <span className="md-toolbar__sep" aria-hidden="true" />

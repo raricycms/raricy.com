@@ -189,30 +189,24 @@
 
   // 2) 首行的顺序：表情 → 上传图片 / 插入引用 → 更多；展开后其余分组接在后面。
   //    「更多」始终 order 3：展开与否都在同一个位置（开关不跳，才不会按错）。
+  //    ⚠️ 「表格」那一档（`--table`）必须排在「更多」**之后** —— 排在前面的话，
+  //    它展开时会把开关挤着往右挪（实测一颗按钮的宽度），而用户正是要靠「开关
+  //    在原地」才敢连按两下。它与其余次要分组一起排在展开区里。
   .md-toolbar__group--core { order: 1; }
   .md-toolbar__group--media { order: 2; }
   .md-toolbar__group--more { order: 3; }
   .md-toolbar__group--format { order: 4; }
   .md-toolbar__group--lists { order: 5; }
   .md-toolbar__group--blocks { order: 6; }
-  .md-toolbar__group--history { order: 7; }
-  .md-toolbar__group--export { order: 8; }
+  .md-toolbar__group--table { order: 7; }
+  .md-toolbar__group--history { order: 8; }
+  .md-toolbar__group--export { order: 9; }
 
   // 3) 展开：所有分组回来。属性选择器权重更高，不必关心与上面那几条的先后。
   //    内联展开（工具条自己长高、分组照常换行）而不是浮层：浮层在窄屏要么被视口
   //    裁掉、要么盖住编辑区，而换行天生不会溢出。
   .md-toolbar[data-more='open'] .md-toolbar__group {
     display: flex;
-  }
-
-  // 「表格」是这一组里唯一次要的：它那一组要留在首行（上传图片 / 插入引用在那儿），
-  // 所以只能单独藏 —— 不能连组一起收。
-  .md-toolbar__btn--table {
-    display: none;
-  }
-
-  .md-toolbar[data-more='open'] .md-toolbar__btn--table {
-    display: inline-flex;
   }
 
   // 4) 分隔线与「把导出推到右边」的撑杆在窄屏没有意义：收起时它们会变成一排
@@ -233,6 +227,7 @@
   .md-toolbar {
     row-gap: 6px;
   }
+
 }
 
 // ── 两个面板 ────────────────────────────────────────────────────────────────
