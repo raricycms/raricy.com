@@ -137,6 +137,12 @@ export const DOC_ENTRIES: readonly DocEntry[] = [
     title: '故事模块',
     summary: '故事区的文件结构、合集嵌套与 URL。',
   },
+  {
+    group: 'guide',
+    slug: 'guide/编辑器使用指南',
+    title: '编辑器使用指南',
+    summary: '手机上的工具条与「更多工具」、Enter 与 Shift+Enter 的差别。',
+  },
 
   // ── 给机器人开发者 ────────────────────────────────────────────────────────
   {

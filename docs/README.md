@@ -57,6 +57,7 @@ GitHub 上仍是原来的反引号，两边不冲突。
 | `guide/头像框出图规范.md` | **给画师的出图规范**（自包含，可整份转发）：画布与格式、8% 圆角几何、20px 判据、配色与主题、命名与交付、交付前自查 |
 | `guide/收藏夹使用指南.md` ★ | 收藏夹：私密 / 公开的区别、复制、分享、导入导出 |
 | `guide/story-module.md` | 故事模块：文件结构 / 合集嵌套 / URL |
+| `guide/编辑器使用指南.md` | 编辑器：手机上的工具条与「更多工具」、Enter 与 Shift+Enter 的差别、预览与导出 |
 
 ★ = 被站内页面渲染（`/clipboard/guide` · `/image/guide` · `/audio/guide` · `/vote/guide` · `/favorite/guide` · `/tool/cattca-guide`）
 
