@@ -328,10 +328,10 @@ export function insertText(text: string, selectInserted = false): EditorCommand 
  * 「只换一行」：
  *   · `insertNewlineContinueMarkup`（Markdown 语言自带，优先级高于默认键位表）
  *     在列表 / 引用块里会**续写标记** —— 回车是「新建下一项」，敲一下多一行 `- `；
- *   · `insertNewlineAndIndent` 在光标夹于 `()` / `[]` / `{}` 之间时会**再补一个
- *     换行**（@codemirror/commands 的 isBetweenBrackets）。正文里写
- *     `[文字](地址)` 这类再常见不过，于是按一次回车，成品里凭空多出一个空行
- *     —— 渲染出来就是「一次换行看着像两行」。
+ *   · `insertNewlineAndIndent` 在光标**正夹在一对空括号中间**时会**再补一个换行**
+ *     （@codemirror/commands 的 isBetweenBrackets：它第一条判据就是光标左右那两个字符
+ *     正好构成 `()` / `[]` / `{}`）。光标停在 `[文字](|)` 那个位置时按一次回车，
+ *     成品里就凭空多出一个空行 —— 渲染出来是「一次换行看着像两行」。
  *
  * 两条都**保留不动**（它们是 Markdown 惯用的输入方式，改掉等于「回车坏了」）；
  * 这条命令提供的是**绕开它们**的那条出口，绑在 Shift+Enter 上（见 MarkdownEditor.tsx
