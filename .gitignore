@@ -45,6 +45,10 @@ coverage/
 # 复制脚本会连 LICENSE.txt 一起生成。
 /public/static/emoji/
 
+# 格式转换器的浏览器引擎（ffmpeg.wasm / pdf.js worker / tesseract wasm 与语言包）
+# —— 同款：从锁版本的 npm 包拷贝，由 `npm run prepare:converter` 重建，不入库。
+/public/static/converter/
+
 # SCSS 的编译产物 —— 全站样式由 src/app/layout.tsx 直接 import 入口
 # src/styles-scss/main.scss，交给 Next 自己编译（dev 走 HMR，build 走 sass-loader），
 # 产物既没人生成也没人读，自然不该入库。
