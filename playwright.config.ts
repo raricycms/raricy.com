@@ -79,6 +79,10 @@ const RESPONSIVE_SPECS: RegExp[] = [
   // 「标签有没有折出对话框、条目与关闭钮还点不点得到」。桌面那一遍同样要跑 ——
   // 插五类资源的正向链路不该只在移动端验一遍。
   /\/editor-resources\.spec\.ts$/,
+  // 窄屏工具条（只留三件核心动作 + 「更多工具」）与 Shift+Enter 的单行换行。
+  // 工具条那部分是**样式表在 767px 以下**才生效的分支，桌面那一遍正好反过来验
+  // 「宽屏没被顺势改窄」（用例自己 setViewportSize 钉视口，两个 project 跑同一件事）。
+  /\/editor-mobile-toolbar\.spec\.ts$/,
   /chat-avatar-menu\.spec\.ts$/,
   /chat-sse\.spec\.ts$/,
   // 只有「移动端汉堡红点」那 2 条是移动端专属，另外 3 条是通用的未读角标语义。

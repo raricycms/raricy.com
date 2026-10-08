@@ -126,6 +126,27 @@ async function setViewMode(page: Page, editor: string, label: '编辑' | '并排
   await page.locator(editor).getByRole('button', { name: label, exact: true }).click();
 }
 
+/**
+ * 够到某一颗工具条按钮 —— 窄屏要先把「更多工具」展开（宽屏下是个空操作）。
+ *
+ * 【为什么必须走这一步】窄屏工具条默认只留 表情 / 上传图片 / 插入引用 三件核心动作，
+ * 其余（含粗体）收在「更多工具」里，而**收起是样式表做的**（`_markdown-editor.scss`
+ * 的窄屏段）。于是窄屏下那颗按钮是 `display: none` —— Playwright 的 `click()` 会一直
+ * 等它可见然后超时，而那看起来像「按钮没了」。
+ *
+ * 【判据用按钮自己可不可见，不用 isMobile】两者本该同源（都是同一个 767px 断点），
+ * 但可见性才是「用户此刻能不能点到它」这件事本身，多一层镜像就多一处会漂的地方。
+ */
+async function revealToolbarButton(page: Page, editor: string, name: string) {
+  const target = page.locator(editor).getByRole('button', { name, exact: true });
+  if (await target.isVisible()) return;
+  const more = page.locator(editor).getByRole('button', { name: '更多工具', exact: true });
+  await expect(more).toBeVisible();
+  await more.click();
+  await expect(more).toHaveAttribute('aria-expanded', 'true');
+  await expect(target).toBeVisible();
+}
+
 test.describe('编辑器行为', () => {
   test.beforeEach(async ({ page }) => {
     await loginViaApi(page, SEED_USERS.core.username);
@@ -145,6 +166,8 @@ test.describe('编辑器行为', () => {
     // 只有整篇渲染出来才看得见（只断字数的话，包不包标记都不影响长度之外的东西）
     const mod = await modKey(page);
     await page.keyboard.press(`${mod}+a`);
+    // 窄屏要先把「更多工具」展开（宽屏空操作）—— 用户在那边的入口就是这条路径
+    await revealToolbarButton(page, BLOG_EDITOR, '粗体');
     await page.locator(BLOG_EDITOR).getByRole('button', { name: '粗体', exact: true }).click();
     await setViewMode(page, BLOG_EDITOR, '预览');
 
