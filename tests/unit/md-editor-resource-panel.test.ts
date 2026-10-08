@@ -115,6 +115,34 @@ function refreshBtn(container: HTMLElement): Element | null {
   return container.querySelector('.md-res-refresh');
 }
 
+function searchInput(container: HTMLElement): HTMLInputElement {
+  const el = container.querySelector('input[type="search"]');
+  if (!el) throw new Error('搜索框不在：选择器写错了，不是产品坏了');
+  return el as HTMLInputElement;
+}
+
+/** 当前高亮那条（焦点留在搜索框上，高亮由 aria-activedescendant 标出来）。 */
+function activeDescendant(container: HTMLElement): string | null {
+  return searchInput(container).getAttribute('aria-activedescendant');
+}
+
+/**
+ * 造一次 keydown。`isComposing` 是**事件对象自己的属性**，用 defineProperty 钉住：
+ * jsdom 的构造字典对它的支持随版本而变，钉住才不依赖环境。
+ * 返回事件本身 —— `defaultPrevented` 是这几条用例的判据之一（拦下默认动作会
+ * 让输入法的候选选不中）。
+ */
+function keydown(el: Element, key: string, isComposing = false): KeyboardEvent {
+  const ev = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+  Object.defineProperty(ev, 'isComposing', { value: isComposing, configurable: true });
+  el.dispatchEvent(ev);
+  return ev;
+}
+
+function composition(el: Element, type: 'compositionstart' | 'compositionend'): void {
+  el.dispatchEvent(new CompositionEvent(type, { bubbles: true }));
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
   document.body.innerHTML = '';
@@ -212,5 +240,101 @@ describe('连点刷新：先发的后到', () => {
     await click(tab(container, 'image'));
     expect(titles(container)).toEqual(['新图.png']);
     expect(calls.length, '缓存被删掉了 —— 切回来又打了一次接口').toBe(before + 1);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 组字期间的按键
+//
+// 【为什么单测】搜索框是中文输入的必经之路：用户打拼音时，Enter 是「确认候选」、
+// ↑↓ 是「在候选词之间翻」—— 那几下都**属于输入法**。面板若把它们当成自己的：
+//   · Enter → 插进一条**不是用户想要**的引用（他要的是候选词里那个标题）；
+//   · ↑↓ → 高亮从 A 跳到 B，用户按 Enter 时插的是 B；
+//   · 更糟的是 preventDefault：候选词选不中，字直接打不进去，而面板看着一切正常。
+//
+// 判据必须是「三件事一件都没发生 + 那一下**没有被拦**」，只断言「没插引用」是不够的
+// —— 拦下默认动作那一半同样在毁用户的输入，而屏幕上没有任何迹象。
+//
+// 【这不是真 IME 验证】这里合成的是事件（compositionstart/end 与带 isComposing 的
+// keydown），不是真的让某个输入法去组字。真 IME 只有人手动敲得出来，所以这几条钉的是
+// 「判据在不在、拦没拦」；两条路（本地标志 / 原生 isComposing）各测一遍，因为
+// 不同浏览器只给其中一条（见 ResourcePanel 里那段注释）。
+// ─────────────────────────────────────────────────────────────────────────────
+describe('输入法组字期间的按键', () => {
+  it('★ 组字中按 Enter：不插、不关面板、也不拦默认动作；组完 Enter 回到面板手里 ★', async () => {
+    const calls = stubDeferredFetch();
+    const { container, onInsert } = await mount();
+    calls[0].fulfill(imagePayload('甲图.png', '乙图.png'));
+    await settle();
+    const input = searchInput(container);
+
+    // 第一条路：本地标志。Safari 在 compositionend **之前**那一下 keydown 上给
+    // isComposing=false，只认原生属性的话这一下会被当成正常回车。
+    await act(async () => {
+      composition(input, 'compositionstart');
+    });
+    const enter = await act(async () => keydown(input, 'Enter'));
+
+    expect(enter.defaultPrevented, '组字期间按 Enter 被 preventDefault 了（候选就选不中）').toBe(
+      false
+    );
+    expect(onInsert, '组字期间按 Enter 把引用插进去了').not.toHaveBeenCalled();
+    expect(container.querySelector('.md-res-modal'), '组字期间按 Enter 把面板关了').not.toBeNull();
+
+    // 组字结束之后，Enter 立刻回到面板手里 —— 守卫不能粘住（粘住的表现是
+    // 「打字时好好的，打完按回车就没反应了」）
+    await act(async () => {
+      composition(input, 'compositionend');
+    });
+    const after = await act(async () => keydown(input, 'Enter'));
+    expect(after.defaultPrevented, '组完字之后 Enter 不再被拦了（表单隐式提交的口子）').toBe(true);
+    expect(onInsert).toHaveBeenCalledTimes(1);
+  });
+
+  it('★ 只给原生 isComposing 的那一档（没有 compositionstart）同样得让开 ★', async () => {
+    const calls = stubDeferredFetch();
+    const { container, onInsert } = await mount();
+    calls[0].fulfill(imagePayload('甲图.png'));
+    await settle();
+    const input = searchInput(container);
+
+    // 有的浏览器组字时 isComposing 为真、而事件早于 compositionstart ——
+    // 本地标志那一刻还是 false，只有原生属性认得出。
+    const enter = await act(async () => keydown(input, 'Enter', true));
+    expect(enter.defaultPrevented, 'isComposing=true 的 Enter 被拦下了').toBe(false);
+    expect(onInsert).not.toHaveBeenCalled();
+
+    // 标志是「按这一次事件」判的，不残留：下一枚正常回车照样插
+    const next = await act(async () => keydown(input, 'Enter'));
+    expect(next.defaultPrevented).toBe(true);
+    expect(onInsert).toHaveBeenCalledTimes(1);
+  });
+
+  it('★ 组字中按 ↑↓ 高亮不许动，也不许拦（拦了候选词就翻不动）★', async () => {
+    const calls = stubDeferredFetch();
+    const { container } = await mount();
+    calls[0].fulfill(imagePayload('甲图.png', '乙图.png'));
+    await settle();
+    const input = searchInput(container);
+    const before = activeDescendant(container);
+    expect(before, '首屏高亮没落在第一条上，这条用例就测不到东西了').not.toBeNull();
+
+    await act(async () => {
+      composition(input, 'compositionstart');
+    });
+    const down = await act(async () => keydown(input, 'ArrowDown'));
+    expect(down.defaultPrevented, '组字期间 ↓ 被拦下了').toBe(false);
+    expect(activeDescendant(container), '组字期间 ↓ 把高亮挪走了').toBe(before);
+
+    const up = await act(async () => keydown(input, 'ArrowUp'));
+    expect(up.defaultPrevented).toBe(false);
+    expect(activeDescendant(container)).toBe(before);
+
+    // 组完字之后 ↓ 照旧移动高亮（不是把方向键整个关掉了）
+    await act(async () => {
+      composition(input, 'compositionend');
+    });
+    await act(async () => keydown(input, 'ArrowDown'));
+    expect(activeDescendant(container), '组完字之后 ↓ 不管用了').not.toBe(before);
   });
 });

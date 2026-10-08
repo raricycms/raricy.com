@@ -63,6 +63,12 @@ export default function ResourcePanel({ onClose, onInsert }: ResourcePanelProps)
   const cacheRef = useRef(new Map<ResourceKind, LoadState>());
   const inputRef = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
+  /**
+   * 输入法是否正在组字。**用 ref 不用 state**：它只在同一次按键事件里被判，
+   * state 要等一次重渲染才更新，而 compositionend 与那一下 keydown 挨得太近。
+   * 与 `nativeEvent.isComposing` 一起当判据（见搜索框上那段注释）。
+   */
+  const composingRef = useRef(false);
   /** 只认最后一次请求：切标签 / 连点刷新时，先发的后到不许覆盖后发的。 */
   const reqSeqRef = useRef(0);
 
@@ -267,7 +273,24 @@ export default function ResourcePanel({ onClose, onInsert }: ResourcePanelProps)
                   setQuery(e.target.value);
                   setReveal(REVEAL_STEP); // 换了过滤条件就收回首屏
                 }}
+                // 组字起止 —— 只用来喂下面那条判据（同 MentionInput / RichComposer 的写法）
+                onCompositionStart={() => {
+                  composingRef.current = true;
+                }}
+                onCompositionEnd={() => {
+                  composingRef.current = false;
+                }}
                 onKeyDown={(e) => {
+                  // ★ 输入法组字期间的按键是**输入法的** ★ 中文 / 日文 / 韩文输入法
+                  // 用 Enter 确认候选、用 ↑↓ 在候选词之间翻 —— 那几下必须原样交给 IME：
+                  // 既不能插引用（用户想插的是候选词里那一条，不是面板高亮那条）、
+                  // 不能关面板，更不能 preventDefault（拦下来候选就选不中，字打不进去）。
+                  // 两个判据都要：`nativeEvent.isComposing` 是浏览器给的，但 Safari 在
+                  // **compositionend 之后**那一下 keydown 上会给 false —— 本地标志兜住它；
+                  // 反过来，某些浏览器组字时 isComposing 为真而事件早于 compositionstart，
+                  // 那种情况只能靠 isComposing。少一个就有一类输入法漏网。
+                  // 这一行必须在下面任何 preventDefault **之前**。
+                  if (e.nativeEvent.isComposing || composingRef.current) return;
                   if (e.key === 'Enter') {
                     // ★ 无条件拦下 ★ 面板挂在页面那个 <form> 里（博客新建 / 编辑、
                     // 剪贴板各一个），而 `<input type="search">` 里按 Enter 会触发
