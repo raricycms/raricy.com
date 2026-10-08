@@ -226,11 +226,15 @@ test.describe('预览里的按钮', () => {
       // ★ 先让表单**具备可提交的形状** ★ 必填项留空的话，就算真的触发了提交也会被
       // 浏览器 / 前端校验拦下，用例变成一句空话（同上面「面板里按 Enter」那两条）。
       await page.fill(titleField, `复制标题-${tag}`);
-      await page.locator(`${editor} .cm-content`).click();
       if (name === '博客新建') {
         await page.fill('#description', '复制用的摘要');
         await page.selectOption('#category', { index: 1 });
       }
+      // ⚠️ 正文**最后**填：上面 fill / selectOption 会把焦点从编辑器挪走。
+      // 先点进编辑器打字、再去选分类的话，键盘事件打在 <select> 上，正文一直是空的
+      // —— 预览里当然也没有代码块，报出来的却是「.copy-btn 找不到」，
+      // 看着像复制按钮没渲染（实测踩过）。
+      await page.locator(`${editor} .cm-content`).click();
       await page.keyboard.type('```js\nconst a = 1;\n```');
 
       // 切到只读预览 —— 复制按钮就在预览里（正文页同款渲染）
