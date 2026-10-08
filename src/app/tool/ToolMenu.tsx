@@ -11,6 +11,7 @@ import {
   Braces,
   Clipboard,
   Code,
+  FileCog,
   Hash,
   Image,
   Link2,
@@ -22,7 +23,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 
-type Cat = 'site' | 'codec' | 'crypto';
+type Cat = 'site' | 'file' | 'codec' | 'crypto';
 type Tool = {
   cat: Cat;
   kw: string;
@@ -98,6 +99,18 @@ const SITE: Tool[] = [
     tags: ['工具'],
   },
 ];
+const FILE_TOOLS: Tool[] = [
+  {
+    cat: 'file',
+    kw: '格式 转换 文件 图片 音频 视频 文档 PDF 表格 字幕 电子书 压缩包 JPG JPEG PNG WebP AVIF HEIC OGG MP3 WAV FLAC M4A MP4 MKV XLSX CSV JSON EPUB ZIP RAR 7Z converter',
+    href: '/tool/convert',
+    icon: FileCog,
+    title: '格式转换器',
+    desc: '图片与音频格式转换，文件在本机处理',
+    tags: ['图片', '音频', '本地处理'],
+  },
+];
+
 const CODEC: Tool[] = [
   {
     cat: 'codec',
@@ -224,6 +237,7 @@ export default function ToolMenu({ isCore }: { isCore: boolean }) {
   const blocks = useMemo(
     () => [
       { key: 'site', title: '站务工具', items: site.filter(match) },
+      { key: 'file', title: '文件处理', items: FILE_TOOLS.filter(match) },
       {
         key: 'codec',
         title: '编码 / 解码',
@@ -266,6 +280,7 @@ export default function ToolMenu({ isCore }: { isCore: boolean }) {
             [
               ['all', '全部'],
               ['site', '站务工具'],
+              ['file', '文件处理'],
               ['codec', '编码 / 解码'],
               ['crypto', '加密 / 安全'],
             ] as Array<['all' | Cat, string]>
@@ -292,6 +307,17 @@ export default function ToolMenu({ isCore }: { isCore: boolean }) {
             <h2 className="tool-new-grid__section-title">站务工具</h2>
             <div className="tool-new-grid__tools">
               {blocks[0].items.map((t) => (
+                <ToolCard t={t} key={t.title} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {blocks[1].items.length > 0 && (
+          <div className="tool-new-grid__section">
+            <h2 className="tool-new-grid__section-title">文件处理</h2>
+            <div className="tool-new-grid__tools">
+              {blocks[1].items.map((t) => (
                 <ToolCard t={t} key={t.title} />
               ))}
             </div>

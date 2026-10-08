@@ -1,0 +1,287 @@
+// 格式转换器（/tool/convert）。复用全站令牌与按钮三档，只写本页特有布局。
+@use '../abstracts/variables' as *;
+@use '../abstracts/mixins' as m;
+
+.fc-page {
+  .fc-presets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: $space-2;
+    margin-bottom: $space-3;
+  }
+
+  .fc-recipes {
+    margin-bottom: $space-4;
+
+    > summary {
+      cursor: pointer;
+      color: var(--color-text-secondary);
+      font-size: 0.875rem;
+      margin-bottom: $space-2;
+    }
+  }
+
+  .fc-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: $space-2;
+    margin: $space-4 0 $space-2;
+  }
+
+  .fc-hint {
+    font-size: 0.875rem;
+    margin-bottom: $space-4;
+  }
+
+  // 拖放区：虚线框 + 拖拽悬停反馈
+  .fc-dropzone {
+    border: 2px dashed var(--color-border);
+    border-radius: 20px;
+    padding: $space-8 $space-4;
+    text-align: center;
+    margin-bottom: $space-4;
+    transition: border-color 0.15s ease;
+
+    &--over {
+      border-color: var(--color-brand-primary);
+    }
+
+    p {
+      margin: 0 0 $space-3;
+      color: var(--color-text-secondary);
+    }
+  }
+
+  .fc-panel {
+    padding: $space-4;
+    margin-bottom: $space-4;
+
+    &__head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: $space-2;
+    }
+
+    &__title {
+      font-size: 1.1rem;
+      margin: 0 0 $space-3;
+    }
+  }
+
+  .fc-files,
+  .fc-tasks {
+    list-style: none;
+    margin: 0 0 $space-3;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: $space-2;
+  }
+
+  .fc-file {
+    display: flex;
+    align-items: center;
+    gap: $space-2;
+    flex-wrap: wrap;
+
+    // 有问题的待转换文件（超限 / 不支持）：整行压淡，问题描述用 danger 色
+    &--bad {
+      opacity: 0.75;
+    }
+
+    &__name {
+      font-weight: 600;
+      word-break: break-all;
+    }
+
+    &__meta {
+      color: var(--color-text-secondary);
+      font-size: 0.85rem;
+    }
+
+    &__problem {
+      color: var(--color-danger, #c0392b);
+      font-size: 0.85rem;
+    }
+
+    &__remove {
+      margin-left: auto;
+    }
+  }
+
+  .fc-field {
+    margin-top: $space-3;
+
+    > label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: $space-1;
+    }
+  }
+
+  .fc-params {
+    margin-top: $space-3;
+    display: flex;
+    flex-direction: column;
+    gap: $space-3;
+  }
+
+  .fc-param {
+    display: flex;
+    align-items: center;
+    gap: $space-2;
+    flex-wrap: wrap;
+
+    > label {
+      min-width: 7em;
+      font-weight: 600;
+    }
+
+    > small {
+      flex-basis: 100%;
+    }
+  }
+
+  .fc-range {
+    display: inline-flex;
+    align-items: center;
+    gap: $space-2;
+
+    output {
+      min-width: 4em;
+      color: var(--color-text-secondary);
+    }
+  }
+
+  .fc-notices {
+    margin: 0;
+    padding-left: 1.2em;
+    color: var(--color-text-secondary);
+    font-size: 0.875rem;
+  }
+
+  .fc-actions {
+    display: flex;
+    align-items: center;
+    gap: $space-3;
+    flex-wrap: wrap;
+  }
+
+  .fc-pack {
+    display: inline-flex;
+    align-items: center;
+    gap: $space-1;
+    color: var(--color-text-secondary);
+  }
+
+  .fc-task {
+    border-top: 1px solid var(--color-border);
+    padding-top: $space-2;
+
+    &__row {
+      display: flex;
+      justify-content: space-between;
+      gap: $space-2;
+      flex-wrap: wrap;
+    }
+
+    &__name {
+      font-weight: 600;
+      word-break: break-all;
+    }
+
+    &__status {
+      color: var(--color-text-secondary);
+      font-size: 0.875rem;
+      white-space: nowrap;
+    }
+
+    &__error {
+      color: var(--color-danger, #c0392b);
+      font-size: 0.9rem;
+      margin-top: $space-1;
+
+      pre {
+        font-size: 0.75rem;
+        white-space: pre-wrap;
+        word-break: break-all;
+        max-height: 8em;
+        overflow: auto;
+      }
+    }
+
+    &__ops {
+      display: flex;
+      gap: $space-2;
+      margin-top: $space-1;
+    }
+  }
+
+  .fc-progress {
+    width: 100%;
+    height: 6px;
+    margin-top: $space-1;
+  }
+
+  .fc-result {
+    margin-top: $space-2;
+
+    &__meta {
+      color: var(--color-text-secondary);
+      font-size: 0.875rem;
+    }
+
+    &__actions {
+      display: flex;
+      gap: $space-2;
+      flex-wrap: wrap;
+      margin-top: $space-2;
+    }
+  }
+
+  .fc-preview {
+    margin-top: $space-2;
+    max-width: 100%;
+
+    &--image {
+      max-height: 320px;
+      border-radius: 8px;
+      // 棋盘背景：透明区域的可见性（plan §5.3）
+      background-image:
+        linear-gradient(45deg, #ccc 25%, transparent 25%),
+        linear-gradient(-45deg, #ccc 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #ccc 75%),
+        linear-gradient(-45deg, transparent 75%, #ccc 75%);
+      background-size: 16px 16px;
+      background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+    }
+
+    &--video {
+      max-height: 320px;
+      border-radius: 8px;
+    }
+
+    &--text {
+      font-size: 0.8rem;
+      max-height: 240px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+      background: var(--color-background-page);
+      border-radius: 8px;
+      padding: $space-2;
+    }
+  }
+
+  // aria-live 状态播报：视觉隐藏
+  .fc-sr-status {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+}
