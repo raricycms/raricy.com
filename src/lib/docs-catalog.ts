@@ -281,6 +281,12 @@ export const DOC_ENTRIES: readonly DocEntry[] = [
   },
   {
     group: 'dev',
+    slug: 'format-converter-plan',
+    title: '格式转换器实施计划',
+    summary: '图片与短音频的本地转换、引擎验证、资源限制、分期与验收（方案阶段，尚未实施）。',
+  },
+  {
+    group: 'dev',
     slug: 'README',
     title: '文档索引',
     summary: '本目录的索引与互指规范（给改文档的人）。',
