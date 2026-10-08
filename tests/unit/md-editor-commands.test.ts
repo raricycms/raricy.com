@@ -199,6 +199,80 @@ describe('标题', () => {
   });
 });
 
+describe('行前缀命令的选区（行首 / 前缀内部）', () => {
+  // 这一组钉的是「落点不能手算」——旧实现写的是 `位置 ± 前缀长度`，光标停在行首
+  // 时算出负数（`0 - 2 = -2`），那一步**不报错**，要等到下一次改动才炸成
+  // `RangeError: Invalid change range -2 to -2`（报错的那一下是粗体，不是它）。
+  // 所以每条都跑一次后续的格式命令 —— 只断「改完的文本对不对」是抓不到的。
+  it('行首点「正文」（# heading）：光标落回行首，后续粗体不抛 RangeError', () => {
+    const h = harness('# heading', [[0, 0]]);
+    cmd.setHeading(0)(h.view);
+    expect(h.text()).toBe('heading');
+    expect(h.main()).toEqual([0, 0]);
+    expect(() => cmd.toggleWrap('**', 'bold')(h.view)).not.toThrow();
+    expect(h.text()).toBe('**bold**heading');
+  });
+
+  it('光标停在前缀内部（# 之后）点「正文」：收口到行首', () => {
+    const h = harness('# heading', [[2, 2]]);
+    cmd.setHeading(0)(h.view);
+    expect(h.text()).toBe('heading');
+    expect(h.main()).toEqual([0, 0]);
+    expect(() => cmd.toggleWrap('**', 'bold')(h.view)).not.toThrow();
+  });
+
+  it('换级别时光标停在行首（## abc 上点一级）：不落到负坐标', () => {
+    const h = harness('## abc', [[0, 0]]);
+    cmd.setHeading(1)(h.view);
+    expect(h.text()).toBe('# abc');
+    expect(h.main()[0]).toBeGreaterThanOrEqual(0);
+    expect(() => cmd.toggleWrap('**', 'bold')(h.view)).not.toThrow();
+  });
+
+  it('行首取消列表（- item）：光标落回行首，后续粗体不抛 RangeError', () => {
+    const h = harness('- item', [[0, 0]]);
+    cmd.toggleBulletList(h.view);
+    expect(h.text()).toBe('item');
+    expect(h.main()).toEqual([0, 0]);
+    expect(() => cmd.toggleWrap('**', 'bold')(h.view)).not.toThrow();
+    expect(h.text()).toBe('**bold**item');
+  });
+
+  it('光标停在前缀内部（- 之后）取消列表：收口到行首', () => {
+    const h = harness('- item', [[1, 1]]);
+    cmd.toggleBulletList(h.view);
+    expect(h.text()).toBe('item');
+    expect(h.main()).toEqual([0, 0]);
+    expect(() => cmd.toggleWrap('**', 'bold')(h.view)).not.toThrow();
+  });
+
+  it('行首取消引用（> quote）：光标落回行首，后续行内代码不抛', () => {
+    const h = harness('> quote', [[0, 0]]);
+    cmd.toggleQuote(h.view);
+    expect(h.text()).toBe('quote');
+    expect(h.main()).toEqual([0, 0]);
+    expect(() => cmd.toggleWrap('`', 'code')(h.view)).not.toThrow();
+  });
+
+  it('行首减少缩进（两个空格）：光标落回行首，后续粗体不抛 RangeError', () => {
+    const h = harness('  item', [[0, 0]]);
+    cmd.shiftIndent(true)(h.view);
+    expect(h.text()).toBe('item');
+    expect(h.main()).toEqual([0, 0]);
+    expect(() => cmd.toggleWrap('**', 'bold')(h.view)).not.toThrow();
+    expect(h.text()).toBe('**bold**item');
+  });
+
+  it('光标停在正文里时仍跟着同一段文字走（不是一律甩到行首）', () => {
+    // 反向护栏：修「负坐标」不能矫枉成「光标每次都跳回行首」。
+    // `# heading` 下标 5 的 `d` 在脱掉 `# ` 之后应落在下标 3。
+    const h = harness('# heading', [[5, 5]]);
+    cmd.setHeading(0)(h.view);
+    expect(h.text()).toBe('heading');
+    expect(h.main()).toEqual([3, 3]);
+  });
+});
+
 describe('插入类', () => {
   it('链接：选中的文字当标题，并选中标题', () => {
     const h = harness('点这里', [[0, 3]]);

@@ -14,16 +14,22 @@
 // EditorState 跑命令，不必挂真 DOM。
 //
 // ⚠️ **选区坐标是这个文件里唯一容易写错的地方**，两条规则：
-//   1. `dispatch({ selection })` 里的数字按**新文档**解释，不是旧文档。任何
-//      「插了几个字符之后光标该在哪」都得自己算；
+//   1. `dispatch({ selection })` 里的数字按**新文档**解释，不是旧文档；
 //   2. 多区间时后面的区间还要再往前挪——前面每一条改动都把它整体推走了自己
-//      插入的字符数。这两件事统一由 applyEdits 收口，命令只报「本区间自己的
-//      净变化 + 只有这一条改动时的落点」，别再在命令里手算累计偏移。
-//      写错的表现：单光标全对、多光标落到别处（或直接抛 Selection points
-//      outside of document），而工具条上完全看不出异常。
+//      插入的字符数。这件事统一由 applyEdits 收口（累加前面各区间自己的净变化），
+//      命令只报「本区间自己的净变化 + 只有这一条改动时的落点」。
+//
+// ⚠️ **行前缀那一族命令一律用 `ChangeSet.mapPos` 算落点，不许手算
+// `位置 ± 前缀长度`** —— 手算在新旧坐标之间做加减，删掉行首那几个字符时很容易
+// 减出负数：光标停在 `# heading` / `- item` / `  item` 的行首时点「正文」「取消
+// 列表」「减少缩进」，落点算成 `0 - 2 = -2`。**那一步不报错**（CM6 收下了这个
+// 越界选区），下一次改动才炸：`RangeError: Invalid change range -2 to -2`
+// —— 报错的是点粗体那一下，跟真正出问题的命令隔着好几步。
+// 映射语义由 CM6 给：落在被删区间**内部**的位置收口到区间起点（不会越界），
+// 正好在插入点上的位置贴右（光标跟着文字走，而不是留在插入的前缀之前）。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { EditorSelection, type ChangeSpec } from '@codemirror/state';
+import { ChangeSet, EditorSelection, type ChangeSpec } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
 import { redo, undo } from '@codemirror/commands';
 
@@ -127,33 +133,26 @@ function toggleLinePrefix(prefixFor: (index: number) => string, ordered: boolean
 
       const changes: ChangeSpec[] = [];
       let net = 0;
-      // 选区要跟着**本区间前面那些行**的增删一起挪（range 里给的是旧坐标）
-      let fromDelta = 0;
-      let toDelta = 0;
-      const shift = (lineFrom: number, delta: number) => {
-        if (lineFrom <= range.from) fromDelta += delta;
-        if (lineFrom <= range.to) toDelta += delta;
-      };
       lines.forEach((line, i) => {
         if (allPrefixed) {
           const prefix = ordered ? (line.text.match(/^\d+\.\s/) ?? [''])[0] : prefixFor(i);
           if (prefix) {
             changes.push({ from: line.from, to: line.from + prefix.length, insert: '' });
-            shift(line.from, -prefix.length);
             net -= prefix.length;
           }
         } else {
           const prefix = prefixFor(i);
           changes.push({ from: line.from, insert: prefix });
-          shift(line.from, prefix.length);
           net += prefix.length;
         }
       });
+      // 落点交给 CM6 映射（见文件头那段 ⚠️）：贴右，光标跟着文字走
+      const own = ChangeSet.of(changes, state.doc.length);
       edits.push({
         changes,
         shift: net,
-        from: range.from + fromDelta,
-        to: range.to + toDelta,
+        from: own.mapPos(range.from, 1),
+        to: own.mapPos(range.to, 1),
       });
     }
     return applyEdits(view, edits);
@@ -179,33 +178,26 @@ export function shiftIndent(outdent: boolean, indentUnit = '  '): EditorCommand 
       const last = state.doc.lineAt(range.to).number;
       const changes: ChangeSpec[] = [];
       let net = 0;
-      // 同 toggleLinePrefix：选区要跟着前面那些行的增删挪
-      let fromDelta = 0;
-      let toDelta = 0;
-      const shift = (lineFrom: number, delta: number) => {
-        if (lineFrom <= range.from) fromDelta += delta;
-        if (lineFrom <= range.to) toDelta += delta;
-      };
       for (let n = first; n <= last; n += 1) {
         const line = state.doc.line(n);
         if (outdent) {
           const matched = line.text.match(/^(?:\t| {1,2})/);
           if (matched) {
             changes.push({ from: line.from, to: line.from + matched[0].length, insert: '' });
-            shift(line.from, -matched[0].length);
             net -= matched[0].length;
           }
         } else {
           changes.push({ from: line.from, insert: indentUnit });
-          shift(line.from, indentUnit.length);
           net += indentUnit.length;
         }
       }
+      // 同 toggleLinePrefix：落点由 CM6 映射，不手算（行首反缩进会算出负坐标）
+      const own = ChangeSet.of(changes, state.doc.length);
       edits.push({
         changes,
         shift: net,
-        from: range.from + fromDelta,
-        to: range.to + toDelta,
+        from: own.mapPos(range.from, 1),
+        to: own.mapPos(range.to, 1),
       });
     }
     return applyEdits(view, edits);
@@ -228,10 +220,12 @@ export function setHeading(level: number): EditorCommand {
     const existing = line.text.match(/^#{1,6}\s+/);
     const removed = existing ? existing[0].length : 0;
     const insert = level === 0 ? '' : `${'#'.repeat(level)} `;
-    view.dispatch({
-      changes: { from: line.from, to: line.from + removed, insert },
-      selection: { anchor: at + insert.length - removed },
-    });
+    // ★ 落点走 ChangeSet 映射，不写 `at + insert.length - removed` ★
+    // 那个式子假定光标在**被换掉的那几个井号之后**；光标停在行首时它算出负数
+    //（`# heading` 上点「正文」= `0 + 0 - 2`），而那一步不报错，等下一次格式
+    // 操作才抛 `Invalid change range`（见文件头那段 ⚠️）。
+    const changes = ChangeSet.of({ from: line.from, to: line.from + removed, insert }, state.doc.length);
+    view.dispatch({ changes, selection: { anchor: changes.mapPos(at, 1) } });
     return true;
   };
 }
