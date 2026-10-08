@@ -55,6 +55,20 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
   const [content, setContent] = useState(clip?.content ?? '');
   const [publicity, setPublicity] = useState(clip ? clip.publicity : true);
   const [autoSave, setAutoSave] = useState(false);
+  /**
+   * 新建态**提交成功、却因为有未保存的改动而留在页面上**时钉住的那一篇
+   * （null = 这一页还没建出过剪贴板）。机制与 `BlogForm.pinnedId` 同款。
+   *
+   * 【为什么要钉】「有未保存的改动就不跳转」这条规则一旦对新建态成立，用户就会
+   * 停在这一页接着改、再点一次提交 —— 而这一页在服务端已经有自己的剪贴板了。
+   * 第二笔若还是 POST，同一份内容会**再建一篇**（列表里多一篇，页面只跳去其中一篇）。
+   * 钉住 id 之后第二笔走 PUT：既把改动存进刚建出来的那一篇，又不会多发。
+   * ⚠️ 钉的是**内存里**这一页的身份 —— 刷新就丢，用户再提交仍会新建一篇。
+   * 这是刻意接受的（与 BlogForm 同一条取舍）。
+   * ⚠️ **只在「提交」这条路上钉**：Ctrl+S 是「另存一篇」的语义（见 doSave 里那段），
+   * 钉了它就会把「连按 Ctrl+S = 几篇剪贴板」变成「第二下起是更新」。
+   */
+  const [pinnedId, setPinnedId] = useState<string | null>(null);
 
   // 编辑器句柄；fallback 文本框给编辑器初始化失败时用。
   const editorRef = useRef<MarkdownEditorHandle>(null);
@@ -65,11 +79,17 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
   /** 在飞的那一笔保存（并发守卫：同一时刻只允许一笔）。 */
   const savingRef = useRef<Promise<void> | null>(null);
   /**
-   * 上一笔**成功**保存时发出去的那份字段（null = 还没成功过一笔）。
+   * 上一笔**成功**保存时发出去的那份字段，以及它落在服务端的哪一篇
+   * （null = 还没成功过一笔）。
+   *
    * 只在「提交撞上在飞的那一笔」这条路上用：等它落地之后，若表单还是那一份，
-   * 这一次点击的意图已经达成，就不必再发第二笔（见 saveClipboard）。
+   * 这一次点击就**不必再发第二笔** —— 但「提交」这个动作还欠一步「去看它」，
+   * 所以连 id 一起记着（见 saveClipboard 里那段，以及 leaveToSaved）。
+   * 失败的那一笔什么都不记（什么都没存下，不能拿来吞掉下一次点击）。
    */
-  const lastSavedRef = useRef<ClipFields | null>(null);
+  const lastSavedRef = useRef<{ fields: ClipFields; id: string | null } | null>(null);
+  /** 最近一次**离场**去的地址 —— 多个等待者同时醒来时，同一篇只跳一次。 */
+  const leftToRef = useRef<string | null>(null);
   /** 组件是否还挂着（异步回调据此判断「这一页还在不在」）。 */
   const aliveRef = useRef(true);
 
@@ -115,6 +135,27 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
   }, []);
 
   /**
+   * 「提交」成功之后离场 —— **只有这一处**做 `router.push`。
+   *
+   * 地址一律取自**那一刻服务端给回来的 id**，不看页面上任何后来的状态（用户可能
+   * 已经又在改了，而那一份还没保存 —— 跳走的判据是别的地方管的）。
+   *
+   * `id` 为 null 只在「接口没回 id」这种不该发生的情况下出现：那时**不跳**
+   * （跳去一个拼不出来的地址比不跳更糟），给一句能照着做的提示。
+   * 同一篇只跳一次：多个提交等待者在同一条 Promise 上醒来时会各走一遍这里。
+   */
+  function leaveToSaved(id: string | null) {
+    if (!aliveRef.current) return;
+    if (!id) {
+      toast('这一份已经保存好了，但没有拿到它的地址 —— 请到剪贴板列表里打开', 'warning');
+      return;
+    }
+    if (leftToRef.current === id) return;
+    leftToRef.current = id;
+    router.push(`/clipboard/${id}`);
+  }
+
+  /**
    * 保存的入口（Ctrl+S / 每分钟自动保存 / 提交都走它）。
    *
    * ★ 一笔在飞时不再发第二笔 ★ 新建态两次 POST 就是**两篇剪贴板**（页面只跳去其中
@@ -150,10 +191,19 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
       // —— 从一个已经离开的页面里再写一笔，用户根本看不到结果。
       if (!aliveRef.current) return;
       // ★ 合并提交意图 ★ 刚落地的那一笔**成功**且存的就是现在这一份 → 这次点击
-      // 要做的事已经做完了，不必再发一笔。少了这一条，连点两下「提交」在新建态
-      // 仍然会留下两篇内容完全一样的剪贴板（一笔是等待后补发的）。
+      // 不必再发一笔。少了这一条，连点两下「提交」在新建态仍然会留下两篇内容完全
+      // 一样的剪贴板（一笔是等待后补发的）。
       const last = lastSavedRef.current;
-      if (last && changedLabels(last, readFields()).length === 0) return;
+      if (last && changedLabels(last.fields, readFields()).length === 0) {
+        // ★ 但「提交」比 Ctrl+S 多一步 ★ 等在飞那一笔的写法只管「存」——
+        // 发起它的是 Ctrl+S / 自动保存那种**留在页面**的动作。而这一下是**提交**：
+        // 用户的意图是「存下这一份，然后去看它」。少了这一步，点了提交却什么都不发生
+        // （不跳、不提示，因为写请求被合并掉了），用户只会以为没生效，于是再点一次
+        // —— 那时在飞的那一笔已经落地、锁是空的，新建态就真的又发一笔 POST、
+        // 多出一篇来。所以这里补完提交欠的那一步：跳去**刚存下的那一篇**。
+        if (!stayOnPage) leaveToSaved(last.id);
+        return;
+      }
     }
     const run = doSave(stayOnPage);
     savingRef.current = run;
@@ -182,10 +232,15 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
     }
 
     try {
-      // 编辑态命中 PUT /api/clipboard/[id]；
-      // 新建态命中 POST /api/clipboard。
-      const url = isEdit ? `/api/clipboard/${clip!.id}` : '/api/clipboard';
-      const method = isEdit ? 'PUT' : 'POST';
+      // 这一笔写的是**哪一篇**：编辑态是服务端给的那一篇；新建态若已经钉住了一篇
+      // （**提交**成功过、因有改动而留在页面上），就是它 —— 那种情况走 PUT，
+      // 否则再发一笔 POST 就是同一份内容建出第二篇（见 pinnedId 的说明）。
+      // ⚠️ 新建态的 Ctrl+S / 自动保存**不钉 id**（pinnedId 只在上面那条提交分支里
+      // 设）：它们每次都是一篇新的 —— 「连按 Ctrl+S = 几篇剪贴板」是既有语义，
+      // 与「提交过一次之后改成更新」是两回事，别合并成一条规则。
+      const pinned = isEdit ? clip!.id : pinnedId;
+      const url = pinned ? `/api/clipboard/${pinned}` : '/api/clipboard';
+      const method = pinned ? 'PUT' : 'POST';
       const response = await fetch(url, {
         method,
         headers: {
@@ -199,10 +254,14 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
       // 更不 router.push（那会把人从**他现在**这一页上拽走）。
       if (!aliveRef.current) return;
       if (response.ok && result.code === 200) {
-        // 记下「服务端现在持有的就是这一份」—— 撞上在飞那一笔的提交据此判断
-        // 自己的意图是不是已经达成（见 saveClipboard）。只有成功才记：失败那一笔
-        // 什么都没存下，不能拿来吞掉下一次点击。
-        lastSavedRef.current = data;
+        // 这一笔落在服务端的哪一篇（两个接口都回 `{ id }`）。新建的第一笔成功之后
+        // 它就是这一页的 id —— 提交那一步要跳过去，有未保存改动而留下时还要钉住它。
+        const savedId =
+          typeof result.id === 'string' ? result.id : isEdit ? clip!.id : null;
+        // 记下「服务端现在持有的就是这一份、以及它落在哪一篇」—— 撞上在飞那一笔的
+        // 提交据此判断自己的意图是不是已经达成（见 saveClipboard）。只有成功才记：
+        // 失败那一笔什么都没存下，不能拿来吞掉下一次点击。
+        lastSavedRef.current = { fields: data, id: savedId };
         // ★ 请求在飞的时候用户还能接着改 ★ —— 那一段**没被存上去**。
         // 成功回调只说明「保存那一刻那一份存下来了」，不说明「页面上现在这一份」。
         // 判据是**整份表单快照**（标题 / 正文 / 公开状态），不是「刚保存过」这个事件，
@@ -222,6 +281,9 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
         }
         if (stayOnPage) {
           toast('保存成功！', 'success');
+          // ⚠️ **手动保存 / 自动保存不钉 id**（见 pinnedId 与 doSave 开头那段）：
+          // 新建页的 Ctrl+S 是「另外存一篇上去」的语义 —— 连按两下就是两篇，
+          // 这是既有行为，别顺手改成「第二下起变成更新」。
           // 保存后**不离开页面**是剪贴板新建页的主路径，所以这里必须说清楚：
           // 绿字说的只是「刚才那一份存下来了」，之后敲的字还在本地。
           // ⚠️ 点名改了哪几格 —— 草稿只存正文，标题 / 公开状态改了是接不住的，
@@ -233,15 +295,24 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
               'warning'
             );
           }
-        } else if (isEdit && changed.length > 0) {
-          // 编辑态**不跳**：跳走等于把刚改的那些一起丢掉，而编辑页没有草稿接住它们。
-          // 留在这儿再点一次「更新」是安全的（PUT 幂等，不会多出一条）。
+        } else if (changed.length > 0) {
+          // ★ 新建态与编辑态在这里是同一条规则 ★ 跳走等于把刚改的那几格一起丢掉：
+          // 草稿只接得住正文，标题 / 公开状态改了**没有任何地方接着**，随跳转消失，
+          // 而页面上刚弹过一句「保存成功」。（这一分支从前只认编辑态，新建态于是
+          // 静静跳走、改动没了 —— 判据只看 isEdit 是错的，看的是**有没有改动**。）
+          //
+          // 新建态还要**钉住刚建出来的那一篇**（见 pinnedId）：留在这页接着改、
+          // 再点一次提交时走 PUT 更新它，而不是又发一篇。
+          if (!isEdit && savedId) setPinnedId(savedId);
           toast(
-            `保存的是按下保存那一刻的${changed.join('、')}；之后你又改了 —— 这次不跳转，请再保存一次`,
+            `保存的是按下保存那一刻的${changed.join('、')}；之后你又改了 —— 这次不跳转，请再保存一次` +
+              (isEdit || savedId ? '（再点一次是更新这一篇，不会多出一篇）' : '') +
+              (!isEdit && bodyChanged ? '（正文那一版也已留在本地草稿里）' : ''),
             'warning'
           );
         } else {
-          router.push(`/clipboard/${result.id}`);
+          // 没有未保存的改动了 —— 这才离场，去的正是**这一笔响应里**那一篇。
+          leaveToSaved(savedId);
         }
       } else {
         const msg = result.message || '未知错误';
@@ -419,8 +490,11 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
             </div>
           )}
 
+          {/* 「已经建出过一篇、现在是留在页面上改它」时按钮改口叫更新：这时再点提交
+              走的是 PUT（见 pinnedId），文案还写「提交」会让人以为又要发一篇新的，
+              于是不敢点。（与 BlogForm 那颗按钮同一条理由。） */}
           <button type="submit" className="clipboard-form__submit">
-            {isEdit ? '更新' : '提交'}
+            {isEdit || pinnedId ? '更新' : '提交'}
           </button>
         </form>
       </div>

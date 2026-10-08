@@ -198,4 +198,110 @@ test.describe('云剪贴板：提交的并发', () => {
     await page.waitForTimeout(500);
     expect(posts, '第一笔落地后排队的那两下各自补发了一笔').toHaveLength(1);
   });
+
+  test('★ 新建态：请求在飞时改了标题与公开状态 → 不跳、留在页面上；再提交是 PUT 同一篇 ★', async ({
+    page,
+  }) => {
+    await registerFreshUser(page, { core: true });
+    const tag = uniqueTag();
+
+    let release!: () => void;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    const posts: string[] = [];
+    const puts: string[] = [];
+    page.on('request', (r) => {
+      if (r.method() === 'POST' && r.url().endsWith('/api/clipboard')) posts.push(r.url());
+      if (r.method() === 'PUT' && r.url().includes('/api/clipboard/')) puts.push(r.url());
+    });
+    await page.route('**/api/clipboard', async (route) => {
+      if (route.request().method() !== 'POST') return route.continue();
+      await gate;
+      await route.continue();
+    });
+
+    await page.goto('/clipboard/upload');
+    await page.fill('#title', `在飞前-${tag}`);
+    await appendToEditor(page, '#clipboard-editor', `在飞正文-${tag}`);
+
+    const created = page.waitForResponse(
+      (r) => r.request().method() === 'POST' && r.url().endsWith('/api/clipboard')
+    );
+    await page.click('#uploadForm button[type=submit]');
+    await expect.poll(() => posts.length, { timeout: 5000 }).toBe(1);
+
+    // ★ 请求还悬着 —— 用户接着改 ★ 标题与公开开关都变了。新建页的草稿**只接得住正文**，
+    // 这两格没有任何地方接着；从前这一版会随 router.push 一起消失，且页面上刚弹过绿字。
+    await page.fill('#title', `在飞后-${tag}`);
+    await page.uncheck('#publicity');
+
+    release();
+    const res = await created;
+    expect(res.ok(), `建剪贴板失败：${res.status()} ${await res.text()}`).toBeTruthy();
+    const { id } = (await res.json()) as { id: string };
+
+    await expect(page.locator('#toast-container'), '没有点名改了哪几格').toContainText('标题');
+    await page.waitForTimeout(800);
+    expect(page.url(), '新建态有未保存的改动却跳走了 —— 标题与公开状态一起没了').toContain(
+      '/clipboard/upload'
+    );
+    await expect(page.locator('#title'), '留在页面上却不是他刚改的那一份').toHaveValue(
+      `在飞后-${tag}`
+    );
+    await expect(page.locator('#publicity')).not.toBeChecked();
+
+    // 再点一次：**更新刚建出来的那一篇**，不会再建一篇
+    await page.click('#uploadForm button[type=submit]');
+    await page.waitForURL(new RegExp(`/clipboard/${id}$`), { timeout: 15_000 });
+    expect(posts, '第二次提交又发了一笔 POST —— 新建态就是两篇').toHaveLength(1);
+    expect(puts, `第二次提交没有更新刚建出来的那一篇：${puts.join(',')}`).toHaveLength(1);
+    expect(puts[0].endsWith(`/api/clipboard/${id}`), `PUT 去了别的地方：${puts[0]}`).toBe(true);
+  });
+
+  test('★ Ctrl+S 在飞时点提交（内容没改）：不多写一笔，但要跳到刚存下的那一篇 ★', async ({
+    page,
+  }) => {
+    await registerFreshUser(page, { core: true });
+    const tag = uniqueTag();
+
+    let release!: () => void;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    const posts: string[] = [];
+    page.on('request', (r) => {
+      if (r.method() === 'POST' && r.url().endsWith('/api/clipboard')) posts.push(r.url());
+    });
+    await page.route('**/api/clipboard', async (route) => {
+      if (route.request().method() !== 'POST') return route.continue();
+      await gate;
+      await route.continue();
+    });
+
+    await page.goto('/clipboard/upload');
+    await page.fill('#title', `合并提交-${tag}`);
+    await appendToEditor(page, '#clipboard-editor', `合并正文-${tag}`);
+
+    const created = page.waitForResponse(
+      (r) => r.request().method() === 'POST' && r.url().endsWith('/api/clipboard')
+    );
+    await page.keyboard.press('Control+s'); // 手动保存，让它悬着
+    await expect.poll(() => posts.length, { timeout: 5000 }).toBe(1);
+
+    await page.click('#uploadForm button[type=submit]'); // 提交撞上它 → 合并
+    await page.waitForTimeout(300);
+    expect(posts, '第一笔还悬着就叠了第二笔 POST').toHaveLength(1);
+
+    release();
+    const res = await created;
+    expect(res.ok(), `建剪贴板失败：${res.status()} ${await res.text()}`).toBeTruthy();
+    const { id } = (await res.json()) as { id: string };
+
+    // ★ 这一条是本轮修的 ★ 写请求被合并掉是对的，但「提交」的意图是**存下这一份、
+    // 然后去看它** —— 从前这里什么都不发生（不跳、不提示），用户以为没生效，
+    // 再点一次就又多一篇。
+    await page.waitForURL(new RegExp(`/clipboard/${id}$`), { timeout: 15_000 });
+    expect(posts, '合并之后又补发了一笔').toHaveLength(1);
+  });
 });

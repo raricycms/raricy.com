@@ -65,6 +65,8 @@ interface PendingCall {
   body: string;
   /** 手动兑现这笔请求（成功）。 */
   resolve(): void;
+  /** 手动兑现这笔请求（失败）。 */
+  fail(): void;
 }
 
 /** 所有请求都**悬着**，由用例决定第一笔何时落地。 */
@@ -81,6 +83,12 @@ function stubGatedFetch(): PendingCall[] {
           body: String(init?.body ?? ''),
           resolve: () =>
             resolve({ ok: true, status: 200, json: async () => ({ code: 200, id: 'clip0001' }) } as Response),
+          fail: () =>
+            resolve({
+              ok: false,
+              status: 400,
+              json: async () => ({ code: 400, message: '存不下' }),
+            } as Response),
         });
       });
     })
@@ -185,6 +193,8 @@ describe('一笔在飞时的提交', () => {
     await settle();
 
     expect(calls, '等待后各自又补发了一笔 —— 新建态就是两篇剪贴板').toHaveLength(1);
+    // 两个等待者都醒了：这一篇只跳一次（同一篇跳两遍只是多压一条历史记录）
+    expect(stubs.pushes, '两个等待者各跳了一次').toEqual(['/clipboard/clip0001']);
   });
 
   it('★ 排队期间真改了内容：这一笔必须补发，不能被「刚存过同一份」吞掉 ★', async () => {
@@ -322,5 +332,102 @@ describe('一笔在飞时的提交', () => {
     expect(calls[2].method).toBe('PUT');
     expect(calls[2].url).toBe('/api/clipboard/AbCd1234');
     expect(JSON.parse(calls[2].body).content).toBe('新正文');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 「提交撞上在飞的那一笔」之后，**这一次点击**算不算完成
+//
+// 上面那一组管的是「别多写一笔」。这一组管另一半：**别少做一步**。
+// 等在飞那一笔的写法本来是给「Ctrl+S 撞 Ctrl+S」用的 —— 那种动作的意图只是「存」。
+// 而「提交」的意图是「存下这一份，然后去看它」：合并掉写请求是对的，把最后那一步
+// 也一起吞掉就是**点了没反应**（不跳、不提示），用户只会以为没生效，再点一次
+// —— 那时锁是空的，新建态就真的又发一笔、多出一篇来。
+// ─────────────────────────────────────────────────────────────────────────────
+describe('提交撞上在飞的那一笔：这次点击的意图算不算完成', () => {
+  it('★ Ctrl+S 在飞时点提交（没改任何东西）：不重复写，但要跳到刚存下的那一篇 ★', async () => {
+    const calls = stubGatedFetch();
+    const { title, form } = await mount();
+    await setTitle(title, '合并标题');
+    stubs.doc.value = '正文';
+
+    await pressCtrlS(); // 起一笔手动保存，让它悬着
+    expect(calls).toHaveLength(1);
+    await submit(form); // 提交撞上它 → 排队
+
+    await act(async () => {
+      calls[0].resolve();
+    });
+    await settle();
+
+    expect(calls, '合并的两下各自补发了一笔').toHaveLength(1);
+    expect(
+      stubs.pushes,
+      '提交的那一步（去看它）被合并逻辑吞了 —— 页面不动、也不提示，用户以为没生效'
+    ).toEqual(['/clipboard/clip0001']);
+  });
+
+  it('★ 在飞的那一笔失败时：这次提交照样写得出去（重试不被「刚保存过」吞掉）★', async () => {
+    const calls = stubGatedFetch();
+    const { title, form } = await mount();
+    await setTitle(title, '失败重试');
+    stubs.doc.value = '正文';
+    vi.stubGlobal('alert', vi.fn());
+
+    await pressCtrlS();
+    await submit(form); // 排队
+
+    await act(async () => {
+      calls[0].fail();
+    });
+    await settle();
+
+    // 失败那一笔什么都没存下 —— 不能拿它当「这一份已经存好了」
+    expect(calls, '在飞那一笔失败了，这次提交却没写').toHaveLength(2);
+    expect(calls[1].method).toBe('POST');
+    expect(JSON.parse(calls[1].body).title).toBe('失败重试');
+  });
+
+  it('★ 新建态：请求在飞时改了标题与公开状态 → 不跳、留在页面；再提交是 PUT 同一篇 ★', async () => {
+    const calls = stubGatedFetch();
+    const { container, title, form } = await mount();
+    await setTitle(title, '在飞前标题');
+    stubs.doc.value = '正文';
+
+    await submit(form);
+    // 请求还悬着 —— 用户接着改：标题与公开开关都变了，这两格没进那一笔
+    await setTitle(title, '在飞后标题');
+    await act(async () => {
+      (container.querySelector('#publicity') as HTMLInputElement).click();
+    });
+
+    await act(async () => {
+      calls[0].resolve();
+    });
+    await settle();
+
+    expect(
+      stubs.pushes,
+      '新建态有未保存的改动却跳走了 —— 标题与公开状态跟着一起消失'
+    ).toEqual([]);
+    expect(
+      toasts.some(([m]) => m.includes('标题') && m.includes('公开设置')),
+      '没有点名改了哪几格（草稿只接得住正文，另外两格必须说出来）'
+    ).toBe(true);
+    expect(title.value, '留在页面上却不是他刚改的那一份').toBe('在飞后标题');
+
+    // 再点一次：**更新刚建出来的那一篇**，不再建第二篇
+    await submit(form);
+    expect(calls, '第二次提交又发了一笔 POST —— 新建态就是两篇').toHaveLength(2);
+    expect(calls[1].method).toBe('PUT');
+    expect(calls[1].url).toBe('/api/clipboard/clip0001');
+    expect(JSON.parse(calls[1].body).title).toBe('在飞后标题');
+    expect(JSON.parse(calls[1].body).publicity).toBe(false);
+
+    await act(async () => {
+      calls[1].resolve();
+    });
+    await settle();
+    expect(stubs.pushes, '没有未保存的改动了，该跳到这一篇').toEqual(['/clipboard/clip0001']);
   });
 });
