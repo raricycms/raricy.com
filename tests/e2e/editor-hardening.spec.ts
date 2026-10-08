@@ -403,3 +403,66 @@ test.describe('导出的正文是哪一份', () => {
   });
 });
 
+// ═══ 视图切换（一次纯粹的父级重渲染）不该抹掉预览里的后处理 ═══════════════════
+//
+// 【为什么只有 E2E 说得清】预览面板在编辑态是 `display:none`，**切一下视图**就是一次
+// 父级重渲染 —— 而 React 19 是按**对象身份** diff `dangerouslySetInnerHTML` 的
+// （内联 `{{ __html }}` 每次渲染都是新对象），于是那一瞬间容器的 innerHTML 会被整块
+// 重写。后处理（MathJax 排出来的 mjx-container、投票小组件）是在 commit 之后那次效果
+// 里做的，效果只认 doc 那几个依赖 —— **DOM 被重写它看不见**，于是不会重跑：
+// 公式退回 `$$…$$` 原文、投票位空掉，控制台一个字都不报。
+//
+// 单测（blog-ref-render.test.ts 的「重渲染不重写正文 DOM」）钉的是机制本身，
+// 这一条钉的是**用户真的会撞上的那个动作**：敲完公式切到预览看一眼。
+
+test.describe('切视图不抹掉预览（后处理的产物要留住）', () => {
+  test('★ 敲完公式再切到「预览」：公式还排着、投票小组件还填着 ★', async ({ page }) => {
+    await registerFreshUser(page, { core: true });
+    const tag = uniqueTag();
+    const voteRes = await page.request.post('/api/votes', {
+      data: { title: `切视图-${tag}`, options: ['甲', '乙'] },
+    });
+    const voteBody = (await voteRes.json()) as { code: number; data: { id: string } };
+    expect(voteBody.code, `建投票失败：${JSON.stringify(voteBody)}`).toBe(200);
+
+    await page.goto('/blog/upload');
+    await expect(page.locator('#editor .md-toolbar')).toBeVisible();
+    await page.locator('#editor .cm-content').click();
+    // `$$` 必须**独占一行**：写成同段内的 `$$E=mc^2$$` 时 MathJax 本来就不认这对
+    // 定界符（与本次修复无关，是本机实测的 MathJax 语义）—— 那样写会让这条用例
+    // 在「有没有这个 bug」两种情况下一律红。
+    for (const line of [
+      '# 标题',
+      '',
+      '行内 $x^2$ 与块级：',
+      '',
+      '$$',
+      'x = 1',
+      '$$',
+      '',
+      `投一下 [@${voteBody.data.id}]`,
+    ]) {
+      await page.keyboard.type(line);
+      await page.keyboard.press('Enter');
+    }
+
+    const setView = (label: '编辑' | '并排' | '预览') =>
+      page.locator('#editor').getByRole('button', { name: label, exact: true }).click();
+    const preview = page.locator('#editor .md-editor__preview-body');
+    // 小组件是**后处理建出来的**：正文 HTML 里只有空的 .vote-embed 挂载点
+    const widget = preview.locator('.vote-embed-widget');
+
+    // 先在「并排」里看着它排出来（两个面板都可见，排不出来与重写无关）
+    await setView('并排');
+    await expect(preview.locator('mjx-container').first()).toBeVisible({ timeout: 15_000 });
+    await expect(widget).toHaveCount(1, { timeout: 15_000 });
+
+    // ★ 切到「预览」：正文一个字没改，纯粹一次父级重渲染 ★
+    await setView('预览');
+    await expect(
+      preview.locator('mjx-container').first(),
+      '切一次视图就把公式打回了原文（后处理过的 DOM 被整块重写了）'
+    ).toBeVisible();
+    await expect(widget, '切一次视图就把投票位清空了').toHaveCount(1);
+  });
+});

@@ -255,3 +255,72 @@ describe('投票 / 收藏夹（对外视图的字面量）', () => {
     expect(calls).toEqual([`/api/votes/${VOTE_ID}`, `/api/votes/${VOTE_ID}`]);
   });
 });
+
+// ═══ 五、重渲染：后处理过的正文 DOM 不许被整块重写 ═══════════════════════════
+//
+// 【这一条盯的是什么】正文的后续处理 —— MathJax 排出来的 mjx-container、投票小组件、
+// 图片放大与复制按钮的绑定 —— 都建立在「commit 之后那次效果」上，而那个效果只认
+// doc / interactive / 数据口 这几个依赖：**「DOM 被别人重写了一遍」它看不见**。
+// 于是只要 React 因为别的理由把容器 innerHTML 重写一次，这些产物就无声消失：
+// 公式退回 `$$…$$` 原文、投票位空掉，控制台一个字都不报。
+//
+// 触发条件在本仓是常态 —— 预览面板在编辑态是 display:none，**切一下视图**就是一次
+// 父级重渲染。根因是 React 19 按**对象身份** diff `dangerouslySetInnerHTML`
+// （内联的 `{{ __html }}` 每次渲染都是新对象 → 每次都重写），修复是把它 memo 住。
+//
+// 这里模拟的正是那一刻：后处理往容器里塞了一个节点，然后父组件重渲染。
+
+describe('重渲染不重写正文 DOM（后处理的产物要留住）', () => {
+  it('★ 父组件重渲染后：容器与子节点身份不变，后处理塞进去的节点还在 ★', async () => {
+    stubFetch();
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    const App = ({ tick }: { tick: number }) =>
+      createElement(
+        'div',
+        null,
+        createElement('span', { 'data-tick': String(tick) }),
+        createElement(MarkdownRenderer, {
+          content: '# 标题\n\n正文一段',
+          contentRefs: 'expand' as const,
+        })
+      );
+    const settle = async () => {
+      for (let i = 0; i < 5; i += 1) {
+        await act(async () => {
+          await new Promise((r) => setTimeout(r, 0));
+        });
+      }
+    };
+
+    await act(async () => {
+      root.render(createElement(App, { tick: 1 }));
+    });
+    await settle();
+
+    const body = container.querySelector<HTMLElement>('#userContentContainer');
+    expect(body, '正文容器没渲染出来').not.toBeNull();
+    const h1 = body!.querySelector('h1');
+    expect(h1, '正文没渲染成 HTML').not.toBeNull();
+
+    // 后处理的产物（真跑起来就是 mjx-container / 投票小组件那一坨）
+    const widget = document.createElement('span');
+    widget.id = 'post-processed';
+    body!.appendChild(widget);
+
+    await act(async () => {
+      root.render(createElement(App, { tick: 2 }));
+    });
+    await settle();
+
+    const after = container.querySelector<HTMLElement>('#userContentContainer');
+    expect(after, '容器在重渲染里被换成了新节点').toBe(body);
+    expect(after!.querySelector('h1'), '正文子节点被整块重写（后处理会跟着一起没）').toBe(h1);
+    expect(
+      after!.querySelector('#post-processed'),
+      '后处理塞进去的节点被重写 DOM 抹掉了 —— 真机上就是公式变回 $$ 原文、投票位空掉'
+    ).not.toBeNull();
+  });
+});

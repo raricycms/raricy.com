@@ -115,6 +115,25 @@ export default function MarkdownRenderer({
   const containerRef = useRef<HTMLDivElement>(null);
   const lastRefreshRef = useRef<number | undefined>(undefined);
 
+  /**
+   * ★ 传给 `dangerouslySetInnerHTML` 的那个对象必须 memo 住 ★
+   *
+   * 【不 memo 会坏什么】React 19 diff 这个 prop 用的是**对象身份**（react-dom 的
+   * updateProperties 判 `prevProp !== nextProp` 才走 setProp，而 setProp 里才去读
+   * `__html`）。`{{ __html: doc.html }}` 这种内联字面量每次渲染都是一个新对象 ——
+   * 于是**任何一次重渲染都会把容器的 innerHTML 整块重写一遍**。
+   *
+   * 而正文的后续处理（MathJax 排版、投票小组件、图片放大与复制按钮的绑定）是在
+   * commit 之后那次效果里做的，效果只认 doc / interactive / 数据口 这些依赖：
+   * 重写 DOM 这件事它看不见，于是**不会重跑**。症状（2026-10 实测）：
+   * 「写一段公式 → 切到预览」公式原样留成 `$$…$$` 文本（预览面板在编辑态是
+   * display:none，切换视图就是一次父级重渲染）；投票位同样会空掉。全程不报错。
+   *
+   * 按 `doc` 对象 memo：**doc 变了才重写**，与上面那个效果的重跑严格同步；
+   * 其它重渲染（父组件切视图、字数统计变化）一概不碰已经处理好的 DOM。
+   */
+  const innerHtml = useMemo(() => ({ __html: doc?.html ?? '' }), [doc]);
+
   useHljsThemeStyles();
 
   // 渲染 markdown → 安全 HTML（含内容引用预处理 + 数学公式占位保护）
@@ -185,8 +204,8 @@ export default function MarkdownRenderer({
           ref={containerRef}
           className="blog-content-container"
           id="userContentContainer"
-          // 已经 DOMPurify 净化
-          dangerouslySetInnerHTML={{ __html: doc.html }}
+          // 已经 DOMPurify 净化；对象 memo 住的理由见上面 innerHtml 的说明
+          dangerouslySetInnerHTML={innerHtml}
         />
       ) : (
         <div
