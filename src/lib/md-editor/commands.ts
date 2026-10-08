@@ -355,7 +355,13 @@ export function insertLineBreak(): EditorCommand {
     // 保持主选区，下游读 `selection.main`（资源面板以 `main.head` 作锚点）拿到的
     // 就是它；`changeByRange` 用 `sel.mainIndex` 收口，这里因此与替换前一致。
     // 有选区时整体替换成一个 `\n`，与 `insertText` 同口径。
-    view.dispatch(state.replaceSelection('\n'));
+    // ★ `scrollIntoView` 不能省 ★ —— 光标停在**可见区底部**时，新插入的那一行落在
+    // 可见区之外，靠这个标记视图才会跟着往下滚。它替换掉的 `insertNewlineAndIndent`
+    // 在同一次 dispatch 上带着它；少了它，用户在长文末尾按 Shift+Enter，光标当场
+    // 落到视野外 —— 不报错、不写日志，只是「按了没反应」。
+    // 同一条命令上原版还带 `userEvent: 'input'`，**这里不跟**：那个管的是撤销分组，
+    // 补上等于顺带改了撤销语义；本轮只补滚动这一处。
+    view.dispatch(state.replaceSelection('\n'), { scrollIntoView: true });
     return true;
   };
 }
