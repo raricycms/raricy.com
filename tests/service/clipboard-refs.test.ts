@@ -9,14 +9,16 @@
 //   · ★ 私有档一条都不许漏出去 ★（`publicity=false` 是「只有本人和站长」，
 //     比 core+ 更窄的一档，被引用进公开文章也不放宽）；
 //   · 已软删 / 不存在的同形（都不出现，不区分 —— 区分等于确认存在性）；
-//   · 一次调用最多查 MAX_BLOG_REF_ITEMS 条（这是服务端每个访客请求都要跑的路径，
-//     没有上限时一篇塞满引用的文章就是一次几千条查询）。
+//   · 一次调用最多查 MAX_REF_FETCHES 条（这是服务端每个访客请求都要跑的路径，
+//     没有上限时一篇塞满引用的文章就是一次几千条查询）；
+//   · 查库并发封顶 MAX_REF_CONCURRENCY（用 prisma spy 数**实际调用**，不复用那个
+//     通用 helper —— 否则闸门没接上也可能全绿）。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeUser, prisma, resetDb } from '../helpers/db';
 import { resolvePublicClipRefs } from '@/lib/clipboard-service';
-import { MAX_BLOG_REF_ITEMS, MAX_REF_EXPAND_CHARS } from '@/lib/content-refs';
+import { MAX_REF_CONCURRENCY, MAX_REF_EXPAND_CHARS, MAX_REF_FETCHES } from '@/lib/content-refs';
 import { nowForDb } from '@/lib/db-time';
 
 /** 造一条剪贴板（正文与可见性都可指定），返回它的 8 位 id。 */
@@ -107,47 +109,84 @@ describe('resolvePublicClipRefs', () => {
     expect(out).toEqual({});
   });
 
-  it(`★ 一次最多解析 ${MAX_BLOG_REF_ITEMS} 条（按出现顺序，超出的不看）★`, async () => {
+  it(`★ 一次最多解析 ${MAX_REF_FETCHES} 条（按出现顺序，超出的不看）★`, async () => {
     const author = await makeUser({ username: 'clip-author-e', role: 'core' });
     const ids: string[] = [];
-    for (let i = 0; i < MAX_BLOG_REF_ITEMS + 1; i += 1) {
+    for (let i = 0; i < MAX_REF_FETCHES + 1; i += 1) {
       ids.push(await makeClip(author.id, { content: `第 ${i} 条` }));
     }
 
     const out = await resolvePublicClipRefs(ids.map(ref).join(' '));
-    expect(Object.keys(out)).toHaveLength(MAX_BLOG_REF_ITEMS);
+    expect(Object.keys(out)).toHaveLength(MAX_REF_FETCHES);
     expect(out[ids[0]]).toBe('第 0 条');
-    expect(out, '第 51 条不该被解析').not.toHaveProperty(ids[MAX_BLOG_REF_ITEMS]);
+    expect(out, '第 51 条不该被解析').not.toHaveProperty(ids[MAX_REF_FETCHES]);
   });
 
   it(`★ 下发总量封顶 ${MAX_REF_EXPAND_CHARS}：大条塞满后，后面的大条跳过、小条仍进 ★`, async () => {
-    // 这篇正文的公开剪贴板合计远超 500000 字 —— 没有预算的话，每一次访客请求
-    // 都会把这几条正文随 RSC payload 一起下发（改版前就是这样，无上限）。
+    // 这篇正文的公开剪贴板合计接近 50 万 —— 没有预算的话，每一次访客请求都会把
+    // 这几条正文随 RSC payload 一起下发（改版前就是这样，无上限）。
+    //
+    // ⚠️ fixture 一律用**合法单条**（每条 ≤ CLIP_CONTENT_MAX = 50000）：
+    // 99000 / 495000 这种数根本写不进库（createClip / updateClip 会拒），
+    // 拿它当样例等于在测一个真实数据到不了的形状。
     const author = await makeUser({ username: 'clip-author-g', role: 'core' });
     const bigIds: string[] = [];
-    // 5 × 99000 = 495000，离预算只剩 5000
-    for (let i = 0; i < 5; i += 1) {
-      bigIds.push(await makeClip(author.id, { content: 'A'.repeat(99000) }));
+    // 10 × 49000 = 490000，离预算只剩 10000
+    for (let i = 0; i < 10; i += 1) {
+      bigIds.push(await makeClip(author.id, { content: 'A'.repeat(49000) }));
     }
     const tooBig = await makeClip(author.id, { content: 'B'.repeat(20000) });
     const small = await makeClip(author.id, { content: 'C'.repeat(100) });
 
     const out = await resolvePublicClipRefs([...bigIds, tooBig, small].map(ref).join(' '));
 
-    expect(Object.keys(out), '超预算的大条跳过后，后面的小条该照样进').toHaveLength(6);
+    expect(Object.keys(out), '超预算的大条跳过后，后面的小条该照样进').toHaveLength(11);
     expect(out, '装不下的那条不该进来').not.toHaveProperty(tooBig);
     expect(out[small]).toBe('C'.repeat(100));
   });
 
   it('预算只按**公开**正文计：私有 / 已软删不占额度、也不出现', async () => {
     const author = await makeUser({ username: 'clip-author-h', role: 'core' });
-    // 一条巨大的私有剪贴板排在最前 —— 它一个字符都不该进映射，也不该挤掉后面公开的
-    const priv = await makeClip(author.id, { content: 'X'.repeat(495000), publicity: false });
-    const deleted = await makeClip(author.id, { content: 'Y'.repeat(495000), ignore: true });
+    // 两条接近满额的私有 / 已软删剪贴板排在最前 —— 一个字符都不该进映射，
+    // 也不该挤掉后面那条公开的
+    const priv = await makeClip(author.id, { content: 'X'.repeat(49000), publicity: false });
+    const deleted = await makeClip(author.id, { content: 'Y'.repeat(49000), ignore: true });
     const pub = await makeClip(author.id, { content: 'Z'.repeat(100) });
 
     const out = await resolvePublicClipRefs([priv, deleted, pub].map(ref).join(' '));
 
     expect(out).toEqual({ [pub]: 'Z'.repeat(100) });
+  });
+
+  it(`★ 查库并发封顶 ${MAX_REF_CONCURRENCY}（按 prisma 实际调用计数）★`, async () => {
+    const author = await makeUser({ username: 'clip-author-i', role: 'core' });
+    const ids: string[] = [];
+    for (let i = 0; i < 20; i += 1) ids.push(await makeClip(author.id, { content: `第 ${i} 条` }));
+
+    // 拦在 prisma 那一层数「同时有几条 findFirst 在飞」——不是复用通用 helper，
+    // 而是量服务端这条路径真实打出去的查询数。
+    const real = prisma.clipBoard.findFirst.bind(prisma.clipBoard) as (
+      ...args: unknown[]
+    ) => Promise<unknown>;
+    let active = 0;
+    let peak = 0;
+    const spy = vi
+      .spyOn(prisma.clipBoard, 'findFirst')
+      .mockImplementation(((...args: unknown[]) => {
+        active += 1;
+        peak = Math.max(peak, active);
+        return real(...args).finally(() => {
+          active -= 1;
+        });
+      }) as typeof prisma.clipBoard.findFirst);
+
+    try {
+      const out = await resolvePublicClipRefs(ids.map(ref).join(' '));
+      expect(Object.keys(out)).toHaveLength(20);
+    } finally {
+      spy.mockRestore();
+    }
+
+    expect(peak, `峰值并发 ${peak} 超过上限`).toBe(MAX_REF_CONCURRENCY);
   });
 });

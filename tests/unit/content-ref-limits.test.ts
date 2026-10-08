@@ -20,6 +20,7 @@ import {
   MAX_REF_CONCURRENCY,
   MAX_REF_EXPAND_CHARS,
   MAX_REF_FETCHES,
+  createConcurrencyLimiter,
 } from '@/lib/content-refs';
 
 /** 8 位剪贴板 id（`\w` 认，`{8}`）。 */
@@ -182,6 +183,24 @@ describe(`取数上限（一轮最多 ${MAX_REF_FETCHES} 个不同 id）`, () =>
 
     expect(calls).toEqual([]);
   });
+
+  it(`★ 收藏夹候选超过 ${MAX_REF_FETCHES}：HTTP 也不超 ${MAX_REF_FETCHES}（卡片另受 3 张上限）★`, async () => {
+    // 60 个不同收藏夹：取数候选封在 50 ⇒ 50 次请求；卡片另有 MAX_FAVORITE_REFS=3，
+    // 所以「请求数」与「卡片数」是两个不同的上界，别把其中一个当成另一个。
+    const calls = stubFetch(() => ({ title: '合集', count: 0, author: 'a', blogs: [] }));
+    const r = new ContentRefResolver('expand');
+    const ids = Array.from({ length: 60 }, (_, i) => favId(i));
+
+    const out = await new ContentRefProcessor(r).preprocess(ids.map(ref).join(' '));
+
+    const favCalls = calls.filter((u) => u.includes('/api/spider/favorites/'));
+    expect(favCalls, `收藏夹取数本该封在 ${MAX_REF_FETCHES} 次`).toHaveLength(MAX_REF_FETCHES);
+    expect(calls).toHaveLength(MAX_REF_FETCHES);
+    // 卡片最多 3 张 → 第 4 个及以后仍是字面量（数容器那个类，别数前缀 —— 卡片内部
+    // 还有 favorite-embed__head 等一堆同前缀的类名）
+    expect((out.match(/class="favorite-embed"/g) ?? [])).toHaveLength(3);
+    expect(out).toContain(ref(ids[3]));
+  });
 });
 
 // ═══ 二、并发：同一实例的真实异步读取封在 MAX_REF_CONCURRENCY ═══════════════
@@ -254,6 +273,26 @@ describe(`真实并发上限（${MAX_REF_CONCURRENCY}）`, () => {
     expect(stub.calls, '图床不该产生请求').toHaveLength(MAX_REF_CONCURRENCY);
     while (stub.pendingCount() > 0) await stub.drainOne();
     await Promise.all(clips);
+  });
+
+  it('★ 任务同步抛错 / 异步拒绝都不泄漏名额：后续任务照常启动（不挂死）★', async () => {
+    // 闸门的任务若**同步**抛错（而不是返回一个 reject 的 Promise），实现里少放行一格
+    // 就会让 `active` 永远差一个 → 后面的任务排到天荒地老。这条用例在「泄漏」的实现上
+    // 不是断言失败，而是**超时**：第二段 `run(...)` 永远不启动。
+    const run = createConcurrencyLimiter(1);
+
+    const syncBoom = run((() => {
+      throw new Error('同步炸');
+    }) as () => Promise<never>);
+    await expect(syncBoom).rejects.toThrow('同步炸');
+    // 名额若被同步抛错吃掉，这一条永远不启动
+    await expect(run(async () => 'after-sync')).resolves.toBe('after-sync');
+
+    const asyncBoom = run(async () => {
+      throw new Error('异步炸');
+    });
+    await expect(asyncBoom).rejects.toThrow('异步炸');
+    await expect(run(async () => 'after-reject')).resolves.toBe('after-reject');
   });
 });
 
