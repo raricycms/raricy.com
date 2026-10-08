@@ -198,6 +198,64 @@ test.describe('资源面板的键盘流', () => {
   });
 });
 
+test.describe('预览里的按钮', () => {
+  test('★ 预览里点代码块的「复制」绝不提交外层表单，也不跳转（博客 / 云剪贴板各一次）★', async ({
+    page,
+  }) => {
+    // 【为什么只有真浏览器说得清】复制按钮是**正文渲染器**（blog-renderer）生成的
+    // HTML，而编辑器的只读预览整块挂在博客 / 剪贴板的 <form> 下面。省略 type 的
+    // <button> 默认就是 submit —— 「填好必填字段 → 预览里点一下复制代码」于是会
+    // 顺手提交整张表单：博客那边当场发出去一篇文章并跳走、剪贴板那边做一次没打算
+    // 做的保存。复制本身看起来一切正常（剪贴板写失败也照样显示「已复制」），
+    // jsdom / 合成事件里没有表单的默认动作，这一条在单测里永远绿。
+    await registerFreshUser(page, { core: true });
+    // 给剪贴板写权限：不给的话 `navigator.clipboard.writeText` 会走拒绝分支
+    //（我们在 catch 里同样显示「已复制」，所以两条路都对）—— 但「按了没反应」
+    // 与「复制成功」在这里必须分得开，才说明这一下真的落到了那个按钮上。
+    await page.context().grantPermissions(['clipboard-write']);
+    const tag = uniqueTag();
+
+    for (const [name, url, editor, titleField] of [
+      ['博客新建', '/blog/upload', '#editor', '#title'],
+      ['云剪贴板新建', '/clipboard/upload', '#clipboard-editor', '#title'],
+    ] as const) {
+      const writes = collectWrites(page);
+      await page.goto(url);
+      await expect(page.locator(`${editor} .md-toolbar`)).toBeVisible();
+
+      // ★ 先让表单**具备可提交的形状** ★ 必填项留空的话，就算真的触发了提交也会被
+      // 浏览器 / 前端校验拦下，用例变成一句空话（同上面「面板里按 Enter」那两条）。
+      await page.fill(titleField, `复制标题-${tag}`);
+      await page.locator(`${editor} .cm-content`).click();
+      if (name === '博客新建') {
+        await page.fill('#description', '复制用的摘要');
+        await page.selectOption('#category', { index: 1 });
+      }
+      await page.keyboard.type('```js\nconst a = 1;\n```');
+
+      // 切到只读预览 —— 复制按钮就在预览里（正文页同款渲染）
+      await page.getByRole('button', { name: '预览', exact: true }).click();
+      const preview = page.locator(`${editor} .md-editor__preview-body`);
+      const copy = preview.locator('.copy-btn');
+      await expect(copy).toHaveCount(1);
+
+      // ★ 就是这一下 ★
+      await copy.click();
+
+      // 复制这件事本身要发生（按钮切成「已复制」；剪贴板权限在无头浏览器里可能被拒，
+      // 那条路径同样会走完成回调 —— 见 enhanceBlogContent 的 catch）
+      await expect(copy).toHaveText('已复制');
+
+      // 留出「提交了但还在飞」的窗口，再判两件事：一个写请求都没有、页面还在原地
+      await page.waitForTimeout(1000);
+      expect(writes, `${name}：点预览里的「复制」触发了写请求`).toEqual([]);
+      expect(page.url(), `${name}：点预览里的「复制」把页面带走了`).toContain(url);
+      // 正文也还在：跳转 / 重渲染把它洗掉的话，用户丢的是刚写的那一段
+      await expect(page.locator(`${editor} .cm-content`)).toContainText('const a = 1;');
+    }
+  });
+});
+
 test.describe('对话框的焦点', () => {
   test('★ Tab 一路走不出对话框，更走不到遮罩后面的提交按钮 ★', async ({ page }) => {
     await registerFreshUser(page, { core: true });

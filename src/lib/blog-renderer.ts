@@ -58,7 +58,14 @@ export function renderBlogMarkdown(text: string): RenderedBlogDoc {
         } catch {
           highlighted = code.replace(/</g, '&lt;').replace(/>/g, '&gt;');
         }
-        return `<div class="highlight"><pre><code class="hljs">${highlighted}</code></pre><button class="copy-btn" data-code="${encodeURIComponent(code)}">复制</button></div>`;
+        // ★ `type="button"` 不是装饰 ★ 这段 HTML 也会被放进**表单里**（编辑器的
+        // 只读预览整块挂在博客 / 剪贴板的 <form> 下，见 MarkdownEditor 的预览面板）。
+        // 省略 type 的 <button> 默认是 submit，于是「填好必填字段 → 预览里点一下
+        // 复制代码」会**顺手把整张表单提交掉**：博客那边当场发出去一篇文章、剪贴板
+        // 那边做一次没打算做的保存，而复制本身看起来一切正常。
+        // 白名单里保留了 `type` 属性（blog-markdown.ts 的 ALLOWED_ATTR），
+        // 所以这个属性过得了 DOMPurify；单测与 e2e 各有断言盯着（见文件末注释）。
+        return `<div class="highlight"><pre><code class="hljs">${highlighted}</code></pre><button type="button" class="copy-btn" data-code="${encodeURIComponent(code)}">复制</button></div>`;
       },
     },
   });

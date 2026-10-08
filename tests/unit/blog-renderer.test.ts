@@ -43,6 +43,19 @@ describe('代码块', () => {
     expect(html).toContain(`data-code="${encodeURIComponent('const a = 1 < 2;')}"`);
   });
 
+  // ★ 「复制」必须是 type="button" ★ 这段 HTML 会整块挂进**表单里**（编辑器的只读
+  // 预览就在博客 / 剪贴板的 <form> 下面）：省略 type 的 <button> 默认是 submit，
+  // 于是「预览里点一下复制」= 顺手提交整张表单。属性本身要过 DOMPurify 白名单，
+  // 所以这里断的是**渲染完成之后**的那份 HTML —— 白名单哪天把 `type` 拿掉，
+  // 这条当场红（真跑浏览器的那一遍在 editor-hardening.spec.ts）。
+  it('复制按钮是 type="button"（默认的 submit 会顺手提交外层表单）', () => {
+    const { html } = renderBlogMarkdown('```\ncode\n```');
+
+    const btn = /<button\b[^>]*class="copy-btn"[^>]*>/.exec(html)?.[0];
+    expect(btn, '没渲染出复制按钮，这条用例就测不到东西了').toBeDefined();
+    expect(btn).toContain('type="button"');
+  });
+
   it('未知语言回退 highlightAuto，不抛错', () => {
     const { html } = renderBlogMarkdown('```not-a-language\nhello\n```');
 
