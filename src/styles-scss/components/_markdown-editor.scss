@@ -42,6 +42,13 @@
   padding: 6px 8px;
   background: var(--color-background-subtle);
   border-bottom: 1px solid var(--color-border);
+  // 这条工具条是浮层宽度的**查询容器**：表情面板的宽度按它的内容盒收窄
+  //（见 `.md-toolbar__menu--emoji` 的 `100cqw`）。窄屏上编辑区可能只有 ~190px
+  // 内容宽，而面板挂在编辑区**外**会撑出去、被 `.md-editor` 的 `overflow: hidden`
+  // 裁掉右边两列 —— 且裁掉是静默的（DOM 里都在、就是点不到）。
+  // `container-type: inline-size` 会带来 `contain: layout`（因此这里也成了一个
+  // 新的层叠上下文），本站没有依赖工具条浮层去盖住编辑区之外的东西，无影响。
+  container-type: inline-size;
 }
 
 .md-toolbar__group {
@@ -139,12 +146,22 @@
   }
 }
 
-/// 表情面板：网格铺开，比一列菜单好扫
+/// 表情面板：网格铺开，比一列菜单好扫。
+///
+/// 【宽度为什么不是写死的】`width: min(264px, 100cqw)` —— `100cqw` 是**工具条
+/// 内容盒**的宽度（见 `.md-toolbar` 的 `container-type`），也就是编辑器真实可用
+/// 宽度减掉工具条两侧内边距。宽屏上它远大于 264px，取 264（观感一字未动）；窄屏
+/// 上它更小，面板就跟着收，**不再撑出编辑区被 `overflow: hidden` 默默裁掉**。
+/// 用容器查询而不是 `calc(100vw - 常量)`：博客与剪贴板两条链路的檐沟不同，
+/// 减常量等于把其中一条的尺寸硬套到另一条上。
+///
+/// 列数交给 `auto-fill`：宽屏 264px 下仍是 8 列（与改版前逐像素一致），窄到
+/// 190px 时自动落成 6 列，每格都还塞得下一个表情。
 .md-toolbar__menu--emoji {
   display: grid;
-  grid-template-columns: repeat(8, 1fr);
+  grid-template-columns: repeat(auto-fill, minmax(28px, 1fr));
   gap: 2px;
-  width: 264px;
+  width: min(264px, 100cqw);
 }
 
 .md-toolbar__emoji {
@@ -228,6 +245,13 @@
     row-gap: 6px;
   }
 
+  // 6) 表情面板在窄屏可能比编辑区还高（短视口 / 横屏：编辑区 60vh 只有 ~240px，
+  //    而面板十来行）。限高并让面板**自己滚**，否则底部那几行会被 `.md-editor`
+  //    的 `overflow: hidden` 静默裁掉、看得见却点不到。宽屏不限（那边够高）。
+  .md-toolbar__menu--emoji {
+    max-height: 50vh;
+    overflow-y: auto;
+  }
 }
 
 // ── 两个面板 ────────────────────────────────────────────────────────────────
