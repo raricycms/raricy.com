@@ -231,21 +231,18 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
     }, []);
 
     // ── 上传 ────────────────────────────────────────────────────────────────
-    const settleSlot = useCallback(
-      (batchId: number, index: number, length: number, message?: string) => {
-        const v = viewRef.current;
-        if (!v || destroyedRef.current) return;
-        v.dispatch({
-          effects: settleUploadSlot.of({
-            batchId,
-            key: `${batchId}:${index}`,
-            length,
-            message,
-          }),
-        });
-      },
-      []
-    );
+    /**
+     * 通知状态机「这个槽位有结果了」。**只传失败原因，不传长度 / 位置**：
+     * 成功那一条连正文一起走同一个事务，插进去的那段区间由状态机自己从改动里
+     * 映射出来（见 upload-anchors.ts 的 settleUploadSlot）。
+     */
+    const settleSlot = useCallback((batchId: number, index: number, message?: string) => {
+      const v = viewRef.current;
+      if (!v || destroyedRef.current) return;
+      v.dispatch({
+        effects: settleUploadSlot.of({ batchId, key: `${batchId}:${index}`, message }),
+      });
+    }, []);
 
     const startUpload = useCallback(
       (candidates: File[], pos: number) => {
@@ -268,10 +265,9 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
         });
 
         void runLimited(gate.files, MAX_CONCURRENT_UPLOADS, async (file, index) => {
-          const key = `${batchId}:${index}`;
           const rejected = precheckFile(file);
           if (rejected) {
-            settleSlot(batchId, index, 0, rejected);
+            settleSlot(batchId, index, rejected);
             notify(`${file.name || '图片'}：${rejected}`, 'error');
             return;
           }
@@ -280,7 +276,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
           // 图床里的东西照旧留着（服务端已经收了），不靠删素材来补偿一次取消的编辑。
           if (destroyedRef.current || abortedRef.current.has(batchId)) return;
           if (!result.ok) {
-            settleSlot(batchId, index, 0, result.message);
+            settleSlot(batchId, index, result.message);
             notify(`${file.name || '图片'}：${result.message}`, 'error');
             return;
           }
@@ -288,10 +284,11 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
           const live = viewRef.current;
           if (!live) return;
           const at = batchInsertPos(live.state, batchId, index);
-          if (at === null) return; // 批次已退场（整批取消）—— 不插
+          if (at === null) return; // 批次已退场（整批取消 / 锚点被删）—— 不插
           live.dispatch({
             changes: { from: at, insert: markdown },
-            effects: settleUploadSlot.of({ batchId, key, length: markdown.length }),
+            // 长度不进效果：插进去的那段正文就在这一条 change 里，状态机自己映射
+            effects: settleUploadSlot.of({ batchId, key: `${batchId}:${index}` }),
           });
         });
       },
