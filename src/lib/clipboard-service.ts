@@ -11,9 +11,9 @@ import { generateShortId } from './short-id';
 import {
   collectClipboardRefIds,
   createConcurrencyLimiter,
-  MAX_BLOG_REF_ITEMS,
   MAX_REF_CONCURRENCY,
   MAX_REF_EXPAND_CHARS,
+  MAX_REF_FETCHES,
 } from './content-refs';
 import { maskMarkdownCode } from './favorite-refs';
 
@@ -253,9 +253,12 @@ export async function getClip(
  * 私有 / 已软删 / 不存在三种情况**同形**：都不出现在结果里，调用方一律保留字面量，
  * 不区分（区分等于确认存在性）。
  *
- * 【条数上限与客户端同源】取正文里出现的前 `MAX_BLOG_REF_ITEMS` 条（按出现顺序，
- * 去重）。这个数必须与渲染器那边的替换上限是同一个 —— 见 content-refs.ts 的说明。
- * 没有它，一篇塞满引用的文章会让**每一次**访客请求打出成千上万条查询。
+ * 【条数上限与客户端同源，且是**取数**那一档】取正文里出现的前 `MAX_REF_FETCHES`
+ * 条（按出现顺序，去重）。这里要的是「服务端为这一篇最多查几次库、最多下发多少条」，
+ * 对应客户端那个**取数候选**上限，而不是它的**显示**上限（`MAX_BLOG_REF_ITEMS`）——
+ * 两个数当前都是 50，但语义不同：显示上限管「替换几处」，取数上限管「取几次」。
+ * 见 content-refs.ts 里 `MAX_REF_FETCHES` 的说明。没有它，一篇塞满引用的文章会让
+ * **每一次**访客请求打出成千上万条查询。
  *
  * 【并发与总量也有上限】查库走 `MAX_REF_CONCURRENCY` 的闸门（同一时刻最多 4 条），
  * 入映射的正文合计封顶 `MAX_REF_EXPAND_CHARS`（500000）—— 防的是**匿名 RSC payload
@@ -270,7 +273,7 @@ export async function getClip(
  * 不同的东西，**而且都不报错**。
  */
 export async function resolvePublicClipRefs(markdown: string): Promise<Record<string, string>> {
-  const ids = collectClipboardRefIds(maskMarkdownCode(markdown)).slice(0, MAX_BLOG_REF_ITEMS);
+  const ids = collectClipboardRefIds(maskMarkdownCode(markdown)).slice(0, MAX_REF_FETCHES);
   if (ids.length === 0) return {};
 
   // 按**下标**收集结果 —— 并发完成顺序不定，映射要按源文顺序重建。
