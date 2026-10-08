@@ -267,6 +267,62 @@ test.describe('编辑区的键盘出口', () => {
   });
 });
 
+test.describe('导出的并发', () => {
+  test('★ 第一份还在算的时候再点一次：必须给明确提示，且只下一份 ★', async ({ page }) => {
+    // 【这一条盯的是「静默早退」】`snapshotBusyRef` 挡住第二份本身是对的（连点两下
+    // 不该渲染两遍、下两份），但**不说话**在用户那边就是「点了没反应」—— 而导出偏偏
+    // 是最慢的一趟（整篇引用取数 + MathJax 排版），越慢越容易连点，越容易撞上。
+    await registerFreshUser(page, { core: true });
+    const tag = uniqueTag();
+    const clipId = await makeClip(page, `导出并发-${tag}`, `并发正文-${tag}`);
+
+    // 把引用取数按住 —— 导出的「在飞」窗口就在这儿。不按住的话本机几十毫秒就算完了，
+    // 两下点击根本不重叠，用例恒绿（什么也没证明）。
+    let release!: () => void;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    let held = 0;
+    await page.route('**/api/clipboard/*', async (route) => {
+      held += 1;
+      await gate;
+      await route.continue();
+    });
+
+    await page.goto('/blog/upload');
+    await page.fill('#title', `导出并发-${tag}`);
+    await page.locator('#editor .cm-content').click();
+    await page.keyboard.insertText(`引用 [@${clipId}]`);
+
+    const downloads: Download[] = [];
+    page.on('download', (d) => downloads.push(d));
+
+    const exportMenu = async () => {
+      await page.locator('#editor').getByRole('button', { name: '导出', exact: true }).click();
+      await page
+        .locator('#editor')
+        .getByRole('menuitem', { name: '导出 HTML', exact: true })
+        .click();
+    };
+
+    await exportMenu();
+    await expect.poll(() => held, { timeout: 10_000 }).toBeGreaterThan(0);
+
+    // 第一份还在算 —— 用户又点了一次
+    await exportMenu();
+    await expect(
+      page.locator('#toast-container'),
+      '第二下是静默的 —— 用户以为点了没反应'
+    ).toContainText('正在生成导出内容');
+    expect(downloads, '第一份还没算完就下去了第二份').toHaveLength(0);
+
+    release();
+    await expect.poll(() => downloads.length, { timeout: 20_000 }).toBe(1);
+    await page.waitForTimeout(500);
+    expect(downloads, '第二下也下了一份').toHaveLength(1);
+  });
+});
+
 test.describe('导出的正文是哪一份', () => {
   test('★ 敲完最后一个字立刻导出：导出件里必须有刚敲的那一段 ★', async ({ page }) => {
     await registerFreshUser(page, { core: true });
@@ -346,3 +402,4 @@ test.describe('导出的正文是哪一份', () => {
     expect(text.replace(/<[^>]+>/g, '')).toContain('const a = 1;');
   });
 });
+

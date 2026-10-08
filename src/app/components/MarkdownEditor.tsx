@@ -45,6 +45,7 @@ import {
   absolutizeSiteUrls,
   buildExportHtml,
   downloadHtml,
+  localizeFragmentLinks,
   printHtml,
   safeFilename,
   stripInteractiveShells,
@@ -506,7 +507,13 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
       title: string;
       bodyHtml: string;
     } | null> => {
-      if (snapshotBusyRef.current) return null;
+      if (snapshotBusyRef.current) {
+        // ★ 第二次点击必须**说话** ★ 早退本身是对的（连点两下不该渲染两遍、下两份），
+        // 但静默早退在用户那边就是「点了没反应」—— 而这一趟偏偏是最慢的一趟
+        // （整篇引用取数 + MathJax），越慢越容易连点，也就越容易撞上。
+        notify('正在生成导出内容，请稍候…', 'warning');
+        return null;
+      }
       snapshotBusyRef.current = true;
       let holder: HTMLDivElement | null = null;
       try {
@@ -535,10 +542,11 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
             return hit ? (hit.data ?? null) : undefined;
           },
         });
-        // 剥掉只在站内页面上才成立的空壳（代码块的「复制」按钮），并把站内相对
-        // 地址补成绝对地址 —— 否则导出件从 file:// 打开时图片全裂、链接全废。
+        // 剥掉只在站内页面上才成立的空壳（代码块的「复制」按钮）；
+        // 把相对地址解析成这一页的绝对地址；纯 `#锚点` 摘掉 target（就地跳）。
         stripInteractiveShells(holder);
         absolutizeSiteUrls(holder);
+        localizeFragmentLinks(holder);
 
         return { title, bodyHtml: holder.innerHTML };
       } catch {

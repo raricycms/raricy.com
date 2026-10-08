@@ -32,59 +32,121 @@
 // 抄过去就够了，导出件里**不需要**再加载 MathJax。
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 站点源（`https://站点`），用来把站内相对地址补成绝对地址。 */
-function siteOrigin(explicit?: string): string {
-  if (explicit) return explicit.replace(/\/+$/, '');
-  return typeof window === 'undefined' ? '' : window.location.origin;
+/**
+ * 解析相对地址时的**基准地址** —— 这一页自己的地址。
+ *
+ * 为什么是「页面地址」而不是「站点源（origin）」：正文里的相对地址（`../`、
+ * `./x`、`x.png`）本来就是**相对于本页**写的，只有页面地址才解析得出它的目标。
+ * 从前只认 `/` 开头的值，于是 `[首页](../)` 这类相对链接在导出件里原样留着，
+ * 双击打开就指向 `file:///C:/…/` 那一层 —— 链接看着在，点下去什么也没有。
+ */
+function pageBase(explicit?: string): string {
+  if (explicit) return explicit;
+  return typeof window === 'undefined' ? '' : window.location.href;
 }
 
 /**
- * `<style>` 里**站内相对**的 `url(/…)` 补成绝对地址。
+ * 把一个属性值解析成绝对地址。**只解析真的相对地址**，其余原样返回：
+ *   · `#锚点` —— 导出件**内部**的跳转，必须继续指自己。`new URL('#x', base)`
+ *     会把它拼成 `https://站点/…/#x`，那正是这里最要避免的（等于加了个 `<base>`）；
+ *   · 空串 / `data:` / `blob:` / `javascript:` / `about:` —— 不是「地址」；
+ *   · 解析不出来的畸形串 —— 原样留着，总好过改写成另一个畸形串。
+ *
+ * 其余一律 `new URL(value, base)`：
+ *   · `/api/…`、`../x`、`x.png` → 站点绝对地址（导出件从 `file://` 打开才取得到）；
+ *   · `//cdn.test/a.png` → **补上这一页的协议**。协议相对地址在 `file://` 下会被
+ *     解析成 `file://cdn.test/a.png` —— 一个不存在的主机上的文件，必裂；
+ *   · `https://…` / `mailto:` / `tel:` → 解析结果就是它自己，等于没动。
+ */
+export function resolveUrl(value: string, base: string): string {
+  if (!base || value === '' || value.startsWith('#')) return value;
+  if (/^(?:data|blob|javascript|about|mailto|tel):/i.test(value)) return value;
+  try {
+    return new URL(value, base).href;
+  } catch {
+    return value;
+  }
+}
+
+/**
+ * `<style>` / 行内 `style` 里 `url(…)` 的地址补成绝对地址。
  *
  * MathJax 的 CHTML 字体表就是这种形态：`src: url("/static/mathjax/woff-v2/…")`。
- * `<style>` 里的相对地址是**相对于文档基址**解析的 —— 导出件从 `file://` 打开时
+ * 样式里的相对地址是**相对于文档基址**解析的 —— 导出件从 `file://` 打开时
  * 它指向 `file:///C:/…/static/…`，一律 404，公式只能用回退字体（字形与间距都不对）。
- * 只补「单个 `/` 开头」的；`data:` / `https:` / `//cdn…` 一概不碰。
+ * 判据与属性那条同一个 `resolveUrl`：`data:` / `#filter` / 已经是绝对的地址不动。
  */
-function absolutizeCssUrls(css: string, origin: string): string {
-  if (!origin) return css;
-  return css.replace(/url\(\s*(['"]?)\/(?!\/)/g, (_all, quote: string) => `url(${quote}${origin}/`);
+export function absolutizeCssUrls(css: string, base: string): string {
+  if (!base) return css;
+  return css.replace(/url\(\s*(['"]?)([^'")]*)\1\s*\)/gi, (all, quote: string, value: string) => {
+    const resolved = resolveUrl(value, base);
+    return resolved === value ? all : `url(${quote}${resolved}${quote})`;
+  });
 }
 
 /** 把 head 里的样式抄成一段可以直接放进导出件的标记。 */
-function collectStyleMarkup(origin: string): string {
+function collectStyleMarkup(base: string): string {
   const parts: string[] = [];
   for (const node of Array.from(
     document.head.querySelectorAll('link[rel="stylesheet"], style')
   )) {
     if (node.tagName === 'LINK') {
+      // 浏览器已经把 `.href` 解析成绝对地址了 —— 直接用，别自己拼
       const href = (node as HTMLLinkElement).href;
       if (href) parts.push(`<link rel="stylesheet" href="${href}">`);
     } else {
-      parts.push(absolutizeCssUrls(node.outerHTML, origin));
+      parts.push(absolutizeCssUrls(node.outerHTML, base));
     }
   }
   return parts.join('\n');
 }
 
 /**
- * 把正文里的**站内相对地址**补成站点绝对地址，让导出件从 `file://` 打开时
- * 图片、音频、站内链接照样出得来。
+ * 把正文与内联样式里的**相对地址**解析成这一页的绝对地址，让导出件从 `file://`
+ * 打开时图片、音频、站内链接、背景图照样出得来。
  *
- * 只动以**单个 `/`** 开头的值：
- *   · `#锚点` —— 导出件**内部**的跳转，必须继续指自己（改它就是在修一个不存在的问题）；
- *   · `mailto:` / `tel:` / `https:` / `data:` / `//cdn…` —— 已经是别的体系，别碰。
+ * 覆盖四类落点：`src` / `href` / `poster` 三个属性、以及 `style` 属性与正文里的
+ * `<style>`（MathJax / 编辑器的行内样式都可能带 `url(…)`）。
+ * 不动的那些（`#锚点`、`data:`、已经是绝对的地址）见 `resolveUrl` 的说明。
  */
-export function absolutizeSiteUrls(root: HTMLElement, origin?: string): void {
-  const base = siteOrigin(origin);
-  if (!base) return;
+export function absolutizeSiteUrls(root: HTMLElement, base?: string): void {
+  const resolvedBase = pageBase(base);
+  if (!resolvedBase) return;
   for (const attr of ['src', 'href', 'poster'] as const) {
     root.querySelectorAll<HTMLElement>(`[${attr}]`).forEach((el) => {
       const value = el.getAttribute(attr);
-      if (!value || !value.startsWith('/') || value.startsWith('//')) return;
-      el.setAttribute(attr, base + value);
+      if (!value) return;
+      const next = resolveUrl(value, resolvedBase);
+      if (next !== value) el.setAttribute(attr, next);
     });
   }
+  root.querySelectorAll<HTMLElement>('[style]').forEach((el) => {
+    const css = el.getAttribute('style');
+    if (!css || !css.includes('url(')) return;
+    const next = absolutizeCssUrls(css, resolvedBase);
+    if (next !== css) el.setAttribute('style', next);
+  });
+  root.querySelectorAll('style').forEach((el) => {
+    const css = el.textContent;
+    if (!css || !css.includes('url(')) return;
+    el.textContent = absolutizeCssUrls(css, resolvedBase);
+  });
+}
+
+/**
+ * 纯 `#锚点` 链接在导出件里要**就地跳**。
+ *
+ * 渲染管线给只读预览的正文里每一条链接都加了 `target="_blank" rel="noopener …"`
+ * （站内预览的规矩：就地点跳会丢掉没发布的草稿）。导出件是一份**死文件**，
+ * `#锚点` 是它**自己文档内部**的跳转 —— 留着 `target` 就是「点一下弹出第二个标签页，
+ * 里面是同一份文件」，而且新标签页连锚点都不一定带过去（用户看到的是「点了没反应」）。
+ * 只摘这一类的 target / rel：真正的外链仍然新窗口开（那是它们本来的行为）。
+ */
+export function localizeFragmentLinks(root: HTMLElement): void {
+  root.querySelectorAll<HTMLAnchorElement>('a[href^="#"]').forEach((a) => {
+    a.removeAttribute('target');
+    a.removeAttribute('rel');
+  });
 }
 
 /**
@@ -112,8 +174,11 @@ export interface ExportOptions {
   title: string;
   /** 正文容器的 innerHTML（调用方跑完整管线后取出来）。 */
   bodyHtml: string;
-  /** 站点源；不传就取当前页面的 `location.origin`（单测可显式传）。 */
-  origin?: string;
+  /**
+   * 解析相对地址的基准（**页面地址**，不是站点源）；不传就取当前页面的
+   * `location.href`（单测可显式传）。
+   */
+  base?: string;
 }
 
 /**
@@ -122,7 +187,7 @@ export interface ExportOptions {
  * `body` 的形状沿用文章页（`.blog-content-container` 提供阅读版式），
  * 于是导出件在浏览器里打开的观感与站内文章页一致。
  */
-export function buildExportHtml({ title, bodyHtml, origin }: ExportOptions): string {
+export function buildExportHtml({ title, bodyHtml, base }: ExportOptions): string {
   const theme = document.documentElement.getAttribute('data-theme') ?? 'light';
   return `<!DOCTYPE html>
 <html lang="zh-CN" data-theme="${theme}">
@@ -130,7 +195,7 @@ export function buildExportHtml({ title, bodyHtml, origin }: ExportOptions): str
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(title)}</title>
-${collectStyleMarkup(siteOrigin(origin))}
+${collectStyleMarkup(pageBase(base))}
 </head>
 <body>
 <main class="blog-content-container-container">
@@ -175,23 +240,50 @@ export function downloadHtml(filename: string, html: string): void {
 /**
  * 打印前等资源的上限。**超了照打** —— 宁可少一张没加载完的图，
  * 也不能让「点了打印没反应」。
+ *
+ * ⚠️ 它是**整段等待共用**的一个总上限（样式 / 图片 + 字体两段加起来），
+ * 不是每段各给这么久 —— 否则最坏情况会拖到 2×。
  */
 export const PRINT_READY_MAX_MS = 3000;
 
+/** 等一帧（让浏览器把刚到手的东西布局一遍）。 */
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => resolve());
+  });
+}
+
+/** 在总预算内等 p；预算已经用完就立刻放行。 */
+function withinDeadline(p: Promise<void>, deadline: number): Promise<void> {
+  if (deadline - Date.now() <= 0) return Promise.resolve();
+  return Promise.race([
+    p,
+    new Promise<void>((resolve) => setTimeout(resolve, deadline - Date.now())),
+  ]).then(() => undefined);
+}
+
 /**
- * 等「这一份文档真的画得出来」：样式表 + 图片 + 字体。
+ * 等「这一份文档真的画得出来」：先样式表 + 图片（**布局**才算发生），
+ * 再回头读**当时**的 `fonts.ready`，最后整体封顶。
  *
  * 三样都必须等，各有各的后果（而且都只在真按下打印时才看得见）：
  *   · 样式表没到 → 打出来**没有版式**；
  *   · 图片没到   → PDF 里是空白框（尤其刚插进去的那张图）；
  *   · 字体没就绪 → MathJax 的 CHTML 公式字形与间距都不对。
- * 外加**封顶**：任何一条卡住都不该把打印一起卡住，超时就按现状打。
+ *
+ * ★ 顺序不能反：字体必须**排在样式与布局之后** ★
+ * `doc.fonts.ready` 在没有字体请求在跑时是**已经兑现**的 Promise。刚 `document.write`
+ * 完那一瞬间样式表还没解析出来，也就没有 `@font-face` 规则、更没有任何字体请求 ——
+ * 这时候读它等于「等了一个立刻完成的空等待」，`await` 一下就过去了，字体一个都没等。
+ * 等到样式表 load 完、再过一两帧让**布局**发生（字体请求是布局触发下载的），
+ * 那时读到的 `fonts.ready` 才真的挂着那几个字体文件。前后差的是「公式用回退字体
+ * 打出来」，页面上没有任何提示。
+ * 两帧：rAF 回调跑在这一帧的样式/布局**之前**，所以第一帧才做布局、第二帧才看得到它
+ * 触发出来的加载。
  */
 function waitForPrintReady(doc: Document, maxMs: number): Promise<void> {
+  const deadline = Date.now() + maxMs;
   const waits: Promise<unknown>[] = [];
-
-  const fonts = (doc as Document & { fonts?: FontFaceSet }).fonts;
-  if (fonts?.ready) waits.push(fonts.ready.catch(() => undefined));
 
   doc.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]').forEach((link) => {
     // 已经解析出 sheet 的说明早就加载好了（同源 CSS 读得到 sheet）——
@@ -228,10 +320,15 @@ function waitForPrintReady(doc: Document, maxMs: number): Promise<void> {
   });
 
   const settled = waits.length ? Promise.all(waits).then(() => undefined) : Promise.resolve();
-  return Promise.race([
-    settled,
-    new Promise<void>((resolve) => setTimeout(resolve, maxMs)),
-  ]).then(() => undefined);
+  return withinDeadline(settled, deadline)
+    .then(() => nextFrame())
+    .then(() => nextFrame())
+    .then(() => {
+      // ★ 到这里才读 fonts.ready（见上面那段）★
+      const fonts = (doc as Document & { fonts?: FontFaceSet }).fonts;
+      if (!fonts?.ready) return;
+      return withinDeadline(fonts.ready.catch(() => undefined).then(() => undefined), deadline);
+    });
 }
 
 /**
