@@ -285,10 +285,16 @@ export default function ResourcePanel({ onClose, onInsert }: ResourcePanelProps)
                   // 用 Enter 确认候选、用 ↑↓ 在候选词之间翻 —— 那几下必须原样交给 IME：
                   // 既不能插引用（用户想插的是候选词里那一条，不是面板高亮那条）、
                   // 不能关面板，更不能 preventDefault（拦下来候选就选不中，字打不进去）。
-                  // 两个判据都要：`nativeEvent.isComposing` 是浏览器给的，但 Safari 在
-                  // **compositionend 之后**那一下 keydown 上会给 false —— 本地标志兜住它；
-                  // 反过来，某些浏览器组字时 isComposing 为真而事件早于 compositionstart，
-                  // 那种情况只能靠 isComposing。少一个就有一类输入法漏网。
+                  // 两个判据都要，但它们覆盖的是**组字期间不同的到达顺序**：
+                  // `isComposing` 是浏览器随事件一起给的；本地标志则由 compositionstart /
+                  // end 翻转 —— 有的环境里 keydown 早于 compositionstart（那一下还没有
+                  // 「在组字」这个事实），有的则在 compositionend 之前、标志已复位的位置
+                  // 收到按键。合成事件层面的用例见 md-editor-resource-panel.test.ts。
+                  // ⚠️ **它们管不到「compositionend 之后**那一下** keydown」**：原生标志那时
+                  // 可能仍是 false，而本地标志已在 compositionend 里复位成 false。这一格
+                  // **刻意不补时序补丁** —— 那种输入法行为本站没有任何实测证据（真中文 /
+                  // 日文 IME 未测，e2e 的 `insertText` 绕过整条组字路径），为一个没验证过的
+                  // 现象加一条「什么时候算组字结束」的猜测，只会制造新的静默错判。
                   // 这一行必须在下面任何 preventDefault **之前**。
                   if (e.nativeEvent.isComposing || composingRef.current) return;
                   if (e.key === 'Enter') {

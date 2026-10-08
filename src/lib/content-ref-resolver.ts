@@ -122,7 +122,21 @@ export class ContentRefResolver {
     return p;
   }
 
-  /** 同步读已落账的结果（替换阶段用 —— 那时所有 resolve 都已 await 完）。 */
+  /**
+   * 同步读**已落账**的那一份 —— 只在「这一格刚 resolve 过、且中间没人作废 / 淘汰」
+   * 时才等于这一轮取到的结果。
+   *
+   * ⚠️ **`await resolve()` 本身不保证随后 peek 就有东西**：resolve 的**返回值**才是
+   * 那一刻的真值，写不写进 entries 是另一回事 ——
+   *   · 期间有人 `invalidate()`（点「刷新引用」、另一次预览渲染起来）→ entries 被清空，
+   *     而且在飞的旧代结果落地时被判过期、**根本不写回来**；
+   *   · 超过 `RESOLVER_CACHE_CAP` → 最早那几格被淘汰；
+   *   · 这一格本来就取不到（403 降级 / 网络失败）→ 没有 entry 可读。
+   * 所以替换阶段**不吃这条捷径**：`ContentRefProcessor.preprocessRound` 把本轮
+   * resolve 的返回值收进 `entries` 一并交出来，导出与预览都用那一份。
+   * 这个方法留给「要用的是缓存本身」的地方（测试断言缓存状态），
+   * 别拿它当「刚取过就一定读得到」。
+   */
   peek(type: ContentRefType, id: string): ResolvedRef | undefined {
     return this.entries.get(`${type}:${id}`);
   }
