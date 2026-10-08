@@ -17,11 +17,13 @@
 // 不匹配的一律保留字面量（fail-closed）。
 //
 // 【一批**跨管线**的东西，别在别处再写一份】id 长度词汇（上面三个常量）、
-// `MAX_BLOG_REF_ITEMS`（博客渲染器与对外视图的服务端解析共用同一个数），以及
-// 「取数取多少 / 并发多少 / 展开多大」这三个预算（`MAX_REF_FETCHES` /
-// `MAX_REF_CONCURRENCY` / `MAX_REF_EXPAND_CHARS`）与那个并发闸门
-// （`createConcurrencyLimiter`）。本文件零依赖，客户端渲染器与服务端解析都 import
-// 得起。
+// `MAX_BLOG_REF_ITEMS`（**只管客户端主循环那 50 处显示**：剪贴板 / 投票 / 图床
+// 共用一份替换额度）、「取数取多少 / 并发多少 / 展开多大」这三个预算
+// （`MAX_REF_FETCHES` 还兼管服务端公开剪贴板的查询条数 / `MAX_REF_CONCURRENCY` /
+// `MAX_REF_EXPAND_CHARS`），以及那个并发闸门（`createConcurrencyLimiter`）。
+// **收藏夹与音频各有自己的显示上限**（不在 `MAX_BLOG_REF_ITEMS` 之列，见各自的
+// `MAX_FAVORITE_REFS` / `MAX_AUDIO_REFS`）。本文件零依赖，客户端渲染器与服务端
+// 解析都 import 得起。
 //
 // 本文件零依赖、不碰 DOM 也不碰 React，故可直接单测
 // （tests/unit/content-refs.test.ts）。
@@ -69,13 +71,13 @@ export const CLIPBOARD_REF_PROBE = new RegExp(
 );
 
 /**
- * 一篇正文里最多处理几条 `[@…]` 引用（**按引用条数**，不是按种类）。
+ * 客户端主循环里最多替换几处 `[@…]` 引用（**按引用条数**，不是按种类）。
  *
- * 【两个调用方共用这一个数，别各写一份】博客渲染器（`content-ref-processor.ts` 的
- * `ContentRefProcessor`）用它封顶替换次数；对外视图那条**服务端**解析
- * （`clipboard-service.ts` 的 `resolvePublicClipRefs`）用它封顶一次请求里的查库次数。
- * 两边的判据必须是同一个数：不一致时，访客会看到「成员视图展开到第 50 条为止、
- * 对外视图是另一个条数」这种**没有任何报错**的分叉。
+ * 【只管显示，不管取数】这是**显示档**：博客渲染器（`content-ref-processor.ts` 的
+ * `ContentRefProcessor`）用它封顶主循环的替换次数，剪贴板 / 投票 / 图床**共用**这一
+ * 份额度。**取数候选与服务端公开剪贴板的查询条数是另一回事**（见 `MAX_REF_FETCHES`）；
+ * **收藏夹与音频也各有自己的显示上限**，不占这 50 处（各跑一趟，见
+ * `MAX_FAVORITE_REFS` / `MAX_AUDIO_REFS`）。
  */
 export const MAX_BLOG_REF_ITEMS = 50;
 
