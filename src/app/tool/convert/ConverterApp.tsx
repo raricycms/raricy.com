@@ -402,6 +402,15 @@ export default function ConverterApp() {
 
   const startConversion = useCallback(() => {
     if (!edge || okPending.length === 0) return;
+    // ⚠️ `edge` 是**按 id 查出来的**（edgeById），不保证它出现在当前候选集里：
+    // 预设会把 edgeId 直接写成它自己那条边，而手上的文件可能并不适合它
+    // （能力不可用 / 内容不符）—— 不挡的话就拿一条当前不可执行的边去跑，
+    // 失败发生在 runner 深处、文案是引擎级的，看不出「这本来就不该点」。
+    // 以**候选集**为准：不在其中就是没得转。
+    if (!candidateEdges.some((e) => e.id === edge.id)) {
+      setAnnounce('当前文件与所选目标不匹配，请重新选择目标格式');
+      return;
+    }
     const queue = queueRef.current!;
     const admit = queue.admitError(okPending.map((p) => p.file));
     if (admit) {
@@ -417,7 +426,7 @@ export default function ConverterApp() {
     for (const t of tasks) queue.enqueue(t);
     setAnnounce(`已加入 ${tasks.length} 个任务`);
     setPending([]);
-  }, [edge, okPending, params, category]);
+  }, [edge, candidateEdges, okPending, params, category]);
 
   // ── 结果操作 ──────────────────────────────────────────────────────────────
 
