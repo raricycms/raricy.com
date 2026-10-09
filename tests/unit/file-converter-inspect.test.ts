@@ -155,11 +155,13 @@ describe('imageHeaderInfo：尺寸与动画标记（plan §3.1 的动画闸）',
     expect(h.height).toBe(480);
   });
 
-  it('ICO：第一张宽高，count>1 → animated 标记', () => {
+  it('ICO：取第一张的宽高；多尺寸**不算动画**（那是分辨率变体，不是帧）', () => {
     const ico = u8(0, 0, 1, 0, 2, 0, 32, 32);
     const h = imageHeaderInfo('ico', ico);
     expect(h.width).toBe(32);
-    expect(h.animated).toBe(true);
+    // 曾经这里断言 true —— 那是一个错的口径：多尺寸 .ico 会被静态边当成动图拒掉，
+    // 而真正要挡的是 GIF / APNG / 动图 WebP。判据是容器语义，不是「装了几张图」。
+    expect(h.animated).toBe(false);
   });
 
   it('TIFF：宽高按**字段类型**读 —— SHORT 两种字节序都要对，LONG 也行', () => {

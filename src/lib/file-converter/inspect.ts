@@ -246,7 +246,12 @@ function icoHeader(b: Uint8Array): ImageHeader {
   // 第一张的宽高（0 = 256）
   const w = b[6] === 0 ? 256 : b[6];
   const h = b[7] === 0 ? 256 : b[7];
-  return { width: w, height: h, animated: count > 1 };
+  // ⚠️ ICO 里多于一张图**不是动画**，是同一个图标的多分辨率变体（16/32/48/256px）。
+  // 早先这里写的是 `animated: count > 1` —— 那让每一个正常的多尺寸 .ico 都被静态边
+  // 当成动图拒掉（静态边的闸是 `info.animated !== true`），而方向恰好反过来：
+  // 真正需要「动画闸」的是 GIF / APNG / 动图 WebP。判断依据是**容器语义**，
+  // 不是「里面装了几张图」—— 这条错误曾经只在 ico 上显形，所以极易被当成特例豁免掉。
+  return { width: w, height: h, animated: false };
 }
 
 /** ftyp brands → 容器。HEIC/HEIF/AVIF/MP4/MOV/M4A 都是 ISOBMFF。 */
