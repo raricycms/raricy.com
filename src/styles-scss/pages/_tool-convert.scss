@@ -233,6 +233,12 @@
       font-size: 0.875rem;
     }
 
+    // 六种转换方式之一（roadmap §2）：与体积同样重要，单独一行
+    &__method {
+      color: var(--color-text-secondary);
+      font-size: 0.875rem;
+    }
+
     &__actions {
       display: flex;
       gap: $space-2;

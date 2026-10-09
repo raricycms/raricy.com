@@ -19,7 +19,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { docHref } from '@/lib/docs-catalog';
 import { CATEGORIES } from '@/lib/file-converter/categories';
 import { makeExecutor, tasksForBatch } from '@/lib/file-converter/execute';
-import { FORMATS, LIMITS, formatBytes } from '@/lib/file-converter/formats';
+import { FORMATS, LIMITS, METHOD_LABELS, formatBytes } from '@/lib/file-converter/formats';
 import { inspectFileClient } from '@/lib/file-converter/inspect-client';
 import { PRESETS, RECIPES } from '@/lib/file-converter/presets';
 import { ConvertQueue } from '@/lib/file-converter/queue';
@@ -733,6 +733,15 @@ export default function ConverterApp() {
                         {formatBytes(t.result.inputSize)} → {formatBytes(t.result.outputSize)}
                         {t.result.outputSize > t.result.inputSize ? '（输出更大）' : ''}
                       </div>
+                      {/* 转换方式（roadmap §2 的六种）：**必须明示** —— 「换封装」与
+                          「重新编码」在用户那里是完全不同的两件事（一个无损、一个
+                          有损），只说「转换完成」等于把最该说清的那条藏起来。 */}
+                      {(() => {
+                        const e = edgeById([category], t.edgeId);
+                        return e ? (
+                          <div className="fc-result__method">转换方式：{METHOD_LABELS[e.method]}</div>
+                        ) : null;
+                      })()}
                       {t.result.notices.length > 0 && (
                         <ul className="fc-notices">
                           {t.result.notices.map((n) => (

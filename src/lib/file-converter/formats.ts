@@ -8,7 +8,7 @@
 // 引擎参数构造、嗅探逻辑在各自模块，别往这里塞。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { FileKind } from './types';
+import type { ConvertMethod, FileKind } from './types';
 
 /** 输出格式词表（`EdgeDef.to` 的合法键）。 */
 export const FORMATS = {
@@ -143,6 +143,22 @@ export function formatBytes(n: number): string {
 
 /** MP3 码率档位（plan §3.3）。 */
 export const MP3_BITRATES = [128, 192, 256, 320] as const;
+
+/**
+ * 六种转换方式的**人话说法**（roadmap §2）。
+ *
+ * 结果页必须把它显示出来：对用户来说「换封装（不重编码）」与「重新编码」是
+ * 完全不同的两件事 —— 前者无损、后者有损，只说「转换完成」等于把最该说清的
+ * 那条藏起来。`Record<ConvertMethod, string>` 保证加第七种方式时 tsc 报缺键。
+ */
+export const METHOD_LABELS: Record<ConvertMethod, string> = {
+  remux: '换封装（不重编码）',
+  reencode: '重新编码',
+  reflow: '重新排版 / 结构转换',
+  map: '数据映射',
+  extract: '信息提取 / 重建',
+  repack: '解包后重新打包',
+};
 
 /** 图片质量范围（plan §3.3：50–100 整数滑块，默认 90）。 */
 export const IMAGE_QUALITY = { min: 50, max: 100, defaultValue: 90 } as const;
