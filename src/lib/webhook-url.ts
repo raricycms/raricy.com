@@ -32,7 +32,7 @@ import { isIP } from 'node:net';
 /** 地址长度上限（与 OAuth 的 redirect_uri 同量级，够放长路径 + 查询串）。 */
 export const WEBHOOK_URL_MAX = 2048;
 
-/** 默认投递超时（毫秒）。商户的回调端点不该让我们等太久 —— 它拖住的是 drainer。 */
+/** 默认投递总时长上限（毫秒）。商户的回调端点不该长时间占住 drainer。 */
 export const WEBHOOK_TIMEOUT_MS = 5000;
 
 /** 响应体最多读这么多就断开：我们只关心状态码，不关心内容。 */
@@ -334,6 +334,14 @@ export function postWebhook(
       }
     );
 
+    // Socket timeout 只限制空闲时间：持续滴字节的端点能不断续期。
+    // 再限制整个请求的总时长，覆盖连接、TLS 与响应正文；依据 Node HTTP timeout 语义：
+    // https://nodejs.org/api/http.html#event-timeout
+    const deadline = setTimeout(() => {
+      req.destroy(new Error(`回调超时（${timeoutMs}ms）`));
+    }, timeoutMs);
+    deadline.unref?.();
+    req.once('close', () => clearTimeout(deadline));
     req.on('timeout', () => {
       req.destroy(new Error(`回调超时（${timeoutMs}ms）`));
     });
