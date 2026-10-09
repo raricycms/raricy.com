@@ -516,7 +516,7 @@ export async function resetUserPassword(p: ResetPasswordParams): Promise<ResetPa
 
   const target = await prisma.user.findUnique({
     where: { id: p.targetId },
-    select: { id: true, username: true, sessionVersion: true },
+    select: { id: true, username: true },
   });
   if (!target) return { ok: false, code: 404, message: '用户不存在' };
 
@@ -526,12 +526,11 @@ export async function resetUserPassword(p: ResetPasswordParams): Promise<ResetPa
   if (password.length < 8) return { ok: false, code: 400, message: '新密码长度至少为 8 位' };
 
   const passwordHash = await hashPassword(password);
-  const nextVersion = (target.sessionVersion ?? 0) + 1;
-
-  await prisma.user.update({
+  // 哈希期间可能发生禁言/强制下线/另一次改密；按数据库当前值递增，不能回写旧快照。
+  const updated = await prisma.user.update({
     where: { id: target.id },
-    data: { passwordHash, sessionVersion: nextVersion },
-    select: { id: true },
+    data: { passwordHash, sessionVersion: { increment: 1 } },
+    select: { sessionVersion: true },
   });
 
   // 断开已建立的 SSE 长连接（否则那条连接会继续收消息直到用户自己刷新）。
@@ -554,7 +553,7 @@ export async function resetUserPassword(p: ResetPasswordParams): Promise<ResetPa
     message: `已重置 ${target.username} 的密码`,
     password,
     generated,
-    sessionVersion: nextVersion,
+    sessionVersion: updated.sessionVersion,
   };
 }
 
