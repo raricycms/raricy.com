@@ -388,7 +388,8 @@ location / {
     proxy_set_header X-Forwarded-Host  $http_host;     # ← 备用来源:与 Host / ALLOWED_ORIGINS 命中任一即可
     proxy_set_header X-Forwarded-Proto $scheme;        # ← 缺它:登录成功但状态不粘,且练手盘协议闸会**误伤 https 用户**(见 §13)
     proxy_set_header X-Real-IP         $remote_addr;
-    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-For   $remote_addr;   # 覆盖客户端伪造的链
+    proxy_set_header CF-Connecting-IP  "";             # 不向应用透传客户端提供的 CF 头
 }
 ```
 
@@ -399,7 +400,14 @@ ssl_certificate     /etc/letsencrypt/live/raricy.com/fullchain.pem;
 ssl_certificate_key /etc/letsencrypt/live/raricy.com/privkey.pem;
 ```
 
-关键头已列全 —— 照抄上面即可，不需要额外参考。
+应用的 IP 限频只读取合法的 `X-Real-IP`，不回退到 CF/XFF。Next 必须只监听回环地址，
+且禁止公网直接访问 3000 端口；否则直连者仍能伪造这个头。`npm start` 与下方 unit 均绑定
+`127.0.0.1`。容器部署应只允许可信反代访问应用端口，不对公网发布它。
+
+若前面有 Cloudflare，默认 `$remote_addr` 是 CDN 节点地址（限频会共用 CDN 的桶）。
+需要 nginx 的 `real_ip_header CF-Connecting-IP`，并且 `set_real_ip_from` **只列 Cloudflare
+官方 IP 段**、随官方更新维护；绝不能信任 `0.0.0.0/0` 或 `::/0`。应用仍只读取 nginx
+还原并覆盖的 `X-Real-IP`。上线时验证伪造 CF/XFF 不改变限频桶，源站端口不可直连。
 ## 7. systemd unit 示例
 
 `/etc/systemd/system/raricy-next.service`：
@@ -418,7 +426,7 @@ Group=www-data
 WorkingDirectory=/srv/raricy.com
 
 # 不挂 EnvironmentFile=.env —— next start 自己会读同目录的 .env
-ExecStart=/srv/raricy.com/node_modules/.bin/next start -p 3000
+ExecStart=/srv/raricy.com/node_modules/.bin/next start -H 127.0.0.1 -p 3000
 
 Restart=always
 RestartSec=3

@@ -447,7 +447,7 @@ describe('无状态路径的限频', () => {
   });
 
   it('同一 IP 扫多个账号，达到 IP 上限 → 429', async () => {
-    const ip = { 'x-forwarded-for': '203.0.113.9' };
+    const ip = { 'x-real-ip': '203.0.113.9' };
     const limit = RULES.fishApiPerIp.limit;
 
     for (let i = 0; i < limit; i++) {

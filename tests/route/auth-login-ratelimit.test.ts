@@ -52,7 +52,7 @@ describe('登录限频', () => {
 
   it('同一 IP 扫一批账号，达到 IP 上限后返回 429', async () => {
     const limit = RULES.loginPerIp.limit;
-    const ip = { 'x-forwarded-for': '203.0.113.7' };
+    const ip = { 'x-real-ip': '203.0.113.7' };
     for (let i = 0; i < limit; i++) {
       const res = await login(req({ username: `victim${i}`, password: 'wrong' }, ip));
       expect(res.status, `第 ${i + 1} 次应为 401`).toBe(401);
@@ -64,45 +64,45 @@ describe('登录限频', () => {
     const limit = RULES.loginPerIp.limit;
     for (let i = 0; i < limit; i++) {
       await login(
-        req({ username: `victim${i}`, password: 'wrong' }, { 'x-forwarded-for': '203.0.113.7' })
+        req({ username: `victim${i}`, password: 'wrong' }, { 'x-real-ip': '203.0.113.7' })
       );
     }
     expect(
-      (await login(req({ username: 'x', password: 'wrong' }, { 'x-forwarded-for': '203.0.113.7' })))
+      (await login(req({ username: 'x', password: 'wrong' }, { 'x-real-ip': '203.0.113.7' })))
         .status
     ).toBe(429);
     // 新 IP + 新用户名 → 未超限，回到凭据校验
     expect(
-      (await login(req({ username: 'y', password: 'wrong' }, { 'x-forwarded-for': '198.51.100.9' })))
+      (await login(req({ username: 'y', password: 'wrong' }, { 'x-real-ip': '198.51.100.9' })))
         .status
     ).toBe(401);
   });
 
-  it('cf-connecting-ip 优先于 x-forwarded-for', async () => {
+  it('换 CF/XFF 伪造头不能绕过 nginx 提供的真实 IP 失败预算', async () => {
     const limit = RULES.loginPerIp.limit;
-    const h = { 'cf-connecting-ip': '198.51.100.9', 'x-forwarded-for': '10.0.0.1' };
+    const h = { 'x-real-ip': '198.51.100.9', 'cf-connecting-ip': '1.1.1.1', 'x-forwarded-for': '10.0.0.1' };
     for (let i = 0; i < limit; i++) {
       await login(req({ username: `victim${i}`, password: 'wrong' }, h));
     }
     expect((await login(req({ username: 'z', password: 'wrong' }, h))).status).toBe(429);
-    // 同一 x-forwarded-for、不同 cf-connecting-ip → 新桶
+    // 伪造头改变，但可信入口 IP 未变 → 仍在旧桶
     expect(
       (
         await login(
           req(
             { username: 'w', password: 'wrong' },
-            { 'cf-connecting-ip': '198.51.100.10', 'x-forwarded-for': '10.0.0.1' }
+            { 'x-real-ip': '198.51.100.9', 'cf-connecting-ip': '198.51.100.10', 'x-forwarded-for': '198.51.100.11' }
           )
         )
       ).status
-    ).toBe(401);
+    ).toBe(429);
   });
 
   // 每次成功登录都要跑一遍 scrypt，100+ 次会超过默认 5s 超时 —— 显式放宽。
   it('成功登录不消耗配额（否则正常用户会被自己的成功记录挡住）', { timeout: 120_000 }, async () => {
     const username = 'gooduser';
     await makeUser({ username, passwordHash: await hashPassword('correct-horse') });
-    const ip = { 'x-forwarded-for': '203.0.113.55' };
+    const ip = { 'x-real-ip': '203.0.113.55' };
 
     // 连续成功登录，次数超过 per-user 上限 —— 必须次次 200
     for (let i = 0; i < RULES.loginPerUser.limit + 5; i++) {
