@@ -603,7 +603,9 @@ E2E。`npm run e2e` 本身不构建，修改源码后不能拿旧 `.next` 的测
 
 #### 2026-10-09 交付（实测记录）
 
-**交付范围**超出首版（图片 + 音频）：八个能力区、共 **70+ 条可执行边**，全部在浏览器本地完成。
+**交付范围**超出首版（图片 + 音频）：八个能力区、共 **81 条登记的边**（79 条 `live` +
+2 条 `planned`：`office:html-print-pdf` / `office:docx-to-pdf`，需要服务端组件，不进菜单），
+全部在浏览器本地完成。
 新增运行时依赖：`@ffmpeg/ffmpeg` + `@ffmpeg/core`（ST 核心）、`pdfjs-dist`、`pdf-lib`、
 `xlsx`、`mammoth`、`docx`、`pptxgenjs`、`tesseract.js` + 中英语言包、`heic2any`、`utif`、
 `node-unrar-js`、`7z-wasm`、`iconv-lite`、`js-yaml`、`fast-xml-parser`、`fflate`、`marked`。
