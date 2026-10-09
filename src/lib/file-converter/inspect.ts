@@ -224,9 +224,18 @@ function tiffHeader(b: Uint8Array): ImageHeader {
     const e = ifd + 2 + i * 12;
     if (e + 12 > b.length) break;
     const tag = u16(b, e);
-    const val = u32(b, e + 8);
+    if (tag !== 256 && tag !== 257) continue;
+    // ★ 必须按**字段类型**读值域，不能一律读 4 字节 ★
+    // 宽高在基线 TIFF 里多是 SHORT（类型 3，2 字节），且只有 count=1 时才内联在
+    // 值域里。一律按 u32 读的话，**大端**文件里那 2 字节落在值域的高位 ——
+    // 宽度会被读成 w<<16（小端恰好正确，所以这个错只在一种字节序下现形，
+    // 而 utif 写出的正是大端）。类型 4（LONG）才是 4 字节。
+    const type = u16(b, e + 2);
+    const n = u32(b, e + 4);
+    if (n !== 1) continue; // 多值 = 值域是偏移量，不是内联值 —— 宽高不会这么存
+    const val = type === 3 ? u16(b, e + 8) : u32(b, e + 8);
     if (tag === 256) width = val;
-    if (tag === 257) height = val;
+    else height = val;
   }
   return { width, height };
 }

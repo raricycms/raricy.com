@@ -162,6 +162,41 @@ describe('imageHeaderInfo：尺寸与动画标记（plan §3.1 的动画闸）',
     expect(h.animated).toBe(true);
   });
 
+  it('TIFF：宽高按**字段类型**读 —— SHORT 两种字节序都要对，LONG 也行', () => {
+    // ★ 这组用例钉的是一个只在**大端**下现形的读法错误 ★
+    // 基线 TIFF 的宽高是 SHORT（类型 3，2 字节），值内联在 12 字节条目的值域里。
+    // 一律按 u32 读的话，大端文件里那 2 字节落在值域高位 → 宽度变成 w<<16；
+    // 小端恰好读对，所以这个错在只有小端样本时完全看不出来（utif 写的正是大端）。
+    const entry = (tag: number, type: number, value: number, be: boolean): number[] => {
+      const u16 = (n: number) => (be ? [n >> 8, n & 0xff] : [n & 0xff, n >> 8]);
+      const u32 = (n: number) => (be ? [n >>> 24, (n >>> 16) & 0xff, (n >>> 8) & 0xff, n & 0xff] : [n & 0xff, (n >>> 8) & 0xff, (n >>> 16) & 0xff, n >>> 24]);
+      // 值域恒 4 字节：SHORT(count=1) 写在前两字节（该文件字节序）、后两字节留零；
+      // LONG 占满 4 字节。类型不同、值域的用法就不同 —— 这正是被测的那点。
+      const valueField = type === 3 ? [...u16(value), 0, 0] : u32(value);
+      return [...u16(tag), ...u16(type), ...u32(1), ...valueField];
+    };
+    const tiff = (be: boolean, w: number, h: number, type = 3): Uint8Array => {
+      const u16 = (n: number) => (be ? [n >> 8, n & 0xff] : [n & 0xff, n >> 8]);
+      const u32 = (n: number) => (be ? [n >>> 24, (n >>> 16) & 0xff, (n >>> 8) & 0xff, n & 0xff] : [n & 0xff, (n >>> 8) & 0xff, (n >>> 16) & 0xff, n >>> 24]);
+      return u8(
+        ...(be ? [0x4d, 0x4d] : [0x49, 0x49]),
+        ...u16(42),
+        ...u32(8),
+        ...u16(2),
+        ...entry(256, type, w, be),
+        ...entry(257, type, h, be),
+        ...u32(0)
+      );
+    };
+    // 大端 SHORT（utif 的产物）—— 修复前这里会得到 640<<16
+    expect(imageHeaderInfo('tiff', tiff(true, 640, 480))).toEqual({ width: 640, height: 480 });
+    // 小端 SHORT：修复前后都对，留作回归
+    expect(imageHeaderInfo('tiff', tiff(false, 640, 480))).toEqual({ width: 640, height: 480 });
+    // LONG（类型 4，4 字节）两种字节序
+    expect(imageHeaderInfo('tiff', tiff(true, 800, 600, 4))).toEqual({ width: 800, height: 600 });
+    expect(imageHeaderInfo('tiff', tiff(false, 800, 600, 4))).toEqual({ width: 800, height: 600 });
+  });
+
   it('非图片 kind → {}', () => {
     expect(imageHeaderInfo('mp3', u8(1, 2, 3))).toEqual({});
   });
