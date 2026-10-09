@@ -106,7 +106,7 @@ const FILE_TOOLS: Tool[] = [
     href: '/tool/convert',
     icon: FileCog,
     title: '格式转换器',
-    desc: '图片与音频格式转换，文件在本机处理',
+    desc: '图片 / 音频 / 视频 / 文档 PDF / 表格 / 字幕 / 电子书 / 压缩包互转，文件在本机处理',
     tags: ['图片', '音频', '本地处理'],
   },
 ];
