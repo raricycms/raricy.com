@@ -166,3 +166,85 @@ Next 官方公告 [GHSA-p293-qw3h-jr36 / CVE-2026-75604](https://github.com/verc
 5. 上线前验证真实 nginx/入口请求头、源站访问限制、生产版本与操作系统、真实 `next start` 下的改密撤流，以及低强度限频验收。
 
 本报告记录的是本轮本地代码审查和隔离实测结论；**没有修复上述业务缺陷，没有对生产站进行攻击、改库或压测**。未发现某类攻击链不是对全部历史代码、全部依赖及线上配置的安全保证。
+
+---
+
+## 8. 补充审查（第二轮：文件读取 / 认证授权 / 鱼干写路径）
+
+本节是在上文基础上追加的第二轮独立复核，覆盖三条线：**文件与数据库读取边界**、**认证/授权/冒充**、**鱼干记账写路径**。方法同为只读源码审查加静态追踪（含对网络路由、事务、幂等键与单位换算的逐行走查），未启动服务器、未改动任何文件。以下仅列**与第 3 节不重叠**的新增项；与既有项重复的已标注归并，不重复计数。
+
+| 编号 | 问题 | 优先级 | 验证状态 |
+| --- | --- | --- | --- |
+| B1 | `GET /api/admin/appeals` 的接口档位低于对应页面，且无条件下发匿名评论处置日志的当事人/申诉人真身 | P2 | 源码逐行核对 |
+| B2 | `POST /api/checkin` 缺禁言闸，被禁言的 core+ 用户每日仍可铸 3 条 | P2 | 源码逐行核对 |
+| B3 | `restoreComment` 先落库、后鉴权（授权发生在副作用之后） | P3 | 源码逐行核对（当前仅 CLI 可达） |
+| B4 | `feedBlog` 允许自投喂：净额为 0 不铸币，但零成本抬高文章投喂数与投喂者名单 | P3 | 源码逐行核对 |
+| B5 | `/api/oauth/revoke` 列在 CSRF 豁免名单里，却存在会话 cookie 鉴权的状态变更路径 | P3 | 源码核对（当前不可利用） |
+| I1–I4 | 头像路由缺 `nosniff`；story 的 Windows 盘符/ADS 边角；`audit-service` 字符串插值 SQL；`audio-upload` 扩展名回退缺失 | 信息级 | 子审计报告，**未逐行复核** |
+
+**归并说明**：上文 A6（停用 OAuth 应用后旧令牌仍有效）与本轮独立复核的同一发现一致 —— 已逐行确认 `validateAccessToken()` 只检查令牌自身的存在/吊销/到期，不核对所属应用的 `disabledAt`，且被停用应用还会从用户设置页隐藏、使受害者无法自助解绑。**该项以 A6 为准，本节不再单列。**
+
+另有已通报的收款回调 SSRF（IPv4 映射 IPv6 绕过内网地址黑名单），按本报告 §2 的口径不作重复登记；其修复与回归用例另行跟踪。
+
+### B1. 申诉列表接口的档位与信息面（P2）
+
+**代码位置**：`src/app/api/admin/appeals/route.ts:7`（`hasAdminRights`）对照 `src/app/admin/appeals/layout.tsx`（`requireOwner`）；`src/lib/admin-appeal-service.ts:54`（`APPEAL_SELECT`）、`:88`（`mapAppealRow`）。
+
+`APPEAL_SELECT` **无条件**投影 `log.targetUser`，且**根本没有 select** `log.hideTarget`，服务层因此无从按匿名口径抹掉当事人；`appellant`（申诉人）也一并下发。对匿名评论的处置日志而言，`createAppeal` 强制只有被处理的目标本人能申诉，所以申诉人就是那位匿名作者 —— 拿到列表即还原真身。
+
+**影响与前提**：真正可行动的点是**档位不一致**——裁决是站长专属（`adjudicate` 判 `isOwner`），对应页面也是站长档，但列表 API 只要求 admin。需注意：本仓设计**有意**保留「管理员能从日志里查到原作者」（`targetUserId` 始终为真身，供运维与管理员查证），所以「管理员看得到真身」本身不违反承诺；被破坏的是**面向更宽档位的信息面与页面不匹配**这一点。
+
+**建议**：GET 与页面同档（`isOwner`）；或像 `getLogDetail` 一样，对 `hideTarget` 的日志把 `appellant` 与 `targetUser` 一并抹掉（需把它们补进 `select`）。回归测试应覆盖「匿名评论处置日志在 admin 档下不出真身」。
+
+### B2. `/api/checkin` 缺禁言闸（P2）
+
+**代码位置**：`src/app/api/checkin/route.ts:39-46`。POST 只判「登录 + core+ + 本人有未软删文章」，**无 `isCurrentlyBanned`**。
+
+对照：`market/transfer`、`market/pay`、`market/rent`、`blogs/[id]/feed`、`trade/buy`、`tokens` POST **全部**带禁言闸；`src/app/api/fish/trade/buy/route.ts:33-38` 更写明了本站口径——「禁言不开新仓，也就没有新的赚取」。签到是**恒定 3 条/天**的新增赚取渠道（`src/lib/checkin-service.ts:50`），因此被禁言的 core+ 用户每天仍能 +3。
+
+**影响与前提**：需要「先被禁言」这一前提，因此不是「非禁言用户的铸币口」，而是**禁言这道控制漏掉了他唯一的主动赚取渠道**。`checkin-service` 头部只列了 core 与「发过文章」两道门，未提禁言；是否属于有意，取决于产品口径——但它与 buy 的口径直接矛盾，倾向于疏漏。
+
+**建议**：POST 增加 `isCurrentlyBanned(user)` → 403（GET 为状态读，可沿用现有「不拒、回 `can_check_in`」的写法）。补一条「被禁言用户 POST 签到 403 且余额不变」的回归。
+
+### B3. `restoreComment` 授权在写之后（P3，当前仅 CLI 可达）
+
+**代码位置**：`src/lib/comment-service.ts:941-948`。`restoreCommentRow(commentId)` 是独立已提交事务（`:905`），其后再判 `row.authorId === actor.id` 或管理员权限。
+
+**影响**：恢复在鉴权前已落库；非授权 actor 会「先恢复、后 403」。当前唯一调用方是运维 CLI（`scripts/cli/commands/comments.ts:229`），正常路径 actor 为 owner，现实影响低；但 CLI 支持 `--as <user>`，且**一旦将来有 HTTP 路由接 `restoreComment`，即成为可远程利用的授权绕过**。对照 `softDeleteComment`（`:802-808`）是在同一事务内先判权的正确写法。
+
+**建议**：把 author/管理员 + reason 校验移到 `restoreCommentRow` 之前。
+
+### B4. `feedBlog` 允许自投喂（P3，不铸币）
+
+**代码位置**：`src/lib/feed-service.ts:131-237`，无 `author ≠ feeder` 判定。自投喂时两笔 `postEntry`（扣自己 `-units`、加自己 `+units`，`:180`、`:191`）**净额为 0，不产生新鱼**；但 `blog_feeds` 行与 `Blog.fishCount`（`:236`）照加，于是 core 用户可零成本抬高自己文章的显示投喂数、并出现在投喂者名单里。受「单篇每人 ≤ 5」上限（`:217`）约束，不能无限刷。对照 `transferFish`（`fish-market-service.ts:289`）明确禁止自转账。
+
+**建议**：`feedBlog` 增加 `userId === blog.authorId` → 400。
+
+### B5. `/api/oauth/revoke` 的 CSRF 豁免与 cookie 鉴权（P3，当前不可利用）
+
+**代码位置**：`src/middleware.ts:63-67`（豁免名单）与 `src/app/api/oauth/revoke/route.ts:41-49`。中间件注释要求加入豁免名单的端点「必须由 client_secret / token 自身承担鉴权」，但 `revoke` 存在一条走会话 cookie 且**改变状态**（吊销令牌）的路径。当前不可利用：跨站 POST 需要受害者那条 32 字节原始令牌（不可猜），且会话 cookie 为 `SameSite=Lax`，跨站 POST 不会携带它。
+
+**建议**：从豁免名单移除，改由 bearer/client 鉴权。
+
+### 信息级（子审计报告，未逐行复核）
+
+- **I1** `src/app/api/avatar/[id]/route.ts` 少 `X-Content-Type-Options: nosniff`（其余字节路由均设置）。`instance/avatars/` 仅由运维放置、无 HTTP 写入路径，**不可利用**。
+- **I2** `src/lib/story-service.ts` 的段名过滤拒绝 `..`、`/`、`\`、NUL、绝对路径且二次解码；残留一个 Windows 盘符相对 / NTFS-ADS 边角，最坏是对**已存在于 stories 树内**的文件的读取，**非任意读取**。
+- **I3** `src/lib/audit-service.ts:246`、`:364` 用字符串插值 `$queryRawUnsafe`；插值内容是经 `Number.isInteger` 过滤的 DB 整数 id 列表，**不可注入**（本轮已复核该口径）。
+- **I4** `src/lib/audio-upload.ts:256` 缺 `?? ''` 回退（对照图片侧 `image-upload.ts:155`）；`mimeType` 只能来自 `ALLOWED_AUDIO_MIMETYPES`，**不可达**。
+- 次要：`src/app/api/oauth/authorize/route.ts:49-52` 对非字符串的 `client_id`/`scope` 会抛未捕获异常 → 单次 500（无鉴权绕过）。`GET /api/users/[id]/ban-history` 对任意 core+ 暴露 `last_login`/`role`/通知偏好/封禁史（不含 email），文件内注明为有意设计。
+
+### 本轮核实为「干净」的方向（负面对照）
+
+- **任意文件读取 / 路径穿越 / SQLi**：未发现可利用路径。所有取 URL 段拼路径的读口，落盘路径均由服务端数据重建——图片/音频按 DB 主键 `id` 取行、贴纸按 readdir 清单映射、头像框按 `FRAME_KEYS` 白名单、文档按 `DOC_ENTRIES` 表查、story 走严格段名过滤；`instance/` 不在 `public/` 下，仓库未使用 `next/image`，`db.db` 无法经静态服务或图片优化器触达；原始 SQL 除上列整数 id 一例外均参数化。
+- **冒充管理员 / 身份提升**：未发现。全部 11 条 `/api/admin/**` 路由在路由层自检（无一条依赖 layout）；`setRole` 只允许非站长操作 `user↔core`、任何涉及 admin/owner 的方向要求站长、不能改自己；`adminCreateUser` 硬编码 `role:'core'` 且无 HTTP 路由；JWT 只携带 `{uid, sv}`、角色从库读取、`jose`+对称密钥拒绝算法混淆；全 `/api` 未发现「以请求体指定操作者」的写法。
+- **鱼干记账**：未发现可铸币/盗币路径，未发现破坏 `users.driedFish == Σ fish_transactions.amount` 的路径。`users.driedFish` 的写入点全仓仅 `postEntry` 两处（`fish-service.ts:339`/`:346`）；扣减为条件写（`gte`）、金额为非零整数校验；幂等记录与业务写同事务；铸币原语（`compensateAllUsers`/`refundFeedFees`/`adminGrant*`）仅 CLI、无路由导入；单位换算单一真相源且受静态守卫。
+
+### 补充修复顺序
+
+1. B2（签到缺禁言闸，与 buy 口径直接冲突）、B1（申诉接口档位/信息面）—— 改动小、语义明确。
+2. B3（`restoreComment` 授权顺序）—— 防将来接线成远程漏洞。
+3. B4、B5 与 I1–I4 —— 随相关改动一并处理。
+4. A6 / M1 的修复以第 3 节 A6 的建议为准。
+
+本节结论仅覆盖上述三条线，不构成对全部历史代码、全部依赖与线上配置的安全保证；全部为静态审查，未在运行中的服务器上验证。
