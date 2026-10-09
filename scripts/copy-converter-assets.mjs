@@ -16,7 +16,8 @@
 //   public/static/converter/
 //     ffmpeg/<@ffmpeg/core 版本>/ffmpeg-core.js       —— ST 核心加载器
 //     ffmpeg/<@ffmpeg/core 版本>/ffmpeg-core.wasm
-//     ffmpeg/worker.js                                —— @ffmpeg/ffmpeg 的类 worker
+//     ffmpeg/worker.js + const.js + errors.js        —— @ffmpeg/ffmpeg 的类 worker 及其两个叶子依赖
+//                                                        （worker 是 ES module，少一个就起不来）
 //     pdfjs/pdf.worker.min.mjs                        —— pdfjs-dist 渲染 worker
 //     tesseract/worker.min.js                         —— tesseract.js worker 入口
 //     tesseract/tesseract-core-simd-lstm.js           —— LSTM 引擎（SIMD 版）
@@ -68,11 +69,19 @@ const FILES = [
   ],
   // @ffmpeg/ffmpeg 的类 worker：load({ classWorkerURL }) 指过来，
   // 避免 bundler 处理 `new URL('./worker.js', import.meta.url)` 的不可靠性。
+  //
+  // ⚠️ **worker.js 是 ES module，它自己 `import './const.js'` 与 `'./errors.js'`** ——
+  // 那两个文件必须一起拷到同目录。漏了它们，worker 以 `type:"module"` 起不来
+  // （相对 import 404），而**症状是「转换引擎加载失败（约 30MB…）」**：
+  // 看起来像网络问题或核心太大，实际是我们少拷了两个几 KB 的叶子模块。
+  // 它是唯二依赖（两文件都无进一步 import），所以只补这两个、不必拷整个 esm/。
   [
     `@ffmpeg/ffmpeg/dist/esm/worker.js`,
     `ffmpeg/worker.js`,
-    '@ffmpeg/ffmpeg 类 worker',
+    '@ffmpeg/ffmpeg 类 worker（ES module，会 import 下面两个）',
   ],
+  [`@ffmpeg/ffmpeg/dist/esm/const.js`, `ffmpeg/const.js`, 'worker 的常量表（叶子模块）'],
+  [`@ffmpeg/ffmpeg/dist/esm/errors.js`, `ffmpeg/errors.js`, 'worker 的错误常量（叶子模块）'],
   [
     `pdfjs-dist/build/pdf.worker.min.mjs`,
     `pdfjs/pdf.worker.min.mjs`,
