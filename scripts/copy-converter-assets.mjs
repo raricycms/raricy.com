@@ -23,9 +23,14 @@
 //     tesseract/tesseract-core-simd-lstm.wasm
 //     tesseract/langs/eng.traineddata.gz              —— OCR 语言数据（英）
 //     tesseract/langs/chi_sim.traineddata.gz          —— OCR 语言数据（简中）
+//     unrar/unrar.wasm                                —— RAR 解包（node-unrar-js，只解不压）
+//     7z/7zz.wasm                                     —— 7Z 解包（7z-wasm，只解不压）
 //
 // 【许可】全部是代码（Apache-2.0 / MIT），与 emoji 那次 CC BY 素材不同，
 // 照拷各包自带 LICENSE 并列在 NOTICE.txt 里即可，无署名渲染义务。
+// ⚠️ 两个解包器**只能解、不能压**：RAR 的编码器是专有技术（无自由实现），
+// 7-Zip 的压缩侧在 wasm 构建里没编进去。所以 RAR / 7Z 的目标只有 ZIP ——
+// 这不是偷懒，是许可与构建事实（见 docs/format-converter-plan.md §8.2 同款判据）。
 //
 // 【注意】`npm ci --ignore-scripts` 会跳过 postinstall —— 那种环境手工跑一次
 // `npm run prepare:converter`。缺了文件时页面会显示「引擎加载失败」，
@@ -94,6 +99,18 @@ const FILES = [
     `tesseract/langs/chi_sim.traineddata.gz`,
     'OCR 语言数据：简体中文',
   ],
+  // 两个解包器的 wasm。**必须显式拷**：包自己的加载器在打包环境里找 wasm 的方式
+  // 不可靠（7z-wasm 尤甚，它的 UMD/ESM 构建都在探 Node 的 fs 路径），所以引擎侧
+  // 是自己 fetch 同源文件再把 wasmBinary 传进去 —— 路径由
+  // src/lib/file-converter/engines/archive.ts 的 UNRAR_WASM_URL / SEVENZ_WASM_URL 决定，
+  // **改这里的目标路径就要同步改那两个常量**（两处不一致 = RAR/7Z 报组件加载失败，
+  // 其它能力区一切正常，所以很容易漏）。
+  [
+    `node-unrar-js/esm/js/unrar.wasm`,
+    `unrar/unrar.wasm`,
+    'RAR 解包组件（node-unrar-js）',
+  ],
+  [`7z-wasm/7zz.wasm`, `7z/7zz.wasm`, '7Z 解包组件（7z-wasm）'],
 ];
 
 // tesseract.js-core 是 tesseract.js 的**传递依赖**：哪天上游改了依赖结构，
