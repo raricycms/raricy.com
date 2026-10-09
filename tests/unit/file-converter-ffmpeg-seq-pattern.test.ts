@@ -7,8 +7,8 @@
 // 没有任何报错指向这里。所以它必须由单测钉住，而不是只靠 e2e 兜。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { describe, it, expect } from 'vitest';
-import { expandSeqPattern } from '@/lib/file-converter/engines/ffmpeg';
+import { describe, it, expect, vi } from 'vitest';
+import { expandOutputNames, expandSeqPattern } from '@/lib/file-converter/engines/ffmpeg';
 
 describe('expandSeqPattern —— 串输出模式展开', () => {
   it('没有占位符 → null（调用方按字面名处理）', () => {
@@ -58,5 +58,42 @@ describe('expandSeqPattern —— 串输出模式展开', () => {
 
   it('一个都没匹配上 → 空数组（不是 null）', () => {
     expect(expandSeqPattern('frame-%04d.png', ['nope.txt'])).toEqual([]);
+  });
+});
+
+describe('expandOutputNames —— 对 MEMFS 列目录的包装', () => {
+  it('★ 字面名原样返回，且**一次目录都不列** ★', async () => {
+    // 这条钉的是一个真实事故：早先对每个名字都先 listDir(dir)，字面名的 dir 是
+    // **空串**，MEMFS 的 readdir('') 抛错 → 那个名字被 `continue` 丢掉 →
+    // exec 回读到空 Map → 所有不带 % 的转换都报「未产生有效输出」。
+    // listDir 直接抛异常来模拟那个「空串」场景：字面名绝不能被它影响。
+    const listDir = vi.fn(async () => {
+      throw new Error("ENOENT: no such file or directory, readdir ''");
+    });
+    await expect(expandOutputNames({ listDir }, ['out.flac'])).resolves.toEqual(['out.flac']);
+    expect(listDir).not.toHaveBeenCalled();
+  });
+
+  it('模式串才列目录，并按帧序展开（含子目录前缀还原）', async () => {
+    const listDir = vi.fn(async (dir: string) =>
+      dir === 'frames'
+        ? [
+            { name: 'frame-0002.png', isDir: false },
+            { name: 'frame-0001.png', isDir: false },
+            { name: 'somedir', isDir: true },
+          ]
+        : []
+    );
+    await expect(
+      expandOutputNames({ listDir }, ['frames/frame-%04d.png'])
+    ).resolves.toEqual(['frames/frame-0001.png', 'frames/frame-0002.png']);
+  });
+
+  it('字面名与模式串混排时各自安好', async () => {
+    const listDir = vi.fn(async () => [{ name: 'f-001.png', isDir: false }]);
+    await expect(expandOutputNames({ listDir }, ['log.txt', 'f-%03d.png'])).resolves.toEqual([
+      'log.txt',
+      'f-001.png',
+    ]);
   });
 });

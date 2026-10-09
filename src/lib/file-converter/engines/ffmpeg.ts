@@ -58,7 +58,26 @@ export type ProbeResult = ParsedProbeResult;
  */
 export const FFMPEG_CORE_VERSION = '0.12.10';
 
-const CLASS_WORKER_URL = '/static/converter/ffmpeg/worker.js';
+/**
+ * 类 worker 的地址。
+ *
+ * ★ **必须是运行时拼出来的绝对地址，不能是 `/static/...` 字面量。** ★
+ *
+ * `@ffmpeg/ffmpeg` 拿到 `classWorkerURL` 后会做
+ * `new Worker(new URL(classWorkerURL, import.meta.url), { type: 'module' })`，
+ * 而 **webpack 会把「字面量 + import.meta.url」这对组合当成静态资源引用**：
+ * 把 `/static/converter/ffmpeg/worker.js` 当**文件系统路径**解析，编译进一个
+ * `file:///C:/static/converter/ffmpeg/worker.js` 的 URL。运行时 Worker 构造直接
+ * 抛 SecurityError（跨源：file: 对 http: 源），而**报错文案是**
+ * 「转换引擎加载失败（约 30MB，请检查网络后重试）」—— 指向网络与体积，
+ * 与真正的原因（URL 被编译成了 file://）毫无关系，极难从现象倒推。
+ *
+ * 接上 `location.origin` 就让这个表达式**不可能**被静态求值，webpack 只能原样
+ * 保留成运行时的 `new URL(...)`。**别为了「好看」把它改回字面量。**
+ */
+const classWorkerUrl = () => `${location.origin}/static/converter/ffmpeg/worker.js`;
+// coreURL / wasmURL 走的是**消息数据**，不经过 `new URL(...)`，webpack 不会动它们，
+// 所以照旧用常量。（worker 内部拿到它们后 `await import(coreURL)`，同源绝对路径。）
 const CORE_URL = `/static/converter/ffmpeg/${FFMPEG_CORE_VERSION}/ffmpeg-core.js`;
 const WASM_URL = `/static/converter/ffmpeg/${FFMPEG_CORE_VERSION}/ffmpeg-core.wasm`;
 
@@ -126,7 +145,7 @@ async function doLoad(
     ffmpeg = instance;
     instance.on('log', onLog);
     await withTimeout(
-      instance.load({ classWorkerURL: CLASS_WORKER_URL, coreURL: CORE_URL, wasmURL: WASM_URL }),
+      instance.load({ classWorkerURL: classWorkerUrl(), coreURL: CORE_URL, wasmURL: WASM_URL }),
       LIMITS.timeouts.ffmpegLoadMs,
       '转换组件加载超时'
     );
@@ -259,30 +278,39 @@ function seqIndexOf(name: string): number {
   return m ? Number(m[1]) : 0;
 }
 
-/** 对 MEMFS 的列目录结果套用 expandSeqPattern（含子目录前缀还原）。 */
-async function expandOutputNames(
+/**
+ * 对 MEMFS 的列目录结果套用 expandSeqPattern（含子目录前缀还原）。
+ *
+ * ⚠️ **字面输出名必须原样返回，且不得碰 listDir。** 踩过一次：早先的写法对
+ * **每一个** 名字都先 `listDir(dir)`，而字面名（`out.flac`）的 dir 是空串 ——
+ * MEMFS 的 `readdir('')` 会抛，于是 `continue` 把**这个字面名整个丢掉**，
+ * `exec` 回读到空 Map。症状是「退出码 0，但报『转换未产生有效输出』」，
+ * 而所有**不带 `%` 的**转换（也就是绝大多数）全部阵亡。
+ * 所以：先判是不是模式串，不是就直接收下，一次目录都不列。
+ */
+export async function expandOutputNames(
   instance: { listDir: (path: string) => Promise<{ name: string; isDir: boolean }[]> },
   outputNames: string[]
 ): Promise<string[]> {
   const out: string[] = [];
   for (const name of outputNames) {
+    if (!SEQ_PLACEHOLDER.test(name)) {
+      out.push(name); // 字面名：原样，不列目录
+      continue;
+    }
     const dir = name.includes('/') ? name.slice(0, name.lastIndexOf('/')) : '';
     const base = dir ? name.slice(dir.length + 1) : name;
     let entries: { name: string; isDir: boolean }[] = [];
     try {
       entries = await instance.listDir(dir);
     } catch {
-      continue; // 目录都列不出来 = 没产出，交调用方判
+      continue; // 模式串且目录都列不出来 = 没产出，交调用方判
     }
     const matched = expandSeqPattern(
       base,
       entries.filter((e) => !e.isDir).map((e) => e.name)
     );
-    if (matched === null) {
-      out.push(name); // 字面输出名，原样
-      continue;
-    }
-    out.push(...matched.map((n) => (dir ? `${dir}/${n}` : n)));
+    out.push(...(matched ?? []).map((n) => (dir ? `${dir}/${n}` : n)));
   }
   return out;
 }
