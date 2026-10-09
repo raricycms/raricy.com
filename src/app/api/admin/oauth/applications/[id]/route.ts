@@ -1,8 +1,7 @@
 import { getCurrentUser, isOwner } from '@/lib/auth';
 import { prisma } from '@/lib/db';
-import { nowForDb } from '@/lib/db-time';
 import { apiErr, apiOk } from '@/lib/format';
-import { updateOAuthApplication } from '@/lib/oauth';
+import { updateOAuthApplication, disableOAuthApplication } from '@/lib/oauth';
 
 // PATCH  /api/admin/oauth/applications/[id]  owner-only（按 id 或 clientId）
 // DELETE /api/admin/oauth/applications/[id]  owner-only → 软禁用
@@ -66,13 +65,8 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
   });
   if (!app) return apiErr(404, '应用不存在');
 
-  // 软禁用：置 disabledAt（走 nowForDb 保持 UTC+8 墙上时间语义）
-  const updated = await prisma.oAuthApplication.update({
-    where: { id: app.id },
-    data: { disabledAt: nowForDb() },
-    select: { id: true, name: true, disabledAt: true },
-  });
-  return apiOk({ application: updated });
+  const updated = await disableOAuthApplication(app.id);
+  return apiOk({ application: { id: updated.id, name: updated.name, disabledAt: updated.disabledAt } });
 }
 
 function safeParse(json: string): string[] {

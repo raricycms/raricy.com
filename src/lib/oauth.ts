@@ -329,8 +329,12 @@ export interface ValidatedToken {
 export async function validateAccessToken(rawToken: string): Promise<ValidatedToken | null> {
   if (!rawToken || rawToken.length > 256) return null;
   const tokenHash = hashOpaqueToken(rawToken);
-  const row = await prisma.oAuthAccessToken.findUnique({ where: { tokenHash } });
+  const row = await prisma.oAuthAccessToken.findUnique({
+    where: { tokenHash },
+    include: { application: { select: { disabledAt: true } } },
+  });
   if (!row) return null;
+  if (row.application.disabledAt) return null;
   if (row.revokedAt) return null;
   if (row.expiresAt <= nowForDb()) return null;
   return {
@@ -466,14 +470,20 @@ export async function updateOAuthApplication(
   if (patch.disabled !== undefined) {
     data.disabledAt = patch.disabled ? nowForDb() : null;
   }
-  return prisma.oAuthApplication.update({ where: { id }, data });
+  return prisma.$transaction(async (tx) => {
+    const application = await tx.oAuthApplication.update({ where: { id }, data });
+    if (patch.disabled) {
+      await tx.oAuthAccessToken.updateMany({
+        where: { applicationId: id, revokedAt: null },
+        data: { revokedAt: nowForDb() },
+      });
+    }
+    return application;
+  });
 }
 
 export async function disableOAuthApplication(id: string): Promise<OAuthApplication> {
-  return prisma.oAuthApplication.update({
-    where: { id },
-    data: { disabledAt: nowForDb() },
-  });
+  return updateOAuthApplication(id, { disabled: true });
 }
 
 export async function enableOAuthApplication(id: string): Promise<OAuthApplication> {
@@ -506,6 +516,7 @@ export interface UserConnection {
   applicationId: string; // 解除绑定时 DELETE /api/oauth/connections/<applicationId>
   applicationName: string;
   applicationHomepageUrl: string | null;
+  applicationDisabled: boolean;
   scopes: Scope[]; // 该应用名下所有存活 token 的 scope 并集（按首次出现顺序）
   tokenCount: number; // 存活 token 条数；>1 即用户重复授权过同一个应用
   firstAuthorizedAt: Date; // 最早一次授权
@@ -541,8 +552,6 @@ export function aggregateConnections(
   const byApp = new Map<string, UserConnection>();
 
   for (const r of rows) {
-    if (r.application.disabledAt != null) continue; // 禁用应用不展示
-
     const createdAt = r.createdAt ?? now;
     const existing = byApp.get(r.applicationId);
     if (!existing) {
@@ -550,6 +559,8 @@ export function aggregateConnections(
         applicationId: r.applicationId,
         applicationName: r.application.name,
         applicationHomepageUrl: r.application.homepageUrl,
+        // 兼容修复前停用但未吊销的 token：仍展示绑定，允许用户主动解绑。
+        applicationDisabled: r.application.disabledAt != null,
         scopes: parseStoredScopes(r.scopes),
         tokenCount: 1,
         firstAuthorizedAt: createdAt,
