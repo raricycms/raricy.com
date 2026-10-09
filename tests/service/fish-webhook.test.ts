@@ -11,7 +11,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import http from 'node:http';
-import type { AddressInfo } from 'node:net';
+import net, { type AddressInfo } from 'node:net';
 import { resetDb, makeUser, prisma } from '../helpers/db';
 import {
   signWebhook,
@@ -162,6 +162,17 @@ describe('地址配置', () => {
     expect(await prisma.fishWebhookEndpoint.count()).toBe(0);
   });
 
+  it.each(['::ffff:127.0.0.1', '::ffff:a00:1', '0:0:0:0:0:ffff:a9fe:a9fe'])(
+    '私网映射 IPv6 %s 在登记时被拒且不落库', async (host) => {
+      const u = await makeUser();
+      const res = await upsertWebhookEndpoint(u.id, `https://[${host}]/cb`);
+      expect(res.ok).toBe(false);
+      if (res.ok) return;
+      expect(res.message).toContain('内网');
+      expect(await prisma.fishWebhookEndpoint.count()).toBe(0);
+    }
+  );
+
   it('换密钥后旧密钥立刻失效', async () => {
     const u = await makeUser();
     const old = await registerReceiver(u.id);
@@ -235,6 +246,35 @@ describe('outbox 写入', () => {
 });
 
 describe('投递', () => {
+  it('已存入库的映射回环地址在投递时被拒，TCP 连接数为零', async () => {
+    let connections = 0;
+    const server = net.createServer((socket) => {
+      connections++;
+      socket.destroy();
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    try {
+      const port = (server.address() as AddressInfo).port;
+      const u = await makeUser();
+      // 模拟修复前已存在的配置；实际投递不传任何放宽策略的测试开关。
+      await prisma.fishWebhookEndpoint.create({
+        data: {
+          userId: u.id,
+          url: `https://[::ffff:127.0.0.1]:${port}/cb`,
+          secretEncrypted: sealWebhookSecret('legacy-endpoint-test-secret'),
+        },
+      });
+      const id = (await enqueue(u.id))!;
+      expect(await deliverWebhook(id)).toBe('retry');
+      const row = await prisma.fishWebhookDelivery.findUniqueOrThrow({ where: { id } });
+      expect(row.lastError).toContain('内网');
+      expect(row.lastStatusCode).toBeNull();
+      expect(connections).toBe(0);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
   it('★ 成功：收到 200 → delivered，header 与正文都对得上', async () => {
     const u = await makeUser();
     const secret = await registerReceiver(u.id);

@@ -163,6 +163,10 @@ curl -sS -X POST -H "Authorization: Bearer $ACCESS_TOKEN" \
 | `oauth:token:${clientId}` | 60 / 分钟 |
 | `oauth:userinfo:${userId}` | 600 / 分钟 |
 
+`token` 的 60 次额度在 `client_secret` 密码计算**之前**同步预留，成功与失败都计数。
+超额沿用 `invalid_request` / HTTP 400 限频响应，不再运行 scrypt。HTTP Basic 与请求体
+按实际参与鉴权的 `client_id` 共用同一桶；未知或禁用应用在密码计算前拒绝，不建立新桶。
+
 ---
 
 ## 8. v1 限制与未来扩展点

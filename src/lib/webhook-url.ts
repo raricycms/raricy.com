@@ -1,9 +1,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // webhook-url.ts — 回调地址的校验与「钉住 IP」的投递
 //
-// 这是本站**第一次由服务器主动去 fetch 用户提供的地址**。在那之前所有出站 HTTP
-// 都是打我们自己配置的账户服务 —— 地址可信，所以从没需要考虑 SSRF。回调不一样：
-// 地址是商户填的，而我们的服务器在内网里，旁边就是账户微服务和 SQLite 文件。
+// 这是本站由服务器主动去请求用户提供的地址的入口。地址是商户填的，而我们的
+// 服务器可能与其他服务共享网络；SQLite 是本地文件，不能因此假定它能被 HTTP 读取。
 // 一个指向 169.254.169.254 或 127.0.0.1 的地址就能把它变成内网探测器。
 //
 // ★ 三层，缺一不可 ★
@@ -155,11 +154,52 @@ const BLOCKED_V4: [string, number][] = [
   ['240.0.0.0', 4], // 保留（含 255.255.255.255）
 ];
 
+/** 已通过 isIP 的 IPv6 转成 128 位数值，统一压缩、前导零和点分十进制尾部。 */
+function v6ToInt(ip: string): bigint | null {
+  // scope ID 指向本机接口，不是公网回调地址的一部分。
+  if (ip.includes('%')) return null;
+  let address = ip;
+  if (address.includes('.')) {
+    const lastColon = address.lastIndexOf(':');
+    const tail = v4Bytes(address.slice(lastColon + 1));
+    if (!tail) return null;
+    address = `${address.slice(0, lastColon + 1)}${((tail[0] << 8) | tail[1]).toString(16)}:${((tail[2] << 8) | tail[3]).toString(16)}`;
+  }
+  const halves = address.split('::');
+  if (halves.length > 2) return null;
+  const left = halves[0] ? halves[0].split(':') : [];
+  const right = halves[1] ? halves[1].split(':') : [];
+  const missing = 8 - left.length - right.length;
+  if (halves.length === 2 ? missing < 1 : missing !== 0) return null;
+  const words = [...left, ...Array<string>(missing).fill('0'), ...right];
+  if (words.some((word) => !/^[\da-f]{1,4}$/i.test(word))) return null;
+  return words.reduce((value, word) => (value << 16n) | BigInt(parseInt(word, 16)), 0n);
+}
+
+function inV6Range(value: bigint, prefix: bigint, bits: number): boolean {
+  const shift = BigInt(128 - bits);
+  return (value >> shift) === (prefix >> shift);
+}
+
+// 公网原生 IPv6 只接受 IANA 当前分配的 2000::/3，再排除协议专用 / 隧道 / 文档段。
+// 其余空间默认拒绝，覆盖未指定、回环、兼容 v4、NAT64、ULA、链路/站点本地与组播。
+// 映射 v4 是例外：先拆实际 v4 地址重判，不依赖输入的文本写法。
+// 策略依据：https://www.iana.org/assignments/ipv6-address-space/
+//           https://www.iana.org/assignments/iana-ipv6-special-registry/
+const BLOCKED_V6: [string, number][] = [
+  ['2001::', 23], // IETF 协议专用，含 Teredo / 基准测试 / ORCHID
+  ['2001:db8::', 32], // 文档
+  ['2002::', 16], // 6to4：可隧道到私网
+  ['3ffe::', 16], // 已退役的 6bone
+  ['3fff::', 20], // 文档
+];
+const BLOCKED_V6_RANGES = BLOCKED_V6.map(([prefix, bits]) => ({ prefix: v6ToInt(prefix)!, bits }));
+
 /**
  * 这个 IP 是不是「不许我们连过去」的地址。**导出是为了单测能逐条钉**。
  *
- * IPv6 两项容易漏：`::ffff:a.b.c.d`（IPv4 映射）必须先拆出来按 v4 重判，
- * 否则 `::ffff:127.0.0.1` 会一路畅通；`2002::/16`（6to4）能隧道到私网。
+ * IPv6 必须按数值判网段：URL 会把 `::ffff:127.0.0.1` 规范化成 `::ffff:7f00:1`，
+ * DNS 又可能返回展开写法；仅匹配某种文本会让同一个私网地址绕过防线。
  */
 export function isBlockedAddress(ip: string): boolean {
   const kind = isIP(ip);
@@ -169,21 +209,16 @@ export function isBlockedAddress(ip: string): boolean {
     return BLOCKED_V4.some(([prefix, bits]) => inV4Range(b, prefix, bits));
   }
   if (kind === 6) {
-    const lower = ip.toLowerCase();
-    // IPv4 映射 / 兼容：拆出来按 v4 规则重判（经典绕过：::ffff:127.0.0.1）
-    const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/.exec(lower);
-    if (mapped) return isBlockedAddress(mapped[1]);
-    if (lower === '::' || lower === '::1') return true;
-    // 展开式写法（0:0:0:0:0:0:0:1）也一并挡掉
-    const expanded = lower.replace(/(^|:)0{1,4}(?=:|$)/g, '$1');
-    if (/^(|0+:)*0*1$/.test(expanded) && expanded.includes(':')) return true;
-    if (/^fe[89ab]/.test(lower)) return true; // fe80::/10 链路本地
-    if (/^f[cd]/.test(lower)) return true; // fc00::/7 唯一本地
-    if (/^ff/.test(lower)) return true; // ff00::/8 组播
-    if (lower.startsWith('2001:db8')) return true; // 文档用
-    if (lower.startsWith('2002')) return true; // 6to4：可隧道到私网
-    if (lower.startsWith('64:ff9b')) return true; // NAT64：同上
-    return false;
+    const value = v6ToInt(ip);
+    if (value === null) return true;
+    // ::ffff:0:0/96 —— 高 96 位固定为 0xffff，低 32 位才是实际连接的 v4。
+    if ((value >> 32n) === 0xffffn) {
+      const v4 = Number(value & 0xffffffffn);
+      const bytes = [v4 >>> 24, (v4 >>> 16) & 255, (v4 >>> 8) & 255, v4 & 255];
+      return BLOCKED_V4.some(([prefix, bits]) => inV4Range(bytes, prefix, bits));
+    }
+    if (!inV6Range(value, 0x20000000000000000000000000000000n, 3)) return true;
+    return BLOCKED_V6_RANGES.some(({ prefix, bits }) => inV6Range(value, prefix, bits));
   }
   return true; // 不是合法 IP —— 宁可不发
 }
