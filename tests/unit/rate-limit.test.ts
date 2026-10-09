@@ -276,6 +276,9 @@ describe('RULES 全站配额（src/lib/rate-limit.ts 即权威，改动即报警
       windowMs: 60_000,
       desc: '对外列表 /explore 的搜索 120 次/分/IP（本站第一个匿名**页面**的限频：没有会话可依，只能按 IP）',
     },
+    { name: 'passwordPerUser', limit: 20, windowMs: 60_000, desc: '所有网络密码确认共享用户 ID 预算，成功也计数' },
+    { name: 'passwordPerIp', limit: 120, windowMs: 60_000, desc: '网络密码计算的可信 IP 预算' },
+    { name: 'passwordGlobal', limit: 240, windowMs: 60_000, desc: '全站网络密码计算预算' },
   ] as const;
 
   for (const e of EXPECTED) {
