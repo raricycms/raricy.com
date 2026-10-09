@@ -3,6 +3,10 @@ import { createSessionToken, SESSION_COOKIE, sessionCookieOptions } from '@/lib/
 import { apiErr } from '@/lib/format';
 import { verifyTurnstile } from '@/lib/turnstile';
 import { cookies } from 'next/headers';
+import { PasswordWorkBusyError } from '@/lib/password';
+import { allowPasswordAttempt } from '@/lib/password-budget';
+import { clientIp } from '@/lib/request-ip';
+import { RULES } from '@/lib/rate-limit';
 
 // POST /api/auth/register  { username, email, password, invite_code?, turnstileToken? }
 // 注册流程：Turnstile 校验 → 校验 → 建号（有效邀请码升级 core）→ 立即登录（下发会话 cookie）。
@@ -39,12 +43,21 @@ export async function POST(req: Request) {
     return apiErr(400, '人机验证失败，请重试');
   }
 
-  const result = await registerUser({
-    username: body.username ?? '',
-    email: body.email ?? '',
-    password: body.password ?? '',
-    inviteCode: body.invite_code ?? null,
-  });
+  if (!allowPasswordAttempt('register', clientIp(req), RULES.passwordPerIp)) {
+    return apiErr(429, '注册过于频繁，请稍后再试');
+  }
+  let result;
+  try {
+    result = await registerUser({
+      username: body.username ?? '',
+      email: body.email ?? '',
+      password: body.password ?? '',
+      inviteCode: body.invite_code ?? null,
+    });
+  } catch (e) {
+    if (e instanceof PasswordWorkBusyError) return apiErr(429, e.message);
+    throw e;
+  }
 
   if (!result.ok || !result.user) {
     return apiErr(result.code, result.message);

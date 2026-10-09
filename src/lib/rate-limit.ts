@@ -252,6 +252,10 @@ export const RULES = {
    */
   loginPerIp: { limit: 300, windowMs: 15 * 60 * 1000 },
   loginPerUser: { limit: 100, windowMs: 15 * 60 * 1000 },
+  /** 所有网络密码确认共用：成功也计数；与失败预算独立。OAuth 的主体档由路由传入。 */
+  passwordPerUser: { limit: 20, windowMs: 60 * 1000 },
+  passwordPerIp: { limit: 120, windowMs: 60 * 1000 },
+  passwordGlobal: { limit: 240, windowMs: 60 * 1000 },
   /**
    * 鱼干转账（鱼干市场）。**唯一有配额的鱼干写路径** —— 投喂 / 签到 / CLI 都没有，
    * 因为它们只能把钱给「文章作者」或「系统」，而转账是唯一能把鱼干推给任意第三方的

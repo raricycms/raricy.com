@@ -10,7 +10,15 @@
 // 用真哈希才能真正验证「werkzeug 生成 → Node 校验」这个方向；自产自销的往返测不了这个。
 
 import { describe, it, expect } from 'vitest';
-import { verifyPassword, hashPassword } from '@/lib/password';
+import { verifyPassword, hashPassword, MAX_PASSWORD_WORK, PasswordWorkBusyError } from '@/lib/password';
+
+it('哈希与校验共用在途上限，超额不排队，结束后释放名额', async () => {
+  const active = Array.from({ length: MAX_PASSWORD_WORK }, () => hashPassword('test-password'));
+  await expect(hashPassword('extra')).rejects.toBeInstanceOf(PasswordWorkBusyError);
+  await expect(verifyPassword('wrong', 'scrypt:32768:8:1$salt$00')).rejects.toBeInstanceOf(PasswordWorkBusyError);
+  const hashes = await Promise.all(active);
+  expect(await verifyPassword('test-password', hashes[0])).toBe(true);
+});
 
 // ── 来自 Python werkzeug 的真实哈希 ─────────────────────────────────────────
 const WERKZEUG_SCRYPT_ASCII = {

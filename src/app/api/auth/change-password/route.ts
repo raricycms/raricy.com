@@ -3,6 +3,8 @@ import { changeOwnPassword } from '@/lib/user-service';
 import { apiErr } from '@/lib/format';
 import { SESSION_COOKIE } from '@/lib/session';
 import { cookies } from 'next/headers';
+import { clientIp } from '@/lib/request-ip';
+import { PasswordWorkBusyError } from '@/lib/password';
 
 // POST /api/auth/change-password — 修改本人密码
 //
@@ -24,12 +26,19 @@ export async function POST(req: Request) {
     return apiErr(400, '请求体格式错误');
   }
 
-  const result = await changeOwnPassword(
-    user.id,
-    body.current_password ?? '',
-    body.new_password ?? '',
-    body.confirm_password ?? ''
-  );
+  let result;
+  try {
+    result = await changeOwnPassword(
+      user.id,
+      body.current_password ?? '',
+      body.new_password ?? '',
+      body.confirm_password ?? '',
+      clientIp(req)
+    );
+  } catch (e) {
+    if (e instanceof PasswordWorkBusyError) return apiErr(429, e.message);
+    throw e;
+  }
   if (!result.ok) return apiErr(result.code, result.message);
 
   // 改密后当前会话失效：清除会话 cookie（sessionVersion 已在 service 内自增）

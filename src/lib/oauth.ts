@@ -17,7 +17,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { prisma } from './db';
 import { nowForDb } from './db-time';
-import { hashPassword, verifyPassword } from './password';
+import { hashPassword, verifyPassword, PasswordWorkBusyError } from './password';
 import { generateShortId } from './short-id';
 import type { OAuthApplication } from '@prisma/client';
 
@@ -203,7 +203,13 @@ export async function authenticateClient(
     return { ok: false, reason: 'rate_limited' };
   }
 
-  const ok = await verifyPassword(clientSecret, app.clientSecretHash);
+  let ok;
+  try {
+    ok = await verifyPassword(clientSecret, app.clientSecretHash);
+  } catch (e) {
+    if (e instanceof PasswordWorkBusyError) return { ok: false, reason: 'rate_limited' };
+    throw e;
+  }
   if (!ok) return { ok: false, reason: 'invalid_client' };
 
   return { ok: true, app };

@@ -12,8 +12,7 @@
 // 攻击者只会挑松的那个门。
 //
 // 【限频语义】（与登录完全一致，连桶都共用）
-//   · **失败才计数**：成功的校验不消耗配额，正常用户与机器人不会被自己的成功
-//     记录挡住（见 rate-limit.ts 的 isRateLimited 注释）；
+//   · 失败预算先同步预留，成功释放；独立的计算预算对成功/失败都计数。
 //   · 双维度：IP（挡「一台机器扫一批账号」）+ 用户名小写归一（挡「一批机器打
 //     同一个账号」），任一超限即 429；
 //   · 检查放在查库与 verifyPassword **之前** —— 被挡的请求不跑 scrypt。
@@ -23,7 +22,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { prisma } from './db';
-import { verifyPassword } from './password';
+import { verifyPassword, PasswordWorkBusyError } from './password';
+import { allowPasswordAttempt } from './password-budget';
 import { reserveRateLimitAttempts, RULES } from './rate-limit';
 
 /** 校验通过时返回的最小用户快照（两个门口各自需要的字段都在里面）。 */
@@ -78,6 +78,9 @@ export async function verifyCredentials(
       },
     });
 
+    if (user && !allowPasswordAttempt(`user:${user.id}`, ip)) {
+      return { ok: false, status: 429, message: '密码校验过于频繁，请稍后再试' };
+    }
     if (!user || !(await verifyPassword(password, user.passwordHash))) {
       finishAttempt(true);
       return { ok: false, status: 401, message: '用户名或密码错误' };
@@ -94,6 +97,9 @@ export async function verifyCredentials(
         banUntil: user.banUntil,
       },
     };
+  } catch (e) {
+    if (e instanceof PasswordWorkBusyError) return { ok: false, status: 429, message: e.message };
+    throw e;
   } finally {
     finishAttempt(false);
   }

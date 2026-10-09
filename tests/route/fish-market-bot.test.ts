@@ -30,6 +30,7 @@ vi.mock('next/headers', () => ({
 import { resetDb, makeUser, prisma } from '../helpers/db';
 import { makeFishUser, expectLedgerConsistent } from '../helpers/fish-ledger';
 import { hashPassword } from '@/lib/password';
+import * as passwordWork from '@/lib/password';
 import { createSessionToken } from '@/lib/session';
 import { __resetRateLimitStore, RULES, isRateLimited, recordRateLimitHit } from '@/lib/rate-limit';
 import { TRANSFER_OUT_TYPE, TRANSFER_IN_TYPE } from '@/lib/fish-market-service';
@@ -852,6 +853,32 @@ describe('POST /api/fish/market/pay（收银台）', () => {
     expect(await balanceOf(sender.id)).toBe(10);
 
     await expectLedgerConsistent('step-up 密码错误被 401 拒后');
+  });
+
+  it('非法金额先拒绝，不运行密码计算或改变账本', async () => {
+    const sender = await makeLoginableUser({ driedFish: 0 });
+    const recipient = await makeUser();
+    session.token = await createSessionToken({ uid: sender.id, sv: 0 });
+    const spy = vi.spyOn(passwordWork, 'verifyPassword');
+    try {
+      for (const amount of [0, -1, 'NaN', 0.00001]) {
+        expect((await payReq({ to_user_id: recipient.id, amount, password: PASSWORD })).status).toBe(400);
+      }
+      expect(spy).not.toHaveBeenCalled();
+      await expectLedgerConsistent('非法付款早退后');
+    } finally { spy.mockRestore(); }
+  });
+
+  it('正确密码反复确认余额不足的付款也受计算预算约束', async () => {
+    const sender = await makeLoginableUser({ driedFish: 0 });
+    const recipient = await makeUser();
+    session.token = await createSessionToken({ uid: sender.id, sv: 0 });
+    for (let i = 0; i < RULES.passwordPerUser.limit; i++) {
+      expect((await payReq({ to_user_id: recipient.id, amount: 1, password: PASSWORD })).status).toBe(400);
+    }
+    expect((await payReq({ to_user_id: recipient.id, amount: 1, password: PASSWORD })).status).toBe(429);
+    expect(await txCount()).toBe(0);
+    await expectLedgerConsistent('正确密码计算被限频后');
   });
 
   it('密码正确 → 付款成功，余额与流水都对', async () => {

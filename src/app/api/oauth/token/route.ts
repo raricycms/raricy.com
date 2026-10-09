@@ -1,4 +1,5 @@
-import { rateLimit } from '@/lib/rate-limit';
+import { allowPasswordAttempt } from '@/lib/password-budget';
+import { clientIp } from '@/lib/request-ip';
 import {
   authenticateClient,
   consumeAuthorizationCode,
@@ -44,10 +45,10 @@ export async function POST(req: Request) {
     body.client_secret ?? null,
     // 配额仍由网络入口定义；鉴权内核在解析 Basic/body 的真实 clientId 后、
     // 密码计算前调用，避免按 body 建桶却拿 Basic 凭据执行校验。
-    (clientId) => rateLimit(`oauth:token:${clientId}`, {
+    (clientId) => allowPasswordAttempt(`oauth:${clientId}`, clientIp(req), {
       limit: 60,
       windowMs: 60 * 1000,
-    }).allowed
+    })
   );
   if (!authRes.ok) {
     if (authRes.reason === 'rate_limited') {

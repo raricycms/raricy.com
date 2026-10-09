@@ -120,17 +120,29 @@ describe('登录限频', () => {
     ).toBe(429);
   });
 
-  // 每次成功登录都要跑一遍 scrypt，100+ 次会超过默认 5s 超时 —— 显式放宽。
-  it('成功登录不消耗配额（否则正常用户会被自己的成功记录挡住）', { timeout: 120_000 }, async () => {
+  it('成功登录不消耗失败预算，但受独立计算预算保护', async () => {
     const username = 'gooduser';
     await makeUser({ username, passwordHash: await hashPassword('correct-horse') });
     const ip = { 'x-real-ip': '203.0.113.55' };
 
-    // 连续成功登录，次数超过 per-user 上限 —— 必须次次 200
-    for (let i = 0; i < RULES.loginPerUser.limit + 5; i++) {
+    for (let i = 0; i < 5; i++) {
       const res = await login(req({ username, password: 'correct-horse' }, ip));
       expect(res.status, `第 ${i + 1} 次成功登录不应被限频`).toBe(200);
     }
+    expect(isRateLimited(`login:user:${username}`, RULES.loginPerUser)).toBe(false);
+  });
+
+  it('正确密码超过 20 次/分钟也在计算前返回 429，用户名和邮箱共享用户 ID 桶', async () => {
+    const user = await makeUser({ username: 'gooduser', passwordHash: await hashPassword('correct-horse') });
+    const spy = vi.spyOn(passwordWork, 'verifyPassword');
+    try {
+      for (let i = 0; i < RULES.passwordPerUser.limit; i++) {
+        expect((await verifyCredentials(i % 2 ? user.email : user.username, 'correct-horse')).ok).toBe(true);
+      }
+      expect(await verifyCredentials(user.username, 'correct-horse')).toMatchObject({ status: 429 });
+      expect(spy).toHaveBeenCalledTimes(RULES.passwordPerUser.limit);
+      expect(isRateLimited(`login:user:${user.username}`, RULES.loginPerUser)).toBe(false);
+    } finally { spy.mockRestore(); }
   });
 
   it('空用户名/密码仍返回 400，且不占用限频配额', async () => {

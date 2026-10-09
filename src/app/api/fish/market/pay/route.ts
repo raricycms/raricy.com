@@ -3,6 +3,7 @@ import { apiOk, apiErr } from '@/lib/format';
 import { verifyCredentials } from '@/lib/credential-auth';
 import { clientIp } from '@/lib/request-ip';
 import { transferFish } from '@/lib/fish-market-service';
+import { fishToUnits, MAX_FISH_UNITS } from '@/lib/fish-units';
 
 export const runtime = 'nodejs';
 
@@ -39,6 +40,11 @@ export async function POST(req: Request) {
   const toUserId = typeof body.to_user_id === 'string' ? body.to_user_id.trim() : '';
   if (!toUserId) return apiErr(400, '缺少收款人');
   const amount = Number(body.amount);
+  if (!Number.isFinite(amount) || amount <= 0) return apiErr(400, '金额必须为正数');
+  try {
+    if (fishToUnits(amount) > MAX_FISH_UNITS) return apiErr(400, '金额过大');
+  } catch { return apiErr(400, '金额最多支持 4 位小数'); }
+  if (toUserId === user.id) return apiErr(400, '不能给自己转账');
   const note = typeof body.note === 'string' ? body.note : null;
   const clientIdempotencyKey =
     typeof body.idempotency_key === 'string' ? body.idempotency_key : null;

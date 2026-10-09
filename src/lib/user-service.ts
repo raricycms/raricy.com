@@ -14,6 +14,7 @@ import { prisma } from './db';
 import { frameUrlFor } from './frame-service';
 import { nowForDb } from './db-time';
 import { hashPassword, verifyPassword } from './password';
+import { allowPasswordAttempt } from './password-budget';
 import { kickUser } from './chat-bus';
 import { publishToUser, kickTopbarUser } from './topbar-bus';
 import type { Prisma } from '@prisma/client';
@@ -614,7 +615,8 @@ export async function changeOwnPassword(
   userId: string,
   currentPassword: string,
   newPassword: string,
-  confirmPassword: string
+  confirmPassword: string,
+  ip?: string
 ): Promise<ChangePasswordResult> {
   const cur = (currentPassword || '').trim();
   const next = (newPassword || '').trim();
@@ -630,6 +632,9 @@ export async function changeOwnPassword(
   });
   if (!user) return { ok: false, code: 401, message: '未登录' };
 
+  if (!allowPasswordAttempt(`user:${userId}`, ip)) {
+    return { ok: false, code: 429, message: '密码校验过于频繁，请稍后再试' };
+  }
   if (!(await verifyPassword(cur, user.passwordHash))) {
     return { ok: false, code: 400, message: '原密码不正确' };
   }
