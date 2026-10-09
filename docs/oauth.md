@@ -24,7 +24,7 @@ raricy.com 作为 **OAuth 2.0 Authorization Server**，让外部第三方应用�
 | `/api/oauth/authorize` | POST | raricy session | 用户点「同意」后 mint code，返回 **200 + `{redirect_to}`**（由前端做顶层跳转，**不是 302**） |
 | `/api/oauth/token` | POST | client (HTTP Basic / body) | code → access_token |
 | `/api/oauth/userinfo` | GET | `Authorization: Bearer` | 返回 `{sub, username, avatar_url}` |
-| `/api/oauth/revoke` | POST | session **或** bearer | 吊销 token（RFC 7009） |
+| `/api/oauth/revoke` | POST | 原始 token（body 或 Bearer） | 仅吊销该 token（RFC 7009），不读取会话 |
 | `/api/oauth/connections` | GET | raricy session | 当前用户已绑定的应用列表（**一应用一行**） |
 | `/api/oauth/connections/[applicationId]` | DELETE | raricy session | 解除与该应用的绑定（撤销其**全部**令牌） |
 | `/api/admin/oauth/applications` | GET / POST | owner | 列出 / 创建应用 |
@@ -139,7 +139,7 @@ curl -sS -X POST -H "Authorization: Bearer $ACCESS_TOKEN" \
 | 授权码 TTL | 10 分钟 |
 | `redirect_uri` 一致性 | token 端再次校验与授权时一致（防 code 截获重定向） |
 | Token 比较时序 | 用 SQL PK 存在性查询；`client_secret` 走 `timingSafeEqual` |
-| CSRF | `/api/oauth/authorize` 保留；`/token` `/userinfo` `/revoke` 豁免（client_secret 鉴权） |
+| CSRF | `/api/oauth/authorize` 保留；`/token` `/userinfo` `/revoke` 豁免（client_secret 或 token 自身鉴权，绝不使用 cookie） |
 | 限频 | authorize 30/min/user · token 60/min/clientId · userinfo 600/min/user |
 | 日志 | 原始 token / code / secret **永不**写入日志 |
 
@@ -180,7 +180,7 @@ curl -sS -X POST -H "Authorization: Bearer $ACCESS_TOKEN" \
 | 无 refresh_token | 加 `grant_type=refresh_token`（v1 用 revocation + 长 TTL 兜底） |
 | 软禁用（`disabledAt`） | 硬删除（FK CASCADE 已就位） |
 | 站长手工注册 | 自助申请 + admin 审批流 |
-| 站内吊销走 settings 页 | 加 `/api/oauth/revoke` 站外调用方接口（已实现，但仅 owner + self） |
+| 站内吊销走 settings 页 | `/api/oauth/revoke` 供外部调用方以 token 自身作凭证吊销 |
 | 仅 HTTP / HTTPS redirect | 加自定义 scheme 支持（mobile app） |
 | 单站点 cookie | 加 PKCE（RFC 7636）防 code 截获 + 适配 SPA / mobile |
 | `state` 仅透传 | 加 server-side state 校验防 CSRF on `/oauth/authorize` GET |
