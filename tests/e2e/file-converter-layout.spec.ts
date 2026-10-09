@@ -47,9 +47,16 @@ test('拖放区与主按钮在任何视口都完整可见、可点', async ({ pa
   expect(box.x + box.width).toBeLessThanOrEqual(vw + 2);
 
   const cta = page.getByRole('button', { name: '选择文件' });
+  await expect(cta).toBeVisible();
   const btnBox = (await cta.boundingBox())!;
-  // 触控目标下限 44px（全站按钮纪律同）
-  expect(btnBox.height).toBeGreaterThanOrEqual(44);
+  // 这里量的是「按钮真的撑得起点击」，**不是** 44px 那道线。
+  // 44px 是全站给**图标圆钮**定的规则（收藏夹那三颗，见 docs/frontend-styles.md §6.7），
+  // 而三档按钮**刻意不统一尺寸**（abstracts/_mixins.scss 头部：「各按钮保留自己的
+  // 字号与内距」），文字按钮实测 40px。照抄 44 就是把一条不存在的规矩塞给本页。
+  expect(btnBox.height).toBeGreaterThanOrEqual(36);
+  // 更实在的一条：按钮整个落在拖放区里（没被裁切 / 没溢出容器）
+  expect(btnBox.y).toBeGreaterThanOrEqual(box.y - 2);
+  expect(btnBox.y + btnBox.height).toBeLessThanOrEqual(box.y + box.height + 2);
 });
 
 test('上传后待转换清单与操作区在窄屏不横向溢出', async ({ page }) => {
