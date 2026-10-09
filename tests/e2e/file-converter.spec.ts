@@ -101,6 +101,11 @@ test('图片：PNG → JPG 真实转换，输出按字节验明正身，并如�
   expect(out.subarray(0, 3)).toEqual(Buffer.from([0xff, 0xd8, 0xff]));
   // §15 诚实说明：有损重编码必须出现在结果区
   await expect(page.locator('li.fc-task[data-edge="image:to-jpg"] .fc-notices li').first()).toBeVisible();
+  // §2 六种转换方式之一：PNG→JPG 是「重新编码」，结果页必须照实标出来
+  // （「换封装」与「重新编码」对用户是完全不同的两件事，不能只写「转换完成」）
+  await expect(page.locator('li.fc-task[data-edge="image:to-jpg"] .fc-result__method')).toContainText(
+    '重新编码'
+  );
 });
 
 test('音频：WAV→FLAC→WAV 引擎闭环（自举样本，全程不出站）', async ({ page }) => {
