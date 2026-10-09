@@ -57,14 +57,14 @@ afterEach(() => {
 
 describe('GET /api/fish/tokens', () => {
   it('未登录 → 401', async () => {
-    expect((await GET()).status).toBe(401);
+    expect((await GET(makeReq())).status).toBe(401);
   });
 
   it('登录 → 列出自己的凭据，且**不返回明文也不返回哈希**', async () => {
     await makeSessionUser();
     const minted = await (await POST(makeReq({ password: PASSWORD }))).json();
 
-    const res = await GET();
+    const res = await GET(makeReq());
     expect(res.status).toBe(200);
     const text = JSON.stringify(await res.json());
 
@@ -75,7 +75,7 @@ describe('GET /api/fish/tokens', () => {
 
   it('空列表是 200 + 空数组，不是 404', async () => {
     await makeSessionUser();
-    const json = await (await GET()).json();
+    const json = await (await GET(makeReq())).json();
     expect(json.tokens).toEqual([]);
   });
 });

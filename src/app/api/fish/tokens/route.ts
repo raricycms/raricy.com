@@ -40,11 +40,11 @@ function toTokenDTO(t: Awaited<ReturnType<typeof listFishTokens>>[number]) {
   };
 }
 
-export async function GET(req?: Request) {
+export async function GET(req: Request) {
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '请先登录');
 
-  const rawCursor = req ? new URL(req.url).searchParams.get('before_id') : null;
+  const rawCursor = new URL(req.url).searchParams.get('before_id');
   const beforeId = rawCursor === null ? undefined : Number(rawCursor);
   if (beforeId !== undefined && (!Number.isSafeInteger(beforeId) || beforeId <= 0)) return apiErr(400, '无效的 before_id');
   const tokens = await listFishTokens(user.id, beforeId);
