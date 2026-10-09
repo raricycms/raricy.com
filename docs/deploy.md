@@ -406,7 +406,7 @@ ssl_certificate_key /etc/letsencrypt/live/raricy.com/privkey.pem;
 
 若前面有 Cloudflare，默认 `$remote_addr` 是 CDN 节点地址（限频会共用 CDN 的桶）。
 需要 nginx 的 `real_ip_header CF-Connecting-IP`，并且 `set_real_ip_from` **只列 Cloudflare
-官方 IP 段**、随官方更新维护；绝不能信任 `0.0.0.0/0` 或 `::/0`。应用仍只读取 nginx
+官方 IP 段**、随官方更新维护（[官方 IP 说明](https://developers.cloudflare.com/fundamentals/concepts/cloudflare-ip-addresses/)）；绝不能信任 `0.0.0.0/0` 或 `::/0`。应用仍只读取 nginx
 还原并覆盖的 `X-Real-IP`。上线时验证伪造 CF/XFF 不改变限频桶，源站端口不可直连。
 ## 7. systemd unit 示例
 
