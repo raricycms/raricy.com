@@ -297,13 +297,25 @@ export default function ConverterApp() {
         }
         try {
           const inspect = await inspectFileClient(file);
-          const edges = caps ? availableEdges(category, inspect, caps) : [];
-          const problem = edges.length === 0 ? '当前类别不支持该文件，或所需能力不可用' : null;
-          newPending.push({ file, inspect, problem });
+          // ⚠️ 这里**只记内在问题**（空文件 / 识别失败），不记「没有可用目标」。
+          // 那一判是**能力相关**的（caps 未就绪时 availableEdges 恒为空），
+          // 存下来就再也得不到重算 —— 症状是「能力探测完成前拖进来的文件被永久
+          // 打上『当前类别不支持该文件』」，而重试用例里同样的文件却能转。
+          // 现在的口径：显示层每次按当前 caps 重算（见 displayPending）。
+          newPending.push({ file, inspect, problem: null });
+          // 深度探测的门槛在 caps 未就绪时退回**与能力无关**的「这个类别有没有
+          // 接这种内容的边」——否则 caps 为 null 时永不探测，动态选项（选音轨 /
+          // 选工作表）永远只有兜底项。
+          const plausible =
+            caps !== null
+              ? availableEdges(category, inspect, caps).length > 0
+              : category.edges.some(
+                  (e) => e.from.includes(inspect.sniff.kind) && (e.match ? e.match(inspect) : true)
+                );
           // 深度探测（类别声明了 probe 才跑）：补 sheets / streams / pageCount。
           // 非阻塞 —— 参数选择器在探测回来前先显示静态选项；probe 契约要求自行
           // 降级不抛，这里再兜一层防意外。
-          if (category.probe && edges.length > 0) {
+          if (category.probe && plausible) {
             const target = file;
             void category
               .probe(file, inspect)
@@ -333,8 +345,29 @@ export default function ConverterApp() {
     [caps, category]
   );
 
+  // ── 待转换的显示模型 ────────────────────────────────────────────────────────
+  //
+  // 「这个文件当前没有可用目标」是**能力相关**的判据，必须随 caps 现算：
+  // 存在 PendingFile.problem 里的话，能力探测完成前拖进来的文件就永远停在
+  // 「不支持」上（它只在 addFiles 那一刻算过一次）。所以分两层 ——
+  //   · 存的 problem：内在的（空文件 / 识别失败），与 caps 无关；
+  //   · 显示的 problem：内在的，或「caps 已就绪但没有可用边」。
+  // 列表与目标选择器读的都是 displayPending。
+  const displayPending = useMemo(
+    () =>
+      pending.map((p) => ({
+        ...p,
+        problem:
+          p.problem ??
+          (caps && availableEdges(category, p.inspect, caps).length === 0
+            ? '当前类别不支持该文件，或所需能力不可用'
+            : null),
+      })),
+    [pending, caps, category]
+  );
+
   // 可选目标 = 所有「无问题」待转换文件的可执行边的交集
-  const okPending = pending.filter((p) => !p.problem);
+  const okPending = displayPending.filter((p) => !p.problem);
   const candidateEdges = useMemo(() => {
     if (!caps || okPending.length === 0) return [];
     let edges = availableEdges(category, okPending[0].inspect, caps);
@@ -537,11 +570,11 @@ export default function ConverterApp() {
         </div>
 
         {/* 待转换清单 */}
-        {pending.length > 0 && (
+        {displayPending.length > 0 && (
           <div className="tool-panel fc-panel">
-            <h2 className="fc-panel__title">待转换（{pending.length}）</h2>
+            <h2 className="fc-panel__title">待转换（{displayPending.length}）</h2>
             <ul className="fc-files">
-              {pending.map((p, i) => (
+              {displayPending.map((p, i) => (
                 <li key={`${p.file.name}-${i}`} className={p.problem ? 'fc-file fc-file--bad' : 'fc-file'}>
                   <span className="fc-file__name">{p.file.name}</span>
                   <span className="fc-file__meta">
