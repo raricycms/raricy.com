@@ -1,4 +1,3 @@
-import { apiErr } from '@/lib/format';
 import { rateLimit } from '@/lib/rate-limit';
 import {
   authenticateClient,
@@ -18,6 +17,7 @@ import {
 //   • redirect_uri 必须与授权时**完全一致**（防 code 截获重定向）。
 //   • consumeAuthorizationCode 内部用原子 update 保证恰好一次成功。
 //   • CSRF 中间件已豁免本路径（外部服务端主机不在 ALLOWED_ORIGINS）。
+//   • 每 clientId 每分钟 60 次密码校验，成功/失败都计数，超额不运行 scrypt。
 
 export async function POST(req: Request) {
   // 1. 解析 body（容错：form-urlencoded 与 JSON 都接受）
@@ -41,19 +41,21 @@ export async function POST(req: Request) {
   const authRes = await authenticateClient(
     req.headers.get('authorization'),
     body.client_id ?? null,
-    body.client_secret ?? null
+    body.client_secret ?? null,
+    // 配额仍由网络入口定义；鉴权内核在解析 Basic/body 的真实 clientId 后、
+    // 密码计算前调用，避免按 body 建桶却拿 Basic 凭据执行校验。
+    (clientId) => rateLimit(`oauth:token:${clientId}`, {
+      limit: 60,
+      windowMs: 60 * 1000,
+    }).allowed
   );
   if (!authRes.ok) {
+    if (authRes.reason === 'rate_limited') {
+      return oauthErr('invalid_request', '请求过于频繁，请稍后再试');
+    }
     return oauthErr('invalid_client', '客户端鉴权失败');
   }
   const app = authRes.app;
-
-  // 限频：每 clientId 每分钟 60 次
-  const rl = rateLimit(`oauth:token:${app.clientId}`, {
-    limit: 60,
-    windowMs: 60 * 1000,
-  });
-  if (!rl.allowed) return oauthErr('invalid_request', '请求过于频繁，请稍后再试');
 
   // 3. grant_type 校验（v1 仅 authorization_code）
   const grantType = body.grant_type;
