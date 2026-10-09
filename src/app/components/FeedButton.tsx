@@ -153,6 +153,7 @@ export default function FeedButton({
   const remaining = Math.max(0, FEED_CAP - fed);
 
   function openFeedModal() {
+    if (canEdit) return;
     if (!isAuth) {
       window.location.href = '/login';
       return;
@@ -384,8 +385,9 @@ export default function FeedButton({
             id="feed-fish-btn"
             className={`fish-btn${fed > 0 ? ' fish-btn--fed' : ''}`}
             onClick={openFeedModal}
-            disabled={isAuth && fed >= FEED_CAP}
-            aria-label="投喂小鱼干"
+            disabled={canEdit || (isAuth && fed >= FEED_CAP)}
+            title={canEdit ? '不能给自己的文章投喂' : undefined}
+            aria-label={canEdit ? '收到的投喂' : '投喂小鱼干'}
           >
             <span className="icon icon-fish" aria-hidden="true"></span>
             <span>投喂</span>
