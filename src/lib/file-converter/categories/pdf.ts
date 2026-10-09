@@ -774,6 +774,11 @@ export const CATEGORY: CategoryDef = {
           type: 'select',
           options: OCR_LANGS.map((l) => ({ value: l, label: OCR_LANG_LABEL[l] })),
           defaultValue: 'chi_sim+eng',
+          // ⚠️ 这条**必须写在跑之前**：中文字符写不进文字层是本功能当前的真实边界，
+          // 而结果页那条 notice 是跑完之后才看到的 —— 用户按「做成可搜索 PDF」点下去、
+          // 拿到一份中文搜不到的 PDF，只会觉得坏了。根因是没有可嵌入的中文字体
+          // （pdf-lib 只能用标准字体 WinAnsi，覆盖不到 CJK）。
+          help: '中文等非拉丁文字暂时写不进文字层（缺少可嵌入的中文字体），含这类字符的页只保留图像；英文可正常搜索。',
         },
       ],
       requires: ['worker'],
