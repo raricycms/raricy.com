@@ -1,11 +1,11 @@
-// GET /api/admin/appeals?page=&status= — 申诉列表（管理员）
-import { getCurrentUser, hasAdminRights } from '@/lib/auth';
+// GET /api/admin/appeals?page=&status= — 申诉列表（与裁决页面同为站长档）
+import { getCurrentUser, isOwner } from '@/lib/auth';
 import { listAppeals } from '@/lib/admin-appeal-service';
 import { apiErr } from '@/lib/format';
 
 export async function GET(req: Request) {
   const user = await getCurrentUser();
-  if (!hasAdminRights(user)) return apiErr(403, '没有管理员权限');
+  if (!isOwner(user)) return apiErr(403, '仅站长可访问');
 
   const url = new URL(req.url);
   const result = await listAppeals({
