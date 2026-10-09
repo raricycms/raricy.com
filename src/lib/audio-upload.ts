@@ -253,7 +253,9 @@ export function getAudioUploadFolder(): string {
 
 /** 磁盘上的完整文件路径：<folder>/<id><ext>。 */
 export function audioStoragePathFor(id: string, mimeType: string): string {
-  return path.join(getAudioUploadFolder(), id + EXT_MAP[mimeType]);
+  const extension = EXT_MAP[mimeType];
+  if (!extension) throw new Error('不支持的音频类型');
+  return path.join(getAudioUploadFolder(), id + extension);
 }
 
 // ── 写路径 ───────────────────────────────────────────────────────────────────
