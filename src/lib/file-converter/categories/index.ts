@@ -27,6 +27,21 @@ function mergeDocument(pdf: CategoryDef, office: CategoryDef): CategoryDef {
     accept: '.pdf,.docx,.doc,.odt,.rtf,.md,.markdown,.html,.htm,.txt',
     maxFilesPerTask: Math.max(pdf.maxFilesPerTask, office.maxFilesPerTask),
     edges: [...pdf.edges, ...office.edges],
+    // ★ 两个子类别的 probe 都要保住 ★
+    // 只合并 edges 的话，document 标签页永远拿不到深度探测结果（PDF 的页数、
+    // DOCX 的元信息），而**症状是「够不到」而不是报错**：页数上限与 estimateOutput
+    // 只能等 runner 内判，体验上从「提前拒绝」退化成「先入队再失败」。
+    //
+    // 两个 probe 都会被调用 —— 廉价的前提是**各自先按 sniff.kind 自判归属，
+    // 不是自己的就立刻返回 {}**（这本来就是 probe 的契约：自己降级、绝不抛）。
+    // 谁的 probe 忘了这条纪律，就会变成「打开每个 PDF 都顺带加载一次 mammoth」。
+    probe: async (file, info) => {
+      const [a, b] = await Promise.all([
+        pdf.probe ? pdf.probe(file, info) : Promise.resolve({}),
+        office.probe ? office.probe(file, info) : Promise.resolve({}),
+      ]);
+      return { ...a, ...b };
+    },
   };
 }
 
