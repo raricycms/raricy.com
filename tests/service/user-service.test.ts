@@ -19,7 +19,9 @@
 // 对应的 *-failclosed 用例，只有建号这条没有 —— 想补的话照 tests/service/
 // checkin-failclosed.test.ts 的 mock 方式（vi.mock accountServiceEnabled + AccountClient）。
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { subscribe as subscribeChat, publishToUsers, __resetChatBus } from '@/lib/chat-bus';
+import { subscribe as subscribeTopbar, publishToUser, __resetTopbarBus } from '@/lib/topbar-bus';
 
 import {
   registerUser,
@@ -37,6 +39,11 @@ import { resetDb, makeUser, makeBlog, prisma } from '../helpers/db';
 
 beforeEach(async () => {
   await resetDb();
+});
+
+afterEach(() => {
+  __resetChatBus();
+  __resetTopbarBus();
 });
 
 // ── 夹具 ────────────────────────────────────────────────────────────────────
@@ -469,6 +476,26 @@ describe('registerUser：邀请码', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('changeOwnPassword：成功路径', () => {
+  it('改密断开该用户的旧讨论和顶栏流，后续私聊/通知不再投递，其他用户不受影响', async () => {
+    const u = await makeUserWithPassword('oldpassword');
+    const chatWrite = vi.fn(() => true);
+    const topbarWrite = vi.fn(() => true);
+    const chatClose = vi.fn();
+    const topbarClose = vi.fn();
+    const otherWrite = vi.fn(() => true);
+    subscribeChat({ userId: u.id, focusMode: false, write: chatWrite, close: chatClose });
+    subscribeTopbar({ userId: u.id, write: topbarWrite, close: topbarClose });
+    subscribeChat({ userId: 'other', focusMode: false, write: otherWrite, close: vi.fn() });
+
+    expect((await changeOwnPassword(u.id, 'oldpassword', 'newpassword1', 'newpassword1')).ok).toBe(true);
+    publishToUsers([u.id, 'other'], { type: 'resync' });
+    publishToUser(u.id, { count: 1 });
+    expect(chatClose).toHaveBeenCalledOnce();
+    expect(topbarClose).toHaveBeenCalledOnce();
+    expect(chatWrite).not.toHaveBeenCalled();
+    expect(topbarWrite).not.toHaveBeenCalled();
+    expect(otherWrite).toHaveBeenCalledOnce();
+  });
   it('★★ sessionVersion 必须自增 —— 这是踢下线所有旧会话的唯一机制', async () => {
     const u = await makeUserWithPassword('oldpassword', { sessionVersion: 3 });
 
