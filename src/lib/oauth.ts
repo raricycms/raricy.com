@@ -151,7 +151,7 @@ export interface ClientAuthOk {
 }
 export interface ClientAuthFail {
   ok: false;
-  reason: 'missing_credentials' | 'invalid_client' | 'disabled';
+  reason: 'missing_credentials' | 'invalid_client' | 'disabled' | 'rate_limited';
 }
 export type ClientAuthResult = ClientAuthOk | ClientAuthFail;
 
@@ -179,12 +179,14 @@ function parseBasicAuth(headerValue: string | null): { clientId: string; clientS
  *   1. 先尝试 HTTP Basic（RFC 6749 §2.3.1 推荐做法，对密码字段也走 TLS）。
  *   2. 兜底 body 内的 client_id / client_secret（仅用于不便加 header 的客户端）。
  *   3. 校验 disabled_at：禁用应用一律拒。
- *   4. verifyPassword(scrypt) 验 client_secret。
+ *   4. 网络入口传入 reserveAttempt，同步预留密码校验额度；超限不运行 scrypt。
+ *   5. verifyPassword(scrypt) 验 client_secret。
  */
 export async function authenticateClient(
   headerAuth: string | null,
   bodyClientId?: string | null,
-  bodyClientSecret?: string | null
+  bodyClientSecret?: string | null,
+  reserveAttempt?: (clientId: string) => boolean
 ): Promise<ClientAuthResult> {
   const basic = parseBasicAuth(headerAuth);
   const clientId = basic?.clientId ?? bodyClientId ?? '';
@@ -194,6 +196,12 @@ export async function authenticateClient(
   const app = await prisma.oAuthApplication.findUnique({ where: { clientId } });
   if (!app) return { ok: false, reason: 'invalid_client' };
   if (app.disabledAt) return { ok: false, reason: 'disabled' };
+
+  // 查到启用的应用后才建桶，避免任意伪造 client_id 产生无限新桶。
+  // 必须在 scrypt 前同步查并记：错误密钥也耗额度，并发请求不能共享剩余名额。
+  if (reserveAttempt && !reserveAttempt(app.clientId)) {
+    return { ok: false, reason: 'rate_limited' };
+  }
 
   const ok = await verifyPassword(clientSecret, app.clientSecretHash);
   if (!ok) return { ok: false, reason: 'invalid_client' };
