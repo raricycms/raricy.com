@@ -123,6 +123,8 @@ export const LIMITS = {
     transcodeAudioMs: 120_000,
     transcodeVideoMs: 600_000,
     ocrPageMs: 120_000,
+    /** 单页 PDF 渲染（dpi 最高 300 时可能是几秒级）。 */
+    pdfRenderMs: 120_000,
   },
 } as const;
 
