@@ -233,6 +233,7 @@ function sanitizeParts(parts: string[]): string[] | null {
       trimmed === '..' ||
       trimmed.includes('/') ||
       trimmed.includes('\\') ||
+      trimmed.includes(':') || // Windows 盘符相对路径及 NTFS ADS，不属于故事段名
       trimmed.includes('\0') ||
       path.isAbsolute(trimmed)
     ) {
