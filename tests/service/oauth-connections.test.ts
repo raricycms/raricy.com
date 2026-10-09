@@ -148,6 +148,15 @@ describe('aggregateConnections（纯函数口径）', () => {
 });
 
 describe('应用停用撤权', () => {
+  it('重新启用历史停用应用前撤销遗留令牌，不能随启用复活', async () => {
+    const app = await makeApp();
+    const user = await makeUser();
+    const token = await makeToken(app.id, user.id);
+    await prisma.oAuthApplication.update({ where: { id: app.id }, data: { disabledAt: nowForDb() } });
+    await enableOAuthApplication(app.id);
+    expect(await validateAccessToken(token)).toBeNull();
+    expect(await validateAccessToken(await makeToken(app.id, user.id))).not.toBeNull();
+  });
   it.each(['CLI', '管理页面'] as const)('%s 停用后立即拒绝全部旧 token，重新启用也不恢复它们', async (entry) => {
     const app = await makeApp();
     const other = await makeApp('other-app');

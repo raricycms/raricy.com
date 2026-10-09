@@ -477,11 +477,19 @@ export async function updateOAuthApplication(
     data.disabledAt = patch.disabled ? nowForDb() : null;
   }
   return prisma.$transaction(async (tx) => {
+    const previous = patch.disabled === false
+      ? await tx.oAuthApplication.findUnique({ where: { id }, select: { disabledAt: true } })
+      : null;
     const application = await tx.oAuthApplication.update({ where: { id }, data });
-    if (patch.disabled) {
+    // 兼容修复前就停用的应用：重新启用时也撤销遗留授权，避免令牌随启用复活。
+    if (patch.disabled || previous?.disabledAt) {
       await tx.oAuthAccessToken.updateMany({
         where: { applicationId: id, revokedAt: null },
         data: { revokedAt: nowForDb() },
+      });
+      await tx.oAuthAuthorizationCode.updateMany({
+        where: { applicationId: id, usedAt: null },
+        data: { usedAt: nowForDb() },
       });
     }
     return application;
@@ -493,10 +501,7 @@ export async function disableOAuthApplication(id: string): Promise<OAuthApplicat
 }
 
 export async function enableOAuthApplication(id: string): Promise<OAuthApplication> {
-  return prisma.oAuthApplication.update({
-    where: { id },
-    data: { disabledAt: null },
-  });
+  return updateOAuthApplication(id, { disabled: false });
 }
 
 /** 用 clientId 或主 id 任一查找（CLI 友好）。 */
