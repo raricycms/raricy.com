@@ -19,3 +19,25 @@ it.each([chatStream, topbarStream])('鉴权快照刚过期、kick 已发生但�
   expect(text).toContain(': connected');
   expect(text).not.toContain('data:');
 });
+it.each([{ role: 'user' }, { focusMode: true }])('角色/专注模式快照过期时，旧讨论流不投递消息（%j）', async (patch) => {
+  const user = await makeUser({ role: 'core', focusMode: false });
+  auth.user = user;
+  // 两种变更不递增 sessionVersion；kick 可能早于这次注册。
+  await prisma.user.update({ where: { id: user.id }, data: patch });
+  const response = await chatStream(new Request('http://localhost/stream'));
+  publishToUsers([user.id], { type: 'resync' });
+  const reader = response.body!.getReader();
+  let received = '';
+  try {
+    await vi.waitFor(async () => {
+      const next = await Promise.race([
+        reader.read(),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 50)),
+      ]);
+      if (!next) throw new Error('等待权限复核');
+      if (next.value) received += new TextDecoder().decode(next.value);
+      expect(next.done).toBe(true);
+    }, { timeout: 500 });
+  } finally { await reader.cancel(); }
+  expect(received).not.toContain('data:');
+});

@@ -20,7 +20,7 @@ import { subscribe, type ChatSubscriber } from '@/lib/chat-bus';
 import { SSE_HEADERS, SSE_QUEUE_LIMIT, SSE_RETRY_MS, sseFrame } from '@/lib/sse';
 import { listMessagesSince } from '@/lib/chat-service';
 import type { ChatStreamEvent } from '@/lib/chat-shared';
-import { isStreamSessionCurrent } from '@/lib/stream-session';
+import { isChatStreamSessionCurrent } from '@/lib/stream-session';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -110,7 +110,7 @@ export async function GET(req: Request) {
         // 断线补齐（不阻塞首帧：上面已经 write 过，浏览器可以先进入 open 状态）
         void (async () => {
           try {
-            if (!(await isStreamSessionCurrent(user))) { sub.close(); return; }
+            if (!(await isChatStreamSessionCurrent(user))) { sub.close(); return; }
             if (closed) return;
             authorized = true;
             for (const chunk of pending) {
@@ -119,7 +119,7 @@ export async function GET(req: Request) {
             pending.length = 0;
             if (lastEventId > 0) await backfill(user.id, lastEventId, write);
           } catch {
-            sub.close(); // 版本复核失败不能降级成继续投递私聊
+            sub.close(); // 权限复核失败不能降级成继续投递私聊
           }
         })();
       },
