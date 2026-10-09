@@ -1,13 +1,14 @@
 // webhook-url.ts —— 回调地址的 SSRF 防线。
 //
 // 【为什么逐条钉】这是本站**唯一**一处「服务器去 fetch 用户给的地址」。
-// 漏掉一条规则的后果不是一个坏掉的用例，是内网可达（旁边就是账户微服务与
-// SQLite 文件）。所以下面这张表是**策略本身**，不是实现细节 —— 加一条规则
+// 漏掉一条规则的后果是服务器可能连到内网服务。所以下面这张表是**策略本身**，
+// 不是实现细节 —— 加一条规则
 // 就该加一行，删一条规则必须先想清楚为什么它不再需要。
 //
 // 「两份都改」的风险在这里不存在：策略是**白名单式**的，绕过一条就真能连出去。
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
+import dns from 'node:dns';
 import {
   parseWebhookUrl,
   isBlockedAddress,
@@ -15,6 +16,13 @@ import {
   WebhookUrlError,
   WEBHOOK_URL_MAX,
 } from '@/lib/webhook-url';
+
+afterEach(() => vi.restoreAllMocks());
+
+// 收窄 lookup 的重载：被测代码只用 all:true，模拟结果也必须是地址数组。
+const dnsAll: {
+  lookup(hostname: string, options: dns.LookupAllOptions): Promise<dns.LookupAddress[]>;
+} = dns.promises;
 
 /** 断言这条地址被拒，且给的是可读的中文原因。 */
 function expectRejected(raw: string) {
@@ -115,18 +123,55 @@ describe('★ isBlockedAddress —— 逐条钉死禁止连的网段', () => {
     '::ffff:127.0.0.1', // ★ IPv4 映射：经典绕过
     '::ffff:169.254.169.254',
     '::ffff:10.0.0.1',
+    '0:0:0:0:0:0:0:0', // 展开式未指定地址
+    '0:0:0:0:0:0:0:1',
+    '0064:ff9b::7f00:1', // 前导零不能绕过 NAT64 策略
+    '0:0:0:0:0:0:127.0.0.1', // 已废弃的 IPv4 兼容地址
+    'fec0::1', // 已废弃的站点本地地址
+    '100::1', // 丢弃专用
+    '2001::1', // Teredo 隧道
+    '2001:2::1', // 基准测试
+    '2001:10::1', // ORCHID
+    '3ffe::1', // 已退役的 6bone
+    '3fff::1', // 文档网段
+    '5f00::1', // SRv6 专用
+    '4000::1', // 保留地址空间
   ];
   for (const ip of blocked) {
     it(`拒 ${ip}`, () => expect(isBlockedAddress(ip)).toBe(true));
   }
 
-  const allowed = ['8.8.8.8', '1.1.1.1', '93.184.216.34', '2606:4700:4700::1111', '2001:4860:4860::8888'];
+  for (const ip of blocked.filter((address) => !address.includes(':'))) {
+    it(`映射 IPv6 的所有写法仍拒绝 ${ip}`, async () => {
+      const [a, b, c, d] = ip.split('.').map(Number);
+      const tail = `${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}`;
+      for (const mapped of [
+        `::ffff:${ip}`,
+        `::ffff:${tail}`,
+        `0:0:0:0:0:ffff:${tail}`,
+        `0000:0000:0000:0000:0000:FFFF:${tail.toUpperCase()}`,
+      ]) {
+        expect(isBlockedAddress(mapped), mapped).toBe(true);
+        // 走真实 URL 解析器：点分十进制尾部会被规范化成十六进制。
+        await expect(resolveWebhookTarget(`https://[${mapped}]/cb`)).rejects.toThrow(WebhookUrlError);
+      }
+    });
+  }
+
+  const allowed = [
+    '8.8.8.8', '1.1.1.1', '93.184.216.34',
+    '2606:4700:4700::1111', '2001:4860:4860::8888',
+    '2001:0db9::1', // 文档 /32 的邻接网段
+    '3fff:1000::1', // 文档 /20 的上界之外
+    '::ffff:8.8.8.8', '::ffff:808:808',
+    '0000:0000:0000:0000:0000:ffff:0808:0808',
+  ];
   for (const ip of allowed) {
     it(`放行公网地址 ${ip}`, () => expect(isBlockedAddress(ip)).toBe(false));
   }
 
-  it('不是合法 IP 的一律当禁止（宁可不发）', () => {
-    for (const s of ['', 'not-an-ip', '999.1.1.1', '1.2.3', '1.2.3.4.5']) {
+  it('非法 IP 或含本机接口 scope ID 的地址一律禁止', () => {
+    for (const s of ['', 'not-an-ip', '999.1.1.1', '1.2.3', '1.2.3.4.5', '2606:4700::1%eth0']) {
       expect(isBlockedAddress(s), `本该拒绝: ${s}`).toBe(true);
     }
   });
@@ -143,9 +188,37 @@ describe('resolveWebhookTarget —— 解析后校验', () => {
   });
 
   it('解析不出来的域名 → 明确报错，不是静默放行', async () => {
+    vi.spyOn(dns.promises, 'lookup').mockRejectedValueOnce(new Error('ENOTFOUND'));
     await expect(
       resolveWebhookTarget('https://no-such-host-xyz-12345.invalid/cb')
     ).rejects.toThrow(WebhookUrlError);
+  });
+
+  it.each(['::ffff:7f00:1', '0:0:0:0:0:ffff:a00:1', '0064:ff9b::7f00:1'])(
+    'DNS 同时返回公网地址和 %s 时整条回调拒绝', async (address) => {
+      vi.spyOn(dnsAll, 'lookup').mockResolvedValueOnce([
+        { address: '8.8.8.8', family: 4 },
+        { address, family: 6 },
+      ]);
+      await expect(resolveWebhookTarget('https://bank.example.com/cb')).rejects.toThrow(WebhookUrlError);
+    }
+  );
+
+  it('公网 DNS 结果可用，连接目标保留已检查的 IP', async () => {
+    vi.spyOn(dnsAll, 'lookup').mockResolvedValueOnce([
+      { address: '2606:4700:4700::1111', family: 6 },
+      { address: '8.8.8.8', family: 4 },
+    ]);
+    const target = await resolveWebhookTarget('https://bank.example.com/cb');
+    expect(target.address).toBe('2606:4700:4700::1111');
+    expect(target.family).toBe(6);
+    expect(target.url.hostname).toBe('bank.example.com');
+  });
+
+  it('公网 IPv4 映射地址经 URL 规范化后仍可用', async () => {
+    const target = await resolveWebhookTarget('https://[::ffff:8.8.8.8]/cb');
+    expect(target.address).toBe('::ffff:808:808');
+    expect(target.family).toBe(6);
   });
 
   it('allowPrivate（仅供测试）放行回环，并返回可钉死的地址', async () => {
