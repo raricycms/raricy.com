@@ -145,7 +145,7 @@
 | 练手盘 | `market-service.ts`（开平仓：**一个事务、没有补偿**；开仓的幂等靠 `open_key` 唯一约束而非独立幂等记录；读口 `listOpenPositions` / `listSettledPositions`（最近结清，只读仓位表的终态行））· `market-math.ts`（**结算公式的唯一实现**，零依赖 —— 服务端真结算与页面「预计到手」是同一个 `settleClose`）· `market-candles.ts`（K 线词汇表：周期白名单 / 根数上限 / 线上形状 / 缓存键，**零依赖**，服务端与客户端共用）· `market-chart.ts`（K 线图的纯计算：窗口 / 聚合 / 刻度 / 映射 / 实时并线 —— 零依赖外加 `db-time` 的一个常量）· `market-price.ts`（行情源与展示缓存，见 §6.13）· `market-stream.ts` + `market-poll-drainer.ts`（喂展示的两个后台循环）· `market-stats.ts`（统计的**纯聚合**：终态白名单 / 拆解表分桶 / 持仓浮动盈亏 —— 白名单由调用方传进来，这样单元用例不必拉 Prisma）· `market-stats-service.ts`（统计的读路径：**盈亏只能来自 `market_positions`，别改成从账本求和**，理由见文件头） |
 | OAuth 2.0 | `oauth.ts`（见 `docs/oauth.md`） |
 | 管理域 | `admin-user-service.ts` · `admin-blog-service.ts` · `admin-category-service.ts` · `admin-comment-service.ts` · `admin-clipboard-service.ts` · `admin-vote-service.ts` · `admin-image-service.ts` · `admin-stats-service.ts` |
-| 工具 / 安全 | `short-id.ts` · `safe-url.ts` · `guard.ts` · `rate-limit.ts` · `turnstile.ts` · `https-guard.ts`（练手盘协议闸的判据：路径清单 / 明文判定 / 跳转目标 —— **零依赖**，Edge 中间件直接吃，见 §6.4） |
+| 工具 / 安全 | `short-id.ts` · `safe-url.ts` · `guard.ts` · `rate-limit.ts` · `turnstile.ts` · `upload-quota.ts`（上传落库的配额拒绝）· `https-guard.ts`（练手盘协议闸的判据：路径清单 / 明文判定 / 跳转目标 —— **零依赖**，Edge 中间件直接吃，见 §6.4） |
 | 鉴权基建 | `credential-auth.ts`（「用户名+密码」校验，`/api/auth/login` 与鱼干市场无状态接口**共用**，限频桶也共用）· `request-ip.ts`（反代后取真实 IP） |
 | 配额白名单 | `service-accounts.ts`（`FISH_SERVICE_ACCOUNTS` 里的账号走 `SERVICE_QUOTA`：转账 500/时、5000/天。给「站外银行」这类自动化账号用，撤销即删配置） |
 
@@ -163,7 +163,9 @@ API 端点位于 `src/app/api/<group>/<verb>/route.ts`，**薄**层：参数校�
 - **密码哈希**：`src/lib/password.ts` 选 `scrypt` / `pbkdf2:sha256`，与历史 werkzeug **字节级互通**——从上一版实现接手的用户无需改密、完全不感知。
 - **会话**：登录成功签发 JWT（`jose`，HS256），cookie 设 `HttpOnly` + `SameSite=Lax`。`Secure` 由 `X-Forwarded-Proto` 推断或 `COOKIE_SECURE` 显式控制。
 - **踢下线**：`User.sessionVersion` 单调递增。`session.ts` 解析 JWT 后比对当前 `user.sessionVersion`，不一致则视为失效。
-  自助改密原子自增版本并成对断开讨论与顶栏 SSE；建流先注册可被踢的订阅，复核数据库版本后才释放私有帧，避免鉴权与建流之间漏掉撤权。
+  自助与管理员改密都按数据库当前值原子自增，避免密码计算期间覆盖其他撤权操作。
+  两者成对断开讨论与顶栏 SSE；建流先注册可被踢的订阅，复核数据库版本后才释放私有帧。
+  讨论还要复核 core+、禁言与专注模式，因为角色和专注模式变化不递增会话版本。
 - **登出**：**只有** `POST /api/auth/logout`（`base.js` 的 `window.logout()` / `LogoutLink` 组件）。
   清会话是状态变更，**不能有 GET 入口** —— GET 会被本人以外的东西发起（浏览器预取视口内的
   `<Link>`、爬虫、第三方页面上的 `<img src="…/logout">`，而本站刻意允许被 iframe 嵌入），
@@ -329,6 +331,10 @@ GET/HEAD/OPTIONS 视为安全方法，不校验（协议闸不受这条影响，
 **多实例部署时换 Redis**。本站单进程不踩该坑。
 
 ### 6.6 文件落盘
+
+图片与音频的 HTTP 上传入口必须把角色配额传给保存内核。写盘和压缩在数据库事务外；
+新行落库与实际用量核验同事务，超额回滚并清理这次新写的文件，防止并发请求共享剩余额度。
+软删除仍按既有规则回收配额，两个存储域独立计量。
 
 | 域 | 路径 | 上传入口 | 读取入口 |
 |----|------|---------|---------|
@@ -599,7 +605,7 @@ Promise** —— 拿它当「等到了字体」，MathJax 的公式会用回退�
 
 - 原始 token / code / client_secret **永不落库**：仅存 SHA-256（不可逆）/ scrypt（自带盐）
 - `redirect_uri` 严格精确匹配（无通配 / 前缀 / 子串）
-- 授权码单次使用：Prisma 原子 `update where {codeHash, usedAt: null}`
+- 授权码消费与令牌签发同事务，并实时检查应用启用；解绑同时撤销令牌与未兑换授权码
 - `client_secret` 与 `User.passwordHash` 同款哈希（werkzeug 兼容），与 SECRET_KEY 轮换解耦
 - CSRF 中间件豁免 3 个 server-to-server 端点：`/api/oauth/token` `/userinfo` `/revoke`（鉴权由 client_secret / bearer 承担）
 

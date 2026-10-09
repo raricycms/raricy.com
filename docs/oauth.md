@@ -26,7 +26,7 @@ raricy.com 作为 **OAuth 2.0 Authorization Server**，让外部第三方应用�
 | `/api/oauth/userinfo` | GET | `Authorization: Bearer` | 返回 `{sub, username, avatar_url}` |
 | `/api/oauth/revoke` | POST | 原始 token（body 或 Bearer） | 仅吊销该 token（RFC 7009），不读取会话 |
 | `/api/oauth/connections` | GET | raricy session | 当前用户已绑定的应用列表（**一应用一行**） |
-| `/api/oauth/connections/[applicationId]` | DELETE | raricy session | 解除与该应用的绑定（撤销其**全部**令牌） |
+| `/api/oauth/connections/[applicationId]` | DELETE | raricy session | 解除与该应用的绑定（撤销全部令牌与未兑换授权码） |
 | `/api/admin/oauth/applications` | GET / POST | owner | 列出 / 创建应用 |
 | `/api/admin/oauth/applications/[id]` | PATCH / DELETE | owner | 更新 / 软禁用 |
 
@@ -39,8 +39,12 @@ v1 不发放 refresh_token，因此**每次走完授权流程都会新签一条 
 另给 `tokenCount`（该应用名下的存活令牌数，>1 即重复授权过）与 `lastAuthorizedAt`。
 
 `DELETE /api/oauth/connections/[applicationId]` 是**整应用解绑**：撤销该用户名下该应用
-的**全部**存活令牌。这是刻意的——按钮语义是「解除与 X 的绑定」，只吊销一条会留下仍然
-有效的凭证，属于静默越权。重复点击幂等（返回 `revokedCount: 0`）。
+的全部存活令牌与未兑换授权码，二者同事务撤销。按钮语义是「解除与 X 的绑定」，
+遗漏授权码会让外部应用在解绑后换出新令牌。只有授权码、尚无令牌时也可解绑；
+重复点击幂等（返回 `revokedCount: 0`，该字段仅统计本次撤销的令牌数）。
+
+授权码兑换走 `exchangeAuthorizationCode`：消费与签发同事务，并实时检查应用启用状态。
+兑换与撤权按数据库提交顺序生效；令牌落库失败会回滚授权码消费，可重试。
 
 > 另一条路（重复授权时自动吊销旧令牌）**没有采用**：外部应用可能在多个实例/设备上各存
 > 一份令牌，静默吊销会让没重新授权过的那个实例突然 401。聚合显示对第三方零影响。
