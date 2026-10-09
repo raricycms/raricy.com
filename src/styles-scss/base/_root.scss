@@ -134,6 +134,24 @@
 
 
 
+/* ── 安全区（刘海 / Home Indicator）与顶栏总高 ───────────────────────────────
+   `env(safe-area-inset-*)` 要有值，页面必须声明 `viewport-fit=cover`（见 layout 的
+   viewport 导出）。**未声明 / 设备无刘海 / 桌面浏览器时 env 返回 0** —— 于是下面
+   每一个消费点（padding、height）都退回改版前的数值，桌面端零变化。这几个值与明暗
+   主题无关，故单独放一个不带 data-theme 的 :root 块。 */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+
+  /* 顶栏总高 = 内容高 62px + 顶部安全区。**这是「顶栏多高」的唯一真相源**：
+     body 的 padding-top、.chat-page 的 height、移动端抽屉的 top 全读它 ——
+     任何一处再抄一个 62px，就是「顶栏多高」被写死成两份，加安全区后必然对不上
+     （少让一次 = 页面平白多一条滚动，多让一次 = 内容顶上被切掉）。 */
+  --navbar-height: calc(62px + var(--safe-top));
+}
+
 /* Ensure footer stays at bottom when content is short */
 html { height: 100%; }
 body {
@@ -141,7 +159,7 @@ body {
      手机上 vh 量的是**地址栏收起时**的大视口，比眼前能看见的高度多出约一条地址栏。
      body 因此比可见区高 → 页面平白能上下滑；而一滑地址栏就收起、可见区随即变高，
      文档下沿之外露出**通栏一条底色**。dvh 跟着地址栏收放，永远等于可见高度。
-     讨论页的整屏工作台（.chat-page）直接踩在这条上 —— 它还要再减掉 62px 顶栏，
+     讨论页的整屏工作台（.chat-page）直接踩在这条上 —— 它还要再减掉 --navbar-height，
      那边的 dvh 与这里是一对，缺一条症状就还在，见 pages/_chat.scss。
      老浏览器不认 dvh，回落到上一行的百分比 / vh（即改动前的行为）。 */
   height: 100%;
@@ -151,7 +169,14 @@ body {
   display: flex;
   flex-direction: column;
 }
-main { flex: 1 0 auto; }
+main {
+  flex: 1 0 auto;
+}
+body > main {
+  // 普通页面和讨论工作台共用横屏安全区，子组件不再重复加两侧留白。
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
+}
 
 /* ── 滚动条 ─────────────────────────────────────────────────────────────────
    全站此前**既没有滚动条样式、也没有 color-scheme**，浏览器按自己的默认色画：
@@ -187,6 +212,4 @@ main { flex: 1 0 auto; }
 }
 /* 两轴都能滚时右下角那块小方块：默认是白的，暗色下会露馅 */
 ::-webkit-scrollbar-corner { background: transparent; }
-
-
 

@@ -6,7 +6,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: calc(100vh - 62px - 120px); // viewport minus navbar minus approx footer
+  min-height: calc(100vh - var(--navbar-height) - 120px); // viewport minus navbar minus approx footer
   padding: 2rem 1rem;
 }
 
@@ -204,7 +204,7 @@
 
 .nf {
   position: relative;
-  min-height: calc(100vh - 62px);
+  min-height: calc(100vh - var(--navbar-height));
   display: flex;
   align-items: center;
   justify-content: center;

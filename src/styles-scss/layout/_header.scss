@@ -21,6 +21,13 @@ a {
   // backdrop-filter: blur(10px);
   // transition: background 0.3s ease;
   box-shadow: var(--shadow-card-brand);
+  /* 安全区：viewport-fit=cover 之后顶栏背景铺到状态栏/刘海之下（这正是 cover 的意图
+     —— 顶栏底色延伸满整条），但**内容**要用 padding 让开。左右那两条是为横屏刘海：
+     竖屏与桌面都是 0。顶栏因此比 62px 高出一个 --safe-top，body 那边读取
+     --navbar-height（= 62px + --safe-top）成对让位，见文件末尾。 */
+  padding-top: var(--safe-top);
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
 }
 
 /* 宽度阶梯与正文 .container 共用同一个 mixin —— 顶栏与正文左边缘对齐。
@@ -394,13 +401,14 @@ a {
   100% { transform: scale(1); } 
 }
 
-// 全局布局调整
-body { 
-  padding-top: 62px; 
-
-  @media (max-width: 768px) { 
-    padding-top: 62px; 
-  }
+// 全局布局调整：为固定顶栏让出空间。
+// 顶栏总高走共享变量（= 62px + 顶部安全区，定义在 base/_root.scss）——
+// 与 .chat-page 的高度算式读同一个值，免得两处各写一个 62px、加安全区后对不上。
+// （原先这里另挂了一条 `@media (max-width: 768px) { padding-top: 62px }`，与基础值
+// 完全相同、纯冗余，随本次合并删掉。）
+//
+body {
+  padding-top: var(--navbar-height);
 }
 
 // 移动端折叠样式

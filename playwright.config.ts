@@ -111,6 +111,10 @@ const RESPONSIVE_SPECS: RegExp[] = [
   // 而三栏那一档（desktop）同样要量 —— 列被内容撑破、网格里的 SVG 塌成 0，
   // 两件事在源码里都完全正常，只有真视口量得出来。
   /fish-trade-chart\.spec\.ts$/,
+  // iOS「添加到主屏幕」适配：触屏字段字号、根文档 manifest / Apple 元数据与图标、
+  // 返回落点。字号那条的**正向**分支只有 mobile（coarse 指针）才验得到；桌面那一遍
+  // 同时验「桌面值没被改动」这条反向分支，两遍都要跑。
+  /ios-app\.spec\.ts$/,
 ];
 
 export default defineConfig({

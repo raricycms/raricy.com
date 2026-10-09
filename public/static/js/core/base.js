@@ -301,16 +301,20 @@ const themeConfig = {
     }
 };
 
-function switchTheme(themeName) {
+function applyTheme(themeName) {
     const root = document.documentElement;
     const config = themeConfig[themeName];
     root.setAttribute('data-theme', config['data-theme']);
-    localStorage.setItem('theme', themeName);
     const tc = document.querySelector('meta[name="theme-color"]');
     // 这两支是 --color-background-page 的明暗两值，手抄在此（JS 读不到 CSS 变量）。
     // 浅色那支曾写成 #FBFBFD，与令牌的 #F8FAFC 已经漂了 —— 改了令牌不会带动这里，
     // 改令牌时记得回来对一眼。深色 #131517 与令牌一致。
     if (tc) tc.setAttribute('content', config['data-theme'] === 'dark' ? '#131517' : '#F8FAFC');
+}
+
+function switchTheme(themeName) {
+    applyTheme(themeName);
+    localStorage.setItem('theme', themeName);
     console.log('切换主题:', themeName);
 }
 
@@ -662,13 +666,13 @@ function initSiteChrome() {
     // 主题：有手动偏好则用之，否则跟随系统（不落盘，OS 变化实时跟随）
     const savedThemeName = localStorage.getItem('theme');
     if (savedThemeName === 'light' || savedThemeName === 'dark') {
-        document.documentElement.setAttribute('data-theme', savedThemeName);
+        applyTheme(savedThemeName);
     } else if (window.matchMedia) {
         const mq = window.matchMedia('(prefers-color-scheme: dark)');
-        document.documentElement.setAttribute('data-theme', mq.matches ? 'dark' : 'light');
+        applyTheme(mq.matches ? 'dark' : 'light');
         mq.addEventListener('change', function (e) {
             if (!localStorage.getItem('theme')) {
-                document.documentElement.setAttribute('data-theme', e.matches ? 'dark' : 'light');
+                applyTheme(e.matches ? 'dark' : 'light');
             }
         });
     }

@@ -19,7 +19,11 @@
   background: rgba(0, 0, 0, 0.5);
   z-index: 1050;
   overflow-y: auto;
-  padding: 1rem 0;
+  /* 安全区：上下为刘海 / Home Indicator 让位、左右为横屏刘海让位。原先 `padding: 1rem 0`
+     的左右是 0（水平边距靠 .modal-dialog 的 `width: calc(100% - 2rem)` 让出），这里把它
+     换成 --safe-left/right —— 竖屏与桌面上是 0，等于维持原样。 */
+  padding: calc(1rem + var(--safe-top)) var(--safe-right) calc(1rem + var(--safe-bottom))
+    var(--safe-left);
 }
 
 .modal.is-open { display: flex; }

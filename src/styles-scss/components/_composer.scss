@@ -193,6 +193,15 @@
     outline: none;
   }
 
+  /* 触屏下把输入区字号抬到 16px：iOS Safari 聚焦 < 16px 的可编辑区会**强制放大整页**
+     （同 components/_form-controls.scss 那条）。只动字号 —— 面板内距 / 最小高度不变，
+     底条与工具条的几何不受影响。判据用 pointer/hover 而非宽度，宽的 iPad 也算触屏。 */
+  @media (hover: none) and (pointer: coarse) {
+    .#{$p}__input {
+      font-size: 1rem;
+    }
+  }
+
   // 面板底条：左侧提示文字 + 右下角提交
   .#{$p}__foot {
     display: flex;

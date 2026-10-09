@@ -3,7 +3,7 @@
   background-color: var(--color-background-card);
   color: var(--color-text-primary);
 //  margin-top: 2rem;
-  padding: 0 0 1.5rem;
+  padding: 0 var(--safe-right) calc(1.5rem + var(--safe-bottom)) var(--safe-left);
   box-shadow: var(--shadow-card-brand);
 }
 .site-footer a { color: var(--color-brand-primary); text-decoration: none; }
@@ -44,4 +44,3 @@
 .site-footer p { color: var(--color-text-primary); margin-bottom: 0.5rem; }
 .social-links a { color: var(--color-text-primary); display: inline-block; margin-right: 1rem; vertical-align: baseline; }
 .social-links a:last-child { margin-right: 0; }
-
