@@ -19,7 +19,9 @@ import { prisma } from './db';
 import { nowForDb } from './db-time';
 import { hashPassword, verifyPassword, PasswordWorkBusyError } from './password';
 import { generateShortId } from './short-id';
-import type { OAuthApplication } from '@prisma/client';
+import type { OAuthApplication, Prisma } from '@prisma/client';
+
+type OAuthGrantDb = Pick<Prisma.TransactionClient, 'oAuthAuthorizationCode' | 'oAuthAccessToken'>;
 
 // ── 常量 ─────────────────────────────────────────────────────────────────────
 
@@ -264,22 +266,24 @@ export type ConsumeResult =
 export async function consumeAuthorizationCode(
   code: string,
   applicationId: string,
-  redirectUri: string
+  redirectUri: string,
+  db: OAuthGrantDb = prisma
 ): Promise<ConsumeResult> {
   const codeHash = hashOpaqueToken(code);
   const now = nowForDb();
-  const updateRes = await prisma.oAuthAuthorizationCode.updateMany({
+  const updateRes = await db.oAuthAuthorizationCode.updateMany({
     where: {
       codeHash,
       applicationId,
       redirectUri,
       usedAt: null,
       expiresAt: { gt: now },
+      application: { disabledAt: null },
     },
     data: { usedAt: now },
   });
   if (updateRes.count === 1) {
-    const row = await prisma.oAuthAuthorizationCode.findUnique({ where: { codeHash } });
+    const row = await db.oAuthAuthorizationCode.findUnique({ where: { codeHash } });
     if (!row) return { ok: false, error: 'invalid' };
     return {
       ok: true,
@@ -288,7 +292,7 @@ export async function consumeAuthorizationCode(
     };
   }
   // 未匹配：定位原因（用于给客户端更明确的错误）
-  const row = await prisma.oAuthAuthorizationCode.findUnique({ where: { codeHash } });
+  const row = await db.oAuthAuthorizationCode.findUnique({ where: { codeHash } });
   if (!row) return { ok: false, error: 'invalid' };
   if (row.usedAt) return { ok: false, error: 'already_used' };
   if (row.expiresAt <= now) return { ok: false, error: 'expired' };
@@ -307,13 +311,14 @@ export interface MintedToken {
 export async function createAccessToken(
   applicationId: string,
   userId: string,
-  scopes: Scope[]
+  scopes: Scope[],
+  db: OAuthGrantDb = prisma
 ): Promise<MintedToken> {
   const token = generateAccessToken();
   const tokenHash = hashOpaqueToken(token);
   const now = nowForDb();
   const expiresAt = new Date(now.getTime() + ACCESS_TOKEN_TTL_MS);
-  await prisma.oAuthAccessToken.create({
+  await db.oAuthAccessToken.create({
     data: {
       tokenHash,
       applicationId,
@@ -324,6 +329,22 @@ export async function createAccessToken(
     },
   });
   return { token, expiresIn: ACCESS_TOKEN_TTL_SEC };
+}
+
+/** 网络兑换必须走这一出口：消费授权码与令牌落库同事务，撤权不能插入两步之间。 */
+export async function exchangeAuthorizationCode(
+  code: string,
+  applicationId: string,
+  redirectUri: string
+): Promise<({ ok: true; scopes: Scope[] } & MintedToken) | Extract<ConsumeResult, { ok: false }>> {
+  return prisma.$transaction(async (tx) => {
+    // 条件更新首先取得 SQLite 写锁，并实时检查应用启用状态。
+    // 解绑/停用若先提交，这里拒绝；兑换若先提交，撤权会一并吊销刚签发的令牌。
+    const consumed = await consumeAuthorizationCode(code, applicationId, redirectUri, tx);
+    if (!consumed.ok) return consumed;
+    const minted = await createAccessToken(applicationId, consumed.userId, consumed.scopes, tx);
+    return { ok: true, ...minted, scopes: consumed.scopes };
+  });
 }
 
 export interface ValidatedToken {
@@ -628,7 +649,7 @@ export interface RevokeApplicationResult {
 }
 
 /**
- * 解除「用户 ↔ 应用」的整个绑定：撤销该用户名下该应用**全部**存活 token。
+ * 解除「用户 ↔ 应用」的整个绑定：撤销全部令牌与尚未兑换的授权码。
  *
  * 【为什么不是一个 token 一个 token 地解】设置页按应用聚合展示，按钮文案也是
  * 「解除与 X 的绑定」；用户的心智模型是「这个网站再也不许读我的资料了」。
@@ -638,15 +659,21 @@ export async function revokeUserApplicationTokens(
   userId: string,
   applicationId: string
 ): Promise<RevokeApplicationResult> {
-  const total = await prisma.oAuthAccessToken.count({ where: { userId, applicationId } });
-  if (total === 0) return { found: false, revoked: 0 };
-
-  // 幂等：已撤销的行不再计入（重复点按钮等价于成功）
-  const res = await prisma.oAuthAccessToken.updateMany({
-    where: { userId, applicationId, revokedAt: null },
-    data: { revokedAt: nowForDb() },
+  return prisma.$transaction(async (tx) => {
+    const now = nowForDb();
+    // 先写再读：与兑换事务串行，避免「查到旧状态 → 对方签发 → 撤权漏掉新令牌」。
+    const res = await tx.oAuthAccessToken.updateMany({
+      where: { userId, applicationId, revokedAt: null },
+      data: { revokedAt: now },
+    });
+    await tx.oAuthAuthorizationCode.updateMany({
+      where: { userId, applicationId, usedAt: null },
+      data: { usedAt: now },
+    });
+    const tokens = await tx.oAuthAccessToken.count({ where: { userId, applicationId } });
+    const codes = await tx.oAuthAuthorizationCode.count({ where: { userId, applicationId } });
+    return { found: tokens + codes > 0, revoked: res.count };
   });
-  return { found: true, revoked: res.count };
 }
 
 // ── siteOrigin：已搬到 src/lib/site-url.ts ──────────────────────────────────

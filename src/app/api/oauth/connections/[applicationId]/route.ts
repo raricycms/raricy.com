@@ -3,7 +3,7 @@ import { apiErr, apiOk } from '@/lib/format';
 import { revokeUserApplicationTokens } from '@/lib/oauth';
 
 // DELETE /api/oauth/connections/[applicationId]
-// 解除当前用户与某个应用的**整个**绑定：撤销该用户名下该应用的全部存活 token。
+// 解除当前用户与某个应用的整个绑定：撤销令牌与未兑换的授权码。
 //
 // 【为什么按应用而不是按 token】设置页聚合展示（一应用一行），按钮文案是
 // 「解除与 X 的绑定」。若只吊销一条 token，重复授权过 N 次的用户点完之后
