@@ -32,10 +32,16 @@ export async function POST(req: Request) {
         body[k] = v;
       });
     } else {
-      body = (await req.json()) as Record<string, string>;
+      const parsed = await req.json();
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return oauthErr('invalid_request', '请求体格式错误');
+      body = parsed;
     }
   } catch {
     return oauthErr('invalid_request', '请求体解析失败');
+  }
+
+  for (const field of ['client_id', 'client_secret', 'grant_type', 'code', 'redirect_uri']) {
+    if (body[field] !== undefined && typeof body[field] !== 'string') return oauthErr('invalid_request', `${field} 必须是字符串`);
   }
 
   // 2. 客户端鉴权（HTTP Basic 优先）

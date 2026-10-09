@@ -2,6 +2,7 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import { resetDb, makeUser, prisma } from '../helpers/db';
 import { createOAuthApplication, createAccessToken, validateAccessToken } from '@/lib/oauth';
 import { POST } from '@/app/api/oauth/revoke/route';
+import { POST as token } from '@/app/api/oauth/token/route';
 
 // 此 CSRF 豁免入口不得依赖 cookie 的权限。
 vi.mock('next/headers', () => ({ cookies: () => { throw new Error('不得读取 cookie'); } }));
@@ -24,5 +25,10 @@ it('只吊销所持原始 token，跨站 cookie 不增加权限，其他令牌�
 });
 it.each([null, [], { token: 42 }, { token: {} }])('非法 body %j 返回 400，不写库', async (body) => {
   expect((await POST(request(body))).status).toBe(400);
+  expect(await prisma.oAuthAccessToken.count()).toBe(0);
+});
+
+it.each([null, [], { client_id: 42 }, { client_secret: [] }, { code: {} }])('token 接口拒绝非法 JSON %j', async (body) => {
+  expect((await token(request(body))).status).toBe(400);
   expect(await prisma.oAuthAccessToken.count()).toBe(0);
 });

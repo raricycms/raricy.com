@@ -8,6 +8,7 @@ vi.mock('@/lib/auth', async (original) => ({ ...await original<typeof import('@/
 vi.mock('@/lib/admin-appeal-service', () => ({ listAppeals: appeals }));
 
 import { GET as getAppeals } from '@/app/api/admin/appeals/route';
+import { POST as authorize } from '@/app/api/oauth/authorize/route';
 import { GET as getCheckin, POST as postCheckin } from '@/app/api/checkin/route';
 import { resetDb, makeUser, makeBlog, prisma } from '../helpers/db';
 import { expectLedgerConsistent } from '../helpers/fish-ledger';
@@ -27,6 +28,15 @@ describe('申诉列表档位', () => {
     auth.user = { id: 'actor', role: 'owner', isBanned: false, banUntil: null };
     expect((await getAppeals(new Request('http://localhost/api/admin/appeals'))).status).toBe(200);
     expect(appeals).toHaveBeenCalledOnce();
+  });
+});
+
+describe('OAuth 授权请求的运行时类型', () => {
+  beforeEach(async () => { await resetDb(); auth.user = { id: 'actor', role: 'core', isBanned: false, banUntil: null }; });
+  it.each([null, [], { client_id: 12 }, { client_id: 'client', scope: [] }, { client_id: 'client', state: {} }])('非法 JSON %j 返回 400 而非 500', async (body) => {
+    const response = await authorize(new Request('http://localhost/api/oauth/authorize', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }));
+    expect(response.status).toBe(400);
+    expect(await prisma.oAuthAuthorizationCode.count()).toBe(0);
   });
 });
 
