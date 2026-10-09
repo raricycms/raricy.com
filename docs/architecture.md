@@ -98,7 +98,7 @@
 | `/api/poster/profile/[id]` · `/api/poster/collect` | API | **画报 / 收款码出图**（PNG，仅本人）。渲染管线与四条约束见 §6.8 |
 | `/notifications` · `/api/notifications/*` | page + API | 通知中心。其中 `GET count` 是顶栏指示器的**兜底快照**（**不能删**：SSE 有「连着但收不到」的半死状态），`GET stream` 是**实时流**（SSE，未登录 401；首帧全量快照 + 之后增量补丁）。推送点纪律与依赖方向见 `src/lib/topbar-bus.ts` 头部 |
 | `/vote` · `/vote/[id]` | page | 投票 |
-| `/checkin` · `/api/checkin` | page + API | 每日签到（**core+**：鱼干的赚取渠道，与投喂/点赞同档）。**一个请求签一次到**，固定发 `CHECKIN_REWARD_FISH` 条鱼干。页面与两个方法（GET/POST）**各自都要判档位**，见 §8。另有一条**内容前置条件**：名下至少一篇未软删的文章（`Blog.ignore = false`，删光 = 没发过）—— 与档位是**两道独立的门**，GET 回 `can_check_in: false` 不拒、POST 403，见 `checkin-service.ts` 头部 |
+| `/checkin` · `/api/checkin` | page + API | 每日签到（**core+**：鱼干的赚取渠道，与投喂/点赞同档）。**一个请求签一次到**，固定发 `CHECKIN_REWARD_FISH` 条鱼干。页面与两个方法（GET/POST）**各自都要判档位**，见 §8。另有一条**内容前置条件**：名下至少一篇未软删的文章（`Blog.ignore = false`，删光 = 没发过）—— 与档位是**两道独立的门**，GET 回 `can_check_in: false` 不拒、POST 403，见 `checkin-service.ts` 头部。禁言期间也不能签到：GET 回 `can_check_in: false`，POST 403，解除或到期后恢复 |
 | `/clipboard` · `/clipboard/[id]` · `/api/clipboard/*` | page + API | 云剪贴板 |
 | `/image` · `/image/admin` · `/api/images/*` | page + API | 图床 + 管理 |
 | `/audio` · `/audio/admin` · `/audio/guide` · `/api/audio/*` | page + API | 音频床 + 管理。**独立配额**（不吃图床那份 50MB），见 §6.6/§6.15 |
