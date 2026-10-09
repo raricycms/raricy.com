@@ -1,6 +1,6 @@
 import { redirect, forbidden } from 'next/navigation';
 import Link from 'next/link';
-import { getCurrentUser, isCoreUser } from '@/lib/auth';
+import { getCurrentUser, isCoreUser, isCurrentlyBanned } from '@/lib/auth';
 import { loginUrlWithNext } from '@/lib/safe-url';
 import { getTodayStatus, getCountLeaderboard } from '@/lib/checkin-service';
 import CheckinCard, { CheckinLeaderboards } from '@/app/components/CheckinCard';
@@ -27,6 +27,7 @@ export default async function CheckinPage() {
   const user = await getCurrentUser();
   if (!user) redirect(loginUrlWithNext('/checkin'));
   if (!isCoreUser(user)) forbidden();
+  if (isCurrentlyBanned(user)) forbidden();
 
   const [status, countLb] = await Promise.all([getTodayStatus(user.id), getCountLeaderboard()]);
 

@@ -8,6 +8,10 @@ vi.mock('@/lib/auth', async (original) => ({ ...await original<typeof import('@/
 vi.mock('@/lib/admin-appeal-service', () => ({ listAppeals: appeals }));
 
 import { GET as getAppeals } from '@/app/api/admin/appeals/route';
+import { GET as getCheckin, POST as postCheckin } from '@/app/api/checkin/route';
+import { resetDb, makeUser, makeBlog, prisma } from '../helpers/db';
+import { expectLedgerConsistent } from '../helpers/fish-ledger';
+import { nowForDb } from '@/lib/db-time';
 
 beforeEach(() => { auth.user = null; appeals.mockClear(); });
 
@@ -23,5 +27,27 @@ describe('申诉列表档位', () => {
     auth.user = { id: 'actor', role: 'owner', isBanned: false, banUntil: null };
     expect((await getAppeals(new Request('http://localhost/api/admin/appeals'))).status).toBe(200);
     expect(appeals).toHaveBeenCalledOnce();
+  });
+});
+
+describe('签到禁言闸', () => {
+  beforeEach(async () => { await resetDb(); });
+  it.each([null, 60_000])('永久或未到期禁言不能领取签到鱼干 (%s)', async (duration) => {
+    const user = await makeUser({ role: 'core', isBanned: true, banUntil: duration === null ? null : new Date(nowForDb().getTime() + duration) });
+    await makeBlog({ authorId: user.id });
+    auth.user = user;
+    expect((await getCheckin()).status).toBe(200);
+    expect(await (await getCheckin()).json()).toMatchObject({ can_check_in: false });
+    expect((await postCheckin()).status).toBe(403);
+    expect(await prisma.dailyCheckIn.count()).toBe(0);
+    expect(await prisma.fishTransaction.count()).toBe(0);
+    await expectLedgerConsistent('禁言签到拒绝后');
+  });
+  it('禁言已到期仍可正常签到', async () => {
+    const user = await makeUser({ role: 'core', isBanned: true, banUntil: new Date(nowForDb().getTime() - 60_000) });
+    await makeBlog({ authorId: user.id });
+    auth.user = user;
+    expect((await postCheckin()).status).toBe(200);
+    await expectLedgerConsistent('禁言到期后签到');
   });
 });

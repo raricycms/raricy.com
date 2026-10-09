@@ -1,4 +1,4 @@
-import { getCurrentUser, isCoreUser } from '@/lib/auth';
+import { getCurrentUser, isCoreUser, isCurrentlyBanned } from '@/lib/auth';
 import { apiOk, apiErr } from '@/lib/format';
 import { getTodayStatus, checkIn, hasPublishedBlog } from '@/lib/checkin-service';
 
@@ -26,7 +26,7 @@ export async function GET() {
   const s = await getTodayStatus(user.id);
   return apiOk({
     checked_in: s.checkedIn,
-    can_check_in: s.canCheckIn,
+    can_check_in: s.canCheckIn && !isCurrentlyBanned(user),
     total_count: s.totalCount,
     today: s.today,
     reward_fish: s.rewardFish,
@@ -40,6 +40,7 @@ export async function POST() {
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '请先登录');
   if (!isCoreUser(user)) return apiErr(403, CORE_ONLY);
+  if (isCurrentlyBanned(user)) return apiErr(403, '你已被禁言，暂时无法签到', { can_check_in: false });
   // 前置条件：没发过文章就不给签。带上 can_check_in 让机器人能程序化判别。
   if (!(await hasPublishedBlog(user.id))) {
     return apiErr(403, NEED_BLOG, { can_check_in: false });
