@@ -13,6 +13,7 @@ import { MAX_REQUEST_BYTES, getQuotaLimitMb } from '@/lib/image-upload';
 import { getCurrentUser, isCurrentlyBanned, isCoreUser } from '@/lib/auth';
 import { apiOk, apiErr } from '@/lib/format';
 import { rateLimit, RULES } from '@/lib/rate-limit';
+import { UploadQuotaError } from '@/lib/upload-quota';
 
 // 说明：文件路由需 Node 运行时（fs）
 export const runtime = 'nodejs';
@@ -122,9 +123,11 @@ export async function POST(req: Request) {
       buffer,
       mimeType,
       filename: file.name,
+      quotaBytes: limitMb * 1024 * 1024,
     });
     return apiOk({ id: saved.id, url: `/api/audio/${saved.id}/raw` }, '上传成功');
-  } catch {
+  } catch (error) {
+    if (error instanceof UploadQuotaError) return apiErr(400, `存储空间不足，你的音频配额为 ${limitMb} MB`);
     return apiErr(500, '音频保存失败，请重试');
   }
 }

@@ -22,6 +22,7 @@ import { randomInt } from 'node:crypto';
 import sharp from 'sharp';
 import { prisma } from './db';
 import { nowForDb } from './db-time';
+import { UploadQuotaError } from './upload-quota';
 
 // 允许的 MIME 白名单（以下五项，扩大即放宽入站格式）
 export const ALLOWED_MIMETYPES = new Set<string>([
@@ -249,7 +250,8 @@ export interface SavedImage {
 /**
  * 压缩 → 生成唯一 ID → 写盘 → 落库，返回最终元信息（fileSize 为最终落库字节数）。
  * compress=false 时跳过压缩，原样存储（图床页那个复选框即走这条）。
- * 调用方负责登录/禁言/MIME/尺寸/配额/限频等前置校验。
+ * 调用方负责登录/禁言/MIME/尺寸/限频等前置校验。
+ * 网络入口必须传 quotaBytes：落库事务再次核验实际用量，不能只信写入前的聚合快照。
  */
 export async function saveUpload(input: {
   userId: string;
@@ -257,6 +259,8 @@ export async function saveUpload(input: {
   mimeType: string;
   filename: string;
   compress?: boolean;
+  /** 可信内部调用可省略；HTTP 路由按角色计算后必传。 */
+  quotaBytes?: number;
 }): Promise<SavedImage> {
   const filename = sanitizeFilename(input.filename);
   const finalBuffer =
@@ -279,18 +283,34 @@ export async function saveUpload(input: {
 
   const folder = getUploadFolder();
   await fs.mkdir(folder, { recursive: true });
-  await fs.writeFile(storagePathFor(id, input.mimeType), finalBuffer);
+  const storagePath = storagePathFor(id, input.mimeType);
+  // 独占创建：即使随机 ID 极端碰撞，也不能覆盖已有文件或在回滚时删掉它。
+  await fs.writeFile(storagePath, finalBuffer, { flag: 'wx' });
 
-  await prisma.imageHosting.create({
-    data: {
-      id,
-      filename,
-      fileSize: finalBuffer.length,
-      mimeType: input.mimeType,
-      authorId: input.userId,
-      createdAt: nowForDb(), // schema 无 @default(now())，显式写入；nowForDb 见 db-time.ts 的时区约定
-    },
-  });
+  try {
+    await prisma.$transaction(async (tx) => {
+      // 首次写取得 SQLite 写锁；并发上传不能共享同一份剩余额度。
+      await tx.imageHosting.create({ data: {
+        id,
+        filename,
+        fileSize: finalBuffer.length,
+        mimeType: input.mimeType,
+        authorId: input.userId,
+        createdAt: nowForDb(), // schema 无 @default(now())，显式写入；nowForDb 见 db-time.ts 的时区约定
+      } });
+      if (input.quotaBytes !== undefined) {
+        const used = await tx.imageHosting.aggregate({
+          where: { authorId: input.userId, ignore: false }, _sum: { fileSize: true },
+        });
+        if (!Number.isSafeInteger(input.quotaBytes) || input.quotaBytes < 0 ||
+          (used._sum.fileSize ?? 0) > input.quotaBytes) throw new UploadQuotaError();
+      }
+    });
+  } catch (error) {
+    // 数据库拒绝的新文件尚未被接受；清理它，避免失败上传累积成磁盘垃圾。
+    await fs.unlink(storagePath).catch(() => undefined);
+    throw error;
+  }
 
   return { id, filename, fileSize: finalBuffer.length, mimeType: input.mimeType };
 }
