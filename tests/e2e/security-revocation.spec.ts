@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { loginViaApi, uniqueTag } from './helpers';
+import { loginViaApi, registerFreshUser, uniqueTag } from './helpers';
 import { SEED_PASSWORD, SEED_USERS, SEED_BLOG } from './seed';
 
 test('自助改密立即关闭旧讨论/顶栏流，旧 cookie 失效且收不到后续私聊', async ({ page, browser, baseURL }) => {
@@ -85,5 +85,41 @@ test('停用 OAuth 应用立即阻断 userinfo，重新启用也不复活旧令�
     const reenabled = await user.request.get('/api/oauth/userinfo', { headers });
     expect(reenabled.status()).toBe(400);
     expect(await reenabled.json()).toMatchObject({ error: 'invalid_token' });
+  } finally { await ctx.close(); }
+});
+
+test('OAuth 解绑撤销尚未兑换的授权码，重新主动授权仍可使用', async ({ page, browser, baseURL }) => {
+  await loginViaApi(page, SEED_USERS.owner.username);
+  const ctx = await browser.newContext({ baseURL });
+  const user = await ctx.newPage();
+  try {
+    await registerFreshUser(user);
+    const redirectUri = 'https://security.example/callback';
+    const created = await page.request.post('/api/admin/oauth/applications', { data: {
+      name: `unbind-${uniqueTag()}`, redirectUris: [redirectUri],
+    } });
+    expect(created.status()).toBe(200);
+    const app = await created.json();
+    async function authorize() {
+      const result = await user.request.post('/api/oauth/authorize', { data: {
+        client_id: app.clientId, redirect_uri: redirectUri, scope: 'profile',
+      } });
+      expect(result.status()).toBe(200);
+      return new URL((await result.json()).redirect_to).searchParams.get('code');
+    }
+    const code = await authorize();
+    const unbound = await user.request.delete(`/api/oauth/connections/${app.application.id}`);
+    expect(unbound.status()).toBe(200);
+    expect(await unbound.json()).toMatchObject({ revoked: true, revokedCount: 0 });
+    const body = { client_id: app.clientId, client_secret: app.clientSecret,
+      grant_type: 'authorization_code', redirect_uri: redirectUri };
+    const rejected = await user.request.post('/api/oauth/token', { data: { ...body, code } });
+    expect(rejected.status()).toBe(400);
+    expect(await rejected.json()).toMatchObject({ error: 'invalid_grant' });
+    const minted = await user.request.post('/api/oauth/token', { data: { ...body, code: await authorize() } });
+    expect(minted.status()).toBe(200);
+    expect((await user.request.get('/api/oauth/userinfo', { headers: {
+      authorization: `Bearer ${(await minted.json()).access_token}`,
+    } })).status()).toBe(200);
   } finally { await ctx.close(); }
 });
