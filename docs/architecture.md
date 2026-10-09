@@ -1449,6 +1449,97 @@ MP3 的帧同步要核版本 / 层 / 位速率字段（只判 `0xFF` 打头太�
 
 ---
 
+### 6.17 格式转换器（`/tool/convert`，2026-10）
+
+**八个能力区的文件转换，全部在浏览器本地完成** —— 用户文件字节既不上传也不经过服务端。
+这一条是整个子系统的地基，不只是隐私卖点：它意味着这里**没有任何服务端路由、没有数据库
+表、没有限频、没有审计**，也因此没有「服务器替我留一份」的所有风险面。
+
+#### 分层（`src/lib/file-converter/`）
+
+| 层 | 文件 | 职责 |
+|---|---|---|
+| 契约 | `types.ts`（**零 import、零运行时代码**） | `EdgeDef` / `RunContext` / `ConvertResultData` / `ParamSpec` / `CapabilityReport` |
+| 词汇 | `formats.ts` | `FORMATS` 格式表、`LIMITS` 限额、超时、`TEXT_ENCODINGS` |
+| 识别 | `inspect.ts`（node 可测）/ `inspect-client.ts`（浏览器入口） | 按**字节魔数**判种类，不按扩展名猜 |
+| 登记表 | `registry.ts`（零依赖） | 有向图的查询与运行时过滤 |
+| 队列 | `queue.ts` | 串行执行、代次、输出预算 |
+| 执行 | `execute.ts` | 边 → 任务校验 → runner 调用 |
+| 引擎 | `engines/*.ts` | 各自能力区的重实现（ffmpeg / pdf / ocr / …） |
+| 边 | `categories/*.ts` | 八个能力区的 `CategoryDef` |
+
+**契约层零 import 是硬纪律**：它要被 node 环境的单测直接 import，拖进 DOM 库或引擎包
+就废掉「契约可单测」。需要共享的运行时常量一律住 `formats.ts`。
+
+#### 能力登记表 = 有向图（roadmap §12.1）
+
+识别出输入后，**只展示当前真的能做出来的目标**。每条边自带四个判据：
+
+- `from` + `match(info)`：这条边接哪些输入（`match` 做内容级判据，如「静态图边拒绝
+  动画标记」——roadmap §3.1 的动画闸）；
+- `requires`：运行时能力（`worker` / `webp-encode` / `avif-decode` /
+  `ffmpeg-enc:libmp3lame` …），不满足的边**不进菜单**；
+- `status`：`live`（可执行）/ `gated`（代码在但当前环境不满足）/ `planned`
+  （**只登记、不实现 run**，如 `office:docx-to-pdf` 需要服务端 LibreOffice）；
+- `estimateOutput`：预算预检（见下）。
+
+⚠️ **`planned` 的边不许有 `run`**、`live` 的边不许缺 `run` —— `registryProblems()`
+静态校验，单测拿 `CATEGORIES` 整体跑一遍（`[]` 才算过）。
+
+⚠️ **ffmpeg 系依赖在核心未加载时按「可满足」处理**（`edgeAvailable`）。若按字面判，
+菜单要等 31MB 核心下载完才出现 —— 那是「先下载再决定能干什么」。核心**加载失败**时
+才把对应目标标为不可用并说明原因。
+
+#### 队列纪律（`queue.ts`）
+
+- **串行**：转换是重计算，同时跑只会一起变慢。最多一个任务在跑。
+- **代次 `gen`**：重试 +1。异步回调必须校验 `id + gen`，旧代次的结果**不得覆盖**新的。
+  缺它的话「取消 → 立刻重试」会被上一轮的迟到 resolve 覆盖成旧结果。
+- ⚠️ **`cancel()` 必须先判 `activeId === id`，再判 `status === 'queued'`**：执行体还没
+  调 `onPhase` 时任务 status 仍是 `queued`，但它其实已经在跑。顺序反了 = 不 abort，
+  ffmpeg 之类会在后台把整个转码跑完，界面却显示「已取消」。
+- **输出预算**：单输出 64MiB、合计 64MiB。合计到顶时队列**暂停**，用户释放结果后自动继续。
+- **任务上限** 10 个、**持入输入** 100MiB。
+
+#### 限额（`formats.ts` 的 `LIMITS`，页面提示与校验读同一份）
+
+图片 20MiB / 1600 万像素；音频 20MiB / 5 分钟 / 双声道 / 48kHz；视频 100MiB / 2 分钟 /
+1920×1080；文档 50MiB / 300 页；表格 20MiB / 20 万行；文本 10MiB；电子书 50MiB；
+压缩包 100MiB / 2000 成员 / 解压后 500MiB / 深度 10 / 压缩比 100。
+
+**这些是起始实验条件，不是已测得的安全上限** —— 下调安全，上调要补测量记录。
+
+#### 引擎资产（`scripts/copy-converter-assets.mjs`）
+
+约 65MB 的 wasm / worker / 语言包从 npm 包拷进 `public/static/converter/`
+（**不入库**，`postinstall` 与 `build` 都会跑，见 `docs/deploy.md` §5）。
+**重引擎一律在 runner 体内 `await import(...)` 动态引入** —— 静态 import 会把它们
+卷进每个页面的主包。前端只从**同源** `/static/converter/` 取资产，不做任何外部请求。
+
+#### 诚实说明（roadmap §15）
+
+每次转换的结果区**逐条列出保留与损失**（有损重编码、透明压平、元数据不保留、动画丢失、
+公式只求值、文字层被栅格化……）。这不是可选装饰：`ConvertResultData.notices` 是契约的
+必填字段，边作者写不出「这次丢了什么」就等于没写完。
+
+#### 几个静默错（都不报错）
+
+- **串输出必须展开**：`video:to-frames` / `image:anim-to-frames` 传的是**模式**
+  （`frame-%04d.png`），而 exec 是按字面名回读的 —— 不展开就永远拿到空 Map，
+  症状是「退出码 0，结果区空着」。展开在 `ffmpeg.ts` 的 `expandSeqPattern`
+  （纯函数，单测钉住宽度是硬判据）。
+- **取消时引擎被整体杀掉**：0.12 的 ffmpeg 没有「只中断当前命令」的接口，
+  abort / 超时的唯一杀法是 `terminate()` 整个 worker，已加载的核心随之销毁 ——
+  下一次要重新加载。这是引擎协议决定的代价，调用方别指望「取消很便宜」。
+- **引擎读出的字节要收窄成 `Uint8Array<ArrayBuffer>`**：TS 5.7 起 `Uint8Array` =
+  `Uint8Array<ArrayBufferLike>`，`new Blob([bytes])` 会报类型错。收窄点在各引擎的
+  `takeOutput`。
+- **压缩包安全闸**（roadmap §11.2）：成员数 / 解压总量 / 嵌套深度 / 压缩比四项上限，
+  加路径净化（拒绝绝对路径、`..`、盘符、反斜杠混用、NUL）。**解压出来的名字不得直接
+  当路径用** —— 这是 zip-slip，防的是「解压到任意目录」。
+
+玩家向说明见 `docs/guide/格式转换器使用指南.md`。
+
 ## 7. 数据流（4 个典型路径）
 
 ### 7.1 用户登录
