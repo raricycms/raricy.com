@@ -289,13 +289,13 @@ export const DOC_ENTRIES: readonly DocEntry[] = [
     group: 'dev',
     slug: 'format-converter-plan',
     title: '格式转换器实施计划',
-    summary: '图片与短音频的本地转换、引擎验证、资源限制、分期与验收（方案阶段，尚未实施）。',
+    summary: '首版的本地转换、引擎验证、资源限制、分期与验收（2026-10-09 已实施，见 §12.2）。',
   },
   {
     group: 'dev',
     slug: 'format-converter-roadmap',
     title: '格式转换器长期规划（能力版图与转换路线）',
-    summary: '八类文件的长期能力、转换方向与引擎、保真边界和建设阶段（尚未实施）。',
+    summary: '八类文件的长期能力、转换方向与引擎、保真边界和建设阶段（路线图，不是支持清单）。',
   },
   {
     group: 'dev',
