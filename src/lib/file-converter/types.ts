@@ -78,7 +78,14 @@ export interface ConvertResultData {
   outputs: OutputFile[];
   /** 实际输出 MIME（与字节一致，已校验）。 */
   mime: string;
-  /** 实际输出扩展名（不带点，小写）。 */
+  /**
+   * 实际输出扩展名（不带点，小写）。**单值** —— 一个任务声明一种产物类型。
+   *
+   * 解压类边（`archive:unzip` / `archive:untar` / `archive:gunzip` /
+   * `ebook:epub-extract`）的输出**各成员扩展名不同**，这里用 `'bin'` 作哨兵：
+   * `verifyOutputBytes` 对它退化成「只查非空」（不逐份核魔数——那本来也无从核）。
+   * 逐份的实际名字在 `OutputFile.name` 上，那才是用户看到的。
+   */
   ext: string;
   inputSize: number;
   outputSize: number;
