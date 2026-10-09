@@ -115,6 +115,8 @@ test('用途预设在选文件前后都可用，保留文件并正确应用参�
   await page.goto('/tool/convert');
   const start = page.getByRole('button', { name: /开始转换/ });
   await expect(start).toBeDisabled();
+  await expect(page.getByRole('button', { name: '手机照片发给别人', exact: true })).toBeHidden();
+  await page.getByText('常用转换方案（可选）', { exact: true }).click();
   await page.getByRole('button', { name: '手机照片发给别人', exact: true }).click();
   await expect(page.locator('#fc-param-quality')).toHaveValue('90');
   await expect(start).toBeDisabled();
@@ -141,6 +143,7 @@ test('用途预设在选文件前后都可用，保留文件并正确应用参�
 
 test('预设只显示当前分类，分类标签支持方向键切换', async ({ page }) => {
   await page.goto('/tool/convert');
+  await page.getByText('常用转换方案（可选）', { exact: true }).click();
   await expect(page.getByRole('button', { name: '手机照片发给别人', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '语音给旧播放器', exact: true })).toHaveCount(0);
   await page.getByRole('tab', { name: '图片', exact: true }).focus();
@@ -148,7 +151,10 @@ test('预设只显示当前分类，分类标签支持方向键切换', async ({
   await expect(page.getByRole('tab', { name: '音频', exact: true })).toBeFocused();
   await expect(page.getByRole('tab', { name: '音频', exact: true })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByRole('button', { name: '手机照片发给别人', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '语音给旧播放器', exact: true })).toBeHidden();
+  await page.getByText('常用转换方案（可选）', { exact: true }).click();
   await expect(page.getByRole('button', { name: '语音给旧播放器', exact: true })).toBeVisible();
+  await page.getByRole('tab', { name: '音频', exact: true }).focus();
   await page.keyboard.press('End');
   await expect(page.getByRole('tab', { name: '压缩包', exact: true })).toBeFocused();
   await page.keyboard.press('Home');

@@ -225,7 +225,7 @@
   }
 
   .fc-support,
-  .fc-recipes {
+  .fc-presets-panel {
     margin-top: $space-4;
     color: var(--color-text-secondary);
     font-size: 0.8125rem;
@@ -236,11 +236,10 @@
     &__formats { font-size: 0.75rem; }
   }
 
-  .fc-shortcuts {
-    margin-bottom: $space-6;
-
-    &__label { margin: 0 0 $space-2; color: var(--color-text-secondary); font-size: 0.8125rem; }
-    &__description { margin: $space-3 0 0; color: var(--color-text-secondary); font-size: 0.8125rem; line-height: 1.6; }
+  .fc-presets-panel {
+    .fc-recipes { margin-top: $space-4; }
+    p.fc-presets-panel__label { margin: 0 0 $space-2; color: var(--color-text-secondary); font-size: 0.8125rem; }
+    p.fc-presets-panel__description { margin: $space-2 0 $space-3; color: var(--color-text-secondary); font-size: 0.8125rem; line-height: 1.6; }
   }
 
   .fc-presets {

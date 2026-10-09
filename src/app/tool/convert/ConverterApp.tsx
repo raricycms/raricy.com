@@ -656,25 +656,6 @@ export default function ConverterApp() {
                 <span className="icon icon-gear" aria-hidden="true" />
               </div>
 
-              {categoryPresets.length > 0 && (
-                <div className="fc-shortcuts">
-                  <p className="fc-shortcuts__label">按用途快速设置</p>
-                  <div className="fc-presets" role="group" aria-label="用途预设">
-                    {categoryPresets.map((p) => (
-                      <button
-                        key={p.id}
-                        type="button"
-                        className={`filter-pill${presetId === p.id ? ' is-active' : ''}`}
-                        aria-pressed={presetId === p.id}
-                        title={p.desc}
-                        onClick={() => applyPreset(p, 'none')}
-                      >{p.label}</button>
-                    ))}
-                  </div>
-                  {selectedPreset ? <p className="fc-shortcuts__description">{selectedPreset.desc}</p> : null}
-                </div>
-              )}
-
               <div className="fc-field">
                 <label htmlFor="fc-target">输出格式</label>
                 <select
@@ -722,14 +703,35 @@ export default function ConverterApp() {
                 </div>
               )}
 
-              {categoryRecipes.length > 0 && (
-                <details className="fc-recipes" key={categoryKey}>
-                  <summary>批量与打包方案</summary>
-                  <div className="fc-presets">
-                    {categoryRecipes.map((p) => (
-                      <button key={p.id} type="button" className={`filter-pill${presetId === p.id ? ' is-active' : ''}`} aria-pressed={presetId === p.id} title={p.desc} onClick={() => applyPreset(p, p.packaging)}>{p.label}</button>
-                    ))}
-                  </div>
+              {(categoryPresets.length > 0 || categoryRecipes.length > 0) && (
+                <details className="fc-presets-panel" key={categoryKey}>
+                  <summary>常用转换方案（可选）</summary>
+                  <p className="fc-presets-panel__description">选择方案可自动填写格式与参数，也可以直接设置上面的输出格式。</p>
+                  {categoryPresets.length > 0 && (
+                    <div className="fc-presets" role="group" aria-label="用途预设">
+                      {categoryPresets.map((p) => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          className={`filter-pill${presetId === p.id ? ' is-active' : ''}`}
+                          aria-pressed={presetId === p.id}
+                          title={p.desc}
+                          onClick={() => applyPreset(p, 'none')}
+                        >{p.label}</button>
+                      ))}
+                    </div>
+                  )}
+                  {categoryRecipes.length > 0 && (
+                    <div className="fc-recipes">
+                      <p className="fc-presets-panel__label">转换并打包</p>
+                      <div className="fc-presets">
+                        {categoryRecipes.map((p) => (
+                          <button key={p.id} type="button" className={`filter-pill${presetId === p.id ? ' is-active' : ''}`} aria-pressed={presetId === p.id} title={p.desc} onClick={() => applyPreset(p, p.packaging)}>{p.label}</button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {selectedPreset ? <p className="fc-presets-panel__description">{selectedPreset.desc}</p> : null}
                 </details>
               )}
 
