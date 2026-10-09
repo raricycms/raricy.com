@@ -275,12 +275,6 @@ export const DOC_ENTRIES: readonly DocEntry[] = [
   },
   {
     group: 'dev',
-    slug: 'security-audit-2026-10-09',
-    title: '小鱼干与认证系统安全审查报告',
-    summary: '两轮只读审查：认证、OAuth、鱼干记账与文件读取边界。',
-  },
-  {
-    group: 'dev',
     slug: 'README',
     title: '文档索引',
     summary: '本目录的索引与互指规范（给改文档的人）。',
