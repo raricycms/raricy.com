@@ -19,7 +19,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { docHref } from '@/lib/docs-catalog';
 import { CATEGORIES } from '@/lib/file-converter/categories';
 import { makeExecutor, tasksForBatch } from '@/lib/file-converter/execute';
-import { FORMATS, LIMITS, METHOD_LABELS, formatBytes } from '@/lib/file-converter/formats';
+import { LIMITS, METHOD_LABELS, formatBytes } from '@/lib/file-converter/formats';
 import { inspectFileClient } from '@/lib/file-converter/inspect-client';
 import { PRESETS, RECIPES } from '@/lib/file-converter/presets';
 import { ConvertQueue } from '@/lib/file-converter/queue';
@@ -100,6 +100,15 @@ interface PendingFile {
   problem: string | null;
 }
 
+const TAB_LABELS: Record<CategoryKey, string> = {
+  image: '图片', audio: '音频', video: '视频', document: '文档',
+  table: '表格', text: '文本 / 字幕', ebook: '电子书', archive: '压缩包',
+};
+
+function defaultParams(edge: EdgeDef): Record<string, unknown> {
+  return Object.fromEntries(edge.params.map((p) => [p.key, p.defaultValue]));
+}
+
 function statusText(t: ConvertTask): string {
   switch (t.status) {
     case 'validating': return '校验中';
@@ -157,7 +166,7 @@ function ParamField({
           value={Number(value ?? spec.defaultValue)}
           onChange={(e) => onChange(Number(e.target.value))}
         />
-        <output>{String(value ?? spec.defaultValue)}{spec.unit ?? ''}</output>
+        <output htmlFor={id}>{String(value ?? spec.defaultValue)}{spec.unit ?? ''}</output>
       </span>
     );
   } else if (spec.type === 'number') {
@@ -224,6 +233,7 @@ export default function ConverterApp() {
   const [dragOver, setDragOver] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [packaging, setPackaging] = useState<'none' | 'zip' | 'gzip'>('none');
+  const [presetId, setPresetId] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const capsRef = useRef<CapabilityReport | null>(null);
@@ -284,7 +294,6 @@ export default function ConverterApp() {
       const files = Array.from(list);
       if (!files.length) return;
       setAnnounce(`正在识别 ${files.length} 个文件`);
-      const queue = queueRef.current!;
       const newPending: PendingFile[] = [];
       for (const file of files) {
         if (file.size === 0) {
@@ -380,24 +389,44 @@ export default function ConverterApp() {
 
   const edge: EdgeDef | null = edgeId ? edgeById([category], edgeId) : null;
 
-  // 目标变化时重置参数为默认
-  useEffect(() => {
-    if (!edge) return;
-    const defaults: Record<string, unknown> = {};
-    for (const p of edge.params) defaults[p.key] = p.defaultValue;
-    setParams(defaults);
+  const selectEdge = (id: string) => {
+    const selected = edgeById([category], id);
+    setEdgeId(id);
+    setParams(selected ? defaultParams(selected) : {});
     setShowAdvanced(false);
-  }, [edgeId]); // eslint-disable-line react-hooks/exhaustive-deps
+    setPresetId(null);
+  };
+
+  const selectCategory = (key: CategoryKey) => {
+    if (key === categoryKey) return;
+    setCategoryKey(key);
+    setPending([]);
+    setEdgeId(null);
+    setParams({});
+    setPresetId(null);
+    setShowAdvanced(false);
+    setPackaging('none');
+  };
+
+  const changeParam = (key: string, value: string | number | boolean) => {
+    setParams((prev) => ({ ...prev, [key]: value }));
+    setPresetId(null);
+  };
 
   const applyPreset = useCallback(
-    (preset: { category: CategoryKey; edgeId: string; params: Record<string, unknown> }, packagingMode: 'none' | 'zip' | 'gzip') => {
+    (preset: { id: string; category: CategoryKey; edgeId: string; params: Record<string, unknown> }, packagingMode: 'none' | 'zip' | 'gzip') => {
+      const selected = edgeById(CATEGORIES, preset.edgeId);
       setCategoryKey(preset.category);
       setEdgeId(preset.edgeId);
-      setParams({ ...preset.params });
+      // 预设在一次操作里覆盖默认参数，避免目标变化后的 effect 把预设冲掉。
+      setParams({ ...(selected ? defaultParams(selected) : {}), ...preset.params });
       setPackaging(packagingMode);
-      setPending([]);
+      setPresetId(preset.id);
+      setShowAdvanced(false);
+      // 同类用途可以在选完文件后切换，不应清空用户刚添加的文件。
+      if (preset.category !== categoryKey) setPending([]);
     },
-    []
+    [categoryKey]
   );
 
   const startConversion = useCallback(() => {
@@ -472,334 +501,318 @@ export default function ConverterApp() {
   // ── 渲染 ──────────────────────────────────────────────────────────────────
 
   const succeededCount = snap.tasks.filter((t) => t.status === 'succeeded').length;
+  const activeCount = snap.tasks.filter((t) => !['succeeded', 'failed', 'cancelled'].includes(t.status)).length;
   const anyAdvanced = (edge?.params ?? []).some((p) => p.advanced);
+  const edgeAvailable = !!edge && candidateEdges.some((e) => e.id === edge.id);
+  const categoryPresets = PRESETS.filter((p) => p.category === categoryKey);
+  const categoryRecipes = RECIPES.filter((p) => p.category === categoryKey);
+  const selectedPreset = [...PRESETS, ...RECIPES].find((p) => p.id === presetId);
+  const startHint = !pending.length
+    ? '添加文件后，即可选择适用的输出格式。'
+    : !caps
+      ? '正在检查浏览器的转换能力…'
+      : okPending.length === 0
+        ? '请移除有问题的文件，并添加当前分类支持的文件。'
+        : !candidateEdges.length
+          ? '这些文件没有共同的输出格式，请分批添加。'
+          : !edgeAvailable
+            ? '请选择适用于当前文件的输出格式。'
+            : `已准备好转换 ${okPending.length} 个文件。`;
 
   return (
-    <section className="py-4 base-tool-page fc-page">
+    <section className="base-tool-page fc-page">
       <div className="container">
-        <div className="d-flex align-items-center mb-3" style={{ gap: '.5rem' }}>
-          <Link
-            href="/tool"
-            className="text-decoration-none"
-            style={{ color: 'var(--color-text-secondary)', display: 'inline-flex' }}
-          >
-            <span className="icon icon-arrow-left" style={{ width: '1.25rem', height: '1.25rem' }}></span>
+        <nav className="fc-nav" aria-label="工具导航">
+          <Link href="/tool" className="fc-nav__back">
+            <span className="icon icon-arrow-left" aria-hidden="true" />
+            工具箱
           </Link>
-          <h1 className="mb-0 tool-new-hero__title">格式转换器</h1>
-        </div>
-        <p className="tool-new-hero__description">
-          文件只在你的浏览器中处理，不会上传。首次转换音频 / 视频需要下载转换组件，之后通常可复用浏览器缓存。
-          页面关闭后，尚未保存的结果会丢失。
-          <Link href={docHref('guide/格式转换器使用指南')} style={{ marginLeft: '.5rem' }}>
+          <Link href={docHref('guide/格式转换器使用指南')} className="fc-nav__guide">
+            <span className="icon icon-book" aria-hidden="true" />
             使用指南
           </Link>
-        </p>
+        </nav>
 
-        {/* 用途预设（roadmap §14）与固定配方（§12.4） */}
-        <div className="fc-presets" role="group" aria-label="用途预设">
-          {PRESETS.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              className="filter-pill"
-              title={p.desc}
-              onClick={() => applyPreset(p, 'none')}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
-        <details className="fc-recipes">
-          <summary>固定配方（多步流程，打包下载）</summary>
-          <div className="fc-presets">
-            {RECIPES.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                className="filter-pill"
-                title={p.desc}
-                onClick={() => applyPreset(p, p.packaging)}
-              >
-                {p.label}
-              </button>
-            ))}
+        <header className="fc-hero">
+          <div>
+            <h1>格式转换器</h1>
+            <p>换个格式，让文件用在你需要的地方。</p>
           </div>
-        </details>
+          <span className="fc-local">本地处理 · 文件不会上传</span>
+        </header>
 
-        {/* 能力区标签 */}
-        <div className="fc-tabs" role="tablist" aria-label="能力区">
-          {CATEGORIES.map((c) => (
+        <div className="fc-tabs" role="tablist" aria-label="文件分类">
+          {CATEGORIES.map((c, index) => (
             <button
               key={c.key}
+              id={`fc-tab-${c.key}`}
               type="button"
               role="tab"
               aria-selected={categoryKey === c.key}
-              className={`filter-pill${categoryKey === c.key ? ' active' : ''}`}
-              onClick={() => {
-                setCategoryKey(c.key);
-                setPending([]);
-                setEdgeId(null);
+              aria-controls="fc-workspace"
+              tabIndex={categoryKey === c.key ? 0 : -1}
+              className={`fc-tab${categoryKey === c.key ? ' is-active' : ''}`}
+              onClick={() => selectCategory(c.key)}
+              onKeyDown={(e) => {
+                let next = index;
+                if (e.key === 'ArrowRight') next = (index + 1) % CATEGORIES.length;
+                else if (e.key === 'ArrowLeft') next = (index + CATEGORIES.length - 1) % CATEGORIES.length;
+                else if (e.key === 'Home') next = 0;
+                else if (e.key === 'End') next = CATEGORIES.length - 1;
+                else return;
+                e.preventDefault();
+                selectCategory(CATEGORIES[next].key);
+                document.getElementById(`fc-tab-${CATEGORIES[next].key}`)?.focus();
               }}
             >
-              {c.label}
+              {TAB_LABELS[c.key]}
             </button>
           ))}
         </div>
-        <p className="fc-hint text-muted">{category.hint}</p>
 
-        {/* 文件选择 */}
-        <div
-          className={`fc-dropzone${dragOver ? ' fc-dropzone--over' : ''}`}
-          onDragOver={(e) => {
-            e.preventDefault();
-            setDragOver(true);
-          }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={(e) => {
-            e.preventDefault();
-            setDragOver(false);
-            void addFiles(e.dataTransfer.files);
-          }}
-        >
-          <p>把文件拖到这里，或者</p>
-          <button type="button" className="btn btn-primary" onClick={() => fileInputRef.current?.click()}>
-            选择文件
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple={category.maxFilesPerTask !== 1}
-            accept={category.accept}
-            hidden
-            onChange={(e) => {
-              if (e.target.files) void addFiles(e.target.files);
-              e.target.value = '';
-            }}
-          />
-        </div>
+        <div id="fc-workspace" role="tabpanel" aria-labelledby={`fc-tab-${categoryKey}`}>
+          <div className="fc-workspace">
+            <section className="fc-panel" aria-labelledby="fc-files-title">
+              <div className="fc-panel__head">
+                <h2 id="fc-files-title" className="fc-panel__title">
+                  <span className="fc-step" aria-hidden="true">01</span>添加文件
+                </h2>
+                <span className="fc-panel__meta">{pending.length ? `${pending.length} 个文件` : TAB_LABELS[categoryKey]}</span>
+              </div>
+              <div
+                className={`fc-dropzone${dragOver ? ' fc-dropzone--over' : ''}${pending.length ? ' fc-dropzone--compact' : ''}`}
+                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDragOver(false);
+                  void addFiles(e.dataTransfer.files);
+                }}
+              >
+                <span className="fc-dropzone__icon" aria-hidden="true">
+                  <span className="icon icon-add" />
+                </span>
+                <h3>{pending.length ? '继续添加文件' : '把文件拖到这里'}</h3>
+                <p>{category.maxFilesPerTask === 1 ? '选择一个文件，在浏览器里完成转换' : '支持一次选择多个文件，在浏览器里完成转换'}</p>
+                <button type="button" className={`btn ${pending.length ? 'btn-secondary' : 'btn-primary'}`} onClick={() => fileInputRef.current?.click()}>
+                  选择文件
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  aria-label="选择待转换文件"
+                  multiple={category.maxFilesPerTask !== 1}
+                  accept={category.accept}
+                  hidden
+                  onChange={(e) => {
+                    if (e.target.files) void addFiles(e.target.files);
+                    e.target.value = '';
+                  }}
+                />
+              </div>
 
-        {/* 待转换清单 */}
-        {displayPending.length > 0 && (
-          <div className="tool-panel fc-panel">
-            <h2 className="fc-panel__title">待转换（{displayPending.length}）</h2>
-            <ul className="fc-files">
-              {displayPending.map((p, i) => (
-                <li key={`${p.file.name}-${i}`} className={p.problem ? 'fc-file fc-file--bad' : 'fc-file'}>
-                  <span className="fc-file__name">{p.file.name}</span>
-                  <span className="fc-file__meta">
-                    {p.inspect.sniff.kind} · {formatBytes(p.file.size)}
-                    {p.inspect.width ? ` · ${p.inspect.width}×${p.inspect.height}` : ''}
-                    {p.inspect.animated ? ' · 动画' : ''}
-                  </span>
-                  {p.problem ? <span className="fc-file__problem">{p.problem}</span> : null}
-                  <button
-                    type="button"
-                    className="btn btn-secondary fc-file__remove"
-                    onClick={() => setPending((prev) => prev.filter((_, j) => j !== i))}
-                  >
-                    移除
-                  </button>
-                </li>
-              ))}
-            </ul>
-
-            {okPending.length > 0 && (
-              <>
-                <div className="fc-field">
-                  <label htmlFor="fc-target">转换为</label>
-                  {candidateEdges.length === 0 ? (
-                    <p className="fc-file__problem">这些文件没有共同的可用目标格式</p>
-                  ) : (
-                    <select
-                      id="fc-target"
-                      className="form-select"
-                      value={edgeId ?? ''}
-                      onChange={(e) => setEdgeId(e.target.value)}
-                    >
-                      <option value="" disabled>
-                        选择目标格式
-                      </option>
-                      {candidateEdges.map((e) => (
-                        <option key={e.id} value={e.id}>
-                          {e.group ? `${e.group} · ` : ''}{e.label}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                </div>
-
-                {edge && (
-                  <div className="fc-params">
-                    {edge.params.filter((p) => !p.advanced).map((spec) => (
-                      <ParamField
-                        key={spec.key}
-                        spec={spec}
-                        value={params[spec.key]}
-                        info={okPending[0]?.inspect ?? null}
-                        allParams={params}
-                        onChange={(v) => setParams((prev) => ({ ...prev, [spec.key]: v }))}
-                      />
-                    ))}
-                    {anyAdvanced && (
-                      <>
+              {displayPending.length > 0 && (
+                <div className="fc-selection">
+                  <div className="fc-selection__head">
+                    <h3>已选文件</h3>
+                    <button type="button" className="btn btn-secondary" onClick={() => setPending([])}>清空</button>
+                  </div>
+                  <ul className="fc-files">
+                    {displayPending.map((p, i) => (
+                      <li key={`${p.file.name}-${i}`} className={p.problem ? 'fc-file fc-file--bad' : 'fc-file'}>
+                        <span className="fc-file__icon" aria-hidden="true"><span className="icon icon-journal-text" /></span>
+                        <div className="fc-file__body">
+                          <span className="fc-file__name">{p.file.name}</span>
+                          <span className="fc-file__meta">
+                            {p.inspect.sniff.ext.toUpperCase() || '未知格式'} · {formatBytes(p.file.size)}
+                            {p.inspect.width ? ` · ${p.inspect.width}×${p.inspect.height}` : ''}
+                            {p.inspect.animated ? ' · 动画' : ''}
+                          </span>
+                          {p.problem ? <span className="fc-file__problem">{p.problem}</span> : null}
+                        </div>
                         <button
                           type="button"
-                          className="btn btn-secondary"
-                          aria-expanded={showAdvanced}
-                          onClick={() => setShowAdvanced((v) => !v)}
-                        >
-                          {showAdvanced ? '收起高级选项' : '高级选项'}
-                        </button>
-                        {showAdvanced &&
-                          edge.params.filter((p) => p.advanced).map((spec) => (
-                            <ParamField
-                              key={spec.key}
-                              spec={spec}
-                              value={params[spec.key]}
-                              info={okPending[0]?.inspect ?? null}
-                              allParams={params}
-                              onChange={(v) => setParams((prev) => ({ ...prev, [spec.key]: v }))}
-                            />
-                          ))}
-                      </>
-                    )}
-                    {edge.notices.length > 0 && (
-                      <ul className="fc-notices">
-                        {edge.notices.map((n) => (
-                          <li key={n}>{n}</li>
-                        ))}
-                      </ul>
-                    )}
-                    <div className="fc-actions">
-                      <button type="button" className="btn btn-primary" onClick={startConversion}>
-                        开始转换（{okPending.length} 个文件）
-                      </button>
-                      {okPending.length > 1 && (
-                        <label className="fc-pack">
-                          <input
-                            type="checkbox"
-                            checked={packaging !== 'none'}
-                            onChange={(e) => setPackaging(e.target.checked ? 'zip' : 'none')}
-                          />
-                          完成后提供打包下载（ZIP）
-                        </label>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        )}
+                          className="btn btn-secondary fc-file__remove"
+                          aria-label={`移除 ${p.file.name}`}
+                          onClick={() => setPending((prev) => prev.filter((_, j) => j !== i))}
+                        >移除</button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              <details className="fc-support" key={categoryKey}>
+                <summary>支持的格式与使用限制</summary>
+                <p className="fc-hint">{category.hint}</p>
+                <p className="fc-support__formats">可选择：{category.accept.replaceAll('.', '').replaceAll(',', ' · ')}</p>
+              </details>
+            </section>
 
-        {/* 预算暂停横幅 */}
-        {snap.budgetPaused && (
-          <div className="alert alert-warning" role="alert">
-            输出暂存已达上限，队列已暂停。请先下载并移除一些结果，转换会继续。
-          </div>
-        )}
-
-        {/* 任务列表 */}
-        {snap.tasks.length > 0 && (
-          <div className="tool-panel fc-panel">
-            <div className="fc-panel__head">
-              <h2 className="fc-panel__title">任务（{snap.tasks.length}）</h2>
-              <div>
-                {succeededCount > 0 && (
-                  <button type="button" className="btn btn-secondary" onClick={() => void packOutputs()}>
-                    打包下载全部成功结果（{succeededCount}）
-                  </button>
-                )}
-                <button type="button" className="btn btn-secondary" onClick={() => queueRef.current!.cancelAll()}>
-                  取消全部
-                </button>
+            <section className="fc-panel" aria-labelledby="fc-settings-title">
+              <div className="fc-panel__head">
+                <h2 id="fc-settings-title" className="fc-panel__title">
+                  <span className="fc-step" aria-hidden="true">02</span>设置输出
+                </h2>
+                <span className="icon icon-gear" aria-hidden="true" />
               </div>
-            </div>
-            <ul className="fc-tasks">
-              {snap.tasks.map((t) => (
-                <li key={t.id} className={`fc-task fc-task--${t.status}`} data-edge={t.edgeId}>
-                  <div className="fc-task__row">
-                    <span className="fc-task__name">{t.fileName}</span>
-                    <span className="fc-task__status">{statusText(t)}{t.message ? ` · ${t.message}` : ''}</span>
-                  </div>
-                  {(t.status === 'converting' || t.status === 'loading-engine' || t.status === 'probing') && (
-                    <progress
-                      className="fc-progress"
-                      max={1}
-                      value={t.progress ?? undefined}
-                      aria-label={`${t.fileName} 进度`}
-                    />
-                  )}
-                  {t.status === 'failed' && t.error && (
-                    <div className="fc-task__error" role="alert">
-                      {t.error.message}
-                      {t.error.detail ? <details><summary>诊断信息</summary><pre>{t.error.detail}</pre></details> : null}
-                    </div>
-                  )}
-                  {t.status === 'succeeded' && t.result && (
-                    <div className="fc-result">
-                      <div className="fc-result__meta">
-                        {formatBytes(t.result.inputSize)} → {formatBytes(t.result.outputSize)}
-                        {t.result.outputSize > t.result.inputSize ? '（输出更大）' : ''}
-                      </div>
-                      {/* 转换方式（roadmap §2 的六种）：**必须明示** —— 「换封装」与
-                          「重新编码」在用户那里是完全不同的两件事（一个无损、一个
-                          有损），只说「转换完成」等于把最该说清的那条藏起来。 */}
-                      {(() => {
-                        const e = edgeById([category], t.edgeId);
-                        return e ? (
-                          <div className="fc-result__method">转换方式：{METHOD_LABELS[e.method]}</div>
-                        ) : null;
-                      })()}
-                      {t.result.notices.length > 0 && (
-                        <ul className="fc-notices">
-                          {t.result.notices.map((n) => (
-                            <li key={n}>{n}</li>
-                          ))}
-                        </ul>
-                      )}
-                      <TaskPreview task={t} registerUrl={registerUrl} />
-                      <div className="fc-result__actions">
-                        {t.result.outputs.map((o, i) => (
-                          <button
-                            key={o.name}
-                            type="button"
-                            className="btn btn-primary"
-                            onClick={() => downloadOutput(t, i)}
-                          >
-                            下载 {o.name}（{formatBytes(o.blob.size)}）
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  <div className="fc-task__ops">
-                    {(t.status === 'queued' || t.status === 'converting' || t.status === 'loading-engine' || t.status === 'probing') && (
-                      <button type="button" className="btn btn-secondary" onClick={() => queueRef.current!.cancel(t.id)}>
-                        取消
-                      </button>
-                    )}
-                    {(t.status === 'failed' || t.status === 'cancelled') && (
+
+              {categoryPresets.length > 0 && (
+                <div className="fc-shortcuts">
+                  <p className="fc-shortcuts__label">按用途快速设置</p>
+                  <div className="fc-presets" role="group" aria-label="用途预设">
+                    {categoryPresets.map((p) => (
                       <button
+                        key={p.id}
                         type="button"
-                        className="btn btn-secondary"
-                        title="沿用开始时的参数快照重试"
-                        onClick={() => queueRef.current!.retry(t.id)}
-                      >
-                        重试
-                      </button>
-                    )}
-                    <button type="button" className="btn btn-secondary" onClick={() => removeTask(t.id)}>
-                      移除
-                    </button>
+                        className={`filter-pill${presetId === p.id ? ' is-active' : ''}`}
+                        aria-pressed={presetId === p.id}
+                        title={p.desc}
+                        onClick={() => applyPreset(p, 'none')}
+                      >{p.label}</button>
+                    ))}
                   </div>
-                </li>
-              ))}
-            </ul>
+                  {selectedPreset ? <p className="fc-shortcuts__description">{selectedPreset.desc}</p> : null}
+                </div>
+              )}
+
+              <div className="fc-field">
+                <label htmlFor="fc-target">输出格式</label>
+                <select
+                  id="fc-target"
+                  className="form-select"
+                  disabled={!caps || candidateEdges.length === 0}
+                  value={edgeAvailable ? edgeId! : ''}
+                  aria-describedby="fc-start-hint"
+                  onChange={(e) => selectEdge(e.target.value)}
+                >
+                  <option value="" disabled>
+                    {!pending.length ? (edge ? `已预设：${edge.label}` : '添加文件后选择格式') : '选择目标格式'}
+                  </option>
+                  {candidateEdges.map((e) => (
+                    <option key={e.id} value={e.id}>{e.group ? `${e.group} · ` : ''}{e.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              {edge && (edgeAvailable || pending.length === 0) && (
+                <div className="fc-params">
+                  {edge.params.filter((p) => !p.advanced).map((spec) => (
+                    <ParamField key={spec.key} spec={spec} value={params[spec.key]} info={okPending[0]?.inspect ?? null} allParams={params} onChange={(v) => changeParam(spec.key, v)} />
+                  ))}
+                  {anyAdvanced && (
+                    <div className="fc-advanced">
+                      <button type="button" className="btn btn-secondary" aria-expanded={showAdvanced} aria-controls="fc-advanced-fields" onClick={() => setShowAdvanced((v) => !v)}>
+                        {showAdvanced ? '收起高级选项' : '高级选项'} <span aria-hidden="true">{showAdvanced ? '−' : '+'}</span>
+                      </button>
+                      {showAdvanced && (
+                        <div id="fc-advanced-fields" className="fc-params">
+                          {edge.params.filter((p) => p.advanced).map((spec) => (
+                            <ParamField key={spec.key} spec={spec} value={params[spec.key]} info={okPending[0]?.inspect ?? null} allParams={params} onChange={(v) => changeParam(spec.key, v)} />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {edge.notices.length > 0 && (
+                    <div className="fc-conversion-note">
+                      <p>转换前请留意</p>
+                      <ul className="fc-notices">{edge.notices.map((n) => <li key={n}>{n}</li>)}</ul>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {categoryRecipes.length > 0 && (
+                <details className="fc-recipes" key={categoryKey}>
+                  <summary>批量与打包方案</summary>
+                  <div className="fc-presets">
+                    {categoryRecipes.map((p) => (
+                      <button key={p.id} type="button" className={`filter-pill${presetId === p.id ? ' is-active' : ''}`} aria-pressed={presetId === p.id} title={p.desc} onClick={() => applyPreset(p, p.packaging)}>{p.label}</button>
+                    ))}
+                  </div>
+                </details>
+              )}
+
+              <div className="fc-actions">
+                {okPending.length > 1 && (
+                  <label className="fc-pack">
+                    <input type="checkbox" checked={packaging !== 'none'} onChange={(e) => { setPackaging(e.target.checked ? 'zip' : 'none'); setPresetId(null); }} />
+                    提供 ZIP 打包下载
+                  </label>
+                )}
+                <button type="button" className="btn btn-primary fc-start" disabled={!edgeAvailable || !okPending.length} onClick={startConversion}>
+                  {edgeAvailable && okPending.length ? `开始转换（${okPending.length} 个文件）` : '开始转换'}
+                  <span aria-hidden="true">→</span>
+                </button>
+                <p id="fc-start-hint">{startHint}</p>
+              </div>
+            </section>
           </div>
+        </div>
+
+        {announce && <p className="fc-feedback" role="status">{announce}</p>}
+        {snap.budgetPaused && (
+          <div className="alert alert-warning" role="alert">输出暂存已达上限，队列已暂停。请先下载并移除一些结果，转换会继续。</div>
         )}
 
-        <div aria-live="polite" className="fc-sr-status">{announce}</div>
+        <section className="fc-panel fc-output" aria-labelledby="fc-output-title">
+          <div className="fc-panel__head">
+            <h2 id="fc-output-title" className="fc-panel__title"><span className="fc-step" aria-hidden="true">03</span>转换结果</h2>
+            <div className="fc-output__ops">
+              {succeededCount > 0 && <button type="button" className="btn btn-secondary" onClick={() => void packOutputs()}>打包下载全部成功结果（{succeededCount}）</button>}
+              {activeCount > 0 && <button type="button" className="btn btn-secondary" onClick={() => queueRef.current!.cancelAll()}>取消全部</button>}
+            </div>
+          </div>
+          {snap.tasks.length === 0 ? (
+            <div className="fc-output__empty">
+              <span className="icon icon-box-arrow-right" aria-hidden="true" />
+              <p>转换后的文件会出现在这里<span>预览确认后，再保存到你的设备。</span></p>
+            </div>
+          ) : (
+            <>
+              <p className="fc-output__summary">{snap.tasks.length} 个任务 · {succeededCount} 个已完成{activeCount ? ` · ${activeCount} 个处理中` : ''}</p>
+              <ul className="fc-tasks">
+                {snap.tasks.map((t) => (
+                  <li key={t.id} className={`fc-task fc-task--${t.status}`} data-edge={t.edgeId}>
+                    <div className="fc-task__row">
+                      <span className="fc-task__name">{t.fileName}</span>
+                      <span className="fc-task__status">{statusText(t)}{t.message ? ` · ${t.message}` : ''}</span>
+                    </div>
+                    {(t.status === 'converting' || t.status === 'loading-engine' || t.status === 'probing') && <progress className="fc-progress" max={1} value={t.progress ?? undefined} aria-label={`${t.fileName} 进度`} />}
+                    {t.status === 'failed' && t.error && (
+                      <div className="fc-task__error" role="alert">
+                        {t.error.message}
+                        {t.error.detail ? <details><summary>诊断信息</summary><pre>{t.error.detail}</pre></details> : null}
+                      </div>
+                    )}
+                    {t.status === 'succeeded' && t.result && (
+                      <div className="fc-result">
+                        <div className="fc-result__meta">{formatBytes(t.result.inputSize)} → {formatBytes(t.result.outputSize)}{t.result.outputSize > t.result.inputSize ? '（输出更大）' : ''}</div>
+                        {(() => {
+                          // 队列跨分类保留，转换方式也从完整登记册读取。
+                          const completedEdge = edgeById(CATEGORIES, t.edgeId);
+                          return completedEdge ? <div className="fc-result__method">转换方式：{METHOD_LABELS[completedEdge.method]}</div> : null;
+                        })()}
+                        {t.result.notices.length > 0 && <ul className="fc-notices">{t.result.notices.map((n) => <li key={n}>{n}</li>)}</ul>}
+                        <TaskPreview task={t} registerUrl={registerUrl} />
+                        <div className="fc-result__actions">
+                          {t.result.outputs.map((o, i) => <button key={o.name} type="button" className="btn btn-primary" onClick={() => downloadOutput(t, i)}>下载 {o.name}（{formatBytes(o.blob.size)}）</button>)}
+                        </div>
+                      </div>
+                    )}
+                    <div className="fc-task__ops">
+                      {(t.status === 'queued' || t.status === 'converting' || t.status === 'loading-engine' || t.status === 'probing') && <button type="button" className="btn btn-secondary" onClick={() => queueRef.current!.cancel(t.id)}>取消</button>}
+                      {(t.status === 'failed' || t.status === 'cancelled') && <button type="button" className="btn btn-secondary" title="沿用开始时的参数快照重试" onClick={() => queueRef.current!.retry(t.id)}>重试</button>}
+                      <button type="button" className="btn btn-secondary" onClick={() => removeTask(t.id)}>移除</button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          <p className="fc-output__reminder">关闭或刷新页面会清除未保存的结果，请及时下载。</p>
+        </section>
+        <p className="fc-footnote">音频、视频等转换组件会在需要时加载，首次使用可能稍等片刻。</p>
       </div>
     </section>
   );

@@ -106,6 +106,53 @@ test('图片：PNG → JPG 真实转换，输出按字节验明正身，并如�
   await expect(page.locator('li.fc-task[data-edge="image:to-jpg"] .fc-result__method')).toContainText(
     '重新编码'
   );
+  // 结果区跨分类保留，转换方式也必须保留，不能随着当前分类的登记表消失。
+  await page.getByRole('tab', { name: '音频', exact: true }).click();
+  await expect(page.locator('li.fc-task[data-edge="image:to-jpg"] .fc-result__method')).toContainText('重新编码');
+});
+
+test('用途预设在选文件前后都可用，保留文件并正确应用参数', async ({ page }) => {
+  await page.goto('/tool/convert');
+  const start = page.getByRole('button', { name: /开始转换/ });
+  await expect(start).toBeDisabled();
+  await page.getByRole('button', { name: '手机照片发给别人', exact: true }).click();
+  await expect(page.locator('#fc-param-quality')).toHaveValue('90');
+  await expect(start).toBeDisabled();
+  await page.locator('.fc-dropzone input[type=file]').setInputFiles({ name: '保留的图片.png', mimeType: 'image/png', buffer: PNG_1PX });
+  await expect(page.locator('#fc-target')).toHaveValue('image:to-jpg');
+  await expect(start).toBeEnabled();
+  await page.getByRole('button', { name: '高级选项' }).click();
+  await expect(page.locator('#fc-param-maxWidth')).toHaveValue('2560');
+
+  await page.getByRole('button', { name: '图片放网页', exact: true }).click();
+  await expect(page.locator('.fc-file__name')).toHaveText('保留的图片.png');
+  await expect(page.locator('#fc-target')).toHaveValue('image:to-webp');
+  await expect(page.locator('#fc-param-quality')).toHaveValue('82');
+  await page.getByRole('button', { name: '高级选项' }).click();
+  await expect(page.locator('#fc-param-maxWidth')).toHaveValue('1280');
+  await expect(start).toBeEnabled();
+
+  // 再点击当前分类不会清空文件；自定义参数后不再宣称仍应用了完整用途预设。
+  await page.getByRole('tab', { name: '图片', exact: true }).click();
+  await expect(page.locator('.fc-file__name')).toHaveText('保留的图片.png');
+  await page.locator('#fc-param-quality').press('ArrowLeft');
+  await expect(page.getByRole('button', { name: '图片放网页', exact: true })).toHaveAttribute('aria-pressed', 'false');
+});
+
+test('预设只显示当前分类，分类标签支持方向键切换', async ({ page }) => {
+  await page.goto('/tool/convert');
+  await expect(page.getByRole('button', { name: '手机照片发给别人', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '语音给旧播放器', exact: true })).toHaveCount(0);
+  await page.getByRole('tab', { name: '图片', exact: true }).focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(page.getByRole('tab', { name: '音频', exact: true })).toBeFocused();
+  await expect(page.getByRole('tab', { name: '音频', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('button', { name: '手机照片发给别人', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '语音给旧播放器', exact: true })).toBeVisible();
+  await page.keyboard.press('End');
+  await expect(page.getByRole('tab', { name: '压缩包', exact: true })).toBeFocused();
+  await page.keyboard.press('Home');
+  await expect(page.getByRole('tab', { name: '图片', exact: true })).toBeFocused();
 });
 
 test('音频：WAV→FLAC→WAV 引擎闭环（自举样本，全程不出站）', async ({ page }) => {

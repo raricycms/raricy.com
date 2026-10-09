@@ -59,7 +59,7 @@ test('拖放区与主按钮在任何视口都完整可见、可点', async ({ pa
   expect(btnBox.y + btnBox.height).toBeLessThanOrEqual(box.y + box.height + 2);
 });
 
-test('上传后待转换清单与操作区在窄屏不横向溢出', async ({ page }) => {
+test('上传后文件清单、展开的参数与操作区不溢出，工作区按视口排列', async ({ page }, testInfo) => {
   // 走一遍最小转换流程的**前半段**（上传 + 出现目标选择），只为把真实内容撑出来排版
   await page.goto('/tool/convert');
   const PNG_1PX = Buffer.from(
@@ -72,6 +72,24 @@ test('上传后待转换清单与操作区在窄屏不横向溢出', async ({ pa
     buffer: PNG_1PX,
   });
   await expect(page.locator('#fc-target')).toBeVisible({ timeout: 15_000 });
+  await page.locator('#fc-target').selectOption('image:to-jpg');
+  await page.getByRole('button', { name: '高级选项' }).click();
+  const panels = page.locator('.fc-workspace > .fc-panel');
+  const files = (await panels.nth(0).boundingBox())!;
+  const settings = (await panels.nth(1).boundingBox())!;
+  if (testInfo.project.name === 'mobile') {
+    expect(settings.y).toBeGreaterThanOrEqual(files.y + files.height);
+  } else {
+    expect(settings.y).toBeCloseTo(files.y, 0);
+    expect(settings.x).toBeGreaterThanOrEqual(files.x + files.width);
+  }
+  for (const control of await page.locator('.fc-workspace .btn, .fc-workspace select, .fc-tab').all()) {
+    if (!(await control.isVisible())) continue;
+    const controlBox = (await control.boundingBox())!;
+    expect(controlBox.height).toBeGreaterThanOrEqual(44);
+    expect(controlBox.x).toBeGreaterThanOrEqual(0);
+    expect(controlBox.x + controlBox.width).toBeLessThanOrEqual(await page.evaluate(() => document.documentElement.clientWidth) + 2);
+  }
   const overflowX = await page.evaluate(
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth
   );
