@@ -9,8 +9,10 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { resetDb, makeUser } from '../helpers/db';
-import { __resetRateLimitStore, RULES } from '@/lib/rate-limit';
+import { __resetRateLimitStore, RULES, recordRateLimitHit, isRateLimited } from '@/lib/rate-limit';
 import { hashPassword } from '@/lib/password';
+import * as passwordWork from '@/lib/password';
+import { verifyCredentials } from '@/lib/credential-auth';
 
 // 成功登录会调 cookies() —— 单测里没有请求上下文，mock 掉（本文件只关心配额）。
 vi.mock('next/headers', () => ({ cookies: async () => ({ set: () => {} }) }));
@@ -32,6 +34,26 @@ beforeEach(async () => {
 });
 
 describe('登录限频', () => {
+  it('失败预算仅剩一个名额时，8 个并发请求只执行一次密码计算', async () => {
+    await makeUser({ username: 'victim', passwordHash: await hashPassword('correct-horse') });
+    for (let i = 0; i < RULES.loginPerUser.limit - 1; i++) recordRateLimitHit('login:user:victim');
+    const spy = vi.spyOn(passwordWork, 'verifyPassword');
+    try {
+      const results = await Promise.all(Array.from({ length: 8 }, () => verifyCredentials('victim', 'wrong')));
+      expect(results.filter((r) => !r.ok && r.status === 401)).toHaveLength(1);
+      expect(results.filter((r) => !r.ok && r.status === 429)).toHaveLength(7);
+      expect(spy).toHaveBeenCalledOnce();
+    } finally { spy.mockRestore(); }
+  });
+
+  it('成功尝试释放预留的失败额度，不把最后一个名额泄漏', async () => {
+    await makeUser({ username: 'victim', passwordHash: await hashPassword('correct-horse') });
+    for (let i = 0; i < RULES.loginPerUser.limit - 1; i++) recordRateLimitHit('login:user:victim');
+    expect((await verifyCredentials('victim', 'correct-horse')).ok).toBe(true);
+    expect(isRateLimited('login:user:victim', RULES.loginPerUser)).toBe(false);
+    expect(await verifyCredentials('victim', 'wrong')).toMatchObject({ status: 401 });
+    expect(await verifyCredentials('victim', 'wrong')).toMatchObject({ status: 429 });
+  });
   it('同一用户名连续失败达上限后返回 429', async () => {
     const limit = RULES.loginPerUser.limit;
     for (let i = 0; i < limit; i++) {

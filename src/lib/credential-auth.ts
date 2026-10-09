@@ -24,7 +24,7 @@
 
 import { prisma } from './db';
 import { verifyPassword } from './password';
-import { isRateLimited, recordRateLimitHit, RULES } from './rate-limit';
+import { reserveRateLimitAttempts, RULES } from './rate-limit';
 
 /** 校验通过时返回的最小用户快照（两个门口各自需要的字段都在里面）。 */
 export interface CredentialUser {
@@ -55,42 +55,46 @@ export async function verifyCredentials(
 ): Promise<CredentialResult> {
   const ipKey = ip ? `login:ip:${ip}` : null;
   const userKey = `login:user:${username.toLowerCase()}`;
-  if (
-    (ipKey && isRateLimited(ipKey, RULES.loginPerIp)) ||
-    isRateLimited(userKey, RULES.loginPerUser)
-  ) {
+  const finishAttempt = reserveRateLimitAttempts([
+    { key: userKey, rule: RULES.loginPerUser },
+    ...(ipKey ? [{ key: ipKey, rule: RULES.loginPerIp }] : []),
+  ]);
+  if (!finishAttempt) {
     return { ok: false, status: 429, message: '尝试过于频繁，请 15 分钟后再试' };
   }
 
-  // 支持用户名或邮箱登录（与 /api/auth/login 同款）
-  const user = await prisma.user.findFirst({
-    where: { OR: [{ username }, { email: username }] },
-    select: {
-      id: true,
-      username: true,
-      role: true,
-      passwordHash: true,
-      sessionVersion: true,
-      isBanned: true,
-      banUntil: true,
-    },
-  });
+  try {
+    // 支持用户名或邮箱登录（与 /api/auth/login 同款）
+    const user = await prisma.user.findFirst({
+      where: { OR: [{ username }, { email: username }] },
+      select: {
+        id: true,
+        username: true,
+        role: true,
+        passwordHash: true,
+        sessionVersion: true,
+        isBanned: true,
+        banUntil: true,
+      },
+    });
 
-  if (!user || !(await verifyPassword(password, user.passwordHash))) {
-    if (ipKey) recordRateLimitHit(ipKey);
-    recordRateLimitHit(userKey);
-    return { ok: false, status: 401, message: '用户名或密码错误' };
+    if (!user || !(await verifyPassword(password, user.passwordHash))) {
+      finishAttempt(true);
+      return { ok: false, status: 401, message: '用户名或密码错误' };
+    }
+
+    return {
+      ok: true,
+      user: {
+        id: user.id,
+        username: user.username,
+        role: user.role,
+        sessionVersion: user.sessionVersion ?? 0,
+        isBanned: user.isBanned,
+        banUntil: user.banUntil,
+      },
+    };
+  } finally {
+    finishAttempt(false);
   }
-
-  return {
-    ok: true,
-    user: {
-      id: user.id,
-      username: user.username,
-      role: user.role,
-      sessionVersion: user.sessionVersion ?? 0,
-      isBanned: user.isBanned,
-      banUntil: user.banUntil,
-    },
-  };
 }
