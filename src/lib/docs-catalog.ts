@@ -143,6 +143,12 @@ export const DOC_ENTRIES: readonly DocEntry[] = [
     title: '编辑器使用指南',
     summary: '手机上的工具条与「更多工具」、Enter 与 Shift+Enter 的差别。',
   },
+  {
+    group: 'guide',
+    slug: 'guide/格式转换器使用指南',
+    title: '格式转换器使用指南',
+    summary: '八个能力区的本地转换（文件不出浏览器）、用途预设、损失说明与各档限额。',
+  },
 
   // ── 给机器人开发者 ────────────────────────────────────────────────────────
   {

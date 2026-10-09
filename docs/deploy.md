@@ -330,13 +330,14 @@ npm ci
 #   添加 PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 可省 Playwright 浏览器下载（生产不需要）
 ```
 
-`npm ci` 会跑 `postinstall`，把两个静态素材目录从 npm 包里**生成**出来
+`npm ci` 会跑 `postinstall`，把三个静态素材目录从 npm 包里**生成**出来
 （它们都是包的派生产物、不入库，见 `.gitignore`）：
 
 | 目录 | 来源包 | 少了会怎样 |
 |---|---|---|
 | `public/static/mathjax/` | `mathjax-full` | 公式仍显示，但用回退字体，字形与间距都不对 |
 | `public/static/emoji/` | `@twemoji/svg` | 正文里的 `[@黄脸/…]` **静默降级成字面量**（不是裂图） |
+| `public/static/converter/` | `@ffmpeg/core`、`pdfjs-dist`、`tesseract.js` 等 | 格式转换器（`/tool/convert`）的音视频 / PDF / OCR 功能报「引擎加载失败」（约 65MB，含 ffmpeg 核心与 OCR 语言包） |
 
 > **`public/static/frames/`（头像框素材）不在上表里** —— 它是我们自己画的、
 > **随代码入库**的，`git pull` 就有，不需要任何生成步骤。少了它会**静默不显示
@@ -347,7 +348,8 @@ npm ci
 手工补一次：
 
 ```bash
-npm run prepare:mathjax && npm run prepare:emoji
+npm run prepare:mathjax && npm run prepare:emoji && npm run prepare:converter
+# 只想核对转换器资产是否齐（CI 用）：npm run converter:check
 ```
 
 ### 构建
@@ -356,7 +358,7 @@ npm run prepare:mathjax && npm run prepare:emoji
 npm run build
 ```
 
-`build` = `prisma generate && next build`，会先按当前 `schema.prisma` 重新生成 Prisma Client。
+`build` = `prisma generate && node scripts/copy-converter-assets.mjs && next build`，会先按当前 `schema.prisma` 重新生成 Prisma Client，并确保转换器引擎资产就位。
 **不要跳过它直接 `next build`**——否则 `node_modules/.prisma/client` 还是上次生成的旧类型，
 schema 新增字段（如 `focusMode`）会报 `Property 'x' does not exist on type 'SafeUser'`。
 

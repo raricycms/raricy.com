@@ -16,6 +16,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { docHref } from '@/lib/docs-catalog';
 import { CATEGORIES } from '@/lib/file-converter/categories';
 import { makeExecutor, tasksForBatch } from '@/lib/file-converter/execute';
 import { FORMATS, LIMITS, formatBytes } from '@/lib/file-converter/formats';
@@ -447,6 +448,9 @@ export default function ConverterApp() {
         <p className="tool-new-hero__description">
           文件只在你的浏览器中处理，不会上传。首次转换音频 / 视频需要下载转换组件，之后通常可复用浏览器缓存。
           页面关闭后，尚未保存的结果会丢失。
+          <Link href={docHref('guide/格式转换器使用指南')} style={{ marginLeft: '.5rem' }}>
+            使用指南
+          </Link>
         </p>
 
         {/* 用途预设（roadmap §14）与固定配方（§12.4） */}
