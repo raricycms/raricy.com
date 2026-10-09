@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { FISH_TOKEN_PAGE_SIZE } from '@/lib/fish-token-limits';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FishApiClient.tsx — /fish/api 的交互部分（只读凭据的签发 / 吊销）
@@ -51,17 +52,21 @@ function statusOf(t: TokenRow): { text: string; kind: 'ok' | 'off' } {
 
 export default function FishApiClient({ initialTokens }: { initialTokens: TokenRow[] }) {
   const [tokens, setTokens] = useState<TokenRow[]>(initialTokens);
+  const [nextCursor, setNextCursor] = useState<number | null>(initialTokens.length === FISH_TOKEN_PAGE_SIZE ? initialTokens[initialTokens.length - 1].id : null);
   const [label, setLabel] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   // 一次性明文。非 null 时那一整块面板压在最上面，直到用户确认已保存。
   const [secret, setSecret] = useState<string | null>(null);
 
-  async function refresh() {
-    const res = await fetch('/api/fish/tokens', { credentials: 'same-origin' });
+  async function refresh(beforeId?: number) {
+    const res = await fetch(`/api/fish/tokens${beforeId ? `?before_id=${beforeId}` : ''}`, { credentials: 'same-origin' });
     if (!res.ok) return;
     const data = await res.json().catch(() => null);
-    if (Array.isArray(data?.tokens)) setTokens(data.tokens as TokenRow[]);
+    if (Array.isArray(data?.tokens)) {
+      setTokens((previous) => beforeId ? [...previous, ...data.tokens] : data.tokens);
+      setNextCursor(data.next_cursor ?? null);
+    }
   }
 
   async function mint(e: React.FormEvent) {
@@ -228,6 +233,13 @@ export default function FishApiClient({ initialTokens }: { initialTokens: TokenR
           })}
         </div>
       )}
+      {nextCursor !== null && <button type="button" className="btn btn-secondary" disabled={busy} onClick={async () => {
+        if (busy) return;
+        setBusy(true);
+        try { await refresh(nextCursor); }
+        catch { window.showToast?.('加载失败，请稍后再试', 'error'); }
+        finally { setBusy(false); }
+      }}>加载更早的凭据</button>}
     </>
   );
 }

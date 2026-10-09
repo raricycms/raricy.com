@@ -72,6 +72,9 @@ curl -X POST https://raricy.com/api/fish/market/transfer \
 
 **在站内自助签发**，不需要找站长：登录 raricy → 打开 `/fish/api` →「签发只读凭据」，
 输入一个备注（例如「对账机器人」）和你的登录密码，页面会给出一串令牌。
+每个用户最多 **20 张有效凭据**，到期或吊销后可再签发。列表每页 **50 条**，页面可加载
+更早记录；接口 `GET /api/fish/tokens?before_id=<上一页 next_cursor>` 返回下一页，
+`next_cursor: null` 表示结束。所有历史行保留，不物理删除。
 
 > ⚠️ **令牌只显示这一次。** 库里只存它的 SHA-256，关掉页面就再也取不回来 ——
 > 没抄走只能吊销重签一张。
