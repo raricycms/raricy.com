@@ -594,6 +594,37 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 - **`frame list --keys` 是运维唯一能发现「登记了框但忘了传素材」的地方** ——
   那时全站静默不显示框，页面没有任何报错。它同时报租金（`—` = 不零售）。
 
+### 格式转换器（`/tool/convert`）
+
+展开见 `docs/architecture.md` §6.17；文件写路径说明在 `src/lib/file-converter/` 各文件头。
+
+**地基：文件字节绝不出站。** 八个能力区（图片 / 音频 / 视频 / 文档 PDF / 表格 / 文本字幕 /
+电子书 / 压缩包）全在浏览器本地转换 —— 没有服务端路由、没有库表、没有限频、没有审计。
+**新增任何「上传到服务端再转」的路径前先停下来**：那会一次性推翻这条，并且是**不可逆**的
+（用户按「不上传」在用它）。服务端方向（LibreOffice / Calibre）在登记表里只写
+`status:'planned'`。
+
+- **重引擎一律在 runner 体内 `await import(...)`**（ffmpeg / pdfjs / xlsx / mammoth / docx /
+  pptxgenjs / tesseract / utif / heic2any / node-unrar-js / 7z-wasm / iconv-lite / fflate…）
+  —— 静态 import 会把几十 MB 卷进**每个页面**的主包。
+- **契约层 `types.ts` 零 import、零运行时代码** —— 它要被 node 单测直接 import。
+  共享的运行时常量住 `formats.ts`；词汇（格式表 / 限额）也只有那一份，
+  **页面提示与校验读同一个数**。
+- **`LIMITS` 是硬上限，改它要同步页面文案**（与 `RULES` 的纪律同源）。
+- **`planned` 的边不许有 `run`，`live` 的不许缺 `run`** —— `registryProblems()` 静态拦。
+  **菜单里看不到 = 那件事现在做不到**，别用「给个能点的入口、点了报错」代替。
+- **`notices[]` 是必填的诚实说明**（有损重编码 / 透明压平 / 元数据不保留 / 动画丢失 /
+  公式只求值 / 文字层被栅格化…）。写不出「这次丢了什么」= 这条边没写完（roadmap §15）。
+- **引擎资产不入库**（`public/static/converter/`，约 65MB）—— `postinstall` 与 `build`
+  经 `scripts/copy-converter-assets.mjs` 生成；少了它音视频 / PDF / OCR **报「引擎加载失败」**。
+- **串输出必须展开再回读**：抽帧类边传的是模式（`frame-%04d.png`）而 exec 按字面名回读，
+  不展开就永远拿到空 Map —— 症状是「退出码 0、结果区空着」，不报错。
+  `ffmpeg.ts` 的 `expandSeqPattern` 干这件事，单测钉住**宽度是硬判据**。
+- **取消 / 超时要杀掉整个 ffmpeg 核心**（0.12 没有软中断），下次要重新加载 ——
+  别把它当便宜操作。
+- **e2e 输出一律按字节魔数断言**（不是「有下载按钮就算过」）：转换出一条空文件 / 错格式，
+  按钮照样能点。样本自举（内嵌 1×1 PNG + 现算 WAV），**不往仓库放二进制样本**。
+
 ## 文档
 
 - **`docs/README.md`** —— 全部文档的索引（分三层：`docs/guide/` 给玩家与创作者、
