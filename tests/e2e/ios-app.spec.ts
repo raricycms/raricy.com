@@ -17,7 +17,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { test, expect, type Page } from '@playwright/test';
-import { loginViaApi } from './helpers';
+import { loginViaApi, uniqueTag } from './helpers';
 import { SEED_BLOG, SEED_USERS } from './seed';
 
 const BLOG_URL = `/blog/${SEED_BLOG.id}`;
@@ -32,6 +32,14 @@ async function fontPx(page: Page, selector: string): Promise<number | null> {
     .locator(selector)
     .first()
     .evaluate((el) => parseFloat(getComputedStyle(el as HTMLElement).fontSize));
+}
+
+async function setSafeArea(page: Page, insets: { top: number; right: number; bottom: number; left: number }) {
+  await page.evaluate((values) => {
+    for (const [side, px] of Object.entries(values)) {
+      document.documentElement.style.setProperty(`--safe-${side}`, `${px}px`);
+    }
+  }, insets);
 }
 
 test('根文档：manifest、Apple 主屏元数据与图标都齐', async ({ page }) => {
@@ -276,4 +284,74 @@ test('非零安全区：顶栏、正文和讨论底部各让位一次', async ({
   expect(bounds).not.toBeNull();
   expect(bounds!.x).toBeGreaterThanOrEqual(24);
   expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(geometry.width - 20);
+});
+
+test('长 modal-overlay 弹窗的关闭与底部操作都避开安全区', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 664 });
+  await loginViaApi(page, SEED_USERS.owner.username);
+  await page.goto('/admin/categories');
+  await setSafeArea(page, { top: 59, right: 28, bottom: 34, left: 32 });
+  await page.getByRole('button', { name: '+ 新建栏目' }).click();
+
+  const overlay = page.locator('.modal-overlay.show');
+  const dialog = overlay.locator('.modal-dialog');
+  const close = overlay.locator('.modal-header button');
+  await expect(dialog).toBeVisible();
+  const closeBox = await close.boundingBox();
+  const dialogBox = await dialog.boundingBox();
+  expect(closeBox!.y, '关闭按钮不能落入顶部安全区').toBeGreaterThanOrEqual(59);
+  expect(dialogBox!.x).toBeGreaterThanOrEqual(32);
+  expect(dialogBox!.x + dialogBox!.width).toBeLessThanOrEqual(390 - 28);
+
+  // 真表单比视口高：滚到最下沿后，保存与取消仍在 Home Indicator 上方且可以点击。
+  expect(await overlay.evaluate(el => el.scrollHeight > el.clientHeight)).toBe(true);
+  await overlay.evaluate(el => { el.scrollTop = el.scrollHeight; });
+  const saveBox = await overlay.getByRole('button', { name: '保存', exact: true }).boundingBox();
+  expect(saveBox!.y + saveBox!.height).toBeLessThanOrEqual(664 - 34);
+  await overlay.getByRole('button', { name: '取消', exact: true }).click();
+  await expect(overlay).toHaveCount(0);
+});
+
+test('看图关闭和缩放控件在竖屏、横屏及零安全区下都可用', async ({ page }) => {
+  await loginViaApi(page, SEED_USERS.core.username);
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+    'base64'
+  );
+  const upload = await page.request.post('/api/images', {
+    multipart: { file: { name: 'safe-area.png', mimeType: 'image/png', buffer: png } },
+  });
+  expect(upload.status()).toBe(200);
+  const imageId = (await upload.json()).id as string;
+  const posted = await page.request.post('/api/chat/channels/lobby/messages', {
+    data: { content: `e2e-safe-image-${uniqueTag()}`, image_id: imageId },
+  });
+  expect(posted.status()).toBe(200);
+  await page.goto('/chat?channel=lobby');
+
+  for (const scenario of [
+    { width: 390, height: 664, top: 0, right: 0, bottom: 0, left: 0 },
+    { width: 390, height: 664, top: 59, right: 0, bottom: 34, left: 0 },
+    { width: 844, height: 390, top: 0, right: 59, bottom: 21, left: 59 },
+  ]) {
+    await page.setViewportSize({ width: scenario.width, height: scenario.height });
+    await setSafeArea(page, scenario);
+    await page.locator(`.chat-msg__image[src*="${imageId}"]`).click();
+    const lightbox = page.locator('.chat-lightbox');
+    await expect(lightbox).toBeVisible();
+    const close = lightbox.getByRole('button', { name: '关闭', exact: true });
+    const closeBox = await close.boundingBox();
+    const zoomBox = await lightbox.locator('.chat-lightbox__zoom').boundingBox();
+    expect(closeBox!.y).toBeCloseTo(16 + scenario.top, 0);
+    expect(closeBox!.x + closeBox!.width).toBeCloseTo(scenario.width - 20 - scenario.right, 0);
+    expect(zoomBox!.y + zoomBox!.height).toBeCloseTo(
+      scenario.height - (scenario.width <= 640 ? 32 : 24) - scenario.bottom, 0
+    );
+    expect(zoomBox!.x).toBeGreaterThanOrEqual(scenario.left);
+    expect(zoomBox!.x + zoomBox!.width).toBeLessThanOrEqual(scenario.width - scenario.right);
+    await lightbox.getByRole('button', { name: '放大', exact: true }).click();
+    await expect(lightbox.locator('.chat-lightbox__zoom-level')).toHaveText('150%');
+    await close.click();
+    await expect(lightbox).toHaveCount(0);
+  }
 });
