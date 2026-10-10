@@ -36,8 +36,8 @@ async function fontPx(page: Page, selector: string): Promise<number | null> {
 
 async function setSafeArea(page: Page, insets: { top: number; right: number; bottom: number; left: number }) {
   await page.evaluate((values) => {
-    for (const [side, px] of Object.entries(values)) {
-      document.documentElement.style.setProperty(`--safe-${side}`, `${px}px`);
+    for (const side of ['top', 'right', 'bottom', 'left'] as const) {
+      document.documentElement.style.setProperty(`--safe-${side}`, `${values[side]}px`);
     }
   }, insets);
 }
