@@ -217,7 +217,11 @@
   .md-toolbar__group--blocks { order: 6; }
   .md-toolbar__group--table { order: 7; }
   .md-toolbar__group--history { order: 8; }
-  .md-toolbar__group--export { order: 9; }
+  .md-toolbar__group--export {
+    order: 9;
+    // 窄屏撑杆已隐藏，导出组自己靠右；否则向左展开的文字菜单会被编辑器裁掉。
+    margin-left: auto;
+  }
 
   // 3) 展开：所有分组回来。属性选择器权重更高，不必关心与上面那几条的先后。
   //    内联展开（工具条自己长高、分组照常换行）而不是浮层：浮层在窄屏要么被视口
