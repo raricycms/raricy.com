@@ -38,12 +38,12 @@ function msgRow(page: Page, marker: string) {
 }
 
 test.describe('讨论图片', () => {
-  test('点图片原位放大、不新开窗口，Esc 关闭', async ({ page }) => {
+  test('图片无描边，点图片原位放大、不新开窗口，Esc 关闭', async ({ page }) => {
     await loginViaApi(page, SEED_USERS.core.username);
     const marker = `e2e-zoom-${uniqueTag()}`;
     const imageId = await uploadViaApi(page.request);
     const posted = await page.request.post(`/api/chat/channels/${LOBBY}/messages`, {
-      data: { content: marker, image_id: imageId },
+      data: { content: `${marker} [@${imageId}]`, image_id: imageId },
     });
     expect(posted.status()).toBe(200);
 
@@ -59,6 +59,15 @@ test.describe('讨论图片', () => {
 
     const thumb = row.locator('.chat-msg__image');
     await expect(thumb).toBeVisible();
+    const inline = row.locator('img.rich-image-ref');
+    await expect(inline).toBeVisible();
+    for (const theme of ['light', 'dark']) {
+      await page.evaluate((value) => document.documentElement.setAttribute('data-theme', value), theme);
+      for (const image of [thumb, inline]) {
+        await expect(image).toHaveCSS('border-width', '0px');
+        await expect(image).toHaveCSS('border-radius', '8px');
+      }
+    }
     const thumbSrc = await thumb.getAttribute('src');
 
     await thumb.click();

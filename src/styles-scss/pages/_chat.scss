@@ -861,6 +861,11 @@
 
 @include markdown-body.rich-markdown('chat-msg__md');
 
+// 聊天图片靠图像本身与圆角界定边缘，正文引用图也不加文字主色描边。
+.chat-msg__md img.rich-image-ref {
+  border: none;
+}
+
 // 单图 / 单表情按最终正文 DOM 判断；缺图回退成文字后修饰类会摘掉，气泡随之恢复。
 .chat-msg__content:has(> .chat-msg__md--single-image) {
   padding: 0;
@@ -891,8 +896,8 @@
 .chat-msg__image {
   max-width: 260px;
   max-height: 320px;
-  border: 1px solid var(--color-text-primary);
-  border-radius: 0;
+  border: none;
+  border-radius: 8px;
   cursor: zoom-in;
   display: block;
   background: var(--color-background-content);
