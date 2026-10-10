@@ -26,6 +26,10 @@
 //
 // 【manifest 缓存】模块级的 5 分钟 TTL + 并发去重，照抄 useResolvedContent 的范式。
 // 服务端那边还有一层扫盘缓存（见 sticker-service.ts），两边互不冲突。
+//
+// 【缩略图按面板可见区加载，最多同时两张】原生 loading="lazy" 会提前请求屏幕外
+// 的图片，短面板里可能把整套合集都排进队列。限制并发给消息 POST 与两条 SSE 留出
+// 连接；点击只交出 token，不依赖缩略图是否加载。切合集 / 关闭面板时清掉旧队列。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useRef, useState } from 'react';
@@ -179,6 +183,7 @@ export default function StickerPicker({
   // null = 没有记忆，下面落回第一栏（黄脸）。
   const [activeKey, setActiveKey] = useState<string | null>(readSavedCollection);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const bodyRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -237,6 +242,64 @@ export default function StickerPicker({
   // 记的那一栏没了（站长删了目录）→ 落回第一栏；下次点任意一栏就把它覆盖掉。
   const current = collections.find((c) => c.key === activeKey) ?? collections[0];
 
+  useEffect(() => {
+    const body = bodyRef.current;
+    if (!body) return;
+    const images = [...body.querySelectorAll<HTMLImageElement>('img[data-src]')];
+    const queued = new Set<HTMLImageElement>();
+    const started = new Set<HTMLImageElement>();
+    const active = new Set<HTMLImageElement>();
+    let disposed = false;
+
+    const pump = () => {
+      if (disposed) return;
+      for (const img of queued) {
+        if (active.size >= 2) break;
+        queued.delete(img);
+        started.add(img);
+        active.add(img);
+        img.src = img.dataset.src!;
+      }
+    };
+    const finish = (event: Event) => {
+      active.delete(event.currentTarget as HTMLImageElement);
+      pump();
+    };
+    for (const img of images) {
+      img.addEventListener('load', finish);
+      img.addEventListener('error', finish);
+    }
+
+    const observer = typeof IntersectionObserver === 'undefined' ? null : new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const img = entry.target as HTMLImageElement;
+          if (started.has(img)) continue;
+          if (entry.isIntersecting) queued.add(img);
+          else queued.delete(img);
+        }
+        pump();
+      },
+      { root: body }
+    );
+    if (observer) images.forEach((img) => observer.observe(img));
+    else {
+      // 老浏览器仍能挑表情；即使不支持可见性观察，也保留两张的并发上限。
+      images.forEach((img) => queued.add(img));
+      pump();
+    }
+    return () => {
+      disposed = true;
+      observer?.disconnect();
+      queued.clear();
+      for (const img of images) {
+        img.removeEventListener('load', finish);
+        img.removeEventListener('error', finish);
+        img.removeAttribute('src');
+      }
+    };
+  }, [loading, current.key, current.stickers]);
+
   return (
     <div className="sticker-picker" ref={rootRef}>
       {loading ? (
@@ -270,8 +333,8 @@ export default function StickerPicker({
               );
             })}
           </div>
-          <div className="sticker-picker__body">
-            <div className="sticker-picker__grid">
+          <div className="sticker-picker__body" ref={bodyRef}>
+            <div className="sticker-picker__grid" key={current.key}>
               {current?.stickers.map((s) => {
                 const token = `[@${current.key}/${s.name}]`;
                 return (
@@ -285,7 +348,7 @@ export default function StickerPicker({
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => onPick(token, current.kind)}
                   >
-                    <img src={s.url} alt={s.name} loading="lazy" draggable={false} />
+                    <img data-src={s.url} alt={s.name} decoding="async" fetchPriority="low" draggable={false} />
                   </button>
                 );
               })}

@@ -176,6 +176,49 @@ test.describe('表情包：正文渲染', () => {
 // ── 输入区 ──────────────────────────────────────────────────────────────────
 
 test.describe('表情包：输入区', () => {
+  test('大合集的缩略图仍在加载时，点表情能立即发送且保留草稿', async ({ page }) => {
+    await registerFreshUser(page, { core: true });
+    const collection = `慢图${uniqueTag()}`;
+    const stickers = Array.from({ length: 120 }, (_, i) => ({
+      name: `图${i}`,
+      url: `/api/stickers/${encodeURIComponent(collection)}/图${i}`,
+    }));
+    await page.route('**/api/stickers', (route) => route.fulfill({
+      json: { code: 200, empty: false, collections: [{ key: collection, title: collection, stickers }] },
+    }));
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    let thumbnailRequests = 0;
+    await page.route('**/api/stickers/*/*', async (route) => {
+      thumbnailRequests++;
+      await held;
+      await route.fulfill({ status: 404 });
+    });
+
+    try {
+      await page.goto(`/chat?channel=${LOBBY}`);
+      const composer = page.locator('.chat-composer').first();
+      await composer.locator('.chat-composer__input').fill('保留的草稿');
+      await composer.getByRole('button', { name: '表情', exact: true }).click();
+      const panel = composer.locator('.sticker-picker');
+      await panel.getByRole('tab', { name: collection, exact: true }).click();
+      await expect.poll(() => thumbnailRequests).toBe(2);
+      expect(await panel.locator('img[src]').count()).toBe(2);
+
+      const sent = page.waitForResponse((res) =>
+        res.url().endsWith(`/api/chat/channels/${LOBBY}/messages`) && res.request().method() === 'POST'
+      );
+      await panel.locator('.sticker-picker__item').first().click();
+      const response = await sent;
+      expect(response.status()).toBe(200);
+      expect((await response.json()).message.content).toBe(`[@${collection}/图0]`);
+      await expect(panel).toHaveCount(0);
+      await expect(composer.locator('.chat-composer__input')).toHaveValue('保留的草稿');
+    } finally {
+      release();
+    }
+  });
+
   test('讨论：点面板里的表情 → 直接发送（不经过输入框）', async ({ page }) => {
     const user = await registerFreshUser(page, { core: true });
     await page.goto(`/chat?channel=${LOBBY}`);

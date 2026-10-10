@@ -74,12 +74,12 @@ async function flush(): Promise<void> {
 }
 
 /** 挂载面板。调用方拿到容器后按类名查 DOM（本仓库没有 testing-library）。 */
-async function mountPicker() {
+async function mountPicker(onPick: (token: string, kind: 'sticker' | 'emoji') => void = () => {}) {
   const container = document.createElement('div');
   document.body.appendChild(container);
   const root = createRoot(container);
   await act(async () => {
-    root.render(createElement(StickerPicker, { onClose: () => {}, onPick: () => {} }));
+    root.render(createElement(StickerPicker, { onClose: () => {}, onPick }));
   });
   await flush(); // 等清单到货
   return {
@@ -206,5 +206,96 @@ describe('表情面板：停在哪一栏', () => {
 
     getItem.mockRestore();
     setItem.mockRestore();
+  });
+});
+
+describe('表情缩略图不占满发送连接', () => {
+  let mounted: Awaited<ReturnType<typeof mountPicker>> | null = null;
+  let notify: IntersectionObserverCallback;
+  let observerRoot: Element | Document | null | undefined;
+  let disconnect: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    localStorage.clear();
+    disconnect = vi.fn();
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => PAYLOAD })));
+    vi.stubGlobal('IntersectionObserver', class {
+      constructor(callback: IntersectionObserverCallback, options?: IntersectionObserverInit) {
+        notify = callback;
+        observerRoot = options?.root;
+      }
+      observe = vi.fn();
+      disconnect = disconnect;
+    });
+  });
+
+  afterEach(() => {
+    mounted?.unmount();
+    mounted = null;
+    vi.unstubAllGlobals();
+  });
+
+  const visible = (images: HTMLImageElement[], isIntersecting = true) => {
+    notify(
+      images.map((target) => ({ target, isIntersecting })) as IntersectionObserverEntry[],
+      {} as IntersectionObserver
+    );
+  };
+  const thumbnails = () => [...mounted!.container.querySelectorAll<HTMLImageElement>('.sticker-picker__item img')];
+  const loaded = () => thumbnails().filter((img) => img.hasAttribute('src'));
+
+  it('只加载面板可见的图，同时最多两张；图片没到也能选中 token', async () => {
+    const onPick = vi.fn();
+    mounted = await mountPicker(onPick);
+    const images = thumbnails();
+    expect(observerRoot).toBe(mounted.container.querySelector('.sticker-picker__body'));
+    expect(loaded()).toHaveLength(0);
+    visible(images.slice(0, 4));
+    expect(loaded()).toEqual(images.slice(0, 2));
+
+    act(() => mounted!.container.querySelector<HTMLButtonElement>('.sticker-picker__item')!.click());
+    expect(onPick).toHaveBeenCalledWith(firstItemToken(mounted.container), 'emoji');
+    expect(loaded()).toHaveLength(2);
+  });
+
+  it('加载成功和失败都会放出下一个可见缩略图，屏幕外的图不请求', async () => {
+    mounted = await mountPicker();
+    const images = thumbnails();
+    visible(images.slice(0, 4));
+    images[0].dispatchEvent(new Event('load'));
+    expect(loaded()).toEqual(images.slice(0, 3));
+    images[1].dispatchEvent(new Event('error'));
+    expect(loaded()).toEqual(images.slice(0, 4));
+    images[2].dispatchEvent(new Event('load'));
+    expect(loaded()).toHaveLength(4);
+  });
+
+  it('滚出面板的排队图片不再开始加载', async () => {
+    mounted = await mountPicker();
+    const images = thumbnails();
+    visible(images.slice(0, 3));
+    visible([images[2]], false);
+    visible([images[3]]);
+    images[0].dispatchEvent(new Event('load'));
+    expect(loaded()).toEqual([images[0], images[1], images[3]]);
+  });
+
+  it('切换合集或关闭面板会取消旧队列，不受旧图片事件影响', async () => {
+    mounted = await mountPicker();
+    const oldImages = thumbnails();
+    visible(oldImages.slice(0, 4));
+    clickTab(mounted.container, '猫猫合集');
+    expect(disconnect).toHaveBeenCalledOnce();
+    expect(oldImages.every((img) => !img.hasAttribute('src'))).toBe(true);
+    oldImages[0].dispatchEvent(new Event('load'));
+    expect(loaded()).toHaveLength(0);
+
+    const nextImages = thumbnails();
+    visible(nextImages);
+    expect(loaded()).toHaveLength(2);
+    mounted.unmount();
+    mounted = null;
+    expect(disconnect).toHaveBeenCalledTimes(2);
+    expect(nextImages.every((img) => !img.hasAttribute('src'))).toBe(true);
   });
 });
