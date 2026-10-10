@@ -792,14 +792,13 @@
   object-fit: cover;
 }
 
-// 气泡：方形直角 + 黑白描边 + 无底色。
-// 描边取「文字主色」——浅色主题近黑、深色主题近白，正好是黑/白边框。
-// 自己发的与别人的不再靠底色区分（都没底色了），靠左右对齐 + 头像位置。
+// 气泡用一级卡片底色；自己与他人的消息靠左右对齐和头像位置区分。
 .chat-msg__content {
-  padding: 8px 12px;
-  border: 1px solid var(--color-text-primary);
-  border-radius: 0;
-  background: transparent;
+  padding: 8px 16px;
+  border: none;
+  // 半个行高（1.55em / 2）+ 单侧内边距：单行恰好是胶囊，多行仍保持这个圆角。
+  border-radius: calc(0.775em + 8px);
+  background: var(--color-background-card);
   color: var(--color-text-primary);
   font-size: 0.92rem;
   line-height: 1.55;
@@ -822,17 +821,8 @@
   max-width: 100%;
 }
 
-// 正文里 @到我 → 描边换品牌色 + 品牌淡底。
-// 原先是「描边 + 内侧一条品牌色竖条（方向跟着气泡走）」，那条竖条是全站**最后一处**
-// 装饰性左侧边框，而且是用 box-shadow: inset 3px 0 0 模拟的 —— 按 border-left 搜
-// 根本搜不到，两轮清理都漏了它。已按「去掉装饰性左侧边框」的规范删掉；它同时有个
-// 右侧镜像（自己发的消息把竖条翻到右边，让方向跟着气泡走），两条一起删，否则会
-// 做成左右不对称。
-// 强调改由**品牌淡底**承担 —— 与全站「淡底 + 同色字」那一套一致。气泡本身是无底色的
-// （自己发的与别人的靠左右对齐 + 头像区分，不靠底色），淡底只出现在 @到我这一种状态上，
-// 不参与「谁发的」这层区分。
+// 正文里 @到我 → 品牌淡底强调。
 .chat-msg__content--mention {
-  border-color: var(--color-brand-primary);
   background: var(--color-brand-secondary);
 }
 
@@ -871,12 +861,33 @@
 
 @include markdown-body.rich-markdown('chat-msg__md');
 
+// 单图 / 单表情按最终正文 DOM 判断；缺图回退成文字后修饰类会摘掉，气泡随之恢复。
+.chat-msg__content:has(> .chat-msg__md--single-image) {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.chat-msg__md--single-image {
+  // 表情的 inline-block 默认会留文字基线的空隙；独处时按图片盒子排版。
+  line-height: 0;
+
+  p {
+    margin: 0;
+  }
+
+  img.rich-image-ref,
+  img.rich-sticker-ref {
+    display: block;
+    margin: 0;
+  }
+}
+
 .chat-msg__deleted {
   color: var(--color-text-secondary);
   font-style: italic;
 }
 
-// 图片消息：与气泡同一套语言（方形直角 + 黑白描边），否则图片和文字气泡并排会很割裂
+// 附件图片独立显示，不包文字气泡。
 .chat-msg__image {
   max-width: 260px;
   max-height: 320px;

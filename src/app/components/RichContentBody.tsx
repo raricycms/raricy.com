@@ -21,7 +21,7 @@
 // 同一个理由。两个薄壳因此退化成「传类名 + 传 render」。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import ImageLightbox from './ImageLightbox';
 import { useResolvedContent } from './useResolvedContent';
 import { useUserCards } from './useUserCards';
@@ -30,16 +30,34 @@ import { IMAGE_REF_CLASS } from '@/lib/content-refs';
 import { STICKER_REF_CLASS } from '@/lib/sticker-refs';
 import type { RichTextContext } from '@/lib/rich-text';
 
+/** 只认最终 DOM 中的一张站内图片；文字、第二张图或其他内容块都保留普通正文样式。 */
+function markSingleImage(box: HTMLElement, className?: string): void {
+  if (!className) return;
+  const images = box.querySelectorAll('img');
+  const image = images[0];
+  const singleImage =
+    images.length === 1 &&
+    (image.classList.contains(IMAGE_REF_CLASS) || image.classList.contains(STICKER_REF_CLASS)) &&
+    !(box.textContent ?? '').trim() &&
+    [...box.querySelectorAll('*')].every((el) =>
+      el === image || ['P', 'BR', 'A', 'STRONG', 'B', 'EM', 'I', 'U', 'S', 'DEL'].includes(el.tagName)
+    );
+  box.classList.toggle(className, singleImage);
+}
+
 function RichContentBody({
   content,
   className,
   render,
+  singleImageClassName,
 }: {
   content: string;
   /** 正文容器的类名（chat-msg__md / comment-content__md）。 */
   className: string;
   /** 净化管线的入口（renderChatMarkdown / renderCommentMarkdown）。 */
   render: (content: string, ctx?: RichTextContext) => string;
+  /** 调用方可为仅含一张图片的正文指定修饰类；加载失败回退成文字时自动摘掉。 */
+  singleImageClassName?: string;
 }) {
   const resolved = useResolvedContent(content);
   const userCards = useUserCards(content);
@@ -51,6 +69,14 @@ function RichContentBody({
   /** 被点开的内联图片地址（null = 没开）。 */
   const [lightbox, setLightbox] = useState<string | null>(null);
   const boxRef = useRef<HTMLDivElement | null>(null);
+
+  // 在绘制前判断，避免单图消息先闪出气泡；异步引用展开后也按最终内容重新判断。
+  useLayoutEffect(() => {
+    const box = boxRef.current;
+    if (!box || !singleImageClassName) return;
+    markSingleImage(box, singleImageClassName);
+    return () => box.classList.remove(singleImageClassName);
+  }, [html, singleImageClassName]);
 
   /**
    * 表情图加载失败 → 把它换回纯文本 `[@合集/表情]`。
@@ -108,10 +134,11 @@ function RichContentBody({
       // 此时节点已脱离文档，replaceWith 会**静默什么都不做**。
       if (!token || !target.isConnected) return;
       target.replaceWith(target.ownerDocument.createTextNode(token));
+      markSingleImage(box, singleImageClassName);
     };
     box.addEventListener('error', onError, true);
     return () => box.removeEventListener('error', onError, true);
-  }, [html]);
+  }, [html, singleImageClassName]);
 
   if (!html) return null;
 

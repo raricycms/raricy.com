@@ -212,7 +212,10 @@ function ChatMessageItemInner({
       {msg.is_deleted ? (
         <span className="chat-msg__deleted">{msg.content}</span>
       ) : (
-        <ChatMarkdown content={msg.content} />
+        <ChatMarkdown
+          content={msg.content}
+          allowBareImage={!msg.image && !msg.image_missing && !msg.blog && !msg.blog_missing}
+        />
       )}
     </div>
   ) : null;
