@@ -42,7 +42,7 @@ async function measureRow(row: import('@playwright/test').Locator) {
       const n = el.querySelector(sel);
       if (!n) return null;
       const b = n.getBoundingClientRect();
-      return { left: b.left, right: b.right, width: b.width };
+      return { left: b.left, right: b.right, width: b.width, top: b.top, bottom: b.bottom };
     };
     return {
       actions: box('.chat-msg__actions'),
@@ -323,6 +323,7 @@ test.describe('连续消息合并', () => {
     const mine = await measureRow(row);
     expect(mine.actions, '没量到工具条 —— 指针没停上去？').not.toBeNull();
     expect(mine.quote, '这条消息没有引用块').not.toBeNull();
+    expect(mine.quote!.bottom, '自己的引用应在正文上方').toBeLessThanOrEqual(mine.bubble!.top);
     // 自己发的：浮层在气泡**左侧**，box 边缘贴着气泡左沿（那 8px 让位是浮层自己的
     // padding，所以按钮与气泡之间正好差 8px）
     expect(mine.actions!.right).toBeCloseTo(mine.bubble!.left - 8, 0);
@@ -340,6 +341,7 @@ test.describe('连续消息合并', () => {
 
     const theirs = await measureRow(seenByPeer);
     expect(theirs.actions).not.toBeNull();
+    expect(theirs.quote!.bottom, '他人的引用应在正文上方').toBeLessThanOrEqual(theirs.bubble!.top);
     expect(theirs.actions!.left).toBeCloseTo(theirs.bubble!.right + 8, 0);
     expect(theirs.bubble!.right - theirs.quote!.right).toBeLessThan(-40);
     expect(Math.abs(theirs.actions!.left - (theirs.quote!.right + 8))).toBeGreaterThan(40);

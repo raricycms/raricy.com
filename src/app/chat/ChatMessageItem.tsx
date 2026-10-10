@@ -322,7 +322,7 @@ function ChatMessageItemInner({
   // 自己的块。**别把这层去掉、也别让浮层挪回 body 上**（CSS 那边有对应的注释）。
   //
   // grouped 时表头行住进这一层 —— 浮层必须真的在它的定位祖先里面，才能贴着它。
-  // 非 grouped 时表头行不进（要在 body 开头占一行，而在别人的消息里这一层排在引用块
+  // 非 grouped 时表头行不进（要在 body 开头占一行，而这一层排在引用块
   // **之后**，进去就跑到引用下面去了）。
   const ownBlocks = (
     <div className="chat-msg__own-blocks">
@@ -355,19 +355,9 @@ function ChatMessageItemInner({
         {/* 表头行只在这一处与 ownBlocks 里的那一处之间二选一（grouped 决定去哪边） */}
         {!grouped && metaRow}
 
-        {/* 自己的消息：正文（含图）置顶，回复摘要 / 博客引用卡随后；
-            他人消息：保持回复摘要在上、正文在下，博客卡在图片后 */}
-        {isMine ? (
-          <>
-            {ownBlocks}
-            {replyBlock}
-          </>
-        ) : (
-          <>
-            {replyBlock}
-            {ownBlocks}
-          </>
-        )}
+        {/* 回复摘要统一在正文上方；独立于 ownBlocks，工具条仍贴自己的气泡。 */}
+        {replyBlock}
+        {ownBlocks}
       </div>
     </div>
   );

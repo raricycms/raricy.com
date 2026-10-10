@@ -89,10 +89,10 @@ describe('表头行的层位（浮层贴谁）', () => {
     expect(q(c, '.chat-msg__meta')?.parentElement?.className).toContain('chat-msg__own-blocks');
   });
 
-  it('非 grouped：表头行留在 body 里、且在引用块之前（照常占正文上面那一行）', async () => {
-    const c = await render(dto({ reply: QUOTE }), { isMine: false });
+  it.each([true, false])('非 grouped（isMine=%s）：表头行留在 body 里、且在引用块之前', async (isMine) => {
+    const c = await render(dto({ reply: QUOTE }), { isMine });
     expect(q(c, '.chat-msg__meta')?.parentElement?.className).toContain('chat-msg__body');
-    // 在流里的表头行必须在引用块**之前** —— 别人的消息引用在上、正文在下，
+    // 在流里的表头行必须在引用块**之前** —— 引用在上、正文在下，
     // 表头行掉到引用下面去就等于「回复 / 删除」换了位置
     expect(kids(c, '.chat-msg__body')).toEqual([
       'chat-msg__meta',
@@ -109,9 +109,9 @@ describe('表头行的层位（浮层贴谁）', () => {
     expect(own.querySelector('.chat-msg__content')).not.toBeNull();
     // 别人的消息里引用块排在 own-blocks **之前**（引用在上、正文在下）
     expect(kids(c, '.chat-msg__body')).toEqual(['chat-msg__reply', 'chat-msg__own-blocks']);
-    // 自己发的消息反过来：正文在上、引用在下
+    // 自己发的消息也保持引用在上、正文在下
     const mine = await render(dto({ reply: QUOTE }), { grouped: true });
-    expect(kids(mine, '.chat-msg__body')).toEqual(['chat-msg__own-blocks', 'chat-msg__reply']);
+    expect(kids(mine, '.chat-msg__body')).toEqual(['chat-msg__reply', 'chat-msg__own-blocks']);
   });
 
   it('纯图片消息：图也在 .chat-msg__own-blocks 里（浮层贴图，不贴更宽的引用）', async () => {
