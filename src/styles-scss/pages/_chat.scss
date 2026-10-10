@@ -915,6 +915,8 @@
   align-items: center;
   justify-content: center;
   background: rgba(0, 0, 0, 0.8);
+  // 固定层覆盖整个视口，图片也要避开刘海与 Home Indicator。
+  padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
   cursor: zoom-out;
   // 触屏捏合时不要让浏览器抢去做页面缩放 / 下拉刷新
   touch-action: none;
@@ -946,7 +948,7 @@
 // 不跟随站点明暗主题（覆盖层本身就是黑底）。
 .chat-lightbox__zoom {
   position: absolute;
-  bottom: 24px;
+  bottom: calc(24px + var(--safe-bottom));
   left: 50%;
   transform: translateX(-50%);
   display: flex;
@@ -1003,7 +1005,7 @@
 // 移动端：控件离底边远一点（浏览器底部工具条会盖住），按钮也放大到可点面积
 @media (max-width: 640px) {
   .chat-lightbox__zoom {
-    bottom: 32px;
+    bottom: calc(32px + var(--safe-bottom));
   }
 
   .chat-lightbox__zoom-btn {
@@ -1019,8 +1021,8 @@
 
 .chat-lightbox__close {
   position: absolute;
-  top: 16px;
-  right: 20px;
+  top: calc(16px + var(--safe-top));
+  right: calc(20px + var(--safe-right));
   border: none;
   background: transparent;
   color: #fff;
