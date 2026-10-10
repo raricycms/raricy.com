@@ -33,6 +33,8 @@ export const editorTheme = EditorView.theme({
     lineHeight: '1.7',
   },
   '.cm-content': {
+    // 当前使用原生光标；只设 .cm-cursor 不会覆盖 CM6 默认的黑色 caret。
+    caretColor: 'var(--color-brand-primary)',
     // 底部留白比顶部大：写作时视线在下方，最后一行贴着边框很难受
     padding: '12px 16px 40px',
     // 长行折行（EditorView.lineWrapping）配上这个才不会在行尾露出半截字符
@@ -47,8 +49,13 @@ export const editorTheme = EditorView.theme({
   '.cm-activeLine': { backgroundColor: 'var(--color-background-subtle)' },
   '.cm-activeLineGutter': { backgroundColor: 'var(--color-background-subtle)' },
   '&.cm-focused .cm-cursor': { borderLeftColor: 'var(--color-brand-primary)' },
-  '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection': {
-    backgroundColor: 'var(--color-background-content)',
+  '&.cm-focused .cm-selectionBackground, .cm-selectionBackground': {
+    backgroundColor: 'color-mix(in srgb, var(--color-brand-primary) 40%, var(--color-background-page))',
+  },
+  '.cm-content ::selection, .cm-content::selection': {
+    backgroundColor: 'color-mix(in srgb, var(--color-brand-primary) 40%, var(--color-background-page))',
+    // 选中时统一文字色，避免标题 / 链接的蓝字融进蓝色选区。
+    color: 'var(--color-text-primary)',
   },
   // 编辑器自身也要能给到聚焦反馈 —— 与全站字段同一条令牌（见 frontend-styles.md：
   // 聚焦一律用这个光晕，绝不改 border，否则字段会随焦点变高、下方内容跟着位移）
@@ -75,7 +82,8 @@ export const markdownHighlightStyle = syntaxHighlighting(
     { tag: tags.url, color: 'var(--color-text-secondary)' },
     { tag: tags.monospace, color: 'var(--color-accent-amber)' },
     { tag: tags.quote, color: 'var(--color-text-secondary)', fontStyle: 'italic' },
-    { tag: tags.list, color: 'var(--color-brand-secondary)' },
+    // tags.list 覆盖整段列表内容，正文用主文字色；列表记号由 processingInstruction 单独弱化。
+    { tag: tags.list, color: 'var(--color-text-primary)' },
     { tag: tags.contentSeparator, color: 'var(--color-text-secondary)' },
     // 记号的颜色比正文淡一档：`##` `**` `>` 是脚手架，不该跟内容抢注意力
     { tag: tags.processingInstruction, color: 'var(--color-text-secondary)' },

@@ -77,7 +77,7 @@ import type { EditorView } from '@codemirror/view';
 import { redoDepth, undoDepth } from '@codemirror/commands';
 import * as cmd from '@/lib/md-editor/commands';
 
-/** 表情面板里的字符 —— 常用的一组，够写日常文章即可（不做搜索，不做分页）。 */
+/** 表情面板里的完整表情：保留变体选择符，按码点拆开会产生不可见的空白按钮。 */
 const EMOJI = [
   '😀', '😄', '😁', '😆', '😅', '😂', '🙂', '😉',
   '😊', '😍', '😘', '😜', '🤔', '😐', '😴', '😢',
@@ -86,7 +86,7 @@ const EMOJI = [
   '❤️', '💔', '✨', '🔥', '🎉', '🎁', '⭐', '💡',
   '✅', '❌', '⚠️', '❓', '❗', '📌', '📎', '🔗',
   '🚀', '🐟', '🌱', '🌈', '☀️', '🌙', '☕', '🍜',
-].join('');
+];
 
 const HEADINGS = [
   { level: 0, label: '正文' },
@@ -199,9 +199,9 @@ export default function Toolbar({
           {btn('表情', Smile, () => setEmojiOpen((v) => !v))}
           {emojiOpen && (
             <div className="md-toolbar__menu md-toolbar__menu--emoji" role="menu">
-              {Array.from(EMOJI).map((ch, i) => (
+              {EMOJI.map((ch) => (
                 <button
-                  key={`${ch}-${i}`}
+                  key={ch}
                   type="button"
                   className="md-toolbar__emoji"
                   role="menuitem"

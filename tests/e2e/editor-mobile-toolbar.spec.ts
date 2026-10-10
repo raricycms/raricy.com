@@ -414,7 +414,13 @@ test.describe('编辑器工具条：核心入口（博客 / 云剪贴板）', ()
       await assertWithinEditor(page, editor, emojiMenu);
       // 每一颗都做命中测试：没被裁、也没被别的东西盖住
       expect(await deadItems(emojiMenu), '有表情点不到（被祖先裁掉或被盖住）').toEqual([]);
-      await emojiMenu.getByRole('menuitem', { name: '插入表情 😀' }).click();
+      // 变体选择符必须与前面的表情同处一格，不能独立变成不可见按钮。
+      const emojiTexts = await emojiMenu.getByRole('menuitem').allTextContents();
+      expect(emojiTexts).not.toContain('\uFE0F');
+      for (const emoji of ['✌️', '❤️', '⚠️', '☀️']) {
+        expect(emojiTexts).toContain(emoji);
+      }
+      await emojiMenu.getByRole('menuitem', { name: '插入表情 ❤️', exact: true }).click();
       await expect(emojiMenu).toHaveCount(0);
 
       // ② 上传图片：点它真的抬起文件选择框（onPickFiles 去点那颗隐藏 input），
@@ -439,7 +445,7 @@ test.describe('编辑器工具条：核心入口（博客 / 云剪贴板）', ()
 
       // ④ 三件事都作用在正文上：表情是文本、图片是图
       const preview = await showPreview(page, editor);
-      await expect(preview).toContainText('😀');
+      await expect(preview).toContainText('❤️');
       await expect(preview.locator('img[src^="/api/images/"]')).toHaveCount(1);
       await expect(page.locator('#toast-container .toast--error')).toHaveCount(0);
     });
