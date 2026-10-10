@@ -42,12 +42,25 @@
   padding: 6px 8px;
   background: var(--color-background-subtle);
   border-bottom: 1px solid var(--color-border);
+  // 这条工具条是浮层宽度的**查询容器**：表情面板的宽度按它的内容盒收窄
+  //（见 `.md-toolbar__menu--emoji` 的 `100cqw`）。窄屏上编辑区可能只有 ~190px
+  // 内容宽，而面板挂在编辑区**外**会撑出去、被 `.md-editor` 的 `overflow: hidden`
+  // 裁掉右边两列 —— 且裁掉是静默的（DOM 里都在、就是点不到）。
+  // `container-type: inline-size` 会带来 `contain: layout`（因此这里也成了一个
+  // 新的层叠上下文），本站没有依赖工具条浮层去盖住编辑区之外的东西，无影响。
+  container-type: inline-size;
 }
 
 .md-toolbar__group {
   display: flex;
   align-items: center;
   gap: 2px;
+}
+
+/// 「更多工具」那颗按钮：**宽屏整个藏掉**（宽屏所有分组都在，没有可展开的东西）。
+/// 窄屏由下面那段 media 打开 —— 收起的是一组分组、不是一个浮层，见文件头。
+.md-toolbar__group--more {
+  display: none;
 }
 
 .md-toolbar__sep {
@@ -133,12 +146,22 @@
   }
 }
 
-/// 表情面板：网格铺开，比一列菜单好扫
+/// 表情面板：网格铺开，比一列菜单好扫。
+///
+/// 【宽度为什么不是写死的】`width: min(264px, 100cqw)` —— `100cqw` 是**工具条
+/// 内容盒**的宽度（见 `.md-toolbar` 的 `container-type`），也就是编辑器真实可用
+/// 宽度减掉工具条两侧内边距。宽屏上它远大于 264px，取 264（观感一字未动）；窄屏
+/// 上它更小，面板就跟着收，**不再撑出编辑区被 `overflow: hidden` 默默裁掉**。
+/// 用容器查询而不是 `calc(100vw - 常量)`：博客与剪贴板两条链路的檐沟不同，
+/// 减常量等于把其中一条的尺寸硬套到另一条上。
+///
+/// 列数交给 `auto-fill`：宽屏 264px 下仍是 8 列（与改版前逐像素一致），窄到
+/// 190px 时自动落成 6 列，每格都还塞得下一个表情。
 .md-toolbar__menu--emoji {
   display: grid;
-  grid-template-columns: repeat(8, 1fr);
+  grid-template-columns: repeat(auto-fill, minmax(28px, 1fr));
   gap: 2px;
-  width: 264px;
+  width: min(264px, 100cqw);
 }
 
 .md-toolbar__emoji {
@@ -152,6 +175,82 @@
 
   &:hover {
     background: var(--color-background-content);
+  }
+}
+
+// ── 窄屏工具条：核心三件事 + 「更多」，固定一行 ────────────────────────────
+//
+// 手机上 16 颗 28px 的按钮要占三行，编辑区被挤矮、每一颗又都点不准。这里把
+// **表情 / 上传图片 / 插入引用** 留在首行，其余收进「更多工具」
+//（文案与取舍见 Toolbar.tsx 的文件头）。
+//
+// 断点 767px 与视图切换的「并排」那一档同值（MarkdownEditor.tsx 的
+// SPLIT_MIN_WIDTH 与下面 `.md-editor__mode--split` 那段）：两者都在说
+// 「这是手机 / 平板竖屏的宽度」，拆成两个值只会让中间那一小段自相矛盾。
+//
+// ⚠️ **这一整段必须排在 `.md-toolbar__group` 那几条之后**：权重相同时后写的赢，
+// 排到前面去的话「默认收起」会被 `.md-toolbar__group { display: flex }` 盖掉 ——
+// 症状是手机上照旧一屏按钮，且看不出是顺序问题（`.md-editor__mode--split` 那段
+// 踩的是同一个坑）。
+@media (max-width: 767px) {
+  // 1) 除核心三件事与「更多」之外，所有分组默认收起
+  .md-toolbar__group {
+    display: none;
+  }
+
+  .md-toolbar__group--core,
+  .md-toolbar__group--media,
+  .md-toolbar__group--more {
+    display: flex;
+  }
+
+  // 2) 首行的顺序：表情 → 上传图片 / 插入引用 → 更多；展开后其余分组接在后面。
+  //    「更多」始终 order 3：展开与否都在同一个位置（开关不跳，才不会按错）。
+  //    ⚠️ 「表格」那一档（`--table`）必须排在「更多」**之后** —— 排在前面的话，
+  //    它展开时会把开关挤着往右挪（实测一颗按钮的宽度），而用户正是要靠「开关
+  //    在原地」才敢连按两下。它与其余次要分组一起排在展开区里。
+  .md-toolbar__group--core { order: 1; }
+  .md-toolbar__group--media { order: 2; }
+  .md-toolbar__group--more { order: 3; }
+  .md-toolbar__group--format { order: 4; }
+  .md-toolbar__group--lists { order: 5; }
+  .md-toolbar__group--blocks { order: 6; }
+  .md-toolbar__group--table { order: 7; }
+  .md-toolbar__group--history { order: 8; }
+  .md-toolbar__group--export { order: 9; }
+
+  // 3) 展开：所有分组回来。属性选择器权重更高，不必关心与上面那几条的先后。
+  //    内联展开（工具条自己长高、分组照常换行）而不是浮层：浮层在窄屏要么被视口
+  //    裁掉、要么盖住编辑区，而换行天生不会溢出。
+  .md-toolbar[data-more='open'] .md-toolbar__group {
+    display: flex;
+  }
+
+  // 4) 分隔线与「把导出推到右边」的撑杆在窄屏没有意义：收起时它们会变成一排
+  //    悬空的竖线，展开时各分组靠换行本来就分得开。
+  .md-toolbar__sep,
+  .md-toolbar__grow {
+    display: none;
+  }
+
+  // 5) 触摸面积：28px 是鼠标的尺寸，手指点不准（收藏夹那三颗圆钮定的也是这条口径）。
+  //    40px 在 WCAG 2.5.8 的 24px 下限之上，且四颗按钮一行放得下 320px。
+  .md-toolbar__btn {
+    width: 40px;
+    height: 40px;
+  }
+
+  // 换行后的行距：基线的 2px 是给同一行内的按钮留的，行与行之间那样挤
+  .md-toolbar {
+    row-gap: 6px;
+  }
+
+  // 6) 表情面板在窄屏可能比编辑区还高（短视口 / 横屏：编辑区 60vh 只有 ~240px，
+  //    而面板十来行）。限高并让面板**自己滚**，否则底部那几行会被 `.md-editor`
+  //    的 `overflow: hidden` 静默裁掉、看得见却点不到。宽屏不限（那边够高）。
+  .md-toolbar__menu--emoji {
+    max-height: 50vh;
+    overflow-y: auto;
   }
 }
 

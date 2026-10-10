@@ -321,6 +321,51 @@ export function insertText(text: string, selectInserted = false): EditorCommand 
   };
 }
 
+/**
+ * 单行换行（Shift+Enter）：在光标 / 选区处**只插一个换行符**，别的一概不做。
+ *
+ * 【为什么不能直接用 Enter 那两条默认命令】它们各自都还要多做一件事，都不是
+ * 「只换一行」：
+ *   · `insertNewlineContinueMarkup`（Markdown 语言自带，优先级高于默认键位表）
+ *     在列表 / 引用块里会**续写标记** —— 回车是「新建下一项」，敲一下多一行 `- `；
+ *   · `insertNewlineAndIndent` 在光标**正夹在一对空括号中间**时会**再补一个换行**
+ *     （@codemirror/commands 的 isBetweenBrackets：它第一条判据就是光标左右那两个字符
+ *     正好构成 `()` / `[]` / `{}`）。光标停在 `[文字](|)` 那个位置时按一次回车，
+ *     成品里就凭空多出一个空行 —— 渲染出来是「一次换行看着像两行」。
+ *
+ * 两条都**保留不动**（它们是 Markdown 惯用的输入方式，改掉等于「回车坏了」）；
+ * 这条命令提供的是**绕开它们**的那条出口，绑在 Shift+Enter 上（见 MarkdownEditor.tsx
+ * 的键位表，必须排在 defaultKeymap 之前）。
+ *
+ * 【渲染侧不需要任何标记】渲染口径是 gfm + `breaks: true`，**普通段落里**单个
+ * `\n` 就换行（`a\nb` → `<p>a<br>b</p>`）、空行才分段（`a\n\nb` → 两个 `<p>`）。
+ * 所以这里只插 `\n` —— **不插 `<br>`**：那是把某一种渲染语义写进源文，改渲染
+ * 口径时它就成了字面量。这条只说普通段落（列表项、引用块里的软换行同理），
+ * **别推广成「每个 `\n` 都会被渲染成 `<br>`」** —— 代码块里就不成立。
+ */
+export function insertLineBreak(): EditorCommand {
+  return (view) => {
+    const { state } = view;
+    // 与它替换掉的那条原生命令同口径：只读下一律不动文档、返回 false。
+    // `dispatch` 本身**不拦**只读（readOnly 是给编辑 DOM 与键位表看的），得自己判。
+    if (state.readOnly) return false;
+    // ★ 用 `state.replaceSelection`（内部就是 `changeByRange`），不用 applyEdits ★
+    // applyEdits 收尾写死 `EditorSelection.create(ranges, 0)` —— 多光标时会把**主
+    // 选区**打回第一个区间。Shift+Enter 换掉的原生命令（`insertNewlineAndIndent`）
+    // 保持主选区，下游读 `selection.main`（资源面板以 `main.head` 作锚点）拿到的
+    // 就是它；`changeByRange` 用 `sel.mainIndex` 收口，这里因此与替换前一致。
+    // 有选区时整体替换成一个 `\n`，与 `insertText` 同口径。
+    // ★ `scrollIntoView` 不能省 ★ —— 光标停在**可见区底部**时，新插入的那一行落在
+    // 可见区之外，靠这个标记视图才会跟着往下滚。它替换掉的 `insertNewlineAndIndent`
+    // 在同一次 dispatch 上带着它；少了它，用户在长文末尾按 Shift+Enter，光标当场
+    // 落到视野外 —— 不报错、不写日志，只是「按了没反应」。
+    // 同一条命令上原版还带 `userEvent: 'input'`，**这里不跟**：那个管的是撤销分组，
+    // 补上等于顺带改了撤销语义；本轮只补滚动这一处。
+    view.dispatch(state.replaceSelection('\n'), { scrollIntoView: true });
+    return true;
+  };
+}
+
 /** 块级公式（`$$…$$`，独占若干行）。行内公式用 toggleWrap('$') 即可。 */
 export function insertMathBlock(placeholder = 'x^2'): EditorCommand {
   return (view) => {

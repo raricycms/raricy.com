@@ -8,6 +8,7 @@ interface Connection {
   applicationId: string;
   applicationName: string;
   applicationHomepageUrl: string | null;
+  applicationDisabled: boolean;
   scopes: string[];
   tokenCount: number;
   firstAuthorizedAt: string;
@@ -107,6 +108,7 @@ export default function OAuthConnectionsList({ onAlert }: Props) {
               )}
             </div>
             <div className="oauth-conn-row__meta">
+              {c.applicationDisabled && <>应用已停用　·　</>}
               授权于 {fmt(c.firstAuthorizedAt)}
               {c.tokenCount > 1 && <>　·　{c.tokenCount} 次授权</>}
               　·　到期 {fmt(c.expiresAt)}

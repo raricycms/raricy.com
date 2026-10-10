@@ -17,6 +17,9 @@ import {
   touchFishTokenUsage,
   FISH_TOKEN_LABEL_MAX,
   FISH_TOKEN_TTL_MS,
+  MAX_ACTIVE_FISH_TOKENS,
+  FISH_TOKEN_PAGE_SIZE,
+  FishTokenLimitError,
 } from '@/lib/fish-token-service';
 import { hashOpaqueToken } from '@/lib/oauth';
 import { nowForDb } from '@/lib/db-time';
@@ -29,6 +32,35 @@ afterEach(() => {
 });
 
 describe('签发与校验', () => {
+  it('有效凭据封顶，吊销后可再签发，其他用户独立', async () => {
+    const u = await makeUser();
+    for (let i = 0; i < MAX_ACTIVE_FISH_TOKENS; i++) await mintFishToken(u.id);
+    await expect(mintFishToken(u.id)).rejects.toBeInstanceOf(FishTokenLimitError);
+    expect(await prisma.fishApiToken.count({ where: { userId: u.id } })).toBe(MAX_ACTIVE_FISH_TOKENS);
+    const [old] = await listFishTokens(u.id);
+    await revokeFishToken(u.id, old.id);
+    await mintFishToken(u.id);
+    const other = await makeUser();
+    expect(await mintFishToken(other.id)).toHaveProperty('token');
+  });
+  it('大量历史凭据分页，不重复、不漏行且只查本人', async () => {
+    const u = await makeUser();
+    const now = nowForDb();
+    await prisma.fishApiToken.createMany({ data: Array.from({ length: 120 }, (_, i) => ({ userId: u.id, tokenHash: hashOpaqueToken(`history-${i}`), scopes: 'read', expiresAt: now, revokedAt: now, createdAt: now })) });
+    const other = await makeUser();
+    await mintFishToken(other.id);
+    const ids: number[] = [];
+    let cursor: number | undefined;
+    for (;;) {
+      const page = await listFishTokens(u.id, cursor);
+      expect(page.length).toBeLessThanOrEqual(FISH_TOKEN_PAGE_SIZE);
+      ids.push(...page.map((r) => r.id));
+      if (page.length < FISH_TOKEN_PAGE_SIZE) break;
+      cursor = page[page.length - 1].id;
+    }
+    expect(ids).toHaveLength(120);
+    expect(new Set(ids).size).toBe(120);
+  });
   it('签发 → 校验，拿回持有者 id', async () => {
     const u = await makeUser();
     const minted = await mintFishToken(u.id, '对账机器人');

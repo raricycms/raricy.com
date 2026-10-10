@@ -14,8 +14,9 @@ import { prisma } from './db';
 import { frameUrlFor } from './frame-service';
 import { nowForDb } from './db-time';
 import { hashPassword, verifyPassword } from './password';
+import { allowPasswordAttempt } from './password-budget';
 import { kickUser } from './chat-bus';
-import { publishToUser } from './topbar-bus';
+import { publishToUser, kickTopbarUser } from './topbar-bus';
 import type { Prisma } from '@prisma/client';
 
 // ── 输入校验（对齐 verify_username / verify_email）──────────────────────────
@@ -607,14 +608,15 @@ export interface ChangePasswordResult {
  *   3. 新密码两次不一致    → '两次输入的新密码不一致'
  *   4. 新密码长度 < 8      → '新密码长度至少为 8 位'
  *   5. 新旧密码相同        → '新密码不能与原密码相同'
- * 成功后重写哈希并 **自增 session_version**（使所有旧会话失效）。
+ * 成功后重写哈希、原子自增 session_version，并断开两条已认证的 SSE（使旧会话立即失效）。
  * 调用方（route）负责随后清除当前会话 cookie（清掉本机这一个，其余靠上面的自增）。
  */
 export async function changeOwnPassword(
   userId: string,
   currentPassword: string,
   newPassword: string,
-  confirmPassword: string
+  confirmPassword: string,
+  ip?: string
 ): Promise<ChangePasswordResult> {
   const cur = (currentPassword || '').trim();
   const next = (newPassword || '').trim();
@@ -630,6 +632,9 @@ export async function changeOwnPassword(
   });
   if (!user) return { ok: false, code: 401, message: '未登录' };
 
+  if (!allowPasswordAttempt(`user:${userId}`, ip)) {
+    return { ok: false, code: 429, message: '密码校验过于频繁，请稍后再试' };
+  }
   if (!(await verifyPassword(cur, user.passwordHash))) {
     return { ok: false, code: 400, message: '原密码不正确' };
   }
@@ -648,9 +653,12 @@ export async function changeOwnPassword(
     where: { id: userId },
     data: {
       passwordHash,
-      sessionVersion: (user.sessionVersion ?? 0) + 1,
+      sessionVersion: { increment: 1 },
     },
   });
+
+  kickUser(userId);
+  kickTopbarUser(userId);
 
   return { ok: true, code: 200, message: '密码修改成功，请使用新密码重新登录。' };
 }

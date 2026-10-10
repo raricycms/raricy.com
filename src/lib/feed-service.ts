@@ -146,6 +146,9 @@ export async function feedBlog(
   if (!blog || blog.ignore) {
     return { ok: false, code: 404, message: '文章不存在' };
   }
+  if (blog.authorId === userId) {
+    return { ok: false, code: 400, message: '不能给自己的文章投喂' };
+  }
 
   // 3. 投喂者存在性。只为一条准确的文案：「库里没有这个人」与「余额不够」在内核眼里
   //    都是条件写的 count=0，不先判就会把前者报成「小鱼干不足」。

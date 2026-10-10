@@ -40,10 +40,16 @@ export async function POST(req: Request) {
         body[k] = v;
       });
     } else {
-      body = (await req.json()) as Record<string, string>;
+      const parsed = await req.json();
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return apiErr(400, '请求体格式错误');
+      body = parsed;
     }
   } catch {
     return apiErr(400, '请求体格式错误');
+  }
+
+  for (const field of ['client_id', 'redirect_uri', 'scope', 'state']) {
+    if (body[field] !== undefined && typeof body[field] !== 'string') return apiErr(400, `${field} 必须是字符串`);
   }
 
   const clientId = (body.client_id || '').trim();

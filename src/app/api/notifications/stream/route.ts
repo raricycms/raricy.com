@@ -23,6 +23,7 @@ import { getUnreadCount } from '@/lib/notification-service';
 import { getChatDotFor } from '@/lib/chat-service';
 import { subscribe, type TopbarSubscriber } from '@/lib/topbar-bus';
 import { SSE_HEADERS, SSE_QUEUE_LIMIT, SSE_RETRY_MS, sseFrame } from '@/lib/sse';
+import { isStreamSessionCurrent } from '@/lib/stream-session';
 
 // 必须是 nodejs：订阅注册表挂在 globalThis 上，进 Edge 运行时就是另一个 VM，
 // 写路径推的帧永远到不了这里 —— 而且**静默不推送**，单测完全看不见。
@@ -86,7 +87,9 @@ export async function GET(req: Request) {
         const pending: string[] = [];
 
         const writeForBus = (chunk: string): boolean => {
+          if (closed) return false;
           if (!snapshotSent) {
+            if (pending.length >= SSE_QUEUE_LIMIT) return false;
             pending.push(chunk);
             return true;
           }
@@ -112,6 +115,10 @@ export async function GET(req: Request) {
         req.signal.addEventListener('abort', close);
 
         void (async () => {
+          try {
+            if (!(await isStreamSessionCurrent(user))) { close(); return; }
+          } catch { close(); return; }
+          if (closed) return;
           try {
             const [count, chatUnread] = await Promise.all([
               getUnreadCount(user.id),

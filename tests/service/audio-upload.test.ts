@@ -8,6 +8,7 @@
 
 import { describe, it, expect } from 'vitest';
 import {
+  audioStoragePathFor,
   ALLOWED_AUDIO_MIMETYPES,
   MAX_AUDIO_SIZE,
   detectAudioMime,
@@ -16,6 +17,10 @@ import {
   audioExtForMime,
   allowedAudioFormatLabel,
 } from '@/lib/audio-upload';
+
+it('未识别的 MIME 不生成含 undefined 的磁盘路径', () => {
+  expect(() => audioStoragePathFor('test-id', 'audio/unknown')).toThrow('不支持的音频类型');
+});
 
 // ── 夹具：造各格式的最小可用字节 ─────────────────────────────────────────────
 

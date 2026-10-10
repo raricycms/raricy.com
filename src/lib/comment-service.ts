@@ -896,6 +896,10 @@ export type RestoreCommentResult =
       message: string;
     };
 
+class RestoreCommentDenied extends Error {
+  constructor(readonly result: Extract<RestoreCommentResult, { ok: false }>) { super(result.message); }
+}
+
 /**
  * 恢复软删评论的**内核**：isDeleted=false + 在同一事务内按「未删除评论数」重算
  * Blog.commentsCount 并刷新 lastCommentAt（与 softDeleteComment 的计数口径完全一致）。
@@ -903,7 +907,8 @@ export type RestoreCommentResult =
  * @returns 成功返回 { blogId, authorId, anonSeq }；评论不存在或本来就没被删 → null（幂等，不报错）
  */
 export async function restoreCommentRow(
-  commentId: string
+  commentId: string,
+  authorize?: (row: { authorId: string }) => void
 ): Promise<{ blogId: string; authorId: string; anonSeq: number | null } | null> {
   return prisma.$transaction(async (tx) => {
     const comment = await tx.blogComment.findUnique({
@@ -911,6 +916,9 @@ export async function restoreCommentRow(
       select: { id: true, blogId: true, authorId: true, isDeleted: true, anonSeq: true },
     });
     if (!comment || !comment.isDeleted) return null;
+
+    // CLI 外壳的权限和原因必须在同一事务内、任何写入之前校验；裁决内核已自行鉴权。
+    authorize?.(comment);
 
     await tx.blogComment.update({ where: { id: comment.id }, data: { isDeleted: false } });
 
@@ -943,22 +951,28 @@ export async function restoreComment(
   actor: DeleteActor,
   reason?: string
 ): Promise<RestoreCommentResult> {
-  const row = await restoreCommentRow(commentId);
-  if (!row) return { ok: false, error: 'notFound', message: '评论不存在或未被删除' };
-
-  const isAuthor = row.authorId === actor.id;
-  if (!isAuthor && !hasAdminRights(actor)) {
-    return { ok: false, error: 'forbidden', message: '无权恢复该评论' };
-  }
-
-  const adminRestoringOthers = !isAuthor && hasAdminRights(actor);
   const trimmedReason = (reason ?? '').trim();
-  if (adminRestoringOthers) {
-    if (!trimmedReason) return { ok: false, error: 'reasonRequired', message: '请提供恢复原因' };
-    if (trimmedReason.length > 500) {
-      return { ok: false, error: 'reasonTooLong', message: '恢复原因过长（最多500字）' };
-    }
+  let adminRestoringOthers = false;
+  let row;
+  try {
+    row = await restoreCommentRow(commentId, (comment) => {
+      const isAuthor = comment.authorId === actor.id;
+      if (!isAuthor && !hasAdminRights(actor)) {
+        throw new RestoreCommentDenied({ ok: false, error: 'forbidden', message: '无权恢复该评论' });
+      }
+      adminRestoringOthers = !isAuthor && hasAdminRights(actor);
+      if (adminRestoringOthers && !trimmedReason) {
+        throw new RestoreCommentDenied({ ok: false, error: 'reasonRequired', message: '请提供恢复原因' });
+      }
+      if (adminRestoringOthers && trimmedReason.length > 500) {
+        throw new RestoreCommentDenied({ ok: false, error: 'reasonTooLong', message: '恢复原因过长（最多500字）' });
+      }
+    });
+  } catch (e) {
+    if (e instanceof RestoreCommentDenied) return e.result;
+    throw e;
   }
+  if (!row) return { ok: false, error: 'notFound', message: '评论不存在或未被删除' };
 
   // 与删除路径同一口径：审计写入失败不回滚恢复本身
   if (adminRestoringOthers) {

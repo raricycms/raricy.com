@@ -18,8 +18,13 @@ export default function Footer({ children }: { children?: ReactNode }) {
                 隐私政策
               </Link>
               <span style={{ margin: '0 0.5rem', color: 'var(--color-text-tertiary)' }}>|</span>
+              {/* 管理公示属于站务信息，入口对所有人保留；/audit 自己校验 core+。 */}
+              <Link href="/audit" style={{ color: 'var(--color-text-secondary)', textDecoration: 'none' }}>
+                管理公示
+              </Link>
+              <span style={{ margin: '0 0.5rem', color: 'var(--color-text-tertiary)' }}>|</span>
               {/* 文档索引 /docs —— 站内所有文档（使用指南 / 机器人接口 / 开发运维）
-                  的唯一入口。挂在页脚而不是顶栏：顶栏那 5 条是站内功能区，
+                  的唯一入口。挂在页脚而不是顶栏：顶栏保留站内四个内容区，
                   文档是给站外读者的（机器人开发者、自部署的人）。 */}
               <Link href="/docs" style={{ color: 'var(--color-text-secondary)', textDecoration: 'none' }}>
                 文档

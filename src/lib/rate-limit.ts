@@ -21,6 +21,8 @@ interface Bucket {
 }
 
 const store = new Map<string, Bucket>();
+// 失败次数在完成校验后才确定；在途请求先占位，防止异步预检共享最后一个名额。
+const pendingAttempts = new Map<string, number>();
 /** 自上次落盘以来是否有新命中（避免空转写盘）。 */
 let dirty = false;
 
@@ -70,21 +72,39 @@ export function rateLimit(key: string, rule: RateRule, now = Date.now()) {
  *
  * 【为什么要拆出这一对】`rateLimit` 是「查 + 记」一体的，适合点赞这类
  * **每次调用都算一次操作**的场景。但登录不同：成功的登录不该消耗配额 ——
- * 否则正常用户（以及 e2e 里反复登录同一批种子账号的用例）会被自己的成功记录
- * 挡在门外。故登录走 `isRateLimited` 先查、失败后 `recordRateLimitHit` 补记。
+ * 否则正常用户会被自己的成功记录挡在门外。异步校验必须用
+ * `reserveRateLimitAttempts` 先占位；单独「只查 + 失败后记」不能防并发穿透。
  *
  * 两者与 rateLimit 共用同一 store 与同一套窗口裁剪，可混用同一 key。
  */
 export function isRateLimited(key: string, rule: RateRule, now = Date.now()): boolean {
   const bucket = store.get(key);
-  if (!bucket) return false;
+  if (!bucket) return (pendingAttempts.get(key) ?? 0) >= rule.limit;
   const cutoff = now - rule.windowMs;
   const hits = bucket.hits.filter((t) => t > cutoff);
   if (hits.length !== bucket.hits.length) {
     bucket.hits = hits;
     store.set(key, bucket);
   }
-  return hits.length >= rule.limit;
+  return hits.length + (pendingAttempts.get(key) ?? 0) >= rule.limit;
+}
+
+/** 同步占用多个失败预算；完成时失败记数，成功/异常释放。返回的完成函数可重复调用。 */
+export function reserveRateLimitAttempts(rules: { key: string; rule: RateRule }[]):
+  ((failed: boolean) => void) | null {
+  if (rules.some(({ key, rule }) => isRateLimited(key, rule))) return null;
+  for (const { key } of rules) pendingAttempts.set(key, (pendingAttempts.get(key) ?? 0) + 1);
+  let finished = false;
+  return (failed) => {
+    if (finished) return;
+    finished = true;
+    for (const { key } of rules) {
+      const remaining = (pendingAttempts.get(key) ?? 1) - 1;
+      if (remaining) pendingAttempts.set(key, remaining);
+      else pendingAttempts.delete(key);
+      if (failed) recordRateLimitHit(key);
+    }
+  };
 }
 
 /** 记一次命中（配合 isRateLimited 用于「失败才计数」）。 */
@@ -186,6 +206,7 @@ if (process.env.NODE_ENV !== 'test') {
 /** 仅供测试：清空所有计数桶与脏标记。 */
 export function __resetRateLimitStore() {
   store.clear();
+  pendingAttempts.clear();
   dirty = false;
   lastSweep = 0;
 }
@@ -231,6 +252,10 @@ export const RULES = {
    */
   loginPerIp: { limit: 300, windowMs: 15 * 60 * 1000 },
   loginPerUser: { limit: 100, windowMs: 15 * 60 * 1000 },
+  /** 所有网络密码确认共用：成功也计数；与失败预算独立。OAuth 的主体档由路由传入。 */
+  passwordPerUser: { limit: 20, windowMs: 60 * 1000 },
+  passwordPerIp: { limit: 120, windowMs: 60 * 1000 },
+  passwordGlobal: { limit: 240, windowMs: 60 * 1000 },
   /**
    * 鱼干转账（鱼干市场）。**唯一有配额的鱼干写路径** —— 投喂 / 签到 / CLI 都没有，
    * 因为它们只能把钱给「文章作者」或「系统」，而转账是唯一能把鱼干推给任意第三方的

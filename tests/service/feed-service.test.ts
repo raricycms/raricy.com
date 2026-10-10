@@ -460,21 +460,23 @@ describe('作者全额收入与金额守恒', () => {
     await expectLedgerConsistent('零手续费投喂之后');
   });
 
-  it('自己投喂自己的文章：允许（刻意不做拦截），余额不变，且不发通知给自己', async () => {
+  it('自投喂拒绝，不改变余额、流水、投喂数和投喂者名单', async () => {
     const self = await makeFishUser(10);
     const blog = await makeBlog({ authorId: self.id, title: '自投' });
 
     const r = await feedBlog(blog.id, self.id, 5);
 
-    expect(r.ok, '无自投拦截，仅跳过通知').toBe(true);
+    expect(r).toMatchObject({ ok: false, code: 400, message: '不能给自己的文章投喂' });
     const bal = unitsToFish(
       (await prisma.user.findUniqueOrThrow({ where: { id: self.id } })).driedFish
     );
-    expect(bal, '10 - 5 + 5 = 10（自投余额不变）').toBe(10);
+    expect(bal).toBe(10);
     expect(
       await prisma.fishTransaction.count({ where: { userId: self.id, type: { in: FEED_TYPES } } }),
-      '仍然是两条流水（支出 + 收入）'
-    ).toBe(2);
+      '被拒绝后不生成任何投喂流水'
+    ).toBe(0);
+    expect(await prisma.blogFeed.count({ where: { blogId: blog.id } })).toBe(0);
+    expect((await prisma.blog.findUniqueOrThrow({ where: { id: blog.id } })).fishCount).toBe(0);
     expect(
       await prisma.notification.count({ where: { recipientId: self.id, actorId: self.id } }),
       '给自己投喂不该给自己发通知'

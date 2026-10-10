@@ -24,9 +24,9 @@ raricy.com 作为 **OAuth 2.0 Authorization Server**，让外部第三方应用�
 | `/api/oauth/authorize` | POST | raricy session | 用户点「同意」后 mint code，返回 **200 + `{redirect_to}`**（由前端做顶层跳转，**不是 302**） |
 | `/api/oauth/token` | POST | client (HTTP Basic / body) | code → access_token |
 | `/api/oauth/userinfo` | GET | `Authorization: Bearer` | 返回 `{sub, username, avatar_url}` |
-| `/api/oauth/revoke` | POST | session **或** bearer | 吊销 token（RFC 7009） |
+| `/api/oauth/revoke` | POST | 原始 token（body 或 Bearer） | 仅吊销该 token（RFC 7009），不读取会话 |
 | `/api/oauth/connections` | GET | raricy session | 当前用户已绑定的应用列表（**一应用一行**） |
-| `/api/oauth/connections/[applicationId]` | DELETE | raricy session | 解除与该应用的绑定（撤销其**全部**令牌） |
+| `/api/oauth/connections/[applicationId]` | DELETE | raricy session | 解除与该应用的绑定（撤销全部令牌与未兑换授权码） |
 | `/api/admin/oauth/applications` | GET / POST | owner | 列出 / 创建应用 |
 | `/api/admin/oauth/applications/[id]` | PATCH / DELETE | owner | 更新 / 软禁用 |
 
@@ -39,8 +39,12 @@ v1 不发放 refresh_token，因此**每次走完授权流程都会新签一条 
 另给 `tokenCount`（该应用名下的存活令牌数，>1 即重复授权过）与 `lastAuthorizedAt`。
 
 `DELETE /api/oauth/connections/[applicationId]` 是**整应用解绑**：撤销该用户名下该应用
-的**全部**存活令牌。这是刻意的——按钮语义是「解除与 X 的绑定」，只吊销一条会留下仍然
-有效的凭证，属于静默越权。重复点击幂等（返回 `revokedCount: 0`）。
+的全部存活令牌与未兑换授权码，二者同事务撤销。按钮语义是「解除与 X 的绑定」，
+遗漏授权码会让外部应用在解绑后换出新令牌。只有授权码、尚无令牌时也可解绑；
+重复点击幂等（返回 `revokedCount: 0`，该字段仅统计本次撤销的令牌数）。
+
+授权码兑换走 `exchangeAuthorizationCode`：消费与签发同事务，并实时检查应用启用状态。
+兑换与撤权按数据库提交顺序生效；令牌落库失败会回滚授权码消费，可重试。
 
 > 另一条路（重复授权时自动吊销旧令牌）**没有采用**：外部应用可能在多个实例/设备上各存
 > 一份令牌，静默吊销会让没重新授权过的那个实例突然 401。聚合显示对第三方零影响。
@@ -139,7 +143,7 @@ curl -sS -X POST -H "Authorization: Bearer $ACCESS_TOKEN" \
 | 授权码 TTL | 10 分钟 |
 | `redirect_uri` 一致性 | token 端再次校验与授权时一致（防 code 截获重定向） |
 | Token 比较时序 | 用 SQL PK 存在性查询；`client_secret` 走 `timingSafeEqual` |
-| CSRF | `/api/oauth/authorize` 保留；`/token` `/userinfo` `/revoke` 豁免（client_secret 鉴权） |
+| CSRF | `/api/oauth/authorize` 保留；`/token` `/userinfo` `/revoke` 豁免（client_secret 或 token 自身鉴权，绝不使用 cookie） |
 | 限频 | authorize 30/min/user · token 60/min/clientId · userinfo 600/min/user |
 | 日志 | 原始 token / code / secret **永不**写入日志 |
 
@@ -166,6 +170,9 @@ curl -sS -X POST -H "Authorization: Bearer $ACCESS_TOKEN" \
 `token` 的 60 次额度在 `client_secret` 密码计算**之前**同步预留，成功与失败都计数。
 超额沿用 `invalid_request` / HTTP 400 限频响应，不再运行 scrypt。HTTP Basic 与请求体
 按实际参与鉴权的 `client_id` 共用同一桶；未知或禁用应用在密码计算前拒绝，不建立新桶。
+密码计算还与站内认证共享 120 次/分钟/IP、全站 240 次/分钟和 4 个在途名额。
+停用应用会在同一事务中吊销其已有令牌；重新启用后须重新授权。令牌校验实时检查
+应用停用状态；修复前未吊销的停用绑定仍在设置页展示，允许用户主动解绑。
 
 ---
 
@@ -177,7 +184,7 @@ curl -sS -X POST -H "Authorization: Bearer $ACCESS_TOKEN" \
 | 无 refresh_token | 加 `grant_type=refresh_token`（v1 用 revocation + 长 TTL 兜底） |
 | 软禁用（`disabledAt`） | 硬删除（FK CASCADE 已就位） |
 | 站长手工注册 | 自助申请 + admin 审批流 |
-| 站内吊销走 settings 页 | 加 `/api/oauth/revoke` 站外调用方接口（已实现，但仅 owner + self） |
+| 站内吊销走 settings 页 | `/api/oauth/revoke` 供外部调用方以 token 自身作凭证吊销 |
 | 仅 HTTP / HTTPS redirect | 加自定义 scheme 支持（mobile app） |
 | 单站点 cookie | 加 PKCE（RFC 7636）防 code 截获 + 适配 SPA / mobile |
 | `state` 仅透传 | 加 server-side state 校验防 CSRF on `/oauth/authorize` GET |

@@ -239,12 +239,12 @@ describe('唯一约束防重复签到', () => {
     expect(await prisma.dailyCheckIn.count({ where: { userId: u.id } })).toBe(1);
   });
 
-  it('★ 并发签到（Promise.all × 5）只成功一次、只落一行、只发一笔鱼', async () => {
+  it('★ 30 次并发签到只成功一次，其余正常回已签到，没有事务超时', async () => {
     freezeUtc('2026-07-15T04:00:00.000Z');
     const u = await makeUser({ driedFish: 0 });
 
     const results = await Promise.all(
-      Array.from({ length: 5 }, () =>
+      Array.from({ length: 30 }, () =>
         checkIn(u.id).catch((e) => ({ thrown: String(e) }) as const)
       )
     );
@@ -265,7 +265,10 @@ describe('唯一约束防重复签到', () => {
     expect(
       succeeded.length,
       `最多只能有一个请求自认为「签到成功」（实测 ${succeeded.length}；抛错 ${thrown.length} 个）`
-    ).toBeLessThanOrEqual(1);
+    ).toBe(1);
+    expect(thrown).toEqual([]);
+    expect(results.filter((r) => 'alreadyChecked' in r && r.alreadyChecked)).toHaveLength(29);
+    await expectLedgerConsistent('30 次并发签到后');
   });
 
   it('不同用户同一天互不影响（唯一约束是 (userId, checkinDate) 复合键）', async () => {

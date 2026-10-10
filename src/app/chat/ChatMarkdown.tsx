@@ -18,6 +18,19 @@
 import RichContentBody from '@/app/components/RichContentBody';
 import { renderChatMarkdown } from '@/lib/chat-markdown';
 
-export default function ChatMarkdown({ content }: { content: string }) {
-  return <RichContentBody content={content} className="chat-msg__md" render={renderChatMarkdown} />;
+export default function ChatMarkdown({
+  content,
+  allowBareImage = true,
+}: {
+  content: string;
+  allowBareImage?: boolean;
+}) {
+  return (
+    <RichContentBody
+      content={content}
+      className="chat-msg__md"
+      render={renderChatMarkdown}
+      singleImageClassName={allowBareImage ? 'chat-msg__md--single-image' : undefined}
+    />
+  );
 }

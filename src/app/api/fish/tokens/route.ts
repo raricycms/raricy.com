@@ -14,6 +14,8 @@ import { clientIp } from '@/lib/request-ip';
 import {
   FISH_TOKEN_LABEL_MAX,
   FISH_TOKEN_TTL_MS,
+  FISH_TOKEN_PAGE_SIZE,
+  FishTokenLimitError,
   listFishTokens,
   mintFishToken,
 } from '@/lib/fish-token-service';
@@ -38,12 +40,15 @@ function toTokenDTO(t: Awaited<ReturnType<typeof listFishTokens>>[number]) {
   };
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '请先登录');
 
-  const tokens = await listFishTokens(user.id);
-  return apiOk({ tokens: tokens.map(toTokenDTO) });
+  const rawCursor = new URL(req.url).searchParams.get('before_id');
+  const beforeId = rawCursor === null ? undefined : Number(rawCursor);
+  if (beforeId !== undefined && (!Number.isSafeInteger(beforeId) || beforeId <= 0)) return apiErr(400, '无效的 before_id');
+  const tokens = await listFishTokens(user.id, beforeId);
+  return apiOk({ tokens: tokens.map(toTokenDTO), next_cursor: tokens.length === FISH_TOKEN_PAGE_SIZE ? tokens[tokens.length - 1].id : null });
 }
 
 export async function POST(req: Request) {
@@ -82,7 +87,13 @@ export async function POST(req: Request) {
   if (!step.ok) return apiErr(step.status, step.message);
   if (step.user.id !== user.id) return apiErr(401, '凭据与当前登录账号不一致');
 
-  const minted = await mintFishToken(user.id, label);
+  let minted;
+  try {
+    minted = await mintFishToken(user.id, label);
+  } catch (e) {
+    if (e instanceof FishTokenLimitError) return apiErr(400, e.message);
+    throw e;
+  }
 
   return apiOk({
     message: '凭据已签发。请立刻复制 —— 它只显示这一次，之后无法再取回。',

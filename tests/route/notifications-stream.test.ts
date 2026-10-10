@@ -20,7 +20,7 @@ vi.mock('@/lib/auth', async (importOriginal) => {
   return { ...actual, getCurrentUser: async () => mockUser.current };
 });
 
-import { resetDb, makeUser } from '../helpers/db';
+import { resetDb, makeUser, prisma } from '../helpers/db';
 import { GET } from '@/app/api/notifications/stream/route';
 import { sendNotification, markAllRead } from '@/lib/notification-service';
 import { __resetTopbarBus } from '@/lib/topbar-bus';
@@ -87,7 +87,7 @@ afterEach(async () => {
 });
 
 async function open(userId: string) {
-  mockUser.current = { id: userId };
+  mockUser.current = await prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { id: true, sessionVersion: true } });
   const res = await GET(new Request('http://x/api/notifications/stream'));
   if (res.body) {
     const p = pump(res);

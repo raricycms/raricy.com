@@ -141,6 +141,28 @@ export type CheckinResult =
  */
 export async function checkIn(userId: string): Promise<CheckinResult> {
   const today = todayUtc8();
+  const key = JSON.stringify([userId, today]);
+  const pending = checkinState.__checkinPending.get(key);
+  if (pending) {
+    await pending;
+    const status = await getTodayStatus(userId);
+    return { alreadyChecked: true, message: '今天已签到', status };
+  }
+  const operation = commitCheckin(userId, today);
+  checkinState.__checkinPending.set(key, operation);
+  try {
+    return await operation;
+  } finally {
+    checkinState.__checkinPending.delete(key);
+  }
+}
+
+// 只合并同用户同日的在途写入；失败原样传播并释放，数据库唯一约束仍是最终防线。
+// 存在 globalThis 上，以免热更新留下另一组没有参与合并的模块实例。
+const checkinState = globalThis as unknown as { __checkinPending: Map<string, Promise<CheckinResult>> };
+checkinState.__checkinPending ??= new Map();
+
+async function commitCheckin(userId: string, today: string): Promise<CheckinResult> {
   const checkinDate = dateAtDay(today);
 
   try {

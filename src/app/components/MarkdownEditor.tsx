@@ -369,6 +369,16 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
         // Ctrl/Cmd+S **刻意不绑** —— 剪贴板的保存由表单那一个页面级监听负责，
         // 两边都绑就会对同一次按键发两遍保存请求（§5.3）。
         keymap.of([
+          /**
+           * 单行换行（Shift+Enter）—— 见 commands.ts 的 insertLineBreak。
+           *
+           * ⚠️ **必须排在这里**（defaultKeymap 之前）：键位表为每一个 `key` 名维护
+           * 一条命令链，**先注册的先跑**。defaultKeymap 里
+           * `{ key: 'Enter', run: insertNewlineAndIndent, shift: insertNewlineAndIndent }`
+           * 那个 `shift` 字段注册的正是 `Shift-Enter` 这个键名 —— 排到它后面就永远
+           * 轮不到我们这条（症状是 Shift+Enter 与 Enter 一模一样，且不报错）。
+           */
+          { key: 'Shift-Enter', run: cmd.insertLineBreak() },
           { key: 'Mod-b', run: cmd.toggleWrap('**', '粗体') },
           { key: 'Mod-i', run: cmd.toggleWrap('*', '斜体') },
           { key: 'Mod-Shift-x', run: cmd.toggleWrap('~~', '删除线') },

@@ -12,7 +12,7 @@
 import { prisma } from './db';
 import { nowForDb, dayStart, todayStr } from './db-time';
 import { sendNotification } from './notification-service';
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 
 const PER_PAGE = 20;
 const WINDOW_DAYS = 30; // 仅公示近 30 天（更早的日志仍在库，只是不进公示页）
@@ -242,10 +242,9 @@ export async function listPublicLogs(params: ListLogsParams) {
   // 单独取 extra（用 CAST 绕过 JSON 列的驱动层转换问题）；生产库同样适用
   const extraMap = new Map<number, string | null>();
   if (logIds.length) {
-    const idList = logIds.filter((n) => Number.isInteger(n)).join(',');
-    const extraRows = (await prisma.$queryRawUnsafe(
-      `SELECT id, CAST(extra AS TEXT) AS extra FROM admin_action_logs WHERE id IN (${idList})`
-    )) as Array<{ id: number; extra: string | null }>;
+    const extraRows = await prisma.$queryRaw<Array<{ id: number; extra: string | null }>>(Prisma.sql`
+      SELECT id, CAST(extra AS TEXT) AS extra FROM admin_action_logs WHERE id IN (${Prisma.join(logIds)})
+    `);
     for (const er of extraRows) extraMap.set(Number(er.id), er.extra);
   }
   const pending = logIds.length
@@ -360,10 +359,9 @@ export async function listAdminLogs(params: ListAdminLogsParams) {
   const logIds = rows.map((r) => r.id);
   const extraMap = new Map<number, string | null>();
   if (logIds.length) {
-    const idList = logIds.filter((n) => Number.isInteger(n)).join(',');
-    const extraRows = (await prisma.$queryRawUnsafe(
-      `SELECT id, CAST(extra AS TEXT) AS extra FROM admin_action_logs WHERE id IN (${idList})`
-    )) as Array<{ id: number; extra: string | null }>;
+    const extraRows = await prisma.$queryRaw<Array<{ id: number; extra: string | null }>>(Prisma.sql`
+      SELECT id, CAST(extra AS TEXT) AS extra FROM admin_action_logs WHERE id IN (${Prisma.join(logIds)})
+    `);
     for (const er of extraRows) extraMap.set(Number(er.id), er.extra);
   }
 

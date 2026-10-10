@@ -31,6 +31,7 @@ import path from 'node:path';
 import { randomInt } from 'node:crypto';
 import { prisma } from './db';
 import { nowForDb } from './db-time';
+import { UploadQuotaError } from './upload-quota';
 // 文件名净化与 10 位 id 生成器与图床**共用同一份实现**：两处若各写一份，
 // 迟早有一处先被加固、另一处留洞（sanitizeFilename 那道白名单是安全边界，不是工具函数）。
 import { generateImageId, sanitizeFilename } from './image-upload';
@@ -253,7 +254,9 @@ export function getAudioUploadFolder(): string {
 
 /** 磁盘上的完整文件路径：<folder>/<id><ext>。 */
 export function audioStoragePathFor(id: string, mimeType: string): string {
-  return path.join(getAudioUploadFolder(), id + EXT_MAP[mimeType]);
+  const extension = EXT_MAP[mimeType];
+  if (!extension) throw new Error('不支持的音频类型');
+  return path.join(getAudioUploadFolder(), id + extension);
 }
 
 // ── 写路径 ───────────────────────────────────────────────────────────────────
@@ -269,7 +272,8 @@ export interface SavedAudio {
  * 生成唯一 ID → 写盘 → 落库，返回最终元信息。
  *
  * 与图床的 saveUpload 同构，只是**没有压缩**那一步、且碰撞检查打在不同的表上。
- * 调用方负责登录/禁言/MIME/大小/配额/限频等一切前置校验。
+ * 调用方负责登录/禁言/MIME/大小/限频等前置校验。
+ * 网络入口必须传 quotaBytes；落库事务重新核验用量，防止并发请求共享剩余额度。
  *
  * `mimeType` 必须是 verifyAudioMime 认过的**规范值** —— 本函数不再复核，
  * 它同时是磁盘扩展名（EXT_MAP）与落库值的来源，传错会导致落盘后缀与
@@ -280,6 +284,8 @@ export async function saveAudioUpload(input: {
   buffer: Buffer;
   mimeType: string;
   filename: string;
+  /** 可信内部调用可省略；HTTP 路由按角色计算后必传。 */
+  quotaBytes?: number;
 }): Promise<SavedAudio> {
   const filename = sanitizeFilename(input.filename);
 
@@ -300,18 +306,32 @@ export async function saveAudioUpload(input: {
 
   const folder = getAudioUploadFolder();
   await fs.mkdir(folder, { recursive: true });
-  await fs.writeFile(audioStoragePathFor(id, input.mimeType), input.buffer);
+  const storagePath = audioStoragePathFor(id, input.mimeType);
+  await fs.writeFile(storagePath, input.buffer, { flag: 'wx' });
 
-  await prisma.audioHosting.create({
-    data: {
-      id,
-      filename,
-      fileSize: input.buffer.length,
-      mimeType: input.mimeType,
-      authorId: input.userId,
-      createdAt: nowForDb(), // schema 无 @default(now())，显式写入；nowForDb 见 db-time.ts 的时区约定
-    },
-  });
+  try {
+    await prisma.$transaction(async (tx) => {
+      // 先写取得锁，再按包含新文件的实际用量判配额；超额则整个事务回滚。
+      await tx.audioHosting.create({ data: {
+        id,
+        filename,
+        fileSize: input.buffer.length,
+        mimeType: input.mimeType,
+        authorId: input.userId,
+        createdAt: nowForDb(), // schema 无 @default(now())，显式写入；nowForDb 见 db-time.ts 的时区约定
+      } });
+      if (input.quotaBytes !== undefined) {
+        const used = await tx.audioHosting.aggregate({
+          where: { authorId: input.userId, ignore: false }, _sum: { fileSize: true },
+        });
+        if (!Number.isSafeInteger(input.quotaBytes) || input.quotaBytes < 0 ||
+          (used._sum.fileSize ?? 0) > input.quotaBytes) throw new UploadQuotaError();
+      }
+    });
+  } catch (error) {
+    await fs.unlink(storagePath).catch(() => undefined);
+    throw error;
+  }
 
   return { id, filename, fileSize: input.buffer.length, mimeType: input.mimeType };
 }

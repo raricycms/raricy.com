@@ -503,7 +503,7 @@ describe('GET /api/spider/favorites/:id（需 core+）', () => {
     for (let i = 0; i < RULES.spiderFavoritePerIp.limit + 2; i++) {
       const res = await spiderApi(
         new Request('http://localhost/api/spider/favorites/x', {
-          headers: { 'x-forwarded-for': '203.0.113.9' },
+          headers: { 'x-real-ip': '203.0.113.9' },
         }),
         ctx({ id: fav.public_id })
       );

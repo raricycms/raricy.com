@@ -17,9 +17,11 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { prisma } from './db';
 import { nowForDb } from './db-time';
-import { hashPassword, verifyPassword } from './password';
+import { hashPassword, verifyPassword, PasswordWorkBusyError } from './password';
 import { generateShortId } from './short-id';
-import type { OAuthApplication } from '@prisma/client';
+import type { OAuthApplication, Prisma } from '@prisma/client';
+
+type OAuthGrantDb = Pick<Prisma.TransactionClient, 'oAuthAuthorizationCode' | 'oAuthAccessToken'>;
 
 // ── 常量 ─────────────────────────────────────────────────────────────────────
 
@@ -203,7 +205,13 @@ export async function authenticateClient(
     return { ok: false, reason: 'rate_limited' };
   }
 
-  const ok = await verifyPassword(clientSecret, app.clientSecretHash);
+  let ok;
+  try {
+    ok = await verifyPassword(clientSecret, app.clientSecretHash);
+  } catch (e) {
+    if (e instanceof PasswordWorkBusyError) return { ok: false, reason: 'rate_limited' };
+    throw e;
+  }
   if (!ok) return { ok: false, reason: 'invalid_client' };
 
   return { ok: true, app };
@@ -258,22 +266,24 @@ export type ConsumeResult =
 export async function consumeAuthorizationCode(
   code: string,
   applicationId: string,
-  redirectUri: string
+  redirectUri: string,
+  db: OAuthGrantDb = prisma
 ): Promise<ConsumeResult> {
   const codeHash = hashOpaqueToken(code);
   const now = nowForDb();
-  const updateRes = await prisma.oAuthAuthorizationCode.updateMany({
+  const updateRes = await db.oAuthAuthorizationCode.updateMany({
     where: {
       codeHash,
       applicationId,
       redirectUri,
       usedAt: null,
       expiresAt: { gt: now },
+      application: { disabledAt: null },
     },
     data: { usedAt: now },
   });
   if (updateRes.count === 1) {
-    const row = await prisma.oAuthAuthorizationCode.findUnique({ where: { codeHash } });
+    const row = await db.oAuthAuthorizationCode.findUnique({ where: { codeHash } });
     if (!row) return { ok: false, error: 'invalid' };
     return {
       ok: true,
@@ -282,7 +292,7 @@ export async function consumeAuthorizationCode(
     };
   }
   // 未匹配：定位原因（用于给客户端更明确的错误）
-  const row = await prisma.oAuthAuthorizationCode.findUnique({ where: { codeHash } });
+  const row = await db.oAuthAuthorizationCode.findUnique({ where: { codeHash } });
   if (!row) return { ok: false, error: 'invalid' };
   if (row.usedAt) return { ok: false, error: 'already_used' };
   if (row.expiresAt <= now) return { ok: false, error: 'expired' };
@@ -301,13 +311,14 @@ export interface MintedToken {
 export async function createAccessToken(
   applicationId: string,
   userId: string,
-  scopes: Scope[]
+  scopes: Scope[],
+  db: OAuthGrantDb = prisma
 ): Promise<MintedToken> {
   const token = generateAccessToken();
   const tokenHash = hashOpaqueToken(token);
   const now = nowForDb();
   const expiresAt = new Date(now.getTime() + ACCESS_TOKEN_TTL_MS);
-  await prisma.oAuthAccessToken.create({
+  await db.oAuthAccessToken.create({
     data: {
       tokenHash,
       applicationId,
@@ -320,6 +331,22 @@ export async function createAccessToken(
   return { token, expiresIn: ACCESS_TOKEN_TTL_SEC };
 }
 
+/** 网络兑换必须走这一出口：消费授权码与令牌落库同事务，撤权不能插入两步之间。 */
+export async function exchangeAuthorizationCode(
+  code: string,
+  applicationId: string,
+  redirectUri: string
+): Promise<({ ok: true; scopes: Scope[] } & MintedToken) | Extract<ConsumeResult, { ok: false }>> {
+  return prisma.$transaction(async (tx) => {
+    // 条件更新首先取得 SQLite 写锁，并实时检查应用启用状态。
+    // 解绑/停用若先提交，这里拒绝；兑换若先提交，撤权会一并吊销刚签发的令牌。
+    const consumed = await consumeAuthorizationCode(code, applicationId, redirectUri, tx);
+    if (!consumed.ok) return consumed;
+    const minted = await createAccessToken(applicationId, consumed.userId, consumed.scopes, tx);
+    return { ok: true, ...minted, scopes: consumed.scopes };
+  });
+}
+
 export interface ValidatedToken {
   applicationId: string;
   userId: string;
@@ -329,8 +356,12 @@ export interface ValidatedToken {
 export async function validateAccessToken(rawToken: string): Promise<ValidatedToken | null> {
   if (!rawToken || rawToken.length > 256) return null;
   const tokenHash = hashOpaqueToken(rawToken);
-  const row = await prisma.oAuthAccessToken.findUnique({ where: { tokenHash } });
+  const row = await prisma.oAuthAccessToken.findUnique({
+    where: { tokenHash },
+    include: { application: { select: { disabledAt: true } } },
+  });
   if (!row) return null;
+  if (row.application.disabledAt) return null;
   if (row.revokedAt) return null;
   if (row.expiresAt <= nowForDb()) return null;
   return {
@@ -466,21 +497,32 @@ export async function updateOAuthApplication(
   if (patch.disabled !== undefined) {
     data.disabledAt = patch.disabled ? nowForDb() : null;
   }
-  return prisma.oAuthApplication.update({ where: { id }, data });
+  return prisma.$transaction(async (tx) => {
+    const previous = patch.disabled === false
+      ? await tx.oAuthApplication.findUnique({ where: { id }, select: { disabledAt: true } })
+      : null;
+    const application = await tx.oAuthApplication.update({ where: { id }, data });
+    // 兼容修复前就停用的应用：重新启用时也撤销遗留授权，避免令牌随启用复活。
+    if (patch.disabled || previous?.disabledAt) {
+      await tx.oAuthAccessToken.updateMany({
+        where: { applicationId: id, revokedAt: null },
+        data: { revokedAt: nowForDb() },
+      });
+      await tx.oAuthAuthorizationCode.updateMany({
+        where: { applicationId: id, usedAt: null },
+        data: { usedAt: nowForDb() },
+      });
+    }
+    return application;
+  });
 }
 
 export async function disableOAuthApplication(id: string): Promise<OAuthApplication> {
-  return prisma.oAuthApplication.update({
-    where: { id },
-    data: { disabledAt: nowForDb() },
-  });
+  return updateOAuthApplication(id, { disabled: true });
 }
 
 export async function enableOAuthApplication(id: string): Promise<OAuthApplication> {
-  return prisma.oAuthApplication.update({
-    where: { id },
-    data: { disabledAt: null },
-  });
+  return updateOAuthApplication(id, { disabled: false });
 }
 
 /** 用 clientId 或主 id 任一查找（CLI 友好）。 */
@@ -506,6 +548,7 @@ export interface UserConnection {
   applicationId: string; // 解除绑定时 DELETE /api/oauth/connections/<applicationId>
   applicationName: string;
   applicationHomepageUrl: string | null;
+  applicationDisabled: boolean;
   scopes: Scope[]; // 该应用名下所有存活 token 的 scope 并集（按首次出现顺序）
   tokenCount: number; // 存活 token 条数；>1 即用户重复授权过同一个应用
   firstAuthorizedAt: Date; // 最早一次授权
@@ -541,8 +584,6 @@ export function aggregateConnections(
   const byApp = new Map<string, UserConnection>();
 
   for (const r of rows) {
-    if (r.application.disabledAt != null) continue; // 禁用应用不展示
-
     const createdAt = r.createdAt ?? now;
     const existing = byApp.get(r.applicationId);
     if (!existing) {
@@ -550,6 +591,8 @@ export function aggregateConnections(
         applicationId: r.applicationId,
         applicationName: r.application.name,
         applicationHomepageUrl: r.application.homepageUrl,
+        // 兼容修复前停用但未吊销的 token：仍展示绑定，允许用户主动解绑。
+        applicationDisabled: r.application.disabledAt != null,
         scopes: parseStoredScopes(r.scopes),
         tokenCount: 1,
         firstAuthorizedAt: createdAt,
@@ -606,7 +649,7 @@ export interface RevokeApplicationResult {
 }
 
 /**
- * 解除「用户 ↔ 应用」的整个绑定：撤销该用户名下该应用**全部**存活 token。
+ * 解除「用户 ↔ 应用」的整个绑定：撤销全部令牌与尚未兑换的授权码。
  *
  * 【为什么不是一个 token 一个 token 地解】设置页按应用聚合展示，按钮文案也是
  * 「解除与 X 的绑定」；用户的心智模型是「这个网站再也不许读我的资料了」。
@@ -616,15 +659,21 @@ export async function revokeUserApplicationTokens(
   userId: string,
   applicationId: string
 ): Promise<RevokeApplicationResult> {
-  const total = await prisma.oAuthAccessToken.count({ where: { userId, applicationId } });
-  if (total === 0) return { found: false, revoked: 0 };
-
-  // 幂等：已撤销的行不再计入（重复点按钮等价于成功）
-  const res = await prisma.oAuthAccessToken.updateMany({
-    where: { userId, applicationId, revokedAt: null },
-    data: { revokedAt: nowForDb() },
+  return prisma.$transaction(async (tx) => {
+    const now = nowForDb();
+    // 先写再读：与兑换事务串行，避免「查到旧状态 → 对方签发 → 撤权漏掉新令牌」。
+    const res = await tx.oAuthAccessToken.updateMany({
+      where: { userId, applicationId, revokedAt: null },
+      data: { revokedAt: now },
+    });
+    await tx.oAuthAuthorizationCode.updateMany({
+      where: { userId, applicationId, usedAt: null },
+      data: { usedAt: now },
+    });
+    const tokens = await tx.oAuthAccessToken.count({ where: { userId, applicationId } });
+    const codes = await tx.oAuthAuthorizationCode.count({ where: { userId, applicationId } });
+    return { found: tokens + codes > 0, revoked: res.count };
   });
-  return { found: true, revoked: res.count };
 }
 
 // ── siteOrigin：已搬到 src/lib/site-url.ts ──────────────────────────────────

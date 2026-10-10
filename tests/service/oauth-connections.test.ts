@@ -15,6 +15,10 @@ import {
   listUserConnections,
   revokeUserApplicationTokens,
   type ConnectionTokenRow,
+  validateAccessToken,
+  disableOAuthApplication,
+  enableOAuthApplication,
+  updateOAuthApplication,
 } from '@/lib/oauth';
 import { nowForDb } from '@/lib/db-time';
 
@@ -120,7 +124,7 @@ describe('aggregateConnections（纯函数口径）', () => {
     expect(out[0].scopes).toEqual(['profile']);
   });
 
-  it('禁用应用的 token 不展示', () => {
+  it('历史禁用应用的 token 仍展示为停用，用户能主动解绑', () => {
     const out = aggregateConnections(
       [
         row({
@@ -130,7 +134,8 @@ describe('aggregateConnections（纯函数口径）', () => {
       ],
       T0
     );
-    expect(out).toEqual([]);
+    expect(out).toHaveLength(1);
+    expect(out[0].applicationDisabled).toBe(true);
   });
 
   it('不同应用各占一行，最近授权的排前面', () => {
@@ -139,6 +144,45 @@ describe('aggregateConnections（纯函数口径）', () => {
       T0
     );
     expect(out.map((c) => c.applicationId)).toEqual(['new', 'old']);
+  });
+});
+
+describe('应用停用撤权', () => {
+  it('重新启用历史停用应用前撤销遗留令牌，不能随启用复活', async () => {
+    const app = await makeApp();
+    const user = await makeUser();
+    const token = await makeToken(app.id, user.id);
+    await prisma.oAuthApplication.update({ where: { id: app.id }, data: { disabledAt: nowForDb() } });
+    await enableOAuthApplication(app.id);
+    expect(await validateAccessToken(token)).toBeNull();
+    expect(await validateAccessToken(await makeToken(app.id, user.id))).not.toBeNull();
+  });
+  it.each(['CLI', '管理页面'] as const)('%s 停用后立即拒绝全部旧 token，重新启用也不恢复它们', async (entry) => {
+    const app = await makeApp();
+    const other = await makeApp('other-app');
+    const user = await makeUser();
+    const tokens = [await makeToken(app.id, user.id), await makeToken(app.id, user.id)];
+    const otherToken = await makeToken(other.id, user.id);
+    expect(await validateAccessToken(tokens[0])).not.toBeNull();
+    if (entry === 'CLI') await disableOAuthApplication(app.id);
+    else await updateOAuthApplication(app.id, { disabled: true });
+    for (const token of tokens) expect(await validateAccessToken(token)).toBeNull();
+    expect(await validateAccessToken(otherToken)).not.toBeNull();
+    await enableOAuthApplication(app.id);
+    for (const token of tokens) expect(await validateAccessToken(token)).toBeNull();
+    const fresh = await makeToken(app.id, user.id);
+    expect(await validateAccessToken(fresh)).not.toBeNull();
+  });
+
+  it('修复前已停用且没有吊销的 token 也被实时拒绝，并仍可由本人解绑', async () => {
+    const app = await makeApp();
+    const user = await makeUser();
+    const token = await makeToken(app.id, user.id);
+    await prisma.oAuthApplication.update({ where: { id: app.id }, data: { disabledAt: nowForDb() } });
+    expect(await validateAccessToken(token)).toBeNull();
+    expect(await listUserConnections(user.id)).toMatchObject([{ applicationDisabled: true }]);
+    expect((await revokeUserApplicationTokens(user.id, app.id)).revoked).toBe(1);
+    expect(await listUserConnections(user.id)).toEqual([]);
   });
 });
 
@@ -187,13 +231,13 @@ describe('listUserConnections（DB 口径）', () => {
     expect(await listUserConnections(me.id)).toEqual([]);
   });
 
-  it('应用被停用 → 列表里不出现', async () => {
+  it('历史应用被停用但未吊销 → 列表标明停用，保留解绑入口', async () => {
     const app = await makeApp();
     const user = await makeUser();
     await makeToken(app.id, user.id);
     await prisma.oAuthApplication.update({ where: { id: app.id }, data: { disabledAt: days(1) } });
 
-    expect(await listUserConnections(user.id)).toEqual([]);
+    expect(await listUserConnections(user.id)).toMatchObject([{ applicationId: app.id, applicationDisabled: true }]);
   });
 
   it('createAccessToken 签出来的真 token 同样被聚合', async () => {

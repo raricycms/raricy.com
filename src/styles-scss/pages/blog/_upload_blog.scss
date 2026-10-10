@@ -10,6 +10,13 @@
     background: var(--color-background-card);
     border-radius: 30px;
     padding: 40px;
+
+    // 窄屏（≤767px）收到 16px：320~390 上 40px 的四周内边距把正文挤成一条窄缝
+    // —— 卡片外侧还站着 .container 的 16px 页边距，两者相加才是到屏幕边的距离。
+    // 断点与编辑器那套窄屏同值（components/_markdown-editor.scss 的 767px）。
+    @media (max-width: 767px) {
+        padding: 16px;
+    }
 }
 
 #message-container {

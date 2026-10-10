@@ -16,9 +16,14 @@
 // 并写成 DOM 属性，形态收紧到「只可能是图床 id」就注入不进任何东西。
 // 不匹配的一律保留字面量（fail-closed）。
 //
-// 【两样东西是**跨管线**的，别在别处再写一份】id 长度词汇（上面三个常量）与
-// `MAX_BLOG_REF_ITEMS`（博客渲染器与对外视图的服务端解析共用同一个数）。
-// 本文件零依赖，两边都 import 得起。
+// 【一批**跨管线**的东西，别在别处再写一份】id 长度词汇（上面三个常量）、
+// `MAX_BLOG_REF_ITEMS`（**只管客户端主循环那 50 处显示**：剪贴板 / 投票 / 图床
+// 共用一份替换额度）、「取数取多少 / 并发多少 / 展开多大」这三个预算
+// （`MAX_REF_FETCHES` 还兼管服务端公开剪贴板的查询条数 / `MAX_REF_CONCURRENCY` /
+// `MAX_REF_EXPAND_CHARS`），以及那个并发闸门（`createConcurrencyLimiter`）。
+// **收藏夹与音频各有自己的显示上限**（不在 `MAX_BLOG_REF_ITEMS` 之列，见各自的
+// `MAX_FAVORITE_REFS` / `MAX_AUDIO_REFS`）。本文件零依赖，客户端渲染器与服务端
+// 解析都 import 得起。
 //
 // 本文件零依赖、不碰 DOM 也不碰 React，故可直接单测
 // （tests/unit/content-refs.test.ts）。
@@ -66,15 +71,121 @@ export const CLIPBOARD_REF_PROBE = new RegExp(
 );
 
 /**
- * 一篇正文里最多处理几条 `[@…]` 引用（**按引用条数**，不是按种类）。
+ * 客户端主循环里最多替换几处 `[@…]` 引用（**按引用条数**，不是按种类）。
  *
- * 【两个调用方共用这一个数，别各写一份】博客渲染器（`content-ref-processor.ts` 的
- * `ContentRefProcessor`）用它封顶替换次数；对外视图那条**服务端**解析
- * （`clipboard-service.ts` 的 `resolvePublicClipRefs`）用它封顶一次请求里的查库次数。
- * 两边的判据必须是同一个数：不一致时，访客会看到「成员视图展开到第 50 条为止、
- * 对外视图是另一个条数」这种**没有任何报错**的分叉。
+ * 【只管显示，不管取数】这是**显示档**：博客渲染器（`content-ref-processor.ts` 的
+ * `ContentRefProcessor`）用它封顶主循环的替换次数，剪贴板 / 投票 / 图床**共用**这一
+ * 份额度。**取数候选与服务端公开剪贴板的查询条数是另一回事**（见 `MAX_REF_FETCHES`）；
+ * **收藏夹与音频也各有自己的显示上限**，不占这 50 处（各跑一趟，见
+ * `MAX_FAVORITE_REFS` / `MAX_AUDIO_REFS`）。
  */
 export const MAX_BLOG_REF_ITEMS = 50;
+
+/**
+ * 一轮预处理里最多解析几个**需要取数**的引用（剪贴板 / 投票 / 收藏夹）。
+ *
+ * 【和 `MAX_BLOG_REF_ITEMS` 是两件事，别合并】**那个**管「最多替换几处」，这个管
+ * 「最多发几次取数」。两者都按原文出现顺序数，但数的是不同的东西：
+ *
+ *   · 图床只拼 URL、不取数（见 content-ref-resolver.ts），所以**不占**这份预算 ——
+ *     否则一篇图多的文章会把剪贴板 / 投票的取数名额饿死（「图多的页面点不动引用」）。
+ *   · 取到了却因为替换上限 / 展开预算而没处放的候选**仍然占过**这份名额：候选只按
+ *     出现顺序挑，与「最终放不放得下」无关。
+ *   · **缓存命中同样占名额**：候选是从正文文本选出来的，与缓存状态无关 —— 这样同一篇
+ *     正文每轮挑中的都是同一批，结果确定。
+ *
+ * 超出这份预算的引用**既不发请求、也不替换**，原样留在正文里（静默保留字面量）。
+ * 客户端渲染器与服务端解析共用这个数，两边必须一致。
+ */
+export const MAX_REF_FETCHES = 50;
+
+/**
+ * 同一个取数层实例的**真实异步读取**并发上限。
+ *
+ * 【为什么要有】一次渲染把整篇的引用一股脑交给取数层（`Promise.all`）—— 没有这个闸，
+ * 一篇塞满引用的正文会同时打出几十条请求，连上站内其它限频、把上游打成一堵墙。
+ *
+ * 【谁排队】只有**真正会发 HTTP 的**那一类（'expand' 模式的剪贴板 / 投票 / 收藏夹）
+ * 才占名额；图床（只拼 URL）与对外视图（查字典、一个请求都不发）**不排队** ——
+ * 占着名额只会让真正的取数变慢。判据在 content-ref-resolver.ts 的 needsSlot。
+ *
+ * 【实例级】编辑器预览那个**共享** resolver 会跨多轮渲染复用它，所以闸门挂在实例上：
+ * 多轮同时在飞时并发仍封在 4 以内，不同 resolver 互不影响。
+ */
+export const MAX_REF_CONCURRENCY = 4;
+
+/**
+ * 引用展开后的**总字符预算**。
+ *
+ * 【一个数管两处】客户端那条管线（content-ref-processor.ts）用它封顶「整篇 Markdown
+ * 展开后有多长」；服务端对外视图的映射（clipboard-service.ts 的 resolvePublicClipRefs）
+ * 用它封顶「一次下发的公开正文合计有多长」。
+ *
+ * 【语义】按出现顺序**整块**接受替换：接受后总量不超过本值就换，超了就**原样保留
+ * token** —— 绝不截断内容、更不切整篇字符串（把半截 Markdown / HTML 交给 marked 或
+ * 浏览器就是另一种坏法）。原文本身就超预算时**保留原文、不再增长**（编辑中的未合法草稿）。
+ *
+ * 【为什么是 50 万】单条剪贴板正文上限 5 万；同一条引用 50 次就是 250 万（改版前实测，
+ * 无上限）。50 万 ≈ 十篇满额剪贴板，正常写作远远够用，又把最坏情况钉在一个可下发的量级。
+ */
+export const MAX_REF_EXPAND_CHARS = 500000;
+
+/**
+ * 一个「同一时刻最多跑 `limit` 个」的并发闸门（先进先出）。
+ *
+ * 【为什么住在这里】两处要用同一个上限：客户端取数层（content-ref-resolver.ts，每实例
+ * 一个闸门）与服务端映射的查库（clipboard-service.ts）。各写一份的话，改了一处另一处
+ * 还是老数 —— **没有任何报错**，只是并发悄悄翻倍。
+ *
+ * 【语义】返回的 Promise 在任务真正跑完时兑现；任务抛错**原样透传**（调用方自己 catch，
+ * 出错也照常放行下一个，闸门不会卡住）。**不保证按入队顺序完成**，只保证同一时刻在跑的
+ * 不超过 `limit`。排队期间要不要放弃（比如代际过期）由**任务自己**在开工时判断 ——
+ * 闸门不管这个，也不该管。
+ */
+export function createConcurrencyLimiter(limit: number) {
+  const cap = Math.max(1, Math.floor(limit));
+  let active = 0;
+  const queue: Array<() => void> = [];
+  const pump = () => {
+    while (active < cap) {
+      const start = queue.shift();
+      if (!start) return;
+      active += 1;
+      start();
+    }
+  };
+  return function run<T>(task: () => Promise<T>): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      queue.push(() => {
+        // **同步**调用 task：闸门未满时要让请求立刻发出 —— 在飞的那一格因此同步可见
+        // （这条时序被 content-ref-resolver 的用例钉着）。任务**同步抛错**时走 catch
+        // 直接兑现成 reject，不能让它逃出 pump 把 `active` 漏成永久占用。
+        let started: Promise<T>;
+        try {
+          started = task();
+        } catch (err) {
+          active -= 1;
+          pump();
+          reject(err);
+          return;
+        }
+        started.then(
+          (value) => {
+            active -= 1;
+            pump();
+            resolve(value);
+          },
+          (err) => {
+            active -= 1;
+            pump();
+            reject(err);
+          }
+        );
+      });
+      pump();
+    });
+  };
+}
 
 /**
  * 扫出正文里所有云剪贴板引用的 id（**去重、保持出现顺序**）。

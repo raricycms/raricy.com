@@ -3,7 +3,7 @@ import { apiErr, apiOk } from '@/lib/format';
 import { listUserConnections } from '@/lib/oauth';
 
 // GET /api/oauth/connections
-// 当前用户已绑定的应用列表（仅未过期、未吊销、未禁用应用）。
+// 当前用户已绑定的应用列表（仅未过期、未吊销；停用的旧绑定仍可解绑）。
 // 用于 settings 页「已绑定的应用」section。
 //
 // 【一应用一行，不是一 token 一行】外部应用每次重新授权都会新签一条 token，
@@ -20,6 +20,7 @@ export async function GET() {
       applicationId: c.applicationId,
       applicationName: c.applicationName,
       applicationHomepageUrl: c.applicationHomepageUrl,
+      applicationDisabled: c.applicationDisabled,
       scopes: c.scopes,
       tokenCount: c.tokenCount,
       firstAuthorizedAt: c.firstAuthorizedAt.toISOString(),

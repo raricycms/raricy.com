@@ -24,6 +24,8 @@
 import { prisma } from './db';
 import { nowForDb } from './db-time';
 import { generateAccessToken, hashOpaqueToken } from './oauth';
+import { MAX_ACTIVE_FISH_TOKENS, FISH_TOKEN_PAGE_SIZE } from './fish-token-limits';
+export { MAX_ACTIVE_FISH_TOKENS, FISH_TOKEN_PAGE_SIZE } from './fish-token-limits';
 
 /** 默认有效期 365 天。 */
 export const FISH_TOKEN_TTL_MS = 365 * 24 * 60 * 60 * 1000;
@@ -34,6 +36,9 @@ export type FishTokenScope = (typeof FISH_TOKEN_SCOPES)[number];
 
 /** 自助页与 CLI 的 label 上限（纯展示字段，防刷屏）。 */
 export const FISH_TOKEN_LABEL_MAX = 30;
+export class FishTokenLimitError extends Error {
+  constructor() { super(`最多保留 ${MAX_ACTIVE_FISH_TOKENS} 张有效凭据，请先吊销不再使用的凭据`); }
+}
 
 export interface FishTokenSummary {
   id: number;
@@ -62,16 +67,20 @@ export async function mintFishToken(userId: string, label?: string | null): Prom
   const expiresAt = new Date(now.getTime() + FISH_TOKEN_TTL_MS);
   const cleanLabel = (label ?? '').trim().slice(0, FISH_TOKEN_LABEL_MAX) || null;
 
-  const row = await prisma.fishApiToken.create({
-    data: {
-      tokenHash: hashOpaqueToken(token),
-      userId,
-      label: cleanLabel,
-      scopes: FISH_TOKEN_SCOPES.join(' '),
-      expiresAt,
-      createdAt: now,
-    },
-    select: { id: true },
+  const row = await prisma.$transaction(async (tx) => {
+    const active = await tx.fishApiToken.count({ where: { userId, revokedAt: null, expiresAt: { gt: now } } });
+    if (active >= MAX_ACTIVE_FISH_TOKENS) throw new FishTokenLimitError();
+    return tx.fishApiToken.create({
+      data: {
+        tokenHash: hashOpaqueToken(token),
+        userId,
+        label: cleanLabel,
+        scopes: FISH_TOKEN_SCOPES.join(' '),
+        expiresAt,
+        createdAt: now,
+      },
+      select: { id: true },
+    });
   });
 
   return { id: row.id, token, expiresAt };
@@ -81,10 +90,11 @@ export async function mintFishToken(userId: string, label?: string | null): Prom
  * 列出某用户的凭据。**绝不返回 tokenHash** —— 那虽然不是明文，但它是库里的
  * 唯一标识，没有理由出现在响应或页面上（吊销走 id）。
  */
-export async function listFishTokens(userId: string): Promise<FishTokenSummary[]> {
+export async function listFishTokens(userId: string, beforeId?: number): Promise<FishTokenSummary[]> {
   const rows = await prisma.fishApiToken.findMany({
-    where: { userId },
+    where: { userId, ...(beforeId ? { id: { lt: beforeId } } : {}) },
     orderBy: { id: 'desc' },
+    take: FISH_TOKEN_PAGE_SIZE,
     select: {
       id: true,
       label: true,

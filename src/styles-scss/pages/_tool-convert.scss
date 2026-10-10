@@ -1,0 +1,400 @@
+// 格式转换器：添加文件 → 设置输出 → 保存结果。表面与控件复用全站令牌。
+@use '../abstracts/variables' as *;
+@use '../abstracts/mixins' as m;
+
+.fc-page {
+  padding: $space-8 0;
+
+  .fc-nav {
+    display: flex;
+    justify-content: space-between;
+    gap: $space-4;
+    margin-bottom: $space-6;
+
+    &__back,
+    &__guide {
+      display: inline-flex;
+      align-items: center;
+      gap: $space-2;
+      min-height: 44px;
+      color: var(--color-text-secondary);
+      font-size: 0.875rem;
+
+      &:hover { color: var(--color-brand-primary); }
+    }
+  }
+
+  .fc-hero {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: $space-4;
+    margin-bottom: $space-8;
+
+    h1 {
+      margin: 0 0 $space-2;
+      font-size: clamp(1.75rem, 4vw, 2.5rem);
+      font-weight: 700;
+      letter-spacing: -0.04em;
+    }
+
+    p { margin: 0; color: var(--color-text-secondary); }
+  }
+
+  .fc-local {
+    display: inline-flex;
+    align-items: center;
+    gap: $space-2;
+    padding: $space-2 $space-3;
+    border-radius: $radius-max;
+    background: var(--color-background-card);
+    color: var(--color-text-secondary);
+    font-size: 0.8125rem;
+
+    &::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--color-success-primary);
+    }
+  }
+
+  .fc-tabs {
+    display: grid;
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+    gap: $space-1;
+    padding: $space-2;
+    margin-bottom: $space-6;
+    background: var(--color-background-card);
+    border-radius: $radius-card;
+  }
+
+  .fc-tab {
+    @include m.btn-tab;
+    min-height: 44px;
+    padding: $space-2;
+    font-size: 0.875rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  button:focus-visible,
+  summary:focus-visible,
+  .fc-nav a:focus-visible {
+    outline: none;
+    box-shadow: var(--shadow-focus-brand);
+  }
+
+  .btn,
+  .filter-pill { min-height: 44px; }
+
+  .fc-workspace {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+    align-items: start;
+    gap: $space-6;
+    margin-bottom: $space-6;
+  }
+
+  .fc-panel {
+    min-width: 0;
+    padding: $space-6;
+    border-radius: $radius-card;
+    background: var(--color-background-card);
+
+    &__head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: $space-2 $space-4;
+      margin-bottom: $space-6;
+      color: var(--color-text-secondary);
+    }
+
+    &__title {
+      display: flex;
+      align-items: center;
+      gap: $space-3;
+      margin: 0;
+      font-size: 1.0625rem;
+      font-weight: 600;
+      color: var(--color-text-primary);
+    }
+
+    &__meta { font-size: 0.8125rem; }
+  }
+
+  .fc-step {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--color-brand-secondary);
+    color: var(--color-brand-primary);
+    font-size: 0.75rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .fc-dropzone {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 280px;
+    padding: $space-8 $space-4;
+    border-radius: $radius-field;
+    background: var(--color-background-page);
+    text-align: center;
+    transition: background-color .2s ease;
+
+    &--over { background: var(--color-brand-secondary); }
+
+    &__icon {
+      display: grid;
+      place-items: center;
+      width: 64px;
+      height: 64px;
+      margin-bottom: $space-4;
+      background: var(--color-background-card);
+      color: var(--color-brand-primary);
+      border-radius: $radius-field;
+
+      .icon { width: 28px; height: 28px; }
+    }
+
+    h3 { margin: 0 0 $space-2; font-size: 1.125rem; font-weight: 600; }
+    p { margin: 0 0 $space-6; color: var(--color-text-secondary); font-size: 0.8125rem; }
+    .btn { padding: $space-3 $space-6; }
+
+    &--compact {
+      min-height: 0;
+      padding: $space-4;
+      h3 { font-size: 1rem; }
+      p { margin-bottom: $space-3; }
+      .fc-dropzone__icon { display: none; }
+    }
+  }
+
+  .fc-selection {
+    margin-top: $space-4;
+
+    &__head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: $space-2;
+      h3 { margin: 0; font-size: 0.875rem; font-weight: 600; }
+    }
+  }
+
+  .fc-files,
+  .fc-tasks { list-style: none; padding: 0; margin: 0; }
+
+  .fc-file {
+    display: flex;
+    align-items: center;
+    gap: $space-3;
+    padding: $space-3 0;
+    border-bottom: 1px solid var(--color-border);
+
+    &:last-child { border-bottom: none; }
+    &--bad .fc-file__icon { color: var(--color-warning-primary); background: var(--color-warning-secondary); }
+
+    &__icon {
+      display: grid;
+      place-items: center;
+      flex: none;
+      width: 40px;
+      height: 44px;
+      border-radius: $radius-large;
+      background: var(--color-background-page);
+      color: var(--color-text-secondary);
+    }
+
+    &__body { flex: 1; min-width: 0; }
+    &__name { display: block; font-weight: 500; font-size: 0.875rem; overflow-wrap: anywhere; }
+    &__meta { display: block; margin-top: $space-1; color: var(--color-text-secondary); font-size: 0.75rem; }
+    &__problem { display: block; margin-top: $space-1; color: var(--color-warning-primary); font-size: 0.8125rem; }
+    &__remove { flex: none; font-size: 0.8125rem; }
+  }
+
+  .fc-support,
+  .fc-presets-panel {
+    margin-top: $space-4;
+    color: var(--color-text-secondary);
+    font-size: 0.8125rem;
+
+    > summary { padding: $space-3 0; cursor: pointer; }
+    p { margin: $space-2 0 0; line-height: 1.7; overflow-wrap: anywhere; }
+    .fc-hint { font-size: 0.8125rem; }
+    &__formats { font-size: 0.75rem; }
+  }
+
+  .fc-presets-panel {
+    .fc-recipes { margin-top: $space-4; }
+    p.fc-presets-panel__label { margin: 0 0 $space-2; color: var(--color-text-secondary); font-size: 0.8125rem; }
+    p.fc-presets-panel__description { margin: $space-2 0 $space-3; color: var(--color-text-secondary); font-size: 0.8125rem; line-height: 1.6; }
+  }
+
+  .fc-presets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: $space-1;
+    .filter-pill { padding: $space-2 $space-3; font-size: 0.8125rem; }
+  }
+
+  .fc-field {
+    > label { display: block; margin-bottom: $space-2; font-size: 0.875rem; font-weight: 600; }
+    .form-select { width: 100%; min-width: 0; min-height: 44px; text-overflow: ellipsis; }
+    .form-select:disabled { color: var(--color-text-secondary); cursor: not-allowed; opacity: 1; }
+  }
+
+  .fc-params { display: flex; flex-direction: column; gap: $space-4; margin-top: ($space-4 + $space-1); }
+
+  .fc-param {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: $space-2;
+    min-width: 0;
+
+    > label { font-size: 0.8125rem; font-weight: 600; }
+    > small { font-size: 0.75rem; line-height: 1.6; }
+    .form-select, .form-control { width: 100%; min-width: 0; min-height: 44px; }
+    input[type='color'] { width: 64px; height: 44px; border: none; padding: $space-1; background: var(--color-background-page); border-radius: $radius-large; }
+    input[type='checkbox'] { width: 20px; height: 20px; }
+    &--advanced { padding-top: $space-1; }
+  }
+
+  .fc-range {
+    display: flex;
+    align-items: center;
+    gap: $space-3;
+    min-width: 0;
+    min-height: 44px;
+
+    input { flex: 1; min-width: 0; accent-color: var(--color-brand-primary); }
+    output { min-width: 3.5em; color: var(--color-text-secondary); font-size: 0.8125rem; text-align: right; font-variant-numeric: tabular-nums; }
+  }
+
+  .fc-advanced {
+    > button { display: flex; justify-content: space-between; align-items: center; gap: $space-2; width: 100%; text-align: left; font-size: 0.8125rem; }
+    .fc-params { padding: 0 $space-2; margin-top: $space-3; }
+  }
+
+  .fc-conversion-note {
+    padding: $space-4;
+    border-radius: $radius-large;
+    background: var(--color-background-page);
+    > p { margin: 0 0 $space-2; font-size: 0.8125rem; font-weight: 600; }
+  }
+
+  .fc-notices {
+    margin: $space-2 0 0;
+    padding-left: $space-4;
+    color: var(--color-text-secondary);
+    font-size: 0.8125rem;
+    line-height: 1.7;
+    li + li { margin-top: $space-1; }
+  }
+
+  .fc-actions {
+    display: flex;
+    flex-direction: column;
+    gap: $space-3;
+    margin-top: $space-6;
+    padding-top: ($space-4 + $space-1);
+    border-top: 1px solid var(--color-border);
+    > p { margin: 0; color: var(--color-text-secondary); font-size: 0.75rem; line-height: 1.6; }
+  }
+
+  .fc-start { display: flex; align-items: center; justify-content: space-between; gap: $space-2; padding: $space-3 ($space-4 + $space-1); }
+  .fc-pack { display: flex; align-items: center; gap: $space-2; min-height: 44px; color: var(--color-text-secondary); font-size: 0.8125rem; cursor: pointer; }
+  input[type='checkbox'] { accent-color: var(--color-brand-primary); }
+  .fc-feedback { margin: 0 0 $space-6; padding: $space-3 $space-4; background: var(--color-brand-secondary); border-radius: $radius-large; font-size: 0.875rem; overflow-wrap: anywhere; }
+
+  .fc-output {
+    overflow-wrap: anywhere;
+    &__ops { display: flex; flex-wrap: wrap; gap: $space-2; max-width: 100%; .btn { max-width: 100%; } }
+    &__summary { margin: 0 0 $space-4; color: var(--color-text-secondary); font-size: 0.8125rem; }
+    &__empty {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: $space-4;
+      padding: $space-6 0;
+      color: var(--color-text-secondary);
+      > .icon { flex: none; width: 28px; height: 28px; }
+      p { margin: 0; font-size: 0.875rem; }
+      span { display: block; margin-top: $space-1; font-size: 0.75rem; }
+    }
+    &__reminder { margin: ($space-4 + $space-1) 0 0; color: var(--color-text-secondary); font-size: 0.75rem; }
+  }
+
+  .fc-tasks { display: flex; flex-direction: column; gap: $space-4; }
+
+  .fc-task {
+    padding: ($space-4 + $space-1);
+    border-radius: $radius-field;
+    background: var(--color-background-page);
+
+    &__row { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: $space-2 $space-4; }
+    &__name { min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+    &__status { display: inline-flex; align-items: center; gap: $space-2; max-width: 100%; color: var(--color-text-secondary); font-size: 0.8125rem; overflow-wrap: anywhere; }
+    &--succeeded .fc-task__status::before { content: ''; width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--color-success-primary); }
+    &--failed .fc-task__status { color: var(--color-warning-primary); }
+    &__error {
+      margin-top: $space-3;
+      color: var(--color-warning-primary);
+      font-size: 0.875rem;
+      pre { font-size: 0.75rem; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 8em; overflow: auto; }
+    }
+    &__ops { display: flex; flex-wrap: wrap; gap: $space-2; margin-top: $space-3; .btn { font-size: 0.8125rem; } }
+  }
+
+  .fc-progress { width: 100%; height: 6px; margin-top: $space-3; accent-color: var(--color-brand-primary); }
+  .fc-result {
+    margin-top: $space-3;
+    &__meta, &__method { color: var(--color-text-secondary); font-size: 0.8125rem; line-height: 1.7; }
+    &__actions { display: flex; flex-wrap: wrap; gap: $space-2; margin-top: $space-4; .btn { max-width: 100%; overflow-wrap: anywhere; } }
+  }
+
+  .fc-preview {
+    display: block;
+    max-width: 100%;
+    margin-top: $space-4;
+    &--image {
+      max-height: 320px;
+      border-radius: $radius-large;
+      // 棋盘底只用于预览透明图，颜色由主题的两档背景生成。
+      background-color: var(--color-background-card);
+      background-image: repeating-conic-gradient(var(--color-background-content) 0% 25%, transparent 0% 50%);
+      background-size: 16px 16px;
+    }
+    &--video { max-height: 320px; border-radius: $radius-large; }
+    &--text { max-height: 240px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: $space-4; background: var(--color-background-content); border-radius: $radius-large; font-size: 0.8125rem; }
+  }
+
+  .fc-footnote { margin: ($space-4 + $space-1) 0 0; color: var(--color-text-secondary); font-size: 0.75rem; text-align: center; }
+
+  @media (max-width: 767px) {
+    padding-top: $space-4;
+    .fc-nav { margin-bottom: $space-4; }
+    .fc-hero { margin-bottom: $space-6; p { font-size: 0.875rem; } }
+    .fc-tabs { grid-template-columns: repeat(4, minmax(0, 1fr)); border-radius: $radius-field; margin-bottom: $space-4; }
+    .fc-tab { font-size: 0.8125rem; padding: $space-2 $space-1; }
+    .fc-workspace { grid-template-columns: minmax(0, 1fr); gap: $space-4; margin-bottom: $space-4; }
+    .fc-panel { padding: ($space-4 + $space-1); &__head { margin-bottom: $space-4; } }
+    .fc-dropzone { min-height: 240px; &--compact { min-height: 0; } }
+    .fc-task { padding: $space-4; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition: none; }
+  }
+}

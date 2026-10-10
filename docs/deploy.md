@@ -113,7 +113,7 @@ vim .env
 | `ACCOUNT_SERVICE_*` | **已废除** | 账户微服务的连接四件套。账户逻辑已搬进站内，这四个变量**不再被任何代码读取** | 留着没有任何效果，删掉即可（见 §12「下线账户微服务」） |
 | `FISH_SERVICE_ACCOUNTS` | 可选 | 鱼干服务账号白名单（逗号分隔的 **user id**）：转账配额 100/500 → 500/5000，给站外银行这类自动化账号用（`docs/bot/fish-bot.md` §4） | 留空 = 无人享受高配额，不影响其他功能 |
 | `FISH_WEBHOOK_DRAIN_MS` | 可选 | 收款回调的投递扫描间隔（毫秒，默认 `30000`）。**`0` = 关闭定时投递** | 关掉后回调只会由 `fish webhook-retry` 推动；`/fish/api` 上登记的地址照样收不到通知 |
-| `FISH_WEBHOOK_TIMEOUT_MS` | 可选 | 单次回调投递的超时（毫秒，默认 `5000`） | 商户端点慢于这个值会被判失败并重试 |
+| `FISH_WEBHOOK_TIMEOUT_MS` | 可选 | 单次回调 HTTP 请求的总时长上限（毫秒，默认 `5000`，涵盖连接/TLS/响应读取） | 持续缓慢返回字节也不会延长期限；超时判失败并重试 |
 | `MARKET_PRICE_BASE_URL` | 可选 | 练手盘的行情源基址（默认 `https://data-api.binance.vision`）。**上线前必须在这台服务器上实测可达**（见 §1 系统要求表），不通就换源，不用发版 | 不通则**成交**与展示一起挂：下单/平仓 503「行情暂不可用」（这是刻意的，不降级到旧价） |
 | `MARKET_POLL_MS` | 可选 | 练手盘行情的轮询间隔（毫秒，默认 `15000`）。**`0` = 关闭这条轮询**。**只刷展示缓存**，不影响任何成交价 | 关掉后若行情流也不可用，页面上的价就停在最后一轮；**它是行情流的兜底，别关** |
 | `MARKET_STREAM_SILENCE_MS` | 可选 | 练手盘**实时行情流**（常驻 WebSocket）的半死阈值（毫秒，默认 `30000`）。**`0` = 关闭这条流**，展示回落到 `MARKET_POLL_MS` 那条轮询。**只喂展示**，成交价照旧现取 | 关掉只是价跳得慢（15 秒一轮），功能不受影响；需要 **Node 22+**，20 上会打一行日志后自动退化 |
@@ -330,13 +330,14 @@ npm ci
 #   添加 PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 可省 Playwright 浏览器下载（生产不需要）
 ```
 
-`npm ci` 会跑 `postinstall`，把两个静态素材目录从 npm 包里**生成**出来
+`npm ci` 会跑 `postinstall`，把三个静态素材目录从 npm 包里**生成**出来
 （它们都是包的派生产物、不入库，见 `.gitignore`）：
 
 | 目录 | 来源包 | 少了会怎样 |
 |---|---|---|
 | `public/static/mathjax/` | `mathjax-full` | 公式仍显示，但用回退字体，字形与间距都不对 |
 | `public/static/emoji/` | `@twemoji/svg` | 正文里的 `[@黄脸/…]` **静默降级成字面量**（不是裂图） |
+| `public/static/converter/` | `@ffmpeg/core`、`pdfjs-dist`、`tesseract.js` 等 | 格式转换器（`/tool/convert`）的音视频 / PDF / OCR 功能报「引擎加载失败」（约 65MB，含 ffmpeg 核心与 OCR 语言包） |
 
 > **`public/static/frames/`（头像框素材）不在上表里** —— 它是我们自己画的、
 > **随代码入库**的，`git pull` 就有，不需要任何生成步骤。少了它会**静默不显示
@@ -347,7 +348,8 @@ npm ci
 手工补一次：
 
 ```bash
-npm run prepare:mathjax && npm run prepare:emoji
+npm run prepare:mathjax && npm run prepare:emoji && npm run prepare:converter
+# 只想核对转换器资产是否齐（CI 用）：npm run converter:check
 ```
 
 ### 构建
@@ -356,9 +358,14 @@ npm run prepare:mathjax && npm run prepare:emoji
 npm run build
 ```
 
-`build` = `prisma generate && next build`，会先按当前 `schema.prisma` 重新生成 Prisma Client。
+`build` = `prisma generate && node scripts/copy-converter-assets.mjs && next build`，会先按当前 `schema.prisma` 重新生成 Prisma Client，并确保转换器引擎资产就位。
 **不要跳过它直接 `next build`**——否则 `node_modules/.prisma/client` 还是上次生成的旧类型，
 schema 新增字段（如 `focusMode`）会报 `Property 'x' does not exist on type 'SafeUser'`。
+
+生产构建使用 `tsconfig.build.json`：继承现有严格检查选项，检查全部 `src/`、
+`next-env.d.ts` 与 `.next/types/` 中的路由类型。测试、运维脚本与测试框架配置
+由原有 `tsconfig.json` 覆盖，在开发机器上用 `npx tsc --noEmit --project tsconfig.json`
+做完整检查。这样避免在部署时把测试代码也加载进类型检查进程，降低构建内存需求。
 
 预期：`✓ Generated Prisma Client` + `✓ Compiled successfully` + 70+ 页全列。
 
@@ -386,7 +393,8 @@ location / {
     proxy_set_header X-Forwarded-Host  $http_host;     # ← 备用来源:与 Host / ALLOWED_ORIGINS 命中任一即可
     proxy_set_header X-Forwarded-Proto $scheme;        # ← 缺它:登录成功但状态不粘,且练手盘协议闸会**误伤 https 用户**(见 §13)
     proxy_set_header X-Real-IP         $remote_addr;
-    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-For   $remote_addr;   # 覆盖客户端伪造的链
+    proxy_set_header CF-Connecting-IP  "";             # 不向应用透传客户端提供的 CF 头
 }
 ```
 
@@ -397,7 +405,14 @@ ssl_certificate     /etc/letsencrypt/live/raricy.com/fullchain.pem;
 ssl_certificate_key /etc/letsencrypt/live/raricy.com/privkey.pem;
 ```
 
-关键头已列全 —— 照抄上面即可，不需要额外参考。
+应用的 IP 限频只读取合法的 `X-Real-IP`，不回退到 CF/XFF。Next 必须只监听回环地址，
+且禁止公网直接访问 3000 端口；否则直连者仍能伪造这个头。`npm start` 与下方 unit 均绑定
+`127.0.0.1`。容器部署应只允许可信反代访问应用端口，不对公网发布它。
+
+若前面有 Cloudflare，默认 `$remote_addr` 是 CDN 节点地址（限频会共用 CDN 的桶）。
+需要 nginx 的 `real_ip_header CF-Connecting-IP`，并且 `set_real_ip_from` **只列 Cloudflare
+官方 IP 段**、随官方更新维护（[官方 IP 说明](https://developers.cloudflare.com/fundamentals/concepts/cloudflare-ip-addresses/)）；绝不能信任 `0.0.0.0/0` 或 `::/0`。应用仍只读取 nginx
+还原并覆盖的 `X-Real-IP`。上线时验证伪造 CF/XFF 不改变限频桶，源站端口不可直连。
 ## 7. systemd unit 示例
 
 `/etc/systemd/system/raricy-next.service`：
@@ -416,7 +431,7 @@ Group=www-data
 WorkingDirectory=/srv/raricy.com
 
 # 不挂 EnvironmentFile=.env —— next start 自己会读同目录的 .env
-ExecStart=/srv/raricy.com/node_modules/.bin/next start -p 3000
+ExecStart=/srv/raricy.com/node_modules/.bin/next start -H 127.0.0.1 -p 3000
 
 Restart=always
 RestartSec=3

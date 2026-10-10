@@ -27,12 +27,24 @@ interface Harness {
   ranges(): Range[];
   /** 主选区。 */
   main(): Range;
+  /** 主选区在 `selection.ranges` 里的序号 —— 多光标时「哪个是主」本身就是一条断言。 */
+  mainIndex(): number;
 }
 
-function harness(doc: string, ranges: Range[] = [[0, 0]], extra: Extension[] = []): Harness {
+function harness(
+  doc: string,
+  ranges: Range[] = [[0, 0]],
+  extra: Extension[] = [],
+  // 主选区的序号。默认 0（绝大多数用例只有一个区间）；多光标用例要显式给它非 0 的
+  // 值才验得出「命令有没有把主选区打回第一个」—— 见 insertLineBreak 那条。
+  mainIndex = 0
+): Harness {
   let state = EditorState.create({
     doc,
-    selection: EditorSelection.create(ranges.map(([a, b]) => EditorSelection.range(a, b)), 0),
+    selection: EditorSelection.create(
+      ranges.map(([a, b]) => EditorSelection.range(a, b)),
+      mainIndex
+    ),
     // 必须显式开：不开的话 EditorState.create 会把多选区压成一个（asSingle()），
     // 多光标用例会「只剩第一个区间」而看不出原因。真编辑器里也开了同一条。
     extensions: [EditorState.allowMultipleSelections.of(true), ...extra],
@@ -53,6 +65,7 @@ function harness(doc: string, ranges: Range[] = [[0, 0]], extra: Extension[] = [
       const r = view.state.selection.main;
       return [r.from, r.to];
     },
+    mainIndex: () => view.state.selection.mainIndex,
   };
 }
 
@@ -325,6 +338,104 @@ describe('插入类', () => {
     cmd.insertText('🐟')(h.view);
     expect(h.text()).toBe('a🐟b');
     expect(h.main()).toEqual([3, 3]);
+  });
+});
+
+describe('单行换行（Shift+Enter）', () => {
+  // 这一组钉的是「只插一个 \n」：渲染侧靠 gfm + breaks 把单个 \n 渲成一个 <br>，
+  // 所以命令里**多插一个字符都是错的**（多一个 \n = 成品里多一个空行），
+  // 而这也是它存在的唯一理由 —— 默认的 Enter 在列表里会续写标记、在 () [] {}
+  // 之间会补第二个换行（见 commands.ts 的 insertLineBreak）。
+  it('光标处只插一个换行，光标落到下一行行首', () => {
+    const h = harness('ab', [[1, 1]]);
+    cmd.insertLineBreak()(h.view);
+    expect(h.text()).toBe('a\nb');
+    expect(h.main()).toEqual([2, 2]);
+  });
+
+  it('行尾插入：不多带行尾空格、也不带任何标记', () => {
+    const h = harness('- 列表项', [[4, 4]]);
+    cmd.insertLineBreak()(h.view);
+    // `- 列表项` 里插一个 \n 就是「列表项里换行」，不是「新建下一项」（那是 Enter 的事）
+    expect(h.text()).toBe('- 列表\n项');
+    expect(h.text()).not.toContain('<br>');
+    expect(/[ \t]\n/.test(h.text())).toBe(false);
+  });
+
+  it('夹在 () [] {} 之间时也只插一个 —— 默认的 Enter 这里会插两个', () => {
+    for (const pair of ['()', '[]', '{}']) {
+      const h = harness(`a${pair[0]}${pair[1]}b`, [[2, 2]]);
+      cmd.insertLineBreak()(h.view);
+      expect(h.text()).toBe(`a${pair[0]}\n${pair[1]}b`);
+    }
+  });
+
+  it('有选区时整体替换成一个换行', () => {
+    const h = harness('abc', [[0, 3]]);
+    cmd.insertLineBreak()(h.view);
+    expect(h.text()).toBe('\n');
+    expect(h.main()).toEqual([1, 1]);
+  });
+
+  it('多光标：每个区间各插一个，后面的区间不会因为前面的插入而错位', () => {
+    // 主选区给**非 0** 的一档 —— 这条同时钉住「后面的区间不错位」与「主选区没被打回
+    // 第一个」。写死 mainIndex 0 的话后者永远不会红（见 insertLineBreak 的落点注释）。
+    const h = harness(
+      'ab',
+      [
+        [0, 0],
+        [2, 2],
+      ],
+      [],
+      1
+    );
+    cmd.insertLineBreak()(h.view);
+    expect(h.text()).toBe('\nab\n');
+    // 第二条落点是**这个换行之后**（= 新那行的行首，末尾是空行时就是文末）
+    expect(h.ranges()).toEqual([
+      [1, 1],
+      [4, 4],
+    ]);
+    // ★ 主选区仍是第二个区间（`insertNewlineAndIndent` 从前也是这么保持的）★
+    expect(h.mainIndex()).toBe(1);
+    expect(h.main()).toEqual([4, 4]);
+  });
+
+  it('多光标 + 其中一个区间有选区', () => {
+    const h = harness(
+      'abcd',
+      [
+        [0, 2],
+        [3, 4],
+      ],
+      [],
+      1
+    );
+    cmd.insertLineBreak()(h.view);
+    expect(h.text()).toBe('\nc\n');
+    expect(h.ranges()).toEqual([
+      [1, 1],
+      [3, 3],
+    ]);
+    expect(h.mainIndex()).toBe(1);
+    expect(h.main()).toEqual([3, 3]);
+  });
+
+  it('只读：不改文档、返回 false（与它替换掉的原生命令同口径）', () => {
+    const h = harness('ab', [[1, 1]], [EditorState.readOnly.of(true)]);
+    expect(cmd.insertLineBreak()(h.view)).toBe(false);
+    expect(h.text()).toBe('ab');
+    expect(h.main()).toEqual([1, 1]);
+  });
+
+  it('进撤销历史：一步退回（不是整块跳回，也不是撤不掉）', () => {
+    const h = harness('ab', [[1, 1]], [history()]);
+    cmd.insertLineBreak()(h.view);
+    expect(h.text()).toBe('a\nb');
+    expect(cmd.undoCommand(h.view)).toBe(true);
+    expect(h.text()).toBe('ab');
+    expect(cmd.redoCommand(h.view)).toBe(true);
+    expect(h.text()).toBe('a\nb');
   });
 });
 

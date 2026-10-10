@@ -38,6 +38,19 @@ const pbkdf2 = promisify(_pbkdf2);
 const SCRYPT_DKLEN = 64;
 const SCRYPT_MAXMEM = 132 * 1024 * 1024;
 
+/** 不排队：阻止匿名/已认证调用把昂贵计算无限堆在线程池后面。所有哈希入口共用。 */
+export const MAX_PASSWORD_WORK = 4;
+export class PasswordWorkBusyError extends Error {
+  constructor() { super('密码校验繁忙，请稍后再试'); }
+}
+const passwordState = globalThis as unknown as { __passwordWorkActive?: number };
+function reservePasswordWork(): () => void {
+  const active = passwordState.__passwordWorkActive ?? 0;
+  if (active >= MAX_PASSWORD_WORK) throw new PasswordWorkBusyError();
+  passwordState.__passwordWorkActive = active + 1;
+  return () => { passwordState.__passwordWorkActive = (passwordState.__passwordWorkActive ?? 1) - 1; };
+}
+
 function hexEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   const ba = Buffer.from(a, 'utf8');
@@ -58,6 +71,7 @@ export async function verifyPassword(password: string, stored: string): Promise<
   const parts = method.split(':');
   const algo = parts[0];
 
+  const release = reservePasswordWork();
   try {
     if (algo === 'scrypt') {
       // scrypt:N:r:p
@@ -84,6 +98,8 @@ export async function verifyPassword(password: string, stored: string): Promise<
     }
   } catch {
     return false;
+  } finally {
+    release();
   }
 
   return false;
@@ -116,15 +132,20 @@ function generateSalt(len = SALT_LENGTH): string {
 }
 
 export async function hashPassword(password: string): Promise<string> {
-  const N = 32768,
-    r = 8,
-    p = 1;
-  const salt = generateSalt();
-  const derived = (await scrypt(password, salt, SCRYPT_DKLEN, {
-    N,
-    r,
-    p,
-    maxmem: SCRYPT_MAXMEM,
-  })) as Buffer;
-  return `scrypt:${N}:${r}:${p}$${salt}$${derived.toString('hex')}`;
+  const release = reservePasswordWork();
+  try {
+    const N = 32768,
+      r = 8,
+      p = 1;
+    const salt = generateSalt();
+    const derived = (await scrypt(password, salt, SCRYPT_DKLEN, {
+      N,
+      r,
+      p,
+      maxmem: SCRYPT_MAXMEM,
+    })) as Buffer;
+    return `scrypt:${N}:${r}:${p}$${salt}$${derived.toString('hex')}`;
+  } finally {
+    release();
+  }
 }

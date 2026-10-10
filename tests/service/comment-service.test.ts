@@ -21,6 +21,7 @@ import {
   listCommentsForBlog,
   createComment,
   softDeleteComment,
+  restoreComment,
   toggleCommentLike,
   toContentHtml,
   type CommentNode,
@@ -28,6 +29,34 @@ import {
 
 beforeEach(async () => {
   await resetDb();
+});
+
+describe('恢复先鉴权再写入', () => {
+  it.each(['core', 'admin-missing-reason', 'admin-long-reason'])('%s 被拒绝时评论、计数和审计保持原样', async (kind) => {
+    const author = await makeUser();
+    const blog = await makeBlog({ authorId: author.id });
+    const comment = await makeComment({ blogId: blog.id, authorId: author.id, isDeleted: true });
+    const actor = await makeUser({ role: kind === 'core' ? 'core' : 'admin' });
+    const before = await prisma.blog.findUniqueOrThrow({ where: { id: blog.id } });
+    const result = await restoreComment(comment.id, actor, kind === 'admin-long-reason' ? 'x'.repeat(501) : undefined);
+    expect(result.ok).toBe(false);
+    expect((await prisma.blogComment.findUniqueOrThrow({ where: { id: comment.id } })).isDeleted).toBe(true);
+    const after = await prisma.blog.findUniqueOrThrow({ where: { id: blog.id } });
+    expect(after.commentsCount).toBe(before.commentsCount);
+    expect(after.lastCommentAt).toEqual(before.lastCommentAt);
+    expect(await prisma.adminActionLog.count()).toBe(0);
+  });
+  it('作者可恢复自己的评论，管理员有原因可恢复他人，计数只变一次', async () => {
+    const author = await makeUser();
+    const admin = await makeUser({ role: 'admin' });
+    const blog = await makeBlog({ authorId: author.id });
+    const own = await makeComment({ blogId: blog.id, authorId: author.id, isDeleted: true });
+    const other = await makeComment({ blogId: blog.id, authorId: author.id, isDeleted: true });
+    expect(await restoreComment(own.id, author)).toEqual({ ok: true });
+    expect(await restoreComment(other.id, admin, '撤销误删')).toEqual({ ok: true });
+    expect((await prisma.blog.findUniqueOrThrow({ where: { id: blog.id } })).commentsCount).toBe(2);
+    expect(await prisma.adminActionLog.count({ where: { action: 'restore_comment' } })).toBe(1);
+  });
 });
 
 // ── 本地工具 ────────────────────────────────────────────────────────────────

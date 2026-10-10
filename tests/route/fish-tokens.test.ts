@@ -22,7 +22,7 @@ import { resetDb, makeUser, prisma } from '../helpers/db';
 import { hashPassword } from '@/lib/password';
 import { createSessionToken } from '@/lib/session';
 import { __resetRateLimitStore, RULES, recordRateLimitHit } from '@/lib/rate-limit';
-import { validateFishToken } from '@/lib/fish-token-service';
+import { validateFishToken, mintFishToken, MAX_ACTIVE_FISH_TOKENS } from '@/lib/fish-token-service';
 import { GET, POST } from '@/app/api/fish/tokens/route';
 import { DELETE as revokeById } from '@/app/api/fish/tokens/[id]/route';
 
@@ -57,14 +57,14 @@ afterEach(() => {
 
 describe('GET /api/fish/tokens', () => {
   it('未登录 → 401', async () => {
-    expect((await GET()).status).toBe(401);
+    expect((await GET(makeReq())).status).toBe(401);
   });
 
   it('登录 → 列出自己的凭据，且**不返回明文也不返回哈希**', async () => {
     await makeSessionUser();
     const minted = await (await POST(makeReq({ password: PASSWORD }))).json();
 
-    const res = await GET();
+    const res = await GET(makeReq());
     expect(res.status).toBe(200);
     const text = JSON.stringify(await res.json());
 
@@ -75,12 +75,18 @@ describe('GET /api/fish/tokens', () => {
 
   it('空列表是 200 + 空数组，不是 404', async () => {
     await makeSessionUser();
-    const json = await (await GET()).json();
+    const json = await (await GET(makeReq())).json();
     expect(json.tokens).toEqual([]);
   });
 });
 
 describe('POST /api/fish/tokens —— 签发', () => {
+  it('达到有效凭据上限后返回 400，不再写入令牌', async () => {
+    const user = await makeSessionUser();
+    for (let i = 0; i < MAX_ACTIVE_FISH_TOKENS; i++) await mintFishToken(user.id);
+    expect((await POST(makeReq({ password: PASSWORD }))).status).toBe(400);
+    expect(await prisma.fishApiToken.count({ where: { userId: user.id } })).toBe(MAX_ACTIVE_FISH_TOKENS);
+  });
   it('★ 缺密码 → 400（step-up 不可跳过）', async () => {
     await makeSessionUser();
     const res = await POST(makeReq({ label: '机器人' }));

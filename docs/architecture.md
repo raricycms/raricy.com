@@ -98,7 +98,7 @@
 | `/api/poster/profile/[id]` · `/api/poster/collect` | API | **画报 / 收款码出图**（PNG，仅本人）。渲染管线与四条约束见 §6.8 |
 | `/notifications` · `/api/notifications/*` | page + API | 通知中心。其中 `GET count` 是顶栏指示器的**兜底快照**（**不能删**：SSE 有「连着但收不到」的半死状态），`GET stream` 是**实时流**（SSE，未登录 401；首帧全量快照 + 之后增量补丁）。推送点纪律与依赖方向见 `src/lib/topbar-bus.ts` 头部 |
 | `/vote` · `/vote/[id]` | page | 投票 |
-| `/checkin` · `/api/checkin` | page + API | 每日签到（**core+**：鱼干的赚取渠道，与投喂/点赞同档）。**一个请求签一次到**，固定发 `CHECKIN_REWARD_FISH` 条鱼干。页面与两个方法（GET/POST）**各自都要判档位**，见 §8。另有一条**内容前置条件**：名下至少一篇未软删的文章（`Blog.ignore = false`，删光 = 没发过）—— 与档位是**两道独立的门**，GET 回 `can_check_in: false` 不拒、POST 403，见 `checkin-service.ts` 头部 |
+| `/checkin` · `/api/checkin` | page + API | 每日签到（**core+**：鱼干的赚取渠道，与投喂/点赞同档）。**一个请求签一次到**，固定发 `CHECKIN_REWARD_FISH` 条鱼干。页面与两个方法（GET/POST）**各自都要判档位**，见 §8。另有一条**内容前置条件**：名下至少一篇未软删的文章（`Blog.ignore = false`，删光 = 没发过）—— 与档位是**两道独立的门**，GET 回 `can_check_in: false` 不拒、POST 403，见 `checkin-service.ts` 头部。禁言期间也不能签到：GET 回 `can_check_in: false`，POST 403，解除或到期后恢复 |
 | `/clipboard` · `/clipboard/[id]` · `/api/clipboard/*` | page + API | 云剪贴板 |
 | `/image` · `/image/admin` · `/api/images/*` | page + API | 图床 + 管理 |
 | `/audio` · `/audio/admin` · `/audio/guide` · `/api/audio/*` | page + API | 音频床 + 管理。**独立配额**（不吃图床那份 50MB），见 §6.6/§6.15 |
@@ -145,7 +145,7 @@
 | 练手盘 | `market-service.ts`（开平仓：**一个事务、没有补偿**；开仓的幂等靠 `open_key` 唯一约束而非独立幂等记录；读口 `listOpenPositions` / `listSettledPositions`（最近结清，只读仓位表的终态行））· `market-math.ts`（**结算公式的唯一实现**，零依赖 —— 服务端真结算与页面「预计到手」是同一个 `settleClose`）· `market-candles.ts`（K 线词汇表：周期白名单 / 根数上限 / 线上形状 / 缓存键，**零依赖**，服务端与客户端共用）· `market-chart.ts`（K 线图的纯计算：窗口 / 聚合 / 刻度 / 映射 / 实时并线 —— 零依赖外加 `db-time` 的一个常量）· `market-price.ts`（行情源与展示缓存，见 §6.13）· `market-stream.ts` + `market-poll-drainer.ts`（喂展示的两个后台循环）· `market-stats.ts`（统计的**纯聚合**：终态白名单 / 拆解表分桶 / 持仓浮动盈亏 —— 白名单由调用方传进来，这样单元用例不必拉 Prisma）· `market-stats-service.ts`（统计的读路径：**盈亏只能来自 `market_positions`，别改成从账本求和**，理由见文件头） |
 | OAuth 2.0 | `oauth.ts`（见 `docs/oauth.md`） |
 | 管理域 | `admin-user-service.ts` · `admin-blog-service.ts` · `admin-category-service.ts` · `admin-comment-service.ts` · `admin-clipboard-service.ts` · `admin-vote-service.ts` · `admin-image-service.ts` · `admin-stats-service.ts` |
-| 工具 / 安全 | `short-id.ts` · `safe-url.ts` · `guard.ts` · `rate-limit.ts` · `turnstile.ts` · `https-guard.ts`（练手盘协议闸的判据：路径清单 / 明文判定 / 跳转目标 —— **零依赖**，Edge 中间件直接吃，见 §6.4） |
+| 工具 / 安全 | `short-id.ts` · `safe-url.ts` · `guard.ts` · `rate-limit.ts` · `turnstile.ts` · `upload-quota.ts`（上传落库的配额拒绝）· `https-guard.ts`（练手盘协议闸的判据：路径清单 / 明文判定 / 跳转目标 —— **零依赖**，Edge 中间件直接吃，见 §6.4） |
 | 鉴权基建 | `credential-auth.ts`（「用户名+密码」校验，`/api/auth/login` 与鱼干市场无状态接口**共用**，限频桶也共用）· `request-ip.ts`（反代后取真实 IP） |
 | 配额白名单 | `service-accounts.ts`（`FISH_SERVICE_ACCOUNTS` 里的账号走 `SERVICE_QUOTA`：转账 500/时、5000/天。给「站外银行」这类自动化账号用，撤销即删配置） |
 
@@ -163,6 +163,9 @@ API 端点位于 `src/app/api/<group>/<verb>/route.ts`，**薄**层：参数校�
 - **密码哈希**：`src/lib/password.ts` 选 `scrypt` / `pbkdf2:sha256`，与历史 werkzeug **字节级互通**——从上一版实现接手的用户无需改密、完全不感知。
 - **会话**：登录成功签发 JWT（`jose`，HS256），cookie 设 `HttpOnly` + `SameSite=Lax`。`Secure` 由 `X-Forwarded-Proto` 推断或 `COOKIE_SECURE` 显式控制。
 - **踢下线**：`User.sessionVersion` 单调递增。`session.ts` 解析 JWT 后比对当前 `user.sessionVersion`，不一致则视为失效。
+  自助与管理员改密都按数据库当前值原子自增，避免密码计算期间覆盖其他撤权操作。
+  两者成对断开讨论与顶栏 SSE；建流先注册可被踢的订阅，复核数据库版本后才释放私有帧。
+  讨论还要复核 core+、禁言与专注模式，因为角色和专注模式变化不递增会话版本。
 - **登出**：**只有** `POST /api/auth/logout`（`base.js` 的 `window.logout()` / `LogoutLink` 组件）。
   清会话是状态变更，**不能有 GET 入口** —— GET 会被本人以外的东西发起（浏览器预取视口内的
   `<Link>`、爬虫、第三方页面上的 `<img src="…/logout">`，而本站刻意允许被 iframe 嵌入），
@@ -321,12 +324,17 @@ GET/HEAD/OPTIONS 视为安全方法，不校验（协议闸不受这条影响，
 另有三点不显然的行为：
 
 - **桶会落盘**：随 10 分钟一次的惰性清扫写入 `instance/rate-limit-snapshot.json`（原子写；`RATE_LIMIT_SNAPSHOT_PATH` 可覆盖），进程启动时回灌 —— **重启不重置窗口**。不落盘的话，一次发版等于给所有人发免刷通行证，也放走进行中的刷量。测试环境不自动回灌，保证确定性。
-- **登录限频只统计失败**：IP 与用户名（小写归一）两个维度分别计数，任一超限即 429。所以正常用户不会被自己的成功登录挡住；顺带它也是 CPU 保护（每次尝试都要跑一次 scrypt）。
+- **登录失败预算同步预留**：IP 与用户名（小写归一）两个维度在任何异步校验前占位，任一超限即 429；失败将占位转为命中，成功或异常释放。这样并发请求不能共享最后一个名额，成功仍不消耗失败预算。
+- **密码计算另有预算**：登录、付款确认、凭据签发与改密共用用户 ID 桶，成功也计数；OAuth 用实际 clientId 的路由档位，同时共享 IP 与全局预算。所有 scrypt/pbkdf2 校验及哈希生成共用 `password.ts` 的 4 个在途名额，超额立即拒绝、不排队。注册使用独立入口桶。具体速率在 `RULES.password*`。
 - **规则值与计桶的键是两回事**：同一条 `RULES.*` 可以被多处复用，但各处用自己的键前缀，**配额互不相干**。已知的有：博客点赞用 `like:h:`/`like:d:`，评论点赞复用同样的 `likeHourly`/`likeDaily` 数值但键是 `comment-like:h:`/`comment-like:d:` —— 分成两个桶是刻意的，共用会让「给评论点赞」顶掉「给文章点赞」的额度。改 `RULES` 的数值会同时影响两边；只想调一边得另立规则。鱼干市场那三条同理且**必须分开**：`fish-api:`（密码，吃 CPU 闸门）/ `fish-api:ip:` / `fish-token:`（只读凭据，**不跑 scrypt 故不受那道闸门约束**）/ `fish-token:ip:` —— 混用会让便宜的凭据路径蹭掉昂贵的密码路径额度（或反之）。
 
 **多实例部署时换 Redis**。本站单进程不踩该坑。
 
 ### 6.6 文件落盘
+
+图片与音频的 HTTP 上传入口必须把角色配额传给保存内核。写盘和压缩在数据库事务外；
+新行落库与实际用量核验同事务，超额回滚并清理这次新写的文件，防止并发请求共享剩余额度。
+软删除仍按既有规则回收配额，两个存储域独立计量。
 
 | 域 | 路径 | 上传入口 | 读取入口 |
 |----|------|---------|---------|
@@ -396,6 +404,27 @@ GET/HEAD/OPTIONS 视为安全方法，不校验（协议闸不受这条影响，
 | 音频 `[@音频/<ID>]` | 浏览器渲染时替换为内联 `<audio controls>`。**两条管线走法不同**：评论 / 讨论在**净化后**建 DOM（那边白名单里没有 audio）；博客在**源文**上直接拼标签串（那边白名单本来就允许 audio），但必须配 `maskMarkdownCode` —— 否则代码块里会嵌出真播放器。一条正文最多展开 3 个 | `src/lib/audio-refs.ts` 的 `embedAudioRefs`（DOM）/ `collectAudioRefs` + `replaceAudioRefs`（源文）。`音频` 是**保留合集名**（表情那条正则带 `(?!用户/)(?!音频/)` 让开），见 §6.15 |
 | 用户名片 `[@用户/<用户名>]` | 浏览器渲染时替换为一枚**行内名片**（`<a>` 包住「带头像框的头像 + 用户名」，指向 `/u/<id>`）（**仅评论 / 讨论**）。认的是**用户名**而不是 ID，所以多一条异步取数；**不算 @ 提及**，不发通知 | `src/lib/user-refs.ts` 的 `embedUserRefs`（纯逻辑 + DOM 构造），数据由 `src/app/components/useUserCards.ts` 经 `RichTextContext` 注入，取数口是 `GET /api/users/<用户名>`（要 core+）。`用户` 因此是**保留合集名**（表情那条正则带 `(?!用户/)` 让开） |
 | 工具页 cattca-guide | **服务端**渲染 | marked（仅一次，可信文档） |
+
+**内容引用的三道上限**（常量集中在零依赖的 `content-refs.ts`，客户端解析器与服务端
+对外映射共用同一份，别在别处再写一遍数字）：
+
+- **取数** `MAX_REF_FETCHES`（50）：候选**按源文出现顺序**去重后取前 50 个
+  `${type}:${id}`（剪贴板 / 投票 / 收藏夹）。图床与音频只拼 URL、**不占**这个名额
+  （否则图多的文章会把取数名额饿死）；缓存命中也计入（保确定性）。**没进候选的引用
+  连取数请求都不发**；已经进候选、只是展开时排不上号的，请求**可能已经发出去了** ——
+  这两件事不要混为一谈。
+- **并发** `MAX_REF_CONCURRENCY`（4）：`ContentRefResolver` 的**实例级**闸门（含共享
+  预览 resolver 的多轮渲染）。只有真会发 HTTP 的才排队 —— 图床与对外视图不发请求、
+  不占名额。「刷新」后排队未发的陈旧请求不再发出，但仍正常 settle（不挂死）。
+- **总量** `MAX_REF_EXPAND_CHARS`（500000）：整篇展开后的 Markdown 总长度。按出现
+  顺序**整块**接受，装不下的那条保留原 token —— 不截断正文、不切 HTML。
+
+替换是单趟切片，所以**剪贴板引用不会递归**：剪贴板正文里再写的 `[@8位]` 保持字面量，
+自引用 / 双向引用都只展开一层。⚠️ **音频与收藏夹各是合并后单独一趟、跑在已改写的
+正文上**，不在这条之列 —— 从剪贴板带进来的音频引用会照常变成播放器，收藏夹 token
+在原文里也有同一个 ID 时会变成卡片。对外视图的服务端映射（`resolvePublicClipRefs`，
+§7.3）另有一档：条数按 `MAX_REF_FETCHES`、查库并发同样走 `MAX_REF_CONCURRENCY`、
+入映射的正文合计同样封顶 `MAX_REF_EXPAND_CHARS`。
 
 **讨论与评论共用一条管线**（`rich-text.ts`）。两者的威胁模型与防线逐条相同，差别只在
 白名单与链接类名（`chat-msg__link` / `comment-link`），所以管线唯一、参数由调用方注入。
@@ -576,7 +605,7 @@ Promise** —— 拿它当「等到了字体」，MathJax 的公式会用回退�
 
 - 原始 token / code / client_secret **永不落库**：仅存 SHA-256（不可逆）/ scrypt（自带盐）
 - `redirect_uri` 严格精确匹配（无通配 / 前缀 / 子串）
-- 授权码单次使用：Prisma 原子 `update where {codeHash, usedAt: null}`
+- 授权码消费与令牌签发同事务，并实时检查应用启用；解绑同时撤销令牌与未兑换授权码
 - `client_secret` 与 `User.passwordHash` 同款哈希（werkzeug 兼容），与 SECRET_KEY 轮换解耦
 - CSRF 中间件豁免 3 个 server-to-server 端点：`/api/oauth/token` `/userinfo` `/revoke`（鉴权由 client_secret / bearer 承担）
 
@@ -1427,6 +1456,97 @@ MP3 的帧同步要核版本 / 层 / 位速率字段（只判 `0xFF` 打头太�
 没有另开额度 —— 匿名不是绕开限频的通道。
 
 ---
+
+### 6.17 格式转换器（`/tool/convert`，2026-10）
+
+**八个能力区的文件转换，全部在浏览器本地完成** —— 用户文件字节既不上传也不经过服务端。
+这一条是整个子系统的地基，不只是隐私卖点：它意味着这里**没有任何服务端路由、没有数据库
+表、没有限频、没有审计**，也因此没有「服务器替我留一份」的所有风险面。
+
+#### 分层（`src/lib/file-converter/`）
+
+| 层 | 文件 | 职责 |
+|---|---|---|
+| 契约 | `types.ts`（**零 import、零运行时代码**） | `EdgeDef` / `RunContext` / `ConvertResultData` / `ParamSpec` / `CapabilityReport` |
+| 词汇 | `formats.ts` | `FORMATS` 格式表、`LIMITS` 限额、超时、`TEXT_ENCODINGS` |
+| 识别 | `inspect.ts`（node 可测）/ `inspect-client.ts`（浏览器入口） | 按**字节魔数**判种类，不按扩展名猜 |
+| 登记表 | `registry.ts`（零依赖） | 有向图的查询与运行时过滤 |
+| 队列 | `queue.ts` | 串行执行、代次、输出预算 |
+| 执行 | `execute.ts` | 边 → 任务校验 → runner 调用 |
+| 引擎 | `engines/*.ts` | 各自能力区的重实现（ffmpeg / pdf / ocr / …） |
+| 边 | `categories/*.ts` | 八个能力区的 `CategoryDef` |
+
+**契约层零 import 是硬纪律**：它要被 node 环境的单测直接 import，拖进 DOM 库或引擎包
+就废掉「契约可单测」。需要共享的运行时常量一律住 `formats.ts`。
+
+#### 能力登记表 = 有向图（roadmap §12.1）
+
+识别出输入后，**只展示当前真的能做出来的目标**。每条边自带四个判据：
+
+- `from` + `match(info)`：这条边接哪些输入（`match` 做内容级判据，如「静态图边拒绝
+  动画标记」——roadmap §3.1 的动画闸）；
+- `requires`：运行时能力（`worker` / `webp-encode` / `avif-decode` /
+  `ffmpeg-enc:libmp3lame` …），不满足的边**不进菜单**；
+- `status`：`live`（可执行）/ `gated`（代码在但当前环境不满足）/ `planned`
+  （**只登记、不实现 run**，如 `office:docx-to-pdf` 需要服务端 LibreOffice）；
+- `estimateOutput`：预算预检（见下）。
+
+⚠️ **`planned` 的边不许有 `run`**、`live` 的边不许缺 `run` —— `registryProblems()`
+静态校验，单测拿 `CATEGORIES` 整体跑一遍（`[]` 才算过）。
+
+⚠️ **ffmpeg 系依赖在核心未加载时按「可满足」处理**（`edgeAvailable`）。若按字面判，
+菜单要等 31MB 核心下载完才出现 —— 那是「先下载再决定能干什么」。核心**加载失败**时
+才把对应目标标为不可用并说明原因。
+
+#### 队列纪律（`queue.ts`）
+
+- **串行**：转换是重计算，同时跑只会一起变慢。最多一个任务在跑。
+- **代次 `gen`**：重试 +1。异步回调必须校验 `id + gen`，旧代次的结果**不得覆盖**新的。
+  缺它的话「取消 → 立刻重试」会被上一轮的迟到 resolve 覆盖成旧结果。
+- ⚠️ **`cancel()` 必须先判 `activeId === id`，再判 `status === 'queued'`**：执行体还没
+  调 `onPhase` 时任务 status 仍是 `queued`，但它其实已经在跑。顺序反了 = 不 abort，
+  ffmpeg 之类会在后台把整个转码跑完，界面却显示「已取消」。
+- **输出预算**：单输出 64MiB、合计 64MiB。合计到顶时队列**暂停**，用户释放结果后自动继续。
+- **任务上限** 10 个、**持入输入** 100MiB。
+
+#### 限额（`formats.ts` 的 `LIMITS`，页面提示与校验读同一份）
+
+图片 20MiB / 1600 万像素；音频 20MiB / 5 分钟 / 双声道 / 48kHz；视频 100MiB / 2 分钟 /
+1920×1080；文档 50MiB / 300 页；表格 20MiB / 20 万行；文本 10MiB；电子书 50MiB；
+压缩包 100MiB / 2000 成员 / 解压后 500MiB / 深度 10 / 压缩比 100。
+
+**这些是起始实验条件，不是已测得的安全上限** —— 下调安全，上调要补测量记录。
+
+#### 引擎资产（`scripts/copy-converter-assets.mjs`）
+
+约 65MB 的 wasm / worker / 语言包从 npm 包拷进 `public/static/converter/`
+（**不入库**，`postinstall` 与 `build` 都会跑，见 `docs/deploy.md` §5）。
+**重引擎一律在 runner 体内 `await import(...)` 动态引入** —— 静态 import 会把它们
+卷进每个页面的主包。前端只从**同源** `/static/converter/` 取资产，不做任何外部请求。
+
+#### 诚实说明（roadmap §15）
+
+每次转换的结果区**逐条列出保留与损失**（有损重编码、透明压平、元数据不保留、动画丢失、
+公式只求值、文字层被栅格化……）。这不是可选装饰：`ConvertResultData.notices` 是契约的
+必填字段，边作者写不出「这次丢了什么」就等于没写完。
+
+#### 几个静默错（都不报错）
+
+- **串输出必须展开**：`video:to-frames` / `image:anim-to-frames` 传的是**模式**
+  （`frame-%04d.png`），而 exec 是按字面名回读的 —— 不展开就永远拿到空 Map，
+  症状是「退出码 0，结果区空着」。展开在 `ffmpeg.ts` 的 `expandSeqPattern`
+  （纯函数，单测钉住宽度是硬判据）。
+- **取消时引擎被整体杀掉**：0.12 的 ffmpeg 没有「只中断当前命令」的接口，
+  abort / 超时的唯一杀法是 `terminate()` 整个 worker，已加载的核心随之销毁 ——
+  下一次要重新加载。这是引擎协议决定的代价，调用方别指望「取消很便宜」。
+- **引擎读出的字节要收窄成 `Uint8Array<ArrayBuffer>`**：TS 5.7 起 `Uint8Array` =
+  `Uint8Array<ArrayBufferLike>`，`new Blob([bytes])` 会报类型错。收窄点在各引擎的
+  `takeOutput`。
+- **压缩包安全闸**（roadmap §11.2）：成员数 / 解压总量 / 嵌套深度 / 压缩比四项上限，
+  加路径净化（拒绝绝对路径、`..`、盘符、反斜杠混用、NUL）。**解压出来的名字不得直接
+  当路径用** —— 这是 zip-slip，防的是「解压到任意目录」。
+
+玩家向说明见 `docs/guide/格式转换器使用指南.md`。
 
 ## 7. 数据流（4 个典型路径）
 

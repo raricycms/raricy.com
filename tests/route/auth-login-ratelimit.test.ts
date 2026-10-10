@@ -9,8 +9,10 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { resetDb, makeUser } from '../helpers/db';
-import { __resetRateLimitStore, RULES } from '@/lib/rate-limit';
+import { __resetRateLimitStore, RULES, recordRateLimitHit, isRateLimited } from '@/lib/rate-limit';
 import { hashPassword } from '@/lib/password';
+import * as passwordWork from '@/lib/password';
+import { verifyCredentials } from '@/lib/credential-auth';
 
 // 成功登录会调 cookies() —— 单测里没有请求上下文，mock 掉（本文件只关心配额）。
 vi.mock('next/headers', () => ({ cookies: async () => ({ set: () => {} }) }));
@@ -32,6 +34,26 @@ beforeEach(async () => {
 });
 
 describe('登录限频', () => {
+  it('失败预算仅剩一个名额时，8 个并发请求只执行一次密码计算', async () => {
+    await makeUser({ username: 'victim', passwordHash: await hashPassword('correct-horse') });
+    for (let i = 0; i < RULES.loginPerUser.limit - 1; i++) recordRateLimitHit('login:user:victim');
+    const spy = vi.spyOn(passwordWork, 'verifyPassword');
+    try {
+      const results = await Promise.all(Array.from({ length: 8 }, () => verifyCredentials('victim', 'wrong')));
+      expect(results.filter((r) => !r.ok && r.status === 401)).toHaveLength(1);
+      expect(results.filter((r) => !r.ok && r.status === 429)).toHaveLength(7);
+      expect(spy).toHaveBeenCalledOnce();
+    } finally { spy.mockRestore(); }
+  });
+
+  it('成功尝试释放预留的失败额度，不把最后一个名额泄漏', async () => {
+    await makeUser({ username: 'victim', passwordHash: await hashPassword('correct-horse') });
+    for (let i = 0; i < RULES.loginPerUser.limit - 1; i++) recordRateLimitHit('login:user:victim');
+    expect((await verifyCredentials('victim', 'correct-horse')).ok).toBe(true);
+    expect(isRateLimited('login:user:victim', RULES.loginPerUser)).toBe(false);
+    expect(await verifyCredentials('victim', 'wrong')).toMatchObject({ status: 401 });
+    expect(await verifyCredentials('victim', 'wrong')).toMatchObject({ status: 429 });
+  });
   it('同一用户名连续失败达上限后返回 429', async () => {
     const limit = RULES.loginPerUser.limit;
     for (let i = 0; i < limit; i++) {
@@ -52,7 +74,7 @@ describe('登录限频', () => {
 
   it('同一 IP 扫一批账号，达到 IP 上限后返回 429', async () => {
     const limit = RULES.loginPerIp.limit;
-    const ip = { 'x-forwarded-for': '203.0.113.7' };
+    const ip = { 'x-real-ip': '203.0.113.7' };
     for (let i = 0; i < limit; i++) {
       const res = await login(req({ username: `victim${i}`, password: 'wrong' }, ip));
       expect(res.status, `第 ${i + 1} 次应为 401`).toBe(401);
@@ -64,51 +86,63 @@ describe('登录限频', () => {
     const limit = RULES.loginPerIp.limit;
     for (let i = 0; i < limit; i++) {
       await login(
-        req({ username: `victim${i}`, password: 'wrong' }, { 'x-forwarded-for': '203.0.113.7' })
+        req({ username: `victim${i}`, password: 'wrong' }, { 'x-real-ip': '203.0.113.7' })
       );
     }
     expect(
-      (await login(req({ username: 'x', password: 'wrong' }, { 'x-forwarded-for': '203.0.113.7' })))
+      (await login(req({ username: 'x', password: 'wrong' }, { 'x-real-ip': '203.0.113.7' })))
         .status
     ).toBe(429);
     // 新 IP + 新用户名 → 未超限，回到凭据校验
     expect(
-      (await login(req({ username: 'y', password: 'wrong' }, { 'x-forwarded-for': '198.51.100.9' })))
+      (await login(req({ username: 'y', password: 'wrong' }, { 'x-real-ip': '198.51.100.9' })))
         .status
     ).toBe(401);
   });
 
-  it('cf-connecting-ip 优先于 x-forwarded-for', async () => {
+  it('换 CF/XFF 伪造头不能绕过 nginx 提供的真实 IP 失败预算', async () => {
     const limit = RULES.loginPerIp.limit;
-    const h = { 'cf-connecting-ip': '198.51.100.9', 'x-forwarded-for': '10.0.0.1' };
+    const h = { 'x-real-ip': '198.51.100.9', 'cf-connecting-ip': '1.1.1.1', 'x-forwarded-for': '10.0.0.1' };
     for (let i = 0; i < limit; i++) {
       await login(req({ username: `victim${i}`, password: 'wrong' }, h));
     }
     expect((await login(req({ username: 'z', password: 'wrong' }, h))).status).toBe(429);
-    // 同一 x-forwarded-for、不同 cf-connecting-ip → 新桶
+    // 伪造头改变，但可信入口 IP 未变 → 仍在旧桶
     expect(
       (
         await login(
           req(
             { username: 'w', password: 'wrong' },
-            { 'cf-connecting-ip': '198.51.100.10', 'x-forwarded-for': '10.0.0.1' }
+            { 'x-real-ip': '198.51.100.9', 'cf-connecting-ip': '198.51.100.10', 'x-forwarded-for': '198.51.100.11' }
           )
         )
       ).status
-    ).toBe(401);
+    ).toBe(429);
   });
 
-  // 每次成功登录都要跑一遍 scrypt，100+ 次会超过默认 5s 超时 —— 显式放宽。
-  it('成功登录不消耗配额（否则正常用户会被自己的成功记录挡住）', { timeout: 120_000 }, async () => {
+  it('成功登录不消耗失败预算，但受独立计算预算保护', async () => {
     const username = 'gooduser';
     await makeUser({ username, passwordHash: await hashPassword('correct-horse') });
-    const ip = { 'x-forwarded-for': '203.0.113.55' };
+    const ip = { 'x-real-ip': '203.0.113.55' };
 
-    // 连续成功登录，次数超过 per-user 上限 —— 必须次次 200
-    for (let i = 0; i < RULES.loginPerUser.limit + 5; i++) {
+    for (let i = 0; i < 5; i++) {
       const res = await login(req({ username, password: 'correct-horse' }, ip));
       expect(res.status, `第 ${i + 1} 次成功登录不应被限频`).toBe(200);
     }
+    expect(isRateLimited(`login:user:${username}`, RULES.loginPerUser)).toBe(false);
+  });
+
+  it('正确密码超过 20 次/分钟也在计算前返回 429，用户名和邮箱共享用户 ID 桶', async () => {
+    const user = await makeUser({ username: 'gooduser', passwordHash: await hashPassword('correct-horse') });
+    const spy = vi.spyOn(passwordWork, 'verifyPassword');
+    try {
+      for (let i = 0; i < RULES.passwordPerUser.limit; i++) {
+        expect((await verifyCredentials(i % 2 ? user.email : user.username, 'correct-horse')).ok).toBe(true);
+      }
+      expect(await verifyCredentials(user.username, 'correct-horse')).toMatchObject({ status: 429 });
+      expect(spy).toHaveBeenCalledTimes(RULES.passwordPerUser.limit);
+      expect(isRateLimited(`login:user:${user.username}`, RULES.loginPerUser)).toBe(false);
+    } finally { spy.mockRestore(); }
   });
 
   it('空用户名/密码仍返回 400，且不占用限频配额', async () => {

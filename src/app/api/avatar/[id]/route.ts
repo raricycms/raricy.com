@@ -13,6 +13,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   return new Response(new Uint8Array(buffer), {
     headers: {
       'Content-Type': contentType,
+      'X-Content-Type-Options': 'nosniff',
       'Cache-Control': 'public, max-age=86400',
     },
   });

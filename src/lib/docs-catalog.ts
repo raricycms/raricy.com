@@ -137,6 +137,18 @@ export const DOC_ENTRIES: readonly DocEntry[] = [
     title: '故事模块',
     summary: '故事区的文件结构、合集嵌套与 URL。',
   },
+  {
+    group: 'guide',
+    slug: 'guide/编辑器使用指南',
+    title: '编辑器使用指南',
+    summary: '手机上的工具条与「更多工具」、Enter 与 Shift+Enter 的差别。',
+  },
+  {
+    group: 'guide',
+    slug: 'guide/格式转换器使用指南',
+    title: '格式转换器使用指南',
+    summary: '八个能力区的本地转换（文件不出浏览器）、用途预设、损失说明与各档限额。',
+  },
 
   // ── 给机器人开发者 ────────────────────────────────────────────────────────
   {
@@ -272,6 +284,18 @@ export const DOC_ENTRIES: readonly DocEntry[] = [
     slug: 'editor-plan',
     title: '编辑器换代方案（Vditor → CodeMirror 6）',
     summary: 'CM6 原文编辑、同源完整预览、资源集成与分期验收（M0–M2 已实施；M3 未实施，M4 只交付了导出）。',
+  },
+  {
+    group: 'dev',
+    slug: 'format-converter-plan',
+    title: '格式转换器实施计划',
+    summary: '首版的本地转换、引擎验证、资源限制、分期与验收（2026-10-09 已实施，见 §12.2）。',
+  },
+  {
+    group: 'dev',
+    slug: 'format-converter-roadmap',
+    title: '格式转换器长期规划（能力版图与转换路线）',
+    summary: '八类文件的长期能力、转换方向与引擎、保真边界和建设阶段（路线图，不是支持清单）。',
   },
   {
     group: 'dev',

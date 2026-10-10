@@ -2,6 +2,7 @@ import { listUserImages } from '@/lib/image-service';
 import { getCurrentUser, isCurrentlyBanned, isCoreUser } from '@/lib/auth';
 import { apiOk, apiErr } from '@/lib/format';
 import { rateLimit, RULES } from '@/lib/rate-limit';
+import { UploadQuotaError } from '@/lib/upload-quota';
 import {
   ALLOWED_MIMETYPES,
   MAX_IMAGE_SIZE,
@@ -167,11 +168,13 @@ export async function POST(req: Request) {
         mimeType,
         filename: file.name,
         compress,
+        quotaBytes: limitBytes,
       });
       used += saved.fileSize;
       items.push({ filename, id: saved.id, url: `/api/images/${saved.id}/raw` });
-    } catch {
-      failed.push({ filename, message: '图片保存失败，请重试' });
+    } catch (error) {
+      failed.push({ filename, message: error instanceof UploadQuotaError
+        ? `存储空间不足，你的配额为 ${limitMb} MB` : '图片保存失败，请重试' });
     }
   }
 

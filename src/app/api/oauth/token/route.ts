@@ -1,8 +1,8 @@
-import { rateLimit } from '@/lib/rate-limit';
+import { allowPasswordAttempt } from '@/lib/password-budget';
+import { clientIp } from '@/lib/request-ip';
 import {
   authenticateClient,
-  consumeAuthorizationCode,
-  createAccessToken,
+  exchangeAuthorizationCode,
   oauthErr,
   parseRedirectUris,
   scopesToString,
@@ -15,7 +15,7 @@ import {
 //
 // 关键安全约束：
 //   • redirect_uri 必须与授权时**完全一致**（防 code 截获重定向）。
-//   • consumeAuthorizationCode 内部用原子 update 保证恰好一次成功。
+//   • 授权码消费与令牌落库同事务，保证单次兑换与撤权完整性。
 //   • CSRF 中间件已豁免本路径（外部服务端主机不在 ALLOWED_ORIGINS）。
 //   • 每 clientId 每分钟 60 次密码校验，成功/失败都计数，超额不运行 scrypt。
 
@@ -31,10 +31,16 @@ export async function POST(req: Request) {
         body[k] = v;
       });
     } else {
-      body = (await req.json()) as Record<string, string>;
+      const parsed = await req.json();
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return oauthErr('invalid_request', '请求体格式错误');
+      body = parsed;
     }
   } catch {
     return oauthErr('invalid_request', '请求体解析失败');
+  }
+
+  for (const field of ['client_id', 'client_secret', 'grant_type', 'code', 'redirect_uri']) {
+    if (body[field] !== undefined && typeof body[field] !== 'string') return oauthErr('invalid_request', `${field} 必须是字符串`);
   }
 
   // 2. 客户端鉴权（HTTP Basic 优先）
@@ -44,10 +50,10 @@ export async function POST(req: Request) {
     body.client_secret ?? null,
     // 配额仍由网络入口定义；鉴权内核在解析 Basic/body 的真实 clientId 后、
     // 密码计算前调用，避免按 body 建桶却拿 Basic 凭据执行校验。
-    (clientId) => rateLimit(`oauth:token:${clientId}`, {
+    (clientId) => allowPasswordAttempt(`oauth:${clientId}`, clientIp(req), {
       limit: 60,
       windowMs: 60 * 1000,
-    }).allowed
+    })
   );
   if (!authRes.ok) {
     if (authRes.reason === 'rate_limited') {
@@ -81,30 +87,27 @@ export async function POST(req: Request) {
     return oauthErr('invalid_grant', 'redirect_uri 未注册');
   }
 
-  // 6. 单次消费 code
-  const consume = await consumeAuthorizationCode(code, app.id, redirectUri);
-  if (!consume.ok) {
+  // 6. 原子兑换：不能在消费授权码与签发令牌之间插入解绑/停用。
+  const minted = await exchangeAuthorizationCode(code, app.id, redirectUri);
+  if (!minted.ok) {
     const msg =
-      consume.error === 'already_used'
+      minted.error === 'already_used'
         ? '授权码已被使用'
-        : consume.error === 'expired'
+        : minted.error === 'expired'
           ? '授权码已过期'
-          : consume.error === 'redirect_mismatch'
+          : minted.error === 'redirect_mismatch'
             ? 'redirect_uri 与授权时不匹配'
             : '授权码无效';
     return oauthErr('invalid_grant', msg);
   }
 
-  // 7. 签发 access_token
-  const minted = await createAccessToken(app.id, consume.userId, consume.scopes);
-
-  // 8. 响应（RFC 6749 §5.1）
+  // 7. 响应（RFC 6749 §5.1）
   return Response.json(
     {
       access_token: minted.token,
       token_type: 'Bearer',
       expires_in: minted.expiresIn,
-      scope: scopesToString(consume.scopes),
+      scope: scopesToString(minted.scopes),
     },
     {
       headers: {

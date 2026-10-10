@@ -32,7 +32,7 @@ Next.js 15 + Prisma + SQLite 单进程部署，自有 `instance/` 数据目录�
 | `tests/`       | vitest 单测 + Playwright e2e |
 | `docs/`        | 全部文档 —— `docs/guide/` 给玩家与创作者、`docs/bot/` 给站外机器人开发者，其余给开发运维。见 `docs/README.md` |
 | `instance/`    | 运行时数据（gitignored）：avatars / database / frames / images / stories / stickers / blogs |
-| `public/`      | 静态资源（图标 / CSS / favicon） |
+| `public/`      | 静态资源（图标 / CSS / favicon）；`static/{mathjax,emoji,converter}/` 是**生成的**（`npm ci` 的 postinstall 拷，见下方「工具脚本」） |
 
 ## 快速开始
 
@@ -62,6 +62,7 @@ npm run dev                              # http://localhost:3000
 | `npm run cli` | 运维台。**不带参数进菜单向导**（引导式，不用背命令）；`npm run cli -- <命令>` 是命令式。覆盖角色 / 用户 / 内容检索与恢复 / 鱼干 / 邀请码 / 审计 / 申诉 / 概览 |
 | `npm run prepare:cutover` | 切换期一次性：备份 → 规整 → diagnose |
 | `npm run instance:check` | 创建 instance/ 子目录 |
+| `npm run prepare:converter` | 生成格式转换器（`/tool/convert`）的引擎资产到 `public/static/converter/`（约 65MB，不入库；postinstall 与 build 都会跑）。`converter:check` 只核对齐不齐 |
 
 > ⚠️ `npm run e2e` 跑的是 `.next` 里的**现有构建产物**（`next start`）。改了 `src/`
 > 却没重新 build 的话，测的是旧代码 —— 症状很隐蔽：刚加的日志/探针一行都不打、
