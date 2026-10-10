@@ -3,6 +3,10 @@ import path from 'node:path';
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // 生产构建只检查应用与路由类型；完整开发检查仍使用 tsconfig.json。
+  typescript: {
+    tsconfigPath: process.env.NODE_ENV === 'production' ? 'tsconfig.build.json' : 'tsconfig.json',
+  },
   experimental: {
     // 自定义 webpack 回调会关闭默认的编译 worker，显式启用以隔离编译内存。
     webpackBuildWorker: true,
