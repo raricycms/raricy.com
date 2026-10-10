@@ -144,6 +144,15 @@ a {
     }
 }
 
+/* 触屏下把搜索框字号抬到 16px：iOS Safari 聚焦 < 16px 的输入框会**强制放大整页**
+   （同 components/_form-controls.scss 与 _composer.scss 那两条）。窄的桌面窗口不触发
+   —— 判据是触屏（pointer/hover）而不是宽度。**改这条就是改全站四个搜索框**。 */
+@media (hover: none) and (pointer: coarse) {
+    .search-input {
+        font-size: 1rem;
+    }
+}
+
 /* 搜索按钮：外观与交互对齐「创建」按钮（.upload-button）—— 常态品牌色浅底 + 品牌色字，
    hover 反转成实底白字，active 整体压暗。
    位置改为**嵌在输入框内部最右侧**：top/bottom 各留 4px，故高度比输入框矮 8px；

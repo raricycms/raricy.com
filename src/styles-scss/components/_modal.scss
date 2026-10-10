@@ -19,7 +19,14 @@
   background: rgba(0, 0, 0, 0.5);
   z-index: 1050;
   overflow-y: auto;
-  padding: 1rem 0;
+}
+
+/* 两套固定遮罩共用安全区留白：.modal-overlay 也用于讨论、资源选择和后台表单。
+   它们不受 main 的内距保护；上下保留 1rem 滚动边距，左右再由 dialog 留出 1rem。 */
+.modal,
+.modal-overlay {
+  padding: calc(1rem + var(--safe-top)) var(--safe-right) calc(1rem + var(--safe-bottom))
+    var(--safe-left);
 }
 
 .modal.is-open { display: flex; }
@@ -87,5 +94,4 @@
 .list-group .list-group-item:last-child { border-bottom: none; }
 .list-group-item-action { cursor: pointer; }
 .list-group-item-action:hover { background: var(--color-background-subtle); }
-
 

@@ -1,0 +1,12 @@
+{
+  "generator": "scripts/make-pwa-icons.mjs",
+  "generatorSha256": "782ff1879d2ed1ef063b1353ec1df6d350d41a09940a56ca38f23ef0081d9909",
+  "source": "public/static/img/favicon.png",
+  "files": {
+    "apple-touch-icon.png": "c59373af962446a5548a8cc66046ef8ad74fcc31cefd0195e5c1927beb34e2df",
+    "icon-192.png": "0e8ba5b1481ed9f297b6b51e14cbe48441168f30ef509992e3c82119dc2191a0",
+    "icon-512.png": "d9bf275848226ea66e317944758a7cb979540ca958390fd751b8c10e23d23594",
+    "icon-maskable-192.png": "b32a4994e868f7ec5c0628de1771d6eecd4efc7b79129c531c8ef42eb1698641",
+    "icon-maskable-512.png": "2ce1133db78126167dc2fb506f272b09300754db2a6e6ceb59507bbd5059f35f"
+  }
+}

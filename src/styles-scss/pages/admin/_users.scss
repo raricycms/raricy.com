@@ -144,7 +144,7 @@
   align-items: center;
   justify-content: center;
   overflow-y: auto;
-  padding: 1rem 0;
+  // 安全区与滚动边距统一由 components/_modal.scss 的共享规则给出。
 
   &.show {
     display: flex;

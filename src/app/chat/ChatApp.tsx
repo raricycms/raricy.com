@@ -37,6 +37,7 @@ import RichComposer, { type ComposerBlogQuote } from '../components/RichComposer
 import { usePendingImage } from '../components/usePendingImage';
 import { insertAtCaret } from '../components/textarea-insert';
 import ChatSearchModal, { SearchButton } from './ChatSearchModal';
+import { useChatViewport } from './useChatViewport';
 
 declare global {
   interface Window {
@@ -296,6 +297,12 @@ export default function ChatApp({
   const viewTokenRef = useRef(0);
   const listRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  /**
+   * 整屏工作台根元素（.chat-page）。仅用于软键盘让位：`useChatViewport` 会把可视区
+   * 下沿写进它的 `--chat-vv-bottom`（见 useChatViewport.ts）。不参与任何其它逻辑。
+   */
+  const pageRef = useRef<HTMLDivElement>(null);
+  useChatViewport(pageRef);
 
   const activeChannel = useMemo(
     () => channels.find((c) => c.id === activeId) ?? null,
@@ -1533,7 +1540,10 @@ export default function ChatApp({
   );
 
   return (
-    <div className={`chat-page${sidebarCollapsed ? ' chat-page--collapsed' : ''}${drawerOpen ? ' chat-page--drawer-open' : ''}`}>
+    <div
+      ref={pageRef}
+      className={`chat-page${sidebarCollapsed ? ' chat-page--collapsed' : ''}${drawerOpen ? ' chat-page--drawer-open' : ''}`}
+    >
       <ChatSidebar
         channels={channels}
         activeId={activeId}

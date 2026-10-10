@@ -170,3 +170,19 @@ select.form-control {
   line-height: 1.5;
   color: var(--color-text-secondary);
 }
+
+/* ── 触屏字段字号（iOS 防「聚焦缩放」）──────────────────────────────────────────
+   移动端 Safari 在聚焦 font-size < 16px 的输入框时会**强制把整页放大**，失焦后才
+   缩回 —— 用户看到的是「点一下搜索框，页面猛地跳一下再回来」。把字段字号抬到 16px
+   以上即可消除，且不必禁用用户缩放（那条是底线，见布局里的 viewport）。
+
+   判据用 pointer/hover 而不是宽度：**宽的 iPad 同样是触屏**、也会缩放，而窄的桌面
+   窗口没有触屏、不该被改动 —— 「桌面值不变」这条正是靠它成立。只抬字号、不动内距：
+   框高会随字号略增，这是这一处必要的代价，别顺手把 padding 也一起改。 */
+@media (hover: none) and (pointer: coarse) {
+  .form-control,
+  .form-control-sm,
+  .form-select {
+    font-size: 1rem;
+  }
+}
