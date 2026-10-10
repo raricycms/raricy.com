@@ -362,6 +362,11 @@ npm run build
 **不要跳过它直接 `next build`**——否则 `node_modules/.prisma/client` 还是上次生成的旧类型，
 schema 新增字段（如 `focusMode`）会报 `Property 'x' does not exist on type 'SafeUser'`。
 
+生产构建使用 `tsconfig.build.json`：继承现有严格检查选项，检查全部 `src/`、
+`next-env.d.ts` 与 `.next/types/` 中的路由类型。测试、运维脚本与测试框架配置
+由原有 `tsconfig.json` 覆盖，在开发机器上用 `npx tsc --noEmit --project tsconfig.json`
+做完整检查。这样避免在部署时把测试代码也加载进类型检查进程，降低构建内存需求。
+
 预期：`✓ Generated Prisma Client` + `✓ Compiled successfully` + 70+ 页全列。
 
 ### 启动
