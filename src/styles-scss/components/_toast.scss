@@ -8,8 +8,11 @@
   pointer-events: none;
 }
 .toast-container--tr { /* top-right */
-  top: 12px;
-  right: 12px;
+  /* 安全区：顶部避开刘海、右侧避开横屏刘海（竖屏与桌面皆为 0）。
+     顶栏是固定浮层、不在文档流里，toast 用的是**视口坐标**，故这里直接加 env 值即可，
+     与 body 的 padding-top 无关、不会重复让位。 */
+  top: calc(12px + var(--safe-top));
+  right: calc(12px + var(--safe-right));
 }
 
 .toast {

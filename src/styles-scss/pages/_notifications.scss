@@ -2,7 +2,6 @@
 @use '../abstracts/mixins' as m;
 
 body {
-    padding-top: 62px;
     background: var(--color-background-page);
     font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
     color: var(--color-text-primary);

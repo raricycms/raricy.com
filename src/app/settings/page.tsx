@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import OAuthConnectionsList from './OAuthConnectionsList';
 import FramePanel from './FramePanel';
+import AddToHomeScreenGuide from '../components/AddToHomeScreenGuide';
 
 interface ProfileState {
   /** 自己的 id：装备面板要拿它把框预览叠在**本人头像**上。 */
@@ -454,6 +455,9 @@ export default function SettingsPage() {
           管理鱼干接口凭据
         </Link>
       </div>
+
+      {/* ====== Section 6: 添加到主屏幕（独立窗口下整张卡片自隐） ====== */}
+      <AddToHomeScreenGuide />
     </div>
   );
 }

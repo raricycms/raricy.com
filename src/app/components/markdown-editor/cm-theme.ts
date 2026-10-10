@@ -56,6 +56,16 @@ export const editorTheme = EditorView.theme({
   '.cm-matchingBracket, .cm-nonmatchingBracket': {
     backgroundColor: 'var(--color-background-content)',
   },
+  // 触屏下把 contenteditable 的字号抬到 16px：iOS Safari 聚焦 < 16px 的可编辑区会
+  // **强制放大整页**（同 components/_form-controls.scss / _composer.scss 那条）。
+  // CM 的可编辑元素是 `.cm-content`，它的字号只从 `&`（根）继承 —— 所以在这里显式给。
+  //
+  // ⚠️ 别把 `&` 包进 @media：buildTheme 的 finish 只对**非 `@` 选择器**做主题类前缀，
+  //    媒体查询里的 `&` 会被当成选择器替换掉，生成一条**没有选择器**的规则（静默失效、
+  //    什么都不报）。写真正的类选择器，finish 才会把它前缀成 `.ͼx .cm-content`。
+  '@media (hover: none) and (pointer: coarse)': {
+    '.cm-content': { fontSize: '1rem' },
+  },
 });
 
 /**

@@ -18,6 +18,7 @@ import { ArrowLeft, Eye, Fish, Heart, Pencil, Settings, Trash2 } from 'lucide-re
 // 它拖着 prisma，进不了客户端包。BlogForm 同款。
 import { BLOG_VISIBILITIES, VISIBILITY_LABEL } from '@/lib/blog-visibility';
 import type { BlogVisibility } from '@/lib/blog-visibility';
+import { decideBackTarget } from '@/lib/navigation-back';
 import FavoriteButton from './FavoriteButton';
 
 const FEED_CAP = 5;
@@ -362,6 +363,15 @@ export default function FeedButton({
     }
   }
 
+  // 「返回上页」：历史记录多于一条时沿用 back()，只有当前页时就
+  // 落回一个确定存在的站内列表页 —— 否则 history.back() 是**静默空操作**、按钮成死键。
+  // 判据与「为什么不用 document.referrer」见 src/lib/navigation-back.ts。
+  function handleBack() {
+    const target = decideBackTarget({ historyLength: window.history.length, isCore });
+    if (target.kind === 'history-back') window.history.back();
+    else router.push(target.href);
+  }
+
   return (
     <>
       {/* 读者交互区两行按钮：第一行 点赞/投喂，第二行 返回上页/管理文章 */}
@@ -407,7 +417,7 @@ export default function FeedButton({
         </div>
 
         <div className="read-controls__row">
-          <button onClick={() => history.back()} className="read-btn">
+          <button onClick={handleBack} className="read-btn">
             <ArrowLeft aria-hidden="true" /> 返回上页
           </button>
           {canManage && (

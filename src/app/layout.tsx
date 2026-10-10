@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import Script from 'next/script';
 // 全站样式：SCSS 入口，由 Next 自己编译（sassOptions 见 next.config.mjs）。
 // 改 SCSS 直接生效，dev 下走 HMR，不需要任何手工编译步骤。
@@ -17,7 +17,14 @@ import { siteBaseUrl } from '@/lib/site-url';
 export const metadata: Metadata = {
   title: '聪明山',
   description: '我们总将找到答案',
-  icons: { icon: [{ url: '/static/img/favicon.png', type: 'image/png' }] },
+  icons: {
+    icon: [{ url: '/static/img/favicon.png', type: 'image/png' }],
+    // 主屏幕专用图标明确指定背景色，避免系统回填透明区域后外观不一致。
+    apple: [{ url: '/static/img/pwa/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
+  },
+  // 让 iOS 把它当独立 App：capable 给 browser chrome 提示，title 是桌面图标默认名，
+  // statusBarStyle 用 default；页面伸入安全区的部分由全站 SCSS 留白。
+  appleWebApp: { capable: true, title: '聪明山', statusBarStyle: 'default' },
   // 相对 OG 图 URL（`images: [{ url: '/api/og/blog/...' }]`）必须有基准才拼得出绝对地址，
   // 否则分享卡片抓不到图。
   // ⚠️ siteBaseUrl() **永不抛**（解析失败回退正式域名）—— 这一行在模块作用域执行，
@@ -25,12 +32,31 @@ export const metadata: Metadata = {
   metadataBase: new URL(siteBaseUrl()),
 };
 
+// 移动端视口。viewportFit: 'cover' 让页面铺到 iPhone 刘海/圆角下（安全区由 SCSS 的
+// env(safe-area-inset-*) 处理），**不设 maximumScale / userScalable** —— 本站刻意
+// 不禁用缩放。
+//
+// theme-color 由主题脚本创建和维护，避免 React hydration 按原始 content 补出重复声明。
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+};
+
+// 主题色的明暗两支（--color-background-page）。base.js 的 switchTheme 里手抄了同一对值
+// （JS 读不到 CSS 变量）—— **改令牌时两处都要看一眼**，否则首帧与切换后会对不上。
+const LIGHT_THEME_COLOR = '#F8FAFC';
+const DARK_THEME_COLOR = '#131517';
+
 // 防闪烁：CSS 加载前按 localStorage/系统偏好设 data-theme（内联脚本，随 <head> 同步执行）。
 // 顺带给 <html> 打上 .js：给「只有 JS 能接管的状态」一个判别位 —— 例如 /blog 侧栏在
 // ≤992px 下要按折叠渲染（见 _menu.scss 末尾），但那只在 JS 会接管折叠时才成立；
 // 禁用 JS 时目录必须保持展开可点，不能被折叠态误伤。脚本同步执行于 <head>，
 // 早于首帧绘制，故不会自己造成闪烁。
-const noFlashScript = `(function(){document.documentElement.classList.add('js');try{var t=localStorage.getItem('theme');if(t!=='light'&&t!=='dark'){t=(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';}document.documentElement.setAttribute('data-theme',t);}catch(e){}})();`;
+//
+// React 19 按 meta 的 content 匹配 hydration 节点；先改它会让 React 再插一条浅色声明。
+// 这条可变 meta 完全交由 JS 管理，首帧与页面主题一致；禁用 JS 时使用浏览器默认窗口色。
+const noFlashScript = `(function(){document.documentElement.classList.add('js');try{var t=localStorage.getItem('theme');if(t!=='light'&&t!=='dark'){t=(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';}document.documentElement.setAttribute('data-theme',t);var m=document.querySelector('meta[name="theme-color"]');if(!m){m=document.createElement('meta');m.setAttribute('name','theme-color');document.head.appendChild(m);}m.setAttribute('content',t==='dark'?'${DARK_THEME_COLOR}':'${LIGHT_THEME_COLOR}');}catch(e){}})();`;
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
@@ -38,6 +64,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang="zh-CN" suppressHydrationWarning>
       <head>
+        {/* Next 输出标准 mobile-web-app-capable；同时保留旧版 iOS 使用的 Apple 名称。 */}
+        <meta name="apple-mobile-web-app-capable" content="yes" />
         {/* base.js 依赖这些 meta（服务端数据契约） */}
         <meta name="user-authenticated" content={user ? 'true' : 'false'} />
         {user && <meta name="notification-api-url" content="/api/notifications/count" />}
