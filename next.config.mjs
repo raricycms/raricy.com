@@ -4,6 +4,8 @@ import path from 'node:path';
 const nextConfig = {
   reactStrictMode: true,
   experimental: {
+    // 自定义 webpack 回调会关闭默认的编译 worker，显式启用以隔离编译内存。
+    webpackBuildWorker: true,
     // 启用 forbidden()/unauthorized() —— 让受控页在原地渲染 403 页
     authInterrupts: true,
     // 请求体缓冲上限（默认 10MB）：有中间件时 Next 会把整个 body 缓冲进内存，
