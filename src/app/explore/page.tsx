@@ -271,14 +271,14 @@ async function ExploreListSection({
             <p className="blog-description">{b.description}</p>
             <div className="menu-blog-meta">
               <div className="blog-author">
-                {/* 头像 + 昵称，但**不是链接** —— 第 2 期刻意不做作者页对外。
-                    与详情页一致（那里作者名也是纯文本）。 */}
-                <Avatar
-                  userId={b.authorId}
-                  frameUrl={b.author?.frameUrl}
-                  alt={b.author?.username ?? ''}
-                />
-                <span>{b.author?.username}</span>
+                <Link href={`/u/${b.authorId}`} className="blog-author-link" title={b.author?.username ?? ''}>
+                  <Avatar
+                    userId={b.authorId}
+                    frameUrl={b.author?.frameUrl}
+                    alt={b.author?.username ?? ''}
+                  />
+                  <span>{b.author?.username}</span>
+                </Link>
                 {b.category && (
                   <span className="blog-category-tag">{categoryFullPath(b.category)}</span>
                 )}

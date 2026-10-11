@@ -1,9 +1,9 @@
-// 时间是文章的次要信息：沿用主题色，以标签和等宽数字区分层次。
+// 列表只露日期；详情的原生折叠面板让鼠标、键盘与触屏都能查看完整时间。
 .blog-timestamps {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px 16px;
+  gap: 4px 10px;
   min-width: 0;
   color: var(--color-text-secondary);
   font-size: 0.75rem;
@@ -20,18 +20,99 @@
     font-weight: 400;
   }
 
+  &__item--secondary {
+    &::before {
+      content: '·';
+      margin-right: 2px;
+    }
+  }
+
   time {
     font-variant-numeric: tabular-nums;
   }
 
   &--detail {
-    justify-content: center;
-    gap: 8px 24px;
+    max-width: 100%;
     font-size: 0.8125rem;
 
-    time {
+    .blog-timestamps__item--primary time {
       color: var(--color-text-primary);
       font-weight: 500;
     }
+  }
+
+  &__details {
+    position: relative;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  &__summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 10px;
+    min-height: 44px;
+    padding: 8px 0;
+    list-style: none;
+    cursor: pointer;
+    border-radius: 5px;
+
+    &::-webkit-details-marker {
+      display: none;
+    }
+
+    &:hover {
+      color: var(--color-brand-primary);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--color-brand-primary);
+      outline-offset: 4px;
+    }
+  }
+
+  &__chevron {
+    flex: none;
+    width: 6px;
+    height: 6px;
+    margin: -3px 3px 0 2px;
+    border-right: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    transform: rotate(45deg);
+  }
+
+  &__details[open] &__chevron {
+    transform: rotate(225deg);
+    margin-top: 3px;
+  }
+
+  &__panel {
+    position: absolute;
+    z-index: 5;
+    top: calc(100% + 8px);
+    left: 0;
+    display: grid;
+    gap: 10px;
+    width: max-content;
+    max-width: calc(100vw - 32px);
+    padding: 16px 20px;
+    background: var(--color-background-card);
+    border-radius: 16px;
+    box-shadow: var(--shadow-card-brand);
+
+    .blog-timestamps__item {
+      gap: 16px;
+      justify-content: space-between;
+    }
+
+    time {
+      color: var(--color-text-primary);
+    }
+  }
+
+  &__zone {
+    margin: 0 0 2px;
+    font-size: 0.75rem;
   }
 }

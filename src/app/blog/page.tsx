@@ -193,7 +193,7 @@ export default async function BlogListPage({
               <SearchRateLimited />
             ) : (
               <Suspense fallback={<BlogListSkeleton />}>
-                <BlogListSection result={result} qs={qs} />
+                <BlogListSection result={result} qs={qs} sort={effectiveSort} />
               </Suspense>
             )}
           </main>
@@ -213,9 +213,11 @@ export default async function BlogListPage({
 async function BlogListSection({
   result: pending,
   qs,
+  sort,
 }: {
   result: ReturnType<typeof listBlogs>;
   qs: (page: number) => string;
+  sort: 'created' | 'updated';
 }) {
   const result = await pending;
 
@@ -301,7 +303,7 @@ async function BlogListSection({
                     </span>
                   )}
                 </div>
-                <BlogTimestamps createdAt={b.createdAt} updatedAt={b.content?.updatedAt} />
+                <BlogTimestamps createdAt={b.createdAt} updatedAt={b.content?.updatedAt} sort={sort} />
               </div>
             </article>
           ))}

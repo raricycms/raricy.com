@@ -194,14 +194,15 @@ export default async function BlogDetailPage({ params }: { params: Promise<{ id:
       <header className="read-hero">
         <h1>{blog.title}</h1>
         <div className="blog-meta" id="blog-meta">
-          <span className="blog-author">
+          <Link href={`/u/${blog.authorId}`} className="read-hero__author">
             <Avatar
               userId={blog.authorId}
               frameUrl={blog.author?.frameUrl}
               alt={blog.author?.username ?? ''}
+              className="read-hero__avatar"
             />
-            {blog.author?.username}
-          </span>
+            <span className="read-hero__author-name">{blog.author?.username}</span>
+          </Link>
           <BlogTimestamps createdAt={blog.createdAt} updatedAt={blog.content?.updatedAt} detail />
         </div>
       </header>
