@@ -47,10 +47,11 @@ a {
 .site-brand {
   display: flex;
   align-items: center;
+  flex-shrink: 0;
   gap: 0.5rem;
   color: var(--color-text-secondary);
   text-decoration: none;
-  font-weight: bold;
+  font-weight: 400;
   font-size: 1.5rem;
   white-space: nowrap;
   font-family: var(--font-body);
@@ -58,6 +59,14 @@ a {
 
 .site-brand__latin {
   font-family: var(--font-brand);
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.site-brand__chinese {
+  font-size: 1.25rem;
+  font-weight: 400;
+  color: var(--color-text-secondary);
 }
 
 .site-navbar-toggler {
@@ -110,11 +119,24 @@ a {
 }
 
 .site-nav {
+  position: relative;
   display: flex;
   list-style: none;
   padding: 0;
   margin-left: 50px;
   gap: 15px;
+
+  // 分隔线居中放在品牌与导航的 50px 间距内；导航折叠后隐藏。
+  &::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: -25px;
+    width: 1px;
+    height: 1.5rem;
+    background: var(--color-border);
+    transform: translateY(-50%);
+  }
 
   li { 
     display: block; 
@@ -468,6 +490,10 @@ body {
     margin-left: 0;
     // 桌面端是 gap 15px + padding 1rem，这里 padding .5rem，gap .5rem → 字间距一致 ≈ 24px
     gap: 0.5rem;
+
+    &::before {
+      display: none;
+    }
   }
 
   .site-link {
@@ -478,4 +504,3 @@ body {
     justify-content: center;
   }
 }
-
