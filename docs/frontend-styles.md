@@ -187,7 +187,17 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
 
 ## 3. 排版
 
-- 未引入 web font，使用系统字体栈（`-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, …` / `system-ui`）。
+- 英文正文使用 **Kumbh Sans**，代码块、行内代码、等宽字段与 Markdown 编辑器使用
+  **JetBrains Mono**。字体文件随站点提供于 `public/static/fonts/`，不依赖访客安装字体
+  或第三方字体服务。两款都按 **SIL Open Font License 1.1** 再分发，来源与版本见
+  `public/static/fonts/README.md`，各自目录保留 `OFL.txt`。
+- `base/_fonts.scss` 定义 `@font-face`，使用 WOFF2 与 `font-display: swap`：
+  Kumbh Sans 是 100–900 字重的可变字体，只带 Latin / Latin Extended 两个子集；
+  JetBrains Mono 带 400 / 700 的正体与斜体，按需加载。中文继续走系统回退字体，
+  MathJax 仍使用自己的数学字体。
+- 字体栈集中在 `base/_root.scss` 的 **`--font-body` / `--font-mono`**，与明暗主题无关。
+  正文回退栈仍为 `"Segoe UI", "Helvetica Neue", Arial, sans-serif`；新增页面引用这两个
+  令牌，交互控件继承字体，不再另写一份系统字体栈。
 - `body`：`-webkit-font-smoothing: antialiased`，主色 `var(--color-text-primary)`。
 - 链接默认**无下划线**（`reset` + `typography` 里 `a { text-decoration: none }`），hover 也不加，靠变色/加粗区分。
 - 标题字重以 `600 / 700` 为主；页级大标题常见 `font-size: 2rem–3.5rem` + `font-weight: 700`。
