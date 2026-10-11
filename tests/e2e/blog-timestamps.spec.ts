@@ -81,13 +81,20 @@ test('实际编辑后的时间贯通详情、两种列表与个人主页，桌�
   const card = page.locator(`[id="id${id}"]`);
   await expectTimesFit(card.locator('.blog-timestamps'));
   await expect(card.locator('.blog-timestamps time')).toHaveCount(1);
+  await expect(card.locator('.blog-timestamps')).not.toContainText(/发布于|更新于|已编辑/);
+  await expect(card.locator('.blog-timestamps time')).toHaveText(/^\d{1,2}月\d{1,2}日$/);
   await card.screenshot({ path: testInfo.outputPath('member-card.png') });
+  await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
+  await expectTimesFit(card.locator('.blog-timestamps'));
+  await card.screenshot({ path: testInfo.outputPath('member-card-dark.png'), animations: 'disabled' });
   await page.goto(`/blog?search=${encodeURIComponent(data.title)}&sort=updated`);
-  await expect(card.locator('.blog-timestamps')).toContainText('更新于');
+  await expect(card.locator('.blog-timestamps time')).toHaveAttribute('aria-label', /^更新于/);
+  await expect(card.locator('.blog-timestamps')).not.toContainText(/发布于|更新于|已编辑/);
   await expect(card.locator('.blog-timestamps time')).toHaveAttribute('datetime', changed.updated_at.replace(/Z$/, '+08:00'));
   await page.goto(`/u/${author.id}`);
   const profileCard = page.locator('.profile-content-item').filter({ hasText: data.title });
   await expectTimesFit(profileCard.locator('.blog-timestamps'));
+  await expect(profileCard.locator('.blog-timestamps time')).toHaveCount(1);
   await profileCard.screenshot({ path: testInfo.outputPath('profile-card.png') });
 
   await page.context().clearCookies();
@@ -100,12 +107,14 @@ test('实际编辑后的时间贯通详情、两种列表与个人主页，桌�
   await page.goto(`/explore?search=${encodeURIComponent(data.title)}`);
   const publicCard = page.locator('.blog-item').filter({ hasText: data.title });
   await expectTimesFit(publicCard.locator('.blog-timestamps'));
+  await expect(publicCard.locator('.blog-timestamps')).not.toContainText(/发布于|更新于|已编辑/);
   await expect(publicCard.locator('.blog-author-link')).toHaveAttribute('href', `/u/${author.id}`);
   await publicCard.screenshot({ path: testInfo.outputPath('public-card.png') });
 
   // 极窄屏下长标题、作者与展开后的完整时间也必须留在檐沟内。
   await page.setViewportSize({ width: 320, height: 740 });
   await expectTimesFit(publicCard.locator('.blog-timestamps'));
+  await publicCard.screenshot({ path: testInfo.outputPath('public-card-320.png') });
   await page.goto(`/blog/${id}`);
   await expectDetail(page, initial.created_at, changed.updated_at);
   await page.locator('.read-hero').screenshot({ path: testInfo.outputPath('detail-320.png'), animations: 'disabled' });

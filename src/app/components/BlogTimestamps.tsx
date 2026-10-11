@@ -1,4 +1,4 @@
-import { isoWithOffset } from '@/lib/db-time';
+import { isoWithOffset, nowForDb } from '@/lib/db-time';
 import { ymd, ymdhms } from '@/lib/format';
 
 interface Props {
@@ -24,6 +24,32 @@ export default function BlogTimestamps({ createdAt, updatedAt, detail = false, s
 
   const updateFirst = !published || (!detail && sort === 'updated' && showModified);
   const primary = updateFirst ? modified! : published!;
+
+  if (!detail) {
+    // 库内日期与「今年」都按本站墙上时间读，避免 UTC 跨年时多出/丢掉年份。
+    const year = primary.getUTCFullYear();
+    const label = `${year === nowForDb().getUTCFullYear() ? '' : `${year}年`}${primary.getUTCMonth() + 1}月${primary.getUTCDate()}日`;
+    const tooltip = [
+      published && `发布时间：${ymdhms(published)}`,
+      showModified && `更新时间：${ymdhms(modified)}`,
+      '北京时间',
+    ].filter(Boolean).join('\n');
+
+    return (
+      <div className="blog-timestamps" aria-label="文章时间">
+        <span className="blog-timestamps__item">
+          <time
+            dateTime={isoWithOffset(primary) ?? undefined}
+            title={tooltip}
+            aria-label={`${updateFirst ? '更新' : '发布'}于${ymdhms(primary)}（北京时间）`}
+          >
+            {label}
+          </time>
+        </span>
+      </div>
+    );
+  }
+
   const secondary = showModified && published ? (updateFirst ? published : modified) : null;
   // 同日的两份日期没有辨识价值；编辑事实保留，完整时间仍在提示/详情里。
   const sameDay = secondary && ymd(primary) === ymd(secondary);
