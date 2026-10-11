@@ -64,6 +64,10 @@ export interface DocEntry {
  * 数组顺序即索引页顺序（组内自上而下）。
  */
 export const DOC_ENTRIES: readonly DocEntry[] = [
+  {
+    group: 'guide', slug: 'guide/聊天气泡使用指南', title: '聊天气泡使用指南',
+    summary: '气泡的租用、选择、到期、历史消息展示与站长发放。',
+  },
   // ── 给玩家与创作者 ────────────────────────────────────────────────────────
   {
     group: 'guide',

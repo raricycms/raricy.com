@@ -274,7 +274,7 @@ retry: 3000
 > 📌 之后服务端每 **25 秒**发一个注释帧 `: ping` 保活。标准 SSE 客户端会忽略注释帧 ——
 > 你不用处理，但**别把它当成数据帧**，也别拿它去更新你的「最后一条消息」游标。
 
-### 6.2 四种事件
+### 6.2 五种事件
 
 | `type` | 载荷字段 | 含义 |
 |--------|----------|------|
@@ -282,10 +282,11 @@ retry: 3000
 | `resync` | — | 积压太多补不齐，**请重新拉取**（§6.3） |
 | `typing` | `channel_id`, `user_id`, `username` | 有人正在输入（不落库，3 秒后自行忽略） |
 | `read` | `channel_id`, `user_id`, `message_id` | 私聊已读回执 |
+| `appearance` | — | 气泡装备变化，展示客户端读取 §9.8 快照；纯文本机器人可忽略 |
 
 `message` 事件的 `message` 字段就是 §11.1 的 `ChatMessageDTO`。
 
-> 这四个是**收**方向：别人做的动作推给你。**发**方向的三个信号 ——
+> 这五个是**收**方向：别人做的动作推给你。**发**方向的三个信号 ——
 > 让别人看到「mybot 正在输入…」（§7.5）、把会话标记为已读并推回执（§7.6）——
 > 是你主动 POST 出来的。
 
@@ -757,6 +758,22 @@ GET /api/notifications/count
 
 ---
 
+### 9.8 当前消息作者的聊天气泡
+
+```http
+GET /api/chat/channels/lobby/appearance?users=u_xxx,u_yyy
+```
+
+只返回当前可访问频道中发过消息的作者，最多查询 100 个不同用户 id：
+`{ "code": 200, "message": "ok", "authors": [{ "id": "u_xxx", "bubble_key": "blue-square" }] }`。
+`bubble_key: null` 表示免费默认款（未装备、到期或停用）。会话权限与专注模式同消息读口。
+
+气泡跟随作者当前装备，包括历史消息。展示客户端收到 `appearance` 后读取快照，
+只更新作者外观；每 60 秒及重新可见时校正一次，覆盖漏推与自然到期。
+此事件没有消息 id，不推进 SSE 的消息游标，也不增加未读。
+
+---
+
 ## 10. 限频
 
 **这是最容易踩的坑，请按此设计机器人行为。**
@@ -815,6 +832,7 @@ GET /api/notifications/count
     "id": "u_xxx",
     "username": "alice",
     "avatar_url": "https://...",  // 可能为空字符串
+    "bubble_key": null,           // 作者当前有效气泡，默认为 null；示范款为 "blue-square"
     "is_admin": false
   },
   "content": "你好",              // Markdown 原文
@@ -877,6 +895,7 @@ GET /api/notifications/count
 ```jsonc
 { "type": "message", "channel_id": "lobby", "message": { /* ChatMessageDTO */ } }
 { "type": "resync" }
+{ "type": "appearance" } // 气泡装备变化，不携带身份或消息内容；纯文本机器人可忽略
 { "type": "typing", "channel_id": "lobby", "user_id": "u_xxx", "username": "alice" }
 { "type": "read",   "channel_id": "d_xxx", "user_id": "u_xxx", "message_id": 12345 }
 ```

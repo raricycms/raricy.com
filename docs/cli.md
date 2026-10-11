@@ -603,3 +603,13 @@ npm run cli -- fish compensate 1 --dry-run --yes  # 只列计划、不动账（�
 （命名、位置参数序号、flag 不与全局冲突、危险命令必须写 `describe`），
 `tests/unit/cli-guards.test.ts` 会守住**三条**硬约定（`--help` 不加载 Prisma、时间戳只用一把钟、
 不许顶层 await —— `scripts/` 按 CJS 语义执行）。
+
+## 聊天气泡命令补充
+
+`bubble list [用户名]` 查看气泡款式、租金，或指定用户的持有状态。
+
+`bubble grant <用户名> <key> [--days N] [--reason 说明]` 授予气泡，省略天数表示永久；只延长不缩短，用户自行选择使用。
+
+`bubble revoke <用户名> <key> [--reason 说明]` 软删持有记录并清除正在使用的装备。两种写操作都进入审计日志。命令归于「用户」菜单，帮助不加载数据库模块。
+
+示范款 `blue-square`（蓝色直角）为 CSS 气泡，无外部素材可缺失。玩家规则见 `docs/guide/聊天气泡使用指南.md`。

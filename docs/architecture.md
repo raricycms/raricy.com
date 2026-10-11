@@ -90,7 +90,7 @@
 | `/api/og/blog/[id]` | API | **分享卡片 PNG**（OG 图）。无会话档位，逐篇判可见性：只对外可见的文章返回 200，其余与「不存在」同形 404。缓存与 `X-Robots-Tag` 按档位发（见 §6.11） |
 | `/api/auth/authentic` · `/zhh` | API + route | 邀请码升 core · 邀请码生成（站长） |
 | `/fish` · `/fish/transactions` · `/api/fish/*` | page + API | 小鱼干面板 + 流水 |
-| `/fish/market` · `/api/fish/market/*` | page + API | 鱼干市场：**用户间转账**（第一期，无手续费）+ **鱼干商城**（租头像框，见 §6.14）。`POST transfer`（支持客户端幂等键）/ `GET users`（收款人搜索）/ `POST balance`、`POST transactions`（站外脚本用的无状态查询，含 `since_id` 对账游标）/ `POST pay`（收银台专用）/ `POST rent`（租头像框 —— **只认会话**，是本命名空间唯一的例外，理由见 §6.14）。写路径见 §6.3；对外契约见 `docs/bot/fish-bot.md`（`rent` 不在其中，它没有对外契约） |
+| `/fish/market` · `/api/fish/market/*` | page + API | 鱼干市场：**用户间转账**（无手续费）+ **鱼干商城**（租头像框 §6.14、聊天气泡 §6.18）。`POST transfer`（支持客户端幂等键）/ `GET users`（收款人搜索）/ `POST balance`、`POST transactions`（站外脚本查询，含 `since_id` 对账游标）/ `POST pay`（收银台专用）/ `POST rent`、`POST bubble-rent`（装扮租赁，仅会话）。写路径见 §6.3；对外契约见 `docs/bot/fish-bot.md`（两条装扮租赁不在其中） |
 | `/fish/pay` | page | **收银台**：站外商户把用户送来付款（`?to= &amount= &note= &from= &return=`）。参数一律不可信，只做展示；付款必须**已登录 + 再输一次密码**（step-up），密码只输在本站域名下。不入索引 |
 | `/fish/collect` | page | **扫码收款页**：`?to=<用户名>`，扫「鱼干收款码」落到这里。与收银台的区别是**金额由付款人自己填**（静态码不可能带金额）。前端是 `/fish/pay` 的**同一个组件**（`src/app/fish/PayForm.tsx`）的另一个变体，step-up 与幂等键完全共用 |
 | `/fish/api` · `/api/fish/tokens/*` | page + API | **机器人接入自助页**：签发 / 吊销只读凭据（`GET`/`POST /api/fish/tokens`、`DELETE /api/fish/tokens/[id]`）。**只认会话**、签发要 step-up、只能动自己的。只读凭据的鉴权门在 `src/app/api/fish/market/_auth.ts`（第三道门，`allowReadToken` 默认关）；签发/校验/吊销在 `src/lib/fish-token-service.ts` |
@@ -138,7 +138,8 @@
 | 收藏夹 | `favorite-service.ts`（六条不变量见文件头）· `favorite-refs.ts`（`[@六位]` 的纯逻辑），见 §6.9 |
 | 图床 | `image-service.ts` · `image-upload.ts`（服务端）· `image-client.ts`（浏览器侧**单文件**上传：校验 / XHR / 弱网重试。讨论、评论、博客与剪贴板编辑器共用这一条；编辑器侧的**多文件**调度另住 `md-editor/upload.ts`） |
 | 音频床 | `audio-upload.ts`（magic bytes 嗅探 + **MIME 别名归一化**，**无压缩**）· `audio-service.ts`（含**独立配额聚合**）· `audio-refs.ts`（`[@音频/<ID>]`，**零 import** —— 要被拉进客户端包），见 §6.15 |
-| 头像框 | `frame-refs.ts`（**零依赖**词汇层：白名单 / 解析 / 到期判定 / **租金与在架清单**）· `frame-service.ts`（素材扫盘 + 持有与装备写路径 + **判定唯一出口**；授予内核 `grantFrameTx` 收调用方的事务，供商城拼原子性）· `frame-shop-service.ts`（鱼干商城：租框。**它不直接写那两列**，一律经 `grantFrameTx` —— F1），见 §6.14 |
+| 头像框 | `frame-refs.ts`（纯词汇层：白名单 / 解析 / 到期判定 / **租金与在架清单**，仅依赖共享租期 `shop-refs.ts`）· `frame-service.ts`（素材扫盘 + 持有与装备写路径 + **判定唯一出口**；授予内核 `grantFrameTx` 收调用方的事务，供商城拼原子性）· `frame-shop-service.ts`（鱼干商城：租框。**它不直接写那两列**，一律经 `grantFrameTx` —— F1），见 §6.14 |
+| 聊天气泡与商城词汇 | `bubble-refs.ts`（白名单、展示与定价）· `shop-refs.ts`（共享租期）· `bubble-service.ts`（持有/装备唯一写入者与判定出口）· `bubble-shop-service.ts`（同事务扣款与发放），见 §6.18 |
 | 故事 | `story-service.ts` |
 | 画报 / 收款码 | `poster.ts`（纯 SVG 构造，含二维码与转义）· `poster-render.ts`（取数 + 头像 + sharp 光栅化），见 §6.8 |
 | 小鱼干 | `fish-service.ts`（**记账内核 `postEntry`** + 读路径，见 §6.3）· `fish-idempotency.ts`（哪些操作才登记幂等 —— 判据在文件头）· `fish-admin.ts` · `fish-market-service.ts`（用户间转账，见 §6.3）· `fish-compensate.ts`（`fish compensate` 群发补偿，只发 core+，见 `docs/cli.md` 与文件头）· `fish-units.ts`（单位换算；`Blog.fishCount` 是**例外**，见文件头）· `fish-webhook-service.ts`（收款回调 outbox，见 §6.3） |
@@ -1250,9 +1251,9 @@ service 层的各 DTO（下发 frame_url / frameUrl 字符串）
 单位**：`fishblue` 按 **1 鱼干 / 天**（自选 1–30 天）、`starmoon` 按
 **50 鱼干 / 月**（自选 1–12 个月，一个月固定 30 天）。**没有动表** ——
 `user_frames.source` 早有 `'purchase'` 这个值，框的定义、单位与定价都住
-`frame-refs.ts`（零依赖，客户端要读）。
+`frame-refs.ts`（纯词汇，客户端要读）。
 
-- **价格、单位与在架清单住 `frame-refs.ts`**（`FrameDef.rent` / `RENT_UNITS` /
+- **价格与在架清单住 `frame-refs.ts`，单位住 `shop-refs.ts`**（`FrameDef.rent` / `RENT_UNITS` /
   `rentableFrameKeys()`）—— 商城面板是客户端组件，而 `frame-service` 拖着 prisma
   进不了客户端包。放一处，展示与校验**读同一个数**；两边各算一次的话症状是
   「页面显示 1 鱼干、服务端扣 2 条」，而用户只会觉得账不对。
@@ -1273,8 +1274,8 @@ service 层的各 DTO（下发 frame_url / frameUrl 字符串）
 - **不登记幂等**：判据在 `fish-idempotency.ts` —— 键是确定的才登记，而每次点击都是
   一笔新交易（同练手盘开仓）。防重复提交是客户端的事（二次确认 + busy 锁），
   服务端由 `RULES.frameRentHourly/Daily` 兜底。
-- **`POST /api/fish/market/rent` 只认会话** —— 它是那个命名空间里唯一不走
-  `requireMarketActor` 的路由。第三道门（请求体里的 username + password）是给站外
+- **`POST /api/fish/market/rent` 只认会话** —— 它与 `bubble-rent` 都不走
+  `requireMarketActor` 的凭据门。第三道门（请求体里的 username + password）是给站外
   脚本的，一旦放行，租金与在架清单就从内部实现变成**对外契约**（改价 = 破坏兼容），
   而机器人租头像框没有真实需求。**默认关门**，将来真需要再加。
   禁言那一道照旧，文案与转账共用一条。
@@ -1547,6 +1548,20 @@ MP3 的帧同步要核版本 / 层 / 位速率字段（只判 `0xFF` 打头太�
   当路径用** —— 这是 zip-slip，防的是「解压到任意目录」。
 
 玩家向说明见 `docs/guide/格式转换器使用指南.md`。
+
+### 6.18 聊天气泡
+
+`user_bubbles` 是持有权威，`users.equipped_bubble_key` / `equipped_bubble_expires_at` 是读时副本，唯一写入者是 `bubble-service.ts`。授予、续期、撤销在同一事务刷新副本；撤销软删，重新授予复活原行。到期只读判定，无后台清理。
+
+款式在 `bubble-refs.ts` 白名单定义，`rent` 缺失表示停售（不影响既有持有者），`disabled` 表示停用（回到默认）。默认款免费，无持有行。`blue-square`（蓝色直角）为 CSS 气泡，10 鱼干/月；共享计价词汇在 `shop-refs.ts`，月固定 30 天。
+
+`ChatBubble` 共用于真实消息、商城与设置预览，气泡不进入 Markdown 正文。删除占位、拍一拍、回复摘要和独立附件保持既有展示规则。消息不存气泡快照，`ChatAuthorDTO.bubble_key` 是作者当前有效气泡；分页、搜索、发送与 SSE 补齐都通过同一序列化出口。
+
+装备/授予/续期/撤销提交后发布不含身份数据的 `appearance` SSE 事件；聊天页从 `GET /api/chat/channels/:id/appearance?users=...` 获取当前消息作者状态，只更新作者 DTO，不替换消息窗口、不移动历史视图。接口复用会话权限和专注模式闸，每批最多 100 个作者；60 秒对账与重新可见时读取同一快照，兜住漏推与到期。
+
+`POST /api/fish/market/bubble-rent` 与租框同档：登录、非禁言、仅会话。客户端只指定 key 和数量，服务端定价；`postEntry` 扣款和 `grantBubbleTx` 授予在同一事务。续期基准在事务内取 `max(now, 旧到期)`，不向永久持有者售卖。两类租赁共用现有租框限频桶，二次确认/busy 防重复提交，每次确认是一笔新租赁。
+
+气泡流水为 `bubble_rent`，`reference_type='bubble'`、`reference_id=<key>`；`shop_all` 合并 `frame_rent` 与 `bubble_rent`。购买不自动装备。运维命令和玩家规则见 `docs/cli.md` 与 `docs/guide/聊天气泡使用指南.md`。
 
 ## 7. 数据流（4 个典型路径）
 

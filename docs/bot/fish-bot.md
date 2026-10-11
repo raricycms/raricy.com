@@ -252,6 +252,8 @@ POST /api/fish/market/transactions
 | `transfer_all` | 转账（转出 + 转入） |
 | `market_all` | 练手盘（买入 + 卖出） |
 | `frame_rent` | 鱼干商城（租头像框的支出） |
+| `bubble_rent` | 鱼干商城（租聊天气泡的支出） |
+| `shop_all` | 商城装扮支出（头像框 + 聊天气泡） |
 | `admin_grant` | 管理员赠送 |
 
 不传则返回全部。
