@@ -341,8 +341,8 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
 - **抬头带（hero）也要吃檐沟**：整幅铺满视口的抬头带里，内容必须再套一层
   `.container`（`.blogs-hero` / `.story-hero` 就是这么分层的）—— **别把宽度阶梯加到
   色带自己身上**，那会连色带一起收窄，页面顶部凭空短一截。
-  底色透明的抬头带是例外：`.read-hero` 没有底色，直接把 `container-padding` +
-  `site-width-ladder` 吃在自己身上即可。
+  底色透明的抬头带是例外：`.read-hero` 没有底色，直接吃 `container-padding`，
+  并与 `.blog-detail` 共用 **940px 阅读行宽**，标题与正文左对齐。
   `/admin` 那一档的檐沟是 **20px**（= `.admin-container` 的值），抬头与它下面的内容列
   左边缘对齐。签到页 `.checkin-page` 只有檐沟、**没有**列宽上限（卡片仍按视口铺开），
   那是现有排版，别顺手「统一」成居中列。
@@ -360,6 +360,10 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
   故事阅读页 / 互动小说页同理：`.story-reader` 820px、`.story-cattca` 720px 是行宽，
   檐沟各自 `@include m.container-padding`（它们**不是** `.container` 元素，别把
   宽度阶梯也加上去 —— 行宽上限已经比阶梯窄了）。
+- **文章页眉**（`.read-hero`）：透明底色、左对齐标题、作者与时间一组，底部淡分隔线
+  接正文。标题采用响应字号与自然折行；作者头像 **40px**，头像与名字共同链接到个人
+  主页。作者链接和时间详情入口至少 **44px** 高，键盘聚焦有可见轮廓。时间详情用原生
+  `<details>`，展开面板沿用主题卡片色与 `--shadow-card-brand`，窄屏限定在 16px 檐沟内。
 - **顶栏**：`.site-navbar` 固定顶部（`position: fixed; top:0`），高 62px，背景 `--color-background-card`，阴影 `--shadow-card-brand`。`body` 有 `padding-top: 62px` 补偿。
 - **页脚**：`.site-footer`，背景卡片色 + 顶部分隔，内容容器同 1140px 体系。
 - **后台**：`.admin-layout` 左侧 220px 固定侧边栏（移动端折叠成横向标签条）+ 右侧滚动内容区，内容容器最大 1400px。
