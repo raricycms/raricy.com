@@ -33,6 +33,10 @@ application. Keep each family's `OFL.txt` alongside the font files.
 - Upstream release: https://github.com/JetBrains/JetBrainsMono/tree/v2.304
 - Original files: `fonts/webfonts/JetBrainsMono-{Regular,Bold,Italic,BoldItalic}.woff2`.
 - License source: https://github.com/JetBrains/JetBrainsMono/blob/v2.304/OFL.txt
+- Dynamic numeric fields reuse these files through the CSS family alias
+  `JetBrains Mono Numeric`, restricted to digits and numeric punctuation. Other
+  characters in these fields fall back to the body font; no additional font
+  binaries are bundled.
 
 The CSS uses `font-display: swap`. Font loading requires no third-party network
 requests. Chinese text continues to use system fallback fonts; math typography

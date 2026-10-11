@@ -187,16 +187,19 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
 
 ## 3. 排版
 
-- 英文正文使用 **Kumbh Sans**，代码块、行内代码、等宽字段与 Markdown 编辑器使用
-  **JetBrains Mono**。字体文件随站点提供于 `public/static/fonts/`，不依赖访客安装字体
-  或第三方字体服务。两款都按 **SIL Open Font License 1.1** 再分发，来源与版本见
+- 英文正文使用 **Kumbh Sans**，顶栏品牌的英文 **Raricy** 使用 **Outfit**，代码块、行内
+  代码、等宽字段与 Markdown 编辑器使用 **JetBrains Mono**。字体文件随站点提供于
+  `public/static/fonts/`，不依赖访客安装字体或第三方字体服务。三款都按
+  **SIL Open Font License 1.1** 再分发，来源与版本见
   `public/static/fonts/README.md`，各自目录保留 `OFL.txt`。
 - `base/_fonts.scss` 定义 `@font-face`，使用 WOFF2 与 `font-display: swap`：
-  Kumbh Sans 是 100–900 字重的可变字体，只带 Latin / Latin Extended 两个子集；
+  Kumbh Sans 与 Outfit 都是 100–900 字重的可变字体，前者带 Latin / Latin Extended
+  两个子集，后者只带 Latin；
   JetBrains Mono 带 400 / 700 的正体与斜体，按需加载。中文继续走系统回退字体，
   MathJax 仍使用自己的数学字体。
-- 字体栈集中在 `base/_root.scss` 的 **`--font-body` / `--font-mono`**，与明暗主题无关。
-  正文回退栈仍为 `"Segoe UI", "Helvetica Neue", Arial, sans-serif`；新增页面引用这两个
+- 字体栈集中在 `base/_root.scss` 的 **`--font-body` / `--font-brand` / `--font-mono` /
+  `--font-numeric`**，与明暗主题无关。
+  正文回退栈仍为 `"Segoe UI", "Helvetica Neue", Arial, sans-serif`；新增页面引用这些
   令牌，交互控件继承字体，不再另写一份系统字体栈。
 - `body`：`-webkit-font-smoothing: antialiased`，主色 `var(--color-text-primary)`。
 - 链接默认**无下划线**（`reset` + `typography` 里 `a { text-decoration: none }`），hover 也不加，靠变色/加粗区分。
@@ -206,6 +209,35 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
   保证主题切换平滑。⚠️ 这条是**全局 `*` 规则且只有这一处定义**：别为了给某个元素加
   过渡而扩成 `transform` —— 那会让全站的 transform 都带上动画，`chat-image.spec.ts`
   读 `matrix(1.5,…)` 那类断言会变成时序相关。给单个组件写自己的 `transition` 即可。
+
+### 动态数字
+
+界面中的数据数字统一使用 **JetBrains Mono**。英文标签、单位与中文字体保持原有回退
+方式；用户名、标题、文件名和自由正文中的数字仍属于文字内容。
+
+| 位置 | 数字字段 |
+|---|---|
+| 博客、评论、个人主页 | 点赞、评论、投喂、文章数、发表与更新时间 |
+| 签到 | 累计天数、奖励、日期、排行名次 |
+| 鱼干、收银台、市场 | 余额、金额、流水、租用期限、备注字数 |
+| 练手盘 | 行情价格、比例、杠杆、盈亏、费率、图表刻度和统计 |
+| 投票、收藏夹 | 票数、选项数、比例、条目数，含正文嵌入卡片 |
+| 讨论、通知 | 通知角标、未读数、新消息数、人数、日期与时间 |
+| 图床、音频床、工具 | 文件大小、配额、进度、字数、任务数、放大比例 |
+| 后台、审计、设置 | 统计、记录数、时间范围、剩余时长、到期时间 |
+| 共用控件 | 页码、数值输入、range 数值输出、资源面板与上传批次 |
+
+新增字段给数值所在元素加 **`.numeric`**；同一个元素混有用户名、标题等自由文字时，
+只包住数值，例如 `<span className="numeric">{count}</span>`。不要把类挂到整页或正文
+容器，也不要在运行时扫描正文、按数字正则改写 DOM。
+
+`base/_fonts.scss` 的 **JetBrains Mono Numeric** 是同一批 JetBrains Mono 文件的字形
+范围别名，只覆盖数字、正负号、小数点、百分号和数值分隔符。`--font-numeric` 在它之后
+接 `--font-body`，因此 `123.4 MB` 的数值等宽、`MB` 仍用 Kumbh Sans；不增加字体文件。
+
+`utilities/_numeric.scss` 在入口末尾加载：`.numeric`、`time`、数值 / 日期时间输入框与
+`.fc-range output` 共用字体与 `tabular-nums`。正文投票、收藏夹计数，以及编辑器的资源
+副标题和上传进度采用同一规则，覆盖 React 与脚本生成的两种显示方式。
 
 ## 4. 圆角与形状语言
 
