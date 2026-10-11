@@ -402,7 +402,7 @@
       border: none;
       padding: 0;
       margin: 0;
-      font-family: monospace;
+      font-family: var(--font-mono);
       font-size: 0.9em;
     }
 
@@ -427,7 +427,7 @@
     font-weight: bold;
     cursor: pointer;
     transition: all 0.2s ease;
-    font-family: system-ui, -apple-system, sans-serif;
+    font-family: var(--font-body);
     z-index: 10;
     user-select: none;
     backdrop-filter: blur(10px);

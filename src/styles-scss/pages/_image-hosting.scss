@@ -208,7 +208,7 @@
   &__id {
     padding: 0 $space-3 $space-2;
     font-size: .7rem;
-    font-family: monospace;
+    font-family: var(--font-mono);
     color: var(--color-text-secondary);
     user-select: all;
   }

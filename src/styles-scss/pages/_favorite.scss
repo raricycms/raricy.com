@@ -188,7 +188,7 @@
 
 /* 公开收藏夹的 6 位句柄 —— 只在这颗 chip 上出现，且**只有公开收藏夹才有**。 */
 .favorite-handle {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 0.9rem;
   letter-spacing: 0.05em;
   padding: 3px 10px;

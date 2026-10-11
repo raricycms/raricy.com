@@ -136,7 +136,7 @@
   padding: $space-2 $space-3;
   border-radius: 8px;
   background: var(--color-background-card);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 0.8125rem;
   color: var(--color-text-primary);
   word-break: break-all;

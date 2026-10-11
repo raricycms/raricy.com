@@ -1,9 +1,18 @@
 @use '../abstracts/variables' as v;
 
 body {
+  font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   color: var(--color-text-primary);
+}
+
+button, input, select, textarea {
+  font-family: inherit;
+}
+
+code, pre, kbd, samp {
+  font-family: var(--font-mono);
 }
 
 // a:hover { text-decoration: underline; }

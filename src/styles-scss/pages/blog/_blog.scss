@@ -250,7 +250,7 @@ a {
     border: none;
     padding: 0;
     margin: 0;
-    font-family: monospace;
+    font-family: var(--font-mono);
     font-size: 0.9em;
     line-height: 1.4;
 }
@@ -268,7 +268,7 @@ a {
     padding: 2px 6px;
     border-radius: 5px;
     font-size: 0.9em;
-    font-family: monospace;
+    font-family: var(--font-mono);
     color: var(--color-text-primary);
 }
 
@@ -289,7 +289,7 @@ a {
     cursor: pointer;
     /* opacity: 0.8; */
     transition: all 0.2s ease;
-    font-family: system-ui, -apple-system, sans-serif;
+    font-family: var(--font-body);
     z-index: 10;
     user-select: none;
     backdrop-filter: blur(10px);

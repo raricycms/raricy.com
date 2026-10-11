@@ -488,7 +488,7 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
                 rows={20}
                 value={fallbackValue}
                 onChange={(e) => setFallbackValue(e.target.value)}
-                style={{ fontFamily: 'ui-monospace, monospace' }}
+                style={{ fontFamily: 'var(--font-mono)' }}
               />
             </>
           )}

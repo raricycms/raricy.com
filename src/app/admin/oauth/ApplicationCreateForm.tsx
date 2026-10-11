@@ -139,7 +139,7 @@ export default function ApplicationCreateForm() {
               value={redirectUrisText}
               onChange={(e) => setRedirectUrisText(e.target.value)}
               placeholder="每行一个 URL，例：&#10;https://example.com/oauth/callback&#10;http://localhost:3000/dev-cb"
-              style={{ fontFamily: 'monospace', fontSize: '.85rem' }}
+              style={{ fontFamily: 'var(--font-mono)', fontSize: '.85rem' }}
             />
             <small style={{ color: 'var(--color-text-secondary)' }}>
               精确匹配（无通配）。多个用换行分隔。

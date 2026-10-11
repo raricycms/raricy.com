@@ -120,7 +120,7 @@
   border-radius: 20px;
   background: var(--color-background-page);
   color: var(--color-text-primary);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.875rem;
   line-height: 1.7;
   resize: vertical;

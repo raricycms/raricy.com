@@ -156,7 +156,7 @@
   word-break: break-all;
 
   code {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-family: var(--font-mono);
     color: var(--color-text-primary);
   }
 }

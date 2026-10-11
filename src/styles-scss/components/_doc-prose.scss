@@ -61,7 +61,7 @@
     background: var(--color-background-content);
     padding: 0.15rem 0.35rem;
     border-radius: 6px;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-family: var(--font-mono);
     font-size: 0.875em;
     /* 行内代码的琥珀色改走星色令牌（站内唯一的黄系令牌），明暗自动跟随 */
     color: var(--color-star-primary);

@@ -26,7 +26,5 @@
 .fw-semibold { font-weight: 600; }
 .font-weight-bold { font-weight: 700; }
 
-// 等宽字体。栈取自 components/_markdown-body.scss 里代码块那份 —— 全站统一这一条，
-// **不要写 `var(--mono)`**：仓库没有这个令牌（旧 rebuild.css 里有，是幽灵变量）。
-.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-
+// 等宽字体。与代码块、编辑器共用 base/_root.scss 的 --font-mono。
+.mono { font-family: var(--font-mono); }
