@@ -1,8 +1,18 @@
 # Web fonts
 
-These unmodified WOFF2 files are served from this site. Both families use the
+These unmodified WOFF2 files are served from this site. All three families use the
 SIL Open Font License 1.1, which permits bundling and redistribution with this
 application. Keep each family's `OFL.txt` alongside the font files.
+
+## Outfit
+
+- Authors: The Outfit Project Authors.
+- Upstream: https://github.com/Outfitio/Outfit-Fonts
+- Distribution: Google Fonts, versioned `v15` URL, weights 100–900, Latin subset.
+- Used only for the English navbar brand name, via `--font-brand`.
+- `Outfit-Latin-Variable.woff2`:
+  https://fonts.gstatic.com/s/outfit/v15/QGYvz_MVcBeNP4NJtEtq.woff2
+- License source: https://github.com/google/fonts/blob/main/ofl/outfit/OFL.txt
 
 ## Kumbh Sans
 

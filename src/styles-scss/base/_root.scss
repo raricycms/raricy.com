@@ -7,6 +7,7 @@
 :root {
   // 字体与主题无关。正文保留原有回退栈；等宽字体由代码块与编辑器共用。
   --font-body: 'Kumbh Sans', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  --font-brand: 'Outfit', var(--font-body);
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 

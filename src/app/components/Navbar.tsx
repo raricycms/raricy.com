@@ -36,7 +36,7 @@ export default function Navbar({
       <div className="site-container">
         <Link className="site-brand" href="/">
           <img src="/static/img/favicon.png" alt="My Icon" width={30} height={30} />
-          <span>聪明山</span>
+          <span><span className="site-brand__latin" lang="en">Raricy</span>{' '}聪明山</span>
         </Link>
 
         <button
