@@ -657,10 +657,41 @@ export default function ChatApp({
   );
 
   // ── 对账（低频兜底）────────────────────────────────────────────────────
+  const appearanceRequestRef = useRef(0);
+  const refreshAppearance = useCallback(async () => {
+    if (document.hidden) return;
+    const channelId = activeRef.current;
+    if (!channelId) return;
+    const token = viewTokenRef.current;
+    const request = ++appearanceRequestRef.current;
+    const ids = [...new Set(messagesRef.current.map((m) => m.author.id))];
+    const authors = new Map<string, ChatMessageDTO['author']['bubble_key']>();
+    try {
+      for (let i = 0; i < ids.length; i += 100) {
+        const query = new URLSearchParams({ users: ids.slice(i, i + 100).join(',') });
+        const data = await api(`/api/chat/channels/${channelId}/appearance?${query}`, { cache: 'no-store' });
+        if (data.code !== 200 || !Array.isArray(data.authors)) return;
+        for (const a of data.authors as { id: string; bubble_key: ChatMessageDTO['author']['bubble_key'] }[]) {
+          authors.set(a.id, a.bubble_key);
+        }
+      }
+    } catch { return; } // 网络断开时保留现状，由下次快照校正。
+    // 不替换消息窗口、不移动滚动位置；历史视图也能更新。旧请求不能覆盖新装备。
+    if (request !== appearanceRequestRef.current || token !== viewTokenRef.current || channelId !== activeRef.current) return;
+    let changed = false;
+    const next = messagesRef.current.map((m) => {
+      if (!authors.has(m.author.id) || authors.get(m.author.id) === m.author.bubble_key) return m;
+      changed = true;
+      return { ...m, author: { ...m.author, bubble_key: authors.get(m.author.id)! } };
+    });
+    if (changed) { messagesRef.current = next; setMessages(next); }
+  }, []);
+
   // 实时消息走 SSE（见下）；这里只把「频道列表」拉回服务端口径：未读数、最后一条
   // 预览、别人新发起的会话、成员变更。SSE 断了也能靠它自愈。
   const reconcile = useCallback(async () => {
     if (document.hidden) return;
+    void refreshAppearance();
     const data = await api('/api/chat/poll');
     if (data.code !== 200) return;
     if (Array.isArray(data.channels)) {
@@ -675,7 +706,7 @@ export default function ChatApp({
       setChannels(withPendingDirects(merged, pendingDirectRef.current));
       setChannelsLoaded(true);
     }
-  }, []);
+  }, [refreshAppearance]);
 
   /** 重新拉当前频道首页（SSE 发来 resync：积压太久、补齐窗口不够）。 */
   const reloadActive = useCallback(() => {
@@ -908,6 +939,8 @@ export default function ChatApp({
               c.id === ev.channel_id ? { ...c, peer_last_read_message_id: ev.message_id } : c
             )
           );
+        } else if (ev.type === 'appearance') {
+          void refreshAppearance();
         } else if (ev.type === 'resync') {
           reloadActive();
           void reconcile();
@@ -950,7 +983,7 @@ export default function ChatApp({
       window.removeEventListener('focus', onVisible);
       clearInterval(iv);
     };
-  }, [catchUpActive, onStreamMessage, onTypingEvent, reconcile, reloadActive]);
+  }, [catchUpActive, onStreamMessage, onTypingEvent, reconcile, reloadActive, refreshAppearance]);
 
   // ── 首次加载：频道列表 + 选定初始频道 ─────────────────────────────────
   // 只在挂载时跑一次：initialChannel 从 ref 读（URL 是应用自己写的镜像，变了也不该

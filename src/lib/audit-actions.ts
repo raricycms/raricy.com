@@ -1,11 +1,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// audit-actions.ts — 管理操作日志的**动作词汇表**（20 个码的中文名、分组、配色档、metadata 说法）
+// audit-actions.ts — 管理操作日志的**动作词汇表**（中文名、分组、配色档、metadata 说法）
 //
 // 【为什么单独一个文件】动作码在几处被渲染成界面文案，而它们此前**各抄了一份**：
 //   · 公示页的筛选下拉只认 4 个码
 //   · 申诉管理页有一张只认 5 个码的映射表
 //   · 公示页与详情页干脆把 `log.action` 原样印出来
-// 而写进 `admin_action_logs` 的一共有 **20 个码**（散在 8 个 service + CLI 的裸字面量里）。
+// 而写进 `admin_action_logs` 的码散在多个 service + CLI 的裸字面量里。
 // 每次新增一个动作，上面每一份副本都**静默漏一个** —— 不报错，只是那一类从此在界面上
 // 显示成英文机器码，或者在筛选器里根本选不到。这正是「日志页面分类不全」的根。
 //
@@ -14,7 +14,7 @@
 // 客户端组件用到处引用）。`import type` 帮不上忙 —— 它只擦类型，擦不掉运行时数组。
 // 所以词汇必须住在一个零依赖模块里：本文件只 `import` 零依赖的 `./format`。
 //
-// 表一律用 `Record<AuditAction, …>`（穷尽类型）：加第 21 个码时，凡是忘了登记的表
+// 表一律用 `Record<AuditAction, …>`（穷尽类型）：加新码时，凡是忘了登记的表
 // **当场 tsc 报错**，而不是界面上少一枚 chip。
 // 唯一真相源是 `AUDIT_ACTIONS`；`tests/unit/audit-action-guard.test.ts` 静态盯着
 // 「写侧用了、表里没有」与「表里有、写侧没人用」两个方向。
@@ -23,7 +23,7 @@
 import { ymdhms } from './format';
 
 /**
- * 20 个动作码。**这个顺序就是筛选下拉里的顺序**（按 group 分块），别打乱。
+ * 全部动作码。**这个顺序就是筛选下拉里的顺序**（按 group 分块），别打乱。
  *
  * 别在这里删码：`AUDIT_ACTIONS` 是解析白名单，删掉一个码会让历史日志里的那一类
  * 在筛选时被判成「非法值」（`parseAction` 返回 null）。要退役某个动作，
@@ -53,6 +53,8 @@ export const AUDIT_ACTIONS = [
   'revoke_invite_code',
   'frame_grant',
   'frame_revoke',
+  'bubble_grant',
+  'bubble_revoke',
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
@@ -78,6 +80,8 @@ export const AUDIT_ACTION_LABEL: Record<AuditAction, string> = {
   revoke_invite_code: '撤销邀请码',
   frame_grant: '发放头像框',
   frame_revoke: '收回头像框',
+  bubble_grant: '发放聊天气泡',
+  bubble_revoke: '收回聊天气泡',
 };
 
 /** 筛选下拉里的分块。 */
@@ -108,6 +112,8 @@ export const AUDIT_ACTION_GROUP: Record<AuditAction, AuditActionGroup> = {
   revoke_invite_code: 'system',
   frame_grant: 'system',
   frame_revoke: 'system',
+  bubble_grant: 'system',
+  bubble_revoke: 'system',
 };
 
 /**
@@ -136,6 +142,8 @@ export const AUDIT_ACTION_KIND: Record<AuditAction, AuditActionKind> = {
   revoke_invite_code: 'system',
   frame_grant: 'system',
   frame_revoke: 'system',
+  bubble_grant: 'system',
+  bubble_revoke: 'system',
 };
 
 /**
@@ -152,6 +160,7 @@ export const AUDIT_OBJECT_TYPES = [
   'chat_message',
   'invite_code',
   'user_frame',
+  'user_bubble',
   'admin_action_appeal',
 ] as const;
 export type AuditObjectType = (typeof AUDIT_OBJECT_TYPES)[number];
@@ -165,24 +174,25 @@ export const AUDIT_OBJECT_TYPE_LABEL: Record<AuditObjectType, string> = {
   chat_message: '讨论消息',
   invite_code: '邀请码',
   user_frame: '头像框',
+  user_bubble: '聊天气泡',
   admin_action_appeal: '申诉',
 };
 
 /**
- * **只有 CLI 会写**的两个码（`scripts/cli/commands/frames.ts`）。
+ * **只有 CLI 会写**的装扮动作码（`scripts/cli/commands/frames.ts` 与 `bubbles.ts`）。
  * 走 `runAsBackendOps()` 写下的日志缺省 `visibility='internal'`（见 `audit-context.ts`），
  * 因此它们**永远不会出现在对外公示的 `/audit` 页**上。
  * 公开页的筛选下拉据此把它们滤掉 —— 留着的话，选中永远得到空结果、看着像页面坏了。
  */
-export const CLI_ONLY_ACTIONS = ['frame_grant', 'frame_revoke'] as const;
+export const CLI_ONLY_ACTIONS = ['frame_grant', 'frame_revoke', 'bubble_grant', 'bubble_revoke'] as const;
 
 /** `/audit` 公示页可选的动作（= 全部 − CLI-only）。 */
 export const PUBLIC_AUDIT_ACTIONS: AuditAction[] = AUDIT_ACTIONS.filter(
   (a) => !(CLI_ONLY_ACTIONS as readonly string[]).includes(a)
 );
-/** `/audit` 公示页可选的对象类型（`user_frame` 同上，只由 CLI 写）。 */
+/** `/audit` 公示页可选的对象类型（两类装扮同上，只由 CLI 写）。 */
 export const PUBLIC_AUDIT_OBJECT_TYPES: AuditObjectType[] = AUDIT_OBJECT_TYPES.filter(
-  (t) => t !== 'user_frame'
+  (t) => t !== 'user_frame' && t !== 'user_bubble'
 );
 
 /**
@@ -286,13 +296,17 @@ export function formatActionDetail(
       const channelId = str(e.channel_id);
       return channelId ? `频道 ${brief(channelId)}` : null;
     }
-    case 'frame_grant': {
+    case 'frame_grant':
+    case 'bubble_grant': {
       const until = when(e.expires_at);
       return until ? `到期 ${until}` : '永久持有';
     }
     case 'frame_revoke':
       if (e.revoked === false) return '空操作（本来就没持有）';
       return e.unequipped === true ? '已收回并摘下' : '已收回';
+    case 'bubble_revoke':
+      if (e.revoked === false) return '空操作（本来就没持有）';
+      return e.unequipped === true ? '已收回并恢复默认' : '已收回';
     default:
       return null;
   }

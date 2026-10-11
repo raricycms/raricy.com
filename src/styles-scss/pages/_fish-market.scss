@@ -669,3 +669,6 @@
   font-weight: 700;
   color: var(--color-text-primary);
 }
+// 两类装扮共用余额与租赁表单，分类只筛商品，不触碰转账面板。
+.market-shop__categories { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.market-shop__category { @include m.btn-tab; }

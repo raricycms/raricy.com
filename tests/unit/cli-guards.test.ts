@@ -61,25 +61,25 @@ const CLI_FILES = [CLI_ENTRY, ...collectFiles(CLI_DIR)];
 /**
  * 顶层可以静态 import 的 src/lib 模块白名单。
  *
- * 这条白名单表达的是**一条通则**：**运行时零依赖**的模块可以进 CLI 顶层 ——
+ * 这条白名单表达的是**一条通则**：纯模块的闭合依赖链可以进 CLI 顶层 ——
  * 引入它们不会把 Prisma 拖进 `--help` 的加载路径。
  *   · format.ts   —— 纯展示辅助（ymd / ymdhms）。日期展示必须与站内同一口径
  *                    （库内存的是「UTC+8 墙上时间贴 Z 标签」，用本地时区 API 会再
  *                    平移 8 小时），与其在 CLI 里抄一份，不如直接复用。
  *   · frame-refs.ts —— 头像框的词汇表（key / 显示名 / 解析）。`frame grant` 需要它
  *                    做两件**必须静态**的事：向导的候选列表（choices 在模块顶层求值）
- *                    与 `validate`（同步）。零依赖是那个文件的硬要求 ——
+ *                    与 `validate`（同步）。依赖链只能含纯词汇模块 ——
  *                    客户端设置面板也要 import 它。
  *   · fish-units.ts —— 鱼干存储单位 ↔ 鱼干的换算（`unitsToFish` / `fishToUnits`）。
  *                    `fish` 命令的失败路径要把库里的存储单位报成鱼干。**必须复用** ——
  *                    在这里手写 `/ 10` 正是标度改动时的静默错值来源（真发生过），
  *                    tests/unit/fish-scale-guard.test.ts 也盯着这条。它零依赖。
  *
- * ⚠️ 这条白名单是**自校验**的：下面有一条用例**遍历它**，逐个断言那些文件没有任何
- *    运行时 import。谁给其中一个加了依赖，那条用例会立刻红 —— 白名单不会悄悄失效。
+ * ⚠️ 白名单自校验：遍历每个成员的 import 和 re-export，依赖必须仍在同一白名单内。
+ *    frame-refs 依赖共享 shop-refs；新增任何外部包或服务层依赖都会判红。
  *    （此前那条只钉 format.ts，加第二个成员时就会漏 —— 所以改成遍历。）
  */
-const LIB_ALLOWLIST = ['src/lib/format', 'src/lib/frame-refs', 'src/lib/fish-units'];
+const LIB_ALLOWLIST = ['src/lib/format', 'src/lib/frame-refs', 'src/lib/fish-units', 'src/lib/shop-refs'];
 
 /** 在文件里跑一个正则，返回 `相对路径:行号` 形式的命中列表。 */
 function hits(re: RegExp): string[] {
@@ -115,7 +115,7 @@ describe('运维 CLI：--help 不加载 Prisma', () => {
     ).toEqual([]);
   });
 
-  it('★ 白名单之所以成立的依据：其中**每一个**模块都没有任何运行时 import', () => {
+  it('★ 白名单闭合：每个模块的 import / re-export 只能指向同一份纯模块白名单', () => {
     // 遍历白名单而不是只钉 format.ts —— 后者在加第二个成员时会静默失效
     //（新成员带着 Prisma 进来，而那条旧用例照旧「通过」）。
     const bad: string[] = [];
@@ -123,7 +123,13 @@ describe('运维 CLI：--help 不加载 Prisma', () => {
       const file = path.join(ROOT, ...`${mod}.ts`.split('/'));
       expect(fs.existsSync(file), `白名单里的 ${mod} 不存在（改名了？）`).toBe(true);
       const src = stripComments(fs.readFileSync(file, 'utf8'));
-      for (const m of src.matchAll(RE_TOP_IMPORT)) bad.push(`${mod}: ${m[0].trim()}`);
+      const reExport = /^export\s+(?!type\b)(?:\{[^}]*\}|\*)\s+from\s+['"]([^'"]+)['"]/gm;
+      const deps = [...src.matchAll(RE_TOP_IMPORT)].map((m) => m[2]);
+      deps.push(...[...src.matchAll(reExport)].map((m) => m[1]));
+      for (const dep of deps) {
+        const normalized = path.relative(ROOT, path.resolve(path.dirname(file), dep)).replace(/\\/g, '/');
+        if (!LIB_ALLOWLIST.includes(normalized)) bad.push(`${mod}: ${dep}`);
+      }
     }
     expect(
       bad,

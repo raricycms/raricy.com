@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import OAuthConnectionsList from './OAuthConnectionsList';
 import FramePanel from './FramePanel';
+import BubblePanel from './BubblePanel';
 import AddToHomeScreenGuide from '../components/AddToHomeScreenGuide';
 
 interface ProfileState {
@@ -423,6 +424,19 @@ export default function SettingsPage() {
       </div>
 
       {/* ====== Section 4: OAuth applications ====== */}
+      <div className="settings-card" id="chat-bubble">
+        <div className="settings-card__header">
+          <span className="icon icon-chat-dots_new"></span>
+          <h2 className="settings-card__title">聊天气泡</h2>
+        </div>
+        <p className="settings-card__desc">
+          在讨论大区和私聊中使用你选的气泡，历史消息也会跟随当前选择。
+          到期后自动恢复默认款。购买后在这里选择使用，{' '}
+          <a className="frame-panel__hint-link" href="/fish/market#shop">去鱼干商城</a>。
+        </p>
+        {state.id && <BubblePanel />}
+      </div>
+
       <div className="settings-card">
         <div className="settings-card__header">
           <span className="icon icon-github"></span>

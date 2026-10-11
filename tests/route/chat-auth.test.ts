@@ -1,10 +1,10 @@
 // 讨论接口的档位 —— route handler 层
 //
-// 【为什么单独一个文件】讨论的 13 个 handler **全都**在参数解析之前调
+// 【为什么单独一个文件】讨论的 14 个 handler **全都**在参数解析之前调
 // `requireChatUser()`（`src/app/api/chat/_auth.ts`），口径是整齐的 core+。但整齐不等于
 // 有保护：本轮审计发现，全仓**没有任何用例**断言过讨论接口对非核心用户 403 ——
 // 唯一的契约是页面级的 `/chat` 403（tests/e2e/access-control.spec.ts）。
-// 也就是说，把这 13 条守卫删掉任何一条，现有测试都不会变红。
+// 也就是说，把这些守卫删掉任何一条，原有测试都不会变红。
 //
 // 【判据为什么看 message 而不只看 status】业务逻辑自己也会回 403
 // （`canAccessChannel` 判频道归属），与「档位不够」是两回事。所以：
@@ -39,6 +39,7 @@ import { POST as muteChannel } from '@/app/api/chat/channels/[id]/mute/route';
 import { POST as hideChannel } from '@/app/api/chat/channels/[id]/hide/route';
 import { POST as readChannel } from '@/app/api/chat/channels/[id]/read/route';
 import { GET as searchChannel } from '@/app/api/chat/channels/[id]/search/route';
+import { GET as channelAppearance } from '@/app/api/chat/channels/[id]/appearance/route';
 import { POST as typing } from '@/app/api/chat/channels/[id]/typing/route';
 import { POST as viewing } from '@/app/api/chat/channels/[id]/viewing/route';
 import { DELETE as deleteMessage } from '@/app/api/chat/messages/[id]/route';
@@ -82,7 +83,7 @@ async function isGuardRejection(res: Response): Promise<boolean> {
 }
 
 /**
- * 13 个 handler。`call` 一律用合法的大区 id，好让 core 用户走完档位之后能落进业务逻辑。
+ * 14 个 handler。`call` 一律用合法的大区 id，好让 core 用户走完档位之后能落进业务逻辑。
  * ⚠️ `/api/chat/stream` 只进「拒绝」两连、不进「放行」组：它一旦放行就会挂起一条 SSE
  * 长连接，把用例拖到超时 —— 那不是档位的问题，是这条路由的形态使然。
  */
@@ -94,6 +95,7 @@ const cases: { name: string; call: () => Promise<Response>; canProbeAllow?: bool
   { name: 'POST /api/chat/channels/:id/hide', call: () => hideChannel(post('/x'), ctx(CHAT_LOBBY_ID)) },
   { name: 'POST /api/chat/channels/:id/read', call: () => readChannel(post('/x'), ctx(CHAT_LOBBY_ID)) },
   { name: 'GET  /api/chat/channels/:id/search', call: () => searchChannel(url('/x?q=x'), ctx(CHAT_LOBBY_ID)) },
+  { name: 'GET  /api/chat/channels/:id/appearance', call: () => channelAppearance(url('/x'), ctx(CHAT_LOBBY_ID)) },
   { name: 'POST /api/chat/channels/:id/typing', call: () => typing(post('/x'), ctx(CHAT_LOBBY_ID)) },
   { name: 'POST /api/chat/channels/:id/viewing', call: () => viewing(post('/x'), ctx(CHAT_LOBBY_ID)) },
   { name: 'DELETE /api/chat/messages/:id', call: () => deleteMessage(new Request('http://localhost/x', { method: 'DELETE' }), ctx('999999')) },
@@ -107,7 +109,7 @@ beforeEach(async () => {
   session.token = undefined;
 });
 
-describe('讨论接口的档位（13 个 handler）', () => {
+describe('讨论接口的档位（14 个 handler）', () => {
   it('清单要盖住 chat 下的**全部** handler（漏一条 = 漏一个免检的口子）', () => {
     // 真的去扫盘，不是断言我自己写的数组长度 —— 新增一条讨论路由而忘了补进 cases 时，
     // 它必须变红。否则那条路由在「有没有测试保护」这件事上是隐形的。

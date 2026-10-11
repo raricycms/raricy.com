@@ -30,9 +30,8 @@ const FILTERS: { label: string; type: string | null }[] = [
   { label: '投喂', type: 'feed_all' },
   { label: '转账', type: 'transfer_all' },
   { label: '练手盘', type: 'market_all' },
-  // 鱼干商城的租框支出（frame_rent）。单值，不需要进 fish-service.applyTypeFilter
-  // 的合称分支 —— 那边的 `else where.type = type` 已经覆盖。
-  { label: '商城', type: 'frame_rent' },
+  // 商城合称由 fish-service.applyTypeFilter 合并头像框与气泡两种租赁支出。
+  { label: '商城', type: 'shop_all' },
   { label: '赠送', type: 'admin_grant' },
 ];
 

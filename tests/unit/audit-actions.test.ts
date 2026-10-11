@@ -1,7 +1,7 @@
 // audit-actions.ts —— 动作词汇表的纯函数单测。
 //
 // 【为什么这块值得单独钉】
-//  1. **表必须穷尽 20 个码**：漏一条的后果是那一类在界面上退回英文机器码、
+//  1. **表必须穷尽全部动作码**：漏一条的后果是那一类在界面上退回英文机器码、
 //     或在筛选下拉里选不到 —— 都静默。tsc 已经拦（`Record<AuditAction, …>`），
 //     这里再钉一遍「四张表条目数都等于 AUDIT_ACTIONS 长度」，防的是把某张表
 //     写成别的形状（如 `Record<string, …>` 却仍能编译过）。
@@ -31,9 +31,9 @@ import {
 } from '@/lib/audit-actions';
 
 describe('AUDIT_ACTIONS 词汇表', () => {
-  it('20 个码，且互不重复', () => {
-    expect(AUDIT_ACTIONS).toHaveLength(20);
-    expect(new Set(AUDIT_ACTIONS).size).toBe(20);
+  it('22 个码，且互不重复', () => {
+    expect(AUDIT_ACTIONS).toHaveLength(22);
+    expect(new Set(AUDIT_ACTIONS).size).toBe(22);
   });
 
   it('四张 Record 表都穷尽全部动作码', () => {
@@ -46,7 +46,7 @@ describe('AUDIT_ACTIONS 词汇表', () => {
     expect(Object.keys(AUDIT_OBJECT_TYPE_LABEL).sort()).toEqual([...AUDIT_OBJECT_TYPES].sort());
   });
 
-  it('公开页的动作清单只滤掉两个 CLI-only 码', () => {
+  it('公开页的动作清单只滤掉四个 CLI-only 装扮码', () => {
     expect(PUBLIC_AUDIT_ACTIONS).not.toContain('frame_grant');
     expect(PUBLIC_AUDIT_ACTIONS).not.toContain('frame_revoke');
     expect(PUBLIC_AUDIT_ACTIONS).toHaveLength(18);
@@ -54,11 +54,14 @@ describe('AUDIT_ACTIONS 词汇表', () => {
     expect(AUDIT_ACTIONS.filter((a) => !PUBLIC_AUDIT_ACTIONS.includes(a))).toEqual([
       'frame_grant',
       'frame_revoke',
+      'bubble_grant',
+      'bubble_revoke',
     ]);
   });
 
-  it('公开页的对象类型清单只滤掉 user_frame', () => {
+  it('公开页的对象类型清单只滤掉两类 CLI 装扮', () => {
     expect(PUBLIC_AUDIT_OBJECT_TYPES).not.toContain('user_frame');
+    expect(PUBLIC_AUDIT_OBJECT_TYPES).not.toContain('user_bubble');
     expect(PUBLIC_AUDIT_OBJECT_TYPES).toHaveLength(9);
   });
 });
@@ -174,5 +177,13 @@ describe('formatActionDetail：metadata 说法', () => {
   it('未知码 / 无法解析的时间 → null', () => {
     expect(formatActionDetail('delete_clip', { anything: 'x' })).toBeNull();
     expect(formatActionDetail('ban_user', { ban_until: 'not-a-date' })).toBeNull();
+  });
+
+  it('聊天气泡：发放显示实际有效期，收回显示卸下结果', () => {
+    expect(formatActionDetail('bubble_grant', { expires_at: '2026-11-01T00:00:00.000Z' })).toBe('到期 2026-11-01 00:00:00');
+    expect(formatActionDetail('bubble_grant', { expires_at: null })).toBe('永久持有');
+    expect(formatActionDetail('bubble_revoke', { revoked: false })).toBe('空操作（本来就没持有）');
+    expect(formatActionDetail('bubble_revoke', { revoked: true, unequipped: true })).toBe('已收回并恢复默认');
+    expect(formatActionDetail('bubble_revoke', { revoked: true })).toBe('已收回');
   });
 });

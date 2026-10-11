@@ -397,3 +397,7 @@
   // 与「戴上」按钮占同样的高度，切换时卡片不跳
   padding: 6px 0;
 }
+// 气泡预览使用与真实聊天相同的 ChatBubble，状态与按钮另行排列。
+.bubble-panel { display: grid; gap: 16px; }
+.bubble-panel__item { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.bubble-panel__state { color: var(--color-text-secondary); font-size: .85rem; }

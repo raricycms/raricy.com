@@ -5,10 +5,11 @@ import { getCurrentUser } from '@/lib/auth';
 import { loginUrlWithNext } from '@/lib/safe-url';
 import { getBalance } from '@/lib/fish-service';
 import { listShopItems } from '@/lib/frame-shop-service';
+import { listBubbleShopItems } from '@/lib/bubble-shop-service';
 import TransferPanel from './TransferPanel';
 import ShopPanel from './ShopPanel';
 
-// 鱼干市场 —— 两块：用户间转账（无手续费）+ 鱼干商城（租头像框）。
+// 鱼干市场 —— 用户间转账（无手续费）+ 共享商城（头像框与聊天气泡）。
 // 需登录，不要求 core+（与 /fish 面板、签到同档）。
 export const dynamic = 'force-dynamic';
 
@@ -18,9 +19,10 @@ export default async function FishMarketPage() {
 
   // 商城列表在**服务端**算好（`listShopItems` 已经把「素材在不在、我持有到什么时候、
   // 过没过期」都判成了结果），客户端组件一次都不做时间比较 —— 见 ShopPanel 的文件头。
-  const [balance, shopItems] = await Promise.all([
+  const [balance, shopItems, bubbleItems] = await Promise.all([
     getBalance(user.id),
     listShopItems(user.id),
+    listBubbleShopItems(user.id),
   ]);
 
   return (
@@ -30,7 +32,7 @@ export default async function FishMarketPage() {
         鱼干市场
       </h1>
       <p className="market-subtitle">
-        给任意一位站内用户转账 —— 零手续费，即时到账；也可以用鱼干租一款头像框。
+        给任意一位站内用户转账 —— 零手续费，即时到账；也可以用鱼干租头像框与聊天气泡。
       </p>
 
       <TransferPanel balance={balance} />
@@ -43,7 +45,7 @@ export default async function FishMarketPage() {
         <span className="icon icon-fish" aria-hidden="true" style={{ marginRight: '0.5rem' }}></span>
         鱼干商城
       </h2>
-      <ShopPanel userId={user.id} balance={balance} items={shopItems} />
+      <ShopPanel userId={user.id} balance={balance} items={[...shopItems.map((item) => ({ ...item, kind: 'frame' as const })), ...bubbleItems]} />
 
       <p className="market-foot">
         <Link className="market-foot__link" href="/fish/transactions?type=transfer_all">

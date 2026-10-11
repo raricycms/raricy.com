@@ -95,7 +95,7 @@ export default async function FishPage() {
             <p>攒下来的鱼干也有花出去的地方 ——</p>
             <p>
               <Link href="/fish/market#shop" className="fish-card__info-link">
-                鱼干商城：用鱼干租一款头像框
+                鱼干商城：租头像框与聊天气泡
               </Link>
             </p>
           </div>

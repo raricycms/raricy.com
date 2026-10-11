@@ -45,6 +45,7 @@ import { isViewingChannel } from './chat-presence';
 import { hasSubscriber, publishToUser } from './topbar-bus';
 import { avatarUrl } from './avatar-refs';
 import { frameUrlFor } from './frame-service';
+import { bubbleKeyFor } from './bubble-service';
 import {
   CHAT_LOBBY_ID,
   CHAT_LOBBY_TITLE,
@@ -111,6 +112,8 @@ const MESSAGE_SELECT = {
       role: true,
       equippedFrameKey: true,
       equippedFrameExpiresAt: true,
+      equippedBubbleKey: true,
+      equippedBubbleExpiresAt: true,
     },
   },
 } satisfies Prisma.ChatMessageSelect;
@@ -128,12 +131,15 @@ function authorOf(a: {
    */
   equippedFrameKey: string | null;
   equippedFrameExpiresAt: Date | null;
+  equippedBubbleKey: string | null;
+  equippedBubbleExpiresAt: Date | null;
 }): ChatAuthorDTO {
   return {
     id: a.id,
     username: a.username,
     avatar_url: avatarUrl(a.id),
     frame_url: frameUrlFor(a),
+    bubble_key: bubbleKeyFor(a),
     is_admin: hasAdminRights(a),
   };
 }

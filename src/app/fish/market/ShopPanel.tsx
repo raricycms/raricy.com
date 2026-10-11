@@ -3,29 +3,26 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Avatar from '@/app/components/Avatar';
+import ChatBubble from '@/app/components/ChatBubble';
+import type { BubbleKey } from '@/lib/bubble-refs';
 import { fmtFish } from '@/lib/fish-amount';
-import {
-  RENT_UNITS,
-  frameUrl,
-  parseRentCount,
-  type FrameKey,
-  type RentUnit,
-} from '@/lib/frame-refs';
+import { frameUrl, type FrameKey } from '@/lib/frame-refs';
+import { RENT_UNITS, parseRentCount, type RentUnit } from '@/lib/shop-refs';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ShopPanel —— 鱼干商城的租赁面板（/fish/market 的第二块，转账面板下面）
 //
 // 【逐款一块表单】面板按 `items.map` 渲染，每款一张 `.market-card`（`data-frame=<key>`
-// 是 e2e 的稳定钩子 —— 两款之后 `.market-shop__name` 这类裸选择器会解析到两个元素，
+// 与 `data-bubble=<key>` 是 e2e 的稳定钩子 —— 多款之后裸选择器会解析到多个元素，
 // Playwright 的 strict 模式当场红）。**别改回 `items[0]`**：那会让其余在售款
 // 从页面上消失，而服务端照样卖（过去有一条绊线用例专门盯这个，见
 // tests/unit/frame-shop-guard.test.ts）。
 //
-// 【两款两种单位】鱼干蓝按天、星落月畔按月。单位、上下限、量词全从 `RENT_UNITS`
+// 【共享租期】鱼干蓝按天、星落月畔与蓝色直角按月。单位、上下限、量词全从 `RENT_UNITS`
 // 现读（零依赖的同一份表，服务端校验读的也是它）—— 面板**不自己判**哪款是按天的。
 //
 // 【它只画商品，判什么都在服务端】列表是 `/fish/market` 的服务端组件调
-// `listShopItems()` 算好传进来的：哪款在卖、素材在不在、我当前持有到什么时候、
+// 两类商品的列表服务算好传进来的：哪款在卖、素材在不在、我当前持有到什么时候、
 // 有没有过期 —— 全是**判定后的结果**。这里一次都不查时间（db-time-guard 规则 4–5
 // 扫整个 src/，含页面组件），确认弹窗里也**不显示算出来的到期日期**：
 // 真实到期时刻由服务端在响应里给，落进 toast。
@@ -52,15 +49,10 @@ declare global {
 }
 
 /**
- * 与 `frame-shop-service.ShopItem` 对应（那边的 Date 在这里已经是展示串）。
- *
- * ⚠️ `key` 是 `FrameKey` 而不是 `string` —— 商城在售的恒是白名单内的框，
- * 于是这里能直接 `frameUrl(key)` 拼预览地址（那个函数只收 FrameKey）。
- * 用 `import type` 拿类型：整条 import 会被擦掉，不会把拖着 prisma 的服务层
- * 带进客户端包。
+ * 两类商品共享租期、余额、持有结果。kind 决定白名单 key、预览和购买接口。
+ * Date 已由服务端转成展示串，客户端不判断到期。
  */
-export interface ShopItemView {
-  key: FrameKey;
+export type ShopItemView = ({ kind: 'frame'; key: FrameKey } | { kind: 'bubble'; key: BubbleKey }) & {
   label: string;
   description: string;
   /** 计价单位 + 单价。上下限与量词在 `RENT_UNITS[unit]` 里，不随 DTO 来。 */
@@ -94,14 +86,22 @@ export default function ShopPanel({
   items: ShopItemView[];
 }) {
   const [balance, setBalance] = useState(initialBalance);
+  const [category, setCategory] = useState<'all' | 'frame' | 'bubble'>('all');
 
   if (items.length === 0) return null;
 
   return (
     <>
-      {items.map((item) => (
+      <div className="market-shop__categories" role="group" aria-label="商品分类">
+        {([['all', '全部'], ['frame', '头像框'], ['bubble', '聊天气泡']] as const).map(([kind, label]) => (
+          <button type="button" key={kind} aria-pressed={category === kind}
+            className={`market-shop__category${category === kind ? ' is-active' : ''}`}
+            onClick={() => setCategory(kind)}>{label}</button>
+        ))}
+      </div>
+      {items.filter((item) => category === 'all' || item.kind === category).map((item) => (
         <ShopItemCard
-          key={item.key}
+          key={`${item.kind}:${item.key}`}
           userId={userId}
           balance={balance}
           item={item}
@@ -112,7 +112,7 @@ export default function ShopPanel({
   );
 }
 
-/** 一款框一张卡：商品行 + 租期表单 + 二次确认弹窗。状态全是这一款自己的。 */
+/** 一款商品一张卡：商品行 + 租期表单 + 二次确认弹窗。状态全是这一款自己的。 */
 function ShopItemCard({
   userId,
   balance,
@@ -134,33 +134,36 @@ function ShopItemCard({
   const countOk = parsedCount !== null;
   const total = countOk ? item.rent.price * parsedCount : 0;
   const affordable = total <= balance;
-  const canSubmit = countOk && affordable && !item.assetMissing;
+  const permanent = !!item.holding && item.holding.expiresAt === null;
+  const canSubmit = countOk && affordable && !item.assetMissing && !permanent;
   const afterBalance = affordable ? balance - total : balance;
-  const previewUrl = item.assetMissing ? null : frameUrl(item.key);
+  const previewUrl = item.kind === 'bubble' || item.assetMissing ? null : frameUrl(item.key);
+  const bubble = item.kind === 'bubble';
+  const itemSlug = bubble ? `bubble-${item.key}` : item.key;
 
   // id 逐款化：两款之后 `#market-shop-days` 这种单一 id 就不够用了（同一条理由
   // 让 `.market-shop__summary` 与 `.market-summary` 分了家，见 _fish-market.scss 尾部）。
-  const inputId = `market-shop-count-${item.key}`;
-  const confirmId = `market-shop-confirm-${item.key}`;
+  const inputId = `market-shop-count-${itemSlug}`;
+  const confirmId = `market-shop-confirm-${itemSlug}`;
 
   // 表单底下那一行提示。**只有一条** —— 租期写错与钱不够不会同时说，
   // 两个 <p> 各挂一次同名类会让选择器有歧义（转账那条 `.market-summary` 就是这么翻的车）。
   // 区间与量词都从单位表来，别写死数字。
-  const formError = !countOk
+  const formError = permanent ? '你已永久持有，无需再租' : !countOk
     ? `租期填 ${unit.min}~${unit.max} ${unit.noun}之间的整数`
     : !affordable
       ? '小鱼干不足'
       : '';
 
   async function submit() {
-    if (!countOk || busy) return;
+    if (!canSubmit || busy) return;
     setBusy(true);
     try {
-      const res = await fetch('/api/fish/market/rent', {
+      const res = await fetch(bubble ? '/api/fish/market/bubble-rent' : '/api/fish/market/rent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({ frame_key: item.key, count: parsedCount }),
+        body: JSON.stringify({ [bubble ? 'bubble_key' : 'frame_key']: item.key, count: parsedCount }),
       });
       const data = await res.json().catch(() => null);
       if (res.ok && data?.code === 200) {
@@ -190,17 +193,17 @@ function ShopItemCard({
 
   return (
     <>
-      <div className="market-card" data-frame={item.key}>
+      <div className="market-card" data-frame={!bubble ? item.key : undefined} data-bubble={bubble ? item.key : undefined}>
         <div className="market-field">
           <span className="market-field__label">在售</span>
           <div className="market-shop__item">
-            <Avatar
+            {bubble ? <ChatBubble bubbleKey={item.key}>你好，这是你的气泡预览。</ChatBubble> : <Avatar
               userId={userId}
               frameUrl={previewUrl}
               alt=""
               className="market-shop__preview"
               loading="lazy"
-            />
+            />}
             <div className="market-shop__meta">
               <span className="market-shop__name">{item.label}</span>
               <span className="market-shop__desc">{item.description}</span>
@@ -213,7 +216,7 @@ function ShopItemCard({
             <p className="market-field__hint market-shop__owned">
               {item.holding.expired ? '上次租的已过期' : '当前持有到'}
               {item.holding.expiresAt ? ` ${item.holding.expiresAt}` : ''}
-              {item.equipped && !item.holding.expired ? '（正戴着）' : ''}
+              {item.equipped && !item.holding.expired ? (bubble ? '（使用中）' : '（正戴着）') : ''}
             </p>
           )}
         </div>
@@ -278,6 +281,8 @@ function ShopItemCard({
             >
               租用
             </button>
+            {bubble && <p className="market-field__hint">购买后到设置页选择使用。{item.rent.unit === 'month' && `1 个月固定 ${unit.days} 天。`}</p>}
+            {bubble && item.holding && <a className="frame-panel__hint-link" href="/settings#chat-bubble">选择聊天气泡</a>}
           </>
         )}
       </div>
@@ -297,12 +302,12 @@ function ShopItemCard({
               </div>
               <div className="modal-body">
                 <div className="market-confirm__to">
-                  <Avatar
+                  {bubble ? <ChatBubble bubbleKey={item.key}>你好，这是你的气泡预览。</ChatBubble> : <Avatar
                     userId={userId}
                     frameUrl={previewUrl}
                     alt=""
                     imgClassName="market-confirm__avatar"
-                  />
+                  />}
                   <span className="market-confirm__name">{item.label}</span>
                 </div>
                 <dl className="market-confirm__rows">

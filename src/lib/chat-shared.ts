@@ -64,6 +64,8 @@ export interface ChatAuthorDTO {
   avatar_url: string;
   /** 头像框贴图地址；null = 没戴 / 已过期 / 素材缺失。**判定已在服务层做完**。 */
   frame_url: string | null;
+  /** 服务端判定的作者当前有效气泡；null 为默认。 */
+  bubble_key: import('./bubble-refs').BubbleKey | null;
   is_admin: boolean;
 }
 
@@ -195,6 +197,7 @@ export interface ChatStreamReadEvent {
 }
 
 export type ChatStreamEvent =
+  | { type: 'appearance' }
   | ChatStreamMessageEvent
   | ChatStreamResyncEvent
   | ChatStreamTypingEvent

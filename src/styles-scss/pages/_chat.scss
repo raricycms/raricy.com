@@ -831,6 +831,15 @@
 }
 
 // 正文里 @到我 → 品牌淡底强调。
+// CSS demo 使用主题蓝色混入卡片底，文字/链接/代码块继续采用主题令牌。
+// 单图透明规则在下方覆盖此规则；删除占位不传气泡 key，保持统一样式。
+.chat-msg__content[data-bubble='blue-square']:not(:has(> .chat-msg__md--single-image)) {
+  border-radius: 0;
+  background: color-mix(in srgb, var(--color-brand-primary) 18%, var(--color-background-card));
+}
+.chat-msg__content[data-bubble='blue-square'].chat-msg__content--mention:not(:has(> .chat-msg__md--single-image)) {
+  background: color-mix(in srgb, var(--color-brand-primary) 30%, var(--color-background-card));
+}
 .chat-msg__content--mention {
   background: var(--color-brand-secondary);
 }

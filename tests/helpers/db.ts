@@ -137,6 +137,7 @@ export async function resetDb() {
     // 头像框持有账引用 users —— 同样必须排在 users 之前（见 migrations/20_user_frames
     // 头部）。⚠️ 同上：漏登记不报错，只表现为数据残留。
     'user_frames',
+    'user_bubbles',
     'users',
     'account_sync_ledger',
   ];

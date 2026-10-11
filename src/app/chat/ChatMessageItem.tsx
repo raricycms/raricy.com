@@ -14,6 +14,7 @@
 import { memo, useState } from 'react';
 import Link from 'next/link';
 import Avatar from '@/app/components/Avatar';
+import ChatBubble from '@/app/components/ChatBubble';
 import { ArrowRight, BookOpenText } from 'lucide-react';
 import { CHAT_DELETED_TEXT, type ChatMessageDTO } from '@/lib/chat-shared';
 import { nowForDb } from '@/lib/db-time';
@@ -208,7 +209,7 @@ function ChatMessageItemInner({
 
   // 纯图片 / 纯博客引用消息没有正文 → 不画空气泡；已删消息仍显示占位泡
   const contentBlock = msg.content || msg.is_deleted ? (
-    <div className={`chat-msg__content${mentioned ? ' chat-msg__content--mention' : ''}`}>
+    <ChatBubble bubbleKey={msg.is_deleted ? null : msg.author.bubble_key} mentioned={!msg.is_deleted && mentioned}>
       {msg.is_deleted ? (
         <span className="chat-msg__deleted">{msg.content}</span>
       ) : (
@@ -217,7 +218,7 @@ function ChatMessageItemInner({
           allowBareImage={!msg.image && !msg.image_missing && !msg.blog && !msg.blog_missing}
         />
       )}
-    </div>
+    </ChatBubble>
   ) : null;
 
   // 附件一律以 !msg.is_deleted 为门（服务端已对软删消息抹掉附件，这里是第二道）：

@@ -69,6 +69,7 @@ const MARKET_PORT = 3102; // 练手盘行情替身，见 tests/e2e/mock-market-p
  * 就加进来；只是 goto 一个页面再断言内容，就不加。
  */
 const RESPONSIVE_SPECS: RegExp[] = [
+  /chat-bubble\.spec\.ts$/,
   /chat-features\.spec\.ts$/,
   /chat-sidebar\.spec\.ts$/,
   // Markdown 编辑器：视图三档在窄屏要少给「并排」那一档，且窄屏的栏宽是被

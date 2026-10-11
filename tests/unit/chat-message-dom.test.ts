@@ -34,7 +34,7 @@ function dto(patch: Partial<ChatMessageDTO> = {}): ChatMessageDTO {
   return {
     id: 1,
     channel_id: 'c1',
-    author: { id: 'u1', username: '小明', avatar_url: '/api/avatar/u1', frame_url: null, is_admin: false },
+    author: { id: 'u1', username: '小明', avatar_url: '/api/avatar/u1', frame_url: null, bubble_key: null, is_admin: false },
     content: '短',
     image: null,
     image_missing: false,

@@ -9,7 +9,7 @@
 // ── 【为什么单独一个文件】────────────────────────────────────────────────────
 // `/settings` 的装备面板是**客户端组件**，它要把每个框渲染成一张卡片（缩略图 + 显示名）；
 // 而 `frame-service.ts` 拖着 `node:fs` 与 prisma，**不能进客户端包**。词汇是这一整套
-// 设计里唯一两端都要用到的部分，所以它必须住在零依赖的模块里 —— 否则前端只能手抄一份
+// 设计里唯一两端都要用到的部分，所以它只能依赖纯词汇模块 —— 否则前端只能手抄一份
 // 清单，而手抄的那份会在加第二个框时静默漏掉（面板少一张卡片，不报错，
 // 只是那个框从此在界面上不可达）。`type-only` 的 `import type` 帮不上忙：
 // 它只擦类型，擦不掉运行时要用到的数组。同一理由见 `blog-visibility.ts` 的文件头。
@@ -204,38 +204,10 @@ export function frameUrl(key: FrameKey): string {
 //    本站不引入）。到期时刻与页面文案都读 `RENT_UNITS[unit].days`，**别在别处写死 30**。
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 租赁计价单位。**只有这两种** —— 下表是穷尽的 `Record`，加第三种时 tsc 会点名。 */
-export type RentUnit = 'day' | 'month';
-
-export interface RentUnitSpec {
-  /** 一个单位 = 几天（算到期时刻时用）。 */
-  days: number;
-  /** 单次可租的**单位数**上下限（整数、含两端）。 */
-  min: number;
-  max: number;
-  /** 量词：拼句子与写在输入框后面（「3 天」「2 个月」）。 */
-  noun: string;
-  /** 单价口径文案（商城展示用，如「鱼干 / 月」）。 */
-  priceNoun: string;
-}
-
-/**
- * 单位表 —— **上下限、量词、单价口径的唯一来源**。
- *
- * 展示与校验读同一份：面板拿 `min`/`max` 画输入框的上下界与快捷按钮，服务端拿
- * 同一个 `min`/`max` 判越界。各写一份的话，改上限时会出现「页面放行、服务端拒」
- * （或反过来），而两边各自的代码看着都对。
- */
-export const RENT_UNITS: Record<RentUnit, RentUnitSpec> = {
-  day: { days: 1, min: 1, max: 30, noun: '天', priceNoun: '鱼干 / 天' },
-  month: { days: 30, min: 1, max: 12, noun: '个月', priceNoun: '鱼干 / 月' },
-};
-
-/** 单位数在合法区间内吗（整数、含两端）。 */
-export function isRentCountInRange(unit: RentUnit, count: number): boolean {
-  const { min, max } = RENT_UNITS[unit];
-  return Number.isInteger(count) && count >= min && count <= max;
-}
+// 兼容原有头像框调用点，租期权威已抽到商城共享词汇，不复制单位或区间。
+import { isRentCountInRange, type RentUnit } from './shop-refs';
+export { RENT_UNITS, isRentCountInRange, parseRentCount } from './shop-refs';
+export type { RentUnit, RentUnitSpec } from './shop-refs';
 
 /**
  * 一款框**能卖的价**（单位 + 单价）；null = 不卖。
@@ -281,27 +253,6 @@ export function frameRentCost(key: string, count: number): number | null {
   const sale = frameSaleOf(k);
   if (!sale || !isRentCountInRange(sale.unit, count)) return null;
   return sale.price * count;
-}
-
-/**
- * 解析提交上来的**单位数**（天数 / 月数），按该单位的合法区间判。
- * **非法一律 null**，由调用方报 400 —— 不兜默认值。
- *
- * 与 `parseFrameKey` 同款纪律：兜成 1 或上限都等于**替用户做了一个他没做的
- * 决定**，而这次那个决定还带着一次扣款。
- *
- * 形状判得比 `Number()` 严：`Number('1e2')` 是 100、`Number(' 1 ')` 是 1、
- * `Number('')` 是 0、`Number([])` 是 0 —— 放行前两个就是静默卖出一个用户没打算
- * 买的数量。所以字符串先过一道「十进制整数」的形状，数字则必须本身就是整数。
- */
-export function parseRentCount(unit: RentUnit, raw: unknown): number | null {
-  const n =
-    typeof raw === 'number'
-      ? raw
-      : typeof raw === 'string' && /^\s*\d+\s*$/.test(raw)
-        ? Number(raw)
-        : NaN;
-  return isRentCountInRange(unit, n) ? n : null;
 }
 
 /**

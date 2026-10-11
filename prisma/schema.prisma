@@ -82,6 +82,10 @@ model User {
   /// 到期是**只读判定**：过期的值留在列里无害（判定恒 null），故无定时清理。
   equippedFrameExpiresAt DateTime? @map("equipped_frame_expires_at")
 
+  /// 当前气泡及到期的冗余副本。唯一写入者 bubble-service，读时走 bubbleKeyFor。
+  equippedBubbleKey       String?   @map("equipped_bubble_key")
+  equippedBubbleExpiresAt DateTime? @map("equipped_bubble_expires_at")
+
   blogs                 Blog[]              @relation("BlogAuthor")
   blogLikes             BlogLike[]
   favorites             Favorite[]
@@ -116,6 +120,7 @@ model User {
   fishWebhookDeliveries FishWebhookDelivery[]
   marketPositions       MarketPosition[]
   frames                UserFrame[]
+  bubbles               UserBubble[]
   anonIdentities        BlogAnonIdentity[]
   visibilityLogs        BlogVisibilityLog[]  @relation("BlogVisibilityLogActor")
   @@index([id], map: "ix_users_id")
@@ -1106,4 +1111,20 @@ model UserFrame {
   @@unique([userId, frameKey], name: "uq_user_frame")
   @@index([userId], map: "ix_user_frames_user_id")
   @@map("user_frames")
+}
+
+/// 气泡持有账。定义在 bubble-refs 中；到期不软删，撤销才写墓碑，NULL 到期表示永久。
+model UserBubble {
+  id        Int       @id @default(autoincrement())
+  userId    String    @map("user_id")
+  bubbleKey String    @map("bubble_key")
+  expiresAt DateTime? @map("expires_at")
+  source    String    @default("cli")
+  createdAt DateTime? @map("created_at")
+  deleted   Boolean   @default(false)
+  deletedAt DateTime? @map("deleted_at")
+  user User @relation(fields: [userId], references: [id])
+  @@unique([userId, bubbleKey], name: "uq_user_bubble")
+  @@index([userId], map: "ix_user_bubbles_user_id")
+  @@map("user_bubbles")
 }

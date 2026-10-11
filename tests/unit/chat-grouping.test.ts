@@ -31,7 +31,7 @@ function msg(
   return {
     id,
     channel_id: 'lobby',
-    author: { id: author, username: author, avatar_url: '', frame_url: null, is_admin: false },
+    author: { id: author, username: author, avatar_url: '', frame_url: null, bubble_key: null, is_admin: false },
     content: `m${id}`,
     image: null,
     image_missing: false,

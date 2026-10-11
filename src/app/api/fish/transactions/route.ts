@@ -3,7 +3,7 @@ import { apiOk, apiErr } from '@/lib/format';
 import { getTransactions, toFishTxJson } from '@/lib/fish-service';
 
 // GET /api/fish/transactions — 当前用户流水分页（需登录）。
-// query: ?page=1&per_page=20&type=checkin|feed_all|transfer_all|market_all|frame_rent|admin_grant
+// query: ?page=1&per_page=20&type=checkin|feed_all|transfer_all|market_all|shop_all|frame_rent|bubble_rent|admin_grant
 //        （筛选条那套值 = 页面 FILTERS 数组；合称映射见 fish-service.applyTypeFilter。
 //          这里**曾经**列过 `purchase` —— 那个 type 从来不存在，付款流水是 transfer）
 //
