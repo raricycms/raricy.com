@@ -55,6 +55,28 @@ describe('气泡租赁与权益', () => {
     expect(await prisma.user.findUniqueOrThrow({ where: { id: user.id } })).toMatchObject({ driedFish: fishToUnits(70), equippedBubbleExpiresAt: next });
     await expectLedgerConsistent();
   });
+  it('原款改名保留已有权益；描边款独立购买、装备与续期', async () => {
+    const user = await makeFishUser(40);
+    await buy(user.id);
+    await equipBubble(user.id, KEY);
+    const original = await holding(user.id);
+    expect((await listMyBubbles(user.id)).activeKey).toBe(KEY);
+    expect(BUBBLES[KEY].label).toBe('蓝底直角');
+    const outlineKey = 'blue-outline-square';
+    expect(await equipBubble(user.id, outlineKey)).toMatchObject({ ok: false, code: 403 });
+    expect(await rentBubble({ userId: user.id, key: outlineKey, count: 1 })).toMatchObject({ ok: true, cost: 10, balance: 20 });
+    expect((await listMyBubbles(user.id)).activeKey).toBe(KEY);
+    expect(await equipBubble(user.id, outlineKey)).toMatchObject({ ok: true, key: outlineKey });
+    await rentBubble({ userId: user.id, key: outlineKey, count: 1 });
+    expect(await holding(user.id)).toEqual(original);
+    const items = await listBubbleShopItems(user.id);
+    expect(items.map((item) => [item.key, item.label, item.equipped])).toEqual([
+      [KEY, '蓝底直角', false], [outlineKey, '蓝色直角', true],
+    ]);
+    expect(await equipBubble(user.id, KEY)).toMatchObject({ ok: true, key: KEY });
+    expect(await prisma.userBubble.count({ where: { userId: user.id } })).toBe(2);
+    await expectLedgerConsistent();
+  });
   it('非法输入、停售、停用与永久持有拒扣款；停售仍允许已持有者装备', async () => {
     const user = await makeFishUser(100);
     for (const count of [0, 13, 1.5, '1e1', [], null]) expect(await rentBubble({ userId: user.id, key: KEY, count })).toMatchObject({ ok: false });

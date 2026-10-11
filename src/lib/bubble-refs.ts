@@ -2,7 +2,7 @@
 // 停售（移除 rent）与停用（disabled）分开。保留 key，历史持有记录仍可解释和卸下。
 import { isRentCountInRange, type RentUnit } from './shop-refs';
 
-export const BUBBLE_KEYS = ['blue-square'] as const;
+export const BUBBLE_KEYS = ['blue-square', 'blue-outline-square'] as const;
 export type BubbleKey = (typeof BUBBLE_KEYS)[number];
 export interface BubbleDef {
   label: string;
@@ -12,8 +12,13 @@ export interface BubbleDef {
 }
 export const BUBBLES: Record<BubbleKey, BubbleDef> = {
   'blue-square': {
-    label: '蓝色直角',
+    label: '蓝底直角',
     description: '清爽的蓝色底与利落直角，适用于讨论大区和私聊。',
+    rent: { unit: 'month', price: 10 },
+  },
+  'blue-outline-square': {
+    label: '蓝色直角',
+    description: '利落的蓝色直角边框，底色与聊天区一致。',
     rent: { unit: 'month', price: 10 },
   },
 };

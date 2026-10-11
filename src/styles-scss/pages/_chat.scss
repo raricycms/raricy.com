@@ -830,9 +830,8 @@
   max-width: 100%;
 }
 
-// 正文里 @到我 → 品牌淡底强调。
-// CSS demo 使用主题蓝色混入卡片底，文字/链接/代码块继续采用主题令牌。
-// 单图透明规则在下方覆盖此规则；删除占位不传气泡 key，保持统一样式。
+// 蓝底直角的底色与正文一起适配主题，避免深色底仍配深色字。
+// 纯图片不套付费气泡；删除占位不传气泡 key，保持统一样式。
 .chat-msg__content[data-bubble='blue-square']:not(:has(> .chat-msg__md--single-image)) {
   border-radius: 0;
   background: color-mix(in srgb, var(--color-brand-primary) 18%, var(--color-background-card));
@@ -840,6 +839,19 @@
 .chat-msg__content[data-bubble='blue-square'].chat-msg__content--mention:not(:has(> .chat-msg__md--single-image)) {
   background: color-mix(in srgb, var(--color-brand-primary) 30%, var(--color-background-card));
 }
+// 蓝色直角只描蓝边，底色与 .chat-main 使用同一令牌，预览也呈现聊天区底色。
+// 边框占用的尺寸从内边距扣除，普通与 @ 高亮保持相同的正文位置与外部尺寸。
+.chat-msg__content[data-bubble='blue-outline-square']:not(:has(> .chat-msg__md--single-image)) {
+  padding: 7px 15px;
+  border: 1px solid var(--color-brand-primary);
+  border-radius: 0;
+  background: var(--color-background-page);
+}
+.chat-msg__content[data-bubble='blue-outline-square'].chat-msg__content--mention:not(:has(> .chat-msg__md--single-image)) {
+  padding: 6px 14px;
+  border-width: 2px;
+}
+// 默认气泡的 @ 高亮用品牌淡底；蓝底款加深底色，描边款加粗边框。
 .chat-msg__content--mention {
   background: var(--color-brand-secondary);
 }

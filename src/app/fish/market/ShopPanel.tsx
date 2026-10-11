@@ -18,7 +18,7 @@ import { RENT_UNITS, parseRentCount, type RentUnit } from '@/lib/shop-refs';
 // 从页面上消失，而服务端照样卖（过去有一条绊线用例专门盯这个，见
 // tests/unit/frame-shop-guard.test.ts）。
 //
-// 【共享租期】鱼干蓝按天、星落月畔与蓝色直角按月。单位、上下限、量词全从 `RENT_UNITS`
+// 【共享租期】鱼干蓝按天、星落月畔与两款直角气泡按月。单位、上下限、量词全从 `RENT_UNITS`
 // 现读（零依赖的同一份表，服务端校验读的也是它）—— 面板**不自己判**哪款是按天的。
 //
 // 【它只画商品，判什么都在服务端】列表是 `/fish/market` 的服务端组件调
