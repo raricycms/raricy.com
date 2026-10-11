@@ -110,7 +110,7 @@ export default function QuoteBlogModal({
                       <span className="chat-blog-item__title">{b.title}</span>
                       <span className="chat-blog-item__meta">
                         {b.author ? `@${b.author}` : '匿名'}
-                        {b.updated_at ? ` · 更新于 ${b.updated_at}` : ''}
+                        <span className="numeric">{b.updated_at ? ` · 更新于 ${b.updated_at}` : ''}</span>
                       </span>
                     </span>
                   </button>
@@ -126,7 +126,7 @@ export default function QuoteBlogModal({
               >
                 上一页
               </button>
-              <span className="chat-pager__info">
+              <span className="chat-pager__info numeric">
                 第 {page} 页 / 共 {pages} 页
               </span>
               <button

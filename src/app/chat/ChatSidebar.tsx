@@ -80,7 +80,7 @@ const SidebarRow = memo(function SidebarRow({
               aria-label={markCount > 0 ? `${markCount} 条未读` : '有新的提及'}
             >
               {markCount > 0 && (
-                <span className="chat-chan__mark-num">
+                <span className="chat-chan__mark-num numeric">
                   {markCount > 99 ? '99+' : markCount}
                 </span>
               )}

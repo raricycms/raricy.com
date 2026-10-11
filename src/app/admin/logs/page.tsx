@@ -181,7 +181,7 @@ export default async function AdminLogsPage({
 
             <select
               name="range"
-              className="form-select"
+              className="form-select numeric"
               aria-label="时间范围"
               defaultValue={days ? String(days) : ''}
             >
@@ -202,7 +202,7 @@ export default async function AdminLogsPage({
               </Link>
             )}
 
-            <span className="audit-total">共 {result.total} 条</span>
+            <span className="audit-total numeric">共 {result.total} 条</span>
           </form>
 
           <div className="table-responsive">
@@ -234,7 +234,7 @@ export default async function AdminLogsPage({
                     return (
                       <tr key={log.id}>
                         <td>
-                          <span className="audit-cell__time">
+                          <span className="audit-cell__time numeric">
                             {ymdhms(log.createdAt) ?? '—'}
                           </span>
                         </td>
@@ -297,9 +297,9 @@ export default async function AdminLogsPage({
                     ) : (
                       <li key={p} className={`page-item ${p === result.page ? 'active' : ''}`}>
                         {p === result.page ? (
-                          <span className="page-link">{p}</span>
+                          <span className="page-link numeric">{p}</span>
                         ) : (
-                          <Link className="page-link" href={qs(p)}>
+                          <Link className="page-link numeric" href={qs(p)}>
                             {p}
                           </Link>
                         )}

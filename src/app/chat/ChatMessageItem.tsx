@@ -293,7 +293,7 @@ function ChatMessageItemInner({
       <Link className="chat-msg__name" href={`/u/${msg.author.id}`}>
         {msg.author.username}
       </Link>
-      <span className="chat-msg__time">{fmtTime(msg.created_at)}</span>
+      <span className="chat-msg__time numeric">{fmtTime(msg.created_at)}</span>
       {isMine && receipt && (
         <span className={`chat-msg__receipt${receipt === 'read' ? ' is-read' : ''}`}>
           {receipt === 'read' ? '已读' : '未读'}

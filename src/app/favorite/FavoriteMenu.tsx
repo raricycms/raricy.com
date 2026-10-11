@@ -208,7 +208,7 @@ export default function FavoriteMenu({ favorites }: { favorites: Row[] }) {
                   <span className={`favorite-badge favorite-badge--${row.isPublic ? 'public' : 'private'}`}>
                     {row.isPublic ? '公开' : '私密'}
                   </span>
-                  <span>{row.itemCount} 篇</span>
+                  <span className="numeric">{row.itemCount} 篇</span>
                   {/* 只有公开收藏夹有 6 位句柄；私密的那格**什么都不渲染**。
                       写的是 JSX 文本 + 表达式，别把模板字符串的 `${}` 搬进来 ——
                       写成 `[@${row.publicId}]` 会原样渲染出「[@$123456]」，

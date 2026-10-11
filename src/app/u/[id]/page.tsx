@@ -179,11 +179,11 @@ export default async function PublicProfilePage({
                 {profile.createdAt && (
                   <span>
                     <span className="icon icon-person" aria-hidden="true" />
-                    注册于 {ymd(new Date(profile.createdAt))}
+                    注册于 <span className="numeric">{ymd(new Date(profile.createdAt))}</span>
                   </span>
                 )}
                 {lastLogin && (
-                  <span>最后登录 {ymd(new Date(lastLogin))}</span>
+                  <span className="numeric">最后登录 {ymd(new Date(lastLogin))}</span>
                 )}
                 {isOwnProfile && currentUser?.email && (
                   <span>
@@ -199,15 +199,15 @@ export default async function PublicProfilePage({
           {canSeeContent && (
             <div className="profile-stats">
               <div className="profile-stats__item">
-                <div className="profile-stats__number">{blogsCount}</div>
+                <div className="profile-stats__number numeric">{blogsCount}</div>
                 <div className="profile-stats__label">文章</div>
               </div>
               <div className="profile-stats__item">
-                <div className="profile-stats__number">{likesReceived}</div>
+                <div className="profile-stats__number numeric">{likesReceived}</div>
                 <div className="profile-stats__label">获赞</div>
               </div>
               <div className="profile-stats__item">
-                <div className="profile-stats__number">{commentsCount}</div>
+                <div className="profile-stats__number numeric">{commentsCount}</div>
                 <div className="profile-stats__label">评论</div>
               </div>
             </div>

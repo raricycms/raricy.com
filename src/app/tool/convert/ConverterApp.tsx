@@ -577,7 +577,7 @@ export default function ConverterApp() {
                 <h2 id="fc-files-title" className="fc-panel__title">
                   <span className="fc-step" aria-hidden="true">01</span>添加文件
                 </h2>
-                <span className="fc-panel__meta">{pending.length ? `${pending.length} 个文件` : TAB_LABELS[categoryKey]}</span>
+                <span className="fc-panel__meta numeric">{pending.length ? `${pending.length} 个文件` : TAB_LABELS[categoryKey]}</span>
               </div>
               <div
                 className={`fc-dropzone${dragOver ? ' fc-dropzone--over' : ''}${pending.length ? ' fc-dropzone--compact' : ''}`}
@@ -624,8 +624,8 @@ export default function ConverterApp() {
                         <div className="fc-file__body">
                           <span className="fc-file__name">{p.file.name}</span>
                           <span className="fc-file__meta">
-                            {p.inspect.sniff.ext.toUpperCase() || '未知格式'} · {formatBytes(p.file.size)}
-                            {p.inspect.width ? ` · ${p.inspect.width}×${p.inspect.height}` : ''}
+                            {p.inspect.sniff.ext.toUpperCase() || '未知格式'} · <span className="numeric">{formatBytes(p.file.size)}</span>
+                            <span className="numeric">{p.inspect.width ? ` · ${p.inspect.width}×${p.inspect.height}` : ''}</span>
                             {p.inspect.animated ? ' · 动画' : ''}
                           </span>
                           {p.problem ? <span className="fc-file__problem">{p.problem}</span> : null}
@@ -666,7 +666,7 @@ export default function ConverterApp() {
                   aria-describedby="fc-start-hint"
                   onChange={(e) => selectEdge(e.target.value)}
                 >
-                  <option value="" disabled>
+                  <option className="numeric" value="" disabled>
                     {!pending.length ? (edge ? `已预设：${edge.label}` : '添加文件后选择格式') : '选择目标格式'}
                   </option>
                   {candidateEdges.map((e) => (
@@ -743,16 +743,16 @@ export default function ConverterApp() {
                   </label>
                 )}
                 <button type="button" className="btn btn-primary fc-start" disabled={!edgeAvailable || !okPending.length} onClick={startConversion}>
-                  {edgeAvailable && okPending.length ? `开始转换（${okPending.length} 个文件）` : '开始转换'}
+                  <span className="numeric">{edgeAvailable && okPending.length ? `开始转换（${okPending.length} 个文件）` : '开始转换'}</span>
                   <span aria-hidden="true">→</span>
                 </button>
-                <p id="fc-start-hint">{startHint}</p>
+                <p className="numeric" id="fc-start-hint">{startHint}</p>
               </div>
             </section>
           </div>
         </div>
 
-        {announce && <p className="fc-feedback" role="status">{announce}</p>}
+        {announce && <p className="fc-feedback numeric" role="status">{announce}</p>}
         {snap.budgetPaused && (
           <div className="alert alert-warning" role="alert">输出暂存已达上限，队列已暂停。请先下载并移除一些结果，转换会继续。</div>
         )}
@@ -761,7 +761,7 @@ export default function ConverterApp() {
           <div className="fc-panel__head">
             <h2 id="fc-output-title" className="fc-panel__title"><span className="fc-step" aria-hidden="true">03</span>转换结果</h2>
             <div className="fc-output__ops">
-              {succeededCount > 0 && <button type="button" className="btn btn-secondary" onClick={() => void packOutputs()}>打包下载全部成功结果（{succeededCount}）</button>}
+              {succeededCount > 0 && <button type="button" className="btn btn-secondary numeric" onClick={() => void packOutputs()}>打包下载全部成功结果（{succeededCount}）</button>}
               {activeCount > 0 && <button type="button" className="btn btn-secondary" onClick={() => queueRef.current!.cancelAll()}>取消全部</button>}
             </div>
           </div>
@@ -772,7 +772,7 @@ export default function ConverterApp() {
             </div>
           ) : (
             <>
-              <p className="fc-output__summary">{snap.tasks.length} 个任务 · {succeededCount} 个已完成{activeCount ? ` · ${activeCount} 个处理中` : ''}</p>
+              <p className="fc-output__summary numeric">{snap.tasks.length} 个任务 · {succeededCount} 个已完成{activeCount ? ` · ${activeCount} 个处理中` : ''}</p>
               <ul className="fc-tasks">
                 {snap.tasks.map((t) => (
                   <li key={t.id} className={`fc-task fc-task--${t.status}`} data-edge={t.edgeId}>
@@ -789,7 +789,7 @@ export default function ConverterApp() {
                     )}
                     {t.status === 'succeeded' && t.result && (
                       <div className="fc-result">
-                        <div className="fc-result__meta">{formatBytes(t.result.inputSize)} → {formatBytes(t.result.outputSize)}{t.result.outputSize > t.result.inputSize ? '（输出更大）' : ''}</div>
+                        <div className="fc-result__meta"><span className="numeric">{formatBytes(t.result.inputSize)}</span> → <span className="numeric">{formatBytes(t.result.outputSize)}</span>{t.result.outputSize > t.result.inputSize ? '（输出更大）' : ''}</div>
                         {(() => {
                           // 队列跨分类保留，转换方式也从完整登记册读取。
                           const completedEdge = edgeById(CATEGORIES, t.edgeId);
@@ -798,7 +798,7 @@ export default function ConverterApp() {
                         {t.result.notices.length > 0 && <ul className="fc-notices">{t.result.notices.map((n) => <li key={n}>{n}</li>)}</ul>}
                         <TaskPreview task={t} registerUrl={registerUrl} />
                         <div className="fc-result__actions">
-                          {t.result.outputs.map((o, i) => <button key={o.name} type="button" className="btn btn-primary" onClick={() => downloadOutput(t, i)}>下载 {o.name}（{formatBytes(o.blob.size)}）</button>)}
+                          {t.result.outputs.map((o, i) => <button key={o.name} type="button" className="btn btn-primary" onClick={() => downloadOutput(t, i)}>下载 {o.name}（<span className="numeric">{formatBytes(o.blob.size)}</span>）</button>)}
                         </div>
                       </div>
                     )}

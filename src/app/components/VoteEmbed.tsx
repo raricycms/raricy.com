@@ -88,7 +88,7 @@ export default function VoteEmbed({
           两边都写就会并排出现两个一模一样的徽章 —— 徽章属于页面元信息，不属于组件本身。
           （博客正文里的嵌入没有 meta 行，那个由 blog-markdown.ts 的
            buildVoteWidget 渲染自己的徽章。） */}
-      {showResults && <p className="vote-embed-total">共 {total} 票</p>}
+      {showResults && <p className="vote-embed-total numeric">共 {total} 票</p>}
 
       {options.map((o) => {
         const isMine = userVoted === o.id;
@@ -105,7 +105,7 @@ export default function VoteEmbed({
               <div className="vote-embed-bar" style={{ width: `${o.percentage}%` }} />
               <div className="vote-embed-option-content">
                 <span className="vote-embed-option-label">{o.label}</span>
-                <span className="vote-embed-option-stats">
+                <span className="vote-embed-option-stats numeric">
                   {o.count} 票 · {o.percentage}%
                 </span>
               </div>
@@ -303,7 +303,7 @@ export function VoteDetailControls({
             >
               {voterGroups.map((g, i) => (
                 <div key={i} style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)' }}>
-                  <strong style={{ color: 'var(--color-text-primary)' }}>{g.label}</strong>（{g.count} 票）：
+                  <strong style={{ color: 'var(--color-text-primary)' }}>{g.label}</strong>（<span className="numeric">{g.count}</span> 票）：
                   {g.voters.length > 0 ? g.voters.join('、') : '暂无投票'}
                 </div>
               ))}

@@ -100,7 +100,7 @@ export default function TradeWatchlist({
                     <span className="trade-watch__name">{r.display}</span>
                     {r.changePercent != null && (
                       <span
-                        className={`trade-watch__change trade-watch__change--${
+                        className={`numeric trade-watch__change trade-watch__change--${
                           r.changePercent >= 0 ? 'up' : 'down'
                         }`}
                       >
@@ -109,7 +109,7 @@ export default function TradeWatchlist({
                     )}
                   </span>
                   <span className="trade-watch__price">
-                    {r.price == null ? '—' : formatPrice(r.price)}
+                    <span className="numeric">{r.price == null ? '—' : formatPrice(r.price)}</span>
                     <span className="trade-watch__unit">USDT</span>
                   </span>
                   <Sparkline closes={r.closes} label={`${r.display} 近 72 小时价格走势`} />

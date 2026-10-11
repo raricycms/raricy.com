@@ -309,7 +309,7 @@ export default function AesToolPage() {
                   快捷键：<span className="kbd">Ctrl</span> +{' '}
                   <span className="kbd">Enter</span> 加密（左 → 右）
                 </small>
-                <span className="text-muted">{status}</span>
+                <span className="text-muted numeric">{status}</span>
               </div>
             </div>
           </div>

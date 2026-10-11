@@ -450,16 +450,16 @@ export default function AdminUserActions({
                         key={ban.id}
                         style={{ marginBottom: index === banHistory.length - 1 ? 0 : '1rem' }}
                       >
-                        <div>
+                        <div className="numeric">
                           {index + 1}. 禁言时间：{fmtTime(ban.banned_at)}
                         </div>
-                        <div>结束时间：{fmtTime(ban.ban_until)}</div>
+                        <div className="numeric">结束时间：{fmtTime(ban.ban_until)}</div>
                         <div>状态：{ban.is_lifted ? '已解除' : '进行中'}</div>
                         <div>原因：{ban.reason}</div>
                         <div>执行者：{ban.admin_username}</div>
                         {ban.is_lifted && ban.lifted_by && (
                           <>
-                            <div>解除时间：{fmtTime(ban.lifted_at)}</div>
+                            <div className="numeric">解除时间：{fmtTime(ban.lifted_at)}</div>
                             <div>解除者：{ban.lifted_by}</div>
                           </>
                         )}

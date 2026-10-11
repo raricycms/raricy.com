@@ -57,7 +57,7 @@ export default async function AuditLogDetailPage({
           {/* 原始机器码一起显示：e2e 靠它断言（audit-detail.spec），读日志的人也要按码搜。 */}
           <code>{log.action}</code>
         </div>
-        <div>时间：{ymdhms(log.createdAt) ?? '—'}</div>
+        <div className="numeric">时间：{ymdhms(log.createdAt) ?? '—'}</div>
         <div>管理员：{log.adminName ?? log.adminId ?? '—'}</div>
         <div>
           对象：{log.objectType ?? '—'}{' '}
@@ -105,7 +105,7 @@ export default async function AuditLogDetailPage({
               {a.status !== 'pending' && a.decision ? (
                 <div className="mt-1 text-muted">处理说明：{a.decision}</div>
               ) : null}
-              <small className="text-muted">{ymdhms(a.createdAt) ?? ''}</small>
+              <small className="text-muted numeric">{ymdhms(a.createdAt) ?? ''}</small>
             </li>
           ))
         )}

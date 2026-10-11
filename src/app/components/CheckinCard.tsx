@@ -144,7 +144,7 @@ export default function CheckinCard({
     <div className="checkin-card">
       <div className="checkin-card__header">
         <span className="checkin-card__greeting">你好，{username}</span>
-        <span className="checkin-card__date">{today}</span>
+        <span className="checkin-card__date numeric">{today}</span>
       </div>
 
       <button
@@ -164,7 +164,7 @@ export default function CheckinCard({
       {/* 统计只有签到天数一格 */}
       <div className="checkin-stats">
         <div className="checkin-stats__item">
-          <div className={'checkin-stats__value' + (countBounce ? ' checkin-stats__value--bounce' : '')}>
+          <div className={'numeric ' + ('checkin-stats__value' + (countBounce ? ' checkin-stats__value--bounce' : ''))}>
             {count}
           </div>
           <div className="checkin-stats__label">累计签到天数</div>
@@ -177,11 +177,11 @@ export default function CheckinCard({
       {fishToday > 0 ? (
         <div className="checkin-today-reward">
           <span className="checkin-today-reward__label">今日签到获得</span>
-          <span className="checkin-today-reward__value">+{fishToday}</span>
+          <span className="checkin-today-reward__value numeric">+{fishToday}</span>
           <span className="checkin-today-reward__label">小鱼干</span>
         </div>
       ) : (
-        <div className="checkin-reward-hint">每天签到领 {rewardFish} 条小鱼干</div>
+        <div className="checkin-reward-hint numeric">每天签到领 {rewardFish} 条小鱼干</div>
       )}
     </div>
   );
@@ -218,7 +218,7 @@ function LeaderboardList({
             (e.userId === currentUserId ? ' checkin-leaderboard__item--self' : '')
           }
         >
-          <span className={`checkin-leaderboard__rank${RANK_CLASS[e.rank] ?? ''}`}>
+          <span className={`checkin-leaderboard__rank numeric${RANK_CLASS[e.rank] ?? ''}`}>
             {e.rank >= 1 && e.rank <= 3 ? (
               <MedalIcon rank={e.rank as 1 | 2 | 3} />
             ) : (
@@ -239,7 +239,7 @@ function LeaderboardList({
             <span className="checkin-leaderboard__name">{e.username}</span>
           </Link>
           <span className="checkin-leaderboard__count">
-            {e.value} {unit}
+            <span className="numeric">{e.value}</span> {unit}
           </span>
         </div>
       ))}

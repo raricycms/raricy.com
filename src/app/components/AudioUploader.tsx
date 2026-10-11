@@ -121,7 +121,7 @@ export default function AudioUploader() {
             style={{ width: progressWidth }}
           ></div>
         </div>
-        <span id="audio-progress-text">{progressText}</span>
+        <span className="numeric" id="audio-progress-text">{progressText}</span>
       </div>
     </>
   );
@@ -211,7 +211,7 @@ export function AudioGallery({ items }: { items: GalleryAudio[] }) {
               <span className="image-hosting-card__name" title={a.filename}>
                 {a.filename}
               </span>
-              <span className="image-hosting-card__size">
+              <span className="image-hosting-card__size numeric">
                 {(a.fileSize / 1024 / 1024).toFixed(2)} MB
               </span>
             </div>

@@ -242,8 +242,8 @@ export default function AdminCategoryEditor({ initialCategories, initialParents 
             ))}
           </div>
           <div className="article-card__meta">
-            <span>{c.blog_count} 篇文章</span>
-            {!child && <span>{c.child_count} 个子栏目</span>}
+            <span className="numeric">{c.blog_count} 篇文章</span>
+            {!child && <span className="numeric">{c.child_count} 个子栏目</span>}
             {c.description && <span>{c.description}</span>}
           </div>
         </div>

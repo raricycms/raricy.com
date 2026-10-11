@@ -238,7 +238,7 @@ export default function FishWebhookPanel({
                     {endpoint.disabled ? '已停用' : '启用中'}
                   </span>
                 </div>
-                <p className="fish-api-row__meta">
+                <p className="fish-api-row__meta numeric">
                   连续失败 {endpoint.consecutive_failures} 次 · 最近成功{' '}
                   {fmtDateTime(endpoint.last_success_at)} · 最近失败{' '}
                   {fmtDateTime(endpoint.last_failure_at)}
@@ -275,7 +275,7 @@ export default function FishWebhookPanel({
                       </span>
                     </div>
                     <p className="fish-api-row__meta">
-                      {fmtDateTime(d.created_at)} · 尝试 {d.attempts} 次
+                      <span className="numeric">{fmtDateTime(d.created_at)}</span> · 尝试 <span className="numeric">{d.attempts}</span> 次
                       {d.last_status_code ? ` · 对方返回 ${d.last_status_code}` : ''}
                       {d.last_error ? ` · ${d.last_error}` : ''}
                     </p>

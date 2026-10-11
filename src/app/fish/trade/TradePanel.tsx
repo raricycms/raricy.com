@@ -482,7 +482,7 @@ export default function TradePanel({
           <div className="trade-card">
             <div className="trade-card__head">
               <span className="trade-card__balance-label">我的余额</span>
-              <span className="trade-card__balance-number">{fmtFish(balance)}</span>
+              <span className="trade-card__balance-number numeric">{fmtFish(balance)}</span>
               <span className="trade-card__balance-unit">小鱼干</span>
             </div>
 
@@ -506,7 +506,7 @@ export default function TradePanel({
               </div>
               {current?.price != null && (
                 <p className="trade-field__hint">
-                  当前 {current.display} ≈ {fmtPrice(current.price)} USDT
+                  当前 {current.display} ≈ <span className="numeric">{fmtPrice(current.price)}</span> USDT
                 </p>
               )}
               {amountError && <p className="trade-field__hint trade-field__hint--error">{amountError}</p>}
@@ -566,7 +566,7 @@ export default function TradePanel({
                     <button
                       key={lv}
                       type="button"
-                      className={`trade-leverage__btn${lv === leverage ? ' is-active' : ''}`}
+                      className={`numeric trade-leverage__btn${lv === leverage ? ' is-active' : ''}`}
                       aria-pressed={lv === leverage}
                       disabled={locked || unavailable}
                       title={unavailable ? '杠杆暂不可用' : undefined}
@@ -588,7 +588,7 @@ export default function TradePanel({
                   onChange={(e) => onLeverageInput(e.target.value)}
                   disabled={locked}
                 />
-                <span className="trade-leverage__unit">
+                <span className="trade-leverage__unit numeric">
                   倍（{MIN_LEVERAGE}–{MAX_LEVERAGE} 的整数）
                 </span>
               </div>
@@ -601,11 +601,11 @@ export default function TradePanel({
                   1–100 的每一个整数，不因跨过它变档。 */}
               {highRisk && (
                 <p className="trade-leverage__warn">
-                  ⚠️ {leverage}× 的爆仓线离现价只有约 {(100 / leverage).toFixed(1)}% —— 一根
+                  ⚠️ <span className="numeric">{leverage}</span>× 的爆仓线离现价只有约 <span className="numeric">{(100 / leverage).toFixed(1)}</span>% —— 一根
                   普通的日内波动就能碰到，几小时就可能见分晓。手续费按名义本金收，这一档
                   平仓一次约合投入的{' '}
-                  <strong>{formatFeeRate(feeRate * leverage)}</strong>（1 倍仓是{' '}
-                  {formatFeeRate(feeRate)}）。
+                  <strong className="numeric">{formatFeeRate(feeRate * leverage)}</strong>（1 倍仓是{' '}
+                  <span className="numeric">{formatFeeRate(feeRate)}</span>）。
                 </p>
               )}
               {/* 提示**不要求已填金额**：距离是这一笔的属性（只由倍数、方向与现价决定，
@@ -615,21 +615,21 @@ export default function TradePanel({
                 <p className="trade-field__hint">
                   {leveraged && amountOk && (
                     <>
-                      名义本金 <strong>{fmtFish(roundFish(parsed * leverage))}</strong> 小鱼干
+                      名义本金 <strong className="numeric">{fmtFish(roundFish(parsed * leverage))}</strong> 小鱼干
                       {hasLiqLine && '，'}
                     </>
                   )}
                   {hasLiqLine && refLiqPrice != null && (
                     <>
                       参考爆仓价{' '}
-                      <strong className="trade-field__hint--danger">
+                      <strong className="trade-field__hint--danger numeric">
                         {fmtPrice(refLiqPrice)}
                       </strong>{' '}
                       USDT
                       {refLiqDistancePct != null && (
                         <>
                           （距现价 {refLiqDistancePct >= 0 ? '+' : ''}
-                          {refLiqDistancePct.toFixed(1)}%）
+                          <span className="numeric">{refLiqDistancePct.toFixed(1)}</span>%）
                         </>
                       )}
                     </>
@@ -645,10 +645,10 @@ export default function TradePanel({
 
             <div className="trade-summary">
               <span>
-                单笔最少 <strong>{minStake}</strong> 条鱼干
+                单笔最少 <strong className="numeric">{minStake}</strong> 条鱼干
               </span>
               <span>
-                手续费 <strong>{formatFeeRate(feeRate)}</strong>
+                手续费 <strong className="numeric">{formatFeeRate(feeRate)}</strong>
                 <span className="trade-summary__note">（平仓时收）</span>
               </span>
             </div>
@@ -685,17 +685,17 @@ export default function TradePanel({
                           {DIRECTION_BADGES[p.direction]}
                         </span>
                         {p.leverage > 1 && (
-                          <span className="trade-position__lev">{p.leverage}×</span>
+                          <span className="trade-position__lev numeric">{p.leverage}×</span>
                         )}
-                        <span className="trade-position__stake">{fmtFish(p.stake)} 鱼干</span>
+                        <span className="trade-position__stake numeric">{fmtFish(p.stake)} 鱼干</span>
                         <span className="trade-position__entry">
-                          开仓 {fmtPrice(p.entryPrice)}
+                          开仓 <span className="numeric">{fmtPrice(p.entryPrice)}</span>
                           {/* 爆仓价只要**那条线存在**就显示 —— 判据是 `> 0`，不是 `杠杆 > 1`：
                               1× 多头是 0（写「爆仓 0 USDT」是在说一件不可能发生的事），
                               而 1× 空头有一条真实爆仓价（2 × 开仓价），漏显示它等于
                               把「这笔会爆」这件事藏起来。 */}
-                          {p.liquidationPrice > 0 && <> · 爆仓 {fmtPrice(p.liquidationPrice)}</>}
-                          <span className="trade-position__time"> · {fmtOpenedAt(p.openedAt)}</span>
+                          {p.liquidationPrice > 0 && <> · 爆仓 <span className="numeric">{fmtPrice(p.liquidationPrice)}</span></>}
+                          <span className="trade-position__time numeric"> · {fmtOpenedAt(p.openedAt)}</span>
                         </span>
                         {/* 「较开仓」而不是光写一个百分数：行情卡上那个百分数是**24 小时**涨跌，
                             两个数会在同一屏里各说各话。取不到价就整行不渲染（不是显示 0.00%）。
@@ -704,9 +704,9 @@ export default function TradePanel({
                             会让空头的红绿全反（不报错）。数值本身照旧是**行情**涨跌幅。 */}
                         {est && (
                           <span className="trade-position__now">
-                            现价 {fmtPrice(est.px)}
+                            现价 <span className="numeric">{fmtPrice(est.px)}</span>
                             <span
-                              className={`trade-position__change trade-position__change--${
+                              className={`numeric trade-position__change trade-position__change--${
                                 est.favorable ? 'up' : 'down'
                               }`}
                             >
@@ -727,14 +727,14 @@ export default function TradePanel({
                         {est ? (
                           <>
                             <span
-                              className={`trade-position__profit trade-position__profit--${
+                              className={`numeric trade-position__profit trade-position__profit--${
                                 est.profit >= 0 ? 'up' : 'down'
                               }`}
                             >
                               {est.profit > 0 ? '+' : ''}
                               {fmtFish(est.profit)}
                             </span>
-                            <span className="trade-position__payout">
+                            <span className="trade-position__payout numeric">
                               平仓可得 {fmtFish(est.payout)} 鱼干
                             </span>
                           </>
@@ -789,7 +789,7 @@ export default function TradePanel({
                   </div>
                   <div className="trade-confirm__row">
                     <dt>投入</dt>
-                    <dd>{fmtFish(parsed)} 小鱼干</dd>
+                    <dd className="numeric">{fmtFish(parsed)} 小鱼干</dd>
                   </div>
                   {/* 「杠杆 / 名义本金」两行只在 leverage > 1 时出现：1 倍仓说「杠杆 1×」
                       是废话，而「名义本金 = 投入」这种恒等式摆两遍会让真正要紧的那几行变淡。 */}
@@ -798,12 +798,12 @@ export default function TradePanel({
                       <div className="trade-confirm__row">
                         <dt>杠杆</dt>
                         <dd>
-                          <span className="trade-confirm__lev">{leverage}×</span>
+                          <span className="trade-confirm__lev numeric">{leverage}×</span>
                         </dd>
                       </div>
                       <div className="trade-confirm__row">
                         <dt>名义本金</dt>
-                        <dd>{fmtFish(roundFish(parsed * leverage))} 小鱼干</dd>
+                        <dd className="numeric">{fmtFish(roundFish(parsed * leverage))} 小鱼干</dd>
                       </div>
                     </>
                   )}
@@ -813,13 +813,13 @@ export default function TradePanel({
                     <div className="trade-confirm__row">
                       <dt>参考爆仓价</dt>
                       <dd>
-                        <span className="trade-confirm__liq">
+                        <span className="trade-confirm__liq numeric">
                           {fmtPrice(refLiqPrice)} USDT
                         </span>
                         {refLiqDistancePct != null && (
                           <>
                             {' '}
-                            <span className="trade-confirm__delta">
+                            <span className="trade-confirm__delta numeric">
                               {refLiqDistancePct >= 0 ? '+' : ''}
                               {refLiqDistancePct.toFixed(1)}%
                             </span>
@@ -830,11 +830,11 @@ export default function TradePanel({
                   )}
                   <div className="trade-confirm__row">
                     <dt>参考价</dt>
-                    <dd>{current.price == null ? '—' : fmtPrice(current.price)} USDT</dd>
+                    <dd className="numeric">{current.price == null ? '—' : fmtPrice(current.price)} USDT</dd>
                   </div>
                   <div className="trade-confirm__row trade-confirm__row--total">
                     <dt>买入后余额</dt>
-                    <dd>{fmtFish(afterBalance)} 小鱼干</dd>
+                    <dd className="numeric">{fmtFish(afterBalance)} 小鱼干</dd>
                   </div>
                 </dl>
                 {/* 免责声明**按「这一笔有没有爆仓线」分岔**（= hasLiqLine），不是按
@@ -849,9 +849,9 @@ export default function TradePanel({
                   <p className="trade-confirm__disclaimer trade-confirm__disclaimer--danger">
                     实际成交价以下单那一刻的行情为准，<strong>真实的爆仓价跟着成交价走</strong>，
                     与上面的参考值会有差异。价格{direction === 'short' ? '反向上涨' : '反向下跌'}
-                    约 {(100 / leverage).toFixed(0)}% 时保证金归零，
+                    约 <span className="numeric">{(100 / leverage).toFixed(0)}</span>% 时保证金归零，
                     <strong>系统会自动强平，这一笔投入全部亏掉</strong>。
-                    名义本金是借来的，亏损以投入的 {fmtFish(parsed)} 条为上限，不会变成欠账。
+                    名义本金是借来的，亏损以投入的 <span className="numeric">{fmtFish(parsed)}</span> 条为上限，不会变成欠账。
                   </p>
                 ) : (
                   <p className="trade-confirm__disclaimer">
@@ -865,9 +865,9 @@ export default function TradePanel({
                 {highRisk && (
                   <p className="trade-confirm__disclaimer trade-confirm__disclaimer--danger">
                     <strong>这是高倍档：</strong>
-                    {leverage}× 的爆仓线离现价只有约 {(100 / leverage).toFixed(1)}% —— 一根
+                    <span className="numeric">{leverage}</span>× 的爆仓线离现价只有约 <span className="numeric">{(100 / leverage).toFixed(1)}</span>% —— 一根
                     普通的日内波动就能碰到，方向看对了也照样会被收走。手续费按名义本金收，
-                    这一笔平仓一次约合投入的 {formatFeeRate(feeRate * leverage)}。
+                    这一笔平仓一次约合投入的 <span className="numeric">{formatFeeRate(feeRate * leverage)}</span>。
                   </p>
                 )}
                 <div className="trade-confirm__actions">
@@ -929,7 +929,7 @@ export default function TradePanel({
                   </div>
                   <div className="trade-confirm__row">
                     <dt>投入</dt>
-                    <dd>{fmtFish(sellTarget.stake)} 小鱼干</dd>
+                    <dd className="numeric">{fmtFish(sellTarget.stake)} 小鱼干</dd>
                   </div>
                   {/* 同样的两条只在杠杆仓出现（理由见买入弹窗那一段）。 */}
                   {sellTarget.leverage > 1 && (
@@ -937,25 +937,25 @@ export default function TradePanel({
                       <div className="trade-confirm__row">
                         <dt>杠杆</dt>
                         <dd>
-                          <span className="trade-confirm__lev">{sellTarget.leverage}×</span>
+                          <span className="trade-confirm__lev numeric">{sellTarget.leverage}×</span>
                         </dd>
                       </div>
                       <div className="trade-confirm__row">
                         <dt>名义本金</dt>
-                        <dd>{fmtFish(roundFish(sellTarget.stake * sellTarget.leverage))} 小鱼干</dd>
+                        <dd className="numeric">{fmtFish(roundFish(sellTarget.stake * sellTarget.leverage))} 小鱼干</dd>
                       </div>
                     </>
                   )}
                   <div className="trade-confirm__row">
                     <dt>开仓价</dt>
-                    <dd>{fmtPrice(sellTarget.entryPrice)} USDT</dd>
+                    <dd className="numeric">{fmtPrice(sellTarget.entryPrice)} USDT</dd>
                   </div>
                   {/* 判据是 `> 0`（那条线存在），不是 `杠杆 > 1` —— 1× 空头有一条真爆仓价。 */}
                   {sellTarget.liquidationPrice > 0 && (
                     <div className="trade-confirm__row">
                       <dt>爆仓价</dt>
                       <dd>
-                        <span className="trade-confirm__liq">
+                        <span className="trade-confirm__liq numeric">
                           {fmtPrice(sellTarget.liquidationPrice)} USDT
                         </span>
                       </dd>
@@ -966,12 +966,12 @@ export default function TradePanel({
                     <dd>
                       {sellEst ? (
                         <>
-                          {fmtPrice(sellEst.px)} USDT
+                          <span className="numeric">{fmtPrice(sellEst.px)}</span> USDT
                           {/* ⚠️ 着色用 `favorable`（行情涨跌 × 方向），不是直接拿
                               changePercent 判 —— 空头「跌了」是在赚，直接判色红绿会反。
                               数值仍是**行情**涨跌幅。 */}
                           <span
-                            className={`trade-confirm__delta trade-confirm__delta--${
+                            className={`numeric trade-confirm__delta trade-confirm__delta--${
                               sellEst.favorable ? 'up' : 'down'
                             }`}
                           >
@@ -985,14 +985,14 @@ export default function TradePanel({
                   </div>
                   <div className="trade-confirm__row">
                     <dt>平仓毛额</dt>
-                    <dd>{sellEst ? `${fmtFish(sellEst.gross)} 小鱼干` : '—'}</dd>
+                    <dd className="numeric">{sellEst ? `${fmtFish(sellEst.gross)} 小鱼干` : '—'}</dd>
                   </div>
                   {/* 费率从 feeRate 插值，**别写死数值**（同 RULES 那条纪律：数值只有
                       一处权威）。文本走 formatFeeRate —— 位数由它定，这里别自己
                       toFixed（费率变小会被 toFixed 抹成「0.0%」，见那个函数的注释） */}
                   <div className="trade-confirm__row">
-                    <dt>手续费 {formatFeeRate(feeRate)}</dt>
-                    <dd>{sellEst ? `-${fmtFish(sellEst.fee)} 小鱼干` : '—'}</dd>
+                    <dt className="numeric">手续费 {formatFeeRate(feeRate)}</dt>
+                    <dd className="numeric">{sellEst ? `-${fmtFish(sellEst.fee)} 小鱼干` : '—'}</dd>
                   </div>
                   <div className="trade-confirm__row">
                     <dt>预计盈亏</dt>
@@ -1002,7 +1002,7 @@ export default function TradePanel({
                     <dd>
                       {sellEst ? (
                         <span
-                          className={`trade-confirm__pnl trade-confirm__pnl--${
+                          className={`numeric trade-confirm__pnl trade-confirm__pnl--${
                             sellEst.profit >= 0 ? 'up' : 'down'
                           }`}
                         >
@@ -1016,7 +1016,7 @@ export default function TradePanel({
                   </div>
                   <div className="trade-confirm__row trade-confirm__row--total">
                     <dt>预计到手</dt>
-                    <dd>{sellEst ? `${fmtFish(sellEst.payout)} 小鱼干` : '—'}</dd>
+                    <dd className="numeric">{sellEst ? `${fmtFish(sellEst.payout)} 小鱼干` : '—'}</dd>
                   </div>
                 </dl>
                 {/* 已经穿过爆仓价时**必须换一套话**：这一屏上面会显示「预计到手 0」，

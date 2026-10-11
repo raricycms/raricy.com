@@ -24,5 +24,5 @@ export default function AdminStatNumber({ value }: { value: number }) {
     return () => clearInterval(timer);
   }, [value]);
 
-  return <>{n}</>;
+  return <><span className="numeric">{n}</span></>;
 }

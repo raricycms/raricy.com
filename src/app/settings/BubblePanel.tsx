@@ -47,7 +47,7 @@ export default function BubblePanel() {
           {view.bubbles.map((b) => (
             <div className="bubble-panel__item" key={b.key} data-bubble-item={b.key}>
               <ChatBubble bubbleKey={b.key}>{b.label}，这是你的聊天气泡预览。</ChatBubble>
-              <span className="bubble-panel__state">{b.expiresAt ? `${b.expiresAt} 到期` : '永久持有'}{b.expired ? ' · 已过期' : b.disabled ? ' · 已停用' : ''}</span>
+              <span className="bubble-panel__state"><span className="numeric">{b.expiresAt ? `${b.expiresAt} 到期` : '永久持有'}</span>{b.expired ? ' · 已过期' : b.disabled ? ' · 已停用' : ''}</span>
               <button className="settings-btn settings-btn--primary" disabled={busy || !b.available || view.activeKey === b.key} onClick={() => void equip(b.key)}>
                 {view.activeKey === b.key ? '使用中' : '使用'}
               </button>

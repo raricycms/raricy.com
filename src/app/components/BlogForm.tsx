@@ -329,9 +329,9 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
           {banInfo.remainingHours != null && (
             <p style={{ margin: '4px 0 0' }}>
               <strong>剩余时间：</strong>
-              {banInfo.remainingHours > 24
+              <span className="numeric">{banInfo.remainingHours > 24
                 ? `约${(banInfo.remainingHours / 24).toFixed(1)}天`
-                : `约${banInfo.remainingHours.toFixed(1)}小时`}
+                : `约${banInfo.remainingHours.toFixed(1)}小时`}</span>
             </p>
           )}
         </div>

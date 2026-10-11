@@ -386,7 +386,7 @@ export default function FeedButton({
           >
             <span className="icon icon-heart-fill" aria-hidden="true"></span>
             <span>{liked ? '已点赞' : '点赞'}</span>
-            <span className="like-count-badge" id="like-count">
+            <span className="like-count-badge numeric" id="like-count">
               {likes}
             </span>
           </button>
@@ -401,7 +401,7 @@ export default function FeedButton({
           >
             <span className="icon icon-fish" aria-hidden="true"></span>
             <span>投喂</span>
-            <span className="fish-count-badge" id="fish-count">
+            <span className="fish-count-badge numeric" id="fish-count">
               {fishCount}
             </span>
           </button>
@@ -439,13 +439,13 @@ export default function FeedButton({
         <div className="feed-modal__content">
           <div className="feed-modal__header">
             <h3><span className="icon icon-fish" aria-hidden="true" style={{ marginRight: '0.5rem' }}></span>投喂小鱼干</h3>
-            <p id="feedModalStatus">{feedStatus}</p>
+            <p className="numeric" id="feedModalStatus">{feedStatus}</p>
           </div>
           <div className="feed-modal__buttons" id="feedButtons">
             {[1, 2, 3, 4, 5].map((n) => (
               <button
                 key={n}
-                className={`feed-modal__amount-btn${selected === n ? ' feed-modal__amount-btn--selected' : ''}`}
+                className={`numeric feed-modal__amount-btn${selected === n ? ' feed-modal__amount-btn--selected' : ''}`}
                 data-amount={n}
                 onClick={() => selectAmount(n)}
                 disabled={feedBusy || n > remaining}
@@ -576,7 +576,7 @@ export default function FeedButton({
                   >
                     上一页
                   </button>
-                  <small className="text-muted">
+                  <small className="text-muted numeric">
                     第 {likersPage} 页，共 {likersPages} 页
                   </small>
                   <button
@@ -642,7 +642,7 @@ export default function FeedButton({
                               fontSize: '0.9rem',
                             }}
                           >
-                            <span className="icon icon-fish" aria-hidden="true" style={{ marginRight: '0.3rem' }}></span>{f.amount}
+                            <span className="icon icon-fish" aria-hidden="true" style={{ marginRight: '0.3rem' }}></span><span className="numeric">{f.amount}</span>
                           </span>
                         </div>
                       </div>
@@ -657,7 +657,7 @@ export default function FeedButton({
                   >
                     上一页
                   </button>
-                  <small className="text-muted">
+                  <small className="text-muted numeric">
                     第 {feedersPage} 页，共 {feedersPages} 页
                   </small>
                   <button
@@ -701,7 +701,7 @@ export default function FeedButton({
                 {/* 「上次变更」—— 公开是不可逆的，所以「我什么时候放出去的」是这一档
                     唯一值得回看的信息。数据来自 blog_visibility_logs（见迁移 19）。 */}
                 {lastVisibilityChange && (
-                  <p className="form-hint text-muted">上次变更：{lastVisibilityChange}</p>
+                  <p className="form-hint text-muted numeric">上次变更：{lastVisibilityChange}</p>
                 )}
                 {BLOG_VISIBILITIES.map((v) => (
                   <div className="form-check" key={v}>

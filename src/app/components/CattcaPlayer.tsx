@@ -278,7 +278,7 @@ const CattcaPlayer = forwardRef<CattcaPlayerHandle, CattcaPlayerProps>(function 
         header.onclick = () => toggleSegment(header);
 
         const title = document.createElement('span');
-        title.className = cfg.title;
+        title.className = cfg.title + ' numeric';
         title.textContent = '段落 ' + ++segmentCount;
 
         const icon = document.createElement('span');

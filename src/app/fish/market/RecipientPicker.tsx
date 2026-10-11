@@ -133,7 +133,7 @@ export default function RecipientPicker({
               >
                 上一页
               </button>
-              <span className="market-picker__page-info">
+              <span className="market-picker__page-info numeric">
                 第 {page} 页 / 共 {pages} 页
               </span>
               <button

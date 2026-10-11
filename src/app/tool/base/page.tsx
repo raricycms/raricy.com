@@ -581,7 +581,7 @@ export default function BaseToolPage() {
                   <span className="kbd">Enter</span> 编码（左 → 右）
                 </small>
                 <div>
-                  <span className="text-muted">{status}</span>
+                  <span className="text-muted numeric">{status}</span>
                 </div>
               </div>
             </div>

@@ -320,11 +320,11 @@ export default function HexToolPage() {
                 <div className="progress" role="progressbar" aria-label="文件加载进度" aria-valuemin={0} aria-valuemax={100}>
                   <div id="loadProgressBar" className="progress-bar progress-bar-striped progress-bar-animated" style={{ width: '0%' }}></div>
                 </div>
-                <small id="loadProgressText" className="text-muted">0%</small>
+                <small id="loadProgressText" className="text-muted numeric">0%</small>
               </div>
               <button id="btnCancelLoad" className="btn btn-outline-danger" style={{ display: 'none' }}> 取消加载</button>
               <button id="btnDownload" className="btn btn-primary" disabled> 下载修改后的文件</button>
-              <span id="fileInfo" className="ms-auto text-muted form-hint"></span>
+              <span id="fileInfo" className="ms-auto text-muted form-hint numeric"></span>
             </div>
           </div>
         </div>
@@ -347,7 +347,7 @@ export default function HexToolPage() {
             </div>
             <div className="d-flex justify-content-between mt-2">
               <small className="text-muted">提示：双击 Hex 可编辑或删除；修改项将高亮</small>
-              <span id="statusText" className="text-muted"></span>
+              <span id="statusText" className="text-muted numeric"></span>
             </div>
           </div>
         </div>

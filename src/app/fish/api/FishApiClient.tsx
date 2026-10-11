@@ -211,8 +211,8 @@ export default function FishApiClient({ initialTokens }: { initialTokens: TokenR
                     </span>
                   </div>
                   <p className="fish-api-row__meta">
-                    权限 {t.scopes} · 签发于 {fmtDate(t.created_at)} · 到期{' '}
-                    {fmtDate(t.expires_at)} · 最后使用 {fmtDate(t.last_used_at)}
+                    权限 {t.scopes} · 签发于 <span className="numeric">{fmtDate(t.created_at)}</span> · 到期{' '}
+                    <span className="numeric">{fmtDate(t.expires_at)}</span> · 最后使用 <span className="numeric">{fmtDate(t.last_used_at)}</span>
                   </p>
                 </div>
                 <div className="fish-api-row__actions">

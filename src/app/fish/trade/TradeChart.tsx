@@ -238,7 +238,7 @@ export default function TradeChart({
         {priceTicks.map((t) => (
           <span
             key={t}
-            className="trade-chart__axis-label trade-chart__axis-label--price"
+            className="trade-chart__axis-label trade-chart__axis-label--price numeric"
             style={{ top: `${yFraction(t, domain) * 100}%` }}
           >
             {formatAxisPrice(t, priceStep)}
@@ -246,7 +246,7 @@ export default function TradeChart({
         ))}
         {hoverItem && (
           <span
-            className="trade-chart__badge trade-chart__badge--price"
+            className="trade-chart__badge trade-chart__badge--price numeric"
             style={{ top: `${hoverY * 100}%` }}
           >
             {formatPrice(hoverItem.close)}
@@ -285,7 +285,7 @@ export default function TradeChart({
           return (
             <span
               key={`${t.index}-${t.label}`}
-              className={`trade-chart__axis-label trade-chart__axis-label--time${edge}`}
+              className={`numeric trade-chart__axis-label trade-chart__axis-label--time${edge}`}
               style={{ left: `${xFraction((it.i0 + it.i1) / 2, win) * 100}%` }}
             >
               {t.label}
@@ -294,7 +294,7 @@ export default function TradeChart({
         })}
         {hoverItem && (
           <span
-            className="trade-chart__badge trade-chart__badge--time"
+            className="trade-chart__badge trade-chart__badge--time numeric"
             style={{ left: `${hoverX * 100}%` }}
           >
             {formatCandleTime(hoverItem.openTime, spanMs)}

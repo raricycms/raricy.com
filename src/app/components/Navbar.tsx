@@ -94,7 +94,7 @@ export default function Navbar({
               <>
                 <Link className="notification-btn" href="/notifications" title="我的通知">
                   <span className="icon icon-bell-fill" aria-hidden="true"></span>
-                  <span className="notification-badge" id="notificationBadge" style={{ display: 'none' }}>0</span>
+                  <span className="notification-badge numeric" id="notificationBadge" style={{ display: 'none' }}>0</span>
                 </Link>
                 <Link className="checkin-indicator" href="/checkin" title="每日签到">
                   <span className="icon icon-calendar-check" aria-hidden="true"></span>

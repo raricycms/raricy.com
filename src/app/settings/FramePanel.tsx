@@ -104,7 +104,7 @@ export default function FramePanel({ userId, onAlert }: Props) {
           {equipped ? (
             <>
               <span className="frame-panel__current-name">{equipped.label}</span>
-              <span className="frame-panel__current-state">
+              <span className="frame-panel__current-state numeric">
                 {equipped.active
                   ? equipped.expiresAt
                     ? `${equipped.expiresAt} 到期`
@@ -153,7 +153,7 @@ export default function FramePanel({ userId, onAlert }: Props) {
                 {/* 到期与状态徽标挤在一行 —— 各占一行会把卡片撑得很高，
                     而它们本来就是同一个问题的两面（「这个框还能不能用」） */}
                 <span className="frame-panel__sub">
-                  <span className="frame-panel__expiry">
+                  <span className="frame-panel__expiry numeric">
                     {f.expiresAt ? `${f.expiresAt} 到期` : '永久'}
                   </span>
                   {/* 三种「戴着也看不见」的原因要分开说 —— 用户据此刻判断该找谁 */}

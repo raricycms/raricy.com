@@ -51,7 +51,7 @@ export default async function AdminAppealsPage({
     <>
       <section className="admin-hero">
         <h1>操作申诉</h1>
-        <p>
+        <p className="numeric">
           共 {result.total} 条申诉 · 通过申诉时会尝试自动撤回原动作（禁言可自动解除）
         </p>
       </section>
@@ -95,7 +95,7 @@ export default async function AdminAppealsPage({
                     : '（日志已不存在）'}
                 </span>
                 <span
-                  className="text-muted"
+                  className="text-muted numeric"
                   style={{ marginLeft: 'auto', fontSize: '0.8rem' }}
                 >
                   {fmt(a.createdAt)}
@@ -116,7 +116,7 @@ export default async function AdminAppealsPage({
                 <p className="text-muted" style={{ marginTop: 8, fontSize: '0.9rem' }}>
                   裁决：{a.decision || '（无批注）'}
                   {a.decider ? ` · 由 ${a.decider.username ?? a.decider.id}` : ''}
-                  {a.decidedAt ? ` · ${fmt(a.decidedAt)}` : ''}
+                  <span className="numeric">{a.decidedAt ? ` · ${fmt(a.decidedAt)}` : ''}</span>
                 </p>
               )}
             </div>
@@ -137,9 +137,9 @@ export default async function AdminAppealsPage({
                 {Array.from({ length: result.pages }, (_, i) => i + 1).map((p) => (
                   <li key={p} className={`page-item ${p === result.page ? 'active' : ''}`}>
                     {p === result.page ? (
-                      <span className="page-link">{p}</span>
+                      <span className="page-link numeric">{p}</span>
                     ) : (
-                      <Link className="page-link" href={qs(p)}>
+                      <Link className="page-link numeric" href={qs(p)}>
                         {p}
                       </Link>
                     )}

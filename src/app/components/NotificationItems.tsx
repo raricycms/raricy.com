@@ -166,7 +166,7 @@ export default function NotificationItems({ initial }: { initial: NotificationDT
                   <span className="notification-unread-badge">未读</span>
                 )}
                 <span className="notification-meta">
-                  {fmt(n.timestamp)} ·{' '}
+                  <span className="numeric">{fmt(n.timestamp)}</span> ·{' '}
                   {n.actor && n.actor.id ? (
                     <Link href={`/u/${n.actor.id}`}>{n.actor.username}</Link>
                   ) : (

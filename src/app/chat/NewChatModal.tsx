@@ -144,7 +144,7 @@ export default function NewChatModal({
               >
                 上一页
               </button>
-              <span className="chat-pager__info">
+              <span className="chat-pager__info numeric">
                 第 {page} 页 / 共 {pages} 页
               </span>
               <button

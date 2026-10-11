@@ -1675,7 +1675,7 @@ export default function ChatApp({
                   ? '对方正在输入…'
                   : typingNames.length === 1
                     ? `${typingNames[0]} 正在输入…`
-                    : `${typingNames.length} 人正在输入…`}
+                    : <><span className="numeric">{typingNames.length}</span> 人正在输入…</>}
               </div>
             )}
 
@@ -1683,7 +1683,7 @@ export default function ChatApp({
                 滚到底也只是滚到窗口底部）；有新消息时按老样子报条数。 */}
             {(newCount > 0 || historyView) && (
               <button type="button" className="chat-jump-new" onClick={returnToPresent}>
-                {newCount > 0 ? `${newCount} 条新消息` : '回到最新'}{' '}
+                <span className="numeric">{newCount > 0 ? `${newCount} 条新消息` : '回到最新'}</span>{' '}
                 <ArrowDown aria-hidden="true" />
               </button>
             )}

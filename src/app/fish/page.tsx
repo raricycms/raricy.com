@@ -27,12 +27,12 @@ export default async function FishPage() {
         </div>
         <div className="fish-card__body">
           <div className="fish-card__balance">
-            <span className="fish-card__balance-number">{fmtFish(driedFish)}</span>
+            <span className="fish-card__balance-number numeric">{fmtFish(driedFish)}</span>
             <span className="fish-card__balance-label">小鱼干</span>
           </div>
           {todayFish > 0 && (
             <div className="fish-card__today">
-              今日签到获得 <strong>+{todayFish}</strong> 小鱼干
+              今日签到获得 <strong className="numeric">+{todayFish}</strong> 小鱼干
             </div>
           )}
           <div className="fish-card__actions">

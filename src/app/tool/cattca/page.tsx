@@ -314,7 +314,7 @@ export default function CattcaToolPage() {
                 语法指南
               </Link>
             </div>
-            <div className={`cattca-tool__status cattca-tool__status--${statusType}`}>{status}</div>
+            <div className={`numeric cattca-tool__status cattca-tool__status--${statusType}`}>{status}</div>
             <textarea
               ref={textareaRef}
               className="cattca-tool__script-input"

@@ -188,7 +188,7 @@ export default function ClickDemo() {
             {c}
           </span>
         ))}
-        <span className="cdm__prompt-progress">
+        <span className="cdm__prompt-progress numeric">
           {marks.length} / {need}
         </span>
       </div>
@@ -206,7 +206,7 @@ export default function ClickDemo() {
             {marks.map((m, i) => (
               <span
                 key={i}
-                className="cdm__mark"
+                className="cdm__mark numeric"
                 style={{
                   left: `${(m.x / challenge.width) * 100}%`,
                   top: `${(m.y / challenge.height) * 100}%`,
@@ -252,7 +252,7 @@ export default function ClickDemo() {
             <span className="cdm__verdict-pass">{result.passed ? '通过' : '未通过'}</span>
             {v && (
               <span className={`cdm__band cdm__band--${v.band}`}>
-                {BAND_LABEL[v.band]} · {v.score} 分
+                {BAND_LABEL[v.band]} · <span className="numeric">{v.score}</span> 分
               </span>
             )}
           </div>
@@ -260,7 +260,7 @@ export default function ClickDemo() {
           {result.traceError ? (
             <p className="cdm__line cdm__line--bad">{result.traceError}</p>
           ) : (
-            <p className="cdm__line">
+            <p className="cdm__line numeric">
               位置：
               {result.clickResults
                 .map((r, i) => `#${i + 1} ${r.ok ? '✓' : `✗(${r.dist}px)`}`)
@@ -276,7 +276,7 @@ export default function ClickDemo() {
 
           {v && (
             <>
-              <p className="cdm__line">
+              <p className="cdm__line numeric">
                 行为：{result.clusterSize > 1
                   ? `这条轨迹的指纹已出现 ${result.clusterSize} 次 —— 有别的会话拖着几乎一样的轨迹`
                   : '这条轨迹的指纹是首次出现'}
@@ -285,9 +285,9 @@ export default function ClickDemo() {
                 <ul className="cdm__flags">
                   {v.flags.map((f) => (
                     <li key={f.key} className="cdm__flag">
-                      <span className="cdm__flag-w">−{f.weight}</span>
+                      <span className="cdm__flag-w numeric">−{f.weight}</span>
                       <span className="cdm__flag-label">{f.label}</span>
-                      <span className="cdm__flag-detail">{f.detail}</span>
+                      <span className="cdm__flag-detail numeric">{f.detail}</span>
                     </li>
                   ))}
                 </ul>
@@ -300,7 +300,7 @@ export default function ClickDemo() {
                   {SIGNAL_ROWS.map((row) => (
                     <div key={row.key} className="cdm__signal">
                       <dt>{row.label}</dt>
-                      <dd>{row.fmt(v.signals[row.key])}</dd>
+                      <dd className="numeric">{row.fmt(v.signals[row.key])}</dd>
                     </div>
                   ))}
                 </dl>

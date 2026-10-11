@@ -49,12 +49,12 @@ export default async function CheckinPage() {
         <div className="checkin-card">
           <div className="checkin-card__header">
             <span className="checkin-card__greeting">你好，{user.username}</span>
-            <span className="checkin-card__date">{status.today}</span>
+            <span className="checkin-card__date numeric">{status.today}</span>
           </div>
           <div className="checkin-reward-hint" style={{ marginBottom: 16 }}>
             签到只对<b>发布过文章</b>的用户开放。你名下还没有未删除的文章（发过又全部删除
             也算没有）。不妨先发一篇<b>自我介绍</b> —— 让大家认识你，发完就能来签到，
-            每天领 {status.rewardFish} 条小鱼干。
+            每天领 <span className="numeric">{status.rewardFish}</span> 条小鱼干。
           </div>
           <Link href={INTRO_SEARCH_HREF} className="btn btn-primary">
             看看大家的「自我介绍」

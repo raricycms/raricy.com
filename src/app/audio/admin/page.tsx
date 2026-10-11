@@ -52,7 +52,7 @@ export default async function AudioAdminPage({
       <div className="image-hosting-header">
         <h1 className="image-hosting-title">音频床管理</h1>
         <p className="image-hosting-subtitle">
-          音频总占用：<strong>{totalMb} MB</strong>
+          音频总占用：<strong className="numeric">{totalMb} MB</strong>
         </p>
       </div>
 
@@ -86,7 +86,7 @@ export default async function AudioAdminPage({
                 <a
                   key={p}
                   href={pageHref(p)}
-                  className={`image-hosting-pagination__item${
+                  className={`numeric image-hosting-pagination__item${
                     p === data.page ? ' active' : ''
                   }`}
                   aria-current={p === data.page ? 'page' : undefined}

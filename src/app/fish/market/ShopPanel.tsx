@@ -208,14 +208,14 @@ function ShopItemCard({
               <span className="market-shop__name">{item.label}</span>
               <span className="market-shop__desc">{item.description}</span>
               <span className="market-shop__price">
-                {fmtFish(item.rent.price)} {unit.priceNoun}
+                <span className="numeric">{fmtFish(item.rent.price)}</span> {unit.priceNoun}
               </span>
             </div>
           </div>
           {item.holding && (
             <p className="market-field__hint market-shop__owned">
               {item.holding.expired ? '上次租的已过期' : '当前持有到'}
-              {item.holding.expiresAt ? ` ${item.holding.expiresAt}` : ''}
+              <span className="numeric">{item.holding.expiresAt ? ` ${item.holding.expiresAt}` : ''}</span>
               {item.equipped && !item.holding.expired ? (bubble ? '（使用中）' : '（正戴着）') : ''}
             </p>
           )}
@@ -256,7 +256,7 @@ function ShopItemCard({
                     onClick={() => setCount(String(d))}
                     disabled={busy}
                   >
-                    {d} {unit.noun}
+                    <span className="numeric">{d}</span> {unit.noun}
                   </button>
                 ))}
               </div>
@@ -264,10 +264,10 @@ function ShopItemCard({
 
             <div className="market-shop__summary">
               <span>
-                合计 <strong>{fmtFish(total)}</strong> 鱼干
+                合计 <strong className="numeric">{fmtFish(total)}</strong> 鱼干
               </span>
               <span>
-                租用后余额 <strong>{fmtFish(afterBalance)}</strong> 鱼干
+                租用后余额 <strong className="numeric">{fmtFish(afterBalance)}</strong> 鱼干
               </span>
             </div>
 
@@ -281,7 +281,7 @@ function ShopItemCard({
             >
               租用
             </button>
-            {bubble && <p className="market-field__hint">购买后到设置页选择使用。{item.rent.unit === 'month' && `1 个月固定 ${unit.days} 天。`}</p>}
+            {bubble && <p className="market-field__hint numeric">购买后到设置页选择使用。{item.rent.unit === 'month' && `1 个月固定 ${unit.days} 天。`}</p>}
             {bubble && item.holding && <a className="frame-panel__hint-link" href="/settings#chat-bubble">选择聊天气泡</a>}
           </>
         )}
@@ -314,18 +314,18 @@ function ShopItemCard({
                   <div className="market-confirm__row">
                     <dt>租期</dt>
                     <dd>
-                      {parsedCount} {unit.noun}
+                      <span className="numeric">{parsedCount}</span> {unit.noun}
                     </dd>
                   </div>
                   <div className="market-confirm__row">
                     <dt>单价</dt>
                     <dd>
-                      {fmtFish(item.rent.price)} {unit.priceNoun}
+                      <span className="numeric">{fmtFish(item.rent.price)}</span> {unit.priceNoun}
                     </dd>
                   </div>
                   <div className="market-confirm__row market-confirm__row--total">
                     <dt>合计</dt>
-                    <dd>{fmtFish(total)} 小鱼干</dd>
+                    <dd className="numeric">{fmtFish(total)} 小鱼干</dd>
                   </div>
                   {/* ⚠️ 这一行**有意只写「接在现有到期之后」而不写日期**：到期时刻要么
                       从现有到期叠加、要么从现在起算，两者都得读库内那口钟，而客户端算出来

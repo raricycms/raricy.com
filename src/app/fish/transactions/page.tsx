@@ -98,11 +98,11 @@ export default async function FishTransactionsPage({
                     <span className={`fish-transaction__type-tag fish-transaction__type-tag--${tx.type}`}>
                       {tx.type}
                     </span>
-                    <span className="fish-transaction__time">{fmtDateTime(tx.createdAt)}</span>
+                    <span className="fish-transaction__time numeric">{fmtDateTime(tx.createdAt)}</span>
                   </div>
                 </div>
                 <div
-                  className={`fish-transaction__amount ${tx.amount > 0 ? 'fish-transaction__amount--in' : 'fish-transaction__amount--out'}`}
+                  className={`numeric fish-transaction__amount ${tx.amount > 0 ? 'fish-transaction__amount--in' : 'fish-transaction__amount--out'}`}
                 >
                   {tx.amount > 0 ? '+' : ''}
                   {fmtFish(tx.amount)}
@@ -128,7 +128,7 @@ export default async function FishTransactionsPage({
                   return (
                     <Link
                       key={p}
-                      className={`page-link${p === data.page ? ' active' : ''}`}
+                      className={`numeric page-link${p === data.page ? ' active' : ''}`}
                       href={hrefFor(p)}
                     >
                       {p}

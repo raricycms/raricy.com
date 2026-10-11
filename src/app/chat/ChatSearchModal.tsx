@@ -139,7 +139,7 @@ export default function ChatSearchModal({
                   >
                     <span className="chat-search-item__head">
                       <span className="chat-search-item__author">{m.author.username}</span>
-                      <span className="chat-search-item__time">{fmtTime(m.created_at)}</span>
+                      <span className="chat-search-item__time numeric">{fmtTime(m.created_at)}</span>
                     </span>
                     <span className="chat-search-item__text">{m.content}</span>
                   </button>
@@ -155,7 +155,7 @@ export default function ChatSearchModal({
               >
                 上一页
               </button>
-              <span className="chat-pager__info">
+              <span className="chat-pager__info numeric">
                 第 {page} 页 / 共 {pages} 页
               </span>
               <button

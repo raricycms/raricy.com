@@ -101,7 +101,7 @@ function ChatMessageListInner({
       {/* DOM 上限：超过 CAP 条时从顶部折叠（消息仍在内存里），
           顶部按钮点一下往下放一页 —— 避免长会话把上万个节点堆在 DOM 里 */}
       {folded > 0 ? (
-        <button type="button" className="chat-list__older" onClick={onRevealOlder}>
+        <button type="button" className="chat-list__older numeric" onClick={onRevealOlder}>
           已折叠 {folded} 条 · 展开更早
         </button>
       ) : (
@@ -126,7 +126,7 @@ function ChatMessageListInner({
           <Fragment key={m.id}>
             {showDate && (
               <div className="chat-date-sep">
-                <span>{fmtDay(m.created_at)}</span>
+                <span className="numeric">{fmtDay(m.created_at)}</span>
               </div>
             )}
             {showNewSep && <div className="chat-list__new-sep">以下是新消息</div>}

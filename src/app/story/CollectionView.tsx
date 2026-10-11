@@ -69,7 +69,7 @@ export function CollectionView({
                     <p className="story-card__desc">{child.description}</p>
                   )}
                   <div className="story-card__meta">
-                    <span className="story-card__badge">{child.itemCount} 篇</span>
+                    <span className="story-card__badge numeric">{child.itemCount} 篇</span>
                   </div>
                   <div className="story-card__actions">
                     <span className="story-card__btn">浏览合集</span>
@@ -82,7 +82,7 @@ export function CollectionView({
                     <p className="story-card__desc">{child.description}</p>
                   )}
                   <div className="story-card__meta">
-                    <span className="story-card__tag story-card__tag--words">
+                    <span className="story-card__tag story-card__tag--words numeric">
                       {child.wordCount} 字
                     </span>
                     {child.genre && (

@@ -76,9 +76,9 @@ export default async function AudioGalleryPage() {
       <div className="image-hosting-quota">
         <div className="image-hosting-quota__info">
           <span>
-            已用 <strong>{usedMb} MB</strong> / {limitMb} MB
+            已用 <strong className="numeric">{usedMb} MB</strong> / <span className="numeric">{limitMb}</span> MB
           </span>
-          <span>{usagePercent}%</span>
+          <span className="numeric">{usagePercent}%</span>
         </div>
         <div className="image-hosting-quota__bar">
           <div

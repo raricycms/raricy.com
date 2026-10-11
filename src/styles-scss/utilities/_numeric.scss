@@ -1,0 +1,19 @@
+// 只标记界面的数据字段，不能挂到用户名、自由正文或整页容器上。
+.numeric,
+.vote-embed-total,
+.vote-embed-option-stats,
+.favorite-embed__count,
+.favorite-embed__more,
+.md-upload-chip__label,
+.md-res-item__sub,
+time,
+input[type='number'],
+input[type='date'],
+input[type='datetime-local'],
+input[type='time'],
+input[inputmode='numeric'],
+input[inputmode='decimal'],
+.fc-range output {
+  font-family: var(--font-numeric);
+  font-variant-numeric: tabular-nums;
+}

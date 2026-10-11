@@ -210,8 +210,8 @@ export default function VisionDemo() {
               <span
                 key={i}
                 className={
-                  'vdm__dot' +
-                  (i < cleared ? ' vdm__dot--done' : i === stage.index ? ' vdm__dot--now' : '')
+                  'numeric ' + ('vdm__dot' +
+                  (i < cleared ? ' vdm__dot--done' : i === stage.index ? ' vdm__dot--now' : ''))
                 }
               >
                 {i < cleared ? '✓' : i + 1}
@@ -219,7 +219,7 @@ export default function VisionDemo() {
             ))}
           </div>
           <span className="vdm__stage-label">
-            第 {stage.index + 1}/{stage.total} 关 · {FORM_LABEL[stage.form]}
+            第 <span className="numeric">{stage.index + 1}</span>/<span className="numeric">{stage.total}</span> 关 · {FORM_LABEL[stage.form]}
           </span>
         </div>
       )}
@@ -277,7 +277,7 @@ export default function VisionDemo() {
 
       {phase === 'failed' && failed && (
         <section className="vdm__result vdm__result--bad">
-          <h2 className="vdm__result-title">第 {failed.failedAt + 1} 关没过</h2>
+          <h2 className="vdm__result-title numeric">第 {failed.failedAt + 1} 关没过</h2>
           <p className="vdm__result-line">
             你碰到的是<strong>{failed.youHit}</strong>。
           </p>

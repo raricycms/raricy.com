@@ -145,26 +145,26 @@ export default function TradeChartPanel({
       <div className="trade-chart__bar">
         <span className="trade-chart__symbol">
           {display}
-          <span className="trade-chart__interval-tag">{INTERVAL_LABELS[interval]}</span>
+          <span className="trade-chart__interval-tag numeric">{INTERVAL_LABELS[interval]}</span>
         </span>
 
         {shown && (
           <span className="trade-chart__legend">
             <span className="trade-chart__legend-item">
-              开 <b>{formatPrice(shown.open)}</b>
+              开 <b className="numeric">{formatPrice(shown.open)}</b>
             </span>
             <span className="trade-chart__legend-item">
-              高 <b>{formatPrice(shown.high)}</b>
+              高 <b className="numeric">{formatPrice(shown.high)}</b>
             </span>
             <span className="trade-chart__legend-item">
-              低 <b>{formatPrice(shown.low)}</b>
+              低 <b className="numeric">{formatPrice(shown.low)}</b>
             </span>
             <span className="trade-chart__legend-item">
-              收 <b>{formatPrice(shown.close)}</b>
+              收 <b className="numeric">{formatPrice(shown.close)}</b>
             </span>
             {changePercent != null && (
               <span
-                className={`trade-chart__legend-change trade-chart__legend-change--${
+                className={`numeric trade-chart__legend-change trade-chart__legend-change--${
                   changePercent >= 0 ? 'up' : 'down'
                 }`}
               >
@@ -172,7 +172,7 @@ export default function TradeChartPanel({
               </span>
             )}
             {bucketSize > 1 && (
-              <span className="trade-chart__legend-note">每根 = {bucketSize} 根聚合</span>
+              <span className="trade-chart__legend-note numeric">每根 = {bucketSize} 根聚合</span>
             )}
           </span>
         )}
@@ -182,7 +182,7 @@ export default function TradeChartPanel({
             <button
               key={iv}
               type="button"
-              className={`trade-chart__interval-btn${iv === interval ? ' is-active' : ''}`}
+              className={`numeric trade-chart__interval-btn${iv === interval ? ' is-active' : ''}`}
               onClick={() => onIntervalChange(iv)}
               aria-pressed={iv === interval}
             >
@@ -266,7 +266,7 @@ export default function TradeChartPanel({
         />
       )}
 
-      <p className="trade-chart__hint">
+      <p className="trade-chart__hint numeric">
         滚轮缩放 · 拖动平移 · 双击复位 · 已加载 {len} 根
       </p>
     </div>

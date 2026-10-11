@@ -65,7 +65,7 @@ export default async function NotificationsPage({
               <Link
                 key={p}
                 href={qs(p)}
-                className={`page-link${p === result.page ? ' active' : ''}`}
+                className={`numeric page-link${p === result.page ? ' active' : ''}`}
                 aria-current={p === result.page ? 'page' : undefined}
               >
                 {p}

@@ -49,7 +49,7 @@ export default async function ImageAdminPage({
       <div className="image-hosting-header">
         <h1 className="image-hosting-title">图床管理</h1>
         <p className="image-hosting-subtitle">
-          总存储用量：<strong>{totalMb} MB</strong>
+          总存储用量：<strong className="numeric">{totalMb} MB</strong>
         </p>
       </div>
 
@@ -83,7 +83,7 @@ export default async function ImageAdminPage({
                 <a
                   key={p}
                   href={pageHref(p)}
-                  className={`image-hosting-pagination__item${
+                  className={`numeric image-hosting-pagination__item${
                     p === data.page ? ' active' : ''
                   }`}
                   aria-current={p === data.page ? 'page' : undefined}

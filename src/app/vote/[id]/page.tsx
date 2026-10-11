@@ -56,7 +56,7 @@ export default async function VoteDetailPage({ params }: { params: Promise<{ id:
         <span style={{ color: 'var(--color-text-secondary)' }}>
           发起者：{vote.authorName}
         </span>
-        <span style={{ color: 'var(--color-text-secondary)' }}>
+        <span className="numeric" style={{ color: 'var(--color-text-secondary)' }}>
           {ymd(vote.createdAt)}
         </span>
         {vote.isLocked && (

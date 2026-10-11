@@ -429,7 +429,7 @@ export default function ResourcePanel({ onClose, onInsert }: ResourcePanelProps)
                     {filtered.length > shown.length && (
                       <button
                         type="button"
-                        className="image-picker-more"
+                        className="image-picker-more numeric"
                         onClick={() => setReveal((n) => n + REVEAL_STEP)}
                       >
                         显示更多（还有 {filtered.length - shown.length} 条）

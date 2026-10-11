@@ -126,37 +126,37 @@ export default async function FishTradeStatsPage() {
       <div className="tstats-kpis">
         <div className="tstats-kpi" data-kpi="pnl">
           <div className="tstats-kpi__label">累计已实现盈亏</div>
-          <div className={`tstats-kpi__value${tone(stats.realizedUnits)}`}>
+          <div className={`numeric tstats-kpi__value${tone(stats.realizedUnits)}`}>
             {signed(stats.realizedUnits)}
           </div>
           <div className="tstats-kpi__unit">小鱼干</div>
         </div>
         <div className="tstats-kpi" data-kpi="winrate">
           <div className="tstats-kpi__label">胜率</div>
-          <div className="tstats-kpi__value">{winRate(stats.winRatePct)}</div>
-          <div className="tstats-kpi__unit">
+          <div className="tstats-kpi__value numeric">{winRate(stats.winRatePct)}</div>
+          <div className="tstats-kpi__unit numeric">
             {stats.wins} 胜 / {stats.losses} 负
             {stats.flats > 0 && ` / ${stats.flats} 平`}
           </div>
         </div>
         <div className="tstats-kpi" data-kpi="count">
           <div className="tstats-kpi__label">已结清</div>
-          <div className="tstats-kpi__value">{stats.count}</div>
+          <div className="tstats-kpi__value numeric">{stats.count}</div>
           <div className="tstats-kpi__unit">笔</div>
         </div>
         <div className="tstats-kpi" data-kpi="liquidated">
           <div className="tstats-kpi__label">爆仓</div>
-          <div className="tstats-kpi__value">{stats.liquidated}</div>
+          <div className="tstats-kpi__value numeric">{stats.liquidated}</div>
           <div className="tstats-kpi__unit">次</div>
         </div>
         <div className="tstats-kpi" data-kpi="stake">
           <div className="tstats-kpi__label">累计投入</div>
-          <div className="tstats-kpi__value">{fish(stats.stakeUnits)}</div>
+          <div className="tstats-kpi__value numeric">{fish(stats.stakeUnits)}</div>
           <div className="tstats-kpi__unit">小鱼干</div>
         </div>
         <div className="tstats-kpi" data-kpi="payout">
           <div className="tstats-kpi__label">累计实发</div>
-          <div className="tstats-kpi__value">{fish(stats.payoutUnits)}</div>
+          <div className="tstats-kpi__value numeric">{fish(stats.payoutUnits)}</div>
           <div className="tstats-kpi__unit">小鱼干</div>
         </div>
       </div>
@@ -190,7 +190,7 @@ export default async function FishTradeStatsPage() {
           {/* 「行情刷新于 …」只在**真有持仓**时才有意义 —— 没有持仓时那一行说的是
               一个与本题无关的时刻，而上面那几个 KPI 根本不看行情。 */}
           {quoteAt && openRows.length > 0 && (
-            <span className="tstats-note">行情刷新于 {ymdhms(quoteAt)}</span>
+            <span className="tstats-note numeric">行情刷新于 {ymdhms(quoteAt)}</span>
           )}
         </div>
         {openRows.length === 0 ? (
@@ -221,16 +221,16 @@ export default async function FishTradeStatsPage() {
                           {DIRECTION_LABELS[r.direction]}
                         </span>
                       </td>
-                      <td className="tstats-table__num">{r.leverage}×</td>
-                      <td className="tstats-table__num">{fmtFish(r.stake)}</td>
-                      <td className="tstats-table__num">{formatPrice(r.entryPrice)}</td>
-                      <td className="tstats-table__num">
+                      <td className="tstats-table__num numeric">{r.leverage}×</td>
+                      <td className="tstats-table__num numeric">{fmtFish(r.stake)}</td>
+                      <td className="tstats-table__num numeric">{formatPrice(r.entryPrice)}</td>
+                      <td className="tstats-table__num numeric">
                         {r.price == null ? '—' : formatPrice(r.price)}
                       </td>
                       <td className="tstats-table__num">
                         {/* 颜色挂在里层 span 上，别挂在 <td> 上：`.table td`（0-1-1）压得住
                             单类选择器，见 _fish-trade-stats.scss 那条注释 */}
-                        <span className={`tstats-pnl${r.estimate ? tone(r.estimate.profitUnits) : ''}`}>
+                        <span className={`numeric tstats-pnl${r.estimate ? tone(r.estimate.profitUnits) : ''}`}>
                           {profitText(r.estimate)}
                         </span>
                         {/* 穿过爆仓价：平仓实得 0，下一轮扫描就会被强平。不说这句的话，
@@ -249,7 +249,7 @@ export default async function FishTradeStatsPage() {
             </div>
             <p className="tstats-total">
               浮动盈亏合计{' '}
-              <strong className={`tstats-pnl${totalProfitUnits == null ? '' : tone(totalProfitUnits)}`}>
+              <strong className={`numeric tstats-pnl${totalProfitUnits == null ? '' : tone(totalProfitUnits)}`}>
                 {totalProfitUnits == null ? '—' : signed(totalProfitUnits)}
               </strong>
               {totalProfitUnits == null && <span className="tstats-liq">有行情取不到，合计先不算</span>}
@@ -260,7 +260,7 @@ export default async function FishTradeStatsPage() {
       </section>
 
       {stats.incomplete > 0 && (
-        <p className="tstats-note">
+        <p className="tstats-note numeric">
           有 {stats.incomplete} 行数据不完整，未计入统计。
         </p>
       )}
@@ -302,12 +302,12 @@ function BreakdownTable({
             {buckets.map((b) => (
               <tr key={b.key}>
                 <td>{labelOf(b.key)}</td>
-                <td className="tstats-table__num">{b.count}</td>
-                <td className="tstats-table__num">{winRate(b.winRatePct)}</td>
+                <td className="tstats-table__num numeric">{b.count}</td>
+                <td className="tstats-table__num numeric">{winRate(b.winRatePct)}</td>
                 <td className="tstats-table__num">
-                  <span className={`tstats-pnl${tone(b.realizedUnits)}`}>{signed(b.realizedUnits)}</span>
+                  <span className={`numeric tstats-pnl${tone(b.realizedUnits)}`}>{signed(b.realizedUnits)}</span>
                 </td>
-                <td className="tstats-table__num">{b.liquidated}</td>
+                <td className="tstats-table__num numeric">{b.liquidated}</td>
               </tr>
             ))}
           </tbody>

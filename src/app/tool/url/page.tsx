@@ -207,7 +207,7 @@ export default function UrlToolPage() {
                   快捷键：<span className="kbd">Ctrl</span> +{' '}
                   <span className="kbd">Enter</span> 编码（左 → 右）
                 </small>
-                <span className="text-muted">{status}</span>
+                <span className="text-muted numeric">{status}</span>
               </div>
             </div>
           </div>

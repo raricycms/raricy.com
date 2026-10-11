@@ -331,7 +331,7 @@ export default function HashToolPage() {
               <div className="mt-3">
                 <label className="form-label fw-semibold">结果</label>
                 <textarea className="form-control mono" rows={6} readOnly value={result} />
-                <small className="text-muted">{status}</small>
+                <small className="text-muted numeric">{status}</small>
               </div>
             </div>
           </div>

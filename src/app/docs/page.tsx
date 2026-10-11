@@ -33,7 +33,7 @@ export default function DocsIndexPage() {
       <header className="docs-hero">
         <h1 className="docs-hero__title">文档</h1>
         <p className="docs-hero__lede">
-          本站的全部文档，共 {DOC_ENTRIES.length} 份：给玩家与创作者的使用指南、给站外机器人开发者的
+          本站的全部文档，共 <span className="numeric">{DOC_ENTRIES.length}</span> 份：给玩家与创作者的使用指南、给站外机器人开发者的
           接口说明，以及开发与运维笔记。它们与站外仓库{' '}
           <code>docs/</code> 里的是同一份 —— 这里读到的就是仓库里的原文。
         </p>
@@ -50,7 +50,7 @@ export default function DocsIndexPage() {
           <section className="docs-group" key={group.key}>
             <h2 className="docs-group__title">
               {group.title}
-              <span className="docs-group__count">{entries.length}</span>
+              <span className="docs-group__count numeric">{entries.length}</span>
             </h2>
             <p className="docs-group__desc">{group.description}</p>
 

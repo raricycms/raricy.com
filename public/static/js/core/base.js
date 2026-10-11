@@ -461,10 +461,12 @@ function enhanceFileInputs() {
             var files = input.files;
             if (files && files.length) {
                 name.textContent = files.length > 1 ? (files.length + ' 个文件') : files[0].name;
+                name.classList.toggle('numeric', files.length > 1);
                 name.classList.add('filepick__name--has');
                 wrap.classList.add('filepick--has');
             } else {
                 name.textContent = '未选择文件';
+                name.classList.remove('numeric');
                 name.classList.remove('filepick__name--has');
                 wrap.classList.remove('filepick--has');
             }

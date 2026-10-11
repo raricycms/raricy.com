@@ -153,9 +153,9 @@ export default async function AdminUsersPage({
                         className={`page-item ${p === result.page ? 'active' : ''}`}
                       >
                         {p === result.page ? (
-                          <span className="page-link">{p}</span>
+                          <span className="page-link numeric">{p}</span>
                         ) : (
-                          <Link className="page-link" href={qs(p)}>
+                          <Link className="page-link numeric" href={qs(p)}>
                             {p}
                           </Link>
                         )}

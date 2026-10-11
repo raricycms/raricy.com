@@ -244,15 +244,15 @@ async function BlogListSection({
                 <div className="blog-stats">
                   <span className="blog-likes" title="点赞数">
                     <span className="icon icon-heart-fill" aria-hidden="true"></span>
-                    <span>{b.likesCount ?? 0}</span>
+                    <span className="numeric">{b.likesCount ?? 0}</span>
                   </span>
                   <span className="blog-comments" title="评论数">
                     <span className="icon icon-chat-dots_new" aria-hidden="true"></span>
-                    <span>{b.commentsCount ?? 0}</span>
+                    <span className="numeric">{b.commentsCount ?? 0}</span>
                   </span>
                   <span className="blog-fish" title="小鱼干">
                     <span className="icon icon-fish" aria-hidden="true"></span>
-                    <span>{b.fishCount ?? 0}</span>
+                    <span className="numeric">{b.fishCount ?? 0}</span>
                   </span>
                 </div>
               </div>
@@ -331,7 +331,7 @@ async function BlogListSection({
               <Link
                 key={p}
                 href={qs(p)}
-                className={`page-link${p === result.page ? ' active' : ''}`}
+                className={`numeric page-link${p === result.page ? ' active' : ''}`}
                 aria-current={p === result.page ? 'page' : undefined}
               >
                 {p}

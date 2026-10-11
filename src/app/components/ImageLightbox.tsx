@@ -236,7 +236,7 @@ export default function ImageLightbox({
         </button>
         <button
           type="button"
-          className="chat-lightbox__zoom-level"
+          className="chat-lightbox__zoom-level numeric"
           onClick={resetView}
           disabled={!zoomed}
           title="恢复原始大小（0 / 双击）"

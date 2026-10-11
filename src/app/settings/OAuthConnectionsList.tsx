@@ -109,9 +109,9 @@ export default function OAuthConnectionsList({ onAlert }: Props) {
             </div>
             <div className="oauth-conn-row__meta">
               {c.applicationDisabled && <>应用已停用　·　</>}
-              授权于 {fmt(c.firstAuthorizedAt)}
-              {c.tokenCount > 1 && <>　·　{c.tokenCount} 次授权</>}
-              　·　到期 {fmt(c.expiresAt)}
+              授权于 <span className="numeric">{fmt(c.firstAuthorizedAt)}</span>
+              {c.tokenCount > 1 && <>　·　<span className="numeric">{c.tokenCount}</span> 次授权</>}
+              　·　到期 <span className="numeric">{fmt(c.expiresAt)}</span>
             </div>
             <div className="oauth-conn-row__scopes">
               {c.scopes.map((s) => (

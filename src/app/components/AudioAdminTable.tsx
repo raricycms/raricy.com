@@ -82,8 +82,8 @@ export default function AudioAdminTable({ items }: { items: AdminAudioRow[] }) {
                 </a>
               </td>
               <td>{a.authorName}</td>
-              <td>{(a.fileSize / 1024 / 1024).toFixed(2)} MB</td>
-              <td>{a.createdAt}</td>
+              <td className="numeric">{(a.fileSize / 1024 / 1024).toFixed(2)} MB</td>
+              <td className="numeric">{a.createdAt}</td>
               <td>
                 <button
                   className="image-hosting-card__btn image-hosting-card__btn--danger"

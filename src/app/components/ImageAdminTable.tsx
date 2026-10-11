@@ -80,8 +80,8 @@ export default function ImageAdminTable({ images }: { images: AdminImageRow[] })
                 </a>
               </td>
               <td>{img.authorName}</td>
-              <td>{(img.fileSize / 1024).toFixed(1)} KB</td>
-              <td>{img.createdAt}</td>
+              <td className="numeric">{(img.fileSize / 1024).toFixed(1)} KB</td>
+              <td className="numeric">{img.createdAt}</td>
               <td>
                 <button
                   className="image-hosting-card__btn image-hosting-card__btn--danger"

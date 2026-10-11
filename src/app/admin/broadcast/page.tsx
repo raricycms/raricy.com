@@ -426,7 +426,7 @@ export default function AdminBroadcastPage() {
                     <h6>预览信息</h6>
                     <p className="mb-1">
                       目标用户数量:{' '}
-                      <span className="font-weight-bold text-primary">{targetUserCount}</span>
+                      <span className="font-weight-bold text-primary numeric">{targetUserCount}</span>
                     </p>
                     <small className="text-muted">请确认发送范围后再提交</small>
                   </div>

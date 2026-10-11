@@ -95,7 +95,7 @@ function Pager({
           <Link
             key={p}
             href={buildHref(which, p)}
-            className={`page-link${p === page ? ' active' : ''}`}
+            className={`numeric page-link${p === page ? ' active' : ''}`}
             aria-current={p === page ? 'page' : undefined}
           >
             {p}
@@ -175,7 +175,7 @@ export default function ProfileTabs({
           type="button"
           role="tab"
           aria-selected={tab === 'blogs'}
-          className={`segmented__btn profile-tabs__tab${tab === 'blogs' ? ' is-active' : ''}`}
+          className={`numeric segmented__btn profile-tabs__tab${tab === 'blogs' ? ' is-active' : ''}`}
           onClick={() => selectTab('blogs')}
         >
           文章 ({blogsCount})
@@ -184,7 +184,7 @@ export default function ProfileTabs({
           type="button"
           role="tab"
           aria-selected={tab === 'comments'}
-          className={`segmented__btn profile-tabs__tab${tab === 'comments' ? ' is-active' : ''}`}
+          className={`numeric segmented__btn profile-tabs__tab${tab === 'comments' ? ' is-active' : ''}`}
           onClick={() => selectTab('comments')}
         >
           评论 ({commentsCount})
@@ -224,11 +224,11 @@ export default function ProfileTabs({
                     <BlogTimestamps createdAt={b.createdAt} updatedAt={b.updatedAt} />
                     <span>
                       <span className="icon icon-heart-fill" aria-hidden="true" />
-                      {b.likesCount}
+                      <span className="numeric">{b.likesCount}</span>
                     </span>
                     <span>
                       <span className="icon icon-chat-dots_new" aria-hidden="true" />
-                      {b.commentsCount}
+                      <span className="numeric">{b.commentsCount}</span>
                     </span>
                   </div>
                 </Link>
@@ -273,7 +273,7 @@ export default function ProfileTabs({
                   <h4 className="profile-content-item__title">回复：{c.blogTitle}</h4>
                   <p className="profile-content-item__preview">{c.content}</p>
                   <div className="profile-content-item__meta">
-                    <span>{ymd(c.createdAt)}</span>
+                    <span className="numeric">{ymd(c.createdAt)}</span>
                   </div>
                 </Link>
               ))}

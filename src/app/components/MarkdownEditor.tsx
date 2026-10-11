@@ -694,7 +694,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
         </div>
 
         <div className="md-editor__foot">
-          <span className="md-editor__count" aria-live="polite">
+          <span className="md-editor__count numeric" aria-live="polite">
             {charCount} 字
           </span>
           {/* 「先 Esc 再 Tab」是 CodeMirror **自带**的行为（见上面 contentAttributes

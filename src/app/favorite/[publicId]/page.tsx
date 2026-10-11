@@ -44,7 +44,7 @@ export default async function FavoritePublicPage({
       </div>
 
       <div className="favorite-detail__meta">
-        <span>共 {fav.items.length} 篇</span>
+        <span className="numeric">共 {fav.items.length} 篇</span>
         {/* 句柄本身，就是粘进 `[@六位ID]` 引用的那一串（不是模板字符串，别加 `$`） */}
         {fav.publicId && <span className="favorite-handle">[@{fav.publicId}]</span>}
         <span>收藏者：{fav.authorName}</span>

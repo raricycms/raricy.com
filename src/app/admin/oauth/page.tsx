@@ -39,7 +39,7 @@ export default async function AdminOAuthPage() {
         <ApplicationCreateForm />
 
         <section className="management-card" style={{ marginTop: 20 }}>
-          <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 600 }}>
+          <h2 className="numeric" style={{ margin: 0, fontSize: '1.25rem', fontWeight: 600 }}>
             已注册的应用（{data.length}）
           </h2>
           {data.length === 0 ? (

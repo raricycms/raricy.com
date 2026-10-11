@@ -67,7 +67,7 @@ export default function AppealForm({ logId }: { logId: number }) {
               但正文是他自己写的，别在这里把不该说的说出来。 */}
           申诉内容与处理结果会在本页向站内成员公示，请勿写入不想公开的信息。
           <br />
-          {content.length} / {MAX_LEN}
+          <span className="numeric">{content.length} / {MAX_LEN}</span>
         </small>
         <button className="btn btn-primary" onClick={submit} disabled={busy || !content.trim()}>
           {busy ? '提交中…' : '提交'}

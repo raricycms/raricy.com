@@ -618,12 +618,12 @@ function CommentItem({
             aria-label={node.liked ? '取消点赞' : '点赞'}
           >
             <Heart aria-hidden="true" />
-            {node.likes_count > 0 && <span>{node.likes_count}</span>}
+            {node.likes_count > 0 && <span className="numeric">{node.likes_count}</span>}
           </button>
         ) : !node.is_deleted && node.likes_count > 0 ? (
           <span className="comment-like comment-like--static">
             <Heart aria-hidden="true" />
-            <span>{node.likes_count}</span>
+            <span className="numeric">{node.likes_count}</span>
           </span>
         ) : null}
         {canComment && (

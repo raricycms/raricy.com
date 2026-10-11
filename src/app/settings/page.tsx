@@ -245,7 +245,7 @@ export default function SettingsPage() {
           value={state.bio}
           onChange={(e) => setState((s) => ({ ...s, bio: e.target.value }))}
         />
-        <div className="settings-input__hint" id="bioCharCount">{state.bio.length} / 500</div>
+        <div className="settings-input__hint numeric" id="bioCharCount">{state.bio.length} / 500</div>
         <button
           className="settings-btn settings-btn--primary"
           id="btnSaveBio"

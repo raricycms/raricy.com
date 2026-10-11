@@ -267,13 +267,13 @@ export default function SliderDemo() {
           <div className="cdm__verdict">
             <span className="cdm__verdict-pass">{result.passed ? '通过' : '未通过'}</span>
             <span className={`cdm__band cdm__band--${v.band}`}>
-              {BAND_LABEL[v.band]} · {v.score} 分
+              {BAND_LABEL[v.band]} · <span className="numeric">{v.score}</span> 分
             </span>
           </div>
 
           <p className="cdm__line">
-            位置：{result.positionOk ? '命中' : '未命中'}（偏差 {result.dx}px，容差 {result.tolerance}px
-            {result.answerX !== undefined ? `，答案 x=${result.answerX}` : ''}）
+            位置：{result.positionOk ? '命中' : '未命中'}（偏差 <span className="numeric">{result.dx}</span>px，容差 <span className="numeric">{result.tolerance}</span>px
+            <span className="numeric">{result.answerX !== undefined ? `，答案 x=${result.answerX}` : ''}</span>）
           </p>
           {result.trajectoryConsistent === false && (
             <p className="cdm__line cdm__line--bad">
@@ -286,7 +286,7 @@ export default function SliderDemo() {
               verify/route.ts 的 BEHAVIOR_BLOCKS。
             </p>
           )}
-          <p className="cdm__line">
+          <p className="cdm__line numeric">
             行为：{result.clusterSize > 1
               ? `这条轨迹的指纹已经出现过 ${result.clusterSize} 次 —— 有别的会话拖着一条几乎一样的轨迹`
               : '这条轨迹的指纹是首次出现'}
@@ -296,9 +296,9 @@ export default function SliderDemo() {
             <ul className="cdm__flags">
               {v.flags.map((f) => (
                 <li key={f.key} className="cdm__flag">
-                  <span className="cdm__flag-w">−{f.weight}</span>
+                  <span className="cdm__flag-w numeric">−{f.weight}</span>
                   <span className="cdm__flag-label">{f.label}</span>
-                  <span className="cdm__flag-detail">{f.detail}</span>
+                  <span className="cdm__flag-detail numeric">{f.detail}</span>
                 </li>
               ))}
             </ul>
@@ -312,7 +312,7 @@ export default function SliderDemo() {
               {SIGNAL_ROWS.map((row) => (
                 <div key={row.key} className="cdm__signal">
                   <dt>{row.label}</dt>
-                  <dd>{row.fmt(v.signals[row.key])}</dd>
+                  <dd className="numeric">{row.fmt(v.signals[row.key])}</dd>
                 </div>
               ))}
             </dl>
@@ -323,7 +323,7 @@ export default function SliderDemo() {
       {result && !v && (
         <section className="cdm__result cdm__result--bot">
           <p className="cdm__line">轨迹被拒：{result.traceError}</p>
-          <p className="cdm__line">位置判定：{result.positionOk ? '命中' : '未命中'}（偏差 {result.dx}px）</p>
+          <p className="cdm__line">位置判定：{result.positionOk ? '命中' : '未命中'}（偏差 <span className="numeric">{result.dx}</span>px）</p>
         </section>
       )}
     </div>

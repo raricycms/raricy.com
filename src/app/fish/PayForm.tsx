@@ -194,10 +194,10 @@ export default function PayForm({
           {done.duplicated ? '这笔已经付过了' : isCollect ? '付款成功' : '支付成功'}
         </p>
         <p className="pay-result__amount">
-          {fmtFish(done.amount)} <span>小鱼干</span>
+          <span className="numeric">{fmtFish(done.amount)}</span> <span>小鱼干</span>
         </p>
         <p className="pay-result__to">已付给 {toUsername}</p>
-        <p className="pay-result__balance">当前余额 {fmtFish(done.balance)} 小鱼干</p>
+        <p className="pay-result__balance numeric">当前余额 {fmtFish(done.balance)} 小鱼干</p>
         {done.transferId && (
           <p className="pay-result__receipt">
             凭据号 <code>{done.transferId}</code>
@@ -272,7 +272,7 @@ export default function PayForm({
               <button
                 type="button"
                 key={v}
-                className="market-quick__btn pay-quick__btn"
+                className="market-quick__btn pay-quick__btn numeric"
                 onClick={() => setAmountText(String(v))}
                 disabled={busy}
               >
@@ -291,7 +291,7 @@ export default function PayForm({
         <div className="market-field">
           <span className="market-field__label">支付金额</span>
           <div className="market-amount pay-amount">
-            <span className="pay-amount__value">{fmtFish(amount)}</span>
+            <span className="pay-amount__value numeric">{fmtFish(amount)}</span>
             <span className="market-amount__unit">小鱼干</span>
           </div>
         </div>
@@ -345,7 +345,7 @@ export default function PayForm({
           手续费 <strong className="market-summary__free">0</strong> 鱼干
         </span>
         <span>
-          支付后余额 <strong>{fmtFish(afterBalance)}</strong> 鱼干
+          支付后余额 <strong className="numeric">{fmtFish(afterBalance)}</strong> 鱼干
         </span>
       </div>
 

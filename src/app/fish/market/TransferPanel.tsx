@@ -98,7 +98,7 @@ export default function TransferPanel({ balance: initialBalance }: { balance: nu
       <div className="market-card">
         <div className="market-card__head">
           <span className="market-card__balance-label">我的余额</span>
-          <span className="market-card__balance-number">{fmtFish(balance)}</span>
+          <span className="market-card__balance-number numeric">{fmtFish(balance)}</span>
           <span className="market-card__balance-unit">小鱼干</span>
         </div>
 
@@ -157,7 +157,7 @@ export default function TransferPanel({ balance: initialBalance }: { balance: nu
               <button
                 key={q}
                 type="button"
-                className="market-quick__btn"
+                className="market-quick__btn numeric"
                 onClick={() => addAmount(q)}
                 disabled={busy}
               >
@@ -183,7 +183,7 @@ export default function TransferPanel({ balance: initialBalance }: { balance: nu
             onChange={(e) => setNote(e.target.value)}
             disabled={busy}
           />
-          <p className="market-field__hint">
+          <p className="market-field__hint numeric">
             {note.length}/{NOTE_MAX}
           </p>
         </div>
@@ -193,7 +193,7 @@ export default function TransferPanel({ balance: initialBalance }: { balance: nu
             手续费 <strong className="market-summary__free">0</strong> 鱼干
           </span>
           <span>
-            转账后余额 <strong>{fmtFish(afterBalance)}</strong> 鱼干
+            转账后余额 <strong className="numeric">{fmtFish(afterBalance)}</strong> 鱼干
           </span>
         </div>
 
@@ -242,7 +242,7 @@ export default function TransferPanel({ balance: initialBalance }: { balance: nu
                 <dl className="market-confirm__rows">
                   <div className="market-confirm__row">
                     <dt>转账金额</dt>
-                    <dd>{fmtFish(parsed)} 小鱼干</dd>
+                    <dd className="numeric">{fmtFish(parsed)} 小鱼干</dd>
                   </div>
                   {note.trim() && (
                     <div className="market-confirm__row">
@@ -256,7 +256,7 @@ export default function TransferPanel({ balance: initialBalance }: { balance: nu
                   </div>
                   <div className="market-confirm__row market-confirm__row--total">
                     <dt>转账后余额</dt>
-                    <dd>{fmtFish(afterBalance)} 小鱼干</dd>
+                    <dd className="numeric">{fmtFish(afterBalance)} 小鱼干</dd>
                   </div>
                 </dl>
                 <div className="market-confirm__actions">

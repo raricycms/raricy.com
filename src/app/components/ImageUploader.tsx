@@ -106,7 +106,7 @@ export default function ImageUploader() {
         <div className="image-hosting-progress__bar">
           <div className="image-hosting-progress__fill" id="progress-fill" style={{ width: progressWidth }}></div>
         </div>
-        <span id="progress-text">{progressText}</span>
+        <span className="numeric" id="progress-text">{progressText}</span>
       </div>
     </>
   );
@@ -213,7 +213,7 @@ export function ImageGallery({ images, isOwner = false }: { images: GalleryImage
               </div>
               <div className="image-hosting-card__info">
                 <span className="image-hosting-card__name" title={img.filename}>{img.filename}</span>
-                <span className="image-hosting-card__size">{(img.fileSize / 1024).toFixed(1)} KB</span>
+                <span className="image-hosting-card__size numeric">{(img.fileSize / 1024).toFixed(1)} KB</span>
               </div>
               <div className="image-hosting-card__id" title="图片ID">{img.id}</div>
               <div className="image-hosting-card__actions">

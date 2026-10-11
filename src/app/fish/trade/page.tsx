@@ -178,7 +178,7 @@ function SettledList({ rows, hasMore }: { rows: SettledPositionView[]; hasMore: 
                   {DIRECTION_BADGES[r.direction]}
                 </span>
                 {/* 倍数角标只在杠杆仓出现（1 倍是默认档，加个「1×」只是噪音 —— 同持仓行） */}
-                {r.leverage > 1 && <span className="trade-settled__lev">{r.leverage}×</span>}
+                {r.leverage > 1 && <span className="trade-settled__lev numeric">{r.leverage}×</span>}
                 <span
                   className={`trade-settled__tag${
                     r.status === 'liquidated' ? ' trade-settled__tag--liquidated' : ''
@@ -186,11 +186,11 @@ function SettledList({ rows, hasMore }: { rows: SettledPositionView[]; hasMore: 
                 >
                   {r.status === 'liquidated' ? '爆仓' : r.direction === 'short' ? '平空' : '卖出'}
                 </span>
-                <span className="trade-settled__meta">
+                <span className="trade-settled__meta numeric">
                   投入 {fmtFish(r.stake)} · 结清价 {formatPrice(r.exitPrice)} · {fmtSettledAt(r.closedAt)}
                 </span>
                 <span
-                  className={`trade-settled__pnl${
+                  className={`numeric trade-settled__pnl${
                     r.profit == null ? '' : r.profit >= 0 ? ' trade-settled__pnl--up' : ' trade-settled__pnl--down'
                   }`}
                 >
@@ -200,7 +200,7 @@ function SettledList({ rows, hasMore }: { rows: SettledPositionView[]; hasMore: 
             ))}
           </ul>
           {hasMore && (
-            <p className="trade-settled__note">
+            <p className="trade-settled__note numeric">
               只显示最近 {SETTLED_PREVIEW} 笔，更早的已结清记录不在本页。
             </p>
           )}

@@ -142,11 +142,11 @@ export default function AdminArticlesManager({
       {/* 统计信息 */}
       <div className="admin-stats-bar">
         <div className="admin-stat-item">
-          <div className="admin-stat-item__number">{total}</div>
+          <div className="admin-stat-item__number numeric">{total}</div>
           <div className="admin-stat-item__label">总文章数</div>
         </div>
         <div className="admin-stat-item">
-          <div className="admin-stat-item__number">{selectedOnPage.length}</div>
+          <div className="admin-stat-item__number numeric">{selectedOnPage.length}</div>
           <div className="admin-stat-item__label">已选择</div>
         </div>
       </div>
@@ -199,7 +199,7 @@ export default function AdminArticlesManager({
       <div className="admin-batch-actions" id="batchActions">
         <div className="row align-items-center">
           <div className="col-md-6">
-            <strong>批量操作</strong> - 已选择 <span>{selectedOnPage.length}</span> 篇文章
+            <strong>批量操作</strong> - 已选择 <span className="numeric">{selectedOnPage.length}</span> 篇文章
           </div>
           <div className="col-md-4">
             <select
@@ -266,10 +266,10 @@ export default function AdminArticlesManager({
                 </div>
                 <div className="article-card__meta">
                   <span>{a.author}</span>
-                  <span>{a.date}</span>
+                  <span className="numeric">{a.date}</span>
                   <span>
                     <span className="icon icon-heart-fill"></span>
-                    {a.likesCount}
+                    <span className="numeric">{a.likesCount}</span>
                   </span>
                   <span className="mono">ID {a.id.slice(0, 8)}…</span>
                 </div>
@@ -329,9 +329,9 @@ export default function AdminArticlesManager({
                 ) : (
                   <li key={p} className={`page-item ${p === pagination.page ? 'active' : ''}`}>
                     {p === pagination.page ? (
-                      <span className="page-link">{p}</span>
+                      <span className="page-link numeric">{p}</span>
                     ) : (
-                      <Link className="page-link" href={qs(p)}>
+                      <Link className="page-link numeric" href={qs(p)}>
                         {p}
                       </Link>
                     )}

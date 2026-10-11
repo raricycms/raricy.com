@@ -32,7 +32,7 @@ export default async function VoteListPage() {
               <div className="vote-item__header">
                 <span className="vote-item__header-title">{v.title}</span>
                 <span className="vote-item__header-meta">
-                  {v.optionCount} 个选项 · {v.totalVotes} 票
+                  <span className="numeric">{v.optionCount}</span> 个选项 · <span className="numeric">{v.totalVotes}</span> 票
                   {v.isLocked && (
                     <span
                       className="vote-item__header-locked"

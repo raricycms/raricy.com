@@ -223,7 +223,7 @@ export default function FavoriteButton({ blogId, isAuth, isCore, initialFavorite
                         <Lock aria-hidden="true" size={14} />
                       )}
                       <span className="favorite-picker__title">{row.title}</span>
-                      <span className="favorite-picker__count">{row.item_count} 篇</span>
+                      <span className="favorite-picker__count numeric">{row.item_count} 篇</span>
                     </label>
                   ))}
                 </div>
