@@ -237,7 +237,7 @@ describe('表情缩略图不占满发送连接', () => {
 
   const visible = (images: HTMLImageElement[], isIntersecting = true) => {
     notify(
-      images.map((target) => ({ target, isIntersecting })) as IntersectionObserverEntry[],
+      images.map((target) => ({ target, isIntersecting })) as unknown as IntersectionObserverEntry[],
       {} as IntersectionObserver
     );
   };

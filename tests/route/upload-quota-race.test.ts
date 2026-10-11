@@ -38,20 +38,25 @@ it.each(['image', 'audio'] as const)('%s：并发上传不能共享最后一份�
   const user = await makeUser({ role: 'core' }); auth.user = user;
   const bytes = kind === 'image' ? Buffer.from('GIF89a') : Buffer.from([73, 68, 51, 3, 0, 0, 0, 0, 0, 0]);
   const mimeType = kind === 'image' ? 'image/gif' : 'audio/mpeg';
-  const model = kind === 'image' ? prisma.imageHosting : prisma.audioHosting;
   const quota = 50 * 1024 * 1024;
-  await model.create({ data: { id: 'quota-seed', filename: 'seed', mimeType,
-    authorId: user.id, fileSize: quota - bytes.length } });
+  const seedData = { id: 'quota-seed', filename: 'seed', mimeType, authorId: user.id, fileSize: quota - bytes.length };
+  if (kind === 'image') await prisma.imageHosting.create({ data: seedData });
+  else await prisma.audioHosting.create({ data: seedData });
+  const usedBytes = async () => {
+    const args = { where: { authorId: user.id, ignore: false }, _sum: { fileSize: true as const } };
+    const used = kind === 'image' ? await prisma.imageHosting.aggregate(args) : await prisma.audioHosting.aggregate(args);
+    return used._sum.fileSize ?? 0;
+  };
   // 两个请求都在写入前完成真实聚合读，精确复现共享同一份剩余额度。
   let arrivals = 0;
   let release!: () => void;
   const bothRead = new Promise<void>((resolve) => { release = resolve; });
   const readUsed = kind === 'image' ? vi.mocked(getUserUsedBytes) : vi.mocked(getUserUsedAudioBytes);
   readUsed.mockImplementation(async () => {
-    const used = await model.aggregate({ where: { authorId: user.id, ignore: false }, _sum: { fileSize: true } });
+    const used = await usedBytes();
     if (++arrivals === 2) release();
     await bothRead;
-    return used._sum.fileSize ?? 0;
+    return used;
   });
   function request() {
     const form = new FormData();
@@ -61,6 +66,6 @@ it.each(['image', 'audio'] as const)('%s：并发上传不能共享最后一份�
   const upload = kind === 'image' ? uploadImage : uploadAudio;
   const responses = await Promise.all([upload(request()), upload(request())]);
   expect(responses.map((r) => r.status).sort()).toEqual([200, 400]);
-  expect((await model.aggregate({ where: { authorId: user.id, ignore: false }, _sum: { fileSize: true } }))._sum.fileSize).toBe(quota);
+  expect(await usedBytes()).toBe(quota);
   expect(fs.readdirSync(kind === 'image' ? imageDir : audioDir)).toHaveLength(1);
 });
