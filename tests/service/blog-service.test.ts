@@ -666,12 +666,63 @@ describe('updateBlog / hasChanges 语义与落库', () => {
     expect(r.hasChanges, 'null === null 不应被判成栏目变化').toBe(false);
   });
 
-  it('无变更时仍然执行写入（幂等落库，不炸）', async () => {
+  it('重复保存不刷新更新时间，发布时间也保持原值', async () => {
     const u = await makeUser();
-    const b = await makeBlog({ authorId: u.id, title: 'T', description: 'D', content: 'C' });
-    await updateBlog(b.id, { title: 'T', description: 'D', content: 'C', categoryId: null, visibility: 'internal' }, b.authorId);
+    const original = new Date('2026-01-01T12:00:00.000Z');
+    const b = await makeBlog({ authorId: u.id, title: 'T', description: 'D', content: 'C', createdAt: original, contentUpdatedAt: original });
+    const result = await updateBlog(b.id, { title: 'T', description: 'D', content: 'C', categoryId: null, visibility: 'internal' }, b.authorId);
     const after = await prisma.blog.findUnique({ where: { id: b.id } });
+    const content = await prisma.blogContent.findUnique({ where: { blogId: b.id } });
+    expect(result.hasChanges).toBe(false);
     expect(after!.title).toBe('T');
+    expect(after!.createdAt).toEqual(original);
+    expect(content!.updatedAt).toEqual(original);
+  });
+
+  it.each(['title', 'description', 'content', 'categoryId'] as const)('%s 实际变化刷新更新时间，保留发布时间', async (field) => {
+    const u = await makeUser();
+    const original = new Date('2026-01-01T12:00:00.000Z');
+    const b = await makeBlog({ authorId: u.id, title: 'T', description: 'D', content: 'C', createdAt: original, contentUpdatedAt: original });
+    const category = await makeCategory();
+    const data = { title: 'T', description: 'D', content: 'C', categoryId: null as number | null, visibility: 'internal' as const };
+    if (field === 'categoryId') data.categoryId = category.id;
+    else data[field] = '真正改过';
+    const before = nowForDb();
+    const result = await updateBlog(b.id, data, u.id);
+    const after = await prisma.blog.findUnique({ where: { id: b.id }, include: { content: true } });
+    expect(result.hasChanges).toBe(true);
+    expect(after!.createdAt).toEqual(original);
+    expect(after!.content!.updatedAt!.getTime()).toBeGreaterThanOrEqual(before.getTime());
+    expect(after!.content!.updatedAt!.getTime()).toBeLessThanOrEqual(nowForDb().getTime());
+  });
+
+  it('只改可见性或匿名评论设置，通知照常记录变化，但不刷新文章更新时间', async () => {
+    const u = await makeUser();
+    const original = new Date('2026-01-01T12:00:00.000Z');
+    const b = await makeBlog({ authorId: u.id, title: 'T', description: 'D', content: 'C', contentUpdatedAt: original });
+    const result = await updateBlog(b.id, {
+      title: 'T', description: 'D', content: 'C', categoryId: null,
+      visibility: 'public', allowAnonymousComments: false,
+    }, u.id);
+    const after = await prisma.blog.findUnique({ where: { id: b.id }, include: { content: true } });
+    expect(result.hasChanges).toBe(true);
+    expect(after!.visibility).toBe('public');
+    expect(after!.allowAnonymousComments).toBe(false);
+    expect(after!.content!.updatedAt).toEqual(original);
+    expect(await listBlogVisibilityLogs(b.id)).toHaveLength(1);
+  });
+
+  it('补缺失的空正文行沿用发布时间，历史空更新时间在重复保存后仍为空', async () => {
+    const u = await makeUser();
+    const published = new Date('2026-01-01T12:00:00.000Z');
+    await prisma.blog.create({ data: { id: 'missing-empty-content', authorId: u.id, title: 'T', description: 'D', createdAt: published } });
+    const data = { title: 'T', description: 'D', content: '', categoryId: null, visibility: 'internal' as const };
+    await updateBlog('missing-empty-content', data, u.id);
+    expect((await prisma.blogContent.findUnique({ where: { blogId: 'missing-empty-content' } }))!.updatedAt).toEqual(published);
+
+    await prisma.blogContent.update({ where: { blogId: 'missing-empty-content' }, data: { updatedAt: null } });
+    await updateBlog('missing-empty-content', data, u.id);
+    expect((await prisma.blogContent.findUnique({ where: { blogId: 'missing-empty-content' } }))!.updatedAt).toBeNull();
   });
 
   it('变更后元信息与正文都真的落库', async () => {

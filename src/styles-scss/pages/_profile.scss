@@ -350,12 +350,13 @@
 
   &__meta {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: $space-4;
     font-size: 0.8rem;
     color: var(--color-text-secondary);
 
-    span {
+    > span {
       display: inline-flex;
       align-items: center;
       gap: 3px;

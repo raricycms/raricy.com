@@ -4,6 +4,7 @@ import type { CSSProperties } from 'react';
 import { useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import BlogTimestamps from '@/app/components/BlogTimestamps';
 
 // 个人主页「文章 / 评论」标签页 — 类名走 segmented + profile-tabs__*
 // tab 切换在客户端完成；分页走整页刷新。
@@ -11,6 +12,7 @@ interface BlogItem {
   id: string;
   title: string;
   createdAt: string | null;
+  updatedAt: string | null;
   likesCount: number;
   description: string;
   commentsCount: number;
@@ -219,7 +221,7 @@ export default function ProfileTabs({
                     <p className="profile-content-item__preview">{b.description}</p>
                   )}
                   <div className="profile-content-item__meta">
-                    <span>{ymd(b.createdAt)}</span>
+                    <BlogTimestamps createdAt={b.createdAt} updatedAt={b.updatedAt} />
                     <span>
                       <span className="icon icon-heart-fill" aria-hidden="true" />
                       {b.likesCount}

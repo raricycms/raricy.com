@@ -1,0 +1,37 @@
+// 时间是文章的次要信息：沿用主题色，以标签和等宽数字区分层次。
+.blog-timestamps {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+  min-width: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+  line-height: 1.6;
+
+  &__item {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    white-space: nowrap;
+  }
+
+  &__label {
+    font-weight: 400;
+  }
+
+  time {
+    font-variant-numeric: tabular-nums;
+  }
+
+  &--detail {
+    justify-content: center;
+    gap: 8px 24px;
+    font-size: 0.8125rem;
+
+    time {
+      color: var(--color-text-primary);
+      font-weight: 500;
+    }
+  }
+}

@@ -500,10 +500,22 @@ a {
 
 .menu-blog-meta {
     display: flex;
+    flex-wrap: wrap;
     justify-content: space-between;
     align-items: center;
     font-size: 0.8rem;
     color: var(--color-text-secondary);
+    gap: 8px 24px;
+
+    > .blog-author {
+        flex-wrap: wrap;
+        min-width: 0;
+    }
+
+    > .blog-timestamps {
+        margin-left: auto;
+        justify-content: flex-end;
+    }
 }
 
 .blog-author {
@@ -755,6 +767,11 @@ a {
         flex-direction: column;
         align-items: flex-start;
         gap: 8px;
+
+        > .blog-timestamps {
+            margin-left: 0;
+            justify-content: flex-start;
+        }
     }
 
     .blogs-hero {
@@ -863,9 +880,20 @@ a {
     margin: 14px 0 20px;       /* 出处：其 14.4 上距（与 header 的 12 折叠取大）与 20 下距 */
 }
 
+.blog-skeleton-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px 24px;
+}
+
 .blog-skeleton-line--meta {
     height: 21px;              /* 出处：.blog-author 实际占高 21 */
     width: 26%;
+}
+
+.blog-skeleton-line--time {
+    height: 19px;
+    width: 36%;
 }
 
 @keyframes blog-skeleton-pulse {
@@ -879,8 +907,7 @@ a {
     }
 }
 
-/* 出处：≤768px 的 .blog-item / .blog-header / .blog-title
-   卡片内距转 28px、head 转纵向，合计 159.5，对齐移动端实测值。 */
+/* 出处：≤768px 的 .blog-item / .blog-header / .blog-title；meta 与时间分行。 */
 @media (max-width: 768px) {
     .blog-skeleton-card {
         padding: 14px 16px;
@@ -896,5 +923,13 @@ a {
 
     .blog-skeleton-line--heading {
         height: 23.5px;        /* 出处：.blog-title 在 ≤768px 降到 1.05rem */
+    }
+
+    .blog-skeleton-meta {
+        flex-direction: column;
+    }
+
+    .blog-skeleton-line--time {
+        width: 70%;
     }
 }

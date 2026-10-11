@@ -14,6 +14,7 @@ import { ymd } from '@/lib/format';
 import { prisma } from '@/lib/db';
 import MarkdownRenderer from '@/app/components/MarkdownRenderer';
 import Avatar from '@/app/components/Avatar';
+import BlogTimestamps from '@/app/components/BlogTimestamps';
 import CommentSection from '@/app/components/CommentSection';
 import FeedButton from '@/app/components/FeedButton';
 import FooterCopyOverride from '@/app/components/FooterCopyOverride';
@@ -84,7 +85,7 @@ export async function generateMetadata({
 //
 //   · 成员视图（core+）：与本站一直以来完全一致 —— 正文 + 点赞 / 投喂 / 收藏 /
 //     编辑入口 + 评论区。
-//   · 访客视图（未登录，或已登录但非 core）：只有标题、作者、正文。**没有任何站内
+//   · 访客视图（未登录，或已登录但非 core）：标题、作者、文章时间、正文。**没有任何站内
 //     affordance** —— 不渲染 FeedButton（点赞、投喂、收藏、编辑、管理入口与三个计数
 //     数字全挂在它身上），也不渲染 CommentSection（它是纯客户端拉取、首屏无 SSR，
 //     所以「不渲染」= 首屏 payload 里连一条评论都没有，不存在「下发了再藏起来」）。
@@ -201,6 +202,7 @@ export default async function BlogDetailPage({ params }: { params: Promise<{ id:
             />
             {blog.author?.username}
           </span>
+          <BlogTimestamps createdAt={blog.createdAt} updatedAt={blog.content?.updatedAt} detail />
         </div>
       </header>
 

@@ -1606,6 +1606,13 @@ MP3 的帧同步要核版本 / 层 / 位速率字段（只判 `0xFF` 打头太�
 
 ### 7.3 浏览一篇文章（读路径）
 
+文章时间在详情页、站内/公开列表与个人主页共用 `BlogTimestamps`：发布时间读
+`Blog.createdAt`，更新时间读 `BlogContent.updatedAt`。详情显示到分钟，列表显示日期、
+完整时间放在提示中；机器读的 `<time datetime>` 与 JSON-LD 一样走 `isoWithOffset()`。
+首次发布只显示发布时间，后续更新时间晚于发布时间才显示第二项；历史空值不补造。
+`updateBlog` 只在标题、摘要、正文或栏目实际变化时刷新更新时间，重复保存、仅改可见性
+或匿名评论设置都不刷新。已有历史更新时间保留原值，无法从它反推当时是否实际改了内容。
+
 一条路由**两种视图**，分叉判据是 `isCore` 而不是 `visibility`（core+ 读一篇 public
 文章看到的仍是完整成员视图 —— 否则「设为公开」会顺手夺走作者自己与全站的互动能力）：
 
@@ -1620,7 +1627,7 @@ MP3 的帧同步要核版本 / 层 / 位速率字段（只判 `0xFF` 打头太�
        core+   → notFound()
   → Server Component 渲染 Markdown 占位 + 注入数据
        core+ → 正文 + FeedButton + CommentSection（contentRefs='expand'）
-       访客 → **只有**标题 / 作者 / 正文（contentRefs='external'），零站内 affordance
+       访客 → 标题 / 作者 / 文章时间 / 正文（contentRefs='external'），零站内 affordance
               + resolvePublicClipRefs(正文) 的结果当 externalClips 一起下发
   → 客户端 marked + DOMPurify + highlight.js 完成正文
 ```

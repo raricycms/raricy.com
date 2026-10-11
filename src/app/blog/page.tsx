@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import { requireCoreUser } from '@/lib/guard';
 import { rateLimit, RULES } from '@/lib/rate-limit';
 import Avatar from '@/app/components/Avatar';
+import BlogTimestamps from '@/app/components/BlogTimestamps';
 import { COOKIE_NAME } from '@/lib/blog-sort-pref';
 import { listBlogs, parseSortParam, ALL_SEARCH_FIELDS } from '@/lib/blog-service';
 // 客户端与服务端共用同一份短标记文案（零依赖模块）—— 不在 JSX 里写死档名。
@@ -300,6 +301,7 @@ async function BlogListSection({
                     </span>
                   )}
                 </div>
+                <BlogTimestamps createdAt={b.createdAt} updatedAt={b.content?.updatedAt} />
               </div>
             </article>
           ))}
@@ -381,7 +383,10 @@ function BlogListSkeleton() {
             <div className="blog-skeleton-line blog-skeleton-line--stats" />
           </div>
           <div className="blog-skeleton-line blog-skeleton-line--desc" />
-          <div className="blog-skeleton-line blog-skeleton-line--meta" />
+          <div className="blog-skeleton-meta">
+            <div className="blog-skeleton-line blog-skeleton-line--meta" />
+            <div className="blog-skeleton-line blog-skeleton-line--time" />
+          </div>
         </div>
       ))}
     </div>

@@ -449,6 +449,7 @@ export interface PublicBlogRow {
   title: string;
   description: string | null;
   createdAt: Date | null;
+  content: { updatedAt: Date | null } | null;
   authorId: string;
   author: { username: string | null; frameUrl: string | null } | null;
   category: { name: string; parentId: number | null; parent: { name: string } | null } | null;
@@ -549,6 +550,7 @@ export async function listPublicBlogs(params: PublicListParams = {}): Promise<{
         title: true,
         description: true,
         createdAt: true,
+        content: { select: { updatedAt: true } },
         authorId: true,
         author: { select: { username: true, equippedFrameKey: true, equippedFrameExpiresAt: true } },
         // ⚠️ parentId 与 parent.name 必须**一起** select。只给 name 会让
@@ -1129,6 +1131,7 @@ export async function createBlog(authorId: string, data: ValidatedBlogData): Pro
 /**
  * 更新博客：逐字段比对生成 changesDetail（改了什么就记什么，供「文章已编辑」通知用），
  * 更新元信息并 upsert 正文。文章不存在时返回 hasChanges:false（不抛错，路由已先判过存在性）。
+ * 更新时间只记标题、摘要、正文或栏目的实际变化；重复保存与互动/可见性设置不刷新。
  */
 export async function updateBlog(
   blogId: string,
@@ -1140,6 +1143,7 @@ export async function updateBlog(
     select: {
       title: true,
       description: true,
+      createdAt: true,
       categoryId: true,
       visibility: true,
       allowAnonymousComments: true,
@@ -1211,6 +1215,14 @@ export async function updateBlog(
     hasChanges = true;
   }
 
+  if (!hasChanges && contentRow) return { hasChanges, changesDetail };
+
+  const articleChanged =
+    blog.title !== data.title ||
+    blog.description !== data.description ||
+    blog.categoryId !== data.categoryId ||
+    oldContent !== data.content;
+
   const now = nowForDb();
   const ops: Prisma.PrismaPromise<unknown>[] = [
     prisma.blog.update({
@@ -1228,8 +1240,9 @@ export async function updateBlog(
     }),
     prisma.blogContent.upsert({
       where: { blogId },
-      create: { blogId, content: data.content, updatedAt: now },
-      update: { content: data.content, updatedAt: now },
+      // 补缺失的空正文行时保留发布时间，不把数据修复伪装成文章更新。
+      create: { blogId, content: data.content, updatedAt: articleChanged ? now : blog.createdAt },
+      update: { content: data.content, ...(articleChanged ? { updatedAt: now } : {}) },
     }),
   ];
 

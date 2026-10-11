@@ -34,7 +34,7 @@ vi.mock('next/headers', () => ({
 import { resetDb, makeUser, makeBlog } from '../helpers/db';
 import { createSessionToken } from '@/lib/session';
 import { prisma } from '@/lib/db';
-import { POST as createBlog } from '@/app/api/blogs/route';
+import { POST as createBlog, GET as listBlogs } from '@/app/api/blogs/route';
 import { GET as getBlog, PUT as updateBlog } from '@/app/api/blogs/[id]/route';
 
 const login = async (userId: string, sv = 0) => {
@@ -64,6 +64,27 @@ const visibilityOf = async (id: string) => {
 beforeEach(async () => {
   await resetDb();
   session.token = undefined;
+});
+
+describe('文章读口的发布时间与更新时间', () => {
+  it('单篇返回完整 updated_at，列表保留日期格式，缺失时间返回 null', async () => {
+    const author = await makeUser({ role: 'core' });
+    const published = new Date('2026-10-01T23:58:00.000Z');
+    const modified = new Date('2026-10-02T00:03:00.000Z');
+    const blog = await makeBlog({ authorId: author.id, createdAt: published, contentUpdatedAt: modified });
+    await login(author.id);
+    const detail = await (await getBlog(new Request('http://localhost/x'), ctx(blog.id))).json();
+    expect(detail.blog.created_at).toBe(published.toISOString());
+    expect(detail.blog.updated_at).toBe(modified.toISOString());
+    const list = await (await listBlogs(new Request('http://localhost/api/blogs'))).json();
+    expect(list.blogs.find((b: { id: string }) => b.id === blog.id)).toMatchObject({ date: '2026-10-01', updated_at: '2026-10-02' });
+
+    await prisma.blog.update({ where: { id: blog.id }, data: { createdAt: null } });
+    await prisma.blogContent.update({ where: { blogId: blog.id }, data: { updatedAt: null } });
+    const empty = await (await getBlog(new Request('http://localhost/x'), ctx(blog.id))).json();
+    expect(empty.blog.created_at).toBeNull();
+    expect(empty.blog.updated_at).toBeNull();
+  });
 });
 
 describe('PUT /api/blogs/:id —— 缺 visibility = 不改动这一列', () => {

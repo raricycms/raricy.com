@@ -7,7 +7,8 @@ import { rateLimit, RULES } from '@/lib/rate-limit';
 import { clientIp } from '@/lib/request-ip';
 import { listPublicBlogs, listPublicCategoryFacets } from '@/lib/blog-service';
 import Avatar from '@/app/components/Avatar';
-import { categoryFullPath, ymd } from '@/lib/format';
+import BlogTimestamps from '@/app/components/BlogTimestamps';
+import { categoryFullPath } from '@/lib/format';
 // 侧栏与搜索框与站内 `/blog` 共用同一份实现（两条列表的差别是数据与去处，不是交互）。
 // 它们住在 app/blog/ 下，是因为先有的站内列表；跨路由 import 没问题 ——
 // 这两个文件不是 Next 的特殊文件，不会被当成路由。
@@ -282,8 +283,7 @@ async function ExploreListSection({
                   <span className="blog-category-tag">{categoryFullPath(b.category)}</span>
                 )}
               </div>
-              {/* 右侧的日期：无类名，字号/颜色继承 .menu-blog-meta */}
-              <span>{ymd(b.createdAt)}</span>
+              <BlogTimestamps createdAt={b.createdAt} updatedAt={b.content?.updatedAt} />
             </div>
           </article>
         ))}

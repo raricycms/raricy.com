@@ -69,6 +69,8 @@ const MARKET_PORT = 3102; // 练手盘行情替身，见 tests/e2e/mock-market-p
  * 就加进来；只是 goto 一个页面再断言内容，就不加。
  */
 const RESPONSIVE_SPECS: RegExp[] = [
+  // 博客时间：四处渲染点的折行、檐沟与深色主题需要在真视口检查。
+  /blog-timestamps\.spec\.ts$/,
   /chat-bubble\.spec\.ts$/,
   /chat-features\.spec\.ts$/,
   /chat-sidebar\.spec\.ts$/,

@@ -21,7 +21,7 @@ import { sendNotification } from '@/lib/notification-service';
 // 「档位阶梯：页面与接口必须同档，每层都自己判」）。
 // 这条此前完全免认证 —— 页面那道 `requireCoreUser()` 于是只挡住浏览器，挡不住任何拿到
 // id 的调用方：匿名 curl 一下就是全文 Markdown。未登录 → 401；已登录但非 core → 403，
-// 错误走 { code, message } 信封。**成功路径的形状一字不动**（加鉴权不该顺带改对外契约）。
+// 错误走 { code, message } 信封。时间字段沿用库内墙上时间的 ISO 格式（见 docs/bot/blog-bot.md §5）。
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '请先登录');
@@ -43,6 +43,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       author: blog.author?.username ?? null,
       author_id: blog.authorId,
       created_at: blog.createdAt?.toISOString() ?? null,
+      updated_at: blog.content?.updatedAt?.toISOString() ?? null,
       likes_count: blog.likesCount ?? 0,
       comments_count: blog.commentsCount ?? 0,
       fish_count: blog.fishCount ?? 0,
