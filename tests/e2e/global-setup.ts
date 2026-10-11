@@ -2,7 +2,7 @@
 //
 // 【与 tests/setup.ts（vitest）的分工】那边每个 vitest **进程**一个
 // test-<pid>-<rand>.db；这边 Playwright 只有一个 webServer + workers:1，
-// 全套用例共用 tests/.tmp/e2e.db。库名与 vitest 的 test-* 前缀不重叠，
+// 全套用例共用本轮唯一的 tests/.tmp/e2e-<pid>-<rand>.db。与 vitest 的 test-* 前缀不重叠，
 // 两套 runner 同时跑也不会互相 rmSync。
 //
 // 【绝不碰真实数据】.env 里的 DATABASE_URL 指向 prisma/prod.db（真实数据的规整副本），
@@ -160,10 +160,8 @@ function seedStories() {
 /**
  * 拦住并发的第二轮 e2e。
  *
- * 库名固定（e2e.db）、端口也固定（3100/3102），所以两轮同时跑时后一轮的 globalSetup
- * 会把前一轮正在用的库 rmSync 掉再重建。前一轮**不会报错**，只会看到一堆莫名其妙的
- * 失败：用户消失、种子文章 404、登录失败……而且每次挂的用例都不一样，极像随机的 flaky。
- * 这个坑真的绊了人（先后看到 121→54→122 三种结果），所以宁可在这里直接拒绝启动。
+ * 库名每轮唯一，但端口、种子素材目录及限频快照仍共享。两轮不能并行：
+ * 一轮重新铺素材或清快照时，会破坏另一轮正在观察的状态。
  *
  * 用 PID 存活性判断而非时间戳：跑一轮就几十秒，用超时判定要么误杀要么拦不住。
  */
@@ -179,8 +177,8 @@ function acquireLock() {
     }
     if (alive) {
       throw new Error(
-        `另一轮 e2e 正在跑（pid ${pid}）。两轮共用 tests/.tmp/e2e.db 与端口 3100/3102，` +
-          `同时跑会互相清库，结果是两边都挂在莫名其妙的地方。请等它跑完，` +
+        `另一轮 e2e 正在跑（pid ${pid}）。两轮共用素材目录、限频快照与端口 3100/3102，` +
+          `同时跑会互相影响。请等它跑完，` +
           `或先 kill ${pid}。`
       );
     }
@@ -196,13 +194,11 @@ export default async function globalSetup() {
   seedStickers();
   seedStories();
   seedFrames();
-  // 每轮从零开始：上轮残留的用户会让「注册重名」「今天已签到」这类用例莫名其妙地挂
-  for (const suffix of ['', '-wal', '-shm']) {
-    fs.rmSync(E2E_DB + suffix, { force: true });
-  }
-
-  // 同 vitest global-setup：Windows 引擎需要已存在的空 SQLite 文件。
-  fs.writeFileSync(E2E_DB, '');
+  // 库名每轮唯一，天然从零开始。webServer 先于 globalSetup 启动，探活可能
+  // 已让 SQLite 创建并打开本轮空库；Windows 此时 unlink 会 EBUSY，截断也不安全。
+  // 只补不存在的文件（引擎要求它存在），绝不替换已被本轮服务器打开的文件。
+  try { fs.writeFileSync(E2E_DB, '', { flag: 'wx' }); }
+  catch (e) { if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e; }
   const url = `file:${E2E_DB}`;
   // 用 db push 而非 migrate：本库的 schema 是从历史实现建好的库 introspect 出来的，
   // 没有 migration 历史，migrate 会要求先 baseline。
