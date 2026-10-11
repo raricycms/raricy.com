@@ -612,4 +612,4 @@ npm run cli -- fish compensate 1 --dry-run --yes  # 只列计划、不动账（�
 
 `bubble revoke <用户名> <key> [--reason 说明]` 软删持有记录并清除正在使用的装备。两种写操作都进入审计日志。命令归于「用户」菜单，帮助不加载数据库模块。
 
-示范款 `blue-square`（蓝色直角）为 CSS 气泡，无外部素材可缺失。玩家规则见 `docs/guide/聊天气泡使用指南.md`。
+示范款 `blue-square`（蓝底直角）与 `blue-outline-square`（蓝色直角，描边款）均为 CSS 气泡，无外部素材可缺失，各 10 鱼干/月；原款改名保留 `blue-square`。玩家规则见 `docs/guide/聊天气泡使用指南.md`。

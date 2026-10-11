@@ -1553,7 +1553,7 @@ MP3 的帧同步要核版本 / 层 / 位速率字段（只判 `0xFF` 打头太�
 
 `user_bubbles` 是持有权威，`users.equipped_bubble_key` / `equipped_bubble_expires_at` 是读时副本，唯一写入者是 `bubble-service.ts`。授予、续期、撤销在同一事务刷新副本；撤销软删，重新授予复活原行。到期只读判定，无后台清理。
 
-款式在 `bubble-refs.ts` 白名单定义，`rent` 缺失表示停售（不影响既有持有者），`disabled` 表示停用（回到默认）。默认款免费，无持有行。`blue-square`（蓝色直角）为 CSS 气泡，10 鱼干/月；共享计价词汇在 `shop-refs.ts`，月固定 30 天。
+款式在 `bubble-refs.ts` 白名单定义，`rent` 缺失表示停售（不影响既有持有者），`disabled` 表示停用（回到默认）。默认款免费，无持有行。`blue-square`（蓝底直角，原「蓝色直角」）与 `blue-outline-square`（蓝色直角，仅蓝边框、聊天区底色）均为 CSS 气泡，各 10 鱼干/月，权益独立；更名保留原 key 和租期。底色和文字共同适配主题。共享计价词汇在 `shop-refs.ts`，月固定 30 天。
 
 `ChatBubble` 共用于真实消息、商城与设置预览，气泡不进入 Markdown 正文。删除占位、拍一拍、回复摘要和独立附件保持既有展示规则。消息不存气泡快照，`ChatAuthorDTO.bubble_key` 是作者当前有效气泡；分页、搜索、发送与 SSE 补齐都通过同一序列化出口。
 

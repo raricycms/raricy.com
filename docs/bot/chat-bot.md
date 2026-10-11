@@ -832,7 +832,7 @@ GET /api/chat/channels/lobby/appearance?users=u_xxx,u_yyy
     "id": "u_xxx",
     "username": "alice",
     "avatar_url": "https://...",  // 可能为空字符串
-    "bubble_key": null,           // 作者当前有效气泡，默认为 null；示范款为 "blue-square"
+    "bubble_key": null,           // 作者当前有效气泡；默认 null，蓝底直角 "blue-square"，蓝色直角 "blue-outline-square"
     "is_admin": false
   },
   "content": "你好",              // Markdown 原文
