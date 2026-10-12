@@ -212,7 +212,8 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
 
 ### 动态数字
 
-界面中的数据数字统一使用 **JetBrains Mono**。英文标签、单位与中文字体保持原有回退
+界面中的数据数字统一使用 **Raricy Numeric**（从 JetBrains Mono 提取的数字子集，
+`0` 使用大写 `O` 的字形）。英文标签、单位与中文字体保持原有回退
 方式；用户名、标题、文件名和自由正文中的数字仍属于文字内容。
 
 | 位置 | 数字字段 |
@@ -231,9 +232,14 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
 只包住数值，例如 `<span className="numeric">{count}</span>`。不要把类挂到整页或正文
 容器，也不要在运行时扫描正文、按数字正则改写 DOM。
 
-`base/_fonts.scss` 的 **JetBrains Mono Numeric** 是同一批 JetBrains Mono 文件的字形
-范围别名，只覆盖数字、正负号、小数点、百分号和数值分隔符。`--font-numeric` 在它之后
-接 `--font-body`，因此 `123.4 MB` 的数值等宽、`MB` 仍用 Kumbh Sans；不增加字体文件。
+`base/_fonts.scss` 的 **Raricy Numeric** 只覆盖 `0123456789#$%+,-./:×‰−`，
+由 `scripts/make-numeric-fonts.py` 从仓库内的 JetBrains Mono 2.304 提取，保留原有数字
+与符号的轮廓、提示信息和等宽度量，仅将字符 `0` 的字形映射到大写 `O`。
+实际文本仍是数字 `0`，复制、输入与计算都不变。四份 WOFF2 分别覆盖 400 / 700 正体与
+斜体，随站点入库，普通构建不需要 Python；再生成与验证方法见
+`public/static/fonts/README.md`。派生字体使用独立名称并保留 OFL 授权。
+`--font-numeric` 在它之后接 `--font-body`，因此 `123.4 MB` 的数值等宽、`MB` 仍用
+Kumbh Sans；代码块与编辑器继续使用完整的 JetBrains Mono。
 
 `utilities/_numeric.scss` 在入口末尾加载：`.numeric`、`time`、数值 / 日期时间输入框与
 `.fc-range output` 共用字体与 `tabular-nums`。正文投票、收藏夹计数，以及编辑器的资源

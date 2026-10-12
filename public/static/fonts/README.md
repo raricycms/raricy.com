@@ -1,6 +1,6 @@
 # Web fonts
 
-These unmodified WOFF2 files are served from this site. All three families use the
+These WOFF2 files are served from this site. All families use the
 SIL Open Font License 1.1, which permits bundling and redistribution with this
 application. Keep each family's `OFL.txt` alongside the font files.
 
@@ -33,10 +33,32 @@ application. Keep each family's `OFL.txt` alongside the font files.
 - Upstream release: https://github.com/JetBrains/JetBrainsMono/tree/v2.304
 - Original files: `fonts/webfonts/JetBrainsMono-{Regular,Bold,Italic,BoldItalic}.woff2`.
 - License source: https://github.com/JetBrains/JetBrainsMono/blob/v2.304/OFL.txt
-- Dynamic numeric fields reuse these files through the CSS family alias
-  `JetBrains Mono Numeric`, restricted to digits and numeric punctuation. Other
-  characters in these fields fall back to the body font; no additional font
-  binaries are bundled.
+
+## Raricy Numeric
+
+- A modified numeric subset of the bundled JetBrains Mono 2.304 files, under the
+  same SIL Open Font License 1.1. Upstream copyright is retained in the fonts and
+  `raricy-numeric/OFL.txt`; the derivative has its own family and PostScript names.
+- Digit `0` (U+0030) uses the original uppercase `O` outline and metrics. All other
+  retained characters keep their original outlines, hinting and equal advance
+  widths. Text still contains the digit `0`, including copying and numeric inputs.
+- Coverage: `0123456789#$%+,-./:×‰−` (22 characters), matching the CSS unicode range.
+  Letters and Chinese text in numeric fields fall back to the body font.
+- Four small WOFF2 files preserve regular, bold, italic and bold italic styling.
+  Code blocks and editors continue to use the unmodified JetBrains Mono files.
+- Rebuild from the committed source fonts with `scripts/make-numeric-fonts.py`.
+  Python is only an optional asset-generation tool; normal npm builds and the
+  running app use the committed WOFF2 files without Python.
+
+```sh
+python -m pip install 'fonttools[woff]==4.60.1' 'brotli==1.1.0'
+python scripts/make-numeric-fonts.py
+python scripts/make-numeric-fonts.py --check
+```
+
+The generator verifies character coverage, original outlines and widths, the `O`
+replacement, and the serialized assets. `--check` also verifies reproducible bytes
+and the bundled license without rewriting files.
 
 The CSS uses `font-display: swap`. Font loading requires no third-party network
 requests. Chinese text continues to use system fallback fonts; math typography
