@@ -94,9 +94,9 @@ test.describe('FrameBuster：跨站 iframe 嵌入提示', () => {
     await expect(page.locator('.frame-buster')).toHaveCount(0); // 顶层访问
 
     const frame = await embed(page, '/'); // 同 hostname → 同站
-    // 等到「被动副作用已 flush」的确定信号：HeroCanvas 在 effect 里写 canvas.width，
-    // SSR 输出没有该属性 —— 它出现即证明同一批 effect（含 FrameBuster 的检测）已经跑过。
-    await expect(frame.locator('#hero-canvas')).toHaveAttribute('width', /\d+/);
+    // 山景在 effect 里标记就绪；SSR 不含该属性，出现即证明同一批副作用
+    // （含 FrameBuster 的检测）已经跑过。
+    await expect(frame.locator('.hero-section')).toHaveAttribute('data-scene-ready', 'true');
     await expect(frame.locator('.frame-buster')).toHaveCount(0);
   });
 });

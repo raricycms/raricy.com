@@ -35,42 +35,214 @@
 .home-btn--outline-info { color: var(--color-brand-primary); background: var(--color-brand-secondary); }
 .home-btn--outline-success { color: var(--color-success-primary); background: var(--color-success-secondary); }
 
-/* ⚠️ 刻意保留的写死色：这是**首页自己的深色主视觉**（深蓝灰渐变 + 白字），
-   明暗两套主题下刻意保持一致，不随 [data-theme] 切换 —— 与 403 页的彩虹底同理。
-   改用令牌会让它在浅色主题下变成浅底，与其中的白字打架。
-   全站唯一一处「不跟主题走」的页面背景，除它之外都在 --color-* 体系内。 */
+/* 原创山景的局部画板。颜色描述插画材质而非界面语义；明暗主题各给一套，
+   不复用 warning / success 等状态色，避免山体配色牵动全站控件。 */
 .hero-section {
-  background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
-  min-height: 60vh;
+  --hero-sky: #edf3f1;
+  --hero-sky-blue: #cee4eb;
+  --hero-ink: #173b50;
+  --hero-muted: #4f6773;
+  --hero-footnote-ink: #071621;
+  --hero-ray: #fffcf0;
+  --hero-sun: #ed9476;
+  --hero-line: #608da0;
+  --hero-far: #b5d1dc;
+  --hero-far-shade: #a2c5d3;
+  --hero-mountain: #72a6bd;
+  --hero-mountain-light: #92bdce;
+  --hero-mountain-shade: #4d839f;
+  --hero-snow: #f4f8f5;
+  --hero-snow-shade: #c7e0e7;
+  --hero-valley: #8eafba;
+  --hero-valley-light: #b5c9bb;
+  --hero-lake: #b9dce0;
+  --hero-lake-shade: #94c1ce;
+  --hero-hill: #4e8596;
+  --hero-hill-light: #71a4a3;
+  --hero-forest-far: #376e80;
+  --hero-forest: #183e52;
+  --hero-forest-light: #285b6b;
+  background: radial-gradient(ellipse at 85% 15%, var(--hero-sky-blue), transparent 65%), var(--hero-sky);
+  color: var(--hero-ink);
+  min-height: clamp(620px, calc(88vh - 62px), 820px);
+  min-height: clamp(620px, calc(88dvh - 62px), 820px);
   display: flex;
   align-items: center;
-  justify-content: center;
   position: relative;
   overflow: hidden;
+  isolation: isolate;
+
+  > .home-container { position: relative; z-index: 1; }
 }
 
-.hero-section::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grain" width="100" height="100" patternUnits="userSpaceOnUse"><circle cx="25" cy="25" r="1" fill="white" opacity="0.1"/><circle cx="75" cy="75" r="1" fill="white" opacity="0.1"/></pattern></defs><rect width="100" height="100" fill="url(%23grain)"/></svg>');
-  opacity: 0.1;
-  z-index: 1;
+[data-theme='dark'] .hero-section {
+  --hero-sky: #182d3b;
+  --hero-sky-blue: #294858;
+  --hero-ink: #e3eef1;
+  --hero-muted: #b4c9d2;
+  --hero-footnote-ink: #e3eef1;
+  --hero-ray: #33505c;
+  --hero-sun: #d48d76;
+  --hero-line: #8bb0c0;
+  --hero-far: #355665;
+  --hero-far-shade: #2d4d5e;
+  --hero-mountain: #426a81;
+  --hero-mountain-light: #608a9e;
+  --hero-mountain-shade: #2c506b;
+  --hero-snow: #bed6df;
+  --hero-snow-shade: #8eb3c6;
+  --hero-valley: #3c6575;
+  --hero-valley-light: #5c7f81;
+  --hero-lake: #6893a4;
+  --hero-lake-shade: #4b748c;
+  --hero-hill: #294d60;
+  --hero-hill-light: #3a6672;
+  --hero-forest-far: #234859;
+  --hero-forest: #102a3b;
+  --hero-forest-light: #1d4351;
 }
 
-#hero-canvas {
+.hero-scene {
   position: absolute;
-  top: 0;
-  left: 0;
+  inset: 0;
   width: 100%;
   height: 100%;
-  z-index: 0;
+  pointer-events: none;
+  overflow: visible;
+
+  &__layer {
+    transform-box: view-box;
+    transform-origin: 72% 100%;
+    transition: none;
+  }
 }
 
-.hero-content { position: relative; z-index: 2; }
+.hero-content {
+  position: relative;
+  max-width: 510px;
+  padding-top: 36px;
+  padding-bottom: 100px;
+}
+
+// 禁用 JS 时直接展示静态文字，不让首屏先经历透明的入场状态。
+.js .hero-content { animation: fadeInUp 0.9s ease-out both; }
+
+.hero-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 0 0 32px;
+  color: var(--hero-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+
+  span { opacity: 0.5; }
+}
+
+.hero-title {
+  margin: 0 0 20px;
+  color: var(--hero-ink);
+  font-size: clamp(4.5rem, 7.5vw, 6.75rem);
+  font-weight: 800;
+  letter-spacing: -0.065em;
+  line-height: 1.15;
+
+  span { color: var(--hero-sun); }
+}
+
+.hero-tagline {
+  margin: 0 0 24px;
+  color: var(--hero-ink);
+  font-size: clamp(1.4rem, 2vw, 1.75rem);
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  line-height: 1.5;
+}
+
+.hero-description {
+  margin: 0 0 32px;
+  color: var(--hero-muted);
+  font-size: 1rem;
+  line-height: 1.9;
+}
+
+.hero-explore {
+  @include m.btn-primary;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  min-height: 48px;
+  padding: 12px 24px;
+  font-size: 0.95rem;
+
+  span { font-size: 1.25rem; line-height: 1; }
+}
+
+.hero-footnote {
+  position: absolute;
+  right: 16px;
+  bottom: -64px;
+  left: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.hero-scroll {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 44px;
+  color: var(--hero-footnote-ink);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+
+  span { font-size: 1.35rem; }
+  &:hover { color: var(--color-brand-primary); }
+}
+
+.hero-caption {
+  color: var(--hero-snow);
+  font-size: 0.75rem;
+  letter-spacing: 0.15em;
+}
+
+.hero-explore:focus-visible,
+.hero-scroll:focus-visible {
+  outline: 2px solid var(--color-brand-primary);
+  outline-offset: 5px;
+}
+
+#features { scroll-margin-top: 78px; }
+
+@media (min-width: 768px) and (max-width: 1199px) {
+  .hero-content { max-width: 440px; }
+  .hero-title { font-size: 5rem; }
+  .hero-eyebrow { font-size: 0.7rem; gap: 10px; }
+}
+
+@media (max-width: 767px) {
+  .hero-section { min-height: 760px; align-items: flex-start; }
+  .hero-section > .home-container { padding-top: 56px; }
+  // 保持山体比例，窄屏把画幅移到文字下方，最高峰仍在右侧。
+  .hero-scene { inset: auto -140px -2px auto; width: 940px; height: 470px; max-width: none; }
+  .hero-content { max-width: 100%; padding: 0; }
+  .hero-eyebrow { gap: 10px; margin-bottom: 24px; font-size: 0.625rem; letter-spacing: 0.1em; }
+  .hero-title { margin-bottom: 16px; font-size: clamp(4rem, 12vw, 5rem); }
+  .hero-tagline { margin-bottom: 18px; font-size: 1.35rem; }
+  .hero-description { margin-bottom: 24px; font-size: 0.875rem; }
+  .hero-explore { min-height: 44px; padding: 10px 20px; }
+  .hero-footnote { position: static; margin-top: 20px; }
+  .hero-scroll { font-size: 0.6875rem; }
+  .hero-caption { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .js .hero-content { animation: none; }
+  .hero-scene__layer { transform: none !important; }
+}
 
 /* 卡片样式优化 */
 /* 首页「探索」区的四张功能卡。空闲**不托阴影也不描边** —— 它们是页面的主体内容，
@@ -166,7 +338,6 @@
 
 /* 响应式优化 */
 @media (max-width: 768px) {
-  .hero-section { min-height: 50vh; text-align: center; }
   .feature-card { margin-bottom: 2rem; }
 }
 

@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { getCurrentUser, isCoreUser } from '@/lib/auth';
 import HomeFooterNote from './components/HomeFooterNote';
-import HeroCanvas from './components/HeroCanvas';
+import HeroLandscape from './components/HeroLandscape';
 
 // 首页 — 样式结构：home-container / home-display / feature-card / home-btn
 //
@@ -25,19 +25,19 @@ export default async function HomePage() {
 
   return (
     <>
-      <section className="hero-section" id="home">
-        <HeroCanvas />
+      <section className="hero-section" id="home" aria-labelledby="hero-title">
+        <HeroLandscape />
         <div className="home-container">
-          <div className="home-row home-text-center">
-            <div className="home-col-6">
-              <div className="text-white fade-in-up hero-content">
-                <h1 className="home-display" style={{ color: '#fff', marginBottom: '1rem' }}>聪明山</h1>
-                <p className="home-lead" style={{ color: '#fff', opacity: 0.9, marginBottom: '1rem', fontSize: '1.5rem' }}>我们总将找到答案</p>
-                <p style={{ color: '#fff', opacity: 0.9, marginBottom: '1rem', fontSize: '1.125rem' }}>
-                  欢迎访问聪明山 website。这里是 Raricy.com 的主页面，你可以由此进入 Raricy.com 的大部分页面
-                </p>
-              </div>
-            </div>
+          <div className="hero-content">
+            <p className="hero-eyebrow">RARICY.COM <span aria-hidden="true">/</span> 保持好奇，向山而行</p>
+            <h1 className="hero-title" id="hero-title">聪明山<span aria-hidden="true">。</span></h1>
+            <p className="hero-tagline">我们总将找到答案</p>
+            <p className="hero-description">故事、思考，还有一些好用的小工具。<br />欢迎来到聪明山，从这里开始探索。</p>
+            <a className="hero-explore" href="#features">开始探索 <span aria-hidden="true">↗</span></a>
+          </div>
+          <div className="hero-footnote">
+            <a className="hero-scroll" href="#features"><span aria-hidden="true">↓</span> 向下，发现更多</a>
+            <span className="hero-caption" aria-hidden="true">山的那边，还有新的可能。</span>
           </div>
         </div>
       </section>
