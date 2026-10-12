@@ -960,6 +960,13 @@ plot / price / volume / time 各占一格）：与 SVG 共用同一个分数，�
 - hover 微交互：卡片升阴影、图标 `scale(1.1)`、按钮反转前景背景。
   **按钮不做垂直位移**（见 §6.1）；入场动画与居中用的 `translateY` 不受限。
 
+首页 Hero 使用 `src/app/components/HeroLandscape.tsx` 的原创 SVG 几何山景，样式在
+`src/styles-scss/pages/_home.scss`。六层共享同一画幅：鼠标轻移按景深分配位移，滚动时
+近景移动与放大更多，文字保持在独立内容层。鼠标视差只响应精细指针；触屏保留滚动景深。
+动画缓动收敛后停止，画面离开视口或页面隐藏时暂停。`prefers-reduced-motion: reduce`
+关闭视差与文字入场动画；禁用 JavaScript 时插画和文字直接由 SSR 展示，探索链接仍可用。
+窄屏将山景移到文字下方并保留山体比例，不把整幅插画压扁。
+
 ## 11. 新页面 / 新功能样式约定
 
 1. 主题色一律用 `_root.scss` 的 CSS 变量，别写死色值。
@@ -1039,8 +1046,9 @@ plot / price / volume / time 各占一格）：与 SVG 共用同一个分数，�
 
 **刻意保留的写死色**（不是遗留，别「顺手」改掉）：
 
-- 首页 `.hero-section` 的深色渐变（`#1f2937 → #111827` + 白字）—— 明暗两套主题下
-  刻意保持一致的主视觉，改用令牌会让它在浅色主题下变浅底、与白字打架。
+- 首页 `.hero-section` 的 `--hero-*` 局部画板—— 描述天空、雪面、湖泊与森林等插画材质，
+  明暗主题各有一套配色。它们不借用 warning / success 等界面状态色；标题、简介和
+  底部提示的字色也随画板切换，界面按钮仍复用站内按钮 mixin。
 - 403 页的彩虹色相循环（`pages/_error.scss` 的 `.rainbow-error__bg`）—— 同理，
   它不是主题表面。
 - 设置页开关的圆钮 `background: #fff`（`pages/_settings.scss` 的
