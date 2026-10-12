@@ -7,6 +7,7 @@ import { useEffect, useId, useRef } from 'react';
 export default function HeroLandscape() {
   const ref = useRef<SVGSVGElement>(null);
   const pineId = useId();
+  const moonMaskId = useId();
 
   useEffect(() => {
     const scene = ref.current;
@@ -25,18 +26,37 @@ export default function HeroLandscape() {
     let x = 0;
     let y = 0;
     let scroll = 0;
+    let currentTheme = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+    let orbitAngle = currentTheme === 'dark' ? -180 : 0;
+    hero.style.setProperty('--hero-orbit-angle', `${orbitAngle}deg`);
+    // 每次切换都逆时针续转半圈，避免切回浅色时沿原轨迹倒放。
+    const themeObserver = new MutationObserver(() => {
+      const nextTheme = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+      if (nextTheme === currentTheme) return;
+      currentTheme = nextTheme;
+      orbitAngle -= 180;
+      hero.style.setProperty('--hero-orbit-angle', `${orbitAngle}deg`);
+    });
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
     function animate() {
       frame = 0;
       x += (targetX - x) * 0.085;
       y += (targetY - y) * 0.085;
       scroll += (targetScroll - scroll) * 0.085;
+      const settling = Math.abs(targetX - x) + Math.abs(targetY - y) + Math.abs(targetScroll - scroll) > 0.001;
+      if (!settling) {
+        x = targetX;
+        y = targetY;
+        scroll = targetScroll;
+      }
       for (const { element, depth } of layers) {
-        const scale = 1 + scroll * depth * 0.055;
-        element.style.transform = `translate(${x * depth * 22}px, ${y * depth * 14 + scroll * depth * 110}px) scale(${scale})`;
+        const scale = 1 + scroll * depth * 0.085;
+        // 页面向下滚动时景物上移，近景的位移和放大都比远景明显。
+        element.style.transform = `translate(${x * depth * 22}px, ${y * depth * 14 - scroll * depth * 260}px) scale(${scale})`;
       }
       // 只在输入变化或缓动尚未收敛时画下一帧，静止时不占用动画循环。
-      if (Math.abs(targetX - x) + Math.abs(targetY - y) + Math.abs(targetScroll - scroll) > 0.001) schedule();
+      if (settling) schedule();
     }
 
     function schedule() {
@@ -104,6 +124,8 @@ export default function HeroLandscape() {
     return () => {
       if (frame) cancelAnimationFrame(frame);
       observer.disconnect();
+      themeObserver.disconnect();
+      hero.style.removeProperty('--hero-orbit-angle');
       delete hero.dataset.sceneReady;
       hero.removeEventListener('pointermove', onPointerMove);
       hero.removeEventListener('pointerleave', resetPointer);
@@ -119,12 +141,22 @@ export default function HeroLandscape() {
     <svg className="hero-scene" ref={ref} viewBox="0 0 1800 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">
       <defs>
         <path id={pineId} d="M0 0 12 23 7 23 20 42 12 42 28 65 17 65 34 91 5 91 5 105 -5 105 -5 91 -34 91 -17 65 -28 65 -12 42 -20 42 -7 23 -12 23Z" />
+        <mask id={moonMaskId} maskUnits="userSpaceOnUse" x="1245" y="55" width="260" height="260">
+          <circle cx="1375" cy="185" r="103" fill="white" />
+          <circle cx="1418" cy="144" r="99" fill="black" />
+        </mask>
       </defs>
 
       <g className="hero-scene__layer" data-depth="0.12">
         <path d="M825-80H1260L870 665H570Z" fill="var(--hero-ray)" opacity="0.45" />
-        <circle cx="1375" cy="185" r="103" fill="var(--hero-sun)" />
-        <circle cx="1375" cy="185" r="126" fill="none" stroke="var(--hero-sun)" strokeWidth="1" opacity="0.3" />
+        <g className="hero-scene__sun">
+          <circle cx="1375" cy="185" r="103" fill="var(--hero-sun)" />
+          <circle cx="1375" cy="185" r="126" fill="none" stroke="var(--hero-sun)" strokeWidth="1" opacity="0.3" />
+        </g>
+        <g className="hero-scene__moon">
+          <circle cx="1375" cy="185" r="103" fill="var(--hero-moon)" mask={`url(#${moonMaskId})`} />
+          <circle cx="1375" cy="185" r="126" fill="none" stroke="var(--hero-moon)" strokeWidth="1" opacity="0.2" />
+        </g>
         <path d="M994 216h83m-41-41v83M1580 133h45m-22-22v45" fill="none" stroke="var(--hero-line)" strokeWidth="1" opacity="0.3" />
         <path d="m1655 220 13-7 13 7m-58 15 9-5 9 5" fill="none" stroke="var(--hero-ink)" strokeWidth="2" opacity="0.4" />
       </g>
@@ -172,7 +204,8 @@ export default function HeroLandscape() {
       </g>
 
       <g className="hero-scene__layer" data-depth="1.3">
-        <path d="M-120 884 105 848 331 913 533 932 786 1005 1033 946 1320 929 1497 837 1643 784 1780 736 1940 760V1080H-120Z" fill="var(--hero-forest)" />
+        {/* 地面延伸到画幅外，强滚动视差上移时仍能覆盖底边。 */}
+        <path d="M-120 884 105 848 331 913 533 932 786 1005 1033 946 1320 929 1497 837 1643 784 1780 736 1940 760V1400H-120Z" fill="var(--hero-forest)" />
         <path d="m1320 929 177-92 146-53 137-48-161 167-299 116H993Z" fill="var(--hero-forest-light)" />
         {[[-10, 798, 1.25], [77, 815, 0.84], [166, 849, 1], [267, 879, 0.65], [365, 913, 0.48], [1280, 866, 0.7], [1378, 798, 1.15], [1465, 819, 0.65], [1556, 711, 1.5], [1658, 738, 0.96], [1774, 581, 2.05], [1870, 610, 1.4]].map(([tx, ty, scale], i) => (
           <use key={i} href={`#${pineId}`} transform={`translate(${tx} ${ty}) scale(${scale})`} fill="var(--hero-forest)" />
