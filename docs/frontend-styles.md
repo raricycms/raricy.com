@@ -1054,7 +1054,10 @@ plot / price / volume / time 各占一格）：与 SVG 共用同一个分数，�
 - 各处**实底按钮/角标上的 `color: #fff`** —— 那是「实底 + 白字」配方的一部分，
   两套主题下都成立（约 40 处，逐一核过）。
 
-**同类陷阱（已登记，还没踩）**：
+**同类陷阱（当前约束与风险）**：
+
+下文同时包含已存在的重复样式和尚未发生冲突的复用风险，不能一概称为「还没踩」。
+需要改动的维护清单统一登记在 `docs/plan/maintenance-plan.md` §1；本节保留规则与排查依据。
 
 **同名嵌套（组件根复用了页面级容器类）** —— 与 `.blog-detail` 同一个形状。
 判据：该组件被渲染在任何**已经带同名类**的父节点里时，就会双份内缩 / 双份外边距。
@@ -1094,8 +1097,8 @@ plot / price / volume / time 各占一格）：与 SVG 共用同一个分数，�
   互不知情。唯一消费方是 `AdminArticlesManager.tsx`（徽章那份），于是徽章白拿
   `margin-top: 12px`。另见上面 `.current-category .badge` 那条死规则。
 - `.copy-btn`（`pages/blog/_blog.scss` 根级全局 vs `pages/_story.scss` 在
-  `.story-reader__content` 下整套重写）：注入点是 `components/MarkdownRenderer.tsx`
-  拼的内联 HTML 字符串，所以**任何**用了 MarkdownRenderer 的页面都会命中 blog 那份。
+  `.story-reader__content` 下整套重写）：注入点是 `src/lib/blog-renderer.ts`
+  拼的内联 HTML 字符串，所以**任何**用了共享渲染管线的页面都会命中 blog 那份。
   story 页目前靠 0-2-0 压 0-1-0 才没走样 —— 改 `_blog.scss` 里那条的权重就会穿透。
 - `.filter-btn`（`pages/_fish.scss` vs `pages/_notifications.scss`）：**后者一个属性都没
   生效**（`main.scss` 里 notifications 先于 fish 加载，fish 全胜），而通知页压根没有
@@ -1231,7 +1234,7 @@ plot / price / volume / time 各占一格）：与 SVG 共用同一个分数，�
   灰底——本来就是为白卡设计的）一条不动。`_blog.scss` **不改**，那是博客那条管线的版式。
   ⚠️ 覆写锚在 `.blog-content-container` 这个类名上：哪天 `MarkdownRenderer` 换了根节点
   类名，它会**静默失效**，表现就是本页又长回那张内卡。
-- 其余同名嵌套已登记待办，见下方「同类陷阱」。
+- 其余同名嵌套的风险说明见本节上方「同类陷阱」，维护清单见 `docs/plan/maintenance-plan.md` §1。
 
 **2026-09-18 已修（第二轮：滚动条 / 左侧竖条收尾 / 幽灵引用）**：
 

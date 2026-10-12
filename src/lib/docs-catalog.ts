@@ -43,7 +43,7 @@ export const DOC_GROUPS = [
   {
     key: 'dev',
     title: '开发与运维',
-    description: '本站自己的设计与运维：架构、部署、CLI、OAuth、样式规范、灾备与历史遗留清单。',
+    description: '本站的架构、部署、CLI、OAuth、样式规范、灾备、实施记录与未完成计划。',
   },
 ] as const;
 
@@ -183,7 +183,7 @@ export const DOC_ENTRIES: readonly DocEntry[] = [
     group: 'bot',
     slug: 'bot/checkin-bot',
     title: '签到机器人接入说明',
-    summary: '签到两步走；每人每天一次、跨 UTC+8 午夜的作废窗口。',
+    summary: 'core+ 一次请求签到；每人每天一次，固定奖励 3 条鱼干。',
   },
   {
     group: 'bot',
@@ -285,21 +285,33 @@ export const DOC_ENTRIES: readonly DocEntry[] = [
   },
   {
     group: 'dev',
-    slug: 'editor-plan',
+    slug: 'format-converter-implementation',
+    title: '格式转换器首轮实施记录',
+    summary: '八个能力区的首轮交付、原始方案与历史验证；全部验收条件尚未满足。',
+  },
+  {
+    group: 'dev',
+    slug: 'plan/README',
+    title: '未完成计划索引',
+    summary: '当前计划、剩余范围、已完成内容去向与更新约定。',
+  },
+  {
+    group: 'dev',
+    slug: 'plan/editor-plan',
     title: '编辑器换代方案（Vditor → CodeMirror 6）',
-    summary: 'CM6 原文编辑、同源完整预览、资源集成与分期验收（M0–M2 已实施；M3 未实施，M4 只交付了导出）。',
+    summary: 'M0–M2 与导出已交付；就地装饰、表格辅助、大纲及真实设备验收待完成。',
   },
   {
     group: 'dev',
-    slug: 'format-converter-plan',
-    title: '格式转换器实施计划',
-    summary: '首版的本地转换、引擎验证、资源限制、分期与验收（2026-10-09 已实施，见 §12.2）。',
-  },
-  {
-    group: 'dev',
-    slug: 'format-converter-roadmap',
+    slug: 'plan/format-converter-roadmap',
     title: '格式转换器长期规划（能力版图与转换路线）',
-    summary: '八类文件的长期能力、转换方向与引擎、保真边界和建设阶段（路线图，不是支持清单）。',
+    summary: '八类本地功能已首轮交付；剩余验收、中文 PDF、服务器方向与长期候选。',
+  },
+  {
+    group: 'dev',
+    slug: 'plan/maintenance-plan',
+    title: '文档核对后的维护待办',
+    summary: '样式容器与类名整理、翻译入口取舍、面向站长的完整可见性轨迹。',
   },
   {
     group: 'dev',

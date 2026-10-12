@@ -12,7 +12,7 @@
 
 ### 1.1 上一版技术栈留下的物理形态（真·框架痕迹）
 
-这六项的共同点：**如果当年用的不是 Flask，它们根本不会长这样**。
+下表记录旧实现留下的物理形态与沿用的约定；其中已成为产品契约的部分，不再按框架痕迹处理。
 
 | 项 | 位置 | 为什么 |
 |---|---|---|
@@ -51,7 +51,7 @@ CLI 退出码与 `LEGACY_COMMANDS` 旧命令名。
 ## 2. 唯一保留的框架字面量
 
 `scripts/check-links.mjs` 里有一个 `if (/FLASK_ORIGIN/.test(txt))` 的守卫。
-**这是全仓仅剩的 `flask` 字样，而且是刻意留的**：`FLASK_ORIGIN` 是**被检查对象的名字**，
+**这处字面量是刻意留的**：`FLASK_ORIGIN` 是**被检查对象的名字**，
 不是归因 —— 它当年是「回源旧后端」的源站地址，代码读到它就是拿旧部署的 origin 拼地址。
 删掉这个 `if` 是**删守卫**（行为变更），不是清理注释。
 
@@ -121,12 +121,12 @@ git ls-tree -r 7d7be1c^ --name-only app/ # 列出旧 app/ 全树
 | `Bootstrap 的 show / 不是 Bootstrap 那套` | `CommentSection.tsx`、`ImagePickerModal.tsx`、两个 e2e 用例 | **防混淆警告**，价值高：站内 modal 的展开类是 `is-open` / `show`，与 Bootstrap 的不是一回事，写错就点不开 |
 | `Bootstrap Icons` | `src/lib/poster.ts`、`src/styles-scss/pages/blog/_menu.scss` | 一个**图标库**的名字，与 Bootstrap 框架无关 |
 
-## 7. 待决事项（需站长定夺）
+## 7. 待决事项去向与已解决记录
 
-1. **`src/app/tool/translate/` 是孤儿**（0 引用，同样不在 `ToolMenu` 里）。页面没有界面，
-   只有一句服务端 `redirect('http://116.62.179.232:9198')`（`page.tsx:5`）。**未删**，
-   留待你定 —— 同类的 `tool/redirect`、`new_redirect` 已作为孤儿页删掉（`a157b08`），
-   它成了最后一个。写死的「IP + 端口」是**刻意的**（存在无法做 DNS 解析、只能用 IP
-   访问的用户），不是待清理的旧站地址 —— 同 §1.2 的两条旧直链 rewrite。
-2. **`tests/e2e/fish-layout.spec.ts:60` 有一条既有的 tsc 报错**
-   （`el.innerText` 不存在于 `SVGElement | HTMLElement`），与 2026-09 清理无关，当时未动。
+2026-10-12 校对：翻译跳转入口的取舍移入 `docs/plan/maintenance-plan.md` §2。
+该路由仍在，写死 IP 的使用理由保留；缺少工具箱入口不等于可以直接退役。
+
+原列出的 `tests/e2e/fish-layout.spec.ts` 类型错误**已于 2026-09-19 修复**（`65de7568`）：
+`evaluateAll` 中选中的 HTML 元素断言为 `HTMLElement[]`，不再对联合类型直接读
+`innerText`。这条不再是待办；不能改用 `textContent`，否则隐藏前缀仍被计入，文案压缩
+断言就失去意义。

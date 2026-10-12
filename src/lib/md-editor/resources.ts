@@ -115,7 +115,7 @@ const BADGE_PRIVATE = '私有';
 
 // ── 五类 ────────────────────────────────────────────────────────────────────
 //
-// 顺序 = 面板上的标签顺序（与 docs/editor-plan.md §4.1 的表同序）。
+// 顺序 = 面板上的标签顺序（与 docs/plan/editor-plan.md §4.1 的表同序）。
 
 export const RESOURCE_KINDS: readonly ResourceKindSpec[] = [
   {

@@ -4,7 +4,7 @@
 // 从 npm 包拷到 public/static/converter/，让浏览器从**同源**加载。
 //
 // 【为什么要同源拷贝】转换器的全部计算都在用户浏览器里跑（见
-// docs/format-converter-plan.md），引擎本体是 wasm + worker：
+// docs/format-converter-implementation.md），引擎本体是 wasm + worker：
 //   · 默认走 CDN（unpkg / jsdelivr）—— 离线 / 内网部署当场坏，且把「访客在转
 //     什么文件」这个信号发给第三方；
 //   · 让 Next 去 bundle wasm 则会把它们卷进构建产物与 vercel 式输出跟踪，
@@ -31,7 +31,7 @@
 // 照拷各包自带 LICENSE 并列在 NOTICE.txt 里即可，无署名渲染义务。
 // ⚠️ 两个解包器**只能解、不能压**：RAR 的编码器是专有技术（无自由实现），
 // 7-Zip 的压缩侧在 wasm 构建里没编进去。所以 RAR / 7Z 的目标只有 ZIP ——
-// 这不是偷懒，是许可与构建事实（见 docs/format-converter-plan.md §8.2 同款判据）。
+// 这不是偷懒，是许可与构建事实（见 docs/format-converter-implementation.md §8.2 同款判据）。
 //
 // 【注意】`npm ci --ignore-scripts` 会跳过 postinstall —— 那种环境手工跑一次
 // `npm run prepare:converter`。缺了文件时页面会显示「引擎加载失败」，
