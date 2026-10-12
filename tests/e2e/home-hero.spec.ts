@@ -7,7 +7,7 @@ test('首页山景：窄屏不溢出，文字和探索入口完整可见', async
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/');
     const title = page.locator('#hero-title');
-    await expect(title).toHaveText('聪明山。');
+    await expect(title).toHaveText('聪明山');
     await expect(page.locator('.hero-tagline')).toHaveText('我们总将找到答案');
     const box = await title.boundingBox();
     expect(box!.x).toBeGreaterThanOrEqual(16);

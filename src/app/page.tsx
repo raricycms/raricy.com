@@ -30,7 +30,7 @@ export default async function HomePage() {
         <div className="home-container">
           <div className="hero-content">
             <p className="hero-eyebrow">RARICY.COM <span aria-hidden="true">/</span> 保持好奇，向山而行</p>
-            <h1 className="hero-title" id="hero-title">聪明山<span aria-hidden="true">。</span></h1>
+            <h1 className="hero-title" id="hero-title">聪明山</h1>
             <p className="hero-tagline">我们总将找到答案</p>
             <p className="hero-description">故事、思考，还有一些好用的小工具。<br />欢迎来到聪明山，从这里开始探索。</p>
             <a className="hero-explore" href="#features">开始探索 <span aria-hidden="true">↗</span></a>
