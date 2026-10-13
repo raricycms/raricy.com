@@ -796,7 +796,7 @@ disallow（断掉「internal 文章 → 307 → next 参数里带 UUID」那条�
 **一律不作用于这里** —— 对外列表的资格只有一条 `visibility = public`。混合它们会直接
 破坏上面那条同源。
 
-**侧栏从公开集合反推**：`listPublicCategoryFacets()` 取出公开文章真正出现过的
+**分类筛选从公开集合反推**：`listPublicCategoryFacets()` 取出公开文章真正出现过的
 `category_id`，页面据此剪枝栏目树 —— 只列「自己或某个子栏目有公开文章」的栏目。
 空栏目是死链，也会给搜索引擎一批空页面（与 sitemap 不收空路径是同一条纪律）。
 它也刻意**不递归**：本站只支持两级栏目。
@@ -1664,13 +1664,14 @@ MP3 的帧同步要核版本 / 层 / 位速率字段（只判 `0xFF` 打头太�
 ### 7.4 浏览目录 /blog（列表读路径，流式）
 
 `page.tsx` **不 await 列表数据**，把 `listBlogs` 的 promise 交给 `<Suspense>` 里的
-`BlogListSection`：hero / 搜索框 / 侧栏分类在首个 flush 就画出来，列表随后补上。
-实测 RTT 300ms：hero+侧栏 400ms、列表 700ms（改前两者同为 ~790ms）。
+`BlogListSection`：页头 / 搜索框 / 分类筛选在首个 flush 就画出来，列表随后补上。
+此前在侧栏布局下实测 RTT 300ms：页头与分类 400ms、列表 700ms（改前两者同为 ~790ms）。
+当前目录把分类收进搜索区域，流式边界仍只包列表与分页；布局见 `docs/frontend-styles.md` §6.6。
 
 ```
 浏览器 GET /blog
   → middleware.ts  ✓ 同源
-  → page.tsx       requireCoreUser() → cookies() → 渲染 hero / 侧栏   ← 首个 flush
+  → page.tsx       requireCoreUser() → cookies() → 渲染页头 / 工具栏 ← 首个 flush
   → BlogListSection  await listBlogs()                              ← 流式补上
 ```
 
@@ -1678,7 +1679,7 @@ MP3 的帧同步要核版本 / 层 / 位速率字段（只判 `0xFF` 打头太�
 
 1. 它把**整页**压成 fallback；React 靠内联脚本 `$RC` 把真实内容从 `<div hidden>`
    换入，**无 JS 时永远停在骨架** —— 连 hero / 搜索 / 分类导航都没了，会踩掉
-   `tests/e2e/blog.spec.ts` 的「禁用 JS › 小屏目录保持展开」。Suspense 方案只罩列表。
+   `tests/e2e/blog.spec.ts` 的「禁用 JS › 小屏分类能原生展开并导航」。Suspense 方案只罩列表。
 2. 守卫被推到挂起之后才跑，响应已以 200 冲出：匿名 `/blog` **307→200**、
    `role=user` **403→200**。
 3. 边界让 DOM 非单调（内容 → 骨架 → 内容），`.blog-item` 计数/顺序与 cookie
