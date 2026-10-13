@@ -974,7 +974,7 @@ plot / price / volume / time 各占一格）：与 SVG 共用同一个分数，�
 交替升落；主题观察器每次把角度减去半圈，两个方向切换都保持逆时针。CSS 控制旋转、
 淡入淡出和轻微变色，天体各自独立于外层视差；无 JavaScript 时使用当前主题的静态角度。
 减少动态效果偏好下直接切换日月，不播放升落动画。
-Hero 只保留「开始探索」入口，复用 `btn-primary` 并增加 `backdrop-filter: blur(16px)`。
+Hero 只保留「开始探索」入口，复用 `btn-primary` 并增加 `backdrop-filter: blur(8px)`。
 文字入场动画结束后不保留 opacity/transform 效果，以免阻隔按钮采样背后的山景。
 
 ## 11. 新页面 / 新功能样式约定
