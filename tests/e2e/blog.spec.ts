@@ -297,18 +297,15 @@ test('排序回显：updated 态下点侧栏分类，URL 保留 sort（不用二
   expect(await cardOrder(page, SEED_BLOG.id, SEED_BLOG2.id)).toBe('ba');
 });
 
-// ── 详情页底部交互区：两行按钮 + 「管理文章」弹窗收拢 ───────────────────────
-// 旧版把 点赞/投喂/返回 与 查看点赞者/查看投喂者/编辑/删除 平铺成两排共 6~7 个按钮；
-// 现改为 4 个按钮两行（点赞/投喂｜返回上页/管理文章），管理类操作收进弹窗。
-// 用例分别覆盖：作者（core 即 SEED_BLOG 作者）、管理员（非作者）、第三方核心用户。
+// 单行胶囊交互区；作者、管理员与第三方读者各自保留原有权限。
 
-test('详情页交互区：点赞/投喂一行、返回/管理一行（作者视角 2×2）', async ({ page }) => {
+test('详情页交互区：返回、互动胶囊、管理同一行，仅图标与数字', async ({ page }) => {
   await page.goto(`/blog/${SEED_BLOG.id}`);
   const controls = page.locator('#read-controls');
   await expect(controls).toBeVisible();
 
   const rows = controls.locator('.read-controls__row');
-  await expect(rows).toHaveCount(2);
+  await expect(rows).toHaveCount(1);
 
   // 第一行：点赞 + 投喂 + 收藏（点赞/投喂标签后带计数徽标，用前缀匹配）
   const row0 = rows.nth(0);
@@ -321,77 +318,90 @@ test('详情页交互区：点赞/投喂一行、返回/管理一行（作者视
   await expect(favBtn.locator('.like-count-badge, .fish-count-badge')).toHaveCount(0);
   await expect(row0.getByRole('button')).toHaveCount(3);
 
-  // 第二行：返回上页 + 管理文章；旧的管理按钮不再平铺在页面上
-  const row1 = rows.nth(1);
-  await expect(row1.getByRole('button', { name: '返回上页' })).toBeVisible();
-  await expect(row1.getByRole('button', { name: '管理文章' })).toBeVisible();
-  await expect(row1.getByRole('button')).toHaveCount(2);
-  await expect(page.getByRole('button', { name: '查看点赞者' })).not.toBeVisible();
+  await expect(controls.getByRole('button', { name: '返回上页' })).toBeVisible();
+  await expect(controls.getByRole('button', { name: '管理文章' })).toBeVisible();
+  await expect(controls.getByRole('button')).toHaveCount(5);
+  await expect(page.getByRole('button', { name: '点赞者', exact: true })).not.toBeVisible();
+  const boxes = await Promise.all([
+    controls.locator('.read-controls__bar > .read-btn').boundingBox(), row0.boundingBox(), controls.locator('.manage-control').boundingBox(),
+  ]);
+  expect(boxes.every(b => b && Math.abs(b.y - boxes[0]!.y) < 1 && b.height === 48)).toBe(true);
 });
 
-test('「管理文章」弹窗：作者四入口齐备，子视图（点赞者/删除）可切换流转', async ({ page }) => {
+test('管理胶囊：作者五入口齐备，列表可打开，删除取消回到胶囊', async ({ page }) => {
   await page.goto(`/blog/${SEED_BLOG.id}`);
 
   // 点「管理文章」打开目录
   await page.locator('#admin-manage-btn').click();
-  const menu = page.locator('#manageMenuModal.is-open');
+  const menu = page.locator('.manage-control.is-open #blog-manage-menu');
   await expect(menu).toBeVisible();
-  await expect(menu.getByRole('button', { name: '查看点赞者' })).toBeVisible();
-  await expect(menu.getByRole('button', { name: '查看投喂者' })).toBeVisible();
-  await expect(menu.getByRole('link', { name: '编辑文章' })).toBeVisible();
-  await expect(menu.getByRole('button', { name: '删除文章' })).toBeVisible();
+  await expect(menu.getByRole('button', { name: '点赞者', exact: true })).toBeVisible();
+  await expect(menu.getByRole('button', { name: '投喂者', exact: true })).toBeVisible();
+  await expect(menu.getByRole('link', { name: '编辑', exact: true })).toBeVisible();
+  await expect(menu.getByRole('button', { name: '可见性', exact: true })).toBeVisible();
+  await expect(menu.getByRole('button', { name: '删除', exact: true })).toBeVisible();
 
   // 查看点赞者 → 切到点赞者列表子视图（目录随之收起）
-  await menu.getByRole('button', { name: '查看点赞者' }).click();
+  await menu.getByRole('button', { name: '点赞者', exact: true }).click();
   await expect(page.locator('#likersModal.is-open')).toBeVisible();
   await expect(page.locator('#likersModal .modal-title')).toContainText('点赞者列表');
-  await expect(page.locator('#manageMenuModal')).not.toHaveClass(/is-open/);
+  await expect(page.locator('#admin-manage-btn')).toHaveAttribute('aria-expanded', 'false');
 
   // 关闭子视图 → 弹窗整体收起
   await page.locator('#likersModal .btn-close').click();
   await expect(page.locator('#likersModal')).not.toHaveClass(/is-open/);
 
-  // 删除确认：取消回到「管理文章」目录（而非直接收起）
   await page.locator('#admin-manage-btn').click();
+  await menu.getByRole('button', { name: '投喂者', exact: true }).click();
+  await expect(page.locator('#feedersModal.is-open')).toBeVisible();
+  await page.locator('#feedersModal .btn-close').click();
+  await page.locator('#admin-manage-btn').click();
+  await menu.getByRole('button', { name: '可见性', exact: true }).click();
+  await expect(page.locator('#visibilityModal.is-open')).toBeVisible();
+  await page.locator('#visibilityModal').getByRole('button', { name: '取消', exact: true }).click();
+  await expect(page.locator('#admin-manage-btn')).toBeFocused();
+  await expect(menu).toBeVisible();
+
+  // 删除确认：取消回到「管理文章」目录（而非直接收起）
   await page
-    .locator('#manageMenuModal.is-open')
-    .getByRole('button', { name: '删除文章' })
+    .locator('.manage-control.is-open #blog-manage-menu')
+    .getByRole('button', { name: '删除', exact: true })
     .click();
   await expect(page.locator('#deleteConfirmModal.is-open')).toBeVisible();
   await page.locator('#deleteConfirmModal').getByRole('button', { name: '取消' }).click();
-  await expect(page.locator('#manageMenuModal.is-open')).toBeVisible();
+  await expect(page.locator('#admin-manage-btn')).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.locator('#admin-manage-btn')).toBeFocused();
 });
 
-test('管理员视角：管理弹窗无「编辑文章」入口（非作者）', async ({ page }) => {
+test('管理员视角：管理胶囊无编辑与可见性入口（非作者）', async ({ page }) => {
   await loginViaApi(page, SEED_USERS.admin.username);
   await page.goto(`/blog/${SEED_BLOG.id}`);
 
   await page.locator('#admin-manage-btn').click();
-  const menu = page.locator('#manageMenuModal.is-open');
+  const menu = page.locator('.manage-control.is-open #blog-manage-menu');
   await expect(menu).toBeVisible();
-  await expect(menu.getByRole('button', { name: '查看点赞者' })).toBeVisible();
-  await expect(menu.getByRole('button', { name: '查看投喂者' })).toBeVisible();
-  await expect(menu.getByRole('link', { name: '编辑文章' })).toHaveCount(0);
-  await expect(menu.getByRole('button', { name: '删除文章' })).toBeVisible();
+  await expect(menu.getByRole('button', { name: '点赞者', exact: true })).toBeVisible();
+  await expect(menu.getByRole('button', { name: '投喂者', exact: true })).toBeVisible();
+  await expect(menu.getByRole('link', { name: '编辑', exact: true })).toHaveCount(0);
+  await expect(menu.getByRole('button', { name: '可见性', exact: true })).toHaveCount(0);
+  await expect(menu.getByRole('button', { name: '删除', exact: true })).toBeVisible();
 });
 
-test('第三方核心用户视角：无「管理文章」，第二行只有返回上页', async ({ page }) => {
+test('第三方核心用户视角：返回与互动胶囊单行，无管理入口', async ({ page }) => {
   // 注册一个非作者、非管理员的核心用户 —— 站在纯读者视角验证布局降级
   await registerFreshUser(page, { core: true });
   await page.goto(`/blog/${SEED_BLOG.id}`);
 
   const rows = page.locator('#read-controls .read-controls__row');
-  await expect(rows).toHaveCount(2);
+  await expect(rows).toHaveCount(1);
   await expect(rows.nth(0).getByRole('button', { name: /点赞/ })).toBeVisible();
   await expect(rows.nth(0).getByRole('button', { name: /投喂/ })).toBeVisible();
   // 收藏对所有人渲染（入口不跟着档位藏），只是非 core 点了会就地提示
   await expect(rows.nth(0).locator('#favorite-btn')).toBeVisible();
 
-  // 第二行只剩「返回上页」，没有管理入口、也没有管理弹窗
-  await expect(rows.nth(1).getByRole('button', { name: '返回上页' })).toBeVisible();
-  await expect(rows.nth(1).getByRole('button')).toHaveCount(1);
+  await expect(page.locator('#read-controls').getByRole('button', { name: '返回上页' })).toBeVisible();
   await expect(page.locator('#admin-manage-btn')).toHaveCount(0);
-  await expect(page.locator('#manageMenuModal')).toHaveCount(0);
+  await expect(page.locator('#blog-manage-menu')).toHaveCount(0);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

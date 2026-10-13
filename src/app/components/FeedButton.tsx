@@ -1,19 +1,18 @@
 'use client';
 
 // FeedButton — 文章详情页「读者交互区」。三块内容的可见/可交互形态：
-//   • 点赞 / 投喂两行按钮（.read-controls：点赞/投喂，返回上页/管理文章）
+//   • 单行操作区：返回、点赞/投喂/收藏胶囊、向右展开的管理胶囊
 //   • 两步式投喂弹窗（选数量 → 确认），由投喂按钮触发
-//   • 「管理文章」弹窗（管理员 / 作者）：统一收拢
-//     「查看点赞者 / 查看投喂者 / 编辑文章(作者) / 设置可见性(作者) / 删除文章」，
-//     弹窗内按视图切换
+//   • 管理胶囊（管理员 / 作者）提供点赞者、投喂者、编辑、可见性与删除入口，
+//     列表和确认操作仍使用弹窗
 //
 // 由 blog/[id]/page.tsx 挂载。点赞 → POST /api/blogs/:id/like；投喂 → POST /api/blogs/:id/feed；
 // 可见性 → PATCH /api/blogs/:id。
 
 import Avatar from '@/app/components/Avatar';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Eye, Fish, Heart, Pencil, Settings, Trash2 } from 'lucide-react';
+import { ChevronLeft, Eye, Fish, Heart, Pencil, Settings, Trash2 } from 'lucide-react';
 // 可见性词汇必须从 ./blog-visibility 取（那个模块零依赖）—— **不能**从 blog-service，
 // 它拖着 prisma，进不了客户端包。BlogForm 同款。
 import { BLOG_VISIBILITIES, VISIBILITY_LABEL } from '@/lib/blog-visibility';
@@ -206,9 +205,25 @@ export default function FeedButton({
     }
   }
 
-  // ── 「管理文章」弹窗（menu 目录 → likers / feeders / visibility / delete 子视图）──
+  // menu 是行内展开态，其余为独立弹窗。
   type ModalKind = 'menu' | 'likers' | 'feeders' | 'visibility' | 'delete' | null;
   const [modal, setModal] = useState<ModalKind>(null);
+  const manageRef = useRef<HTMLDivElement>(null);
+  const manageToggleRef = useRef<HTMLButtonElement>(null);
+
+  function returnToManage() {
+    setModal('menu');
+    requestAnimationFrame(() => manageToggleRef.current?.focus());
+  }
+
+  useEffect(() => {
+    if (modal !== 'menu') return;
+    const onOutside = (e: PointerEvent) => {
+      if (!manageRef.current?.contains(e.target as Node)) setModal(null);
+    };
+    document.addEventListener('pointerdown', onOutside);
+    return () => document.removeEventListener('pointerdown', onOutside);
+  }, [modal]);
 
   // ESC 关闭
   useEffect(() => {
@@ -216,11 +231,12 @@ export default function FeedButton({
       if (e.key === 'Escape') {
         setModal(null);
         setFeedOpen(false);
+        if (modal) manageToggleRef.current?.focus();
       }
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, []);
+  }, [modal]);
 
   // 点赞者列表
   const [likers, setLikers] = useState<LikerRow[]>([]);
@@ -333,7 +349,7 @@ export default function FeedButton({
     if (visBusy) return;
     if (visDraft === visibility) {
       toast('可见性没有变化', 'info');
-      setModal('menu');
+      returnToManage();
       return;
     }
     setVisBusy(true);
@@ -374,61 +390,100 @@ export default function FeedButton({
 
   return (
     <>
-      {/* 读者交互区两行按钮：第一行 点赞/投喂，第二行 返回上页/管理文章 */}
+      {/* 三组等高外壳保持单行；窄屏管理项向右展开后可横向滚动。 */}
       <div className="read-controls" id="read-controls">
-        <div className="read-controls__row">
-          <button
-            id="like-btn"
-            className={`like-btn${liked ? ' liked' : ''}`}
-            onClick={handleLike}
-            disabled={likeBusy}
-            aria-label="点赞"
-          >
-            <span className="icon icon-heart-fill" aria-hidden="true"></span>
-            <span>{liked ? '已点赞' : '点赞'}</span>
-            <span className="like-count-badge numeric" id="like-count">
-              {likes}
-            </span>
+        <div className="read-controls__bar">
+          <button onClick={handleBack} className="read-btn" aria-label="返回上页" title="返回上页">
+            <ChevronLeft aria-hidden="true" />
           </button>
-
-          <button
-            id="feed-fish-btn"
-            className={`fish-btn${fed > 0 ? ' fish-btn--fed' : ''}`}
-            onClick={openFeedModal}
-            disabled={canEdit || (isAuth && fed >= FEED_CAP)}
-            title={canEdit ? '不能给自己的文章投喂' : undefined}
-            aria-label={canEdit ? '收到的投喂' : '投喂小鱼干'}
-          >
-            <span className="icon icon-fish" aria-hidden="true"></span>
-            <span>投喂</span>
-            <span className="fish-count-badge numeric" id="fish-count">
-              {fishCount}
-            </span>
-          </button>
-
-          {/* 收藏夹（黄色五角星）。刻意**不带计数徽标** —— 站内不显示被收藏数。
-              组件自带选择器弹窗；对所有人渲染，档位判断在组件内做。 */}
-          <FavoriteButton
-            blogId={blogId}
-            isAuth={isAuth}
-            isCore={isCore}
-            initialFavorited={initialFavorited}
-          />
-        </div>
-
-        <div className="read-controls__row">
-          <button onClick={handleBack} className="read-btn">
-            <ArrowLeft aria-hidden="true" /> 返回上页
-          </button>
-          {canManage && (
+          <div className="read-controls__row">
             <button
-              id="admin-manage-btn"
-              className="read-btn"
-              onClick={() => setModal('menu')}
-              aria-label="管理文章"
+              id="like-btn"
+              className={`like-btn${liked ? ' liked' : ''}`}
+              onClick={handleLike}
+              disabled={likeBusy}
+              aria-label="点赞"
+              aria-pressed={liked}
+              title={liked ? '已点赞' : '点赞'}
             >
-              <Settings aria-hidden="true" /> 管理文章
+              <span className="icon icon-heart-fill" aria-hidden="true"></span>
+              <span className="like-count-badge numeric" id="like-count">
+                {likes}
+              </span>
             </button>
+
+            <button
+              id="feed-fish-btn"
+              className={`fish-btn${fed > 0 ? ' fish-btn--fed' : ''}`}
+              onClick={openFeedModal}
+              disabled={canEdit || (isAuth && fed >= FEED_CAP)}
+              title={canEdit ? '不能给自己的文章投喂' : '投喂小鱼干'}
+              aria-label={canEdit ? '收到的投喂' : '投喂小鱼干'}
+            >
+              <span className="icon icon-fish" aria-hidden="true"></span>
+              <span className="fish-count-badge numeric" id="fish-count">
+                {fishCount}
+              </span>
+            </button>
+
+            {/* 收藏夹（黄色五角星）。刻意**不带计数徽标** —— 站内不显示被收藏数。
+                组件自带选择器弹窗；对所有人渲染，档位判断在组件内做。 */}
+            <FavoriteButton
+              blogId={blogId}
+              isAuth={isAuth}
+              isCore={isCore}
+              initialFavorited={initialFavorited}
+            />
+          </div>
+
+          {canManage && (
+            <div
+              ref={manageRef}
+              className={`manage-control${modal === 'menu' ? ' is-open' : ''}`}
+              onBlur={(e) => {
+                if (modal === 'menu' && !e.currentTarget.contains(e.relatedTarget)) setModal(null);
+              }}
+            >
+              <button
+                ref={manageToggleRef}
+                id="admin-manage-btn"
+                className="manage-control__toggle"
+                onClick={() => setModal(modal === 'menu' ? null : 'menu')}
+                aria-label="管理文章"
+                title="管理文章"
+                aria-expanded={modal === 'menu'}
+                aria-controls="blog-manage-menu"
+              >
+                <Settings aria-hidden="true" />
+              </button>
+              <div className="manage-control__panel" inert={modal !== 'menu'} aria-hidden={modal !== 'menu'}>
+                <div className="manage-menu" id="blog-manage-menu" role="group" aria-label="文章管理操作">
+                  <button type="button" className="manage-menu__item" onClick={openLikers}>
+                    <Heart aria-hidden="true" /> 点赞者
+                  </button>
+                  <button type="button" className="manage-menu__item" onClick={openFeeders}>
+                    <Fish aria-hidden="true" /> 投喂者
+                  </button>
+                  {canEdit && (
+                    <a href={`/blog/${blogId}/edit`} className="manage-menu__item">
+                      <Pencil aria-hidden="true" /> 编辑
+                    </a>
+                  )}
+                  {/* 编辑与可见性仅作者可用，服务端 PATCH / PUT 也只认作者。 */}
+                  {canEdit && (
+                    <button type="button" className="manage-menu__item" onClick={() => {
+                      setVisDraft(visibility);
+                      setModal('visibility');
+                    }}>
+                      <Eye aria-hidden="true" /> 可见性
+                    </button>
+                  )}
+                  <button type="button" className="manage-menu__item manage-menu__item--danger" onClick={() => setModal('delete')}>
+                    <Trash2 aria-hidden="true" /> 删除
+                  </button>
+                </div>
+              </div>
+            </div>
           )}
         </div>
       </div>
@@ -469,67 +524,6 @@ export default function FeedButton({
           </div>
         </div>
       </div>
-
-      {/* 「管理文章」目录 Modal：收拢 查看点赞者 / 查看投喂者 / 编辑(作者) / 删除 入口 */}
-      {canManage && (
-        <div
-          className={`modal${modal === 'menu' ? ' is-open' : ''}`}
-          id="manageMenuModal"
-          role="dialog"
-          aria-hidden={modal !== 'menu'}
-          onClick={(e) => e.target === e.currentTarget && setModal(null)}
-        >
-          <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">
-                  <Settings aria-hidden="true" style={{ marginRight: '0.5rem' }} />
-                  管理文章
-                </h5>
-                <button type="button" className="btn-close" aria-label="Close" onClick={() => setModal(null)} />
-              </div>
-              <div className="modal-body">
-                <div className="manage-menu">
-                  <button type="button" className="manage-menu__item" onClick={openLikers}>
-                    <Heart aria-hidden="true" /> 查看点赞者
-                  </button>
-                  <button type="button" className="manage-menu__item" onClick={openFeeders}>
-                    <Fish aria-hidden="true" /> 查看投喂者
-                  </button>
-                  {canEdit && (
-                    <a href={`/blog/${blogId}/edit`} className="manage-menu__item">
-                      <Pencil aria-hidden="true" /> 编辑文章
-                    </a>
-                  )}
-                  {/* 可见性入口挂在 canEdit 上，**不是 canManage** —— 管理员改不了别人的
-                      文章（PATCH 与 PUT 都只认作者本人）。别在这里开一个后端不认的入口：
-                      那正是 CLAUDE.md 说的「入口有、门禁却不认」的自相矛盾。 */}
-                  {canEdit && (
-                    <button
-                      type="button"
-                      className="manage-menu__item"
-                      // 每次打开都从**服务端确认过的档位**重取草稿，丢掉上次的残留
-                      onClick={() => {
-                        setVisDraft(visibility);
-                        setModal('visibility');
-                      }}
-                    >
-                      <Eye aria-hidden="true" /> 设置可见性
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    className="manage-menu__item manage-menu__item--danger"
-                    onClick={() => setModal('delete')}
-                  >
-                    <Trash2 aria-hidden="true" /> 删除文章
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* 点赞者列表 Modal */}
       {canManage && (
@@ -733,7 +727,7 @@ export default function FeedButton({
               </div>
               <div className="modal-footer">
                 {/* 取消：回到「管理文章」目录而非直接关闭（与删除弹窗同款） */}
-                <button type="button" className="button button-primary" onClick={() => setModal('menu')}>
+                <button type="button" className="button button-primary" onClick={returnToManage}>
                   取消
                 </button>
                 <button
@@ -787,7 +781,7 @@ export default function FeedButton({
               </div>
               <div className="modal-footer">
                 {/* 取消：回到「管理文章」目录而非直接关闭 */}
-                <button type="button" className="button button-primary" onClick={() => setModal('menu')}>
+                <button type="button" className="button button-primary" onClick={returnToManage}>
                   取消
                 </button>
                 <button

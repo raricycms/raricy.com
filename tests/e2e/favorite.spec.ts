@@ -42,8 +42,8 @@ test('收藏一篇博客：星标变「已收藏」，且按钮上没有计数�
   await page.goto(`/blog/${blogId}`);
   const btn = page.locator('#favorite-btn');
   await expect(btn).toBeVisible();
-  await expect(btn).toContainText('收藏');
-  await expect(btn).not.toContainText('已收藏');
+  await expect(btn).toHaveAttribute('aria-label', '收藏');
+  await expect(btn).toHaveAttribute('aria-pressed', 'false');
   // ★ 需求：站内不显示一篇文章的被收藏数 —— 按钮上不许有计数徽标
   await expect(btn.locator('.like-count-badge, .fish-count-badge')).toHaveCount(0);
 
@@ -54,7 +54,7 @@ test('收藏一篇博客：星标变「已收藏」，且按钮上没有计数�
   await modal.locator('.favorite-picker__input').fill('我的私藏');
   await modal.getByRole('button', { name: '创建私密收藏夹' }).click();
 
-  await expect(btn).toContainText('已收藏', { timeout: 15_000 });
+  await expect(btn).toHaveAttribute('aria-pressed', 'true', { timeout: 15_000 });
 
   // 关掉弹窗再看一眼按钮：仍然没有计数徽标（收藏后也不许冒出来）
   await page.keyboard.press('Escape');
@@ -62,7 +62,7 @@ test('收藏一篇博客：星标变「已收藏」，且按钮上没有计数�
 
   // 刷新后状态保持（说明是真写进库了，不是前端自作主张）
   await page.reload();
-  await expect(page.locator('#favorite-btn')).toContainText('已收藏');
+  await expect(page.locator('#favorite-btn')).toHaveAttribute('aria-label', '已收藏');
 });
 
 test('私密收藏夹：页面上**一个 ID 都不出现**，也没有二维码入口', async ({ page }) => {

@@ -78,16 +78,7 @@ test('详情页：点赞 / 投喂 / 收藏 三颗在同一行，且标签不折�
   expect(info.sameRow, `三颗按钮没落在同一行（宽度 ${info.widths.join(' / ')}）`).toBe(true);
   expect(info.wrapped, `按钮标签折行了：${info.wrapped.join('、')}`).toEqual([]);
 
-  // ★ 窄屏专属契约：三颗**等宽**平分。桌面端刻意不等宽（跟随各自内容宽度）。
-  //   窄屏没有下限兜底了 —— 文字标签隐藏后内容只剩约 34px，320px 档也塞得下。
-  const vw = page.viewportSize()?.width ?? 0;
-  if (vw >= 360 && vw <= 768) {
-    const [a, b, c] = info.widths;
-    expect(
-      Math.max(a, b, c) - Math.min(a, b, c),
-      `${vw}px 下三颗应当等宽，实际 ${info.widths.join(' / ')}`
-    ).toBeLessThan(2);
-  }
+  expect(info.count).toBe(3);
 });
 
 /** 三颗按钮的渲染几何 + 内容构成（窄屏那条用例用）。 */
@@ -112,14 +103,11 @@ async function readActions(page: import('@playwright/test').Page) {
     });
 }
 
-test('详情页：窄屏只留图标与计数，且三颗高度与桌面端一致', async ({ page }) => {
+test('详情页：各视口只留图标与计数，三颗尺寸跨断点一致', async ({ page }) => {
   await registerFreshUser(page, { core: true });
   const blogId = await createBlog(page, `窄屏操作区 ${uniqueTag()}`);
 
-  // ★ 先定视口、再导航 ★ 三颗都带 `transition: all 0.3s ease`，而 padding / gap /
-  //   flex 都在过渡属性里 —— 先加载再改视口，量到的是过渡**起点**的值（桌面端的），
-  //   于是「窄屏是不是变矮了」永远量不出来。同文件下面那条星标用例踩的是同一个坑，
-  //   只是那边是颜色、这边是几何。
+  // 先定视口再导航，让两档分别完成首次排版后再量几何。
   async function at(width: number) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto(`/blog/${blogId}`);
@@ -131,16 +119,15 @@ test('详情页：窄屏只留图标与计数，且三颗高度与桌面端一�
   const desk = await at(800);
   const mob = await at(390);
 
-  // 桌面端：三颗都带文字标签
-  expect(desk.map((b) => b.labelShown), '桌面端不该隐藏文字标签').toEqual([true, true, true]);
+  // 所有视口都只保留图标与数字。
+  expect(desk.map((b) => b.labelShown)).toEqual([false, false, false]);
   // 窄屏：标签全隐藏，只剩图标 + 计数（收藏那颗本来就没有计数）
   expect(mob.map((b) => b.labelShown), '窄屏应当只留图标与计数').toEqual([false, false, false]);
   expect(mob[0].count, '窄屏点赞的计数该还在').not.toBe('');
   expect(mob[1].count, '窄屏投喂的计数该还在').not.toBe('');
   expect(mob[2].count, '收藏本来就没有计数').toBe('');
 
-  // ★ 用户报的 bug：这三颗的高度在 768px 前后会变。高度由 _blog.scss 的
-  //   min-height: 44px 钉死（桌面端 44.31 / 44.00 的零头是计数徽标撑的）。
+  // 胶囊内三颗统一为 40px 高，不随断点缩放。
   mob.forEach((b, i) => {
     expect(
       Math.abs(b.h - desk[i].h),
@@ -148,9 +135,7 @@ test('详情页：窄屏只留图标与计数，且三颗高度与桌面端一�
     ).toBeLessThan(1);
   });
 
-  // 窄屏三颗等宽平分（与上一条用例同一契约，这里在 390px 上再钉一次）
-  const ws = mob.map((b) => b.w);
-  expect(Math.max(...ws) - Math.min(...ws), `窄屏三颗应当等宽，实际 ${ws.join(' / ')}`).toBeLessThan(2);
+  expect(mob.map(b => b.w)).toEqual(desk.map(b => b.w));
 });
 
 test('详情页：星标未收藏时不亮，收藏后才变黄', async ({ page }) => {
@@ -180,7 +165,7 @@ test('详情页：星标未收藏时不亮，收藏后才变黄', async ({ page 
       .evaluate((el) => getComputedStyle(el).backgroundColor);
 
   const btn = page.locator('#favorite-btn');
-  await expect(btn).toContainText('收藏');
+  await expect(btn).toHaveAttribute('aria-label', '收藏');
   // ★ 需求：未收藏时星标**不亮**（跟着文字走 currentColor，与心形/小鱼同机制）
   expect(await iconBg(), '未收藏时星标就已经亮着了').toBe(colors.muted);
 
@@ -190,15 +175,53 @@ test('详情页：星标未收藏时不亮，收藏后才变黄', async ({ page 
   await expect(modal).toBeVisible();
   await modal.locator('.favorite-picker__input').fill(`星标夹 ${uniqueTag()}`);
   await modal.getByRole('button', { name: '创建私密收藏夹' }).click();
-  await expect(btn).toContainText('已收藏', { timeout: 15_000 });
+  await expect(btn).toHaveAttribute('aria-pressed', 'true', { timeout: 15_000 });
 
   // 收藏后才亮成黄色。
-  // ★ 必须轮询，不能读一次 ★ `.favorite-btn` 带 `transition: all 0.3s ease`，
+  // ★ 必须轮询，不能读一次 ★ `.favorite-btn` 带颜色过渡，
   // 类名一挂上动画就开始了 —— 立刻 getComputedStyle 拿到的是**过渡中间值**
   // （实测 rgb(105,119,134)，从灰到黄刚起步），断言会莫名其妙地红。
   await expect
     .poll(iconBg, { message: '已收藏了，星标却没变黄', timeout: 5_000 })
     .toBe(colors.star);
+});
+
+test('操作区：320px 起三组等高同行，管理向右展开可滚动，失焦收起', async ({ page }, testInfo) => {
+  await registerFreshUser(page, { core: true });
+  const blogId = await createBlog(page, `胶囊几何 ${uniqueTag()}`);
+  for (const width of [320, 390, 1000]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(`/blog/${blogId}`);
+    const controls = page.locator('#read-controls');
+    const toggle = controls.locator('#admin-manage-btn');
+    await toggle.scrollIntoViewIfNeeded();
+    const group = controls.locator('.manage-control');
+    const closed = (await group.boundingBox())!;
+    expect(closed.width).toBe(48);
+    const boxes = await Promise.all([
+      controls.locator('.read-controls__bar > .read-btn').boundingBox(),
+      controls.locator('.read-controls__row').boundingBox(), group.boundingBox(),
+    ]);
+    expect(boxes.every(b => b && b.height === 48 && Math.abs(b.y - closed.y) < 1)).toBe(true);
+    const before = (await toggle.boundingBox())!;
+    if (width === 1000) await controls.screenshot({ path: testInfo.outputPath('controls-idle.png') });
+    await toggle.click();
+    await expect.poll(async () => (await group.boundingBox())!.width).toBeGreaterThan(400);
+    const after = (await toggle.boundingBox())!;
+    expect(after.x).toBeCloseTo(before.x, 0);
+    expect(after.y).toBeCloseTo(before.y, 0);
+    if (width === 1000) await controls.screenshot({ path: testInfo.outputPath('controls-open.png') });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    // 窄屏的最后一项必须能滚动到并打开，不能只是留在被裁掉的 DOM 里。
+    await controls.getByRole('button', { name: '删除', exact: true }).click();
+    await expect(page.locator('#deleteConfirmModal.is-open')).toBeVisible();
+    await page.locator('#deleteConfirmModal').getByRole('button', { name: '取消', exact: true }).click();
+    await expect(toggle).toBeFocused();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await controls.getByRole('button', { name: '返回上页', exact: true }).focus();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await expect.poll(async () => (await group.boundingBox())!.width).toBe(48);
+  }
 });
 
 test('收藏选择器：名称独占一行，两颗创建按钮并排且等宽、标签不折行', async ({ page }) => {

@@ -5,6 +5,8 @@
  *   · .favorite-embed —— 正文里 `[@六位ID]` 展开出来的收藏夹卡片
  */
 
+@use '../abstracts/mixins' as m;
+
 /* ── 详情页的收藏按钮（参照 .like-btn / .fish-btn 的 pill 形态）─────────────
  * ⚠️ 星标**未收藏时不亮**：走 .icon 的 `background-color: currentColor`（与心形 /
  * 小鱼同一个机制）—— 未收藏时跟着文字是灰的，hover 与已收藏才变黄。
@@ -15,28 +17,11 @@
  * 另外这按钮**没有计数徽标**（与点赞/投喂刻意不同）：站内不显示一篇文章的被收藏数，
  * 因为收藏夹可以复制，那个数字既无意义又会让作者以为「有人收藏了我的文章」。 */
 .favorite-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  background: var(--color-text-tertiary);
+  @include m.btn-primary;
+  --color-brand-primary: var(--color-star-primary);
+  --color-brand-secondary: var(--color-star-secondary);
+  background: transparent;
   color: var(--color-text-secondary);
-  padding: 10px 16px;
-  border-radius: 999px;
-  border: none;
-  font-weight: bold;
-  font-size: 16px;
-  transition: all 0.3s ease;
-  cursor: pointer;
-
-  &:hover {
-    background: var(--color-star-secondary);
-    color: var(--color-star-primary);
-  }
-
-  &:disabled {
-    opacity: 0.7;
-    cursor: not-allowed;
-  }
 }
 
 .favorite-btn.favorited {

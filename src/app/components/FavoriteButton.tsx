@@ -174,9 +174,10 @@ export default function FavoriteButton({ blogId, isAuth, isCore, initialFavorite
         className={`favorite-btn${favorited ? ' favorited' : ''}`}
         onClick={openPicker}
         aria-label={favorited ? '已收藏' : '收藏'}
+        aria-pressed={favorited}
+        title={favorited ? '已收藏' : '收藏'}
       >
         <span className="icon icon-star-fill" aria-hidden="true"></span>
-        <span>{favorited ? '已收藏' : '收藏'}</span>
       </button>
 
       <div

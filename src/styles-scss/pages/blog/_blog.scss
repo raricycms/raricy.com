@@ -361,129 +361,192 @@ a {
 
 
 .read-controls {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 12px; /* 行与行之间的间距 */
+    overflow-x: auto;
     margin: 30px auto 40px;
-    max-width: 700px;
-    padding: 0 20px;
+    max-width: 860px;
+    padding: 4px 0;
 
-    /* 单行内部：按钮并排居中，窄屏自动换行 */
-    &__row {
+    // 从左侧固定起点向右展开；窄屏只滚动这一条，不撑宽正文或整个页面。
+    &__bar {
         display: flex;
+        width: max-content;
         align-items: center;
         justify-content: center;
-        gap: 16px;
-        flex-wrap: wrap;
+        gap: 6px;
+    }
+
+    &__row {
+        display: flex;
+        flex: none;
+        align-items: center;
+        gap: 4px;
+        height: 48px;
+        padding: 4px;
+        border-radius: 24px;
+        background: var(--color-background-content);
+        box-sizing: border-box;
+    }
+
+    &__row .like-btn,
+    &__row .fish-btn,
+    &__row .favorite-btn {
+        display: inline-flex;
+        flex: none;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        height: 40px;
+        min-width: 60px;
+        padding: 0 10px;
+        font: inherit;
+        border-radius: 20px;
+
+        .icon {
+            width: 20px;
+            height: 20px;
+            flex: none;
+        }
+    }
+
+    &__row .favorite-btn {
+        min-width: 40px;
+        width: 40px;
+        padding: 0;
+    }
+
+    &__bar > .read-btn {
+        width: 48px;
+        min-width: 48px;
+        height: 48px;
+        padding: 0;
+        border-radius: 50%;
+        flex: none;
+
+        svg { width: 20px; height: 20px; }
+    }
+
+    button:focus-visible,
+    a:focus-visible {
+        outline: 2px solid currentColor;
+        outline-offset: -3px;
     }
 }
 
-/* .read-btn 的唯一定义在本文件靠后处（归「最高级」档），此处原有的一套
-   写死 #2c3e50 / #34495e 的旧配色已被它整体覆盖 —— 是死代码，且留着会让人
-   以为改这里有效。已删。 */
+.manage-control {
+    display: inline-grid;
+    grid-template-columns: 48px 0fr;
+    flex: none;
+    height: 48px;
+    border-radius: 24px;
+    background: var(--color-background-content);
+    transition: grid-template-columns .42s cubic-bezier(.22, 1, .36, 1);
 
-/* ── 点赞 / 投喂 / 收藏 三颗的高度基准 ──────────────────────────────────────
-   桌面端它们由内容撑出，且**三颗并不一样高**：点赞 / 投喂 ≈ 44.3px（计数徽标
-   比文字行高），收藏 41.0px（没有徽标）。窄屏换成竖排后内容更高，两边各写各的
-   高度就会跳 —— 用户报的「768px 前后这三颗的高度会变」正是它。
-   钉在桌面端那个数上（44.3 取整 44px）并三颗共用：断点前后一致，顺带把同一行
-   里 44.3 / 41.0 那 3.3px 的差也抹平了 —— 并排的三颗本就该一样高。
-   ⚠️ 改桌面端的上下内边距或字号时，这个数要跟着复核（下面窄屏的竖排内容也一样）。 */
-.read-controls__row .like-btn,
-.read-controls__row .fish-btn,
-.read-controls__row .favorite-btn {
-    min-height: 44px;
-}
-
-/* 「管理文章」弹窗目录项：整行胶囊，危险项用红色语义 */
-.manage-menu {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-
-    &__item {
-        display: inline-flex;
+    &__toggle {
+        @include m.btn-secondary;
+        // 管理开关始终走灰色系，菜单项仍保留品牌蓝与删除红。
+        --color-brand-primary: var(--color-text-secondary);
+        --color-brand-secondary: var(--color-text-tertiary);
+        display: flex;
         align-items: center;
         justify-content: center;
-        gap: 8px;
-        width: 100%;
-        padding: 12px 16px;
-        border: none;
-        border-radius: 999px;
-        background: var(--color-brand-secondary);
-        color: var(--color-brand-primary);
-        font-weight: bold;
-        font-size: 1rem;
-        font-family: inherit;
-        text-align: center;
-        text-decoration: none;
-        cursor: pointer;
-        box-sizing: border-box;
-        transition: all 0.3s ease;
+        width: 48px;
+        height: 48px;
+        padding: 0;
+        border-radius: 50%;
 
-        &:hover {
-            background: var(--color-brand-primary);
-            color: #fff;
+        svg {
+            width: 20px;
+            height: 20px;
+            transition: transform .42s cubic-bezier(.22, 1, .36, 1);
+        }
+    }
+
+    &__panel {
+        min-width: 0;
+        overflow: hidden;
+        visibility: hidden;
+        transition: visibility 0s .42s;
+    }
+
+    &.is-open {
+        grid-template-columns: 48px 1fr;
+
+        .manage-control__panel {
+            visibility: visible;
+            transition-delay: 0s;
         }
 
-        // 删除文章：红色语义（与删除确认弹窗的红色按钮一致）
-        &--danger {
-            background: var(--color-warning-secondary);
-            color: var(--color-warning-primary);
+        .manage-control__toggle svg { transform: rotate(180deg); }
 
-            &:hover {
-                background: var(--color-warning-primary);
-                color: #fff;
+        .manage-menu__item {
+            opacity: 1;
+            transform: translateX(0);
+
+            @for $i from 1 through 5 {
+                &:nth-child(#{$i}) { transition-delay: 55ms + ($i - 1) * 28ms; }
             }
         }
     }
 }
 
-
-
-/* 点赞按钮样式 */
-.like-btn {
-    display: inline-flex;
+.manage-menu {
+    display: flex;
     align-items: center;
-    gap: 8px;
-    background: var(--color-text-tertiary);
-    color: var(--color-text-secondary);
-    padding: 10px 16px;
-    border-radius: 999px;
-    border: none;
-    font-weight: bold;
-    font-size: 16px;
-    transition: all 0.3s ease;
-    cursor: pointer;
-    &:hover {
-        background: var(--color-warning-secondary);
-        color: var(--color-warning-primary);
-        .like-count-badge {
-            background: var(--color-warning-primary);
-            color: #fff;
+    width: max-content;
+    height: 48px;
+    gap: 4px;
+    padding: 4px 4px 4px 0;
+    box-sizing: border-box;
+
+    &__item {
+        @include m.btn-primary;
+        display: inline-flex;
+        flex: none;
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
+        height: 40px;
+        padding: 0 12px;
+        border-radius: 20px;
+        font-size: .875rem;
+        font-family: inherit;
+        text-decoration: none;
+        white-space: nowrap;
+        opacity: 0;
+        transform: translateX(-8px);
+        transition: color .25s ease, background-color .25s ease, filter .15s ease,
+                    opacity .18s ease, transform .28s cubic-bezier(.22, 1, .36, 1);
+
+        svg { width: 18px; height: 18px; }
+
+        &--danger {
+            --color-brand-primary: var(--color-warning-primary);
+            --color-brand-secondary: var(--color-warning-secondary);
         }
     }
 }
 
-.like-btn:disabled {
-    opacity: 0.7;
-    cursor: not-allowed;
+@media (prefers-reduced-motion: reduce) {
+    .manage-control,
+    .manage-control__panel,
+    .manage-control__toggle svg,
+    .manage-menu__item {
+        transition: none;
+    }
 }
 
-.like-btn .bi {
-    font-size: 1.1rem;
+.like-btn {
+    @include m.btn-primary;
+    --color-brand-primary: var(--color-warning-primary);
+    --color-brand-secondary: var(--color-warning-secondary);
+    background: transparent;
+    color: var(--color-text-secondary);
 }
 
-.like-count-badge {
-    background: var(--color-text-secondary);
-    color: #fff;
+.like-count-badge,
+.fish-count-badge {
     font-weight: bold;
-    padding: 4px 8px;
-    border-radius: 999px;
-    font-weight: bold;
-    font-size: 0.85rem;
+    font-size: .85rem;
     line-height: 1.2;
 }
 
@@ -492,53 +555,15 @@ a {
     color: var(--color-warning-primary);
 }
 
-.like-btn.liked .like-count-badge {
-    background: var(--color-warning-primary);
-    color: #fff;
-}
-
 /* 投喂按钮样式（参照点赞按钮）
    ⚠️ 亮起来的颜色是**品牌蓝**，不是绿色。小鱼干的主题色全站就是 `--color-brand-*`
    —— /blog 列表卡上的 .blog-fish 胶囊（_menu.scss）与投喂弹窗（_fish.scss 的
    .feed-modal__*）都走这一支。曾经这里是绿的（在「小鱼干改蓝」那次只改了列表页），
    于是同一篇小鱼干在列表页是蓝、点进详情页变成绿。改回绿色之前先看一眼那两处。 */
 .fish-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    background: var(--color-text-tertiary);
+    @include m.btn-primary;
+    background: transparent;
     color: var(--color-text-secondary);
-    padding: 10px 16px;
-    border-radius: 999px;
-    border: none;
-    font-weight: bold;
-    font-size: 16px;
-    transition: all 0.3s ease;
-    cursor: pointer;
-
-    &:hover {
-        background: var(--color-brand-secondary);
-        color: var(--color-brand-primary);
-        .fish-count-badge {
-            background: var(--color-brand-primary);
-            color: #fff;
-        }
-    }
-
-    &:disabled {
-        opacity: 0.7;
-        cursor: not-allowed;
-    }
-}
-
-.fish-count-badge {
-    background: var(--color-text-secondary);
-    color: #fff;
-    font-weight: bold;
-    padding: 4px 8px;
-    border-radius: 999px;
-    font-size: 0.85rem;
-    line-height: 1.2;
 }
 
 /* 「我投喂过」那一档：同上面两处一样走品牌蓝（见 .fish-btn 上方那条注释）。
@@ -546,11 +571,6 @@ a {
 .fish-btn--fed {
     background: var(--color-brand-secondary);
     color: var(--color-brand-primary);
-
-    .fish-count-badge {
-        background: var(--color-brand-primary);
-        color: #fff;
-    }
 }
 
 
@@ -936,91 +956,6 @@ a {
     .blog-detail {
         margin: 24px auto 40px;
     }
-    .read-controls {
-        padding: 0 10px;
-        margin: 20px auto 30px;
-        gap: 12px;
-    }
-
-    /* ── 窄屏：点赞 / 投喂 / 收藏 变成三颗圆钮，计数落在圆钮下方居中 ──
-       不许换行（原样 flex-wrap: wrap + 16px 间距 + 16px 字号在 390px 上放不下第三颗，
-       收藏被挤到第二行 —— 看起来像次要操作，而它与点赞/投喂并列）。
-       三颗定宽 44px 而不是平分轨道宽度：圆钮必须正圆，宽度就得等于高度。
-       横向由 space-evenly 摊开 —— 三颗仍是「并列」的一排，只是各自收成一个圆，
-       中间留白而不是像原来那样被拉成三条等宽长条。
-
-       内容改竖排：**文字标签隐藏，计数挪到图标正下方居中**，图标放大一档
-       （1rem → 1.25rem）。图标正是圆钮的正中，计数则在**圆钮外面**下方 ——
-       见下面那条绝对定位的说明。
-
-       ⚠️ 高度**不在这里调**：由上面的 min-height: 44px 钉死（= 桌面端高度），
-       这里再补一个 height: 44px 把圆的正圆坐实。原来这里写的是
-       `padding: 8px 6px; font-size: .85rem` 那套整体缩放，
-       那正是「768px 前后这三颗会变矮」的原因，已删。 */
-    .read-controls__row {
-        width: 100%;
-        max-width: 24rem;
-        flex-wrap: nowrap;
-        justify-content: space-evenly;
-        gap: 6px;
-        /* 给圆钮下方那颗数字留位。数字是绝对定位的（不参与布局），
-           不留这一条它会压到下一行「返回上页 / 管理文章」上。
-           20px = 数字的 4px 下移间隙 + 0.85rem 行高（≈13.6px）+ 一点余量。 */
-        padding-bottom: 20px;
-    }
-
-    .read-controls__row .like-btn,
-    .read-controls__row .fish-btn,
-    .read-controls__row .favorite-btn {
-        position: relative;
-        flex: 0 0 44px;
-        width: 44px;
-        height: 44px;
-        padding: 0;
-        /* 44×44 的方盒，50% 就是正圆（原先是 999px 胶囊 —— 在方盒上等价，
-           写 50% 是为了让「这里要的是圆，不是胶囊」一眼看得出来）。 */
-        border-radius: 50%;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-
-        /* 文字标签：窄屏不显示。用 span:not([class]) 选它 —— 计数徽标也是 span，
-           但它带类名，正好被这条排除在外（这正是「只留图标与计数」去掉的那一半）。 */
-        > span:not([class]) {
-            display: none;
-        }
-
-        .icon {
-            width: 1.25rem;
-            height: 1.25rem;
-            flex: none;
-        }
-
-        /* 计数：不再是实底徽标，也不是圆钮里的一行 —— 圆钮只有 44px 见方，
-           数字再挤进去圆就不成圆了。用绝对定位把它拉到圆钮**外面**的正下方居中：
-           DOM 不动（仍是按钮的孩子，点击它照样触发按钮），也不占布局位置，
-           所以按钮自己的高度还是那个 44px，跨断点不跳。
-
-           `+ 4px` 是让数字离圆底留一口气：贴着 `top: 100%` 时数字上沿紧挨圆边，
-           看起来像是圆钮溢出来的。字号 0.7rem → 0.85rem（= 桌面端徽标字号），
-           顺带把两档的字号也统一了。
-           ⚠️ 这两条一动，`.read-controls__row` 的 `padding-bottom` 必须跟着复核：
-           它要接住「4px 间隙 + 数字行高」，现在 20px。 */
-        .like-count-badge,
-        .fish-count-badge {
-            position: absolute;
-            top: calc(100% + 4px);
-            left: 50%;
-            transform: translateX(-50%);
-            background: none;
-            padding: 0;
-            color: inherit;
-            font-size: 0.85rem;
-            line-height: 1;
-            white-space: nowrap;
-        }
-    }
-
     .read-btn {
         padding: 10px 16px;
         font-size: 0.9rem;
@@ -1088,13 +1023,6 @@ a {
         font-size: 0.9em !important;
     }
 }
-
-/* 此处原有 `@media (max-width: 359px)` 的极窄屏兜底：三颗退回按内容宽度、
- * 允许换行（2+1 两行）。它的全部依据是**文字**的宽度 —— 一颗 = 内边距 12 +
- * 图标 16 + 内间距 6 + 「已点赞」42 + 徽标 33 ≈ 109px，三颗 339px，再加
- * .read-controls 的左右内边距 20px，320px 档确实塞不下。
- * 窄屏改成「图标 + 计数」竖排后，一颗只剩约 34px 宽，三颗在 320px 上也绰绰有余，
- * 这条兜底连同它的前提一并消失，已删。 */
 
 /* 此处原有两大段注释掉的旧令牌表（`--bg` / `--text` / `--box-bg` / `--border-color` …）
    与配套的 `body.dark-mode` 第二套暗色板。那套令牌**从未迁进** base/_root.scss，
