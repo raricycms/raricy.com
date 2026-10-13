@@ -294,7 +294,8 @@ Kumbh Sans；代码块与编辑器继续使用完整的 JetBrains Mono。
 | 新会话弹窗列表 | `.chat-new-item__avatar`（pages/_chat.scss） | 32px |
 | 签到排行榜（含占位） | `.checkin-leaderboard__avatar` / `-placeholder`（pages/_checkin.scss） | 32px |
 | 后台用户卡片 | `.user-card__avatar`（pages/admin/_users.scss） | 28px |
-| 博客列表 / 详情作者 | `.blog-author img`（pages/blog/_menu.scss，博客列表与详情页共用） | 20px |
+| 博客列表作者 | `.blog-author img`（pages/blog/_menu.scss） | 20px |
+| 博客详情作者 | `.read-hero__avatar`（pages/blog/_blog.scss） | 32px |
 | 博客评论作者 | `.comment-author-avatar`（pages/blog/_blog.scss） | 24px |
 | Feed 弹窗名单（点赞 / 动态） | FeedButton.tsx 内联 style（两处） | 32px |
 | 讨论 / 评论正文里的用户名片 | `.rich-user-ref__avatar`（components/_markdown-body.scss） | 1.4em（随正文字号，两条管线基准字号不同） |
@@ -373,7 +374,8 @@ Kumbh Sans；代码块与编辑器继续使用完整的 JetBrains Mono。
   剪贴板与编辑器预览继续使用各自的既有布局。
 - **文章页眉**（`.read-hero`）：左对齐标题、作者与时间一组，以留白衔接正文（桌面 **32px**、
   窄屏 **24px**），不画分隔线。标题采用响应字号与均衡折行，作者与时间可自然换行；
-  作者头像 **40px**，头像与名字共同链接到个人主页。作者链接和时间详情入口至少
+  作者头像 **32px**，作者名字号 **1rem**、时间字号 **0.875rem**，头像与名字共同链接到个人主页。
+  作者链接和时间详情入口至少
   **44px** 高，键盘聚焦有可见轮廓。时间详情用原生
   `<details>`，展开面板沿用主题卡片色与 `--shadow-card-brand`，窄屏限定在 16px 檐沟内。
 - **文章目录时间**（站内 / 公开列表与个人主页）：普通字重与次要文字色，仅显示一枚
