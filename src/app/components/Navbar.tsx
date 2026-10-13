@@ -4,6 +4,7 @@ import { hasAdminRights, isCoreUser } from '@/lib/auth';
 import LogoutLink from './LogoutLink';
 import NavLink from './NavLink';
 import Avatar from './Avatar';
+import { ChevronDown } from 'lucide-react';
 
 // 顶栏 — 站点顶部导航（site-* BEM 类 + 图标 mask 着色）
 // base.js 通过 id (#userDropdownToggle, #userDropdownMenu, #themeToggle, #notificationBadge,
@@ -104,58 +105,60 @@ export default function Navbar({
                   <span className="checkin-badge" id="checkinBadge" style={{ display: 'none' }}></span>
                 </Link>
                 <div className="site-user-dropdown">
-                  <button
-                    className="site-user-dropdown-toggle"
-                    id="userDropdownToggle"
-                    type="button"
-                    aria-haspopup="true"
-                    aria-expanded="false"
-                    aria-controls="userDropdownMenu"
-                  >
-                    <span>{user.username}</span>
-                    <Avatar
-                      userId={user.id}
-                      frameUrl={frameUrl}
-                      alt="avatar"
-                      className="site-user-avatar"
-                    />
-                  </button>
-                  <ul className="site-user-dropdown-menu" role="menu" id="userDropdownMenu" aria-labelledby="userDropdownToggle">
-                    <li role="presentation" className="site-dropdown-header">用户信息</li>
-                    <li role="separator" className="site-dropdown-divider"></li>
-                    <li role="none">
-                      <Link className="site-dropdown-item" role="menuitem" href={`/u/${user.id}`}>
-                        <span className="icon icon-person" style={{ marginRight: '.5rem' }}></span>个人资料
-                      </Link>
-                    </li>
-                    <li role="none">
-                      <Link className="site-dropdown-item" role="menuitem" href="/settings">
-                        <span className="icon icon-gear" style={{ marginRight: '.5rem' }}></span>账号设置
-                      </Link>
-                    </li>
-                    <li role="none">
-                      <Link className="site-dropdown-item" role="menuitem" href="/fish">
-                        <span className="icon icon-fish" style={{ marginRight: '.5rem' }} aria-hidden="true"></span>小鱼干
-                      </Link>
-                    </li>
-                    {/* 「我的收藏夹」原先挂在这里 —— 它是「创建/改名/删除/导出/导入」的
-                        唯一管理页，曾经只能靠手敲 URL 到达。现按站长的要求挪到
-                        `/tool` 的「站务工具」区（与云剪贴板 / 投票箱并列），
-                        那里才是「站内工具」的入口所在，下拉菜单只留账号类入口。
-                        口径不变：**不对档位设条件**（core 以下点了是就地 403），
-                        与顶栏「讨论」同一条口径 —— 入口不跟着藏。 */}
-                    {hasAdminRights(user) && (
-                      <li role="none">
-                        <Link className="site-dropdown-item" role="menuitem" href="/admin">
-                          <span className="icon icon-gear-fill" style={{ marginRight: '.5rem' }}></span>管理面板
-                        </Link>
-                      </li>
-                    )}
-                    <li role="separator" className="site-dropdown-divider"></li>
-                    <li role="none">
-                      <LogoutLink />
-                    </li>
-                  </ul>
+                  <div className="site-user-dropdown-shell">
+                    <button
+                      className="site-user-dropdown-toggle"
+                      id="userDropdownToggle"
+                      type="button"
+                      aria-haspopup="true"
+                      aria-expanded="false"
+                      aria-controls="userDropdownMenu"
+                    >
+                      <span>{user.username}</span>
+                      <Avatar
+                        userId={user.id}
+                        frameUrl={frameUrl}
+                        alt="avatar"
+                        className="site-user-avatar"
+                      />
+                      <ChevronDown className="site-user-dropdown-chevron" aria-hidden="true" />
+                    </button>
+                    <div className="site-user-dropdown-panel" inert>
+                      <ul className="site-user-dropdown-menu" role="menu" id="userDropdownMenu" aria-labelledby="userDropdownToggle">
+                        <li role="none">
+                          <Link className="site-dropdown-item" role="menuitem" href={`/u/${user.id}`}>
+                            <span className="icon icon-person" style={{ marginRight: '.5rem' }}></span>个人资料
+                          </Link>
+                        </li>
+                        <li role="none">
+                          <Link className="site-dropdown-item" role="menuitem" href="/settings">
+                            <span className="icon icon-gear" style={{ marginRight: '.5rem' }}></span>账号设置
+                          </Link>
+                        </li>
+                        <li role="none">
+                          <Link className="site-dropdown-item" role="menuitem" href="/fish">
+                            <span className="icon icon-fish" style={{ marginRight: '.5rem' }} aria-hidden="true"></span>小鱼干
+                          </Link>
+                        </li>
+                        {/* 「我的收藏夹」原先挂在这里 —— 它是「创建/改名/删除/导出/导入」的
+                            唯一管理页，曾经只能靠手敲 URL 到达。现按站长的要求挪到
+                            `/tool` 的「站务工具」区（与云剪贴板 / 投票箱并列），
+                            那里才是「站内工具」的入口所在，下拉菜单只留账号类入口。
+                            口径不变：**不对档位设条件**（core 以下点了是就地 403），
+                            与顶栏「讨论」同一条口径 —— 入口不跟着藏。 */}
+                        {hasAdminRights(user) && (
+                          <li role="none">
+                            <Link className="site-dropdown-item" role="menuitem" href="/admin">
+                              <span className="icon icon-gear-fill" style={{ marginRight: '.5rem' }}></span>管理面板
+                            </Link>
+                          </li>
+                        )}
+                        <li role="none">
+                          <LogoutLink />
+                        </li>
+                      </ul>
+                      </div>
+                  </div>
                 </div>
               </>
             ) : (

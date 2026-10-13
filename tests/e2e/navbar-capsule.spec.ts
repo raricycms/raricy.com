@@ -1,0 +1,38 @@
+import { test, expect } from '@playwright/test';
+import { loginViaApi } from './helpers';
+import { SEED_USERS } from './seed';
+
+test('用户胶囊：仅光晕悬停、原位向下展开、失焦和 ESC 收起', async ({ page, isMobile }) => {
+  await loginViaApi(page, SEED_USERS.admin.username);
+  await page.goto('/');
+  if (isMobile) await page.locator('.site-navbar-toggler').click();
+  const toggle = page.locator('#userDropdownToggle');
+  const shell = page.locator('.site-user-dropdown-shell');
+  const menu = page.locator('#userDropdownMenu');
+  const idle = await toggle.evaluate(el => ({ color: getComputedStyle(el).color, bg: getComputedStyle(el).backgroundColor }));
+  const closed = (await shell.boundingBox())!;
+  await toggle.hover();
+  await expect.poll(() => shell.evaluate(el => getComputedStyle(el).boxShadow)).not.toBe('none');
+  expect(await toggle.evaluate(el => ({ color: getComputedStyle(el).color, bg: getComputedStyle(el).backgroundColor }))).toEqual(idle);
+  await toggle.click();
+  await expect(menu.getByRole('menuitem')).toHaveCount(5);
+  await expect(menu.getByRole('menuitem', { name: '退出登录' })).toBeVisible();
+  await expect.poll(async () => (await shell.boundingBox())!.height).toBeGreaterThan(closed.height + 180);
+  const open = (await shell.boundingBox())!;
+  expect(open.x).toBeCloseTo(closed.x, 0);
+  expect(open.y).toBeCloseTo(closed.y, 0);
+  expect(open.width).toBeCloseTo(closed.width, 0);
+  if (isMobile) await menu.getByRole('menuitem').first().focus();
+  else await toggle.press('Tab');
+  await expect(menu.getByRole('menuitem').first()).toBeFocused();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await page.locator('#themeToggle').focus();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect.poll(async () => (await shell.boundingBox())!.height).toBeCloseTo(closed.height, 0);
+  await toggle.click();
+  if (isMobile) await menu.getByRole('menuitem').first().focus();
+  else await toggle.press('Tab');
+  await page.keyboard.press('Escape');
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(toggle).toBeFocused();
+});

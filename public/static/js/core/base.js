@@ -610,24 +610,28 @@ function initSiteChrome() {
     // 加载的（仅执行一次）。登录流程 router.refresh() 会让 Navbar 从无头像切到
     // 有头像 —— 新插入的 .site-user-dropdown-toggle 没绑过监听器，点击不会展开。
     // 委托到 document 后，无论 toggle 何时插入 DOM 都能响应。
+    function setUserDropdownOpen(dropdown, open) {
+        dropdown.classList.toggle('open', open);
+        const toggle = dropdown.querySelector('.site-user-dropdown-toggle');
+        if (toggle) toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+        const panel = dropdown.querySelector('.site-user-dropdown-panel');
+        // 收起动画仍可见，但里面的链接立即退出焦点序列，不能点到正在消失的按钮。
+        if (panel) panel.inert = !open;
+    }
+
     document.addEventListener('click', function (e) {
         // 1) 点中 toggle：切 .open，然后 return（不触发后续"外部关闭"）
         const toggle = e.target.closest && e.target.closest('.site-user-dropdown-toggle');
         if (toggle) {
             const dropdown = toggle.closest('.site-user-dropdown');
             if (dropdown) {
-                dropdown.classList.toggle('open');
-                toggle.setAttribute('aria-expanded', dropdown.classList.contains('open') ? 'true' : 'false');
+                setUserDropdownOpen(dropdown, !dropdown.classList.contains('open'));
             }
             return;
         }
         // 2) 点击页面其它位置：关闭所有已展开的头像下拉
         document.querySelectorAll('.site-user-dropdown.open').forEach(function (d) {
-            if (!d.contains(e.target)) {
-                d.classList.remove('open');
-                const t = d.querySelector('.site-user-dropdown-toggle');
-                if (t) t.setAttribute('aria-expanded', 'false');
-            }
+            if (!d.contains(e.target) || e.target.closest('.site-dropdown-item')) setUserDropdownOpen(d, false);
         });
         // 3) 移动端：点非 navbar 区域收起 navbar
         if (isMobile() && siteNavbar && !siteNavbar.contains(e.target)) {
@@ -635,17 +639,22 @@ function initSiteChrome() {
         }
     }, { signal });
 
+    document.addEventListener('focusout', function (e) {
+        const dropdown = e.target.closest && e.target.closest('.site-user-dropdown.open');
+        if (dropdown && !dropdown.contains(e.relatedTarget)) setUserDropdownOpen(dropdown, false);
+    }, { signal });
+
     // ESC 关闭移动端 navbar / 桌面端下拉菜单
     document.addEventListener('keydown', function (e) {
         if (e.key !== 'Escape') return;
-        if (isMobile()) {
-            closeNavbar();
-        }
-        document.querySelectorAll('.site-user-dropdown.open').forEach(function (d) {
-            d.classList.remove('open');
+        const dropdowns = document.querySelectorAll('.site-user-dropdown.open');
+        dropdowns.forEach(function (d) {
             const t = d.querySelector('.site-user-dropdown-toggle');
-            if (t) t.setAttribute('aria-expanded', 'false');
+            setUserDropdownOpen(d, false);
+            if (t && d.contains(document.activeElement)) t.focus();
         });
+        // 先收起内层胶囊；再按一次 ESC 才关闭移动端导航，避免把焦点放进隐藏区。
+        if (!dropdowns.length && isMobile()) closeNavbar();
     }, { signal });
 
     // 移动端：点导航链接后收起 navbar。
@@ -660,7 +669,7 @@ function initSiteChrome() {
                 closeNavbar();
                 // 用户下拉菜单项也是 <a>：导航时连下拉一并收起，避免 .open 跨页残留
                 const dd = document.querySelector('.site-user-dropdown.open');
-                if (dd) dd.classList.remove('open');
+                if (dd) setUserDropdownOpen(dd, false);
             }
         }, { signal });
     }

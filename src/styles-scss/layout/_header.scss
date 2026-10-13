@@ -190,7 +190,25 @@ a {
 }
 
 .site-user-dropdown { 
-  position: relative; 
+  position: relative;
+  flex: none;
+  height: 48px;
+  min-width: 160px;
+
+  &-shell {
+    position: relative;
+    background: var(--color-background-card);
+    border-radius: 24px;
+    overflow: hidden;
+    transition: box-shadow .25s ease;
+  }
+
+  &:hover &-shell,
+  &:focus-within &-shell,
+  &.open &-shell {
+    box-shadow: var(--shadow-card-brand);
+  }
+
   &-toggle {
     background: transparent;
     border: 0;
@@ -198,53 +216,71 @@ a {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    padding: 8px 15px;
+    width: 100%;
+    height: 48px;
+    padding: 8px 14px;
     border-radius: 999px;
     font-size: 1rem;
     cursor: pointer;
-    transition: all 0.3s ease; 
+    white-space: nowrap;
 
-    &:hover { 
-      background: var(--color-brand-secondary); 
-      color: var(--color-brand-primary);
+    > span:first-child {
+      margin-right: auto;
     }
+  }
 
-    &::after {
-      content: '';
-      display: inline-block;
-      margin-left: 6px;
-      width: 0;
-      height: 0;
-      border-left: 5px solid transparent;
-      border-right: 5px solid transparent;
-      border-top: 6px solid var(--color-text-primary);
-      transition: all 0.3s ease;
-    }
+  &-chevron {
+    width: 18px;
+    height: 18px;
+    flex: none;
+    color: var(--color-text-primary);
+    transition: transform .42s cubic-bezier(.22, 1, .36, 1);
+  }
+
+  // 固定顶栏只占第一行的高度；同一个外壳在其下延伸，避免挤动整条导航。
+  &-panel {
+    display: grid;
+    grid-template-rows: 0fr;
+    visibility: hidden;
+    transition: grid-template-rows .42s cubic-bezier(.22, 1, .36, 1),
+                visibility 0s .42s;
   }
 
   &-menu {
-    position: absolute;
-    top: calc(100% + 6px);
-    right: 0;
-    background: var(--color-background-card);
-    // border: 1px solid #dee2e6;
-    border-radius: 15px;
-    box-shadow: var(--shadow-card-brand);
-    min-width: 200px;
-    padding: 0.5rem 0;
-    display: none;
-    z-index: 2000;
+    min-height: 0;
+    overflow: hidden;
     list-style: none;
     margin: 0;
-    
+    padding: 0;
+
+    li {
+      padding: 0 8px 5px;
+      opacity: 0;
+      transform: translateY(-8px);
+      transition: opacity .18s ease, transform .28s cubic-bezier(.22, 1, .36, 1);
+
+      &:last-child { padding-bottom: 8px; }
+    }
   }
 
   &.open {
-    .site-user-dropdown-menu { 
-      display: block; 
+    .site-user-dropdown-panel {
+      grid-template-rows: 1fr;
+      visibility: visible;
+      transition-delay: 0s;
     }
-    .site-user-dropdown-toggle::after { 
-      transform: rotate(180deg); 
+
+    .site-user-dropdown-menu li {
+      opacity: 1;
+      transform: translateY(0);
+
+      @for $i from 1 through 5 {
+        &:nth-child(#{$i}) { transition-delay: 55ms + ($i - 1) * 28ms; }
+      }
+    }
+
+    .site-user-dropdown-chevron {
+      transform: rotate(180deg);
     }
   }
 }
@@ -268,39 +304,40 @@ a {
 }
 
 .site-dropdown {
-  
-  &-header { 
-    padding: 0.5rem 1rem; 
-    font-size: 1.2rem; 
-    color: var(--color-text-primary); 
-    font-weight: bold; 
-  }
-
-  &-divider { 
-    height: 2px; 
-    background: var(--color-text-tertiary); 
-    margin: 0.5rem 0; 
-  }
-
   &-item { 
-    display: block; 
-    padding: 0.5rem 1rem; 
-    color: var(--color-text-primary); 
+    @include m.btn-secondary;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    min-height: 40px;
+    padding: 8px 14px;
+    background-color: var(--color-background-card);
+    color: var(--color-brand-primary);
+    font-size: .9rem;
+    white-space: nowrap;
     text-decoration: none; 
-    transition: all 0.3s ease;
-
-    &:hover { 
-      background: var(--color-brand-secondary); 
-      color: var(--color-brand-primary)
-    }
 
     &.site-text-danger { 
       color: var(--color-warning-primary); 
 
-      &:hover { 
-        background: var(--color-warning-secondary); 
+      &:hover:not(:disabled) {
+        background-color: var(--color-warning-secondary);
+        color: var(--color-warning-primary);
+      }
+
+      &:active:not(:disabled) {
+        background-color: var(--color-warning-primary);
+        color: #fff;
       }
     }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .site-user-dropdown-panel,
+  .site-user-dropdown-chevron,
+  .site-user-dropdown-menu li {
+    transition: none;
   }
 }
 

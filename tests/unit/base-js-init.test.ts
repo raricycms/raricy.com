@@ -31,7 +31,9 @@ const NAVBAR_HTML = `
     <button class="site-navbar-toggler" aria-expanded="false"></button>
     <div class="site-user-dropdown">
       <button class="site-user-dropdown-toggle" aria-expanded="false"></button>
-      <ul class="site-user-dropdown-menu"></ul>
+      <div class="site-user-dropdown-panel" inert>
+        <ul class="site-user-dropdown-menu"><li><a class="site-dropdown-item" href="/settings">账号设置</a></li></ul>
+      </div>
     </div>
     <button id="themeToggle"></button>
   </nav>
@@ -97,6 +99,26 @@ describe('回归：base.js 在 DOM 已就绪后加载时，仍须完成初始化
     const after = document.documentElement.getAttribute('data-theme');
     expect(after).not.toBe(before);
     expect(['light', 'dark']).toContain(after);
+  });
+
+  it('头像胶囊：内部转移焦点保持展开，移出收起，ESC 回到触发器', () => {
+    loadBaseJsAfterInteractive();
+    const toggle = document.querySelector('.site-user-dropdown-toggle') as HTMLElement;
+    const panel = document.querySelector('.site-user-dropdown-panel') as HTMLElement;
+    const item = panel.querySelector('a')!;
+    toggle.focus();
+    toggle.click();
+    expect(panel.inert).toBe(false);
+    item.focus();
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    document.getElementById('themeToggle')!.focus();
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(panel.inert).toBe(true);
+    toggle.click();
+    item.focus();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(document.activeElement).toBe(toggle);
   });
 });
 
