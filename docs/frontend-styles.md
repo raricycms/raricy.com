@@ -611,15 +611,21 @@ Kumbh Sans；代码块与编辑器继续使用完整的 JetBrains Mono。
 
 `/blog` 与 `/explore` 共用页头、搜索与分类筛选，读口和权限仍各自独立。
 
-- 页头 `src/app/blog/BlogDirectoryHeading.tsx` 只显示「博客」与原创矢量书页插画。
-  插画沿用首页的品牌色与分面画法，构图改为书本、叶枝与书签；不复制首页山景。
-- `.blog-list`：≥820px 为两列，窄屏一列，容器继续使用全站宽度阶梯。
-  卡片标题、两行摘要、作者与短日期、站内互动计数依次排布；分类只显示末级名称，
-  完整路径收进提示。公开列表继续不渲染计数。骨架用 `.blog-skeleton-grid` 共用列宽，
-  不复用真实文章的 `.blog-item` 类名。
+- 页头 `src/app/blog/BlogDirectoryHeading.tsx` 显示「博客」与用户指定的「分享思考与见解」。
+  `src/app/blog/BlogDirectoryScene.tsx` 绘制展开书页、稿纸与纸飞机，插画融入首屏背景；
+  沿用首页的分面配色，构图不复制山景。桌面鼠标与滚动驱动分层视差，标题与控件保持
+  稳定；触屏只响应滚动，减少动态效果偏好下保持静态。动画收敛、离屏或页面不可见时
+  不继续绘制，无脚本时仍由 SSR 输出完整插画。
+- `.blog-list`：所有宽度均为一行一张卡片，容器继续使用全站宽度阶梯。
+  站内计数恢复原有红色点赞、绿色评论、品牌蓝小鱼干胶囊；桌面在标题右侧，手机在标题
+  下方。摘要、作者与短日期保持原有排列。分类只显示末级名称，完整路径收进提示。
+  公开列表继续不渲染计数。骨架用 `.blog-skeleton-grid` 共用单列几何，不复用真实文章
+  的 `.blog-item` 类名。
 - `src/app/blog/BlogDirectoryToolbar.tsx` 的 `.blog-directory-toolbar` 使用 `position: sticky`
   与 `top: var(--navbar-height)`，接在全站顶栏下方。哨兵的 IntersectionObserver 使用
   `body` 的实际顶内距判定吸顶，包含安全区；吸顶后出现短标题与品牌光晕。
+  搜索、文章范围、分类与排序共用一个首屏面板，哨兵与面板一起压进插画区底部；
+  工具栏仍是页头的兄弟节点，避免 sticky 被首屏容器的底边限制。
 - ≤767px 吸顶时，搜索与创建收成 44px 图标按钮；搜索按钮展开同一份表单。
   字段始终挂载，滚动不会丢掉未提交文字，输入中吸顶保持字段与焦点。
   收拢过渡为 0.2s，`prefers-reduced-motion` 下关闭。
@@ -629,8 +635,8 @@ Kumbh Sans；代码块与编辑器继续使用完整的 JetBrains Mono。
 - 目录链接共用 `src/lib/blog-directory-links.ts`：换分类、清搜索与切文章范围都回第 1 页，
   保留其余条件，尤其保留 `featured=0` 的「只看非精选」。公开目录的搜索提示与 100 字
   上限只涉及标题、作者与简介，不宣称能搜索正文。
-- `.blog-directory-browse` 在正常文档流内排列「全部文章 / 精选」与 `.blog-sort`；
-  不再使用绝对定位的停放带。排序在空结果态也渲染，以便挂载偏好的恢复 effect。
+- 「全部文章 / 精选」、分类与 `.blog-sort` 在工具栏搜索框下方排列；吸顶后文章范围与
+  排序隐藏，保留搜索和分类入口。排序在空结果态与收拢时也保持挂载，以便偏好的恢复 effect。
   排序仍用 `.segmented` 胶囊滑块（§6.8），按钮尺寸由 `.blog-sort .segmented__btn` 给。
   容器 `role="group"`，按钮 `aria-pressed`，**不改为 `role="tab"`**。
 
