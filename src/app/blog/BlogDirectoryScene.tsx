@@ -121,11 +121,6 @@ export default function BlogDirectoryScene() {
         <path d="M296 242c40-2 78 9 112 26m-110-15c39 0 75 11 109 28m75-32c36-20 77-34 119-40m-117 54c37-20 77-32 119-39" fill="none" stroke="var(--directory-art-line)" strokeWidth="2.5" strokeLinecap="round" />
       </g>
       <g className="blog-directory-scene__layer" data-depth="1.25">
-        {/* 翻起的一页承接上方稿纸，书脊保留在 (443, 265)，整幅插画有共同的展开方向。 */}
-        <path d="M443 265C422 209 376 182 309 181c-27 0-51-5-74-18 13 57 28 88 80 94 54 5 95 8 128 8Z" fill="var(--directory-art-paper-light)" />
-        <path d="M235 163c23 13 47 18 74 18 67 1 113 28 134 84-37-36-69-55-125-56-40 0-59-12-83-46Z" fill="var(--directory-art-paper)" />
-        <path d="M443 265C422 209 376 182 309 181" fill="none" stroke="var(--directory-art-line)" strokeWidth="1" opacity="0.5" />
-        <path d="M270 205c45 20 91 4 133 34m-120-18c39 14 71 6 101 23" fill="none" stroke="var(--directory-art-line)" strokeWidth="2.5" strokeLinecap="round" />
         <path d="m210 312 74-19 6 8-76 20-13-1Z" fill="var(--directory-art-cover)" />
         <path d="m210 312 4 9-13-1Z" fill="var(--directory-art-accent)" />
         <path d="m277 295 7-2 6 8-7 2Z" fill="var(--directory-art-paper-light)" />
