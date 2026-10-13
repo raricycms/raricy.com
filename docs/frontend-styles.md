@@ -294,8 +294,7 @@ Kumbh Sans；代码块与编辑器继续使用完整的 JetBrains Mono。
 | 新会话弹窗列表 | `.chat-new-item__avatar`（pages/_chat.scss） | 32px |
 | 签到排行榜（含占位） | `.checkin-leaderboard__avatar` / `-placeholder`（pages/_checkin.scss） | 32px |
 | 后台用户卡片 | `.user-card__avatar`（pages/admin/_users.scss） | 28px |
-| 博客目录作者 | `.blog-author-link .avatar`（pages/blog/_menu.scss） | 24px |
-| 博客详情作者 | `.read-hero__author .avatar`（pages/blog/_blog.scss） | 40px |
+| 博客列表 / 详情作者 | `.blog-author img`（pages/blog/_menu.scss，博客列表与详情页共用） | 20px |
 | 博客评论作者 | `.comment-author-avatar`（pages/blog/_blog.scss） | 24px |
 | Feed 弹窗名单（点赞 / 动态） | FeedButton.tsx 内联 style（两处） | 32px |
 | 讨论 / 评论正文里的用户名片 | `.rich-user-ref__avatar`（components/_markdown-body.scss） | 1.4em（随正文字号，两条管线基准字号不同） |
@@ -409,7 +408,7 @@ Kumbh Sans；代码块与编辑器继续使用完整的 JetBrains Mono。
 | **次级** | `btn-secondary` | 无底色 + `--color-text-secondary` | = 最高级的**空闲**态 | = 最高级的 **hover** 态 |
 | **切页 / 分类** | `btn-tab` | = 次级空闲态 | = 最高级空闲态 | **无变化** |
 
-- 最高级的基准是博客目录的「创建」按钮（`.blog-directory-create`）。统一的是**表面 + 交互**，
+- 最高级的基准是博客首页的「创建」按钮（`.upload-button`）。统一的是**表面 + 交互**，
   不是尺寸 —— 各按钮保留自己的字号与内距。
 - 次级三态递进（越靠近越显眼），所以它不会一上来就和主按钮争。
 - `.button-*` 那一族只差尺寸与档位：`.button-primary`（16px / 10px 16px）、
@@ -421,8 +420,8 @@ Kumbh Sans；代码块与编辑器继续使用完整的 JetBrains Mono。
   不跟主按钮抢视线。
 - 切页档：「当前所在页」常驻最高级空闲态，且**按下不叠加变化** —— 已经在的页面
   再点一下不该闪成实底。当前项挂 `.is-active`（`.active` 作为历史写法一并认，
-  **新代码用 `.is-active`**）。落点：顶栏 `.site-link`、博客筛选面板 `.blog-category-parent` /
-  `.blog-category-option`、页码 `.page-link`、管理页的选中/未选中成对按钮、
+  **新代码用 `.is-active`**）。落点：顶栏 `.site-link`、博客分类栏 `.category-link` /
+  `.sub-category-link`、页码 `.page-link`、管理页的选中/未选中成对按钮、
   工具箱 `.filter-pill`、鱼干流水 `.filter-btn`。
 - **任何一档都不做垂直位移**。hover/按下只改颜色；卡片 hover 也只亮品牌色光晕
   （对齐 `.blog-item`），不 `translateY`。入场动画（`fadeInUp` / toast / 汉堡变形）
@@ -607,35 +606,22 @@ Kumbh Sans；代码块与编辑器继续使用完整的 JetBrains Mono。
 - 发起私聊弹窗 `.chat-new-modal`：搜索框 `.chat-new-search` + 结果项 `.chat-new-item`（头像 / 昵称 / 角色 / 自己标记）。
 - 响应式：`≤900px` 时侧栏变抽屉，`.chat-page--drawer-open` 展开。
 
-### 6.6 博客目录与排序工具栏（`pages/blog/_menu.scss`）
+### 6.6 博客列表排序工具栏（`pages/blog/_menu.scss`）
 
-`/blog` 与 `/explore` 共用页头、搜索与分类筛选，读口和权限仍各自独立。
+`/blog` 列表顶部的「发布时间 / 更新时间」切换（组件 `src/app/blog/BlogSort.tsx`）：
 
-- 页头 `src/app/blog/BlogDirectoryHeading.tsx` 只显示「博客」与原创矢量书页插画。
-  插画沿用首页的品牌色与分面画法，构图改为书本、叶枝与书签；不复制首页山景。
-- `.blog-list`：≥820px 为两列，窄屏一列，容器继续使用全站宽度阶梯。
-  卡片标题、两行摘要、作者与短日期、站内互动计数依次排布；分类只显示末级名称，
-  完整路径收进提示。公开列表继续不渲染计数。骨架用 `.blog-skeleton-grid` 共用列宽，
-  不复用真实文章的 `.blog-item` 类名。
-- `src/app/blog/BlogDirectoryToolbar.tsx` 的 `.blog-directory-toolbar` 使用 `position: sticky`
-  与 `top: var(--navbar-height)`，接在全站顶栏下方。哨兵的 IntersectionObserver 使用
-  `body` 的实际顶内距判定吸顶，包含安全区；吸顶后出现短标题与品牌光晕。
-- ≤767px 吸顶时，搜索与创建收成 44px 图标按钮；搜索按钮展开同一份表单。
-  字段始终挂载，滚动不会丢掉未提交文字，输入中吸顶保持字段与焦点。
-  收拢过渡为 0.2s，`prefers-reduced-motion` 下关闭。
-- 分类收进搜索下方的原生 `<details>`，桌面与手机首帧都收起，无脚本时仍能展开和导航。
-  多组分类在浮层内按真实剩余视口高度限高；点击外部或按 Escape 关闭。
-  当前分类与搜索词显示为可移除标签。
-- 目录链接共用 `src/lib/blog-directory-links.ts`：换分类、清搜索与切文章范围都回第 1 页，
-  保留其余条件，尤其保留 `featured=0` 的「只看非精选」。公开目录的搜索提示与 100 字
-  上限只涉及标题、作者与简介，不宣称能搜索正文。
-- `.blog-directory-browse` 在正常文档流内排列「全部文章 / 精选」与 `.blog-sort`；
-  不再使用绝对定位的停放带。排序在空结果态也渲染，以便挂载偏好的恢复 effect。
-  排序仍用 `.segmented` 胶囊滑块（§6.8），按钮尺寸由 `.blog-sort .segmented__btn` 给。
-  容器 `role="group"`，按钮 `aria-pressed`，**不改为 `role="tab"`**。
+- `.blog-sort`：容器，列表区顶部右对齐一行（`justify-content: flex-end`），**空结果态也渲染**（要挂载客户端恢复 effect）。
+- 它现在是一个**胶囊滑块**（`.segmented`，见 §6.8）—— 切换时滑块有 0.25s 的移动反馈。
+  按钮尺寸写在 `.blog-sort .segmented__btn`，几何与动画来自 `components/_segmented.scss`。
+- 可访问性：容器 `role="group"` + `aria-label`，按钮 `type="button"` + `aria-pressed`。
+  ⚠️ **不要改成 `role="tab"`**：`tests/e2e/blog.spec.ts` 用
+  `getByRole('button', { name: '更新时间' })` 定位，`tab` 角色会覆盖按钮角色，
+  那条用例会直接失配。
 
-响应式与交互由 `tests/e2e/blog-directory-layout.spec.ts` 覆盖桌面、手机及 320px 窄屏；
-搜索、三态筛选、排序偏好与无脚本访问继续由 `tests/e2e/blog.spec.ts` 覆盖。
+> ⚠️ 桌面端（≥992px）`.blog-sort` 是**绝对定位**参与一条「停放带」：hero 的底 padding
+> 10 + `.blog-layout` 的 margin-top 60 拼出停放空间，滑块 `top: -52px` 落在其中。
+> 它**顶部锚定**，变高只会向下长进首篇博客上方那 24px 余量里。**不要为了「重新居中」
+> 把 `top` 往上调** —— 那会撞进 hero 色块（`_menu.scss` 的注释记的正是这个坑）。
 
 ### 6.7 文章详情页读者交互区（`pages/blog/_blog.scss` + `pages/_favorite.scss`）
 
@@ -1128,6 +1114,11 @@ Hero 只保留「开始探索」入口，复用 `btn-primary` 并增加 `backdro
 
 **同名不同义（两处定义指的是两回事）**：
 
+- `pages/admin/_articles.scss` 的 `.current-category`（后台文章表格里的**分类徽章**：
+  `padding` / `radius 20px` / 配 `.is-categorized` 换色）与 `pages/blog/_menu.scss` 的
+  同名类（博客分类栏的**「当前分类」标签**，只写 `margin-top: 12px`）都是根级 0-1-0，
+  互不知情。唯一消费方是 `AdminArticlesManager.tsx`（徽章那份），于是徽章白拿
+  `margin-top: 12px`。另见上面 `.current-category .badge` 那条死规则。
 - `.copy-btn`（`pages/blog/_blog.scss` 根级全局 vs `pages/_story.scss` 在
   `.story-reader__content` 下整套重写）：注入点是 `src/lib/blog-renderer.ts`
   拼的内联 HTML 字符串，所以**任何**用了共享渲染管线的页面都会命中 blog 那份。
