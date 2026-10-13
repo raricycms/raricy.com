@@ -199,7 +199,6 @@ function consumedClasses(): Set<string> {
 
 /** 刻意无样式，且**不需要**有消费者 —— 纯语义包装 / 占位修饰类。 */
 const UNSTYLED: [string, string][] = [
-  ['.badge', '模板兼容标记：外观由同元素的 .algo-badge / 状态色类或内联样式给；目录原先的 .current-category .badge 从未作用于这些消费者，已随旧侧栏移除'],
   ['.chat-msg__reply-text', '纯语义包装：字号/颜色/换行/超长裁剪全部自父级 button.chat-msg__reply 继承'],
   ['.fish-card__body', '纯语义包装：四个子块各自带间距与外观，这层壳不带样式（678f461 主动删掉过它的空规则）'],
   ['.fish-card__link-label', '纯语义包装且是必需的：整条文案要成为 .fish-card__link 的单一子元素（见 _fish.scss 注释）'],

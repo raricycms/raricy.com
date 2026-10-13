@@ -1,8 +1,8 @@
 'use client';
 
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
-import type { FormEvent, Ref } from 'react';
+import type { FormEvent } from 'react';
 
 // 博客搜索表单 — 搜索组的一套类名（search-form / search-field / search-input）
 // 空搜索时拦截，去掉 search 参数并保留其他筛选。
@@ -10,13 +10,14 @@ export default function SearchForm({
   currentSlug,
   featured,
   search,
+  clearHref,
   sort,
   basePath = '/blog',
-  inputRef,
 }: {
   currentSlug: string | null;
-  featured: '1' | '0' | null;
+  featured: boolean;
   search: string;
+  clearHref: string;
   /** URL 里显式合法的 sort，非空时随搜索请求带回，保住已选的排序 */
   sort: string | null;
   /**
@@ -28,11 +29,8 @@ export default function SearchForm({
    * 而带词搜索却正常 —— 一个只在清空时才现形、且看起来像「偶发」的 bug。
    */
   basePath?: string;
-  inputRef?: Ref<HTMLInputElement>;
 }) {
   const router = useRouter();
-  const [draft, setDraft] = useState(search);
-  useEffect(() => setDraft(search), [search]);
 
   function onSubmit(e: FormEvent<HTMLFormElement>) {
     const input = e.currentTarget.querySelector<HTMLInputElement>('.search-input');
@@ -40,7 +38,7 @@ export default function SearchForm({
       e.preventDefault();
       const params = new URLSearchParams();
       if (currentSlug) params.set('category', currentSlug);
-      if (featured) params.set('featured', featured);
+      if (featured) params.set('featured', '1');
       if (sort) params.set('sort', sort);
       const s = params.toString();
       router.push(s ? `${basePath}?${s}` : basePath);
@@ -55,25 +53,26 @@ export default function SearchForm({
       onSubmit={onSubmit}
     >
       {currentSlug && <input type="hidden" name="category" value={currentSlug} />}
-      {featured && <input type="hidden" name="featured" value={featured} />}
+      {featured && <input type="hidden" name="featured" value="1" />}
       {sort && <input type="hidden" name="sort" value={sort} />}
       {/* 输入框与按钮同一个定位上下文：按钮绝对定位嵌在胶囊内部最右侧 */}
       <div className="search-field">
         <input
           type="search"
           name="search"
-          ref={inputRef}
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          aria-label="搜索博客"
-          placeholder={basePath === '/explore' ? '搜索标题、作者、简介' : '搜索标题、作者、简介、正文'}
-          maxLength={basePath === '/explore' ? 100 : undefined}
+          defaultValue={search}
+          placeholder="搜索标题、作者、简介、正文..."
           className="search-input"
         />
         <button type="submit" className="search-btn">
           搜索
         </button>
       </div>
+      {search && (
+        <Link href={clearHref} className="search-clear-btn">
+          清除
+        </Link>
+      )}
     </form>
   );
 }

@@ -8,7 +8,7 @@
 //    <img>），那些点会静默退回方角，而没有任何测试会红。
 //
 // 【盒子不设尺寸】尺寸由各站点原来的类给（.site-user-avatar 32px / .profile-hero__avatar
-// 120px / .blog-author-link .avatar 24px …）。这里只提供「定位上下文 + 圆角裁剪 + 不变形」，
+// 120px / .blog-author img 20px …）。这里只提供「定位上下文 + 圆角裁剪 + 不变形」，
 // 一旦这里写死 width/height，博客列表的 20px 作者头像就会被撑成别的尺寸。
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -25,8 +25,10 @@
 
 // 头像位图本身。尺寸与 object-fit 交给各站点的类 —— 这里**不重复设置**。
 //
-// 各站点有的给包装层尺寸，有的给位图尺寸，不能在这里统一覆盖它们的宽高。
-// object-fit 也不共用：头像位图通常要 cover，框贴图要 contain。
+// ⚠️ 为什么必须让位：`.blog-author img` 给的是 20px 写死值，若这里写
+//    `.avatar > img { width: 100% }`（同为 (0,2,1)，靠源码顺序决胜），
+//    博客列表的作者头像就会被撑成父盒宽度 —— 而那是**静默**的版式错乱。
+//    同理不要把 object-fit 搬过来：`.blog-author img` 是 cover，框要的是 contain。
 .avatar > img.avatar__img {
   display: block;
 }
@@ -39,9 +41,9 @@
 // 存在的请求：DevTools 里查得到，e2e 能断言它的 src。
 //
 // 【为什么选择器是 `.avatar > img.avatar__frame`（(0,2,1)）而不是光一个类名】
-// 各站点有多条 `.xxx img { width:100%; height:100%; object-fit: cover }` 的
+// 各站点有六条 `.xxx img { width:100%; height:100%; object-fit: cover }` 的
 // 后代规则（.site-user-avatar / .profile-hero__avatar / .chat-chan__avatar /
-// .chat-main__peer-avatar / .chat-msg__avatar），全是 (0,1,1)。
+// .chat-main__peer-avatar / .chat-msg__avatar / .blog-author），全是 (0,1,1)。
 // 光写 `.avatar__frame`（(0,1,0)）会被它们**压过去**，框会被 cover 裁掉。
 // 加上 `img` 与子选择器到 (0,2,1) 就能确定性胜出，**不依赖 main.scss 的导入顺序**
 //（本文件在 components/ 下，导入在 pages/ 之前 —— 靠顺序决胜太脆）。

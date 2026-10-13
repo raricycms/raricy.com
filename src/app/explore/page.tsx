@@ -9,11 +9,11 @@ import { listPublicBlogs, listPublicCategoryFacets } from '@/lib/blog-service';
 import Avatar from '@/app/components/Avatar';
 import BlogTimestamps from '@/app/components/BlogTimestamps';
 import { categoryFullPath } from '@/lib/format';
-// 目录页头与搜索工具栏与站内 `/blog` 共用实现，数据仍走各自的读口。
+// 侧栏与搜索框与站内 `/blog` 共用同一份实现（两条列表的差别是数据与去处，不是交互）。
 // 它们住在 app/blog/ 下，是因为先有的站内列表；跨路由 import 没问题 ——
 // 这两个文件不是 Next 的特殊文件，不会被当成路由。
-import BlogDirectoryHeading from '@/app/blog/BlogDirectoryHeading';
-import BlogDirectoryToolbar from '@/app/blog/BlogDirectoryToolbar';
+import BlogSidebar from '@/app/blog/BlogSidebar';
+import SearchForm from '@/app/blog/SearchForm';
 
 // 根 layout 读 cookie 取登录态，整棵树本来就是动态的 —— 这里写 revalidate/静态化
 // 都是自欺（它不会生效，只会让下一个人以为这页有缓存）。见「已知风险」。
@@ -113,7 +113,7 @@ export default async function ExplorePage({
     ? null
     : listPublicBlogs({ page, perPage: PER_PAGE, categorySlug: category, search });
 
-  // 分类筛选：从**公开集合**反推出来的栏目，不是站内栏目树的照搬。
+  // 侧栏：从**公开集合**反推出来的栏目，不是站内栏目树的照搬。
   // 数据与列表并行取；两件事互不依赖。
   const [facets, categories] = await Promise.all([
     listPublicCategoryFacets(),
@@ -152,21 +152,49 @@ export default async function ExplorePage({
     return `/explore?${params.toString()}`;
   };
 
+  const clearHref = category ? `/explore?category=${encodeURIComponent(category)}` : '/explore';
+
   return (
-    <div className="blog-directory">
-      {/* 访客从「博客」入口进入，这里的名称也保持「博客」。 */}
-      <BlogDirectoryHeading />
-      <BlogDirectoryToolbar
-        basePath="/explore"
-        categories={publicCategories}
-        currentSlug={category}
-        featured={null}
-        search={search ?? ''}
-        sort={null}
-      />
+    <>
+      <section className="blogs-hero">
+        <div className="container">
+          {/* 【为什么这一页自称「博客」，而不是「公开文章」】
+              这一页对站外读者**就是本站的博客** —— h1 与副标题与站内 `/blog` 逐字相同
+              （那边是「博客 / 分享思考与见解」）。写「公开文章」等于在页面最显眼处告诉
+              每个访客「你看到的是个子集，还有一半没给你看」：那既没有信息量，也不是
+              我们想让他关心的事。访客点顶栏「博客」进来看到「博客」，这条链是自洽的。
+
+              ⚠️ 别在这里加「（仅显示公开文章）」之类的补充说明，也别在空态里写
+              「还没有公开的文章」。要区分的是**这一页自己的两种空**（有没有搜索词），
+              不是「公开 / 非公开」——见下面 ExploreListSection 的空态分支。 */}
+          <h1>博客</h1>
+          <p>分享思考与见解</p>
+
+          <div className="blog-search">
+            {/* featured / sort 恒为假值 —— 对外列表没有精选，也不带排序偏好 */}
+            <SearchForm
+              basePath="/explore"
+              currentSlug={category}
+              featured={false}
+              search={search ?? ''}
+              clearHref={clearHref}
+              sort={null}
+            />
+          </div>
+        </div>
+      </section>
 
       <div className="container">
         <div className="blog-layout">
+          <BlogSidebar
+            basePath="/explore"
+            showFeatured={false}
+            categories={publicCategories}
+            currentSlug={category}
+            featured={false}
+            sort={null}
+          />
+
           <main className="blog-content">
             {result === null ? (
               <SearchRateLimited />
@@ -178,14 +206,14 @@ export default async function ExplorePage({
           </main>
         </div>
       </div>
-    </div>
+    </>
   );
 }
 
 /**
  * 列表区（列表 + 分页）—— 被 <Suspense> 包住，等 listPublicBlogs 的 promise。
  *
- * 拆出来的理由与站内列表相同：让页头 / 搜索框 / 分类筛选在首个 flush 就画出来，
+ * 拆出来的理由与站内列表相同：让 hero / 搜索框 / 侧栏在首个 flush 就画出来，
  * 列表随后流式补上。
  */
 async function ExploreListSection({
@@ -252,7 +280,7 @@ async function ExploreListSection({
                   <span>{b.author?.username}</span>
                 </Link>
                 {b.category && (
-                  <span className="blog-category-tag" title={categoryFullPath(b.category)}>{b.category.name}</span>
+                  <span className="blog-category-tag">{categoryFullPath(b.category)}</span>
                 )}
               </div>
               <BlogTimestamps createdAt={b.createdAt} updatedAt={b.content?.updatedAt} />
@@ -319,7 +347,7 @@ function SearchRateLimited() {
  */
 function ExploreListSkeleton() {
   return (
-    <div className="blog-skeleton-grid" aria-hidden="true">
+    <div aria-hidden="true">
       {Array.from({ length: 4 }, (_, i) => (
         <div key={i} className="blog-skeleton-card">
           <div className="blog-skeleton-head">

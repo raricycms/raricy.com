@@ -116,7 +116,7 @@ test.describe('专注模式（设置 → 各处生效）', () => {
     await expect(page.locator(`.blog-item:has-text("${flagged.title}")`)).toHaveCount(0);
     await expect(page.locator(`.blog-item:has-text("${plainTitle}")`)).toHaveCount(1);
     // 侧栏：整组入口消失（含「专注水区」根）
-    await expect(page.locator(`.blog-category-panel a:has-text("专注水区")`)).toHaveCount(0);
+    await expect(page.locator(`.category-link:has-text("专注水区")`)).toHaveCount(0);
     // 搜索命中关键词也不出现
     await page.goto(`/blog?search=${encodeURIComponent('专注关键词')}`);
     await expect(page.locator(`.blog-item:has-text("${flagged.title}")`)).toHaveCount(0);

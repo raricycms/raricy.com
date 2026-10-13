@@ -6,7 +6,7 @@
 // —— 只要 marked 加载失败、hydration 报错、或 DOMPurify 把内容清空了。
 // 断言 HTTP 状态或服务端 HTML 都发现不了；必须真跑浏览器、等脚本执行完再看 DOM。
 
-import { test, expect, type APIRequestContext, type Page } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import {
   SEED_USERS,
   SEED_BLOG,
@@ -14,39 +14,32 @@ import {
   SEED_FEATURED_BLOG,
   SEED_CATEGORY,
   BLOG_BODY_MARKER,
-  SEED_PASSWORD,
 } from './seed';
 import { loginViaApi, registerFreshUser } from './helpers';
 
 /**
- * 两篇文章在结果集里的相对顺序；双列时相邻条目可能处于同一行，不能只比较高度。
+ * 两篇文章卡的相对顺序（按卡片在页面里的纵向位置）。
  * 按 id 定位而非枚举整列标题 —— 别的 spec 若在库里留下额外博客，整列断言会脆断，这个不会。
  * @returns 'ab' 表示 firstId 在 secondId 上面，'ba' 反之
  */
 async function cardOrder(page: Page, firstId: string, secondId: string): Promise<'ab' | 'ba'> {
   const pos = await page.evaluate(
     ([a, b]) => {
-      const ids = Array.from(document.querySelectorAll('.blog-item'), (item) => item.id);
-      return { a: ids.indexOf(`id${a}`), b: ids.indexOf(`id${b}`) };
+      const top = (id: string) =>
+        document.getElementById(`id${id}`)?.getBoundingClientRect().top ?? Infinity;
+      return { a: top(a), b: top(b) };
     },
     [firstId, secondId]
   );
   return pos.a < pos.b ? 'ab' : 'ba';
 }
 
-// 列表/详情都需要 core 会话。此处不测登录，每个 worker 只真实登录一次，
-// 每个用例的新浏览器 context 再接入会话，避免快速回归耗尽密码校验配额。
-let coreCookies: Awaited<ReturnType<APIRequestContext['storageState']>>['cookies'] = [];
-test.beforeAll(async ({ request }) => {
-  const response = await request.post('/api/auth/login', { data: { username: SEED_USERS.core.username, password: SEED_PASSWORD } });
-  expect(response.status()).toBe(200);
-  coreCookies = (await request.storageState()).cookies;
-});
-test.beforeEach(async ({ context }) => {
-  await context.addCookies(coreCookies);
+// 列表/详情都在 requireCoreUser 之后，故每个用例先以 core 身份登录
+test.beforeEach(async ({ page }) => {
+  await loginViaApi(page, SEED_USERS.core.username);
 });
 
-test('博客列表页渲染文章卡片与分类筛选', async ({ page }) => {
+test('博客列表页渲染文章卡片与栏目侧栏', async ({ page }) => {
   const res = await page.goto('/blog');
   expect(res?.status()).toBe(200);
 
@@ -59,8 +52,8 @@ test('博客列表页渲染文章卡片与分类筛选', async ({ page }) => {
   // <span class="avatar"> 包装层，按 span 顺序取会取到那个空 span。
   await expect(card.locator('.blog-author-link')).toContainText(SEED_USERS.core.username);
 
-  await page.locator('.blog-category-filter summary').click();
-  await expect(page.locator('.blog-category-panel')).toContainText(SEED_CATEGORY.name);
+  // 侧栏分类（seed 的栏目 excludeFromAll=false，应当出现）
+  await expect(page.locator('.blog-layout')).toContainText(SEED_CATEGORY.name);
 });
 
 test('按栏目筛选命中种子文章', async ({ page }) => {
@@ -248,8 +241,9 @@ test('cookie 稳态：无参 /blog 首屏直出 updated 序、不 replace；点�
   expect(new URL(page.url()).searchParams.has('sort')).toBe(false);
   expect(await cardOrder(page, SEED_BLOG.id, SEED_BLOG2.id)).toBe('ba');
 
-  // 工具栏就绪意味着页面客户端已接管，排序按钮的事件也已挂上。
-  await expect(page.locator('.blog-directory-toolbar')).toHaveAttribute('data-ready', 'true');
+  // 等 JS 接管再点：水合之前 React 还没挂上 onClick，点了等于没点（判据沿用下面那条
+  // 用例的 `.sidebar--ready`，BlogSidebar 挂载时补上）。
+  await expect(page.locator('.sidebar')).toHaveClass(/sidebar--ready/);
 
   // 稳态无参页上点「发布时间」：cookie 已删、URL 仍无参 → 走 router.refresh 由服务端重出 created 序。
   //
@@ -278,12 +272,21 @@ test('cookie 稳态：无参 /blog 首屏直出 updated 序、不 replace；点�
   expect(await page.evaluate(() => localStorage.getItem('blog.sort'))).toBe('created');
 });
 
-test('排序回显：updated 态下选择分类，URL 保留 sort（不用二次跳转找回）', async ({ page }) => {
+test('排序回显：updated 态下点侧栏分类，URL 保留 sort（不用二次跳转找回）', async ({ page }) => {
   await page.goto(`/blog?sort=updated`);
   await expect(page.locator(`#id${SEED_BLOG2.id}`)).toBeVisible();
 
-  await expect(page.locator('.blog-directory-toolbar')).toHaveAttribute('data-ready', 'true');
-  await page.locator('.blog-category-filter summary').click();
+  // 移动端（≤992px）侧栏分类默认折叠 —— 折叠时先点标题展开。
+  // 必须等 JS 接管（--ready）：水合前目录由 CSS 藏起，这时点标题点了个空
+  // （React 还没挂上 onClick）。
+  await expect(page.locator('.sidebar')).toHaveClass(/sidebar--ready/);
+  // 判据取标题的 .collapsed 类，而不是链接的 isVisible()：折叠靠 max-height:0 +
+  // overflow:hidden，链接自身的布局盒还在（Playwright 判「可见」），点下去落在被裁掉的
+  // 区域上，被上面的元素接管 —— 表现为点击重试到超时。
+  const sidebarTitle = page.locator('.sidebar-title');
+  if (await sidebarTitle.evaluate((el) => el.classList.contains('collapsed'))) {
+    await sidebarTitle.click();
+  }
   const catLink = page.getByRole('link', { name: SEED_CATEGORY.name, exact: true });
   await catLink.click();
   await expect(page).toHaveURL(new RegExp(`category=${SEED_CATEGORY.slug}`));
@@ -438,46 +441,44 @@ test('编辑页：保存修改 / 取消 / 返回阅读页 三颗同高、同字�
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 分类面板以原生 details 直出，所有视口首帧都收起，无须等待水合纠正。
-// 阻断客户端 chunk 或完全禁用脚本后，搜索表单与分类链接也必须可用。
+// 侧栏首帧折叠
+//
+// 小屏（≤992px）的自动折叠发生在 useEffect（水合之后），而 SSR 直出的是展开态。
+// 若 CSS 不接管水合前那一帧，手机上就会「先看到展开的目录，再播放一段折叠动画」。
+// 阻断 Next 的 JS chunk = 停在「HTML 已解析、内联脚本已跑、但尚未水合」那一帧，
+// 正是用户看到的第一眼（CSS 在 /_next/static/css/ 下，不受影响）。
 // ─────────────────────────────────────────────────────────────────────────────
 const blockHydration = (page: Page) =>
   page.route(/\/_next\/static\/.*\.js(\?.*)?$/, (route) => route.abort());
 
-test.describe('分类筛选首帧与无脚本访问', () => {
-  test('手机宽度：水合前分类已收起，搜索可用', async ({ page }) => {
+test.describe('侧栏首帧折叠', () => {
+  test('手机宽度：水合前目录即折叠（不再先展开再播放折叠动画）', async ({ page }) => {
     await blockHydration(page);
     await page.setViewportSize({ width: 390, height: 844 });
 
     await page.goto('/blog');
-    await expect(page.getByRole('searchbox', { name: '搜索博客' })).toBeVisible();
-    await expect(page.locator('.blog-category-panel')).toBeHidden();
-    await page.locator('.blog-category-filter summary').click();
-    await expect(page.locator('.blog-category-panel')).toBeVisible();
+    await expect(page.locator('.sidebar')).toBeVisible();
+    await expect(page.locator('.category-list')).toBeHidden();
   });
 
-  test('桌面宽度：水合前分类也按需展开', async ({ page }) => {
+  test('桌面宽度：水合前目录仍是展开（不能误伤大屏）', async ({ page }) => {
     await blockHydration(page);
     await page.setViewportSize({ width: 1280, height: 800 });
 
     await page.goto('/blog');
-    await expect(page.locator('.blog-category-panel')).toBeHidden();
-    await page.locator('.blog-category-filter summary').click();
-    await expect(page.locator('.blog-category-panel')).toBeVisible();
+    await expect(page.locator('.category-list')).toBeVisible();
   });
 
-  // details 的展开无需脚本，分类链接保持普通 GET 导航。
+  // 折叠态只是「JS 会接管」的前提下的首帧优化；禁用 JS 时目录必须照旧展开可点，
+  // 否则导航入口在无脚本环境下就没了（渐进增强）。
   test.describe('禁用 JS', () => {
     test.use({ javaScriptEnabled: false });
 
-    test('小屏分类能原生展开并导航', async ({ page }) => {
+    test('小屏目录保持展开', async ({ page }) => {
       await page.setViewportSize({ width: 390, height: 844 });
 
       await page.goto('/blog');
-      await page.locator('.blog-category-filter summary').click();
-      await expect(page.locator('.blog-category-panel')).toBeVisible();
-      await page.locator('.blog-category-panel').getByRole('link', { name: SEED_CATEGORY.name, exact: true }).click();
-      await expect(page).toHaveURL(new RegExp(`category=${SEED_CATEGORY.slug}`));
+      await expect(page.locator('.category-list')).toBeVisible();
     });
   });
 });
