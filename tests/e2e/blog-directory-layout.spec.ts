@@ -13,23 +13,65 @@ test.beforeEach(async ({ context }) => {
   await context.addCookies(cookies);
 });
 
-test('文章目录宽屏双列、窄屏单列，长标题与作者信息不横向溢出', async ({ page, isMobile }) => {
+test('文章目录始终单列，互动计数恢复三色胶囊与标题旁的布局', async ({ page, isMobile }) => {
   await page.goto('/blog');
   await expect(page.locator('.blog-item').nth(1)).toBeVisible();
   const boxes = await page.locator('.blog-item').evaluateAll((items) => items.slice(0, 2).map((item) => {
     const r = item.getBoundingClientRect();
     return { top: r.top, left: r.left, bottom: r.bottom };
   }));
-  if (isMobile) {
-    expect(Math.abs(boxes[0].left - boxes[1].left)).toBeLessThan(1);
-    expect(boxes[1].top).toBeGreaterThan(boxes[0].bottom);
-  } else {
-    expect(Math.abs(boxes[0].top - boxes[1].top)).toBeLessThan(1);
-    expect(boxes[1].left).toBeGreaterThan(boxes[0].left);
+  expect(Math.abs(boxes[0].left - boxes[1].left)).toBeLessThan(1);
+  expect(boxes[1].top).toBeGreaterThan(boxes[0].bottom);
+  const stats = await page.locator('.blog-item').first().evaluate((card) => {
+    const title = card.querySelector('.blog-title')!.getBoundingClientRect();
+    const counters = ['.blog-likes', '.blog-comments', '.blog-fish'].map((selector) => {
+      const el = card.querySelector(selector)!;
+      const style = getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return { top: rect.top, left: rect.left, color: style.color, background: style.backgroundColor, radius: style.borderRadius };
+    });
+    return { title: { top: title.top, right: title.right, bottom: title.bottom }, counters };
+  });
+  expect(new Set(stats.counters.map((c) => c.color)).size).toBe(3);
+  for (const c of stats.counters) {
+    expect(c.radius).toBe('999px');
+    expect(c.background).not.toBe('rgba(0, 0, 0, 0)');
+  }
+  if (isMobile) expect(stats.counters[0].top).toBeGreaterThan(stats.title.bottom);
+  else {
+    expect(stats.counters[0].top).toBeCloseTo(stats.title.top, 0);
+    expect(stats.counters[0].left).toBeGreaterThan(stats.title.right);
   }
   await page.setViewportSize({ width: 320, height: 740 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await expect(page.getByRole('link', { name: '创建博客', exact: true })).toBeVisible();
+  await expect(page.locator('.blog-directory-heading__text p')).toHaveText('分享思考与见解');
+  await expect(page.locator('.blog-directory-scene')).toBeVisible();
+});
+
+test('首屏纸页视差随滚动变化，减少动态效果时立即恢复静态插画', async ({ page, isMobile }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.goto('/blog');
+  await expect(page.locator('.blogs-hero')).toHaveAttribute('data-scene-ready', 'true');
+  const near = page.locator('.blog-directory-scene__layer').last();
+  if (!isMobile) {
+    const title = page.locator('.blogs-hero h1');
+    const before = await title.boundingBox();
+    const hero = await page.locator('.blogs-hero').boundingBox();
+    await page.mouse.move(hero!.x + hero!.width * 0.9, hero!.y + hero!.height * 0.4);
+    await expect.poll(async () => near.evaluate((el) => new DOMMatrix(getComputedStyle(el).transform).e)).toBeGreaterThan(8);
+    const after = await title.boundingBox();
+    expect(after!.x).toBeCloseTo(before!.x, 1);
+    expect(after!.y).toBeCloseTo(before!.y, 1);
+    await page.mouse.move(0, 0);
+  }
+  await page.evaluate(() => window.scrollTo(0, 140));
+  await expect.poll(async () => near.evaluate((el) => new DOMMatrix(getComputedStyle(el).transform).f)).toBeLessThan(-15);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(near).toHaveCSS('transform', 'none');
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await expect(page.locator('.blog-directory-scene')).toBeVisible();
+  await expect(page.getByRole('searchbox', { name: '搜索博客' })).toBeVisible();
 });
 
 test('滚动后搜索与创建留在顶栏下方，手机收拢也保留未提交的搜索词', async ({ page, isMobile }) => {
@@ -51,8 +93,12 @@ test('滚动后搜索与创建留在顶栏下方，手机收拢也保留未提�
     await expect(input).not.toBeVisible();
     const toggle = page.getByRole('button', { name: '展开搜索与筛选' });
     await expect(toggle).toBeVisible();
-    await toggle.click();
+    // WebKit 的 locator.click 会先对 sticky 元素 scrollIntoView，把页面滚回
+    // 按钮的原始文档位置。按当前视口坐标真实触屏点击，验证用户实际看到的吸顶栏。
+    const box = await toggle.boundingBox();
+    await page.touchscreen.tap(box!.x + box!.width / 2, box!.y + box!.height / 2);
     await expect(input).toBeFocused();
+    await expect(toolbar).toHaveClass(/blog-directory-toolbar--stuck/);
   }
   await expect(input).toHaveValue('尚未提交的搜索词');
 });
