@@ -73,6 +73,8 @@ const RESPONSIVE_SPECS: RegExp[] = [
   /home-hero\.spec\.ts$/,
   // 博客时间：四处渲染点的折行、檐沟与深色主题需要在真视口检查。
   /blog-timestamps\.spec\.ts$/,
+  // 双列目录、分类浮层与手机滚动后搜索栏的收拢，需要真视口验证。
+  /blog-directory-layout\.spec\.ts$/,
   /chat-bubble\.spec\.ts$/,
   /chat-features\.spec\.ts$/,
   /chat-sidebar\.spec\.ts$/,

@@ -14,8 +14,9 @@ import { categoryFullPath } from '@/lib/format';
 import { getCurrentUser, isCoreUser } from '@/lib/auth';
 // 锚点常量（零依赖模块）—— 设置页那块卡片的 id 就是它，别在 JSX 里再抄一遍字符串
 import { FOCUS_MODE_SETTINGS_HREF } from '@/lib/focus-mode';
-import BlogSidebar from './BlogSidebar';
-import SearchForm from './SearchForm';
+import { blogDirectoryHref } from '@/lib/blog-directory-links';
+import BlogDirectoryHeading from './BlogDirectoryHeading';
+import BlogDirectoryToolbar from './BlogDirectoryToolbar';
 import BlogSort from './BlogSort';
 import BlogPageJump from './BlogPageJump';
 
@@ -40,12 +41,12 @@ export default async function BlogListPage({
   //   '1' → true（只看精选） / '0' → false（只看非精选） / 缺省 → undefined（不筛）
   // listBlogs 里 `featured: false` 是**生效的筛选**（与「不筛」的 undefined 不是一回事），
   // 所以「URL 没带 featured」若算成 false，「全部文章」和栏目目录就只剩非精选 ——
-  // 精选文整体消失，只有点侧栏「精选」才看得见（线上发生过的 bug）。
+  // 精选文整体消失，只有切到「精选」范围才看得见（线上发生过的 bug）。
   const featuredFilter = sp.featured === '1' ? true : sp.featured === '0' ? false : undefined;
-  const featured = featuredFilter === true; // 侧栏高亮 / 搜索表单回显用的布尔视图
+  const featuredParam: '1' | '0' | null = sp.featured === '1' || sp.featured === '0' ? sp.featured : null;
   const currentSlug = sp.category ?? null;
   // 回显只认「URL 里显式且合法」的 sort —— 默认 created 与无参等价，不给 URL 补默认值。
-  const rawSort = sp.sort === 'created' || sp.sort === 'updated' ? sp.sort : null;
+  const rawSort: 'created' | 'updated' | null = sp.sort === 'created' || sp.sort === 'updated' ? sp.sort : null;
   // 有效排序 = URL 显式合法 > cookie=updated > created(默认)。
   // cookie 是 BlogSort 客户端写入的偏好镜像（非 httpOnly，见 blog-sort-pref.ts），
   // 让无参首访 /blog 的首屏就直接按偏好直出，避免「先 created 水合后再翻 updated」。
@@ -55,7 +56,7 @@ export default async function BlogListPage({
   const prefUpdated = (await cookies()).get(COOKIE_NAME)?.value === 'updated';
   const effectiveSort: 'created' | 'updated' = rawSort ?? (prefUpdated ? 'updated' : 'created');
 
-  // 专注模式：查看者开启时，列表与侧栏都隐藏 focusHidden 栏目（根整组隐藏、
+  // 专注模式：查看者开启时，列表与分类筛选都隐藏 focusHidden 栏目（根整组隐藏、
   // 子项从父组剪掉但父组「全部」入口保留）。本页 requireCoreUser 保证登录，
   // 先取当前用户定 focusOn，再与列表/栏目并行取数。
   const currentUser = await getCurrentUser();
@@ -75,7 +76,7 @@ export default async function BlogListPage({
     searching && !rateLimit(`blog:search:${viewer.id}`, RULES.blogSearchMinute).allowed;
 
   // ⚠️ 列表**不 await** —— 直接把 promise 交给下面 <Suspense> 里的 BlogListSection。
-  // 这样 hero / 搜索框 / 侧栏分类在首个 flush 就能画出来，列表随后流式补上；
+  // 这样页头 / 搜索框 / 分类筛选在首个 flush 就能画出来，列表随后流式补上；
   // 若在这里 await，整页要等列表就绪才吐第一个字节（首屏与末屏同一时刻出现）。
   // 守卫不受影响：requireCoreUser 在上面已经 await 过，redirect/forbidden 早于任何 flush。
   const result = searchLimited
@@ -129,42 +130,11 @@ export default async function BlogListPage({
     return `?${p.toString()}`;
   };
 
-  const clearHref = (() => {
-    const p = new URLSearchParams();
-    if (sp.category) p.set('category', sp.category);
-    if (sp.featured) p.set('featured', sp.featured);
-    if (rawSort) p.set('sort', rawSort);
-    const s = p.toString();
-    return s ? `/blog?${s}` : '/blog';
-  })();
+  const directoryFilters = { category: currentSlug, search: sp.search, sort: rawSort };
 
   return (
-    <>
-      <section className="blogs-hero">
-        <div className="container">
-          <h1>博客</h1>
-          <p>分享思考与见解</p>
-
-          <div className="blog-search">
-            <SearchForm
-              currentSlug={currentSlug}
-              featured={featured}
-              search={sp.search ?? ''}
-              clearHref={clearHref}
-              sort={rawSort}
-            />
-          </div>
-
-          {canUpload && (
-            <div className="mt-3">
-              <Link href="/blog/upload" className="upload-button">
-                <span className="icon icon-add" aria-hidden="true"></span>
-                创建
-              </Link>
-            </div>
-          )}
-        </div>
-      </section>
+    <div className="blog-directory">
+      <BlogDirectoryHeading />
 
       {focusOn && (
         <div className="focus-banner" role="status">
@@ -172,18 +142,26 @@ export default async function BlogListPage({
         </div>
       )}
 
+      <BlogDirectoryToolbar
+        categories={focusOn ? pruneFocusCategories(categories) : categories}
+        currentSlug={currentSlug}
+        featured={featuredParam}
+        search={sp.search ?? ''}
+        sort={rawSort}
+        canUpload={canUpload}
+      />
+
       <div className="container">
         <div className="blog-layout">
-          <BlogSidebar
-            categories={focusOn ? pruneFocusCategories(categories) : categories}
-            currentSlug={currentSlug}
-            featured={featured}
-            sort={rawSort}
-          />
-
           <main className="blog-content">
-            {/* 无条件渲染：空结果页也要能执行「LS→cookie 迁移」的恢复 effect */}
-            <BlogSort initialSort={effectiveSort} />
+            <div className="blog-directory-browse">
+              <nav className="blog-directory-scopes" aria-label="文章范围">
+                <Link href={blogDirectoryHref('/blog', directoryFilters)} className={`blog-directory-scope${featuredFilter !== true ? ' is-active' : ''}`} aria-current={featuredFilter !== true ? 'page' : undefined}>全部文章</Link>
+                <Link href={blogDirectoryHref('/blog', { ...directoryFilters, featured: '1' })} className={`blog-directory-scope${featuredFilter === true ? ' is-active' : ''}`} aria-current={featuredFilter === true ? 'page' : undefined}>精选</Link>
+              </nav>
+              {/* 空结果页也保留排序偏好的恢复 effect。 */}
+              <BlogSort initialSort={effectiveSort} />
+            </div>
             {/* 列表与分页都依赖 result，故连同分页一起放进边界内 ——
                 它们要么一起出现，要么一起等。fallback 用骨架，且**不复用 .blog-item**：
                 专注模式的用例断言 `.blog-item` 计数为 0，骨架顶着同名类出现会污染它。 */}
@@ -199,7 +177,7 @@ export default async function BlogListPage({
           </main>
         </div>
       </div>
-    </>
+    </div>
   );
 }
 
@@ -207,7 +185,7 @@ export default async function BlogListPage({
  * 列表区（列表 + 分页）—— 被 <Suspense> 包住，等 listBlogs 的 promise。
  *
  * 拆出来的唯一理由是让 page 组件本身**不 await** 列表数据：React 的提交单位是
- * Suspense 边界，边界内的内容挂起时，边界外的 hero / 搜索框 / 侧栏可以先画出来。
+ * Suspense 边界，边界内的内容挂起时，边界外的页头 / 搜索框 / 分类筛选可以先画出来。
  * 分页依赖 result.pages，所以一并搬进来 —— 拆一半会让首屏出现「列表有了、页码还在等」。
  */
 async function BlogListSection({
@@ -278,7 +256,7 @@ async function BlogListSection({
                     <span>{b.author?.username}</span>
                   </Link>
                   {b.category && (
-                    <span className="blog-category-tag">{categoryFullPath(b.category)}</span>
+                    <span className="blog-category-tag" title={categoryFullPath(b.category)}>{b.category.name}</span>
                   )}
                   {/* 对外可见性标记 —— 给作者看「哪几篇已经对外了」。站内数千篇默认全是
                       private，作者要挑文章对外时没有这个标记就只能逐篇点进去看。
@@ -376,7 +354,7 @@ function SearchRateLimited() {
  */
 function BlogListSkeleton() {
   return (
-    <div aria-hidden="true">
+    <div className="blog-skeleton-grid" aria-hidden="true">
       {Array.from({ length: 4 }, (_, i) => (
         <div key={i} className="blog-skeleton-card">
           {/* 桌面：标题与统计同行两端对齐；≤768px：.blog-header 转纵向、间距 6px */}

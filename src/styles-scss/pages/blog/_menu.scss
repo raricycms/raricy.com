@@ -1,935 +1,315 @@
-/* 注：本文件顶部原本有 `* { transition / -webkit-tap-highlight-color }`，
-   已收敛到 base/_reset.scss（全局规则只留一处定义）。 */
-
 @use '../../abstracts/mixins' as m;
 
-a {
-  text-decoration: none;
-  &:hover {
-    text-decoration: none;
-  }
-}
-// 专注模式横幅（/blog 列表页顶部）—— 提示当前视图被过滤，「此处」深链
-// /settings#focus-mode 关闭。低调处理：无底色、小字灰调，不抢正文视觉。
-/* 宽度与内距原先写死 1140 / 20px（正文是 16px）—— 窄屏下横幅比正文宽 8px、
-   宽屏下又窄 8px，且 992–1199 区间正文全幅时它仍是 1140。改为与 .container
-   同一套阶梯，两者始终对齐。 */
-.focus-banner {
-    width: 100%;
-    margin: 12px auto 0;
-    padding-bottom: 8px;
-    @include m.container-padding;
-    @include m.site-width-ladder;
-    text-align: center;
-    font-size: 0.82rem;
-    color: var(--color-text-tertiary);
-
-    a {
-        color: var(--color-text-secondary);
-        font-weight: 600;
-        text-decoration: underline;
-    }
-}
-
-.blogs-hero {
-    background: var(--color-background-card);
-    padding: 20px 0 40px;
-    margin-bottom: 0;
-    text-align: center;
-    color: var(--color-text-primary);
-    h1 {
-        color: var(--color-text-primary);
-        font-size: 3.2rem;
-        font-weight: bold;
-        margin-bottom: 6px;
-        letter-spacing: 1px;
-    }
-    p {
-        color: var(--color-text-secondary);
-        font-size: 1.1rem;
-        font-weight: normal;
-        margin-bottom: 30px;
-    }
-}
-
-/* 全站「最高级按钮」的基准。表面与三态由 mixin 提供（abstracts/_mixins.scss），
-   这里只留它自己的尺寸 —— width / font-size / gap 是这个按钮带图标的结果，
-   不跟着复制到别的按钮上。 */
-.upload-button {
-    @include m.btn-primary;
-    margin: auto;
-    margin-top: 10px;
-    width: 105px;
-    padding: 8px 10px;
-    font-size: 20px;
-    display: flex;
-    align-items: center;
-    position: relative;
-    gap: 10px;
-    -webkit-tap-highlight-color: transparent;
-    outline: none;
-    .icon {
-        width: 1.7rem;
-        height: 1.7rem;
-        color: var(--color-brand-primary);
-        transition: all 0.3s ease;
-    }
-    &:hover {
-        .icon {
-            color: #fff;
-        }
-    }
-}
-
-
-/* 搜索栏 */
-.blog-search {
-    display: flex;
-    justify-content: center;
-    margin-top: 20px;
-}
-
-.search-form {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    max-width: 520px;
-    width: 100%;
-}
-
-/* 只有内嵌了按钮的那种搜索框才需要右侧留白 —— 所以这条挂在 .search-field 上，
-   而不是共用类 .search-input 上：/tool 的搜索框没有按钮，/clipboard 与 /vote 的
-   按钮是 flex 兄弟而非内嵌，三处都不该凭空多出 80px 空隙。
-   80px = 按钮宽约 65px（0.9rem 的「搜索」+ 左右各 18px）+ 4px 贴边 + 余量。 */
-.search-field .search-input {
-    padding-right: 80px;
-}
-
-/* 输入框 + 内嵌搜索按钮的定位上下文。
-   高度不写死：由里面的 input 撑出来，按钮再用 top/bottom 贴边（见 .search-btn），
-   这样改字号或内距时按钮自动跟着变高，不必猜行高。 */
-.search-field {
-    position: relative;
-    display: flex;
-    flex: 1;
-    min-width: 0;
-}
-
-/* 胶囊形、无边框 —— **全站搜索框的唯一定义**。
-   `.search-input` 是共用类（博客 / 剪贴板 / 工具 / 投票四处都用）。此前那三处各自
-   把它完整重声明了一遍（描边 + 5~10px 圆角 + 卡片底色），以更高的选择器权重压过
-   这里，于是四个搜索框长得各不相同。本次统一把那三条重声明删了 ——
-   **改这条就是改全站四个搜索框**，不要再在页面样式里另抄一份。 */
+// 单行搜索框的共享定义：博客、工具、剪贴板与投票共用，目录只调整外层布局。
+.search-form { display: flex; align-items: center; gap: 8px; max-width: 520px; width: 100%; }
+.search-field { position: relative; display: flex; flex: 1; min-width: 0; }
+.search-field .search-input { padding-right: 80px; }
 .search-input {
-    flex: 1;
-    padding: 10px 16px;
-    border: none;
-    border-radius: 999px;
-    background: var(--color-background-page);
-    color: var(--color-text-primary);
-    font-size: 0.95rem;
-    transition: box-shadow 0.2s ease;
-    min-width: 0;
-
-    &:focus {
-        outline: none;
-        /* 偏移量为 0 的品牌色光晕。形状取自顶栏的常驻阴影 --shadow-card-brand
-           （同样 25px 模糊、同色系），只是抹掉那 2px 下偏移、并把不透明度提一档 ——
-           常驻阴影是「托住」顶栏，聚焦态得自己站得出来。 */
-        box-shadow: var(--shadow-focus-brand);
-    }
-
-    &::placeholder {
-        color: var(--color-text-secondary);
-    }
+  flex: 1;
+  min-width: 0;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 999px;
+  background: var(--color-background-page);
+  color: var(--color-text-primary);
+  font-size: 0.95rem;
+  transition: box-shadow 0.2s ease;
+  &:focus { outline: none; box-shadow: var(--shadow-focus-brand); }
+  &::placeholder { color: var(--color-text-secondary); }
 }
-
-/* 触屏下把搜索框字号抬到 16px：iOS Safari 聚焦 < 16px 的输入框会**强制放大整页**
-   （同 components/_form-controls.scss 与 _composer.scss 那两条）。窄的桌面窗口不触发
-   —— 判据是触屏（pointer/hover）而不是宽度。**改这条就是改全站四个搜索框**。 */
-@media (hover: none) and (pointer: coarse) {
-    .search-input {
-        font-size: 1rem;
-    }
-}
-
-/* 搜索按钮：外观与交互对齐「创建」按钮（.upload-button）—— 常态品牌色浅底 + 品牌色字，
-   hover 反转成实底白字，active 整体压暗。
-   位置改为**嵌在输入框内部最右侧**：top/bottom 各留 4px，故高度比输入框矮 8px；
-   圆角与输入框同为胶囊，两条弧线贴合。 */
 .search-btn {
-    @include m.btn-primary;
-    position: absolute;
-    top: 4px;
-    right: 4px;
-    bottom: 4px;
+  @include m.btn-primary;
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  bottom: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 18px;
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+@media (hover: none) and (pointer: coarse) { .search-input { font-size: 1rem; } }
+
+.blog-directory { padding-bottom: 32px; }
+.blogs-hero {
+  --directory-art-cover: color-mix(in srgb, var(--color-brand-primary) 65%, var(--color-background-card));
+  --directory-art-cover-shade: color-mix(in srgb, var(--color-brand-primary) 75%, var(--color-text-secondary));
+  --directory-art-paper: color-mix(in srgb, var(--color-brand-primary) 8%, var(--color-background-card));
+  --directory-art-paper-light: var(--color-background-card);
+  --directory-art-paper-shade: color-mix(in srgb, var(--color-brand-primary) 20%, var(--color-background-card));
+  --directory-art-line: color-mix(in srgb, var(--color-brand-primary) 28%, var(--color-background-card));
+  --directory-art-ground: color-mix(in srgb, var(--color-brand-primary) 7%, var(--color-background-page));
+  --directory-art-warm: color-mix(in srgb, var(--color-accent-amber) 28%, var(--color-background-page));
+  --directory-art-ribbon: var(--color-accent-amber);
+  --directory-art-stem: color-mix(in srgb, var(--color-accent-cyan) 55%, var(--color-text-secondary));
+  --directory-art-leaf: color-mix(in srgb, var(--color-accent-cyan) 45%, var(--color-background-card));
+  padding: 26px 0 22px;
+  color: var(--color-text-primary);
+  h1 { margin: 0; font-size: clamp(2.4rem, 4vw, 3.4rem); font-weight: 700; letter-spacing: -0.035em; }
+}
+.blog-directory-heading { display: flex; align-items: center; justify-content: space-between; min-height: 126px; gap: 24px; }
+.blog-directory-art { display: block; width: 230px; height: 130px; flex: none; }
+.focus-banner {
+  width: 100%;
+  margin: 0 auto 14px;
+  @include m.container-padding;
+  @include m.site-width-ladder;
+  color: var(--color-text-secondary);
+  font-size: 0.82rem;
+  a { color: var(--color-brand-primary); }
+}
+.blog-directory-sentinel { height: 1px; margin-top: -1px; pointer-events: none; }
+.blog-directory-toolbar {
+  position: sticky;
+  top: var(--navbar-height);
+  z-index: 1015;
+  transition: background-color 0.2s ease, box-shadow 0.2s ease;
+  &__surface {
+    position: relative;
+    padding: 14px 18px 10px;
+    border-radius: 30px;
+    background: var(--color-background-card);
+    transition: padding 0.2s ease, border-radius 0.2s ease;
+  }
+  &__row { display: flex; align-items: center; gap: 12px; min-height: 44px; }
+  &__title {
+    max-width: 0;
+    overflow: hidden;
+    opacity: 0;
+    font-size: 1.05rem;
+    font-weight: 600;
+    white-space: nowrap;
+    transition: max-width 0.2s ease, opacity 0.2s ease;
+  }
+  &__search { flex: 1; min-width: 0; }
+  .search-form { max-width: none; }
+  &__filters { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; margin-top: 6px; }
+  &--stuck {
+    background: var(--color-background-card);
+    box-shadow: var(--shadow-card-brand);
+    .blog-directory-toolbar__surface { padding-block: 10px 8px; border-radius: 0; }
+    .blog-directory-toolbar__title { max-width: 64px; opacity: 1; }
+  }
+}
+.blog-directory-create, .blog-directory-search-toggle {
+  @include m.btn-primary;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 44px;
+  padding: 10px 20px;
+  flex: none;
+  font-size: 0.95rem;
+  svg { flex: none; }
+}
+.blog-directory-search-toggle { display: none; }
+.blog-directory-create:focus-visible,
+.blog-directory-search-toggle:focus-visible,
+.blog-directory-chip:focus-visible,
+.blog-category-filter summary:focus-visible,
+.blog-directory-scope:focus-visible,
+.blog-category-panel a:focus-visible { outline: 2px solid var(--color-brand-primary); outline-offset: 3px; }
+.blog-category-filter {
+  summary {
+    @include m.btn-secondary;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 0 18px;
-    font-size: 0.9rem;
-    font-weight: 700;
-    -webkit-tap-highlight-color: transparent;
-    outline: none;
-    white-space: nowrap;
-}
-
-.search-clear-btn {
-    padding: 10px 12px;
-    color: var(--color-text-secondary);
-    font-size: 0.9rem;
-    text-decoration: none;
-    white-space: nowrap;
-    transition: color 0.2s ease;
-
-    &:hover {
-        color: var(--color-warning-primary);
-        text-decoration: none;
-    }
-}
-
-.current-category {
-    margin-top: 12px;
-}
-.current-category .badge {
-    background: rgba(255, 255, 255, 0.2) !important;
-    color: white;
-    padding: 8px 16px;
-    border-radius: 20px;
-}
-
-/* 主布局 */
-.blog-layout {
-    display: flex;
-    gap: 30px;
-    margin-top: 30px;
-    min-height: calc(100vh - 400px);
-}
-
-/* 左侧分类导航 */
-.sidebar {
-    flex: 0 0 280px;
-    background: var(--color-background-card);
-    border-radius: 30px;
-    padding: 0px 24px;
-    height: auto;
-    margin-bottom: 30px;
-    position: sticky;
-    top: 90px;
-    overflow: auto;
-}
-
-.sidebar-title {
-    font-size: 2rem;
-    font-weight: bold;
-    color: var(--color-text-primary);
-    margin-bottom: 20px;
-    padding-bottom: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    cursor: pointer;
-    user-select: none;
-    transition: color 0.3s ease;
-    &:hover {
-        color: var(--color-brand-primary);
-    }
-}
-
-.sidebar-title .toggle-icon {
-    font-size: 1rem;
-    transition: transform 0.3s ease;
-}
-
-.sidebar-title.collapsed .toggle-icon {
-    transform: rotate(-90deg);
-}
-
-.category-list {
+    gap: 7px;
+    min-height: 36px;
+    padding: 5px 10px;
     list-style: none;
-    padding: 0;
-    margin: 0;
-    transition: all 0.3s ease;
-    overflow: hidden;
+    font-size: 0.82rem;
+    &::-webkit-details-marker { display: none; }
+    svg:last-child { transition: transform 0.2s ease; }
+  }
+  &[open] summary { color: var(--color-brand-primary); }
+  &[open] summary svg:last-child { transform: rotate(180deg); }
 }
-
-.category-list.collapsed {
-    max-height: 0;
-    opacity: 0;
-    margin-bottom: 0;
+.blog-category-panel {
+  --directory-panel-space: calc(100dvh - var(--navbar-height) - 200px);
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  max-height: min(520px, var(--directory-panel-space));
+  overflow-y: auto;
+  padding: 24px;
+  border-radius: 30px;
+  background: var(--color-background-card);
+  box-shadow: var(--shadow-card-brand);
+  overscroll-behavior: contain;
+  a { @include m.btn-tab; display: flex; align-items: center; min-height: 40px; padding: 7px 12px; font-size: 0.85rem; overflow-wrap: anywhere; }
 }
-
-.category-list:not(.collapsed) {
-    max-height: 1250px;
-    opacity: 1;
+.blog-category-all { width: fit-content; }
+.blog-category-groups { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; margin-top: 16px; }
+.blog-category-group { min-width: 0; }
+.blog-category-panel .blog-category-parent { font-weight: 600; color: var(--color-text-primary); margin-bottom: 4px; }
+.blog-category-option { margin-top: 2px; }
+.blog-directory-chips { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; max-width: 100%; }
+.blog-directory-chip {
+  @include m.btn-tab;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  min-height: 32px;
+  max-width: 300px;
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  background: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+  span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  svg { flex: none; }
 }
-
-.category-item {
-    margin-bottom: 8px;
-}
-
-.category-item.has-children {
-    position: relative;
-}
-
-/* 分类栏 = 切页档：当前分类常驻最高级空闲态，按下不叠加变化。
-   原先这里靠 `border-left: 3px solid transparent` 占位、再由 .active 上色，
-   是「胶囊 + 左侧竖条」两种形状语言的混搭 —— 竖条已去掉，语义全部由底色承担。 */
-.category-link {
-    @include m.btn-tab;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 10px 14px;
-    text-decoration: none;
-    font-size: 0.9rem;
-    font-weight: 500;
-    position: relative;
-    .collapsible {
-        cursor: pointer;
-        user-select: none;
-        .catogory-toggle {
-            transform: rotate(-90deg);
-        }
-    }
-}
-
-
-
-.category-content {
-    display: flex;
-    align-items: center;
-    flex: 1;
-}
-
-.category-toggle {
-    font-size: 0.8rem;
-    margin-left: 8px;
-    transition: transform 0.3s ease;
-    color: var(--color-text-secondary);
-}
-
-
-
-/* .category-link.active 的规则已并入上面的 @include m.btn-tab */
-
-.category-link .icon,
-.category-item .icon {
-    margin-right: 8px;
-    font-size: 1rem;
-    background-color: rgba(255, 255, 255, 0);
-}
-
-.sub-category-list {
-    list-style: none;
-    padding: 0;
-    margin: 8px 0 0 24px;
-    transition: all 0.3s ease;
-    overflow: hidden;
-}
-
-.sub-category-list.collapsed {
-    max-height: 0;
-    opacity: 0;
-    margin-top: 0;
-}
-
-.sub-category-list:not(.collapsed) {
-    max-height: 500px;
-    opacity: 1;
-}
-
-/* 子分类与父分类同一档（原先色值是写死的 #8e9ba6，不在主题体系内，
-   暗色下不会跟着变） */
-.sub-category-link {
-    @include m.btn-tab;
-    display: flex;
-    align-items: center;
-    padding: 8px 12px;
-    text-decoration: none;
-    font-size: 0.85rem;
-    font-weight: 400;
-}
-
-/* 右侧博客列表 */
-.blog-content {
-    flex: 1;
-}
-
-/* 列表排序工具栏（发布时间/更新时间；列表顶部右对齐，空结果态也渲染） */
-.blog-sort {
-    display: flex;
-    justify-content: flex-end;
-    align-items: center;
-    gap: 8px;
-    margin: 0 0 16px;
-}
-
-/* 滑块内的按钮只定尺寸 —— 几何（等宽、位移、轨道底色、动画）全部由
-   components/_segmented.scss 提供。 */
-.blog-sort .segmented__btn {
-    padding: 6px 14px;
-    font-size: 0.85rem;
-    font-weight: 400;
-
-    &.is-active {
-        font-weight: 600;
-    }
-}
-
+.blog-layout { margin-top: 24px; }
+.blog-content { min-width: 0; }
+.blog-directory-browse { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
+.blog-directory-scopes { display: flex; align-items: center; gap: 8px; }
+.blog-directory-scope { @include m.btn-tab; display: inline-flex; align-items: center; min-height: 40px; padding: 8px 16px; font-size: 0.9rem; }
+.blog-sort { display: flex; justify-content: flex-end; align-items: center; }
+.blog-sort .segmented__btn { padding: 7px 14px; font-size: 0.85rem; font-weight: 400; &.is-active { font-weight: 600; } }
+.blog-list, .blog-skeleton-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
 .blog-item {
-    position: relative; /* 承载整卡拉伸链接（.blog-item-cover） */
-    background: var(--color-background-card);
-    border-radius: 30px;
-    padding: 20px 23px 23px 28px;
-    margin-bottom: 16px;
-    cursor: pointer;
-    /* 常态不描边、不托阴影（全站卡片口径），只有 hover 才亮光晕，故保留这条过渡。 */
-    transition: box-shadow 0.2s ease;
-
-    /* 整卡可点（.blog-item-cover 拉伸链接铺满整卡）：hover 亮品牌蓝光晕提示可点。
-       原先的 --shadow-card-hover 是黑色阴影，已按全站口径退役。 */
-    &:hover {
-        box-shadow: var(--shadow-card-brand);
-    }
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto 1fr auto;
+  gap: 16px;
+  min-width: 0;
+  min-height: 220px;
+  padding: 26px;
+  border-radius: 30px;
+  background: var(--color-background-card);
+  transition: box-shadow 0.2s ease;
+  &:hover { box-shadow: var(--shadow-card-brand); }
 }
-
-/* 整卡可点击的拉伸链接：铺满卡片，作者链接（z-index:1）优先响应 */
-.blog-item-cover {
-    position: absolute;
-    inset: 0;
-    z-index: 0;
-    border-radius: 30px;
-}
-
-.blog-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: 12px;
-}
-
+.blog-item-cover { position: absolute; inset: 0; z-index: 0; border-radius: inherit; }
+.blog-item-cover:focus-visible { outline: 2px solid var(--color-brand-primary); outline-offset: 4px; }
+// DOM 仍是标题一组、摘要、作者时间一组；统计落到卡片底部，保持安静。
+.blog-header { display: contents; }
 .blog-title {
-    font-size: 1.3rem;
-    font-weight: 600;
-    color: var(--color-text-primary);
-    text-decoration: none;
-    line-height: 1.4;
-    margin: 0;
-    flex: 1;
-    margin-right: 16px;
+  grid-row: 1;
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: 1.3rem;
+  font-weight: 600;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  &:hover { color: var(--color-brand-primary); }
 }
-
-.blog-title:hover {
-    color: var(--color-brand-primary);
-    text-decoration: none;
-}
-
-.blog-stats {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-shrink: 0;
-}
-
-.blog-likes {
-    display: flex;
-    align-items: center;
-    border-radius: 999px;
-    background-color: var(--color-warning-secondary);
-    gap: 6px;
-    color: var(--color-warning-primary);
-    font-size: 15px;
-    font-weight: bold;
-    padding: 4px 12px;
-    
-    .icon { 
-        width: 0.9rem;
-        height: 0.9rem;
-        color: var(--color-warning-primary); 
-    }
-}
-
-.blog-comments {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    border-radius: 999px;
-    color: var(--color-success-primary);
-    background: var(--color-success-secondary);
-    font-size: 15px;
-    font-weight: bold;
-    padding: 4px 12px;
-    .icon {
-        width: 1rem;
-        height: 1rem;
-        color: var(--color-success-primary);
-    }
-}
-
-.blog-fish {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    border-radius: 999px;
-    color: var(--color-brand-primary);
-    background: var(--color-brand-secondary);
-    font-size: 15px;
-    font-weight: bold;
-    padding: 4px 12px;
-
-    .icon {
-        width: 1rem;
-        height: 1rem;
-        color: var(--color-brand-primary);
-    }
-}
-
 .blog-description {
-    color: var(--color-text-secondary);
-    font-size: 0.9rem;
-    line-height: 1.5;
-    margin-bottom: 14px;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-    margin-bottom: 20px;
+  grid-row: 2;
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.65;
+  margin: 0;
+  @include m.truncate(2);
+  overflow-wrap: anywhere;
+  align-self: start;
 }
-
+.blog-stats { grid-row: 4; display: flex; align-items: center; flex-wrap: wrap; gap: 16px; color: var(--color-text-secondary); font-size: 0.78rem; }
+.blog-likes, .blog-comments, .blog-fish { display: inline-flex; align-items: center; gap: 5px; .icon { width: 0.95rem; height: 0.95rem; color: inherit; } }
 .menu-blog-meta {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 0.8rem;
-    color: var(--color-text-secondary);
-    gap: 8px 24px;
-
-    > .blog-author {
-        flex-wrap: wrap;
-        min-width: 0;
-    }
-
-    > .blog-timestamps {
-        margin-left: auto;
-        justify-content: flex-end;
-    }
+  grid-row: 3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+  > .blog-author { min-width: 0; flex-wrap: wrap; }
+  > .blog-timestamps { margin-left: auto; justify-content: flex-end; }
 }
-
-.blog-author {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-/* 作者链接：置顶于拉伸链接之上（点击头像/用户名 → 个人主页，而非博客详情） */
+.blog-author { display: flex; align-items: center; gap: 8px; }
 .blog-author-link {
-    position: relative;
-    z-index: 1;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    color: inherit;
-    text-decoration: none;
-
-    &:hover span {
-        color: var(--color-brand-primary);
-    }
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  color: inherit;
+  overflow-wrap: anywhere;
+  .avatar { width: 24px; height: 24px; flex: none; }
+  .avatar__img { width: 24px; height: 24px; border-radius: 8%; object-fit: cover; }
+  &:hover { color: var(--color-brand-primary); }
 }
-
-.blog-author img {
-    width: 20px;
-    height: 20px;
-    /* 头像统一小圆角 8%（全站规范，见 docs/frontend-styles.md §4.1） */
-    border-radius: 8%;
-    object-fit: cover;
-}
-
-.blog-category-tag {
-    display: inline-block;
-    background: var(--color-background-content);
-    color: var(--color-text-secondary);
-    padding: 2px 8px;
-    border-radius: 12px;
-    font-size: 0.75rem;
-    margin-left: 8px;
-}
-
-/* 对外可见性标记（站内列表卡片上，给作者看「哪几篇已经对外了」）。
- *
- * 【为什么用分类色而不是语义色】见 docs/frontend-styles.md §2.6：语义色（红=危险、
- * 绿=成功、蓝=主行动）表达**状态**，而「这篇已经对外」不是状态、是属性 —— 与
- * .blog-category-tag / 精选标记同一类东西，所以走 --color-accent-*。
- *
- * private **不标记**：它是默认档，站内 4906 篇里 4906 篇都是它 —— 给默认值加标记
- * 等于满屏噪音，反而让 link/public 那两个淹没在里面。
- *
- * 几何与 .blog-category-tag 同档（同一个小胶囊），只是底色/字色换成分类色，
- * 这样两者并排时能一眼分开「这是栏目」与「这是对外状态」。 */
+.blog-category-tag { display: inline-block; max-width: 100%; padding: 2px 8px; border-radius: 999px; font-size: 0.72rem; background: var(--color-background-content); color: var(--color-text-secondary); overflow-wrap: anywhere; }
 .blog-visibility-tag {
-    display: inline-block;
-    padding: 2px 8px;
-    border-radius: 12px;
-    font-size: 0.75rem;
-    margin-left: 8px;
-    white-space: nowrap;
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  white-space: nowrap;
+  &--link { background: var(--color-accent-cyan-soft); color: var(--color-accent-cyan); }
+  &--public { background: var(--color-accent-amber-soft); color: var(--color-accent-amber); }
+}
+.no-blogs { text-align: center; padding: 60px 20px; color: var(--color-text-secondary); }
+.no-blogs .icon { width: 3rem; height: 3rem; margin-bottom: 16px; opacity: 0.5; }
 
-    /* 凭链接可读：拿到链接就能读，但不进任何列表、不被收录。青色 = 比 public 安静。 */
-    &--link {
-        background: var(--color-accent-cyan-soft);
-        color: var(--color-accent-cyan);
+// 骨架与双列卡片同一套几何；不用真实条目类，避免污染按文章数量检查的用例。
+.blog-skeleton-card { min-height: 220px; padding: 26px; border-radius: 30px; background: var(--color-background-card); }
+.blog-skeleton-line { background: var(--color-background-subtle); border-radius: 8px; animation: blog-skeleton-pulse 1.4s ease-in-out infinite; }
+.blog-skeleton-head { margin-bottom: 18px; }
+.blog-skeleton-line--heading { height: 30px; width: 72%; }
+.blog-skeleton-line--stats { height: 14px; width: 30%; margin-top: 16px; }
+.blog-skeleton-line--desc { height: 40px; width: 92%; margin-bottom: 24px; }
+.blog-skeleton-meta { display: flex; justify-content: space-between; gap: 16px; }
+.blog-skeleton-line--meta { height: 24px; width: 48%; }
+.blog-skeleton-line--time { height: 20px; width: 22%; }
+@keyframes blog-skeleton-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+
+@media (max-width: 819px) {
+  .blog-list, .blog-skeleton-grid { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .blog-category-groups { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .blog-item, .blog-skeleton-card { min-height: 190px; padding: 22px; }
+}
+@media (max-width: 767px) {
+  .blogs-hero { padding: 12px 0 16px; }
+  .blog-directory-heading { min-height: 100px; gap: 16px; }
+  .blog-directory-art { width: 150px; height: 94px; }
+  .blog-directory-toolbar__surface { padding: 12px 12px 8px; border-radius: 24px; }
+  .blog-directory-toolbar__row { gap: 8px; flex-wrap: wrap; }
+  .blog-directory-create { width: 44px; height: 44px; padding: 0; span { display: none; } }
+  .blog-directory-toolbar__title { display: none; }
+  .blog-directory-toolbar--stuck {
+    .blog-directory-toolbar__surface { padding: 8px 0; }
+    .blog-directory-toolbar__title { display: block; flex: 1; max-width: none; }
+    .blog-directory-toolbar__search { display: none; }
+    .blog-directory-search-toggle { display: inline-flex; width: 44px; height: 44px; padding: 0; }
+    .blog-category-filter { display: none; }
+    .blog-directory-toolbar__filters { margin-top: 0; }
+    &.blog-directory-toolbar--filtered .blog-directory-toolbar__filters { margin-top: 6px; }
+    &.blog-directory-toolbar--search-open {
+      .blog-directory-toolbar__search { display: block; order: 4; flex-basis: 100%; }
+      .blog-category-filter { display: block; }
+      .blog-directory-toolbar__filters { margin-top: 6px; }
     }
-
-    /* 对外公开：任何人可读 + 可被收录。琥珀 = 需要作者留意的那一档（不可逆）。 */
-    &--public {
-        background: var(--color-accent-amber-soft);
-        color: var(--color-accent-amber);
-    }
-}
-
-.no-blogs {
-    text-align: center;
-    padding: 60px 20px;
-    color: var(--color-text-secondary);
-}
-
-// 空状态图标走站内 mask-image 那套（.icon .icon-*），底色取 currentColor
-// → 自动继承上面那条 --color-text-secondary。
-// ⚠️ 尺寸必须写 width/height：.icon 是固定 1.2rem，**不随 font-size 缩放**
-// （这行原先写的是 font-size: 3rem —— 那是给 Bootstrap Icons 的字体图标用的，
-//  而站内从没加载过那套字体，所以那个 <i> 一直是个 3rem 的空白）。
-.no-blogs .icon {
-    width: 3rem;
-    height: 3rem;
-    margin-bottom: 16px;
-    opacity: 0.5;
-}
-
-/* 响应式设计 */
-
-/* 桌面端：排序条不再占右列顶部（否则首篇博客比目录矮一截），
-   悬浮在 hero 与列表之间的页面底色带上，右列首篇上边界与目录齐平。
-
-   ⚠️ 停放带由两段拼成：hero 底 padding 10 + .blog-layout margin-top 60 = 70px。
-   排序条 top:-52 + 高 ~28 落在带内 8~36px 处（上下各留 8/24px 余量），hero 内容
-   底沿到首篇博客的总距与旧值 (40+30) 相同，密度不变。三个数必须联动 —— 曾因
-   hero 底 padding 40 让色块伸进带内，排序条上半截 ~22px 压在 hero 色块上；
-   专注模式关闭时（无 focus-banner 垫高 layout）即表现为「与 hero 重叠」。 */
-@media (min-width: 993px) {
-  .blog-content {
-    position: relative;
   }
-
-  /* 停放带两段（hero 收底 / layout 让顶），与 .blog-sort 的 top:-52 联动，勿单独改 */
-  .blogs-hero {
-    padding-bottom: 10px;
-  }
-
-  .blog-layout {
-    margin-top: 60px;
-  }
-
-  .blog-sort {
-    position: absolute;
-    top: -52px;
-    right: 0;
-    margin: 0;
-    z-index: 3;
-  }
+  .blog-category-filter summary { min-height: 40px; }
+  .blog-category-panel { padding: 16px; border-radius: 24px; a { min-height: 44px; } }
+  .blog-directory-chip { min-height: 36px; max-width: 100%; }
+  .blog-directory-browse { gap: 8px; margin-bottom: 16px; }
+  .blog-directory-scopes { gap: 0; }
+  .blog-directory-scope { padding-inline: 12px; font-size: 0.85rem; }
+  .blog-sort .segmented__btn { padding-inline: 10px; font-size: 0.8rem; }
+  .blog-layout { margin-top: 20px; }
+  .blog-title { font-size: 1.15rem; }
+  .blog-item { gap: 14px; }
+  .blog-description { font-size: 0.88rem; }
 }
-
-@media (max-width: 992px) {
-    .blog-layout {
-        flex-direction: column;
-        gap: 14px;
-        margin-top: 14px;
-    }
-
-    .sidebar {
-        flex: none;
-        position: static;
-        order: -1;
-        height: auto;               /* Mobile/tablet: auto height */
-        max-height: none;           /* Remove fixed height cap */
-        overflow: visible;          /* No internal scroll; page grows with content */
-        margin-bottom: 0;           /* 单列下间距交给 .blog-layout 的 gap，不再额外 30px */
-        padding: 14px 20px;
-        border-radius: 20px;
-    }
-
-    /* 折叠态（默认）下目录只是细条标题：小标题 + 小行距，给文章让出空间 */
-    .sidebar-title {
-        font-size: 1.35rem;
-        margin-bottom: 0;
-        padding-bottom: 0;
-    }
-
-    /* 展开后的目录也压紧行距（仍是折叠态为主，行距只在展开时显形） */
-    .category-item {
-        margin-bottom: 4px;
-    }
-
-    .category-link {
-        padding: 7px 10px;
-        font-size: 0.85rem;
-    }
-
-    .sub-category-list {
-        margin: 4px 0 0 12px;
-    }
-
-    .sub-category-link {
-        padding: 6px 10px;
-        font-size: 0.8rem;
-    }
-
-    /* 排序条不再独占大片空白：紧贴目录，小一号 */
-    .blog-sort {
-        margin: 2px 0 10px;
-    }
-
-    .blog-sort .segmented__btn {
-        padding: 5px 12px;
-        font-size: 0.8rem;
-    }
-
-    /* hero 收紧：标题/副文案/搜索逐级压缩 */
-    .blogs-hero {
-        padding: 30px 0 18px;
-    }
-
-    .blogs-hero h1 {
-        font-size: 2.4rem;
-        margin-bottom: 4px;
-    }
-
-    .blogs-hero p {
-        font-size: 1rem;
-        margin-bottom: 14px;
-    }
-
-    .blog-search {
-        margin-top: 12px;
-    }
+@media (max-width: 479px) {
+  .blog-category-groups { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .menu-blog-meta > .blog-timestamps { margin-left: 0; justify-content: flex-start; }
 }
-
-@media (max-width: 768px) {
-    .sidebar {
-        padding: 12px 14px;
-        height: auto;               /* Ensure auto height on smaller screens */
-        max-height: none;
-        overflow: visible;
-    }
-
-    /* 手机端默认折叠分类列表 */
-    // 与 BlogSidebar.tsx 的折叠命名保持一致（用 .collapsed 而非 .expanded），
-    // 否则展开时 DOM 上既无 .collapsed 也无 .expanded，命中不到任何规则。
-    .sidebar .category-list {
-        max-height: 0;
-        opacity: 0;
-        margin-bottom: 0;
-    }
-
-    .sidebar .category-list:not(.collapsed) {
-        max-height: 1000px;
-        opacity: 1;
-        margin-bottom: 0;
-    }
-
-    /* 手机端侧边栏标题：整行可点，保持小巧 */
-    .sidebar-title {
-        font-size: 1.15rem;
-        padding: 4px 10px;
-        margin: -12px -14px 0;
-        border-radius: 12px;
-    }
-
-    .blog-item {
-        padding: 14px 16px;
-        border-radius: 18px;
-        margin-bottom: 10px;
-    }
-
-    .blog-header {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 6px;
-    }
-
-    .blog-title {
-        font-size: 1.05rem;
-        margin-right: 0;
-    }
-
-    .menu-blog-meta {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 8px;
-
-        > .blog-timestamps {
-            margin-left: 0;
-            justify-content: flex-start;
-        }
-    }
-
-    .blogs-hero {
-        padding: 22px 0 12px;
-    }
-
-    .blogs-hero h1 {
-        font-size: 1.9rem;
-    }
-
-    .blogs-hero p {
-        font-size: 0.92rem;
-        margin-bottom: 10px;
-    }
-
-    .blog-search {
-        margin-top: 10px;
-    }
-
-    .blog-layout {
-        margin-top: 10px;
-        gap: 10px;
-    }
-
-    .blog-sort {
-        margin: 2px 0 8px;
-    }
-
-    .sub-category-list {
-        margin-left: 10px;
-    }
-}
-
-/* ── 水合前（≤992px）：目录按「已折叠」渲染 ────────────────────────────────────
-   自动折叠发生在 BlogSidebar 的 useEffect（水合之后），而 SSR 直出的是展开态 ——
-   不接管的话，手机/平板会先画一帧展开的目录，再播放一段折叠动画（用户看到的
-   「一进去是展开的，然后收起来」）。这里让首帧就是折叠好的：BlogSidebar 挂载时
-   给 .sidebar 补上 --ready，此后完全由 .collapsed 类说话，两种渲染结果一致，
-   那一帧没有任何视觉变化。
-
-   前缀 .js（layout 的内联脚本在 <head> 同步打上）把这条限制在「JS 可用」时：
-   禁用 JS 就没有任何东西会接管折叠，目录必须保持展开可点，不能被藏起来。
-
-   放在文件末尾：与上面 ≤768px 的 `.sidebar .category-list:not(.collapsed)` 比，
-   多一个 .js 已经胜出，但同段内的两条仍靠源序压过更早的 :not(.collapsed)。 */
-@media (max-width: 992px) {
-    .js .sidebar:not(.sidebar--ready) {
-
-        .category-list,
-        .sub-category-list {
-            max-height: 0;
-            opacity: 0;
-            margin-top: 0;
-            margin-bottom: 0;
-        }
-
-        .sidebar-title .toggle-icon {
-            transform: rotate(-90deg);
-        }
-    }
-}
-
-/* ── 目录列表的等待态（page.tsx 的 <Suspense> fallback）─────────────────────────
-   列表数据不 await，hero / 搜索框 / 侧栏先画，这块从挂起到补上大约一个 RTT。
-   尺寸逐项对齐真实元素（出处见各行注释），换入时列表不跳动。
-   ⚠️ 类名一律走 blog-skeleton-*，**不复用 .blog-item / .blog-list** ——
-   专注模式的用例断言 `.blog-item` 计数为 0，骨架顶着同名类出现会污染它。
-   取色只用 --color-* 令牌，明暗主题自动跟随。 */
-.blog-skeleton-line {
-    background: var(--color-background-subtle);
-    border-radius: 8px;
-    animation: blog-skeleton-pulse 1.4s ease-in-out infinite;
-}
-
-/* 出处：.blog-item（卡片底 / 30px 圆角 / 20px 23px 23px 28px 内距 / 16px 下距） */
-.blog-skeleton-card {
-    background: var(--color-background-card);
-    border-radius: 30px;
-    padding: 20px 23px 23px 28px;
-    margin-bottom: 16px;
-}
-
-/* 出处：.blog-header（桌面 flex 两端对齐、12px 下距；≤768px 转纵向 + 6px 间距） */
-.blog-skeleton-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 12px;
-}
-
-/* 各行高度取自实测：桌面 head 取 max(标题 29, 统计 25)=29，加 12 下距 + 描述(14+22+20)
-   + 作者 21 = 106，加卡片 43 内距 = 149，对齐 .blog-item 实测的 149.1。 */
-.blog-skeleton-line--heading {
-    height: 29px;              /* 出处：.blog-title（1.3rem）实际占高 29.1 */
-    width: 42%;
-}
-
-.blog-skeleton-line--stats {
-    height: 25px;              /* 出处：.blog-stats 实际占高 25 */
-    width: 20%;
-}
-
-.blog-skeleton-line--desc {
-    height: 22px;              /* 出处：.blog-description 实际占高 21.6 */
-    width: 82%;
-    margin: 14px 0 20px;       /* 出处：其 14.4 上距（与 header 的 12 折叠取大）与 20 下距 */
-}
-
-.blog-skeleton-meta {
-    display: flex;
-    justify-content: space-between;
-    gap: 8px 24px;
-}
-
-.blog-skeleton-line--meta {
-    height: 21px;              /* 出处：.blog-author 实际占高 21 */
-    width: 26%;
-}
-
-.blog-skeleton-line--time {
-    height: 19px;
-    width: 36%;
-}
-
-@keyframes blog-skeleton-pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.55; }
-}
-
 @media (prefers-reduced-motion: reduce) {
-    .blog-skeleton-line {
-        animation: none;
-    }
-}
-
-/* 出处：≤768px 的 .blog-item / .blog-header / .blog-title；meta 与时间分行。 */
-@media (max-width: 768px) {
-    .blog-skeleton-card {
-        padding: 14px 16px;
-        border-radius: 18px;
-        margin-bottom: 10px;
-    }
-
-    .blog-skeleton-head {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 6px;
-    }
-
-    .blog-skeleton-line--heading {
-        height: 23.5px;        /* 出处：.blog-title 在 ≤768px 降到 1.05rem */
-    }
-
-    .blog-skeleton-meta {
-        flex-direction: column;
-    }
-
-    .blog-skeleton-line--time {
-        width: 70%;
-    }
+  .blog-directory-toolbar, .blog-directory-toolbar__surface, .blog-directory-toolbar__title,
+  .blog-category-filter summary svg:last-child { transition: none; }
+  .blog-skeleton-line { animation: none; }
 }

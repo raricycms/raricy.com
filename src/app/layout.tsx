@@ -49,9 +49,8 @@ const LIGHT_THEME_COLOR = '#F8FAFC';
 const DARK_THEME_COLOR = '#131517';
 
 // 防闪烁：CSS 加载前按 localStorage/系统偏好设 data-theme（内联脚本，随 <head> 同步执行）。
-// 顺带给 <html> 打上 .js：给「只有 JS 能接管的状态」一个判别位 —— 例如 /blog 侧栏在
-// ≤992px 下要按折叠渲染（见 _menu.scss 末尾），但那只在 JS 会接管折叠时才成立；
-// 禁用 JS 时目录必须保持展开可点，不能被折叠态误伤。脚本同步执行于 <head>，
+// 顺带给 <html> 打上 .js：例如首页文字的入场动画只在 JS 可用时启用。
+// 禁用 JS 时内容直接展示。脚本同步执行于 <head>，
 // 早于首帧绘制，故不会自己造成闪烁。
 //
 // React 19 按 meta 的 content 匹配 hydration 节点；先改它会让 React 再插一条浅色声明。
