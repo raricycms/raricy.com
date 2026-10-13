@@ -382,6 +382,12 @@ Kumbh Sans；代码块与编辑器继续使用完整的 JetBrains Mono。
   短日期，今年省略年份，发布 / 更新说明与完整时间收进提示。日期随站内列表当前排序
   选择，避免在卡片底部同时陈列两种时间与编辑标记。
 - **顶栏**：`.site-navbar` 固定顶部（`position: fixed; top:0`），高 62px，背景 `--color-background-card`，阴影 `--shadow-card-brand`。`body` 有 `padding-top: 62px` 补偿。
+  用户入口为同一外壳内向下展开的胶囊，首行高 **48px**，圆角 **24px**，不挤动导航。
+  悬停不换文字或底色，只亮 `--shadow-card-brand`；箭头使用线性 `ChevronDown`。
+  菜单按钮白底（深色跟随卡片底色）、品牌主色文字，hover 品牌浅底、按下实底白字，
+  退出登录对应红色三态；内部图标与文字左对齐，无标题与分隔线。
+  外壳按 **420ms** 非线性缓动伸缩，按钮错开淡入，收起反向播放；
+  移出焦点、外部点击、导航与 ESC 收起，隐藏面板 `inert`；减少动态效果偏好下直接切换。
 - **页脚**：`.site-footer`，背景卡片色 + 顶部分隔，内容容器同 1140px 体系。
 - **后台**：`.admin-layout` 左侧 220px 固定侧边栏（移动端折叠成横向标签条）+ 右侧滚动内容区，内容容器最大 1400px。
 - **栅格**：首页用 flex + `gap` 或 CSS Grid（`repeat(auto-fit, minmax(...))` / 显式 `repeat(3,1fr)`），**不用浮点栅格**。另有 `layout/_grid.scss` 与 `base/_forms.scss` 提供 Bootstrap 风格行/列工具。
@@ -437,8 +443,7 @@ Kumbh Sans；代码块与编辑器继续使用完整的 JetBrains Mono。
 > ⚠️ **唯一的有边框按钮是 `.btn--ghost`**，这是「无边框」总则的刻意例外：投票详情页
 > 底部那几颗（「返回上页」等）在暗色下没有边框就只剩一行字。`tests/e2e/dark-theme.spec.ts`
 > 断言的正是「暗色下这个按钮的边框必须非透明」—— 去掉边框会让用例失败，且确实是
-> 可读性倒退。另一处保留的 `border-left` 是顶栏下拉的**箭头三角形**
-> （`.site-user-dropdown-toggle::after`），那是 CSS 画的图形，不是设计元素。
+> 可读性倒退。
 
 > 写按钮样式前先看一眼有没有更具体的选择器会盖掉它，例如
 > `pages/_tool-new.scss` 的 `.tool-new-card__footer .btn` 是 0-2-0，会压过全局 `.btn`
@@ -627,40 +632,26 @@ Kumbh Sans；代码块与编辑器继续使用完整的 JetBrains Mono。
 
 ### 6.7 文章详情页读者交互区（`pages/blog/_blog.scss` + `pages/_favorite.scss`）
 
-`.read-controls` 两行：第一行 **点赞 / 投喂 / 收藏**，第二行 返回上页 / 管理文章。
-三颗状态色都走「**未激活跟随 `currentColor`，激活才上色**」的同一套手法，别让任何一颗常亮：
+`.read-controls` 全视口保持单行，从左到右为 **返回圆钮 / 点赞、投喂、收藏的共用胶囊 / 管理胶囊**。
+三组外壳均高 **48px**，返回与收起的管理按钮宽 **48px**；互动底座内距 **4px**，
+内部按钮高 **40px**，圆角 **20px**，与外壳 **24px** 的圆角相适配。
 
-- `.like-btn` → `.liked` 红（`--color-warning-*`）；`.fish-btn` → `.fish-btn--fed` 绿（`--color-success-*`）；
-  `.favorite-btn` → `.favorited` 黄（`--color-star-*`）。
-- ⚠️ 星标曾经**恒亮**（给 `.icon-star-fill` 直接写死 `background-color`），后果是三颗里
-  只有它一直有颜色，「已收藏」反而看不出来。**不要**再给 `.icon-star-fill` 加 `background-color` ——
-  `.icon` 的机制就是 `background-color: currentColor`，颜色只由按钮的 `color` 决定（§7）。
-- 收藏按钮**没有计数徽标**（点赞/投喂有）：站内不显示一篇文章的被收藏数。
-
-**窄屏（≤768px）三颗收成三个 44px 圆钮**，压在同一行、不许换行
-（`flex-wrap: nowrap` + `flex: 0 0 44px` + `max-width: 24rem`；横向交给
-`justify-content: space-evenly` —— 定宽之后不能再平分轨道宽度，**正圆要求宽 = 高**）：
-
-- **文字标签隐藏**（`> span:not([class])` —— 计数徽标也是 `span`，但它带类名，正好被排除）。
-  一排字换成一列之后，320px 档也宽松得很，原先 `<360px` 那条「退回按内容宽度 + 允许换行」
-  的兜底连同它的前提（文字宽度 339px 塞不下）一并删了。
-- **计数落在圆钮外面、正下方居中**：44px 见方的圆钮里再挤一行数字，圆就不成圆了。
-  所以 `.like-count-badge` / `.fish-count-badge` 走 `position: absolute` +
-  `top: calc(100% + 4px)` + `left: 50%`/`translateX(-50%)` —— DOM 不动
-  （仍是按钮的孩子，点数字照样触发按钮），也不占布局位置，因此**按钮自己还是 44px**。
-  那 4px 是数字离圆底的一口气（贴 `top: 100%` 时数字上沿紧挨圆边，像溢出来的）；
-  字号 `0.85rem`（与桌面端徽标同号，不再是窄屏专属的 `0.7rem`）。
-  行上必须留 `padding-bottom: 20px` 接住「4px 间隙 + 数字行高」，
-  否则那行数字会压到下一行「返回上页 / 管理文章」。图标放大一档（1rem → 1.25rem）。
-- ⚠️ **高度由 `.read-controls__row` 的 `min-height: 44px` 钉死，两个断点共用**，
-  窄屏再补一个 `height: 44px` 把正圆坐实。桌面端它由内容撑出（点赞/投喂 ≈44.3px、
-  收藏 41.0px —— 徽标比文字行高）；两边各写各的高度就会在断点前后跳一下（用户报的就是它）。
-  窄屏那条里**不要再写 `padding` / `font-size` 的整体缩放**，那正是原来会变矮的原因。
-- 这条**不能只看代码**：`tests/e2e/favorite-layout.spec.ts` 用真视口断几何，并登记在
-  `playwright.config.ts` 的 `RESPONSIVE_SPECS` 里（desktop 那一遍同样要跑）。
-  其中「窄屏高度 = 桌面高度」那条要在**同一个用例里换视口量两次**，且必须
-  **先 `setViewportSize` 再 `goto`** —— 三颗都带 `transition: all .3s ease`，
-  先加载再改视口会量到过渡起点的值（桌面端的），于是这个 bug 永远量不出来。
+- 所有视口只显示图标与数字，不显示按钮文字。名称保留在 `aria-label` 与 `title` 中，
+  点赞与收藏状态同时提供 `aria-pressed`。点赞、投喂数字留在胶囊内部同行；收藏没有计数。
+- 未激活的图标跟随灰色 `currentColor`；`.liked` 红（`--color-warning-*`），
+  `.fish-btn--fed` 蓝（`--color-brand-*`），`.favorited` 黄（`--color-star-*`）。
+  不给 `.icon-star-fill` 写死颜色，避免未收藏时就亮。
+- 管理开关使用灰色次级按钮，点击后同一外壳向右展开，齿轮同步旋转 **180°**。
+  菜单文字为「点赞者 / 投喂者 / 编辑 / 可见性 / 删除」，保留品牌蓝与删除红。
+  编辑与可见性仍仅作者可用；管理员和普通读者的权限边界保持原有规则。
+- 管理胶囊使用 `grid-template-columns: 48px 0fr → 48px 1fr`，
+  **420ms**、`cubic-bezier(.22, 1, .36, 1)`，菜单项错开淡入与平移；
+  收起反向播放，隐藏项立即 `inert`，退出焦点序列。失焦、外部点击与 ESC 收起；
+  删除或可见性弹窗取消回到管理胶囊，并聚焦触发器。
+- 展开时左侧起点不移动。窄屏仅 `.read-controls` 横向滚动，正文与页面不被撑宽。
+  `prefers-reduced-motion: reduce` 直接切换，不播放伸缩与入场动画。
+- `tests/e2e/favorite-layout.spec.ts` 在 **320px / 390px / 1000px** 量实际几何，
+  同时检查最后一项可滚动到并打开、失焦收起与收藏选择器；desktop 与 mobile 都跑。
 
 收藏夹选择器弹窗（`.favorite-picker__*`）：**名称独占一行，两颗创建按钮并排在下一行**
 （`.favorite-picker__new-actions`，`flex: 1 1 0` 等宽）。三者挤一行时「创建公开」会被挤到
@@ -911,7 +902,9 @@ plot / price / volume / time 各占一格）：与 SVG 共用同一个分数，�
 
 ## 7. 图标方案
 
-**不用图标字体 / icon 库**，采用「SVG + CSS mask」：`components/_icons.scss` 定义 `.icon` 基类，用 `mask-image` 引用 `public/static/img/icons/*.svg`，颜色跟随 `currentColor`（即继承 `color`），天然适配亮/暗主题。
+**不用图标字体**。现有 mask 图标由 `components/_icons.scss` 的 `.icon` 基类引用
+`public/static/img/icons/*.svg`；线性图标使用 `lucide-react` 的内联 SVG，
+例如胶囊箭头、博客管理齿轮与菜单图标。两种图标颜色均跟随 `currentColor`，适配明暗主题。
 
 - 常用类：`.icon-bell`、`.icon-gear`、`.icon-person`、`.icon-house`、`.icon-fish`、`.icon-theme-toggle`、`.icon-book/controller/journal-text/tools`（首页四大入口）等。
 - 首页卡片的 `feature-icon` / `__icon` 用同一手法，给不同卡片指定不同 `color` 形成彩色图标（无需多色 SVG）。
