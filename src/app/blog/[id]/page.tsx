@@ -191,32 +191,36 @@ export default async function BlogDetailPage({ params }: { params: Promise<{ id:
       {/* 客户端绑定 scroll → 进度条宽度 */}
       <ReadingProgress />
 
-      <header className="read-hero">
-        <h1>{blog.title}</h1>
-        <div className="blog-meta" id="blog-meta">
-          <Link href={`/u/${blog.authorId}`} className="read-hero__author">
-            <Avatar
-              userId={blog.authorId}
-              frameUrl={blog.author?.frameUrl}
-              alt={blog.author?.username ?? ''}
-              className="read-hero__avatar"
-            />
-            <span className="read-hero__author-name">{blog.author?.username}</span>
-          </Link>
-          <BlogTimestamps createdAt={blog.createdAt} updatedAt={blog.content?.updatedAt} detail />
-        </div>
-      </header>
-
       <article className="blog-detail" data-blog-id={blog.id}>
-        {/* contentRefs 与 externalClips 都由**服务端**决定，不是客户端开关。
-            成员视图 'expand'（带凭据请求三条 core+ 接口）；对外视图 'external'
-            —— 图床 / 音频照渲染，剪贴板只出服务端判过的那几条公开档，
-            投票与收藏保留字面量。判据与理由见 MarkdownRenderer 的 prop 说明。 */}
-        <MarkdownRenderer
-          content={blog.content?.content ?? ''}
-          contentRefs={member ? 'expand' : 'external'}
-          externalClips={externalClips}
-        />
+        <div className="blog-content-container-container">
+          <div className="read-card">
+            <header className="read-hero">
+              <h1>{blog.title}</h1>
+              <div className="blog-meta" id="blog-meta">
+                <Link href={`/u/${blog.authorId}`} className="read-hero__author">
+                  <Avatar
+                    userId={blog.authorId}
+                    frameUrl={blog.author?.frameUrl}
+                    alt={blog.author?.username ?? ''}
+                    className="read-hero__avatar"
+                  />
+                  <span className="read-hero__author-name">{blog.author?.username}</span>
+                </Link>
+                <BlogTimestamps createdAt={blog.createdAt} updatedAt={blog.content?.updatedAt} detail />
+              </div>
+            </header>
+
+            {/* contentRefs 与 externalClips 都由**服务端**决定，不是客户端开关。
+                成员视图 'expand'（带凭据请求三条 core+ 接口）；对外视图 'external'
+                —— 图床 / 音频照渲染，剪贴板只出服务端判过的那几条公开档，
+                投票与收藏保留字面量。判据与理由见 MarkdownRenderer 的 prop 说明。 */}
+            <MarkdownRenderer
+              content={blog.content?.content ?? ''}
+              contentRefs={member ? 'expand' : 'external'}
+              externalClips={externalClips}
+            />
+          </div>
+        </div>
 
         {member && (
           <FeedButton

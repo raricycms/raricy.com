@@ -67,15 +67,17 @@ test('实际编辑后的时间贯通详情、两种列表与个人主页，桌�
   await page.reload();
   const detail = page.locator('.blog-meta .blog-timestamps');
   await expectDetail(page, initial.created_at, changed.updated_at);
+  await expect(page.locator('.read-card .read-hero')).toBeVisible();
+  await expect(page.locator('.read-card #userContentContainer h1')).toBeVisible();
   const alignment = await page.locator('.read-hero h1').evaluate((title) => ({
     title: title.getBoundingClientRect().left,
-    body: document.querySelector('.blog-detail')!.getBoundingClientRect().left + 16,
+    body: document.querySelector('#userContentContainer')!.getBoundingClientRect().left,
   }));
   expect(alignment.title).toBeCloseTo(alignment.body, 0);
-  await page.locator('.read-hero').screenshot({ path: testInfo.outputPath('detail-light.png'), animations: 'disabled' });
+  await page.locator('.read-card').screenshot({ path: testInfo.outputPath('detail-light.png'), animations: 'disabled' });
   await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
   await expectTimesFit(detail);
-  await page.locator('.read-hero').screenshot({ path: testInfo.outputPath('detail-dark.png'), animations: 'disabled' });
+  await page.locator('.read-card').screenshot({ path: testInfo.outputPath('detail-dark.png'), animations: 'disabled' });
 
   await page.goto(`/blog?search=${encodeURIComponent(data.title)}`);
   const card = page.locator(`[id="id${id}"]`);
@@ -117,7 +119,7 @@ test('实际编辑后的时间贯通详情、两种列表与个人主页，桌�
   await publicCard.screenshot({ path: testInfo.outputPath('public-card-320.png') });
   await page.goto(`/blog/${id}`);
   await expectDetail(page, initial.created_at, changed.updated_at);
-  await page.locator('.read-hero').screenshot({ path: testInfo.outputPath('detail-320.png'), animations: 'disabled' });
+  await page.locator('.read-card').screenshot({ path: testInfo.outputPath('detail-320.png'), animations: 'disabled' });
   await page.locator('.blog-timestamps__summary').focus();
   await page.keyboard.press('Enter');
   await expect(page.locator('.blog-timestamps__panel')).toBeVisible();
