@@ -14,8 +14,10 @@ import { categoryFullPath } from '@/lib/format';
 import { getCurrentUser, isCoreUser } from '@/lib/auth';
 // 锚点常量（零依赖模块）—— 设置页那块卡片的 id 就是它，别在 JSX 里再抄一遍字符串
 import { FOCUS_MODE_SETTINGS_HREF } from '@/lib/focus-mode';
+import { blogDirectoryHref } from '@/lib/blog-directory-links';
 import BlogDirectoryHeading from './BlogDirectoryHeading';
 import BlogDirectoryToolbar from './BlogDirectoryToolbar';
+import BlogSort from './BlogSort';
 import BlogPageJump from './BlogPageJump';
 
 export const dynamic = 'force-dynamic'; // 依赖查询参数，禁用静态化
@@ -128,15 +130,17 @@ export default async function BlogListPage({
     return `?${p.toString()}`;
   };
 
+  const directoryFilters = { category: currentSlug, search: sp.search, sort: rawSort };
+
   return (
     <div className="blog-directory">
+      <BlogDirectoryHeading />
+
       {focusOn && (
         <div className="focus-banner" role="status">
           您已开启专注模式，点击 <Link href={FOCUS_MODE_SETTINGS_HREF}>此处</Link> 关闭
         </div>
       )}
-
-      <BlogDirectoryHeading />
 
       <BlogDirectoryToolbar
         categories={focusOn ? pruneFocusCategories(categories) : categories}
@@ -144,13 +148,20 @@ export default async function BlogListPage({
         featured={featuredParam}
         search={sp.search ?? ''}
         sort={rawSort}
-        initialSort={effectiveSort}
         canUpload={canUpload}
       />
 
       <div className="container">
         <div className="blog-layout">
           <main className="blog-content">
+            <div className="blog-directory-browse">
+              <nav className="blog-directory-scopes" aria-label="文章范围">
+                <Link href={blogDirectoryHref('/blog', directoryFilters)} className={`blog-directory-scope${featuredFilter !== true ? ' is-active' : ''}`} aria-current={featuredFilter !== true ? 'page' : undefined}>全部文章</Link>
+                <Link href={blogDirectoryHref('/blog', { ...directoryFilters, featured: '1' })} className={`blog-directory-scope${featuredFilter === true ? ' is-active' : ''}`} aria-current={featuredFilter === true ? 'page' : undefined}>精选</Link>
+              </nav>
+              {/* 空结果页也保留排序偏好的恢复 effect。 */}
+              <BlogSort initialSort={effectiveSort} />
+            </div>
             {/* 列表与分页都依赖 result，故连同分页一起放进边界内 ——
                 它们要么一起出现，要么一起等。fallback 用骨架，且**不复用 .blog-item**：
                 专注模式的用例断言 `.blog-item` 计数为 0，骨架顶着同名类出现会污染它。 */}

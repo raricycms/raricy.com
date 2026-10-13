@@ -2,11 +2,9 @@
 
 import Link from 'next/link';
 import { useEffect, useId, useRef, useState } from 'react';
-import { flushSync } from 'react-dom';
 import { ChevronDown, Plus, Search, SlidersHorizontal, X } from 'lucide-react';
 import { blogDirectoryHref } from '@/lib/blog-directory-links';
 import SearchForm from './SearchForm';
-import BlogSort from './BlogSort';
 
 interface DirectoryCategory {
   id: number;
@@ -30,7 +28,6 @@ export default function BlogDirectoryToolbar({
   featured,
   search,
   sort,
-  initialSort = 'created',
   basePath = '/blog',
   canUpload = false,
 }: {
@@ -40,7 +37,6 @@ export default function BlogDirectoryToolbar({
   featured: '1' | '0' | null;
   search: string;
   sort: 'created' | 'updated' | null;
-  initialSort?: 'created' | 'updated';
   basePath?: '/blog' | '/explore';
   canUpload?: boolean;
 }) {
@@ -110,12 +106,11 @@ export default function BlogDirectoryToolbar({
   function toggleSearch() {
     if (searchOpen) {
       setSearchOpen(false);
-      toggleRef.current?.focus({ preventScroll: true });
+      toggleRef.current?.focus();
     } else {
-      // 在本次点击里先展开再聚焦，兼顾触屏键盘的用户手势要求。
-      // preventScroll 避免 WebKit 把吸顶字段滚回它在文档流中的原位置。
-      flushSync(() => setSearchOpen(true));
-      inputRef.current?.focus({ preventScroll: true });
+      setSearchOpen(true);
+      // 字段一直挂在 DOM 上；只等这一帧的 CSS 展开，再把焦点交给它。
+      requestAnimationFrame(() => inputRef.current?.focus());
     }
   }
 
@@ -123,7 +118,7 @@ export default function BlogDirectoryToolbar({
     <>
       <div className="blog-directory-sentinel" ref={sentinelRef} aria-hidden="true" />
       <div
-        className={`blog-directory-toolbar${stuck ? ' blog-directory-toolbar--stuck' : ''}${searchOpen ? ' blog-directory-toolbar--search-open' : ''}`}
+        className={`blog-directory-toolbar${stuck ? ' blog-directory-toolbar--stuck' : ''}${searchOpen ? ' blog-directory-toolbar--search-open' : ''}${hasChips ? ' blog-directory-toolbar--filtered' : ''}`}
         data-ready={ready ? 'true' : undefined}
         onKeyDown={(event) => {
           if (event.key !== 'Escape') return;
@@ -132,7 +127,7 @@ export default function BlogDirectoryToolbar({
             detailsRef.current.querySelector('summary')?.focus();
           } else if (stuck && searchOpen && window.matchMedia('(max-width: 767px)').matches) {
             setSearchOpen(false);
-            toggleRef.current?.focus({ preventScroll: true });
+            toggleRef.current?.focus();
           }
         }}
       >
@@ -169,12 +164,6 @@ export default function BlogDirectoryToolbar({
               )}
             </div>
             <div className="blog-directory-toolbar__filters">
-              {basePath === '/blog' && (
-                <nav className="blog-directory-scopes" aria-label="文章范围">
-                  <Link href={href({ featured: null })} className={`blog-directory-scope${featured !== '1' ? ' is-active' : ''}`} aria-current={featured !== '1' ? 'page' : undefined}>全部文章</Link>
-                  <Link href={href({ featured: '1' })} className={`blog-directory-scope${featured === '1' ? ' is-active' : ''}`} aria-current={featured === '1' ? 'page' : undefined}>精选</Link>
-                </nav>
-              )}
               <details className="blog-category-filter" ref={detailsRef} onToggle={(event) => fitCategoryPanel(event.currentTarget)}>
                 <summary>
                   <SlidersHorizontal size={16} aria-hidden="true" />
@@ -199,16 +188,14 @@ export default function BlogDirectoryToolbar({
                   </div>
                 </div>
               </details>
-              {/* 空结果与吸顶收拢时也保持挂载，以便排序偏好的恢复 effect 运行。 */}
-              {basePath === '/blog' && <BlogSort initialSort={initialSort} />}
+              {hasChips && (
+                <div className="blog-directory-chips" aria-label="当前筛选条件">
+                  {currentSlug && <Link href={href({ category: null })} className="blog-directory-chip" aria-label={`移除分类筛选：${categoryLabel}`} title={categoryLabel}><span>{categoryLabel}</span><X size={14} aria-hidden="true" /></Link>}
+                  {search && <Link href={href({ search: '' })} className="blog-directory-chip" aria-label={`清除搜索：${search}`} title={search}><span>{search}</span><X size={14} aria-hidden="true" /></Link>}
+                  {featured === '0' && <Link href={href({ featured: null })} className="blog-directory-chip" aria-label="移除非精选筛选"><span>非精选</span><X size={14} aria-hidden="true" /></Link>}
+                </div>
+              )}
             </div>
-            {hasChips && (
-              <div className="blog-directory-chips" aria-label="当前筛选条件">
-                {currentSlug && <Link href={href({ category: null })} className="blog-directory-chip" aria-label={`移除分类筛选：${categoryLabel}`} title={categoryLabel}><span>{categoryLabel}</span><X size={14} aria-hidden="true" /></Link>}
-                {search && <Link href={href({ search: '' })} className="blog-directory-chip" aria-label={`清除搜索：${search}`} title={search}><span>{search}</span><X size={14} aria-hidden="true" /></Link>}
-                {featured === '0' && <Link href={href({ featured: null })} className="blog-directory-chip" aria-label="移除非精选筛选"><span>非精选</span><X size={14} aria-hidden="true" /></Link>}
-              </div>
-            )}
           </div>
         </div>
       </div>

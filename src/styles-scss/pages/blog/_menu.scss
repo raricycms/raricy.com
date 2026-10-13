@@ -34,54 +34,33 @@
 
 .blog-directory { padding-bottom: 32px; }
 .blogs-hero {
-  --directory-art-cover: color-mix(in srgb, var(--color-brand-primary) 56%, var(--color-background-card));
-  --directory-art-cover-shade: color-mix(in srgb, var(--color-brand-primary) 72%, var(--color-text-secondary));
-  --directory-art-paper: color-mix(in srgb, var(--color-accent-cyan) 9%, var(--color-background-card));
+  --directory-art-cover: color-mix(in srgb, var(--color-brand-primary) 65%, var(--color-background-card));
+  --directory-art-cover-shade: color-mix(in srgb, var(--color-brand-primary) 75%, var(--color-text-secondary));
+  --directory-art-paper: color-mix(in srgb, var(--color-brand-primary) 8%, var(--color-background-card));
   --directory-art-paper-light: var(--color-background-card);
-  --directory-art-paper-shade: color-mix(in srgb, var(--color-brand-primary) 19%, var(--color-background-card));
-  --directory-art-line: color-mix(in srgb, var(--color-brand-primary) 32%, var(--color-background-card));
-  --directory-art-ground: color-mix(in srgb, var(--color-accent-cyan) 9%, var(--color-background-page));
-  --directory-art-accent: var(--color-accent-amber);
-  position: relative;
-  overflow: hidden;
-  background:
-    linear-gradient(to top, var(--color-background-page), transparent 65%),
-    radial-gradient(ellipse at 78% 22%, var(--color-accent-amber-soft), transparent 46%),
-    radial-gradient(ellipse at 52% 80%, var(--color-accent-cyan-soft), transparent 62%),
-    color-mix(in srgb, var(--color-brand-primary) 3%, var(--color-background-page));
+  --directory-art-paper-shade: color-mix(in srgb, var(--color-brand-primary) 20%, var(--color-background-card));
+  --directory-art-line: color-mix(in srgb, var(--color-brand-primary) 28%, var(--color-background-card));
+  --directory-art-ground: color-mix(in srgb, var(--color-brand-primary) 7%, var(--color-background-page));
+  --directory-art-warm: color-mix(in srgb, var(--color-accent-amber) 28%, var(--color-background-page));
+  --directory-art-ribbon: var(--color-accent-amber);
+  --directory-art-stem: color-mix(in srgb, var(--color-accent-cyan) 55%, var(--color-text-secondary));
+  --directory-art-leaf: color-mix(in srgb, var(--color-accent-cyan) 45%, var(--color-background-card));
+  padding: 26px 0 22px;
   color: var(--color-text-primary);
-  h1 { margin: 0; font-size: clamp(3rem, 4.5vw, 4.1rem); line-height: 1.2; font-weight: 700; letter-spacing: -0.04em; }
-  p { margin: 16px 0 0; font-size: 1rem; color: var(--color-text-secondary); letter-spacing: 0.08em; }
+  h1 { margin: 0; font-size: clamp(2.4rem, 4vw, 3.4rem); font-weight: 700; letter-spacing: -0.035em; }
 }
-.blog-directory-heading { position: relative; display: flex; align-items: center; min-height: 292px; padding-block: 40px 72px; }
-.blog-directory-heading__text { position: relative; z-index: 1; max-width: 45%; }
-.blog-directory-scene {
-  position: absolute;
-  right: -12px;
-  bottom: -22px;
-  width: 630px;
-  height: auto;
-  pointer-events: none;
-  mask-image: linear-gradient(to bottom, #000 90%, transparent 100%);
-  &__layer { transform-box: view-box; transform-origin: 62% 72%; transition: none; }
-}
-[data-theme='dark'] .blogs-hero {
-  --directory-art-paper: color-mix(in srgb, var(--color-brand-primary) 16%, var(--color-background-card));
-  --directory-art-paper-light: color-mix(in srgb, var(--color-brand-primary) 8%, var(--color-background-content));
-  --directory-art-paper-shade: color-mix(in srgb, var(--color-brand-primary) 27%, var(--color-background-card));
-  --directory-art-line: color-mix(in srgb, var(--color-brand-primary) 52%, var(--color-background-card));
-}
+.blog-directory-heading { display: flex; align-items: center; justify-content: space-between; min-height: 126px; gap: 24px; }
+.blog-directory-art { display: block; width: 230px; height: 130px; flex: none; }
 .focus-banner {
   width: 100%;
-  margin: 12px auto 0;
+  margin: 0 auto 14px;
   @include m.container-padding;
   @include m.site-width-ladder;
   color: var(--color-text-secondary);
   font-size: 0.82rem;
   a { color: var(--color-brand-primary); }
 }
-// 哨兵与工具栏共同压进首屏底部，吸顶判定和工具栏的真实起点一致。
-.blog-directory-sentinel { height: 1px; margin-top: -39px; pointer-events: none; }
+.blog-directory-sentinel { height: 1px; margin-top: -1px; pointer-events: none; }
 .blog-directory-toolbar {
   position: sticky;
   top: var(--navbar-height);
@@ -89,7 +68,7 @@
   transition: background-color 0.2s ease, box-shadow 0.2s ease;
   &__surface {
     position: relative;
-    padding: 18px 22px 14px;
+    padding: 14px 18px 10px;
     border-radius: 30px;
     background: var(--color-background-card);
     transition: padding 0.2s ease, border-radius 0.2s ease;
@@ -106,14 +85,12 @@
   }
   &__search { flex: 1; min-width: 0; }
   .search-form { max-width: none; }
-  &__filters { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; margin-top: 12px; }
+  &__filters { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; margin-top: 6px; }
   &--stuck {
     background: var(--color-background-card);
     box-shadow: var(--shadow-card-brand);
     .blog-directory-toolbar__surface { padding-block: 10px 8px; border-radius: 0; }
     .blog-directory-toolbar__title { max-width: 64px; opacity: 1; }
-    .blog-directory-scopes, .blog-sort { display: none; }
-    .blog-directory-toolbar__filters { margin-top: 6px; }
   }
 }
 .blog-directory-create, .blog-directory-search-toggle {
@@ -172,7 +149,7 @@
 .blog-category-group { min-width: 0; }
 .blog-category-panel .blog-category-parent { font-weight: 600; color: var(--color-text-primary); margin-bottom: 4px; }
 .blog-category-option { margin-top: 2px; }
-.blog-directory-chips { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; max-width: 100%; margin-top: 8px; }
+.blog-directory-chips { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; max-width: 100%; }
 .blog-directory-chip {
   @include m.btn-tab;
   display: inline-flex;
@@ -190,64 +167,59 @@
 }
 .blog-layout { margin-top: 24px; }
 .blog-content { min-width: 0; }
-.blog-directory-scopes { display: flex; align-items: center; gap: 4px; }
+.blog-directory-browse { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
+.blog-directory-scopes { display: flex; align-items: center; gap: 8px; }
 .blog-directory-scope { @include m.btn-tab; display: inline-flex; align-items: center; min-height: 40px; padding: 8px 16px; font-size: 0.9rem; }
-.blog-sort { display: flex; justify-content: flex-end; align-items: center; margin-left: auto; }
+.blog-sort { display: flex; justify-content: flex-end; align-items: center; }
 .blog-sort .segmented__btn { padding: 7px 14px; font-size: 0.85rem; font-weight: 400; &.is-active { font-weight: 600; } }
-.blog-list, .blog-skeleton-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.blog-list, .blog-skeleton-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
 .blog-item {
   position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto 1fr auto;
+  gap: 16px;
   min-width: 0;
-  padding: 20px 23px 23px 28px;
+  min-height: 220px;
+  padding: 26px;
   border-radius: 30px;
   background: var(--color-background-card);
-  cursor: pointer;
   transition: box-shadow 0.2s ease;
   &:hover { box-shadow: var(--shadow-card-brand); }
 }
 .blog-item-cover { position: absolute; inset: 0; z-index: 0; border-radius: inherit; }
 .blog-item-cover:focus-visible { outline: 2px solid var(--color-brand-primary); outline-offset: 4px; }
-.blog-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 12px; }
+// DOM 仍是标题一组、摘要、作者时间一组；统计落到卡片底部，保持安静。
+.blog-header { display: contents; }
 .blog-title {
-  flex: 1;
-  min-width: 0;
+  grid-row: 1;
   margin: 0;
   color: var(--color-text-primary);
   font-size: 1.3rem;
   font-weight: 600;
-  line-height: 1.4;
+  line-height: 1.5;
   overflow-wrap: anywhere;
   &:hover { color: var(--color-brand-primary); }
 }
 .blog-description {
+  grid-row: 2;
   color: var(--color-text-secondary);
   font-size: 0.9rem;
-  line-height: 1.5;
-  margin: 0 0 20px;
+  line-height: 1.65;
+  margin: 0;
   @include m.truncate(2);
   overflow-wrap: anywhere;
+  align-self: start;
 }
-// 恢复目录原有的三色胶囊：桌面放在标题右侧，手机紧接标题下方。
-.blog-stats { display: flex; align-items: center; flex-shrink: 0; flex-wrap: wrap; gap: 12px; }
-.blog-likes, .blog-comments, .blog-fish {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 12px;
-  border-radius: 999px;
-  font-size: 15px;
-  font-weight: bold;
-  .icon { width: 1rem; height: 1rem; color: inherit; }
-}
-.blog-likes { color: var(--color-warning-primary); background: var(--color-warning-secondary); .icon { width: 0.9rem; height: 0.9rem; } }
-.blog-comments { color: var(--color-success-primary); background: var(--color-success-secondary); }
-.blog-fish { color: var(--color-brand-primary); background: var(--color-brand-secondary); gap: 4px; }
+.blog-stats { grid-row: 4; display: flex; align-items: center; flex-wrap: wrap; gap: 16px; color: var(--color-text-secondary); font-size: 0.78rem; }
+.blog-likes, .blog-comments, .blog-fish { display: inline-flex; align-items: center; gap: 5px; .icon { width: 0.95rem; height: 0.95rem; color: inherit; } }
 .menu-blog-meta {
+  grid-row: 3;
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 8px 24px;
+  gap: 10px;
   color: var(--color-text-secondary);
   font-size: 0.8rem;
   > .blog-author { min-width: 0; flex-wrap: wrap; }
@@ -281,30 +253,28 @@
 .no-blogs { text-align: center; padding: 60px 20px; color: var(--color-text-secondary); }
 .no-blogs .icon { width: 3rem; height: 3rem; margin-bottom: 16px; opacity: 0.5; }
 
-// 骨架与单列卡片同一套几何；不用真实条目类，避免污染按文章数量检查的用例。
-.blog-skeleton-card { padding: 20px 23px 23px 28px; border-radius: 30px; background: var(--color-background-card); }
+// 骨架与双列卡片同一套几何；不用真实条目类，避免污染按文章数量检查的用例。
+.blog-skeleton-card { min-height: 220px; padding: 26px; border-radius: 30px; background: var(--color-background-card); }
 .blog-skeleton-line { background: var(--color-background-subtle); border-radius: 8px; animation: blog-skeleton-pulse 1.4s ease-in-out infinite; }
-.blog-skeleton-head { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+.blog-skeleton-head { margin-bottom: 18px; }
 .blog-skeleton-line--heading { height: 30px; width: 72%; }
-.blog-skeleton-line--stats { height: 30px; width: 24%; }
-.blog-skeleton-line--desc { height: 40px; width: 92%; margin-bottom: 20px; }
+.blog-skeleton-line--stats { height: 14px; width: 30%; margin-top: 16px; }
+.blog-skeleton-line--desc { height: 40px; width: 92%; margin-bottom: 24px; }
 .blog-skeleton-meta { display: flex; justify-content: space-between; gap: 16px; }
 .blog-skeleton-line--meta { height: 24px; width: 48%; }
 .blog-skeleton-line--time { height: 20px; width: 22%; }
 @keyframes blog-skeleton-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
 
 @media (max-width: 819px) {
+  .blog-list, .blog-skeleton-grid { grid-template-columns: minmax(0, 1fr); gap: 14px; }
   .blog-category-groups { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .blog-directory-scene { right: -50px; width: 540px; }
+  .blog-item, .blog-skeleton-card { min-height: 190px; padding: 22px; }
 }
 @media (max-width: 767px) {
-  .blogs-hero h1 { font-size: 2.8rem; }
-  .blogs-hero p { margin-top: 12px; font-size: 0.9rem; letter-spacing: 0.04em; white-space: nowrap; }
-  .blog-directory-heading { min-height: 244px; padding-block: 32px 110px; align-items: flex-start; }
-  .blog-directory-heading__text { max-width: 55%; }
-  .blog-directory-scene { width: 380px; right: -22px; bottom: 2px; }
-  .blog-directory-sentinel { margin-top: -27px; }
-  .blog-directory-toolbar__surface { padding: 14px 12px 12px; border-radius: 24px; }
+  .blogs-hero { padding: 12px 0 16px; }
+  .blog-directory-heading { min-height: 100px; gap: 16px; }
+  .blog-directory-art { width: 150px; height: 94px; }
+  .blog-directory-toolbar__surface { padding: 12px 12px 8px; border-radius: 24px; }
   .blog-directory-toolbar__row { gap: 8px; flex-wrap: wrap; }
   .blog-directory-create { width: 44px; height: 44px; padding: 0; span { display: none; } }
   .blog-directory-toolbar__title { display: none; }
@@ -315,6 +285,7 @@
     .blog-directory-search-toggle { display: inline-flex; width: 44px; height: 44px; padding: 0; }
     .blog-category-filter { display: none; }
     .blog-directory-toolbar__filters { margin-top: 0; }
+    &.blog-directory-toolbar--filtered .blog-directory-toolbar__filters { margin-top: 6px; }
     &.blog-directory-toolbar--search-open {
       .blog-directory-toolbar__search { display: block; order: 4; flex-basis: 100%; }
       .blog-category-filter { display: block; }
@@ -324,22 +295,16 @@
   .blog-category-filter summary { min-height: 40px; }
   .blog-category-panel { padding: 16px; border-radius: 24px; a { min-height: 44px; } }
   .blog-directory-chip { min-height: 36px; max-width: 100%; }
-  .blog-directory-toolbar__filters { gap: 6px; margin-top: 8px; }
-  .blog-directory-scopes { gap: 0; flex: 1; }
+  .blog-directory-browse { gap: 8px; margin-bottom: 16px; }
+  .blog-directory-scopes { gap: 0; }
   .blog-directory-scope { padding-inline: 12px; font-size: 0.85rem; }
-  .blog-sort { width: 100%; justify-content: flex-start; margin-top: 2px; }
   .blog-sort .segmented__btn { padding-inline: 10px; font-size: 0.8rem; }
   .blog-layout { margin-top: 20px; }
-  .blog-list, .blog-skeleton-grid { gap: 10px; }
-  .blog-item, .blog-skeleton-card { padding: 14px 16px; border-radius: 18px; }
-  .blog-header, .blog-skeleton-head { flex-direction: column; align-items: flex-start; gap: 6px; }
-  .blog-title { font-size: 1.05rem; }
-  .menu-blog-meta { flex-direction: column; align-items: flex-start; gap: 8px; }
-  .menu-blog-meta > .blog-timestamps { margin-left: 0; justify-content: flex-start; }
-  .blog-skeleton-line--stats { width: 40%; }
+  .blog-title { font-size: 1.15rem; }
+  .blog-item { gap: 14px; }
+  .blog-description { font-size: 0.88rem; }
 }
 @media (max-width: 479px) {
-  .blog-directory-scene { width: 360px; right: -22px; }
   .blog-category-groups { grid-template-columns: minmax(0, 1fr); gap: 14px; }
   .menu-blog-meta > .blog-timestamps { margin-left: 0; justify-content: flex-start; }
 }
@@ -347,5 +312,4 @@
   .blog-directory-toolbar, .blog-directory-toolbar__surface, .blog-directory-toolbar__title,
   .blog-category-filter summary svg:last-child { transition: none; }
   .blog-skeleton-line { animation: none; }
-  .blog-directory-scene__layer { transform: none !important; }
 }
