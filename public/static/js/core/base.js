@@ -586,21 +586,34 @@ function initSiteChrome() {
         : { matches: false, addEventListener: function () {}, removeEventListener: function () {} };
     function isMobile() { return mqMobile.matches; }
 
+    // 收起方向现在也有动画（_header.scss：面板 340ms 收回，期间 visibility 仍是
+    // visible）—— 但里面的链接要**立即**退出焦点序列，同 .site-user-dropdown-panel
+    // 的处理，靠 inert 而不是等 visibility 那一刀。
+    // ⚠️ 只在移动端置 inert：桌面端的 collapse 是常显的，误置等于整条顶栏点不动。
+    function setNavbarOpen(open) {
+        siteNavbar.classList.toggle('open', open);
+        if (toggler) toggler.setAttribute('aria-expanded', open ? 'true' : 'false');
+        const collapse = siteNavbar.querySelector('.site-navbar-collapse');
+        if (collapse) collapse.inert = isMobile() && !open;
+    }
+
     function closeNavbar() {
         if (!siteNavbar || !siteNavbar.classList.contains('open')) return;
-        siteNavbar.classList.remove('open');
-        if (toggler) toggler.setAttribute('aria-expanded', 'false');
+        setNavbarOpen(false);
     }
 
     if (toggler && siteNavbar) {
         toggler.addEventListener('click', function () {
-            const isOpen = siteNavbar.classList.toggle('open');
-            toggler.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+            setNavbarOpen(!siteNavbar.classList.contains('open'));
         }, { signal });
         // 跨断点（如桌面端缩放 / 旋转）：离开 mobile 时清掉 .open，避免
         // aria-expanded 与 .site-navbar-collapse 的折叠状态错位。
+        // ⚠️ 这里**不能**只调 closeNavbar()：已经收起时会早退，而移动端那次收起
+        // 留下的 inert 就带到了桌面端 —— 桌面端 collapse 是常显的，整条顶栏立刻
+        // 点不动（鼠标点、Tab 都进不去，且不报任何错）。无参调 setNavbarOpen
+        // 会按 isMobile() 重算，离开 mobile 时自然把 inert 清成 false。
         mqMobile.addEventListener('change', function (e) {
-            if (!e.matches) closeNavbar();
+            if (!e.matches) setNavbarOpen(false);
         });
     }
 
