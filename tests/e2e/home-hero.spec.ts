@@ -157,15 +157,16 @@ test.describe('手机倾斜视差', () => {
     await expectOffset(page, true).toBeCloseTo(0, 2);
     await expectOffset(page, true, 'f').toBeCloseTo(0, 2);
     await sendTilt(page, 85, 37);
-    await expectOffset(page, true).toBeCloseTo(28.6, 1);
-    await expectOffset(page, true, 'f').toBeCloseTo(18.2, 1);
+    // 2.5 × 满量程：近景 2.5×1.3×22，纵向 2.5×1.3×14。
+    await expectOffset(page, true).toBeCloseTo(71.5, 1);
+    await expectOffset(page, true, 'f').toBeCloseTo(45.5, 1);
     expect(await layerOffset(page, true)).toBeGreaterThan(await layerOffset(page, false) * 5);
     const titleAfter = await page.locator('#hero-title').boundingBox();
     expect(titleAfter!.x).toBeCloseTo(titleBefore!.x, 1);
     expect(titleAfter!.y).toBeCloseTo(titleBefore!.y, 1);
     await sendTilt(page, 145, 87);
-    await expectOffset(page, true).toBeCloseTo(28.6, 1);
-    await expectOffset(page, true, 'f').toBeCloseTo(18.2, 1);
+    await expectOffset(page, true).toBeCloseTo(71.5, 1);
+    await expectOffset(page, true, 'f').toBeCloseTo(45.5, 1);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(page.viewportSize()!.width);
   });
 
@@ -229,8 +230,8 @@ test.describe('手机倾斜视差', () => {
       await expectOffset(page, true, 'f').toBeCloseTo(0, 1);
       await sendTilt(page, 85, 35);
       const radians = angle * Math.PI / 180;
-      await expectOffset(page, true).toBeCloseTo(28.6 * (Math.cos(radians) + Math.sin(radians)), 1);
-      await expectOffset(page, true, 'f').toBeCloseTo(18.2 * (Math.cos(radians) - Math.sin(radians)), 1);
+      await expectOffset(page, true).toBeCloseTo(71.5 * (Math.cos(radians) + Math.sin(radians)), 1);
+      await expectOffset(page, true, 'f').toBeCloseTo(45.5 * (Math.cos(radians) - Math.sin(radians)), 1);
     }
   });
 
