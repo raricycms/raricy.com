@@ -367,7 +367,7 @@ export default function SettingsPage() {
           <h2 className="settings-card__title">专注模式</h2>
         </div>
         <p className="settings-card__desc">
-          屏蔽干扰源，专心阅读。开启后：博客列表与侧栏将隐藏站长标记为「专注隐藏」的栏目及其文章；
+          屏蔽干扰源，专心阅读。开启后：博客列表与侧栏将隐藏标记为「专注隐藏」的栏目及其文章；
           讨论大区（讨论室）与鱼干练手盘（含统计）不可使用 —— 它们的入口会一并隐藏，
           私聊与鱼干商城不受影响。随时可在此关闭。
         </p>
@@ -399,7 +399,7 @@ export default function SettingsPage() {
         </div>
         <p className="settings-card__desc">
           戴上你拥有的头像框，它会显示在顶栏、评论区、讨论区与你的个人主页。
-          除了站长发放的，也可以去{' '}
+          除了活动发放的，也可以去{' '}
           <a className="frame-panel__hint-link" href="/fish/market">
             鱼干商城
           </a>

@@ -449,8 +449,7 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
           </div>
           <span className="form-hint text-muted">
             匿名评论者在本文下始终显示同一个化名（第一位是 Alice，第二位是 Bob，以此类推），
-            头像按化名生成。<strong>管理员</strong>仍能在管理日志里查到真实作者
-            （你和读者都看不到）。
+            头像按化名生成，评论区不展示其账号资料。
           </span>
         </div>
 

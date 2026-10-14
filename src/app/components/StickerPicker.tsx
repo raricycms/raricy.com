@@ -354,14 +354,6 @@ export default function StickerPicker({
               })}
             </div>
           </div>
-          {/* 站长指引：只在素材目录为空时出现。
-              以前它是一条**整块空态**（连 tab 条都不渲染）—— 现在黄脸永远是内容，
-              所以降级成一行小字，别让整站没素材时站长再也看不到这句话。 */}
-          {data?.empty && (
-            <p className="sticker-picker__hint">
-              把表情图片放进服务器的 instance/stickers/&lt;合集&gt;/ 目录即可增加合集。
-            </p>
-          )}
         </>
       )}
     </div>

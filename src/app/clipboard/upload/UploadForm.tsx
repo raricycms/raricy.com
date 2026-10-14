@@ -504,7 +504,7 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
             公开：站内成员凭这 8 位 ID 就能读到；若嵌进对外公开的博客，站外读者也会看到其中的
             内容。它不会出现在任何列表里，搜索引擎也搜不到。
             <br />
-            私密：只有你本人（和站长）能读；嵌进博客后，站外读者看到的是 <code>[@ID]</code> 原文。
+            私密：不公开分享；嵌进博客后，站外读者看到的是 <code>[@ID]</code> 原文。
           </span>
 
           {isEdit && (

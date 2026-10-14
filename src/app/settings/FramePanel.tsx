@@ -134,7 +134,7 @@ export default function FramePanel({ userId, onAlert }: Props) {
         // ⚠️ 这句话曾经是「头像框由站长发放，不需要你申请」—— 鱼干商城上线后它就不对了：
         //    有一款框是**用户自己租**的。指向商城而不是说「等站长发」。
         <p className="frame-panel__hint">
-          你还没有任何头像框。站长会不定期发放，也可以自己去{' '}
+          你还没有任何头像框。可以通过活动获得，也可以去{' '}
           <a className="frame-panel__hint-link" href="/fish/market">
             鱼干商城
           </a>

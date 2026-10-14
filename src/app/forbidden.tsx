@@ -27,8 +27,8 @@ export default async function Forbidden() {
           <p className="rainbow-error__msg">抱歉，您没有足够的权限访问此页面。</p>
           <p className="rainbow-error__hint">
             {user
-              ? `当前账号（${user.username}）没有访问此页面的权限。如需更高权限，请联系网站管理员。`
-              : '可能是该内容需要特定权限，或者您的账户尚未登录。登录后再试，或联系网站管理员。'}
+              ? `当前账号（${user.username}）无法访问此内容。如认为有误，可联系本站反馈。`
+              : '请先登录后重试。如果仍无法访问，可联系本站反馈。'}
           </p>
           <div className="rainbow-error__actions">
             {user ? (

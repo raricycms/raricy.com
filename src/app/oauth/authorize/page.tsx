@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { LockKeyhole } from 'lucide-react';
-import { getCurrentUser } from '@/lib/auth';
+import { getCurrentUser, isOwner } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import {
   normalizeScopes,
@@ -108,7 +108,7 @@ export default async function AuthorizePage({ searchParams }: PageProps) {
   if (app.disabledAt) {
     return (
       <ErrorCard title="应用已停用">
-        {app.name} 已被站长停用，无法绑定。
+        {app.name} 已停用，无法绑定。
       </ErrorCard>
     );
   }
@@ -119,7 +119,7 @@ export default async function AuthorizePage({ searchParams }: PageProps) {
   } catch {
     return (
       <ErrorCard title="配置错误">
-        该应用的 redirect_uris 配置损坏，请联系站长。
+        该应用的回调地址配置有误，请联系本站反馈。
       </ErrorCard>
     );
   }
@@ -127,12 +127,21 @@ export default async function AuthorizePage({ searchParams }: PageProps) {
     return (
       <ErrorCard title="回调地址未注册">
         该应用未注册回调地址 <code>{redirectUri}</code>。
-        <br />
-        如你是站长，请到{' '}
-        <a href="/admin/oauth" style={{ color: 'var(--fd-accent)' }}>
-          OAuth 应用管理
-        </a>{' '}
-        添加此 redirect_uri。
+        {isOwner(user) ? (
+          <>
+            <br />
+            请到{' '}
+            <a href="/admin/oauth" style={{ color: 'var(--fd-accent)' }}>
+              OAuth 应用管理
+            </a>{' '}
+            添加此回调地址。
+          </>
+        ) : (
+          <>
+            <br />
+            请联系应用提供方核对回调地址。
+          </>
+        )}
       </ErrorCard>
     );
   }

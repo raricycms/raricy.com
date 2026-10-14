@@ -223,7 +223,7 @@ function ShopItemCard({
 
         {item.assetMissing ? (
           <p className="market-shop__error">
-            这款头像框的素材还没传上来，暂时买不了。站长补图后这里会自动放开。
+            这款头像框的素材暂不可用，暂时无法购买。
           </p>
         ) : (
           <>

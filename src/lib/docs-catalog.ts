@@ -66,7 +66,7 @@ export interface DocEntry {
 export const DOC_ENTRIES: readonly DocEntry[] = [
   {
     group: 'guide', slug: 'guide/聊天气泡使用指南', title: '聊天气泡使用指南',
-    summary: '气泡的租用、选择、到期、历史消息展示与站长发放。',
+    summary: '气泡的租用、选择、到期、历史消息展示与款式维护。',
   },
   // ── 给玩家与创作者 ────────────────────────────────────────────────────────
   {
@@ -79,7 +79,7 @@ export const DOC_ENTRIES: readonly DocEntry[] = [
     group: 'guide',
     slug: 'guide/表情包使用指南',
     title: '表情包使用指南',
-    summary: '[@合集/表情] 怎么用、内置黄脸栏与站长自加素材。',
+    summary: '[@合集/表情] 怎么用、内置黄脸栏与图片表情合集。',
   },
   {
     group: 'guide',

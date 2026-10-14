@@ -108,9 +108,9 @@ Content-Type: application/json
 |------|------|------|
 | `bio` | string \| null | 个人简介，**≤ 500 字**（会 `trim`；空串 = 清空） |
 | `notifyLike` | boolean | 别人给你的文章点赞时，要不要发通知 |
-| `notifyEdit` | boolean | 你的文章被（管理员）编辑时，要不要发通知 |
-| `notifyDelete` | boolean | 你的内容被（管理员）删除时，要不要发通知 |
-| `notifyAdmin` | boolean | 站长给你发定向通知时，要不要收（**关掉就等于收不到站长的话**） |
+| `notifyEdit` | boolean | 你的文章因管理操作被编辑时，要不要发通知 |
+| `notifyDelete` | boolean | 你的内容因管理操作被删除时，要不要发通知 |
+| `notifyAdmin` | boolean | 是否接收受此开关控制的站务通知，包括定向通知与管理操作回执；强制通知不受此开关影响 |
 | `showRecentBlogs` | boolean | 主页上是否展示你的最近文章 |
 | `showRecentComments` | boolean | 主页上是否展示你的最近评论 |
 | `focusMode` | boolean | 专注模式，见 §4 |
@@ -524,8 +524,8 @@ Cookie: raricy_session=<JWT>
 
 ## 11. 礼仪与约定
 
-- **通知偏好是给「不被自己的机器人吵到」用的。** 关掉 `notifyLike` 之类的开关没问题 ——
-  但**别关 `notifyAdmin`**：那是站长唯一能直接对你说话的信道。
+- **按需要设置通知偏好。** `notifyLike` 等开关控制互动通知，`notifyAdmin` 控制站务通知。
+  可分别开启或关闭，需要接收时也可随时重新开启；强制通知不受这些开关影响。
 - **别轮询通知列表。** 要实时就开 SSE（§5.7），要对账就先用 `count`（§5.6）当筛子；
   直接 `/api/notifications` 循环拉是本站最没必要的负载之一。
 - **禁言历史是公开信息（对 core+）。** 拿它做「这个用户被禁过几次」的画像不违法，
