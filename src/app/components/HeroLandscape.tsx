@@ -1,8 +1,7 @@
 'use client';
 
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef } from 'react';
 
-type TiltState = 'hidden' | 'ready' | 'requesting' | 'enabled' | 'denied';
 type OrientationEventConstructor = typeof DeviceOrientationEvent & {
   requestPermission?: () => Promise<'granted' | 'denied'>;
 };
@@ -11,8 +10,6 @@ type OrientationEventConstructor = typeof DeviceOrientationEvent & {
 // SVG 本身参与 SSR；无 JS 或减少动态效果偏好下仍是一幅完整的插画。
 export default function HeroLandscape() {
   const ref = useRef<SVGSVGElement>(null);
-  const toggleTilt = useRef<() => void>(() => {});
-  const [tiltState, setTiltState] = useState<TiltState>('hidden');
   const pineId = useId();
   const moonMaskId = useId();
 
@@ -29,11 +26,10 @@ export default function HeroLandscape() {
     const orientationEvent = window.DeviceOrientationEvent as OrientationEventConstructor | undefined;
     const tiltSupported = window.isSecureContext && !!orientationEvent;
     let disposed = false;
-    let tiltGranted = tiltSupported && typeof orientationEvent?.requestPermission !== 'function';
-    let tiltEnabled = tiltGranted;
+    let tiltGranted = false;
+    let tiltAttempted = false;
+    let tiltClickListening = false;
     let tiltListening = false;
-    let tiltRequesting = false;
-    let tiltDenied = false;
     let neutralTilt: { beta: number; gamma: number; angle: number } | null = null;
     let frame = 0;
     let visible = true;
@@ -132,42 +128,37 @@ export default function HeroLandscape() {
 
     function syncTiltInput() {
       const available = tiltSupported && coarsePointer.matches && !reducedMotion.matches;
-      const active = available && tiltEnabled && tiltGranted;
-      const listen = active && visible && !document.hidden;
+      const waitForClick = available && !tiltAttempted && !document.hidden;
+      if (waitForClick !== tiltClickListening) {
+        tiltClickListening = waitForClick;
+        // 捕获页面任意位置的真实点击，同时让原本的导航、按钮操作继续执行。
+        if (waitForClick) document.addEventListener('click', onFirstClick, { capture: true, passive: true });
+        else document.removeEventListener('click', onFirstClick, true);
+      }
+      const listen = available && tiltGranted && visible && !document.hidden;
       if (listen !== tiltListening) {
         tiltListening = listen;
         resetTilt();
         if (listen) window.addEventListener('deviceorientation', onDeviceOrientation, { passive: true });
         else window.removeEventListener('deviceorientation', onDeviceOrientation);
       }
-      setTiltState(!available ? 'hidden' : tiltRequesting ? 'requesting' : active ? 'enabled' : tiltDenied ? 'denied' : 'ready');
     }
 
-    toggleTilt.current = async () => {
-      if (disposed || tiltRequesting || !tiltSupported || !coarsePointer.matches || reducedMotion.matches) return;
-      if (tiltGranted) {
-        tiltEnabled = !tiltEnabled;
-        syncTiltInput();
-        return;
-      }
-      tiltRequesting = true;
-      setTiltState('requesting');
+    async function onFirstClick(event: MouseEvent) {
+      if (!event.isTrusted || disposed || tiltAttempted || !tiltSupported || !coarsePointer.matches || reducedMotion.matches) return;
+      tiltAttempted = true;
+      syncTiltInput();
       try {
         // iOS 必须直接在点击回调内请求，不能移到 effect 或定时器中。
-        const permission = await orientationEvent?.requestPermission?.();
+        const permission = orientationEvent?.requestPermission
+          ? await orientationEvent.requestPermission() : 'granted';
         if (disposed) return;
         tiltGranted = permission === 'granted';
-        tiltEnabled = tiltGranted;
-        tiltDenied = !tiltGranted;
+        syncTiltInput();
       } catch {
-        if (!disposed) tiltDenied = true;
-      } finally {
-        if (!disposed) {
-          tiltRequesting = false;
-          syncTiltInput();
-        }
+        // 装饰性效果的授权拒绝或异常静默降级，后续点击不再重复申请。
       }
-    };
+    }
 
     function onInputChange() {
       resetTilt();
@@ -221,7 +212,6 @@ export default function HeroLandscape() {
 
     return () => {
       disposed = true;
-      toggleTilt.current = () => {};
       if (frame) cancelAnimationFrame(frame);
       observer.disconnect();
       themeObserver.disconnect();
@@ -236,13 +226,13 @@ export default function HeroLandscape() {
       finePointer.removeEventListener('change', onInputChange);
       coarsePointer.removeEventListener('change', onInputChange);
       window.removeEventListener('deviceorientation', onDeviceOrientation);
+      document.removeEventListener('click', onFirstClick, true);
       window.removeEventListener('orientationchange', resetTilt);
       window.screen.orientation?.removeEventListener('change', resetTilt);
     };
   }, []);
 
   return (
-    <>
     <svg className="hero-scene" ref={ref} viewBox="0 0 1800 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">
       <defs>
         <path id={pineId} d="M0 0 12 23 7 23 20 42 12 42 28 65 17 65 34 91 5 91 5 105 -5 105 -5 91 -34 91 -17 65 -28 65 -12 42 -20 42 -7 23 -12 23Z" />
@@ -318,20 +308,5 @@ export default function HeroLandscape() {
         <path d="m1556 711 0 136 34 0-13-39-12 0 14-23-12 0 9-19-10 0Zm218-130v185h42l-19-53h-14l22-36h-20l17-29h-14Z" fill="var(--hero-forest-light)" opacity="0.45" />
       </g>
     </svg>
-    {tiltState !== 'hidden' && (
-      <div className="hero-tilt-control">
-        <button
-          className="hero-tilt-toggle"
-          type="button"
-          aria-pressed={tiltState === 'enabled'}
-          disabled={tiltState === 'requesting'}
-          onClick={() => toggleTilt.current()}
-        >
-          {tiltState === 'enabled' ? '关闭倾斜效果' : tiltState === 'requesting' ? '正在开启…' : tiltState === 'denied' ? '重新开启倾斜效果' : '开启倾斜效果'}
-        </button>
-        {tiltState === 'denied' && <p role="status">未获授权，仍可滚动浏览山景。</p>}
-      </div>
-    )}
-    </>
   );
 }

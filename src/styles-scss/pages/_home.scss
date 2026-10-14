@@ -193,30 +193,6 @@
   outline-offset: 5px;
 }
 
-.hero-tilt-control {
-  position: absolute;
-  right: 24px;
-  bottom: 24px;
-  z-index: 2;
-  max-width: calc(100% - 48px);
-  text-align: right;
-
-  p { margin: 8px 0 0; color: var(--hero-muted); font-size: 0.8rem; }
-}
-
-.hero-tilt-toggle {
-  @include m.btn-secondary;
-  min-height: 44px;
-  padding: 10px 16px;
-  font-size: 0.85rem;
-  background-color: var(--color-background-card);
-
-  &:focus-visible {
-    outline: 2px solid var(--color-brand-primary);
-    outline-offset: 3px;
-  }
-}
-
 #features { scroll-margin-top: 78px; }
 
 @media (min-width: 768px) and (max-width: 1199px) {
