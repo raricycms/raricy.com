@@ -217,7 +217,7 @@ a {
   &-toggle {
     background: transparent;
     border: 0;
-    color: var(--color-text-primary);
+    color: var(--color-text-secondary);
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -238,7 +238,7 @@ a {
     width: 18px;
     height: 18px;
     flex: none;
-    color: var(--color-text-primary);
+    color: var(--color-text-secondary);
     transition: transform .42s cubic-bezier(.22, 1, .36, 1);
   }
 
@@ -318,7 +318,7 @@ a {
     min-height: 40px;
     padding: 8px 14px;
     background-color: var(--color-background-card);
-    color: var(--color-text-primary);
+    color: var(--color-text-secondary);
     font-size: .9rem;
     white-space: nowrap;
     text-decoration: none; 
