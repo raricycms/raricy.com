@@ -20,6 +20,10 @@ export default function HeroLandscape() {
 
     const layers = Array.from(scene.querySelectorAll<SVGGElement>('[data-depth]'))
       .map((element) => ({ element, depth: Number(element.dataset.depth) }));
+    // 触屏倾斜的位移上限刻意比鼠标视差大一档：窄屏把整幅画按 940/1800 缩到一半，
+    // 用户单位换算成屏幕像素后又打对折，而手持可倾斜的角度也远小于鼠标的横扫范围 ——
+    // 两样一叠，沿用鼠标那套幅度时层与层只差几个像素，分层就看不出来了。
+    const TILT_GAIN = 2.5;
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
     const finePointer = window.matchMedia('(hover: hover) and (pointer: fine)');
     const coarsePointer = window.matchMedia('(pointer: coarse)');
@@ -121,8 +125,9 @@ export default function HeroLandscape() {
       const deltaGamma = gamma - neutralTilt.gamma;
       const rotation = angle * Math.PI / 180;
       // 传感器轴固定在设备上，转到屏幕坐标后横竖屏都能左右、上下倾斜。
-      targetX = Math.max(-1, Math.min(1, (deltaGamma * Math.cos(rotation) + deltaBeta * Math.sin(rotation)) / 25));
-      targetY = Math.max(-1, Math.min(1, (deltaBeta * Math.cos(rotation) - deltaGamma * Math.sin(rotation)) / 25));
+      // 先按 ±25° 归一化并限幅，再乘倾斜专属的位移增益。
+      targetX = TILT_GAIN * Math.max(-1, Math.min(1, (deltaGamma * Math.cos(rotation) + deltaBeta * Math.sin(rotation)) / 25));
+      targetY = TILT_GAIN * Math.max(-1, Math.min(1, (deltaBeta * Math.cos(rotation) - deltaGamma * Math.sin(rotation)) / 25));
       schedule();
     }
 
