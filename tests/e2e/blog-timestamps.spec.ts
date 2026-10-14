@@ -69,11 +69,16 @@ test('实际编辑后的时间贯通详情、两种列表与个人主页，桌�
   await expectDetail(page, initial.created_at, changed.updated_at);
   await expect(page.locator('.read-card .read-hero')).toBeVisible();
   await expect(page.locator('.read-card #userContentContainer h1')).toBeVisible();
-  const alignment = await page.locator('.read-hero h1').evaluate((title) => ({
-    title: title.getBoundingClientRect().left,
-    body: document.querySelector('#userContentContainer')!.getBoundingClientRect().left,
-  }));
-  expect(alignment.title).toBeCloseTo(alignment.body, 0);
+  await expect(page.locator('.read-hero h1')).toHaveCSS('text-align', 'center');
+  const alignment = await page.locator('.blog-meta').evaluate((meta) => {
+    const rect = meta.getBoundingClientRect();
+    const items = Array.from(meta.children).map((item) => item.getBoundingClientRect());
+    return {
+      container: rect.left + rect.width / 2,
+      content: (Math.min(...items.map((item) => item.left)) + Math.max(...items.map((item) => item.right))) / 2,
+    };
+  });
+  expect(alignment.content).toBeCloseTo(alignment.container, 0);
   await page.locator('.read-card').screenshot({ path: testInfo.outputPath('detail-light.png'), animations: 'disabled' });
   await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
   await expectTimesFit(detail);
