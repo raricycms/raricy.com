@@ -462,7 +462,7 @@ a {
         padding: 0;
         border-radius: 50%;
 
-        svg {
+        .icon {
             width: 20px;
             height: 20px;
             transition: transform .42s cubic-bezier(.22, 1, .36, 1);
@@ -484,7 +484,7 @@ a {
             transition-delay: 0s;
         }
 
-        .manage-control__toggle svg { transform: rotate(-180deg); }
+        .manage-control__toggle .icon { transform: rotate(-180deg); }
 
         .manage-menu__item {
             opacity: 1;
@@ -525,7 +525,6 @@ a {
         transition: color .25s ease, background-color .25s ease, filter .15s ease,
                     opacity .18s ease, transform .28s cubic-bezier(.22, 1, .36, 1);
 
-        svg { width: 18px; height: 18px; }
         .icon { width: 20px; height: 20px; flex: none; }
 
         &--danger {
@@ -584,7 +583,7 @@ a {
     .read-controls__interaction,
     .manage-control,
     .manage-control__panel,
-    .manage-control__toggle svg,
+    .manage-control__toggle .icon,
     .manage-menu__item {
         transition: none;
     }

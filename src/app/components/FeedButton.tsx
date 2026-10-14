@@ -12,7 +12,7 @@
 import Avatar from '@/app/components/Avatar';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, Eye, Pencil, Settings, Trash2 } from 'lucide-react';
+import { ChevronLeft } from 'lucide-react';
 // 可见性词汇必须从 ./blog-visibility 取（那个模块零依赖）—— **不能**从 blog-service，
 // 它拖着 prisma，进不了客户端包。BlogForm 同款。
 import { BLOG_VISIBILITIES, VISIBILITY_LABEL } from '@/lib/blog-visibility';
@@ -466,7 +466,7 @@ export default function FeedButton({
                 aria-expanded={modal === 'menu'}
                 aria-controls="blog-manage-menu"
               >
-                <Settings aria-hidden="true" />
+                <span className="icon icon-gear-fill" aria-hidden="true" />
               </button>
               <div className="manage-control__panel" inert={modal !== 'menu'} aria-hidden={modal !== 'menu'}>
                 <div className="manage-menu" id="blog-manage-menu" role="group" aria-label="文章管理操作">
@@ -478,7 +478,7 @@ export default function FeedButton({
                   </button>
                   {canEdit && (
                     <a href={`/blog/${blogId}/edit`} className="manage-menu__item" aria-label="编辑" title="编辑">
-                      <Pencil aria-hidden="true" /><span>编辑</span>
+                      <span className="icon icon-pencil-fill" aria-hidden="true" /><span>编辑</span>
                     </a>
                   )}
                   {/* 编辑与可见性仅作者可用，服务端 PATCH / PUT 也只认作者。 */}
@@ -487,11 +487,11 @@ export default function FeedButton({
                       setVisDraft(visibility);
                       setModal('visibility');
                     }}>
-                      <Eye aria-hidden="true" /><span>可见性</span>
+                      <span className="icon icon-eye-fill" aria-hidden="true" /><span>可见性</span>
                     </button>
                   )}
                   <button type="button" className="manage-menu__item manage-menu__item--danger" onClick={() => setModal('delete')} aria-label="删除" title="删除">
-                    <Trash2 aria-hidden="true" /><span>删除</span>
+                    <span className="icon icon-trash-fill" aria-hidden="true" /><span>删除</span>
                   </button>
                 </div>
               </div>
