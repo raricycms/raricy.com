@@ -146,7 +146,7 @@ test('详情页：各视口只留图标与计数，三颗尺寸跨断点一致',
   await expect(page.locator('#like-count')).toHaveCount(0);
 });
 
-test('详情页：星标收藏或悬停浅底，已收藏悬停实底，按下更暗', async ({ page }) => {
+test('详情页：星标收藏或悬停浅底，已收藏悬停与按下同为实底', async ({ page }) => {
   await registerFreshUser(page, { core: true });
   const blogId = await createBlog(page, `星标用例 ${uniqueTag()}`);
   await page.goto(`/blog/${blogId}`);
@@ -165,7 +165,6 @@ test('详情页：星标收藏或悬停浅底，已收藏悬停实底，按下�
     return {
       star: norm(cs.getPropertyValue('--color-star-primary')),
       starSoft: norm(cs.getPropertyValue('--color-star-secondary')),
-      starPressed: norm('color-mix(in srgb, var(--color-star-primary) 50%, #000)'),
       muted: norm(cs.getPropertyValue('--color-text-secondary')),
     };
   });
@@ -185,7 +184,7 @@ test('详情页：星标收藏或悬停浅底，已收藏悬停实底，按下�
 
   // 建一个私密收藏夹并顺手收藏本文
   await page.mouse.down();
-  await expect(btn).toHaveCSS('background-color', colors.starPressed);
+  await expect(btn).toHaveCSS('background-color', colors.star);
   await expect.poll(iconBg).toBe('rgb(255, 255, 255)');
   await page.mouse.up();
   const modal = page.locator('#favoritePickerModal.is-open');
@@ -210,9 +209,9 @@ test('详情页：星标收藏或悬停浅底，已收藏悬停实底，按下�
   await expect(btn).toHaveCSS('background-color', colors.star);
   await expect.poll(iconBg).toBe('rgb(255, 255, 255)');
 
-  // 已收藏且悬停时按住：按下样式必须盖过实底悬停样式。
+  // 已收藏且悬停时按住：保持与悬停相同的主色实底与白星。
   await page.mouse.down();
-  await expect(btn).toHaveCSS('background-color', colors.starPressed);
+  await expect(btn).toHaveCSS('background-color', colors.star);
   await expect
     .poll(iconBg)
     .toBe('rgb(255, 255, 255)');

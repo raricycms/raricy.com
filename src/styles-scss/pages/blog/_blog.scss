@@ -414,12 +414,6 @@ a {
         font: inherit;
         border-radius: 20px;
 
-        // 按下只压暗实底，图标仍为白色；适用于已选与未选的三颗按钮。
-        &:active:not(:disabled) {
-            background-color: color-mix(in srgb, var(--color-brand-primary) 50%, #000);
-            color: #fff;
-        }
-
         .icon {
             width: 20px;
             height: 20px;
@@ -622,15 +616,14 @@ a {
     @include m.btn-secondary;
 }
 
-// 已点赞 / 投喂 / 收藏的停手态同未选时的 hover；选中后悬停用实底白图标。
-// 排除 :active，避免这条悬停规则盖掉操作区共同的按下压暗态。
+// 已点赞 / 投喂 / 收藏的停手态同未选时的 hover；选中后悬停与按下都用实底白图标。
 .like-btn.liked,
 .fish-btn--fed,
 .favorite-btn.favorited {
     background-color: var(--color-brand-secondary);
     color: var(--color-brand-primary);
 
-    &:hover:not(:active):not(:disabled) {
+    &:hover:not(:disabled) {
         background-color: var(--color-brand-primary);
         color: #fff;
     }
