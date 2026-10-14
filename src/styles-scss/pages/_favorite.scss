@@ -9,7 +9,8 @@
 
 /* ── 详情页的收藏按钮（参照 .like-btn / .fish-btn 的 pill 形态）─────────────
  * ⚠️ 星标**未收藏时不亮**：走 .icon 的 `background-color: currentColor`（与心形 /
- * 小鱼同一个机制）—— 未收藏时跟着文字是灰的，hover 变黄；已收藏用浅黄实底与白星。
+ * 小鱼同一个机制）—— 未收藏时跟着文字是灰的，hover 或已收藏的停手态用浅底黄星。
+ * 已收藏时悬停用黄色实底白星；按下用更暗的实底。三颗按钮的状态样式共用 _blog.scss。
  * 这里曾经写死 `.icon-star-fill { background-color: 黄色 }`（想让五角星恒亮），
  * 后果是三颗并排的按钮里只有它是常亮的，「已收藏」反而看不出来 —— 那正是状态色
  * 存在的意义。所以图标颜色只跟随按钮的 color。
@@ -20,11 +21,6 @@
   @include m.btn-secondary;
   --color-brand-primary: var(--color-star-primary);
   --color-brand-secondary: var(--color-star-secondary);
-}
-
-.favorite-btn.favorited {
-  background: color-mix(in srgb, var(--color-star-primary) 75%, #fff);
-  color: #fff;
 }
 
 /* ── 正文里的收藏夹卡片 ─────────────────────────────────────────────────────

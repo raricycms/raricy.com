@@ -414,6 +414,12 @@ a {
         font: inherit;
         border-radius: 20px;
 
+        // 按下只压暗实底，图标仍为白色；适用于已选与未选的三颗按钮。
+        &:active:not(:disabled) {
+            background-color: color-mix(in srgb, var(--color-brand-primary) 50%, #000);
+            color: #fff;
+        }
+
         .icon {
             width: 20px;
             height: 20px;
@@ -607,11 +613,6 @@ a {
     line-height: 1.2;
 }
 
-.like-btn.liked {
-    background: color-mix(in srgb, var(--color-warning-primary) 75%, #fff);
-    color: #fff;
-}
-
 /* 投喂按钮样式（参照点赞按钮）
    ⚠️ 亮起来的颜色是**品牌蓝**，不是绿色。小鱼干的主题色全站就是 `--color-brand-*`
    —— /blog 列表卡上的 .blog-fish 胶囊（_menu.scss）与投喂弹窗（_fish.scss 的
@@ -621,11 +622,18 @@ a {
     @include m.btn-secondary;
 }
 
-/* 「我投喂过」那一档：同上面两处一样走品牌蓝（见 .fish-btn 上方那条注释）。
-   停手状态（未投喂）保持与点赞 / 收藏同款的灰，三颗按钮在这一档仍是一套观感。 */
-.fish-btn--fed {
-    background: color-mix(in srgb, var(--color-brand-primary) 75%, #fff);
-    color: #fff;
+// 已点赞 / 投喂 / 收藏的停手态同未选时的 hover；选中后悬停用实底白图标。
+// 排除 :active，避免这条悬停规则盖掉操作区共同的按下压暗态。
+.like-btn.liked,
+.fish-btn--fed,
+.favorite-btn.favorited {
+    background-color: var(--color-brand-secondary);
+    color: var(--color-brand-primary);
+
+    &:hover:not(:active):not(:disabled) {
+        background-color: var(--color-brand-primary);
+        color: #fff;
+    }
 }
 
 

@@ -146,7 +146,7 @@ test('详情页：各视口只留图标与计数，三颗尺寸跨断点一致',
   await expect(page.locator('#like-count')).toHaveCount(0);
 });
 
-test('详情页：星标空闲灰色，悬停浅底黄星，收藏后浅黄实底白星', async ({ page }) => {
+test('详情页：星标收藏或悬停浅底，已收藏悬停实底，按下更暗', async ({ page }) => {
   await registerFreshUser(page, { core: true });
   const blogId = await createBlog(page, `星标用例 ${uniqueTag()}`);
   await page.goto(`/blog/${blogId}`);
@@ -165,6 +165,7 @@ test('详情页：星标空闲灰色，悬停浅底黄星，收藏后浅黄实�
     return {
       star: norm(cs.getPropertyValue('--color-star-primary')),
       starSoft: norm(cs.getPropertyValue('--color-star-secondary')),
+      starPressed: norm('color-mix(in srgb, var(--color-star-primary) 50%, #000)'),
       muted: norm(cs.getPropertyValue('--color-text-secondary')),
     };
   });
@@ -183,37 +184,39 @@ test('详情页：星标空闲灰色，悬停浅底黄星，收藏后浅黄实�
   await expect(btn).toHaveCSS('background-color', colors.starSoft);
 
   // 建一个私密收藏夹并顺手收藏本文
-  await btn.click();
+  await page.mouse.down();
+  await expect(btn).toHaveCSS('background-color', colors.starPressed);
+  await expect.poll(iconBg).toBe('rgb(255, 255, 255)');
+  await page.mouse.up();
   const modal = page.locator('#favoritePickerModal.is-open');
   await expect(modal).toBeVisible();
   await modal.locator('.favorite-picker__input').fill(`星标夹 ${uniqueTag()}`);
   await modal.getByRole('button', { name: '创建私密收藏夹' }).click();
   await expect(btn).toHaveAttribute('aria-pressed', 'true', { timeout: 15_000 });
+  await modal.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(modal).toBeHidden();
 
-  // 收藏后是白星与提亮的黄色实底。移开指针，避免量到悬停态。
+  // 收藏后的停手态与未收藏时的悬停态一致。
   await page.mouse.move(0, 0);
   // ★ 必须轮询，不能读一次 ★ `.favorite-btn` 带颜色过渡，
   // 类名一挂上动画就开始了 —— 立刻 getComputedStyle 拿到的是**过渡中间值**
   // （实测 rgb(105,119,134)，从灰到黄刚起步），断言会莫名其妙地红。
   await expect
-    .poll(iconBg, { message: '已收藏了，星标却没变白', timeout: 5_000 })
+    .poll(iconBg, { message: '已收藏了，星标却没变黄', timeout: 5_000 })
+    .toBe(colors.star);
+  await expect(btn).toHaveCSS('background-color', colors.starSoft);
+
+  await btn.hover();
+  await expect(btn).toHaveCSS('background-color', colors.star);
+  await expect.poll(iconBg).toBe('rgb(255, 255, 255)');
+
+  // 已收藏且悬停时按住：按下样式必须盖过实底悬停样式。
+  await page.mouse.down();
+  await expect(btn).toHaveCSS('background-color', colors.starPressed);
+  await expect
+    .poll(iconBg)
     .toBe('rgb(255, 255, 255)');
-  const background = await btn.evaluate(el => getComputedStyle(el).backgroundColor);
-  // 浏览器可能把 color-mix 序列化为 color(srgb …)，借助 canvas 统一为 RGB。
-  const channels = await page.evaluate(({ background, star }) => {
-    const context = document.createElement('canvas').getContext('2d')!;
-    const rgb = (color: string) => {
-      context.clearRect(0, 0, 1, 1);
-      context.fillStyle = color;
-      context.fillRect(0, 0, 1, 1);
-      return Array.from(context.getImageData(0, 0, 1, 1).data);
-    };
-    return { selected: rgb(background), primary: rgb(star) };
-  }, { background, star: colors.star });
-  expect(channels.selected[3], '激活态应为实底').toBe(255);
-  expect(channels.selected.slice(0, 3).every((c, i) => c >= channels.primary[i])).toBe(true);
-  expect(channels.selected.slice(0, 3).reduce((sum, c) => sum + c, 0))
-    .toBeGreaterThan(channels.primary.slice(0, 3).reduce((sum, c) => sum + c, 0));
+  await page.mouse.up();
 });
 
 test('操作区：动态居中，手机端管理展开只留图标并收起互动胶囊', async ({ page }, testInfo) => {

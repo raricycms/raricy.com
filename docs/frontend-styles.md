@@ -74,7 +74,7 @@ CSS 由 [scripts/compiled-css.mjs](../scripts/compiled-css.mjs) **现编**入口
 | `--color-success-secondary` | `rgba(16,185,129,0.1)` | 成功浅底 |
 | `--color-info-secondary` | `rgba(59,130,246,0.08)` | 信息浅底 |
 | `--color-star-primary` | `#f1c40f` | 收藏夹：黄色五角星（**唯一的黄色语义色**；`--color-warning-*` 其实是红）。**只在「已收藏」与 hover 时用**，未收藏不亮 —— 见 §6.7 |
-| `--color-star-secondary` | `rgba(241,196,15,0.12)` | 收藏夹按钮的 hover 浅底 |
+| `--color-star-secondary` | `rgba(241,196,15,0.12)` | 收藏夹按钮的已收藏停手态与未收藏 hover 浅底 |
 | `--color-accent-blue` / `-soft` | `#3b82f6` | **分类强调色**：把同页几项彼此分开的色相，非语义色（见 §2.6） |
 | `--color-accent-amber` / `-soft` | `#f59e0b` | 同上 |
 | `--color-accent-cyan` / `-soft` | `#06b6d4` | 同上 |
@@ -645,10 +645,11 @@ Kumbh Sans；代码块与编辑器继续使用完整的 JetBrains Mono。
 
 - 所有视口只显示图标与数字，不显示按钮文字。名称保留在 `aria-label` 与 `title` 中，
   点赞与收藏状态同时提供 `aria-pressed`。点赞、投喂数大于零时才显示同行数字；收藏没有计数。
-- 未激活的图标跟随灰色 `currentColor`；hover 使用 `btn-secondary` 的浅底与同色图标。
-  激活态为白色图标与实底：`.liked` 红（`--color-warning-*`），
-  `.fish-btn--fed` 蓝（`--color-brand-*`），`.favorited` 黄（`--color-star-*`）；
-  实底用主色混入 **25% 白色**提亮，两个主题都从各自的主色计算。
+- 未激活且未悬停时，图标跟随灰色 `currentColor`；未激活时悬停、或已激活但未悬停时，
+  使用浅底与同色图标。已激活时悬停用主色实底与白色图标；按下时不论是否已激活，
+  都用主色混入 **50% 黑色**的更暗实底与白色图标。
+  `.liked` 红（`--color-warning-*`），`.fish-btn--fed` 蓝（`--color-brand-*`），
+  `.favorited` 黄（`--color-star-*`），两个主题都从各自的令牌计算。
   不给 `.icon-star-fill` 写死颜色，避免未收藏时就亮。
 - 管理开关使用灰色次级按钮，点击后同一外壳向右展开，齿轮同步旋转 **180°**。
   齿轮展开时逆时针旋转、收起时转回。桌面菜单显示「点赞者 / 投喂者 / 编辑 / 可见性 / 删除」，
