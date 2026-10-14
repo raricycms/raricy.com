@@ -6,7 +6,9 @@ async function mockTiltPermission(page: Page, permission: 'auto' | 'granted' | '
     // 浏览器自动化没有实体传感器；只替换权限入口，位移仍由真实 SVG 和 RAF 渲染。
     // Linux WebKit 的宿主屏幕默认横向；手机竖屏视口不会自动改传感器坐标。
     Object.defineProperty(window, 'orientation', { configurable: true, value: 0 });
-    if (screen.orientation) Object.defineProperty(screen.orientation, 'angle', { configurable: true, value: 0 });
+    Object.defineProperty(screen, 'orientation', {
+      configurable: true, value: Object.assign(new EventTarget(), { angle: 0 }),
+    });
     const constructor = window.DeviceOrientationEvent ?? class extends Event {};
     Object.defineProperty(window, 'DeviceOrientationEvent', { configurable: true, value: constructor });
     Object.defineProperty(constructor, 'requestPermission', {
@@ -68,6 +70,7 @@ test('首页山景：窄屏不溢出，文字和探索入口完整可见', async
 });
 
 test('切换主题：日月沿弧线持续逆时针旋转并变色，减少动态效果时直接切换', async ({ page, isMobile }) => {
+  if (isMobile) await mockTiltPermission(page, 'granted');
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.goto('/');
   await expect(page.locator('.hero-section')).toHaveAttribute('data-scene-ready', 'true');
@@ -138,12 +141,17 @@ test.describe('手机倾斜视差', () => {
     await page.emulateMedia({ reducedMotion: 'no-preference' });
   });
 
-  test('无需授权时自动开启，以握持角度校准，分层限幅且文字稳定', async ({ page }) => {
+  test('无需授权时也等待首次点击，以握持角度校准，分层限幅且文字稳定', async ({ page }) => {
     await mockTiltPermission(page, 'auto');
     await page.goto('/');
-    await expect(page.getByRole('button', { name: '关闭倾斜效果' })).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('.hero-section')).toHaveAttribute('data-scene-ready', 'true');
+    await expect(page.locator('.hero-tilt-control, .hero-tilt-toggle')).toHaveCount(0);
     await page.locator('.hero-content').evaluate((el) => Promise.all(el.getAnimations().map((animation) => animation.finished)));
     const titleBefore = await page.locator('#hero-title').boundingBox();
+    await sendTilt(page, 60, 0);
+    await sendTilt(page, 85, 25);
+    await expectOffset(page, true).toBeCloseTo(0, 2);
+    await page.locator('#hero-title').click();
     await sendTilt(page, null, null);
     await sendTilt(page, 60, 12);
     await expectOffset(page, true).toBeCloseTo(0, 2);
@@ -161,43 +169,44 @@ test.describe('手机倾斜视差', () => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(page.viewportSize()!.width);
   });
 
-  test('点击才请求授权，关闭后复位，重新开启不重复请求且重新校准', async ({ page }) => {
+  test('首次真实点击才请求授权，导航操作照常执行且后续点击不重复申请', async ({ page }) => {
     await mockTiltPermission(page, 'granted');
     await page.goto('/');
-    await expect(page.getByRole('button', { name: '开启倾斜效果', exact: true })).toBeVisible();
+    await expect(page.locator('.hero-section')).toHaveAttribute('data-scene-ready', 'true');
+    await expect(page.locator('.hero-tilt-control, .hero-tilt-toggle')).toHaveCount(0);
+    await page.evaluate(() => document.body.click());
     await sendTilt(page, 60, 0);
     await sendTilt(page, 85, 25);
     await expectOffset(page, true).toBeCloseTo(0, 2);
     await expect(page.locator('html')).not.toHaveAttribute('data-tilt-permission-requests');
-    await page.getByRole('button', { name: '开启倾斜效果', exact: true }).click();
-    await expect(page.getByRole('button', { name: '关闭倾斜效果' })).toBeVisible();
+    const navigation = page.getByRole('button', { name: '切换导航', exact: true });
+    await navigation.click();
+    await expect(navigation).toHaveAttribute('aria-expanded', 'true');
     await expect(page.locator('html')).toHaveAttribute('data-tilt-permission-requests', '1');
     await sendTilt(page, 60, 0);
     await sendTilt(page, 60, 25);
     await expectOffset(page, true).toBeGreaterThan(25);
-    await page.getByRole('button', { name: '关闭倾斜效果' }).click();
-    await expectOffset(page, true).toBeCloseTo(0, 1);
+    await navigation.click();
+    await expect(navigation).toHaveAttribute('aria-expanded', 'false');
+    await page.locator('#hero-title').click();
     await sendTilt(page, 60, -25);
-    await expectOffset(page, true).toBeCloseTo(0, 1);
-    await page.getByRole('button', { name: '开启倾斜效果', exact: true }).click();
-    await sendTilt(page, 90, 20);
-    await expectOffset(page, true).toBeCloseTo(0, 1);
-    await sendTilt(page, 90, -5);
     await expectOffset(page, true).toBeLessThan(-25);
     await expect(page.locator('html')).toHaveAttribute('data-tilt-permission-requests', '1');
   });
 
   for (const permission of ['denied', 'error'] as const) {
-    test(`权限${permission === 'denied' ? '拒绝' : '异常'}时可重试，仍保留滚动视差`, async ({ page }) => {
+    test(`权限${permission === 'denied' ? '拒绝' : '异常'}时静默降级，后续点击不重复申请`, async ({ page }) => {
       await mockTiltPermission(page, permission);
       await page.goto('/');
-      await page.getByRole('button', { name: '开启倾斜效果', exact: true }).click();
-      await expect(page.getByRole('status')).toHaveText('未获授权，仍可滚动浏览山景。');
+      await expect(page.locator('.hero-section')).toHaveAttribute('data-scene-ready', 'true');
+      await page.locator('#hero-title').click();
+      await expect(page.locator('html')).toHaveAttribute('data-tilt-permission-requests', '1');
+      await expect(page.locator('.hero-tilt-control, .hero-tilt-toggle, .hero-section [role="status"]')).toHaveCount(0);
       await sendTilt(page, 60, 0);
       await sendTilt(page, 85, 25);
       await expectOffset(page, true).toBeCloseTo(0, 1);
-      await page.getByRole('button', { name: '重新开启倾斜效果' }).click();
-      await expect(page.locator('html')).toHaveAttribute('data-tilt-permission-requests', '2');
+      await page.locator('#hero-title').click();
+      await expect(page.locator('html')).toHaveAttribute('data-tilt-permission-requests', '1');
       await page.evaluate(() => window.scrollTo(0, 340));
       await expectOffset(page, true, 'f').toBeLessThan(-100);
     });
@@ -206,7 +215,8 @@ test.describe('手机倾斜视差', () => {
   test('横竖屏切换重新校准，并按屏幕方向转换传感器轴', async ({ page }) => {
     await mockTiltPermission(page, 'auto');
     await page.goto('/');
-    await expect(page.getByRole('button', { name: '关闭倾斜效果' })).toBeVisible();
+    await expect(page.locator('.hero-section')).toHaveAttribute('data-scene-ready', 'true');
+    await page.locator('#hero-title').click();
     for (const angle of [90, -90, 180, 0]) {
       await page.evaluate((angle) => {
         // WebKit 的旧 orientation 与标准 screen.orientation 都需要覆盖。
@@ -224,16 +234,20 @@ test.describe('手机倾斜视差', () => {
     }
   });
 
-  test('减少动态效果隐藏入口并停止倾斜，恢复后重新校准', async ({ page }) => {
+  test('减少动态效果不请求授权并停止倾斜，恢复后重新校准', async ({ page }) => {
     await mockTiltPermission(page, 'granted');
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto('/');
     await expect(page.locator('.hero-section')).toHaveAttribute('data-scene-ready', 'true');
     await expect(page.locator('.hero-tilt-toggle')).toHaveCount(0);
+    await page.locator('#hero-title').click();
     await expect(page.locator('html')).not.toHaveAttribute('data-tilt-permission-requests');
     await page.emulateMedia({ reducedMotion: 'no-preference' });
-    await page.getByRole('button', { name: '开启倾斜效果', exact: true }).click();
-    await expect(page.getByRole('button', { name: '关闭倾斜效果' })).toBeVisible();
+    await sendTilt(page, 60, 0);
+    await sendTilt(page, 60, 25);
+    await expectOffset(page, true).toBeCloseTo(0, 1);
+    await page.locator('#hero-title').click();
+    await expect(page.locator('html')).toHaveAttribute('data-tilt-permission-requests', '1');
     await sendTilt(page, 60, 0);
     await sendTilt(page, 60, 25);
     await expectOffset(page, true).toBeGreaterThan(25);
@@ -242,14 +256,13 @@ test.describe('手机倾斜视差', () => {
     await sendTilt(page, 80, -25);
     await expect(page.locator('.hero-scene__layer').last()).toHaveCSS('transform', 'none');
     await page.emulateMedia({ reducedMotion: 'no-preference' });
-    await expect(page.getByRole('button', { name: '关闭倾斜效果' })).toBeVisible();
     await sendTilt(page, 80, -25);
     await expectOffset(page, true).toBeCloseTo(0, 1);
     await expect(page.locator('html')).toHaveAttribute('data-tilt-permission-requests', '1');
   });
 
   for (const unavailable of ['api', 'secure-context'] as const) {
-    test(`${unavailable}不可用时隐藏倾斜入口，保留山景与探索链接`, async ({ page }) => {
+    test(`${unavailable}不可用时点击也不启用倾斜，保留山景与探索链接`, async ({ page }) => {
       await page.addInitScript((unavailable) => {
         Object.defineProperty(window, unavailable === 'api' ? 'DeviceOrientationEvent' : 'isSecureContext', {
           configurable: true, value: unavailable === 'api' ? undefined : false,
@@ -258,6 +271,10 @@ test.describe('手机倾斜视差', () => {
       await page.goto('/');
       await expect(page.locator('.hero-section')).toHaveAttribute('data-scene-ready', 'true');
       await expect(page.locator('.hero-tilt-toggle')).toHaveCount(0);
+      await page.locator('#hero-title').click();
+      await sendTilt(page, 60, 0);
+      await sendTilt(page, 60, 25);
+      await expectOffset(page, true).toBeCloseTo(0, 1);
       await expect(page.locator('.hero-scene')).toBeVisible();
       await expect(page.getByRole('link', { name: '开始探索' })).toBeVisible();
     });
