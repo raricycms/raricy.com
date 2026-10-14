@@ -212,13 +212,13 @@ a {
   &-toggle {
     background: transparent;
     border: 0;
-    color: var(--color-text-secondary);
+    color: var(--color-text-primary);
     display: flex;
     align-items: center;
     gap: 0.5rem;
     width: 100%;
     height: 48px;
-    padding: 8px 14px;
+    padding: 8px 24px;
     border-radius: 999px;
     font-size: 1rem;
     cursor: pointer;
@@ -254,7 +254,8 @@ a {
     padding: 0;
 
     li {
-      padding: 0 8px 5px;
+      // 与按钮的 14px 内距合为 24px，图标和首行用户名避开外壳圆角并左对齐。
+      padding: 0 10px 5px;
       opacity: 0;
       transform: translateY(-8px);
       transition: opacity .18s ease, transform .28s cubic-bezier(.22, 1, .36, 1);
@@ -312,7 +313,7 @@ a {
     min-height: 40px;
     padding: 8px 14px;
     background-color: var(--color-background-card);
-    color: var(--color-brand-primary);
+    color: var(--color-text-primary);
     font-size: .9rem;
     white-space: nowrap;
     text-decoration: none; 
