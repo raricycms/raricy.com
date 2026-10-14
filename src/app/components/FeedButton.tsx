@@ -12,7 +12,7 @@
 import Avatar from '@/app/components/Avatar';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, Eye, Fish, Heart, Pencil, Settings, Trash2 } from 'lucide-react';
+import { ChevronLeft, Eye, Pencil, Settings, Trash2 } from 'lucide-react';
 // 可见性词汇必须从 ./blog-visibility 取（那个模块零依赖）—— **不能**从 blog-service，
 // 它拖着 prisma，进不了客户端包。BlogForm 同款。
 import { BLOG_VISIBILITIES, VISIBILITY_LABEL } from '@/lib/blog-visibility';
@@ -471,10 +471,10 @@ export default function FeedButton({
               <div className="manage-control__panel" inert={modal !== 'menu'} aria-hidden={modal !== 'menu'}>
                 <div className="manage-menu" id="blog-manage-menu" role="group" aria-label="文章管理操作">
                   <button type="button" className="manage-menu__item" onClick={openLikers} aria-label="点赞者" title="点赞者">
-                    <Heart aria-hidden="true" /><span>点赞者</span>
+                    <span className="icon icon-person-heart-fill" aria-hidden="true" /><span>点赞者</span>
                   </button>
                   <button type="button" className="manage-menu__item" onClick={openFeeders} aria-label="投喂者" title="投喂者">
-                    <Fish aria-hidden="true" /><span>投喂者</span>
+                    <span className="icon icon-person-fish-fill" aria-hidden="true" /><span>投喂者</span>
                   </button>
                   {canEdit && (
                     <a href={`/blog/${blogId}/edit`} className="manage-menu__item" aria-label="编辑" title="编辑">

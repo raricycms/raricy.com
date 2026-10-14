@@ -225,7 +225,7 @@ test('操作区：动态居中，手机端管理展开只留图标并收起互�
     await expect.poll(centered).toBeLessThan(1);
     const after = (await toggle.boundingBox())!;
     expect(after.y).toBeCloseTo(closed.y, 0);
-    const labels = controls.locator('.manage-menu__item > span');
+    const labels = controls.locator('.manage-menu__item > span:not(.icon)');
     if (width <= 768) {
       await expect.poll(async () => (await interaction.boundingBox())!.width).toBe(0);
       await expect(interaction).toHaveAttribute('inert', '');
@@ -235,6 +235,14 @@ test('操作区：动态居中，手机端管理展开只留图标并收起互�
       await expect(controls.locator('#like-btn')).toBeVisible();
       for (const label of await labels.all()) await expect(label).toBeVisible();
     }
+    // 截图取展开后的空闲态，避免指针停在菜单项上或入场动画尚未结束。
+    await page.mouse.move(0, 0);
+    await group.evaluate(async el => {
+      // 移开指针可能取消 hover 过渡，等替换后的动画一起收敛。
+      do {
+        await Promise.allSettled(el.getAnimations({ subtree: true }).map(animation => animation.finished));
+      } while (el.getAnimations({ subtree: true }).some(animation => animation.playState === 'running'));
+    });
     if (width >= 390) await controls.screenshot({ path: testInfo.outputPath(`controls-open-${width}.png`) });
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
     // 窄屏的最后一项必须能滚动到并打开，不能只是留在被裁掉的 DOM 里。

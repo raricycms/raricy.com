@@ -507,7 +507,7 @@ a {
     box-sizing: border-box;
 
     &__item {
-        @include m.btn-primary;
+        @include m.btn-secondary;
         display: inline-flex;
         flex: none;
         align-items: center;
@@ -526,6 +526,7 @@ a {
                     opacity .18s ease, transform .28s cubic-bezier(.22, 1, .36, 1);
 
         svg { width: 18px; height: 18px; }
+        .icon { width: 20px; height: 20px; flex: none; }
 
         &--danger {
             --color-brand-primary: var(--color-warning-primary);
@@ -569,7 +570,7 @@ a {
         width: 40px;
         padding: 0;
 
-        span { display: none; }
+        > span:not(.icon) { display: none; }
     }
 }
 
