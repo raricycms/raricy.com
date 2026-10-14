@@ -646,6 +646,7 @@ Kumbh Sans；代码块与编辑器继续使用完整的 JetBrains Mono。
   齿轮展开时逆时针旋转、收起时转回。桌面菜单显示「点赞者 / 投喂者 / 编辑 / 可见性 / 删除」，
   各项使用 `btn-secondary`：空闲无底色、灰字，悬停浅底，按下实底；删除项在交互时走警示红。
   点赞者与投喂者用面性人像图标，右下角分别叠爱心与本站 `fish.svg` 的小鱼干轮廓。
+  设置、编辑、可见性与删除也使用面性 SVG，管理条图标统一 **20px**，颜色跟随 `currentColor`。
   **≤768px** 时每项只保留图标，名称仍在 `aria-label` 与 `title` 中。
   编辑与可见性仍仅作者可用；管理员和普通读者的权限边界保持原有规则。
 - 管理胶囊使用 `grid-template-columns: 48px 0fr → 48px 1fr`，
@@ -911,7 +912,7 @@ plot / price / volume / time 各占一格）：与 SVG 共用同一个分数，�
 
 **不用图标字体**。现有 mask 图标由 `components/_icons.scss` 的 `.icon` 基类引用
 `public/static/img/icons/*.svg`；线性图标使用 `lucide-react` 的内联 SVG，
-例如胶囊箭头、博客管理齿轮与菜单图标。两种图标颜色均跟随 `currentColor`，适配明暗主题。
+例如胶囊箭头。两种图标颜色均跟随 `currentColor`，适配明暗主题。
 
 - 常用类：`.icon-bell`、`.icon-gear`、`.icon-person`、`.icon-house`、`.icon-fish`、`.icon-theme-toggle`、`.icon-book/controller/journal-text/tools`（首页四大入口）等。
 - 首页卡片的 `feature-icon` / `__icon` 用同一手法，给不同卡片指定不同 `color` 形成彩色图标（无需多色 SVG）。
