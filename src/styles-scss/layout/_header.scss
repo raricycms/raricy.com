@@ -112,6 +112,11 @@ a {
 // hamburger 展开 navbar。
 .site-navbar-collapse {
   display: flex;
+  width: 100%;
+}
+
+.site-navbar-collapse-inner {
+  display: flex;
   align-items: center;
   justify-content: space-between;
   width: 100%;
@@ -497,26 +502,61 @@ body {
   // 移动端：collapse 整体折叠（actions + nav 一起，hamburger 控制）。
   .site-navbar-collapse {
     order: 3;
-    flex-direction: column;
-    gap: 0.5rem;
+    display: grid;
+    grid-template-rows: 0fr;
     flex-basis: 100%;
     width: 100%;
-    max-height: 0;
-    overflow: hidden;
-    // transition **不写在这里** —— 见展开态那条的说明。
+    visibility: hidden;
+    // 收起仍立即让位；只在展开态播放过渡。
+    transition: none;
   }
 
-  // 展开后实际高度约 1–2 行导航 + actions ≈ 150px 内，max-height 定 260px 即可
-  // （原来 500px 时内容早已展开，剩余过渡时间全花在动画空区上）。
-  //
-  // ⚠️ transition 只挂在展开态：收起因此是**瞬间**的。写在折叠态（原来那样）会让
-  // 收起也走一遍 max-height 260 → 0 的过渡 —— 那 0.25 秒里内容不是消失，而是被
-  // 逐帧裁掉，看着就是「点完 hamburger 菜单还赖着不走」。展开方向保留动画
-  // （内容从 0 撑开，有过渡才不突兀），收起方向要的是立刻让位。
+  .site-navbar-collapse-inner {
+    min-height: 0;
+    overflow: hidden;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  // 0fr → 1fr 按真实内容高度展开，换行或登录状态变化无需猜 max-height。
+  // 先快速打开、再缓慢落定，与分批入场的导航和操作按钮衔接。
   .site-navbar.open .site-navbar-collapse {
-    max-height: 260px;
+    grid-template-rows: 1fr;
+    visibility: visible;
+    transition: grid-template-rows 480ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .site-navbar.open .site-navbar-collapse-inner {
+    // 仅在展开过程中裁剪；完成后释放 overflow，用户胶囊仍能向下伸出顶栏。
     overflow: visible;
-    transition: max-height 0.25s ease;
+    animation: navbar-unfold-clip 480ms;
+  }
+
+  .site-nav > li,
+  .site-actions > * {
+    opacity: 0;
+    transform: translateY(-10px);
+    transition: none;
+  }
+
+  .site-navbar.open {
+    .site-nav > li,
+    .site-actions > * {
+      opacity: 1;
+      transform: none;
+      transition: opacity 240ms ease-out,
+                  transform 360ms cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    @for $i from 1 through 4 {
+      .site-nav > li:nth-child(#{$i}) {
+        transition-delay: 45ms + ($i - 1) * 35ms;
+      }
+
+      .site-actions > :nth-child(#{$i}) {
+        transition-delay: 160ms + ($i - 1) * 25ms;
+      }
+    }
   }
 
   .site-nav {
@@ -540,5 +580,22 @@ body {
 
   .site-actions {
     justify-content: center;
+  }
+}
+
+@keyframes navbar-unfold-clip {
+  from, to { overflow: hidden; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .site-navbar.open .site-navbar-collapse,
+  .site-navbar.open .site-nav > li,
+  .site-navbar.open .site-actions > *,
+  .site-navbar-toggler .bar {
+    transition: none;
+  }
+
+  .site-navbar.open .site-navbar-collapse-inner {
+    animation: none;
   }
 }

@@ -598,7 +598,7 @@ function initSiteChrome() {
             toggler.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
         }, { signal });
         // 跨断点（如桌面端缩放 / 旋转）：离开 mobile 时清掉 .open，避免
-        // aria-expanded 与 .site-navbar-collapse 的 max-height 状态错位。
+        // aria-expanded 与 .site-navbar-collapse 的折叠状态错位。
         mqMobile.addEventListener('change', function (e) {
             if (!e.matches) closeNavbar();
         });
