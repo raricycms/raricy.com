@@ -5,7 +5,15 @@ import { SEED_USERS } from './seed';
 test('用户胶囊：仅光晕悬停、原位向下展开、失焦和 ESC 收起', async ({ page, isMobile }) => {
   await loginViaApi(page, SEED_USERS.admin.username);
   await page.goto('/');
-  if (isMobile) await page.locator('.site-navbar-toggler').click();
+  if (isMobile) {
+    await page.locator('.site-navbar-toggler').click();
+    // 先等操作按钮入场落定，再量用户胶囊自身的伸缩；不等待角标的无限 pulse。
+    await page.locator('.site-actions').evaluate(async actions => {
+      await Promise.all(
+        Array.from(actions.children).flatMap(el => el.getAnimations()).map(animation => animation.finished)
+      );
+    });
+  }
   const toggle = page.locator('#userDropdownToggle');
   const shell = page.locator('.site-user-dropdown-shell');
   const menu = page.locator('#userDropdownMenu');
