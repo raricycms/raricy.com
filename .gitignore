@@ -2,6 +2,8 @@
 /.next
 /out
 next-env.d.ts
+# 本地 agent 指令：个人部署约定与私有信息只在本机保存，不入库。
+/AGENTS.override.md
 # 环境变量：真实密钥只存在于 .env*，绝不入库。
 # 只写 `.env` 不够 —— `.env.production` / `.env.local` 不匹配该模式，
 # 而 docs/deploy.md 恰恰让人创建 .env.production 放 SECRET_KEY，
