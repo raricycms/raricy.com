@@ -595,7 +595,7 @@ a {
 }
 
 .like-btn {
-    @include m.btn-secondary;
+    @include m.btn-secondary($pointer-hover-only: true);
     --color-brand-primary: var(--color-warning-primary);
     --color-brand-secondary: var(--color-warning-secondary);
 }
@@ -613,7 +613,7 @@ a {
    .feed-modal__*）都走这一支。曾经这里是绿的（在「小鱼干改蓝」那次只改了列表页），
    于是同一篇小鱼干在列表页是蓝、点进详情页变成绿。改回绿色之前先看一眼那两处。 */
 .fish-btn {
-    @include m.btn-secondary;
+    @include m.btn-secondary($pointer-hover-only: true);
 }
 
 // 已点赞 / 投喂 / 收藏的停手态同未选时的 hover；选中后悬停与按下都用实底白图标。
@@ -623,9 +623,11 @@ a {
     background-color: var(--color-brand-secondary);
     color: var(--color-brand-primary);
 
-    &:hover:not(:disabled) {
-        background-color: var(--color-brand-primary);
-        color: #fff;
+    @media (hover: hover) and (pointer: fine) {
+        &:hover:not(:disabled) {
+            background-color: var(--color-brand-primary);
+            color: #fff;
+        }
     }
 }
 

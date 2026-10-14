@@ -65,7 +65,7 @@
 
 /// 次级：不抢视线。空闲＝次级文字色、无底色；hover＝最高级空闲态；按下＝最高级 hover 态。
 /// 三态递进，所以它「越靠近越显眼」，而不是一上来就和主按钮争。
-@mixin btn-secondary {
+@mixin btn-secondary($pointer-hover-only: false) {
   border: none;
   border-radius: v.$radius-max;
   background-color: transparent;
@@ -73,9 +73,19 @@
   cursor: pointer;
   transition: color .25s ease, background-color .25s ease;
 
-  &:hover:not(:disabled) {
-    background-color: var(--color-brand-secondary);
-    color: var(--color-brand-primary);
+  // 触屏会保留模拟的 :hover；状态按钮可要求真实鼠标悬停，避免松手后仍亮着。
+  @if $pointer-hover-only {
+    @media (hover: hover) and (pointer: fine) {
+      &:hover:not(:disabled) {
+        background-color: var(--color-brand-secondary);
+        color: var(--color-brand-primary);
+      }
+    }
+  } @else {
+    &:hover:not(:disabled) {
+      background-color: var(--color-brand-secondary);
+      color: var(--color-brand-primary);
+    }
   }
 
   &:active:not(:disabled) {

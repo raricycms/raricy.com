@@ -103,7 +103,7 @@ async function readActions(page: import('@playwright/test').Page) {
     });
 }
 
-test('详情页：各视口只留图标与计数，三颗尺寸跨断点一致', async ({ page }) => {
+test('详情页：各视口只留图标与计数，三颗尺寸跨断点一致', async ({ page, isMobile }) => {
   await registerFreshUser(page, { core: true });
   const blogId = await createBlog(page, `窄屏操作区 ${uniqueTag()}`);
 
@@ -140,10 +140,28 @@ test('详情页：各视口只留图标与计数，三颗尺寸跨断点一致',
 
   // 计数从 0 到 1 再回到 0，数字随实际状态出现和消失。
   const like = page.locator('#like-btn');
-  await like.click();
+  const touchColors = await like.evaluate(el => {
+    const norm = (value: string) => {
+      const sample = document.createElement('span');
+      sample.style.color = value;
+      el.appendChild(sample);
+      const color = getComputedStyle(sample).color;
+      sample.remove();
+      return color;
+    };
+    return { pale: norm('var(--color-warning-secondary)'), muted: norm('var(--color-text-secondary)') };
+  });
+  if (isMobile) await like.tap();
+  else await like.click();
   await expect(page.locator('#like-count')).toHaveText('1');
-  await like.click();
+  if (isMobile) await expect(like).toHaveCSS('background-color', touchColors.pale);
+  if (isMobile) await like.tap();
+  else await like.click();
   await expect(page.locator('#like-count')).toHaveCount(0);
+  if (isMobile) {
+    await expect(like).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect(like).toHaveCSS('color', touchColors.muted);
+  }
 });
 
 test('详情页：星标收藏或悬停浅底，已收藏悬停与按下同为实底', async ({ page }) => {
@@ -174,13 +192,14 @@ test('详情页：星标收藏或悬停浅底，已收藏悬停与按下同为�
       .evaluate((el) => getComputedStyle(el).backgroundColor);
 
   const btn = page.locator('#favorite-btn');
+  const supportsHover = await page.evaluate(() => matchMedia('(hover: hover) and (pointer: fine)').matches);
   await expect(btn).toHaveAttribute('aria-label', '收藏');
   // ★ 需求：未收藏时星标**不亮**（跟着文字走 currentColor，与心形/小鱼同机制）
   expect(await iconBg(), '未收藏时星标就已经亮着了').toBe(colors.muted);
 
   await btn.hover();
-  await expect.poll(iconBg).toBe(colors.star);
-  await expect(btn).toHaveCSS('background-color', colors.starSoft);
+  await expect.poll(iconBg).toBe(supportsHover ? colors.star : colors.muted);
+  await expect(btn).toHaveCSS('background-color', supportsHover ? colors.starSoft : 'rgba(0, 0, 0, 0)');
 
   // 建一个私密收藏夹并顺手收藏本文
   await page.mouse.down();
@@ -206,8 +225,8 @@ test('详情页：星标收藏或悬停浅底，已收藏悬停与按下同为�
   await expect(btn).toHaveCSS('background-color', colors.starSoft);
 
   await btn.hover();
-  await expect(btn).toHaveCSS('background-color', colors.star);
-  await expect.poll(iconBg).toBe('rgb(255, 255, 255)');
+  await expect(btn).toHaveCSS('background-color', supportsHover ? colors.star : colors.starSoft);
+  await expect.poll(iconBg).toBe(supportsHover ? 'rgb(255, 255, 255)' : colors.star);
 
   // 已收藏且悬停时按住：保持与悬停相同的主色实底与白星。
   await page.mouse.down();

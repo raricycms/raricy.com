@@ -651,6 +651,8 @@ Kumbh Sans；代码块与编辑器继续使用完整的 JetBrains Mono。
   `.liked` 红（`--color-warning-*`），`.fish-btn--fed` 蓝（`--color-brand-*`），
   `.favorited` 黄（`--color-star-*`），两个主题都从各自的令牌计算。
   不给 `.icon-star-fill` 写死颜色，避免未收藏时就亮。
+  三颗按钮的 hover 仅在 **`(hover: hover) and (pointer: fine)`** 时生效；触屏松手后，
+  已激活显示浅底，未激活恢复灰色无底色，避免手机保留模拟的 hover。
 - 管理开关使用灰色次级按钮，点击后同一外壳向右展开，齿轮同步旋转 **180°**。
   齿轮展开时逆时针旋转、收起时转回。桌面菜单显示「点赞者 / 投喂者 / 编辑 / 可见性 / 删除」，
   各项使用 `btn-secondary`：空闲无底色、灰字，悬停浅底，按下实底；删除项在交互时走警示红。

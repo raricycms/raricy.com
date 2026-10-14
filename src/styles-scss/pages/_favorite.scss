@@ -18,7 +18,7 @@
  * 另外这按钮**没有计数徽标**（与点赞/投喂刻意不同）：站内不显示一篇文章的被收藏数，
  * 因为收藏夹可以复制，那个数字既无意义又会让作者以为「有人收藏了我的文章」。 */
 .favorite-btn {
-  @include m.btn-secondary;
+  @include m.btn-secondary($pointer-hover-only: true);
   --color-brand-primary: var(--color-star-primary);
   --color-brand-secondary: var(--color-star-secondary);
 }
