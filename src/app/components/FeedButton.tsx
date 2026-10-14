@@ -22,6 +22,28 @@ import FavoriteButton from './FavoriteButton';
 
 const FEED_CAP = 5;
 
+function ReadCount({ count, id, className }: { count: number; id: string; className: string }) {
+  const visible = count > 0;
+  const [lastCount, setLastCount] = useState(count);
+
+  // 收回时保留上一枚数字供淡出；零值不占宽度，也不进入辅助技术的读数。
+  useEffect(() => {
+    if (count > 0) setLastCount(count);
+  }, [count]);
+
+  return (
+    <span
+      className={`read-count numeric${visible ? ' read-count--visible' : ''}`}
+      style={{ width: visible ? `calc(${String(count).length}ch + 6px)` : '0px' }}
+      aria-hidden={!visible}
+    >
+      <span className={className} id={visible ? id : undefined}>
+        {visible ? count : lastCount || ''}
+      </span>
+    </span>
+  );
+}
+
 function toast(msg: string, type: string) {
   const w = window as unknown as { showToast?: (m: string, t: string) => void };
   if (w.showToast) w.showToast(msg, type);
@@ -418,9 +440,7 @@ export default function FeedButton({
                 title={liked ? '已点赞' : '点赞'}
               >
                 <span className="icon icon-heart-fill" aria-hidden="true"></span>
-                {likes > 0 && (
-                  <span className="like-count-badge numeric" id="like-count">{likes}</span>
-                )}
+                <ReadCount count={likes} id="like-count" className="like-count-badge" />
               </button>
 
               <button
@@ -432,9 +452,7 @@ export default function FeedButton({
                 aria-label={canEdit ? '收到的投喂' : '投喂小鱼干'}
               >
                 <span className="icon icon-fish" aria-hidden="true"></span>
-                {fishCount > 0 && (
-                  <span className="fish-count-badge numeric" id="fish-count">{fishCount}</span>
-                )}
+                <ReadCount count={fishCount} id="fish-count" className="fish-count-badge" />
               </button>
 
               {/* 收藏夹（黄色五角星）。刻意**不带计数徽标** —— 站内不显示被收藏数。

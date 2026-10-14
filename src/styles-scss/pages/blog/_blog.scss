@@ -407,7 +407,7 @@ a {
         flex: none;
         align-items: center;
         justify-content: center;
-        gap: 6px;
+        gap: 0;
         height: 40px;
         min-width: 40px;
         padding: 0 10px;
@@ -442,6 +442,26 @@ a {
     a:focus-visible {
         outline: 2px solid currentColor;
         outline-offset: -3px;
+    }
+}
+
+.read-count {
+    display: inline-flex;
+    flex: none;
+    overflow: hidden;
+    white-space: nowrap;
+    font-weight: bold;
+    font-size: .85rem;
+    line-height: 1.2;
+    opacity: 0;
+    // 数字使用等宽字体，按位数伸缩；间距也包含在宽度内，零值时整段收回。
+    transition: width .32s cubic-bezier(.22, 1, .36, 1), opacity .2s ease;
+
+    &--visible { opacity: 1; }
+
+    > span {
+        flex: none;
+        margin-inline-start: 6px;
     }
 }
 
@@ -585,6 +605,7 @@ a {
 }
 
 @media (prefers-reduced-motion: reduce) {
+    .read-count,
     .read-controls__interaction,
     .manage-control,
     .manage-control__panel,
