@@ -123,8 +123,9 @@ test('详情页：各视口只留图标与计数，三颗尺寸跨断点一致',
   expect(desk.map((b) => b.labelShown)).toEqual([false, false, false]);
   // 窄屏：标签全隐藏，只剩图标 + 计数（收藏那颗本来就没有计数）
   expect(mob.map((b) => b.labelShown), '窄屏应当只留图标与计数').toEqual([false, false, false]);
-  expect(mob[0].count, '窄屏点赞的计数该还在').not.toBe('');
-  expect(mob[1].count, '窄屏投喂的计数该还在').not.toBe('');
+  expect(desk.map(b => b.count), '新文章没有点赞或投喂，不应显示零').toEqual(['', '', '']);
+  expect(mob[0].count, '点赞为零时不显示数字').toBe('');
+  expect(mob[1].count, '投喂为零时不显示数字').toBe('');
   expect(mob[2].count, '收藏本来就没有计数').toBe('');
 
   // 胶囊内三颗统一为 40px 高，不随断点缩放。
@@ -136,6 +137,13 @@ test('详情页：各视口只留图标与计数，三颗尺寸跨断点一致',
   });
 
   expect(mob.map(b => b.w)).toEqual(desk.map(b => b.w));
+
+  // 计数从 0 到 1 再回到 0，数字随实际状态出现和消失。
+  const like = page.locator('#like-btn');
+  await like.click();
+  await expect(page.locator('#like-count')).toHaveText('1');
+  await like.click();
+  await expect(page.locator('#like-count')).toHaveCount(0);
 });
 
 test('详情页：星标未收藏时不亮，收藏后才变黄', async ({ page }) => {
@@ -186,7 +194,7 @@ test('详情页：星标未收藏时不亮，收藏后才变黄', async ({ page 
     .toBe(colors.star);
 });
 
-test('操作区：320px 起三组等高同行，管理向右展开可滚动，失焦收起', async ({ page }, testInfo) => {
+test('操作区：动态居中，手机端管理展开只留图标并收起互动胶囊', async ({ page }, testInfo) => {
   await registerFreshUser(page, { core: true });
   const blogId = await createBlog(page, `胶囊几何 ${uniqueTag()}`);
   for (const width of [320, 390, 1000]) {
@@ -196,6 +204,13 @@ test('操作区：320px 起三组等高同行，管理向右展开可滚动，�
     const toggle = controls.locator('#admin-manage-btn');
     await toggle.scrollIntoViewIfNeeded();
     const group = controls.locator('.manage-control');
+    const interaction = controls.locator('.read-controls__interaction');
+    const bar = controls.locator('.read-controls__bar');
+    const centered = async () => {
+      const outer = (await controls.boundingBox())!;
+      const inner = (await bar.boundingBox())!;
+      return Math.abs(inner.x + inner.width / 2 - outer.x - outer.width / 2);
+    };
     const closed = (await group.boundingBox())!;
     expect(closed.width).toBe(48);
     const boxes = await Promise.all([
@@ -203,14 +218,24 @@ test('操作区：320px 起三组等高同行，管理向右展开可滚动，�
       controls.locator('.read-controls__row').boundingBox(), group.boundingBox(),
     ]);
     expect(boxes.every(b => b && b.height === 48 && Math.abs(b.y - closed.y) < 1)).toBe(true);
-    const before = (await toggle.boundingBox())!;
-    if (width === 1000) await controls.screenshot({ path: testInfo.outputPath('controls-idle.png') });
+    await expect.poll(centered).toBeLessThan(1);
+    if (width >= 390) await controls.screenshot({ path: testInfo.outputPath(`controls-idle-${width}.png`) });
     await toggle.click();
-    await expect.poll(async () => (await group.boundingBox())!.width).toBeGreaterThan(400);
+    await expect.poll(async () => (await group.boundingBox())!.width).toBeGreaterThan(200);
+    await expect.poll(centered).toBeLessThan(1);
     const after = (await toggle.boundingBox())!;
-    expect(after.x).toBeCloseTo(before.x, 0);
-    expect(after.y).toBeCloseTo(before.y, 0);
-    if (width === 1000) await controls.screenshot({ path: testInfo.outputPath('controls-open.png') });
+    expect(after.y).toBeCloseTo(closed.y, 0);
+    const labels = controls.locator('.manage-menu__item > span');
+    if (width <= 768) {
+      await expect.poll(async () => (await interaction.boundingBox())!.width).toBe(0);
+      await expect(interaction).toHaveAttribute('inert', '');
+      for (const label of await labels.all()) await expect(label).toBeHidden();
+    } else {
+      await expect(interaction).not.toHaveAttribute('inert');
+      await expect(controls.locator('#like-btn')).toBeVisible();
+      for (const label of await labels.all()) await expect(label).toBeVisible();
+    }
+    if (width >= 390) await controls.screenshot({ path: testInfo.outputPath(`controls-open-${width}.png`) });
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
     // 窄屏的最后一项必须能滚动到并打开，不能只是留在被裁掉的 DOM 里。
     await controls.getByRole('button', { name: '删除', exact: true }).click();
@@ -221,6 +246,10 @@ test('操作区：320px 起三组等高同行，管理向右展开可滚动，�
     await controls.getByRole('button', { name: '返回上页', exact: true }).focus();
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
     await expect.poll(async () => (await group.boundingBox())!.width).toBe(48);
+    await expect(interaction).not.toHaveAttribute('inert');
+    await expect(controls.locator('#like-btn')).toBeVisible();
+    await expect.poll(async () => (await interaction.boundingBox())!.width).toBeGreaterThan(100);
+    await expect.poll(centered).toBeLessThan(1);
   }
 });
 

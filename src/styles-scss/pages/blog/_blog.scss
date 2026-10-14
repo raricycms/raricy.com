@@ -366,13 +366,20 @@ a {
     max-width: 860px;
     padding: 4px 0;
 
-    // 从左侧固定起点向右展开；窄屏只滚动这一条，不撑宽正文或整个页面。
+    // 按实际宽度动态居中；超过容器时 auto 外距归零，仍能从头滚动到最后一项。
     &__bar {
         display: flex;
         width: max-content;
+        margin-inline: auto;
         align-items: center;
         justify-content: center;
         gap: 6px;
+    }
+
+    &__interaction {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        flex: none;
     }
 
     &__row {
@@ -385,6 +392,7 @@ a {
         border-radius: 24px;
         background: var(--color-background-content);
         box-sizing: border-box;
+        min-width: 0;
     }
 
     &__row .like-btn,
@@ -396,7 +404,7 @@ a {
         justify-content: center;
         gap: 6px;
         height: 40px;
-        min-width: 60px;
+        min-width: 40px;
         padding: 0 10px;
         font: inherit;
         border-radius: 20px;
@@ -476,7 +484,7 @@ a {
             transition-delay: 0s;
         }
 
-        .manage-control__toggle svg { transform: rotate(180deg); }
+        .manage-control__toggle svg { transform: rotate(-180deg); }
 
         .manage-menu__item {
             opacity: 1;
@@ -526,7 +534,53 @@ a {
     }
 }
 
+@media (max-width: 768px) {
+    .read-controls {
+        &__bar {
+            gap: 0;
+
+            > .read-btn { margin-inline-end: 6px; }
+        }
+
+        &__interaction {
+            margin-inline-end: 6px;
+            overflow: hidden;
+            visibility: visible;
+            opacity: 1;
+            transition: grid-template-columns .42s cubic-bezier(.22, 1, .36, 1),
+                        margin-inline-end .42s cubic-bezier(.22, 1, .36, 1),
+                        opacity .18s ease, visibility 0s;
+
+            &:last-child { margin-inline-end: 0; }
+        }
+
+        &__row { overflow: hidden; }
+
+        &.is-manage-open .read-controls__interaction {
+            grid-template-columns: minmax(0, 0fr);
+            margin-inline-end: 0;
+            opacity: 0;
+            visibility: hidden;
+            transition-delay: 0s, 0s, 0s, .42s;
+        }
+    }
+
+    .manage-menu__item {
+        width: 40px;
+        padding: 0;
+
+        span { display: none; }
+    }
+}
+
+// 320px 视口扣掉两侧 16px 后只余 288px：返回 48 + 间距 6 + 管理 232 = 286。
+@media (max-width: 359px) {
+    .manage-menu { gap: 0; }
+    .manage-menu__item { width: 36px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
+    .read-controls__interaction,
     .manage-control,
     .manage-control__panel,
     .manage-control__toggle svg,
