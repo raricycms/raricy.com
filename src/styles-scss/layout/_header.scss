@@ -112,8 +112,7 @@ a {
 // hamburger 展开 navbar。
 .site-navbar-collapse {
   display: flex;
-  flex: 1;
-  min-width: 0;
+  width: 100%;
 }
 
 .site-navbar-collapse-inner {
@@ -121,14 +120,12 @@ a {
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  min-width: 0;
   gap: 1rem;
 }
 
 .site-nav {
   position: relative;
   display: flex;
-  flex: none;
   list-style: none;
   padding: 0;
   margin-left: 50px;
@@ -160,7 +157,6 @@ a {
   text-decoration: none;
   padding: 0.5rem 1rem;
   font-weight: 500;
-  white-space: nowrap;
   // 挂角用（.site-link__dot）
   position: relative;
 
@@ -181,12 +177,8 @@ a {
 
 .site-actions { 
   display: flex; 
-  flex: none;
-  min-width: 0;
   align-items: center; 
   gap: 0.25rem; 
-
-  > * { flex-shrink: 0; }
 }
 
 .site-login-btn {
@@ -207,7 +199,6 @@ a {
   flex: none;
   height: 48px;
   min-width: 160px;
-  max-width: 240px;
 
   &-shell {
     position: relative;
@@ -239,11 +230,7 @@ a {
     white-space: nowrap;
 
     > span:first-child {
-      flex: 1;
-      min-width: 0;
       margin-right: auto;
-      overflow: hidden;
-      text-overflow: ellipsis;
     }
   }
 
@@ -493,9 +480,8 @@ body {
   padding-top: var(--navbar-height);
 }
 
-// 1200px 以下容器不足以容纳品牌、五个入口与完整操作区，提前折叠。
-// 断点须与 base.js 的 matchMedia 一致，避免隐藏导航仍可交互。
-@media (max-width: 1199px) {
+// 移动端折叠样式
+@media (max-width: 808px) {
   .site-navbar .site-container {
     height: 62px;
     padding-top: 8px;
@@ -607,14 +593,6 @@ body {
 
   .site-actions {
     justify-content: center;
-    flex-wrap: wrap;
-    width: 100%;
-    max-width: 420px;
-  }
-
-  .site-user-dropdown {
-    // 优先让用户名收缩；极窄屏下整颗胶囊换行，保持头像与菜单可见。
-    flex: 1 1 160px;
   }
 }
 

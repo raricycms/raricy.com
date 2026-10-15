@@ -120,7 +120,7 @@ export default function Navbar({
                         aria-expanded="false"
                         aria-controls="userDropdownMenu"
                       >
-                        <span title={user.username}>{user.username}</span>
+                        <span>{user.username}</span>
                         <Avatar
                           userId={user.id}
                           frameUrl={frameUrl}
