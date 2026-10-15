@@ -578,11 +578,10 @@ function initSiteChrome() {
     // 顶栏折叠
     const siteNavbar = document.querySelector('.site-navbar');
     const toggler = document.querySelector('.site-navbar-toggler');
-    // 与 _header.scss 的 @media (max-width: 808px) 对齐；改用 matchMedia 替代
-    // window.innerWidth 判断，避免 809–991px 区间 .open 跨断点残留。
+    // 与 _header.scss 的 @media (max-width: 1199px) 对齐，跨断点时同步展开状态。
     // jsdom 下 window.matchMedia 不存在 → 走兜底，按非移动端处理（不影响测试）。
     const mqMobile = window.matchMedia
-        ? window.matchMedia('(max-width: 808px)')
+        ? window.matchMedia('(max-width: 1199px)')
         : { matches: false, addEventListener: function () {}, removeEventListener: function () {} };
     function isMobile() { return mqMobile.matches; }
 
