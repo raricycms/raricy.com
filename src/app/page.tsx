@@ -2,19 +2,12 @@ import Link from 'next/link';
 import { getCurrentUser, isCoreUser } from '@/lib/auth';
 import HomeFooterNote from './components/HomeFooterNote';
 import HeroLandscape from './components/HeroLandscape';
+import { Gamepad2 } from 'lucide-react';
 
 // 首页 — 样式结构：home-container / home-display / feature-card / home-btn
 //
-// 【四张卡都对所有人渲染，含「讨论」】/chat 是 core+ 档，非核心用户点进去会撞 403 ——
-// 这是**有意保留**的：功能存在、但需要更高权限，是正常的权限阶梯。
-// 曾经按「入口与门禁同档」把讨论卡藏起来过，站长明确不要那样。
-// 注意别把这条与另一种情况混为一谈：/admin/users 那种「入口有、门禁却不认」的
-// 自相矛盾（核心用户看得到侧栏却被 403）才是必须修的，见 access-control.spec。
-//
-// 【「博客/文章」卡是这条口径的例外，且是有意的】它按档位**分流**而不是藏起来：
-// 卡对所有人渲染，只是 core+ 去 /blog（站内全量）、其余去 /explore（对外公开列表）。
-// 与顶栏「博客」同一条口径，理由写在那边的注释里。别把两者「统一」成 /blog ——
-// 那等于让访客点进一张登录页。
+// 故事 → 玩具 → 博客 → 工具；玩具随专注模式隐藏。
+// 博客按档位分流：core+ 去站内 /blog，其余去对外公开列表 /explore。
 export default async function HomePage() {
   // 为分流取一次登录态。⚠️ 首页因此从同步组件变成 async，并比从前多一次
   // getCurrentUser()（读 cookie + 一次主键查询）。根 layout 已经查过一次，但那个
@@ -59,6 +52,19 @@ export default async function HomePage() {
               </Link>
             </div>
 
+            {!user?.focusMode && (
+              <div className="home-grid-item">
+                <Link className="feature-card card-game" href="/game">
+                  <div className="card-body home-text-center">
+                    <Gamepad2 className="feature-game-icon" aria-hidden="true" />
+                    <h4 className="card-title" style={{ marginBottom: '0.75rem' }}>玩具</h4>
+                    <p className="card-text">ATÅMAS 浏览器小游戏。</p>
+                    <span className="home-btn">打开玩具</span>
+                  </div>
+                </Link>
+              </div>
+            )}
+
             <div className="home-grid-item">
               <Link className="feature-card card-blog" href={blogHref}>
                 <div className="card-body home-text-center">
@@ -81,16 +87,6 @@ export default async function HomePage() {
               </Link>
             </div>
 
-            <div className="home-grid-item">
-              <Link className="feature-card card-chat" href="/chat">
-                <div className="card-body home-text-center">
-                  <span className="feature-icon" aria-hidden="true"></span>
-                  <h4 className="card-title" style={{ marginBottom: '0.75rem' }}>讨论</h4>
-                  <p className="card-text">站内讨论区，欢迎在这里交流想法、分享发现。</p>
-                  <span className="home-btn home-btn--outline-success home-btn--sm">进入讨论</span>
-                </div>
-              </Link>
-            </div>
           </div>
         </div>
       </section>

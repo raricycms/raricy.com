@@ -1565,6 +1565,20 @@ MP3 的帧同步要核版本 / 层 / 位速率字段（只判 `0xFF` 打头太�
 
 气泡流水为 `bubble_rent`，`reference_type='bubble'`、`reference_id=<key>`；`shop_all` 合并 `frame_rent` 与 `bubble_rent`。购买不自动装备。运维命令和玩家规则见 `docs/cli.md` 与 `docs/guide/聊天气泡使用指南.md`。
 
+### 6.19 玩具（`/game`）
+
+首页内容卡按「故事 / 玩具 / 博客 / 工具」排列；讨论入口保留在顶栏。
+游戏清单住 `src/lib/game-catalog.ts`：每款游戏只登记一次，玩法类别、游玩方式与
+启动方式分别描述。目前只上架 ATÅMAS（益智、单人、原生组件）。
+
+`src/games/atamas/` 包含客户端引擎、Canvas 绘制、24 种语言与界面，
+`src/app/game/atamas/page.tsx` 是路由包装。游戏匿名可玩，不调用账号接口、
+不连接实时服务、不保存服务端成绩；语言偏好保存在浏览器 `atamas_lang`。
+页面外壳与按钮随全站主题，画布及数字圆盘保留游戏配色。
+
+专注模式下，首页卡和顶栏入口整段不渲染；`src/app/game/layout.tsx` 同时替换
+菜单和游戏直达页为设置提示，不挂载游戏引擎。关闭开关后即可重新进入。
+
 ## 7. 数据流（4 个典型路径）
 
 ### 7.1 用户登录

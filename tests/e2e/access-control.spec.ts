@@ -242,7 +242,8 @@ test.describe('核心用户门槛（接口层）', () => {
 // 「功能存在，但当前账号权限不够」——入口**保留**，不做同档隐藏
 //
 // 站长 2026-09 的明确口径：讨论的入口对所有人渲染，
-// 点进去 403 就 403。曾经按「入口与门禁同档」把讨论入口与首页讨论卡藏掉过 ——
+// 点进去 403 就 403。讨论保留在顶栏；首页按站长要求改为故事 / 玩具 / 博客 / 工具。
+// 曾经按「入口与门禁同档」把讨论入口藏掉过 ——
 // 那是把一条**具体**的教训过度推广了：
 //   · 必须修的是 /admin/users 那种自相矛盾：入口有、门禁却不认（核心用户看得到
 //     侧栏「用户管理」却被 403）——那是入口和门禁**互相打架**；
@@ -251,10 +252,11 @@ test.describe('核心用户门槛（接口层）', () => {
 // 这一组用例把两半都钉住，免得下次又有人「顺手对齐」把它藏回去。
 // ─────────────────────────────────────────────────────────────────────────────
 test.describe('入口保留：非核心用户看得到讨论入口，但进不去', () => {
-  test('匿名访客：顶栏与首页讨论卡都在', async ({ page }) => {
+  test('匿名访客：顶栏保留讨论，首页使用玩具卡', async ({ page }) => {
     await page.goto('/');
     await expect(page.locator('.site-nav a[href="/chat"]')).toHaveCount(1);
-    await expect(page.locator('a.card-chat')).toBeVisible();
+    await expect(page.locator('.home-grid a[href="/game"]')).toBeVisible();
+    await expect(page.locator('.home-grid a[href="/chat"]')).toHaveCount(0);
   });
 
   test('普通用户（role=user）：入口在，/chat 原地 403', async ({ page }) => {

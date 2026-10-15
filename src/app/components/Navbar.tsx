@@ -57,13 +57,18 @@ export default function Navbar({
 
         <div className="site-navbar-collapse" id="siteNavbar">
           <div className="site-navbar-collapse-inner">
-            {/* 主导航对齐首页四个内容区（故事 → 博客 → 工具 → 讨论）。 */}
+            {/* 主导航与首页内容区对应，玩具随专注模式隐藏。 */}
             <ul className="site-nav">
               <li>
                 <NavLink className="site-link" href="/story">
                   故事
                 </NavLink>
               </li>
+              {!user?.focusMode && (
+                <li>
+                  <NavLink className="site-link" href="/game">玩具</NavLink>
+                </li>
+              )}
               <li>
                 <NavLink className="site-link" href={blogHref}>
                   博客

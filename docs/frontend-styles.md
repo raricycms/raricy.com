@@ -488,12 +488,12 @@ Kumbh Sans；代码块与编辑器继续使用完整的 JetBrains Mono。
   `--card-accent`（色相）与 `--card-glow`（同色系的 `-soft` 淡色），
   **图标、hover 光晕、卡内按钮三者都读这两个变量** ——
 
-  | 卡 | `--card-accent` | 图标 mask |
+  | 卡 | `--card-accent` | 图标 |
   |----|-----------------|-----------|
   | `.card-story` | `--color-accent-blue` | `book.svg` |
   | `.card-blog` | `--color-accent-amber` | `journal-text.svg` |
   | `.card-tool` | `--color-accent-cyan` | `tools.svg` |
-  | `.card-chat` | `--color-success-primary` | `chat-dots_new.svg` |
+  | `.card-game` | `--color-accent-violet` | Lucide `Gamepad2`（内联 SVG） |
 
   > 改卡片颜色只需改 `.card-*` 那一行。⚠️ 别再让图标、光晕、按钮各自取色 ——
   > 那会做出「图标是琥珀的、光晕是蓝的、按钮还是品牌蓝」这种半拉子状态。

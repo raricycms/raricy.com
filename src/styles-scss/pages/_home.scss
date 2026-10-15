@@ -19,7 +19,7 @@
 /* Responsive grid for features */
 .home-grid { display: grid; grid-template-columns: 1fr; gap: 1rem; }
 @media (min-width: 768px) { .home-grid { grid-template-columns: repeat(2, 1fr); } }
-@media (min-width: 992px) { .home-grid { grid-template-columns: repeat(4, 1fr); } }
+@media (min-width: 992px) { .home-grid { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); } }
 
 /* 首页功能卡上的引导标签。改「淡底 + 同色字」的胶囊，与博客首页的
    .blog-likes / .blog-comments / .blog-fish 三个统计胶囊同一套观感 ——
@@ -282,7 +282,8 @@
 .card-story { --card-accent: var(--color-accent-blue);      --card-glow: var(--color-accent-blue-soft); }
 .card-blog  { --card-accent: var(--color-accent-amber);     --card-glow: var(--color-accent-amber-soft); }
 .card-tool  { --card-accent: var(--color-accent-cyan);      --card-glow: var(--color-accent-cyan-soft); }
-.card-chat  { --card-accent: var(--color-success-primary);  --card-glow: var(--color-success-secondary); }
+.card-game  { --card-accent: var(--color-accent-violet);   --card-glow: var(--color-accent-violet-soft); }
+.feature-game-icon { width: 3rem; height: 3rem; margin-bottom: 1rem; color: var(--card-accent); }
 
 /* 图标只需取色，形状（mask）仍各卡一支 */
 .feature-card .feature-icon { color: var(--card-accent); }
@@ -290,7 +291,6 @@
 .card-story .feature-icon { -webkit-mask-image: url('/static/img/icons/book.svg'); mask-image: url('/static/img/icons/book.svg'); }
 .card-blog  .feature-icon { -webkit-mask-image: url('/static/img/icons/journal-text.svg'); mask-image: url('/static/img/icons/journal-text.svg'); }
 .card-tool  .feature-icon { -webkit-mask-image: url('/static/img/icons/tools.svg'); mask-image: url('/static/img/icons/tools.svg'); }
-.card-chat  .feature-icon { -webkit-mask-image: url('/static/img/icons/chat-dots_new.svg'); mask-image: url('/static/img/icons/chat-dots_new.svg'); }
 
 /* 卡内按钮跟随卡片强调色（而非它自己那支 --outline-* 变体）。
    选择器权重 0-2-0 高过 .home-btn--outline-*（0-1-0），故无需 !important。
