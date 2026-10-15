@@ -1,10 +1,12 @@
 import { once } from 'node:events';
 import { readRealtimeConfig } from './config.js';
-import { realtimeGames } from './games.js';
+import { createRealtimeGames } from './games.js';
+import { createSiteTicketAuthority } from './site-auth.js';
 import { createRealtimeServer } from './server.js';
 
 async function main() {
   const config = readRealtimeConfig();
+  const realtimeGames = createRealtimeGames(createSiteTicketAuthority());
   const runtime = createRealtimeServer({ allowedOrigins: config.allowedOrigins, games: realtimeGames });
   runtime.server.listen(config.port, config.host);
   try { await once(runtime.server, 'listening'); }

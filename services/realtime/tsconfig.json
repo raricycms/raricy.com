@@ -11,6 +11,6 @@
     "rootDir": "../..",
     "outDir": "dist"
   },
-  "include": ["src/**/*.ts", "../../shared/realtime/**/*.ts"],
+  "include": ["src/**/*.ts", "../../shared/**/*.ts"],
   "exclude": ["dist"]
 }

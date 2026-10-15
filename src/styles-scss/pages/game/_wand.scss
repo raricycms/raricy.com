@@ -1,0 +1,16 @@
+@use '../../abstracts/mixins' as m;
+
+.wand-page { max-width: 760px; padding-top: 24px; padding-bottom: 40px; }
+.wand-panel { border-radius: 30px; background: var(--color-background-card); padding: 28px; color: var(--color-text-primary); }
+.wand-panel h1 { margin: 0 0 20px; color: var(--color-text-primary); font-size: 2rem; }
+.wand-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin-bottom: 20px; }
+.wand-status { margin: 0; color: var(--color-text-secondary); }
+.wand-error { color: var(--color-warning-primary); margin: 0 0 16px; }
+// 地图是游戏画面，沿用草地、湖泊的固定配色。
+.wand-canvas { width: 100%; height: auto; aspect-ratio: 1; display: block; background: #6cdc00; border-radius: 20px; }
+.wand-controls { display: grid; grid-template-columns: repeat(3, 56px); gap: 8px; justify-content: center; margin: 24px 0 16px; }
+.wand-direction { @include m.btn-secondary; display: flex; align-items: center; justify-content: center; width: 56px; height: 56px; background: var(--color-background-content); touch-action: none; user-select: none; }
+.wand-direction:first-child { grid-column: 2; }
+.wand-direction:nth-child(2) { grid-column: 1; }
+.wand-help { color: var(--color-text-secondary); margin: 0; line-height: 1.8; font-size: .9rem; }
+@media (max-width: 550px) { .wand-panel { padding: 16px; } .wand-panel h1 { font-size: 1.6rem; } }

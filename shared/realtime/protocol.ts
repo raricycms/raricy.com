@@ -3,6 +3,20 @@ export const REALTIME_PROTOCOL_VERSION = 1;
 export const MAX_REALTIME_MESSAGE_BYTES = 16 * 1024;
 export const MAX_REALTIME_TICKET_LENGTH = 2048;
 
+export interface RealtimeIdentity {
+  userId: string;
+  username: string;
+  sessionVersion: number;
+}
+
+export function isRealtimeIdentity(value: unknown): value is RealtimeIdentity {
+  if (!value || typeof value !== 'object') return false;
+  const identity = value as Record<string, unknown>;
+  return typeof identity.userId === 'string' && identity.userId.length > 0 && identity.userId.length <= 128
+    && typeof identity.username === 'string' && identity.username.length > 0 && identity.username.length <= 256
+    && Number.isSafeInteger(identity.sessionVersion) && (identity.sessionVersion as number) >= 0;
+}
+
 export interface RealtimeAuthentication {
   type: 'realtime.authenticate';
   version: typeof REALTIME_PROTOCOL_VERSION;
@@ -13,6 +27,7 @@ export type RealtimeErrorCode =
   | 'invalid_message'
   | 'authentication_failed'
   | 'authentication_timeout'
+  | 'permission_revoked'
   | 'rate_limited'
   | 'internal_error';
 

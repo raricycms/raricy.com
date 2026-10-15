@@ -1,0 +1,20 @@
+import { siteOrigin } from './site-url';
+
+export function wandWebSocketUrl(requestUrl: string): string {
+  const configured = process.env.REALTIME_PUBLIC_ORIGIN?.trim();
+  const base = new URL(configured || siteOrigin() || requestUrl);
+  if (configured && (!['ws:', 'wss:'].includes(base.protocol) || base.pathname !== '/' || base.search || base.hash || base.username || base.password)) {
+    throw new Error('REALTIME_PUBLIC_ORIGIN 必须是 ws(s) origin');
+  }
+  if (!configured) {
+    base.protocol = base.protocol === 'https:' ? 'wss:' : 'ws:';
+    if (process.env.NODE_ENV !== 'production') base.port = process.env.REALTIME_PORT || '3033';
+  }
+  if (base.protocol === 'ws:' && !['localhost', '127.0.0.1', '[::1]'].includes(base.hostname)) {
+    throw new Error('非回环实时地址必须使用 wss');
+  }
+  base.pathname = '/realtime/wand';
+  base.search = '';
+  base.hash = '';
+  return base.toString();
+}

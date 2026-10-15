@@ -6,6 +6,7 @@ import {
   MAX_REALTIME_MESSAGE_BYTES,
   REALTIME_PROTOCOL_VERSION,
   parseRealtimeAuthentication,
+  isRealtimeIdentity,
   type RealtimeControlMessage,
   type RealtimeErrorCode,
 } from '../../../shared/realtime/protocol.js';
@@ -18,6 +19,7 @@ interface ServerOptions {
   authTimeoutMs?: number;
   heartbeatMs?: number;
   shutdownGraceMs?: number;
+  revalidationMs?: number;
 }
 
 const MAX_CONNECTIONS = 256;
@@ -36,7 +38,7 @@ export function createRealtimeServer(options: ServerOptions) {
   const games = new Map<string, RealtimeGame>();
   for (const game of options.games) {
     if (!/^[a-z][a-z0-9-]{0,47}$/.test(game.id) || games.has(game.id)
-        || typeof game.authenticate !== 'function' || typeof game.connect !== 'function') {
+        || typeof game.authenticate !== 'function' || typeof game.connect !== 'function' || typeof game.revalidate !== 'function') {
       throw new Error('实时游戏必须有唯一 ID、票据验证与连接处理器');
     }
     games.set(game.id, game);
@@ -44,7 +46,8 @@ export function createRealtimeServer(options: ServerOptions) {
   const authTimeoutMs = options.authTimeoutMs ?? 5000;
   const heartbeatMs = options.heartbeatMs ?? 30000;
   const shutdownGraceMs = options.shutdownGraceMs ?? 3000;
-  for (const duration of [authTimeoutMs, heartbeatMs, shutdownGraceMs]) {
+  const revalidationMs = options.revalidationMs ?? 10000;
+  for (const duration of [authTimeoutMs, heartbeatMs, shutdownGraceMs, revalidationMs]) {
     if (!Number.isFinite(duration) || duration <= 0) throw new Error('实时服务的超时必须为正数');
   }
   let stopping = false;
@@ -68,6 +71,7 @@ export function createRealtimeServer(options: ServerOptions) {
     const abort = new AbortController();
     let phase: 'waiting' | 'authenticating' | 'connected' | 'closed' = 'waiting';
     let session: RealtimeSession | undefined;
+    let validationTimer: ReturnType<typeof setInterval> | undefined;
     let windowStart = performance.now();
     let messages = 0;
 
@@ -92,6 +96,7 @@ export function createRealtimeServer(options: ServerOptions) {
       phase = 'closed';
       abort.abort();
       clearTimeout(authTimer);
+      clearInterval(validationTimer);
       try { session?.close(); } catch { /* 单个游戏的清理失败不能影响其他连接。 */ }
     });
 
@@ -102,12 +107,12 @@ export function createRealtimeServer(options: ServerOptions) {
       try {
         const identity = await game.authenticate({ gameId: game.id, ticket: authentication.ticket, signal: abort.signal });
         if (abort.signal.aborted || socket.readyState !== WebSocket.OPEN) return;
-        if (!identity || typeof identity.userId !== 'string' || !identity.userId) { fail('authentication_failed'); return; }
+        if (!isRealtimeIdentity(identity)) { fail('authentication_failed'); return; }
         clearTimeout(authTimer);
         phase = 'connected';
         const peer: RealtimePeer = {
           id: randomUUID(),
-          identity: Object.freeze({ userId: identity.userId }),
+          identity: Object.freeze({ userId: identity.userId, username: identity.username, sessionVersion: identity.sessionVersion }),
           send(data) {
             if (socket.readyState !== WebSocket.OPEN || phase !== 'connected') return false;
             if (socket.bufferedAmount > MAX_BUFFERED_BYTES) { socket.close(1013, 'slow_consumer'); return false; }
@@ -118,6 +123,20 @@ export function createRealtimeServer(options: ServerOptions) {
         };
         control({ type: 'realtime.ready', version: REALTIME_PROTOCOL_VERSION, gameId: game.id, connectionId: peer.id });
         session = game.connect(peer);
+        let checking = false;
+        validationTimer = setInterval(() => {
+          if (checking || phase !== 'connected') return;
+          checking = true;
+          const deadline = setTimeout(() => fail('permission_revoked'), 3000);
+          deadline.unref();
+          void Promise.resolve().then(() => game.revalidate({ identity: peer.identity, signal: abort.signal })).then((valid) => {
+            if (!valid && !abort.signal.aborted) fail('permission_revoked');
+          }).catch(() => { if (!abort.signal.aborted) fail('permission_revoked'); }).finally(() => {
+            checking = false;
+            clearTimeout(deadline);
+          });
+        }, revalidationMs);
+        validationTimer.unref();
       } catch {
         // 错误只返回稳定代码，票据、用户资料与内部异常不写入响应或日志。
         if (!abort.signal.aborted) fail('internal_error', 1011);

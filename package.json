@@ -8,7 +8,7 @@
   "description": "raricy.com (聪明山) — Next.js + Prisma + SQLite. 单进程部署，自有 instance/ 数据目录。",
   "scripts": {
     "dev": "next dev -p 3000",
-    "build": "prisma generate && node scripts/copy-converter-assets.mjs && next build",
+    "build": "prisma generate && node scripts/copy-converter-assets.mjs && next build && npm run realtime:build",
     "start": "next start -H 127.0.0.1 -p 3000",
     "lint": "next lint",
     "prisma:pull": "prisma db pull",

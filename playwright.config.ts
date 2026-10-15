@@ -53,6 +53,8 @@ const E2E_STORIES_DIR = path.resolve(__dirname, 'tests/.tmp/e2e-stories');
 process.env.STORIES_DIR = E2E_STORIES_DIR;
 const PORT = 3100; // 避开开发用的 3000
 const MARKET_PORT = 3102; // 练手盘行情替身，见 tests/e2e/mock-market-price.ts
+const REALTIME_PORT = 3103;
+const REALTIME_TEST_TOKEN = 'e2e-realtime-service-token-not-for-production';
 
 /**
  * 真正需要 mobile 布局的 spec —— mobile project 只跑这些（见下方 projects 的注解）。
@@ -69,6 +71,7 @@ const MARKET_PORT = 3102; // 练手盘行情替身，见 tests/e2e/mock-market-p
  * 就加进来；只是 goto 一个页面再断言内容，就不加。
  */
 const RESPONSIVE_SPECS: RegExp[] = [
+  /wand\.spec\.ts$/,
   /game\.spec\.ts$/,
   /navbar-capsule\.spec\.ts$/,
   // 首页山景的窄屏构图、SVG 视差与减少动态效果偏好。
@@ -212,6 +215,8 @@ export default defineConfig({
       // 不显式给的话会回落到 .env 里的 http://localhost:3000 —— 图照样能出，
       // 但二维码指向的是开发端口而不是这个测试服务器，等于测了个假的。
       SITE_URL: `http://127.0.0.1:${PORT}`,
+      REALTIME_SERVICE_TOKEN: REALTIME_TEST_TOKEN,
+      REALTIME_PUBLIC_ORIGIN: `ws://127.0.0.1:${REALTIME_PORT}`,
       // 限频桶的快照落盘/回灌必须隔离到 tests/.tmp —— 不设它就会读写项目真实的
       // instance/rate-limit-snapshot.json：跑一次 e2e 就把测试用户的配额写进
       // 那边的持久状态（实测攒出 e2e-user-core 的 like 桶），且下一次启动还会
@@ -256,6 +261,19 @@ export default defineConfig({
       FRAMES_DIR: E2E_FRAMES_DIR,
       STORIES_DIR: E2E_STORIES_DIR,
     },
+    },
+    {
+      command: 'node services/realtime/dist/services/realtime/src/main.js',
+      port: REALTIME_PORT,
+      reuseExistingServer: false,
+      timeout: 30000,
+      env: {
+        NODE_ENV: 'production',
+        REALTIME_PORT: String(REALTIME_PORT),
+        REALTIME_ALLOWED_ORIGINS: `http://127.0.0.1:${PORT}`,
+        REALTIME_AUTH_BASE_URL: `http://127.0.0.1:${PORT}`,
+        REALTIME_SERVICE_TOKEN: REALTIME_TEST_TOKEN,
+      },
     },
   ],
 });

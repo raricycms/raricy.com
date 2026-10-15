@@ -4,7 +4,7 @@ import type { AddressInfo } from 'node:net';
 import { WebSocket } from 'ws';
 import { createRealtimeServer } from '../../services/realtime/src/server';
 import { readRealtimeConfig } from '../../services/realtime/src/config';
-import type { RealtimeGame } from '../../services/realtime/src/game';
+import type { RealtimeGame, RealtimeIdentity } from '../../services/realtime/src/game';
 import { MAX_REALTIME_MESSAGE_BYTES, parseRealtimeAuthentication } from '../../shared/realtime/protocol';
 
 const ORIGIN = 'http://localhost:3000';
@@ -16,13 +16,14 @@ afterEach(async () => {
 function game(overrides: Partial<RealtimeGame> = {}): RealtimeGame {
   return {
     id: 'probe',
-    authenticate: async ({ ticket }) => ticket === 'valid-ticket' ? { userId: 'player-1' } : null,
+    authenticate: async ({ ticket }) => ticket === 'valid-ticket' ? { userId: 'player-1', username: 'Player', sessionVersion: 0 } : null,
+    revalidate: async () => true,
     connect: (peer) => ({ receive: (message) => { peer.send(message.data); }, close: () => {} }),
     ...overrides,
   };
 }
 
-async function start(games: RealtimeGame[] = [], options: { authTimeoutMs?: number; heartbeatMs?: number } = {}) {
+async function start(games: RealtimeGame[] = [], options: { authTimeoutMs?: number; heartbeatMs?: number; revalidationMs?: number } = {}) {
   const runtime = createRealtimeServer({ allowedOrigins: [ORIGIN], games, shutdownGraceMs: 100, ...options });
   runtime.server.listen(0, '127.0.0.1');
   await once(runtime.server, 'listening');
@@ -97,7 +98,7 @@ describe('实时服务边界', () => {
   it('认证后才建立游戏，文本与二进制帧保持原样，断连清理一次', async () => {
     const closed = vi.fn();
     const connected = vi.fn<RealtimeGame['connect']>((peer) => {
-      expect(peer.identity).toEqual({ userId: 'player-1' });
+      expect(peer.identity).toEqual({ userId: 'player-1', username: 'Player', sessionVersion: 0 });
       return { receive: (message) => { peer.send(message.data); }, close: closed };
     });
     const runtime = await start([game({ connect: connected })]);
@@ -131,7 +132,7 @@ describe('实时服务边界', () => {
   });
 
   it('认证期间收到额外帧会拒绝，迟到的验证结果不会进入游戏', async () => {
-    let finish!: (identity: { userId: string }) => void;
+    let finish!: (identity: RealtimeIdentity) => void;
     let signal!: AbortSignal;
     const connected = vi.fn();
     const runtime = await start([game({
@@ -144,7 +145,7 @@ describe('实时服务边界', () => {
     const [data] = await once(socket, 'message');
     expect(JSON.parse(String(data)).code).toBe('invalid_message');
     expect(signal.aborted).toBe(true);
-    finish({ userId: 'late-user' });
+    finish({ userId: 'late-user', username: 'Late', sessionVersion: 0 });
     await runtime.close();
     expect(connected).not.toHaveBeenCalled();
   });
@@ -207,5 +208,17 @@ describe('实时服务边界', () => {
     expect((await closed)[0]).toBe(1001);
     await first;
     expect(closedSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('身份复核失败会关闭已认证连接并清理会话', async () => {
+    const cleanup = vi.fn();
+    const runtime = await start([game({ revalidate: async () => false, connect: () => ({ receive() {}, close: cleanup }) })], { revalidationMs: 40 });
+    const socket = await connect(`${runtime.ws}/realtime/probe`);
+    await authorize(socket);
+    const closed = once(socket, 'close');
+    const [message] = await once(socket, 'message');
+    expect(JSON.parse(String(message)).code).toBe('permission_revoked');
+    expect((await closed)[0]).toBe(1008);
+    await vi.waitFor(() => expect(cleanup).toHaveBeenCalledTimes(1));
   });
 });
