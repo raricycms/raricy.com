@@ -16,7 +16,7 @@
 | CSRF | `src/middleware.ts` 对状态变更方法校验 `Origin`/`Referer` 同源 |
 | 文件落盘 | 头像/图床/故事/表情包落 `instance/`（gitignored，六个子目录见 §3） |
 | 鱼干账户 | 站内余额与账本，同一个 SQLite 事务（见 §6.3） |
-| 实时游戏 | 可选 Node.js + ws 独立进程，共用仓库与 lockfile；目前未注册游戏 |
+| 实时游戏 | 可选 Node.js + ws 独立进程，共用仓库与 lockfile；承载 Wand demo |
 | 渲染 | 博客 / 评论 / 故事 — 客户端 marked + DOMPurify（详见 §6.7） |
 | 测试 | vitest 单测 + Playwright e2e |
 | 限频 | 进程内内存限频（`src/lib/rate-limit.ts`） |
@@ -31,7 +31,8 @@
 
 主站负责页面、账号、权限和所有现行业务数据；鱼干账户已在站内，不再有账户微服务。
 主站的限频桶与 SSE 订阅表仍遵循单实例前提，实时进程不共享这些内存对象。
-实时服务当前只开放健康检查，游戏注册表为空，启动、认证与接入契约见 `docs/realtime.md`。
+实时服务承载 Wand 的权威移动与多人同步，通过独立服务凭据调用主站消费一次性票据、
+复核会话版本与账号状态；它不直接读数据库。启动、认证与接入契约见 `docs/realtime.md`。
 ATÅMAS 在浏览器内运行，正常游玩不需要启动实时进程。
 `instance/` 是 gitignored 的运行时数据目录，部署机器提供真实内容。
 
@@ -1544,12 +1545,20 @@ MP3 的帧同步要核版本 / 层 / 位速率字段（只判 `0xFF` 打头太�
 
 首页内容卡按「故事 / 玩具 / 博客 / 工具」排列；讨论入口保留在顶栏。
 游戏清单住 `src/lib/game-catalog.ts`：每款游戏只登记一次，玩法类别、游玩方式与
-启动方式分别描述。目前只上架 ATÅMAS（益智、单人、原生组件）。
+启动方式分别描述。玩具首页保留 ATÅMAS（益智、单人、原生组件），另有「测试」合集
+`/game/collections/test`，目前只收录 Wand demo（动作、在线多人、原生组件）。
 
 `src/games/atamas/` 包含客户端引擎、Canvas 绘制、24 种语言与界面，
 `src/app/game/atamas/page.tsx` 是路由包装。游戏匿名可玩，不调用账号接口、
 不连接实时服务、不保存服务端成绩；语言偏好保存在浏览器 `atamas_lang`。
 页面外壳与按钮随全站主题，画布及数字圆盘保留游戏配色。
+
+`src/games/wand/` 是 Wand 的 Canvas 客户端，`/game/wand` 登录后可玩，不要求 core 档位。
+主站 `POST /api/game/wand/launch` 检查专注模式、封禁与用户限频，签发 60 秒一次性票据。
+票据摘要存在主站单实例的 `globalThis` Map，实时进程通过独立 Bearer 凭据调用
+`POST /api/internal/realtime/session` 消费；浏览器 Cookie 不能调用这个内部接口。
+实时进程每 10 秒复核会话版本、封禁与专注状态，失败关闭已有连接。
+地图、速度和碰撞由服务端计算，客户端只提交方向输入；当前没有持久化成绩和房间存档。
 
 专注模式下，首页卡和顶栏入口整段不渲染；`src/app/game/layout.tsx` 同时替换
 菜单和游戏直达页为设置提示，不挂载游戏引擎。关闭开关后即可重新进入。

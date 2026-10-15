@@ -15,7 +15,8 @@ Next.js 15 + Prisma + SQLite 主站，自有 `instance/` 数据目录；另有�
 - **会话**：JWT（`jose`）+ `session_version` 失效机制
 - **认证**：密码哈希与历史 werkzeug **互通**，用户**无需重置密码**
 - **服务边界**：主站业务与鱼干账目保持单进程自洽。同仓 `services/realtime/` 是可选的
-  独立实时进程，目前只提供连接基础设施，尚未注册游戏；ATÅMAS 不依赖它。见 `docs/realtime.md`。
+  独立实时进程，承载「测试」合集中的 Wand demo；主站签发一次性票据并复核账号权限。
+  ATÅMAS 不依赖它。配置与启动见 `docs/realtime.md`。
 - **前端**：服务端 / 客户端组件混用，marked + DOMPurify + highlight.js 渲染 Markdown
 
 组件与子系统的关系见 `docs/architecture.md`。
@@ -26,9 +27,9 @@ Next.js 15 + Prisma + SQLite 主站，自有 `instance/` 数据目录；另有�
 |------|------|
 | `src/app/`     | App Router 页面与 API 路由 |
 | `src/lib/`     | 业务逻辑层 |
-| `src/games/`   | 纯客户端游戏，目前只有 ATÅMAS |
+| `src/games/`   | ATÅMAS 客户端引擎与 Wand 联机客户端 |
 | `services/realtime/` | 独立 WebSocket 服务，开发 / 构建 / 启动见 `docs/realtime.md` |
-| `shared/realtime/` | 主站、浏览器与实时服务可以共用的零依赖传输契约 |
+| `shared/` | 主站、浏览器与实时服务共用的零依赖传输契约、Wand 地图与移动计算 |
 | `src/middleware.ts` | CSRF 同源校验（反代下读 `X-Forwarded-Host`） |
 | `prisma/`      | schema.prisma + migrations/（手写 SQL，见 `docs/deploy.md` §4） |
 | `scripts/`     | 自检 / 运维 / 数据补偿脚本（详见下方「工具脚本」） |
