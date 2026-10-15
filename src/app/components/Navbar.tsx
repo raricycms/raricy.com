@@ -119,8 +119,10 @@ export default function Navbar({
                         aria-haspopup="true"
                         aria-expanded="false"
                         aria-controls="userDropdownMenu"
+                        aria-label={`用户菜单：${user.username}`}
+                        title={user.username}
                       >
-                        <span>{user.username}</span>
+                        <span className="site-user-name">{user.username}</span>
                         <Avatar
                           userId={user.id}
                           frameUrl={frameUrl}

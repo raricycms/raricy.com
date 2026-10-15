@@ -112,7 +112,8 @@ a {
 // hamburger 展开 navbar。
 .site-navbar-collapse {
   display: flex;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
 }
 
 .site-navbar-collapse-inner {
@@ -120,12 +121,14 @@ a {
   align-items: center;
   justify-content: space-between;
   width: 100%;
+  min-width: 0;
   gap: 1rem;
 }
 
 .site-nav {
   position: relative;
   display: flex;
+  flex: none;
   list-style: none;
   padding: 0;
   margin-left: 50px;
@@ -157,6 +160,7 @@ a {
   text-decoration: none;
   padding: 0.5rem 1rem;
   font-weight: 500;
+  white-space: nowrap;
   // 挂角用（.site-link__dot）
   position: relative;
 
@@ -177,8 +181,11 @@ a {
 
 .site-actions { 
   display: flex; 
+  min-width: 0;
   align-items: center; 
   gap: 0.25rem; 
+
+  > * { flex-shrink: 0; }
 }
 
 .site-login-btn {
@@ -196,9 +203,10 @@ a {
 
 .site-user-dropdown { 
   position: relative;
-  flex: none;
+  flex: 0 1 auto;
   height: 48px;
   min-width: 160px;
+  max-width: 240px;
 
   &-shell {
     position: relative;
@@ -228,10 +236,6 @@ a {
     font-size: 1rem;
     cursor: pointer;
     white-space: nowrap;
-
-    > span:first-child {
-      margin-right: auto;
-    }
   }
 
   &-chevron {
@@ -289,6 +293,14 @@ a {
       transform: rotate(180deg);
     }
   }
+}
+
+.site-user-name {
+  flex: 1;
+  min-width: 0;
+  margin-right: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .site-user-avatar { 
@@ -480,6 +492,61 @@ body {
   padding-top: var(--navbar-height);
 }
 
+// 先压缩留白与用户名，仍保留全部横排入口；折叠菜单继续使用 808px 断点。
+@media (min-width: 809px) and (max-width: 1199px) {
+  .site-navbar-collapse-inner { gap: 12px; }
+
+  .site-nav {
+    margin-left: 32px;
+    gap: 8px;
+
+    &::before { left: -16px; }
+  }
+
+  .site-link { padding-inline: 12px; }
+  .site-user-dropdown { max-width: 200px; }
+}
+
+@media (min-width: 809px) and (max-width: 899px) {
+  .site-navbar-collapse-inner { gap: 8px; }
+
+  .site-nav {
+    margin-left: 24px;
+    gap: 4px;
+
+    &::before { left: -12px; }
+  }
+
+  .site-link { padding-inline: 8px; }
+
+  .site-user-dropdown {
+    flex: none;
+    min-width: 80px;
+    width: 80px;
+
+    &-toggle {
+      padding-inline: 11px;
+      justify-content: flex-end;
+    }
+    .site-user-name { display: none; }
+    .site-user-avatar { margin-left: 0; }
+
+    // 紧凑入口只占头像与箭头的宽度，菜单仍在同一外壳中展开。
+    // 向左增加宽度由绝对定位承接，头像右边缘不动，也不挤开其他入口。
+    &.open {
+      .site-user-dropdown-shell {
+        position: absolute;
+        top: 0;
+        right: 0;
+        width: 200px;
+      }
+
+      .site-user-dropdown-toggle { padding-left: 24px; }
+      .site-user-name { display: block; }
+    }
+  }
+}
+
 // 移动端折叠样式
 @media (max-width: 808px) {
   .site-navbar .site-container {
@@ -593,6 +660,14 @@ body {
 
   .site-actions {
     justify-content: center;
+    flex-wrap: wrap;
+    width: 100%;
+    max-width: 420px;
+  }
+
+  .site-user-dropdown {
+    // 可用宽度不足时整颗胶囊换行，保留可读的菜单宽度与完整头像。
+    flex: 1 1 160px;
   }
 }
 
