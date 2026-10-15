@@ -1,5 +1,6 @@
 /node_modules
 /.next
+/services/realtime/dist/
 /out
 next-env.d.ts
 # 本地 agent 指令：个人部署约定与私有信息只在本机保存，不入库。

@@ -255,6 +255,12 @@ export const DOC_ENTRIES: readonly DocEntry[] = [
   },
   {
     group: 'dev',
+    slug: 'realtime',
+    title: '实时游戏服务',
+    summary: '同仓独立实时进程、认证首帧、游戏接入契约、连接生命周期与部署。',
+  },
+  {
+    group: 'dev',
     slug: 'cli',
     title: '运维 CLI',
     summary: '交互式向导与命令式用法；角色、用户、内容检索与恢复、鱼干、头像框、邀请码、审计、申诉。',

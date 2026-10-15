@@ -37,7 +37,10 @@
     "emoji:check": "node scripts/copy-emoji-assets.mjs --check",
     "prepare:converter": "node scripts/copy-converter-assets.mjs",
     "converter:check": "node scripts/copy-converter-assets.mjs --check",
-    "postinstall": "node scripts/copy-mathjax-fonts.mjs && node scripts/copy-emoji-assets.mjs && node scripts/copy-converter-assets.mjs"
+    "postinstall": "node scripts/copy-mathjax-fonts.mjs && node scripts/copy-emoji-assets.mjs && node scripts/copy-converter-assets.mjs",
+    "realtime:dev": "tsx watch services/realtime/src/main.ts",
+    "realtime:build": "tsc -p services/realtime/tsconfig.json",
+    "realtime:start": "node services/realtime/dist/services/realtime/src/main.js"
   },
   "dependencies": {
     "@codemirror/commands": "6.11.1",
@@ -78,7 +81,8 @@
     "sharp": "^0.35.3",
     "tesseract.js": "5.1.1",
     "utif": "3.1.0",
-    "xlsx": "0.18.5"
+    "xlsx": "0.18.5",
+    "ws": "8.22.0"
   },
   "devDependencies": {
     "@inquirer/prompts": "^7.10.1",
@@ -94,6 +98,7 @@
     "sass": "^1.99.0",
     "tsx": "^4.23.1",
     "typescript": "^5.7.3",
-    "vitest": "^2.1.9"
+    "vitest": "^2.1.9",
+    "@types/ws": "8.18.2"
   }
 }

@@ -1,6 +1,7 @@
 # 项目架构
 
-聪明山 / raricy.com 的当前架构：Next.js 15 单进程 + Prisma 6 + SQLite + 独立 FastAPI 账户微服务。
+聪明山 / raricy.com 的当前架构：Next.js 15 主站 + Prisma 6 + SQLite，
+以及按需启用的同仓独立实时游戏服务。主站业务和鱼干账目仍在同一进程内自洽。
 
 > 上一版是 Flask 单体，2026-07 全部替换。本文档只描述现役架构；Flask 历史仅在「迁移史速查」一节列出。
 
@@ -9,12 +10,13 @@
 | 层 | 选型 |
 |----|------|
 | 框架 | Next.js 15（App Router）· React 19 · TypeScript 5 |
-| ORM | Prisma 6（provider=sqlite），直连 `instance/database/db.db` |
+| ORM | Prisma 6（provider=sqlite），开发库 `instance/database/dev.db`，生产库见部署配置 |
 | 鉴权 | JWT（`jose`）· 密码哈希与历史 werkzeug **双向互通**（用户无需改密） |
 | 会话 | JWT cookie + `User.sessionVersion` 失效机制（改密 / 禁言 / 强制下线时递增，旧会话立即全废） |
 | CSRF | `src/middleware.ts` 对状态变更方法校验 `Origin`/`Referer` 同源 |
 | 文件落盘 | 头像/图床/故事/表情包落 `instance/`（gitignored，六个子目录见 §3） |
-| 鱼干账户 | 独立 FastAPI 微服务（本仓**只**通过 HTTP 调用，本仓无 Python） |
+| 鱼干账户 | 站内余额与账本，同一个 SQLite 事务（见 §6.3） |
+| 实时游戏 | 可选 Node.js + ws 独立进程，共用仓库与 lockfile；目前未注册游戏 |
 | 渲染 | 博客 / 评论 / 故事 — 客户端 marked + DOMPurify（详见 §6.7） |
 | 测试 | vitest 单测 + Playwright e2e |
 | 限频 | 进程内内存限频（`src/lib/rate-limit.ts`） |
@@ -22,43 +24,16 @@
 
 ## 2. 进程拓扑
 
-```
-                        ┌──────────────────────────────────────┐
-                        │           用户浏览器                  │
-                        └──────────┬────────────┬──────────────┘
-                                   │ TLS (HTTPS) │
-                                   │            │
-                         ┌─────────▼──┐    ┌─────▼─────────┐
-                         │   nginx    │    │   account-    │
-                         │  (反代)    │    │   service     │
-                         │ proxy_pass │    │  (FastAPI,    │
-                         │ → :3000    │    │   独立仓库)   │
-                         └─────┬──────┘    └─────┬─────────┘
-                               │                 │
-                               │ HTTP/3000       │ HTTP/8000
-                               │ local           │ local
-                         ┌─────▼──────────┐      │
-                         │   Next.js      │──────┘
-                         │  (单进程)      │
-                         └──┬─────────────┘
-                            │ Prisma 直连
-                            ▼
-                     ┌──────────────────┐
-                     │ instance/        │
-                     │ ├── database/    │
-                     │ │   └── db.db    │
-                     │ ├── avatars/     │   ⟨gitignored 部署时挂载⟩
-                     │ ├── images/      │
-                     │ ├── stories/     │
-                     │ ├── stickers/    │
-                     │ └── blogs/       │   ⟨历史遗留，当前无写入⟩
-                     └──────────────────┘
+```text
+浏览器 ── HTTPS ── nginx ── 主站请求 ── Next.js（单实例）── Prisma / SQLite
+                       └── /realtime/* ── 实时服务（可选独立进程）
 ```
 
-**关键点**：
-- Next 进程**单实例**（多实例部署需先换 Redis 限频；SQLite 写锁是库级的）。
-- 账户服务是**完全独立的部署单元**，独立仓库、独立进程、独立数据库。
-- `instance/` 是**数据**，是 gitignored，部署机器提供真实目录。
+主站负责页面、账号、权限和所有现行业务数据；鱼干账户已在站内，不再有账户微服务。
+主站的限频桶与 SSE 订阅表仍遵循单实例前提，实时进程不共享这些内存对象。
+实时服务当前只开放健康检查，游戏注册表为空，启动、认证与接入契约见 `docs/realtime.md`。
+ATÅMAS 在浏览器内运行，正常游玩不需要启动实时进程。
+`instance/` 是 gitignored 的运行时数据目录，部署机器提供真实内容。
 
 ## 3. 目录布局
 
