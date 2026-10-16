@@ -279,6 +279,7 @@ describe('RULES 全站配额（src/lib/rate-limit.ts 即权威，改动即报警
     { name: 'passwordPerUser', limit: 20, windowMs: 60_000, desc: '所有网络密码确认共享用户 ID 预算，成功也计数' },
     { name: 'passwordPerIp', limit: 120, windowMs: 60_000, desc: '网络密码计算的可信 IP 预算' },
     { name: 'passwordGlobal', limit: 240, windowMs: 60_000, desc: '全站网络密码计算预算' },
+    { name: 'realtimeLaunch', limit: 10, windowMs: 60_000, desc: '实时游戏启动票据 10 次/分/用户' },
   ] as const;
 
   for (const e of EXPECTED) {
