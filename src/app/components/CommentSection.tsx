@@ -29,6 +29,8 @@ import { usePendingImage } from './usePendingImage';
 import { insertAtCaret } from './textarea-insert';
 import Avatar from '@/app/components/Avatar';
 import { COMMENT_TEXT_MAX, COMMENT_CAPTION_MAX } from '@/lib/comment-shared';
+import { isoWithOffset } from '@/lib/db-time';
+import { ymdhms } from '@/lib/format';
 
 declare global {
   interface Window {
@@ -533,6 +535,9 @@ function CommentItem({
   replyForm: React.ReactNode;
 }) {
   const authorName = node.author.username ?? '匿名用户';
+  // 接口时间仍是库内的 UTC+8 墙上时间，展示时不再按浏览器时区平移。
+  const createdAt = node.created_at ? new Date(node.created_at) : null;
+  const published = createdAt && !Number.isNaN(createdAt.getTime()) ? createdAt : null;
   // ⚠️ 归属一律用服务端算好的 `is_mine`，**不要**再拿 currentUserId 去比 author.id ——
   // 匿名评论的 author.id 恒为 null（真 id 不下发），那样比会让作者删不掉自己的评论，
   // 而且是静默的：按钮不出现，没有报错。
@@ -572,6 +577,15 @@ function CommentItem({
           <span className="comment-author-anon" title="以化名发表的匿名评论">
             匿名
           </span>
+        )}
+        {published && (
+          <time
+            className="comment-time"
+            dateTime={isoWithOffset(published) ?? undefined}
+            title="发表时间（北京时间）"
+          >
+            {ymdhms(published)}
+          </time>
         )}
       </div>
 
