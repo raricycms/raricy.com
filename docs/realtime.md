@@ -1,10 +1,10 @@
 # 实时游戏服务
 
-`services/realtime/` 是同仓库、独立进程的 Node.js WebSocket 服务。
+`services/realtime/` 是同仓库、与主站共同启停的 Node.js WebSocket 进程。
 主站继续负责页面、账号和数据库；实时服务负责连接与游戏内状态。
 `shared/` 放无 Node.js、Next.js、Prisma 依赖的传输契约、Wand 地图与移动计算。
 
-**当前交付范围**：服务可独立构建、启动和停止；提供健康检查、精确 Origin 检查、
+**当前交付范围**：服务与主站统一配置、启动和停止；提供健康检查、精确 Origin 检查、
 认证首帧、游戏接入接口、文本与二进制帧、心跳、大小与频率限制。
 「测试」合集已接入 Wand demo，支持主站登录、一次性票据、服务端移动与多人位置同步。
 ATÅMAS 在浏览器内运行，不需要这个服务。
@@ -35,34 +35,29 @@ Prisma、Next.js 或主站会话密钥；同一源码文件在两个进程内也
 
 ## 2. 开发与运行
 
-先在主站 `.env` 与实时服务的独立环境中设置相同的 `REALTIME_SERVICE_TOKEN`，
-使用 32–256 字符的独立随机值，不复用 `SECRET_KEY`，不提交真实凭据。
-开发时实时服务的 `REALTIME_ALLOWED_ORIGINS` 设为
-`http://localhost:3000,http://127.0.0.1:3000`，认证地址默认回环 3000 端口。
-
-在仓库根目录分别启动主站与实时进程（两个终端）：
+在仓库根目录使用原来的主站命令，一个终端即可：
 
 ```bash
 npm ci
 npm run dev
-# 另一个终端，先由终端环境注入实时服务配置，再执行：
-npm run realtime:dev
-# 默认监听 127.0.0.1:3033
-curl http://127.0.0.1:3033/healthz
-
-npm run realtime:build
-npm run realtime:start
+# 生产
+npm run build
+npm start
 ```
 
-实时进程不自动加载 `.env`。也可把 `services/realtime/.env.example` 复制到被忽略的
-`services/realtime/.env` 并填好后，用 Node 显式加载：
+统一入口 `scripts/start.mjs` 使用 Next 的环境加载规则读取主站 `.env*`，开发与生产分别
+选择对应环境文件。无需创建 `services/realtime/.env`，既有该文件也不会被读取。
+启动时自动生成随机内部凭据，分别传给主站与实时子进程，不落盘、不复用 `SECRET_KEY`。
+实时进程只接收运行所需的环境变量，不接收主站数据库地址、会话或鱼干加密密钥。
 
-```bash
-# 开发（替代上面的 realtime:dev）
-node --env-file=services/realtime/.env --import tsx --watch services/realtime/src/main.ts
-# 生产构建后运行（替代上面的 realtime:start）
-node --env-file=services/realtime/.env services/realtime/dist/services/realtime/src/main.js
-```
+来源白名单默认从主站 `SITE_URL` 与 `ALLOWED_ORIGINS` 推导；生产至少配置其中一个。
+开发额外允许实际主站端口的 localhost / 127.0.0.1。内部认证地址默认指向同一主站端口，
+例如 `npm run dev -- --port 3200` 会使用 `http://127.0.0.1:3200`。
+开发实时进程通过 Node watch 监测所加载的源码，修改服务或共享协议后自动重启。
+
+退出统一入口会回收两个服务及其开发子进程；任一受管进程退出时，统一入口停止整组并
+返回非零状态，由外层 systemd 统一重启。Linux 先发 SIGTERM，5 秒后强制回收；
+Windows 使用进程树终止，避免遗留 Next dev / Node watch 的子进程。
 
 进入 `/game` →「测试」→ Wand demo，登录后点击「开始联机」。
 `npm run build` 同时构建主站与实时服务；`realtime:build` 只构建后者。
@@ -77,15 +72,15 @@ node --env-file=services/realtime/.env services/realtime/dist/services/realtime/
 |---|---|
 | `REALTIME_HOST` | `127.0.0.1` |
 | `REALTIME_PORT` | `3033`，整数 1–65535 |
-| `REALTIME_ALLOWED_ORIGINS` | 逗号分隔的完整 origin，无路径或尾斜杠；生产必填 |
-| `REALTIME_AUTH_BASE_URL` | 主站 HTTP origin，默认 `http://127.0.0.1:3000`；非回环须 HTTPS |
-| `REALTIME_SERVICE_TOKEN` | 主站与实时进程都必填，相同的独立随机凭据，32–256 字符 |
+| `REALTIME_ALLOWED_ORIGINS` | 可选覆盖；逗号分隔的完整 origin，无路径或尾斜杠；默认复用主站域名配置 |
+| `REALTIME_AUTH_BASE_URL` | 可选覆盖；默认主站回环地址与实际端口；非回环须 HTTPS |
+| `REALTIME_SERVICE_TOKEN` | 可选覆盖；默认每次共同启动自动生成；手动指定需 32–256 字符 |
 | `REALTIME_PUBLIC_ORIGIN` | **主站读取**，浏览器连接的 ws(s) origin，无路径；非回环须 wss |
 
-开发未配置白名单时允许 `http://localhost:3000` 和 `http://127.0.0.1:3000`。
-`REALTIME_PUBLIC_ORIGIN` 留空时，开发使用 `SITE_URL` 的主机加 3033 端口（可用
+以上变量都配置在主站环境文件中。`REALTIME_PUBLIC_ORIGIN` 留空时，开发使用当前页面
+的主机加 3033 端口（可用
 `REALTIME_PORT` 改）；生产使用本站同域 `/realtime/`。分域时设置此值并配置精确白名单。
-可参考 `services/realtime/.env.example`，生产用服务管理器的 EnvironmentFile 注入。
+通常无需填写任何 `REALTIME_*` 变量；独立端口和分域配置才需要覆盖默认值。
 
 ## 3. 连接与游戏契约
 
@@ -103,7 +98,7 @@ node --env-file=services/realtime/.env services/realtime/dist/services/realtime/
 禁止以客户端自报的 userId 建立身份。Wand 使用如下主站接口：
 
 1. 浏览器 `POST /api/game/wand/launch`，主站通过会话 Cookie 检查登录、专注模式与当前封禁，
-   按用户限频 10 次 / 分钟，返回 `{ticket, expiresIn: 60, wsUrl}`；未配置服务凭据返回 503。
+   按用户限频 10 次 / 分钟，返回 `{ticket, expiresIn: 60, wsUrl}`；绕过统一入口且未配置凭据时返回 503。
 2. 浏览器只在 WS 首帧发送票据，不放进 URL，也不保存到 localStorage。
 3. 实时进程以 `Authorization: Bearer <REALTIME_SERVICE_TOKEN>` 调用
    `POST /api/internal/realtime/session`，提交 `{action:"consume", gameId:"wand", ticket}`。
@@ -155,14 +150,14 @@ node --env-file=services/realtime/.env services/realtime/dist/services/realtime/
 
 ## 4. 部署
 
-ATÅMAS 随主站原有流程部署即可。Wand 需要配置并启动实时服务；
-现有主站启动命令不会自动启动第二个进程。
+主站与 Wand 共用一次构建、一个服务管理单元和一份主站环境文件。
+运行 `npm start` 即同时启动两个进程；实时服务仍只监听内部 3033 端口。
 
 systemd 示例（通用示例路径，按实际环境调整）：
 
 ```ini
 [Unit]
-Description=Raricy realtime games
+Description=Raricy website and realtime games
 After=network.target
 
 [Service]
@@ -170,10 +165,10 @@ Type=simple
 User=www-data
 WorkingDirectory=/srv/raricy.com
 Environment=NODE_ENV=production
-EnvironmentFile=/srv/raricy.com/services/realtime/.env
-ExecStart=/usr/bin/node /srv/raricy.com/services/realtime/dist/services/realtime/src/main.js
+ExecStart=/usr/bin/node /srv/raricy.com/scripts/start.mjs start
 Restart=on-failure
-TimeoutStopSec=5
+TimeoutStopSec=10
+KillMode=control-group
 NoNewPrivileges=true
 PrivateTmp=true
 
@@ -181,8 +176,12 @@ PrivateTmp=true
 WantedBy=multi-user.target
 ```
 
-构建用 `npm run build`（含实时服务）或 `npm run realtime:build`。发布时分别管理主站和实时服务的重启，
-重启实时服务会断开所有连接；当前没有持久化或跨实例房间恢复。
+保留现有主站 systemd 单元，只把直接执行 `next start` 的入口替换为上面的统一入口，
+不再创建独立实时服务单元；若此前已经创建，先停用它，避免抢占 3033 端口。
+Node 路径与运行用户按实际部署填写。Next 自己也能读取主站环境文件，无需另挂环境文件。
+
+构建用 `npm run build`（含实时服务），发布时只需重启这一个单元。
+重启会断开所有游戏连接；当前没有持久化或跨实例房间恢复。
 更新协议或添加游戏时，要同时检查客户端与实时服务的版本兼容。
 
 nginx 在主站同域增加：

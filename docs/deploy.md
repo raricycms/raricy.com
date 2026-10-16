@@ -2,8 +2,8 @@
 
 > 从零到上线的完整步骤。覆盖：环境要求、`.env`、数据库、systemd、nginx、TLS、自检、备份。
 
-本文是主站部署流程。可选的同仓实时进程另见 `docs/realtime.md`；当前 ATÅMAS
-无需启动它，主站现有启动命令也不会自动启动实时服务。
+本文是主站部署流程。`npm start` 同时管理主站与同仓实时游戏进程，共用主站环境文件，
+内部凭据自动生成。Wand 的 nginx WebSocket 转发见 `docs/realtime.md` §4。
 > 上线前必跑自检：`npm run diagnose -- --url https://你的域名`。
 
 ## 1. 系统要求
@@ -377,7 +377,7 @@ schema 新增字段（如 `focusMode`）会报 `Property 'x' does not exist on t
 ```bash
 # 直接前台
 npm start
-# → Listening on http://0.0.0.0:3000
+# → 主站 127.0.0.1:3000，实时服务 127.0.0.1:3033
 ```
 
 生产用 systemd，详见 §7。
@@ -433,8 +433,10 @@ Group=www-data
 
 WorkingDirectory=/srv/raricy.com
 
-# 不挂 EnvironmentFile=.env —— next start 自己会读同目录的 .env
-ExecStart=/srv/raricy.com/node_modules/.bin/next start -H 127.0.0.1 -p 3000
+# 统一入口按 Next 规则读取主站 .env*，并共同管理两个子进程
+ExecStart=/usr/bin/node /srv/raricy.com/scripts/start.mjs start
+KillMode=control-group
+TimeoutStopSec=10
 
 Restart=always
 RestartSec=3

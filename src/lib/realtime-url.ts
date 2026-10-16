@@ -2,7 +2,8 @@ import { siteOrigin } from './site-url';
 
 export function wandWebSocketUrl(requestUrl: string): string {
   const configured = process.env.REALTIME_PUBLIC_ORIGIN?.trim();
-  const base = new URL(configured || siteOrigin() || requestUrl);
+  // 本地开发的 SITE_URL 往往仍是正式站；连接应跟随当前开发页面的主机。
+  const base = new URL(configured || (process.env.NODE_ENV === 'production' ? siteOrigin() : '') || requestUrl);
   if (configured && (!['ws:', 'wss:'].includes(base.protocol) || base.pathname !== '/' || base.search || base.hash || base.username || base.password)) {
     throw new Error('REALTIME_PUBLIC_ORIGIN 必须是 ws(s) origin');
   }

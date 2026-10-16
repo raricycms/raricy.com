@@ -5,11 +5,11 @@
     "node": ">=20.0.0"
   },
   "private": true,
-  "description": "raricy.com (聪明山) — Next.js + Prisma + SQLite. 单进程部署，自有 instance/ 数据目录。",
+  "description": "raricy.com (聪明山) — Next.js + Prisma + SQLite，共同启动的实时游戏进程，自有 instance/ 数据目录。",
   "scripts": {
-    "dev": "next dev -p 3000",
+    "dev": "node scripts/start.mjs dev",
     "build": "prisma generate && node scripts/copy-converter-assets.mjs && next build && npm run realtime:build",
-    "start": "next start -H 127.0.0.1 -p 3000",
+    "start": "node scripts/start.mjs start",
     "lint": "next lint",
     "prisma:pull": "prisma db pull",
     "prisma:generate": "prisma generate",
@@ -38,9 +38,7 @@
     "prepare:converter": "node scripts/copy-converter-assets.mjs",
     "converter:check": "node scripts/copy-converter-assets.mjs --check",
     "postinstall": "node scripts/copy-mathjax-fonts.mjs && node scripts/copy-emoji-assets.mjs && node scripts/copy-converter-assets.mjs",
-    "realtime:dev": "tsx watch services/realtime/src/main.ts",
-    "realtime:build": "tsc -p services/realtime/tsconfig.json",
-    "realtime:start": "node services/realtime/dist/services/realtime/src/main.js"
+    "realtime:build": "tsc -p services/realtime/tsconfig.json"
   },
   "dependencies": {
     "@codemirror/commands": "6.11.1",

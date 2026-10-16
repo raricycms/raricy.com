@@ -2,7 +2,7 @@
 
 个人网站（博客 / 故事 / 玩具 / 工具集 / 剪贴板 / 图床 / 投票）。
 
-Next.js 15 + Prisma + SQLite 主站，自有 `instance/` 数据目录；另有按需启用的同仓实时游戏服务。
+Next.js 15 + Prisma + SQLite 主站，自有 `instance/` 数据目录；实时游戏服务随主站共同启停。
 
 > 2026-07 由上一版实现重写为当前 Next.js 实现并已运行。
 > 迁移手册详见 git 历史与切换期提交的 commit message。
@@ -14,9 +14,10 @@ Next.js 15 + Prisma + SQLite 主站，自有 `instance/` 数据目录；另有�
   生产库 `db.db`（见 `.env.production.example`）。**两者是不同的文件**，别按文档去改错那个
 - **会话**：JWT（`jose`）+ `session_version` 失效机制
 - **认证**：密码哈希与历史 werkzeug **互通**，用户**无需重置密码**
-- **服务边界**：主站业务与鱼干账目保持单进程自洽。同仓 `services/realtime/` 是可选的
+- **服务边界**：主站业务与鱼干账目保持单进程自洽。同仓 `services/realtime/` 是共同启动的
   独立实时进程，承载「测试」合集中的 Wand demo；主站签发一次性票据并复核账号权限。
-  ATÅMAS 不依赖它。配置与启动见 `docs/realtime.md`。
+  共用主站 `.env*`，内部凭据自动生成；`npm run dev` / `npm start` 同时管理两个进程。
+  ATÅMAS 不依赖它。部署反代见 `docs/realtime.md`。
 - **前端**：服务端 / 客户端组件混用，marked + DOMPurify + highlight.js 渲染 Markdown
 
 组件与子系统的关系见 `docs/architecture.md`。
@@ -52,7 +53,7 @@ npm run dev                              # http://localhost:3000
 
 | 命令 | 作用 |
 |------|------|
-| `npm run dev` / `start` | 本地开发 / 生产启动 |
+| `npm run dev` / `start` | 本地开发 / 生产启动，主站与实时服务共同启停 |
 | `npm run build` | 生产构建 |
 | `npm test` | vitest 单测 |
 | `npm run e2e` | 端到端（直接跑 Playwright，**不**自动 build —— 见下方警告） |
