@@ -65,6 +65,7 @@ const AVATAR_SITES = [
   'src/app/components/CheckinCard.tsx', // 签到天数榜（32px）
 
   // ── 客户端组件 ──
+  'src/games/public-space/PublicSpaceDemo.tsx', // 公共空间网格与观众席（36px）
   'src/app/components/CommentSection.tsx', // 博客评论作者（24px）
   'src/app/components/FeedButton.tsx', // 点赞者 / 投喂者弹窗名单（内联 32px）
   'src/app/chat/ChatMessageItem.tsx', // 讨论消息作者（34px，<button>）

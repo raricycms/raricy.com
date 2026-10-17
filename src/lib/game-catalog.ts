@@ -1,5 +1,5 @@
 // 游戏清单只描述陈列与启动方式；引擎按页面加载，不从这里导入客户端组件。
-export const GAME_CATEGORIES = { puzzle: '益智', action: '动作' } as const;
+export const GAME_CATEGORIES = { puzzle: '益智', action: '动作', social: '互动' } as const;
 export const GAME_MODES = { solo: '单人', online: '在线多人' } as const;
 
 export const GAME_COLLECTIONS = [{ id: 'test', title: '测试', href: '/game/collections/test' }] as const;
@@ -13,10 +13,21 @@ export interface GameEntry {
   href: string;
   runtime: 'native' | 'embedded' | 'external';
   collectionId: typeof GAME_COLLECTIONS[number]['id'] | null;
-  icon: 'atamas' | 'wand';
+  icon: 'atamas' | 'wand' | 'public-space';
 }
 
 export const GAMES = [
+  {
+    id: 'public-space',
+    title: '公共空间',
+    description: '在 5 × 5 网格中放置自己的头像，与在线用户共享空间，空闲时可留在观众席。',
+    category: 'social',
+    modes: ['online'],
+    href: '/game/public-space',
+    runtime: 'native',
+    collectionId: 'test',
+    icon: 'public-space',
+  },
   {
     id: 'atamas',
     title: 'ATÅMAS',

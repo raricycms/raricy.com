@@ -6,7 +6,7 @@
 
 **当前交付范围**：服务与主站统一配置、启动和停止；提供健康检查、精确 Origin 检查、
 认证首帧、游戏接入接口、文本与二进制帧、心跳、大小与频率限制。
-「测试」合集已接入 Wand demo，支持主站登录、一次性票据、服务端移动与多人位置同步。
+「测试」合集已接入 Wand demo 与公共空间，支持主站登录、一次性票据与多人状态同步。
 ATÅMAS 在浏览器内运行，不需要这个服务。
 
 ## 1. 目录与依赖方向
@@ -15,9 +15,11 @@ ATÅMAS 在浏览器内运行，不需要这个服务。
 src/app/game/                     主站游戏页面
 src/games/atamas/                 纯客户端游戏
 src/games/wand/                   Wand 画布与输入客户端
+src/games/public-space/           公共空间网格与观众席
 src/lib/realtime-ticket-service.ts 主站瞬时票据与权限复核
 shared/realtime/protocol.ts       认证与控制帧契约
 shared/wand/                     地图、输入与快照契约、移动计算
+shared/public-space/             网格、心跳与成员快照契约
 services/realtime/src/
   main.ts                        进程启动、信号处理
   config.ts                      环境配置与校验
@@ -26,6 +28,7 @@ services/realtime/src/
   games.ts                       显式游戏注册表
   site-auth.ts                   主站票据消费与身份复核客户端
   wand.ts                        Wand 权威移动与广播
+  public-space.ts                 公共空间占位、观众席与断线清理
 ```
 
 共用仓库根目录的依赖与 lockfile，使用独立的 TypeScript 构建配置。
@@ -65,7 +68,7 @@ Windows 使用进程树终止，避免遗留 Next dev / Node watch 的子进程�
 健康检查返回：
 
 ```json
-{"ok":true,"service":"realtime","version":1,"games":["wand"]}
+{"ok":true,"service":"realtime","version":1,"games":["wand","public-space"]}
 ```
 
 | 环境变量 | 默认 / 规则 |
@@ -95,7 +98,8 @@ Windows 使用进程树终止，避免遗留 Next dev / Node watch 的子进程�
 
 服务调用该游戏的 `authenticate({ gameId, ticket, signal })`。
 认证器必须校验游戏归属、有效期和身份，并原子消费票据；验证超时或连接断开时 signal 取消。
-禁止以客户端自报的 userId 建立身份。Wand 使用如下主站接口：
+禁止以客户端自报的 userId 建立身份。两个联机 demo 使用如下主站接口（下文以 Wand 为例，
+公共空间对应的 gameId 是 `public-space`，签发入口是 `POST /api/game/public-space/launch`）：
 
 1. 浏览器 `POST /api/game/wand/launch`，主站通过会话 Cookie 检查登录、专注模式与当前封禁，
    按用户限频 10 次 / 分钟，返回 `{ticket, expiresIn: 60, wsUrl}`；绕过统一入口且未配置凭据时返回 503。
@@ -147,6 +151,24 @@ Windows 使用进程树终止，避免遗留 Next dev / Node watch 的子进程�
 断开会清理玩家；重连需要新票据、从出生点重新开始。实时服务重启后地图清空。
 当前没有房间选择、战斗、成绩、持久化存档或跨实例同步。新增玩法在 Wand 模块内扩展，
 新增游戏在注册表显式登记，并实现认证、定期复核、连接与清理接口。
+
+### 3.3 公共空间 demo
+
+`/game/public-space` 登录后自动连接，进入共享的 5 × 5 网格外的观众席。
+点击空格发送 `{"type":"public-space.move","cell":0}`，位置按行从 0 编号到 24；
+发送 `cell:null` 回到观众席。点击自己的格子或「回到观众席」均可退出网格，
+「离开空间」与页面卸载会断开连接。
+
+服务端同步检查占用并换位，同一格只能有一个用户；冲突返回 `public-space.occupied`，
+失败者保留原位。成员快照 `public-space.snapshot` 同时携带网格成员与观众，包含主站可信的
+用户 ID、用户名、`frameUrlFor()` 解析的头像框与格子位置。头像框在建连时解析，重新连接刷新。
+同一账号的多个标签页共用一个头像与位置，最后一个连接关闭后才移除。
+
+网格坐满仍可旁观；最多 128 个不同账号，另受传输层 256 连接的总上限约束。
+客户端每 5 秒发送 `public-space.ping`，服务返回 `public-space.pong`；
+服务端每 5 秒清理超过 15 秒无应用心跳的连接，因此无关闭通知的断网通常在 15–20 秒内释放位置。
+客户端同样检测服务静默并显示重新连接入口。普通断开立即移除，重连从观众席开始。
+成员与位置只保存在实时进程内存，服务重启后清空，无需数据库迁移。
 
 ## 4. 部署
 

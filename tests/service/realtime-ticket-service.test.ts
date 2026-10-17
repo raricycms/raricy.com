@@ -12,6 +12,23 @@ beforeEach(async () => {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
 
 describe('实时游戏一次性票据', () => {
+  it('公共空间票据绑定游戏并从主站取得头像框，不能用于 Wand', async () => {
+    const user = await makeUser();
+    const issued = issueRealtimeTicket(user, 'public-space')!;
+    expect(await consumeRealtimeTicket(issued.ticket, 'wand')).toBeNull();
+    expect(await consumeRealtimeTicket(issued.ticket, 'public-space')).toEqual({
+      userId: user.id, username: user.username, sessionVersion: user.sessionVersion, frameUrl: null,
+    });
+    const response = await POST(new Request('http://localhost/api/internal/realtime/session', {
+      method: 'POST', headers: { Authorization: `Bearer ${SERVICE_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'validate', gameId: 'public-space', identity: {
+        userId: user.id, username: '伪造名字', sessionVersion: user.sessionVersion, frameUrl: '/forged.png',
+      } }),
+    }));
+    expect(response.status).toBe(200);
+    expect((await response.json()).identity).toEqual({ userId: user.id, username: user.username,
+      sessionVersion: user.sessionVersion, frameUrl: null });
+  });
   it('并发消费只成功一次，身份只取主站记录', async () => {
     const user = await makeUser();
     const issued = issueRealtimeTicket(user, 'wand')!;

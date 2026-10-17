@@ -2,11 +2,17 @@
 export const REALTIME_PROTOCOL_VERSION = 1;
 export const MAX_REALTIME_MESSAGE_BYTES = 16 * 1024;
 export const MAX_REALTIME_TICKET_LENGTH = 2048;
+export const REALTIME_GAME_IDS = ['wand', 'public-space'] as const;
+export type RealtimeGameId = typeof REALTIME_GAME_IDS[number];
+export function isRealtimeGameId(value: unknown): value is RealtimeGameId {
+  return REALTIME_GAME_IDS.some((id) => id === value);
+}
 
 export interface RealtimeIdentity {
   userId: string;
   username: string;
   sessionVersion: number;
+  frameUrl?: string | null;
 }
 
 export function isRealtimeIdentity(value: unknown): value is RealtimeIdentity {
@@ -14,7 +20,8 @@ export function isRealtimeIdentity(value: unknown): value is RealtimeIdentity {
   const identity = value as Record<string, unknown>;
   return typeof identity.userId === 'string' && identity.userId.length > 0 && identity.userId.length <= 128
     && typeof identity.username === 'string' && identity.username.length > 0 && identity.username.length <= 256
-    && Number.isSafeInteger(identity.sessionVersion) && (identity.sessionVersion as number) >= 0;
+    && Number.isSafeInteger(identity.sessionVersion) && (identity.sessionVersion as number) >= 0
+    && (identity.frameUrl === undefined || identity.frameUrl === null || typeof identity.frameUrl === 'string');
 }
 
 export interface RealtimeAuthentication {

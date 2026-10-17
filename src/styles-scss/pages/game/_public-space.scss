@@ -1,0 +1,45 @@
+@use '../../abstracts/mixins' as m;
+
+.public-space-page { max-width: 1000px; padding-top: 24px; padding-bottom: 40px; }
+.public-space-panel { padding: 28px; border-radius: 30px; background: var(--color-background-card); color: var(--color-text-primary); }
+.public-space-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin-bottom: 16px; }
+.public-space-header h1 { margin: 0; color: var(--color-text-primary); font-size: 2rem; }
+.public-space-header h1 span { font-size: 1rem; font-weight: 400; color: var(--color-text-secondary); }
+.public-space-toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; .game-back { margin-bottom: 0; } }
+.public-space-status { margin: 0; color: var(--color-text-secondary); }
+.public-space-help { margin: 0 0 20px; line-height: 1.8; font-size: .9rem; color: var(--color-text-secondary); }
+.public-space-error { margin: 0 0 20px; color: var(--color-warning-primary); }
+.public-space-layout { display: grid; grid-template-columns: minmax(0, 5fr) minmax(200px, 3fr); gap: 28px; }
+.public-space-board, .public-space-audience {
+  min-width: 0;
+  h2 { display: flex; align-items: center; gap: 8px; margin: 0 0 16px; color: var(--color-text-primary); font-size: 1.1rem; }
+  h2 svg { width: 20px; height: 20px; color: var(--color-brand-primary); }
+  h2 .numeric { margin-left: auto; font-size: .85rem; color: var(--color-text-secondary); font-weight: 400; }
+}
+.public-space-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; padding: 8px; background: var(--color-background-page); border-radius: 20px; }
+.public-space-cell {
+  @include m.btn-secondary($pointer-hover-only: true);
+  position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  min-width: 0; min-height: 0; aspect-ratio: 1; padding: 0; border-radius: 10px; background: var(--color-background-content);
+  .public-space-avatar { width: 54%; max-width: 36px; height: auto; aspect-ratio: 1; margin-bottom: 10px; }
+  .public-space-name { position: absolute; bottom: 3px; left: 3px; width: calc(100% - 6px); }
+  &:disabled { opacity: 1; }
+  &:focus-visible { outline: 2px solid var(--color-brand-primary); outline-offset: 2px; }
+  &--mine { background: var(--color-brand-secondary); color: var(--color-brand-primary); }
+}
+.public-space-avatar { width: 36px; height: 36px; flex-shrink: 0; }
+.public-space-avatar .avatar__img { width: 100%; height: 100%; object-fit: cover; }
+.public-space-name { display: block; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; font-size: .7rem; line-height: 1.3; }
+.public-space-coordinate { font-size: .75rem; color: var(--color-text-secondary); }
+.public-space-spectators { display: grid; grid-template-columns: repeat(auto-fill, minmax(58px, 1fr)); gap: 20px 8px; padding: 12px 0; margin: 0; list-style: none; }
+.public-space-spectators li { display: flex; flex-direction: column; align-items: center; gap: 8px; min-width: 0; }
+.public-space-empty { padding: 24px 16px; margin: 0; border-radius: 20px; background: var(--color-background-page); color: var(--color-text-secondary); text-align: center; font-size: .9rem; }
+@media (max-width: 700px) {
+  .public-space-panel { padding: 20px 16px; }
+  .public-space-header h1 { font-size: 1.6rem; }
+  .public-space-layout { grid-template-columns: minmax(0, 1fr); gap: 28px; }
+}
+@media (max-width: 380px) {
+  .public-space-grid { gap: 4px; padding: 6px; }
+  .public-space-avatar { width: 28px; height: 28px; }
+}

@@ -1,6 +1,6 @@
 import { isRealtimeServiceRequest } from '@/lib/realtime-auth';
 import { consumeRealtimeTicket, validateRealtimeIdentity } from '@/lib/realtime-ticket-service';
-import { isRealtimeIdentity } from '../../../../../../shared/realtime/protocol';
+import { isRealtimeGameId, isRealtimeIdentity } from '../../../../../../shared/realtime/protocol';
 
 // 只认独立 Bearer 服务凭据，不读取浏览器 Cookie；服务器调用无需 Origin。
 export async function POST(request: Request) {
@@ -11,10 +11,10 @@ export async function POST(request: Request) {
   if (!body || typeof body !== 'object') return Response.json({ error: 'invalid_request' }, { status: 400, headers });
   const data = body as Record<string, unknown>;
   let identity = null;
-  if (data.action === 'consume' && data.gameId === 'wand' && typeof data.ticket === 'string') {
+  if (data.action === 'consume' && isRealtimeGameId(data.gameId) && typeof data.ticket === 'string') {
     identity = await consumeRealtimeTicket(data.ticket, data.gameId);
-  } else if (data.action === 'validate' && data.gameId === 'wand' && isRealtimeIdentity(data.identity)) {
-    identity = await validateRealtimeIdentity(data.identity);
+  } else if (data.action === 'validate' && isRealtimeGameId(data.gameId) && isRealtimeIdentity(data.identity)) {
+    identity = await validateRealtimeIdentity(data.identity, data.gameId);
   } else return Response.json({ error: 'invalid_request' }, { status: 400, headers });
   return identity ? Response.json({ identity }, { headers }) : Response.json({ error: 'invalid_identity' }, { status: 403, headers });
 }
