@@ -692,8 +692,13 @@ a {
     color: var(--color-text-secondary);
     margin-bottom: 0.5rem;
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 8px;
+    .comment-time {
+        font-size: 0.85rem;
+        white-space: nowrap;
+    }
     .comment-author-avatar {
         width: 24px;
         height: 24px;

@@ -524,25 +524,47 @@ body {
     min-width: 80px;
     width: 80px;
 
+    // 两个状态都由右侧绝对定位承接宽度，收回时也能从当前宽度连续过渡。
+    &-shell {
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 80px;
+      transition: width .42s cubic-bezier(.22, 1, .36, 1), box-shadow .25s ease;
+    }
+
+    // 菜单按展开后的宽度排版，再由外壳裁剪，避免伸缩过程中挤压文字。
+    &-panel {
+      width: 200px;
+      margin-left: calc(100% - 200px);
+    }
+
     &-toggle {
+      position: relative;
       padding-inline: 11px;
       justify-content: flex-end;
     }
-    .site-user-name { display: none; }
+    .site-user-name {
+      // 与展开态的 24px 左内距、头像前的 8px 间距相接；头像和箭头始终右对齐。
+      position: absolute;
+      right: 77px;
+      width: 99px;
+      margin-right: 0;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity .18s ease, visibility 0s .18s;
+    }
     .site-user-avatar { margin-left: 0; }
 
     // 紧凑入口只占头像与箭头的宽度，菜单仍在同一外壳中展开。
-    // 向左增加宽度由绝对定位承接，头像右边缘不动，也不挤开其他入口。
     &.open {
-      .site-user-dropdown-shell {
-        position: absolute;
-        top: 0;
-        right: 0;
-        width: 200px;
-      }
+      .site-user-dropdown-shell { width: 200px; }
 
-      .site-user-dropdown-toggle { padding-left: 24px; }
-      .site-user-name { display: block; }
+      .site-user-name {
+        opacity: 1;
+        visibility: visible;
+        transition-delay: 0s;
+      }
     }
   }
 }
@@ -686,6 +708,11 @@ body {
   .site-navbar.open .site-nav > li,
   .site-navbar.open .site-actions > *,
   .site-navbar-toggler .bar {
+    transition: none;
+  }
+
+  .site-user-dropdown .site-user-dropdown-shell,
+  .site-user-dropdown .site-user-name {
     transition: none;
   }
 

@@ -142,3 +142,55 @@ test('访客顶栏：中等宽度保留导航和登录入口，手机导航正�
   await expect(page).toHaveURL('/story');
   await expect(toggler).toHaveAttribute('aria-expanded', 'false');
 });
+
+test('紧凑头像菜单：向左展开和收回都有宽度过渡，头像与相邻入口保持原位', async ({ page, isMobile }) => {
+  test.skip(isMobile, '紧凑横排顶栏使用桌面视口检查');
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await loginViaApi(page, SEED_USERS.admin.username);
+
+  for (const width of [809, 844, 899]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/');
+    const toggle = page.locator('#userDropdownToggle');
+    await expect(toggle).toBeVisible();
+
+    for (const open of [true, false]) {
+      const frames = await toggle.evaluate(el => {
+        const shell = el.closest('.site-user-dropdown-shell')!;
+        const snapshot = () => {
+          const box = shell.getBoundingClientRect();
+          const avatar = shell.querySelector('.site-user-avatar')!.getBoundingClientRect();
+          const nav = document.querySelector('.site-nav')!.getBoundingClientRect();
+          return { width: box.width, right: box.right, avatarX: avatar.x, avatarY: avatar.y, navX: nav.x };
+        };
+        const before = snapshot();
+        (el as HTMLButtonElement).click();
+        // 采样真实 CSS 过渡的中间帧，避免靠 sleep 碰运气，也能抓到瞬间切宽的回归。
+        const animations = shell.getAnimations({ subtree: true });
+        const widthAnimated = animations.some(animation =>
+          animation instanceof CSSTransition && animation.transitionProperty === 'width'
+        );
+        for (const animation of animations) {
+          animation.pause();
+          animation.currentTime = Number(animation.effect!.getTiming().duration) / 2;
+        }
+        const middle = snapshot();
+        animations.forEach(animation => animation.finish());
+        return { before, middle, after: snapshot(), widthAnimated };
+      });
+      expect(frames.widthAnimated, `${width}px ${open ? '展开' : '收回'}有过渡`).toBe(true);
+      expect(frames.before.width).toBeCloseTo(open ? 80 : 200, 0);
+      expect(frames.after.width).toBeCloseTo(open ? 200 : 80, 0);
+      expect(frames.middle.width).toBeGreaterThan(80);
+      expect(frames.middle.width).toBeLessThan(200);
+      for (const frame of [frames.middle, frames.after]) {
+        for (const key of ['right', 'avatarX', 'avatarY', 'navX'] as const) {
+          expect(frame[key]).toBeCloseTo(frames.before[key], 0);
+        }
+      }
+      await expect(toggle).toHaveAttribute('aria-expanded', String(open));
+      if (open) await expect(page.locator('.site-user-name')).toBeVisible();
+      else await expect(page.locator('.site-user-name')).toBeHidden();
+    }
+  }
+});
