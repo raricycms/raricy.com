@@ -1,0 +1,281 @@
+/* 多玩家颜色选择器 */
+.multiplayer-color-selection {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    margin: 20px 40px 25px 40px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.player-color-section {
+    background: linear-gradient(145deg, rgba(20, 40, 80, 0.6), rgba(30, 50, 90, 0.7));
+    border: 1px solid rgba(100, 200, 255, 0.2);
+    border-radius: 15px;
+    padding: 20px;
+    position: relative;
+    overflow: hidden;
+}
+
+.player-color-section::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, transparent, rgba(100, 200, 255, 0.6), transparent);
+    animation: shimmer 2s linear infinite;
+}
+
+.player-color-section[data-player="1"] h3 {
+    color: #ff6b6b;
+    text-shadow: 0 0 10px rgba(255, 107, 107, 0.5);
+    margin-bottom: 8px;
+    font-size: 1.4em;
+}
+
+.player-color-section[data-player="2"] h3 {
+    color: #4ecdc4;
+    text-shadow: 0 0 10px rgba(78, 205, 196, 0.5);
+    margin-bottom: 8px;
+    font-size: 1.4em;
+}
+
+.color-picker {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.preset-colors {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+}
+
+.custom-color-picker {
+    background: rgba(15, 25, 45, 0.8);
+    border: 1px solid rgba(100, 200, 255, 0.2);
+    border-radius: 10px;
+    padding: 15px;
+    backdrop-filter: blur(5px);
+}
+
+.custom-color-picker input[type="color"] {
+    width: 100%;
+    height: 40px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    margin-bottom: 15px;
+    background: none;
+}
+
+.color-sliders {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.color-sliders label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: #a0c4ff;
+    font-size: 0.9em;
+    letter-spacing: 0.5px;
+}
+
+.color-sliders input[type="range"] {
+    flex: 1;
+    height: 6px;
+    border-radius: 3px;
+    background: rgba(100, 200, 255, 0.2);
+    outline: none;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.color-sliders input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #64c8ff;
+    cursor: pointer;
+    box-shadow: 0 0 10px rgba(100, 200, 255, 0.5);
+    transition: all 0.3s ease;
+}
+
+.color-sliders input[type="range"]::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+    box-shadow: 0 0 15px rgba(100, 200, 255, 0.8);
+}
+
+/* 颜色和谐度指示器 */
+.color-harmony-indicator {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 15px;
+    background: rgba(15, 25, 45, 0.6);
+    border-radius: 10px;
+    border: 1px solid rgba(100, 200, 255, 0.2);
+    margin: 0 40px;
+}
+
+.harmony-status {
+    color: #a0c4ff;
+    font-size: 0.9em;
+    min-width: 100px;
+    letter-spacing: 0.5px;
+}
+
+.harmony-bar {
+    flex: 1;
+    height: 8px;
+    background: rgba(100, 200, 255, 0.2);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.harmony-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #ff6b6b, #4ecdc4);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+    width: 0%;
+}
+
+.color-option {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    cursor: pointer;
+    border: 3px solid rgba(100, 200, 255, 0.3);
+    transition: all 0.3s ease;
+    position: relative;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+}
+
+.color-option::after {
+    content: attr(data-name);
+    position: absolute;
+    bottom: -25px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+    white-space: nowrap;
+    z-index: 100;
+}
+
+.color-option:hover::after {
+    opacity: 1;
+}
+
+.color-option.selected {
+    border-color: #64c8ff;
+    transform: scale(1.2);
+    box-shadow:
+        0 0 20px rgba(100, 200, 255, 0.6),
+        inset 0 0 10px rgba(255, 255, 255, 0.2);
+    animation: selectedPulse 2s ease-in-out infinite;
+}
+
+@keyframes selectedPulse {
+    0%, 100% {
+        box-shadow:
+            0 0 20px rgba(100, 200, 255, 0.6),
+            inset 0 0 10px rgba(255, 255, 255, 0.2);
+    }
+    50% {
+        box-shadow:
+            0 0 30px rgba(100, 200, 255, 0.8),
+            inset 0 0 15px rgba(255, 255, 255, 0.3);
+    }
+}
+
+.color-option::before {
+    content: '';
+    position: absolute;
+    top: -3px;
+    left: -3px;
+    right: -3px;
+    bottom: -3px;
+    border-radius: 50%;
+    background: linear-gradient(45deg, transparent, rgba(100, 200, 255, 0.5), transparent);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    z-index: -1;
+}
+
+.color-option:hover {
+    transform: scale(1.1);
+    box-shadow:
+        0 5px 15px rgba(0, 0, 0, 0.4),
+        0 0 20px rgba(100, 200, 255, 0.4);
+    border-color: #64c8ff;
+}
+
+.color-option:hover::before {
+    opacity: 1;
+}
+
+.color-selection-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 40px 20px 40px;
+}
+
+/* Custom Scrollbar for color selection */
+.color-selection-content::-webkit-scrollbar {
+    width: 14px;
+}
+
+.color-selection-content::-webkit-scrollbar-track {
+    background: rgba(15, 32, 70, 0.6);
+    border-radius: 12px;
+}
+
+.color-selection-content::-webkit-scrollbar-thumb {
+    background: linear-gradient(145deg, #2a5298, #1e3c72);
+    border-radius: 12px;
+    border: 2px solid rgba(100, 200, 255, 0.4);
+    box-shadow: 0 0 8px rgba(100, 200, 255, 0.4);
+}
+
+.color-selection-content::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(145deg, #3d6bb3, #2a5298);
+    box-shadow: 0 0 12px rgba(100, 200, 255, 0.6);
+}
+
+.color-selection-container::-webkit-scrollbar {
+    width: 12px;
+}
+
+.color-selection-container::-webkit-scrollbar-track {
+    background: rgba(15, 32, 70, 0.5);
+    border-radius: 10px;
+}
+
+.color-selection-container::-webkit-scrollbar-thumb {
+    background: linear-gradient(145deg, #1e3c72, #2a5298);
+    border-radius: 10px;
+    border: 2px solid rgba(100, 200, 255, 0.3);
+}
+
+.color-selection-container::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(145deg, #2a5298, #3d6bb3);
+    box-shadow: 0 0 10px rgba(100, 200, 255, 0.3);
+}

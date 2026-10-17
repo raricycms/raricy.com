@@ -1,6 +1,6 @@
 // 游戏清单只描述陈列与启动方式；引擎按页面加载，不从这里导入客户端组件。
 export const GAME_CATEGORIES = { puzzle: '益智', action: '动作', social: '互动' } as const;
-export const GAME_MODES = { solo: '单人', online: '在线多人' } as const;
+export const GAME_MODES = { solo: '单人', local: '本地双人', online: '在线多人' } as const;
 
 export const GAME_COLLECTIONS = [{ id: 'test', title: '测试', href: '/game/collections/test' }] as const;
 
@@ -13,10 +13,21 @@ export interface GameEntry {
   href: string;
   runtime: 'native' | 'embedded' | 'external';
   collectionId: typeof GAME_COLLECTIONS[number]['id'] | null;
-  icon: 'atamas' | 'wand' | 'public-space';
+  icon: 'atamas' | 'wand' | 'public-space' | 'quandi';
 }
 
 export const GAMES = [
+  {
+    id: 'quandi',
+    title: '圈地运动',
+    description: '移动留下轨迹，闭合圈地，与朋友争夺领土。支持本地双人和账号联机，推荐电脑游玩。',
+    category: 'action',
+    modes: ['local', 'online'],
+    href: '/game/quandi',
+    runtime: 'embedded',
+    collectionId: 'test',
+    icon: 'quandi',
+  },
   {
     id: 'public-space',
     title: '公共空间',

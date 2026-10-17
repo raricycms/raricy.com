@@ -1,0 +1,162 @@
+/* 菜单选项样式 */
+.menu-options {
+    margin-bottom: 30px;
+}
+
+.color-selection, .difficulty-selection, .gamemode-selection {
+    margin-bottom: 25px;
+}
+
+.color-selection h3, .difficulty-selection h3, .gamemode-selection h3 {
+    color: #a0c4ff;
+    margin-bottom: 15px;
+    font-size: clamp(1em, 2.5vw, 1.2em);
+    text-shadow: 0 0 5px rgba(160, 196, 255, 0.3);
+}
+
+/* 下拉选择器样式 */
+#difficultySelect, #gamemodeSelect {
+    padding: 12px 20px;
+    border: 2px solid rgba(100, 200, 255, 0.3);
+    border-radius: 15px;
+    font-size: clamp(0.9em, 2vw, 1em);
+    background:
+        linear-gradient(145deg, rgba(15, 32, 70, 0.9), rgba(25, 42, 80, 0.95)),
+        radial-gradient(circle at 30% 30%, rgba(100, 200, 255, 0.1) 0%, transparent 50%);
+    color: #a0c4ff;
+    cursor: pointer;
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    backdrop-filter: blur(8px);
+    min-width: 150px;
+    position: relative;
+    overflow: hidden;
+    text-shadow: 0 0 5px rgba(100, 200, 255, 0.3);
+    box-shadow:
+        0 4px 15px rgba(0, 0, 0, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.1),
+        0 0 20px rgba(100, 200, 255, 0.1);
+    font-weight: 500;
+    letter-spacing: 0.5px;
+}
+
+/* 科幻风格内部光晕效果 */
+#difficultySelect::before, #gamemodeSelect::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(45deg, transparent, rgba(100, 200, 255, 0.05), transparent);
+    opacity: 0;
+    transition: opacity 0.4s ease;
+    pointer-events: none;
+}
+
+/* 自定义下拉箭头 */
+#difficultySelect::-webkit-appearance, #gamemodeSelect::-webkit-appearance {
+    appearance: none;
+    -webkit-appearance: none;
+}
+
+#difficultySelect::after, #gamemodeSelect::after {
+    content: '▼';
+    position: absolute;
+    right: 15px;
+    top: 50%;
+    transform: none;
+    color: #64c8ff;
+    font-size: 0.8em;
+    pointer-events: none;
+    transition: all 0.3s ease;
+    text-shadow: 0 0 5px rgba(100, 200, 255, 0.5);
+}
+
+#difficultySelect:hover, #gamemodeSelect:hover {
+    border-color: #64c8ff;
+    box-shadow:
+        0 8px 25px rgba(0, 0, 0, 0.4),
+        inset 0 1px 0 rgba(255, 255, 255, 0.2),
+        0 0 30px rgba(100, 200, 255, 0.4);
+    transform: none;
+    color: #ffffff;
+}
+
+#difficultySelect:hover::before, #gamemodeSelect:hover::before {
+    opacity: 1;
+}
+
+#difficultySelect:hover::after, #gamemodeSelect:hover::after {
+    color: #ffffff;
+    transform: none;
+    text-shadow: 0 0 10px rgba(100, 200, 255, 0.8);
+}
+
+#difficultySelect:focus, #gamemodeSelect:focus {
+    outline: none;
+    border-color: #64c8ff;
+    box-shadow:
+        0 0 30px rgba(100, 200, 255, 0.6),
+        inset 0 0 20px rgba(100, 200, 255, 0.1),
+        0 8px 25px rgba(0, 0, 0, 0.4);
+    transform: none;
+    color: #FFD700;
+}
+
+#difficultySelect:focus::before, #gamemodeSelect:focus::before {
+    opacity: 1;
+    background: linear-gradient(45deg, transparent, rgba(100, 200, 255, 0.1), transparent);
+    animation: sciFiPulse 2s ease-in-out infinite;
+}
+
+#difficultySelect:focus::after, #gamemodeSelect:focus::after {
+    color: #ffffff;
+    text-shadow: 0 0 15px rgba(100, 200, 255, 1);
+}
+
+/* 科幻脉冲动画 */
+@keyframes sciFiPulse {
+    0%, 100% { opacity: 0.3; }
+    50% { opacity: 0.8; }
+}
+
+/* 下拉选项科幻风格 */
+#difficultySelect option, #gamemodeSelect option {
+    background: linear-gradient(145deg, rgba(15, 32, 70, 0.95), rgba(25, 42, 80, 1));
+    color: #a0c4ff;
+    padding: 10px 15px;
+    border: none;
+    border-bottom: 1px solid rgba(100, 200, 255, 0.2);
+    text-shadow: 0 0 3px rgba(100, 200, 255, 0.3);
+    transition: all 0.3s ease;
+    font-weight: 500;
+    letter-spacing: 0.3px;
+}
+
+#difficultySelect option:hover, #gamemodeSelect option:hover {
+    background: linear-gradient(145deg, rgba(25, 42, 80, 1), rgba(35, 52, 90, 1));
+    color: #ffffff;
+    text-shadow: 0 0 8px rgba(100, 200, 255, 0.6);
+    box-shadow: inset 0 0 15px rgba(100, 200, 255, 0.2);
+}
+
+#difficultySelect option:checked, #gamemodeSelect option:checked {
+    background: linear-gradient(145deg, rgba(30, 60, 114, 0.9), rgba(42, 82, 152, 0.95));
+    color: #FFD700;
+    text-shadow: 0 0 15px rgba(255, 215, 0, 0.8);
+    border-left: 3px solid #64c8ff;
+    box-shadow:
+        inset 0 0 20px rgba(100, 200, 255, 0.3),
+        0 0 10px rgba(100, 200, 255, 0.2);
+}
+
+/* 为不同浏览器添加兼容性 */
+#difficultySelect::-moz-focus-inner, #gamemodeSelect::-moz-focus-inner {
+    border: 0;
+    outline: none;
+}
+
+#difficultySelect:-moz-focusring, #gamemodeSelect:-moz-focusring {
+    color: transparent;
+    text-shadow: 0 0 0 #a0c4ff;
+}

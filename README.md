@@ -28,7 +28,7 @@ Next.js 15 + Prisma + SQLite 主站，自有 `instance/` 数据目录；实时�
 |------|------|
 | `src/app/`     | App Router 页面与 API 路由 |
 | `src/lib/`     | 业务逻辑层 |
-| `src/games/`   | ATÅMAS 客户端引擎与 Wand 联机客户端 |
+| `src/games/`   | ATÅMAS、Wand、公共空间与圈地运动客户端 |
 | `services/realtime/` | 独立 WebSocket 服务，开发 / 构建 / 启动见 `docs/realtime.md` |
 | `shared/` | 主站、浏览器与实时服务共用的零依赖传输契约、Wand 地图与移动计算 |
 | `src/middleware.ts` | CSRF 同源校验（反代下读 `X-Forwarded-Host`） |

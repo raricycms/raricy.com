@@ -1,0 +1,98 @@
+/* 按钮基础样式 */
+.btn {
+    padding: 12px 24px;
+    border: 2px solid transparent;
+    border-radius: 15px;
+    font-size: clamp(0.9em, 2vw, 1em);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-weight: bold;
+    position: relative;
+    overflow: hidden;
+    min-width: 120px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    transition: left 0.5s ease;
+}
+
+.btn:hover::before {
+    left: 100%;
+}
+
+/* 主要按钮样式 */
+.btn.primary {
+    background: linear-gradient(145deg, #1e3c72, #2a5298);
+    color: #ffffff;
+    border-color: rgba(100, 200, 255, 0.5);
+    box-shadow:
+        0 4px 15px rgba(0, 0, 0, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.btn.primary:hover {
+    transform: none;
+    box-shadow:
+        0 8px 25px rgba(0, 0, 0, 0.4),
+        0 0 20px rgba(100, 200, 255, 0.4),
+        inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    border-color: #64c8ff;
+    background: linear-gradient(145deg, #2a5298, #3d6bb3);
+}
+
+.btn.primary:active {
+    transform: none;
+    box-shadow:
+        0 4px 15px rgba(0, 0, 0, 0.3),
+        0 0 15px rgba(100, 200, 255, 0.3);
+}
+
+/* 次要按钮样式 */
+.btn.secondary {
+    background: linear-gradient(145deg, rgba(15, 32, 70, 0.8), rgba(25, 42, 80, 0.9));
+    color: #a0c4ff;
+    border-color: rgba(100, 200, 255, 0.3);
+    backdrop-filter: blur(5px);
+}
+
+.btn.secondary:hover {
+    background: linear-gradient(145deg, rgba(25, 42, 80, 0.9), rgba(35, 52, 90, 0.95));
+    border-color: #64c8ff;
+    box-shadow: 0 0 15px rgba(100, 200, 255, 0.3);
+    transform: none;
+    color: #ffffff;
+}
+
+/* 小按钮样式 */
+.btn.small {
+    padding: 8px 16px;
+    font-size: clamp(0.8em, 1.8vw, 0.9em);
+    min-width: 100px;
+}
+
+/* 按钮容器 */
+.menu-buttons {
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.color-selection-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 25px;
+    margin: 25px 0;
+    margin-bottom: 0px;
+    flex-shrink: 0;
+    padding: 0 20px;
+}

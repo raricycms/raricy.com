@@ -1,0 +1,280 @@
+/* 科幻风格倒计时显示 */
+.countdown-displays {
+    position: relative;
+    width: 100%;
+    height: 0;
+    pointer-events: none;
+}
+
+.shield-countdown, .barrier-countdown {
+    position: absolute;
+    background: linear-gradient(135deg, rgba(0, 30, 60, 0.95), rgba(0, 50, 100, 0.95));
+    color: #00d4ff;
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-weight: bold;
+    font-size: 14px;
+    font-family: 'Courier New', monospace;
+    z-index: 10;
+    border: 2px solid rgba(0, 212, 255, 0.6);
+    box-shadow:
+        0 0 15px rgba(0, 212, 255, 0.4),
+        inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    text-shadow: 0 0 8px rgba(0, 212, 255, 0.8);
+    backdrop-filter: blur(5px);
+    transition: all 0.3s ease;
+}
+
+.shield-countdown.left {
+    left: 5px;
+    bottom: -40px;
+}
+
+.shield-countdown.right {
+    right: 5px;
+    bottom: -40px;
+}
+
+.barrier-countdown.bottom {
+    left: 80%;
+    transform: translateX(-50%);
+    bottom: -40px;
+}
+
+.shield-countdown.active {
+    background: linear-gradient(135deg, rgba(0, 255, 255, 0.2), rgba(0, 150, 255, 0.3));
+    border-color: #00ffff;
+    color: #ffffff;
+    text-shadow: 0 0 12px rgba(0, 255, 255, 1);
+    box-shadow:
+        0 0 25px rgba(0, 255, 255, 0.6),
+        inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    animation: shieldPulse 2s infinite ease-in-out;
+}
+
+/* 加速状态显示样式 */
+.speed-countdown {
+    position: absolute;
+    background: linear-gradient(135deg, rgba(60, 30, 0, 0.95), rgba(100, 50, 0, 0.95));
+    color: #ffaa00;
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-weight: bold;
+    font-size: 14px;
+    font-family: 'Courier New', monospace;
+    z-index: 10;
+    border: 2px solid rgba(255, 170, 0, 0.6);
+    box-shadow:
+        0 0 15px rgba(255, 170, 0, 0.4),
+        inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    text-shadow: 0 0 8px rgba(255, 170, 0, 0.8);
+    backdrop-filter: blur(5px);
+    transition: all 0.3s ease;
+    display: none;
+}
+
+.speed-countdown.left-speed {
+    left: 5px;
+    bottom: -65px;
+}
+
+.speed-countdown.active {
+    display: block;
+    background: linear-gradient(135deg, rgba(255, 170, 0, 0.2), rgba(255, 140, 0, 0.3));
+    border-color: #ffaa00;
+    color: #ffffff;
+    text-shadow: 0 0 12px rgba(255, 170, 0, 1);
+    box-shadow:
+        0 0 25px rgba(255, 170, 0, 0.6),
+        inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    animation: speedPulse 1.5s infinite ease-in-out;
+}
+
+@keyframes speedPulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.6; }
+    100% { opacity: 1; }
+}
+
+.barrier-countdown.active {
+    color: #ffffff;
+    text-shadow: 0 0 12px rgba(255, 215, 0, 1);
+    animation: barrierPulse 1.5s infinite ease-in-out;
+    border: none;
+}
+
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
+}
+
+@keyframes shieldPulse {
+    0% {
+        box-shadow: 0 0 15px rgba(0, 255, 255, 0.4);
+        border-color: rgba(0, 255, 255, 0.6);
+    }
+    50% {
+        box-shadow: 0 0 30px rgba(0, 255, 255, 0.8);
+        border-color: rgba(0, 255, 255, 1);
+    }
+    100% {
+        box-shadow: 0 0 15px rgba(0, 255, 255, 0.4);
+        border-color: rgba(0, 255, 255, 0.6);
+    }
+}
+
+@keyframes barrierPulse {
+    0% { opacity: 0.8; }
+    50% { opacity: 1; }
+    100% { opacity: 0.8; }
+}
+
+/* 封锁时间显示样式 */
+.lock-countdown {
+    position: absolute;
+    background: rgba(255, 0, 0, 0.9);
+    color: white;
+    padding: 8px 12px;
+    border-radius: 5px;
+    font-weight: bold;
+    font-size: 14px;
+    display: none;
+    z-index: 1000;
+    border: 2px solid #ff4444;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+}
+
+.lock-countdown.left-lock {
+    bottom: -40px;
+    left: 120px;
+}
+
+.lock-countdown.right-lock {
+    bottom: -40px;
+    right: 120px;
+}
+
+.lock-countdown.active {
+    display: block;
+    animation: lockPulse 1s infinite;
+}
+
+@keyframes lockPulse {
+    0% {
+        background: rgba(255, 0, 0, 0.9);
+        transform: scale(1);
+    }
+    50% {
+        background: rgba(255, 0, 0, 0.7);
+        transform: scale(1.05);
+    }
+    100% {
+        background: rgba(255, 0, 0, 0.9);
+        transform: scale(1);
+    }
+}
+
+/* 回家倒计时显示样式 */
+.home-countdown {
+    position: absolute;
+    background: rgba(0, 255, 0, 0.9);
+    color: white;
+    padding: 8px 12px;
+    border-radius: 5px;
+    font-weight: bold;
+    font-size: 14px;
+    display: none;
+    z-index: 1000;
+    border: 2px solid #44ff44;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+}
+
+.home-countdown.left-home {
+    bottom: -40px;
+    left: 320px;
+}
+
+.home-countdown.right-home {
+    bottom: -40px;
+    right: 320px;
+}
+
+.home-countdown.active {
+    display: block;
+    animation: homePulse 1s infinite;
+}
+
+@keyframes homePulse {
+    0% {
+        background: rgba(0, 255, 0, 0.9);
+        transform: scale(1);
+    }
+    50% {
+        background: rgba(0, 255, 0, 0.7);
+        transform: scale(1.05);
+    }
+    100% {
+        background: rgba(0, 255, 0, 0.9);
+        transform: scale(1);
+    }
+}
+
+/* 昼夜时间显示样式 */
+.daytime-countdown {
+    position: absolute;
+    background: linear-gradient(135deg, rgba(255, 215, 0, 0.9), rgba(255, 165, 0, 0.9));
+    color: white;
+    padding: 8px 12px;
+    border-radius: 5px;
+    font-weight: bold;
+    font-size: 14px;
+    display: none;
+    z-index: 1000;
+    border: 2px solid #ffd700;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+}
+
+.daytime-countdown.bottom-left {
+    bottom: -40px;
+    left: 320px;
+}
+
+.nighttime-countdown {
+    position: absolute;
+    background: linear-gradient(135deg, rgba(25, 25, 112, 0.9), rgba(0, 0, 139, 0.9));
+    color: white;
+    padding: 8px 12px;
+    border-radius: 5px;
+    font-weight: bold;
+    font-size: 14px;
+    display: none;
+    z-index: 1000;
+    border: 2px solid #4169e1;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+}
+
+.nighttime-countdown.bottom-right {
+    bottom: -40px;
+    right: 320px;
+}
+
+.daytime-countdown.active, .nighttime-countdown.active {
+    display: block;
+    animation: dayNightPulse 2s infinite ease-in-out;
+}
+
+@keyframes dayNightPulse {
+    0% {
+        transform: scale(1);
+        opacity: 0.9;
+    }
+    50% {
+        transform: scale(1.02);
+        opacity: 1;
+    }
+    100% {
+        transform: scale(1);
+        opacity: 0.9;
+    }
+}

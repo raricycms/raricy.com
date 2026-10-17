@@ -1,0 +1,50 @@
+/* 基础重置和全局样式 */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Orbitron', 'Arial', sans-serif;
+    background: linear-gradient(135deg, #0a0a23 0%, #1a1a3e 25%, #2d2d5f 50%, #1e3c72 75%, #2a5298 100%);
+    min-height: 100vh;
+    overflow: hidden;
+    position: relative;
+    margin: 0;
+    background-color: #000814;
+}
+
+/* 页面内容布局 */
+.page {
+    display: none;
+    min-height: 100vh;
+    padding: 20px;
+    color: #d6f0ff;
+}
+
+.page.active {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+/* 动画增强 */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.page.active .menu-container,
+.page.active .rules-container,
+.page.active .color-selection-container,
+.page.active #gamePage {
+    animation: fadeInUp 0.6s ease-out;
+}

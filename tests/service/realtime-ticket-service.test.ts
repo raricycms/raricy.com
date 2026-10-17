@@ -12,6 +12,18 @@ beforeEach(async () => {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
 
 describe('实时游戏一次性票据', () => {
+  it('圈地运动票据不能用于其他游戏，身份和撤权复用本站账号', async () => {
+    const user = await makeUser();
+    const issued = issueRealtimeTicket(user, 'quandi')!;
+    expect(await consumeRealtimeTicket(issued.ticket, 'wand')).toBeNull();
+    expect(await consumeRealtimeTicket(issued.ticket, 'public-space')).toBeNull();
+    const identity = await consumeRealtimeTicket(issued.ticket, 'quandi');
+    expect(identity).toEqual({ userId: user.id, username: user.username, sessionVersion: user.sessionVersion });
+    expect(await consumeRealtimeTicket(issued.ticket, 'quandi')).toBeNull();
+    await prisma.user.update({ where: { id: user.id }, data: { focusMode: true } });
+    expect(await validateRealtimeIdentity(identity!, 'quandi')).toBeNull();
+    expect(issueRealtimeTicket({ ...user, focusMode: true }, 'quandi')).toBeNull();
+  });
   it('公共空间票据绑定游戏并从主站取得头像框，不能用于 Wand', async () => {
     const user = await makeUser();
     const issued = issueRealtimeTicket(user, 'public-space')!;

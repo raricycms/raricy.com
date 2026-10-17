@@ -98,6 +98,7 @@
 
 // 格式转换器（/tool/convert）
 @use 'pages/tool-convert';
+@use 'pages/game/quandi';
 
 // 数据字段的字体放在页面规则之后，覆盖控件原有的字体继承声明。
 @use 'utilities/numeric';

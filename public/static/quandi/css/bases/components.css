@@ -1,0 +1,97 @@
+/* 通用容器样式 */
+.menu-container,
+.rules-container,
+.color-selection-container {
+    background: linear-gradient(145deg, rgba(15, 32, 70, 0.9), rgba(25, 42, 80, 0.95));
+    border: 2px solid rgba(100, 200, 255, 0.3);
+    border-radius: 25px;
+    padding: 40px;
+    box-shadow:
+        0 20px 40px rgba(0, 0, 0, 0.4),
+        inset 0 1px 0 rgba(255, 255, 255, 0.1),
+        0 0 30px rgba(100, 200, 255, 0.2);
+    backdrop-filter: blur(10px);
+    position: relative;
+    overflow: hidden;
+}
+
+.menu-container {
+    max-width: 500px;
+    width: 100%;
+    text-align: center;
+}
+
+.rules-container {
+    max-width: 700px;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.color-selection-container {
+    max-width: 800px;
+    width: 100%;
+    height: 90vh;
+    display: flex;
+    flex-direction: column;
+    margin: 0 auto;
+    color: #d6f0ff;
+    text-align: center;
+}
+
+/* 容器光晕效果 */
+.menu-container::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: linear-gradient(45deg, transparent, rgba(100, 200, 255, 0.05), transparent);
+    animation: shimmer 3s linear infinite;
+    pointer-events: none;
+}
+
+@keyframes shimmer {
+    0% { transform: translateX(-100%) translateY(-100%) rotate(45deg); }
+    100% { transform: translateX(100%) translateY(100%) rotate(45deg); }
+}
+
+/* 标题样式 */
+.game-title {
+    font-size: clamp(2.5em, 5vw, 3.5em);
+    background: linear-gradient(45deg, #64c8ff, #ff6bff, #64ffcc);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    margin-bottom: 30px;
+    text-shadow:
+        0 0 5px rgba(100, 200, 255, 0.3),
+        0 0 10px rgba(100, 200, 255, 0.2);
+    font-weight: bold;
+    letter-spacing: 3px;
+    animation: titleGlow 3s ease-in-out infinite alternate;
+    transform: translateZ(0);
+}
+
+@keyframes titleGlow {
+    0% {
+        text-shadow: 0 0 5px rgba(100, 200, 255, 0.3), 0 0 10px rgba(100, 200, 255, 0.2);
+        background-position: 0% 50%;
+    }
+    100% {
+        text-shadow: 0 0 10px rgba(100, 200, 255, 0.5), 0 0 15px rgba(100, 200, 255, 0.3);
+        background-position: 100% 50%;
+    }
+}
+
+/* 通用标题样式 */
+.rules-container h2,
+.color-selection-container h2 {
+    color: #64c8ff;
+    text-align: center;
+    text-shadow: 0 0 10px rgba(100, 200, 255, 0.5);
+    margin-bottom: 30px;
+    font-size: clamp(1.5em, 4vw, 2em);
+}

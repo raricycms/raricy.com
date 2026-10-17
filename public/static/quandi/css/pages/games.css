@@ -1,0 +1,271 @@
+/* 游戏页面 */
+#gamePage {
+    padding: 0;
+    overflow: hidden;
+    animation: fadeInUp 0.6s ease-out;
+}
+
+.game-header {
+    background: linear-gradient(145deg, rgba(15, 32, 70, 0.95), rgba(25, 42, 80, 0.98));
+    padding: 15px 20px;
+    box-shadow:
+        0 2px 20px rgba(0, 0, 0, 0.3),
+        0 0 30px rgba(100, 200, 255, 0.1);
+    border-bottom: 2px solid rgba(100, 200, 255, 0.3);
+    backdrop-filter: blur(10px);
+    border: 2px solid rgba(100, 200, 255, 0.3);
+    border-radius: 25px;
+}
+
+.score-board {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    max-width: 1300px;
+    margin: 0 auto;
+    gap: 20px;
+    padding: 0 20px;
+}
+
+/* 玩家信息区域 - 左右两侧 */
+.player-score {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 120px;
+    gap: 8px;
+}
+
+/* 玩家名称 */
+.player-name {
+    font-weight: bold;
+    color: #a0c4ff;
+    text-shadow: 0 0 5px rgba(160, 196, 255, 0.3);
+    font-size: clamp(0.9em, 2.4vw, 1em);
+    margin: 0;
+    padding: 0;
+    white-space: nowrap;
+    height: 25px;
+}
+
+/* 分数条区域 */
+.score-section {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 20px; /* 固定高度确保对齐 */
+}
+
+.score-bar {
+    width: 200px;
+    height: 20px;
+    background: rgba(15, 32, 70, 0.8);
+    border: 1px solid rgba(100, 200, 255, 0.3);
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.3);
+    position: relative;
+    margin: 0;
+}
+
+.score-fill {
+    height: 100%;
+    transition: width 0.3s ease;
+    border-radius: 8px;
+    position: relative;
+}
+
+.score-fill::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 50%;
+    background: linear-gradient(to bottom, rgba(255, 255, 255, 0.3), transparent);
+    border-radius: 8px 8px 0 0;
+}
+
+.score-fill.player1 {
+    background: linear-gradient(45deg, #ff6b6b, #ff8e8e);
+    box-shadow: 0 0 10px rgba(255, 107, 107, 0.5);
+}
+
+.score-fill.player2 {
+    background: linear-gradient(45deg, #4ecdc4, #44a08d);
+    box-shadow: 0 0 10px rgba(78, 205, 196, 0.5);
+}
+
+.score-text {
+    font-weight: bold;
+    color: #ffffff;
+    min-width: 35px;
+    text-align: center;
+    text-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
+    font-size: clamp(0.8em, 1.5vw, 0.9em);
+    margin: 0;
+    padding: 0;
+    line-height: 20px; /* 与分数条高度一致 */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* 生命值显示样式 */
+.lives-display {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: bold;
+    min-width: 70px;
+    height: 16px; /* 固定高度 */
+    display: none; /* 默认隐藏，只在fight模式显示 */
+}
+
+.lives-display.show {
+    display: flex;
+}
+
+.lives-label {
+    color: #a0c4ff;
+    margin-right: 6px;
+    text-shadow: 0 0 5px rgba(160, 196, 255, 0.3);
+    font-size: 14px;
+    line-height: 1;
+}
+
+.lives-count {
+    padding: 3px 8px;
+    border-radius: 10px;
+    font-weight: bold;
+    font-size: 12px;
+    min-width: 18px;
+    text-align: center;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    line-height: 1;
+}
+
+.lives-count.normal {
+    background: linear-gradient(45deg, #4CAF50, #66BB6A);
+    color: white;
+    box-shadow: 0 0 8px rgba(76, 175, 80, 0.4);
+}
+
+.lives-count.warning {
+    background: linear-gradient(45deg, #FF9800, #FFB74D);
+    color: white;
+    box-shadow: 0 0 8px rgba(255, 152, 0, 0.4);
+}
+
+.lives-count.critical {
+    background: linear-gradient(45deg, #F44336, #EF5350);
+    color: white;
+    box-shadow: 0 0 8px rgba(244, 67, 54, 0.4);
+    animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
+}
+
+/* 中央控制区域 */
+.center-controls {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    min-width: 400px;
+    justify-content: center;
+}
+
+.game-controls {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    min-width: 300px;
+    margin: 0 10px;
+    align-items: center;
+}
+
+/* 游戏页面按钮样式 */
+.game-controls .btn {
+    padding: 8px 16px;
+    border: 2px solid transparent;
+    border-radius: 15px;
+    font-size: clamp(0.8em, 1.8vw, 0.9em);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-weight: bold;
+    position: relative;
+    overflow: hidden;
+    min-width: 80px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    background: linear-gradient(145deg, rgba(15, 32, 70, 0.8), rgba(25, 42, 80, 0.9));
+    color: #a0c4ff;
+    border-color: rgba(100, 200, 255, 0.3);
+    backdrop-filter: blur(5px);
+    text-shadow: 0 0 5px rgba(160, 196, 255, 0.3);
+}
+
+.game-controls .btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    transition: left 0.5s ease;
+}
+
+.game-controls .btn:hover::before {
+    left: 100%;
+}
+
+.game-controls .btn:hover {
+    background: linear-gradient(145deg, rgba(25, 42, 80, 0.9), rgba(35, 52, 90, 0.95));
+    border-color: #64c8ff;
+    box-shadow:
+        0 0 15px rgba(100, 200, 255, 0.3),
+        0 0 20px rgba(100, 200, 255, 0.2);
+    transform: none;
+    color: #ffffff;
+    text-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
+}
+
+.game-controls .btn:active {
+    transform: translateY(0);
+    box-shadow: 0 0 8px rgba(100, 200, 255, 0.2);
+}
+
+.game-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex: 1;
+    padding: 20px;
+}
+
+#gameCanvas {
+    border: 3px solid rgba(100, 200, 255, 0.5);
+    border-radius: 15px;
+    background: rgba(255, 255, 255, 0.95);
+    box-shadow:
+        0 10px 30px rgba(0, 0, 0, 0.4),
+        0 0 50px rgba(100, 200, 255, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.game-status {
+    text-align: center;
+    padding: 10px;
+    color: #64c8ff;
+    font-size: clamp(1em, 3vw, 1.2em);
+    font-weight: bold;
+    text-shadow:
+        0 0 10px rgba(100, 200, 255, 0.5),
+        2px 2px 4px rgba(0, 0, 0, 0.5);
+}

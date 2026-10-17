@@ -1,0 +1,65 @@
+/* 游戏说明页面 */
+.rules-container {
+    text-align: left;
+}
+
+.rules-container .btn.secondary {
+    margin-top: 30px;
+}
+
+.rules-content {
+    max-height: 60vh;
+    overflow-y: auto;
+    padding-right: 20px;
+}
+
+/* Custom Scrollbar */
+.rules-content::-webkit-scrollbar {
+    width: 12px;
+}
+
+.rules-content::-webkit-scrollbar-track {
+    background: rgba(15, 32, 70, 0.5);
+    border-radius: 10px;
+}
+
+.rules-content::-webkit-scrollbar-thumb {
+    background: linear-gradient(145deg, #1e3c72, #2a5298);
+    border-radius: 10px;
+    border: 2px solid rgba(100, 200, 255, 0.3);
+}
+
+.rules-content::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(145deg, #2a5298, #3d6bb3);
+    box-shadow: 0 0 10px rgba(100, 200, 255, 0.3);
+}
+
+.rules-content h3 {
+    color: #a0c4ff;
+    margin: 20px 0 10px 0;
+    font-size: clamp(1.1em, 2.5vw, 1.3em);
+    text-shadow: 0 0 5px rgba(160, 196, 255, 0.3);
+    border-bottom: 1px solid rgba(100, 200, 255, 0.3);
+    padding-bottom: 5px;
+}
+
+.rules-content h4 {
+    color: #88aadd;
+    margin: 15px 0 8px 0;
+    font-size: clamp(1em, 2.2vw, 1.1em);
+    text-shadow: 0 0 3px rgba(136, 170, 221, 0.3);
+    border-bottom: 1px dashed rgba(100, 200, 255, 0.2);
+    padding-bottom: 4px;
+}
+
+.rules-content p, .rules-content li {
+    color: #c0d4ff;
+    line-height: 1.6;
+    margin-bottom: 10px;
+    font-size: clamp(0.9em, 2vw, 1em);
+}
+
+.rules-content ul {
+    margin-left: 20px;
+    margin-bottom: 20px;
+}

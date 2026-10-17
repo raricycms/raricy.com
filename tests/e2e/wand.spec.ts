@@ -22,7 +22,7 @@ test('测试合集有 Wand，匿名玩家需登录，未知合集返回 404', as
   await page.goto('/game');
   await page.getByRole('link', { name: /测试.*查看合集/ }).click();
   await expect(page).toHaveURL('/game/collections/test');
-  await expect(page.locator('.game-card')).toHaveCount(2);
+  await expect(page.locator('.game-card')).toHaveCount(3);
   await page.getByRole('link', { name: /Wand demo/ }).click();
   await expect(page).toHaveURL(/\/login\?next=%2Fgame%2Fwand/);
   expect((await page.request.post('/api/game/wand/launch')).status()).toBe(401);

@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>圈地运动</title>
+    <link rel="icon" type="image/png" href="/static/quandi/icon.png">
+    <link rel="stylesheet" href="/static/quandi/css/main.css">
+</head>
+
+<body>
+    <p id="siteNotice" role="status" hidden></p>
+    <!-- 主菜单页面 -->
+    <div id="mainMenu" class="page active">
+        <div class="menu-container">
+            <h1 class="game-title">圈地运动</h1>
+            <div class="menu-options">
+                <div class="difficulty-selection">
+                    <h3>选择速度</h3>
+                    <select id="difficultySelect">
+                        <option value="slow">慢速</option>
+                        <option value="medium" selected>中速</option>
+                        <option value="fast">快速</option>
+                        <option value="ultra">闪电</option>
+                    </select>
+                </div>
+                <div class="gamemode-selection">
+                    <h3>选择游戏模式</h3>
+                    <select id="gamemodeSelect">
+                        <option value="explore" selected>探索</option>
+                        <option value="fight">对战</option>
+                        <option value="infinite">无限</option>
+                        <option value="survival">生存</option>
+                        <option value="capture">夺旗</option>
+                        <option value="daynight">昼夜</option>
+                    </select>
+                </div>
+                <div class="menu-buttons">
+                    <button class="btn primary" onclick="showColorSelection()">颜色选择</button>
+                    <button class="btn primary" onclick="showRules()">游戏说明</button>
+                    <button class="btn primary" onclick="startGame()">本地双人</button>
+                    <button class="btn online" onclick="showOnlineLobby()">联机对战</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 联机大厅页面 -->
+    <div id="onlineLobby" class="page">
+        <div class="lobby-container">
+            <h2>联机大厅</h2>
+            <div class="player-name-setup">
+                <label>你的本站账号:</label>
+                <span id="playerNameInput">连接后显示本站账号</span>
+            </div>
+
+            <div class="lobby-sections">
+                <!-- 创建房间 -->
+                <div class="lobby-card">
+                    <h3>创建房间</h3>
+                    <div class="form-group">
+                        <label>模式:</label>
+                        <select id="onlineModeSelect">
+                            <option value="explore">探索</option>
+                            <option value="fight" selected>对战</option>
+                            <option value="infinite">无限</option>
+                            <option value="survival">生存</option>
+                            <option value="capture">夺旗</option>
+                            <option value="daynight">昼夜</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>难度:</label>
+                        <select id="onlineDifficultySelect">
+                            <option value="slow">慢速</option>
+                            <option value="medium" selected>中速</option>
+                            <option value="fast">快速</option>
+                            <option value="ultra">闪电</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>人数:</label>
+                        <select id="onlineMaxPlayers">
+                            <option value="2" selected>2人</option>
+                        </select>
+                    </div>
+                    <button class="btn primary" onclick="createOnlineRoom()">创建房间</button>
+                </div>
+
+                <!-- 加入房间 -->
+                <div class="lobby-card">
+                    <h3>加入房间</h3>
+                    <div class="form-group">
+                        <label>房间码:</label>
+                        <input type="text" id="roomCodeInput" placeholder="输入6位房间码" maxlength="6" autocomplete="off" spellcheck="false" style="text-transform:uppercase">
+                    </div>
+                    <button class="btn primary" onclick="joinOnlineRoom()">加入房间</button>
+                </div>
+            </div>
+
+            <div class="server-status">
+                <span>服务器状态: </span>
+                <button class="btn small" onclick="showOnlineLobby()">重新连接</button>
+                <span id="serverStatus" class="status-disconnected">未连接</span>
+                <span> | 延迟: </span>
+                <span id="lobbyPing">---</span>
+            </div>
+
+            <button class="btn secondary" onclick="showMainMenu()">返回主菜单</button>
+        </div>
+    </div>
+
+    <!-- 房间等待页面 -->
+    <div id="roomWaiting" class="page">
+        <div class="room-waiting-container">
+            <h2>房间等待中</h2>
+            <div class="room-info-bar">
+                <span>房间码: <strong id="displayRoomCode">------</strong></span>
+                <button class="btn small" onclick="copyRoomCode()">选中房间码</button>
+                <span> | 模式: <strong id="displayRoomMode">对战</strong></span>
+                <span> | 难度: <strong id="displayRoomDifficulty">中速</strong></span>
+            </div>
+
+            <div class="player-slots" id="playerSlots">
+                <!-- 动态填充 -->
+            </div>
+
+            <div class="room-actions">
+                <span class="ping-display">延迟: <strong id="roomPing">---</strong>ms</span>
+                <button class="btn primary" id="readyBtn" onclick="toggleReady()">准备</button>
+                <button class="btn primary" id="startGameBtn" onclick="startOnlineGame()" style="display:none;">开始游戏</button>
+                <button class="btn secondary" onclick="leaveOnlineRoom()">离开房间</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 游戏说明页面 -->
+    <div id="rulesPage" class="page">
+        <div class="rules-container">
+            <h2>游戏说明</h2>
+            <div class="rules-content">
+                <h3>游戏目标</h3>
+                <p>控制你的画笔在画布上移动，通过圈地和阻断对手来获得更多领土！</p>
+
+                <h3>基本规则</h3>
+                <ul>
+                    <li>玩家有一定长度的轨迹</li>
+                    <li>移动时会留下自己颜色的轨迹</li>
+                    <li>轨迹头回到家后与尾相连</li>
+                    <li>形成封闭区域可以占领该区域</li>
+                    <li>碰到自己或对手的轨迹会死亡</li>
+                    <li>进入对手的领土会死亡</li>
+                    <li>规定时间内占领更多区域的玩家获胜</li>
+                </ul>
+
+                <h3>各游戏模式介绍</h3>
+                <h4>1. 探索模式</h4>
+                <ul>
+                    <li>碰到对手的轨迹会死亡</li>
+                    <li>进入对手的领土会死亡</li>
+                    <li>每个人只有1条生命</li>
+                    <li>规定时间内占领更多区域的玩家获胜</li>
+                </ul>
+
+                <h4>2. 对战模式</h4>
+                <ul>
+                    <li>碰到对手的轨迹会杀死对手</li>
+                    <li>进入对手的领土同样会死亡</li>
+                    <li>每个人有3条生命</li>
+                    <li>生命归零后即死亡</li>
+                    <li>规定时间内占领更多区域的玩家获胜</li>
+                </ul>
+
+                <h4>3. 无限模式</h4>
+                <ul>
+                    <li>游戏模式与对战模式类似</li>
+                    <li>拥有无限生命，但每次死亡后都会有5秒钟的封锁时间</li>
+                    <li>每死亡一次，封锁时间增加2秒钟</li>
+                    <li>第一个占领60%区域的玩家获胜</li>
+                </ul>
+
+                <h4>4. 生存模式</h4>
+                <ul>
+                    <li>AI会追击玩家，被追上就死亡</li>
+                    <li>每个人有3条生命，生命归零后即死亡</li>
+                    <li>AI碰撞玩家后会有5秒钟的休息时间，不再追逐玩家</li>
+                    <li>可以使用护盾来躲避AI进攻</li>
+                    <li>规定时间内占领更多区域的玩家获胜</li>
+                </ul>
+
+                <h4>5. 夺旗模式</h4>
+                <ul>
+                    <li>地图上会生成旗帜区域</li>
+                    <li>旗帜属于最后一个圈到旗帜的玩家</li>
+                    <li>每隔玩家离开出生点后15秒内需要回到出生点</li>
+                    <li>未及时回到出生点的玩家会直接死亡</li>
+                    <li>需要圈住并守住旗帜，先比较旗帜数量再比较领土面积</li>
+                    <li>规定时间内占领更多旗帜的玩家获胜</li>
+                </ul>
+
+                <h4>6. 昼夜模式</h4>
+                <ul>
+                    <li>每30秒进行一次昼夜循环</li>
+                    <li>前5秒渐变变黑，中间20秒完全黑暗，后5秒渐变变亮</li>
+                    <li>夜晚时画布变黑，左上角和右下角会出现月亮</li>
+                    <li>玩家在夜晚时可以继续移动和游戏</li>
+                    <li>碰撞机制与对战模式相同，碰到对手轨迹会杀死对手</li>
+                    <li>每个人有3条生命，生命归零后即死亡</li>
+                    <li>规定时间内占领更多区域的玩家获胜</li>
+                </ul>
+
+                <h3>联机对战</h3>
+                <p>使用本站账号联机：创建房间并分享房间码，双方准备后由房主开始。断线或离开会判为弃权，重连后需重新加入房间。</p>
+
+                <h3>操作方式</h3>
+                <p><strong>玩家1：</strong> 使用 WASD 键控制移动</p>
+                <p><strong>玩家2：</strong> 使用方向键控制移动</p>
+
+                <h3>道具说明</h3>
+                <ul>
+                    <li>速度（绿色 ⚡）：增加移动速度</li>
+                    <li>长度（黄色 📏）：增加轨迹长度</li>
+                    <li>护盾（蓝色 🛡️）：保护自己可以进入对方领土</li>
+                    <li>障碍：阻挡移动,一次会有多个同时生成</li>
+                    <li>临时栏杆: 开局12秒后消失</li>
+                </ul>
+
+            </div>
+            <button class="btn secondary" onclick="showMainMenu()">返回主菜单</button>
+        </div>
+    </div>
+
+    <!-- 颜色选择页面 -->
+    <div id="colorSelectionPage" class="page">
+        <div class="color-selection-container">
+            <h2>颜色选择</h2>
+            <div class="color-selection-content">
+                <div class="multiplayer-color-selection">
+                    <div class="player-color-section" data-player="1">
+                        <h3>玩家1 颜色</h3>
+                        <div class="color-picker">
+                            <div class="preset-colors">
+                                <div class="color-option" data-color="#E6194B" data-name="热情红" style="background: #E6194B;"></div>
+                                <div class="color-option" data-color="#0047AB" data-name="神秘蓝" style="background: #0047AB;"></div>
+                                <div class="color-option" data-color="#3CB44B" data-name="自然绿" style="background: #3CB44B;"></div>
+                                <div class="color-option" data-color="#FFE119" data-name="阳光黄" style="background: #FFE119;"></div>
+                                <div class="color-option" data-color="#F58231" data-name="活力橙" style="background: #F58231;"></div>
+                                <div class="color-option" data-color="#46F0F0" data-name="冰晶青" style="background: #46F0F0;"></div>
+                                <div class="color-option" data-color="#808000" data-name="橄榄绿" style="background: #808000;"></div>
+                            </div>
+                            <div class="custom-color-picker">
+                                <input type="color" id="player1CustomColor" value="#E6194B">
+                                <div class="color-sliders">
+                                    <label>色相: <input type="range" id="player1Hue" min="0" max="360" value="0"></label>
+                                    <label>饱和度: <input type="range" id="player1Saturation" min="0" max="100" value="100"></label>
+                                    <label>亮度: <input type="range" id="player1Lightness" min="0" max="100" value="50"></label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="player-color-section" data-player="2">
+                        <h3>玩家2 颜色</h3>
+                        <div class="color-picker">
+                            <div class="preset-colors">
+                                <div class="color-option" data-color="#E6194B" data-name="热情红" style="background: #E6194B;"></div>
+                                <div class="color-option" data-color="#0047AB" data-name="神秘蓝" style="background: #0047AB;"></div>
+                                <div class="color-option" data-color="#3CB44B" data-name="自然绿" style="background: #3CB44B;"></div>
+                                <div class="color-option" data-color="#FFE119" data-name="阳光黄" style="background: #FFE119;"></div>
+                                <div class="color-option" data-color="#F58231" data-name="活力橙" style="background: #F58231;"></div>
+                                <div class="color-option" data-color="#46F0F0" data-name="冰晶青" style="background: #46F0F0;"></div>
+                                <div class="color-option" data-color="#808000" data-name="橄榄绿" style="background: #808000;"></div>
+                            </div>
+                            <div class="custom-color-picker">
+                                <input type="color" id="player2CustomColor" value='#0047AB'>
+                                <div class="color-sliders">
+                                    <label>色相: <input type="range" id="player2Hue" min="0" max="360" value="240"></label>
+                                    <label>饱和度: <input type="range" id="player2Saturation" min="0" max="100" value="100"></label>
+                                    <label>亮度: <input type="range" id="player2Lightness" min="0" max="100" value="50"></label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="color-harmony-indicator">
+                        <span class="harmony-status">颜色和谐度: </span>
+                        <div class="harmony-bar">
+                            <div class="harmony-fill"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="color-selection-buttons">
+                <button class="btn primary" onclick="saveColorSelection()">保存颜色</button>
+                <button class="btn secondary" onclick="showMainMenu()">返回主菜单</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 游戏页面 -->
+    <div id="gamePage" class="page">
+        <div class="game-header">
+            <div class="score-board">
+                <span class="player-name" id="player1Name">玩家1</span>
+
+                <div class="lives-display" id="player1Lives">
+                    <span class="lives-label">生命:</span>
+                    <span class="lives-count normal" id="player1LivesCount">3</span>
+                </div>
+
+                <div class="score-section">
+                    <div class="score-bar">
+                        <div class="score-fill player1" id="player1Score"></div>
+                    </div>
+                    <span class="score-text" id="player1ScoreText">0%</span>
+                </div>
+
+                <div class="game-controls">
+                    <button class="btn small" onclick="pauseGame()">暂停</button>
+                    <button class="btn small" onclick="restartGame()">重新开始</button>
+                    <button class="btn small" onclick="showMainMenu()">主菜单</button>
+                </div>
+
+                <div class="score-section">
+                    <span class="score-text" id="player2ScoreText">0%</span>
+                    <div class="score-bar">
+                        <div class="score-fill player2" id="player2Score"></div>
+                    </div>
+                </div>
+
+                <div class="lives-display" id="player2Lives">
+                    <span class="lives-label">生命:</span>
+                    <span class="lives-count normal" id="player2LivesCount">3</span>
+                </div>
+
+                <span class="player-name" id="player2Name">玩家2</span>
+            </div>
+
+            <div class="game-container">
+                <canvas id="gameCanvas" width="1200" height="600"></canvas>
+            </div>
+            <div class="countdown-displays">
+                <div id="player1Shield" class="shield-countdown left">护盾：---</div>
+                <div id="player1Lock" class="lock-countdown left-lock">封锁：---</div>
+                <div id="player1Home" class="home-countdown left-home">回家：---</div>
+                <div id="initialBarrier" class="barrier-countdown bottom">初始栏杆：---</div>
+                <div id="player2Home" class="home-countdown right-home">回家：---</div>
+                <div id="player2Lock" class="lock-countdown right-lock">封锁：---</div>
+                <div id="player2Shield" class="shield-countdown right">护盾：---</div>
+                <div id="dayTimeDisplay" class="daytime-countdown bottom-left">白天：---</div>
+                <div id="nightTimeDisplay" class="nighttime-countdown bottom-right">夜晚：---</div>
+            </div>
+            <div class="game-status" id="gameStatus"></div>
+        </div>
+    </div>
+
+    <!-- 暂停菜单 -->
+    <div id="pauseMenu" class="overlay">
+        <div class="pause-container">
+            <h2>游戏暂停</h2>
+            <div class="pause-buttons">
+                <button class="btn primary" onclick="resumeGame()">继续游戏</button>
+                <button class="btn secondary" onclick="restartGame()">重新开始</button>
+                <button class="btn secondary" onclick="showMainMenu()">主菜单</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 游戏结束菜单 -->
+    <div id="gameOverMenu" class="overlay">
+        <div class="gameover-container">
+            <h2 id="gameOverTitle">游戏结束</h2>
+            <p id="gameOverMessage"></p>
+            <div class="gameover-buttons">
+                <button class="btn primary" onclick="restartGame()">再来一局</button>
+                <button class="btn secondary" onclick="showMainMenu()">主菜单</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/quandi/js/site-bridge.js"></script>
+    <script src="/static/quandi/js/Config.js"></script>
+    <script src="/static/quandi/js/modes/Flag.js"></script>
+    <script src="/static/quandi/js/modes/Survive.js"></script>
+    <script src="/static/quandi/js/modes/DayNight.js"></script>
+    <script src="/static/quandi/js/objects/Player.js"></script>
+    <script src="/static/quandi/js/objects/RemotePlayer.js"></script>
+    <script src="/static/quandi/js/objects/Territory.js"></script>
+    <script src="/static/quandi/js/objects/UIManager.js"></script>
+    <script src="/static/quandi/js/objects/ItemManager.js"></script>
+    <script src="/static/quandi/js/objects/Color.js"></script>
+    <script src="/static/quandi/js/core/InputHandler.js"></script>
+    <script src="/static/quandi/js/core/ImageLoader.js"></script>
+    <script src="/static/quandi/js/core/Renderer.js"></script>
+    <script src="/static/quandi/js/core/NetworkManager.js"></script>
+    <script src="/static/quandi/js/core/GameEngine.js"></script>
+    <script src="/static/quandi/js/core/main.js"></script>
+</body>
+
+</html>

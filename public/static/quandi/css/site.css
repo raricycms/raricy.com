@@ -1,0 +1,26 @@
+/* 本站嵌入布局，独立游戏画面保留原作配色。 */
+body, .page { min-height: 840px; }
+body { overflow: auto; }
+.page { padding: 20px 12px; }
+.game-container { width: 100%; max-width: 1200px; }
+#gameCanvas { display: block; width: 100%; height: auto; }
+#siteNotice { position: sticky; top: 0; z-index: 100; background: #152b4b; color: #fff; padding: 12px 16px; text-align: center; }
+.players-info { gap: 12px; padding: 0 8px; }
+.game-controls { min-width: 0; }
+.center-info { min-width: 0; gap: 12px; }
+.score-bar { width: 150px; }
+
+/* 桌面记分板：长账号名不挤出画布，两侧分数与中央按钮分开排。 */
+.game-header { width: 100%; padding: 12px; border: 0; border-radius: 0; box-sizing: border-box; }
+.score-board { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); grid-template-rows: auto auto; gap: 8px 12px; padding: 0; width: 100%; }
+.player-name { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+#player1Name { grid-column: 1; grid-row: 1; justify-self: start; }
+#player2Name { grid-column: 3; grid-row: 1; justify-self: end; }
+#player1Lives { grid-column: 1; grid-row: 2; justify-self: start; }
+#player2Lives { grid-column: 3; grid-row: 2; justify-self: end; }
+.score-section { grid-column: 1; grid-row: 2; justify-self: end; }
+.game-controls ~ .score-section { grid-column: 3; justify-self: start; }
+.game-controls { grid-column: 2; grid-row: 1 / 3; margin: 0; }
+.game-controls .btn { min-width: 0; padding: 8px 12px; white-space: nowrap; }
+.btn, .btn.primary, .btn.secondary, .btn.online, .game-controls .btn, input, select { border-radius: 999px; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
