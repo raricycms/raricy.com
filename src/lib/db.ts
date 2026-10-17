@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { withArchiveScope } from './archive-scope';
 
 // Next.js 开发模式热重载会反复 new PrismaClient，导致连接泄漏。
 // 用全局单例避免（生产构建只实例化一次）。
@@ -6,9 +7,9 @@ const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
 export const prisma =
   globalForPrisma.prisma ??
-  new PrismaClient({
+  withArchiveScope(new PrismaClient({
     log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
-  });
+  }));
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
 

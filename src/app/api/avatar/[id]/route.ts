@@ -1,4 +1,6 @@
 import { resolveAvatar } from '@/lib/avatar';
+import { prisma } from '@/lib/db';
+import { generateIdenticonSvg } from '@/lib/identicon';
 
 export const runtime = 'nodejs';
 
@@ -8,7 +10,10 @@ export const runtime = 'nodejs';
 // 解析逻辑在 src/lib/avatar.ts（画报渲染也要头像，共用同一份防穿越守卫）。
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { buffer, contentType } = await resolveAvatar(id);
+  const active = await prisma.user.findUnique({ where: { id }, select: { id: true } });
+  const { buffer, contentType } = active
+    ? await resolveAvatar(id)
+    : { buffer: Buffer.from(generateIdenticonSvg(id)), contentType: 'image/svg+xml; charset=utf-8' };
 
   return new Response(new Uint8Array(buffer), {
     headers: {

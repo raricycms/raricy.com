@@ -37,6 +37,8 @@ export const AUDIT_ACTIONS = [
   'reset_password',
   'force_logout',
   'create_user',
+  'archive_user',
+  'unarchive_user',
   // 内容管理
   'delete_blog',
   'restore_blog',
@@ -66,6 +68,8 @@ export const AUDIT_ACTION_LABEL: Record<AuditAction, string> = {
   reset_password: '重置密码',
   force_logout: '强制下线',
   create_user: '创建用户',
+  archive_user: '归档用户',
+  unarchive_user: '恢复归档用户',
   delete_blog: '删除文章',
   restore_blog: '恢复文章',
   delete_comment: '删除评论',
@@ -98,6 +102,8 @@ export const AUDIT_ACTION_GROUP: Record<AuditAction, AuditActionGroup> = {
   reset_password: 'user',
   force_logout: 'user',
   create_user: 'user',
+  archive_user: 'user',
+  unarchive_user: 'user',
   delete_blog: 'content',
   restore_blog: 'content',
   delete_comment: 'content',
@@ -137,6 +143,8 @@ export const AUDIT_ACTION_KIND: Record<AuditAction, AuditActionKind> = {
   change_role: 'account',
   reset_password: 'account',
   create_user: 'account',
+  archive_user: 'account',
+  unarchive_user: 'restore',
   force_logout: 'system',
   decide_appeal: 'system',
   revoke_invite_code: 'system',
@@ -184,7 +192,10 @@ export const AUDIT_OBJECT_TYPE_LABEL: Record<AuditObjectType, string> = {
  * 因此它们**永远不会出现在对外公示的 `/audit` 页**上。
  * 公开页的筛选下拉据此把它们滤掉 —— 留着的话，选中永远得到空结果、看着像页面坏了。
  */
-export const CLI_ONLY_ACTIONS = ['frame_grant', 'frame_revoke', 'bubble_grant', 'bubble_revoke'] as const;
+export const CLI_ONLY_ACTIONS = ['frame_grant', 'frame_revoke', 'bubble_grant', 'bubble_revoke', 'archive_user', 'unarchive_user'] as const;
+
+/** 归档操作连网页管理日志也不展示，查看历史仅限 CLI。 */
+export const WEB_AUDIT_ACTIONS: AuditAction[] = AUDIT_ACTIONS.filter(a => a !== 'archive_user' && a !== 'unarchive_user');
 
 /** `/audit` 公示页可选的动作（= 全部 − CLI-only）。 */
 export const PUBLIC_AUDIT_ACTIONS: AuditAction[] = AUDIT_ACTIONS.filter(

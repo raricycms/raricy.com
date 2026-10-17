@@ -13,6 +13,7 @@
 import type { CommandSpec } from './types';
 import { roleCommands } from './commands/roles';
 import { userCommands } from './commands/users';
+import { userArchiveCommands } from './commands/user-archives';
 import { blogCommands } from './commands/blogs';
 import { commentCommands } from './commands/comments';
 import { clipCommands } from './commands/clips';
@@ -29,6 +30,7 @@ import { bubbleCommands } from './commands/bubbles';
 
 export const COMMANDS: CommandSpec[] = [
   ...userCommands,
+  ...userArchiveCommands,
   ...roleCommands,
   ...blogCommands,
   ...commentCommands,

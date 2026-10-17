@@ -121,7 +121,7 @@ const COMPENSATE_ROLES = ['core', 'admin', 'owner'] as const;
 
 async function eligibleUsers(): Promise<{ id: string; username: string }[]> {
   return prisma.user.findMany({
-    where: { role: { in: [...COMPENSATE_ROLES] } },
+    where: { role: { in: [...COMPENSATE_ROLES] }, archivedAt: null },
     select: { id: true, username: true },
     orderBy: { createdAt: 'asc' },
   });

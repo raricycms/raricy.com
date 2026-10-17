@@ -336,15 +336,18 @@ export async function postEntry(tx: TxClient, input: PostEntryInput): Promise<{ 
     // 读出来再判断再写回去会与并发扣款互相覆盖，扣出负余额。
     const need = -units;
     const dec = await tx.user.updateMany({
-      where: { id: input.userId, driedFish: { gte: need } },
+      where: { id: input.userId, archivedAt: null, driedFish: { gte: need } },
       data: { driedFish: { decrement: need } },
     });
     if (dec.count === 0) throw new InsufficientFishError(input.userId, need);
   } else {
-    // 入账：increment 不可能变负，不需要条件写（DB 侧原子加，不是读-改-写）。
+    // 原子入账，并独立拒绝归档钱包；CLI 与异步结算同样不能绕过。
     await tx.user.update({
-      where: { id: input.userId },
+      where: { id: input.userId, archivedAt: null },
       data: { driedFish: { increment: units } },
+      // 保留 Int 回读校验：updateMany 只回 count，会让超出客户端整数范围的余额
+      // 静默落库，直到下一次读余额才报错。回读失败必须让整笔事务立即回滚。
+      select: { driedFish: true },
     });
   }
 

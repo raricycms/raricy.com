@@ -1,6 +1,38 @@
 import { prisma } from './db';
 import { isCoreUser, isCurrentlyBanned } from './auth';
 
+/**
+ * 每帧（含心跳）复核数据库，覆盖 CLI 在另一个进程撤权的情形。
+ * bus 的同步背压协议保持不变；异步鉴权串行投递、有界排队，失败即断流。
+ */
+export function verifiedStreamWriter(
+  verify: () => Promise<boolean>, write: (chunk: string) => boolean, close: () => void, limit: number
+): (chunk: string) => boolean {
+  const queue: string[] = [];
+  let draining = false;
+  let stopped = false;
+  async function drain() {
+    if (draining) return;
+    draining = true;
+    try {
+      while (queue.length && !stopped) {
+        const chunk = queue.shift()!;
+        if (!(await verify()) || !write(chunk)) {
+          stopped = true; queue.length = 0; close();
+        }
+      }
+    } catch {
+      stopped = true; queue.length = 0; close();
+    } finally { draining = false; }
+  }
+  return (chunk) => {
+    if (stopped || queue.length >= limit) return false;
+    queue.push(chunk);
+    void drain();
+    return true;
+  };
+}
+
 /** 先注册可被 kick 的订阅，再复核版本；复核前不得发任何私有帧，堵住鉴权与建流间的撤权窗口。 */
 export async function isStreamSessionCurrent(user: { id: string; sessionVersion: number }): Promise<boolean> {
   const current = await prisma.user.findUnique({ where: { id: user.id }, select: { sessionVersion: true } });

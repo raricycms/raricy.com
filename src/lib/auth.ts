@@ -29,6 +29,9 @@ export const PUBLIC_USER_SELECT = {
   createdAt: true,
   lastLogin: true,
   sessionVersion: true,
+  archivedAt: true,
+  archiveReason: true,
+  archivedBy: true,
   role: true,
   isBanned: true,
   banUntil: true,
@@ -71,14 +74,14 @@ export async function getCurrentUser(): Promise<SafeUser | null> {
 
 // ── 角色判定（逐档包含：user < core < admin < owner）────────────────────────
 
-export function isOwner(u: { role?: string } | null): boolean {
-  return !!u && u.role === 'owner';
+export function isOwner(u: { role?: string; archivedAt?: Date | null } | null): boolean {
+  return !!u && !u.archivedAt && u.role === 'owner';
 }
-export function hasAdminRights(u: { role?: string } | null): boolean {
-  return !!u && (u.role === 'admin' || u.role === 'owner');
+export function hasAdminRights(u: { role?: string; archivedAt?: Date | null } | null): boolean {
+  return !!u && !u.archivedAt && (u.role === 'admin' || u.role === 'owner');
 }
-export function isCoreUser(u: { role?: string } | null): boolean {
-  return !!u && (u.role === 'core' || u.role === 'admin' || u.role === 'owner');
+export function isCoreUser(u: { role?: string; archivedAt?: Date | null } | null): boolean {
+  return !!u && !u.archivedAt && (u.role === 'core' || u.role === 'admin' || u.role === 'owner');
 }
 
 /**

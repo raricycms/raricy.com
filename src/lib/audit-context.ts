@@ -35,7 +35,13 @@ const store = new AsyncLocalStorage<{ source: 'backend-ops' }>();
  * 两个前端都从这一处进出，所以新增入口不会漏。
  */
 export function runAsBackendOps<T>(fn: () => Promise<T>): Promise<T> {
-  return store.run({ source: 'backend-ops' }, fn);
+  // PrismaPromise 是惰性的 thenable；必须在上下文内 await，不能交给圈外才启动查询。
+  return store.run({ source: 'backend-ops' }, async () => await fn());
+}
+
+/** 仅 CLI 入口设置；HTTP 参数不能开启后台上下文。归档数据的读写边界也复用它。 */
+export function isBackendOps(): boolean {
+  return store.getStore()?.source === 'backend-ops';
 }
 
 /**

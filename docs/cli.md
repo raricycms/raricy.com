@@ -227,6 +227,9 @@ CLI 写下的每一条审计日志都落 `visibility='internal'`：**不进** `/
 |------|------|
 | `user search [关键词]` | 按用户名搜 |
 | `user show <username>` | 详情：角色 / 禁言 / 鱼干余额 / 文章数 / 评论数 |
+| `user archived [关键词]` | 列出已归档用户、时间和原因，仅后台可查 |
+| `user archive <username> --reason <原因>` | 归档用户：撤赞、清钱包、作废凭据和持仓，站长主体专属 |
+| `user unarchive <username> --reason <原因>` | 恢复账号和原本未删除的内容；不恢复余额、点赞、凭据或持仓 |
 | `user reset-password <username> [generate\|manual] [--password <新密码>] --reason <原因>` | 重置密码（旧会话全部失效）。`manual` 模式**必须**给 `--password`（≥8 位）；`generate` 模式不给，**给了会报错**（不是静默忽略） |
 | `user ban <username> --hours N --reason <原因>` | 禁言 |
 | `user unban <username> [--reason <原因>]` | 解除禁言 |
@@ -240,6 +243,28 @@ npm run cli -- user reset-password alice --reason "用户申诉邮箱被盗" --y
 ```
 
 新密码**永远不会进审计日志** —— `/audit` 是公开页。
+
+#### 用户归档（仅后台 CLI）
+
+```bash
+npm run cli -- user archived
+npm run cli -- user archive alice --reason "复核确认的批量账号" --yes
+npm run cli -- user show alice
+npm run cli -- user unarchive alice --reason "复核后恢复" --yes
+```
+
+归档是独立账号状态，保留 ID、用户名、原角色、原文、流水和邀请码使用记录。
+网页端（包括站长管理页和接口）视为账号不存在；文章不进入列表、搜索、引用或分享卡片，
+评论与讨论按已删除占位显示，作者身份不下发。上传内容也随账号停止展示。
+后台 `user search` / `user show`、文章与评论检索仍可查看原始记录；用户搜索的状态列标明已归档。
+
+归档在同一事务内撤销全部文章/评论点赞并重算计数、通过账本全额扣除余额、
+把未结清仓位设为 `archived`（不退款、不伪造成交），以及作废会话、OAuth/鱼干凭据和回调。
+历史转账已经到达其他账号的鱼干不回收。归档及恢复只写内部审计日志，必须提供 1..200 字原因，
+审计主体须为有效站长，不能操作自己。重复归档不重复扣款。
+
+恢复后原本未删除的内容重新可见，原本已删除的内容仍保持删除。余额、旧赞、
+凭据、历史通知和已作废仓位不返还；用户需要重新登录、授权。以上命令均不提供网页入口。
 
 #### user create（站长建号）
 

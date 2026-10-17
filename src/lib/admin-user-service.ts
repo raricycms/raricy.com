@@ -97,6 +97,7 @@ const USER_SELECT = {
   username: true,
   email: true,
   role: true,
+  archivedAt: true,
   createdAt: true,
   lastLogin: true,
   isBanned: true,
@@ -113,6 +114,7 @@ export type AdminUserRow = {
   username: string;
   email: string;
   role: string;
+  archivedAt: string | null;
   createdAt: string | null;
   lastLogin: string | null;
   isBanned: boolean;
@@ -129,6 +131,7 @@ function toRow(u: {
   username: string;
   email: string;
   role: string;
+  archivedAt: Date | null;
   createdAt: Date | null;
   lastLogin: Date | null;
   isBanned: boolean | null;
@@ -144,6 +147,7 @@ function toRow(u: {
     username: u.username,
     email: u.email,
     role: u.role,
+    archivedAt: u.archivedAt?.toISOString() ?? null,
     createdAt: u.createdAt ? u.createdAt.toISOString() : null,
     lastLogin: u.lastLogin ? u.lastLogin.toISOString() : null,
     isBanned: !!u.isBanned,
@@ -164,7 +168,7 @@ function toRow(u: {
 // 复用 auth.ts 的 PUBLIC_USER_SELECT，字段口径与 getCurrentUser() 完全一致。
 
 export async function loadSafeUserByUsername(username: string): Promise<SafeUser | null> {
-  const u = await prisma.user.findUnique({ where: { username }, select: PUBLIC_USER_SELECT });
+  const u = await prisma.user.findUnique({ where: { username, archivedAt: null }, select: PUBLIC_USER_SELECT });
   return (u as SafeUser | null) ?? null;
 }
 
@@ -179,7 +183,7 @@ export async function loadUserById(id: string): Promise<SafeUser | null> {
  */
 export async function loadDefaultOwner(): Promise<SafeUser | null> {
   const u = await prisma.user.findFirst({
-    where: { role: 'owner' },
+    where: { role: 'owner', archivedAt: null },
     select: PUBLIC_USER_SELECT,
     orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
   });

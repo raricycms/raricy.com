@@ -6,7 +6,7 @@ import { ymdhms } from '@/lib/format';
 import { pageWindow } from '@/lib/page-window';
 import ObjId from '@/app/components/ObjId';
 import {
-  AUDIT_ACTIONS,
+  WEB_AUDIT_ACTIONS,
   AUDIT_ACTION_LABEL,
   AUDIT_GROUP_LABEL,
   AUDIT_OBJECT_TYPES,
@@ -118,7 +118,7 @@ export default async function AdminLogsPage({
               <option value="">全部动作</option>
               {GROUPS.map((g) => (
                 <optgroup key={g} label={AUDIT_GROUP_LABEL[g]}>
-                  {AUDIT_ACTIONS.filter((a) => actionGroup(a) === g).map((a) => (
+                  {WEB_AUDIT_ACTIONS.filter((a) => actionGroup(a) === g).map((a) => (
                     <option key={a} value={a}>
                       {AUDIT_ACTION_LABEL[a]}
                     </option>

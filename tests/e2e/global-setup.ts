@@ -189,6 +189,9 @@ function acquireLock() {
 
 export default async function globalSetup() {
   assertTestDb(E2E_DB);
+  // Worker 会重载 playwright.config.ts 并重算 E2E_DB；给 CLI 联动用例传递
+  // 本轮实际建表、与 webServer 共用的路径，不能读取 worker 重算的空库。
+  process.env.E2E_SEEDED_DB = E2E_DB;
   fs.mkdirSync(path.dirname(E2E_DB), { recursive: true });
   acquireLock();
   seedStickers();

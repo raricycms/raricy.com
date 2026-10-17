@@ -680,6 +680,11 @@ export async function toggleLike(blogId: string, userId: string) {
   }
 
   const result = await prisma.$transaction(async (tx) => {
+    // CLI 可在另一个进程归档账号。事务内复核，防止先通过路由鉴权的请求
+    // 在归档撤赞之后又创建/点亮一条记录（恢复账号时也不能自动带回这些赞）。
+    if (!(await tx.user.findUnique({ where: { id: userId, archivedAt: null }, select: { id: true } }))) {
+      return { notFound: true as const };
+    }
     // 事务内再确认一次（并发下文章可能刚被软删）
     const blog = await tx.blog.findFirst({
       where: { id: blogId, ignore: false },

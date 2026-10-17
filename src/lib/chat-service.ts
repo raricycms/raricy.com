@@ -110,6 +110,7 @@ const MESSAGE_SELECT = {
       id: true,
       username: true,
       role: true,
+      archivedAt: true,
       equippedFrameKey: true,
       equippedFrameExpiresAt: true,
       equippedBubbleKey: true,
@@ -124,6 +125,7 @@ function authorOf(a: {
   id: string;
   username: string;
   role: string;
+  archivedAt: Date | null;
   /**
    * 装备两列 —— 只为算 `frame_url`。**刻意必填**：唯一的调用方（消息行）走
    * `MESSAGE_SELECT`，漏加那两列的后果是「讨论区所有人永远没有框」——
@@ -134,6 +136,10 @@ function authorOf(a: {
   equippedBubbleKey: string | null;
   equippedBubbleExpiresAt: Date | null;
 }): ChatAuthorDTO {
+  if (a.archivedAt) return {
+    id: '', username: '已删除用户', avatar_url: avatarUrl('deleted'),
+    frame_url: null, bubble_key: null, is_admin: false,
+  };
   return {
     id: a.id,
     username: a.username,
@@ -247,6 +253,7 @@ async function countUnreadByChannel(
       ON msg.channel_id = m.channel_id
      AND msg.id > m.last_read_message_id
      AND (msg.is_deleted = 0 OR msg.is_deleted IS NULL)
+     AND EXISTS (SELECT 1 FROM users author WHERE author.id = msg.author_id AND author.archived_at IS NULL)
     WHERE m.user_id = ${userId}
       AND m.channel_id IN (${Prisma.join(channelIds)})
     GROUP BY m.channel_id
@@ -269,6 +276,7 @@ async function countLobbyMentionsSince(userId: string, cursor: number): Promise<
     WHERE msg.channel_id = ${CHAT_LOBBY_ID}
       AND msg.id > ${cursor}
       AND (msg.is_deleted = 0 OR msg.is_deleted IS NULL)
+      AND EXISTS (SELECT 1 FROM users author WHERE author.id = msg.author_id AND author.archived_at IS NULL)
       AND msg.author_id <> ${userId}
       AND msg.content LIKE '%@' || u.username || '%'
   `;
@@ -785,7 +793,7 @@ async function attachImagesAndReplies(rows: MessageRow[]): Promise<ChatMessageDT
     content: string;
     isDeleted: boolean | null;
     imageId: string | null;
-    author: { username: string };
+    author: { username: string; archivedAt: Date | null };
   }>();
   if (replyIds.length) {
     const reps = await prisma.chatMessage.findMany({
@@ -795,7 +803,7 @@ async function attachImagesAndReplies(rows: MessageRow[]): Promise<ChatMessageDT
         content: true,
         isDeleted: true,
         imageId: true,
-        author: { select: { username: true } },
+        author: { select: { username: true, archivedAt: true } },
       },
     });
     for (const r of reps) replyMap.set(r.id, r);
@@ -855,7 +863,7 @@ async function attachImagesAndReplies(rows: MessageRow[]): Promise<ChatMessageDT
   }
 
   return rows.map((m) => {
-    const deleted = m.isDeleted ?? false;
+    const deleted = !!m.isDeleted || !!m.author.archivedAt;
     const img = m.imageId ? imageMap.get(m.imageId) : undefined;
     const reply = m.replyTo != null ? replyMap.get(m.replyTo) : undefined;
     const blog = m.blogId ? blogMap.get(m.blogId) : undefined;
@@ -864,7 +872,7 @@ async function attachImagesAndReplies(rows: MessageRow[]): Promise<ChatMessageDT
     // 缩略图，图没了给占位文案（否则引用块只剩「作者：」）。
     const replyText = !reply
       ? ''
-      : (reply.isDeleted ?? false)
+      : (reply.isDeleted || reply.author.archivedAt)
         ? CHAT_DELETED_TEXT
         : // 引用块是一行摘要，内联 token 一律换成短标记（与侧栏预览、通知预览同口径）
           stripPreviewTokens(reply.content) ||
@@ -893,7 +901,7 @@ async function attachImagesAndReplies(rows: MessageRow[]): Promise<ChatMessageDT
             }
           : null,
       blog_missing: !deleted && !!m.blogId && !blog,
-      pat: m.patTargetId
+      pat: m.patTargetId && !m.author.archivedAt
         ? {
             target_id: m.patTargetId,
             target_name: patNameMap.get(m.patTargetId) ?? PAT_TARGET_FALLBACK,
@@ -904,10 +912,10 @@ async function attachImagesAndReplies(rows: MessageRow[]): Promise<ChatMessageDT
           ? {
               id: reply.id,
               content: replyText,
-              author_name: reply.author.username,
-              is_deleted: reply.isDeleted ?? false,
+              author_name: reply.author.archivedAt ? '已删除用户' : reply.author.username,
+              is_deleted: !!reply.isDeleted || !!reply.author.archivedAt,
               image_url:
-                !(reply.isDeleted ?? false) && replyImage
+                !reply.isDeleted && !reply.author.archivedAt && replyImage
                   ? `/api/images/${replyImage.id}/raw`
                   : null,
             }

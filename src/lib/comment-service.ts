@@ -107,6 +107,7 @@ export interface CommentBaseRow {
     id: string;
     username: string;
     role: string;
+    archivedAt?: Date | null;
     /**
      * 装备两列 —— 只为下面算 `frame_url`。
      *
@@ -203,6 +204,7 @@ const commentSelect = {
       id: true,
       username: true,
       role: true,
+      archivedAt: true,
       equippedFrameKey: true,
       equippedFrameExpiresAt: true,
     },
@@ -218,7 +220,8 @@ type CommentRow = Prisma.BlogCommentGetPayload<{ select: typeof commentSelect }>
  * 两个调用方自动都拿到「不泄露原文」的行为。
  */
 export function serializeCommentBase(c: CommentBaseRow): CommentBaseDTO {
-  const deleted = c.isDeleted ?? false;
+  const archived = !!c.author?.archivedAt;
+  const deleted = !!c.isDeleted || archived;
 
   // ── 匿名评论：**只在这里**把真实身份换成化名 ──────────────────────────────
   // 站内评论树与 spider 对外接口都走这一个函数，所以这一处换掉，两条路一起生效。
@@ -256,12 +259,12 @@ export function serializeCommentBase(c: CommentBaseRow): CommentBaseDTO {
     id: c.id,
     blog_id: c.blogId,
     author: {
-      id: c.author?.id ?? null,
-      username: c.author?.username ?? null,
-      is_admin: c.author ? hasAdminRights(c.author) : false,
-      avatar_url: c.author ? avatarUrl(c.author.id) : null,
+      id: archived ? null : c.author?.id ?? null,
+      username: archived ? '已删除用户' : c.author?.username ?? null,
+      is_admin: !archived && c.author ? hasAdminRights(c.author) : false,
+      avatar_url: !archived && c.author ? avatarUrl(c.author.id) : null,
       // 作者已注销 → frameUrlFor(null) → null，组件据此不渲染框
-      frame_url: frameUrlFor(c.author),
+      frame_url: archived ? null : frameUrlFor(c.author),
     },
     parent_id: c.parentId,
     root_id: c.rootId,
@@ -275,7 +278,7 @@ export function serializeCommentBase(c: CommentBaseRow): CommentBaseDTO {
 }
 
 function serializeRow(c: CommentRow): CommentNode {
-  const deleted = c.isDeleted ?? false;
+  const deleted = !!c.isDeleted || !!c.author?.archivedAt;
   return {
     ...serializeCommentBase(c),
     // ★ 软删即抹掉原文 ★ 与 content_html 同一口径：保留的已删节点（有子评论）只显示
@@ -373,7 +376,7 @@ async function attachAttachments(nodes: CommentNode[], rows: CommentRow[]): Prom
   for (const node of flatten(nodes)) {
     const row = byId.get(node.id);
     if (!row) continue;
-    const deleted = row.isDeleted ?? false;
+    const deleted = !!row.isDeleted || !!row.author?.archivedAt;
     const img = row.imageId ? imageMap.get(row.imageId) : undefined;
     const blog = row.quoteBlogId ? blogMap.get(row.quoteBlogId) : undefined;
     node.image =
@@ -430,7 +433,7 @@ async function attachViewerState(
   for (const n of targets) n.is_mine = authorById.get(n.id) === viewerId;
 
   const likes = await prisma.commentLike.findMany({
-    where: { userId: viewerId, commentId: { in: targets.map((n) => n.id) } },
+    where: { userId: viewerId, deleted: false, commentId: { in: targets.map((n) => n.id) } },
     select: { commentId: true },
   });
   const likedIds = new Set(likes.map((l) => l.commentId));
@@ -632,7 +635,7 @@ export async function createComment(input: CreateCommentInput): Promise<CreateCo
         select: commentSelect,
       });
 
-      const commentsCount = await tx.blogComment.count({ where: { blogId, isDeleted: false } });
+      const commentsCount = await tx.blogComment.count({ where: { blogId, isDeleted: false, author: { archivedAt: null } } });
       await tx.blog.update({ where: { id: blogId }, data: { commentsCount, lastCommentAt: now } });
 
       return {
@@ -818,9 +821,9 @@ export async function softDeleteComment(
 
     await tx.blogComment.update({ where: { id: commentId }, data: { isDeleted: true } });
 
-    const commentsCount = await tx.blogComment.count({ where: { blogId: comment.blogId, isDeleted: false } });
+    const commentsCount = await tx.blogComment.count({ where: { blogId: comment.blogId, isDeleted: false, author: { archivedAt: null } } });
     const latest = await tx.blogComment.findFirst({
-      where: { blogId: comment.blogId, isDeleted: false },
+      where: { blogId: comment.blogId, isDeleted: false, author: { archivedAt: null } },
       orderBy: { createdAt: 'desc' },
       select: { createdAt: true },
     });
@@ -923,10 +926,10 @@ export async function restoreCommentRow(
     await tx.blogComment.update({ where: { id: comment.id }, data: { isDeleted: false } });
 
     const commentsCount = await tx.blogComment.count({
-      where: { blogId: comment.blogId, isDeleted: false },
+      where: { blogId: comment.blogId, isDeleted: false, author: { archivedAt: null } },
     });
     const latest = await tx.blogComment.findFirst({
-      where: { blogId: comment.blogId, isDeleted: false },
+      where: { blogId: comment.blogId, isDeleted: false, author: { archivedAt: null } },
       orderBy: { createdAt: 'desc' },
       select: { createdAt: true },
     });
@@ -1030,6 +1033,9 @@ export async function toggleCommentLike(commentId: string, userId: string): Prom
 
   return prisma.$transaction(async (tx) => {
     // 事务内再确认一次：并发下这条评论可能刚被软删
+    if (!(await tx.user.findUnique({ where: { id: userId, archivedAt: null }, select: { id: true } }))) {
+      return { notFound: true as const };
+    }
     const comment = await tx.blogComment.findFirst({
       where: { id: commentId, isDeleted: false },
       select: { id: true },
@@ -1042,14 +1048,14 @@ export async function toggleCommentLike(commentId: string, userId: string): Prom
 
     let liked: boolean;
     if (existing) {
-      await tx.commentLike.delete({ where: { id: existing.id } });
-      liked = false;
+      liked = existing.deleted;
+      await tx.commentLike.update({ where: { id: existing.id }, data: { deleted: !liked, deletedAt: liked ? null : nowForDb() } });
     } else {
       await tx.commentLike.create({ data: { commentId, userId, createdAt: nowForDb() } });
       liked = true;
     }
 
-    const likesCount = await tx.commentLike.count({ where: { commentId } });
+    const likesCount = await tx.commentLike.count({ where: { commentId, deleted: false } });
     await tx.blogComment.update({ where: { id: commentId }, data: { likesCount } });
     return { liked, likesCount };
   });

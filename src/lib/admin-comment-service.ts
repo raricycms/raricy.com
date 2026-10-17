@@ -12,6 +12,7 @@
 
 import { prisma } from './db';
 import type { Prisma } from '@prisma/client';
+import { isBackendOps } from './audit-context';
 
 const DEFAULT_PER_PAGE = 20;
 const MAX_PER_PAGE = 100;
@@ -37,7 +38,7 @@ export async function listAdminComments(params: AdminCommentListParams) {
   const page = Math.max(1, params.page ?? 1);
   const perPage = Math.min(MAX_PER_PAGE, Math.max(1, params.perPage ?? DEFAULT_PER_PAGE));
 
-  const where: Prisma.BlogCommentWhereInput = {};
+  const where: Prisma.BlogCommentWhereInput = isBackendOps() ? {} : { author: { archivedAt: null } };
   if (params.status === 'active') where.isDeleted = false;
   else if (params.status === 'deleted') where.isDeleted = true;
   // status='all' 或未指定：不过滤 isDeleted
@@ -83,7 +84,7 @@ export async function listAdminComments(params: AdminCommentListParams) {
 /** 单条评论的管理端详情（确认屏用）。不过滤 isDeleted —— 要恢复的正是被删的那些。 */
 export async function getCommentForAdmin(id: string) {
   return prisma.blogComment.findUnique({
-    where: { id },
+    where: { id, ...(isBackendOps() ? {} : { author: { archivedAt: null } }) },
     select: {
       id: true,
       blogId: true,

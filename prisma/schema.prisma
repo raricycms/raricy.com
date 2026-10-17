@@ -47,6 +47,11 @@ model User {
   bio            String?
   sessionVersion Int       @default(0) @map("session_version")
 
+  /// 账号级软删除。查看、归档和恢复只走后台 CLI，网页端（含管理页）视为不存在。
+  archivedAt     DateTime? @map("archived_at")
+  archiveReason  String?   @map("archive_reason")
+  archivedBy     String?   @map("archived_by")
+
   notifyLike   Boolean? @default(true) @map("notify_like")
   notifyEdit   Boolean? @default(true) @map("notify_edit")
   notifyDelete Boolean? @default(true) @map("notify_delete")
@@ -125,6 +130,7 @@ model User {
   visibilityLogs        BlogVisibilityLog[]  @relation("BlogVisibilityLogActor")
   @@index([id], map: "ix_users_id")
   @@index([role], map: "ix_users_role")
+  @@index([archivedAt], map: "ix_users_archived_at")
 
   @@map("users")
 }
@@ -427,6 +433,8 @@ model CommentLike {
   commentId String    @map("comment_id")
   userId    String    @map("user_id")
   createdAt DateTime? @map("created_at")
+  deleted   Boolean   @default(false)
+  deletedAt DateTime? @map("deleted_at")
 
   comment BlogComment @relation(fields: [commentId], references: [id])
   user    User        @relation(fields: [userId], references: [id])
@@ -449,6 +457,8 @@ model Notification {
   objectId    String?   @map("object_id")
   detail      String?
   read        Boolean   @default(false)
+  /// 归档关联通知的软隐藏；避免旧快照继续展示已停用用户的内容。
+  hiddenAt    DateTime?  @map("hidden_at")
 
   recipient User  @relation("NotificationRecipient", fields: [recipientId], references: [id])
   actor     User? @relation("NotificationActor", fields: [actorId], references: [id])
@@ -759,8 +769,8 @@ model MarketPosition {
   openTxId     Int?      @map("open_tx_id")
   /** 开仓幂等键（每次唯一，带随机后缀）。唯一约束就是幂等的实现。 */
   openKey      String    @unique(map: "market_positions_open_key_key") @map("open_key")
-  /** open | closed | liquidated（爆仓，由强平引擎写，见 src/lib/market-liquidator.ts）。
-   *  后两者都是终态：`status !== 'open'` 即「已结清」。
+  /** open | closed | liquidated（爆仓）| archived（账号归档作废，不退款、不伪造成交）。
+   *  closed/liquidated/archived 都是终态；archived 不进正常结算统计。
    *  **绝不物理删除**，没有例外（曾有一处：远端同步失败的补偿事务会删掉从未生效的
    *  开仓，那个机制随账户服务搬进站内一起消失了）。 */
   status       String    @default("open")

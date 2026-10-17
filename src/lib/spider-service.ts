@@ -72,6 +72,7 @@ const commentSelect = {
       id: true,
       username: true,
       role: true,
+      archivedAt: true,
       equippedFrameKey: true,
       equippedFrameExpiresAt: true,
     },

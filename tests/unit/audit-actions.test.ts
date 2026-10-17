@@ -21,6 +21,7 @@ import {
   AUDIT_OBJECT_TYPES,
   AUDIT_OBJECT_TYPE_LABEL,
   PUBLIC_AUDIT_ACTIONS,
+  WEB_AUDIT_ACTIONS,
   PUBLIC_AUDIT_OBJECT_TYPES,
   actionLabel,
   actionKind,
@@ -31,9 +32,9 @@ import {
 } from '@/lib/audit-actions';
 
 describe('AUDIT_ACTIONS 词汇表', () => {
-  it('22 个码，且互不重复', () => {
-    expect(AUDIT_ACTIONS).toHaveLength(22);
-    expect(new Set(AUDIT_ACTIONS).size).toBe(22);
+  it('24 个码，且互不重复', () => {
+    expect(AUDIT_ACTIONS).toHaveLength(24);
+    expect(new Set(AUDIT_ACTIONS).size).toBe(24);
   });
 
   it('四张 Record 表都穷尽全部动作码', () => {
@@ -46,12 +47,16 @@ describe('AUDIT_ACTIONS 词汇表', () => {
     expect(Object.keys(AUDIT_OBJECT_TYPE_LABEL).sort()).toEqual([...AUDIT_OBJECT_TYPES].sort());
   });
 
-  it('公开页的动作清单只滤掉四个 CLI-only 装扮码', () => {
+  it('归档操作仅 CLI 可见，公开页另外排除四个 CLI-only 装扮码', () => {
+    expect(WEB_AUDIT_ACTIONS).not.toContain('archive_user');
+    expect(WEB_AUDIT_ACTIONS).not.toContain('unarchive_user');
     expect(PUBLIC_AUDIT_ACTIONS).not.toContain('frame_grant');
     expect(PUBLIC_AUDIT_ACTIONS).not.toContain('frame_revoke');
     expect(PUBLIC_AUDIT_ACTIONS).toHaveLength(18);
     // 其余一个不少 —— 别把「滤掉 CLI-only」写成「只剩几种」。
     expect(AUDIT_ACTIONS.filter((a) => !PUBLIC_AUDIT_ACTIONS.includes(a))).toEqual([
+      'archive_user',
+      'unarchive_user',
       'frame_grant',
       'frame_revoke',
       'bubble_grant',

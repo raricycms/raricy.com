@@ -1722,11 +1722,26 @@ MP3 的帧同步要核版本 / 层 / 位速率字段（只判 `0xFF` 打头太�
 
 永不物理删除（站长手动除外）：
 
+**账号归档**：`User.archivedAt` 为非空时按账号级软删除处理，独立于角色与禁言。
+归档、恢复及原始资料仅限后台 CLI（`docs/cli.md` 的用户归档节），HTTP 管理页也无豁免。
+`archive-scope.ts` 在 Prisma 查询扩展内给用户、自有内容与凭据的读取、计数和修改附加归档过滤；
+只有 `scripts/cli.ts` 的 `runAsBackendOps` 异步上下文可绕过，不能通过请求参数开启。
+扩展不处理嵌套 relation 和 raw SQL：评论/讨论在共同序列化出口抹掉归档作者及原文、附件、引用摘要，
+管理端评论显式过滤作者，讨论 raw 未读 SQL 显式排除归档作者。新增这类读口必须沿用这条边界。
+
+`user-archive-service.ts` 在同一事务内写归档状态、撤销文章/评论点赞并重算冗余计数、
+通过 `postEntry` 清空钱包（`archive_clear` 流水）、作废未结清仓位（独立终态 `archived`），
+撤销凭据、软隐藏关联通知并记录内部审计。记账内核独立检查 `archivedAt:null`，
+即使在 CLI 上下文里也不能再向归档钱包入账。恢复只解除账号状态，原内容的删除标志保留，
+余额、点赞、凭据、隐藏通知和作废仓位不恢复。SSE 每帧（含心跳）查数据库复核权限，
+覆盖 CLI 与网站不同进程时无法靠内存 bus 踢人的情形。
+
 | 字段 | 默认 | 模型 |
 |------|------|------|
 | `Blog.ignore` | false | 博客 |
 | `BlogComment.isDeleted` | false | 评论 |
 | `BlogLike.deleted` | false | 点赞记录 |
+| `CommentLike.deleted` | false | 评论点赞记录（同样软删，不物理删除） |
 | `ImageHosting.ignore` | false | 图床 |
 | `AudioHosting.ignore` | false | 音频床（软删后磁盘文件保留；站长可在管理端硬删，见 §6.15） |
 | `Vote.ignore` | false | 投票 |

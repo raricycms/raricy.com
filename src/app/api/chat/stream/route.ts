@@ -20,7 +20,7 @@ import { subscribe, type ChatSubscriber } from '@/lib/chat-bus';
 import { SSE_HEADERS, SSE_QUEUE_LIMIT, SSE_RETRY_MS, sseFrame } from '@/lib/sse';
 import { listMessagesSince } from '@/lib/chat-service';
 import type { ChatStreamEvent } from '@/lib/chat-shared';
-import { isChatStreamSessionCurrent } from '@/lib/stream-session';
+import { isChatStreamSessionCurrent, verifiedStreamWriter } from '@/lib/stream-session';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -94,6 +94,7 @@ export async function GET(req: Request) {
             }
           },
         };
+        sub.write = verifiedStreamWriter(() => isChatStreamSessionCurrent(user), writeForBus, sub.close, SSE_QUEUE_LIMIT);
         unsubscribe = subscribe(sub);
 
         // 客户端主动断开（关闭标签页 / 网络断）时 Next 会 cancel 流；这里再挂一道
