@@ -1,0 +1,919 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>P0 切页动画 demo · 聪明山</title>
+<style>
+  :root {
+    color-scheme: light;
+    --brand: #2563EB;
+    --brand-soft: rgba(37, 99, 235, .1);
+    --bg: #F8FAFC;
+    --card: #fff;
+    --content: #eff2f5;
+    --text: #0f172a;
+    --muted: #64748B;
+    --border: #E2E8F0;
+    --shadow: 0 10px 30px rgba(15, 23, 42, .08);
+    --sky-a: #dbeafe;
+    --sky-b: #eff6ff;
+    --m1: #93c5fd;
+    --m2: #60a5fa;
+    --m3: #3b82f6;
+    --sun: #ea3b3b;
+    --nav-h: 62px;
+    --radius: 20px;
+    --font: 'Kumbh Sans', 'Segoe UI', 'Helvetica Neue', Arial, 'PingFang SC',
+      'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  [data-theme="dark"] {
+    color-scheme: dark;
+    --brand: #23A5FF;
+    --brand-soft: rgba(35, 165, 255, .12);
+    --bg: #131517;
+    --card: #181A1D;
+    --content: #21252A;
+    --text: #f1f5f9;
+    --muted: #94A3B8;
+    --border: #334155;
+    --shadow: 0 10px 30px rgba(0, 0, 0, .35);
+    --sky-a: #0b1b33;
+    --sky-b: #131b2b;
+    --m1: #1e3a5f;
+    --m2: #1d4ed8;
+    --m3: #2563eb;
+    --sun: #fbbf24;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  html { height: 100%; }
+  body {
+    margin: 0;
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    padding-top: var(--nav-h);
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: inherit; text-decoration: none; }
+  img { max-width: 100%; height: auto; }
+  button, input { font: inherit; }
+  :focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+
+  /* ── 固定顶栏：切页时它不参与淡入，也不移动 ─────────────────────────── */
+  .navbar {
+    position: fixed;
+    inset: 0 0 auto;
+    height: var(--nav-h);
+    z-index: 50;
+    background: var(--card);
+    background: color-mix(in srgb, var(--card) 88%, transparent);
+    border-bottom: 1px solid var(--border);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+  }
+  .navbar__inner {
+    max-width: 1080px;
+    height: 100%;
+    margin: 0 auto;
+    padding: 0 20px;
+    display: flex;
+    align-items: center;
+    gap: 18px;
+  }
+  .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 800;
+    letter-spacing: .02em;
+    flex: none;
+  }
+  .brand__dot {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 32% 30%, #ff8a7a, #ea3b3b 58%, #b91c1c);
+    box-shadow: 0 0 0 3px var(--brand-soft);
+  }
+  .brand small {
+    display: block;
+    font-size: .7rem;
+    font-weight: 600;
+    color: var(--muted);
+    letter-spacing: .14em;
+  }
+  .nav {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    margin-left: auto;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .nav::-webkit-scrollbar { display: none; }
+  .nav a {
+    flex: none;
+    padding: 7px 12px;
+    border-radius: 999px;
+    font-size: .9rem;
+    color: var(--muted);
+    transition: color .2s ease, background-color .2s ease;
+    white-space: nowrap;
+  }
+  .nav a:hover { color: var(--text); background: var(--content); }
+  .nav a.is-active { color: var(--brand); background: var(--brand-soft); font-weight: 700; }
+  .navbar__actions { flex: none; }
+  .icon-btn {
+    border: 1px solid var(--border);
+    background: var(--card);
+    color: var(--text);
+    border-radius: 999px;
+    padding: 7px 12px;
+    cursor: pointer;
+    font-size: .82rem;
+    transition: background-color .2s ease, border-color .2s ease;
+  }
+  .icon-btn:hover { border-color: var(--brand); background: var(--brand-soft); }
+
+  /* ── 内容区：P0 的淡入只加在这里 ──────────────────────────────────── */
+  @keyframes page-in { from { opacity: 0; } }
+  @keyframes page-in-lift {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: none; }
+  }
+  .page {
+    width: 100%;
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 28px 20px 48px;
+    flex: 1 0 auto;
+  }
+  .page-enter { animation: page-in var(--enter-duration, 160ms) ease-out backwards; }
+  .page-enter--lift { animation-name: page-in-lift; }
+
+  /* ── 首页 ─────────────────────────────────────────────────────────── */
+  .hero {
+    position: relative;
+    overflow: hidden;
+    border-radius: 30px;
+    background: var(--card);
+    box-shadow: var(--shadow);
+    padding: 56px 40px 44px;
+    margin-bottom: 36px;
+  }
+  .hero__art {
+    position: absolute;
+    inset: auto 0 0;
+    width: 100%;
+    height: 78%;
+    opacity: .9;
+    pointer-events: none;
+  }
+  .hero__content { position: relative; z-index: 1; }
+  .eyebrow {
+    margin: 0 0 26px;
+    color: var(--brand);
+    font-size: .75rem;
+    font-weight: 700;
+    letter-spacing: .16em;
+  }
+  .hero h1 {
+    margin: 0 0 16px;
+    font-size: clamp(3.4rem, 8vw, 5rem);
+    line-height: 1;
+    letter-spacing: -.02em;
+  }
+  .tagline { margin: 0 0 18px; font-size: 1.35rem; font-weight: 600; }
+  .lead { margin: 0 0 28px; max-width: 44ch; color: var(--muted); line-height: 1.7; }
+  .hero__links { display: flex; flex-wrap: wrap; gap: 12px; }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 42px;
+    padding: 0 20px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--card);
+    color: var(--text);
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .btn--primary { background: var(--brand); border-color: var(--brand); color: #fff; }
+  .btn:hover { border-color: var(--brand); }
+
+  .section-title {
+    margin: 0 0 8px;
+    font-size: 1.5rem;
+    letter-spacing: -.01em;
+  }
+  .section-lede { margin: 0 0 22px; color: var(--muted); }
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+  }
+  .card {
+    display: block;
+    padding: 22px;
+    border-radius: var(--radius);
+    background: var(--card);
+    box-shadow: 0 2px 10px rgba(15, 23, 42, .04);
+    border: 1px solid transparent;
+    transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
+  }
+  .card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow);
+    border-color: var(--brand);
+  }
+  .card h3 { margin: 0 0 8px; font-size: 1.05rem; }
+  .card p { margin: 0; color: var(--muted); font-size: .9rem; line-height: 1.6; }
+
+  /* ── 列表页（博客 / 文档） ────────────────────────────────────────── */
+  .page-head { margin-bottom: 26px; }
+  .page-head h1 { margin: 0 0 8px; font-size: clamp(2.2rem, 5vw, 3rem); }
+  .page-head p { margin: 0; color: var(--muted); }
+  .post-list { display: flex; flex-direction: column; gap: 12px; }
+  .post {
+    display: block;
+    padding: 20px 22px;
+    border-radius: var(--radius);
+    background: var(--card);
+    box-shadow: 0 2px 10px rgba(15, 23, 42, .04);
+    border: 1px solid transparent;
+    transition: border-color .2s ease, box-shadow .2s ease;
+  }
+  .post:hover { border-color: var(--brand); box-shadow: var(--shadow); }
+  .post h2 { margin: 0 0 6px; font-size: 1.1rem; }
+  .post p { margin: 0 0 10px; color: var(--muted); font-size: .9rem; line-height: 1.6; }
+  .meta { display: flex; flex-wrap: wrap; gap: 12px; color: var(--muted); font-size: .78rem; }
+  .doc-list { display: flex; flex-direction: column; gap: 8px; }
+  .doc-row {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    padding: 14px 18px;
+    border-radius: 14px;
+    background: var(--card);
+    border: 1px solid var(--border);
+  }
+  .doc-row__title { font-weight: 700; }
+  .doc-row__summary { color: var(--muted); font-size: .85rem; }
+
+  /* ── 文章页：fixed 进度条用来验证“整页动 opacity 不会带跑 fixed” ───── */
+  .reading-progress {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 0;
+    height: 3px;
+    z-index: 100;
+    background: var(--brand);
+  }
+  .article { max-width: 760px; margin: 0 auto; }
+  .article h1 { margin: 0 0 10px; font-size: clamp(2rem, 4.6vw, 3rem); }
+  .article__meta { margin: 0 0 30px; color: var(--muted); font-size: .85rem; }
+  .article__body { line-height: 1.85; }
+  .article__body h2 { margin: 38px 0 10px; font-size: 1.3rem; }
+  .article__body p { margin: 0 0 16px; }
+  .article__body blockquote {
+    margin: 20px 0;
+    padding: 12px 18px;
+    border-left: 3px solid var(--brand);
+    background: var(--content);
+    border-radius: 0 12px 12px 0;
+    color: var(--muted);
+  }
+  .back-link { display: inline-block; margin-bottom: 18px; color: var(--brand); font-weight: 700; }
+
+  /* ── 讨论页 ───────────────────────────────────────────────────────── */
+  .thread { display: flex; flex-direction: column; gap: 14px; max-width: 760px; }
+  .msg { display: flex; gap: 12px; align-items: flex-start; }
+  .avatar {
+    flex: none;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: var(--brand-soft);
+    color: var(--brand);
+    font-weight: 800;
+    font-size: .9rem;
+  }
+  .msg__body { min-width: 0; }
+  .msg__head { display: flex; gap: 10px; align-items: baseline; margin-bottom: 4px; }
+  .msg__name { font-weight: 700; font-size: .9rem; }
+  .msg__time { color: var(--muted); font-size: .75rem; }
+  .msg__text {
+    margin: 0;
+    padding: 10px 14px;
+    border-radius: 4px 16px 16px 16px;
+    background: var(--card);
+    box-shadow: 0 2px 8px rgba(15, 23, 42, .04);
+    font-size: .92rem;
+    line-height: 1.65;
+  }
+  .composer {
+    margin-top: 20px;
+    padding: 14px 18px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--card);
+    color: var(--muted);
+    font-size: .9rem;
+  }
+
+  /* ── 页脚 / 实现说明 ──────────────────────────────────────────────── */
+  .footer {
+    width: 100%;
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 0 20px 120px;
+    color: var(--muted);
+    font-size: .86rem;
+    line-height: 1.7;
+  }
+  .footer h2 { margin: 0 0 10px; color: var(--text); font-size: 1rem; }
+  .footer ul { margin: 0 0 18px; padding-left: 1.2em; }
+  .footer li { margin-bottom: 5px; }
+  .footer code { font-family: var(--mono); font-size: .82em; }
+  .footer pre {
+    margin: 0;
+    padding: 16px;
+    border-radius: 14px;
+    background: var(--content);
+    color: var(--text);
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: .78rem;
+    line-height: 1.6;
+  }
+  .footer details {
+    margin: 0 0 18px;
+    padding: 14px 18px;
+    border-radius: 14px;
+    background: var(--card);
+    border: 1px solid var(--border);
+  }
+  .footer summary { cursor: pointer; color: var(--text); font-weight: 700; }
+  .footer details[open] summary { margin-bottom: 12px; }
+
+  /* ── 控制面板 ─────────────────────────────────────────────────────── */
+  .hud {
+    position: fixed;
+    right: 16px;
+    bottom: 16px;
+    z-index: 200;
+    width: 310px;
+    max-width: calc(100vw - 32px);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    background: var(--card);
+    background: color-mix(in srgb, var(--card) 94%, transparent);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: var(--shadow);
+    font-size: .82rem;
+  }
+  .hud__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .hud__head strong { font-size: .85rem; }
+  .hud__body { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 9px; }
+  .hud[data-collapsed="true"] .hud__body { display: none; }
+  .hud[data-collapsed="true"] .hud__head { border-bottom: 0; }
+  .hud label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+  .hud input[type="checkbox"] { accent-color: var(--brand); width: 15px; height: 15px; }
+  .hud__range { flex-wrap: wrap; cursor: default; }
+  .hud__range input { flex: 1; min-width: 120px; accent-color: var(--brand); }
+  .hud output { color: var(--muted); font-family: var(--mono); font-size: .78rem; }
+  .hud__btns { display: flex; gap: 8px; }
+  .hud__btns button {
+    flex: 1;
+    padding: 7px 10px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--content);
+    color: var(--text);
+    cursor: pointer;
+  }
+  .hud__btns button:hover { border-color: var(--brand); color: var(--brand); }
+  .hud__status {
+    margin: 0;
+    padding: 8px 10px;
+    border-radius: 10px;
+    background: var(--brand-soft);
+    color: var(--brand);
+    font-size: .78rem;
+    line-height: 1.45;
+  }
+  .hud__hint { margin: 0; color: var(--muted); font-size: .75rem; line-height: 1.5; }
+  .hud__hint strong { color: var(--text); }
+
+  @media (max-width: 640px) {
+    .navbar__inner { gap: 10px; padding: 0 14px; }
+    .brand small { display: none; }
+    .nav a { padding: 6px 9px; font-size: .82rem; }
+    .page { padding: 20px 14px 40px; }
+    .hero { padding: 38px 22px 32px; }
+    .hud { right: 10px; left: 10px; bottom: 10px; width: auto; }
+    .footer { padding: 0 14px 140px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .page-enter, .page-enter--lift { animation: none !important; }
+    .card, .post, .nav a, .icon-btn { transition: none; }
+    .card:hover { transform: none; }
+  }
+</style>
+</head>
+<body>
+  <header class="navbar">
+    <div class="navbar__inner">
+      <a class="brand" href="#home" data-nav="home" aria-label="回到首页">
+        <span class="brand__dot" aria-hidden="true"></span>
+        <span>聪明山<small>RARICY.COM</small></span>
+      </a>
+      <nav class="nav" aria-label="演示页面">
+        <a href="#home" data-nav="home">首页</a>
+        <a href="#blog" data-nav="blog">博客</a>
+        <a href="#article" data-nav="article">文章</a>
+        <a href="#docs" data-nav="docs">文档</a>
+        <a href="#thread" data-nav="thread">讨论</a>
+      </nav>
+      <div class="navbar__actions">
+        <button class="icon-btn" id="themeToggle" type="button" aria-pressed="false">暗色</button>
+      </div>
+    </div>
+  </header>
+
+  <main id="app" class="page" aria-live="off"></main>
+
+  <footer class="footer">
+    <h2>这个 demo 验证了什么</h2>
+    <ul>
+      <li><strong>首屏不播</strong>：刷新直接看到内容，不与首页 hero 自己的入场叠两层。</li>
+      <li><strong>只淡入内容区</strong>：顶部导航是 fixed，切页时既不变暗也不位移。</li>
+      <li><strong>前进 / 后退不播</strong>：浏览器返回时直接切换，滚动位置按历史恢复。</li>
+      <li><strong>减少动效直接切</strong>：勾选面板里的「模拟减少动效」，或系统开启 reduce，动画为 0ms。</li>
+      <li><strong>整页只动 opacity</strong>：文章页顶部那条 fixed 阅读进度条，在正确模式下不会跑位；
+        打开「上移 6px」的错误示范后，它会跟着内容一起下移 —— 这就是不用 transform 包整页的原因。</li>
+    </ul>
+
+    <details>
+      <summary>真实接入时怎么改（示意代码，不是本站产物）</summary>
+      <pre><code>// src/app/components/PageMain.tsx（示意，约 40 行）
+'use client';
+import { useEffect, useLayoutEffect, useRef } from 'react';
+import { usePathname } from 'next/navigation';
+
+const SKIP = ['/chat'];
+const useIsoLayoutEffect =
+  typeof window === 'undefined' ? useEffect : useLayoutEffect;
+
+export default function PageMain({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const ref = useRef&lt;HTMLElement&gt;(null);
+  const first = useRef(true);
+  const skipPop = useRef(false);
+
+  useEffect(() =&gt; {
+    const onPop = () =&gt; { skipPop.current = true; };
+    window.addEventListener('popstate', onPop);
+    return () =&gt; window.removeEventListener('popstate', onPop);
+  }, []);
+
+  useIsoLayoutEffect(() =&gt; {
+    if (first.current) { first.current = false; return; }
+    if (skipPop.current) { skipPop.current = false; return; }
+    if (SKIP.some((p) =&gt; pathname === p || pathname.startsWith(`${p}/`))) return;
+    const el = ref.current;
+    if (!el) return;
+    el.classList.remove('page-enter');
+    void el.offsetWidth; // 强制 reflow，重启动画
+    el.classList.add('page-enter');
+  }, [pathname]);
+
+  return &lt;main ref={ref}&gt;{children}&lt;/main&gt;;
+}
+
+/* 样式：只动 opacity，不写 forwards（结束后释放，不残留 stacking context） */
+@keyframes page-in { from { opacity: 0; } }
+.page-enter { animation: page-in 160ms ease-out backwards; }
+@media (prefers-reduced-motion: reduce) {
+  .page-enter { animation: none; }
+}</code></pre>
+      <p style="margin:12px 0 0">
+        方案全文见 <code>docs/plan/page-transition-plan.md</code>；P0 的边界、跳过规则与验收清单在 §4。
+      </p>
+    </details>
+
+    <p style="margin:0">
+      这是 <strong>P0 概念 demo</strong>：单文件、无网络依赖，不修改产品代码，也不代表站点已接入。
+      真实接入按方案 §4.2 改 <code>src/app/layout.tsx</code> 的 <code>&lt;main&gt;</code> 一行。
+    </p>
+  </footer>
+
+  <aside class="hud" id="hud" data-collapsed="false" aria-label="demo 控制面板">
+    <div class="hud__head">
+      <strong>P0 demo 控制</strong>
+      <button class="icon-btn" id="hudToggle" type="button" aria-expanded="true">收起</button>
+    </div>
+    <div class="hud__body">
+      <p class="hud__status" id="status" aria-live="polite">首屏：不播放</p>
+      <label><input type="checkbox" id="enabled" checked> 启用切页动画</label>
+      <label><input type="checkbox" id="forceReduce"> 模拟减少动效（reduced motion）</label>
+      <label class="hud__range">
+        入场时长 <output id="durOut" for="duration">160ms</output>
+        <input type="range" id="duration" min="80" max="260" step="10" value="160">
+      </label>
+      <label><input type="checkbox" id="lift"> 实验：入场时上移 6px（不建议）</label>
+      <div class="hud__btns">
+        <button id="replay" type="button">重播当前页</button>
+        <button id="reset" type="button">重置</button>
+      </div>
+      <p class="hud__hint">
+        正确模式只动 <strong>opacity</strong>：固定顶栏与 fixed 进度条都不动。
+        打开「上移 6px」后再去<strong>文章页</strong>看顶部进度条，能直接看到 transform
+        包整页的代价。
+      </p>
+    </div>
+  </aside>
+
+<script>
+(function () {
+  'use strict';
+
+  var app = document.getElementById('app');
+  var statusEl = document.getElementById('status');
+  var mql = window.matchMedia('(prefers-reduced-motion: reduce)');
+  var current = 'home';
+  var forceReduce = false;
+
+  // ── 页面内容：一个用同一套外壳模拟出来的小站点 ──────────────────────
+  var PAGES = {
+    home: {
+      title: '首页',
+      html: [
+        '<section class="hero">',
+        '  <svg class="hero__art" viewBox="0 0 1200 420" preserveAspectRatio="xMidYMax slice" aria-hidden="true">',
+        '    <defs>',
+        '      <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">',
+        '        <stop offset="0" stop-color="var(--sky-a)" />',
+        '        <stop offset="1" stop-color="var(--sky-b)" />',
+        '      </linearGradient>',
+        '    </defs>',
+        '    <rect width="1200" height="420" fill="url(#sky)" />',
+        '    <circle cx="930" cy="120" r="46" fill="var(--sun)" opacity=".9" />',
+        '    <path d="M0 330 L210 190 L390 305 L600 150 L820 300 L1000 215 L1200 330 L1200 420 L0 420Z" fill="var(--m1)" />',
+        '    <path d="M0 372 L250 250 L470 350 L700 230 L930 352 L1120 270 L1200 330 L1200 420 L0 420Z" fill="var(--m2)" />',
+        '    <path d="M0 410 L300 318 L560 400 L820 312 L1060 402 L1200 356 L1200 420 L0 420Z" fill="var(--m3)" />',
+        '  </svg>',
+        '  <div class="hero__content">',
+        '    <p class="eyebrow">P0 · PAGE TRANSITION DEMO</p>',
+        '    <h1>聪明山</h1>',
+        '    <p class="tagline">我们总将找到答案</p>',
+        '    <p class="lead">这是一个单文件 demo，用与方案 §4 相同的方式模拟切页：顶栏不动，内容区 160ms 淡入。点上面的导航试试，再点浏览器的后退。</p>',
+        '    <div class="hero__links">',
+        '      <a class="btn btn--primary" href="#blog" data-nav="blog">看博客</a>',
+        '      <a class="btn" href="#docs" data-nav="docs">翻文档</a>',
+        '    </div>',
+        '  </div>',
+        '</section>',
+        '<section>',
+        '  <h2 class="section-title">四个入口</h2>',
+        '  <p class="section-lede">卡片本身也是演示导航入口。</p>',
+        '  <div class="cards">',
+        '    <a class="card" href="#blog" data-nav="blog"><h3>博客 / 文章</h3><p>列表进详情，观察长页面滚动后的返回。</p></a>',
+        '    <a class="card" href="#article" data-nav="article"><h3>一篇文章</h3><p>顶部有 fixed 阅读进度条，用来验证整页只动 opacity。</p></a>',
+        '    <a class="card" href="#docs" data-nav="docs"><h3>文档</h3><p>没有图片的列表页，看看连续切页的节奏。</p></a>',
+        '    <a class="card" href="#thread" data-nav="thread"><h3>讨论</h3><p>另一种内容密度，确认淡入不会显得拖沓。</p></a>',
+        '  </div>',
+        '</section>'
+      ].join('\n')
+    },
+    blog: {
+      title: '博客',
+      html: [
+        '<header class="page-head">',
+        '  <h1>博客</h1>',
+        '  <p>硬切和淡入的差别，在列表页最明显。点任意一条进文章，再用浏览器后退。</p>',
+        '</header>',
+        '<div class="post-list">',
+        '  <a class="post" href="#article" data-nav="article"><h2>把切页动画加在 Next App Router 里</h2><p>布局常驻、Link 预取、template 机制：入场动画几乎零成本；真正的交叉溶解要自己接 View Transitions。</p><div class="meta"><span>2026-10-18</span><span>阅读 6 分钟</span><span>12 条评论</span></div></a>',
+        '  <a class="post" href="#article" data-nav="article"><h2>为什么整页只动 opacity</h2><p>fixed 元素、Playwright 几何断言、合成层：三个理由让 transform 包整页变成一个坏主意。</p><div class="meta"><span>2026-10-17</span><span>阅读 4 分钟</span><span>8 条评论</span></div></a>',
+        '  <a class="post" href="#article" data-nav="article"><h2>页面内的过渡比切页更值得做</h2><p>筛选、翻页、弹层：用户一天点这些的次数远多于换页面。</p><div class="meta"><span>2026-10-16</span><span>阅读 5 分钟</span><span>5 条评论</span></div></a>',
+        '  <a class="post" href="#article" data-nav="article"><h2>View Transitions 的两个静默陷阱</h2><p>同 pathname 只改查询参数时 promise 不 resolve；交叉溶解和入场淡入叠在一起会拍到透明页。</p><div class="meta"><span>2026-10-15</span><span>阅读 7 分钟</span><span>3 条评论</span></div></a>',
+        '  <a class="post" href="#article" data-nav="article"><h2>给动态页补骨架，比加动画更顺滑</h2><p>动画遮得住换页那一瞬，遮不住等数据的那几秒。</p><div class="meta"><span>2026-10-14</span><span>阅读 3 分钟</span><span>1 条评论</span></div></a>',
+        '  <a class="post" href="#article" data-nav="article"><h2>一批 e2e 用例正在盯着你的动画</h2><p>量盒子的用例在 goto 后立刻取几何，scale / translate 会让它们变成时序相关。</p><div class="meta"><span>2026-10-13</span><span>阅读 4 分钟</span><span>2 条评论</span></div></a>',
+        '</div>'
+      ].join('\n')
+    },
+    article: {
+      title: '把切页动画加在 Next App Router 里',
+      html: [
+        '<div class="reading-progress" aria-hidden="true"></div>',
+        '<div class="article">',
+        '  <a class="back-link" href="#blog" data-nav="blog">← 返回博客</a>',
+        '  <h1>把切页动画加在 Next App Router 里</h1>',
+        '  <p class="article__meta">2026-10-18 · 阅读 6 分钟 · 示例文章</p>',
+        '  <div class="article__body">',
+        '    <p>这一页故意做得很长，用来验证两件事：切页后应该回到顶部；浏览器后退时滚动位置应该被正确恢复。顶部那条 3px 的进度条是 <code>position: fixed</code>，它就是检验“整页动画是否用了 transform”的那根标尺。</p>',
+        '    <h2>1. 先把“适合”拆成两半</h2>',
+        '    <p>Next App Router 的布局会常驻，换页时只有内容区在变。这是切页动画最理想的舞台：顶栏、页脚、甚至侧栏都不需要重新挂载。Link 的预取又让数据在点击前往往已经到手，所以入场动画不会变成“先等两秒再淡入”。</p>',
+        '    <p>但它没有离场生命周期。旧页面在新页面提交时直接消失，没有“淡出”的钩子。真正的交叉溶解要靠浏览器的 View Transitions API，而且得自己接一层导航拦截。</p>',
+        '    <blockquote>结论：入场动画几乎零成本；交叉溶解是另一件事，成本高一个数量级，值得单独决策。</blockquote>',
+        '    <h2>2. 为什么整页只动 opacity</h2>',
+        '    <p>站点里有大量 fixed 元素：顶栏、阅读进度条、弹层、图片放大层。祖先一旦有 transform，fixed 后代的包含块会从视口变成那个祖先，位置当场跑掉。虽然动画只有 160ms，但这 160ms 里弹层如果开着，层级就会错。</p>',
+        '    <p>还有一个更隐蔽的代价：Playwright 里一批用例在页面加载后立刻量盒子。整页 transform 会让这些盒子在动画中间读到偏移值，测试从此变成时序相关。opacity 不移动任何盒子，是唯一安全的选择。</p>',
+        '    <h2>3. 首屏、后退、满屏工作台</h2>',
+        '    <p>首屏不播，是为了不和首页 hero 自己的入场叠两层；后退不播，是因为浏览器恢复滚动位置时再淡入会显得迟钝；满屏工作台（本站的讨论页）不播，是因为它有自己的频道切换过渡，而且整屏高度的内容淡入容易让人以为页面在闪。</p>',
+        '    <h2>4. 页面内过渡才是大头</h2>',
+        '    <p>筛选、排序、翻页、开弹层——这些动作的频率远高于换页面。对依赖 URL 查询参数的列表，最省事的做法是在服务端给列表外壳一个随查询串变化的 key，导航后 React 重建 DOM，CSS 动画自动重播，一行客户端代码都不用写。</p>',
+        '    <p>弹层则要克制：遮罩淡入、dialog 只淡入不缩放。缩放会让几何断言在动画中间抖动，而退出动画需要一套状态机，不值得。</p>',
+        '    <h2>5. 交叉溶解留作实验</h2>',
+        '    <p>如果要做真正的旧页淡出、新页淡入，建议只包四到五条高价值路径，不要全局拦截。需要处理同 pathname 只改查询参数、popstate、快速连点、超时兜底，以及“交叉溶解进行中要禁用入场淡入”这个细节。</p>',
+        '    <p>读到这里，你可以点一下顶部的「文档」，再点浏览器的后退，看看滚动位置和动画是否符合预期。</p>',
+        '  </div>',
+        '</div>'
+      ].join('\n')
+    },
+    docs: {
+      title: '文档',
+      html: [
+        '<header class="page-head">',
+        '  <h1>文档</h1>',
+        '  <p>连续切页时，160ms 的淡入应该稳定、不拖沓；列表内容越长，越要避免整页 transform。</p>',
+        '</header>',
+        '<div class="doc-list">',
+        '  <a class="doc-row" href="#article" data-nav="article"><span class="doc-row__title">切页动画方案（P0–P2）</span><span class="doc-row__summary">三层方案、风险与验收；P0 demo 就是当前这个页面。</span></a>',
+        '  <a class="doc-row" href="#article" data-nav="article"><span class="doc-row__title">前端样式规范</span><span class="doc-row__summary">SCSS 目录、设计令牌、组件约定与响应式。</span></a>',
+        '  <a class="doc-row" href="#article" data-nav="article"><span class="doc-row__title">架构说明</span><span class="doc-row__summary">进程拓扑、路由、子系统、数据流与风险。</span></a>',
+        '  <a class="doc-row" href="#article" data-nav="article"><span class="doc-row__title">部署手册</span><span class="doc-row__summary">环境、数据库、systemd、nginx、TLS 与排障。</span></a>',
+        '  <a class="doc-row" href="#article" data-nav="article"><span class="doc-row__title">历史遗留约束清单</span><span class="doc-row__summary">哪些老东西不能删、为什么不能删。</span></a>',
+        '  <a class="doc-row" href="#article" data-nav="article"><span class="doc-row__title">未完成计划索引</span><span class="doc-row__summary">当前计划、剩余范围与更新约定。</span></a>',
+        '</div>'
+      ].join('\n')
+    },
+    thread: {
+      title: '讨论',
+      html: [
+        '<header class="page-head">',
+        '  <h1>讨论</h1>',
+        '  <p>另一种内容密度：气泡本身带背景色，适合观察淡入有没有“整块跳出来”的感觉。</p>',
+        '</header>',
+        '<div class="thread">',
+        '  <div class="msg"><span class="avatar">山</span><div class="msg__body"><div class="msg__head"><span class="msg__name">山民</span><span class="msg__time">15:20</span></div><p class="msg__text">切页淡入这个方案看起来不错，顶栏不动这点很重要。</p></div></div>',
+        '  <div class="msg"><span class="avatar">R</span><div class="msg__body"><div class="msg__head"><span class="msg__name">Raricy</span><span class="msg__time">15:21</span></div><p class="msg__text">对，只动 main 的 opacity，固定元素完全不受影响。</p></div></div>',
+        '  <div class="msg"><span class="avatar">路</span><div class="msg__body"><div class="msg__head"><span class="msg__name">路过</span><span class="msg__time">15:22</span></div><p class="msg__text">后退的时候也会淡入吗？从长文章返回列表会不会很怪。</p></div></div>',
+        '  <div class="msg"><span class="avatar">R</span><div class="msg__body"><div class="msg__head"><span class="msg__name">Raricy</span><span class="msg__time">15:23</span></div><p class="msg__text">不会 —— popstate 里跳过动画，滚动位置照常恢复。你可以去文章页滚到底，再点后退试试。</p></div></div>',
+        '  <div class="msg"><span class="avatar">山</span><div class="msg__body"><div class="msg__head"><span class="msg__name">山民</span><span class="msg__time">15:24</span></div><p class="msg__text">那页面内筛选、翻页这些也做吗？</p></div></div>',
+        '  <div class="msg"><span class="avatar">R</span><div class="msg__body"><div class="msg__head"><span class="msg__name">Raricy</span><span class="msg__time">15:25</span></div><p class="msg__text">做，而且优先级比交叉溶解高。列表区用 key 重挂 + CSS 淡入就够了。</p></div></div>',
+        '</div>',
+        '<div class="composer">说点什么…（demo 里的输入框不接后端）</div>'
+      ].join('\n')
+    }
+  };
+
+  function isReduced() {
+    return forceReduce || mql.matches;
+  }
+
+  function animationsOn() {
+    var enabled = document.getElementById('enabled');
+    return enabled.checked && !isReduced();
+  }
+
+  function setStatus(message) {
+    statusEl.textContent = message;
+  }
+
+  function pageFromHash() {
+    var key = (location.hash || '').replace(/^#/, '');
+    return Object.prototype.hasOwnProperty.call(PAGES, key) ? key : 'home';
+  }
+
+  function playEnter() {
+    var duration = Number(document.getElementById('duration').value);
+    app.style.setProperty('--enter-duration', duration + 'ms');
+    app.classList.toggle('page-enter--lift', document.getElementById('lift').checked);
+    app.classList.remove('page-enter');
+    // 强制 reflow，让同一个元素上的同名动画可以重播。
+    void app.offsetWidth;
+    app.classList.add('page-enter');
+  }
+
+  function clearEnter() {
+    app.classList.remove('page-enter');
+    app.classList.remove('page-enter--lift');
+    app.style.removeProperty('--enter-duration');
+  }
+
+  function updateNav(path) {
+    var links = document.querySelectorAll('[data-nav]');
+    for (var i = 0; i < links.length; i++) {
+      var link = links[i];
+      var active = link.getAttribute('data-nav') === path;
+      link.classList.toggle('is-active', active);
+      if (active) link.setAttribute('aria-current', 'page');
+      else link.removeAttribute('aria-current');
+    }
+  }
+
+  function updateReadingProgress() {
+    var bar = document.querySelector('.reading-progress');
+    if (!bar) return;
+    var doc = document.documentElement;
+    var scrollable = doc.scrollHeight - doc.clientHeight;
+    var ratio = scrollable > 0 ? doc.scrollTop / scrollable : 0;
+    bar.style.width = Math.max(0, Math.min(1, ratio)) * 100 + '%';
+  }
+
+  function render(path, options) {
+    var page = PAGES[path] || PAGES.home;
+    var animate = Boolean(options && options.animate);
+
+    clearEnter();
+    app.innerHTML = page.html;
+    document.title = page.title + ' · P0 切页动画 demo';
+    updateNav(path);
+    current = path;
+    updateReadingProgress();
+
+    if (animate && animationsOn()) {
+      playEnter();
+    }
+  }
+
+  function navigate(path) {
+    if (path === current || !PAGES[path]) return;
+
+    // 记录当前滚动位置，模拟 Next 在历史记录里的滚动恢复。
+    var prev = history.state || {};
+    history.replaceState({ path: prev.path, scrollY: window.scrollY }, '');
+
+    history.pushState({ path: path, scrollY: 0 }, '', '#' + path);
+    window.scrollTo(0, 0);
+    render(path, { animate: true });
+
+    if (!animationsOn()) {
+      setStatus('动画关闭 / 减少动效：直接切换（' + path + '）');
+    } else if (document.getElementById('lift').checked) {
+      setStatus('已上移 6px（错误示范）：' + path + '，去看文章页的 fixed 进度条');
+    } else {
+      setStatus('播放 ' + document.getElementById('duration').value + 'ms 淡入 → ' + path);
+    }
+  }
+
+  // ── 导航：所有 demo 链接走同一入口 ─────────────────────────────────
+  document.addEventListener('click', function (event) {
+    var target = event.target;
+    if (!target || !target.closest) return;
+    var link = target.closest('a[data-nav]');
+    if (!link) return;
+    var path = link.getAttribute('data-nav');
+    if (!path || !PAGES[path]) return;
+    event.preventDefault();
+    if (path === current) return;
+    navigate(path);
+  });
+
+  window.addEventListener('popstate', function (event) {
+    var state = event.state || {};
+    var path = state.path && PAGES[state.path] ? state.path : pageFromHash();
+    render(path, { animate: false });
+    var y = Number(state.scrollY) || 0;
+    // 等新内容落地后再恢复滚动，避免被文档高度变化修正掉。
+    requestAnimationFrame(function () { window.scrollTo(0, y); });
+    setStatus('前进 / 后退：不播放动画，恢复滚动位置 ' + y + 'px');
+  });
+
+  // ── 控制面板 ───────────────────────────────────────────────────────
+  var enabled = document.getElementById('enabled');
+  var forceReduceInput = document.getElementById('forceReduce');
+  var duration = document.getElementById('duration');
+  var durOut = document.getElementById('durOut');
+  var lift = document.getElementById('lift');
+
+  enabled.addEventListener('change', function () {
+    if (!enabled.checked) {
+      clearEnter();
+      setStatus('动画已关闭：直接切换');
+    } else {
+      setStatus(isReduced() ? '动画已开启，但当前处于减少动效状态' : '动画已开启');
+    }
+  });
+
+  forceReduceInput.addEventListener('change', function () {
+    forceReduce = forceReduceInput.checked;
+    if (forceReduce) {
+      clearEnter();
+      setStatus('已模拟 prefers-reduced-motion: reduce：0ms 直接切换');
+    } else {
+      setStatus('已恢复：按设定时长播放');
+    }
+  });
+
+  duration.addEventListener('input', function () {
+    durOut.textContent = duration.value + 'ms';
+  });
+
+  lift.addEventListener('change', function () {
+    if (lift.checked) {
+      setStatus('上移实验已开启：去「文章」页看顶部进度条如何被 transform 带跑');
+    } else {
+      setStatus('已回到正确模式：只动 opacity');
+    }
+  });
+
+  document.getElementById('replay').addEventListener('click', function () {
+    if (!animationsOn()) {
+      clearEnter();
+      setStatus('当前不可播放（动画关闭或减少动效）');
+      return;
+    }
+    playEnter();
+    setStatus('重播当前页：' + duration.value + 'ms 淡入');
+  });
+
+  document.getElementById('reset').addEventListener('click', function () {
+    enabled.checked = true;
+    forceReduceInput.checked = false;
+    forceReduce = false;
+    lift.checked = false;
+    duration.value = 160;
+    durOut.textContent = '160ms';
+    clearEnter();
+    setStatus('已重置：动画开启、160ms、只动 opacity');
+  });
+
+  var hudEl = document.getElementById('hud');
+  var hudToggle = document.getElementById('hudToggle');
+  hudToggle.addEventListener('click', function () {
+    var collapsed = hudEl.getAttribute('data-collapsed') === 'true';
+    hudEl.setAttribute('data-collapsed', collapsed ? 'false' : 'true');
+    this.textContent = collapsed ? '收起' : '展开';
+    this.setAttribute('aria-expanded', collapsed ? 'true' : 'false');
+  });
+
+  // 小屏默认收起控制面板，避免它挡住内容；点标题栏展开。
+  if (window.innerWidth <= 640) {
+    hudEl.setAttribute('data-collapsed', 'true');
+    hudToggle.textContent = '展开';
+    hudToggle.setAttribute('aria-expanded', 'false');
+  }
+
+  // ── 主题：只影响颜色，与切页动画无关；顺手证明顶栏不参与淡入 ───────
+  var themeToggle = document.getElementById('themeToggle');
+  function applyTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    themeToggle.textContent = theme === 'dark' ? '浅色' : '暗色';
+    themeToggle.setAttribute('aria-pressed', theme === 'dark' ? 'true' : 'false');
+  }
+  var savedTheme = null;
+  try { savedTheme = localStorage.getItem('page-transition-demo-theme'); } catch (error) { /* ignore */ }
+  var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  applyTheme(savedTheme === 'dark' || savedTheme === 'light' ? savedTheme : (prefersDark ? 'dark' : 'light'));
+
+  themeToggle.addEventListener('click', function () {
+    var next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    applyTheme(next);
+    try { localStorage.setItem('page-transition-demo-theme', next); } catch (error) { /* ignore */ }
+  });
+
+  // ── 滚动进度条 ─────────────────────────────────────────────────────
+  window.addEventListener('scroll', updateReadingProgress, { passive: true });
+  window.addEventListener('resize', updateReadingProgress);
+
+  // 减少动效偏好运行时变化时，立刻清掉进行中的动画类。
+  if (mql.addEventListener) {
+    mql.addEventListener('change', function () {
+      if (mql.matches) clearEnter();
+    });
+  }
+
+  // ── 首屏：不播（与 P0 规则一致） ───────────────────────────────────
+  if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+  var initial = pageFromHash();
+  history.replaceState({ path: initial, scrollY: window.scrollY }, '', '#' + initial);
+  render(initial, { animate: false });
+  updateReadingProgress();
+  setStatus('首屏：不播放（P0 规则）');
+})();
+</script>
+</body>
+</html>

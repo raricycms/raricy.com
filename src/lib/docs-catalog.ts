@@ -321,6 +321,12 @@ export const DOC_ENTRIES: readonly DocEntry[] = [
   },
   {
     group: 'dev',
+    slug: 'plan/page-transition-plan',
+    title: '切页动画方案（P0–P2）',
+    summary: 'P0 全站淡入、P1 页面内过渡、P2 交叉溶解；含风险、验收与 P0 demo。',
+  },
+  {
+    group: 'dev',
     slug: 'README',
     title: '文档索引',
     summary: '本目录的索引与互指规范（给改文档的人）。',
