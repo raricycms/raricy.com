@@ -49,6 +49,20 @@ npm run prisma:generate                  # 生成 Prisma Client
 npm run dev                              # http://localhost:3000
 ```
 
+> ⚠️ **仓库指引是「两份名字、一份内容」**：`AGENTS.md` 是指向 `CLAUDE.md` 的软链接
+> （Codex 等只认 `AGENTS.md` 的工具读同一份，改一处即可）。**Windows 上必须让 git 打开软链接** ——
+> Git for Windows 的 `core.symlinks` 默认 `false`，检出时链接会被展开成一个 9 字节的普通文本
+> 文件（内容就是 `CLAUDE.md`），而 `git status` 依旧干净。症状只打在「只读 `AGENTS.md`」的
+> agent 上：它拿到的仓库指引只有一个词，不报任何错。修复：
+>
+> ```bash
+> git config --global core.symlinks true      # 只对本仓生效就去掉 --global
+> rm AGENTS.md && git checkout -- AGENTS.md   # Windows PowerShell: Remove-Item AGENTS.md
+> ```
+>
+> `tests/unit/agent-instructions.test.ts` 会把这个退化状态判红（失败信息里带修复命令）。
+> **别把它改成两份真文件** —— 复制品会重新引入 drift，正是这条链接要消灭的东西。
+
 ## 工具脚本
 
 | 命令 | 作用 |

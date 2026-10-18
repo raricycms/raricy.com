@@ -14,6 +14,10 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
   微服务里，已于 2026-09 搬进站内（历史注记见 `docs/architecture.md` §6.3.1）；
   库表里还剩两处物理痕迹，见 `docs/legacy-constraints.md` §1.1
 - **迁移走手写 SQL**（**不要用 `prisma migrate`**）—— 详见下面「数据库迁移」
+- **仓库指引只有一份** —— `AGENTS.md` 是指向本文件的软链接（Codex 等只认 `AGENTS.md`
+  的工具读同一份）；**别把它改成复制品**。⚠️ Windows 的 `core.symlinks` 默认 `false`，
+  检出时链接会被静默展开成 9 字节文本（内容就是 `CLAUDE.md`）而 `git status` 仍干净 ——
+  修复命令与症状见 `README.md`「快速开始」，`tests/unit/agent-instructions.test.ts` 守着。
 
 上一版是 Flask 单体（2026-07 被替换），源码已在 git 历史中删除（要考古从 `7d7be1c^` 检出），
 **工作区里已无 Python**。**不要修改或恢复任何 Flask 代码**。
