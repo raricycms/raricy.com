@@ -190,6 +190,7 @@ export default function ChatApp({
   currentUsername,
   isAdmin,
   initialChannel,
+  initialMessage,
   initialSidebarCollapsed = false,
   initialFocusMode = false,
 }: {
@@ -197,6 +198,11 @@ export default function ChatApp({
   currentUsername: string;
   isAdmin: boolean;
   initialChannel: string | null;
+  /**
+   * 深链目标消息（`/chat?channel=…&message=…`，来自「保存的消息」）。
+   * 只在挂载时读一次；与 initialChannel 一起决定首屏选中哪个频道并跳到哪条消息。
+   */
+  initialMessage?: number | null;
   /** SSR 首屏折叠态：/chat 服务端页读 chat_sidebar_collapsed cookie 传入（见 chat-sidebar-pref.ts） */
   initialSidebarCollapsed?: boolean;
   /**
@@ -211,6 +217,8 @@ export default function ChatApp({
   const [channels, setChannels] = useState<ChatChannelDTO[]>([]);
   const [activeId, setActiveId] = useState<string | null>(initialChannel);
   const [messages, setMessages] = useState<ChatMessageDTO[]>([]);
+  /** 当前频道里「我保存过的消息 id」—— 消息表头「保存 / 已保存」的初始态。 */
+  const [savedIds, setSavedIds] = useState<Set<number>>(() => new Set());
   const [hasMore, setHasMore] = useState(true);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [sending, setSending] = useState(false);
@@ -262,6 +270,22 @@ export default function ChatApp({
    * 点的用户相同 → router.replace 目标 URL 没变 → effect 不重跑，才侥幸留下）。
    */
   const initialChannelRef = useRef(initialChannel);
+  /**
+   * 深链目标消息，也只在挂载时读一次。
+   *
+   * 【它必须和 initialChannel 一起才成立】`/chat?channel=X&message=N` 两个参数缺一不可：
+   * 只有 message 没有 channel 时无法知道去哪找（消息 id 全局唯一，但跳转需要频道上下文
+   * 才能按 before/after 拉窗口）。两者都在时才在首屏消息落地后调用 jumpToMessage。
+   */
+  const initialMessageRef = useRef(initialMessage ?? null);
+  /**
+   * 首屏深链待办：poll 选好频道、消息落地后由下面的 effect 消费。
+   * 存 ref 而不是 state —— 它只消费一次，且设置时机早于消息提交，不需要触发渲染。
+   */
+  const pendingDeepLinkRef = useRef<{ channelId: string; messageId: number } | null>(null);
+  /** savedIds 的镜像：保存/取消的快速连点要读最新值，不能等下一次渲染。 */
+  const savedIdsRef = useRef(savedIds);
+  savedIdsRef.current = savedIds;
   /**
    * 本地新建、双方还没发过消息的私聊。服务端列表不返回空会话，对账
    * （reconcile）整表替换时要把它们补回侧栏，否则发起私聊后最多 60 秒
@@ -648,12 +672,30 @@ export default function ChatApp({
     [markRead, scrollAfterCommit]
   );
 
+  /**
+   * 拉「当前频道里我保存过的消息 id」—— 消息表头「保存 / 已保存」的初始态。
+   *
+   * 【为什么单独一条接口】没有把它塞进 ChatMessageDTO：保存状态是**逐用户**的，
+   * 而消息 DTO 是所有成员共享的一份序列化结果；塞进去会让「同一页消息对 A/B 渲染
+   * 不同」扩散到 SSE 推送、搜索、引用等每一条读路径。这里一次批量取一页，够用且隔离。
+   */
+  const loadSavedIds = useCallback(async (channelId: string, token: number) => {
+    const data = await api(`/api/chat/saved/ids?channel=${encodeURIComponent(channelId)}`);
+    if (token !== viewTokenRef.current || channelId !== activeRef.current) return;
+    if (data.code === 200 && Array.isArray(data.ids)) {
+      setSavedIds(new Set(data.ids as number[]));
+    }
+  }, []);
+
   const loadMessages = useCallback(
     async (channelId: string, token: number, sync = false) => {
       const list = await fetchMessages(channelId);
-      if (list) commitMessages(channelId, list, token, sync);
+      if (list) {
+        commitMessages(channelId, list, token, sync);
+        void loadSavedIds(channelId, token);
+      }
     },
-    [fetchMessages, commitMessages]
+    [fetchMessages, commitMessages, loadSavedIds]
   );
 
   // ── 对账（低频兜底）────────────────────────────────────────────────────
@@ -991,7 +1033,18 @@ export default function ChatApp({
   useEffect(() => {
     let alive = true;
     const initialChannel = initialChannelRef.current;
+    const initialMessage = initialMessageRef.current;
     (async () => {
+      // 深链进入（来自「保存的消息」）：先解除「删除会话」的隐藏。
+      // 隐藏的会话不在 poll 列表里，不先恢复就会静默落到第一个会话 —— 用户点了一条
+      // 保存的消息，打开的却是别的对话，且不报错。显式进入 = 我要看这个会话。
+      // 失败（不是成员 / 频道没了）不阻断：poll 自然回退，只是到不了目标消息。
+      if (initialMessage != null && initialChannel) {
+        await api(`/api/chat/channels/${encodeURIComponent(initialChannel)}/reveal`, {
+          method: 'POST',
+        });
+        if (!alive) return;
+      }
       const data = await api('/api/chat/poll');
       if (!alive || data.code !== 200) return;
       const list = (data.channels ?? []) as ChatChannelDTO[];
@@ -1013,6 +1066,11 @@ export default function ChatApp({
           router.replace('/chat', { scroll: false });
         }
         return;
+      }
+      // 深链目标只在**确实进到了目标频道**时才排期（被回退到别的频道时跳过去毫无意义）。
+      // 消息可能不在首页（很久以前保存的）—— 交给 jumpToMessage 补拉上下文窗口。
+      if (initialMessage != null && target === initialChannel) {
+        pendingDeepLinkRef.current = { channelId: target, messageId: initialMessage };
       }
       const token = ++viewTokenRef.current;
       await loadMessages(target, token);
@@ -1080,6 +1138,10 @@ export default function ChatApp({
           setActiveId(id);
           activeRef.current = id;
           setMessages([]);
+          // 保存态是逐频道的：先清空，等 loadMessages 拉到新频道的那一份；
+          // 不清的话切过去的一瞬间旧频道的「已保存」会挂到新消息上。
+          setSavedIds(new Set());
+          savedIdsRef.current = new Set();
           setReplyTarget(null);
           clearImage();
           setBlogQuote(null);
@@ -1115,6 +1177,8 @@ export default function ChatApp({
     setMessages([]);
     lastIdRef.current = 0;
     setNewCount(0);
+    setSavedIds(new Set());
+    savedIdsRef.current = new Set();
     setReplyTarget(null);
     setBlogQuote(null);
     setActiveId(null);
@@ -1417,6 +1481,24 @@ export default function ChatApp({
     [flashHighlight]
   );
 
+  /**
+   * 深链待办：首屏消息落地后跳到目标消息。
+   *
+   * 为什么不在首次加载 effect 里直接调：`jumpToMessage` 定义在那之后，且它依赖
+   * messages 已经提交到 DOM（目标可能在窗口里，也可能要补拉上下文）。所以把
+   * 「待办」挂成 ref，由这条 effect 在消息落地的那一帧消费。
+   *
+   * 目标消息可能不在首页（很久以前保存的）—— jumpToMessage 会按 id 拉前后窗口，
+   * 这正是搜索跳转复用同一条路径的原因。
+   */
+  useEffect(() => {
+    const pending = pendingDeepLinkRef.current;
+    if (!pending) return;
+    if (activeId !== pending.channelId || messages.length === 0) return;
+    pendingDeepLinkRef.current = null;
+    jumpToMessage(pending.messageId);
+  }, [activeId, messages, jumpToMessage]);
+
   // 跳转相关的两个定时器（高亮、落位兜底）在卸载时清掉 —— 前者避免对已卸载组件
   // setState，后者避免挂着一个够不着的 DOM 引用。
   useEffect(
@@ -1426,6 +1508,38 @@ export default function ChatApp({
     },
     []
   );
+
+  // ── 保存 / 取消保存（私聊消息）──────────────────────────────────────────
+  /**
+   * 保存箱与收藏夹是**两个功能**：这里没有「选择收藏夹」那一步，只有保存 / 已保存。
+   * 服务端会再判一次「存在 + 未删 + 私聊 + 仍是成员」，所以前端不传频道等上下文；
+   * 失败文案统一由接口给（不确认消息存在性）。
+   */
+  const handleToggleSave = useCallback(async (m: ChatMessageDTO) => {
+    const saved = savedIdsRef.current.has(m.id);
+    try {
+      const data = saved
+        ? await api(`/api/chat/saved/${m.id}`, { method: 'DELETE' })
+        : await api('/api/chat/saved', {
+            method: 'POST',
+            body: JSON.stringify({ messageId: m.id }),
+          });
+      if (data.code !== 200) {
+        toast(data.message || '操作失败', 'error');
+        return;
+      }
+      // 同步更新 ref + state：快速连点时第二次要读到第一次的结果（否则会重复 POST，
+      // 虽然服务端幂等，但按钮会在「已保存 / 保存」之间闪）。
+      const next = new Set(savedIdsRef.current);
+      if (saved) next.delete(m.id);
+      else next.add(m.id);
+      savedIdsRef.current = next;
+      setSavedIds(next);
+      toast(saved ? '已取消保存' : '已保存', 'success');
+    } catch {
+      toast('网络错误，请稍后重试', 'error');
+    }
+  }, []);
 
   // ── 删除 ───────────────────────────────────────────────────────────────
   const handleDelete = useCallback(
@@ -1661,6 +1775,8 @@ export default function ChatApp({
                 }
                 onRevealOlder={revealOlder}
                 onLoadOlder={loadOlder}
+                savedIds={savedIds}
+                onToggleSave={handleToggleSave}
                 onReply={handleReply}
                 onDelete={handleDelete}
                 onAvatarClick={openAvatarMenu}

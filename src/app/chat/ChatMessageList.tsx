@@ -63,6 +63,10 @@ export interface ChatMessageListProps {
   /** 「已折叠 N 条 · 展开更早」——放回一页由 ChatApp 定（REVEAL_STEP 住那边）。 */
   onRevealOlder: () => void;
   onLoadOlder: () => void;
+  /** 当前频道里我保存过的消息 id（保存按钮的初始态；Set 引用只在加载/切换时变）。 */
+  savedIds: Set<number>;
+  /** 保存 / 取消保存一条消息（只有私聊、未删除的消息会显示按钮）。 */
+  onToggleSave: (m: ChatMessageDTO) => void;
   onReply: (m: ChatMessageDTO) => void;
   onDelete: (m: ChatMessageDTO) => void;
   onAvatarClick: (m: ChatMessageDTO, el: HTMLButtonElement) => void;
@@ -90,6 +94,8 @@ function ChatMessageListInner({
   emptyText,
   onRevealOlder,
   onLoadOlder,
+  savedIds,
+  onToggleSave,
   onReply,
   onDelete,
   onAvatarClick,
@@ -139,6 +145,9 @@ function ChatMessageListInner({
               highlighted={highlightId === m.id}
               grouped={grouped}
               receipt={m.id === lastMineId && isDirect ? (peerLastRead >= m.id ? 'read' : 'unread') : null}
+              saved={savedIds.has(m.id)}
+              canSave={isDirect && !m.is_deleted}
+              onToggleSave={onToggleSave}
               onReply={onReply}
               onDelete={onDelete}
               onAvatarClick={onAvatarClick}

@@ -120,6 +120,7 @@ model User {
   oauthTokens           OAuthAccessToken[]
   chatMembers           ChatMember[]            @relation("ChatMemberUser")
   chatMessages          ChatMessage[]           @relation("ChatMessageAuthor")
+  savedChatMessages     SavedChatMessage[]      @relation("SavedChatMessageUser")
   fishApiTokens         FishApiToken[]
   fishWebhookEndpoint   FishWebhookEndpoint?
   fishWebhookDeliveries FishWebhookDelivery[]
@@ -1012,9 +1013,44 @@ model ChatMessage {
   image      ImageHosting? @relation(fields: [imageId], references: [id])
   replyToMsg ChatMessage?  @relation("ChatMessageReply", fields: [replyTo], references: [id])
   replies    ChatMessage[] @relation("ChatMessageReply")
+  savedBy    SavedChatMessage[] @relation("SavedChatMessageMessage")
 
   @@index([channelId, id], map: "ix_chat_messages_channel_id_id")
   @@map("chat_messages")
+}
+
+// ── 私聊消息保存箱（见 src/lib/saved-message-service.ts）──────────────────────
+//
+// 【为什么不复用收藏夹】收藏夹是「可分享的合辑」：公开夹有 6 位句柄 / 二维码 /
+// [@ID] / bot 接口，私密夹也能复制成公开、能导出 JSON。私聊消息是「只有当事人能看」，
+// 两者的分享语义相反。塞进同一个容器就要给**每个**出口加一条例外，所以单开一张薄表：
+// 它没有句柄、没有复制、没有导出、没有 bot 接口 —— 不是「藏起来」，是**没有那些东西**。
+//
+// 【只存指针，不存正文】消息会被作者 / 管理员软删（is_deleted）。保存箱若存快照，
+// 就等于给删除语义开后门 —— 所以读时按当前消息行重新解析，删了就给占位。
+//
+// 【形态】对齐 FavoriteItem / UserFrame：自增 id（join 行）+ 非可选 deleted + 配对
+// deletedAt + 唯一约束（含墓碑行 → 再保存必须复活旧行）+ createdAt 无默认。
+// 时间戳由写路径显式 nowForDb() 给（本库「UTC+8 墙上时间贴 Z」语义，见 db-time.ts）。
+model SavedChatMessage {
+  id        Int       @id @default(autoincrement())
+  userId    String    @map("user_id")
+  messageId Int       @map("message_id")
+  createdAt DateTime? @map("created_at")
+  deleted   Boolean   @default(false)
+  deletedAt DateTime? @map("deleted_at")
+
+  user    User        @relation("SavedChatMessageUser", fields: [userId], references: [id])
+  message ChatMessage @relation("SavedChatMessageMessage", fields: [messageId], references: [id])
+
+  // ⚠️ 物理唯一索引是 SQLite 的派生名 saved_chat_messages_user_id_message_id_key
+  //    （Prisma 忽略 @@unique 的 name；手写迁移必须写派生名，见 20_user_frames）。
+  @@unique([userId, messageId])
+  // 保存箱唯一的列表查询是「我保存的，按保存时间倒序」+ 游标 id —— 复合索引一次覆盖。
+  @@index([userId, id], map: "ix_saved_chat_messages_user_id_id")
+  // 「这条消息被我保存过吗」/ 反查消息的保存者。
+  @@index([messageId], map: "ix_saved_chat_messages_message_id")
+  @@map("saved_chat_messages")
 }
 
 // ── 收藏夹 ───────────────────────────────────────────────────────────────────

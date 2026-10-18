@@ -46,6 +46,10 @@ import { DELETE as deleteMessage } from '@/app/api/chat/messages/[id]/route';
 import { GET as poll } from '@/app/api/chat/poll/route';
 import { GET as stream } from '@/app/api/chat/stream/route';
 import { GET as chatUsers } from '@/app/api/chat/users/route';
+import { POST as saveMessageApi } from '@/app/api/chat/saved/route';
+import { DELETE as unsaveMessageApi } from '@/app/api/chat/saved/[messageId]/route';
+import { GET as savedIdsApi } from '@/app/api/chat/saved/ids/route';
+import { POST as revealChannelApi } from '@/app/api/chat/channels/[id]/reveal/route';
 
 const login = async (userId: string, sv = 0) => {
   session.token = await createSessionToken({ uid: userId, sv });
@@ -53,6 +57,8 @@ const login = async (userId: string, sv = 0) => {
 
 /** Next 15 的 params 是 Promise。 */
 const ctx = (id: string) => ({ params: Promise.resolve({ id }) });
+/** 保存箱的 DELETE 路由参数名是 messageId（与 :id 区分开，避免类型对不上）。 */
+const ctxMessage = (messageId: string) => ({ params: Promise.resolve({ messageId }) });
 
 /** 守卫的三种拒绝文案（`src/app/api/chat/_auth.ts`）—— 一字不差地钉住。 */
 const GUARD_MESSAGES = ['请先登录', '需要核心用户权限', '你已被禁言，暂时无法讨论'];
@@ -101,6 +107,10 @@ const cases: { name: string; call: () => Promise<Response>; canProbeAllow?: bool
   { name: 'DELETE /api/chat/messages/:id', call: () => deleteMessage(new Request('http://localhost/x', { method: 'DELETE' }), ctx('999999')) },
   { name: 'GET  /api/chat/poll', call: () => poll(url(`/api/chat/poll?channel=${CHAT_LOBBY_ID}`)) },
   { name: 'GET  /api/chat/users', call: () => chatUsers(url('/api/chat/users?q=x')) },
+  { name: 'POST /api/chat/saved', call: () => saveMessageApi(post('/api/chat/saved', { messageId: 1 })) },
+  { name: 'DELETE /api/chat/saved/:messageId', call: () => unsaveMessageApi(new Request('http://localhost/x', { method: 'DELETE' }), ctxMessage('1')) },
+  { name: 'GET  /api/chat/saved/ids', call: () => savedIdsApi(url(`/api/chat/saved/ids?channel=${CHAT_LOBBY_ID}`)) },
+  { name: 'POST /api/chat/channels/:id/reveal', call: () => revealChannelApi(post('/x'), ctx(CHAT_LOBBY_ID)) },
   { name: 'GET  /api/chat/stream（SSE，只测拒绝）', call: () => stream(url('/api/chat/stream')), canProbeAllow: false },
 ];
 

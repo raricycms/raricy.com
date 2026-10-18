@@ -20,7 +20,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { memo, useState } from 'react';
-import { MessageCircle, MoreHorizontal, VolumeX } from 'lucide-react';
+import Link from 'next/link';
+import { Bookmark, MessageCircle, MoreHorizontal, VolumeX } from 'lucide-react';
 import { type ChatChannelDTO } from '@/lib/chat-shared';
 import Avatar from '@/app/components/Avatar';
 import ChatChannelMenu, { type ChannelMenuAnchor } from './ChatChannelMenu';
@@ -182,6 +183,12 @@ export default function ChatSidebar({
           <span aria-hidden="true">＋</span>
           {!collapsed && <span>发起私聊</span>}
         </button>
+        {/* 「保存的消息」是独立页面（不是收藏夹）：入口放在会话列表底部，
+            与「发起私聊」并列 —— 它在私聊消息的操作条里被写进去，得有个地方读。 */}
+        <Link className="chat-saved-link" href="/chat/saved" title="保存的消息">
+          <Bookmark aria-hidden="true" />
+          {!collapsed && <span>保存的消息</span>}
+        </Link>
       </div>
 
       {menu && (

@@ -113,6 +113,7 @@
 | 通知 / 审计 | `notification-service.ts` · `broadcast-service.ts` · `audit-service.ts` · `admin-appeal-service.ts` |
 | 投票 / 签到 / 剪贴板 | `vote-service.ts` · `checkin-service.ts` · `clipboard-service.ts` |
 | 收藏夹 | `favorite-service.ts`（六条不变量见文件头）· `favorite-refs.ts`（`[@六位]` 的纯逻辑），见 §6.9 |
+| 保存的消息（私聊） | `saved-message-service.ts`（私聊消息保存箱：**不是收藏夹**，没有 6 位句柄 / 分享 / 导出 / 复制 / bot 出口），见 §6.20 |
 | 图床 | `image-service.ts` · `image-upload.ts`（服务端）· `image-client.ts`（浏览器侧**单文件**上传：校验 / XHR / 弱网重试。讨论、评论、博客与剪贴板编辑器共用这一条；编辑器侧的**多文件**调度另住 `md-editor/upload.ts`） |
 | 音频床 | `audio-upload.ts`（magic bytes 嗅探 + **MIME 别名归一化**，**无压缩**）· `audio-service.ts`（含**独立配额聚合**）· `audio-refs.ts`（`[@音频/<ID>]`，**零 import** —— 要被拉进客户端包），见 §6.15 |
 | 头像框 | `frame-refs.ts`（纯词汇层：白名单 / 解析 / 到期判定 / **租金与在架清单**，仅依赖共享租期 `shop-refs.ts`）· `frame-service.ts`（素材扫盘 + 持有与装备写路径 + **判定唯一出口**；授予内核 `grantFrameTx` 收调用方的事务，供商城拼原子性）· `frame-shop-service.ts`（鱼干商城：租框。**它不直接写那两列**，一律经 `grantFrameTx` —— F1），见 §6.14 |
@@ -1569,6 +1570,51 @@ MP3 的帧同步要核版本 / 层 / 位速率字段（只判 `0xFF` 打头太�
 
 专注模式下，首页卡和顶栏入口整段不渲染；`src/app/game/layout.tsx` 同时替换
 菜单和游戏直达页为设置提示，不挂载游戏引擎。关闭开关后即可重新进入。
+
+### 6.20 保存的私聊消息（`/chat/saved`，2026-10，迁移 `30_saved_chat_messages`）
+
+**它不是收藏夹。** 收藏夹是「可分享的合辑」：公开夹有 6 位句柄 / 二维码 / `[@ID]` /
+bot 接口，私密夹也能**复制成公开**、能导出 JSON —— 它的每个动作都在暗示「可以发出去」。
+私聊消息恰好相反：只有会话当事人能看。把两者放进同一个容器，用户就得永远记着
+「这个夹子里的东西有些不能发」，每个出口也要各加一道例外。所以单开一张薄表
+`saved_chat_messages`：**没有句柄、没有复制、没有导出、没有 bot 出口** —— 不是藏起来，
+是根本没有那些东西。需求是「把这句话存下来以后回看」，不是「把私聊消息编成合辑」。
+
+**四条不变量**（`src/lib/saved-message-service.ts` 文件头）：
+
+1. **只存指针，不存正文**。消息会被作者 / 管理员软删（`chat_messages.is_deleted`），
+   快照会让保存箱变成「删了还能读」的后门 —— 读时按当前消息行重新解析，删了给
+   `[该消息已删除]` 占位。
+2. **保存范围 = 自己当前仍是成员的私聊（`kind='direct'`）**。写入口一次判齐「消息存在 +
+   未软删 + 是私聊 + 我是成员」，任何一条不满足都返回**同一个** `badinput` —— 不区分
+   「不存在」与「无权」，否则接口就成了「某条消息是否存在于别人私聊」的探针。大区消息
+   不进保存箱。
+3. **读路径重新判权限**。保存过不是永久通行证：消息删了 / 作者注销 → `deleted` 占位；
+   频道没了 / 不再是我的私聊 / 我被移出 → `forbidden`，**不返回正文、作者、频道 id**。
+4. **墓碑复活**。唯一约束 `(user_id, message_id)` 是物理的、包含软删行 —— 取消后再保存
+   必须翻转 `deleted` 复活旧行，不能新插（同 `favorite_items` / `user_frames`）。
+
+**接口与页面**：
+
+| 路径 | 说明 |
+|------|------|
+| `POST /api/chat/saved` | body `{ messageId }`；幂等，已保存返回成功；失败一律 400 同一文案 |
+| `DELETE /api/chat/saved/:messageId` | 取消保存（软删）；幂等，且**不限频**（额度满了也要能腾名额） |
+| `GET /api/chat/saved/ids?channel=<id>` | 某私聊频道里我保存过的消息 id，供消息列表标「已保存」；大区返回空数组 |
+| `/chat/saved` | 服务端页面：core+，禁言与 `/api/chat/*` 同闸；条目可跳到原消息，可取消保存 |
+
+每人上限 `1000` 条（只数未取消的）；增删复用 `likeHourly` / `likeDaily` 的数值，但
+**另起键前缀** `chat:saved:h:` / `chat:saved:d:`（`rule` 不参与分桶，复用别的前缀会互相
+吃额度）。
+
+**深链**：条目链接是 `/chat?channel=<id>&message=<id>`。聊天页首屏会先
+`POST /api/chat/channels/:id/reveal` —— 否则被「删除会话」隐藏的频道不在 `poll` 列表里，
+页面会静默落到第一个会话（点了一条保存的消息、打开的却是别的对话）。恢复后再交给已有的
+`jumpToMessage`：目标不在首页时按 id 补拉前后上下文窗口，与搜索跳转共用同一条路径。
+
+**测试**：`tests/service/saved-message-service.test.ts`（权限 / 软删占位 / 复活 / 分页 /
+配额）、`tests/route/saved-message-api.test.ts`（档位 / 同形失败 / 幂等）、
+`tests/route/chat-auth.test.ts` 的 handler 清单（新增的 4 个 handler 必须登记）。
 
 ## 7. 数据流（4 个典型路径）
 

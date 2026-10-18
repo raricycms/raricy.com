@@ -154,6 +154,11 @@ export interface ChatMessageItemProps {
   grouped?: boolean;
   /** 私聊里「我发出的最后一条」的送达状态（对方读游标决定）；其他消息不传 */
   receipt?: 'read' | 'unread' | null;
+  /** 我在保存箱里保存过这条消息（按钮显示「已保存」）。 */
+  saved?: boolean;
+  /** 只有私聊里未删除的消息可保存（大区消息不进保存箱）。 */
+  canSave?: boolean;
+  onToggleSave: (m: ChatMessageDTO) => void;
   onReply: (m: ChatMessageDTO) => void;
   onDelete: (m: ChatMessageDTO) => void;
   onAvatarClick: (m: ChatMessageDTO, el: HTMLButtonElement) => void;
@@ -172,6 +177,9 @@ function ChatMessageItemInner({
   highlighted = false,
   grouped = false,
   receipt = null,
+  saved = false,
+  canSave = false,
+  onToggleSave,
   onReply,
   onDelete,
   onAvatarClick,
@@ -300,6 +308,16 @@ function ChatMessageItemInner({
         </span>
       )}
       <span className="chat-msg__actions">
+        {canSave && (
+          <button
+            type="button"
+            className={`chat-msg__btn${saved ? ' is-saved' : ''}`}
+            onClick={() => onToggleSave(msg)}
+            title={saved ? '从保存的消息中移除' : '保存到「保存的消息」（只有自己看得到）'}
+          >
+            {saved ? '已保存' : '保存'}
+          </button>
+        )}
         {!msg.is_deleted && (
           <button type="button" className="chat-msg__btn" onClick={() => onReply(msg)}>
             回复

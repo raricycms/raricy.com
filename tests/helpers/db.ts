@@ -104,6 +104,9 @@ export async function resetDb() {
   await assertConnectedTestDb();
   // 顺序：先删子表再删父表，避免外键约束
   const tables = [
+    // 保存箱引用 users 与 chat_messages —— 必须排在两者之前删。
+    // ⚠️ 漏登记不报错（下面那条 DELETE 的 catch 会吞掉），表现为数据在用例间残留。
+    'saved_chat_messages',
     'chat_messages', 'chat_members', 'chat_channels',
     'comment_likes', 'blog_comments', 'blog_likes', 'blog_feeds',
     // 匿名化名分配表引用 blogs 与 users —— 必须排在两者之前删。

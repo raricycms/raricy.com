@@ -309,6 +309,31 @@
 .chat-sidebar__foot {
   padding: 10px 12px calc(10px + var(--safe-bottom));
   border-top: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* 「保存的消息」入口：与「发起私聊」并列的第二行（它不是收藏夹，见 /chat/saved） */
+.chat-saved-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.chat-saved-link:hover {
+  color: var(--color-brand-primary);
+  background: var(--color-brand-secondary);
+}
+.chat-saved-link svg {
+  width: 14px;
+  height: 14px;
 }
 
 .chat-new-btn {
@@ -761,6 +786,11 @@
 }
 .chat-msg__btn:hover {
   color: var(--color-brand-primary);
+}
+/* 已保存：与点赞/收藏同一套「状态色只由状态类给」的手法（未保存时是普通灰） */
+.chat-msg__btn.is-saved {
+  color: var(--color-brand-primary);
+  font-weight: 600;
 }
 .chat-msg__btn--danger:hover {
   color: var(--color-warning-primary);
@@ -1576,5 +1606,136 @@
   }
   .chat-composer {
     padding: 8px 8px calc(10px + var(--safe-bottom));
+  }
+}
+
+// ── 保存的消息页（/chat/saved）──────────────────────────────────────────────
+// 刻意只有一列卡片，**没有分享 / 导出 / 复制入口** —— 这一页的隐私模型就是
+// 「只有自己看得到」，不是收藏夹。
+.saved-page {
+  padding-top: 2rem;
+  padding-bottom: 2rem;
+  max-width: 820px;
+}
+.saved-page__head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+.saved-page__title {
+  font-size: 1.5rem;
+  margin: 0;
+}
+.saved-page__count {
+  font-size: 0.82rem;
+  color: var(--color-text-secondary);
+}
+.saved-page__hint {
+  font-size: 0.82rem;
+  color: var(--color-text-secondary);
+  margin: 0 0 18px;
+}
+.saved-page__empty {
+  padding: 40px 16px;
+  text-align: center;
+  color: var(--color-text-secondary);
+  background: var(--color-background-card);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+}
+.saved-msg-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.saved-msg {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--color-background-card);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+}
+.saved-msg__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.saved-msg__link {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+.saved-msg__link:hover .saved-msg__title {
+  color: var(--color-brand-primary);
+}
+.saved-msg__link--disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+.saved-msg__title {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.saved-msg__meta {
+  font-size: 0.78rem;
+  color: var(--color-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.saved-msg__time {
+  font-size: 0.72rem;
+  color: var(--color-text-tertiary);
+}
+.saved-msg__remove {
+  flex: none;
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 0.78rem;
+  cursor: pointer;
+  padding: 6px 8px;
+  border-radius: 8px;
+}
+.saved-msg__remove:hover {
+  color: var(--color-warning-primary);
+  background: var(--color-background-highlight);
+}
+.saved-msg__remove:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.saved-page__more,
+.saved-page__back {
+  margin-top: 16px;
+}
+.saved-page__more a,
+.saved-page__back a {
+  color: var(--color-brand-primary);
+}
+
+@media (max-width: 560px) {
+  .saved-msg {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .saved-msg__remove {
+    align-self: flex-end;
   }
 }

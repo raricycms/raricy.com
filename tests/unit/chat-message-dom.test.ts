@@ -67,6 +67,7 @@ async function render(msg: ChatMessageDTO, opts: { grouped?: boolean; isMine?: b
         currentUserId: 'u1',
         currentUsername: '小明',
         grouped: opts.grouped ?? false,
+        onToggleSave: () => {},
         onReply: () => {},
         onDelete: () => {},
         onAvatarClick: () => {},

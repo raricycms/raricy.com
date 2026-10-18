@@ -685,6 +685,28 @@ export async function hideChannel(channelId: string, userId: string): Promise<Ch
   return { ok: true };
 }
 
+/**
+ * 解除会话隐藏。与 hideChannel 对称 —— 「删除会话」只是隐藏，不是删除。
+ *
+ * 【谁用】从「保存的消息」点进一条历史消息时：显式进入 = 我要看这个会话，
+ * 若它已被「删除会话」隐藏，poll 列表里不会有它，聊天页会静默落到第一个会话 ——
+ * 所以深链进入前先恢复。隐藏仍可由用户随时重新执行。
+ */
+export async function revealChannel(channelId: string, userId: string): Promise<ChannelPrefResult> {
+  const access = await canAccessChannel(channelId, userId);
+  if (!access.kind) return { ok: false, error: 'notFound' };
+  if (!access.allowed) return { ok: false, error: 'forbidden' };
+  if (access.kind === CHAT_KIND_LOBBY) return { ok: false, error: 'forbidden' };
+
+  await prisma.chatMember.updateMany({
+    where: { channelId, userId, hiddenAfterMessageId: { not: null } },
+    data: { hiddenAfterMessageId: null },
+  });
+  // 隐藏/恢复会改变「会话是否计入红点」—— 推给本人（与 hideChannel 同口径）
+  void pushChatDot(userId);
+  return { ok: true };
+}
+
 // ── 私聊频道 ────────────────────────────────────────────────────────────────
 
 export type StartDirectResult =
