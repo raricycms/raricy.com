@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>拉格朗日乘数法 - 聪明山工具箱</title>
+  <link rel="stylesheet" href="./document/keypad.css">
+  <link rel="stylesheet" href="./document/math-page.css">
+  <style>
+    /* ==================== 本页私有样式（公共部分见 document/math-page.css） ==================== */
+    body { padding: 32px 20px 60px; }
+
+    /* 两个条件输入框 */
+    .input-list {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .input-row {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .input-label {
+      flex: 0 0 auto;
+      font-size: 20px;
+      color: #5b6b80;
+      white-space: nowrap;
+    }
+    .input-row .formula-editor.mini {
+      flex: 1 1 260px;
+      min-width: 0;
+    }
+    .input-suffix {
+      flex: 0 0 auto;
+      font-size: 20px;
+      color: #5b6b80;
+      white-space: nowrap;
+    }
+    .input-hint {
+      margin-top: 13px;
+      font-size: 13px;
+      color: #8a97a8;
+      line-height: 1.75;
+    }
+
+    /* 本页只有 x、y 两个变量键 */
+    .param-grid {
+      grid-template-columns: repeat(2, minmax(54px, 1fr));
+    }
+
+    /* ==================== 结果区 ==================== */
+
+    #result {
+      display: block;
+      padding: 18px;
+      background: #f7f9fc;
+      border: 1px solid #e5e9f0;
+      border-radius: 10px;
+      font-size: 22px;
+    }
+
+    .result-placeholder {
+      color: #8a97a8;
+      font-size: 15px;
+      line-height: 1.7;
+    }
+
+    .result-section + .result-section {
+      margin-top: 18px;
+      padding-top: 16px;
+      border-top: 1px dashed #dce2eb;
+    }
+
+    .result-section-title {
+      margin: 0 0 10px;
+      font-size: 15px;
+      font-weight: 650;
+      color: #4285e9;
+      letter-spacing: .2px;
+    }
+
+    .equation-row {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      min-height: 40px;
+    }
+
+    .equation-label {
+      font-size: 20px;
+      color: #5b6b80;
+      white-space: nowrap;
+    }
+
+    .equation-body {
+      display: inline-flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 4px;
+      font-size: 22px;
+    }
+
+    .equation-tail {
+      font-size: 20px;
+      color: #5b6b80;
+      white-space: nowrap;
+    }
+
+    .result-note {
+      margin: 10px 0 0;
+      font-size: 13px;
+      color: #8a97a8;
+      line-height: 1.7;
+    }
+
+    .error-box {
+      padding: 12px 14px;
+      border: 1px solid #fecdca;
+      border-radius: 8px;
+      background: #fef3f2;
+      color: #b42318;
+      font-size: 15px;
+      line-height: 1.7;
+    }
+
+    @media (max-width: 560px) {
+      .input-label,
+      .input-row .formula-editor.mini {
+        width: 100%;
+        flex-basis: 100%;
+      }
+      .input-suffix { margin-left: auto; }
+      .equation-label { font-size: 18px; }
+      .equation-body { font-size: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page-header">
+    <h1>拉格朗日乘数法</h1>
+    <a href="/tool/geometry" class="back-link">返回工具箱</a>
+  </div>
+
+  <div id="calculator">
+    <div class="input-list">
+      <div class="input-row">
+        <span class="input-label">f(x, y) =</span>
+        <div id="f-editor" class="formula-editor mini" data-editor="f" aria-label="目标函数 f(x, y)">
+          <span class="slot" contenteditable="true"></span>
+        </div>
+      </div>
+      <div class="input-row">
+        <span class="input-label">g(x, y) =</span>
+        <div id="g-editor" class="formula-editor mini" data-editor="g" aria-label="约束函数 g(x, y)">
+          <span class="slot" contenteditable="true"></span>
+        </div>
+        <span class="input-suffix">= 0</span>
+      </div>
+    </div>
+
+    <p class="input-hint">
+      g 的输入框中只填写等号左边的表达式（默认 g(x, y) = 0）。
+      支持 + − × ÷、括号、幂、分数与根式；变量请使用 x、y，乘数 λ 由工具自动引入。
+      <br>
+      例如：f = x^2+y^2，g = x+y-1。使用“幂”键时，请把底数和指数都填写完整。
+    </p>
+    <p style = "color:#4285e9">注：仅输出拉格朗日方程组。我不想做数值解（对圆锥曲线题也不是很有用），所以自己解一下。想要数值解可以问竞赛同学借一个卡西欧991，或者自己买。</p>
+
+    <div id="keypad" class="keypad">
+      <div class="key-group">
+        <div class="key-title">数字与变量</div>
+        <div class="number-param-row">
+          <div class="key-grid number-grid">
+            <span class="btn" data-key="1">1</span>
+            <span class="btn" data-key="2">2</span>
+            <span class="btn" data-key="3">3</span>
+            <span class="btn" data-key="4">4</span>
+            <span class="btn" data-key="5">5</span>
+            <span class="btn" data-key="6">6</span>
+            <span class="btn" data-key="7">7</span>
+            <span class="btn" data-key="8">8</span>
+            <span class="btn" data-key="9">9</span>
+            <span class="btn zero-key" data-key="0">0</span>
+          </div>
+          <div class="key-grid param-grid">
+            <span class="btn param-key" data-key="x" title="变量 x">x</span>
+            <span class="btn param-key" data-key="y" title="变量 y">y</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="control-row">
+        <div class="key-group">
+          <div class="key-title">运算符</div>
+          <div class="key-grid operator-grid">
+            <span class="btn" data-key="+">+</span>
+            <span class="btn" data-key="-">−</span>
+            <span class="btn" data-key="*">×</span>
+            <span class="btn" data-key="/">÷</span>
+            <span class="btn" data-key="(">(</span>
+            <span class="btn" data-key=")">)</span>
+          </div>
+        </div>
+        <div class="key-group">
+          <div class="key-title">数学结构</div>
+          <div class="key-grid structure-grid">
+            <span class="btn" data-action="frac">分数</span>
+            <span class="btn" data-action="pow">幂</span>
+            <span class="btn" data-action="sqrt">√</span>
+            <span class="btn" data-action="root">ⁿ√</span>
+          </div>
+        </div>
+        <div class="key-group">
+          <div class="key-title">编辑</div>
+          <div class="key-grid edit-grid">
+            <span class="btn" data-action="backspace">⌫ 退格</span>
+            <span class="btn" data-action="clear">清空</span>
+            <span class="btn cursor-btn" data-action="cursor-left">←</span>
+            <span class="btn cursor-btn" data-action="cursor-right">→</span>
+          </div>
+        </div>
+        <div class="key-group simplify-group">
+          <div class="key-title">拉格朗日</div>
+          <button id="simplify-btn">构造并求偏导</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="result" aria-live="polite">
+      <div class="result-placeholder">
+        填写 f(x, y) 与 g(x, y) 后，点击“构造并求偏导”。
+      </div>
+    </div>
+  </div>
+
+  <script src="./document/monomial.js"></script>
+  <script src="./document/polynomial.js"></script>
+  <script src="./document/derivative.js"></script>
+  <script src="./document/formula-render.js"></script>
+  <script src="./document/formula-editor.js"></script>
+  <script>
+    (function () {
+      'use strict';
+
+      // derivative.js 只接受单字母参数；用 l 代表拉格朗日乘数 λ。
+      // f、g 只允许出现 x、y，因此 l 不会与用户输入冲突。
+      const LAMBDA = 'l';
+
+      const fEditor = document.getElementById('f-editor');
+      const gEditor = document.getElementById('g-editor');
+      const resultEl = document.getElementById('result');
+
+      // 把内部占位符 l 显示成 λ（只替换独立的参数 l，不碰 sqrt 等函数名）
+      function lambdaToDisplay(expr) {
+        return String(expr == null ? '' : expr)
+          .replace(/(^|[^A-Za-z0-9_])l(?![A-Za-z0-9_])/g, '$1λ');
+      }
+
+      function renderFormula(expr) {
+        if (typeof FormulaRender !== 'undefined') {
+          return FormulaRender.safe(expr);
+        }
+        const span = document.createElement('span');
+        span.textContent = expr;
+        return span;
+      }
+
+      function showError(message) {
+        resultEl.innerHTML = '';
+        const box = document.createElement('div');
+        box.className = 'error-box';
+        box.textContent = message;
+        resultEl.appendChild(box);
+      }
+
+      // 防止“幂”键结构里底数留空时被导出成 p(0,n)，导致结果悄悄少掉一项
+      function checkPowerStructures(editor, label) {
+        const powers = editor.querySelectorAll('.power');
+        for (const power of powers) {
+          const base = power.querySelector('.base');
+          const exponent = power.querySelector('.exponent');
+          const baseText = base ? base.textContent.trim() : '';
+          const exponentText = exponent ? exponent.textContent.trim() : '';
+          if (!baseText || !exponentText) {
+            throw new Error(
+              label + ' 中有未填写完整的幂：请补全底数和指数（也可以直接输入 x^2）。'
+            );
+          }
+        }
+      }
+
+      // 校验表达式：非空、不含等号/λ、变量只能是 x、y
+      function validateExpression(expr, label) {
+        if (!expr) {
+          throw new Error('请输入' + label + '。');
+        }
+
+        if (expr.indexOf('=') !== -1) {
+          throw new Error(label + ' 中不要写等号，直接填写等号左边的表达式。');
+        }
+
+        if (expr.indexOf('λ') !== -1) {
+          throw new Error(label + ' 中不要输入 λ，乘数 λ 由工具自动引入。');
+        }
+
+        let vars;
+        try {
+          vars = Derivative.variables(expr);
+        } catch (err) {
+          const message = String((err && err.message) || err);
+          if (/参数过多/.test(message)) {
+            throw new Error(label + ' 中变量过多：本工具只支持变量 x、y（λ 由工具自动引入）。');
+          }
+          throw new Error(label + ' 表达式无法解析：' + message);
+        }
+
+        const unsupported = vars.filter(function (name) {
+          return name !== 'x' && name !== 'y';
+        });
+
+        if (unsupported.length) {
+          throw new Error(
+            label + ' 中只支持变量 x、y，检测到：' + unsupported.join('、') + '。'
+          );
+        }
+
+        return vars;
+      }
+
+      function sectionTitle(text) {
+        const title = document.createElement('h2');
+        title.className = 'result-section-title';
+        title.textContent = text;
+        return title;
+      }
+
+      // 一行方程：标签 + 渲染后的表达式 + 可选的“= 0”
+      function equationRow(labelText, expr, tailText) {
+        const row = document.createElement('div');
+        row.className = 'equation-row';
+
+        const label = document.createElement('span');
+        label.className = 'equation-label';
+        label.textContent = labelText;
+        row.appendChild(label);
+
+        const body = document.createElement('span');
+        body.className = 'equation-body';
+        body.appendChild(renderFormula(expr));
+        row.appendChild(body);
+
+        if (tailText) {
+          const tail = document.createElement('span');
+          tail.className = 'equation-tail';
+          tail.textContent = tailText;
+          row.appendChild(tail);
+        }
+
+        return row;
+      }
+
+      function renderResult(data) {
+        resultEl.innerHTML = '';
+
+        const functionSection = document.createElement('section');
+        functionSection.className = 'result-section';
+        functionSection.appendChild(sectionTitle('拉格朗日函数'));
+        functionSection.appendChild(equationRow('L(x, y, λ) =', data.lagrange));
+
+        const functionNote = document.createElement('p');
+        functionNote.className = 'result-note';
+        functionNote.textContent = '按 L(x, y, λ) = f(x, y) + λ g(x, y) 构造。';
+        functionSection.appendChild(functionNote);
+
+        const systemSection = document.createElement('section');
+        systemSection.className = 'result-section';
+        systemSection.appendChild(sectionTitle('拉格朗日方程组'));
+        systemSection.appendChild(equationRow('∂L/∂x =', data.dx, '= 0'));
+        systemSection.appendChild(equationRow('∂L/∂y =', data.dy, '= 0'));
+        systemSection.appendChild(equationRow('∂L/∂λ =', data.dl, '= 0'));
+
+        const systemNote = document.createElement('p');
+        systemNote.className = 'result-note';
+        systemNote.textContent = '第三条方程 ∂L/∂λ = 0 即原约束条件 g(x, y) = 0。本工具只输出方程组，不进行后续求解。';
+        systemSection.appendChild(systemNote);
+
+        resultEl.appendChild(functionSection);
+        resultEl.appendChild(systemSection);
+      }
+
+      function computeLagrange() {
+        const fExpr = FormulaEditor.readEditor(fEditor);
+        const gExpr = FormulaEditor.readEditor(gEditor);
+
+        try {
+          if (typeof Derivative === 'undefined') {
+            throw new Error('derivative.js 未成功加载。');
+          }
+
+          checkPowerStructures(fEditor, '目标函数 f');
+          checkPowerStructures(gEditor, '约束函数 g');
+          validateExpression(fExpr, '目标函数 f');
+          validateExpression(gExpr, '约束函数 g');
+
+          // 构造 L(x, y, λ) = f(x, y) + λ g(x, y)
+          const lagrangeExpr = '(' + fExpr + ')+(' + LAMBDA + ')*(' + gExpr + ')';
+          const lagrange = new Derivative(lagrangeExpr);
+
+          // 用 derivative.js 的解析结果给出展开后的 L，再分别求三个偏导
+          const lagrangeText = lagrange.format(lagrange.value);
+          const dx = lagrange.partial('x');
+          const dy = lagrange.partial('y');
+          const dl = lagrange.partial(LAMBDA);
+
+
+          renderResult({
+            lagrange: lambdaToDisplay(lagrangeText),
+            dx: lambdaToDisplay(dx),
+            dy: lambdaToDisplay(dy),
+            dl: lambdaToDisplay(dl)
+          });
+        } catch (err) {
+          console.error('拉格朗日乘数法计算错误：', err);
+          showError((err && err.message) ? err.message : String(err));
+        }
+      }
+
+      FormulaEditor.init({ onSubmit: computeLagrange });
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>普通计算器 - 聪明山工具箱</title>
+  <link rel="stylesheet" href="./document/keypad.css">
+  <style>
+    * { box-sizing: border-box; }
+    .page-header { display: flex; align-items: center; gap: 14px; margin: 0 0 22px; }
+    .page-header h1 { margin: 0; }
+    .back-link {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 6px 12px; font-size: 14px; line-height: 1;
+      color: #4285e9; background: #ffffff; border: 1px solid #dce2eb;
+      border-radius: 8px; text-decoration: none; white-space: nowrap;
+      transition: background 0.2s, border-color 0.2s, transform 0.1s;
+    }
+    .back-link:hover { background: #eaf2ff; border-color: #4285e9; }
+    .back-link:active { transform: translateY(1px); }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+      max-width: 760px; margin: 0 auto; padding: 32px 20px;
+      background: #f3f5f9; color: #202938;
+    }
+    h1 { font-size: 26px; font-weight: 650; margin: 0 0 22px; letter-spacing: -0.5px; }
+    #calculator {
+      background: #ffffff; padding: 24px; border-radius: 16px;
+      border: 1px solid #e5e9f0; box-shadow: 0 5px 20px rgba(30, 50, 80, 0.06);
+    }
+    .formula-editor {
+      min-height: 100px; padding: 18px; background: #fbfcfe;
+      border: 1.5px solid #dce2eb; border-radius: 10px;
+      font-size: 24px; display: flex; align-items: center; flex-wrap: wrap;
+      gap: 4px; overflow-x: auto; transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .formula-editor:focus-within { border-color: #4285e9; box-shadow: 0 0 0 3px rgba(66, 133, 233, 0.10); }
+    .slot {
+      min-width: 20px; min-height: 30px; display: inline-block; outline: none;
+      border-bottom: 1px dashed #aeb9c9; padding: 0 4px;
+      vertical-align: middle; line-height: 28px; white-space: nowrap;
+    }
+    .slot:focus { background: #eaf2ff; border-bottom: 2px solid #4285e9; border-radius: 3px 3px 0 0; }
+    .formula-node { display: inline-flex; align-items: center; vertical-align: middle; flex: 0 0 auto; }
+    .fraction {
+      display: inline-grid; grid-template-columns: minmax(24px, max-content);
+      grid-template-rows: auto 2px auto; align-items: center; justify-items: stretch;
+      vertical-align: middle; margin: 2px 4px; min-width: 30px; width: max-content; flex: 0 0 auto;
+    }
+    .fraction .numerator-wrap, .fraction .denominator-wrap {
+      display: inline-flex; align-items: center; justify-content: center;
+      gap: 2px; min-width: 24px; min-height: 28px; white-space: nowrap;
+    }
+    .fraction .numerator, .fraction .denominator {
+      display: inline-block; min-width: 24px; min-height: 28px;
+      padding: 2px 6px; text-align: center; line-height: 26px;
+      white-space: nowrap; border-bottom: none;
+    }
+    .fraction .bar { display: block; width: 100%; min-width: 24px; height: 1.5px; background: #26364a; }
+    .sqrt, .root { display: inline-flex; align-items: center; vertical-align: middle; flex: 0 0 auto; }
+    .sqrt-symbol { font-size: 1.15em; line-height: 1; }
+    .sqrt > .radicand, .root > .radicand {
+      display: inline-block; min-width: 24px; padding: 2px 5px 0;
+      white-space: nowrap; border-top: 1.5px solid currentColor; border-radius: 0 4px 0 0;
+    }
+    .root > .root-index { margin-right: 1px; font-size: 0.7em; line-height: 1; }
+    #result {
+      margin-top: 22px; padding: 16px; min-height: 50px; background: #f7f9fc;
+      border: 1px solid #e5e9f0; border-radius: 10px; font-size: 24px; overflow-x: auto;
+    }
+    .power { display: inline-flex; align-items: baseline; flex: 0 0 auto; }
+    .render-power { display: inline-flex; align-items: baseline; flex: 0 0 auto; }
+    .render-exp {
+      font-size: 0.7em; line-height: 1;
+      position: relative; top: -0.55em;   /* 与 document/math-page.css 同口径 */
+    }
+    .render-fraction {
+      display: inline-grid; grid-template-columns: minmax(24px, max-content);
+      grid-template-rows: auto 2px auto; align-items: center; justify-items: stretch;
+      vertical-align: middle; margin: 2px 4px; width: max-content;
+    }
+    .render-num, .render-den {
+      display: block; min-width: 24px; text-align: center;
+      padding: 2px 6px; line-height: 1.4; white-space: nowrap;
+    }
+    .render-bar { display: block; width: 100%; height: 1.5px; background: currentColor; }
+    .render-sqrt, .render-root { display: inline-flex; align-items: center; vertical-align: middle; flex: 0 0 auto; }
+    .render-radicand {
+      display: inline-block; min-width: 20px; border-top: 1.5px solid currentColor;
+      border-radius: 0 4px 0 0; padding: 2px 5px 0; white-space: nowrap;
+    }
+    .render-index { font-size: 0.7em; line-height: 1; margin-right: 1px; }
+  </style>
+</head>
+<body>
+  <div class="page-header">
+    <h1>普通计算器</h1>
+    <a href="/tool/geometry" class="back-link">返回工具箱</a>
+  </div>
+  <div id="calculator">
+    <div id="formula-editor" class="formula-editor">
+      <span class="slot" contenteditable="true"></span>
+    </div>
+    <div id="keypad" class="keypad">
+      <div class="key-group">
+        <div class="key-title">数字</div>
+        <div class="key-grid number-grid">
+          <span class="btn" data-key="1">1</span>
+          <span class="btn" data-key="2">2</span>
+          <span class="btn" data-key="3">3</span>
+          <span class="btn" data-key="4">4</span>
+          <span class="btn" data-key="5">5</span>
+          <span class="btn" data-key="6">6</span>
+          <span class="btn" data-key="7">7</span>
+          <span class="btn" data-key="8">8</span>
+          <span class="btn" data-key="9">9</span>
+          <span class="btn zero-key" data-key="0">0</span>
+        </div>
+      </div>
+      <div class="control-row">
+        <div class="key-group">
+          <div class="key-title">运算符</div>
+          <div class="key-grid operator-grid">
+            <span class="btn" data-key="+">+</span>
+            <span class="btn" data-key="-">−</span>
+            <span class="btn" data-key="*">×</span>
+            <span class="btn" data-key="/">÷</span>
+            <span class="btn" data-key="(">(</span>
+            <span class="btn" data-key=")">)</span>
+          </div>
+        </div>
+        <div class="key-group">
+          <div class="key-title">数学结构</div>
+          <div class="key-grid structure-grid">
+            <span class="btn" data-action="frac">分数</span>
+            <span class="btn" data-action="pow">幂</span>
+            <span class="btn" data-action="sqrt">√</span>
+            <span class="btn" data-action="root">ⁿ√</span>
+          </div>
+        </div>
+        <div class="key-group">
+          <div class="key-title">编辑</div>
+          <div class="key-grid edit-grid">
+            <span class="btn" data-action="backspace">⌫ 退格</span>
+            <span class="btn" data-action="clear">清空</span>
+            <span class="btn cursor-btn" data-action="cursor-left">←</span>
+            <span class="btn cursor-btn" data-action="cursor-right">→</span>
+          </div>
+        </div>
+        <div class="key-group simplify-group">
+          <div class="key-title">计算</div>
+          <button id="simplify-btn">化简</button>
+        </div>
+      </div>
+    </div>
+    <div id="result"></div>
+  </div>
+  <script src="./document/monomial.js"></script>
+  <script src="./document/polynomial.js"></script>
+  <script src="./document/formula-render.js"></script>
+  <script>
+    // ==================== 公式编辑器逻辑 ====================
+    let currentSlot = null;
+    let savedRange = null;
+
+    function saveEditorSelection() {
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return;
+      const range = sel.getRangeAt(0);
+      const editor = document.getElementById('formula-editor');
+      if (editor.contains(range.commonAncestorContainer)) {
+        savedRange = range.cloneRange();
+      }
+    }
+
+    function getActiveSlot() {
+      const ae = document.activeElement;
+      if (ae && ae.classList && ae.classList.contains('slot') && document.contains(ae)) {
+        currentSlot = ae;
+        return currentSlot;
+      }
+      if (currentSlot && document.contains(currentSlot)) return currentSlot;
+      currentSlot = document.querySelector('#formula-editor .slot');
+      return currentSlot;
+    }
+
+    function placeCaret(el, atEnd) {
+      if (!el) return;
+      el.focus();
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      range.collapse(!atEnd);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      currentSlot = el;
+      savedRange = range.cloneRange();
+    }
+
+    function placeCaretAtEnd(el) { placeCaret(el, true); }
+    function placeCaretAtStart(el) { placeCaret(el, false); }
+
+    function isCaretAtStart(slot) {
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return false;
+      const r = sel.getRangeAt(0);
+      if (!slot.contains(r.startContainer)) return false;
+      const probe = document.createRange();
+      probe.selectNodeContents(slot);
+      try { probe.setEnd(r.startContainer, r.startOffset); }
+      catch (err) { return false; }
+      return probe.toString().length === 0;
+    }
+
+    function isCaretAtEnd(slot) {
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return false;
+      const r = sel.getRangeAt(0);
+      if (!slot.contains(r.startContainer)) return false;
+      const probe = document.createRange();
+      probe.selectNodeContents(slot);
+      try { probe.setStart(r.startContainer, r.startOffset); }
+      catch (err) { return false; }
+      return probe.toString().length === 0;
+    }
+
+    function setSlotText(slot, text) {
+      if (!slot) return;
+      slot.focus();
+      const sel = window.getSelection();
+      let range = savedRange ? savedRange.cloneRange() : null;
+      const isInsideSlot = range &&
+        (range.startContainer === slot || slot.contains(range.startContainer)) &&
+        (range.endContainer === slot || slot.contains(range.endContainer));
+      if (!isInsideSlot) {
+        range = document.createRange();
+        range.selectNodeContents(slot);
+        range.collapse(false);
+      }
+      range.deleteContents();
+      const node = document.createTextNode(text);
+      range.insertNode(node);
+      range.setStartAfter(node);
+      range.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(range);
+      savedRange = range.cloneRange();
+      currentSlot = slot;
+    }
+
+    // ==================== 工具函数 ====================
+    function createSlot() {
+      const s = document.createElement('span');
+      s.className = 'slot';
+      s.contentEditable = 'true';
+      return s;
+    }
+
+    // ==================== 焦点跟踪 ====================
+    document.addEventListener('focusin', (e) => {
+      if (e.target.classList && e.target.classList.contains('slot')) {
+        currentSlot = e.target;
+      }
+    });
+
+    document.getElementById('formula-editor').addEventListener('click', (e) => {
+      if (e.target.id === 'formula-editor') {
+        const firstSlot = e.target.querySelector('.slot');
+        if (firstSlot) firstSlot.focus();
+      }
+    });
+
+    document.getElementById('keypad').addEventListener('mousedown', (e) => {
+      const btn = e.target.closest('.btn');
+      if (!btn) return;
+      saveEditorSelection();
+      e.preventDefault();
+    });
+
+    document.getElementById('keypad').addEventListener('click', (e) => {
+      const btn = e.target.closest('.btn');
+      if (!btn) return;
+      if (btn.dataset.key !== undefined) {
+        insertText(btn.dataset.key);
+      } else if (btn.dataset.action === 'frac') {
+        insertFraction();
+      } else if (btn.dataset.action === 'pow') {
+        insertPower();
+      } else if (btn.dataset.action === 'sqrt') {
+        insertSqrt();
+      } else if (btn.dataset.action === 'root') {
+        insertRoot();
+      } else if (btn.dataset.action === 'backspace') {
+        backspace();
+      } else if (btn.dataset.action === 'clear') {
+        clearEditor();
+      } else if (btn.dataset.action === 'cursor-left') {
+        moveCaret('left');
+      } else if (btn.dataset.action === 'cursor-right') {
+        moveCaret('right');
+      }
+    });
+
+    // ==================== 输入文本 ====================
+    function insertText(text) {
+      const slot = getActiveSlot();
+      if (!slot) return;
+      setSlotText(slot, text);
+    }
+
+    // ==================== 数学结构插入（通用） ====================
+    // 结构一律插到当前槽位的【下一个位置】，不吸收当前槽位的内容
+    function insertStructure(opts) {
+      const slot = getActiveSlot();
+      if (!slot) return;
+
+      const wrapper = document.createElement('span');
+      wrapper.className = 'formula-node';
+      wrapper.contentEditable = 'false';
+      wrapper.innerHTML = opts.html;
+
+      const focusSlot = wrapper.querySelector(opts.focusSelector);
+
+      const afterSlot = createSlot();
+      slot.parentNode.insertBefore(wrapper, slot.nextSibling);
+      slot.parentNode.insertBefore(afterSlot, wrapper.nextSibling);
+
+      placeCaretAtEnd(focusSlot);
+    }
+
+    function insertFraction() {
+      insertStructure({
+        html: `
+          <span class="fraction">
+            <span class="numerator-wrap"><span class="slot numerator" contenteditable="true"></span></span>
+            <span class="bar"></span>
+            <span class="denominator-wrap"><span class="slot denominator" contenteditable="true"></span></span>
+          </span>
+        `,
+        focusSelector: '.numerator'
+      });
+    }
+
+    function insertPower() {
+      insertStructure({
+        html: `
+          <span class="power">
+            <span class="slot base" contenteditable="true"></span>
+            <sup class="slot exponent" contenteditable="true"></sup>
+          </span>
+        `,
+        focusSelector: '.exponent'
+      });
+    }
+
+    function insertSqrt() {
+      insertStructure({
+        html: `
+          <span class="sqrt">
+            <span class="sqrt-symbol">√</span>
+            <span class="slot radicand" contenteditable="true"></span>
+          </span>
+        `,
+        focusSelector: '.radicand'
+      });
+    }
+
+    function insertRoot() {
+      insertStructure({
+        html: `
+          <span class="root">
+            <sup class="slot root-index" contenteditable="true"></sup>
+            <span class="sqrt-symbol">√</span>
+            <span class="slot radicand" contenteditable="true"></span>
+          </span>
+        `,
+        focusSelector: '.root-index'
+      });
+    }
+
+    // ==================== 退格 ====================
+    function slotIsEmpty(slot) {
+      return slot.textContent.trim() === '' && !slot.querySelector('.formula-node');
+    }
+
+    function removeStructure(wrapper) {
+      const parent = wrapper.parentNode;
+      const next = wrapper.nextElementSibling;
+      wrapper.remove();
+      if (next && next.classList && next.classList.contains('slot')) {
+        placeCaretAtStart(next);
+      } else if (parent && parent.classList && parent.classList.contains('slot')) {
+        placeCaretAtEnd(parent);
+      } else if (parent && parent.querySelector) {
+        const s = parent.querySelector('.slot');
+        if (s) placeCaretAtEnd(s);
+      }
+      saveEditorSelection();
+    }
+
+    function backspace() {
+      const slot = getActiveSlot();
+      if (!slot) return;
+      slot.focus();
+
+      if (slotIsEmpty(slot)) {
+        const wrapper = slot.closest('.formula-node');
+        if (wrapper) {
+          removeStructure(wrapper);
+          return;
+        }
+        return;
+      }
+
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) {
+        placeCaretAtEnd(slot);
+      }
+      document.execCommand('delete');
+      saveEditorSelection();
+    }
+
+    function clearEditor() {
+      const editor = document.getElementById('formula-editor');
+      editor.innerHTML = '<span class="slot" contenteditable="true"></span>';
+      currentSlot = editor.querySelector('.slot');
+      placeCaretAtEnd(currentSlot);
+    }
+
+    // ==================== 隐式乘法判定 ====================
+    // 判断节点本身或其内部是否包含数学结构（分数、根式、幂）
+    function isStructureNode(node) {
+      if (!node || node.nodeType !== Node.ELEMENT_NODE) return false;
+      const cls = node.classList;
+      if (cls.contains('fraction') || cls.contains('sqrt') ||
+          cls.contains('root') || cls.contains('power')) return true;
+      if (cls.contains('formula-node')) {
+        return Array.from(node.children).some(c => isStructureNode(c));
+      }
+      return false;
+    }
+
+    // 判断左右两段之间是否需要插入乘号
+    function shouldInsertMul(leftText, rightText, leftIsStruct, rightIsStruct) {
+      if (!leftText || !rightText) return false;
+      const leftLast = leftText[leftText.length - 1];
+      const rightFirst = rightText[0];
+      const isDigit = c => c >= '0' && c <= '9';
+      const isLetter = c => /[a-zA-Z]/.test(c);
+
+      const leftOk = leftIsStruct || isDigit(leftLast) || isLetter(leftLast) || leftLast === ')';
+      if (!leftOk) return false;
+
+      const rightOk = rightIsStruct || isDigit(rightFirst) || isLetter(rightFirst) ||
+                      rightFirst === '(' || rightFirst === '√';
+      if (!rightOk) return false;
+
+      // 纯数字 + 纯数字：视为同一数字的不同槽位（如 "3" 与 "2" 应合为 "32"）
+      if (!leftIsStruct && !rightIsStruct && isDigit(leftLast) && isDigit(rightFirst)) {
+        return false;
+      }
+
+      return true;
+    }
+
+    // ==================== 导出公式（带隐式乘法） ====================
+    function exportFormula(node) {
+      if (!node) return '';
+      if (node.nodeType === Node.TEXT_NODE) {
+        return node.textContent;
+      }
+      if (node.nodeType !== Node.ELEMENT_NODE) {
+        return '';
+      }
+      if (node.classList.contains('slot')) {
+        return exportChildrenWithMul(node.childNodes).trim();
+      }
+      if (node.classList.contains('fraction')) {
+        const children = Array.from(node.children);
+        const barIndex = children.findIndex(child => child.classList.contains('bar'));
+        if (barIndex === -1) return '';
+        const num = exportChildrenWithMul(children.slice(0, barIndex));
+        const den = exportChildrenWithMul(children.slice(barIndex + 1));
+        return Monomial.formatFraction(num, den);
+      }
+      if (node.classList.contains('power')) {
+        const children = Array.from(node.children);
+        const expNode = children.find(child => child.classList.contains('exponent'));
+        const baseNodes = children.filter(child => child !== expNode);
+        const base = exportChildrenWithMul(baseNodes);
+        const exp = exportFormula(expNode);
+        return Monomial.formatPower(base, exp);
+      }
+      if (node.classList.contains('sqrt')) {
+        const children = Array.from(node.children);
+        const radicandNodes = children.filter(child => !child.classList.contains('sqrt-symbol'));
+        const radicand = exportChildrenWithMul(radicandNodes);
+        return Monomial.formatSqrt(radicand);
+      }
+      if (node.classList.contains('root')) {
+        const children = Array.from(node.children);
+        const symbolIndex = children.findIndex(child => child.classList.contains('sqrt-symbol'));
+        if (symbolIndex === -1) return '';
+        const index = exportChildrenWithMul(children.slice(0, symbolIndex));
+        const radicand = exportChildrenWithMul(children.slice(symbolIndex + 1));
+        return Monomial.formatRoot(index, radicand);
+      }
+      return exportChildrenWithMul(node.childNodes);
+    }
+
+    // 遍历子节点并自动插入隐式乘号
+    function exportChildrenWithMul(nodes) {
+      let result = '';
+      let prevIsStruct = false;
+      for (const child of nodes) {
+        const text = exportFormula(child);
+        if (!text) continue;
+        const curIsStruct = isStructureNode(child);
+        if (result && shouldInsertMul(result, text, prevIsStruct, curIsStruct)) {
+          result += '*';
+        }
+        result += text;
+        prevIsStruct = curIsStruct;
+      }
+      return result;
+    }
+
+    // ==================== 化简函数 ====================
+    function simplify() {
+      const editor = document.getElementById('formula-editor');
+      const expr = exportFormula(editor);
+
+      let resultStr;
+      try {
+        resultStr = Monomial.simplifyExpression(expr);
+      } catch (err) {
+        console.error(err);
+        resultStr = '错误：' + err.message;
+      }
+
+      // 统一走公共渲染器：它会拆顶层乘除并渲染幂/根式/分式；
+      // 页面内联的旧渲染器只认单个结构，会把 3*p(a,2)+2*a+1 原样吐出来。
+      FormulaRender.setResult(document.getElementById('result'), resultStr);
+    }
+
+    // ==================== 键盘导航 ====================
+    function getAllSlots() {
+      const editor = document.getElementById('formula-editor');
+      return Array.from(editor.querySelectorAll('.slot')).filter(s => s.isContentEditable);
+    }
+
+    document.getElementById('formula-editor').addEventListener('keydown', (e) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const key = e.key;
+      if (key !== 'ArrowLeft' && key !== 'ArrowRight' && key !== 'Home' && key !== 'End') return;
+
+      const slot = getActiveSlot();
+      if (!slot) return;
+
+      const slots = getAllSlots();
+      const idx = slots.indexOf(slot);
+      if (idx === -1) return;
+
+      if (key === 'ArrowLeft' && isCaretAtStart(slot)) {
+        if (idx > 0) {
+          e.preventDefault();
+          placeCaretAtEnd(slots[idx - 1]);
+        }
+      } else if (key === 'ArrowRight' && isCaretAtEnd(slot)) {
+        if (idx < slots.length - 1) {
+          e.preventDefault();
+          placeCaretAtStart(slots[idx + 1]);
+        }
+      } else if (key === 'Home') {
+        e.preventDefault();
+        placeCaretAtStart(slots[0]);
+      } else if (key === 'End') {
+        e.preventDefault();
+        placeCaretAtEnd(slots[slots.length - 1]);
+      }
+    });
+
+    // ==================== 光标移动 ====================
+    function moveCaret(direction) {
+      const slot = getActiveSlot();
+      if (!slot) return;
+
+      slot.focus();
+
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) {
+        placeCaretAtEnd(slot);
+        return;
+      }
+
+      const slots = getAllSlots();
+      const idx = slots.indexOf(slot);
+
+      if (direction === 'left' && isCaretAtStart(slot)) {
+        if (idx > 0) placeCaretAtEnd(slots[idx - 1]);
+        return;
+      }
+      if (direction === 'right' && isCaretAtEnd(slot)) {
+        if (idx !== -1 && idx < slots.length - 1) placeCaretAtStart(slots[idx + 1]);
+        return;
+      }
+
+      if (typeof sel.modify === 'function') {
+        sel.modify('move', direction === 'left' ? 'backward' : 'forward', 'character');
+      } else {
+        if (direction === 'left') placeCaretAtStart(slot);
+        else placeCaretAtEnd(slot);
+      }
+      saveEditorSelection();
+    }
+
+    // ==================== 初始化 ====================
+    window.onload = function() {
+      currentSlot = document.querySelector('#formula-editor .slot');
+      if (currentSlot) currentSlot.focus();
+    };
+    document.getElementById('simplify-btn').addEventListener('click', simplify);
+  </script>
+</body>
+</html>

@@ -1,0 +1,237 @@
+/* ============================================================
+   math-page.css —— 计算器页面公共样式
+   ------------------------------------------------------------
+   提取自下列页面中【逐字重复】的 <style> 规则：
+     monomial.html、distance2.html、distance3.html、
+     linedistance2.html、tetrahedron.html
+
+   配套文件：
+     keypad.css          —— 键盘按键外观（已存在）
+     math-page.css       —— 本文件：页面骨架 / 公式编辑器 / 结果区 / 渲染样式
+     formula-editor.js   —— 公式编辑器交互逻辑
+     formula-render.js   —— 表达式 → DOM 渲染
+
+   用法：<link rel="stylesheet" href="./document/keypad.css">
+         <link rel="stylesheet" href="./document/math-page.css">
+
+   说明：原页面各自的 <style> 里还留有少量【页面私有】规则
+        （.param-grid、.result-item、页面标题字号等），
+        文末“可选规则”一节列出了这些规则，需要的页面自行保留即可。
+   ============================================================ */
+
+/* ==================== 页面骨架 ==================== */
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  max-width: 760px; margin: 0 auto; padding: 32px 20px 260px;
+  background: #f3f5f9; color: #202938;
+}
+/* 注：monomial.html 的 body 为 padding: 32px 20px（没有底部 260px 留白），
+   因为它只有一个编辑框、不需要给键盘留位置；距离/四面体页面统一用 260px。 */
+
+h1 {
+  font-size: 26px; font-weight: 650; margin: 0 0 22px; letter-spacing: -0.5px;
+}
+
+.page-header { display: flex; align-items: center; gap: 14px; margin: 0 0 22px; }
+.page-header h1 { font-size: 26px; font-weight: 650; margin: 0; letter-spacing: -0.5px; }
+
+.back-link {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 6px 12px; font-size: 14px; line-height: 1;
+  color: #4285e9; background: #ffffff; border: 1px solid #dce2eb;
+  border-radius: 8px; text-decoration: none; white-space: nowrap;
+  transition: background 0.2s, border-color 0.2s, transform 0.1s;
+}
+.back-link:hover { background: #eaf2ff; border-color: #4285e9; }
+.back-link:active { transform: translateY(1px); }
+
+#calculator {
+  background: #ffffff; padding: 24px; border-radius: 16px;
+  border: 1px solid #e5e9f0; box-shadow: 0 5px 20px rgba(30, 50, 80, 0.06);
+}
+
+/* ==================== 坐标输入区 ==================== */
+
+.points {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+}
+.point-card {
+  border: 1px solid #e5e9f0; border-radius: 12px;
+  padding: 14px 16px; background: #fbfcfe;
+}
+.point-name {
+  font-size: 15px; font-weight: 650; color: #4285e9;
+  margin-bottom: 12px; letter-spacing: 0.2px;
+}
+.coord-line { display: flex; align-items: center; gap: 10px; }
+.coord-line + .coord-line { margin-top: 10px; }
+.coord-label {
+  font-size: 17px; color: #5b6b80; min-width: 46px;
+  white-space: nowrap; flex: 0 0 auto;
+}
+
+/* ==================== 公式编辑器 ==================== */
+
+.formula-editor {
+  min-height: 100px; padding: 18px; background: #fbfcfe;
+  border: 1.5px solid #dce2eb; border-radius: 10px;
+  font-size: 24px; display: flex; align-items: center; flex-wrap: wrap;
+  gap: 4px; overflow-x: auto; transition: border-color 0.2s, box-shadow 0.2s;
+}
+.formula-editor:focus-within {
+  border-color: #4285e9; box-shadow: 0 0 0 3px rgba(66, 133, 233, 0.10);
+}
+.formula-editor.mini {
+  flex: 1 1 auto; min-width: 0;
+  min-height: 50px; padding: 7px 12px; font-size: 21px;
+  background: #ffffff;
+}
+
+.slot {
+  min-width: 20px; min-height: 30px; display: inline-block; outline: none;
+  border-bottom: 1px dashed #aeb9c9; padding: 0 4px;
+  vertical-align: middle; line-height: 28px; white-space: nowrap;
+}
+.slot:focus { background: #eaf2ff; border-bottom: 2px solid #4285e9; border-radius: 3px 3px 0 0; }
+
+.formula-node { display: inline-flex; align-items: center; vertical-align: middle; flex: 0 0 auto; }
+
+/* ---------- 分数 ---------- */
+.fraction {
+  display: inline-grid; grid-template-columns: minmax(24px, max-content);
+  grid-template-rows: auto 2px auto; align-items: center; justify-items: stretch;
+  vertical-align: middle; margin: 2px 4px; min-width: 30px; width: max-content; flex: 0 0 auto;
+}
+.fraction .numerator-wrap, .fraction .denominator-wrap {
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: 2px; min-width: 24px; min-height: 28px; white-space: nowrap;
+}
+.fraction .numerator, .fraction .denominator {
+  display: inline-block; min-width: 24px; min-height: 28px;
+  padding: 2px 6px; text-align: center; line-height: 26px;
+  white-space: nowrap; border-bottom: none;
+}
+.fraction .bar { display: block; width: 100%; min-width: 24px; height: 1.5px; background: #26364a; }
+
+/* ---------- 根式 ---------- */
+.sqrt, .root { display: inline-flex; align-items: center; vertical-align: middle; flex: 0 0 auto; }
+.sqrt-symbol { font-size: 1.15em; line-height: 1; }
+
+/* 旧结构：被开方内容直接放在 .radicand 上（distance2/3、linedistance2、tetrahedron） */
+.sqrt > .radicand, .root > .radicand {
+  display: inline-block; min-width: 24px; padding: 2px 5px 0;
+  white-space: nowrap; border-top: 1.5px solid currentColor; border-radius: 0 4px 0 0;
+}
+/* 新结构：外面套一层 .radicand-wrap（monomial.html 的最终结构）
+   横线画在 wrap 上，嵌套结构会插进 wrap 内部，
+   横线才能跟着内容一起变长、盖住整个被开方部分 */
+.sqrt > .radicand-wrap, .root > .radicand-wrap {
+  display: inline-block; min-width: 24px; padding: 5px 6px 0;
+  white-space: nowrap; border-top: 1.5px solid currentColor; border-radius: 0 4px 0 0;
+}
+.root > .root-index { margin-right: 1px; font-size: 0.7em; line-height: 1; }
+
+/* ---------- 幂（编辑器内） ---------- */
+.power { display: inline-flex; align-items: baseline; flex: 0 0 auto; }
+/* 指数用更小的字号、棕色、上移，与底数区分开 */
+.power > .exponent {
+  font-size: 0.62em;
+  line-height: 1.1;
+  color: #a1571b;
+  min-width: 18px;
+  min-height: 20px;
+  padding: 0 3px;
+  position: relative;
+  top: -0.75em;                       /* flex 里 <sup> 的 vertical-align 失效，手动上移 */
+  border-bottom-color: #dcb68d;
+}
+.power > .exponent:focus {
+  color: #8a4610;
+  background: #fdf3e7;
+  border-bottom: 2px solid #a1571b;
+  border-radius: 3px 3px 0 0;
+}
+
+/* ==================== 结果区 ==================== */
+
+#result {
+  margin-top: 22px; padding: 16px; min-height: 50px; background: #f7f9fc;
+  border: 1px solid #e5e9f0; border-radius: 10px;
+  font-size: 24px; overflow-x: auto;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 4px;
+}
+/* 注：monomial.html 的 #result 没有 display:flex 一行（块级、单行结果）。
+   需要“标签 + 结果”横排或多个结果项时用 flex 版本。 */
+
+.result-label { font-size: 18px; color: #5b6b80; margin-right: 4px; }
+.result-hint { font-size: 14px; color: #9aa7b8; margin-left: 10px; }
+
+/* 多结果项（tetrahedron.html） */
+.result-item {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  width: 100%;
+  min-height: 42px;
+  gap: 6px;
+  padding: 5px 0;
+}
+/* 多结果时标签统一宽度，数值才能对齐 */
+.result-item > .result-label {
+  font-size: 17px;
+  color: #5b6b80;
+  min-width: 150px;
+  margin-right: 4px;
+}
+.result-value {
+  font-size: 21px;
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+/* ==================== 结果渲染（公式排版） ==================== */
+
+.render-power { display: inline-flex; align-items: baseline; flex: 0 0 auto; }
+.render-exp {
+  font-size: 0.7em; line-height: 1;
+  position: relative; top: -0.55em;   /* flex 里 <sup> 的 vertical-align 失效，手动上移 */
+}
+.render-fraction {
+  display: inline-grid; grid-template-columns: minmax(24px, max-content);
+  grid-template-rows: auto 2px auto; align-items: center; justify-items: stretch;
+  vertical-align: middle; margin: 2px 4px; width: max-content;
+}
+.render-num, .render-den {
+  display: block; min-width: 24px; text-align: center;
+  padding: 2px 6px; line-height: 1.4; white-space: nowrap;
+}
+.render-bar { display: block; width: 100%; height: 1.5px; background: currentColor; }
+.render-sqrt, .render-root { display: inline-flex; align-items: center; vertical-align: middle; flex: 0 0 auto; }
+.render-radicand {
+  display: inline-block; min-width: 20px; border-top: 1.5px solid currentColor;
+  border-radius: 0 4px 0 0; padding: 2px 5px 0; white-space: nowrap;
+}
+.render-index { font-size: 0.7em; line-height: 1; margin-right: 1px; }
+.render-abs { display: inline-flex; align-items: center; flex: 0 0 auto; }
+.render-abs-bar { font-size: 1.05em; line-height: 1; padding: 0 1px; }
+.render-abs-inner { display: inline-block; padding: 0 2px; white-space: nowrap; }
+
+/* ==================== 页面私有规则（不放在这里） ====================
+   .structure-grid .btn[data-action="pow"]（棕色“幂”键）
+   只属于 monomial.html，写在它自己的 <style> 里；
+   其他页面不要把这条规则带进来，否则“幂”键会从蓝色变成棕色。
+
+   .number-param-row / .param-grid（a、b、h 参数键）现在是【5 个页面公共】
+   的按键样式，放在 document/keypad.css 里。
+   ================================================================= */
+
+/* ==================== 响应式 ==================== */
+
+@media (max-width: 560px) {
+  .points { grid-template-columns: 1fr; }
+}

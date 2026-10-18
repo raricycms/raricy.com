@@ -1,0 +1,218 @@
+/* ==================== 键盘整体 ==================== */
+
+.keypad {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin-top: 22px;
+}
+
+/* 运算符、数学结构、编辑、化简横向排列 */
+.control-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  align-items: end;
+}
+
+.control-row .key-group {
+  min-width: 0;
+}
+
+/* 控制区内按键 */
+.control-row .key-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+#simplify-btn {
+  width: 100%;
+  min-height: 54px;
+  padding: 8px 4px;
+  margin: 0;
+  border: 1px solid #c9ddfa;
+  border-radius: 9px;
+  background: #3478d4;
+  color: white;
+  font-size: 17px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+#simplify-btn:hover {
+  background: #2868bd;
+}
+
+#simplify-btn:active {
+  transform: scale(0.96);
+}
+
+/* 功能分区 */
+.key-group {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+/* 分区标题 */
+.key-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #64748b;
+  padding-left: 2px;
+}
+
+/* 按键网格 */
+.key-grid {
+  display: grid;
+  gap: 9px;
+}
+
+/* 数字区 */
+.number-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.zero-key {
+  grid-column: 2;
+}
+
+/* 数字 + 参数（a、b、h）并排：五个计算器页面共用 */
+.number-param-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+}
+
+/* 参数区：a、b、h 三个按键 */
+.param-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+/* 运算符 */
+.operator-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+/* 数学结构 */
+.structure-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+/* 编辑区 */
+.edit-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+/* 通用按键 */
+.keypad .btn {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-width: 0;
+  min-height: 54px;
+  padding: 8px 4px;
+
+  background: #edf2f8;
+  color: #26364a;
+  border: 1px solid #e2e8f0;
+  border-radius: 9px;
+
+  font-size: 19px;
+  font-weight: 500;
+
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+
+  transition: background 0.12s, transform 0.12s;
+}
+
+/* 悬停和按下 */
+.keypad .btn:hover {
+  background: #dce8f7;
+}
+
+.keypad .btn:active {
+  background: #cbdcf2;
+  transform: scale(0.96);
+}
+
+/* 数学结构按键 */
+.structure-grid .btn {
+  background: #e4efff;
+  color: #245da7;
+  border-color: #d3e3fb;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+/* 编辑按键 */
+.edit-grid .btn {
+  background: #fff0ef;
+  color: #c04a45;
+  border-color: #f6d9d6;
+  font-size: 15px;
+}
+
+/* 参数按键（a、b、h）：放在通用 .keypad .btn 之后，
+   否则同优先级下会被通用按键的背景色盖掉 */
+.param-grid .btn {
+  min-width: 54px;
+  background: #e8f6ee;
+  color: #1d7a4b;
+  border-color: #d2ebdd;
+  font-family: Georgia, "Times New Roman", serif;
+  font-style: italic;
+  font-size: 21px;
+}
+
+.param-grid .btn:hover {
+  background: #d6efe1;
+}
+
+/* ==================== 手机适配 ==================== */
+
+@media (max-width: 500px) {
+  .keypad {
+    gap: 16px;
+  }
+
+  .number-param-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .key-grid {
+    gap: 7px;
+  }
+
+  .keypad .btn {
+    min-height: 52px;
+    font-size: 18px;
+  }
+
+  .structure-grid .btn,
+  .edit-grid .btn {
+    font-size: 15px;
+  }
+
+  /* 参数键保持自己的字号（不要被上面的 .keypad .btn 覆盖） */
+  .param-grid .btn {
+    font-size: 21px;
+  }
+
+  .control-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .control-row .key-group {
+    min-width: 0;
+  }
+
+  #simplify-btn {
+    min-height: 52px;
+    font-size: 16px;
+  }
+}

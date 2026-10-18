@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>多项式求导 - 聪明山工具箱</title>
+  <link rel="stylesheet" href="./document/keypad.css">
+  <link rel="stylesheet" href="./document/math-page.css">
+  <style>
+    /* ==================== 本页私有样式（公共部分见 document/math-page.css） ==================== */
+    body { padding: 32px 20px; }        /* 单个编辑框，不需要给键盘留 260px 底部留白 */
+    #result { display: block; }         /* 结果区为块级单行 */
+
+    /* “幂”按键（棕色，与指数颜色一致） */
+    .structure-grid .btn[data-action="pow"] {
+      background: #f7e7d6; color: #a1571b; border-color: #edd8c0;
+    }
+    .structure-grid .btn[data-action="pow"]:hover { background: #f0dac3; }
+    .structure-grid .btn[data-action="pow"]:active { background: #e8cdb0; }
+
+    /* 求导对象选择条 */
+    .derivative-settings {
+      display: flex; align-items: center; flex-wrap: wrap; gap: 12px;
+      margin-top: 14px; padding: 12px 14px;
+      background: #f7f9fc; border: 1px solid #e5e9f0; border-radius: 10px;
+    }
+    .derivative-settings label {
+      font-size: 14px; font-weight: 600; color: #5b6b80; white-space: nowrap;
+    }
+    #derivative-target {
+      min-height: 38px; padding: 6px 34px 6px 11px;
+      border: 1px solid #dce2eb; border-radius: 8px;
+      background: #ffffff; color: #26364a;
+      font-size: 15px; font-family: inherit; cursor: pointer;
+    }
+    #derivative-target:focus {
+      outline: none; border-color: #4285e9;
+      box-shadow: 0 0 0 3px rgba(66, 133, 233, 0.10);
+    }
+    .variable-hint {
+      margin-left: auto; font-size: 13px; color: #8a97a8;
+      line-height: 1.5;
+    }
+    .variable-hint strong { color: #5b6b80; font-weight: 600; }
+
+    @media (max-width: 560px) {
+      .variable-hint { margin-left: 0; width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page-header">
+    <h1>多项式求导</h1>
+    <a href="/tool/geometry" class="back-link">返回工具箱</a>
+  </div>
+  <div id="calculator">
+    <div id="formula-editor" class="formula-editor">
+      <span class="slot" contenteditable="true"></span>
+    </div>
+
+    <div class="derivative-settings">
+      <label for="derivative-target">求导对象</label>
+      <select id="derivative-target">
+        <option value="">自动（唯一参数）</option>
+        <option value="a">对参数 a 求偏导</option>
+        <option value="b">对参数 b 求偏导</option>
+        <option value="h">对参数 h 求偏导</option>
+      </select>
+      <span id="variable-hint" class="variable-hint">检测到参数：—</span>
+    </div>
+
+    <div id="keypad" class="keypad">
+      <div class="key-group">
+        <div class="key-title">数字与参数</div>
+        <div class="number-param-row">
+          <div class="key-grid number-grid">
+            <span class="btn" data-key="1">1</span>
+            <span class="btn" data-key="2">2</span>
+            <span class="btn" data-key="3">3</span>
+            <span class="btn" data-key="4">4</span>
+            <span class="btn" data-key="5">5</span>
+            <span class="btn" data-key="6">6</span>
+            <span class="btn" data-key="7">7</span>
+            <span class="btn" data-key="8">8</span>
+            <span class="btn" data-key="9">9</span>
+            <span class="btn zero-key" data-key="0">0</span>
+          </div>
+          <div class="key-grid param-grid">
+            <span class="btn param-key" data-key="a" title="参数 a">a</span>
+            <span class="btn param-key" data-key="b" title="参数 b">b</span>
+            <span class="btn param-key" data-key="h" title="参数 h">h</span>
+          </div>
+        </div>
+      </div>
+      <div class="control-row">
+        <div class="key-group">
+          <div class="key-title">运算符</div>
+          <div class="key-grid operator-grid">
+            <span class="btn" data-key="+">+</span>
+            <span class="btn" data-key="-">−</span>
+            <span class="btn" data-key="*">×</span>
+            <span class="btn" data-key="/">÷</span>
+            <span class="btn" data-key="(">(</span>
+            <span class="btn" data-key=")">)</span>
+          </div>
+        </div>
+        <div class="key-group">
+          <div class="key-title">数学结构</div>
+          <div class="key-grid structure-grid">
+            <span class="btn" data-action="frac">分数</span>
+            <span class="btn" data-action="pow">幂</span>
+            <span class="btn" data-action="sqrt">√</span>
+            <span class="btn" data-action="root">ⁿ√</span>
+          </div>
+        </div>
+        <div class="key-group">
+          <div class="key-title">编辑</div>
+          <div class="key-grid edit-grid">
+            <span class="btn" data-action="backspace">⌫ 退格</span>
+            <span class="btn" data-action="clear">清空</span>
+            <span class="btn cursor-btn" data-action="cursor-left">←</span>
+            <span class="btn cursor-btn" data-action="cursor-right">→</span>
+          </div>
+        </div>
+        <div class="key-group simplify-group">
+          <div class="key-title">求导</div>
+          <button id="simplify-btn">求导</button>
+        </div>
+      </div>
+    </div>
+    <div id="result" aria-live="polite"></div>
+  </div>
+  <script src="./document/monomial.js"></script>
+  <script src="./document/polynomial.js"></script>
+  <script src="./document/derivative.js"></script>
+  <script src="./document/formula-render.js"></script>
+  <script src="./document/formula-editor.js"></script>
+  <script>
+    const editor = document.getElementById('formula-editor');
+    const resultEl = document.getElementById('result');
+    const targetSelect = document.getElementById('derivative-target');
+    const hintEl = document.getElementById('variable-hint');
+
+    // 读取表达式，并更新“检测到参数”提示
+    function updateVariableHint() {
+      const expr = FormulaEditor.readEditor(editor);
+
+      if (!expr) {
+        hintEl.textContent = '检测到参数：—';
+        return;
+      }
+
+      try {
+        const vars = Derivative.variables(expr);
+        const target = targetSelect.value;
+
+        let text = vars.length
+          ? '检测到参数：' + vars.join('、')
+          : '检测到参数：无';
+
+        if (!target && vars.length > 1) {
+          text += ' · 自动求导不可用，请选择偏导参数';
+        } else if (target && !vars.includes(target)) {
+          text += ' · ' + target + ' 未出现在表达式中';
+        }
+
+        hintEl.textContent = text;
+      } catch (err) {
+        hintEl.textContent = '检测到参数：表达式未完成';
+      }
+    }
+
+    // 求导：未选择参数时对唯一参数求导；选择了参数时求偏导
+    function computeDerivative() {
+      const expr = FormulaEditor.readEditor(editor);
+
+      if (!expr) {
+        FormulaRender.setResult(resultEl, '0', '= ');
+        updateVariableHint();
+        return;
+      }
+
+      let resultStr;
+      let label = '= ';
+
+      try {
+        if (typeof Derivative === 'undefined') {
+          throw new Error('derivative.js 未成功加载');
+        }
+
+        const target = targetSelect.value;
+
+        if (target) {
+          resultStr = Derivative.partial(expr, target);
+          label = '∂/∂' + target + ' = ';
+        } else {
+          resultStr = Derivative.derivative(expr);
+
+          const vars = Derivative.variables(expr);
+          if (vars.length === 1) {
+            label = 'd/d' + vars[0] + ' = ';
+          }
+        }
+      } catch (err) {
+        console.error('求导错误：', err);
+        resultStr = err.message;
+        label = '错误：';
+      }
+
+
+      FormulaRender.setResult(resultEl, resultStr, label);
+      updateVariableHint();
+    }
+
+    FormulaEditor.init({ onSubmit: computeDerivative });
+
+    editor.addEventListener('input', updateVariableHint);
+    targetSelect.addEventListener('change', updateVariableHint);
+
+    // 键盘插入/退格不一定会触发 input，点击后补一次提示刷新
+    document.getElementById('keypad').addEventListener('click', function () {
+      setTimeout(updateVariableHint, 0);
+    });
+
+    updateVariableHint();
+  </script>
+</body>
+</html>

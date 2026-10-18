@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>双曲线与直线交点 - 聪明山工具箱</title>
+  <link rel="stylesheet" href="./document/keypad.css">
+  <link rel="stylesheet" href="./document/math-page.css">
+  <style>
+    /* ==================== 本页私有样式（公共部分见 document/math-page.css） ==================== */
+    /* 两个交点结果项也用 .result-item 的公共排版（标签 + 结果） */
+    #result .result-item { min-height: 46px; }
+  </style>
+</head>
+<body>
+  <div class="page-header">
+    <h1>双曲线与直线交点</h1>
+    <a href="/tool/geometry" class="back-link">返回工具箱</a>
+  </div>
+
+  <div id="calculator">
+    <div class="points">
+      <!-- 双曲线：实轴、虚轴都与坐标轴重合，中心在原点 -->
+      <div class="point-card">
+        <div class="point-name">双曲线 C：x²/a² − y²/b² = 1（实轴在 x 轴上，虚轴在 y 轴上）</div>
+
+        <div class="coord-line">
+          <span class="coord-label">a =</span>
+          <div class="formula-editor mini" data-editor="a">
+            <span class="slot" contenteditable="true"></span>
+          </div>
+        </div>
+
+        <div class="coord-line">
+          <span class="coord-label">b =</span>
+          <div class="formula-editor mini" data-editor="b">
+            <span class="slot" contenteditable="true"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 直线 -->
+      <div class="point-card">
+        <div class="point-name">直线 l：y = kx + m</div>
+
+        <div class="coord-line">
+          <span class="coord-label">k =</span>
+          <div class="formula-editor mini" data-editor="k">
+            <span class="slot" contenteditable="true"></span>
+          </div>
+        </div>
+
+        <div class="coord-line">
+          <span class="coord-label">m =</span>
+          <div class="formula-editor mini" data-editor="m">
+            <span class="slot" contenteditable="true"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="keypad" class="keypad">
+      <div class="key-group">
+        <div class="key-title">数字与参数</div>
+        <div class="number-param-row">
+          <div class="key-grid number-grid">
+            <span class="btn" data-key="1">1</span>
+            <span class="btn" data-key="2">2</span>
+            <span class="btn" data-key="3">3</span>
+            <span class="btn" data-key="4">4</span>
+            <span class="btn" data-key="5">5</span>
+            <span class="btn" data-key="6">6</span>
+            <span class="btn" data-key="7">7</span>
+            <span class="btn" data-key="8">8</span>
+            <span class="btn" data-key="9">9</span>
+            <span class="btn zero-key" data-key="0">0</span>
+          </div>
+          <div class="key-grid param-grid">
+            <span class="btn param-key" data-key="a" title="参数 a">a</span>
+            <span class="btn param-key" data-key="b" title="参数 b">b</span>
+            <span class="btn param-key" data-key="h" title="参数 h">h</span>
+          </div>
+        </div>
+      </div>
+      <div class="control-row">
+        <div class="key-group">
+          <div class="key-title">运算符</div>
+          <div class="key-grid operator-grid">
+            <span class="btn" data-key="+">+</span>
+            <span class="btn" data-key="-">−</span>
+            <span class="btn" data-key="*">×</span>
+            <span class="btn" data-key="/">÷</span>
+            <span class="btn" data-key="(">(</span>
+            <span class="btn" data-key=")">)</span>
+          </div>
+        </div>
+        <div class="key-group">
+          <div class="key-title">数学结构</div>
+          <div class="key-grid structure-grid">
+            <span class="btn" data-action="frac">分数</span>
+            <span class="btn" data-action="pow">幂</span>
+            <span class="btn" data-action="sqrt">√</span>
+            <span class="btn" data-action="root">ⁿ√</span>
+          </div>
+        </div>
+        <div class="key-group">
+          <div class="key-title">编辑</div>
+          <div class="key-grid edit-grid">
+            <span class="btn" data-action="backspace">⌫ 退格</span>
+            <span class="btn" data-action="clear">清空</span>
+            <span class="btn cursor-btn" data-action="cursor-left">←</span>
+            <span class="btn cursor-btn" data-action="cursor-right">→</span>
+          </div>
+        </div>
+        <div class="key-group simplify-group">
+          <div class="key-title">计算</div>
+          <button id="simplify-btn">求交点</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="result"></div>
+  </div>
+
+  <script src="./document/monomial.js"></script>
+  <script src="./document/polynomial.js"></script>
+  <script src="./document/formula-render.js"></script>
+  <script src="./document/formula-editor.js"></script>
+  <script>
+    // ========================================================
+    // 双曲线 x²/a² − y²/b² = 1 与直线 y = kx + m 求交点（精确输出）
+    //
+    // 把 y = kx + m 代入双曲线，两边同乘 a²b²：
+    //     b²x² − a²(kx + m)² = a²b²
+    //     (b² − a²k²)·x² − 2a²km·x − a²(m² + b²) = 0
+    // 即
+    //     D·x² − 2a²km·x − a²(m² + b²) = 0,     D = b² − a²k²
+    //
+    // 判别式（注意 D 可正可负可为零）：
+    //     Δ = (2a²km)² − 4·D·(−a²(m² + b²))
+    //       = 4a²b²(m² + b² − a²k²) = 4a²b²·Q,   Q = m² + D = m² + b² − a²k²
+    // 由 a、b > 0 可知：Q < 0 时直线与双曲线没有交点；
+    //                    Q = 0 时直线与双曲线相切（两个交点重合）。
+    //
+    // 当 D ≠ 0（不是渐近线方向）时，求根公式：
+    //     x = ( a²km ± a·b·√Q ) / D
+    //     y = kx + m = ( m·b² ± a·b·k·√Q ) / D
+    //
+    // 当 D = 0（k = ±b/a，直线与渐近线平行）时，二次项消失，退化为一次方程：
+    //     −2a²km·x − a²(m² + b²) = 0
+    //     · m ≠ 0 时恰有一个交点：
+    //           x = −(m² + b²) / (2km)
+    //           y =  (m² − b²) / (2m)
+    //     · m = 0 时直线就是渐近线本身，与双曲线没有交点。
+    //
+    // 全程只用 polynomial.js 的精确符号运算：
+    //   · 小数先按精确有理数改写（1.5 → d(15,10)），不引入任何近似值
+    //   · 各判据（D 是否为零、Q 的符号）用数值探针判断（只判分支，
+    //     不参与结果，结果里没有近似值）
+    //   · 除法一律交给 Polynomial 化简；分子含根式、分母含参数而化简不动时，
+    //     退回 d(分子,分母) 的精确写法（渲染器会画成真正的分式）
+    // ========================================================
+    (function () {
+      'use strict';
+
+      // ---------- 小工具：全部基于 Polynomial ----------
+
+      function isError(text) {
+        return /^\s*错误[:：]/.test(String(text == null ? '' : text));
+      }
+
+      // 小数 → 精确有理数：2.5 → d(25,10)，0.25 → d(25,100)
+      // （引擎只认整数，这样做能保证 1.5 这类输入也是精确值，而不是浮点数）
+      function decimalsToExact(text) {
+        return String(text == null ? '' : text).replace(/(\d+)\.(\d+)/g, function (m, int, frac) {
+          return 'd(' + int + frac + ',' + '1' + new Array(frac.length + 1).join('0') + ')';
+        });
+      }
+
+      // 化简；抛错或返回“错误: …”时交回 fallback()
+      function tolerant(expr, fallback) {
+        let out;
+        try {
+          out = Polynomial.simplifyExpression(expr);
+        } catch (err) {
+          out = '错误: ' + err.message;
+        }
+        if (isError(out) || out === undefined || out === null) return fallback();
+        return String(out);
+      }
+
+      // 把表达式化简成字符串（失败时原样返回，调用处用 isError 判断）
+      function simplify(expr) {
+        return tolerant(expr, function () { return String(expr); });
+      }
+
+      // 给一段表达式加括号：后面要当项拼进新式子时必须用它，
+      // 否则像 0-(N1)+… 里 N1 自身带负号时会变成 “0-(-3)+1”，
+      // 引擎会按 (0-(-3))+1 解析（结果差一个符号）
+      function wrap(expr) {
+        return '(' + String(expr) + ')';
+      }
+
+      function negate(expr) {
+        return '0-' + wrap(expr);
+      }
+
+      // 两个式子相加减：先让引擎算（能合并同类项、约分），算不动就退回显式写法
+      function combine(a, op, b) {
+        return tolerant(wrap(a) + op + wrap(b), function () {
+          return wrap(a) + op + wrap(b);
+        });
+      }
+
+      // 除法的精确写法：tolerant((A)/(B)) → d(A,B) → 分子分母各自化简后 d()
+      function tolerantDiv(num, den) {
+        const a = String(num), b = String(den);
+        return tolerant('(' + a + ')/(' + b + ')', function () {
+          return tolerant('d(' + a + ',' + b + ')', function () {
+            return 'd(' + simplify(a) + ',' + simplify(b) + ')';
+          });
+        });
+      }
+
+      // 把 (N1±N2·√s)/D 写成“每项各自除以 D 再相加”的形式：
+      // 引擎对“分母含参数”的整式除法会拒绝化简，按顶层加减号拆开后每项都能约分
+      //   (a²km + a·b·√Q)/D → d(a²km,D) + d(a·b·√Q,D)
+      // 渲染器会把这些项排成公式（负项自然排成“− …”），值完全精确。
+      function simplifyDiv(num, den) {
+        const a = String(num), b = String(den);
+
+        let denSimp = null;
+        try {
+          denSimp = Polynomial.simplifyExpression(b);
+        } catch (err) {
+          denSimp = null;
+        }
+        if (isError(denSimp) || !denSimp) denSimp = null;
+
+        if (denSimp && denSimp !== '1' && denSimp !== '0') {
+          let parts = null;
+          try {
+            parts = Polynomial.splitTopLevel(a, ['+', '-']);
+          } catch (err) {
+            parts = null;
+          }
+
+          if (parts && parts.length > 1) {
+            const out = [];
+            let ok = true;
+
+            for (let i = 0; i < parts.length; i++) {
+              let body = String(parts[i].value).trim();
+              let negative = parts[i].op === '-';
+              // splitTopLevel 只在中间的分隔符上记 op，开头的负号还在项里
+              if (body.charAt(0) === '-') {
+                negative = !negative;
+                body = body.slice(1).trim();
+              } else if (body.charAt(0) === '+') {
+                body = body.slice(1).trim();
+              }
+              if (!body) continue;
+
+              // 只把正数那一项交给引擎，负号由这里显式补（引擎输出的负数形如 -d(2,5)）
+              const piece = tolerantDiv(body, denSimp);
+              if (!piece || isError(piece)) { ok = false; break; }
+
+              out.push(negative ? '-' + piece : piece);
+            }
+
+            if (ok && out.length) {
+              // 每项都带自己的符号（-d(2,5) 或 d(r(4,7,2),5)），直接拼接
+              return out.join('+');
+            }
+          }
+        }
+
+        return tolerantDiv(a, b);
+      }
+
+      // 精确开方：Polynomial 化简不动（根式里含参数）时保留 sqrt(…) 的精确写法
+      function exactSqrt(radicand) {
+        // 先把被开方数化简（含参数的式子要先化成规范写法，引擎的 sqrt 才认）
+        const text = simplify(radicand);
+        return tolerant('sqrt(' + text + ')', function () {
+          return tolerant('sqrt(' + simplify(text) + ')', function () {
+            return Polynomial.formatSqrt(simplify(text));
+          });
+        });
+      }
+
+      // ---------- 分支判据：数值探针（只判符号/是否为零，不进结果） ----------
+
+      // 探针表里只放引擎认识的参数（Monomial.PARAMS = ['a','b','h']），
+      // 输入框里写这些字母时按下面的取值代入，用来挑分支。
+      // 双曲线的 a、b 和直线的 k、m 都是这一步的“数据”，由各输入框自己给出，
+      // 绝不能塞进探针表——那等于把直线/曲线的数据当成参数。
+      // 取值刻意避开各种“恰好为零”的退化情形（h = 0 会让含 h 的项整项消失）。
+      const PROBES = { a: '2', b: '1', h: '1' };
+
+      // 返回表达式的数值（纯数字走精确求值；含参数则用探针代入）——只用于挑分支，
+      // 不参与结果；判曲线/直线自身的数据请用下面的 evaluateNumeric
+      function evaluateValue(expr) {
+        const text = String(expr == null ? '' : expr).trim();
+        if (!text || isError(text)) return NaN;
+
+        // 纯数字：先走 Polynomial.evaluate（化简到内部语法再求值）
+        try {
+          const v = Polynomial.evaluate(text);
+          if (Number.isFinite(v)) return v;
+        } catch (err) { /* 含参数，走探针 */ }
+
+        // 含参数：用探针取值代入
+        let sandbox = text;
+        for (const name of Object.keys(PROBES)) {
+          sandbox = sandbox.replace(new RegExp('\\b' + name + '\\b', 'g'), '(' + PROBES[name] + ')');
+        }
+        try {
+          const v = Polynomial.evaluateSyntax(sandbox);
+          return Number.isFinite(v) ? v : NaN;
+        } catch (err) {
+          return NaN;
+        }
+      }
+
+      // 只认“输入本身能精确求值”的情形：纯数字返回数值，含参数（a、b、h）返回 NaN。
+      // 判断曲线/直线自身的数据（半轴是否为正、m 是否为 0）必须用它：
+      // 拿探针代入参数后的取值去判数据的正负，等于把参数当成了曲线/直线的数据，
+      // 会得出假结论（例如半轴写成参数 h 时被误判成“半轴为 0”而报错）。
+      function evaluateNumeric(expr) {
+        const text = String(expr == null ? '' : expr).trim();
+        if (!text || isError(text)) return NaN;
+        try {
+          const v = Polynomial.evaluate(text);
+          return Number.isFinite(v) ? v : NaN;
+        } catch (err) {
+          return NaN;
+        }
+      }
+
+      // ---------- 每个输入量的精确表达式 ----------
+      // 括号包住，避免与后面的运算符优先级打架（例如 k = -1 写成 0-1）
+      // 输入支持：数字（含小数，按精确分数处理）、分数、幂、根号，以及参数 a、b、h
+
+      function term(name) {
+        const raw = String(FormulaEditor.readByName(name) || '').trim() || '0';
+        const normalized = FormulaEditor.normalize(decimalsToExact(raw));
+        if (isError(normalized)) {
+          throw new Error('输入框 ' + name + ' 里的表达式无法识别（' +
+            normalized.replace(/^\s*错误[:：]\s*/, '') +
+            '）；可以直接填数字，或使用参数 a、b、h');
+        }
+        return '(' + normalized + ')';
+      }
+
+      // ---------- 主流程 ----------
+
+      function computeIntersections() {
+        const box = document.getElementById('result');
+        box.innerHTML = '';
+
+        try {
+          const A = term('a');      // 双曲线的半实轴（x 方向）
+          const B = term('b');      // 双曲线的半虚轴（y 方向）
+          const K = term('k');      // 直线的斜率
+          const M = term('m');      // 直线的纵截距
+
+          // 半实轴、半虚轴必须为正（只对能精确求值的输入判定：
+          // 含参数时无法判定正负，不能拿探针取值冒充半轴）
+          const av = evaluateNumeric(A);
+          const bv = evaluateNumeric(B);
+          if ((Number.isFinite(av) && av <= 0) || (Number.isFinite(bv) && bv <= 0)) {
+            throw new Error('双曲线的半实轴 a、半虚轴 b 必须为正数');
+          }
+
+          // D = b² − a²k²（可能为 0：直线与渐近线平行）
+          const D = simplify('(' + B + ')*(' + B + ')-(' + A + ')*(' + A + ')*(' + K + ')*(' + K + ')');
+
+          // Q = m² + D = m² + b² − a²k²；Δ = 4a²b²·Q 与 Q 同号
+          const Q = simplify('(' + M + ')*(' + M + ')+(' + D + ')');
+
+          const dValue = evaluateNumeric(D);   // D 是否为 0 只能由“不含参数的数据”判定
+          const qExact = evaluateNumeric(Q);   // 精确判据（输入不含参数时）
+          const qValue = evaluateValue(Q);     // 含参数时退化为探针判据，只用来挑分支
+
+          // ---------- 情形一：D = 0（直线与双曲线的一条渐近线平行） ----------
+          if (Number.isFinite(dValue) && Math.abs(dValue) < 1e-12) {
+            // m 是否为 0 也是直线自身的数据：只有输入能精确求值且确实为 0 时，
+            // 才能说“直线就是渐近线”；含参数时无法判定，走下面的一次方程分支
+            const mValue = evaluateNumeric(M);
+
+            if (Number.isFinite(mValue) && Math.abs(mValue) < 1e-12) {
+              // m = 0：直线就是渐近线本身，与双曲线没有交点
+              addPoint('交点 P =', '', '');
+              addNote('直线与双曲线的渐近线重合，没有交点');
+            } else {
+              // 一次方程 −2km·x − (m² + b²) = 0 给出唯一交点
+              const NUMX = simplify('0-((' + M + ')*(' + M + ')+(' + B + ')*(' + B + '))'); // −(m²+b²)
+              const DENX = simplify('2*(' + K + ')*(' + M + ')');                          // 2km
+              const X = simplifyDiv(NUMX, DENX);
+
+              const NUMY = simplify('(' + M + ')*(' + M + ')-(' + B + ')*(' + B + ')');   // m²−b²
+              const DENY = simplify('2*(' + M + ')');                                     // 2m
+              const Y = simplifyDiv(NUMY, DENY);
+
+              addPoint('交点 P =', X, Y);
+              addNote('直线与双曲线的一条渐近线平行，只有一个交点');
+            }
+            return;
+          }
+
+          // ---------- 情形二：Q < 0（Δ < 0，没有交点） ----------
+          if (Number.isFinite(qValue) && qValue < -1e-12) {
+            addPoint('交点 P₁ =', '', '');
+            addPoint('交点 P₂ =', '', '');
+            addNote('Δ < 0，直线与双曲线没有交点');
+            return;
+          }
+
+          // ---------- 情形三：D ≠ 0 且 Q ≥ 0，两个交点 ----------
+          // “相切”是曲线与直线数据的精确结论：只有 qExact ≈ 0（输入不含参数、
+          // 确实算得 0）才能把 √Q 写成 0；含参数时 √Q 必须保留，
+          // 否则会拿探针取值当数据、把两个交点悄悄并成一个
+          const SQ = (Number.isFinite(qExact) && Math.abs(qExact) < 1e-12)
+            ? '0'                       // 相切：√Q = 0，两个交点重合
+            : exactSqrt(Q);
+
+          // x₁,₂ = ( a²km ± a·b·√Q ) / D
+          const PKM = simplify('(' + A + ')*(' + A + ')*(' + K + ')*(' + M + ')');   // a²km
+          const ABSQ = simplify('(' + A + ')*(' + B + ')*(' + SQ + ')');              // a·b·√Q
+
+          const X1 = simplifyDiv(combine(PKM, '+', ABSQ), D);
+          const X2 = simplifyDiv(combine(PKM, '-', ABSQ), D);
+
+          // y₁,₂ = ( m·b² ± a·b·k·√Q ) / D
+          const MB2 = simplify('(' + M + ')*(' + B + ')*(' + B + ')');                 // m·b²
+          const ABKQ = simplify('(' + A + ')*(' + B + ')*(' + K + ')*' + wrap(SQ));   // a·b·k·√Q
+
+          const Y1 = simplifyDiv(combine(MB2, '+', ABKQ), D);
+          const Y2 = simplifyDiv(combine(MB2, '-', ABKQ), D);
+
+          addPoint('交点 P₁ =', X1, Y1);
+          addPoint('交点 P₂ =', X2, Y2);
+
+          if (Number.isFinite(qExact) && Math.abs(qExact) < 1e-12) {
+            addNote('Δ = 0，直线与双曲线相切，两个交点重合');
+          }
+
+        } catch (err) {
+          console.error(err);
+          const error = document.createElement('div');
+          error.className = 'result-item';
+          error.style.color = '#d9534f';
+          error.textContent = '计算错误：' + err.message;
+          box.appendChild(error);
+        }
+      }
+
+      // ---------- 结果显示 ----------
+
+      // 一个交点 (x, y)：两个分量分别渲染，整串交给渲染器会被当成普通文本
+      function pointNode(x, y) {
+        const span = document.createElement('span');
+        span.className = 'render-vector';
+        if (!x && !y) return span;      // 没有交点：留空
+
+        span.appendChild(document.createTextNode('('));
+        span.appendChild(FormulaRender.safe(x));
+        span.appendChild(document.createTextNode(', '));
+        span.appendChild(FormulaRender.safe(y));
+        span.appendChild(document.createTextNode(')'));
+        return span;
+      }
+
+      function addPoint(labelText, x, y) {
+        const box = document.getElementById('result');
+
+        const item = document.createElement('div');
+        item.className = 'result-item';
+        // 精确表达式也存一份在 data-exact 上（便于外部脚本核对，不影响显示）
+        item.setAttribute('data-exact', (!x && !y) ? '' : x + ' ; ' + y);
+
+        const label = document.createElement('span');
+        label.className = 'result-label';
+        label.textContent = labelText;
+        item.appendChild(label);
+
+        const value = document.createElement('span');
+        value.className = 'result-value';
+        value.appendChild(pointNode(x, y));
+        item.appendChild(value);
+
+        box.appendChild(item);
+      }
+
+      function addNote(text) {
+        const box = document.getElementById('result');
+        const note = document.createElement('div');
+        note.className = 'result-hint';
+        note.textContent = text;
+        box.appendChild(note);
+      }
+
+      FormulaEditor.init({ onSubmit: computeIntersections, radicalWrap: false });
+    })();
+  </script>
+</body>
+</html>

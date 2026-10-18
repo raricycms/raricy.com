@@ -1,0 +1,25 @@
+// 几何计算器索引（/tool/geometry）：返回链接与空结果。
+// 卡片、hero、分类 pill 复用 pages/_tool-new.scss 的 tool-new-* / filter-pill。
+@use '../abstracts/variables' as *;
+
+.tool-geometry {
+  &__back {
+    display: inline-flex;
+    align-items: center;
+    gap: $space-2;
+    margin: $space-4 0 0;
+    color: var(--color-text-secondary);
+    font-size: 0.875rem;
+    text-decoration: none;
+
+    &:hover {
+      color: var(--color-brand-primary);
+    }
+  }
+
+  &__empty {
+    padding: $space-8 0;
+    text-align: center;
+    color: var(--color-text-secondary);
+  }
+}

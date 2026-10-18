@@ -9,6 +9,7 @@ import {
   AudioLines,
   Binary,
   Braces,
+  Calculator,
   Clipboard,
   Code,
   FileCog,
@@ -23,7 +24,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 
-type Cat = 'site' | 'file' | 'codec' | 'crypto';
+type Cat = 'site' | 'file' | 'math' | 'codec' | 'crypto';
 type Tool = {
   cat: Cat;
   kw: string;
@@ -108,6 +109,18 @@ const FILE_TOOLS: Tool[] = [
     title: '格式转换器',
     desc: '图片 / 音频 / 视频 / 文档 PDF / 表格 / 字幕 / 电子书 / 压缩包互转，文件在本机处理',
     tags: ['图片', '音频', '本地处理'],
+  },
+];
+
+const MATH: Tool[] = [
+  {
+    cat: 'math',
+    kw: '几何 计算器 数学 距离 圆锥曲线 椭圆 抛物线 双曲线 四面体 求导 偏导 拉格朗日 符号计算 geometry calculator',
+    href: '/tool/geometry',
+    icon: Calculator,
+    title: '几何计算器',
+    desc: '平面与空间距离、圆锥曲线交点、多项式求导与拉格朗日乘数法，结果精确输出',
+    tags: ['几何', '符号计算', '本地处理'],
   },
 ];
 
@@ -238,6 +251,7 @@ export default function ToolMenu({ isCore }: { isCore: boolean }) {
     () => [
       { key: 'site', title: '站务工具', items: site.filter(match) },
       { key: 'file', title: '文件处理', items: FILE_TOOLS.filter(match) },
+      { key: 'math', title: '数学 / 几何', items: MATH.filter(match) },
       {
         key: 'codec',
         title: '编码 / 解码',
@@ -281,6 +295,7 @@ export default function ToolMenu({ isCore }: { isCore: boolean }) {
               ['all', '全部'],
               ['site', '站务工具'],
               ['file', '文件处理'],
+              ['math', '数学 / 几何'],
               ['codec', '编码 / 解码'],
               ['crypto', '加密 / 安全'],
             ] as Array<['all' | Cat, string]>
@@ -318,6 +333,17 @@ export default function ToolMenu({ isCore }: { isCore: boolean }) {
             <h2 className="tool-new-grid__section-title">文件处理</h2>
             <div className="tool-new-grid__tools">
               {blocks[1].items.map((t) => (
+                <ToolCard t={t} key={t.title} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {blocks[2].items.length > 0 && (
+          <div className="tool-new-grid__section">
+            <h2 className="tool-new-grid__section-title">数学 / 几何</h2>
+            <div className="tool-new-grid__tools">
+              {blocks[2].items.map((t) => (
                 <ToolCard t={t} key={t.title} />
               ))}
             </div>
