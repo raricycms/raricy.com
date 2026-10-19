@@ -88,7 +88,15 @@ export default function MentionInput({
         onChange={(e) => { setDismissed(''); updateCaret(e.currentTarget); props.onChange?.(e); }}
         onSelect={(e) => { updateCaret(e.currentTarget); props.onSelect?.(e); }}
         onCompositionStart={(e) => { setComposing(true); props.onCompositionStart?.(e); }}
-        onCompositionEnd={(e) => { setComposing(false); updateCaret(e.currentTarget); props.onCompositionEnd?.(e); }}
+        onCompositionEnd={(e) => {
+          // Firefox 的最终 input 可能晚于 compositionend。先同步 DOM 中的最终文本，
+          // 否则下面的状态更新会让受控 textarea 用旧 value 覆盖刚选中的汉字。
+          // 读取整段 value（而非追加 e.data），同时保留光标两侧正文与取消组字的结果。
+          onTextChange(e.currentTarget.value);
+          setComposing(false);
+          updateCaret(e.currentTarget);
+          props.onCompositionEnd?.(e);
+        }}
         onKeyDown={(e) => {
           if (e.nativeEvent.isComposing || composing) return;
           if (open) {
