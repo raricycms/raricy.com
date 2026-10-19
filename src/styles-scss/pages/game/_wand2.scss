@@ -1,0 +1,56 @@
+@use '../../abstracts/mixins' as m;
+
+.wand2-page { max-width: 1280px; padding-top: 24px; padding-bottom: 40px; }
+.wand2-panel { padding: 28px; border-radius: 30px; background: var(--color-background-card); color: var(--color-text-primary); }
+.wand2-header { display: flex; justify-content: space-between; align-items: center; gap: 20px; flex-wrap: wrap; margin-bottom: 24px;
+  h1 { margin: 3px 0 0; color: var(--color-text-primary); font-size: 2rem; letter-spacing: -.04em; } }
+.wand2-eyebrow { margin: 0; font-size: .65rem; letter-spacing: .2em; font-weight: 700; color: var(--color-text-secondary); }
+.wand2-toolbar { display: flex; align-items: center; gap: 18px; }
+.wand2-status { display: flex; align-items: center; gap: 7px; margin: 0; font-size: .85rem; color: var(--color-text-secondary);
+  &::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--color-text-secondary); }
+  &[data-connected='true']::before { background: var(--color-success-primary); } }
+.wand2-error { color: var(--color-warning-primary); margin: 0 0 16px; }
+.wand2-layout { display: grid; grid-template-columns: minmax(0, 1fr) 240px; gap: 24px; }
+.wand2-play { min-width: 0;
+  &:fullscreen { display: flex; flex-direction: column; height: 100dvh; padding: 16px; background: var(--color-background-card);
+    .wand2-stage { flex: 1; min-height: 0; }
+    .wand2-canvas { height: 100%; object-fit: contain; }
+    .wand2-inputs { flex-shrink: 0; } } }
+.wand2-stage { position: relative; overflow: hidden; border-radius: 20px; background: #b8cfaa; }
+.wand2-canvas { display: block; width: 100%; height: auto; aspect-ratio: 3 / 2; touch-action: none; }
+.wand2-hud { position: absolute; left: 14px; top: 14px; display: flex; flex-wrap: wrap; gap: 8px; pointer-events: none;
+  > span { display: inline-flex; align-items: center; gap: 5px; padding: 7px 11px; border-radius: 999px; font-size: .72rem; color: #fff9e8; background: #314e3edb; } }
+.wand2-overlay { position: absolute; inset: 0; display: grid; place-items: end center; padding: 24px; pointer-events: none;
+  span { padding: 10px 17px; border-radius: 999px; background: #fff9e8ed; color: #36503d; font-size: .85rem; } }
+.wand2-fullscreen { @include m.btn-secondary; position: absolute; right: 10px; bottom: 10px; display: grid; place-items: center; width: 36px; height: 36px; background: var(--color-background-card); }
+.wand2-inputs { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 18px; }
+.wand2-dpad { display: grid; grid-template-columns: repeat(3, 42px); gap: 5px; }
+.wand2-direction { @include m.btn-secondary; display: grid; place-items: center; width: 42px; height: 42px; padding: 0; background: var(--color-background-content); touch-action: none; user-select: none;
+  &:first-child { grid-column: 2; } &:nth-child(2) { grid-column: 1; } }
+.wand2-keyhelp { margin: 0; font-size: .75rem; line-height: 2; color: var(--color-text-secondary);
+  kbd { font-family: inherit; font-size: .7rem; display: inline-block; margin-right: 3px; padding: 0 5px; border-radius: 4px; background: var(--color-background-content); color: var(--color-text-primary); } }
+.wand2-attack { @include m.btn-primary; display: flex; flex-direction: column; gap: 5px; align-items: center; justify-content: center; width: 76px; height: 76px; flex-shrink: 0; padding: 0; touch-action: none; user-select: none;
+  span { font-size: .75rem; } }
+.wand2-sidebar { display: flex; flex-direction: column; gap: 16px; min-width: 0;
+  h2 { display: flex; align-items: center; gap: 8px; color: var(--color-text-primary); font-size: .95rem; margin: 0 0 8px; } }
+.wand2-leaderboard, .wand2-guide { background: var(--color-background-content); padding: 18px; border-radius: 20px; }
+.wand2-leaderboard { flex: 1;
+  ol { list-style: none; padding: 0; margin: 18px 0 0; max-height: 330px; overflow-y: auto; }
+  li { display: flex; align-items: center; gap: 7px; padding: 9px 7px; border-radius: 10px; color: var(--color-text-primary); font-size: .8rem;
+    &[data-mine='true'] { color: var(--color-brand-primary); background: var(--color-brand-secondary); }
+    strong { margin-left: auto; font-size: .8rem; } > svg { color: var(--color-success-primary); flex-shrink: 0; } } }
+.wand2-rank { width: 16px; flex-shrink: 0; font-size: .7rem; color: var(--color-text-secondary); }
+.wand2-player-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; small { color: var(--color-text-secondary); } }
+.wand2-caption { color: var(--color-text-secondary); font-size: .72rem; line-height: 1.7; margin: 0; }
+.wand2-empty { color: var(--color-text-secondary); font-size: .8rem; margin: 30px 0; text-align: center; }
+.wand2-guide { p { color: var(--color-text-secondary); font-size: .78rem; line-height: 1.8; margin: 12px 0 0; } p.wand2-caption { font-size: .68rem; } }
+.wand2-rewards { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px;
+  span { padding: 4px 7px; background: var(--color-background-card); color: var(--color-text-primary); border-radius: 8px; font-size: .68rem; } }
+@media (max-width: 1050px) { .wand2-layout { grid-template-columns: minmax(0, 1fr); } .wand2-sidebar { display: grid; grid-template-columns: 1fr 1fr; } }
+@media (max-width: 700px) { .wand2-canvas { aspect-ratio: 4 / 3; } .wand2-keyhelp { display: none; } }
+@media (max-width: 550px) {
+  .wand2-panel { padding: 16px; } .wand2-header { gap: 16px; margin-bottom: 18px; h1 { font-size: 1.7rem; } }
+  .wand2-toolbar { width: 100%; justify-content: space-between; } .wand2-sidebar { grid-template-columns: 1fr; }
+  .wand2-hud { left: 8px; top: 8px; gap: 5px; > span { padding: 5px 8px; font-size: .65rem; } }
+  .wand2-overlay { padding: 14px; span { font-size: .7rem; } }
+}

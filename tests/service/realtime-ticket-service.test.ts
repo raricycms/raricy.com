@@ -12,6 +12,16 @@ beforeEach(async () => {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
 
 describe('实时游戏一次性票据', () => {
+  it('Wand 2 使用独立票据，不能跨到第一版，主站撤权后身份失效', async () => {
+    const user = await makeUser();
+    const issued = issueRealtimeTicket(user, 'wand2')!;
+    expect(await consumeRealtimeTicket(issued.ticket, 'wand')).toBeNull();
+    const identity = await consumeRealtimeTicket(issued.ticket, 'wand2');
+    expect(identity).toEqual({ userId: user.id, username: user.username, sessionVersion: user.sessionVersion });
+    expect(await consumeRealtimeTicket(issued.ticket, 'wand2')).toBeNull();
+    await prisma.user.update({ where: { id: user.id }, data: { focusMode: true } });
+    expect(await validateRealtimeIdentity(identity!, 'wand2')).toBeNull();
+  });
   it('圈地运动票据不能用于其他游戏，身份和撤权复用本站账号', async () => {
     const user = await makeUser();
     const issued = issueRealtimeTicket(user, 'quandi')!;

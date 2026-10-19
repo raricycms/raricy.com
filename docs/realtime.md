@@ -6,7 +6,7 @@
 
 **当前交付范围**：服务与主站统一配置、启动和停止；提供健康检查、精确 Origin 检查、
 认证首帧、游戏接入接口、文本与二进制帧、心跳、大小与频率限制。
-「测试」合集已接入 Wand demo、公共空间与圈地运动，支持主站登录、一次性票据与多人状态同步。
+「测试」合集已接入 Wand demo、Wand demo 2、公共空间与圈地运动，支持主站登录、一次性票据与多人状态同步。
 ATÅMAS 在浏览器内运行，不需要这个服务。
 
 ## 1. 目录与依赖方向
@@ -15,12 +15,14 @@ ATÅMAS 在浏览器内运行，不需要这个服务。
 src/app/game/                     主站游戏页面
 src/games/atamas/                 纯客户端游戏
 src/games/wand/                   Wand 画布与输入客户端
+src/games/wand2/                  精灵战斗、地图、排行榜与触屏输入
 src/games/public-space/           公共空间网格与观众席
 src/games/quandi/                 圈地运动外壳与受认证保护的游戏文档
 public/static/quandi/             已获原作者授权的圈地运动脚本、样式、素材与署名
 src/lib/realtime-ticket-service.ts 主站瞬时票据与权限复核
 shared/realtime/protocol.ts       认证与控制帧契约
 shared/wand/                     地图、输入与快照契约、移动计算
+shared/wand2/                    精灵战斗协议、权威世界与史莱姆 AI
 shared/public-space/             网格、心跳与成员快照契约
 shared/quandi/                   操作校验、资源上限与增量领地计分
 services/realtime/src/
@@ -31,6 +33,7 @@ services/realtime/src/
   games.ts                       显式游戏注册表
   site-auth.ts                   主站票据消费与身份复核客户端
   wand.ts                        Wand 权威移动与广播
+  wand2.ts                       Wand 2 权威世界驱动、输入与广播
   public-space.ts                 公共空间占位、观众席与断线清理
   quandi.ts                      圈地运动账号连接、双人房间与生命周期
   quandi-engine/                 圈地运动权威引擎及六种模式
@@ -73,7 +76,7 @@ Windows 使用进程树终止，避免遗留 Next dev / Node watch 的子进程�
 健康检查返回：
 
 ```json
-{"ok":true,"service":"realtime","version":1,"games":["wand","public-space","quandi"]}
+{"ok":true,"service":"realtime","version":1,"games":["wand","wand2","public-space","quandi"]}
 ```
 
 | 环境变量 | 默认 / 规则 |
@@ -154,8 +157,31 @@ Windows 使用进程树终止，避免遗留 Next dev / Node watch 的子进程�
 输入停止 250ms 后自动停步。客户端插值显示，斜向不加速。
 
 断开会清理玩家；重连需要新票据、从出生点重新开始。实时服务重启后地图清空。
-当前没有房间选择、战斗、成绩、持久化存档或跨实例同步。新增玩法在 Wand 模块内扩展，
+第一版没有房间选择、战斗、成绩、持久化存档或跨实例同步。战斗版见下文 Wand demo 2，
 新增游戏在注册表显式登记，并实现认证、定期复核、连接与清理接口。
+
+#### Wand demo 2
+
+`/game/wand2` 为独立入口，票据和 WebSocket 游戏 ID 均为 `wand2`；第一版保持原玩法。
+`shared/wand2/` 定义 960 × 640 草地图、碰撞、战斗与史莱姆 AI，
+`services/realtime/src/wand2.ts` 驱动权威世界，`src/games/wand2/` 绘制与收集输入。
+最多 32 个连接，每 50ms 广播 `wand2.snapshot`。输入仍为 4 字节：opcode `2`、
+方向及攻击位（1/2/4/8/16）、uint16 大端序号；拒绝过期、重复和无效输入。
+250ms 未收到输入即停止移动及后续攻击。离线后需重新申请票据，撤权规则与第一版一致。
+
+方向键 / WASD 移动，空格 / J / 点击地图挥剑；手机有支持同时按住的方向与攻击按钮，
+镜头跟随并显示全局小地图。人物有四方向待机、步行、挥剑和受击动画。
+透明精灵表由内置 image_gen 根据用户提供的人物参考生成，素材及提示保存在
+`public/static/games/wand2/`，游戏配色固定，外壳随站点主题。
+
+有人在线时按间隔随机刷新史莱姆，数量随连接数增长、最多 28 只；空场立即清理怪物并停止计时。
+史莱姆游荡、追逐、绕石寻路，接近玩家后蓄力扑击。剑击校验距离、朝向、冷却与遮挡，
+每剑对每只怪物最多命中一次；击杀时青绿 / 淡紫 / 金色分别奖励 1 / 3 / 5 猫薄荷。
+接触触发玩家受击、击退和 850ms 无敌，没有血量或猫薄荷损失；无玩家间伤害。
+
+排行只列在线账号，同账号多个标签各有角色位置，但共享猫薄荷并合并排名。
+分数保存在实时进程内，最多保留 2048 个账号，达到上限时逐出最早保留的离线账号；
+服务重启后清零，不接入鱼干账户、库表或持久化存档。
 
 ### 3.3 公共空间 demo
 

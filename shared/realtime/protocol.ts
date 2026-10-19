@@ -2,7 +2,7 @@
 export const REALTIME_PROTOCOL_VERSION = 1;
 export const MAX_REALTIME_MESSAGE_BYTES = 16 * 1024;
 export const MAX_REALTIME_TICKET_LENGTH = 2048;
-export const REALTIME_GAME_IDS = ['wand', 'public-space', 'quandi'] as const;
+export const REALTIME_GAME_IDS = ['wand', 'wand2', 'public-space', 'quandi'] as const;
 export type RealtimeGameId = typeof REALTIME_GAME_IDS[number];
 export function isRealtimeGameId(value: unknown): value is RealtimeGameId {
   return REALTIME_GAME_IDS.some((id) => id === value);

@@ -18,6 +18,17 @@ export interface GameEntry {
 
 export const GAMES = [
   {
+    id: 'wand2',
+    title: 'Wand demo 2',
+    description: '化身猫耳剑士，在共享草地上迎战史莱姆，收集猫薄荷并争夺实时排行。',
+    category: 'action',
+    modes: ['online'],
+    href: '/game/wand2',
+    runtime: 'native',
+    collectionId: 'test',
+    icon: 'wand',
+  },
+  {
     id: 'quandi',
     title: '圈地运动',
     description: '移动留下轨迹，闭合圈地，与朋友争夺领土。支持本地双人和账号联机，推荐电脑游玩。',
