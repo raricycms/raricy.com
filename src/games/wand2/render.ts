@@ -7,6 +7,11 @@ export interface FloatText { x: number; y: number; text: string; at: number }
 const palette = ['#b8cfaa', '#b5cca7', '#bdd1b0', '#b9cdaa'];
 const noise = (x: number, y: number) => ((x * 73 + y * 137 + x * y * 11) % 101) / 101;
 
+function playerPosition(player: Player, frame: Frame | null, progress: number) {
+  const previous = frame?.previous.players.find(p => p.id === player.id) ?? player;
+  return { x: previous.x + (player.x - previous.x) * progress, y: previous.y + (player.y - previous.y) * progress };
+}
+
 function sprite(ctx: CanvasRenderingContext2D, sheet: HTMLImageElement, col: number, row: number, x: number, y: number, size: number) {
   if (!sheet.complete || !sheet.naturalWidth) return;
   const sw = sheet.naturalWidth / 4, sh = sheet.naturalHeight / 4;
@@ -43,14 +48,16 @@ export function makeGround(assets: Assets): HTMLCanvasElement {
 export function render(ctx: CanvasRenderingContext2D, assets: Assets, ground: HTMLCanvasElement, frame: Frame | null, ownId: string, now: number,
   compact: boolean, floating: FloatText[]) {
   const viewW = compact ? 560 : WORLD_WIDTH, viewH = compact ? 420 : WORLD_HEIGHT;
-  const own = frame?.current.players.find(p => p.id === ownId);
-  const cx = compact ? Math.max(0, Math.min(WORLD_WIDTH - viewW, (own?.x ?? 100) - viewW / 2)) : 0;
-  const cy = compact ? Math.max(0, Math.min(WORLD_HEIGHT - viewH, (own?.y ?? 320) - viewH / 2)) : 0;
-  ctx.setTransform(ctx.canvas.width / viewW, 0, 0, ctx.canvas.height / viewH, 0, 0); ctx.clearRect(0, 0, viewW, viewH);
-  ctx.save(); ctx.translate(-cx, -cy); ctx.drawImage(ground, 0, 0);
   // rAF 时间戳可能早于同轮事件循环刚收到的快照，负年龄会把待机算成攻击。
   const frameAge = frame ? Math.max(0, now - frame.at) : 0;
   const progress = frame ? Math.min(1, frameAge / TICK_MS) : 1;
+  const own = frame?.current.players.find(p => p.id === ownId);
+  // 镜头与角色共用插值坐标，避免背景只在收到快照时跳动。
+  const focus = own ? playerPosition(own, frame, progress) : { x: 100, y: 320 };
+  const cx = compact ? Math.max(0, Math.min(WORLD_WIDTH - viewW, focus.x - viewW / 2)) : 0;
+  const cy = compact ? Math.max(0, Math.min(WORLD_HEIGHT - viewH, focus.y - viewH / 2)) : 0;
+  ctx.setTransform(ctx.canvas.width / viewW, 0, 0, ctx.canvas.height / viewH, 0, 0); ctx.clearRect(0, 0, viewW, viewH);
+  ctx.save(); ctx.translate(-cx, -cy); ctx.drawImage(ground, 0, 0);
   const players: Player[] = frame?.current.players ?? [{ id: 'preview', name: '', x: 100, y: 320, facing: 0, moving: false, attack: 0, hurt: 0, catnip: 0 }];
   const monsters: Slime[] = frame?.current.slimes ?? [
     { id: 0, x: 340, y: 230, kind: 0, hp: 2, mood: 'wander', phase: 0 },
@@ -60,8 +67,7 @@ export function render(ctx: CanvasRenderingContext2D, assets: Assets, ground: HT
   const entities = [...players.map(p => ({ type: 'player' as const, p, y: p.y })), ...monsters.map(p => ({ type: 'slime' as const, p, y: p.y }))].sort((a, b) => a.y - b.y);
   for (const entity of entities) {
     if (entity.type === 'player') {
-      const p = entity.p, prev = frame?.previous.players.find(a => a.id === p.id) ?? p;
-      const x = prev.x + (p.x - prev.x) * progress, y = prev.y + (p.y - prev.y) * progress, mine = p.id === ownId;
+      const p = entity.p, { x, y } = playerPosition(p, frame, progress), mine = p.id === ownId;
       ellipse(ctx, x, y + 1, 15, 6, '#344b3b32');
       if (mine) { ctx.strokeStyle = '#fffbe5'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(x, y, 18, 8, 0, 0, Math.PI * 2); ctx.stroke(); }
       ctx.save();
