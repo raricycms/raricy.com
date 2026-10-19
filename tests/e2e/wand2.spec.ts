@@ -22,12 +22,38 @@ test('Wand 2 入口和认证独立于第一版', async ({ page }) => {
   expect((await page.request.post('/api/game/wand2/launch')).status()).toBe(401);
 });
 
+test('Wand 2 向下走实际绘制四帧步态，停步后恢复待机', async ({ page }, info) => {
+  await page.addInitScript(() => {
+    const frames: number[][] = [];
+    (window as Window & { __wandDownFrames?: number[][] }).__wandDownFrames = frames;
+    const draw = CanvasRenderingContext2D.prototype.drawImage;
+    CanvasRenderingContext2D.prototype.drawImage = function (image: CanvasImageSource, ...coords: number[]) {
+      if (image instanceof HTMLImageElement && image.src.endsWith('/walk-down.webp')
+        && !frames.some(frame => frame[2] === coords[0])) {
+        frames.push([image.naturalWidth, image.naturalHeight, ...coords.slice(0, 4)]);
+      }
+      Reflect.apply(draw, this, [image, ...coords]);
+    };
+  });
+  await registerFreshUser(page); const state = observe(page);
+  await page.goto('/game/wand2'); await page.getByRole('button', { name: '开始联机' }).click();
+  await expect(page.locator('.wand2-status')).toContainText('已连接');
+  await page.locator('canvas').focus(); await page.keyboard.down('ArrowDown');
+  const frames = () => page.evaluate(() => (window as Window & { __wandDownFrames?: number[][] }).__wandDownFrames ?? []);
+  await expect.poll(async () => (await frames()).length).toBe(4);
+  expect((await frames()).sort((a, b) => a[2] - b[2])).toEqual([0, 1, 2, 3].map(col => [1024, 256, col * 256, 0, 256, 256]));
+  await page.locator('canvas').screenshot({ path: info.outputPath('wand2-walk-down.png') });
+  await page.keyboard.up('ArrowDown');
+  await expect.poll(() => state.snapshot?.players.find(p => p.id === state.id)?.moving).toBe(false);
+  await page.getByRole('button', { name: '离开草地' }).click();
+});
+
 test('Wand 2：美术、双客户端同步、真实战斗奖励、同账号排行与移动端操作', async ({ page, context, isMobile }, info) => {
   test.setTimeout(90000);
   const errors: string[] = []; page.on('pageerror', e => errors.push(e.message));
   await registerFreshUser(page); const first = observe(page);
   await page.goto('/game/wand2'); await expect(page.getByRole('button', { name: '开始联机' })).toBeEnabled();
-  for (const name of ['character', 'attack', 'world']) {
+  for (const name of ['character', 'attack', 'world', 'walk-down']) {
     const result = await page.request.get(`/static/games/wand2/${name}.webp`); expect(result.status()).toBe(200); expect(result.headers()['content-type']).toContain('image/webp');
   }
   await page.getByRole('button', { name: '开始联机' }).click(); await expect(page.locator('.wand2-status')).toContainText('已连接');

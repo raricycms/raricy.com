@@ -3,6 +3,10 @@
   "attackDrawSize": 144,
   "attackFootBaseline": 354,
   "gutter": 8,
+  "walkDown": {
+    "file": "walk-down.webp", "frameMs": 150, "bodyHeight": 224, "footBaseline": 244,
+    "faceCenter": 133, "sourceFaceY": 176, "headCenters": [280, 280, 280, 280], "bob": [0, -1, 0, -1]
+  },
   "attack": [
     { "direction": "down", "file": "attack-down.webp", "poses": [
       { "hand": [129, 175], "angle": -25 }, { "hand": [153, 260], "angle": 135 },
@@ -22,6 +26,8 @@
     ] }
   ],
   "characterPatches": [
+    { "row": 0, "col": 1, "file": "walk-down.webp", "frame": 0, "region": [0, 0, 256, 256] },
+    { "row": 0, "col": 2, "file": "walk-down.webp", "frame": 2, "region": [0, 0, 256, 256] },
     { "row": 2, "col": 2, "file": "foot-3.webp", "region": [56, 204, 104, 52] },
     { "row": 2, "col": 3, "file": "foot-4.webp", "region": [56, 204, 104, 52] }
   ]

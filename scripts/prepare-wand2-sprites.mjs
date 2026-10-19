@@ -100,10 +100,31 @@ await fs.writeFile(path.join(QA, 'source-transforms.json'), JSON.stringify(sourc
 if (bodiesOnly) { console.log('Prepared padded body-layer preview.'); process.exit(0); }
 await blank(CELL * 4, CELL * 4).composite(complete).webp({ lossless: true }).toFile(path.join(DIR, 'attack.webp'));
 
-// 只替换两个问题帧的下半部，原表其余像素（包括脸、头发、持剑手）保持完全相同。
+// 四帧向下步行独立成条；以脸的中心对齐，避免低垂剑的包围盒令人物左右漂移。
+const walking = [], walkCrops = [], walk = layout.walkDown;
+for (let col = 0; col < 4; col++) {
+  const buffer = await sharp(path.join(SOURCE, walk.file)).extract({ left: col % 2 * 512, top: Math.floor(col / 2) * 512, width: 512, height: 512 }).png().toBuffer();
+  walkCrops.push({ buffer, bounds: await alphaBounds(buffer) });
+}
+const walkScale = walk.bodyHeight / Math.max(...walkCrops.map(c => c.bounds.height));
+const walkFaceY = walk.footBaseline - Math.max(...walkCrops.map(c => (c.bounds.top + c.bounds.height - walk.sourceFaceY) * walkScale));
+for (let col = 0; col < 4; col++) {
+  const { buffer, bounds } = walkCrops[col];
+  const width = Math.round(bounds.width * walkScale), height = Math.round(bounds.height * walkScale);
+  const left = Math.round(walk.faceCenter - (walk.headCenters[col] - bounds.left) * walkScale);
+  const top = Math.round(walkFaceY - (walk.sourceFaceY - bounds.top) * walkScale + walk.bob[col]);
+  if (left < 4 || left + width > 252 || top < 4 || top + height > 252) throw new Error(`walk-down ${col}: sprite outside safe cell`);
+  walking.push(await blank(256, 256).composite([{ input: await sharp(buffer).extract(bounds).resize(width, height).png().toBuffer(), left, top }]).png().toBuffer());
+}
+await blank(1024, 256).composite(walking.map((input, col) => ({ input, left: col * 256, top: 0 }))).webp({ lossless: true }).toFile(path.join(DIR, walk.file));
+
+// 仅应用登记的帧或局部矩形，其余角色表可见像素保持不变。
 const { data: character, info } = await sharp(path.join(SOURCE, 'character-original.webp')).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
 for (const patch of layout.characterPatches) {
-  const { data } = await sharp(path.join(SOURCE, patch.file)).resize(256, 256).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  // 从已合成的步行条取帧，避免半透明边缘在两条合成路径中出现舍入差异。
+  const input = patch.frame === undefined ? path.join(SOURCE, patch.file)
+    : await sharp(path.join(DIR, walk.file)).extract({ left: patch.frame * 256, top: 0, width: 256, height: 256 }).png().toBuffer();
+  const { data } = await sharp(input).resize(256, 256).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   const [x0, y0, width, height] = patch.region;
   for (let y = y0; y < y0 + height; y++) for (let x = x0; x < x0 + width; x++) {
     const target = ((patch.row * 256 + y) * info.width + patch.col * 256 + x) * 4;
@@ -112,4 +133,4 @@ for (const patch of layout.characterPatches) {
   }
 }
 await sharp(character, { raw: info }).webp({ lossless: true }).toFile(path.join(DIR, 'character.webp'));
-console.log('Wand 2: rebuilt 16 padded sword frames and repaired two shoe frames.');
+console.log('Wand 2: rebuilt sword frames, four down-walk phases and character patches.');

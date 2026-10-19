@@ -4,8 +4,8 @@ import type { Facing, Player, Snapshot } from '../../shared/wand2/protocol';
 import spriteLayout from '../../public/static/games/wand2/sprite-layout.json';
 
 function scene(overrides: Partial<Player> = {}, previousX = 100, previousY = 200) {
-  const image = (size = 1024) => ({ complete: true, naturalWidth: size, naturalHeight: size }) as HTMLImageElement;
-  const assets: Assets = { character: image(), attack: image(spriteLayout.attackCellSize * 4), world: image() };
+  const image = (size = 1024, height = size) => ({ complete: true, naturalWidth: size, naturalHeight: height }) as HTMLImageElement;
+  const assets: Assets = { character: image(), attack: image(spriteLayout.attackCellSize * 4), world: image(), walkDown: image(1024, 256) };
   const drawImage = vi.fn(), scale = vi.fn(), translate = vi.fn(), noop = () => {};
   const context = { canvas: { width: 960, height: 640 }, drawImage, scale, setTransform: noop, clearRect: noop, save: noop,
     translate, restore: noop, beginPath: noop, ellipse: noop, fill: noop, stroke: noop, arc: noop,
@@ -82,6 +82,29 @@ describe('Wand 2 精灵播放', () => {
       expect(s.drawImage.mock.calls[1][0]).toBe(s.assets.character);
       expect(s.drawImage.mock.calls[1][1]).toBe(2 * 256);
       expect(s.drawImage.mock.calls[1][2]).toBe(facing * 256);
+    }
+  });
+
+  it('向下移动连续播放四个步态，循环后接回首帧，不穿插站定或挥剑帧', () => {
+    for (let phase = 0; phase <= 4; phase++) {
+      const s = scene({ facing: 0, moving: true });
+      s.draw((8 + phase) * spriteLayout.walkDown.frameMs);
+      const draw = s.drawImage.mock.calls[1];
+      expect(draw.slice(0, 5)).toEqual([s.assets.walkDown, phase % 4 * 256, 0, 256, 256]);
+      expect(draw.slice(7)).toEqual([88, 88]);
+      expect(s.scale).not.toHaveBeenCalled();
+    }
+  });
+
+  it('停步、受击与攻击均优先使用对应动作，不继续播放向下行走条', () => {
+    for (const [overrides, sheet, col] of [
+      [{ moving: false }, 'character', 0],
+      [{ moving: true, hurt: 700 }, 'character', 3],
+      [{ moving: true, attack: 360 }, 'attack', 0],
+    ] as const) {
+      const s = scene({ facing: 0, ...overrides }); s.draw(1001);
+      expect(s.drawImage.mock.calls[1][0]).toBe(s.assets[sheet]);
+      expect(s.drawImage.mock.calls[1][1]).toBe(col * 256);
     }
   });
 

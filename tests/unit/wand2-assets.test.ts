@@ -6,12 +6,12 @@ import layout from '../../public/static/games/wand2/sprite-layout.json';
 const dir = path.resolve('public/static/games/wand2');
 const read = (file: string) => sharp(path.join(dir, file)).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
 type Pixels = Awaited<ReturnType<typeof read>>;
-let attack: Pixels, body: Pixels, character: Pixels, original: Pixels;
+let attack: Pixels, body: Pixels, character: Pixels, original: Pixels, walkDown: Pixels;
 const pixel = (image: Pixels, x: number, y: number) => image.data.subarray((y * image.info.width + x) * 4, (y * image.info.width + x) * 4 + 4);
 
 beforeAll(async () => {
-  [attack, body, character, original] = await Promise.all([
-    read('attack.webp'), read('attack-body.webp'), read('character.webp'), read('source/character-original.webp'),
+  [attack, body, character, original, walkDown] = await Promise.all([
+    read('attack.webp'), read('attack-body.webp'), read('character.webp'), read('source/character-original.webp'), read('walk-down.webp'),
   ]);
 });
 
@@ -20,6 +20,24 @@ describe('Wand 2 精灵资源', () => {
     expect([attack.info.width, attack.info.height]).toEqual([1536, 1536]);
     expect([body.info.width, body.info.height]).toEqual([1536, 1536]);
     expect([character.info.width, character.info.height]).toEqual([1024, 1024]);
+  });
+
+  it('向下步行条的四帧能独立切出，保留边距，并同步角色表中的左右步', () => {
+    expect([walkDown.info.width, walkDown.info.height]).toEqual([1024, 256]);
+    const changed = [0, 0, 0, 0];
+    let edgePixels = 0, mismatched = 0;
+    for (let frame = 0; frame < 4; frame++) for (let y = 0; y < 256; y++) for (let x = 0; x < 256; x++) {
+      const p = pixel(walkDown, frame * 256 + x, y);
+      if ((x < 4 || x >= 252 || y < 4 || y >= 252) && p[3] > 0) edgePixels++;
+      const next = pixel(walkDown, (frame + 1) % 4 * 256 + x, y);
+      if (p[3] !== next[3] || p[3] > 0 && !p.equals(next)) changed[frame]++;
+      if (frame !== 0 && frame !== 2) continue;
+      const inCharacter = pixel(character, (frame === 0 ? 1 : 2) * 256 + x, y);
+      if (inCharacter[3] !== p[3] || p[3] > 0 && !inCharacter.equals(p)) mismatched++;
+    }
+    expect(edgePixels).toBe(0);
+    expect(mismatched).toBe(0);
+    for (const count of changed) expect(count).toBeGreaterThan(100);
   });
 
   it('攻击的所有实际切格均有透明边距，剑、鞋和剑光不跨格或被裁切', () => {
@@ -53,7 +71,7 @@ describe('Wand 2 精灵资源', () => {
     }
   });
 
-  it('鞋子修补只改变指定的两块脚部，其余可见像素和透明度保持原样', () => {
+  it('步态与鞋子修补只改变登记区域，其余可见像素和透明度保持原样', () => {
     let outsideChanges = 0;
     const patchChanges = layout.characterPatches.map(() => 0);
     for (let y = 0; y < 1024; y++) for (let x = 0; x < 1024; x++) {

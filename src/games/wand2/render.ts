@@ -1,7 +1,7 @@
 import { ATTACK_MS, DIRECTIONS, TILE, TILES, TICK_MS, WORLD_HEIGHT, WORLD_WIDTH, type Player, type Slime, type Snapshot } from '../../../shared/wand2/protocol';
 import spriteLayout from '../../../public/static/games/wand2/sprite-layout.json';
 
-export interface Assets { character: HTMLImageElement; attack: HTMLImageElement; world: HTMLImageElement }
+export interface Assets { character: HTMLImageElement; attack: HTMLImageElement; world: HTMLImageElement; walkDown: HTMLImageElement }
 export interface Frame { previous: Snapshot; current: Snapshot; at: number }
 export interface FloatText { x: number; y: number; text: string; at: number }
 const palette = ['#b8cfaa', '#b5cca7', '#bdd1b0', '#b9cdaa'];
@@ -12,9 +12,9 @@ function playerPosition(player: Player, frame: Frame | null, progress: number) {
   return { x: previous.x + (player.x - previous.x) * progress, y: previous.y + (player.y - previous.y) * progress };
 }
 
-function sprite(ctx: CanvasRenderingContext2D, sheet: HTMLImageElement, col: number, row: number, x: number, y: number, size: number) {
+function sprite(ctx: CanvasRenderingContext2D, sheet: HTMLImageElement, col: number, row: number, x: number, y: number, size: number, rows = 4) {
   if (!sheet.complete || !sheet.naturalWidth) return;
-  const sw = sheet.naturalWidth / 4, sh = sheet.naturalHeight / 4;
+  const sw = sheet.naturalWidth / 4, sh = sheet.naturalHeight / rows;
   ctx.drawImage(sheet, col * sw, row * sh, sw, sh, x - size / 2, y - size * .9, size, size);
 }
 function ellipse(ctx: CanvasRenderingContext2D, x: number, y: number, rx: number, ry: number, color: string) {
@@ -77,7 +77,12 @@ export function render(ctx: CanvasRenderingContext2D, assets: Assets, ground: HT
       const walk = Math.floor(now / 130) % 4;
       const col = recoil ? 3 : p.moving ? [0, 1, 0, 2][walk] : 0;
       // 各方向直接使用对应原绘帧；镜像会把角色的右手持剑翻成左手。
-      sprite(ctx, attack ? assets.attack : assets.character, attack ? Math.min(3, Math.floor((ATTACK_MS - attack) / (ATTACK_MS / 4))) : col, p.facing, x, y + 4, attack ? spriteLayout.attackDrawSize : 88);
+      if (!attack && !recoil && p.moving && p.facing === 0) {
+        // 向下走使用完整的左右迈步与交错过渡，不在每一步之间插回双脚站定。
+        sprite(ctx, assets.walkDown, Math.floor(now / spriteLayout.walkDown.frameMs) % 4, 0, x, y + 4, 88, 1);
+      } else {
+        sprite(ctx, attack ? assets.attack : assets.character, attack ? Math.min(3, Math.floor((ATTACK_MS - attack) / (ATTACK_MS / 4))) : col, p.facing, x, y + 4, attack ? spriteLayout.attackDrawSize : 88);
+      }
       ctx.restore();
       if (attack > 100 && attack < 280) {
         const dir = DIRECTIONS[p.facing], angle = Math.atan2(dir.y, dir.x);

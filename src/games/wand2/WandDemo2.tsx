@@ -34,10 +34,11 @@ export default function WandDemo2() {
     mounted.current = true;
     let animation = 0, disposed = false, ground: HTMLCanvasElement | null = null;
     const context = canvas.current?.getContext('2d');
-    const assets: Assets = { character: new Image(), attack: new Image(), world: new Image() };
+    const assets: Assets = { character: new Image(), attack: new Image(), world: new Image(), walkDown: new Image() };
+    const files: Record<keyof Assets, string> = { character: 'character', attack: 'attack', world: 'world', walkDown: 'walk-down' };
     Promise.all(Object.entries(assets).map(([key, img]) => new Promise<void>((resolve, reject) => {
       img.onload = () => resolve(); img.onerror = () => reject(new Error('asset'));
-      img.src = `/static/games/wand2/${key}.webp`;
+      img.src = `/static/games/wand2/${files[key as keyof Assets]}.webp`;
     }))).then(() => { if (!disposed) { ground = makeGround(assets); setAssetsReady(true); } })
       .catch(() => { if (!disposed) setMessage('美术素材加载失败，请刷新页面重试。'); });
     function draw(now: number) {
