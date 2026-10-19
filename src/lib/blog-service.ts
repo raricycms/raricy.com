@@ -164,7 +164,16 @@ async function blogListWhere(params: ListParams): Promise<Prisma.BlogWhereInput>
     const { kind, userId } = params.personalScope;
     if (kind === 'mine') where.authorId = userId;
     if (kind === 'liked') where.likes = { some: { userId, deleted: false } };
-    if (kind === 'commented') where.comments = { some: { authorId: userId, isDeleted: false, status: 'approved' } };
+    if (kind === 'commented') {
+      // 先按本人评论去重，再与文章筛选取交集。直接用 comments.some 会生成逐篇执行的
+      // 相关 EXISTS；SQLite 缺少统计信息时可能选 is_deleted 索引，反复扫整批未删评论。
+      // 分组只扫描一次，侧栏计数与个人列表都走这里；空集合也必须保留 id in []。
+      const commented = await prisma.blogComment.groupBy({
+        by: ['blogId'],
+        where: { authorId: userId, isDeleted: false, status: 'approved' },
+      });
+      where.id = { in: commented.map((comment) => comment.blogId) };
+    }
     if (kind === 'fed') where.feeds = { some: { userId, amount: { gt: 0 } } };
   }
 
@@ -278,6 +287,32 @@ export async function getBlogDirectorySummary(userId: string, focusMode: boolean
   };
 }
 
+/** 长 IN 集合会被 Prisma 自动分批，skip/take 不能据此得到全局分页。 */
+async function commentedBlogPage(where: Prisma.BlogWhereInput, sort: BlogSort, page: number, perPage: number) {
+  const ids = typeof where.id === 'object' ? where.id.in : undefined;
+  const batchSize = 500; // 给栏目、专注模式与搜索条件留出 SQLite 参数余量。
+  if (!Array.isArray(ids) || ids.length <= batchSize) return null;
+
+  // 先分批只取排序元数据，合并后统一分页；完整卡片仍只读取当前页。
+  const matching = [];
+  for (let offset = 0; offset < ids.length; offset += batchSize) {
+    matching.push(...await prisma.blog.findMany({
+      where: { ...where, id: { in: ids.slice(offset, offset + batchSize) } },
+      select: { id: true, createdAt: true, content: { select: { updatedAt: true } } },
+    }));
+  }
+  const time = (date: Date | null | undefined) => date?.getTime() ?? Number.NEGATIVE_INFINITY;
+  matching.sort((a, b) =>
+    (sort === 'updated' ? time(b.content?.updatedAt) - time(a.content?.updatedAt) : 0)
+    || time(b.createdAt) - time(a.createdAt)
+    || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+  );
+  return {
+    total: matching.length,
+    ids: matching.slice((page - 1) * perPage, page * perPage).map((blog) => blog.id),
+  };
+}
+
 /**
  * **站内**列表：不看 `visibility`，调用方（`/blog`、`GET /api/blogs`）都由 core+ 守卫保护。
  * 对外列表另走 listPublicBlogs，不能给这里加一个可选 viewer 来兼做对外读口：漏传就会泄露
@@ -300,13 +335,17 @@ export async function listBlogs(params: ListParams) {
       ? [{ content: { updatedAt: 'desc' } }, { createdAt: 'desc' }]
       : [{ createdAt: 'desc' }];
 
+  const commentedPage = params.personalScope?.kind === 'commented'
+    ? await commentedBlogPage(where, params.sort ?? 'created', page, perPage)
+    : null;
+  if (commentedPage) orderBy.push({ id: 'asc' });
+
   const [total, blogs] = await Promise.all([
-    prisma.blog.count({ where }),
+    commentedPage ? commentedPage.total : prisma.blog.count({ where }),
     prisma.blog.findMany({
-      where,
+      where: commentedPage ? { ...where, id: { in: commentedPage.ids } } : where,
       orderBy,
-      skip: (page - 1) * perPage,
-      take: perPage,
+      ...(commentedPage ? {} : { skip: (page - 1) * perPage, take: perPage }),
       select: {
         id: true,
         title: true,

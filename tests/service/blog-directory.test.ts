@@ -96,4 +96,74 @@ describe('博客目录个人范围', () => {
     expect(second.blogs[0].id).toBe(result.blogs[1].id);
     expect((await getBlogDirectorySummary(me.id, false)).counts.commented).toBe(2);
   });
+
+  it('没有有效评论时个人列表与侧栏均为空，不会退回全部文章', async () => {
+    const me = await makeUser();
+    const other = await makeUser();
+    const blog = await makeBlog({ authorId: me.id });
+    await prisma.blogComment.createMany({ data: [
+      { id: 'empty-other', blogId: blog.id, authorId: other.id, content: '他人评论' },
+      { id: 'empty-deleted', blogId: blog.id, authorId: me.id, content: '已删评论', isDeleted: true },
+      { id: 'empty-pending', blogId: blog.id, authorId: me.id, content: '待审核', status: 'pending' },
+    ] });
+
+    const result = await listBlogs({ personalScope: { kind: 'commented', userId: me.id } });
+    expect(result).toMatchObject({ blogs: [], total: 0, pages: 1 });
+    expect((await getBlogDirectorySummary(me.id, false)).counts.commented).toBe(0);
+  });
+
+  it('评论范围超过 SQLite 单批参数数目时，仍按筛选后的全集排序、计数和分页', async () => {
+    const me = await makeUser();
+    const author = await makeUser();
+    const category = await makeCategory({ excludeFromAll: true });
+    const now = nowForDb();
+    const ids = Array.from({ length: 1100 }, (_, i) => `bulk-commented-${String(i).padStart(4, '0')}`);
+    await prisma.blog.createMany({ data: ids.map((id, i) => ({
+      id, authorId: author.id, title: '批量评论文章', categoryId: category.id,
+      isFeatured: i % 2 === 0, createdAt: new Date(now.getTime() - i * 1000),
+    })) });
+    await prisma.blogContent.createMany({ data: ids.map((blogId, i) => ({
+      blogId, content: '正文', updatedAt: new Date(now.getTime() - ((i * 37) % ids.length) * 1000),
+    })) });
+    await prisma.blogComment.createMany({ data: ids.map((blogId, i) => ({
+      id: `bulk-comment-${i}`, blogId, authorId: me.id, content: '评论',
+    })) });
+
+    for (const [sort, expected] of [
+      ['created', [14, 16, 18, 20, 22, 24, 26]],
+      ['updated', [922, 268, 714, 60, 506, 952, 298]],
+    ] as const) {
+      const result = await listBlogs({
+        personalScope: { kind: 'commented', userId: me.id },
+        categorySlug: category.slug, search: '批量评论', featured: true,
+        sort, page: 2, perPage: 7,
+      });
+      expect(result).toMatchObject({ total: 550, pages: 79, page: 2, hasPrev: true, hasNext: true });
+      expect(result.blogs.map((blog) => blog.id)).toEqual(expected.map((i) => ids[i]));
+    }
+    expect((await getBlogDirectorySummary(me.id, false)).counts.commented).toBe(ids.length);
+  });
+
+  it('评论范围排除归档作者的文章，专注模式同时过滤列表与侧栏计数', async () => {
+    const me = await makeUser();
+    const archived = await makeUser();
+    const hidden = await makeCategory({ focusHidden: true });
+    const visible = await makeBlog();
+    const focused = await makeBlog({ categoryId: hidden.id });
+    const archivedBlog = await makeBlog({ authorId: archived.id });
+    await prisma.blogComment.createMany({ data: [
+      { id: 'scope-visible', blogId: visible.id, authorId: me.id, content: '可见' },
+      { id: 'scope-focus', blogId: focused.id, authorId: me.id, content: '专注隐藏' },
+      { id: 'scope-archived', blogId: archivedBlog.id, authorId: me.id, content: '作者归档' },
+    ] });
+    await prisma.user.update({ where: { id: archived.id }, data: { archivedAt: nowForDb() } });
+
+    for (const focusMode of [false, true]) {
+      const expected = focusMode ? [visible.id] : [visible.id, focused.id];
+      const result = await listBlogs({ focusMode, personalScope: { kind: 'commented', userId: me.id } });
+      expect(new Set(result.blogs.map((blog) => blog.id))).toEqual(new Set(expected));
+      expect(result.total).toBe(expected.length);
+      expect((await getBlogDirectorySummary(me.id, focusMode)).counts.commented).toBe(expected.length);
+    }
+  });
 });
