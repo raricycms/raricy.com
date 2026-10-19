@@ -198,7 +198,7 @@ OAuth 授权 / 图片 / 小鱼干等较新页面与工具类用 `fd-` 前缀令�
   JetBrains Mono 带 400 / 700 的正体与斜体，按需加载。中文继续走系统回退字体，
   MathJax 仍使用自己的数学字体。
 - 字体栈集中在 `base/_root.scss` 的 **`--font-body` / `--font-brand` / `--font-mono` /
-  `--font-numeric`**，与明暗主题无关。
+  `--font-numeric` / `--font-reader-serif`**，与明暗主题无关。
   正文回退栈仍为 `"Segoe UI", "Helvetica Neue", Arial, sans-serif`；新增页面引用这些
   令牌，交互控件继承字体，不再另写一份系统字体栈。
 - `body`：`-webkit-font-smoothing: antialiased`，主色 `var(--color-text-primary)`。
@@ -763,12 +763,13 @@ content 色）+ 形状（圆角 + 内距）与正文分开，不靠色相，也�
 
 #### 什么时候用 —— **只有「2 选 1 的互斥视图切换」**
 
-判据一句话：**这块滑块代表同一个视图的两种呈现。** 目前全站只有两处：
+判据一句话：**这块滑块代表同一个视图的两种呈现。** 目前全站只有三处：
 
 | 落点 | 组件 | ARIA |
 |------|------|------|
 | 博客列表「发布时间 / 更新时间」 | `src/app/blog/BlogSort.tsx` | `role="group"` + `aria-pressed` |
 | 个人主页「文章 / 评论」 | `src/app/u/[id]/ProfileTabs.tsx` | `role="tablist"` / `role="tab"` + `aria-selected` |
+| Cattca 阅读器「书本 / 简洁」 | `src/app/components/cattca/CattcaReader.tsx` | `role="group"` + `aria-pressed` |
 
 视觉共用，**语义各按各的** —— 前者是一组互斥开关，后者在切换面板。
 
