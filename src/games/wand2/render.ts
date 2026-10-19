@@ -67,10 +67,8 @@ export function render(ctx: CanvasRenderingContext2D, assets: Assets, ground: HT
       const recoil = p.hurt > 570;
       const walk = Math.floor(now / 130) % 4;
       const col = recoil ? 3 : p.moving ? [0, 1, 0, 2][walk] : 0;
-      // 左右行的第三帧使用反向侧面，翻转同侧步态保持朝向一致。
-      if (!attack && !recoil && (p.facing === 1 || p.facing === 2) && col === 2) {
-        ctx.translate(x, 0); ctx.scale(-1, 1); sprite(ctx, assets.character, 1, p.facing === 1 ? 2 : 1, 0, y + 4, 88);
-      } else sprite(ctx, attack ? assets.attack : assets.character, attack ? Math.min(3, Math.floor((ATTACK_MS - attack) / (ATTACK_MS / 4))) : col, p.facing, x, y + 4, attack ? 96 : 88);
+      // 各方向直接使用对应原绘帧；镜像会把角色的右手持剑翻成左手。
+      sprite(ctx, attack ? assets.attack : assets.character, attack ? Math.min(3, Math.floor((ATTACK_MS - attack) / (ATTACK_MS / 4))) : col, p.facing, x, y + 4, attack ? 96 : 88);
       ctx.restore();
       if (attack > 100 && attack < 280) {
         const dir = DIRECTIONS[p.facing], angle = Math.atan2(dir.y, dir.x);
