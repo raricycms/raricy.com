@@ -945,8 +945,12 @@ plot / price / volume / time 各占一格）：与 SVG 共用同一个分数，�
 `public/static/img/icons/*.svg`；线性图标使用 `lucide-react` 的内联 SVG，
 例如胶囊箭头。两种图标颜色均跟随 `currentColor`，适配明暗主题。
 
-- 常用类：`.icon-bell`、`.icon-gear`、`.icon-person`、`.icon-house`、`.icon-fish`、`.icon-theme-toggle`、`.icon-book/controller/journal-text/tools`（首页四大入口）等。
+- 常用类：`.icon-bell`、`.icon-gear`、`.icon-person`、`.icon-house`、`.icon-fish`、`.icon-theme-toggle`、`.icon-controller`（设置页）等；首页四张功能卡里故事 / 博客 / 工具三张用 `.card-story/.card-blog/.card-tool` 上的 `feature-icon` 掩出 `book / journal-text / tools` 的形状。
 - 首页卡片的 `feature-icon` / `__icon` 用同一手法，给不同卡片指定不同 `color` 形成彩色图标（无需多色 SVG）。
+  玩具卡是唯一一颗 lucide 内联 SVG（`Gamepad2`）：`components/_icons.scss` 的
+  `svg.lucide { width/height: 1em }` 是 **0-1-1，压得过光秃秃的类名选择器（0-1-0）** ——
+  给它定 3rem 的规则必须写成 `.feature-card .feature-game-icon`，否则它静默缩成正文的
+  16px，和另外三张的 48px 并排时只是「看着不对」。
 - 新增图标：放一个单色 SVG 到 `public/static/img/icons/`，在 SCSS 里加一条 mask 规则即可。
 - **例外：自带配色的多色图标不走 mask。** mask 是单色模板（只取形状，颜色一律来自
   `currentColor`），所以**填充色与描边色必须分开**的图标套不进这条约定 —— 例如「白填充 +
