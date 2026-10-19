@@ -75,7 +75,7 @@ export default function ChatChannelMenu({
   return createPortal(
     <div
       ref={ref}
-      className="chat-avatar-menu"
+      className="chat-menu"
       role="menu"
       aria-label={`${channel.title} 的操作`}
       style={{ top: pos?.top, left: pos?.left, visibility: pos ? 'visible' : 'hidden' }}
@@ -83,7 +83,7 @@ export default function ChatChannelMenu({
       <button
         type="button"
         role="menuitem"
-        className="chat-avatar-menu__item"
+        className="chat-menu__item"
         onClick={() => onMute(!channel.muted)}
       >
         {channel.muted ? '取消静音' : '静音'}
@@ -92,17 +92,17 @@ export default function ChatChannelMenu({
         <button
           type="button"
           role="menuitem"
-          className="chat-avatar-menu__item chat-avatar-menu__item--danger"
+          className="chat-menu__item chat-menu__item--danger"
           onClick={onHide}
         >
           删除会话
         </button>
       )}
-      <div className="chat-avatar-menu__sep" role="separator" />
+      <div className="chat-menu__sep" role="separator" />
       <button
         type="button"
         role="menuitem"
-        className="chat-avatar-menu__item chat-avatar-menu__item--cancel"
+        className="chat-menu__item chat-menu__item--cancel"
         onClick={onClose}
       >
         取消

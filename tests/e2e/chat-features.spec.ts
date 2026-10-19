@@ -35,7 +35,7 @@ async function postTo(
 const postLobby = (page: import('@playwright/test').Page, content: string, replyTo?: number) =>
   postTo(page, LOBBY, content, replyTo);
 
-/** 一条消息上三个盒子的视口矩形：工具条（回执 / 回复 / 删除）、气泡、引用块。 */
+/** 一条消息上三个盒子的视口矩形：表头浮层（名字 / 时间 / 回执）、气泡、引用块。 */
 async function measureRow(row: import('@playwright/test').Locator) {
   return row.evaluate((el) => {
     const box = (sel: string) => {
@@ -45,7 +45,7 @@ async function measureRow(row: import('@playwright/test').Locator) {
       return { left: b.left, right: b.right, width: b.width, top: b.top, bottom: b.bottom };
     };
     return {
-      actions: box('.chat-msg__actions'),
+      meta: box('.chat-msg__meta'),
       bubble: box('.chat-msg__content'),
       quote: box('.chat-msg__reply'),
     };
@@ -126,11 +126,14 @@ test.describe('讨论功能：链接 / 跳转 / 搜索 / 日期分隔', () => {
     await loginViaApi(page, SEED_USERS.core.username);
     await page.goto(`/chat?channel=${LOBBY}`);
 
-    // 回复按钮是 hover 才显示的（.chat-msg__actions 默认 display:none）→ 先把指针停上去
+    // 消息上没有常驻按钮：右键唤出操作菜单，再点「回复」（见 ChatMessageMenu）
     const origRow = msgRow(page, orig);
     await expect(origRow).toBeVisible();
-    await origRow.hover();
-    await origRow.locator('.chat-msg__btn', { hasText: '回复' }).click();
+    await origRow.click({ button: 'right' });
+    await page
+      .locator('.chat-menu')
+      .getByRole('menuitem', { name: '回复', exact: true })
+      .click();
 
     // 前置断言：真的进了回复态。这一步挂 = 按钮没接上，与「reply_to 没发出去」分开定位
     await expect(page.locator('.chat-composer__reply')).toContainText(peer.username);
@@ -272,8 +275,7 @@ test.describe('连续消息合并', () => {
     await expect(firstRow.locator('.chat-msg__time')).toBeVisible();
     await expect(firstRow.locator('.chat-msg__name')).toBeVisible();
 
-    // 后继：时间与名字都不显示。时间用 visibility: hidden（占位留着，悬停时
-    // 「回复 / 删除」浮出来不会把整条消息顶下去），Playwright 的 toBeVisible 认它。
+    // 后继：时间与名字都不显示（display: none，既不占宽也不占行高）。
     await expect(secondRow).toHaveClass(/chat-msg--grouped/);
     await expect(secondRow.locator('.chat-msg__time')).toBeHidden();
     await expect(secondRow.locator('.chat-msg__name')).toBeHidden();
@@ -287,18 +289,22 @@ test.describe('连续消息合并', () => {
   });
 
   /**
-   * ★ 浮层贴的是**气泡**的边，不是「引用块和正文里更长的那一个」的边。
+   * ★ 表头浮层贴的是**气泡**的边，不是「引用块和正文里更长的那一个」的边。
    *
-   * 【回归背景】站长 2026-09 报：回复里引用比正文长时，「已读 / 回复 / 删除」跟着
-   * 引用块跑到外面去了。根因是表头行的定位祖先是 .chat-msg__body，而它的宽度 =
+   * 【回归背景】站长 2026-09 报：回复里引用比正文长时，「已读」跟着引用块跑到外面
+   * 去了。根因是表头行的定位祖先是 .chat-msg__body，而它的宽度 =
    * max(引用块, 自己的块) —— 修法是让浮层住进只装自己那几块的 .chat-msg__own-blocks。
    * 结构那半边在 tests/unit/chat-message-dom.test.ts；这里量真渲染出来的几何。
+   *
+   * 【为什么量的是表头行本身】保存 / 回复 / 删除已从这一行挪进右键 / 长按菜单
+   * （ChatMessageMenu），浮层里只剩回执；但「浮层贴谁」这条契约没变 —— 挂错层时
+   * 表头行的 box 边会跟着引用块走。空行也照样有 box（padding 撑出来的宽度）。
    *
    * 【为什么要真浏览器】jsdom 不排版，getBoundingClientRect 恒为 0：把定位父节点改回
    * body，单测照过（结构没变），只有这里会红。断言全部写成**相对关系**（浮层到气泡的距离），
    * 不写死绝对像素 —— 两个 project 的栏宽不同。
    */
-  test('★ 分组消息的工具条贴气泡的边，不贴更长的引用块', async ({ page }) => {
+  test('★ 分组消息的表头浮层贴气泡的边，不贴更长的引用块', async ({ page }) => {
     const tag = uniqueTag();
     const long = `e2e-anchor-long-${tag} ${'引用的一段很长很长的话，'.repeat(6)}`;
     const reply = `短 ${tag}`;
@@ -318,38 +324,102 @@ test.describe('连续消息合并', () => {
     await page.goto(`/chat?channel=${channelId}`);
     const row = msgRow(page, reply);
     await expect(row).toHaveClass(/chat-msg--grouped/);
-    await row.hover();
 
     const mine = await measureRow(row);
-    expect(mine.actions, '没量到工具条 —— 指针没停上去？').not.toBeNull();
+    expect(mine.meta, '没量到表头浮层').not.toBeNull();
     expect(mine.quote, '这条消息没有引用块').not.toBeNull();
     expect(mine.quote!.bottom, '自己的引用应在正文上方').toBeLessThanOrEqual(mine.bubble!.top);
-    // 自己发的：浮层在气泡**左侧**，box 边缘贴着气泡左沿（那 8px 让位是浮层自己的
-    // padding，所以按钮与气泡之间正好差 8px）
-    expect(mine.actions!.right).toBeCloseTo(mine.bubble!.left - 8, 0);
+    // 自己发的：浮层在气泡**左侧**，box 的右边缘贴着气泡左沿（8px 间距在 box 内部）
+    expect(mine.meta!.right).toBeCloseTo(mine.bubble!.left, 0);
     // 牙在这里：挂错层时它贴的是引用块的左沿。先确认两者确实差得开（引用够长），
     // 否则这条断言会退化成「两个数都差不多」而恒绿。
     expect(mine.bubble!.left - mine.quote!.left, '引用块没比正文宽出可辨的距离').toBeGreaterThan(40);
-    expect(Math.abs(mine.actions!.right - (mine.quote!.left - 8))).toBeGreaterThan(40);
+    expect(Math.abs(mine.meta!.right - mine.quote!.left)).toBeGreaterThan(40);
 
     // 换到对方视角：同一条消息变成「别人的」，浮层挂到气泡**右侧**（另一条 CSS 分支）
     await loginViaApi(page, SEED_USERS.admin.username);
     await page.goto(`/chat?channel=${channelId}`);
     const seenByPeer = msgRow(page, reply);
     await expect(seenByPeer).toHaveClass(/chat-msg--grouped/);
-    await seenByPeer.hover();
 
     const theirs = await measureRow(seenByPeer);
-    expect(theirs.actions).not.toBeNull();
+    expect(theirs.meta).not.toBeNull();
     expect(theirs.quote!.bottom, '他人的引用应在正文上方').toBeLessThanOrEqual(theirs.bubble!.top);
-    expect(theirs.actions!.left).toBeCloseTo(theirs.bubble!.right + 8, 0);
+    expect(theirs.meta!.left).toBeCloseTo(theirs.bubble!.right, 0);
     expect(theirs.bubble!.right - theirs.quote!.right).toBeLessThan(-40);
-    expect(Math.abs(theirs.actions!.left - (theirs.quote!.right + 8))).toBeGreaterThan(40);
+    expect(Math.abs(theirs.meta!.left - theirs.quote!.right)).toBeGreaterThan(40);
 
-    // 换了个位置也得**够得着**：指针从气泡走到按钮的途中不能落进空隙（那 8px 让位
-    // 用 padding 而不是 margin 的全部理由，见 _chat.scss）。点下去能进回复态才算数。
-    await seenByPeer.locator('.chat-msg__btn', { hasText: '回复' }).click();
+    // 同一条 grouped 消息上，右键菜单也得好用：弹得出来，点「回复」能进回复态
+    await seenByPeer.click({ button: 'right' });
+    const menu = page.locator('.chat-menu');
+    await expect(menu).toBeVisible();
+    await menu.getByRole('menuitem', { name: '回复', exact: true }).click();
     await expect(page.locator('.chat-composer__reply')).toContainText(`回复 ${me.username}`);
+  });
+});
+
+test.describe('消息操作菜单（右键 / 长按）', () => {
+  // 消息上不再有常驻按钮：菜单由 ChatMessageItem 的 useMessageMenuTrigger 唤出，
+  // 菜单本体是 portal + fixed 的 ChatMessageMenu。这里覆盖两条真浏览器才看得见的链路：
+  // 触屏长按（Playwright 没有长按 API，直接派发 pointerdown 让计时器接管）与删除。
+
+  test('触屏长按 → 菜单落在指针落点，Esc 收起', async ({ page }) => {
+    const marker = `e2e-hold-${uniqueTag()}`;
+    await registerFreshUser(page, { core: true });
+    await postLobby(page, marker);
+    await page.goto(`/chat?channel=${LOBBY}`);
+
+    const row = msgRow(page, marker);
+    await expect(row).toBeVisible();
+
+    // 长按：真浏览器里是手指按住不动 500ms；这里派发 pointerdown 后等计时器自己响
+    await row.evaluate((el) => {
+      el.dispatchEvent(
+        new PointerEvent('pointerdown', {
+          bubbles: true,
+          pointerType: 'touch',
+          button: 0,
+          clientX: 140,
+          clientY: 120,
+        })
+      );
+    });
+
+    const menu = page.locator('.chat-menu');
+    await expect(menu).toBeVisible();
+    // 大区里自己发的消息：没有「保存」（保存箱只收私聊），有回复与删除
+    await expect(menu.getByRole('menuitem')).toHaveText(['回复', '删除', '取消']);
+    // 菜单是 fixed 定位的 portal：落在落点附近，且完整落在视口内
+    const box = (await menu.boundingBox())!;
+    const vp = page.viewportSize()!;
+    expect(Math.abs(box.x - 142), '菜单没贴住长按落点').toBeLessThanOrEqual(1);
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.y).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(vp.width);
+    expect(box.y + box.height).toBeLessThanOrEqual(vp.height);
+
+    await page.keyboard.press('Escape');
+    await expect(menu).toHaveCount(0);
+  });
+
+  test('右键自己的消息 → 删除（走菜单，不再是 hover 按钮）', async ({ page }) => {
+    const marker = `e2e-del-${uniqueTag()}`;
+    await loginViaApi(page, SEED_USERS.core.username);
+    const messageId = await postLobby(page, marker);
+    await page.goto(`/chat?channel=${LOBBY}`);
+
+    const row = page.locator(`.chat-msg[data-message-id="${messageId}"]`);
+    await expect(row.locator('.chat-msg__content')).toContainText(marker);
+    await row.click({ button: 'right' });
+
+    const menu = page.locator('.chat-menu');
+    await expect(menu).toBeVisible();
+    // 删自己的消息前有 confirm；先挂好 accept
+    page.once('dialog', (d) => void d.accept());
+    await menu.getByRole('menuitem', { name: '删除', exact: true }).click();
+
+    // 服务端软删 → 行变成删除占位（消息行本身还在，附件已被抹掉）
+    await expect(row.locator('.chat-msg__deleted')).toHaveText('[该消息已删除]');
   });
 });
 
@@ -454,13 +524,13 @@ test.describe('会话偏好（静音 / 删除会话）', () => {
     await expect(row).toBeVisible();
 
     await row.locator('.chat-chan__more').click();
-    await page.locator('.chat-avatar-menu__item', { hasText: '静音' }).click();
+    await page.locator('.chat-menu__item', { hasText: '静音' }).click();
 
     await expect(row.locator('.chat-chan__muted')).toBeAttached({ timeout: 5000 });
 
     // 还原：取消静音（避免影响同库的其他用例）
     await row.locator('.chat-chan__more').click();
-    await page.locator('.chat-avatar-menu__item', { hasText: '取消静音' }).click();
+    await page.locator('.chat-menu__item', { hasText: '取消静音' }).click();
     await expect(row.locator('.chat-chan__muted')).toHaveCount(0);
   });
 
@@ -484,7 +554,7 @@ test.describe('会话偏好（静音 / 删除会话）', () => {
 
     page.on('dialog', (d) => void d.accept()); // 删除前有 confirm
     await row.locator('.chat-chan__more').click();
-    await page.locator('.chat-avatar-menu__item', { hasText: '删除会话' }).click();
+    await page.locator('.chat-menu__item', { hasText: '删除会话' }).click();
 
     await expect(row).toHaveCount(0, { timeout: 5000 });
   });

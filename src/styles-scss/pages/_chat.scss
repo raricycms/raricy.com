@@ -588,10 +588,17 @@
 }
 
 // 消息气泡
+//
+// 右键 / 长按唤出操作菜单（保存 / 回复 / 删除，见 ChatMessageItem 的
+// useMessageMenuTrigger）。-webkit-touch-callout 压掉 iOS 长按链接 / 图片时弹的
+// 原生 callout —— 那一下已经由我们自己的长按菜单接管；不设这条的话，链接上会先
+// 弹一个「打开 / 拷贝」的原生菜单再叠出我们的。正文选中不受影响（长按触发菜单时
+// JS 会把选区收掉）。
 .chat-msg {
   display: flex;
   gap: 10px;
   max-width: 78%;
+  -webkit-touch-callout: none;
 }
 .chat-msg--mine {
   align-self: flex-end;
@@ -621,31 +628,33 @@
   opacity: 1;
 }
 // 时间与名字在这一串的后继上**不渲染**。
-// 它们所在的整行已经退出文档流（见下），「保住行高、免得悬停时把内容顶下去」
-// 那个理由随之消失；而留着它们倒是有实打实的害处 —— `visibility: hidden` 的元素
-// **仍然占宽**：浮层的宽度会把这两格算进去，凭空宽出六七十 px，挂到气泡外侧就把
-// `overflow-y: auto` 的列表撑出横向滚动条。
+// 它们所在的整行已经退出文档流（见下），这一条是纯视觉约定；而写着
+// `visibility: hidden` 也不行 —— 那些元素**仍然占宽**：浮层的宽度会把这两格算进去，
+// 凭空宽出六七十 px，挂到气泡外侧就把 `overflow-y: auto` 的列表撑出横向滚动条。
 .chat-msg--grouped .chat-msg__name,
 .chat-msg--grouped .chat-msg__time {
   display: none;
 }
 
-// 表头行（名字 / 时间 / 回执 / 回复·删除）在后继消息上整行**退出文档流**，
+// 表头行（名字 / 时间 / 已读回执）在后继消息上整行**退出文档流**，
 // 挂到气泡外侧的空位上 —— 这是「两条气泡贴得住」的前提（见上面 -11px 的来路）。
-// 私聊的「已读 / 未读」回执也在这一行里，跟着一起挂到气泡外侧，照常显示。
+// 名字与时间在后继上 display:none，所以浮层里实际只剩私聊的「已读 / 未读」回执。
 //
-// 【为什么挂外侧而不是压在气泡上】气泡是 fit-content 宽度，浮层压上去正好盖住
-// 正文，短消息上尤其明显（「回复 删除」能占掉半个气泡）。
+// 【操作按钮不在这一行】保存 / 回复 / 删除住进右键 / 长按唤出的 .chat-menu 里
+// （ChatMessageMenu），消息上没有任何常驻按钮 —— 原先的 hover 工具条已删。
 //
-// ⚠️ 那 8px 让位必须用 padding 而不是 margin：浮层的 box 边缘要**贴着气泡边缘**，
-// 否则指针从气泡移向按钮的途中会落进一段既不属于气泡、也不属于浮层的空隙，
-// :hover 当场中断 —— 按钮在你够到它之前就消失了。padding 在 box 内部，边缘不变。
+// 【为什么挂外侧而不是压在气泡上】气泡是 fit-content 宽度，浮层压上去会盖住正文，
+// 短消息上尤其明显。
+//
+// 那 8px 间距用 padding 而不是 margin：浮层的 box 边缘仍然**贴着气泡边缘**
+// （几何契约由 tests/e2e/chat-features.spec.ts 的「表头浮层贴气泡」那条钉住，
+// padding 在 box 内部、边缘不变）。
 //
 // 挂哪一侧跟着气泡走：别人的在右、自己的在左（那一条是 row-reverse），都对齐顶边。
 //
 // ★ 它的定位祖先是 .chat-msg__own-blocks（自己的块那一层），**不是 .chat-msg__body**：
 //   body 的宽度是 max(引用块, 自己的块)，挂 body 上时「贴气泡边缘」只在气泡恰好是最宽的
-//   那一块时成立 —— 引用比正文长，工具条就跟过去贴引用的边了（2026-09 站长报的现象：
+//   那一块时成立 —— 引用比正文长，回执就跟过去贴引用的边了（2026-09 站长报的现象：
 //   它对齐的是「引用内容和原信息里更长的那一个」）。所以 grouped 的表头行住在
 //   own-blocks 里面，见 ChatMessageItem 的 ownBlocks 那段。别把它挪回 body 上。
 .chat-msg--grouped .chat-msg__meta {
@@ -653,7 +662,7 @@
   top: 0;
   left: 100%;
   padding-left: 8px;
-  // 浮层已经不在行里了，「回复 / 删除」再被挤成两行就只是难看
+  // 浮层已经不在行里了，回执再被挤成两行就只是难看
   white-space: nowrap;
 }
 .chat-msg--mine.chat-msg--grouped .chat-msg__meta {
@@ -762,38 +771,6 @@
 
 .chat-msg__time {
   white-space: nowrap;
-}
-
-.chat-msg__actions {
-  display: none;
-  gap: 6px;
-  margin-left: auto;
-}
-.chat-msg:hover .chat-msg__actions {
-  display: inline-flex;
-}
-.chat-msg--mine .chat-msg__actions {
-  margin-left: 0;
-}
-
-.chat-msg__btn {
-  border: none;
-  background: transparent;
-  color: var(--color-text-secondary);
-  font-size: 0.72rem;
-  cursor: pointer;
-  padding: 0 2px;
-}
-.chat-msg__btn:hover {
-  color: var(--color-brand-primary);
-}
-/* 已保存：与点赞/收藏同一套「状态色只由状态类给」的手法（未保存时是普通灰） */
-.chat-msg__btn.is-saved {
-  color: var(--color-brand-primary);
-  font-weight: 600;
-}
-.chat-msg__btn--danger:hover {
-  color: var(--color-warning-primary);
 }
 
 /* 被引用的那条消息。左侧竖条已按全站规范去掉，改用品牌淡底标识。 */
@@ -1173,7 +1150,9 @@
   font-size: 0.8rem;
 }
 
-// 拍一拍：微信/QQ 式的居中系统行（无头像、无气泡、灰字）
+// 拍一拍：微信/QQ 式的居中系统行（无头像、无气泡、灰字）。
+// 它的「删除」也走右键 / 长按唤出的操作菜单（同 .chat-msg），所以同样压掉
+// iOS 长按的原生 callout。
 .chat-pat {
   align-self: center;
   max-width: 90%;
@@ -1183,6 +1162,7 @@
   padding: 2px 10px;
   font-size: 0.78rem;
   color: var(--color-text-secondary);
+  -webkit-touch-callout: none;
   text-align: center;
   word-break: break-word;
 }
@@ -1197,17 +1177,11 @@
 .chat-pat__text {
   min-width: 0;
 }
-// 拍一拍没有气泡可挂操作，删除键改为 hover 时才出现
-.chat-pat__btn {
-  display: none;
-  flex: none;
-}
-.chat-pat:hover .chat-pat__btn {
-  display: inline-block;
-}
-
-// 头像选项框（portal 到 body、position: fixed —— 位置由 AvatarMenu 实测后写入）
-.chat-avatar-menu {
+// 讨论的三个浮层菜单共用这套皮肤：头像选项框（AvatarMenu）、会话「⋯」菜单
+// （ChatChannelMenu）、消息操作菜单（ChatMessageMenu）。原来是 .chat-avatar-menu，
+// 加第三个使用者时改了名 —— 它本来就不是头像专属的。
+// 位置一律 portal 到 body + position: fixed，由各组件实测后写入 top/left。
+.chat-menu {
   position: fixed;
   z-index: 60;
   min-width: 148px;
@@ -1220,7 +1194,7 @@
   // 浮层：去边框、去黑阴影，改用品牌蓝光晕与卡面拉层级。
   box-shadow: var(--shadow-card-brand);
 }
-.chat-avatar-menu__item {
+.chat-menu__item {
   display: block;
   width: 100%;
   padding: 7px 12px;
@@ -1235,19 +1209,19 @@
   cursor: pointer;
   white-space: nowrap;
 }
-.chat-avatar-menu__item:hover {
+.chat-menu__item:hover {
   background: var(--color-background-subtle);
   color: var(--color-brand-primary);
 }
-.chat-avatar-menu__item--danger {
+.chat-menu__item--danger {
   color: var(--color-warning-primary);
 }
 
-.chat-avatar-menu__item--cancel {
+.chat-menu__item--cancel {
   color: var(--color-text-secondary);
   text-align: center;
 }
-.chat-avatar-menu__sep {
+.chat-menu__sep {
   height: 1px;
   margin: 2px 6px;
   background: var(--color-border);

@@ -29,6 +29,7 @@ import { FOCUS_MODE_SETTINGS_HREF } from '@/lib/focus-mode';
 import NewChatModal from './NewChatModal';
 import QuoteBlogModal from '../components/QuoteBlogModal';
 import AvatarMenu, { type AvatarMenuAnchor } from './AvatarMenu';
+import ChatMessageMenu, { type MessageMenuAnchor } from './ChatMessageMenu';
 import ImageLightbox from '../components/ImageLightbox';
 import { isMentioned, markGroupedMessages } from './ChatMessageItem';
 import ChatMessageList from './ChatMessageList';
@@ -217,7 +218,7 @@ export default function ChatApp({
   const [channels, setChannels] = useState<ChatChannelDTO[]>([]);
   const [activeId, setActiveId] = useState<string | null>(initialChannel);
   const [messages, setMessages] = useState<ChatMessageDTO[]>([]);
-  /** 当前频道里「我保存过的消息 id」—— 消息表头「保存 / 已保存」的初始态。 */
+  /** 当前频道里「我保存过的消息 id」—— 消息菜单里「保存 / 已保存」的显示依据。 */
   const [savedIds, setSavedIds] = useState<Set<number>>(() => new Set());
   const [hasMore, setHasMore] = useState(true);
   const [loadingOlder, setLoadingOlder] = useState(false);
@@ -236,6 +237,14 @@ export default function ChatApp({
   /** 头像选项框：锚点信息（头像按钮矩形）在点击瞬间实测 */
   const [avatarMenu, setAvatarMenu] = useState<
     { author: ChatMessageDTO['author']; anchor: AvatarMenuAnchor } | null
+  >(null);
+  /**
+   * 消息操作菜单（保存 / 回复 / 删除）：右键或长按唤出。
+   * 只存「哪条消息 + 指针落点」，可用动作在渲染时按当前消息与频道现算 —— 保存态
+   * 会随 savedIds 变，存快照会在菜单开着时拿到旧值。
+   */
+  const [messageMenu, setMessageMenu] = useState<
+    { msg: ChatMessageDTO; anchor: MessageMenuAnchor } | null
   >(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(initialSidebarCollapsed);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -673,7 +682,7 @@ export default function ChatApp({
   );
 
   /**
-   * 拉「当前频道里我保存过的消息 id」—— 消息表头「保存 / 已保存」的初始态。
+   * 拉「当前频道里我保存过的消息 id」—— 消息菜单里「保存 / 已保存」的显示依据。
    *
    * 【为什么单独一条接口】没有把它塞进 ChatMessageDTO：保存状态是**逐用户**的，
    * 而消息 DTO 是所有成员共享的一份序列化结果；塞进去会让「同一页消息对 A/B 渲染
@@ -1339,6 +1348,14 @@ export default function ChatApp({
     [currentUserId]
   );
 
+  /**
+   * 右键 / 长按某条消息 → 打开操作菜单（保存 / 回复 / 删除）。
+   * 回调必须是稳定引用：ChatMessageItem 包了 memo，换引用等于整列表白 memo。
+   */
+  const openMessageMenu = useCallback((m: ChatMessageDTO, anchor: MessageMenuAnchor) => {
+    setMessageMenu({ msg: m, anchor });
+  }, []);
+
   /** 点消息里的图片 → 原位放大（覆盖层），不再新开窗口 */
   const openLightbox = useCallback((url: string) => setLightbox({ url }), []);
   const closeLightbox = useCallback(() => setLightbox(null), []);
@@ -1529,7 +1546,7 @@ export default function ChatApp({
         return;
       }
       // 同步更新 ref + state：快速连点时第二次要读到第一次的结果（否则会重复 POST，
-      // 虽然服务端幂等，但按钮会在「已保存 / 保存」之间闪）。
+      // 虽然服务端幂等，但菜单项会在「已保存 / 保存」之间闪）。
       const next = new Set(savedIdsRef.current);
       if (saved) next.delete(m.id);
       else next.add(m.id);
@@ -1775,10 +1792,7 @@ export default function ChatApp({
                 }
                 onRevealOlder={revealOlder}
                 onLoadOlder={loadOlder}
-                savedIds={savedIds}
-                onToggleSave={handleToggleSave}
-                onReply={handleReply}
-                onDelete={handleDelete}
+                onOpenMenu={openMessageMenu}
                 onAvatarClick={openAvatarMenu}
                 onJumpToReply={jumpToMessage}
                 onImageClick={openLightbox}
@@ -1927,6 +1941,34 @@ export default function ChatApp({
             setAvatarMenu(null);
             insertMention(target.username);
           }}
+        />
+      )}
+
+      {/* 消息操作菜单：右键 / 长按唤出。「保存」只有私聊（且未删、非拍一拍）才有 ——
+          大区消息不进保存箱，服务端也会拒。 */}
+      {messageMenu && (
+        <ChatMessageMenu
+          msg={messageMenu.msg}
+          anchor={messageMenu.anchor}
+          saved={savedIds.has(messageMenu.msg.id)}
+          canSave={
+            activeChannel?.kind === 'direct' && !messageMenu.msg.is_deleted && !messageMenu.msg.pat
+          }
+          canReply={!messageMenu.msg.is_deleted && !messageMenu.msg.pat}
+          canDelete={messageMenu.msg.author.id === currentUserId || isAdmin}
+          onToggleSave={(m) => {
+            setMessageMenu(null);
+            void handleToggleSave(m);
+          }}
+          onReply={(m) => {
+            setMessageMenu(null);
+            handleReply(m);
+          }}
+          onDelete={(m) => {
+            setMessageMenu(null);
+            void handleDelete(m);
+          }}
+          onClose={() => setMessageMenu(null)}
         />
       )}
     </div>

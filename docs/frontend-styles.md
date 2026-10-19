@@ -584,7 +584,8 @@ Kumbh Sans；代码块与编辑器继续使用完整的 JetBrains Mono。
     漏掉了（按 `border-left` 搜是搜不到的）。折叠态则改用头像外一圈 3px 品牌描边
     （60px 轨道里整行淡底会被头像占满、读不出来）。
   - 默认款中 `@` 到我那条消息（`.chat-msg__content--mention`）用**品牌淡底**强调，不描边。
-- 消息主区 `.chat-main`：头部标题 + 操作；消息气泡 `.chat-msg`（自己发的加 `.chat-msg--mine`），含作者名 / 时间 / 操作 / 图片 / 引用回复 / 已删占位 `.chat-msg__deleted`。
+- 消息主区 `.chat-main`：头部标题 + 操作；消息气泡 `.chat-msg`（自己发的加 `.chat-msg--mine`），含作者名 / 时间 / 已读回执 / 图片 / 引用回复 / 已删占位 `.chat-msg__deleted`。
+  **消息上没有常驻按钮**：保存 / 回复 / 删除住在右键 / 长按唤出的操作菜单里（见下一条）。
   - 正文气泡用一级卡片底色 `--color-background-card`，无描边，内边距 `8px 16px`。
     圆角 `calc(0.775em + 8px)` = 半个行高（`1.55em / 2`）+ 单侧内边距：
     **单行恰好是胶囊，多行保持同一个圆角**，不随消息高度继续增大。
@@ -604,20 +605,27 @@ Kumbh Sans；代码块与编辑器继续使用完整的 JetBrains Mono。
     **别在渲染层另算一套**。
   - **能挨在一起的前提：后继消息的表头行整行退出了文档流**（`.chat-msg--grouped
     .chat-msg__meta { position: absolute }`），挂到气泡**外侧**（别人的在右、自己的
-    在左，都对齐顶边）。它在流里时要占 17px 行高 + 4px 间距，光靠负外边距最多把两条
-    气泡的距离从 27px 收到 21px，怎么调都贴不上；而浮在气泡**上**会盖住正文
-    （气泡是 fit-content 宽度，「回复 删除」能占掉短气泡的一半）。同理，那 8px 让位
-    用的是 `padding` 而不是 `margin` —— 浮层的 box 边缘必须贴着气泡边缘，否则指针
-    从气泡移向按钮的途中会落进一段空隙，`:hover` 中断、按钮够不着。
+    在左，都对齐顶边）。它在流里时要占 17px 行高（私聊回执那一行）+ 4px 间距，光靠
+    负外边距最多把两条气泡的距离从 27px 收到 21px，怎么调都贴不上；而浮在气泡**上**
+    会盖住正文（气泡是 fit-content 宽度）。那 8px 间距用的是 `padding` 而不是
+    `margin`：浮层的 box 边缘仍贴着气泡边缘（几何契约见下）。
   - 浮层的**定位祖先是 `.chat-msg__own-blocks`**（气泡 / 图 / 博客卡那一层，
     **不含引用块**），不是 `.chat-msg__body`：body 的宽度是 `max(引用块, 自己的块)`，
-    挂它上面时「贴气泡边缘」只在气泡恰好最宽时成立 —— 引用比正文长，回执与
-    「回复 / 删除」就跟过去贴引用的边了（2026-09 站长报的：对齐的是两者里更长的那一个）。
-    所以 grouped 的表头行住在 own-blocks 里面（组件里按 `grouped` 换父节点），
-    那一层也带了 `max-width: 100%` —— 理由与气泡上那条完全同源（代码块的 min-content
-    会把**每一层**祖先都撑破），由 `tests/e2e/chat-codeblock.spec.ts` 盯着。
-    结构契约由 `tests/unit/chat-message-dom.test.ts` 钉住，几何由
-    `tests/e2e/chat-features.spec.ts` 的「工具条贴气泡」那条钉住。
+    挂它上面时「贴气泡边缘」只在气泡恰好最宽时成立 —— 引用比正文长，表头行就跟过去
+    贴引用的边了（2026-09 站长报的：对齐的是两者里更长的那一个）。所以 grouped 的
+    表头行住在 own-blocks 里面（组件里按 `grouped` 换父节点），那一层也带了
+    `max-width: 100%` —— 理由与气泡上那条完全同源（代码块的 min-content 会把**每一层**
+    祖先都撑破），由 `tests/e2e/chat-codeblock.spec.ts` 盯着。结构契约由
+    `tests/unit/chat-message-dom.test.ts` 钉住，几何由
+    `tests/e2e/chat-features.spec.ts` 的「表头浮层贴气泡」那条钉住。
+  - **消息操作菜单**（`.chat-menu`，组件 `ChatMessageMenu`）：桌面右键、触屏长按唤出，
+    定位在指针落点（portal + fixed，两个方向都夹进视口，放不下就翻到落点另一侧）。
+    菜单项按语境组合：私聊可保存（`保存 / 已保存`）、未删除且非拍一拍可回复、
+    本人或管理员可删除，末尾固定「取消」。手势识别在 `ChatMessageItem` 的
+    `useMessageMenuTrigger`：鼠标只认 `contextmenu`（不做鼠标长按），触屏自己计时
+    500ms（滑动超过 8px 取消），长按后的那一次 click 会被吞掉。
+    它和头像选项框、会话「⋯」菜单**共用一套皮肤** —— 类名原本叫 `.chat-avatar-menu`，
+    加第三个使用者时改成了 `.chat-menu`。
   - 三处隐藏方式**刻意不同**，改动前先看清各自为什么：头像 `opacity: 0`（它是
     「拍一拍 / @ta / 主页」的入口，藏了也**要能点**，悬停淡入；触屏没有 hover，故
     `@media (hover: none)` 下常显）；作者名与时间 `display: none`（不可交互；

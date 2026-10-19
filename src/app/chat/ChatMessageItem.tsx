@@ -9,9 +9,14 @@
 //
 // 【正文渲染】走 ChatMarkdown（Markdown → 净化 HTML）；回复摘要 / 侧栏预览等
 // 只露一行的位置仍按纯文本处理，不进 Markdown 管线。
+//
+// 【消息上没有常驻按钮】保存 / 回复 / 删除住在一个右键 / 长按唤出的菜单里（由 ChatApp
+// 持有 ChatMessageMenu，本文件只负责把「右键 / 长按」翻译成一次 onOpenMenu）。原来的
+// hover 工具条已删：它在触屏上只能靠「点一下 → 粘住 hover」这种偶然行为打开，还会
+// 把按钮摆进表头行、挤占气泡外侧的宽度。手势识别见 useMessageMenuTrigger。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { memo, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import Avatar from '@/app/components/Avatar';
 import ChatBubble from '@/app/components/ChatBubble';
@@ -19,6 +24,7 @@ import { ArrowRight, BookOpenText } from 'lucide-react';
 import { CHAT_DELETED_TEXT, type ChatMessageDTO } from '@/lib/chat-shared';
 import { nowForDb } from '@/lib/db-time';
 import ChatMarkdown from './ChatMarkdown';
+import type { MessageMenuAnchor } from './ChatMessageMenu';
 
 // ── 时间显示：一律 UTC+8 钟面 ─────────────────────────────────────────────────
 // 库里时间戳是「UTC+8 墙上时间，贴 Z 标签」（见 src/lib/db-time.ts）—— 也就是说
@@ -138,6 +144,133 @@ export function isMentioned(content: string, username: string): boolean {
   return false;
 }
 
+// ── 右键 / 长按 → 操作菜单 ───────────────────────────────────────────────────
+//
+// 触屏没有 hover，鼠标右键是浏览器自己的菜单 —— 两者都要变成「消息操作菜单」：
+//   · 鼠标：只认 contextmenu（右键 / 键盘菜单键 / Shift+F10）。**不做鼠标长按**，
+//     按住左键 500ms 弹菜单不是桌面上的习惯，而且会和拖选文字打架。
+//   · 触屏：自己做长按计时（iOS 不派发 contextmenu）。手指移动超过阈值即视为
+//     在滚动列表 → 取消；定时器触发后吞掉随后的 click，免得顺带点开图片 / 链接。
+//   · Android：长按会**同时**触发原生 contextmenu 与我们的计时器，用
+//     touchOpenedAtRef 去重，两次只开一个菜单。
+//
+// ⚠️ 为什么不做 `preventDefault()` on touchstart：那会连列表滚动一起禁掉。iOS 长按
+// 选中文字 / 链接 callout 只能靠计时器触发后收掉选区 + 样式表的
+// `-webkit-touch-callout: none` 来压，压不干净也只是「多出一片选区」，菜单照常开。
+
+/** 长按判定时长（毫秒）。与 Android 原生 contextmenu 的触发时间大致同档。 */
+export const MESSAGE_LONG_PRESS_MS = 500;
+/** 手指移动超过这个距离（px）就视为滑动列表，取消长按。 */
+const LONG_PRESS_MOVE_TOLERANCE = 8;
+
+/**
+ * 给消息行挂上「右键 / 长按 → 打开操作菜单」的手势。
+ *
+ * @param canMenu 这条消息有没有可做的动作。没有就别拦浏览器原生菜单 —— 右键
+ *   至少还能复制文字（如别人发的已删消息）。
+ * @returns 直接 spread 到消息行根节点的 props。
+ */
+function useMessageMenuTrigger(
+  msg: ChatMessageDTO,
+  canMenu: boolean,
+  onOpenMenu: (m: ChatMessageDTO, anchor: MessageMenuAnchor) => void
+) {
+  const timerRef = useRef<number | null>(null);
+  const startRef = useRef<{ x: number; y: number } | null>(null);
+  /** 长按刚开过菜单 → 吞掉随后那一次 click（否则会顺带放大图片 / 跟进链接）。 */
+  const suppressClickRef = useRef(false);
+  /** 触摸长按已经开过菜单的时刻：Android 随后还会补一个 contextmenu，别开第二次。 */
+  const touchOpenedAtRef = useRef(0);
+
+  const cancel = useCallback(() => {
+    if (timerRef.current != null) {
+      window.clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    startRef.current = null;
+  }, []);
+
+  // 卸载时清掉挂着的定时器（列表滚动会不断挂载 / 卸载消息行）
+  useEffect(() => cancel, [cancel]);
+
+  const open = useCallback(
+    (x: number, y: number) => onOpenMenu(msg, { x, y }),
+    [msg, onOpenMenu]
+  );
+
+  const onContextMenu = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (!canMenu) return;
+      e.preventDefault();
+      // Android 长按：上面的计时器先开了菜单，紧跟着原生 contextmenu 又来一次
+      if (Date.now() - touchOpenedAtRef.current < 1000) return;
+      cancel();
+      const rect = e.currentTarget.getBoundingClientRect();
+      // 键盘菜单键 / Shift+F10 没有指针坐标（clientX/Y 都是 0）→ 贴着消息左上角开
+      const byPointer = e.clientX !== 0 || e.clientY !== 0;
+      open(byPointer ? e.clientX : rect.left + 12, byPointer ? e.clientY : rect.top + 12);
+    },
+    [canMenu, cancel, open]
+  );
+
+  const onPointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      // 新手势开始：上一次长按的「吞 click」状态作废（长按后未必真会派发 click）
+      suppressClickRef.current = false;
+      if (!canMenu || e.pointerType === 'mouse' || e.button !== 0) return;
+      // 万一上一下还没结束（多点触控 / 异常序列），别让旧计时器留着
+      cancel();
+      startRef.current = { x: e.clientX, y: e.clientY };
+      timerRef.current = window.setTimeout(() => {
+        timerRef.current = null;
+        const start = startRef.current;
+        startRef.current = null;
+        if (!start) return;
+        suppressClickRef.current = true;
+        touchOpenedAtRef.current = Date.now();
+        // iOS 长按会顺手开始选文字 / 弹 callout —— 菜单接管，把选区收掉。
+        // （链接的 callout 另由 `-webkit-touch-callout: none` 压，见 _chat.scss）
+        window.getSelection()?.removeAllRanges();
+        open(start.x, start.y);
+      }, MESSAGE_LONG_PRESS_MS);
+    },
+    [canMenu, cancel, open]
+  );
+
+  const onPointerMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const start = startRef.current;
+      if (!start) return;
+      if (
+        Math.abs(e.clientX - start.x) > LONG_PRESS_MOVE_TOLERANCE ||
+        Math.abs(e.clientY - start.y) > LONG_PRESS_MOVE_TOLERANCE
+      ) {
+        cancel();
+      }
+    },
+    [cancel]
+  );
+
+  const onPointerEnd = useCallback(() => cancel(), [cancel]);
+
+  const onClickCapture = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!suppressClickRef.current) return;
+    suppressClickRef.current = false;
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
+
+  return {
+    onContextMenu,
+    onPointerDown,
+    onPointerMove,
+    onPointerUp: onPointerEnd,
+    onPointerCancel: onPointerEnd,
+    onPointerLeave: onPointerEnd,
+    onClickCapture,
+  };
+}
+
 export interface ChatMessageItemProps {
   msg: ChatMessageDTO;
   isMine: boolean;
@@ -154,13 +287,10 @@ export interface ChatMessageItemProps {
   grouped?: boolean;
   /** 私聊里「我发出的最后一条」的送达状态（对方读游标决定）；其他消息不传 */
   receipt?: 'read' | 'unread' | null;
-  /** 我在保存箱里保存过这条消息（按钮显示「已保存」）。 */
-  saved?: boolean;
-  /** 只有私聊里未删除的消息可保存（大区消息不进保存箱）。 */
+  /** 只有私聊里未删除的消息可保存（大区消息不进保存箱；拍一拍也不进）。 */
   canSave?: boolean;
-  onToggleSave: (m: ChatMessageDTO) => void;
-  onReply: (m: ChatMessageDTO) => void;
-  onDelete: (m: ChatMessageDTO) => void;
+  /** 右键 / 长按唤出操作菜单：锚点是视口坐标（菜单自己负责摆位） */
+  onOpenMenu: (m: ChatMessageDTO, anchor: MessageMenuAnchor) => void;
   onAvatarClick: (m: ChatMessageDTO, el: HTMLButtonElement) => void;
   /** 点击回复摘要 → 跳到被引用的原消息 */
   onJumpToReply: (messageId: number) => void;
@@ -177,37 +307,30 @@ function ChatMessageItemInner({
   highlighted = false,
   grouped = false,
   receipt = null,
-  saved = false,
   canSave = false,
-  onToggleSave,
-  onReply,
-  onDelete,
+  onOpenMenu,
   onAvatarClick,
   onJumpToReply,
   onImageClick,
 }: ChatMessageItemProps) {
   const [imgError, setImgError] = useState(false);
 
+  // 菜单里有没有可做的动作：没有就放行浏览器原生右键菜单（至少还能复制文字）
+  const canMenu = canSave || canDelete || (!msg.is_deleted && !msg.pat);
+  const menuTrigger = useMessageMenuTrigger(msg, canMenu, onOpenMenu);
+
   // 拍一拍：无头像无气泡的居中系统行（微信/QQ 式）；本人被拍时用品牌色强调。
   // 已删除的拍一拍保持居中，只把文案换成删除占位。
+  // 它的「删除」也走同一个右键 / 长按菜单（原先是一条 hover 才出现的按钮）。
   if (msg.pat) {
     const pattedMe = msg.pat.target_id === currentUserId;
     return (
-      <div className={`chat-pat${pattedMe ? ' chat-pat--me' : ''}`}>
+      <div className={`chat-pat${pattedMe ? ' chat-pat--me' : ''}`} {...menuTrigger}>
         <span className="chat-pat__text">
           {msg.is_deleted
             ? CHAT_DELETED_TEXT
             : `${msg.author.username} 拍了拍 ${msg.pat.target_name}`}
         </span>
-        {canDelete && !msg.is_deleted && (
-          <button
-            type="button"
-            className="chat-msg__btn chat-msg__btn--danger chat-pat__btn"
-            onClick={() => onDelete(msg)}
-          >
-            删除
-          </button>
-        )}
       </div>
     );
   }
@@ -294,8 +417,9 @@ function ChatMessageItemInner({
     <div className="chat-msg__blog-missing">[博客已删除]</div>
   ) : null;
 
-  // 表头行：作者名 / 时间 / 已读回执 / 回复·删除。
+  // 表头行：作者名 / 时间 / 已读回执。
   // grouped（同人连续发言的后继）上，整行由 _chat.scss 接管成绝对定位的浮层。
+  // 操作按钮不在这一行 —— 保存 / 回复 / 删除在右键 / 长按菜单里。
   const metaRow = (
     <div className="chat-msg__meta">
       <Link className="chat-msg__name" href={`/u/${msg.author.id}`}>
@@ -307,28 +431,6 @@ function ChatMessageItemInner({
           {receipt === 'read' ? '已读' : '未读'}
         </span>
       )}
-      <span className="chat-msg__actions">
-        {canSave && (
-          <button
-            type="button"
-            className={`chat-msg__btn${saved ? ' is-saved' : ''}`}
-            onClick={() => onToggleSave(msg)}
-            title={saved ? '从保存的消息中移除' : '保存到「保存的消息」（只有自己看得到）'}
-          >
-            {saved ? '已保存' : '保存'}
-          </button>
-        )}
-        {!msg.is_deleted && (
-          <button type="button" className="chat-msg__btn" onClick={() => onReply(msg)}>
-            回复
-          </button>
-        )}
-        {canDelete && (
-          <button type="button" className="chat-msg__btn chat-msg__btn--danger" onClick={() => onDelete(msg)}>
-            删除
-          </button>
-        )}
-      </span>
     </div>
   );
 
@@ -336,9 +438,9 @@ function ChatMessageItemInner({
   //
   // 【为什么要单独包一层】grouped 的表头行是绝对定位的浮层，贴的是**定位祖先**的边。
   // 不包这一层的话，那个祖先是 .chat-msg__body，而 body 的宽度 = max(引用块, 自己的块)
-  // —— 引用比正文长时，回执与「回复 / 删除」就跟着引用甩到外面去，看着像对齐了
-  // 「引用内容和原信息里更长的那一个」（2026-09 站长报的）。包一层之后浮层永远贴
-  // 自己的块。**别把这层去掉、也别让浮层挪回 body 上**（CSS 那边有对应的注释）。
+  // —— 引用比正文长时，回执就跟着引用甩到外面去，看着像对齐了「引用内容和原信息里
+  // 更长的那一个」（2026-09 站长报的）。包一层之后浮层永远贴自己的块。
+  // **别把这层去掉、也别让浮层挪回 body 上**（CSS 那边有对应的注释）。
   //
   // grouped 时表头行住进这一层 —— 浮层必须真的在它的定位祖先里面，才能贴着它。
   // 非 grouped 时表头行不进（要在 body 开头占一行，而这一层排在引用块
@@ -356,6 +458,7 @@ function ChatMessageItemInner({
     <div
       className={`chat-msg${isMine ? ' chat-msg--mine' : ''}${grouped ? ' chat-msg--grouped' : ''}${highlighted ? ' chat-msg--highlight' : ''}`}
       data-message-id={msg.id}
+      {...menuTrigger}
     >
       {/* 头像不再是直链：点开选项框（拍一拍 / 访问个人主页 / @ta / 取消） */}
       <Avatar
@@ -374,7 +477,7 @@ function ChatMessageItemInner({
         {/* 表头行只在这一处与 ownBlocks 里的那一处之间二选一（grouped 决定去哪边） */}
         {!grouped && metaRow}
 
-        {/* 回复摘要统一在正文上方；独立于 ownBlocks，工具条仍贴自己的气泡。 */}
+        {/* 回复摘要统一在正文上方；独立于 ownBlocks。 */}
         {replyBlock}
         {ownBlocks}
       </div>

@@ -2,7 +2,7 @@
 // saved-messages.spec.ts —— 保存的私聊消息（/chat/saved）
 //
 // 【守的是三条真浏览器才看得见的链路】
-//   1. 消息操作条的「保存」按钮真的把消息写进保存箱（UI → API → DB）；
+//   1. 消息右键菜单里的「保存」真的把消息写进保存箱（UI → API → DB）；
 //   2. 保存箱条目能点回**原消息**并高亮（/chat?channel=&message= → jumpToMessage）；
 //   3. 会话被「删除会话」隐藏之后，从保存箱点进去仍然能打开它（reveal 先于 poll）
 //      —— 不恢复隐藏的话，poll 列表里没有该频道，页面会静默落到第一个会话。
@@ -40,17 +40,19 @@ test.describe('保存的私聊消息', () => {
     expect(sent.status(), `发消息失败：${sent.status()} ${await sent.text()}`).toBe(200);
     const messageId = ((await sent.json()) as { message: { id: number } }).message.id;
 
-    // ── 1. 在聊天页点「保存」（操作条 hover 才出现）────────────────────────
+    // ── 1. 在聊天页右键 → 操作菜单里点「保存」（消息上没有常驻按钮）──────────
     await page.goto(`/chat?channel=${encodeURIComponent(channelId)}`);
     const row = msgRow(page, marker);
     await expect(row).toBeVisible();
-    await row.hover();
-    const saveBtn = row.locator('.chat-msg__actions button', { hasText: '保存' });
-    await expect(saveBtn).toBeVisible();
-    await saveBtn.click();
-    await expect(
-      row.locator('.chat-msg__actions button', { hasText: '已保存' })
-    ).toBeVisible();
+    await row.click({ button: 'right' });
+    const menu = page.locator('.chat-menu');
+    await expect(menu).toBeVisible();
+    await menu.getByRole('menuitem', { name: '保存', exact: true }).click();
+    // 菜单项是「已保存」状态的唯一展示处：再开一次确认它真的翻过去了
+    await row.click({ button: 'right' });
+    await expect(menu.getByRole('menuitem', { name: '已保存', exact: true })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(menu).toHaveCount(0);
 
     // ── 2. 保存箱里出现；点进去回到原消息并短暂高亮 ────────────────────────
     await page.goto('/chat/saved');

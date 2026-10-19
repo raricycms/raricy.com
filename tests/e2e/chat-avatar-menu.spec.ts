@@ -48,15 +48,15 @@ test.describe('讨论头像选项框', () => {
     await expect(avatar).toHaveJSProperty('tagName', 'BUTTON');
     await avatar.click();
 
-    const menu = page.locator('.chat-avatar-menu');
+    const menu = page.locator('.chat-menu');
     await expect(menu).toBeVisible();
-    await expect(menu.locator('.chat-avatar-menu__item')).toHaveText([
+    await expect(menu.locator('.chat-menu__item')).toHaveText([
       '拍一拍',
       '访问个人主页',
       '@ta',
       '取消',
     ]);
-    await expect(menu.locator('.chat-avatar-menu__sep')).toHaveCount(1);
+    await expect(menu.locator('.chat-menu__sep')).toHaveCount(1);
     await expect(menu.getByRole('link', { name: '访问个人主页' })).toHaveAttribute(
       'href',
       `/u/${SEED_USERS.admin.id}`
@@ -89,7 +89,7 @@ test.describe('讨论头像选项框', () => {
 
     // 取消：菜单收起，什么都不发生
     await row.locator('.chat-msg__avatar').click();
-    const menu = page.locator('.chat-avatar-menu');
+    const menu = page.locator('.chat-menu');
     await expect(menu).toBeVisible();
     await menu.getByRole('menuitem', { name: '取消' }).click();
     await expect(menu).toHaveCount(0);

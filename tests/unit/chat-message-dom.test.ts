@@ -2,17 +2,19 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // ChatMessageItem.tsx —— 消息 DOM 的**层位**契约（谁住在谁里面）
 //
-// 【为什么值得单测】连续消息的表头行（回执 / 回复 / 删除）是绝对定位的浮层，
+// 【为什么值得单测】连续消息的表头行（名字 / 时间 / 已读回执）是绝对定位的浮层，
 // CSS 靠「贴定位祖先的边」把它挂在气泡外侧。哪一层当那个定位祖先，决定了它贴的是
 // 气泡还是「引用块和正文里更长的那一个」：
 //   · 挂在 .chat-msg__body 上 → body 的宽度 = max(引用块, 自己的块)，引用比正文长
-//     时工具条就被甩到引用那一侧（2026-09 站长报的 bug：对齐的是更长的那一个）
+//     时回执就被甩到引用那一侧（2026-09 站长报的 bug：对齐的是更长的那一个）
 //   · 挂在 .chat-msg__own-blocks 上 → 永远贴自己的块
 // 而「哪个元素住在哪个元素里」是**静态结构**，写错了没有任何东西会报错 ——
 // tsc 管不着 JSX 的嵌套、e2e 那头的几何断言要跑整站才看得见。这里把它钉死在结构层。
 //
+// （保存 / 回复 / 删除已从表头行挪进右键 / 长按菜单，但浮层本身的层位契约不变。）
+//
 // 【为什么不在这里量几何】jsdom 不排版（getBoundingClientRect 恒为 0）。几何在
-// tests/e2e/chat-features.spec.ts 的「工具条贴气泡」那条里断。
+// tests/e2e/chat-features.spec.ts 的「表头浮层贴气泡」那条里断。
 //
 // 【环境】照 avatar-component.test.ts：不引 @testing-library（本仓没有这个依赖），
 // 用 react-dom/client 的 createRoot + act 直接驱动。
@@ -67,9 +69,7 @@ async function render(msg: ChatMessageDTO, opts: { grouped?: boolean; isMine?: b
         currentUserId: 'u1',
         currentUsername: '小明',
         grouped: opts.grouped ?? false,
-        onToggleSave: () => {},
-        onReply: () => {},
-        onDelete: () => {},
+        onOpenMenu: () => {},
         onAvatarClick: () => {},
         onJumpToReply: () => {},
         onImageClick: () => {},
@@ -94,7 +94,7 @@ describe('表头行的层位（浮层贴谁）', () => {
     const c = await render(dto({ reply: QUOTE }), { isMine });
     expect(q(c, '.chat-msg__meta')?.parentElement?.className).toContain('chat-msg__body');
     // 在流里的表头行必须在引用块**之前** —— 引用在上、正文在下，
-    // 表头行掉到引用下面去就等于「回复 / 删除」换了位置
+    // 表头行掉到引用下面去就等于回执换了位置
     expect(kids(c, '.chat-msg__body')).toEqual([
       'chat-msg__meta',
       'chat-msg__reply',

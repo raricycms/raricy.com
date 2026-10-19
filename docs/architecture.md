@@ -1603,6 +1603,10 @@ bot 接口，私密夹也能**复制成公开**、能导出 JSON —— 它的�
 | `GET /api/chat/saved/ids?channel=<id>` | 某私聊频道里我保存过的消息 id，供消息列表标「已保存」；大区返回空数组 |
 | `/chat/saved` | 服务端页面：core+，禁言与 `/api/chat/*` 同闸；条目可跳到原消息，可取消保存 |
 
+**消息上的入口**在右键 / 长按唤出的操作菜单里（`.chat-menu`，组件 `ChatMessageMenu`）——
+消息上没有常驻按钮，「保存 / 已保存」是菜单项。手势识别与菜单样式见
+`docs/frontend-styles.md` §6.5。
+
 每人上限 `1000` 条（只数未取消的）；增删复用 `likeHourly` / `likeDaily` 的数值，但
 **另起键前缀** `chat:saved:h:` / `chat:saved:d:`（`rule` 不参与分桶，复用别的前缀会互相
 吃额度）。

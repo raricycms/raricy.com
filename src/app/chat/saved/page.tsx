@@ -103,7 +103,7 @@ export default async function SavedMessagesPage({
 
       {page.items.length === 0 ? (
         <div className="saved-page__empty">
-          还没有保存的消息。在私聊消息上点「保存」，就会出现在这里。
+          还没有保存的消息。在私聊消息上右键（手机长按）→「保存」，就会出现在这里。
         </div>
       ) : (
         <ul className="saved-msg-list">

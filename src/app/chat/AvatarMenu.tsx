@@ -87,26 +87,26 @@ export default function AvatarMenu({
   return createPortal(
     <div
       ref={ref}
-      className="chat-avatar-menu"
+      className="chat-menu"
       role="menu"
       aria-label={`${target.username} 的操作`}
       // 首帧还不知道自身尺寸 → 先藏起来，量完再显
       style={{ top: pos?.top, left: pos?.left, visibility: pos ? 'visible' : 'hidden' }}
     >
-      <button type="button" role="menuitem" className="chat-avatar-menu__item" onClick={onPat}>
+      <button type="button" role="menuitem" className="chat-menu__item" onClick={onPat}>
         拍一拍
       </button>
-      <Link className="chat-avatar-menu__item" href={`/u/${target.id}`} onClick={onClose}>
+      <Link className="chat-menu__item" href={`/u/${target.id}`} onClick={onClose}>
         访问个人主页
       </Link>
-      <button type="button" role="menuitem" className="chat-avatar-menu__item" onClick={onMention}>
+      <button type="button" role="menuitem" className="chat-menu__item" onClick={onMention}>
         @ta
       </button>
-      <div className="chat-avatar-menu__sep" role="separator" />
+      <div className="chat-menu__sep" role="separator" />
       <button
         type="button"
         role="menuitem"
-        className="chat-avatar-menu__item chat-avatar-menu__item--cancel"
+        className="chat-menu__item chat-menu__item--cancel"
         onClick={onClose}
       >
         取消

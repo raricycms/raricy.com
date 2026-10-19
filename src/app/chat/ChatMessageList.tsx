@@ -25,9 +25,9 @@
 //   · 能传原始值就传原始值 —— 空态文案、`isDirect` 这种在调用方算好再传，别把
 //     `activeChannel` 整个对象塞进来（它在切频道 / 对账时会换引用）。
 //
-// 【它不管什么】折叠量、加载更早的游标、滚动、已读回执的判定依据都由 ChatApp 持有，
-// 这里只按传进来的值画 —— `<div className="chat-list">`（listRef / onScroll）也留在
-// 调用方，本组件只渲染它**里面**的内容。
+// 【它不管什么】折叠量、加载更早的游标、滚动、已读回执的判定依据、操作菜单的开关
+// 都由 ChatApp 持有，这里只按传进来的值画 —— `<div className="chat-list">`
+// （listRef / onScroll）也留在调用方，本组件只渲染它**里面**的内容。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { Fragment, memo } from 'react';
@@ -63,12 +63,8 @@ export interface ChatMessageListProps {
   /** 「已折叠 N 条 · 展开更早」——放回一页由 ChatApp 定（REVEAL_STEP 住那边）。 */
   onRevealOlder: () => void;
   onLoadOlder: () => void;
-  /** 当前频道里我保存过的消息 id（保存按钮的初始态；Set 引用只在加载/切换时变）。 */
-  savedIds: Set<number>;
-  /** 保存 / 取消保存一条消息（只有私聊、未删除的消息会显示按钮）。 */
-  onToggleSave: (m: ChatMessageDTO) => void;
-  onReply: (m: ChatMessageDTO) => void;
-  onDelete: (m: ChatMessageDTO) => void;
+  /** 右键 / 长按某条消息 → 打开操作菜单（保存 / 回复 / 删除）。 */
+  onOpenMenu: (m: ChatMessageDTO, anchor: { x: number; y: number }) => void;
   onAvatarClick: (m: ChatMessageDTO, el: HTMLButtonElement) => void;
   /** 点回复摘要 → 跳到被引用的原消息。 */
   onJumpToReply: (messageId: number) => void;
@@ -94,10 +90,7 @@ function ChatMessageListInner({
   emptyText,
   onRevealOlder,
   onLoadOlder,
-  savedIds,
-  onToggleSave,
-  onReply,
-  onDelete,
+  onOpenMenu,
   onAvatarClick,
   onJumpToReply,
   onImageClick,
@@ -145,11 +138,8 @@ function ChatMessageListInner({
               highlighted={highlightId === m.id}
               grouped={grouped}
               receipt={m.id === lastMineId && isDirect ? (peerLastRead >= m.id ? 'read' : 'unread') : null}
-              saved={savedIds.has(m.id)}
-              canSave={isDirect && !m.is_deleted}
-              onToggleSave={onToggleSave}
-              onReply={onReply}
-              onDelete={onDelete}
+              canSave={isDirect && !m.is_deleted && !m.pat}
+              onOpenMenu={onOpenMenu}
               onAvatarClick={onAvatarClick}
               onJumpToReply={onJumpToReply}
               onImageClick={onImageClick}
