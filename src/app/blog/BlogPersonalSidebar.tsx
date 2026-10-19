@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { X } from 'lucide-react';
 import Avatar from '@/app/components/Avatar';
@@ -14,9 +14,18 @@ export default function BlogPersonalSidebar({ user, summary, scope }: {
 }) {
   const [open, setOpen] = useState(false);
   const [narrow, setNarrow] = useState(false);
+  const [settled, setSettled] = useState(false);
   const host = useRef<HTMLElement>(null);
   const toggle = useRef<HTMLButtonElement>(null);
   const params = useSearchParams();
+
+  useLayoutEffect(() => {
+    setSettled(false);
+    if (!open) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { setSettled(true); return; }
+    const timer = window.setTimeout(() => setSettled(true), 450);
+    return () => window.clearTimeout(timer);
+  }, [open]);
 
   useEffect(() => {
     const media = window.matchMedia('(max-width: 992px)');
@@ -55,7 +64,7 @@ export default function BlogPersonalSidebar({ user, summary, scope }: {
   return (
     <aside
       ref={host}
-      className={`blog-personal${open ? ' is-open' : ''}`}
+      className={`blog-personal${open ? ' is-open' : ''}${open && settled ? ' is-settled' : ''}`}
       aria-label="我的博客"
       onBlur={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false);
@@ -109,7 +118,7 @@ export default function BlogPersonalSidebar({ user, summary, scope }: {
                 </Link>
               ))}
             </nav>
-            <Link href="/blog/upload" className="blog-personal__create">
+            <Link href="/blog/upload" className="upload-button blog-personal__create">
               <span className="icon icon-add" aria-hidden="true" />创建
             </Link>
           </div>

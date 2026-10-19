@@ -31,10 +31,24 @@ export default function BlogCategorySelect({ categories, currentSlug, featured }
     const element = host.current!;
     const options = element.querySelector<HTMLDivElement>('.blog-category-select__options')!;
     let active = true;
+    function textWidth(span: Element) {
+      const text = span as HTMLElement;
+      const saved = text.style.cssText;
+      text.style.whiteSpace = 'nowrap';
+      text.style.width = 'max-content';
+      text.style.maxWidth = 'none';
+      const range = document.createRange();
+      range.selectNodeContents(span);
+      const width = range.getBoundingClientRect().width;
+      text.style.cssText = saved;
+      return width;
+    }
     function measure() {
       if (!active) return;
-      const labelWidth = toggle.current!.querySelector('span')!.scrollWidth;
-      const closedWidth = Math.ceil(labelWidth + 28 + 8 + 16);
+      const button = toggle.current!;
+      const buttonStyle = getComputedStyle(button);
+      // scrollWidth 会取整，临界宽度会差不到 1px 却触发省略号；按文字的实际小数宽度留余量。
+      const closedWidth = Math.ceil(textWidth(button.querySelector('span')!) + parseFloat(buttonStyle.paddingLeft) + parseFloat(buttonStyle.paddingRight) + parseFloat(buttonStyle.columnGap) + 16) + 2;
       const optionsStyle = getComputedStyle(options);
       const outerWidth = parseFloat(optionsStyle.paddingLeft) + parseFloat(optionsStyle.paddingRight) + options.offsetWidth - options.clientWidth;
       let width = closedWidth;
@@ -46,15 +60,19 @@ export default function BlogCategorySelect({ categories, currentSlug, featured }
         const arrowWidth = parent.classList.contains('blog-category-select__parent')
           ? (parent.querySelector('.blog-category-select__expand')?.getBoundingClientRect().width ?? 0) + parseFloat(getComputedStyle(parent).paddingRight)
           : 0;
-        width = Math.max(width, option.querySelector('span')!.scrollWidth + parseFloat(style.paddingLeft) + parseFloat(style.paddingRight) + arrowWidth + outerWidth);
+        width = Math.max(width, textWidth(option.querySelector('span')!) + parseFloat(style.paddingLeft) + parseFloat(style.paddingRight) + arrowWidth + outerWidth + 2);
       });
-      const available = document.documentElement.clientWidth - element.getBoundingClientRect().left - 16;
+      const narrow = window.matchMedia('(max-width: 992px)').matches;
+      const rect = element.getBoundingClientRect();
+      // 桌面菜单始终固定右端，向左生长；窄屏则从左端向右展开。
+      const available = narrow ? document.documentElement.clientWidth - rect.left - 16 : rect.right - 16;
       element.style.setProperty('--category-closed-width', `${closedWidth}px`);
       element.style.setProperty('--category-open-width', `${Math.ceil(Math.min(width, available))}px`);
     }
     const observer = new ResizeObserver(measure);
     observer.observe(element);
     observer.observe(options);
+    observer.observe(toggle.current!.querySelector('span')!);
     window.addEventListener('resize', measure);
     void document.fonts.ready.then(measure);
     measure();

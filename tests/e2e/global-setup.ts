@@ -394,6 +394,12 @@ export default async function globalSetup() {
     }
     await prisma.blogLike.create({ data: { blogId: DIRECTORY_SEED.likedId, userId: SEED_USERS.directory.id } });
     await prisma.blogFeed.create({ data: { blogId: DIRECTORY_SEED.fedId, userId: SEED_USERS.directory.id, amount: fishToUnits(1) } });
+    await prisma.blogComment.createMany({ data: [
+      { id: 'e2e-directory-comment', blogId: DIRECTORY_SEED.likedId, authorId: SEED_USERS.directory.id, content: '目录评论范围', createdAt: now },
+      { id: 'e2e-directory-anon-comment', blogId: DIRECTORY_SEED.likedId, authorId: SEED_USERS.directory.id, content: '同篇匿名评论', anonSeq: 1, createdAt: now },
+      { id: 'e2e-directory-received', blogId: 'e2e-directory-0', authorId: SEED_USERS.owner.id, content: '收到的评论', createdAt: now },
+    ] });
+    await prisma.blog.update({ where: { id: 'e2e-directory-0' }, data: { commentsCount: 1 } });
 
     // 通知翻页造数：SEED_USERS.notif 名下 25 条（每页 20 → 2 页）。
     // timestamp 逐条错开 1 分钟并**递减**，与 listNotifications 的 `timestamp desc`

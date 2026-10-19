@@ -29,7 +29,7 @@ test('筛选条的行数、侧栏的高度和真实吸顶位置', async ({ page,
     expect(category.y).toBeGreaterThanOrEqual(search.y + search.height);
     expect(Math.abs(category.y - sort.y)).toBeLessThan(4);
     await expect(page.locator('.blog-personal__panel')).toBeHidden();
-    expect((await page.locator('.blog-personal').boundingBox())!.width).toBe(64);
+    expect((await page.locator('.blog-personal').boundingBox())!.width).toBe(70);
   } else {
     const filters = page.locator('.blog-filters');
     const radius = await filters.evaluate((el) => parseFloat(getComputedStyle(el).borderRadius));
@@ -53,11 +53,11 @@ test('筛选条的行数、侧栏的高度和真实吸顶位置', async ({ page,
     await page.evaluate((theme) => document.documentElement.setAttribute('data-theme', theme), theme);
     const mask = await page.locator('.blog-filters').evaluate((el) => {
       const style = getComputedStyle(el, '::before');
-      return { left: el.getBoundingClientRect().left + parseFloat(style.left), width: parseFloat(style.width), viewport: document.documentElement.clientWidth, background: style.backgroundImage, page: getComputedStyle(document.documentElement).getPropertyValue('--color-background-page').trim(), pointerEvents: style.pointerEvents };
+      return { left: el.getBoundingClientRect().left + parseFloat(style.left), width: parseFloat(style.width), viewport: document.documentElement.clientWidth, mask: style.maskImage, background: style.backgroundColor, pointerEvents: style.pointerEvents };
     });
     expect(Math.abs(mask.left)).toBeLessThan(1);
     expect(mask.width).toBe(mask.viewport);
-    expect(mask.background).toContain('linear-gradient');
+    expect(mask.mask).toContain('linear-gradient');
     expect(mask.background).toContain(theme === 'light' ? '248, 250, 252' : '19, 21, 23');
     expect(mask.pointerEvents).toBe('none');
     await page.screenshot({ path: testInfo.outputPath(`sticky-mask-${theme}.png`), animations: 'disabled' });
@@ -109,13 +109,17 @@ test('个人面板使用统计胶囊，窄屏由同一个头像连续移动展�
       const animations = host.getAnimations({ subtree: true });
       animations.forEach((animation) => { animation.pause(); animation.currentTime = 210; });
       const middle = avatar.getBoundingClientRect().toJSON();
+      const gutter = host.querySelector('.blog-personal__inner')!;
+      const scroll = { overflow: getComputedStyle(gutter).overflowY, gutter: gutter.getBoundingClientRect().width - gutter.clientWidth };
       animations.forEach((animation) => animation.finish());
       const end = avatar.getBoundingClientRect().toJSON();
-      return { start, middle, end, same: avatar === host.querySelector('.blog-personal__avatar'), avatars: host.querySelectorAll('.avatar').length };
+      return { start, middle, end, scroll, same: avatar === host.querySelector('.blog-personal__avatar'), avatars: host.querySelectorAll('.avatar').length };
     });
     expect(motion.same).toBe(true);
     expect(motion.avatars).toBe(1);
-    expect(motion.start.width).toBe(40);
+    expect(motion.scroll.overflow).toBe('hidden');
+    expect(Math.abs(motion.scroll.gutter)).toBeLessThan(1);
+    expect(motion.start.width).toBe(44);
     expect(motion.middle.width).toBeGreaterThan(motion.start.width);
     expect(motion.middle.width).toBeLessThan(motion.end.width);
     expect(motion.end.width).toBe(48);
@@ -127,13 +131,32 @@ test('个人面板使用统计胶囊，窄屏由同一个头像连续移动展�
   const stats = page.locator('.blog-personal__stats');
   await expect(stats).toContainText('获赞');
   await expect(stats).toContainText('收获鱼干');
+  const pills = await stats.locator('dd').evaluateAll((els) => els.map((el) => ({ text: el.textContent, y: el.getBoundingClientRect().y })));
+  expect(pills.map((pill) => pill.text)).toEqual(['+0', '+1', '+0']);
+  expect(new Set(pills.map((pill) => pill.y)).size).toBe(1);
   expect(await stats.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgba(0, 0, 0, 0)');
   await expect(stats.locator('.blog-likes')).toBeVisible();
   await expect(stats.locator('.blog-fish')).toBeVisible();
+  await expect(stats.locator('.blog-comments')).toBeVisible();
   await expect(page.locator('.blog-personal').getByRole('link', { name: '创建', exact: true })).toBeVisible();
+  if (isMobile) {
+    await expect(page.locator('.blog-personal')).toHaveClass(/is-settled/);
+    const closing = await page.locator('.blog-personal').evaluate(async (host) => {
+      (host.querySelector('.blog-personal__toggle') as HTMLButtonElement).click();
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const animations = host.getAnimations({ subtree: true });
+      animations.forEach((animation) => { animation.pause(); animation.currentTime = 210; });
+      const inner = host.querySelector('.blog-personal__inner')!;
+      const result = { overflow: getComputedStyle(inner).overflowY, gutter: inner.getBoundingClientRect().width - inner.clientWidth };
+      animations.forEach((animation) => animation.finish());
+      return result;
+    });
+    expect(closing.overflow).toBe('hidden');
+    expect(Math.abs(closing.gutter)).toBeLessThan(1);
+  }
 });
 
-test('四个范围使用同一列表，空状态清掉筛选后保留当前范围', async ({ page, isMobile }) => {
+test('五个范围使用同一列表，空状态清掉筛选后保留当前范围', async ({ page, isMobile }) => {
   await page.goto(`/blog?scope=mine&search=${DIRECTORY_SEED.titlePrefix}&category=${DIRECTORY_SEED.child.slug}&sort=updated&page=2`);
   await openPersonal(page);
   await expect(page.getByRole('link', { name: '我发布的 51', exact: true })).toBeVisible();
@@ -151,10 +174,63 @@ test('四个范围使用同一列表，空状态清掉筛选后保留当前范�
   await expect(page.locator(`#id${DIRECTORY_SEED.fedId}`)).toBeVisible();
   await expect(page.locator('.blog-item')).toHaveCount(1);
   await openPersonal(page);
+  await page.getByRole('link', { name: '我评论过的 1', exact: true }).click();
+  await expect(page.locator(`#id${DIRECTORY_SEED.likedId}`)).toBeVisible();
+  await expect(page.locator('.blog-item')).toHaveCount(1);
+  await openPersonal(page);
   await page.getByRole('link', { name: /^全部文章 / }).click();
-  await expect(page.locator('.blog-directory__scope')).toHaveText('全部文章');
-  expect(new URL(page.url()).searchParams.has('scope')).toBe(false);
+  await expect(page.locator('.blog-directory__scope')).toHaveCount(0);
+  await expect(page).toHaveURL((url) => !url.searchParams.has('scope'));
   if (isMobile) await expect(page.locator('.blog-personal__panel')).toHaveAttribute('inert', '');
+});
+
+test('栏目闲置文字完整，桌面向左伸缩时搜索框跟随且右端不变', async ({ page, isMobile }, testInfo) => {
+  await page.goto('/blog?scope=mine');
+  const host = page.locator('.blog-category-select');
+  const frames = await host.evaluate(async (el) => {
+    const button = el.querySelector('button')!;
+    const snapshot = () => {
+      const category = el.getBoundingClientRect();
+      const search = document.querySelector('.blog-filters .search-field')!.getBoundingClientRect();
+      return { right: category.right, width: category.width, searchWidth: search.width };
+    };
+    const before = snapshot();
+    button.click();
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const animations = el.getAnimations({ subtree: true });
+    animations.forEach((animation) => { animation.pause(); animation.currentTime = 210; });
+    const middle = snapshot();
+    animations.forEach((animation) => animation.finish());
+    return { before, middle, end: snapshot() };
+  });
+  if (!isMobile) {
+    expect(frames.middle.width).toBeGreaterThan(frames.before.width);
+    expect(frames.middle.width).toBeLessThan(frames.end.width);
+    expect(frames.middle.right).toBeCloseTo(frames.before.right, 1);
+    expect(frames.end.right).toBeCloseTo(frames.before.right, 1);
+    expect(frames.middle.searchWidth).toBeLessThan(frames.before.searchWidth);
+    expect(frames.end.searchWidth).toBeLessThan(frames.middle.searchWidth);
+  }
+  await page.getByRole('button', { name: `展开${DIRECTORY_SEED.parent.name}的二级栏目`, exact: true }).click();
+  await page.getByRole('button', { name: DIRECTORY_SEED.child.name, exact: true }).click();
+  await expect(host).not.toHaveClass(/is-open/);
+  await expect.poll(async () => host.locator('button').first().locator('span').evaluate((el) => ({ ellipsis: getComputedStyle(el).textOverflow, fits: el.scrollWidth <= el.clientWidth }))).toMatchObject(isMobile ? { ellipsis: 'clip' } : { fits: true });
+  if (isMobile) {
+    await page.setViewportSize({ width: 320, height: 800 });
+    await expect.poll(async () => host.locator('button').first().evaluate((el) => el.querySelector('span')!.getBoundingClientRect().height <= el.getBoundingClientRect().height)).toBe(true);
+  }
+  await page.screenshot({ path: testInfo.outputPath('directory-selected-category.png'), animations: 'disabled' });
+});
+
+test('分页与页脚留足间距，跳页输入框有底色并使用折角箭头', async ({ page }) => {
+  await page.goto('/blog?scope=mine');
+  const pagination = page.getByRole('navigation', { name: '分页', exact: true });
+  await pagination.scrollIntoViewIfNeeded();
+  const gap = await page.evaluate(() => document.querySelector('.site-footer')!.getBoundingClientRect().top - document.querySelector('.pagination')!.getBoundingClientRect().bottom);
+  expect(gap).toBeGreaterThanOrEqual(60);
+  await expect(page.getByRole('link', { name: '下一页', exact: true }).locator('svg')).toBeVisible();
+  const input = page.locator('.page-input');
+  expect(await input.evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe(await page.locator('body').evaluate((el) => getComputedStyle(el).backgroundColor));
 });
 
 test('范围内分页保留筛选，第二页显示实际的剩余文章', async ({ page }) => {

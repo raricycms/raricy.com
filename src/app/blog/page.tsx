@@ -21,6 +21,7 @@ import BlogFilters from './BlogFilters';
 import SearchForm from './SearchForm';
 import BlogSort from './BlogSort';
 import BlogPageJump from './BlogPageJump';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 export const dynamic = 'force-dynamic'; // 依赖查询参数，禁用静态化
 
@@ -193,7 +194,6 @@ export default async function BlogListPage({
               {/* 空结果页也挂载排序偏好的恢复 effect。 */}
               <BlogSort initialSort={effectiveSort} />
             </BlogFilters>
-            <h2 className="blog-directory__scope">{scopeLabel}</h2>
             {/* 列表与分页都依赖 result，故连同分页一起放进边界内 ——
                 它们要么一起出现，要么一起等。fallback 用骨架，且**不复用 .blog-item**：
                 专注模式的用例断言 `.blog-item` 计数为 0，骨架顶着同名类出现会污染它。 */}
@@ -335,8 +335,8 @@ async function BlogListSection({
       {result.pages > 1 && (
         <nav className="pagination" aria-label="分页">
           {result.hasPrev && (
-            <Link href={qs(result.page - 1)} className="page-link">
-              &laquo;
+            <Link href={qs(result.page - 1)} className="page-link" aria-label="上一页">
+              <ChevronLeft aria-hidden="true" size={16} />
             </Link>
           )}
           {pageItems.map((p, i) =>
@@ -356,8 +356,8 @@ async function BlogListSection({
             )
           )}
           {result.hasNext && (
-            <Link href={qs(result.page + 1)} className="page-link">
-              &raquo;
+            <Link href={qs(result.page + 1)} className="page-link" aria-label="下一页">
+              <ChevronRight aria-hidden="true" size={16} />
             </Link>
           )}
           <BlogPageJump totalPages={result.pages} current={result.page} />
