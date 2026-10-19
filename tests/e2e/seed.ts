@@ -17,6 +17,8 @@ type SeedUser = {
 };
 
 export const SEED_USERS: Record<string, SeedUser> = {
+  /** 目录个人范围与分页专用，文章放在 excludeFromAll 栏目里，不挤走既有种子文章。 */
+  directory: { id: 'e2e-user-directory', username: 'e2e_directory', email: 'directory@e2e.local', role: 'core' },
   /** core：博客列表/详情等 requireCoreUser 页面的通行证 */
   core: { id: 'e2e-user-core', username: 'e2e_core', email: 'core@e2e.local', role: 'core' },
   /** admin：/admin 段的正向用例（非站长专属页）+ 站长专属页的反向用例 */
@@ -104,6 +106,15 @@ export const SEED_CATEGORY = { name: 'E2E 栏目', slug: 'e2e-cat' };
 /** 正文里的哨兵串：只有客户端 marked 真的跑完才会出现在 DOM 里，
  *  用它断言「详情页正文渲染成功」比断言标题（服务端直出）更有意义。 */
 export const BLOG_BODY_MARKER = 'E2E-BODY-MARKER-7f3a';
+
+export const DIRECTORY_SEED = {
+  parent: { name: '目录测试栏目', slug: 'e2e-directory' },
+  child: { name: '目录二级栏目', slug: 'e2e-directory-child' },
+  titlePrefix: '目录分页文章',
+  count: 51,
+  likedId: 'e2e-directory-liked',
+  fedId: 'e2e-directory-fed',
+} as const;
 
 export const SEED_BLOG = {
   id: 'e2e-blog-0001',

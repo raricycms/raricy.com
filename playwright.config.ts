@@ -70,6 +70,7 @@ const REALTIME_PORT = 3103;
  * 就加进来；只是 goto 一个页面再断言内容，就不加。
  */
 const RESPONSIVE_SPECS: RegExp[] = [
+  /blog-directory\.spec\.ts$/,
   /public-space\.spec\.ts$/,
   /wand\.spec\.ts$/,
   /wand2(?:-controls)?\.spec\.ts$/,

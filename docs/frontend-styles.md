@@ -637,22 +637,30 @@ Kumbh Sans；代码块与编辑器继续使用完整的 JetBrains Mono。
 - 发起私聊弹窗 `.chat-new-modal`：搜索框 `.chat-new-search` + 结果项 `.chat-new-item`（头像 / 昵称 / 角色 / 自己标记）。
 - 响应式：`≤900px` 时侧栏变抽屉，`.chat-page--drawer-open` 展开。
 
-### 6.6 博客列表排序工具栏（`pages/blog/_menu.scss`）
+### 6.6 博客目录筛选与个人侧栏（`pages/blog/_directory.scss`）
 
-`/blog` 列表顶部的「发布时间 / 更新时间」切换（组件 `src/app/blog/BlogSort.tsx`）：
+`/blog` 使用 `.blog-layout.blog-directory`：宽屏仍为 **280px** 个人侧栏 + 列表，
+`align-items: flex-start` 与侧栏 `align-self: flex-start` 保证侧栏按自身高度吸顶，
+不被列表拉长。筛选条与侧栏均停在固定顶栏下方 **74px**。
 
-- `.blog-sort`：容器，列表区顶部右对齐一行（`justify-content: flex-end`），**空结果态也渲染**（要挂载客户端恢复 effect）。
-- 它现在是一个**胶囊滑块**（`.segmented`，见 §6.8）—— 切换时滑块有 0.25s 的移动反馈。
-  按钮尺寸写在 `.blog-sort .segmented__btn`，几何与动画来自 `components/_segmented.scss`。
-- 可访问性：容器 `role="group"` + `aria-label`，按钮 `type="button"` + `aria-pressed`。
-  ⚠️ **不要改成 `role="tab"`**：`tests/e2e/blog.spec.ts` 用
-  `getByRole('button', { name: '更新时间' })` 定位，`tab` 角色会覆盖按钮角色，
-  那条用例会直接失配。
+- `.blog-filters`：搜索（含按钮）、栏目下拉、排序同排；≤992px 搜索独占第一行，
+  栏目和排序在第二行，两行作为整体停在 **70px**。空结果也保留全部控件。
+- 栏目下拉使用 `BlogCategorySelect`：父栏目名称可直接筛选，旁边箭头展开二级栏目，
+  子项缩进。外壳与子组按网格 **0fr → 1fr** 伸缩，沿用用户菜单的 **420ms** 与
+  `cubic-bezier(.22, 1, .36, 1)`；外部点击、焦点移出和 ESC 收起，隐藏选项 `inert`。
+- 排序仍为 `.segmented` 胶囊滑块（见 §6.8），在筛选条内恢复正常文档流。
+  `BlogSort` 的 `role="group"`、`aria-pressed` 与排序偏好恢复逻辑保持一致。
+- `BlogPersonalSidebar` 展示当前用户头像、用户名、文章获赞和收获鱼干，下面是
+  全部 / 本人发布 / 有效点赞 / 投喂四个范围及其文章数。数字不随搜索、栏目改变；
+  切换保留筛选和排序、回第一页，列表与分页仍共用。个人范围包含从「全部文章」
+  排除的栏目，专注模式与软删除过滤照常生效。
+- ≤992px 侧栏变成右下角 **64px** 的头像悬浮入口，同一外壳向上伸展至 **280px**。
+  范围按钮按用户菜单的节奏依次淡入；关闭时面板 `inert`，ESC 归还入口焦点。
+- 空状态说明当前范围没有匹配文章，「清掉筛选」去掉栏目、精选和搜索，保留范围
+  与排序。减少动态效果偏好下，栏目和个人面板直接切换。
 
-> ⚠️ 桌面端（≥992px）`.blog-sort` 是**绝对定位**参与一条「停放带」：hero 的底 padding
-> 10 + `.blog-layout` 的 margin-top 60 拼出停放空间，滑块 `top: -52px` 落在其中。
-> 它**顶部锚定**，变高只会向下长进首篇博客上方那 24px 余量里。**不要为了「重新居中」
-> 把 `top` 往上调** —— 那会撞进 hero 色块（`_menu.scss` 的注释记的正是这个坑）。
+`/explore` 继续使用 `BlogSidebar` 的栏目目录；样式覆写限定在站内目录，避免改变公开列表。
+响应式几何、实际吸顶、范围切换和分页由 `tests/e2e/blog-directory.spec.ts` 覆盖。
 
 ### 6.7 文章详情页读者交互区（`pages/blog/_blog.scss` + `pages/_favorite.scss`）
 

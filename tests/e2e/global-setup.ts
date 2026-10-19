@@ -16,8 +16,10 @@ import path from 'node:path';
 import { PrismaClient } from '@prisma/client';
 import { hashPassword } from '../../src/lib/password';
 import { nowForDb } from '../../src/lib/db-time';
+import { fishToUnits } from '../../src/lib/fish-units';
 import {
   E2E_STICKERS,
+  DIRECTORY_SEED,
   E2E_STORIES,
   SEED_PASSWORD,
   SEED_FRAME_KEYS,
@@ -370,6 +372,28 @@ export default async function globalSetup() {
         updatedAt: new Date(now.getTime() - 6 * 86400_000),
       },
     });
+
+    // 个人目录：51 篇跨两页；父栏目从「全部文章」排除，避免影响其它列表的种子断言。
+    const directoryParent = await prisma.category.create({ data: { ...DIRECTORY_SEED.parent, isActive: true, excludeFromAll: true } });
+    const directoryChild = await prisma.category.create({ data: { ...DIRECTORY_SEED.child, parentId: directoryParent.id, isActive: true } });
+    for (let i = 0; i < DIRECTORY_SEED.count; i++) {
+      await prisma.blog.create({ data: {
+        id: `e2e-directory-${i}`, authorId: SEED_USERS.directory.id,
+        title: `${DIRECTORY_SEED.titlePrefix}${i}`, description: '目录范围、搜索和分页的独立样本',
+        categoryId: directoryChild.id, ignore: false,
+        createdAt: new Date(now.getTime() - (100 + i) * 86400_000),
+        content: { create: { content: '目录测试正文', updatedAt: new Date(now.getTime() - i * 1000) } },
+      } });
+    }
+    for (const id of [DIRECTORY_SEED.likedId, DIRECTORY_SEED.fedId]) {
+      await prisma.blog.create({ data: {
+        id, authorId: SEED_USERS.owner.id, title: id, description: '目录互动范围样本',
+        categoryId: directoryChild.id, ignore: false, createdAt: now,
+        content: { create: { content: '目录互动测试正文', updatedAt: now } },
+      } });
+    }
+    await prisma.blogLike.create({ data: { blogId: DIRECTORY_SEED.likedId, userId: SEED_USERS.directory.id } });
+    await prisma.blogFeed.create({ data: { blogId: DIRECTORY_SEED.fedId, userId: SEED_USERS.directory.id, amount: fishToUnits(1) } });
 
     // 通知翻页造数：SEED_USERS.notif 名下 25 条（每页 20 → 2 页）。
     // timestamp 逐条错开 1 分钟并**递减**，与 listNotifications 的 `timestamp desc`
