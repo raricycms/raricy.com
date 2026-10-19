@@ -353,7 +353,7 @@ export default function CattcaToolPage() {
             </div>
           </div>
 
-          {/* 游戏运行面板（含标题栏、全屏按钮与全屏覆盖层，由 CattcaPlayer 承载） */}
+          {/* 游戏运行面板（标题栏、全屏按钮与阅读器都由 CattcaPlayer 承载） */}
           <div className="cattca-tool__panel cattca-tool__panel--game">
             <CattcaPlayer
               ref={playerRef}
