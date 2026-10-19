@@ -4,8 +4,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState, type PointerEvent } from 'react';
 import { ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Swords, Leaf, Trophy, Users, Maximize } from 'lucide-react';
 import { INPUT, TICK_MS, encodeInput, parseSnapshot, type Snapshot } from '../../../shared/wand2/protocol';
-import { Motion } from './motion';
-import { makeGround, render, type Assets, type FloatText } from './render';
+import { makeGround, render, type Assets, type FloatText, type Frame } from './render';
 
 type Status = 'idle' | 'connecting' | 'connected' | 'disconnected' | 'error';
 type Connection = { dispose(): void; sendInput?(): void };
@@ -14,39 +13,20 @@ const KEY_INPUT: Record<string, number> = {
   ArrowLeft: INPUT.left, KeyA: INPUT.left, ArrowRight: INPUT.right, KeyD: INPUT.right, Space: INPUT.attack, KeyJ: INPUT.attack,
 };
 const LABELS: Record<Status, string> = { idle: '未连接', connecting: '正在连接…', connected: '已连接', disconnected: '连接已断开', error: '连接失败' };
-const COMPACT_WIDTH = 640;
 
 export default function WandDemo2() {
   const canvas = useRef<HTMLCanvasElement>(null), stage = useRef<HTMLDivElement>(null);
-  const connection = useRef<Connection | null>(null);
-  // 快照缓冲 + 插值都在 Motion 里；latest 只给「飘字 / 排行榜」这类 UI 用。
-  const motion = useRef<Motion | null>(null), latest = useRef<Snapshot | null>(null);
+  const connection = useRef<Connection | null>(null), frame = useRef<Frame | null>(null);
   const ownId = useRef(''), ready = useRef(false), mounted = useRef(false);
   const keys = useRef(new Set<string>()), touches = useRef(new Map<number, number>()), floating = useRef<FloatText[]>([]);
   const [status, setStatus] = useState<Status>('idle'), [message, setMessage] = useState(''), [assetsReady, setAssetsReady] = useState(false);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null), [myId, setMyId] = useState('');
 
-  /** 当前按键位。渲染时的本地前推与发往服务端的输入必须读同一份。 */
-  function readButtons() {
-    let buttons = 0;
-    for (const code of keys.current) buttons |= KEY_INPUT[code] ?? 0;
-    for (const mask of touches.current.values()) buttons |= mask;
-    return buttons;
-  }
-
   useEffect(() => {
     mounted.current = true;
-    if (!motion.current) motion.current = new Motion();
     let animation = 0, disposed = false, ground: HTMLCanvasElement | null = null;
     const context = canvas.current?.getContext('2d');
     const assets: Assets = { character: new Image(), attack: new Image(), world: new Image() };
-    // 视口宽窄决定取景框。用 ResizeObserver 缓存，别在每帧 rAF 里读 clientWidth ——
-    // 那是一次强制布局，而 React 每 150ms 还会改一次 DOM，正好每次都逼它重排。
-    let compact = (canvas.current?.clientWidth ?? 960) < COMPACT_WIDTH;
-    const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(() => {
-      compact = (canvas.current?.clientWidth ?? 960) < COMPACT_WIDTH;
-    }) : null;
-    if (observer && canvas.current) observer.observe(canvas.current);
     Promise.all(Object.entries(assets).map(([key, img]) => new Promise<void>((resolve, reject) => {
       img.onload = () => resolve(); img.onerror = () => reject(new Error('asset'));
       img.src = `/static/games/wand2/${key}.webp`;
@@ -54,11 +34,10 @@ export default function WandDemo2() {
       .catch(() => { if (!disposed) setMessage('美术素材加载失败，请刷新页面重试。'); });
     function draw(now: number) {
       if (context && ground) {
+        const compact = (canvas.current?.clientWidth ?? 960) < 640;
         const desiredHeight = compact ? 720 : 640;
         if (context.canvas.height !== desiredHeight) context.canvas.height = desiredHeight;
-        // 平滑后的画面：位置已经插值/外推过，自己那格再用当前按键向前推一点。
-        render(context, assets, ground, motion.current?.sample(now, ownId.current, readButtons()) ?? null,
-          ownId.current, now, compact, floating.current);
+        render(context, assets, ground, frame.current, ownId.current, now, compact, floating.current);
       }
       animation = requestAnimationFrame(draw);
     }
@@ -77,7 +56,7 @@ export default function WandDemo2() {
     window.addEventListener('keydown', keyDown); window.addEventListener('keyup', keyUp); window.addEventListener('blur', clearInput);
     document.addEventListener('visibilitychange', visibility);
     return () => {
-      disposed = true; mounted.current = false; connection.current?.dispose(); cancelAnimationFrame(animation); observer?.disconnect();
+      disposed = true; mounted.current = false; connection.current?.dispose(); cancelAnimationFrame(animation);
       window.removeEventListener('keydown', keyDown); window.removeEventListener('keyup', keyUp); window.removeEventListener('blur', clearInput);
       document.removeEventListener('visibilitychange', visibility);
     };
@@ -93,8 +72,8 @@ export default function WandDemo2() {
         controller.abort(); clearInterval(inputTimer); clearTimeout(startupTimer);
         if (socket) { socket.onopen = socket.onmessage = socket.onerror = socket.onclose = null; socket.close(); }
         if (connection.current === current) {
-          connection.current = null; ready.current = false; ownId.current = ''; latest.current = null;
-          motion.current?.clear(); keys.current.clear(); touches.current.clear(); floating.current = [];
+          connection.current = null; ready.current = false; ownId.current = ''; frame.current = null;
+          keys.current.clear(); touches.current.clear(); floating.current = [];
         }
       },
     };
@@ -124,7 +103,9 @@ export default function WandDemo2() {
           ownId.current = packet.connectionId; setMyId(packet.connectionId); ready.current = true; clearTimeout(startupTimer); setStatus('connected');
           current.sendInput = () => {
             if (socket?.readyState !== WebSocket.OPEN || !ready.current) return;
-            socket.send(encodeInput(readButtons(), sequence++ % 65536));
+            let buttons = 0; for (const code of keys.current) buttons |= KEY_INPUT[code] ?? 0;
+            for (const mask of touches.current.values()) buttons |= mask;
+            socket.send(encodeInput(buttons, sequence++ % 65536));
           };
           inputTimer = setInterval(current.sendInput, TICK_MS); return;
         }
@@ -132,13 +113,13 @@ export default function WandDemo2() {
         if (packet.type === 'wand2.full') { finish('error', '草地已满，请稍后重试。'); return; }
         const next = parseSnapshot(packet);
         if (!ready.current || !next) { finish('error', '收到无效的游戏消息。'); return; }
-        const now = performance.now(), before = latest.current;
+        const now = performance.now(), before = frame.current?.current;
         for (const p of next.players) {
           const old = before?.players.find(a => a.id === p.id);
           if (old && p.catnip > old.catnip) floating.current.push({ x: p.x, y: p.y, text: `+${p.catnip - old.catnip} 猫薄荷`, at: now });
         }
         floating.current = floating.current.filter(f => now - f.at < 1400);
-        latest.current = next; motion.current?.push(next, now);
+        frame.current = { previous: before ?? next, current: next, at: now };
         if (now - lastUI > 150 || !before) { lastUI = now; setSnapshot(next); }
       };
       socket.onerror = () => finish('error', '无法连接实时服务，请稍后重试。'); socket.onclose = () => finish('disconnected');

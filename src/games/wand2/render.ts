@@ -1,17 +1,10 @@
-import { ATTACK_MS, DIRECTIONS, TILE, TILES, WORLD_HEIGHT, WORLD_WIDTH, type Player, type Slime } from '../../../shared/wand2/protocol';
-import type { Scene } from './motion';
+import { ATTACK_MS, DIRECTIONS, TILE, TILES, TICK_MS, WORLD_HEIGHT, WORLD_WIDTH, type Player, type Slime, type Snapshot } from '../../../shared/wand2/protocol';
 
 export interface Assets { character: HTMLImageElement; attack: HTMLImageElement; world: HTMLImageElement }
+export interface Frame { previous: Snapshot; current: Snapshot; at: number }
 export interface FloatText { x: number; y: number; text: string; at: number }
 const palette = ['#b8cfaa', '#b5cca7', '#bdd1b0', '#b9cdaa'];
 const noise = (x: number, y: number) => ((x * 73 + y * 137 + x * y * 11) % 101) / 101;
-// 未联机时草地上的静态预览：与联机时同一个绘制函数，免得「开始联机」前后换一种画风。
-const PREVIEW_PLAYERS: Player[] = [{ id: 'preview', name: '', x: 100, y: 320, facing: 0, moving: false, attack: 0, hurt: 0, catnip: 0 }];
-const PREVIEW_SLIMES: Slime[] = [
-  { id: 0, x: 340, y: 230, kind: 0, hp: 2, mood: 'wander', phase: 0 },
-  { id: 1, x: 440, y: 390, kind: 1, hp: 2, mood: 'wander', phase: 0 },
-  { id: 2, x: 690, y: 300, kind: 2, hp: 3, mood: 'wander', phase: 0 },
-];
 
 function sprite(ctx: CanvasRenderingContext2D, sheet: HTMLImageElement, col: number, row: number, x: number, y: number, size: number) {
   if (!sheet.complete || !sheet.naturalWidth) return;
@@ -46,42 +39,33 @@ export function makeGround(assets: Assets): HTMLCanvasElement {
   return layer;
 }
 
-/**
- * 画一帧。
- *
- * `scene` 来自 `Motion.sample()`：位置已经是平滑过的（播放缓冲 + 外推 + 自己的本地前推），
- * 所以这里**不做时间插值**，只负责按场景时钟推进动画与剩余毫秒：
- *   · `now` 是真实时刻，只用来给飘字算年龄（飘字由消息回调按真实时钟打点）；
- *   · `scene.time` 是画面时钟（比 now 慢一个播放缓冲），walk / 受击闪烁 / 挥剑弧线都按它；
- *   · `time - scene.at` 是这帧权威状态已经过去的毫秒数，`attack` / `hurt` 这类
- *     「剩余毫秒」要先扣掉它，否则动画会按收到快照的那一刻从头播。
- * 镜头跟随用的是 scene 里自己的位置 —— 这样镜头与人物的平滑是同一份数据，
- * 不会出现「人物在插值、镜头却按最新快照整格跳」的割裂。
- */
-export function render(ctx: CanvasRenderingContext2D, assets: Assets, ground: HTMLCanvasElement, scene: Scene | null, ownId: string, now: number,
+export function render(ctx: CanvasRenderingContext2D, assets: Assets, ground: HTMLCanvasElement, frame: Frame | null, ownId: string, now: number,
   compact: boolean, floating: FloatText[]) {
   const viewW = compact ? 560 : WORLD_WIDTH, viewH = compact ? 420 : WORLD_HEIGHT;
-  const time = scene ? scene.time : now;
-  const age = scene ? Math.max(0, time - scene.at) : 0;
-  const players = scene?.players ?? PREVIEW_PLAYERS;
-  const monsters = scene?.slimes ?? PREVIEW_SLIMES;
-  const own = players.find(p => p.id === ownId);
+  const own = frame?.current.players.find(p => p.id === ownId);
   const cx = compact ? Math.max(0, Math.min(WORLD_WIDTH - viewW, (own?.x ?? 100) - viewW / 2)) : 0;
   const cy = compact ? Math.max(0, Math.min(WORLD_HEIGHT - viewH, (own?.y ?? 320) - viewH / 2)) : 0;
   ctx.setTransform(ctx.canvas.width / viewW, 0, 0, ctx.canvas.height / viewH, 0, 0); ctx.clearRect(0, 0, viewW, viewH);
   ctx.save(); ctx.translate(-cx, -cy); ctx.drawImage(ground, 0, 0);
+  const progress = frame ? Math.min(1, (now - frame.at) / TICK_MS) : 1;
+  const players: Player[] = frame?.current.players ?? [{ id: 'preview', name: '', x: 100, y: 320, facing: 0, moving: false, attack: 0, hurt: 0, catnip: 0 }];
+  const monsters: Slime[] = frame?.current.slimes ?? [
+    { id: 0, x: 340, y: 230, kind: 0, hp: 2, mood: 'wander', phase: 0 },
+    { id: 1, x: 440, y: 390, kind: 1, hp: 2, mood: 'wander', phase: 0 },
+    { id: 2, x: 690, y: 300, kind: 2, hp: 3, mood: 'wander', phase: 0 },
+  ];
   const entities = [...players.map(p => ({ type: 'player' as const, p, y: p.y })), ...monsters.map(p => ({ type: 'slime' as const, p, y: p.y }))].sort((a, b) => a.y - b.y);
   for (const entity of entities) {
     if (entity.type === 'player') {
-      const p = entity.p, x = p.x, y = p.y, mine = p.id === ownId;
+      const p = entity.p, prev = frame?.previous.players.find(a => a.id === p.id) ?? p;
+      const x = prev.x + (p.x - prev.x) * progress, y = prev.y + (p.y - prev.y) * progress, mine = p.id === ownId;
       ellipse(ctx, x, y + 1, 15, 6, '#344b3b32');
       if (mine) { ctx.strokeStyle = '#fffbe5'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(x, y, 18, 8, 0, 0, Math.PI * 2); ctx.stroke(); }
       ctx.save();
-      const hurt = Math.max(0, p.hurt - age);
-      if (hurt > 0) ctx.globalAlpha = Math.floor(time / 70) % 2 ? .45 : 1;
-      const attack = Math.max(0, p.attack - age);
-      const recoil = hurt > 570;
-      const walk = Math.floor(time / 130) % 4;
+      if (p.hurt > 0) ctx.globalAlpha = Math.floor(now / 70) % 2 ? .45 : 1;
+      const attack = Math.max(0, p.attack - (frame ? now - frame.at : 0));
+      const recoil = p.hurt > 570;
+      const walk = Math.floor(now / 130) % 4;
       const col = recoil ? 3 : p.moving ? [0, 1, 0, 2][walk] : 0;
       // 左右行的第三帧使用反向侧面，翻转同侧步态保持朝向一致。
       if (!attack && !recoil && (p.facing === 1 || p.facing === 2) && col === 2) {
@@ -99,17 +83,17 @@ export function render(ctx: CanvasRenderingContext2D, assets: Assets, ground: HT
         ctx.fillStyle = '#fffdf2'; ctx.fillText(label, x, y - 71, width - 10);
       }
     } else {
-      const m = entity.p, x = m.x, y = m.y;
+      const m = entity.p, prev = frame?.previous.slimes.find(a => a.id === m.id) ?? m;
+      const x = prev.x + (m.x - prev.x) * progress, y = prev.y + (m.y - prev.y) * progress;
       ellipse(ctx, x, y + 1, 16, 6, '#36563b29');
       ctx.save();
       if (m.mood === 'windup') { ctx.strokeStyle = '#b36046'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, 27, 0, Math.PI * 2); ctx.stroke(); }
       if (m.mood === 'dying') {
-        const phase = Math.max(0, m.phase - age);
-        ctx.globalAlpha = Math.min(1, Math.max(0, phase / 400));
-        sprite(ctx, assets.world, 3, 3, x, y - (400 - phase) / 25, 42);
+        ctx.globalAlpha = Math.max(0, m.phase / 400);
+        sprite(ctx, assets.world, 3, 3, x, y - (400 - m.phase) / 25, 42);
         ctx.fillStyle = '#36563b'; ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'center'; ctx.fillText(`+${[1, 3, 5][m.kind]}`, x, y - 37);
       } else {
-        const col = m.mood === 'stunned' ? 3 : m.mood === 'windup' ? 1 : m.mood === 'lunge' ? 2 : [0, 1, 2, 0][Math.floor((time + m.id * 91) / 180) % 4];
+        const col = m.mood === 'stunned' ? 3 : m.mood === 'windup' ? 1 : m.mood === 'lunge' ? 2 : [0, 1, 2, 0][Math.floor((now + m.id * 91) / 180) % 4];
         sprite(ctx, assets.world, col, m.kind, x, y + 5, 51);
         if (m.hp < (m.kind === 2 ? 3 : 2)) for (let k = 0; k < m.hp; k++) ellipse(ctx, x - (m.hp - 1) * 3 + k * 6, y - 39, 2, 2, '#4d6350');
       }
@@ -117,9 +101,9 @@ export function render(ctx: CanvasRenderingContext2D, assets: Assets, ground: HT
     }
   }
   for (const f of floating) {
-    const textAge = now - f.at; if (textAge > 1400) continue;
-    ctx.globalAlpha = Math.min(1, Math.max(0, 1 - textAge / 1400)); ctx.fillStyle = '#294f39'; ctx.font = 'bold 17px sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText(f.text, f.x, f.y - 100 - textAge / 28); ctx.globalAlpha = 1;
+    const age = now - f.at; if (age > 1400) continue;
+    ctx.globalAlpha = 1 - age / 1400; ctx.fillStyle = '#294f39'; ctx.font = 'bold 17px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(f.text, f.x, f.y - 100 - age / 28); ctx.globalAlpha = 1;
   }
   ctx.restore();
   if (compact && own) {
