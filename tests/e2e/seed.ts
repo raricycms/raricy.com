@@ -109,7 +109,7 @@ export const BLOG_BODY_MARKER = 'E2E-BODY-MARKER-7f3a';
 
 export const DIRECTORY_SEED = {
   parent: { name: '目录测试栏目', slug: 'e2e-directory' },
-  child: { name: '目录二级栏目', slug: 'e2e-directory-child' },
+  child: { name: '目录里名称较长的二级栏目', slug: 'e2e-directory-child' },
   titlePrefix: '目录分页文章',
   count: 51,
   likedId: 'e2e-directory-liked',

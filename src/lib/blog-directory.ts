@@ -3,7 +3,7 @@ export const BLOG_SCOPES = [
   { value: 'all', label: '全部文章', icon: 'icon-journal-text' },
   { value: 'mine', label: '我发布的', icon: 'icon-pencil-fill' },
   { value: 'liked', label: '我赞过的', icon: 'icon-heart-fill' },
-  { value: 'fed', label: '我喂过鱼的', icon: 'icon-fish' },
+  { value: 'fed', label: '我投喂过的', icon: 'icon-fish' },
 ] as const;
 
 export type BlogScope = (typeof BLOG_SCOPES)[number]['value'];

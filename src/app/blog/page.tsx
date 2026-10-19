@@ -17,6 +17,7 @@ import { categoryFullPath } from '@/lib/format';
 import { FOCUS_MODE_SETTINGS_HREF } from '@/lib/focus-mode';
 import BlogPersonalSidebar from './BlogPersonalSidebar';
 import BlogCategorySelect from './BlogCategorySelect';
+import BlogFilters from './BlogFilters';
 import SearchForm from './SearchForm';
 import BlogSort from './BlogSort';
 import BlogPageJump from './BlogPageJump';
@@ -155,10 +156,6 @@ export default async function BlogListPage({
         <div className="container">
           <h1>博客</h1>
           <p>分享思考与见解</p>
-          <Link href="/blog/upload" className="upload-button">
-            <span className="icon icon-add" aria-hidden="true"></span>
-            创建
-          </Link>
         </div>
       </section>
 
@@ -177,7 +174,7 @@ export default async function BlogListPage({
           />
 
           <main className="blog-content">
-            <div className="blog-filters" aria-label="文章筛选">
+            <BlogFilters>
               <SearchForm
                 key={`${scope}:${currentSlug}:${sp.featured}:${sp.search}`}
                 currentSlug={currentSlug}
@@ -195,7 +192,7 @@ export default async function BlogListPage({
               />
               {/* 空结果页也挂载排序偏好的恢复 effect。 */}
               <BlogSort initialSort={effectiveSort} />
-            </div>
+            </BlogFilters>
             <h2 className="blog-directory__scope">{scopeLabel}</h2>
             {/* 列表与分页都依赖 result，故连同分页一起放进边界内 ——
                 它们要么一起出现，要么一起等。fallback 用骨架，且**不复用 .blog-item**：

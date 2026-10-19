@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { X } from 'lucide-react';
 import Avatar from '@/app/components/Avatar';
 import { BLOG_SCOPES, type BlogScope } from '@/lib/blog-directory';
 
@@ -61,6 +62,15 @@ export default function BlogPersonalSidebar({ user, summary, scope }: {
       }}
     >
       <div className="blog-personal__shell">
+        <Link
+          className="blog-personal__avatar"
+          href={`/u/${user.id}`}
+          aria-label={`${user.username}的主页`}
+          tabIndex={narrow && !open ? -1 : undefined}
+          aria-hidden={narrow && !open}
+        >
+          <Avatar userId={user.id} frameUrl={user.frameUrl} alt="" />
+        </Link>
         <button
           ref={toggle}
           type="button"
@@ -70,17 +80,16 @@ export default function BlogPersonalSidebar({ user, summary, scope }: {
           aria-controls="blog-personal-panel"
           onClick={() => setOpen((value) => !value)}
         >
-          <Avatar userId={user.id} frameUrl={user.frameUrl} alt="" />
+          <X aria-hidden="true" />
         </button>
         <div className="blog-personal__panel" id="blog-personal-panel" inert={narrow && !open}>
           <div className="blog-personal__inner">
             <Link className="blog-personal__identity" href={`/u/${user.id}`}>
-              <Avatar userId={user.id} frameUrl={user.frameUrl} alt="" />
               <span>{user.username}</span>
             </Link>
             <dl className="blog-personal__stats">
-              <div><dt>获赞</dt><dd className="numeric">{summary.likesReceived}</dd></div>
-              <div><dt>收获鱼干</dt><dd className="numeric">{summary.fishReceived}</dd></div>
+              <div className="blog-likes"><dt><span className="icon icon-heart-fill" aria-hidden="true" />获赞</dt><dd className="numeric">{summary.likesReceived}</dd></div>
+              <div className="blog-fish"><dt><span className="icon icon-fish" aria-hidden="true" />收获鱼干</dt><dd className="numeric">{summary.fishReceived}</dd></div>
             </dl>
             <nav className="blog-personal__ranges" aria-label="文章范围">
               {BLOG_SCOPES.map((item) => (
@@ -99,6 +108,9 @@ export default function BlogPersonalSidebar({ user, summary, scope }: {
                 </Link>
               ))}
             </nav>
+            <Link href="/blog/upload" className="blog-personal__create">
+              <span className="icon icon-add" aria-hidden="true" />创建
+            </Link>
           </div>
         </div>
       </div>
