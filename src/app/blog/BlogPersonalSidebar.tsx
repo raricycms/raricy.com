@@ -9,7 +9,7 @@ import { BLOG_SCOPES, type BlogScope } from '@/lib/blog-directory';
 
 export default function BlogPersonalSidebar({ user, summary, scope }: {
   user: { id: string; username: string; frameUrl: string | null };
-  summary: { counts: Record<BlogScope, number>; likesReceived: number; fishReceived: number };
+  summary: { counts: Record<BlogScope, number>; likesReceived: number; commentsReceived: number; fishReceived: number };
   scope: BlogScope;
 }) {
   const [open, setOpen] = useState(false);
@@ -88,8 +88,9 @@ export default function BlogPersonalSidebar({ user, summary, scope }: {
               <span>{user.username}</span>
             </Link>
             <dl className="blog-personal__stats">
-              <div className="blog-likes"><dt><span className="icon icon-heart-fill" aria-hidden="true" />获赞</dt><dd className="numeric">{summary.likesReceived}</dd></div>
-              <div className="blog-fish"><dt><span className="icon icon-fish" aria-hidden="true" />收获鱼干</dt><dd className="numeric">{summary.fishReceived}</dd></div>
+              <div className="blog-likes" title="获赞"><dt><span className="icon icon-heart-fill" aria-hidden="true" /><span className="visually-hidden">获赞</span></dt><dd className="numeric">+{summary.likesReceived}</dd></div>
+              <div className="blog-comments" title="收到评论"><dt><span className="icon icon-chat-dots_new" aria-hidden="true" /><span className="visually-hidden">收到评论</span></dt><dd className="numeric">+{summary.commentsReceived}</dd></div>
+              <div className="blog-fish" title="收获鱼干"><dt><span className="icon icon-fish" aria-hidden="true" /><span className="visually-hidden">收获鱼干</span></dt><dd className="numeric">+{summary.fishReceived}</dd></div>
             </dl>
             <nav className="blog-personal__ranges" aria-label="文章范围">
               {BLOG_SCOPES.map((item) => (

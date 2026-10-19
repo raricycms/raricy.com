@@ -195,10 +195,10 @@
   }
   &__stats {
     display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
+    flex-wrap: nowrap;
+    gap: 6px;
     margin: 20px 0;
-    > div { padding: 6px 10px; font-size: .8rem; }
+    > div { padding: 6px 10px; gap: 6px; font-size: .8rem; }
     dt { display: flex; align-items: center; gap: 6px; font-weight: 400; }
     dd { margin: 0; font-weight: 700; }
   }
@@ -312,7 +312,7 @@
         transition-delay: 55ms;
       }
       .blog-personal__range {
-        @for $i from 1 through 4 {
+        @for $i from 1 through 5 {
           &:nth-child(#{$i}) { transition-delay: 55ms + ($i - 1) * 28ms; }
         }
       }

@@ -164,6 +164,7 @@ async function blogListWhere(params: ListParams): Promise<Prisma.BlogWhereInput>
     const { kind, userId } = params.personalScope;
     if (kind === 'mine') where.authorId = userId;
     if (kind === 'liked') where.likes = { some: { userId, deleted: false } };
+    if (kind === 'commented') where.comments = { some: { authorId: userId, isDeleted: false, status: 'approved' } };
     if (kind === 'fed') where.feeds = { some: { userId, amount: { gt: 0 } } };
   }
 
@@ -257,21 +258,22 @@ async function blogListWhere(params: ListParams): Promise<Prisma.BlogWhereInput>
 
 /** 侧栏数字不随搜索/栏目变化；范围计数与列表共用同一套栏目、专注模式与软删规则。 */
 export async function getBlogDirectorySummary(userId: string, focusMode: boolean) {
-  const scopes = ['mine', 'liked', 'fed'] as const;
+  const scopes = ['mine', 'liked', 'commented', 'fed'] as const;
   const [allWhere, ...personalWheres] = await Promise.all([
     blogListWhere({ focusMode }),
     ...scopes.map((kind) => blogListWhere({ focusMode, personalScope: { kind, userId } })),
   ]);
-  const [[all, mine, liked, fed], received] = await Promise.all([
+  const [[all, mine, liked, commented, fed], received] = await Promise.all([
     Promise.all([allWhere, ...personalWheres].map((where) => prisma.blog.count({ where }))),
     prisma.blog.aggregate({
       where: { authorId: userId, ignore: false },
-      _sum: { likesCount: true, fishCount: true },
+      _sum: { likesCount: true, commentsCount: true, fishCount: true },
     }),
   ]);
   return {
-    counts: { all, mine, liked, fed },
+    counts: { all, mine, liked, commented, fed },
     likesReceived: received._sum.likesCount ?? 0,
+    commentsReceived: received._sum.commentsCount ?? 0,
     fishReceived: received._sum.fishCount ?? 0,
   };
 }
