@@ -47,7 +47,9 @@ export function render(ctx: CanvasRenderingContext2D, assets: Assets, ground: HT
   const cy = compact ? Math.max(0, Math.min(WORLD_HEIGHT - viewH, (own?.y ?? 320) - viewH / 2)) : 0;
   ctx.setTransform(ctx.canvas.width / viewW, 0, 0, ctx.canvas.height / viewH, 0, 0); ctx.clearRect(0, 0, viewW, viewH);
   ctx.save(); ctx.translate(-cx, -cy); ctx.drawImage(ground, 0, 0);
-  const progress = frame ? Math.min(1, (now - frame.at) / TICK_MS) : 1;
+  // rAF 时间戳可能早于同轮事件循环刚收到的快照，负年龄会把待机算成攻击。
+  const frameAge = frame ? Math.max(0, now - frame.at) : 0;
+  const progress = frame ? Math.min(1, frameAge / TICK_MS) : 1;
   const players: Player[] = frame?.current.players ?? [{ id: 'preview', name: '', x: 100, y: 320, facing: 0, moving: false, attack: 0, hurt: 0, catnip: 0 }];
   const monsters: Slime[] = frame?.current.slimes ?? [
     { id: 0, x: 340, y: 230, kind: 0, hp: 2, mood: 'wander', phase: 0 },
@@ -63,7 +65,7 @@ export function render(ctx: CanvasRenderingContext2D, assets: Assets, ground: HT
       if (mine) { ctx.strokeStyle = '#fffbe5'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(x, y, 18, 8, 0, 0, Math.PI * 2); ctx.stroke(); }
       ctx.save();
       if (p.hurt > 0) ctx.globalAlpha = Math.floor(now / 70) % 2 ? .45 : 1;
-      const attack = Math.max(0, p.attack - (frame ? now - frame.at : 0));
+      const attack = Math.max(0, p.attack - frameAge);
       const recoil = p.hurt > 570;
       const walk = Math.floor(now / 130) % 4;
       const col = recoil ? 3 : p.moving ? [0, 1, 0, 2][walk] : 0;
