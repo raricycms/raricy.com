@@ -2,6 +2,33 @@ import { test, expect } from '@playwright/test';
 import { loginViaApi, uniqueTag } from './helpers';
 import { SEED_PASSWORD, SEED_USERS } from './seed';
 
+test('手机顶栏两个方向都有高度动画，第五个讨论入口按顺序入场', async ({ page, isMobile }) => {
+  test.skip(!isMobile, '手机折叠布局');
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.goto('/');
+  await expect.poll(() => page.evaluate(() => typeof (window as unknown as { switchTheme?: unknown }).switchTheme)).toBe('function');
+  const toggle = page.getByRole('button', { name: '切换导航', exact: true });
+  for (const open of [true, false]) {
+    const frames = await toggle.evaluate((el) => {
+      const host = el.closest('.site-navbar')!;
+      const snapshot = () => host.getBoundingClientRect().height;
+      const before = snapshot();
+      (el as HTMLButtonElement).click();
+      const animations = host.getAnimations({ subtree: true });
+      animations.forEach((animation) => { animation.pause(); animation.currentTime = Number(animation.effect!.getTiming().duration) / 2; });
+      const middle = snapshot();
+      const delays = Array.from(host.querySelectorAll('.site-nav > li')).map((item) => parseFloat(getComputedStyle(item).transitionDelay));
+      const visible = getComputedStyle(host.querySelector('.site-navbar-collapse')!).visibility;
+      animations.forEach((animation) => animation.finish());
+      return { before, middle, end: snapshot(), visible, delays };
+    });
+    expect(frames.middle).toBeGreaterThan(Math.min(frames.before, frames.end));
+    expect(frames.middle).toBeLessThan(Math.max(frames.before, frames.end));
+    expect(frames.visible).toBe('visible');
+    if (open) expect(frames.delays[4]).toBeGreaterThan(frames.delays[3]);
+  }
+});
+
 test('用户胶囊：仅光晕悬停、原位向下展开、失焦和 ESC 收起', async ({ page, isMobile }) => {
   await loginViaApi(page, SEED_USERS.admin.username);
   await page.goto('/');
