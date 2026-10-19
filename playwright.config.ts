@@ -71,6 +71,7 @@ const REALTIME_PORT = 3103;
  */
 const RESPONSIVE_SPECS: RegExp[] = [
   /blog-directory\.spec\.ts$/,
+  /theme-transition\.spec\.ts$/,
   /public-space\.spec\.ts$/,
   /wand\.spec\.ts$/,
   /wand2(?:-controls)?\.spec\.ts$/,
