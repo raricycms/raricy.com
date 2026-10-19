@@ -5,6 +5,14 @@ test('玩具入口：四张首页卡按故事、玩具、博客、工具排列�
   await page.goto('/');
   expect(await page.locator('.home-grid .feature-card').evaluateAll((cards) => cards.map((card) => card.getAttribute('href'))))
     .toEqual(['/story', '/game', '/explore', '/tool']);
+  // 四张卡的图标必须同尺寸（3rem = 48px）。玩具卡是 lucide 内联 SVG，而
+  // `svg.lucide { width/height: 1em }` 的权重（0-1-1）高过单类名选择器（0-1-0）——
+  // 尺寸那条规则漏了升权重，这颗图标就静默退回 16px，与另外三张并排时只是「看着不对」。
+  expect(await page.locator('.home-grid .feature-card').evaluateAll((cards) => cards.map((card) => {
+    const icon = card.querySelector('.feature-icon, .feature-game-icon')!;
+    const { width, height } = icon.getBoundingClientRect();
+    return `${width}x${height}`;
+  }))).toEqual(['48x48', '48x48', '48x48', '48x48']);
   await expect(page.locator('.site-nav a[href="/game"]')).toHaveCount(1);
   await expect(page.locator('.site-nav a[href="/chat"]')).toHaveCount(1);
   await page.locator('.home-grid a[href="/game"]').click();

@@ -283,7 +283,14 @@
 .card-blog  { --card-accent: var(--color-accent-amber);     --card-glow: var(--color-accent-amber-soft); }
 .card-tool  { --card-accent: var(--color-accent-cyan);      --card-glow: var(--color-accent-cyan-soft); }
 .card-game  { --card-accent: var(--color-accent-violet);   --card-glow: var(--color-accent-violet-soft); }
-.feature-game-icon { width: 3rem; height: 3rem; margin-bottom: 1rem; color: var(--card-accent); }
+
+/* 玩具卡是四张里唯一用 lucide 内联 SVG 的（其余三张是 3rem 的 mask 方块，
+   见下面各卡那几行）。⚠️ 尺寸选择器必须是 `.feature-card .feature-game-icon`
+   而不是光秃秃的 `.feature-game-icon`：`components/_icons.scss` 里
+   `svg.lucide { width: 1em; height: 1em }` 的权重是 0-1-1，压得过 0-1-0 ——
+   写成后者时这颗图标会渲染成正文一个字的 16px，与另外三张的 48px 并排，
+   而页面上不会报任何错（2026-10 的首页就是这样崩的）。 */
+.feature-card .feature-game-icon { width: 3rem; height: 3rem; margin-bottom: 1rem; color: var(--card-accent); }
 
 /* 图标只需取色，形状（mask）仍各卡一支 */
 .feature-card .feature-icon { color: var(--card-accent); }
