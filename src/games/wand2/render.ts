@@ -1,4 +1,5 @@
 import { ATTACK_MS, DIRECTIONS, TILE, TILES, TICK_MS, WORLD_HEIGHT, WORLD_WIDTH, type Player, type Slime, type Snapshot } from '../../../shared/wand2/protocol';
+import spriteLayout from '../../../public/static/games/wand2/sprite-layout.json';
 
 export interface Assets { character: HTMLImageElement; attack: HTMLImageElement; world: HTMLImageElement }
 export interface Frame { previous: Snapshot; current: Snapshot; at: number }
@@ -70,7 +71,7 @@ export function render(ctx: CanvasRenderingContext2D, assets: Assets, ground: HT
       const walk = Math.floor(now / 130) % 4;
       const col = recoil ? 3 : p.moving ? [0, 1, 0, 2][walk] : 0;
       // 各方向直接使用对应原绘帧；镜像会把角色的右手持剑翻成左手。
-      sprite(ctx, attack ? assets.attack : assets.character, attack ? Math.min(3, Math.floor((ATTACK_MS - attack) / (ATTACK_MS / 4))) : col, p.facing, x, y + 4, attack ? 96 : 88);
+      sprite(ctx, attack ? assets.attack : assets.character, attack ? Math.min(3, Math.floor((ATTACK_MS - attack) / (ATTACK_MS / 4))) : col, p.facing, x, y + 4, attack ? spriteLayout.attackDrawSize : 88);
       ctx.restore();
       if (attack > 100 && attack < 280) {
         const dir = DIRECTIONS[p.facing], angle = Math.atan2(dir.y, dir.x);

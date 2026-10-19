@@ -1,0 +1,28 @@
+{
+  "attackCellSize": 384,
+  "attackDrawSize": 144,
+  "attackFootBaseline": 354,
+  "gutter": 8,
+  "attack": [
+    { "direction": "down", "file": "attack-down.webp", "poses": [
+      { "hand": [129, 175], "angle": -25 }, { "hand": [153, 260], "angle": 135 },
+      { "hand": [140, 264], "angle": 25 }, { "hand": [152, 282], "angle": 45 }
+    ] },
+    { "direction": "left", "file": "attack-left.webp", "offsetX": 16, "poses": [
+      { "hand": [133, 176], "angle": -15 }, { "hand": [134, 254], "angle": 185 },
+      { "hand": [114, 249], "angle": 160 }, { "hand": [150, 253], "angle": 135 }
+    ] },
+    { "direction": "right", "file": "attack-right.webp", "offsetX": -16, "poses": [
+      { "hand": [244, 175], "angle": -165 }, { "hand": [209, 271], "angle": -5 },
+      { "hand": [236, 261], "angle": 20 }, { "hand": [203, 270], "angle": 45 }
+    ] },
+    { "direction": "up", "file": "attack-up.webp", "poses": [
+      { "hand": [250, 164], "angle": -150 }, { "hand": [278, 176], "angle": -110 },
+      { "hand": [250, 168], "angle": -65 }, { "hand": [240, 262], "angle": 45 }
+    ] }
+  ],
+  "characterPatches": [
+    { "row": 2, "col": 2, "file": "foot-3.webp", "region": [56, 204, 104, 52] },
+    { "row": 2, "col": 3, "file": "foot-4.webp", "region": [56, 204, 104, 52] }
+  ]
+}

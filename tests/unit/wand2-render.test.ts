@@ -1,10 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, type Assets, type Frame } from '../../src/games/wand2/render';
 import type { Facing, Player, Snapshot } from '../../shared/wand2/protocol';
+import spriteLayout from '../../public/static/games/wand2/sprite-layout.json';
 
 function scene(overrides: Partial<Player> = {}, previousX = 100) {
-  const image = () => ({ complete: true, naturalWidth: 1024, naturalHeight: 1024 }) as HTMLImageElement;
-  const assets: Assets = { character: image(), attack: image(), world: image() };
+  const image = (size = 1024) => ({ complete: true, naturalWidth: size, naturalHeight: size }) as HTMLImageElement;
+  const assets: Assets = { character: image(), attack: image(spriteLayout.attackCellSize * 4), world: image() };
   const drawImage = vi.fn(), scale = vi.fn(), noop = () => {};
   const context = { canvas: { width: 960, height: 640 }, drawImage, scale, setTransform: noop, clearRect: noop, save: noop,
     translate: noop, restore: noop, beginPath: noop, ellipse: noop, fill: noop, stroke: noop, arc: noop,
@@ -42,6 +43,17 @@ describe('Wand 2 精灵播放', () => {
       expect(s.drawImage.mock.calls[1][0]).toBe(s.assets.character);
       expect(s.drawImage.mock.calls[1][1]).toBe(2 * 256);
       expect(s.drawImage.mock.calls[1][2]).toBe(facing * 256);
+    }
+  });
+
+  it('四方向的攻击使用实际留白单元切帧，并补偿显示大小', () => {
+    for (const facing of [0, 1, 2, 3] as Facing[]) {
+      for (let col = 0; col < 4; col++) {
+        const s = scene({ facing, attack: 360 - col * 90 }); s.draw(1001);
+        const draw = s.drawImage.mock.calls[1];
+        expect(draw.slice(0, 5)).toEqual([s.assets.attack, col * 384, facing * 384, 384, 384]);
+        expect(draw.slice(7)).toEqual([144, 144]);
+      }
     }
   });
 });
