@@ -38,8 +38,9 @@ test('Wand 2：美术、双客户端同步、真实战斗奖励、同账号排�
   await page.bringToFront();
   const before = first.snapshot!.players.find(p => p.id === first.id)!.x;
   if (isMobile) {
-    const button = page.getByRole('button', { name: '向右', exact: true }), box = (await button.boundingBox())!;
+    const button = page.getByRole('button', { name: '移动摇杆', exact: true }), box = (await button.boundingBox())!;
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down();
+    await page.mouse.move(box.x + box.width, box.y + box.height / 2);
     await expect.poll(() => second.snapshot?.players.find(p => p.id === first.id)?.x ?? 0).toBeGreaterThan(before + 20); await page.mouse.up();
     const attack = page.getByRole('button', { name: '挥剑', exact: true }); await attack.tap(); await expect(attack).toHaveCSS('touch-action', 'none');
   } else {

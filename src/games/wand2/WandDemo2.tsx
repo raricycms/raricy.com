@@ -19,8 +19,16 @@ export default function WandDemo2() {
   const connection = useRef<Connection | null>(null), frame = useRef<Frame | null>(null);
   const ownId = useRef(''), ready = useRef(false), mounted = useRef(false);
   const keys = useRef(new Set<string>()), touches = useRef(new Map<number, number>()), floating = useRef<FloatText[]>([]);
+  const joystickPointer = useRef<number | null>(null);
+  const [stick, setStick] = useState({ x: 0, y: 0, active: false });
   const [status, setStatus] = useState<Status>('idle'), [message, setMessage] = useState(''), [assetsReady, setAssetsReady] = useState(false);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null), [myId, setMyId] = useState('');
+
+  const clearInput = useCallback(() => {
+    keys.current.clear(); touches.current.clear(); joystickPointer.current = null;
+    if (mounted.current) setStick({ x: 0, y: 0, active: false });
+    connection.current?.sendInput?.();
+  }, []);
 
   useEffect(() => {
     mounted.current = true;
@@ -42,7 +50,12 @@ export default function WandDemo2() {
       animation = requestAnimationFrame(draw);
     }
     animation = requestAnimationFrame(draw);
-    function clearInput() { keys.current.clear(); touches.current.clear(); connection.current?.sendInput?.(); }
+    // React 的 touchstart 是被动监听；在游戏操作面上提前取消原生长按，避免选字/菜单的触觉反馈。
+    const play = stage.current;
+    function preventTouchGesture(event: TouchEvent) {
+      if (event.target instanceof Element && event.target.closest('.wand2-canvas, .wand2-joystick, .wand2-attack') && event.cancelable) event.preventDefault();
+    }
+    play?.addEventListener('touchstart', preventTouchGesture, { passive: false });
     function keyDown(event: KeyboardEvent) {
       if (!ready.current || !KEY_INPUT[event.code]) return;
       if (event.target instanceof Element && event.target.closest('input, textarea, select, [contenteditable="true"]')) return;
@@ -59,8 +72,9 @@ export default function WandDemo2() {
       disposed = true; mounted.current = false; connection.current?.dispose(); cancelAnimationFrame(animation);
       window.removeEventListener('keydown', keyDown); window.removeEventListener('keyup', keyUp); window.removeEventListener('blur', clearInput);
       document.removeEventListener('visibilitychange', visibility);
+      play?.removeEventListener('touchstart', preventTouchGesture);
     };
-  }, []);
+  }, [clearInput]);
 
   const connect = useCallback(async () => {
     connection.current?.dispose();
@@ -73,7 +87,7 @@ export default function WandDemo2() {
         if (socket) { socket.onopen = socket.onmessage = socket.onerror = socket.onclose = null; socket.close(); }
         if (connection.current === current) {
           connection.current = null; ready.current = false; ownId.current = ''; frame.current = null;
-          keys.current.clear(); touches.current.clear(); floating.current = [];
+          clearInput(); floating.current = [];
         }
       },
     };
@@ -124,16 +138,40 @@ export default function WandDemo2() {
       };
       socket.onerror = () => finish('error', '无法连接实时服务，请稍后重试。'); socket.onclose = () => finish('disconnected');
     } catch { if (!controller.signal.aborted) finish('error', '无法连接实时服务，请稍后重试。'); }
-  }, []);
+  }, [clearInput]);
 
-  function control(event: PointerEvent<HTMLElement>, mask: number, down: boolean) {
+  function control(event: PointerEvent<HTMLElement>, mask: number) {
     event.preventDefault();
-    if (down) { event.currentTarget.setPointerCapture(event.pointerId); touches.current.set(event.pointerId, mask); }
-    else touches.current.delete(event.pointerId);
+    if (!ready.current || event.button !== 0) return;
+    event.currentTarget.setPointerCapture(event.pointerId); touches.current.set(event.pointerId, mask);
     connection.current?.sendInput?.();
   }
-  const controls = [{ label: '向上', mask: INPUT.up, Icon: ArrowUp }, { label: '向左', mask: INPUT.left, Icon: ArrowLeft },
-    { label: '向下', mask: INPUT.down, Icon: ArrowDown }, { label: '向右', mask: INPUT.right, Icon: ArrowRight }];
+  function releaseControl(event: PointerEvent<HTMLElement>) {
+    event.preventDefault();
+    if (joystickPointer.current === event.pointerId) {
+      joystickPointer.current = null; setStick({ x: 0, y: 0, active: false });
+    }
+    if (touches.current.delete(event.pointerId)) connection.current?.sendInput?.();
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+  }
+  function moveJoystick(event: PointerEvent<HTMLButtonElement>) {
+    if (joystickPointer.current !== event.pointerId) return;
+    event.preventDefault();
+    const box = event.currentTarget.getBoundingClientRect(), radius = box.width * .28;
+    const dx = event.clientX - box.left - box.width / 2, dy = event.clientY - box.top - box.height / 2;
+    const distance = Math.hypot(dx, dy), scale = distance > radius ? radius / distance : 1;
+    let mask = 0;
+    // 中心留死区，方向按 45° 分成八区；沿用服务端按键协议，斜向速度仍由服务端归一化。
+    if (distance > radius * .2) {
+      const threshold = distance * Math.sin(Math.PI / 8);
+      if (Math.abs(dx) >= threshold) mask |= dx > 0 ? INPUT.right : INPUT.left;
+      if (Math.abs(dy) >= threshold) mask |= dy > 0 ? INPUT.down : INPUT.up;
+    }
+    setStick({ x: dx * scale, y: dy * scale, active: true });
+    if (touches.current.get(event.pointerId) !== mask) {
+      touches.current.set(event.pointerId, mask); connection.current?.sendInput?.();
+    }
+  }
   const me = snapshot?.players.find(p => p.id === myId);
   const connected = status === 'connected';
   return (
@@ -154,12 +192,11 @@ export default function WandDemo2() {
         </header>
         {message && <p className="wand2-error" role="alert">{message}</p>}
         <div className="wand2-layout">
-          <div className="wand2-play" ref={stage}>
+          <div className="wand2-play" ref={stage} onContextMenu={event => event.preventDefault()}>
             <div className="wand2-stage">
               <canvas ref={canvas} className="wand2-canvas" width={960} height={640} tabIndex={0} aria-label="Wand demo 2 共享草地，方向键移动，空格或 J 挥剑"
-                onPointerDown={e => { if (connected) { e.currentTarget.focus({ preventScroll: true }); control(e, INPUT.attack, true); } }}
-                onPointerUp={e => control(e, INPUT.attack, false)} onPointerCancel={e => control(e, INPUT.attack, false)}
-                onLostPointerCapture={e => { touches.current.delete(e.pointerId); connection.current?.sendInput?.(); }} />
+                onPointerDown={e => { if (connected) { e.currentTarget.focus({ preventScroll: true }); control(e, INPUT.attack); } }}
+                onPointerUp={releaseControl} onPointerCancel={releaseControl} onLostPointerCapture={releaseControl} />
               <div className="wand2-hud"><span><Users size={14} aria-hidden="true" /><span className="numeric">{snapshot?.leaderboard.length ?? 0}</span> 人在线</span>
                 <span><Leaf size={14} aria-hidden="true" /><span className="numeric">{me?.catnip ?? 0}</span> 猫薄荷</span></div>
               {!connected && <div className="wand2-overlay"><span>{status === 'connecting' ? '正在进入草地…' : assetsReady ? '点击「开始联机」进入草地' : '正在加载精灵…'}</span></div>}
@@ -170,15 +207,22 @@ export default function WandDemo2() {
               }}><Maximize size={18} aria-hidden="true" /></button>
             </div>
             <div className="wand2-inputs">
-              <div className="wand2-dpad" aria-label="移动方向">{controls.map(({ label, mask, Icon }) => (
-                <button key={label} type="button" className="wand2-direction" aria-label={label} disabled={!connected}
-                  onPointerDown={e => control(e, mask, true)} onPointerUp={e => control(e, mask, false)} onPointerCancel={e => control(e, mask, false)}
-                  onLostPointerCapture={e => { touches.current.delete(e.pointerId); connection.current?.sendInput?.(); }}><Icon size={20} aria-hidden="true" /></button>
-              ))}</div>
+              <div className="wand2-movement">
+                <button type="button" className="wand2-joystick" aria-label="移动摇杆" aria-describedby="wand2-joystick-help" disabled={!connected} data-active={stick.active}
+                  onPointerDown={event => {
+                    event.preventDefault();
+                    if (!ready.current || event.button !== 0 || joystickPointer.current !== null) return;
+                    joystickPointer.current = event.pointerId; event.currentTarget.setPointerCapture(event.pointerId); moveJoystick(event);
+                  }} onPointerMove={moveJoystick} onPointerUp={releaseControl} onPointerCancel={releaseControl} onLostPointerCapture={releaseControl}>
+                  <ArrowUp size={16} aria-hidden="true" /><ArrowLeft size={16} aria-hidden="true" /><ArrowDown size={16} aria-hidden="true" /><ArrowRight size={16} aria-hidden="true" />
+                  <span className="wand2-joystick-knob" aria-hidden="true" style={{ transform: `translate(${stick.x}px, ${stick.y}px)` }} />
+                </button>
+                <span className="wand2-touchhelp" id="wand2-joystick-help">拖动移动 · 松手停止</span>
+              </div>
               <p className="wand2-keyhelp"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / 方向键移动<br /><kbd>Space</kbd> / <kbd>J</kbd> / 点击地图挥剑</p>
               <button type="button" className="wand2-attack" aria-label="挥剑" disabled={!connected}
-                onPointerDown={e => control(e, INPUT.attack, true)} onPointerUp={e => control(e, INPUT.attack, false)} onPointerCancel={e => control(e, INPUT.attack, false)}
-                onLostPointerCapture={e => { touches.current.delete(e.pointerId); connection.current?.sendInput?.(); }}><Swords size={25} aria-hidden="true" /><span>挥剑</span></button>
+                onPointerDown={e => control(e, INPUT.attack)} onPointerUp={releaseControl} onPointerCancel={releaseControl}
+                onLostPointerCapture={releaseControl}><Swords size={25} aria-hidden="true" /><span>挥剑</span></button>
             </div>
           </div>
           <aside className="wand2-sidebar">

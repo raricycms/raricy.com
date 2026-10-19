@@ -72,7 +72,7 @@ const REALTIME_PORT = 3103;
 const RESPONSIVE_SPECS: RegExp[] = [
   /public-space\.spec\.ts$/,
   /wand\.spec\.ts$/,
-  /wand2\.spec\.ts$/,
+  /wand2(?:-controls)?\.spec\.ts$/,
   /game\.spec\.ts$/,
   /navbar-capsule\.spec\.ts$/,
   // 首页山景的窄屏构图、SVG 视差与减少动态效果偏好。
