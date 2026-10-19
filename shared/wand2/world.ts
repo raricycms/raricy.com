@@ -1,22 +1,11 @@
 import { ATTACK_COOLDOWN, ATTACK_MS, DIRECTIONS, INPUT, MAX_SLIMES, SPEED, TILE, TILES, WORLD_HEIGHT, WORLD_WIDTH,
   type Facing, type Player, type Slime, type Snapshot } from './protocol.js';
+// 碰撞与位移抽到 geometry，客户端 Motion 也要用同一份（理由见那个文件头）。
+import { blocked, move } from './geometry.js';
+export { blocked, move } from './geometry.js';
 
 interface Actor extends Player { userId: string; buttons: number; queuedAttack: boolean; cooldown: number; struck: boolean }
 interface Monster extends Slime { dx: number; dy: number }
-export function blocked(x: number, y: number, radius = 12): boolean {
-  if (x < radius || y < radius || x > WORLD_WIDTH - radius || y > WORLD_HEIGHT - radius) return true;
-  for (let row = Math.floor((y - radius) / TILE); row <= Math.floor((y + radius) / TILE); row++) {
-    for (let col = Math.floor((x - radius) / TILE); col <= Math.floor((x + radius) / TILE); col++) if (TILES[row]?.[col] === 1) return true;
-  }
-  return false;
-}
-export function move(p: { x: number; y: number }, dx: number, dy: number) {
-  const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy) / 4));
-  for (let i = 0; i < steps; i++) {
-    if (!blocked(p.x + dx / steps, p.y)) p.x += dx / steps;
-    if (!blocked(p.x, p.y + dy / steps)) p.y += dy / steps;
-  }
-}
 function visible(a: { x: number; y: number }, b: { x: number; y: number }, radius = 3) {
   const n = Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / 8);
   for (let i = 1; i <= n; i++) if (blocked(a.x + (b.x - a.x) * i / n, a.y + (b.y - a.y) * i / n, radius)) return false;
