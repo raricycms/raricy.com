@@ -80,13 +80,17 @@ export default function CattcaReader({
   const lastMetricsRef = useRef('');
 
   const [stageWidth, setStageWidth] = useState(0);
+  const [viewportWidth, setViewportWidth] = useState(0);
   const [pageText, setPageText] = useState('1');
   const [logsOpen, setLogsOpen] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [choiceCollapsed, setChoiceCollapsed] = useState(false);
 
   const total = pages.length;
-  const spread = mode === 'book' && (fullscreen || stageWidth >= 900);
+  // 对开必须由**当前实际可用宽度**决定，不能只看 fullscreen：
+  // 手机全屏只有 390px，强行双页会把两页压成各 180px，正文根本没法读。
+  const spread = mode === 'book' && stageWidth >= 900;
+  const canSpread = (fullscreen ? stageWidth : viewportWidth) >= 900;
   const visibleIndexes = visiblePageIndexes(pageIndex, total, spread);
   const visiblePages = visibleIndexes
     .map((index) => pages[index])
@@ -101,8 +105,11 @@ export default function CattcaReader({
   const inputOpen = showChoices && pending?.kind === 'input';
   // 对开页按「左页先打、右页后打」顺序显示；第一个还没显示完的可见页拿到 active。
   const activePageKey = visiblePages.find((page) => !revealed.has(page.key))?.key ?? null;
+  const interactionOpen = inputOpen || choiceOpen;
+  const interactionOpenRef = useRef(false);
+  interactionOpenRef.current = interactionOpen;
 
-  // 阶段宽度 → 对开页判定（工具页半栏不强行双页；全屏/宽屏才双页）。
+  // 阶段宽度 → 对开页判定（工具页半栏不强行双页；宽屏/全屏才双页）。
   useEffect(() => {
     const stage = stageRef.current;
     if (!stage || typeof ResizeObserver === 'undefined') return;
@@ -113,6 +120,15 @@ export default function CattcaReader({
     observer.observe(stage);
     setStageWidth(stage.getBoundingClientRect().width);
     return () => observer.disconnect();
+  }, []);
+
+  // 视口宽度只用于“全屏按钮该不该写双页 / 是否提示可对开”，
+  // 不参与 spread 本身（spread 看的是当前舞台实际宽度）。
+  useEffect(() => {
+    const sync = () => setViewportWidth(window.innerWidth);
+    sync();
+    window.addEventListener('resize', sync);
+    return () => window.removeEventListener('resize', sync);
   }, []);
 
   useEffect(() => {
@@ -149,6 +165,22 @@ export default function CattcaReader({
     reportMetrics();
   }, [reportMetrics, pageIndex, pages.length, mode, fullscreen, stageWidth]);
 
+  // 窗口/手机旋转导致高度变化时重新量高、重新分页；交互面板打开期间跳过，
+  // 否则移动端软键盘弹起会把正在输入的页面重排掉。
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const onResize = () => {
+      if (interactionOpenRef.current) return;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => reportMetrics(), 180);
+    };
+    window.addEventListener('resize', onResize);
+    return () => {
+      if (timer) clearTimeout(timer);
+      window.removeEventListener('resize', onResize);
+    };
+  }, [reportMetrics]);
+
   useEffect(() => {
     if (typeof window === 'undefined' || !window.matchMedia) return;
     const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -157,6 +189,31 @@ export default function CattcaReader({
     mq.addEventListener?.('change', sync);
     return () => mq.removeEventListener?.('change', sync);
   }, []);
+
+  // 大图会按原始尺寸撑高整页；分页只量一次，图片在量完之后加载就会让页面巨大滚动。
+  // 给可见页图片一个基于正文可用高度的 max-height，让图按比例缩到页内。
+  useLayoutEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    const apply = () => {
+      stage.querySelectorAll<HTMLImageElement>('.cattca-reader__page-content img').forEach((img) => {
+        const content = img.closest<HTMLElement>('.cattca-reader__page-content');
+        if (!content) return;
+        const max = Math.max(120, Math.floor(content.clientHeight * 0.8));
+        img.style.maxHeight = `${max}px`;
+        img.style.width = 'auto';
+        img.style.height = 'auto';
+      });
+    };
+    apply();
+    const images = Array.from(stage.querySelectorAll<HTMLImageElement>('img'));
+    images.forEach((img) => {
+      if (!img.complete) img.addEventListener('load', apply, { once: true });
+    });
+    return () => {
+      images.forEach((img) => img.removeEventListener('load', apply));
+    };
+  }, [pages, pageIndex, fullscreen, mode, showChoices]);
 
   useEffect(() => {
     setPageText(String(pageIndex + 1));
@@ -297,6 +354,8 @@ export default function CattcaReader({
     if (!Number.isFinite(n)) return;
     const index = clampPage(Math.trunc(n) - 1, total);
     onPageChange(spread ? spreadStart(index, true) : index);
+    // 页码输入框保持焦点时按 Ctrl 会被当成“正在输入”，跳页后主动失焦。
+    event.currentTarget.querySelector<HTMLInputElement>('.cattca-reader__page-input')?.blur();
   };
 
   const pageLabel =
@@ -373,7 +432,7 @@ export default function CattcaReader({
             <FileText aria-hidden="true" /> 简洁
           </button>
         </div>
-        {mode === 'book' && !spread && (
+        {mode === 'book' && !spread && canSpread && (
           <span className="cattca-reader__mode-note">全屏可左右对开</span>
         )}
 
@@ -383,10 +442,10 @@ export default function CattcaReader({
               type="button"
               className="cattca-reader__text-btn"
               onClick={onToggleFullscreen}
-              title={mode === 'book' ? '全屏显示左右两页' : '全屏阅读'}
+              title={mode === 'book' && canSpread ? '全屏显示左右两页' : '全屏阅读'}
             >
               <Maximize2 aria-hidden="true" />
-              {mode === 'book' ? '全屏双页' : '全屏'}
+              {mode === 'book' && canSpread ? '全屏双页' : '全屏'}
             </button>
           )}
           {(logs.length > 0 || status === 'error') && (

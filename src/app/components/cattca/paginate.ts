@@ -107,9 +107,21 @@ function normalizeBlocks(root: ParentNode): HTMLElement[] {
     // 列表：一个 li 一个块，这样可以在条目之间换页。
     if (el.tagName === 'UL' || el.tagName === 'OL') {
       const items = Array.from(el.children).filter((child) => child.tagName === 'LI');
-      for (const item of items) {
+      const ordered = el.tagName === 'OL';
+      const reversed = ordered && el.hasAttribute('reversed');
+      const startAttr = el.getAttribute('start');
+      const declaredStart = startAttr == null ? NaN : Number(startAttr);
+      const base = reversed
+        ? (Number.isFinite(declaredStart) ? declaredStart : items.length)
+        : (Number.isFinite(declaredStart) ? declaredStart : 1);
+      for (let index = 0; index < items.length; index += 1) {
         const list = el.cloneNode(false) as HTMLElement;
-        list.appendChild(item.cloneNode(true));
+        if (ordered) {
+          // 每个条目被拆成独立的 <ol>；不写 start 会从 1 重新编号，
+          // 第 5–10 项也会显示成 1–6。
+          list.setAttribute('start', String(reversed ? base - index : base + index));
+        }
+        list.appendChild(items[index].cloneNode(true));
         blocks.push(list);
       }
       return;

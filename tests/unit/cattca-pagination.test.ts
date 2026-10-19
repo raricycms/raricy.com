@@ -111,6 +111,20 @@ describe('paginateHtml', () => {
     for (const item of items) expect(all).toContain(item);
   });
 
+  it('有序列表跨页后保持 1、2、3… 的连续编号', () => {
+    const items = Array.from({ length: 8 }, (_, index) => `第${index + 1}项`);
+    const html = `<ol>${items.map((item) => `<li>${item}${'字'.repeat(12)}</li>`).join('')}</ol>`;
+    const pages = paginateHtml(html, { width: 600, height: 500 });
+
+    expect(pages.length).toBeGreaterThan(1);
+    const starts = pages.flatMap((page) => {
+      const div = document.createElement('div');
+      div.innerHTML = page;
+      return Array.from(div.querySelectorAll('ol')).map((ol) => Number(ol.getAttribute('start')));
+    });
+    expect(starts).toEqual(Array.from({ length: 8 }, (_, index) => index + 1));
+  });
+
   it('空 HTML 返回一页空串', () => {
     expect(paginateHtml('', { width: 600, height: 500 })).toEqual(['']);
     expect(paginateHtml('   ', { width: 600, height: 500 })).toEqual(['']);
