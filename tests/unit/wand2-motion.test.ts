@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { EXTRAPOLATE_MS, INTERP_DELAY_MS, MAX_SAMPLES, Motion, type Scene } from '../../src/games/wand2/motion';
+import { EXTRAPOLATE_MS, INTERP_DELAY_MS, MAX_SAMPLES, Motion } from '../../src/games/wand2/motion';
 import { INPUT, SPEED, type Player, type Slime, type Snapshot } from '../../shared/wand2/protocol';
 
 const player = (over: Partial<Player> = {}): Player => ({
@@ -8,14 +8,6 @@ const player = (over: Partial<Player> = {}): Player => ({
 const snapshot = (tick: number, players: Player[], slimes: Slime[] = []): Snapshot =>
   ({ type: 'wand2.snapshot', tick, players, slimes, leaderboard: [] });
 const at = (motion: Motion, now: number, ownId = '', buttons = 0) => motion.sample(now, ownId, buttons)!;
-const FRAME = 1000 / 60;
-const ownX = (scene: Scene) => scene.players.find(p => p.id === 'a')!.x;
-/** 按 60fps 连续采样 `frames` 帧（真实 rAF 的节奏），返回最后一帧。 */
-function play(motion: Motion, from: number, frames: number, buttons: (now: number) => number) {
-  let scene = at(motion, from, 'a', buttons(from));
-  for (let i = 1; i <= frames; i++) scene = at(motion, from + i * FRAME, 'a', buttons(from + i * FRAME));
-  return scene;
-}
 
 describe('Wand demo 2 客户端运动平滑', () => {
   it('没有快照时没有画面，收到一帧就先画那一帧', () => {
@@ -64,56 +56,15 @@ describe('Wand demo 2 客户端运动平滑', () => {
     expect(at(motion, 15 + INTERP_DELAY_MS).players[0].x).toBeCloseTo(103.75, 5);
   });
 
-  it('自己那格把权威位置往前推一个缓冲，别人不动', () => {
+  it('自己那格用当前按键向前推，别人不动', () => {
     const motion = new Motion();
     motion.push(snapshot(1, [player({ id: 'a', x: 100 }), player({ id: 'b', x: 300, name: '路人' })]), 0);
     const scene = at(motion, 2 * INTERP_DELAY_MS, 'a', INPUT.right);
-    // 第一次采样就把「按住」铺满一个缓冲：权威位置之后这 100ms 由本地按键补上
+    // 权威位置在 time 那一刻，之后一个缓冲的位移由本地按键补上
     expect(scene.players.find(p => p.id === 'a')!.x).toBeCloseTo(100 + SPEED * (INTERP_DELAY_MS / 1000), 5);
     expect(scene.players.find(p => p.id === 'b')!.x).toBeCloseTo(300, 5);
-    // 没按键就不推（换一个实例：同一个实例里按键历史仍是「一直按着」）
-    const idle = new Motion();
-    idle.push(snapshot(1, [player({ id: 'a', x: 100 })]), 0);
-    expect(at(idle, 2 * INTERP_DELAY_MS, 'a', 0).players.find(p => p.id === 'a')!.x).toBeCloseTo(100, 5);
-  });
-
-  it('持续按住时本地前推覆盖整个缓冲：画的是 now 而不是画面时刻', () => {
-    const motion = new Motion();
-    motion.push(snapshot(1, [player({ x: 100 })]), 0);
-    motion.push(snapshot(2, [player({ x: 107.5 })]), 50);
-    const scene = play(motion, 50, 6, () => INPUT.right);
-    // now = 150、画面时刻 50：权威位置 107.5 再补 100ms 本地位移
-    expect(ownX(scene)).toBeCloseTo(107.5 + SPEED * (INTERP_DELAY_MS / 1000), 5);
-  });
-
-  it('按下方向键当帧不会瞬移：只补按键变化那一帧起的位移', () => {
-    const motion = new Motion();
-    motion.push(snapshot(1, [player({ x: 100 })]), 0);
-    play(motion, 100, 3, () => 0);
-    const before = ownX(at(motion, 150, 'a', 0));
-    const after = ownX(at(motion, 150 + FRAME, 'a', INPUT.right));
-    // 一帧 ≈ 2.5px；拿当前按键补整个缓冲的旧实现会在这里一次加上 15px
-    expect(after - before).toBeGreaterThan(0);
-    expect(after - before).toBeLessThanOrEqual((SPEED * FRAME) / 1000 + 1e-6);
-  });
-
-  it('松开方向键当帧不会后退，也不会继续滑行', () => {
-    const motion = new Motion();
-    for (let i = 0; i <= 6; i++) motion.push(snapshot(i + 1, [player({ x: 100 + i * 7.5 })]), i * 50);
-    const held = play(motion, 50, 6, () => INPUT.right); // now = 150
-    const released = at(motion, 150 + FRAME, 'a', 0);
-    // 连续按住时画到位置就是 truth(now)；松手当帧应当停在原处（旧实现会退 12.5px）
-    expect(ownX(released)).toBeCloseTo(ownX(held), 5);
-  });
-
-  it('切换方向不会瞬移：那一帧只按一帧的位移改向', () => {
-    const motion = new Motion();
-    for (let i = 0; i <= 6; i++) motion.push(snapshot(i + 1, [player({ x: 100 + i * 7.5 })]), i * 50);
-    play(motion, 50, 6, () => INPUT.right); // now = 150
-    const before = ownX(at(motion, 150, 'a', INPUT.right));
-    const after = ownX(at(motion, 150 + FRAME, 'a', INPUT.left));
-    expect(after - before).toBeLessThan(0);
-    expect(after - before).toBeGreaterThanOrEqual((-2 * SPEED * FRAME) / 1000 - 1e-6);
+    // 没按键就不推
+    expect(at(motion, 2 * INTERP_DELAY_MS, 'a', 0).players.find(p => p.id === 'a')!.x).toBeCloseTo(100, 5);
   });
 
   it('自己前推遵守与服务端同一套状态规则：受击不动、挥剑减速、斜向不加速', () => {
@@ -125,32 +76,19 @@ describe('Wand demo 2 客户端运动平滑', () => {
     const attack = new Motion();
     attack.push(snapshot(1, [player({ attack: 300 })]), 0);
     expect(at2(attack, 2 * INTERP_DELAY_MS, INPUT.right)).toBeCloseTo(100 + SPEED * (INTERP_DELAY_MS / 1000) * 0.4, 5);
-    const straight = new Motion();
-    straight.push(snapshot(1, [player()]), 0);
     const diagonal = new Motion();
     diagonal.push(snapshot(1, [player()]), 0);
-    const s = play(straight, 100, 6, () => INPUT.right);
-    const d = play(diagonal, 100, 6, () => INPUT.right | INPUT.down);
-    expect(Math.hypot(ownX(d) - 100, d.players[0].y - 320)).toBeCloseTo(ownX(s) - 100, 5);
+    const start = diagonal.sample(2 * INTERP_DELAY_MS, 'a', 0)!.players[0];
+    const moved = diagonal.sample(2 * INTERP_DELAY_MS, 'a', INPUT.right | INPUT.down)!.players[0];
+    expect(Math.hypot(moved.x - start.x, moved.y - start.y)).toBeCloseTo(SPEED * (INTERP_DELAY_MS / 1000), 5);
   });
 
   it('自己前推用同一份碰撞：朝着碎石推不会推进石头里', () => {
     const motion = new Motion();
     // (180,160) 右侧是 TILES 的碎石列（x=5，像素 200~240）
     motion.push(snapshot(1, [player({ x: 180, y: 160 })]), 0);
-    const scene = play(motion, INTERP_DELAY_MS, 12, () => INPUT.right);
-    expect(ownX(scene)).toBeLessThanOrEqual(188);
-  });
-
-  it('朝向与走路标记按本地按键立即跟上，受击时不能走（规则同服务端 step）', () => {
-    const motion = new Motion();
-    motion.push(snapshot(1, [player({ x: 100, facing: 0, moving: false })]), 0);
-    const walking = play(motion, 100, 6, () => INPUT.right);
-    expect(walking.players[0]).toMatchObject({ facing: 2, moving: true });
-    // 受击：位置不动、不显示走路，但朝向照服务端规则照样更新
-    const hurt = new Motion();
-    hurt.push(snapshot(1, [player({ hurt: 850, facing: 0, moving: true })]), 0);
-    expect(at(hurt, 2 * INTERP_DELAY_MS, 'a', INPUT.right).players[0]).toMatchObject({ facing: 2, moving: false });
+    const x = motion.sample(2 * INTERP_DELAY_MS, 'a', INPUT.right)!.players[0].x;
+    expect(x).toBeLessThanOrEqual(188);
   });
 
   it('实体集合取较新的一帧：中途离开的立刻消失，中途加入的直接出现', () => {

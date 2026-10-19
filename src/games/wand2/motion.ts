@@ -1,4 +1,4 @@
-import { INPUT, SPEED, TICK_MS, type Facing, type Player, type Slime, type Snapshot } from '../../../shared/wand2/protocol';
+import { INPUT, SPEED, TICK_MS, type Player, type Slime, type Snapshot } from '../../../shared/wand2/protocol';
 import { move } from '../../../shared/wand2/geometry';
 
 /**
@@ -15,14 +15,9 @@ import { move } from '../../../shared/wand2/geometry';
  *      （`INTERP_DELAY_MS`）。包早到／迟到都不会改变正在播的那一段，只会改变缓冲的消费速度；
  *   2. 缓冲被吃穿（包迟到超过缓冲）时用最后两个快照的速度**外推**，最多
  *      `EXTRAPOLATE_MS`，到上限后停住而不是无限飘；
- *   3. 自己那一格额外补上「播放缓冲」这一段（`leadOwn`）：别人看到的是被缓冲拖慢的画面，
- *      自己操作的那一格不该也跟着慢半个来回 —— 以这一帧的权威位置为锚点，按**最近一个
- *      缓冲里的本地按键历史**逐步走、用同一份 `move()` 判碰撞，把位置推到 `now`。
- *      关键是「按键历史」而不是「当前按键」：拿当前按键去补整段缓冲，按下的一瞬间就会把
- *      整整一个缓冲的位移一次加上（150px/s × 100ms = 15px 的瞬移），松开再整段扣回来
- *      （先退一截、之后画面上还在继续走）。位移本来是在这 100ms 里逐渐发生的，按历史
- *      积分才会连续：按下当帧只补那几毫秒，松手当帧补到松开那一刻为止。朝向与走路标记也
- *      在同一步按按键更新，免得位置已经开始走了、精灵还站着不动。
+ *   3. 自己那一格额外用当前按键向前推（`leadOwn`）：别人看到的是被缓冲拖慢的画面，
+ *      自己操作的那一格不该也跟着慢半个来回 —— 本地按键状态 + 同一份 `move()` 碰撞，
+ *      从权威位置外推 `INTERP_DELAY_MS` 就是输入延迟的补偿。
  *
  * 只影响「播放」：不修改服务端权威状态，也不预测其他玩家。外推用最后两帧的真实速度，
  * 不是凭空猜；上限之后停住，所以掉线/长卡顿时画面会停在最后位置而不是越飘越远。
@@ -38,12 +33,6 @@ export const MAX_SAMPLES = 8;
 interface Sample {
   snapshot: Snapshot;
   at: number;
-}
-
-/** 本地按键状态变化；`at` 是这个状态开始生效的采样时刻。 */
-interface ButtonFrame {
-  at: number;
-  buttons: number;
 }
 
 /** 某一帧该画的世界：位置已经平滑，其余字段取插值区间起点那一刻的权威状态。 */
@@ -67,10 +56,6 @@ function find<T extends { id: string | number }>(list: T[], id: string | number)
 
 export class Motion {
   private samples: Sample[] = [];
-  /** 最近一个缓冲内的按键变化，用来把自己那格从权威位置连续地推到 `now`。 */
-  private frames: ButtonFrame[] = [];
-  private lastNow: number | null = null;
-  private lastButtons = 0;
 
   /** 收下一帧权威快照。`at` 是**到达时刻**（`performance.now()`），同一条连接上单调递增。 */
   push(snapshot: Snapshot, at: number) {
@@ -81,9 +66,6 @@ export class Motion {
   /** 断开 / 重连时清空：缓冲里是上一条连接的世界，混进新连接会画出鬼影。 */
   clear() {
     this.samples = [];
-    this.frames = [];
-    this.lastNow = null;
-    this.lastButtons = 0;
   }
 
   get size() {
@@ -98,7 +80,6 @@ export class Motion {
    * @param buttons 当前按键位（`INPUT` 的按位或），用于本地向前推
    */
   sample(now: number, ownId: string, buttons: number): Scene | null {
-    this.trackInput(now, buttons);
     const samples = this.samples;
     if (!samples.length) return null;
     const time = now - INTERP_DELAY_MS;
@@ -138,77 +119,33 @@ export class Motion {
     });
 
     // 自己那格向前推：权威位置只到 time 为止，而玩家看到的是 now —— 这中间的
-    // INTERP_DELAY_MS 用这段时间里的本地按键补上，操作才有「跟手」的感觉。
+    // INTERP_DELAY_MS 用当前按键补上，操作才有「跟手」的感觉。
     if (ownId) {
       const own = find(players, ownId);
-      if (own) this.leadOwn(own, time, a.at, now);
+      if (own) this.leadOwn(own, time, a.at, now, buttons);
     }
     return { players, slimes, time, at: a.at };
   }
 
   /**
-   * 记下按键状态的变化。
+   * 用本地按键把权威位置推到 `now`。
    *
-   * 变化边界记在**上一次采样时刻**：两次 rAF 之间不知道按键具体在哪一刻按下，按「上一帧
-   * 就已经按下」算 —— 代价是最多提前一帧（60fps 下 2.5px），换来按下当帧就有位移。第一次
-   * 采样时把状态往前铺满一个缓冲，否则「刷新页面时正按着键」会被当成刚刚按下。
+   * 规则与服务端 `shared/wand2/world.ts` 的 step 保持一致（速度、斜向归一化、
+   * 攻击时 0.4 倍、受击 650ms 内不能动），碰撞直接用同一份 `move()` ——
+   * 各写一份的话，客户端会把自己推进服务端不认的墙里，然后每次快照都被拽回来。
+   * `attack` / `hurt` 是「剩余毫秒」，按 `time - at` 扣掉已经过去的部分。
    */
-  private trackInput(now: number, buttons: number) {
-    if (this.lastNow === null) {
-      this.lastButtons = buttons;
-      this.lastNow = now;
-      this.frames.push({ at: now - INTERP_DELAY_MS, buttons });
-      return;
-    }
-    if (buttons !== this.lastButtons) {
-      this.frames.push({ at: this.lastNow, buttons });
-      this.lastButtons = buttons;
-    }
-    this.lastNow = now;
-    // 只需要覆盖一个播放缓冲再加一点边界；长时间挂机别把数组攒大。
-    const stale = now - INTERP_DELAY_MS - TICK_MS * 4;
-    while (this.frames.length > 1 && this.frames[1].at <= stale) this.frames.shift();
-  }
-
-  /**
-   * 把权威位置从 `time` 推到 `now`：按这一段的**本地按键历史**逐步走。
-   *
-   * 规则与服务端 `shared/wand2/world.ts` 的 step 保持一致（速度、斜向归一化、挥剑时
-   * 0.4 倍、受击 650ms 内不能动，碰撞直接用同一份 `move()`）—— 各写一份的话，客户端会
-   * 把自己推进服务端不认的墙里，然后每次快照都被拽回来。`attack` / `hurt` 是「剩余
-   * 毫秒」，按快照时刻的值扣到当前；每一步先扣受击再判能不能走，与 step 的顺序一致。
-   */
-  private leadOwn(own: Player, time: number, at: number, now: number) {
+  private leadOwn(own: Player, time: number, at: number, now: number, buttons: number) {
     const elapsed = Math.max(0, time - at);
-    let attack = Math.max(0, own.attack - elapsed);
-    let hurt = Math.max(0, own.hurt - elapsed);
-    let cursor = time;
-    let buttons = this.frames[0]?.buttons ?? 0;
-    const advance = (ms: number) => {
-      if (ms <= 0) return;
-      hurt = Math.max(0, hurt - ms);
-      const dx = Number(!!(buttons & INPUT.right)) - Number(!!(buttons & INPUT.left));
-      const dy = Number(!!(buttons & INPUT.down)) - Number(!!(buttons & INPUT.up));
-      if ((dx || dy) && hurt < 650) {
-        const norm = Math.hypot(dx, dy);
-        const distance = ((SPEED * ms) / 1000) * (attack > 0 ? 0.4 : 1);
-        move(own, (dx / norm) * distance, (dy / norm) * distance);
-      }
-      attack = Math.max(0, attack - ms);
-    };
-    for (const frame of this.frames) {
-      if (frame.at <= time) { buttons = frame.buttons; continue; }
-      if (frame.at >= now) break;
-      advance(frame.at - cursor);
-      cursor = frame.at;
-      buttons = frame.buttons;
-    }
-    advance(now - cursor);
-    // 朝向与走路标记也按本地按键立即跟上（规则同 step）：位置已经开始走了、精灵却还要等
-    // 下一帧快照才切走路帧，看着像在冰面上滑。受击剩余时间用积分后的值，与服务端一致。
+    const attack = Math.max(0, own.attack - elapsed);
+    const hurt = Math.max(0, own.hurt - elapsed);
     const dx = Number(!!(buttons & INPUT.right)) - Number(!!(buttons & INPUT.left));
     const dy = Number(!!(buttons & INPUT.down)) - Number(!!(buttons & INPUT.up));
-    if (!attack && (dx || dy)) own.facing = (Math.abs(dx) > Math.abs(dy) ? dx > 0 ? 2 : 1 : dy > 0 ? 0 : 3) as Facing;
-    own.moving = !!(dx || dy) && hurt < 650;
+    if ((!dx && !dy) || hurt >= 650) return;
+    // 只补到「现在」为止，且不超过一个缓冲 —— 否则刚连上或掉帧时会一次冲出去一大截。
+    const span = Math.max(0, Math.min(now - time, INTERP_DELAY_MS));
+    const norm = Math.hypot(dx, dy);
+    const distance = ((SPEED * span) / 1000) * (attack > 0 ? 0.4 : 1);
+    move(own, (dx / norm) * distance, (dy / norm) * distance);
   }
 }
