@@ -10,6 +10,8 @@
   --font-brand: 'Outfit', var(--font-body);
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --font-numeric: 'Raricy Numeric', var(--font-body);
+  // Cattca 书页模式的衬线正文；字体栈集中在这里，页面里只引用令牌。
+  --font-reader-serif: 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', SimSun, serif;
 }
 
 :root,

@@ -103,6 +103,11 @@
     font-size: 0.95em;
   }
 
+  .cattca-reader__table-scroll {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
   th,
   td {
     padding: 6px 9px;
@@ -143,20 +148,32 @@
   flex-direction: column;
   min-height: 420px;
   height: clamp(420px, 68vh, 760px);
+  height: clamp(420px, 68dvh, 760px);
   color: var(--color-text-primary);
   font-family: var(--font-body);
 }
 
 // 书页模式专属的纸面颜色。用 color-mix 从站点令牌里调出暖纸色，
-// 深色主题下也会跟着令牌走；不支持 color-mix 的浏览器回退到卡片底色。
+// 深色主题下也会跟着令牌走。不支持 color-mix 时先用普通令牌兜底
+// （不能只写两条同名 background-color：第二条无效会被当成 invalid at
+// computed-value time，结果是 transparent，而不是回退到卡片色）。
 .cattca-reader--book {
-  --reader-paper-bg: color-mix(in srgb, var(--color-background-card) 92%, #e8d8b5);
-  --reader-paper-rule: color-mix(in srgb, var(--color-text-secondary) 46%, transparent);
-  --reader-gutter: color-mix(in srgb, var(--color-text-secondary) 28%, transparent);
+  --reader-paper-bg: var(--color-background-card);
+  --reader-paper-rule: var(--color-border);
+  --reader-gutter: var(--color-border);
+}
+
+@supports (background: color-mix(in srgb, red, blue)) {
+  .cattca-reader--book {
+    --reader-paper-bg: color-mix(in srgb, var(--color-background-card) 92%, #e8d8b5);
+    --reader-paper-rule: color-mix(in srgb, var(--color-text-secondary) 46%, transparent);
+    --reader-gutter: color-mix(in srgb, var(--color-text-secondary) 28%, transparent);
+  }
 }
 
 // 工具箱的游戏面板是 flex 容器：阅读器吃掉剩余高度，不额外撑高页面。
-.cattca-tool__panel--game .cattca-reader {
+// 全屏时这条必须让位：它的 min-height 是 0-2-0，会压过 --fullscreen 的 0-1-0。
+.cattca-tool__panel--game .cattca-reader:not(.cattca-reader--fullscreen) {
   flex: 1 1 auto;
   height: auto;
   min-height: 420px;
@@ -169,7 +186,11 @@
   height: 100%;
   height: 100dvh;
   min-height: 0;
-  padding: $space-4;
+  padding:
+    calc(#{$space-4} + var(--safe-top))
+    calc(#{$space-4} + var(--safe-right))
+    calc(#{$space-4} + var(--safe-bottom))
+    calc(#{$space-4} + var(--safe-left));
   background: var(--color-background-page);
 }
 
@@ -508,9 +529,9 @@
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
-  scrollbar-color: var(--color-border) transparent;
+  // 站点统一由 base/_root.scss 的 ::-webkit-scrollbar 画滚动条；这里刻意不写
+  // scrollbar-color / scrollbar-width（它们一生效，整套圆角 hover 样式就失效了）。
   scrollbar-gutter: stable;
-  scrollbar-width: thin;
 }
 
 // 量高度的隐藏页：与最终页同一套排版，但高度自动。
@@ -524,7 +545,7 @@
 }
 
 .cattca-reader--book .cattca-reader__page-content {
-  font-family: 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', SimSun, serif;
+  font-family: var(--font-reader-serif);
   font-size: clamp(1.02rem, 1.5vw, 1.14rem);
   line-height: 2;
   text-align: justify;
@@ -552,10 +573,6 @@
   margin: 0 auto;
   padding-top: 4px;
   border-top: 1px solid var(--reader-paper-rule);
-}
-
-.cattca-reader__page-number {
-  opacity: 0.75;
 }
 
 .cattca-reader--book .cattca-reader__page-number::before {
@@ -626,7 +643,7 @@
   border: none;
   border-radius: $radius-max;
   outline: none;
-  background: var(--color-background-subtle);
+  background: var(--color-background-page);
   color: var(--color-text-primary);
   font-size: 0.82rem;
   text-align: center;
@@ -752,22 +769,32 @@
   }
 }
 
+// 选项面板/结束条都做成浮层：它们进文档流会把 stage 压矮，而 stage 高度是分页
+// 依据 —— 面板一出现，最后几行就被挤到页面内滚动条下面。浮层不改变 stage 高度。
+// bottom 让开底部的状态栏（40px）与翻页栏（约 46px）。
 .cattca-reader__choice-sheet {
-  flex: 0 0 auto;
+  position: absolute;
+  right: 50%;
+  bottom: calc(40px + 46px + 8px);
+  z-index: 40;
   width: min(720px, calc(100% - 24px));
   max-height: min(42vh, 360px);
-  margin: 8px auto 0;
   padding: $space-4;
   overflow-y: auto;
   border-radius: $radius-field;
   background: var(--color-background-card);
-  box-shadow: none;
+  box-shadow: var(--shadow-card-brand);
+  transform: translateX(50%);
 }
 
 .cattca-reader--fullscreen .cattca-reader__choice-sheet {
   width: min(820px, calc(100% - 48px));
   max-height: min(40vh, 380px);
-  margin-top: $space-3;
+  bottom: calc(40px + 46px + 8px + #{$space-4} + var(--safe-bottom));
+}
+
+.cattca-reader--fullscreen .cattca-reader__end {
+  bottom: calc(40px + 46px + 8px + #{$space-4} + var(--safe-bottom));
 }
 
 .cattca-reader__choice-head {
@@ -848,7 +875,7 @@
   border: none;
   border-radius: $radius-max;
   outline: none;
-  background: var(--color-background-subtle);
+  background: var(--color-background-page);
   color: var(--color-text-primary);
   font-size: 0.95rem;
   transition: box-shadow 0.2s ease;
@@ -869,17 +896,20 @@
 // ---- 结束 / 错误 / 占位 ---- //
 
 .cattca-reader__end {
+  position: absolute;
+  right: 50%;
+  bottom: calc(40px + 46px + 8px);
+  z-index: 35;
   display: flex;
-  flex: 0 0 auto;
   align-items: center;
   justify-content: center;
   gap: $space-2;
-  margin-top: 4px;
-  padding: 0;
-  background: transparent;
-  box-shadow: none;
+  padding: 4px 12px;
+  border-radius: $radius-max;
+  background: var(--color-background-page);
   color: var(--color-text-secondary);
   font-size: 0.8rem;
+  transform: translateX(50%);
 }
 
 .cattca-reader__placeholder {
@@ -936,16 +966,40 @@
   overflow-wrap: anywhere;
 }
 
+// 键盘提示只在有键盘的设备上出现；触屏改用状态栏里的「显示全文」按钮。
+@media (hover: none) {
+  .cattca-reader__statusbar .cattca-reader__status-keys {
+    display: none;
+  }
+}
+
+.cattca-reader__sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  border: 0;
+  white-space: nowrap;
+}
+
 // ---- 响应式 ---- //
 
 @include bp.down(bp.$bp-md) {
   .cattca-reader {
     height: clamp(420px, 72vh, 640px);
+    height: clamp(420px, 72dvh, 640px);
   }
 
   .cattca-reader--fullscreen {
     height: 100%;
-    padding: $space-2;
+    padding:
+      calc(#{$space-2} + var(--safe-top))
+      calc(#{$space-2} + var(--safe-right))
+      calc(#{$space-2} + var(--safe-bottom))
+      calc(#{$space-2} + var(--safe-left));
   }
 
   .cattca-reader--book .cattca-reader__page {
@@ -999,13 +1053,16 @@
   .cattca-reader__choice-sheet {
     width: calc(100% - 12px);
     max-height: min(46vh, 320px);
-    margin-top: 6px;
     padding: $space-3;
   }
 
   .cattca-reader--fullscreen .cattca-reader__choice-sheet {
     width: calc(100% - 16px);
-    margin-top: 6px;
+    bottom: calc(40px + 46px + 8px + #{$space-2} + var(--safe-bottom));
+  }
+
+  .cattca-reader--fullscreen .cattca-reader__end {
+    bottom: calc(40px + 46px + 8px + #{$space-2} + var(--safe-bottom));
   }
 
   .cattca-reader__logs {

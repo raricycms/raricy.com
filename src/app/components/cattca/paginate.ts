@@ -22,9 +22,12 @@ export interface PageMetrics {
   fontSize?: string;
   lineHeight?: string;
   fontFamily?: string;
+  /** 块间距与对齐方式；同样从真实页面抄来，避免 SCSS 改了分页还按老值量。 */
+  gap?: string;
+  textAlign?: string;
 }
 
-const MIN_PAGE_SIZE = 120;
+const MIN_PAGE_SIZE = 80;
 
 /** 页码换算：把任意页码夹到 [0, total-1]。 */
 export function clampPage(index: number, total: number): number {
@@ -80,10 +83,11 @@ function makeMeasure(width: number, metrics: PageMetrics): HTMLDivElement {
   measure.style.pointerEvents = 'none';
   measure.style.display = 'flex';
   measure.style.flexDirection = 'column';
-  measure.style.gap = BLOCK_GAP;
+  measure.style.gap = metrics.gap ?? BLOCK_GAP;
   if (metrics.fontSize) measure.style.fontSize = metrics.fontSize;
   if (metrics.lineHeight) measure.style.lineHeight = metrics.lineHeight;
   if (metrics.fontFamily) measure.style.fontFamily = metrics.fontFamily;
+  if (metrics.textAlign) measure.style.textAlign = metrics.textAlign;
   document.body.appendChild(measure);
   return measure;
 }
@@ -104,7 +108,17 @@ function normalizeBlocks(root: ParentNode): HTMLElement[] {
   const add = (el: HTMLElement) => {
     if (el.tagName === 'SCRIPT' || el.tagName === 'STYLE') return;
 
+    // 宽表格不能撑破页面：套一层横向滚动容器。表格本身保持 table 布局。
+    if (el.tagName === 'TABLE') {
+      const wrap = doc.createElement('div');
+      wrap.className = 'cattca-reader__table-scroll';
+      wrap.appendChild(el.cloneNode(true));
+      blocks.push(wrap);
+      return;
+    }
+
     // 列表：一个 li 一个块，这样可以在条目之间换页。
+    // 每个条目被拆成独立的 <ol>，必须写回 start，否则第 5–10 项会重新从 1 编号。
     if (el.tagName === 'UL' || el.tagName === 'OL') {
       const items = Array.from(el.children).filter((child) => child.tagName === 'LI');
       const ordered = el.tagName === 'OL';
@@ -117,8 +131,6 @@ function normalizeBlocks(root: ParentNode): HTMLElement[] {
       for (let index = 0; index < items.length; index += 1) {
         const list = el.cloneNode(false) as HTMLElement;
         if (ordered) {
-          // 每个条目被拆成独立的 <ol>；不写 start 会从 1 重新编号，
-          // 第 5–10 项也会显示成 1–6。
           list.setAttribute('start', String(reversed ? base - index : base + index));
         }
         list.appendChild(items[index].cloneNode(true));
@@ -217,11 +229,20 @@ function sliceInto(target: HTMLElement, from: number, to: number): HTMLElement {
   return wrapper;
 }
 
-function wrapSlice(block: HTMLElement, target: HTMLElement, slice: HTMLElement): HTMLElement {
+function wrapSlice(
+  block: HTMLElement,
+  target: HTMLElement,
+  slice: HTMLElement,
+  continuation = false,
+): HTMLElement {
   if (target === block) return slice;
 
   if (target.parentElement === block) {
     const outer = block.cloneNode(false) as HTMLElement;
+    if (continuation && (block.tagName === 'OL' || block.tagName === 'UL')) {
+      // 同一条目被切成两页：续页不重复列表标记（OL 会再印一个序号，UL 会再印一个点）。
+      outer.style.listStyle = 'none';
+    }
     outer.appendChild(slice);
     return outer;
   }
@@ -281,7 +302,7 @@ function splitBlock(
   if (best <= 0 || best >= total) return null;
 
   const left = wrapSlice(block, target, sliceInto(target, 0, best));
-  const right = wrapSlice(block, target, sliceInto(target, best, total));
+  const right = wrapSlice(block, target, sliceInto(target, best, total), true);
   if (!textOf(left).trim() || !textOf(right).trim()) return null;
   return { left, right };
 }

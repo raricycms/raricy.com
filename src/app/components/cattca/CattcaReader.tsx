@@ -71,15 +71,20 @@ export default function CattcaReader({
   onRestart,
   onMetricsChange,
   onSpreadChange,
+  onRelayout,
 }: ReaderProps) {
   const stageRef = useRef<HTMLDivElement>(null);
   const choiceListRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const pageInputRef = useRef<HTMLInputElement>(null);
   const shiftHeldRef = useRef(false);
   const ctrlComboRef = useRef(false);
+  const ctrlHeldRef = useRef(false);
+  const ctrlDirtyRef = useRef(false);
+  const ctrlDownAtRef = useRef(0);
   const lastMetricsRef = useRef('');
 
-  const [stageWidth, setStageWidth] = useState(0);
+  const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
   const [viewportWidth, setViewportWidth] = useState(0);
   const [pageText, setPageText] = useState('1');
   const [logsOpen, setLogsOpen] = useState(false);
@@ -87,10 +92,10 @@ export default function CattcaReader({
   const [choiceCollapsed, setChoiceCollapsed] = useState(false);
 
   const total = pages.length;
-  // 对开必须由**当前实际可用宽度**决定，不能只看 fullscreen：
-  // 手机全屏只有 390px，强行双页会把两页压成各 180px，正文根本没法读。
-  const spread = mode === 'book' && stageWidth >= 900;
-  const canSpread = (fullscreen ? stageWidth : viewportWidth) >= 900;
+  // 对开必须由**当前实际可用宽度**决定，不能只看 fullscreen：手机全屏只有
+  // 390px，强行双页会把两页压成各 ~145px，正文根本没法读。
+  const spread = mode === 'book' && stageSize.width >= 900;
+  const canSpread = (fullscreen ? stageSize.width : viewportWidth) >= 900;
   const visibleIndexes = visiblePageIndexes(pageIndex, total, spread);
   const visiblePages = visibleIndexes
     .map((index) => pages[index])
@@ -109,16 +114,21 @@ export default function CattcaReader({
   const interactionOpenRef = useRef(false);
   interactionOpenRef.current = interactionOpen;
 
-  // 阶段宽度 → 对开页判定（工具页半栏不强行双页；宽屏/全屏才双页）。
+  // 阶段尺寸 → 对开页判定（工具页半栏不强行双页；宽屏才双页；手机全屏同样
+  // 只有 390px 宽，不能因为 fullscreen 就双页）。
   useEffect(() => {
     const stage = stageRef.current;
     if (!stage || typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver((entries) => {
-      const width = entries[0]?.contentRect.width ?? stage.getBoundingClientRect().width;
-      setStageWidth(width);
+      const rect = entries[0]?.contentRect;
+      setStageSize({
+        width: rect?.width ?? stage.getBoundingClientRect().width,
+        height: rect?.height ?? stage.getBoundingClientRect().height,
+      });
     });
     observer.observe(stage);
-    setStageWidth(stage.getBoundingClientRect().width);
+    const rect = stage.getBoundingClientRect();
+    setStageSize({ width: rect.width, height: rect.height });
     return () => observer.disconnect();
   }, []);
 
@@ -136,34 +146,95 @@ export default function CattcaReader({
   }, [spread, onSpreadChange]);
 
   // 量正文可用尺寸；分页和最终页面共用同一套排版，所以这里的宽高就是分页依据。
+  // 用 clientWidth/clientHeight 而不是 getBoundingClientRect：正文容器有
+  // `scrollbar-gutter: stable`，border box 比真正能排字的宽度多一个滚动条槽
+  // （Chromium 上约 10px），拿 rect 会让每页多塞一行。
   const reportMetrics = useCallback(() => {
+    // 输入/选项面板打开时不要重排：移动端软键盘弹起会改变可视高度，把正在输入的
+    // 那一页当场重分页会明显跳一下。关掉面板后 interactionOpen 变化会再量一次。
+    if (interactionOpenRef.current) return;
     const stage = stageRef.current;
     if (!stage) return;
     const el =
       stage.querySelector<HTMLElement>('.cattca-reader__probe .cattca-reader__page-content') ??
       stage.querySelector<HTMLElement>('.cattca-reader__page-content');
     if (!el) return;
-    const rect = el.getBoundingClientRect();
-    if (rect.width < 120 || rect.height < 120) return;
+    const width = el.clientWidth;
+    const height = el.clientHeight;
+    if (width < 80 || height < 80) return;
     const style = window.getComputedStyle(el);
     const fontSize = style.fontSize;
     const lineHeight = style.lineHeight;
     const fontFamily = style.fontFamily;
-    const key = `${Math.round(rect.width)}x${Math.round(rect.height)}|${fontSize}|${lineHeight}|${fontFamily}`;
+    const gap = style.rowGap;
+    const textAlign = style.textAlign;
+    const key = `${width}x${height}|${fontSize}|${lineHeight}|${fontFamily}|${gap}|${textAlign}`;
     if (key === lastMetricsRef.current) return;
     lastMetricsRef.current = key;
     onMetricsChange({
-      width: Math.round(rect.width),
-      height: Math.round(rect.height),
+      width,
+      height,
       fontSize,
       lineHeight,
       fontFamily,
+      gap: gap === 'normal' ? undefined : gap,
+      textAlign,
     });
   }, [onMetricsChange]);
 
   useLayoutEffect(() => {
     reportMetrics();
-  }, [reportMetrics, pageIndex, pages.length, mode, fullscreen, stageWidth]);
+  }, [reportMetrics, pageIndex, pages.length, mode, fullscreen, stageSize.width, stageSize.height, interactionOpen]);
+
+  // 图片在分页时还没解码完的话，高度会被低估；等它们真正占据布局后重新分页。
+  // 即使 image.complete 为真也排一次检查：分页时量的是隐藏 measure 里的副本，
+  // 它可能比当前渲染页更早/更晚知道真实高度。
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    let timer: number | null = null;
+    const schedule = () => {
+      if (timer != null) window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        timer = null;
+        onRelayout();
+      }, 200);
+    };
+    const images = Array.from(stage.querySelectorAll<HTMLImageElement>('img'));
+    for (const image of images) {
+      if (!image.complete) {
+        image.addEventListener('load', schedule);
+        image.addEventListener('error', schedule);
+      }
+    }
+    if (images.length > 0) schedule();
+    return () => {
+      if (timer != null) window.clearTimeout(timer);
+      for (const image of images) {
+        image.removeEventListener('load', schedule);
+        image.removeEventListener('error', schedule);
+      }
+    };
+  }, [pages, pageIndex, onRelayout]);
+
+  // 字体（尤其书页的衬线字体）加载完成后行高会变；字体集一旦可用就重排一次。
+  // fonts.ready 只代表「当前这一批」结束，之后新增的字体不会再触发，所以同时听
+  // loadingdone。
+  useEffect(() => {
+    if (typeof document === 'undefined' || !document.fonts) return;
+    let cancelled = false;
+    const relayout = () => {
+      if (!cancelled) onRelayout();
+    };
+    document.fonts.ready.then(relayout).catch(() => {
+      // 字体加载失败不阻塞阅读。
+    });
+    document.fonts.addEventListener('loadingdone', relayout);
+    return () => {
+      cancelled = true;
+      document.fonts.removeEventListener('loadingdone', relayout);
+    };
+  }, [onRelayout]);
 
   // 窗口/手机旋转导致高度变化时重新量高、重新分页；交互面板打开期间跳过，
   // 否则移动端软键盘弹起会把正在输入的页面重排掉。
@@ -238,17 +309,6 @@ export default function CattcaReader({
     }
   }, [showChoices, pending]);
 
-  // 输入/选项面板现在占的是正文下方的独立空间，不再浮在页面上。舞台因此变矮，
-  // 把可见页滚到底，保证最后几行正文在面板上方而不是被面板挡住。
-  useEffect(() => {
-    if (!showChoices) return;
-    const stage = stageRef.current;
-    if (!stage) return;
-    stage.querySelectorAll<HTMLElement>('.cattca-reader__page-content').forEach((el) => {
-      el.scrollTop = el.scrollHeight;
-    });
-  }, [showChoices, choiceOpen, inputOpen, pageIndex]);
-
   const goPrev = useCallback(() => {
     onPageChange(movePage(pageIndex, -1, total, spread));
   }, [onPageChange, pageIndex, total, spread]);
@@ -270,13 +330,15 @@ export default function CattcaReader({
         return;
       }
       if (e.key === 'Control') {
-        if (!isTypingTarget(e.target)) {
-          ctrlComboRef.current = false;
-        }
+        ctrlHeldRef.current = true;
+        ctrlComboRef.current = false;
+        ctrlDirtyRef.current = false;
+        ctrlDownAtRef.current = performance.now();
         return;
       }
       if (e.ctrlKey || e.metaKey) {
         ctrlComboRef.current = true;
+        ctrlDirtyRef.current = true;
         return;
       }
       if (isTypingTarget(e.target)) return;
@@ -314,25 +376,52 @@ export default function CattcaReader({
       }
       if (e.key === 'Control') {
         const combo = ctrlComboRef.current;
+        const dirty = ctrlDirtyRef.current;
+        const wasHeld = ctrlHeldRef.current;
+        const held = performance.now() - ctrlDownAtRef.current;
+        ctrlHeldRef.current = false;
         ctrlComboRef.current = false;
-        if (!combo && !isTypingTarget(e.target)) {
+        ctrlDirtyRef.current = false;
+        // Ctrl+滚轮缩放、Ctrl+点击、Ctrl+L/Tab 这类「Ctrl 只是组合键的一部分」不算
+        // 跳过：只有单独、稳定按下一小会儿才补完。否则任何一次误按都会把整段文字
+        // 直接显示出来，甚至把选项面板弹出来。
+        if (
+          wasHeld &&
+          !combo &&
+          !dirty &&
+          held >= 80 &&
+          !isTypingTarget(e.target)
+        ) {
           e.preventDefault();
           onCompleteSegment();
         }
       }
     };
 
+    const markCtrlDirty = () => {
+      if (ctrlHeldRef.current) ctrlDirtyRef.current = true;
+    };
+    const onWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || ctrlHeldRef.current) ctrlDirtyRef.current = true;
+    };
+
     const onBlur = () => {
       shiftHeldRef.current = false;
       ctrlComboRef.current = false;
+      ctrlHeldRef.current = false;
+      ctrlDirtyRef.current = false;
     };
 
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('pointerdown', markCtrlDirty, true);
+    window.addEventListener('wheel', onWheel, { passive: true });
     window.addEventListener('blur', onBlur);
     return () => {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('pointerdown', markCtrlDirty, true);
+      window.removeEventListener('wheel', onWheel);
       window.removeEventListener('blur', onBlur);
     };
   }, [
@@ -354,8 +443,9 @@ export default function CattcaReader({
     if (!Number.isFinite(n)) return;
     const index = clampPage(Math.trunc(n) - 1, total);
     onPageChange(spread ? spreadStart(index, true) : index);
-    // 页码输入框保持焦点时按 Ctrl 会被当成“正在输入”，跳页后主动失焦。
-    event.currentTarget.querySelector<HTMLInputElement>('.cattca-reader__page-input')?.blur();
+    // 跳页后把焦点还给页面，否则 ←/→ 会被数字输入框吃掉，翻页键盘直接失效。
+    setPageText(String(index + 1));
+    pageInputRef.current?.blur();
   };
 
   const pageLabel =
@@ -369,16 +459,16 @@ export default function CattcaReader({
     'cattca-reader',
     `cattca-reader--${mode}`,
     fullscreen ? 'cattca-reader--fullscreen' : '',
-    spread ? 'cattca-reader--spread' : 'cattca-reader--one',
-    status === 'idle' ? 'cattca-reader--idle' : '',
-    status === 'ended' ? 'cattca-reader--ended' : '',
-    status === 'error' ? 'cattca-reader--error' : '',
+    spread ? 'cattca-reader--spread' : '',
   ]
     .filter(Boolean)
     .join(' ');
 
   return (
     <div className={rootClass}>
+      <span className="cattca-reader__sr-only" aria-live="polite">
+        {total > 0 ? `第 ${pageIndex + 1} 页，共 ${total} 页` : ''}
+      </span>
       {variant === 'tool' && !fullscreen && (
         <div className="cattca-reader__panel-header">
           <h2 className="story-cattca__panel-title">游戏运行区</h2>
@@ -617,12 +707,21 @@ export default function CattcaReader({
                   <kbd>Ctrl</kbd> 跳过
                 </span>
               </span>
+              {activePageKey && (
+                <button
+                  type="button"
+                  className="cattca-reader__hint-link"
+                  onClick={onCompleteSegment}
+                >
+                  显示全文
+                </button>
+              )}
             </>
           )}
         </div>
 
         {choiceOpen && pending?.kind === 'choice' && (
-          <div className="cattca-reader__choice-sheet" role="dialog" aria-label="选择">
+          <div className="cattca-reader__choice-sheet" role="group" aria-label="选择">
             <div className="cattca-reader__choice-head">
               <div className="cattca-reader__choice-title">你要怎么做？</div>
               <button
@@ -681,6 +780,7 @@ export default function CattcaReader({
           </label>
           <input
             id="cattca-reader-page"
+            ref={pageInputRef}
             className="cattca-reader__page-input numeric"
             type="number"
             min={1}

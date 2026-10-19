@@ -48,10 +48,13 @@ function revealContainerOf(node: Text, root: HTMLElement): HTMLElement | null {
     current = current.parentElement;
   }
   if (container) return container;
-  // 兜底：取 root 的顶层子元素。
+  // 兜底：取 root 的顶层子元素。若文字节点直接挂在 root 下（当前分页管线不会这样
+  // 产出，但以后改了 normalizeBlocks 就可能），不能继续往上爬 —— 那会把
+  // documentElement 当成「显示单元」藏起来。
   let child: HTMLElement | null = node.parentElement;
-  while (child && child.parentElement !== root) child = child.parentElement;
-  return child;
+  if (!child || child === root) return null;
+  while (child.parentElement && child.parentElement !== root) child = child.parentElement;
+  return child.parentElement === root ? child : null;
 }
 
 interface TypewriterProps {
@@ -94,7 +97,10 @@ export default function Typewriter({
   const finish = () => {
     if (doneRef.current) return;
     stop();
-    if (rootRef.current) delete rootRef.current.dataset.typing;
+    if (rootRef.current) {
+      delete rootRef.current.dataset.typing;
+      rootRef.current.style.visibility = '';
+    }
     for (const view of viewsRef.current) {
       if (view.node.nodeValue !== view.full) view.node.nodeValue = view.full;
     }
@@ -122,6 +128,10 @@ export default function Typewriter({
       root.innerHTML = html;
       appliedHtmlRef.current = html;
     }
+
+    // 整页先藏起来：只隐藏「有文字的容器」时，右页/等待页里的 <img>、<hr> 和
+    // 表格边框会提前露出来，看着像排版坏了。等这一页真正开始打字再显示。
+    root.style.visibility = 'hidden';
 
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
     const views: TextNodeView[] = [];
@@ -155,6 +165,7 @@ export default function Typewriter({
     const restore = () => {
       stop();
       delete root.dataset.typing;
+      root.style.visibility = '';
       for (const container of containers.keys()) container.style.visibility = '';
       // StrictMode 会 mount → unmount → remount；若这里不还原，第二次 mount
       // 读到的文本节点已经被清空，会被误判成「空页面」。
@@ -163,12 +174,14 @@ export default function Typewriter({
 
     if (total === 0) {
       doneRef.current = true;
+      root.style.visibility = '';
       onDone(pageKey);
       return restore;
     }
 
     if (initiallyDone || reducedMotion) {
       doneRef.current = true;
+      root.style.visibility = '';
       onDone(pageKey);
       return restore;
     }
@@ -191,6 +204,7 @@ export default function Typewriter({
 
     const tick = (now: number) => {
       if (doneRef.current) return;
+      if (root.style.visibility === 'hidden') root.style.visibility = '';
       const delta = Math.max(0, (now - last) / 1000);
       last = now;
       const speed = TYPEWRITER_CPS * (shiftHeld.current ? 8 : 1);

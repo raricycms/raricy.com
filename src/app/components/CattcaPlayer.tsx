@@ -123,6 +123,38 @@ function pageKeyAt(segments: ReaderSegment[], index: number): string | null {
   return null;
 }
 
+/**
+ * 重排后把「已读」状态迁移到新的分页上。
+ *
+ * 不能直接清空：改字号 / 切模式 / 全屏 / 窗口缩放都会重排，清空会让眼前这一页
+ * 整段重新打字，选项面板也会因为「最后一页还没看过」而消失。按每段已读页数
+ * 等比换算，已读完整的段继续保持完整。
+ */
+function remapRevealed(
+  previousSegments: ReaderSegment[],
+  nextSegments: ReaderSegment[],
+  previous: Set<string>,
+): Set<string> {
+  const next = new Set<string>();
+  nextSegments.forEach((segment, index) => {
+    const before = previousSegments[index];
+    if (!before || before.pages.length === 0) return;
+
+    let seen = 0;
+    for (let i = 0; i < before.pages.length; i += 1) {
+      if (previous.has(`${before.id}:${i}`)) seen += 1;
+    }
+    if (seen === 0) return;
+
+    const count =
+      seen >= before.pages.length
+        ? segment.pages.length
+        : Math.min(segment.pages.length, Math.max(1, Math.round((seen / before.pages.length) * segment.pages.length)));
+    for (let i = 0; i < count; i += 1) next.add(`${segment.id}:${i}`);
+  });
+  return next;
+}
+
 // ── 组件 ────────────────────────────────────────────────────────────────────
 
 export type Variant = 'story' | 'tool';
@@ -285,17 +317,26 @@ const CattcaPlayer = forwardRef<CattcaPlayerHandle, CattcaPlayerProps>(function 
       const target = start + Math.min(pageInSegment, next[currentSegment].pages.length - 1);
       commitPageIndex(target);
 
-      const empty = new Set<string>();
-      revealedRef.current = empty;
-      setRevealed(empty);
+      const nextRevealed = remapRevealed(current, next, revealedRef.current);
+      revealedRef.current = nextRevealed;
+      setRevealed(nextRevealed);
     },
     [commitPageIndex],
   );
 
+  // 拖动窗口 / 切换布局会连续触发 metrics；等尺寸稳定后再重排，避免每个 RO tick
+  // 都把全部段落重新分页一遍（长故事会明显卡顿）。
   useEffect(() => {
     if (!metrics) return;
-    repaginateAll(metrics);
+    const timer = window.setTimeout(() => repaginateAll(metrics), 120);
+    return () => window.clearTimeout(timer);
   }, [metrics, repaginateAll]);
+
+  // 图片解码完、字体真正可用之后，之前量到的高度会变；请重新分页一次。
+  const requestRelayout = useCallback(() => {
+    const current = metricsRef.current;
+    if (current) repaginateAll(current);
+  }, [repaginateAll]);
 
   // ── 翻页 / 展开 ────────────────────────────────────────────────────────────
 
@@ -404,7 +445,9 @@ const CattcaPlayer = forwardRef<CattcaPlayerHandle, CattcaPlayerProps>(function 
       Math.abs(previous.height - next.height) < 1 &&
       previous.fontSize === next.fontSize &&
       previous.lineHeight === next.lineHeight &&
-      previous.fontFamily === next.fontFamily
+      previous.fontFamily === next.fontFamily &&
+      previous.gap === next.gap &&
+      previous.textAlign === next.textAlign
     ) {
       return;
     }
@@ -495,14 +538,14 @@ const CattcaPlayer = forwardRef<CattcaPlayerHandle, CattcaPlayerProps>(function 
               setStatus('error');
             }
           },
-          (name) =>
+          () =>
             new Promise<string>((resolve) => {
               if (token !== runTokenRef.current) {
                 resolve('');
                 return;
               }
               flushSegment();
-              const next: ReaderPending = { kind: 'input', name, resolve };
+              const next: ReaderPending = { kind: 'input', resolve };
               pendingRef.current = next;
               setPending(next);
               setStatus('running');
@@ -522,7 +565,9 @@ const CattcaPlayer = forwardRef<CattcaPlayerHandle, CattcaPlayerProps>(function 
         );
 
         engineRef.current = interpreter;
-        interpreter.load(stripFrontmatter(script ?? ''));
+        // 故事内容在 story-service 里已经剥过 frontmatter（contentRaw），这里再剥一次
+        // 会把正文里以 `---` 开头的段落误删；只有工具页直接加载 .cattca 文件时才需要剥。
+        interpreter.load(isTool ? stripFrontmatter(script ?? '') : (script ?? ''));
         interpreter
           .run()
           .then(() => {
@@ -630,6 +675,7 @@ const CattcaPlayer = forwardRef<CattcaPlayerHandle, CattcaPlayerProps>(function 
       onRestart={handleRestart}
       onMetricsChange={handleMetricsChange}
       onSpreadChange={handleSpreadChange}
+      onRelayout={requestRelayout}
     />
   );
 });

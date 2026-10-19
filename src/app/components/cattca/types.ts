@@ -31,7 +31,6 @@ export interface ChoicePending {
 
 export interface InputPending {
   kind: 'input';
-  name: string;
   resolve: (value: string) => void;
 }
 
@@ -59,4 +58,6 @@ export interface ReaderProps {
   onRestart: () => void;
   onMetricsChange: (metrics: PageMetrics) => void;
   onSpreadChange: (spread: boolean) => void;
+  /** 图片解码 / 字体加载等异步排版变化后，请求重新分页。 */
+  onRelayout: () => void;
 }
