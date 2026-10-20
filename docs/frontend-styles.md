@@ -557,6 +557,20 @@ Kumbh Sans；代码块与编辑器继续使用完整的 JetBrains Mono。
   看起来像「没适配夜间模式」，且不报错。`color-scheme` 只管浏览器画那一层的**明暗基准**
   （见 §8），不足以保证底色与字色配对，所以这两条不能删。高亮行仍由浏览器自己画。
 - `.form-check-input`：圆形 checkbox，选中变品牌色。
+- **带展开动画的列表下拉**（`ExpandSelect`，`components/_expand-select.scss`）：博客
+  创建 / 编辑页的「栏目 / 可见范围」、日志检索与操作公示的筛选字段、文章管理的栏目筛选
+  都用它。触发钮走 `field-surface`（与 `.form-control` / `.form-select` 同一表面），
+  面板是**绝对定位浮层**，按 `grid-template-rows` **0fr → 1fr** 随实际内容高度展开
+  （**420ms / cubic-bezier(.22, 1, .36, 1)**），列表随后淡入；收起的面板 `inert`，
+  外部点击 / 焦点移出 / Escape 收起，方向键与 Home / End / Enter 可完整操作。
+  - **表单语义不变**：值经隐藏 input 提交，字段名仍是 `category` / `visibility` /
+    `action` 这些。选中时**先同步写隐藏 input，再回调 `onChange`** —— 调用方可能在
+    `onChange` 里立刻 `requestSubmit()`（文章管理的栏目筛选），只靠 React 状态会提交
+    上一格的值，且页面上看不出异常。
+  - `prefers-reduced-motion: reduce` 下直接切换。展开动画的节奏与博客目录栏目下拉
+    **共用** `abstracts/_mixins.scss` 的 `expand-panel`，别在组件里另写一份时长。
+  - 未换成 `ExpandSelect` 的原生 `<select>`（工具页的参数选择等）继续沿用下面那条
+    原生弹出层配色规则。
 - 校验态：`.is-invalid` + `.invalid-feedback`（红色）。
 - **文件选择器**（`components/_file-picker.scss`，`.filepick` 一族）：这套类**在 `.tsx` 里
   一个都搜不到** —— 那 DOM 是 `public/static/js/core/base.js` 的 `enhanceFileInputs`
@@ -663,6 +677,8 @@ Kumbh Sans；代码块与编辑器继续使用完整的 JetBrains Mono。
   文字按实际小数宽度测量，避免取整触发省略号；桌面固定右端，左侧伸缩同时带动搜索字段。
   外壳宽度与子组网格 **0fr → 1fr** 同步伸缩，沿用用户菜单的 **420ms** 与
   `cubic-bezier(.22, 1, .36, 1)`；外部点击、焦点移出和 ESC 收起，隐藏选项 `inert`。
+  展开节奏与通用下拉 `ExpandSelect` 共用 `abstracts/_mixins.scss` 的 `expand-panel`
+  （§6.3），改时长只改那一处。
   **首帧宽度过渡必须关着**：服务端只能给 `--category-closed-width` 的 120px 兜底值，
   水合后 `useLayoutEffect` 才量出真实文字宽度。组件在首次点击前不挂 `.is-ready`
   （宽度过渡只写在 `.is-ready` / `.is-open` 上），否则进入目录页时按钮会先显示
@@ -1307,17 +1323,17 @@ Hero 的导航入口为「开始探索」，复用 `btn-primary` 并增加 `back
   页面与组件各渲染一个 `<h1 class="clipboard-title">上传云剪贴板</h1>`，**同一页两个
   内容相同的主标题**（a11y / SEO 硬伤；edit 页因 `isEdit` 分支不同文案而不重复）。
   修法：组件根去掉这两个类，由两个页面各自提供外壳。
+- `src/app/fish/PayError.tsx` 的根节点 = `content-wrapper` + `page-title`（整页外壳）。
+  **当前不冲突**：它只出现在 `fish/pay` 与 `fish/collect` 的参数非法 early-return 分支，
+  与正常分支的 `content-wrapper` 不会同时渲染。但 `pages/_notifications.scss` 的注释
+  专门警告过 `.content-wrapper` 的后代选择器会随类名漂移，属同一类债。
+
 > 2026-10 管理端改版已修掉两处同类嵌套，别再按旧描述排查：
 > `admin/oauth/ApplicationRow.tsx` 的根节点不再是 `management-card`（改用
 > `.admin-app-row`，外层由页面的 `.admin-panel` 统一提供）；`AdminArticlesManager.tsx`
 > 的根节点也不再是 `admin-container`（容器上提到 `admin/blogs/page.tsx`）。
 > `_users.scss` 里那条 `.management-card .management-card` 兜底与 `_oauth.scss` 里整套
 > `.management-card__*` 规则已随之删除。
-
-- `src/app/fish/PayError.tsx` 的根节点 = `content-wrapper` + `page-title`（整页外壳）。
-  **当前不冲突**：它只出现在 `fish/pay` 与 `fish/collect` 的参数非法 early-return 分支，
-  与正常分支的 `content-wrapper` 不会同时渲染。但 `pages/_notifications.scss` 的注释
-  专门警告过 `.content-wrapper` 的后代选择器会随类名漂移，属同一类债。
 
 **同名不同义（两处定义指的是两回事）**：
 
