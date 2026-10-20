@@ -68,9 +68,13 @@ a {
     gap: 10px;
     -webkit-tap-highlight-color: transparent;
     outline: none;
+    // 图标用整数 px，**别写回 1.7rem**：1.7rem = 27.1875px 是小数，而这张图是 CSS mask
+    // 画的 —— 元素边长落在小数上时，mask 的栅格比例不整，收起态首屏绘制和展开后重绘
+    // 拿到的缩放差一点点（实测圆盘 27.5×27.0 ↔ 26.0×26.0 CSS px，长宽方向还会反号），
+    // 看起来就是「没展开时横向更长、展开后纵向更长」。整数边长下两次绘制完全一致。
     .icon {
-        width: 1.7rem;
-        height: 1.7rem;
+        width: 28px;
+        height: 28px;
         color: var(--color-brand-primary);
         transition: all 0.3s ease;
     }
