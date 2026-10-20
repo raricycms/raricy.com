@@ -355,8 +355,9 @@ Kumbh Sans；代码块与编辑器继续使用完整的 JetBrains Mono。
   文章页眉 `.read-hero` 位于 `.read-card` 内，由阅读卡承担内距，标题与作者、时间居中。
   外层 `.blog-detail` 保留 **940px 阅读行宽**。
   `/admin` 那一档的檐沟是 **20px**（= AdminShell 的 `.admin-layout` 内距；`.admin-container` 只是内容列，不再自带宽度与檐沟），抬头与它下面的内容列
-  左边缘对齐。签到页 `.checkin-page` 只有檐沟、**没有**列宽上限（卡片仍按视口铺开），
-  那是现有排版，别顺手「统一」成居中列。
+  左边缘对齐。签到页 `.checkin-page` 与 `/image-hosting` 同款：页面根节点自己吃檐沟
+  **和**宽度阶梯（它没有套 `.container`），桌面端两张卡片因此收在 1140px 列里、
+  与顶栏左边缘对齐，**不再按视口铺满**。
 
   > ⚠️ 漏了这一层**不报错、不警告**，构建与单测都拦不住 —— 窄屏下标题与简介就那样
   > 贴着屏幕两条边。`tests/e2e/page-gutter.spec.ts` 按真视口量左边缘，盯着故事区

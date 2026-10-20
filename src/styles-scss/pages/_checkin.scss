@@ -58,9 +58,14 @@
      贴着屏幕边缘。
      ⚠️ 纵横分开写：媒体查询里若再落一次 `padding: $space-6 0` 这种简写，会把横向
      檐沟一并抹回 0（简写管的是四条边）。
-     本页**没有**列宽上限 —— 桌面端卡片仍按视口铺开，这里只补檐沟，不动排版。 */
+     列宽同样走统一阶梯（site-width-ladder：≥992px → 960px，≥1200px → 1140px），
+     与 /image-hosting、/notifications 那些页同款 —— 卡片不按视口铺满，宽屏下
+     与顶栏、正文左边缘对齐。 */
+  margin-left: auto;
+  margin-right: auto;
   padding-block: $space-8;
   @include m.container-padding;
+  @include m.site-width-ladder;
 
   @media (max-width: 768px) {
     padding-block: $space-6;
