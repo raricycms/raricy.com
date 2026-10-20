@@ -63,7 +63,13 @@
   height: var(--filter-control-height);
   width: var(--category-closed-width, 120px);
   max-width: 100%;
-  transition: width .42s cubic-bezier(.22, 1, .36, 1);
+  // 宽度过渡只在用户操作过之后开启（组件挂 `.is-ready`）。首帧的服务端兜底宽度
+  // 到真实文字宽度那一次变化发生在水合后，若这里常开过渡，进入目录页时会看到
+  // 「全部栏目」按钮先显示成 120px、再缩短到内容宽度的一段动画。
+  &.is-ready,
+  &.is-open {
+    transition: width .42s cubic-bezier(.22, 1, .36, 1);
+  }
 
   &__shell {
     position: absolute;
@@ -302,9 +308,10 @@
       padding: 0 20px;
     }
     &__identity { margin-top: 24px; padding-right: 28px; }
-    // 「创建」只有这一个元素：收起态是胶囊左端的圆形加号（透明底 + 品牌色圆加号），
-    // 展开时宽 44→105、底色浮出、文案淡入，落成面板底部的创建按钮。位置钉在
-    // 外壳左下角，随外壳向左展开，所以看起来就是「加号展开成创建按钮」。
+    // 「创建」只有这一个元素：收起态是胶囊左端的圆形加号（与面板底部创建按钮
+    // 同一个二级主题色容器，只是不显示文案），展开时宽 44→105、文案淡入，落成
+    // 面板底部的创建按钮。位置钉在外壳左下角，随外壳向左展开，所以看起来就是
+    // 「加号展开成创建按钮」。
     &__create {
       position: absolute;
       z-index: 1;
@@ -316,7 +323,8 @@
       padding: 0;
       gap: 0;
       justify-content: center;
-      background-color: transparent;
+      // 底色就是 `.upload-button`（btn-primary）的二级主题色，这里不再覆写成透明
+      // —— 收起态也要保留那颗浅底圆形容器，和面板里的创建按钮同一档。
       transition: left .42s cubic-bezier(.22, 1, .36, 1), bottom .42s cubic-bezier(.22, 1, .36, 1), width .42s cubic-bezier(.22, 1, .36, 1), gap .42s cubic-bezier(.22, 1, .36, 1), background-color .25s ease, color .25s ease;
     }
     &__create-label {

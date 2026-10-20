@@ -149,9 +149,10 @@ test('个人面板使用统计胶囊，窄屏由同一个头像连续移动展�
     expect(motion.middleCreate.width).toBeGreaterThan(motion.startCreate.width);
     expect(motion.middleCreate.width).toBeLessThan(motion.endCreate.width);
     expect(motion.endCreate.width).toBe(105);
-    expect(motion.startStyle).toEqual({ bg: 'rgba(0, 0, 0, 0)', label: '0' });
+    expect(motion.startStyle).toEqual({ bg: 'rgba(37, 99, 235, 0.1)', label: '0' });
     expect(motion.endStyle.label).toBe('1');
-    expect(motion.endStyle.bg).not.toBe('rgba(0, 0, 0, 0)');
+    // 收起态与展开态是同一个二级主题色容器（只是收起时没有文案）。
+    expect(motion.endStyle.bg).toBe(motion.startStyle.bg);
     await expect(page.getByRole('button', { name: '收起我的博客', exact: true })).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath('personal-avatar-expanded.png') });
   }
@@ -246,6 +247,11 @@ test('五个范围使用同一列表，空状态清掉筛选后保留当前范�
 test('栏目闲置文字完整，桌面向左伸缩时搜索框跟随且右端不变', async ({ page, isMobile }, testInfo) => {
   await page.goto('/blog?scope=mine');
   const host = page.locator('.blog-category-select');
+  // 首帧的服务端兜底宽度到测量值是水合后的第一次变化：那时宽度过渡必须还是
+  // 关着的（全局 `*` 只过渡 color / background-color），否则进入目录页会看到
+  // 按钮从 120px 缩短到内容宽度的一段动画。
+  await expect(host).not.toHaveClass(/is-ready/);
+  expect(await host.evaluate((el) => getComputedStyle(el).transitionProperty)).not.toContain('width');
   const frames = await host.evaluate(async (el) => {
     const button = el.querySelector('button')!;
     const snapshot = () => {
@@ -270,6 +276,8 @@ test('栏目闲置文字完整，桌面向左伸缩时搜索框跟随且右端�
     expect(frames.middle.searchWidth).toBeLessThan(frames.before.searchWidth);
     expect(frames.end.searchWidth).toBeLessThan(frames.middle.searchWidth);
   }
+  // 用户操作过之后宽度过渡才开启（展开动画本身依赖它）。
+  expect(await host.evaluate((el) => getComputedStyle(el).transitionProperty)).toContain('width');
   await page.getByRole('button', { name: `展开${DIRECTORY_SEED.parent.name}的二级栏目`, exact: true }).click();
   await page.getByRole('button', { name: DIRECTORY_SEED.child.name, exact: true }).click();
   await expect(host).not.toHaveClass(/is-open/);

@@ -17,6 +17,11 @@ export default function BlogCategorySelect({ categories, currentSlug, featured }
   featured?: string;
 }) {
   const [open, setOpen] = useState(false);
+  // 首帧服务端渲染只能给出 `--category-closed-width` 的 120px 兜底值，水合后
+  // useLayoutEffect 才量出真实文字宽度。若宽度过渡从首帧就开着，那次「120px → 实际
+  // 宽度」会以 420ms 的缩短动画演一遍 —— 页面刚进来时按钮会莫名缩一下。
+  // 所以过渡只在用户真正操作过之后开启（`.is-ready`），首次测量是无动画的。
+  const [ready, setReady] = useState(false);
   const [expanded, setExpanded] = useState(() => new Set(
     categories.filter((c) => c.slug === currentSlug || c.children.some((child) => child.slug === currentSlug)).map((c) => c.id)
   ));
@@ -112,7 +117,7 @@ export default function BlogCategorySelect({ categories, currentSlug, featured }
   return (
     <div
       ref={host}
-      className={`blog-category-select${open ? ' is-open' : ''}`}
+      className={`blog-category-select${open ? ' is-open' : ''}${ready ? ' is-ready' : ''}`}
       onBlur={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false);
       }}
@@ -125,7 +130,10 @@ export default function BlogCategorySelect({ categories, currentSlug, featured }
           aria-label={`栏目：${label}`}
           aria-expanded={open}
           aria-controls="blog-category-options"
-          onClick={() => setOpen((value) => !value)}
+          onClick={() => {
+            setReady(true);
+            setOpen((value) => !value);
+          }}
         >
           <span>{label}</span><ChevronDown aria-hidden="true" />
         </button>
