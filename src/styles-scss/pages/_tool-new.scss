@@ -101,15 +101,22 @@
   // Tool card
   &-card {
     background: var(--color-background-card);
-    border-radius: $radius-large;
-    padding: $space-4;
-    transition: all 0.3s ease;
+    /* 卡片档 30px（`docs/frontend-styles.md` §4：卡片 → `$radius-card`）。工具箱的
+       卡片与博客目录的 `.blog-item` 是同一档视觉：圆角、内距、hover 过渡都照它来
+       —— 别退回 `$radius-large`（10px 是「次级面板 / 小组件」档，卡片用它会和全站
+       30px 卡片混成两套形状语言）。内距取 `.blog-item` 那一档的呼吸感（20px 上、
+       24px 两侧）：30px 圆角配 16px 内距时，内容会挤进圆角的弧线里。 */
+    border-radius: $radius-card;
+    padding: 20px $space-6;
+    /* 整卡是 <Link> → 可点卡：常态无边框、无阴影，层级只靠卡片底色与页面底色的
+       深浅差；hover 只提品牌蓝光晕，不位移 —— 与博客首页 .blog-item 一致。
+       过渡只跟 box-shadow（与 .blog-item 同一条）：写 all 会把内距、字号这些
+       布局属性也做成动画。 */
+    transition: box-shadow 0.2s ease;
     height: 100%;
     display: flex;
     flex-direction: column;
 
-    /* 整卡是 <Link> → 可点卡：常态无边框、无阴影，层级只靠卡片底色与页面底色的
-       深浅差；hover 只提品牌蓝光晕，不位移 —— 与博客首页 .blog-item 一致。 */
     &:hover {
       box-shadow: var(--shadow-card-brand);
     }
