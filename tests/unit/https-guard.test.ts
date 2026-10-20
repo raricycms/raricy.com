@@ -1,4 +1,4 @@
-// https-guard.ts —— 练手盘协议闸的判据，外加「闸门覆盖面」的对账。
+// https-guard.ts —— 练手盘与玩具区的协议闸判据，外加「闸门覆盖面」的对账。
 //
 // 【为什么值得单独一个文件】这套判据里有三处**刻意选的方向**，都不是读代码能看出来
 // 的（读出来的只是「行为」，读不出「为什么不是另一种」）：
@@ -15,7 +15,7 @@ import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
-  guardedKind,
+  guardFor,
   isConfirmedHttp,
   isLocalHost,
   isLoopbackHost,
@@ -66,31 +66,64 @@ describe('isConfirmedHttp —— 只在**确证**是 http 时返回 true', () =>
   });
 });
 
-describe('guardedKind —— 哪条路径过闸、过哪一档', () => {
-  it('页面：/fish/trade 与它下面的一切（含尾斜杠）', () => {
-    for (const p of ['/fish/trade', '/fish/trade/', '/fish/trade/stats', '/fish/trade/stats/']) {
-      expect(guardedKind(p), p).toBe('page');
+describe('guardFor —— 哪条路径过闸、过哪一档、403 文案点名谁', () => {
+  it('页面：练手盘的 /fish/trade 与玩具的 /game，以及它们下面的一切（含尾斜杠）', () => {
+    for (const p of [
+      '/fish/trade',
+      '/fish/trade/',
+      '/fish/trade/stats',
+      '/fish/trade/stats/',
+      '/game',
+      '/game/',
+      '/game/atamas',
+      '/game/wand2/',
+      '/game/collections/test',
+    ]) {
+      expect(guardFor(p), p).toEqual({ kind: 'page', label: p.startsWith('/game') ? '玩具' : '练手盘' });
     }
   });
 
-  it('接口：GUARDED_APIS 里四条都认（含尾斜杠）', () => {
+  it('★ /game/quandi/play 按页面走 308（它是 GET 的 iframe 文档，跟到 https 没损失）', () => {
+    expect(guardFor('/game/quandi/play')).toEqual({ kind: 'page', label: '玩具' });
+  });
+
+  it('接口：GUARDED_APIS 里每条都认（含尾斜杠）', () => {
     for (const p of GUARDED_APIS) {
-      expect(guardedKind(p), p).toBe('api');
-      expect(guardedKind(`${p}/`), `${p}/`).toBe('api');
+      expect(guardFor(p), p).toEqual({ kind: 'api', label: p.startsWith('/api/game/') ? '玩具' : '练手盘' });
+      expect(guardFor(`${p}/`), `${p}/`).toEqual({
+        kind: 'api',
+        label: p.startsWith('/api/game/') ? '玩具' : '练手盘',
+      });
     }
   });
 
-  it('前缀不得误伤：/fish/trades 与 /fish/tradex 不在闸内', () => {
-    // 少一条这样的用例，`startsWith('/fish/trade')` 这种写法就会把 /fish/trades
-    // 一起拦下（而它将来可能是个真页面）—— 症状是一个无关页面在 http 下 308。
-    for (const p of ['/fish/trades', '/fish/tradex', '/fish', '/fish/market']) {
-      expect(guardedKind(p), p).toBeNull();
+  it('★ 403 文案点名的区域由路径决定，不是硬编码「练手盘」', () => {
+    // 中间件拿 label 拼「<label>仅支持 HTTPS 访问」。漏了这条，玩具区的 403 会
+    // 指着一个它不属于的功能，而页面/接口本身拦得完全正确 —— 只有真看文案才发现。
+    expect(guardFor('/game')?.label).toBe('玩具');
+    expect(guardFor('/api/game/wand2/launch')?.label).toBe('玩具');
+    expect(guardFor('/fish/trade')?.label).toBe('练手盘');
+    expect(guardFor('/api/fish/trade/quote')?.label).toBe('练手盘');
+  });
+
+  it('前缀不得误伤：/games、/gameplay、/fish/trades、/fish/tradex 不在闸内', () => {
+    // 少一条这样的用例，`startsWith('/game')` 这种写法就会把 /games 一起拦下
+    //（而它将来可能是个真页面）—— 症状是一个无关页面在 http 下 308。
+    for (const p of ['/games', '/gameplay', '/fish/trades', '/fish/tradex', '/fish', '/fish/market']) {
+      expect(guardFor(p), p).toBeNull();
     }
   });
 
   it('其余接口一律不在闸内', () => {
-    for (const p of ['/api/auth/login', '/api/fish/market/transfer', '/api/fish/trade', '/api/blogs']) {
-      expect(guardedKind(p), p).toBeNull();
+    for (const p of [
+      '/api/auth/login',
+      '/api/fish/market/transfer',
+      '/api/fish/trade',
+      '/api/game',
+      '/api/game/wand',
+      '/api/blogs',
+    ]) {
+      expect(guardFor(p), p).toBeNull();
     }
   });
 });
@@ -192,16 +225,16 @@ describe('★ plaintextVerdict —— 拦 / 放 / 跳到哪，三种形态', () 
 });
 
 describe('闸门覆盖面：matcher 与文件系统双向对账', () => {
-  it('matcher 必须同时含 /api/:path* 与 /fish/trade/:path*', () => {
+  it('matcher 必须同时含 /api/:path*、/fish/trade/:path* 与 /game/:path*', () => {
     // ⚠️ 这一条是逐字断言，不是「包含」——改 matcher 必须是有意识的动作。
-    // matcher 是构建期静态字符串，与运行期的 guardedKind 没有编译期关系：
-    // 少了 /fish/trade/:path* 时中间件根本不会被这两个页面调用，而所有单测与
+    // matcher 是构建期静态字符串，与运行期的 guardFor 没有编译期关系：
+    // 少了 /game/:path* 时中间件根本不会被这些页面调用，而所有单测与
     // 绝大多数 e2e 照常全绿（页面在 http 下照常可达）。
     expect(
       config.matcher,
-      'matcher 与 guardedKind 是一对必须同时改的东西：matcher 决定中间件会不会被调用，' +
-        'guardedKind 决定被调用时管不管这条路径。改了一边没改另一边 = 闸静默失效。'
-    ).toEqual(['/api/:path*', '/fish/trade/:path*']);
+      'matcher 与 guardFor 是一对必须同时改的东西：matcher 决定中间件会不会被调用，' +
+        'guardFor 决定被调用时管不管这条路径。改了一边没改另一边 = 闸静默失效。'
+    ).toEqual(['/api/:path*', '/fish/trade/:path*', '/game/:path*']);
   });
 
   it('★ 每个 /api/fish/trade/<x>/route.ts 都必须在 GUARDED_APIS 里', () => {
@@ -222,6 +255,26 @@ describe('闸门覆盖面：matcher 与文件系统双向对账', () => {
       onDisk,
       'src/app/api/fish/trade/ 下新增了路由但没进 src/lib/https-guard.ts 的 GUARDED_APIS —— ' +
         '那个接口会在明文 http 下照常可用（页面已跳走，所以从界面上看不出来）'
-    ).toEqual([...GUARDED_APIS].sort());
+    ).toEqual([...GUARDED_APIS].filter((p) => p.startsWith('/api/fish/trade/')).sort());
+  });
+
+  it('★ 每个 /api/game/<x>/launch/route.ts 都必须在 GUARDED_APIS 里', () => {
+    const dir = path.join(import.meta.dirname, '..', '..', 'src', 'app', 'api', 'game');
+    expect(fs.existsSync(dir), `扫描面不存在（路径写错了？）：${dir}`).toBe(true);
+
+    const onDisk = fs
+      .readdirSync(dir, { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .filter((d) => fs.existsSync(path.join(dir, d.name, 'launch', 'route.ts')))
+      .map((d) => `/api/game/${d.name}/launch`)
+      .sort();
+
+    // 与上一条同理：启动接口才是联机游戏的入口（票据从它的响应体里出来）。
+    // 漏了它，页面在 308 之下、接口却照旧能在明文 http 上发出票据。
+    expect(
+      onDisk,
+      'src/app/api/game/ 下新增了启动接口但没进 src/lib/https-guard.ts 的 GUARDED_APIS —— ' +
+        '那个接口会在明文 http 下照常发出一次性票据'
+    ).toEqual([...GUARDED_APIS].filter((p) => p.startsWith('/api/game/')).sort());
   });
 });

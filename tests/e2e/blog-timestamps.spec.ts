@@ -99,9 +99,11 @@ test('实际编辑后的时间贯通详情、两种列表与个人主页，桌�
   await expect(card.locator('.blog-timestamps')).not.toContainText(/发布于|更新于|已编辑/);
   await expect(card.locator('.blog-timestamps time')).toHaveAttribute('datetime', changed.updated_at.replace(/Z$/, '+08:00'));
   await page.goto(`/u/${author.id}`);
-  const profileCard = page.locator('.profile-content-item').filter({ hasText: data.title });
-  await expectTimesFit(profileCard.locator('.blog-timestamps'));
-  await expect(profileCard.locator('.blog-timestamps time')).toHaveCount(1);
+  // 个人主页现在是一张「积木墙」：文章以 .bento-card--blog 出现，日期是 <time>。
+  const profileCard = page.locator('.bento-card--blog').filter({ hasText: data.title });
+  await expect(profileCard).toBeVisible();
+  await expect(profileCard.locator('.bento-blog__date')).toHaveCount(1);
+  await expect(profileCard.locator('.bento-blog__date')).toHaveAttribute('datetime', /^\d{4}-\d{2}-\d{2}$/);
   await profileCard.screenshot({ path: testInfo.outputPath('profile-card.png') });
 
   await page.context().clearCookies();
@@ -110,7 +112,8 @@ test('实际编辑后的时间贯通详情、两种列表与个人主页，桌�
   await expect(page.locator('#comment-section')).toHaveCount(0);
   await page.locator('.read-hero__author').click();
   await expect(page).toHaveURL(new RegExp(`/u/${author.id}$`));
-  await expect(page.locator('.profile-content-list')).toHaveCount(0);
+  // 主页现在对访客是**开放的**（旧版对游客是一片空白）：public 文章应当出现。
+  await expect(page.locator('.bento-card--blog').filter({ hasText: data.title })).toHaveCount(1);
   await page.goto(`/explore?search=${encodeURIComponent(data.title)}`);
   const publicCard = page.locator('.blog-item').filter({ hasText: data.title });
   await expectTimesFit(publicCard.locator('.blog-timestamps'));

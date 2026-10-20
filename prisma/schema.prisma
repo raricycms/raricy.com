@@ -128,6 +128,7 @@ model User {
   frames                UserFrame[]
   bubbles               UserBubble[]
   anonIdentities        BlogAnonIdentity[]
+  profileBlocks         ProfileBlock[]
   visibilityLogs        BlogVisibilityLog[]  @relation("BlogVisibilityLogActor")
   @@index([id], map: "ix_users_id")
   @@index([role], map: "ix_users_role")
@@ -1173,4 +1174,45 @@ model UserBubble {
   @@unique([userId, bubbleKey], name: "uq_user_bubble")
   @@index([userId], map: "ix_user_bubbles_user_id")
   @@map("user_bubbles")
+}
+
+// ── 个人主页积木（bento 沙盒主页）─────────────────────────────────────────────
+
+/// 个人主页上的一块「积木」。
+///
+/// 【它是什么】一块积木 = 用户亲手挑的一个展示单元。**存的是指针，不是快照** ——
+/// `config` 里是 blogId / imageId / audioId，渲染时现查目标行；目标被删、档位降回
+/// internal、或作者被归档时，整块不渲染。绝不把标题/正文抄进 config：抄了就会
+/// 出现「文章已经改成私有、名片上还挂着它」的洞。
+///
+/// 【坐标】桌面 4 列网格上的 (x, y)，尺寸 (w, h) 只允许 1×1 / 2×1 / 1×2 / 2×2
+/// （白名单在 src/lib/profile-blocks.ts）。手机上忽略 x/y，按 y→x 排序流式排两列。
+/// 允许留白（空着的格子就是设计的一部分），但**不允许两块重叠** —— 重叠会让其中
+/// 一块永远看不见，而用户会以为保存失败了。
+///
+/// 【config 为什么是 String】SQLite 上 Prisma 没有 Json 标量（同
+/// admin_action_logs.extra），应用层 JSON.parse/stringify，形状由
+/// src/lib/profile-blocks.ts 的白名单校验。
+///
+/// 【软删】保存是「整页替换」：旧的块翻 deleted 墓碑、新的块插入。永不物理删除
+/// （全站纪律），所以这张表会长出墓碑行 —— 查询一律带 deleted: false。
+model ProfileBlock {
+  id        String    @id
+  userId    String    @map("user_id")
+  /// 块类型，白名单见 src/lib/profile-blocks.ts 的 BLOCK_KINDS。
+  kind      String
+  x         Int       @default(0)
+  y         Int       @default(0)
+  w         Int       @default(1)
+  h         Int       @default(1)
+  /// JSON 文本；每类块自己的参数（blogId / imageId / text / url…）。
+  config    String    @default("{}")
+  createdAt DateTime? @map("created_at")
+  updatedAt DateTime? @map("updated_at")
+  deleted   Boolean   @default(false)
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId], map: "ix_profile_blocks_user_id")
+  @@map("profile_blocks")
 }

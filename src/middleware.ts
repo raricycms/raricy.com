@@ -1,22 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { guardedKind, plaintextVerdict } from '@/lib/https-guard';
+import { guardFor, plaintextVerdict } from '@/lib/https-guard';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 中间件两件事
 //
-//   1. 练手盘协议闸（/fish/trade 与它下面的页面 + 四个接口）—— 见下 §A
+//   1. 协议闸（练手盘 `/fish/trade*` + 玩具区 `/game*`，以及两区各自的接口）—— 见下 §A
 //   2. CSRF 防护（对写请求做 Origin/Referer 同源校验）—— 见下 §B
 //
 // 顺序上 §A 必须排在 §B 的「安全方法早退」之前，理由写在 §A 那里。
 // ─────────────────────────────────────────────────────────────────────────────
 //
-// ── §A 练手盘协议闸 ─────────────────────────────────────────────────────────
-// 确证是明文 http 时：页面 308 跳到 https，四个接口回 403。
+// ── §A 协议闸（练手盘与玩具区只走 https） ───────────────────────────────────
+// 确证是明文 http 时：页面 308 跳到 https，接口回 403。
 // 判据、**本机地址为什么豁免**、以及「为什么只在中间件判一处」见
 // `src/lib/https-guard.ts` 文件头 —— 那里是这套规则的唯一说明处。
 //
 // ⚠️ 与 §B 不同，这道闸看的是**路径**不是方法，所以它必须在 SAFE_METHODS 早退
-//    **之前**：两个页面都是 GET，排到后面等于永远走不到。
+//    **之前**：这些页面都是 GET，排到后面等于永远走不到。
 //
 // ── §B CSRF 防护（对写请求做 Origin/Referer 同源校验）
 //
@@ -40,16 +40,16 @@ import { guardedKind, plaintextVerdict } from '@/lib/https-guard';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
-/** §A 协议闸的拒绝文案（页面走 308，用不到它）。 */
-const HTTPS_ONLY_MESSAGE = '练手盘仅支持 HTTPS 访问';
-
 /**
  * §A 的拒绝响应。接口一律 403 JSON —— 别改成跳转：POST 不能跟 301/302（方法与 body
  * 都会丢），而 308 虽保方法，让 fetch/XHR 跟到 https 去拿一坨 HTML 也只会让调用方更看不懂。
  * 页面在**拿不到对外 Host** 时也用它（拼不出 Location 就别拼，见调用点）。
+ *
+ * `label` 由 `guardFor` 给出（「练手盘」/「玩具」）—— 别在这里按路径再猜一遍：
+ * 那会多出一份「哪些路径属于哪个区域」的真相，加第三个区域时静默写错。
  */
-function httpsOnlyRefusal() {
-  return NextResponse.json({ code: 403, message: HTTPS_ONLY_MESSAGE }, { status: 403 });
+function httpsOnlyRefusal(label: string) {
+  return NextResponse.json({ code: 403, message: `${label}仅支持 HTTPS 访问` }, { status: 403 });
 }
 
 /**
@@ -85,16 +85,16 @@ function normalizeHost(v: string): string | null {
 export function middleware(req: NextRequest) {
   const { pathname, search } = new URL(req.url);
 
-  // ── §A 练手盘协议闸 ────────────────────────────────────────────────────────
+  // ── §A 协议闸（练手盘与玩具区只走 https） ─────────────────────────────────
   // ⚠️ 必须排在下面那次 SAFE_METHODS 早退**之前**：那道早退是给 §B 的 CSRF 写校验
-  //    写的，而练手盘的两个页面都是 GET —— 排到它后面就永远走不到。
-  const guarded = guardedKind(pathname);
-  if (guarded) {
+  //    写的，而这些页面都是 GET —— 排到它后面就永远走不到。
+  const guard = guardFor(pathname);
+  if (guard) {
     const verdict = plaintextVerdict(req.headers);
     if (verdict.block) {
       // 接口一律 403：POST 不能跳转（301/302 丢方法，308 虽保方法但让 fetch 跟到
       // https 去拿一坨 HTML 只会让调用方更看不懂）。
-      if (guarded === 'api' || !verdict.redirectTo) return httpsOnlyRefusal();
+      if (guard.kind === 'api' || !verdict.redirectTo) return httpsOnlyRefusal(guard.label);
       // 拼串只用 verdict 给的 Host（就是判据那一份），别在这里再读一遍头 ——
       // 两边各读一次就会出现「判据放行、这里却跳转」的缝，而症状是跳错域且
       // 308 被浏览器长期缓存。也不用 req.nextUrl 改 protocol：反代下它的 host
@@ -144,11 +144,13 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  // /api/:path*        —— §B 只校验会产生副作用的 API 写请求
-  // /fish/trade/:path* —— §A 练手盘的协议闸（两个页面；四个接口已被上一行覆盖）
-  // 注：`:path*` 是**零或多段**，所以裸 `/fish/trade` 也匹配，不必再单列一条。
-  // ⚠️ 改这里要同时想清楚 src/lib/https-guard.ts 的 guardedKind 覆盖不覆盖 ——
+  // /api/:path*        —— §B 只校验会产生副作用的 API 写请求；同时把 §A 的接口
+  //                       （/api/fish/trade/*、/api/game/*/launch）一并带进来
+  // /fish/trade/:path* —— §A 练手盘的页面
+  // /game/:path*       —— §A 玩具区的页面（含 /game/quandi/play 那份 iframe 文档）
+  // 注：`:path*` 是**零或多段**，所以裸 `/fish/trade`、`/game` 也匹配，不必再单列一条。
+  // ⚠️ 改这里要同时想清楚 src/lib/https-guard.ts 的 guardFor 覆盖不覆盖 ——
   //    两处没有编译期关系（matcher 必须是构建期可静态分析的字符串字面量），
   //    tests/unit/https-guard.test.ts 会逐字断言这一行。
-  matcher: ['/api/:path*', '/fish/trade/:path*'],
+  matcher: ['/api/:path*', '/fish/trade/:path*', '/game/:path*'],
 };

@@ -17,7 +17,7 @@
 import { SSE_HEARTBEAT_MS, sseFrame } from './sse';
 import type { ChatStreamEvent } from './chat-shared';
 
-// sseFrame 的实现已抽到 ./sse（与游戏 SSE 共用同一份帧格式与响应头常量）。
+// sseFrame 的实现已抽到 ./sse（帧格式与响应头常量的唯一出处，讨论流与顶栏流共用）。
 // 这里重导出，保持既有 import 路径（含 tests/service/chat-bus.test.ts）不变。
 export { sseFrame };
 

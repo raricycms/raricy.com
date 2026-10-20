@@ -2,15 +2,25 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { getCurrentUser, isCoreUser } from '@/lib/auth';
 import { getPublicProfile } from '@/lib/user-service';
-import { prisma } from '@/lib/db';
-import Avatar from '@/app/components/Avatar';
+import { getProfilePageData } from '@/lib/profile-service';
 import { ymd } from '@/lib/format';
-import ProfileTabs from './ProfileTabs';
+import Avatar from '@/app/components/Avatar';
 import PosterModal from '@/app/components/PosterModal';
+import ProfileBoard from './ProfileBoard';
 
+// 个人主页 —— 对外名片 + 可自由布置的「积木墙」。
+//
+// 【它现在是什么】一张匿名可达的名片：上半截是固定的身份条（头像 + 头像框、用户名、
+// 简介、注册时间），下半截是用户自己挑、自己摆的积木网格。**旧的文章/评论标签页
+// 已经删掉**：评论不能上公开主页（匿名承诺），文章列表改成了「作者亲手挑的精选」。
+//
+// 【为什么不再有 core+ 分档】旧页是「站内档案」，内容对 core+ 才开；新页是「对外
+// 名片」，挂的东西全部本来就对外可读（public / link 档文章、isPublic 的图与音频）。
+// 所以这里没有 canSeeContent —— 有的话反而会在某个分支漏挡。
+//
+// 【noindex】主页是可被二维码传播的个人名片，不进索引。这条同时保护 link 档
+// 文章不被搜索引擎把题录带走（link 的语义是「可读、不列举、不索引」）。
 export const dynamic = 'force-dynamic';
-
-const PAGE_SIZE = 20;
 
 const ROLE_LABEL: Record<string, string> = {
   user: '用户',
@@ -19,10 +29,14 @@ const ROLE_LABEL: Record<string, string> = {
   owner: '站长',
 };
 
-function parsePage(raw: string | string[] | undefined): number {
-  const v = Array.isArray(raw) ? raw[0] : raw;
-  const n = parseInt(v ?? '', 10);
-  return Number.isFinite(n) && n >= 1 ? n : 1;
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  // 只取用户名，别为了一份 metadata 把整页数据拉一遍。
+  const profile = await getPublicProfile(id, null);
+  return {
+    title: profile ? `${profile.username} 的主页` : '个人主页',
+    robots: { index: false, follow: false },
+  };
 }
 
 export default async function PublicProfilePage({
@@ -35,8 +49,8 @@ export default async function PublicProfilePage({
   const { id } = await params;
   const sp = await searchParams;
 
-  // 必须先取登录态：本页**匿名可达**（主页画报的二维码把站外人引到这里），
-  // 而 profile 里哪些字段对游客可见由查看者决定 —— 见 getPublicProfile 的分档口径。
+  // 先取登录态：本页匿名可达（主页画报的二维码把站外人引到这里），
+  // 而 profile 里哪些字段给游客由 getPublicProfile 决定（role 对游客是 null）。
   const currentUser = await getCurrentUser();
   const profile = await getPublicProfile(
     id,
@@ -44,194 +58,67 @@ export default async function PublicProfilePage({
   );
   if (!profile) notFound();
 
-  const rawTab = Array.isArray(sp.tab) ? sp.tab[0] : sp.tab;
-  const tab: 'blogs' | 'comments' = rawTab === 'comments' ? 'comments' : 'blogs';
-  const blogPage = parsePage(sp.blog_page);
-  const commentPage = parsePage(sp.comment_page);
-
   const isOwnProfile = currentUser?.id === profile.id;
-  const isCoreAuthenticated = isCoreUser(currentUser);
-  // 与 getPublicProfile 里那条同口径：本人 或 core+。**两处必须一致** —— 服务层把
-  // recentBlogs 按它清空了，页面若还用「用户开关」单独判，游客就会拿到一个空标签页
-  // 或者（更糟）从这里直接查出一份完整列表。见 `showBlogs`。
-  const canSeeContent = isOwnProfile || isCoreAuthenticated;
+  // 「能不能布置」= 本人 + core。非核心用户照常能看自己的主页，只是不能编辑
+  //（产品决定：2026-10 先只对 core+ 开）。
+  const canEdit = isOwnProfile && isCoreUser(currentUser);
+  const data = await getProfilePageData(profile.id, { isOwner: canEdit });
 
-  // 两个开关管「本人愿不愿意展示」，canSeeContent 管「查看者够不够格」，正交，都要过。
-  // 档位不够时是「没有这个标签页」，不是「列表为空」—— 后者等于承认内容存在。
-  const showBlogs = canSeeContent && (isOwnProfile || profile.showRecentBlogs);
-  const showComments = canSeeContent && (isOwnProfile || profile.showRecentComments);
-
-  // 计数与获赞同样是「内容」：档位不够时**连查都不查**（计数本身就是信息 ——
-  // 「这篇有 40 条讨论」在熟人社区里可能就够了）。四项一律用 canSeeContent 收口。
-  const [blogsCount, commentsCount, likesAgg, extra] = await Promise.all([
-    canSeeContent ? prisma.blog.count({ where: { authorId: profile.id, ignore: false } }) : 0,
-    // anonSeq: null 与下面的列表同口径（匿名评论不进主页，理由见 user-service.getPublicProfile）。
-    // ⚠️ 计数与列表**必须同一个 where** —— 计数多算会让「共 N 条」和翻出来的条数对不上。
-    canSeeContent
-      ? prisma.blogComment.count({
-          where: { authorId: profile.id, isDeleted: false, anonSeq: null, blog: { ignore: false } },
-        })
-      : 0,
-    canSeeContent
-      ? prisma.blog.aggregate({
-          where: { authorId: profile.id, ignore: false },
-          _sum: { likesCount: true },
-        })
-      : null,
-    // 档位不够时**连查都不查**：不把这个值取进内存，就不存在「渲染时忘了挡」的活口。
-    canSeeContent
-      ? prisma.user.findUnique({
-          where: { id: profile.id },
-          select: { lastLogin: true },
-        })
-      : null,
-  ]);
-  const likesReceived = likesAgg?._sum.likesCount ?? 0;
-  const lastLogin = extra?.lastLogin ?? null;
-
-  const blogsPages = Math.max(1, Math.ceil(blogsCount / PAGE_SIZE));
-  const commentsPages = Math.max(1, Math.ceil(commentsCount / PAGE_SIZE));
-
-  const blogRows = showBlogs
-    ? await prisma.blog.findMany({
-        where: { authorId: profile.id, ignore: false },
-        orderBy: { createdAt: 'desc' },
-        skip: (blogPage - 1) * PAGE_SIZE,
-        take: PAGE_SIZE,
-        select: {
-          id: true,
-          title: true,
-          createdAt: true,
-          content: { select: { updatedAt: true } },
-          likesCount: true,
-          description: true,
-          commentsCount: true,
-        },
-      })
-    : [];
-
-  const commentRows = showComments
-    ? await prisma.blogComment.findMany({
-        // anonSeq: null —— 匿名评论不进个人主页，见 user-service.getPublicProfile 那段。
-        where: { authorId: profile.id, isDeleted: false, anonSeq: null, blog: { ignore: false } },
-        orderBy: { createdAt: 'desc' },
-        skip: (commentPage - 1) * PAGE_SIZE,
-        take: PAGE_SIZE,
-        select: {
-          id: true,
-          blogId: true,
-          content: true,
-          createdAt: true,
-          blog: { select: { title: true } },
-        },
-      })
-    : [];
-
-  const blogItems = blogRows.map((b) => ({
-    id: b.id,
-    title: b.title,
-    createdAt: b.createdAt ? b.createdAt.toISOString() : null,
-    updatedAt: b.content?.updatedAt?.toISOString() ?? null,
-    likesCount: b.likesCount ?? 0,
-    description: b.description ?? '',
-    commentsCount: b.commentsCount ?? 0,
-  }));
-
-  const commentItems = commentRows.map((c) => ({
-    id: c.id,
-    blogId: c.blogId,
-    blogTitle: c.blog?.title ?? '',
-    content: (c.content ?? '').slice(0, 120),
-    createdAt: c.createdAt ? c.createdAt.toISOString() : null,
-  }));
+  const rawEdit = Array.isArray(sp.edit) ? sp.edit[0] : sp.edit;
+  const startEditing = rawEdit === '1' && canEdit;
 
   return (
     <div className="profile-page">
       <div className="container">
+        {/* 身份条：整页唯一不可定制的部分。二维码落地时第一眼必须知道这是谁。 */}
         <section className="profile-hero">
-          <div className="profile-hero__top">
-            {/* 全站最大的头像（120px）—— 也是唯一「框的细节看得清」的地方 */}
-            <Avatar
-              userId={profile.id}
-              frameUrl={profile.frameUrl}
-              alt={profile.username}
-              className="profile-hero__avatar"
-            />
-            <div className="profile-hero__info">
-              <div className="profile-hero__name-row">
-                <span className="profile-hero__username">{profile.username}</span>
-                {/* role 为 null = 查看者档位不够（游客 / 非 core）。徽章整块不渲染 ——
-                    别退化成「空字符串的徽章」，那会留下一个没有说明的空胶囊。 */}
-                {profile.role && (
-                  <span className={`profile-hero__role-badge profile-hero__role-badge--${profile.role}`}>
-                    {ROLE_LABEL[profile.role] ?? profile.role}
-                  </span>
-                )}
-              </div>
-
-              <p
-                className={`profile-hero__bio${!profile.bio ? ' profile-hero__bio--empty' : ''}`}
-              >
-                {profile.bio || '这个人还没有写简介…'}
-              </p>
-
-              <div className="profile-hero__meta">
-                {profile.createdAt && (
-                  <span>
-                    <span className="icon icon-person" aria-hidden="true" />
-                    注册于 <span className="numeric">{ymd(new Date(profile.createdAt))}</span>
-                  </span>
-                )}
-                {lastLogin && (
-                  <span className="numeric">最后登录 {ymd(new Date(lastLogin))}</span>
-                )}
-                {isOwnProfile && currentUser?.email && (
-                  <span>
-                    <span className="icon icon-envelope" aria-hidden="true" />
-                    {currentUser.email}
-                  </span>
-                )}
-              </div>
+          <Avatar
+            userId={profile.id}
+            frameUrl={profile.frameUrl}
+            alt={profile.username}
+            className="profile-hero__avatar"
+          />
+          <div className="profile-hero__info">
+            <div className="profile-hero__name-row">
+              <h1 className="profile-hero__username">{profile.username}</h1>
+              {profile.role && (
+                <span className={`profile-hero__role-badge profile-hero__role-badge--${profile.role}`}>
+                  {ROLE_LABEL[profile.role] ?? profile.role}
+                </span>
+              )}
+            </div>
+            <p className={`profile-hero__bio${!profile.bio ? ' profile-hero__bio--empty' : ''}`}>
+              {profile.bio || '这个人还没有写简介…'}
+            </p>
+            <div className="profile-hero__meta">
+              {profile.createdAt && (
+                <span>
+                  <span className="icon icon-person" aria-hidden="true" />
+                  注册于 <span className="numeric">{ymd(new Date(profile.createdAt))}</span>
+                </span>
+              )}
             </div>
           </div>
 
-          {/* 计数也是内容：档位不够时整块不渲染 —— 只留头像 / 用户名 / 简介 / 注册时间 */}
-          {canSeeContent && (
-            <div className="profile-stats">
-              <div className="profile-stats__item">
-                <div className="profile-stats__number numeric">{blogsCount}</div>
-                <div className="profile-stats__label">文章</div>
-              </div>
-              <div className="profile-stats__item">
-                <div className="profile-stats__number numeric">{likesReceived}</div>
-                <div className="profile-stats__label">获赞</div>
-              </div>
-              <div className="profile-stats__item">
-                <div className="profile-stats__number numeric">{commentsCount}</div>
-                <div className="profile-stats__label">评论</div>
-              </div>
-            </div>
-          )}
-
           {isOwnProfile && (
-            <div className="profile-actions">
-              <Link href="/settings" className="profile-actions__btn profile-actions__btn--edit">
+            <div className="profile-hero__actions">
+              {/* 默认布局时引导面板里已经有一颗「布置主页」，这里不重复摆第二颗 */}
+              {canEdit && !startEditing && !data.isDefault && (
+                <Link
+                  href={`/u/${profile.id}?edit=1`}
+                  className="profile-actions__btn profile-actions__btn--edit"
+                >
+                  <span className="icon icon-add" aria-hidden="true" />
+                  布置主页
+                </Link>
+              )}
+              <Link href="/settings" className="profile-actions__btn">
                 <span className="icon icon-gear" aria-hidden="true" />
                 账号设置
               </Link>
-              {/* 深链到设置页那块面板（与 /settings#focus-mode 同款）。
-                  框只显示在这个人的主页头像上，所以「在这儿换」是最自然的入口 ——
-                  而**写**的入口仍然只在 /settings（那页是账号偏好的归属地）。 */}
-              <Link
-                href="/settings#avatar-frame"
-                className="profile-actions__btn profile-actions__btn--frame"
-              >
-                <span className="icon icon-person" aria-hidden="true" />
-                换个头像框
-              </Link>
               {/* 画报只有本人能生成（路由同样只放行本人），所以入口只挂在自己的主页上 */}
               <PosterModal
-                triggerClassName="profile-actions__btn profile-actions__btn--poster poster-trigger"
+                triggerClassName="profile-actions__btn poster-trigger"
                 label={
                   <>
                     <span className="icon icon-link" aria-hidden="true" />
@@ -243,33 +130,24 @@ export default async function PublicProfilePage({
                 title="我的主页画报"
                 hint="保存后可以发到任何地方，扫图上的二维码就能打开你的主页。"
               />
-              {!isCoreAuthenticated && (
-                <Link href="/authentic" className="profile-actions__btn profile-actions__btn--auth">
-                  <span className="icon icon-person-circle" aria-hidden="true" />
-                  去认证
-                </Link>
-              )}
             </div>
           )}
         </section>
 
-        {/* 档位不够时整个标签区不渲染。别退化成「两个标签页 + 一句未公开提示」——
-            标签上的计数本身就把内容量透出去了。 */}
-        {canSeeContent && (
-          <ProfileTabs
-            userId={profile.id}
-            initialTab={tab}
-            blogsCount={blogsCount}
-            commentsCount={commentsCount}
-            showBlogs={showBlogs}
-            showComments={showComments}
-            blogItems={blogItems}
-            commentItems={commentItems}
-            blogPage={blogPage}
-            blogPages={blogsPages}
-            commentPage={commentPage}
-            commentPages={commentsPages}
-          />
+        <ProfileBoard
+          profileId={profile.id}
+          blocks={data.blocks}
+          catalog={data.catalog}
+          isDefault={data.isDefault}
+          canEdit={canEdit}
+          isOwner={isOwnProfile}
+          startEditing={startEditing}
+        />
+
+        {isOwnProfile && !canEdit && (
+          <p className="profile-tier-note">
+            布置主页目前对核心用户开放。你仍然可以设置头像、简介与头像框。
+          </p>
         )}
       </div>
     </div>

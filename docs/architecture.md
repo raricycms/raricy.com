@@ -124,7 +124,7 @@
 | 练手盘 | `market-service.ts`（开平仓：**一个事务、没有补偿**；开仓的幂等靠 `open_key` 唯一约束而非独立幂等记录；读口 `listOpenPositions` / `listSettledPositions`（最近结清，只读仓位表的终态行））· `market-math.ts`（**结算公式的唯一实现**，零依赖 —— 服务端真结算与页面「预计到手」是同一个 `settleClose`）· `market-candles.ts`（K 线词汇表：周期白名单 / 根数上限 / 线上形状 / 缓存键，**零依赖**，服务端与客户端共用）· `market-chart.ts`（K 线图的纯计算：窗口 / 聚合 / 刻度 / 映射 / 实时并线 —— 零依赖外加 `db-time` 的一个常量）· `market-price.ts`（行情源与展示缓存，见 §6.13）· `market-stream.ts` + `market-poll-drainer.ts`（喂展示的两个后台循环）· `market-stats.ts`（统计的**纯聚合**：终态白名单 / 拆解表分桶 / 持仓浮动盈亏 —— 白名单由调用方传进来，这样单元用例不必拉 Prisma）· `market-stats-service.ts`（统计的读路径：**盈亏只能来自 `market_positions`，别改成从账本求和**，理由见文件头） |
 | OAuth 2.0 | `oauth.ts`（见 `docs/oauth.md`） |
 | 管理域 | `admin-user-service.ts` · `admin-blog-service.ts` · `admin-category-service.ts` · `admin-comment-service.ts` · `admin-clipboard-service.ts` · `admin-vote-service.ts` · `admin-image-service.ts` · `admin-stats-service.ts` |
-| 工具 / 安全 | `short-id.ts` · `safe-url.ts` · `guard.ts` · `rate-limit.ts` · `turnstile.ts` · `upload-quota.ts`（上传落库的配额拒绝）· `https-guard.ts`（练手盘协议闸的判据：路径清单 / 明文判定 / 跳转目标 —— **零依赖**，Edge 中间件直接吃，见 §6.4） |
+| 工具 / 安全 | `short-id.ts` · `safe-url.ts` · `guard.ts` · `rate-limit.ts` · `turnstile.ts` · `upload-quota.ts`（上传落库的配额拒绝）· `https-guard.ts`（**协议闸的判据**：两区路径清单 / 明文判定 / 跳转目标 —— **零依赖**，Edge 中间件直接吃，见 §6.4） |
 | 鉴权基建 | `credential-auth.ts`（「用户名+密码」校验，`/api/auth/login` 与鱼干市场无状态接口**共用**，限频桶也共用）· `request-ip.ts`（反代后取真实 IP） |
 | 配额白名单 | `service-accounts.ts`（`FISH_SERVICE_ACCOUNTS` 里的账号走 `SERVICE_QUOTA`：转账 500/时、5000/天。给「站外银行」这类自动化账号用，撤销即删配置） |
 
@@ -259,26 +259,32 @@ SQLite 文件**里，只从远端恢复鱼干余额也拼不出站 —— 真正
 
 清单与判据见 `docs/legacy-constraints.md` §1.1。
 
-### 6.4 中间件（CSRF + 练手盘协议闸）
+### 6.4 中间件（CSRF + 协议闸：练手盘与玩具区）
 
 `src/middleware.ts` 干两件事，**判据与说明各在别处（以那两处为准）**：
 
-**一、练手盘协议闸** —— `/fish/trade` 与它下面的页面、以及四个 `/api/fish/trade/*` 接口
-**只走 https**：确证是明文 http 时页面 **308** 跳到 https、接口回 **403 JSON**。
+**一、协议闸** —— 两个区域**只走 https**：
+
+- **练手盘**：`/fish/trade` 与它下面的页面 + 四个 `/api/fish/trade/*` 接口；
+- **玩具区**：`/game` 与它下面的页面（含 `/game/quandi/play` 那份 iframe 文档）+ 四个
+  `/api/game/*/launch` 启动接口。
+
+确证是明文 http 时页面 **308** 跳到 https、接口回 **403 JSON**（文案点名所属区域）。
 判据是 `X-Forwarded-Proto`，**回环地址（`localhost` / `127.x` / `::1`）豁免** ——
 判据的全部理由、以及「为什么缺了它 `npm run dev` 与整个 e2e 会打不开」写在
-`src/lib/https-guard.ts` 文件头。
+`src/lib/https-guard.ts` 文件头。两区的路径清单只有那一张表；`tests/unit/https-guard.test.ts`
+拿文件系统双向对账（新增 `/api/game/<x>/launch` 忘了进表，那个接口就在明文下照发票据）。
 
 两处容易踩的：
 
-- **它排在 GET 早退前面**。下面那两条 CSRF 规则只看写方法，而练手盘的两页都是 GET ——
+- **它排在 GET 早退前面**。下面那两条 CSRF 规则只看写方法，而这些页面都是 GET ——
   把它排到早退之后等于这道闸永远走不到。
 - **它不是「反代才设的头」**。没有反代时 **Next 自己会按 socket 填**这个头（直连明文时
   读到的就是 `http`），所以「头缺失就放行」那条分支在真实服务器上几乎走不到；
   真正让本地能跑的是**回环豁免**，不是「没有信号」。
   ⚠️ 推论：nginx 漏配 `proxy_set_header X-Forwarded-Proto $scheme` 时，Next 会把
   「nginx→Next」那段明文连接当成对外协议 ⇒ **连 https 的正常用户也被判成明文**、
-  整个练手盘变 403。那不是安全问题而是可用性事故，`npm run smoke` §1b 专门盯它。
+  整个练手盘与玩具区变 403。那不是安全问题而是可用性事故，`npm run smoke` §1b 专门盯它。
 
 **二、CSRF 防护** —— 对状态变更方法（POST/PUT/PATCH/DELETE）校验 `Origin` / `Referer`
 与对外 Host 同源。
@@ -1573,6 +1579,12 @@ MP3 的帧同步要核版本 / 层 / 位速率字段（只判 `0xFF` 打头太�
 父页持有网络连接与票据，游戏文档不能自行联网或访问本站 Cookie。账号名安全写入文本节点，
 服务端独立维护双人房间与权威引擎，校验方向、序号、房主和准备状态，并限制房间资源。
 授权与来源见 `public/static/quandi/NOTICE.txt`，生命周期及上限见 `docs/realtime.md` §3.4。
+
+玩具区与练手盘同一条**协议闸**：`/game` 与它下面的一切（含 `/game/quandi/play` 那份
+iframe 文档）以及四个 `/api/game/*/launch` **只走 https** —— 页面在明文 http 下 308、
+启动接口回 403。启动接口才是联机游戏真正的入口（一次性票据在响应体里），所以它在清单上；
+而实时地址在回环之外本来就不许是 `ws:`（`src/lib/realtime-url.ts` 会抛错）。
+判据、回环豁免与「为什么只在中间件一处判」见 §6.4 与 `src/lib/https-guard.ts` 文件头。
 
 专注模式下，首页卡和顶栏入口整段不渲染；`src/app/game/layout.tsx` 同时替换
 菜单和游戏直达页为设置提示，不挂载游戏引擎。关闭开关后即可重新进入。

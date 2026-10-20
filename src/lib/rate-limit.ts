@@ -405,4 +405,10 @@ export const RULES = {
    * 桶键：explore:search:ip:{IP}（clientIp 取不到时**整条跳过**，不传占位串）。
    */
   exploreSearchPerIp: { limit: 120, windowMs: 60 * 1000 },
+  /**
+   * 个人主页布局保存（PUT /api/profile/blocks）。整页替换 = 一个事务里最多 16 次
+   * 写，而正常人是「拖几下、保存一次」。30/分对正常使用绰绰有余，挡的是脚本
+   * 反复重排把库写热。桶键：profile:save:{用户 id}。
+   */
+  profileSave: { limit: 30, windowMs: 60 * 1000 },
 } as const;
