@@ -69,7 +69,8 @@ a.admin-kpi:hover {
   place-items: center;
   width: 38px;
   height: 38px;
-  border-radius: 14px;
+  // 每张卡唯一的图标容器：纯色底一律圆形（与全站「图标徽章」的形状语言一致）。
+  border-radius: 50%;
   background: var(--admin-kpi-soft);
   color: var(--admin-kpi-color);
 
@@ -160,7 +161,7 @@ a.admin-kpi:hover {
   .admin-kpi__icon {
     width: 32px;
     height: 32px;
-    border-radius: 11px;
+    border-radius: 50%;
 
     svg {
       width: 16px;
