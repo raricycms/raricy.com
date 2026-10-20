@@ -1,10 +1,23 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// https-guard.ts — 「鱼干练手盘只走 https」的判据（零 import，Edge 中间件可直接吃）
+// https-guard.ts — 「练手盘与玩具区只走 https」的判据（零 import，Edge 中间件可直接吃）
 //
-// 【为什么闸只做在中间件一处，而不是跟着档位在那六个判定点各写一遍】
-// 那六处判的是「谁够不够格用这个功能」（core 档位 / 专注模式 / 禁言），是业务档位；
+// 【为什么闸只做在中间件一处，而不是跟着档位在各处判定点各写一遍】
+// 那些点判的是「谁够不够格用这个功能」（core 档位 / 专注模式 / 禁言 / 封禁），是业务档位；
 // 这里判的是「这次请求是怎么来的」，是传输层属性。混在一起之后，改档位就得顺手想
 // 一遍协议，改协议也得顺手想一遍档位 —— 两边都不是对方的事。
+//
+// 【覆盖两个区域：练手盘、玩具区】
+//   · 练手盘：`/fish/trade` 与它下面的一切 + 四个 `/api/fish/trade/*` 接口；
+//   · 玩具区：`/game` 与它下面的一切 + 四个 `/api/game/*/launch` 启动接口。
+// 两区共用同一套判据，差别只在 403 文案点名的名字（`GuardedArea.label`）。
+//
+// 玩具区为什么也要这道理：联机游戏先向 `/api/game/*/launch` 领一张 60 秒的一次性票据、
+// 再拿它连实时服务 —— 票据在**响应体里**，明文链路上任何第三方都能截走它冒用身份。
+// 而实时地址在回环之外**本来就不许是 `ws:`**（`src/lib/realtime-url.ts` 会抛错），
+// 所以页面这一层也一起收紧，免得出现「页面在 http、启动接口照发」这种半截状态。
+// ⚠️ `/game/quandi/play` 是 iframe 的文档路由（route handler，不是页面）—— 它落在
+// `/game` 这个页面前缀下，于是按页面走 308。那是刻意的：它只有 GET，跟到 https 没有
+// 任何损失，而那个 iframe 本来就只会由 https 父页加载。
 //
 // ── ★ 判据（这一段是实测出来的，别按「反代才设这个头」的直觉改）★ ──────────
 // 信号是 `X-Forwarded-Proto`，但它**不是**「只有反代才有」：
@@ -20,7 +33,8 @@
 // **跨公网那一段链路上的第三方**：请求如果压根没离开本机或本局域网，没有那个第三方，
 // 也就不需要 TLS。而 dev（http://localhost:3000）与 e2e（http://127.0.0.1:3100，
 // playwright.config.ts 显式设了 COOKIE_SECURE=false）都正是这种请求 ——
-// 不豁免的话练手盘在本地开发与整个 e2e 里会**整体 403**。
+// 不豁免的话练手盘与玩具区在本地开发与整个 e2e 里会**整体 403**（`/game` 那一堆页面
+// 连同 e2e 里点开的游戏都会，而单测用的是手搓的 Request，全绿）。
 //
 // ⚠️ **已知残余缺口（照实写）**：nginx 若只透传了 X-Forwarded-Proto、没透传
 //    Host / X-Forwarded-Host，Next 看到的 Host 就是上游地址（127.0.0.1:3000），
@@ -34,39 +48,80 @@
 // 那边问的是「cookie 要不要加 Secure」，判定链是 COOKIE_SECURE → XFP → NODE_ENV
 // 三级兜底，**缺信息时倾向『加』**；这边问的是「要不要拦下这次请求」，
 // **缺信息时倾向『放行』**。方向相反的两套策略并成一个函数，等于让改一处静默改
-// 另一处 —— 与「档位六处各判一次」同一个理由。两处注释互指，别互相 import。
+// 另一处 —— 与「档位各处各判一次」同一个理由。两处注释互指，别互相 import。
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 闸覆盖的页面根：`/fish/trade` 与它下面的一切（统计页就在下面）。
- *  用**前缀**而不是逐条枚举：以后加 `/fish/trade/xxx` 自动在闸内。
- *  漏掉一个页面的失效是无声的 —— 那一页照常在 http 下可达、照常渲染。 */
-const PAGE_ROOT = '/fish/trade';
+/** 协议闸覆盖的一个区域。加一个区域 = 这里加一行；**别在别处再维护一份路径清单**。 */
+interface GuardedArea {
+  /** 403 文案里点名的名字（「练手盘仅支持 HTTPS 访问」）。 */
+  readonly label: string;
+  /** 页面前缀：`/x` 与 `/x/…` 都算。用前缀而不是逐条枚举 —— 以后加 `/x/y` 自动在闸内。
+   *  漏掉一个页面的失效是无声的：那一页照常在 http 下可达、照常渲染。 */
+  readonly pageRoots: readonly string[];
+  /** 接口**逐条列全**，理由见下面 `GUARDED_APIS` 的注释。 */
+  readonly apis: readonly string[];
+}
+
+const GUARDED_AREAS: readonly GuardedArea[] = [
+  {
+    label: '练手盘',
+    pageRoots: ['/fish/trade'],
+    apis: [
+      '/api/fish/trade/quote',
+      '/api/fish/trade/buy',
+      '/api/fish/trade/sell',
+      '/api/fish/trade/candles',
+    ],
+  },
+  {
+    label: '玩具',
+    pageRoots: ['/game'],
+    apis: [
+      '/api/game/wand/launch',
+      '/api/game/wand2/launch',
+      '/api/game/quandi/launch',
+      '/api/game/public-space/launch',
+    ],
+  },
+];
 
 /**
- * 闸覆盖的四个接口，**逐条列全**。
+ * 闸覆盖的全部接口（由上面那张表推出来，供测试拿文件系统对账）。
  *
- * ⚠️ 别图省事写成前缀常量 `/api/fish/trade`：scripts/check-links.mjs 第 2 节会把
- *    `src/**` 里所有 `/api/…` 字面量拿去和真实路由表比对，而那条前缀不是任何一条
- *    路由 —— 当场报一条「调用不存在的 API」。下面四条各自都是真路由，所以合法。
- * ⚠️ 新增 `src/app/api/fish/trade/<x>/route.ts` 时必须往这里补一条：
- *    tests/unit/https-guard.test.ts 拿文件系统与本清单**双向对账**。
+ * ⚠️ 别图省事把某一格写成前缀常量（`/api/fish/trade`、`/api/game`）：scripts/check-links.mjs
+ *    第 2 节会把 `src/**` 里所有 `/api/…` 字面量拿去和真实路由表比对，而那种前缀不是
+ *    任何一条路由 —— 当场报一条「调用不存在的 API」。表里每一条都必须是真路由。
+ * ⚠️ 新增 `src/app/api/fish/trade/<x>/route.ts` 或 `src/app/api/game/<x>/launch/route.ts`
+ *    时必须往这张表补一条：tests/unit/https-guard.test.ts 拿文件系统与本清单**双向对账**。
  */
-export const GUARDED_APIS = [
-  '/api/fish/trade/quote',
-  '/api/fish/trade/buy',
-  '/api/fish/trade/sell',
-  '/api/fish/trade/candles',
-] as const;
+export const GUARDED_APIS: readonly string[] = GUARDED_AREAS.flatMap((area) => area.apis);
+
+/** 这条路径过不过协议闸；过的话是哪一档、403 文案点名谁。不覆盖则 null。 */
+export interface GuardHit {
+  /** 页面走 308、接口回 403（理由见 src/middleware.ts 的调用点）。 */
+  readonly kind: 'page' | 'api';
+  /** `GuardedArea.label` —— 只用来拼 403 文案。 */
+  readonly label: string;
+}
 
 function stripTrailingSlash(p: string): string {
   return p.length > 1 && p.endsWith('/') ? p.slice(0, -1) : p;
 }
 
-/** 这条路径过不过协议闸；过的话是哪一档（页面跳转 / 接口 403）。不覆盖则 null。 */
-export function guardedKind(pathname: string): 'page' | 'api' | null {
+/**
+ * 路径是否过闸。页面前缀先判（区域表顺序即是优先级），接口逐条比。
+ * 结论连着 `label` 一起返回：中间件那边不再自己猜「这条路径属于哪个区域」，
+ * 否则加第三个区域时就会出现「闸认得了、文案点名却还写着练手盘」的缝。
+ */
+export function guardFor(pathname: string): GuardHit | null {
   const p = stripTrailingSlash(pathname);
-  if (p === PAGE_ROOT || p.startsWith(`${PAGE_ROOT}/`)) return 'page';
-  return (GUARDED_APIS as readonly string[]).includes(p) ? 'api' : null;
+  for (const area of GUARDED_AREAS) {
+    for (const root of area.pageRoots) {
+      if (p === root || p.startsWith(`${root}/`)) return { kind: 'page', label: area.label };
+    }
+    if (area.apis.includes(p)) return { kind: 'api', label: area.label };
+  }
+  return null;
 }
 
 /**

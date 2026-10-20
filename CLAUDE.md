@@ -107,15 +107,19 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
   但**不是**库内那套「UTC+8 墙上时间贴 Z」——两者绝不能相减。按本站钟面显示走
   「加 `SITE_TZ_OFFSET_MS` 再 `getUTC*`」。db-time-guard 抓不到这条（它只匹配
   `.getTime()` 相减），所以只靠注释与单测守。
-- **练手盘只走 https**（闸在 `src/middleware.ts` **一处**；协议是传输层属性，不是档位，
-  别跟着那六处判定各抄一遍）。两条最容易踩的：
+- **练手盘与玩具区只走 https**（闸在 `src/middleware.ts` **一处**；协议是传输层属性，不是档位，
+  别跟着各处的档位判定各抄一遍）。覆盖 `/fish/trade*` + 四个 `/api/fish/trade/*`，以及
+  `/game*` + 四个 `/api/game/*/launch`；路径清单只住 `src/lib/https-guard.ts`（两区共用一张
+  表，`/game/quandi/play` 那份 iframe 文档也在页面前缀里）。两条最容易踩的：
   - **回环豁免（`localhost` / `127.x`）不是「宽松」，是本地与全部 e2e 的活路**。Next
     会自己按 socket 把 `X-Forwarded-Proto` 填成 `http`，所以「明文 + localhost」是
-    本地开发的常态 —— 删了豁免，练手盘在本机与整个 e2e 里**整体 403**，而这只在真跑
-    起来时才看得见（单测用不到真服务器，全绿）。
+    本地开发的常态 —— 删了豁免，两区在本机与整个 e2e 里**整体 403**（`/game` 那一堆
+    页面连同 e2e 里点开的游戏都会），而这只在真跑起来时才看得见（单测用不到真服务器，全绿）。
   - **私网 / 拿不到 Host 时宁可回 403，也不拼跳转地址**：308 会被浏览器**永久**缓存，
     跳到上游地址（`127.0.0.1:3000`）之后只能清缓存，而服务端一切正常、不报错。
-  判据与理由的唯一说明处是 `src/lib/https-guard.ts` 文件头；展开见 §6.4。
+  判据与理由的唯一说明处是 `src/lib/https-guard.ts` 文件头；展开见 §6.4。matcher 与
+  路径清单**没有编译期关系**（matcher 必须是构建期字面量），`tests/unit/https-guard.test.ts`
+  拿文件系统双向对账 —— 新增 `/api/game/<x>/launch` 而没进表，那个接口就在明文下照发票据。
 - **表情包语法的正则里一个 `\s*` 都不能有**，字符集必须是白名单 —— 宽一点就是
   **向任意同名用户凭空发通知**（`extractMentions` 跑在原始正文上）。
 - **OAuth 三条限频不在 `RULES` 里**（内联在 `oauth/*/route.ts`）—— 做全站限频审计时最容易漏。
@@ -174,8 +178,8 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 
 ### CSRF / 中间件
 
-`docs/architecture.md` §6.4（三源并集、只校验写方法；外加练手盘协议闸 —— 它排在 GET
-早退**之前**，所以别以为「中间件只管写请求」）+ `docs/deploy.md` §6/§13（nginx 的
+`docs/architecture.md` §6.4（三源并集、只校验写方法；外加练手盘与玩具区的协议闸 ——
+它排在 GET 早退**之前**，所以别以为「中间件只管写请求」）+ `docs/deploy.md` §6/§13（nginx 的
 `Host` 与 `X-Forwarded-Host` 都没透传就会全站 POST 403）。鱼干市场的双门见
 `src/app/api/fish/market/_auth.ts` 与 `docs/bot/fish-bot.md`。
 
