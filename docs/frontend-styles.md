@@ -998,15 +998,23 @@ plot / price / volume / time 各占一格）：与 SVG 共用同一个分数，�
   **不画左侧竖条**。状态与分类色统一走 `.admin-chip`（`--brand` / `-blue` / `-amber` /
   `-violet` / `-success` / `-warning` / `-featured`）；**「精选」用 `-featured`（分类琥珀），
   不借 `--color-star-*`** —— 那是收藏夹五角星的专用语义色（§2.1 / §6.7）。
+- **文章栏目管理页的行卡**（`AdminArticlesManager` + `AdminBlogActions`）：正文
+  （标题 → 作者 / 日期 / 点赞 / ID → 两行描述）在上，底部一条 `.admin-row__footer`
+  放「栏目选择器 + 查看 / 编辑 / 精选」—— 旧版把这些堆在右侧一列，卡片右半截空、
+  左半截挤。分类名只由底部选择器呈现（它是当前值），标题行只在**未分类**时补一枚
+  `-amber` 徽标，避免同一个分类在卡里出现两次。底部这条用 `--color-background-subtle`
+  分组，不描边（全站层级靠背景色阶）。
 - **工具栏与字段**：`.admin-toolbar` 是吸顶胶囊（控件统一高 44px），`.admin-search` 是
   带图标的胶囊搜索框；字段多、需要标签的页用 `.admin-filter-bar` + `.admin-field`
   （标签 + 控件两行）。移动端有**两条吸顶**（侧栏标签带 + 工具栏），工具栏 `top`
   必须停在标签带下方（`navbar-height + 58px`）；只差 8px 的话滚动后会把它盖住，
   导航等于消失。
-- **圆形勾选点**：`.admin-pick`（`AdminPick`）—— 原生 checkbox 视觉隐藏但保留在焦点
-  序列里，可见的是 22px 圆点：未选中内容底色，选中转品牌实底 + 白色对勾（勾的缩放 /
-  淡入与行卡底色同一节奏）。**别把它塞进 `.form-check` 的 `padding-left` 体系** ——
-  旧写法用 `margin-left: -1.5rem` 抵消，少了那层 padding 时勾选点会溢出卡片。
+- **方形勾选点**：`.admin-pick`（`AdminPick`）—— 原生 checkbox 视觉隐藏但保留在焦点
+  序列里，可见的是 **20px 方角块（7px 圆角）**：未选中内容底色，选中转品牌实底 + 白色
+  对勾（勾的缩放 / 淡入与行卡底色同一节奏）。2026-10 从圆形改成方形：圆形勾选在行卡里
+  跟头像 / 状态圆点同形，扫一眼分不清「可勾选」与「只是图标」。**别把它塞进
+  `.form-check` 的 `padding-left` 体系** —— 旧写法用 `margin-left: -1.5rem` 抵消，
+  少了那层 padding 时勾选点会溢出卡片。
 - **批量操作底座**：选中后从底部浮出 `.admin-dock`（固定定位 + 品牌浮层阴影），
   列表末尾补 `.admin-dock-spacer` 防遮挡；清空选择后整块**不渲染** —— 旧版的
   `.admin-batch-actions` 是 `display: none` 等 JS 加 `.is-visible`，而没有任何代码加，

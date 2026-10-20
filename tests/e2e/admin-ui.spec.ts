@@ -5,7 +5,7 @@
 //   · 页面有没有横向溢出（页级 overflow 不受局部 `overflow-x:auto` 影响，会静默
 //     把整页顶宽）；
 //   · 日志检索的六个筛选字段在首屏是否真的带可见标签、表格有没有在窄屏折成卡片；
-//   · 文章行首的圆形勾选点是否落在卡片内、心形图标与数字是否同一水平线。
+//   · 文章行首的方形勾选点是否落在卡片内、心形图标与数字是否同一水平线。
 //
 // 用户报过三件事，正好是后三条：勾选点溢出卡片、点赞数与心形没对齐、日志检索
 // 在手机端挤成一坨。这里把它们钉住，改版回退时会当场红。
@@ -120,6 +120,10 @@ test.describe('管理面板窄屏版式', () => {
     // 勾选点必须完整落在卡片内（旧版用 margin-left:-1.5rem 把它推到卡片外 4px）。
     expect(pickBox!.x).toBeGreaterThanOrEqual(rowBox!.x);
     expect(pickBox!.x + pickBox!.width).toBeLessThanOrEqual(rowBox!.x + rowBox!.width);
+    // 选择控件是 7px 圆角的方形勾选块，不是圆形亮起。
+    expect(
+      await row.locator('.admin-pick__box').evaluate((el) => parseFloat(getComputedStyle(el).borderRadius))
+    ).toBeLessThanOrEqual(8);
 
     // 心形与紧跟的数字同一水平线（旧版中心线差 2.8px）。
     const heart = await row.locator('.admin-row__stat svg').first().boundingBox();

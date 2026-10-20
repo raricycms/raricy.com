@@ -304,9 +304,11 @@
   margin-top: 24px;
 }
 
-// ---- 选择控件（圆形勾选点）----
-// 原生 input 只在可访问性树里（视觉隐藏、仍可聚焦），可见的是一枚圆形指示器：
+// ---- 选择控件（方形勾选点）----
+// 原生 input 只在可访问性树里（视觉隐藏、仍可聚焦），可见的是一枚**方角勾选块**：
 // 未选中为内容底色，选中转品牌实底 + 白色对勾，勾的缩放/淡入与卡片底色同步。
+// 2026-10 从「圆形亮起」改成 7px 圆角的方形 —— 勾选是「这份表单字段被勾上了」，
+// 方形比圆形更接近这个语义，也不会在行卡里跟头像 / 状态圆点混成同一族形状。
 .admin-pick {
   position: relative;
   display: inline-flex;
@@ -330,16 +332,16 @@
 .admin-pick__box {
   display: grid;
   place-items: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  border-radius: 7px;
   background: var(--color-background-content);
   color: #fff;
   transition: background-color 0.25s ease, box-shadow 0.25s ease;
 
   svg {
-    width: 13px;
-    height: 13px;
+    width: 12px;
+    height: 12px;
     opacity: 0;
     transform: scale(0.4);
     transition: opacity 0.2s ease, transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
@@ -414,6 +416,12 @@
   overflow-wrap: anywhere;
 }
 
+// 标题文字单独一格：长标题可换行，后面的徽标跟着排。
+.admin-row__heading {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .admin-row__meta {
   display: flex;
   flex-wrap: wrap;
@@ -465,27 +473,13 @@
   overflow-wrap: anywhere;
 }
 
-.admin-row__side {
-  display: flex;
-  flex: 0 0 auto;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 8px;
-  max-width: 280px;
-}
-
-.admin-row__side-chips {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 6px;
-}
-
-.admin-row__actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 6px;
+// 卡片底部操作区：整行落在正文下方，左边改栏目、右边查看 / 编辑 / 精选。
+// 用一层内容底色把「编辑动作」和「正文」分开（全站口径：层级靠背景色阶，不描边）。
+.admin-row__footer {
+  margin-top: 12px;
+  padding: 8px 10px;
+  border-radius: 16px;
+  background: var(--color-background-subtle);
 }
 
 // ---- 徽标 ----
@@ -876,7 +870,6 @@
   }
 
   .admin-row {
-    flex-wrap: wrap;
     padding: 14px;
     border-radius: 20px;
   }
@@ -885,16 +878,8 @@
     align-self: flex-start;
   }
 
-  .admin-row__side {
-    align-items: stretch;
-    width: 100%;
-    max-width: none;
-    padding-top: 2px;
-  }
-
-  .admin-row__side-chips,
-  .admin-row__actions {
-    justify-content: flex-start;
+  .admin-row__footer {
+    padding: 8px;
   }
 
   .admin-dock {

@@ -2,7 +2,7 @@
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AdminArticlesManager — 文章栏目管理页的交互层：
-//   • 行首的圆形勾选点 + 全选本页 / 清空
+//   • 行首的方形勾选块 + 全选本页 / 清空
 //   • 选中后从底部浮出批量操作胶囊（更新栏目 / 设为精选）
 //   • 每行动作簇委托给 <AdminBlogActions>（栏目下拉 + 查看 / 编辑 / 精选）
 // 没有批量更新端点，这里对所选文章逐条 PATCH，可见结果等价（toast + 列表刷新）。
@@ -256,13 +256,16 @@ export default function AdminArticlesManager({
 
             <div className="admin-row__main">
               <div className="admin-row__title">
-                <span>{a.title}</span>
+                <span className="admin-row__heading">{a.title}</span>
                 {a.isFeatured && (
                   <span className="admin-chip admin-chip--featured">
                     <Star aria-hidden="true" />
                     精选
                   </span>
                 )}
+                {/* 只有「未分类」才单独给徽标：分类名已在下方栏目选择器里，正常分类
+                    不必再重复一遍；未分类则值得在标题行一眼看见。 */}
+                {!a.categoryPath && <span className="admin-chip admin-chip--amber">未分类</span>}
               </div>
 
               <div className="admin-row__meta">
@@ -276,19 +279,8 @@ export default function AdminArticlesManager({
               </div>
 
               {a.description ? <p className="admin-row__desc">{a.description}</p> : null}
-            </div>
 
-            <div className="admin-row__side">
-              <div className="admin-row__side-chips">
-                <span
-                  className={`admin-chip ${
-                    a.categoryPath ? 'admin-chip--blue' : 'admin-chip--amber'
-                  }`}
-                >
-                  {a.categoryPath ?? '未分类'}
-                </span>
-              </div>
-              <div className="admin-row__actions">
+              <div className="admin-row__footer">
                 <AdminBlogActions
                   blogId={a.id}
                   initialFeatured={a.isFeatured}

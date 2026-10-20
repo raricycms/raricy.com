@@ -72,28 +72,33 @@ export default function AdminBlogActions({
 
   return (
     <div className="admin-blog-actions">
-      <select
-        className="form-select admin-blog-actions__select"
-        data-article-id={blogId}
-        value={initialCategoryId ?? 'none'}
-        disabled={busy}
-        aria-label="文章栏目"
-        onChange={(e) => {
-          const v = e.target.value;
-          patch({ categoryId: v === 'none' ? null : Number(v) });
-        }}
-      >
-        <option value="none">未分类</option>
-        {categoryGroups.map((g) => (
-          <optgroup key={g.label} label={g.label}>
-            {g.options.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.label}
-              </option>
-            ))}
-          </optgroup>
-        ))}
-      </select>
+      {/* 卡片底部一行：左边改栏目、右边行内动作。可见的「栏目」标签替代旧版
+          由分类徽标承担的「这个下拉是干什么的」提示。 */}
+      <label className="admin-blog-actions__field" htmlFor={`admin-blog-category-${blogId}`}>
+        <span className="admin-blog-actions__label">栏目</span>
+        <select
+          id={`admin-blog-category-${blogId}`}
+          className="form-select admin-blog-actions__select"
+          data-article-id={blogId}
+          value={initialCategoryId ?? 'none'}
+          disabled={busy}
+          onChange={(e) => {
+            const v = e.target.value;
+            patch({ categoryId: v === 'none' ? null : Number(v) });
+          }}
+        >
+          <option value="none">未分类</option>
+          {categoryGroups.map((g) => (
+            <optgroup key={g.label} label={g.label}>
+              {g.options.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.label}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+      </label>
 
       <div className="admin-blog-actions__buttons">
         <Link
