@@ -106,7 +106,7 @@ test.describe('戴着永久框的账号：各尺寸的落点都真的画出了�
   test('20px · 文章详情页的作者头像', async ({ page }) => {
     await loginViaApi(page, SEED_USERS.framed.username);
     await page.goto(`/blog/${made.blogId}`);
-    await expect(page.locator('.blog-meta .blog-author .avatar__frame')).toHaveAttribute(
+    await expect(page.locator('.read-hero__author .avatar__frame')).toHaveAttribute(
       'src',
       FRAME_SRC
     );
@@ -175,8 +175,8 @@ test.describe('没有框的账号：一个框元素都不该渲染', () => {
     // /blog/<id> 是 core+ 档，匿名访客会被重定向到登录页 —— 这里用 core 看
     await loginViaApi(page, SEED_USERS.core.username);
     await page.goto(`/blog/${SEED_BLOG.id}`);
-    await expect(page.locator('.blog-meta .blog-author .avatar__img')).toHaveCount(1);
-    await expect(page.locator('.blog-meta .blog-author .avatar__frame')).toHaveCount(0);
+    await expect(page.locator('.read-hero__author .avatar__img')).toHaveCount(1);
+    await expect(page.locator('.read-hero__author .avatar__frame')).toHaveCount(0);
   });
 });
 
