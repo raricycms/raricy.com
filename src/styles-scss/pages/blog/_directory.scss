@@ -169,6 +169,8 @@
   align-self: flex-start; // 避免被列表拉长，给 sticky 留出实际滚动距离
 
   &__shell { position: relative; border-radius: 30px; background: var(--color-background-card); max-height: calc(100dvh - var(--navbar-height) - 24px); overflow-y: auto; }
+  // 窄屏展开时的全屏蒙版。桌面没有「展开」这回事，直接不渲染；≤992px 那一档才点亮。
+  &__backdrop { display: none; }
   &__avatar {
     position: absolute;
     z-index: 1;
@@ -257,12 +259,36 @@
     // 头像 44 + 右内距 13。外壳固定在右下角，展开时向左上伸展；头像留在胶囊右端
     // （right 13），屏幕位置与改版前那颗球完全一致，所以「原来那颗头像球」不会跳。
     &__shell {
+      // 压在展开态的全屏蒙版之上（__backdrop 的 z-index 是 0）。
+      z-index: 1;
       width: 122px;
       min-height: 70px;
       border-radius: 35px;
       overflow: clip;
       box-shadow: var(--shadow-card-brand);
       transition: width .42s cubic-bezier(.22, 1, .36, 1), border-radius .42s cubic-bezier(.22, 1, .36, 1);
+    }
+    // 展开时的全屏暗色蒙版。色值取站内**模态遮罩**统一的那一个：
+    //   .modal / .modal-overlay / .bento-detail__backdrop / .oauth-modal-overlay
+    // 都是 rgba(0, 0, 0, .5)。更深的那几档留给内容本身就是深色场景的查看器
+    // （.chat-lightbox 0.8、.feed-modal__backdrop 0.65），面板蒙版不跟它们对齐。
+    // 别在这里调深浅，否则同一次会话里打开两个浮层，一个深一个浅。
+    // （docs/frontend-styles.md §2.3 第 3 条：写死的 rgba 只允许作遮罩底色。）
+    // 它挂在 aside 里面而不是 portal：移动端 aside 自己就是 fixed，蒙版跟着它一起
+    // 显隐即可。代价是「点外部收起」那个监听判不出它（它就在 aside 内），收起由
+    // 组件自己的 onPointerDown 接（见 BlogPersonalSidebar）。
+    &__backdrop {
+      display: block;
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      background: rgba(0, 0, 0, 0.5);
+      opacity: 0;
+      pointer-events: none;
+      // 触屏在蒙版上拖动会滚动底下那一页：暗层纹丝不动、页面却在暗层底下滑，
+      // 看着像坏了。touch-action 只拦手势，不拦点击（点蒙版收起照常）。
+      touch-action: none;
+      transition: opacity .18s ease;
     }
     &__avatar {
       top: 13px;
@@ -350,6 +376,12 @@
     }
 
     &.is-open {
+      // 蒙版要盖住固定顶栏（.site-navbar 是 1030）才叫「全屏」。与 .bento-detail
+      // 为了同一件事取 1050 同源；这里只压过顶栏，仍让站内模态（1050 / 10000）
+      // 盖在它上面。收起态维持 80，不进渲染。
+      z-index: 1035;
+
+      .blog-personal__backdrop { opacity: 1; pointer-events: auto; }
       .blog-personal__shell { width: min(280px, calc(100vw - 32px)); border-radius: 30px; }
       .blog-personal__avatar { top: 24px; left: 20px; width: 48px; height: 48px; }
       .blog-personal__toggle { top: 28px; right: 12px; width: 36px; height: 36px; padding: 0; svg { opacity: 1; transition-delay: 55ms; } }

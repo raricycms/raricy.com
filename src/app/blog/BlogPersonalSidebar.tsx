@@ -70,6 +70,16 @@ export default function BlogPersonalSidebar({ user, summary, scope }: {
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false);
       }}
     >
+      {/* 窄屏展开时的全屏暗色蒙版：点它收起（与 ESC、点外部同义）。
+          颜色跟站内模态遮罩统一（0.5 黑），样式见 _directory.scss 的 __backdrop。
+          它挂在 aside 里面而不是 portal：移动端 aside 本身就是 fixed，蒙版跟着一起
+          显隐即可 —— 代价是文档上那个「点外部收起」的监听判不出它（它就在 aside 内），
+          所以这里自己接 pointerdown。同理，桌面 display:none，不进任何渲染。 */}
+      <div
+        className="blog-personal__backdrop"
+        aria-hidden="true"
+        onPointerDown={() => setOpen(false)}
+      />
       <div className="blog-personal__shell">
         <Link
           className="blog-personal__avatar"

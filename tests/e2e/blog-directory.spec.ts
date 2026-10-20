@@ -43,6 +43,8 @@ test('筛选条的行数、侧栏的高度和真实吸顶位置', async ({ page,
     expect(Math.abs(category.y - sort.y)).toBeLessThan(4);
     expect((await page.locator('.blog-personal').boundingBox())!.width).toBe(280);
     expect((await page.locator('.blog-personal').boundingBox())!.height).toBeLessThan(500);
+    // 桌面没有「展开」这回事，蒙版整个不渲染。
+    await expect(page.locator('.blog-personal__backdrop')).toBeHidden();
   }
   await page.evaluate(() => window.scrollTo(0, 650));
   // 手机视觉视口可相对布局视口平移；两者都用浏览器测量值，以顶栏下沿为基准。
@@ -219,6 +221,48 @@ test('手机端胶囊：加号直达创建，点头像展开，加号展开成�
   await expect(page.locator('.blog-personal__panel')).toBeHidden();
   await plus.click();
   await expect(page).toHaveURL('/blog/upload');
+});
+
+test('手机端展开个人面板时压一层全屏暗色蒙版，点蒙版收起', async ({ page, isMobile }) => {
+  test.skip(!isMobile, '蒙版只在 ≤992px 的悬浮入口出现');
+  await page.goto('/blog?scope=mine');
+  const backdrop = page.locator('.blog-personal__backdrop');
+  const panel = page.locator('.blog-personal__panel');
+
+  // 收起态：元素在（≤992px 才 display:block），但不接收点击。
+  // ⚠️ 判据不能用 toBeHidden：opacity:0 的元素在 Playwright 里仍算 visible。
+  await expect(backdrop).toHaveCSS('opacity', '0');
+  await expect(backdrop).toHaveCSS('pointer-events', 'none');
+
+  await page.getByRole('button', { name: '展开我的博客', exact: true }).tap();
+  await expect(panel).toBeVisible();
+  await expect(backdrop).toHaveCSS('opacity', '1');
+  await expect(backdrop).toHaveCSS('pointer-events', 'auto');
+  // 与站内其它遮罩同一个色（.modal / .modal-overlay / .bento-detail__backdrop）。
+  await expect(backdrop).toHaveCSS('background-color', 'rgba(0, 0, 0, 0.5)');
+
+  // 铺满可视区；层级还要高于固定顶栏，否则顶栏那一条不会跟着变暗。
+  // 尺寸基准取 visualViewport：Chromium 的移动模拟里布局视口（clientWidth）比可视区
+  // 大一条经典滚动条的宽度，而 fixed 定位的初始包含块跟着可视区走 —— 全站其它固定
+  // 遮罩（.modal-overlay、.chat-lightbox）在这个环境里也是同样大小，不是本条的偏差。
+  const layout = await page.evaluate(() => {
+    const vv = window.visualViewport;
+    return {
+      navbar: Number(getComputedStyle(document.querySelector('.site-navbar')!).zIndex),
+      host: Number(getComputedStyle(document.querySelector('.blog-personal')!).zIndex),
+      width: vv?.width ?? window.innerWidth,
+      height: vv?.height ?? window.innerHeight,
+    };
+  });
+  expect(layout.host).toBeGreaterThan(layout.navbar);
+  const box = (await backdrop.boundingBox())!;
+  expect(Math.round(box.width)).toBe(Math.round(layout.width));
+  expect(Math.round(box.height)).toBe(Math.round(layout.height));
+
+  // 点左上角空白处收起（右下角那块是展开的面板本身，避开它），走触屏路径。
+  await backdrop.tap({ position: { x: 24, y: 120 } });
+  await expect(panel).toBeHidden();
+  await expect(backdrop).toHaveCSS('pointer-events', 'none');
 });
 
 test('五个范围使用同一列表，空状态清掉筛选后保留当前范围', async ({ page, isMobile }) => {
