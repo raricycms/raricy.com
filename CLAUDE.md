@@ -532,8 +532,9 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
   ⚠️ **它连申诉人一起管**：`createAppeal` 只许当事人本人申诉，所以隐藏日志的申诉人
   就是那个匿名作者 —— `getLogDetail` 必须把 `appellant` 一并抹掉。只抹 `target` 而
   放着申诉人，等于匿名作者一申诉就把自己交出去（真名会印在 core+ 都能开的 `/audit/<id>` 上）。
-- **匿名评论不进个人主页**（`getPublicProfile` / `/u/[id]` 的 `recentComments` 与计数）：
-  主页 core+ 都能看，列在那里一比对就对上号了。
+- **匿名评论不进个人主页**（`getPublicProfile` 的 `recentComments` 与评论计数 ——
+  主页墙本身已没有评论列表，但 `/api/users/:id` 仍走这个读口）：那个读口 core+ 都能用，
+  列在那里一比对就对上号了。新增主页积木时同理：**统计块不许加评论数**。
 
 另外三条：
 

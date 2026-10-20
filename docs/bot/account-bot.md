@@ -111,8 +111,8 @@ Content-Type: application/json
 | `notifyEdit` | boolean | 你的文章因管理操作被编辑时，要不要发通知 |
 | `notifyDelete` | boolean | 你的内容因管理操作被删除时，要不要发通知 |
 | `notifyAdmin` | boolean | 是否接收受此开关控制的站务通知，包括定向通知与管理操作回执；强制通知不受此开关影响 |
-| `showRecentBlogs` | boolean | 主页上是否展示你的最近文章 |
-| `showRecentComments` | boolean | 主页上是否展示你的最近评论 |
+| `showRecentBlogs` | boolean | 主页**默认布局**是否自动展示最近文章（尚未布置主页时的兜底） |
+| `showRecentComments` | boolean | 资料接口 `GET /api/users/:id` 是否返回最近评论（主页本身不展示评论） |
 | `focusMode` | boolean | 专注模式，见 §4 |
 
 成功：
@@ -355,9 +355,14 @@ GET /api/users/u_xxx
 | 字段 | 谁能看到 |
 |------|----------|
 | `id` / `username` / `avatarPath` / `bio` / `createdAt` | **所有人**（含游客） |
-| `showRecentBlogs` / `showRecentComments` | 所有人（那是页面的主体） |
+| `showRecentBlogs` / `showRecentComments` | 所有人（这是资料接口自己的字段） |
 | `role` | **仅本人或 core+**；否则是 `null` |
 | `recentBlogs` / `recentComments` | **仅本人或 core+**；否则是空数组 |
+
+> ⚠️ **主页页面与这份接口不是同一份数据**（2026-10 起）：`/u/:id` 由作者自己布置成
+> 积木墙（只挂本来就对外可读的文章 / 公开图 / 公开音频，另有文字、链接、统计块），
+> 没有对应的 JSON 接口。这份接口仍按旧口径返回最近文章与最近评论，供第三方展示资料
+> 卡片用 —— 别拿它推断主页页面上有什么。
 
 > ⚠️ **`role: null` 不代表「这人是普通用户」—— 它代表「你没资格知道」。**
 > 别拿它当角色判断用。

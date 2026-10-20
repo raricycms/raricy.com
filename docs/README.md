@@ -61,6 +61,7 @@ GitHub 上仍是原来的反引号，两边不冲突。
 | `guide/story-module.md` | 故事模块：文件结构 / 合集嵌套 / URL |
 | `guide/编辑器使用指南.md` | 编辑器：手机上的工具条与「更多工具」、Enter 与 Shift+Enter 的差别、预览与导出 |
 | `guide/格式转换器使用指南.md` | 格式转换器：八个能力区的本地转换（文件不出浏览器）、用途预设与固定配方、损失说明与限额 |
+| `guide/个人主页使用指南.md` | 个人主页：能放什么、四档尺寸、电脑拖动摆放与手机上下移、内容不可用之后 |
 
 ★ = 被站内页面渲染（`/clipboard/guide` · `/image/guide` · `/audio/guide` · `/vote/guide` · `/favorite/guide` · `/tool/cattca-guide`）
 
