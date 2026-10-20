@@ -1,0 +1,18 @@
+-- 32_profile_block_sort —— 个人主页积木的**手机端显示顺序**。
+--
+-- 【为什么单独一列】桌面是 4 列自由网格，位置就是 (x, y)；手机忽略坐标、按两列流式排。
+-- 这两件事在一次重排里**没有共同的表示**：把手机上的顺序塞进 x/y，会把桌面布局一起
+-- 改掉（桌面用户精心留的空白会无声消失）。所以顺序单独存一列：桌面读 (x, y)，
+-- 手机读 sort。
+--
+-- 【口径】sort = 保存时客户端数组里的下标（0 起），写入在
+-- src/lib/profile-service.ts 的 saveProfileBlocks 里。读口 orderBy [sort, y, x]：
+-- 本迁移之后所有老行的 sort 都是 0（相等），于是回落成旧的 (y, x) 顺序 ——
+-- 也就是当前手机上看到的顺序。**刻意不回填**：回填要猜一个「旧手机顺序」，
+-- 而那个顺序本来就是 (y, x)。
+--
+-- 【本迁移不含数据变换】只加一列。
+--
+-- ⚠️ 只执行一次（_raricy_migrations 保证）。ALTER … ADD COLUMN 没有 IF EXISTS，
+--    手工重跑会报 `duplicate column name` —— 那是响亮的报错，不是静默错账。
+ALTER TABLE "profile_blocks" ADD COLUMN "sort" INTEGER NOT NULL DEFAULT 0;

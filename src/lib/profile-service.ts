@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // profile-service.ts —— 个人主页「积木」的读写
 //
-// 【三条纪律，改之前先读】
+// 【四条纪律，改之前先读】
 //
 // 1. **只出「本来就对外可读」的数据**。所有查询都叠 EXTERNAL_VISIBLE_BLOG_WHERE /
 //    isPublic=true；这与「主页是匿名可达的名片」是同一件事的两面。不做「先查出来
@@ -14,6 +14,11 @@
 // 3. **写路径整页替换，且用「更新 + 翻墓碑」而不是「删了重插」**。id 由客户端带
 //    回来，删了重插会撞主键（同一 id 正在被软删的那一行占着）。而且全站永不物理
 //    删除 —— 少掉的块翻 deleted 墓碑。
+//
+// 4. **「保存时的归属校验」只查归属，不查档位**。档位是**读路径**的事（第 1 条）：
+//    把校验写成「必须此刻对外可见」会让一个目标刚降档的人**整页都存不进去**
+//    （报「有一篇文章不可见」），连删掉那一块都做不到 —— 而那块本来就会渲染成空。
+//    归属必须查：不然可以把自己的块指向别人的 id，是一发越权指针。
 //
 // 【为什么 viewer 只用来决定「要不要给编辑清单」】对外可读的数据对游客 / core+ /
 // 本人是同一份：博客有 external 档、图片音频有 isPublic。主页不再做「core+ 才看
@@ -86,15 +91,40 @@ function defaultPositions(index: number): { x: number; y: number; w: number; h: 
   return { x: 0, y: index - 1, w: 2, h: 1 };
 }
 
-async function resolveViews(userId: string, blocks: StoredBlock[]): Promise<ProfileBlock[]> {
+/** 统计块与签到块共用的那一组数（也作为本人编辑器的预览值）。 */
+export interface ProfileStats {
+  /** 对外可读（public / link）的文章数。 */
+  blogs: number;
+  likes: number;
+  /** **累计**签到天数（不是连续 —— DailyCheckIn 只存每天一行，没有 streak 列）。 */
+  checkins: number;
+}
+
+async function computeStats(userId: string): Promise<ProfileStats> {
+  const [blogs, likeAgg, checkins] = await Promise.all([
+    prisma.blog.count({ where: { authorId: userId, ignore: false, ...EXTERNAL_VISIBLE_BLOG_WHERE } }),
+    prisma.blog.aggregate({
+      where: { authorId: userId, ignore: false, ...EXTERNAL_VISIBLE_BLOG_WHERE },
+      _sum: { likesCount: true },
+    }),
+    prisma.dailyCheckIn.count({ where: { userId } }),
+  ]);
+  return { blogs, likes: likeAgg._sum.likesCount ?? 0, checkins };
+}
+
+async function resolveViews(
+  userId: string,
+  blocks: StoredBlock[],
+  stats: ProfileStats | null
+): Promise<ProfileBlock[]> {
   const blogIds = blocks.filter((b) => b.kind === 'blog').map((b) => String(b.config.blogId ?? ''));
   const imageIds = blocks.filter((b) => b.kind === 'image').map((b) => String(b.config.imageId ?? ''));
   const audioIds = blocks.filter((b) => b.kind === 'audio').map((b) => String(b.config.audioId ?? ''));
 
-  const needStats = blocks.some((b) => b.kind === 'stats');
-  const needCheckin = blocks.some((b) => b.kind === 'checkin');
+  const needStats = blocks.some((b) => b.kind === 'stats' || b.kind === 'checkin');
+  const resolvedStats = needStats ? stats ?? (await computeStats(userId)) : null;
 
-  const [blogRows, imageRows, audioRows, blogCount, likeAgg, checkinDays] = await Promise.all([
+  const [blogRows, imageRows, audioRows] = await Promise.all([
     blogIds.length
       ? prisma.blog.findMany({
           where: { id: { in: blogIds }, authorId: userId, ignore: false, ...EXTERNAL_VISIBLE_BLOG_WHERE },
@@ -118,18 +148,6 @@ async function resolveViews(userId: string, blocks: StoredBlock[]): Promise<Prof
           select: { id: true, filename: true },
         })
       : Promise.resolve([]),
-    needStats
-      ? prisma.blog.count({ where: { authorId: userId, ignore: false, ...EXTERNAL_VISIBLE_BLOG_WHERE } })
-      : Promise.resolve(0),
-    needStats
-      ? prisma.blog.aggregate({
-          where: { authorId: userId, ignore: false, ...EXTERNAL_VISIBLE_BLOG_WHERE },
-          _sum: { likesCount: true },
-        })
-      : Promise.resolve(null),
-    needStats || needCheckin
-      ? prisma.dailyCheckIn.count({ where: { userId } })
-      : Promise.resolve(0),
   ]);
 
   const blogMap = new Map(blogRows.map((b) => [b.id, b]));
@@ -203,15 +221,17 @@ async function resolveViews(userId: string, blocks: StoredBlock[]): Promise<Prof
         break;
       }
       case 'stats':
-        view = {
-          kind: 'stats',
-          blogs: blogCount,
-          likes: likeAgg?._sum.likesCount ?? 0,
-          checkins: checkinDays,
-        };
+        if (resolvedStats) {
+          view = {
+            kind: 'stats',
+            blogs: resolvedStats.blogs,
+            likes: resolvedStats.likes,
+            checkins: resolvedStats.checkins,
+          };
+        }
         break;
       case 'checkin':
-        view = { kind: 'checkin', days: checkinDays };
+        if (resolvedStats) view = { kind: 'checkin', days: resolvedStats.checkins };
         break;
     }
     return { ...block, view };
@@ -227,18 +247,22 @@ async function resolveViews(userId: string, blocks: StoredBlock[]): Promise<Prof
  */
 export async function getProfilePageData(
   userId: string,
-  opts: { isOwner: boolean }
+  opts: { isOwner: boolean; showRecentBlogs?: boolean }
 ): Promise<ProfilePageData> {
   const rows = await prisma.profileBlock.findMany({
     where: { userId, deleted: false },
-    orderBy: [{ y: 'asc' }, { x: 'asc' }],
+    // sort 是手机端顺序（迁移 32）；老行全是 0，于是回落到旧的 (y, x) 顺序。
+    orderBy: [{ sort: 'asc' }, { y: 'asc' }, { x: 'asc' }],
     select: { id: true, kind: true, x: true, y: true, w: true, h: true, config: true },
   });
 
   let stored = rows.map(toStored).filter((b): b is StoredBlock => b !== null);
   const isDefault = stored.length === 0;
 
-  if (isDefault) {
+  // 默认布局尊重「展示最近文章」这个旧开关：关掉它的人不该因为「还没布置」
+  // 就被自动挂上三篇最近文章。**只影响默认布局** —— 亲手加的文章块照常显示。
+  // 不传 = 按默认展示（测试与内部调用方少传一个参数时行为不变）。
+  if (isDefault && (opts.showRecentBlogs ?? true)) {
     const recent = await prisma.blog.findMany({
       where: { authorId: userId, ignore: false, ...EXTERNAL_VISIBLE_BLOG_WHERE },
       orderBy: { createdAt: 'desc' },
@@ -254,7 +278,17 @@ export async function getProfilePageData(
     }));
   }
 
-  const blocks = await resolveViews(userId, stored);
+  // 本人要编辑清单，也就需要统计块的预览值；访客只在真的挂了统计块时才算。
+  const needStats = stored.some((b) => b.kind === 'stats' || b.kind === 'checkin');
+  const stats = opts.isOwner || needStats ? await computeStats(userId) : null;
+
+  let blocks = await resolveViews(userId, stored, stats);
+
+  // 访客视图：目标已不可对外展示的块**连指针都不下发**（它本来就不渲染）。
+  // 本人才拿得到它们 —— 编辑器要显示「这块内容已不可用」并让人换掉。
+  if (!opts.isOwner) {
+    blocks = blocks.filter((b) => b.view !== null);
+  }
 
   let catalog: BlockCatalog | null = null;
   if (opts.isOwner) {
@@ -287,6 +321,8 @@ export async function getProfilePageData(
       })),
       images: images.map((i) => ({ id: i.id, url: `/api/images/${i.id}/raw`, filename: i.filename })),
       audios: audios.map((a) => ({ id: a.id, url: `/api/audio/${a.id}/raw`, filename: a.filename })),
+      // owner 分支里 stats 一定算过（见上面 needStats 那段）；这里只是收窄类型。
+      stats: stats ?? { blogs: 0, likes: 0, checkins: 0 },
     };
   }
 
@@ -307,33 +343,30 @@ export async function saveProfileBlocks(userId: string, raw: unknown): Promise<S
   if (!parsed.ok) return { ok: false, message: parsed.message };
   const blocks = parsed.blocks;
 
-  // 归属 + 对外可读性校验：存进去的指针必须此刻就打得开，否则卡片会立刻是空的。
+  // 归属校验：指针必须指向**自己的、未软删**的对象。
+  //
+  // 【刻意不查档位】档位在读路径里判（resolveViews 叠 EXTERNAL_VISIBLE_*）。这里若
+  // 也要求「此刻对外可见」，目标刚降档的人会**整页都存不进去** —— 报「有一篇文章
+  // 不可见」，而他想删掉那一块也删不掉（保存是整页提交）。那块本来就会渲染成空，
+  // 编辑器里显示「已不可用」并让他换一个，这才是正确的手感。
   const blogIds = [...new Set(blocks.filter((b) => b.kind === 'blog').map((b) => String(b.config.blogId)))];
   const imageIds = [...new Set(blocks.filter((b) => b.kind === 'image').map((b) => String(b.config.imageId)))];
   const audioIds = [...new Set(blocks.filter((b) => b.kind === 'audio').map((b) => String(b.config.audioId)))];
 
   const [blogOk, imageOk, audioOk] = await Promise.all([
     blogIds.length
-      ? prisma.blog.count({
-          where: { id: { in: blogIds }, authorId: userId, ignore: false, ...EXTERNAL_VISIBLE_BLOG_WHERE },
-        })
+      ? prisma.blog.count({ where: { id: { in: blogIds }, authorId: userId, ignore: false } })
       : Promise.resolve(0),
     imageIds.length
-      ? prisma.imageHosting.count({
-          where: { id: { in: imageIds }, authorId: userId, ignore: false, isPublic: true },
-        })
+      ? prisma.imageHosting.count({ where: { id: { in: imageIds }, authorId: userId, ignore: false } })
       : Promise.resolve(0),
     audioIds.length
-      ? prisma.audioHosting.count({
-          where: { id: { in: audioIds }, authorId: userId, ignore: false, isPublic: true },
-        })
+      ? prisma.audioHosting.count({ where: { id: { in: audioIds }, authorId: userId, ignore: false } })
       : Promise.resolve(0),
   ]);
-  if (blogOk !== blogIds.length) {
-    return { ok: false, message: '有一篇文章当前不可对外展示，刷新后再试' };
-  }
-  if (imageOk !== imageIds.length) return { ok: false, message: '有一张图片当前不可公开，刷新后再试' };
-  if (audioOk !== audioIds.length) return { ok: false, message: '有一段音频当前不可公开，刷新后再试' };
+  if (blogOk !== blogIds.length) return { ok: false, message: '有一篇文章不存在或不属于你，刷新后再试' };
+  if (imageOk !== imageIds.length) return { ok: false, message: '有一张图片不存在或不属于你，刷新后再试' };
+  if (audioOk !== audioIds.length) return { ok: false, message: '有一段音频不存在或不属于你，刷新后再试' };
 
   const now = nowForDb();
   await prisma.$transaction(async (tx) => {
@@ -355,13 +388,15 @@ export async function saveProfileBlocks(userId: string, raw: unknown): Promise<S
       });
     }
 
-    for (const b of withIds) {
+    for (const [index, b] of withIds.entries()) {
       const data = {
         kind: b.kind,
         x: b.x,
         y: b.y,
         w: b.w,
         h: b.h,
+        // 手机端顺序 = 客户端数组下标（迁移 32）。桌面位置仍由 x/y 决定，两者互不干扰。
+        sort: index,
         config: JSON.stringify(b.config),
         updatedAt: now,
         deleted: false,

@@ -10,8 +10,10 @@
 // 要复用同一套卡片渲染，拆成两个组件必然漂移（一边能拖、一边不能，样式也会分叉）。
 // 客户端组件在首屏一样会被服务端渲染成 HTML，所以访客拿到的仍是 SSR 内容。
 //
-// 【拖拽只做桌面】手机上网格是两列流式（没有真坐标），拖拽语义不成立 —— 手机端
-// 明确提示「用电脑摆放」，不假装支持。尺寸与增删在手机端仍然可用。
+// 【两种摆放模型，别混】桌面是 4 列自由网格（位置 = x/y，拖动摆放）；手机是两列
+// 流式（忽略 x/y，按**数组顺序**排，存在 profile_blocks.sort 里）。所以手机上换顺序
+// 只改数组下标，**不动桌面坐标** —— 反过来会把桌面精心留的空白一起改掉。
+// 手机端不支持拖动（流式布局里「拖到哪」没有意义），改用选中后的「上移 / 下移」。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -24,6 +26,8 @@ import {
   BookOpen,
   CalendarCheck,
   Check,
+  ChevronDown,
+  ChevronUp,
   ExternalLink,
   GripVertical,
   Image as ImageIcon,
@@ -44,7 +48,6 @@ import {
   GRID_COLUMNS,
   MAX_BLOCKS,
   findFreeSpot,
-  mobileOrder,
   normalizeBlocks,
   normalizeConfig,
   rectsOverlap,
@@ -72,8 +75,19 @@ const KIND_ICON: Record<BlockKind, typeof BookOpen> = {
 type Draft = StoredBlock;
 
 type Dialog =
-  | { type: 'pick'; kind: 'blog' | 'image' | 'audio' }
+  /** targetId 非空 = 「换一个」：替换那一块的指针，而不是新加一块。 */
+  | { type: 'pick'; kind: 'blog' | 'image' | 'audio'; targetId?: string }
   | { type: 'field'; kind: 'text' | 'link' | 'image' | 'audio'; id: string | null; initial: Record<string, string> };
+
+/** 内容来自「已有对象」的块 —— 目标不可用时唯一有意义的修复动作是「换一个」。 */
+function isPickable(kind: BlockKind): kind is 'blog' | 'image' | 'audio' {
+  return kind === 'blog' || kind === 'image' || kind === 'audio';
+}
+
+/** 有可编辑字段（标题 / 说明 / 正文）的块。 */
+function isFieldEditable(kind: BlockKind): kind is 'text' | 'link' | 'image' | 'audio' {
+  return kind === 'text' || kind === 'link' || kind === 'image' || kind === 'audio';
+}
 
 function genId(): string {
   return (
@@ -168,6 +182,30 @@ export default function ProfileBoard({
     [draft, blocks]
   );
 
+  // 有未保存改动时离开页面要拦一下（只在编辑态）。beforeunload 是浏览器唯一
+  // 会给确认框的钩子；移动端标签页被杀时它不触发，但那种情况本来就救不回来。
+  useEffect(() => {
+    if (!editing || !dirty) return;
+    const guard = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', guard);
+    return () => window.removeEventListener('beforeunload', guard);
+  }, [editing, dirty]);
+
+  /**
+   * 只改地址栏、不触发导航。
+   *
+   * ⚠️ **必须把 `window.history.state` 原样传回去**：Next App Router 把当前路由树
+   * 挂在 history.state 里。这里传 `{}` 会把它抹掉，随后 `router.refresh()` 拿不到
+   * 正确的树 —— 症状是「保存成功、刷新回来的却是上一次的数据」（实测过：连存两次，
+   * 页面总落后一版，reload 一下又对了）。
+   */
+  function syncUrl(url: string) {
+    window.history.replaceState(window.history.state, '', url);
+  }
+
   /** 编辑态下的「能画什么」：优先用服务端解析好的 view，新加的块从清单里现拼。 */
   const viewOf = useCallback(
     (b: Draft): BlockView | null => {
@@ -209,19 +247,25 @@ export default function ProfileBoard({
           const url = cfgStr(b.config, 'url');
           return url ? { kind: 'link', url, label: cfgStr(b.config, 'label') || url } : null;
         }
-        default:
-          return null;
+        // 统计 / 签到块没有 config 可填：新加的那一块必须立刻显示真数，
+        // 否则编辑器里会先画成「还没填内容」+ 一个点了没反应的「编辑」按钮。
+        case 'stats':
+          return catalog
+            ? { kind: 'stats', blogs: catalog.stats.blogs, likes: catalog.stats.likes, checkins: catalog.stats.checkins }
+            : null;
+        case 'checkin':
+          return catalog ? { kind: 'checkin', days: catalog.stats.checkins } : null;
       }
     },
     [blocks, catalog]
   );
 
+  /** 手机端顺序 = 数组下标（桌面位置仍由 x/y 决定）。只改顺序，不动坐标。 */
   const visible = useMemo(() => {
     const list = editing ? draft : blocks.filter((b) => b.view !== null).map(stripView);
-    const withView = list.map((b) => ({ block: b, view: editing ? viewOf(b) : blocks.find((x) => x.id === b.id)?.view ?? null }));
-    return mobileOrder(withView.map((x) => x.block)).map((b) => ({
-      block: b,
-      view: withView.find((x) => x.block.id === b.id)?.view ?? null,
+    return list.map((block) => ({
+      block,
+      view: editing ? viewOf(block) : blocks.find((x) => x.id === block.id)?.view ?? null,
     }));
   }, [editing, draft, blocks, viewOf]);
 
@@ -324,6 +368,24 @@ export default function ProfileBoard({
     });
   }
 
+  /**
+   * 手机端的上移 / 下移：只交换数组里相邻两项。
+   * 保存时服务端按数组下标写 `sort`，所以这一操作**不会碰任何块的 x/y** ——
+   * 桌面布局保持原样（迁移 32 头部讲了为什么必须是两套）。
+   */
+  function moveInOrder(id: string, dir: -1 | 1) {
+    setDraft((prev) => {
+      const i = prev.findIndex((b) => b.id === id);
+      const j = i + dir;
+      if (i < 0 || j < 0 || j >= prev.length) return prev;
+      const next = [...prev];
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
+  }
+
+  const orderIndex = selected ? draft.findIndex((b) => b.id === selected) : -1;
+
   function startAdd(kind: BlockKind) {
     const def = BLOCK_DEFS[kind];
     if (def.picker) {
@@ -344,6 +406,31 @@ export default function ProfileBoard({
       return;
     }
     addBlock(kind, {});
+  }
+
+  /**
+   * 「换一个」——目标已不可用（被删 / 降档 / 归档）时的修复路径。
+   *
+   * 之前这里只有一个 `编辑` 按钮，而 blog 块点它**什么都不发生**（它没有可填字段），
+   * 用户只能删掉重加。现在按块类型走对应入口：指针类重新挑一个，文本类回字段弹窗。
+   */
+  function startRepick(b: Draft) {
+    if (isPickable(b.kind)) {
+      const def = BLOCK_DEFS[b.kind];
+      const list = catalog?.[b.kind === 'blog' ? 'blogs' : b.kind === 'image' ? 'images' : 'audios'] ?? [];
+      if (list.length === 0) {
+        setNotice(def.emptyHint);
+        return;
+      }
+      setDialog({ type: 'pick', kind: b.kind, targetId: b.id });
+      return;
+    }
+    if (isFieldEditable(b.kind)) startEditField(b);
+  }
+
+  /** 把「换一个」挑中的指针写到既有块上（位置 / 尺寸不变）。 */
+  function replacePointer(id: string, config: Record<string, unknown>) {
+    setDraft((prev) => prev.map((b) => (b.id === id ? { ...b, config } : b)));
   }
 
   function startEditField(b: Draft) {
@@ -403,18 +490,14 @@ export default function ProfileBoard({
       }
     } else {
       if (!id) return;
+      // 图片说明 / 音频标题：走同一个 normalizeConfig（服务端也是它）——
+      // 客户端那份只做体验，但不能出现「本地看着存下了、刷新后变了」的差异。
       setDraft((prev) =>
-        prev.map((b) =>
-          b.id === id
-            ? {
-                ...b,
-                config:
-                  kind === 'image'
-                    ? { ...b.config, caption: (values.caption ?? '').slice(0, 40) }
-                    : { ...b.config, title: (values.title ?? '').slice(0, 24) },
-              }
-            : b
-        )
+        prev.map((b) => {
+          if (b.id !== id) return b;
+          const config = normalizeConfig(kind, { ...b.config, ...values });
+          return config ? { ...b, config } : b;
+        })
       );
     }
     setDialog(null);
@@ -446,9 +529,13 @@ export default function ProfileBoard({
       setEditing(false);
       setSelected(null);
       setNotice('已保存');
-      // 清掉 ?edit=1：否则刷新页面会又进编辑态，而用户刚保存完
-      window.history.replaceState({}, '', `/u/${profileId}`);
-      router.refresh();
+      // 保存成功后既要把地址栏的 `?edit=1` 去掉，也要让服务端把新布局渲染回来。
+      // **两件事都交给 router.replace**：
+      //   · 先裸 `history.replaceState` 改地址栏、再 `router.refresh()` 的话，
+      //     refresh 会按路由树里的旧 URL 把地址栏写回去（实测：URL 又变回 ?edit=1）；
+      //   · 只 refresh 不 replace 则 `?edit=1` 一直留在地址栏，刷新会重进编辑态。
+      // 同路由、只换 searchParams 的软导航不会丢客户端 state（「已保存」提示还在）。
+      router.replace(`/u/${profileId}`, { scroll: false });
     } catch {
       setError('网络异常，请稍后再试');
       setSaving(false);
@@ -461,51 +548,54 @@ export default function ProfileBoard({
     setSelected(null);
     setError(null);
     if (window.location.search.includes('edit=1')) {
-      window.history.replaceState({}, '', `/u/${profileId}`);
+      syncUrl(`/u/${profileId}`);
     }
   }
 
   function beginEditing() {
     setEditing(true);
     setError(null);
-    window.history.replaceState({}, '', `/u/${profileId}?edit=1`);
+    syncUrl(`/u/${profileId}?edit=1`);
   }
 
   const selectedBlock = selected ? draftById.get(selected) ?? null : null;
 
   // ── 空态 / 引导 ───────────────────────────────────────────────────────────
-  if (!editing && visible.length === 0) {
-    return (
-      <section className="bento-empty">
-        {isOwner ? (
-          <>
-            <h2 className="bento-empty__title">这里还没有东西</h2>
-            <p className="bento-empty__text">
-              挑几块放上来：文章、图片、文字、链接都可以。摆好后，访客看到的就是这一页。
-            </p>
-            {canEdit ? (
-              <button type="button" className="bento-btn bento-btn--primary" onClick={beginEditing}>
-                <Plus size={18} aria-hidden="true" />
-                开始布置
-              </button>
-            ) : (
-              <p className="bento-empty__note">布置主页目前对核心用户开放。</p>
-            )}
-          </>
-        ) : (
-          <p className="bento-empty__text">这个人还没有布置主页。</p>
-        )}
-      </section>
-    );
-  }
+  // 渲染在正常树里（不是提前 return）：保存成功后 `editing` 先变 false、新的
+  // blocks 还没随 router.refresh 回来，这时如果整块提前 return，刚设的
+  // 「已保存」提示会被一起丢掉 —— 用户看到页面闪成空态，以为没存上。
+  const emptyState = !editing && visible.length === 0 ? (
+    <section className="bento-empty">
+      {isOwner ? (
+        <>
+          <h2 className="bento-empty__title">这里还没有东西</h2>
+          <p className="bento-empty__text">
+            挑几块放上来：文章、图片、文字、链接都可以。摆好后，访客看到的就是这一页。
+          </p>
+          {canEdit ? (
+            <button type="button" className="bento-btn bento-btn--primary" onClick={beginEditing}>
+              <Plus size={18} aria-hidden="true" />
+              开始布置
+            </button>
+          ) : (
+            <p className="bento-empty__note">布置主页目前对核心用户开放。</p>
+          )}
+        </>
+      ) : (
+        <p className="bento-empty__text">这个人还没有布置主页。</p>
+      )}
+    </section>
+  ) : null;
 
   return (
     <div className={`bento${editing ? ' is-editing' : ''}`}>
       {editing && (
         <div className="bento-toolbar">
           <div className="bento-toolbar__hint">
-            <GripVertical size={16} aria-hidden="true" />
-            {isMobile ? '手机上先用下方按钮加块、调尺寸；拖拽在电脑上更顺手。' : '拖动卡片换位置；选中卡片后可调尺寸、改内容。'}
+            {isMobile ? <Pencil size={16} aria-hidden="true" /> : <GripVertical size={16} aria-hidden="true" />}
+            {isMobile
+              ? '点卡片选中后可调尺寸、上下移动、删除；加块在下方工具条。'
+              : '拖动卡片换位置；选中卡片后可调尺寸、改内容。'}
           </div>
           <span className={`bento-toolbar__dirty${dirty ? ' is-dirty' : ''}`}>
             {dirty ? '有未保存的修改' : '已保存'}
@@ -522,7 +612,7 @@ export default function ProfileBoard({
         </div>
       )}
 
-      {isOwner && isDefault && !editing && (
+      {isOwner && canEdit && isDefault && !editing && (
         <section className="bento-guide" aria-label="主页布置引导">
           <div className="bento-guide__text">
             <h2 className="bento-guide__title">这是你的名片</h2>
@@ -547,15 +637,29 @@ export default function ProfileBoard({
           {error}
         </p>
       )}
-      {notice && <p className="bento-notice">{notice}</p>}
+      {notice && (
+        <p className="bento-notice" role="status">
+          {notice}
+        </p>
+      )}
 
+      {emptyState}
+
+      {!emptyState && (
+        <>
       <div
         className="bento-stage"
         style={{ '--rows': guideRows } as React.CSSProperties}
+        // 点空白处取消选中：手机上卡片操作条是固定在底部的，没有这一下就退不出去。
+        onPointerDown={(e) => {
+          if (!editing) return;
+          if (!(e.target as HTMLElement).closest('.bento-card')) setSelected(null);
+        }}
       >
-        {editing && (
+        {/* 背景格只在桌面画：手机是两列流式，坐标与格位对不上，画出来是误导。 */}
+        {editing && !isMobile && (
           <div className="bento-guides" aria-hidden="true">
-            {Array.from({ length: guideRows * (isMobile ? 2 : 4) }).map((_, i) => (
+            {Array.from({ length: guideRows * 4 }).map((_, i) => (
               <span className="bento-guides__cell" key={i} />
             ))}
           </div>
@@ -591,6 +695,7 @@ export default function ProfileBoard({
                   } as React.CSSProperties
                 }
                 tabIndex={editing ? 0 : -1}
+                aria-label={editing ? `第 ${index + 1} 块：${BLOCK_DEFS[block.kind].label}` : undefined}
                 onPointerDown={(e) => onPointerDown(e, block)}
                 onPointerMove={onPointerMove}
                 onPointerUp={onPointerUp}
@@ -604,7 +709,7 @@ export default function ProfileBoard({
                   if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); removeBlock(block.id); }
                 }}
               >
-                {editing && (
+                {editing && !isMobile && (
                   <span className="bento-card__grip" aria-hidden="true">
                     <Icon size={14} />
                     <GripVertical size={14} />
@@ -613,10 +718,16 @@ export default function ProfileBoard({
 
                 {unavailable ? (
                   <div className="bento-card__missing">
-                    <span>{block.kind === 'blog' || block.kind === 'image' || block.kind === 'audio' ? '这块内容已不可用' : '还没填内容'}</span>
-                    <button type="button" className="bento-mini" onClick={() => startEditField(block)}>
-                      编辑
-                    </button>
+                    <span>{isPickable(block.kind) ? '这块内容已不可用' : '还没填内容'}</span>
+                    {isPickable(block.kind) ? (
+                      <button type="button" className="bento-mini" onClick={() => startRepick(block)}>
+                        换一个
+                      </button>
+                    ) : isFieldEditable(block.kind) ? (
+                      <button type="button" className="bento-mini" onClick={() => startRepick(block)}>
+                        编辑
+                      </button>
+                    ) : null}
                   </div>
                 ) : view ? (
                   <BlockBody
@@ -627,7 +738,9 @@ export default function ProfileBoard({
                   />
                 ) : null}
 
-                {editing && selected === block.id && (
+                {/* 手机端不往卡片里塞操作：1×1 的卡塞不下 6 颗按钮，而且按钮会盖住
+                    内容。选中后的操作统一走底部固定条（见 .bento-dock）。 */}
+                {editing && !isMobile && selected === block.id && (
                   <div className="bento-card__tools">
                     {BLOCK_SIZES.map((s) => (
                       <button
@@ -640,7 +753,7 @@ export default function ProfileBoard({
                         {s.w}×{s.h}
                       </button>
                     ))}
-                    {(block.kind === 'text' || block.kind === 'link' || block.kind === 'image' || block.kind === 'audio') && (
+                    {isFieldEditable(block.kind) && (
                       <button type="button" className="bento-mini" onClick={() => startEditField(block)}>
                         编辑
                       </button>
@@ -657,63 +770,104 @@ export default function ProfileBoard({
           {editing && draft.length === 0 && (
             <div className="bento-card bento-card--ghost" style={{ '--gx': 0, '--gy': 0, '--gw': 2, '--gh': 1, '--gw-m': 2 } as React.CSSProperties}>
               <div className="bento-card__missing">
-                <span>从下面挑一块开始</span>
+                <span>{isMobile ? '从下方工具条加一块开始' : '从下面挑一块开始'}</span>
               </div>
             </div>
           )}
         </div>
       </div>
 
-      {editing && (
-        <>
-          {selectedBlock && (
-            <div className="bento-inspector">
-              <span className="bento-inspector__label">
-                已选：{BLOCK_DEFS[selectedBlock.kind].label}（{selectedBlock.w}×{selectedBlock.h}）
-              </span>
-              <div className="bento-inspector__sizes">
+      {/* 桌面：检查器 + 加块面板都在正常文档流里（面板吸底，滚到底就能完整操作）。 */}
+      {editing && !isMobile && selectedBlock && (
+        <div className="bento-inspector">
+          <span className="bento-inspector__label">
+            已选：{BLOCK_DEFS[selectedBlock.kind].label}（{selectedBlock.w}×{selectedBlock.h}）
+          </span>
+          <div className="bento-inspector__sizes">
+            {BLOCK_SIZES.map((s) => (
+              <button
+                key={sizeKey(s.w, s.h)}
+                type="button"
+                className={`bento-size${s.w === selectedBlock.w && s.h === selectedBlock.h ? ' is-active' : ''}`}
+                onClick={() => applySize(selectedBlock.id, s.w, s.h)}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+          <span className="bento-inspector__hint">方向键可微调位置，Delete 删除</span>
+        </div>
+      )}
+
+      {editing && !isMobile && <Palette draftCount={draft.length} onAdd={startAdd} />}
+
+      {/* 手机：底部固定工具条。没选中时是「加一块」，选中后换成那一块的操作 ——
+          同一块屏幕空间只回答一个问题，也避免 1×1 卡片里塞满按钮。 */}
+      {editing && isMobile && (
+        <div className="bento-dock" role="region" aria-label="主页编辑工具">
+          {selectedBlock ? (
+            <>
+              <div className="bento-dock__head">
+                <span className="bento-dock__label">
+                  已选：{BLOCK_DEFS[selectedBlock.kind].label}
+                </span>
+                <button type="button" className="bento-dock__done" onClick={() => setSelected(null)}>
+                  <X size={16} aria-hidden="true" />
+                  完成
+                </button>
+              </div>
+              <div className="bento-dock__row">
                 {BLOCK_SIZES.map((s) => (
                   <button
                     key={sizeKey(s.w, s.h)}
                     type="button"
-                    className={`bento-size${s.w === selectedBlock.w && s.h === selectedBlock.h ? ' is-active' : ''}`}
+                    className={`bento-size bento-size--lg${s.w === selectedBlock.w && s.h === selectedBlock.h ? ' is-active' : ''}`}
                     onClick={() => applySize(selectedBlock.id, s.w, s.h)}
+                    aria-label={`${s.label}尺寸（${s.w}×${s.h}）`}
                   >
                     {s.label}
                   </button>
                 ))}
-              </div>
-              <span className="bento-inspector__hint">方向键可微调位置，Delete 删除</span>
-            </div>
-          )}
-
-          <div className="bento-palette">
-            <span className="bento-palette__title">
-              <Plus size={16} aria-hidden="true" />
-              加一块
-            </span>
-            <div className="bento-palette__items">
-              {BLOCK_KINDS.map((kind) => {
-                const def = BLOCK_DEFS[kind];
-                const Icon = KIND_ICON[kind];
-                return (
-                  <button
-                    key={kind}
-                    type="button"
-                    className="bento-palette__item"
-                    onClick={() => startAdd(kind)}
-                    title={def.hint}
-                  >
-                    <Icon size={18} aria-hidden="true" />
-                    <span>{def.label}</span>
+                <span className="bento-dock__rowgap" aria-hidden="true" />
+                <button
+                  type="button"
+                  className="bento-size bento-size--lg"
+                  onClick={() => moveInOrder(selectedBlock.id, -1)}
+                  disabled={orderIndex <= 0}
+                  aria-label="上移一块"
+                >
+                  <ChevronUp size={16} aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  className="bento-size bento-size--lg"
+                  onClick={() => moveInOrder(selectedBlock.id, 1)}
+                  disabled={orderIndex >= draft.length - 1}
+                  aria-label="下移一块"
+                >
+                  <ChevronDown size={16} aria-hidden="true" />
+                </button>
+                {isFieldEditable(selectedBlock.kind) && (
+                  <button type="button" className="bento-size bento-size--lg" onClick={() => startEditField(selectedBlock)}>
+                    <Pencil size={15} aria-hidden="true" />
+                    <span className="visually-hidden">编辑内容</span>
                   </button>
-                );
-              })}
-            </div>
-            <span className="bento-palette__free">
-              {draft.length}/{MAX_BLOCKS} 块
-            </span>
-          </div>
+                )}
+                <button
+                  type="button"
+                  className="bento-size bento-size--lg bento-size--danger"
+                  onClick={() => removeBlock(selectedBlock.id)}
+                  aria-label="删除这块"
+                >
+                  <Trash2 size={15} aria-hidden="true" />
+                </button>
+              </div>
+            </>
+          ) : (
+            <Palette draftCount={draft.length} onAdd={startAdd} compact />
+          )}
+        </div>
+      )}
         </>
       )}
 
@@ -723,7 +877,10 @@ export default function ProfileBoard({
           catalog={catalog}
           onClose={() => setDialog(null)}
           onPick={(config) => {
-            addBlock(dialog.kind, config);
+            // 「换一个」复用同一个清单弹窗：目标是替换既有块（位置尺寸不变），
+            // 不是再加一块 —— 否则用户点了「换一个」会得到第二块。
+            if (dialog.targetId) replacePointer(dialog.targetId, config);
+            else addBlock(dialog.kind, config);
             setDialog(null);
           }}
         />
@@ -739,6 +896,49 @@ export default function ProfileBoard({
       )}
 
       {lightbox && <ImageLightbox src={lightbox} alt="主页图片" onClose={() => setLightbox(null)} />}
+    </div>
+  );
+}
+
+// ── 加块面板（桌面在流内吸底，手机在固定工具条里横滚）──────────────────────────
+
+function Palette({
+  draftCount,
+  onAdd,
+  compact,
+}: {
+  draftCount: number;
+  onAdd: (kind: BlockKind) => void;
+  /** 手机工具条里：单行横滚，省出纵向空间给卡片。 */
+  compact?: boolean;
+}) {
+  return (
+    <div className={`bento-palette${compact ? ' bento-palette--compact' : ''}`}>
+      <span className="bento-palette__title">
+        <Plus size={16} aria-hidden="true" />
+        加一块
+      </span>
+      <div className="bento-palette__items">
+        {BLOCK_KINDS.map((kind) => {
+          const def = BLOCK_DEFS[kind];
+          const Icon = KIND_ICON[kind];
+          return (
+            <button
+              key={kind}
+              type="button"
+              className="bento-palette__item"
+              onClick={() => onAdd(kind)}
+              title={def.hint}
+            >
+              <Icon size={18} aria-hidden="true" />
+              <span>{def.label}</span>
+            </button>
+          );
+        })}
+      </div>
+      <span className="bento-palette__free">
+        {draftCount}/{MAX_BLOCKS} 块
+      </span>
     </div>
   );
 }
@@ -843,7 +1043,8 @@ function BlockBody({
         <div className="bento-card__body bento-stats">
           <span className="bento-stats__item">
             <span className="bento-stats__num numeric">{view.blogs}</span>
-            <span className="bento-stats__label">公开文章</span>
+            {/* 数的是「对外可读」（public + link），不是只有 public */}
+            <span className="bento-stats__label">对外文章</span>
           </span>
           <span className="bento-stats__item">
             <span className="bento-stats__num numeric">{view.likes}</span>
@@ -851,7 +1052,7 @@ function BlockBody({
           </span>
           <span className="bento-stats__item">
             <span className="bento-stats__num numeric">{view.checkins}</span>
-            <span className="bento-stats__label">签到</span>
+            <span className="bento-stats__label">签到天数</span>
           </span>
         </div>
       );
@@ -860,7 +1061,8 @@ function BlockBody({
         <div className="bento-card__body bento-checkin">
           <CalendarCheck size={18} aria-hidden="true" />
           <span className="bento-checkin__num numeric">{view.days}</span>
-          <span className="bento-checkin__label">天连续签到</span>
+          {/* DailyCheckIn 只有「每天一行」，没有 streak 列 —— 这里只能是累计。 */}
+          <span className="bento-checkin__label">天累计签到</span>
         </div>
       );
   }
@@ -1036,3 +1238,4 @@ function FieldDialog({
     </div>
   );
 }
+

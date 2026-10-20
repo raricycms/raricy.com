@@ -62,7 +62,11 @@ export default async function PublicProfilePage({
   // 「能不能布置」= 本人 + core。非核心用户照常能看自己的主页，只是不能编辑
   //（产品决定：2026-10 先只对 core+ 开）。
   const canEdit = isOwnProfile && isCoreUser(currentUser);
-  const data = await getProfilePageData(profile.id, { isOwner: canEdit });
+  const data = await getProfilePageData(profile.id, {
+    isOwner: canEdit,
+    // 默认布局（还没布置过）要不要自动挂最近文章，沿用设置页那个旧开关。
+    showRecentBlogs: profile.showRecentBlogs,
+  });
 
   const rawEdit = Array.isArray(sp.edit) ? sp.edit[0] : sp.edit;
   const startEditing = rawEdit === '1' && canEdit;

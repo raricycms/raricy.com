@@ -359,6 +359,12 @@
   color: var(--color-text-secondary);
 }
 
+// 日期是等宽数字（.numeric 已给 font-variant），这里只补一行垂直对齐。
+.bento-blog__date {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+}
+
 // --- 图片卡 ---
 
 .bento-image {
@@ -579,9 +585,12 @@
     box-shadow: var(--shadow-card-brand);
   }
 
-  /* 左上角的拖拽徽标不能压住正文：给非图片卡多留一条头距 */
-  .bento-card:not(.bento-card--image) .bento-card__body {
-    padding-top: 34px;
+  /* 左上角的拖拽徽标不能压住正文：给非图片卡多留一条头距。
+     只在桌面——手机不画拖拽徽标（顺序靠底部工具条的上下移）。 */
+  @media (min-width: 769px) {
+    .bento-card:not(.bento-card--image) .bento-card__body {
+      padding-top: 34px;
+    }
   }
 
   .bento-card--ghost {
@@ -636,6 +645,17 @@
     background: var(--color-brand-secondary);
     color: var(--color-brand-primary);
     font-weight: 600;
+  }
+}
+
+// 删除那颗（手机工具条里）：与 .bento-mini--danger 同一套警示红，独立成类是因为
+// 它同时要吃 .bento-size--lg 的 40px 触达尺寸。
+.bento-size--danger {
+  color: var(--color-warning-primary);
+
+  &:hover {
+    background: var(--color-warning-secondary);
+    color: var(--color-warning-primary);
   }
 }
 
@@ -1088,27 +1108,23 @@
 }
 
 // --- 窄屏 ---
+//
+// 手机是**两列流式**：忽略 x/y，按数组顺序（数据库 sort 列）排。所以
+//   1. 绝不能 `grid-auto-flow: dense` —— 它会把后面的 1×1 块填进前面的空洞，
+//      画出来的顺序就与用户刚调好的顺序对不上（而那是保存时唯一被持久化的东西）；
+//   2. 背景格不画（坐标与流式格位对不上）；
+//   3. 卡片操作不进卡片，统一走底部固定工具条（见 .bento-dock）。
 
 @media (max-width: 768px) {
   .bento-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     grid-auto-rows: 120px;
-    grid-auto-flow: dense;
+    grid-auto-flow: row;
     gap: 12px;
   }
 
   .bento-grid.is-editing {
     min-height: calc(var(--rows, 4) * 120px + (var(--rows, 4) - 1) * 12px);
-  }
-
-  .bento-guides {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    grid-auto-rows: 120px;
-    gap: 12px;
-  }
-
-  .bento-guides__cell {
-    border-radius: 18px;
   }
 
   .bento-card {
@@ -1121,23 +1137,146 @@
     padding: $space-4;
   }
 
-  .bento-card__tools {
-    left: 6px;
-    right: 6px;
-    bottom: 6px;
+  /* 底部固定工具条不占文档流，给页面尾部留出它的高度，否则最后一块永远压在它下面。 */
+  .bento.is-editing {
+    padding-bottom: 164px;
   }
 
   .bento-pick-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  /* 手机上积木面板不吸底：它本身就有三行高，吸底会长期盖住卡片。 */
-  .bento-palette {
-    position: static;
-    box-shadow: none;
-  }
-
   .bento-toolbar {
     top: 68px;
+  }
+}
+
+// --- 手机底部工具条 ---------------------------------------------------------
+//
+// 同一块位置只回答一个问题：没选中卡片时是「加一块」，选中后换成那一块的
+// 尺寸 / 上移下移 / 编辑 / 删除。这样 1×1 卡片里不用再塞六颗按钮。
+
+.bento-dock {
+  position: fixed;
+  right: 12px;
+  bottom: calc(12px + var(--safe-bottom, env(safe-area-inset-bottom, 0px)));
+  left: 12px;
+  z-index: 30;
+  max-height: 45vh;
+  overflow-y: auto;
+  padding: 10px 12px;
+  border-radius: 20px;
+  background: var(--color-background-card);
+  box-shadow: var(--shadow-card-brand);
+  animation: bento-dock-in 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  &__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: $space-2;
+    margin-bottom: 6px;
+  }
+
+  &__label {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__done {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+    padding: 4px 12px;
+    min-height: 32px;
+    border: none;
+    border-radius: $radius-max;
+    background: var(--color-background-subtle);
+    color: var(--color-text-secondary);
+    font-size: 0.8rem;
+    cursor: pointer;
+  }
+
+  &__row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  &__rowgap {
+    flex: 0 0 2px;
+  }
+}
+
+// 工具条里的按钮一律 ≥ 40px，手指点得准。
+.bento-size--lg {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 44px;
+  min-height: 40px;
+  padding: 0 10px;
+  font-size: 0.85rem;
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+}
+
+@keyframes bento-dock-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+// 固定工具条里的「加一块」：单行横滚，别把工具条撑成三行高。
+.bento-palette--compact {
+  position: static;
+  box-shadow: none;
+  padding: 0;
+  background: transparent;
+  gap: $space-2;
+  flex-wrap: nowrap;
+  margin: 0;
+
+  .bento-palette__items {
+    flex: 1;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+
+    &::-webkit-scrollbar {
+      display: none;
+    }
+  }
+
+  .bento-palette__item {
+    flex: 0 0 auto;
+    min-height: 40px;
+  }
+
+  .bento-palette__free {
+    flex-shrink: 0;
+    margin-left: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bento-dock {
+    animation: none;
   }
 }

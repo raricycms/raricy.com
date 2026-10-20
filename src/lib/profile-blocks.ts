@@ -19,7 +19,10 @@
 
 import { safeExternalReturnUrl } from './safe-url';
 
-/** 桌面网格列数。手机上忽略 x/y，按 y→x 排序流式排两列（见页面组件）。 */
+/**
+ * 桌面网格列数。手机上忽略 x/y，按**保存时的数组顺序**（数据库里的 `sort` 列）流式排
+ * 两列 —— 顺序与桌面位置是两件事，理由见迁移 32 的头部。
+ */
 export const GRID_COLUMNS = 4;
 /** 一页最多几块。超过就拒绝保存 —— 防「每块一次查询」被堆成慢查询。 */
 export const MAX_BLOCKS = 16;
@@ -216,6 +219,11 @@ export interface BlockCatalog {
   blogs: CatalogBlog[];
   images: CatalogImage[];
   audios: CatalogAudio[];
+  /**
+   * 统计块的当前值。**新加的统计 / 签到块要立刻显示真数**，否则编辑器里会先画成
+   * 「还没填内容」（那时它没有任何 config 可填），用户会以为这块坏了。
+   */
+  stats: { blogs: number; likes: number; checkins: number };
 }
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
@@ -362,9 +370,4 @@ export function normalizeBlocks(raw: unknown): NormalizeResult {
 /** 手机端把宽 2 的块压成两列；宽 1 保持一列。 */
 export function mobileSpan(w: number): number {
   return Math.min(w, 2);
-}
-
-/** 手机端的排列顺序：先上后下、先左后右。桌面端不用它（有真坐标）。 */
-export function mobileOrder(blocks: readonly StoredBlock[]): StoredBlock[] {
-  return [...blocks].sort((a, b) => a.y - b.y || a.x - b.x);
 }

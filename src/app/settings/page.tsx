@@ -324,13 +324,13 @@ export default function SettingsPage() {
           <span className="icon icon-gear"></span>
           <h2 className="settings-card__title">主页隐私设置</h2>
         </div>
-        <p className="settings-card__desc">控制你的最近文章和评论是否在个人主页中公开展示</p>
+        <p className="settings-card__desc">主页内容由你在主页上自行布置；下面两项控制默认展示与资料接口</p>
         <div className={privacyAlertClass} id="privacyAlert">{privacyAlert?.msg ?? ''}</div>
 
         <div className="settings-toggle-row">
           <div className="settings-toggle-row__label">
-            <span className="settings-toggle-row__title">展示最近文章</span>
-            <span className="settings-toggle-row__desc">他人访问你的主页时可以看到最近发布的文章</span>
+            <span className="settings-toggle-row__title">默认展示最近文章</span>
+            <span className="settings-toggle-row__desc">还没布置主页时，自动展示最近三篇对外可读的文章；关掉后默认为空。亲手加的文章块不受影响</span>
           </div>
           <label className="settings-toggle">
             <input
@@ -345,8 +345,8 @@ export default function SettingsPage() {
 
         <div className="settings-toggle-row">
           <div className="settings-toggle-row__label">
-            <span className="settings-toggle-row__title">展示最近评论</span>
-            <span className="settings-toggle-row__desc">他人访问你的主页时可以看到最近发表的评论</span>
+            <span className="settings-toggle-row__title">在资料接口中提供最近评论</span>
+            <span className="settings-toggle-row__desc">评论不会出现在个人主页（保护匿名评论者）；关闭后，第三方应用读取资料时也拿不到最近评论</span>
           </div>
           <label className="settings-toggle">
             <input

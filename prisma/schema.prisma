@@ -1207,6 +1207,9 @@ model ProfileBlock {
   h         Int       @default(1)
   /// JSON 文本；每类块自己的参数（blogId / imageId / text / url…）。
   config    String    @default("{}")
+  /// 手机端的显示顺序（0 起）。桌面按 (x, y) 自由摆放；手机忽略坐标、按这一列流式排，
+  /// 因此「手机上调顺序」与「桌面上挪位置」互不影响（保存时按客户端数组下标重编号）。
+  sort      Int       @default(0)
   createdAt DateTime? @map("created_at")
   updatedAt DateTime? @map("updated_at")
   deleted   Boolean   @default(false)
