@@ -277,6 +277,8 @@
     // 它挂在 aside 里面而不是 portal：移动端 aside 自己就是 fixed，蒙版跟着它一起
     // 显隐即可。代价是「点外部收起」那个监听判不出它（它就在 aside 内），收起由
     // 组件自己的 onPointerDown 接（见 BlogPersonalSidebar）。
+    // 尺寸是整块可视区，但**层级留在固定顶栏之下**（见 .is-open 的说明）：顶栏是
+    // 不透明的固定条，蒙版压到它下面，于是只暗页面、不暗顶栏。
     &__backdrop {
       display: block;
       position: fixed;
@@ -376,11 +378,9 @@
     }
 
     &.is-open {
-      // 蒙版要盖住固定顶栏（.site-navbar 是 1030）才叫「全屏」。与 .bento-detail
-      // 为了同一件事取 1050 同源；这里只压过顶栏，仍让站内模态（1050 / 10000）
-      // 盖在它上面。收起态维持 80，不进渲染。
-      z-index: 1035;
-
+      // 刻意**不**抬 aside 的层级：蒙版要压在页面内容之上、又留在固定顶栏
+      // （.site-navbar，1030）之下 —— 顶栏照常亮着、不参与变暗。80 正好夹在两者
+      // 之间（这一页页面内容的最高层是吸顶筛选条的 40）。
       .blog-personal__backdrop { opacity: 1; pointer-events: auto; }
       .blog-personal__shell { width: min(280px, calc(100vw - 32px)); border-radius: 30px; }
       .blog-personal__avatar { top: 24px; left: 20px; width: 48px; height: 48px; }

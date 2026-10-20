@@ -223,7 +223,7 @@ test('手机端胶囊：加号直达创建，点头像展开，加号展开成�
   await expect(page).toHaveURL('/blog/upload');
 });
 
-test('手机端展开个人面板时压一层全屏暗色蒙版，点蒙版收起', async ({ page, isMobile }) => {
+test('手机端展开个人面板时压一层暗色蒙版，顶栏不被蒙，点蒙版收起', async ({ page, isMobile }) => {
   test.skip(!isMobile, '蒙版只在 ≤992px 的悬浮入口出现');
   await page.goto('/blog?scope=mine');
   const backdrop = page.locator('.blog-personal__backdrop');
@@ -241,26 +241,36 @@ test('手机端展开个人面板时压一层全屏暗色蒙版，点蒙版收�
   // 与站内其它遮罩同一个色（.modal / .modal-overlay / .bento-detail__backdrop）。
   await expect(backdrop).toHaveCSS('background-color', 'rgba(0, 0, 0, 0.5)');
 
-  // 铺满可视区；层级还要高于固定顶栏，否则顶栏那一条不会跟着变暗。
+  // 铺满可视区，但层级**低于固定顶栏**：顶栏不参与变暗、照常可点；同时高于页面内容。
   // 尺寸基准取 visualViewport：Chromium 的移动模拟里布局视口（clientWidth）比可视区
   // 大一条经典滚动条的宽度，而 fixed 定位的初始包含块跟着可视区走 —— 全站其它固定
   // 遮罩（.modal-overlay、.chat-lightbox）在这个环境里也是同样大小，不是本条的偏差。
   const layout = await page.evaluate(() => {
     const vv = window.visualViewport;
+    const navbar = document.querySelector('.site-navbar')!;
+    const navRect = navbar.getBoundingClientRect();
+    const navHit = document.elementFromPoint(navRect.width / 2, navRect.height / 2);
     return {
-      navbar: Number(getComputedStyle(document.querySelector('.site-navbar')!).zIndex),
+      navbar: Number(getComputedStyle(navbar).zIndex),
       host: Number(getComputedStyle(document.querySelector('.blog-personal')!).zIndex),
+      filters: Number(getComputedStyle(document.querySelector('.blog-filters')!).zIndex),
       width: vv?.width ?? window.innerWidth,
       height: vv?.height ?? window.innerHeight,
+      // 命中测试：顶栏那条区域里最上层仍是顶栏自己；页面内容那一点最上层是蒙版。
+      navbarOnTop: navHit !== null && navbar.contains(navHit),
+      scrimOnTop: document.elementFromPoint(12, 220) === document.querySelector('.blog-personal__backdrop'),
     };
   });
-  expect(layout.host).toBeGreaterThan(layout.navbar);
+  expect(layout.host).toBeLessThan(layout.navbar);
+  expect(layout.host).toBeGreaterThan(layout.filters);
+  expect(layout.navbarOnTop).toBe(true);
+  expect(layout.scrimOnTop).toBe(true);
   const box = (await backdrop.boundingBox())!;
   expect(Math.round(box.width)).toBe(Math.round(layout.width));
   expect(Math.round(box.height)).toBe(Math.round(layout.height));
 
   // 点左上角空白处收起（右下角那块是展开的面板本身，避开它），走触屏路径。
-  await backdrop.tap({ position: { x: 24, y: 120 } });
+  await backdrop.tap({ position: { x: 12, y: 220 } });
   await expect(panel).toBeHidden();
   await expect(backdrop).toHaveCSS('pointer-events', 'none');
 });

@@ -72,6 +72,7 @@ export default function BlogPersonalSidebar({ user, summary, scope }: {
     >
       {/* 窄屏展开时的全屏暗色蒙版：点它收起（与 ESC、点外部同义）。
           颜色跟站内模态遮罩统一（0.5 黑），样式见 _directory.scss 的 __backdrop。
+          层级刻意留在固定顶栏之下 —— 顶栏照常亮着，不参与变暗。
           它挂在 aside 里面而不是 portal：移动端 aside 本身就是 fixed，蒙版跟着一起
           显隐即可 —— 代价是文档上那个「点外部收起」的监听判不出它（它就在 aside 内），
           所以这里自己接 pointerdown。同理，桌面 display:none，不进任何渲染。 */}
